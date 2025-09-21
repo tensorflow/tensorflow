@@ -1528,7 +1528,7 @@ PJRT_Error* PJRT_Executable_GetCostAnalysis(
       PJRT_Executable_GetCostAnalysis_Args_STRUCT_SIZE, args->struct_size));
 
   {
-    absl::MutexLock lock(&args->executable->mutex);
+    absl::MutexLock lock(args->executable->mutex);
     if (!args->executable->cost_analysis_ran) {
       PJRT_RETURN_IF_ERROR(PopulateExecutableCostAnalysis(args->executable));
       args->executable->cost_analysis_ran = true;
@@ -1552,7 +1552,7 @@ PJRT_Error* PJRT_Executable_OutputElementTypes(
       PJRT_Executable_OutputElementTypes_Args_STRUCT_SIZE, args->struct_size));
 
   {
-    absl::MutexLock lock(&args->executable->mutex);
+    absl::MutexLock lock(args->executable->mutex);
     if (!args->executable->out_type_ran) {
       PJRT_RETURN_IF_ERROR(
           PopulateExecutableOutputElementTypes(args->executable));
@@ -1572,7 +1572,7 @@ PJRT_Error* PJRT_Executable_OutputDimensions(
       PJRT_Executable_OutputDimensions_Args_STRUCT_SIZE, args->struct_size));
 
   {
-    absl::MutexLock lock(&args->executable->mutex);
+    absl::MutexLock lock(args->executable->mutex);
     if (!args->executable->out_dimension_ran) {
       PJRT_RETURN_IF_ERROR(
           PopulateExecutableOutputDimensions(args->executable));
@@ -1593,7 +1593,7 @@ PJRT_Error* PJRT_Executable_OutputMemoryKinds(
       PJRT_Executable_OutputMemoryKinds_Args_STRUCT_SIZE, args->struct_size));
 
   {
-    absl::MutexLock lock(&args->executable->mutex);
+    absl::MutexLock lock(args->executable->mutex);
     if (!args->executable->memory_kind_ran) {
       PJRT_RETURN_IF_ERROR(
           PopulateExecutableOutputMemoryKinds(args->executable));
@@ -1984,7 +1984,7 @@ PJRT_Error* PJRT_Buffer_UnpaddedDimensions(
   std::optional<std::vector<int64_t>>& unpadded_dims =
       args->buffer->unpadded_dims;
   {
-    absl::MutexLock lock(&args->buffer->mu);
+    absl::MutexLock lock(args->buffer->mu);
     if (!unpadded_dims.has_value()) {
       PJRT_ASSIGN_OR_RETURN(std::vector<int64_t> dims,
                             args->buffer->buffer->logical_dimensions());
@@ -2006,7 +2006,7 @@ PJRT_Error* PJRT_Buffer_DynamicDimensionIndices(
   std::optional<std::vector<size_t>>& dyn_dim_indices =
       args->buffer->dynamic_dim_indices;
   {
-    absl::MutexLock lock(&args->buffer->mu);
+    absl::MutexLock lock(args->buffer->mu);
     if (!dyn_dim_indices.has_value()) {
       std::vector<size_t>& dyn_dim_indices_value = dyn_dim_indices.emplace();
       for (int i = 0; i < is_dyn_dim.size(); ++i) {
@@ -2030,7 +2030,7 @@ PJRT_Error* PJRT_Buffer_GetMemoryLayout(
   std::optional<BufferMemoryLayoutData>& layout_data =
       args->buffer->layout_data;
   {
-    absl::MutexLock lock(&args->buffer->mu);
+    absl::MutexLock lock(args->buffer->mu);
     if (!layout_data.has_value()) {
       // TODO(skyewm): change PJRT C API to also use opaque layout type
       std::shared_ptr<const xla::PjRtLayout> pjrt_layout =

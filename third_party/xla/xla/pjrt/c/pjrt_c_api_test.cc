@@ -88,7 +88,7 @@ class TestCApiFactory {
  public:
   void Register(std::function<const PJRT_Api*()> factory,
                 absl::string_view platform_name) {
-    absl::MutexLock lock(&mu_);
+    absl::MutexLock lock(mu_);
     CHECK(!factory_);
     factory_ = std::move(factory);
     CHECK(platform_name_.empty()) << "Platform name already provided";
@@ -97,13 +97,13 @@ class TestCApiFactory {
   }
 
   std::function<const PJRT_Api*()> Get() const {
-    absl::MutexLock lock(&mu_);
+    absl::MutexLock lock(mu_);
     CHECK(factory_) << "Test didn't call RegisterPjRtCApiTestFactory()";
     return factory_;
   }
 
   std::string GetPlatformName() const {
-    absl::MutexLock lock(&mu_);
+    absl::MutexLock lock(mu_);
     CHECK(!platform_name_.empty())
         << "Test didn't call RegisterPjRtCApiTestFactory()";
     return platform_name_;
