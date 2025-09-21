@@ -331,13 +331,13 @@ class CuptiActivityBufferManager {
   void ReclaimBuffer(uint8_t* p) { buffer_pool_.ReclaimBuffer(p); }
 
   void CacheCuptiFilledActivityBuffer(uint8_t* p, size_t sz) {
-    absl::MutexLock lock(&buffer_mutex_);
+    absl::MutexLock lock(buffer_mutex_);
     cached_buffers_.emplace_back(p, sz);
   }
 
   std::list<ActivityBufferAndSize> PopCachedBuffers() {
     std::list<ActivityBufferAndSize> result;
-    absl::MutexLock lock(&buffer_mutex_);
+    absl::MutexLock lock(buffer_mutex_);
     std::swap(result, cached_buffers_);
     return result;
   }
