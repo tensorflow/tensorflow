@@ -6,6 +6,7 @@ load("//tensorflow:strict.default.bzl", "py_strict_binary", "py_strict_library",
 load("//tensorflow:tensorflow.bzl", "if_google", "if_xla_available", "tf_cc_test")
 load("//tensorflow/core/platform:build_config_root.bzl", "if_pywrap")
 load("//tensorflow/python/tools:tools.bzl", "saved_model_compile_aot")
+load("//tensorflow:tensorflow.bzl", "tf_py_test")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -588,6 +589,18 @@ tf_cc_test(
         "//tensorflow/core/platform:logging",
         "@eigen_archive//:eigen3",
     ]),
+)
+
+tf_py_test(
+    name = "saved_model_cli_sanitize_list_test",
+    size = "small",
+    srcs = ["saved_model_cli_sanitize_list_test.py"],
+    python_version = "PY3",
+    deps = [
+        ":saved_model_cli",
+        "//tensorflow/python/platform:client_testlib",
+        "@absl_py//absl/testing:parameterized",  # testte kullanılmıyorsa kaldırabilirsin
+    ],
 )
 
 # copybara:uncomment_begin(google-only)
