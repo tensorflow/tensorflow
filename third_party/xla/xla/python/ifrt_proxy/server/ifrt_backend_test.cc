@@ -283,13 +283,13 @@ class IfrtBackendHandlerTest : public IfrtBackendTest {
         .WillByDefault(Return(raw_device_ptrs));
     ON_CALL(*mock_client, LookupDevice(_))
         .WillByDefault(
-            Invoke([this](DeviceId id) -> absl::StatusOr<xla::ifrt::Device*> {
+            [this](DeviceId id) -> absl::StatusOr<xla::ifrt::Device*> {
               if (id.value() < 0 || id.value() >= mock_devices_.size()) {
                 return absl::NotFoundError(
                     absl::StrCat("Unknown device id: ", id.value()));
               }
               return mock_devices_[id.value()].get();
-            }));
+            });
     ON_CALL(*mock_client, MakeDeviceList(_))
         .WillByDefault([](absl::Span<xla::ifrt::Device* const> devices) {
           return xla::ifrt::BasicDeviceList::Create(devices);
@@ -806,16 +806,16 @@ TEST_P(IfrtBackendHandlerTest, CopyToHostSuccessWithStringArray) {
   ON_CALL(*mock_array, dtype()).WillByDefault(Return(expected_dtype));
 
   ON_CALL(*mock_array, CopyToHostBuffer(_, _, _))
-      .WillByDefault(Invoke(
-          [input_strings = input_strings](
-              void* data, std::optional<absl::Span<const int64_t>> byte_strides,
-              xla::ifrt::ArrayCopySemantics semantics) {
-            auto dst = static_cast<absl::Cord*>(data);
-            for (int i = 0; i < input_strings.size(); ++i) {
-              dst[i] = input_strings[i];
-            }
-            return Future<>(absl::OkStatus());
-          }));
+      .WillByDefault([input_strings = input_strings](
+                         void* data,
+                         std::optional<absl::Span<const int64_t>> byte_strides,
+                         xla::ifrt::ArrayCopySemantics semantics) {
+        auto dst = static_cast<absl::Cord*>(data);
+        for (int i = 0; i < input_strings.size(); ++i) {
+          dst[i] = input_strings[i];
+        }
+        return Future<>(absl::OkStatus());
+      });
 
   EXPECT_CALL(*mock_client_,
               MakeArrayFromHostBuffer(_, expected_dtype, expected_shape,
@@ -1326,16 +1326,15 @@ TEST_P(IfrtBackendHandlerTest, LoadedExecutableExecute) {
   }
 
   EXPECT_CALL(*executable, Execute(SizeIs(kNumArgs), _, _))
-      .WillOnce(
-          Invoke([&](absl::Span<ArrayRef> args,
-                     const xla::ifrt::LoadedExecutable::ExecuteOptions& options,
-                     std::optional<DeviceListRef> devices)
-                     -> absl::StatusOr<LoadedExecutable::ExecuteResult> {
-            return LoadedExecutable::ExecuteResult{
-                .status = Future<>(absl::InternalError("injected error")),
-                .outputs = outputs,
-            };
-          }));
+      .WillOnce([&](absl::Span<ArrayRef> args,
+                    const xla::ifrt::LoadedExecutable::ExecuteOptions& options,
+                    std::optional<DeviceListRef> devices)
+                    -> absl::StatusOr<LoadedExecutable::ExecuteResult> {
+        return LoadedExecutable::ExecuteResult{
+            .status = Future<>(absl::InternalError("injected error")),
+            .outputs = outputs,
+        };
+      });
 
   auto request = NewIfrtRequest(NewOpId());
   LoadedExecutableExecuteRequest* execute_request =
@@ -1417,13 +1416,12 @@ TEST_P(IfrtBackendHandlerTest, LoadedExecutableExecuteErrorWithClientHandles) {
   };
 
   EXPECT_CALL(*executable, Execute(SizeIs(kNumArgs), _, _))
-      .WillOnce(
-          Invoke([&](absl::Span<ArrayRef> args,
-                     const xla::ifrt::LoadedExecutable::ExecuteOptions& options,
-                     std::optional<DeviceListRef> devices)
-                     -> absl::StatusOr<LoadedExecutable::ExecuteResult> {
-            return absl::InternalError("injected error");
-          }));
+      .WillOnce([&](absl::Span<ArrayRef> args,
+                    const xla::ifrt::LoadedExecutable::ExecuteOptions& options,
+                    std::optional<DeviceListRef> devices)
+                    -> absl::StatusOr<LoadedExecutable::ExecuteResult> {
+        return absl::InternalError("injected error");
+      });
 
   auto request = NewIfrtRequest(NewOpId());
   LoadedExecutableExecuteRequest* execute_request =
@@ -1546,16 +1544,15 @@ TEST_P(IfrtBackendHandlerTest, LoadedHostCallbackExecute) {
 
     EXPECT_CALL(mock_compiler_, CompileAndLoad(_, _))
         .WillOnce(DoAll(
-            Invoke(
-                [&](const std::unique_ptr<xla::ifrt::Program>& program,
-                    const std::unique_ptr<xla::ifrt::CompileOptions>& options) {
-                  auto* xla_compile_options =
-                      llvm::cast<xla::ifrt::XlaCompileOptions>(options.get());
-                  auto& loaded_host_callbacks =
-                      xla_compile_options->loaded_host_callbacks;
-                  ASSERT_EQ(loaded_host_callbacks.size(), 1);
-                  loaded_host_callback = loaded_host_callbacks.front();
-                }),
+            [&](const std::unique_ptr<xla::ifrt::Program>& program,
+                const std::unique_ptr<xla::ifrt::CompileOptions>& options) {
+              auto* xla_compile_options =
+                  llvm::cast<xla::ifrt::XlaCompileOptions>(options.get());
+              auto& loaded_host_callbacks =
+                  xla_compile_options->loaded_host_callbacks;
+              ASSERT_EQ(loaded_host_callbacks.size(), 1);
+              loaded_host_callback = loaded_host_callbacks.front();
+            },
             Return(ByMove(std::move(e)))));
 
     TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<IfrtResponse> response,
