@@ -33,7 +33,7 @@ RngState::RngState(int64_t delta)
     : delta_(delta), state_(kRngStateInitialValue) {}
 
 void RngState::GetAndUpdateState(uint64_t* data) {
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
 
   uint64_t low = absl::Int128Low64(state_);
   uint64_t high = absl::Int128High64(state_);
