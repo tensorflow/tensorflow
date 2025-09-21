@@ -124,7 +124,7 @@ ABSL_CONST_INIT absl::Mutex host_offloading_client_mutex(absl::kConstInit);
 absl::StatusOr<xla::cpu::NanoRtClient*> GetHostOffloadingNanoRtClient() {
   static xla::cpu::NanoRtClient* client = nullptr;
 
-  absl::MutexLock lock(&host_offloading_client_mutex);
+  absl::MutexLock lock(host_offloading_client_mutex);
   if (client != nullptr) {
     return client;
   }
