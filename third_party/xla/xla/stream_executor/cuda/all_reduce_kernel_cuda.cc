@@ -37,27 +37,6 @@ union alignas(8) Vec<__nv_bfloat16> {
   PackedType packed;
 };
 
-template <>
-__device__ __forceinline__ void PutSignalFlag<PlatformType::CUDA>(
-    uint32_t* addr, uint32_t val) {
-  ::cuda::atomic_ref<uint32_t, ::cuda::thread_scope_system> ref(*addr);
-  // During signaling release semantics are used to ensure that writes
-  // by the current thread are visible to the waiting thread.
-  ref.store(val, ::cuda::memory_order_release);
-}
-
-template <>
-__device__ __forceinline__ void WaitSignalFlag<PlatformType::CUDA>(
-    uint32_t* addr, uint32_t expected) {
-  ::cuda::atomic_ref<uint32_t, ::cuda::thread_scope_system> ref(*addr);
-  // During waiting we use acquire semantics to ensure all memory writes by the
-  // remote thread are visible to the current thread.
-  // If the flag is greater it means that the other GPU has already signaled
-  // the next sync point.
-  while (ref.load(::cuda::memory_order_acquire) < expected) {
-  }
-}
-
 }  // namespace stream_executor::gpu
 
 // C++ macros don't like commas in template arguments, so we need to use
