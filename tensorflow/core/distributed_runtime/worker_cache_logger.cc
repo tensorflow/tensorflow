@@ -103,7 +103,7 @@ void WorkerCacheLogger::RecordDataTransfer(int64_t step_id, int64_t start_usecs,
   ns->set_node_name(transfer_method_name);
   int64_t elapsed_usecs = end_usecs - start_usecs;
   if (details.empty()) {
-    auto byte_string = strings::StrCat("[", bytes, "B] ");
+    auto byte_string = absl::StrCat("[", bytes, "B] ");
     if (bytes >= 0.1 * 1048576.0) {
       byte_string = strings::Printf("[%.1fMB] ", bytes / 1048576.0);
     }
