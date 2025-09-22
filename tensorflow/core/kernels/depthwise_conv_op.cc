@@ -284,6 +284,18 @@ class DepthwiseConv2dNativeOp : public BinaryOp<T> {
   explicit DepthwiseConv2dNativeOp(OpKernelConstruction* context)
       : BinaryOp<T>(context) {
     OP_REQUIRES_OK(context, context->GetAttr("strides", &strides_));
+	
+	// Validate strides to prevent crashes due to extremely large or negative values
+	for (int i = 0; i < strides_.size(); ++i) {
+		OP_REQUIRES(context, strides_[i] > 0,
+			errors::InvalidArgument("Stride at index ", i,
+									" must be positive, got ", strides_[i]));
+		OP_REQUIRES(context, strides_[i] <= std::numeric_limits<int32_t>::max(),
+			errors::InvalidArgument("Stride at index ", i,
+									" too large, must fit in int32, got ", strides_[i]));
+	}
+
+	
     string data_format;
     OP_REQUIRES_OK(context, context->GetAttr("data_format", &data_format));
     OP_REQUIRES(context, FormatFromString(data_format, &data_format_),
