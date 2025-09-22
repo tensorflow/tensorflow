@@ -57,6 +57,10 @@ struct MhloToScalarOp<mhlo::AcoshOp> {
   using FOp = ::mlir::math::AcoshOp;
 };
 template <>
+struct MhloToScalarOp<mhlo::AsinOp> {
+  using FOp = ::mlir::math::AsinOp;
+};
+template <>
 struct MhloToScalarOp<mhlo::AddOp> {
   using FOp = ::mlir::arith::AddFOp;
   using IOp = ::mlir::arith::AddIOp;
