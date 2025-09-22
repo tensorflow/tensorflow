@@ -12,12 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Command-line interface to inspect and execute a graph in a SavedModel.
+(
+    """Command-line interface to inspect and execute a graph in a SavedModel.
 
 For detailed usages and examples, please refer to:
-https://www.tensorflow.org/guide/saved_model#cli_to_inspect_and_execute_savedmodel
-
 """
+    "https://www.tensorflow.org/guide/saved_model#cli_to_inspect_and_"
+    "execute_savedmodel\n\n"
+)
 
 import argparse
 import platform
@@ -433,16 +435,22 @@ def _show_defined_functions(saved_model_dir, meta_graphs):
     return
 
   children = list(
-      save._AugmentedGraphView(trackable_object)  # pylint: disable=protected-access
-      .list_children(trackable_object))
+      save._AugmentedGraphView(
+          trackable_object
+      )  # pylint: disable=protected-access
+      .list_children(trackable_object)
+  )
   children = sorted(children, key=lambda x: x.name)
   for name, child in children:
     concrete_functions = []
     if isinstance(child, defun.ConcreteFunction):
       concrete_functions.append(child)
     elif isinstance(child, def_function.Function):
+      # pylint: disable=protected-access
       concrete_functions.extend(
-          child._list_all_concrete_functions_for_serialization())  # pylint: disable=protected-access
+          child._list_all_concrete_functions_for_serialization()
+      )
+      # pylint: enable=protected-access
     else:
       continue
     print('\n  Function Name: \'%s\'' % name)
@@ -454,7 +462,9 @@ def _show_defined_functions(saved_model_dir, meta_graphs):
       elif concrete_function._arg_keywords:  # pylint: disable=protected-access
         # For pure ConcreteFunctions we might have nothing better than
         # _arg_keywords.
-        args = concrete_function._arg_keywords  # pylint: disable=protected-access
+        # pylint: disable=protected-access
+        args = concrete_function._arg_keywords
+        # pylint: enable=protected-access
       if args:
         print('    Option #%d' % index)
         print('      Callable with:')
@@ -464,7 +474,8 @@ def _show_defined_functions(saved_model_dir, meta_graphs):
 
 
 def _print_args(arguments, argument_type='Argument', indent=0):
-  """Formats and prints the argument of the concrete functions defined in the model.
+  """Formats and prints the argument of the concrete functions defined in the\
+ model.
 
   Args:
     arguments: Arguments to format print.
@@ -601,7 +612,10 @@ def get_signature_def_map(saved_model_dir, tag_set):
 
 def _get_op_denylist_set(op_denylist):
   # Note: Discard empty ops so that "" can mean the empty denylist set.
-  set_of_denylisted_ops = set([op for op in op_denylist.split(',') if op])
+  set_of_denylisted_ops = set([
+      op for op in op_denylist.split(',')
+      if op
+  ])
   return set_of_denylisted_ops
 
 
@@ -945,7 +959,10 @@ def load_inputs_from_input_arg_string(inputs_str, input_exprs_str,
   input_examples = preprocess_input_examples_arg_string(input_examples_str)
 
   for input_tensor_key, (filename, variable_name) in inputs.items():
-    data = np.load(file_io.FileIO(filename, mode='rb'), allow_pickle=True)  # pylint: disable=unexpected-keyword-arg
+    data = np.load(
+        file_io.FileIO(filename, mode='rb'),
+        allow_pickle=True,
+    )  # pylint: disable=unexpected-keyword-arg
 
     # When a variable_name key is specified for the input file
     if variable_name:
@@ -1078,7 +1095,8 @@ def convert_with_tensorrt():
   """Function triggered by 'convert tensorrt' command."""
   # Import here instead of at top, because this will crash if TensorRT is
   # not installed
-  from tensorflow.python.compiler.tensorrt import trt_convert as trt  # pylint: disable=g-import-not-at-top
+  from tensorflow.python.compiler.tensorrt \
+      import trt_convert as trt  # pylint: disable=g-import-not-at-top
 
   if not _SMCLI_CONVERT_TF1_MODEL.value:
     params = trt.DEFAULT_TRT_CONVERSION_PARAMS._replace(
@@ -1088,8 +1106,11 @@ def convert_with_tensorrt():
     try:
       converter = trt.TrtGraphConverterV2(
           input_saved_model_dir=_SMCLI_DIR.value,
-          input_saved_model_tags=_SMCLI_TAG_SET.value.split(','),
-          **params._asdict())
+          input_saved_model_tags=_SMCLI_TAG_SET.value.split(
+              ','
+          ),
+          **params._asdict(),
+      )
       converter.convert()
     except Exception as exc:
       raise RuntimeError(
@@ -1105,7 +1126,9 @@ def convert_with_tensorrt():
         minimum_segment_size=_SMCLI_MINIMUM_SEGMENT_SIZE.value,
         is_dynamic_op=True,
         input_saved_model_dir=_SMCLI_DIR.value,
-        input_saved_model_tags=_SMCLI_TAG_SET.value.split(','),
+        input_saved_model_tags=_SMCLI_TAG_SET.value.split(
+            ','
+        ),
         output_saved_model_dir=_SMCLI_OUTPUT_DIR.value)
 
 
