@@ -33246,6 +33246,8 @@ func QuantizeV2Mode(value string) QuantizeV2Attr {
 }
 
 // QuantizeV2RoundMode sets the optional round_mode attribute to value.
+//
+// value: `round_mode='HALF_TO_EVEN'` only supported for mode 'SCALED'.
 // If not specified, defaults to "HALF_AWAY_FROM_ZERO"
 func QuantizeV2RoundMode(value string) QuantizeV2Attr {
 	return func(m optionalAttr) {
