@@ -59,7 +59,10 @@ static constexpr int64_t kMaxTwoShotAllReduceSizeBytes =
 absl::StatusOr<se::DeviceMemoryHandle> AllocateMemory(
     se::StreamExecutor* executor, int64_t size,
     absl::string_view debug_buffer_name) {
-  se::DeviceMemoryHandle local_buffer_alloc(executor, executor->Allocate(size));
+  se::DeviceMemoryHandle local_buffer_alloc(
+      executor,
+      executor->Allocate(
+          size, static_cast<int64_t>(stream_executor::MemoryType::kP2P)));
   if (local_buffer_alloc.memory().is_null()) {
     return absl::InternalError(absl::StrFormat(
         "Failed to allocate %s for all-reduce.", debug_buffer_name));
