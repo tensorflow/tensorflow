@@ -230,30 +230,6 @@ Shape GetLinearizedShape(const Shape& shape) {
   return result;
 }
 
-llvm::SmallVector<IndexingMap, 4> MapLogicalToLinearizedPhysicalShape(
-    absl::Span<const HloInstruction* const> operands,
-    MLIRContext* mlir_context) {
-  llvm::SmallVector<IndexingMap, 4> indexing_maps;
-  // For every operand compute thread ID -> physical layout of operand
-  // indexing map.
-  for (const HloInstruction* operand : operands) {
-    const Shape& operand_shape = operand->shape();
-
-    IndexingMap operand_logical_to_physical_map =
-        GetIndexingMapFromLogicalToPhysicalLayout(operand_shape, mlir_context);
-    IndexingMap operand_physical_to_linearized_shape = GetBitcastMap(
-        ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
-            operand_shape),
-        GetLinearizedShape(operand_shape), mlir_context);
-    IndexingMap operand_logical_to_linearized_physical_shape =
-        operand_logical_to_physical_map * operand_physical_to_linearized_shape;
-    operand_logical_to_linearized_physical_shape.Simplify();
-    indexing_maps.push_back(
-        std::move(operand_logical_to_linearized_physical_shape));
-  }
-  return indexing_maps;
-}
-
 // Returns thread ID to linearized physical layout indexing map for each operand
 // of the fusion.
 std::optional<GroupedByOpIndexingMap> GetThreadIdToInputMemoryLayoutsMaps(
@@ -677,6 +653,30 @@ std::optional<CoalescingMap> ComputeCoalescingForAllOperands(
 }
 
 }  // namespace
+
+llvm::SmallVector<IndexingMap, 4> MapLogicalToLinearizedPhysicalShape(
+    absl::Span<const HloInstruction* const> operands,
+    MLIRContext* mlir_context) {
+  llvm::SmallVector<IndexingMap, 4> indexing_maps;
+  // For every operand compute thread ID -> physical layout of operand
+  // indexing map.
+  for (const HloInstruction* operand : operands) {
+    const Shape& operand_shape = operand->shape();
+
+    IndexingMap operand_logical_to_physical_map =
+        GetIndexingMapFromLogicalToPhysicalLayout(operand_shape, mlir_context);
+    IndexingMap operand_physical_to_linearized_shape = GetBitcastMap(
+        ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
+            operand_shape),
+        GetLinearizedShape(operand_shape), mlir_context);
+    IndexingMap operand_logical_to_linearized_physical_shape =
+        operand_logical_to_physical_map * operand_physical_to_linearized_shape;
+    operand_logical_to_linearized_physical_shape.Simplify();
+    indexing_maps.push_back(
+        std::move(operand_logical_to_linearized_physical_shape));
+  }
+  return indexing_maps;
+}
 
 /*static*/
 CoalescingAnalysis CoalescingAnalysis::Create(
