@@ -116,7 +116,7 @@ class DeviceResDistTest : public ::testing::Test {
   void DefineWorkers(int num_workers, int num_devices,
                      const string& device_type, bool nccl) {
     for (int w = 0; w < num_workers; ++w) {
-      string name = strings::StrCat("/job:worker/replica:0/task:", w);
+      string name = absl::StrCat("/job:worker/replica:0/task:", w);
       DefineWorker(name, device_type, num_devices, nccl);
     }
   }
@@ -164,7 +164,7 @@ class DeviceResDistTest : public ::testing::Test {
                               CollectiveType coll_type = REDUCTION_COLLECTIVE,
                               int source_rank = 0) {
     for (int wi = 0; wi < num_workers; ++wi) {
-      string task_name = strings::StrCat("/job:worker/replica:0/task:", wi);
+      string task_name = absl::StrCat("/job:worker/replica:0/task:", wi);
       for (int di = 0; di < num_devices; ++di) {
         int idx = wi * num_devices + di;
         string device_name =
@@ -203,9 +203,9 @@ class DeviceResDistTest : public ::testing::Test {
     }
     int group_size = num_workers * num_devices;
     for (int wi = 0; wi < num_workers; ++wi) {
-      string task_name = strings::StrCat("/job:worker/replica:0/task:", wi);
+      string task_name = absl::StrCat("/job:worker/replica:0/task:", wi);
       for (int di = 0; di < num_devices; ++di) {
-        string device_name = strings::StrCat(task_name, "/device:CPU:", di);
+        string device_name = absl::StrCat(task_name, "/device:CPU:", di);
         IssueRequest(task_name, device_name, group_size);
       }
     }
@@ -245,9 +245,9 @@ class DeviceResDistTest : public ::testing::Test {
     const int dev_count = num_workers * num_devices;
     string dev0 = "/job:worker/replica:0/task:0/device:CPU:0";
     for (int wi = 0; wi < num_workers; ++wi) {
-      string task_name = strings::StrCat("/job:worker/replica:0/task:", wi);
+      string task_name = absl::StrCat("/job:worker/replica:0/task:", wi);
       for (int di = 0; di < num_devices; ++di) {
-        string device_name = strings::StrCat(task_name, "/device:CPU:", di);
+        string device_name = absl::StrCat(task_name, "/device:CPU:", di);
         int idx = wi * num_devices + di;
         TF_ASSERT_OK(status_[device_name]);
         EXPECT_EQ(cp_[device_name]->default_rank, idx);
@@ -283,7 +283,7 @@ class DeviceResDistTest : public ::testing::Test {
                      CollectiveType coll_type = REDUCTION_COLLECTIVE,
                      bool is_source = false) {
     string worker_name =
-        strings::StrCat("/job:worker/replica:0/task:", worker_idx);
+        absl::StrCat("/job:worker/replica:0/task:", worker_idx);
     DefineWorker(worker_name, device_type, num_devices, nccl);
     for (int i = 0; i < num_devices; ++i) {
       string device_name =
