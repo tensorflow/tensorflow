@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <cassert>
 #include <memory>
-#include <utility>
 
 #include "absl/log/check.h"
 #include "llvm/ADT/DenseSet.h"
@@ -44,6 +43,7 @@ limitations under the License.
 #include "mlir/Pass/PassRegistry.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/TypeID.h"
+#include "mlir/Support/WalkResult.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "shardy/dialect/sdy/ir/dialect.h"
 #include "shardy/dialect/sdy/ir/utils.h"
@@ -58,7 +58,6 @@ namespace {
 
 using ::mlir::MLIRContext;
 using ::mlir::ModuleOp;
-using ::mlir::OpConversionPattern;
 using ::mlir::StringRef;
 using ::mlir::SymbolTable;
 using ::mlir::func::CallOp;
@@ -112,8 +111,8 @@ mlir::LogicalResult rewriteManualComputation(
              << kGlobalToLocalShapeCallTargetName << " CustomCallOp";
     }
     globalToLocalShape = (*customCallResIt).getDefiningOp<CustomCallOp>();
-    CHECK(globalToLocalShape.getCallTargetName() ==
-          kGlobalToLocalShapeCallTargetName);
+    CHECK_EQ(globalToLocalShape.getCallTargetName(),
+             kGlobalToLocalShapeCallTargetName);
     operands = globalToLocalShape->getOperands();
   }
 
@@ -131,8 +130,8 @@ mlir::LogicalResult rewriteManualComputation(
              << callOp.getCalleeAttr() << " to be a "
              << kLocalToGlobalShapeCallTargetName << " CustomCallOp";
     }
-    CHECK(localToGlobalShape.getCallTargetName() ==
-          kLocalToGlobalShapeCallTargetName);
+    CHECK_EQ(localToGlobalShape.getCallTargetName(),
+             kLocalToGlobalShapeCallTargetName);
     resultTypes = localToGlobalShape->getResultTypes();
   }
 
