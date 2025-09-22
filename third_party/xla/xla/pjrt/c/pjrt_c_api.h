@@ -67,6 +67,7 @@ typedef enum {
   PJRT_Extension_Type_Unknown,
   PJRT_Extension_Type_CrossHostTransfers,
   PJRT_Extension_Type_ExecutableMetadata,
+  PJRT_Extension_Type_Callback,
 } PJRT_Extension_Type;
 
 // PJRT_Extension_Base contains a type and a pointer to next
