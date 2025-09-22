@@ -300,9 +300,12 @@ def argmax_v2(input, axis=None, output_type=dtypes.int64, name=None):
     axis = 0
 
   if hasattr(axis, "dtype"):
-    if axis.dtype not in (
-      dtypes.int8, dtypes.uint8, dtypes.int16, dtypes.uint16, dtypes.int32, dtypes.int64
-    ):
+    allowed_dtypes = {
+      dtypes.int8, dtypes.uint8,
+      dtypes.int16, dtypes.uint16,
+      dtypes.int32, dtypes.int64
+    }
+    if axis.dtype not in allowed_dtypes:
       raise TypeError(
         f"axis tensor dtypes {axis.dtype} is not supported"
       )
