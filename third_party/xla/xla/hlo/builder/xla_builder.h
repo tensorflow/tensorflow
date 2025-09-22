@@ -1731,6 +1731,9 @@ class XlaBuilder {
       absl::Span<const std::pair<int64_t, int64_t>> padding, XlaOp source,
       XlaOp init_value, XlaComputationId scatter);
   friend XlaOp Abs(XlaOp operand);
+  friend XlaOp Acos(XlaOp x,
+                    const std::optional<ResultAccuracy>& result_accuracy,
+                    bool expand);
   friend XlaOp Acosh(XlaOp x,
                      const std::optional<ResultAccuracy>& result_accuracy,
                      bool expand);
