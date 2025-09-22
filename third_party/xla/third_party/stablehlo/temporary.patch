@@ -1,3 +1,14 @@
+diff --ruN a/stablehlo/BUILD.bazel b/stablehlo/BUILD.bazel
+--- stablehlo/BUILD.bazel
++++ stablehlo/BUILD.bazel
+@@ -1231,6 +1231,7 @@
+     strip_include_prefix = ".",
+     deps = [
+         ":base",
++        ":chlo_ops",
+         ":stablehlo_aggressive_simplification_inc_gen",
+         ":stablehlo_ops",
+         ":stablehlo_pass_inc_gen",
 diff --ruN a/stablehlo/stablehlo/conversions/tosa/tests/legalize_quant_ops_to_tosa_rescale.mlir b/stablehlo/stablehlo/conversions/tosa/tests/legalize_quant_ops_to_tosa_rescale.mlir
 --- stablehlo/stablehlo/conversions/tosa/tests/legalize_quant_ops_to_tosa_rescale.mlir
 +++ stablehlo/stablehlo/conversions/tosa/tests/legalize_quant_ops_to_tosa_rescale.mlir
@@ -247,7 +258,428 @@ diff --ruN a/stablehlo/stablehlo/tests/chlo/chlo_legalize_to_stablehlo_broadcast
 diff --ruN a/stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_folder.mlir b/stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_folder.mlir
 --- stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_folder.mlir
 +++ stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_folder.mlir
-@@ -748,6 +748,19 @@
+@@ -712,18 +712,412 @@
+ // -----
+ 
+ ////////
++// AbsOp
++
++// CHECK-LABEL: func @fold_abs
++func.func @fold_abs() -> (tensor<i32>, tensor<i32>, tensor<i32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>) {
++  // CHECK-DAG: [[INT_ZERO:%.*]] = stablehlo.constant dense<0> : tensor<i32>
++  // CHECK-DAG: [[INT_TEN:%.*]] = stablehlo.constant dense<10> : tensor<i32>
++  // CHECK-DAG: [[FLOAT_ZERO:%.*]] = stablehlo.constant dense<0.0{{.*}}> : tensor<f32>
++  // CHECK-DAG: [[FLOAT_HALF:%.*]] = stablehlo.constant dense<5.0{{.*}}e-01> : tensor<f32>
++  // CHECK-DAG: [[FLOAT_INF:%.*]] = stablehlo.constant dense<0x7F800000> : tensor<f32>
++  // CHECK:     return [[INT_ZERO]], [[INT_TEN]], [[INT_TEN]], [[FLOAT_ZERO]], [[FLOAT_HALF]], [[FLOAT_HALF]], [[FLOAT_INF]], [[FLOAT_INF]]
++
++  %int_zero = stablehlo.constant dense<0> : tensor<i32>
++  %int_neg_ten = stablehlo.constant dense<-10> : tensor<i32>
++  %int_pos_ten = stablehlo.constant dense<10> : tensor<i32>
++
++  %float_zero = stablehlo.constant dense<0.0> : tensor<f32>
++  %float_neg_half = stablehlo.constant dense<-0.5> : tensor<f32>
++  %float_pos_half = stablehlo.constant dense<0.5> : tensor<f32>
++  %float_neg_inf = stablehlo.constant dense<0xFF800000> : tensor<f32> // -inf
++  %float_pos_inf = stablehlo.constant dense<0x7F800000> : tensor<f32> // +inf
++
++  %0 = stablehlo.abs %int_zero : tensor<i32>
++  %1 = stablehlo.abs %int_neg_ten : tensor<i32>
++  %2 = stablehlo.abs %int_pos_ten : tensor<i32>
++
++  %3 = stablehlo.abs %float_zero : tensor<f32>
++  %4 = stablehlo.abs %float_neg_half : tensor<f32>
++  %5 = stablehlo.abs %float_pos_half : tensor<f32>
++  %6 = stablehlo.abs %float_neg_inf : tensor<f32>
++  %7 = stablehlo.abs %float_pos_inf : tensor<f32>
++
++  func.return %0, %1, %2, %3, %4, %5, %6, %7 : tensor<i32>, tensor<i32>, tensor<i32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>
++}
++
++// -----
++
++////////
++// CosineOp
++
++// CHECK-LABEL: func @fold_cosine
++func.func @fold_cosine() -> (tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>) {
++  // CHECK-DAG: [[ONE:%.*]] = stablehlo.constant dense<{{1\.0000.*}}> : tensor<f32>
++  // CHECK-DAG: [[SQRT_THREE_OVER_TWO:%.*]] = stablehlo.constant dense<{{0\.8660.*|8\.660.*[Ee]-01}}> : tensor<f32>
++  // CHECK-DAG: [[SQRT_TWO_OVER_TWO:%.*]] = stablehlo.constant dense<{{0\.7071.*|7\.071.*[Ee]-01}}> : tensor<f32>
++  // CHECK-DAG: [[HALF:%.*]] = stablehlo.constant dense<{{0\.5000.*|5\.000.*[Ee]-01|0.4999.*|4\.999.*[Ee]-01}}> : tensor<f32>
++  // CHECK-DAG: [[ZERO:%.*]] = stablehlo.constant dense<{{-?(0\.0000.*|[0-9]\.[0-9]*[Ee]-(0?[5-9]|[1-9][0-9]))}}> : tensor<f32>
++  // CHECK:     return [[ONE]], [[SQRT_THREE_OVER_TWO]], [[SQRT_TWO_OVER_TWO]], [[HALF]], [[ZERO]]
++
++  %0 = stablehlo.constant dense<0.0> : tensor<f32>
++  %1 = stablehlo.constant dense<0.5235987755982989> : tensor<f32> // pi/6
++  %2 = stablehlo.constant dense<0.7853981633974483> : tensor<f32> // pi/4
++  %3 = stablehlo.constant dense<1.0471975511965977> : tensor<f32> // pi/3
++  %4 = stablehlo.constant dense<1.5707963267948966> : tensor<f32> // pi/2
++
++  %5 = stablehlo.cosine %0 : tensor<f32>
++  %6 = stablehlo.cosine %1 : tensor<f32>
++  %7 = stablehlo.cosine %2 : tensor<f32>
++  %8 = stablehlo.cosine %3 : tensor<f32>
++  %9 = stablehlo.cosine %4 : tensor<f32>
++
++  func.return %5, %6, %7, %8, %9 : tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>
++}
++
++// -----
++
++////////
++// ErfOp
++
++// CHECK-LABEL: func @fold_erf
++func.func @fold_erf() -> (tensor<f32>, tensor<f32>, tensor<f32>) {
++  // CHECK-DAG: [[RESULT0:%.*]] = stablehlo.constant dense<-0.52049{{.*}}> : tensor<f32>
++  // CHECK-DAG: [[RESULT1:%.*]] = stablehlo.constant dense<0.0{{.*}}> : tensor<f32>
++  // CHECK-DAG: [[RESULT2:%.*]] = stablehlo.constant dense<0.90000{{.*}}> : tensor<f32>
++  // CHECK:     return [[RESULT0]], [[RESULT1]], [[RESULT2]]
++
++  %0 = stablehlo.constant dense<-0.5> : tensor<f32>
++  %1 = stablehlo.constant dense<0.0> : tensor<f32>
++  %2 = stablehlo.constant dense<1.1631> : tensor<f32>
++
++  %3 = chlo.erf %0 : tensor<f32> -> tensor<f32>
++  %4 = chlo.erf %1 : tensor<f32> -> tensor<f32>
++  %5 = chlo.erf %2 : tensor<f32> -> tensor<f32>
++
++  func.return %3, %4, %5 : tensor<f32>, tensor<f32>, tensor<f32>
++}
++
++// -----
++
++////////
++// ExpOp
++
++// CHECK-LABEL: func @fold_exponential
++func.func @fold_exponential() -> (tensor<f32>, tensor<f32>) {
++  // CHECK-DAG: [[ONE:%.*]] = stablehlo.constant dense<1.0{{.*}}> : tensor<f32>
++  // CHECK-DAG: [[E:%.*]] = stablehlo.constant dense<2.718{{.*}}> : tensor<f32>
++  // CHECK:     return [[ONE]], [[E]]
++
++  %0 = stablehlo.constant dense<0.0> : tensor<f32>
++  %1 = stablehlo.constant dense<1.0> : tensor<f32>
++
++  %2 = stablehlo.exponential %0 : tensor<f32>
++  %3 = stablehlo.exponential %1 : tensor<f32>
++
++  func.return %2, %3 : tensor<f32>, tensor<f32>
++}
++
++// -----
++
++////////
++// LogOp
++
++// CHECK-LABEL: func @fold_log
++func.func @fold_log() -> (tensor<f32>, tensor<f32>, tensor<f32>) {
++  // CHECK-DAG: [[ZERO:%.*]] = stablehlo.constant dense<0.0{{.*}}> : tensor<f32>
++  // CHECK-DAG: [[ONE:%.*]] = stablehlo.constant dense<{{1\.0.*|0\.999.*}}> : tensor<f32>
++  // CHECK-DAG: [[DO_NOT_FOLD_LOG_ZERO:%.*]] = stablehlo.log [[ZERO]] : tensor<f32>
++  // CHECK:     return [[ZERO]], [[ONE]], [[DO_NOT_FOLD_LOG_ZERO]]
++
++  %0 = stablehlo.constant dense<1.0> : tensor<f32>
++  %1 = stablehlo.constant dense<2.718281828459045> : tensor<f32>
++  %2 = stablehlo.constant dense<0.0> : tensor<f32>
++
++  %3 = stablehlo.log %0 : tensor<f32>
++  %4 = stablehlo.log %1 : tensor<f32>
++  %5 = stablehlo.log %2 : tensor<f32>
++
++  func.return %3, %4, %5 : tensor<f32>, tensor<f32>, tensor<f32>
++}
++
++// -----
++
++////////
++// LogisticOp
++
++// CHECK-LABEL: func @fold_logistic
++func.func @fold_logistic() -> (tensor<f32>, tensor<f32>, tensor<f32>) {
++  // CHECK-DAG: [[ZERO:%.*]] = stablehlo.constant dense<0.0{{.*}}> : tensor<f32>
++  // CHECK-DAG: [[HALF:%.*]] = stablehlo.constant dense<5.0{{.*}}e-01> : tensor<f32>
++  // CHECK-DAG: [[ONE:%.*]] = stablehlo.constant dense<1.0{{.*}}> : tensor<f32>
++  // CHECK:     return [[ZERO]], [[HALF]], [[ONE]]
++
++  %neg_inf = stablehlo.constant dense<0xFF800000> : tensor<f32>
++  %zero = stablehlo.constant dense<0.0> : tensor<f32>
++  %pos_inf = stablehlo.constant dense<0x7F800000> : tensor<f32>
++
++  %0 = stablehlo.logistic %neg_inf : tensor<f32>
++  %1 = stablehlo.logistic %zero : tensor<f32>
++  %2 = stablehlo.logistic %pos_inf : tensor<f32>
++
++  func.return %0, %1, %2 : tensor<f32>, tensor<f32>, tensor<f32>
++}
++
++// -----
++
++////////
++// NegOp
++
++// CHECK-LABEL: func @fold_negate
++func.func @fold_negate() -> (tensor<i32>, tensor<i32>, tensor<f32>) {
++  // CHECK-DAG: [[RESULT0:%.*]] = stablehlo.constant dense<-4> : tensor<i32>
++  // CHECK-DAG: [[RESULT1:%.*]] = stablehlo.constant dense<0> : tensor<i32>
++  // CHECK-DAG: [[RESULT2:%.*]] = stablehlo.constant dense<9.999{{.*}}e+02> : tensor<f32>
++  // CHECK:     return [[RESULT0]], [[RESULT1]], [[RESULT2]]
++
++  %0 = stablehlo.constant dense<4> : tensor<i32>
++  %1 = stablehlo.constant dense<0> : tensor<i32>
++  %2 = stablehlo.constant dense<-999.9> : tensor<f32>
++
++  %3 = stablehlo.negate %0 : tensor<i32>
++  %4 = stablehlo.negate %1 : tensor<i32>
++  %5 = stablehlo.negate %2 : tensor<f32>
++
++  func.return %3, %4, %5 : tensor<i32>, tensor<i32>, tensor<f32>
++}
++
++// -----
++
++////////
++// NotOp
++
++// CHECK-LABEL: func @fold_not
++func.func @fold_not() -> (tensor<i32>, tensor<i32>) {
++  // CHECK-DAG: [[RESULT0:%.*]] = stablehlo.constant dense<42> : tensor<i32>
++  // CHECK-DAG: [[RESULT1:%.*]] = stablehlo.constant dense<-1> : tensor<i32>
++  // CHECK:     return [[RESULT0]], [[RESULT1]]
++
++  %0 = stablehlo.constant dense<-43> : tensor<i32>
++  %1 = stablehlo.constant dense<0> : tensor<i32>
++
++  %2 = stablehlo.not %0 : tensor<i32>
++  %3 = stablehlo.not %1 : tensor<i32>
++
++  func.return %2, %3 : tensor<i32>, tensor<i32>
++}
++
++// -----
++
++////////
++// RoundOp
++
++// CHECK-LABEL: func @fold_round_nearest_afz
++func.func @fold_round_nearest_afz() -> (tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>) {
++  // CHECK-DAG: [[NEG_THREE:%.*]] = stablehlo.constant dense<-3.0{{.*}}> : tensor<f32>
++  // CHECK-DAG: [[NEG_TWO:%.*]] = stablehlo.constant dense<-2.0{{.*}}> : tensor<f32>
++  // CHECK-DAG: [[ZERO:%.*]] = stablehlo.constant dense<0.0{{.*}}> : tensor<f32>
++  // CHECK-DAG: [[ONE:%.*]] = stablehlo.constant dense<1.0{{.*}}> : tensor<f32>
++  // CHECK-DAG: [[TWO:%.*]] = stablehlo.constant dense<2.0{{.*}}> : tensor<f32>
++  // CHECK-DAG: [[THREE:%.*]] = stablehlo.constant dense<3.0{{.*}}> : tensor<f32>
++  // CHECK:     return [[NEG_THREE]], [[NEG_TWO]], [[ZERO]], [[ONE]], [[ONE]], [[TWO]], [[THREE]]
++
++  %0 = stablehlo.constant dense<-2.5> : tensor<f32>
++  %1 = stablehlo.constant dense<-1.5> : tensor<f32>
++  %2 = stablehlo.constant dense<0.4> : tensor<f32>
++  %3 = stablehlo.constant dense<0.5> : tensor<f32>
++  %4 = stablehlo.constant dense<0.6> : tensor<f32>
++  %5 = stablehlo.constant dense<1.5> : tensor<f32>
++  %6 = stablehlo.constant dense<2.5> : tensor<f32>
++
++  %7 = stablehlo.round_nearest_afz %0 : tensor<f32>
++  %8 = stablehlo.round_nearest_afz %1 : tensor<f32>
++  %9 = stablehlo.round_nearest_afz %2 : tensor<f32>
++  %10 = stablehlo.round_nearest_afz %3 : tensor<f32>
++  %11 = stablehlo.round_nearest_afz %4 : tensor<f32>
++  %12 = stablehlo.round_nearest_afz %5 : tensor<f32>
++  %13 = stablehlo.round_nearest_afz %6 : tensor<f32>
++
++  func.return %7, %8, %9, %10, %11, %12, %13 : tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>
++}
++
++// -----
++
++////////
++// RoundNearestEvenOp
++
++// CHECK-LABEL: func @fold_round_nearest_even
++func.func @fold_round_nearest_even() -> (tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>) {
++  // CHECK-DAG: [[NEG_TWO:%.*]] = stablehlo.constant dense<-2.0{{.*}}> : tensor<f32>
++  // CHECK-DAG: [[ZERO:%.*]] = stablehlo.constant dense<0.0{{.*}}> : tensor<f32>
++  // CHECK-DAG: [[ONE:%.*]] = stablehlo.constant dense<1.0{{.*}}> : tensor<f32>
++  // CHECK-DAG: [[TWO:%.*]] = stablehlo.constant dense<2.0{{.*}}> : tensor<f32>
++  // CHECK:     return [[NEG_TWO]], [[NEG_TWO]], [[ZERO]], [[ZERO]], [[ONE]], [[TWO]], [[TWO]]
++
++  %0 = stablehlo.constant dense<-2.5> : tensor<f32>
++  %1 = stablehlo.constant dense<-1.5> : tensor<f32>
++  %2 = stablehlo.constant dense<0.4> : tensor<f32>
++  %3 = stablehlo.constant dense<0.5> : tensor<f32>
++  %4 = stablehlo.constant dense<0.6> : tensor<f32>
++  %5 = stablehlo.constant dense<1.5> : tensor<f32>
++  %6 = stablehlo.constant dense<2.5> : tensor<f32>
++
++  %7 = stablehlo.round_nearest_even %0 : tensor<f32>
++  %8 = stablehlo.round_nearest_even %1 : tensor<f32>
++  %9 = stablehlo.round_nearest_even %2 : tensor<f32>
++  %10 = stablehlo.round_nearest_even %3 : tensor<f32>
++  %11 = stablehlo.round_nearest_even %4 : tensor<f32>
++  %12 = stablehlo.round_nearest_even %5 : tensor<f32>
++  %13 = stablehlo.round_nearest_even %6 : tensor<f32>
++
++  func.return %7, %8, %9, %10, %11, %12, %13 : tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>
++}
++
++// -----
++
++////////
++// RsqrtOp
++
++// CHECK-LABEL: func @fold_rsqrt
++func.func @fold_rsqrt() -> (tensor<f32>, tensor<f32>) {
++  // CHECK-DAG: [[HALF:%.*]] = stablehlo.constant dense<5.0{{.*}}e-01> : tensor<f32>
++  // CHECK-DAG: [[ZERO:%.*]] = stablehlo.constant dense<0.0{{.*}}> : tensor<f32>
++  // CHECK-DAG: [[DO_NOT_FOLD_RSQRT_ZERO:%.*]] = stablehlo.rsqrt [[ZERO]] : tensor<f32>
++  // CHECK:     return [[HALF]], [[DO_NOT_FOLD_RSQRT_ZERO]]
++
++  %0 = stablehlo.constant dense<4.0> : tensor<f32>
++  %1 = stablehlo.constant dense<0.0> : tensor<f32>
++
++  %2 = stablehlo.rsqrt %0 : tensor<f32>
++  %3 = stablehlo.rsqrt %1 : tensor<f32>
++
++  func.return %2, %3 : tensor<f32>, tensor<f32>
++}
++
++// -----
++
++////////
++// SignOp
++
++// CHECK-LABEL: func @fold_sign
++func.func @fold_sign() -> (tensor<i32>, tensor<i32>, tensor<i32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>) {
++  // CHECK-DAG: [[INT_NEG_ONE:%.*]] = stablehlo.constant dense<-1> : tensor<i32>
++  // CHECK-DAG: [[INT_ZERO:%.*]] = stablehlo.constant dense<0> : tensor<i32>
++  // CHECK-DAG: [[INT_POS_ONE:%.*]] = stablehlo.constant dense<1> : tensor<i32>
++  // CHECK-DAG: [[FLOAT_NEG_ONE:%.*]] = stablehlo.constant dense<-1.0{{.*}}> : tensor<f32>
++  // CHECK-DAG: [[FLOAT_ZERO:%.*]] = stablehlo.constant dense<0.0{{.*}}> : tensor<f32>
++  // CHECK-DAG: [[FLOAT_POS_ONE:%.*]] = stablehlo.constant dense<1.0{{.*}}> : tensor<f32>
++  // CHECK-DAG: [[FLOAT_NAN:%.*]] = stablehlo.constant dense<0x7FC00000> : tensor<f32>
++  // CHECK-DAG: [[DO_NOT_FOLD_SIGN_NAN:%.*]] = stablehlo.sign [[FLOAT_NAN]] : tensor<f32>
++  // CHECK:     return [[INT_NEG_ONE]], [[INT_ZERO]], [[INT_POS_ONE]], [[FLOAT_NEG_ONE]], [[FLOAT_ZERO]], [[FLOAT_POS_ONE]], [[DO_NOT_FOLD_SIGN_NAN]]
++
++  %0 = stablehlo.constant dense<-7> : tensor<i32>
++  %1 = stablehlo.constant dense<0> : tensor<i32>
++  %2 = stablehlo.constant dense<25> : tensor<i32>
++  %3 = stablehlo.constant dense<-2.5> : tensor<f32>
++  %4 = stablehlo.constant dense<0.0> : tensor<f32>
++  %5 = stablehlo.constant dense<0.1> : tensor<f32>
++  %6 = stablehlo.constant dense<0x7FC00000> : tensor<f32> // NaN
++
++  %7 = stablehlo.sign %0 : tensor<i32>
++  %8 = stablehlo.sign %1 : tensor<i32>
++  %9 = stablehlo.sign %2 : tensor<i32>
++  %10 = stablehlo.sign %3 : tensor<f32>
++  %11 = stablehlo.sign %4 : tensor<f32>
++  %12 = stablehlo.sign %5 : tensor<f32>
++  %13 = stablehlo.sign %6 : tensor<f32>
++
++  func.return %7, %8, %9, %10, %11, %12, %13 : tensor<i32>, tensor<i32>, tensor<i32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>
++}
++
++// -----
++
++////////
++// SineOp
++
++// CHECK-LABEL: func @fold_sine
++func.func @fold_sine() -> (tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>) {
++  // CHECK-DAG: [[ZERO:%.*]] = stablehlo.constant dense<{{0\.0000.*}}> : tensor<f32>
++  // CHECK-DAG: [[HALF:%.*]] = stablehlo.constant dense<{{0\.5000.*|5\.000.*[Ee]-01|0.4999.*|4\.999.*[Ee]-01}}> : tensor<f32>
++  // CHECK-DAG: [[SQRT_TWO_OVER_TWO:%.*]] = stablehlo.constant dense<{{0\.7071.*|7\.071.*[Ee]-01}}> : tensor<f32>
++  // CHECK-DAG: [[SQRT_THREE_OVER_TWO:%.*]] = stablehlo.constant dense<{{0\.8660.*|8\.660.*[Ee]-01}}> : tensor<f32>
++  // CHECK-DAG: [[ONE:%.*]] = stablehlo.constant dense<{{1\.0000.*|0\.9999.*|9\.999.*[Ee]-01}}> : tensor<f32>
++  // CHECK:     return [[ZERO]], [[HALF]], [[SQRT_TWO_OVER_TWO]], [[SQRT_THREE_OVER_TWO]], [[ONE]]
++
++  %0 = stablehlo.constant dense<0.0> : tensor<f32>
++  %1 = stablehlo.constant dense<0.5235987755982989> : tensor<f32> // pi/6
++  %2 = stablehlo.constant dense<0.7853981633974483> : tensor<f32> // pi/4
++  %3 = stablehlo.constant dense<1.0471975511965977> : tensor<f32> // pi/3
++  %4 = stablehlo.constant dense<1.5707963267948966> : tensor<f32> // pi/2
++
++  %5 = stablehlo.sine %0 : tensor<f32>
++  %6 = stablehlo.sine %1 : tensor<f32>
++  %7 = stablehlo.sine %2 : tensor<f32>
++  %8 = stablehlo.sine %3 : tensor<f32>
++  %9 = stablehlo.sine %4 : tensor<f32>
++
++  func.return %5, %6, %7, %8, %9 : tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>
++}
++
++// -----
++
++////////
+ // SqrtOp
+ 
+ // CHECK-LABEL: func @fold_sqrt
+-func.func @fold_sqrt() -> (tensor<f32>) {
+-  // CHECK: [[RESULT0:%.*]] = stablehlo.constant dense<2.0{{.*}}> : tensor<f32>
+-  // CHECK: return [[RESULT0]]
++func.func @fold_sqrt() -> (tensor<f32>, tensor<f32>) {
++  // CHECK-DAG: [[TWO:%.*]] = stablehlo.constant dense<2.0{{.*}}> : tensor<f32>
++  // CHECK-DAG: [[NEG_ONE:%.*]] = stablehlo.constant dense<-1.0{{.*}}> : tensor<f32>
++  // CHECK-DAG: [[DO_NOT_FOLD_FLOAT_SQRT_NEG_ONE:%.*]] = stablehlo.sqrt [[NEG_ONE]] : tensor<f32>
++  // CHECK:     return [[TWO]], [[DO_NOT_FOLD_FLOAT_SQRT_NEG_ONE]]
++
+   %0 = stablehlo.constant dense<4.0> : tensor<f32>
+-  %1 = stablehlo.sqrt %0 : tensor<f32>
+-  func.return %1 : tensor<f32>
+-}
+-
+-//
++  %1 = stablehlo.constant dense<-1.0> : tensor<f32>
++
++  %2 = stablehlo.sqrt %0 : tensor<f32>
++  %3 = stablehlo.sqrt %1 : tensor<f32>
++
++  func.return %2, %3 : tensor<f32>, tensor<f32>
++}
++
++// -----
++
++////////
++// TanOp
++
++// CHECK-LABEL: func @fold_tan
++func.func @fold_tan() -> (tensor<f32>) {
++  // CHECK: [[ONE:%.*]] = stablehlo.constant dense<{{1\.0.*|0\.999.*}}> : tensor<f32>
++  // CHECK: return [[ONE]]
++  %pi_over_4 = stablehlo.constant dense<0.7853981633974483> : tensor<f32>
++  %result = stablehlo.tan %pi_over_4 : tensor<f32>
++  func.return %result : tensor<f32>
++}
++
++// -----
++
++////////
++// TanhOp
++
++// CHECK-LABEL: func @fold_tanh
++func.func @fold_tanh() -> (tensor<f32>, tensor<f32>, tensor<f32>) {
++  // CHECK-DAG: [[NEG_SQRT_ONE_FIFTH:%.*]] = stablehlo.constant dense<-0.44721{{.*}}> : tensor<f32>
++  // CHECK-DAG: [[ZERO:%.*]] = stablehlo.constant dense<0.0{{.*}}> : tensor<f32>
++  // CHECK-DAG: [[SQRT_ONE_FIFTH:%.*]] = stablehlo.constant dense<0.44721{{.*}}> : tensor<f32>
++  // CHECK:     return [[NEG_SQRT_ONE_FIFTH]], [[ZERO]], [[SQRT_ONE_FIFTH]]
++
++  %neg_log_phi = stablehlo.constant dense<-0.4812118250596034> : tensor<f32>
++  %zero = stablehlo.constant dense<0.0> : tensor<f32>
++  %log_phi = stablehlo.constant dense<0.4812118250596034> : tensor<f32>
++
++  %tanh_neg_log_phi = stablehlo.tanh %neg_log_phi : tensor<f32>
++  %tanh_zero = stablehlo.tanh %zero : tensor<f32>
++  %tanh_log_phi = stablehlo.tanh %log_phi : tensor<f32>
++
++  func.return %tanh_neg_log_phi, %tanh_zero, %tanh_log_phi : tensor<f32>, tensor<f32>, tensor<f32>
++}
++
++// -----
+ 
+ ////////
+ // SetDimensionSizeOp
+@@ -748,6 +1142,19 @@
    // CHECK-NEXT: return [[RESULT0]]
    %0 = stablehlo.set_dimension_size %arg0, %c, dim = 0 : (tensor<10xf32>, tensor<i32>) -> tensor<?xf32, #stablehlo.bounds<10>>
    return %0 : tensor<?xf32, #stablehlo.bounds<10>>
@@ -415,7 +847,240 @@ diff --ruN a/stablehlo/stablehlo/transforms/ChloLegalizeToStablehlo.cpp b/stable
 diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveFolder.cpp b/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveFolder.cpp
 --- stablehlo/stablehlo/transforms/optimization/StablehloAggressiveFolder.cpp
 +++ stablehlo/stablehlo/transforms/optimization/StablehloAggressiveFolder.cpp
-@@ -1014,6 +1014,11 @@
+@@ -21,6 +21,7 @@
+ #include <numeric>
+ #include <optional>
+ #include <string>
++#include <type_traits>
+ #include <utility>
+ 
+ #include "llvm/ADT/APFloat.h"
+@@ -58,6 +59,7 @@
+ #include "mlir/Support/LogicalResult.h"
+ #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
+ #include "stablehlo/dialect/Base.h"
++#include "stablehlo/dialect/ChloOps.h"
+ #include "stablehlo/dialect/StablehloOps.h"
+ #include "stablehlo/transforms/optimization/Passes.h"
+ 
+@@ -87,6 +89,14 @@
+       /*isUnsigned=*/isUnsigned);
+ }
+ 
++template <typename T>
++APSInt getAPSInt(unsigned bitWidth, T value, bool isSigned) {
++  return APSInt({/*numBits=*/bitWidth, static_cast<uint64_t>(value),
++                 /*isSigned=*/isSigned,
++                 /*implicitTrunc=*/true},
++                /*isUnsigned=*/!isSigned);
++}
++
+ APFloat getAPFloat(
+     Type type, double value,
+     llvm::RoundingMode roundingMode = llvm::RoundingMode::NearestTiesToEven) {
+@@ -94,8 +104,8 @@
+   if (!floatType) llvm::report_fatal_error("expected float type");
+ 
+   APFloat result(value);
+-  bool losesInfo = false;
+-  result.convert(floatType.getFloatSemantics(), roundingMode, &losesInfo);
++  bool unusedLosesInfo = false;
++  result.convert(floatType.getFloatSemantics(), roundingMode, &unusedLosesInfo);
+   return result;
+ }
+ 
+@@ -351,6 +361,190 @@
+           "too many elements, fold "
+           "limit is " +
+               std::to_string(options.foldOpElementLimit));
++    return success();
++  }
++};
++
++namespace fold_unary {
++
++template <typename Impl, typename = void, typename... ArgTypes>
++struct FolderExistsHelper : std::false_type {};
++
++template <typename Impl, typename... ArgTypes>
++struct FolderExistsHelper<
++    Impl,
++    std::enable_if_t<sizeof(Impl::EvaluateOp(std::declval<ArgTypes>()...)) != 0,
++                     void>,
++    ArgTypes...> : std::true_type {};
++
++template <typename Impl, typename... ArgTypes>
++struct FolderExists : FolderExistsHelper<Impl, void, ArgTypes...> {};
++
++template <typename Impl, typename CanonicalType, typename = void>
++struct DirectFolderExists : std::false_type {};
++
++template <typename Impl, typename CanonicalType>
++struct DirectFolderExists<
++    Impl, CanonicalType,
++    std::enable_if_t<std::is_convertible_v<decltype(Impl::EvaluateOp(
++                                               std::declval<CanonicalType>())),
++                                           std::optional<CanonicalType>>,
++                     void>> : std::true_type {
++  static_assert(FolderExists<Impl, CanonicalType>::value);
++};
++
++template <typename Impl, typename CanonicalType, typename ComputeType,
++          typename ConversionFn, typename = void>
++struct ConvertingFolderExists : std::false_type {};
++
++template <typename Impl, typename CanonicalType, typename ComputeType,
++          typename ConversionFn>
++struct ConvertingFolderExists<
++    Impl, CanonicalType, ComputeType, ConversionFn,
++    std::enable_if_t<std::is_convertible_v<
++                         decltype(std::declval<ConversionFn>()(
++                             Impl::EvaluateOp(std::declval<ComputeType>()))),
++                         std::optional<CanonicalType>> &&
++                         !std::is_same_v<std::decay_t<CanonicalType>,
++                                         std::decay_t<ComputeType>>,
++                     void>> : std::true_type {
++  static_assert(FolderExists<Impl, ComputeType>::value);
++  static_assert(!DirectFolderExists<Impl, CanonicalType>::value);
++};
++
++}  // namespace fold_unary
++
++template <typename Impl, typename OpType>
++struct FoldUnaryOpPattern : public FoldOpRewritePattern<OpType> {
++  using FoldOpRewritePattern<OpType>::FoldOpRewritePattern;
++
++  template <
++      typename CanonicalType,
++      std::enable_if_t<
++          fold_unary::DirectFolderExists<Impl, CanonicalType>::value, int> = 0>
++  static std::optional<CanonicalType> FoldIfImplemented(CanonicalType operand) {
++    return Impl::EvaluateOp(operand);
++  }
++
++  template <typename CanonicalType, typename ComputeType,
++            typename ConversionFn =
++                std::optional<CanonicalType> (*)(std::optional<ComputeType>),
++            std::enable_if_t<
++                fold_unary::ConvertingFolderExists<
++                    Impl, CanonicalType, ComputeType, ConversionFn>::value,
++                int> = 0>
++  static std::optional<CanonicalType> FoldIfImplemented(
++      ComputeType operand,
++      ConversionFn&& convertResult = [](std::optional<ComputeType> result)
++          -> std::optional<CanonicalType> {
++        if (result == std::nullopt) return std::nullopt;
++        return CanonicalType(*result);
++      }) {
++    return convertResult(Impl::EvaluateOp(operand));
++  }
++
++  template <typename CanonicalType, typename ComputeType,
++            typename ConversionFn = std::nullptr_t,
++            std::enable_if_t<
++                !fold_unary::FolderExists<Impl, ComputeType>::value, int> = 0>
++  static std::nullopt_t FoldIfImplemented(
++      ComputeType operand, ConversionFn&& convertResult = nullptr) {
++    return std::nullopt;
++  }
++
++  struct FoldDispatch {
++    bool isSignedInt = false;
++
++    std::optional<APInt> operator()(APInt operand) const {
++      if constexpr (fold_unary::DirectFolderExists<Impl, APInt>::value) {
++        // Fold as a signedness-agnostic `APInt`.
++        return FoldIfImplemented<APInt>(operand);
++      } else if constexpr (fold_unary::DirectFolderExists<Impl,
++                                                          APSInt>::value) {
++        // Fold as a signedness-aware `APSInt`.
++        return FoldIfImplemented<APSInt>(
++            APSInt(std::move(operand), /*isUnsigned=*/!isSignedInt));
++      } else {
++        // Fold as a C++ primitive of type `int64_t` or `uint64_t`.
++        return isSignedInt ? FoldAsIntType<int64_t>(operand)
++                           : FoldAsIntType<uint64_t>(operand);
++      }
++    }
++
++    std::optional<APFloat> operator()(APFloat operand) const {
++      if constexpr (fold_unary::DirectFolderExists<Impl, APFloat>::value) {
++        // Fold as an `APFloat`.
++        return FoldIfImplemented<APFloat>(operand);
++      } else {
++        // Fold as a `double`.
++        return FoldAsDouble(operand);
++      }
++    }
++
++    template <typename ComputationDataType>
++    std::optional<APInt> FoldAsIntType(APInt operand) const {
++      const size_t bitWidth = operand.getBitWidth();
++
++      auto convertResult = [&](std::optional<ComputationDataType> result)
++          -> std::optional<APInt> {
++        if (result == std::nullopt) return std::nullopt;
++        return APInt(bitWidth, *result, isSignedInt);
++      };
++
++      ComputationDataType operandValue;
++      if constexpr (std::is_signed_v<ComputationDataType>) {
++        operandValue = static_cast<ComputationDataType>(operand.getSExtValue());
++      } else {
++        operandValue = static_cast<ComputationDataType>(operand.getZExtValue());
++      }
++
++      return FoldIfImplemented<APInt, ComputationDataType>(operandValue,
++                                                           convertResult);
++    }
++
++    std::optional<APFloat> FoldAsDouble(APFloat operand) const {
++      auto convertResult =
++          [&](std::optional<double> result) -> std::optional<APFloat> {
++        if (result == std::nullopt) return std::nullopt;
++        APFloat resultAsAPFloat(*result);
++        bool unusedLosesInfo;
++        resultAsAPFloat.convert(operand.getSemantics(),
++                                APFloat::rmNearestTiesToEven, &unusedLosesInfo);
++        return resultAsAPFloat;
++      };
++
++      APFloat operandCopy = operand;
++      bool unusedLosesInfo;
++      operandCopy.convert(APFloat::IEEEdouble(), APFloat::rmNearestTiesToEven,
++                          &unusedLosesInfo);
++      double operandValue = operandCopy.convertToDouble();
++
++      return FoldIfImplemented<APFloat, double>(operandValue, convertResult);
++    }
++  };
++
++  LogicalResult matchAndRewrite(OpType op,
++                                PatternRewriter& rewriter) const override {
++    auto elementType = op.getType().getElementType();
++
++    FailureOr<TypedAttr> result;
++    if (elementType.isUnsignedInteger()) {
++      result = foldUnaryOpIntOrFloat(rewriter, op,
++                                     FoldDispatch{/*isSignedInt=*/false});
++    } else if (elementType.isInteger()) {
++      // Types with unspecified signedness are treated as signed per StableHLO
++      // convention.
++      result = foldUnaryOpIntOrFloat(rewriter, op,
++                                     FoldDispatch{/*isSignedInt=*/true});
++    } else if (elementType.isFloat()) {
++      result = foldUnaryOpIntOrFloat(rewriter, op,
++                                     FoldDispatch{/*isSignedInt=*/false});
++    } else {
++      return failure();
++    }
++    if (failed(result)) return failure();
++
++    rewriter.replaceOpWithNewOp<ConstantOp>(op, result.value());
+     return success();
+   }
+ };
+@@ -1014,6 +1208,11 @@
      // No need to verify static shape or dtype here since we aren't evaluating
      // dtype, just folding set_dim_size ops with no semantic meaning.
  
@@ -427,7 +1092,252 @@ diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveFold
      SplatElementsAttr cstSplatAttr;
      matchPattern(op.getSize(), m_Constant(&cstSplatAttr));
      if (!cstSplatAttr)
-@@ -1316,13 +1321,9 @@
+@@ -1031,50 +1230,6 @@
+     rewriter.replaceAllOpUsesWith(op, op.getOperand());
+     return success();
+   }
+-};
+-
+-struct FoldSignOpPattern : public ShapeOpRewritePattern<SignOp> {
+-  using ShapeOpRewritePattern::ShapeOpRewritePattern;
+-
+-  LogicalResult matchAndRewrite(SignOp op,
+-                                PatternRewriter& rewriter) const override {
+-    if (failed(validateShapeFoldDtype(rewriter, op, op.getType())))
+-      return failure();
+-
+-    auto elementType = op.getType().getElementType();
+-    auto res = foldUnaryOpIntOrFloat(rewriter, op, FoldSign(elementType));
+-    if (failed(res)) return failure();
+-    rewriter.replaceOpWithNewOp<mlir::stablehlo::ConstantOp>(op, res.value());
+-    return success();
+-  }
+-
+-  struct FoldSign {
+-    FoldSign(Type elementType) : elementType(elementType) {}
+-    Type elementType;
+-    double result;
+-    APFloat operator()(APFloat operand) {
+-      if (operand.isNegative())
+-        result = -1.0;
+-      else if (operand.isZero())
+-        result = 0.0;
+-      else
+-        result = 1.0;
+-      return getAPFloat(elementType, result);
+-    }
+-
+-    APInt operator()(APInt operand) {
+-      // SignOp only supports signed integers.
+-      APSInt signedInt = getAPSInt(elementType, operand.getSExtValue());
+-      int64_t result;
+-      if (signedInt.isNegative())
+-        result = -1;
+-      else if (signedInt.isZero())
+-        result = 0;
+-      else
+-        result = 1;
+-      return getAPSInt(elementType, result);
+-    }
+-  };
+ };
+ 
+ template <typename RangeType>
+@@ -1163,31 +1318,169 @@
+   }
+ };
+ 
++struct FoldAbsOpPattern : public FoldUnaryOpPattern<FoldAbsOpPattern, AbsOp> {
++  using FoldUnaryOpPattern::FoldUnaryOpPattern;
++
++  static std::optional<APInt> EvaluateOp(APInt operand) {
++    return operand.abs();
++  }
++  static std::optional<APFloat> EvaluateOp(APFloat operand) {
++    return llvm::abs(operand);
++  }
++};
++
++struct FoldCosineOpPattern
++    : public FoldUnaryOpPattern<FoldCosineOpPattern, CosineOp> {
++  using FoldUnaryOpPattern::FoldUnaryOpPattern;
++
++  static std::optional<double> EvaluateOp(double operand) {
++    return std::cos(operand);
++  }
++};
++
++struct FoldErfOpPattern
++    : public FoldUnaryOpPattern<FoldErfOpPattern, chlo::ErfOp> {
++  using FoldUnaryOpPattern::FoldUnaryOpPattern;
++
++  static std::optional<double> EvaluateOp(double operand) {
++    return std::erf(operand);
++  }
++};
++
++struct FoldExpOpPattern : public FoldUnaryOpPattern<FoldExpOpPattern, ExpOp> {
++  using FoldUnaryOpPattern::FoldUnaryOpPattern;
++
++  static std::optional<double> EvaluateOp(double operand) {
++    return std::exp(operand);
++  }
++};
++
++struct FoldLogOpPattern : public FoldUnaryOpPattern<FoldLogOpPattern, LogOp> {
++  using FoldUnaryOpPattern::FoldUnaryOpPattern;
++
++  static std::optional<double> EvaluateOp(double operand) {
++    if (operand <= 0.0) return std::nullopt;
++    return std::log(operand);
++  }
++};
++
++struct FoldLogisticOpPattern
++    : public FoldUnaryOpPattern<FoldLogisticOpPattern, LogisticOp> {
++  using FoldUnaryOpPattern::FoldUnaryOpPattern;
++
++  static std::optional<double> EvaluateOp(double operand) {
++    return 1.0 / (1.0 + std::exp(-operand));
++  }
++};
++
++struct FoldNegOpPattern : public FoldUnaryOpPattern<FoldNegOpPattern, NegOp> {
++  using FoldUnaryOpPattern::FoldUnaryOpPattern;
++
++  static std::optional<APInt> EvaluateOp(APInt operand) { return -operand; }
++  static std::optional<APFloat> EvaluateOp(APFloat operand) { return -operand; }
++};
++
++struct FoldNotOpPattern : public FoldUnaryOpPattern<FoldNotOpPattern, NotOp> {
++  using FoldUnaryOpPattern::FoldUnaryOpPattern;
++
++  static std::optional<APInt> EvaluateOp(APInt operand) {
++    operand.flipAllBits();
++    return operand;
++  }
++};
++
++struct FoldRoundOpPattern
++    : public FoldUnaryOpPattern<FoldRoundOpPattern, RoundOp> {
++  using FoldUnaryOpPattern::FoldUnaryOpPattern;
++
++  static std::optional<APFloat> EvaluateOp(APFloat operand) {
++    operand.roundToIntegral(APFloat::rmNearestTiesToAway);
++    return operand;
++  }
++};
++
++struct FoldRoundNearestEvenOpPattern
++    : public FoldUnaryOpPattern<FoldRoundNearestEvenOpPattern,
++                                RoundNearestEvenOp> {
++  using FoldUnaryOpPattern::FoldUnaryOpPattern;
++
++  static std::optional<APFloat> EvaluateOp(APFloat operand) {
++    operand.roundToIntegral(APFloat::rmNearestTiesToEven);
++    return operand;
++  }
++};
++
++struct FoldRsqrtOpPattern
++    : public FoldUnaryOpPattern<FoldRsqrtOpPattern, RsqrtOp> {
++  using FoldUnaryOpPattern::FoldUnaryOpPattern;
++
++  static std::optional<double> EvaluateOp(double operand) {
++    if (operand <= 0.0) return std::nullopt;
++    return 1.0 / std::sqrt(operand);
++  }
++};
++
++struct FoldSignOpPattern
++    : public FoldUnaryOpPattern<FoldSignOpPattern, SignOp> {
++  using FoldUnaryOpPattern::FoldUnaryOpPattern;
++
++  static std::optional<APFloat> EvaluateOp(APFloat operand) {
++    if (operand.isNaN()) return std::nullopt;
++    if (operand.isZero()) return APFloat::getZero(operand.getSemantics());
++    return APFloat::getOne(operand.getSemantics(),
++                           /*Negative=*/operand.isNegative());
++  }
++
++  static std::optional<APSInt> EvaluateOp(APSInt operand) {
++    // SignOp only supports signed integers.
++    if (operand.isUnsigned()) return std::nullopt;
++
++    int sign;
++    if (operand.isNegative()) {
++      sign = -1;
++    } else if (operand.isZero()) {
++      sign = 0;
++    } else {
++      sign = +1;
++    }
++    return getAPSInt(operand.getBitWidth(), sign, /*isSigned=*/true);
++  }
++};
++
++struct FoldSineOpPattern
++    : public FoldUnaryOpPattern<FoldSineOpPattern, SineOp> {
++  using FoldUnaryOpPattern::FoldUnaryOpPattern;
++
++  static std::optional<double> EvaluateOp(double operand) {
++    return std::sin(operand);
++  }
++};
++
+ struct FoldSqrtOpPattern
+-    : public FoldOpRewritePattern<mlir::stablehlo::SqrtOp> {
+-  using FoldOpRewritePattern<mlir::stablehlo::SqrtOp>::FoldOpRewritePattern;
+-
+-  LogicalResult matchAndRewrite(mlir::stablehlo::SqrtOp op,
+-                                PatternRewriter& rewriter) const final {
+-    auto res = foldUnaryOpIntOrFloat(rewriter, op, FoldSqrt());
+-    if (failed(res)) return failure();
+-    rewriter.replaceOpWithNewOp<mlir::stablehlo::ConstantOp>(op, res.value());
+-    return success();
+-  }
+-
+-  struct FoldSqrt {
+-    std::optional<APFloat> operator()(APFloat operand) {
+-      if (operand.getSizeInBits(operand.getSemantics()) == 64)
+-        return APFloat(std::sqrt(operand.convertToDouble()));
+-
+-      if (operand.getSizeInBits(operand.getSemantics()) == 32)
+-        return APFloat(sqrtf(operand.convertToFloat()));
+-      return std::nullopt;
+-    }
+-
+-    // TODO: Enable int folding.
+-    std::optional<APInt> operator()(APInt operand) { return std::nullopt; }
+-  };
++    : public FoldUnaryOpPattern<FoldSqrtOpPattern, SqrtOp> {
++  using FoldUnaryOpPattern::FoldUnaryOpPattern;
++
++  static std::optional<double> EvaluateOp(double operand) {
++    if (operand < 0.0) return std::nullopt;
++    return std::sqrt(operand);
++  }
++};
++
++struct FoldTanOpPattern : public FoldUnaryOpPattern<FoldTanOpPattern, TanOp> {
++  using FoldUnaryOpPattern::FoldUnaryOpPattern;
++
++  static std::optional<double> EvaluateOp(double operand) {
++    return std::tan(operand);
++  }
++};
++
++struct FoldTanhOpPattern
++    : public FoldUnaryOpPattern<FoldTanhOpPattern, TanhOp> {
++  using FoldUnaryOpPattern::FoldUnaryOpPattern;
++
++  static std::optional<double> EvaluateOp(double operand) {
++    return std::tanh(operand);
++  }
+ };
+ 
+ struct FoldIotaOpPattern : public FoldOpRewritePattern<IotaOp> {
+@@ -1316,13 +1609,9 @@
  
      for (auto [inputValue, bodyArg] :
           llvm::zip_equal(op.getOperands(), body.getArguments())) {
@@ -444,7 +1354,7 @@ diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveFold
          return rewriter.notifyMatchFailure(op,
                                             "Input must be a splat constant.");
  
-@@ -1332,7 +1333,7 @@
+@@ -1332,7 +1621,7 @@
              op, "Could not get the shape of the body argument.");
  
        bodyArgConstantAttrs.push_back(DenseElementsAttr::get(
@@ -453,4 +1363,31 @@ diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveFold
      }
  
      for (BlockArgument bodyArg : body.getArguments()) {
+@@ -1570,11 +1859,25 @@
+     PatternBenefit benefit) {
+   populateStablehloShapeFolderPatterns(context, patterns, options, benefit);
+ 
+-  patterns->add<FoldIotaOpPattern,                    //
++  patterns->add<FoldAbsOpPattern,                     //
++                FoldCosineOpPattern,                  //
++                FoldErfOpPattern,                     //
++                FoldExpOpPattern,                     //
++                FoldIotaOpPattern,                    //
++                FoldLogOpPattern,                     //
++                FoldLogisticOpPattern,                //
++                FoldNegOpPattern,                     //
++                FoldNotOpPattern,                     //
+                 FoldReduceOpReducingZeroDims,         //
+                 FoldReduceOpToConstantInitializer,    //
+                 FoldReduceOpWithRedundantResults,     //
++                FoldRoundOpPattern,                   //
++                FoldRoundNearestEvenOpPattern,        //
++                FoldRsqrtOpPattern,                   //
++                FoldSineOpPattern,                    //
+                 FoldSqrtOpPattern,                    //
++                FoldTanOpPattern,                     //
++                FoldTanhOpPattern,                    //
+                 FoldTransposeOpPattern,               //
+                 FoldWhileOpIfDeadAndPresumedPure,     //
+                 FoldWhileOpPattern,                   //
 
