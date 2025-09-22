@@ -148,7 +148,7 @@ CpuAotCompilationResult::CpuAotCompilationResult(
 absl::StatusOr<std::unique_ptr<Executable>>
 CpuAotCompilationResult::LoadExecutable(
     [[maybe_unused]] Compiler* compiler,
-    const se::StreamExecutor* stream_exec) const&& {
+    const se::StreamExecutor* stream_exec) && {
   // Compiler would be used only to get the BufferSizeBytesFunction. Doing this
   // we ensure the user doesn't expect a different function to be used.
   CHECK(compiler == nullptr);

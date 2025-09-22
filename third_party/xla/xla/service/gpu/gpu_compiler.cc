@@ -405,8 +405,8 @@ class GpuThunkAotCompilationResult : public AotCompilationResult {
   }
 
   absl::StatusOr<std::unique_ptr<Executable>> LoadExecutable(
-      Compiler* compiler,
-      const se::StreamExecutor* stream_exec) const&& override;
+      Compiler* compiler, const se::StreamExecutor* stream_exec) &&
+      override;
 
   const HloModule* optimized_module() const override { return module_.get(); }
   std::unique_ptr<HloModule> consume_optimized_module() override {
@@ -450,7 +450,7 @@ GpuThunkAotCompilationResult::buffer_assignment() const {
 
 absl::StatusOr<std::unique_ptr<Executable>>
 GpuThunkAotCompilationResult::LoadExecutable(
-    Compiler* compiler, const se::StreamExecutor* stream_exec) const&& {
+    Compiler* compiler, const se::StreamExecutor* stream_exec) && {
   tsl::profiler::TraceMe traceme("LoadExecutable");
   // Recreate HloModule+HloModuleConfig from proto.
   TF_ASSIGN_OR_RETURN(

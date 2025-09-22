@@ -2362,8 +2362,8 @@ class CpuExecutableAotCompilationResult : public AotCompilationResult {
   }
 
   absl::StatusOr<std::unique_ptr<Executable>> LoadExecutable(
-      Compiler* compiler,
-      const se::StreamExecutor* stream_exec) const&& override;
+      Compiler* compiler, const se::StreamExecutor* stream_exec) &&
+      override;
 
   const HloModule* optimized_module() const override { return module_.get(); }
 
@@ -2413,7 +2413,7 @@ class CpuExecutableAotCompilationResult : public AotCompilationResult {
 
 absl::StatusOr<std::unique_ptr<Executable>>
 CpuExecutableAotCompilationResult::LoadExecutable(
-    Compiler* compiler, const se::StreamExecutor* stream_exec) const&& {
+    Compiler* compiler, const se::StreamExecutor* stream_exec) && {
   // Recreate HloModule from proto.
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<HloModule> module,

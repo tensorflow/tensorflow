@@ -117,7 +117,8 @@ class CpuAotCompilationResult : public AotCompilationResult {
 
   absl::StatusOr<std::unique_ptr<Executable>> LoadExecutable(
       [[maybe_unused]] Compiler* compiler,
-      const se::StreamExecutor* stream_exec) const&& override;
+      const se::StreamExecutor* stream_exec) &&
+      override;
 
   const HloModule* optimized_module() const override { return module_.get(); }
 
