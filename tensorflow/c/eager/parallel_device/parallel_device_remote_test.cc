@@ -39,8 +39,7 @@ tensorflow::ServerDef GetServerDef(const std::string& job_name, int num_tasks) {
   job_def->set_name(job_name);
   for (int i = 0; i < num_tasks; i++) {
     int port = tensorflow::testing::PickUnusedPortOrDie();
-    job_def->mutable_tasks()->insert(
-        {i, tensorflow::strings::StrCat("localhost", ":", port)});
+    job_def->mutable_tasks()->insert({i, absl::StrCat("localhost", ":", port)});
     LOG(INFO) << "Picked test port: " << port << " for job: " << job_name
               << ", task: " << i;
   }
