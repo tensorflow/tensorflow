@@ -6613,6 +6613,116 @@ class DecodeImageTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     image0, image1_0 = self.evaluate([image0, image1_0])
     self.assertAllEqual(image0, image1_0)
 
+  def testDecodeImageShapeInferenceInDataPipeline(self):
+    """Test that decode_image sets proper shape inference in tf.data pipelines.
+
+    This test verifies the fix for the issue where tf.image.decode_image
+    followed by tf.image.resize would fail with "ValueError: 'images' contains
+    no shape" when used in tf.data.Dataset.map() operations.
+
+    The fix ensures that when expand_animations=False, the output tensor shape
+    is properly set to [None, None, channels] for known channel counts or
+    [None, None, None] for unknown channel counts, enabling proper shape
+    inference for subsequent operations like resize.
+    """
+    # Create 2x2 RGB test image.
+    test_image = constant_op.constant(
+        [[[255, 0, 0], [0, 255, 0]], [[0, 0, 255], [255, 255, 0]]],
+        dtype=dtypes.uint8,
+    )
+    jpeg_bytes = gen_image_ops.encode_jpeg(test_image)
+
+    def process_image_fixed(image_bytes):
+      """Process function using expand_animations=False for shape inference."""
+      decoded = image_ops.decode_image(
+          image_bytes, channels=3, expand_animations=False
+      )
+      resized = image_ops.resize_images(decoded, [224, 224])
+      return resized
+
+    with self.cached_session():
+      # Test tf.data pipeline with decode_image + resize.
+      dataset_fixed = dataset_ops.Dataset.from_tensor_slices([jpeg_bytes])
+      dataset_fixed = dataset_fixed.map(process_image_fixed)
+
+      # Use get_single_element for graph mode compatibility.
+      processed_image = get_single_element.get_single_element(dataset_fixed)
+      processed_image_val = self.evaluate(processed_image)
+      self.assertEqual(processed_image_val.shape, (224, 224, 3))
+
+      # Verify shape inference with expand_animations=False.
+      decoded_fixed = image_ops.decode_image(
+          jpeg_bytes, channels=3, expand_animations=False
+      )
+      self.assertEqual(decoded_fixed.shape.rank, 3)
+
+      # Check shape compatibility in both graph and eager modes.
+      shape_list = decoded_fixed.get_shape().as_list()
+      self.assertEqual(shape_list[2], 3)
+      self.assertTrue(shape_list[0] is None or shape_list[0] == 2)
+      self.assertTrue(shape_list[1] is None or shape_list[1] == 2)
+
+      # Test different channel configurations.
+      # Note: decode_image only supports channels 0, 1, 3, 4 (not 2).
+      for channels in [0, 1, 3, 4]:
+        if channels == 0:
+          # Use auto-detection with RGB JPEG.
+          test_bytes = jpeg_bytes
+        elif channels == 1:
+          # Create grayscale test image.
+          gray_image = constant_op.constant(
+              [[128, 64], [192, 32]], dtype=dtypes.uint8
+          )
+          gray_image = array_ops.expand_dims(gray_image, -1)
+          test_bytes = gen_image_ops.encode_png(gray_image)
+        elif channels == 4:
+          # Create RGBA test image using PNG (JPEG doesn't support 4 channels).
+          rgba_image = constant_op.constant(
+              [
+                  [[255, 0, 0, 255], [0, 255, 0, 128]],
+                  [[0, 0, 255, 64], [255, 255, 0, 192]],
+              ],
+              dtype=dtypes.uint8,
+          )
+          test_bytes = gen_image_ops.encode_png(rgba_image)
+        else:
+          # Use RGB JPEG for 3-channel tests.
+          test_bytes = jpeg_bytes
+
+        decoded = image_ops.decode_image(
+            test_bytes, channels=channels, expand_animations=False
+        )
+        self.assertEqual(decoded.shape.rank, 3)
+
+        if channels == 0:
+          # Auto-detection case - shape depends on the image format used.
+          expected_shape = [None, None, None]
+        elif channels <= 4:
+          expected_shape = [None, None, channels]
+        else:
+          expected_shape = [None, None, None]
+
+        # Shape must be compatible for resize operations.
+        self.assertTrue(decoded.shape.is_compatible_with(expected_shape))
+
+      # Test automatic channel detection.
+      decoded_unknown = image_ops.decode_image(
+          jpeg_bytes, expand_animations=False
+      )
+      self.assertEqual(decoded_unknown.shape.rank, 3)
+
+      # Check shape compatibility with automatic channel detection.
+      shape_list_unknown = decoded_unknown.get_shape().as_list()
+      self.assertTrue(
+          shape_list_unknown[0] is None or shape_list_unknown[0] == 2
+      )
+      self.assertTrue(
+          shape_list_unknown[1] is None or shape_list_unknown[1] == 2
+      )
+      self.assertTrue(
+          shape_list_unknown[2] is None or shape_list_unknown[2] == 3
+      )
+
 
 if __name__ == "__main__":
   googletest.main()
