@@ -164,4 +164,13 @@ def TritonXLAConvertUnsupportedTypesPass
   let constructor = "CreateTritonXLAConvertUnsupportedTypesPass()";
 }
 
+def TritonXLALowerRemoteAccessPass
+    : Pass<"triton-xla-remote-access", "mlir::ModuleOp"> {
+  let summary = "Lower triton_xla.get_rank/get_peer operations used to remote access kernels.";
+  let description = [{
+    This pass lowers collective operations (get_rank, get_peer).
+  }];
+  let constructor = "CreateTritonXLALowerRemoteAccessPass()";
+}
+
 #endif  // XLA_BACKENDS_GPU_CODEGEN_TRITON_PASSES_TD_
