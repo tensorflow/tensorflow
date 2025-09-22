@@ -121,6 +121,14 @@ class CommonPjRtClient : public PjRtClient {
         "CreateLinkedEventPromise is not supported");
   }
 
+  virtual absl::StatusOr<tsl::RCReference<CommonPjRtRawBuffer>>
+  CreateRawBufferAsyncValue(
+      PjRtMemorySpace* memory_space,
+      tsl::RCReference<tsl::IndirectAsyncValue> buffer_promise) {
+    return absl::UnimplementedError(
+        "CreateRawBufferAsyncValue is not supported");
+  }
+
   // Track a user-provided future with attached debug_info (if
   // event_tracking_enabled()).
   virtual void TrackFuture(PjRtMemorySpace* memory_space,
@@ -178,6 +186,10 @@ class CommonPjRtClient : public PjRtClient {
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostLiteral(
       const LiteralSlice& literal, PjRtMemorySpace* memory_space,
       const Layout* device_layout) override;
+
+  absl::StatusOr<
+      std::pair<std::unique_ptr<PjRtBuffer>, PjRtFulfillAliasBufferCallback>>
+  CreateAliasBuffer(const Shape& shape, PjRtMemorySpace* memory_space) override;
 
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> CreateUninitializedBuffer(
       const Shape& shape, PjRtMemorySpace* memory_space) override;

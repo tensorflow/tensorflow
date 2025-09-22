@@ -29,6 +29,7 @@ cc_library(
     name = "pjrt_c_api_hdrs",
     hdrs = ["pjrt_c_api.h"],
     visibility = ["//visibility:public"],
+    deps = ["@com_google_absl//absl/status"],
 )
 
 cc_library(
@@ -256,6 +257,8 @@ cc_library(
         "//xla/pjrt:pjrt_executable",
         "//xla/pjrt:pjrt_future",
         "//xla/pjrt:pjrt_layout",
+        "//xla/pjrt:pjrt_stream_executor_client",
+        "//xla/pjrt:raw_buffer",
         "//xla/pjrt/distributed:key_value_store_interface",
         "//xla/pjrt/proto:compile_options_proto_cc",
         "//xla/pjrt/proto:topology_description_proto_cc",
@@ -275,11 +278,11 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:span",
         "@llvm-project//mlir:IR",
-        "@local_tsl//tsl/platform:casts",
         "@local_tsl//tsl/profiler/lib:connected_traceme",
         "@local_tsl//tsl/profiler/lib:context_types_hdrs",
     ],

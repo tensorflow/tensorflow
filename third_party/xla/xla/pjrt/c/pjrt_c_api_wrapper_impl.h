@@ -26,6 +26,7 @@ limitations under the License.
 
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -197,6 +198,10 @@ struct PJRT_Buffer {
       external_references;
 };
 
+struct PJRT_FulfillAliasBufferCallback {
+  xla::PjRtFulfillAliasBufferCallback fulfill_alias_buffer_cb;
+};
+
 struct PJRT_Event {
   xla::PjRtFuture<> future;
 };
@@ -283,6 +288,10 @@ PJRT_Error* PJRT_Client_DefaultDeviceAssignment(
     PJRT_Client_DefaultDeviceAssignment_Args* args);
 PJRT_Error* PJRT_Client_CreateUninitializedBuffer(
     PJRT_Client_CreateUninitializedBuffer_Args* args);
+PJRT_Error* PJRT_Client_CreateAliasBuffer(
+    PJRT_Client_CreateAliasBuffer_Args* args);
+PJRT_Error* PJRT_Client_FulfillAliasBuffer(
+    PJRT_Client_FulfillAliasBuffer_Args* args);
 PJRT_Error* PJRT_Client_BufferFromHostBuffer(
     PJRT_Client_BufferFromHostBuffer_Args* args);
 PJRT_Error* PJRT_Client_CreateViewOfDeviceBuffer(
