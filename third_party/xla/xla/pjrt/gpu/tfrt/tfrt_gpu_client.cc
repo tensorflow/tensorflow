@@ -55,6 +55,8 @@ limitations under the License.
 #include "xla/layout.h"
 #include "xla/literal.h"
 #include "xla/maybe_owning.h"
+#include "xla/pjrt/abstract_tracked_device_buffer.h"
+#include "xla/pjrt/device_event.h"
 #include "xla/pjrt/distributed/in_memory_key_value_store.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/pjrt/distributed/protocol.pb.h"
@@ -79,6 +81,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/plugin/xla_gpu/xla_gpu_client_options.h"
 #include "xla/pjrt/proto/compile_options.pb.h"
+#include "xla/pjrt/raw_buffer.h"
 #include "xla/pjrt/stream_executor_executable.h"
 #include "xla/pjrt/transpose.h"
 #include "xla/pjrt/utils.h"
@@ -99,6 +102,7 @@ limitations under the License.
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
+#include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/framework/allocator.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
@@ -449,6 +453,62 @@ TfrtGpuClient::CreateUninitializedBuffer(const Shape& shape,
       compact_shape, tsl::MakeAvailableAsyncValueRef<GpuEvent>(),
       tsl::down_cast<TfrtGpuDevice*>(memory_space->devices()[0]), this,
       memory_space);
+}
+
+absl::StatusOr<
+    std::pair<std::unique_ptr<PjRtBuffer>, PjRtFulfillAliasBufferCallback>>
+TfrtGpuClient::CreateAliasBuffer(const Shape& shape,
+                                 PjRtMemorySpace* memory_space) {
+  auto buffer_promise = tsl::MakeIndirectAsyncValue();
+  auto definition_event_promise = tsl::MakeIndirectAsyncValue();
+  auto ready_event_promise = tsl::MakeIndirectAsyncValue();
+
+  auto tracked_device_buffer = std::make_unique<TrackedGpuDeviceBuffer>(
+      tsl::AsyncValueRef<GpuDeviceMemory>(buffer_promise),
+      tsl::AsyncValueRef<GpuEvent>(definition_event_promise),
+      tsl::AsyncValueRef<GpuEvent>(ready_event_promise));
+
+  CHECK_EQ(memory_space->devices().size(), 1);
+  auto* device = tsl::down_cast<TfrtGpuDevice*>(memory_space->devices()[0]);
+  auto result_buffer = std::make_unique<TfrtGpuBuffer>(
+      shape, std::move(tracked_device_buffer), this, device, memory_space);
+
+  xla::PjRtFulfillAliasBufferCallback fulfill_alias_buffer_cb =
+      [buffer_promise = std::move(buffer_promise),
+       definition_event_promise = std::move(definition_event_promise),
+       ready_event_promise = std::move(ready_event_promise)](
+          absl::StatusOr<xla::PjRtBuffer*> buffer_or) -> absl::Status {
+    if (!buffer_or.ok()) {
+      definition_event_promise->SetError(buffer_or.status());
+      ready_event_promise->SetError(buffer_or.status());
+      buffer_promise->SetError(buffer_or.status());
+      return buffer_or.status();
+    }
+    xla::PjRtBuffer* buffer = buffer_or.value();
+    xla::TfrtGpuBuffer* tfrt_buffer = dynamic_cast<xla::TfrtGpuBuffer*>(buffer);
+    if (tfrt_buffer == nullptr) {
+      auto status = absl::InternalError("Failed to cast to TfrtGpuBuffer");
+      definition_event_promise->SetError(status);
+      ready_event_promise->SetError(status);
+      buffer_promise->SetError(status);
+      return status;
+    }
+    {
+      absl::MutexLock lock(&tfrt_buffer->mu_);
+      xla::TrackedGpuDeviceBuffer* tracked_gpu_buffer =
+          tfrt_buffer->tracked_device_buffer_.get();
+      buffer_promise->ForwardTo(tracked_gpu_buffer->buffer().CopyRCRef());
+      definition_event_promise->ForwardTo(
+          tracked_gpu_buffer->definition_event().CopyRCRef());
+      ready_event_promise->ForwardTo(
+          tracked_gpu_buffer->ready_event().CopyRCRef());
+    }
+
+    return absl::OkStatus();
+  };
+
+  return std::make_pair(std::move(result_buffer),
+                        std::move(fulfill_alias_buffer_cb));
 }
 
 absl::StatusOr<std::unique_ptr<PjRtExecutable>>
