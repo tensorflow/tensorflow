@@ -91,11 +91,10 @@ constexpr int kVersionStartSupportDisabledChecks = 6;
 constexpr int kVersionStartSupportShapeAssertions = 7;
 constexpr int kVersionStartSupportUsesShapePolymorphismAttr = 8;
 constexpr int kVersionStartSupportEffects = 9;
-constexpr int kVersionStartSupportShardyPartitioner = 10;
 constexpr int kVersionMinimumSupported = kVersionStartStableHloCompatibility;
 
 // This should match xla.py:call_module_maximum_supported_version
-constexpr int kVersionMaximumSupported = kVersionStartSupportShardyPartitioner;
+constexpr int kVersionMaximumSupported = kVersionStartSupportEffects;
 
 constexpr llvm::StringRef kDisabledCheckPlatform = "platform";
 
