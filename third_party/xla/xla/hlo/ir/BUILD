@@ -410,6 +410,8 @@ xla_cc_test(
     deps = [
         ":hlo",
         "//xla:literal_util",
+        "//xla:status_macros",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/service:hlo_module_config",
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:test",

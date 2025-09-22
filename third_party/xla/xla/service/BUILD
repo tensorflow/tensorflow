@@ -784,20 +784,6 @@ xla_test(
     ],
 )
 
-xla_cc_test(
-    name = "dfs_hlo_visitor_with_default_test",
-    srcs = ["dfs_hlo_visitor_with_default_test.cc"],
-    deps = [
-        ":hlo_runner",
-        "//xla:shape_util",
-        "//xla/hlo/ir:hlo",
-        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
-        "//xla/hlo/testlib:test",
-        "//xla/tests:xla_internal_test_main",
-        "//xla/tsl/lib/core:status_test_util",
-    ],
-)
-
 cc_library(
     name = "pattern_matcher",
     hdrs = ["pattern_matcher.h"],

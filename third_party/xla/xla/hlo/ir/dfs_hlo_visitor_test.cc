@@ -15,6 +15,7 @@
 #include "xla/hlo/ir/dfs_hlo_visitor.h"
 
 #include <memory>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -22,10 +23,14 @@
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
+#include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/literal_util.h"
 #include "xla/service/hlo_module_config.h"
+#include "xla/status_macros.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/test.h"
 
@@ -33,6 +38,61 @@ namespace xla {
 namespace {
 
 using ::testing::ElementsAre;
+using DfsHloVisitorWithDefaultTest = HloHardwareIndependentTestBase;
+
+TEST_F(DfsHloVisitorWithDefaultTest, DefaultElementwiseTest) {
+  // Verify that HandleElementwiseBinary and HandleElementwiseUnary are called
+  // on the appropriate HLO ops (elementwise binary/unary ops).
+
+  class ElementwiseTestVisitor : public DfsHloVisitorWithDefault {
+   public:
+    absl::Status DefaultAction(HloInstruction* hlo) override {
+      // The HLO should be neither an elementwise unary nor binary op. These
+      // cases are handled in HandleElementwiseBinary/Unary.
+      TF_RET_CHECK(!(hlo->IsElementwise() && hlo->operand_count() == 2))
+          << hlo->ToString();
+      TF_RET_CHECK(!(hlo->IsElementwise() && hlo->operand_count() == 1))
+          << hlo->ToString();
+      return absl::OkStatus();
+    }
+
+    absl::Status HandleElementwiseBinary(HloInstruction* hlo) override {
+      // HLO should be elementwise binary.
+      TF_RET_CHECK(hlo->IsElementwise() && hlo->operand_count() == 2)
+          << hlo->ToString();
+      return absl::OkStatus();
+    }
+    absl::Status HandleElementwiseUnary(HloInstruction* hlo) override {
+      // HLO should be elementwise unary.
+      TF_RET_CHECK(hlo->IsElementwise() && hlo->operand_count() == 1)
+          << hlo->ToString();
+      return absl::OkStatus();
+    }
+  };
+
+  // HLO module contains are arbitrary mix of elementwise and non-elementwise
+  // operations.
+  const std::string& hlo_string = R"(
+HloModule TestModule
+
+ENTRY TestComputation {
+  arg = f32[] parameter(0)
+  tuple = (f32[]) tuple(arg)
+  gte = f32[] get-tuple-element(tuple), index=0
+  abs = f32[] abs(arg)
+  add = f32[] add(arg, gte)
+  broadcast = f32[42] broadcast(add), dimensions={}
+  slice = f32[1] slice(broadcast), slice={[1:2]}
+  copy = f32[] copy(arg)
+  eq = pred[] compare(arg, gte), direction=EQ
+  neg = f32[] negate(arg)
+  ROOT convert = f64[] convert(f32[] arg)
+})";
+  std::unique_ptr<HloModule> module =
+      ParseAndReturnVerifiedModule(hlo_string).value();
+  ElementwiseTestVisitor visitor;
+  TF_EXPECT_OK(module->entry_computation()->Accept(&visitor));
+}
 
 TEST(FilteredDfsHloVisitorTest, FiltersInstructions) {
   // Create a module with a few instructions.
