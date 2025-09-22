@@ -105,7 +105,7 @@ TEST_P(SingleClientRecoverableJobsTest, TestRecoverWorkerFailure) {
   client_job->set_name("localhost");
   int client_port = tensorflow::testing::PickUnusedPortOrDie();
   client_job->mutable_tasks()->insert(
-      {0, strings::StrCat("localhost:", client_port)});
+      {0, absl::StrCat("localhost:", client_port)});
   server_def.set_job_name("localhost");
   std::string serialized = server_def.SerializeAsString();
 
@@ -159,7 +159,7 @@ TEST_P(SingleClientRecoverableJobsTest, TestRecoverWorkerFailure) {
       if (job.name() == "localhost") {
         job.mutable_tasks()->clear();
         job.mutable_tasks()->insert(
-            {0, strings::StrCat("localhost:", client_port)});
+            {0, absl::StrCat("localhost:", client_port)});
         break;
       }
     }
@@ -184,7 +184,7 @@ TEST_P(SingleClientRecoverableJobsTest, TestRecoverWorkerFailure) {
       if (iter->name() == "worker") {
         int worker_1_port = tensorflow::testing::PickUnusedPortOrDie();
         auto& tasks = *iter->mutable_tasks();
-        tasks[1] = strings::StrCat("localhost:", worker_1_port);
+        tasks[1] = absl::StrCat("localhost:", worker_1_port);
         ++iter;
       } else if (iter->name() == "localhost") {
         saved_client_job = *iter;
