@@ -671,7 +671,7 @@ def call_module_maximum_supported_version():
   See versioning details documentation for the XlaCallModule op at:
   https://github.com/search?q=repo%3Atensorflow%2Ftensorflow+path%3Axla_call_module+%22int+kVersionMaximumSupported%22&type=code
   """
-  return 10
+  return 9
 
 # pylint: enable=g-doc-args
 # pylint: enable=g-doc-return-or-yield
