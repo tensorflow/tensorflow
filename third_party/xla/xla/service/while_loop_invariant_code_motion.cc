@@ -219,6 +219,10 @@ WhileLoopInvariantCodeMotion::TryHoistingInvariantInstructionsFromWhileBody(
         instruction->IsCustomCall("SPMDShardShapeToFull")) {
       return false;
     }
+    if (instruction->IsCustomCall(
+            std::vector<absl::string_view>{"MoveToHost", "MoveToDevice"})) {
+      return false;
+    }
   }
 
   // instructions_to_replace[i] is hoisted into a loop invariant instruction
