@@ -1,0 +1,40 @@
+diff --git a/python/versions.bzl b/python/versions.bzl
+index 30929f82..73974065 100644
+--- a/python/versions.bzl
++++ b/python/versions.bzl
+@@ -1045,29 +1045,29 @@ def get_release_info(platform, python_version, base_url = DEFAULT_RELEASE_BASE_U
+     for u in url:
+         p, _, _ = platform.partition(FREETHREADED)
+ 
+-        release_id = int(u.split("/")[-2])
+-
+         if FREETHREADED.lstrip("-") in platform:
++            if "3.13" in python_version:
++                aarch64_linux_suffix = "lto"
++            else:
++                aarch64_linux_suffix = "pgo+lto"
+             build = "{}+{}-full".format(
+                 FREETHREADED.lstrip("-"),
+                 {
+                     "aarch64-apple-darwin": "pgo+lto",
+                     "aarch64-pc-windows-msvc": "pgo",
+-                    "aarch64-unknown-linux-gnu": "lto" if release_id < 20250702 else "pgo+lto",
++                    "aarch64-unknown-linux-gnu": aarch64_linux_suffix,
+                     "ppc64le-unknown-linux-gnu": "lto",
+                     "riscv64-unknown-linux-gnu": "lto",
+                     "s390x-unknown-linux-gnu": "lto",
+                     "x86_64-apple-darwin": "pgo+lto",
+                     "x86_64-pc-windows-msvc": "pgo",
+                     "x86_64-unknown-linux-gnu": "pgo+lto",
++                    "x86_64-unknown-linux-musl": "pgo+lto",
+                 }[p],
+             )
+         else:
+             build = INSTALL_ONLY
+ 
+-        if WINDOWS_NAME in platform and release_id < 20250317:
+-            build = "shared-" + build
+-
+         release_filename = u.format(
+             platform = p,
+             python_version = python_version,
