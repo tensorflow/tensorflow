@@ -1596,7 +1596,6 @@ pywrap_library(
     common_lib_version_scripts = {
         "tensorflow/tensorflow_framework": select({
             "//tensorflow:windows": None,
-            "//tensorflow:macos": None,
             "//conditions:default": "//tensorflow:tf_framework_version_script.lds",
         }),
         "tensorflow/tensorflow_cc": select({
