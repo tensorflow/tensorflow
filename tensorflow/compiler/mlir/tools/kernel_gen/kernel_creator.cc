@@ -185,7 +185,7 @@ absl::Status LowerHlotoLoops(mlir::ModuleOp module,
 
   // Remove the remaining references to unsigned types after all HLO compute
   // operations were converted.
-  pm.addPass(mlir::mhlo::createConvertToSignlessPass());
+  pm.addPass(mlir::stablehlo::createStablehloConvertToSignlessPass());
 
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addNestedPass<FuncOp>(mlir::createCSEPass());

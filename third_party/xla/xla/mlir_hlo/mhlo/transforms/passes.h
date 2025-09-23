@@ -76,9 +76,6 @@ std::unique_ptr<OperationPass<ModuleOp>> createExpandHloTuplesPass(
 // op.
 std::unique_ptr<OperationPass<func::FuncOp>> createCollapseElementwiseMapPass();
 
-// Pass to replace unsigned types with signless integers.
-std::unique_ptr<OperationPass<ModuleOp>> createConvertToSignlessPass();
-
 // Test passes.
 std::unique_ptr<Pass> createTestInferShapedTypeMethodsPass();
 std::unique_ptr<Pass> createTestMaterializeBroadcastsPass();

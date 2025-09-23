@@ -155,7 +155,6 @@ cc_library(
         "//xla/codegen/emitters/transforms:passes",
         "//xla/mlir/tools/mlir_replay/public:compiler_trace_proto_cc",
         "//xla/mlir_hlo",
-        "//xla/mlir_hlo:mhlo_passes",
         "//xla/tsl/framework/mlir:status_scoped_diagnostic_handler",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",
@@ -194,6 +193,7 @@ cc_library(
         "@llvm-project//mlir:VectorDialect",
         "@local_tsl//tsl/profiler/lib:traceme",
         "@local_tsl//tsl/profiler/lib:traceme_encode",
+        "@stablehlo//:stablehlo_passes",
     ],
 )
 

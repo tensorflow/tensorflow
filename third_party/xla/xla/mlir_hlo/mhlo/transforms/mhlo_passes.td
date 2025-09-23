@@ -159,11 +159,6 @@ def FlattenTuplePass : Pass<"mhlo-flatten-tuple", "func::FuncOp"> {
   let constructor = "createFlattenTuplePass()";
 }
 
-def ConvertToSignlessPass : Pass<"convert-to-signless", "ModuleOp"> {
-  let summary = "Pass to transform the IR to be on signless integers.";
-  let constructor = "createConvertToSignlessPass()";
-}
-
 def CollapseElementwiseMapPass
     : Pass<"mhlo-collapse-elementwise-map", "func::FuncOp"> {
   let summary = "Collapse the mhlo.map if the map only has elementwise ops.";

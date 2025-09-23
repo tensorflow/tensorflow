@@ -66,7 +66,6 @@ cc_library(
         "//xla/mlir/tools/mlir_replay/public:compiler_trace_instrumentation",
         "//xla/mlir/tools/mlir_replay/public:compiler_trace_proto_cc",
         "//xla/mlir_hlo",
-        "//xla/mlir_hlo:mhlo_passes",
         "//xla/service:buffer_assignment",
         "//xla/service:dump",
         "//xla/service/gpu:gpu_constants",
@@ -125,6 +124,7 @@ cc_library(
         "@llvm-project//mlir:ToLLVMIRTranslation",
         "@llvm-project//mlir:Transforms",
         "@llvm-project//mlir:VectorDialect",
+        "@stablehlo//:stablehlo_passes",
     ],
 )
 

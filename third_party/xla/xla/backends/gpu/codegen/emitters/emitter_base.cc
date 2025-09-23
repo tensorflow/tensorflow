@@ -80,6 +80,7 @@ limitations under the License.
 #include "mlir/Target/LLVMIR/Dialect/ROCDL/ROCDLToLLVMIRTranslation.h"
 #include "mlir/Target/LLVMIR/Export.h"
 #include "mlir/Transforms/Passes.h"
+#include "stablehlo/transforms/Passes.h"
 #include "xla/backends/gpu/codegen/emitters/ir/xla_gpu_ops.h"
 #include "xla/backends/gpu/codegen/emitters/transforms/passes.h"
 #include "xla/backends/gpu/codegen/fusion_emitter.h"
@@ -100,7 +101,6 @@ limitations under the License.
 #include "xla/mlir/tools/mlir_replay/public/compiler_trace.pb.h"
 #include "xla/mlir/tools/mlir_replay/public/compiler_trace_instrumentation.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
-#include "xla/mlir_hlo/mhlo/transforms/passes.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/dump.h"
 #include "xla/service/gpu/gpu_constants.h"
@@ -458,7 +458,7 @@ void AddLoopTransformationPasses(mlir::OpPassManager& pm,
   pm.addPass(mlir::createCSEPass());
   pm.addNestedPass<FuncOp>(CreatePeelLoopsPass());
   pm.addNestedPass<FuncOp>(emitters::CreateLowerXlaLoopsToScfPass());
-  pm.addPass(mlir::mhlo::createConvertToSignlessPass());
+  pm.addPass(mlir::stablehlo::createStablehloConvertToSignlessPass());
   pm.addPass(emitters::CreatePropagateSliceIndicesPass());
   pm.addPass(emitters::CreateFlattenTensorsPass());
   // We need LICM before unswitching loops, because our loop unswitcher only

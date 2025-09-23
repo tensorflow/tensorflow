@@ -330,7 +330,6 @@ cc_library(
     srcs = [
         "mhlo/transforms/chlo_legalize_to_hlo/chlo_legalize_to_hlo_pass.cc",
         "mhlo/transforms/collapse_elementwise_map/collapse_elementwise_map.cc",
-        "mhlo/transforms/convert_to_signless/convert_to_signless_pass.cc",
         "mhlo/transforms/expand_hlo_tuples/expand_hlo_tuples.cc",
         "mhlo/transforms/hlo_legalize_to_arithmetic/hlo_legalize_to_arithmetic.cc",
         "mhlo/transforms/hlo_legalize_to_memref/hlo_legalize_to_memref.cc",
