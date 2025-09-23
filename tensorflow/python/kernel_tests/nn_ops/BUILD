@@ -46,7 +46,7 @@ cuda_py_strict_test(
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],
-    tags = ["no_pip", "no_gpu"],
+  
 )
 
 cuda_py_strict_test(
