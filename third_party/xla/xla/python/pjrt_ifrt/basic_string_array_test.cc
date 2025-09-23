@@ -199,8 +199,8 @@ TEST(BasicStringArrayTest, InvalidBuffersAreHandledCorrectly) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto ret, CreateNonReadyTestArray(client.get(), devices[0],
                                         std::move(on_done_with_buffer)));
-  auto array = ret.first;
-  auto promise = ret.second;
+  auto& array = ret.first;
+  auto& promise = ret.second;
   auto basic_string_array = llvm::dyn_cast<BasicStringArray>(array.get());
 
   // Buffers with two shards and a single-device array are inconsistent.
