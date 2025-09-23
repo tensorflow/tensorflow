@@ -46,7 +46,6 @@ cuda_py_strict_test(
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],
-  
 )
 
 cuda_py_strict_test(
