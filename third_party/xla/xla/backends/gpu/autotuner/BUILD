@@ -131,7 +131,6 @@ cc_library(
         "//xla/service/gpu/autotuning:redzone_buffers",
         "//xla/service/gpu/transforms:dot_algorithm_rewriter",
         "//xla/service/gpu/transforms:gemm_rewriter",
-        "//xla/service/gpu/transforms:priority_fusion",
         "//xla/stream_executor:blas",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor:device_memory",
