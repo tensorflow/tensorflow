@@ -328,7 +328,7 @@ TEST_P(LoadedExecutableImplTest, CompileAndExecute) {
         CompileOnDevices(client.get(), compiler, module_add_one, devices,
                          /*replicated=*/false, serialize));
   }
-  EXPECT_EQ(loaded_executable->user_context()->Fingerprint(), 20);
+  EXPECT_EQ(loaded_executable->user_context()->Id(), UserContextId(20));
 
   DType dtype(DType::kF32);
   Shape shape({2, 3});
@@ -356,7 +356,7 @@ TEST_P(LoadedExecutableImplTest, CompileAndExecute) {
   }
   TF_ASSERT_OK(result.status.Await());
   EXPECT_THAT(result.outputs, SizeIs(1));
-  EXPECT_EQ(result.outputs[0]->user_context()->Fingerprint(), 100);
+  EXPECT_EQ(result.outputs[0]->user_context()->Id(), UserContextId(100));
 
   std::vector<float> out_data(6);
   auto future = result.outputs[0]->CopyToHostBuffer(
@@ -384,7 +384,7 @@ TEST_P(LoadedExecutableImplTest, CompileAndExecutePortable) {
         CompileOnDevices(client.get(), compiler, module_add_one, devices,
                          /*replicated=*/false, serialize));
   }
-  EXPECT_EQ(loaded_executable->user_context()->Fingerprint(), 20);
+  EXPECT_EQ(loaded_executable->user_context()->Id(), UserContextId(20));
 
   DType dtype(DType::kF32);
   Shape shape({2, 3});
@@ -414,7 +414,7 @@ TEST_P(LoadedExecutableImplTest, CompileAndExecutePortable) {
   }
   TF_ASSERT_OK(result.status.Await());
   EXPECT_THAT(result.outputs, SizeIs(1));
-  EXPECT_EQ(result.outputs[0]->user_context()->Fingerprint(), 100);
+  EXPECT_EQ(result.outputs[0]->user_context()->Id(), UserContextId(100));
 
   std::vector<float> out_data(6);
   auto future = result.outputs[0]->CopyToHostBuffer(
@@ -462,7 +462,7 @@ TEST_P(LoadedExecutableImplTest, DoNotFillStatus) {
                                  /*devices=*/std::nullopt));
   EXPECT_FALSE(result.status.IsValid());
   EXPECT_THAT(result.outputs, SizeIs(1));
-  EXPECT_EQ(result.outputs[0]->user_context()->Fingerprint(), 100);
+  EXPECT_EQ(result.outputs[0]->user_context()->Id(), UserContextId(100));
 
   std::vector<float> out_data(6);
   auto future = result.outputs[0]->CopyToHostBuffer(

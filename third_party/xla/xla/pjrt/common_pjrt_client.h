@@ -121,6 +121,14 @@ class CommonPjRtClient : public PjRtClient {
         "CreateLinkedEventPromise is not supported");
   }
 
+  virtual absl::StatusOr<tsl::RCReference<CommonPjRtRawBuffer>>
+  CreateRawBufferAsyncValue(
+      PjRtMemorySpace* memory_space,
+      tsl::RCReference<tsl::IndirectAsyncValue> buffer_promise) {
+    return absl::UnimplementedError(
+        "CreateRawBufferAsyncValue is not supported");
+  }
+
   // Track a user-provided future with attached debug_info (if
   // event_tracking_enabled()).
   virtual void TrackFuture(PjRtMemorySpace* memory_space,
@@ -137,10 +145,9 @@ class CommonPjRtClient : public PjRtClient {
   // Create a linked PjRtFuture<> and ::Promise pair for operations on
   // buffers in memory_space which populates debug information like linked
   // tracmes.
-  std::pair<PjRtFuture<>::MoveOnlyPromise, PjRtFuture<>>
-  CreateLinkedUserPromise(PjRtMemorySpace* memory_space,
-                          const char* callee_type, const char* callee_method,
-                          absl::string_view debug_info);
+  std::pair<PjRtFuture<>::Promise, PjRtFuture<>> CreateLinkedUserPromise(
+      PjRtMemorySpace* memory_space, const char* callee_type,
+      const char* callee_method, absl::string_view debug_info);
 
   template <typename T, std::enable_if_t<std::is_invocable_v<T>, bool> = true>
   absl::StatusOr<std::pair<tsl::RCReference<PjRtDeviceEventPromise>,
@@ -179,6 +186,10 @@ class CommonPjRtClient : public PjRtClient {
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostLiteral(
       const LiteralSlice& literal, PjRtMemorySpace* memory_space,
       const Layout* device_layout) override;
+
+  absl::StatusOr<
+      std::pair<std::unique_ptr<PjRtBuffer>, PjRtFulfillAliasBufferCallback>>
+  CreateAliasBuffer(const Shape& shape, PjRtMemorySpace* memory_space) override;
 
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> CreateUninitializedBuffer(
       const Shape& shape, PjRtMemorySpace* memory_space) override;

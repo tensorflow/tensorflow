@@ -44,7 +44,7 @@ class GenericCachingChannelCache : public ChannelCacheT {
 
   SharedGrpcChannelPtr FindWorkerChannel(const string& target) override {
     {
-      absl::MutexLock l(&mu_);
+      absl::MutexLock l(mu_);
       auto iter = channels_.find(target);
       if (iter != channels_.end()) {
         return GetNextChannelPtrAndUpdateState(iter->second);
@@ -59,7 +59,7 @@ class GenericCachingChannelCache : public ChannelCacheT {
     new_chan_state.last_used = num_channels_per_target_ - 1;
 
     {
-      absl::MutexLock l(&mu_);
+      absl::MutexLock l(mu_);
       typename absl::flat_hash_map<string, ChannelState>::iterator iter;
       bool was_inserted;
       std::tie(iter, was_inserted) = channels_.insert({target, new_chan_state});

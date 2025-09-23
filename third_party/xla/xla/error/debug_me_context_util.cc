@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/errors/debug_me_context_util.h"
+#include "xla/error/debug_me_context_util.h"
 
 #include <string>
 #include <vector>
@@ -22,7 +22,6 @@ limitations under the License.
 #include "absl/strings/cord.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
-#include "xla/hlo/pass/hlo_pass_interface.h"
 #include "xla/tsl/platform/debug_me_context.h"
 
 namespace xla::error {
@@ -66,9 +65,5 @@ std::string DebugMeContextToErrorMessageString() {
   }
   return error_message;
 }
-
-HloPassDebugMeContext::HloPassDebugMeContext(const HloPassInterface* pass)
-    : tsl::DebugMeContext<DebugMeContextKey>(DebugMeContextKey::kHloPass,
-                                             std::string(pass->name())) {}
 
 }  // namespace xla::error

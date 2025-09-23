@@ -88,10 +88,9 @@ class UserContextRegistry {
                   const TrackedUserContext* tracked_user_context);
 
   mutable absl::Mutex mu_;
-  // A map from `UserContext::Fingerprint()` to a weak reference of
-  // `TrackedUserContext`. The raw pointer is used for handling a race condition
-  // between `Register()` and destruction of `TrackedUserContext` for the same
-  // ID.
+  // A map from `UserContext::Id()` to a weak reference of `TrackedUserContext`.
+  // The raw pointer is used for handling a race condition between `Register()`
+  // and destruction of `TrackedUserContext` for the same ID.
   absl::flat_hash_map<
       UserContextId,
       std::pair<std::weak_ptr<TrackedUserContext>, const TrackedUserContext*>>

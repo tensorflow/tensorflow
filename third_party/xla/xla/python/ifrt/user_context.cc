@@ -15,12 +15,10 @@ limitations under the License.
 
 #include "xla/python/ifrt/user_context.h"
 
-#include <cstdint>
 #include <string>
 #include <utility>
 #include <vector>
 
-#include "absl/algorithm/container.h"
 #include "absl/base/attributes.h"
 #include "absl/base/no_destructor.h"
 #include "absl/base/nullability.h"
@@ -29,7 +27,6 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
 #include "xla/tsl/concurrency/ref_count.h"
-#include "tsl/platform/fingerprint.h"
 #include "tsl/platform/random.h"
 
 namespace xla {
@@ -62,14 +59,6 @@ AnnotatedUserContext::AnnotatedUserContext(UserContextRef user_context,
       user_context_(std::move(user_context)),
       msg_(std::move(msg)) {}
 
-uint64_t AnnotatedUserContext::Fingerprint() const {
-  if (user_context_ != nullptr) {
-    return tsl::FingerprintCat64(user_context_->Fingerprint(),
-                                 tsl::Fingerprint64(msg_));
-  }
-  return tsl::Fingerprint64(msg_);
-}
-
 UserContextId AnnotatedUserContext::Id() const { return id_; }
 
 std::string AnnotatedUserContext::DebugString() const {
@@ -87,19 +76,6 @@ ChainedUserContext::ChainedUserContext(
     absl::Span<const UserContextRef> user_contexts)
     : id_(tsl::random::ThreadLocalNew64()),
       user_contexts_(user_contexts.begin(), user_contexts.end()) {}
-
-uint64_t ChainedUserContext::Fingerprint() const {
-  static const uint64_t kFingerprintInitialValue =
-      tsl::Fingerprint64("ChainedUserContext");
-  uint64_t fingerprint = kFingerprintInitialValue;
-  for (int i = 0; i < user_contexts_.size(); ++i) {
-    if (user_contexts_[i] != nullptr) {
-      fingerprint =
-          tsl::FingerprintCat64(fingerprint, user_contexts_[i]->Fingerprint());
-    }
-  }
-  return fingerprint;
-}
 
 UserContextId ChainedUserContext::Id() const { return id_; }
 
@@ -121,24 +97,6 @@ FusedUserContext::FusedUserContext(
     absl::Span<const UserContextRef> user_contexts)
     : id_(tsl::random::ThreadLocalNew64()),
       user_contexts_(user_contexts.begin(), user_contexts.end()) {}
-
-uint64_t FusedUserContext::Fingerprint() const {
-  static const uint64_t kFingerprintInitialValue =
-      tsl::Fingerprint64("FusedUserContext");
-  std::vector<uint64_t> fingerprints;
-  fingerprints.reserve(user_contexts_.size());
-  for (int i = 0; i < user_contexts_.size(); ++i) {
-    if (user_contexts_[i] != nullptr) {
-      fingerprints.push_back(user_contexts_[i]->Fingerprint());
-    }
-  }
-  absl::c_sort(fingerprints);
-  uint64_t fingerprint = kFingerprintInitialValue;
-  for (uint64_t user_context_fingerprint : fingerprints) {
-    fingerprint = tsl::FingerprintCat64(fingerprint, user_context_fingerprint);
-  }
-  return fingerprint;
-}
 
 UserContextId FusedUserContext::Id() const { return id_; }
 

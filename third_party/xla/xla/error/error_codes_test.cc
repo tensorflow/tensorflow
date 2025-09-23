@@ -13,14 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/errors/error_codes.h"
+#include "xla/error/error_codes.h"
 
 #include <string>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
-#include "xla/errors/debug_me_context_util.h"
+#include "xla/error/debug_me_context_util.h"
 #include "xla/tsl/platform/debug_me_context.h"
 
 namespace xla::error {

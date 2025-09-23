@@ -47,6 +47,7 @@ class OpcodeCollector : public ConstDfsHloVisitorWithDefault {
       case HloOpcode::kAbs:
       case HloOpcode::kAcos:
       case HloOpcode::kAcosh:
+      case HloOpcode::kAsin:
       case HloOpcode::kCbrt:
       case HloOpcode::kCeil:
       case HloOpcode::kCos:
@@ -63,6 +64,7 @@ class OpcodeCollector : public ConstDfsHloVisitorWithDefault {
       case HloOpcode::kRsqrt:
       case HloOpcode::kSign:
       case HloOpcode::kSin:
+      case HloOpcode::kSinh:
       case HloOpcode::kSqrt:
       case HloOpcode::kTan:
       case HloOpcode::kTanh:

@@ -74,7 +74,7 @@ TEST(ObjectPoolTest, GetOrCreateUnderContention) {
 
   ObjectPool<std::unique_ptr<Obj>> pool(
       [&]() -> absl::StatusOr<std::unique_ptr<Obj>> {
-        absl::MutexLock lock(&mutex);
+        absl::MutexLock lock(mutex);
         auto obj = std::make_unique<Obj>();
         objs.push_back(obj.get());
         return obj;

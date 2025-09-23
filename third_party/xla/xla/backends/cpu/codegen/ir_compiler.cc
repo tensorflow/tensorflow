@@ -281,7 +281,7 @@ llvm::Expected<std::unique_ptr<llvm::MemoryBuffer>> IrCompiler::operator()(
   }
 
   {  // Synchronize access to user-defined hooks.
-    absl::MutexLock lock(&mutex_);
+    absl::MutexLock lock(mutex_);
     if (hooks_.pre_optimization) {
       hooks_.pre_optimization(module);
     }
@@ -296,7 +296,7 @@ llvm::Expected<std::unique_ptr<llvm::MemoryBuffer>> IrCompiler::operator()(
   XLA_VLOG_LINES(2, llvm_ir::DumpToString(&module));
 
   {  // Synchronize access to user-defined hooks.
-    absl::MutexLock lock(&mutex_);
+    absl::MutexLock lock(mutex_);
     if (hooks_.post_optimization) {
       hooks_.post_optimization(module);
     }
@@ -306,7 +306,7 @@ llvm::Expected<std::unique_ptr<llvm::MemoryBuffer>> IrCompiler::operator()(
       EmitMachineCode(module, target_machine->get());
 
   {  // Synchronize access to user-defined hooks.
-    absl::MutexLock lock(&mutex_);
+    absl::MutexLock lock(mutex_);
     if (hooks_.post_codegen) {
       llvm::Expected<std::unique_ptr<llvm::object::ObjectFile>> obj_file =
           llvm::object::ObjectFile::createObjectFile(*mc_memory_buffer);

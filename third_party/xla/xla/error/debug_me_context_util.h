@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_ERRORS_DEBUG_ME_CONTEXT_UTIL_H_
-#define XLA_ERRORS_DEBUG_ME_CONTEXT_UTIL_H_
+#ifndef XLA_ERROR_DEBUG_ME_CONTEXT_UTIL_H_
+#define XLA_ERROR_DEBUG_ME_CONTEXT_UTIL_H_
 
 #include <cstdint>
 #include <string>
@@ -34,9 +34,6 @@ limitations under the License.
 // behavior, please see the comment on that class.
 
 namespace xla {
-
-// Foward declaration
-class HloPassInterface;
 
 namespace error {
 
@@ -62,15 +59,7 @@ std::string DebugMeContextToErrorMessageString();
 // status, if the context is not empty and the status is not OK.
 void AttachDebugMeContextPayload(absl::Status& status);
 
-// This class is a specialization of the RAII DebugMeContext specifically for
-// HloPasses. The details of its constructor dictate what information from the
-// HloPass is stored in the context.
-class HloPassDebugMeContext : public tsl::DebugMeContext<DebugMeContextKey> {
- public:
-  explicit HloPassDebugMeContext(const HloPassInterface* pass);
-};
-
 }  // namespace error
 }  // namespace xla
 
-#endif  // XLA_ERRORS_DEBUG_ME_CONTEXT_UTIL_H_
+#endif  // XLA_ERROR_DEBUG_ME_CONTEXT_UTIL_H_

@@ -858,9 +858,15 @@ cc_library(
     name = "all_reduce_kernel",
     hdrs = ["all_reduce_kernel.h"],
     deps = [
+        ":collective_kernel_metadata",
         "//xla/service:collective_ops_utils",
         "//xla/stream_executor:kernel",
     ],
+)
+
+cc_library(
+    name = "collective_kernel_metadata",
+    hdrs = ["collective_kernel_metadata.h"],
 )
 
 cc_library(

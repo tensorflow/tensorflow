@@ -173,7 +173,7 @@ absl::StatusOr<KernelInstantiation*> GetInstantiation(
       *new absl::flat_hash_map<std::string /*base64-encoded fingerprint*/,
                                std::unique_ptr<KernelInstantiation>>();
 
-  absl::MutexLock lock(&mu);
+  absl::MutexLock lock(mu);
   std::unique_ptr<KernelInstantiation>& instantiation =
       instantiations[fingerprint_str];
   if (instantiation == nullptr) {
@@ -595,7 +595,7 @@ absl::Status CallTfKernel(void* stream_handle, void** buffers,
   std::unique_ptr<TfCallbackDevice> device;
   std::unique_ptr<OpKernel> kernel;
   {
-    absl::MutexLock lock(&instantiation->mu);
+    absl::MutexLock lock(instantiation->mu);
 
     if (instantiation->devices_and_kernels.empty()) {
       auto device = std::make_unique<TfCallbackDevice>();
@@ -626,7 +626,7 @@ absl::Status CallTfKernel(void* stream_handle, void** buffers,
   // Put callback_device and kernel back in `devices_and_kernels` when we're
   // done with them.
   auto cleanup = absl::MakeCleanup([&] {
-    absl::MutexLock lock(&instantiation->mu);
+    absl::MutexLock lock(instantiation->mu);
     instantiation->devices_and_kernels.push_back(
         std::make_pair(std::move(device), std::move(kernel)));
   });

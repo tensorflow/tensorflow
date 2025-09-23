@@ -655,7 +655,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
   // CHECK-LABEL: func @tf_mod
   func.func @tf_mod(%arg1: tensor<2x2xf32>) -> tensor<2x2xf32> {
     %cst = "tf.Const"() {value = dense<7.000000e+00> : tensor<f32>} : () -> tensor<f32>
-    // CHECK: "mhlo.dynamic_broadcast_in_dim"
+    // CHECK: mhlo.broadcast_in_dim
     // CHECK: mhlo.remainder
     %6 = "tf.Mod"(%arg1, %cst) {_global_shape = [#tf_type.shape<4x8>], device = ""} : (tensor<2x2xf32>, tensor<f32>) -> tensor<2x2xf32>
     return %6 : tensor<2x2xf32>

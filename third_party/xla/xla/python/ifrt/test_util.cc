@@ -47,13 +47,13 @@ class ClientFactory {
  public:
   void Register(
       std::function<absl::StatusOr<std::shared_ptr<Client>>()> factory) {
-    absl::MutexLock lock(&mu_);
+    absl::MutexLock lock(mu_);
     CHECK(!factory_) << "Client factory has been already registered.";
     factory_ = std::move(factory);
   }
 
   std::function<absl::StatusOr<std::shared_ptr<Client>>()> Get() const {
-    absl::MutexLock lock(&mu_);
+    absl::MutexLock lock(mu_);
     return factory_;
   }
 
@@ -131,7 +131,6 @@ class TestUserContext : public llvm::RTTIExtends<TestUserContext, UserContext> {
  public:
   explicit TestUserContext(UserContextId id) : id_(id) {}
 
-  uint64_t Fingerprint() const override { return id_.value(); }
   UserContextId Id() const override { return id_; }
 
   std::string DebugString() const override {

@@ -955,13 +955,16 @@ absl::Status CpuCompiler::RunHloPassesAfterLayoutAssn(
       options::UseMultiOutputFusion(module->config());
   pipeline.AddPass<CpuInstructionFusion>(
       /*may_duplicate=*/!use_multi_output_fusion);
+
+  if (is_fusion_emitters) {
+    bool use_experimental_loop_fusion =
+        options::UseExperimentalLoopFusion(module->config());
+    pipeline.AddPass<FusionWrapper>(use_experimental_loop_fusion);
+  }
+
   if (use_multi_output_fusion) {
     pipeline.AddPass<CpuMultiOutputFusion>();
     pipeline.AddPass<TupleSimplifier>();
-  }
-
-  if (is_fusion_emitters) {
-    pipeline.AddPass<FusionWrapper>();
   }
 
   if (flatten_after_fusion) {
@@ -2359,8 +2362,8 @@ class CpuExecutableAotCompilationResult : public AotCompilationResult {
   }
 
   absl::StatusOr<std::unique_ptr<Executable>> LoadExecutable(
-      Compiler* compiler,
-      const se::StreamExecutor* stream_exec) const&& override;
+      Compiler* compiler, const se::StreamExecutor* stream_exec) &&
+      override;
 
   const HloModule* optimized_module() const override { return module_.get(); }
 
@@ -2410,7 +2413,7 @@ class CpuExecutableAotCompilationResult : public AotCompilationResult {
 
 absl::StatusOr<std::unique_ptr<Executable>>
 CpuExecutableAotCompilationResult::LoadExecutable(
-    Compiler* compiler, const se::StreamExecutor* stream_exec) const&& {
+    Compiler* compiler, const se::StreamExecutor* stream_exec) && {
   // Recreate HloModule from proto.
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<HloModule> module,

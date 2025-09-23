@@ -2860,6 +2860,7 @@ bool LayoutAssignment::InstructionCanChangeLayout(
     case HloOpcode::kAbs:
     case HloOpcode::kAcos:
     case HloOpcode::kAcosh:
+    case HloOpcode::kAsin:
     case HloOpcode::kAdd:
     case HloOpcode::kAddDependency:
     case HloOpcode::kAnd:
@@ -2919,6 +2920,7 @@ bool LayoutAssignment::InstructionCanChangeLayout(
     case HloOpcode::kShiftRightLogical:
     case HloOpcode::kSign:
     case HloOpcode::kSin:
+    case HloOpcode::kSinh:
     case HloOpcode::kSlice:
     case HloOpcode::kSort:
     case HloOpcode::kTopK:

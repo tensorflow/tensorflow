@@ -99,36 +99,34 @@ class CollectiveKernelThunk : public Thunk {
     //   before they can sync on the second invocation.
     // - Alternate back to Buffer 0 on third invocation. And so on.
     se::DeviceMemoryHandle local_buffer;
-    se::DeviceMemoryHandle signal_buffer;
+
+    // Pointer to the collective kernel metadata on device.
+    se::DeviceMemoryBase metadata;
+
     // These vectors are merely pointers into the buffer(s) above ordered
     // by RankId. They are initialized once at the end of Initialize() and never
     // changed.
-    std::array<absl::InlinedVector<se::DeviceMemoryBase, kMaxNumExecutors>,
-               kNumBuffers>
-        remote_buffer_ptrs{};
-    std::array<absl::InlinedVector<se::DeviceMemoryBase, kMaxNumExecutors>,
-               kNumBuffers>
-        signal_buffer_ptrs{};
+    std::array<se::DeviceMemoryBase, kNumBuffers> remote_buffer_ptrs;
+    std::array<se::DeviceMemoryBase, kNumBuffers> signal_buffer_ptrs;
     uint32_t invocation_count = 0;
 
     // Constructor to make OSS builds happy.
     StreamState() = default;
     StreamState(int device_ordinal_arg, RankId rank_arg,
-                se::DeviceMemoryHandle local_buffer_arg,
-                se::DeviceMemoryHandle signal_buffer_arg)
+                se::DeviceMemoryHandle local_buffer_arg)
         : device_ordinal(device_ordinal_arg),
           rank(rank_arg),
-          local_buffer(std::move(local_buffer_arg)),
-          signal_buffer(std::move(signal_buffer_arg)) {}
+          local_buffer(std::move(local_buffer_arg)) {}
   };
 
   // Returns the input size in bytes for the collective.
   int64_t GetInputSizeBytes() const;
 
   // Internal method to sync thread after Initialize.
-  // Modifies the state to include pointers to all buffers in the clique.
-  absl::Status RendezvousAfterInit(const GpuCliqueKey& clique_key,
-                                   StreamState& state);
+  // Returns the collective kernel metadata for the given clique key.
+  absl::Status ExchangeStateMetadata(const GpuCliqueKey& clique_key,
+                                     StreamState& state,
+                                     const InitializeParams& params);
 
   // Whether the one-shot kernel is enabled.
   const bool collective_kernel_enabled_;

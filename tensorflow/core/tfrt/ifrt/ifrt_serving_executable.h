@@ -103,7 +103,7 @@ class IfrtServingExecutable {
   void Freeze();
 
   int num_executables() const {
-    absl::MutexLock lock(&mutex_);
+    absl::MutexLock lock(mutex_);
     return executable_bundles_.size();
   }
 

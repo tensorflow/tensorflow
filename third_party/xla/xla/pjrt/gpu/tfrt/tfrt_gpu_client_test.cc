@@ -523,7 +523,7 @@ TEST(TfrtGpuClientTest, DonateWithControlDependency) {
       ShapeUtil::DeviceShapeToHostShape(blocked_buffer->on_device_shape()));
   bool got_literal = false;
   blocked_buffer->ToLiteral(result_literal.get()).OnReady([&](absl::Status s) {
-    absl::MutexLock l(&mu);
+    absl::MutexLock l(mu);
     TF_ASSERT_OK(s);
     got_literal = true;
   });
@@ -534,7 +534,7 @@ TEST(TfrtGpuClientTest, DonateWithControlDependency) {
   EXPECT_TRUE(future.IsReady());
 
   {
-    absl::MutexLock l(&mu);
+    absl::MutexLock l(mu);
     mu.Await(absl::Condition(&got_literal));
   }
 
@@ -706,7 +706,7 @@ TEST(TfrtGpuClientTest, ToLiteralAsync) {
   // Literal is not ready.
   buffer->LazyToLiteral([f = std::move(literal_future)]() { return f; })
       .OnReady([&](absl::Status s) {
-        absl::MutexLock l(&mu);
+        absl::MutexLock l(mu);
         TF_ASSERT_OK(s);
         got_literal = true;
       });
@@ -717,7 +717,7 @@ TEST(TfrtGpuClientTest, ToLiteralAsync) {
   literal_promise.Set(literal.get());
 
   {
-    absl::MutexLock l(&mu);
+    absl::MutexLock l(mu);
     mu.Await(absl::Condition(&got_literal));
   }
 
@@ -865,7 +865,7 @@ TEST(TfrtGpuClientTest, ToLiteralAsyncBeforeBufferReady) {
   bool got_literal = false;
 
   buffer->ToLiteral(literal.get()).OnReady([&](absl::Status s) {
-    absl::MutexLock l(&mu);
+    absl::MutexLock l(mu);
     TF_ASSERT_OK(s);
     got_literal = true;
   });
@@ -878,7 +878,7 @@ TEST(TfrtGpuClientTest, ToLiteralAsyncBeforeBufferReady) {
   buffer.reset();
 
   {
-    absl::MutexLock l(&mu);
+    absl::MutexLock l(mu);
     mu.Await(absl::Condition(&got_literal));
   }
 
@@ -928,12 +928,12 @@ TEST(TfrtGpuClientTest, FromHostAsync) {
     literals.push_back(std::make_shared<Literal>(
         ShapeUtil::DeviceShapeToHostShape(buffer->on_device_shape())));
     buffer->ToLiteral(literals.back().get()).OnReady([&](absl::Status s) {
-      absl::MutexLock l(&mu);
+      absl::MutexLock l(mu);
       TF_ASSERT_OK(s);
       ++got_literal_count;
     });
     buffer->GetReadyFuture().OnReady([&](absl::Status s) {
-      absl::MutexLock l(&mu);
+      absl::MutexLock l(mu);
       TF_ASSERT_OK(s);
       ++got_callback_count;
     });
@@ -945,7 +945,7 @@ TEST(TfrtGpuClientTest, FromHostAsync) {
       return got_literal_count == src_literals.size() &&
              got_callback_count == src_literals.size();
     };
-    absl::MutexLock l(&mu);
+    absl::MutexLock l(mu);
     mu.Await(absl::Condition(&done));
   }
 
@@ -1107,7 +1107,7 @@ TEST(TfrtGpuClientTest, CreateMixOfErrorBuffers) {
       TF_ASSERT_OK(transfer_manager->TransferLiteralToBuffer(i, src_literals[i],
                                                              [&]() {}));
       buffer->GetReadyFuture().OnReady([&](absl::Status s) {
-        absl::MutexLock l(&mu);
+        absl::MutexLock l(mu);
         TF_ASSERT_OK(s);
         ++got_callback_count;
       });
@@ -1116,7 +1116,7 @@ TEST(TfrtGpuClientTest, CreateMixOfErrorBuffers) {
       transfer_manager->SetBufferError(i, error);
       buffer->GetReadyFuture().OnReady(
           [error, &mu, &got_callback_count](absl::Status s) {
-            absl::MutexLock l(&mu);
+            absl::MutexLock l(mu);
             EXPECT_THAT(s.message(), HasSubstr(error.message()));
             ++got_callback_count;
           });
@@ -1126,7 +1126,7 @@ TEST(TfrtGpuClientTest, CreateMixOfErrorBuffers) {
 
   {
     auto done = [&]() { return got_callback_count == src_literals.size(); };
-    absl::MutexLock l(&mu);
+    absl::MutexLock l(mu);
     QCHECK(mu.AwaitWithTimeout(absl::Condition(&done), absl::Seconds(60)));
   }
 }
@@ -1879,6 +1879,65 @@ TEST(TfrtGpuClientTest, HostExecuteRuntimeTest) {
                           ExtractSingleResult(result));
   EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR0<float>(0.2f),
                                      *result_literal));
+}
+
+TEST(TfrtGpuClientTest, CreateAliasBuffer) {
+  TF_ASSERT_OK_AND_ASSIGN(auto client, GetTfrtGpuClient(GpuClientOptions()));
+
+  std::vector<int32_t> data{1, 2, 3, 4, 5, 6};
+  Shape shape = ShapeUtil::MakeShape(S32, {2, 3});
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto alias_buffer,
+      client->CreateAliasBuffer(shape, client->memory_spaces()[0]));
+
+  // Create a buffer from host data.
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto param,
+      client->BufferFromHostBuffer(
+          data.data(), shape.element_type(), shape.dimensions(),
+          /*byte_strides=*/std::nullopt,
+          PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall, nullptr,
+          client->memory_spaces()[0], /*device_layout=*/nullptr));
+
+  // Define a simple "add one" kernel in StableHLO MLIR.
+  constexpr char kAddOneMlir[] = R"(
+    module @jit_add_one attributes {stablehlo.num_partitions = 1 : i32, stablehlo.num_replicas = 1 : i32} {
+      func.func @main(%arg0: tensor<2x3xi32>) -> tensor<2x3xi32> {
+        %0 = stablehlo.constant dense<1> : tensor<i32>
+        %1 = stablehlo.broadcast_in_dim %0, dims = [] : (tensor<i32>) -> tensor<2x3xi32>
+        %2 = stablehlo.add %arg0, %1 : tensor<2x3xi32>
+        return %2 : tensor<2x3xi32>
+      }
+    })";
+
+  mlir::MLIRContext context;
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          xla::ParseMlirModuleString(kAddOneMlir, context));
+
+  // Compile and load the executable.
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtLoadedExecutable> executable,
+                          client->CompileAndLoad(*module, CompileOptions()));
+
+  // Execute the kernel.
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> results,
+      executable->Execute({{param.get()}}, ExecuteOptions()));
+  ASSERT_EQ(results.size(), 1);
+  ASSERT_EQ(results[0].size(), 1);
+  std::unique_ptr<PjRtBuffer>& result_buffer = results[0][0];
+
+  // Wait for the result buffer to be ready.
+  TF_ASSERT_OK(result_buffer->GetReadyFuture().Await());
+
+  // Fulfill the alias buffer with the result of the add one kernel.
+  ASSERT_NE(alias_buffer.second, nullptr);
+  TF_ASSERT_OK(std::move(alias_buffer.second)(result_buffer.get()));
+  TF_ASSERT_OK_AND_ASSIGN(auto alias_literal,
+                          alias_buffer.first->ToLiteralSync());
+
+  // Expected result: data + 1
+  EXPECT_TRUE(LiteralTestUtil::Equal(
+      LiteralUtil::CreateR2<int32_t>({{2, 3, 4}, {5, 6, 7}}), *alias_literal));
 }
 
 }  // namespace

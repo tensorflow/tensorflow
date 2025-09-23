@@ -54,6 +54,9 @@ message SparseCoreTableLayout {
   // An arbitrary identifier for the table (usually from the TableConfig).
   string table_name = 1;
 
+  // The key used to look up the shared FDO config for this table.
+  string fdo_key = 12;
+
   // The name of the stack it wound up in. The sparse core python library uses
   // this name as a variable name.
   string stacked_table_name = 2;

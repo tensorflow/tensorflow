@@ -2153,10 +2153,12 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
         .getOperation();                                                      \
   }
       NO_ATTRIBUTE_CASE_MHLO(kAcos, AcosOp);
+      NO_ATTRIBUTE_CASE_MHLO(kAsin, AsinOp);
       NO_ATTRIBUTE_CASE_MHLO(kAcosh, AcoshOp);
       NO_ATTRIBUTE_CASE_MHLO(kAddDependency, AddDependencyOp);
       NO_ATTRIBUTE_CASE_MHLO(kCopy, CopyOp);
       NO_ATTRIBUTE_CASE_MHLO(kErf, ErfOp);
+      NO_ATTRIBUTE_CASE_MHLO(kSinh, SinhOp);
       NO_ATTRIBUTE_CASE_MHLO(kStochasticConvert, StochasticConvertOp);
 
 #undef NO_ATTRIBUTE_CASE_MHLO

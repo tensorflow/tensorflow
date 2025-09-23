@@ -23,6 +23,9 @@ namespace xla {
 inline constexpr absl::string_view kXlaGpuAssertCustomCallTag =
     "__xla_gpu_assert";
 
+inline constexpr absl::string_view kXlaGpuDebugPrintCustomCallTag =
+    "__xla_gpu_debug_print";
+
 }  // namespace xla
 
 #endif  // XLA_SERVICE_GPU_RUNTIME_INTRINSICS_H_

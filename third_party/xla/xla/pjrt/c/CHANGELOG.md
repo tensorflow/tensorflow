@@ -1,5 +1,9 @@
 # PJRT C API changelog
 
+## 0.77
+
+* Added buffer aliasing support to the PJRT C API
+
 ## 0.76
 
 * Added `call_location` to `PJRT_ExecuteOptions`

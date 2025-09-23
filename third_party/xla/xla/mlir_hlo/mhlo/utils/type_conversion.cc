@@ -201,15 +201,16 @@ HloTypeConverter::HloTypeConverter() {
     if (failed(convertTypes(type.getTypes(), convertedTypes))) return {};
     return TupleType::get(type.getContext(), convertedTypes);
   });
+  // Similar to tuple, replace contents with StableHLO/MHLO types.
+  addConversion([&](mhlo::AsyncBundleType bundle) -> Type {
+    SmallVector<Type> convertedTypes;
+    if (failed(convertTypes(bundle.getTypes(), convertedTypes))) return {};
+    return mhlo::AsyncBundleType::get(bundle.getContext(), convertedTypes);
+  });
 }
 
 HloToStablehloTypeConverter::HloToStablehloTypeConverter()
     : HloTypeConverter() {
-  // !mhlo.async_bundle is only used in mhlo.async_start, mhlo.async_update
-  // and mhlo.async_done which are private to XLA.
-  // This means that these ops are deliberately not part of StableHLO,
-  // and as a result this type is not part of StableHLO either.
-  addConversion([](mhlo::AsyncBundleType) -> Type { return {}; });
   addConversion([](mhlo::TokenType type) -> Type {
     return stablehlo::TokenType::get(type.getContext());
   });

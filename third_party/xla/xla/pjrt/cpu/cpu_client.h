@@ -68,6 +68,7 @@ limitations under the License.
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/shape.h"
+#include "xla/tsl/concurrency/async_value.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/platform/threadpool.h"
@@ -188,7 +189,7 @@ class PjRtCpuClient final : public CommonPjRtClient {
   CollectiveLaunchEvent GetLastCollectiveLaunchEvent(
       size_t num_addressable_devices) {
     tsl::CountDownAsyncValueRef<CpuEvent> count_down(num_addressable_devices);
-    absl::MutexLock lock(&mu_);
+    absl::MutexLock lock(mu_);
     auto last_launch = std::move(last_collective_launch_event_);
     last_collective_launch_event_ = count_down.AsRef();
     return std::make_pair(std::move(last_launch), std::move(count_down));
@@ -198,6 +199,11 @@ class PjRtCpuClient final : public CommonPjRtClient {
       const override {
     return &topology_;
   }
+
+  absl::StatusOr<tsl::RCReference<CommonPjRtRawBuffer>>
+  CreateRawBufferAsyncValue(
+      PjRtMemorySpace* memory_space,
+      tsl::RCReference<tsl::IndirectAsyncValue> buffer_promise) override;
 
   absl::StatusOr<tsl::RCReference<CommonPjRtRawBuffer>> AllocateRawBuffer(
       PjRtMemorySpace* memory_space, size_t on_device_bytes_count,

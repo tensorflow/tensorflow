@@ -97,7 +97,15 @@ class TritonFusionAnalysis {
   bool IsBatchDimMinorForInt4Parameter(const HloInstruction& dot,
                                        Scope scope) const;
 
+  // Block scaled dot support.
   bool is_scaled_dot() const { return is_scaled_dot_; }
+
+  std::optional<int64_t> lhs_scale_block_size() const {
+    return lhs_scale_block_size_;
+  }
+  std::optional<int64_t> rhs_scale_block_size() const {
+    return rhs_scale_block_size_;
+  }
 
  private:
   IterationSpecByInstructionByScopeMap iter_specs_;
@@ -105,6 +113,8 @@ class TritonFusionAnalysis {
   std::map<Scope, ConstHloInstructionSet> parameters_;
   // Scaled dot has additional scale scopes.
   bool is_scaled_dot_ = false;
+  std::optional<int64_t> lhs_scale_block_size_;
+  std::optional<int64_t> rhs_scale_block_size_;
 };
 
 // The details of the Triton fusion / tiling propagation are in a separate

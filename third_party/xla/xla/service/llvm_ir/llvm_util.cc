@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/service/llvm_ir/llvm_util.h"
 
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <iterator>
 #include <limits>
@@ -34,7 +35,9 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/FloatingPointMode.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/SmallVector.h"
@@ -138,7 +141,6 @@ std::optional<PrimitiveType> PrimitiveComplexTypeFromIrStructType(
 }
 
 }  // namespace
-
 
 llvm::CallInst* EmitCallToIntrinsic(
     llvm::Intrinsic::ID intrinsic_id, absl::Span<llvm::Value* const> operands,
@@ -1012,6 +1014,105 @@ absl::StatusOr<llvm::Value*> EmitReducePrecisionIR(
   }
 
   return result;
+}
+
+llvm::Value* HandleHalfwayPointsFxToF8(
+    PrimitiveType fx_type, int f8_exponent_bits, int f8_mantissa_bits,
+    int f8_bias, llvm::Value* fx_abs_bits, llvm::Value* f8_bits,
+    std::optional<size_t> vector_width, llvm::IRBuilderBase* b) {
+  using llvm::APFloat;
+  using llvm::APInt;
+  using llvm::Value;
+  CHECK(fx_type == F16 || fx_type == F32 || fx_type == F64);
+
+  const llvm::fltSemantics* fx_semantics;
+  llvm::Type* fx_float_type = PrimitiveTypeToIrType(fx_type, b->getContext());
+  llvm::Type* scale_factor_type = fx_float_type;
+
+  if (fx_type == F16) {
+    // Scale factor can be > 2^17, which overflows F16.
+    fx_semantics = &llvm::APFloat::IEEEsingle();
+    scale_factor_type = b->getFloatTy();
+  } else if (fx_type == F32) {
+    fx_semantics = &llvm::APFloat::IEEEsingle();
+  } else if (fx_type == F64) {
+    fx_semantics = &llvm::APFloat::IEEEdouble();
+  } else {
+    LOG(FATAL) << "Unsupported FX type: " << fx_type;
+  }
+
+  // Get the input/output types, accounting for vectors.
+  llvm::Type* ix_type = fx_abs_bits->getType();
+  llvm::Type* i8_type = f8_bits->getType();
+
+  if (vector_width.has_value()) {
+    auto vec_width = llvm::ElementCount::getFixed(*vector_width);
+    fx_float_type = llvm::VectorType::get(fx_float_type, vec_width);
+    scale_factor_type = llvm::VectorType::get(scale_factor_type, vec_width);
+  }
+  llvm::RoundingMode rm = llvm::RoundingMode::NearestTiesToEven;
+
+  auto fp_const = [&](APFloat val) {
+    bool losesInfo;
+    val.convert(*fx_semantics, rm, &losesInfo);
+    return llvm::ConstantFP::get(scale_factor_type, val);
+  };
+
+  const int num_subnormal_steps = 1 << f8_mantissa_bits;
+  const int smallest_normal_exp = 1 - f8_bias;
+  const int quantum_exponent = smallest_normal_exp - f8_mantissa_bits;
+
+  // Create the scaling factor constant: 2^(-quantum_exponent)
+  // e.g., for B11 (quantum_exp = -13), this is 2^13, or 8192.0.
+  APFloat scale_apfloat = scalbn(APFloat(1.0), -quantum_exponent, rm);
+
+  // Create the upper boundary constant: (num_steps - 0.5) * quantum
+  // This is the halfway point for the *largest* subnormal step (e.g., 7.5 *
+  // q).
+  APFloat quantum = scalbn(APFloat(1.0), quantum_exponent, rm);
+
+  APFloat num_steps_apfloat(static_cast<double>(num_subnormal_steps));
+  APFloat half_apfloat(0.5);
+
+  APFloat upper_bound_apfloat = num_steps_apfloat;
+  upper_bound_apfloat.subtract(half_apfloat, rm);
+  upper_bound_apfloat.multiply(quantum, rm);
+
+  Value* scale_factor = fp_const(scale_apfloat);
+  Value* upper_bound_constant = fp_const(upper_bound_apfloat);
+  Value* input_float = b->CreateBitCast(fx_abs_bits, fx_float_type);
+  input_float = b->CreateFPExt(input_float, scale_factor_type);
+
+  // Check if the input is below the subnormal range boundary.
+  // Anything >= 7.5q (for an M3 format) is a normal number and should
+  // use the default 'f8_bits' value passed into this function.
+  Value* is_subnormal_candidate =
+      b->CreateFCmpOLT(input_float, upper_bound_constant);
+
+  // --- Subnormal Path ---
+  // Apply the rounding formula: i = round_to_even(input_float * scale_factor)
+  Value* scaled = b->CreateFMul(input_float, scale_factor);
+
+  // Use llvm.nearbyint, which rounds to the nearest integer using
+  // ties-to-even.
+  llvm::Module* module = b->GetInsertBlock()->getModule();
+  llvm::Function* nearbyint = llvm::Intrinsic::getOrInsertDeclaration(
+      module, llvm::Intrinsic::nearbyint, {scaled->getType()});
+  Value* rounded = b->CreateCall(nearbyint, scaled);
+
+  // Convert the rounded float result to its integer bucket index.
+  Value* int_bucket = b->CreateFPToUI(rounded, ix_type);
+
+  // Truncate the index (which is i32 or i64) down to our final i8 value.
+  Value* subnormal_result = b->CreateTrunc(int_bucket, i8_type);
+
+  // --- Final Select ---
+  // If it was a subnormal candidate, use our calculated result.
+  // Otherwise, use the original 'f8_bits' value (the default normal/inf/nan).
+  Value* final_result =
+      b->CreateSelect(is_subnormal_candidate, subnormal_result, f8_bits);
+
+  return final_result;
 }
 
 }  // namespace llvm_ir

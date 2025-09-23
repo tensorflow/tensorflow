@@ -26,6 +26,7 @@ bool FusionWrapper::MustWrapInstruction(HloOpcode opcode) {
     case HloOpcode::kAbs:
     case HloOpcode::kAcos:
     case HloOpcode::kAcosh:
+    case HloOpcode::kAsin:
     case HloOpcode::kAdd:
     case HloOpcode::kAnd:
     case HloOpcode::kAtan2:
@@ -82,6 +83,7 @@ bool FusionWrapper::MustWrapInstruction(HloOpcode opcode) {
     case HloOpcode::kShiftRightArithmetic:
     case HloOpcode::kSign:
     case HloOpcode::kSin:
+    case HloOpcode::kSinh:
     case HloOpcode::kSlice:
     case HloOpcode::kSqrt:
     case HloOpcode::kSubtract:

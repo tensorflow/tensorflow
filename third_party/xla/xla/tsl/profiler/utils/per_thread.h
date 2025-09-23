@@ -70,7 +70,7 @@ class PerThread {
 
     std::vector<std::shared_ptr<T>> StartRecording() {
       std::vector<std::shared_ptr<T>> threads;
-      absl::MutexLock lock(&mutex_);
+      absl::MutexLock lock(mutex_);
       threads.reserve(threads_.size());
       for (auto iter = threads_.begin(); iter != threads_.end(); ++iter) {
         threads.push_back(iter->first);
@@ -81,7 +81,7 @@ class PerThread {
 
     std::vector<std::shared_ptr<T>> StopRecording() {
       std::vector<std::shared_ptr<T>> threads;
-      absl::MutexLock lock(&mutex_);
+      absl::MutexLock lock(mutex_);
       threads.reserve(threads_.size());
       for (auto iter = threads_.begin(); iter != threads_.end();) {
         if (!iter->second) {  // The creator thread is dead.
@@ -97,12 +97,12 @@ class PerThread {
     }
 
     void Register(std::shared_ptr<T> thread) {
-      absl::MutexLock lock(&mutex_);
+      absl::MutexLock lock(mutex_);
       threads_.insert_or_assign(std::move(thread), true);
     }
 
     void Unregister(const std::shared_ptr<T>& thread) {
-      absl::MutexLock lock(&mutex_);
+      absl::MutexLock lock(mutex_);
       if (!recording_) {
         threads_.erase(thread);
       } else {

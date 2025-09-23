@@ -107,7 +107,7 @@ absl::StatusOr<absl::Time> PreemptionNotifier::WillBePreemptedAt() {
 }
 
 void PreemptionNotifier::WillBePreemptedAtAsync(PreemptTimeCallback callback) {
-  absl::MutexLock l(&mu_);
+  absl::MutexLock l(mu_);
   if (death_time_ == kUnsetDeathTime) {
     // Did not receive preemption notice yet.
     callbacks_.push_back(std::move(callback));
@@ -119,7 +119,7 @@ void PreemptionNotifier::WillBePreemptedAtAsync(PreemptTimeCallback callback) {
 
 void PreemptionNotifier::NotifyRegisteredListeners(
     absl::StatusOr<absl::Time> death_time) {
-  absl::MutexLock l(&mu_);
+  absl::MutexLock l(mu_);
   if (death_time.ok()) {
     death_time_ = death_time.value();
   }

@@ -1164,7 +1164,11 @@ XlaOp RoundToEven(XlaOp x) {
 //           pi                                if x == -1
 // For complex:
 // acos(x) = -(i * log(x + i * sqrt((1 + x) * (1 - x))))
-XlaOp Acos(XlaOp x) {
+XlaOp Acos(XlaOp x, const std::optional<ResultAccuracy>& result_accuracy,
+           bool expand) {
+  if (!expand) {
+    return x.builder()->UnaryOp(HloOpcode::kAcos, x, result_accuracy);
+  }
   XlaBuilder* b = x.builder();
   return b->ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(auto shape, b->GetShape(x));

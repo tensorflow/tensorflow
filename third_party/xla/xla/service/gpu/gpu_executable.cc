@@ -511,7 +511,7 @@ absl::StatusOr<const GpuExecutable::BufferAllocToDeviceMemoryMap*>
 GpuExecutable::ResolveConstantGlobals(se::Stream* stream) {
   se::StreamExecutor* executor = stream->parent();
 
-  absl::MutexLock lock(&module_handle_mutex_);
+  absl::MutexLock lock(module_handle_mutex_);
   auto it = module_globals_.find(executor);
   if (it != module_globals_.end()) {
     return it->second.get();
@@ -900,7 +900,7 @@ absl::Status GpuExecutable::ExecuteThunks(
     // address, and report the allocation info if memory addressed changed.
     // Useful for identify in user's model if it is command buffer perf friendly
     // (no command buffer update cost).
-    absl::MutexLock lock(&module_handle_mutex_);
+    absl::MutexLock lock(module_handle_mutex_);
     if (module_allocations_.find(executor) == module_allocations_.end()) {
       std::vector<se::DeviceMemoryBase> allocs_addr;
       allocs_addr.reserve(buffer_allocations.size());

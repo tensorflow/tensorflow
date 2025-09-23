@@ -265,6 +265,19 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
     return UnsupportedTypeError(acosh);
   }
 
+  absl::Status HandleAsin(const HloInstruction* asin) override {
+    if constexpr (!is_complex_v<ReturnT>) {
+      TF_ASSIGN_OR_RETURN(
+          Literal literal,
+          ElementWiseUnaryOp(asin, [](ElementwiseT elem_operand) {
+            return std::asin(elem_operand);
+          }));
+      parent_->SetEvaluatedLiteralFor(asin, std::move(literal));
+      return absl::OkStatus();
+    }
+    return UnsupportedTypeError(asin);
+  }
+
   absl::Status HandleRound(const HloInstruction* round) override {
     if constexpr (!is_complex_v<ReturnT>) {
       TF_ASSIGN_OR_RETURN(
@@ -1829,6 +1842,19 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
       return absl::OkStatus();
     }
     return UnsupportedTypeError(sin);
+  }
+
+  absl::Status HandleSinh(const HloInstruction* sinh) override {
+    if constexpr (!is_complex_v<ReturnT>) {
+      TF_ASSIGN_OR_RETURN(
+          Literal literal,
+          ElementWiseUnaryOp(sinh, [](ElementwiseT elem_operand) {
+            return std::sinh(elem_operand);
+          }));
+      parent_->SetEvaluatedLiteralFor(sinh, std::move(literal));
+      return absl::OkStatus();
+    }
+    return UnsupportedTypeError(sinh);
   }
 
   absl::Status HandleCos(const HloInstruction* cos) override {

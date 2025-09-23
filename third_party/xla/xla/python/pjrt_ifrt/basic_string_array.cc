@@ -131,12 +131,12 @@ Future<> BasicStringArray::Delete() {
 }
 
 bool BasicStringArray::IsDeleted() const {
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
   return is_deleted_;
 }
 
 void BasicStringArray::DeleteInternal() {
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
   if (is_deleted_) {
     return;
   }
@@ -148,7 +148,7 @@ void BasicStringArray::DeleteInternal() {
 
 Future<> BasicStringArray::GetReadyFuture() const {
   DCHECK(this);
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
   if (is_deleted_) {
     return Future<>(
         absl::FailedPreconditionError("Array has already been deleted"));
@@ -169,7 +169,7 @@ BasicStringArray::DisassembleIntoSingleDeviceArrays(
         *sharding_->devices());
   }
 
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
   if (is_deleted_) {
     return absl::FailedPreconditionError("Array has already been deleted");
   }
@@ -263,7 +263,7 @@ Future<> BasicStringArray::CopyToHostBuffer(
     void* data, std::optional<absl::Span<const int64_t>> byte_strides,
     ArrayCopySemantics semantics) {
   DCHECK(this);
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
   if (is_deleted_) {
     return Future<>(
         absl::FailedPreconditionError("Array has already been deleted"));
@@ -301,7 +301,7 @@ absl::StatusOr<ArrayRef> BasicStringArray::Copy(
     std::optional<xla::ifrt::MemoryKind> memory_kind,
     ArrayCopySemantics semantics) {
   DCHECK(this);
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
   if (is_deleted_) {
     return absl::FailedPreconditionError("Array has already been deleted");
   }
@@ -355,7 +355,7 @@ absl::StatusOr<ArrayRef> BasicStringArray::Copy(
 // Makes a single sharded BasicStringArray from the first shard.
 absl::StatusOr<ArrayRef> BasicStringArray::FullyReplicatedShard(
     ArrayCopySemantics semantics) {
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
   if (is_deleted_) {
     return absl::FailedPreconditionError("Array has already been deleted");
   }

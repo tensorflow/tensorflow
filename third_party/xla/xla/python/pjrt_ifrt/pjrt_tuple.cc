@@ -51,7 +51,7 @@ Future<> PjRtTuple::GetReadyFuture() const {
 
 Future<> PjRtTuple::Delete() {
   {
-    absl::MutexLock lock(&mu_);
+    absl::MutexLock lock(mu_);
     if (!is_deleted_.HasBeenNotified()) {
       is_deleted_.Notify();
     }

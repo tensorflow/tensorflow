@@ -73,7 +73,7 @@ class DestroyTensorHandleNode : public tensorflow::AsyncEagerNode {
 
   string DebugString() const override {
     string out = "[DestroyTensorHandleNode]";
-    strings::StrAppend(&out, " request: ", request_->DebugString());
+    absl::StrAppend(&out, " request: ", request_->DebugString());
     return out;
   }
 

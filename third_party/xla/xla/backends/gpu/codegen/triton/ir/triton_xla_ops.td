@@ -389,5 +389,15 @@ def TTXLA_BlockBarrierOp : TTXLA_Op<"block_barrier", []> {
   }];
 }
 
+def TTXLA_GetRankOp : TTXLA_Op<"get_rank", [Pure]> {
+  let summary = "Extract the device rank from the collectives metadata.";
+  let arguments = (ins
+    Arg<TT_PtrLike, "",
+      [MemRead<GlobalMemory>]>:$metadata);
+  let results = (outs I64:$result);
+  let assemblyFormat = "$metadata attr-dict `:` type($metadata) `->` type($result)";
+}
+
+
 #endif // XLA_BACKENDS_GPU_CODEGEN_TRITON_IR_TRITON_XLA_OPS_TD_
 

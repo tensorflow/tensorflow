@@ -96,4 +96,5 @@ bazel \
        //xla/tests:replicated_io_feed_test \
        //xla/tools/multihost_hlo_runner:functional_hlo_runner_test \
        //xla/pjrt/distributed:topology_util_test \
-       //xla/pjrt/distributed:client_server_test
+       //xla/pjrt/distributed:client_server_test \
+       //xla/backends/gpu/runtime:all_reduce_test

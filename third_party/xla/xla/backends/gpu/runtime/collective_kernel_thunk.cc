@@ -35,6 +35,7 @@ limitations under the License.*/
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/core/collectives/rank_id.h"
+#include "xla/service/gpu/gpu_constants.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/rendezvous.h"
 #include "xla/shape_util.h"
@@ -42,9 +43,11 @@ limitations under the License.*/
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_handle.h"
 #include "xla/stream_executor/gpu/all_reduce_kernel.h"
+#include "xla/stream_executor/gpu/collective_kernel_metadata.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla::gpu {
@@ -59,7 +62,10 @@ static constexpr int64_t kMaxTwoShotAllReduceSizeBytes =
 absl::StatusOr<se::DeviceMemoryHandle> AllocateMemory(
     se::StreamExecutor* executor, int64_t size,
     absl::string_view debug_buffer_name) {
-  se::DeviceMemoryHandle local_buffer_alloc(executor, executor->Allocate(size));
+  se::DeviceMemoryHandle local_buffer_alloc(
+      executor,
+      executor->Allocate(
+          size, static_cast<int64_t>(stream_executor::MemoryType::kP2P)));
   if (local_buffer_alloc.memory().is_null()) {
     return absl::InternalError(absl::StrFormat(
         "Failed to allocate %s for all-reduce.", debug_buffer_name));
@@ -131,59 +137,77 @@ int64_t CollectiveKernelThunk::GetInputSizeBytes() const {
              collective_config_.operand_element_type[0]);
 }
 
-absl::Status CollectiveKernelThunk::RendezvousAfterInit(
-    const GpuCliqueKey& clique_key, StreamState& state) {
+struct BaseRangePtrRendezvousValue {
+  RankId rank;
+  se::DeviceMemoryBase locally_allocated_buffer_ptr;
+  se::DeviceMemoryBase buffer_ptr;
+
+  bool operator<(const BaseRangePtrRendezvousValue& other) const {
+    return rank < other.rank;
+  }
+};
+
+absl::Status CollectiveKernelThunk::ExchangeStateMetadata(
+    const GpuCliqueKey& clique_key, StreamState& state,
+    const InitializeParams& params) {
+  BaseRangePtrRendezvousValue rendezvous_value;
+  const std::optional<RankId> rank =
+      clique_key.rank(params.collective_params->global_device_id);
+  TF_RET_CHECK(rank.has_value())
+      << "Device " << params.collective_params->global_device_id
+      << "is not in the clique.";
+  rendezvous_value.rank = rank.value();
+  rendezvous_value.locally_allocated_buffer_ptr = state.local_buffer.memory();
+  TF_ASSIGN_OR_RETURN(rendezvous_value.buffer_ptr,
+                      params.executor->GetMemoryRange(
+                          params.buffer_allocations->GetDeviceAddress(
+                              buffers_[0].source_buffer)));
+
+  auto rendezvous_fn =
+      [](absl::Span<const BaseRangePtrRendezvousValue* const> values) {
+        std::vector<BaseRangePtrRendezvousValue> values_copy;
+        for (const auto& value : values) {
+          values_copy.push_back(*value);
+        }
+        // Sort to make sure that values are in the same order as the
+        // devices are ordered in the communicator.
+        absl::c_sort(values_copy);
+        return values_copy;
+      };
   const int64_t num_ranks = clique_key.num_devices();
   std::string start_rendezvous_key = absl::StrFormat(
       "Initializing one-shot all-reduce for device %d, clique %s",
-      state.device_ordinal, clique_key.ToString());
-  // NB: This callback is called on one thread per participating group.
-  // i.e.; If participating groups are {{0,1},{2,3}} then it would be called
-  // twice. Once with StreamStates for 0,1 and once with StreamStates for 2,3.
-  auto completion_fn = [](absl::Span<const StreamState*> states)
-      -> std::vector<const StreamState*> {
-    std::vector<const StreamState*> copy(states.begin(), states.end());
-    // Sort by rank for stable order.
-    absl::c_sort(copy,
-                 [](const StreamState* const a, const StreamState* const b) {
-                   return a->rank < b->rank;
-                 });
-    return copy;
-  };
-  TF_ASSIGN_OR_RETURN(
-      std::shared_ptr<std::vector<const StreamState*>> rendezvous_values,
-      Rendezvous<std::vector<const StreamState*>>(
-          /*name=*/start_rendezvous_key, /*key=*/clique_key,
-          /*value=*/state,
-          /*num_threads=*/num_ranks, completion_fn));
+      params.executor->device_ordinal(), clique_key.ToString());
+  TF_ASSIGN_OR_RETURN(std::shared_ptr<std::vector<BaseRangePtrRendezvousValue>>
+                          rendezvous_values,
+                      Rendezvous<std::vector<BaseRangePtrRendezvousValue>>(
+                          /*name=*/
+                          start_rendezvous_key, /*key=*/clique_key,
+                          /*value=*/rendezvous_value, /*num_threads=*/num_ranks,
+                          rendezvous_fn));
 
-  // Sanity check to ensure that Rendezvous() was called only once.
-  for (int i = 0; i < state.remote_buffer_ptrs.size(); ++i) {
-    TF_RET_CHECK(state.remote_buffer_ptrs[i].empty())
-        << "Remote buffer ptrs was expected to be empty. Was: "
-        << state.remote_buffer_ptrs[i].size();
-    TF_RET_CHECK(state.signal_buffer_ptrs[i].empty())
-        << "Signal buffer ptrs was expected to be empty. Was: "
-        << state.signal_buffer_ptrs[i].size();
+  if (rendezvous_values->size() > CollectiveKernelMetadata::kMaxNumDevices) {
+    return absl::InvalidArgumentError(
+        absl::StrFormat("Multi-device kernels require at most %d peers.",
+                        CollectiveKernelMetadata::kMaxNumDevices));
   }
-  for (auto* rendezvous_state : *rendezvous_values) {
-    // NB: This is a double buffer allocation. So size of a single buffer is
-    // half of the total allocation.
-    const int64_t buffer_size =
-        rendezvous_state->local_buffer.memory().size() / kNumBuffers;
-    const int64_t signal_buffer_size =
-        rendezvous_state->signal_buffer.memory().size() / kNumBuffers;
-    for (int i = 0; i < state.remote_buffer_ptrs.size(); ++i) {
-      state.remote_buffer_ptrs[i].emplace_back(
-          rendezvous_state->local_buffer.memory().GetByteSlice(
-              /*offset_bytes=*/i * buffer_size,
-              /*size_bytes=*/buffer_size));
-      state.signal_buffer_ptrs[i].emplace_back(
-          rendezvous_state->signal_buffer.memory().GetByteSlice(
-              /*offset_bytes=*/i * signal_buffer_size,
-              /*size_bytes=*/signal_buffer_size));
-    }
+  CollectiveKernelMetadata metadata;
+  metadata.rank = rank.value().value();
+  for (int i = 0; i < rendezvous_values->size(); ++i) {
+    metadata.local_buffer_root_ptrs[i] =
+        (uint64_t)rendezvous_values->at(i)
+            .locally_allocated_buffer_ptr.opaque();
+    metadata.buffer_root_ptrs[i] =
+        (uint64_t)rendezvous_values->at(i).buffer_ptr.opaque();
   }
+
+  se::DeviceMemoryBase metadata_ptr =
+      params.executor->Allocate(sizeof(CollectiveKernelMetadata), 0);
+  TF_RETURN_IF_ERROR(params.stream->Memcpy(&metadata_ptr, (void*)&metadata,
+                                           sizeof(CollectiveKernelMetadata)));
+  TF_RETURN_IF_ERROR(params.stream->BlockHostUntilDone());
+
+  state.metadata = metadata_ptr;
   return absl::OkStatus();
 }
 
@@ -199,47 +223,62 @@ absl::Status CollectiveKernelThunk::Initialize(const InitializeParams& params) {
   const LaunchDimensions launch_dimensions = AllReduceLaunchDimensions(
       buffers_[0].element_count, clique_key.num_local_participants(),
       GetAllReduceStrategy(GetInputSizeBytes()));
+
   StreamState* state = nullptr;
   {
     absl::MutexLock lock(mutex_);
     if (!per_stream_state_.contains(params.executor)) {
-      // Step1: Allocate local buffer
+      // Step1: Allocate signal and local buffers.
+      const int64_t kNumSignalFlags =
+          clique_key.num_local_participants() * launch_dimensions.num_blocks();
+
+      int64_t kSignalBufferSize = xla::RoundUpTo<uint64_t>(
+          kNumSignalFlags * sizeof(int32_t), kXlaAllocatedBufferAlignBytes);
+      const int64_t kLocalBufferSize = xla::RoundUpTo<uint64_t>(
+          buffers_[0].source_buffer.size(), kXlaAllocatedBufferAlignBytes);
       TF_ASSIGN_OR_RETURN(
           se::DeviceMemoryHandle local_buffer_alloc,
           AllocateMemory(params.executor,
-                         buffers_[0].source_buffer.size() * kNumBuffers,
-                         "LocalBuffer"));
+                         (kSignalBufferSize + kLocalBufferSize) * kNumBuffers,
+                         "Local and Signal buffers"));
 
-      // Step2: Allocate signal buffer
-      // We needs 1 atomic flag per block per device on each device.
-      const int64_t kNumSignalFlags =
-          clique_key.num_local_participants() * launch_dimensions.num_blocks();
-      TF_ASSIGN_OR_RETURN(
-          se::DeviceMemoryHandle signal_flags_alloc,
-          AllocateMemory(params.executor,
-                         kNumSignalFlags * sizeof(int32_t) * kNumBuffers,
-                         "SignalBuffer"));
+      // Step2: We needs 1 atomic flag per block per device on each device.
       // One-shot kernel expects that the signal flags buffer is zeroed out.
       // Initial state of device memory is undefined, so we need to zero out
       // the buffer. The kernel will take care of leaving the buffer in
       // correct state after use, so we don't need to zero out after
       // initialization.
       TF_RETURN_IF_ERROR(params.executor->SynchronousMemZero(
-          signal_flags_alloc.memory_ptr(), signal_flags_alloc.memory().size()));
+          local_buffer_alloc.memory_ptr(), local_buffer_alloc.memory().size()));
 
       // Step3: Emplace into the stream state.
       per_stream_state_.emplace(
-          params.executor,
-          std::make_unique<StreamState>(
-              params.executor->device_ordinal(), rank.value(),
-              std::move(local_buffer_alloc), std::move(signal_flags_alloc)));
+          params.executor, std::make_unique<StreamState>(
+                               params.executor->device_ordinal(), rank.value(),
+                               std::move(local_buffer_alloc)));
       state = per_stream_state_.at(params.executor).get();
+
+      // NB: This is a double buffer allocation. So size of a single buffer is
+      // half of the total allocation.
+      for (int i = 0; i < kNumBuffers; ++i) {
+        uint64_t offset = i * (kLocalBufferSize + kSignalBufferSize);
+        state->remote_buffer_ptrs[i] =
+            state->local_buffer.memory_ptr()->GetByteSlice(
+                /*offset_bytes=*/offset,
+                /*size_bytes=*/kLocalBufferSize);
+
+        state->signal_buffer_ptrs[i] =
+            state->local_buffer.memory_ptr()->GetByteSlice(
+                /*offset_bytes=*/offset + kLocalBufferSize,
+                /*size_bytes=*/kSignalBufferSize);
+      }
     }
   }
-  // Only invoke rendezvous if a new state was initialized.
+
   if (state != nullptr) {
-    return RendezvousAfterInit(clique_key, *state);
+    TF_RETURN_IF_ERROR(ExchangeStateMetadata(clique_key, *state, params));
   }
+
   return absl::OkStatus();
 }
 
@@ -282,6 +321,7 @@ absl::Status CollectiveKernelThunk::ExecuteOnStream(
         << "Stream not found in per_stream_state_";
     state = it->second.get();
   }
+
   const uint32_t buffer_index = state->invocation_count % kNumBuffers;
   auto const strategy = GetAllReduceStrategy(GetInputSizeBytes());
   const LaunchDimensions launch_dimensions =
@@ -291,6 +331,15 @@ absl::Status CollectiveKernelThunk::ExecuteOnStream(
   VLOG(3) << "[" << device_ordinal
           << "] Performing one-shot all-reduce for clique "
           << clique_key.ToString();
+
+  se::DeviceMemoryBase input_buffer_ptr =
+      state->remote_buffer_ptrs[buffer_index];
+  se::DeviceMemoryBase signal_buffer_ptr =
+      state->signal_buffer_ptrs[buffer_index];
+  VLOG(3) << "[" << device_ordinal
+          << "] input_buffer_ptr: " << (uint64_t)input_buffer_ptr.opaque()
+          << " signal_buffer_ptr: " << (uint64_t)signal_buffer_ptr.opaque();
+
   // TODO(b/407736956): Change this to emitted kernel.
   return RunAllReduceKernel(
       /*stream=*/stream,
@@ -298,14 +347,15 @@ absl::Status CollectiveKernelThunk::ExecuteOnStream(
       /*element_type=*/element_type,
       /*reduction_kind=*/reduction_kind_,
       /*all_reduce_strategy=*/strategy,
-      /*remote_input_buffers=*/state->remote_buffer_ptrs[buffer_index],
+      /*symmetric_input_buffer=*/input_buffer_ptr,
       /*local_input_buffer=*/source_buffer,
       /*output_buffer=*/destination_buffer,
       /*rank=*/rank.value(),
       /*num_ranks=*/kNumRanks,
       /*num_elements=*/buffer.element_count,
-      /*signal_flags_buffers=*/state->signal_buffer_ptrs[buffer_index],
-      /*signal_value=*/state->invocation_count);
+      /*symmetric_signal_buffer=*/signal_buffer_ptr,
+      /*signal_value=*/state->invocation_count,
+      /*metadata=*/state->metadata);
 }
 
 }  // namespace xla::gpu

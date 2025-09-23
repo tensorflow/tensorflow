@@ -20,6 +20,7 @@ limitations under the License.
 #include <cstdint>
 
 #include "xla/service/collective_ops_utils.h"
+#include "xla/stream_executor/gpu/collective_kernel_metadata.h"
 #include "xla/stream_executor/kernel.h"
 
 namespace stream_executor::gpu {
@@ -52,8 +53,8 @@ using RestrictedPtr = U* __restrict__;
 
 template <typename T>
 struct AllReduceKernelParams {
-  // Shared buffers of all devices ordered by rank.
-  std::array<RestrictedPtr<T>, kMaxNumAllReduceInputPtrs> remote_input_buffers;
+  // Pointer to the input buffer which is symmetric around peer ranks.
+  RestrictedPtr<T> symmetric_input_ptrs = nullptr;
   // Local buffer of the device.
   RestrictedPtr<T> input_buffer;
   // Output buffer of the device. Can be the same as the local input buffer in
@@ -77,12 +78,17 @@ struct AllReduceKernelParams {
   // Ranks rotated by `rank` % `num_ranks` to circumvent all GPUs reading from
   // the same location simultaneously. Index 0 is the rank itself.
   std::array<int64_t, kMaxNumAllReduceInputPtrs> rotated_ranks;
-  // Signal flags buffers of all devices ordered by rank.
-  std::array<RestrictedPtr<uint32_t>, kMaxNumAllReduceInputPtrs>
-      signal_flags_buffers;
+
   // Value to be written to the signal flags. Should be different for different
   // invocations of the kernel with the same signal buffer.
   uint32_t signal_value;
+
+  // Pointer to the signal flags buffer which is symmetric around peer ranks.
+  // TODO(446447767): Remove this once we have a single pointer to symmetric
+  // memory.
+  RestrictedPtr<uint32_t> symmetric_signal_ptrs = nullptr;
+
+  RestrictedPtr<CollectiveKernelMetadata> metadata;
 };
 
 // Defines a trait for the AllReduce kernel that can be used to register

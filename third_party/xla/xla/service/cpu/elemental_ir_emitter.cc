@@ -65,6 +65,16 @@ absl::StatusOr<llvm::Value*> CpuElementalIrEmitter::EmitAcosh(
   return Unimplemented("acosh");
 }
 
+absl::StatusOr<llvm::Value*> CpuElementalIrEmitter::EmitSinh(
+    PrimitiveType prim_type, llvm::Value* value) {
+  return Unimplemented("sinh");
+}
+
+absl::StatusOr<llvm::Value*> CpuElementalIrEmitter::EmitAsin(
+    PrimitiveType prim_type, llvm::Value* value) {
+  return Unimplemented("asin");
+}
+
 absl::StatusOr<llvm::Value*> CpuElementalIrEmitter::EmitErf(
     PrimitiveType prim_type, llvm::Value* value) {
   return xla::cpu::EmitErf(module(), *b(), prim_type, value);

@@ -117,7 +117,7 @@ absl::Status CoordinationServiceAgent::Initialize(
     std::unique_ptr<CoordinationClient> leader_client,
     StatusCallback error_fn) {
   enabled_usage_metric->GetCell()->Set(true);
-  absl::MutexLock l(&state_mu_);
+  absl::MutexLock l(state_mu_);
   if (state_ != CoordinatedTaskState::TASKSTATE_UNINITIALIZED) {
     return MakeCoordinationError(absl::FailedPreconditionError(
         "Coordination service agent has already been initialized."));
@@ -141,23 +141,23 @@ absl::Status CoordinationServiceAgent::Initialize(
 }
 
 bool CoordinationServiceAgent::IsInitialized() {
-  absl::MutexLock l(&state_mu_);
+  absl::MutexLock l(state_mu_);
   return state_ != CoordinatedTaskState::TASKSTATE_UNINITIALIZED;
 }
 
 bool CoordinationServiceAgent::IsConnected() {
-  absl::MutexLock l(&state_mu_);
+  absl::MutexLock l(state_mu_);
   return state_ == CoordinatedTaskState::TASKSTATE_CONNECTED;
 }
 
 bool CoordinationServiceAgent::IsError() {
-  absl::MutexLock l(&state_mu_);
+  absl::MutexLock l(state_mu_);
   return state_ == CoordinatedTaskState::TASKSTATE_ERROR;
 }
 
 void CoordinationServiceAgent::StopHeartbeat() {
   {
-    absl::MutexLock l(&shutdown_mu_);
+    absl::MutexLock l(shutdown_mu_);
     shutting_down_ = true;
   }
   heartbeat_thread_ = nullptr;
@@ -175,7 +175,7 @@ void CoordinationServiceAgent::ResetCancellationManager() {
 absl::Status CoordinationServiceAgent::Connect() {
   VLOG(3) << "Agent has started trying to Connect().";
   {
-    absl::MutexLock l(&state_mu_);
+    absl::MutexLock l(state_mu_);
     if (state_ != CoordinatedTaskState::TASKSTATE_DISCONNECTED) {
       return MakeCoordinationError(absl::FailedPreconditionError(
           "Coordination service agent is not in DISCONNECTED state."));
@@ -209,7 +209,7 @@ absl::Status CoordinationServiceAgent::Connect() {
           if (s.ok()) {
             leader_incarnation_ = response.leader_incarnation();
             {
-              absl::MutexLock l(&state_mu_);
+              absl::MutexLock l(state_mu_);
               state_ = CoordinatedTaskState::TASKSTATE_CONNECTED;
             }
           }
@@ -289,7 +289,7 @@ void CoordinationServiceAgent::StartSendingHeartbeats() {
       // inflight heartbeats sent during shutdown and can be ignored.
       absl::SleepFor(absl::Seconds(1));
       {
-        absl::MutexLock l(&shutdown_mu_);
+        absl::MutexLock l(shutdown_mu_);
 
         if (shutting_down_) {
           return;
@@ -305,7 +305,7 @@ void CoordinationServiceAgent::StartSendingHeartbeats() {
     }
     // Send next heartbeat after an interval.
     {
-      absl::MutexLock l(&shutdown_mu_);
+      absl::MutexLock l(shutdown_mu_);
       shutdown_mu_.AwaitWithTimeout(absl::Condition(&shutting_down_),
                                     absl::Milliseconds(heartbeat_interval_ms));
       if (shutting_down_) {
@@ -478,7 +478,7 @@ CoordinationServiceAgent::WatchJobState(absl::string_view job_name,
 
 absl::Status CoordinationServiceAgent::ReportError(const absl::Status& error) {
   {
-    absl::MutexLock l(&state_mu_);
+    absl::MutexLock l(state_mu_);
     if (state_ == CoordinatedTaskState::TASKSTATE_UNINITIALIZED) {
       return MakeCoordinationError(absl::FailedPreconditionError(
           "Coordination service agent must be initialized first before "
@@ -525,7 +525,7 @@ absl::Status CoordinationServiceAgent::ShutdownInternal() {
   absl::Status status = absl::OkStatus();
   bool is_connected = false;
   {
-    absl::MutexLock l(&state_mu_);
+    absl::MutexLock l(state_mu_);
     is_connected = state_ == CoordinatedTaskState::TASKSTATE_CONNECTED;
   }
   // Disconnect agent from service.
@@ -574,7 +574,7 @@ absl::Status CoordinationServiceAgent::ShutdownInternal() {
   StopHeartbeat();
   StopErrorPolling();
   {
-    absl::MutexLock l(&state_mu_);
+    absl::MutexLock l(state_mu_);
     if (status.ok() && state_ == CoordinatedTaskState::TASKSTATE_ERROR) {
       const std::string status_message = absl::StrCat(
           "Shutdown() was called while coordination agent is in error state, "
@@ -600,7 +600,7 @@ absl::Status CoordinationServiceAgent::ShutdownInternal() {
 
 absl::Status CoordinationServiceAgent::Reset() {
   {
-    absl::MutexLock l(&state_mu_);
+    absl::MutexLock l(state_mu_);
     if (state_ != CoordinatedTaskState::TASKSTATE_ERROR) {
       return MakeCoordinationError(absl::FailedPreconditionError(
           "Reset() failed: coordination service agent is not in ERROR state."));
@@ -630,11 +630,11 @@ absl::Status CoordinationServiceAgent::Reset() {
   StopErrorPolling();
   ResetCancellationManager();
   {
-    absl::MutexLock l(&state_mu_);
+    absl::MutexLock l(state_mu_);
     state_ = CoordinatedTaskState::TASKSTATE_DISCONNECTED;
   }
   {
-    absl::MutexLock l(&shutdown_mu_);
+    absl::MutexLock l(shutdown_mu_);
     shutting_down_ = false;
   }
 
@@ -861,7 +861,7 @@ absl::Status CoordinationServiceAgent::StopWatchKey(absl::string_view key) {
 
 void CoordinationServiceAgent::SetError(const absl::Status& error) {
   assert(!error.ok());
-  absl::MutexLock l(&state_mu_);
+  absl::MutexLock l(state_mu_);
   if (state_ == CoordinatedTaskState::TASKSTATE_ERROR) return;
   absl::Status trimmed_error = TrimCoordinationErrorMessage(error);
 
@@ -901,7 +901,7 @@ void CoordinationServiceAgent::WaitAtBarrierAsync(
   auto request = std::make_shared<BarrierRequest>();
   auto response = std::make_shared<BarrierResponse>();
   {
-    absl::MutexLock l(&state_mu_);
+    absl::MutexLock l(state_mu_);
 
     // Prevent multiple concurrent invocations with the same id.
     // This usually indicates a bug in the user code. They should wait till the
@@ -944,7 +944,7 @@ void CoordinationServiceAgent::WaitAtBarrierAsync(
       call_opts.get(), request.get(), response.get(),
       [call_opts, request, response, done = std::move(done), barrier_id, this,
        &cm = cancellation_manager_, token](const absl::Status& s) mutable {
-        absl::MutexLock l(&state_mu_);
+        absl::MutexLock l(state_mu_);
         // Allow the same barrier id to be invoked after this counter's
         // completion.
         ongoing_barriers_.erase(barrier_id);
@@ -986,7 +986,7 @@ void CoordinationServiceAgent::CancelBarrierAsync(absl::string_view barrier_id,
     done(agent_running_status);
     return;
   }
-  absl::MutexLock l(&state_mu_);
+  absl::MutexLock l(state_mu_);
   if (!barrier_counter_.contains(barrier_id)) {
     done(MakeCoordinationError(absl::FailedPreconditionError(absl::StrCat(
         "Tried to cancel non-existent barrier ", barrier_id, "."))));
@@ -1042,7 +1042,7 @@ CoordinationServiceAgent::GetAliveTasks(
     return status;
   }
   {
-    absl::MutexLock lock(&incarnations_mu_);
+    absl::MutexLock lock(incarnations_mu_);
     for (int i = 0; i < response->alive_tasks_size(); ++i) {
       incarnations_[response->alive_tasks(i).task_id()] =
           response->incarnations(i);
@@ -1054,7 +1054,7 @@ CoordinationServiceAgent::GetAliveTasks(
 
 absl::StatusOr<std::vector<IncarnationId>>
 CoordinationServiceAgent::Incarnations(absl::Span<const int> tasks) const {
-  absl::MutexLock lock(&incarnations_mu_);
+  absl::MutexLock lock(incarnations_mu_);
   std::vector<IncarnationId> incarnations;
   for (const auto& task_id : tasks) {
     auto it = incarnations_.find(task_id);
@@ -1070,7 +1070,7 @@ CoordinationServiceAgent::Incarnations(absl::Span<const int> tasks) const {
 // Returns an error if agent is not running.
 absl::Status CoordinationServiceAgent::ValidateRunningAgent(
     bool allow_disconnected) {
-  absl::MutexLock l(&state_mu_);
+  absl::MutexLock l(state_mu_);
   switch (state_) {
     case CoordinatedTaskState::TASKSTATE_CONNECTED:
       return absl::OkStatus();

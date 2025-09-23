@@ -14678,7 +14678,9 @@ ENTRY entry {
 
 TEST_F(MemorySpaceAssignmentTest, TestBlockPrefetchingLowConcurrentPrefetches) {
   // The size of alternate memory allows for 4 concurrent block prefetches but
-  // the maximum number of concurrent block prefetches allowed is 2.
+  // the maximum number of concurrent block prefetches allowed is 2. The live
+  // ranges of p0 and p1 are long but their copy dones are early enough that
+  // other prefetches can start without violating the concurrent prefetch limit.
   absl::string_view hlo_string = R"(
 HloModule module, is_scheduled=true
 
@@ -14745,21 +14747,18 @@ ENTRY entry {
   HloInstruction* add14 = FindInstruction(module.get(), "add14");
   EXPECT_EQ(add14->operand(0)->shape().layout().memory_space(),
             kAlternateMemorySpace);
-
-  // The following operands are not prefetched because the prefetches are
-  // limited to 2 concurrent prefetches.
   HloInstruction* add6 = FindInstruction(module.get(), "add6");
   EXPECT_EQ(add6->operand(0)->shape().layout().memory_space(),
-            kDefaultMemorySpace);
+            kAlternateMemorySpace);
   HloInstruction* add9 = FindInstruction(module.get(), "add9");
   EXPECT_EQ(add9->operand(0)->shape().layout().memory_space(),
-            kDefaultMemorySpace);
+            kAlternateMemorySpace);
   HloInstruction* add12 = FindInstruction(module.get(), "add12");
   EXPECT_EQ(add12->operand(0)->shape().layout().memory_space(),
-            kDefaultMemorySpace);
+            kAlternateMemorySpace);
   HloInstruction* add15 = FindInstruction(module.get(), "add15");
   EXPECT_EQ(add15->operand(0)->shape().layout().memory_space(),
-            kDefaultMemorySpace);
+            kAlternateMemorySpace);
 }
 
 TEST_F(MemorySpaceAssignmentTest, TestSingleBufferedBlockPrefetching) {

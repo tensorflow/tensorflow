@@ -19,6 +19,7 @@ load("//xla/stream_executor:build_defs.bzl", "if_cuda_or_rocm_is_configured", "i
 load("//xla/tests:build_defs.bzl", "xla_test")
 load("//xla/tsl:tsl.bzl", "if_google", "if_libtpu", "internal_visibility", "tsl_copts")
 load("//xla/tsl:tsl.default.bzl", "filegroup", "get_compatible_with_portable")
+load("//xla/tsl/mkl:build_defs.bzl", "if_onednn")
 load(
     "//xla/tsl/platform:build_config.bzl",
     "tf_proto_library",
@@ -780,20 +781,6 @@ xla_test(
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/types:span",
-    ],
-)
-
-xla_cc_test(
-    name = "dfs_hlo_visitor_with_default_test",
-    srcs = ["dfs_hlo_visitor_with_default_test.cc"],
-    deps = [
-        ":hlo_runner",
-        "//xla:shape_util",
-        "//xla/hlo/ir:hlo",
-        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
-        "//xla/hlo/testlib:test",
-        "//xla/tests:xla_internal_test_main",
-        "//xla/tsl/lib/core:status_test_util",
     ],
 )
 
@@ -4189,7 +4176,6 @@ cc_library(
         "//xla/service/llvm_ir:loop_emitter",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
@@ -5694,8 +5680,9 @@ cc_library(
     deps = [
         ":hlo_creation_utils",
         "//xla/hlo/pass:hlo_pass",
+    ] + if_onednn([
         "//xla/service/cpu:onednn_contraction_rewriter",
-    ],
+    ]),
 )
 
 cc_library(

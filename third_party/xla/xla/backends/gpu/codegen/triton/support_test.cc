@@ -95,6 +95,8 @@ bool DoesOpSupportType(HloOpcode opcode, PrimitiveType type) {
       return pu::IsFloatingPointType(type) || pu::IsComplexType(type);
     case HloOpcode::kAcos:
     case HloOpcode::kAcosh:
+    case HloOpcode::kSinh:
+    case HloOpcode::kAsin:
     case HloOpcode::kCbrt:
     case HloOpcode::kErf:
     case HloOpcode::kFloor:
@@ -447,6 +449,7 @@ constexpr std::array kTestedOpsUnaryElementwise = {
     HloOpcode::kAbs,
     HloOpcode::kAcos,
     HloOpcode::kAcosh,
+    HloOpcode::kAsin,
     HloOpcode::kCbrt,
     HloOpcode::kCeil,
     HloOpcode::kClz,
@@ -472,6 +475,7 @@ constexpr std::array kTestedOpsUnaryElementwise = {
     HloOpcode::kRsqrt,
     HloOpcode::kSign,
     HloOpcode::kSin,
+    HloOpcode::kSinh,
     HloOpcode::kSqrt,
     HloOpcode::kTan,
     HloOpcode::kTanh

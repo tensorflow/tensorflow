@@ -61,6 +61,7 @@ namespace xla {
   V(kAllReduceStart, "all-reduce-start", kHloOpcodeIsVariadic)                 \
   V(kAllToAll, "all-to-all", kHloOpcodeIsVariadic)                             \
   V(kAnd, "and", 2)                                                            \
+  V(kAsin, "asin", 1)                                                          \
   V(kAsyncDone, "async-done", 1)                                               \
   V(kAsyncStart, "async-start", kHloOpcodeIsVariadic)                          \
   V(kAsyncUpdate, "async-update", 1)                                           \
@@ -160,6 +161,7 @@ namespace xla {
   V(kShiftRightLogical, "shift-right-logical", 2)                              \
   V(kSign, "sign", 1)                                                          \
   V(kSin, "sine", 1)                                                           \
+  V(kSinh, "sinh", 1)                                                          \
   V(kSlice, "slice", 1)                                                        \
   V(kSort, "sort", kHloOpcodeIsVariadic)                                       \
   V(kSqrt, "sqrt", 1)                                                          \

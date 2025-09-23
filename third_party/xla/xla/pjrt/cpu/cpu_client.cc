@@ -1001,7 +1001,7 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> PjRtCpuClient::DefineBuffer(
       std::make_unique<TrackedCpuDeviceBuffer>(
           /*owns_buffers=*/raw_buffer_is_mutable,
           tsl::down_cast<CpuRawBuffer*>(raw_buffer.get())->buffer(),
-          std::move(definition_events)),
+          ShapeUtil::ByteSizeOf(on_device_shape), std::move(definition_events)),
       raw_buffer->memory_space()));
 }
 
@@ -1014,6 +1014,15 @@ PjRtCpuClient::AllocateRawBuffer(PjRtMemorySpace* memory_space,
                                       "PjRtCpuClient.";
   return xla::CpuRawBuffer::Allocate(memory_space, on_device_bytes_count,
                                      *allocator_);
+}
+
+absl::StatusOr<tsl::RCReference<CommonPjRtRawBuffer>>
+PjRtCpuClient::CreateRawBufferAsyncValue(
+    PjRtMemorySpace* memory_space,
+    tsl::RCReference<tsl::IndirectAsyncValue> buffer_promise) {
+  return tsl::MakeRef<CpuRawBuffer>(
+      memory_space,
+      tsl::AsyncValueRef<CpuDeviceMemory>(std::move(buffer_promise)));
 }
 
 absl::StatusOr<int64_t> PjRtCpuClient::GetOnDeviceBytesCount(
@@ -1994,7 +2003,7 @@ PjRtCpuExecutable::Execute(
           }
         }
 
-        absl::MutexLock lock(&mu);
+        absl::MutexLock lock(mu);
         --running;
         if (!statusor.ok()) {
           if (failed == 0) {
@@ -2016,7 +2025,7 @@ PjRtCpuExecutable::Execute(
         mu.AssertHeld();
         return running == 0;
       };
-      absl::MutexLock lock(&mu);
+      absl::MutexLock lock(mu);
       mu.Await(absl::Condition(&done_running));
     }
 

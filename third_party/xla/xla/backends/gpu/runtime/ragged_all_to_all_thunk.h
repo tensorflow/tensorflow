@@ -25,7 +25,6 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
@@ -33,7 +32,6 @@ limitations under the License.
 #include "xla/core/collectives/rank_id.h"
 #include "xla/hlo/ir/collective_op_group_mode.h"
 #include "xla/hlo/ir/hlo_instructions.h"
-#include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_handle.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/memory_allocation.h"
@@ -91,21 +89,13 @@ class RaggedAllToAllStartThunk : public CollectiveThunk {
     // Device memory buffer for output offsets.
     se::DeviceMemoryHandle output_offsets_device_buffer;
 
-    // Device memory buffer for outputs on the local device.
-    se::DeviceMemoryBase local_output_buffer;
+    // Event to synchronize streams on different devices at the start of the
+    // kernel.
+    std::unique_ptr<se::Event> start_event;
 
-    // Device memory buffers for outputs on all participating devices.
-    absl::InlinedVector<se::DeviceMemoryBase, 8> output_buffers;
-
-    // Events to notify before and after the kernel to synchronize with streams
-    // on other devices.
-    std::unique_ptr<se::Event> local_start_event;
-    std::unique_ptr<se::Event> local_end_event;
-
-    // Events collected from all participating devices. Need to be waited on
-    // before the start and after the end of the kernel.
-    absl::InlinedVector<se::Event*, 8> start_events;
-    absl::InlinedVector<se::Event*, 8> end_events;
+    // Event to synchronize streams on different devices at the end of the
+    // kernel.
+    std::unique_ptr<se::Event> end_event;
 
     StreamState(int device_ordinal, RankId rank)
         : device_ordinal(device_ordinal), rank(rank) {}

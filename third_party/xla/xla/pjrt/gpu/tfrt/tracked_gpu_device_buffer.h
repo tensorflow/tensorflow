@@ -18,11 +18,9 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
-#include <functional>
-#include <type_traits>
+#include <memory>
 #include <utility>
 
-#include "absl/container/inlined_vector.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -33,8 +31,8 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_allocator.h"
+#include "xla/stream_executor/event.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
-#include "xla/tsl/framework/allocator.h"
 
 namespace xla {
 // TODO(b/400541410): Refactor and Merge this with MaybeOwningDeviceMemory.
@@ -88,7 +86,8 @@ class TrackedGpuDeviceBuffer {
       tsl::AsyncValueRef<GpuDeviceMemory> buffer,
       tsl::AsyncValueRef<GpuEvent> definition_event,
       tsl::AsyncValueRef<GpuEvent> ready_event,
-      absl::AnyInvocable<void() &&> on_delete_callback = nullptr);
+      absl::AnyInvocable<void() &&> on_delete_callback = nullptr,
+      std::shared_ptr<stream_executor::Event> cuda_event = nullptr);
 
   TrackedGpuDeviceBuffer(TrackedGpuDeviceBuffer&&) = default;
   TrackedGpuDeviceBuffer& operator=(TrackedGpuDeviceBuffer&&) = default;
@@ -128,6 +127,10 @@ class TrackedGpuDeviceBuffer {
 
   friend class TfrtGpuBuffer;
 
+  // Gets the cuda execute event to wait if this buffer depends on executions
+  // from other cuda streams.
+  stream_executor::Event* GetCudaEvent() const { return cuda_event_.get(); }
+
  private:
   tsl::AsyncValueRef<GpuDeviceMemory> buffer_;
 
@@ -150,6 +153,8 @@ class TrackedGpuDeviceBuffer {
   // A callback to call when the TrackedGpuDeviceBuffer is about to be
   // destroyed.
   absl::AnyInvocable<void() &&> on_delete_callback_;
+
+  std::shared_ptr<stream_executor::Event> cuda_event_;
 };
 
 }  // namespace xla

@@ -84,8 +84,7 @@ class ThreadSafePjRtChunkQueue {
   absl::Mutex mu_;
   std::deque<PjRtChunk> queue_ ABSL_GUARDED_BY(mu_);
   // Contains unfulfilled pop promises.
-  std::deque<PjRtFuture<PjRtChunk>::MoveOnlyPromise> promises_
-      ABSL_GUARDED_BY(mu_);
+  std::deque<PjRtFuture<PjRtChunk>::Promise> promises_ ABSL_GUARDED_BY(mu_);
 };
 
 struct HostCallbackArgInfo {

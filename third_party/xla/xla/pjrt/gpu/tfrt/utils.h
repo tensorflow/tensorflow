@@ -65,6 +65,13 @@ limitations under the License.
 
 namespace xla {
 
+std::unique_ptr<se::Stream> MaybeCreateStream(se::StreamExecutor* executor);
+
+absl::Status WaitForEventOnStream(se::Stream* stream, se::Event* event);
+
+absl::StatusOr<std::shared_ptr<se::Event>> CreateCudaEvent(
+    TfrtGpuDevice* device);
+
 PjRtFuture<> CreateFutureForEvent(tsl::AsyncValueRef<xla::GpuEvent> event);
 
 absl::StatusOr<Shape> GetDestinationDeviceShape(const Shape& host_shape,

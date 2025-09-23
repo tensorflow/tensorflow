@@ -411,13 +411,13 @@ absl::Mutex renderer_mu(absl::kConstInit);
 ExecutionGraph::Renderer* graph_renderer ABSL_GUARDED_BY(renderer_mu) = nullptr;
 
 ExecutionGraph::Renderer* ExecutionGraph::GetRenderer() {
-  absl::MutexLock lock(&renderer_mu);
+  absl::MutexLock lock(renderer_mu);
   return graph_renderer;
 }
 
 void ExecutionGraph::RegisterRenderer(
     std::unique_ptr<ExecutionGraph::Renderer> renderer) {
-  absl::MutexLock lock(&renderer_mu);
+  absl::MutexLock lock(renderer_mu);
   if (graph_renderer != nullptr) {
     LOG(WARNING) << "Multiple calls to RegisterRenderer. Last "
                     "call wins, but because order of initialization in C++ is "

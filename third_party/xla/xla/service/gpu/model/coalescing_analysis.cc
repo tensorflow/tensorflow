@@ -50,8 +50,7 @@ limitations under the License.
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
-namespace xla {
-namespace gpu {
+namespace xla::gpu {
 
 // Returns true if all input reads are coalesced. If consumer is not nullptr,
 // producer and consumer are considered as one fusion, otherwise it's only the
@@ -245,7 +244,9 @@ std::optional<GroupedByOpIndexingMap> GetThreadIdToInputMemoryLayoutsMaps(
   if (fusion_interface == nullptr) {
     return std::nullopt;
   }
-
+  llvm::SmallVector<IndexingMap, 4>
+      operand_logical_to_linearized_physical_maps =
+          MapLogicalToLinearizedPhysicalShape(operands, mlir_context);
   GroupedByOpIndexingMap result;
   for (const auto& [root_index, hero] :
        llvm::enumerate(fusion_analysis.fusion_heroes())) {
@@ -267,26 +268,14 @@ std::optional<GroupedByOpIndexingMap> GetThreadIdToInputMemoryLayoutsMaps(
                                               hero_operand, mlir_context);
       // For every operand compute thread ID -> physical layout of operand
       // indexing map.
-      for (const HloInstruction* operand : operands) {
+      for (auto&& [operand, operand_linarized_physical_map] :
+           llvm::zip(operands, operand_logical_to_linearized_physical_maps)) {
         auto operand_indexing_maps_it =
             instr_indexing_keyed_by_operands.find(operand);
         if (operand_indexing_maps_it ==
             instr_indexing_keyed_by_operands.end()) {
           continue;
         }
-        const Shape& operand_shape = operand->shape();
-
-        IndexingMap operand_logical_to_physical_map =
-            GetIndexingMapFromLogicalToPhysicalLayout(operand_shape,
-                                                      mlir_context);
-        IndexingMap operand_physical_to_linearized_shape = GetBitcastMap(
-            ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
-                operand_shape),
-            GetLinearizedShape(operand_shape), mlir_context);
-        IndexingMap operand_logical_to_linearized_physical_shape =
-            operand_logical_to_physical_map *
-            operand_physical_to_linearized_shape;
-        operand_logical_to_linearized_physical_shape.Simplify();
 
         for (const OperandIndexing& operand_indexing :
              operand_indexing_maps_it->second) {
@@ -298,8 +287,7 @@ std::optional<GroupedByOpIndexingMap> GetThreadIdToInputMemoryLayoutsMaps(
             break;
           }
           IndexingMap logical_output_to_linearized_physical_input_map =
-              operand_indexing_map *
-              operand_logical_to_linearized_physical_shape;
+              operand_indexing_map * operand_linarized_physical_map;
           IndexingMap thread_id_to_linearized_physical_input_map =
               *thread_id_to_hero_operand_map *
               logical_output_to_linearized_physical_input_map;
@@ -666,6 +654,30 @@ std::optional<CoalescingMap> ComputeCoalescingForAllOperands(
 
 }  // namespace
 
+llvm::SmallVector<IndexingMap, 4> MapLogicalToLinearizedPhysicalShape(
+    absl::Span<const HloInstruction* const> operands,
+    MLIRContext* mlir_context) {
+  llvm::SmallVector<IndexingMap, 4> indexing_maps;
+  // For every operand compute thread ID -> physical layout of operand
+  // indexing map.
+  for (const HloInstruction* operand : operands) {
+    const Shape& operand_shape = operand->shape();
+
+    IndexingMap operand_logical_to_physical_map =
+        GetIndexingMapFromLogicalToPhysicalLayout(operand_shape, mlir_context);
+    IndexingMap operand_physical_to_linearized_shape = GetBitcastMap(
+        ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
+            operand_shape),
+        GetLinearizedShape(operand_shape), mlir_context);
+    IndexingMap operand_logical_to_linearized_physical_shape =
+        operand_logical_to_physical_map * operand_physical_to_linearized_shape;
+    operand_logical_to_linearized_physical_shape.Simplify();
+    indexing_maps.push_back(
+        std::move(operand_logical_to_linearized_physical_shape));
+  }
+  return indexing_maps;
+}
+
 /*static*/
 CoalescingAnalysis CoalescingAnalysis::Create(
     const HloInstruction* instr,
@@ -708,5 +720,4 @@ bool CoalescingAnalysis::IsReadCoalesced(const HloInstruction* operand) const {
   return it->second;
 }
 
-}  // namespace gpu
-}  // namespace xla
+}  // namespace xla::gpu

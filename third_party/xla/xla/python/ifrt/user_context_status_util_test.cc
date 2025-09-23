@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/python/ifrt/user_context_status_util.h"
 
-#include <cstdint>
 #include <optional>
 #include <string>
 #include <utility>
@@ -45,7 +44,6 @@ class TestUserContext : public llvm::RTTIExtends<TestUserContext, UserContext> {
     return tsl::TakeRef<TestUserContext>(new TestUserContext(id));
   }
 
-  uint64_t Fingerprint() const override { return id_.value(); }
   UserContextId Id() const override { return id_; }
 
   std::string DebugString() const override {

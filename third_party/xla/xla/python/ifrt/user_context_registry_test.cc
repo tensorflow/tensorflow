@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/python/ifrt/user_context_registry.h"
 
-#include <cstdint>
 #include <memory>
 #include <string>
 #include <vector>
@@ -41,7 +40,6 @@ class TestUserContext : public llvm::RTTIExtends<TestUserContext, UserContext> {
     return tsl::TakeRef<TestUserContext>(new TestUserContext(id));
   }
 
-  uint64_t Fingerprint() const override { return id_.value(); }
   UserContextId Id() const override { return UserContextId(id_); }
 
   std::string DebugString() const override {

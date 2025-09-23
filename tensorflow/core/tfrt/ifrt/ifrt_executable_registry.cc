@@ -53,7 +53,7 @@ absl::Status ServingExecutableRegistry::Handle::Freeze() {
     return absl::FailedPreconditionError("Program is not registered");
   }
 
-  absl::MutexLock l(&ServingExecutableRegistry::mu_);
+  absl::MutexLock l(ServingExecutableRegistry::mu_);
 
   const auto it = ServingExecutableRegistry::executables_->find(*program_id_);
   if (it == ServingExecutableRegistry::executables_->end()) {
@@ -74,7 +74,7 @@ void ServingExecutableRegistry::Handle::Release() {
     return;
   }
 
-  absl::MutexLock l(&ServingExecutableRegistry::mu_);
+  absl::MutexLock l(ServingExecutableRegistry::mu_);
 
   const auto it = ServingExecutableRegistry::executables_->find(*program_id_);
   if (it == ServingExecutableRegistry::executables_->end()) {
@@ -96,7 +96,7 @@ ServingExecutableRegistry::Handle::Handle(int64_t program_id)
 absl::StatusOr<ServingExecutableRegistry::Handle>
 ServingExecutableRegistry::Register(
     int64_t program_id, std::unique_ptr<IfrtServingExecutable> executable) {
-  absl::MutexLock l(&mu_);
+  absl::MutexLock l(mu_);
   VLOG(1) << "Registering program " << program_id << " from signature '"
           << executable->signature_name() << "' of model '"
           << executable->model_name() << "'"
@@ -109,7 +109,7 @@ ServingExecutableRegistry::Register(
 }
 
 IfrtServingExecutable* ServingExecutableRegistry::Lookup(int64_t program_id) {
-  absl::ReaderMutexLock l(&mu_);
+  absl::ReaderMutexLock l(mu_);
   VLOG(1) << "Looking up program " << program_id;
   const auto it = executables_->find(program_id);
   return it != executables_->end() ? it->second.get() : nullptr;

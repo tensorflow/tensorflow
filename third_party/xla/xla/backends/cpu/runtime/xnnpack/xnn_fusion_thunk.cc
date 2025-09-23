@@ -150,9 +150,6 @@ XnnFusionThunk::CreateXnnExecutable(
   }
 
   uint32_t flags = XNN_FLAG_SLINKY_ENABLED | XNN_FLAG_SLINKY_STATIC_BOUNDS;
-#ifdef NDEBUG
-  flags |= XNN_FLAG_SLINKY_NO_CHECKS;
-#endif
 
   TF_ASSIGN_OR_RETURN(
       executable.runtime, CreateXnnRuntime([&](xnn_runtime_t* runtime) {
@@ -195,9 +192,6 @@ absl::Status XnnFusionThunk::UpdateXnnExecutable(
       capturing_builder_(arguments_, results_, arguments_buffers));
 
   uint32_t flags = XNN_FLAG_SLINKY_ENABLED | XNN_FLAG_SLINKY_STATIC_BOUNDS;
-#ifdef NDEBUG
-  flags |= XNN_FLAG_SLINKY_NO_CHECKS;
-#endif
 
   TF_ASSIGN_OR_RETURN(
       executable.runtime, CreateXnnRuntime([&](xnn_runtime_t* runtime) {

@@ -78,6 +78,14 @@ std::string PrintCss() {
     .section > .content {
       font-size: 14px;
     }
+    .section > .content ul {
+      margin-top: 5px;
+      margin-bottom: 5px;
+      padding-left: 20px;
+    }
+    .section > .content li {
+      margin-bottom: 3px;
+    }
 
     details {
       margin: 0;
@@ -202,6 +210,7 @@ std::string PrintCss() {
       overflow: auto;
       white-space: pre-wrap;
       height: 100%;
+      counter-reset: instruction;
     }
     .hlo-textbox > .textbox > .click-to-copy {
       position: absolute;
@@ -227,29 +236,86 @@ std::string PrintCss() {
     span.grey {
       color: #999999;
     }
-
-    span.hlo-instruction {
-      display: inline-block;
-      cursor: pointer;
+    div.hlo-instruction {
+      display: flex;
       width: 100%;
+      align-items: flex-start;
+      border: 2px solid transparent;
+      box-sizing: border-box;
+      counter-increment: instruction;
+      position: relative;
+      padding-left: 3.5em;
     }
-    span.hlo-instruction:hover {
-      border: 2px solid #4285F4;
+    div.hlo-instruction::before {
+      content: counter(instruction);
+      position: absolute;
+      left: 0;
+      width: 3em;
+      text-align: right;
+      padding-right: 0.5em;
+      color: #888;
+      user-select: none;
     }
-    span.bordered {
+    div.hlo-instruction.expanded {
+      max-width: unset;
+    }
+    span.hlo-instruction-text {
+      flex: 1 1 auto;
+      min-width: 0;
+      white-space: pre;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      cursor: pointer;
+    }
+    div.hlo-instruction.expanded span.hlo-instruction-text {
+      white-space: pre-wrap;
+      overflow: visible;
+    }
+    button.hlo-expand-btn {
+      flex-shrink: 0;
+      background: #e8eaf6;
+      color: #3f51b5;
+      padding: 0 4px;
+      border: 1px solid #c5cae9;
+      box-shadow: none;
+      font-weight: bold;
+      margin-left: 4px;
+      min-width: 25px;
+      height: 1.3em;
+      line-height: 1.1;
+      visibility: hidden;
+      cursor: pointer;
+    }
+    div.hlo-instruction.has-overflow.expanded button.hlo-expand-btn,
+    div.hlo-instruction.has-overflow:not(.expanded):hover button.hlo-expand-btn {
+      visibility: visible;
+    }
+    button.hlo-program-shape-btn {
+      background: #e8eaf6;
+      color: #3f51b5;
+      padding: 0 4px;
+      border: 1px solid #c5cae9;
+      box-shadow: none;
+      font-weight: bold;
+      margin-left: 4px;
+      height: 1.3em;
+      line-height: 1.1;
+      cursor: pointer;
+    }
+    div.hlo-instruction.bordered {
       border: 2px solid #4285F4;
     }
 
-    span.red-highlight {
+    .red-highlight {
       background-color: #fad2cf;
     }
-    span.green-highlight {
+    .green-highlight {
       background-color: #ceead6;
     }
-    span.yellow-highlight {
+    .yellow-highlight {
       background-color: #feefc3;
     }
-    span.darker-yellow-highlight {
+    .darker-yellow-highlight {
       background-color: #FAD67F;
       /* Ensure empty or minimal content spans are visible as a thin line */
       display: inline-block;
@@ -259,7 +325,7 @@ std::string PrintCss() {
       line-height: 1; /* Prevent extra space */
       overflow: hidden; /* Hide any overflow */
     }
-    span.temp-highlight {
+    .temp-highlight {
       background-color: #a8c7fa;
       opacity: 0.7;
       animation: breathe-highlight 1s infinite alternate;
@@ -357,76 +423,106 @@ std::string PrintJavascriptForHoverEvent() {
       }, 3000);
   }
 
-  const allSpans = document.querySelectorAll('span[data-diffid][data-diffid-mapped]');
-  allSpans.forEach(span => {
-      span.addEventListener('mouseover', handleMouseOver);
-      span.addEventListener('mouseout', handleMouseOut);
-      span.addEventListener('click', handleSpanClick);
-      span.addEventListener('dblclick', handleSpanDoubleClick);
+  const allInstructions = document.querySelectorAll('.hlo-instruction');
+  allInstructions.forEach(instructionDiv => {
+      instructionDiv.addEventListener('mouseover', handleInstructionMouseOver);
+      instructionDiv.addEventListener('mouseout', handleInstructionMouseOut);
+      instructionDiv.addEventListener('dblclick', handleInstructionDoubleClick);
+      instructionDiv.addEventListener('click', handleInstructionClick);
+
+      const button = instructionDiv.querySelector('.hlo-expand-btn');
+      const textSpan = instructionDiv.querySelector('.hlo-instruction-text');
+      if(textSpan.scrollWidth > textSpan.clientWidth) {
+        instructionDiv.classList.add('has-overflow');
+        button.addEventListener('click', (e) => {
+          instructionDiv.classList.toggle('expanded');
+          button.textContent = instructionDiv.classList.contains('expanded') ? '-' : '+';
+          e.stopPropagation();
+        });
+      }
   });
 
-  function getRelatedSpans(diffId, mappedId) {
-    return document.querySelectorAll(`span[data-diffid="${diffId}"][data-diffid-mapped="${mappedId}"], span[data-diffid="${mappedId}"][data-diffid-mapped="${diffId}"]`);
+  const allProgramShapeButtons = document.querySelectorAll('.hlo-program-shape-btn');
+  allProgramShapeButtons.forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      const shapeSpan = btn.nextElementSibling;
+      if (shapeSpan && shapeSpan.classList.contains('hlo-program-shape')) {
+        if (shapeSpan.style.display === 'none') {
+          shapeSpan.style.display = 'inline';
+          btn.textContent = 'hide program shape';
+        } else {
+          shapeSpan.style.display = 'none';
+          btn.textContent = 'show program shape';
+        }
+      }
+      e.stopPropagation();
+    });
+  });
+
+  function getRelatedDivs(diffId, mappedId) {
+    return document.querySelectorAll(`div[data-diffid="${diffId}"][data-diffid-mapped="${mappedId}"], div[data-diffid="${mappedId}"][data-diffid-mapped="${diffId}"]`);
   }
 
-  function handleMouseOver(event) {
-      const diffId = event.target.getAttribute('data-diffid');
-      const mappedId = event.target.getAttribute('data-diffid-mapped');
+  function handleInstructionMouseOver(event) {
+      const instructionDiv = event.currentTarget;
+      const diffId = instructionDiv.getAttribute('data-diffid');
+      const mappedId = instructionDiv.getAttribute('data-diffid-mapped');
       if (!diffId || !mappedId) {
           return;
       }
-      const relatedSpans = getRelatedSpans(diffId, mappedId);
-      relatedSpans.forEach(relatedSpan => {
-          relatedSpan.classList.add('bordered');
+      const relatedDivs = getRelatedDivs(diffId, mappedId);
+      relatedDivs.forEach(relatedDiv => {
+          relatedDiv.classList.add('bordered');
       });
   }
 
-  function handleMouseOut(event) {
-      const diffId = event.target.getAttribute('data-diffid');
-      const mappedId = event.target.getAttribute('data-diffid-mapped');
+  function handleInstructionMouseOut(event) {
+      const instructionDiv = event.currentTarget;
+      const diffId = instructionDiv.getAttribute('data-diffid');
+      const mappedId = instructionDiv.getAttribute('data-diffid-mapped');
       if (!diffId || !mappedId) {
           return;
       }
-      const relatedSpans = getRelatedSpans(diffId, mappedId);
-      relatedSpans.forEach(relatedSpan => {
-          relatedSpan.classList.remove('bordered');
+      const relatedDivs = getRelatedDivs(diffId, mappedId);
+      relatedDivs.forEach(relatedDiv => {
+          relatedDiv.classList.remove('bordered');
       });
   }
 
-  function handleSpanClick(event) {
-      const diffId = event.target.getAttribute('data-diffid');
-      const mappedId = event.target.getAttribute('data-diffid-mapped');
+  function handleInstructionClick(event) {
+      const instructionDiv = event.currentTarget;
+      const diffId = instructionDiv.getAttribute('data-diffid');
+      const mappedId = instructionDiv.getAttribute('data-diffid-mapped');
       if (!diffId || !mappedId) {
           return;
       }
 
-      const clickedSpan = event.target;
-      const clickedPre = clickedSpan.closest('pre');
+      const clickedPre = instructionDiv.closest('pre');
       if (!clickedPre) return;
 
-      const selfTextboxes = clickedSpan.closest('.hlo-textboxes');
+      const selfTextboxes = instructionDiv.closest('.hlo-textboxes');
       if (!selfTextboxes) return;
       const siblingTextboxes = selfTextboxes.nextElementSibling || selfTextboxes.previousElementSibling;
       if (!siblingTextboxes || !siblingTextboxes.classList.contains('hlo-textboxes')) return;
 
-      const targetSpan = siblingTextboxes.querySelector(`span[data-diffid="${mappedId}"][data-diffid-mapped="${diffId}"]`);
+      const targetDiv = siblingTextboxes.querySelector(`div[data-diffid="${mappedId}"][data-diffid-mapped="${diffId}"]`);
 
-      if (targetSpan) {
-          const siblingPre = targetSpan.closest('pre');
+      if (targetDiv) {
+          const siblingPre = targetDiv.closest('pre');
           if (!siblingPre) return;
 
-          // Calculate the vertical offset of the clicked span from the top of its visible area.
-          const clickedSpanViewportOffset = clickedSpan.offsetTop - clickedPre.scrollTop;
+          // Calculate the vertical offset of the clicked div from the top of its visible area.
+          const clickedDivViewportOffset = (instructionDiv.offsetTop - clickedPre.offsetTop) - clickedPre.scrollTop;
 
           // Calculate the percentage of this offset within the clickedPre's visible height.
           const percentage = clickedPre.clientHeight > 0 ?
-              clickedSpanViewportOffset / clickedPre.clientHeight : 0;
+              clickedDivViewportOffset / clickedPre.clientHeight : 0;
 
-          // Calculate the desired offset for the targetSpan within the siblingPre's visible area.
+          // Calculate the desired offset for the targetDiv within the siblingPre's visible area.
           const desiredSiblingViewportOffset = percentage * siblingPre.clientHeight;
 
           // Calculate the new scrollTop for siblingPre to achieve this alignment.
-          const newScrollTop = targetSpan.offsetTop - desiredSiblingViewportOffset;
+          const newScrollTop = (targetDiv.offsetTop - siblingPre.offsetTop) - desiredSiblingViewportOffset;
 
           // Scroll the siblingPre element smoothly.
           siblingPre.scrollTo({
@@ -434,62 +530,63 @@ std::string PrintJavascriptForHoverEvent() {
               behavior: 'smooth'
           });
 
-          // Temporarily highlight the target span
-          targetSpan.classList.add('temp-highlight');
+          // Temporarily highlight the target div
+          targetDiv.classList.add('temp-highlight');
           setTimeout(() => {
-              targetSpan.classList.remove('temp-highlight');
+              targetDiv.classList.remove('temp-highlight');
           }, 2000); // Remove highlight after 2 seconds
       } else {
           ShowSystemMessage("Corresponding instruction is in another computation, double click to jump to it.");
       }
   }
 
-  function handleSpanDoubleClick(event) {
-      const diffId = event.target.getAttribute('data-diffid');
-      const mappedId = event.target.getAttribute('data-diffid-mapped');
+  function handleInstructionDoubleClick(event) {
+      const instructionDiv = event.currentTarget;
+      const diffId = instructionDiv.getAttribute('data-diffid');
+      const mappedId = instructionDiv.getAttribute('data-diffid-mapped');
       if (!diffId || !mappedId) {
           return;
       }
 
-      const clickedSpan = event.target;
-      const clickedPre = clickedSpan.closest('pre');
+      const clickedEl = event.target;
+      const clickedPre = clickedEl.closest('pre');
       if (!clickedPre) return;
 
-      const selfTextboxes = clickedSpan.closest('.hlo-textboxes');
+      const selfTextboxes = clickedEl.closest('.hlo-textboxes');
       if (!selfTextboxes) return;
       const siblingTextboxes = selfTextboxes.nextElementSibling || selfTextboxes.previousElementSibling;
       if (!siblingTextboxes || !siblingTextboxes.classList.contains('hlo-textboxes')) return;
 
-      const targetSpanInSibling = siblingTextboxes.querySelector(`span[data-diffid="${mappedId}"][data-diffid-mapped="${diffId}"]`);
+      const targetDivInSibling = siblingTextboxes.querySelector(`div[data-diffid="${mappedId}"][data-diffid-mapped="${diffId}"]`);
 
-      if (!targetSpanInSibling) {
-          // Case 2: Corresponding span NOT found in sibling textboxes in same pair.
-          // Search for the span with the same diffId in other hlo-textbox-pairs.
-          const allMatchingSpans = document.querySelectorAll(`span[data-diffid="${mappedId}"][data-diffid-mapped="${diffId}"]`);
-          let foundSpanInOtherPre = null;
-          allMatchingSpans.forEach(span => {
-              if (span !== clickedSpan) {
-                  foundSpanInOtherPre = span;
+      if (!targetDivInSibling) {
+          // Case 2: Corresponding div NOT found in sibling textboxes in same pair.
+          // Search for the div with the same diffId in other hlo-textbox-pairs.
+          const allMatchingDivs = document.querySelectorAll(`div[data-diffid="${mappedId}"][data-diffid-mapped="${diffId}"]`);
+          let foundDivInOtherPre = null;
+          allMatchingDivs.forEach(div => {
+              if (div !== instructionDiv) {
+                  foundDivInOtherPre = div;
               }
           });
 
-          if (foundSpanInOtherPre) {
-              const foundPre = foundSpanInOtherPre.closest('pre');
+          if (foundDivInOtherPre) {
+              const foundPre = foundDivInOtherPre.closest('pre');
               if (foundPre) {
                   // Find ancestor detail and open it.
-                  let parentDetails = foundSpanInOtherPre.closest('details');
+                  let parentDetails = foundDivInOtherPre.closest('details');
                   while (parentDetails) {
                       parentDetails.open = true;
                       parentDetails = parentDetails.parentElement ? parentDetails.parentElement.closest('details') : null;
                   }
 
-                  // Scroll the foundPre to make the foundSpanInOtherPre visible.
-                  foundSpanInOtherPre.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                  // Scroll the foundPre to make the foundDivInOtherPre visible.
+                  foundDivInOtherPre.scrollIntoView({ behavior: 'smooth', block: 'center' });
 
-                  // Temporarily highlight the found span
-                  foundSpanInOtherPre.classList.add('temp-highlight');
+                  // Temporarily highlight the found div
+                  foundDivInOtherPre.classList.add('temp-highlight');
                   setTimeout(() => {
-                      foundSpanInOtherPre.classList.remove('temp-highlight');
+                      foundDivInOtherPre.classList.remove('temp-highlight');
                   }, 3000);
               }
           }
@@ -582,6 +679,59 @@ std::string PrintSectionWithHeader(absl::string_view header,
                   {"section"});
 }
 
+// Prints overview section.
+std::string PrintOverviewSection(const DiffResult& diff_result) {
+  std::string content = absl::StrFormat(
+      R"html(
+        <p>This report highlights the differences between two HLO modules.</p>
+        <p>
+          <b>Diff Statistics:</b>
+          <span>%d unchanged</span>,
+          <span class="yellow">%d changed</span>,
+          <span class="red">%d left unmatched</span>,
+          <span class="green">%d right unmatched</span> instruction(s).
+        </p>
+      )html",
+      diff_result.unchanged_instructions.size(),
+      diff_result.changed_instructions.size(),
+      diff_result.left_module_unmatched_instructions.size(),
+      diff_result.right_module_unmatched_instructions.size());
+  return PrintSectionWithHeader("Overview", content);
+}
+
+// Prints the "How to use this report" section.
+std::string PrintHowToUseSection() {
+  std::string content = R"html(
+        <p>
+          <b>Highlights:</b>
+          <ul>
+            <li><span class="red-highlight">&nbsp;Red&nbsp;</span>: Instruction only present in the left module.</li>
+            <li><span class="green-highlight">&nbsp;Green&nbsp;</span>: Instruction only present in the right module.</li>
+            <li><span class="yellow-highlight">&nbsp;Yellow&nbsp;</span>: Instruction present in both modules but with differences. Character-level differences are highlighted in <span class="darker-yellow-highlight">&nbsp;darker yellow&nbsp;</span> (this is skipped for instructions with >10k characters due to performance concern).</li>
+            <li>Instructions without highlights are identical in both modules.</li>
+          </ul>
+        </p>
+        <p>
+          <b>Interactions:</b>
+          <ul>
+            <li><b>Hover</b> over an instruction to highlight its counterpart in the other module.</li>
+            <li><b>Click</b> on an instruction to scroll its counterpart into view within the same computation diff.</li>
+            <li><b>Double-click</b> on an instruction to jump to its counterpart if it resides in a different computation diff.</li>
+            <li>Click the <b>[+]</b> button on an instruction to expand/collapse overflowing text.</li>
+          </ul>
+        </p>
+        <p>
+          <b>Sections:</b>
+          <ul>
+            <li><b>XProf Op Metrics Diff</b>: Shows instructions with the largest execution time differences based on XProf data (if available).</li>
+            <li><b>Diffs grouped by computation</b>: Groups computations with similar diff patterns to help identify repetitive changes.</li>
+            <li><b>Full Diff Results</b>: A flat list of all instructions that are unmatched or have changed.</li>
+          </ul>
+        </p>
+      )html";
+  return PrintSectionWithHeader("How to use this report", content);
+}
+
 // Prints a system message placeholder.
 std::string PrintSystemMessagePlaceholder() {
   return PrintDiv(PrintSpan("System message placeholder", {}),
@@ -670,42 +820,42 @@ absl::flat_hash_map<const HloInstruction*, Attributes> GenerateSpanAttributes(
   for (auto& instruction : diff_result.left_module_unmatched_instructions) {
     span_attributes[instruction] =
         Attributes{.highlight = "red-highlight",
-                   .diffid = std::string(instruction->name()),
+                   .diffid = absl::StrCat("left:", instruction->name()),
                    .mapped_diffid = "",
                    .mapped_instruction = nullptr};
   }
   for (auto& instruction : diff_result.right_module_unmatched_instructions) {
     span_attributes[instruction] =
         Attributes{.highlight = "green-highlight",
-                   .diffid = std::string(instruction->name()),
+                   .diffid = absl::StrCat("right:", instruction->name()),
                    .mapped_diffid = "",
                    .mapped_instruction = nullptr};
   }
   for (const auto& [l_instruction, r_instruction] :
        diff_result.changed_instructions) {
-    span_attributes[l_instruction] =
-        Attributes{.highlight = "yellow-highlight",
-                   .diffid = std::string(l_instruction->name()),
-                   .mapped_diffid = std::string(r_instruction->name()),
-                   .mapped_instruction = r_instruction};
-    span_attributes[r_instruction] =
-        Attributes{.highlight = "yellow-highlight",
-                   .diffid = std::string(r_instruction->name()),
-                   .mapped_diffid = std::string(l_instruction->name()),
-                   .mapped_instruction = l_instruction};
+    span_attributes[l_instruction] = Attributes{
+        .highlight = "yellow-highlight",
+        .diffid = absl::StrCat("left:", l_instruction->name()),
+        .mapped_diffid = absl::StrCat("right:", r_instruction->name()),
+        .mapped_instruction = r_instruction};
+    span_attributes[r_instruction] = Attributes{
+        .highlight = "yellow-highlight",
+        .diffid = absl::StrCat("right:", r_instruction->name()),
+        .mapped_diffid = absl::StrCat("left:", l_instruction->name()),
+        .mapped_instruction = l_instruction};
   }
   for (const auto& [l_instruction, r_instruction] :
        diff_result.unchanged_instructions) {
-    span_attributes[l_instruction] =
-        Attributes{.highlight = "",
-                   .diffid = std::string(l_instruction->name()),
-                   .mapped_diffid = std::string(r_instruction->name()),
-                   .mapped_instruction = r_instruction};
-    span_attributes[r_instruction] =
-        Attributes{.highlight = "",
-                   .diffid = std::string(r_instruction->name()),
-                   .mapped_diffid = std::string(l_instruction->name()),
-                   .mapped_instruction = l_instruction};
+    span_attributes[l_instruction] = Attributes{
+        .highlight = "",
+        .diffid = absl::StrCat("left:", l_instruction->name()),
+        .mapped_diffid = absl::StrCat("right:", r_instruction->name()),
+        .mapped_instruction = r_instruction};
+    span_attributes[r_instruction] = Attributes{
+        .highlight = "",
+        .diffid = absl::StrCat("right:", r_instruction->name()),
+        .mapped_diffid = absl::StrCat("left:", l_instruction->name()),
+        .mapped_instruction = l_instruction};
   }
   return span_attributes;
 };
@@ -724,8 +874,12 @@ std::string PrintHloComputationToHtml(
   printer.Append("<b>%");
   printer.Append(comp->name());
   printer.Append(" ");
+  printer.Append(
+      "<button class='hlo-program-shape-btn'>show program shape</button>");
+  printer.Append("<span class='hlo-program-shape' style='display: none;'>");
   ShapeUtil::PrintHumanString(&printer,
                               comp->ComputeProgramShape(/*include_ids=*/true));
+  printer.Append("</span>");
   printer.Append(" ");
   printer.Append("{</b>\n");
 
@@ -761,8 +915,9 @@ std::string PrintHloComputationToHtml(
               EscapeStringForHtmlAttribute(it->second.mapped_diffid), "\"");
         }
       }
-      printer.Append(absl::StrCat("<span class=\"hlo-instruction ",
-                                  highlight_class, "\"", diffid_attrs, " >"));
+      printer.Append(absl::StrCat("<div class=\"hlo-instruction ",
+                                  highlight_class, "\"", diffid_attrs, " >",
+                                  "<span class='hlo-instruction-text'>"));
       printer.Append("  ");  // Instruction indentation (2 spaces)
       if (instruction == comp->root_instruction()) {
         printer.Append("ROOT ");
@@ -787,37 +942,42 @@ std::string PrintHloComputationToHtml(
         std::string current_str = std::move(current_printer).ToString();
         std::string mapped_str = std::move(mapped_printer).ToString();
 
-        std::vector<TextDiffChunk> diff_chunks;
-        if (is_left_node) {
-          // Left side: diff current (left) vs mapped (right).
-          diff_chunks = ComputeTextDiff(current_str, mapped_str);
+        // Skip text diff if the two strings are longer than 10000 characters.
+        if (current_str.size() > 10000 || mapped_str.size() > 10000) {
+          printer.Append(current_str);
         } else {
-          // Right side: diff mapped (left) vs current (right).
-          diff_chunks = ComputeTextDiff(mapped_str, current_str);
-        }
-
-        for (const auto& chunk : diff_chunks) {
-          if (chunk.type == TextDiffType::kUnchanged) {
-            printer.Append(EscapeStringForHtmlAttribute(chunk.text));
-          } else if (is_left_node && chunk.type == TextDiffType::kRemoved) {
-            // On the left side, highlight text REMOVED from left compared to
-            // right.
-            printer.Append("<span class=\"darker-yellow-highlight\">");
-            printer.Append(EscapeStringForHtmlAttribute(chunk.text));
-            printer.Append("</span>");
-          } else if (!is_left_node && chunk.type == TextDiffType::kAdded) {
-            // On the right side, highlight text ADDED to right compared to
-            // left.
-            printer.Append("<span class=\"darker-yellow-highlight\">");
-            printer.Append(EscapeStringForHtmlAttribute(chunk.text));
-            printer.Append("</span>");
+          std::vector<TextDiffChunk> diff_chunks;
+          if (is_left_node) {
+            // Left side: diff current (left) vs mapped (right).
+            diff_chunks = ComputeTextDiff(current_str, mapped_str);
           } else {
-            printer.Append("<span class=\"darker-yellow-highlight\">");
-            printer.Append("</span>");
+            // Right side: diff mapped (left) vs current (right).
+            diff_chunks = ComputeTextDiff(mapped_str, current_str);
+          }
+
+          for (const auto& chunk : diff_chunks) {
+            if (chunk.type == TextDiffType::kUnchanged) {
+              printer.Append(EscapeStringForHtmlAttribute(chunk.text));
+            } else if (is_left_node && chunk.type == TextDiffType::kRemoved) {
+              // On the left side, highlight text REMOVED from left compared to
+              // right.
+              printer.Append("<span class=\"darker-yellow-highlight\">");
+              printer.Append(EscapeStringForHtmlAttribute(chunk.text));
+              printer.Append("</span>");
+            } else if (!is_left_node && chunk.type == TextDiffType::kAdded) {
+              // On the right side, highlight text ADDED to right compared to
+              // left.
+              printer.Append("<span class=\"darker-yellow-highlight\">");
+              printer.Append(EscapeStringForHtmlAttribute(chunk.text));
+              printer.Append("</span>");
+            } else {
+              printer.Append("<span class=\"darker-yellow-highlight\">");
+              printer.Append("</span>");
+            }
           }
         }
       }
-      printer.Append("</span>");
+      printer.Append("</span><button class='hlo-expand-btn'>+</button></div>");
     }
   }
 
@@ -836,13 +996,14 @@ std::string PrintHloComputationToHtml(
 // Prints a single HLO instruction in a text box.
 template <typename T>
 std::string PrintHloTextbox(
-    const T* node, const absl::flat_hash_map<const HloInstruction*, Attributes>&
-                       span_attributes) {
+    const T* node, DiffSide side,
+    const absl::flat_hash_map<const HloInstruction*, Attributes>&
+        span_attributes) {
   std::string title = "None", text;
   if (node != nullptr) {
     title = node->name();
     if constexpr (std::is_same_v<T, HloComputation>) {
-      text = PrintHloComputationToHtml(node, DiffSide::kLeft, span_attributes);
+      text = PrintHloComputationToHtml(node, side, span_attributes);
     } else {
       text = node->ToString();
     }
@@ -862,10 +1023,12 @@ std::string PrintHloTextboxPair(
         span_attributes) {
   std::string left_textbox, right_textbox;
   for (const T* node : left_nodes) {
-    absl::StrAppend(&left_textbox, PrintHloTextbox(node, span_attributes));
+    absl::StrAppend(&left_textbox,
+                    PrintHloTextbox(node, DiffSide::kLeft, span_attributes));
   }
   for (const T* node : right_nodes) {
-    absl::StrAppend(&right_textbox, PrintHloTextbox(node, span_attributes));
+    absl::StrAppend(&right_textbox,
+                    PrintHloTextbox(node, DiffSide::kRight, span_attributes));
   }
   return PrintDiv(absl::StrCat(PrintDiv(left_textbox, {"hlo-textboxes"}),
                                PrintDiv(right_textbox, {"hlo-textboxes"})),
@@ -1369,6 +1532,12 @@ void RenderHtml(const DiffResult& diff_result, const DiffSummary& diff_summary,
       GenerateSpanAttributes(diff_result);
 
   out << PrintCss() << PrintJavascript();
+
+  // Print overview section
+  out << PrintOverviewSection(filtered_diff_result);
+
+  // Print "How to use this report" section
+  out << PrintHowToUseSection();
 
   // Print profile metrics diff
   if (left_op_metric_getter != nullptr && right_op_metric_getter != nullptr) {

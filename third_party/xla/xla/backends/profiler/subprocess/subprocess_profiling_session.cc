@@ -22,6 +22,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/cleanup/cleanup.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
@@ -124,6 +125,9 @@ absl::Status SubprocessProfilingSession::Stop() {
     return absl::FailedPreconditionError(
         "Subprocess profiling session not started.");
   }
+  // If there is an error, make sure to cancel the context to avoid
+  // heap-use-after-free inside the gRPC library.
+  absl::Cleanup cleanup = [&]() { context_.TryCancel(); };
   tensorflow::TerminateRequest terminate_request;
   terminate_request.set_session_id(request_.session_id());
   tensorflow::TerminateResponse terminate_response;

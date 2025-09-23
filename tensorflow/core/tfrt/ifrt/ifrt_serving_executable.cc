@@ -583,7 +583,7 @@ IfrtServingExecutable::LookUpOrCreateExecutable(
   xla::ifrt::Future<SharedCachedExecutableBundle> future;
   mlir::OwningOpRef<mlir::ModuleOp> module_copy;
   {
-    absl::MutexLock lock(&mutex_);
+    absl::MutexLock lock(mutex_);
 
     const auto it = executable_bundles_.find(key);
     if (it != executable_bundles_.end()) {
@@ -618,7 +618,7 @@ IfrtServingExecutable::LookUpOrCreateExecutable(
 
 void IfrtServingExecutable::Freeze() {
   LOG(INFO) << "Freezing executable. Program id: " << program_id_;
-  absl::MutexLock lock(&mutex_);
+  absl::MutexLock lock(mutex_);
   is_frozen_ = true;
   module_ = nullptr;
 }
@@ -703,7 +703,7 @@ absl::StatusOr<std::vector<tensorflow::Tensor>> IfrtServingExecutable::Execute(
 
   {
     tsl::profiler::TraceMe traceme("AsyncRestoreVariables");
-    absl::ReaderMutexLock lock(&mutex_);
+    absl::ReaderMutexLock lock(mutex_);
     if (!is_frozen_) {
       // Asynchronously load the restored variable tensors to Ifrt array.
       TF_RETURN_IF_ERROR(AsyncLoadIfrtArray(inputs, variable_arg_indices,

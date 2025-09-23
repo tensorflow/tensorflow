@@ -231,7 +231,7 @@ CpuRawBuffer::CopyFromHostBuffer(
       if (byte_strides) {
         options.input_layout = TransposePlan::Striding{*byte_strides};
       }
-      absl::MutexLock lock(transpose_mu);
+      absl::MutexLock lock(*transpose_mu);
       TF_ASSIGN_OR_RETURN(transpose, transpose_cache->GetOrCreate(options));
     }
     if (!is_packed) {

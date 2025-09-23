@@ -298,6 +298,7 @@ namespace opcode_matchers {
 HLO_MATCHER(Abs);
 HLO_MATCHER(Acos);
 HLO_MATCHER(Acosh);
+HLO_MATCHER(Asin);
 HLO_MATCHER(Add);
 HLO_MATCHER(AddDependency);
 HLO_MATCHER(AfterAll);
@@ -383,6 +384,7 @@ HLO_MATCHER(ShiftLeft);
 HLO_MATCHER(ShiftRightArithmetic);
 HLO_MATCHER(ShiftRightLogical);
 HLO_MATCHER(Sign);
+HLO_MATCHER(Sinh);
 HLO_MATCHER(Slice);
 HLO_MATCHER(Sort);
 HLO_MATCHER(Subtract);
