@@ -434,7 +434,7 @@ tf_cuda_cc_test(
 
 tf_cuda_cc_test(
     name = "gpu_debug_allocator_test",
-    size = "medium",
+    size = "large", # ROCm SR-IOV systems need large timeout
     srcs = ["gpu_debug_allocator_test.cc"],
     args = ["--gtest_death_test_style=threadsafe"],
     features = ["-layering_check"],
