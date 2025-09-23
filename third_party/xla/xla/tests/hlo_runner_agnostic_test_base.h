@@ -32,6 +32,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/error_spec.h"
+#include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -182,6 +183,16 @@ class HloRunnerAgnosticTestBase : public HloHardwareIndependentTestBase {
       std::unique_ptr<HloModule> module,
       std::vector<std::vector<Literal*>> arguments, int64_t num_replicas,
       bool run_hlo_passes, DeviceAssignment* device_assignment = nullptr);
+
+  // Same as above but builds the hlo module from the builder.
+  absl::StatusOr<std::vector<Literal>> ExecuteReplicated(
+      XlaBuilder* builder, const ExecutionOptions& execution_options,
+      const HloRunnerInterface::ReplicatedExecuteOptions& options);
+
+  absl::StatusOr<std::vector<Literal>> ExecuteReplicated(
+      XlaBuilder* builder, const ExecutionOptions& execution_options,
+      const HloRunnerInterface::ReplicatedExecuteOptions& options,
+      DeviceAssignment* device_assignment);
 
   // Executes an hlo module with fake inputs and checks that the execution is
   // successful.
