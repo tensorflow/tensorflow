@@ -246,6 +246,20 @@ cc_library(
     hdrs = ["versions.h"],
 )
 
+cc_library(
+    name = "transfer_util",
+    srcs = ["transfer_util.cc"],
+    hdrs = ["transfer_util.h"],
+    deps = [
+        "//xla/tsl/platform:env",
+        "@com_google_absl//absl/base:no_destructor",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
 # copybara:uncomment_begin
 # bzl_library(
 #     name = "ifrt_proxy_bzl",

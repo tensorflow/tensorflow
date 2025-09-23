@@ -89,6 +89,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/synchronization",
+        "@local_tsl//tsl/platform:path",
         "@local_tsl//tsl/profiler/lib:traceme",
     ],
 )
@@ -251,6 +252,9 @@ cc_library(
     srcs = ["host_buffer.cc"],
     hdrs = ["host_buffer.h"],
     deps = [
+        "//xla/python/ifrt_proxy/common:transfer_util",
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:errors",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",
