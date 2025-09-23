@@ -5289,6 +5289,7 @@ xla_cc_test(
         ":hlo_module_config",
         ":source_target_pairs",
         "//xla:array2d",
+        "//xla:literal",
         "//xla:literal_util",
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",

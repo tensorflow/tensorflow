@@ -38,6 +38,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
+#include "xla/primitive_util.h"
 #include "xla/service/collective_permute_cycle.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/global_device_id.h"
@@ -140,8 +141,14 @@ std::optional<Literal> GetReductionIdentity(ReductionKind kind,
     case ReductionKind::PRODUCT:
       return LiteralUtil::One(type);
     case ReductionKind::MIN:
+      if (primitive_util::IsComplexType(type)) {
+        return std::nullopt;
+      }
       return LiteralUtil::MaxValue(type);
     case ReductionKind::MAX:
+      if (primitive_util::IsComplexType(type)) {
+        return std::nullopt;
+      }
       return LiteralUtil::MinValue(type);
     default:
       return std::nullopt;
