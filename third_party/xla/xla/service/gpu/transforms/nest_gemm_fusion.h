@@ -77,7 +77,7 @@ namespace detail {
 // function can be removed once `GpuDotFusionCostModel::EstimateRunTimeForDotOp`
 // is implemented.
 absl::StatusOr<BlockLevelParameters> FindBlockLevelParameters(
-    HloDotInstruction* dot, const TritonGemmConfig& config,
+    HloInstruction* dot, const TritonGemmConfig& config,
     mlir::MLIRContext* ctx);
 
 }  // namespace detail

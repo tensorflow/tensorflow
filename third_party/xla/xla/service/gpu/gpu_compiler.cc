@@ -733,7 +733,9 @@ absl::Status RunOptimizationPasses(
     pipeline.AddPass<UnstableReductionDetector>();
   }
   pipeline.AddPass<RaggedDotRewriter>();
-  pipeline.AddPass<ScaledDotRewriter>();
+  if (!debug_options.xla_gpu_experimental_scaled_dot_with_triton()) {
+    pipeline.AddPass<ScaledDotRewriter>();
+  }
   pipeline.AddPass<BatchedGatherScatterNormalizer>();
   if (debug_options.xla_gpu_multi_streamed_windowed_einsum()) {
     pipeline.AddPass<WindowedEinsumHandler>();

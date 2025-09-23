@@ -153,14 +153,24 @@ absl::Status FuseInstructionsForConsumer(HloInstruction& root,
   return absl::OkStatus();
 }
 
+absl::Status IsDot(const HloInstruction& dot) {
+  if (dot.opcode() != HloOpcode::kDot &&
+      dot.opcode() != HloOpcode::kScaledDot) {
+    return absl::InternalError(
+        absl::StrCat("Expected a dot instruction but got ", dot.ToString()));
+  }
+  return absl::OkStatus();
+}
+
 // Annotates the given nested fusion with the given tile sizes.
 // Implementation for AnnotateDotLhs/RhsNestedFusion().
 absl::Status AnnotateDotOperandNestedFusionImpl(
-    HloFusionInstruction& nested_fusion, const HloDotInstruction& dot,
+    HloFusionInstruction& nested_fusion, const HloInstruction& dot,
     const TritonGemmConfig& config,
     absl::Span<const int64_t> contracting_dimensions,  // Must be single element
     absl::Span<const int64_t> batch_dimensions, int64_t contracting_dim_size,
     int64_t non_contracting_dim_size) {
+  TF_RETURN_IF_ERROR(IsDot(dot));
   if (contracting_dimensions.size() != 1) {
     return absl::InternalError(
         absl::StrCat("Expected a single lhs contracting dimension but got ",
@@ -203,8 +213,9 @@ absl::Status AnnotateDotOperandNestedFusionImpl(
 }
 
 absl::Status AnnotateDotLhsNestedFusion(HloFusionInstruction& nested_fusion,
-                                        const HloDotInstruction& dot,
+                                        const HloInstruction& dot,
                                         const TritonGemmConfig& config) {
+  TF_RETURN_IF_ERROR(IsDot(dot));
   const DotDimensionNumbers& dimension_numbers = dot.dot_dimension_numbers();
   return AnnotateDotOperandNestedFusionImpl(
       nested_fusion, dot, config,
@@ -213,8 +224,9 @@ absl::Status AnnotateDotLhsNestedFusion(HloFusionInstruction& nested_fusion,
 }
 
 absl::Status AnnotateDotRhsNestedFusion(HloFusionInstruction& nested_fusion,
-                                        const HloDotInstruction& dot,
+                                        const HloInstruction& dot,
                                         const TritonGemmConfig& config) {
+  TF_RETURN_IF_ERROR(IsDot(dot));
   const DotDimensionNumbers& dimension_numbers = dot.dot_dimension_numbers();
   return AnnotateDotOperandNestedFusionImpl(
       nested_fusion, dot, config,
@@ -253,10 +265,13 @@ absl::Status FuseAndAnnotateConcatOperands(HloComputation* computation) {
 // Transforms a fusion into an equivalent nested fusion if it has a single dot.
 // Returns ok if the transformation was successful.
 absl::Status MakeNestedFusionFromGemmFusion(HloFusionInstruction* fusion,
-                                            HloDotInstruction* dot,
+                                            HloInstruction* dot,
                                             mlir::MLIRContext* ctx) {
+  TF_RETURN_IF_ERROR(IsDot(*dot));
+  const bool is_scaled_dot = dot->opcode() == HloOpcode::kScaledDot;
+  const int lhs = 0;
+  const int rhs = is_scaled_dot ? 2 : 1;
   TF_ASSIGN_OR_RETURN(TritonGemmConfig config, GetTritonGemmConfig(*fusion));
-
   HloComputation* computation = fusion->called_computation();
 
   // First, create nested fusions for the operands of `concatenate` instructions
@@ -265,18 +280,35 @@ absl::Status MakeNestedFusionFromGemmFusion(HloFusionInstruction* fusion,
 
   // Left-hand side of the dot.
   TF_RETURN_IF_ERROR(
-      FuseInstructionsForConsumer(*dot->mutable_operand(0), *dot));
+      FuseInstructionsForConsumer(*dot->mutable_operand(lhs), *dot));
   TF_RETURN_IF_ERROR(AnnotateDotLhsNestedFusion(
-      *::xla::Cast<HloFusionInstruction>(dot->mutable_operand(0)), *dot,
+      *::xla::Cast<HloFusionInstruction>(dot->mutable_operand(lhs)), *dot,
       config));
 
   // Right-hand side of the dot.
   TF_RETURN_IF_ERROR(
-      FuseInstructionsForConsumer(*dot->mutable_operand(1), *dot));
+      FuseInstructionsForConsumer(*dot->mutable_operand(rhs), *dot));
   TF_RETURN_IF_ERROR(AnnotateDotRhsNestedFusion(
-      *::xla::Cast<HloFusionInstruction>(dot->mutable_operand(1)), *dot,
+      *::xla::Cast<HloFusionInstruction>(dot->mutable_operand(rhs)), *dot,
       config));
 
+  if (is_scaled_dot) {
+    constexpr int kLhsScale = 1;
+    constexpr int kRhsScale = 3;
+    constexpr int kContractingScaleFactor = 32;
+    auto scale_config = config;
+    scale_config.block_k /= kContractingScaleFactor;
+    TF_RETURN_IF_ERROR(
+        FuseInstructionsForConsumer(*dot->mutable_operand(kLhsScale), *dot));
+    TF_RETURN_IF_ERROR(AnnotateDotLhsNestedFusion(
+        *::xla::Cast<HloFusionInstruction>(dot->mutable_operand(kLhsScale)),
+        *dot, scale_config));
+    TF_RETURN_IF_ERROR(
+        FuseInstructionsForConsumer(*dot->mutable_operand(kRhsScale), *dot));
+    TF_RETURN_IF_ERROR(AnnotateDotRhsNestedFusion(
+        *::xla::Cast<HloFusionInstruction>(dot->mutable_operand(kRhsScale)),
+        *dot, scale_config));
+  }
   // Delete newly unused instructions, if any.
   TF_ASSIGN_OR_RETURN([[maybe_unused]] bool changed,
                       HloDCE::RunOnComputation(
@@ -1157,6 +1189,14 @@ class NestGemmFusionVisitor : public DfsHloRewriteVisitor {
         return absl::OkStatus();
       case HloOpcode::kFusion:
         return AcceptResultingFusion(Cast<HloFusionInstruction>(instruction));
+      case HloOpcode::kScaledDot:
+        if (instruction->GetModule()
+                ->config()
+                .debug_options()
+                .xla_gpu_experimental_scaled_dot_with_triton()) {
+          return absl::OkStatus();
+        }
+        return absl::InternalError("Scaled dot with Triton is not enabled.");
       case HloOpcode::kDot:
         return AcceptDotInstruction(Cast<HloDotInstruction>(instruction));
       default:
@@ -1191,20 +1231,28 @@ class NestGemmFusionVisitor : public DfsHloRewriteVisitor {
     HloInstruction* instr =
         hlo_query::GetFirstInstructionWithOpcode(*computation, HloOpcode::kDot);
     if (instr == nullptr) {
-      return absl::InternalError(absl::StrCat("Computation of fusion ",
-                                              fusion->ToString(),
-                                              " has no dot instruction"));
+      instr = hlo_query::GetFirstInstructionWithOpcode(*computation,
+                                                       HloOpcode::kScaledDot);
+      if (instr == nullptr) {
+        return absl::InternalError(absl::StrCat("Computation of fusion ",
+                                                fusion->ToString(),
+                                                " has no dot instruction"));
+      }
     }
+
     TF_RETURN_IF_ERROR(
         TryHoistBitcastsInComputationToCallers(instr, call_graph));
-    HloDotInstruction* dot = Cast<HloDotInstruction>(instr);
-    TF_RETURN_IF_ERROR(MakeNestedFusionFromGemmFusion(fusion, dot, ctx_));
+    TF_RETURN_IF_ERROR(MakeNestedFusionFromGemmFusion(fusion, instr, ctx_));
 
     MarkAsChanged();
-
+    bool scaled_dot_enabled =
+        fusion->GetModule()
+            ->config()
+            .debug_options()
+            .xla_gpu_experimental_scaled_dot_with_triton();
     if (CodegenDecision can_codegen_computation = IsTritonSupportedComputation(
             *fusion->called_computation(), compute_capability_);
-        !can_codegen_computation) {
+        !scaled_dot_enabled && !can_codegen_computation) {
       return absl::InternalError(absl::StrCat(
           "Computation of fusion ", fusion->ToString(),
           " is not supported by Triton: ", can_codegen_computation.Explain()));
@@ -1226,10 +1274,13 @@ class NestGemmFusionVisitor : public DfsHloRewriteVisitor {
     HloInstruction* instr =
         hlo_query::GetFirstInstructionWithOpcode(*computation, HloOpcode::kDot);
     if (instr == nullptr) {
-      VLOG(2) << "Skipping fusion as it has no dot instruction";
-      return absl::OkStatus();
+      instr = hlo_query::GetFirstInstructionWithOpcode(*computation,
+                                                       HloOpcode::kScaledDot);
+      if (instr == nullptr) {
+        VLOG(2) << "Skipping fusion as it has no dot instruction";
+        return absl::OkStatus();
+      }
     }
-
     {
       // Symbolic tile analysis and nesting do not support all HLOs yet and
       // might leave the module in an invalid state. To avoid that we first dry
@@ -1313,8 +1364,9 @@ absl::StatusOr<bool> NestGemmFusion::Run(
 namespace detail {
 
 absl::StatusOr<BlockLevelParameters> FindBlockLevelParameters(
-    HloDotInstruction* dot, const TritonGemmConfig& config,
+    HloInstruction* dot, const TritonGemmConfig& config,
     mlir::MLIRContext* ctx) {
+  TF_RETURN_IF_ERROR(IsDot(*dot));
   HloComputation* computation = dot->parent();
   VLOG(3) << "FindOutputTileSizesForEpilogue of computation: "
           << computation->ToString();

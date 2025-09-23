@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/backends/gpu/codegen/triton/dot_algorithms.h"
 
+#include <cstdint>
 #include <limits>
 #include <optional>
 #include <string>
@@ -154,6 +155,10 @@ absl::StatusOr<Value> ScaledDot(EmitterLocOpBuilder b,
 
   auto lhs_scale = Bitcast(b, operands.lhs_scale, b.getI8Type());
   auto rhs_scale = Bitcast(b, operands.rhs_scale, b.getI8Type());
+
+  // TODO(b/436988479): Remove this once we have a fix for the scaled dot
+  // rewrite on the Triton side. With this transpose we have matching numerics.
+  rhs_scale = b.create<ttir::TransOp>(rhs_scale, mlir::ArrayRef<int32_t>{1, 0});
 
   // make type with the same shape as the scale but with i8 type
   return b.create<ttir::DotScaledOp>(
