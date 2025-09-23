@@ -945,6 +945,33 @@ TEST_P(MMapWeightCacheProviderTest, XnnpackCApiJourney) {
   }
 }
 
+TEST_P(MMapWeightCacheProviderTest, XnnpackRebuildOnVersionMismatch) {
+  TempFileDesc temp_fd;
+  const char* temp_fd_cpath = explicit_fd_path;
+  FileDescriptor temp_fd_value = temp_fd.Duplicate();
+
+  {  // Set bad build identifier
+    XNNPackCacheHeader header{.version = XNNPackCacheHeader::kVersion};
+    header.xnnpack_build_identifier[0] += 1;
+    ASSERT_TRUE(temp_fd_value.Write(&header, sizeof(header)));
+  }
+
+  if (!use_explicit_fd) {
+    temp_fd.Close();
+    temp_fd_cpath = temp_fd.GetCPath();
+    temp_fd_value.Close();
+    if (use_in_memory_cache) {
+      temp_fd_cpath = kInMemoryCachePath;
+    }
+  }
+
+  auto build_cache_provider = std::make_unique<MMapWeightCacheProvider>();
+  MMapWeightCacheProvider& cache_provider = *build_cache_provider;
+  ASSERT_TRUE(cache_provider.LoadOrStartBuild(temp_fd_cpath,
+                                              temp_fd_value.Duplicate()));
+  ASSERT_TRUE(cache_provider.StartBuildStep());
+}
+
 class IsCompatibleCacheFileTest : public testing::Test {
  public:
   void SetUp() override {

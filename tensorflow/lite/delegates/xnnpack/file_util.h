@@ -85,6 +85,12 @@ class FileDescriptorView {
   [[nodiscard /*Reading from a file may fail.*/]]
   bool Write(const void* src, size_t count) const;
 
+  // Truncates the file to the given size.
+  //
+  // Returns true if the file was truncated successfully.
+  [[nodiscard /*Reading from a file may fail.*/]]
+  bool Truncate(size_t size) const;
+
  protected:
   int fd_ = -1;
 };

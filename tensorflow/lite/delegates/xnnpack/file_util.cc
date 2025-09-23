@@ -19,6 +19,7 @@ limitations under the License.
 #if defined(_MSC_VER)
 #include <io.h>
 #define F_OK 0
+#define ftruncate _chsize_s
 #else
 #include <unistd.h>
 #endif  // defined(_MSC_VER)
@@ -116,6 +117,10 @@ bool FileDescriptorView::Write(const void* src, size_t count) const {
     src_it += bytes;
   }
   return true;
+}
+
+bool FileDescriptorView::Truncate(size_t size) const {
+  return ftruncate(fd_, size) == 0;
 }
 
 bool InMemoryFileDescriptorAvailable() {
