@@ -1212,8 +1212,8 @@ TEST_F(HloEvaluatorTest, RaggedDotNonContractingWithBatchDimensions) {
   // rhs[b,g,k,n]:
   // f32[3,2,1,2] =
   // {{{{ 0, 1 }}, {{ 2, 3 }}},
-  //   {{ 4, 5 }}, {{ 6, 7 }}},
-  //   {{ 8, 9 }}, {{ 10, 11 }}}},
+  //  {{{ 4, 5 }}, {{ 6, 7 }}},
+  //  {{{ 8, 9 }}, {{ 10, 11 }}}}
   auto rhs_array = std::make_unique<Array4D<float>>(3, 2, 1, 2);
   rhs_array->FillIota(0.f);
   auto rhs_literal = LiteralUtil::CreateR4FromArray4D<float>(*rhs_array);
@@ -1229,7 +1229,7 @@ TEST_F(HloEvaluatorTest, RaggedDotNonContractingWithBatchDimensions) {
   HloInstruction* gs_instruction =
       b.AddInstruction(HloInstruction::CreateConstant(std::move(gs_literal)));
 
-  // f32[g,m,n]
+  // f32[b,m,n]
   Shape output_shape = ShapeUtil::MakeShape(F32, {3, 4, 2});
   DotDimensionNumbers dot_dnums;
   dot_dnums.add_lhs_contracting_dimensions(2);
@@ -1256,6 +1256,420 @@ TEST_F(HloEvaluatorTest, RaggedDotNonContractingWithBatchDimensions) {
   });
   // clang-format on
   auto expected = LiteralUtil::CreateR3FromArray3D<float>(expected_array);
+
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
+}
+
+TEST_F(HloEvaluatorTest, RaggedDotContractingMode) {
+  HloComputation::Builder b(TestName());
+
+  // lhs[m,k]:
+  // f32[4,5] {
+  //  { 1, 2, 3, 4, 5 },
+  //  { 6, 7, 8, 9, 10 },
+  //  { 11, 12, 13, 14, 15 },
+  //  { 16, 17, 18, 19, 20 }
+  // }
+  auto lhs_array = std::make_unique<Array2D<float>>(4, 5);
+  lhs_array->FillIota(1.0f);
+  auto lhs_literal = LiteralUtil::CreateR2FromArray2D<float>(*lhs_array);
+  HloInstruction* lhs_instruction =
+      b.AddInstruction(HloInstruction::CreateConstant(std::move(lhs_literal)));
+
+  // rhs[k,n]:
+  // f32[5,3]
+  //  {{ 1, 2, 3 },
+  //   { 4, 5, 6 },
+  //   { 7, 8, 9 },
+  //   { 10, 11, 12 },
+  //   { 13, 14, 15 }}
+  auto rhs_array = std::make_unique<Array2D<float>>(5, 3);
+  rhs_array->FillIota(1.0f);
+  auto rhs_literal = LiteralUtil::CreateR2FromArray2D<float>(*rhs_array);
+  HloInstruction* rhs_instruction =
+      b.AddInstruction(HloInstruction::CreateConstant(std::move(rhs_literal)));
+
+  // group_sizes s64[g]:
+  // { 2, 3 }
+  auto gs_literal = LiteralUtil::CreateR1<int64_t>({2, 3});
+  HloInstruction* gs_instruction =
+      b.AddInstruction(HloInstruction::CreateConstant(std::move(gs_literal)));
+
+  Shape output_shape = ShapeUtil::MakeShape(F32, {2, 4, 3});
+  DotDimensionNumbers dot_dnums;
+  dot_dnums.add_lhs_contracting_dimensions(1);
+  dot_dnums.add_rhs_contracting_dimensions(0);
+  RaggedDotDimensionNumbers ragged_dot_dnums;
+  ragged_dot_dnums.add_lhs_ragged_dimensions(1);
+  *ragged_dot_dnums.mutable_dot_dimension_numbers() = dot_dnums;
+  b.AddInstruction(HloInstruction::CreateRaggedDot(
+      output_shape, lhs_instruction, rhs_instruction, gs_instruction,
+      ragged_dot_dnums, DefaultPrecisionConfig(2)));
+  m_->AddEntryComputation(b.Build());
+
+  TF_ASSERT_OK_AND_ASSIGN(Literal result, Evaluate());
+
+  // clang-format off
+  auto expected_array = Array3D<float>({
+      {{9.f, 12.f, 15.f},
+       {34.f, 47.f, 60.f},
+       {59.f, 82.f, 105.f},
+       {84.f, 117.f, 150.f}},
+      {{126.f, 138.f, 150.f},
+       {276.f, 303.f, 330.f},
+       {426.f, 468.f, 510.f},
+       {576.f, 633.f, 690.f}},
+  });
+  // clang-format on
+  auto expected = LiteralUtil::CreateR3FromArray3D<float>(expected_array);
+
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
+}
+
+TEST_F(HloEvaluatorTest, RaggedDotContractingModeMixedPrecision) {
+  HloComputation::Builder b(TestName());
+
+  // lhs[m,k]:
+  // bf16[4,5] {
+  //  { 1, 2, 3, 4, 5 },
+  //  { 6, 7, 8, 9, 10 },
+  //  { 11, 12, 13, 14, 15 },
+  //  { 16, 17, 18, 19, 20 }
+  // }
+  auto lhs_array = std::make_unique<Array2D<float>>(4, 5);
+  lhs_array->FillIota(1.0f);
+  auto lhs_literal = LiteralUtil::ConvertF32ToBF16(
+      LiteralUtil::CreateR2FromArray2D<float>(*lhs_array));
+  HloInstruction* lhs_instruction =
+      b.AddInstruction(HloInstruction::CreateConstant(std::move(lhs_literal)));
+
+  // rhs[k,n]:
+  // bf16[5,3]
+  //  {{ 1, 2, 3 },
+  //   { 4, 5, 6 },
+  //   { 7, 8, 9 },
+  //   { 10, 11, 12 },
+  //   { 13, 14, 15 }}
+  auto rhs_array = std::make_unique<Array2D<float>>(5, 3);
+  rhs_array->FillIota(1.0f);
+  auto rhs_literal = LiteralUtil::ConvertF32ToBF16(
+      LiteralUtil::CreateR2FromArray2D<float>(*rhs_array));
+  HloInstruction* rhs_instruction =
+      b.AddInstruction(HloInstruction::CreateConstant(std::move(rhs_literal)));
+
+  // group_sizes s64[g]:
+  // { 2, 3 }
+  auto gs_literal = LiteralUtil::CreateR1<int64_t>({2, 3});
+  HloInstruction* gs_instruction =
+      b.AddInstruction(HloInstruction::CreateConstant(std::move(gs_literal)));
+
+  Shape output_shape = ShapeUtil::MakeShape(F32, {2, 4, 3});
+  DotDimensionNumbers dot_dnums;
+  dot_dnums.add_lhs_contracting_dimensions(1);
+  dot_dnums.add_rhs_contracting_dimensions(0);
+  RaggedDotDimensionNumbers ragged_dot_dnums;
+  ragged_dot_dnums.add_lhs_ragged_dimensions(1);
+  *ragged_dot_dnums.mutable_dot_dimension_numbers() = dot_dnums;
+  b.AddInstruction(HloInstruction::CreateRaggedDot(
+      output_shape, lhs_instruction, rhs_instruction, gs_instruction,
+      ragged_dot_dnums, DefaultPrecisionConfig(2)));
+  m_->AddEntryComputation(b.Build());
+
+  TF_ASSERT_OK_AND_ASSIGN(Literal result, Evaluate());
+
+  // clang-format off
+  auto expected_array = Array3D<float>({
+      {{9.f, 12.f, 15.f},
+       {34.f, 47.f, 60.f},
+       {59.f, 82.f, 105.f},
+       {84.f, 117.f, 150.f}},
+      {{126.f, 138.f, 150.f},
+       {276.f, 303.f, 330.f},
+       {426.f, 468.f, 510.f},
+       {576.f, 633.f, 690.f}},
+  });
+  // clang-format on
+  auto expected = LiteralUtil::CreateR3FromArray3D<float>(expected_array);
+
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
+}
+
+TEST_F(HloEvaluatorTest, RaggedDotContractingModeGroupSizeSumLessThanK) {
+  HloComputation::Builder b(TestName());
+
+  // lhs[m,k]:
+  // f32[4,5] {
+  //  { 1, 2, 3, 4, 5 },
+  //  { 6, 7, 8, 9, 10 },
+  //  { 11, 12, 13, 14, 15 },
+  //  { 16, 17, 18, 19, 20 }
+  // }
+  auto lhs_array = std::make_unique<Array2D<float>>(4, 5);
+  lhs_array->FillIota(1.0f);
+  auto lhs_literal = LiteralUtil::CreateR2FromArray2D<float>(*lhs_array);
+  HloInstruction* lhs_instruction =
+      b.AddInstruction(HloInstruction::CreateConstant(std::move(lhs_literal)));
+
+  // rhs[k,n]:
+  // f32[5,3]
+  //  {{ 1, 2, 3 },
+  //   { 4, 5, 6 },
+  //   { 7, 8, 9 },
+  //   { 10, 11, 12 },
+  //   { 13, 14, 15 }}
+  auto rhs_array = std::make_unique<Array2D<float>>(5, 3);
+  rhs_array->FillIota(1.0f);
+  auto rhs_literal = LiteralUtil::CreateR2FromArray2D<float>(*rhs_array);
+  HloInstruction* rhs_instruction =
+      b.AddInstruction(HloInstruction::CreateConstant(std::move(rhs_literal)));
+
+  // group_sizes s64[g]:
+  // { 2, 2 }
+  auto gs_literal = LiteralUtil::CreateR1<int64_t>({2, 2});
+  HloInstruction* gs_instruction =
+      b.AddInstruction(HloInstruction::CreateConstant(std::move(gs_literal)));
+
+  Shape output_shape = ShapeUtil::MakeShape(F32, {2, 4, 3});
+  DotDimensionNumbers dot_dnums;
+  dot_dnums.add_lhs_contracting_dimensions(1);
+  dot_dnums.add_rhs_contracting_dimensions(0);
+  RaggedDotDimensionNumbers ragged_dot_dnums;
+  ragged_dot_dnums.add_lhs_ragged_dimensions(1);
+  *ragged_dot_dnums.mutable_dot_dimension_numbers() = dot_dnums;
+  b.AddInstruction(HloInstruction::CreateRaggedDot(
+      output_shape, lhs_instruction, rhs_instruction, gs_instruction,
+      ragged_dot_dnums, DefaultPrecisionConfig(2)));
+  m_->AddEntryComputation(b.Build());
+
+  TF_ASSERT_OK_AND_ASSIGN(Literal result, Evaluate());
+
+  // clang-format off
+  auto expected_array = Array3D<float>({
+      {{9.f, 12.f, 15.f},
+       {34.f, 47.f, 60.f},
+       {59.f, 82.f, 105.f},
+       {84.f, 117.f, 150.f}},
+      {{61.f, 68.f, 75.f},
+       {146.f, 163.f, 180.f},
+       {231.f, 258.f, 285.f},
+       {316.f, 353.f, 390.f}},
+  });
+  // clang-format on
+  auto expected = LiteralUtil::CreateR3FromArray3D<float>(expected_array);
+
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
+}
+
+TEST_F(HloEvaluatorTest, RaggedDotContractingModeMultipleContractingDims) {
+  HloComputation::Builder b(TestName());
+
+  // lhs[m,k1,k2,k3]:
+  // f32[2,2,5,2] {
+  //   {{{1, 2}, {3, 4}, {5, 6}, {7, 8}, {9, 10}},
+  //    {{11, 12}, {13, 14}, {15, 16}, {17, 18}, {19, 20}}},
+  //   {{{21, 22}, {23, 24}, {25, 26}, {27, 28}, {29, 30}},
+  //    {{31, 32}, {33, 34}, {35, 36}, {37, 38}, {39, 40}}}
+  // }
+  auto lhs_array = std::make_unique<Array4D<float>>(2, 2, 5, 2);
+  lhs_array->FillIota(1.0f);
+  auto lhs_literal = LiteralUtil::CreateR4FromArray4D<float>(*lhs_array);
+  HloInstruction* lhs_instruction =
+      b.AddInstruction(HloInstruction::CreateConstant(std::move(lhs_literal)));
+
+  // rhs[k1,k2,k3,n]:
+  // f32[2,5,2,3] {
+  //   {{{1, 2, 3}, {4, 5, 6}},
+  //    {{7, 8, 9}, {10, 11, 12}},
+  //    {{13, 14, 15}, {16, 17, 18}},
+  //    {{19, 20, 21}, {22, 23, 24}},
+  //    {{25, 26, 27}, {28, 29, 30}}},
+  //   {{{31, 32, 33}, {34, 35, 36}},
+  //    {{37, 38, 39}, {40, 41, 42}},
+  //    {{43, 44, 45}, {46, 47, 48}},
+  //    {{49, 50, 51}, {52, 53, 54}},
+  //    {{55, 56, 57}, {58, 59, 60}}}
+  // }
+  auto rhs_array = std::make_unique<Array4D<float>>(2, 5, 2, 3);
+  rhs_array->FillIota(1.0f);
+  auto rhs_literal = LiteralUtil::CreateR4FromArray4D<float>(*rhs_array);
+  HloInstruction* rhs_instruction =
+      b.AddInstruction(HloInstruction::CreateConstant(std::move(rhs_literal)));
+
+  // group_sizes s64[g]:
+  // { 2, 3 }
+  auto gs_literal = LiteralUtil::CreateR1<int64_t>({2, 3});
+  HloInstruction* gs_instruction =
+      b.AddInstruction(HloInstruction::CreateConstant(std::move(gs_literal)));
+
+  Shape output_shape = ShapeUtil::MakeShape(F32, {2, 2, 3});
+  DotDimensionNumbers dot_dnums;
+  dot_dnums.add_lhs_contracting_dimensions(1);
+  dot_dnums.add_lhs_contracting_dimensions(2);
+  dot_dnums.add_lhs_contracting_dimensions(3);
+  dot_dnums.add_rhs_contracting_dimensions(0);
+  dot_dnums.add_rhs_contracting_dimensions(1);
+  dot_dnums.add_rhs_contracting_dimensions(2);
+  RaggedDotDimensionNumbers ragged_dot_dnums;
+  ragged_dot_dnums.add_lhs_ragged_dimensions(2);
+  *ragged_dot_dnums.mutable_dot_dimension_numbers() = dot_dnums;
+  b.AddInstruction(HloInstruction::CreateRaggedDot(
+      output_shape, lhs_instruction, rhs_instruction, gs_instruction,
+      ragged_dot_dnums, DefaultPrecisionConfig(2)));
+  m_->AddEntryComputation(b.Build());
+
+  TF_ASSERT_OK_AND_ASSIGN(Literal result, Evaluate());
+
+  // clang-format off
+  auto expected_array = Array3D<float>({
+      {{1860.f, 1920.f, 1980.f},
+       {5140.f, 5360.f, 5580.f}},
+      {{6330.f, 6480.f, 6630.f},
+       {14850.f, 15240.f, 15630.f}},
+  });
+  // clang-format on
+  auto expected = LiteralUtil::CreateR3FromArray3D<float>(expected_array);
+
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
+}
+
+TEST_F(HloEvaluatorTest, RaggedDotContractingModeExtraLhsDim) {
+  HloComputation::Builder b(TestName());
+
+  // lhs[m1,m2,k]:
+  // f32[2,2,5] {
+  //   {{ 1, 2, 3, 4, 5 },
+  //    { 6, 7, 8, 9, 10 }},
+  //   {{ 11, 12, 13, 14, 15 },
+  //    { 16, 17, 18, 19, 20 }}
+  // }
+  auto lhs_array = std::make_unique<Array3D<float>>(2, 2, 5);
+  lhs_array->FillIota(1.0f);
+  auto lhs_literal = LiteralUtil::CreateR3FromArray3D<float>(*lhs_array);
+  HloInstruction* lhs_instruction =
+      b.AddInstruction(HloInstruction::CreateConstant(std::move(lhs_literal)));
+
+  // rhs[k,n]:
+  // f32[5,3]
+  //  {{ 1, 2, 3 },
+  //   { 4, 5, 6 },
+  //   { 7, 8, 9 },
+  //   { 10, 11, 12 },
+  //   { 13, 14, 15 }}
+  auto rhs_array = std::make_unique<Array2D<float>>(5, 3);
+  rhs_array->FillIota(1.0f);
+  auto rhs_literal = LiteralUtil::CreateR2FromArray2D<float>(*rhs_array);
+  HloInstruction* rhs_instruction =
+      b.AddInstruction(HloInstruction::CreateConstant(std::move(rhs_literal)));
+
+  // group_sizes s64[g]:
+  // { 2, 3 }
+  auto gs_literal = LiteralUtil::CreateR1<int64_t>({2, 3});
+  HloInstruction* gs_instruction =
+      b.AddInstruction(HloInstruction::CreateConstant(std::move(gs_literal)));
+
+  Shape output_shape = ShapeUtil::MakeShape(F32, {2, 2, 2, 3});
+  DotDimensionNumbers dot_dnums;
+  dot_dnums.add_lhs_contracting_dimensions(2);
+  dot_dnums.add_rhs_contracting_dimensions(0);
+  RaggedDotDimensionNumbers ragged_dot_dnums;
+  ragged_dot_dnums.add_lhs_ragged_dimensions(2);
+  *ragged_dot_dnums.mutable_dot_dimension_numbers() = dot_dnums;
+  b.AddInstruction(HloInstruction::CreateRaggedDot(
+      output_shape, lhs_instruction, rhs_instruction, gs_instruction,
+      ragged_dot_dnums, DefaultPrecisionConfig(2)));
+  m_->AddEntryComputation(b.Build());
+
+  TF_ASSERT_OK_AND_ASSIGN(Literal result, Evaluate());
+
+  // clang-format off
+  auto expected_array = Array4D<float>({
+      {{{9.f, 12.f, 15.f},
+        {34.f, 47.f, 60.f}},
+       {{59.f, 82.f, 105.f},
+        {84.f, 117.f, 150.f}}},
+      {{{126.f, 138.f, 150.f},
+        {276.f, 303.f, 330.f}},
+       {{426.f, 468.f, 510.f},
+        {576.f, 633.f, 690.f}}},
+  });
+  // clang-format on
+  auto expected = LiteralUtil::CreateR4FromArray4D<float>(expected_array);
+
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
+}
+
+TEST_F(HloEvaluatorTest, RaggedDotContractingModeWithBatchDimensions) {
+  HloComputation::Builder b(TestName());
+
+  // lhs[b,m,k]:
+  // f32[2,2,5] {
+  //   {{ 1, 2, 3, 4, 5 },
+  //    { 6, 7, 8, 9, 10 }},
+  //   {{ 11, 12, 13, 14, 15 },
+  //    { 16, 17, 18, 19, 20 }}
+  // }
+  auto lhs_array = std::make_unique<Array3D<float>>(2, 2, 5);
+  lhs_array->FillIota(1.0f);
+  auto lhs_literal = LiteralUtil::CreateR3FromArray3D<float>(*lhs_array);
+  HloInstruction* lhs_instruction =
+      b.AddInstruction(HloInstruction::CreateConstant(std::move(lhs_literal)));
+
+  // rhs[b,k,n]:
+  // f32[2,5,3]
+  //  {{{ 1, 2, 3 },
+  //    { 4, 5, 6 },
+  //    { 7, 8, 9 },
+  //    { 10, 11, 12 },
+  //    { 13, 14, 15 }},
+  //   {{ 16, 17, 18 },
+  //    { 19, 20, 21 },
+  //    { 22, 23, 24 },
+  //    { 25, 26, 27 },
+  //    { 28, 29, 30 }}
+  auto rhs_array = std::make_unique<Array3D<float>>(2, 5, 3);
+  rhs_array->FillIota(1.0f);
+  auto rhs_literal = LiteralUtil::CreateR3FromArray3D<float>(*rhs_array);
+  HloInstruction* rhs_instruction =
+      b.AddInstruction(HloInstruction::CreateConstant(std::move(rhs_literal)));
+
+  // group_sizes[b,g]:
+  // s64[2,2]
+  // { { 2, 2 }, { 5, 0 } }
+  auto gs_literal = LiteralUtil::CreateR2<int64_t>({{2, 2}, {5, 0}});
+  HloInstruction* gs_instruction =
+      b.AddInstruction(HloInstruction::CreateConstant(std::move(gs_literal)));
+
+  // output[g,b,m,n]
+  // f32[2,2,2,3]
+  Shape output_shape = ShapeUtil::MakeShape(F32, {2, 2, 2, 3});
+  DotDimensionNumbers dot_dnums;
+  dot_dnums.add_lhs_batch_dimensions(0);
+  dot_dnums.add_rhs_batch_dimensions(0);
+  dot_dnums.add_lhs_contracting_dimensions(2);
+  dot_dnums.add_rhs_contracting_dimensions(1);
+  RaggedDotDimensionNumbers ragged_dot_dnums;
+  ragged_dot_dnums.add_lhs_ragged_dimensions(2);
+  *ragged_dot_dnums.mutable_dot_dimension_numbers() = dot_dnums;
+  b.AddInstruction(HloInstruction::CreateRaggedDot(
+      output_shape, lhs_instruction, rhs_instruction, gs_instruction,
+      ragged_dot_dnums, DefaultPrecisionConfig(2)));
+  m_->AddEntryComputation(b.Build());
+
+  TF_ASSERT_OK_AND_ASSIGN(Literal result, Evaluate());
+
+  // clang-format off
+  auto expected_array = Array4D<float>({
+      {{{9.f, 12.f, 15.f},         // group 0, batch 0 -> [2] 2
+        {34.f, 47.f, 60.f}},
+       {{1460.f, 1525.f, 1590.f},  // group 0, batch 1 -> [5] 0
+        {2010.f, 2100.f, 2190.f}}},
+      {{{61.f, 68.f, 75.f},        // group 1, batch 0 -> 2 [2]
+        {146.f, 163.f, 180.f}},
+       {{0.f, 0.f, 0.f},           // group 1, batch 1 -> 5 [0]
+        {0.f, 0.f, 0.f}}}
+  });
+  // clang-format on
+  auto expected = LiteralUtil::CreateR4FromArray4D<float>(expected_array);
 
   EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
 }
