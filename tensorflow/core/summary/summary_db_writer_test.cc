@@ -269,10 +269,10 @@ TEST_F(SummaryDbWriterTest, WriteEvent_Scalar) {
   int64_t tag2_id = QueryInt("SELECT tag_id FROM Tags WHERE tag_name = 'φ'");
   EXPECT_GT(tag1_id, 0LL);
   EXPECT_GT(tag2_id, 0LL);
-  EXPECT_EQ(123.456, QueryDouble(strings::StrCat(
+  EXPECT_EQ(123.456, QueryDouble(absl::StrCat(
                          "SELECT computed_time FROM Tensors WHERE series = ",
                          tag1_id, " AND step = 7")));
-  EXPECT_EQ(123.456, QueryDouble(strings::StrCat(
+  EXPECT_EQ(123.456, QueryDouble(absl::StrCat(
                          "SELECT computed_time FROM Tensors WHERE series = ",
                          tag2_id, " AND step = 7")));
 }
