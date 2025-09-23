@@ -178,18 +178,6 @@ class CpuAotCompilationResult : public AotCompilationResult {
     return FromProto(std::move(proto), std::move(function_library));
   }
 
-  // TODO(basioli): legacy API so that tensorflow CI passes, remove in followup
-  // CL.
-  static absl::StatusOr<std::unique_ptr<CpuAotCompilationResult>> FromString(
-      const std::string& serialized, FunctionLibrary* function_library) {
-    CompilationResultProto proto;
-    if (!proto.ParseFromString(serialized)) {
-      return Internal("Failed to parse serialized CpuAotCompilationResult.");
-    }
-
-    return FromProto(std::move(proto), absl::WrapUnique(function_library));
-  }
-
  private:
   CpuAotCompilationResult(
       const HloModule* hlo_module, const BufferAssignment* buffer_assignment,
