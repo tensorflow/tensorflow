@@ -169,6 +169,7 @@ build --repo_env USE_HERMETIC_CC_TOOLCHAIN=1
 # TODO: Migrate for https://github.com/bazelbuild/bazel/issues/7260
 build:clang_local --noincompatible_enable_cc_toolchain_resolution
 build:clang_local --noincompatible_enable_android_toolchain_resolution
+build:clang_local --@rules_ml_toolchain//common:enable_hermetic_cc=False
 build:clang_local --repo_env USE_HERMETIC_CC_TOOLCHAIN=0
 
 # Print a stacktrace when a test is killed
@@ -665,6 +666,9 @@ build:rbe_linux_cuda --config=cuda_clang_official
 build:rbe_linux_cuda --config=rbe_linux_cpu
 # For Remote build execution -- GPU configuration
 build:rbe_linux_cuda --repo_env=REMOTE_GPU_TESTING=1
+# Enable forward compatibility for CUDA builds because RBE docker image doesn't
+# have latest CUDA drivers installed.
+build:rbe_linux_cuda --@cuda_driver//:enable_forward_compatibility=true
 
 build:rbe_linux_cuda_nvcc --config=rbe_linux_cuda
 build:rbe_linux_cuda_nvcc --config=cuda_nvcc

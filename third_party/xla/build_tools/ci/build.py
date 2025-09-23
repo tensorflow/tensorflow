@@ -117,6 +117,9 @@ class BuildType(enum.Enum):
   XLA_LINUX_X86_GPU_L4_16_VCPU_PRESUBMIT_GITHUB_ACTIONS = enum.auto()
   XLA_LINUX_X86_GPU_L4_48_VCPU_PRESUBMIT_GITHUB_ACTIONS = enum.auto()
   XLA_LINUX_X86_GPU_A4_224_VCPU_PRESUBMIT_GITHUB_ACTIONS = enum.auto()
+  XLA_LINUX_X86_GPU_L4_16_VCPU_BENCHMARK_PRESUBMIT_GITHUB_ACTIONS = enum.auto()
+  XLA_LINUX_X86_GPU_L4_48_VCPU_BENCHMARK_PRESUBMIT_GITHUB_ACTIONS = enum.auto()
+  XLA_LINUX_X86_GPU_A4_224_VCPU_BENCHMARK_PRESUBMIT_GITHUB_ACTIONS = enum.auto()
 
   XLA_MACOS_X86_CPU_KOKORO = enum.auto()
   XLA_MACOS_ARM64_CPU_KOKORO = enum.auto()
@@ -430,6 +433,39 @@ Build(
 )
 
 Build(
+    type_=BuildType.XLA_LINUX_X86_GPU_L4_16_VCPU_BENCHMARK_PRESUBMIT_GITHUB_ACTIONS,
+    repo="openxla/xla",
+    target_patterns=_XLA_GPU_PRESUBMIT_BENCHMARKS_DEFAULT_TARGET_PATTERNS,
+    configs=("warnings", "rbe_linux_cuda_nvcc"),
+    test_tag_filters=(
+        "-no_oss",
+        "requires-gpu-nvidia",
+        "gpu",
+        "-rocm-only",
+        "-oneapi-only",
+    )
+    + _tag_filters_for_compute_capability(compute_capability=75),
+    build_tag_filters=(
+        "-no_oss",
+        "requires-gpu-nvidia",
+        "gpu",
+        "-rocm-only",
+        "-oneapi-only",
+    ),
+    options={
+        "run_under": "//build_tools/ci:parallel_gpu_execute",
+        "//xla/tsl:ci_build": True,
+        "@local_config_cuda//cuda:include_cuda_libs": False,
+        **_DEFAULT_BAZEL_OPTIONS,
+    },
+    repo_env={
+        "TF_CUDA_COMPUTE_CAPABILITIES": "7.5",
+    },
+    extra_setup_commands=(["nvidia-smi"],),
+    subcommand="build",
+)
+
+Build(
     type_=BuildType.XLA_LINUX_X86_GPU_L4_48_VCPU_PRESUBMIT_GITHUB_ACTIONS,
     repo="openxla/xla",
     configs=("warnings", "rbe_linux_cuda_nvcc"),
@@ -452,6 +488,39 @@ Build(
     options={
         "run_under": "//build_tools/ci:parallel_gpu_execute",
         "//xla/tsl:ci_build": True,
+        **_DEFAULT_BAZEL_OPTIONS,
+    },
+    repo_env={
+        "TF_CUDA_COMPUTE_CAPABILITIES": "7.5",
+    },
+    extra_setup_commands=(["nvidia-smi"],),
+    subcommand="build",
+)
+
+Build(
+    type_=BuildType.XLA_LINUX_X86_GPU_L4_48_VCPU_BENCHMARK_PRESUBMIT_GITHUB_ACTIONS,
+    repo="openxla/xla",
+    configs=("warnings", "rbe_linux_cuda_nvcc"),
+    target_patterns=_XLA_GPU_PRESUBMIT_BENCHMARKS_DEFAULT_TARGET_PATTERNS,
+    test_tag_filters=(
+        "-no_oss",
+        "requires-gpu-nvidia",
+        "gpu",
+        "-rocm-only",
+        "-oneapi-only",
+    )
+    + _tag_filters_for_compute_capability(compute_capability=75),
+    build_tag_filters=(
+        "-no_oss",
+        "requires-gpu-nvidia",
+        "gpu",
+        "-rocm-only",
+        "-oneapi-only",
+    ),
+    options={
+        "run_under": "//build_tools/ci:parallel_gpu_execute",
+        "//xla/tsl:ci_build": True,
+        "@local_config_cuda//cuda:include_cuda_libs": False,
         **_DEFAULT_BAZEL_OPTIONS,
     },
     repo_env={
@@ -485,6 +554,42 @@ Build(
         "run_under": "//build_tools/ci:parallel_gpu_execute",
         # Use User Mode and Kernel Mode Drivers pre-installed on the system.
         "//xla/tsl:ci_build": True,
+        **_DEFAULT_BAZEL_OPTIONS,
+    },
+    repo_env={
+        "TF_CUDA_COMPUTE_CAPABILITIES": "10",
+        "HERMETIC_CUDA_VERSION": "12.8.0",
+        "HERMETIC_CUDNN_VERSION": "9.8.0",
+    },
+    extra_setup_commands=(["nvidia-smi"],),
+    subcommand="build",
+)
+
+Build(
+    type_=BuildType.XLA_LINUX_X86_GPU_A4_224_VCPU_BENCHMARK_PRESUBMIT_GITHUB_ACTIONS,
+    repo="openxla/xla",
+    configs=(),
+    target_patterns=_XLA_GPU_PRESUBMIT_BENCHMARKS_DEFAULT_TARGET_PATTERNS,
+    test_tag_filters=(
+        "-no_oss",
+        "requires-gpu-nvidia",
+        "gpu",
+        "-rocm-only",
+        "-oneapi-only",
+    )
+    + _tag_filters_for_compute_capability(compute_capability=100),
+    build_tag_filters=(
+        "-no_oss",
+        "requires-gpu-nvidia",
+        "gpu",
+        "-rocm-only",
+        "-oneapi-only",
+    ),
+    options={
+        "run_under": "//build_tools/ci:parallel_gpu_execute",
+        # Use User Mode and Kernel Mode Drivers pre-installed on the system.
+        "//xla/tsl:ci_build": True,
+        "@local_config_cuda//cuda:include_cuda_libs": False,
         **_DEFAULT_BAZEL_OPTIONS,
     },
     repo_env={

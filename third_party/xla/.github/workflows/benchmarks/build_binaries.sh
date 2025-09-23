@@ -85,13 +85,13 @@ case "$HARDWARE_CATEGORY" in
     device_type_flag_value="host"
     ;;
   GPU_L4)
-    BUILD_TYPE="XLA_LINUX_X86_GPU_L4_16_VCPU_PRESUBMIT_GITHUB_ACTIONS" # Or _48_VCPU if that's the more common
+    BUILD_TYPE="XLA_LINUX_X86_GPU_L4_16_VCPU_BENCHMARK_PRESUBMIT_GITHUB_ACTIONS" # Or _48_VCPU if that's the more common
     runner_binary_path="./$BAZEL_BIN_DIR/xla/tools/multihost_hlo_runner/hlo_runner_main_gpu"
     stats_binary_path="./$BAZEL_BIN_DIR/xla/tools/compute_xspace_stats_main_gpu"
     device_type_flag_value="gpu"
     ;;
   GPU_B200)
-    BUILD_TYPE="XLA_LINUX_X86_GPU_A4_224_VCPU_PRESUBMIT_GITHUB_ACTIONS"
+    BUILD_TYPE="XLA_LINUX_X86_GPU_A4_224_VCPU_BENCHMARK_PRESUBMIT_GITHUB_ACTIONS"
     runner_binary_path="./$BAZEL_BIN_DIR/xla/tools/multihost_hlo_runner/hlo_runner_main_gpu"
     stats_binary_path="./$BAZEL_BIN_DIR/xla/tools/compute_xspace_stats_main_gpu"
     device_type_flag_value="gpu"
