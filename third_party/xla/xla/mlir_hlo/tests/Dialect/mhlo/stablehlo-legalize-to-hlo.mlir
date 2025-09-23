@@ -458,6 +458,30 @@ func.func @add_dependency(%arg0: tensor<3x4xf32>) -> tensor<3x4xf32> {
 
 // -----
 
+// CHECK-LABEL: "recv"
+func.func @recv(%token: !stablehlo.token) -> (tensor<3x4xi32>, !stablehlo.token) attributes {execution_thread = "main"} {
+  // CHECK: mhlo.recv{{.*}}!mhlo.token
+  %0:2 = "stablehlo.recv"(%token) {
+    channel_handle = #stablehlo.channel_handle<
+      handle = 5,
+      type = 3  // Host to device channel
+    >,
+    is_host_transfer = true
+  } : (!stablehlo.token) -> (tensor<3x4xi32>, !stablehlo.token)
+  func.return %0#0, %0#1 : tensor<3x4xi32>, !stablehlo.token
+}
+
+// CHECK-LABEL: "async_ops_with_token"
+func.func @async_ops_with_token(%token: !stablehlo.token) -> (tensor<3x4xi32>, !stablehlo.token) {
+  // CHECK: mhlo.async_start{{.*}} !mhlo.async_bundle<!mhlo.token, tuple<tensor<3x4xi32>, !mhlo.token>, tensor<i32>>
+  %0 = "mhlo.async_start"(%token) {called_computation = @recv, execution_thread = "main"} : (!stablehlo.token) -> !mhlo.async_bundle<!stablehlo.token, tuple<tensor<3x4xi32>, !stablehlo.token>, tensor<i32>>
+  // CHECK: mhlo.async_done{{.*}} -> (tensor<3x4xi32>, !mhlo.token)
+  %1, %2 = "mhlo.async_done"(%0) : (!mhlo.async_bundle<!stablehlo.token, tuple<tensor<3x4xi32>, !stablehlo.token>, tensor<i32>>) -> (tensor<3x4xi32>, !stablehlo.token)
+  return %1, %2 : tensor<3x4xi32>, !stablehlo.token
+}
+
+// -----
+
 // CHECK-LABEL: "op_after_all"
 func.func @op_after_all(%arg0: !stablehlo.token) -> !stablehlo.token {
   // CHECK: "mhlo.after_all"([[ARG0:%arg[0-9]+]]) : (!mhlo.token) -> !mhlo.token

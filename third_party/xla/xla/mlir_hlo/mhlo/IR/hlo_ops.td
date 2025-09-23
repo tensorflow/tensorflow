@@ -1400,7 +1400,7 @@ def MHLO_AsyncStartOp : MHLO_Op<"async_start", []> {
   }];
 
   let arguments = (ins
-    Variadic<MHLO_TensorOrTokenOrTuple>:$inputs,
+    Variadic<MHLO_TensorOrAnyTokenOrTuple>:$inputs,
     FlatSymbolRefAttr:$called_computation,
     StrAttr:$execution_thread
   );
@@ -1444,7 +1444,7 @@ def MHLO_AsyncDoneOp : MHLO_Op<"async_done", [DeclareOpInterfaceMethods<InferTyp
 
   let arguments = (ins MHLO_AsyncBundle:$bundle);
 
-  let results = (outs Variadic<MHLO_TensorOrTokenOrTuple>);
+  let results = (outs Variadic<MHLO_TensorOrAnyTokenOrTuple>);
   let hasVerifier = 1;
   let hasCustomHLOConverter = 1;
 }
