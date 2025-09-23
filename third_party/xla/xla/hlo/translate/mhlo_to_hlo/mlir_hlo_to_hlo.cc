@@ -6264,6 +6264,8 @@ absl::Status PrepareForExport(mlir::ModuleOp module) {
   pm.enableVerifier(enableVerifier);
 
   pm.addNestedPass<mlir::func::FuncOp>(mhlo::createPrepareForExportPass());
+  pm.addNestedPass<mlir::func::FuncOp>(
+      stablehlo_ext::createStablehloPrepareForHloExportPass());
   if (hasShapeOps) {
     // Experimental support for exporting dynamic MHLO programs to HLO.
     // Only bounded dynamism is planned to be supported; unbounded dynamism
