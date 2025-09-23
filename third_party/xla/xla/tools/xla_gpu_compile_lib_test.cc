@@ -72,9 +72,8 @@ TEST_F(XlaCompileLibTest, CompilesForGpuWithDevice) {
 }
 
 TEST_F(XlaCompileLibTest, CompilesForGpuWithoutDevice) {
-  const std::string target_config_path =
-      tsl::io::JoinPath(tsl::testing::XlaSrcRoot(), "service",
-                        "xla_aot_compile_test_gpu_target_config.txtpb");
+  const std::string target_config_path = tsl::io::JoinPath(
+      tsl::testing::XlaSrcRoot(), "tools/hlo_opt/gpu_specs", "h100_sxm.txtpb");
   stream_executor::GpuTargetConfigProto target_config;
   TF_ASSERT_OK(tsl::ReadTextProto(tsl::Env::Default(), target_config_path,
                                   &target_config));

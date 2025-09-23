@@ -5818,34 +5818,34 @@ xla_aot_compile_cpu(
 xla_aot_compile_gpu(
     name = "xla_aot_compile_test_gpu_executable",
     autotune_results = "xla_aot_compile_test_autotune_results.txtpb",
-    gpu_target_config = "xla_aot_compile_test_gpu_target_config.txtpb",
+    gpu_target_config = "//xla/tools/hlo_opt:gpu_specs/h100_sxm.txtpb",
     module = "xla_aot_compile_test.mlir",
 )
 
 xla_aot_compile_gpu(
     name = "xla_aot_compile_test_gpu_executable_hlo",
     autotune_results = "xla_aot_compile_test_autotune_results.txtpb",
-    gpu_target_config = "xla_aot_compile_test_gpu_target_config.txtpb",
+    gpu_target_config = "//xla/tools/hlo_opt:gpu_specs/h100_sxm.txtpb",
     module = "xla_aot_compile_test.hlo",
 )
 
 xla_aot_compile_gpu(
     name = "xla_aot_compile_test_gpu_executable_constant",
     autotune_results = "xla_aot_compile_test_autotune_results.txtpb",
-    gpu_target_config = "xla_aot_compile_test_gpu_target_config.txtpb",
+    gpu_target_config = "//xla/tools/hlo_opt:gpu_specs/h100_sxm.txtpb",
     module = "xla_aot_compile_test_constant.mlir",
 )
 
 xla_aot_compile_gpu(
     name = "xla_aot_compile_test_gpu_executable_convolution",
     autotune_results = "xla_aot_compile_test_autotune_results.txtpb",
-    gpu_target_config = "xla_aot_compile_test_gpu_target_config.txtpb",
+    gpu_target_config = "//xla/tools/hlo_opt:gpu_specs/h100_sxm.txtpb",
     module = "xla_aot_compile_test_convolution.mlir",
 )
 
 xla_aot_compile_gpu_runtime_autotuning(
     name = "xla_aot_compile_test_gpu_executable_convolution_runtime_autotuning",
-    gpu_target_config = "xla_aot_compile_test_gpu_target_config.txtpb",
+    gpu_target_config = "//xla/tools/hlo_opt:gpu_specs/h100_sxm.txtpb",
     module = "xla_aot_compile_test_convolution.mlir",
 )
 
@@ -5919,8 +5919,7 @@ xla_cc_test(
         "cuda-only",
         "gpu",
         "no_oss",
-        "nomsan",  # Pulls in precompiled NVIDIA libraries which cause false positives in msan.
-        "requires-gpu-sm60-only",
+        "requires-gpu-sm90-only",
     ],
     deps = [
         ":gpu_plugin_impl",
