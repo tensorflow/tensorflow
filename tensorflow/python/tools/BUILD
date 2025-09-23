@@ -40,15 +40,14 @@ py_strict_library(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "saved_model_cli_empty_feature_test",
     size = "small",
     srcs = ["saved_model_cli_empty_feature_test.py"],
     python_version = "PY3",
-    extra_pywrap_deps = [],
     data = [
         "saved_model_cli.py",
-        "saved_model_cli_test_stubs.py",
+        "saved_model_utils.py",
     ],
 )
 
