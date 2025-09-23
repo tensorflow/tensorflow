@@ -14,7 +14,6 @@ cc_library(
         "//xla/tsl/profiler:internal",
         "//xla/tsl/profiler:xla_profiler_backends",
         "//tensorflow/lite:__pkg__",
-        "//waymo/onboard/gpu:__subpackages__",  # copybara:strip
     ]),
     deps = [
         "//xla/tsl/platform:macros",
