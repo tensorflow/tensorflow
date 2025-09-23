@@ -988,11 +988,8 @@ std::optional<HloSharding> ReshapeSharding(const Shape& source_shape,
         dims_to_replicate.push_back(source_dims_index);
       }
     } else if (s_partitions == 1) {
-      if (!source_dims_stack.empty() && sharding_tile_dims_stack.back() == 1) {
-        source_dims_stack.back() *= s_size;
-      } else {
-        break;
-      }
+      CHECK(!source_dims_stack.empty() && sharding_tile_dims_stack.back() != 1);
+      break;
     } else if (s_size % s_partitions != 0) {
       // TODO(zixuanjiang): Although we can propagate thd gcd(s_size,
       // s_partitions), we return std::nullopt since the current partitioner
