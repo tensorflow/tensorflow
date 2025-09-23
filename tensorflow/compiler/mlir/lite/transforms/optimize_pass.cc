@@ -1352,7 +1352,7 @@ struct FuseFullyConnectedAndAdd : public OpRewritePattern<TFL::AddOp> {
     }
 
     // Get the number of output channels.
-    if (fc_output_type.getShape().size() == 0) {
+    if (fc_output_type.getShape().empty()) {
       return failure();
     }
     const int64_t num_channels = fc_output_type.getShape().back();
