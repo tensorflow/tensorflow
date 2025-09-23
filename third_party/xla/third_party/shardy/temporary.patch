@@ -1,0 +1,720 @@
+diff --git a/third_party/llvm/generated.patch b/third_party/llvm/generated.patch
+index a7198bd..97b592d 100644
+--- a/third_party/llvm/generated.patch
++++ b/third_party/llvm/generated.patch
+@@ -1,531 +1,180 @@
+ Auto generated patch. Do not edit or delete it, even if empty.
+-diff -ruN --strip-trailing-cr a/clang/lib/CodeGen/CGExpr.cpp b/clang/lib/CodeGen/CGExpr.cpp
+---- a/clang/lib/CodeGen/CGExpr.cpp
+-+++ b/clang/lib/CodeGen/CGExpr.cpp
+-@@ -6496,11 +6496,8 @@
+-     SanitizerDebugLocation SanScope(this, {CheckOrdinal}, CheckHandler);
+-     EmitSanitizerStatReport(llvm::SanStat_CFI_ICall);
+- 
+--    llvm::Metadata *MD;
+--    if (CGM.getCodeGenOpts().SanitizeCfiICallGeneralizePointers)
+--      MD = CGM.CreateMetadataIdentifierGeneralized(QualType(FnType, 0));
+--    else
+--      MD = CGM.CreateMetadataIdentifierForType(QualType(FnType, 0));
+-+    llvm::Metadata *MD =
+-+        CGM.CreateMetadataIdentifierForFnType(QualType(FnType, 0));
+- 
+-     llvm::Value *TypeId = llvm::MetadataAsValue::get(getLLVMContext(), MD);
+- 
+-diff -ruN --strip-trailing-cr a/clang/lib/CodeGen/CodeGenModule.cpp b/clang/lib/CodeGen/CodeGenModule.cpp
+---- a/clang/lib/CodeGen/CodeGenModule.cpp
+-+++ b/clang/lib/CodeGen/CodeGenModule.cpp
+-@@ -2339,12 +2339,28 @@
+-   return llvm::ConstantInt::get(Int64Ty, llvm::MD5Hash(MDS->getString()));
+- }
+- 
+--// Generalize pointer types to a void pointer with the qualifiers of the
+--// originally pointed-to type, e.g. 'const char *' and 'char * const *'
+--// generalize to 'const void *' while 'char *' and 'const char **' generalize to
+--// 'void *'.
+--static QualType GeneralizeType(ASTContext &Ctx, QualType Ty) {
+--  if (!Ty->isPointerType())
+-+static QualType GeneralizeTransparentUnion(QualType Ty) {
+-+  const RecordType *UT = Ty->getAsUnionType();
+-+  if (!UT)
+-+    return Ty;
+-+  const RecordDecl *UD = UT->getOriginalDecl()->getDefinitionOrSelf();
+-+  if (!UD->hasAttr<TransparentUnionAttr>())
+-+    return Ty;
+-+  for (const auto *it : UD->fields()) {
+-+    return it->getType();
+-+  }
+-+  return Ty;
+-+}
+-+
+-+// If `GeneralizePointers` is true, generalizes types to a void pointer with the
+-+// qualifiers of the originally pointed-to type, e.g. 'const char *' and 'char *
+-+// const *' generalize to 'const void *' while 'char *' and 'const char **'
+-+// generalize to 'void *'.
+-+static QualType GeneralizeType(ASTContext &Ctx, QualType Ty,
+-+                               bool GeneralizePointers) {
+-+  Ty = GeneralizeTransparentUnion(Ty);
+-+
+-+  if (!GeneralizePointers || !Ty->isPointerType())
+-     return Ty;
+- 
+-   return Ctx.getPointerType(
+-@@ -2353,26 +2369,29 @@
+- }
+- 
+- // Apply type generalization to a FunctionType's return and argument types
+--static QualType GeneralizeFunctionType(ASTContext &Ctx, QualType Ty) {
+-+static QualType GeneralizeFunctionType(ASTContext &Ctx, QualType Ty,
+-+                                       bool GeneralizePointers) {
+-   if (auto *FnType = Ty->getAs<FunctionProtoType>()) {
+-     SmallVector<QualType, 8> GeneralizedParams;
+-     for (auto &Param : FnType->param_types())
+--      GeneralizedParams.push_back(GeneralizeType(Ctx, Param));
+-+      GeneralizedParams.push_back(
+-+          GeneralizeType(Ctx, Param, GeneralizePointers));
+- 
+--    return Ctx.getFunctionType(GeneralizeType(Ctx, FnType->getReturnType()),
+--                               GeneralizedParams, FnType->getExtProtoInfo());
+-+    return Ctx.getFunctionType(
+-+        GeneralizeType(Ctx, FnType->getReturnType(), GeneralizePointers),
+-+        GeneralizedParams, FnType->getExtProtoInfo());
+-   }
+- 
+-   if (auto *FnType = Ty->getAs<FunctionNoProtoType>())
+-     return Ctx.getFunctionNoProtoType(
+--        GeneralizeType(Ctx, FnType->getReturnType()));
+-+        GeneralizeType(Ctx, FnType->getReturnType(), GeneralizePointers));
+- 
+-   llvm_unreachable("Encountered unknown FunctionType");
+- }
+- 
+- llvm::ConstantInt *CodeGenModule::CreateKCFITypeId(QualType T, StringRef Salt) {
+--  if (getCodeGenOpts().SanitizeCfiICallGeneralizePointers)
+--    T = GeneralizeFunctionType(getContext(), T);
+-+  T = GeneralizeFunctionType(
+-+      getContext(), T, getCodeGenOpts().SanitizeCfiICallGeneralizePointers);
+-   if (auto *FnType = T->getAs<FunctionProtoType>())
+-     T = getContext().getFunctionType(
+-         FnType->getReturnType(), FnType->getParamTypes(),
+-@@ -3041,9 +3060,14 @@
+-   if (isa<CXXMethodDecl>(FD) && !cast<CXXMethodDecl>(FD)->isStatic())
+-     return;
+- 
+--  llvm::Metadata *MD = CreateMetadataIdentifierForType(FD->getType());
+-+  QualType FnType = GeneralizeFunctionType(getContext(), FD->getType(),
+-+                                           /*GeneralizePointers=*/false);
+-+  llvm::Metadata *MD = CreateMetadataIdentifierForType(FnType);
+-   F->addTypeMetadata(0, MD);
+--  F->addTypeMetadata(0, CreateMetadataIdentifierGeneralized(FD->getType()));
+-+
+-+  QualType GenPtrFnType = GeneralizeFunctionType(getContext(), FD->getType(),
+-+                                                 /*GeneralizePointers=*/true);
+-+  F->addTypeMetadata(0, CreateMetadataIdentifierGeneralized(GenPtrFnType));
+- 
+-   // Emit a hash-based bit set entry for cross-DSO calls.
+-   if (CodeGenOpts.SanitizeCfiCrossDso)
+-@@ -7934,6 +7958,15 @@
+-   return InternalId;
++diff -ruN --strip-trailing-cr a/clang/lib/Sema/SemaCXXScopeSpec.cpp b/clang/lib/Sema/SemaCXXScopeSpec.cpp
++--- a/clang/lib/Sema/SemaCXXScopeSpec.cpp
+++++ b/clang/lib/Sema/SemaCXXScopeSpec.cpp
++@@ -220,10 +220,11 @@
++ ///
++ bool Sema::RequireCompleteEnumDecl(EnumDecl *EnumD, SourceLocation L,
++                                    CXXScopeSpec *SS) {
++-  if (EnumD->isCompleteDefinition()) {
+++  if (EnumDecl *Def = EnumD->getDefinition();
+++      Def && Def->isCompleteDefinition()) {
++     // If we know about the definition but it is not visible, complain.
++     NamedDecl *SuggestedDef = nullptr;
++-    if (!hasReachableDefinition(EnumD, &SuggestedDef,
+++    if (!hasReachableDefinition(Def, &SuggestedDef,
++                                 /*OnlyNeedComplete*/ false)) {
++       // If the user is going to see an error here, recover by making the
++       // definition visible.
++diff -ruN --strip-trailing-cr a/clang/test/SemaCXX/cxx20-using-enum.cpp b/clang/test/SemaCXX/cxx20-using-enum.cpp
++--- a/clang/test/SemaCXX/cxx20-using-enum.cpp
+++++ b/clang/test/SemaCXX/cxx20-using-enum.cpp
++@@ -288,4 +288,14 @@
++   };
++ };
+  }
+- 
+-+llvm::Metadata *CodeGenModule::CreateMetadataIdentifierForFnType(QualType T) {
+-+  assert(isa<FunctionType>(T));
+-+  T = GeneralizeFunctionType(
+-+      getContext(), T, getCodeGenOpts().SanitizeCfiICallGeneralizePointers);
+-+  if (getCodeGenOpts().SanitizeCfiICallGeneralizePointers)
+-+    return CreateMetadataIdentifierGeneralized(T);
+-+  return CreateMetadataIdentifierForType(T);
+-+}
+-+
+- llvm::Metadata *CodeGenModule::CreateMetadataIdentifierForType(QualType T) {
+-   return CreateMetadataIdentifierImpl(T, MetadataIdMap, "");
+- }
+-@@ -7944,8 +7977,8 @@
+- }
+- 
+- llvm::Metadata *CodeGenModule::CreateMetadataIdentifierGeneralized(QualType T) {
+--  return CreateMetadataIdentifierImpl(GeneralizeFunctionType(getContext(), T),
+--                                      GeneralizedMetadataIdMap, ".generalized");
+-+  return CreateMetadataIdentifierImpl(T, GeneralizedMetadataIdMap,
+-+                                      ".generalized");
+- }
+- 
+- /// Returns whether this module needs the "all-vtables" type identifier.
+-diff -ruN --strip-trailing-cr a/clang/lib/CodeGen/CodeGenModule.h b/clang/lib/CodeGen/CodeGenModule.h
+---- a/clang/lib/CodeGen/CodeGenModule.h
+-+++ b/clang/lib/CodeGen/CodeGenModule.h
+-@@ -1623,6 +1623,9 @@
+-   /// Generate a KCFI type identifier for T.
+-   llvm::ConstantInt *CreateKCFITypeId(QualType T, StringRef Salt);
+- 
+-+  /// Create a metadata identifier for the given function type.
+-+  llvm::Metadata *CreateMetadataIdentifierForFnType(QualType T);
+-+
+-   /// Create a metadata identifier for the given type. This may either be an
+-   /// MDString (for external identifiers) or a distinct unnamed MDNode (for
+-   /// internal identifiers).
+-diff -ruN --strip-trailing-cr a/clang/test/CodeGen/cfi-icall-generalize.c b/clang/test/CodeGen/cfi-icall-generalize.c
+---- a/clang/test/CodeGen/cfi-icall-generalize.c
+-+++ b/clang/test/CodeGen/cfi-icall-generalize.c
+-@@ -15,5 +15,21 @@
+-   fp(0, 0);
+- }
+- 
+-+union Union {
+-+  char *c;
+-+  long *n;
+-+} __attribute__((transparent_union));
+-+
+-+// CHECK: define{{.*}} void @uni({{.*}} !type [[TYPE2:![0-9]+]] !type [[TYPE2_GENERALIZED:![0-9]+]]
+-+void uni(void (*fn)(union Union), union Union arg1) {
+-+  // UNGENERALIZED: call i1 @llvm.type.test(ptr {{.*}}, metadata !"_ZTSFvPcE")
+-+  // GENERALIZED: call i1 @llvm.type.test(ptr {{.*}}, metadata !"_ZTSFvPvE.generalized")
+-+    fn(arg1);
+-+}
+-+
+- // CHECK: [[TYPE]] = !{i64 0, !"_ZTSFPPiPKcPS2_E"}
+- // CHECK: [[TYPE_GENERALIZED]] = !{i64 0, !"_ZTSFPvPKvS_E.generalized"}
+ +
+-+// CHECK: [[TYPE2]] = !{i64 0, !"_ZTSFvPFv5UnionEPcE"}
+-+// CHECK: [[TYPE2_GENERALIZED]] = !{i64 0, !"_ZTSFvPvS_E.generalized"}
+-+
+-diff -ruN --strip-trailing-cr a/clang/test/CodeGen/cfi-icall-normalize2.c b/clang/test/CodeGen/cfi-icall-normalize2.c
+---- a/clang/test/CodeGen/cfi-icall-normalize2.c
+-+++ b/clang/test/CodeGen/cfi-icall-normalize2.c
+-@@ -24,6 +24,20 @@
+-     fn(arg1, arg2, arg3);
+- }
+- 
+-+union Union {
+-+  char *c;
+-+  long *n;
+-+} __attribute__((transparent_union));
+-+
+-+void uni(void (*fn)(union Union), union Union arg1) {
+-+    // CHECK-LABEL: define{{.*}}uni
+-+    // CHECK-SAME: {{.*}}!type ![[TYPE4:[0-9]+]] !type !{{[0-9]+}}
+-+    // CHECK: call i1 @llvm.type.test({{i8\*|ptr}} {{%f|%0}}, metadata !"_ZTSFvPu2i8E.normalized")
+-+    fn(arg1);
+-+}
+-+
+- // CHECK: ![[TYPE1]] = !{i64 0, !"_ZTSFvPFvu3i32ES_E.normalized"}
+- // CHECK: ![[TYPE2]] = !{i64 0, !"_ZTSFvPFvu3i32S_ES_S_E.normalized"}
+- // CHECK: ![[TYPE3]] = !{i64 0, !"_ZTSFvPFvu3i32S_S_ES_S_S_E.normalized"}
+-+// CHECK: ![[TYPE4]] = !{i64 0, !"_ZTSFvPFv5UnionEPu2i8E.normalized"}
+-+
+-diff -ruN --strip-trailing-cr a/clang/test/CodeGen/kcfi-generalize.c b/clang/test/CodeGen/kcfi-generalize.c
+---- a/clang/test/CodeGen/kcfi-generalize.c
+-+++ b/clang/test/CodeGen/kcfi-generalize.c
+-@@ -26,8 +26,23 @@
+-   fp(0, 0);
+- }
+- 
+-+union Union {
+-+  char *c;
+-+  long *n;
+-+} __attribute__((transparent_union));
+-+
+-+// CHECK: define{{.*}} void @uni({{.*}} !kcfi_type [[TYPE4:![0-9]+]]
+-+void uni(void (*fn)(union Union), union Union arg1) {
+-+  // UNGENERALIZED: call {{.*}} [ "kcfi"(i32 -587217045) ]
+-+  // GENERALIZED: call {{.*}} [ "kcfi"(i32 2139530422) ]
+-+    fn(arg1);
+-+}
+-+
+- // UNGENERALIZED: [[TYPE]] = !{i32 1296635908}
+- // GENERALIZED: [[TYPE]] = !{i32 -49168686}
+- 
+- // UNGENERALIZED: [[TYPE3]] = !{i32 874141567}
+- // GENERALIZED: [[TYPE3]] = !{i32 954385378}
+-+
+-+// UNGENERALIZED: [[TYPE4]] = !{i32 -1619636625}
+-+// GENERALIZED: [[TYPE4]] = !{i32 -125078496}
+-diff -ruN --strip-trailing-cr a/clang/test/CodeGen/kcfi-normalize.c b/clang/test/CodeGen/kcfi-normalize.c
+---- a/clang/test/CodeGen/kcfi-normalize.c
+-+++ b/clang/test/CodeGen/kcfi-normalize.c
+-@@ -1,5 +1,5 @@
+--// RUN: %clang_cc1 -triple x86_64-unknown-linux-gnu -emit-llvm -fsanitize=kcfi -fsanitize-cfi-icall-experimental-normalize-integers -o - %s | FileCheck %s
+--// RUN: %clang_cc1 -triple x86_64-unknown-linux-gnu -emit-llvm -fsanitize=kcfi -fsanitize-cfi-icall-experimental-normalize-integers -x c++ -o - %s | FileCheck %s
+-+// RUN: %clang_cc1 -triple x86_64-unknown-linux-gnu -emit-llvm -fsanitize=kcfi -fsanitize-cfi-icall-experimental-normalize-integers -o - %s | FileCheck %s --check-prefixes=CHECK,C
+-+// RUN: %clang_cc1 -triple x86_64-unknown-linux-gnu -emit-llvm -fsanitize=kcfi -fsanitize-cfi-icall-experimental-normalize-integers -x c++ -o - %s | FileCheck %s --check-prefixes=CHECK,CPP
+- #if !__has_feature(kcfi)
+- #error Missing kcfi?
+++namespace Redecl {
+++  enum class A : int { X };
+++  enum class A : int;
+++  template <class> struct B {
+++    using enum A;
+++    using Z = decltype(X);
+++  };
+++  template struct B<int>;
+++} // namespace Redecl
+  #endif
+-@@ -28,7 +28,22 @@
+-     fn(arg1, arg2, arg3);
++diff -ruN --strip-trailing-cr a/compiler-rt/lib/fuzzer/FuzzerTracePC.cpp b/compiler-rt/lib/fuzzer/FuzzerTracePC.cpp
++--- a/compiler-rt/lib/fuzzer/FuzzerTracePC.cpp
+++++ b/compiler-rt/lib/fuzzer/FuzzerTracePC.cpp
++@@ -69,6 +69,9 @@
+  }
+  
+-+union Union {
+-+  char *c;
+-+  long *n;
+-+} __attribute__((transparent_union));
+-+
+-+void uni(void (*fn)(union Union), union Union arg1) {
+-+    // CHECK-LABEL: define{{.*}}uni
+-+    // CHECK-SAME: {{.*}}!kcfi_type ![[TYPE4:[0-9]+]]
+-+    // C: call void %0(ptr %1) [ "kcfi"(i32 1819770848) ]
+-+    // CPP: call void %0(ptr %1) [ "kcfi"(i32 -1430221633) ]
+-+    fn(arg1);
++ void TracePC::HandlePCsInit(const uintptr_t *Start, const uintptr_t *Stop) {
+++  if (Start == Stop) {
+++    return;
+++  }
++   const PCTableEntry *B = reinterpret_cast<const PCTableEntry *>(Start);
++   const PCTableEntry *E = reinterpret_cast<const PCTableEntry *>(Stop);
++   if (NumPCTables && ModulePCTable[NumPCTables - 1].Start == B) return;
++diff -ruN --strip-trailing-cr a/compiler-rt/test/fuzzer/empty-module.test b/compiler-rt/test/fuzzer/empty-module.test
++--- a/compiler-rt/test/fuzzer/empty-module.test
+++++ b/compiler-rt/test/fuzzer/empty-module.test
++@@ -0,0 +1,7 @@
+++CHECK: BINGO
+++RUN: %cpp_compiler %S/SimulateEmptyModuleTest.cpp -o %t-SimulateEmptyModuleTest
+++
+++RUN: not %run %t-SimulateEmptyModuleTest         2>&1 | FileCheck %s
+++
+++# only_ascii mode. Will perform some minimal self-validation.
+++RUN: not %run %t-SimulateEmptyModuleTest -only_ascii=1 2>&1
++diff -ruN --strip-trailing-cr a/compiler-rt/test/fuzzer/SimulateEmptyModuleTest.cpp b/compiler-rt/test/fuzzer/SimulateEmptyModuleTest.cpp
++--- a/compiler-rt/test/fuzzer/SimulateEmptyModuleTest.cpp
+++++ b/compiler-rt/test/fuzzer/SimulateEmptyModuleTest.cpp
++@@ -0,0 +1,60 @@
+++// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+++// See https://llvm.org/LICENSE.txt for license information.
+++// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+++
+++// Like SimpleTest, but simulates an "empty" module (i.e. one without any functions to instrument).
+++// This reproduces a previous bug (when libFuzzer is compiled with assertions enabled).
+++
+++#include <assert.h>
+++#include <cstddef>
+++#include <cstdint>
+++#include <cstdlib>
+++#include <iostream>
+++#include <ostream>
+++
+++extern "C" {
+++void __sanitizer_cov_8bit_counters_init(uint8_t *Start, uint8_t *Stop);
+++void __sanitizer_cov_pcs_init(const uintptr_t *pcs_beg,
+++                              const uintptr_t *pcs_end);
+ +}
+ +
+- // CHECK: ![[#]] = !{i32 4, !"cfi-normalize-integers", i32 1}
+- // CHECK: ![[TYPE1]] = !{i32 -1143117868}
+- // CHECK: ![[TYPE2]] = !{i32 -460921415}
+- // CHECK: ![[TYPE3]] = !{i32 -333839615}
+-+// C: ![[TYPE4]] = !{i32 -650530463}
+-+// CPP: ![[TYPE4]] = !{i32 1766237188}
+-diff -ruN --strip-trailing-cr a/lldb/source/Plugins/Process/elf-core/ProcessElfCore.cpp b/lldb/source/Plugins/Process/elf-core/ProcessElfCore.cpp
+---- a/lldb/source/Plugins/Process/elf-core/ProcessElfCore.cpp
+-+++ b/lldb/source/Plugins/Process/elf-core/ProcessElfCore.cpp
+-@@ -952,7 +952,7 @@
+-         return status.ToError();
+-       thread_data.name.assign (prpsinfo.pr_fname, strnlen (prpsinfo.pr_fname, sizeof (prpsinfo.pr_fname)));
+-       SetID(prpsinfo.pr_pid);
+--      m_executable_name = prpsinfo.pr_fname;
+-+      m_executable_name = thread_data.name;
+-       break;
+-     }
+-     case ELF::NT_SIGINFO: {
+-diff -ruN --strip-trailing-cr a/llvm/lib/Analysis/ScalarEvolution.cpp b/llvm/lib/Analysis/ScalarEvolution.cpp
+---- a/llvm/lib/Analysis/ScalarEvolution.cpp
+-+++ b/llvm/lib/Analysis/ScalarEvolution.cpp
+-@@ -3217,26 +3217,18 @@
+-       }
+- 
+-       // Try to fold (C1 * D /u C2) -> C1/C2 * D, if C1 and C2 are powers-of-2,
+--      // D is a multiple of C2, and C1 is a multiple of C2. If C2 is a multiple
+--      // of C1, fold to (D /u (C2 /u C1)).
+-+      // D is a multiple of C2, and C1 is a multiple of C2.
+-       const SCEV *D;
+-       APInt C1V = LHSC->getAPInt();
+--      // (C1 * D /u C2) == -1 * -C1 * D /u C2 when C1 != INT_MIN. Don't treat -1
+--      // as -1 * 1, as it won't enable additional folds.
+--      if (C1V.isNegative() && !C1V.isMinSignedValue() && !C1V.isAllOnes())
+-+      // (C1 * D /u C2) == -1 * -C1 * D /u C2 when C1 != INT_MIN.
+-+      if (C1V.isNegative() && !C1V.isMinSignedValue())
+-         C1V = C1V.abs();
+-       const SCEVConstant *C2;
+-       if (C1V.isPowerOf2() &&
+-           match(Ops[1], m_scev_UDiv(m_SCEV(D), m_SCEVConstant(C2))) &&
+--          C2->getAPInt().isPowerOf2() &&
+-+          C2->getAPInt().isPowerOf2() && C1V.uge(C2->getAPInt()) &&
+-           C1V.logBase2() <= getMinTrailingZeros(D)) {
+--        const SCEV *NewMul;
+--        if (C1V.uge(C2->getAPInt())) {
+--          NewMul = getMulExpr(getUDivExpr(getConstant(C1V), C2), D);
+--        } else {
+--          assert(C1V.ugt(1) && "C1 <= 1 should have been folded earlier");
+--          NewMul = getUDivExpr(D, getUDivExpr(C2, getConstant(C1V)));
+--        }
+-+        const SCEV *NewMul = getMulExpr(getUDivExpr(getConstant(C1V), C2), D);
+-         return C1V == LHSC->getAPInt() ? NewMul : getNegativeSCEV(NewMul);
+-       }
+-     }
+-diff -ruN --strip-trailing-cr a/llvm/test/Analysis/ScalarEvolution/mul-udiv-folds.ll b/llvm/test/Analysis/ScalarEvolution/mul-udiv-folds.ll
+---- a/llvm/test/Analysis/ScalarEvolution/mul-udiv-folds.ll
+-+++ b/llvm/test/Analysis/ScalarEvolution/mul-udiv-folds.ll
+-@@ -21,7 +21,7 @@
+- ; CHECK-NEXT:    %gep.8 = getelementptr i8, ptr %A, i64 %iv
+- ; CHECK-NEXT:    --> {(((zext i32 %start to i64) /u 4) + %A),+,1}<%loop> U: full-set S: full-set Exits: (((zext i32 %start to i64) /u 2) + %A) LoopDispositions: { %loop: Computable }
+- ; CHECK-NEXT:    %gep.16 = getelementptr i16, ptr %A, i64 %iv
+--; CHECK-NEXT:    --> {(((zext i32 %start to i64) /u 2) + %A),+,2}<%loop> U: full-set S: full-set Exits: ((zext i32 %start to i64) + %A) LoopDispositions: { %loop: Computable }
+-+; CHECK-NEXT:    --> {((2 * ((zext i32 %start to i64) /u 4))<nuw><nsw> + %A),+,2}<%loop> U: full-set S: full-set Exits: ((zext i32 %start to i64) + %A) LoopDispositions: { %loop: Computable }
+- ; CHECK-NEXT:    %gep.32 = getelementptr i32, ptr %A, i64 %iv
+- ; CHECK-NEXT:    --> {((zext i32 %start to i64) + %A),+,4}<%loop> U: full-set S: full-set Exits: ((2 * (zext i32 %start to i64))<nuw><nsw> + %A) LoopDispositions: { %loop: Computable }
+- ; CHECK-NEXT:    %gep.40 = getelementptr <{ i32, i8 }>, ptr %A, i64 %iv
+-diff -ruN --strip-trailing-cr a/llvm/test/Transforms/LoopStrengthReduce/duplicated-phis.ll b/llvm/test/Transforms/LoopStrengthReduce/duplicated-phis.ll
+---- a/llvm/test/Transforms/LoopStrengthReduce/duplicated-phis.ll
+-+++ b/llvm/test/Transforms/LoopStrengthReduce/duplicated-phis.ll
+-@@ -18,7 +18,8 @@
+- ; CHECK:       [[FOR_BODY_PREHEADER_NEW]]:
+- ; CHECK-NEXT:    [[UNROLL_ITER:%.*]] = and i64 [[MUL]], -4
+- ; CHECK-NEXT:    [[TMP4:%.*]] = add i64 [[UNROLL_ITER]], -4
+--; CHECK-NEXT:    [[TMP3:%.*]] = lshr i64 [[TMP4]], 1
+-+; CHECK-NEXT:    [[TMP5:%.*]] = lshr i64 [[TMP4]], 2
+-+; CHECK-NEXT:    [[TMP3:%.*]] = shl nuw nsw i64 [[TMP5]], 1
+- ; CHECK-NEXT:    [[LSR_IV_NEXT:%.*]] = sub i64 -3, [[TMP3]]
+- ; CHECK-NEXT:    br label %[[FOR_BODY:.*]]
+- ; CHECK:       [[FOR_BODY]]:
+-diff -ruN --strip-trailing-cr a/llvm/test/Verifier/llvm.loop.estimated_trip_count.ll b/llvm/test/Verifier/llvm.loop.estimated_trip_count.ll
+---- a/llvm/test/Verifier/llvm.loop.estimated_trip_count.ll
+-+++ b/llvm/test/Verifier/llvm.loop.estimated_trip_count.ll
+-@@ -26,36 +26,43 @@
+- 
+- ; No value.
+- ; RUN: cp %s %t
+-+; RUN: chmod u+w %t
+- ; RUN: echo '!1 = !{!"llvm.loop.estimated_trip_count"}' >> %t
+- ; RUN: not %{RUN} TOO-FEW
+- 
+- ; i16 value.
+- ; RUN: cp %s %t
+-+; RUN: chmod u+w %t
+- ; RUN: echo '!1 = !{!"llvm.loop.estimated_trip_count", i16 5}' >> %t
+- ; RUN: %{RUN} GOOD
+- 
+- ; i32 value.
+- ; RUN: cp %s %t
+-+; RUN: chmod u+w %t
+- ; RUN: echo '!1 = !{!"llvm.loop.estimated_trip_count", i32 5}' >> %t
+- ; RUN: %{RUN} GOOD
+- 
+- ; i64 value.
+- ; RUN: cp %s %t
+-+; RUN: chmod u+w %t
+- ; RUN: echo '!1 = !{!"llvm.loop.estimated_trip_count", i64 5}' >> %t
+- ; RUN: not %{RUN} BAD-VALUE
+- 
+- ; MDString value.
+- ; RUN: cp %s %t
+-+; RUN: chmod u+w %t
+- ; RUN: echo '!1 = !{!"llvm.loop.estimated_trip_count", !"5"}' >> %t
+- ; RUN: not %{RUN} BAD-VALUE
+- 
+- ; MDNode value.
+- ; RUN: cp %s %t
+-+; RUN: chmod u+w %t
+- ; RUN: echo '!1 = !{!"llvm.loop.estimated_trip_count", !2}' >> %t
+- ; RUN: echo '!2 = !{i32 5}' >> %t
+- ; RUN: not %{RUN} BAD-VALUE
+- 
+- ; Too many values.
+- ; RUN: cp %s %t
+-+; RUN: chmod u+w %t
+- ; RUN: echo '!1 = !{!"llvm.loop.estimated_trip_count", i32 5, i32 5}' >> %t
+- ; RUN: not %{RUN} TOO-MANY
+-diff -ruN --strip-trailing-cr a/mlir/include/mlir/Tools/mlir-opt/MlirOptMain.h b/mlir/include/mlir/Tools/mlir-opt/MlirOptMain.h
+---- a/mlir/include/mlir/Tools/mlir-opt/MlirOptMain.h
+-+++ b/mlir/include/mlir/Tools/mlir-opt/MlirOptMain.h
+-@@ -264,7 +264,7 @@
+-   bool allowUnregisteredDialectsFlag = false;
+- 
+-   /// Remark format
+--  RemarkFormat remarkFormatFlag;
+-+  RemarkFormat remarkFormatFlag = REMARK_FORMAT_STDOUT;
+-   /// Remark file to output to
+-   std::string remarksOutputFileFlag = "";
+-   /// Remark filters
+-diff -ruN --strip-trailing-cr a/mlir/lib/Bindings/Python/IRCore.cpp b/mlir/lib/Bindings/Python/IRCore.cpp
+---- a/mlir/lib/Bindings/Python/IRCore.cpp
+-+++ b/mlir/lib/Bindings/Python/IRCore.cpp
+-@@ -1079,23 +1079,38 @@
+- PyModule::PyModule(PyMlirContextRef contextRef, MlirModule module)
+-     : BaseContextObject(std::move(contextRef)), module(module) {}
+- 
+--PyModule::~PyModule() { mlirModuleDestroy(module); }
+-+PyModule::~PyModule() {
+-+  nb::gil_scoped_acquire acquire;
+-+  auto &liveModules = getContext()->liveModules;
+-+  assert(liveModules.count(module.ptr) == 1 &&
+-+         "destroying module not in live map");
+-+  liveModules.erase(module.ptr);
+-+  mlirModuleDestroy(module);
+-+}
+- 
+- PyModuleRef PyModule::forModule(MlirModule module) {
+-   MlirContext context = mlirModuleGetContext(module);
+-   PyMlirContextRef contextRef = PyMlirContext::forContext(context);
+- 
+--  // Create.
+--  PyModule *unownedModule = new PyModule(std::move(contextRef), module);
+--  // Note that the default return value policy on cast is `automatic_reference`,
+--  // which means "does not take ownership, does not call delete/dtor".
+--  // We use `take_ownership`, which means "Python will call the C++ destructor
+--  // and delete operator when the Python wrapper is garbage collected", because
+--  // MlirModule actually wraps OwningOpRef<ModuleOp> (see mlirModuleCreateParse
+--  // etc).
+--  nb::object pyRef = nb::cast(unownedModule, nb::rv_policy::take_ownership);
+--  unownedModule->handle = pyRef;
+--  return PyModuleRef(unownedModule, std::move(pyRef));
+-+  nb::gil_scoped_acquire acquire;
+-+  auto &liveModules = contextRef->liveModules;
+-+  auto it = liveModules.find(module.ptr);
+-+  if (it == liveModules.end()) {
+-+    // Create.
+-+    PyModule *unownedModule = new PyModule(std::move(contextRef), module);
+-+    // Note that the default return value policy on cast is automatic_reference,
+-+    // which does not take ownership (delete will not be called).
+-+    // Just be explicit.
+-+    nb::object pyRef = nb::cast(unownedModule, nb::rv_policy::take_ownership);
+-+    unownedModule->handle = pyRef;
+-+    liveModules[module.ptr] =
+-+        std::make_pair(unownedModule->handle, unownedModule);
+-+    return PyModuleRef(unownedModule, std::move(pyRef));
+++void dummy_func() {}
+++
+++uint8_t empty_8bit_counters[0];
+++uintptr_t empty_pcs[0];
+++
+++uint8_t fake_8bit_counters[1] = {0};
+++uintptr_t fake_pcs[2] = {reinterpret_cast<uintptr_t>(&dummy_func),
+++                         reinterpret_cast<uintptr_t>(&dummy_func)};
+++
+++// Register two modules at program launch (same time they'd normally be registered).
+++// Triggering the bug requires loading an empty module, then a non-empty module after it.
+++bool dummy = []() {
+++  // First, simulate loading an empty module.
+++  __sanitizer_cov_8bit_counters_init(empty_8bit_counters, empty_8bit_counters);
+++  __sanitizer_cov_pcs_init(empty_pcs, empty_pcs);
+++
+++  // Next, simulate loading a non-empty module.
+++  __sanitizer_cov_8bit_counters_init(fake_8bit_counters,
+++                                     fake_8bit_counters + 1);
+++  __sanitizer_cov_pcs_init(fake_pcs, fake_pcs + 2);
+++
+++  return true;
+++}();
+++
+++static volatile int Sink;
+++
+++extern "C" int LLVMFuzzerTestOneInput(const uint8_t *Data, size_t Size) {
+++  assert(Data);
+++  if (Size > 0 && Data[0] == 'H') {
+++    Sink = 1;
+++    if (Size > 1 && Data[1] == 'i') {
+++      Sink = 2;
+++      if (Size > 2 && Data[2] == '!') {
+++        std::cout << "BINGO; Found the target, exiting\n" << std::flush;
+++        exit(0);
+++      }
+++    }
+ +  }
+-+  // Use existing.
+-+  PyModule *existing = it->second.second;
+-+  nb::object pyRef = nb::borrow<nb::object>(it->second.first);
+-+  return PyModuleRef(existing, std::move(pyRef));
+- }
+- 
+- nb::object PyModule::createFromCapsule(nb::object capsule) {
+-@@ -2084,6 +2099,8 @@
+-   return PyInsertionPoint{block, std::move(nextOpRef)};
+- }
+- 
+-+size_t PyMlirContext::getLiveModuleCount() { return liveModules.size(); }
+-+
+- nb::object PyInsertionPoint::contextEnter(nb::object insertPoint) {
+-   return PyThreadContextEntry::pushInsertionPoint(insertPoint);
+++  return 0;
+++}
++diff -ruN --strip-trailing-cr a/llvm/lib/IR/Metadata.cpp b/llvm/lib/IR/Metadata.cpp
++--- a/llvm/lib/IR/Metadata.cpp
+++++ b/llvm/lib/IR/Metadata.cpp
++@@ -986,10 +986,15 @@
+  }
+-@@ -2923,6 +2940,7 @@
+-              PyMlirContextRef ref = PyMlirContext::forContext(self.get());
+-              return ref.releaseObject();
+-            })
+-+      .def("_get_live_module_count", &PyMlirContext::getLiveModuleCount)
+-       .def_prop_ro(MLIR_PYTHON_CAPI_PTR_ATTR, &PyMlirContext::getCapsule)
+-       .def(MLIR_PYTHON_CAPI_FACTORY_ATTR, &PyMlirContext::createFromCapsule)
+-       .def("__enter__", &PyMlirContext::contextEnter)
+-diff -ruN --strip-trailing-cr a/mlir/lib/Bindings/Python/IRModule.h b/mlir/lib/Bindings/Python/IRModule.h
+---- a/mlir/lib/Bindings/Python/IRModule.h
+-+++ b/mlir/lib/Bindings/Python/IRModule.h
+-@@ -218,6 +218,10 @@
+-   /// Gets the count of live context objects. Used for testing.
+-   static size_t getLiveCount();
+  
+-+  /// Gets the count of live modules associated with this context.
+-+  /// Used for testing.
+-+  size_t getLiveModuleCount();
+-+
+-   /// Enter and exit the context manager.
+-   static nanobind::object contextEnter(nanobind::object context);
+-   void contextExit(const nanobind::object &excType,
+-@@ -244,6 +248,14 @@
+-   static nanobind::ft_mutex live_contexts_mutex;
+-   static LiveContextMap &getLiveContexts();
+- 
+-+  // Interns all live modules associated with this context. Modules tracked
+-+  // in this map are valid. When a module is invalidated, it is removed
+-+  // from this map, and while it still exists as an instance, any
+-+  // attempt to access it will raise an error.
+-+  using LiveModuleMap =
+-+      llvm::DenseMap<const void *, std::pair<nanobind::handle, PyModule *>>;
+-+  LiveModuleMap liveModules;
+-+
+-   bool emitErrorDiagnostics = false;
+- 
+-   MlirContext context;
+-diff -ruN --strip-trailing-cr a/mlir/test/python/ir/module.py b/mlir/test/python/ir/module.py
+---- a/mlir/test/python/ir/module.py
+-+++ b/mlir/test/python/ir/module.py
+-@@ -121,6 +121,7 @@
+- def testModuleOperation():
+-     ctx = Context()
+-     module = Module.parse(r"""module @successfulParse {}""", ctx)
+-+    assert ctx._get_live_module_count() == 1
+-     op1 = module.operation
+-     # CHECK: module @successfulParse
+-     print(op1)
+-@@ -145,6 +146,7 @@
+-     op1 = None
+-     op2 = None
+-     gc.collect()
+-+    assert ctx._get_live_module_count() == 0
+- 
+- 
+- # CHECK-LABEL: TEST: testModuleCapsule
+-@@ -152,17 +154,17 @@
+- def testModuleCapsule():
+-     ctx = Context()
+-     module = Module.parse(r"""module @successfulParse {}""", ctx)
+-+    assert ctx._get_live_module_count() == 1
+-     # CHECK: "mlir.ir.Module._CAPIPtr"
+-     module_capsule = module._CAPIPtr
+-     print(module_capsule)
+-     module_dup = Module._CAPICreate(module_capsule)
+--    assert module is not module_dup
+-+    assert module is module_dup
+-     assert module == module_dup
+--    module._clear_mlir_module()
+--    assert module != module_dup
+-     assert module_dup.context is ctx
+-     # Gc and verify destructed.
+-     module = None
+-     module_capsule = None
+-     module_dup = None
+-     gc.collect()
+-+    assert ctx._get_live_module_count() == 0
++ template <class NodeTy> struct MDNode::HasCachedHash {
+++  using Yes = char[1];
+++  using No = char[2];
+++  template <class U, U Val> struct SFINAE {};
+++
++   template <class U>
++-  using check = decltype(static_cast<void (U::*)(unsigned)>(&U::setHash));
+++  static Yes &check(SFINAE<void (U::*)(unsigned), &U::setHash> *);
+++  template <class U> static No &check(...);
++ 
++-  static constexpr bool value = is_detected<check, NodeTy>::value;
+++  static const bool value = sizeof(check<NodeTy>(nullptr)) == sizeof(Yes);
++ };
++ 
++ MDNode *MDNode::uniquify() {
++diff -ruN --strip-trailing-cr a/llvm/lib/Transforms/IPO/FunctionSpecialization.cpp b/llvm/lib/Transforms/IPO/FunctionSpecialization.cpp
++--- a/llvm/lib/Transforms/IPO/FunctionSpecialization.cpp
+++++ b/llvm/lib/Transforms/IPO/FunctionSpecialization.cpp
++@@ -796,18 +796,19 @@
++       if (Count && !ProfcheckDisableMetadataFixes) {
++         std::optional<llvm::Function::ProfileCount> MaybeCloneCount =
++             Clone->getEntryCount();
++-        assert(MaybeCloneCount && "Clone entry count was not set!");
++-        uint64_t CallCount = *Count + MaybeCloneCount->getCount();
++-        Clone->setEntryCount(CallCount);
++-        if (std::optional<llvm::Function::ProfileCount> MaybeOriginalCount =
++-                S.F->getEntryCount()) {
++-          uint64_t OriginalCount = MaybeOriginalCount->getCount();
++-          if (OriginalCount >= *Count) {
++-            S.F->setEntryCount(OriginalCount - *Count);
++-          } else {
++-            // This should generally not happen as that would mean there are
++-            // more computed calls to the function than what was recorded.
++-            LLVM_DEBUG(S.F->setEntryCount(0));
+++        if (MaybeCloneCount) {
+++          uint64_t CallCount = *Count + MaybeCloneCount->getCount();
+++          Clone->setEntryCount(CallCount);
+++          if (std::optional<llvm::Function::ProfileCount> MaybeOriginalCount =
+++                  S.F->getEntryCount()) {
+++            uint64_t OriginalCount = MaybeOriginalCount->getCount();
+++            if (OriginalCount >= *Count) {
+++              S.F->setEntryCount(OriginalCount - *Count);
+++            } else {
+++              // This should generally not happen as that would mean there are
+++              // more computed calls to the function than what was recorded.
+++              LLVM_DEBUG(S.F->setEntryCount(0));
+++            }
++           }
++         }
++       }
+diff --git a/third_party/llvm/workspace.bzl b/third_party/llvm/workspace.bzl
+index 3bdff1c..08eb474 100644
+--- a/third_party/llvm/workspace.bzl
++++ b/third_party/llvm/workspace.bzl
+@@ -4,8 +4,8 @@ load("//third_party:repo.bzl", "tf_http_archive")
+ 
+ def repo(name):
+     """Imports LLVM."""
+-    LLVM_COMMIT = "f3b712f6e4e9afed735962c6b96e0a2cadb03dc1"
+-    LLVM_SHA256 = "3c1a7a3156635a35e33da13a93a4dd8f2e48ac7280b5674061a951a4aa8475c3"
++    LLVM_COMMIT = "b8649098a7fcf598406d8d8b7d68891d1444e9c8"
++    LLVM_SHA256 = "18e365a1f849b6b66f0ae10810250be6c4a1de791e4892f9eaf900b8974b461b"
+ 
+     tf_http_archive(
+         name = name,
