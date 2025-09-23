@@ -884,6 +884,11 @@ bool HloRunnerPjRt::ExecutablesAreEquivalent(
   return *lhs_fingerprint == *rhs_fingerprint;
 }
 
+absl::StatusOr<DeviceAssignment> HloRunnerPjRt::GetDefaultDeviceAssignment(
+    int num_replicas, int num_partitions) const {
+  return pjrt_client_->GetDefaultDeviceAssignment(num_replicas, num_partitions);
+}
+
 // Split-phase HloRunnerPjRt implementations:
 
 namespace {

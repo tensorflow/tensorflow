@@ -321,6 +321,9 @@ class HloRunnerInterface {
   virtual bool ExecutablesAreEquivalent(
       const OpaqueExecutable* absl_nonnull lhs,
       const OpaqueExecutable* absl_nonnull rhs) const = 0;
+
+  virtual absl::StatusOr<DeviceAssignment> GetDefaultDeviceAssignment(
+      int num_replicas, int num_partitions) const = 0;
 };
 
 }  // namespace xla

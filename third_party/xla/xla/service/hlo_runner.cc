@@ -869,6 +869,12 @@ absl::StatusOr<const HloProto* absl_nonnull> HloRunner::HloProtoFromWrapped(
   return hlo_runner_executable->executable()->hlo_proto();
 }
 
+absl::StatusOr<DeviceAssignment> HloRunner::GetDefaultDeviceAssignment(
+    int num_replicas, int num_partitions) const {
+  return backend().computation_placer()->AssignDevices(num_replicas,
+                                                       num_partitions);
+}
+
 void HloRunner::MaybeUpdateEntryComputationLayout(HloModule* module) {
   absl::MutexLock lock(&mu_);
   if (module_ids_with_updated_layouts_.insert(module->unique_id()).second) {

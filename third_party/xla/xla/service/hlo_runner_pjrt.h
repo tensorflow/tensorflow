@@ -128,6 +128,9 @@ class HloRunnerPjRt : public HloRunnerInterface {
       const OpaqueExecutable* absl_nonnull lhs,
       const OpaqueExecutable* absl_nonnull rhs) const override;
 
+  absl::StatusOr<DeviceAssignment> GetDefaultDeviceAssignment(
+      int num_replicas, int num_partitions) const override;
+
  private:
   absl::StatusOr<CompileOptions> GenerateDefaultCompileOptions(
       HloModule* module, bool run_hlo_passes);
