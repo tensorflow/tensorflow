@@ -28,7 +28,6 @@ test_suite(
             [basename + "_gpu" for basename in CONV_TEST_BASENAMES],
 )
 
-# tensorflow/python/kernel_tests/nn_ops/BUILD
 cuda_py_strict_test(
     name = "separable_conv2d_patch_test",
     size = "small",
