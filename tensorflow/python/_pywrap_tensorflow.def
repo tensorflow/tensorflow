@@ -69,13 +69,13 @@ EXPORTS
   ??0GraphDef@tensorflow@@IEAA@PEAVArena@protobuf@google@@@Z
   ??0GraphDef@tensorflow@@IEAA@PEAVArena@protobuf@google@@AEBV01@@Z
   ??0HistogramProto@tensorflow@@IEAA@PEAVArena@protobuf@google@@@Z
-  ??0Impl@MakeErrorStream@status_macros@xla@@QEAA@PEBDHW4Code@error@tensorflow@@PEAV123@_N@Z
   ??0LayoutProto@dtensor@tensorflow@@IEAA@PEAVArena@protobuf@google@@@Z
   ??0LayoutProto@dtensor@tensorflow@@IEAA@PEAVArena@protobuf@google@@AEBV012@@Z
   ??0LogMessage@log_internal@lts_20250814@absl@@QEAA@PEBDHUInfoTag@0123@@Z
   ??0LogMessageFatal@log_internal@lts_20250814@absl@@QEAA@PEBDH0@Z
   ??0LogMessageFatal@log_internal@lts_20250814@absl@@QEAA@PEBDH@Z
   ??0MLIRContext@mlir@@QEAA@AEBVDialectRegistry@1@W4Threading@01@@Z
+  ??0MakeErrorStream@status_macros@xla@@QEAA@PEBDHW4StatusCode@lts_20250814@absl@@@Z
   ??0MeasuringCostEstimator@grappler@tensorflow@@QEAA@PEAVCluster@12@HH@Z
   ??0MeshProto@dtensor@tensorflow@@IEAA@PEAVArena@protobuf@google@@@Z
   ??0MeshProto@dtensor@tensorflow@@IEAA@PEAVArena@protobuf@google@@AEBV012@@Z

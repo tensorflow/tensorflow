@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/status_macros.h"
 
+#include <memory>
 #include <string>
 
 #include "absl/base/attributes.h"
@@ -84,6 +85,10 @@ static absl::Status MakeError(const char* filename, int line,
   return status;
 }
 
+MakeErrorStream::MakeErrorStream(const char* file, int line,
+                                 absl::StatusCode code)
+    : impl_(std::make_unique<Impl>(file, line, code, this)) {}
+
 MakeErrorStream::MakeErrorStreamWithOutput&
 MakeErrorStream::add_ret_check_failure(const char* condition) {
   return *this << "RET_CHECK failure (" << impl_->file_ << ":" << impl_->line_
@@ -94,36 +99,16 @@ MakeErrorStream::add_ret_check_failure(const char* condition) {
 // generating a lot of inline code for error cases in all callers.
 void MakeErrorStream::CheckNotDone() const { impl_->CheckNotDone(); }
 
-MakeErrorStream::Impl::Impl(const char* file, int line, tsl::error::Code code,
-                            MakeErrorStream* error_stream,
-                            bool is_logged_by_default)
-    : file_(file),
-      line_(line),
-      code_(static_cast<absl::StatusCode>(code)),
-      is_done_(false),
-      should_log_(is_logged_by_default),
-      log_severity_(absl::LogSeverity::kError),
-      should_log_stack_trace_(false),
-      make_error_stream_with_output_wrapper_(error_stream) {}
-
-MakeErrorStream::Impl::Impl(const absl::Status& status,
-                            PriorMessageHandling prior_message_handling,
-                            const char* file, int line,
+MakeErrorStream::Impl::Impl(const char* file, int line, absl::StatusCode code,
                             MakeErrorStream* error_stream)
     : file_(file),
       line_(line),
-      // Make sure we show some error, even if the call is incorrect.
-      code_(!status.ok() ? static_cast<absl::StatusCode>(status.code())
-                         : absl::StatusCode::kUnknown),
-      prior_message_handling_(prior_message_handling),
-      prior_message_(status.message()),
+      code_(code),
       is_done_(false),
       should_log_(true),
       log_severity_(absl::LogSeverity::kError),
       should_log_stack_trace_(false),
-      make_error_stream_with_output_wrapper_(error_stream) {
-  DCHECK(!status.ok()) << "Attempted to append/prepend error text to status OK";
-}
+      make_error_stream_with_output_wrapper_(error_stream) {}
 
 MakeErrorStream::Impl::~Impl() {
   // Note: error messages refer to the public MakeErrorStream class.
