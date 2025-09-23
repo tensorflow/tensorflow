@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "mlir/IR/MLIRContext.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -77,7 +78,8 @@ class GpuLatencyHidingSchedulerBaseTest
     options.set_xla_gpu_pgle_accuracy_checker(strictness);
 
     TF_RETURN_IF_ERROR(ScheduleGpuModule(module, /*pointer_size=*/8,
-                                         gpu_device_info, &alias_info)
+                                         gpu_device_info, &mlir_context_,
+                                         &alias_info)
                            .status());
     return module;
   }
@@ -95,6 +97,8 @@ class GpuLatencyHidingSchedulerBaseTest
     config.set_fdo_profile(fdo_profile);
     return config;
   }
+
+  mlir::MLIRContext mlir_context_;
 };
 
 TEST_F(GpuLatencyHidingSchedulerBaseTest,

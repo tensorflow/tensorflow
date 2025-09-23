@@ -165,7 +165,7 @@ class PriorityFusionQueue {
         thread_pool_(thread_pool),
         fusion_analysis_cache_(fusion_analysis_cache),
         gpu_performance_model_(*device_info, fusion_analysis_cache,
-                               gpu_performance_model_cache_),
+                               gpu_performance_model_cache_, mlir_context),
         fusion_deduplication_cache_(fusion_deduplication_cache),
         fusion_info_cache_(*device_info_),
         reachability_(HloDfsReachability::Build(computation)),
@@ -1161,7 +1161,7 @@ absl::StatusOr<bool> PriorityFusion::Run(
 
     auto fusion_queue = std::make_unique<PriorityFusionQueue>(
         computation, cost_analysis_options_, &device_info_,
-        fusion_process_dump_.get(), thread_pool_, &mlir_context_,
+        fusion_process_dump_.get(), thread_pool_, mlir_context_,
         fusion_analysis_cache_, fusion_deduplication_cache,
         triton_heroless_fusion_enabled);
 

@@ -38,6 +38,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
+#include "mlir/IR/MLIRContext.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
@@ -463,7 +464,7 @@ std::string TagWithFingerprint(HloModule* module) {
 std::unique_ptr<LatencyEstimator> GetLatencyEstimator(
     const HloModule& module, int pointer_size,
     const se::DeviceDescription& gpu_device_info, absl::string_view fingerprint,
-    const SchedulerConfig& config) {
+    const SchedulerConfig& config, mlir::MLIRContext* mlir_context) {
   const DebugOptions& options = module.config().debug_options();
 
   auto gpu_latency_estimator =
@@ -487,7 +488,8 @@ std::unique_ptr<LatencyEstimator> GetLatencyEstimator(
     VLOG(1) << "Using analytical latency estimator";
     return std::make_unique<AnalyticalLatencyEstimator>(
         config, std::move(gpu_latency_estimator), gpu_device_info,
-        ShapeSizeBytesFunction(pointer_size), module.entry_computation());
+        ShapeSizeBytesFunction(pointer_size), module.entry_computation(),
+        mlir_context);
   }
 
   if (SolLatencyEstimator::IsSupportedForModule(module, gpu_device_info)) {
@@ -510,7 +512,7 @@ std::unique_ptr<LatencyEstimator> GetLatencyEstimator(
     auto sol_latency_estimator = SolLatencyEstimator::Create(
         config, std::move(gpu_latency_estimator), gpu_device_info,
         ShapeSizeBytesFunction(pointer_size), module.entry_computation(),
-        std::move(cost_analysis));
+        mlir_context, std::move(cost_analysis));
     if (sol_latency_estimator.ok()) {
       return std::move(*sol_latency_estimator);
     }
@@ -564,7 +566,7 @@ LegalizeSchedulingAnnotations::Config SchedulingAnnotationsConfig() {
 absl::Status RunLatencyHidingSchedulerPasses(
     HloModule* module, int pointer_size, absl::string_view fingerprint,
     uint64_t memory_limit, const se::DeviceDescription& gpu_device_info,
-    const GpuAliasInfo* alias_info) {
+    mlir::MLIRContext* mlir_context, const GpuAliasInfo* alias_info) {
   tsl::profiler::TraceMe traceme("RunLatencyHidingSchedulerPasses");
   HloPassPipeline pipeline("latency-hiding-scheduler");
   const DebugOptions& options = module->config().debug_options();
@@ -577,8 +579,9 @@ absl::Status RunLatencyHidingSchedulerPasses(
 
   auto shape_size_in_bytes = ShapeSizeBytesFunction(pointer_size);
 
-  std::unique_ptr<LatencyEstimator> estimator = GetLatencyEstimator(
-      *module, pointer_size, gpu_device_info, fingerprint, config);
+  std::unique_ptr<LatencyEstimator> estimator =
+      GetLatencyEstimator(*module, pointer_size, gpu_device_info, fingerprint,
+                          config, mlir_context);
 
   if (NeedAccuracyChecker(options, *estimator)) {
     pipeline.AddPass<PGLEAccuracyChecker>(
@@ -721,7 +724,7 @@ absl::Status RunAsyncCollectivesConversionPasses(HloModule* module) {
 absl::StatusOr<ScheduleMetadata> ScheduleGpuModule(
     HloModule* module, int64_t pointer_size,
     const se::DeviceDescription& gpu_device_info,
-    const GpuAliasInfo* alias_info) {
+    mlir::MLIRContext* mlir_context, const GpuAliasInfo* alias_info) {
   tsl::profiler::TraceMe traceme("ScheduleGpuModule");
 
   // Tag the module with its 128 bit fingerprint. The fingerprint should include
@@ -755,7 +758,7 @@ absl::StatusOr<ScheduleMetadata> ScheduleGpuModule(
   if (enable_latency_hiding_scheduler) {
     TF_RETURN_IF_ERROR(RunLatencyHidingSchedulerPasses(
         module, pointer_size, fingerprint, memory_limit, gpu_device_info,
-        alias_info));
+        mlir_context, alias_info));
   }
 
   return ScheduleMetadata{memory_limit, peak_memory_bytes};

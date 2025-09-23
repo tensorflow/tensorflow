@@ -236,8 +236,8 @@ std::optional<GroupedByOpIndexingMap> GetThreadIdToInputMemoryLayoutsMaps(
     const HloFusionAnalysis& fusion_analysis,
     absl::Span<const HloInstruction* const> operands,
     MLIRContext* mlir_context) {
-  auto emitter =
-      GetFusionEmitter(PreBufferAssignmentFusionInfo{fusion_analysis});
+  auto emitter = GetFusionEmitter(
+      PreBufferAssignmentFusionInfo{fusion_analysis}, mlir_context);
   const auto* fusion_interface =
       dynamic_cast<const KernelFusionInterface*>(emitter.get());
 

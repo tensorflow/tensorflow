@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/status/status_matchers.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
+#include "mlir/IR/MLIRContext.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/primitive_util.h"
@@ -86,6 +87,8 @@ class TritonFusionNumericsVerifierTest
     TF_EXPECT_OK(compile_util_or);
     return std::move(compile_util_or).value();
   }
+
+  mlir::MLIRContext mlir_context_;
 };
 
 constexpr absl::string_view kSoftmaxHlo = R"(
@@ -130,8 +133,8 @@ TEST_P(TritonFusionNumericsVerifierTest, VerifyExactSoftmaxFusionNumerics) {
                        primitive_util::LowercasePrimitiveTypeName(GetParam()));
 
   EXPECT_NE(TritonFusion(*module), nullptr);
-  auto verifier =
-      TritonFusionNumericsVerifier(CreateDeviceOrDevicelessConfig());
+  auto verifier = TritonFusionNumericsVerifier(CreateDeviceOrDevicelessConfig(),
+                                               &mlir_context_);
   TF_EXPECT_OK(verifier.Run(module.get(), /*execution_threads=*/{}));
 }
 
@@ -185,8 +188,8 @@ ENTRY entry {
                        primitive_util::LowercasePrimitiveTypeName(GetParam()));
 
   EXPECT_NE(TritonFusion(*module), nullptr);
-  auto verifier =
-      TritonFusionNumericsVerifier(CreateDeviceOrDevicelessConfig());
+  auto verifier = TritonFusionNumericsVerifier(CreateDeviceOrDevicelessConfig(),
+                                               &mlir_context_);
   TF_EXPECT_OK(verifier.Run(module.get(), /*execution_threads=*/{}));
 }
 
@@ -216,8 +219,8 @@ ENTRY main{
                        primitive_util::LowercasePrimitiveTypeName(GetParam()));
 
   EXPECT_NE(TritonFusion(*module), nullptr);
-  auto verifier =
-      TritonFusionNumericsVerifier(CreateDeviceOrDevicelessConfig());
+  auto verifier = TritonFusionNumericsVerifier(CreateDeviceOrDevicelessConfig(),
+                                               &mlir_context_);
   TF_EXPECT_OK(verifier.Run(module.get(), /*execution_threads=*/{}));
 }
 
@@ -306,8 +309,8 @@ ENTRY main (p0: bf16[128,512], p1: bf16[256,512], p2: bf16[512,512]) -> bf16[384
                        primitive_util::LowercasePrimitiveTypeName(GetParam()));
 
   EXPECT_NE(TritonFusion(*module), nullptr);
-  auto verifier =
-      TritonFusionNumericsVerifier(CreateDeviceOrDevicelessConfig());
+  auto verifier = TritonFusionNumericsVerifier(CreateDeviceOrDevicelessConfig(),
+                                               &mlir_context_);
   TF_EXPECT_OK(verifier.Run(module.get(), /*execution_threads=*/{}));
 }
 
@@ -339,12 +342,12 @@ TEST_F(TritonFusionNumericsVerifierTest, CheckMismatch) {
 
   auto f64_result = triton_fusion_numerics_pass_internal::CompileAndRunFusion(
       compile_util, *fusion_f64, autotune_config, debug_options,
-      /*disable_triton=*/false);
+      /*disable_triton=*/false, &mlir_context_);
   TF_EXPECT_OK(f64_result);
 
   auto f32_result = triton_fusion_numerics_pass_internal::CompileAndRunFusion(
       compile_util, *fusion_f32, autotune_config, debug_options,
-      /*disable_triton=*/false);
+      /*disable_triton=*/false, &mlir_context_);
   TF_EXPECT_OK(f32_result);
 
   auto stream = autotune_config.GetStream();
@@ -393,8 +396,8 @@ ENTRY main {
 })",
                        "");
 
-  auto verifier =
-      TritonFusionNumericsVerifier(CreateDeviceOrDevicelessConfig());
+  auto verifier = TritonFusionNumericsVerifier(CreateDeviceOrDevicelessConfig(),
+                                               &mlir_context_);
   TF_EXPECT_OK(verifier.Run(module.get(), /*execution_threads=*/{}));
   auto fusion = TritonFusion(*module);
   EXPECT_NE(fusion, nullptr);
@@ -405,7 +408,7 @@ ENTRY main {
   auto compilation_result =
       triton_fusion_numerics_pass_internal::CompileAndRunFusion(
           compile_util, *fusion, autotune_config, GetDebugOptionsForTest(),
-          /*disable_triton=*/false);
+          /*disable_triton=*/false, &mlir_context_);
 
   // Verify that the compilation with default flags fails. The compilation
   // fails, because the kernel will spill registers, but the error is
@@ -463,8 +466,8 @@ ENTRY main {
   )";
 
   std::unique_ptr<HloModule> module = Module(hlo_text, "");
-  auto verifier =
-      TritonFusionNumericsVerifier(CreateDeviceOrDevicelessConfig());
+  auto verifier = TritonFusionNumericsVerifier(CreateDeviceOrDevicelessConfig(),
+                                               &mlir_context_);
   TF_EXPECT_OK(verifier.Run(module.get(), /*execution_threads=*/{}));
   EXPECT_EQ(verifier.CacheHitsForTestingOnly(), 1);
 }
@@ -518,8 +521,8 @@ ENTRY main {
   )";
   auto module = Module(hlo_text, "");
   EXPECT_NE(TritonFusion(*module), nullptr);
-  auto verifier =
-      TritonFusionNumericsVerifier(CreateDeviceOrDevicelessConfig());
+  auto verifier = TritonFusionNumericsVerifier(CreateDeviceOrDevicelessConfig(),
+                                               &mlir_context_);
   TF_EXPECT_OK(verifier.Run(module.get(), /*execution_threads=*/{}));
 }
 

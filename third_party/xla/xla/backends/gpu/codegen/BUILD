@@ -297,5 +297,6 @@ cc_library(
         "//xla/service/gpu:ir_emission_utils",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
+        "@llvm-project//mlir:IR",
     ],
 )

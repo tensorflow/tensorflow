@@ -1281,10 +1281,10 @@ absl::StatusOr<bool> NestGemmFusion::RunOnModule(
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
   auto call_graph = CallGraph::Build(module, execution_threads);
-  mlir::MLIRContext ctx;
   for (HloComputation* computation :
        module->MakeNonfusionComputations(execution_threads)) {
-    NestGemmFusionVisitor visitor(&ctx, call_graph.get(), compute_capability_);
+    NestGemmFusionVisitor visitor(mlir_context_, call_graph.get(),
+                                  compute_capability_);
     TF_RETURN_IF_ERROR(computation->Accept(&visitor));
     changed |= visitor.changed();
   }

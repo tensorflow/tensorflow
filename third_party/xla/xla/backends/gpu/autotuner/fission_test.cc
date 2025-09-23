@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "mlir/IR/MLIRContext.h"
 #include "xla/autotuning.pb.h"
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -70,13 +71,14 @@ class FissionBackendTest : public HloHardwareIndependentTestBase {
   DebugOptions debug_options_;
   NVPTXCompiler compiler_;
   FissionBackend backend_;
+  mlir::MLIRContext mlir_context_;
 
   FissionBackendTest()
       : backend_(PlatformUtil::GetDefaultPlatform()
                      .value()
                      ->ExecutorForDevice(0)
                      .value(),
-                 &debug_options_, &compiler_) {}
+                 &debug_options_, &compiler_, &mlir_context_) {}
 };
 
 TEST_F(FissionBackendTest, CanCreateCublasBackend) {

@@ -60,7 +60,8 @@ class CoalescingTest : public HloHardwareIndependentTestBase {
   std::vector<bool> IsReadCoalescedPerOperand(const HloInstruction* root) {
     auto fusion_adaptor = HloFusionAdaptor::ForInstruction(root);
     auto analysis = HloFusionAnalysis::Create(*root, device_info_);
-    auto emitter = GetFusionEmitter(PreBufferAssignmentFusionInfo{analysis});
+    auto emitter = GetFusionEmitter(PreBufferAssignmentFusionInfo{analysis},
+                                    &mlir_context_);
     auto fusion = dynamic_cast<KernelFusionInterface*>(emitter.get());
     EXPECT_NE(fusion, nullptr);
 

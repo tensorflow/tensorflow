@@ -66,8 +66,9 @@ ENTRY entry_computation {
   auto* root = module->entry_computation()->root_instruction();
   HloFusionAnalysis analysis = HloFusionAnalysis::Create(*root, device_info);
 
+  mlir::MLIRContext mlir_context;
   std::unique_ptr<FusionInterface> emitter =
-      GetFusionEmitter(PreBufferAssignmentFusionInfo{analysis});
+      GetFusionEmitter(PreBufferAssignmentFusionInfo{analysis}, &mlir_context);
   auto triton_fusion = dynamic_cast<TritonFusion*>(emitter.get());
   ASSERT_NE(triton_fusion, nullptr);
   std::optional<TritonFusion::LaunchConfig> launch_config =
@@ -103,14 +104,14 @@ ENTRY entry_computation {
   auto* root = module->entry_computation()->root_instruction();
   HloFusionAnalysis analysis = HloFusionAnalysis::Create(*root, device_info);
 
+  mlir::MLIRContext mlir_context;
   std::unique_ptr<FusionInterface> emitter =
-      GetFusionEmitter(PreBufferAssignmentFusionInfo{analysis});
+      GetFusionEmitter(PreBufferAssignmentFusionInfo{analysis}, &mlir_context);
   auto triton_fusion_emitter = dynamic_cast<TritonFusion*>(emitter.get());
   ASSERT_NE(triton_fusion_emitter, nullptr);
   EXPECT_EQ(triton_fusion_emitter->launch_config(), std::nullopt);
 
   // Ensure that the emitter fails gracefully when the launch config is not set.
-  mlir::MLIRContext mlir_context;
   EXPECT_THAT(triton_fusion_emitter->GenerateTritonKernelAndWrapper(
                   *::xla::Cast<HloFusionInstruction>(root), "random_name",
                   device_info, /*llvm_module=*/nullptr, &mlir_context),

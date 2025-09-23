@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "llvm/IR/Module.h"
+#include "mlir/IR/MLIRContext.h"
 #include "xla/autotune_results.pb.h"
 #include "xla/hlo/analysis/hlo_dataflow_analysis.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -110,6 +111,8 @@ class GpuCompiler : public LLVMCompiler {
   static absl::StatusOr<Compiler::TargetConfig> GetTargetConfig(
       const Compiler::CompileOptions& options, const DebugOptions& debug_opts,
       se::StreamExecutor* executor);
+
+  mlir::MLIRContext* mlir_context() { return &mlir_context_; }
 
   virtual std::unique_ptr<GpuAliasInfo> GetAliasInfo(
       const se::DeviceDescription& device_description) const {
@@ -286,6 +289,10 @@ class GpuCompiler : public LLVMCompiler {
   // THey need to be set globally whenever we call into LLVM.
   virtual std::vector<std::string> GetLLVMCommandLineOptions(
       const DebugOptions& debug_options) const = 0;
+
+  // A MLIR context that can be used by pre-codegen passes. For codegen, we will
+  // need to have a context with more dialects registered.
+  mlir::MLIRContext mlir_context_;
 };
 
 }  // namespace gpu

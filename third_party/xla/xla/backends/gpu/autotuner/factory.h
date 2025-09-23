@@ -20,6 +20,7 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "mlir/IR/MLIRContext.h"
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/service/compiler.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -30,7 +31,8 @@ namespace gpu {
 
 struct GetCodegenBackends {
   using Type = std::function<std::vector<std::unique_ptr<CodegenBackend>>(
-      stream_executor::StreamExecutor*, const DebugOptions*, Compiler*)>;
+      stream_executor::StreamExecutor*, const DebugOptions*, Compiler*,
+      mlir::MLIRContext* mlir_context)>;
 };
 
 }  // namespace gpu

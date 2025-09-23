@@ -23,6 +23,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "mlir/IR/MLIRContext.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -44,16 +45,19 @@ namespace m = ::xla::match;
 class MultiOutputFusionTest : public HloHardwareIndependentTestBase {
  public:
   MultiOutputFusion mof_{TestGpuDeviceInfo::RTXA6000DeviceInfo(),
-                         HloCostAnalysis::DefaultShapeSize};
+                         HloCostAnalysis::DefaultShapeSize, &mlir_context_};
 
   void CheckMultiOutputFusion(absl::string_view hlo,
                               std::optional<absl::string_view> expected) {
     RunAndFilecheckHloRewrite(
         hlo,
         MultiOutputFusion{TestGpuDeviceInfo::RTXA6000DeviceInfo(),
-                          HloCostAnalysis::DefaultShapeSize},
+                          HloCostAnalysis::DefaultShapeSize, &mlir_context_},
         expected);
   }
+
+ protected:
+  mlir::MLIRContext mlir_context_;
 };
 
 const char kModulePrefix[] = R"(

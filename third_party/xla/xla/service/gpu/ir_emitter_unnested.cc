@@ -1655,7 +1655,8 @@ absl::Status IrEmitterUnnested::EmitFusion(const HloFusionInstruction* instr) {
           /*analysis=*/fusion_analysis, instr,
           /*buffer_assignment=*/
           &ir_emitter_context_->buffer_assignment(),
-          /*call_graph=*/*call_graph_));
+          /*call_graph=*/*call_graph_),
+      ir_emitter_context_->mlir_context());
   TF_ASSIGN_OR_RETURN(auto result, emitter->Emit(*ir_emitter_context_, *instr));
 
   const ExecutionStreamAssignment& stream_assignment =

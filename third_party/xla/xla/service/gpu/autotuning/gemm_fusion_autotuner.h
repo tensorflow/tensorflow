@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "mlir/IR/MLIRContext.h"
 #include "xla/autotuning.pb.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -77,11 +78,13 @@ class GemmFusionAutotuner : public HloModulePass {
   explicit GemmFusionAutotuner(const AutotuneConfig& config,
                                const se::SemanticVersion& toolkit_version,
                                tsl::thread::ThreadPool* thread_pool,
-                               const MultiProcessKeyValueStore& key_value_store)
+                               const MultiProcessKeyValueStore& key_value_store,
+                               mlir::MLIRContext* mlir_context)
       : config_(config),
         toolkit_version_(toolkit_version),
         thread_pool_(thread_pool),
-        key_value_store_(key_value_store) {}
+        key_value_store_(key_value_store),
+        mlir_context_(mlir_context) {}
 
   absl::string_view name() const override { return "gemm-fusion-autotuner"; }
 
@@ -95,6 +98,7 @@ class GemmFusionAutotuner : public HloModulePass {
   se::SemanticVersion toolkit_version_;
   tsl::thread::ThreadPool* thread_pool_;
   MultiProcessKeyValueStore key_value_store_;
+  mlir::MLIRContext* mlir_context_;
 };
 
 class GemmFusionAutotunerImpl {
@@ -102,11 +106,13 @@ class GemmFusionAutotunerImpl {
   GemmFusionAutotunerImpl(
       AutotuneConfig& config,
       const stream_executor::SemanticVersion& toolkit_version,
-      DebugOptions debug_options, tsl::thread::ThreadPool* thread_pool)
+      DebugOptions debug_options, tsl::thread::ThreadPool* thread_pool,
+      mlir::MLIRContext* mlir_context)
       : config_(std::move(config)),
         toolkit_version_(toolkit_version),
         debug_options_(std::move(debug_options)),
-        thread_pool_(thread_pool) {}
+        thread_pool_(thread_pool),
+        mlir_context_(mlir_context) {}
 
   struct CuBlasConfig {
     bool operator<(const CuBlasConfig& other) const;
@@ -213,6 +219,7 @@ class GemmFusionAutotunerImpl {
   DebugOptions debug_options_;
   tsl::thread::ThreadPool* thread_pool_;
   std::vector<TritonGemmConfig> triton_configs_;
+  mlir::MLIRContext* mlir_context_;
 };
 
 }  // namespace gpu

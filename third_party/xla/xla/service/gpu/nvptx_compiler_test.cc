@@ -21,6 +21,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "mlir/IR/MLIRContext.h"
 #include "xla/hlo/analysis/hlo_ordering.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -74,7 +75,7 @@ class NVPTXCompilerTest : public HloTestBase {
     std::unique_ptr<GpuAliasInfo> alias_info =
         compiler.GetAliasInfo(gpu_device_info);
     TF_RETURN_IF_ERROR(ScheduleGpuModule(module, pointer_size, gpu_device_info,
-                                         alias_info.get())
+                                         &mlir_context_, alias_info.get())
                            .status());
 
     auto buffer_size_bytes_function =
@@ -88,6 +89,9 @@ class NVPTXCompilerTest : public HloTestBase {
         /*color_alignment=*/
         [](LogicalBuffer::Color) { return kXlaAllocatedBufferAlignBytes; });
   }
+
+ protected:
+  mlir::MLIRContext mlir_context_;
 };
 
 class NVPTXCompilerTestTriton : public NVPTXCompilerTest {

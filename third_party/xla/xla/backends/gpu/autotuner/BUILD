@@ -440,6 +440,7 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
+        "@llvm-project//mlir:IR",
     ],
 )
 
@@ -473,6 +474,7 @@ xla_test(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
+        "@llvm-project//mlir:IR",
     ],
 )
 
@@ -514,6 +516,7 @@ cc_library(
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
+        "@llvm-project//mlir:IR",
     ],
 )
 
@@ -551,6 +554,7 @@ xla_test(
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/status:statusor",
         "@com_google_googletest//:gtest_main",
+        "@llvm-project//mlir:IR",
     ],
 )
 
@@ -667,6 +671,7 @@ cc_library(
         "//xla/stream_executor:stream_executor_h",
         "//xla/stream_executor/cuda:cuda_platform_id",
         "//xla/stream_executor/platform:platform_object_registry",
+        "@llvm-project//mlir:IR",
     ],
     alwayslink = True,
 )
@@ -687,6 +692,7 @@ cc_library(
         "//xla/stream_executor:stream_executor_h",
         "//xla/stream_executor/platform:platform_object_registry",
         "//xla/stream_executor/rocm:rocm_platform_id",
+        "@llvm-project//mlir:IR",
     ],
     alwayslink = True,
 )
@@ -697,8 +703,8 @@ cc_library(
     deps = [
         "//xla/backends/autotuner:codegen_backend",
         "//xla/service:compiler",
-        "//xla/stream_executor:platform",
         "//xla/stream_executor:stream_executor_h",
+        "@llvm-project//mlir:IR",
     ],
 )
 
@@ -820,6 +826,7 @@ xla_cc_binary(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
+        "@llvm-project//mlir:IR",
         "@local_tsl//tsl/platform:platform_port",
     ] + if_cuda_is_configured([
         ":factory_cuda",

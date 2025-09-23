@@ -22,11 +22,12 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "mlir/IR/MLIRContext.h"
+#include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/backends/gpu/autotuner/cublas.h"
 #include "xla/backends/gpu/autotuner/cublaslt.h"
 #include "xla/backends/gpu/autotuner/custom_kernel.h"
 #include "xla/backends/gpu/autotuner/gpu_codegen_backend.h"
-#include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/compiler.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -43,11 +44,13 @@ namespace gpu {
 class FissionBackend : public GpuCodegenBackend {
  public:
   explicit FissionBackend(stream_executor::StreamExecutor* stream_executor,
-                          const DebugOptions* debug_options, Compiler* compiler)
+                          const DebugOptions* debug_options, Compiler* compiler,
+                          mlir::MLIRContext* mlir_context)
       : GpuCodegenBackend("Fission", stream_executor, debug_options, compiler),
         cublas_backend_(stream_executor, debug_options, compiler),
         cublaslt_backend_(stream_executor, debug_options, compiler),
-        custom_kernel_backend_(stream_executor, debug_options, compiler) {}
+        custom_kernel_backend_(stream_executor, debug_options, compiler),
+        mlir_context_(mlir_context) {}
 
   absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>>
   GetSupportedConfigs(const HloInstruction& instr) override;
@@ -61,6 +64,7 @@ class FissionBackend : public GpuCodegenBackend {
   CublasBackend cublas_backend_;
   CublasLtBackend cublaslt_backend_;
   CustomKernelBackend custom_kernel_backend_;
+  mlir::MLIRContext* mlir_context_;
 };
 
 }  // namespace gpu

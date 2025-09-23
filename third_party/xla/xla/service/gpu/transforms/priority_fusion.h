@@ -43,11 +43,13 @@ class PriorityFusion : public HloModulePass {
  public:
   PriorityFusion(tsl::thread::ThreadPool* thread_pool,
                  const se::DeviceDescription& device,
-                 GpuHloCostAnalysis::Options cost_analysis_options)
+                 GpuHloCostAnalysis::Options cost_analysis_options,
+                 mlir::MLIRContext* mlir_context)
       : thread_pool_(thread_pool),
         device_info_(device),
         cost_analysis_options_(std::move(cost_analysis_options)),
-        fusion_analysis_cache_(device_info_) {}
+        fusion_analysis_cache_(device_info_),
+        mlir_context_(mlir_context) {}
 
   absl::string_view name() const override { return "priority-fusion"; }
 
@@ -84,7 +86,7 @@ class PriorityFusion : public HloModulePass {
 
   HloFusionAnalysisCache fusion_analysis_cache_;
 
-  mlir::MLIRContext mlir_context_;
+  mlir::MLIRContext* mlir_context_;
 };
 
 }  // namespace gpu
