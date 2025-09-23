@@ -659,5 +659,296 @@ REGISTER_XLA_OP(
     Name("NonMaxSuppressionV3").CompileTimeConstantInput("max_output_size"),
     NonMaxSuppressionV3Op);
 
+class CropAndResizeOp : public XlaOpKernel {
+ public:
+  explicit CropAndResizeOp(OpKernelConstruction* context) : XlaOpKernel(context) {
+    OP_REQUIRES_OK(context, context->GetAttr("method", &method_));
+    OP_REQUIRES(context, method_ == "bilinear" || method_ == "nearest",
+                errors::InvalidArgument(
+                    "method must be 'bilinear' or 'nearest'", method_));
+    OP_REQUIRES_OK(context, context->GetAttr("extrapolation_value",
+                                             &extrapolation_value_));
+  }
+
+  void Compile(XlaOpKernelContext* context) override {
+    // Input validation
+    const TensorShape& image_shape = context->InputShape(0);
+    const TensorShape& boxes_shape = context->InputShape(1);
+    const TensorShape& box_indices_shape = context->InputShape(2);
+
+    OP_REQUIRES(context, image_shape.dims() == 4,
+                errors::InvalidArgument("image must be 4-D",
+                                        image_shape.DebugString()));
+    OP_REQUIRES(context, boxes_shape.dims() == 2,
+                errors::InvalidArgument("boxes must be 2-D",
+                                        boxes_shape.DebugString()));
+    OP_REQUIRES(context, boxes_shape.dim_size(1) == 4,
+                errors::InvalidArgument("boxes must have 4 columns"));
+    OP_REQUIRES(context, TensorShapeUtils::IsVector(box_indices_shape),
+                errors::InvalidArgument("box_indices must be 1-D",
+                                        box_indices_shape.DebugString()));
+    OP_REQUIRES(context, boxes_shape.dim_size(0) == box_indices_shape.dim_size(0),
+                errors::InvalidArgument("first dimension of boxes and box_indices "
+                                        "must be equal"));
+
+    // Get crop size
+    std::vector<int64_t> crop_size_values;
+    OP_REQUIRES_OK(context,
+                   context->ConstantInputAsIntVector(3, &crop_size_values));
+    OP_REQUIRES(context, crop_size_values.size() == 2,
+                errors::InvalidArgument("crop_size must have two elements"));
+
+    const int64_t crop_height = crop_size_values[0];
+    const int64_t crop_width = crop_size_values[1];
+
+    OP_REQUIRES(context, crop_height > 0 && crop_width > 0,
+                errors::InvalidArgument("crop dimensions must be positive"));
+
+    // Get dimensions
+    const int64_t batch_size = image_shape.dim_size(0);
+    const int64_t image_height = image_shape.dim_size(1);
+    const int64_t image_width = image_shape.dim_size(2);
+    const int64_t depth = image_shape.dim_size(3);
+    const int64_t num_boxes = boxes_shape.dim_size(0);
+
+    xla::XlaBuilder* b = context->builder();
+    xla::XlaOp image = context->Input(0);
+    xla::XlaOp boxes = context->Input(1);
+    xla::XlaOp box_indices = context->Input(2);
+
+    // Convert inputs to appropriate types
+    xla::PrimitiveType image_type = context->input_xla_type(0);
+    image = xla::ConvertElementType(image, xla::F32);
+    boxes = xla::ConvertElementType(boxes, xla::F32);
+    box_indices = xla::ConvertElementType(box_indices, xla::S32);
+
+    // Simple implementation for now - use a single gather operation with proper indexing
+    // This implementation handles one box at a time but could be optimized later
+
+    if (num_boxes == 0) {
+      // Handle empty case
+      std::vector<int64_t> output_shape = {0, crop_height, crop_width, depth};
+      xla::XlaOp result = xla::Broadcast(
+          xla::ConstantR0<float>(b, extrapolation_value_), output_shape);
+      if (image_type != xla::F32) {
+        result = xla::ConvertElementType(result, image_type);
+      }
+      context->SetOutput(0, result);
+      return;
+    }
+
+    // For simplicity, process each box sequentially
+    std::vector<xla::XlaOp> all_crops;
+    all_crops.reserve(num_boxes);
+
+    for (int64_t box_idx = 0; box_idx < num_boxes; ++box_idx) {
+      // Extract box coordinates and batch index
+      xla::XlaOp y1 = xla::DynamicSlice(boxes, {box_idx, 0}, {1, 1});
+      xla::XlaOp x1 = xla::DynamicSlice(boxes, {box_idx, 1}, {1, 1});
+      xla::XlaOp y2 = xla::DynamicSlice(boxes, {box_idx, 2}, {1, 1});
+      xla::XlaOp x2 = xla::DynamicSlice(boxes, {box_idx, 3}, {1, 1});
+      xla::XlaOp batch_idx = xla::DynamicSlice(box_indices, {box_idx}, {1});
+
+      y1 = xla::Reshape(y1, {});
+      x1 = xla::Reshape(x1, {});
+      y2 = xla::Reshape(y2, {});
+      x2 = xla::Reshape(x2, {});
+      batch_idx = xla::Reshape(batch_idx, {});
+
+      // Create single crop for this box
+      xla::XlaOp crop = CreateSingleCrop(b, image, y1, x1, y2, x2, batch_idx,
+                                         image_height, image_width, depth,
+                                         crop_height, crop_width);
+      all_crops.push_back(crop);
+    }
+
+    // Concatenate all crops
+    xla::XlaOp result = xla::ConcatInDim(b, all_crops, 0);
+
+    // Convert back to original type if needed
+    if (image_type != xla::F32) {
+      result = xla::ConvertElementType(result, image_type);
+    }
+
+    context->SetOutput(0, result);
+  }
+
+ private:
+  xla::XlaOp CreateSingleCrop(xla::XlaBuilder* b, xla::XlaOp image,
+                              xla::XlaOp y1, xla::XlaOp x1, xla::XlaOp y2, xla::XlaOp x2,
+                              xla::XlaOp batch_idx, int64_t image_height, int64_t image_width,
+                              int64_t depth, int64_t crop_height, int64_t crop_width) {
+    // Create coordinate grid for the crop
+    xla::XlaOp crop_y_indices = xla::Iota(b, xla::ShapeUtil::MakeShape(xla::F32, {crop_height}), 0);
+    xla::XlaOp crop_x_indices = xla::Iota(b, xla::ShapeUtil::MakeShape(xla::F32, {crop_width}), 0);
+
+    // Scale indices to [0, 1] range
+    if (crop_height > 1) {
+      crop_y_indices = xla::Div(crop_y_indices, xla::ConstantR0<float>(b, crop_height - 1));
+    } else {
+      crop_y_indices = xla::Broadcast(xla::ConstantR0<float>(b, 0.5), {crop_height});
+    }
+
+    if (crop_width > 1) {
+      crop_x_indices = xla::Div(crop_x_indices, xla::ConstantR0<float>(b, crop_width - 1));
+    } else {
+      crop_x_indices = xla::Broadcast(xla::ConstantR0<float>(b, 0.5), {crop_width});
+    }
+
+    // Map to box coordinates
+    xla::XlaOp y_range = xla::Sub(y2, y1);
+    xla::XlaOp x_range = xla::Sub(x2, x1);
+
+    crop_y_indices = xla::Add(y1, xla::Mul(crop_y_indices, y_range));
+    crop_x_indices = xla::Add(x1, xla::Mul(crop_x_indices, x_range));
+
+    // Scale to image pixel coordinates
+    crop_y_indices = xla::Mul(crop_y_indices, xla::ConstantR0<float>(b, image_height - 1));
+    crop_x_indices = xla::Mul(crop_x_indices, xla::ConstantR0<float>(b, image_width - 1));
+
+    // Create meshgrid
+    xla::XlaOp y_grid = xla::BroadcastInDim(crop_y_indices, {crop_height, crop_width}, {0});
+    xla::XlaOp x_grid = xla::BroadcastInDim(crop_x_indices, {crop_height, crop_width}, {1});
+
+    xla::XlaOp crop_result;
+
+    if (method_ == "bilinear") {
+      crop_result = BilinearSampleCrop(b, image, y_grid, x_grid, batch_idx,
+                                       image_height, image_width, depth,
+                                       crop_height, crop_width);
+    } else {
+      crop_result = NearestSampleCrop(b, image, y_grid, x_grid, batch_idx,
+                                      image_height, image_width, depth,
+                                      crop_height, crop_width);
+    }
+
+    return xla::Reshape(crop_result, {1, crop_height, crop_width, depth});
+  }
+
+  xla::XlaOp BilinearSampleCrop(xla::XlaBuilder* b, xla::XlaOp image,
+                                xla::XlaOp y_grid, xla::XlaOp x_grid, xla::XlaOp batch_idx,
+                                int64_t image_height, int64_t image_width, int64_t depth,
+                                int64_t crop_height, int64_t crop_width) {
+    // Floor and ceiling coordinates
+    xla::XlaOp y_floor = xla::Floor(y_grid);
+    xla::XlaOp x_floor = xla::Floor(x_grid);
+    xla::XlaOp y_ceil = xla::Add(y_floor, xla::ConstantR0<float>(b, 1.0));
+    xla::XlaOp x_ceil = xla::Add(x_floor, xla::ConstantR0<float>(b, 1.0));
+
+    // Interpolation weights
+    xla::XlaOp y_weight = xla::Sub(y_grid, y_floor);
+    xla::XlaOp x_weight = xla::Sub(x_grid, x_floor);
+
+    // Convert to integer indices and clamp
+    xla::XlaOp zero_i = xla::ConstantR0<int32>(b, 0);
+    xla::XlaOp height_bound = xla::ConstantR0<int32>(b, image_height - 1);
+    xla::XlaOp width_bound = xla::ConstantR0<int32>(b, image_width - 1);
+
+    xla::XlaOp y0 = xla::Clamp(zero_i, xla::ConvertElementType(y_floor, xla::S32), height_bound);
+    xla::XlaOp x0 = xla::Clamp(zero_i, xla::ConvertElementType(x_floor, xla::S32), width_bound);
+    xla::XlaOp y1 = xla::Clamp(zero_i, xla::ConvertElementType(y_ceil, xla::S32), height_bound);
+    xla::XlaOp x1 = xla::Clamp(zero_i, xla::ConvertElementType(x_ceil, xla::S32), width_bound);
+
+    // Gather four corner pixels
+    xla::GatherDimensionNumbers gather_dims;
+    gather_dims.add_offset_dims(2);
+    gather_dims.add_start_index_map(0);
+    gather_dims.add_start_index_map(1);
+    gather_dims.add_start_index_map(2);
+    gather_dims.set_index_vector_dim(2);
+
+    auto batch_broadcast = xla::Broadcast(batch_idx, {crop_height, crop_width});
+
+    // Four corners
+    auto indices_00 = xla::ConcatInDim(b, {
+        xla::Reshape(batch_broadcast, {crop_height, crop_width, 1}),
+        xla::Reshape(y0, {crop_height, crop_width, 1}),
+        xla::Reshape(x0, {crop_height, crop_width, 1})
+    }, 2);
+
+    auto indices_01 = xla::ConcatInDim(b, {
+        xla::Reshape(batch_broadcast, {crop_height, crop_width, 1}),
+        xla::Reshape(y0, {crop_height, crop_width, 1}),
+        xla::Reshape(x1, {crop_height, crop_width, 1})
+    }, 2);
+
+    auto indices_10 = xla::ConcatInDim(b, {
+        xla::Reshape(batch_broadcast, {crop_height, crop_width, 1}),
+        xla::Reshape(y1, {crop_height, crop_width, 1}),
+        xla::Reshape(x0, {crop_height, crop_width, 1})
+    }, 2);
+
+    auto indices_11 = xla::ConcatInDim(b, {
+        xla::Reshape(batch_broadcast, {crop_height, crop_width, 1}),
+        xla::Reshape(y1, {crop_height, crop_width, 1}),
+        xla::Reshape(x1, {crop_height, crop_width, 1})
+    }, 2);
+
+    auto pixel_00 = xla::Gather(image, indices_00, gather_dims, {1, 1, 1, depth});
+    auto pixel_01 = xla::Gather(image, indices_01, gather_dims, {1, 1, 1, depth});
+    auto pixel_10 = xla::Gather(image, indices_10, gather_dims, {1, 1, 1, depth});
+    auto pixel_11 = xla::Gather(image, indices_11, gather_dims, {1, 1, 1, depth});
+
+    // Bilinear interpolation
+    auto one_minus_y = xla::Sub(xla::ConstantR0<float>(b, 1.0), y_weight);
+    auto one_minus_x = xla::Sub(xla::ConstantR0<float>(b, 1.0), x_weight);
+
+    auto w00 = xla::Mul(one_minus_y, one_minus_x);
+    auto w01 = xla::Mul(one_minus_y, x_weight);
+    auto w10 = xla::Mul(y_weight, one_minus_x);
+    auto w11 = xla::Mul(y_weight, x_weight);
+
+    // Broadcast weights to match pixel tensor dimensions
+    w00 = xla::BroadcastInDim(w00, {crop_height, crop_width, depth}, {0, 1});
+    w01 = xla::BroadcastInDim(w01, {crop_height, crop_width, depth}, {0, 1});
+    w10 = xla::BroadcastInDim(w10, {crop_height, crop_width, depth}, {0, 1});
+    w11 = xla::BroadcastInDim(w11, {crop_height, crop_width, depth}, {0, 1});
+
+    // Weighted sum
+    auto result = xla::Add(xla::Add(xla::Add(
+        xla::Mul(w00, pixel_00),
+        xla::Mul(w01, pixel_01)),
+        xla::Mul(w10, pixel_10)),
+        xla::Mul(w11, pixel_11));
+
+    return result;
+  }
+
+  xla::XlaOp NearestSampleCrop(xla::XlaBuilder* b, xla::XlaOp image,
+                               xla::XlaOp y_grid, xla::XlaOp x_grid, xla::XlaOp batch_idx,
+                               int64_t image_height, int64_t image_width, int64_t depth,
+                               int64_t crop_height, int64_t crop_width) {
+    // Round to nearest integers and clamp
+    xla::XlaOp zero_i = xla::ConstantR0<int32>(b, 0);
+    xla::XlaOp height_bound = xla::ConstantR0<int32>(b, image_height - 1);
+    xla::XlaOp width_bound = xla::ConstantR0<int32>(b, image_width - 1);
+
+    xla::XlaOp y_nearest = xla::Clamp(zero_i, xla::ConvertElementType(xla::Round(y_grid), xla::S32), height_bound);
+    xla::XlaOp x_nearest = xla::Clamp(zero_i, xla::ConvertElementType(xla::Round(x_grid), xla::S32), width_bound);
+
+    // Gather pixels
+    xla::GatherDimensionNumbers gather_dims;
+    gather_dims.add_offset_dims(2);
+    gather_dims.add_start_index_map(0);
+    gather_dims.add_start_index_map(1);
+    gather_dims.add_start_index_map(2);
+    gather_dims.set_index_vector_dim(2);
+
+    auto batch_broadcast = xla::Broadcast(batch_idx, {crop_height, crop_width});
+    auto indices = xla::ConcatInDim(b, {
+        xla::Reshape(batch_broadcast, {crop_height, crop_width, 1}),
+        xla::Reshape(y_nearest, {crop_height, crop_width, 1}),
+        xla::Reshape(x_nearest, {crop_height, crop_width, 1})
+    }, 2);
+
+    return xla::Gather(image, indices, gather_dims, {1, 1, 1, depth});
+  }
+
+  std::string method_;
+  float extrapolation_value_;
+};
+
+REGISTER_XLA_OP(Name("CropAndResize").CompileTimeConstantInput("crop_size"), CropAndResizeOp);
+
 }  // namespace
 }  // namespace tensorflow
