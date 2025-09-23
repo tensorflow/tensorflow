@@ -1,25 +1,21 @@
 diff --git a/python/versions.bzl b/python/versions.bzl
-index 30929f82..73974065 100644
+index 30929f82..3d0d6025 100644
 --- a/python/versions.bzl
 +++ b/python/versions.bzl
-@@ -1045,29 +1045,29 @@ def get_release_info(platform, python_version, base_url = DEFAULT_RELEASE_BASE_U
+@@ -1045,29 +1045,25 @@ def get_release_info(platform, python_version, base_url = DEFAULT_RELEASE_BASE_U
      for u in url:
          p, _, _ = platform.partition(FREETHREADED)
  
 -        release_id = int(u.split("/")[-2])
 -
          if FREETHREADED.lstrip("-") in platform:
-+            if "3.13" in python_version:
-+                aarch64_linux_suffix = "lto"
-+            else:
-+                aarch64_linux_suffix = "pgo+lto"
              build = "{}+{}-full".format(
                  FREETHREADED.lstrip("-"),
                  {
                      "aarch64-apple-darwin": "pgo+lto",
                      "aarch64-pc-windows-msvc": "pgo",
 -                    "aarch64-unknown-linux-gnu": "lto" if release_id < 20250702 else "pgo+lto",
-+                    "aarch64-unknown-linux-gnu": aarch64_linux_suffix,
++                    "aarch64-unknown-linux-gnu": "pgo+lto",
                      "ppc64le-unknown-linux-gnu": "lto",
                      "riscv64-unknown-linux-gnu": "lto",
                      "s390x-unknown-linux-gnu": "lto",
