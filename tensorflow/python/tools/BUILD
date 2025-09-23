@@ -40,15 +40,15 @@ py_strict_library(
     ],
 )
 
-tf_py_test(
+py_strict_test(
     name = "saved_model_cli_empty_feature_test",
     size = "small",
     srcs = ["saved_model_cli_empty_feature_test.py"],
     python_version = "PY3",
-    deps = [
-        ":saved_model_cli",
-        "//tensorflow/python/platform:client_testlib",
-        "@absl_py//absl/testing:parameterized",
+    extra_pywrap_deps = [],
+    data = [
+        "saved_model_cli.py",
+        "saved_model_cli_test_stubs.py",
     ],
 )
 
