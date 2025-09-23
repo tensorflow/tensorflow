@@ -62,12 +62,11 @@ py_strict_library(
     ],
 )
 
-py_strict_test(
+tf_py_test(
     name = "saved_model_utils_test",
     size = "small",
     srcs = ["saved_model_utils_test.py"],
     tags = ["no_windows"],  # TODO: needs investigation on Windows
-    visibility = ["//visibility:private"],
     deps = [
         ":saved_model_utils",
         # copybara:uncomment "//third_party/py/google/protobuf:use_fast_cpp_protos",
@@ -133,7 +132,7 @@ py_strict_binary(
     deps = ["//tensorflow:tensorflow_py"],
 )
 
-py_strict_test(
+tf_py_test(
     name = "freeze_graph_test",
     size = "small",
     srcs = ["freeze_graph_test.py"],
@@ -208,7 +207,7 @@ py_strict_binary(
     ],
 )
 
-py_strict_test(
+tf_py_test(
     name = "strip_unused_test",
     size = "small",
     srcs = ["strip_unused_test.py"],
@@ -264,7 +263,7 @@ py_strict_library(
     ],
 )
 
-py_strict_test(
+tf_py_test(
     name = "optimize_for_inference_test",
     size = "small",
     srcs = ["optimize_for_inference_test.py"],
@@ -321,7 +320,7 @@ py_strict_library(
     ],
 )
 
-py_strict_test(
+tf_py_test(
     name = "print_selective_registration_header_test",
     srcs = ["print_selective_registration_header_test.py"],
     deps = [
@@ -402,7 +401,7 @@ py_strict_library(
     ],
 )
 
-py_strict_test(
+tf_py_test(
     name = "saved_model_cli_test",
     srcs = ["saved_model_cli_test.py"],
     data = [
