@@ -17,7 +17,6 @@ limitations under the License.
 #define XLA_PJRT_PJRT_FUTURE_H_
 
 #include <algorithm>
-#include <atomic>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -279,22 +278,8 @@ class PjRtFutureBase : public PjRtFutureMoveControl<is_move_only> {
     // value stored in the AsyncValue.
     tsl::AsyncValue* async_value() const { return promise_.GetAsyncValue(); }
 
-#ifndef NDEBUG
-    int64_t AddFuture() const { return num_futures_->fetch_add(1); }
-#endif
-
    private:
     tsl::AsyncValueRef<T> promise_;
-
-#ifndef NDEBUG
-    // In debug builds we track the number of futures created from a promise to
-    // detect when a promise for a move-only type can be accidentally shared by
-    // multiple futures. We wrap the counter into shared pointer because promise
-    // for a move-only future is still copyable, but only one future can be
-    // created from all the copies.
-    std::shared_ptr<std::atomic<int64_t>> num_futures_ =
-        std::make_shared<std::atomic<int64_t>>(0);
-#endif
   };
 
   class ProfilingCleanup {
@@ -475,6 +460,16 @@ class PjRtFuture : public internal::PjRtFutureBase<absl::StatusOr<T>> {
       "PjRtFuture<T> already has an implicit absl::StatusOr<T> semantics");
 
  public:
+  PjRtFuture() = default;
+
+  // Constructs an immediately available future with the given value.
+  explicit PjRtFuture(absl::StatusOr<T> value) : Base(std::move(value)) {}
+
+  // Constructs and immediately available future from the given value.
+  template <typename U,
+            std::enable_if_t<std::is_constructible_v<T, U>>* = nullptr>
+  explicit PjRtFuture(U value) : Base(std::forward<U>(value)) {}
+
   class Promise : public Base::Promise {
    public:
     Promise(Promise&&) = default;
@@ -503,6 +498,9 @@ class PjRtFuture : public internal::PjRtFutureBase<absl::StatusOr<T>> {
 
   // Returns a pair of connected Promise and PjRtFuture<T>. Setting the returned
   // promise will fulfill the connected future.
+  //
+  // - on_block_start is called before Await starts to block.
+  // - on_block_end is called after Await finishes blocking.
   static std::pair<Promise, PjRtFuture<T>> MakePromise(
       PjRtFutureHelpers::OnBlockStartFn on_block_start = nullptr,
       PjRtFutureHelpers::OnBlockEndFn on_block_end = nullptr) {
@@ -510,28 +508,6 @@ class PjRtFuture : public internal::PjRtFutureBase<absl::StatusOr<T>> {
     PjRtFuture<T> future(promise, std::move(on_block_start),
                          std::move(on_block_end));
     return std::make_pair(std::move(promise), std::move(future));
-  }
-
-  // Bring PjRtFutureBase constructors in scope.
-  using Base::Base;
-
-  // Constructor for unavailable future that will be fulfilled later via the
-  // promise object.
-  //
-  // - on_block_start is called before Await starts to block.
-  //  - on_block_end is called after Await finishes blocking.
-  explicit PjRtFuture(
-      const Promise& promise,
-      PjRtFutureHelpers::OnBlockStartFn on_block_start = nullptr,
-      PjRtFutureHelpers::OnBlockEndFn on_block_end = nullptr)
-      : Base(promise.ref(), std::move(on_block_start),
-             std::move(on_block_end)) {
-#ifndef NDEBUG
-    if constexpr (is_move_only) {
-      DCHECK_EQ(promise.AddFuture(), 0)
-          << "Move-only PjRtFuture cannot share a promise object";
-    }
-#endif
   }
 
   using Base::Await;
@@ -740,6 +716,23 @@ class PjRtFuture : public internal::PjRtFutureBase<absl::StatusOr<T>> {
     return std::move(*this).template TryMap<typename R::value_type>(
         std::forward<F>(f));
   }
+
+ private:
+  friend class PjRtFutureHelpers;
+
+  // Bring PjRtFutureBase constructors in scope.
+  using Base::Base;
+
+  // Constructor for unavailable future that will be fulfilled later via the
+  // promise object.
+  //
+  // - on_block_start is called before Await starts to block.
+  // - on_block_end is called after Await finishes blocking.
+  PjRtFuture(const Promise& promise,
+             PjRtFutureHelpers::OnBlockStartFn on_block_start,
+             PjRtFutureHelpers::OnBlockEndFn on_block_end)
+      : Base(promise.ref(), std::move(on_block_start),
+             std::move(on_block_end)) {}
 };
 
 // PjRtFuture<void> specialization for communicating stateless events.
