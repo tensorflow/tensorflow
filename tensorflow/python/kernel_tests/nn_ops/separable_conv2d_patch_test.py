@@ -90,4 +90,3 @@ class SeparableConv2DTest(test.TestCase, parameterized.TestCase):
 
 if __name__ == "__main__":
     test.main()
-
