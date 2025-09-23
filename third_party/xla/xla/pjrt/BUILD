@@ -362,6 +362,7 @@ cc_library(
         "//xla/service:buffer_assignment",
         "//xla/service:compiler",
         "//xla/service:computation_layout",
+        "//xla/service:global_device_id",
         "//xla/service:hlo_cost_analysis",
         "//xla/service:hlo_proto_cc",
         "//xla/service:hlo_value",

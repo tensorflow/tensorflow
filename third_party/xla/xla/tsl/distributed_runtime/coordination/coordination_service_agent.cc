@@ -1052,21 +1052,6 @@ CoordinationServiceAgent::GetAliveTasks(
       response->alive_tasks().begin(), response->alive_tasks().end());
 }
 
-absl::StatusOr<std::vector<IncarnationId>>
-CoordinationServiceAgent::Incarnations(absl::Span<const int> tasks) const {
-  absl::MutexLock lock(incarnations_mu_);
-  std::vector<IncarnationId> incarnations;
-  for (const auto& task_id : tasks) {
-    auto it = incarnations_.find(task_id);
-    if (it == incarnations_.end()) {
-      return absl::FailedPreconditionError(
-          absl::StrFormat("Task %d not found", task_id));
-    }
-    incarnations.push_back(it->second);
-  }
-  return incarnations;
-}
-
 // Returns an error if agent is not running.
 absl::Status CoordinationServiceAgent::ValidateRunningAgent(
     bool allow_disconnected) {

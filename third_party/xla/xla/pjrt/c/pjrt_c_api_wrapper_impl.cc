@@ -64,6 +64,7 @@ limitations under the License.
 #include "xla/pjrt/proto/topology_description.pb.h"
 #include "xla/pjrt/raw_buffer.h"
 #include "xla/service/computation_placer.h"
+#include "xla/service/global_device_id.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -1810,6 +1811,12 @@ PJRT_Error* PJRT_LoadedExecutable_Execute(
       options.non_donatable_input_indices.insert(
           args->options->non_donatable_input_indices[i]);
     }
+  }
+
+  for (size_t i = 0; i < args->options->num_tasks; ++i) {
+    int task_id = args->options->task_ids[i];
+    int64_t incarnation_id = args->options->incarnation_ids[i];
+    options.incarnations.insert({task_id, xla::IncarnationId(incarnation_id)});
   }
 
   std::vector<std::vector<xla::PjRtBuffer*>> cpp_argument_lists =

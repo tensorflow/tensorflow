@@ -2821,7 +2821,7 @@ PjRtStreamExecutorLoadedExecutable::EnqueueExecution(
     run_options.set_run_id(run_id);
   }
   run_options.set_rng_seed(device_state->GetNewPrngSeed());
-  run_options.set_gpu_executable_run_options(client_->gpu_run_options());
+  run_options.set_gpu_executable_run_options(client_->gpu_run_options(options));
   run_options.set_launch_id(options.launch_id);
   run_options.set_send_device_memory_function(&send_device_memory);
   run_options.set_recv_device_memory_function(&recv_device_memory);

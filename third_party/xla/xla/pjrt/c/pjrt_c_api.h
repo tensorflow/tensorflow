@@ -102,7 +102,7 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_Extension_Base, next);
 // Changes include:
 // * Adding a new field to the PJRT_Api or argument structs
 // * Renaming a method or argument (doesn't affect ABI)
-#define PJRT_API_MINOR 77
+#define PJRT_API_MINOR 78
 
 // The plugin should set the major_version and minor_version of
 // PJRT_Api.pjrt_api_version to be the `PJRT_API_MAJOR` and `PJRT_API_MINOR` in
@@ -1704,8 +1704,14 @@ struct PJRT_ExecuteOptions {
   // null-terminated string. It is only valid for the duration of the C API
   // call. The plugin must copy the string if it needs to be stored.
   const char* call_location;
+
+  // The incarnation id for every task. For every 0 <= i < num_tasks,
+  // task task_ids[i] has incarnation incarnation_ids[i].
+  size_t num_tasks;
+  int* task_ids;
+  int64_t* incarnation_ids;
 };
-PJRT_DEFINE_STRUCT_TRAITS(PJRT_ExecuteOptions, call_location);
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_ExecuteOptions, incarnation_ids);
 
 struct PJRT_LoadedExecutable_Execute_Args {
   size_t struct_size;

@@ -2058,7 +2058,9 @@ PjRtCApiLoadedExecutable::GetCommonExecuteArgs(
     std::vector<PJRT_Buffer**>& c_output_lists,
     std::optional<std::vector<PJRT_Event*>>& device_complete_events,
     SendRecvCallbackData& callback_data,
-    std::vector<int64_t>& non_donatable_input_indices_storage) const {
+    std::vector<int64_t>& non_donatable_input_indices_storage,
+    std::vector<int>& task_ids_storage,
+    std::vector<int64_t>& incarnation_ids_storage) const {
   bool using_host_callbacks =
       !options.send_callbacks.empty() || !options.recv_callbacks.empty();
   if (using_host_callbacks &&
@@ -2085,6 +2087,14 @@ PjRtCApiLoadedExecutable::GetCommonExecuteArgs(
   if (pjrt_c_api()->pjrt_api_version.minor_version >= 76) {
     args.options->call_location = options.call_location.c_str();
   }
+
+  for (const auto& [task_id, incarnation_id] : options.incarnations) {
+    task_ids_storage.push_back(task_id);
+    incarnation_ids_storage.push_back(incarnation_id.value());
+  }
+  args.options->num_tasks = options.incarnations.size();
+  args.options->task_ids = task_ids_storage.data();
+  args.options->incarnation_ids = incarnation_ids_storage.data();
 
   // If the executable has no addressable devices, `num_args` cannot be
   // determined but it is unused. 0 serves as a placeholder.
@@ -2196,6 +2206,8 @@ PjRtCApiLoadedExecutable::Execute(
   std::vector<std::vector<PJRT_Buffer*>> c_output_lists_storage;
   std::vector<PJRT_Buffer**> c_output_lists;
   std::vector<int64_t> non_donatable_input_indices_storage;
+  std::vector<int> task_ids_storage;
+  std::vector<int64_t> incarnation_ids_storage;
   std::vector<PJRT_Buffer**> c_arguments;
   std::optional<std::vector<PJRT_Event*>> device_complete_events;
   if (returned_futures.has_value()) {
@@ -2225,7 +2237,8 @@ PjRtCApiLoadedExecutable::Execute(
                            c_argument_lists_storage, c_arguments,
                            c_output_lists_storage, c_output_lists,
                            device_complete_events, *callback_data,
-                           non_donatable_input_indices_storage));
+                           non_donatable_input_indices_storage,
+                           task_ids_storage, incarnation_ids_storage));
 
   args.execute_device = nullptr;
   PJRT_Profiler_Extension profiler_extension =
@@ -2281,6 +2294,8 @@ PjRtCApiLoadedExecutable::ExecuteWithSingleDevice(
   std::vector<std::vector<PJRT_Buffer*>> c_output_lists_storage;
   std::vector<PJRT_Buffer**> c_output_lists;
   std::vector<int64_t> non_donatable_input_indices_storage;
+  std::vector<int> task_ids_storage;
+  std::vector<int64_t> incarnation_ids_storage;
   std::vector<PJRT_Buffer**> c_arguments;
   std::optional<std::vector<PJRT_Event*>> device_complete_events;
   if (fill_future) {
@@ -2296,7 +2311,8 @@ PjRtCApiLoadedExecutable::ExecuteWithSingleDevice(
                            c_argument_lists_storage, c_arguments,
                            c_output_lists_storage, c_output_lists,
                            device_complete_events, *callback_data,
-                           non_donatable_input_indices_storage));
+                           non_donatable_input_indices_storage,
+                           task_ids_storage, incarnation_ids_storage));
 
   args.execute_device =
       tensorflow::down_cast<PjRtCApiDevice*>(device)->c_device();

@@ -279,6 +279,7 @@ cc_library(
         "//xla/pjrt/proto:compile_options_proto_cc",
         "//xla/pjrt/proto:topology_description_proto_cc",
         "//xla/service:computation_placer_hdr",
+        "//xla/service:global_device_id",
         "//xla/service:hlo_proto_cc",
         "//xla/tsl/framework:allocator",
         "//xla/tsl/platform:errors",

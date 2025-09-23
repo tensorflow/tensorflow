@@ -1,5 +1,9 @@
 # PJRT C API changelog
 
+## 0.78
+
+* Add incarnations to `PJRT_ExecuteOptions`.
+
 ## 0.77
 
 * Added buffer aliasing support to the PJRT C API

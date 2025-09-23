@@ -84,6 +84,7 @@ limitations under the License.
 #include "xla/python/pjrt_ifrt/pjrt_topology.h"
 #include "xla/python/pjrt_ifrt/pjrt_tuple.h"
 #include "xla/python/pjrt_ifrt/xla_sharding.h"
+#include "xla/service/global_device_id.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
@@ -1657,6 +1658,16 @@ absl::Status PjRtClient::TransferFromOutfeed(PjRtDevice* device,
         device->DebugString());
   }
   return device->pjrt_device()->TransferFromOutfeed(literal);
+}
+
+absl::StatusOr<absl::flat_hash_map<int, IncarnationId>>
+PjRtClient::Incarnations() const {
+  if (!distributed_client_) {
+    return absl::FailedPreconditionError("missing distributed client");
+  }
+  TF_ASSIGN_OR_RETURN(tsl::CoordinationServiceAgent * agent,
+                      distributed_client_->GetCoordinationServiceAgent());
+  return agent->Incarnations();
 }
 
 }  // namespace ifrt
