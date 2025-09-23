@@ -99,6 +99,9 @@ class PjRtCompatibleClient
   virtual absl::StatusOr<PjRtCompatibleMemory*> LookupPjRtMemory(
       xla::PjRtMemorySpace* pjrt_memory) const = 0;
 
+  // Whether to require a user context scope to be set up for IFRT operations.
+  virtual bool RequireUserContextScope() const = 0;
+
   static char ID;  // NOLINT
 };
 
@@ -159,6 +162,9 @@ class PjRtClient final
     // Whether to sort devices by (process index, device ID). If false, sort
     // devices only by device ID.
     bool sort_devices_by_process_index = true;
+
+    // Whether to require a user context scope to be set up for IFRT operations.
+    bool require_user_context_scope = false;
   };
 
   static absl::StatusOr<std::unique_ptr<PjRtClient>> Create(
@@ -300,6 +306,10 @@ class PjRtClient final
   absl::StatusOr<PjRtCompatibleMemory*> LookupPjRtMemory(
       xla::PjRtMemorySpace* pjrt_memory) const override;
 
+  bool RequireUserContextScope() const override {
+    return require_user_context_scope_;
+  }
+
   // Returns the PjRt global device ID for the given IFRT device ID. This
   // succeeds only if the PjRt global device ID was available in `pjrt_client_`
   // or it has been discovered through topology exchange; in other words, it
@@ -411,6 +421,10 @@ class PjRtClient final
   // A work queue for dispatching background work. Enqueued work items can
   // access the members of this class, so work_queue_ should be built last.
   std::unique_ptr<tsl::UnboundedWorkQueue> work_queue_;
+
+  // Whether the client requires a user context scope to be set up for IFRT
+  // operations.
+  bool require_user_context_scope_;
 
   friend class PjRtClientPeer;
 };

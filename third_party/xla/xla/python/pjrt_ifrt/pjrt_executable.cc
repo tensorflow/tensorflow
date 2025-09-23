@@ -216,6 +216,11 @@ absl::StatusOr<LoadedExecutableRef> PjRtLoadedExecutable::Create(
   // TODO(hyeontaek): Use a full shape and a sharding rather than a per-shard
   // shape.
   VLOG(3) << "PjRtLoadedExecutable::Create";
+  if (client->RequireUserContextScope() && !UserContextScope::HasAnyScope()) {
+    return FailedPrecondition(
+        "User context scope is required for PjRtLoadedExecutable::Create() but "
+        "not set");
+  }
   VLOG(3) << "Using per-shard shape";
   TF_ASSIGN_OR_RETURN(
       auto result_element_types,
@@ -255,6 +260,11 @@ absl::StatusOr<LoadedExecutableRef> PjRtLoadedExecutable::Create(
     std::vector<tsl::RCReference<LoadedHostCallback>> loaded_host_callbacks,
     DeviceListRef executable_devices) {
   VLOG(3) << "PjRtLoadedExecutable::Create";
+  if (client->RequireUserContextScope() && !UserContextScope::HasAnyScope()) {
+    return FailedPrecondition(
+        "User context scope is required for PjRtLoadedExecutable::Create() but "
+        "not set");
+  }
   if (VLOG_IS_ON(3)) {
     module.dump();
   }
