@@ -1,5 +1,5 @@
  *******************************************************************************
- Copyright 2023 Arm Limited and affiliates.
+ Copyright 2023-2025 Arm Limited and affiliates.
  SPDX-License-Identifier: Apache-2.0
 
  Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,10 +15,10 @@
  limitations under the License.
  *******************************************************************************
 diff --git a/BUILD.bazel b/BUILD.bazel
-index f1766d958..0cb51f52d 100644
+index 3cbd582c2..3aaf9430f 100644
 --- a/BUILD.bazel
 +++ b/BUILD.bazel
-@@ -239,9 +239,11 @@ cc_library(
+@@ -255,9 +255,11 @@ cc_library(
              }),
      visibility = ["//visibility:public"],
      deps = [
@@ -31,9 +31,9 @@ index f1766d958..0cb51f52d 100644
      ],
      alwayslink = True,
  )
-@@ -407,7 +409,8 @@ cc_library(
-         "//support",
-         "//utils",
+@@ -427,7 +429,8 @@ cc_library(
+         "@@kleidiai//kai/ukernels/matmul:clamp_f32_f32_f32p",
+         "@@kleidiai//kai/ukernels/matmul:rhs_pack_kxn_f32pbiasf32_f32_f32_neon",
          "//:arm_compute_sve",
 -        "//:arm_compute_sve2"
 +        "//:arm_compute_sve2",

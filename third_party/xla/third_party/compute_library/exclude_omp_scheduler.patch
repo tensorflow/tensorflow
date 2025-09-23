@@ -12,11 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-diff --git a/src/BUILD.bazel b/src/BUILD.bazel
-index 547c98576..a31301230 100644
 --- a/src/BUILD.bazel
 +++ b/src/BUILD.bazel
-@@ -1029,7 +1029,6 @@ filegroup(
+@@ -970,7 +970,6 @@
  	"runtime/NEON/functions/NETranspose.cpp",
  	"runtime/NEON/functions/NEUnstack.cpp",
  	"runtime/NEON/functions/NEWinogradConvolutionLayer.cpp",
@@ -24,14 +22,14 @@ index 547c98576..a31301230 100644
  	"runtime/OffsetLifetimeManager.cpp",
  	"runtime/OffsetMemoryPool.cpp",
  	"runtime/OperatorTensor.cpp",
-@@ -1058,6 +1057,10 @@ filegroup(
- 	"runtime/experimental/operators/CpuSub.cpp",
- 	"runtime/experimental/operators/CpuTranspose.cpp",
- 	"runtime/experimental/operators/CpuWinogradConv2d.cpp"]  +
-+    select({
-+        "//:openmp_flag": ["runtime/OMP/OMPScheduler.cpp"],
-+        "//conditions:default": [],
-+    }) +
+@@ -1083,6 +1082,10 @@
+ 	"cpu/kernels/select/generic/neon/fp16.cpp",
+ 	"cpu/kernels/softmax/generic/neon/fp16.cpp",
+ 	"cpu/kernels/sub/neon/fp16.cpp"]  +
++	select({
++	    "//:openmp_flag": ["runtime/OMP/OMPScheduler.cpp"],
++	    "//conditions:default": [],
++	}) +
      glob(["**/*.h",
      "**/*.hpp",
      "**/*.inl"]),
