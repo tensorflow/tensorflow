@@ -294,8 +294,6 @@ class DepthwiseConv2dNativeOp : public BinaryOp<T> {
 			errors::InvalidArgument("Stride at index ", i,
 									" too large, must fit in int32, got ", strides_[i]));
 	}
-
-	
     string data_format;
     OP_REQUIRES_OK(context, context->GetAttr("data_format", &data_format));
     OP_REQUIRES(context, FormatFromString(data_format, &data_format_),
