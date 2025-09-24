@@ -15,16 +15,20 @@ limitations under the License.
 
 #include "xla/backends/gpu/runtime/conditional_thunk.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <string>
 #include <utility>
 #include <variant>
 #include <vector>
 
 #include "absl/functional/function_ref.h"
 #include "absl/functional/overload.h"
+#include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
@@ -192,6 +196,25 @@ absl::StatusOr<std::unique_ptr<ConditionalThunk>> ConditionalThunk::FromProto(
   return std::make_unique<ConditionalThunk>(
       std::move(thunk_info), branch_index_buffer_index,
       std::move(branch_thunks), thunk_proto.branch_index_is_bool());
+}
+
+std::string ConditionalThunk::ToString(int indent) const {
+  std::string indent_str(indent * 2, ' ');
+  std::string result;
+  absl::StrAppend(&result, indent_str, "\n");
+  if (branch_index_is_bool_) {
+    CHECK_EQ(branch_thunks_.size(), 2);
+    absl::StrAppend(&result, indent_str, "false_branch:\n",
+                    branch_thunks_[0]->ToString(indent + 1));
+    absl::StrAppend(&result, indent_str, "true_branch:\n",
+                    branch_thunks_[1]->ToString(indent + 1));
+  } else {
+    for (size_t i = 0; i < branch_thunks_.size(); ++i) {
+      absl::StrAppend(&result, indent_str, "branch_", i, ":\n",
+                      branch_thunks_[i]->ToString(indent + 1));
+    }
+  }
+  return result;
 }
 
 }  // namespace gpu

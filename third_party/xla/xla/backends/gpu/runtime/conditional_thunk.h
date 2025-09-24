@@ -89,6 +89,8 @@ class ConditionalThunk : public Thunk {
       absl::Span<const BufferAllocation> buffer_allocations,
       const Deserializer& deserializer);
 
+  std::string ToString(int indent) const override;
+
  private:
   const BufferAllocation::Slice branch_index_buffer_index_;
   std::vector<std::unique_ptr<SequentialThunk>> branch_thunks_;
