@@ -69,12 +69,11 @@ absl::StatusOr<std::shared_ptr<LockableGpuClique::Lock>> AcquireGpuClique(
     const GpuCollectives::CliqueIdCallback& clique_id_callback, RankId rank,
     const AcquiredCliquesMap& acquired_cliques, int64_t max_nchannels = 0);
 
-// Aborts and invalidates all cliques that have been created via
-// AcquireGpuClique with any of the provided incarnations. For example, if
-// incarnations is [1, 2], then all cliques with a clique key that includes
-// incarnations 1 or 2 will be aborted.
-absl::Status AbortCliquesWithIncarnations(
-    absl::Span<const IncarnationId> incarnations);
+// Updates the global set of task state information. This function aborts and
+// invalidates all cliques that were created via AcquireGpuClique with
+// incarnations that have become stale.
+absl::Status UpdateGlobalProcessInfo(
+    absl::Span<tensorflow::CoordinatedTaskStateInfo> infos);
 
 }  // namespace xla::gpu
 
