@@ -717,7 +717,9 @@ CudaExecutor::CreateMemoryAllocator(MemoryType type) {
                 }
               });
         });
-  } else if (type == MemoryType::kCollective) {
+  }
+
+  if (type == MemoryType::kCollective) {
     return std::make_unique<GenericMemoryAllocator>(
         [this](uint64_t size)
             -> absl::StatusOr<std::unique_ptr<MemoryAllocation>> {
@@ -739,11 +741,14 @@ CudaExecutor::CreateMemoryAllocator(MemoryType type) {
                 }
               });
         });
-  } else if (type == MemoryType::kHost) {
+  }
+
+  if (type == MemoryType::kHost) {
     return std::make_unique<GenericMemoryAllocator>([this](uint64_t size) {
       return AllocateHostMemory(cuda_context_, numa_node_, size);
     });
   }
+
   return absl::UnimplementedError(
       absl::StrFormat("Unsupported memory type %d", type));
 }
@@ -1058,8 +1063,10 @@ DeviceMemoryBase CudaExecutor::Allocate(uint64_t size, int64_t memory_space) {
     VLOG(1) << "[" << device_ordinal() << "] CudaExecutor::Allocate returns "
             << result.value();
     return DeviceMemoryBase(result.value(), size);
-  } else if (memory_space ==
-             static_cast<int64_t>(stream_executor::MemoryType::kHost)) {
+  }
+
+  if (memory_space ==
+      static_cast<int64_t>(stream_executor::MemoryType::kHost)) {
     auto result = HostAllocate(cuda_context_, numa_node_, size);
     if (!result.ok()) {
       LOG(ERROR) << "[" << device_ordinal()
@@ -1070,7 +1077,10 @@ DeviceMemoryBase CudaExecutor::Allocate(uint64_t size, int64_t memory_space) {
             << result.value();
     return DeviceMemoryBase(result.value(), size);
   }
-  CHECK_EQ(memory_space, 0);
+
+  CHECK(memory_space == static_cast<int64_t>(MemoryType::kDevice) ||
+        memory_space == static_cast<int64_t>(MemoryType::kP2P));
+
   auto device_buf_base = DeviceAllocate(cuda_context_, size);
   VLOG(1) << "[" << device_ordinal() << "] CudaExecutor::Allocate returns "
           << device_buf_base;
