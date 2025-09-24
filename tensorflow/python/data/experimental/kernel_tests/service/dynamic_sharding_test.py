@@ -415,6 +415,35 @@ class DynamicShardingTest(data_service_test_base.TestBase,
     self.assertDatasetProduces(
         ds, [b"a", b"b", b"c"] * 50, assert_items_equal=True)
 
+  @combinations.generate(test_base.default_test_combinations())
+  def testMultipleRegistration(self):
+    cluster = data_service_test_base.TestCluster(num_workers=2)
+    dataset = dataset_ops.Dataset.range(100)
+    dataset1 = dataset.apply(
+        data_service_ops.distribute(
+            data_service_ops.ShardingPolicy.DYNAMIC,
+            cluster.dispatcher_address(),
+            job_name="shared_job"
+        )
+    )
+    dataset2 = dataset.apply(
+        data_service_ops.distribute(
+            data_service_ops.ShardingPolicy.DYNAMIC,
+            cluster.dispatcher_address(),
+            job_name="shared_job"
+        )
+    )
+
+    output = []
+    iter1 = self.getNext(dataset1)
+    iter2 = self.getNext(dataset2)
+    for _ in range(5):
+      output.append(self.evaluate(iter1()))
+      output.append(self.evaluate(iter2()))
+    output.extend(self.getIteratorOutput(iter1))
+    output.extend(self.getIteratorOutput(iter2))
+    self.assertEqual(sorted(output), list(range(100)))
+
 
 class DynamicShardingFilesTest(data_service_test_base.TestBase,
                                tf_record_test_base.TFRecordTestBase,
