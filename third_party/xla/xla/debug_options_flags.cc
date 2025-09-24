@@ -1673,13 +1673,6 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
                 debug_options->xla_dump_full_hlo_config(),
                 "Enable dumping the full HloModuleConfig proto."));
   flag_list->push_back(tsl::Flag(
-      "xla_gpu_enable_custom_fusions_re",
-      string_setter_for(&DebugOptions::set_xla_gpu_enable_custom_fusions_re),
-      debug_options->xla_gpu_enable_custom_fusions_re(),
-      "Limits custom fusion only to fusions which match this regular "
-      "expression. Default is all custom fusions registerered in a current "
-      "process."));
-  flag_list->push_back(tsl::Flag(
       "xla_gpu_enable_dynamic_slice_fusion",
       bool_setter_for(&DebugOptions::set_xla_gpu_enable_dynamic_slice_fusion),
       debug_options->xla_gpu_enable_dynamic_slice_fusion(),
