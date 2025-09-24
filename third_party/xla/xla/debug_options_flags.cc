@@ -2536,6 +2536,12 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
           &DebugOptions::set_xla_gpu_experimental_use_raft_select_k),
       debug_options->xla_gpu_experimental_use_raft_select_k(),
       "If true, use the raft::matrix::select_k implementation of TopK."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_experimental_scaled_dot_with_triton",
+      bool_setter_for(
+          &DebugOptions::set_xla_gpu_experimental_scaled_dot_with_triton),
+      debug_options->xla_gpu_experimental_scaled_dot_with_triton(),
+      "If true, use the Triton emitter for scaled dot."));
 }  // NOLINT(readability/fn_size)
 
 // Allocates flag_values and flag_objects; this function must not be called more

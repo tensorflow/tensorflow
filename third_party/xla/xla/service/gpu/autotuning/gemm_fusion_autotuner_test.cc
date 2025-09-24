@@ -1760,6 +1760,39 @@ TEST_F(GemmFusionAutotunerTest, ScaledDotConfigsAreGenerated) {
   EXPECT_GT(blackwell_configs_set.size(), 0);
 }
 
+TEST_F(GemmFusionAutotunerTest, ScaledDotConfigsHaveCuBlasFallback) {
+  if (isRocm()) {
+    GTEST_SKIP() << "Not supported on ROCm.";
+  }
+
+  std::unique_ptr<VerifiedHloModule> module = ParseAndReturnVerifiedModule(R"(
+    HloModule module
+
+    fusion_computation {
+      p0 = f32[1024,1024] parameter(0)
+      p0_scale = f32[1024,8] parameter(1)
+      p1 = f32[1024,1024] parameter(2)
+      p1_scale = f32[8,1024] parameter(3)
+      ROOT r = f32[1024,1024] scaled-dot(p0, p0_scale, p1, p1_scale),
+        lhs_contracting_dims={1}, rhs_contracting_dims={0}
+    }
+
+    ENTRY e {
+      p0 = f32[1024,1024] parameter(0)
+      p0_scale = f32[1024,8] parameter(1)
+      p1 = f32[1024,1024] parameter(2)
+      p1_scale = f32[8,1024] parameter(3)
+      ROOT r = f32[1024,1024] fusion(p0, p0_scale, p1, p1_scale),
+        kind=kCustom, calls=fusion_computation
+    })")
+                                                  .value();
+
+  auto configs = GetPossibleMatmulAutotuneConfigs(*module);
+  EXPECT_TRUE(hasCublasConfig(configs.value()))
+      << "There should be at least one config with cublas fallback for "
+         "scaled-dot.";
+}
+
 // TODO(b/315957220): Remove the experimental flags once TMA is enabled by
 // default.
 class GemmFusionAutotunerEnableTma : public GemmFusionAutotunerTest {

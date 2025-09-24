@@ -30,6 +30,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/layout_util.h"
 #include "xla/primitive_util.h"
 #include "xla/shape.h"
 #include "xla/tsl/platform/errors.h"
@@ -128,10 +129,12 @@ HloInstruction* BroadcastAndReshape(HloInstruction* scale,
     }
   }
   Shape new_scales_shape(scale_shape.element_type(), shape_dims);
+  LayoutUtil::SetToDefaultLayout(&new_scales_shape);
   HloInstruction* new_scales = computation->AddInstruction(
       HloInstruction::CreateBroadcast(new_scales_shape, scale, broadcast_dims));
   Shape reshaped_scales_shape(scale_shape.element_type(),
                               operand_shape.dimensions());
+  LayoutUtil::SetToDefaultLayout(&reshaped_scales_shape);
   return computation->AddInstruction(
       HloInstruction::CreateReshape(reshaped_scales_shape, new_scales));
 }
@@ -159,26 +162,33 @@ absl::StatusOr<HloInstruction*> Dequantize(HloInstruction* dot,
 }
 }  // namespace
 
+absl::StatusOr<bool> ScaledDotRewriter::RewriteComputation(
+    HloComputation* computation) {
+  bool changed = false;
+  for (HloInstruction* instruction : computation->MakeInstructionPostOrder()) {
+    if (instruction->opcode() != HloOpcode::kScaledDot) {
+      continue;
+    }
+    changed = true;
+    HloScaledDotInstruction* dot = Cast<HloScaledDotInstruction>(instruction);
+    TF_ASSIGN_OR_RETURN(HloInstruction * lhs, Dequantize(dot, 0, 1, "LHS"));
+    TF_ASSIGN_OR_RETURN(HloInstruction * rhs, Dequantize(dot, 2, 3, "RHS"));
+
+    TF_RETURN_IF_ERROR(dot->ReplaceAllUsesWith(
+        computation->AddInstruction(HloInstruction::CreateDot(
+            dot->shape(), lhs, rhs, dot->dot_dimension_numbers(),
+            dot->precision_config()))));
+    TF_RETURN_IF_ERROR(computation->RemoveInstruction(dot));
+  }
+  return changed;
+}
+
 absl::StatusOr<bool> ScaledDotRewriter::Run(
     HloModule* module, const absl::flat_hash_set<absl::string_view>&) {
   bool changed = false;
   for (HloComputation* computation : module->MakeNonfusionComputations()) {
-    for (HloInstruction* instruction :
-         computation->MakeInstructionPostOrder()) {
-      if (instruction->opcode() != HloOpcode::kScaledDot) {
-        continue;
-      }
-      changed = true;
-      HloScaledDotInstruction* dot = Cast<HloScaledDotInstruction>(instruction);
-      TF_ASSIGN_OR_RETURN(HloInstruction * lhs, Dequantize(dot, 0, 1, "LHS"));
-      TF_ASSIGN_OR_RETURN(HloInstruction * rhs, Dequantize(dot, 2, 3, "RHS"));
-
-      TF_RETURN_IF_ERROR(dot->ReplaceAllUsesWith(
-          computation->AddInstruction(HloInstruction::CreateDot(
-              dot->shape(), lhs, rhs, dot->dot_dimension_numbers(),
-              dot->precision_config()))));
-      TF_RETURN_IF_ERROR(computation->RemoveInstruction(dot));
-    }
+    TF_ASSIGN_OR_RETURN(bool result, RewriteComputation(computation));
+    changed |= result;
   }
   return changed;
 }

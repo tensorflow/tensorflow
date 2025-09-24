@@ -167,6 +167,7 @@ cc_library(
         "//xla/service/gpu/transforms:gemm_rewriter",
         "//xla/service/gpu/transforms:nest_gemm_fusion",
         "//xla/service/gpu/transforms:priority_fusion",
+        "//xla/service/gpu/transforms:scaled_dot_rewriter",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor:device_memory",
         "//xla/stream_executor:device_memory_allocator",
