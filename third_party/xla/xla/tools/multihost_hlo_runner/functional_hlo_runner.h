@@ -304,6 +304,14 @@ absl::StatusOr<CompileOptions> CreateCompileOptions(
     int num_nodes = 1,
     std::shared_ptr<xla::KeyValueStoreInterface> kv_store = nullptr);
 
+// Calculates the requested number of replicas and partitions. The explicit
+// num_replicas and num_partitions options override execution_options. Regarding
+// the num_slices parameter, see the comment on xla::MultiSliceConfig.
+ReplicasAndPartitions GetReplicasAndPartitions(
+    const std::optional<ExecutionOptions>& execution_options, int device_count,
+    const std::optional<int>& num_replicas,
+    const std::optional<int>& num_partitions, int num_slices = 1);
+
 // Runs on HLO module and dumps the output if needed.
 //
 // This is the highest level API in this file.
