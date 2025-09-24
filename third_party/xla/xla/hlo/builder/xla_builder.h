@@ -371,6 +371,11 @@ class XlaBuilder {
   // Returns the OpSharding that will be attached to all instructions.
   const std::optional<OpSharding>& sharding() const { return sharding_; }
 
+  // Returns the OriginalValueProto that will be attached to all instructions.
+  const std::optional<OriginalValueProto>& original_value() const {
+    return original_value_;
+  }
+
   // Sets the builder to a mode where it will die immediately when an error is
   // encountered, rather than producing it in a deferred fashion when Build() is
   // called (which is the default).
@@ -1985,10 +1990,8 @@ class XlaScopedOriginalValueAssignment {
   XlaScopedOriginalValueAssignment(
       xla::XlaBuilder* builder,
       std::optional<OriginalValueProto> original_value_proto)
-      : builder_(builder) {
-    if (original_value_proto.has_value()) {
-      builder_->SetOriginalValue(original_value_proto.value());
-    }
+      : builder_(builder), prev_original_value_(builder->original_value()) {
+    SetOriginalValue(original_value_proto);
   }
 
   XlaScopedOriginalValueAssignment(const XlaScopedOriginalValueAssignment&) =
@@ -1996,11 +1999,22 @@ class XlaScopedOriginalValueAssignment {
   XlaScopedOriginalValueAssignment& operator=(
       const XlaScopedOriginalValueAssignment&) = delete;
 
-  ~XlaScopedOriginalValueAssignment() { builder_->ClearOriginalValue(); }
+  ~XlaScopedOriginalValueAssignment() {
+    SetOriginalValue(prev_original_value_);
+  }
 
  private:
+  void SetOriginalValue(
+      const std::optional<OriginalValueProto>& original_value_proto) {
+    if (original_value_proto.has_value()) {
+      builder_->SetOriginalValue(original_value_proto.value());
+    } else {
+      builder_->ClearOriginalValue();
+    }
+  }
+
   xla::XlaBuilder* const builder_;
-  std::optional<OpSharding> prev_sharding_;
+  std::optional<OriginalValueProto> prev_original_value_;
 };
 
 // RAII-style object: save the current builder's frontend attributes, and merge

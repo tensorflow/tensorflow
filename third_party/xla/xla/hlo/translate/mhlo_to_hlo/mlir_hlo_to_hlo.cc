@@ -83,6 +83,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/hlo_original_value.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/translate/hlo_to_mhlo/hlo_utils.h"
@@ -1298,6 +1299,22 @@ void BuildGetTupleElementsForTupleResults(
     mlir::Operation* op, xla::XlaOp tuple, xla::XlaBuilder* builder,
     llvm::DenseMap<mlir::Value, xla::XlaOp>& values,
     unsigned num_implicit_results = 0) {
+  auto get_tuple_element_original_value_proto =
+      [&builder](int64_t index) -> std::optional<xla::OriginalValueProto> {
+    auto original_value_proto = builder->original_value();
+    if (original_value_proto.has_value()) {
+      auto original_value =
+          xla::OriginalValue::FromProto(*original_value_proto);
+      auto subtree = original_value->tree().Subtree({index});
+      if (subtree.ok()) {
+        auto element_original_value =
+            std::make_shared<xla::OriginalValue>(std::move(subtree.value()));
+        return element_original_value->ToProto();
+      }
+    }
+    return std::nullopt;
+  };
+
   const std::optional<xla::OpSharding>& sharding = builder->sharding();
   if (sharding.has_value()) {
     bool is_tuple_sharding = sharding->type() == xla::OpSharding::TUPLE;
@@ -1309,11 +1326,19 @@ void BuildGetTupleElementsForTupleResults(
       xla::XlaScopedShardingAssignment scoped_sharding(
           builder,
           is_tuple_sharding ? sharding->tuple_shardings(index) : sharding);
+      // Set the original value for the get-tuple-element.
+      xla::XlaScopedOriginalValueAssignment original_value(
+          builder,
+          get_tuple_element_original_value_proto(static_cast<int64_t>(index)));
       values[result] = xla::GetTupleElement(tuple, index);
     }
   } else {
     xla::XlaScopedShardingAssignment scoped_sharding(builder, std::nullopt);
     for (auto [index, result] : llvm::enumerate(op->getResults())) {
+      // Set the original value for the get-tuple-element.
+      xla::XlaScopedOriginalValueAssignment original_value(
+          builder,
+          get_tuple_element_original_value_proto(static_cast<int64_t>(index)));
       values[result] = xla::GetTupleElement(tuple, index);
     }
   }
