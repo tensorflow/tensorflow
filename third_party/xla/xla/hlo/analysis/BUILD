@@ -622,6 +622,29 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "interval",
+    srcs = ["interval.cc"],
+    hdrs = ["interval.h"],
+    deps = [
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/numeric:int128",
+        "@com_google_absl//absl/strings:str_format",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+xla_cc_test(
+    name = "interval_test",
+    srcs = ["interval_test.cc"],
+    deps = [
+        ":interval",
+        "//xla/tests:hlo_test_base",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:test",
+    ],
+)
+
+cc_library(
     name = "indexing_analysis",
     srcs = [
         "indexing_analysis.cc",
@@ -634,6 +657,7 @@ cc_library(
         "indexing_map_serialization.h",
     ],
     deps = [
+        ":interval",
         "//xla:permutation_util",
         "//xla:shape_util",
         "//xla:util",
@@ -666,6 +690,7 @@ xla_cc_test(
     deps = [
         ":indexing_analysis",
         ":indexing_test_utils",
+        ":interval",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/hlo/testlib:verified_hlo_module",
         "//xla/tests:xla_internal_test_main",
@@ -685,6 +710,7 @@ xla_cc_test(
     deps = [
         ":indexing_analysis",
         ":indexing_test_utils",
+        ":interval",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/tests:xla_internal_test_main",
         "@com_google_absl//absl/strings:string_view",
@@ -701,6 +727,7 @@ cc_library(
     hdrs = ["indexing_test_utils.h"],
     deps = [
         ":indexing_analysis",
+        ":interval",
         "//xla:status_macros",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:verified_hlo_module",
@@ -729,6 +756,7 @@ xla_cc_test(
     deps = [
         ":indexing_analysis",
         ":indexing_test_utils",
+        ":interval",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/utils:hlo_traversal",
         "//xla/tests:xla_internal_test_main",
