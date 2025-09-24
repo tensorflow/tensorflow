@@ -18,6 +18,7 @@ def repo():
             "//third_party/raft:cudart_utils.hpp.patch",
             "//third_party/raft:vectorized.cuh.patch",
             "//third_party/raft:clang_cuda_intrinsics.h.patch",
+            "//third_party/raft:pr-2807.patch",
             "//third_party/raft:logger_macros.hpp.patch",
             "//third_party/raft:select_k_runner.hpp.patch",
             "//third_party/raft:select_k_runner.cu.cc.patch",
