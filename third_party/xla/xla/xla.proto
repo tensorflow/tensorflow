@@ -549,9 +549,6 @@ message DebugOptions {
 
   optional bool xla_gpu_enable_triton_gemm = 188;
 
-  // Enables currently disabled features within Triton for Hopper.
-  optional bool xla_gpu_enable_triton_hopper = 266;
-
   // Enable double buffering for loops.
   optional bool xla_gpu_enable_while_loop_double_buffering = 248;
 
@@ -916,6 +913,7 @@ message DebugOptions {
   // go/keep-sorted end
 
   reserved 167;  // xla_gpu_redzone_scratch_max_megabytes
+  reserved 266;  // xla_gpu_enable_triton_hopper
   reserved 276;  // xla_gpu_enable_nccl_per_stream_comms
   reserved 226;  // xla_gpu_triton_gemm_disable_reduced_precision_reduction
   reserved 385;  // xla_gpu_experimental_enable_dynamic_dot_search_space
