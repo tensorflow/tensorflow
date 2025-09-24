@@ -116,13 +116,6 @@ ENTRY main {
       LiteralUtil::CreateR2<int32_t>({{10, 20, 30}, {70, 80, 90}});
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo_text));
-  if (module->config()
-          .debug_options()
-          .xla_gpu_enable_scatter_determinism_expander() &&
-      module->config().debug_options().xla_gpu_deterministic_ops()) {
-    // TODO(b/443204632): Re-enable this test.
-    GTEST_SKIP() << "Currently fails";
-  }
   TF_ASSERT_OK_AND_ASSIGN(
       Literal result,
       Execute(std::move(module), {&operand, &scatter_indices, &updates}));

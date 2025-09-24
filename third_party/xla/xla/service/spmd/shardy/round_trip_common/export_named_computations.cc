@@ -108,13 +108,15 @@ StringAttr createFuncOpOrGetFromCache(
     mlir::IRRewriter& rewriter, SymbolTable& symbolTable,
     ManualAxesAttr manualAxesAttr,
     std::optional<TensorShardingPerValueAttr> inShardings,
-    std::optional<TensorShardingPerValueAttr> outShardings) {
-  auto key = std::make_tuple(namedComputationOp.getName(),
-                             namedComputationOp.getInShardings().value_or(
-                                 TensorShardingPerValueAttr()),
-                             namedComputationOp.getOutShardings().value_or(
-                                 TensorShardingPerValueAttr()),
-                             manualAxesAttr);
+    std::optional<TensorShardingPerValueAttr> outShardings,
+    bool dedupFunctionsFully) {
+  auto key = std::make_tuple(
+      namedComputationOp.getName(),
+      dedupFunctionsFully ? TensorShardingPerValueAttr()
+                          : inShardings.value_or(TensorShardingPerValueAttr()),
+      dedupFunctionsFully ? TensorShardingPerValueAttr()
+                          : outShardings.value_or(TensorShardingPerValueAttr()),
+      manualAxesAttr);
   if (auto it = funcCache.find(key); it != funcCache.end()) {
     return it->second;
   }
@@ -168,7 +170,7 @@ class ExportNamedComputationsPass
       }
       StringAttr funcSymName = createFuncOpOrGetFromCache(
           namedComputationOp, funcCache, rewriter, symbolTable, manualAxesAttr,
-          inShardings, outShardings);
+          inShardings, outShardings, dedupFunctionsFully);
 
       // Replace the `NamedComputationOp` with a `CallOp`.
       rewriter.setInsertionPoint(namedComputationOp);
@@ -204,10 +206,9 @@ class ExportNamedComputationsPass
       *this, "dedup-functions-fully",
       llvm::cl::desc(
           "Whether to deduplicate functions fully, regardless of the input and "
-          "output shardings of functions, and it keeps one function for each "
-          "input function. The default is false, meaning it will deduplicate "
-          "only if the input and output shardings are the same. Not "
-          "implemented yet."),
+          "output shardings of functions, and it keeps one callee function for "
+          "each caller function. The default is false, meaning it will "
+          "deduplicate only if the input and output shardings are the same."),
       llvm::cl::init(false)};
 };
 

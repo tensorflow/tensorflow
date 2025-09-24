@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
+#include <iostream>
 #include <memory>
 #include <string>
 #include <utility>
@@ -220,7 +221,9 @@ int main(int argc, char* argv[]) {
   std::string kUsageString =
       absl::StrCat(kUsageText, "\n\n", tsl::Flags::Usage(argv[0], flag_list));
   if (!tsl::Flags::Parse(&argc, argv, flag_list)) {
-    LOG(QFATAL) << kUsageString;
+    // Print the usage using cerr to avoid truncation by LOG.
+    std::cerr << kUsageString;
+    return 1;
   }
   tsl::port::InitMain(kUsageString.c_str(), &argc, &argv);
 
