@@ -3007,8 +3007,7 @@ LogicalResult ExportXlaOp(SelectAndScatterOp op, OpLoweringContext ctx) {
 // available through xla::RemoveDynamicDimension, so to avoid changing MHLO
 // semantics we explicitly check for that case here.  However, we should
 // consider adding a RemoveDynamicDimensionOp to HLO and MHLO.
-mlir::LogicalResult ExportXlaOp(mlir::stablehlo::SetDimensionSizeOp op,
-                                OpLoweringContext ctx) {
+mlir::LogicalResult ExportXlaOp(SetDimensionSizeOp op, OpLoweringContext ctx) {
   auto& value_map = *ctx.values;
   auto result = op.getResult();
   xla::XlaOp array;
@@ -3020,8 +3019,8 @@ mlir::LogicalResult ExportXlaOp(mlir::stablehlo::SetDimensionSizeOp op,
     return op.emitError(shape_or.status().ToString());
   }
   xla::XlaOp xla_result;
-  if (auto constant = llvm::dyn_cast_or_null<mlir::mhlo::ConstantOp>(
-          op.getSize().getDefiningOp());
+  if (auto constant =
+          llvm::dyn_cast_or_null<ConstantOp>(op.getSize().getDefiningOp());
       constant != nullptr) {
     auto value = constant.getValue();
     auto values = value.getValues<mlir::IntegerAttr>();
