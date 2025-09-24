@@ -21,7 +21,6 @@ limitations under the License.
 #include <deque>
 #include <memory>
 #include <optional>
-#include <string>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -54,6 +53,7 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/layout.h"
 #include "xla/service/call_graph.h"
+#include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/gpu/model/symbolic_tile.h"
@@ -70,6 +70,7 @@ limitations under the License.
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
+#include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla::gpu {
