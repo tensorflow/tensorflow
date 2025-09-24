@@ -451,6 +451,16 @@ absl::StatusOr<bool> CommandBufferConversionPass::Run(
           bool changed_in_body,
           Run(while_thunk->body_thunk_sequence(), debug_options, device_info));
       changed |= changed_in_body;
+    } else if (thunk->kind() == Thunk::kConditional) {
+      // If a `ConditionalThunk` itself is not eligible for conversion into a
+      // command buffer, we attempt to convert thunks within its branches.
+      auto conditional_thunk = static_cast<ConditionalThunk*>(thunk.get());
+      for (auto& branch_thunk : conditional_thunk->branch_thunks()) {
+        TF_ASSIGN_OR_RETURN(
+            bool changed_in_branch,
+            Run(branch_thunk.get(), debug_options, device_info));
+        changed |= changed_in_branch;
+      }
     }
 
     // If the current thunk is not convertible, flush collected eligible thunk
