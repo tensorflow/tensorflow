@@ -15,8 +15,6 @@ limitations under the License.
 
 #include "xla/tsl/framework/device_type.h"
 
-#include <ostream>
-
 namespace tsl {
 
 bool DeviceType::operator<(const DeviceType& other) const {
@@ -25,11 +23,6 @@ bool DeviceType::operator<(const DeviceType& other) const {
 
 bool DeviceType::operator==(const DeviceType& other) const {
   return type_ == other.type_;
-}
-
-std::ostream& operator<<(std::ostream& os, const DeviceType& d) {
-  os << d.type();
-  return os;
 }
 
 }  // namespace tsl

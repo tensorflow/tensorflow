@@ -169,7 +169,7 @@ inline absl::Status CreateWithUpdatedMessage(const absl::Status& status,
 template <typename... Args>
 void AppendToMessage(absl::Status* status, Args... args) {
   auto new_status = CreateWithUpdatedMessage(
-      *status, ::tsl::strings::StrCat(status->message(), "\n\t", args...));
+      *status, absl::StrCat(status->message(), "\n\t", args...));
   CopyPayloads(*status, new_status);
   *status = std::move(new_status);
 }
@@ -203,8 +203,7 @@ void AppendToMessage(absl::Status* status, Args... args) {
 template <typename... Args>
 ABSL_DEPRECATED("Use absl::CancelledError() instead.")
 absl::Status Cancelled(Args... args) {
-  return absl::CancelledError(::tsl::strings::StrCat(
-      ::tsl::errors::internal::PrepareForStrCat(args)...));
+  return absl::CancelledError(absl::StrCat(args...));
 }
 template <typename... Args>
 absl::Status CancelledWithPayloads(
@@ -217,51 +216,36 @@ absl::Status CancelledWithPayloads(
 template <typename... Args>
 ABSL_DEPRECATED("Use absl::InvalidArgumentError() instead.")
 absl::Status InvalidArgument(Args... args) {
-  return absl::InvalidArgumentError(::tsl::strings::StrCat(
-      ::tsl::errors::internal::PrepareForStrCat(args)...));
+  return absl::InvalidArgumentError(absl::StrCat(args...));
 }
 // Specialized overloads to capture source location for up to four arguments.
 #if defined(PLATFORM_GOOGLE)
 template <typename Arg1, typename Arg2, typename Arg3, typename Arg4>
-ABSL_DEPRECATED("Use absl::InvalidArgumentError() instead.")
+ABSL_DEPRECATE_AND_INLINE()
 absl::Status InvalidArgument(
     Arg1 arg1, Arg2 arg2, Arg3 arg3, Arg4 arg4,
     absl::SourceLocation loc = absl::SourceLocation::current()) {
-  return absl::InvalidArgumentError(
-      ::tsl::strings::StrCat(::tsl::errors::internal::PrepareForStrCat(arg1),
-                             ::tsl::errors::internal::PrepareForStrCat(arg2),
-                             ::tsl::errors::internal::PrepareForStrCat(arg3),
-                             ::tsl::errors::internal::PrepareForStrCat(arg4)),
-      loc);
+  return absl::InvalidArgumentError(absl::StrCat(arg1, arg2, arg3, arg4), loc);
 }
 template <typename Arg1, typename Arg2, typename Arg3>
-ABSL_DEPRECATED("Use absl::InvalidArgumentError() instead.")
+ABSL_DEPRECATE_AND_INLINE()
 absl::Status InvalidArgument(
     Arg1 arg1, Arg2 arg2, Arg3 arg3,
     absl::SourceLocation loc = absl::SourceLocation::current()) {
-  return absl::InvalidArgumentError(
-      ::tsl::strings::StrCat(::tsl::errors::internal::PrepareForStrCat(arg1),
-                             ::tsl::errors::internal::PrepareForStrCat(arg2),
-                             ::tsl::errors::internal::PrepareForStrCat(arg3)),
-      loc);
+  return absl::InvalidArgumentError(absl::StrCat(arg1, arg2, arg3), loc);
 }
 template <typename Arg1, typename Arg2>
-ABSL_DEPRECATED("Use absl::InvalidArgumentError() instead.")
+ABSL_DEPRECATE_AND_INLINE()
 absl::Status InvalidArgument(
     Arg1 arg1, Arg2 arg2,
     absl::SourceLocation loc = absl::SourceLocation::current()) {
-  return absl::InvalidArgumentError(
-      ::tsl::strings::StrCat(::tsl::errors::internal::PrepareForStrCat(arg1),
-                             ::tsl::errors::internal::PrepareForStrCat(arg2)),
-      loc);
+  return absl::InvalidArgumentError(absl::StrCat(arg1, arg2), loc);
 }
 template <typename Arg1>
-ABSL_DEPRECATED("Use absl::InvalidArgumentError() instead.")
+ABSL_DEPRECATE_AND_INLINE()
 absl::Status InvalidArgument(
     Arg1 arg1, absl::SourceLocation loc = absl::SourceLocation::current()) {
-  return absl::InvalidArgumentError(
-      ::tsl::strings::StrCat(::tsl::errors::internal::PrepareForStrCat(arg1)),
-      loc);
+  return absl::InvalidArgumentError(absl::StrCat(arg1), loc);
 }
 inline absl::Status InvalidArgumentWithPayloads(
     absl::string_view message,
@@ -282,40 +266,30 @@ inline absl::Status InvalidArgumentWithPayloads(
 template <typename... Args>
 ABSL_DEPRECATED("Use absl::NotFoundError() instead.")
 absl::Status NotFound(Args... args) {
-  return absl::NotFoundError(::tsl::strings::StrCat(
-      ::tsl::errors::internal::PrepareForStrCat(args)...));
+  return absl::NotFoundError(absl::StrCat(args...));
 }
 // Specialized overloads to capture source location for up to three arguments.
 #if defined(PLATFORM_GOOGLE)
 template <typename Arg1, typename Arg2, typename Arg3>
-ABSL_DEPRECATED("Use absl::NotFoundError() instead.")
+ABSL_DEPRECATE_AND_INLINE()
 absl::Status
     NotFound(Arg1 arg1, Arg2 arg2, Arg3 arg3,
              absl::SourceLocation loc = absl::SourceLocation::current()) {
-  return absl::NotFoundError(
-      ::tsl::strings::StrCat(::tsl::errors::internal::PrepareForStrCat(arg1),
-                             ::tsl::errors::internal::PrepareForStrCat(arg2),
-                             ::tsl::errors::internal::PrepareForStrCat(arg3)),
-      loc);
+  return absl::NotFoundError(absl::StrCat(arg1, arg2, arg3), loc);
 }
 template <typename Arg1, typename Arg2>
-ABSL_DEPRECATED("Use absl::NotFoundError() instead.")
+ABSL_DEPRECATE_AND_INLINE()
 absl::Status
     NotFound(Arg1 arg1, Arg2 arg2,
              absl::SourceLocation loc = absl::SourceLocation::current()) {
-  return absl::NotFoundError(
-      ::tsl::strings::StrCat(::tsl::errors::internal::PrepareForStrCat(arg1),
-                             ::tsl::errors::internal::PrepareForStrCat(arg2)),
-      loc);
+  return absl::NotFoundError(absl::StrCat(arg1, arg2), loc);
 }
 template <typename Arg1>
-ABSL_DEPRECATED("Use absl::NotFoundError() instead.")
+ABSL_DEPRECATE_AND_INLINE()
 absl::Status
     NotFound(Arg1 arg1,
              absl::SourceLocation loc = absl::SourceLocation::current()) {
-  return absl::NotFoundError(
-      ::tsl::strings::StrCat(::tsl::errors::internal::PrepareForStrCat(arg1)),
-      loc);
+  return absl::NotFoundError(absl::StrCat(arg1), loc);
 }
 inline absl::Status NotFoundWithPayloads(
     absl::string_view message,
@@ -335,8 +309,7 @@ inline absl::Status NotFoundWithPayloads(
 template <typename... Args>
 ABSL_DEPRECATED("Use absl::AlreadyExistsError() instead.")
 absl::Status AlreadyExists(Args... args) {
-  return absl::AlreadyExistsError(::tsl::strings::StrCat(
-      ::tsl::errors::internal::PrepareForStrCat(args)...));
+  return absl::AlreadyExistsError(absl::StrCat(args...));
 }
 inline absl::Status AlreadyExistsWithPayloads(
     absl::string_view message,
@@ -348,8 +321,7 @@ inline absl::Status AlreadyExistsWithPayloads(
 template <typename... Args>
 ABSL_DEPRECATED("Use absl::ResourceExhaustedError() instead.")
 absl::Status ResourceExhausted(Args... args) {
-  return absl::ResourceExhaustedError(::tsl::strings::StrCat(
-      ::tsl::errors::internal::PrepareForStrCat(args)...));
+  return absl::ResourceExhaustedError(absl::StrCat(args...));
 }
 inline absl::Status ResourceExhaustedWithPayloads(
     absl::string_view message,
@@ -362,8 +334,7 @@ inline absl::Status ResourceExhaustedWithPayloads(
 template <typename... Args>
 ABSL_DEPRECATED("Use absl::UnavailableError() instead.")
 absl::Status Unavailable(Args... args) {
-  return absl::UnavailableError(::tsl::strings::StrCat(
-      ::tsl::errors::internal::PrepareForStrCat(args)...));
+  return absl::UnavailableError(absl::StrCat(args...));
 }
 inline absl::Status UnavailableWithPayloads(
     absl::string_view message,
@@ -375,8 +346,7 @@ inline absl::Status UnavailableWithPayloads(
 template <typename... Args>
 ABSL_DEPRECATED("Use absl::FailedPreconditionError() instead.")
 absl::Status FailedPrecondition(Args... args) {
-  return absl::FailedPreconditionError(::tsl::strings::StrCat(
-      ::tsl::errors::internal::PrepareForStrCat(args)...));
+  return absl::FailedPreconditionError(absl::StrCat(args...));
 }
 inline absl::Status FailedPreconditionWithPayloads(
     absl::string_view message,
@@ -389,8 +359,7 @@ inline absl::Status FailedPreconditionWithPayloads(
 template <typename... Args>
 ABSL_DEPRECATED("Use absl::OutOfRangeError() instead.")
 absl::Status OutOfRange(Args... args) {
-  return absl::OutOfRangeError(::tsl::strings::StrCat(
-      ::tsl::errors::internal::PrepareForStrCat(args)...));
+  return absl::OutOfRangeError(absl::StrCat(args...));
 }
 inline absl::Status OutOfRangeWithPayloads(
     absl::string_view message,
@@ -402,8 +371,7 @@ inline absl::Status OutOfRangeWithPayloads(
 template <typename... Args>
 ABSL_DEPRECATED("Use absl::UnimplementedError() instead.")
 absl::Status Unimplemented(Args... args) {
-  return absl::UnimplementedError(::tsl::strings::StrCat(
-      ::tsl::errors::internal::PrepareForStrCat(args)...));
+  return absl::UnimplementedError(absl::StrCat(args...));
 }
 inline absl::Status UnimplementedWithPayloads(
     absl::string_view message,
@@ -415,8 +383,7 @@ inline absl::Status UnimplementedWithPayloads(
 template <typename... Args>
 ABSL_DEPRECATED("Use absl::InternalError() instead.")
 absl::Status Internal(Args... args) {
-  return absl::InternalError(::tsl::strings::StrCat(
-      ::tsl::errors::internal::PrepareForStrCat(args)...));
+  return absl::InternalError(absl::StrCat(args...));
 }
 inline absl::Status InternalWithPayloads(
     absl::string_view message,
@@ -428,8 +395,7 @@ inline absl::Status InternalWithPayloads(
 template <typename... Args>
 ABSL_DEPRECATED("Use absl::AbortedError() instead.")
 absl::Status Aborted(Args... args) {
-  return absl::AbortedError(::tsl::strings::StrCat(
-      ::tsl::errors::internal::PrepareForStrCat(args)...));
+  return absl::AbortedError(absl::StrCat(args...));
 }
 inline absl::Status AbortedWithPayloads(
     absl::string_view message,
@@ -441,8 +407,7 @@ inline absl::Status AbortedWithPayloads(
 template <typename... Args>
 ABSL_DEPRECATED("Use absl::DeadlineExceededError() instead.")
 absl::Status DeadlineExceeded(Args... args) {
-  return absl::DeadlineExceededError(::tsl::strings::StrCat(
-      ::tsl::errors::internal::PrepareForStrCat(args)...));
+  return absl::DeadlineExceededError(absl::StrCat(args...));
 }
 inline absl::Status DeadlineExceededWithPayloads(
     absl::string_view message,
@@ -454,8 +419,7 @@ inline absl::Status DeadlineExceededWithPayloads(
 template <typename... Args>
 ABSL_DEPRECATED("Use absl::DataLossError() instead.")
 absl::Status DataLoss(Args... args) {
-  return absl::DataLossError(::tsl::strings::StrCat(
-      ::tsl::errors::internal::PrepareForStrCat(args)...));
+  return absl::DataLossError(absl::StrCat(args...));
 }
 inline absl::Status DataLossWithPayloads(
     absl::string_view message,
@@ -467,8 +431,7 @@ inline absl::Status DataLossWithPayloads(
 template <typename... Args>
 ABSL_DEPRECATED("Use absl::UnknownError() instead.")
 absl::Status Unknown(Args... args) {
-  return absl::UnknownError(::tsl::strings::StrCat(
-      ::tsl::errors::internal::PrepareForStrCat(args)...));
+  return absl::UnknownError(absl::StrCat(args...));
 }
 inline absl::Status UnknownPayloads(
     absl::string_view message,
@@ -479,8 +442,7 @@ inline absl::Status UnknownPayloads(
 template <typename... Args>
 ABSL_DEPRECATED("Use absl::PermissionDeniedError() instead.")
 absl::Status PermissionDenied(Args... args) {
-  return absl::PermissionDeniedError(::tsl::strings::StrCat(
-      ::tsl::errors::internal::PrepareForStrCat(args)...));
+  return absl::PermissionDeniedError(absl::StrCat(args...));
 }
 inline absl::Status PermissionDeniedWithPayloads(
     absl::string_view message,
@@ -492,8 +454,7 @@ inline absl::Status PermissionDeniedWithPayloads(
 template <typename... Args>
 ABSL_DEPRECATED("Use absl::UnauthenticatedError() instead.")
 absl::Status Unauthenticated(Args... args) {
-  return absl::UnauthenticatedError(::tsl::strings::StrCat(
-      ::tsl::errors::internal::PrepareForStrCat(args)...));
+  return absl::UnauthenticatedError(absl::StrCat(args...));
 }
 inline absl::Status UnauthenticatedWithPayloads(
     absl::string_view message,
@@ -603,7 +564,7 @@ inline std::string FormatFunctionForError(absl::string_view name) {
 
 inline absl::Status ReplaceErrorFromNonCommunicationOps(
     const absl::Status s, absl::string_view op_name) {
-  assert(absl::IsUnavailable(s));
+  DCHECK(absl::IsUnavailable(s));
   return absl::InternalError(absl::StrCat(
       s.message(), "\nExecuting non-communication op <", op_name,
       "> originally returned UnavailableError, and was replaced by "

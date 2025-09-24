@@ -16,7 +16,6 @@ limitations under the License.
 #ifndef XLA_TSL_FRAMEWORK_DEVICE_TYPE_H_
 #define XLA_TSL_FRAMEWORK_DEVICE_TYPE_H_
 
-#include <ostream>
 #include <string>
 
 #include "absl/strings/string_view.h"
@@ -40,10 +39,14 @@ class DeviceType {
   bool operator==(const DeviceType& other) const;
   bool operator!=(const DeviceType& other) const { return !(*this == other); }
 
+  template <typename Sink>
+  friend void AbslStringify(Sink& sink, const DeviceType& d) {
+    sink.Append(d.type_);
+  }
+
  private:
   std::string type_;
 };
-std::ostream& operator<<(std::ostream& os, const DeviceType& d);
 
 }  // namespace tsl
 
