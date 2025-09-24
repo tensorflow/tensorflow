@@ -64,6 +64,7 @@ xla_cc_test(
         "//xla/pjrt/plugin/xla_cpu:xla_cpu_pjrt_client",
         "//xla/runtime:device_id",
         "//xla/service:computation_placer_hdr",
+        "//xla/service/cpu:cpu_aot_compilation_result",
         "//xla/tsl/concurrency:async_value",
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:logging",
@@ -77,6 +78,7 @@ xla_cc_test(
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
         "@eigen_archive//:eigen3",
+        "@local_tsl//tsl/platform:casts",
     ],
 )
 
@@ -104,7 +106,9 @@ cc_library(
         "//xla/service:computation_placer_hdr",
         "//xla/service:executable",
         "//xla/service:hlo_value",
+        "//xla/service/cpu:cpu_aot_loader",
         "//xla/service/cpu:cpu_executable",
+        "//xla/service/cpu:executable_proto_cc",
         "//xla/stream_executor:device_memory",
         "//xla/tsl/concurrency:async_value",
         "//xla/tsl/platform:errors",
