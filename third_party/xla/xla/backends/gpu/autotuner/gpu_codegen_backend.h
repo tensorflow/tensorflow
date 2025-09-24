@@ -68,11 +68,18 @@ class GpuCodegenBackend : public CodegenBackend {
     TF_RETURN_IF_ERROR(ApplyConfig(*root_instruction, config));
 
     hlo_module->mutable_config().set_debug_options(debug_options_);
-    hlo_module->mutable_config().mutable_debug_options().set_xla_enable_dumping(
-        false);
-    hlo_module->mutable_config()
-        .mutable_debug_options()
-        .clear_xla_gpu_enable_command_buffer();
+    DebugOptions& opts = hlo_module->mutable_config().mutable_debug_options();
+    opts.set_xla_enable_dumping(false);
+    // Avoid using another thread pool.
+    opts.set_xla_gpu_force_compilation_parallelism(1);
+    opts.set_xla_gpu_enable_llvm_module_compilation_parallelism(false);
+    // Avoid using GPU graphs as we don't want to measure graph construction
+    // time.
+    opts.clear_xla_gpu_enable_command_buffer();
+    // Avoid using async dot as we don't want to measure event overheads.
+    opts.set_xla_gpu_async_dot(false);
+    opts.set_xla_embed_ir_in_executable(false);
+    opts.set_xla_gpu_kernel_cache_file("");
 
     Compiler::CompileOptions options;
     options.is_autotuning_compilation = true;
