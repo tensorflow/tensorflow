@@ -5811,11 +5811,21 @@ AllocationResult MsaAlgorithm::AllocateSegment(AllocationRequest& request) {
           request.end_time));
       prev_allocation_in_default_mem_it = allocation_sequence->rbegin();
     }
+  } else if (prev_allocation_it == allocation_sequence->rend() &&
+             (request.require_start_colored_in_default_memory ||
+              request.require_end_colored_in_default_memory)) {
+    // There are no previous allocations, we require contiguous allocation and
+    // either the start or end needs to be colored in the default memory.
+    // We can satisfy this requirement by pinning the allocation in the default
+    // memory space for this time range.
+    allocation_sequence->push_back(std::make_unique<PinnedAllocation>(
+        defining_position, MemorySpace::kDefault,
+        /*chunk=*/std::nullopt, request.inclusive_start_time,
+        request.end_time));
+    prev_allocation_in_default_mem_it = allocation_sequence->rbegin();
   } else if (prev_allocation_in_default_mem_it == allocation_sequence->rend()) {
     VLOG(3) << "Allocation requires contiguous allocation, but it wasn't "
-               "possible to find one.";
-    CHECK(!request.require_start_colored_in_default_memory);
-    CHECK(!request.require_end_colored_in_default_memory);
+               "possible to find one in alternate memory or default memory.";
     return result_mark(AllocationResult::kFailRequiresUncommit,
                        allocation_result);
   }
