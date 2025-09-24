@@ -1067,8 +1067,7 @@ absl::StatusOr<const se::CommandBuffer::Command*> LaunchCmd::Record(
         "Kernel not loaded on a command buffer executor: ", kernel_name_));
   }
 
-  absl::InlinedVector<std::variant<se::DeviceMemoryBase, se::TensorMap>, 4>
-      kernel_args_variant;
+  absl::InlinedVector<se::KernelArgument, 4> kernel_args_variant;
   stream_executor::gpu::TmaMetadata tma_metadata =
       tma_metadata_.value_or(se::gpu::TmaMetadata{});
   for (int idx = 0; idx < args_.size(); ++idx) {

@@ -186,6 +186,11 @@ void PrintBufferContents(se::Stream* stream, int input_idx,
   VLOG(100) << "BUF(" << input_idx << ") = " << buffer_contents;
 }
 
+void PrintBufferContents(se::Stream*, int input_idx, int64_t int_arg) {
+  VLOG(100) << "INT(" << input_idx << ") = ";
+  VLOG(100) << absl::StrFormat("%x ", int_arg);
+}
+
 static void PrintBufferContents(
     se::Stream* stream, absl::Span<const se::KernelArgument> kernel_args) {
   for (const auto& [input_idx, arg] : llvm::enumerate(kernel_args)) {

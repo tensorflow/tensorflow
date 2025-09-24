@@ -81,7 +81,9 @@ limitations under the License.
 #include <utility>
 #include <variant>
 
+#include "absl/base/optimization.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/functional/overload.h"
 #include "absl/log/check.h"
 #include "absl/meta/type_traits.h"
 #include "absl/status/status.h"
@@ -404,13 +406,18 @@ namespace internal {
 
 // An empty storage for packing just the device memory arguments, that are
 // stored directly in the `KernelArgsPackedArray`.
-class EmptyArgs {};
+struct EmptyArgs {
+  static constexpr size_t kSize = 0;
+};
 
 // A storage for POD generic arguments that are smaller than `size` and require
 // alignment smaller or equal to `alignment`.
 template <size_t capacity, size_t size = 8,
           size_t alignment = alignof(std::max_align_t)>
 class PodArgs {
+ public:
+  static constexpr size_t kSize = size;
+
  protected:
   template <typename T>
   const std::byte* add_pod_argument(const T& arg) {
@@ -514,7 +521,7 @@ class KernelArgsPackedArray : public KernelArgsPackedArrayBase, ArgsStorage {
   size_t number_of_argument_addresses_ = 0;
 };
 
-using KernelArgument = std::variant<DeviceMemoryBase, TensorMap>;
+using KernelArgument = std::variant<DeviceMemoryBase, TensorMap, int64_t>;
 
 namespace internal {
 template <int n>
@@ -530,42 +537,61 @@ std::unique_ptr<KernelArgsPackedArrayBase> PackKernelArgs(
   return packed;
 }
 
-template <int n>
-std::unique_ptr<KernelArgsPackedArrayBase> PackKernelArgs(
+template <int n, typename ArgsStorage>
+std::unique_ptr<KernelArgsPackedArray<n, ArgsStorage>> PackKernelArgsImpl(
     absl::Span<const KernelArgument> args, uint32_t shared_mem_bytes) {
-  auto contains_tensor_map = [](absl::Span<const KernelArgument> args) -> bool {
-    return absl::c_any_of(args, [](const auto& arg) {
-      return std::holds_alternative<TensorMap>(arg);
-    });
-  };
-
-  if (contains_tensor_map(args)) {
-    auto packed =
-        std::make_unique<KernelArgsPackedArray<n, PodArgs<n, 128, 64>>>();
-    for (auto& buf : args) {
-      if (std::holds_alternative<DeviceMemoryBase>(buf)) {
-        // Buffer argument.
-        packed->add_device_memory_argument(std::get<DeviceMemoryBase>(buf));
-      } else {
-        // TMA descriptor argument.
-        packed->add_argument(std::get<TensorMap>(buf).storage);
-      }
-    }
-    if (shared_mem_bytes > 0) {
-      packed->add_shared_bytes(shared_mem_bytes);
-    }
-    return packed;
-  }
-
-  // No TensorMap arguments -> Can use EmptyArgs.
-  auto packed = std::make_unique<KernelArgsPackedArray<n, EmptyArgs>>();
-  for (auto& buf : args) {
-    packed->add_device_memory_argument(std::get<DeviceMemoryBase>(buf));
+  auto packed = std::make_unique<KernelArgsPackedArray<n, ArgsStorage>>();
+  for (const auto& arg : args) {
+    std::visit(
+        absl::Overload{
+            [&](const DeviceMemoryBase& device_memory) {
+              packed->add_device_memory_argument(device_memory);
+            },
+            [&](int64_t int_arg) {
+              if constexpr (ArgsStorage::kSize >= sizeof(int64_t)) {
+                packed->add_argument(int_arg);
+              }
+            },
+            [&](const TensorMap& tensor_map) {
+              if constexpr (ArgsStorage::kSize >= sizeof(tensor_map.storage)) {
+                packed->add_argument(tensor_map.storage);
+              }
+            },
+        },
+        arg);
   }
   if (shared_mem_bytes > 0) {
     packed->add_shared_bytes(shared_mem_bytes);
   }
   return packed;
+}
+
+template <int n>
+std::unique_ptr<KernelArgsPackedArrayBase> PackKernelArgs(
+    absl::Span<const KernelArgument> args, uint32_t shared_mem_bytes) {
+  const int32_t pod_size = [](absl::Span<const KernelArgument> args) {
+    bool has_int = false;
+    for (const auto& arg : args) {
+      if (std::holds_alternative<TensorMap>(arg)) {
+        return 128;
+      }
+      if (std::holds_alternative<int64_t>(arg)) {
+        has_int = true;
+      }
+    }
+    return has_int ? 64 : 0;
+  }(args);
+
+  switch (pod_size) {
+    case 128:
+      return PackKernelArgsImpl<n, PodArgs<n, 128, 64>>(args, shared_mem_bytes);
+    case 64:
+      return PackKernelArgsImpl<n, PodArgs<n, 64, 64>>(args, shared_mem_bytes);
+    case 0:
+      return PackKernelArgsImpl<n, EmptyArgs>(args, shared_mem_bytes);
+    default:
+      ABSL_UNREACHABLE();
+  }
 }
 }  // namespace internal
 
