@@ -747,6 +747,19 @@ class PjRtFuture<void> : public internal::PjRtFutureBase<absl::Status> {
       tsl::internal::is_status_or_v<U>;
 
  public:
+  PjRtFuture() = default;
+
+  // Constructor for a future that is immediately ready with a given status.
+  // For futures that are immediately ready with OK status, we use a global non
+  // reference-counted async value that avoids heap allocation and reference
+  // counting operations on a hot path.
+  explicit PjRtFuture(absl::Status status)
+      : Base(ABSL_PREDICT_TRUE(status.ok())
+                 ? ready_promise_->AsRef()
+                 : tsl::MakeAvailableAsyncValueRef<absl::Status>(
+                       std::move(status)),
+             /*on_block_start=*/nullptr, /*on_block_end=*/nullptr) {}
+
   class Promise : public Base::Promise {
    public:
     Promise(Promise&&) = default;
@@ -770,43 +783,28 @@ class PjRtFuture<void> : public internal::PjRtFutureBase<absl::Status> {
       return std::make_shared<Promise>(std::move(*this));
     }
 
+    // Returns a future associated with the promise.
+    PjRtFuture<> future(
+        PjRtFutureHelpers::OnBlockStartFn on_block_start = nullptr,
+        PjRtFutureHelpers::OnBlockEndFn on_block_end = nullptr) const {
+      return PjRtFuture<>(*this, std::move(on_block_start),
+                          std::move(on_block_end));
+    }
+
    private:
     friend class PjRtFuture<void>;
   };
 
   // Returns a pair of connected Promise and PjRtFuture<>. Setting the returned
   // promise will fulfill the connected future.
-  static std::pair<Promise, PjRtFuture<>> MakePromise() {
+  static std::pair<Promise, PjRtFuture<>> MakePromise(
+      PjRtFutureHelpers::OnBlockStartFn on_block_start = nullptr,
+      PjRtFutureHelpers::OnBlockEndFn on_block_end = nullptr) {
     Promise promise(tsl::MakeUnconstructedAsyncValueRef<absl::Status>());
-    PjRtFuture<> future(promise);
+    PjRtFuture<> future(promise, std::move(on_block_start),
+                        std::move(on_block_end));
     return std::make_pair(std::move(promise), std::move(future));
   }
-
-  // Bring PjRtFutureBase constructors in scope.
-  using Base::Base;
-
-  // Constructor for unavailable future that will be fulfilled later via the
-  // promise object.
-  //
-  // - on_block_start is called before Await starts to block.
-  // - on_block_end is called after Await finishes blocking.
-  explicit PjRtFuture(
-      const Promise& promise,
-      PjRtFutureHelpers::OnBlockStartFn on_block_start = nullptr,
-      PjRtFutureHelpers::OnBlockEndFn on_block_end = nullptr)
-      : Base(promise.ref(), std::move(on_block_start),
-             std::move(on_block_end)) {}
-
-  // Constructor for a future that is immediately ready with a given status.
-  // For futures that are immediately ready with OK status, we use a global non
-  // reference-counted async value that avoids heap allocation and reference
-  // counting operations on a hot path.
-  explicit PjRtFuture(absl::Status status)
-      : Base(ABSL_PREDICT_TRUE(status.ok())
-                 ? ready_promise_->AsRef()
-                 : tsl::MakeAvailableAsyncValueRef<absl::Status>(
-                       std::move(status)),
-             /*on_block_start=*/nullptr, /*on_block_end=*/nullptr) {}
 
   using Base::Await;
   using Base::BlockUntilReady;
@@ -919,10 +917,26 @@ class PjRtFuture<void> : public internal::PjRtFutureBase<absl::Status> {
   }
 
  private:
+  friend class PjRtFutureHelpers;
+
   // A promise that is immediately ready with OK status. Async value allocated
   // in the static storage and is not reference-counted.
   static absl::NoDestructor<tsl::AsyncValueOwningRef<absl::Status>>
       ready_promise_;
+
+  // Bring PjRtFutureBase constructors in scope.
+  using Base::Base;
+
+  // Constructor for unavailable future that will be fulfilled later via the
+  // promise object.
+  //
+  // - on_block_start is called before Await starts to block.
+  // - on_block_end is called after Await finishes blocking.
+  PjRtFuture(const Promise& promise,
+             PjRtFutureHelpers::OnBlockStartFn on_block_start,
+             PjRtFutureHelpers::OnBlockEndFn on_block_end)
+      : Base(promise.ref(), std::move(on_block_start),
+             std::move(on_block_end)) {}
 };
 
 //===----------------------------------------------------------------------===//
