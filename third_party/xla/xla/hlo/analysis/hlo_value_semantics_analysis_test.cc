@@ -795,14 +795,14 @@ TEST_F(EinsumDepthAnalysisTest, SendWithRecv) {
       arg_0 = s32[] parameter(0)
       arg_1 = token[] parameter(1)
 
-      send.0 = (s32[], u32[], token[]) send(s32[] arg_0, token[] arg_1), channel_id=3, is_host_transfer=true, sharding={{maximal device=0}, {maximal device=0}, {maximal device=0}}, frontend_attributes={_xla_host_transfer_handler_name="tf_rendezvous", _xla_host_transfer_rendezvous="rendezvous1"}
-      send-done.1 = token[] send-done((s32[], u32[], token[]) send.0), channel_id=3, is_host_transfer=true, sharding={maximal device=0}, frontend_attributes={_xla_host_transfer_handler_name="tf_rendezvous", _xla_host_transfer_rendezvous="rendezvous1"}
+      send.0 = (s32[], u32[], token[]) send(s32[] arg_0, token[] arg_1), channel_id=3, is_host_transfer=true, sharding={{maximal device=0}, {maximal device=0}, {maximal device=0}}, frontend_attributes={_xla_host_transfer_handler_name="tf_rendezvous", _xla_host_transfer_rendezvous="host_compute_channel_0_args_dtoh_0"}
+      send-done.1 = token[] send-done((s32[], u32[], token[]) send.0), channel_id=3, is_host_transfer=true, sharding={maximal device=0}, frontend_attributes={_xla_host_transfer_handler_name="tf_rendezvous", _xla_host_transfer_rendezvous="host_compute_channel_0_args_dtoh_0"}
 
-      recv.2 = (s32[], u32[], token[]) recv(token[] send-done.1), channel_id=4, is_host_transfer=true, sharding={{maximal device=0}, {maximal device=0}, {maximal device=0}}, frontend_attributes={_xla_host_transfer_handler_name="tf_rendezvous", _xla_host_transfer_rendezvous="rendezvous1"}
-      recv-done.3 = (s32[], token[]) recv-done((s32[], u32[], token[]) recv.2), channel_id=4, is_host_transfer=true, sharding={{maximal device=0}, {maximal device=0}}, frontend_attributes={_xla_host_transfer_handler_name="tf_rendezvous", _xla_host_transfer_rendezvous="rendezvous1"}
+      recv.2 = (s32[], u32[], token[]) recv(token[] send-done.1), channel_id=4, is_host_transfer=true, sharding={{maximal device=0}, {maximal device=0}, {maximal device=0}}, frontend_attributes={_xla_host_transfer_handler_name="tf_rendezvous", _xla_host_transfer_rendezvous="host_compute_channel_0_retvals_htod_0"}
+      recv-done.3 = (s32[], token[]) recv-done((s32[], u32[], token[]) recv.2), channel_id=4, is_host_transfer=true, sharding={{maximal device=0}, {maximal device=0}}, frontend_attributes={_xla_host_transfer_handler_name="tf_rendezvous", _xla_host_transfer_rendezvous="host_compute_channel_0_retvals_htod_0"}
 
       get-tuple-element.4 = token[] get-tuple-element((s32[], token[]) recv-done.3), index=1, sharding={maximal device=0}
-      ROOT %after-all.2 = token[] after-all(get-tuple-element.4), frontend_attributes={_xla_host_transfer_handler_name="tf_rendezvous",_xla_host_transfer_rendezvous="rendezvous1"}
+      ROOT %after-all.2 = token[] after-all(get-tuple-element.4), frontend_attributes={_xla_host_transfer_handler_name="tf_rendezvous",_xla_host_transfer_rendezvous="host_compute_channel_0_retvals_htod_0"}
     }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
