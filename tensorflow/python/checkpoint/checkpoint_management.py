@@ -644,7 +644,7 @@ class CheckpointManager(object):
       if step_counter is None:
         raise ValueError("`step_counter` should be passed if "
                          "`checkpoint_interval` is not None.")
-      self._last_checkpoint_step = last_checkpoint_step or None
+      self._last_checkpoint_step = last_checkpoint_step
       self._step_counter = step_counter
     self._checkpoint_interval = checkpoint_interval
 
