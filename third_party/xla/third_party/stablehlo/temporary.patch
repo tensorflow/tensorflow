@@ -699,6 +699,24 @@ diff --ruN a/stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_folder.ml
  }
  
  // -----
+diff --ruN a/stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_simplification.mlir b/stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_simplification.mlir
+--- stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_simplification.mlir
++++ stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_simplification.mlir
+@@ -98,6 +98,14 @@
+ 
+   // CHECK-NEXT: return [[ARG0]], [[R4]]
+   return %3, %4 : tensor<3x3xi32>, tensor<3x3xi32>
++}
++
++// CHECK-LABEL: func.func @broadcast_in_dim_transpose_invert
++// CHECK-SAME:   ([[ARG0:%.+]]: tensor<1x2x3x4xf32>)
++func.func @broadcast_in_dim_transpose_invert(%arg0 : tensor<1x2x3x4xf32>) -> tensor<3x1x4x2xf32> {
++  // stablehlo.transpose %arg0, dims = [2, 0, 3, 1] : (tensor<1x2x3x4xf32>) -> tensor<3x1x4x2xf32>
++  %0 = stablehlo.broadcast_in_dim %arg0, dims = [1,3,0,2] : (tensor<1x2x3x4xf32>) -> tensor<3x1x4x2xf32>
++  return %0 : tensor<3x1x4x2xf32>
+ }
+ 
+ // CHECK-LABEL: func.func @broadcast_in_dim_nested
 diff --ruN a/stablehlo/stablehlo/transforms/ChloLegalizeToStablehlo.cpp b/stablehlo/stablehlo/transforms/ChloLegalizeToStablehlo.cpp
 --- stablehlo/stablehlo/transforms/ChloLegalizeToStablehlo.cpp
 +++ stablehlo/stablehlo/transforms/ChloLegalizeToStablehlo.cpp
@@ -1390,4 +1408,48 @@ diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveFold
                  FoldTransposeOpPattern,               //
                  FoldWhileOpIfDeadAndPresumedPure,     //
                  FoldWhileOpPattern,                   //
+diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplification.cpp b/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplification.cpp
+--- stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplification.cpp
++++ stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplification.cpp
+@@ -325,8 +325,18 @@
+ //////////////////////////////////
+ // BroadcastInDimOp
+ /////////////////////////////////
+-
+ // Used in DRR file.
++
++// Convert broadcast dimensions into permutation for transpose.
++DenseI64ArrayAttr getInvertedBroadcastDimensions(OpBuilder& b,
++                                                 ArrayRef<int64_t> dims) {
++  SmallVector<int64_t> permutation(dims.size());
++  for (auto i = 0; i < dims.size(); ++i) {
++    permutation[dims[i]] = i;
++  }
++  return b.getDenseI64ArrayAttr(permutation);
++}
++
+ DenseI64ArrayAttr getMergedBroadcastDimensions(OpBuilder& b,
+                                                ArrayRef<int64_t> dims,
+                                                ArrayRef<int64_t> dimsParent) {
+diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplificationPatterns.td b/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplificationPatterns.td
+--- stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplificationPatterns.td
++++ stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplificationPatterns.td
+@@ -116,6 +116,8 @@
+ 
+ def GetEmptyI64Array : NativeCodeCall<"$_builder.getDenseI64ArrayAttr({})">;
+ 
++def InvertBroadcastDims : NativeCodeCall<"getInvertedBroadcastDimensions($_builder, $0)">;
++
+ def MergeBroadcastDims : NativeCodeCall<"getMergedBroadcastDimensions($_builder, $0, $1)">;
+ 
+ def StableHLO_ConvertOpWithShape : NativeCodeCall<
+@@ -193,7 +195,7 @@
+ //          [if same numel & rank]
+ def BroadcastInDimOp_ReplaceWithTranspose
+   : Pat<(StableHLO_BroadcastInDimOp:$op $operand, $dims),
+-        (StableHLO_TransposeOp $operand, $dims),
++        (StableHLO_TransposeOp $operand, (InvertBroadcastDims $dims)),
+         [(NumberOfElementsEqual $op, $operand), (RankEqual $op, $operand)]>;
+ 
+ ////////
 
