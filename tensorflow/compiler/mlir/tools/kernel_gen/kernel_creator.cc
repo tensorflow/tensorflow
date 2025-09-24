@@ -183,6 +183,13 @@ absl::Status LowerHlotoLoops(mlir::ModuleOp module,
   pm.addNestedPass<FuncOp>(::mlir::mhlo::createLegalizeHloToLinalgPass());
   pm.addPass(::mlir::mhlo::createLegalizeToArithmeticPass());
 
+  // Convert tensor.reshape to MHLO before running any bufferization passes.
+  // We'll need to teach this pipeline how to properly handle tensor.reshape
+  // in order to fully deprecate MHLO but in the meantime this ublocks lots of
+  // cleanup.
+  pm.addNestedPass<FuncOp>(
+      ::mlir::kernel_gen::createLegalizeTensorReshapePass());
+
   // Remove the remaining references to unsigned types after all HLO compute
   // operations were converted.
   pm.addPass(mlir::stablehlo::createStablehloConvertToSignlessPass());

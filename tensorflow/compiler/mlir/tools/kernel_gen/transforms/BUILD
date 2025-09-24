@@ -186,6 +186,7 @@ cc_library(
         "embed_tf_framework_pass.cc",
         "func_to_jit_invocations.cc",
         "fuse_inner_parallel_loops_pass.cc",
+        "legalize_tensor_reshape_pass.cc",
         "merge_assuming_ops_pass.cc",
         "parallel_loops_to_sequential.cc",
         "rewrite_tf_framework_assert.cc",
