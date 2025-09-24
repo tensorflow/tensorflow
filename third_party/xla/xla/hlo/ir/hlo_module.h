@@ -465,19 +465,26 @@ class HloModule {
   uint64_t ToFingerprint(const HloPrintOptions& options) const;
 
   // Remaps the instruction ids in the proto to be consecutive. This is useful
-  // for loading a proto that had its ids manually created or created
-  // incorrectly.
+  // for loading a proto that had its ids manually created, created incorrectly
+  // or in an older version of the compiler. Instructions will only have the
+  // local id in the id field.
   static absl::StatusOr<HloModuleProto> RemapInstructionIds(
       const HloModuleProto& proto);
 
-  // Updates the instruction ids in the module's schedules to match the new
-  // instruction ids as defined by the old_instr_id_to_new_id map.
-  static absl::Status UpdateIdsInSchedules(
-      HloModuleProto& proto,
+  // Updates the instruction ids in the computation's schedule to match the new
+  // instruction ids as defined by the old_instr_id_to_new_id map. The map only
+  // needs to be consistent and unique within the computation level.
+  static absl::Status UpdateIdsInSchedule(
+      HloModuleProto& proto, int64_t computation_proto_id,
       absl::flat_hash_map<int64_t, int64_t>& old_instr_id_to_new_id);
 
   // Convert an HloModule to or from a proto.
   HloModuleProto ToProto() const;
+
+  // Converts an HloModuleProto to an HloModule. If the module had its ids
+  // manually changed or was created in an older version of the compiler, it
+  // might be necessary to call RemapInstructionIds to make the ids consistent
+  // and compact.
   static absl::StatusOr<std::unique_ptr<HloModule>> CreateFromProto(
       const HloModuleProto& proto, const HloModuleConfig& module_config,
       bool prohibit_empty_literal = true,

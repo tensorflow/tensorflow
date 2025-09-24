@@ -44,11 +44,13 @@ limitations under the License.
 #include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/protobuf.h"
 
 namespace xla {
 namespace {
 
 using ::testing::ElementsAre;
+using ::testing::Eq;
 using ::testing::IsEmpty;
 using ::testing::UnorderedElementsAre;
 
@@ -745,6 +747,114 @@ TEST(HloModuleTest, TestUniqueIdIs64Bits) {
   // Lower 32 bits should be preserved and therefore the same
   EXPECT_EQ(tparam->unique_id() & 0xFFFFFFFF, fparam->unique_id() & 0xFFFFFFFF);
   TF_EXPECT_OK(module->CheckUniqueNamesAndIdsForComputationsAndInstructions());
+}
+
+TEST(HloModuleTest, TestRemapInstructionIdsResolvesOperands) {
+  HloModuleProto hlo_module_proto;
+  ASSERT_TRUE(tsl::protobuf::TextFormat::ParseFromString(R"(
+  name: "hlo_module_proto"
+  entry_computation_id: 1
+computations {
+  name: "basic_computation"
+  id: 2
+  root_id: 1
+  instructions {
+    name: "parameter.0"
+    opcode: "parameter"
+    id: 1
+  }
+  instructions {
+    name: "parameter.1"
+    opcode: "parameter"
+    id: 2
+  }
+  instructions {
+    name: "add.0"
+    opcode: "add"
+    id: 3
+    operand_ids: 1
+    operand_ids: 2
+  }
+  instructions {
+    name: "add.1"
+    opcode: "add"
+    id: 4
+    operand_ids: 1
+    operand_ids: 3
+  }
+  instructions {
+    name: "add.2"
+    opcode: "add"
+    id: 5
+    operand_ids: 2
+    operand_ids: 3
+  }
+}
+
+computations {
+  name: "entry_computation"
+  id: 1
+  root_id: 12884901895
+  instructions {
+    name: "Arg_0.1"
+    opcode: "parameter"
+    id: 12884901889
+  }
+  instructions {
+    name: "slice.2"
+    opcode: "slice"
+    id: 12884901890
+    operand_ids: 1
+  }
+  instructions {
+    name: "squeeze.2"
+    opcode: "reshape"
+    id: 12884901891
+    operand_ids: 2
+  }
+  instructions {
+    name: "add.39"
+    opcode: "broadcast"
+    id: 12884901892
+    operand_ids: 3
+  }
+  instructions {
+    name: "iota_2x32_shape.1"
+    opcode: "iota"
+    id: 12884901893
+  }
+  instructions {
+    name: "slice.3"
+    opcode: "slice"
+    id: 12884901894
+    operand_ids: 1
+  }
+  instructions {
+    name: "squeeze.3"
+    opcode: "reshape"
+    id: 7
+    operand_ids: 6
+  }
+}
+
+)",
+                                                         &hlo_module_proto));
+
+  TF_ASSERT_OK_AND_ASSIGN(HloModuleProto remapped_hlo_module_proto,
+                          HloModule::RemapInstructionIds(hlo_module_proto));
+
+  HloInstructionProto squeeze_3_instr =
+      remapped_hlo_module_proto.computations(1).instructions(6);
+
+  // Instruction squeeze.3's operand is slice.3, which should be remapped to
+  // id 5.
+  EXPECT_THAT(
+      remapped_hlo_module_proto.computations(1).instructions(6).operand_ids(),
+      ElementsAre(5));
+  // squeeze.3 is the root because its local id matches the local part of the
+  // root id specified in the proto.
+  EXPECT_THAT(remapped_hlo_module_proto.computations(1).instructions(6).id(),
+              Eq(remapped_hlo_module_proto.computations(1).root_id()));
 }
 
 }  // namespace

@@ -185,7 +185,6 @@ HloComputation* HloModule::AddComputationInternal(
     computation->SetUniqueId(ReadAndIncrementNextUniqueComputationId());
     // Computation sets unique ID internally in sequence
     // Recompacts the instructions vector to remove nullptr entries.
-    // computation->RecompactInstructions();
     computation->Cleanup();
   } else {
     // Don't uniquify the names of the computation or instruction, but we must
@@ -634,20 +633,18 @@ absl::Status HloModule::CheckUniqueNamesAndIdsForComputationsAndInstructions()
 }
 
 /* static */
-absl::Status HloModule::UpdateIdsInSchedules(
-    HloModuleProto& proto,
+absl::Status HloModule::UpdateIdsInSchedule(
+    HloModuleProto& proto, int64_t computation_proto_id,
     absl::flat_hash_map<int64_t, int64_t>& old_instr_id_to_new_id) {
-  for (HloComputationProto& computation_proto : *proto.mutable_computations()) {
-    if (proto.schedule().sequences().contains(computation_proto.id())) {
-      HloScheduleProto::InstructionSequence& sequence =
-          (*proto.mutable_schedule()
-                ->mutable_sequences())[computation_proto.id()];
-      for (int64_t& instr_id : *sequence.mutable_instruction_ids()) {
-        TF_RET_CHECK(old_instr_id_to_new_id.contains(instr_id))
-            << "Instruction id " << instr_id
-            << " not found in map when updating schedule ids.";
-        instr_id = old_instr_id_to_new_id[instr_id];
-      }
+  if (proto.schedule().sequences().contains(computation_proto_id)) {
+    HloScheduleProto::InstructionSequence& sequence =
+        (*proto.mutable_schedule()->mutable_sequences())[computation_proto_id];
+    for (int64_t& instr_id : *sequence.mutable_instruction_ids()) {
+      int64_t local_instr_id = HloInstruction::CalculateLocalId(instr_id);
+      TF_RET_CHECK(old_instr_id_to_new_id.contains(local_instr_id))
+          << "Instruction id " << instr_id
+          << " not found in map when updating schedule ids.";
+      instr_id = old_instr_id_to_new_id[local_instr_id];
     }
   }
   return absl::OkStatus();
@@ -656,36 +653,45 @@ absl::Status HloModule::UpdateIdsInSchedules(
 /* static */
 absl::StatusOr<HloModuleProto> HloModule::RemapInstructionIds(
     const HloModuleProto& proto) {
-  absl::flat_hash_map<int64_t, int64_t> old_instr_id_to_new_id;
   HloModuleProto proto_copy = proto;
   for (HloComputationProto& computation_proto :
        *proto_copy.mutable_computations()) {
     int64_t next_instr_id = 0;
+    int64_t new_root_id = -1;
+    absl::flat_hash_map<int64_t, int64_t> old_instr_id_to_new_id;
     for (HloInstructionProto& instr_proto :
          *computation_proto.mutable_instructions()) {
       int64_t old_instr_id = instr_proto.id();
       instr_proto.set_id(next_instr_id++);
-      old_instr_id_to_new_id[old_instr_id] = instr_proto.id();
+      old_instr_id_to_new_id[HloInstruction::CalculateLocalId(old_instr_id)] =
+          instr_proto.id();
+      if (HloInstruction::CalculateLocalId(old_instr_id) ==
+          HloInstruction::CalculateLocalId(computation_proto.root_id())) {
+        new_root_id = instr_proto.id();
+      }
     }
     // Fix operands and control_predecessors.
     for (HloInstructionProto& instr_proto :
          *computation_proto.mutable_instructions()) {
       for (int64_t& operand_id : *instr_proto.mutable_operand_ids()) {
-        operand_id = old_instr_id_to_new_id[operand_id];
+        operand_id = old_instr_id_to_new_id[HloInstruction::CalculateLocalId(
+            operand_id)];
       }
       for (int64_t& control_predecessor_id :
            *instr_proto.mutable_control_predecessor_ids()) {
-        control_predecessor_id = old_instr_id_to_new_id[control_predecessor_id];
+        control_predecessor_id =
+            old_instr_id_to_new_id[HloInstruction::CalculateLocalId(
+                control_predecessor_id)];
       }
     }
     // Fix root_id.
-    TF_RET_CHECK(old_instr_id_to_new_id.contains(computation_proto.root_id()))
-        << "Root id " << computation_proto.root_id()
-        << " not found in computation proto.";
-    computation_proto.set_root_id(
-        old_instr_id_to_new_id[computation_proto.root_id()]);
+    TF_RET_CHECK(new_root_id != -1) << "Root id " << computation_proto.root_id()
+                                    << " not found in computation proto.";
+    computation_proto.set_root_id(new_root_id);
+    // Fix schedule.
+    TF_RETURN_IF_ERROR(UpdateIdsInSchedule(proto_copy, computation_proto.id(),
+                                           old_instr_id_to_new_id));
   }
-  TF_RETURN_IF_ERROR(UpdateIdsInSchedules(proto_copy, old_instr_id_to_new_id));
   return proto_copy;
 }
 
