@@ -176,6 +176,7 @@ limitations under the License.
 #include "xla/service/cpu/buffer_info_util.h"
 #include "xla/service/cpu/conv_canonicalization.h"
 #include "xla/service/cpu/cpu_aot_compilation_result.h"
+#include "xla/service/cpu/cpu_aot_loader.h"
 #include "xla/service/cpu/cpu_executable.h"
 #include "xla/service/cpu/cpu_float_support.h"
 #include "xla/service/cpu/cpu_instruction_fusion.h"
@@ -1063,14 +1064,6 @@ namespace {
 
 // Align buffers to XLA:CPU minimal alignment.
 int64_t memory_alignment(LogicalBuffer::Color) { return MinAlign(); }
-
-llvm::TargetOptions CompilerTargetOptions(
-    const HloModuleConfig& module_config) {
-  llvm::TargetOptions target_options;
-  // Always allow FMA fusion. This increases precision instead of decreasing it.
-  target_options.AllowFPOpFusion = llvm::FPOpFusion::Fast;
-  return target_options;
-}
 
 std::pair<LLVMCompiler::ModuleHook, LLVMCompiler::ModuleHook> GetIRModuleHooks(
     const HloModule& hlo_module,
@@ -2311,78 +2304,6 @@ HloCostAnalysis::ShapeSizeFunction CpuCompiler::ShapeSizeBytesFunction() const {
   return CpuExecutable::ShapeSizeBytes;
 }
 
-namespace {
-
-absl::StatusOr<std::vector<FunctionLibrary::Symbol>>
-GetCompiledSymbolsFromProto(
-    absl::Span<const SymbolProto> compiled_symbols_proto) {
-  std::vector<FunctionLibrary::Symbol> compiled_symbols;
-  for (const auto& symbol_proto : compiled_symbols_proto) {
-    switch (symbol_proto.function_type_id()) {
-      case SymbolProto::KERNEL:
-        compiled_symbols.push_back(
-            FunctionLibrary::Sym<FunctionLibrary::Kernel>(symbol_proto.name()));
-        break;
-      case SymbolProto::COMPARATOR:
-        compiled_symbols.push_back(
-            FunctionLibrary::Sym<FunctionLibrary::Comparator>(
-                symbol_proto.name()));
-        break;
-      default:
-        return Internal(
-            "Unknown function type id %s",
-            SymbolProto_FunctionTypeId_Name(symbol_proto.function_type_id()));
-    }
-  }
-  VLOG(3) << "Collected " << compiled_symbols.size() << " compiled symbols";
-  for (const auto& symbol : compiled_symbols) {
-    VLOG(3) << " Symbol: " << symbol.name;
-  }
-
-  return compiled_symbols;
-}
-
-absl::StatusOr<std::unique_ptr<FunctionLibrary>> LoadFunctionLibrary(
-    const std::vector<FunctionLibrary::Symbol>& compiled_symbols,
-    absl::Span<const ObjFileProto> obj_files, const HloModule* hlo_module) {
-  const HloModuleConfig& config = hlo_module->config();
-  const DebugOptions& debug_options = config.debug_options();
-
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<llvm::TargetMachine> target_machine,
-      IrCompiler::InferTargetMachine(
-          std::move(CompilerTargetOptions(hlo_module->config())),
-          IrCompiler::GetCodeGenOptLevel(config),
-          CpuFeatureFromString(debug_options.xla_cpu_max_isa())));
-
-  // Definition generator to link with XLA:CPU host runtime symbols.
-  ExecutionEngine::DefinitionGenerator definition_generator =
-      [](const llvm::DataLayout& data_layout) {
-        return std::make_unique<RuntimeSymbolGenerator>(data_layout);
-      };
-
-  ObjectLoader object_loader(/*num_dylibs=*/1,
-                             target_machine->createDataLayout(),
-                             definition_generator);
-
-  for (size_t i = 0; i < object_loader.num_dylibs(); ++i) {
-    object_loader.dylib(i).value()->addGenerator(
-        std::make_unique<RuntimeSymbolGenerator>(
-            target_machine->createDataLayout()));
-  }
-
-  for (auto& obj_file : obj_files) {
-    llvm::StringRef data(obj_file.contents().data(),
-                         obj_file.contents().size());
-    TF_RETURN_IF_ERROR(object_loader.AddObjFile(
-        llvm::MemoryBuffer::getMemBuffer(data, obj_file.name())));
-  }
-
-  return std::move(object_loader).Load(compiled_symbols);
-}
-
-}  // namespace
-
 absl::StatusOr<std::unique_ptr<AotCompilationResult>> CpuCompiler::Export(
     Executable* executable) const {
   auto* cpu_executable = tensorflow::down_cast<CpuExecutable*>(executable);
@@ -2428,32 +2349,7 @@ absl::StatusOr<std::unique_ptr<AotCompilationResult>> CpuCompiler::Export(
 absl::StatusOr<std::unique_ptr<AotCompilationResult>>
 CpuCompiler::LoadAotCompilationResult(
     const std::string& serialized_aot_result) {
-  CompilationResultProto proto;
-  if (!proto.ParseFromString(serialized_aot_result)) {
-    return Internal("Failed to parse serialized CpuAotCompilationResult.");
-  }
-
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> hlo_module,
-                      HloModule::CreateFromProtoWithConfig(proto.hlo_module()));
-  std::vector<SymbolProto> compiled_symbols_proto;
-  for (const auto& symbol_proto : proto.compiled_symbols()) {
-    compiled_symbols_proto.push_back(symbol_proto);
-  }
-
-  TF_ASSIGN_OR_RETURN(auto compiled_symbols,
-                      GetCompiledSymbolsFromProto(compiled_symbols_proto));
-
-  std::vector<ObjFileProto> obj_files;
-  for (const auto& obj_file : proto.object_files()) {
-    obj_files.push_back(obj_file);
-  }
-
-  TF_ASSIGN_OR_RETURN(
-      auto function_library,
-      LoadFunctionLibrary(compiled_symbols, obj_files, hlo_module.get()));
-
-  return CpuAotCompilationResult::FromProto(std::move(proto),
-                                            std::move(function_library));
+  return CpuAotLoader::LoadAotCompilationResult(serialized_aot_result);
 }
 
 absl::StatusOr<HloSchedule> CpuCompiler::CreateHloSchedule(
