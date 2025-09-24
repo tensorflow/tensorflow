@@ -883,21 +883,18 @@ TEST_F(ScatterDeterminismExpanderTest, ScatterAddHloVerificationTest) {
     CHECK-DAG:   %[[CONSTANT:.*]] = s32[1]{0} constant({2})
     CHECK-DAG:   %[[BROADCAST0:.*]] = s32[2,1]{1,0} broadcast(%[[CONSTANT]]), dimensions={1}
     CHECK-DAG:   %[[SELECT1:.*]] = s32[2,1]{1,0} select(%[[BROADCAST3]], %[[RESHAPE5]], %[[BROADCAST0]])
-    CHECK-DAG:   %[[FALSE:.*]] = pred[1]{0} constant({0})
-    CHECK-DAG:   %[[CONSTANT2:.*]] = s32[] constant(0)
+    CHECK-DAG:   %[[CONSTANT2:.*]] = s32[] constant(2)
     CHECK-DAG:   %[[BROADCAST1:.*]] = s32[1]{0} broadcast(%[[CONSTANT2]]), dimensions={}
     CHECK-DAG:   %[[SLICE1:.*]] = s32[1]{0} slice(%[[GET_TUPLE_ELEMENT]]), slice={[0:1]}
     CHECK-DAG:   %[[CONCATENATE1:.*]] = s32[2]{0} concatenate(%[[BROADCAST1]], %[[SLICE1]]), dimensions={0}
     CHECK-DAG:   %[[COMPARE1:.*]] = pred[2]{0} compare(%[[GET_TUPLE_ELEMENT]], %[[CONCATENATE1]]), direction=EQ
-    CHECK-DAG:   %[[SLICE2:.*]] = pred[1]{0} slice(%[[COMPARE1]]), slice={[1:2]}
-    CHECK-DAG:   %[[CONCATENATE3:.*]] = pred[2]{0} concatenate(%[[FALSE]], %[[SLICE2]]), dimensions={0}
     CHECK-DAG:   %[[GET_TUPLE_ELEMENT1:.*]] = f32[2]{0} get-tuple-element(%[[SORT]]), index=1
     CHECK-DAG:   %[[CONSTANT1:.*]] = f32[] constant(0)
     CHECK-DAG:   %[[BROADCAST:.*]] = f32[1]{0} broadcast(%[[CONSTANT1]]), dimensions={}
     CHECK-DAG:   %[[SLICE:.*]] = f32[1]{0} slice(%[[GET_TUPLE_ELEMENT1]]), slice={[0:1]}
     CHECK-DAG:   %[[CONCATENATE:.*]] = f32[2]{0} concatenate(%[[BROADCAST]], %[[SLICE]]), dimensions={0}
     CHECK-DAG:   %[[MAP:.*]] = f32[2]{0} map(%[[GET_TUPLE_ELEMENT1]], %[[CONCATENATE]]), dimensions={0}, to_apply=%scatter_computation
-    CHECK-DAG:   %[[SELECT:.*]] = f32[2]{0} select(%[[CONCATENATE3]], %[[MAP]], %[[GET_TUPLE_ELEMENT1]])
+    CHECK-DAG:   %[[SELECT:.*]] = f32[2]{0} select(%[[COMPARE1]], %[[MAP]], %[[GET_TUPLE_ELEMENT1]])
     CHECK-DAG:  ROOT %[[SCATTER:.*]] = f32[2]{0} scatter(%[[OPERAND]], %[[SELECT1]], %[[SELECT]]),
     CHECK-SAME:   update_window_dims={},
     CHECK-SAME:   inserted_window_dims={0},
