@@ -34,6 +34,8 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
 #include "xla/error_spec.h"
+#include "xla/hlo/builder/xla_builder.h"
+#include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
@@ -101,6 +103,22 @@ HloRunnerAgnosticTestBase::ParseAndReturnVerifiedModule(
     const HloParserOptions& parser_options) const {
   return HloHardwareIndependentTestBase::ParseAndReturnVerifiedModule(
       hlo_text, config, parser_options, device_shape_size_fn_);
+}
+
+absl::StatusOr<std::unique_ptr<HloModule>>
+HloRunnerAgnosticTestBase::HloModuleFromXlaBuilder(
+    XlaBuilder* builder, const ExecutionOptions& execution_options) const {
+  TF_ASSIGN_OR_RETURN(XlaComputation computation, builder->Build());
+  TF_ASSIGN_OR_RETURN(
+      HloModuleConfig module_config,
+      HloModule::CreateModuleConfigFromProto(computation.proto(),
+                                             execution_options.debug_options(),
+                                             &execution_options));
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<HloModule> module,
+      HloModule::CreateFromProto(computation.proto(), module_config));
+  TF_RETURN_IF_ERROR(verifier().Run(module.get()).status());
+  return module;
 }
 
 HloComputation*

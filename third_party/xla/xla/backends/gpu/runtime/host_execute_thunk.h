@@ -20,7 +20,6 @@ limitations under the License.
 #include <string>
 #include <utility>
 
-#include "absl/base/call_once.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
@@ -34,7 +33,6 @@ limitations under the License.
 #include "xla/core/host_offloading/host_offloading_executable.h"
 #include "xla/core/host_offloading/host_offloading_executable.pb.h"
 #include "xla/executable_run_options.h"
-#include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/shape.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -77,10 +75,12 @@ class HostExecuteStartThunk : public Thunk {
     Shape shape;
   };
 
-  HostExecuteStartThunk(Thunk::ThunkInfo thunk_info,
-                        const HloModule& hlo_module,
-                        absl::InlinedVector<SliceAndShape, 4> args,
-                        absl::InlinedVector<SliceAndShape, 4> results);
+  static absl::StatusOr<std::unique_ptr<HostExecuteStartThunk>> Create(
+      Thunk::ThunkInfo thunk_info,
+      const HostOffloadingExecutableProto& host_offloading_executable_proto,
+      absl::InlinedVector<SliceAndShape, 4> args,
+      absl::InlinedVector<SliceAndShape, 4> results);
+
   HostExecuteStartThunk(const HostExecuteStartThunk&) = delete;
   HostExecuteStartThunk& operator=(const HostExecuteStartThunk&) = delete;
   ~HostExecuteStartThunk() override = default;
@@ -101,8 +101,24 @@ class HostExecuteStartThunk : public Thunk {
     return async_events_;
   }
 
+  absl::Status LoadExecutable();
+
+  const HostOffloadingExecutableProto& executable_proto() const {
+    return executable_proto_;
+  }
+
+  HostOffloadingExecutableProto* mutable_executable_proto() {
+    return &executable_proto_;
+  }
+
+ protected:
+  HostExecuteStartThunk(
+      Thunk::ThunkInfo thunk_info,
+      const HostOffloadingExecutableProto& host_offloading_executable_proto,
+      absl::InlinedVector<SliceAndShape, 4> args,
+      absl::InlinedVector<SliceAndShape, 4> results);
+
  private:
-  absl::once_flag executable_init_flag_;
   std::unique_ptr<HostOffloadingExecutable> executable_;
   absl::InlinedVector<SliceAndShape, 4> args_;
   absl::InlinedVector<SliceAndShape, 4> results_;

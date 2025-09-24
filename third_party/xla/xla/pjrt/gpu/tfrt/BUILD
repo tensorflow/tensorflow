@@ -2,6 +2,7 @@ load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
 load("//xla:xla.default.bzl", "xla_cc_test")
 load("//xla/pjrt/gpu:package_groups.bzl", "xla_gpu_internal_packages")
+load("//xla/tests:build_defs.bzl", "xla_test")
 load("//xla/tsl:tsl.bzl", "internal_visibility")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
@@ -152,15 +153,17 @@ cc_library(
     ]),
 )
 
-xla_cc_test(
+xla_test(
     name = "tfrt_gpu_client_test",
     srcs = ["tfrt_gpu_client_test.cc"],
+    backends = [
+        "nvgpu_any",
+    ],
     tags = [
-        "gpu",
+        "multi_gpu",
         "no_oss",
         "noasan",
         "nomsan",
-        "requires-gpu-nvidia:2",
     ],
     deps = [
         ":gpu_event",
@@ -206,7 +209,6 @@ xla_cc_test(
         "//xla/pjrt/gpu:gpu_topology_proto_cc",
         "//xla/pjrt/plugin/xla_gpu:xla_gpu_client_options",
         "//xla/pjrt/proto:compile_options_proto_cc",
-        "//xla/service:gpu_plugin",
         "//xla/service:platform_util",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor:device_memory",
