@@ -17,13 +17,11 @@ limitations under the License.
 
 #include <cstdint>
 
-#include "llvm/ADT/MapVector.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/Support/LLVM.h"
-#include "xla/hlo/analysis/indexing_map.h"
 #include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/service/gpu/model/experimental/symbolic_map.h"
 

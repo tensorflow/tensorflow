@@ -20,7 +20,7 @@ limitations under the License.
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/MLIRContext.h"
-#include "xla/hlo/analysis/indexing_map.h"
+#include "xla/hlo/analysis/interval.h"
 #include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/service/gpu/model/experimental/symbolic_map.h"
 

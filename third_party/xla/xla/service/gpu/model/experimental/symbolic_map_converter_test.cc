@@ -15,14 +15,20 @@ limitations under the License.
 
 #include "xla/service/gpu/model/experimental/symbolic_map_converter.h"
 
+#include <string>
+
 #include <gtest/gtest.h>
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "llvm/ADT/MapVector.h"
 #include "llvm/ADT/SmallVector.h"
+#include "mlir/AsmParser/AsmParser.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
+#include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/MLIRContext.h"
-#include "xla/hlo/analysis/indexing_map.h"
-#include "xla/hlo/analysis/indexing_test_utils.h"
+#include "mlir/Support/LLVM.h"
+#include "xla/hlo/analysis/interval.h"
 #include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/service/gpu/model/experimental/symbolic_map.h"
 
@@ -32,6 +38,19 @@ namespace {
 
 using ::mlir::AffineMap;
 using ::mlir::MLIRContext;
+
+// TODO: b/433693782 - This code is duplicated from indexing_test_utils. Remove
+// this function as soon as symbolic_map_converter is not needed anymore. If
+// not, we should refactor it to a common test library.
+// Helper function to parse an AffineMap from a string.
+AffineMap ParseAffineMap(absl::string_view serialized_affine_map,
+                         MLIRContext* context) {
+  std::string full_affine_map_string =
+      absl::StrCat("affine_map<", serialized_affine_map, ">");
+  return mlir::cast<mlir::AffineMapAttr>(
+             mlir::parseAttribute(full_affine_map_string, context))
+      .getValue();
+}
 
 TEST(SymbolicMapConverterTest, AffineToSymbolicRoundTrip) {
   MLIRContext mlir_context;
