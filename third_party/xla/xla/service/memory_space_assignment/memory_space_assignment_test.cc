@@ -14855,6 +14855,72 @@ ENTRY entry {
       /*operand_memory_space=*/kAlternateMemorySpace);
 }
 
+TEST_F(MemorySpaceAssignmentTest, TestBlockPrefetchingWithAlisedUses) {
+  absl::string_view hlo_string = R"(
+HloModule module, is_scheduled=true
+
+ENTRY entry {
+  p0 = f32[2,3]{1,0} parameter(0)
+  p1 = f32[2,3]{1,0} parameter(1)
+  p2 = f32[2,3]{1,0} parameter(2)
+  p3 = f32[2,3]{1,0} parameter(3)
+  p4 = f32[2,3]{1,0} parameter(4)
+  p5 = f32[2,3]{1,0} parameter(5)
+  custom_call0 = f32[2,3]{1,0} custom-call(p0), custom_call_target="tpu_custom_call", output_to_operand_aliasing={{}: (0, {})}
+  negate1 = f32[2,3]{1,0} negate(custom_call0)
+  negate2 = f32[2,3]{1,0} negate(negate1)
+  add3 = f32[2,3]{1,0} add(p1, negate2)
+  negate4 = f32[2,3]{1,0} negate(add3)
+  negate5 = f32[2,3]{1,0} negate(negate4)
+  add6 = f32[2,3]{1,0} add(p2, negate5)
+  negate7 = f32[2,3]{1,0} negate(add6)
+  negate8 = f32[2,3]{1,0} negate(negate7)
+  add9 = f32[2,3]{1,0} add(p3, negate8)
+  negate10 = f32[2,3]{1,0} negate(add9)
+  negate11 = f32[2,3]{1,0} negate(negate10)
+  add12 = f32[2,3]{1,0} add(p4, negate11)
+  custom_call13 = f32[2,3]{1,0} custom-call(custom_call0, add12), custom_call_target="tpu_custom_call", output_to_operand_aliasing={{}: (0, {})}
+  negate14 = f32[2,3]{1,0} negate(custom_call13)
+  ROOT add15 = f32[2,3]{1,0} add(p5, negate14)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  Options memory_space_options = DefaultMemorySpaceOptions();
+  memory_space_options.max_size_in_bytes = 24;
+  memory_space_options.reserved_bytes_for_block_prefetches = 24;
+  memory_space_options.max_outstanding_block_prefetches = 10;
+  memory_space_options.max_outstanding_prefetches = 0;
+
+  memory_space_options.block_prefetched_positions = GetHloPositions(
+      /*module=*/module.get(),
+      /*instruction_names=*/{"p0", "p1", "p2", "p3", "p4", "p5"});
+
+  XLA_LOG_LINES(INFO, "Before MSA: \n" + module->ToString());
+  AssignMemorySpaceUsingCostAnalysis(module.get(),
+                                     std::move(memory_space_options));
+  XLA_LOG_LINES(INFO, "After MSA: \n" + module->ToString());
+
+  std::vector<std::string> prefetched_uses = {"custom_call0", "add15"};
+  CheckOperandOpcodeAndMemorySpaceForInstructionNames(
+      /*module=*/module.get(), /*instruction_names=*/prefetched_uses,
+      /*operand_index=*/0, /*operand_opcode=*/HloOpcode::kCopyDone,
+      /*operand_memory_space=*/kAlternateMemorySpace);
+
+  std::vector<std::string> aliased_uses = {"negate1", "custom_call13",
+                                           "negate14"};
+  CheckOperandOpcodeAndMemorySpaceForInstructionNames(
+      /*module=*/module.get(), /*instruction_names=*/aliased_uses,
+      /*operand_index=*/0, /*operand_opcode=*/HloOpcode::kCustomCall,
+      /*operand_memory_space=*/kAlternateMemorySpace);
+
+  std::vector<std::string> default_memory_uses = {"add3", "add6", "add9",
+                                                  "add12"};
+  CheckOperandOpcodeAndMemorySpaceForInstructionNames(
+      /*module=*/module.get(), /*instruction_names=*/default_memory_uses,
+      /*operand_index=*/0, /*operand_opcode=*/HloOpcode::kParameter,
+      /*operand_memory_space=*/kDefaultMemorySpace);
+}
+
 TEST_F(MemorySpaceAssignmentTest,
        TestBlockPrefetchingWithInputOutputAliasConfig) {
   absl::string_view hlo_string = R"(
@@ -15610,6 +15676,145 @@ ENTRY entry {
   CheckOperandOpcodeAndMemorySpaceForInstructionNames(
       /*module=*/module.get(), /*instruction_names=*/prefetched_uses,
       /*operand_index=*/0,
+      /*operand_opcode=*/HloOpcode::kCustomCall,
+      /*operand_memory_space=*/kAlternateMemorySpace);
+
+  // Check that all direct uses of parameters are in default memory space.
+  std::vector<std::string> direct_uses = {"add18", "add19", "add20"};
+  CheckOperandOpcodeAndMemorySpaceForInstructionNames(
+      /*module=*/module.get(), /*instruction_names=*/direct_uses,
+      /*operand_index=*/0, /*operand_opcode=*/HloOpcode::kParameter,
+      /*operand_memory_space=*/kDefaultMemorySpace);
+}
+
+TEST_F(MemorySpaceAssignmentTest,
+       TestScheduleCustomCallPrefetchesWithAliasing) {
+  // params p0, p1, p2 have sliced and non-sliced custom call prefetches.
+  // slice_done_1 and prefetch_done_0 have multiple uses.
+  // p0, p1 and p2 have uses apart from the custom call prefetches.
+  // custom_call17 output aliases with prefetch_done_0, extending the live range
+  // of prefetch_done_0 by sharing the buffer with one additional hlo value.
+  // custom_call15 output aliases with slice_done_5 and custom_call21
+  // output aliases with custom_call17, extending the live range of
+  // slice_done_5, by sharing the buffer with two additional hlo values.
+  absl::string_view hlo_string = R"(
+HloModule module, is_scheduled=true
+
+ENTRY entry {
+  p0 = f32[4,3]{1,0} parameter(0)
+  p1 = f32[4,3]{1,0} parameter(1)
+  p2 = f32[4,3]{1,0} parameter(2)
+
+  prefetch_start0 = (f32[4,3]{1,0}, s32[]{:T(128)S(2)}) custom-call(p0), custom_call_target="tpu_custom_call"
+  prefetch_start0_gte_0 = f32[4,3]{1,0} get-tuple-element(prefetch_start0), index=0
+  prefetch_start0_gte_1 = s32[]{:T(128)S(2)} get-tuple-element(prefetch_start0), index=1
+  prefetch_done_0 = f32[4,3]{1,0} custom-call(p0, prefetch_start0_gte_0, prefetch_start0_gte_1), custom_call_target="tpu_custom_call", output_to_operand_aliasing={{}: (1, {})}
+
+
+  slice_start_0 = (f32[2,3]{1,0}, s32[]{:T(128)S(2)}) custom-call(p0), custom_call_target="tpu_custom_call"
+  slice_start_0_gte_0 = f32[2,3]{1,0} get-tuple-element(slice_start_0), index=0
+  slice_start_0_gte_1 = s32[]{:T(128)S(2)} get-tuple-element(slice_start_0), index=1
+  slice_done_0 = f32[2,3]{1,0} custom-call(p0, slice_start_0_gte_0, slice_start_0_gte_1), custom_call_target="tpu_custom_call", output_to_operand_aliasing={{}: (1, {})}
+
+  slice_start_1 = (f32[2,3]{1,0}, s32[]{:T(128)S(2)}) custom-call(p1), custom_call_target="tpu_custom_call"
+  slice_start_1_gte_0 = f32[2,3]{1,0} get-tuple-element(slice_start_1), index=0
+  slice_start_1_gte_1 = s32[]{:T(128)S(2)} get-tuple-element(slice_start_1), index=1
+  slice_done_1 = f32[2,3]{1,0} custom-call(p1, slice_start_1_gte_0, slice_start_1_gte_1), custom_call_target="tpu_custom_call", output_to_operand_aliasing={{}: (1, {})}
+
+  slice_start_2 = (f32[2,3]{1,0}, s32[]{:T(128)S(2)}) custom-call(p2), custom_call_target="tpu_custom_call"
+  slice_start_2_gte_0 = f32[2,3]{1,0} get-tuple-element(slice_start_2), index=0
+  slice_start_2_gte_1 = s32[]{:T(128)S(2)} get-tuple-element(slice_start_2), index=1
+  slice_done_2 = f32[2,3]{1,0} custom-call(p2, slice_start_2_gte_0, slice_start_2_gte_1), custom_call_target="tpu_custom_call", output_to_operand_aliasing={{}: (1, {})}
+
+  slice_start_3 = (f32[2,3]{1,0}, s32[]{:T(128)S(2)}) custom-call(p0), custom_call_target="tpu_custom_call"
+  slice_start_3_gte_0 = f32[2,3]{1,0} get-tuple-element(slice_start_3), index=0
+  slice_start_3_gte_1 = s32[]{:T(128)S(2)} get-tuple-element(slice_start_3), index=1
+  slice_done_3 = f32[2,3]{1,0} custom-call(p0, slice_start_3_gte_0, slice_start_3_gte_1), custom_call_target="tpu_custom_call", output_to_operand_aliasing={{}: (1, {})}
+
+  slice_start_4 = (f32[2,3]{1,0}, s32[]{:T(128)S(2)}) custom-call(p1), custom_call_target="tpu_custom_call"
+  slice_start_4_gte_0 = f32[2,3]{1,0} get-tuple-element(slice_start_4), index=0
+  slice_start_4_gte_1 = s32[]{:T(128)S(2)} get-tuple-element(slice_start_4), index=1
+  slice_done_4 = f32[2,3]{1,0} custom-call(p1, slice_start_4_gte_0, slice_start_4_gte_1), custom_call_target="tpu_custom_call", output_to_operand_aliasing={{}: (1, {})}
+
+  slice_start_5 = (f32[2,3]{1,0}, s32[]{:T(128)S(2)}) custom-call(p2), custom_call_target="tpu_custom_call"
+  slice_start_5_gte_0 = f32[2,3]{1,0} get-tuple-element(slice_start_5), index=0
+  slice_start_5_gte_1 = s32[]{:T(128)S(2)} get-tuple-element(slice_start_5), index=1
+  slice_done_5 = f32[2,3]{1,0} custom-call(p2, slice_start_5_gte_0, slice_start_5_gte_1), custom_call_target="tpu_custom_call", output_to_operand_aliasing={{}: (1, {})}
+
+  negate0 = f32[2,3]{1,0} negate(slice_done_0)
+  negate1 = f32[2,3]{1,0} negate(negate0)
+  negate2 = f32[2,3]{1,0} negate(negate1)
+  add3 = f32[2,3]{1,0} add(slice_done_1, negate2)
+  negate4 = f32[2,3]{1,0} negate(add3)
+  negate5 = f32[2,3]{1,0} negate(negate4)
+  add6 = f32[2,3]{1,0} add(slice_done_2, negate5)
+  negate7 = f32[2,3]{1,0} negate(add6)
+  negate8 = f32[2,3]{1,0} negate(negate7)
+  add9 = f32[2,3]{1,0} add(slice_done_3, negate8)
+  negate10 = f32[2,3]{1,0} negate(add9)
+  add11 = f32[2,3]{1,0} add(slice_done_1, negate10)
+  add12 = f32[2,3]{1,0} add(slice_done_4, add11)
+  negate13 = f32[2,3]{1,0} negate(add12)
+  negate14 = f32[2,3]{1,0} negate(negate13)
+  custom_call15 = f32[2,3]{1,0} custom-call(slice_done_5, negate14), custom_call_target="tpu_custom_call", output_to_operand_aliasing={{}: (0, {})}
+  negate16 = f32[4,3]{1,0} negate(prefetch_done_0)
+  custom_call17 = f32[4,3]{1,0} custom-call(prefetch_done_0, negate16), custom_call_target="tpu_custom_call", output_to_operand_aliasing={{}: (0, {})}
+  add18 = f32[4,3]{1,0} add(p0, custom_call17)
+  add19 = f32[4,3]{1,0} add(p1, add18)
+  add20 = f32[4,3]{1,0} add(p2, custom_call17)
+  custom_call21 = f32[4,3]{1,0} custom-call(add19, custom_call17), custom_call_target="tpu_custom_call", output_to_operand_aliasing={{}: (1, {})}
+  add22 = f32[4,3]{1,0} add(add20, custom_call21)
+  add23 = f32[2,3]{1,0} add(negate14, custom_call15)
+  ROOT tuple = (f32[4,3]{1,0}, f32[2,3]{1,0}) tuple(add22, add23)
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  Options memory_space_options = DefaultMemorySpaceOptions();
+  memory_space_options.max_size_in_bytes = 96;
+  memory_space_options.reserved_bytes_for_block_prefetches = 96;
+  memory_space_options.max_outstanding_block_prefetches = 10;
+  memory_space_options.max_outstanding_prefetches = 0;
+  memory_space_options.verify = true;
+
+  std::vector<CustomCallPrefetchInfo> custom_call_prefetch_instructions = {
+      {"p0", "prefetch_start0", "prefetch_done_0"},
+      {"p0", "slice_start_0", "slice_done_0"},
+      {"p0", "slice_start_3", "slice_done_3"},
+      {"p1", "slice_start_1", "slice_done_1"},
+      {"p1", "slice_start_4", "slice_done_4"},
+      {"p2", "slice_start_2", "slice_done_2"},
+      {"p2", "slice_start_5", "slice_done_5"}};
+
+  memory_space_options.hlo_position_to_custom_call_prefetch_details =
+      GetCustomCallPrefetchDetailsMap(/*module=*/module.get(),
+                                      /*custom_call_prefetch_instructions=*/
+                                      custom_call_prefetch_instructions);
+
+  XLA_VLOG_LINES(1, "Before MSA: \n" + module->ToString());
+  AssignMemorySpaceUsingCostAnalysis(module.get(),
+                                     std::move(memory_space_options));
+  XLA_VLOG_LINES(1, "After MSA: \n" + module->ToString());
+
+  // Check that all uses of custom call prefetches are in alternate memory
+  // space.
+  std::vector<std::string> prefetched_uses = {
+      "negate0", "add3",          "add6",     "add9",         "add11",
+      "add12",   "custom_call15", "negate16", "custom_call17"};
+  CheckOperandOpcodeAndMemorySpaceForInstructionNames(
+      /*module=*/module.get(), /*instruction_names=*/prefetched_uses,
+      /*operand_index=*/0,
+      /*operand_opcode=*/HloOpcode::kCustomCall,
+      /*operand_memory_space=*/kAlternateMemorySpace);
+
+  // Check that all aliased uses of custom call prefetches are in alternate
+  // memory space.
+  std::vector<std::string> aliased_uses = {"add18", "add20", "custom_call21",
+                                           "add22", "add23"};
+  CheckOperandOpcodeAndMemorySpaceForInstructionNames(
+      /*module=*/module.get(), /*instruction_names=*/aliased_uses,
+      /*operand_index=*/1,
       /*operand_opcode=*/HloOpcode::kCustomCall,
       /*operand_memory_space=*/kAlternateMemorySpace);
 
