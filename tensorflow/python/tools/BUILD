@@ -40,7 +40,7 @@ py_strict_library(
     ],
 )
 
-py_test(
+py_strict_test(
     name = "saved_model_cli_empty_feature_test",
     size = "small",
     srcs = ["saved_model_cli_empty_feature_test.py"],
@@ -49,6 +49,7 @@ py_test(
         "saved_model_cli.py",
         "saved_model_utils.py",
     ],
+    deps = [":saved_model_cli_lib"],
 )
 
 py_strict_library(
@@ -606,9 +607,8 @@ tf_py_test(
     srcs = ["saved_model_cli_sanitize_list_test.py"],
     python_version = "PY3",
     deps = [
-        ":saved_model_cli",
-        "//tensorflow/python/platform:client_testlib",
-        "@absl_py//absl/testing:parameterized",  # testte kullanılmıyorsa kaldırabilirsin
+        ":saved_model_cli_lib",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
