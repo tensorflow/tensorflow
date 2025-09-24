@@ -577,7 +577,7 @@ PjRtLoadedExecutable::Execute(absl::Span<ArrayRef> args,
   if (incarnations.ok()) {
     opts.incarnations = *std::move(incarnations);
   } else {
-    LOG(WARNING) << "Unable to get incarnations: " << incarnations.status();
+    VLOG(3) << "Unable to get incarnations: " << incarnations.status();
   }
 
   if (options.custom_options.has_value()) {
