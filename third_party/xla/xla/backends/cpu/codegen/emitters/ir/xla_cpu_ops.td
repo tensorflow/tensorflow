@@ -24,6 +24,8 @@ class XLACPU_Op<string mnemonic, list<Trait> traits = []> :
       Op<XlaCpuDialect, mnemonic, traits> {
 }
 
+def TensorOrMemRef : AnyTypeOf<[AnyMemRef, AnyRankedTensor]>;
+
 //===----------------------------------------------------------------------===//
 // !xla_cpu.load
 //===----------------------------------------------------------------------===//
@@ -42,7 +44,7 @@ def XLACPU_LoadOp : XLACPU_Op<"load"> {
   let arguments = (ins XLACPU_CallFrame:$call_frame,
                        I32Attr:$index);
 
-  let results = (outs AnyStaticShapeTensor:$result);
+  let results = (outs TensorOrMemRef:$result);
 
   let assemblyFormat = [{
     $call_frame `,` $index attr-dict `:` type($result)
