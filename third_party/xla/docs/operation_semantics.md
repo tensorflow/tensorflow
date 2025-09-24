@@ -16,7 +16,7 @@ and familiar names; for example a *vector* is a 1-dimensional array and a
 ## Abs
 
 See also
-[`XlaBuilder::Abs`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h)
+[`XlaBuilder::Abs`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 Element-wise abs `x -> |x|`.
 
@@ -27,12 +27,12 @@ Arguments | Type    | Semantics
 `operand` | `XlaOp` | The operand to the function
 
 For StableHLO information see
-[StableHLO - abs](https://openxla.org/stablehlo/spec#abs)
+[StableHLO - abs](https://openxla.org/stablehlo/spec#abs).
 
 ## Add
 
 See also
-[`XlaBuilder::Add`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h)
+[`XlaBuilder::Add`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 Performs element-wise addition of `lhs` and `rhs`.
 
@@ -72,12 +72,12 @@ the dimensions to use for broadcasting the operands. The semantics are described
 in detail on the [broadcasting page](broadcasting.md).
 
 For StableHLO information see
-[StableHLO - add](https://openxla.org/stablehlo/spec#add)
+[StableHLO - add](https://openxla.org/stablehlo/spec#add).
 
 ## AddDependency
 
 See also
-[`HloInstruction::AddDependency`](https://github.com/openxla/xla/tree/main/xla/hlo/ir/hlo_instruction.h)
+[`HloInstruction::AddDependency`](https://github.com/openxla/xla/tree/main/xla/hlo/ir/hlo_instruction.h).
 
 `AddDependency` may appear in HLO dumps, but they are not intended to be
 constructed manually by end users.
@@ -87,12 +87,12 @@ constructed manually by end users.
 ## AfterAll
 
 See also
-[`XlaBuilder::AfterAll`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h)
+[`XlaBuilder::AfterAll`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 AfterAll takes a variadic number of tokens and produces a single token. Tokens
 are primitive types which can be threaded between side-effecting operations to
 enforce ordering. `AfterAll` can be used as a join of tokens for ordering an
-operation after a set operations.
+operation after a set of operations.
 
 **`AfterAll(tokens)`**
 
@@ -101,12 +101,12 @@ Arguments | Type              | Semantics
 `tokens`  | vector of `XlaOp` | variadic number of tokens
 
 For StableHLO information see
-[StableHLO - after_all](https://openxla.org/stablehlo/spec#after_all)
+[StableHLO - after_all](https://openxla.org/stablehlo/spec#after_all).
 
 ## AllGather
 
 See also
-[`XlaBuilder::AllGather`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h)
+[`XlaBuilder::AllGather`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 Performs concatenation across replicas.
 
@@ -159,22 +159,22 @@ The API of `AllGather` is internally decomposed into 2 HLO instructions
 (`AllGatherStart` and `AllGatherDone`).
 
 See also
-[`HloInstruction::CreateAllGatherStart`](https://github.com/openxla/xla/tree/main/xla/hlo/ir/hlo_instruction.h)
+[`HloInstruction::CreateAllGatherStart`](https://github.com/openxla/xla/tree/main/xla/hlo/ir/hlo_instruction.h).
 
 `AllGatherStart`, `AllGatherDone` serve as primitives in HLO. These ops may
 appear in HLO dumps, but they are not intended to be constructed manually by end
 users.
 
-> **Note:**`AllGatherStart` and `AllGatherDone` are only found in HLO. They are
+> **Note:** `AllGatherStart` and `AllGatherDone` are only found in HLO. They are
 > not found in StableHLO.
 
 For StableHLO information see
-[StableHLO - all_gather](https://openxla.org/stablehlo/spec#all_gather)
+[StableHLO - all_gather](https://openxla.org/stablehlo/spec#all_gather).
 
 ## AllReduce
 
 See also
-[`XlaBuilder::AllReduce`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h)
+[`XlaBuilder::AllReduce`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 Performs a custom computation across replicas.
 
@@ -226,14 +226,15 @@ Computing the result of `AllReduce` requires having one input from each replica,
 so if one replica executes an `AllReduce` node more times than another, then the
 former replica will wait forever. Since the replicas are all running the same
 program, there are not a lot of ways for that to happen, but it is possible when
-a while loop's condition depends on data from infeed and the data that is infeed
-causes the while loop to iterate more times on one replica than another.
+a while loop's condition depends on data from `infeed` and the data that is
+`infeed` causes the while loop to iterate more times on one replica than
+another.
 
 The API of `AllReduce` is internally decomposed into 2 HLO instructions
 (`AllReduceStart` and `AllReduceDone`).
 
 See also
-[`HloInstruction::CreateAllReduceStart`](https://github.com/openxla/xla/tree/main/xla/hlo/ir/hlo_instruction.h)
+[`HloInstruction::CreateAllReduceStart`](https://github.com/openxla/xla/tree/main/xla/hlo/ir/hlo_instruction.h).
 
 `AllReduceStart` and `AllReduceDone` serve as primitives in HLO. These ops may
 appear in HLO dumps, but they are not intended to be constructed manually by end
@@ -241,12 +242,12 @@ users.
 
 > **Note:** `AllGatherStart` and `AllGatherDone` are only found in HLO. They are
 > not found in StableHLO. For StableHLO information see
-> [StableHLO - all_reduce](https://openxla.org/stablehlo/spec#all_reduce)
+> [StableHLO - all_reduce](https://openxla.org/stablehlo/spec#all_reduce).
 
 ### CrossReplicaSum
 
 See also
-[`XlaBuilder::CrossReplicaSum`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h)
+[`XlaBuilder::CrossReplicaSum`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 Performs `AllReduce` with a summation computation.
 
@@ -267,7 +268,7 @@ for each subgroup.
 ## AllToAll
 
 See also
-[`XlaBuilder::AllToAll`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h)
+[`XlaBuilder::AllToAll`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 AllToAll is a collective operation that sends data from all cores to all cores.
 It has two phases:
@@ -328,10 +329,10 @@ replica_groups, layout, channel_id)`**
 :                    :                          : send/recv pair               :
 
 See
-[xla::shapes for more information on shapes and layouts.](https://openxla.org/xla/shapes)
+[xla::shapes for more information on shapes and layouts.](https://openxla.org/xla/shapes).
 
 For StableHLO information see
-[StableHLO - all_to_all](https://openxla.org/stablehlo/spec#all_to_all)
+[StableHLO - all_to_all](https://openxla.org/stablehlo/spec#all_to_all).
 
 ### AllToAll - Example 1.
 
@@ -368,7 +369,7 @@ f32[4,2].
 ### RaggedAllToAll
 
 See also
-[`XlaBuilder::RaggedAllToAll`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h)
+[`XlaBuilder::RaggedAllToAll`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 RaggedAllToAll performs a collective all-to-all operation, where the input and
 output are ragged tensors.
@@ -389,19 +390,28 @@ recv_sizes, replica_groups, channel_id)`**
 | `channel_id`     | optional `ChannelHandle` | unique identifier for each    |
 :                  :                          : send/recv pair                :
 
-Ragged tensors are defined by a set of three tensors: - `data`: the `data`
-tensor is “ragged” along its outermost dimension, along which each indexed
-element has variable size. - `offsets`': the `offsets` tensor indexes the
-outermost dimension of the `data` tensor, and represents the starting offset of
-each ragged element of the `data` tensor. - `sizes`: the `sizes` tensor
-represents the size of each ragged element of the `data` tensor, where the size
-is specified in units of sub-elements. A sub-element is defined as the suffix of
-the ‘data’ tensor shape obtained by removing the outermost “ragged” dimension. -
-The `offsets` and `sizes` tensors must have the same size.
+Ragged tensors are defined by a set of three tensors:
 
-An example ragged tensor: ```cpp data: [8,3] =
-{{a,b,c},{d,e,f},{g,h,i},{j,k,l},{m,n,o},{p,q,r},{s,t,u},{v,w,x}} offsets: [3] =
-{0, 1, 4} sizes: [3] = {1, 3, 4}
+-   `data`: the `data`tensor is “ragged” along its outermost dimension, along
+    which each indexed element has variable size.
+-   `offsets`': the `offsets` tensor indexes the outermost dimension of the
+    `data` tensor, and represents the starting offset of each ragged element of
+    the `data` tensor.
+-   `sizes`: the `sizes` tensor represents the size of each ragged element of
+    the `data` tensor, where the size is specified in units of sub-elements. A
+    sub-element is defined as the suffix of the ‘data’ tensor shape obtained by
+    removing the outermost “ragged” dimension.
+-   The `offsets` and `sizes` tensors must have the same size.
+
+An example ragged tensor:
+
+```cpp
+data: [8,3] =
+{{a,b,c},{d,e,f},{g,h,i},{j,k,l},{m,n,o},{p,q,r},{s,t,u},{v,w,x}}
+
+offsets: [3] = {0, 1, 4}
+
+sizes: [3] = {1, 3, 4}
 
 // Index 'data' at 'offsets'[0], 'sizes'[0]' // {a,b,c}
 
@@ -419,41 +429,72 @@ replica that will be written to
 `output_i[output_offsets[i]:output_offsets[i]+send_sizes[i]]` in `i`-th replica
 `output`.
 
-For example, if we have 2 replicas: ```cpp replica 0: input: [1, 2, 2] output:
-[0, 0, 0, 0] input_offsets: [0, 1] send_sizes: [1, 2] output_offsets: [0, 0]
+For example, if we have 2 replicas:
+
+```cpp
+replica 0:
+input: [1, 2, 2]
+output:[0, 0, 0, 0]
+input_offsets: [0, 1]
+send_sizes: [1, 2]
+output_offsets: [0, 0]
 recv_sizes: [1, 1]
 
-replica 1: input: [3, 4, 0] output: [0, 0, 0, 0] input_offsets: [0, 1]
-send_sizes: [1, 1] output_offsets: [1, 2] recv_sizes: [2, 1]
+replica 1:
+input: [3, 4, 0]
+output: [0, 0, 0, 0]
+input_offsets: [0, 1]
+send_sizes: [1, 1]
+output_offsets: [1, 2]
+recv_sizes: [2, 1]
 
-// replica 0's result will be: [1, 3, 0, 0] // replica 1's result will be: [2,
-2, 4, 0] ```The ragged all-to-all HLO has the following arguments: -`input`:
-ragged input data tensor. -`output`: ragged output data tensor.
--`input_offsets`: ragged input offsets tensor. -`send_sizes`: ragged send sizes
-tensor. -`output_offsets`: array of ragged offsets in the target replica output.
--`recv_sizes`: ragged recv sizes tensor.
+// replica 0's result will be: [1, 3, 0, 0]
+// replica 1's result will be: [2, 2, 4, 0]
+```
+
+The ragged all-to-all HLO has the following arguments:
+
+-   `input`: ragged input data tensor.
+-   `output`: ragged output data tensor.
+-   `input_offsets`: ragged input offsets tensor.
+-   `send_sizes`: ragged send sizes tensor.
+-   `output_offsets`: array of ragged offsets in the target replica output.
+-   `recv_sizes`: ragged recv sizes tensor.
 
 The `*_offsets` and `*_sizes` tensors must all have the same shape.
 
-Two shapes are supported for the `*_offsets` and `*_sizes` tensors: -
-`[num_devices]` where ragged-all-to-all may send at most one update to each
-remote device in the replica group. For example: `cpp for (remote_device_id :
-replica_group) { SEND input[input_offsets[remote_device_id]],
-output[output_offsets[remote_device_id]], send_sizes[remote_device_id] }` -
-`[num_devices, num_updates]` where ragged-all-to-all may send up to
-`num_updates` updates the same remote device (each at different offsets), for
-each remote device in the replica group. For example: `cpp for
-(remote_device_id : replica_group) { for (update_idx : num_updates) { SEND
-input[input_offsets[remote_device_id][update_idx]],
-output[output_offsets[remote_device_id][update_idx]]],
-send_sizes[remote_device_id][update_idx] } }`
+Two shapes are supported for the `*_offsets` and `*_sizes` tensors:
 
-> **Note:**`RaggedAllToAll` is only found in HLO. It is not found in StableHLO.
+-   `[num_devices]` where ragged-all-to-all may send at most one update to each
+    remote device in the replica group. For example:
+
+```cpp
+for (remote_device_id : replica_group) {
+     SEND input[input_offsets[remote_device_id]],
+     output[output_offsets[remote_device_id]],
+     send_sizes[remote_device_id] }
+```
+
+-   `[num_devices, num_updates]` where ragged-all-to-all may send up to
+    `num_updates` updates the same remote device (each at different offsets),
+    for each remote device in the replica group.
+
+For example:
+
+```cpp
+for (remote_device_id : replica_group) {
+    for (update_idx : num_updates) {
+        SEND input[input_offsets[remote_device_id][update_idx]],
+        output[output_offsets[remote_device_id][update_idx]]],
+        send_sizes[remote_device_id][update_idx] } }
+```
+
+> **Note:** `RaggedAllToAll` is only found in HLO. It is not found in StableHLO.
 
 ## And
 
 See also
-[`XlaBuilder::And`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h)
+[`XlaBuilder::And`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 Performs element-wise AND of two tensors `lhs` and `rhs`.
 
@@ -493,25 +534,25 @@ the dimensions to use for broadcasting the operands. The semantics are described
 in detail on the [broadcasting page](broadcasting.md).
 
 For StableHLO information see
-[StableHLO - and](https://openxla.org/stablehlo/spec#and)
+[StableHLO - and](https://openxla.org/stablehlo/spec#and).
 
 ## Async
 
 See also [`HloInstruction::CreateAsyncStart`,
 `HloInstruction::CreateAsyncUpdate`,
-`HloInstruction::CreateAsyncDone`](https://github.com/openxla/xla/tree/main/xla/hlo/ir/hlo_instruction.h)
+`HloInstruction::CreateAsyncDone`](https://github.com/openxla/xla/tree/main/xla/hlo/ir/hlo_instruction.h).
 
 `AsyncDone`, `AsyncStart`, and `AsyncUpdate` are internal HLO instructions used
 for Asynchronous operations and serve as primitives in HLO. These ops may appear
 in HLO dumps but they are not intended to be constructed manually by end users.
 
-> **Note:**`AsyncStart`, `AsyncUpdate`, and `AsyncDone` are only found in HLO.
+> **Note:** `AsyncStart`, `AsyncUpdate`, and `AsyncDone` are only found in HLO.
 > They are not found in StableHLO.
 
 ## Atan2
 
 See also
-[`XlaBuilder::Atan2`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h)
+[`XlaBuilder::Atan2`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 Performs element-wise atan2 operation on `lhs` and `rhs`.
 
@@ -551,7 +592,7 @@ the dimensions to use for broadcasting the operands. The semantics are described
 in detail on the [broadcasting page](broadcasting.md).
 
 For StableHLO information see
-[StableHLO - atan2](https://openxla.org/stablehlo/spec#atan2)
+[StableHLO - atan2](https://openxla.org/stablehlo/spec#atan2).
 
 ## BatchNormGrad
 
@@ -621,7 +662,7 @@ The output type is a tuple of three handles:
 :                :       : **`offset`**($\nabla\beta$) :
 
 For StableHLO information see
-[StableHLO - batch_norm_grad](https://openxla.org/stablehlo/spec#batch_norm_grad)
+[StableHLO - batch_norm_grad](https://openxla.org/stablehlo/spec#batch_norm_grad).
 
 ## BatchNormInference
 
@@ -660,7 +701,7 @@ The output is an n-dimensional, normalized array with the same shape as input
 `operand`.
 
 For StableHLO information see
-[StableHLO - batch_norm_inference](https://openxla.org/stablehlo/spec#batch_norm_inference)
+[StableHLO - batch_norm_inference](https://openxla.org/stablehlo/spec#batch_norm_inference).
 
 ## BatchNormTraining
 
@@ -717,22 +758,22 @@ The `batch_mean` and `batch_var` are moments calculated across the batch and
 spatial dimensions using the formulas above.
 
 For StableHLO information see
-[StableHLO - batch_norm_training](https://openxla.org/stablehlo/spec#batch_norm_training)
+[StableHLO - batch_norm_training](https://openxla.org/stablehlo/spec#batch_norm_training).
 
 ## Bitcast
 
 See also
-[`HloInstruction::CreateBitcast`](https://github.com/openxla/xla/tree/main/xla/hlo/ir/hlo_instruction.h)
+[`HloInstruction::CreateBitcast`](https://github.com/openxla/xla/tree/main/xla/hlo/ir/hlo_instruction.h).
 
 `Bitcast` may appear in HLO dumps, but they are not intended to be constructed
 manually by end users.
 
-> **Note:**`Bitcast` is only found in HLO. It is not found in StableHLO.
+> **Note:** `Bitcast` is only found in HLO. It is not found in StableHLO.
 
 ## BitcastConvertType
 
 See also
-[`XlaBuilder::BitcastConvertType`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h)
+[`XlaBuilder::BitcastConvertType`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 Similar to a `tf.bitcast` in TensorFlow, performs an element-wise bitcast
 operation from a data shape to a target shape. The input and output size must
@@ -755,7 +796,7 @@ after the conversion.
 The source and destination element types must not be tuples.
 
 For StableHLO information see
-[StableHLO - bitcast_convert](https://openxla.org/stablehlo/spec#bitcast_convert)
+[StableHLO - bitcast_convert](https://openxla.org/stablehlo/spec#bitcast_convert).
 
 ### Bitcast-converting to primitive type of different width
 
@@ -791,7 +832,7 @@ Note that conversions between different bitwidths are not elementwise.
 ## Broadcast
 
 See also
-[`XlaBuilder::Broadcast`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h)
+[`XlaBuilder::Broadcast`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 Adds dimensions to an array by duplicating the data in the array.
 
@@ -817,12 +858,12 @@ For example, if `operand` is a scalar `f32` with value `2.0f`, and
 `f32[2, 3]` and all the values in the result will be `2.0f`.
 
 For StableHLO information see
-[StableHLO - broadcast](https://openxla.org/stablehlo/spec#broadcast)
+[StableHLO - broadcast](https://openxla.org/stablehlo/spec#broadcast).
 
 ### BroadcastInDim
 
 See also
-[`XlaBuilder::BroadcastInDim`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h)
+[`XlaBuilder::BroadcastInDim`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 Expands the size and number of dimensions of an array by duplicating the data
 in the array.
@@ -854,7 +895,7 @@ the [broadcasting page](broadcasting.md).
 ## Call
 
 See also
-[`XlaBuilder::Call`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h)
+[`XlaBuilder::Call`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 Invokes a computation with the given arguments.
 
@@ -873,7 +914,7 @@ The arity and types of the `args` must match the parameters of the
 ### CompositeCall
 
 See also
-[`XlaBuilder::CompositeCall`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h)
+[`XlaBuilder::CompositeCall`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 Encapsulates an operation made up (composed) of other StableHLO operations,
 taking inputs and composite_attributes and producing results. The semantics of
@@ -919,14 +960,14 @@ attribute that points to the function which contains the lower-level
 implementation, i.e. `to_apply=%funcname`
 
 More information on composite and decomposition can be found on
-[StableHLO Specification](https://openxla.org/stablehlo/spec#composite)
+[StableHLO Specification](https://openxla.org/stablehlo/spec#composite).
 
 ## Cbrt
 
 See also
-[`XlaBuilder::Cbrt`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h)
+[`XlaBuilder::Cbrt`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
-Element-wise cubic root operation `x -> cbrt(x)`
+Element-wise cubic root operation `x -> cbrt(x)`.
 
 **`Cbrt(operand)`**
 
@@ -947,17 +988,17 @@ Cbrt also supports the optional `result_accuracy` argument:
 :                   :                           : implementations             :
 
 For more information on `result_accuracy` see
-[Result Accuracy](https://github.com/openxla/stablehlo/blob/main/rfcs/20241015-result-accuracy.md)
+[Result Accuracy](https://github.com/openxla/stablehlo/blob/main/rfcs/20241015-result-accuracy.md).
 
 For StableHLO information see
-[StableHLO - cbrt](https://openxla.org/stablehlo/spec#cbrt)
+[StableHLO - cbrt](https://openxla.org/stablehlo/spec#cbrt).
 
 ## Ceil
 
 See also
-[`XlaBuilder::Ceil`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h)
+[`XlaBuilder::Ceil`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
-Element-wise ceil `x -> ⌈x⌉`
+Element-wise ceil `x -> ⌈x⌉`.
 
 **`Ceil(operand)`**
 
@@ -966,12 +1007,12 @@ Arguments | Type    | Semantics
 `operand` | `XlaOp` | The operand to the function
 
 For StableHLO information see
-[StableHLO - ceil](https://openxla.org/stablehlo/spec#ceil)
+[StableHLO - ceil](https://openxla.org/stablehlo/spec#ceil).
 
 ## Cholesky
 
 See also
-[`XlaBuilder::Cholesky`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h)
+[`XlaBuilder::Cholesky`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 Computes the
 [Cholesky decomposition](https://en.wikipedia.org/wiki/Cholesky_decomposition)
@@ -1001,12 +1042,12 @@ If `a` is not symmetric (Hermitian) positive definite, the result is
 implementation-defined.
 
 For StableHLO information see
-[StableHLO - cholesky](https://openxla.org/stablehlo/spec#cholesky)
+[StableHLO - cholesky](https://openxla.org/stablehlo/spec#cholesky).
 
 ## Clamp
 
 See also
-[`XlaBuilder::Clamp`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h)
+[`XlaBuilder::Clamp`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 Clamps an operand to within the range between a minimum and maximum value.
 
@@ -1021,7 +1062,7 @@ Arguments | Type    | Semantics
 Given an operand and minimum and maximum values, returns the operand if it is in
 the range between the minimum and maximum, else returns the minimum value if the
 operand is below this range or the maximum value if the operand is above this
-range. That is, `clamp(a, x, b) =  min(max(a, x), b)`.
+range. That is, `clamp(a, x, b) = min(max(a, x), b)`.
 
 All three arrays must be the same shape. Alternatively, as a restricted form of
 [broadcasting](broadcasting.md), `min` and/or `max` can be a scalar of type `T`.
@@ -1037,12 +1078,12 @@ Clamp(min, operand, max) = s32[3]{0, 5, 6};
 ```
 
 For StableHLO information see
-[StableHLO - clamp](https://openxla.org/stablehlo/spec#clamp)
+[StableHLO - clamp](https://openxla.org/stablehlo/spec#clamp).
 
 ## Collapse
 
 See also
-[`XlaBuilder::Collapse`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h)
+[`XlaBuilder::Collapse`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 and the `tf.reshape` operation.
 
 Collapses dimensions of an array into one dimension.
@@ -1070,10 +1111,10 @@ general collapse ordering is needed.
 For example, let v be an array of 24 elements:
 
 ```cpp
-let v = f32[4x2x3] {{{10, 11, 12},  {15, 16, 17}},
-{{20, 21, 22},  {25, 26, 27}},
-{{30, 31, 32},  {35, 36, 37}},
-{{40, 41, 42},  {45, 46, 47}}};
+let v = f32[4x2x3] {{{10, 11, 12}, {15, 16, 17}},
+{{20, 21, 22}, {25, 26, 27}},
+{{30, 31, 32}, {35, 36, 37}},
+{{40, 41, 42}, {45, 46, 47}}};
 
 // Collapse to a single dimension, leaving one dimension.
 let v012 = Collapse(v, {0,1,2});
@@ -1107,7 +1148,7 @@ then v12 == f32[8x3] {{10, 11, 12},
 ## Clz
 
 See also
-[`XlaBuilder::Clz`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h)
+[`XlaBuilder::Clz`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 Element-wise count leading zeros.
 
@@ -1117,18 +1158,17 @@ Arguments | Type    | Semantics
 --------- | ------- | ---------------------------
 `operand` | `XlaOp` | The operand to the function
 
-> **Note:**`Clz` is not found directly in StableHLO, but is analogous to
-> [StableHlo - count_leading_zeros](https://openxla.org/stablehlo/spec#count_leading_zeros)
+> **Note:** `Clz` is not found directly in StableHLO, but is analogous to
+> [StableHlo - count_leading_zeros](https://openxla.org/stablehlo/spec#count_leading_zeros).
 
 ## CollectiveBroadcast
 
 See also
-[`XlaBuilder::CollectiveBroadcast`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h)
+[`XlaBuilder::CollectiveBroadcast`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
-Broadcasts data across replicas. Data is sent from to the first replica id in
-each group to the other ids in the same group. If a replica id is not a in any
-replica group, the output on that replica is a tensor consisting of 0(s) in
-`shape`.
+Broadcasts data across replicas. Data is sent from the first replica id in each
+group to the other ids in the same group. If a replica id is not in any replica
+group, the output on that replica is a tensor consisting of 0(s) in `shape`.
 
 **`CollectiveBroadcast(operand, replica_groups, channel_id)`**
 
@@ -1141,14 +1181,14 @@ replica group, the output on that replica is a tensor consisting of 0(s) in
 :                  :                          : send/recv pair                :
 
 For StableHLO information see
-[StableHLO - collective_broadcast](https://openxla.org/stablehlo/spec#collective_broadcast)
+[StableHLO - collective_broadcast](https://openxla.org/stablehlo/spec#collective_broadcast).
 
 ## CollectivePermute
 
 See also
-[`XlaBuilder::CollectivePermute`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h)
+[`XlaBuilder::CollectivePermute`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
-CollectivePermute is a collective operation that sends and receives data cross
+CollectivePermute is a collective operation that sends and receives data across
 replicas.
 
 **`CollectivePermute(operand, source_target_pairs, channel_id, inplace)`**
@@ -1177,14 +1217,14 @@ The API of `CollectivePermute` operation is internally decomposed into 2 HLO
 instructions (`CollectivePermuteStart` and `CollectivePermuteDone`).
 
 See also
-[`HloInstruction::CreateCollectivePermuteStart`](https://github.com/openxla/xla/tree/main/xla/hlo/ir/hlo_instruction.h)
+[`HloInstruction::CreateCollectivePermuteStart`](https://github.com/openxla/xla/tree/main/xla/hlo/ir/hlo_instruction.h).
 
 `CollectivePermuteStart` and `CollectivePermuteDone` serve as primitives in HLO.
 These ops may appear in HLO dumps, but they are not intended to be constructed
 manually by end users.
 
 For StableHLO information see
-[StableHLO - collective_permute](https://openxla.org/stablehlo/spec#collective_permute)
+[StableHLO - collective_permute](https://openxla.org/stablehlo/spec#collective_permute).
 
 > **Note:** `CollectivePermuteStart` and `CollectivePermuteDone` are only found
 > in HLO. They are not found in StableHLO.
@@ -1192,14 +1232,14 @@ For StableHLO information see
 ## Compare
 
 See also
-[`XlaBuilder::Compare`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h)
+[`XlaBuilder::Compare`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 Performs element-wise comparison of `lhs` and `rhs` of the following:
 
 ### Eq
 
 See also
-[`XlaBuilder::Eq`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h)
+[`XlaBuilder::Eq`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 Performs element-wise **equal-to** comparison of `lhs` and `rhs`.
 
@@ -1258,12 +1298,12 @@ $$-NaN < -Inf < -Finite < -0 < +0 < +Finite < +Inf < +NaN.$$
 :                     :                   : operand shape corresponds to     :
 
 For StableHLO information see
-[StableHLO - compare](https://openxla.org/stablehlo/spec#compare)
+[StableHLO - compare](https://openxla.org/stablehlo/spec#compare).
 
 ### Ne
 
 See also
-[`XlaBuilder::Ne`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h)
+[`XlaBuilder::Ne`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 Performs element-wise **not equal-to** comparison of `lhs` and `rhs`.
 
@@ -1322,12 +1362,12 @@ $$-NaN < -Inf < -Finite < -0 < +0 < +Finite < +Inf < +NaN.$$
 :                     :                   : operand shape corresponds to     :
 
 For StableHLO information see
-[StableHLO - compare](https://openxla.org/stablehlo/spec#compare)
+[StableHLO - compare](https://openxla.org/stablehlo/spec#compare).
 
 ### Ge
 
 See also
-[`XlaBuilder::Ge`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h)
+[`XlaBuilder::Ge`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 Performs element-wise **greater-or-equal-than** comparison of `lhs` and `rhs`.
 
@@ -1386,12 +1426,12 @@ $$-NaN < -Inf < -Finite < -0 < +0 < +Finite < +Inf < +NaN.$$
 :                     :                   : operand shape corresponds to     :
 
 For StableHLO information see
-[StableHLO - compare](https://openxla.org/stablehlo/spec#compare)
+[StableHLO - compare](https://openxla.org/stablehlo/spec#compare).
 
 ### Gt
 
 See also
-[`XlaBuilder::Gt`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h)
+[`XlaBuilder::Gt`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 Performs element-wise **greater-than** comparison of `lhs` and `rhs`.
 
@@ -1433,12 +1473,12 @@ the dimensions to use for broadcasting the operands. The semantics are described
 in detail on the [broadcasting page](broadcasting.md).
 
 For StableHLO information see
-[StableHLO - compare](https://openxla.org/stablehlo/spec#compare)
+[StableHLO - compare](https://openxla.org/stablehlo/spec#compare).
 
 ### Le
 
 See also
-[`XlaBuilder::Le`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h)
+[`XlaBuilder::Le`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 Performs element-wise **less-or-equal-than** comparison of `lhs` and `rhs`.
 
@@ -1497,12 +1537,12 @@ $$-NaN < -Inf < -Finite < -0 < +0 < +Finite < +Inf < +NaN.$$
 :                     :                   : operand shape corresponds to     :
 
 For StableHLO information see
-[StableHLO - compare](https://openxla.org/stablehlo/spec#compare)
+[StableHLO - compare](https://openxla.org/stablehlo/spec#compare).
 
 ### Lt
 
 See also
-[`XlaBuilder::Lt`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h)
+[`XlaBuilder::Lt`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 Performs element-wise **less-than** comparison of `lhs` and `rhs`.
 
@@ -1561,15 +1601,15 @@ $$-NaN < -Inf < -Finite < -0 < +0 < +Finite < +Inf < +NaN.$$
 :                     :                   : operand shape corresponds to     :
 
 For StableHLO information see
-[StableHLO - compare](https://openxla.org/stablehlo/spec#compare)
+[StableHLO - compare](https://openxla.org/stablehlo/spec#compare).
 
 ## Complex
 
 See also
-[`XlaBuilder::Complex`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h)
+[`XlaBuilder::Complex`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 Performs element-wise conversion to a complex value from a pair of real and
-imaginary values, `lhs` and `rhs`
+imaginary values, `lhs` and `rhs`.
 
 **`Complex(lhs, rhs)`**
 
@@ -1607,12 +1647,12 @@ the dimensions to use for broadcasting the operands. The semantics are described
 in detail on the [broadcasting page](broadcasting.md).
 
 For StableHLO information see
-[StableHLO - complex](https://openxla.org/stablehlo/spec#complex)
+[StableHLO - complex](https://openxla.org/stablehlo/spec#complex).
 
 ## ConcatInDim (Concatenate)
 
 See also
-[`XlaBuilder::ConcatInDim`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h)
+[`XlaBuilder::ConcatInDim`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 Concatenate composes an array from multiple array operands. The array has the
 same number of dimensions as each of the input array operands (which must have
@@ -1638,27 +1678,24 @@ which the concatenation occurs).
 
 ```cpp
 Concat({{2, 3}, {4, 5}, {6, 7}}, 0)
->>> {2, 3, 4, 5, 6, 7}
+//Output:  {2, 3, 4, 5, 6, 7}
 ```
 
 2-dimensional example:
 
 ```cpp
-let a = {
-{1, 2},
-{3, 4},
-{5, 6},
-};
-let b = {
-{7, 8},
-};
+let a = {{1, 2},
+         {3, 4},
+         {5, 6}};
+
+let b = {{7, 8}};
+
 Concat({a, b}, 0)
->>> {
-{1, 2},
-{3, 4},
-{5, 6},
-{7, 8},
-}
+
+//Output:  {{1, 2},
+//          {3, 4},
+//          {5, 6},
+//          {7, 8}}
 ```
 
 Diagram:
@@ -1666,12 +1703,12 @@ Diagram:
 ![](images/ops_concatenate.png)
 
 For StableHLO information see
-[StableHLO - concatenate](https://openxla.org/stablehlo/spec#concatenate)
+[StableHLO - concatenate](https://openxla.org/stablehlo/spec#concatenate).
 
 ## Conditional
 
 See also
-[`XlaBuilder::Conditional`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h)
+[`XlaBuilder::Conditional`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 **`Conditional(predicate, true_operand, true_computation, false_operand,
 false_computation)`**
@@ -1724,12 +1761,12 @@ Note that only one of the `branch_computations` will be executed depending on
 the value of `branch_index`.
 
 For StableHLO information see
-[StableHLO - if](https://openxla.org/stablehlo/spec#if)
+[StableHLO - if](https://openxla.org/stablehlo/spec#if).
 
 ## Constant
 
 See also
-[`XlaBuilder::ConstantLiteral`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h)
+[`XlaBuilder::ConstantLiteral`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 Produces an `output` from a constant `literal`.
 
@@ -1740,17 +1777,17 @@ Arguments | Type           | Semantics
 `literal` | `LiteralSlice` | constant view of an existing `Literal`
 
 For StableHLO information see
-[StableHLO - constant](https://openxla.org/stablehlo/spec#constant)
+[StableHLO - constant](https://openxla.org/stablehlo/spec#constant).
 
 ## ConvertElementType
 
 See also
-[`XlaBuilder::ConvertElementType`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h)
+[`XlaBuilder::ConvertElementType`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
-Similar to an element-wise `static_cast` in C++, performs an element-wise
-conversion operation from a data shape to a target shape. The dimensions must
-match, and the conversion is an element-wise one; e.g. `s32` elements become
-`f32` elements via an `s32`-to-`f32` conversion routine.
+Similar to an element-wise `static_cast` in C++, `ConvertElementType` performs
+an element-wise conversion operation from a data shape to a target shape. The
+dimensions must match, and the conversion is an element-wise one; e.g. `s32`
+elements become `f32` elements via an `s32`-to-`f32` conversion routine.
 
 **`ConvertElementType(operand, new_element_type)`**
 
@@ -1765,7 +1802,7 @@ destination element types must not be tuples.
 A conversion such as `T=s32` to `U=f32` will perform a normalizing int-to-float
 conversion routine such as round-to-nearest-even.
 
-> **Note:**: The precise float-to-int and visa-versa conversions are currently
+> **Note:** The precise float-to-int and visa-versa conversions are currently
 > unspecified, but may become additional arguments to the convert operation in
 > the future. Not all possible conversions have been implemented for all
 > targets.
@@ -1777,12 +1814,12 @@ then b == f32[3]{0.0, 1.0, 2.0}
 ```
 
 For StableHLO information see
-[StableHLO - convert](https://openxla.org/stablehlo/spec#convert)
+[StableHLO - convert](https://openxla.org/stablehlo/spec#convert).
 
 ## Conv (Convolution)
 
 See also
-[`XlaBuilder::Conv`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h)
+[`XlaBuilder::Conv`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 Computes a convolution of the kind used in neural networks. Here, a convolution
 can be thought of as a n-dimensional window moving across a n-dimensional base
@@ -1819,7 +1856,8 @@ Increasing levels of controls are available for `Conv`:
 
 -   [ConvWithGeneralPadding](#ConvWithGeneralPadding)
 -   [ConvWithGeneralDimensions](#ConvWithGeneralDimensions)
--   [ConvGeneral](#ConvGeneral) - [ConvGeneralDilated](#convgeneraldilated)
+-   [ConvGeneral](#ConvGeneral)
+-   [ConvGeneralDilated](#convgeneraldilated)
 
 Let n be the number of spatial dimensions. The `lhs` argument is an
 (n+2)-dimensional array describing the base area. This is called the input,
@@ -1934,9 +1972,9 @@ separate convolutions with a different filter for each of them.
 Here is pseudo-code for a 2d convolution with padding and striding:
 
 ```cpp
-for (b, oz, oy, ox) {  // output coordinates
+for (b, oz, oy, ox) { // output coordinates
   value = 0;
-  for (iz, ky, kx) {  // kernel coordinates and input z
+  for (iz, ky, kx) { // kernel coordinates and input z
     iy = oy*stride_y + ky - pad_low_y;
     ix = ox*stride_x + kx - pad_low_x;
     if ((iy, ix) inside the base area considered without padding) {
@@ -1961,12 +1999,12 @@ allows for some hardware backends to instead accumulate in a different type and
 convert to the preferred output type.
 
 For StableHLO information see
-[StableHLO - convolution](https://openxla.org/stablehlo/spec#convolution)
+[StableHLO - convolution](https://openxla.org/stablehlo/spec#convolution).
 
 ### ConvWithGeneralPadding
 
 See also
-[`XlaBuilder::ConvWithGeneralPadding`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h)
+[`XlaBuilder::ConvWithGeneralPadding`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 **`ConvWithGeneralPadding(lhs, rhs, window_strides, padding,
 feature_group_count, batch_group_count, precision_config,
@@ -1994,7 +2032,7 @@ Same as [`Conv`](#conv-convolution) where padding configuration is explicit.
 ### ConvWithGeneralDimensions
 
 See also
-[`XlaBuilder::ConvWithGeneralDimensions`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h)
+[`XlaBuilder::ConvWithGeneralDimensions`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 **`ConvWithGeneralDimensions(lhs, rhs, window_strides, padding,
 dimension_numbers, feature_group_count, batch_group_count, precision_config,
@@ -2026,7 +2064,7 @@ Same as [`Conv`](#conv-convolution) where dimension numbers are explicit.
 ### ConvGeneral
 
 See also
-[`XlaBuilder::ConvGeneral`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h)
+[`XlaBuilder::ConvGeneral`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 **`ConvGeneral(lhs, rhs, window_strides, padding, dimension_numbers,
 feature_group_count, batch_group_count, precision_config,
@@ -2061,7 +2099,7 @@ configuration is explicit
 ### ConvGeneralDilated
 
 See also
-[`XlaBuilder::ConvGeneralDilated`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h)
+[`XlaBuilder::ConvGeneralDilated`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 **`ConvGeneralDilated(lhs, rhs, window_strides, padding, lhs_dilation,
 rhs_dilation, dimension_numbers, feature_group_count, batch_group_count,
@@ -2105,22 +2143,22 @@ factors, and dimension numbers are explicit.
 ## Copy
 
 See also
-[`HloInstruction::CreateCopyStart`](https://github.com/openxla/xla/tree/main/xla/hlo/ir/hlo_instruction.h)
+[`HloInstruction::CreateCopyStart`](https://github.com/openxla/xla/tree/main/xla/hlo/ir/hlo_instruction.h).
 
 `Copy` is internally decomposed into 2 HLO instructions `CopyStart` and
 `CopyDone`. `Copy` along with `CopyStart` and `CopyDone` serve as primitives in
 HLO. These ops may appear in HLO dumps, but they are not intended to be
 constructed manually by end users.
 
-> **Note:**`Copy`, `CopyStart`, `CopyDone` are only found in HLO. They are not
+> **Note:** `Copy`, `CopyStart`, `CopyDone` are only found in HLO. They are not
 > found in StableHLO.
 
 ## Cos
 
 See
-also[`XlaBuilder::Cos`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h)
+also[`XlaBuilder::Cos`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
-Element-wise cosine `x -> cos(x)`
+Element-wise cosine `x -> cos(x)`.
 
 **`Cos(operand)`**
 
@@ -2141,15 +2179,15 @@ Cos also supports the optional `result_accuracy` argument:
 :                   :                           : implementations             :
 
 For more information on `result_accuracy` see
-[Result Accuracy](https://github.com/openxla/stablehlo/blob/main/rfcs/20241015-result-accuracy.md)
+[Result Accuracy](https://github.com/openxla/stablehlo/blob/main/rfcs/20241015-result-accuracy.md).
 
 For StableHLO information see
-[StableHLO - cosine](https://openxla.org/stablehlo/spec#cosine)
+[StableHLO - cosine](https://openxla.org/stablehlo/spec#cosine).
 
 ## CustomCall
 
 See also
-[`XlaBuilder::CustomCall`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h)
+[`XlaBuilder::CustomCall`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 Call a user-provided function within a computation.
 
@@ -2157,12 +2195,12 @@ CustomCall documentation is provided in
 [Developer details - XLA Custom Calls](https://openxla.org/xla/custom_call)
 
 For StableHLO information see
-[StableHLO - custom_call](https://openxla.org/stablehlo/spec#custom_call)
+[StableHLO - custom_call](https://openxla.org/stablehlo/spec#custom_call).
 
 ## Div
 
 See also
-[`XlaBuilder::Div`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h)
+[`XlaBuilder::Div`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 Performs element-wise division of dividend `lhs` and divisor `rhs`.
 
@@ -2206,22 +2244,22 @@ the dimensions to use for broadcasting the operands. The semantics are described
 in detail on the [broadcasting page](broadcasting.md).
 
 For StableHLO information see
-[StableHLO - divide](https://openxla.org/stablehlo/spec#divide)
+[StableHLO - divide](https://openxla.org/stablehlo/spec#divide).
 
 ## Domain
 
 See also
-[`HloInstruction::CreateDomain`](https://github.com/openxla/xla/tree/main/xla/hlo/ir/hlo_instruction.h)
+[`HloInstruction::CreateDomain`](https://github.com/openxla/xla/tree/main/xla/hlo/ir/hlo_instruction.h).
 
 `Domain` may appear in HLO dumps, but it is not intended to be constructed
 manually by end users.
 
-> **Note:**: `Domain` is only found in HLO. It is not found in StableHLO.
+> **Note:** `Domain` is only found in HLO. It is not found in StableHLO.
 
 ## Dot
 
 See also
-[`XlaBuilder::Dot`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h)
+[`XlaBuilder::Dot`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 **`Dot(lhs, rhs, precision_config, preferred_element_type)`**
 
@@ -2264,12 +2302,12 @@ allows for some hardware backends to instead accumulate in a different type and
 convert to the preferred output type.
 
 For StableHLO information see
-[StableHLO - dot](https://openxla.org/stablehlo/spec#dot)
+[StableHLO - dot](https://openxla.org/stablehlo/spec#dot).
 
 ### DotGeneral
 
 See also
-[`XlaBuilder::DotGeneral`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h)
+[`XlaBuilder::DotGeneral`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 **`DotGeneral(lhs, rhs, dimension_numbers, precision_config,
 preferred_element_type)`**
@@ -2309,17 +2347,17 @@ Example with contracting dimension numbers:
 
 ```cpp
 lhs = { {1.0, 2.0, 3.0},
-{4.0, 5.0, 6.0} }
+        {4.0, 5.0, 6.0} }
 
 rhs = { {1.0, 1.0, 1.0},
-{2.0, 2.0, 2.0} }
+        {2.0, 2.0, 2.0} }
 
 DotDimensionNumbers dnums;
 dnums.add_lhs_contracting_dimensions(1);
 dnums.add_rhs_contracting_dimensions(1);
 
-DotGeneral(lhs, rhs, dnums) -> { {6.0, 12.0},
-{15.0, 30.0} }
+DotGeneral(lhs, rhs, dnums) -> { { 6.0, 12.0},
+                                 {15.0, 30.0} }
 ```
 
 Associated batch dimension numbers from the `lhs` and `rhs` must have the same
@@ -2329,14 +2367,14 @@ Example with batch dimension numbers (batch size 2, 2x2 matrices):
 
 ```cpp
 lhs = { { {1.0, 2.0},
-{3.0, 4.0} },
-{ {5.0, 6.0},
-{7.0, 8.0} } }
+          {3.0, 4.0} },
+        { {5.0, 6.0},
+          {7.0, 8.0} } }
 
 rhs = { { {1.0, 0.0},
-{0.0, 1.0} },
-{ {1.0, 0.0},
-{0.0, 1.0} } }
+          {0.0, 1.0} },
+        { {1.0, 0.0},
+          {0.0, 1.0} } }
 
 DotDimensionNumbers dnums;
 dnums.add_lhs_contracting_dimensions(2);
@@ -2344,10 +2382,11 @@ dnums.add_rhs_contracting_dimensions(1);
 dnums.add_lhs_batch_dimensions(0);
 dnums.add_rhs_batch_dimensions(0);
 
-DotGeneral(lhs, rhs, dnums) -> { { {1.0, 2.0},
-{3.0, 4.0} },
-{ {5.0, 6.0},
-{7.0, 8.0} } }
+DotGeneral(lhs, rhs, dnums) -> {
+    { {1.0, 2.0},
+      {3.0, 4.0} },
+    { {5.0, 6.0},
+      {7.0, 8.0} } }
 ```
 
 Input                               | Output         | Semantics
@@ -2373,12 +2412,12 @@ allows for some hardware backends to instead accumulate in a different type and
 convert to the preferred output type.
 
 For StableHLO information see
-[StableHLO - dot_general](https://openxla.org/stablehlo/spec#dot_general)
+[StableHLO - dot_general](https://openxla.org/stablehlo/spec#dot_general).
 
 ### ScaledDot
 
 See also
-[`XlaBuilder::ScaledDot`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h)
+[`XlaBuilder::ScaledDot`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 **`ScaledDot(lhs, lhs_scale, rhs, rhs_scale, dimension_number,
 precision_config,preferred_element_type)`**
@@ -2407,7 +2446,7 @@ Creates a scaled dot op with operands 'lhs', 'lhs_scale', 'rhs', and
 ### RaggedDot
 
 See also
-[`XlaBuilder::RaggedDot`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h)
+[`XlaBuilder::RaggedDot`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 For a breakdown of `RaggedDot` computation see
 [StableHLO - chlo.ragged_dot](https://openxla.org/stablehlo/generated/chlo?hl=en#chloragged_dot_chloraggeddotop)
@@ -2417,7 +2456,7 @@ For a breakdown of `RaggedDot` computation see
 ## DynamicReshape
 
 See also
-[`XlaBuilder::DynamicReshape`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h)
+[`XlaBuilder::DynamicReshape`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 This operation is functionally identical to [reshape](#reshape), but the result
 shape is specified dynamically via output_shape.
@@ -2432,17 +2471,17 @@ Arguments          | Type              | Semantics
 `dims_are_dynamic` | vector of `bool`  | N dimensional dynamic dim
 
 For StableHLO information see
-[StableHLO - dynamic_reshape](https://openxla.org/stablehlo/spec#dynamic_reshape)
+[StableHLO - dynamic_reshape](https://openxla.org/stablehlo/spec#dynamic_reshape).
 
 ## DynamicSlice
 
 See also
-[`XlaBuilder::DynamicSlice`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h)
+[`XlaBuilder::DynamicSlice`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 DynamicSlice extracts a sub-array from the input array at dynamic
 `start_indices`. The size of the slice in each dimension is passed in
 `size_indices`, which specify the end point of exclusive slice intervals in each
-dimension: [start, start + size). The shape of `start_indices` must
+dimension: [start, start + size). The shape of `start_indices` must be
 1-dimensional, with dimension size equal to the number of dimensions of
 `operand`.
 
@@ -2478,11 +2517,11 @@ the transformation has no effect.
 1-dimensional example:
 
 ```cpp
-let a = {0.0, 1.0, 2.0, 3.0, 4.0}
-let s = {2}
+let a = {0.0, 1.0, 2.0, 3.0, 4.0};
+let s = {2};
 
-DynamicSlice(a, s, {2}) produces:
-{2.0, 3.0}
+DynamicSlice(a, s, {2});
+// Result: {2.0, 3.0}
 ```
 
 2-dimensional example:
@@ -2490,23 +2529,24 @@ DynamicSlice(a, s, {2}) produces:
 ```cpp
 let b =
 { {0.0,  1.0,  2.0},
-{3.0,  4.0,  5.0},
-{6.0,  7.0,  8.0},
-{9.0, 10.0, 11.0} }
+  {3.0,  4.0,  5.0},
+  {6.0,  7.0,  8.0},
+  {9.0, 10.0, 11.0} }
 let s = {2, 1}
 
-DynamicSlice(b, s, {2, 2}) produces:
-{ { 7.0,  8.0},
-{10.0, 11.0} }
+DynamicSlice(b, s, {2, 2});
+//Result:
+// { { 7.0,  8.0},
+//   {10.0, 11.0} }
 ```
 
 For StableHLO information see
-[StableHLO - dynamic_slice](https://openxla.org/stablehlo/spec#dynamic_slice)
+[StableHLO - dynamic_slice](https://openxla.org/stablehlo/spec#dynamic_slice).
 
 ## DynamicUpdateSlice
 
 See also
-[`XlaBuilder::DynamicUpdateSlice`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h)
+[`XlaBuilder::DynamicUpdateSlice`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 DynamicUpdateSlice generates a result which is the value of the input array
 `operand`, with a slice `update` overwritten at `start_indices`.
@@ -2552,8 +2592,8 @@ let a = {0.0, 1.0, 2.0, 3.0, 4.0}
 let u = {5.0, 6.0}
 let s = {2}
 
-DynamicUpdateSlice(a, u, s) produces:
-{0.0, 1.0, 5.0, 6.0, 4.0}
+DynamicUpdateSlice(a, u, s)
+// Result: {0.0, 1.0, 5.0, 6.0, 4.0}
 ```
 
 2-dimensional example:
@@ -2561,30 +2601,31 @@ DynamicUpdateSlice(a, u, s) produces:
 ```cpp
 let b =
 { {0.0,  1.0,  2.0},
-{3.0,  4.0,  5.0},
-{6.0,  7.0,  8.0},
-{9.0, 10.0, 11.0} }
+  {3.0,  4.0,  5.0},
+  {6.0,  7.0,  8.0},
+  {9.0, 10.0, 11.0} }
 let u =
-{ {12.0,  13.0},
-{14.0,  15.0},
-{16.0,  17.0} }
+{ {12.0, 13.0},
+  {14.0, 15.0},
+  {16.0, 17.0} }
 
 let s = {1, 1}
 
-DynamicUpdateSlice(b, u, s) produces:
-{ {0.0,  1.0,  2.0},
-{3.0, 12.0, 13.0},
-{6.0, 14.0, 15.0},
-{9.0, 16.0, 17.0} }
+DynamicUpdateSlice(b, u, s)
+// Result:
+// { {0.0,  1.0,  2.0},
+//   {3.0, 12.0, 13.0},
+//   {6.0, 14.0, 15.0},
+//   {9.0, 16.0, 17.0} }
 ```
 
 For StableHLO information see
-[StableHLO - dynamic_update_slice](https://openxla.org/stablehlo/spec#dynamic_update_slice)
+[StableHLO - dynamic_update_slice](https://openxla.org/stablehlo/spec#dynamic_update_slice).
 
 ## Erf
 
 See also
-[`XlaBuilder::Erf`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h)
+[`XlaBuilder::Erf`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 Element-wise error function `x -> erf(x)` where:
 
@@ -2609,16 +2650,16 @@ Erf also supports the optional `result_accuracy` argument:
 :                   :                           : implementations             :
 
 For more information on `result_accuracy` see
-[Result Accuracy](https://github.com/openxla/stablehlo/blob/main/rfcs/20241015-result-accuracy.md)
+[Result Accuracy](https://github.com/openxla/stablehlo/blob/main/rfcs/20241015-result-accuracy.md).
 
-> **Note:**: `Erf` is only found in HLO and not found in StableHLO. CHLO `Erf`
-> in Frameworks will lower to HLO `Erf` see
+> **Note:** `Erf` is only found in HLO and not found in StableHLO. CHLO `Erf` in
+> Frameworks will lower to HLO `Erf` see
 > [StableHLO - chlo.erf](https://openxla.org/stablehlo/generated/chlo?hl=en#chloerf_chloerfop)
 
 ## Exp
 
 See also
-[`XlaBuilder::Exp`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h)
+[`XlaBuilder::Exp`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 Element-wise natural exponential `x -> e^x`.
 
@@ -2641,15 +2682,15 @@ Exp also supports the optional `result_accuracy` argument:
 :                   :                           : implementations             :
 
 For more information on `result_accuracy` see
-[Result Accuracy](https://github.com/openxla/stablehlo/blob/main/rfcs/20241015-result-accuracy.md)
+[Result Accuracy](https://github.com/openxla/stablehlo/blob/main/rfcs/20241015-result-accuracy.md).
 
 For StableHLO information see
-[StableHLO - exponential](https://openxla.org/stablehlo/spec#exponential)
+[StableHLO - exponential](https://openxla.org/stablehlo/spec#exponential).
 
 ## Expm1
 
 See also
-[`XlaBuilder::Expm1`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h)
+[`XlaBuilder::Expm1`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 Element-wise natural exponential minus one `x -> e^x - 1`.
 
@@ -2672,15 +2713,15 @@ Expm1 also supports the optional `result_accuracy` argument:
 :                   :                           : implementations             :
 
 For more information on `result_accuracy` see
-[Result Accuracy](https://github.com/openxla/stablehlo/blob/main/rfcs/20241015-result-accuracy.md)
+[Result Accuracy](https://github.com/openxla/stablehlo/blob/main/rfcs/20241015-result-accuracy.md).
 
 For StableHLO information see
-[StableHLO - exponential_minus_one](https://openxla.org/stablehlo/spec#exponential_minus_one)
+[StableHLO - exponential_minus_one](https://openxla.org/stablehlo/spec#exponential_minus_one).
 
 ## Fft
 
 See also
-[`XlaBuilder::Fft`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h)
+[`XlaBuilder::Fft`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 The XLA FFT operation implements the forward and inverse Fourier Transforms for
 real and complex inputs/outputs. Multidimensional FFTs on up to 3 axes are
@@ -2719,7 +2760,7 @@ supported.
 :           : conjugate of the `1` to `fft_length[-1] // 2 + 1` entries.       :
 
 For StableHLO information see
-[StableHLO - fft](https://openxla.org/stablehlo/spec#fft)
+[StableHLO - fft](https://openxla.org/stablehlo/spec#fft).
 
 #### Multidimensional FFT
 
@@ -2737,7 +2778,7 @@ CPU FFT is backed by Eigen's TensorFFT. GPU FFT uses cuFFT.
 ## Floor
 
 See also
-[`XlaBuilder::Floor`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h)
+[`XlaBuilder::Floor`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 Element-wise floor `x -> ⌊x⌋`.
 
@@ -2748,16 +2789,16 @@ Arguments | Type    | Semantics
 `operand` | `XlaOp` | The operand to the function
 
 For StableHLO information see
-[StableHLO - floor](https://openxla.org/stablehlo/spec#floor)
+[StableHLO - floor](https://openxla.org/stablehlo/spec#floor).
 
 ## Fusion
 
 See also
-[`HloInstruction::CreateFusion`](https://github.com/openxla/xla/tree/main/xla/hlo/ir/hlo_instruction.h)
+[`HloInstruction::CreateFusion`](https://github.com/openxla/xla/tree/main/xla/hlo/ir/hlo_instruction.h).
 
 `Fusion` operation represents HLO instructions and serves as a primitive in HLO.
-This op may appear in HLO dumps but is is not intended to be constructed
-manually by end users.
+This op may appear in HLO dumps but is not intended to be constructed manually
+by end users.
 
 > **Note:** `Fusion` is only found in HLO. It is not found in StableHLO.
 
@@ -2767,12 +2808,12 @@ The XLA gather operation stitches together several slices (each slice at a
 potentially different runtime offset) of an input array.
 
 For StableHLO information see
-[StableHLO - gather](https://openxla.org/stablehlo/spec#gather)
+[StableHLO - gather](https://openxla.org/stablehlo/spec#gather).
 
 ### General Semantics
 
 See also
-[`XlaBuilder::Gather`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h)
+[`XlaBuilder::Gather`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 For a more intuitive description, see the "Informal Description" section below.
 
 **`gather(operand, start_indices, dimension_numbers, slice_sizes,
@@ -2967,7 +3008,7 @@ concatenation of all these rows.
 ## GetDimensionSize
 
 See also
-[`XlaBuilder::GetDimensionSize`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h)
+[`XlaBuilder::GetDimensionSize`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 Returns the size of the given dimension of the operand. The operand must be
 array shaped.
@@ -2981,12 +3022,12 @@ array shaped.
 :             :         : dimension                                           :
 
 For StableHLO information see
-[StableHLO - get_dimension_size](https://openxla.org/stablehlo/spec#get_dimension_size)
+[StableHLO - get_dimension_size](https://openxla.org/stablehlo/spec#get_dimension_size).
 
 ## GetTupleElement
 
 See also
-[`XlaBuilder::GetTupleElement`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h)
+[`XlaBuilder::GetTupleElement`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 Indexes into a tuple with a compile-time-constant value.
 
@@ -2999,7 +3040,7 @@ This is analogous to `std::get<int N>(t)` in C++. Conceptually:
 let v: f32[10] = f32[10]{0, 1, 2, 3, 4, 5, 6, 7, 8, 9};
 let s: s32 = 5;
 let t: (f32[10], s32) = tuple(v, s);
-let element_1: s32 = gettupleelement(t, 1);  // Inferred shape matches s32.
+let element_1: s32 = gettupleelement(t, 1); // Inferred shape matches s32.
 ```
 
 See also `tf.tuple`.
@@ -3012,12 +3053,12 @@ Argument     | Type    | Semantics
 `index`      | `int64` | Index of tuple shape
 
 For StableHLO information see
-[StableHLO - get_tuple_element](https://openxla.org/stablehlo/spec#get_tuple_element)
+[StableHLO - get_tuple_element](https://openxla.org/stablehlo/spec#get_tuple_element).
 
 ## Imag
 
 See also
-[`XlaBuilder::Imag`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h)
+[`XlaBuilder::Imag`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 Element-wise imaginary part of a complex (or real) shape. `x -> imag(x)`. If the
 operand is a floating point type, returns 0.
@@ -3029,12 +3070,12 @@ Arguments | Type    | Semantics
 `operand` | `XlaOp` | The operand to the function
 
 For StableHLO information see
-[StableHLO - imag](https://openxla.org/stablehlo/spec#imag)
+[StableHLO - imag](https://openxla.org/stablehlo/spec#imag).
 
 ## Infeed
 
 See also
-[`XlaBuilder::Infeed`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h)
+[`XlaBuilder::Infeed`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 **`Infeed(shape)`**
 
@@ -3047,36 +3088,36 @@ See also
 
 Reads a single data item from the implicit Infeed streaming interface of the
 device, interpreting the data as the given shape and its layout, and returns a
-`XlaOp` of the data. Multiple Infeed operations are allowed in a
-computation, but there must be a total order among the Infeed operations. For
-example, two Infeeds in the code below have a total order since there is a
-dependency between the while loops.
+`XlaOp` of the data. Multiple Infeed operations are allowed in a computation,
+but there must be a total order among the Infeed operations. For example, two
+`Infeed`'s in the code below have a total order since there is a dependency
+between the while loops.
 
 ```cpp
 result1 = while (condition, init = init_value) {
   Infeed(shape)
-}
+  }
 
 result2 = while (condition, init = result1) {
   Infeed(shape)
-}
+  }
 ```
 
 Nested tuple shapes are not supported. For an empty tuple shape, the Infeed
 operation is effectively a no-op and proceeds without reading any data from the
 Infeed of the device.
 
-> **Note:**: We plan to allow multiple Infeed operations without a total order,
+> **Note:** We plan to allow multiple Infeed operations without a total order,
 > in which case the compiler will provide information about how the Infeed
 > operations are serialized in the compiled program.
 
 For StableHLO information see
-[StableHLO - infeed](https://openxla.org/stablehlo/spec#infeed)
+[StableHLO - infeed](https://openxla.org/stablehlo/spec#infeed).
 
 ## Iota
 
 See also
-[`XlaBuilder::Iota`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h)
+[`XlaBuilder::Iota`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 **`Iota(shape, iota_dimension)`**
 
@@ -3094,28 +3135,28 @@ Arguments        | Type    | Semantics
 For example, `Iota(s32[4, 8], 0)` returns
 
 ```cpp
-  [[0, 0, 0, 0, 0, 0, 0, 0 ],
-   [1, 1, 1, 1, 1, 1, 1, 1 ],
-   [2, 2, 2, 2, 2, 2, 2, 2 ],
-   [3, 3, 3, 3, 3, 3, 3, 3 ]]
+[[0, 0, 0, 0, 0, 0, 0, 0 ],
+ [1, 1, 1, 1, 1, 1, 1, 1 ],
+ [2, 2, 2, 2, 2, 2, 2, 2 ],
+ [3, 3, 3, 3, 3, 3, 3, 3 ]]
 ```
 
 `Iota(s32[4, 8], 1)` returns
 
 ```cpp
-  [[0, 1, 2, 3, 4, 5, 6, 7 ],
-   [0, 1, 2, 3, 4, 5, 6, 7 ],
-   [0, 1, 2, 3, 4, 5, 6, 7 ],
-   [0, 1, 2, 3, 4, 5, 6, 7 ]]
+[[0, 1, 2, 3, 4, 5, 6, 7 ],
+ [0, 1, 2, 3, 4, 5, 6, 7 ],
+ [0, 1, 2, 3, 4, 5, 6, 7 ],
+ [0, 1, 2, 3, 4, 5, 6, 7 ]]
 ```
 
 For StableHLO information see
-[StableHLO - iota](https://openxla.org/stablehlo/spec#iota)
+[StableHLO - iota](https://openxla.org/stablehlo/spec#iota).
 
 ## IsFinite
 
 See also
-[`XlaBuilder::IsFinite`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h)
+[`XlaBuilder::IsFinite`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 Tests whether each element of `operand` is finite, i.e., is not positive or
 negative infinity, and is not `NaN`. Returns an array of `PRED` values with the
@@ -3129,12 +3170,12 @@ Arguments | Type    | Semantics
 `operand` | `XlaOp` | The operand to the function
 
 For StableHLO information see
-[StableHLO - is_finite](https://openxla.org/stablehlo/spec#is_finite)
+[StableHLO - is_finite](https://openxla.org/stablehlo/spec#is_finite).
 
 ## Log
 
 See also
-[`XlaBuilder::Log`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h)
+[`XlaBuilder::Log`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 Element-wise natural logarithm `x -> ln(x)`.
 
@@ -3157,15 +3198,15 @@ Log also supports the optional `result_accuracy` argument:
 :                   :                           : implementations             :
 
 For more information on `result_accuracy` see
-[Result Accuracy](https://github.com/openxla/stablehlo/blob/main/rfcs/20241015-result-accuracy.md)
+[Result Accuracy](https://github.com/openxla/stablehlo/blob/main/rfcs/20241015-result-accuracy.md).
 
 For StableHLO information see
-[StableHLO - log](https://openxla.org/stablehlo/spec#log)
+[StableHLO - log](https://openxla.org/stablehlo/spec#log).
 
 ## Log1p
 
 See also
-[`XlaBuilder::Log1p`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h)
+[`XlaBuilder::Log1p`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 Element-wise shifted natural logarithm `x -> ln(1+x)`.
 
@@ -3188,15 +3229,15 @@ Log1p also supports the optional `result_accuracy` argument:
 :                   :                           : implementations             :
 
 For more information on `result_accuracy` see
-[Result Accuracy](https://github.com/openxla/stablehlo/blob/main/rfcs/20241015-result-accuracy.md)
+[Result Accuracy](https://github.com/openxla/stablehlo/blob/main/rfcs/20241015-result-accuracy.md).
 
 For StableHLO information see
-[StableHLO - log_plus_one](https://openxla.org/stablehlo/spec#log_plus_one)
+[StableHLO - log_plus_one](https://openxla.org/stablehlo/spec#log_plus_one).
 
 ## Logistic
 
 See also
-[`XlaBuilder::Logistic`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h)
+[`XlaBuilder::Logistic`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 Element-wise logistic function computation `x -> logistic(x)`.
 
@@ -3219,15 +3260,15 @@ Logistic also supports the optional `result_accuracy` argument:
 :                   :                           : implementations             :
 
 For more information on `result_accuracy` see
-[Result Accuracy](https://github.com/openxla/stablehlo/blob/main/rfcs/20241015-result-accuracy.md)
+[Result Accuracy](https://github.com/openxla/stablehlo/blob/main/rfcs/20241015-result-accuracy.md).
 
 For StableHLO information see
-[StableHLO - logistic](https://openxla.org/stablehlo/spec#logistic)
+[StableHLO - logistic](https://openxla.org/stablehlo/spec#logistic).
 
 ## Map
 
 See also
-[`XlaBuilder::Map`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h)
+[`XlaBuilder::Map`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 **`Map(operands..., computation, dimensions)`**
 
@@ -3254,12 +3295,12 @@ computation(elem1, elem2, elem3, par1)` at each (multi-dimensional) index in the
 input arrays to produce the output array.
 
 For StableHLO information see
-[StableHLO - map](https://openxla.org/stablehlo/spec#map)
+[StableHLO - map](https://openxla.org/stablehlo/spec#map).
 
 ## Max
 
 See also
-[`XlaBuilder::Max`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h)
+[`XlaBuilder::Max`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 Performs element-wise max operation on tensors `lhs` and `rhs`.
 
@@ -3299,12 +3340,12 @@ the dimensions to use for broadcasting the operands. The semantics are described
 in detail on the [broadcasting page](broadcasting.md).
 
 For StableHLO information see
-[StableHLO - maximum](https://openxla.org/stablehlo/spec#maximum)
+[StableHLO - maximum](https://openxla.org/stablehlo/spec#maximum).
 
 ## Min
 
 See also
-[`XlaBuilder::Min`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h)
+[`XlaBuilder::Min`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 Performs element-wise min operation on `lhs` and `rhs`.
 
@@ -3344,12 +3385,12 @@ the dimensions to use for broadcasting the operands. The semantics are described
 in detail on the [broadcasting page](broadcasting.md).
 
 For StableHLO information see
-[StableHLO - minimum](https://openxla.org/stablehlo/spec#minimum)
+[StableHLO - minimum](https://openxla.org/stablehlo/spec#minimum).
 
 ## Mul
 
 See also
-[`XlaBuilder::Mul`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h)
+[`XlaBuilder::Mul`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 Performs element-wise product of `lhs` and `rhs`.
 
@@ -3389,12 +3430,12 @@ the dimensions to use for broadcasting the operands. The semantics are described
 in detail on the [broadcasting page](broadcasting.md).
 
 For StableHLO information see
-[StableHLO - multiply](https://openxla.org/stablehlo/spec#multiply)
+[StableHLO - multiply](https://openxla.org/stablehlo/spec#multiply).
 
 ## Neg
 
 See also
-[`XlaBuilder::Neg`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h)
+[`XlaBuilder::Neg`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 Element-wise negation `x -> -x`.
 
@@ -3410,7 +3451,7 @@ For StableHLO information see
 ## Not
 
 See also
-[`XlaBuilder::Not`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h)
+[`XlaBuilder::Not`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 Element-wise logical not `x -> !(x)`.
 
@@ -3421,12 +3462,12 @@ Arguments | Type    | Semantics
 `operand` | `XlaOp` | The operand to the function
 
 For StableHLO information see
-[StableHLO - not](https://openxla.org/stablehlo/spec#not)
+[StableHLO - not](https://openxla.org/stablehlo/spec#not).
 
 ## OptimizationBarrier
 
 See also
-[`XlaBuilder::OptimizationBarrier`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h)
+[`XlaBuilder::OptimizationBarrier`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 Blocks any optimization pass from moving computations across the barrier.
 
@@ -3440,12 +3481,12 @@ Ensures that all inputs are evaluated before any operators that depend on the
 barrier's outputs.
 
 For StableHLO information see
-[StableHLO - optimization_barrier](https://openxla.org/stablehlo/spec#optimization_barrier)
+[StableHLO - optimization_barrier](https://openxla.org/stablehlo/spec#optimization_barrier).
 
 ## Or
 
 See also
-[`XlaBuilder::Or`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h)
+[`XlaBuilder::Or`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 Performs element-wise OR of `lhs` and `rhs` .
 
@@ -3485,12 +3526,12 @@ the dimensions to use for broadcasting the operands. The semantics are described
 in detail on the [broadcasting page](broadcasting.md).
 
 For StableHLO information see
-[StableHLO - or](https://openxla.org/stablehlo/spec#or)
+[StableHLO - or](https://openxla.org/stablehlo/spec#or).
 
 ## Outfeed
 
 See also
-[`XlaBuilder::Outfeed`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h)
+[`XlaBuilder::Outfeed`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 Writes inputs to the outfeed.
 
@@ -3505,12 +3546,12 @@ Arguments           | Type     | Semantics
 `shape_with_layout` communicates the laid out shape that we want to outfeed.
 
 For StableHLO information see
-[StableHLO - outfeed](https://openxla.org/stablehlo/spec#outfeed)
+[StableHLO - outfeed](https://openxla.org/stablehlo/spec#outfeed).
 
 ## Pad
 
 See also
-[`XlaBuilder::Pad`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h)
+[`XlaBuilder::Pad`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 **`Pad(operand, padding_value, padding_config)`**
 
@@ -3550,12 +3591,12 @@ interior padding values are all 0. The figure below shows examples of different
 ![](images/ops_pad.png)
 
 For StableHLO information see
-[StableHLO - pad](https://openxla.org/stablehlo/spec#pad)
+[StableHLO - pad](https://openxla.org/stablehlo/spec#pad).
 
 ## Parameter
 
 See also
-[`XlaBuilder::Parameter`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h)
+[`XlaBuilder::Parameter`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 `Parameter` represents an argument input to a computation.
 
@@ -3564,7 +3605,7 @@ See also
 ## PartitionID
 
 See also
-[`XlaBuilder::BuildPartitionId`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h)
+[`XlaBuilder::BuildPartitionId`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 Produces `partition_id` of the current process.
 
@@ -3578,12 +3619,12 @@ Arguments | Type    | Semantics
 manually by end users.
 
 For StableHLO information see
-[StableHLO - partition_id](https://openxla.org/stablehlo/spec#partition_id)
+[StableHLO - partition_id](https://openxla.org/stablehlo/spec#partition_id).
 
 ## PopulationCount
 
 See also
-[`XlaBuilder::PopulationCount`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h)
+[`XlaBuilder::PopulationCount`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 Computes the number of bits set in each element of `operand`.
 
@@ -3594,12 +3635,12 @@ Arguments | Type    | Semantics
 `operand` | `XlaOp` | The operand to the function
 
 For StableHLO information see
-[StableHLO - popcnt](https://openxla.org/stablehlo/spec#popcnt)
+[StableHLO - popcnt](https://openxla.org/stablehlo/spec#popcnt).
 
 ## Pow
 
 See also
-[`XlaBuilder::Pow`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h)
+[`XlaBuilder::Pow`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 Performs element-wise exponentiation of `lhs` by `rhs`.
 
@@ -3639,15 +3680,15 @@ the dimensions to use for broadcasting the operands. The semantics are described
 in detail on the [broadcasting page](broadcasting.md).
 
 For StableHLO information see
-[StableHLO - power](https://openxla.org/stablehlo/spec#power)
+[StableHLO - power](https://openxla.org/stablehlo/spec#power).
 
 ## Real
 
 See also
-[`XlaBuilder::Real`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h)
+[`XlaBuilder::Real`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 Element-wise real part of a complex (or real) shape. `x -> real(x)`. If the
-operand is a floating point type, returns the same value.
+operand is a floating point type, `Real` returns the same value.
 
 **`Real(operand)`**
 
@@ -3656,14 +3697,14 @@ Arguments | Type    | Semantics
 `operand` | `XlaOp` | The operand to the function
 
 For StableHLO information see
-[StableHLO - real](https://openxla.org/stablehlo/spec#real)
+[StableHLO - real](https://openxla.org/stablehlo/spec#real).
 
 ## Recv
 
 See also
-[`XlaBuilder::Recv`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h)
+[`XlaBuilder::Recv`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
-`Recv`, `RecvWithTokens`, `RecvToHost` are operations that serve as
+`Recv`, `RecvWithTokens`, and `RecvToHost` are operations that serve as
 communication primitives in HLO. These ops typically appear in HLO dumps as part
 of low-level input/output or cross-device transfer, but they are not intended to
 be constructed manually by end users.
@@ -3680,12 +3721,12 @@ computation that shares the same channel handle. Returns a
 XlaOp for the received data.
 
 For StableHLO information see
-[StableHLO - recv](https://openxla.org/stablehlo/spec#recv)
+[StableHLO - recv](https://openxla.org/stablehlo/spec#recv).
 
 ### RecvDone
 
 See also
-[`HloInstruction::CreateRecv` and `HloInstruction::CreateRecvDone`](https://github.com/openxla/xla/tree/main/xla/hlo/ir/hlo_instruction.h)
+[`HloInstruction::CreateRecv` and `HloInstruction::CreateRecvDone`](https://github.com/openxla/xla/tree/main/xla/hlo/ir/hlo_instruction.h).
 
 Similar to [`Send`](#send), the client API of `Recv` operation represents
 synchronous communication. However, the instruction is internally decomposed
@@ -3708,7 +3749,7 @@ complete and return the received data.
 ## Reduce
 
 See also
-[`XlaBuilder::Reduce`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h)
+[`XlaBuilder::Reduce`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 Applies a reduction function to one or more arrays in parallel.
 
@@ -3751,7 +3792,7 @@ floating-point addition is close enough to be associative for most practical
 uses.
 
 For StableHLO information see
-[StableHLO - reduce](https://openxla.org/stablehlo/spec#reduce)
+[StableHLO - reduce](https://openxla.org/stablehlo/spec#reduce).
 
 ### Examples
 
@@ -3876,7 +3917,7 @@ containing the maximal value and the matching index.
 ## ReducePrecision
 
 See also
-[`XlaBuilder::ReducePrecision`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h)
+[`XlaBuilder::ReducePrecision`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 Models the effect of converting floating-point values to a lower-precision
 format (such as IEEE-FP16) and back to the original format. The number of
@@ -3905,12 +3946,12 @@ mantissa bits may exceed the corresponding value for type `T`; the corresponding
 portion of the conversion is then simply a no-op.
 
 For StableHLO information see
-[StableHLO - reduce_precision](https://openxla.org/stablehlo/spec#reduce_precision)
+[StableHLO - reduce_precision](https://openxla.org/stablehlo/spec#reduce_precision).
 
 ## ReduceScatter
 
 See also
-[`XlaBuilder::ReduceScatter`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h)
+[`XlaBuilder::ReduceScatter`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 ReduceScatter is a collective operation that effectively does an AllReduce and
 then scatters the result by splitting it into `shard_count` blocks along the
@@ -3972,7 +4013,7 @@ replicas, then the output value from this op where `scatter_dim` is `0` will be
 `[4.0]` for the first replica and `[7.5]` for the second replica.
 
 For StableHLO information see
-[StableHLO - reduce_scatter](https://openxla.org/stablehlo/spec#reduce_scatter)
+[StableHLO - reduce_scatter](https://openxla.org/stablehlo/spec#reduce_scatter).
 
 ### ReduceScatter - Example 1 - StableHLO
 
@@ -3989,7 +4030,7 @@ each replica has shape f32[2,2].
 ## ReduceWindow
 
 See also
-[`XlaBuilder::ReduceWindow`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h)
+[`XlaBuilder::ReduceWindow`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 Applies a reduction function to all elements in each window of a sequence of N
 multi-dimensional arrays, producing a single or a tuple of N multi-dimensional
@@ -4043,7 +4084,7 @@ Where:
     `(T0,...T{N-1})`.
 
 For StableHLO information see
-[StableHLO - reduce_window](https://openxla.org/stablehlo/spec#reduce_window)
+[StableHLO - reduce_window](https://openxla.org/stablehlo/spec#reduce_window).
 
 ### ReduceWindow - Example 1
 
@@ -4104,7 +4145,7 @@ context of [`Reduce`](#reduce) for more details.
 
 ### ReduceWindow - Example 2 - StableHLO
 
-![A example of ReduceWindow dataflow for StableHLO](images/ops_reduce_window_2.svg)
+![An example of ReduceWindow dataflow for StableHLO](images/ops_reduce_window_2.svg)
 
 In the above example:
 
@@ -4136,7 +4177,7 @@ Results) The final output has shape S32[2,2], with values: `[[0,0],[3,4]]`
 ## Rem
 
 See also
-[`XlaBuilder::Rem`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h)
+[`XlaBuilder::Rem`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 Performs element-wise remainder of dividend `lhs` and divisor `rhs`.
 
@@ -4179,12 +4220,12 @@ the dimensions to use for broadcasting the operands. The semantics are described
 in detail on the [broadcasting page](broadcasting.md).
 
 For StableHLO information see
-[StableHLO - remainder](https://openxla.org/stablehlo/spec#remainder)
+[StableHLO - remainder](https://openxla.org/stablehlo/spec#remainder).
 
 ## ReplicaId
 
 See also
-[`XlaBuilder::ReplicaId`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h)
+[`XlaBuilder::ReplicaId`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 Returns the unique ID (U32 scalar) of the replica.
 
@@ -4196,12 +4237,12 @@ program, a `ReplicaId()` call in the program will return a different value on
 each replica.
 
 For StableHLO information see
-[StableHLO - replica_id](https://openxla.org/stablehlo/spec#replica_id)
+[StableHLO - replica_id](https://openxla.org/stablehlo/spec#replica_id).
 
 ## Reshape
 
 See also
-[`XlaBuilder::Reshape`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h)
+[`XlaBuilder::Reshape`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 and the [`Collapse`](#collapse) operation.
 
 Reshapes the dimensions of an array into a new configuration.
@@ -4253,12 +4294,12 @@ Reshape(5, {1,1}) == f32[1x1] {{5}};
 ```
 
 For StableHLO information see
-[StableHLO - reshape](https://openxla.org/stablehlo/spec#reshape)
+[StableHLO - reshape](https://openxla.org/stablehlo/spec#reshape).
 
 ### Reshape (explicit)
 
 See also
-[`XlaBuilder::Reshape`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h)
+[`XlaBuilder::Reshape`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 **`Reshape(shape, operand)`**
 
@@ -4272,7 +4313,7 @@ Arguments | Type    | Semantics
 ## Rev (reverse)
 
 See also
-[`XlaBuilder::Rev`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h)
+[`XlaBuilder::Rev`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 **`Rev(operand, dimensions)`**
 
@@ -4292,12 +4333,12 @@ One use for the `Rev` operation is to reverse the convolution weight array along
 the two window dimensions during the gradient computation in neural networks.
 
 For StableHLO information see
-[StableHLO - reverse](https://openxla.org/stablehlo/spec#reverse)
+[StableHLO - reverse](https://openxla.org/stablehlo/spec#reverse).
 
 ## RngNormal
 
 See also
-[`XlaBuilder::RngNormal`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h)
+[`XlaBuilder::RngNormal`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 Constructs an output of a given shape with random numbers generated following
 the $N(\mu, \sigma)$ normal distribution. The parameters $\mu$ and $\sigma$, and
@@ -4314,12 +4355,12 @@ furthermore have to be scalar valued.
 | `shape`   | `Shape` | Output shape of type T                                |
 
 For StableHLO information see
-[StableHLO - rng](https://openxla.org/stablehlo/spec#rng)
+[StableHLO - rng](https://openxla.org/stablehlo/spec#rng).
 
 ## RngUniform
 
 See also
-[`XlaBuilder::RngUniform`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h)
+[`XlaBuilder::RngUniform`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 Constructs an output of a given shape with random numbers generated following
 the uniform distribution over the interval $[a,b)$. The parameters and output
@@ -4338,12 +4379,12 @@ Arguments | Type    | Semantics
 `shape`   | `Shape` | Output shape of type T
 
 For StableHLO information see
-[StableHLO - rng](https://openxla.org/stablehlo/spec#rng)
+[StableHLO - rng](https://openxla.org/stablehlo/spec#rng).
 
 ## RngBitGenerator
 
 See also
-[`XlaBuilder::RngBitGenerator`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h)
+[`XlaBuilder::RngBitGenerator`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 Generates an output with a given shape filled with uniform random bits using the
 specified algorithm (or backend default) and returns an updated state (with the
@@ -4378,12 +4419,12 @@ Available values for `algorithm`:
     [Salmon et al. SC 2011. Parallel random numbers: as easy as 1, 2, 3.](http://www.thesalmons.org/john/random123/papers/random123sc11.pdf)
 
 For StableHLO information see
-[StableHLO - rng_bit_generator](https://openxla.org/stablehlo/spec#rng_bit_generator)
+[StableHLO - rng_bit_generator](https://openxla.org/stablehlo/spec#rng_bit_generator).
 
 ## RngGetAndUpdateState
 
 See also
-[`HloInstruction::CreateRngGetAndUpdateState`](https://github.com/openxla/xla/tree/main/xla/hlo/ir/hlo_instruction.h)
+[`HloInstruction::CreateRngGetAndUpdateState`](https://github.com/openxla/xla/tree/main/xla/hlo/ir/hlo_instruction.h).
 
 The API of the various `Rng` operations are internally decomposed into HLO
 instructions including `RngGetAndUpdateState`.
@@ -4397,7 +4438,7 @@ dumps, but it is not intended to be constructed manually by end users.
 ## Round
 
 See also
-[`XlaBuilder::Round`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h)
+[`XlaBuilder::Round`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 Element-wise rounding, ties away from zero.
 
@@ -4410,7 +4451,7 @@ Arguments | Type    | Semantics
 ### RoundNearestAfz
 
 See also
-[`XlaBuilder::RoundNearestAfz`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h)
+[`XlaBuilder::RoundNearestAfz`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 Performs element-wise rounding towards the nearest integer, breaking ties away
 from zero.
@@ -4422,12 +4463,12 @@ Arguments | Type    | Semantics
 `operand` | `XlaOp` | The operand to the function
 
 For StableHLO information see
-[StableHLO - round_nearest_afz](https://openxla.org/stablehlo/spec#round_nearest_afz)
+[StableHLO - round_nearest_afz](https://openxla.org/stablehlo/spec#round_nearest_afz).
 
 ### RoundNearestEven
 
 See also
-[`XlaBuilder::RoundNearestEven`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h)
+[`XlaBuilder::RoundNearestEven`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 Element-wise rounding, ties to the nearest even.
 
@@ -4438,12 +4479,12 @@ Arguments | Type    | Semantics
 `operand` | `XlaOp` | The operand to the function
 
 For StableHLO information see
-[StableHLO - round_nearest_even](https://openxla.org/stablehlo/spec#round_nearest_even)
+[StableHLO - round_nearest_even](https://openxla.org/stablehlo/spec#round_nearest_even).
 
 ## Rsqrt
 
 See also
-[`XlaBuilder::Rsqrt`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h)
+[`XlaBuilder::Rsqrt`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 Element-wise reciprocal of square root operation `x -> 1.0 / sqrt(x)`.
 
@@ -4466,15 +4507,15 @@ Rsqrt also supports the optional `result_accuracy` argument:
 :                   :                           : implementations             :
 
 For more information on `result_accuracy` see
-[Result Accuracy](https://github.com/openxla/stablehlo/blob/main/rfcs/20241015-result-accuracy.md)
+[Result Accuracy](https://github.com/openxla/stablehlo/blob/main/rfcs/20241015-result-accuracy.md).
 
 For StableHLO information see
-[StableHLO - rsqrt](https://openxla.org/stablehlo/spec#rsqrt)
+[StableHLO - rsqrt](https://openxla.org/stablehlo/spec#rsqrt).
 
 ## Scatter
 
 See also
-[`XlaBuilder::Scatter`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h)
+[`XlaBuilder::Scatter`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 The XLA scatter operation generates a sequence of results which are the values
 of the input array `operands`, with several slices (at indices specified by
@@ -4613,7 +4654,7 @@ For a detailed informal description and examples, refer to the
 "Informal Description" section under `Gather`.
 
 For StableHLO information see
-[StableHLO - scatter](https://openxla.org/stablehlo/spec#scatter)
+[StableHLO - scatter](https://openxla.org/stablehlo/spec#scatter).
 
 ### Scatter - Example 1 - StableHLO
 
@@ -4657,7 +4698,7 @@ falls outside of `operand` tensor.
 ## Select
 
 See also
-[`XlaBuilder::Select`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h)
+[`XlaBuilder::Select`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 Constructs an output array from elements of two input arrays, based on the
 values of a predicate array.
@@ -4711,7 +4752,7 @@ For StableHLO information see
 ## SelectAndScatter
 
 See also
-[`XlaBuilder::SelectAndScatter`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h)
+[`XlaBuilder::SelectAndScatter`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 This operation can be considered as a composite operation that first computes
 `ReduceWindow` on the `operand` array to select an element from each window, and
@@ -4786,14 +4827,14 @@ sensitive to reassociation. See the discussion about associativity in the
 context of [`Reduce`](#reduce) for more details.
 
 For StableHLO information see
-[StableHLO - select_and_scatter](https://openxla.org/stablehlo/spec#select_and_scatter)
+[StableHLO - select_and_scatter](https://openxla.org/stablehlo/spec#select_and_scatter).
 
 ## Send
 
 See also
-[`XlaBuilder::Send`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h)
+[`XlaBuilder::Send`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
-`Send`, `SendWithTokens`, `SendToHost` are operations that serve as
+`Send`, `SendWithTokens`, and `SendToHost` are operations that serve as
 communication primitives in HLO. These ops typically appear in HLO dumps as part
 of low-level input/output or cross-device transfer, but they are not intended to
 be constructed manually by end users.
@@ -4812,7 +4853,7 @@ Similar to the [`Recv`](#recv) operation, the client API of `Send` operation
 represents synchronous communication, and is internally decomposed into 2 HLO
 instructions (`Send` and `SendDone`) to enable asynchronous data transfers. See
 also
-[`HloInstruction::CreateSend` and `HloInstruction::CreateSendDone`](https://github.com/openxla/xla/tree/main/xla/hlo/ir/hlo_instruction.h)
+[`HloInstruction::CreateSend` and `HloInstruction::CreateSendDone`](https://github.com/openxla/xla/tree/main/xla/hlo/ir/hlo_instruction.h).
 
 **`Send(HloInstruction operand, int64 channel_id)`**
 
@@ -4823,19 +4864,19 @@ data transfer. The context is a tuple of {operand (shape), request identifier
 (U32)} and it can only be used by a `SendDone` instruction.
 
 For StableHLO information see
-[StableHLO - send](https://openxla.org/stablehlo/spec#send)
+[StableHLO - send](https://openxla.org/stablehlo/spec#send).
 
 ### SendDone
 
 See also
-[`HloInstruction::CreateSendDone`](https://github.com/openxla/xla/tree/main/xla/hlo/ir/hlo_instruction.h)
+[`HloInstruction::CreateSendDone`](https://github.com/openxla/xla/tree/main/xla/hlo/ir/hlo_instruction.h).
 
 **`SendDone(HloInstruction context)`**
 
 Given a context created by a `Send` instruction, waits for the data transfer to
 complete. The instruction does not return any data.
 
-> **Note:**: `SendDone` is only found in HLO. It is not found in StableHLO.
+> **Note:** `SendDone` is only found in HLO. It is not found in StableHLO.
 
 ### Scheduling of channel instructions
 
@@ -4858,7 +4899,7 @@ computations. For example, below schedules lead to deadlocks.
 ## SetDimensionSize
 
 See also
-[`XlaBuilder::SetDimensionSize`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h)
+[`XlaBuilder::SetDimensionSize`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 Sets the dynamic size of XlaOp's given dimension. The operand must be array
 shaped.
@@ -4900,7 +4941,7 @@ let sum:f32[] = reduce_sum(padded_v_six);
 ## ShiftLeft
 
 See also
-[`XlaBuilder::ShiftLeft`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h)
+[`XlaBuilder::ShiftLeft`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 Performs element-wise left-shift operation on `lhs` by `rhs` number of bits.
 
@@ -4940,12 +4981,12 @@ the dimensions to use for broadcasting the operands. The semantics are described
 in detail on the [broadcasting page](broadcasting.md).
 
 For StableHLO information see
-[StableHLO - shift_left](https://openxla.org/stablehlo/spec#shift_left)
+[StableHLO - shift_left](https://openxla.org/stablehlo/spec#shift_left).
 
 ## ShiftRightArithmetic
 
 See also
-[`XlaBuilder::ShiftRightArithmetic`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h)
+[`XlaBuilder::ShiftRightArithmetic`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 Performs element-wise arithmetic right-shift operation on `lhs` by `rhs` number
 of bits.
@@ -4986,12 +5027,12 @@ the dimensions to use for broadcasting the operands. The semantics are described
 in detail on the [broadcasting page](broadcasting.md).
 
 For StableHLO information see
-[StableHLO - shift_right_arithmetic](https://openxla.org/stablehlo/spec#shift_right_arithmetic)
+[StableHLO - shift_right_arithmetic](https://openxla.org/stablehlo/spec#shift_right_arithmetic).
 
 ## ShiftRightLogical
 
 See also
-[`XlaBuilder::ShiftRightLogical`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h)
+[`XlaBuilder::ShiftRightLogical`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 Performs element-wise logical right-shift operation on `lhs` by `rhs` number of
 bits.
@@ -5032,12 +5073,12 @@ the dimensions to use for broadcasting the operands. The semantics are described
 in detail on the [broadcasting page](broadcasting.md).
 
 For StableHLO information see
-[StableHLO - shift_right_logical](https://openxla.org/stablehlo/spec#shift_right_logical)
+[StableHLO - shift_right_logical](https://openxla.org/stablehlo/spec#shift_right_logical).
 
 ## Sign
 
 See also
-[`XlaBuilder::Sign`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h)
+[`XlaBuilder::Sign`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 **`Sign(operand)`** Element-wise sign operation `x -> sgn(x)` where
 
@@ -5053,14 +5094,14 @@ Arguments | Type    | Semantics
 `operand` | `XlaOp` | The operand to the function
 
 For StableHLO information see
-[StableHLO - sign](https://openxla.org/stablehlo/spec#sign)
+[StableHLO - sign](https://openxla.org/stablehlo/spec#sign).
 
 ## Sin
 
 **`Sin(operand)`** Element-wise sine `x -> sin(x)`.
 
 See also
-[`XlaBuilder::Sin`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h)
+[`XlaBuilder::Sin`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 **`Sin(operand)`**
 
@@ -5081,15 +5122,15 @@ Sin also supports the optional `result_accuracy` argument:
 :                   :                           : implementations             :
 
 For more information on `result_accuracy` see
-[Result Accuracy](https://github.com/openxla/stablehlo/blob/main/rfcs/20241015-result-accuracy.md)
+[Result Accuracy](https://github.com/openxla/stablehlo/blob/main/rfcs/20241015-result-accuracy.md).
 
 For StableHLO information see
-[StableHLO - sine](https://openxla.org/stablehlo/spec#sine)
+[StableHLO - sine](https://openxla.org/stablehlo/spec#sine).
 
 ## Slice
 
 See also
-[`XlaBuilder::Slice`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h)
+[`XlaBuilder::Slice`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 Slicing extracts a sub-array from the input array. The sub-array has the same
 number of dimensions as the input and contains the values inside a bounding box
@@ -5121,8 +5162,8 @@ given as arguments to the slice operation.
 
 ```cpp
 let a = {0.0, 1.0, 2.0, 3.0, 4.0}
-Slice(a, {2}, {4}) produces:
-  {2.0, 3.0}
+Slice(a, {2}, {4})
+// Result: {2.0, 3.0}
 ```
 
 2-dimensional example:
@@ -5134,18 +5175,19 @@ let b =
    {6.0,  7.0,  8.0},
    {9.0, 10.0, 11.0} }
 
-Slice(b, {2, 1}, {4, 3}) produces:
-  { { 7.0,  8.0},
-    {10.0, 11.0} }
+Slice(b, {2, 1}, {4, 3})
+// Result:
+//   { { 7.0,  8.0},
+//     {10.0, 11.0} }
 ```
 
 For StableHLO information see
-[StableHLO - slice](https://openxla.org/stablehlo/spec#slice)
+[StableHLO - slice](https://openxla.org/stablehlo/spec#slice).
 
 ## Sort
 
 See also
-[`XlaBuilder::Sort`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h)
+[`XlaBuilder::Sort`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 **`Sort(operands, comparator, dimension, is_stable)`**
 
@@ -5202,12 +5244,12 @@ equal if and only if `comparator(e1, e2) = comparator(e2, e1) = false`. By
 default, `is_stable` is set to false.
 
 For StableHLO information see
-[StableHLO - sort](https://openxla.org/stablehlo/spec#sort)
+[StableHLO - sort](https://openxla.org/stablehlo/spec#sort).
 
 ## Sqrt
 
 See also
-[`XlaBuilder::Sqrt`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h)
+[`XlaBuilder::Sqrt`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 Element-wise square root operation `x -> sqrt(x)`.
 
@@ -5230,15 +5272,15 @@ Sqrt also supports the optional `result_accuracy` argument:
 :                   :                           : implementations             :
 
 For more information on `result_accuracy` see
-[Result Accuracy](https://github.com/openxla/stablehlo/blob/main/rfcs/20241015-result-accuracy.md)
+[Result Accuracy](https://github.com/openxla/stablehlo/blob/main/rfcs/20241015-result-accuracy.md).
 
 For StableHLO information see
-[StableHLO - sqrt](https://openxla.org/stablehlo/spec#sqrt)
+[StableHLO - sqrt](https://openxla.org/stablehlo/spec#sqrt).
 
 ## Sub
 
 See also
-[`XlaBuilder::Sub`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h)
+[`XlaBuilder::Sub`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 Performs element-wise subtraction of `lhs` and `rhs`.
 
@@ -5278,12 +5320,12 @@ the dimensions to use for broadcasting the operands. The semantics are described
 in detail on the [broadcasting page](broadcasting.md).
 
 For StableHLO information see
-[StableHLO - subtract](https://openxla.org/stablehlo/spec#subtract)
+[StableHLO - subtract](https://openxla.org/stablehlo/spec#subtract).
 
 ## Tan
 
 See also
-[`XlaBuilder::Tan`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h)
+[`XlaBuilder::Tan`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 Element-wise tangent `x -> tan(x)`.
 
@@ -5306,15 +5348,15 @@ Tan also supports the optional `result_accuracy` argument:
 :                   :                           : implementations             :
 
 For more information on `result_accuracy` see
-[Result Accuracy](https://github.com/openxla/stablehlo/blob/main/rfcs/20241015-result-accuracy.md)
+[Result Accuracy](https://github.com/openxla/stablehlo/blob/main/rfcs/20241015-result-accuracy.md).
 
 For StableHLO information see
-[StableHLO - tan](https://openxla.org/stablehlo/spec#tan)
+[StableHLO - tan](https://openxla.org/stablehlo/spec#tan).
 
 ## Tanh
 
 See also
-[`XlaBuilder::Tanh`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h)
+[`XlaBuilder::Tanh`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 Element-wise hyperbolic tangent `x -> tanh(x)`.
 
@@ -5337,15 +5379,15 @@ Tanh also supports the optional `result_accuracy` argument:
 :                   :                           : implementations             :
 
 For more information on `result_accuracy` see
-[Result Accuracy](https://github.com/openxla/stablehlo/blob/main/rfcs/20241015-result-accuracy.md)
+[Result Accuracy](https://github.com/openxla/stablehlo/blob/main/rfcs/20241015-result-accuracy.md).
 
 For StableHLO information see
-[StableHLO - tanh](https://openxla.org/stablehlo/spec#tanh)
+[StableHLO - tanh](https://openxla.org/stablehlo/spec#tanh).
 
 ## TopK
 
 See also
-[`XlaBuilder::TopK`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h)
+[`XlaBuilder::TopK`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 `TopK` finds the values and indices of the `k` largest or smallest elements for
 the last dimension of the given tensor.
@@ -5378,8 +5420,8 @@ values.shape = indices.shape = [A, B, ..., P, k]
 
 If two elements within a row are equal, the lower-index element appears first.
 
-> **Note:**: `TopK` is only found in HLO and not found in StableHLO. CHLO `TopK`
-> in Frameworks will lower to HLO `TopK` see
+> **Note:** `TopK` is only found in HLO and is not found in StableHLO. CHLO
+> `TopK` in Frameworks will lower to HLO `TopK` see
 > [StableHLO - chlo.top_k](https://openxla.org/stablehlo/generated/chlo?hl=en#chlotop_k_chlotopkop)
 
 ## Transpose
@@ -5401,12 +5443,12 @@ This is the same as Reshape(operand, permutation,
                             Permute(permutation, operand.shape.dimensions)).
 
 For StableHLO information see
-[StableHLO - transpose](https://openxla.org/stablehlo/spec#transpose)
+[StableHLO - transpose](https://openxla.org/stablehlo/spec#transpose).
 
 ## TriangularSolve
 
 See also
-[`XlaBuilder::TriangularSolve`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h)
+[`XlaBuilder::TriangularSolve`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 Solves systems of linear equations with lower or upper triangular coefficient
 matrices by forward- or back-substitution. Broadcasting along leading
@@ -5445,12 +5487,12 @@ as batches of matrices, where all except the minor 2 dimensions are batch
 dimensions. `a` and `b` must have equal batch dimensions.
 
 For StableHLO information see
-[StableHLO - triangular_solve](https://openxla.org/stablehlo/spec#triangular_solve)
+[StableHLO - triangular_solve](https://openxla.org/stablehlo/spec#triangular_solve).
 
 ## Tuple
 
 See also
-[`XlaBuilder::Tuple`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h)
+[`XlaBuilder::Tuple`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 A tuple containing a variable number of data handles, each of which has its own
 shape.
@@ -5473,7 +5515,7 @@ Tuples can be deconstructed (accessed) via the [`GetTupleElement`]
 (#gettupleelement) operation.
 
 For StableHLO information see
-[StableHLO - tuple](https://openxla.org/stablehlo/spec#tuple)
+[StableHLO - tuple](https://openxla.org/stablehlo/spec#tuple).
 
 > **Note:** In HLO, tuples are needed for most ops that return >1 result. While
 > in StableHLO/MLIR, variadic results can be expressed and tuples are not used,
@@ -5482,7 +5524,7 @@ For StableHLO information see
 ## While
 
 See also
-[`XlaBuilder::While`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h)
+[`XlaBuilder::While`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 **`While(condition, body, init)`**
 
@@ -5531,14 +5573,14 @@ while (result(0) < 1000) {
 ![](images/ops_while.png)
 
 For StableHLO information see
-[StableHLO - while](https://openxla.org/stablehlo/spec#while)
+[StableHLO - while](https://openxla.org/stablehlo/spec#while).
 
 ## Xor
 
 See also
-[`XlaBuilder::Xor`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h)
+[`XlaBuilder::Xor`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
-Performs element-wise XOR of `lhs` and `rhs`
+Performs element-wise XOR of `lhs` and `rhs`.
 
 **`Xor(lhs, rhs)`**
 
@@ -5576,4 +5618,4 @@ the dimensions to use for broadcasting the operands. The semantics are described
 in detail on the [broadcasting page](broadcasting.md).
 
 For StableHLO information see
-[StableHLO - xor](https://openxla.org/stablehlo/spec#xor)
+[StableHLO - xor](https://openxla.org/stablehlo/spec#xor).
