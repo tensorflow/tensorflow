@@ -16,7 +16,6 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_RUNTIME_COMMAND_BUFFER_CONVERSION_PASS_H_
 #define XLA_BACKENDS_GPU_RUNTIME_COMMAND_BUFFER_CONVERSION_PASS_H_
 
-#include <memory>
 #include <string>
 
 #include "absl/container/flat_hash_set.h"
@@ -32,7 +31,8 @@ namespace gpu {
 // Converts compatible sequences of Thunks into CommandBufferThunks.
 class CommandBufferConversionPass : public ThunkPassInterface {
  public:
-  CommandBufferConversionPass() = default;
+  explicit CommandBufferConversionPass(absl::string_view module_name = "")
+      : module_name_(module_name) {}
 
   absl::string_view name() const override {
     return "command-buffer-conversion";
@@ -47,7 +47,11 @@ class CommandBufferConversionPass : public ThunkPassInterface {
     absl::flat_hash_set<DebugOptions::CommandBufferCmdType> enabled_commands;
     absl::flat_hash_set<std::string> enabled_legacy_custom_call_targets;
     const se::DeviceDescription& device_description;
+    std::string ToString() const;
   };
+
+ private:
+  std::string module_name_;
 };
 
 }  // namespace gpu
