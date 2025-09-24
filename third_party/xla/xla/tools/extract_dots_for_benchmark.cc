@@ -124,7 +124,9 @@ int main(int argc, char** argv) {
   bool parse_ok = tsl::Flags::Parse(&argc, argv, flag_list);
   tsl::port::InitMain(kUsageString.c_str(), &argc, &argv);
   if (!parse_ok) {
-    LOG(QFATAL) << kUsageString;
+    // Print the usage using cerr to avoid truncation by LOG.
+    std::cerr << kUsageString;
+    return 1;
   }
 
   std::unique_ptr<xla::HloCostAnalysis> analysis;
