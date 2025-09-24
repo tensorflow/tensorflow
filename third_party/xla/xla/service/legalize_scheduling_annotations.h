@@ -46,6 +46,7 @@ class LegalizeSchedulingAnnotations : public HloModulePass {
     bool keep_start_annotation = true;
     bool deannotate_unsupported_groups = false;
     bool check_gap_only = false;
+    bool check_non_mitigatable_gap_only = false;
   };
 
   explicit LegalizeSchedulingAnnotations(Config config)
@@ -54,10 +55,14 @@ class LegalizeSchedulingAnnotations : public HloModulePass {
     return "legalize-scheduling-annotations";
   }
 
+  // Propagates the annotation to fill the gaps between instructions with the
+  // same annotation ID. If dry_run is true, it will only check if the
+  // propagation is possible without actually annotating the instructions.
   static absl::StatusOr<bool> PropagateAnnotations(
       const HloComputation* computation,
       const absl::btree_map<Annotation, std::vector<HloInstruction*>>&
-          annotation_to_instruction);
+          annotation_to_instruction,
+      bool dry_run = false);
 
   static absl::Status Verify(HloModule* module);
 

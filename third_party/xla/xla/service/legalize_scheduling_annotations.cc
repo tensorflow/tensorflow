@@ -103,7 +103,8 @@ absl::flat_hash_set<HloInstruction*> PropagateAnnotationFromSources(
 // the instructions already has an annotation.
 absl::Status AttachAnnotation(
     Annotation annotation,
-    const absl::flat_hash_set<HloInstruction*>& instructions) {
+    const absl::flat_hash_set<HloInstruction*>& instructions,
+    bool dry_run = false) {
   for (HloInstruction* instr : instructions) {
     TF_ASSIGN_OR_RETURN(std::optional<Annotation> instr_annotation,
                         GetSchedulingAnnotation(instr));
@@ -116,7 +117,9 @@ absl::Status AttachAnnotation(
     }
     LOG(INFO) << "Propagating annotation " << annotation.ToString() << " to "
               << instr->name();
-    TF_RETURN_IF_ERROR(SetSchedulingAnnotation(instr, annotation));
+    if (!dry_run) {
+      TF_RETURN_IF_ERROR(SetSchedulingAnnotation(instr, annotation));
+    }
   }
   return absl::OkStatus();
 }
@@ -332,13 +335,14 @@ absl::StatusOr<bool> RemoveLoopIterationAnnotation(HloModule* module) {
 absl::StatusOr<bool> LegalizeSchedulingAnnotations::PropagateAnnotations(
     const HloComputation* computation,
     const absl::btree_map<Annotation, std::vector<HloInstruction*>>&
-        annotation_to_instruction) {
+        annotation_to_instruction,
+    bool dry_run) {
   bool changed = false;
   for (auto& [annotation, sources] : annotation_to_instruction) {
     absl::flat_hash_set<HloInstruction*> to_annotate =
         PropagateAnnotationFromSources(sources, computation);
     changed |= (!to_annotate.empty());
-    auto status = AttachAnnotation(annotation, to_annotate);
+    auto status = AttachAnnotation(annotation, to_annotate, dry_run);
     if (!status.ok()) {
       return status;
     }
@@ -570,7 +574,8 @@ absl::StatusOr<bool> LegalizeSchedulingAnnotations::Run(
         continue;
       }
       auto result = PropagateAnnotations(
-          computation, per_computation_annotation_to_instruction);
+          computation, per_computation_annotation_to_instruction,
+          /*dry_run=*/config_.check_non_mitigatable_gap_only);
       if (!result.ok()) {
         return result.status();
       }
