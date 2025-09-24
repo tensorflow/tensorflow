@@ -37,9 +37,9 @@ struct StablehloExportPipelineOptions
       *this, "dedup-functions-fully",
       llvm::cl::desc(
           "Whether to deduplicate functions fully, regardless of the input and "
-          "output shardings of functions, and it keeps one function for each "
-          "input function. The default is false, meaning it will deduplicate "
-          "only if the input and output shardings are the same."),
+          "output shardings of functions, and it keeps one callee function for "
+          "each caller function. The default is false, meaning it will "
+          "deduplicate only if the input and output shardings are the same."),
       llvm::cl::init(false)};
 };
 
