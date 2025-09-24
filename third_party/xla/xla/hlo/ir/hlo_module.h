@@ -838,26 +838,26 @@ class HloModule {
 
   void SetNextUniqueComputationId(int32_t next_unique_computation_id)
       ABSL_LOCKS_EXCLUDED(next_unique_computation_id_mutex_) {
-    absl::MutexLock mx_lock(&next_unique_computation_id_mutex_);
+    absl::MutexLock mx_lock(next_unique_computation_id_mutex_);
     next_unique_computation_id_ = next_unique_computation_id;
   }
 
   void ResyncNextUniqueComputationId(int32_t last_assigned_unique_id)
       ABSL_LOCKS_EXCLUDED(next_unique_computation_id_mutex_) {
-    absl::MutexLock mx_lock(&next_unique_computation_id_mutex_);
+    absl::MutexLock mx_lock(next_unique_computation_id_mutex_);
     next_unique_computation_id_ =
         std::max(next_unique_computation_id_, last_assigned_unique_id + 1);
   }
 
   int32_t ReadAndIncrementNextUniqueComputationId()
       ABSL_LOCKS_EXCLUDED(next_unique_computation_id_mutex_) {
-    absl::MutexLock mx_lock(&next_unique_computation_id_mutex_);
+    absl::MutexLock mx_lock(next_unique_computation_id_mutex_);
     return next_unique_computation_id_++;
   }
 
   int32_t ReadNextUniqueComputationId() const
       ABSL_LOCKS_EXCLUDED(next_unique_computation_id_mutex_) {
-    absl::MutexLock mx_lock(&next_unique_computation_id_mutex_);
+    absl::MutexLock mx_lock(next_unique_computation_id_mutex_);
     return next_unique_computation_id_;
   }
   // A unique id to label modules with.
