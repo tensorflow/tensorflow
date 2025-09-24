@@ -176,9 +176,9 @@ class KernelArgs {
 class KernelArgsPackedArrayBase : public KernelArgs {
  public:
   // Gets the list of argument addresses.
-  virtual absl::Span<const void *const> argument_addresses() const = 0;
+  virtual absl::Span<const void* const> argument_addresses() const = 0;
 
-  static bool classof(const KernelArgs *args) {
+  static bool classof(const KernelArgs* args) {
     return args->kind() == Kind::kPackedArray;
   }
 
@@ -202,13 +202,13 @@ class Kernel {
   // StreamExecutor as a generic `Kernel`.
   using KernelArgsPacking =
       std::function<absl::StatusOr<std::unique_ptr<KernelArgsPackedArrayBase>>(
-          const Kernel &kernel, const KernelArgs &args)>;
+          const Kernel& kernel, const KernelArgs& args)>;
 
   Kernel() = default;
   virtual ~Kernel() = default;
 
-  Kernel(const Kernel &) = delete;
-  void operator=(const Kernel &) = delete;
+  Kernel(const Kernel&) = delete;
+  void operator=(const Kernel&) = delete;
 
   // Returns the number of parameters that this kernel accepts. (Arity refers to
   // nullary, unary, ...).
@@ -219,10 +219,10 @@ class Kernel {
   virtual absl::StatusOr<int32_t> GetMaxOccupiedBlocksPerCore(
       ThreadDim threads, size_t dynamic_shared_memory_bytes) const = 0;
 
-  const KernelMetadata &metadata() const { return metadata_; }
+  const KernelMetadata& metadata() const { return metadata_; }
   void set_metadata(KernelMetadata metadata) { metadata_ = metadata; }
 
-  const KernelArgsPacking &args_packing() const { return args_packing_; }
+  const KernelArgsPacking& args_packing() const { return args_packing_; }
   void set_args_packing(KernelArgsPacking args_packing) {
     args_packing_ = std::move(args_packing);
   }
@@ -233,14 +233,14 @@ class Kernel {
   // Launches a data parallel kernel with the given thread/block
   // dimensionality and already-packed args/sizes to pass to the underlying
   // platform driver.
-  absl::Status Launch(const ThreadDim &thread_dims, const BlockDim &block_dims,
-                      Stream *stream, const KernelArgs &args);
+  absl::Status Launch(const ThreadDim& thread_dims, const BlockDim& block_dims,
+                      Stream* stream, const KernelArgs& args);
 
   // Helper method to launch a kernel with optional cluster dimensions.
-  virtual absl::Status Launch(const ThreadDim &thread_dims,
-                              const BlockDim &block_dims,
-                              const std::optional<ClusterDim> &cluster_dims,
-                              Stream *stream, const KernelArgs &args) = 0;
+  virtual absl::Status Launch(const ThreadDim& thread_dims,
+                              const BlockDim& block_dims,
+                              const std::optional<ClusterDim>& cluster_dims,
+                              Stream* stream, const KernelArgs& args) = 0;
 
  private:
   std::string name_;
@@ -249,9 +249,9 @@ class Kernel {
   KernelArgsPacking args_packing_;
 };
 
-inline absl::Status Kernel::Launch(const ThreadDim &thread_dims,
-                                   const BlockDim &block_dims, Stream *stream,
-                                   const KernelArgs &args) {
+inline absl::Status Kernel::Launch(const ThreadDim& thread_dims,
+                                   const BlockDim& block_dims, Stream* stream,
+                                   const KernelArgs& args) {
   return Launch(thread_dims, block_dims, std::nullopt, stream, args);
 }
 
@@ -269,11 +269,11 @@ class TypedKernel {
 
   TypedKernel() = default;
 
-  Kernel &operator*() { return *kernel_; }
-  const Kernel &operator*() const { return *kernel_; }
+  Kernel& operator*() { return *kernel_; }
+  const Kernel& operator*() const { return *kernel_; }
 
-  Kernel *operator->() { return kernel_.get(); }
-  const Kernel *operator->() const { return kernel_.get(); }
+  Kernel* operator->() { return kernel_.get(); }
+  const Kernel* operator->() const { return kernel_.get(); }
 
   operator bool() const { return static_cast<bool>(kernel_); }  // NOLINT
 
@@ -300,14 +300,14 @@ class TypedKernel {
   // argument number and types that were mismatched.
   template <typename... Args>
   inline absl::Status Launch(ThreadDim thread_dims, BlockDim block_dims,
-                             Stream *stream, Args... args) {
+                             Stream* stream, Args... args) {
     auto kernel_args = PackKernelArgs(*this, args...);
     return kernel_->Launch(thread_dims, block_dims, stream, *kernel_args);
   }
 
   template <typename... Args>
   inline absl::Status Launch(ThreadDim thread_dims, BlockDim block_dims,
-                             int32_t shmem_bytes, Stream *stream,
+                             int32_t shmem_bytes, Stream* stream,
                              Args... args) {
     auto kernel_args = PackKernelArgs(shmem_bytes, args...);
     return kernel_->Launch(thread_dims, block_dims, stream, *kernel_args);
@@ -325,31 +325,31 @@ class TypedKernel {
 // Kernel arguments LLVM-style RTTI library
 //===----------------------------------------------------------------------===//
 
-template <class T, KernelArgs::IsKernelArgs<T> * = nullptr>
-T *Cast(KernelArgs *args) {
+template <class T, KernelArgs::IsKernelArgs<T>* = nullptr>
+T* Cast(KernelArgs* args) {
   CHECK(T::classof(args)) << "Invalid arguments casting to a destination type: "
                           << typeid(T).name();
   CHECK(args != nullptr) << "Casted arguments must be not null";
-  return static_cast<const T *>(args);
+  return static_cast<const T*>(args);
 }
 
-template <class T, KernelArgs::IsKernelArgs<T> * = nullptr>
-const T *Cast(const KernelArgs *args) {
+template <class T, KernelArgs::IsKernelArgs<T>* = nullptr>
+const T* Cast(const KernelArgs* args) {
   CHECK(T::classof(args)) << "Invalid arguments casting to a destination type: "
                           << typeid(T).name();
   CHECK(args != nullptr) << "Casted arguments must be not null";
-  return static_cast<const T *>(args);
+  return static_cast<const T*>(args);
 }
 
-template <class T, KernelArgs::IsKernelArgs<T> * = nullptr>
-const T *DynCast(const KernelArgs *args) {
+template <class T, KernelArgs::IsKernelArgs<T>* = nullptr>
+const T* DynCast(const KernelArgs* args) {
   CHECK(args != nullptr) << "Casted arguments must be not null";
-  return T::classof(args) ? static_cast<const T *>(args) : nullptr;
+  return T::classof(args) ? static_cast<const T*>(args) : nullptr;
 }
 
-template <class T, KernelArgs::IsKernelArgs<T> * = nullptr>
-const T *DynCastOrNull(const KernelArgs *args) {
-  return args && T::classof(args) ? static_cast<const T *>(args) : nullptr;
+template <class T, KernelArgs::IsKernelArgs<T>* = nullptr>
+const T* DynCastOrNull(const KernelArgs* args) {
+  return args && T::classof(args) ? static_cast<const T*>(args) : nullptr;
 }
 
 //===----------------------------------------------------------------------===//
@@ -363,7 +363,7 @@ class KernelArgsDeviceMemoryArray : public KernelArgs {
       : device_memory_args_(args.begin(), args.end()),
         shared_memory_bytes_(shared_memory_bytes) {}
 
-  static bool classof(const KernelArgs *args) {
+  static bool classof(const KernelArgs* args) {
     return args->kind() == Kind::kDeviceMemoryArray;
   }
 
@@ -379,7 +379,7 @@ class KernelArgsDeviceMemoryArray : public KernelArgs {
     return device_memory_args_;
   }
 
-  const void *device_memory_ptr(size_t index) const {
+  const void* device_memory_ptr(size_t index) const {
     return device_memory_args_[index].opaque();
   }
 
@@ -413,13 +413,13 @@ template <size_t capacity, size_t size = 8,
 class PodArgs {
  protected:
   template <typename T>
-  const std::byte *add_pod_argument(const T &arg) {
+  const std::byte* add_pod_argument(const T& arg) {
     static_assert(std::is_trivially_copyable_v<T> &&
                       sizeof(T) <= size & alignof(T) <= alignment,
                   "Type is not compatible with POD arguments storage");
 
     assert(num_args_ < capacity && "pod args overflow");
-    std::byte *arg_storage = args_storage_[num_args_++].storage;
+    std::byte* arg_storage = args_storage_[num_args_++].storage;
     std::memcpy(arg_storage, &arg, sizeof(T));
 
     return arg_storage;
@@ -453,12 +453,12 @@ class KernelArgsPackedArray : public KernelArgsPackedArrayBase, ArgsStorage {
 
   // KernelArgsPackedArray is not copyable or movable because argument addresses
   // point to inline storage that can't be moved.
-  KernelArgsPackedArray(const KernelArgsPackedArray &) = delete;
-  KernelArgsPackedArray &operator=(const KernelArgsPackedArray &) = delete;
+  KernelArgsPackedArray(const KernelArgsPackedArray&) = delete;
+  KernelArgsPackedArray& operator=(const KernelArgsPackedArray&) = delete;
 
   // Adds an argument to the list.
   template <typename T>
-  void add_argument(const T &arg) {
+  void add_argument(const T& arg) {
     if constexpr (internal::is_pod_args_v<ArgsStorage>) {
       argument_addresses_[number_of_argument_addresses_++] =
           ArgsStorage::add_pod_argument(arg);
@@ -469,8 +469,8 @@ class KernelArgsPackedArray : public KernelArgsPackedArrayBase, ArgsStorage {
   }
 
   // Adds a device memory argument to the list.
-  void add_device_memory_argument(const DeviceMemoryBase &arg) {
-    const void **copy_ptr =
+  void add_device_memory_argument(const DeviceMemoryBase& arg) {
+    const void** copy_ptr =
         &device_memory_opaque_pointers_[number_of_argument_addresses_];
     *copy_ptr = arg.opaque();
     argument_addresses_[number_of_argument_addresses_] = copy_ptr;
@@ -495,17 +495,17 @@ class KernelArgsPackedArray : public KernelArgsPackedArrayBase, ArgsStorage {
   uint64_t number_of_shared_bytes() const final { return shared_memory_bytes_; }
 
   // Gets the list of argument addresses.
-  absl::Span<const void *const> argument_addresses() const final {
-    return absl::Span<const void *const>(argument_addresses_.data(),
+  absl::Span<const void* const> argument_addresses() const final {
+    return absl::Span<const void* const>(argument_addresses_.data(),
                                          number_of_argument_addresses_);
   }
 
  private:
   // A place to store copies of opaque pointers from device memory arguments.
-  std::array<const void *, num_args> device_memory_opaque_pointers_;
+  std::array<const void*, num_args> device_memory_opaque_pointers_;
 
   // Addresses for non-shared-memory arguments.
-  std::array<const void *, num_args> argument_addresses_;
+  std::array<const void*, num_args> argument_addresses_;
 
   // Shared memory required by a kernel.
   size_t shared_memory_bytes_ = 0;
@@ -521,7 +521,7 @@ template <int n>
 std::unique_ptr<KernelArgsPackedArrayBase> PackKernelArgs(
     absl::Span<const DeviceMemoryBase> args, uint32_t shared_mem_bytes) {
   auto packed = std::make_unique<KernelArgsPackedArray<n, EmptyArgs>>();
-  for (const DeviceMemoryBase &buf : args) {
+  for (const DeviceMemoryBase& buf : args) {
     packed->add_device_memory_argument(buf);
   }
   if (shared_mem_bytes > 0) {
@@ -534,7 +534,7 @@ template <int n>
 std::unique_ptr<KernelArgsPackedArrayBase> PackKernelArgs(
     absl::Span<const KernelArgument> args, uint32_t shared_mem_bytes) {
   auto contains_tensor_map = [](absl::Span<const KernelArgument> args) -> bool {
-    return absl::c_any_of(args, [](const auto &arg) {
+    return absl::c_any_of(args, [](const auto& arg) {
       return std::holds_alternative<TensorMap>(arg);
     });
   };
@@ -542,7 +542,7 @@ std::unique_ptr<KernelArgsPackedArrayBase> PackKernelArgs(
   if (contains_tensor_map(args)) {
     auto packed =
         std::make_unique<KernelArgsPackedArray<n, PodArgs<n, 128, 64>>>();
-    for (auto &buf : args) {
+    for (auto& buf : args) {
       if (std::holds_alternative<DeviceMemoryBase>(buf)) {
         // Buffer argument.
         packed->add_device_memory_argument(std::get<DeviceMemoryBase>(buf));
@@ -559,7 +559,7 @@ std::unique_ptr<KernelArgsPackedArrayBase> PackKernelArgs(
 
   // No TensorMap arguments -> Can use EmptyArgs.
   auto packed = std::make_unique<KernelArgsPackedArray<n, EmptyArgs>>();
-  for (auto &buf : args) {
+  for (auto& buf : args) {
     packed->add_device_memory_argument(std::get<DeviceMemoryBase>(buf));
   }
   if (shared_mem_bytes > 0) {
@@ -604,7 +604,7 @@ PackKernelArgs(absl::Span<const ArgType> args, uint32_t shared_mem_bytes) {
 
 template <typename ArgType>
 inline absl::StatusOr<std::unique_ptr<KernelArgsPackedArrayBase>>
-PackKernelArgs(absl::Span<const ArgType> args, const KernelMetadata &metadata) {
+PackKernelArgs(absl::Span<const ArgType> args, const KernelMetadata& metadata) {
   return PackKernelArgs(args, metadata.shared_memory_bytes().value_or(0));
 }
 
@@ -635,7 +635,7 @@ struct PackedArgType {
 
 template <>
 struct PackedArgType<DeviceMemoryBase> {
-  using Type = const void *;
+  using Type = const void*;
 };
 
 template <typename T>
@@ -644,44 +644,44 @@ struct PackedArgType<DeviceMemory<T>> {
 };
 
 template <>
-struct PackedArgType<DeviceMemoryBase *> {
+struct PackedArgType<DeviceMemoryBase*> {
   using Type = typename PackedArgType<DeviceMemoryBase>::Type;
 };
 
 template <>
-struct PackedArgType<const DeviceMemoryBase *> {
+struct PackedArgType<const DeviceMemoryBase*> {
   using Type = typename PackedArgType<DeviceMemoryBase>::Type;
 };
 
 template <typename T>
-struct PackedArgType<DeviceMemory<T> *> {
+struct PackedArgType<DeviceMemory<T>*> {
   using Type = typename PackedArgType<DeviceMemoryBase>::Type;
 };
 
 template <typename T>
-struct PackedArgType<const DeviceMemory<T> *> {
+struct PackedArgType<const DeviceMemory<T>*> {
   using Type = typename PackedArgType<DeviceMemoryBase>::Type;
 };
 
 // Overload set for packing kernel arguments. This overload set matches
 // supported kernel arguments types defined by `PackedArgType`.
-template <typename T, std::enable_if_t<!std::is_pointer_v<T>> * = nullptr>
-T PackArg(const T &arg) {
+template <typename T, std::enable_if_t<!std::is_pointer_v<T>>* = nullptr>
+T PackArg(const T& arg) {
   return arg;
 }
 
-inline const void *PackArg(const DeviceMemoryBase &arg) { return arg.opaque(); }
-inline const void *PackArg(const DeviceMemoryBase *arg) {
+inline const void* PackArg(const DeviceMemoryBase& arg) { return arg.opaque(); }
+inline const void* PackArg(const DeviceMemoryBase* arg) {
   return PackArg(*arg);
 }
 
 template <typename T>
-const void *PackArg(const DeviceMemory<T> &arg) {
+const void* PackArg(const DeviceMemory<T>& arg) {
   return arg.opaque();
 }
 
 template <typename T>
-const void *PackArg(const DeviceMemory<T> *arg) {
+const void* PackArg(const DeviceMemory<T>* arg) {
   return PackArg(*arg);
 }
 
@@ -703,8 +703,8 @@ class KernelArgsPackedTuple : public KernelArgsPackedArrayBase {
 
   // KernelArgsPackedTuple is not copyable or movable because argument addresses
   // point to inline storage that can't be moved.
-  KernelArgsPackedTuple(const KernelArgsPackedTuple &) = delete;
-  KernelArgsPackedTuple &operator=(const KernelArgsPackedTuple &) = delete;
+  KernelArgsPackedTuple(const KernelArgsPackedTuple&) = delete;
+  KernelArgsPackedTuple& operator=(const KernelArgsPackedTuple&) = delete;
 
   size_t number_of_arguments() const final {
     return kSize + (shared_memory_bytes_ > 0);
@@ -712,8 +712,8 @@ class KernelArgsPackedTuple : public KernelArgsPackedArrayBase {
 
   uint64_t number_of_shared_bytes() const final { return shared_memory_bytes_; }
 
-  absl::Span<const void *const> argument_addresses() const final {
-    return absl::Span<const void *const>(argument_addresses_.data(), kSize);
+  absl::Span<const void* const> argument_addresses() const final {
+    return absl::Span<const void* const>(argument_addresses_.data(), kSize);
   }
 
   // Compile time check that KernelArgsPackedTuple is compatible with
@@ -742,7 +742,7 @@ class KernelArgsPackedTuple : public KernelArgsPackedArrayBase {
   size_t shared_memory_bytes_ = 0;
 
   // Pointers into `storage_`.
-  std::array<const void *, kSize> argument_addresses_;
+  std::array<const void*, kSize> argument_addresses_;
 };
 
 // Packs the given arguments into a KernelArgsPackedTuple.
@@ -757,7 +757,7 @@ std::unique_ptr<KernelArgsPackedArrayBase> PackKernelArgs(int64_t shmem_bytes,
 // checks that arguments are compatible with TypedKernel signature.
 template <typename... Params, typename... Args>
 std::unique_ptr<KernelArgsPackedArrayBase> PackKernelArgs(
-    const TypedKernel<Params...> &kernel, Args... args) {
+    const TypedKernel<Params...>& kernel, Args... args) {
   using PackedParams = KernelArgsPackedTuple<Params...>;
   using PackedArgs = KernelArgsPackedTuple<Args...>;
 
