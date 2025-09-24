@@ -26,12 +26,14 @@ limitations under the License.
 #include <stack>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/container/btree_map.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/functional/overload.h"
 #include "absl/status/status.h"
 #include "absl/strings/cord.h"
 #include "absl/strings/escaping.h"
@@ -346,7 +348,9 @@ void HloModule::ReplaceComputations(
       replacements, entry_computation_, entry_computation_);
 }
 
-void HloModule::Print(Printer* printer, const HloPrintOptions& options) const {
+void HloModule::Print(
+    Printer* printer, const HloPrintOptions& options,
+    const absl::btree_map<std::string, NumericOrString>& custom_fields) const {
   printer->Append("HloModule ");
   if (options.print_ids()) {
     // When print_ids() is false, exclude module's name because it includes and
@@ -369,7 +373,35 @@ void HloModule::Print(Printer* printer, const HloPrintOptions& options) const {
     printer->Append(" }");
   }
 
-  const HloModuleConfig& config = this->config();
+  PrintConfig(printer, this->config());
+
+  if (!frontend_attributes_.map().empty()) {
+    AppendCat(printer, ", frontend_attributes=",
+              FrontendAttributesToString(frontend_attributes_));
+  }
+  if (!original_value_recovery_table_.empty()) {
+    HloPrintOptions new_options = options;
+    new_options.set_indent_amount(options.indent_amount() + 1);
+    printer->Append(", origin_recovery_table={\n");
+    printer->Append(original_value_recovery_table_.ToString(new_options));
+    printer->Append("}\n");
+  }
+  for (const auto& [key, value] : custom_fields) {
+    printer->Append(absl::StrCat(", ", key, "="));
+    std::visit(
+        absl::Overload{
+            [&printer](const std::string& data) { printer->Append(data); },
+            [&printer](const int64_t data) { printer->Append(data); },
+            [&printer](const double data) { printer->Append(data); },
+        },
+        value);
+  }
+  printer->Append("\n\n");
+  PrintComputations(printer, options);
+}
+
+void HloModule::PrintConfig(Printer* printer,
+                            const HloModuleConfig& config) const {
   if (config.alias_passthrough_params()) {
     printer->Append(", alias_passthrough_params=true");
   }
@@ -404,18 +436,10 @@ void HloModule::Print(Printer* printer, const HloPrintOptions& options) const {
     printer->Append(", num_partitions=");
     printer->Append(config.num_partitions());
   }
-  if (!frontend_attributes_.map().empty()) {
-    AppendCat(printer, ", frontend_attributes=",
-              FrontendAttributesToString(frontend_attributes_));
-  }
-  if (!original_value_recovery_table_.empty()) {
-    HloPrintOptions new_options = options;
-    new_options.set_indent_amount(options.indent_amount() + 1);
-    printer->Append(", origin_recovery_table={\n");
-    printer->Append(original_value_recovery_table_.ToString(new_options));
-    printer->Append("}\n");
-  }
-  printer->Append("\n\n");
+}
+
+void HloModule::PrintComputations(Printer* printer,
+                                  const HloPrintOptions& options) const {
   // We use a DFS postorder traversal to ensure that computations are printed
   // more consistently run to run. Even thet non-dfs postorder is deterministic,
   // but exactly which topological ordering it yields depends on the order in
@@ -509,9 +533,11 @@ class HighwayHashPrinter : public Printer {
 };
 }  // namespace
 
-uint64_t HloModule::ToFingerprint(const HloPrintOptions& options) const {
+uint64_t HloModule::ToFingerprint(
+    const HloPrintOptions& options,
+    const absl::btree_map<std::string, NumericOrString>& custom_fields) const {
   HighwayHashPrinter printer;
-  Print(&printer, options);
+  Print(&printer, options, custom_fields);
   return printer.ToFingerprint();
 }
 

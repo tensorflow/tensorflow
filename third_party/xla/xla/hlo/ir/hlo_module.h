@@ -26,13 +26,16 @@ limitations under the License.
 #include <random>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/base/thread_annotations.h"
+#include "absl/container/btree_map.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
 #include "absl/strings/cord.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
@@ -68,6 +71,8 @@ inline constexpr absl::string_view kOriginalValuePlaceholderDelimiter = "__ovp";
 using LayoutCanonicalizationCallback =
     std::function<absl::StatusOr<std::pair<std::vector<Shape>, Shape>>(
         const HloModule& module)>;
+
+using NumericOrString = std::variant<std::string, int64_t, double>;
 
 // Describes a compilation unit at the HLO level.
 //
@@ -438,14 +443,25 @@ class HloModule {
   bool is_dynamic() const { return is_dynamic_; }
   void set_is_dynamic(bool is_dynamic) { is_dynamic_ = is_dynamic; }
 
+ private:
+  void PrintComputations(Printer* printer,
+                         const HloPrintOptions& options) const;
+  void PrintConfig(Printer* printer, const HloModuleConfig& config) const;
+
+ public:
   // Prints a string representation of the module.
   //
   // (We express the default options using an overload rather than a default
   // param because gdb ignores default params, but does resolve overloads.)
   void Print(Printer* printer) const {
-    return Print(printer, HloPrintOptions::Default());
+    return Print(printer, HloPrintOptions::Default(), {});
   }
-  void Print(Printer* printer, const HloPrintOptions& options) const;
+  void Print(Printer* printer, const HloPrintOptions& options) const {
+    return Print(printer, options, {});
+  }
+  void Print(
+      Printer* printer, const HloPrintOptions& options,
+      const absl::btree_map<std::string, NumericOrString>& custom_fields) const;
 
   // Return a string representation of the module.
   //
@@ -462,7 +478,15 @@ class HloModule {
   absl::Cord ToCord(const HloPrintOptions& options) const;
 
   // Returns a stable fingerprint of the module using the given print options.
-  uint64_t ToFingerprint(const HloPrintOptions& options) const;
+  //
+  // (We express the default options using an overload rather than a default
+  // param because gdb ignores default params, but does resolve overloads.)
+  uint64_t ToFingerprint(const HloPrintOptions& options) const {
+    return ToFingerprint(options, {});
+  }
+  uint64_t ToFingerprint(
+      const HloPrintOptions& options,
+      const absl::btree_map<std::string, NumericOrString>& custom_fields) const;
 
   // Remaps the instruction ids in the proto to be consecutive. This is useful
   // for loading a proto that had its ids manually created, created incorrectly

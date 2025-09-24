@@ -18,12 +18,14 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/container/btree_map.h"
 #include "absl/hash/hash.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
@@ -75,12 +77,17 @@ TEST(HloModuleTest, AbslHashValue) {
 }
 
 TEST(HloModuleTest, ToFingerprint) {
-  auto fp = [](const HloModule& module) {
-    return module.ToFingerprint(HloPrintOptions::ModuleFingerprint());
+  auto fp = [](const HloModule& module,
+               std::optional<absl::btree_map<std::string, NumericOrString>>
+                   custom_fields) {
+    return custom_fields.has_value()
+               ? module.ToFingerprint(HloPrintOptions::ModuleFingerprint(),
+                                      *custom_fields)
+               : module.ToFingerprint(HloPrintOptions::ModuleFingerprint());
   };
   HloModule module1("m1", HloModuleConfig());
   HloModule module2("m2", HloModuleConfig());
-  EXPECT_EQ(fp(module1), fp(module2));
+  EXPECT_EQ(fp(module1, std::nullopt), fp(module2, std::nullopt));
 
   absl::string_view hlo = R"(
       HloModule m3
@@ -93,8 +100,25 @@ TEST(HloModuleTest, ToFingerprint) {
                           ParseAndReturnUnverifiedModule(hlo));
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module4,
                           ParseAndReturnUnverifiedModule(hlo));
-  EXPECT_EQ(fp(*module3), fp(*module4));
-  EXPECT_NE(fp(module1), fp(*module4));
+  EXPECT_EQ(fp(*module3, std::nullopt), fp(*module4, std::nullopt));
+  EXPECT_NE(fp(module1, std::nullopt), fp(*module4, std::nullopt));
+
+  const absl::btree_map<std::string, NumericOrString> custom_fields = {
+      {"parameter_0", int64_t{50}},
+      {"parameter_1", "string_value"},
+      {"parameter_2", 10.594},
+  };
+
+  EXPECT_NE(fp(*module3, custom_fields), fp(*module3, std::nullopt));
+  EXPECT_NE(fp(module1, custom_fields), fp(*module4, custom_fields));
+
+  EXPECT_EQ(fp(*module3, custom_fields), fp(*module4, custom_fields));
+  EXPECT_EQ(fp(*module4, custom_fields), fp(*module4, custom_fields));
+
+  const absl::btree_map<std::string, NumericOrString> custom_fields2 = {
+      {"parameter_0", int64_t{1}},
+  };
+  EXPECT_NE(fp(*module3, custom_fields), fp(*module3, custom_fields2));
 }
 
 TEST(HloModuleTest, MutableAndReadOnlyConfigEquals) {
