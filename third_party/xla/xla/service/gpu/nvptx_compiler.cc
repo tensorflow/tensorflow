@@ -399,6 +399,12 @@ bool ShouldAutotuneBetweenFusionEmitters(const HloInstruction& instruction) {
   if (fusion->fusion_kind() == HloInstruction::FusionKind::kCustom) {
     return false;
   }
+  // Scatter can't go through the block-level emitter and runs into comparator
+  // issues in the autotuner as different runs can produce different results.
+  if (absl::c_any_of(fusion->fused_instructions_computation()->instructions(),
+                     HloPredicateIsOp<HloOpcode::kScatter>)) {
+    return false;
+  }
   return absl::c_any_of(
       fusion->fused_instructions_computation()->instructions(),
       HloPredicateIsOp<HloOpcode::kReduce, HloOpcode::kTranspose>);
