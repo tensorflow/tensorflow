@@ -99,12 +99,6 @@ double BandwidthUtilizationRateHeuristicForTiledMemoryAccess(
 bool IsTiledReadCoalescedHeuristic(const TiledHloInstruction& operand,
                                    const se::DeviceDescription& device_info);
 
-// Returns the indexing map from logical to linearized physical shape for each
-// operand.
-llvm::SmallVector<IndexingMap, 4> MapLogicalToLinearizedPhysicalShape(
-    absl::Span<const HloInstruction* const> operands,
-    mlir::MLIRContext* mlir_context);
-
 }  // namespace xla::gpu
 
 #endif  // XLA_SERVICE_GPU_MODEL_COALESCING_ANALYSIS_H_

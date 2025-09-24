@@ -1547,6 +1547,93 @@ GroupedByOpIndexing ComputeGroupedOutputToInputIndexing(
   return grouped_indexing_maps;
 }
 
+namespace {
+// Returns a linearized shape, i.e. tensor<num_elements(input) x element_type>.
+Shape GetLinearizedShape(const Shape& shape) {
+  if (shape.dimensions().empty()) {
+    return shape;
+  }
+  std::vector<int64_t> dims{ShapeUtil::ElementsIn(shape)};
+  auto result = Shape(shape.element_type(), dims);
+  *result.mutable_layout() = xla::Layout({0});
+  return result;
+}
+}  // namespace
+
+llvm::SmallVector<IndexingMap, 4> MapLogicalToLinearizedPhysicalShape(
+    absl::Span<const HloInstruction* const> operands,
+    mlir::MLIRContext* mlir_context) {
+  llvm::SmallVector<IndexingMap, 4> indexing_maps;
+  // For every operand compute thread ID -> physical layout of operand
+  // indexing map.
+  for (const HloInstruction* operand : operands) {
+    const Shape& operand_shape = operand->shape();
+
+    IndexingMap operand_logical_to_physical_map =
+        GetIndexingMapFromLogicalToPhysicalLayout(operand_shape, mlir_context);
+    IndexingMap operand_physical_to_linearized_shape = GetBitcastMap(
+        ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
+            operand_shape),
+        GetLinearizedShape(operand_shape), mlir_context);
+    IndexingMap operand_logical_to_linearized_physical_shape =
+        operand_logical_to_physical_map * operand_physical_to_linearized_shape;
+    operand_logical_to_linearized_physical_shape.Simplify();
+    indexing_maps.push_back(
+        std::move(operand_logical_to_linearized_physical_shape));
+  }
+  return indexing_maps;
+}
+
+void GetThreadIdToInputMemoryLayoutsMaps(
+    const HloFusionAdaptor& fusion_adaptor,
+    absl::Span<const IndexingMap> hero_indexing_maps,
+    const HloInstructionAdaptor& hero,
+    absl::Span<const HloInstruction* const> operands,
+    absl::Span<const IndexingMap> operand_logical_to_linearized_physical_maps,
+    MLIRContext* mlir_context, GroupedByOpIndexingMap& result) {
+  for (const auto& [hero_operand_index, hero_operand] :
+       llvm::enumerate(hero.GetOperands())) {
+    if (hero_operand.shape().dimensions().empty()) {
+      continue;
+    }
+    // Compute thread ID -> hero operand indexing map.
+    const IndexingMap& thread_id_to_hero_operand_map =
+        hero_indexing_maps[hero_operand_index];
+    // Compute indexing from output to inputs for logical layout.
+    GroupedByOpIndexing instr_indexing_keyed_by_operands =
+        ComputeGroupedOutputToInputIndexing(fusion_adaptor, hero_operand,
+                                            mlir_context);
+    // For every operand compute thread ID -> physical layout of operand
+    // indexing map.
+    for (auto&& [operand, operand_linarized_physical_map] :
+         llvm::zip(operands, operand_logical_to_linearized_physical_maps)) {
+      auto operand_indexing_maps_it =
+          instr_indexing_keyed_by_operands.find(operand);
+      if (operand_indexing_maps_it == instr_indexing_keyed_by_operands.end()) {
+        continue;
+      }
+
+      for (const OperandIndexing& operand_indexing :
+           operand_indexing_maps_it->second) {
+        const IndexingMap& operand_indexing_map = operand_indexing.map();
+        // If one of the indexing maps for the operand is undefined, we remove
+        // all indexing maps for it and store only the undefined one.
+        if (operand_indexing_map.IsUndefined()) {
+          result[operand] = {operand_indexing_map};
+          break;
+        }
+        IndexingMap logical_output_to_linearized_physical_input_map =
+            operand_indexing_map * operand_linarized_physical_map;
+        IndexingMap thread_id_to_linearized_physical_input_map =
+            thread_id_to_hero_operand_map *
+            logical_output_to_linearized_physical_input_map;
+        thread_id_to_linearized_physical_input_map.Simplify();
+        result[operand].insert(thread_id_to_linearized_physical_input_map);
+      }
+    }
+  }
+}
+
 HloInstructionIndexing ComputeOutputToInputAllGatherOpIndexing(
     const HloAllGatherInstruction* instr, MLIRContext* ctx) {
   // CHECK_EQ(instr->all_gather_dimension(), 0);
