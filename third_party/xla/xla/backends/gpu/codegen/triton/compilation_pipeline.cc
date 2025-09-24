@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "mlir/Conversion/AffineToStandard/AffineToStandard.h"
 #include "mlir/Pass/PassManager.h"
+#include "mlir/Transforms/Passes.h"
 #include "xla/backends/gpu/codegen/emitters/transforms/passes.h"
 #include "xla/backends/gpu/codegen/triton/transforms/passes.h"
 #include "xla/codegen/emitters/transforms/passes.h"
@@ -56,6 +57,10 @@ void CreateTritonXlaPipeline(
   // Lower xla_gpu.apply_indexing into arithmetic ops.
   pm->addPass(emitters::CreateSimplifyAffinePass());
   pm->addPass(CreateConvertIndexTypePass());
+  // We need LICM before unswitching loops because loop unswitcher relies on
+  // having loop invariant code to be outside of the loop.
+  pm->addPass(mlir::createLoopInvariantCodeMotionPass());
+  pm->addPass(mlir::triton::xla::CreateTritonXLAUnswitchLoopsPass());
 }
 
 void CreateTritonCudaPipeline(
