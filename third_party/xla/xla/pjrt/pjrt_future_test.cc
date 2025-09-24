@@ -52,6 +52,15 @@ TEST(PjRtFutureTest, StatelessFuture) {
       [](absl::Status status) { EXPECT_EQ(status, absl::OkStatus()); });
 }
 
+TEST(PjRtFutureTest, CreateFutureFromPromise) {
+  auto [promise, _] = PjRtFuture<int32_t>::MakePromise();
+  PjRtFuture<int32_t> future = promise.future();
+
+  EXPECT_FALSE(future.IsReady());
+  promise.Set(42);
+  EXPECT_EQ(*future.Await(), 42);
+}
+
 TEST(PjRtFutureTest, StatefulFutureToStateless) {
   auto [promise, future] = PjRtFuture<int32_t>::MakePromise();
   PjRtFuture<> ready_future = future.GetReadyFuture();

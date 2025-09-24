@@ -237,9 +237,6 @@ class PjRtFutureBase : public PjRtFutureMoveControl<is_move_only> {
     Promise(Promise&& other) = default;
     Promise& operator=(Promise&& other) = default;
 
-    Promise(const Promise& other) = default;
-    Promise& operator=(const Promise& other) = default;
-
     explicit operator bool() const { return static_cast<bool>(promise_); }
 
     // Returns if this promise is the unique reference to the underlying value.
@@ -257,7 +254,7 @@ class PjRtFutureBase : public PjRtFutureMoveControl<is_move_only> {
     // debugging easier. Also, be aware that the current promise may still be
     // used to mint a future.
     bool IsUniqueReference() const {
-      return async_value()->IsUnique() && !async_value()->HasWaiter();
+      return promise_.IsUnique() && !promise_.HasWaiter();
     }
 
    protected:
@@ -272,11 +269,6 @@ class PjRtFutureBase : public PjRtFutureMoveControl<is_move_only> {
 
     // Takes a reference to the underlying AsyncValueRef container.
     tsl::AsyncValueRef<T> ref() const { return promise_; }
-
-    // Returns a pointer to the underlying AsyncValue that can be used to
-    // track completion of a promise. It is undefined behavior to access the
-    // value stored in the AsyncValue.
-    tsl::AsyncValue* async_value() const { return promise_.GetAsyncValue(); }
 
    private:
     tsl::AsyncValueRef<T> promise_;
@@ -472,9 +464,6 @@ class PjRtFuture : public internal::PjRtFutureBase<absl::StatusOr<T>> {
 
   class Promise : public Base::Promise {
    public:
-    Promise(Promise&&) = default;
-    Promise& operator=(Promise&&) = default;
-
     using Base::Promise::Promise;
 
     // Sets the value of the promise. Must be called at most once.
@@ -489,6 +478,20 @@ class PjRtFuture : public internal::PjRtFutureBase<absl::StatusOr<T>> {
     // useful when the promise has to be captured by a std::function.
     std::shared_ptr<Promise> ToShared() && {
       return std::make_shared<Promise>(std::move(*this));
+    }
+
+    // Returns a future associated with the promise. We use a trick we an extra
+    // template parameter to disable converting promise to future for move-only
+    // types, as it is illegal to create multiple move-only futures sharing the
+    // underlying async value storage. For move-only types, the only way to
+    // create a future is to call `MakePromise`.
+    template <typename U = void,
+              std::enable_if_t<!is_move_only && std::is_void_v<U>>* = nullptr>
+    PjRtFuture<T> future(
+        PjRtFutureHelpers::OnBlockStartFn on_block_start = nullptr,
+        PjRtFutureHelpers::OnBlockEndFn on_block_end = nullptr) const {
+      return PjRtFuture<T>(*this, std::move(on_block_start),
+                           std::move(on_block_end));
     }
 
    private:
@@ -762,10 +765,6 @@ class PjRtFuture<void> : public internal::PjRtFutureBase<absl::Status> {
 
   class Promise : public Base::Promise {
    public:
-    Promise(Promise&&) = default;
-    Promise& operator=(Promise&&) = default;
-
-    using Base::Promise::async_value;
     using Base::Promise::Promise;
 
     // Sets the promise completed with a given status. Must be called at most
