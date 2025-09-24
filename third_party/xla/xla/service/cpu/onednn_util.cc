@@ -12,9 +12,20 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#if defined(INTEL_MKL)
 
 #include "xla/service/cpu/onednn_util.h"
+
+#include <cstdint>
+#include <memory>
+#include <vector>
+
+#include "absl/log/log.h"
+#include "oneapi/dnnl/dnnl.hpp"
+#include "oneapi/dnnl/dnnl_common.hpp"
+#include "oneapi/dnnl/dnnl_threadpool.hpp"
+#include "oneapi/dnnl/dnnl_threadpool_iface.hpp"
+#include "oneapi/dnnl/dnnl_types.h"
+#include "xla/tsl/util/onednn_threadpool.h"
 
 #define EIGEN_USE_THREADS
 
@@ -122,5 +133,3 @@ dnnl::post_ops PopulateOneDnnPostOps(
 
 }  // namespace cpu
 }  // namespace xla
-
-#endif  // INTEL_MKL

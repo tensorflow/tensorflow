@@ -15,6 +15,8 @@ mkl_repository depends on the following environment variables:
   * `TF_MKL_ROOT`: The root folder where a copy of libmkl is located.
 """
 
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
+
 _TF_MKL_ROOT = "TF_MKL_ROOT"
 
 def if_mkl(if_true, if_false = []):
@@ -44,6 +46,15 @@ def if_mkl(if_true, if_false = []):
 # Use `if_onednn` for XLA code to allow different configurations between TF and
 # XLA in the future.
 if_onednn = if_mkl
+
+def onednn_cc_library(srcs = [], hdrs = [], deps = [], **kwargs):
+    """cc_library rule with empty src/hdrs/deps if not building with oneDNN."""
+    cc_library(
+        srcs = if_onednn(srcs),
+        hdrs = if_onednn(hdrs),
+        deps = if_onednn(deps),
+        **kwargs
+    )
 
 def if_mkl_ml(if_true, if_false = []):
     """Shorthand for select()'ing on whether we're building with MKL-ML.
