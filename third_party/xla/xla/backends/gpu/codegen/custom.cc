@@ -99,8 +99,9 @@ absl::StatusOr<std::unique_ptr<Thunk>> BuildCustomKernelThunkForFusion(
       emitters::KernelArguments::Create(ir_emitter_context.buffer_assignment(),
                                         GetDefaultBufferAlignment(), &fusion));
 
-  return std::make_unique<CustomKernelThunk>(&fusion, std::move(custom_kernel),
-                                             std::move(kernel_arguments));
+  return std::make_unique<CustomKernelThunk>(
+      &fusion, std::move(custom_kernel), std::move(kernel_arguments),
+      ir_emitter_context.GetNextThunkId());
 }
 
 absl::StatusOr<BufferAllocation::Slice> GetOperandSlice(
@@ -642,7 +643,8 @@ absl::StatusOr<FusionEmissionResult> EmitGemm(
                       ir_emitter_context.gpu_compute_capability()));
 
   std::unique_ptr<Thunk> thunk;
-  auto thunk_info = Thunk::ThunkInfo::WithProfileAnnotation(&fusion);
+  auto thunk_info = Thunk::ThunkInfo::WithProfileAnnotation(
+      &fusion, ir_emitter_context.GetNextThunkId());
 
   if (absl::c_any_of(slice_instrs, IsDynamicSliceOrDynamicUpdateSlice)) {
     // Creating embedded GEMM thunk.
@@ -880,7 +882,8 @@ absl::StatusOr<FusionEmissionResult> EmitCustomCall(
   }
 
   std::unique_ptr<Thunk> thunk;
-  auto thunk_info = Thunk::ThunkInfo::WithProfileAnnotation(&fusion);
+  auto thunk_info = Thunk::ThunkInfo::WithProfileAnnotation(
+      &fusion, ir_emitter_context.GetNextThunkId());
 
   auto ffi_thunk =
       [&](Slices ops,
@@ -1213,7 +1216,8 @@ absl::StatusOr<FusionEmissionResult> EmitCollective(
       NcclThunkType::CheckImplementable(instr, replica_count, partition_count);
   bool is_degenerate = GetCollectiveConfig(instr, use_global_device_ids)
                            .IsDegenerate(replica_count, partition_count);
-  Thunk::ThunkInfo thunk_info = Thunk::ThunkInfo::WithProfileAnnotation(instr);
+  Thunk::ThunkInfo thunk_info = Thunk::ThunkInfo::WithProfileAnnotation(
+      instr, ir_emitter_context.GetNextThunkId());
 
   FusionEmissionResult result;
 
@@ -1280,7 +1284,9 @@ absl::StatusOr<FusionEmissionResult> EmitCollective(
     } else {
       auto collective_done_thunk = std::make_unique<CollectiveDoneThunk>(
           /*kind=*/collective_done_thunk_kind,
-          /*thunk_info=*/Thunk::ThunkInfo::WithProfileAnnotation(instr),
+          /*thunk_info=*/
+          Thunk::ThunkInfo::WithProfileAnnotation(
+              instr, ir_emitter_context.GetNextThunkId()),
           /*async_events=*/async_events,
           /*async_stream_kind=*/AsyncStreamKind::kCollective);
       seq.emplace_back(std::move(collective_done_thunk));

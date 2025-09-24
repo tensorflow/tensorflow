@@ -31,6 +31,7 @@ limitations under the License.
 #include "mlir/IR/Operation.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/host_execute_thunk.h"
+#include "xla/backends/gpu/runtime/thunk_id.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/buffer_assignment.h"
@@ -39,6 +40,7 @@ limitations under the License.
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/kernel_reuse_cache.h"
 #include "xla/service/name_uniquer.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 
 namespace xla {
@@ -139,6 +141,8 @@ class IrEmitterContext {
 
   bool emit_kernels() const { return emit_kernels_; }
 
+  ThunkId GetNextThunkId() { return thunk_id_generator_.GetNextThunkId(); }
+
  private:
   const HloModule* hlo_module_;
   const BufferAssignment* buffer_assignment_;
@@ -157,6 +161,9 @@ class IrEmitterContext {
 
   // We should not emit kernels when loading thunks from a compilation result.
   const bool emit_kernels_;
+
+  // Generates unique IDs for thunk creation.
+  ThunkIdGenerator thunk_id_generator_;
 };
 
 }  // namespace gpu

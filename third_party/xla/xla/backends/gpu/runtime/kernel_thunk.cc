@@ -34,6 +34,7 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
+#include "xla/backends/gpu/runtime/thunk_id.h"
 #include "xla/codegen/emitters/kernel_arguments.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/buffer_assignment.h"
@@ -255,9 +256,9 @@ absl::Status KernelThunk::ExecuteOnStream(const ExecuteParams& params) {
 
 CustomKernelThunk::CustomKernelThunk(
     const HloInstruction* instr, CustomKernel custom_kernel,
-    const emitters::KernelArguments& kernel_arguments)
+    const emitters::KernelArguments& kernel_arguments, ThunkId thunk_id)
     : Thunk(Kind::kCustomKernel,
-            Thunk::ThunkInfo::WithProfileAnnotation(instr)),
+            Thunk::ThunkInfo::WithProfileAnnotation(instr, thunk_id)),
       args_(kernel_arguments.GetArgumentBufferSlices()),
       written_(kernel_arguments.GetArgumentOutputFlags()),
       custom_kernel_(std::move(custom_kernel)) {}

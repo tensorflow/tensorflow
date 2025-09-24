@@ -29,6 +29,7 @@ import "xla/xla_data.proto";
 message ThunkInfoProto {
   string profile_annotation = 1;
   int64 execution_stream_id = 2;
+  int64 thunk_id = 3;
 }
 
 message CopyThunkProto {

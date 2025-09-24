@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <memory>
 #include <string>
+#include <utility>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -25,11 +26,20 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
-#include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/backends/gpu/runtime/thunk_id.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla::gpu {
 namespace {
+
+class DummyThunk : public Thunk {
+ public:
+  explicit DummyThunk(Thunk::Kind kind, Thunk::ThunkInfo thunk_info)
+      : Thunk(kind, std::move(thunk_info)) {}
+  absl::Status ExecuteOnStream(const ExecuteParams& params) override {
+    return absl::OkStatus();
+  }
+};
 
 using ::testing::IsEmpty;
 
@@ -40,6 +50,7 @@ Thunk::ThunkInfo GetExampleThunkInfo() {
   Thunk::ThunkInfo thunk_info{};
   thunk_info.execution_stream_id = kExecutionStreamId;
   thunk_info.profile_annotation = kProfileAnnotation;
+  thunk_info.thunk_id = ThunkId(1);
   return thunk_info;
 }
 
@@ -78,8 +89,7 @@ TEST(SequentialThunkTest, SequentialThunkChainFromProto) {
   // sequential thunk.
   ThunkProto* inner_proto = outer_proto.add_thunks();
   inner_proto->mutable_sequential_thunk();
-  inner_proto->mutable_thunk_info()->set_profile_annotation(
-      std::string{kProfileAnnotation});
+  inner_proto->mutable_thunk_info()->set_profile_annotation(kProfileAnnotation);
   inner_proto->mutable_thunk_info()->set_execution_stream_id(
       kExecutionStreamId.value());
 
@@ -114,6 +124,32 @@ TEST(SequentialThunkTest, SequentialThunkChainFromProto) {
   EXPECT_THAT(inner_thunk->thunks(), IsEmpty());
   EXPECT_EQ(inner_thunk->execution_stream_id(), kExecutionStreamId);
   EXPECT_EQ(inner_thunk->profile_annotation(), kProfileAnnotation);
+}
+
+TEST(SequentialThunkTest, ToString) {
+  Thunk::ThunkInfo thunk_info;
+  thunk_info.profile_annotation = "profile_annotation";
+  thunk_info.execution_stream_id = 123;
+  thunk_info.thunk_id = ThunkId(1);
+
+  ThunkSequence thunks;
+  thunks.push_back(
+      std::make_unique<DummyThunk>(Thunk::Kind::kGemm, thunk_info));
+
+  thunk_info.thunk_id = ThunkId(2);
+  thunks.push_back(
+      std::make_unique<DummyThunk>(Thunk::Kind::kGemm, thunk_info));
+
+  thunk_info.thunk_id = ThunkId(3);
+  thunks.push_back(
+      std::make_unique<DummyThunk>(Thunk::Kind::kGemm, thunk_info));
+
+  thunk_info.thunk_id = ThunkId(4);
+  SequentialThunk sequential_thunk(thunk_info, std::move(thunks));
+  EXPECT_EQ(sequential_thunk.ToString(/*indent=*/0),
+            "001: kGemm\t\n"
+            "002: kGemm\t\n"
+            "003: kGemm\t\n");
 }
 
 }  // namespace

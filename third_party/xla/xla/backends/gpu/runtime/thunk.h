@@ -38,6 +38,7 @@ limitations under the License.
 #include "xla/backends/gpu/collectives/gpu_cliques.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
+#include "xla/backends/gpu/runtime/thunk_id.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
 #include "xla/executable_run_options.h"
@@ -87,7 +88,7 @@ TSL_LIB_GTL_DEFINE_INT_TYPE(ExecutionStreamId, uint64_t);
 // Unique identifier for async events. The same identifier is expected to be
 // shared between a pair of StartThunk and corresponding DoneThunk. It is used
 // to collect async regions for a CommandBufferThunk.
-TSL_LIB_GTL_DEFINE_INT_TYPE(AsyncEventsUniqueId, uint64_t)
+TSL_LIB_GTL_DEFINE_INT_TYPE(AsyncEventsUniqueId, uint64_t);
 
 // Thunk acts as the bridge between IrEmitter and GpuExecutable. It stores the
 // metadata IrEmitter generates for GpuExecutable to invoke an HloInstruction.
@@ -220,11 +221,14 @@ class Thunk {
     static absl::StatusOr<Thunk::ThunkInfo> FromProto(
         const ThunkInfoProto& proto);
 
-    static ThunkInfo WithProfileAnnotation(const HloInstruction* instr);
+    static ThunkInfo WithProfileAnnotation(const HloInstruction* instr,
+                                           ThunkId thunk_id);
 
     std::string profile_annotation;
 
     ExecutionStreamId execution_stream_id = kDefaultExecutionStreamId;
+
+    ThunkId thunk_id = ThunkId{0};
 
     // Serializes a ThunkInfo to a ThunkInfoProto.
     ThunkInfoProto ToProto() const;

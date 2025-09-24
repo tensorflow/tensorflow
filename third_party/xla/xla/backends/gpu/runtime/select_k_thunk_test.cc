@@ -22,6 +22,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
+#include "xla/backends/gpu/runtime/thunk_id.h"
 #include "xla/codegen/emitters/kernel_arguments.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/literal_util.h"
@@ -39,6 +40,7 @@ TEST(SelectKThunkTest, ToProto) {
   Thunk::ThunkInfo thunk_info;
   thunk_info.profile_annotation = "profile_annotation";
   thunk_info.execution_stream_id = 123;
+  thunk_info.thunk_id = 456;
 
   BufferAllocation alloc0(/*index=*/0, /*size=*/20, /*color=*/0);
   BufferAllocation::Slice slice0(&alloc0, /*offset=*/0, /*size=*/20);
@@ -63,10 +65,11 @@ TEST(SelectKThunkTest, ToProto) {
   auto topKInst = HloInstruction::CreateCustomCall(
       ShapeUtil::MakeShape(F32, {1, 5}), {c1.get()}, "__gpu$TopK");
 
-  SelectKThunk thunk(topKInst.get(), 1, 5, 3, F32, kernel_arguments);
+  SelectKThunk thunk(topKInst.get(), 1, 5, 3, F32, kernel_arguments,
+                     ThunkId(456));
   TF_ASSERT_OK_AND_ASSIGN(ThunkProto proto, thunk.ToProto());
   EXPECT_THAT(proto, EqualsProto(R"pb(
-                thunk_info { profile_annotation: "custom-call" }
+                thunk_info { profile_annotation: "custom-call" thunk_id: 456 }
                 select_k_thunk {}
               )pb"));
 }

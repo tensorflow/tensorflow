@@ -16,7 +16,6 @@ limitations under the License.
 
 #include <cstdint>
 #include <functional>
-#include <iterator>
 #include <memory>
 #include <optional>
 #include <string>
@@ -24,7 +23,6 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
-#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -67,7 +65,6 @@ limitations under the License.
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/DialectRegistry.h"
-#include "mlir/IR/ImplicitLocOpBuilder.h"
 #include "mlir/IR/Location.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
@@ -111,10 +108,10 @@ limitations under the License.
 #include "xla/service/gpu/llvm_gpu_backend/ptx_version_util.h"
 #include "xla/service/gpu/target_util.h"
 #include "xla/service/llvm_ir/llvm_util.h"
-#include "xla/shape.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/gpu/tma_metadata.h"
 #include "xla/stream_executor/semantic_version.h"
 #include "xla/tsl/framework/mlir/status_scoped_diagnostic_handler.h"
 #include "xla/tsl/platform/errors.h"
@@ -319,8 +316,10 @@ absl::StatusOr<FusionEmissionResult> EmitterBase::Emit(
 
   FusionEmissionResult result;
   result.thunks.emplace_back(std::make_unique<KernelThunk>(
-      Thunk::ThunkInfo::WithProfileAnnotation(&fusion), entry->kernel_name,
-      args, launch_dims, entry->cluster_dim, entry->shmem_bytes,
+      Thunk::ThunkInfo::WithProfileAnnotation(
+          &fusion, ir_emitter_context.GetNextThunkId()),
+      entry->kernel_name, args, launch_dims, entry->cluster_dim,
+      entry->shmem_bytes,
       /*tma_metadata=*/se::gpu::TmaMetadata()));
   return result;
 }

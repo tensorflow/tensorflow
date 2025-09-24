@@ -148,7 +148,8 @@ class KernelThunk : public Thunk {
 class CustomKernelThunk : public Thunk {
  public:
   CustomKernelThunk(const HloInstruction* inst, CustomKernel custom_kernel,
-                    const emitters::KernelArguments& kernel_arguments);
+                    const emitters::KernelArguments& kernel_arguments,
+                    ThunkId thunk_id);
 
   std::string ToString(int indent) const override;
 

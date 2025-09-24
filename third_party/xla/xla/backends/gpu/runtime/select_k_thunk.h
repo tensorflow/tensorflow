@@ -50,7 +50,8 @@ class SelectKThunk : public Thunk {
   SelectKThunk(const HloInstruction* inst, std::uint32_t batch_size,
                std::uint32_t num_elements, std::uint32_t k,
                xla::PrimitiveType dtype,
-               const emitters::KernelArguments& kernel_arguments);
+               const emitters::KernelArguments& kernel_arguments,
+               ThunkId thunk_id);
 
   std::string ToString(int indent) const override;
 

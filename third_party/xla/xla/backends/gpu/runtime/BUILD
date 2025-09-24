@@ -749,6 +749,7 @@ xla_test(
     deps = [
         ":gpublas_lt_matmul_thunk",
         ":thunk",
+        ":thunk_id",
         "//xla:error_spec",
         "//xla:executable_run_options",
         "//xla:shape_util",
@@ -830,6 +831,7 @@ cc_library(
     hdrs = ["kernel_thunk.h"],
     deps = [
         ":thunk",
+        ":thunk_id",
         ":thunk_proto_cc",
         "//xla:shape_util",
         "//xla:types",
@@ -981,6 +983,7 @@ cc_library(
     hdrs = ["select_k_thunk.h"],
     deps = [
         ":thunk",
+        ":thunk_id",
         ":thunk_proto_cc",
         "//xla:shape_util",
         "//xla:types",
@@ -1008,6 +1011,7 @@ xla_cc_test(
     deps = [
         ":select_k_thunk",
         ":thunk",
+        ":thunk_id",
         ":thunk_proto_cc",
         "//xla:literal_util",
         "//xla:shape_util",
@@ -1450,6 +1454,7 @@ cc_library(
     deps = [
         ":collective_thunk",
         ":thunk",
+        ":thunk_id",
         "//xla:util",
         "//xla/backends/gpu/collectives:gpu_clique_key",
         "//xla/backends/gpu/collectives:gpu_communicator",
@@ -1541,6 +1546,7 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
         "@local_tsl//tsl/profiler/lib:scoped_annotation",
         "@local_tsl//tsl/profiler/lib:traceme",
     ],
@@ -1552,6 +1558,7 @@ xla_cc_test(
     deps = [
         ":sequential_thunk",
         ":thunk",
+        ":thunk_id",
         ":thunk_proto_cc",
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:statusor",
@@ -1593,10 +1600,28 @@ cc_library(
 )
 
 cc_library(
+    name = "thunk_id",
+    hdrs = ["thunk_id.h"],
+    deps = [
+        "//xla/tsl/lib/gtl:int_type",
+    ],
+)
+
+xla_cc_test(
+    name = "thunk_id_test",
+    srcs = ["thunk_id_test.cc"],
+    deps = [
+        ":thunk_id",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "thunk",
     srcs = ["thunk.cc"],
     hdrs = ["thunk.h"],
     deps = [
+        ":thunk_id",
         ":thunk_proto_cc",
         "//xla:executable_run_options",
         "//xla:status_macros",

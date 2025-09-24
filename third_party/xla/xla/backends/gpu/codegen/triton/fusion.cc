@@ -265,9 +265,10 @@ absl::StatusOr<FusionEmissionResult> TritonFusion::Emit(
 
   FusionEmissionResult result;
   result.thunks.emplace_back(std::make_unique<KernelThunk>(
-      Thunk::ThunkInfo::WithProfileAnnotation(&fusion), entry->kernel_name,
-      kernel_arguments, entry->launch_dimensions, entry->cluster_dim,
-      entry->shmem_bytes, entry->tma_metadata));
+      Thunk::ThunkInfo::WithProfileAnnotation(
+          &fusion, ir_emitter_context.GetNextThunkId()),
+      entry->kernel_name, kernel_arguments, entry->launch_dimensions,
+      entry->cluster_dim, entry->shmem_bytes, entry->tma_metadata));
 
   return result;
 }

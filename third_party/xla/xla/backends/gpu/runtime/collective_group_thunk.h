@@ -38,7 +38,7 @@ class CollectiveGroupThunk : public Thunk {
  public:
   CollectiveGroupThunk(const HloInstruction* instruction, Thunk::Kind kind,
                        std::vector<std::unique_ptr<Thunk>> thunks,
-                       AsyncStreamKind stream_kind);
+                       AsyncStreamKind stream_kind, ThunkId thunk_id);
   absl::Status Prepare(const PrepareParams& params,
                        ResourceRequestsInterface& resource_requests) override;
   absl::Status ExecuteOnStream(const Thunk::ExecuteParams& params) override;
