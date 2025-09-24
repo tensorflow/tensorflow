@@ -64,6 +64,12 @@ struct AutotuneConfig {
   // If not empty, detailed logs will be written to the specified file path
   // as a textproto representation of an `AutotuningLogs` proto message.
   std::string dump_logs_to = "";
+  // TODO b/446618161 - Remove this when old triton emitter is
+  // deprecated.
+  // If true, autotuner will not select cublas configs. We still try cublas
+  // configs as they can be used to check numerical issues with triton but they
+  // are not considered for selection.
+  bool exclude_cublas_config = false;
 };
 
 class Autotuner {

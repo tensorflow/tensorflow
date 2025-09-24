@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/backends/autotuner/autotuner.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <limits>
 #include <memory>
@@ -309,6 +310,16 @@ absl::StatusOr<std::vector<Autotuner::ConfigResult>> Autotuner::ProfileAll(
 
 absl::StatusOr<Autotuner::ConfigResult> Autotuner::PickBestConfig(
     std::vector<ConfigResult>& results) {
+  if (autotune_config_.exclude_cublas_config) {
+    results.erase(
+        std::remove_if(results.begin(), results.end(),
+                       [](const ConfigResult& result) {
+                         return result.config.codegen_backend->name() ==
+                                "cublas";
+                       }),
+        results.end());
+  }
+
   absl::Duration min_duration = absl::InfiniteDuration();
   ConfigResult* best_result = nullptr;
   for (ConfigResult& result : results) {

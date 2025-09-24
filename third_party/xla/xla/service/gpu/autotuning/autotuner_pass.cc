@@ -56,6 +56,8 @@ AutotuneConfig GetAutotuneConfig(const DebugOptions& debug_options) {
   autotune_config.expect_all_instructions_in_cache =
       debug_options.xla_gpu_require_complete_aot_autotune_results();
   autotune_config.dump_logs_to = debug_options.xla_gpu_dump_autotune_logs_to();
+  autotune_config.exclude_cublas_config =
+      !debug_options.xla_gpu_cublas_fallback();
   return autotune_config;
 }
 
