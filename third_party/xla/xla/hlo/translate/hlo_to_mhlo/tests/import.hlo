@@ -180,6 +180,14 @@ add {
   ROOT %and.3 = pred[4] and(pred[4] %Arg_0.1, pred[4] %Arg_1.2)
 }
 
+// CHECK-LABEL:  func private @test_acos(%arg0: tensor<1x16x16x3xf32>) -> tensor<1x16x16x3xf32>
+%test_acos (arg0.1: f32[1,16,16,3]) -> f32[1,16,16,3] {
+  %arg0.1 = f32[1,16,16,3]{3,2,1,0} parameter(0), metadata={op_name="HLO_Args"}
+
+  // CHECK-NEXT:  mhlo.acos %arg0 : tensor<1x16x16x3xf32>
+  ROOT %acos.3 = f32[1,16,16,3]{3,2,1,0} acos(f32[1,16,16,3]{3,2,1,0} %arg0.1)
+}
+
 // CHECK-LABEL:  func private @test_atan2
 // CHECK-SAME:    ([[VAL_0:%.*]]: tensor<4xf32>, [[VAL_1:%.*]]: tensor<4xf32>) -> tensor<4xf32>
 %test_atan2 (Arg_0.1: f32[4], Arg_1.2: f32[4]) -> f32[4] {
@@ -575,6 +583,14 @@ add {
 
   // CHECK-NEXT:  mhlo.cosine %arg0 : tensor<1x16x16x3xf32>
   ROOT %cosine.3 = f32[1,16,16,3]{3,2,1,0} cosine(f32[1,16,16,3]{3,2,1,0} %arg0.1)
+}
+
+// CHECK-LABEL:  func private @test_cosh(%arg0: tensor<1x16x16x3xf32>) -> tensor<1x16x16x3xf32>
+%test_cosh (arg0.1: f32[1,16,16,3]) -> f32[1,16,16,3] {
+  %arg0.1 = f32[1,16,16,3]{3,2,1,0} parameter(0), metadata={op_name="HLO_Args"}
+
+  // CHECK-NEXT:  mhlo.cosh %arg0 : tensor<1x16x16x3xf32>
+  ROOT %cosh.3 = f32[1,16,16,3]{3,2,1,0} cosh(f32[1,16,16,3]{3,2,1,0} %arg0.1)
 }
 
 // CHECK-LABEL:  func private @test_tan(%arg0: tensor<1x16x16x3xf32>) -> tensor<1x16x16x3xf32>

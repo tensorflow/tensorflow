@@ -250,6 +250,9 @@ struct TargetDeviceFunction GetDeviceFunctionRoot(
     case TargetDeviceFunctionID::kCos: {
       return {"__nv_cos", "__ocml_cos", "_Z15__spirv_ocl_cos"};
     }
+    case TargetDeviceFunctionID::kCosh: {
+      return {"__nv_cosh", "__ocml_cosh", "_Z16__spirv_ocl_cosh"};
+    }
     case TargetDeviceFunctionID::kErf: {
       return {"__nv_erf", "__ocml_erf", "_Z15__spirv_ocl_erf"};
     }
@@ -311,6 +314,8 @@ std::optional<TargetDeviceFunctionID> GetTargetDeviceFunctionID(HloOpcode op) {
       return TargetDeviceFunctionID::kAtan2;
     case HloOpcode::kCos:
       return TargetDeviceFunctionID::kCos;
+    case HloOpcode::kCosh:
+      return TargetDeviceFunctionID::kCosh;
     case HloOpcode::kExp:
       return TargetDeviceFunctionID::kExp;
     case HloOpcode::kErf:

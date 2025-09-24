@@ -105,12 +105,30 @@ absl::flat_hash_set<HloOpcode> TritonSupportedUnaryElementwiseOps(
       element_type == PrimitiveType::F32 ||
       element_type == PrimitiveType::F64) {
     absl::flat_hash_set<HloOpcode> additional_opcodes{
-        HloOpcode::kAsin,  HloOpcode::kCos,   HloOpcode::kFloor,
-        HloOpcode::kLog1p, HloOpcode::kSqrt,  HloOpcode::kTanh,
-        HloOpcode::kAcos,  HloOpcode::kAcosh, HloOpcode::kExp,
-        HloOpcode::kExpm1, HloOpcode::kCbrt,  HloOpcode::kErf,
-        HloOpcode::kLog,   HloOpcode::kTan,   HloOpcode::kCeil,
-        HloOpcode::kRsqrt, HloOpcode::kSin,   HloOpcode::kSinh};
+        // clang-format off
+        // go/keep-sorted start
+        HloOpcode::kAcos,
+        HloOpcode::kAcosh,
+        HloOpcode::kAsin,
+        HloOpcode::kCbrt,
+        HloOpcode::kCeil,
+        HloOpcode::kCos,
+        HloOpcode::kCosh,
+        HloOpcode::kErf,
+        HloOpcode::kExp,
+        HloOpcode::kExpm1,
+        HloOpcode::kFloor,
+        HloOpcode::kLog,
+        HloOpcode::kLog1p,
+        HloOpcode::kRsqrt,
+        HloOpcode::kSin,
+        HloOpcode::kSinh,
+        HloOpcode::kSqrt,
+        HloOpcode::kTan,
+        HloOpcode::kTanh,
+        // go/keep-sorted end
+        // clang-format on
+    };
     ret.insert(additional_opcodes.begin(), additional_opcodes.end());
   }
 

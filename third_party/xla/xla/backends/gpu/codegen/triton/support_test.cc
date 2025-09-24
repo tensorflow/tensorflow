@@ -28,7 +28,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
-#include "absl/container/flat_hash_set.h"
+#include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
@@ -44,7 +44,6 @@ limitations under the License.
 #include "xla/service/gpu/model/tiled_hlo_computation.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
@@ -55,7 +54,6 @@ namespace gpu {
 namespace {
 
 using ::testing::Not;
-using ::tsl::testing::IsOk;
 
 // Returns true if the given `opcode` supports the given `type` with respect to
 // HLO semantics. This is completely independent of the what Triton supports or
@@ -98,6 +96,7 @@ bool DoesOpSupportType(HloOpcode opcode, PrimitiveType type) {
     case HloOpcode::kSinh:
     case HloOpcode::kAsin:
     case HloOpcode::kCbrt:
+    case HloOpcode::kCosh:
     case HloOpcode::kErf:
     case HloOpcode::kFloor:
     case HloOpcode::kCeil:
@@ -455,6 +454,7 @@ constexpr std::array kTestedOpsUnaryElementwise = {
     HloOpcode::kClz,
     HloOpcode::kCopy,
     HloOpcode::kCos,
+    HloOpcode::kCosh,
     HloOpcode::kErf,
     HloOpcode::kExp,
     HloOpcode::kExpm1,
@@ -694,11 +694,11 @@ using ReduceTest = TritonSupportTestWithTypeAndOpcodeAndDeviceParam;
 static absl::string_view init_value(PrimitiveType dtype) {
   if (dtype == C64 || dtype == C128) {
     return "(0, 0)";
-  } else if (dtype == F8E8M0FNU) {
-    return "1e-40";
-  } else {
-    return "0";
   }
+  if (dtype == F8E8M0FNU) {
+    return "1e-40";
+  }
+  return "0";
 }
 
 TEST_P(ReduceTest, IsTritonSupportedReduction) {

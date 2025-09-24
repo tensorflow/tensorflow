@@ -2013,6 +2013,19 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
     return UnsupportedTypeError(cos);
   }
 
+  absl::Status HandleCosh(const HloInstruction* cosh) override {
+    if constexpr (!is_complex_v<ReturnT>) {
+      TF_ASSIGN_OR_RETURN(
+          Literal literal,
+          ElementWiseUnaryOp(cosh, [](ElementwiseT elem_operand) {
+            return std::cosh(elem_operand);
+          }));
+      parent_->SetEvaluatedLiteralFor(cosh, std::move(literal));
+      return absl::OkStatus();
+    }
+    return UnsupportedTypeError(cosh);
+  }
+
   absl::Status HandleTan(const HloInstruction* tan) override {
     if constexpr (std::is_floating_point_v<ElementwiseT>) {
       TF_ASSIGN_OR_RETURN(

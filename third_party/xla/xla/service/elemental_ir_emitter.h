@@ -180,6 +180,9 @@ class ElementalIrEmitter : public IrBuilderMixin<ElementalIrEmitter> {
   virtual absl::StatusOr<llvm::Value*> EmitCos(PrimitiveType prim_type,
                                                llvm::Value* value);
 
+  virtual absl::StatusOr<llvm::Value*> EmitCosh(PrimitiveType prim_type,
+                                                llvm::Value* value);
+
   virtual absl::StatusOr<llvm::Value*> EmitCosm1(PrimitiveType prim_type,
                                                  llvm::Value* value);
 

@@ -1815,11 +1815,9 @@ xla_test(
         ":client_library_test_base",
         ":hlo_test_base",
         ":xla_internal_test_main",
-        "//xla/hlo/builder:xla_builder",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:test",
         "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/platform:errors",
     ],
 )
 

@@ -1054,6 +1054,8 @@ absl::StatusOr<SmallVector<Value, 1>> HloToMlir(
           /*attributes=*/{}, builder);
     case HloOpcode::kCos:
       return MapElementwiseOp<mhlo::CosineOp>(arg_types, operands, builder);
+    case HloOpcode::kCosh:
+      return MapElementwiseOp<mhlo::CoshOp>(arg_types, operands, builder);
     case HloOpcode::kDivide:
       return MapElementwiseOp<mhlo::DivOp>(arg_types, operands, builder);
     case HloOpcode::kErf:
