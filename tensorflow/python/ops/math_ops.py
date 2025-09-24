@@ -310,9 +310,9 @@ def argmax_v2(input, axis=None, output_type=dtypes.int64, name=None):
         f"axis tensor dtypes {axis.dtype} is not supported"
       )
     castable_types = {
-        dtypes.int8, dtypes.int16,
-        dtypes.uint8, dtypes.uint16
-      }
+      dtypes.int8, dtypes.int16,
+      dtypes.uint8, dtypes.uint16
+    }
     if axis.dtype in castable_types:
       axis = cast(axis, dtypes.int32)
   elif not isinstance(axis, int):

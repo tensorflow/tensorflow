@@ -1379,7 +1379,7 @@ class ErfcinvTest(test_util.TensorFlowTestCase):
 
 
 @test_util.run_all_in_graph_and_eager_modes
-class ArgMaxMinTest(test_util.TensorFlowTestCase):
+class ArgMaxMinTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
   def _generateRandomTensor(self, dtype, shape):
     if dtype.is_integer:
@@ -1426,25 +1426,24 @@ class ArgMaxMinTest(test_util.TensorFlowTestCase):
         tf_max = math_ops.argmax(
             tf_values, axis=axis, output_type=dtypes.uint16)
         self.assertAllEqual(tf_max, np_max)
- 
-  def testArgMaxWithIntegerDtypes(self):
-    axis_dtypes = {
-      dtypes.int8, dtypes.uint8,
-      dtypes.int16, dtypes.uint16,
-      dtypes.int32, dtypes.int64
-    }
+  
+  @parameterized.parameters(
+    dtypes.int8, dtypes.uint8,
+    dtypes.int16, dtypes.uint16,
+    dtypes.int32, dtypes.int64
+  )
+  def testArgMaxWithIntegerDtypes(self,dtype):
     shape = (24, 8)
-    for d_type in axis_dtypes:
-      tf_values = self._generateRandomTensor(d_type, shape)
-      np_values = self.evaluate(tf_values)
-      for axis in range(len(shape)):
-        np_max = np.argmax(np_values, axis=axis)
-        tf_max = math_ops.argmax(
-          tf_values,
-          axis=constant_op.constant(axis, dtype=d_type),
-          output_type=dtypes.int32
-        )
-        self.assertAllEqual(tf_max, np_max)
+    tf_values = self._generateRandomTensor(dtype, shape)
+    np_values = self.evaluate(tf_values)
+    for axis in range(len(shape)):
+      np_max = np.argmax(np_values, axis=axis)
+      tf_max = math_ops.argmax(
+        tf_values,
+        axis=constant_op.constant(axis, dtype=dtype),
+        output_type=dtypes.int32
+      )
+      self.assertAllEqual(tf_max, np_max)
 
   def testArgMaxRaisesInvalidDtype(self):
     invalid_axis = constant_op.constant(1, dtype=dtypes.float32)
