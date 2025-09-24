@@ -1,4 +1,3 @@
-
 /* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -16,20 +15,17 @@ limitations under the License.
 
 #ifndef XLA_TSL_UTIL_ONEDNN_THREADPOOL_H_
 #define XLA_TSL_UTIL_ONEDNN_THREADPOOL_H_
-#ifdef INTEL_MKL
 
-#include <list>
-#include <memory>
-#include <string>
-#include <unordered_map>
-#include <utility>
-#include <vector>
+#include <algorithm>
+#include <cstdint>
+#include <functional>
 
 #define EIGEN_USE_THREADS
 
 #include "absl/synchronization/blocking_counter.h"
-#include "dnnl.hpp"
-#include "oneapi/dnnl/dnnl_threadpool.hpp"
+#include "oneapi/dnnl/dnnl_threadpool.h"
+#include "oneapi/dnnl/dnnl_threadpool_iface.hpp"
+#include "oneapi/dnnl/dnnl_version.h"
 #include "xla/tsl/platform/threadpool.h"
 #include "tsl/platform/cpu_info.h"
 
@@ -88,11 +84,11 @@ class OneDnnThreadPool : public threadpool_iface {
         can_use_caller_thread_(can_use_caller_thread) {
     set_num_and_max_threads(num_threads);
   }
-  virtual int get_num_threads() const override { return num_threads_; }
-  virtual bool get_in_parallel() const override {
+  int get_num_threads() const override { return num_threads_; }
+  bool get_in_parallel() const override {
     return (eigen_interface_->CurrentThreadId() != -1) ? true : false;
   }
-  virtual uint64_t get_flags() const override { return ASYNCHRONOUS; }
+  uint64_t get_flags() const override { return ASYNCHRONOUS; }
 #ifdef ENABLE_ONEDNN_ASYNC
   // wait() method for synchronous execution is basically a no-op.
   // But we need to implement it to satisfy the interface.
@@ -100,10 +96,11 @@ class OneDnnThreadPool : public threadpool_iface {
   // in oneDNN.
   virtual void wait() override {}
 #endif  // ENABLE_ONEDNN_ASYNC
-  virtual void parallel_for(int n,
-                            const std::function<void(int, int)>& fn) override {
+  void parallel_for(int n, const std::function<void(int, int)>& fn) override {
     // Should never happen (handled by DNNL)
-    if (n == 0) return;
+    if (n == 0) {
+      return;
+    }
 
     // Should never happen (handled by DNNL)
     if (n == 1) {
@@ -194,5 +191,4 @@ class OneDnnThreadPool {
 
 }  // namespace tsl
 
-#endif  // INTEL_MKL
 #endif  // XLA_TSL_UTIL_ONEDNN_THREADPOOL_H_
