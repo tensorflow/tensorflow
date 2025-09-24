@@ -995,6 +995,8 @@ PJRT_Error* PJRT_Client_FulfillAliasBuffer(
 
   absl::Status status = std::move(fulfill_alias_buffer_cb)(real_buffer_or);
   if (!status.ok()) {
+    LOG(ERROR) << "PJRT_Client_FulfillAliasBuffer: Callback returned error: "
+               << status;
     return new PJRT_Error{status};
   }
   return nullptr;

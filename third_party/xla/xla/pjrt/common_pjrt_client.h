@@ -121,14 +121,6 @@ class CommonPjRtClient : public PjRtClient {
         "CreateLinkedEventPromise is not supported");
   }
 
-  virtual absl::StatusOr<tsl::RCReference<CommonPjRtRawBuffer>>
-  CreateRawBufferAsyncValue(
-      PjRtMemorySpace* memory_space,
-      tsl::RCReference<tsl::IndirectAsyncValue> buffer_promise) {
-    return absl::UnimplementedError(
-        "CreateRawBufferAsyncValue is not supported");
-  }
-
   // Track a user-provided future with attached debug_info (if
   // event_tracking_enabled()).
   virtual void TrackFuture(PjRtMemorySpace* memory_space,
@@ -190,6 +182,21 @@ class CommonPjRtClient : public PjRtClient {
   absl::StatusOr<
       std::pair<std::unique_ptr<PjRtBuffer>, PjRtFulfillAliasBufferCallback>>
   CreateAliasBuffer(const Shape& shape, PjRtMemorySpace* memory_space) override;
+
+  // Creates a raw buffer channel. Returns a tuple containing:
+  // 1.  A tsl::RCReference<CommonPjRtRawBuffer> which is an alias for a future
+  //     raw buffer.
+  // 2.  A tsl::RCReference<PjRtDeviceEvent> which is the definition event
+  //     for the alias raw buffer.
+  // 3.  A PjRtFulfillAliasBufferCallback to fulfill the alias.
+  // TODO(b/447164755 jparkerh): Rework this API to share a bit more code
+  // between children of this class.
+  virtual absl::StatusOr<std::tuple<tsl::RCReference<CommonPjRtRawBuffer>,
+                                    tsl::RCReference<PjRtDeviceEvent>,
+                                    PjRtFulfillAliasBufferCallback>>
+  CreateRawBufferChannel(const Shape& shape, PjRtMemorySpace* memory_space) {
+    return absl::UnimplementedError("CreateRawBufferChannel is not supported");
+  }
 
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> CreateUninitializedBuffer(
       const Shape& shape, PjRtMemorySpace* memory_space) override;
