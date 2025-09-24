@@ -18,8 +18,10 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -816,6 +818,34 @@ TEST_F(EinsumDepthAnalysisTest, SendWithRecv) {
   HloComputation* computation = module->GetComputationWithName("entry");
   EXPECT_EQ(GetInstructionDepth(einsum_depth_map, computation, "after-all.2"),
             0);
+}
+
+TEST_F(EinsumDepthAnalysisTest, SendRecvNotPair) {
+  const std::string module_str = R"(
+    HloModule foobar
+
+    ENTRY entry {
+      arg_0 = s32[] parameter(0)
+      arg_1 = token[] parameter(1)
+
+      send.0 = (s32[], u32[], token[]) send(s32[] arg_0, token[] arg_1), channel_id=3, is_host_transfer=true, sharding={{maximal device=0}, {maximal device=0}, {maximal device=0}}, frontend_attributes={_xla_host_transfer_handler_name="tf_rendezvous", _xla_host_transfer_rendezvous="host_compute_channel_0_args_dtoh_0"}
+      send-done.1 = token[] send-done((s32[], u32[], token[]) send.0), channel_id=3, is_host_transfer=true, sharding={maximal device=0}, frontend_attributes={_xla_host_transfer_handler_name="tf_rendezvous", _xla_host_transfer_rendezvous="host_compute_channel_0_args_dtoh_0"}
+
+      recv.2 = (s32[], u32[], token[]) recv(token[] send-done.1), channel_id=4, is_host_transfer=true, sharding={{maximal device=0}, {maximal device=0}, {maximal device=0}}, frontend_attributes={_xla_host_transfer_handler_name="tf_rendezvous", _xla_host_transfer_rendezvous="host_compute_channel_1_retvals_htod_0"}
+      recv-done.3 = (s32[], token[]) recv-done((s32[], u32[], token[]) recv.2), channel_id=4, is_host_transfer=true, sharding={{maximal device=0}, {maximal device=0}}, frontend_attributes={_xla_host_transfer_handler_name="tf_rendezvous", _xla_host_transfer_rendezvous="host_compute_channel_1_retvals_htod_0"}
+
+      get-tuple-element.4 = token[] get-tuple-element((s32[], token[]) recv-done.3), index=1, sharding={maximal device=0}
+      ROOT %after-all.2 = token[] after-all(get-tuple-element.4), frontend_attributes={_xla_host_transfer_handler_name="tf_rendezvous",_xla_host_transfer_rendezvous="host_compute_channel_1_retvals_htod_0"}
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(module_str));
+  auto status = EinsumDepthAnalysis::Run(*module->entry_computation(),
+                                         SendRecvGroupMap(*module))
+                    .status();
+  EXPECT_FALSE(status.ok());
+  EXPECT_THAT(status.message(),
+              testing::HasSubstr("Send pairing with Recv not found"));
 }
 
 TEST_F(EinsumDepthAnalysisTest, SparseDenseMatmulDepth) {

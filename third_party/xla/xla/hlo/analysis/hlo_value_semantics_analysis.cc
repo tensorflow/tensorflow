@@ -534,8 +534,10 @@ absl::Status EinsumDepthAnalysis::HandleRecv(HloInstruction* recv) {
   const ShapeTree<int>& depth_tree = GetDepthTreeOrDie(recv);
   TF_ASSIGN_OR_RETURN(HloInstruction * send,
                       send_recv_group_map_->GetMatchingSendOrRecv(recv));
-  CHECK(send) << "recv: " << recv->name()
-              << " not found in send_recv_group_map: " << recv->ToString();
+  if (send == nullptr) {
+    return absl::NotFoundError(
+        absl::StrCat("Send pairing with Recv not found: ", recv->name()));
+  }
   ShapeTree<int>& send_depth = GetOrCreateDepthTree(send);
   int max_depth = GetMaxDepth(depth_tree);
   send_depth.ForEachMutableElement([&depth_tree, &send_depth, max_depth](
