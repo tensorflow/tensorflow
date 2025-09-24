@@ -41,6 +41,21 @@ py_strict_library(
     ],
 )
 
+<<<<<<< HEAD
+=======
+py_strict_test(
+    name = "saved_model_cli_empty_feature_test",
+    size = "small",
+    srcs = ["saved_model_cli_empty_feature_test.py"],
+    python_version = "PY3",
+    data = [
+        "saved_model_cli.py",
+        "saved_model_utils.py",
+    ],
+    deps = [":saved_model_cli_lib"],
+)
+
+>>>>>>> 65b16be0de4 (tools/BUILD: minimize deps for saved_model_cli_sanitize_list_test (use :saved_model_cli_lib, drop client_testlib))
 py_strict_library(
     name = "saved_model_utils",
     srcs = ["saved_model_utils.py"],
@@ -600,6 +615,10 @@ py_test(
         "saved_model_cli.py",
     ],
     deps = [
+<<<<<<< HEAD
+=======
+        ":saved_model_cli_lib",
+>>>>>>> 65b16be0de4 (tools/BUILD: minimize deps for saved_model_cli_sanitize_list_test (use :saved_model_cli_lib, drop client_testlib))
         "@absl_py//absl/testing:parameterized",
     ],
 )
