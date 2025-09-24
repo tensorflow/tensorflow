@@ -16,7 +16,9 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/graph_view.h"
 
 #include <atomic>
+#include <cstdint>
 #include <deque>
+#include <limits>
 #include <memory>
 #include <string>
 #include <unordered_map>
@@ -252,9 +254,9 @@ absl::Status GraphView::Initialize(const Graph* g) {
   for (const Node* n : g->nodes()) {
     if (n->out_edges().size() > kint32max) {
       return errors::InvalidArgument(
-          "The executor cannot handle nodes with more than ", kint32max,
-          " output edges. Node ", n->name(), " had ", n->out_edges().size(),
-          " output edges.");
+          "The executor cannot handle nodes with more than ",
+          std::numeric_limits<int32_t>::max(), " output edges. Node ",
+          n->name(), " had ", n->out_edges().size(), " output edges.");
     }
     total_bytes += NodeItemBytes(n);
   }
