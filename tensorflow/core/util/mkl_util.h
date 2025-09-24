@@ -24,7 +24,8 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "dnnl.hpp"
+#include "oneapi/dnnl/dnnl.hpp"
+#include "oneapi/dnnl/dnnl_threadpool.hpp"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"

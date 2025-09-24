@@ -132,6 +132,7 @@ cc_library(
         "//xla/service/cpu:onednn_util",
         "//xla/stream_executor:device_memory",
         "//xla/tsl/concurrency:async_value",
+        "//xla/tsl/mkl:onednn",
         "//xla/tsl/platform:logging",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/base",

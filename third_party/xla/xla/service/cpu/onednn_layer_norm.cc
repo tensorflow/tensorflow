@@ -26,6 +26,7 @@ limitations under the License.
 
 #include "absl/base/dynamic_annotations.h"
 #include "dnnl.hpp"
+#include "oneapi/dnnl/dnnl_threadpool.hpp"
 #include "xla/executable_run_options.h"
 #include "xla/service/cpu/backend_config.pb.h"
 #include "xla/service/cpu/onednn_config.pb.h"

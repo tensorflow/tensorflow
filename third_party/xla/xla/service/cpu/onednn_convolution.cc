@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/base/dynamic_annotations.h"
 #include "unsupported/Eigen/CXX11/Tensor"
 #include "dnnl.hpp"
+#include "oneapi/dnnl/dnnl_threadpool.hpp"
 #include "xla/executable_run_options.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instructions.h"
