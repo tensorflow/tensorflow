@@ -1,12 +1,19 @@
 """TensorFlow workspace initialization. Consult the WORKSPACE on how to use it."""
 
+load("@bazel_skylib//lib:paths.bzl", "paths")
 load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
-load("//third_party:repo.bzl", "tf_vendored")
+load("@bazel_tools//tools/build_defs/repo:local.bzl", "local_repository")
 load("//third_party/tf_runtime:workspace.bzl", tf_runtime = "repo")
 
 def workspace():
-    tf_vendored(name = "local_xla", relpath = "third_party/xla")
-    tf_vendored(name = "local_tsl", relpath = "third_party/xla/third_party/tsl")
+    local_repository(
+        name = "local_xla",
+        path = paths.join(Label("//:__pkg__").workspace_root, "third_party/xla"),
+    )
+    local_repository(
+        name = "local_tsl",
+        path = paths.join(Label("//:__pkg__").workspace_root, "third_party/xla"),
+    )
 
     http_archive(
         name = "io_bazel_rules_closure",
