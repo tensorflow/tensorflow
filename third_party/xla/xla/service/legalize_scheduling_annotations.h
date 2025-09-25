@@ -64,7 +64,7 @@ class LegalizeSchedulingAnnotations : public HloModulePass {
           annotation_to_instruction,
       bool dry_run = false);
 
-  static absl::Status Verify(HloModule* module);
+  absl::Status Verify(HloModule* module);
 
   using HloPassInterface::Run;
   absl::StatusOr<bool> Run(

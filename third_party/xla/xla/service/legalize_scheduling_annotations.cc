@@ -124,11 +124,20 @@ absl::Status AttachAnnotation(
   return absl::OkStatus();
 }
 
-bool IsSupportedAsyncOp(HloInstruction* instr, bool supports_async_start) {
+bool IsSupportedAsyncOp(HloInstruction* instr, bool supports_async_start,
+                        bool check_sync_versions) {
   if (instr->opcode() == HloOpcode::kAsyncStart && !supports_async_start) {
     VLOG(1) << "Dropping annotation on async start operation: "
             << instr->name();
     return false;
+  }
+  if (check_sync_versions) {
+    if (HloPredicateIsOp<HloOpcode::kAllGather, HloOpcode::kAllReduce,
+                         HloOpcode::kCollectivePermute, HloOpcode::kSendDone,
+                         HloOpcode::kSend, HloOpcode::kRecvDone,
+                         HloOpcode::kRecv>(instr)) {
+      return true;
+    }
   }
   return HloPredicateIsOp<
       HloOpcode::kAllGatherDone, HloOpcode::kAllGatherStart,
@@ -358,7 +367,8 @@ bool LegalizeSchedulingAnnotations::KeepSchedulingAnnotation(
     return false;
   }
 
-  return IsSupportedAsyncOp(instr, config_.keep_start_annotation) ||
+  return IsSupportedAsyncOp(instr, config_.keep_start_annotation,
+                            /*check_sync_versions=*/false) ||
          config_.keep_sync_annotation(instr);
 }
 
@@ -413,6 +423,11 @@ absl::Status LegalizeSchedulingAnnotations::Verify(HloModule* module) {
       if (HasSchedulingAnnotation(instr)) {
         auto scheduling_annotation_or = GetSchedulingAnnotation(instr);
         if (!scheduling_annotation_or.ok()) {
+          continue;
+        }
+        if (!IsSupportedAsyncOp(instr, config_.keep_start_annotation,
+                                /*check_sync_versions=*/true) &&
+            !config_.keep_sync_annotation(instr)) {
           continue;
         }
         std::optional<Annotation> scheduling_annotation =
