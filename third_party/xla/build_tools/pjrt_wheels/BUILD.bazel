@@ -4,6 +4,13 @@ load("@rules_python//python:packaging.bzl", "py_wheel")
 # This ensures we can only build plugins for selected CUDA versions.
 cuda_label = "cuda" + cuda_major_version if cuda_major_version else "null"
 
+wheel_version = "0.0.0.dev0"
+
+wheel_platform = select({
+    "//conditions:default": "manylinux2014_x86_64",
+    "//xla/tsl:linux_aarch64": "manylinux2014_aarch64",
+})
+
 # Aliases and filegroups don't move files within bazel-out, so we need to use genrules to place them
 # in the correct directory structure for the wheel.
 genrule(
@@ -44,11 +51,11 @@ py_wheel(
             "xla_" + cuda_label + "_pjrt = xla_plugins.xla_" + cuda_label + "_pjrt\n",
         ],
     },
-    platform = "manylinux2014_x86_64",
+    platform = wheel_platform,
     python_tag = "py3",
     strip_path_prefixes = ["build_tools/pjrt_wheels"],
     summary = "XLA PJRT Plugin",
-    version = "0.0.0.dev0",
+    version = wheel_version,
     deps = [
         ":xla_plugins/xla_" + cuda_label + "_pjrt/xla_gpu_pjrt.so",
         ":init_file_" + cuda_label,
@@ -84,11 +91,11 @@ py_wheel(
             "xla_cpu_pjrt = xla_plugins.xla_cpu_pjrt\n",
         ],
     },
-    platform = "manylinux2014_x86_64",
+    platform = wheel_platform,
     python_tag = "py3",
     strip_path_prefixes = ["build_tools/pjrt_wheels"],
     summary = "XLA PJRT Plugin",
-    version = "0.0.0.dev0",
+    version = wheel_version,
     deps = [
         ":init_file_cpu",
         ":xla_plugins/xla_cpu_pjrt/xla_cpu_pjrt.so",
