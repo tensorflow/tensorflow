@@ -29,11 +29,12 @@ absl::Status Run(const std::string& filename) {
   TF_ASSIGN_OR_RETURN(auto module, LoadTestModule(filename));
   TF_ASSIGN_OR_RETURN(auto emitter_data, GetEmitter(*module));
 
-  auto context = GetMlirContextForTest();
-  context.loadAllAvailableDialects();
+  auto mlir_context = GetMlirContextForTest();
+  mlir_context.loadAllAvailableDialects();
+  auto symbolic_expr_context = GetSymbolicExprContextForTest(&mlir_context);
   TF_ASSIGN_OR_RETURN(auto mlir_module,
                       emitter_data->emitter->CreateMLIRModule(
-                          context, *emitter_data->fusion, "main",
+                          symbolic_expr_context, *emitter_data->fusion, "main",
                           /*buffer_assignment=*/nullptr));
   llvm::outs() << *mlir_module;
   return absl::OkStatus();

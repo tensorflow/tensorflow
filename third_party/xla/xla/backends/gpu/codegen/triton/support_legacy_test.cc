@@ -129,7 +129,7 @@ ENTRY e {
       EXPECT_THAT(
           TritonWrapper("test_fn", &ti.TritonFusion(), GetComputeCapability(),
                         dev_info, block_level_parameters, &llvm_module_,
-                        mlir_context_),
+                        symbolic_expr_context_),
           absl_testing::StatusIs(
               absl::StatusCode::kInternal,
               ::testing::HasSubstr("Failed to compile Triton kernel")));
@@ -307,7 +307,7 @@ ENTRY e {
   EXPECT_THAT(
       TritonWrapper("test_fn", &ti.TritonFusion(), GetComputeCapability(),
                     dev_info, block_level_parameters, &llvm_module_,
-                    mlir_context_),
+                    symbolic_expr_context_),
       absl_testing::StatusIs(
           absl::StatusCode::kInternal,
           ::testing::HasSubstr("Failed to verify Triton module for fusion")));
@@ -351,7 +351,7 @@ ENTRY e {
   EXPECT_THAT(
       TritonWrapper("test_fn", &ti.TritonFusion(), GetComputeCapability(),
                     dev_info, block_level_parameters, &llvm_module_,
-                    mlir_context_),
+                    symbolic_expr_context_),
       absl_testing::StatusIs(absl::StatusCode::kInternal,
                              ::testing::HasSubstr("num_batch_dims <= 1")));
 }

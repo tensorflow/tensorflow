@@ -27,7 +27,6 @@ limitations under the License.
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
-#include "mlir/IR/MLIRContext.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -35,6 +34,7 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/service/gpu/alias_info.h"
 #include "xla/service/gpu/gpu_hlo_schedule.h"
+#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/service/gpu/transforms/collectives/collective_ops_utils.h"
 #include "xla/service/gpu/transforms/collectives/convert_async_collectives_to_sync.h"
 #include "xla/stream_executor/device_description.h"
@@ -97,14 +97,16 @@ struct Metadata {
 //   synchronous post scheduling.
 absl::StatusOr<Metadata> GetSchedulingMetadata(
     const HloModule& module, int64_t pointer_size,
-    const se::DeviceDescription& device_info, mlir::MLIRContext* mlir_context,
+    const se::DeviceDescription& device_info,
+    SymbolicExprContext* symbolic_expr_context,
     const GpuAliasInfo* alias_info) {
   std::unique_ptr<HloModule> cloned_module = module.Clone();
   AnnotateCollectives(cloned_module.get());
   TF_RETURN_IF_ERROR(RunAsyncCollectivesConversionPasses(cloned_module.get()));
-  TF_ASSIGN_OR_RETURN(ScheduleMetadata schedule_metadata,
-                      ScheduleGpuModule(cloned_module.get(), pointer_size,
-                                        device_info, mlir_context, alias_info));
+  TF_ASSIGN_OR_RETURN(
+      ScheduleMetadata schedule_metadata,
+      ScheduleGpuModule(cloned_module.get(), pointer_size, device_info,
+                        symbolic_expr_context, alias_info));
   TF_RETURN_IF_ERROR(AnnotateSyncCollectives(cloned_module.get()));
   return Metadata{schedule_metadata.peak_memory_usage,
                   SyncCollectiveIds(*cloned_module)};
@@ -127,8 +129,8 @@ absl::StatusOr<bool> CollectiveCombinerAnnotator::Run(
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   TF_ASSIGN_OR_RETURN(
       Metadata metadata,
-      GetSchedulingMetadata(*module, pointer_size_, device_info_, mlir_context_,
-                            alias_info_));
+      GetSchedulingMetadata(*module, pointer_size_, device_info_,
+                            symbolic_expr_context_, alias_info_));
   int64_t combiner_threshold =
       MaxAvailableMemory(*module, device_info_) - metadata.peak_memory_bytes;
   if (combiner_threshold <= 0) {

@@ -30,6 +30,7 @@ limitations under the License.
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
+#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tsl/platform/status_matchers.h"
@@ -87,12 +88,13 @@ ENTRY e {
   auto* fusion = Cast<HloFusionInstruction>(
       module->entry_computation()->root_instruction());
 
-  mlir::MLIRContext context;
+  mlir::MLIRContext mlir_context;
+  SymbolicExprContext symbolic_expr_context(&mlir_context);
   TF_ASSERT_OK_AND_ASSIGN(
       auto triton_module,
       CreateTritonModule("triton_fn", fusion,
                          TestGpuDeviceInfo::RTXA6000DeviceInfo(),
-                         BlockLevelParameters(), context));
+                         BlockLevelParameters(), symbolic_expr_context));
 
   std::string annotated_ir = DumpTritonIR(triton_module.get(), true);
 
@@ -137,6 +139,7 @@ ENTRY entry {
   llvm::LLVMContext llvm_ctx;
   llvm::Module llvm_module("module", llvm_ctx);
   mlir::MLIRContext mlir_context;
+  SymbolicExprContext symbolic_expr_context(&mlir_context);
 
   BlockLevelParameters block_level_parameters;
   block_level_parameters.output_tile_sizes = {{1, 1}};
@@ -144,7 +147,8 @@ ENTRY entry {
 
   EXPECT_THAT(TritonWrapper("test_fn", triton_fusion,
                             se::CudaComputeCapability::Hopper(), dev_info,
-                            block_level_parameters, &llvm_module, mlir_context),
+                            block_level_parameters, &llvm_module,
+                            symbolic_expr_context),
               absl_testing::StatusIs(
                   absl::StatusCode::kFailedPrecondition,
                   ::testing::HasSubstr(

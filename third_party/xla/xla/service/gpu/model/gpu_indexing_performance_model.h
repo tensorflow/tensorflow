@@ -29,6 +29,7 @@ limitations under the License.
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/model/block_level_parameters.h"
+#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/service/gpu/model/fusion_analysis_cache.h"
 #include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
 #include "xla/service/gpu/model/gpu_performance_model_base.h"
@@ -57,7 +58,7 @@ class GpuPerformanceModelWithIndexingAnalysis : public GpuPerformanceModelBase {
       const se::DeviceDescription* device_info,
       HloFusionAnalysisCache* fusion_analysis_cache,
       HloCostAnalysis::ShapeSizeFunction shape_size,
-      mlir::MLIRContext* mlir_context)
+      SymbolicExprContext* symbolic_expr_context)
       : hlo_op_profile_(&HloOpProfiles::Singleton().GetProfile(*device_info)),
         device_info_(device_info),
         fusion_analysis_cache_(fusion_analysis_cache),
@@ -68,7 +69,7 @@ class GpuPerformanceModelWithIndexingAnalysis : public GpuPerformanceModelBase {
                                         /*min_latencies_seconds=*/{},
                                         /*count_multiple_input_accesses=*/true},
             *device_info_),
-        mlir_context_(mlir_context) {}
+        symbolic_expr_context_(symbolic_expr_context) {}
 
   // Returns the launch dimensions for the given tiled HLO computation.
   static LaunchDimensions GetLaunchDimensionsForTiledFusion(
@@ -133,7 +134,7 @@ class GpuPerformanceModelWithIndexingAnalysis : public GpuPerformanceModelBase {
   HloFusionAnalysisCache* fusion_analysis_cache_;
   HloCostAnalysis::ShapeSizeFunction shape_size_;
   GpuHloCostAnalysis cost_analysis_;
-  mlir::MLIRContext* mlir_context_;
+  SymbolicExprContext* symbolic_expr_context_;
 };
 
 }  // namespace gpu

@@ -301,6 +301,7 @@ cc_library(
         "//xla/hlo/utils:hlo_query",
         "//xla/service/gpu:alias_info",
         "//xla/service/gpu:gpu_hlo_schedule",
+        "//xla/service/gpu/model/experimental:symbolic_expr",
         "//xla/stream_executor:device_description",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",
@@ -310,7 +311,6 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
-        "@llvm-project//mlir:IR",
     ],
 )
 
@@ -323,6 +323,7 @@ xla_cc_test(
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/service:hlo_module_config",
         "//xla/service/gpu:alias_info",
+        "//xla/service/gpu/model/experimental:symbolic_expr",
         "//xla/stream_executor:device_description",
         "//xla/tsl/platform:status_matchers",
         "//xla/tsl/platform:statusor",

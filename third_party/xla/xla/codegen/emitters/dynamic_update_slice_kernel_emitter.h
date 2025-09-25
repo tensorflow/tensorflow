@@ -23,7 +23,6 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
-#include "mlir/IR/MLIRContext.h"
 #include "xla/codegen/emitters/computation_partitioner.h"
 #include "xla/codegen/emitters/ir/xla_ops.h"
 #include "xla/codegen/emitters/kernel_arguments.h"
@@ -37,6 +36,7 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/runtime/work_dimensions.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/shape.h"
 
 namespace xla::emitters {
@@ -50,8 +50,8 @@ namespace xla::emitters {
 class DynamicUpdateSliceKernelEmitter final : public MlirKernelEmitter {
  public:
   DynamicUpdateSliceKernelEmitter(
-      mlir::MLIRContext& mlir_context, const HloFusionInstruction& fusion,
-      const HloFusionSpec& fusion_spec,
+      gpu::SymbolicExprContext& symbolic_expr_context,
+      const HloFusionInstruction& fusion, const HloFusionSpec& fusion_spec,
       const BufferAssignment* buffer_assignment,
       KernelArguments::BufferAlignment buffer_alignment,
       WorkDimensions work_dimensions, absl::string_view entry_function_name,
@@ -65,14 +65,15 @@ class DynamicUpdateSliceKernelEmitter final : public MlirKernelEmitter {
   // Get the mapping from work item id to output.
   static IndexingMap ComputeWorkItemIdToOutputIndexing(
       const WorkDimensions& work_dimensions, const Shape& update_shape,
-      mlir::MLIRContext* ctx);
+      gpu::SymbolicExprContext* ctx);
 
   std::string name() const final {
     return "dynamic_update_slice_kernel_emitter";
   }
 
  private:
-  IndexingMap ComputeWorkItemIdToInputIndexing(mlir::MLIRContext* ctx) const;
+  IndexingMap ComputeWorkItemIdToInputIndexing(
+      gpu::SymbolicExprContext* symbolic_expr_context) const;
   absl::StatusOr<KernelSpec> GetKernelSpec() const;
 
   absl::Status EmitEntryFunction(
@@ -84,7 +85,7 @@ class DynamicUpdateSliceKernelEmitter final : public MlirKernelEmitter {
   std::vector<emitters::EpilogueSpecification> GetEpilogues() const;
 
  private:
-  mlir::MLIRContext& mlir_context_;
+  gpu::SymbolicExprContext& symbolic_expr_context_;
   const HloFusionInstruction& fusion_;
   const HloFusionSpec& fusion_spec_;
   std::vector<HloInstructionAdaptor> dus_ops_;

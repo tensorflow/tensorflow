@@ -25,7 +25,6 @@ limitations under the License.
 #include "mlir/IR/Attributes.h"  // IWYU pragma: keep
 #include "mlir/IR/BuiltinTypes.h"  // IWYU pragma: keep
 #include "mlir/IR/Dialect.h"  // IWYU pragma: keep
-#include "mlir/IR/MLIRContext.h"  // IWYU pragma: keep
 #include "mlir/IR/OpDefinition.h"  // IWYU pragma: keep
 #include "mlir/IR/OpImplementation.h"  // IWYU pragma: keep
 #include "mlir/Interfaces/CallInterfaces.h"  // IWYU pragma: keep
@@ -33,6 +32,7 @@ limitations under the License.
 #include "mlir/Interfaces/SideEffectInterfaces.h"  // IWYU pragma: keep
 #include "xla/codegen/emitters/ir/xla_dialect.h"  // IWYU pragma: keep
 #include "xla/hlo/analysis/indexing_map.h"  // IWYU pragma: keep
+#include "xla/service/gpu/model/experimental/symbolic_expr.h"  // IWYU pragma: keep
 
 // The order of these includes is important.
 #include "xla/codegen/emitters/ir/xla_enums.h.inc"  // IWYU pragma: keep
@@ -74,7 +74,7 @@ std::optional<Interval> GetIVRange(mlir::Value iv);
 
 // Helpers for getting/setting xla::BackendKind attribute given a func::FuncOp.
 std::optional<xla::BackendKind> GetBackendKind(mlir::func::FuncOp fn);
-void SetBackendKind(mlir::MLIRContext* context, mlir::func::FuncOp fn,
+void SetBackendKind(gpu::SymbolicExprContext* context, mlir::func::FuncOp fn,
                     xla::BackendKind backend_kind);
 
 }  // namespace xla

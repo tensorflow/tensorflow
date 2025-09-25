@@ -20,7 +20,6 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "llvm/IR/Module.h"
-#include "mlir/IR/MLIRContext.h"
 #include "xla/backends/gpu/codegen/fusion_emitter.h"
 #include "xla/backends/gpu/codegen/triton/fusion_emitter.h"
 #include "xla/codegen/tiling/tiled_hlo_computation.h"
@@ -58,7 +57,7 @@ class TritonFusion : public FusionInterface {
   absl::StatusOr<TritonWrapperResult> GenerateTritonKernelAndWrapper(
       const HloFusionInstruction& fusion, absl::string_view impl_fn_name,
       const se::DeviceDescription& device_info, llvm::Module* llvm_module,
-      mlir::MLIRContext* mlir_context) const;
+      SymbolicExprContext* symbolic_expr_context) const;
 
  private:
   const HloFusionAnalysis& analysis_;

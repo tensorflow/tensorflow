@@ -52,8 +52,8 @@ class IndexingMapTest : public HloHardwareIndependentTestBase {
   IndexingMapTest() : symbolic_expr_context_(&mlir_context_) {}
 
   IndexingMap Parse(absl::string_view indexing_map_str) {
-    auto indexing_map = ParseIndexingMap(
-        indexing_map_str, symbolic_expr_context_.GetMLIRContext());
+    auto indexing_map =
+        ParseIndexingMap(indexing_map_str, &symbolic_expr_context_);
     EXPECT_TRUE(indexing_map.has_value());
     return *indexing_map;
   }

@@ -44,6 +44,7 @@ limitations under the License.
 #include "xla/runtime/work_dimensions.h"
 #include "xla/service/gpu/ir_emitter_context.h"
 #include "xla/service/gpu/launch_dimensions.h"
+#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/service/gpu/target_util.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/shape.h"
@@ -100,10 +101,11 @@ absl::Status AnnotateKernelLaunchDimensions(
 
 IndexingMap KernelFusionInterface::GetDefaultThreadIdIndexingMap(
     const LaunchDimensions& launch_dims, int unroll_factor, const Shape& shape,
-    mlir::MLIRContext* ctx) {
+    SymbolicExprContext* symbolic_expr_context) {
   WorkDimensions work_dimensions = launch_dims.AsWorkDimensions();
   work_dimensions.work_tile_size.dimensions.push_back(unroll_factor);
-  return emitters::GetDefaultWorkItemIndexingMap(work_dimensions, shape, ctx);
+  return emitters::GetDefaultWorkItemIndexingMap(work_dimensions, shape,
+                                                 symbolic_expr_context);
 }
 
 std::string GetSanitizedUniqueName(IrEmitterContext& ir_emitter_context,

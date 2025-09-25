@@ -27,7 +27,6 @@ limitations under the License.
 #include "llvm/IR/Module.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/BuiltinOps.h"
-#include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
 #include "mlir/IR/Value.h"
 #include "mlir/Pass/PassManager.h"
@@ -36,6 +35,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/gpu/model/block_level_parameters.h"
+#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/service/gpu/model/symbolic_tile_analysis.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/stream_executor/device_description.h"
@@ -65,7 +65,7 @@ struct TritonWrapperResult {
 };
 
 // Load the MLIR dialects required for Triton IR generation.
-void LoadMlirDialectsForTriton(mlir::MLIRContext& mlir_context);
+void LoadMlirDialectsForTriton(SymbolicExprContext& symbolic_expr_context);
 
 // Generate Triton IR by running the provided generator and compile it into LLVM
 // IR.
@@ -74,7 +74,7 @@ absl::StatusOr<TritonWrapperResult> TritonWrapper(
     const se::GpuComputeCapability& cc,
     const se::DeviceDescription& device_info,
     const BlockLevelParameters& block_level_parameters,
-    llvm::Module* llvm_module, mlir::MLIRContext& mlir_context);
+    llvm::Module* llvm_module, SymbolicExprContext& symbolic_expr_context);
 
 // Creates the initial Triton module for the given fusion. Visible for testing,
 // use TritonWrapper instead.
@@ -82,7 +82,7 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateTritonModule(
     absl::string_view fn_name, const HloFusionInstruction* fusion,
     const se::DeviceDescription& device_info,
     const BlockLevelParameters& block_level_parameters,
-    mlir::MLIRContext& mlir_context);
+    SymbolicExprContext& symbolic_expr_context);
 
 // Compiles a given Triton module to LLVM IR.
 // If `emit_kernels` is false, then the function skips emitting
@@ -93,7 +93,7 @@ absl::StatusOr<TritonWrapperResult> CompileTritonToLLVM(
     const se::DeviceDescription& device_info,
     const BlockLevelParameters& block_level_parameters,
     mlir::ModuleOp triton_module, llvm::Module* llvm_module,
-    mlir::MLIRContext& mlir_context, bool is_xla_fusion,
+    SymbolicExprContext& symbolic_expr_context, bool is_xla_fusion,
     bool emit_kernel = true);
 
 std::string GetLibdevicePath(const HloModuleConfig& hlo_config,
