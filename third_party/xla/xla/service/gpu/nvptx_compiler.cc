@@ -365,11 +365,13 @@ absl::Status NVPTXCompiler::AddConvAndGemmAutotuningPasses(
     return instruction.opcode() == HloOpcode::kCustomCall &&
            IsCublasGemm(instruction);
   };
+
+  bool cache_only = stream_exec == nullptr;
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<AutotunerPass> autotuner_pass,
       AutotunerPass::Create(std::move(backends), debug_options, stream_exec,
-                            thread_pool, should_autotune,
-                            options.device_allocator));
+                            thread_pool, should_autotune, target_config,
+                            options.device_allocator, cache_only));
   pipeline->AddPass(std::move(autotuner_pass));
   return absl::OkStatus();
 }
@@ -437,11 +439,12 @@ absl::Status NVPTXCompiler::AddFusionAutotuningPass(
   backends.push_back(std::make_unique<NativeEmitterBackend>(
       &debug_options, this, target_config));
 
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<AutotunerPass> autotuner_pass,
-      AutotunerPass::Create(std::move(backends), debug_options, stream_executor,
-                            thread_pool, ShouldAutotuneBetweenFusionEmitters,
-                            options.device_allocator));
+  bool cache_only = stream_executor == nullptr;
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<AutotunerPass> autotuner_pass,
+                      AutotunerPass::Create(
+                          std::move(backends), debug_options, stream_executor,
+                          thread_pool, ShouldAutotuneBetweenFusionEmitters,
+                          target_config, options.device_allocator, cache_only));
   pipeline->AddPass(std::move(autotuner_pass));
   return absl::OkStatus();
 }

@@ -715,6 +715,7 @@ cc_library(
         "//xla/backends/gpu/autotuner:legacy_cache",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
+        "//xla/service:compiler",
         "//xla/stream_executor:device_memory_allocator",
         "//xla/stream_executor:stream_executor_h",
         "//xla/tsl/platform:env",

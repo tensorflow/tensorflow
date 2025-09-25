@@ -258,7 +258,7 @@ absl::Status AMDGPUCompiler::AddConvAndGemmAutotuningPasses(
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<AutotunerPass> autotuner_pass,
       AutotunerPass::Create(std::move(backends), debug_options, stream_exec,
-                            thread_pool, should_autotune,
+                            thread_pool, should_autotune, target_config,
                             options.device_allocator));
   pipeline->AddPass(std::move(autotuner_pass));
 

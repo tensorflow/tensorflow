@@ -34,6 +34,7 @@ limitations under the License.
 #include "xla/backends/gpu/autotuner/legacy_cache.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/service/compiler.h"
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/platform/errors.h"
@@ -78,24 +79,30 @@ absl::StatusOr<std::unique_ptr<AutotunerPass>> AutotunerPass::Create(
     const DebugOptions& debug_options,
     stream_executor::StreamExecutor* stream_executor,
     tsl::thread::ThreadPool* thread_pool, InstructionFilterFn should_autotune,
-    se::DeviceMemoryAllocator* allocator) {
-  // At least one of stream_executor or allocator must be provided.
-  CHECK(stream_executor != nullptr || allocator != nullptr);
-
-  std::unique_ptr<GpuProfiler> profiler = GpuProfiler::Create(
-      stream_executor, GetProfileOptions(debug_options), allocator);
+    const Compiler::TargetConfig* target_config,
+    se::DeviceMemoryAllocator* allocator, bool cache_only) {
+  std::unique_ptr<Profiler> profiler = nullptr;
+  AutotuneConfig autotune_config = GetAutotuneConfig(debug_options);
+  if (cache_only) {
+    autotune_config.expect_all_instructions_in_cache = true;
+  } else {
+    // If not cache_only, at least one of stream_executor or allocator must be
+    // provided.
+    CHECK(stream_executor != nullptr || allocator != nullptr);
+    profiler = GpuProfiler::Create(stream_executor,
+                                   GetProfileOptions(debug_options), allocator);
+  }
 
   std::unique_ptr<AutotunerCacheInterface> cache =
       std::make_unique<LegacyCache>(
           debug_options.xla_gpu_experimental_autotuner_cache_dir(),
           debug_options.xla_gpu_experimental_autotune_cache_mode(),
-          stream_executor->GetDeviceDescription());
+          target_config->device_description);
 
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<Autotuner> autotuner,
       Autotuner::Create(std::move(backends), std::move(profiler),
-                        GetAutotuneConfig(debug_options), std::move(cache),
-                        thread_pool));
+                        autotune_config, std::move(cache), thread_pool));
   return absl::WrapUnique(
       new AutotunerPass(std::move(autotuner), should_autotune));
 }
