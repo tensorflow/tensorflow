@@ -61,12 +61,17 @@ limitations under the License.
 #include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/DialectRegistry.h"
 #include "mlir/Support/LLVM.h"
+#include "xla/backends/cpu/nanort/nanort_client.h"
+#include "xla/backends/cpu/nanort/nanort_executable.h"
 #include "xla/backends/gpu/codegen/triton/support.h"
+#include "xla/backends/gpu/runtime/host_execute_thunk.h"
 #include "xla/backends/gpu/runtime/runtime_intrinsics.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
+#include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/core/host_offloading/hlo_host_device_type_call_wrapper.h"
 #include "xla/core/host_offloading/host_compute_asyncifier.h"
 #include "xla/hlo/analysis/alias_info.h"
+#include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -152,6 +157,7 @@ limitations under the License.
 #include "xla/service/compiler.h"
 #include "xla/service/conditional_simplifier.h"
 #include "xla/service/copy_insertion.h"
+#include "xla/service/cpu/cpu_aot_compilation_result.h"
 #include "xla/service/cpu_gpu_shape_verifier.h"
 #include "xla/service/debug/unstable_reduction_detector.h"
 #include "xla/service/dump.h"
@@ -166,6 +172,7 @@ limitations under the License.
 #include "xla/service/gpu/compile_module_to_llvm_ir.h"
 #include "xla/service/gpu/conv_layout_normalization.h"
 #include "xla/service/gpu/cublas_cudnn.h"
+#include "xla/service/gpu/executable.pb.h"
 #include "xla/service/gpu/execution_stream_assignment.h"
 #include "xla/service/gpu/flag_utils.h"
 #include "xla/service/gpu/fusion_dispatch_pipeline.h"
@@ -2465,6 +2472,21 @@ absl::StatusOr<GpuCompiler::BackendCompileResult> GpuCompiler::CompileAndLink(
   return BackendCompileResult{ptx_snippets, std::move(*maybe_backend_result)};
 }
 
+namespace {
+absl::StatusOr<xla::cpu::CompilationResultProto> GetCpuCompilationResult(
+    const HloModuleProto& hlo_proto) {
+  static auto* client = new xla::cpu::NanoRtClient();
+  XlaComputation computation(hlo_proto);
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<xla::cpu::NanoRtExecutable> executable,
+                      client->Compile(computation));
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<AotCompilationResult> result,
+                      client->Export(executable.get()));
+  xla::cpu::CpuAotCompilationResult* cpu_aot_compilation_result =
+      tsl::down_cast<xla::cpu::CpuAotCompilationResult*>(result.get());
+  return cpu_aot_compilation_result->proto();
+}
+}  // namespace
+
 absl::StatusOr<GpuCompiler::CompileResultWithMetadata>
 GpuCompiler::CompileToBackendResult(
     HloModule* module, llvm::LLVMContext* llvm_context,
@@ -2562,6 +2584,26 @@ GpuCompiler::CompileToBackendResult(
     DumpToFileInDirOrStdout(
         *module, "", "thunk_sequence.txt",
         compile_module_results.executable->ToString(/*indent=*/0));
+  }
+
+  // Host executable has to be compiled the GPU compilation is done to
+  // avoid a deadlock on the LLVM command line options lock. We can then load
+  // it.
+  for (auto& thunk : compile_module_results.executable->thunks()) {
+    if (thunk->kind() == Thunk::Kind::kHostExecuteStart) {
+      auto* host_execute_start_thunk =
+          tsl::down_cast<HostExecuteStartThunk*>(thunk.get());
+      TF_ASSIGN_OR_RETURN(
+          xla::cpu::CompilationResultProto cpu_compilation_result,
+          GetCpuCompilationResult(
+              host_execute_start_thunk->executable_proto().hlo_module()));
+
+      *host_execute_start_thunk->mutable_executable_proto()
+           ->mutable_aot_compilation_result() =
+          std::move(cpu_compilation_result);
+
+      TF_RETURN_IF_ERROR(host_execute_start_thunk->LoadExecutable());
+    }
   }
 
   return CompileResultWithMetadata{std::move(backend_result),

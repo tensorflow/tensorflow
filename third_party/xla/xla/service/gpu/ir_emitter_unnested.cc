@@ -3273,11 +3273,19 @@ absl::Status IrEmitterUnnested::EmitHloInstruction(
               result_slices.push_back({slice, indexed.shape});
             }
 
-            auto thunk = std::make_unique<HostExecuteStartThunk>(
-                Thunk::ThunkInfo::WithProfileAnnotation(
-                    instr, ir_emitter_context_->GetNextThunkId()),
-                *hlo_module, std::move(operand_slices),
-                std::move(result_slices));
+            HostOffloadingExecutableProto host_offloading_executable_proto;
+            *host_offloading_executable_proto.mutable_hlo_module() =
+                hlo_module->ToProto();
+            host_offloading_executable_proto.set_executable_type(
+                HostOffloadingExecutableProto::EXECUTABLE_TYPE_NANORT);
+
+            TF_ASSIGN_OR_RETURN(
+                auto thunk,
+                HostExecuteStartThunk::Create(
+                    Thunk::ThunkInfo::WithProfileAnnotation(
+                        instr, ir_emitter_context_->GetNextThunkId()),
+                    std::move(host_offloading_executable_proto),
+                    std::move(operand_slices), std::move(result_slices)));
 
             auto async_events = thunk->async_events();
 

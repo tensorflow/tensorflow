@@ -163,7 +163,7 @@ struct BufferView {
     Iterator end() const { return {view_, {-1}, false}; }
 
    private:
-    friend class BufferView;
+    friend struct BufferView;
 
     LogicalIndexView(const BufferView* view, bool include_vector_dims)
         : view_(view), include_vector_dims_(include_vector_dims) {}
