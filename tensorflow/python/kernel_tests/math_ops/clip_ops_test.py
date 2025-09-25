@@ -42,6 +42,20 @@ class ClipTest(test.TestCase):
 
     self.assertAllClose(np_ans, tf_ans)
 
+  @test_util.run_gpu_only
+  def testClipByValuePositiveZeroOnGpu(self):
+  # Regression test for https://github.com/tensorflow/tensorflow/issues/67279
+  # and https://github.com/tensorflow/tensorflow/issues/99759
+  # Ensures tf.clip_by_value returns +0.0 (not -0.0) for clipped values on GPU
+    x = constant_op.constant([-0.0, -1.0, 0.0, 1.0], dtype=dtypes.float32)
+    clip_value_min = 0.0
+    clip_value_max = 1.0
+    ans = clip_ops.clip_by_value(x, clip_value_min, clip_value_max)
+    tf_ans = self.evaluate(ans)
+    # All clipped zeros should be +0.0
+    for v in tf_ans:
+      if v == 0.0:
+        self.assertEqual(np.signbit(v), False)
   # [Tensor, Scalar, Scalar]
   def testClipByValue0Type(self):
     for dtype in [
