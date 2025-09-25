@@ -96,15 +96,6 @@ struct NumpyScalarTypes {
 };
 const NumpyScalarTypes& GetNumpyScalarTypes();
 
-// Returns the strides for `shape`.
-std::vector<int64_t> ByteStridesForShape(const Shape& shape);
-std::vector<int64_t> ByteStridesForShape(PrimitiveType element_type,
-                                         absl::Span<const int64_t> dimensions,
-                                         const xla::Layout& layout);
-std::vector<int64_t> StridesForShape(PrimitiveType element_type,
-                                     absl::Span<const int64_t> dimensions,
-                                     const xla::Layout& layout);
-
 // Converts a literal to (possibly-nested tuples of) NumPy arrays.
 // The literal's leaf arrays are not copied; instead the NumPy arrays share
 // buffers with the literals. Takes ownership of `literal` and keeps the
