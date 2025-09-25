@@ -29,12 +29,12 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
 #include "xla/backends/cpu/alignment.h"
+#include "xla/future.h"
 #include "xla/pjrt/common_pjrt_client.h"
 #include "xla/pjrt/cpu/cpu_event.h"
 #include "xla/pjrt/cpu/raw_buffer.h"
 #include "xla/pjrt/device_event.h"
 #include "xla/pjrt/pjrt_client.h"
-#include "xla/pjrt/pjrt_future.h"
 #include "xla/pjrt/raw_buffer.h"
 #include "xla/tsl/concurrency/async_value.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
@@ -322,9 +322,8 @@ void TrackedCpuDeviceBuffer::Delete(PjRtMemorySpace* memory_space) {
   });
 }
 
-PjRtFuture<> TrackedCpuDeviceBuffer::GetReadyFuture(
-    PjRtMemorySpace* memory_space) {
-  auto [promise, future] = PjRtFuture<>::MakePromise();
+Future<> TrackedCpuDeviceBuffer::GetReadyFuture(PjRtMemorySpace* memory_space) {
+  auto [promise, future] = Future<>::MakePromise();
 
   tensorflow::down_cast<CommonPjRtClient*>(memory_space->client())
       ->TrackFuture(memory_space, "BufferDefinitionEvent", future);

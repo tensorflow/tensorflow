@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "xla/future.h"
 #include "xla/layout.h"
 #include "xla/literal.h"
 #include "xla/pjrt/async_work_runner.h"
@@ -34,7 +35,6 @@ limitations under the License.
 #include "xla/pjrt/cpu/tracked_cpu_device_buffer.h"
 #include "xla/pjrt/device_event.h"
 #include "xla/pjrt/pjrt_client.h"
-#include "xla/pjrt/pjrt_future.h"
 #include "xla/pjrt/raw_buffer.h"
 #include "xla/pjrt/transpose.h"
 #include "xla/tsl/concurrency/async_value.h"
@@ -80,7 +80,7 @@ class CpuTrackedDeviceEvent : public PjRtDeviceEvent {
     return event_.GetAsyncValue();
   }
 
-  PjRtFuture<> GetReadyFuture() override;
+  Future<> GetReadyFuture() override;
 
  private:
   tsl::AsyncValueRef<CpuEvent> event_;
@@ -150,7 +150,7 @@ class CpuRawBuffer : public CommonPjRtRawBuffer {
                         xla::Shape shape) override;
 
   void CopyToLiteralAsync(
-      PjRtFuture<>::Promise promise,
+      Promise<> promise,
       tsl::RCReference<PjRtDeviceEventPromise> device_promise,
       MutableLiteralBase* literal, xla::Shape shape) override;
 

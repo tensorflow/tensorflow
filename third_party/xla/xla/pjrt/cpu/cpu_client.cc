@@ -56,6 +56,7 @@ limitations under the License.
 #include "xla/client/executable_build_options.h"
 #include "xla/debug_options_flags.h"
 #include "xla/executable_run_options.h"
+#include "xla/future.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -84,7 +85,6 @@ limitations under the License.
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
-#include "xla/pjrt/pjrt_future.h"
 #include "xla/pjrt/plugin/xla_cpu/cpu_client_options.h"
 #include "xla/pjrt/plugin/xla_cpu/cpu_execute_options.h"
 #include "xla/pjrt/plugin/xla_cpu/cpu_memory.h"
@@ -1904,7 +1904,7 @@ absl::StatusOr<PjRtLoadedExecutable::Result> PjRtCpuExecutable::ExecuteHelper(
   }
 
   if (fill_future) {
-    auto [promise, future] = PjRtFuture<>::MakePromise();
+    auto [promise, future] = Future<>::MakePromise();
     execute_event.AndThen([promise = std::move(promise),
                            event = execute_event.CopyRef()]() mutable {
       if (auto* error = event.GetErrorIfPresent()) {
@@ -1960,7 +1960,7 @@ absl::StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>>
 PjRtCpuExecutable::Execute(
     absl::Span<const std::vector<PjRtBuffer*>> argument_handles,
     const ExecuteOptions& options,
-    std::optional<std::vector<PjRtFuture<>>>& returned_futures) const {
+    std::optional<std::vector<Future<>>>& returned_futures) const {
   RunId run_id(options.launch_id);
   tsl::profiler::TraceMe trace_me("PjRtCpuExecutable::Execute");
   if (!options.untuple_result && cpu_executable_->module()
@@ -2097,7 +2097,7 @@ PjRtCpuExecutable::Execute(
 absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
 PjRtCpuExecutable::ExecuteSharded(
     absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
-    const ExecuteOptions& options, std::optional<PjRtFuture<>>& returned_future,
+    const ExecuteOptions& options, std::optional<Future<>>& returned_future,
     bool fill_future) const {
   RunId run_id(options.launch_id);
   tsl::profiler::TraceMe trace_me("PjRtCpuExecutable::ExecuteSharded");
@@ -2136,7 +2136,7 @@ PjRtCpuExecutable::ExecuteSharded(
 absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
 PjRtCpuExecutable::ExecutePortable(
     absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
-    const ExecuteOptions& options, std::optional<PjRtFuture<>>& returned_future,
+    const ExecuteOptions& options, std::optional<Future<>>& returned_future,
     bool fill_future) const {
   RunId run_id(options.launch_id);
   tsl::profiler::TraceMe trace_me("PjRtCpuExecutable::ExecutePortable");

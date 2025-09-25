@@ -889,7 +889,7 @@ class Future<void> : public internal::FutureBase<absl::Status> {
 };
 
 // Bring Promise implementation into the tsl namespace.
-template <typename T>
+template <typename T = void>
 using Promise = typename Future<T>::Promise;  // NOLINT
 
 //===----------------------------------------------------------------------===//
