@@ -39,10 +39,10 @@ limitations under the License.
 #include "xla/hlo/transforms/simplifiers/dot_dimension_merger.h"
 #include "xla/hlo/transforms/simplifiers/float_normalization.h"
 #include "xla/hlo/transforms/simplifiers/hlo_constant_folding.h"
-#include "xla/hlo/transforms/simplifiers/reshape_mover.h"
 #include "xla/hlo/transforms/simplifiers/tuple_simplifier.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/service/call_inliner.h"
+#include "xla/service/compiler.h"
 #include "xla/service/float_support.h"
 #include "xla/service/gpu/alias_info.h"
 #include "xla/service/gpu/autotuning/autotuner_pass.h"
@@ -228,7 +228,8 @@ absl::Status AMDGPUCompiler::AddConvAndGemmAutotuningPasses(
     HloPassPipeline* pipeline, const se::GpuComputeCapability& gpu_version,
     const CompileOptions& options, HloModule* hlo_module,
     AutotuneConfig& autotune_config, tsl::thread::ThreadPool* thread_pool,
-    se::StreamExecutor* stream_exec) {
+    se::StreamExecutor* stream_exec,
+    const Compiler::TargetConfig* target_config) {
   const DebugOptions& debug_options = hlo_module->config().debug_options();
   if (hlo_module->config()
           .debug_options()
@@ -246,10 +247,10 @@ absl::Status AMDGPUCompiler::AddConvAndGemmAutotuningPasses(
   std::vector<std::unique_ptr<CodegenBackend>> backends;
   // TODO: b/407494793 - Add proper support for ROCM. Currently the Cublas
   // backend uses the same API as rocBLAS.
-  backends.push_back(
-      std::make_unique<CublasBackend>(stream_exec, &debug_options, this));
-  backends.push_back(
-      std::make_unique<CublasLtBackend>(stream_exec, &debug_options, this));
+  backends.push_back(std::make_unique<CublasBackend>(
+      stream_exec, &debug_options, this, target_config));
+  backends.push_back(std::make_unique<CublasLtBackend>(
+      stream_exec, &debug_options, this, target_config));
   auto should_autotune = [](const HloInstruction& instruction) -> bool {
     return instruction.opcode() == HloOpcode::kCustomCall &&
            IsCublasGemm(instruction);

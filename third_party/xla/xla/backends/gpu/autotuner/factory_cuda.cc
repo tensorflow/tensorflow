@@ -37,16 +37,17 @@ namespace gpu {
 std::vector<std::unique_ptr<CodegenBackend>> GetCodegenBackendsForCuda(
     stream_executor::StreamExecutor* stream_executor,
     const DebugOptions* debug_options, Compiler* compiler,
+    const Compiler::TargetConfig* target_config,
     mlir::MLIRContext* mlir_context) {
   std::vector<std::unique_ptr<CodegenBackend>> backends;
   backends.push_back(std::make_unique<TritonBackend>(
-      stream_executor, debug_options, compiler, mlir_context));
-  backends.push_back(std::make_unique<CublasBackend>(stream_executor,
-                                                     debug_options, compiler));
+      debug_options, compiler, target_config, mlir_context));
+  backends.push_back(std::make_unique<CublasBackend>(
+      stream_executor, debug_options, compiler, target_config));
   backends.push_back(std::make_unique<CublasLtBackend>(
-      stream_executor, debug_options, compiler));
-  backends.push_back(
-      std::make_unique<CudnnBackend>(stream_executor, debug_options, compiler));
+      stream_executor, debug_options, compiler, target_config));
+  backends.push_back(std::make_unique<CudnnBackend>(
+      stream_executor, debug_options, compiler, target_config));
   return backends;
 }
 

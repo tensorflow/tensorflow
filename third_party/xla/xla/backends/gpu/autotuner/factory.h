@@ -32,7 +32,7 @@ namespace gpu {
 struct GetCodegenBackends {
   using Type = std::function<std::vector<std::unique_ptr<CodegenBackend>>(
       stream_executor::StreamExecutor*, const DebugOptions*, Compiler*,
-      mlir::MLIRContext* mlir_context)>;
+      const Compiler::TargetConfig*, mlir::MLIRContext* mlir_context)>;
 };
 
 }  // namespace gpu

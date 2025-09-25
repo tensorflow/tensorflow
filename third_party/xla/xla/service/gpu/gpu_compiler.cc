@@ -1594,7 +1594,7 @@ absl::Status GpuCompiler::OptimizeHloModule(
     HloPassPipeline pipeline("autotune-fusion-emitters");
     TF_RETURN_IF_ERROR(AddFusionAutotuningPass(
         &pipeline, hlo_module, options, thread_pool.get_mutable(), stream_exec,
-        ShapeSizeBytesFunction()));
+        &gpu_target_config, ShapeSizeBytesFunction()));
     TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
   }
 
@@ -1852,7 +1852,7 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
 
   TF_RETURN_IF_ERROR(AddConvAndGemmAutotuningPasses(
       &pipeline, gpu_version, options, hlo_module, autotune_config, thread_pool,
-      stream_exec));
+      stream_exec, &gpu_target_config));
 
   // The GEMM fusion autotuner can insert new bf16 reductions that need to be
   // normalized again.
