@@ -73,8 +73,8 @@ xla_cc_binary(
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@llvm-project//llvm:Support",
-        "@local_tsl//tsl/platform:platform_port",
-        "@local_tsl//tsl/platform:statusor",
+        "@tsl//tsl/platform:platform_port",
+        "@tsl//tsl/platform:statusor",
     ],
 )
 
@@ -111,7 +111,7 @@ xla_cc_binary(
         "//xla/service/gpu:hlo_fusion_analysis",
         "//xla/tests:hlo_test_base",
         "//xla/tsl/lib/core:status_test_util",
-        "@local_tsl//tsl/platform:statusor",
+        "@tsl//tsl/platform:statusor",
     ] + if_cuda_is_configured([
         "//xla/stream_executor/cuda:all_runtime",
     ]) + if_rocm_is_configured([
@@ -130,7 +130,7 @@ xla_cc_binary(
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@llvm-project//llvm:Support",
-        "@local_tsl//tsl/platform:platform_port",
+        "@tsl//tsl/platform:platform_port",
     ],
 )
 

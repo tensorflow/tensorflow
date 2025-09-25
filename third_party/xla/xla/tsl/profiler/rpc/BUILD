@@ -48,10 +48,10 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
-        "@local_tsl//tsl/profiler/lib:profiler_session",
-        "@local_tsl//tsl/profiler/protobuf:profiler_service_cc_grpc_proto",
-        "@local_tsl//tsl/profiler/protobuf:profiler_service_proto_cc",
-        "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc",
+        "@tsl//tsl/profiler/lib:profiler_session",
+        "@tsl//tsl/profiler/protobuf:profiler_service_cc_grpc_proto",
+        "@tsl//tsl/profiler/protobuf:profiler_service_proto_cc",
+        "@tsl//tsl/profiler/protobuf:xplane_proto_cc",
     ] + tsl_grpc_cc_dependencies(),
 )
 
@@ -80,7 +80,7 @@ cc_library(
         "//xla/tsl/platform:logging",
         "//xla/tsl/platform:types",
         "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/profiler/protobuf:profiler_service_cc_grpc_proto",
+        "@tsl//tsl/profiler/protobuf:profiler_service_cc_grpc_proto",
     ] + tsl_grpc_cc_dependencies(),
     alwayslink = True,
 )

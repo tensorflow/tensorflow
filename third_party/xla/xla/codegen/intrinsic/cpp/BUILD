@@ -71,7 +71,7 @@ xla_cc_test(
         ":tanh_ll_header_lib",
         ":vector_ops",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:status_matchers",
-        "@local_tsl//tsl/platform:test",
+        "@tsl//tsl/platform:status_matchers",
+        "@tsl//tsl/platform:test",
     ],
 )

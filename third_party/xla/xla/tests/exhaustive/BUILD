@@ -77,7 +77,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/platform:path",
+        "@tsl//tsl/platform:path",
     ],
 )
 
@@ -99,8 +99,8 @@ cc_library(
         ":exhaustive_op_test_utils",
         "//xla/tsl/util:command_line_flags",
         "@com_google_googletest//:gtest_for_library",
-        "@local_tsl//tsl/platform:logging",
-        "@local_tsl//tsl/platform:test",
+        "@tsl//tsl/platform:logging",
+        "@tsl//tsl/platform:test",
     ],
     alwayslink = True,
 )
@@ -159,7 +159,7 @@ exhaustive_xla_test(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/platform:test",
+        "@tsl//tsl/platform:test",
     ],
 )
 
@@ -197,7 +197,7 @@ xla_test(
         "//xla/hlo/builder:xla_builder",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/platform:test",
+        "@tsl//tsl/platform:test",
     ],
 )
 
@@ -266,6 +266,6 @@ exhaustive_xla_test(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/platform:test",
+        "@tsl//tsl/platform:test",
     ],
 )

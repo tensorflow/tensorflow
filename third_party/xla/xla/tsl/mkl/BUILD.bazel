@@ -1,6 +1,6 @@
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
-load("@local_xla//xla/tsl:tsl.bzl", "clean_dep")
-load("@local_xla//xla/tsl/mkl:build_defs.bzl", "mkl_deps")
+load("@xla//xla/tsl:tsl.bzl", "clean_dep")
+load("@xla//xla/tsl/mkl:build_defs.bzl", "mkl_deps")
 
 licenses(["notice"])  # 3-Clause BSD
 
@@ -99,7 +99,7 @@ cc_library(
     ],
     hdrs = ["@llvm_openmp//:config_omp"],
     target_compatible_with = select({
-        "@local_xla//xla/tsl/mkl:build_with_mkl": [],
+        "@xla//xla/tsl/mkl:build_with_mkl": [],
         "//conditions:default": ["@platforms//:incompatible"],
     }),
     visibility = ["//visibility:public"],
@@ -113,7 +113,7 @@ cc_library(
     ],
     hdrs = ["@llvm_openmp//:config_omp"],
     target_compatible_with = select({
-        "@local_xla//xla/tsl/mkl:build_with_mkl": [],
+        "@xla//xla/tsl/mkl:build_with_mkl": [],
         "//conditions:default": ["@platforms//:incompatible"],
     }),
     visibility = ["//visibility:public"],
@@ -126,7 +126,7 @@ cc_library(
     ],
     hdrs = ["@llvm_openmp//:config_omp"],
     target_compatible_with = select({
-        "@local_xla//xla/tsl/mkl:build_with_mkl": [],
+        "@xla//xla/tsl/mkl:build_with_mkl": [],
         "//conditions:default": ["@platforms//:incompatible"],
     }),
     visibility = ["//visibility:public"],
@@ -135,18 +135,18 @@ cc_library(
 cc_library(
     name = "intel_binary_blob",
     target_compatible_with = select({
-        "@local_xla//xla/tsl/mkl:build_with_mkl": [],
+        "@xla//xla/tsl/mkl:build_with_mkl": [],
         "//conditions:default": ["@platforms//:incompatible"],
     }),
     visibility = ["//visibility:public"],
     deps = select({
-        clean_dep("@local_xla//xla/tsl:linux_x86_64"): [
+        clean_dep("@xla//xla/tsl:linux_x86_64"): [
             ":mkl_libs_linux",
         ],
-        clean_dep("@local_xla//xla/tsl:macos"): [
+        clean_dep("@xla//xla/tsl:macos"): [
             ":mkl_libs_darwin",
         ],
-        clean_dep("@local_xla//xla/tsl:windows"): [
+        clean_dep("@xla//xla/tsl:windows"): [
             ":mkl_libs_windows",
         ],
         "//conditions:default": [],

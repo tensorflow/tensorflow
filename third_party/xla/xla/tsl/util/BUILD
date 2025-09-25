@@ -219,10 +219,10 @@ cc_library(
         "//xla/tsl/platform:logging",
         "//xla/tsl/platform:status",
         "//xla/tsl/platform:types",
-        "@local_tsl//tsl/platform:numbers",
-        "@local_tsl//tsl/platform:str_util",
-        "@local_tsl//tsl/platform:strcat",
-        "@local_tsl//tsl/platform:stringpiece",
+        "@tsl//tsl/platform:numbers",
+        "@tsl//tsl/platform:str_util",
+        "@tsl//tsl/platform:strcat",
+        "@tsl//tsl/platform:stringpiece",
     ],
 )
 
@@ -232,7 +232,7 @@ cc_library(
     hdrs = ["reporter.h"],
     visibility = internal_visibility([
         "//tensorflow/core:__subpackages__",
-        "@local_tsl//tsl:__subpackages__",
+        "@tsl//tsl:__subpackages__",
     ]),
     deps = [
         "//xla/tsl/platform:env",
@@ -241,7 +241,7 @@ cc_library(
         "//xla/tsl/platform:macros",
         "//xla/tsl/platform:types",
         "//xla/tsl/protobuf:test_log_proto_cc",
-        "@local_tsl//tsl/platform:str_util",
+        "@tsl//tsl/platform:str_util",
     ],
 )
 
@@ -278,8 +278,8 @@ cc_library(
     deps = [
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:status",
-        "@local_tsl//tsl/platform:str_util",
-        "@local_tsl//tsl/platform:stringpiece",
+        "@tsl//tsl/platform:str_util",
+        "@tsl//tsl/platform:stringpiece",
     ],
 )
 
@@ -295,7 +295,7 @@ tsl_cc_test(
         "//xla/tsl/platform:test_benchmark",
         "//xla/tsl/platform:test_main",
         "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/platform:strcat",
+        "@tsl//tsl/platform:strcat",
     ],
 )
 
@@ -307,9 +307,9 @@ cc_library(
         "//xla/tsl/platform:logging",
         "//xla/tsl/platform:types",
         "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/platform:str_util",
-        "@local_tsl//tsl/platform:stringpiece",
-        "@local_tsl//tsl/platform:stringprintf",
+        "@tsl//tsl/platform:str_util",
+        "@tsl//tsl/platform:stringpiece",
+        "@tsl//tsl/platform:stringprintf",
     ],
 )
 

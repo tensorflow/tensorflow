@@ -18,9 +18,9 @@ projects:
 
    For XLA and JAX:
    ```
-   load("@local_xla//third_party/gpus:cuda_configure.bzl", "cuda_configure")
+   load("@xla//third_party/gpus:cuda_configure.bzl", "cuda_configure")
    cuda_configure(name = "local_config_cuda")
-   load("@local_xla//third_party/nccl:nccl_configure.bzl", "nccl_configure")
+   load("@xla//third_party/nccl:nccl_configure.bzl", "nccl_configure")
    nccl_configure(name = "local_config_nccl")
    ```
 

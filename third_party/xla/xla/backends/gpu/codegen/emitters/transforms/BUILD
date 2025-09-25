@@ -85,7 +85,7 @@ cc_library(
         "@llvm-project//mlir:TensorDialect",
         "@llvm-project//mlir:TransformUtils",
         "@llvm-project//mlir:VectorDialect",
-        "@local_tsl//tsl/platform:protobuf",
+        "@tsl//tsl/platform:protobuf",
     ] + if_cuda_is_configured([
         "//xla/service/gpu/llvm_gpu_backend:nvptx_backend",
     ]) + if_rocm_is_configured([

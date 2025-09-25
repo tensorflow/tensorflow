@@ -51,7 +51,7 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:str_format",
-        "@local_tsl//tsl/platform:status",
+        "@tsl//tsl/platform:status",
     ],
     alwayslink = True,  # Registers itself with the PlatformManager.
 )
@@ -88,11 +88,11 @@ cc_library(
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/synchronization",
-        "@local_tsl//tsl/platform:context",
-        "@local_tsl//tsl/platform:denormal",
-        "@local_tsl//tsl/platform:env",
-        "@local_tsl//tsl/platform:setround",
-        "@local_tsl//tsl/platform:thread_annotations",
+        "@tsl//tsl/platform:context",
+        "@tsl//tsl/platform:denormal",
+        "@tsl//tsl/platform:env",
+        "@tsl//tsl/platform:setround",
+        "@tsl//tsl/platform:thread_annotations",
     ],
 )
 
@@ -144,7 +144,7 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
-        "@local_tsl//tsl/platform:platform_port",
+        "@tsl//tsl/platform:platform_port",
     ],
     alwayslink = True,
 )
@@ -163,7 +163,7 @@ xla_cc_test(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/synchronization",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:test",
+        "@tsl//tsl/platform:errors",
+        "@tsl//tsl/platform:test",
     ],
 )

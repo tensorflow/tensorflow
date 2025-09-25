@@ -62,7 +62,7 @@ cc_library(
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
         "@eigen_archive//:eigen3",
-        "@local_tsl//tsl/platform:protobuf",
+        "@tsl//tsl/platform:protobuf",
     ],
 )
 
@@ -115,8 +115,8 @@ cc_library(
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/platform:numbers",
-        "@local_tsl//tsl/platform:regexp",
+        "@tsl//tsl/platform:numbers",
+        "@tsl//tsl/platform:regexp",
     ],
 )
 

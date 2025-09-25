@@ -116,15 +116,15 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
         "@llvm-project//mlir:Transforms",
-        "@local_tsl//tsl/platform:fingerprint",
-        "@local_tsl//tsl/platform:numbers",
-        "@local_tsl//tsl/platform:path",
-        "@local_tsl//tsl/platform:protobuf",
         "@shardy//shardy/dialect/sdy/ir:dialect",
         "@stablehlo//:register",
         "@stablehlo//:stablehlo_ops",
         "@stablehlo//:stablehlo_serialization",
         "@stablehlo//:version",
+        "@tsl//tsl/platform:fingerprint",
+        "@tsl//tsl/platform:numbers",
+        "@tsl//tsl/platform:path",
+        "@tsl//tsl/platform:protobuf",
     ],
 )
 
@@ -163,7 +163,7 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
-        "@local_tsl//tsl/platform:fingerprint",
+        "@tsl//tsl/platform:fingerprint",
     ],
 )
 
@@ -184,9 +184,9 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
-        "@local_tsl//tsl/platform:path",
-        "@local_tsl//tsl/platform:random",
-        "@local_tsl//tsl/platform:regexp",
+        "@tsl//tsl/platform:path",
+        "@tsl//tsl/platform:random",
+        "@tsl//tsl/platform:regexp",
     ],
 )
 
@@ -206,7 +206,7 @@ xla_cc_test(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
-        "@local_tsl//tsl/platform:path",
-        "@local_tsl//tsl/platform:status_matchers",
+        "@tsl//tsl/platform:path",
+        "@tsl//tsl/platform:status_matchers",
     ],
 )

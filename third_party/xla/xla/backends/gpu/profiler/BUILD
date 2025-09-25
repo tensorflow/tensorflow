@@ -36,7 +36,7 @@ cc_library(
         "//xla/stream_executor/platform:platform_object_registry",
         "//xla/tsl/profiler/utils:time_utils",
         "@com_google_absl//absl/status:statusor",
-        "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc",
+        "@tsl//tsl/profiler/protobuf:xplane_proto_cc",
     ],
     alwayslink = True,
 )

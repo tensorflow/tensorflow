@@ -27,7 +27,7 @@ cc_library(
     hdrs = ["grpc_call.h"],
     deps = [
         "@com_google_absl//absl/synchronization",
-        "@local_tsl//tsl/platform:refcount",
+        "@tsl//tsl/platform:refcount",
     ] + tsl_grpc_cc_dependencies(),
 )
 
@@ -40,9 +40,9 @@ cc_library(
         "//xla/tsl/protobuf:distributed_runtime_payloads_proto_cc",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings:cord",
-        "@local_tsl//tsl/platform:protobuf",
-        "@local_tsl//tsl/platform:stringpiece",
-        "@local_tsl//tsl/platform:stringprintf",
+        "@tsl//tsl/platform:protobuf",
+        "@tsl//tsl/platform:stringpiece",
+        "@tsl//tsl/platform:stringprintf",
     ] + tsl_grpc_cc_dependencies(),
 )
 
@@ -74,7 +74,7 @@ cc_library(
         "//xla/tsl/platform:logging",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/synchronization",
-        "@local_tsl//tsl/platform:thread_annotations",
+        "@tsl//tsl/platform:thread_annotations",
     ],
 )
 
@@ -95,10 +95,10 @@ cc_library(
         "//xla/tsl/util:device_name_utils",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
-        "@local_tsl//tsl/platform:numbers",
-        "@local_tsl//tsl/platform:str_util",
-        "@local_tsl//tsl/platform:strcat",
-        "@local_tsl//tsl/platform:thread_annotations",
+        "@tsl//tsl/platform:numbers",
+        "@tsl//tsl/platform:str_util",
+        "@tsl//tsl/platform:strcat",
+        "@tsl//tsl/platform:thread_annotations",
     ] + tsl_grpc_cc_dependencies(),
 )
 
@@ -116,7 +116,7 @@ tsl_cc_test(
         "//xla/tsl/protobuf:rpc_options_proto_cc_impl",
         "//xla/tsl/util:device_name_utils",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:strcat",
+        "@tsl//tsl/platform:strcat",
     ],
 )
 
@@ -132,7 +132,7 @@ cc_library(
         "//xla/tsl/platform:status",
         "//xla/tsl/util:env_var",
         "@com_google_absl//absl/status",
-        "@local_tsl//tsl/platform:strcat",
+        "@tsl//tsl/platform:strcat",
     ] + tsl_grpc_cc_dependencies(),
 )
 

@@ -44,7 +44,7 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
-        "@local_tsl//tsl/platform:platform_port",
+        "@tsl//tsl/platform:platform_port",
     ],
 )
 
@@ -86,7 +86,7 @@ cc_library(
         "//xla/tsl/platform:env",
         "@local_config_rocm//rocm:hip",  # buildcleaner: keep
         "@local_config_rocm//rocm:rocm_headers",
-        "@local_tsl//tsl/platform:dso_loader",
+        "@tsl//tsl/platform:dso_loader",
     ],
 )
 
@@ -200,9 +200,9 @@ cc_library(
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
         "@local_config_rocm//rocm:rocm_headers",
-        "@local_tsl//tsl/platform:casts",
-        "@local_tsl//tsl/platform:fingerprint",
-        "@local_tsl//tsl/platform:numbers",
+        "@tsl//tsl/platform:casts",
+        "@tsl//tsl/platform:fingerprint",
+        "@tsl//tsl/platform:numbers",
     ],
     alwayslink = True,
 )
@@ -351,8 +351,8 @@ cc_library(
         "//xla/tsl/platform:env",
         "//xla/tsl/util:determinism_for_kernels",
         "@local_config_rocm//rocm:rocm_headers",
-        "@local_tsl//tsl/platform",
-        "@local_tsl//tsl/platform:dso_loader",
+        "@tsl//tsl/platform",
+        "@tsl//tsl/platform:dso_loader",
     ],
     alwayslink = True,
 )
@@ -477,7 +477,7 @@ cc_library(
         "//xla/tsl/platform:logging",
         "@com_google_absl//absl/status",
         "@local_config_rocm//rocm:rocm_headers",
-        "@local_tsl//tsl/platform:dso_loader",
+        "@tsl//tsl/platform:dso_loader",
     ],
     alwayslink = True,
 )
@@ -543,8 +543,8 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "@eigen_archive//:eigen3",
         "@local_config_rocm//rocm:rocm_headers",
-        "@local_tsl//tsl/platform:dso_loader",
-        "@local_tsl//tsl/platform:hash",
+        "@tsl//tsl/platform:dso_loader",
+        "@tsl//tsl/platform:hash",
     ],
     alwayslink = True,
 )
@@ -585,8 +585,8 @@ cc_library(
         ":rocm_platform_id",
         "//xla/tsl/platform:env",
         "@local_config_rocm//rocm:rocm_headers",
-        "@local_tsl//tsl/platform",
-        "@local_tsl//tsl/platform:dso_loader",
+        "@tsl//tsl/platform",
+        "@tsl//tsl/platform:dso_loader",
     ],
     alwayslink = True,
 )
@@ -616,7 +616,7 @@ cc_library(
         ":rocsolver_if_static",
         "//xla/tsl/platform:env",
         "@local_config_rocm//rocm:rocm_headers",
-        "@local_tsl//tsl/platform:dso_loader",
+        "@tsl//tsl/platform:dso_loader",
     ],
     alwayslink = True,
 )
@@ -645,7 +645,7 @@ cc_library(
         ":rocm_platform_id",
         "//xla/tsl/platform:env",
         "@local_config_rocm//rocm:rocm_headers",
-        "@local_tsl//tsl/platform:dso_loader",
+        "@tsl//tsl/platform:dso_loader",
     ],
     alwayslink = True,
 )
@@ -705,8 +705,8 @@ cc_library(
         "@com_google_absl//absl/time",
         "@eigen_archive//:eigen3",
         "@local_config_rocm//rocm:rocm_headers",
-        "@local_tsl//tsl/platform:dso_loader",
-        "@local_tsl//tsl/platform:ml_dtypes",
+        "@tsl//tsl/platform:dso_loader",
+        "@tsl//tsl/platform:ml_dtypes",
     ] + if_static([
         ":hipblaslt_if_static",
     ]),
@@ -737,7 +737,7 @@ cc_library(
         "//xla/tsl/platform:status",
         "@com_google_absl//absl/status",
         "@local_config_rocm//rocm:rocm_headers",
-        "@local_tsl//tsl/platform:dso_loader",
+        "@tsl//tsl/platform:dso_loader",
     ],
 )
 
@@ -784,8 +784,8 @@ cc_library(
         ":roctracer_if_static",  # buildcleaner: keep
         "//xla/tsl/platform:env",
         "@local_config_rocm//rocm:rocm_headers",
-        "@local_tsl//tsl/platform",
-        "@local_tsl//tsl/platform:dso_loader",
+        "@tsl//tsl/platform",
+        "@tsl//tsl/platform:dso_loader",
     ],
     alwayslink = True,
 )
@@ -1076,7 +1076,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@local_config_rocm//rocm:rocm_headers",
-        "@local_tsl//tsl/platform:casts",
+        "@tsl//tsl/platform:casts",
     ],
 )
 
@@ -1161,7 +1161,7 @@ rocm_library(
         "@com_google_absl//absl/status",
         "@eigen_archive//:eigen3",
         "@local_config_rocm//rocm:rocprim",
-        "@local_tsl//tsl/platform:bfloat16",
+        "@tsl//tsl/platform:bfloat16",
     ],
     alwayslink = 1,
 ) for typename in get_cub_sort_kernel_types()]

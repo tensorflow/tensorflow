@@ -59,10 +59,10 @@ xla_cc_binary(
         "@llvm-project//mlir:MlirOptLib",
         "@llvm-project//mlir:RegisterAllDialects",  # buildcleaner: keep
         "@llvm-project//mlir:RegisterAllPasses",  # buildcleaner: keep
-        "@local_tsl//tsl/platform:path",
-        "@local_tsl//tsl/platform:platform_port",
         "@shardy//shardy/dialect/mpmd/ir:dialect",
         "@shardy//shardy/dialect/sdy/ir:dialect",
+        "@tsl//tsl/platform:path",
+        "@tsl//tsl/platform:platform_port",
     ],
 )
 

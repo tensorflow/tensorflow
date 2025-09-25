@@ -140,6 +140,6 @@ func.func @custom_call_with_tuple_operand_result(%arg0: tensor<8x8xf32>, %arg1: 
 // CHECK-SAME:      %arg0: tensor<8x8xf32>) -> tensor<8x8xf32> {
 func.func @import_sharding_group_with_unused_result(%arg0: tensor<8x8xf32>) -> tensor<8x8xf32> {
   // CHECK sdy.sharding_group %arg0 group_id = 21:  tensor<8x8xf32>
-  %0 = stablehlo.custom_call @local_xla.sdy.ShardingGroup(%arg0) {has_side_effect = true, mhlo.frontend_attributes = {xla.sdy.sharding_group_id = "21 : i64"}} : (tensor<8x8xf32>) -> tuple<>
+  %0 = stablehlo.custom_call @xla.sdy.ShardingGroup(%arg0) {has_side_effect = true, mhlo.frontend_attributes = {xla.sdy.sharding_group_id = "21 : i64"}} : (tensor<8x8xf32>) -> tuple<>
   return %arg0 : tensor<8x8xf32>
 }

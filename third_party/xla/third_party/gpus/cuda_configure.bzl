@@ -987,7 +987,7 @@ def _create_local_cuda_repository(repository_ctx):
         ],
     ))
 
-    check_cuda_libs_script = repository_ctx.path(Label("@local_xla//third_party/gpus:check_cuda_libs.py"))
+    check_cuda_libs_script = repository_ctx.path(Label("@xla//third_party/gpus:check_cuda_libs.py"))
     cuda_libs = _find_libs(repository_ctx, check_cuda_libs_script, cuda_config)
     cuda_lib_srcs = []
     cuda_lib_outs = []
