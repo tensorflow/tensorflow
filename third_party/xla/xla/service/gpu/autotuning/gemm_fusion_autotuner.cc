@@ -1064,6 +1064,27 @@ GemmFusionAutotunerImpl::CompileAll(AutotunerCompileUtil& compile_util,
             fusion, opts, mlir_context_,
             allow_filtering_kernels_spilling_registers);
       });
+      if (absl::c_contains(
+              debug_options_
+                  .xla_gpu_unsupported_generic_triton_emitter_features(),
+              DebugOptions::
+                  GENERIC_TRITON_EMITTER_MUST_ACCEPT_ALL_AUTOTUNER_CONFIGS)) {
+        return executable_or;
+      }
+      absl::StatusCode code = executable_or.status().code();
+      // TODO(b/447113513): we should not silently ignore that wide range of
+      // errors as we might hide real regressions and drop the optimal
+      // configuration. One idea might be to use a specific error type when
+      // tiling is not possible and we should skip the config.
+      if (code == absl::StatusCode::kInternal ||
+          code == absl::StatusCode::kFailedPrecondition ||
+          code == absl::StatusCode::kUnimplemented ||
+          (debug_options_.xla_gpu_exhaustive_tiling_search() &&
+           code == absl::StatusCode::kInvalidArgument)) {
+        VLOG(5) << "Compilation failed with status " << executable_or.status()
+                << " that is ignored";
+        return nullptr;
+      }
       return executable_or;
     }
 

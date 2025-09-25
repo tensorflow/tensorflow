@@ -144,8 +144,7 @@ absl::StatusOr<std::unique_ptr<Executable>> AutotunerCompileUtil::Compile(
                                /*layout_canonicalization_callback=*/{},
                                /*is_autotuning_compilation=*/true});
   if (out.status().code() == absl::StatusCode::kResourceExhausted ||
-      out.status().code() == absl::StatusCode::kCancelled ||
-      out.status().code() == absl::StatusCode::kInvalidArgument) {
+      out.status().code() == absl::StatusCode::kCancelled) {
     // Being out of shared memory budget or registers is an expected failure.
     // Cancelling upon register spilling is also an expected failure.
     VLOG(5) << "Compilation failed with status " << out.status()
