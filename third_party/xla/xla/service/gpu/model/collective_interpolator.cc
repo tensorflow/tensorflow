@@ -56,6 +56,17 @@ namespace xla::gpu {
 
 namespace {
 
+static const DeviceHloInstructionProfiles& Profile() {
+  static const DeviceHloInstructionProfiles* profile = []() {
+    auto* profile = new DeviceHloInstructionProfiles();
+    CHECK(tsl::protobuf::TextFormat::ParseFromString(kDefaultCollectivePTable,
+                                                     profile))
+        << "Cannot parse a default profile.";
+    return profile;
+  }();
+  return *profile;
+}
+
 constexpr int64_t kMaxDefaultTransferSizeBytes = 1 << 30;
 
 constexpr int64_t kMinDefaultTransferSizeBytes = 1 << 10;
@@ -322,18 +333,12 @@ HloOpcode AsyncToSyncOpcode(const HloCollectiveInstruction& instr) {
 
 absl::StatusOr<HloInstructionProfileList> ReadDefaultProfiles(
     const se::DeviceDescription& device_info) {
-  DeviceHloInstructionProfiles profile;
-
-  if (!tsl::protobuf::TextFormat::ParseFromString(kDefaultCollectivePTable,
-                                                  &profile)) {
-    return absl::FailedPreconditionError("Cannot parse a default profile.");
-  }
   std::string key = HloOpProfiles::GetProfileName(device_info);
 
-  if (!profile.entries().contains(key)) {
+  if (!Profile().entries().contains(key)) {
     return absl::NotFoundError(absl::StrCat("Cannot find key: ", key));
   }
-  return profile.entries().at(key);
+  return Profile().entries().at(key);
 }
 
 int64_t GetBytesTransferred(const HloInstruction& instr,
