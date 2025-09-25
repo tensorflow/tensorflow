@@ -502,9 +502,6 @@ absl::StatusOr<PerDeviceLiteralVecType> RunInternal(
   if (running_options.multi_slice_config != nullptr) {
     execute_options.multi_slice_config = running_options.multi_slice_config;
   }
-  if (running_options.untuple_result.has_value()) {
-    execute_options.untuple_result = *running_options.untuple_result;
-  }
   TF_ASSIGN_OR_RETURN(std::vector<std::shared_ptr<HloModule>> hlo_modules,
                       executable->GetHloModules());
   CHECK_EQ(hlo_modules.size(), 1);
@@ -545,35 +542,7 @@ absl::StatusOr<PerDeviceLiteralVecType> RunInternal(
   };
 
   std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> output_buffers;
-  auto output_has_tuple_leaf_on_host_memory_space = [&module]() {
-    if (!module.result_shape().IsTuple()) {
-      return false;
-    }
-    return true;
-  };
-  // If any output leaf buffer is a tuple, PJRT requires untuple_result.
-  bool must_untuple_result = output_has_tuple_leaf_on_host_memory_space();
-  bool default_untuple_result =
-      must_untuple_result || execute_options.untuple_result;
-  switch (parameter_type) {
-    case ParameterType::kOneTupleOfArrays:
-      execute_options.arguments_are_tupled = false;
-      execute_options.untuple_result =
-          module.entry_computation()->root_instruction()->shape().IsTuple();
-      break;
-    case ParameterType::kOneListOfArrays:
-      execute_options.arguments_are_tupled = false;
-      execute_options.untuple_result =
-          module.entry_computation()->root_instruction()->shape().IsTuple();
-      break;
-    case ParameterType::kOther:
-      execute_options.arguments_are_tupled = false;
-      execute_options.untuple_result = false;
-      break;
-  }
-  if (must_untuple_result) {
-    execute_options.untuple_result = true;
-  }
+  execute_options.arguments_are_tupled = false;
   std::optional<std::vector<PjRtFuture<>>> futures;
   futures.emplace();
   std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> device_buffers;
@@ -600,9 +569,7 @@ absl::StatusOr<PerDeviceLiteralVecType> RunInternal(
                                                 flatten_arguments));
         argument_ptrs = CreateArgumentPointersFromDeviceBuffers(device_buffers);
       }
-      if (is_last_repeat) {
-        execute_options.untuple_result = default_untuple_result;
-      }
+      execute_options.untuple_result = true;
       execute_options.launch_id = repeat + 1 + running_options.base_run_id;
       if (running_options.execution_profiles != nullptr) {
         execute_options.execution_profile =
