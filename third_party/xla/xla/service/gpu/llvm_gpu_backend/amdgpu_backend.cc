@@ -21,7 +21,6 @@ limitations under the License.
 #include <functional>
 #include <ios>
 #include <memory>
-#include <mutex>  // NOLINT
 #include <optional>
 #include <string>
 #include <system_error>  // NOLINT
@@ -30,6 +29,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/call_once.h"
+#include "absl/base/thread_annotations.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -38,7 +38,9 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/StringSet.h"
 #include "llvm/Analysis/CGSCCPassManager.h"
 #include "llvm/Analysis/LazyCallGraph.h"
 #include "llvm/Analysis/LoopAnalysisManager.h"
@@ -47,6 +49,9 @@ limitations under the License.
 #include "llvm/Bitcode/BitcodeReader.h"
 #include "llvm/Bitcode/BitcodeWriter.h"
 #include "llvm/CodeGen/CommandFlags.h"
+#include "llvm/IR/Constants.h"
+#include "llvm/IR/DerivedTypes.h"
+#include "llvm/IR/GlobalVariable.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/LegacyPassManager.h"
 #include "llvm/IR/Metadata.h"
@@ -59,12 +64,14 @@ limitations under the License.
 #include "llvm/PassRegistry.h"
 #include "llvm/Passes/PassBuilder.h"
 #include "llvm/Passes/StandardInstrumentations.h"
+#include "llvm/Support/Alignment.h"
 #include "llvm/Support/CodeGen.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/Program.h"
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Target/TargetMachine.h"
+#include "llvm/TargetParser/TargetParser.h"
 #include "llvm/Transforms/IPO/AlwaysInliner.h"
 #include "llvm/Transforms/IPO/Internalize.h"
 #include "llvm/Transforms/Scalar.h"
@@ -89,9 +96,14 @@ limitations under the License.
 #include <array>
 
 #include "absl/base/const_init.h"
-#include "absl/synchronization/mutex.h"
 #include "lld/Common/Driver.h"
 LLD_HAS_DRIVER(elf)
+#endif
+
+#ifdef HAS_SUPPORT_FOR_EMBEDDED_LIB_DEVICE
+#include "xla/service/gpu/llvm_gpu_backend/amdgpu_device_lib_data.h"
+#else
+constexpr const char* kAMDGPUDeviceLibData = "";
 #endif
 
 namespace xla {
@@ -100,34 +112,17 @@ namespace {
 
 // Inline threshold value to use in LLVM AMDGPU backend.
 const int kAMDGPUInlineThreshold = 0x100000;
+const int32_t kAMDGPUAbiVersion = 500;
 
 // Gets the ROCm-Device-Libs filenames for a particular AMDGPU version.
-std::vector<std::string> GetROCDLPaths(std::string gcn_arch_name,
-                                       const std::string& rocdl_dir_path) {
-  // AMDGPU version-neutral bitcodes.
-  static std::vector<std::string>* rocdl_filenames =
-      new std::vector<std::string>(
-          {"opencl.bc", "ocml.bc", "ockl.bc", "oclc_finite_only_off.bc",
-           "oclc_daz_opt_off.bc", "oclc_correctly_rounded_sqrt_on.bc",
-           "oclc_unsafe_math_off.bc", "oclc_wavefrontsize64_on.bc",
-           "oclc_abi_version_500.bc"});
-
+std::vector<std::string> GetROCDLPaths(const std::string& rocdl_dir_path) {
   // Construct full path to ROCDL bitcode libraries.
   std::vector<std::string> result;
-  result.reserve(rocdl_filenames->size() + 1);
-  for (auto& filename : *rocdl_filenames) {
-    result.push_back(tsl::io::JoinPath(rocdl_dir_path, filename));
+  result.reserve(2);
+  for (absl::string_view filename : {"ocml.bc", "ockl.bc"}) {
+    result.emplace_back(tsl::io::JoinPath(rocdl_dir_path, filename));
   }
 
-  // Add AMDGPU version-specific bitcodes.
-  std::vector<std::string> tokens = absl::StrSplit(gcn_arch_name, ':');
-  std::string amdgpu_version = gcn_arch_name;
-  if (!tokens.empty() && tokens[0].size() >= 3) {
-    amdgpu_version = tokens[0].substr(3);
-  }
-  result.push_back(tsl::io::JoinPath(
-      rocdl_dir_path,
-      absl::StrCat("oclc_isa_version_", amdgpu_version, ".bc")));
   return result;
 }
 
@@ -140,10 +135,10 @@ struct HsacoCacheEntry {
 
 struct HsacoCache {
  protected:
-  std::vector<HsacoCacheEntry> cache;
-  std::mutex m_mutex;
-  int request_count = 0;
-  int hit_count = 0;
+  std::vector<HsacoCacheEntry> cache ABSL_GUARDED_BY(mutex);
+  absl::Mutex mutex;
+  int request_count ABSL_GUARDED_BY(mutex) = 0;
+  int hit_count ABSL_GUARDED_BY(mutex) = 0;
 
  public:
   static bool Find(const std::string& ir, uint64_t& hash,
@@ -156,29 +151,38 @@ static HsacoCache g_hsacoCache;  // NOLINT: static/global vars forbidden
 
 bool HsacoCache::Find(const std::string& ir, uint64_t& hash,
                       const std::string& gfx, std::vector<uint8_t>& hsaco) {
-  std::lock_guard<std::mutex> lg(g_hsacoCache.m_mutex);
+  absl::MutexLock lock(g_hsacoCache.mutex);
   hash = std::hash<std::string>{}(ir);
   bool hit = false;
   for (auto& x : g_hsacoCache.cache) {
-    if (x.hash != hash) continue;
-    if (x.gfx != gfx) continue;
-    if (x.ir != ir) continue;
+    if (x.hash != hash) {
+      continue;
+    }
+    if (x.gfx != gfx) {
+      continue;
+    }
+    if (x.ir != ir) {
+      continue;
+    }
     hsaco = x.hsaco;
     hit = true;
     break;
   }
   g_hsacoCache.request_count++;
-  if (hit) g_hsacoCache.hit_count++;
-  if (!(g_hsacoCache.request_count % 50))
+  if (hit) {
+    g_hsacoCache.hit_count++;
+  }
+  if (!(g_hsacoCache.request_count % 50)) {
     VLOG(1) << "HSACO cache: " << g_hsacoCache.request_count << " requests, "
             << g_hsacoCache.hit_count << " hits";
+  }
   return hit;
 }
 
 void HsacoCache::Add(const std::string& ir, uint64_t hash,
                      const std::string& gfx,
                      const std::vector<uint8_t>& hsaco) {
-  std::lock_guard<std::mutex> lg(g_hsacoCache.m_mutex);
+  absl::MutexLock lock(g_hsacoCache.mutex);
   g_hsacoCache.cache.resize(g_hsacoCache.cache.size() + 1);
   g_hsacoCache.cache.back().ir = ir;
   g_hsacoCache.cache.back().hash = hash;
@@ -330,18 +334,6 @@ absl::StatusOr<std::vector<uint8_t>> EmitModuleToHsaco(
   return hsaco;
 }
 
-// Links ROCm-Device-Libs into the given module if the module needs it.
-absl::Status LinkROCDLIfNecessary(llvm::Module* module,
-                                  std::string gcn_arch_name,
-                                  const std::string& rocdl_dir_path) {
-  if (!CouldNeedDeviceBitcode(*module)) {
-    return absl::OkStatus();
-  }
-
-  return LinkWithBitcodeVector(module,
-                               GetROCDLPaths(gcn_arch_name, rocdl_dir_path));
-}
-
 absl::Status AMDGPUTargetModuleLinker(
     llvm::Module* module, se::GpuComputeCapability gpu_version,
     const DebugOptions& debug_options,
@@ -354,9 +346,9 @@ absl::Status AMDGPUTargetModuleLinker(
     return xla::Internal("Incompatible compute capability was specified.");
   }
 
-  std::string gcn_arch_name = compute_capability->gcn_arch_name();
   TF_RETURN_IF_ERROR(
-      LinkROCDLIfNecessary(module, gcn_arch_name, device_bitcode_dir_path));
+      amdgpu::LinkROCDLIfNecessary(module, compute_capability->gfx_version(),
+                                   debug_options, device_bitcode_dir_path));
 
   // If ftz is enabled, set it as an attribute on every function in the module.
   if (debug_options.xla_gpu_ftz()) {
@@ -364,9 +356,8 @@ absl::Status AMDGPUTargetModuleLinker(
       fn.addFnAttr("denormal-fp-math-f32", "preserve-sign");
     }
   }
-  const int32_t kAbiVersion = 500;
   module->addModuleFlag(llvm::Module::Error, "amdhsa_code_object_version",
-                        kAbiVersion);
+                        kAMDGPUAbiVersion);
 
   return absl::OkStatus();
 }
@@ -385,12 +376,17 @@ std::string MapGCNArchNameTokenToFeatureStr(const std::string& token,
                                             const std::string& gfx) {
   if (token == "sramecc+") {
     return "+sramecc";
-  } else if (token == "sramecc-") {
-    if (gfx == "gfx90a" || gfx == "gfx942") return "";
+  }
+  if (token == "sramecc-") {
+    if (gfx == "gfx90a" || gfx == "gfx942") {
+      return "";
+    }
     return "-sramecc";
-  } else if (token == "xnack+") {
+  }
+  if (token == "xnack+") {
     return "+xnack";
-  } else if (token == "xnack-") {
+  }
+  if (token == "xnack-") {
     return "-xnack";
   }
   return "";
@@ -405,7 +401,9 @@ std::pair<std::string, std::string> GetFeatureStrFromGCNArchName(
   // feature str, based on the underlying GPU HW to get max performance.
   std::vector<std::string> tokens = absl::StrSplit(gcn_arch_name, ':');
   std::vector<std::string> mapped_tokens;
-  if (!tokens.empty()) gfx = tokens[0];
+  if (!tokens.empty()) {
+    gfx = tokens[0];
+  }
   for (auto it = tokens.begin(); it != tokens.end(); it++) {
     // Skip the first token, that is the gfxNNN str
     // The rest of the tokens are the feature/targetid strings
@@ -476,6 +474,84 @@ void AMDGPUBackendInit(const DebugOptions& debug_options,
 
 namespace amdgpu {
 
+// Links ROCm-Device-Libs into the given module if the module needs it.
+absl::Status LinkROCDLIfNecessary(llvm::Module* module,
+                                  const std::string& gfx_version,
+                                  const DebugOptions& debug_options,
+                                  const std::string& rocdl_dir_path) {
+  if (!CouldNeedDeviceBitcode(*module)) {
+    return absl::OkStatus();
+  }
+
+  auto addControlVariable = [&](llvm::StringRef name, uint32_t value,
+                                uint32_t bitwidth = 8) {
+    if (module->getNamedGlobal(name)) {
+      return;
+    }
+    llvm::IntegerType* type =
+        llvm::IntegerType::getIntNTy(module->getContext(), bitwidth);
+    llvm::GlobalVariable* control_variable = new llvm::GlobalVariable(
+        *module, type, /*isConstant=*/true,
+        llvm::GlobalValue::LinkageTypes::LinkOnceODRLinkage,
+        llvm::ConstantInt::get(type, value), name, /*before=*/nullptr,
+        /*threadLocalMode=*/llvm::GlobalValue::ThreadLocalMode::NotThreadLocal,
+        /*addressSpace=*/4);
+    control_variable->setVisibility(
+        llvm::GlobalValue::VisibilityTypes::ProtectedVisibility);
+    control_variable->setAlignment(llvm::MaybeAlign(bitwidth / 8));
+    control_variable->setUnnamedAddr(llvm::GlobalValue::UnnamedAddr::Local);
+  };
+
+  addControlVariable("__oclc_finite_only_opt", false);
+  // TODO(rocm): Maybe check ftz for this one
+  addControlVariable("__oclc_daz_opt", false);
+  addControlVariable("__oclc_correctly_rounded_sqrt32", true);
+  addControlVariable("__oclc_unsafe_math_opt", false);
+
+  auto [major, minor, stepping] = llvm::AMDGPU::getIsaVersion(gfx_version);
+
+  CHECK(major != 0) << "Could not parse gfx_version.";
+
+  // TODO(rocm): Not great, not terrible
+  addControlVariable("__oclc_wavefrontsize64", major == 9);
+  addControlVariable("__oclc_ISA_version",
+                     1000 * major + 100 * stepping + minor, 32);
+  addControlVariable("__oclc_ABI_version", kAMDGPUAbiVersion, 32);
+
+  if (debug_options.xla_gpu_use_embeded_device_lib()) {
+    llvm::Linker linker(*module);
+    auto device_lib = llvm::getLazyBitcodeModule(
+        {kAMDGPUDeviceLibData, "device_lib"}, module->getContext());
+    if (!device_lib) {
+      return absl::InternalError("Error loading embeded device lib.");
+    }
+    if (linker.linkInModule(
+            std::move(*device_lib), llvm::Linker::Flags::LinkOnlyNeeded,
+            [](llvm::Module& M, const llvm::StringSet<>& GVS) {
+              internalizeModule(M, [&GVS](const llvm::GlobalValue& GV) {
+                return !GV.hasName() || (GVS.count(GV.getName()) == 0);
+              });
+            })) {
+      return absl::InternalError("Error linking embeded device lib.");
+    }
+    return absl::OkStatus();
+  }
+
+  TF_RETURN_IF_ERROR(
+      LinkWithBitcodeVector(module, GetROCDLPaths(rocdl_dir_path)));
+
+  // Sanitize stray metadata from the bitcode files
+  if (auto* opencl_version = module->getNamedMetadata("opencl.ocl.version")) {
+    module->eraseNamedMetadata(opencl_version);
+  }
+
+  if (auto* ident = module->getNamedMetadata("llvm.ident")) {
+    module->eraseNamedMetadata(ident);
+  }
+
+  return absl::OkStatus();
+}
+
 std::vector<std::string> GetAMDGPUBackendOptions(
     const DebugOptions& debug_options) {
   std::vector<std::string> backend_llvm_opts;
@@ -489,17 +565,6 @@ std::vector<std::string> GetAMDGPUBackendOptions(
                            backend_extra_llvm_opts.cend());
 
   return backend_llvm_opts;
-}
-
-std::string LibDevicePath(std::string gcn_arch_name,
-                          const std::string& rocdl_dir_path) {
-  auto libdevice_dir_paths = GetROCDLPaths(gcn_arch_name, rocdl_dir_path);
-  for (auto libdevice_dir_path : libdevice_dir_paths) {
-    if (libdevice_dir_path.find("ocml.bc")) {
-      return libdevice_dir_path;
-    }
-  }
-  return "";
 }
 
 absl::StatusOr<std::vector<uint8_t>> CompileToHsaco(
@@ -524,11 +589,15 @@ absl::StatusOr<std::vector<uint8_t>> CompileToHsaco(
   // the code is the same (but verify that they are what we expect).
   if (str.size() >= 13 && str.substr(0, 13) == "; ModuleID = ") {
     auto pos = str.find('\n');
-    if (pos != std::string::npos) str = str.substr(pos + 1);
+    if (pos != std::string::npos) {
+      str = str.substr(pos + 1);
+    }
   }
   if (str.size() >= 18 && str.substr(0, 18) == "source_filename = ") {
     auto pos = str.find('\n');
-    if (pos != std::string::npos) str = str.substr(pos + 1);
+    if (pos != std::string::npos) {
+      str = str.substr(pos + 1);
+    }
   }
   str += module_config_cache_key;
   {
