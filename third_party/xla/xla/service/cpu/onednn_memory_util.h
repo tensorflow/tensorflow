@@ -15,18 +15,21 @@ limitations under the License.
 
 #ifndef XLA_SERVICE_CPU_ONEDNN_MEMORY_UTIL_H_
 #define XLA_SERVICE_CPU_ONEDNN_MEMORY_UTIL_H_
-#if defined(INTEL_MKL)
 
+#include <cstdint>
 #include <memory>
+#include <vector>
 
-#include "dnnl.hpp"
+#include "absl/status/statusor.h"
+#include "oneapi/dnnl/dnnl.hpp"
+#include "oneapi/dnnl/dnnl_common_types.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Instructions.h"
-#include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Value.h"
 #include "xla/literal.h"
 #include "xla/service/cpu/runtime_lightweight_check.h"
 #include "xla/service/llvm_ir/ir_array.h"
+#include "xla/shape.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -46,7 +49,7 @@ using MemrefInfoHandler = std::shared_ptr<MemrefInfoPOD>;
 
 MemrefInfoHandler CreateMemrefInfoFromLiteral(const Literal* literal);
 
-MemrefInfoHandler CreateMemrefFromShape(const Shape& shape, void* buf);
+MemrefInfoHandler CreateMemrefFromShape(const Shape& shape, const void* buf);
 
 StackAlloca GetAllocaAndEmitMemrefInfo(llvm::IRBuilderBase& builder,
                                        const llvm_ir::IrArray& ir_array);
@@ -165,5 +168,4 @@ struct OneDnnResources {
 }  // namespace cpu
 }  // namespace xla
 
-#endif  // INTEL_MKL
 #endif  // XLA_SERVICE_CPU_ONEDNN_MEMORY_UTIL_H_

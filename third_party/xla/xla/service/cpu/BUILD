@@ -13,12 +13,8 @@ load(
 load("//xla/tests:build_defs.bzl", "xla_test")
 load("//xla/tsl:tsl.bzl", "internal_visibility", "tsl_copts")
 load("//xla/tsl:tsl.default.bzl", "filegroup", "get_compatible_with_portable")
-load(
-    "//xla/tsl/mkl:build_defs.bzl",
-    "if_graph_api",
-    "if_onednn",
-    "onednn_cc_library",
-)
+load("//xla/tsl/mkl:build_defs.bzl", "if_graph_api", "if_onednn")
+load("//xla/tsl/mkl:graph.bzl", "onednn_cc_library")
 load("//xla/tsl/platform:build_config.bzl", "tf_proto_library")
 load(
     "//xla/tsl/platform:build_config_root.bzl",
@@ -833,7 +829,6 @@ cc_library(
         ":ir_emission_utils",
         ":ir_function",
         ":onednn_config_proto_cc",
-        ":onednn_memory_util",
         ":parallel_loop_emitter",
         "//xla:literal",
         "//xla:literal_util",
@@ -881,7 +876,7 @@ cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//llvm:TargetParser",
         "@llvm-project//mlir:IR",
-    ],
+    ] + if_onednn([":onednn_memory_util"]),
 )
 
 cc_library(
@@ -1731,7 +1726,7 @@ onednn_cc_library(
     ],
 )
 
-cc_library(
+onednn_cc_library(
     name = "onednn_memory_util",
     srcs = ["onednn_memory_util.cc"],
     hdrs = ["onednn_memory_util.h"],
@@ -1741,24 +1736,15 @@ cc_library(
         ":runtime_lightweight_check",
         "//xla:literal",
         "//xla:shape_util",
-        "//xla:status_macros",
-        "//xla:types",
-        "//xla:util",
         "//xla:xla_data_proto_cc",
-        "//xla/hlo/ir:hlo",
         "//xla/service/llvm_ir:ir_array",
-        "//xla/service/llvm_ir:ir_builder_mixin",
         "//xla/service/llvm_ir:llvm_util",
         "//xla/tsl/mkl:onednn",
-        "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/base:dynamic_annotations",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Core",
-        "@llvm-project//llvm:TargetParser",
-        "@llvm-project//mlir:IR",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:logging",
     ],
 )
 
