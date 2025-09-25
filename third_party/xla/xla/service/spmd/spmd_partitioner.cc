@@ -52,7 +52,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/ir/tile_assignment.h"
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
-#include "xla/hlo/transforms/simplifiers/flatten_call_graph.h"
 #include "xla/hlo/transforms/simplifiers/hlo_dce.h"
 #include "xla/hlo/transforms/simplifiers/tuple_simplifier.h"
 #include "xla/hlo/utils/hlo_query.h"
@@ -6176,7 +6175,14 @@ void SpmdPartitioningVisitor::SetPartitionedHlo(
         hlo, partitioned_hlo.hlo(),
         [&](const ShapeIndex& index, const OriginalArray& old_original_array,
             const xla::Shape& old_array_shape,
-            const xla::Shape& new_array_shape) {
+            const xla::Shape& new_array_shape)
+            -> std::optional<std::unique_ptr<HloModule>> {
+          if (ShapeUtil::Compatible(old_array_shape, new_array_shape)) {
+            // If the shapes are the same, nothing is sharded so we return
+            // nullptr to indicate identity recovery module. This may happen
+            // for scalars in tuples.
+            return nullptr;
+          }
           SpmdBuilder builder("recovery_computation", nullptr);
           auto* param =
               builder.AddInstruction(xla::HloInstruction::CreateParameter(
