@@ -1049,6 +1049,43 @@ ENTRY main {
   RunTest(hlo_text, &operand, &scatter_indices, &updates);
 }
 
+TEST_F(ScatterTest, Scatter_Add_F32) {
+  if (GetDebugOptionsForTest().xla_gpu_enable_scatter_determinism_expander() &&
+      GetDebugOptionsForTest().xla_gpu_deterministic_ops()) {
+    // TODO(b/443204632): Re-enable this test.
+    GTEST_SKIP() << "Currently fails";
+  }
+  const std::string hlo_text = R"(
+HloModule scatter_add
+
+region_0.1 {
+  scatter-add.2 = f32[] parameter(0)
+  scatter-add.3 = f32[] parameter(1)
+  ROOT add.2 = f32[] add(scatter-add.2, scatter-add.3)
+}
+
+ENTRY main.2 {
+  constant.4 = f32[] constant(0)
+  broadcast.4 = f32[2,2,4]{2,1,0} broadcast(constant.4), dimensions={}
+  channel_idxs.1 = s32[2,2]{1,0} constant({{0,3}, {1,2}})
+  constant.5 = s32[] constant(0)
+  broadcast.5 = s32[2,2]{1,0} broadcast(constant.5), dimensions={}
+  lt.1 = pred[2,2]{1,0} compare(channel_idxs.1, broadcast.5), direction=LT
+  constant.3 = s32[] constant(4)
+  broadcast.3 = s32[2,2]{1,0} broadcast(constant.3), dimensions={}
+  add.3 = s32[2,2]{1,0} add(channel_idxs.1, broadcast.3)
+  select_n.1 = s32[2,2]{1,0} select(lt.1, add.3, channel_idxs.1)
+  broadcast_in_dim.1 = s32[2,2,1]{2,1,0} reshape(select_n.1)
+  arr.1 = f32[2,2,2]{2,1,0} parameter(0)
+  ROOT scatter-add.5 = f32[2,2,4]{2,1,0} scatter(broadcast.4, broadcast_in_dim.1, arr.1), update_window_dims={1}, inserted_window_dims={2}, scatter_dims_to_operand_dims={2}, input_batching_dims={0}, scatter_indices_batching_dims={0}, index_vector_dim=2, to_apply=region_0.1
+}
+)";
+  Literal updates = LiteralUtil::CreateR3<float>(
+      {{{1.0, 1.1}, {2.0, 2.1}}, {{3.0, 3.1}, {4.0, 4.1}}});
+
+  RunTest(hlo_text, {&updates});
+}
+
 // Test min/max/add scatters with edge-case values.
 class ScatterEdgeCaseTestP
     : public ScatterTest,
