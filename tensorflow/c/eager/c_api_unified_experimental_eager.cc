@@ -61,8 +61,8 @@ TFE_TensorHandle* TF_AbstractTensorGetEagerTensor(TF_AbstractTensor* at,
                                                   TF_Status* s) {
   auto handle = dyn_cast<ImmediateExecutionTensorHandle>(unwrap(at));
   if (!handle) {
-    string msg =
-        StrCat("Not an eager tensor handle.", reinterpret_cast<uintptr_t>(at));
+    string msg = absl::StrCat("Not an eager tensor handle.",
+                              reinterpret_cast<uintptr_t>(at));
     TF_SetStatus(s, TF_INVALID_ARGUMENT, msg.c_str());
     return nullptr;
   }
@@ -74,7 +74,7 @@ TFE_Context* TF_ExecutionContextGetTFEContext(TF_ExecutionContext* ctx,
   auto imm_ctx = dyn_cast<ImmediateExecutionContext>(unwrap(ctx));
   if (!imm_ctx) {
     string msg =
-        StrCat("Not an eager context.", reinterpret_cast<uintptr_t>(ctx));
+        absl::StrCat("Not an eager context.", reinterpret_cast<uintptr_t>(ctx));
     TF_SetStatus(s, TF_INVALID_ARGUMENT, msg.c_str());
     return nullptr;
   }
