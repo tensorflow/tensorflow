@@ -58,6 +58,9 @@ AutotuneConfig GetAutotuneConfig(const DebugOptions& debug_options) {
   autotune_config.dump_logs_to = debug_options.xla_gpu_dump_autotune_logs_to();
   autotune_config.exclude_cublas_config =
       !debug_options.xla_gpu_cublas_fallback();
+  autotune_config.select_first_config =
+      debug_options.xla_gpu_deterministic_ops() ||
+      debug_options.xla_gpu_exclude_nondeterministic_ops();
   return autotune_config;
 }
 

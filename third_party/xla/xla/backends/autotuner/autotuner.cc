@@ -346,6 +346,9 @@ absl::StatusOr<Autotuner::ConfigResult> Autotuner::PickBestConfig(
   if (best_result == nullptr) {
     return absl::InternalError("No valid config found!");
   }
+  if (autotune_config_.select_first_config) {
+    return std::move(results[0]);
+  }
 
   return std::move(*best_result);
 }

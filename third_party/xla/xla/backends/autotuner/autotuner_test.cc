@@ -611,5 +611,39 @@ TEST_F(AutotunerTest, ExcludeCublasConfig) {
               StatusIs(absl::StatusCode::kInternal));
 }
 
+TEST_F(AutotunerTest, SelectFirstConfig) {
+  config_.select_first_config = true;
+
+  std::vector<std::unique_ptr<BackendConfig>> configs;
+  configs.push_back(GetTestConfig("test_config_1"));
+  configs.push_back(GetTestConfig("test_config_2"));
+
+  auto backend = std::make_unique<MockCodegenBackend>();
+  EXPECT_CALL(*backend, GetSupportedConfigs(_))
+      .WillOnce(Return(std::move(configs)));
+  EXPECT_CALL(*backend, Compile(_, _))
+      .WillOnce(Return(std::unique_ptr<Executable>()))
+      .WillOnce(Return(std::unique_ptr<Executable>()));
+  EXPECT_CALL(*backend, ApplyConfig(_, ConfigMatcher("test_config_1")))
+      .Times(1)
+      .WillRepeatedly(Return(absl::OkStatus()));
+  std::vector<std::unique_ptr<CodegenBackend>> backends;
+  backends.push_back(std::move(backend));
+
+  auto profiler = std::make_unique<MockProfiler>();
+  EXPECT_CALL(*profiler, CreateInputBuffers(_))
+      .WillOnce(Return(std::make_unique<InputBuffers>()));
+  EXPECT_CALL(*profiler, Profile(_, _))
+      .WillOnce(Return(ProfileResult({absl::Seconds(2)})))
+      .WillOnce(Return(ProfileResult({absl::Seconds(1)})));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto autotuner, Autotuner::Create(std::move(backends),
+                                        std::move(profiler), config_, nullptr));
+  auto module = ParseAndReturnVerifiedModule(kHlo).value();
+  auto dummy_instr = module->entry_computation()->root_instruction();
+  EXPECT_THAT(autotuner->Autotune(dummy_instr), absl_testing::IsOk());
+}
+
 }  // namespace
 }  // namespace xla
