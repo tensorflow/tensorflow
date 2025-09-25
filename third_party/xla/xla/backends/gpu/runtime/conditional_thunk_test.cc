@@ -267,25 +267,25 @@ TEST(ConditionalThunkTest, ToString) {
                              /*kBranchIndexIsBool=*/true));
   auto sequential_thunk =
       std::make_unique<SequentialThunk>(thunk_info, std::move(thunk_sequence));
-  EXPECT_EQ(sequential_thunk->ToString(0),
+  EXPECT_EQ(sequential_thunk->ToString(/*indent=*/0),
             "000: kConditional\t  \n"
             "  false_branch:\n"
-            "000:     kGemm\t\n"
+            "    000: kGemm\t\n"
             "  true_branch:\n"
-            "000:     kGemm\t\n"
-            "000:     kGemm\t\n\n");
+            "    000: kGemm\t\n"
+            "    000: kGemm\t\n\n");
 
   std::unique_ptr<ConditionalThunk> thunk =
       CreateConditionalThunk(thunk_info, slice, create_branch_thunk_sequences(),
                              /*kBranchIndexIsBool=*/false);
 
-  EXPECT_EQ(thunk->ToString(0),
+  EXPECT_EQ(thunk->ToString(/*indent=*/0),
             "\n"
             "branch_0:\n"
-            "000:   kGemm\t\n"
+            "  000: kGemm\t\n"
             "branch_1:\n"
-            "000:   kGemm\t\n"
-            "000:   kGemm\t\n");
+            "  000: kGemm\t\n"
+            "  000: kGemm\t\n");
 }
 
 }  // namespace

@@ -150,6 +150,10 @@ TEST(SequentialThunkTest, ToString) {
             "001: kGemm\t\n"
             "002: kGemm\t\n"
             "003: kGemm\t\n");
+  EXPECT_EQ(sequential_thunk.ToString(/*indent=*/1),
+            "  001: kGemm\t\n"
+            "  002: kGemm\t\n"
+            "  003: kGemm\t\n");
 }
 
 }  // namespace
