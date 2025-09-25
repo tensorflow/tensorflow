@@ -26,8 +26,12 @@ namespace {
 
 using ::testing::ElementsAre;
 
-TEST(SymbolicMapTest, GetSymbolAndDimExpressions) {
-  SymbolicExprContext ctx;
+struct SymbolicMapTest : public ::testing::Test {
+  // TODO(b/446856305): MLIRContext should not be used in this test.
+  SymbolicExprContext ctx{nullptr};
+};
+
+TEST_F(SymbolicMapTest, GetSymbolAndDimExpressions) {
   SymbolicExpr d0 = ctx.CreateVariable(0);
   SymbolicExpr d1 = ctx.CreateVariable(1);
   SymbolicExpr s0 = ctx.CreateVariable(2);
@@ -39,8 +43,7 @@ TEST(SymbolicMapTest, GetSymbolAndDimExpressions) {
   EXPECT_EQ(map.GetDimExpression(1), d1);
 }
 
-TEST(SymbolicMapTest, ToString) {
-  SymbolicExprContext ctx;
+TEST_F(SymbolicMapTest, ToString) {
   SymbolicExpr d0 = ctx.CreateVariable(0);
   SymbolicExpr d1 = ctx.CreateVariable(1);
   SymbolicExpr s0 = ctx.CreateVariable(2);
@@ -62,16 +65,13 @@ TEST(SymbolicMapTest, ToString) {
   EXPECT_EQ(symbols_only.ToString(), "()[s0, s1] -> (s0, s1)");
 }
 
-TEST(SymbolicMapTest, IsEmpty) {
-  SymbolicExprContext ctx;
+TEST_F(SymbolicMapTest, IsEmpty) {
   EXPECT_TRUE(SymbolicMap::Get(&ctx, 0, 0, {}).IsEmpty());
   EXPECT_TRUE(SymbolicMap::Get(&ctx, 2, 1, {}).IsEmpty());
   EXPECT_FALSE(SymbolicMap::Get(&ctx, 1, 0, {ctx.CreateVariable(0)}).IsEmpty());
 }
 
-TEST(SymbolicMapTest, IsIdentity) {
-  SymbolicExprContext ctx;
-
+TEST_F(SymbolicMapTest, IsIdentity) {
   SymbolicMap true_identity = SymbolicMap::Get(
       &ctx, 2, 0, {ctx.CreateVariable(0), ctx.CreateVariable(1)});
   EXPECT_TRUE(true_identity.IsIdentity());
@@ -97,9 +97,7 @@ TEST(SymbolicMapTest, IsIdentity) {
   EXPECT_FALSE(unordered_variable_id.IsIdentity());
 }
 
-TEST(SymbolicMapTest, GetConstantResults) {
-  SymbolicExprContext ctx;
-
+TEST_F(SymbolicMapTest, GetConstantResults) {
   SymbolicMap all_constants_map = SymbolicMap::Get(
       &ctx, 0, 0, {ctx.CreateConstant(5), ctx.CreateConstant(10)});
   EXPECT_TRUE(all_constants_map.IsConstant());
@@ -116,8 +114,7 @@ TEST(SymbolicMapTest, GetConstantResults) {
   EXPECT_THAT(no_results_map.GetConstantResults(), ElementsAre());
 }
 
-TEST(SymbolicMapTest, ReplaceDimsAndSymbols) {
-  SymbolicExprContext ctx;
+TEST_F(SymbolicMapTest, ReplaceDimsAndSymbols) {
   SymbolicExpr d0 = ctx.CreateVariable(0);
   SymbolicExpr d1 = ctx.CreateVariable(1);
   SymbolicExpr s0 = ctx.CreateVariable(2);
@@ -148,8 +145,7 @@ TEST(SymbolicMapTest, ReplaceDimsAndSymbols) {
               ElementsAre((new_d0 * c1 + new_d1) + new_s0 * c2));
 }
 
-TEST(SymbolicMapTest, Compose) {
-  SymbolicExprContext ctx;
+TEST_F(SymbolicMapTest, Compose) {
   SymbolicExpr d0 = ctx.CreateVariable(0);
   SymbolicExpr d1 = ctx.CreateVariable(1);
 
@@ -198,8 +194,7 @@ TEST(SymbolicMapTest, Compose) {
               ElementsAre(d0 + reindexed_map1_s0, d1 * 2));
 }
 
-TEST(SymbolicMapTest, Replace) {
-  SymbolicExprContext ctx;
+TEST_F(SymbolicMapTest, Replace) {
   SymbolicExpr d0 = ctx.CreateVariable(0);
   SymbolicExpr d1 = ctx.CreateVariable(1);
   SymbolicExpr c2 = ctx.CreateConstant(2);
@@ -220,8 +215,7 @@ TEST(SymbolicMapTest, Replace) {
   EXPECT_EQ(no_replacement_map, map);
 }
 
-TEST(SymbolicMapTest, GetUnusedVariables) {
-  SymbolicExprContext ctx;
+TEST_F(SymbolicMapTest, GetUnusedVariables) {
   SymbolicExpr d0 = ctx.CreateVariable(0);
   SymbolicExpr d1 = ctx.CreateVariable(1);
   // d2 is unused.
@@ -275,8 +269,7 @@ TEST(SymbolicMapTest, GetUnusedVariables) {
   EXPECT_FALSE(no_dim_symbols[1]);
 }
 
-TEST(SymbolicMapTest, CompressDims) {
-  SymbolicExprContext ctx;
+TEST_F(SymbolicMapTest, CompressDims) {
   SymbolicExpr d0 = ctx.CreateVariable(0);
   [[maybe_unused]] SymbolicExpr d1 = ctx.CreateVariable(1);  // Unused
   SymbolicExpr d2 = ctx.CreateVariable(2);
@@ -305,8 +298,7 @@ TEST(SymbolicMapTest, CompressDims) {
                "Attempting to compress a used dimension: 0");
 }
 
-TEST(SymbolicMapTest, CompressSymbols) {
-  SymbolicExprContext ctx;
+TEST_F(SymbolicMapTest, CompressSymbols) {
   SymbolicExpr d0 = ctx.CreateVariable(0);
   SymbolicExpr s0 = ctx.CreateVariable(1);
   [[maybe_unused]] SymbolicExpr s1 = ctx.CreateVariable(2);  // Unused
