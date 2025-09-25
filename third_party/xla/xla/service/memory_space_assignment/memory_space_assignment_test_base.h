@@ -27,6 +27,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gtest/gtest.h>
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
@@ -54,9 +55,8 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "tsl/platform/status.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
+#include "xla/tsl/platform/status.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace memory_space_assignment {
