@@ -12,6 +12,8 @@ toc:
     path: /xla/architecture
   - title: XLA terminology
     path: /xla/terminology
+  - title: HLO to Thunks
+    path: /xla/hlo_to_thunks
 - title: Developer details
   # These should be in alphabetical order unless otherwise noted.
   section:
