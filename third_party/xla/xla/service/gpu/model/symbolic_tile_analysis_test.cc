@@ -1630,8 +1630,8 @@ ENTRY e {
   EXPECT_EQ(dynamic_slice->hlo()->opcode(), HloOpcode::kDynamicSlice);
   const TiledHloInstruction* p0 = dynamic_slice->operand(0);
   EXPECT_THAT(*p0, MatchTiledHloInstruction(
-                       /*tile_sizes=*/{1, 8, 2},
-                       /*tile_strides=*/{0, 1, 1},
+                       /*tile_sizes=*/{2, 8, 2},
+                       /*tile_strides=*/{1, 1, 1},
                        /*tile_offsets_indexing=*/R"(
     (pid_0){rt0} -> (rt0, 0, 0), domain: pid_0 in [0, 0], rt0 in [0, 3]
   )"));
