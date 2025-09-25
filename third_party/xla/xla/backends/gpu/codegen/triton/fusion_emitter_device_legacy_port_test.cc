@@ -3448,12 +3448,12 @@ ENTRY e {
 
   TF_ASSERT_OK_AND_ASSIGN(auto optimized_module,
                           GetOptimizedModule(std::move(module)));
-  MatchOptimizedHlo(optimized_module->ToString(), R"(
+  EXPECT_TRUE(*RunFileCheck(optimized_module->ToString(), R"(
     CHECK: fusion
     CHECK: ROOT {{.*}} scaled-dot
     CHECK: ENTRY
     CHECK: __triton_nested_gemm_fusion
-  )");
+  )"));
   EXPECT_TRUE(RunAndCompareNoHloPasses(
       std::move(optimized_module), ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }

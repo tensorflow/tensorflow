@@ -933,7 +933,8 @@ GemmFusionAutotunerImpl::GenerateScaledDotConfigs(
     const HloFusionInstruction& fusion, const HloScaledDotInstruction* dot) {
   std::vector<BackendConfig> configs;
 
-  if (!debug_options_.xla_gpu_experimental_disable_binary_libraries()) {
+  if (!debug_options_.xla_gpu_experimental_disable_binary_libraries() &&
+      IsAutotuningEnabled() && !config_.IsDeviceless()) {
     // Add cuBLAS reference config, if available.
     configs.push_back(CuBlasConfig{});
   }
