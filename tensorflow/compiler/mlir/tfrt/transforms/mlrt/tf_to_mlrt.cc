@@ -16,14 +16,15 @@ limitations under the License.
 
 #include <stdint.h>
 
-#include <iostream>
 #include <memory>
 #include <optional>
 #include <string>
 #include <utility>
 
-#include "google/protobuf/text_format.h"
+#include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Casting.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
@@ -41,6 +42,7 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
+#include "third_party/protobuf/text_format.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/host_runtime/tfrt_ops.h.inc"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
@@ -57,6 +59,8 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tfrt/transforms/mlrt/util.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/utils.h"
 #include "xla/tsl/platform/status.h"
+#include "tensorflow/core/framework/function.pb.h"
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/tfrt/fallback/fallback_state.h"
