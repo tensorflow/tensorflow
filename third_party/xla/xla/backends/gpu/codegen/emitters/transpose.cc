@@ -270,23 +270,34 @@ std::optional<IndexingMap> TransposeFusion::ComputeThreadIdToOutputIndexing(
   return GetIndexing(/*input=*/false, hero.shape(), mlir_context);
 }
 
-std::optional<IndexingMap> TransposeFusion::ComputeThreadIdToInputIndexing(
-    int64_t root_index, int64_t hero_operand_index,
-    MLIRContext* mlir_context) const {
+std::optional<std::vector<IndexingMap>>
+TransposeFusion::ComputeThreadIdToInputIndexing(
+    int64_t root_index, MLIRContext* mlir_context) const {
   const auto& hero = analysis_.fusion_hero(root_index).instruction();
-  if (!GetDescriptionForTiledTransposeEmitter(hero)) {
+  if (GetDescriptionForTiledTransposeEmitter(hero)) {
+    return std::vector<IndexingMap>{GetIndexing(
+        /*input=*/true, hero.operand(0)->shape(), mlir_context)};
+  }
+  std::vector<IndexingMap> result;
+  result.reserve(hero.operand_count());
+  auto thread_id_to_output_indexing =
+      ComputeThreadIdToOutputIndexing(root_index, mlir_context);
+  if (!thread_id_to_output_indexing.has_value()) {
+    return std::nullopt;
+  }
+  for (int64_t operand_index = 0; operand_index < hero.operand_count();
+       ++operand_index) {
     auto map = ComposeIndexingMaps(
-        *ComputeThreadIdToOutputIndexing(root_index, mlir_context),
+        *thread_id_to_output_indexing,
         ComputeOutputToInputIndexing(
             &analysis_.fusion_root(root_index).instruction(), 0, mlir_context)
-            .indexing_maps[hero_operand_index]
+            .indexing_maps[operand_index]
             .begin()
             ->map());
     map.Simplify();
-    return map;
+    result.push_back(map);
   }
-  return GetIndexing(/*input=*/true, hero.operand(hero_operand_index)->shape(),
-                     mlir_context);
+  return result;
 }
 
 LaunchDimensions TransposeFusion::launch_dimensions() const {
@@ -572,10 +583,33 @@ std::optional<IndexingMap> PackedTranspose::ComputeThreadIdToOutputIndexing(
   return GetOutputIndexing(mlir_context);
 }
 
-std::optional<IndexingMap> PackedTranspose::ComputeThreadIdToInputIndexing(
-    int64_t root_index, int64_t hero_operand_index,
-    MLIRContext* mlir_context) const {
-  return GetInputIndexing(mlir_context);
+std::optional<std::vector<IndexingMap>>
+PackedTranspose::ComputeThreadIdToInputIndexing(
+    int64_t root_index, MLIRContext* mlir_context) const {
+  const auto& hero = analysis_.fusion_hero(root_index).instruction();
+  if (GetDescriptionForTiledTransposeEmitter(hero)) {
+    return std::vector<IndexingMap>{GetInputIndexing(mlir_context)};
+  }
+  std::vector<IndexingMap> result;
+  result.reserve(hero.operand_count());
+  auto thread_id_to_output_indexing =
+      ComputeThreadIdToOutputIndexing(root_index, mlir_context);
+  if (!thread_id_to_output_indexing.has_value()) {
+    return std::nullopt;
+  }
+  for (int64_t operand_index = 0; operand_index < hero.operand_count();
+       ++operand_index) {
+    auto map = ComposeIndexingMaps(
+        *thread_id_to_output_indexing,
+        ComputeOutputToInputIndexing(
+            &analysis_.fusion_root(root_index).instruction(), 0, mlir_context)
+            .indexing_maps[operand_index]
+            .begin()
+            ->map());
+    map.Simplify();
+    result.push_back(map);
+  }
+  return result;
 }
 
 LaunchDimensions PackedTranspose::launch_dimensions() const {

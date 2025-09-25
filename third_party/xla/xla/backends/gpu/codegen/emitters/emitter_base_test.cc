@@ -17,6 +17,7 @@ limitations under the License.
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <vector>
 
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
@@ -59,8 +60,8 @@ class DummyCopyEmitter : public EmitterBase {
     return std::nullopt;
   }
 
-  std::optional<IndexingMap> ComputeThreadIdToInputIndexing(
-      int64_t, int64_t, mlir::MLIRContext*) const final {
+  std::optional<std::vector<IndexingMap>> ComputeThreadIdToInputIndexing(
+      int64_t, mlir::MLIRContext*) const final {
     return std::nullopt;
   }
 

@@ -113,11 +113,11 @@ TEST_F(CorrectnessTest, InputIndexingIsBijection) {
   for (const auto& [hero_name, ids] : flags.bijection_inputs) {
     TF_ASSERT_OK_AND_ASSIGN(int64_t hero_index,
                             GetHeroIndex(hero_name, *emitter_data->analysis));
+    auto indexing = emitter_data->emitter->ComputeThreadIdToInputIndexing(
+        hero_index, &context);
+    ASSERT_TRUE(indexing.has_value());
     for (int64_t id : ids) {
-      auto indexing = emitter_data->emitter->ComputeThreadIdToInputIndexing(
-          hero_index, id, &context);
-      ASSERT_TRUE(indexing.has_value());
-      TF_ASSERT_OK(TestBijection(*indexing,
+      TF_ASSERT_OK(TestBijection(indexing.value()[id],
                                  emitter_data->analysis->fusion_hero(hero_index)
                                      .GetOperand(id)
                                      .shape()

@@ -19,6 +19,7 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -62,12 +63,17 @@ std::optional<IndexingMap> ConcatenateFusion::ComputeThreadIdToOutputIndexing(
   return std::nullopt;
 }
 
-std::optional<IndexingMap> ConcatenateFusion::ComputeThreadIdToInputIndexing(
-    int64_t root_index, int64_t hero_operand_index,
-    mlir::MLIRContext* ctx) const {
-  // TODO(b/331356433): Add constraints depending on the `hero_operand_index`.
-  return KernelEmitter::ComputeWorkItemIdToOutputIndexing(GetWorkDimensions(),
-                                                          largest_shape_, ctx);
+std::optional<std::vector<IndexingMap>>
+ConcatenateFusion::ComputeThreadIdToInputIndexing(
+    int64_t root_index, mlir::MLIRContext* ctx) const {
+  IndexingMap map_for_largest_shape =
+      KernelEmitter::ComputeWorkItemIdToOutputIndexing(GetWorkDimensions(),
+                                                       largest_shape_, ctx);
+  // TODO(b/331356433): Handle other hero operands correctly.
+  std::vector<IndexingMap> result(
+      analysis_.fusion_hero(root_index).GetOperands().size(),
+      map_for_largest_shape);
+  return result;
 }
 
 absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>>
