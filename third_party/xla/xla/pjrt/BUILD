@@ -800,6 +800,7 @@ cc_library(
         "//xla:future",
         "//xla/tsl/concurrency:async_value",
         "//xla/tsl/concurrency:ref_count",
+        "@com_google_absl//absl/base:core_headers",
     ],
 )
 

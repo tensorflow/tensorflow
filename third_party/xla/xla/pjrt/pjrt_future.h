@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_PJRT_PJRT_FUTURE_H_
 #define XLA_PJRT_PJRT_FUTURE_H_
 
+#include "absl/base/macros.h"
 #include "xla/future.h"
 #include "xla/tsl/concurrency/async_value.h"
 #include "xla/tsl/concurrency/ref_count.h"
@@ -23,9 +24,9 @@ limitations under the License.
 namespace xla {
 
 template <typename T = void>
-using PjRtFuture = ::xla::Future<T>;
+using PjRtFuture ABSL_DEPRECATE_AND_INLINE() = ::xla::Future<T>;
 
-using PjRtFutureHelpers = ::xla::FutureHelpers;
+using PjRtFutureHelpers ABSL_DEPRECATE_AND_INLINE() = ::xla::FutureHelpers;
 
 // An RAII event that a caller can use to tell the PjRtClient about asynchronous
 // actions outside PjRt.
