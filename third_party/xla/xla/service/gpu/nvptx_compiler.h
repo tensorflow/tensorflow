@@ -112,7 +112,6 @@ class NVPTXCompiler : public GpuCompiler {
  private:
   absl::StatusOr<std::vector<uint8_t>> LinkModules(
       const stream_executor::DeviceDescription& device_description,
-      se::StreamExecutor* stream_exec,
       std::vector<std::vector<uint8_t>> modules,
       const DebugOptions& debug_options) override;
 

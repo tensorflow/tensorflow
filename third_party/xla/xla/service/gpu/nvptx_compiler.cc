@@ -735,7 +735,7 @@ absl::StatusOr<bool> NVPTXCompiler::CanUseLinkModules(
 
 absl::StatusOr<std::vector<uint8_t>> NVPTXCompiler::LinkModules(
     const stream_executor::DeviceDescription& device_description,
-    se::StreamExecutor* stream_exec, std::vector<std::vector<uint8_t>> modules,
+    std::vector<std::vector<uint8_t>> modules,
     const DebugOptions& debug_options) {
   if (modules.empty()) {
     return std::vector<uint8_t>{};
