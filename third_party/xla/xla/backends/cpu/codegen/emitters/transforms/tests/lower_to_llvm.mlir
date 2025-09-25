@@ -34,6 +34,31 @@ func.func @output_not_error(%arg0: !xla_cpu.call_frame) -> index {
 
 // -----
 
+func.func @extract_workgroup_id(%call_frame: !xla_cpu.call_frame) -> (index, index, index) {
+  %id_x = xla_cpu.extract_workgroup_id %call_frame, x
+  %id_y = xla_cpu.extract_workgroup_id %call_frame, y
+  %id_z = xla_cpu.extract_workgroup_id %call_frame, z
+  return %id_x, %id_y, %id_z : index, index, index
+}
+
+// CHECK-LABEL: func.func @extract_workgroup_id(
+// CHECK-SAME: %[[CALL_FRAME:.+]]: !xla_cpu.call_frame) -> (index, index, index) {
+// CHECK: %[[CALL_FRAME_PTR:.+]] = builtin.unrealized_conversion_cast %[[CALL_FRAME]] : !xla_cpu.call_frame to !llvm.ptr
+// CHECK: %[[WORKGROUP_GEP:.+]] = llvm.getelementptr inbounds %[[CALL_FRAME_PTR]][0, 1] : (!llvm.ptr) -> !llvm.ptr, !llvm.struct<"XLA_CPU_KernelCallFrame", (ptr, ptr, i64, ptr)>
+// CHECK: %[[WORKGROUP_PTR:.+]] = llvm.load %[[WORKGROUP_GEP]] : !llvm.ptr -> !llvm.ptr
+// CHECK: %[[WORKGROUP_X_GEP:.+]] = llvm.getelementptr inbounds %[[WORKGROUP_PTR]][0, 0] : (!llvm.ptr) -> !llvm.ptr, !llvm.struct<"kernel_dim3", (i64, i64, i64)>
+// CHECK: %[[WORKGROUP_X:.+]] = llvm.load %[[WORKGROUP_X_GEP]] invariant : !llvm.ptr -> i64
+// CHECK: %[[WORKGROUP_X_IDX:.+]] = builtin.unrealized_conversion_cast %[[WORKGROUP_X]] : i64 to index
+// CHECK: %[[WORKGROUP_Y_GEP:.+]] = llvm.getelementptr inbounds %[[WORKGROUP_PTR]][0, 1] : (!llvm.ptr) -> !llvm.ptr, !llvm.struct<"kernel_dim3", (i64, i64, i64)>
+// CHECK: %[[WORKGROUP_Y:.+]] = llvm.load %[[WORKGROUP_Y_GEP]] invariant : !llvm.ptr -> i64
+// CHECK: %[[WORKGROUP_Y_IDX:.+]] = builtin.unrealized_conversion_cast %[[WORKGROUP_Y]] : i64 to index
+// CHECK: %[[WORKGROUP_Z_GEP:.+]] = llvm.getelementptr inbounds %[[WORKGROUP_PTR]][0, 2] : (!llvm.ptr) -> !llvm.ptr, !llvm.struct<"kernel_dim3", (i64, i64, i64)>
+// CHECK: %[[WORKGROUP_Z:.+]] = llvm.load %[[WORKGROUP_Z_GEP]] invariant : !llvm.ptr -> i64
+// CHECK: %[[WORKGROUP_Z_IDX:.+]] = builtin.unrealized_conversion_cast %[[WORKGROUP_Z]] : i64 to index
+// CHECK: return %[[WORKGROUP_X_IDX]], %[[WORKGROUP_Y_IDX]], %[[WORKGROUP_Z_IDX]] : index, index, index
+
+// -----
+
 func.func private @wrap_entry(
   %arg0: tensor<2xi32> {llvm.dereferenceable = 8 : index},
   %arg1: tensor<21x12xi32> {llvm.dereferenceable = 1008 : index})
