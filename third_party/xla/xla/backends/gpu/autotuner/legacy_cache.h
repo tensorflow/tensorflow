@@ -33,9 +33,7 @@ namespace xla {
 namespace gpu {
 
 // Wrapper around the legacy autotune cache from the AutotunerUtil which uses
-// AutotuneResult proto. The insert for backends which are not supported in
-// AutotuneResult proto will be a no-op. The lookup will return nullopt if the
-// backend is not supported in AutotuneResult proto.
+// AutotuneResult proto.
 class LegacyCache : public AutotunerCacheInterface {
  public:
   LegacyCache(std::string cache_dir, DebugOptions::AutotuneCacheMode cache_mode,
@@ -45,7 +43,7 @@ class LegacyCache : public AutotunerCacheInterface {
         device_desc_(std::move(device_desc)) {}
   std::optional<Config> Lookup(const HloInstruction* instr) override;
   absl::Status Insert(const HloInstruction* instr,
-                      Config& best_config) override;
+                      const Config& best_config) override;
 
  private:
   AutotuneCacheKey GetAutotuneCacheKey(const HloInstruction& instr);

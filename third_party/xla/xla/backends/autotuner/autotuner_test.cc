@@ -120,7 +120,7 @@ class MockAutotunerCache : public AutotunerCacheInterface {
               (const HloInstruction* instr), (override));
   MOCK_METHOD(absl::Status, Insert,
               (const HloInstruction* instr,
-               AutotunerCacheInterface::Config& best_config),
+               const AutotunerCacheInterface::Config& best_config),
               (override));
 };
 
@@ -574,9 +574,15 @@ TEST_F(AutotunerTest, DumpLogsToFile) {
   AutotuningLog* log = expected_logs.add_logs();
   log->mutable_instr()->PackFrom(dummy_instr->ToProto());
   AutotuneResult* result_1 = log->add_results();
+  result_1->mutable_other()->set_name("mock_backend");
+  *result_1->mutable_other()->mutable_config() =
+      *GetTestConfig("test_config_1");
   *result_1->mutable_run_time() = ToDurationProto(absl::Seconds(2));
   result_1->set_scratch_bytes(100);
   AutotuneResult* result_2 = log->add_results();
+  result_2->mutable_other()->set_name("mock_backend");
+  *result_2->mutable_other()->mutable_config() =
+      *GetTestConfig("test_config_2");
   *result_2->mutable_run_time() = ToDurationProto(absl::Seconds(1));
 
   EXPECT_THAT(actual_logs, tsl::proto_testing::EqualsProto(expected_logs));

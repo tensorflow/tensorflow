@@ -147,7 +147,8 @@ std::optional<AutotunerCacheInterface::Config> FileBasedAutotunerCache::Lookup(
 }
 
 absl::Status FileBasedAutotunerCache::Insert(
-    const HloInstruction* instr, AutotunerCacheInterface::Config& best_config) {
+    const HloInstruction* instr,
+    const AutotunerCacheInterface::Config& best_config) {
   if (cache_config_.autotune_cache_mode ==
       FileBasedCacheConfig::CacheMode::READ) {
     return absl::OkStatus();

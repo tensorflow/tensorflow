@@ -46,7 +46,7 @@ std::optional<LegacyCache::Config> LegacyCache::Lookup(
 }
 
 absl::Status LegacyCache::Insert(const HloInstruction* instr,
-                                 Config& best_config) {
+                                 const Config& best_config) {
   AutotuneCacheKey key = GetAutotuneCacheKey(*instr);
   std::optional<AutotuneResult> opt_result = GetAutotuneResult(best_config);
   if (!opt_result.has_value()) {
@@ -80,6 +80,9 @@ std::optional<LegacyCache::Config> LegacyCache::GetConfig(
   } else if (result.has_algorithm()) {
     config.codegen_backend_name = "Cudnn";
     config.backend_config.PackFrom(result.algorithm());
+  } else if (result.has_other()) {
+    config.codegen_backend_name = result.other().name();
+    config.backend_config = result.other().config();
   } else {
     return std::nullopt;
   }
@@ -96,7 +99,8 @@ std::optional<AutotuneResult> LegacyCache::GetAutotuneResult(
   } else if (config.codegen_backend_name == "Cudnn") {
     config.backend_config.UnpackTo(result.mutable_algorithm());
   } else {
-    return std::nullopt;
+    result.mutable_other()->set_name(config.codegen_backend_name);
+    *result.mutable_other()->mutable_config() = config.backend_config;
   }
   return result;
 }

@@ -476,6 +476,9 @@ AutotuneResult Autotuner::ConfigResult::ToProto() const {
   } else if (config.backend_config
                  ->Is<stream_executor::dnn::AlgorithmProto>()) {
     config.backend_config->UnpackTo(result.mutable_algorithm());
+  } else {
+    result.mutable_other()->set_name(config.codegen_backend->name());
+    *result.mutable_other()->mutable_config() = *config.backend_config;
   }
   if (failure.has_value()) {
     *result.mutable_failure() = failure->ToProto();
