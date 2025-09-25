@@ -63,7 +63,6 @@ limitations under the License.
 #include "xla/service/gpu/metrics.h"
 #include "xla/service/logical_buffer.h"
 #include "xla/shape.h"
-#include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"

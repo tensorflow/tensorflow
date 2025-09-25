@@ -1220,6 +1220,7 @@ cc_library(
         "//xla/service/heap_simulator",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:logging",
+        "//xla/tsl/platform:status",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
@@ -3498,7 +3499,7 @@ cc_library(
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "@com_google_absl//absl/base:core_headers",
-        "@local_tsl//tsl/platform:logging",
+        "@com_google_absl//absl/log:check",
     ],
 )
 

@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/service/gpu/gpu_hlo_schedule.h"
 
-#include <stdbool.h>
 
 #include <cstddef>
 #include <cstdint>
