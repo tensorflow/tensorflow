@@ -608,39 +608,68 @@ AllocateDestinationBuffer(const Shape& on_host_shape, PjRtDevice* device,
         "Cannot allocate a PjRtStreamExecutorBuffer for a tuple.");
   }
 
-  PjRtMemorySpace* default_memory_space =
-      device->default_memory_space().value_or(nullptr);
   if (!memory_space) {
-    memory_space = default_memory_space;
+    memory_space = device->default_memory_space().value_or(nullptr);
   }
-  bool is_pinned_host_memory =
-      memory_space && (memory_space->kind() == PinnedHostMemorySpace::kKind);
-  // Only allow pinned host memory or device memory.
-  if (memory_space != default_memory_space && !is_pinned_host_memory) {
-    return InvalidArgument("Buffer allocation: invalid memory space");
-  }
-
-  auto* se_client = tensorflow::down_cast<PjRtStreamExecutorClient*>(client);
-  TransferManager* transfer_manager =
-      se_client->client()->backend().transfer_manager();
-
-  // Communicate the desired memory space to the allocator via the shape
-  // callback.
-  auto memory_space_shape_fn = [is_pinned_host_memory,
-                                transfer_manager](const Shape& shape) {
-    Shape result = transfer_manager->HostShapeToDeviceShape(shape);
-    if (is_pinned_host_memory) {
-      result.mutable_layout()->set_memory_space(Layout::kHostMemorySpace);
-    }
-    return result;
-  };
 
   TF_ASSIGN_OR_RETURN(
-      ScopedShapedBuffer dst_buffer,
-      transfer_manager->AllocateScopedShapedBuffer(
-          on_host_shape, se_client->allocator(),
-          local_device->local_device_id().value(),
-          local_device->local_hardware_id().value(), memory_space_shape_fn));
+      Shape on_device_shape,
+      client->MakeDefaultShapeForMemorySpace(
+          memory_space, on_host_shape,
+          on_host_shape.has_layout() ? &on_host_shape.layout() : nullptr));
+  TF_ASSIGN_OR_RETURN(
+      size_t on_device_bytes_count,
+      client->GetOnDeviceBytesCount(memory_space, on_device_shape));
+  tsl::RCReference<RawSEDeviceMemory> mem;
+  {
+    bool is_pinned_host_memory =
+        memory_space && (memory_space->kind() == PinnedHostMemorySpace::kKind);
+    // Only allow pinned host memory or device memory.
+    PjRtMemorySpace* default_memory_space =
+        device->default_memory_space().value_or(nullptr);
+    if (memory_space != default_memory_space && !is_pinned_host_memory) {
+      return InvalidArgument("Buffer allocation: invalid memory space");
+    }
+
+    auto* se_client = tensorflow::down_cast<PjRtStreamExecutorClient*>(client);
+    TransferManager* transfer_manager =
+        se_client->client()->backend().transfer_manager();
+
+    // Communicate the desired memory space to the allocator via the shape
+    // callback.
+    auto memory_space_shape_fn = [is_pinned_host_memory,
+                                  transfer_manager](const Shape& shape) {
+      Shape result = transfer_manager->HostShapeToDeviceShape(shape);
+      if (is_pinned_host_memory) {
+        result.mutable_layout()->set_memory_space(Layout::kHostMemorySpace);
+      }
+      return result;
+    };
+
+    TF_ASSIGN_OR_RETURN(
+        ScopedShapedBuffer dst_buffer,
+        transfer_manager->AllocateScopedShapedBuffer(
+            on_host_shape, se_client->allocator(),
+            local_device->local_device_id().value(),
+            local_device->local_hardware_id().value(), memory_space_shape_fn));
+    Shape old_on_device_shape = dst_buffer.on_device_shape();
+    DCHECK_EQ(on_device_shape, old_on_device_shape)
+        << on_device_shape.ToString(true) << " vs "
+        << old_on_device_shape.ToString(true);
+    DCHECK_EQ(on_device_bytes_count, dst_buffer.buffer({}).size());
+    mem = RawSEDeviceMemory::Create(dst_buffer.buffer({}),
+                                    device->local_device_id(),
+                                    dst_buffer.memory_allocator());
+    dst_buffer.clear();
+    if (local_device->allocation_model() !=
+        LocalDeviceState::kComputeSynchronized) {
+      DCHECK(client->client()
+                 ->backend()
+                 .transfer_manager()
+                 ->CanBufferBeAccessedNow(
+                     local_device->compute_stream()->parent(), mem->mem()));
+    }
+  }
   if (local_device->allocation_model() ==
       LocalDeviceState::kComputeSynchronized) {
     if (copy_stream == nullptr) {
@@ -648,11 +677,7 @@ AllocateDestinationBuffer(const Shape& on_host_shape, PjRtDevice* device,
     } else {
       CHECK(copy_stream->WaitFor(local_device->compute_stream()).ok());
     }
-  } else {
-    DCHECK(transfer_manager->CanShapedBufferBeAccessedNow(
-        local_device->compute_stream()->parent(), dst_buffer));
   }
-  Shape on_device_shape = dst_buffer.on_device_shape();
 
   absl::InlinedVector<BufferSequencingEventRef, 2> definition_events;
   if (is_uninitialized_create) {
@@ -684,11 +709,6 @@ AllocateDestinationBuffer(const Shape& on_host_shape, PjRtDevice* device,
           BufferSequencingEvent::Create(client->thread_pool()));
     }
   }
-
-  auto mem = RawSEDeviceMemory::Create(dst_buffer.buffer({}),
-                                       device->local_device_id(),
-                                       dst_buffer.memory_allocator());
-  dst_buffer.clear();
 
   auto dst_device_buffer = std::make_unique<TrackedDeviceBuffer>(
       device, std::move(mem), definition_events);
