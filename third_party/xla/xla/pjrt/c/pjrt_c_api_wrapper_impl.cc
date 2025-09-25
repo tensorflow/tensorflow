@@ -2581,57 +2581,6 @@ PJRT_Error* PJRT_TopologyDescription_Deserialize(
   return nullptr;
 }
 
-PJRT_Error* PJRT_LoadedExecutable_GetDeviceAssignment(
-    PJRT_LoadedExecutable_GetDeviceAssignment_Args* args) {
-  PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
-      "PJRT_LoadedExecutable_GetDeviceAssignment_Args",
-      PJRT_LoadedExecutable_GetDeviceAssignment_Args_STRUCT_SIZE,
-      args->struct_size));
-
-  // A portable executable doesn't have a device assignment. Return an empty
-  // assignment and no-op deleter in this case.
-  PJRT_ASSIGN_OR_RETURN(
-      xla::CompileOptions compile_options,
-      args->executable->executable->GetExecutable()->GetCompileOptions());
-  if (compile_options.compile_portable_executable) {
-    args->serialized_bytes_size = 0;
-    args->serialized_device_assignment = nullptr;
-    args->serialized_device_assignment_deleter =
-        +[](PJRT_DeviceAssignmentSerialized* serialized_device_assignment) {};
-    return nullptr;
-  }
-
-  const xla::DeviceAssignment& device_assignment =
-      args->executable->executable->device_assignment();
-
-  xla::DeviceAssignmentProto proto;
-  device_assignment.Serialize(&proto);
-
-  std::string serialized_proto;
-  if (!proto.SerializeToString(&serialized_proto)) {
-    return new PJRT_Error{xla::ResourceExhausted(
-        "%s: Device assignment serialization failed, likely due to exceeding "
-        "the max supported protobuf size of 2 GiB.",
-        __func__)};
-  }
-
-  PJRT_DeviceAssignmentSerialized* serialized_da =
-      new PJRT_DeviceAssignmentSerialized;
-  if (serialized_da == nullptr) {
-    return new PJRT_Error{xla::ResourceExhausted(
-        "Out of memory for `PJRT_LoadedExecutable_GetDeviceAssignment()`")};
-  }
-  serialized_da->serialized = std::move(serialized_proto);
-  args->serialized_device_assignment = serialized_da;
-  args->serialized_bytes = serialized_da->serialized.data();
-  args->serialized_bytes_size = serialized_da->serialized.size();
-  args->serialized_device_assignment_deleter =
-      +[](PJRT_DeviceAssignmentSerialized* serialized_device_assignment) {
-        delete serialized_device_assignment;
-      };
-  return nullptr;
-}
-
 // ---------------------------------- Layouts ----------------------------------
 
 PJRT_Error* PJRT_Layouts_MemoryLayout_Destroy(
@@ -3095,8 +3044,6 @@ PJRT_Api CreatePjrtApi(PJRT_Client_Create* create_fn,
       pjrt::PJRT_Client_CreateAliasBuffer,
       /*PJRT_Client_FulfillAliasBuffer=*/
       pjrt::PJRT_Client_FulfillAliasBuffer,
-      /*PJRT_LoadedExecutable_GetDeviceAssignment=*/
-      pjrt::PJRT_LoadedExecutable_GetDeviceAssignment,
   };
 }
 

@@ -617,11 +617,7 @@ class PjRtCApiLoadedExecutable : public PjRtLoadedExecutable {
   }
 
   const DeviceAssignment& device_assignment() const override {
-    CHECK(device_assignment_ != nullptr)
-        << "device_assignment_ is a nullptr. This is likely because "
-           "PjRtCApiLoadedExecutable::device_assignment() was called on a "
-           "portable executable, which does not have a device assignment.";
-    return *device_assignment_;
+    CHECK(false) << "PJRT C API does not support device_assignment";
   }
 
   absl::Span<const LogicalDeviceIds> addressable_device_logical_ids()
@@ -755,10 +751,8 @@ class PjRtCApiLoadedExecutable : public PjRtLoadedExecutable {
       loaded_executable_;
   std::unique_ptr<PjRtCApiExecutable> executable_;
   std::vector<PjRtDevice*> addressable_devices_;
-  std::unique_ptr<const DeviceAssignment> device_assignment_;
 
   void InitDevices();
-  void InitDeviceAssignment();
 };
 
 class CApiCopyToDeviceStream : public CopyToDeviceStream {

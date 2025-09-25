@@ -1,9 +1,5 @@
 # PJRT C API changelog
 
-## 0.79
-
-* Added `PJRT_LoadedExecutable_GetDeviceAssignment.`
-
 ## 0.78
 
 * Add incarnations to `PJRT_ExecuteOptions`.

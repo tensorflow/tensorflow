@@ -30,7 +30,6 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "absl/cleanup/cleanup.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -62,7 +61,6 @@ limitations under the License.
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_future.h"
-#include "xla/service/computation_placer.h"
 #include "xla/service/custom_call_target_registry.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -286,44 +284,6 @@ TEST_F(PjrtCApiGpuExecutableTest, GetCompiledMemoryStats) {
             stats.host_output_size_in_bytes);
   EXPECT_EQ(ref_stats.host_alias_size_in_bytes, stats.host_alias_size_in_bytes);
   EXPECT_EQ(ref_stats.host_temp_size_in_bytes, stats.host_temp_size_in_bytes);
-}
-
-TEST_F(PjrtCApiGpuExecutableTest, GetDeviceAssignment) {
-  PJRT_LoadedExecutable_GetDeviceAssignment_Args args;
-  args.struct_size = PJRT_LoadedExecutable_GetDeviceAssignment_Args_STRUCT_SIZE;
-  args.extension_start = nullptr;
-  args.executable = executable_.get();
-
-  PJRT_Error* error = api_->PJRT_LoadedExecutable_GetDeviceAssignment(&args);
-  ASSERT_EQ(error, nullptr);
-
-  absl::Cleanup cleanup = [&args] {
-    args.serialized_device_assignment_deleter(
-        args.serialized_device_assignment);
-  };
-
-  // Deserialize
-  xla::DeviceAssignmentProto proto;
-  std::string serialized_proto(args.serialized_bytes,
-                               args.serialized_bytes_size);
-  ASSERT_TRUE(proto.ParseFromString(serialized_proto));
-  TF_ASSERT_OK_AND_ASSIGN(auto device_assignment,
-                          xla::DeviceAssignment::Deserialize(proto));
-
-  // Use the PJRT C++ API to create a reference device assignment.
-  const xla::DeviceAssignment& ref_device_assignment =
-      executable_->get()->device_assignment();
-
-  // Compare with reference to ensure the C++ and C APIs are equivalent.
-  EXPECT_EQ(device_assignment->replica_count(),
-            ref_device_assignment.replica_count());
-  EXPECT_EQ(device_assignment->computation_count(),
-            ref_device_assignment.computation_count());
-  for (int i = 0; i < device_assignment->replica_count(); ++i) {
-    for (int j = 0; j < device_assignment->computation_count(); ++j) {
-      EXPECT_EQ((*device_assignment)(i, j), ref_device_assignment(i, j));
-    }
-  }
 }
 
 TEST_F(PjrtCApiGpuTest, CreateAndDestroyExecuteContext) {
