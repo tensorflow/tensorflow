@@ -1,720 +1,1181 @@
+diff --git a/WORKSPACE b/WORKSPACE
+index 0a86891..95d626f 100644
+--- a/WORKSPACE
++++ b/WORKSPACE
+@@ -33,13 +33,6 @@ http_archive(
+     url = "https://github.com/bazelbuild/rules_cc/releases/download/0.1.5/rules_cc-0.1.5.tar.gz",
+ )
+ 
+-http_archive(
+-    name = "rules_shell",
+-    sha256 = "bc61ef94facc78e20a645726f64756e5e285a045037c7a61f65af2941f4c25e1",
+-    strip_prefix = "rules_shell-0.4.1",
+-    url = "https://github.com/bazelbuild/rules_shell/releases/download/v0.4.1/rules_shell-v0.4.1.tar.gz",
+-)
+-
+ ###############################
+ # Initialize non-hermetic Python
+ 
+diff --git a/shardy/dialect/mpmd/transforms/import/generate_sdy_meshes_from_topology_pass.cc b/shardy/dialect/mpmd/transforms/import/generate_sdy_meshes_from_topology_pass.cc
+index 99ab496..d4208da 100644
+--- a/shardy/dialect/mpmd/transforms/import/generate_sdy_meshes_from_topology_pass.cc
++++ b/shardy/dialect/mpmd/transforms/import/generate_sdy_meshes_from_topology_pass.cc
+@@ -118,11 +118,6 @@ class GenerateSdyMeshesFromTopologyPass
+           auto [prefix, axis_name] = axis.getName().split(kMeshAxisSeparator);
+           SDY_CHECK(!axis_name.empty())
+               << "Axis name does not contain '" << kMeshAxisSeparator << "'";
+-          if (!mesh_name.empty() && mesh_name != prefix) {
+-            SDY_CHECK(mesh_name == prefix)
+-                << "Mesh name mismatch: " << mesh_name.str() << " vs "
+-                << prefix.str();
+-          }
+           mesh_name = prefix;
+           axes.push_back(sdy::AxisRefAttr::get(
+               module_op.getContext(), axis_name, axis.getSubAxisInfo()));
+diff --git a/shardy/dialect/mpmd/transforms/import/import_pipeline.cc b/shardy/dialect/mpmd/transforms/import/import_pipeline.cc
+index 8d55fb9..1c3c1c7 100644
+--- a/shardy/dialect/mpmd/transforms/import/import_pipeline.cc
++++ b/shardy/dialect/mpmd/transforms/import/import_pipeline.cc
+@@ -176,11 +176,6 @@ struct ImportPipelineOptions
+       llvm::cl::desc(
+           "Whether to merge inferred fragments only after scheduling."),
+       llvm::cl::init(false)};
+-
+-  Option<bool> enableHeterogeneousMeshes{
+-      *this, "enable-heterogeneous-meshes",
+-      llvm::cl::desc("Whether to enable heterogeneous meshes."),
+-      llvm::cl::init(false)};
+ };
+ 
+ }  // namespace
+@@ -194,8 +189,6 @@ void registerImportPipeline() {
+         ImportOptions options;
+         options.nameToMeshAssignment = pipelineOptions.nameToMeshAssignment;
+         options.mergeAfterScheduling = pipelineOptions.mergeAfterScheduling;
+-        options.enableHeterogeneousMeshes =
+-            pipelineOptions.enableHeterogeneousMeshes;
+         addImportPipeline(pm, std::move(options));
+       });
+ }
+diff --git a/shardy/dialect/mpmd/transforms/import/test/import_pipeline_with_heterogenous_meshes.mlir b/shardy/dialect/mpmd/transforms/import/test/import_pipeline_with_heterogenous_meshes.mlir
+deleted file mode 100644
+index 64914ef..0000000
+--- a/shardy/dialect/mpmd/transforms/import/test/import_pipeline_with_heterogenous_meshes.mlir
++++ /dev/null
+@@ -1,34 +0,0 @@
+-// RUN: mpmd_opt %s -mpmd-import-pipeline='name-to-mesh-assignment=f1@tpu,f2@cpu enable-heterogeneous-meshes' -split-input-file 2>&1 | FileCheck %s
+-
+-module @multiple_input_meshes {
+-  // CHECK-DAG: sdy.mesh @tpu = <["x"=2, "y"=4]>
+-  // CHECK-DAG: sdy.mesh @cpu = <["z"=8]>
+-  // CHECK-DAG: sdy.mesh @empty_mesh = <[]>
+-  // CHECK-DAG: sdy.mesh @maximal_mesh = <[], device_ids=[0]>
+-  // CHECK-NOT: sdy.mesh @mesh
+-  // CHECK-NOT: sdy.mesh @mesh_0
+-  sdy.mesh @mesh = <["tpu_x"=8, "tpu_y"=8]>
+-  sdy.mesh @mesh_0 = <["cpu_z"=8]>
+-  sdy.mesh @empty_mesh = <[]>
+-  sdy.mesh @maximal_mesh = <[], device_ids=[0]>
+-
+-  // CHECK: %arg0: !mpmd.mesh_tensor<"tpu", tensor<16xf32>> {sdy.sharding = #sdy.sharding<@tpu, [{"x", "y"}]>}
+-  // CHECK: %arg1: !mpmd.mesh_tensor<"cpu", tensor<16xf32>> {sdy.sharding = #sdy.sharding<@cpu, [{"z":(1)2}]>}
+-  // CHECK: %arg2: !mpmd.mesh_tensor<"tpu", tensor<16xf32>> {sdy.sharding = #sdy.sharding<@tpu, [{"x", "y"}]>}
+-  func.func @main(
+-    %arg0: tensor<16xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"tpu_x", "tpu_y"}]>},
+-    %arg1: tensor<16xf32> {sdy.sharding = #sdy.sharding<@mesh_0, [{"cpu_z":(1)2}]>},
+-    %arg2: tensor<16xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"tpu_x", "tpu_y"}]>})
+-      -> (tensor<16xf32>) attributes {
+-      topology = #mpmd.topology<<"tpu" : <["x"=2, "y"=4]>>, <"cpu" : <["z"=8]>>>} {
+-    %0 = mpmd.named_computation<"f1"> (%arg0, %arg2) (%arg3: tensor<16xf32>, %arg4: tensor<16xf32>) {
+-      %2 = stablehlo.add %arg4, %arg3 : tensor<16xf32>
+-      mpmd.return %2 : tensor<16xf32>
+-    } : (tensor<16xf32>, tensor<16xf32>) -> tensor<16xf32>
+-    %1 = mpmd.named_computation<"f2"> (%arg1, %0) (%arg3: tensor<16xf32>, %arg4: tensor<16xf32>) {
+-      %2 = stablehlo.add %arg4, %arg3 : tensor<16xf32>
+-      mpmd.return %2 : tensor<16xf32>
+-    } : (tensor<16xf32>, tensor<16xf32>) -> tensor<16xf32>
+-    return %1 : tensor<16xf32>
+-  }
+-}
+diff --git a/shardy/dialect/sdy/transforms/export/explicit_reshards_util.cc b/shardy/dialect/sdy/transforms/export/explicit_reshards_util.cc
+index 87186df..75892ea 100644
+--- a/shardy/dialect/sdy/transforms/export/explicit_reshards_util.cc
++++ b/shardy/dialect/sdy/transforms/export/explicit_reshards_util.cc
+@@ -926,7 +926,7 @@ ArrayRef<AxisRefAttr> getUnreducedAxes(Value value) {
+   return getUnreducedAxes(getSharding(value));
+ }
+ 
+-void insertAllReducesForReductionFactors(
++void insertAllReducesForRedcutionFactors(
+     Operation* op, const AxesPerFactor& commonAxesPerFactor, const Mesh& mesh,
+     OpShardingRuleAttr shardingRule, IRRewriter& rewriter) {
+   if (op->getResults().empty()) {
+@@ -957,11 +957,13 @@ void insertAllReducesForReductionFactors(
+   }
+ }
+ 
+-std::optional<AxesPerFactor> insertExplicitReshardsOnOp(
+-    Operation* op, ArrayRef<TensorShardingAttr> inShardings,
+-    ArrayRef<TensorShardingAttr> outShardings, IRRewriter& rewriter,
+-    const SymbolTable& symbolTable, OpShardingRuleAttr shardingRule,
+-    const Mesh& mesh) {
++void insertExplicitReshardsOnOp(Operation* op,
++                                ArrayRef<TensorShardingAttr> inShardings,
++                                ArrayRef<TensorShardingAttr> outShardings,
++                                IRRewriter& rewriter,
++                                const SymbolTable& symbolTable,
++                                OpShardingRuleAttr shardingRule,
++                                const Mesh& mesh) {
+   ShardingProjection shardingProjection = ShardingProjection::build(
+       inShardings, outShardings, shardingRule, mesh.attr(),
+       /*closedIfMissing=*/true);
+@@ -971,10 +973,8 @@ std::optional<AxesPerFactor> insertExplicitReshardsOnOp(
+   AxesPerFactor commonAxesPerFactor =
+       findCommonAxes(inShardings, outShardings, shardingProjection,
+                      shardingRule, getTensorSizes(op), symbolTable, mesh);
+-  // TODO(b/446833985): Return common axes factors also when the sharding
+-  // projection have overflow axes.
+   if (commonAxesPerFactor.empty()) {
+-    return std::nullopt;
++    return;
+   }
+   for (const auto& [index, axes] : llvm::enumerate(commonAxesPerFactor)) {
+     // TODO(enver): Add unit tests to test overflow axes are cleared after
+@@ -986,7 +986,9 @@ std::optional<AxesPerFactor> insertExplicitReshardsOnOp(
+                          updateTensorShardings, rewriter, shardingRule,
+                          symbolTable, mesh);
+ 
+-  return commonAxesPerFactor;
++  // TODO(b/440055868): Insert a reshard from unreduced to replicated axes.
++  insertAllReducesForRedcutionFactors(op, commonAxesPerFactor, mesh,
++                                      shardingRule, rewriter);
+ }
+ 
+ }  // namespace sdy
+diff --git a/shardy/dialect/sdy/transforms/export/explicit_reshards_util.h b/shardy/dialect/sdy/transforms/export/explicit_reshards_util.h
+index 0fb26e1..7d2a830 100644
+--- a/shardy/dialect/sdy/transforms/export/explicit_reshards_util.h
++++ b/shardy/dialect/sdy/transforms/export/explicit_reshards_util.h
+@@ -88,9 +88,7 @@ ArrayRef<AxisRefAttr> getUnreducedAxes(Value value);
+ // Assume the followings:
+ // - All op results have the same unreduced axes.
+ // - All op results have the same mesh as `mesh` ignoring device id orders.
+-// - Only the reduction factors are properly set in `commonAxesPerFactor`.
+-// TODO(enver): Change to take axes only for reduction factors.
+-void insertAllReducesForReductionFactors(
++void insertAllReducesForRedcutionFactors(
+     Operation* op, const AxesPerFactor& commonAxesPerFactor, const Mesh& mesh,
+     OpShardingRuleAttr shardingRule, IRRewriter& rewriter);
+ 
+@@ -103,13 +101,13 @@ void insertAllReducesForReductionFactors(
+ // - All op results have the same unreduced axes.
+ // - If the op has no results, none of the operands has unreduced axes.
+ // - Operand and result meshes are the same ignoring device id order.
+-//
+-// Returns the common axes per factor.
+-std::optional<AxesPerFactor> insertExplicitReshardsOnOp(
+-    Operation* op, ArrayRef<TensorShardingAttr> inShardings,
+-    ArrayRef<TensorShardingAttr> outShardings, IRRewriter& rewriter,
+-    const SymbolTable& symbolTable, OpShardingRuleAttr shardingRule,
+-    const Mesh& mesh);
++void insertExplicitReshardsOnOp(Operation* op,
++                                ArrayRef<TensorShardingAttr> inShardings,
++                                ArrayRef<TensorShardingAttr> outShardings,
++                                IRRewriter& rewriter,
++                                const SymbolTable& symbolTable,
++                                OpShardingRuleAttr shardingRule,
++                                const Mesh& mesh);
+ 
+ }  // namespace sdy
+ }  // namespace mlir
+diff --git a/shardy/dialect/sdy/transforms/export/insert_explicit_reshards.cc b/shardy/dialect/sdy/transforms/export/insert_explicit_reshards.cc
+index 47d89f7..f52218d 100644
+--- a/shardy/dialect/sdy/transforms/export/insert_explicit_reshards.cc
++++ b/shardy/dialect/sdy/transforms/export/insert_explicit_reshards.cc
+@@ -71,15 +71,14 @@ void insertExplicitReshardsToTargetSharding(OpOperand& opOperand,
+         opOperand, operandSharding, targetSharding, symbolTable, rewriter);
+   }
+ 
+-  if (onFullVersion && !isEquivalent(operandSharding, targetSharding)) {
++  if (onFullVersion && shouldReshard(operandSharding, targetSharding)) {
+     operand = opOperand.get();
+     auto reshardOp = ReshardOp::create(
+         rewriter, operand.getLoc(), operand,
+         targetSharding
+             ? targetSharding
+-            // Since opearand and target shardings are not equivalent and
+-            // `targetSharding` is empty, `operandSharding` is guaranteed to be
+-            // nonempty.
++            // Since it should reshard and `targetSharding` is empty,
++            // `operandSharding` is guaranteed to be nonempty.
+             : TensorShardingAttr::getFullyClosedLike(operandSharding));
+     opOperand.set(reshardOp);
+   }
+@@ -391,16 +390,13 @@ bool isOnFullVersion(Operation* op, const bool enableFullVersion) {
+   return false;
+ }
+ 
+-std::optional<AxesPerFactor> processOp(
+-    Operation* op, ArrayRef<TensorShardingAttr> inShardings,
+-    ArrayRef<TensorShardingAttr> outShardings, IRRewriter& rewriter,
+-    const SymbolTable& symbolTable, OpShardingRuleAttr shardingRule,
+-    const Mesh& mesh, const bool onFullVersion) {
+-  if (onFullVersion) {
+-    return insertExplicitReshardsOnOp(op, inShardings, outShardings, rewriter,
+-                                      symbolTable, shardingRule, mesh);
+-  }
+-
++void processOpInMinimalVersion(Operation* op,
++                               ArrayRef<TensorShardingAttr> inShardings,
++                               ArrayRef<TensorShardingAttr> outShardings,
++                               IRRewriter& rewriter,
++                               const SymbolTable& symbolTable,
++                               OpShardingRuleAttr shardingRule,
++                               const Mesh& mesh) {
+   TypeSwitch<Operation*>(op)
+       .Case<stablehlo::DotOp>([&](stablehlo::DotOp dotOp) {
+         processDot(dotOp, inShardings, outShardings, rewriter, symbolTable,
+@@ -412,7 +408,6 @@ std::optional<AxesPerFactor> processOp(
+       });
+ 
+   // Collect unreduced axes from all results.
+-  // TODO(enver): Factor out the check. It is also used in another method.
+   ArrayRef<AxisRefAttr> resultUnreducedAxes;
+   for (TensorShardingAttr outSharding : outShardings) {
+     if (outSharding && !outSharding.getUnreducedAxes().empty()) {
+@@ -425,15 +420,14 @@ std::optional<AxesPerFactor> processOp(
+       }
+     }
+   }
++
+   if (resultUnreducedAxes.empty()) {
+-    return std::nullopt;
++    return;
+   }
+ 
+   ShardingProjection shardingProjection = ShardingProjection::build(
+       inShardings, outShardings, shardingRule, mesh.attr(),
+       /*closedIfMissing=*/true);
+-  // TODO(enver): Factor out finding common axes per factor. Share logic with
+-  // getCompatibleFactorShardings.
+   AxesPerFactor commonAxesPerFactor(shardingRule.getNumFactors());
+   for (int64_t reductionFactor : shardingRule.getReductionFactors()) {
+     // We only iterate operands since reduction factors are not in results.
+@@ -458,7 +452,8 @@ std::optional<AxesPerFactor> processOp(
+     }
+   }
+ 
+-  return commonAxesPerFactor;
++  insertAllReducesForRedcutionFactors(op, commonAxesPerFactor, mesh,
++                                      shardingRule, rewriter);
+ }
+ 
+ struct InsertExplicitReshardsPass
+@@ -517,13 +512,12 @@ struct InsertExplicitReshardsPass
+         return;
+       }
+ 
+-      if (std::optional<AxesPerFactor> commonAxesPerFactor =
+-              processOp(op, inShardings, outShardings, rewriter, symbolTable,
+-                        shardingRule, *mesh, onFullVersion)) {
+-        // TODO(b/440055868): Insert a reshard from unreduced to replicated
+-        // axes.
+-        insertAllReducesForReductionFactors(op, *commonAxesPerFactor, *mesh,
+-                                            shardingRule, rewriter);
++      if (onFullVersion) {
++        insertExplicitReshardsOnOp(op, inShardings, outShardings, rewriter,
++                                   symbolTable, shardingRule, *mesh);
++      } else {
++        processOpInMinimalVersion(op, inShardings, outShardings, rewriter,
++                                  symbolTable, shardingRule, *mesh);
+       }
+ 
+       // TODO(enver): Remove sharding rules from ops.
+diff --git a/shardy/dialect/sdy/transforms/export/reshard_to_collectives.cc b/shardy/dialect/sdy/transforms/export/reshard_to_collectives.cc
+index 5f6be97..3800cbc 100644
+--- a/shardy/dialect/sdy/transforms/export/reshard_to_collectives.cc
++++ b/shardy/dialect/sdy/transforms/export/reshard_to_collectives.cc
+@@ -1328,10 +1328,6 @@ class ReshardPattern : public OpConversionPattern<ReshardOp> {
+       return rewriter.notifyMatchFailure(
+           op, [](Diagnostic& diag) { diag << "Incompatible shardings"; });
+     }
+-    if (inSharding.isFullyReplicated() && outSharding.isFullyReplicated()) {
+-      rewriter.replaceOp(op, adaptor.getInput());
+-      return success();
+-    }
+     MeshAttr inMesh = inSharding.getMesh(op);
+     if (inSharding.getMeshName() != outSharding.getMeshName()) {
+        MeshAttr outMesh = outSharding.getMesh(op);
+diff --git a/shardy/dialect/sdy/transforms/export/test/insert_explicit_reshards/reduce.mlir b/shardy/dialect/sdy/transforms/export/test/insert_explicit_reshards/reduce.mlir
+index 71303fa..68aaf30 100644
+--- a/shardy/dialect/sdy/transforms/export/test/insert_explicit_reshards/reduce.mlir
++++ b/shardy/dialect/sdy/transforms/export/test/insert_explicit_reshards/reduce.mlir
+@@ -23,30 +23,6 @@ func.func @reduce_single_result_reduction_dim_sharded(%arg0: tensor<2x64x13xf32>
+   return %1 : tensor<2x13xf32>
+ }
+ 
+-// CHECK-LABEL: func @reduce_single_result_multiple_reduction_dims_sharded
+-func.func @reduce_single_result_multiple_reduction_dims_sharded(%arg0: tensor<2x64x13xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"y"}, {"x"}, {}]>}) -> tensor<13xf32> {
+-  // CHECK:      %[[REDUCE:.*]] = stablehlo.reduce(%arg0 init: %cst) applies stablehlo.add across dimensions = [0, 1]
+-  // CHECK-NOT:  sdy.sharding
+-  // CHECK-NEXT: %[[ALL_REDUCE:.*]] = sdy.all_reduce {"y", "x"} %[[REDUCE]] out_sharding=<@mesh, [{}]>
+-  // CHECK-NEXT: return %[[ALL_REDUCE]]
+-  %0 = stablehlo.constant dense<0.000000e+00> : tensor<f32>
+-  %1 = stablehlo.reduce(%arg0 init: %0) applies stablehlo.add across dimensions = [0, 1] : (tensor<2x64x13xf32>, tensor<f32>) -> tensor<13xf32>
+-  return %1 : tensor<13xf32>
+-}
+-
+-// CHECK-LABEL: func @reduce_single_result_multiple_reduction_dims_sharded_sub_axis
+-func.func @reduce_single_result_multiple_reduction_dims_sharded_sub_axis(%arg0: tensor<2x64x13xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x":(2)2}, {"y", "x":(1)2}, {}]>}) -> tensor<13xf32> {
+-  // CHECK:      %[[REDUCE:.*]] = stablehlo.reduce(%arg0 init: %cst) applies stablehlo.add across dimensions = [0, 1]
+-  // CHECK-NOT:  sdy.sharding
+-  // TODO(enver, zixuanjiang): Axes should be canonicalized: merged and sorted.
+-  // So that it becomes sdy.all_reduce {"x", "y"}
+-  // CHECK-NEXT: %[[ALL_REDUCE:.*]] = sdy.all_reduce {"x":(2)2, "y", "x":(1)2} %[[REDUCE]] out_sharding=<@mesh, [{}]>
+-  // CHECK-NEXT: return %[[ALL_REDUCE]]
+-  %0 = stablehlo.constant dense<0.000000e+00> : tensor<f32>
+-  %1 = stablehlo.reduce(%arg0 init: %0) applies stablehlo.add across dimensions = [0, 1] : (tensor<2x64x13xf32>, tensor<f32>) -> tensor<13xf32>
+-  return %1 : tensor<13xf32>
+-}
+-
+ // CHECK-LABEL: func @reduce_multiple_results
+ func.func @reduce_multiple_results(%arg0: tensor<2x64x13xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {}, {}]>}, %arg1: tensor<2x64x13xi32>)
+     -> (tensor<64xf32>, tensor<64xi32>) {
+diff --git a/shardy/dialect/sdy/transforms/export/test/insert_explicit_reshards/unreduced.mlir b/shardy/dialect/sdy/transforms/export/test/insert_explicit_reshards/unreduced.mlir
+index 17df9d2..bd3ce9b 100644
+--- a/shardy/dialect/sdy/transforms/export/test/insert_explicit_reshards/unreduced.mlir
++++ b/shardy/dialect/sdy/transforms/export/test/insert_explicit_reshards/unreduced.mlir
+@@ -219,6 +219,15 @@ func.func @all_reduce_source_has_unreduced_and_target_no_sharding(
+   return %arg0 : tensor<4x8xf32>
+ }
+ 
++// CHECK-LABEL: func @all_reduce_source_has_unreduced_and_target_has_sharding_no_unreduced
++func.func @all_reduce_source_has_unreduced_and_target_has_sharding_no_unreduced(
++  %arg0: tensor<4x8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {}], unreduced={"y"}>})
++     -> (tensor<4x8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {}]>}) {
++  // CHECK-NEXT: %[[ALL_REDUCE:.*]] = sdy.all_reduce {"y"} %arg0 out_sharding=<@mesh, [{"x"}, {}]>
++  // CHECK-NEXT: return %[[ALL_REDUCE]]
++  return %arg0 : tensor<4x8xf32>
++}
++
+ // CHECK-LABEL: func @all_reduce_source_no_sharding_and_target_has_unreduced
+ func.func @all_reduce_source_no_sharding_and_target_has_unreduced(
+   %arg0: tensor<4x8xf32>)
+@@ -244,64 +253,3 @@ func.func @all_reduce_target_unreduced_is_strict_subset_of_source_unreduced(
+   return %arg0 : tensor<4x8xf32>
+ }
+ 
+-// CHECK-LABEL: func @all_reduce_source_and_target_has_different_shardings_and_different_unreduced_axes
+-func.func @all_reduce_source_and_target_has_different_shardings_and_different_unreduced_axes(
+-  %arg0: tensor<4x8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"y"}, {}], unreduced={"x":(1)2}>})
+-     -> (tensor<4x8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {"y"}], unreduced={"x"}>}) {
+-  // CHECK-NEXT: %[[RESHARD:.*]] = sdy.reshard %arg0 <@mesh, [{}, {"y"}], unreduced={"x"}>
+-  // CHECK-NEXT: return %[[RESHARD]]
+-  return %arg0 : tensor<4x8xf32>
+-}
+-
+-// CHECK-LABEL: func @all_reduce_source_and_target_has_different_shardings_and_same_unreduced_axes
+-func.func @all_reduce_source_and_target_has_different_shardings_and_same_unreduced_axes(
+-  %arg0: tensor<4x8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"y"}, {}], unreduced={"x":(1)2}>})
+-     -> (tensor<4x8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {"y"}], unreduced={"x":(1)2}>}) {
+-  // CHECK-NEXT: %[[RESHARD:.*]] = sdy.reshard %arg0 <@mesh, [{}, {"y"}], unreduced={"x":(1)2}>
+-  // CHECK-NEXT: return %[[RESHARD]]
+-  return %arg0 : tensor<4x8xf32>
+-}
+-
+-// CHECK-LABEL: func @all_reduce_source_and_target_has_same_shardings_and_different_unreduced_axes
+-func.func @all_reduce_source_and_target_has_same_shardings_and_different_unreduced_axes(
+-  %arg0: tensor<4x8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"y"}, {}], unreduced={"x":(1)2}>})
+-     -> (tensor<4x8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"y"}, {}], unreduced={"x"}>}) {
+-  // CHECK-NEXT: return %arg0
+-  return %arg0 : tensor<4x8xf32>
+-}
+-
+-// CHECK-LABEL: func @all_reduce_source_and_target_has_different_shardings_only_source_has_unreduced_axes
+-func.func @all_reduce_source_and_target_has_different_shardings_only_source_has_unreduced_axes(
+-  %arg0: tensor<4x8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x":(1)2}, {}], unreduced={"y"}>})
+-     -> (tensor<4x8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x":(2)2}, {}]>}) {
+-  // CHECK-NEXT: %[[ALL_REDUCE:.*]] = sdy.all_reduce {"y"} %arg0 out_sharding=<@mesh, [{"x":(1)2}, {}]>
+-  // CHECK-NEXT: %[[RESHARD:.*]] = sdy.reshard %[[ALL_REDUCE]] <@mesh, [{"x":(2)2}, {}]>
+-  // CHECK-NEXT: return %[[RESHARD]]
+-  return %arg0 : tensor<4x8xf32>
+-}
+-
+-// CHECK-LABEL: func @all_reduce_source_and_target_has_same_shardings_only_source_has_unreduced_axes
+-func.func @all_reduce_source_and_target_has_same_shardings_only_source_has_unreduced_axes(
+-  %arg0: tensor<4x8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {}], unreduced={"y"}>})
+-     -> (tensor<4x8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {}]>}) {
+-  // CHECK-NEXT: %[[ALL_REDUCE:.*]] = sdy.all_reduce {"y"} %arg0 out_sharding=<@mesh, [{"x"}, {}]>
+-  // CHECK-NEXT: return %[[ALL_REDUCE]]
+-  return %arg0 : tensor<4x8xf32>
+-}
+-
+-// CHECK-LABEL: func @all_reduce_source_and_target_has_same_shardings_and_same_unreduced_axes
+-func.func @all_reduce_source_and_target_has_same_shardings_and_same_unreduced_axes(
+-  %arg0: tensor<4x8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"y"}, {}], unreduced={"x":(1)2}>})
+-     -> (tensor<4x8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"y"}, {}], unreduced={"x":(1)2}>}) {
+-  // CHECK-NEXT: return %arg0
+-  return %arg0 : tensor<4x8xf32>
+-}
+-
+-// CHECK-LABEL: func @all_reduce_source_and_target_fully_replicated_shardings_and_different_unreduced_axes
+-func.func @all_reduce_source_and_target_fully_replicated_shardings_and_different_unreduced_axes(
+-  %arg0: tensor<4x8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {}], unreduced={"x":(1)2}>})
+-     -> (tensor<4x8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {}], unreduced={"x"}>}) {
+-  // CHECK-NEXT: return %arg0
+-  return %arg0 : tensor<4x8xf32>
+-}
+-
+diff --git a/shardy/dialect/sdy/transforms/export/test/reshard_to_collectives.mlir b/shardy/dialect/sdy/transforms/export/test/reshard_to_collectives.mlir
+index 8e10dcf..86d6070 100644
+--- a/shardy/dialect/sdy/transforms/export/test/reshard_to_collectives.mlir
++++ b/shardy/dialect/sdy/transforms/export/test/reshard_to_collectives.mlir
+@@ -17,51 +17,6 @@ sdy.mesh @mesh4d_z4 = <["x"=2, "y"=2, "z"=4, "w"=2]>
+ sdy.mesh @mesh4d_w4 = <["x"=2, "y"=2, "z"=2, "w"=4]>
+ sdy.mesh @mesh4d_w16 = <["x"=2, "y"=2, "z"=2, "w"=16]>
+ sdy.mesh @mesh6d = <["x"=2, "y"=2, "z"=2, "w"=2, "u"=2, "v"=2]>
+-sdy.mesh @empty_mesh = <[]>
+-sdy.mesh @empty_mesh_another = <[]>
+-
+-
+-// CHECK-LABEL: func @redundant_reshard_fully_replicated
+-func.func @redundant_reshard_fully_replicated(%arg0 : tensor<16x8xf32> {sdy.sharding=#sdy.sharding<@mesh2d, [{}, {}]>}) -> tensor<16x8xf32> {
+-  // CHECK-NEXT: return %arg0
+-  %0 = sdy.reshard %arg0 <@mesh2d, [{}, {}]> : tensor<16x8xf32>
+-  return %0 : tensor<16x8xf32>
+-}
+-
+-// CHECK-LABEL: func @redundant_reshard_fully_replicated_different_meshes
+-func.func @redundant_reshard_fully_replicated_different_meshes(%arg0 : tensor<16x8xf32> {sdy.sharding=#sdy.sharding<@mesh2d_2x3, [{}, {}]>}) -> tensor<16x8xf32> {
+-  // CHECK-NEXT: return %arg0
+-  %0 = sdy.reshard %arg0 <@mesh1d_6, [{}, {}]> : tensor<16x8xf32>
+-  return %0 : tensor<16x8xf32>
+-}
+-
+-// CHECK-LABEL: func @redundant_reshard_fully_replicated_same_mesh_different_device_ids
+-func.func @redundant_reshard_fully_replicated_same_mesh_different_device_ids(%arg0 : tensor<16x8xf32> {sdy.sharding=#sdy.sharding<@mesh2d, [{}, {}]>}) -> tensor<16x8xf32> {
+-  // CHECK-NEXT: return %arg0
+-  %0 = sdy.reshard %arg0 <@mesh2d_non_iota, [{}, {}]> : tensor<16x8xf32>
+-  return %0 : tensor<16x8xf32>
+-}
+-
+-// CHECK-LABEL: func @redundant_reshard_fully_replicated_same_empty_meshes
+-func.func @redundant_reshard_fully_replicated_same_empty_meshes(%arg0 : tensor<16x8xf32> {sdy.sharding=#sdy.sharding<@empty_mesh, [{}, {}]>}) -> tensor<16x8xf32> {
+-  // CHECK-NEXT: return %arg0
+-  %0 = sdy.reshard %arg0 <@empty_mesh, [{}, {}]> : tensor<16x8xf32>
+-  return %0 : tensor<16x8xf32>
+-}
+-
+-// CHECK-LABEL: func @redundant_reshard_fully_replicated_different_empty_meshes
+-func.func @redundant_reshard_fully_replicated_different_empty_meshes(%arg0 : tensor<16x8xf32> {sdy.sharding=#sdy.sharding<@empty_mesh, [{}, {}]>}) -> tensor<16x8xf32> {
+-  // CHECK-NEXT: return %arg0
+-  %0 = sdy.reshard %arg0 <@empty_mesh_another, [{}, {}]> : tensor<16x8xf32>
+-  return %0 : tensor<16x8xf32>
+-}
+-
+-// CHECK-LABEL: func @redundant_reshard_fully_replicated_input_mesh_nonempty_output_mesh_empty
+-func.func @redundant_reshard_fully_replicated_input_mesh_nonempty_output_mesh_empty(%arg0 : tensor<16x8xf32> {sdy.sharding=#sdy.sharding<@mesh2d, [{}, {}]>}) -> tensor<16x8xf32> {
+-  // CHECK-NEXT: return %arg0
+-  %0 = sdy.reshard %arg0 <@empty_mesh, [{}, {}]> : tensor<16x8xf32>
+-  return %0 : tensor<16x8xf32>
+-}
+ 
+ // CHECK-LABEL: func @redundant_reshard
+ func.func @redundant_reshard(%arg0 : tensor<16x8xf32> {sdy.sharding=#sdy.sharding<@mesh2d, [{"x"}, {"y"}]>}) -> tensor<16x8xf32> {
 diff --git a/third_party/llvm/generated.patch b/third_party/llvm/generated.patch
-index a7198bd..97b592d 100644
+index 97b592d..1747a96 100644
 --- a/third_party/llvm/generated.patch
 +++ b/third_party/llvm/generated.patch
-@@ -1,531 +1,180 @@
+@@ -1,180 +1,433 @@
  Auto generated patch. Do not edit or delete it, even if empty.
--diff -ruN --strip-trailing-cr a/clang/lib/CodeGen/CGExpr.cpp b/clang/lib/CodeGen/CGExpr.cpp
----- a/clang/lib/CodeGen/CGExpr.cpp
--+++ b/clang/lib/CodeGen/CGExpr.cpp
--@@ -6496,11 +6496,8 @@
--     SanitizerDebugLocation SanScope(this, {CheckOrdinal}, CheckHandler);
--     EmitSanitizerStatReport(llvm::SanStat_CFI_ICall);
-- 
---    llvm::Metadata *MD;
---    if (CGM.getCodeGenOpts().SanitizeCfiICallGeneralizePointers)
---      MD = CGM.CreateMetadataIdentifierGeneralized(QualType(FnType, 0));
---    else
---      MD = CGM.CreateMetadataIdentifierForType(QualType(FnType, 0));
--+    llvm::Metadata *MD =
--+        CGM.CreateMetadataIdentifierForFnType(QualType(FnType, 0));
-- 
--     llvm::Value *TypeId = llvm::MetadataAsValue::get(getLLVMContext(), MD);
-- 
--diff -ruN --strip-trailing-cr a/clang/lib/CodeGen/CodeGenModule.cpp b/clang/lib/CodeGen/CodeGenModule.cpp
----- a/clang/lib/CodeGen/CodeGenModule.cpp
--+++ b/clang/lib/CodeGen/CodeGenModule.cpp
--@@ -2339,12 +2339,28 @@
--   return llvm::ConstantInt::get(Int64Ty, llvm::MD5Hash(MDS->getString()));
+-diff -ruN --strip-trailing-cr a/clang/lib/Sema/SemaCXXScopeSpec.cpp b/clang/lib/Sema/SemaCXXScopeSpec.cpp
+---- a/clang/lib/Sema/SemaCXXScopeSpec.cpp
+-+++ b/clang/lib/Sema/SemaCXXScopeSpec.cpp
+-@@ -220,10 +220,11 @@
+- ///
+- bool Sema::RequireCompleteEnumDecl(EnumDecl *EnumD, SourceLocation L,
+-                                    CXXScopeSpec *SS) {
+--  if (EnumD->isCompleteDefinition()) {
+-+  if (EnumDecl *Def = EnumD->getDefinition();
+-+      Def && Def->isCompleteDefinition()) {
+-     // If we know about the definition but it is not visible, complain.
+-     NamedDecl *SuggestedDef = nullptr;
+--    if (!hasReachableDefinition(EnumD, &SuggestedDef,
+-+    if (!hasReachableDefinition(Def, &SuggestedDef,
+-                                 /*OnlyNeedComplete*/ false)) {
+-       // If the user is going to see an error here, recover by making the
+-       // definition visible.
+-diff -ruN --strip-trailing-cr a/clang/test/SemaCXX/cxx20-using-enum.cpp b/clang/test/SemaCXX/cxx20-using-enum.cpp
+---- a/clang/test/SemaCXX/cxx20-using-enum.cpp
+-+++ b/clang/test/SemaCXX/cxx20-using-enum.cpp
+-@@ -288,4 +288,14 @@
+-   };
+- };
 - }
-- 
---// Generalize pointer types to a void pointer with the qualifiers of the
---// originally pointed-to type, e.g. 'const char *' and 'char * const *'
---// generalize to 'const void *' while 'char *' and 'const char **' generalize to
---// 'void *'.
---static QualType GeneralizeType(ASTContext &Ctx, QualType Ty) {
---  if (!Ty->isPointerType())
--+static QualType GeneralizeTransparentUnion(QualType Ty) {
--+  const RecordType *UT = Ty->getAsUnionType();
--+  if (!UT)
--+    return Ty;
--+  const RecordDecl *UD = UT->getOriginalDecl()->getDefinitionOrSelf();
--+  if (!UD->hasAttr<TransparentUnionAttr>())
--+    return Ty;
--+  for (const auto *it : UD->fields()) {
--+    return it->getType();
+-+
+-+namespace Redecl {
+-+  enum class A : int { X };
+-+  enum class A : int;
+-+  template <class> struct B {
+-+    using enum A;
+-+    using Z = decltype(X);
+-+  };
+-+  template struct B<int>;
+-+} // namespace Redecl
+- #endif
+-diff -ruN --strip-trailing-cr a/compiler-rt/lib/fuzzer/FuzzerTracePC.cpp b/compiler-rt/lib/fuzzer/FuzzerTracePC.cpp
+---- a/compiler-rt/lib/fuzzer/FuzzerTracePC.cpp
+-+++ b/compiler-rt/lib/fuzzer/FuzzerTracePC.cpp
+-@@ -69,6 +69,9 @@
++diff -ruN --strip-trailing-cr a/libcxx/include/ext/hash_map b/libcxx/include/ext/hash_map
++--- a/libcxx/include/ext/hash_map
+++++ b/libcxx/include/ext/hash_map
++@@ -787,10 +787,7 @@
+  }
+  
+- void TracePC::HandlePCsInit(const uintptr_t *Start, const uintptr_t *Stop) {
+-+  if (Start == Stop) {
+-+    return;
 -+  }
--+  return Ty;
--+}
+-   const PCTableEntry *B = reinterpret_cast<const PCTableEntry *>(Start);
+-   const PCTableEntry *E = reinterpret_cast<const PCTableEntry *>(Stop);
+-   if (NumPCTables && ModulePCTable[NumPCTables - 1].Start == B) return;
+-diff -ruN --strip-trailing-cr a/compiler-rt/test/fuzzer/empty-module.test b/compiler-rt/test/fuzzer/empty-module.test
+---- a/compiler-rt/test/fuzzer/empty-module.test
+-+++ b/compiler-rt/test/fuzzer/empty-module.test
+-@@ -0,0 +1,7 @@
+-+CHECK: BINGO
+-+RUN: %cpp_compiler %S/SimulateEmptyModuleTest.cpp -o %t-SimulateEmptyModuleTest
 -+
--+// If `GeneralizePointers` is true, generalizes types to a void pointer with the
--+// qualifiers of the originally pointed-to type, e.g. 'const char *' and 'char *
--+// const *' generalize to 'const void *' while 'char *' and 'const char **'
--+// generalize to 'void *'.
--+static QualType GeneralizeType(ASTContext &Ctx, QualType Ty,
--+                               bool GeneralizePointers) {
--+  Ty = GeneralizeTransparentUnion(Ty);
+-+RUN: not %run %t-SimulateEmptyModuleTest         2>&1 | FileCheck %s
 -+
--+  if (!GeneralizePointers || !Ty->isPointerType())
--     return Ty;
-- 
--   return Ctx.getPointerType(
--@@ -2353,26 +2369,29 @@
-- }
-- 
-- // Apply type generalization to a FunctionType's return and argument types
---static QualType GeneralizeFunctionType(ASTContext &Ctx, QualType Ty) {
--+static QualType GeneralizeFunctionType(ASTContext &Ctx, QualType Ty,
--+                                       bool GeneralizePointers) {
--   if (auto *FnType = Ty->getAs<FunctionProtoType>()) {
--     SmallVector<QualType, 8> GeneralizedParams;
--     for (auto &Param : FnType->param_types())
---      GeneralizedParams.push_back(GeneralizeType(Ctx, Param));
--+      GeneralizedParams.push_back(
--+          GeneralizeType(Ctx, Param, GeneralizePointers));
-- 
---    return Ctx.getFunctionType(GeneralizeType(Ctx, FnType->getReturnType()),
---                               GeneralizedParams, FnType->getExtProtoInfo());
--+    return Ctx.getFunctionType(
--+        GeneralizeType(Ctx, FnType->getReturnType(), GeneralizePointers),
--+        GeneralizedParams, FnType->getExtProtoInfo());
--   }
-- 
--   if (auto *FnType = Ty->getAs<FunctionNoProtoType>())
--     return Ctx.getFunctionNoProtoType(
---        GeneralizeType(Ctx, FnType->getReturnType()));
--+        GeneralizeType(Ctx, FnType->getReturnType(), GeneralizePointers));
-- 
--   llvm_unreachable("Encountered unknown FunctionType");
-- }
-- 
-- llvm::ConstantInt *CodeGenModule::CreateKCFITypeId(QualType T, StringRef Salt) {
---  if (getCodeGenOpts().SanitizeCfiICallGeneralizePointers)
---    T = GeneralizeFunctionType(getContext(), T);
--+  T = GeneralizeFunctionType(
--+      getContext(), T, getCodeGenOpts().SanitizeCfiICallGeneralizePointers);
--   if (auto *FnType = T->getAs<FunctionProtoType>())
--     T = getContext().getFunctionType(
--         FnType->getReturnType(), FnType->getParamTypes(),
--@@ -3041,9 +3060,14 @@
--   if (isa<CXXMethodDecl>(FD) && !cast<CXXMethodDecl>(FD)->isStatic())
--     return;
-- 
---  llvm::Metadata *MD = CreateMetadataIdentifierForType(FD->getType());
--+  QualType FnType = GeneralizeFunctionType(getContext(), FD->getType(),
--+                                           /*GeneralizePointers=*/false);
--+  llvm::Metadata *MD = CreateMetadataIdentifierForType(FnType);
--   F->addTypeMetadata(0, MD);
---  F->addTypeMetadata(0, CreateMetadataIdentifierGeneralized(FD->getType()));
--+
--+  QualType GenPtrFnType = GeneralizeFunctionType(getContext(), FD->getType(),
--+                                                 /*GeneralizePointers=*/true);
--+  F->addTypeMetadata(0, CreateMetadataIdentifierGeneralized(GenPtrFnType));
-- 
--   // Emit a hash-based bit set entry for cross-DSO calls.
--   if (CodeGenOpts.SanitizeCfiCrossDso)
--@@ -7934,6 +7958,15 @@
--   return InternalId;
-+diff -ruN --strip-trailing-cr a/clang/lib/Sema/SemaCXXScopeSpec.cpp b/clang/lib/Sema/SemaCXXScopeSpec.cpp
-+--- a/clang/lib/Sema/SemaCXXScopeSpec.cpp
-++++ b/clang/lib/Sema/SemaCXXScopeSpec.cpp
-+@@ -220,10 +220,11 @@
-+ ///
-+ bool Sema::RequireCompleteEnumDecl(EnumDecl *EnumD, SourceLocation L,
-+                                    CXXScopeSpec *SS) {
-+-  if (EnumD->isCompleteDefinition()) {
-++  if (EnumDecl *Def = EnumD->getDefinition();
-++      Def && Def->isCompleteDefinition()) {
-+     // If we know about the definition but it is not visible, complain.
-+     NamedDecl *SuggestedDef = nullptr;
-+-    if (!hasReachableDefinition(EnumD, &SuggestedDef,
-++    if (!hasReachableDefinition(Def, &SuggestedDef,
-+                                 /*OnlyNeedComplete*/ false)) {
-+       // If the user is going to see an error here, recover by making the
-+       // definition visible.
-+diff -ruN --strip-trailing-cr a/clang/test/SemaCXX/cxx20-using-enum.cpp b/clang/test/SemaCXX/cxx20-using-enum.cpp
-+--- a/clang/test/SemaCXX/cxx20-using-enum.cpp
-++++ b/clang/test/SemaCXX/cxx20-using-enum.cpp
-+@@ -288,4 +288,14 @@
-+   };
-+ };
-  }
-- 
--+llvm::Metadata *CodeGenModule::CreateMetadataIdentifierForFnType(QualType T) {
--+  assert(isa<FunctionType>(T));
--+  T = GeneralizeFunctionType(
--+      getContext(), T, getCodeGenOpts().SanitizeCfiICallGeneralizePointers);
--+  if (getCodeGenOpts().SanitizeCfiICallGeneralizePointers)
--+    return CreateMetadataIdentifierGeneralized(T);
--+  return CreateMetadataIdentifierForType(T);
--+}
--+
-- llvm::Metadata *CodeGenModule::CreateMetadataIdentifierForType(QualType T) {
--   return CreateMetadataIdentifierImpl(T, MetadataIdMap, "");
-- }
--@@ -7944,8 +7977,8 @@
-- }
-- 
-- llvm::Metadata *CodeGenModule::CreateMetadataIdentifierGeneralized(QualType T) {
---  return CreateMetadataIdentifierImpl(GeneralizeFunctionType(getContext(), T),
---                                      GeneralizedMetadataIdMap, ".generalized");
--+  return CreateMetadataIdentifierImpl(T, GeneralizedMetadataIdMap,
--+                                      ".generalized");
-- }
-- 
-- /// Returns whether this module needs the "all-vtables" type identifier.
--diff -ruN --strip-trailing-cr a/clang/lib/CodeGen/CodeGenModule.h b/clang/lib/CodeGen/CodeGenModule.h
----- a/clang/lib/CodeGen/CodeGenModule.h
--+++ b/clang/lib/CodeGen/CodeGenModule.h
--@@ -1623,6 +1623,9 @@
--   /// Generate a KCFI type identifier for T.
--   llvm::ConstantInt *CreateKCFITypeId(QualType T, StringRef Salt);
-- 
--+  /// Create a metadata identifier for the given function type.
--+  llvm::Metadata *CreateMetadataIdentifierForFnType(QualType T);
--+
--   /// Create a metadata identifier for the given type. This may either be an
--   /// MDString (for external identifiers) or a distinct unnamed MDNode (for
--   /// internal identifiers).
--diff -ruN --strip-trailing-cr a/clang/test/CodeGen/cfi-icall-generalize.c b/clang/test/CodeGen/cfi-icall-generalize.c
----- a/clang/test/CodeGen/cfi-icall-generalize.c
--+++ b/clang/test/CodeGen/cfi-icall-generalize.c
--@@ -15,5 +15,21 @@
--   fp(0, 0);
-- }
-- 
--+union Union {
--+  char *c;
--+  long *n;
--+} __attribute__((transparent_union));
--+
--+// CHECK: define{{.*}} void @uni({{.*}} !type [[TYPE2:![0-9]+]] !type [[TYPE2_GENERALIZED:![0-9]+]]
--+void uni(void (*fn)(union Union), union Union arg1) {
--+  // UNGENERALIZED: call i1 @llvm.type.test(ptr {{.*}}, metadata !"_ZTSFvPcE")
--+  // GENERALIZED: call i1 @llvm.type.test(ptr {{.*}}, metadata !"_ZTSFvPvE.generalized")
--+    fn(arg1);
--+}
--+
-- // CHECK: [[TYPE]] = !{i64 0, !"_ZTSFPPiPKcPS2_E"}
-- // CHECK: [[TYPE_GENERALIZED]] = !{i64 0, !"_ZTSFPvPKvS_E.generalized"}
+-+# only_ascii mode. Will perform some minimal self-validation.
+-+RUN: not %run %t-SimulateEmptyModuleTest -only_ascii=1 2>&1
+-diff -ruN --strip-trailing-cr a/compiler-rt/test/fuzzer/SimulateEmptyModuleTest.cpp b/compiler-rt/test/fuzzer/SimulateEmptyModuleTest.cpp
+---- a/compiler-rt/test/fuzzer/SimulateEmptyModuleTest.cpp
+-+++ b/compiler-rt/test/fuzzer/SimulateEmptyModuleTest.cpp
+-@@ -0,0 +1,60 @@
++ template <class _Key, class _Tp, class _Hash, class _Pred, class _Alloc>
++-hash_multimap<_Key, _Tp, _Hash, _Pred, _Alloc>::hash_multimap(const hash_multimap& __u) : __table_(__u.__table_) {
++-  __table_.__rehash_multi(__u.bucket_count());
++-  insert(__u.begin(), __u.end());
++-}
+++hash_multimap<_Key, _Tp, _Hash, _Pred, _Alloc>::hash_multimap(const hash_multimap& __u) : __table_(__u.__table_) {}
++ 
++ template <class _Key, class _Tp, class _Hash, class _Pred, class _Alloc>
++ template <class _InputIterator>
++diff -ruN --strip-trailing-cr a/libcxx/test/extensions/gnu/hash_multimap/copy.pass.cpp b/libcxx/test/extensions/gnu/hash_multimap/copy.pass.cpp
++--- a/libcxx/test/extensions/gnu/hash_multimap/copy.pass.cpp
+++++ b/libcxx/test/extensions/gnu/hash_multimap/copy.pass.cpp
++@@ -0,0 +1,27 @@
+++//===----------------------------------------------------------------------===//
+++//
+ +// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+ +// See https://llvm.org/LICENSE.txt for license information.
+ +// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+++//
+++//===----------------------------------------------------------------------===//
  +
--+// CHECK: [[TYPE2]] = !{i64 0, !"_ZTSFvPFv5UnionEPcE"}
--+// CHECK: [[TYPE2_GENERALIZED]] = !{i64 0, !"_ZTSFvPvS_E.generalized"}
--+
--diff -ruN --strip-trailing-cr a/clang/test/CodeGen/cfi-icall-normalize2.c b/clang/test/CodeGen/cfi-icall-normalize2.c
----- a/clang/test/CodeGen/cfi-icall-normalize2.c
--+++ b/clang/test/CodeGen/cfi-icall-normalize2.c
--@@ -24,6 +24,20 @@
--     fn(arg1, arg2, arg3);
-- }
-- 
--+union Union {
--+  char *c;
--+  long *n;
--+} __attribute__((transparent_union));
--+
--+void uni(void (*fn)(union Union), union Union arg1) {
--+    // CHECK-LABEL: define{{.*}}uni
--+    // CHECK-SAME: {{.*}}!type ![[TYPE4:[0-9]+]] !type !{{[0-9]+}}
--+    // CHECK: call i1 @llvm.type.test({{i8\*|ptr}} {{%f|%0}}, metadata !"_ZTSFvPu2i8E.normalized")
--+    fn(arg1);
+-+// Like SimpleTest, but simulates an "empty" module (i.e. one without any functions to instrument).
+-+// This reproduces a previous bug (when libFuzzer is compiled with assertions enabled).
+++// ADDITIONAL_COMPILE_FLAGS: -Wno-deprecated
+ +
+-+#include <assert.h>
+-+#include <cstddef>
+-+#include <cstdint>
+-+#include <cstdlib>
+-+#include <iostream>
+-+#include <ostream>
+++// hash_multimap::hash_multimap(const hash_multimap&)
+ +
+-+extern "C" {
+-+void __sanitizer_cov_8bit_counters_init(uint8_t *Start, uint8_t *Stop);
+-+void __sanitizer_cov_pcs_init(const uintptr_t *pcs_beg,
+-+                              const uintptr_t *pcs_end);
 -+}
--+
-- // CHECK: ![[TYPE1]] = !{i64 0, !"_ZTSFvPFvu3i32ES_E.normalized"}
-- // CHECK: ![[TYPE2]] = !{i64 0, !"_ZTSFvPFvu3i32S_ES_S_E.normalized"}
-- // CHECK: ![[TYPE3]] = !{i64 0, !"_ZTSFvPFvu3i32S_S_ES_S_S_E.normalized"}
--+// CHECK: ![[TYPE4]] = !{i64 0, !"_ZTSFvPFv5UnionEPu2i8E.normalized"}
--+
--diff -ruN --strip-trailing-cr a/clang/test/CodeGen/kcfi-generalize.c b/clang/test/CodeGen/kcfi-generalize.c
----- a/clang/test/CodeGen/kcfi-generalize.c
--+++ b/clang/test/CodeGen/kcfi-generalize.c
--@@ -26,8 +26,23 @@
--   fp(0, 0);
-- }
-- 
--+union Union {
--+  char *c;
--+  long *n;
--+} __attribute__((transparent_union));
--+
--+// CHECK: define{{.*}} void @uni({{.*}} !kcfi_type [[TYPE4:![0-9]+]]
--+void uni(void (*fn)(union Union), union Union arg1) {
--+  // UNGENERALIZED: call {{.*}} [ "kcfi"(i32 -587217045) ]
--+  // GENERALIZED: call {{.*}} [ "kcfi"(i32 2139530422) ]
--+    fn(arg1);
--+}
--+
-- // UNGENERALIZED: [[TYPE]] = !{i32 1296635908}
-- // GENERALIZED: [[TYPE]] = !{i32 -49168686}
-- 
-- // UNGENERALIZED: [[TYPE3]] = !{i32 874141567}
-- // GENERALIZED: [[TYPE3]] = !{i32 954385378}
--+
--+// UNGENERALIZED: [[TYPE4]] = !{i32 -1619636625}
--+// GENERALIZED: [[TYPE4]] = !{i32 -125078496}
--diff -ruN --strip-trailing-cr a/clang/test/CodeGen/kcfi-normalize.c b/clang/test/CodeGen/kcfi-normalize.c
----- a/clang/test/CodeGen/kcfi-normalize.c
--+++ b/clang/test/CodeGen/kcfi-normalize.c
--@@ -1,5 +1,5 @@
---// RUN: %clang_cc1 -triple x86_64-unknown-linux-gnu -emit-llvm -fsanitize=kcfi -fsanitize-cfi-icall-experimental-normalize-integers -o - %s | FileCheck %s
---// RUN: %clang_cc1 -triple x86_64-unknown-linux-gnu -emit-llvm -fsanitize=kcfi -fsanitize-cfi-icall-experimental-normalize-integers -x c++ -o - %s | FileCheck %s
--+// RUN: %clang_cc1 -triple x86_64-unknown-linux-gnu -emit-llvm -fsanitize=kcfi -fsanitize-cfi-icall-experimental-normalize-integers -o - %s | FileCheck %s --check-prefixes=CHECK,C
--+// RUN: %clang_cc1 -triple x86_64-unknown-linux-gnu -emit-llvm -fsanitize=kcfi -fsanitize-cfi-icall-experimental-normalize-integers -x c++ -o - %s | FileCheck %s --check-prefixes=CHECK,CPP
-- #if !__has_feature(kcfi)
-- #error Missing kcfi?
-++namespace Redecl {
-++  enum class A : int { X };
-++  enum class A : int;
-++  template <class> struct B {
-++    using enum A;
-++    using Z = decltype(X);
-++  };
-++  template struct B<int>;
-++} // namespace Redecl
-  #endif
--@@ -28,7 +28,22 @@
--     fn(arg1, arg2, arg3);
-+diff -ruN --strip-trailing-cr a/compiler-rt/lib/fuzzer/FuzzerTracePC.cpp b/compiler-rt/lib/fuzzer/FuzzerTracePC.cpp
-+--- a/compiler-rt/lib/fuzzer/FuzzerTracePC.cpp
-++++ b/compiler-rt/lib/fuzzer/FuzzerTracePC.cpp
-+@@ -69,6 +69,9 @@
-  }
-  
--+union Union {
--+  char *c;
--+  long *n;
--+} __attribute__((transparent_union));
--+
--+void uni(void (*fn)(union Union), union Union arg1) {
--+    // CHECK-LABEL: define{{.*}}uni
--+    // CHECK-SAME: {{.*}}!kcfi_type ![[TYPE4:[0-9]+]]
--+    // C: call void %0(ptr %1) [ "kcfi"(i32 1819770848) ]
--+    // CPP: call void %0(ptr %1) [ "kcfi"(i32 -1430221633) ]
--+    fn(arg1);
-+ void TracePC::HandlePCsInit(const uintptr_t *Start, const uintptr_t *Stop) {
-++  if (Start == Stop) {
-++    return;
-++  }
-+   const PCTableEntry *B = reinterpret_cast<const PCTableEntry *>(Start);
-+   const PCTableEntry *E = reinterpret_cast<const PCTableEntry *>(Stop);
-+   if (NumPCTables && ModulePCTable[NumPCTables - 1].Start == B) return;
-+diff -ruN --strip-trailing-cr a/compiler-rt/test/fuzzer/empty-module.test b/compiler-rt/test/fuzzer/empty-module.test
-+--- a/compiler-rt/test/fuzzer/empty-module.test
-++++ b/compiler-rt/test/fuzzer/empty-module.test
-+@@ -0,0 +1,7 @@
-++CHECK: BINGO
-++RUN: %cpp_compiler %S/SimulateEmptyModuleTest.cpp -o %t-SimulateEmptyModuleTest
+++#include <cassert>
+++#include <ext/hash_map>
 ++
-++RUN: not %run %t-SimulateEmptyModuleTest         2>&1 | FileCheck %s
+++int main(int, char**) {
+++  __gnu_cxx::hash_multimap<int, int> map;
 ++
-++# only_ascii mode. Will perform some minimal self-validation.
-++RUN: not %run %t-SimulateEmptyModuleTest -only_ascii=1 2>&1
-+diff -ruN --strip-trailing-cr a/compiler-rt/test/fuzzer/SimulateEmptyModuleTest.cpp b/compiler-rt/test/fuzzer/SimulateEmptyModuleTest.cpp
-+--- a/compiler-rt/test/fuzzer/SimulateEmptyModuleTest.cpp
-++++ b/compiler-rt/test/fuzzer/SimulateEmptyModuleTest.cpp
-+@@ -0,0 +1,60 @@
-++// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-++// See https://llvm.org/LICENSE.txt for license information.
-++// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+++  map.insert(std::make_pair(1, 1));
+++  map.insert(std::make_pair(1, 1));
 ++
-++// Like SimpleTest, but simulates an "empty" module (i.e. one without any functions to instrument).
-++// This reproduces a previous bug (when libFuzzer is compiled with assertions enabled).
+++  auto map2 = map;
 ++
-++#include <assert.h>
-++#include <cstddef>
-++#include <cstdint>
-++#include <cstdlib>
-++#include <iostream>
-++#include <ostream>
-++
-++extern "C" {
-++void __sanitizer_cov_8bit_counters_init(uint8_t *Start, uint8_t *Stop);
-++void __sanitizer_cov_pcs_init(const uintptr_t *pcs_beg,
-++                              const uintptr_t *pcs_end);
+++  assert(map2.size() == 2);
+ +
+-+void dummy_func() {}
+-+
+-+uint8_t empty_8bit_counters[0];
+-+uintptr_t empty_pcs[0];
+-+
+-+uint8_t fake_8bit_counters[1] = {0};
+-+uintptr_t fake_pcs[2] = {reinterpret_cast<uintptr_t>(&dummy_func),
+-+                         reinterpret_cast<uintptr_t>(&dummy_func)};
+-+
+-+// Register two modules at program launch (same time they'd normally be registered).
+-+// Triggering the bug requires loading an empty module, then a non-empty module after it.
+-+bool dummy = []() {
+-+  // First, simulate loading an empty module.
+-+  __sanitizer_cov_8bit_counters_init(empty_8bit_counters, empty_8bit_counters);
+-+  __sanitizer_cov_pcs_init(empty_pcs, empty_pcs);
+-+
+-+  // Next, simulate loading a non-empty module.
+-+  __sanitizer_cov_8bit_counters_init(fake_8bit_counters,
+-+                                     fake_8bit_counters + 1);
+-+  __sanitizer_cov_pcs_init(fake_pcs, fake_pcs + 2);
+-+
+-+  return true;
+-+}();
+-+
+-+static volatile int Sink;
+-+
+-+extern "C" int LLVMFuzzerTestOneInput(const uint8_t *Data, size_t Size) {
+-+  assert(Data);
+-+  if (Size > 0 && Data[0] == 'H') {
+-+    Sink = 1;
+-+    if (Size > 1 && Data[1] == 'i') {
+-+      Sink = 2;
+-+      if (Size > 2 && Data[2] == '!') {
+-+        std::cout << "BINGO; Found the target, exiting\n" << std::flush;
+-+        exit(0);
+-+      }
+-+    }
+-+  }
+ +  return 0;
  +}
- +
-- // CHECK: ![[#]] = !{i32 4, !"cfi-normalize-integers", i32 1}
-- // CHECK: ![[TYPE1]] = !{i32 -1143117868}
-- // CHECK: ![[TYPE2]] = !{i32 -460921415}
-- // CHECK: ![[TYPE3]] = !{i32 -333839615}
--+// C: ![[TYPE4]] = !{i32 -650530463}
--+// CPP: ![[TYPE4]] = !{i32 1766237188}
--diff -ruN --strip-trailing-cr a/lldb/source/Plugins/Process/elf-core/ProcessElfCore.cpp b/lldb/source/Plugins/Process/elf-core/ProcessElfCore.cpp
----- a/lldb/source/Plugins/Process/elf-core/ProcessElfCore.cpp
--+++ b/lldb/source/Plugins/Process/elf-core/ProcessElfCore.cpp
--@@ -952,7 +952,7 @@
--         return status.ToError();
--       thread_data.name.assign (prpsinfo.pr_fname, strnlen (prpsinfo.pr_fname, sizeof (prpsinfo.pr_fname)));
--       SetID(prpsinfo.pr_pid);
---      m_executable_name = prpsinfo.pr_fname;
--+      m_executable_name = thread_data.name;
--       break;
--     }
--     case ELF::NT_SIGINFO: {
--diff -ruN --strip-trailing-cr a/llvm/lib/Analysis/ScalarEvolution.cpp b/llvm/lib/Analysis/ScalarEvolution.cpp
----- a/llvm/lib/Analysis/ScalarEvolution.cpp
--+++ b/llvm/lib/Analysis/ScalarEvolution.cpp
--@@ -3217,26 +3217,18 @@
--       }
-- 
--       // Try to fold (C1 * D /u C2) -> C1/C2 * D, if C1 and C2 are powers-of-2,
---      // D is a multiple of C2, and C1 is a multiple of C2. If C2 is a multiple
---      // of C1, fold to (D /u (C2 /u C1)).
--+      // D is a multiple of C2, and C1 is a multiple of C2.
--       const SCEV *D;
--       APInt C1V = LHSC->getAPInt();
---      // (C1 * D /u C2) == -1 * -C1 * D /u C2 when C1 != INT_MIN. Don't treat -1
---      // as -1 * 1, as it won't enable additional folds.
---      if (C1V.isNegative() && !C1V.isMinSignedValue() && !C1V.isAllOnes())
--+      // (C1 * D /u C2) == -1 * -C1 * D /u C2 when C1 != INT_MIN.
--+      if (C1V.isNegative() && !C1V.isMinSignedValue())
--         C1V = C1V.abs();
--       const SCEVConstant *C2;
--       if (C1V.isPowerOf2() &&
--           match(Ops[1], m_scev_UDiv(m_SCEV(D), m_SCEVConstant(C2))) &&
---          C2->getAPInt().isPowerOf2() &&
--+          C2->getAPInt().isPowerOf2() && C1V.uge(C2->getAPInt()) &&
--           C1V.logBase2() <= getMinTrailingZeros(D)) {
---        const SCEV *NewMul;
---        if (C1V.uge(C2->getAPInt())) {
---          NewMul = getMulExpr(getUDivExpr(getConstant(C1V), C2), D);
---        } else {
---          assert(C1V.ugt(1) && "C1 <= 1 should have been folded earlier");
---          NewMul = getUDivExpr(D, getUDivExpr(C2, getConstant(C1V)));
---        }
--+        const SCEV *NewMul = getMulExpr(getUDivExpr(getConstant(C1V), C2), D);
--         return C1V == LHSC->getAPInt() ? NewMul : getNegativeSCEV(NewMul);
--       }
--     }
--diff -ruN --strip-trailing-cr a/llvm/test/Analysis/ScalarEvolution/mul-udiv-folds.ll b/llvm/test/Analysis/ScalarEvolution/mul-udiv-folds.ll
----- a/llvm/test/Analysis/ScalarEvolution/mul-udiv-folds.ll
--+++ b/llvm/test/Analysis/ScalarEvolution/mul-udiv-folds.ll
--@@ -21,7 +21,7 @@
-- ; CHECK-NEXT:    %gep.8 = getelementptr i8, ptr %A, i64 %iv
-- ; CHECK-NEXT:    --> {(((zext i32 %start to i64) /u 4) + %A),+,1}<%loop> U: full-set S: full-set Exits: (((zext i32 %start to i64) /u 2) + %A) LoopDispositions: { %loop: Computable }
-- ; CHECK-NEXT:    %gep.16 = getelementptr i16, ptr %A, i64 %iv
---; CHECK-NEXT:    --> {(((zext i32 %start to i64) /u 2) + %A),+,2}<%loop> U: full-set S: full-set Exits: ((zext i32 %start to i64) + %A) LoopDispositions: { %loop: Computable }
--+; CHECK-NEXT:    --> {((2 * ((zext i32 %start to i64) /u 4))<nuw><nsw> + %A),+,2}<%loop> U: full-set S: full-set Exits: ((zext i32 %start to i64) + %A) LoopDispositions: { %loop: Computable }
-- ; CHECK-NEXT:    %gep.32 = getelementptr i32, ptr %A, i64 %iv
-- ; CHECK-NEXT:    --> {((zext i32 %start to i64) + %A),+,4}<%loop> U: full-set S: full-set Exits: ((2 * (zext i32 %start to i64))<nuw><nsw> + %A) LoopDispositions: { %loop: Computable }
-- ; CHECK-NEXT:    %gep.40 = getelementptr <{ i32, i8 }>, ptr %A, i64 %iv
--diff -ruN --strip-trailing-cr a/llvm/test/Transforms/LoopStrengthReduce/duplicated-phis.ll b/llvm/test/Transforms/LoopStrengthReduce/duplicated-phis.ll
----- a/llvm/test/Transforms/LoopStrengthReduce/duplicated-phis.ll
--+++ b/llvm/test/Transforms/LoopStrengthReduce/duplicated-phis.ll
--@@ -18,7 +18,8 @@
-- ; CHECK:       [[FOR_BODY_PREHEADER_NEW]]:
-- ; CHECK-NEXT:    [[UNROLL_ITER:%.*]] = and i64 [[MUL]], -4
-- ; CHECK-NEXT:    [[TMP4:%.*]] = add i64 [[UNROLL_ITER]], -4
---; CHECK-NEXT:    [[TMP3:%.*]] = lshr i64 [[TMP4]], 1
--+; CHECK-NEXT:    [[TMP5:%.*]] = lshr i64 [[TMP4]], 2
--+; CHECK-NEXT:    [[TMP3:%.*]] = shl nuw nsw i64 [[TMP5]], 1
-- ; CHECK-NEXT:    [[LSR_IV_NEXT:%.*]] = sub i64 -3, [[TMP3]]
-- ; CHECK-NEXT:    br label %[[FOR_BODY:.*]]
-- ; CHECK:       [[FOR_BODY]]:
--diff -ruN --strip-trailing-cr a/llvm/test/Verifier/llvm.loop.estimated_trip_count.ll b/llvm/test/Verifier/llvm.loop.estimated_trip_count.ll
----- a/llvm/test/Verifier/llvm.loop.estimated_trip_count.ll
--+++ b/llvm/test/Verifier/llvm.loop.estimated_trip_count.ll
--@@ -26,36 +26,43 @@
-- 
-- ; No value.
-- ; RUN: cp %s %t
--+; RUN: chmod u+w %t
-- ; RUN: echo '!1 = !{!"llvm.loop.estimated_trip_count"}' >> %t
-- ; RUN: not %{RUN} TOO-FEW
-- 
-- ; i16 value.
-- ; RUN: cp %s %t
--+; RUN: chmod u+w %t
-- ; RUN: echo '!1 = !{!"llvm.loop.estimated_trip_count", i16 5}' >> %t
-- ; RUN: %{RUN} GOOD
-- 
-- ; i32 value.
-- ; RUN: cp %s %t
--+; RUN: chmod u+w %t
-- ; RUN: echo '!1 = !{!"llvm.loop.estimated_trip_count", i32 5}' >> %t
-- ; RUN: %{RUN} GOOD
-- 
-- ; i64 value.
-- ; RUN: cp %s %t
--+; RUN: chmod u+w %t
-- ; RUN: echo '!1 = !{!"llvm.loop.estimated_trip_count", i64 5}' >> %t
-- ; RUN: not %{RUN} BAD-VALUE
-- 
-- ; MDString value.
-- ; RUN: cp %s %t
--+; RUN: chmod u+w %t
-- ; RUN: echo '!1 = !{!"llvm.loop.estimated_trip_count", !"5"}' >> %t
-- ; RUN: not %{RUN} BAD-VALUE
-- 
-- ; MDNode value.
-- ; RUN: cp %s %t
--+; RUN: chmod u+w %t
-- ; RUN: echo '!1 = !{!"llvm.loop.estimated_trip_count", !2}' >> %t
-- ; RUN: echo '!2 = !{i32 5}' >> %t
-- ; RUN: not %{RUN} BAD-VALUE
-- 
-- ; Too many values.
-- ; RUN: cp %s %t
--+; RUN: chmod u+w %t
-- ; RUN: echo '!1 = !{!"llvm.loop.estimated_trip_count", i32 5, i32 5}' >> %t
-- ; RUN: not %{RUN} TOO-MANY
--diff -ruN --strip-trailing-cr a/mlir/include/mlir/Tools/mlir-opt/MlirOptMain.h b/mlir/include/mlir/Tools/mlir-opt/MlirOptMain.h
----- a/mlir/include/mlir/Tools/mlir-opt/MlirOptMain.h
--+++ b/mlir/include/mlir/Tools/mlir-opt/MlirOptMain.h
--@@ -264,7 +264,7 @@
--   bool allowUnregisteredDialectsFlag = false;
-- 
--   /// Remark format
---  RemarkFormat remarkFormatFlag;
--+  RemarkFormat remarkFormatFlag = REMARK_FORMAT_STDOUT;
--   /// Remark file to output to
--   std::string remarksOutputFileFlag = "";
--   /// Remark filters
--diff -ruN --strip-trailing-cr a/mlir/lib/Bindings/Python/IRCore.cpp b/mlir/lib/Bindings/Python/IRCore.cpp
----- a/mlir/lib/Bindings/Python/IRCore.cpp
--+++ b/mlir/lib/Bindings/Python/IRCore.cpp
--@@ -1079,23 +1079,38 @@
-- PyModule::PyModule(PyMlirContextRef contextRef, MlirModule module)
--     : BaseContextObject(std::move(contextRef)), module(module) {}
-- 
---PyModule::~PyModule() { mlirModuleDestroy(module); }
--+PyModule::~PyModule() {
--+  nb::gil_scoped_acquire acquire;
--+  auto &liveModules = getContext()->liveModules;
--+  assert(liveModules.count(module.ptr) == 1 &&
--+         "destroying module not in live map");
--+  liveModules.erase(module.ptr);
--+  mlirModuleDestroy(module);
--+}
-- 
-- PyModuleRef PyModule::forModule(MlirModule module) {
--   MlirContext context = mlirModuleGetContext(module);
--   PyMlirContextRef contextRef = PyMlirContext::forContext(context);
-- 
---  // Create.
---  PyModule *unownedModule = new PyModule(std::move(contextRef), module);
---  // Note that the default return value policy on cast is `automatic_reference`,
---  // which means "does not take ownership, does not call delete/dtor".
---  // We use `take_ownership`, which means "Python will call the C++ destructor
---  // and delete operator when the Python wrapper is garbage collected", because
---  // MlirModule actually wraps OwningOpRef<ModuleOp> (see mlirModuleCreateParse
---  // etc).
---  nb::object pyRef = nb::cast(unownedModule, nb::rv_policy::take_ownership);
---  unownedModule->handle = pyRef;
---  return PyModuleRef(unownedModule, std::move(pyRef));
--+  nb::gil_scoped_acquire acquire;
--+  auto &liveModules = contextRef->liveModules;
--+  auto it = liveModules.find(module.ptr);
--+  if (it == liveModules.end()) {
--+    // Create.
--+    PyModule *unownedModule = new PyModule(std::move(contextRef), module);
--+    // Note that the default return value policy on cast is automatic_reference,
--+    // which does not take ownership (delete will not be called).
--+    // Just be explicit.
--+    nb::object pyRef = nb::cast(unownedModule, nb::rv_policy::take_ownership);
--+    unownedModule->handle = pyRef;
--+    liveModules[module.ptr] =
--+        std::make_pair(unownedModule->handle, unownedModule);
--+    return PyModuleRef(unownedModule, std::move(pyRef));
-++void dummy_func() {}
-++
-++uint8_t empty_8bit_counters[0];
-++uintptr_t empty_pcs[0];
-++
-++uint8_t fake_8bit_counters[1] = {0};
-++uintptr_t fake_pcs[2] = {reinterpret_cast<uintptr_t>(&dummy_func),
-++                         reinterpret_cast<uintptr_t>(&dummy_func)};
-++
-++// Register two modules at program launch (same time they'd normally be registered).
-++// Triggering the bug requires loading an empty module, then a non-empty module after it.
-++bool dummy = []() {
-++  // First, simulate loading an empty module.
-++  __sanitizer_cov_8bit_counters_init(empty_8bit_counters, empty_8bit_counters);
-++  __sanitizer_cov_pcs_init(empty_pcs, empty_pcs);
-++
-++  // Next, simulate loading a non-empty module.
-++  __sanitizer_cov_8bit_counters_init(fake_8bit_counters,
-++                                     fake_8bit_counters + 1);
-++  __sanitizer_cov_pcs_init(fake_pcs, fake_pcs + 2);
-++
-++  return true;
-++}();
-++
-++static volatile int Sink;
-++
-++extern "C" int LLVMFuzzerTestOneInput(const uint8_t *Data, size_t Size) {
-++  assert(Data);
-++  if (Size > 0 && Data[0] == 'H') {
-++    Sink = 1;
-++    if (Size > 1 && Data[1] == 'i') {
-++      Sink = 2;
-++      if (Size > 2 && Data[2] == '!') {
-++        std::cout << "BINGO; Found the target, exiting\n" << std::flush;
-++        exit(0);
-++      }
-++    }
- +  }
--+  // Use existing.
--+  PyModule *existing = it->second.second;
--+  nb::object pyRef = nb::borrow<nb::object>(it->second.first);
--+  return PyModuleRef(existing, std::move(pyRef));
+-diff -ruN --strip-trailing-cr a/llvm/lib/IR/Metadata.cpp b/llvm/lib/IR/Metadata.cpp
+---- a/llvm/lib/IR/Metadata.cpp
+-+++ b/llvm/lib/IR/Metadata.cpp
+-@@ -986,10 +986,15 @@
 - }
 - 
-- nb::object PyModule::createFromCapsule(nb::object capsule) {
--@@ -2084,6 +2099,8 @@
--   return PyInsertionPoint{block, std::move(nextOpRef)};
-- }
-- 
--+size_t PyMlirContext::getLiveModuleCount() { return liveModules.size(); }
+- template <class NodeTy> struct MDNode::HasCachedHash {
+-+  using Yes = char[1];
+-+  using No = char[2];
+-+  template <class U, U Val> struct SFINAE {};
 -+
-- nb::object PyInsertionPoint::contextEnter(nb::object insertPoint) {
--   return PyThreadContextEntry::pushInsertionPoint(insertPoint);
-++  return 0;
-++}
-+diff -ruN --strip-trailing-cr a/llvm/lib/IR/Metadata.cpp b/llvm/lib/IR/Metadata.cpp
-+--- a/llvm/lib/IR/Metadata.cpp
-++++ b/llvm/lib/IR/Metadata.cpp
-+@@ -986,10 +986,15 @@
-  }
--@@ -2923,6 +2940,7 @@
--              PyMlirContextRef ref = PyMlirContext::forContext(self.get());
--              return ref.releaseObject();
--            })
--+      .def("_get_live_module_count", &PyMlirContext::getLiveModuleCount)
--       .def_prop_ro(MLIR_PYTHON_CAPI_PTR_ATTR, &PyMlirContext::getCapsule)
--       .def(MLIR_PYTHON_CAPI_FACTORY_ATTR, &PyMlirContext::createFromCapsule)
--       .def("__enter__", &PyMlirContext::contextEnter)
--diff -ruN --strip-trailing-cr a/mlir/lib/Bindings/Python/IRModule.h b/mlir/lib/Bindings/Python/IRModule.h
----- a/mlir/lib/Bindings/Python/IRModule.h
--+++ b/mlir/lib/Bindings/Python/IRModule.h
--@@ -218,6 +218,10 @@
--   /// Gets the count of live context objects. Used for testing.
--   static size_t getLiveCount();
+-   template <class U>
+--  using check = decltype(static_cast<void (U::*)(unsigned)>(&U::setHash));
+-+  static Yes &check(SFINAE<void (U::*)(unsigned), &U::setHash> *);
+-+  template <class U> static No &check(...);
++diff -ruN --strip-trailing-cr a/llvm/lib/CodeGen/AsmPrinter/DwarfExpression.cpp b/llvm/lib/CodeGen/AsmPrinter/DwarfExpression.cpp
++--- a/llvm/lib/CodeGen/AsmPrinter/DwarfExpression.cpp
+++++ b/llvm/lib/CodeGen/AsmPrinter/DwarfExpression.cpp
++@@ -154,7 +154,7 @@
++     unsigned Size = TRI.getSubRegIdxSize(Idx);
++     unsigned Offset = TRI.getSubRegIdxOffset(Idx);
++     Reg = TRI.getDwarfRegNum(SR, false);
++-    if (Reg < 0)
+++    if (Reg < 0 || Offset + Size > RegSize)
++       continue;
   
--+  /// Gets the count of live modules associated with this context.
--+  /// Used for testing.
--+  size_t getLiveModuleCount();
--+
--   /// Enter and exit the context manager.
--   static nanobind::object contextEnter(nanobind::object context);
--   void contextExit(const nanobind::object &excType,
--@@ -244,6 +248,14 @@
--   static nanobind::ft_mutex live_contexts_mutex;
--   static LiveContextMap &getLiveContexts();
-- 
--+  // Interns all live modules associated with this context. Modules tracked
--+  // in this map are valid. When a module is invalidated, it is removed
--+  // from this map, and while it still exists as an instance, any
--+  // attempt to access it will raise an error.
--+  using LiveModuleMap =
--+      llvm::DenseMap<const void *, std::pair<nanobind::handle, PyModule *>>;
--+  LiveModuleMap liveModules;
--+
--   bool emitErrorDiagnostics = false;
-- 
--   MlirContext context;
--diff -ruN --strip-trailing-cr a/mlir/test/python/ir/module.py b/mlir/test/python/ir/module.py
----- a/mlir/test/python/ir/module.py
--+++ b/mlir/test/python/ir/module.py
--@@ -121,6 +121,7 @@
-- def testModuleOperation():
--     ctx = Context()
--     module = Module.parse(r"""module @successfulParse {}""", ctx)
--+    assert ctx._get_live_module_count() == 1
--     op1 = module.operation
--     # CHECK: module @successfulParse
--     print(op1)
--@@ -145,6 +146,7 @@
--     op1 = None
--     op2 = None
--     gc.collect()
--+    assert ctx._get_live_module_count() == 0
-- 
-- 
-- # CHECK-LABEL: TEST: testModuleCapsule
--@@ -152,17 +154,17 @@
-- def testModuleCapsule():
--     ctx = Context()
--     module = Module.parse(r"""module @successfulParse {}""", ctx)
--+    assert ctx._get_live_module_count() == 1
--     # CHECK: "mlir.ir.Module._CAPIPtr"
--     module_capsule = module._CAPIPtr
--     print(module_capsule)
--     module_dup = Module._CAPICreate(module_capsule)
---    assert module is not module_dup
--+    assert module is module_dup
--     assert module == module_dup
---    module._clear_mlir_module()
---    assert module != module_dup
--     assert module_dup.context is ctx
--     # Gc and verify destructed.
--     module = None
--     module_capsule = None
--     module_dup = None
--     gc.collect()
--+    assert ctx._get_live_module_count() == 0
-+ template <class NodeTy> struct MDNode::HasCachedHash {
-++  using Yes = char[1];
-++  using No = char[2];
-++  template <class U, U Val> struct SFINAE {};
+--  static constexpr bool value = is_detected<check, NodeTy>::value;
+-+  static const bool value = sizeof(check<NodeTy>(nullptr)) == sizeof(Yes);
+- };
++     // Used to build the intersection between the bits we already
++diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/AArch64/debug-info-sve-pair.mir b/llvm/test/CodeGen/AArch64/debug-info-sve-pair.mir
++--- a/llvm/test/CodeGen/AArch64/debug-info-sve-pair.mir
+++++ b/llvm/test/CodeGen/AArch64/debug-info-sve-pair.mir
++@@ -0,0 +1,344 @@
+++# RUN: llc -start-before=aarch64-asm-printer -o - %s | FileCheck %s
 ++
-+   template <class U>
-+-  using check = decltype(static_cast<void (U::*)(unsigned)>(&U::setHash));
-++  static Yes &check(SFINAE<void (U::*)(unsigned), &U::setHash> *);
-++  template <class U> static No &check(...);
-+ 
-+-  static constexpr bool value = is_detected<check, NodeTy>::value;
-++  static const bool value = sizeof(check<NodeTy>(nullptr)) == sizeof(Yes);
-+ };
-+ 
-+ MDNode *MDNode::uniquify() {
-+diff -ruN --strip-trailing-cr a/llvm/lib/Transforms/IPO/FunctionSpecialization.cpp b/llvm/lib/Transforms/IPO/FunctionSpecialization.cpp
-+--- a/llvm/lib/Transforms/IPO/FunctionSpecialization.cpp
-++++ b/llvm/lib/Transforms/IPO/FunctionSpecialization.cpp
-+@@ -796,18 +796,19 @@
-+       if (Count && !ProfcheckDisableMetadataFixes) {
-+         std::optional<llvm::Function::ProfileCount> MaybeCloneCount =
-+             Clone->getEntryCount();
-+-        assert(MaybeCloneCount && "Clone entry count was not set!");
-+-        uint64_t CallCount = *Count + MaybeCloneCount->getCount();
-+-        Clone->setEntryCount(CallCount);
-+-        if (std::optional<llvm::Function::ProfileCount> MaybeOriginalCount =
-+-                S.F->getEntryCount()) {
-+-          uint64_t OriginalCount = MaybeOriginalCount->getCount();
-+-          if (OriginalCount >= *Count) {
-+-            S.F->setEntryCount(OriginalCount - *Count);
-+-          } else {
-+-            // This should generally not happen as that would mean there are
-+-            // more computed calls to the function than what was recorded.
-+-            LLVM_DEBUG(S.F->setEntryCount(0));
-++        if (MaybeCloneCount) {
-++          uint64_t CallCount = *Count + MaybeCloneCount->getCount();
-++          Clone->setEntryCount(CallCount);
-++          if (std::optional<llvm::Function::ProfileCount> MaybeOriginalCount =
-++                  S.F->getEntryCount()) {
-++            uint64_t OriginalCount = MaybeOriginalCount->getCount();
-++            if (OriginalCount >= *Count) {
-++              S.F->setEntryCount(OriginalCount - *Count);
-++            } else {
-++              // This should generally not happen as that would mean there are
-++              // more computed calls to the function than what was recorded.
-++              LLVM_DEBUG(S.F->setEntryCount(0));
-++            }
-+           }
-+         }
-+       }
+++# Check that z30_z31 debug info does not crash.
+++
+++# CHECK: .Ldebug_loc0:
+++# CHECK:        .byte   4                               // DW_LLE_offset_pair
+++# CHECK:        .uleb128 .Ltmp2-.Lfunc_begin0           //   starting offset
+++# CHECK:        .uleb128 .Ltmp3-.Lfunc_begin0           //   ending offset
+++# CHECK:        .byte   2                               // Loc expr size
+++# CHECK:        .byte   144                             // DW_OP_regx
+++# CHECK:        .byte   126                             // 126
+++# CHECK:        .byte   4                               // DW_LLE_offset_pair
+++# CHECK:        .uleb128 .Ltmp3-.Lfunc_begin0           //   starting offset
+++# CHECK:        .uleb128 .Lfunc_end0-.Lfunc_begin0      //   ending offset
+++# CHECK:        .byte   6                               // Loc expr size
+++# CHECK:        .byte   144                             // sub-register DW_OP_regx
+++# CHECK:        .byte   94                              // 94
+++# CHECK:        .byte   147                             // DW_OP_piece
+++# CHECK:        .byte   16                              // 16
+++# CHECK:        .byte   147                             // DW_OP_piece
+++# CHECK:        .byte   31                              // 31
+++# CHECK:        .byte   0                               // DW_LLE_end_of_list
+++
+++
+++--- |
+++  target datalayout = "e-m:e-p270:32:32-p271:32:32-p272:64:64-i8:8:32-i16:16:32-i64:64-i128:128-n32:64-S128-Fn32"
+++  target triple = "aarch64"
+++
+++  define void @_Z10Sort16RowsILi6EEv12SharedTraitsI10TraitsLaneEP22Trans_NS_hwy_float16_tiS4_(i8 %st.coerce, ptr noundef %keys, i32 noundef %0, ptr noundef %1) #2 !dbg !2 {
+++      unreachable
+++  }
+++
+++  attributes #2 = { mustprogress uwtable vscale_range(1,16) "frame-pointer"="non-leaf" "no-trapping-math"="true" "stack-protector-buffer-size"="8" "target-cpu"="neoverse-n1" "target-features"="+aes,+crc,+dotprod,+fp-armv8,+fullfp16,+lse,+neon,+perfmon,+ras,+rcpc,+rdm,+sha2,+spe,+ssbs,+sve,+sve-aes,+sve2,+sve2-aes,+v8.1a,+v8.2a,+v8a,-fmv" "tune-cpu"="generic" }
+++
+++  !llvm.dbg.cu = !{!3}
+++  !llvm.module.flags = !{!4, !5, !6, !7, !8, !9}
+++  !llvm.ident = !{!10}
+++
+++  !2 = distinct !DISubprogram(name: "Sort16Rows<6>", linkageName: "_Z10Sort16RowsILi6EEv12SharedTraitsI10TraitsLaneEP22Trans_NS_hwy_float16_tiS4_", scope: !12, file: !12, line: 369, type: !18, scopeLine: 370, flags: DIFlagPrototyped | DIFlagAllCallsDescribed, spFlags: DISPFlagDefinition | DISPFlagOptimized, unit: !3, templateParams: !19, retainedNodes: !20, keyInstructions: true)
+++  !3 = distinct !DICompileUnit(language: DW_LANG_C_plus_plus_14, file: !14, producer: "clang version 22.0.0git (https://github.com/llvm/llvm-project.git)", isOptimized: true, runtimeVersion: 0, emissionKind: FullDebug, splitDebugInlining: false, nameTableKind: None)
+++  !4 = !{i32 7, !"Dwarf Version", i32 5}
+++  !5 = !{i32 2, !"Debug Info Version", i32 3}
+++  !6 = !{i32 1, !"wchar_size", i32 4}
+++  !7 = !{i32 7, !"uwtable", i32 2}
+++  !8 = !{i32 7, !"frame-pointer", i32 1}
+++  !9 = !{i32 7, !"debug-info-assignment-tracking", i1 true}
+++  !10 = !{!"clang version 22.0.0git (https://github.com/llvm/llvm-project.git)"}
+++  !12 = !DIFile(filename: "example.cpp", directory: "/app", checksumkind: CSK_MD5, checksum: "5fbaafea0ede06ddd1ffc371aeee276e")
+++  !14 = !DIFile(filename: "/app/example.cpp", directory: "/app", checksumkind: CSK_MD5, checksum: "5fbaafea0ede06ddd1ffc371aeee276e")
+++  !17 = !DIBasicType(name: "__fp16", size: 16, encoding: DW_ATE_float)
+++  !18 = !DISubroutineType(types: !21)
+++  !19 = !{!120}
+++  !20 = !{!77, !78, !79, !80, !81, !82, !83, !84, !85, !86, !87, !88, !89, !90, !91, !92, !93, !94, !95, !96, !97, !98, !99, !100, !101, !102, !103, !104, !105}
+++  !21 = !{null, !22, !23, !24, !23}
+++  !22 = distinct !DICompositeType(tag: DW_TAG_structure_type, name: "SharedTraits<TraitsLane>", file: !12, line: 272, size: 8, flags: DIFlagTypePassByValue, elements: !25, templateParams: !26, identifier: "_ZTS12SharedTraitsI10TraitsLaneE")
+++  !23 = !DIDerivedType(tag: DW_TAG_pointer_type, baseType: !55, size: 64)
+++  !24 = !DIBasicType(name: "int", size: 32, encoding: DW_ATE_signed)
+++  !25 = !{!27}
+++  !26 = !{!76}
+++  !27 = !DIDerivedType(tag: DW_TAG_inheritance, scope: !22, baseType: !28, extraData: i32 0)
+++  !28 = distinct !DICompositeType(tag: DW_TAG_structure_type, name: "TraitsLane", file: !12, line: 325, size: 8, flags: DIFlagTypePassByValue, elements: !29, identifier: "_ZTS10TraitsLane")
+++  !29 = !{!30, !31, !32, !33}
+++  !30 = !DIDerivedType(tag: DW_TAG_inheritance, scope: !28, baseType: !34, extraData: i32 0)
+++  !31 = !DISubprogram(name: "Sort2", linkageName: "_ZN10TraitsLane5Sort2E4SimdI22Trans_NS_hwy_float16_tLi1ELi0EERu13__SVFloat16_tS4_", scope: !28, file: !12, line: 326, type: !70, scopeLine: 326, flags: DIFlagPrototyped, spFlags: DISPFlagOptimized)
+++  !32 = !DISubprogram(name: "SortPairsDistance1", linkageName: "_ZN10TraitsLane18SortPairsDistance1E4SimdI22Trans_NS_hwy_float16_tLi1ELi0EEu13__SVFloat16_t", scope: !28, file: !12, line: 344, type: !74, scopeLine: 344, flags: DIFlagPrototyped, spFlags: DISPFlagOptimized)
+++  !33 = !DISubprogram(name: "SortPairsDistance4", linkageName: "_ZN10TraitsLane18SortPairsDistance4E4SimdI22Trans_NS_hwy_float16_tLi1ELi0EEu13__SVFloat16_t", scope: !28, file: !12, line: 352, type: !74, scopeLine: 352, flags: DIFlagPrototyped, spFlags: DISPFlagOptimized)
+++  !34 = distinct !DICompositeType(tag: DW_TAG_structure_type, name: "KeyLane", file: !12, line: 307, size: 8, flags: DIFlagTypePassByValue, elements: !35, identifier: "_ZTS7KeyLane")
+++  !35 = !{!36, !37, !38}
+++  !36 = !DISubprogram(name: "SwapAdjacentPairs", linkageName: "_ZN7KeyLane17SwapAdjacentPairsE4SimdI22Trans_NS_hwy_float16_tLi1ELi0EEu13__SVFloat16_t", scope: !34, file: !12, line: 309, type: !39, scopeLine: 309, flags: DIFlagPrototyped, spFlags: DISPFlagOptimized)
+++  !37 = !DISubprogram(name: "SwapAdjacentPairs", linkageName: "_ZN7KeyLane17SwapAdjacentPairsEu13__SVFloat32_t", scope: !34, file: !12, line: 314, type: !58, scopeLine: 314, flags: DIFlagPrototyped, spFlags: DISPFlagOptimized)
+++  !38 = !DISubprogram(name: "OddEvenPairs", linkageName: "_ZN7KeyLane12OddEvenPairsE4SimdI22Trans_NS_hwy_float16_tLi1ELi0EEu13__SVFloat16_tS3_", scope: !34, file: !12, line: 318, type: !68, scopeLine: 318, flags: DIFlagPrototyped, spFlags: DISPFlagOptimized)
+++  !39 = !DISubroutineType(types: !40)
+++  !40 = !{!41, !42, !43, !41}
+++  !41 = !DIDerivedType(tag: DW_TAG_typedef, name: "Vec<Simd<Trans_NS_hwy_float16_t, 1, 0> >", file: !12, line: 270, baseType: !44)
+++  !42 = !DIDerivedType(tag: DW_TAG_pointer_type, baseType: !34, size: 64, flags: DIFlagArtificial | DIFlagObjectPointer)
+++  !43 = distinct !DICompositeType(tag: DW_TAG_structure_type, name: "Simd<Trans_NS_hwy_float16_t, 1, 0>", file: !12, line: 83, size: 8, flags: DIFlagTypePassByValue, elements: !50, templateParams: !51, identifier: "_ZTS4SimdI22Trans_NS_hwy_float16_tLi1ELi0EE")
+++  !44 = !DIDerivedType(tag: DW_TAG_typedef, name: "VFromD<Simd<Trans_NS_hwy_float16_t, 1, 0> >", file: !12, line: 142, baseType: !45)
+++  !45 = !DIDerivedType(tag: DW_TAG_typedef, name: "svfloat16_t", file: !12, line: 26, baseType: !46)
+++  !46 = !DIDerivedType(tag: DW_TAG_typedef, name: "__SVFloat16_t", file: !12, baseType: !47)
+++  !47 = !DICompositeType(tag: DW_TAG_array_type, baseType: !17, flags: DIFlagVector, elements: !48)
+++  !48 = !{!49}
+++  !49 = !DISubrange(lowerBound: 0, upperBound: !DIExpression(DW_OP_constu, 4, DW_OP_bregx, 46, 0, DW_OP_mul, DW_OP_constu, 1, DW_OP_minus))
+++  !50 = !{}
+++  !51 = !{!52, !53, !54}
+++  !52 = !DITemplateTypeParameter(name: "Lane", type: !55)
+++  !53 = !DITemplateValueParameter(type: !24, value: i32 1)
+++  !54 = !DITemplateValueParameter(name: "kPow2", type: !24, value: i32 0)
+++  !55 = distinct !DICompositeType(tag: DW_TAG_structure_type, name: "Trans_NS_hwy_float16_t", file: !12, line: 6, size: 16, flags: DIFlagTypePassByValue, elements: !56, identifier: "_ZTS22Trans_NS_hwy_float16_t")
+++  !56 = !{!57}
+++  !57 = !DIDerivedType(tag: DW_TAG_member, name: "native", scope: !55, file: !12, line: 7, baseType: !17, size: 16)
+++  !58 = !DISubroutineType(types: !59)
+++  !59 = !{!60, !42, !60}
+++  !60 = !DIDerivedType(tag: DW_TAG_typedef, name: "Vec<Simd<float, 0, 0> >", file: !12, line: 270, baseType: !61)
+++  !61 = !DIDerivedType(tag: DW_TAG_typedef, name: "VFromD<Simd<float, 0, 0> >", file: !12, line: 142, baseType: !62)
+++  !62 = !DIDerivedType(tag: DW_TAG_typedef, name: "svfloat32_t", file: !12, line: 27, baseType: !63)
+++  !63 = !DIDerivedType(tag: DW_TAG_typedef, name: "__SVFloat32_t", file: !12, baseType: !64)
+++  !64 = !DICompositeType(tag: DW_TAG_array_type, baseType: !65, flags: DIFlagVector, elements: !66)
+++  !65 = !DIBasicType(name: "float", size: 32, encoding: DW_ATE_float)
+++  !66 = !{!67}
+++  !67 = !DISubrange(lowerBound: 0, upperBound: !DIExpression(DW_OP_constu, 2, DW_OP_bregx, 46, 0, DW_OP_mul, DW_OP_constu, 1, DW_OP_minus))
+++  !68 = !DISubroutineType(types: !69)
+++  !69 = !{!41, !42, !43, !41, !41}
+++  !70 = !DISubroutineType(types: !71)
+++  !71 = !{null, !72, !43, !73, !73}
+++  !72 = !DIDerivedType(tag: DW_TAG_pointer_type, baseType: !28, size: 64, flags: DIFlagArtificial | DIFlagObjectPointer)
+++  !73 = !DIDerivedType(tag: DW_TAG_reference_type, baseType: !41, size: 64)
+++  !74 = !DISubroutineType(types: !75)
+++  !75 = !{!41, !72, !43, !41}
+++  !76 = !DITemplateTypeParameter(name: "Base", type: !28)
+++  !77 = !DILocalVariable(name: "st", arg: 1, scope: !2, file: !12, line: 369, type: !22)
+++  !78 = !DILocalVariable(name: "keys", arg: 2, scope: !2, file: !12, line: 369, type: !23)
+++  !79 = !DILocalVariable(arg: 3, scope: !2, file: !12, line: 369, type: !24)
+++  !80 = !DILocalVariable(arg: 4, scope: !2, file: !12, line: 370, type: !23)
+++  !81 = !DILocalVariable(name: "d", scope: !2, file: !12, line: 371, type: !106)
+++  !82 = !DILocalVariable(name: "v8", scope: !2, file: !12, line: 373, type: !112)
+++  !83 = !DILocalVariable(name: "v9", scope: !2, file: !12, line: 373, type: !112)
+++  !84 = !DILocalVariable(name: "va", scope: !2, file: !12, line: 373, type: !112)
+++  !85 = !DILocalVariable(name: "vb", scope: !2, file: !12, line: 373, type: !112)
+++  !86 = !DILocalVariable(name: "vc", scope: !2, file: !12, line: 373, type: !112)
+++  !87 = !DILocalVariable(name: "vd", scope: !2, file: !12, line: 373, type: !112)
+++  !88 = !DILocalVariable(name: "ve", scope: !2, file: !12, line: 373, type: !112)
+++  !89 = !DILocalVariable(name: "vf", scope: !2, file: !12, line: 373, type: !112)
+++  !90 = !DILocalVariable(name: "v2", scope: !2, file: !12, line: 373, type: !112)
+++  !91 = !DILocalVariable(name: "v4", scope: !2, file: !12, line: 373, type: !112)
+++  !92 = !DILocalVariable(name: "v7", scope: !2, file: !12, line: 373, type: !112)
+++  !93 = !DILocalVariable(name: "v0", scope: !2, file: !12, line: 374, type: !112)
+++  !94 = !DILocalVariable(name: "v3", scope: !2, file: !12, line: 375, type: !112)
+++  !95 = !DILocalVariable(name: "v5", scope: !2, file: !12, line: 376, type: !112)
+++  !96 = !DILocalVariable(name: "v6", scope: !2, file: !12, line: 377, type: !112)
+++  !97 = !DILocalVariable(name: "kIota", scope: !2, file: !12, line: 378, type: !112)
+++  !98 = !DILocalVariable(name: "m8", scope: !2, file: !12, line: 379, type: !113)
+++  !99 = !DILocalVariable(name: "m9", scope: !2, file: !12, line: 380, type: !113)
+++  !100 = !DILocalVariable(name: "ma", scope: !2, file: !12, line: 381, type: !113)
+++  !101 = !DILocalVariable(name: "mb", scope: !2, file: !12, line: 382, type: !113)
+++  !102 = !DILocalVariable(name: "mc", scope: !2, file: !12, line: 383, type: !113)
+++  !103 = !DILocalVariable(name: "md", scope: !2, file: !12, line: 384, type: !113)
+++  !104 = !DILocalVariable(name: "me", scope: !2, file: !12, line: 385, type: !113)
+++  !105 = !DILocalVariable(name: "mf", scope: !2, file: !12, line: 386, type: !113)
+++  !106 = !DIDerivedType(tag: DW_TAG_typedef, name: "CappedTag<Trans_NS_hwy_float16_t, 6>", file: !12, line: 97, baseType: !107)
+++  !107 = !DIDerivedType(tag: DW_TAG_typedef, name: "type", scope: !108, file: !12, line: 89, baseType: !43)
+++  !108 = distinct !DICompositeType(tag: DW_TAG_structure_type, name: "ClampNAndPow2<Trans_NS_hwy_float16_t, 1>", file: !12, line: 88, size: 8, flags: DIFlagTypePassByValue, elements: !50, templateParams: !109, identifier: "_ZTS13ClampNAndPow2I22Trans_NS_hwy_float16_tLi1EE")
+++  !109 = !{!110, !111}
+++  !110 = !DITemplateTypeParameter(name: "T", type: !55)
+++  !111 = !DITemplateValueParameter(name: "N", type: !24, value: i32 1)
+++  !112 = !DIDerivedType(tag: DW_TAG_typedef, name: "V", scope: !2, file: !12, line: 372, baseType: !41)
+++  !113 = !DIDerivedType(tag: DW_TAG_typedef, name: "Mask<Simd<Trans_NS_hwy_float16_t, 1, 0> >", file: !12, line: 271, baseType: !114)
+++  !114 = !DIDerivedType(tag: DW_TAG_typedef, name: "svbool_t", file: !12, line: 28, baseType: !115)
+++  !115 = !DIDerivedType(tag: DW_TAG_typedef, name: "__SVBool_t", file: !12, baseType: !116)
+++  !116 = !DICompositeType(tag: DW_TAG_array_type, baseType: !117, flags: DIFlagVector, elements: !118)
+++  !117 = !DIBasicType(name: "unsigned char", size: 8, encoding: DW_ATE_unsigned_char)
+++  !118 = !{!119}
+++  !119 = !DISubrange(lowerBound: 0, upperBound: !DIExpression(DW_OP_constu, 1, DW_OP_bregx, 46, 0, DW_OP_mul, DW_OP_constu, 1, DW_OP_minus))
+++  !120 = !DITemplateValueParameter(name: "kKeysPerRow", type: !24, value: i32 6)
+++  !121 = !DILocalVariable(name: "this", arg: 1, scope: !122, type: !123, flags: DIFlagArtificial | DIFlagObjectPointer)
+++  !122 = distinct !DISubprogram(name: "Sort2", linkageName: "_ZN10TraitsLane5Sort2E4SimdI22Trans_NS_hwy_float16_tLi1ELi0EERu13__SVFloat16_tS4_", scope: !28, file: !12, line: 326, type: !70, scopeLine: 328, flags: DIFlagPrototyped | DIFlagAllCallsDescribed, spFlags: DISPFlagDefinition | DISPFlagOptimized, unit: !3, declaration: !31, retainedNodes: !124, keyInstructions: true)
+++  !123 = !DIDerivedType(tag: DW_TAG_pointer_type, baseType: !28, size: 64)
+++  !124 = !{!121, !125, !126, !127, !128, !129, !130, !131, !132}
+++  !125 = !DILocalVariable(name: "d", arg: 2, scope: !122, file: !12, line: 326, type: !43)
+++  !126 = !DILocalVariable(name: "a", arg: 3, scope: !122, file: !12, line: 327, type: !73)
+++  !127 = !DILocalVariable(name: "b", arg: 4, scope: !122, file: !12, line: 328, type: !73)
+++  !128 = !DILocalVariable(name: "__trans_tmp_52", scope: !122, file: !12, line: 329, type: !41)
+++  !129 = !DILocalVariable(name: "a_copy", scope: !122, file: !12, line: 329, type: !41)
+++  !130 = !DILocalVariable(name: "__trans_tmp_45", scope: !122, file: !12, line: 330, type: !41)
+++  !131 = !DILocalVariable(name: "__trans_tmp_53", scope: !133, file: !12, line: 334, type: !41)
+++  !132 = !DILocalVariable(name: "__trans_tmp_29", scope: !134, file: !12, line: 336, type: !45)
+++  !133 = distinct !DILexicalBlock(scope: !122, file: !12, line: 333, column: 5)
+++  !134 = distinct !DILexicalBlock(scope: !133, file: !12, line: 335, column: 7)
+++  !137 = distinct !DISubprogram(name: "SortPairsDistance1", linkageName: "_ZN10TraitsLane18SortPairsDistance1E4SimdI22Trans_NS_hwy_float16_tLi1ELi0EEu13__SVFloat16_t", scope: !28, file: !12, line: 344, type: !74, scopeLine: 345, flags: DIFlagPrototyped | DIFlagAllCallsDescribed, spFlags: DISPFlagDefinition | DISPFlagOptimized, unit: !3, declaration: !32, retainedNodes: !139, keyInstructions: true)
+++  !139 = !{!140, !141, !142, !143}
+++  !140 = !DILocalVariable(name: "this", arg: 1, scope: !137, type: !123, flags: DIFlagArtificial | DIFlagObjectPointer)
+++  !141 = !DILocalVariable(name: "d", arg: 2, scope: !137, file: !12, line: 344, type: !43)
+++  !142 = !DILocalVariable(name: "v", arg: 3, scope: !137, file: !12, line: 345, type: !41)
+++  !143 = !DILocalVariable(name: "__trans_tmp_48", scope: !137, file: !12, line: 346, type: !41)
+++  !144 = distinct !DISubprogram(name: "Merge16x16<6, SharedTraits<TraitsLane>, __SVFloat16_t>", linkageName: "_Z10Merge16x16ILi6E12SharedTraitsI10TraitsLaneEu13__SVFloat16_tEvT0_RT1_S6_S6_S6_S6_S6_S6_S6_S6_S6_S6_S6_", scope: !12, file: !12, line: 286, type: !146, scopeLine: 288, flags: DIFlagPrototyped | DIFlagAllCallsDescribed, spFlags: DISPFlagDefinition | DISPFlagOptimized, unit: !3, templateParams: !147, retainedNodes: !148, keyInstructions: true)
+++  !145 = distinct !DILocation(line: 388, column: 3, scope: !2)
+++  !146 = !DISubroutineType(types: !149)
+++  !147 = !{!164, !165, !166}
+++  !148 = !{!151, !152, !153, !154, !155, !156, !157, !158, !159, !160, !161, !162, !163}
+++  !149 = !{null, !22, !150, !150, !150, !150, !150, !150, !150, !150, !150, !150, !150, !150}
+++  !150 = !DIDerivedType(tag: DW_TAG_reference_type, baseType: !47, size: 64)
+++  !151 = !DILocalVariable(name: "st", arg: 1, scope: !144, file: !12, line: 286, type: !22)
+++  !152 = !DILocalVariable(name: "v0", arg: 2, scope: !144, file: !12, line: 286, type: !150)
+++  !153 = !DILocalVariable(name: "v2", arg: 3, scope: !144, file: !12, line: 286, type: !150)
+++  !154 = !DILocalVariable(name: "v5", arg: 4, scope: !144, file: !12, line: 286, type: !150)
+++  !155 = !DILocalVariable(name: "v6", arg: 5, scope: !144, file: !12, line: 287, type: !150)
+++  !156 = !DILocalVariable(name: "v7", arg: 6, scope: !144, file: !12, line: 287, type: !150)
+++  !157 = !DILocalVariable(name: "v9", arg: 7, scope: !144, file: !12, line: 287, type: !150)
+++  !158 = !DILocalVariable(name: "va", arg: 8, scope: !144, file: !12, line: 287, type: !150)
+++  !159 = !DILocalVariable(name: "vb", arg: 9, scope: !144, file: !12, line: 287, type: !150)
+++  !160 = !DILocalVariable(name: "vc", arg: 10, scope: !144, file: !12, line: 288, type: !150)
+++  !161 = !DILocalVariable(name: "vd", arg: 11, scope: !144, file: !12, line: 288, type: !150)
+++  !162 = !DILocalVariable(name: "ve", arg: 12, scope: !144, file: !12, line: 288, type: !150)
+++  !163 = !DILocalVariable(name: "vf", arg: 13, scope: !144, file: !12, line: 288, type: !150)
+++  !164 = !DITemplateValueParameter(type: !24, value: i32 6)
+++  !165 = !DITemplateTypeParameter(name: "Traits", type: !22)
+++  !166 = !DITemplateTypeParameter(name: "V", type: !47)
+++  !184 = !DILocalVariable(name: "this", arg: 1, scope: !185, type: !186, flags: DIFlagArtificial | DIFlagObjectPointer)
+++  !185 = distinct !DISubprogram(name: "SortPairsDistance2<Simd<Trans_NS_hwy_float16_t, 1, 0> >", linkageName: "_ZN12SharedTraitsI10TraitsLaneE18SortPairsDistance2I4SimdI22Trans_NS_hwy_float16_tLi1ELi0EEEEDTcl4ZerocvT__EEES6_S7_", scope: !22, file: !12, line: 273, type: !187, scopeLine: 273, flags: DIFlagPrototyped | DIFlagAllCallsDescribed, spFlags: DISPFlagDefinition | DISPFlagOptimized, unit: !3, templateParams: !188, declaration: !189, retainedNodes: !190, keyInstructions: true)
+++  !186 = !DIDerivedType(tag: DW_TAG_pointer_type, baseType: !22, size: 64)
+++  !187 = !DISubroutineType(types: !191)
+++  !188 = !{!193}
+++  !189 = !DISubprogram(name: "SortPairsDistance2<Simd<Trans_NS_hwy_float16_t, 1, 0> >", linkageName: "_ZN12SharedTraitsI10TraitsLaneE18SortPairsDistance2I4SimdI22Trans_NS_hwy_float16_tLi1ELi0EEEEDTcl4ZerocvT__EEES6_S7_", scope: !22, file: !12, line: 273, type: !187, scopeLine: 273, flags: DIFlagPrototyped, spFlags: DISPFlagOptimized, templateParams: !188)
+++  !190 = !{!184, !194, !195, !196, !197}
+++  !191 = !{!41, !192, !43, !41}
+++  !192 = !DIDerivedType(tag: DW_TAG_pointer_type, baseType: !22, size: 64, flags: DIFlagArtificial | DIFlagObjectPointer)
+++  !193 = !DITemplateTypeParameter(name: "D", type: !43)
+++  !194 = !DILocalVariable(name: "d", arg: 2, scope: !185, file: !12, line: 273, type: !43)
+++  !195 = !DILocalVariable(name: "v", arg: 3, scope: !185, file: !12, line: 273, type: !41)
+++  !196 = !DILocalVariable(name: "base", scope: !185, file: !12, line: 274, type: !28)
+++  !197 = !DILocalVariable(name: "swapped", scope: !185, file: !12, line: 275, type: !41)
+++  !200 = !DILocation(line: 0, scope: !122, inlinedAt: !201)
+++  !201 = distinct !DILocation(line: 358, column: 5, scope: !202, inlinedAt: !203)
+++  !202 = distinct !DISubprogram(name: "SortPairsDistance4", linkageName: "_ZN10TraitsLane18SortPairsDistance4E4SimdI22Trans_NS_hwy_float16_tLi1ELi0EEu13__SVFloat16_t", scope: !28, file: !12, line: 352, type: !74, scopeLine: 353, flags: DIFlagPrototyped | DIFlagAllCallsDescribed, spFlags: DISPFlagDefinition | DISPFlagOptimized, unit: !3, declaration: !33, retainedNodes: !204, keyInstructions: true)
+++  !203 = distinct !DILocation(line: 298, column: 11, scope: !144, inlinedAt: !145)
+++  !204 = !{!205, !206, !207, !208, !209, !210, !211}
+++  !205 = !DILocalVariable(name: "this", arg: 1, scope: !202, type: !123, flags: DIFlagArtificial | DIFlagObjectPointer)
+++  !206 = !DILocalVariable(name: "d", arg: 2, scope: !202, file: !12, line: 352, type: !43)
+++  !207 = !DILocalVariable(name: "v", arg: 3, scope: !202, file: !12, line: 353, type: !41)
+++  !208 = !DILocalVariable(name: "__trans_tmp_42", scope: !202, file: !12, line: 354, type: !41)
+++  !209 = !DILocalVariable(name: "__trans_tmp_39", scope: !202, file: !12, line: 354, type: !41)
+++  !210 = !DILocalVariable(name: "dw", scope: !202, file: !12, line: 355, type: !212)
+++  !211 = !DILocalVariable(name: "__trans_tmp_51", scope: !219, file: !12, line: 360, type: !44)
+++  !212 = !DIDerivedType(tag: DW_TAG_typedef, name: "RepartitionToWide<Simd<Trans_NS_hwy_float16_t, 1, 0> >", file: !12, line: 103, baseType: !213)
+++  !213 = !DIDerivedType(tag: DW_TAG_typedef, name: "Repartition<float, Simd<Trans_NS_hwy_float16_t, 1, 0> >", file: !12, line: 101, baseType: !214)
+++  !214 = !DIDerivedType(tag: DW_TAG_typedef, name: "Repartition<float>", scope: !43, file: !12, line: 86, baseType: !215)
+++  !215 = distinct !DICompositeType(tag: DW_TAG_structure_type, name: "Simd<float, 0, 0>", file: !12, line: 83, size: 8, flags: DIFlagTypePassByValue, elements: !50, templateParams: !216, identifier: "_ZTS4SimdIfLi0ELi0EE")
+++  !216 = !{!217, !218, !54}
+++  !217 = !DITemplateTypeParameter(name: "Lane", type: !65)
+++  !218 = !DITemplateValueParameter(type: !24, value: i32 0)
+++  !219 = distinct !DILexicalBlock(scope: !202, file: !12, line: 359, column: 5)
+++  !220 = !DILocalVariable(name: "this", arg: 1, scope: !221, type: !222, flags: DIFlagArtificial | DIFlagObjectPointer)
+++  !221 = distinct !DISubprogram(name: "SwapAdjacentPairs", linkageName: "_ZN7KeyLane17SwapAdjacentPairsEu13__SVFloat32_t", scope: !34, file: !12, line: 314, type: !58, scopeLine: 314, flags: DIFlagPrototyped | DIFlagAllCallsDescribed, spFlags: DISPFlagDefinition | DISPFlagOptimized, unit: !3, declaration: !37, retainedNodes: !223, keyInstructions: true)
+++  !222 = !DIDerivedType(tag: DW_TAG_pointer_type, baseType: !34, size: 64)
+++  !223 = !{!220, !224}
+++  !224 = !DILocalVariable(name: "v", arg: 2, scope: !221, file: !12, line: 314, type: !60)
+++  !225 = distinct !DILocation(line: 357, column: 38, scope: !202, inlinedAt: !203)
+++  !226 = !DILocalVariable(name: "v", arg: 1, scope: !227, file: !12, line: 264, type: !64)
+++  !227 = distinct !DISubprogram(name: "Shuffle1032<__SVFloat32_t>", linkageName: "_Z11Shuffle1032Iu13__SVFloat32_tET_S1_", scope: !12, file: !12, line: 264, type: !228, scopeLine: 264, flags: DIFlagPrototyped | DIFlagAllCallsDescribed, spFlags: DISPFlagDefinition | DISPFlagOptimized, unit: !3, templateParams: !229, retainedNodes: !230, keyInstructions: true)
+++  !228 = !DISubroutineType(types: !231)
+++  !229 = !{!262}
+++  !230 = !{!226, !232, !233, !234}
+++  !231 = !{!64, !64}
+++  !232 = !DILocalVariable(name: "d", scope: !227, file: !12, line: 265, type: !235)
+++  !233 = !DILocalVariable(name: "d8", scope: !227, file: !12, line: 266, type: !252)
+++  !234 = !DILocalVariable(name: "v8", scope: !227, file: !12, line: 267, type: !257)
+++  !235 = !DIDerivedType(tag: DW_TAG_typedef, name: "DFromV<__SVFloat32_t>", file: !12, line: 108, baseType: !236)
+++  !236 = !DIDerivedType(tag: DW_TAG_typedef, name: "type", scope: !237, file: !12, line: 116, baseType: !238)
+++  !237 = distinct !DICompositeType(tag: DW_TAG_structure_type, name: "DFromV_t<__SVFloat32_t>", file: !12, line: 115, size: 8, flags: DIFlagTypePassByValue, elements: !50, templateParams: !239, identifier: "_ZTS8DFromV_tIu13__SVFloat32_tE")
+++  !238 = !DIDerivedType(tag: DW_TAG_typedef, name: "ScalableTag<float>", file: !12, line: 95, baseType: !241)
+++  !239 = !{!240}
+++  !240 = !DITemplateTypeParameter(type: !64)
+++  !241 = !DIDerivedType(tag: DW_TAG_typedef, name: "type", scope: !242, file: !12, line: 92, baseType: !243)
+++  !242 = distinct !DICompositeType(tag: DW_TAG_structure_type, name: "ScalableTagChecker<float>", file: !12, line: 91, size: 8, flags: DIFlagTypePassByValue, elements: !50, templateParams: !244, identifier: "_ZTS18ScalableTagCheckerIfE")
+++  !243 = !DIDerivedType(tag: DW_TAG_typedef, name: "type", scope: !246, file: !12, line: 89, baseType: !247)
+++  !244 = !{!245}
+++  !245 = !DITemplateTypeParameter(name: "T", type: !65)
+++  !246 = distinct !DICompositeType(tag: DW_TAG_structure_type, name: "ClampNAndPow2<float, 64>", file: !12, line: 88, size: 8, flags: DIFlagTypePassByValue, elements: !50, templateParams: !248, identifier: "_ZTS13ClampNAndPow2IfLi64EE")
+++  !247 = distinct !DICompositeType(tag: DW_TAG_structure_type, name: "Simd<float, 64, 0>", file: !12, line: 83, size: 8, flags: DIFlagTypePassByValue, elements: !50, templateParams: !250, identifier: "_ZTS4SimdIfLi64ELi0EE")
+++  !248 = !{!245, !249}
+++  !249 = !DITemplateValueParameter(name: "N", type: !24, value: i32 64)
+++  !250 = !{!217, !251, !54}
+++  !251 = !DITemplateValueParameter(type: !24, value: i32 64)
+++  !252 = !DIDerivedType(tag: DW_TAG_typedef, name: "Repartition<unsigned char, Simd<float, 64, 0> >", file: !12, line: 101, baseType: !253)
+++  !253 = !DIDerivedType(tag: DW_TAG_typedef, name: "Repartition<unsigned char>", scope: !247, file: !12, line: 86, baseType: !254)
+++  !254 = distinct !DICompositeType(tag: DW_TAG_structure_type, name: "Simd<unsigned char, 0, 0>", file: !12, line: 83, size: 8, flags: DIFlagTypePassByValue, elements: !50, templateParams: !255, identifier: "_ZTS4SimdIhLi0ELi0EE")
+++  !255 = !{!256, !218, !54}
+++  !256 = !DITemplateTypeParameter(name: "Lane", type: !117)
+++  !257 = !DIDerivedType(tag: DW_TAG_typedef, name: "svuint8_t", file: !12, line: 22, baseType: !258)
+++  !258 = !DIDerivedType(tag: DW_TAG_typedef, name: "__SVUint8_t", file: !12, baseType: !259)
+++  !259 = !DICompositeType(tag: DW_TAG_array_type, baseType: !117, flags: DIFlagVector, elements: !260)
+++  !260 = !{!261}
+++  !261 = !DISubrange(lowerBound: 0, upperBound: !DIExpression(DW_OP_constu, 8, DW_OP_bregx, 46, 0, DW_OP_mul, DW_OP_constu, 1, DW_OP_minus))
+++  !262 = !DITemplateTypeParameter(name: "V", type: !64)
+++  !263 = !DILocalVariable(name: "hi", arg: 1, scope: !264, file: !12, line: 248, type: !259)
+++  !264 = distinct !DISubprogram(name: "CombineShiftRightBytes<8, __SVUint8_t>", linkageName: "_Z22CombineShiftRightBytesILi8Eu11__SVUint8_tET0_S1_S1_", scope: !12, file: !12, line: 248, type: !265, scopeLine: 248, flags: DIFlagPrototyped | DIFlagAllCallsDescribed, spFlags: DISPFlagDefinition | DISPFlagOptimized, unit: !3, templateParams: !266, retainedNodes: !267, keyInstructions: true)
+++  !265 = !DISubroutineType(types: !268)
+++  !266 = !{!283, !284}
+++  !267 = !{!263, !269, !270, !271, !272, !273, !274, !275, !276}
+++  !268 = !{!259, !259, !259}
+++  !269 = !DILocalVariable(name: "lo", arg: 2, scope: !264, file: !12, line: 248, type: !259)
+++  !270 = !DILocalVariable(name: "__trans_tmp_33", scope: !264, file: !12, line: 249, type: !257)
+++  !271 = !DILocalVariable(name: "__trans_tmp_15", scope: !264, file: !12, line: 249, type: !257)
+++  !272 = !DILocalVariable(name: "__trans_tmp_32", scope: !264, file: !12, line: 250, type: !257)
+++  !273 = !DILocalVariable(name: "d8", scope: !264, file: !12, line: 251, type: !277)
+++  !274 = !DILocalVariable(name: "__trans_tmp_16", scope: !264, file: !12, line: 252, type: !114)
+++  !275 = !DILocalVariable(name: "lo_down", scope: !264, file: !12, line: 254, type: !257)
+++  !276 = !DILocalVariable(name: "__trans_tmp_34", scope: !264, file: !12, line: 255, type: !114)
+++  !277 = !DIDerivedType(tag: DW_TAG_typedef, name: "Repartition<unsigned char, Simd<char, 0, 0> >", file: !12, line: 101, baseType: !278)
+++  !278 = !DIDerivedType(tag: DW_TAG_typedef, name: "Repartition<unsigned char>", scope: !279, file: !12, line: 86, baseType: !254)
+++  !279 = distinct !DICompositeType(tag: DW_TAG_structure_type, name: "Simd<char, 0, 0>", file: !12, line: 83, size: 8, flags: DIFlagTypePassByValue, elements: !50, templateParams: !280, identifier: "_ZTS4SimdIcLi0ELi0EE")
+++  !280 = !{!281, !218, !54}
+++  !281 = !DITemplateTypeParameter(name: "Lane", type: !282)
+++  !282 = !DIBasicType(name: "char", size: 8, encoding: DW_ATE_unsigned_char)
+++  !283 = !DITemplateValueParameter(name: "kBytes", type: !24, value: i32 8)
+++  !284 = !DITemplateTypeParameter(name: "V", type: !259)
+++  !285 = !DILocalVariable(name: "hi", arg: 1, scope: !286, file: !12, line: 216, type: !257)
+++  !286 = distinct !DISubprogram(name: "Ext<8>", linkageName: "_Z3ExtILi8EEu11__SVUint8_tS0_S0_", scope: !12, file: !12, line: 216, type: !287, scopeLine: 216, flags: DIFlagPrototyped | DIFlagAllCallsDescribed, spFlags: DISPFlagDefinition | DISPFlagOptimized, unit: !3, templateParams: !288, retainedNodes: !289, keyInstructions: true)
+++  !287 = !DISubroutineType(types: !290)
+++  !288 = !{!292}
+++  !289 = !{!285, !291}
+++  !290 = !{!257, !257, !257}
+++  !291 = !DILocalVariable(name: "lo", arg: 2, scope: !286, file: !12, line: 216, type: !257)
+++  !292 = !DITemplateValueParameter(name: "kIndex", type: !24, value: i32 8)
+++  !293 = !DILocalVariable(name: "a", arg: 1, scope: !294, file: !12, line: 180, type: !47)
+++  !294 = distinct !DISubprogram(name: "Min<__SVFloat16_t>", linkageName: "_Z3MinIu13__SVFloat16_tET_S1_S1_", scope: !12, file: !12, line: 180, type: !295, scopeLine: 180, flags: DIFlagPrototyped | DIFlagAllCallsDescribed, spFlags: DISPFlagDefinition | DISPFlagOptimized, unit: !3, templateParams: !296, retainedNodes: !297, keyInstructions: true)
+++  !295 = !DISubroutineType(types: !298)
+++  !296 = !{!166}
+++  !297 = !{!293, !299, !300, !301, !302, !303, !304}
+++  !298 = !{!47, !47, !47}
+++  !299 = !DILocalVariable(name: "b", arg: 2, scope: !294, file: !12, line: 180, type: !47)
+++  !300 = !DILocalVariable(name: "__trans_tmp_36", scope: !294, file: !12, line: 181, type: !45)
+++  !301 = !DILocalVariable(name: "__trans_tmp_25", scope: !294, file: !12, line: 181, type: !45)
+++  !302 = !DILocalVariable(name: "__trans_tmp_27", scope: !294, file: !12, line: 182, type: !114)
+++  !303 = !DILocalVariable(name: "__trans_tmp_24", scope: !294, file: !12, line: 183, type: !114)
+++  !304 = !DILocalVariable(name: "__trans_tmp_19", scope: !294, file: !12, line: 184, type: !114)
+++  !308 = distinct !DILocation(line: 315, column: 12, scope: !221, inlinedAt: !225)
+++  !309 = distinct !DILocation(line: 268, column: 21, scope: !227, inlinedAt: !308)
+++  !311 = distinct !DILocation(line: 254, column: 18, scope: !264, inlinedAt: !309)
+++  !312 = !DILocation(line: 217, column: 10, scope: !286, inlinedAt: !311, atomGroup: 1, atomRank: 2)
+++  !313 = !DILocation(line: 257, column: 20, scope: !264, inlinedAt: !309, atomGroup: 5, atomRank: 2)
+++  !314 = !DILocation(line: 0, scope: !294, inlinedAt: !315)
+++  !315 = distinct !DILocation(line: 331, column: 22, scope: !122, inlinedAt: !201)
+++  !316 = !DILocation(line: 185, column: 20, scope: !294, inlinedAt: !315)
+++  !317 = !DILocation(line: 403, column: 1, scope: !2, atomGroup: 19449, atomRank: 1)
+++
+++...
+++---
+++name:            _Z10Sort16RowsILi6EEv12SharedTraitsI10TraitsLaneEP22Trans_NS_hwy_float16_tiS4_
+++body:             |
+++  bb.0:
+++    liveins: $x1, $z0, $z1, $p0
+++
+++    $z30 = LDR_ZXI $x1, -14
+++    $z31 = LDR_ZXI $x1, -13
+++    $z23 = ORR_ZZZ $z30, $z30
+++    renamable $z2 = EXT_ZZI_B renamable $z30_z31, 8,  debug-location !312
+++    renamable $z7 = SEL_ZPZZ_B renamable $p0, renamable $z0, killed renamable $z1,  debug-location !313
+++    DBG_VALUE $z30, $noreg, !129, !DIExpression(),  debug-location !200
+++    renamable $p3 = nofpexcept FCMGT_PPzZZ_H renamable $p0, renamable $z0, undef renamable $z1,  debug-location !316
+++    DBG_VALUE $z30_z31, $noreg, !129, !DIExpression(),  debug-location !200
+++    DBG_VALUE $z30_z31, $noreg, !293, !DIExpression(),  debug-location !314
+++    RET undef $lr,  debug-location !317
+++...
+++
++diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel b/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
++--- a/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
+++++ b/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
++@@ -4970,6 +4970,22 @@
++ )
+  
+- MDNode *MDNode::uniquify() {
+-diff -ruN --strip-trailing-cr a/llvm/lib/Transforms/IPO/FunctionSpecialization.cpp b/llvm/lib/Transforms/IPO/FunctionSpecialization.cpp
+---- a/llvm/lib/Transforms/IPO/FunctionSpecialization.cpp
+-+++ b/llvm/lib/Transforms/IPO/FunctionSpecialization.cpp
+-@@ -796,18 +796,19 @@
+-       if (Count && !ProfcheckDisableMetadataFixes) {
+-         std::optional<llvm::Function::ProfileCount> MaybeCloneCount =
+-             Clone->getEntryCount();
+--        assert(MaybeCloneCount && "Clone entry count was not set!");
+--        uint64_t CallCount = *Count + MaybeCloneCount->getCount();
+--        Clone->setEntryCount(CallCount);
+--        if (std::optional<llvm::Function::ProfileCount> MaybeOriginalCount =
+--                S.F->getEntryCount()) {
+--          uint64_t OriginalCount = MaybeOriginalCount->getCount();
+--          if (OriginalCount >= *Count) {
+--            S.F->setEntryCount(OriginalCount - *Count);
+--          } else {
+--            // This should generally not happen as that would mean there are
+--            // more computed calls to the function than what was recorded.
+--            LLVM_DEBUG(S.F->setEntryCount(0));
+-+        if (MaybeCloneCount) {
+-+          uint64_t CallCount = *Count + MaybeCloneCount->getCount();
+-+          Clone->setEntryCount(CallCount);
+-+          if (std::optional<llvm::Function::ProfileCount> MaybeOriginalCount =
+-+                  S.F->getEntryCount()) {
+-+            uint64_t OriginalCount = MaybeOriginalCount->getCount();
+-+            if (OriginalCount >= *Count) {
+-+              S.F->setEntryCount(OriginalCount - *Count);
+-+            } else {
+-+              // This should generally not happen as that would mean there are
+-+              // more computed calls to the function than what was recorded.
+-+              LLVM_DEBUG(S.F->setEntryCount(0));
+-+            }
+-           }
+-         }
+-       }
++ cc_binary(
+++    name = "llvm-remarkutil",
+++    srcs = glob([
+++        "tools/llvm-remarkutil/**/*.cpp",
+++        "tools/llvm-remarkutil/**/*.h",
+++    ]),
+++    copts = llvm_copts,
+++    includes = ["tools/llvm-remarkutil"],
+++    stamp = 0,
+++    deps = [
+++        ":Demangle",
+++        ":Remarks",
+++        ":Support",
+++    ],
+++)
+++
+++cc_binary(
++     name = "llvm-rtdyld",
++     srcs = glob([
++         "tools/llvm-rtdyld/*.cpp",
 diff --git a/third_party/llvm/workspace.bzl b/third_party/llvm/workspace.bzl
-index 3bdff1c..08eb474 100644
+index 08eb474..6a81c10 100644
 --- a/third_party/llvm/workspace.bzl
 +++ b/third_party/llvm/workspace.bzl
 @@ -4,8 +4,8 @@ load("//third_party:repo.bzl", "tf_http_archive")
  
  def repo(name):
      """Imports LLVM."""
--    LLVM_COMMIT = "f3b712f6e4e9afed735962c6b96e0a2cadb03dc1"
--    LLVM_SHA256 = "3c1a7a3156635a35e33da13a93a4dd8f2e48ac7280b5674061a951a4aa8475c3"
-+    LLVM_COMMIT = "b8649098a7fcf598406d8d8b7d68891d1444e9c8"
-+    LLVM_SHA256 = "18e365a1f849b6b66f0ae10810250be6c4a1de791e4892f9eaf900b8974b461b"
+-    LLVM_COMMIT = "b8649098a7fcf598406d8d8b7d68891d1444e9c8"
+-    LLVM_SHA256 = "18e365a1f849b6b66f0ae10810250be6c4a1de791e4892f9eaf900b8974b461b"
++    LLVM_COMMIT = "79a0bf0efce50626595341e1eb01cee4328ad425"
++    LLVM_SHA256 = "1fa8a1809d3f14c21f698f68088a9883345e51e5839d501308ec63ff009a2363"
  
      tf_http_archive(
          name = name,
+diff --git a/third_party/stablehlo/temporary.patch b/third_party/stablehlo/temporary.patch
+index b139307..32e8868 100755
+--- a/third_party/stablehlo/temporary.patch
++++ b/third_party/stablehlo/temporary.patch
+@@ -699,24 +699,6 @@ diff --ruN a/stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_folder.ml
+  }
+  
+  // -----
+-diff --ruN a/stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_simplification.mlir b/stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_simplification.mlir
+---- stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_simplification.mlir
+-+++ stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_simplification.mlir
+-@@ -98,6 +98,14 @@
+- 
+-   // CHECK-NEXT: return [[ARG0]], [[R4]]
+-   return %3, %4 : tensor<3x3xi32>, tensor<3x3xi32>
+-+}
+-+
+-+// CHECK-LABEL: func.func @broadcast_in_dim_transpose_invert
+-+// CHECK-SAME:   ([[ARG0:%.+]]: tensor<1x2x3x4xf32>)
+-+func.func @broadcast_in_dim_transpose_invert(%arg0 : tensor<1x2x3x4xf32>) -> tensor<3x1x4x2xf32> {
+-+  // stablehlo.transpose %arg0, dims = [2, 0, 3, 1] : (tensor<1x2x3x4xf32>) -> tensor<3x1x4x2xf32>
+-+  %0 = stablehlo.broadcast_in_dim %arg0, dims = [1,3,0,2] : (tensor<1x2x3x4xf32>) -> tensor<3x1x4x2xf32>
+-+  return %0 : tensor<3x1x4x2xf32>
+- }
+- 
+- // CHECK-LABEL: func.func @broadcast_in_dim_nested
+ diff --ruN a/stablehlo/stablehlo/transforms/ChloLegalizeToStablehlo.cpp b/stablehlo/stablehlo/transforms/ChloLegalizeToStablehlo.cpp
+ --- stablehlo/stablehlo/transforms/ChloLegalizeToStablehlo.cpp
+ +++ stablehlo/stablehlo/transforms/ChloLegalizeToStablehlo.cpp
+@@ -1408,48 +1390,4 @@ diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveFold
+                  FoldTransposeOpPattern,               //
+                  FoldWhileOpIfDeadAndPresumedPure,     //
+                  FoldWhileOpPattern,                   //
+-diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplification.cpp b/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplification.cpp
+---- stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplification.cpp
+-+++ stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplification.cpp
+-@@ -325,8 +325,18 @@
+- //////////////////////////////////
+- // BroadcastInDimOp
+- /////////////////////////////////
+--
+- // Used in DRR file.
+-+
+-+// Convert broadcast dimensions into permutation for transpose.
+-+DenseI64ArrayAttr getInvertedBroadcastDimensions(OpBuilder& b,
+-+                                                 ArrayRef<int64_t> dims) {
+-+  SmallVector<int64_t> permutation(dims.size());
+-+  for (auto i = 0; i < dims.size(); ++i) {
+-+    permutation[dims[i]] = i;
+-+  }
+-+  return b.getDenseI64ArrayAttr(permutation);
+-+}
+-+
+- DenseI64ArrayAttr getMergedBroadcastDimensions(OpBuilder& b,
+-                                                ArrayRef<int64_t> dims,
+-                                                ArrayRef<int64_t> dimsParent) {
+-diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplificationPatterns.td b/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplificationPatterns.td
+---- stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplificationPatterns.td
+-+++ stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplificationPatterns.td
+-@@ -116,6 +116,8 @@
+- 
+- def GetEmptyI64Array : NativeCodeCall<"$_builder.getDenseI64ArrayAttr({})">;
+- 
+-+def InvertBroadcastDims : NativeCodeCall<"getInvertedBroadcastDimensions($_builder, $0)">;
+-+
+- def MergeBroadcastDims : NativeCodeCall<"getMergedBroadcastDimensions($_builder, $0, $1)">;
+- 
+- def StableHLO_ConvertOpWithShape : NativeCodeCall<
+-@@ -193,7 +195,7 @@
+- //          [if same numel & rank]
+- def BroadcastInDimOp_ReplaceWithTranspose
+-   : Pat<(StableHLO_BroadcastInDimOp:$op $operand, $dims),
+--        (StableHLO_TransposeOp $operand, $dims),
+-+        (StableHLO_TransposeOp $operand, (InvertBroadcastDims $dims)),
+-         [(NumberOfElementsEqual $op, $operand), (RankEqual $op, $operand)]>;
+- 
+- ////////
+ 
