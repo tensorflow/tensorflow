@@ -930,7 +930,10 @@ cc_binary(
         "@llvm-project//mlir:RegisterAllPasses",
         "@llvm-project//mlir:Support",
         "@shardy//shardy/dialect/sdy/ir:dialect",
+        "@stablehlo//:linalg_passes",
         "@stablehlo//:register",
+        "@stablehlo//:stablehlo_passes",
+        "@stablehlo//:stablehlo_passes_optimization",
     ],
 )
 
