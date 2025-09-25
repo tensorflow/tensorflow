@@ -419,6 +419,13 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "future",
+    hdrs = ["future.h"],
+    visibility = ["//visibility:public"],
+    deps = ["//xla/tsl/concurrency:future"],
+)
+
+cc_library(
     name = "shape_util",
     srcs = [
         "index_util.cc",
