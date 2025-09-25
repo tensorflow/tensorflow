@@ -869,9 +869,8 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitFusionKernelThunk(
                           emitters::GetKernelSpec(
                               kernel_spec.name(), *fusion, &buffer_assignment_,
                               kernel_spec.work_dimensions()));
-      return MakeKernelThunkSequence(
-          instruction, new_kernel_spec,
-          /*min_alignment=*/cpu_function_runtime::MinAlign());
+      return MakeKernelThunkSequence(instruction, new_kernel_spec,
+                                     /*min_alignment=*/MinAlign());
     }
 
     TF_ASSIGN_OR_RETURN(KernelSpec kernel_spec,
