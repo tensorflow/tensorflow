@@ -2793,10 +2793,17 @@ class BroadcastInDimSimplifier : public OpRewritePattern<BroadcastInDimOp> {
                                                op.getOperand());
         return success();
       }
-      // BroadcastInDim equivalent to transpose
+      // BroadcastInDim equivalent to transpose, except that the index values
+      // are reversed; broadcast_dim[i] == j <=> transpose[j] == i
       if (operandType.getRank() == resultType.getRank() && sameTotalElements) {
+        SmallVector<int64_t> permutation(operandType.getRank());
+        for (int64_t i = 0; i < operandType.getRank(); ++i) {
+          permutation[bsDimIndices[i]] = i;
+        }
+        auto permutationAttr = DenseIntElementsAttr::get(
+            op.getBroadcastDimensions().getType(), permutation);
         rewriter.replaceOpWithNewOp<TransposeOp>(
-            op, op.getType(), op.getOperand(), op.getBroadcastDimensions());
+            op, op.getType(), op.getOperand(), permutationAttr);
         return success();
       }
     }
