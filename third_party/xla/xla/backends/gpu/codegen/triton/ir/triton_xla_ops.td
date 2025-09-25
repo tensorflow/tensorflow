@@ -398,6 +398,29 @@ def TTXLA_GetRankOp : TTXLA_Op<"get_rank", [Pure]> {
   let assemblyFormat = "$metadata attr-dict `:` type($metadata) `->` type($result)";
 }
 
+def TTXLA_GetPeerPtrOp : TTXLA_Op<"get_peer_ptr", [Pure]> {
+  let summary = [{
+    Extract the pointer to the given symmetric memory `address` on the given
+    `peer` device using the symmetric memory `metadata`.
+    For this an operation first calculates an offset of the `address` to the
+    current rank symmetric memory range, and the adds this offset to the 
+    symmetric memory range of the `peer` device.
+  }];
+  let arguments = (ins
+    Arg<TT_PtrLike, "",
+      [MemRead<GlobalMemory>]>:$address,
+    I64:$peer_id,
+    Arg<TT_PtrLike, "",
+      [MemRead<GlobalMemory>]>:$metadata);
+
+  let results = (outs Arg<TT_PtrLike, "", [MemRead<GlobalMemory>]>:$result);
+
+  let assemblyFormat = [{
+    $address `,` $peer_id `,` $metadata attr-dict `:`
+    functional-type(operands, results)
+  }];
+}
+
 
 #endif // XLA_BACKENDS_GPU_CODEGEN_TRITON_IR_TRITON_XLA_OPS_TD_
 
