@@ -28,12 +28,14 @@ limitations under the License.
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
+#include "xla/service/compiler.h"
 #include "xla/service/executable.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/nvptx_compiler.h"
 #include "xla/service/platform_util.h"
 #include "xla/stream_executor/device_description.pb.h"
+#include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
@@ -65,12 +67,13 @@ class TritonBlockLevelFusionEmitterBackendTest
     : public HloHardwareIndependentTestBase {
  protected:
   TritonBlockLevelFusionEmitterBackendTest()
-      : backend_(PlatformUtil::GetDefaultPlatform()
-                     .value()
-                     ->ExecutorForDevice(0)
-                     .value(),
-                 &debug_options_, &compiler_,
-                 compiler_.ShapeSizeBytesFunction()) {
+      : stream_executor_(PlatformUtil::GetDefaultPlatform()
+                             .value()
+                             ->ExecutorForDevice(0)
+                             .value()),
+        target_config_(stream_executor_),
+        backend_(&debug_options_, &compiler_,
+                 compiler_.ShapeSizeBytesFunction(), &target_config_) {
     // TODO(b/315957220): Remove the experimental flags once TMA is enabled by
     // default.
     debug_options_.set_xla_gpu_experimental_enable_triton_tma(true);
@@ -78,6 +81,8 @@ class TritonBlockLevelFusionEmitterBackendTest
 
   DebugOptions debug_options_;
   NVPTXCompiler compiler_;
+  se::StreamExecutor* stream_executor_;
+  Compiler::TargetConfig target_config_;
   BlockLevelEmitterBackend backend_;
 };
 
@@ -450,9 +455,8 @@ ENTRY %main {
 
 TEST_F(TritonBlockLevelFusionEmitterBackendTest, UseDefaultConfigFlag) {
   auto backend = BlockLevelEmitterBackend(
-      PlatformUtil::GetDefaultPlatform().value()->ExecutorForDevice(0).value(),
       &debug_options_, &compiler_, compiler_.ShapeSizeBytesFunction(),
-      /*use_default_config=*/true);
+      &target_config_, /*use_default_config=*/true);
   // Parse an HLO module containing a kCustom Triton fusion with a backend
   // config that includes block-level tiling parameters.
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,

@@ -45,11 +45,15 @@ class FissionBackend : public GpuCodegenBackend {
  public:
   explicit FissionBackend(stream_executor::StreamExecutor* stream_executor,
                           const DebugOptions* debug_options, Compiler* compiler,
+                          const Compiler::TargetConfig* target_config,
                           mlir::MLIRContext* mlir_context)
-      : GpuCodegenBackend("Fission", stream_executor, debug_options, compiler),
-        cublas_backend_(stream_executor, debug_options, compiler),
-        cublaslt_backend_(stream_executor, debug_options, compiler),
-        custom_kernel_backend_(stream_executor, debug_options, compiler),
+      : GpuCodegenBackend("Fission", debug_options, compiler, target_config),
+        cublas_backend_(stream_executor, debug_options, compiler,
+                        target_config),
+        cublaslt_backend_(stream_executor, debug_options, compiler,
+                          target_config),
+        custom_kernel_backend_(stream_executor, debug_options, compiler,
+                               target_config),
         mlir_context_(mlir_context) {}
 
   absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>>

@@ -166,11 +166,13 @@ class GpuCompiler : public LLVMCompiler {
   }
 
   // Add autotuning passes for convolution and gemm (except triton).
+  // target_config must outlive the pipeline.
   virtual absl::Status AddConvAndGemmAutotuningPasses(
       HloPassPipeline* pipeline, const se::GpuComputeCapability& gpu_version,
       const CompileOptions& options, HloModule* hlo_module,
       AutotuneConfig& autotune_config, tsl::thread::ThreadPool* thread_pool,
-      se::StreamExecutor* stream_exec) {
+      se::StreamExecutor* stream_exec,
+      const Compiler::TargetConfig* target_config) {
     return absl::OkStatus();
   }
 
@@ -184,10 +186,12 @@ class GpuCompiler : public LLVMCompiler {
     return absl::OkStatus();
   }
 
+  // target_config must outlive the pipeline.
   virtual absl::Status AddFusionAutotuningPass(
       HloPassPipeline* pipeline, HloModule* hlo_module,
       const CompileOptions& options, tsl::thread::ThreadPool* thread_pool,
       stream_executor::StreamExecutor* stream_executor,
+      const Compiler::TargetConfig* target_config,
       HloCostAnalysis::ShapeSizeFunction shape_size_fn) {
     return absl::OkStatus();
   }

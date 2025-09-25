@@ -3798,6 +3798,73 @@ TEST_F(TritonEmitterTest, RocmWarpSizeIsSetCorrectly) {
   EXPECT_THAT(RunFileCheck(triton_passes_log, kPattern_n), true);
 }
 
+TEST_F(TritonEmitterTest, EmitsCorrectlyForReshapeOfPad) {
+  // Note: this test needs a dot for ShouldDerivationSimplifyPointDimensions()
+  // to return false. Otherwise the tile will still be simplified.
+  const std::string kHloText = R"(
+lhs {
+  ROOT p0 = bf16[16,32,67,133] parameter(0)
+}
+
+rhs {
+  p0 = bf16[16,2128,1] parameter(0)
+  zero = bf16[] constant(0)
+  pad = bf16[16,2144,1] pad(p0, zero), padding=0_0x0_16x0_0
+  ROOT bitcast = bf16[16,32,67,1] bitcast(pad)
+}
+
+fusion {
+  p0 = bf16[16,32,67,133] parameter(0)
+  p1 = bf16[16,2128,1] parameter(1)
+  lhs = bf16[16,32,67,133] fusion(p0), kind=kCustom, calls=lhs, backend_config={
+      "fusion_backend_config":{
+          "kind":"__triton_nested_gemm_fusion",
+          "block_level_fusion_config":{
+              "num_warps":"2",
+              "output_tiles":[{"sizes":["1","1","16","256"]}],
+              "num_ctas":1,
+              "num_stages":1,
+              "is_tma_allowed":false
+          }
+      }
+  }
+  rhs = bf16[16,32,67,1] fusion(p1), kind=kCustom, calls=rhs, backend_config={
+      "fusion_backend_config":{
+          "kind":"__triton_nested_gemm_fusion",
+          "block_level_fusion_config":{
+              "num_warps":"2",
+              "output_tiles":[{"sizes":["1","1","16","16"]}],
+              "num_ctas":1,
+              "num_stages":1,
+              "is_tma_allowed":false
+          }
+      }
+  }
+  ROOT dot = f32[32,16,133,1] dot(lhs, rhs),
+      lhs_batch_dims={1,0}, lhs_contracting_dims={2},
+      rhs_batch_dims={1,0}, rhs_contracting_dims={2}
+}
+
+ENTRY entry {
+  p0 = bf16[16,32,67,133] parameter(0)
+  p1 = bf16[16,2128,1] parameter(1)
+  ROOT micro_kernel = f32[32,16,133,1] fusion(p0, p1), kind=kCustom, calls=fusion, backend_config={
+      "fusion_backend_config":{
+          "kind":"__triton_nested_gemm_fusion",
+          "block_level_fusion_config":{
+              "num_warps":"2",
+              "output_tiles":[{"sizes":["1","1","256","16"]}],
+              "num_ctas":1,
+              "num_stages":1,
+              "is_tma_allowed":false
+          }
+      }
+  }
+})";
+  EXPECT_TRUE(RunAndCompareNoHloPasses(
+      kHloText, ErrorSpec{/*aabs=*/1e-4, /*arel=*/1e-6}));
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla

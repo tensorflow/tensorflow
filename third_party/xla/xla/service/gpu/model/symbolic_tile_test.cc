@@ -79,8 +79,9 @@ TEST_F(SymbolicTileTest, CanPropagateTileThroughTrivialReshape) {
               Optional(MatchSymbolicTileString(R"(
       Symbolic tile with
         offset_map: (d0, d1, d2, d3) -> (0, 0, 0)
-        size_map: (d0, d1, d2, d3) -> (d1, d2, d3)
-        stride_map: (d0, d1, d2, d3) -> (1, 1, 1)
+        size_map: (d0, d1, d2, d3) -> (d0 * d1, d2, d3)
+        stride_map: (d0, d1, d2, d3) -> (((-d1 + 12) floordiv 11) * ((-(-d0 + 2) + 1) * 11) + -((-d1 + 12) floordiv 11) + 1, 1, 1)
+        constraints: d0 in [1, 1] || d1 in [1, 1] || d1 in [11, 11]
       )")));
 }
 
@@ -101,8 +102,8 @@ TEST_F(SymbolicTileTest,
               Optional(MatchSymbolicTileString(R"(
       Symbolic tile with
         offset_map: (d0, d1) -> (0, 0, 0, 0)
-        size_map: (d0, d1) -> (1, (d0 + 5) floordiv 6, d0 - ((d0 - 1) floordiv 6) * 6, d1)
-        stride_map: (d0, d1) -> (0, 1, 1, 1)
+        size_map: (d0, d1) -> ((d0 + 47) floordiv 48, (d0 + 5) floordiv 6, d0 - ((d0 - 1) floordiv 6) * 6, d1)
+        stride_map: (d0, d1) -> (1, 1, 1, 1)
         constraints:
           6 mod d0 in [0, 0] || d0 mod 6 in [0, 0]
       )")));
@@ -767,8 +768,8 @@ TEST_F(SymbolicTileTest, CanCombineCompatibleConstraints) {
               Optional(MatchSymbolicTileString(R"(
       Symbolic tile with
         offset_map: (d0, d1) -> (0, 0, 0, 0, 0)
-        size_map: (d0, d1) -> (1, (d0 + 5) floordiv 6, d0 - ((d0 - 1) floordiv 6) * 6, (d1 + 7) floordiv 8, d1 - ((d1 - 1) floordiv 8) * 8)
-        stride_map: (d0, d1) -> (0, 1, 1, 1, 1)
+        size_map: (d0, d1) -> ((d0 + 47) floordiv 48, (d0 + 5) floordiv 6, d0 - ((d0 - 1) floordiv 6) * 6, (d1 + 7) floordiv 8, d1 - ((d1 - 1) floordiv 8) * 8)
+        stride_map: (d0, d1) -> (1, 1, 1, 1, 1)
         constraints:
           6 mod d0 in [0, 0] && 8 mod d1 in [0, 0] ||
           6 mod d0 in [0, 0] && d1 mod 8 in [0, 0] ||

@@ -1100,16 +1100,14 @@ AffineMap ComputeReshapeIndexingMap(const Shape& input, const Shape& output,
          output_dim_id < output.dimensions().size() ||
          !input_subshape.empty()) {
     if (input_dim_id < input.dimensions().size() &&
-        (input_subshape.empty() || input_num_elements < output_num_elements ||
-         input_dims[input_dim_id] == 1)) {
+        (input_subshape.empty() || input_num_elements < output_num_elements)) {
       input_num_elements *= input_dims[input_dim_id];
       input_subshape.push_back(input_dims[input_dim_id]);
       ++input_dim_id;
       continue;
     }
     if (output_dim_id < output.dimensions().size() &&
-        (output_subshape.empty() || output_num_elements < input_num_elements ||
-         output_dims[output_dim_id] == 1)) {
+        (output_subshape.empty() || output_num_elements < input_num_elements)) {
       output_num_elements *= output_dims[output_dim_id];
       output_subshape.push_back(output_dims[output_dim_id]);
       output_dims_exprs.push_back(
@@ -1137,7 +1135,8 @@ HloInstructionIndexing ComputeOutputToInputReshapeOpIndexing(
   IndexingMap reshape_indexing_map = IndexingMap::FromTensorSizes(
       ComputeReshapeIndexingMap(input, output, mlir_context),
       output.dimensions(), {});
-  reshape_indexing_map.Simplify();
+  reshape_indexing_map.Simplify(
+      IndexingMap::SimplifyPointDimensions::kPreserve);
   return HloInstructionIndexing::FromIndexingMaps({reshape_indexing_map});
 }
 HloInstructionIndexing ComputeInputToOutputReshapeOpIndexing(
@@ -1148,7 +1147,8 @@ HloInstructionIndexing ComputeInputToOutputReshapeOpIndexing(
   IndexingMap reshape_indexing_map = IndexingMap::FromTensorSizes(
       ComputeReshapeIndexingMap(output, input, mlir_context),
       input.dimensions(), {});
-  reshape_indexing_map.Simplify();
+  reshape_indexing_map.Simplify(
+      IndexingMap::SimplifyPointDimensions::kPreserve);
   return HloInstructionIndexing::FromIndexingMaps({reshape_indexing_map});
 }
 
@@ -1310,7 +1310,7 @@ HloInstructionIndexing ComputeOutputToInputBitcastOpIndexing(
     const HloInstruction* bitcast, MLIRContext* mlir_context) {
   auto bitcast_map = GetBitcastMap(bitcast->shape(),
                                    bitcast->operand(0)->shape(), mlir_context);
-  bitcast_map.Simplify();
+  bitcast_map.Simplify(IndexingMap::SimplifyPointDimensions::kPreserve);
   return HloInstructionIndexing::FromIndexingMaps({bitcast_map});
 }
 
@@ -1318,7 +1318,7 @@ HloInstructionIndexing ComputeInputToOutputBitcastOpIndexing(
     const HloInstruction* bitcast, MLIRContext* mlir_context) {
   auto bitcast_map = GetBitcastMap(bitcast->operand(0)->shape(),
                                    bitcast->shape(), mlir_context);
-  bitcast_map.Simplify();
+  bitcast_map.Simplify(IndexingMap::SimplifyPointDimensions::kPreserve);
   return HloInstructionIndexing::FromIndexingMaps({bitcast_map});
 }
 

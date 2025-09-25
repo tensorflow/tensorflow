@@ -26,6 +26,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
+#include "xla/service/compiler.h"
 #include "xla/service/gpu/alias_info.h"
 #include "xla/service/gpu/autotuning/autotuner_util.h"
 #include "xla/service/gpu/gpu_compiler.h"
@@ -59,11 +60,13 @@ class AMDGPUCompiler : public GpuCompiler {
   bool RequiresCollectiveScheduleLinearizer(
       const HloModule* module, se::StreamExecutor* stream_exec) override;
 
+  // target_config must outlive the pipeline.
   absl::Status AddConvAndGemmAutotuningPasses(
       HloPassPipeline* pipeline, const se::GpuComputeCapability& gpu_version,
       const CompileOptions& options, HloModule* hlo_module,
       AutotuneConfig& autotune_config, tsl::thread::ThreadPool* thread_pool,
-      se::StreamExecutor* stream_exec) override;
+      se::StreamExecutor* stream_exec,
+      const Compiler::TargetConfig* target_config) override;
 
   absl::StatusOr<BackendCompileResult> CompileTargetBinary(
       const HloModuleConfig& module_config, llvm::Module* llvm_module,
