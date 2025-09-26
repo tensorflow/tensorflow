@@ -85,13 +85,4 @@ limitations under the License.
 
 #define TF_FALLTHROUGH_INTENDED ABSL_FALLTHROUGH_INTENDED
 
-namespace tsl {
-namespace internal {
-template <typename T>
-void remove_unused_variable_compiler_warning(const T&) {}
-}  // namespace internal
-}  // namespace tsl
-#define TF_UNUSED_VARIABLE(x) \
-  tensorflow::internal::remove_unused_variable_compiler_warning(x)
-
 #endif  // XLA_TSL_PLATFORM_MACROS_H_
