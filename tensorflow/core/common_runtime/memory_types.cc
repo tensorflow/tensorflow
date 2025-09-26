@@ -118,8 +118,8 @@ absl::Status ValidateMemoryTypes(const DeviceType& device_type,
 // a single tf device (hence within a single process).
 static string GetTensorName(const Edge* edge) {
   static std::atomic<int64_t> counter(0);
-  return strings::StrCat("memtype_", counter.fetch_add(1), "_",
-                         edge->src()->name());
+  return absl::StrCat("memtype_", counter.fetch_add(1), "_",
+                      edge->src()->name());
 }
 
 static Node* Send(Graph* g, const string& tensor_name,
