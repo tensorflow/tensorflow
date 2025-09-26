@@ -21510,8 +21510,7 @@ platform argument (see `platforms`) nor the dimension arguments (see
     DefaultValuedOptionalAttr<StrArrayAttr, "{}">:$platforms,
     DefaultValuedOptionalAttr<TF_SymbolRefArrayAttr, "{}">:$function_list,
     DefaultValuedOptionalAttr<BoolAttr, "false">:$has_token_input_output,
-    DefaultValuedOptionalAttr<StrArrayAttr, "{}">:$disabled_checks,
-    DefaultValuedOptionalAttr<BoolAttr, "false">:$use_shardy_partitioner
+    DefaultValuedOptionalAttr<StrArrayAttr, "{}">:$disabled_checks
   );
 
   let results = (outs
