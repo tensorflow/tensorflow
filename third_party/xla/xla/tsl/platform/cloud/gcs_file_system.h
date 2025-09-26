@@ -226,15 +226,15 @@ class GcsFileSystem : public FileSystem {
   /// These accessors are mainly for testing purposes, to verify that the
   /// environment variables that control these parameters are handled correctly.
   size_t block_size() {
-    absl::ReaderMutexLock l(&block_cache_lock_);
+    absl::ReaderMutexLock l(block_cache_lock_);
     return file_block_cache_->block_size();
   }
   size_t max_bytes() {
-    absl::ReaderMutexLock l(&block_cache_lock_);
+    absl::ReaderMutexLock l(block_cache_lock_);
     return file_block_cache_->max_bytes();
   }
   uint64 max_staleness() {
-    absl::ReaderMutexLock l(&block_cache_lock_);
+    absl::ReaderMutexLock l(block_cache_lock_);
     return file_block_cache_->max_staleness();
   }
   TimeoutConfig timeouts() const { return timeouts_; }
