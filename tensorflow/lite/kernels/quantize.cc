@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/reference/requantize.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
+#include "tensorflow/lite/kernels/internal/tensor_utils.h"
 #include "tensorflow/lite/kernels/internal/types.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 
@@ -87,6 +88,31 @@ static inline void Requantize(const input_type* input_data, int32_t size,
   }
 }
 
+void AffineQuantizeToInt4(const tflite::QuantizationParams& op_params,
+                          const RuntimeShape& input_shape,
+                          const float* input_data,
+                          const RuntimeShape& output_shape,
+                          int8_t* output_data) {
+  const int32_t zero_point = op_params.zero_point;
+  const double scale = op_params.scale;
+  const int flat_size = MatchingFlatSize(input_shape, output_shape);
+  // Signed int4 has range [-8, 7]. Narrow range ([-7, 7]) is not needed here
+  // since we will unpack int4 to int8 for computation
+  constexpr int32_t min_val = -8;
+  constexpr int32_t max_val = 7;
+  std::vector<int8_t> quantized_buffer(flat_size);
+  for (int i = 0; i < flat_size; i++) {
+    const float val = input_data[i];
+    int32_t unclamped =
+        static_cast<int32_t>(TfLiteRound(val / static_cast<float>(scale))) +
+        zero_point;
+    int32_t clamped = std::min(std::max(unclamped, min_val), max_val);
+    quantized_buffer[i] = clamped;
+  }
+  tensor_utils::PackInt8IntoDenseInt4(quantized_buffer.data(), flat_size,
+                                      output_data);
+}
+
 void ReportError(TfLiteContext* context, TfLiteType input_type,
                  TfLiteType output_type) {
   TF_LITE_KERNEL_LOG(
@@ -121,7 +147,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     // Quantize use case.
     TF_LITE_ENSURE(context, output->type == kTfLiteUInt8 ||
                                 output->type == kTfLiteInt8 ||
-                                output->type == kTfLiteInt16);
+                                output->type == kTfLiteInt16 ||
+                                output->type == kTfLiteInt4);
   } else {
     // Requantize use case.
     if (input->type == kTfLiteInt16) {
@@ -217,6 +244,11 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
         op_params.scale = output->params.scale;
 
         switch (output->type) {
+          case kTfLiteInt4: {
+            AffineQuantizeToInt4(op_params, input_shape, input_data,
+                                 output_shape, GetTensorData<int8_t>(output));
+            return kTfLiteOk;
+          }
           case kTfLiteInt8:
             AffineQuantize<kernel_type>(op_params, input_shape, input_data,
                                         output_shape,
