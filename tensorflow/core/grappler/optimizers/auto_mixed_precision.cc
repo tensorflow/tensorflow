@@ -157,7 +157,7 @@ struct TypeAttrId {
       if (type_index == kSingleType) {
         return attr_name;
       } else {
-        return strings::StrCat(attr_name, "[", type_index, "]");
+        return absl::StrCat(attr_name, "[", type_index, "]");
       }
     } else {
       return tensorflow::DataTypeString(fixed_type);
@@ -1177,7 +1177,7 @@ NodeDef AutoMixedPrecisionImpl::BuildCastNode(
   node.set_name(name);
   node.set_op("Cast");
   node.set_device(device);
-  node.add_input(strings::StrCat(src.node->name(), ":", src.port_id));
+  node.add_input(absl::StrCat(src.node->name(), ":", src.port_id));
   (*node.mutable_attr())["SrcT"].set_type(src_type);
   (*node.mutable_attr())["DstT"].set_type(dst_type);
   (*node.mutable_attr())["Truncate"].set_b(false);
@@ -1208,7 +1208,7 @@ absl::Status AutoMixedPrecisionImpl::PrintDebugLogs(bool preop,
       strings::StrCat("_", preop ? "preop" : kSuffix, "_", id_, "_", timestamp);
 
   string fname =
-      io::JoinPath(prepend_path, strings::StrCat("graphdef", suffix, ".pb"));
+      io::JoinPath(prepend_path, absl::StrCat("graphdef", suffix, ".pb"));
   std::fstream f;
   f.open(fname.c_str(), std::fstream::out | std::fstream::binary);
   f << graph_->SerializeAsString();
@@ -1216,8 +1216,8 @@ absl::Status AutoMixedPrecisionImpl::PrintDebugLogs(bool preop,
   LOG(INFO) << "Saved " << (preop ? "pre-optimization" : "post-optimization")
             << " graph as binary to " << fname;
 
-  fname = io::JoinPath(prepend_path,
-                       strings::StrCat("graphdef", suffix, ".pb.txt"));
+  fname =
+      io::JoinPath(prepend_path, absl::StrCat("graphdef", suffix, ".pb.txt"));
   f.open(fname.c_str(), std::fstream::out);
   f << graph_->DebugString();
   f.close();
@@ -1226,7 +1226,7 @@ absl::Status AutoMixedPrecisionImpl::PrintDebugLogs(bool preop,
 
   if (!preop) {
     fname = io::JoinPath(prepend_path,
-                         strings::StrCat("paintbuckets", suffix, ".txt"));
+                         absl::StrCat("paintbuckets", suffix, ".txt"));
     f.open(fname.c_str(), std::fstream::out);
     std::unique_ptr<AutoMixedPrecisionLists> mp_lists =
         get_mixed_precision_lists();
