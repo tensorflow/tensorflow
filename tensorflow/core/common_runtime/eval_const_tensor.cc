@@ -246,7 +246,7 @@ struct Subgraph {
 // Node along with output index.
 using NodeOutput = std::pair<const Node*, int>;
 std::string OutputName(const NodeOutput& output) {
-  return strings::StrCat(output.first->name(), ":", output.second);
+  return absl::StrCat(output.first->name(), ":", output.second);
 }
 
 // Assuming that the subgraph ending at `target_node` is constant-foldable,
