@@ -158,16 +158,6 @@ std::string GetDumpName(const se::DeviceDescription& device_desc) {
   return absl::StrCat(prefix, "_gpu_", kAfterOptimizationsDumpName);
 }
 
-std::unique_ptr<mlir::MLIRContext> CreateMlirContext() {
-  mlir::DialectRegistry registry;
-  // Disable MLIR multi-threading to prevent creating too many threads when
-  // compiling XLA executables concurrently (e.g. during auto-tuning).
-  auto mlir_context = std::make_unique<mlir::MLIRContext>(
-      registry, mlir::MLIRContext::Threading::DISABLED);
-  mlir_context->getDiagEngine().registerHandler(DiagnosticHandler);
-  return mlir_context;
-}
-
 std::string Phase(absl::string_view phase_name, const HloModule* module) {
   return absl::StrFormat("%s:#module=%s,program_id=%d#", phase_name,
                          module->name(), module->unique_id());
@@ -290,7 +280,7 @@ absl::StatusOr<CompileModuleResults> CompileModuleToLlvmIr(
     const HloModule* hlo_module, llvm::LLVMContext* llvm_context,
     const std::string& target_triple, const std::string& data_layout,
     const se::Platform* platform, const se::DeviceDescription& device_desc,
-    const GpuAliasInfo* alias_info,
+    const GpuAliasInfo* alias_info, mlir::MLIRContext* mlir_context,
     const BufferValue::SizeFunction& buffer_size_bytes_function,
     bool split_constants_module) {
   tsl::profiler::TraceMe traceme("CompileModuleToLlvmIr");
@@ -316,11 +306,15 @@ absl::StatusOr<CompileModuleResults> CompileModuleToLlvmIr(
   VLOG(1) << "After optimization module fingerprint for " << hlo_module->name()
           << ": " << hlo_module->GetFingerprint128();
 
-  std::unique_ptr<mlir::MLIRContext> mlir_context = CreateMlirContext();
+  // Disable MLIR multi-threading to prevent creating too many threads when
+  // compiling XLA executables concurrently (e.g. during auto-tuning).
+  mlir_context->disableMultithreading();
+  mlir_context->getDiagEngine().registerHandler(DiagnosticHandler);
+
   IrEmitterContext ir_emitter_context(
       hlo_module, results.buffer_assignment.get(),
       results.execution_stream_assignment.get(), platform->Name(), device_desc,
-      mlir_context.get(), results.llvm_module.get(),
+      mlir_context, results.llvm_module.get(),
       results.llvm_module_constants.get(),
       /*emit_kernels=*/true);
 
