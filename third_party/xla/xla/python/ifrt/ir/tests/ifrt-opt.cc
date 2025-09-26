@@ -29,11 +29,14 @@ limitations under the License.
 #include "mlir/IR/DialectRegistry.h"
 #include "mlir/InitAllPasses.h"
 #include "mlir/Tools/mlir-opt/MlirOptMain.h"
+#include "shardy/dialect/mpmd/ir/dialect.h"
+#include "shardy/dialect/sdy/ir/dialect.h"
 #include "xla/mlir_hlo/mhlo/IR/register.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/hlo/hlo_program.h"
 #include "xla/python/ifrt/ir/atom_program_compiler.h"
+#include "xla/python/ifrt/ir/conversions/mpmd/lower_to_ifrt.h"
 #include "xla/python/ifrt/ir/ifrt_dialect.h"
 #include "xla/python/ifrt/ir/ifrt_ir_program.h"
 #include "xla/python/ifrt/ir/transforms/passes.h"
@@ -152,10 +155,12 @@ int main(int argc, char** argv) {
   mlir::registerAllPasses();
   xla::ifrt::registerIfrtPassesAndPipelines(
       compiler, compile_options, atom_executable_map, bound_executable_map);
+  xla::ifrt::mpmd::RegisterLowerToIfrtPasses();
   mlir::DialectRegistry registry;
   xla::ifrt::support::InitializeMlirDialectRegistry(registry);
   // Register dialects that are only used in the MLIR lit tests.
-  registry.insert<mlir::math::MathDialect>();
+  registry.insert<mlir::math::MathDialect, mlir::sdy::SdyDialect,
+                  mlir::mpmd::MpmdDialect>();
 
   return mlir::asMainReturnCode(
       mlir::MlirOptMain(argc, argv, "IFRT IR dialect driver\n", registry));
