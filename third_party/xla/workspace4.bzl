@@ -1,12 +1,16 @@
 """TensorFlow workspace initialization. Consult the WORKSPACE on how to use it."""
 
-load("//third_party:repo.bzl", "tf_vendored")
+load("@bazel_skylib//lib:paths.bzl", "paths")
+load("@bazel_tools//tools/build_defs/repo:local.bzl", "local_repository")
 
 # buildifier: disable=function-docstring
 # buildifier: disable=unnamed-macro
 def workspace():
     # Declares @tsl
-    tf_vendored(name = "tsl", relpath = "third_party/tsl")
+    local_repository(
+        name = "tsl",
+        path = paths.join(Label("//:__pkg__").workspace_root, "third_party/tsl"),
+    )
 
 # Alias so it can be loaded without assigning to a different symbol to prevent
 # shadowing previous loads and trigger a buildifier warning.
