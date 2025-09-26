@@ -195,7 +195,7 @@ class MemorySpaceAssignmentTestBase : public HloTestBase {
 
     Options memory_space_options = DefaultMemorySpaceOptions();
     if (memory_space_options_override) {
-      memory_space_options = *memory_space_options_override;
+      memory_space_options = *std::move(memory_space_options_override);
     }
     CostAnalysisOptions cost_analysis_options = DefaultCostAnalysisOptions();
     if (cost_analysis_options_override) {
@@ -230,7 +230,7 @@ class MemorySpaceAssignmentTestBase : public HloTestBase {
     MemoryBoundednessBufferIntervalComparator comparator(
         *cost_analysis, &cache_, msa_sort_order_overrides);
     return AssignMemorySpace(
-        module, memory_space_options,
+        module, std::move(memory_space_options),
         [&comparator](const MsaBufferInterval& lhs,
                       const MsaBufferInterval& rhs) {
           return comparator.LessThan(lhs, rhs);
@@ -298,7 +298,7 @@ class MemorySpaceAssignmentTestBase : public HloTestBase {
 
     Options options = DefaultMemorySpaceOptions();
     if (options_override) {
-      options = *options_override;
+      options = *std::move(options_override);
     }
     std::unique_ptr<TestBufferIntervalComparator> test_comparator;
     if (buffer_interval_compare.has_value()) {
