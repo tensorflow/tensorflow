@@ -258,7 +258,45 @@ diff --ruN a/stablehlo/stablehlo/tests/chlo/chlo_legalize_to_stablehlo_broadcast
 diff --ruN a/stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_folder.mlir b/stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_folder.mlir
 --- stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_folder.mlir
 +++ stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_folder.mlir
-@@ -712,18 +712,412 @@
+@@ -601,6 +601,37 @@
+ // -----
+ 
+ ////////
++// SliceOp / DynamicSliceOp
++
++// CHECK-LABEL: @slice_fold
++func.func @slice_fold(%arg0: tensor<6x1xi32>) -> tensor<1x1xi32> {
++  %c = stablehlo.constant dense<[[0], [1], [2], [3], [4], [5]]> : tensor<6x1xi32>
++  %0 = stablehlo.slice %c [2:3, 0:1] : (tensor<6x1xi32>) -> tensor<1x1xi32>
++  // CHECK: stablehlo.constant dense<2> : tensor<1x1xi32>
++  return %0 : tensor<1x1xi32>
++}
++
++// CHECK-LABEL: @slice_fold_splat
++func.func @slice_fold_splat(%arg0: tensor<6x1xi32>) -> tensor<1x1xi32> {
++  %c = stablehlo.constant dense<1> : tensor<6x1xi32>
++  %0 = stablehlo.slice %c [2:3, 0:1] : (tensor<6x1xi32>) -> tensor<1x1xi32>
++  // CHECK: stablehlo.constant dense<1> : tensor<1x1xi32>
++  return %0 : tensor<1x1xi32>
++}
++
++// CHECK-LABEL: @dynamic_slice_fold
++func.func @dynamic_slice_fold(%arg0: tensor<i32>, %arg1: tensor<i32>) -> tensor<1x1xi32> {
++  %0 = stablehlo.constant dense<256> : tensor<6x1xi32>
++  %1 = "stablehlo.dynamic_slice"(%0, %arg0, %arg1) <{slice_sizes = array<i64: 1, 1>}> : (tensor<6x1xi32>, tensor<i32>, tensor<i32>) -> tensor<1x1xi32>
++
++  // CHECK: %[[RESULT:.*]] = stablehlo.constant dense<256> : tensor<1x1xi32>
++  // CHECK: return %[[RESULT]]
++  return %1 : tensor<1x1xi32>
++}
++
++// -----
++
++////////
+ // ConvertOp
+ 
+ // CHECK-LABEL: func @eval_convert_f32_to_i64
+@@ -712,18 +743,412 @@
  // -----
  
  ////////
@@ -679,7 +717,7 @@ diff --ruN a/stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_folder.ml
  
  ////////
  // SetDimensionSizeOp
-@@ -748,6 +1142,19 @@
+@@ -748,6 +1173,19 @@
    // CHECK-NEXT: return [[RESULT0]]
    %0 = stablehlo.set_dimension_size %arg0, %c, dim = 0 : (tensor<10xf32>, tensor<i32>) -> tensor<?xf32, #stablehlo.bounds<10>>
    return %0 : tensor<?xf32, #stablehlo.bounds<10>>
@@ -1161,7 +1199,60 @@ diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveFold
  };
  
  template <typename RangeType>
-@@ -1163,31 +1318,169 @@
+@@ -1128,15 +1283,21 @@
+       return rewriter.notifyMatchFailure(
+           op, "expected operand with static ranked tensor type");
+ 
+-    ElementsAttr els;
++    DenseElementsAttr els;
+     if (!matchPattern(operand, m_Constant(&els)))
+       return rewriter.notifyMatchFailure(
+           op, "expected constant integer or float operand");
+ 
++    // Short circuit on splat resizes
++    if (els.isSplat()) {
++      rewriter.replaceOpWithNewOp<ConstantOp>(op, els.resizeSplat(resultType));
++      return success();
++    }
++
+     DenseElementsAttr resAttr;
+-    if (auto data = els.tryGetValues<APInt>())
++    if (auto data = els.tryGetValues<APInt>(); succeeded(data))
+       resAttr = sliceType(op, *data);
+-    else if (auto data = els.tryGetValues<APFloat>())
++    else if (auto data = els.tryGetValues<APFloat>(); succeeded(data))
+       resAttr = sliceType(op, *data);
+     else
+       return rewriter.notifyMatchFailure(op.getLoc(),
+@@ -1147,6 +1308,27 @@
+   }
+ };
+ 
++// Pattern: dynamic_slice(splat_cst, start, end) -> resized_splat_cst
++struct FoldDynamicSliceOpPattern : public FoldOpRewritePattern<DynamicSliceOp> {
++  using FoldOpRewritePattern::FoldOpRewritePattern;
++
++  LogicalResult matchAndRewrite(DynamicSliceOp op,
++                                PatternRewriter& rewriter) const override {
++    auto resultType = op.getType();
++    if (failed(validateStaticShapeResult(rewriter, op, resultType)))
++      return failure();
++
++    SplatElementsAttr inputSplatAttr;
++    if (!matchPattern(op.getOperand(), m_Constant(&inputSplatAttr)) ||
++        !inputSplatAttr)
++      return rewriter.notifyMatchFailure(op, "Input must be a splat constant.");
++
++    rewriter.replaceOpWithNewOp<ConstantOp>(
++        op, inputSplatAttr.resizeSplat(resultType));
++    return success();
++  }
++};
++
+ struct FoldSubtractOpPattern final
+     : ShapeOpRewritePattern<mlir::stablehlo::SubtractOp> {
+   using ShapeOpRewritePattern::ShapeOpRewritePattern;
+@@ -1163,31 +1345,169 @@
    }
  };
  
@@ -1355,7 +1446,7 @@ diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveFold
  };
  
  struct FoldIotaOpPattern : public FoldOpRewritePattern<IotaOp> {
-@@ -1316,13 +1609,9 @@
+@@ -1316,13 +1636,9 @@
  
      for (auto [inputValue, bodyArg] :
           llvm::zip_equal(op.getOperands(), body.getArguments())) {
@@ -1372,7 +1463,7 @@ diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveFold
          return rewriter.notifyMatchFailure(op,
                                             "Input must be a splat constant.");
  
-@@ -1332,7 +1621,7 @@
+@@ -1332,7 +1648,7 @@
              op, "Could not get the shape of the body argument.");
  
        bodyArgConstantAttrs.push_back(DenseElementsAttr::get(
@@ -1381,7 +1472,7 @@ diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveFold
      }
  
      for (BlockArgument bodyArg : body.getArguments()) {
-@@ -1570,11 +1859,25 @@
+@@ -1570,11 +1886,25 @@
      PatternBenefit benefit) {
    populateStablehloShapeFolderPatterns(context, patterns, options, benefit);
  
@@ -1408,6 +1499,14 @@ diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveFold
                  FoldTransposeOpPattern,               //
                  FoldWhileOpIfDeadAndPresumedPure,     //
                  FoldWhileOpPattern,                   //
+@@ -1605,6 +1935,7 @@
+   patterns->add<FoldConcatenateOpPattern>(context, options, benefit);
+   patterns->add<FoldConvertOpPattern>(context, options, benefit);
+   patterns->add<FoldDivOpPattern>(context, options, benefit);
++  patterns->add<FoldDynamicSliceOpPattern>(context, options, benefit);
+   patterns->add<FoldGetDimensionSizeOpPattern>(context, options, benefit);
+   patterns->add<FoldMaxOpPattern>(context, options, benefit);
+   patterns->add<FoldMinOpPattern>(context, options, benefit);
 diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplification.cpp b/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplification.cpp
 --- stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplification.cpp
 +++ stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplification.cpp
