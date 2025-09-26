@@ -795,7 +795,7 @@ TEST_F(OpKernelBuilderTest, OpOutputList) {
       DEVICE_CPU, params.device, cpu_allocator(),
       CreateNodeDef("ListOut", {"T|list(type)|[DT_FLOAT, DT_INT32]"}),
       TF_GRAPH_DEF_VERSION, &status));
-  EXPECT_TRUE(status.ok()) << status.ToString();
+  EXPECT_TRUE(status.ok()) << status;
   params.op_kernel = op.get();
   auto ctx = std::make_unique<OpKernelContext>(&params);
 

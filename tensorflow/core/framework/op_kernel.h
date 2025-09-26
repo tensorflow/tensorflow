@@ -308,8 +308,8 @@ class OpKernelConstruction {
   // If expected_inputs == inputs() and expected_outputs == output_types(),
   // returns OK, else returns INVALID_ARGUMENT with an error message.
   // Recommended for Ops with dynamic signatures.
-  absl::Status MatchSignature(const DataTypeSlice expected_inputs,
-                              const DataTypeSlice expected_outputs);
+  absl::Status MatchSignature(DataTypeSlice expected_inputs,
+                              DataTypeSlice expected_outputs);
 
   // For recording configuration errors during construction.
   void SetStatus(const absl::Status& status);
@@ -1157,8 +1157,8 @@ class OpKernelContext {
   // returns OK, else returns INVALID_ARGUMENT with an error message.
   // Recommended for Ops with dynamic signatures, where validation can only
   // be performed at runtime.
-  absl::Status MatchSignature(const DataTypeSlice expected_inputs,
-                              const DataTypeSlice expected_outputs);
+  absl::Status MatchSignature(DataTypeSlice expected_inputs,
+                              DataTypeSlice expected_outputs);
 
   // An OpKernel should call SetStatus() if Compute() encounters an
   // error.

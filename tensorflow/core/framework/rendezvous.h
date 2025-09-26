@@ -90,7 +90,7 @@ class RendezvousInterface {
   //
   // Send() never blocks.
   virtual absl::Status Send(const ParsedKey& key, const Args& args,
-                            const Tensor& val, const bool is_dead) = 0;
+                            const Tensor& val, bool is_dead) = 0;
 
   // Callback provided by a tensor consumer waiting on the rendezvous.
   // It will be invoked when the tensor is available, or when a non-OK

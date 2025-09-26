@@ -116,7 +116,7 @@ class ReaderBase : public ReaderInterface {
 
   // Produces up to num_records.
   // In this implementation all the records come from the same work unit.
-  int64_t ReadUpTo(const int64_t num_records, QueueInterface* queue,
+  int64_t ReadUpTo(int64_t num_records, QueueInterface* queue,
                    std::vector<tstring>* keys, std::vector<tstring>* value,
                    OpKernelContext* context) override;
 
