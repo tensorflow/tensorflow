@@ -119,8 +119,7 @@ bool FileInputYielder::NextItem(GrapplerItem* item) {
     }
   }
 
-  const string id =
-      strings::StrCat(Fingerprint64(metagraph.SerializeAsString()));
+  const string id = absl::StrCat(Fingerprint64(metagraph.SerializeAsString()));
 
   ItemConfig cfg;
   std::unique_ptr<GrapplerItem> new_item =
