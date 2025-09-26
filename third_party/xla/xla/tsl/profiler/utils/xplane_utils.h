@@ -156,6 +156,10 @@ std::vector<Event> GetSortedEvents(Plane& plane,
 void NormalizeTimestamps(XPlane* plane, uint64 start_time_ns);
 void NormalizeTimestamps(XSpace* space, uint64 start_time_ns);
 
+// Denormalize timestamps by time-shifting to 0 as origin.
+void DenormalizeTimestamps(XPlane* plane, uint64 start_time_ns);
+void DenormalizeTimestamps(XSpace* space, uint64 start_time_ns);
+
 // Merges src_plane into dst_plane. Both plane level stats, lines, events and
 // event level stats are merged. If src_plane and dst_plane both have the same
 // line, which have different start timestamps, we will normalize the events
