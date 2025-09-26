@@ -113,27 +113,8 @@ HostOffloadingNanoRtExecutable::HostOffloadingNanoRtExecutable(
                        GetIntraOpThreadPool().NumThreads()) {}
 
 namespace {
-
 using ::tsl::profiler::TraceMe;
 using ::tsl::profiler::TraceMeEncode;
-
-// A mutex for a global NANORT CPU client initialization.
-ABSL_CONST_INIT absl::Mutex host_offloading_client_mutex(absl::kConstInit);
-
-// Returns a global NANORT CPU client for host offloading computations.
-absl::StatusOr<xla::cpu::NanoRtClient*> GetHostOffloadingNanoRtClient() {
-  static xla::cpu::NanoRtClient* client = nullptr;
-
-  absl::MutexLock lock(host_offloading_client_mutex);
-  if (client != nullptr) {
-    return client;
-  }
-
-  VLOG(1) << "Create host offloading NanoRt client for a current process";
-  client = new xla::cpu::NanoRtClient();
-  return client;
-}
-
 }  // namespace
 
 absl::StatusOr<std::unique_ptr<HostOffloadingNanoRtExecutable>>
@@ -142,42 +123,40 @@ HostOffloadingNanoRtExecutable::LoadFromProto(
   TF_RET_CHECK(proto.executable_type() ==
                HostOffloadingExecutableProto::EXECUTABLE_TYPE_NANORT);
 
+  TF_RET_CHECK(proto.has_aot_compilation_result());
+
+  auto& hlo_module_proto =
+      proto.aot_compilation_result().hlo_module().hlo_module();
+
   VLOG(3) << "Load NanoRt host offloading executable: name="
-          << proto.hlo_module().name();
+          << hlo_module_proto.name();
 
   TraceMe trace([&] {
     return TraceMeEncode("HostOffloadingNanoRtExecutable::LoadFromProto",
-                         {{"name", proto.hlo_module().name()}});
+                         {{"name", hlo_module_proto.name()}});
   });
 
   // We keep program shape and alias config of the original HLO module and not
   // the destination-passing-style module with extra output parameters.
-  TF_ASSIGN_OR_RETURN(
-      ProgramShape program_shape,
-      ProgramShape::FromProto(proto.hlo_module().host_program_shape()));
-  TF_ASSIGN_OR_RETURN(
-      auto alias_config,
-      HloInputOutputAliasConfig::CreateFromProto(
-          program_shape.result(), proto.hlo_module().input_output_alias()));
+  TF_ASSIGN_OR_RETURN(ProgramShape program_shape,
+                      ProgramShape::FromProto(proto.aot_compilation_result()
+                                                  .hlo_module()
+                                                  .hlo_module()
+                                                  .host_program_shape()));
 
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> hlo_module,
-                      HloModule::CreateFromProto(
-                          proto.hlo_module(), HloModuleConfig(program_shape)));
+  TF_ASSIGN_OR_RETURN(auto alias_config,
+                      HloInputOutputAliasConfig::CreateFromProto(
+                          program_shape.result(), proto.aot_compilation_result()
+                                                      .hlo_module()
+                                                      .hlo_module()
+                                                      .input_output_alias()));
 
-  XlaComputation computation;
-  computation = XlaComputation(proto.hlo_module());
-
-  TF_ASSIGN_OR_RETURN(
-      bool needs_layout_conversion,
-      HostOffloadingLayoutAnalysis::NeedsLayoutConversion(hlo_module.get()));
-
-  TF_ASSIGN_OR_RETURN(xla::cpu::NanoRtClient * client,
-                      GetHostOffloadingNanoRtClient());
+  TF_ASSIGN_OR_RETURN(auto executable,
+                      xla::cpu::NanoRtExecutable::Create(
+                          proto.aot_compilation_result(), program_shape));
 
   // TODO(basioli): Add support for compile options.
   CompileOptions compile_options;
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<xla::cpu::NanoRtExecutable> executable,
-                      client->Compile(computation));
 
   std::shared_ptr<DeviceAssignment> device_assignment;
   int num_replicas;
@@ -192,11 +171,11 @@ HostOffloadingNanoRtExecutable::LoadFromProto(
       &num_replicas, &num_partitions, &device_assignment));
 
   return absl::WrapUnique(new HostOffloadingNanoRtExecutable(
-      proto.hlo_module().name(),
+      hlo_module_proto.name(),
       executable->program_shape() ? *executable->program_shape()
                                   : program_shape,
-      std::move(alias_config), std::move(executable), needs_layout_conversion,
-      std::move(device_assignment)));
+      std::move(alias_config), std::move(executable),
+      /*needs_layout_conversion=*/false, std::move(device_assignment)));
 }
 
 tsl::AsyncValueRef<HostOffloadingExecutable::ExecuteEvent>

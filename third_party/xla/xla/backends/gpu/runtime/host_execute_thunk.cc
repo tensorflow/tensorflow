@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
@@ -354,20 +355,47 @@ HostExecuteAsyncEvents::ExtractEvent(se::StreamExecutor* executor,
 
 // HostExecuteStartThunk
 
+absl::StatusOr<std::unique_ptr<HostExecuteStartThunk>>
+HostExecuteStartThunk::Create(
+    Thunk::ThunkInfo thunk_info,
+    const HostOffloadingExecutableProto& host_offloading_executable_proto,
+    absl::InlinedVector<HostExecuteStartThunk::SliceAndShape, 4> args,
+    absl::InlinedVector<HostExecuteStartThunk::SliceAndShape, 4> results) {
+  auto thunk = absl::WrapUnique(new HostExecuteStartThunk(
+      std::move(thunk_info), host_offloading_executable_proto, std::move(args),
+      std::move(results)));
+  if (host_offloading_executable_proto.has_aot_compilation_result()) {
+    TF_RETURN_IF_ERROR(thunk->LoadExecutable());
+  }
+  return thunk;
+}
+
+absl::Status HostExecuteStartThunk::LoadExecutable() {
+  if (executable_ != nullptr) {
+    return Internal("Host offloading executable was already loaded.");
+  }
+  if (!executable_proto_.has_aot_compilation_result()) {
+    return Internal(
+        "Host offloading executable proto does not have aot "
+        "compilation result.");
+  }
+
+  TF_ASSIGN_OR_RETURN(
+      executable_,
+      HostOffloadingNanoRtExecutable::LoadFromProto(executable_proto_));
+  return absl::OkStatus();
+}
+
 HostExecuteStartThunk::HostExecuteStartThunk(
-    Thunk::ThunkInfo thunk_info, const HloModule& hlo_module,
+    Thunk::ThunkInfo thunk_info,
+    const HostOffloadingExecutableProto& host_offloading_executable_proto,
     absl::InlinedVector<HostExecuteStartThunk::SliceAndShape, 4> args,
     absl::InlinedVector<HostExecuteStartThunk::SliceAndShape, 4> results)
     : Thunk(Thunk::Kind::kHostExecuteStart, std::move(thunk_info)),
       args_(std::move(args)),
       results_(std::move(results)),
-      async_events_(std::make_shared<HostExecuteAsyncEvents>()) {
-  HostOffloadingExecutableProto host_offloading_executable_proto;
-  *host_offloading_executable_proto.mutable_hlo_module() = hlo_module.ToProto();
-  host_offloading_executable_proto.set_executable_type(
-      HostOffloadingExecutableProto::EXECUTABLE_TYPE_NANORT);
-  executable_proto_ = std::move(host_offloading_executable_proto);
-}
+      executable_proto_(host_offloading_executable_proto),
+      async_events_(std::make_shared<HostExecuteAsyncEvents>()) {}
 
 std::string HostExecuteStartThunk::ToString(int indent) const { return ""; }
 
@@ -393,19 +421,8 @@ absl::Status HostExecuteStartThunk::Initialize(const InitializeParams& params) {
   if (!allocator_) {
     allocator_ = GetHostOffloadingAllocator(params.executor);
   }
-  // NOTE(basioli): We load the executable here so that we don't get a deadlock
-  // when locking llvm command line options.
-  absl::Status initialization_status = absl::OkStatus();
-  absl::call_once(executable_init_flag_, [this, &initialization_status]() {
-    auto executable_or_status =
-        HostOffloadingNanoRtExecutable::LoadFromProto(executable_proto_);
-    initialization_status = executable_or_status.status();
-    if (initialization_status.ok()) {
-      executable_ = std::move(executable_or_status.value());
-    }
-  });
 
-  return initialization_status;
+  return absl::OkStatus();
 }
 
 absl::Status HostExecuteStartThunk::ExecuteOnStream(

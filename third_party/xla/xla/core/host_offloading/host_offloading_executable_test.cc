@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/backends/cpu/nanort/nanort_client.h"
 #include "xla/backends/cpu/nanort/nanort_executable.h"
 #include "xla/core/host_offloading/host_offloading_buffer.h"
 #include "xla/core/host_offloading/host_offloading_executable.pb.h"
@@ -34,9 +35,11 @@ limitations under the License.
 #include "xla/core/host_offloading/host_offloading_pjrt_executable.h"
 #include "xla/ffi/ffi.h"
 #include "xla/ffi/ffi_api.h"
+#include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
+#include "xla/service/cpu/cpu_aot_compilation_result.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/shape.h"
 #include "xla/shape_tree.h"
@@ -61,8 +64,22 @@ absl::StatusOr<std::unique_ptr<HostOffloadingExecutable>> CompileFromString(
   executable_proto.set_executable_type(executable_type);
 
   switch (executable_type) {
-    case HostOffloadingExecutableProto::EXECUTABLE_TYPE_NANORT:
+    case HostOffloadingExecutableProto::EXECUTABLE_TYPE_NANORT: {
+      xla::cpu::NanoRtClient client;
+      XlaComputation computation(module->ToProto());
+      TF_ASSIGN_OR_RETURN(auto executable, client.Compile(computation));
+      TF_ASSIGN_OR_RETURN(auto aot_compilation_result,
+                          client.Export(executable.get()));
+
+      xla::cpu::CpuAotCompilationResult* cpu_aot_compilation_result =
+          tsl::down_cast<xla::cpu::CpuAotCompilationResult*>(
+              aot_compilation_result.get());
+
+      *executable_proto.mutable_aot_compilation_result() =
+          cpu_aot_compilation_result->proto();
       return HostOffloadingNanoRtExecutable::LoadFromProto(executable_proto);
+    }
+
     case HostOffloadingExecutableProto::EXECUTABLE_TYPE_PJRT:
       return HostOffloadingPjRtExecutable::LoadFromProto(executable_proto);
     default:
