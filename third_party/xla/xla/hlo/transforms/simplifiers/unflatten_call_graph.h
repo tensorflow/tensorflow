@@ -49,10 +49,10 @@ class UnflattenCallGraph : public HloModulePass {
 
   absl::string_view name() const override { return "unflatten-call-graph"; }
 
+ protected:
   // Find called computations that are identical and replace them with calls to
   // a single computation. Returns true if the module was changed.
-  using HloPassInterface::Run;
-  absl::StatusOr<bool> Run(
+  absl::StatusOr<bool> RunImpl(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 

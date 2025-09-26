@@ -29,11 +29,6 @@ class DotAlgorithmRewriter : public HloModulePass {
  public:
   DotAlgorithmRewriter() = default;
   absl::string_view name() const override { return "dot-algorithm-rewriter"; }
-  using HloPassInterface::Run;
-
-  absl::StatusOr<bool> Run(
-      HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
   static absl::StatusOr<HloInstruction*> MakeMultiplyForBF16BF16F32(
       HloInstruction* lhs, HloInstruction* rhs);
@@ -47,6 +42,11 @@ class DotAlgorithmRewriter : public HloModulePass {
       HloInstruction* lhs, HloInstruction* rhs);
   static absl::StatusOr<HloInstruction*> MakeMultiplyForTF32TF32F32X3(
       HloInstruction* lhs, HloInstruction* rhs);
+
+ protected:
+  absl::StatusOr<bool> RunImpl(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 };
 
 }  // namespace xla::gpu

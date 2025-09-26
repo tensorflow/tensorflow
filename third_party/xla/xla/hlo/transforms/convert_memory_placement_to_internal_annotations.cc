@@ -110,7 +110,7 @@ ConvertCustomCallWithExternalAnnotationToInternalAnnotation(
 
 }  // namespace
 
-absl::StatusOr<bool> ConvertMemoryPlacementToInternalAnnotations::Run(
+absl::StatusOr<bool> ConvertMemoryPlacementToInternalAnnotations::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;

@@ -151,7 +151,7 @@ class BatchDimensionMerger : public DfsHloRewriteVisitor {
 
 }  // namespace
 
-absl::StatusOr<bool> DotDimensionMerger::Run(
+absl::StatusOr<bool> DotDimensionMerger::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   return BatchDimensionMerger().RunOnModule(module, execution_threads);

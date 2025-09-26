@@ -112,7 +112,7 @@ bool HostOffloadingLayoutAnalysis::ShapeHasPadding(const Shape& shape) {
   return has_padding;
 }
 
-absl::StatusOr<bool> HostOffloadingLayoutAnalysis::Run(
+absl::StatusOr<bool> HostOffloadingLayoutAnalysis::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   // TODO(ecg): relax this by allowing padding to then operate on a modified

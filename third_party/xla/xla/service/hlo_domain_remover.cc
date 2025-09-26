@@ -131,7 +131,7 @@ absl::StatusOr<int64_t> HloDomainRemover::RemoveExitDomains(
   return removed_domains;
 }
 
-absl::StatusOr<bool> HloDomainRemover::Run(
+absl::StatusOr<bool> HloDomainRemover::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   RunContext run_context(module, this);

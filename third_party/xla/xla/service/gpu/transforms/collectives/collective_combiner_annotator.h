@@ -45,13 +45,14 @@ class CollectiveCombinerAnnotator : public HloModulePass {
         pointer_size_(pointer_size),
         mlir_context_(mlir_context) {}
 
-  absl::StatusOr<bool> Run(
-      HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
-
   absl::string_view name() const override {
     return "collective-combiner-annotator";
   }
+
+ protected:
+  absl::StatusOr<bool> RunImpl(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
   const se::DeviceDescription device_info_;

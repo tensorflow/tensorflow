@@ -415,7 +415,7 @@ static absl::StatusOr<bool> SplitAllReduce(const HloModule& module,
                         computation);  // changed
 }
 
-absl::StatusOr<bool> AllReduceSplitter::Run(
+absl::StatusOr<bool> AllReduceSplitter::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;

@@ -64,7 +64,7 @@ absl::StatusOr<HloInstructionProfileList> CollectProfiles(
 
 }  // namespace
 
-absl::StatusOr<bool> CollectivePerfTableStatsCollection::Run(
+absl::StatusOr<bool> CollectivePerfTableStatsCollection::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   TF_ASSIGN_OR_RETURN(HloInstructionProfileList profiles,

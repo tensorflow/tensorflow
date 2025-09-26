@@ -131,7 +131,7 @@ absl::Status UnflattenCallGraph::ValidateComputationHashes(
   return absl::OkStatus();
 }
 
-absl::StatusOr<bool> UnflattenCallGraph::Run(
+absl::StatusOr<bool> UnflattenCallGraph::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   VLOG(1) << "Running UnflattenCallGraph on module " << module->name();

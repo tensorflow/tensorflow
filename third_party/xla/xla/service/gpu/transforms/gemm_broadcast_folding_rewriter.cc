@@ -108,9 +108,9 @@ static absl::StatusOr<bool> RunOnComputation(HloComputation *computation) {
   return visitor.changed();
 }
 
-absl::StatusOr<bool> GemmBroadcastFoldingRewriter::Run(
-    HloModule *module,
-    const absl::flat_hash_set<absl::string_view> &execution_threads) {
+absl::StatusOr<bool> GemmBroadcastFoldingRewriter::RunImpl(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
   for (HloComputation *computation :
        module->MakeNonfusionComputations(execution_threads)) {

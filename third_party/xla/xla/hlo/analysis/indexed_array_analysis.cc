@@ -1165,7 +1165,7 @@ absl::StatusOr<Analysis::Array*> IndexedArrayAnalysis::ComputeArrayForDot(
   return nullptr;
 }
 
-absl::StatusOr<bool> IndexedArrayAnalysisPrinterPass::Run(
+absl::StatusOr<bool> IndexedArrayAnalysisPrinterPass::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   if (!VLOG_IS_ON(2)) {

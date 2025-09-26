@@ -519,7 +519,7 @@ absl::Status InfeedTokenPropagation::PropagateToken(
   return PropagateToken(ordering);
 }
 
-absl::StatusOr<bool> InfeedTokenPropagation::Run(
+absl::StatusOr<bool> InfeedTokenPropagation::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   VLOG(5) << "Before InfeedTokenPropagation:";

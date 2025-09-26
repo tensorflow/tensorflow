@@ -34,9 +34,9 @@ limitations under the License.
 
 namespace xla {
 
-absl::StatusOr<bool> ReduceScatterDecomposer::Run(
-    HloModule *module,
-    const absl::flat_hash_set<absl::string_view> &execution_threads) {
+absl::StatusOr<bool> ReduceScatterDecomposer::RunImpl(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
   int64_t next_channel_id = hlo_query::NextChannelId(*module);
 

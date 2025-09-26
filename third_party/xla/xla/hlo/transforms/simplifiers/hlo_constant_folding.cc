@@ -283,7 +283,7 @@ absl::StatusOr<bool> PropagateIdenticalConstantArguments(
 
 }  // namespace
 
-absl::StatusOr<bool> HloConstantFolding::Run(
+absl::StatusOr<bool> HloConstantFolding::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   // Limit the constant folding to 0 iterations to skip folding loops in the

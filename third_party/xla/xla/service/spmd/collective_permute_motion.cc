@@ -305,7 +305,7 @@ absl::StatusOr<bool> MoveCollectivePermutes(HloComputation* computation,
   return changed;
 }
 
-absl::StatusOr<bool> CollectivePermuteMotion::Run(
+absl::StatusOr<bool> CollectivePermuteMotion::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;

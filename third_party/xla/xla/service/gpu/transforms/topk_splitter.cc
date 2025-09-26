@@ -145,7 +145,7 @@ class TopkSplitterVisitor : public DfsHloRewriteVisitor {
 
 }  // namespace
 
-absl::StatusOr<bool> TopKSplitter::Run(
+absl::StatusOr<bool> TopKSplitter::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   return TopkSplitterVisitor(split_threshold_)

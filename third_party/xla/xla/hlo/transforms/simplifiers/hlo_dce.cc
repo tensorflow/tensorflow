@@ -381,7 +381,7 @@ absl::StatusOr<bool> RemoveDanglingComputations(
   return changed;
 }
 
-absl::StatusOr<bool> HloDCE::Run(
+absl::StatusOr<bool> HloDCE::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   VLOG(2) << "Before dce; threads: " << absl::StrJoin(execution_threads, ",");

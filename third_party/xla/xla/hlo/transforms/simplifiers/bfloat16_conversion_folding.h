@@ -46,10 +46,10 @@ class BFloat16ConversionFolding : public HloModulePass {
   ~BFloat16ConversionFolding() override = default;
   absl::string_view name() const override { return "bfloat16-fold"; }
 
+ protected:
   // Run BF16 conversion folding on the given computation. Returns whether the
   // computation was changed.
-  using HloPassInterface::Run;
-  absl::StatusOr<bool> Run(
+  absl::StatusOr<bool> RunImpl(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 

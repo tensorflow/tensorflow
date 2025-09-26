@@ -112,7 +112,7 @@ absl::Status AnnotateNode(const CallGraphNode& node) {
 
 }  // namespace
 
-absl::StatusOr<bool> FlattenCallGraph::Run(
+absl::StatusOr<bool> FlattenCallGraph::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   XLA_VLOG_LINES(3, "Before flatten call graph:\n" + module->ToString());

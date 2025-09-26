@@ -94,7 +94,7 @@ CollectivePermuteCombiner::CollectivePermuteCombiner(
     : combine_threshold_in_bytes_(combine_threshold_in_bytes),
       combine_threshold_count_(combine_threshold_count) {}
 
-absl::StatusOr<bool> CollectivePermuteCombiner::Run(
+absl::StatusOr<bool> CollectivePermuteCombiner::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   VLOG(1) << "Running CollectivePermuteCombiner with threshold of "

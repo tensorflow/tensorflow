@@ -341,7 +341,7 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> RaggedToGeneral(
 
 }  // namespace
 
-absl::StatusOr<bool> RaggedDotRewriter::Run(
+absl::StatusOr<bool> RaggedDotRewriter::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   if (module->config()

@@ -219,17 +219,6 @@ class HloRematerialization : public HloModulePass {
         std::max(max_rematerialized_block_size_, new_rematerialized_block_size);
   }
 
-  // Runs rematerialization on the given module. Returns whether the module was
-  // changed. Requires that the module has a schedule set
-  // (HloModule::has_schedule() is true) before running. Returns whether any
-  // instructions were rematerialized. If memory use is already below the limit
-  // specified in the constructor then no instructions are rematerialized and
-  // false is returned.
-  using HloPassInterface::Run;
-  absl::StatusOr<bool> Run(
-      HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
-
   int64_t GetBlockSizeLimit() const { return options_.block_size_limit; }
 
   // Holds references to data structures and some constants that are used during
@@ -414,6 +403,16 @@ class HloRematerialization : public HloModulePass {
   // rematerialized.
   absl::AnyInvocable<absl::Status(HloInstruction*, HloInstruction*)>
       on_rematerialized_;
+
+  // Runs rematerialization on the given module. Returns whether the module was
+  // changed. Requires that the module has a schedule set
+  // (HloModule::has_schedule() is true) before running. Returns whether any
+  // instructions were rematerialized. If memory use is already below the limit
+  // specified in the constructor then no instructions are rematerialized and
+  // false is returned.
+  absl::StatusOr<bool> RunImpl(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 };
 
 }  // namespace xla

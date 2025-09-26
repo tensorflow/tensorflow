@@ -682,11 +682,11 @@ absl::Status ConvolutionVisitor::HandleConvolution(
 
 }  // namespace
 
-absl::StatusOr<bool> ConvolutionGroupConverter::Run(
+absl::StatusOr<bool> ConvolutionGroupConverter::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  XLA_VLOG_LINES(
-      2, "ConvolutionGroupConverter::Run(), before:\n" + module->ToString());
+  XLA_VLOG_LINES(2, "ConvolutionGroupConverter::RunImpl(), before:\n" +
+                        module->ToString());
   bool changed = false;
   for (auto* comp : module->MakeNonfusionComputations(execution_threads)) {
     if (ConvolutionVisitor::Run(comp, should_expand_, is_cost_viable_,
@@ -696,7 +696,7 @@ absl::StatusOr<bool> ConvolutionGroupConverter::Run(
     }
   }
   XLA_VLOG_LINES(
-      2, "ConvolutionGroupConverter::Run(), after:\n" + module->ToString());
+      2, "ConvolutionGroupConverter::RunImpl(), after:\n" + module->ToString());
   return changed;
 }
 

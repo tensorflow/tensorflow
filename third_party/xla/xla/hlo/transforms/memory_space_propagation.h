@@ -39,14 +39,15 @@ class MemorySpacePropagation : public HloModulePass {
       : dataflow_analysis_(std::move(dataflow_analysis)) {}
   ~MemorySpacePropagation() override = default;
   absl::string_view name() const override { return "memory-space-propagation"; }
-  using HloPassInterface::Run;
-  absl::StatusOr<bool> Run(
-      HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
   // Propagates the memory space (and associated split config) in the layout to
   // a given fusion computation. Returns true if the computation is modified.
   bool RunOnComputation(HloComputation* computation);
+
+ protected:
+  absl::StatusOr<bool> RunImpl(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
   // Given the shape index (operand or output) and its corresponding instruction

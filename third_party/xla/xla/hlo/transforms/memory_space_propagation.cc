@@ -56,7 +56,7 @@ bool MemorySpacePropagation::RunOnComputation(HloComputation* computation) {
   return modified;
 }
 
-absl::StatusOr<bool> MemorySpacePropagation::Run(
+absl::StatusOr<bool> MemorySpacePropagation::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool modified = false;

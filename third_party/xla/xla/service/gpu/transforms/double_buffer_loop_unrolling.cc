@@ -555,7 +555,7 @@ absl::StatusOr<bool> AutoUnroll(HloInstruction* while_instr,
 
 }  // namespace
 
-absl::StatusOr<bool> DoubleBufferLoopUnrolling::Run(
+absl::StatusOr<bool> DoubleBufferLoopUnrolling::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;

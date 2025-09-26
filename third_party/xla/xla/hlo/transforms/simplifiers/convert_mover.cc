@@ -211,7 +211,7 @@ absl::StatusOr<bool> MoveConvertPrecisionOps(HloComputation* comp) {
 
 }  // anonymous namespace
 
-absl::StatusOr<bool> ConvertMover::Run(
+absl::StatusOr<bool> ConvertMover::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;

@@ -96,7 +96,7 @@ std::vector<HloInstruction*> GetRelevantVariadicOps(HloComputation* comp) {
 
 }  // namespace
 
-absl::StatusOr<bool> VariadicOpSplitter::Run(
+absl::StatusOr<bool> VariadicOpSplitter::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
