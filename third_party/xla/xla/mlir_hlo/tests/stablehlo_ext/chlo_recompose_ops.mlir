@@ -33,6 +33,21 @@ func.func private @chlo.acosh.impl(%arg0: tensor<3x20x20xbf16>) -> tensor<?x20x2
 
 // -----
 
+// CHECK-LABEL: func @atanh_recompose_composite
+func.func @atanh_recompose_composite(%arg0: tensor<3x20x20xbf16>) -> tensor<?x20x20xbf16> {
+  // CHECK-NEXT: chlo.atanh
+  // CHECK-NOT: stablehlo.composite
+  %0 = stablehlo.composite "chlo.atanh" %arg0 {decomposition = @chlo.atanh.impl, version = 1 : i32} : (tensor<3x20x20xbf16>) -> tensor<?x20x20xbf16>
+  return %0 : tensor<?x20x20xbf16>
+}
+// CHECK-NOT: @chlo.atanh.imp
+func.func private @chlo.atanh.impl(%arg0: tensor<3x20x20xbf16>) -> tensor<?x20x20xbf16> {
+  %0 = chlo.atanh %arg0 : tensor<3x20x20xbf16> -> tensor<?x20x20xbf16>
+  return %0 : tensor<?x20x20xbf16>
+}
+
+// -----
+
 // CHECK-LABEL: func @acos_recompose_composite
 func.func @acos_recompose_composite(%arg0: tensor<3x20x20xbf16>) -> tensor<?x20x20xbf16> {
   // CHECK-NEXT: chlo.acos
@@ -115,6 +130,20 @@ func.func @acos_recompose_cc(%arg0: tensor<3x20x20xbf16>) -> tensor<?x20x20xbf16
   %0 = "stablehlo.custom_call"(%arg0) {
     backend_config = "",
     call_target_name = "mhlo.acos",
+    mhlo.attributes = {},
+    mhlo.version = 1 : i64
+  } : (tensor<3x20x20xbf16>) -> tensor<?x20x20xbf16>
+  func.return %0 : tensor<?x20x20xbf16>
+}
+
+// -----
+
+// CHECK-LABEL: @atanh_recompose_cc
+func.func @atanh_recompose_cc(%arg0: tensor<3x20x20xbf16>) -> tensor<?x20x20xbf16> {
+  // CHECK: %0 = chlo.atanh %arg0 : tensor<3x20x20xbf16> -> tensor<?x20x20xbf16>
+  %0 = "stablehlo.custom_call"(%arg0) {
+    backend_config = "",
+    call_target_name = "mhlo.atanh",
     mhlo.attributes = {},
     mhlo.version = 1 : i64
   } : (tensor<3x20x20xbf16>) -> tensor<?x20x20xbf16>

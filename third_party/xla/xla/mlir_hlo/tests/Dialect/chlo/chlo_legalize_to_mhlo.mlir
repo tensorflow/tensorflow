@@ -1,5 +1,5 @@
 // RUN: mlir-hlo-opt --chlo-legalize-to-hlo --split-input-file -verify-diagnostics %s | FileCheck %s --dump-input-context=20
-// RUN: mlir-hlo-opt --chlo-legalize-to-high-level-mhlo="enable-acosh enable-acos" --split-input-file -verify-diagnostics %s | FileCheck %s --check-prefix=CHECK-HIGH-LEVEL
+// RUN: mlir-hlo-opt --chlo-legalize-to-high-level-mhlo="enable-acosh enable-acos enable-atanh" --split-input-file -verify-diagnostics %s | FileCheck %s --check-prefix=CHECK-HIGH-LEVEL
 
 // CHECK-LABEL: func.func @asin_bf16(
 // CHECK-SAME:    %[[TMP_arg0:.*]]: tensor<bf16>
@@ -2736,6 +2736,7 @@ func.func @atanh_f32(%arg : tensor<f32>) -> tensor<f32> {
   %result = "chlo.atanh"(%arg) : (tensor<f32>) -> tensor<f32>
   func.return %result : tensor<f32>
 }
+// CHECK-HIGH-LEVEL: mhlo.atanh
 
 // -----
 
@@ -2814,6 +2815,7 @@ func.func @atanh_complex_f32(%arg : tensor<complex<f32>>) -> tensor<complex<f32>
   %result = "chlo.atanh"(%arg) : (tensor<complex<f32>>) -> tensor<complex<f32>>
   func.return %result : tensor<complex<f32>>
 }
+// CHECK-HIGH-LEVEL-NOT: mhlo.atanh
 
 // -----
 

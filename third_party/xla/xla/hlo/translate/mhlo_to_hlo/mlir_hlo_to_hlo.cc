@@ -5201,26 +5201,30 @@ LogicalResult ExportXlaOp(UniformDequantizeOp op, OpLoweringContext ctx) {
   return failure();
 }
 
-LogicalResult ExportXlaOp(AcosOp op, OpLoweringContext ctx) {
+template <typename Op,
+          xla::XlaOp OpFunc(xla::XlaOp,
+                            const std::optional<xla::ResultAccuracy>&, bool)>
+LogicalResult ExportElementwiseXlaOp(Op op, OpLoweringContext ctx) {
   auto& value_map = *ctx.values;
   xla::XlaOp operand;
   if (failed(GetXlaOp(op.getOperand(), value_map, &operand, op))) {
     return failure();
   }
   value_map[op] =
-      xla::Acos(operand, /*result_accuracy=*/std::nullopt, /*expand=*/false);
+      OpFunc(operand, /*result_accuracy=*/std::nullopt, /*expand=*/false);
   return success();
 }
 
+LogicalResult ExportXlaOp(AcosOp op, OpLoweringContext ctx) {
+  return ExportElementwiseXlaOp<AcosOp, xla::Acos>(op, ctx);
+}
+
 LogicalResult ExportXlaOp(AcoshOp op, OpLoweringContext ctx) {
-  auto& value_map = *ctx.values;
-  xla::XlaOp operand;
-  if (failed(GetXlaOp(op.getOperand(), value_map, &operand, op))) {
-    return failure();
-  }
-  value_map[op] =
-      xla::Acosh(operand, /*result_accuracy=*/std::nullopt, /*expand=*/false);
-  return success();
+  return ExportElementwiseXlaOp<AcoshOp, xla::Acosh>(op, ctx);
+}
+
+LogicalResult ExportXlaOp(AtanhOp op, OpLoweringContext ctx) {
+  return ExportElementwiseXlaOp<AtanhOp, xla::Atanh>(op, ctx);
 }
 
 LogicalResult ExportXlaOp(TopKOp op, OpLoweringContext ctx) {

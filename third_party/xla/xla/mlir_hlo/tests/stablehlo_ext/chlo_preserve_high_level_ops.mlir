@@ -93,6 +93,16 @@ func.func @acos_preserve(%arg0: tensor<3x20x20xbf16>) -> tensor<?x20x20xbf16> {
 
 // -----
 
+// CHECK-LABEL: func @atanh_preserve
+func.func @atanh_preserve(%arg0: tensor<3x20x20xbf16>) -> tensor<?x20x20xbf16> {
+  // CHECK-CC: stablehlo.custom_call @mhlo.atanh(%arg0) {mhlo.attributes = {}, mhlo.version = 1 : i64} : (tensor<3x20x20xbf16>) -> tensor<?x20x20xbf16>
+  // CHECK: stablehlo.composite "chlo.atanh" %arg0 {decomposition = @chlo.atanh.impl, version = 1 : i32}
+  %0 = chlo.atanh %arg0 : tensor<3x20x20xbf16> -> tensor<?x20x20xbf16>
+  return %0 : tensor<?x20x20xbf16>
+}
+
+// -----
+
 // CHECK-LABEL: func @tan_no_preserve
 func.func @tan_no_preserve(%arg0: tensor<16xf32>) -> tensor<?xf32> {
   // CHECK: chlo.tan

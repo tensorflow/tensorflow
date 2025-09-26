@@ -47,8 +47,17 @@ namespace gpu {
 namespace {
 
 bool IsExpensiveToUnroll(mlir::Operation* op) {
-  return mlir::isa<mlir::func::CallOp, mlir::scf::ForOp, mlir::math::AcoshOp,
-                   mlir::math::AcosOp>(op);
+  return mlir::isa<
+      // clang-format off
+      // go/keep-sorted start
+      mlir::func::CallOp,
+      mlir::math::AcosOp,
+      mlir::math::AcoshOp,
+      mlir::math::AtanhOp,
+      mlir::scf::ForOp
+      // go/keep-sorted end
+      // clang-format on
+      >(op);
 }
 
 int GetUnrollingFactor(mlir::scf::ForOp op) {
