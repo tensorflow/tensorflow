@@ -3477,6 +3477,31 @@ With `src_format` of `NHWC`, `dst_format` of `NCHW`, and input:
   }];
 }
 
+def TF_DebugIdentityOp : TF_Op<"DebugIdentity", [Pure, TF_SameOperandsAndResultTypeResolveRef]> {
+  let summary = [{
+Provides an identity mapping of the non-Ref type input tensor for debugging.
+  }];
+
+  let description = [{
+Provides an identity mapping of the non-Ref type input tensor for debugging.
+  }];
+
+  let arguments = (ins
+    Arg<TF_Tensor, [{Input tensor, non-Reference type}]>:$input,
+
+    DefaultValuedOptionalAttr<StrAttr, "\"\"">:$device_name,
+    DefaultValuedOptionalAttr<StrAttr, "\"\"">:$tensor_name,
+    DefaultValuedOptionalAttr<StrArrayAttr, "{}">:$debug_urls,
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$gated_grpc
+  );
+
+  let results = (outs
+    TF_Tensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
 def TF_DebugIdentityV2Op : TF_Op<"DebugIdentityV2", []> {
   let summary = "Debug Identity V2 Op.";
 
