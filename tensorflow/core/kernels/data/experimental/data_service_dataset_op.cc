@@ -193,7 +193,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
   absl::Status CheckExternalState() const override {
     return absl::Status(
         absl::StatusCode::kFailedPrecondition,
-        strings::StrCat(DebugString(), " does not yet support serialization."));
+        absl::StrCat(DebugString(), " does not yet support serialization."));
   }
 
   absl::Status InputDatasets(
