@@ -147,6 +147,25 @@ message SelectKThunkProto {
   // TODO(upwind): Add fields for SelectKThunkProto.
 }
 
+message CublasLtMatmulThunkProto {
+  xla.GemmConfigProto gemm_config = 1;
+  xla.BlasLtEpilogueProto epilogue = 2;
+  int64 algorithm_idx = 3;
+  string canonical_hlo = 4;
+  xla.buffer_assignment.BufferAllocationSliceProto a = 5;
+  xla.buffer_assignment.BufferAllocationSliceProto b = 6;
+  xla.buffer_assignment.BufferAllocationSliceProto c = 7;
+  xla.buffer_assignment.BufferAllocationSliceProto d = 8;
+  optional xla.buffer_assignment.BufferAllocationSliceProto bias = 9;
+  optional xla.buffer_assignment.BufferAllocationSliceProto aux = 10;
+  optional xla.buffer_assignment.BufferAllocationSliceProto a_scale = 11;
+  optional xla.buffer_assignment.BufferAllocationSliceProto b_scale = 12;
+  optional xla.buffer_assignment.BufferAllocationSliceProto c_scale = 13;
+  optional xla.buffer_assignment.BufferAllocationSliceProto d_scale = 14;
+  optional xla.buffer_assignment.BufferAllocationSliceProto d_amax = 15;
+  optional xla.buffer_assignment.BufferAllocationSliceProto workspace = 16;
+}
+
 message ThunkProto {
   ThunkInfoProto thunk_info = 1;
 
@@ -171,6 +190,7 @@ message ThunkProto {
     MemzeroThunkProto memzero_thunk = 19;
     SelectKThunkProto select_k_thunk = 20;
     InfeedThunkProto infeed_thunk = 21;
+    CublasLtMatmulThunkProto cublas_lt_matmul_thunk = 22;
   }
 }
 

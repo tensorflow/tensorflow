@@ -16,6 +16,8 @@ limitations under the License.
 
 #include <optional>
 
+#include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/gpu/gpu_blas_lt.pb.h"
 #include "xla/tsl/platform/statusor.h"
@@ -23,6 +25,8 @@ limitations under the License.
 #include "xla/xla_data.pb.h"
 
 namespace stream_executor::gpu {
+using absl_testing::IsOk;
+using absl_testing::StatusIs;
 
 // Helper to compare MatrixLayout structs.
 void ExpectMatrixLayoutEq(const MatrixLayout& lhs, const MatrixLayout& rhs) {
@@ -109,6 +113,54 @@ TEST(GemmConfigTest, ProtoConversionWithOptionals) {
                           GemmConfig::FromProto(proto));
 
   ExpectGemmConfigEq(original_config, round_tripped_config);
+}
+
+TEST(BlasLtTest, EpilogueToProto) {
+  EXPECT_EQ(BlasLt::EpilogueToProto(BlasLt::Epilogue::kDefault),
+            xla::BlasLtEpilogueProto::EPILOGUE_DEFAULT);
+  EXPECT_EQ(BlasLt::EpilogueToProto(BlasLt::Epilogue::kReLU),
+            xla::BlasLtEpilogueProto::EPILOGUE_RELU);
+  EXPECT_EQ(BlasLt::EpilogueToProto(BlasLt::Epilogue::kBias),
+            xla::BlasLtEpilogueProto::EPILOGUE_BIAS);
+  EXPECT_EQ(BlasLt::EpilogueToProto(BlasLt::Epilogue::kBiasThenReLU),
+            xla::BlasLtEpilogueProto::EPILOGUE_BIAS_THEN_RELU);
+  EXPECT_EQ(BlasLt::EpilogueToProto(BlasLt::Epilogue::kGELU),
+            xla::BlasLtEpilogueProto::EPILOGUE_GELU);
+  EXPECT_EQ(BlasLt::EpilogueToProto(BlasLt::Epilogue::kSILU),
+            xla::BlasLtEpilogueProto::EPILOGUE_SILU);
+  EXPECT_EQ(BlasLt::EpilogueToProto(BlasLt::Epilogue::kSILUWithAux),
+            xla::BlasLtEpilogueProto::EPILOGUE_SILU_WITH_AUX);
+  EXPECT_EQ(BlasLt::EpilogueToProto(BlasLt::Epilogue::kGELUWithAux),
+            xla::BlasLtEpilogueProto::EPILOGUE_GELU_WITH_AUX);
+  EXPECT_EQ(BlasLt::EpilogueToProto(BlasLt::Epilogue::kBiasThenGELU),
+            xla::BlasLtEpilogueProto::EPILOGUE_BIAS_THEN_GELU);
+  EXPECT_EQ(BlasLt::EpilogueToProto(BlasLt::Epilogue::kBiasThenSILU),
+            xla::BlasLtEpilogueProto::EPILOGUE_BIAS_THEN_SILU);
+  EXPECT_EQ(BlasLt::EpilogueToProto(BlasLt::Epilogue::kBiasThenGELUWithAux),
+            xla::BlasLtEpilogueProto::EPILOGUE_BIAS_THEN_GELU_WITH_AUX);
+  EXPECT_EQ(BlasLt::EpilogueToProto(BlasLt::Epilogue::kBiasThenSILUWithAux),
+            xla::BlasLtEpilogueProto::EPILOGUE_BIAS_THEN_SILU_WITH_AUX);
+}
+
+TEST(BlasLtTest, EpilogueFromProtoSucceedsForValidValues) {
+  for (int i = xla::BlasLtEpilogueProto_MIN; i <= xla::BlasLtEpilogueProto_MAX;
+       ++i) {
+    if (!xla::BlasLtEpilogueProto_IsValid(i)) {
+      continue;
+    }
+    EXPECT_THAT(
+        BlasLt::EpilogueFromProto(static_cast<xla::BlasLtEpilogueProto>(i)),
+
+        IsOk());
+  }
+}
+
+TEST(BlasLtTest, EpilogueFromProtoReturnsErrorForInvalidValues) {
+  constexpr int kInvalidProtoValue = 123456789;
+  EXPECT_FALSE(xla::BlasLtEpilogueProto_IsValid(kInvalidProtoValue));
+  EXPECT_THAT(BlasLt::EpilogueFromProto(
+                  static_cast<xla::BlasLtEpilogueProto>(kInvalidProtoValue)),
+              StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 }  // namespace stream_executor::gpu

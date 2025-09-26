@@ -359,5 +359,66 @@ xla::GemmConfigProto GemmConfig::ToProto() const {
   return proto;
 }
 
+absl::StatusOr<BlasLt::Epilogue> BlasLt::EpilogueFromProto(
+    const xla::BlasLtEpilogueProto& proto) {
+  switch (proto) {
+    case xla::BlasLtEpilogueProto::EPILOGUE_DEFAULT:
+      return Epilogue::kDefault;
+    case xla::BlasLtEpilogueProto::EPILOGUE_RELU:
+      return Epilogue::kReLU;
+    case xla::BlasLtEpilogueProto::EPILOGUE_BIAS:
+      return Epilogue::kBias;
+    case xla::BlasLtEpilogueProto::EPILOGUE_BIAS_THEN_RELU:
+      return Epilogue::kBiasThenReLU;
+    case xla::BlasLtEpilogueProto::EPILOGUE_GELU:
+      return Epilogue::kGELU;
+    case xla::BlasLtEpilogueProto::EPILOGUE_SILU:
+      return Epilogue::kSILU;
+    case xla::BlasLtEpilogueProto::EPILOGUE_SILU_WITH_AUX:
+      return Epilogue::kSILUWithAux;
+    case xla::BlasLtEpilogueProto::EPILOGUE_GELU_WITH_AUX:
+      return Epilogue::kGELUWithAux;
+    case xla::BlasLtEpilogueProto::EPILOGUE_BIAS_THEN_GELU:
+      return Epilogue::kBiasThenGELU;
+    case xla::BlasLtEpilogueProto::EPILOGUE_BIAS_THEN_SILU:
+      return Epilogue::kBiasThenSILU;
+    case xla::BlasLtEpilogueProto::EPILOGUE_BIAS_THEN_GELU_WITH_AUX:
+      return Epilogue::kBiasThenGELUWithAux;
+    case xla::BlasLtEpilogueProto::EPILOGUE_BIAS_THEN_SILU_WITH_AUX:
+      return Epilogue::kBiasThenSILUWithAux;
+    default:
+      return absl::InvalidArgumentError("Unsupported epilogue type");
+  }
+}
+
+xla::BlasLtEpilogueProto BlasLt::EpilogueToProto(Epilogue epilogue) {
+  switch (epilogue) {
+    case Epilogue::kDefault:
+      return xla::BlasLtEpilogueProto::EPILOGUE_DEFAULT;
+    case Epilogue::kReLU:
+      return xla::BlasLtEpilogueProto::EPILOGUE_RELU;
+    case Epilogue::kBias:
+      return xla::BlasLtEpilogueProto::EPILOGUE_BIAS;
+    case Epilogue::kBiasThenReLU:
+      return xla::BlasLtEpilogueProto::EPILOGUE_BIAS_THEN_RELU;
+    case Epilogue::kGELU:
+      return xla::BlasLtEpilogueProto::EPILOGUE_GELU;
+    case Epilogue::kSILU:
+      return xla::BlasLtEpilogueProto::EPILOGUE_SILU;
+    case Epilogue::kSILUWithAux:
+      return xla::BlasLtEpilogueProto::EPILOGUE_SILU_WITH_AUX;
+    case Epilogue::kGELUWithAux:
+      return xla::BlasLtEpilogueProto::EPILOGUE_GELU_WITH_AUX;
+    case Epilogue::kBiasThenGELU:
+      return xla::BlasLtEpilogueProto::EPILOGUE_BIAS_THEN_GELU;
+    case Epilogue::kBiasThenSILU:
+      return xla::BlasLtEpilogueProto::EPILOGUE_BIAS_THEN_SILU;
+    case Epilogue::kBiasThenGELUWithAux:
+      return xla::BlasLtEpilogueProto::EPILOGUE_BIAS_THEN_GELU_WITH_AUX;
+    case Epilogue::kBiasThenSILUWithAux:
+      return xla::BlasLtEpilogueProto::EPILOGUE_BIAS_THEN_SILU_WITH_AUX;
+  }
+}
+
 }  // namespace gpu
 }  // namespace stream_executor

@@ -152,6 +152,10 @@ struct BlasLt {
     kBiasThenSILUWithAux = kBiasThenSILU | 1024,
   };
 
+  static absl::StatusOr<Epilogue> EpilogueFromProto(
+      const xla::BlasLtEpilogueProto& proto);
+  static xla::BlasLtEpilogueProto EpilogueToProto(Epilogue epilogue);
+
   // Describes the location of pointers for the scaling factors alpha and beta.
   enum class PointerMode {
     kHost,
