@@ -226,11 +226,18 @@ FusionCompiler::FusionCompiler(mlir::MLIRContext* context, Options options,
       optimization_pass_manager_(
           mlir::PassManager::on<mlir::ModuleOp>(context)),
       lowering_pass_manager_(mlir::PassManager::on<mlir::ModuleOp>(context)) {
-  emitters::RegisterOptimizationPasses(optimization_pass_manager_);
-  AddLoopTransformationPasses(optimization_pass_manager_,
-                              options_.vector_width);
-  optimization_pass_manager_.addInstrumentation(
-      std::make_unique<TraceInstrumentation>());
+  // If there is no user provided callback for the intermediate IR, then we just
+  // do all the passes in one pass manager which reduces some overhead.
+  if (hooks_.post_optimization) {
+    emitters::RegisterOptimizationPasses(optimization_pass_manager_);
+    AddLoopTransformationPasses(optimization_pass_manager_,
+                                options_.vector_width);
+    optimization_pass_manager_.addInstrumentation(
+        std::make_unique<TraceInstrumentation>());
+  } else {
+    emitters::RegisterOptimizationPasses(lowering_pass_manager_);
+    AddLoopTransformationPasses(lowering_pass_manager_, options_.vector_width);
+  }
 
   AddLoweringPasses(lowering_pass_manager_, options_.vector_width,
                     options_.fast_min_max);
@@ -266,10 +273,10 @@ absl::StatusOr<std::unique_ptr<llvm::Module>> FusionCompiler::Compile(
   if (hooks_.pre_optimization) {
     hooks_.pre_optimization(mlir_module);
   }
-  TF_RETURN_IF_ERROR(RunPassPipeline(mlir_module, optimization_pass_manager_,
-                                     nullptr, options_.verification_level));
 
   if (hooks_.post_optimization) {
+    TF_RETURN_IF_ERROR(RunPassPipeline(mlir_module, optimization_pass_manager_,
+                                       nullptr, options_.verification_level));
     hooks_.post_optimization(mlir_module);
   }
 
