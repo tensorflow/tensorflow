@@ -206,7 +206,8 @@ absl::Status GpuProfiler::CheckInputBuffers(InputBuffers& buffers) {
 absl::Status GpuProfiler::CheckOutputBuffer(ScopedShapedBuffer& output,
                                             ScopedShapedBuffer& reference,
                                             float rtol) {
-  BufferComparator comparator(output.on_device_shape(), rtol);
+  BufferComparator comparator(output.on_device_shape(), rtol,
+                              /*verbose=*/false);
 
   TF_ASSIGN_OR_RETURN(bool outputs_match,
                       comparator.CompareEqual(stream_, output.root_buffer(),

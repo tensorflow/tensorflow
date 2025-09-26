@@ -1206,7 +1206,8 @@ absl::Status GemmFusionAutotunerImpl::CompareBuffers(
   tsl::profiler::TraceMe traceme("CompareBuffers");
   const HloInstruction& root = *fusion.called_computation_root();
   BufferComparator comparator(root.shape(),
-                              debug_options_.xla_gpu_autotune_gemm_rtol());
+                              debug_options_.xla_gpu_autotune_gemm_rtol(),
+                              /*verbose=*/VLOG_IS_ON(5));
   TF_ASSIGN_OR_RETURN(se::Stream* const stream, config_.GetStream());
 
   TF_ASSIGN_OR_RETURN(
