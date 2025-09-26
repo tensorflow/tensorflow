@@ -306,7 +306,8 @@ absl::Status EinsumShape(shape_inference::InferenceContext* c) {
     if (dimension_it == label_to_dimension.end()) {
       return errors::InvalidArgument(
           "Einsum output subscripts for equation '", equation, "' has label '",
-          label, "' which is not present in the input subscripts");
+          absl::string_view(&label, 1),
+          "' which is not present in the input subscripts");
     }
     output_dims.push_back(dimension_it->second);
   }
