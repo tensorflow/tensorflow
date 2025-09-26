@@ -18,6 +18,8 @@
 #include <memory>
 
 #include "absl/status/status.h"
+#include "absl/types/span.h"
+#include "xla/python/ifrt/user_context.h"
 #include "xla/python/ifrt_proxy/common/ifrt_service.pb.h"
 #include "xla/tsl/platform/status_to_from_proto.h"
 
@@ -25,12 +27,21 @@ namespace xla {
 namespace ifrt {
 namespace proxy {
 
-std::unique_ptr<IfrtResponse> NewIfrtResponse(uint64_t op_id,
-                                              absl::Status status) {
+std::unique_ptr<IfrtResponse> NewIfrtResponse(
+    uint64_t op_id, absl::Status status,
+    absl::Span<const UserContextId> destroyed_user_contexts) {
   auto ifrt_resp = std::make_unique<IfrtResponse>();
   auto* response_metadata = ifrt_resp->mutable_response_metadata();
   response_metadata->set_op_id(op_id);
   *response_metadata->mutable_status() = tsl::StatusToProto(status);
+  if (!destroyed_user_contexts.empty()) {
+    response_metadata->mutable_destroyed_user_context_ids()->Reserve(
+        destroyed_user_contexts.size());
+    for (const auto& user_context_id : destroyed_user_contexts) {
+      response_metadata->add_destroyed_user_context_ids(
+          user_context_id.value());
+    }
+  }
   return ifrt_resp;
 }
 

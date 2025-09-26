@@ -207,10 +207,13 @@ cc_library(
     hdrs = ["proto_util.h"],
     deps = [
         ":ifrt_service_proto_cc",
+        "//xla/python/ifrt:user_context",
         "//xla/tsl/platform:status_to_from_proto",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
