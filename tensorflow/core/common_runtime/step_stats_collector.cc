@@ -76,12 +76,12 @@ void NodeExecStatsWrapper::Done(const string& device) {
       int64_t peak = all.peak_bytes();
       if (peak > 0) {
         memory =
-            strings::StrCat(memory, "[", all.allocator_name(),
-                            strings::Printf(" %.1fMB %.1fMB] ", tot / 1048576.0,
-                                            peak / 1048576.0));
+            absl::StrCat(memory, "[", all.allocator_name(),
+                         strings::Printf(" %.1fMB %.1fMB] ", tot / 1048576.0,
+                                         peak / 1048576.0));
       } else {
-        memory = strings::StrCat(memory, "[", all.allocator_name(),
-                                 strings::Printf(" %.1fMB] ", tot / 1048576.0));
+        memory = absl::StrCat(memory, "[", all.allocator_name(),
+                              strings::Printf(" %.1fMB] ", tot / 1048576.0));
       }
     }
   }
