@@ -38,11 +38,11 @@ string IOColocationGroups::DebugString() const {
   std::unordered_map<int, std::vector<string>> group_members;
   for (int arg_index = 0; arg_index < input_groups.size(); ++arg_index) {
     int group_id = input_groups[arg_index];
-    group_members[group_id].push_back(strings::StrCat("i:", arg_index));
+    group_members[group_id].push_back(absl::StrCat("i:", arg_index));
   }
   for (int ret_index = 0; ret_index < output_groups.size(); ++ret_index) {
     int group_id = output_groups[ret_index];
-    group_members[group_id].push_back(strings::StrCat("o:", ret_index));
+    group_members[group_id].push_back(absl::StrCat("o:", ret_index));
   }
 
   std::vector<string> group_strings;
