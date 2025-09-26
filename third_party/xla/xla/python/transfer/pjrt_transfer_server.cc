@@ -248,7 +248,7 @@ absl::Status PjRtTransferServer::CrossHostPull(
         xla::DimensionVector(shape.dims().begin(), shape.dims().end())};
     shape_specs.push_back(shape_spec);
 
-    auto pjrt_layout = arrays[i]->layout();
+    auto pjrt_layout = arrays[i]->pjrt_layout();
     std::optional<xla::Layout> layout;
     if (pjrt_layout.ok()) {
       layout = (*pjrt_layout)->xla_layout();
@@ -344,7 +344,7 @@ PjRtTransferServer::CopyArraysForCrossHost(
     TF_ASSIGN_OR_RETURN(auto new_sharding,
                         arrays[i]->shared_ptr_sharding()->WithDeviceAssignment(
                             dst_devices, memory_kind));
-    TF_ASSIGN_OR_RETURN(auto new_layout, arrays[i]->layout());
+    TF_ASSIGN_OR_RETURN(auto new_layout, arrays[i]->pjrt_layout());
     PjRtArray::PjRtBuffers array_buffers;
     array_buffers.reserve(buffers_by_device.size());
     for (auto& [_, bufs] : buffers_by_device) {

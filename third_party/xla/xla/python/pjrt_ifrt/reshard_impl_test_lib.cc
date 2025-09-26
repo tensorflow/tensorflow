@@ -401,7 +401,7 @@ TEST_F(ReshardTest, DifferentDestinationLayout) {
 
   // Make sure that the destination layout is actually different from the source
   // layout in order to ensure the test coverage.
-  TF_ASSERT_OK_AND_ASSIGN(const auto src_layout, src_array->layout());
+  TF_ASSERT_OK_AND_ASSIGN(const auto src_layout, src_array->pjrt_layout());
   ASSERT_NE(src_layout->xla_layout(), dst_array_spec.layout->xla_layout());
 
   TF_ASSERT_OK_AND_ASSIGN(
@@ -414,7 +414,7 @@ TEST_F(ReshardTest, DifferentDestinationLayout) {
   EXPECT_EQ(dst_array->sharding(), *dst_array_spec.sharding);
 
   // Verify that the destination array is created with the user-provided layout.
-  TF_ASSERT_OK_AND_ASSIGN(const auto dst_layout, dst_array->layout());
+  TF_ASSERT_OK_AND_ASSIGN(const auto dst_layout, dst_array->pjrt_layout());
   EXPECT_EQ(dst_layout->xla_layout(), dst_array_spec.layout->xla_layout());
 
   EXPECT_THAT(CopyArrayToLiteral(dst_array),

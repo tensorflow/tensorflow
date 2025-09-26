@@ -315,7 +315,7 @@ TEST(ArrayImplTest, MakeArrayFromHostBufferDefaultLayout) {
             /*on_done_with_host_buffer=*/nullptr));
     TF_ASSERT_OK(array->GetReadyFuture().Await());
 
-    TF_ASSERT_OK_AND_ASSIGN(auto layout, array->layout());
+    TF_ASSERT_OK_AND_ASSIGN(auto layout, array->pjrt_layout());
     EXPECT_EQ(*layout, *default_layout);
   }
 }
@@ -710,7 +710,7 @@ TEST(ArrayImplTest, MakeArraysFromHostBufferShardsWithLayout) {
   }
 
   TF_ASSERT_OK(array->GetReadyFuture().Await());
-  TF_ASSERT_OK_AND_ASSIGN(auto result_layout, array->layout());
+  TF_ASSERT_OK_AND_ASSIGN(auto result_layout, array->pjrt_layout());
   EXPECT_EQ(*result_layout, *layout);
 }
 
@@ -1448,7 +1448,7 @@ TEST(ArrayImplTest, CopyPreservesDefaultLayouts) {
               /*on_done_with_host_buffer=*/nullptr));
       TF_ASSERT_OK(array->GetReadyFuture().Await());
 
-      TF_ASSERT_OK_AND_ASSIGN(auto src_layout, array->layout());
+      TF_ASSERT_OK_AND_ASSIGN(auto src_layout, array->pjrt_layout());
       TF_ASSERT_OK_AND_ASSIGN(
           auto src_default_layout,
           client->GetDefaultLayout(dtype, shape.dims(), device,
@@ -1460,7 +1460,7 @@ TEST(ArrayImplTest, CopyPreservesDefaultLayouts) {
                                               std::nullopt, dst_memory->Kind(),
                                               ArrayCopySemantics::kAlwaysCopy));
       ASSERT_THAT(new_arrays, SizeIs(1));
-      TF_ASSERT_OK_AND_ASSIGN(auto dst_layout, new_arrays[0]->layout());
+      TF_ASSERT_OK_AND_ASSIGN(auto dst_layout, new_arrays[0]->pjrt_layout());
       TF_ASSERT_OK_AND_ASSIGN(
           auto dst_default_layout,
           client->GetDefaultLayout(dtype, shape.dims(), device,
