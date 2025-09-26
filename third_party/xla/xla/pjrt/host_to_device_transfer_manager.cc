@@ -251,7 +251,7 @@ class CommonAsyncHostToDeviceTransferManager
     TF_ASSIGN_OR_RETURN(
         auto h2d_transfer_event,
         client_->LinearizeInto(
-            literal, device_shapes_[buffer_index].layout(),
+            literal, device_shapes_[buffer_index],
             PjRtClient::HostBufferSemantics::kImmutableUntilTransferCompletes,
             raw_buffer));
     if (client_->event_tracking_enabled()) {

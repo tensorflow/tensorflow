@@ -149,7 +149,8 @@ TEST(PjRtStreamExecutorClientTest, DonateWithControlDependency) {
   auto literal = LiteralUtil::CreateR2({{1, 2, 3}, {4, 5, 6}});
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<PjRtBuffer> buffer,
-      client->BufferFromHostLiteral(literal, client->memory_spaces()[0]));
+      client->BufferFromHostLiteral(literal, client->memory_spaces()[0],
+                                    /*device_layout=*/nullptr));
 
   auto [promise, future] = PjRtFuture<>::MakePromise();
   auto blocked_buffer =
