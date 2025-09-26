@@ -41,6 +41,7 @@ limitations under the License.
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/MathExtras.h"
+#include "mlir/IR/MLIRContext.h"
 #include "mlir/Support/StorageUniquer.h"
 
 namespace xla {
@@ -885,7 +886,8 @@ SymbolicExpr SymbolicExpr::max(SymbolicExpr other) const {
   return GetContext()->CreateBinaryOp(SymbolicExprType::kMax, *this, other);
 }
 
-SymbolicExprContext::SymbolicExprContext() {
+SymbolicExprContext::SymbolicExprContext(mlir::MLIRContext* mlir_context)
+    : mlir_context_(mlir_context) {
   uniquer_.registerParametricStorageType<SymbolicExprStorage>();
 }
 

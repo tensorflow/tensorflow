@@ -34,7 +34,8 @@ using ::testing::Values;
 // Test fixture to hold the context for all tests.
 struct SymbolicExprTest : public ::testing::Test {
  protected:
-  SymbolicExprContext ctx;
+  // There should not be any usage of MLIRContext in this test.
+  SymbolicExprContext ctx{nullptr};
   SymbolicExpr v0 = ctx.CreateVariable(0);
   SymbolicExpr v1 = ctx.CreateVariable(1);
   SymbolicExpr c2 = ctx.CreateConstant(2);
