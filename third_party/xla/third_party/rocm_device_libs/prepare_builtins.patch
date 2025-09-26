@@ -1,0 +1,18 @@
+diff --git a/utils/prepare-builtins/prepare-builtins.cpp b/utils/prepare-builtins/prepare-builtins.cpp
+index 7fc9d06dab7d..2a93638c3f8f 100644
+--- a/utils/prepare-builtins/prepare-builtins.cpp
++++ b/utils/prepare-builtins/prepare-builtins.cpp
+@@ -73,6 +73,13 @@ int main(int argc, char **argv) {
+     return 1;
+   }
+
++  // Strip the OpenCL version metadata. There are a lot of linked
++  // modules in the library build, each spamming the same
++  // version. This may also report a different version than the user
++  // program is using. This should probably be uniqued when linking.
++  if (NamedMDNode *OCLVersion = M->getNamedMetadata("opencl.ocl.version"))
++      M->eraseNamedMetadata(OCLVersion);
++
+   // Set linkage of every external definition to linkonce_odr.
+   for (Module::iterator i = M->begin(), e = M->end(); i != e; ++i) {
+     if (!i->isDeclaration() && i->getLinkage() == GlobalValue::ExternalLinkage) {
