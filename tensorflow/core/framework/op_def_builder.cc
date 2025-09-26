@@ -64,11 +64,11 @@ bool ConsumeQuotedString(char quote_ch, absl::string_view* sp,
                          absl::string_view* out) {
   const string quote_str(1, quote_ch);
   return Scanner(*sp)
-      .OneLiteral(quote_str.c_str())
+      .OneLiteral(quote_str)
       .RestartCapture()
       .ScanEscapedUntil(quote_ch)
       .StopCapture()
-      .OneLiteral(quote_str.c_str())
+      .OneLiteral(quote_str)
       .AnySpace()
       .GetResult(sp, out);
 }
