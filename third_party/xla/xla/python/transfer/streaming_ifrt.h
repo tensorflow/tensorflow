@@ -52,8 +52,8 @@ absl::StatusOr<std::shared_ptr<absl::Span<uint8_t>>> AllocateAndMapPjrtMemory(
 // An structure which represents a single copy of a chunk out of a buffer
 // with an assigned 'buffer_id'.
 struct DmaCopyChunk {
-  absl::AnyInvocable<xla::PjRtFuture<>(void* dst, int64_t offset,
-                                       int64_t transfer_size)>
+  absl::AnyInvocable<xla::Future<>(void* dst, int64_t offset,
+                                   int64_t transfer_size)>
       copy_fn;
   size_t buffer_id;
   size_t offset;
@@ -61,12 +61,12 @@ struct DmaCopyChunk {
 
   static DmaCopyChunk Make(xla::ifrt::ArrayRef arr, xla::PjRtBuffer* buffer,
                            size_t buffer_id, size_t offset, size_t size) {
-    return DmaCopyChunk{
-        [arr, buffer](void* dst, int64_t offset,
-                      int64_t transfer_size) -> xla::PjRtFuture<> {
-          return buffer->CopyRawToHost(dst, offset, transfer_size);
-        },
-        buffer_id, offset, size};
+    return DmaCopyChunk{[arr, buffer](void* dst, int64_t offset,
+                                      int64_t transfer_size) -> xla::Future<> {
+                          return buffer->CopyRawToHost(dst, offset,
+                                                       transfer_size);
+                        },
+                        buffer_id, offset, size};
   }
 
   // Divides an IFRT array up evenly for copying.
@@ -129,7 +129,7 @@ class RawBufferEntry : public PullTable::Entry {
   struct BufferRef {
     // TODO(parkers): Technically this should be a use-ref instead of a
     // ready_future + buffer, but there is no PJRT api for this.
-    xla::PjRtFuture<> ready_future;
+    xla::Future<> ready_future;
     tsl::RCReference<xla::PjRtRawBuffer> buffer;
     size_t buf_size;
   };
@@ -155,7 +155,7 @@ class PjRtBufferEntry : public PullTable::Entry {
   struct BufferRef {
     std::shared_ptr<xla::PjRtBuffer> buffer;
     size_t buf_size;
-    xla::PjRtFuture<> ready_future;
+    xla::Future<> ready_future;
   };
   explicit PjRtBufferEntry(std::vector<BufferRef> arrs,
                            std::shared_ptr<PremappedCopierState> state,
@@ -180,7 +180,7 @@ tsl::RCReference<ChunkDestination> MakeDmaDestination(
 
 // Creates a ChunkDestination for a sliced offset into
 // a PjRtRawBuffer.
-absl::StatusOr<std::pair<tsl::RCReference<ChunkDestination>, xla::PjRtFuture<>>>
+absl::StatusOr<std::pair<tsl::RCReference<ChunkDestination>, xla::Future<>>>
 CreateSlicedRawBufferDest(tsl::RCReference<xla::PjRtRawBuffer> raw_buffer,
                           size_t offset, size_t size);
 

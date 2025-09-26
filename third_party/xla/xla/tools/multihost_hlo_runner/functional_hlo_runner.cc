@@ -40,6 +40,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "mlir/Dialect/Func/Extensions/AllExtensions.h"
 #include "xla/client/executable_build_options.h"
+#include "xla/future.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -543,7 +544,7 @@ absl::StatusOr<PerDeviceLiteralVecType> RunInternal(
 
   std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> output_buffers;
   execute_options.arguments_are_tupled = false;
-  std::optional<std::vector<PjRtFuture<>>> futures;
+  std::optional<std::vector<Future<>>> futures;
   futures.emplace();
   std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> device_buffers;
   std::vector<std::vector<PjRtBuffer*>> argument_ptrs;
