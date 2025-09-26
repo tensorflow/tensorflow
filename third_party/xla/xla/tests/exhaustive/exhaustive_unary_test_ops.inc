@@ -203,7 +203,8 @@ DEFINE_UNARY_TEST_OP(AsinhOp, { return Asinh; }, { return std::asinh; });
 DEFINE_UNARY_TEST_OP(AtanhOp, { return Atanh; }, { return std::atanh; });
 DEFINE_UNARY_TEST_OP(
     AcosOp, { return [](XlaOp x) { return Acos(x); }; }, { return std::acos; });
-DEFINE_UNARY_TEST_OP(AsinOp, { return Asin; }, { return std::asin; });
+DEFINE_UNARY_TEST_OP(
+    AsinOp, { return [](XlaOp x) { return Asin(x); }; }, { return std::asin; });
 DEFINE_UNARY_TEST_OP(AtanOp, { return Atan; }, { return std::atan; });
 DEFINE_UNARY_TEST_OP(CoshOp, { return Cosh; }, { return std::cosh; });
 DEFINE_UNARY_TEST_OP(SinhOp, { return Sinh; }, { return std::sinh; });

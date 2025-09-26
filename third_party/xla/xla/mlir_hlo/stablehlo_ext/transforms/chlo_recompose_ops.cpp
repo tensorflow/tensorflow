@@ -280,6 +280,22 @@ struct AcosOpRecomposePattern
   }
 };
 
+struct AsinOpRecomposePattern
+    : public OpRewritePattern<stablehlo::CompositeOp> {
+  using OpRewritePattern::OpRewritePattern;
+  LogicalResult matchAndRewrite(stablehlo::CompositeOp op,
+                                PatternRewriter& rewriter) const override {
+    if (op.getName() != "chlo.asin") {
+      return rewriter.notifyMatchFailure(op, "not a chlo.asin");
+    }
+    if (op.getVersion() != 1) {
+      return rewriter.notifyMatchFailure(
+          op, "unsupported version for chlo.asin composite");
+    }
+    return recomposeChloOpFromCompositeOp<chlo::AsinOp>(op, rewriter);
+  }
+};
+
 struct ErfOpRecomposePattern : public OpRewritePattern<stablehlo::CompositeOp> {
   using OpRewritePattern::OpRewritePattern;
   LogicalResult matchAndRewrite(stablehlo::CompositeOp op,
@@ -389,6 +405,16 @@ struct AcosOpCustomCallRecomposePattern
   }
 };
 
+struct AsinOpCustomCallRecomposePattern
+    : public OpRewritePattern<stablehlo::CustomCallOp> {
+  using OpRewritePattern::OpRewritePattern;
+  LogicalResult matchAndRewrite(stablehlo::CustomCallOp op,
+                                PatternRewriter& rewriter) const override {
+    return recomposeChloOpFromCustomCall<chlo::AsinOp>(
+        op, {"mhlo.asin", "chlo.asin"}, rewriter);
+  }
+};
+
 }  // namespace
 
 struct ChloRecomposeOpsPass
@@ -410,6 +436,7 @@ struct ChloRecomposeOpsPass
     // CustomCall Patterns
     patterns.add<
       AcosOpCustomCallRecomposePattern,
+      AsinOpCustomCallRecomposePattern,
       AcoshOpCustomCallRecomposePattern,
       ErfOpCustomCallRecomposePattern,
       RaggedDotOpCustomCallRecomposePattern,
@@ -419,6 +446,7 @@ struct ChloRecomposeOpsPass
     // Composite Patterns
     patterns.add<
       AcosOpRecomposePattern,
+      AsinOpRecomposePattern,
       AcoshOpRecomposePattern,
       ErfOpRecomposePattern,
       RaggedDotOpRecomposePattern,
