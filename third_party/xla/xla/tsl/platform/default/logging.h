@@ -87,7 +87,7 @@ class LogMessage : public std::basic_ostringstream<char> {
   ~LogMessage() override;
 
   // Change the location of the log message.
-  LogMessage& AtLocation(const char* fname, int line);
+  LogMessage& AtLocation(absl::string_view fname, int line);
 
   // Returns the maximum log level for VLOG statements.
   // E.g., if MaxVLogLevel() is 2, then VLOG(2) statements will produce output,
@@ -109,7 +109,7 @@ class LogMessage : public std::basic_ostringstream<char> {
   void GenerateLogMessage();
 
  private:
-  const char* fname_;
+  absl::string_view fname_;
   int line_;
   absl::LogSeverity severity_;
 };

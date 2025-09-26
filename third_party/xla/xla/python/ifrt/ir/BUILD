@@ -1,4 +1,5 @@
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("//xla:xla.default.bzl", "xla_cc_test")
 load("//xla/tsl:tsl.bzl", "internal_visibility")
 load("//xla/tsl:tsl.default.bzl", "get_compatible_with_portable", "tsl_pybind_extension")
@@ -455,6 +456,75 @@ tsl_pybind_extension(
         "@llvm-project//mlir:MLIRBindingsPythonHeaders",
         "@pybind11",
         "@pybind11_abseil//pybind11_abseil:absl_casters",
+    ],
+)
+
+cc_library(
+    name = "compiled_ifrt_ir_program",
+    srcs = ["compiled_ifrt_ir_program.cc"],
+    hdrs = ["compiled_ifrt_ir_program.h"],
+    compatible_with = get_compatible_with_portable(),
+    visibility = ["//xla/python/ifrt:users"],
+    deps = [
+        ":atom_program_compiler",
+        ":ifrt_ir_program",
+        ":ir",
+        "//xla:status_macros",
+        "//xla:xla_data_proto_cc",
+        "//xla/python/ifrt",
+        "//xla/python/ifrt:attribute_map",
+        "//xla/python/ifrt/ir/transforms:debug",
+        "//xla/python/ifrt/ir/transforms:passes",
+        "//xla/python/ifrt/ir/transforms:utils",
+        "//xla/python/ifrt/support:module_parsing",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/cleanup",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/types:span",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+        "@local_tsl//tsl/profiler/lib:traceme",
+    ],
+)
+
+cc_library(
+    name = "program_interpreter",
+    srcs = ["program_interpreter.cc"],
+    hdrs = ["program_interpreter.h"],
+    compatible_with = get_compatible_with_portable(),
+    visibility = ["//xla/python/ifrt:users"],
+    deps = [
+        ":compiled_ifrt_ir_program",
+        ":ir",
+        "//xla:status_macros",
+        "//xla/python/ifrt",
+        "//xla/python/ifrt:remap_plan_proto_cc",
+        "//xla/python/ifrt/ir/transforms:utils",
+        "//xla/tsl/concurrency:ref_count",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:Analysis",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+        "@local_tsl//tsl/profiler/lib:traceme",
     ],
 )
 

@@ -620,7 +620,7 @@ TEST_P(GpuHloScheduleParameterizedTest,
 
   // `dot1` and `ar-start1` are missing from the profile.;
   EXPECT_THAT(ScheduleGpuModule(module.get()),
-              StatusIs(absl::StatusCode::kInvalidArgument));
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 TEST_P(

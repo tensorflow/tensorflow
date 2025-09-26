@@ -111,48 +111,18 @@ void PrintPrecisionConfig(HloInstruction::AttributePrinter& printer,
   }
 }
 
-void PrintSparsityDescriptor(HloInstruction::AttributePrinter& printer,
-                             absl::Span<const SparsityDescriptor> sparsity) {
-  printer.Next([&sparsity](Printer* printer) {
-    printer->Append("sparsity=");
-    for (int i = 0; i < sparsity.size(); ++i) {
-      if (i != 0) {
-        printer->Append("_");
-      }
-      const SparsityDescriptor& cur = sparsity[i];
-      printer->Append(cur.index() == 0 ? "L." : "R.");
-      printer->Append(cur.dimension());
-      printer->Append("@");
-      switch (cur.type()) {
-        case SPARSITY_STRUCTURED_N_M:
-          printer->Append(cur.n());
-          printer->Append(":");
-          printer->Append(cur.m());
-          break;
-        default:
-          LOG(FATAL) << "Unknown sparsity type: " << cur.type();
-      }
-    }
-  });
-}
-
 void SetThreadName(HloComputation* called_computation,
-                   absl::string_view execution_thread,
-                   bool skip_async_execution_thread_overwrite) {
+                   absl::string_view execution_thread) {
   called_computation->SetExecutionThread(execution_thread);
   for (HloInstruction* instr : called_computation->instructions()) {
     if (instr->IsAsynchronous()) {
-      if (!skip_async_execution_thread_overwrite) {
-        // Set async instruction thread name and also recursively set async
-        // computations.
-        instr->set_async_execution_thread(execution_thread);
-      }
-      continue;
+      // Set async instruction thread name and also recursively set async
+      // computations.
+      instr->set_async_execution_thread(execution_thread);
     }
     for (HloComputation* nested_called_computation :
          instr->called_computations()) {
-      SetThreadName(nested_called_computation, execution_thread,
-                    skip_async_execution_thread_overwrite);
+      SetThreadName(nested_called_computation, execution_thread);
     }
   }
 }
@@ -379,6 +349,28 @@ std::vector<HloAsyncInstruction*> HloAsyncInstruction::GetAsyncChain() const {
   return chain;
 }
 
+void HloAsyncInstruction::UpdateChainShapes() {
+  if (opcode() == HloOpcode::kAsyncDone) {
+    return;
+  }
+
+  const Shape& async_update_shape = shape();
+  const Shape& async_done_shape = shape().tuple_shapes(1);
+  for (HloAsyncInstruction* current = async_chain_next_; current != nullptr;
+       current = current->async_chain_next_) {
+    switch (current->opcode()) {
+      case HloOpcode::kAsyncUpdate:
+        *current->mutable_shape() = async_update_shape;
+        break;
+      case HloOpcode::kAsyncDone:
+        *current->mutable_shape() = async_done_shape;
+        break;
+      default:
+        LOG(FATAL) << "Unexpected async opcode: " << current->opcode();
+    }
+  }
+}
+
 bool HloAsyncInstruction::IdenticalSlowPath(
     const HloInstruction& other,
     absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
@@ -407,11 +399,26 @@ HloAsyncStartInstruction::HloAsyncStartInstruction(
   HloAsyncStartInstruction::set_async_execution_thread(async_execution_thread);
 }
 
+HloInstruction* HloAsyncStartInstruction::AddCallOperand(
+    HloInstruction* new_operand) {
+  CHECK_EQ(operand_count(),
+           async_wrapped_computation()->parameter_instructions().size());
+  const int64_t param_no = operand_count();
+  std::string param_name = StrCat("param_", param_no);
+  HloInstruction* called_computation_parameter =
+      async_wrapped_computation()->AddParameter(HloInstruction::CreateParameter(
+          param_no, new_operand->shape(), param_name));
+  AppendOperand(new_operand);
+  mutable_shape()->mutable_tuple_shapes(0)->mutable_tuple_shapes()->push_back(
+      new_operand->shape());
+  UpdateChainShapes();
+  return called_computation_parameter;
+}
+
 void HloAsyncStartInstruction::set_async_execution_thread(
     absl::string_view async_execution_thread) {
   async_execution_thread_ = std::string(async_execution_thread);
-  SetThreadName(async_wrapped_computation(), async_execution_thread,
-                /*skip_async_execution_thread_overwrite=*/false);
+  SetThreadName(async_wrapped_computation(), async_execution_thread);
 }
 
 HloInstructionProto HloAsyncStartInstruction::ToProto() const {
@@ -782,8 +789,16 @@ bool HloSendRecvInstruction::IdenticalSlowPathIgnoringChannelIdValues(
     const HloInstruction& other,
     absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
         eq_computations) const {
-  // Not yet supported.
-  return false;
+  const auto& casted_other = static_cast<const HloSendRecvInstruction&>(other);
+  if (is_host_transfer_ != casted_other.is_host_transfer()) {
+    return false;
+  }
+  // TODO(b/436212814): In theory, frontend_attributes() are a hint, can be
+  // dropped by the optimizer, and aren't check by the top-level
+  // HloInstruction::Identical(). In practice, they are load-bearing for
+  // host-transfer Send/Recv, even if they shouldn't be.
+  return ::google::protobuf::util::MessageDifferencer::Equivalent(
+      frontend_attributes(), casted_other.frontend_attributes());
 }
 
 // Send instruction produces a tuple of {aliased operand, U32 context}.
@@ -2160,11 +2175,9 @@ HloCallableInstruction::GetOrCloneCalledComputations(
 }
 
 void HloCallableInstruction::RecursivelySetComputationsThreadName(
-    absl::string_view execution_thread,
-    bool skip_async_execution_thread_overwrite) {
+    absl::string_view execution_thread) {
   for (HloComputation* comp : called_computations()) {
-    SetThreadName(comp, execution_thread,
-                  skip_async_execution_thread_overwrite);
+    SetThreadName(comp, execution_thread);
   }
 }
 
@@ -3834,34 +3847,18 @@ std::unique_ptr<HloInstruction> HloIotaInstruction::CloneWithNewOperandsImpl(
 HloDotInstruction::HloDotInstruction(
     const Shape& shape, HloInstruction* lhs, HloInstruction* rhs,
     const DotDimensionNumbers& dimension_numbers,
-    const PrecisionConfig& precision_config,
-    std::vector<SparsityDescriptor> sparsity,
-    absl::Span<HloInstruction* const> sparse_meta)
+    const PrecisionConfig& precision_config)
     : HloInstruction(HloOpcode::kDot, shape),
       dot_dimension_numbers_(dimension_numbers),
-      precision_config_(precision_config),
-      sparsity_(std::move(sparsity)) {
+      precision_config_(precision_config) {
   AppendOperand(lhs);
   AppendOperand(rhs);
-  CHECK_LE(sparsity_.size(), kOperands);
-  CHECK_EQ(sparsity_.size(), sparse_meta.size());
-  for (HloInstruction* meta : sparse_meta) {
-    AppendOperand(meta);
-  }
-  if (sparsity_.size() == kOperands &&
-      sparsity_[0].index() > sparsity_[1].index()) {
-    std::swap(sparsity_[0], sparsity_[1]);  // Keep descriptors ordered.
-    std::swap(mutable_operands()[2], mutable_operands()[3]);
-  }
 }
 
 HloInstructionProto HloDotInstruction::ToProto() const {
   HloInstructionProto proto = HloInstruction::ToProto();
   *proto.mutable_dot_dimension_numbers() = dot_dimension_numbers_;
   *proto.mutable_precision_config() = precision_config_;
-  for (const SparsityDescriptor& descriptor : sparsity_) {
-    *proto.add_dot_sparsity() = descriptor;
-  }
   return proto;
 }
 
@@ -3871,9 +3868,6 @@ void HloDotInstruction::PrintExtraAttributesImpl(
     printer->Append(DotDimensionNumbersToString(dot_dimension_numbers_));
   });
   PrintPrecisionConfig(printer, precision_config_);
-  if (!sparsity_.empty()) {
-    PrintSparsityDescriptor(printer, absl::MakeSpan(sparsity_));
-  }
 }
 
 bool HloDotInstruction::IdenticalSlowPath(
@@ -3883,19 +3877,17 @@ bool HloDotInstruction::IdenticalSlowPath(
   const auto& casted_other = static_cast<const HloDotInstruction&>(other);
   return protobuf_util::HaveSameSerialization(
              dot_dimension_numbers(), casted_other.dot_dimension_numbers()) &&
-         protobuf_util::HaveSameSerialization(
-             precision_config(), casted_other.precision_config()) &&
-         absl::c_equal(sparsity_, casted_other.sparsity_,
-                       protobuf_util::HaveSameSerialization);
+         protobuf_util::HaveSameSerialization(precision_config(),
+                                              casted_other.precision_config());
 }
 
 std::unique_ptr<HloInstruction> HloDotInstruction::CloneWithNewOperandsImpl(
     const Shape& shape, absl::Span<HloInstruction* const> new_operands,
     HloCloneContext* context) const {
-  CHECK_EQ(new_operands.size(), kOperands + sparse_operands());
+  CHECK_EQ(new_operands.size(), 2);
   return std::make_unique<HloDotInstruction>(
       shape, new_operands[0], new_operands[1], dot_dimension_numbers_,
-      precision_config_, sparsity_, new_operands.subspan(kOperands));
+      precision_config_);
 }
 
 HloRaggedDotInstruction::HloRaggedDotInstruction(
@@ -3947,6 +3939,56 @@ HloRaggedDotInstruction::CloneWithNewOperandsImpl(
   return std::make_unique<HloRaggedDotInstruction>(
       shape, new_operands[0], new_operands[1], new_operands[2],
       ragged_dot_dimension_numbers_, precision_config_);
+}
+
+HloScaledDotInstruction::HloScaledDotInstruction(
+    const Shape& shape, HloInstruction* lhs, HloInstruction* lhs_scale,
+    HloInstruction* rhs, HloInstruction* rhs_scale,
+    const DotDimensionNumbers& dimension_numbers,
+    const PrecisionConfig& precision_config)
+    : HloInstruction(HloOpcode::kScaledDot, shape),
+      dot_dimension_numbers_(dimension_numbers),
+      precision_config_(precision_config) {
+  AppendOperand(lhs);
+  AppendOperand(lhs_scale);
+  AppendOperand(rhs);
+  AppendOperand(rhs_scale);
+}
+
+HloInstructionProto HloScaledDotInstruction::ToProto() const {
+  HloInstructionProto proto = HloInstruction::ToProto();
+  *proto.mutable_dot_dimension_numbers() = dot_dimension_numbers_;
+  *proto.mutable_precision_config() = precision_config_;
+  return proto;
+}
+
+void HloScaledDotInstruction::PrintExtraAttributesImpl(
+    AttributePrinter& printer, const HloPrintOptions& options) const {
+  printer.Next([this](Printer* printer) {
+    printer->Append(DotDimensionNumbersToString(dot_dimension_numbers_));
+  });
+  PrintPrecisionConfig(printer, precision_config_);
+}
+
+bool HloScaledDotInstruction::IdenticalSlowPath(
+    const HloInstruction& other,
+    absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
+        eq_computations) const {
+  const auto& casted_other = static_cast<const HloScaledDotInstruction&>(other);
+  return protobuf_util::HaveSameSerialization(
+             dot_dimension_numbers(), casted_other.dot_dimension_numbers()) &&
+         protobuf_util::HaveSameSerialization(precision_config(),
+                                              casted_other.precision_config());
+}
+
+std::unique_ptr<HloInstruction>
+HloScaledDotInstruction::CloneWithNewOperandsImpl(
+    const Shape& shape, absl::Span<HloInstruction* const> new_operands,
+    HloCloneContext* context) const {
+  CHECK_EQ(new_operands.size(), kOperands);
+  return std::make_unique<HloScaledDotInstruction>(
+      shape, new_operands[0], new_operands[1], new_operands[2], new_operands[3],
+      dot_dimension_numbers_, precision_config_);
 }
 
 HloDomainInstruction::HloDomainInstruction(

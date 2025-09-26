@@ -20,7 +20,10 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/attributes.h"
+#include "absl/base/const_init.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
@@ -28,7 +31,6 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "xla/hlo/builder/xla_computation.h"
-#include "xla/pjrt/metrics.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/proto/pjrt_partial_program.pb.h"
 
@@ -42,33 +44,6 @@ CompilerRegistry() {
   return compiler_registry;
 }
 
-// An RAII helper for streamz metrics.
-class ScopedMetricHelper {
- public:
-  explicit ScopedMetricHelper(absl::string_view metric_name)
-      : metric_name_(metric_name) {
-    if (metric_name == metrics::kPjrtCompilerCompileComputationMetricName) {
-      metrics::RecordPjrtCompilerCompileComputationStatus(true);
-    } else if (metric_name == metrics::kPjrtCompilerCompileModuleMetricName) {
-      metrics::RecordPjrtCompilerCompileModuleStatus(true);
-    } else {
-      LOG(ERROR) << "No corresponding handler function for metric: "
-                 << metric_name;
-    }
-  }
-
-  ~ScopedMetricHelper() {
-    if (metric_name_ == metrics::kPjrtCompilerCompileComputationMetricName) {
-      metrics::RecordPjrtCompilerCompileComputationStatus(false);
-    } else if (metric_name_ == metrics::kPjrtCompilerCompileModuleMetricName) {
-      metrics::RecordPjrtCompilerCompileModuleStatus(false);
-    }
-  }
-
- private:
-  absl::string_view metric_name_;
-};
-
 void PjRtRegisterCompiler(absl::string_view platform_name,
                           std::unique_ptr<PjRtCompiler> compiler) {
   CHECK(compiler != nullptr);
@@ -78,11 +53,21 @@ void PjRtRegisterCompiler(absl::string_view platform_name,
   (*compiler_registry)[platform_name] = std::move(compiler);
 }
 
+absl::StatusOr<PjRtCompiler*> GetPjRtCompiler(absl::string_view platform_name) {
+  absl::ReaderMutexLock l(&registry_mutex);
+  const auto* compiler_registry = CompilerRegistry();
+  auto it = compiler_registry->find(platform_name);
+  if (it == compiler_registry->end()) {
+    return absl::NotFoundError(
+        absl::StrCat("No compiler registered for platform ", platform_name));
+  }
+  return it->second.get();
+}
+
 absl::StatusOr<std::unique_ptr<PjRtExecutable>> PjRtCompile(
     CompileOptions options, const XlaComputation& computation,
     const PjRtTopologyDescription& topology, PjRtClient* client) {
   auto topology_compiler = topology.compiler();
-  ScopedMetricHelper helper(metrics::kPjrtCompilerCompileComputationMetricName);
   if (topology_compiler.has_value()) {
     return (*topology_compiler)
         ->Compile(std::move(options), computation, topology, client);
@@ -91,7 +76,7 @@ absl::StatusOr<std::unique_ptr<PjRtExecutable>> PjRtCompile(
   const auto* compiler_registry = CompilerRegistry();
   auto it = compiler_registry->find(topology.platform_name());
   if (it == compiler_registry->end()) {
-    return tsl::errors::NotFound(absl::StrCat(
+    return absl::NotFoundError(absl::StrCat(
         "No compiler registered for platform ", topology.platform_name()));
   }
   return it->second->Compile(std::move(options), computation, topology, client);
@@ -101,7 +86,6 @@ absl::StatusOr<std::unique_ptr<PjRtExecutable>> PjRtCompile(
     CompileOptions options, mlir::ModuleOp module,
     const PjRtTopologyDescription& topology, PjRtClient* client) {
   auto topology_compiler = topology.compiler();
-  ScopedMetricHelper helper(metrics::kPjrtCompilerCompileModuleMetricName);
   if (topology_compiler.has_value()) {
     return (*topology_compiler)
         ->Compile(std::move(options), module, topology, client);

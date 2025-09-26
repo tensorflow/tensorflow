@@ -1225,6 +1225,10 @@ class SingleOpModel {
 
   void ValidateAcceleration();
 
+  // When the flag --dump_tflite_model_dir is set, dump the model to the
+  // specified directory.
+  void MaybeDumpModel();
+
   // If the test was configured to use NNAPI and NNAPI was actually loaded,
   // checks if the single operation in the model has been accelerated.
   void ExpectOpAcceleratedWithNnapi(const std::string& test_id);

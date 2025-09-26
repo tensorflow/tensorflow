@@ -40,6 +40,9 @@ limitations under the License.
 #include "llvm/IRReader/IRReader.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/raw_ostream.h"
+#include "xla/backends/autotuner/codegen_backend.h"
+#include "xla/backends/gpu/autotuner/cublas.h"
+#include "xla/backends/gpu/autotuner/cublaslt.h"
 #include "xla/backends/gpu/autotuner/factory.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -83,7 +86,6 @@ limitations under the License.
 #include "xla/service/gpu/transforms/cudnn_pad_for_convolutions.h"
 #include "xla/service/gpu/transforms/cudnn_simplify_padding.h"
 #include "xla/service/gpu/transforms/cudnn_vectorize_convolutions.h"
-#include "xla/service/gpu/transforms/dot_sparsity_rewriter.h"
 #include "xla/service/gpu/transforms/gpusolver_rewriter.h"
 #include "xla/service/gpu/transforms/triangular_solve_rewriter.h"
 #include "xla/service/hlo_module_config.h"
@@ -201,8 +203,14 @@ absl::Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
                                              dnn_version, toolkit_version);
     pipeline.AddPass<ConvPaddingLegalization>();
     pipeline.AddPass<CudnnPadForConvolutions>(cuda_compute_capability);
-    pipeline.AddPass<CudnnVectorizeConvolutions>(cuda_compute_capability,
-                                                 dnn_version);
+    if (!cuda_compute_capability.IsAtLeast(
+            se::CudaComputeCapability::CudaComputeCapabilities::kHopper)) {
+      // CUDNN vectorization is not performant on Hopper and later.
+      // The official guidance is not to use the vectorized layouts anymore on
+      // these newer architectures.
+      pipeline.AddPass<CudnnVectorizeConvolutions>(cuda_compute_capability,
+                                                   dnn_version);
+    }
   }
   // The conv padding/vectorization passes which we need to get rid of.  They
   // also leave behind unnecessary tuple/get-tuple-element pairs that
@@ -254,7 +262,9 @@ absl::Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
   // CudnnConvPadForTensorCores may add instructions which can be simplified
   // by constant folding.
   pipeline.AddPass<HloConstantFolding>();
-  TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
+  TF_RETURN_IF_ERROR(
+      pipeline.Run(hlo_module, {HloInstruction::kMainExecutionThread})
+          .status());
 
   return absl::OkStatus();
 }
@@ -262,7 +272,7 @@ absl::Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
 absl::Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(
     HloModule* hlo_module, se::StreamExecutor* stream_exec,
     const CompileOptions& options, const TargetConfig& gpu_target_config,
-    tsl::thread::ThreadPool* thread_pool) {
+    const GpuAliasInfo* alias_info, tsl::thread::ThreadPool* thread_pool) {
   // This needs to run before GemmRewriter, which is part of
   // OptimizeHloPostLayoutAssignment().
   auto cuda_compute_capability = std::get<se::CudaComputeCapability>(
@@ -281,14 +291,13 @@ absl::Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(
       /*allow_cudnn=*/cuda_compute_capability.IsAtLeastBlackwell() &&
       gpu_target_config.dnn_version_info >= se::dnn::VersionInfo(9, 7));
   pre_pipeline.AddPass<DotDimensionMerger>();
-  pre_pipeline.AddPass<DotSparsityRewriter>();
 
   if (!hlo_module->config()
            .debug_options()
            .xla_gpu_experimental_disable_binary_libraries()) {
     for (const CublasPaddingRequirement& requirement :
          CublasPaddingRequirements) {
-      if (cuda_compute_capability.IsAtLeast(
+      if (cuda_compute_capability.SupportsAllFeaturesOf(
               requirement.min_compute_capability)) {
         pre_pipeline.AddPass<CublasPadForGemms>(cuda_compute_capability,
                                                 requirement.data_type,
@@ -299,17 +308,22 @@ absl::Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(
   // Padding a gemm operand that's a constant results in pad(constant).  Run
   // constant-folding to simplify this into a new constant.
   pre_pipeline.AddPass<HloConstantFolding>();
-  TF_RETURN_IF_ERROR(pre_pipeline.Run(hlo_module).status());
+  TF_RETURN_IF_ERROR(
+      pre_pipeline.Run(hlo_module, {HloInstruction::kMainExecutionThread})
+          .status());
 
   TF_RETURN_IF_ERROR(GpuCompiler::OptimizeHloPostLayoutAssignment(
-      hlo_module, stream_exec, options, gpu_target_config, thread_pool));
+      hlo_module, stream_exec, options, gpu_target_config, alias_info,
+      thread_pool));
 
   HloPassPipeline post_pipeline("nvptx post-layout_assignment part 2");
 
   // Transform TriangularSolve ops into custom-calls, so we can add temp
   // memory.
   post_pipeline.AddPass<TriangularSolveRewriter>();
-  TF_RETURN_IF_ERROR(post_pipeline.Run(hlo_module).status());
+  TF_RETURN_IF_ERROR(
+      post_pipeline.Run(hlo_module, {HloInstruction::kMainExecutionThread})
+          .status());
 
   return absl::OkStatus();
 }
@@ -335,22 +349,43 @@ bool NVPTXCompiler::RequiresCollectiveScheduleLinearizer(
 absl::Status NVPTXCompiler::AddConvAndGemmAutotuningPasses(
     HloPassPipeline* pipeline, const se::GpuComputeCapability& gpu_version,
     const CompileOptions& options, HloModule* hlo_module,
-    AutotuneConfig& autotune_config, tsl::thread::ThreadPool* thread_pool) {
+    AutotuneConfig& autotune_config, tsl::thread::ThreadPool* thread_pool,
+    se::StreamExecutor* stream_exec) {
+  const DebugOptions& debug_options = hlo_module->config().debug_options();
   if (hlo_module->config()
           .debug_options()
-          .xla_gpu_experimental_disable_binary_libraries()) {
+          .xla_gpu_experimental_disable_binary_libraries() ||
+      debug_options.xla_gpu_autotune_level() == 0 ||
+      debug_options.xla_gpu_exclude_nondeterministic_ops()) {
     return absl::OkStatus();
   }
-  if (GpuConvAlgorithmPicker::IsEnabled(hlo_module)) {
-    pipeline->AddPass<GpuConvAlgorithmPicker>(autotune_config);
-  }
-  // On Ampere or later, GemmAlgorithmPicker just provides a way to "warmup" the
-  // execution. But we already do that during GemmFusionAutotuner pass. In that
-  // case, we do a recursive compilation call that has
-  // 'is_autotuning_compilation' set to true.
-  if (!std::get<se::CudaComputeCapability>(gpu_version).IsAtLeastAmpere() ||
-      options.is_autotuning_compilation) {
-    pipeline->AddPass<GemmAlgorithmPicker>(autotune_config);
+
+  // TODO(b/407495801): Cached Gemm as well as Conv autotuning results are
+  // loaded in the GpuConvAlgorithmPicker but should be loaded in the autotuner.
+  pipeline->AddPass<GpuConvAlgorithmPicker>(autotune_config);
+
+  if (debug_options.xla_gpu_experimental_use_autotuner_pass()) {
+    std::vector<std::unique_ptr<CodegenBackend>> backends;
+    backends.push_back(
+        std::make_unique<CublasBackend>(stream_exec, &debug_options, this));
+    backends.push_back(
+        std::make_unique<CublasLtBackend>(stream_exec, &debug_options, this));
+    TF_ASSIGN_OR_RETURN(
+        std::unique_ptr<AutotunerPass> autotuner_pass,
+        AutotunerPass::Create(std::move(backends), debug_options,
+                              options.device_allocator, stream_exec,
+                              thread_pool));
+    pipeline->AddPass(std::move(autotuner_pass));
+  } else {
+    // On Ampere or later, GemmAlgorithmPicker just provides a way to "warmup"
+    // the
+    // execution. But we already do that during GemmFusionAutotuner pass. In
+    // that case, we do a recursive compilation call that has
+    // 'is_autotuning_compilation' set to true.
+    if (!std::get<se::CudaComputeCapability>(gpu_version).IsAtLeastAmpere() ||
+        options.is_autotuning_compilation) {
+      pipeline->AddPass<GemmAlgorithmPicker>(autotune_config);
+    }
   }
   return absl::OkStatus();
 }
@@ -361,20 +396,8 @@ absl::Status NVPTXCompiler::AddGemmFusionAutotuningPasses(
     const MultiProcessKeyValueStore& key_value_store,
     const se::SemanticVersion& toolkit_version,
     se::StreamExecutor* stream_executor) {
-  if (hlo_module->config()
-          .debug_options()
-          .xla_gpu_experimental_use_autotuner_pass()) {
-    const DebugOptions& debug_options = hlo_module->config().debug_options();
-    TF_ASSIGN_OR_RETURN(
-        std::unique_ptr<AutotunerPass> autotuner_pass,
-        AutotunerPass::Create(
-            GetAllGpuCodegenBackends(stream_executor, &debug_options, this),
-            stream_executor, thread_pool));
-    pipeline->AddPass(std::move(autotuner_pass));
-  } else {
-    pipeline->AddPass<GemmFusionAutotuner>(autotune_config, toolkit_version,
-                                           thread_pool, key_value_store);
-  }
+  pipeline->AddPass<GemmFusionAutotuner>(autotune_config, toolkit_version,
+                                         thread_pool, key_value_store);
   return absl::OkStatus();
 }
 
@@ -391,9 +414,12 @@ absl::Status NVPTXCompiler::RunCudnnCompilerPasses(
                            module->name(), module->unique_id());
   });
   CuDnnFusionCompiler fusion_compiler(*stream_exec, *dnn_compiled_graphs);
-  TF_RETURN_IF_ERROR(fusion_compiler.Run(module).status());
+  TF_RETURN_IF_ERROR(
+      fusion_compiler.Run(module, {HloInstruction::kMainExecutionThread})
+          .status());
   CuDnnCustomCallCompiler call_compiler(*stream_exec, *dnn_compiled_graphs);
-  return call_compiler.Run(module).status();
+  return call_compiler.Run(module, {HloInstruction::kMainExecutionThread})
+      .status();
 }
 
 namespace {

@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_LLVM_IR_LLVM_UTIL_H_
 #define XLA_SERVICE_LLVM_IR_LLVM_UTIL_H_
 
+#include <cstddef>
 #include <cstdint>
 #include <map>
 #include <optional>
@@ -25,7 +26,10 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "llvm/ADT/APFloat.h"
+#include "llvm/ADT/FloatingPointMode.h"
 #include "llvm/IR/BasicBlock.h"
+#include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/FPEnv.h"
 #include "llvm/IR/GlobalVariable.h"
 #include "llvm/IR/IRBuilder.h"
@@ -34,6 +38,7 @@ limitations under the License.
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Value.h"
+#include "llvm/Support/TypeSize.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/Location.h"
 #include "mlir/IR/Operation.h"
@@ -339,6 +344,127 @@ llvm::BasicBlock* EmitReturnBlock(llvm::IRBuilderBase* b);
 // Can either use a supplied `return_block`, or generate a new one.
 void EmitEarlyReturn(llvm::Value* condition, llvm::IRBuilderBase* b,
                      llvm::BasicBlock* return_block = nullptr);
+
+absl::StatusOr<llvm::Value*> EmitReducePrecisionIR(
+    PrimitiveType src_ty, llvm::Value* x, int64_t dest_exponent_bits,
+    int64_t dest_mantissa_bits, bool quiet_nans, llvm::IRBuilderBase* b);
+
+template <PrimitiveType fx_type, int f8_exponent_bits>
+llvm::Value* HandleHalfwayPointsFxToF8(llvm::Value* fx_abs_bits,
+                                       llvm::Value* f8_bits,
+                                       std::optional<size_t> vector_width,
+                                       llvm::IRBuilderBase* b) {
+  using llvm::APFloat;
+  using llvm::APInt;
+  using llvm::Value;
+  static_assert(fx_type == F16 || fx_type == F32 || fx_type == F64);
+  static_assert(3 <= f8_exponent_bits && f8_exponent_bits <= 4);
+
+  const llvm::fltSemantics* fx_semantics;
+  llvm::Type* ix_type;
+
+  if constexpr (fx_type == F16) {
+    fx_semantics = &llvm::APFloat::IEEEhalf();
+    ix_type = b->getInt16Ty();
+  } else if constexpr (fx_type == F32) {
+    fx_semantics = &llvm::APFloat::IEEEsingle();
+    ix_type = b->getInt32Ty();
+  } else if constexpr (fx_type == F64) {
+    fx_semantics = &llvm::APFloat::IEEEdouble();
+    ix_type = b->getInt64Ty();
+  }
+
+  llvm::Type* i8_type = b->getInt8Ty();
+
+  if (vector_width.has_value()) {
+    ix_type = llvm::VectorType::get(
+        ix_type, llvm::ElementCount::getFixed(*vector_width));
+    i8_type = llvm::VectorType::get(
+        i8_type, llvm::ElementCount::getFixed(*vector_width));
+  }
+
+  auto ix_const = [fx_semantics, ix_type](APFloat val) {
+    bool losesInfo;
+    val.convert(*fx_semantics, llvm::RoundingMode::NearestTiesToEven,
+                &losesInfo);
+    return llvm::ConstantInt::get(ix_type, val.bitcastToAPInt());
+  };
+
+  auto i8_const = [i8_type](int val) {
+    return llvm::ConstantInt::get(i8_type, val);
+  };
+
+  // F16 values that are halfway between denormal F8 values. This is used to
+  // determine how to round to denormal F8 values.
+  const APFloat halfway_points_e4[8] = {
+      APFloat(0x1.0p-10),  // halfway between [0/8 * 2^-6, 1/8 * 2^-6]
+      APFloat(0x1.8p-9),   // halfway between [1/8 * 2^-6, 2/8 * 2^-6]
+      APFloat(0x1.4p-8),   // halfway between [2/8 * 2^-6, 3/8 * 2^-6]
+      APFloat(0x1.Cp-8),   // halfway between [3/8 * 2^-6, 4/8 * 2^-6]
+      APFloat(0x1.2p-7),   // halfway between [4/8 * 2^-6, 5/8 * 2^-6]
+      APFloat(0x1.6p-7),   // halfway between [5/8 * 2^-6, 6/8 * 2^-6]
+      APFloat(0x1.Ap-7),   // halfway between [6/8 * 2^-6, 7/8 * 2^-6]
+      APFloat(0x1.Ep-7)    // halfway between [7/8 * 2^-6, 8/8 * 2^-6]
+  };
+
+  const APFloat halfway_points_e3[16] = {
+      APFloat(0x1.0p-7),  // halfway between [0/16 * 2^-2, 1/16 * 2^-2]
+      APFloat(0x1.8p-6),  // halfway between [1/16 * 2^-2, 2/16 * 2^-2]
+      APFloat(0x1.4p-5),  // halfway between [2/16 * 2^-2, 3/16 * 2^-2]
+      APFloat(0x1.Cp-5),  // halfway between [3/16 * 2^-2, 4/16 * 2^-2]
+      APFloat(0x1.2p-4),  // halfway between [4/16 * 2^-2, 5/16 * 2^-2]
+      APFloat(0x1.6p-4),  // halfway between [5/16 * 2^-2, 6/16 * 2^-2]
+      APFloat(0x1.Ap-4),  // halfway between [6/16 * 2^-2, 7/16 * 2^-2]
+      APFloat(0x1.Ep-4),  // halfway between [7/16 * 2^-2, 8/16 * 2^-2]
+      APFloat(0x1.1p-3),  // halfway between [8/16 * 2^-2, 9/16 * 2^-2]
+      APFloat(0x1.3p-3),  // halfway between [9/16 * 2^-2, 10/16 * 2^-2]
+      APFloat(0x1.5p-3),  // halfway between [10/16 * 2^-2, 11/16 * 2^-2]
+      APFloat(0x1.7p-3),  // halfway between [11/16 * 2^-2, 12/16 * 2^-2]
+      APFloat(0x1.9p-3),  // halfway between [12/16 * 2^-2, 13/16 * 2^-2]
+      APFloat(0x1.Bp-3),  // halfway between [13/16 * 2^-2, 14/16 * 2^-2]
+      APFloat(0x1.Dp-3),  // halfway between [14/16 * 2^-2, 15/16 * 2^-2]
+      APFloat(0x1.Fp-3),  // halfway between [15/16 * 2^-2, 16/16 * 2^-2]
+  };
+
+  const APFloat* halfway_points;
+  int arr_sz;
+  if constexpr (f8_exponent_bits == 4) {
+    halfway_points = halfway_points_e4;
+    arr_sz = 8;
+  } else if constexpr (f8_exponent_bits == 3) {
+    halfway_points = halfway_points_e3;
+    arr_sz = 16;
+  }
+
+  // Handle case where output is denormal. If we're rounding to a denormal
+  // value, ignore the current value of f8_bits and set it to the correct
+  // denormal value. We emit the equivalent of the following:
+  //
+  //   if (f16_abs_bits <= halfway_points[0]) {
+  //     f8_bits = 0;
+  //   } else if (f16_abs_bits < halfway_points[1]) {
+  //     f8_bits = 1;
+  //   } else if (f16_abs_bits <= halfway_points[2]) {
+  //   ...  // More if-else statements. The comparisons alternate between <=
+  //   ...  // and < to handle round-to-even properly.
+  //   } else if (f16_abs_bits < halfway_points[7])  {
+  //     f8_bits = 7;
+  //   }
+  for (int i = arr_sz - 1; i >= 0; i--) {
+    Value* comparison;
+    llvm::Constant* half_way_point = ix_const(halfway_points[i]);
+
+    if (i % 2 == 0) {
+      comparison = b->CreateICmpULE(fx_abs_bits, half_way_point);
+    } else {
+      comparison = b->CreateICmpULT(fx_abs_bits, half_way_point);
+    }
+
+    f8_bits = b->CreateSelect(comparison, i8_const(i), f8_bits);
+  }
+
+  return f8_bits;
+}
 
 }  // namespace llvm_ir
 }  // namespace xla

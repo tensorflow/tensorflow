@@ -22,6 +22,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/autotuning.pb.h"
@@ -32,7 +33,6 @@ limitations under the License.
 #include "xla/service/gpu/nvptx_compiler.h"
 #include "xla/service/platform_util.h"
 #include "xla/stream_executor/device_description.pb.h"
-#include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
@@ -90,17 +90,15 @@ TEST_F(FissionBackendTest, GetSupportedConfigsFromCublasCustomCall) {
   absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>> configs =
       backend_.GetSupportedConfigs(
           (*module->entry_computation()->root_instruction()));
-  EXPECT_THAT(configs, IsOkAndHolds(SizeIs(10)));
+  EXPECT_THAT(configs, absl_testing::IsOkAndHolds(SizeIs(10)));
   // The first config is the cublas config.
-  EXPECT_EQ(
-      static_cast<const AutotuneResult::GemmKey&>(*configs.value().front())
-          .algorithm(),
-      -1);
+  AutotuneResult::GemmKey cublas_config;
+  EXPECT_TRUE(configs.value().front()->UnpackTo(&cublas_config));
+  EXPECT_EQ(cublas_config.algorithm(), -1);
   // The last config is the custom kernel config.
-  EXPECT_EQ(static_cast<const AutotuneResult::CustomKernelFusionKey&>(
-                *configs.value().back())
-                .kernel_index(),
-            0);
+  AutotuneResult::CustomKernelFusionKey custom_kernel_config;
+  EXPECT_TRUE(configs.value().back()->UnpackTo(&custom_kernel_config));
+  EXPECT_EQ(custom_kernel_config.kernel_index(), 0);
 }
 
 TEST_F(FissionBackendTest, GetSupportedConfigsForUnsupportedInstructionFails) {
@@ -136,8 +134,10 @@ TEST_F(FissionBackendTest, ApplyCublasConfigToFusionInstruction) {
                           ParseAndReturnVerifiedModule(kTritonFusionHlo));
   AutotuneResult::GemmKey config;
   config.set_algorithm(3);
+  google::protobuf::Any any;
+  any.PackFrom(config);
   TF_EXPECT_OK(backend_.ApplyConfig(
-      *hlo_module->entry_computation()->root_instruction(), config));
+      *hlo_module->entry_computation()->root_instruction(), any));
   EXPECT_THAT(RunFileCheck(hlo_module->ToString(),
                            "CHECK: \"selected_algorithm\":\"3\""),
               IsOkAndHolds(true));
@@ -148,8 +148,10 @@ TEST_F(FissionBackendTest, ApplyCustomKernelConfigToFusionInstruction) {
                           ParseAndReturnVerifiedModule(kTritonFusionHlo));
   AutotuneResult::CustomKernelFusionKey config;
   config.set_kernel_index(3);
+  google::protobuf::Any any;
+  any.PackFrom(config);
   TF_EXPECT_OK(backend_.ApplyConfig(
-      *hlo_module->entry_computation()->root_instruction(), config));
+      *hlo_module->entry_computation()->root_instruction(), any));
   EXPECT_THAT(RunFileCheck(hlo_module->ToString(), "CHECK: \"kernel_index\":3"),
               IsOkAndHolds(true));
 }

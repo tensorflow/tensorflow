@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/shape_util.h"
 
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <numeric>
 #include <optional>
@@ -1359,6 +1360,17 @@ TEST(ShapeUtilTest, Int4ShapeSize) {
   EXPECT_EQ(u4_shape.layout().element_size_in_bits(), 4);
 }
 
+TEST(ShapeUtilTest, Int4ShapeToHostShape) {
+  Shape int4_shape = ShapeUtil::MakeShape(S4, {64, 128});
+  int4_shape.mutable_layout()->set_element_size_in_bits(4);
+
+  EXPECT_FALSE(ShapeUtil::DeviceShapeIsHostShape(int4_shape));
+  Shape host_shape = ShapeUtil::DeviceShapeToHostShape(int4_shape);
+
+  EXPECT_TRUE(ShapeUtil::DeviceShapeIsHostShape(host_shape));
+  EXPECT_EQ(host_shape.layout().element_size_in_bits(), 0);
+}
+
 TEST(XlaShapeUtilTest, ZeroSize) {
   // Verify that if any one dimension is 0 we have a zero byte buffer.
   std::vector<std::vector<int64_t>> test_cases = {
@@ -1627,11 +1639,38 @@ TEST(ShapeUtilTest, ShapeIndexProtoSerialization) {
   EXPECT_EQ(multi_index, ShapeIndex::FromProto(multi_index.ToProto()));
 }
 
+//===----------------------------------------------------------------------===//
+// Performance benchmarks below.
+//===----------------------------------------------------------------------===//
+
+void BM_ShapeCount(::testing::benchmark::State& state) {
+  const int depth = state.range(0);
+  const int fan_out = state.range(1);
+
+  Shape shape = ShapeUtil::MakeShape(F32, {32, 64, 128});
+  for (int i = 0; i < depth; ++i) {
+    std::vector<xla::Shape> shapes(fan_out, shape);
+    shape = ShapeUtil::MakeTupleShape(shapes);
+  }
+
+  for (auto s : state) {
+    size_t count = ShapeUtil::SubshapeCount(shape);
+    benchmark::DoNotOptimize(count);
+  }
+}
+
+BENCHMARK(BM_ShapeCount)
+    ->ArgPair(0, 0)
+    ->ArgPair(2, 8)
+    ->ArgPair(4, 8)
+    ->ArgPair(1, 1000);
+
 void BM_MakeShape(::testing::benchmark::State& state) {
   for (auto s : state) {
     ShapeUtil::MakeShape(F32, {2});
   }
 }
+
 BENCHMARK(BM_MakeShape);
 
 void BM_MakeValidatedShape(::testing::benchmark::State& state) {
@@ -1639,6 +1678,7 @@ void BM_MakeValidatedShape(::testing::benchmark::State& state) {
     ShapeUtil::MakeValidatedShape(F32, {2}).value();
   }
 }
+
 BENCHMARK(BM_MakeValidatedShape);
 
 Shape ShapeForBenchmark(::testing::benchmark::State& state) {
@@ -1673,6 +1713,7 @@ void BM_ForEachIndex(::testing::benchmark::State& state) {
     ShapeUtil::ForEachIndex(shape, increment_func);
   }
 }
+
 BENCHMARK(BM_ForEachIndex)->Arg(0)->Arg(1)->Arg(2);
 
 void BM_ForEachIndexNoStatus(::testing::benchmark::State& state) {
@@ -1686,6 +1727,7 @@ void BM_ForEachIndexNoStatus(::testing::benchmark::State& state) {
     ShapeUtil::ForEachIndexNoStatus(shape, increment_func);
   }
 }
+
 BENCHMARK(BM_ForEachIndexNoStatus)->Arg(0)->Arg(1)->Arg(2);
 
 }  // namespace

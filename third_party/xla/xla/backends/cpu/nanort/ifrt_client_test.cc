@@ -16,8 +16,10 @@
 #include "xla/backends/cpu/nanort/ifrt_client.h"
 
 #include <array>
+#include <cstddef>
 #include <memory>
 #include <optional>
+#include <random>
 #include <utility>
 #include <vector>
 
@@ -34,6 +36,7 @@
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/device.h"
+#include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/hlo/hlo_program.h"
@@ -41,11 +44,14 @@
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt/test_util.h"
-#include "xla/python/ifrt/user_context.h"
 #include "xla/python/pjrt_ifrt/xla_compiler.h"
+#include "xla/shape.h"
 #include "xla/tsl/concurrency/ref_count.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/platform/test_benchmark.h"
+#include "xla/tsl/platform/threadpool.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla::cpu {
@@ -83,8 +89,7 @@ TEST(NanoIfrtClientTest, BigResult) {
   auto a_array = client->MakeArrayFromHostBuffer(
       &a, dtype, shape, std::nullopt, client->default_sharding(),
       ifrt::Client::HostBufferSemantics::kImmutableZeroCopy,
-      /*on_done_with_host_buffer=*/nullptr,
-      tsl::RCReference<ifrt::UserContext>());
+      /*on_done_with_host_buffer=*/nullptr);
   CHECK_OK(a_array);
 
   auto result =
@@ -113,7 +118,9 @@ static absl::StatusOr<ifrt::LoadedExecutableRef> CompileAndLoad(
   mlir::MLIRContext context;
   auto module = xla::ParseMlirModuleString(program, context);
 
-  auto devices = client->MakeDeviceList({client->addressable_devices().at(0)});
+  TF_ASSIGN_OR_RETURN(
+      xla::ifrt::DeviceListRef devices,
+      client->MakeDeviceList({client->addressable_devices().at(0)}));
   auto compile_options = std::make_unique<ifrt::XlaCompileOptions>(
       xla::CompileOptions(), std::move(devices));
   compile_options->compile_options.compile_portable_executable = true;
@@ -140,7 +147,7 @@ static absl::StatusOr<ifrt::ArrayRef> MakeArrayFromLiteral(
       ifrt::Shape(literal.shape().dimensions()),
       /*byte_strides=*/std::nullopt, std::move(sharding),
       ifrt::Client::HostBufferSemantics::kImmutableZeroCopy,
-      /*on_done_with_host_buffer=*/{}, tsl::RCReference<ifrt::UserContext>());
+      /*on_done_with_host_buffer=*/nullptr);
 }
 
 static void BM_IfRtAddScalars(benchmark::State& state) {
@@ -236,6 +243,70 @@ static void BM_IfRtAddManyScalars(benchmark::State& state) {
 }
 
 BENCHMARK(BM_IfRtAddManyScalars);
+
+static void BM_IfRtAddBigBuffers(benchmark::State& state) {
+  // Optionally use a thread pool to parallelize the execution.
+  std::optional<tsl::thread::ThreadPool> thread_pool;
+  if (size_t num_threads = state.range(0); num_threads > 0) {
+    thread_pool.emplace(tsl::Env::Default(), tsl::ThreadOptions(), "benchmark",
+                        num_threads);
+  }
+
+  constexpr absl::string_view program =
+      R"(module {
+        func.func @main(%arg0: tensor<1024x1024xf32>,
+                        %arg1: tensor<1024x1024xf32>) -> tensor<1024x1024xf32> {
+          %0 = stablehlo.add %arg0, %arg1 : tensor<1024x1024xf32>
+          return %0 : tensor<1024x1024xf32>
+        }
+      })";
+
+  NanoIfrtOptions options;
+  if (thread_pool.has_value()) {
+    options.intra_op_threadpool = thread_pool->AsEigenThreadPool();
+  }
+
+  auto client = NanoIfrtClient::Create(options);
+  auto executable = CompileAndLoad(client.get(), program);
+
+  ifrt::Device* device = client->addressable_devices().at(0);
+  ifrt::ShardingRef sharding =
+      ifrt::SingleDeviceSharding::Create(device, ifrt::MemoryKind());
+
+  ifrt::ExecuteOptions execute_options;
+  execute_options.fill_status = true;
+
+  double mean = 1.0f;
+  double stddev = 0.1f;
+  std::minstd_rand0 engine;
+
+  Shape shape = ShapeUtil::MakeShape(F32, {1024, 1024});
+  auto a = LiteralUtil::CreateRandomLiteral<F32>(shape, &engine, mean, stddev);
+  auto b = LiteralUtil::CreateRandomLiteral<F32>(shape, &engine, mean, stddev);
+  CHECK(a.ok() && b.ok());
+
+  for (auto _ : state) {
+    auto a_array = MakeArrayFromLiteral(client.get(), *a, sharding);
+    auto b_array = MakeArrayFromLiteral(client.get(), *b, sharding);
+    CHECK(a_array.ok() && b_array.ok());
+
+    std::array<ifrt::ArrayRef, 2> args = {std::move(*a_array),
+                                          std::move(*b_array)};
+
+    auto result = (*executable)
+                      ->Execute(absl::MakeSpan(args), execute_options,
+                                /*devices=*/std::nullopt);
+    CHECK_OK(result->status.Await());
+    CHECK_EQ(result->outputs.size(), 1);
+  }
+}
+
+BENCHMARK(BM_IfRtAddBigBuffers)
+    ->MeasureProcessCPUTime()
+    ->Arg(0)
+    ->Arg(2)
+    ->Arg(4)
+    ->Arg(8);
 
 }  // namespace xla::cpu
 

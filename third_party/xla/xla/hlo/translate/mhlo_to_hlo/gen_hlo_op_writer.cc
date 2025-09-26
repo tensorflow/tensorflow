@@ -156,7 +156,7 @@ static bool OperatorWritersMain(raw_ostream& os, const RecordKeeper& records) {
   }
   // Convert the list to a set for faster lookups.
   std::unordered_set<std::string> custom_convert_op_names;
-  for (const auto* op_def : custom_convert_op_defs->getValues())
+  for (const auto* op_def : custom_convert_op_defs->getElements())
     custom_convert_op_names.insert(op_def->getAsString());
 
   // Get the list of StableHLO operations that are allowed to be directly
@@ -170,7 +170,7 @@ static bool OperatorWritersMain(raw_ostream& os, const RecordKeeper& records) {
   }
   // Convert the list to a set for faster lookups.
   absl::flat_hash_set<std::string> hlo_conversion_allowed_op_names;
-  for (const auto* op_def : hlo_conversion_allowed_op_defs->getValues())
+  for (const auto* op_def : hlo_conversion_allowed_op_defs->getElements())
     hlo_conversion_allowed_op_names.insert(op_def->getAsString());
 
   emitSourceFileHeader("MLIR XLA Builders", os);
@@ -214,6 +214,11 @@ static bool OperatorWritersMain(raw_ostream& os, const RecordKeeper& records) {
         "op_metadata(lowering_context.builder, "
         "mlir::mhlo::CreateOpMetadataFromLocation("
         "op, lowering_context.frame_index_builder));\n\n";
+
+  // Create a scoped object to assign original values to generated XLA ops.
+  os << "  xla::XlaScopedOriginalValueAssignment "
+        "original_value(lowering_context.builder, "
+        "CreateOriginalValueFromOp(op));\n\n";
 
   // Retrieve all the definitions derived from MHLO_Op and sort by record name.
   for (auto dialect_def : dialect_defs) {

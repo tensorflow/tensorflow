@@ -19,6 +19,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status_matchers.h"
 #include "absl/strings/string_view.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/IR/BuiltinAttributes.h"
@@ -72,12 +73,12 @@ TEST_F(EmitterLocOpBuilderTest, IRWithAnnotations) {
     EXPECT_THAT(RunFileCheck(ir, R"(
       CHECK: "IRWithAnnotations -> [[FILE:.*_test.cc]]:[[LINE:[0-9]+]]"
     )"),
-                IsOkAndHolds(true));
+                absl_testing::IsOkAndHolds(true));
   } else {
     EXPECT_THAT(RunFileCheck(ir, R"(
       CHECK: "IRWithAnnotations"
     )"),
-                IsOkAndHolds(true));
+                absl_testing::IsOkAndHolds(true));
   }
 }
 
@@ -90,7 +91,7 @@ TEST_F(EmitterLocOpBuilderTest, IRWithoutAnnotations) {
   EXPECT_THAT(RunFileCheck(ir, R"(
     CHECK-NOT: IRWithoutAnnotations
   )"),
-              IsOkAndHolds(true));
+              absl_testing::IsOkAndHolds(true));
 }
 
 }  // namespace

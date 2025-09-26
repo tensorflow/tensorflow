@@ -25,6 +25,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/hash/hash_testing.h"
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "xla/python/ifrt/serdes_test_util.h"
 #include "xla/python/ifrt/serdes_version.h"
 #include "xla/python/ifrt/shape.pb.h"
@@ -153,8 +154,9 @@ TEST(DynamicShapeTest, SizeMismatch) {
   Shape shape({1, 2, 3});
   BoundedDynamicShapeTag tag({true, true});
   EXPECT_THAT(DynamicShape::Create(shape, tag),
-              StatusIs(absl::StatusCode::kInvalidArgument,
-                       HasSubstr("must have the same number of dimensions")));
+              absl_testing::StatusIs(
+                  absl::StatusCode::kInvalidArgument,
+                  HasSubstr("must have the same number of dimensions")));
 }
 
 TEST(DynamicShapeTest, Equality) {

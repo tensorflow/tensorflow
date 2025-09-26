@@ -16,6 +16,10 @@ load(
     "tsl_grpc_cc_dependencies",
 )
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
+load(
+    "//xla/tsl/platform/default:cuda_build_defs.bzl",
+    "if_cuda_newer_than",
+)
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -70,9 +74,11 @@ cc_library(
     srcs = ["cuda_root_path.cc"],
     hdrs = ["@local_tsl//tsl/platform:cuda_root_path.h"],
     compatible_with = [],
-    data = if_cuda_tools([
-        "@cuda_nvcc//:nvvm",
-    ]),
+    data = if_cuda_tools(if_cuda_newer_than(
+        "13_0",
+        if_false = ["@cuda_nvcc//:nvvm"],
+        if_true = ["@cuda_nvvm//:nvvm"],
+    )),
     tags = [
         "manual",
         "no_oss",
@@ -82,6 +88,7 @@ cc_library(
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:logging",
         "//xla/tsl/platform:types",
+        "@com_google_absl//absl/strings",
         "@local_config_cuda//cuda:cuda_headers",
         "@local_tsl//tsl/platform",
         "@local_tsl//tsl/platform:path",
@@ -302,6 +309,8 @@ cc_library(
         "@com_google_absl//absl/base:log_severity",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/synchronization",
         "@local_tsl//tsl/platform",
     ],
@@ -578,6 +587,7 @@ bzl_library(
     # This .bzl file is only used in OSS and references OSS paths. Therefore it cannot be parsed
     # correctly by the parse test in g3.
     # copybara:uncomment parse_tests = False,
+    # copybara:uncomment deps = ["@rules_cc//cc:core_rules"],
 )
 
 bzl_library(
@@ -596,6 +606,7 @@ bzl_library(
     # copybara:uncomment parse_tests = False,
     deps = [
         ":build_config_root_bzl",
+        # copybara:uncomment "@rules_cc//cc:core_rules",
         "//xla/tsl:tsl_bzl",
         "@local_xla//third_party/py/rules_pywrap:pywrap_bzl",
     ],

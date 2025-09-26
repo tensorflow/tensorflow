@@ -78,5 +78,10 @@ void RangePush(ProfilerDomainHandle domain, StringHandle title,
 // Register the schema of a custom payload type, for use with the more powerful
 // version of RangePush
 uint64_t RegisterSchema(ProfilerDomainHandle domain, const void* schemaAttr);
+
+// Mark a memory region as initialized.
+// This mitigates false positives from the compute sanitizer (initcheck).
+void MarkMemoryInitialized(void const* address, size_t size,
+                           StreamHandle stream);
 }  // namespace tsl::profiler
 #endif  // TENSORFLOW_TSL_PROFILER_LIB_NVTX_UTILS_H_

@@ -132,13 +132,16 @@ std::string TiledHloInstruction::ToString() const {
   ss << "\ttile_offsets_indexing: "
      << (tile_offsets_indexing_.has_value()
              ? ::xla::ToString(*tile_offsets_indexing_)
-             : "nullopt");
-  ss << "\toperands: \n";
-  for (const auto* x : operands_) {
-    ss << x->hlo()->ToShortString() << "\n";
+             : "nullopt")
+     << "\n";
+  if (!operands_.empty()) {
+    ss << "\toperands:\n";
+    for (const auto* x : operands_) {
+      ss << "\t\t" << x->hlo()->ToShortString() << "\n";
+    }
   }
   if (!runtime_variables_.empty()) {
-    ss << "\truntime variables: \n";
+    ss << "\truntime variables:\n";
     for (const auto* x : runtime_variables_) {
       ss << x->ToString() << "\n";
     }

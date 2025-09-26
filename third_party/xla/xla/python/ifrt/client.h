@@ -111,29 +111,13 @@ class Client : public llvm::RTTIExtends<Client, llvm::RTTIRoot> {
   // `on_done_with_host_buffer` is optional and may be null.
   // `on_done_with_host_buffer` will be called iff OK is returned.
   //
-  // `user_context` is attached to all the runtime actions triggered by this
-  // call and thus simplifies performance analysis and debugging.
-  //
   // TODO(hyeontaek): Consider changing `on_done_with_host_buffer` into a
   // returned `Future<absl::Status>` for consistency with other IFRT APIs.
   virtual absl::StatusOr<ArrayRef> MakeArrayFromHostBuffer(
       const void* data, DType dtype, Shape shape,
       std::optional<absl::Span<const int64_t>> byte_strides,
       ShardingRef sharding, HostBufferSemantics semantics,
-      std::function<void()> on_done_with_host_buffer,
-      tsl::RCReference<UserContext> user_context) = 0;
-
-  // Soon to be deprecated. Please use the version above that accepts a
-  // `UserContext`.
-  absl::StatusOr<ArrayRef> MakeArrayFromHostBuffer(
-      const void* data, DType dtype, Shape shape,
-      std::optional<absl::Span<const int64_t>> byte_strides,
-      ShardingRef sharding, HostBufferSemantics semantics,
-      std::function<void()> on_done_with_host_buffer) {
-    return MakeArrayFromHostBuffer(data, dtype, shape, byte_strides, sharding,
-                                   semantics, on_done_with_host_buffer,
-                                   CreateUserContext());
-  }
+      std::function<void()> on_done_with_host_buffer) = 0;
   // Represents a host buffer.
   //
   // TODO(hyeontaek): Consider evolving this structure to `Literal` once it is
@@ -195,22 +179,17 @@ class Client : public llvm::RTTIExtends<Client, llvm::RTTIRoot> {
   //
   // `specs` may be consumed by the implementation.
   //
-  // `user_context` is attached to all the runtime actions triggered by this
-  // call and thus simplifies performance analysis and debugging.
-  //
   // All resulting arrays should use the same device list and memory kind. i.e.,
   // `specs[i].sharding->devices()` and `specs[i].sharding->memory_kind()` must
   // be equal across all `i`.
   virtual absl::StatusOr<std::vector<ArrayRef>> MakeArraysFromHostBufferShards(
       absl::Span<MakeArraysFromHostBufferShardsSpec> specs,
-      HostBufferSemantics semantics,
-      tsl::RCReference<UserContext> user_context) = 0;
+      HostBufferSemantics semantics) = 0;
 
   // Creates new arrays that will be fulfilled with the given error status. The
   // status must not be OK.
   virtual absl::StatusOr<std::vector<ArrayRef>> MakeErrorArrays(
-      const absl::Status& error, absl::Span<const ArraySpec> array_specs,
-      tsl::RCReference<UserContext> user_context) = 0;
+      const absl::Status& error, absl::Span<const ArraySpec> array_specs) = 0;
 
   // Builds a larger array out of individual per-device shards.
   // TODO(hyeontaek): Replace this API with the version that takes
@@ -337,7 +316,7 @@ class Client : public llvm::RTTIExtends<Client, llvm::RTTIRoot> {
       int local_hardware_id) const = 0;
 
   // Creates a device list from the given list of devices.
-  virtual DeviceListRef MakeDeviceList(
+  virtual absl::StatusOr<DeviceListRef> MakeDeviceList(
       absl::Span<Device* const> devices) const = 0;
 
   // TODO(hyeontaek): Potentially remove this method to encourage supporting

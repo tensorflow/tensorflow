@@ -86,6 +86,17 @@ load(
 python_wheel_version_suffix_repository(name = "tf_wheel_version_suffix")
 
 load(
+    "@rules_ml_toolchain//cc/deps:cc_toolchain_deps.bzl",
+    "cc_toolchain_deps",
+)
+
+cc_toolchain_deps()
+
+register_toolchains("@rules_ml_toolchain//cc:linux_x86_64_linux_x86_64")
+
+register_toolchains("@rules_ml_toolchain//cc:linux_x86_64_linux_x86_64_cuda")
+
+load(
     "@rules_ml_toolchain//third_party/gpus/cuda/hermetic:cuda_json_init_repository.bzl",
     "cuda_json_init_repository",
 )
@@ -151,21 +162,3 @@ load(
 nvshmem_redist_init_repository(
     nvshmem_redistributions = NVSHMEM_REDISTRIBUTIONS,
 )
-
-load(
-    "@rules_ml_toolchain//third_party/nvshmem/hermetic:nvshmem_configure.bzl",
-    "nvshmem_configure",
-)
-
-nvshmem_configure(name = "local_config_nvshmem")
-
-load(
-    "@rules_ml_toolchain//cc_toolchain/deps:cc_toolchain_deps.bzl",
-    "cc_toolchain_deps",
-)
-
-cc_toolchain_deps()
-
-register_toolchains("@rules_ml_toolchain//cc_toolchain:lx64_lx64")
-
-register_toolchains("@rules_ml_toolchain//cc_toolchain:lx64_lx64_cuda")

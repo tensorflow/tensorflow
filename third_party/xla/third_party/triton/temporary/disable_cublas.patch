@@ -1,0 +1,49 @@
+Remove after fixing b/436154455. In my opinion, this should be a private patch,
+since it appliest to a google-internal issue. We might consider merging with
+xla/third_party/triton/temporary/tutorial_fixes.patch,
+because we have a similar issue there. Also related to b/346755023.
+
+--- a/python/test/unit/language/test_warp_specialization.py	2025-07-31 05:01:16.000000000 -0700
++++ b/python/test/unit/language/test_warp_specialization.py	2025-08-05 04:15:09.000000000 -0700
+@@ -7,7 +7,10 @@
+ from triton._internal_testing import is_hip, is_hopper, is_blackwell
+ from triton.tools.tensor_descriptor import TensorDescriptor
+ 
+-if not is_hip() and torch.cuda.is_available() and torch.cuda.get_device_capability()[0] in [9, 10]:
++# Attempts to dlopen cuBLAS, prevent this path
++# TODO: b/436154455 - Re-enable once we can link in cuBLAS properly
++# if not is_hip() and torch.cuda.is_available() and torch.cuda.get_device_capability()[0] in [9, 10]:
++if False:
+     from triton._C.libtriton import nvidia
+     cublas_workspace = torch.empty(32 * 1024 * 1024, device="cuda", dtype=torch.uint8)
+     cublas = nvidia.cublas.CublasLt(cublas_workspace)
+@@ -285,9 +288,11 @@
+     else:
+         assert "ttg.warp_specialize" in ttgir
+ 
+-    ref_out = torch.empty((M, N), dtype=dtype, device=device)
+-    cublas.matmul(A, B, ref_out)
+-    torch.testing.assert_close(ref_out.to(torch.float16), C.to(torch.float16), atol=0.03, rtol=0.03)
++    # TODO: b/436154455 - Re-enable once we can link in cuBLAS properly
++    if cublas is not None:
++        ref_out = torch.empty((M, N), dtype=dtype, device=device)
++        cublas.matmul(A, B, ref_out)
++        torch.testing.assert_close(ref_out.to(torch.float16), C.to(torch.float16), atol=0.03, rtol=0.03)
+ 
+ 
+ @triton.jit
+@@ -386,9 +391,11 @@
+     else:
+         assert "ttg.warp_specialize" in ttgir
+ 
+-    ref_out = torch.empty((M, N), dtype=dtype, device=device)
+-    cublas.matmul(A, B, ref_out)
+-    torch.testing.assert_close(ref_out.to(torch.float16), C.to(torch.float16), atol=0.03, rtol=0.03)
++    # TODO: b/436154455 - Re-enable once we can link in cuBLAS properly
++    if cublas is not None:
++        ref_out = torch.empty((M, N), dtype=dtype, device=device)
++        cublas.matmul(A, B, ref_out)
++        torch.testing.assert_close(ref_out.to(torch.float16), C.to(torch.float16), atol=0.03, rtol=0.03)
+ 
+ 
+ @triton.jit

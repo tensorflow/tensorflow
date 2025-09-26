@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/codegen/emitters/kernel_arguments.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/buffer_assignment.h"
@@ -72,7 +73,7 @@ class KernelThunk : public Thunk {
   // directly, not to their base allocation (e.g. they can be the result of an
   // `mlir::memref::ViewOp`).
   KernelThunk(Thunk::ThunkInfo thunk_info, std::string kernel_name,
-              absl::Span<const emitters::KernelArgument> kernel_arguments,
+              const emitters::KernelArguments& kernel_arguments,
               LaunchDimensions launch_dimensions,
               std::optional<se::ClusterDim> cluster_dim, int64_t shmem_bytes,
               std::optional<stream_executor::gpu::TmaMetadata> tma_metadata =
@@ -105,6 +106,10 @@ class KernelThunk : public Thunk {
   }
   // The shared memory required by the kernel.
   int64_t shmem_bytes() const { return shmem_bytes_; }
+
+  const std::optional<stream_executor::gpu::TmaMetadata>& tma_metadata() const {
+    return tma_metadata_;
+  }
 
  private:
   // Buffer slices passed to the kernel as arguments.
@@ -143,9 +148,8 @@ class KernelThunk : public Thunk {
 // compiled by XLA and loaded from an executable source.
 class CustomKernelThunk : public Thunk {
  public:
-  CustomKernelThunk(
-      const HloInstruction* inst, CustomKernel custom_kernel,
-      absl::Span<const emitters::KernelArgument> kernel_arguments);
+  CustomKernelThunk(const HloInstruction* inst, CustomKernel custom_kernel,
+                    const emitters::KernelArguments& kernel_arguments);
 
   std::string ToString(int indent) const override;
 

@@ -78,7 +78,7 @@ bool CompatibleDimensionSizes(int64_t size_a, int64_t size_b) {
 }
 
 absl::Status ExpectArray(const Shape& shape, absl::string_view op_type) {
-  if (!shape.IsArray()) {
+  if (!shape.IsArrayExcludingBuffer()) {
     return InvalidArgument("Expected array argument for %s, but got %s.",
                            std::string(op_type), ShapeUtil::HumanString(shape));
   }
@@ -98,7 +98,7 @@ absl::Status VerifyReducerShape(
 
   const Shape& accumulator_shape = reducer_shape.result();
   std::vector<const Shape*> accumulator_subshapes;
-  if (accumulator_shape.IsArray()) {
+  if (accumulator_shape.IsArrayExcludingBuffer()) {
     if (inputs != 1) {
       return InvalidArgument(
           "Reduction function must produce a tuple with %d elements, but "
@@ -585,7 +585,7 @@ absl::StatusOr<DimAndBound> InferMostSpecificDimAndBound(int64_t dim,
 
 /* static */ absl::StatusOr<Shape> ShapeInference::InferConvertShape(
     const Shape& operand_shape, PrimitiveType new_element_type) {
-  if (!operand_shape.IsArray() ||
+  if (!operand_shape.IsArrayExcludingBuffer() ||
       !primitive_util::IsArrayType(new_element_type)) {
     // Note: we may want to support tuple conversions via this operation in the
     // future, by recursing into the tuple elements to check all sub-conversions
@@ -608,7 +608,7 @@ absl::StatusOr<DimAndBound> InferMostSpecificDimAndBound(int64_t dim,
                            ShapeUtil::HumanString(operand_shape),
                            PrimitiveType_Name(new_element_type));
   }
-  if (!operand_shape.IsArray() ||
+  if (!operand_shape.IsArrayExcludingBuffer() ||
       !primitive_util::IsArrayType(new_element_type)) {
     // Note: we may want to support tuple conversions via this operation in the
     // future, by recursing into the tuple elements to check all sub-conversions
@@ -725,7 +725,7 @@ absl::StatusOr<DimAndBound> InferMostSpecificDimAndBound(int64_t dim,
 /* static */ absl::StatusOr<Shape> ShapeInference::InferPadShape(
     const Shape& operand_shape, const Shape& padding_value_shape,
     const PaddingConfig& padding_config) {
-  if (!operand_shape.IsArray()) {
+  if (!operand_shape.IsArrayExcludingBuffer()) {
     return InvalidArgument(
         "Pad operation does not support tuple-shape operands.");
   }
@@ -846,11 +846,7 @@ absl::Status ValidateDotDimensionNumbers(
 
 absl::Status CheckDotDimensionConstraints(
     const Shape& lhs, const Shape& rhs,
-    const DotDimensionNumbers& dimension_numbers,
-    std::optional<std::array<std::pair<int, int>, HloDotInstruction::kOperands>>
-        sparsity_nm = std::nullopt,
-    std::optional<std::array<int, HloDotInstruction::kOperands>> sparsity_dim =
-        std::nullopt) {
+    const DotDimensionNumbers& dimension_numbers) {
   auto fail = [lhs, rhs](const std::string& addendum) -> absl::Status {
     std::string message =
         StrFormat("Cannot infer shape for dot operation: %s <dot> %s.",
@@ -875,26 +871,9 @@ absl::Status CheckDotDimensionConstraints(
         dimension_numbers.lhs_contracting_dimensions(i);
     const int64_t rhs_contracting_dimension =
         dimension_numbers.rhs_contracting_dimensions(i);
-    int64_t lhs_size = lhs.dimensions(lhs_contracting_dimension);
-    int64_t rhs_size = rhs.dimensions(rhs_contracting_dimension);
-    bool is_sparse = false;
-    if (sparsity_nm.has_value() && sparsity_dim.has_value()) {
-      if (lhs_contracting_dimension == sparsity_dim.value()[0]) {
-        lhs_size *= sparsity_nm.value()[0].second;
-        rhs_size *= sparsity_nm.value()[0].first;
-        is_sparse = true;
-      }
-      if (rhs_contracting_dimension == sparsity_dim.value()[1]) {
-        lhs_size *= sparsity_nm.value()[1].first;
-        rhs_size *= sparsity_nm.value()[1].second;
-        is_sparse = true;
-      }
-    }
-    if (!CompatibleDimensionSizes(lhs_size, rhs_size)) {
-      return fail(
-          !is_sparse
-              ? "Contracting dimension sizes are not compatible."
-              : "Sparse dimension size ratio doesn't match the descriptor.");
+    if (!CompatibleDimensionSizes(lhs.dimensions(lhs_contracting_dimension),
+                                  rhs.dimensions(rhs_contracting_dimension))) {
+      return fail("Contracting dimension sizes are not compatible.");
     }
   }
 
@@ -962,34 +941,15 @@ void GenerateDotResultDimensions(
 /* static */ absl::StatusOr<Shape> ShapeInference::InferDotOpShape(
     const Shape& lhs, const Shape& rhs,
     const DotDimensionNumbers& dimension_numbers,
-    std::optional<PrimitiveType> preferred_element_type,
-    absl::Span<const SparsityDescriptor> sparsity) {
+    std::optional<PrimitiveType> preferred_element_type) {
   TF_RETURN_IF_ERROR(ExpectArray(lhs, "lhs of dot"));
   TF_RETURN_IF_ERROR(ExpectArray(rhs, "rhs of dot"));
 
   // Validate basic properties of dot dimension numbers.
   TF_RETURN_IF_ERROR(ValidateDotDimensionNumbers(lhs, rhs, dimension_numbers));
 
-  // Sparsity is only supported for contracting dimensions.
-  // With N:M sparsity, the contracting dimension sizes have N/M ratio.
-  const int kSize = HloDotInstruction::kOperands;
-  std::array<std::pair<int, int>, kSize> sparsity_nm = {{{1, 1}, {1, 1}}};
-  std::array<int, kSize> sparsity_dim = {-1, -1};
-  for (const auto& descriptor : sparsity) {
-    TF_RET_CHECK(descriptor.index() == 0 || descriptor.index() == 1);
-    sparsity_dim[descriptor.index()] = descriptor.dimension();
-    switch (descriptor.type()) {
-      case SPARSITY_STRUCTURED_N_M:
-        sparsity_nm[descriptor.index()] = {descriptor.n(), descriptor.m()};
-        break;
-      default:
-        LOG(FATAL) << "Unsupported sparsity type: " << descriptor.type();
-    }
-  }
-
   // Check the number and sizes of batch and contracting dimensions.
-  TF_RETURN_IF_ERROR(CheckDotDimensionConstraints(lhs, rhs, dimension_numbers,
-                                                  sparsity_nm, sparsity_dim));
+  TF_RETURN_IF_ERROR(CheckDotDimensionConstraints(lhs, rhs, dimension_numbers));
 
   std::vector<int64_t> dimensions;
   std::vector<bool> is_dynamic;
@@ -1209,54 +1169,6 @@ void GenerateDotResultDimensions(
   TF_DCHECK_OK(ShapeUtil::ValidateShapeWithOptionalLayout(result));
   VLOG(2) << "inferred ragged dot shape: " << ShapeUtil::HumanString(result);
   return result;
-}
-
-/* static */ absl::StatusOr<Shape> ShapeInference::InferSparseDotMetadataShape(
-    const Shape& operand_shape, const DotDimensionNumbers& dimension_numbers,
-    const SparsityDescriptor& sparsity, PrimitiveType element_type) {
-  CHECK(primitive_util::IsUnsignedIntegralType(element_type));
-
-  // Metadata includes contracting and non-contracting dimensions
-  // (i.e. excludes batch) of the sparse operand shape. The sparse dimension
-  // must be contracting.
-  bool sparse_lhs = sparsity.index() == 0;
-  auto& contracting_dimensions =
-      sparse_lhs ? dimension_numbers.lhs_contracting_dimensions()
-                 : dimension_numbers.rhs_contracting_dimensions();
-  TF_RET_CHECK(
-      absl::c_linear_search(contracting_dimensions, sparsity.dimension()));
-
-  // Calculate the number of elements needed to encode the sparsity metadata
-  // in the sparse dimension.
-  int64_t metadata_dimension_size = 0;
-  switch (sparsity.type()) {
-    case SPARSITY_STRUCTURED_N_M: {
-      // For 2:4 sparsity, each group of 4 elements has 2 values defined.
-      // Each 16-bit metadata element contains the data for 4 groups.
-      int bits_per_value = Log2Ceiling(static_cast<uint32_t>(sparsity.m()));
-      int bits_per_group = sparsity.n() * bits_per_value;
-      int groups_per_element =
-          CeilOfRatio(primitive_util::BitWidth(element_type), bits_per_group);
-      int64_t group_count =
-          CeilOfRatio(operand_shape.dimensions(sparsity.dimension()),
-                      static_cast<int64_t>(sparsity.n()));
-      metadata_dimension_size =
-          CeilOfRatio(group_count, static_cast<int64_t>(groups_per_element));
-      break;
-    }
-    default:
-      LOG(FATAL) << "Unsupported sparsity type: " << sparsity.type();
-  }
-
-  // Build the resulting shape dimensions.
-  std::vector<int64_t> dimensions;
-  std::vector<bool> is_dynamic;
-  for (int64_t i = 0; i < operand_shape.dimensions().size(); ++i) {
-    dimensions.push_back(i != sparsity.dimension() ? operand_shape.dimensions(i)
-                                                   : metadata_dimension_size);
-    is_dynamic.push_back(operand_shape.is_dynamic_dimension(i));
-  }
-  return ShapeUtil::MakeShape(element_type, dimensions, is_dynamic);
 }
 
 /* static */ absl::StatusOr<Shape>
@@ -1516,7 +1428,7 @@ ShapeInference::InferScalarBroadcastShape(absl::Span<const Shape> shapes) {
   // function.
   std::optional<Shape> broadcasted_shape;
   for (const Shape& shape : shapes) {
-    if (!shape.IsArray() || shape.dimensions().empty()) {
+    if (!shape.IsArrayExcludingBuffer() || shape.dimensions().empty()) {
       continue;
     }
     if (!broadcasted_shape.has_value()) {
@@ -3637,7 +3549,7 @@ ShapeInference::InferCollectivePermuteDoneShape(const Shape& operand_shape) {
   // Result is s32[<=4].
   ShapeUtil::ForEachMutableSubshape(
       &result, [&](Shape* subshape, const ShapeIndex& index) {
-        if (!subshape->IsArray()) {
+        if (!subshape->IsArrayExcludingBuffer()) {
           return;
         }
         for (int j = 0; j < branch_computations.size(); ++j) {

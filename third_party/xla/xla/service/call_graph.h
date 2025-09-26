@@ -20,7 +20,6 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
-#include <ostream>
 #include <string>
 #include <utility>
 #include <vector>
@@ -40,30 +39,6 @@ limitations under the License.
 #include "tsl/platform/logging.h"
 
 namespace xla {
-
-// The context in which a computation is called by another computation.
-enum class CallContext {
-  // In an embedded call context, the body of the function cannot allocate
-  // buffers.
-  kEmbedded,
-
-  // A control flow call context can allocate buffers.
-  kControlFlow,
-
-  // A computation is called from both an embedded and control flow context.
-  kBoth,
-
-  // During call graph construction kNone is used to indicate that the context
-  // has not been determined. This is the top value for the context
-  // lattice. After construction, no call sites or call graph nodes should have
-  // this value.
-  kNone
-};
-
-std::string CallContextToString(CallContext context);
-std::ostream& operator<<(std::ostream& out, const CallContext& context);
-
-CallContext GetInstructionCallContext(HloOpcode opcode);
 
 // Represents an HLO instruction which calls one or more computations.
 class CallSite {

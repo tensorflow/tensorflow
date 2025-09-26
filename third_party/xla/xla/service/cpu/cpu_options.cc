@@ -62,6 +62,12 @@ bool FoldAllConstants(const HloModuleConfig& config) {
   return extra_options_map.count(kFoldAllConstants) > 0;
 }
 
+bool DisablePlatformDependentMath(const HloModuleConfig& config) {
+  const auto& extra_options_map =
+      config.debug_options().xla_backend_extra_options();
+  return extra_options_map.count(kDisablePlatformDependentMath) > 0;
+}
+
 std::optional<int64_t> LlvmIrGemvTilingFactor(const HloModuleConfig& config) {
   const auto& extra_options_map =
       config.debug_options().xla_backend_extra_options();
@@ -137,13 +143,22 @@ std::optional<std::tuple<int64_t, int64_t, int64_t>> LlvmIrGemmTileSize(
 bool UseExperimentalLoopFusion(const HloModuleConfig& config) {
   const auto& extra_options_map =
       config.debug_options().xla_backend_extra_options();
-  return extra_options_map.count(kUseExperimentalLoopFusion) > 0;
+  return extra_options_map.count(kDisableNewFusionEmitters) == 0;
 }
 
 bool FlattenAfterFusion(const HloModuleConfig& config) {
   const auto& extra_options_map =
       config.debug_options().xla_backend_extra_options();
   return extra_options_map.count(kFlattenAfterFusion) > 0;
+}
+
+bool UseMultiOutputFusion(const HloModuleConfig& config) {
+  if (!options::UseExperimentalLoopFusion(config)) {
+    return false;
+  }
+  const auto& extra_options_map =
+      config.debug_options().xla_backend_extra_options();
+  return extra_options_map.count(kUseMultiOutputFusion) > 0;
 }
 
 }  // namespace xla::cpu::options

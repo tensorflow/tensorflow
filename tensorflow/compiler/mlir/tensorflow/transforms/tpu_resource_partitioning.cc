@@ -204,7 +204,8 @@ LogicalResult PartitionResourceReadsWrites(
     auto partitioned_output = builder.create<TF::TPUPartitionedOutputV2Op>(
         cluster_func->getLoc(), partitioned_output_types, result,
         partitioned_input.getPartitionDimsAttr(),
-        partitioned_input.get_XlaShardingAttr());
+        partitioned_input.get_XlaShardingAttr(),
+        partitioned_input.get_XlaShardingV2Attr());
     for (auto [i, value] : llvm::enumerate(partitioned_output.getOutput())) {
       const auto& resource = packed_input ? inputs[0] : inputs[i];
       builder.create<TF::AssignVariableOp>(
@@ -254,7 +255,8 @@ LogicalResult PartitionResourceReadsWrites(
         partitioned_input->getLoc(), read_var.getValue().getType(),
         partitioned_reads, partitioned_input.getPartitionDimsAttr(),
         partitioned_input.getIsPackedAttr(),
-        partitioned_input.get_XlaShardingAttr());
+        partitioned_input.get_XlaShardingAttr(),
+        partitioned_input.get_XlaShardingV2Attr());
     if (failed(UpdateReadUses(read_var, partitioned_input, partitioned_read,
                               partitioned_reads, is_packed)))
       return failure();

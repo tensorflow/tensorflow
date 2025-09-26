@@ -153,8 +153,6 @@ __device__ __forceinline__ void TwoShotAllReduceKernelImpl(
                args.num_elements_per_rank);
 
   const int64_t block_stride = kNumElementsPerThread * blockDim.x;
-  // Responsibility for accumulation for this rank.
-  const int64_t rank_offset = args.rank * args.num_elements_per_rank;
 
   // Step1: Copy data from input buffer to the local shared buffer.
   // Each GPU will copy data from its local input buffer to its own local shared
@@ -184,12 +182,21 @@ __device__ __forceinline__ void TwoShotAllReduceKernelImpl(
   for (int i = offset; i < offset_end; i += block_stride) {
     // Each rank is only responsible for accumulating num_elements_per_rank
     // elements.
-    const int64_t offset_i = rank_offset + i;
+    const int64_t offset_i = args.rank_offset + i;
     if (offset_i >= args.num_elements) {
       continue;
     }
-    Vec<T> acc = VecLoad(args.remote_input_buffers[0] + offset_i);
+    std::array<Vec<T>, kMaxNumAllReduceInputPtrs> accs;
+#pragma unroll
+    for (int r = 0; r < kMaxNumAllReduceInputPtrs; ++r) {
+      if (r >= args.num_ranks) {
+        continue;
+      }
+      accs[args.rotated_ranks[r]] =
+          VecLoad(args.remote_input_buffers[args.rotated_ranks[r]] + offset_i);
+    }
 
+    Vec<T> acc = accs[0];
     // Since `remote_input_ptrs` are provided in rank order, we get stable
     // reduction results on all devices.
 #pragma unroll
@@ -197,8 +204,7 @@ __device__ __forceinline__ void TwoShotAllReduceKernelImpl(
       if (r >= args.num_ranks) {
         continue;
       }
-      VecOp<T, ReductionKindT>(
-          acc, VecLoad(args.remote_input_buffers[r] + offset_i));
+      VecOp<T, ReductionKindT>(acc, accs[r]);
     }
     VecStore(args.remote_input_buffers[args.rank] + offset_i, acc);
   }
@@ -217,15 +223,14 @@ __device__ __forceinline__ void TwoShotAllReduceKernelImpl(
       if (r >= args.num_ranks) {
         continue;
       }
-      // Rotate ranks to circumvent all GPUs reading from the same location
-      // simultaneously.
-      const int64_t remote_rank = (args.rank + r) % args.num_ranks;
-      const int64_t offset_i = remote_rank * args.num_elements_per_rank + i;
+      const int64_t offset_i =
+          args.rotated_ranks[r] * args.num_elements_per_rank + i;
       if (offset_i >= args.num_elements) {
         continue;
       }
-      VecStore(args.output_buffer + offset_i,
-               VecLoad(args.remote_input_buffers[remote_rank] + offset_i));
+      VecStore(
+          args.output_buffer + offset_i,
+          VecLoad(args.remote_input_buffers[args.rotated_ranks[r]] + offset_i));
     }
   }
 }

@@ -729,7 +729,8 @@ absl::StatusOr<xla::ifrt::ArrayRef> MakeArrayFromTensor(
         ifrt_client.LookupDevice(xla::ifrt::DeviceId(device_id)));
     devices.push_back(device);
   }
-  xla::ifrt::DeviceListRef device_list(ifrt_client.MakeDeviceList(devices));
+  TF_ASSIGN_OR_RETURN(xla::ifrt::DeviceListRef device_list,
+                      ifrt_client.MakeDeviceList(devices));
 
   return MakeArrayFromTensor(ifrt_client, input_tensor, device_list,
                              hlo_sharding, thread_pool);

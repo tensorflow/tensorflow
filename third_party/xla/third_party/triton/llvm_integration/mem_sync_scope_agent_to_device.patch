@@ -1,0 +1,24 @@
+b/433429549: Fix the issue where AtomicRMWOp with 2 bf16 elements was not being
+translated correctly. The sync scope for NV should be device, not agent.
+
+diff --git a/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/LoadStoreOpToLLVM.cpp b/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/LoadStoreOpToLLVM.cpp
+--- a/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/LoadStoreOpToLLVM.cpp
++++ b/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/LoadStoreOpToLLVM.cpp
+@@ -923,7 +923,7 @@ struct AtomicRMWOpConversion
+         Value atom = rewriter
+                          .create<LLVM::AtomicRMWOp>(
+                              loc, *llvmAtomicBinOp, rmwPtr, valElements[i],
+-                             *llvmAtomicMemOrdering, StringRef("agent"))
++                             *llvmAtomicMemOrdering, StringRef("device"))
+                          .getResult();
+         // Handle the 2 bf16 case
+         if (packed == 2 && valueElemNBits == 16) {
+@@ -931,7 +931,7 @@ struct AtomicRMWOpConversion
+                             .create<LLVM::AtomicRMWOp>(
+                                 loc, *llvmAtomicBinOp, ptrElements[i + 1],
+                                 valElements[i + 1], *llvmAtomicMemOrdering,
+-                                StringRef("agent"))
++                                StringRef("device"))
+                             .getResult();
+           auto vecTy = vec_ty(valueElemTy, vec);
+           auto tmp =

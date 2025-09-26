@@ -75,7 +75,7 @@ TEST(DataServiceTest, RangeDataset_NoShard) {
   EXPECT_THAT(
       dataset_client.Read(RangeDataset(20), ProcessingModeDef::OFF,
                           TARGET_WORKERS_AUTO),
-      IsOkAndHolds(UnorderedElementsAre(
+      absl_testing::IsOkAndHolds(UnorderedElementsAre(
           Pair(cluster.WorkerAddress(0), ElementsAreArray(Range(20))),
           Pair(cluster.WorkerAddress(1), ElementsAreArray(Range(20))),
           Pair(cluster.WorkerAddress(2), ElementsAreArray(Range(20))),
@@ -111,7 +111,7 @@ TEST_P(DataServiceTest_DataShard, RangeDataset_DataShard) {
 
   EXPECT_THAT(
       dataset_client.Read(RangeDataset(20), GetParam(), TARGET_WORKERS_LOCAL),
-      IsOkAndHolds(UnorderedElementsAre(
+      absl_testing::IsOkAndHolds(UnorderedElementsAre(
           Pair(cluster.WorkerAddress(0), ElementsAre(0, 5, 10, 15)),
           Pair(cluster.WorkerAddress(1), ElementsAre(1, 6, 11, 16)),
           Pair(cluster.WorkerAddress(2), ElementsAre(2, 7, 12, 17)),
@@ -131,7 +131,7 @@ TEST(DataServiceTest, RangeDataset_HintShard) {
   EXPECT_THAT(
       dataset_client.Read(RangeDatasetWithShardHint(20),
                           ProcessingModeDef::HINT, TARGET_WORKERS_LOCAL),
-      IsOkAndHolds(UnorderedElementsAre(
+      absl_testing::IsOkAndHolds(UnorderedElementsAre(
           Pair(cluster.WorkerAddress(0), ElementsAre(0, 5, 10, 15)),
           Pair(cluster.WorkerAddress(1), ElementsAre(1, 6, 11, 16)),
           Pair(cluster.WorkerAddress(2), ElementsAre(2, 7, 12, 17)),
@@ -155,7 +155,7 @@ TEST(DataServiceTest, TextlineDataset_NoShard) {
                                    "4", "2", "3", "4", "3", "4", "4"};
   EXPECT_THAT(
       dataset_client.Read(dataset, ProcessingModeDef::OFF, TARGET_WORKERS_ANY),
-      IsOkAndHolds(UnorderedElementsAre(
+      absl_testing::IsOkAndHolds(UnorderedElementsAre(
           Pair(cluster.WorkerAddress(0), ElementsAreArray(expected)),
           Pair(cluster.WorkerAddress(1), ElementsAreArray(expected)),
           Pair(cluster.WorkerAddress(2), ElementsAreArray(expected)),
@@ -177,7 +177,7 @@ TEST(DataServiceTest, TextlineDataset_DataShard) {
           filenames, {"0", "1\n1", "2\n2\n2", "3\n3\n3\n3", "4\n4\n4\n4\n4"}));
   EXPECT_THAT(dataset_client.Read(dataset, ProcessingModeDef::DATA,
                                   TARGET_WORKERS_LOCAL),
-              IsOkAndHolds(UnorderedElementsAre(
+              absl_testing::IsOkAndHolds(UnorderedElementsAre(
                   Pair(cluster.WorkerAddress(0), ElementsAre("0", "1", "3")),
                   Pair(cluster.WorkerAddress(1), ElementsAre("1", "2", "4")),
                   Pair(cluster.WorkerAddress(2), ElementsAre("2", "3", "3")),
@@ -203,7 +203,7 @@ TEST_P(DataServiceTest_FileShard, TextlineDataset_FileShard) {
   EXPECT_THAT(
       dataset_client.Read(dataset, ProcessingModeDef::FILE_OR_DATA,
                           TARGET_WORKERS_LOCAL),
-      IsOkAndHolds(UnorderedElementsAre(
+      absl_testing::IsOkAndHolds(UnorderedElementsAre(
           Pair(cluster.WorkerAddress(0), ElementsAre("0")),
           Pair(cluster.WorkerAddress(1), ElementsAre("1", "1")),
           Pair(cluster.WorkerAddress(2), ElementsAre("2", "2", "2")),
@@ -230,7 +230,7 @@ TEST(DataServiceTest, GcMissingClientsWithSmallTimeout) {
   Env::Default()->SleepForMicroseconds(1000 * 1000);  // 1 second.
   // Iteration should not be garbage collected before the client has started
   // reading.
-  EXPECT_THAT(cluster.NumActiveIterations(), IsOkAndHolds(1));
+  EXPECT_THAT(cluster.NumActiveIterations(), absl_testing::IsOkAndHolds(1));
 
   TF_ASSERT_OK(dataset_client.GetTasks(iteration_client_id).status());
   // Iteration should be garbage collected within 10 seconds.
@@ -255,7 +255,7 @@ TEST(DataServiceTest, DontGcMissingClientsWithLargeTimeout) {
   Env::Default()->SleepForMicroseconds(1000 * 1000);  // 1 second.
   // Iteration should not be garbage collected, since the client hasn't timed
   // out.
-  EXPECT_THAT(cluster.NumActiveIterations(), IsOkAndHolds(1));
+  EXPECT_THAT(cluster.NumActiveIterations(), absl_testing::IsOkAndHolds(1));
 }
 
 TEST(DataServiceTest, GetWorkers) {

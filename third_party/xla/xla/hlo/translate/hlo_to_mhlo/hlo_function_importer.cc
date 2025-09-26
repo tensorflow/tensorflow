@@ -69,6 +69,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/ir/hlo_sharding_metadata.h"
+#include "xla/hlo/translate/attributes.h"
 #include "xla/hlo/translate/hlo_to_mhlo/async_importer.h"
 #include "xla/hlo/translate/hlo_to_mhlo/attribute_importer.h"
 #include "xla/hlo/translate/hlo_to_mhlo/custom_call_importer.h"
@@ -102,10 +103,6 @@ using mlir::func::FuncOp;
 namespace xla {
 
 namespace {
-
-constexpr char kFrontendAttributesAttr[] = "mhlo.frontend_attributes";
-constexpr char kShardingAttr[] = "mhlo.sharding";
-constexpr char kParameterReplicationAttr[] = "mhlo.parameter_replication";
 
 // Note: This sanitization function causes an irreversible many-to-one mapping
 // and any solution to mitigate this would cause issues with the reverse
@@ -719,6 +716,13 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
         kShardingAttr, ConvertSharding(instruction->sharding(), builder_)));
   }
 
+  if (instruction->original_value()) {
+    attributes.push_back(builder_->getNamedAttr(
+        kOriginalValueAttr,
+        builder_->getStringAttr(
+            "{" + instruction->original_value()->ToString() + "}")));
+  }
+
   llvm::SmallVector<NamedAttribute, 4> frontend_attributes;
   for (const auto& [k, v] : instruction->frontend_attributes().map()) {
     frontend_attributes.push_back(
@@ -855,31 +859,6 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       }
 
     case HloOpcode::kDot: {
-      auto dot = Cast<HloDotInstruction>(instruction);
-      if (dot->sparse_operands()) {
-        attributes.push_back(builder_->getNamedAttr(
-            "precision_config",
-            ConvertPrecisionConfig(&instruction->precision_config(),
-                                   builder_)));
-        attributes.push_back(builder_->getNamedAttr(
-            "dot_dimension_numbers",
-            ConvertDotDimensionNumbers(instruction->dot_dimension_numbers(),
-                                       builder_)));
-        for (const SparsityDescriptor& descriptor : dot->sparsity()) {
-          TF_ASSIGN_OR_RETURN(auto sparsity,
-                              ConvertSparsityDescriptor(descriptor, builder_));
-          attributes.push_back(builder_->getNamedAttr(
-              descriptor.index() == 0 ? "lhs_sparsity" : "rhs_sparsity",
-              sparsity));
-        }
-        // XLA Feature -- MHLO Only
-        return func_builder
-            ->create<mlir::mhlo::SparseDotOp>(loc, result_type, operands,
-                                              attributes)
-            .getOperation();
-      }
-
-      // Dot or DotGeneral
       attributes.push_back(builder_->getNamedAttr(
           "precision_config", stablehlo::ConvertPrecisionConfig(
                                   &instruction->precision_config(), builder_)));
@@ -891,7 +870,7 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
                 instruction->precision_config().algorithm(), builder_)));
       }
       // Consider consolidating DotOps together.
-      if (DotIsDefault(instruction) && !dot->sparse_operands()) {
+      if (DotIsDefault(instruction)) {
         return func_builder
             ->create<mlir::stablehlo::DotOp>(loc, result_type, operands,
                                              attributes)
@@ -1184,10 +1163,21 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
         attributes.push_back(builder_->getNamedAttr(
             "api_version", mlir::mhlo::CustomCallApiVersionAttr::get(
                                builder_->getContext(), mlir_api_version)));
-        attributes.push_back(builder_->getNamedAttr(
-            "output_operand_aliases",
-            ConvertOutputOperandAliasing(instruction->output_operand_aliasing(),
-                                         builder_)));
+        // We consider the output operand alias associated with Pin and Unpin
+        // an XLA/HLO implementation detail, such as to tell copy insertion that
+        // if there is a needed we can copy the operand of Pin and the result of
+        // Unpin, but can't copy the result of Pin and the operand of Unpin.
+        // The Pin and Unpin operand and result aren't alias from users's
+        // perspective, and they don't have the same types. For these reasons,
+        // we don't want to expose this implementation detail to MHLO/StableHLO
+        // users.
+        if (!custom_call->IsCustomCall(kPinCustomCallTarget) &&
+            !custom_call->IsCustomCall(kUnpinCustomCallTarget)) {
+          attributes.push_back(builder_->getNamedAttr(
+              "output_operand_aliases",
+              ConvertOutputOperandAliasing(
+                  instruction->output_operand_aliasing(), builder_)));
+        }
         // XLA Feature - MHLO Only
         return func_builder
             ->create<mlir::mhlo::CustomCallOp>(loc, result_type, operands,
@@ -1202,10 +1192,13 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       attributes.push_back(builder_->getNamedAttr(
           "api_version", mlir::stablehlo::CustomCallApiVersionAttr::get(
                              builder_->getContext(), mlir_api_version)));
-      attributes.push_back(builder_->getNamedAttr(
-          "output_operand_aliases",
-          stablehlo::ConvertOutputOperandAliasing(
-              instruction->output_operand_aliasing(), builder_)));
+      if (!custom_call->IsCustomCall(kPinCustomCallTarget) &&
+          !custom_call->IsCustomCall(kUnpinCustomCallTarget)) {
+        attributes.push_back(builder_->getNamedAttr(
+            "output_operand_aliases",
+            stablehlo::ConvertOutputOperandAliasing(
+                instruction->output_operand_aliasing(), builder_)));
+      }
       return func_builder
           ->create<mlir::stablehlo::CustomCallOp>(loc, result_type, operands,
                                                   attributes)
@@ -2067,7 +2060,7 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       FlattenTupleValue(func_builder, loc, operands[0], flattened_operands);
 
       auto op = func_builder->create<mlir::stablehlo::OptimizationBarrierOp>(
-          loc, flattened_operand_types, flattened_operands);
+          loc, flattened_operand_types, flattened_operands, attributes);
 
       return CreateTupleFromOpResults(func_builder, loc, op.getOperation(),
                                       operands[0].getType());

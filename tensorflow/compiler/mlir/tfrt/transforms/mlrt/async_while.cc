@@ -225,8 +225,8 @@ class AsyncWhilePass
         }
 
         auto empty_string_attr = builder.getStringAttr("");
-        auto init_predicate = builder.create<mlir::TF::PartitionedCallOp>(
-            while_op->getLoc(), predicate_fn.getResultTypes()[0],
+        auto init_predicate = mlir::TF::PartitionedCallOp::create(
+            builder, while_op->getLoc(), predicate_fn.getResultTypes()[0],
             predicate_input, /*args_attrs=*/nullptr, /*res_attrs=*/nullptr,
             mlir::FlatSymbolRefAttr::get(new_predicate_fn.getSymNameAttr()),
             empty_string_attr, empty_string_attr, empty_string_attr);
@@ -247,15 +247,15 @@ class AsyncWhilePass
                   async_while_output_types.end(),
                   builder.getType<mlrt::compiler::FutureType>());
 
-        auto async_while_op = builder.create<tf_mlrt::TFAsyncWhileOp>(
-            while_op.getLoc(), async_while_output_types,
+        auto async_while_op = tf_mlrt::TFAsyncWhileOp::create(
+            builder, while_op.getLoc(), async_while_output_types,
             init_predicate->getResult(0), async_while_input,
             new_body.getSymName(), argument_groups.immutables.size());
 
         for (int i = 0; i < while_op.getResults().size(); ++i) {
           if (!while_op.getResult(i).use_empty()) {
-            auto async_while_result = builder.create<tf_mlrt::TFAwaitOp>(
-                while_op.getLoc(), while_op->getResultTypes()[i],
+            auto async_while_result = tf_mlrt::TFAwaitOp::create(
+                builder, while_op.getLoc(), while_op->getResultTypes()[i],
                 async_while_op.getResult(argument_remap.old_to_new_remap[i]));
             while_op.getResult(i).replaceAllUsesWith(
                 async_while_result.getResult());
@@ -303,8 +303,8 @@ class AsyncWhilePass
 
     std::string new_predicate_fn_name = absl::StrCat(
         original_predicate_fn.getName().str(), "/TfMlrtAsyncWhilePredicate");
-    mlir::func::FuncOp new_predicate_fn = builder.create<mlir::func::FuncOp>(
-        original_predicate_fn->getLoc(), new_predicate_fn_name,
+    mlir::func::FuncOp new_predicate_fn = mlir::func::FuncOp::create(
+        builder, original_predicate_fn->getLoc(), new_predicate_fn_name,
         mlir::FunctionType::get(original_predicate_fn.getContext(),
                                 remapped_input_types,
                                 original_predicate_fn.getResultTypes()));
@@ -386,8 +386,8 @@ class AsyncWhilePass
 
     std::string new_body_fn_name =
         absl::StrCat(original_body_fn.getName().str(), "/TfMlrtAsyncWhileBody");
-    auto body_fn = builder.create<mlir::func::FuncOp>(
-        original_body_fn->getLoc(), new_body_fn_name,
+    auto body_fn = mlir::func::FuncOp::create(
+        builder, original_body_fn->getLoc(), new_body_fn_name,
         mlir::FunctionType::get(original_body_fn.getContext(),
                                 remapped_input_types, remapped_output_types));
     processed_function = body_fn;
@@ -402,8 +402,8 @@ class AsyncWhilePass
     mlir::IRMapping mapping;
     int body_arg_idx = kNonPredicateStartIndex;
     for (int i : argument_groups.mutables) {
-      auto future_value = builder.create<tf_mlrt::TFAwaitOp>(
-          body_fn->getLoc(), original_body_fn.getArgumentTypes()[i],
+      auto future_value = tf_mlrt::TFAwaitOp::create(
+          builder, body_fn->getLoc(), original_body_fn.getArgumentTypes()[i],
           body_fn.getArgument(future_index));
       mapping.map(original_body_fn.getArgument(i), future_value);
       // Move by 2 b/c each variant correspond to one future and one promise
@@ -446,8 +446,8 @@ class AsyncWhilePass
     builder.setInsertionPointAfter(earliest_op);
     llvm::SmallVector<mlir::Type> predicate_returned_types;
     auto empty_string_attr = builder.getStringAttr("");
-    auto predicate_op = builder.create<mlir::TF::PartitionedCallOp>(
-        earliest_op->getLoc(), new_predicate_fn.getResultTypes(),
+    auto predicate_op = mlir::TF::PartitionedCallOp::create(
+        builder, earliest_op->getLoc(), new_predicate_fn.getResultTypes(),
         predicate_inputs, /*args_attrs=*/nullptr, /*res_attrs=*/nullptr,
         mlir::FlatSymbolRefAttr::get(new_predicate_fn.getSymNameAttr()),
         empty_string_attr, empty_string_attr, empty_string_attr);
@@ -458,19 +458,19 @@ class AsyncWhilePass
     auto predicate_tensor = predicate_op->getResult(0);
 
     const int kPredicatePromiseIndex = 0;
-    builder.create<tf_mlrt::TFPromiseOp>(
-        return_op->getLoc(), body_fn.getArgument(kPredicatePromiseIndex),
-        predicate_tensor);
+    tf_mlrt::TFPromiseOp::create(builder, return_op->getLoc(),
+                                 body_fn.getArgument(kPredicatePromiseIndex),
+                                 predicate_tensor);
     // First variant promise start at 2 as [predicate_promise, arg0_future,
     // arg0_promise, ...]
     int promise_index = 2;
     for (int i : argument_groups.mutables) {
-      builder.create<tf_mlrt::TFPromiseOp>(return_op->getLoc(),
-                                           body_fn.getArgument(promise_index),
-                                           return_op->getOperand(i));
+      tf_mlrt::TFPromiseOp::create(builder, return_op->getLoc(),
+                                   body_fn.getArgument(promise_index),
+                                   return_op->getOperand(i));
       promise_index += 2;
     }
-    builder.create<mlir::func::ReturnOp>(return_op->getLoc());
+    mlir::func::ReturnOp::create(builder, return_op->getLoc());
     return_op->erase();
 
     // Reorder await and promise to reduce blocking waits.

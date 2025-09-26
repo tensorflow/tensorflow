@@ -25,7 +25,6 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/custom.h"
 #include "xla/backends/gpu/codegen/emitters/concatenate.h"
 #include "xla/backends/gpu/codegen/emitters/in_place_dynamic_update_slice.h"
-#include "xla/backends/gpu/codegen/emitters/input_slices.h"
 #include "xla/backends/gpu/codegen/emitters/loop.h"
 #include "xla/backends/gpu/codegen/emitters/reduction.h"
 #include "xla/backends/gpu/codegen/emitters/scatter.h"
@@ -114,8 +113,6 @@ std::unique_ptr<FusionInterface> GetFusionEmitter(
       }
       return std::make_unique<CustomFusion>();
     }
-    case HloFusionAnalysis::EmitterFusionKind::kInputSlices:
-      return std::make_unique<InputSlicesFusion>(analysis);
     case HloFusionAnalysis::EmitterFusionKind::kDynamicMemcpy:
     case HloFusionAnalysis::EmitterFusionKind::kLoop: {
       // Check for a memcpy fusion before checking if a DUS can be emitted in

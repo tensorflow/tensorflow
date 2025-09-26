@@ -73,8 +73,8 @@ StatusOr<mlir::Operation*> QRSPMDExpander::ExpandOp(mlir::Operation* op) {
     builder.setInsertionPointAfterValue(generated_outputs[0]);
 
   // Tie the two outputs together with an identity op
-  auto identity_op = builder.create<mlir::TF::IdentityNOp>(
-      op->getLoc(), generated_types, generated_outputs);
+  auto identity_op = mlir::TF::IdentityNOp::create(
+      builder, op->getLoc(), generated_types, generated_outputs);
   newly_created_ops.insert(identity_op);
   for (int i = 0; i < output_layouts.size(); i++) {
     op->getOpResult(i).replaceAllUsesExcept(identity_op.getResult(i),

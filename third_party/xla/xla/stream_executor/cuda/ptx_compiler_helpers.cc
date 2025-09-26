@@ -15,13 +15,19 @@ limitations under the License.
 
 #include "xla/stream_executor/cuda/ptx_compiler_helpers.h"
 
+#include <string>
+#include <vector>
+
 #include "absl/base/call_once.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/match.h"
+#include "absl/strings/numbers.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
-#include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/semantic_version.h"
 
 namespace stream_executor {
@@ -45,6 +51,44 @@ bool IsPtxRegisterAllocationError(absl::string_view str) {
   return absl::StrContains(str, "ptxas fatal") &&
          (absl::StrContains(str, "Register allocation failed") ||
           absl::StrContains(str, "Insufficient registers"));
+}
+
+absl::StatusOr<int> GetLatestPtxIsaVersionFromUnsupportedVersionErrorLog(
+    absl::string_view error_log) {
+  std::vector<absl::string_view> chunks = absl::StrSplit(error_log, '\'');
+  if (chunks.size() != 3) {
+    return absl::InternalError(absl::StrCat(
+        "Failed to locate PTX ISA version in ptxas error message: ",
+        error_log));
+  }
+  std::vector<std::string> major_minor = absl::StrSplit(chunks[1], '.');
+  if (major_minor.size() != 2) {
+    return absl::InternalError(
+        absl::StrFormat("Expected PTX ISA version to be formatted as "
+                        "MAJOR.MINOR, instead got: %s",
+                        chunks[1]));
+  }
+  int major;
+  if (!absl::SimpleAtoi(major_minor[0], &major)) {
+    return absl::InternalError(
+        absl::StrFormat("Failed to parse PTX ISA major version, expected a "
+                        "parsable integer, instead got: %s",
+                        major_minor[0]));
+  }
+  int minor;
+  if (!absl::SimpleAtoi(major_minor[1], &minor)) {
+    return absl::InternalError(
+        absl::StrFormat("Failed to parse PTX ISA minor version, expected a "
+                        "parsable integer, instead got: %s",
+                        major_minor[1]));
+  }
+  if (minor >= 10) {
+    return absl::InternalError(
+        absl::StrFormat("PTX ISA minor version %d is not less than or equal to "
+                        "9, which is assumed for version comparison",
+                        minor));
+  }
+  return major * 10 + minor;
 }
 
 absl::Status CreateErrorFromPTXASLog(absl::string_view log,
@@ -99,15 +143,6 @@ void WarnIfBadPtxasVersion(absl::string_view method,
       }
     }
   });
-}
-
-// Extension is used for compute capabilities 9.0, 10.0/10.1/10.3 and 12.0/12.1
-// https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#ptx-compatibility
-bool ShouldUsePtxExtension(const CudaComputeCapability& cc) {
-  return (cc.major == 9 && cc.minor == 0) ||
-         (cc.major == 10 &&
-          (cc.minor == 0 || cc.minor == 1 || cc.minor == 3)) ||
-         (cc.major == 12 && (cc.minor == 0 || cc.minor == 1));
 }
 
 }  // namespace stream_executor

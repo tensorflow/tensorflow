@@ -42,6 +42,7 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/LogicalResult.h"
+#include "llvm/Support/Path.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -78,10 +79,12 @@ limitations under the License.
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/ir/dynamic_parameter_binding.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/parser/hlo_parser.h"
+#include "xla/hlo/translate/attributes.h"
 #include "xla/hlo/translate/hlo_to_mhlo/hlo_utils.h"
 #include "xla/hlo/translate/mhlo_to_hlo/attribute_exporter.h"
 #include "xla/hlo/translate/mhlo_to_hlo/layout_util.h"
@@ -102,13 +105,15 @@ limitations under the License.
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_module_config.h"
-#include "xla/service/source_target_pairs.h"
+#include "xla/service/spmd/shardy/constants.h"
+#include "xla/service/spmd/shardy/utils.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/types.h"
+#include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
 #define DEBUG_TYPE "xla-translate"
@@ -148,13 +153,10 @@ constexpr char kTopK[] = "top_k";
 
 // MHLO attributes. Module level attributes require namespacing.
 constexpr char kMhloCrossProgramPrefetches[] = "mhlo.cross_program_prefetches";
-constexpr char kMhloFrontendAttributes[] = "mhlo.frontend_attributes";
 constexpr char kMhloInputOutputAlias[] = "mhlo.input_output_alias";
 constexpr char kMhloIsDynamic[] = "mhlo.is_dynamic";
 constexpr char kMhloLiteral[] = "mhlo.literal";
-constexpr char kMhloParameterReplication[] = "mhlo.parameter_replication";
 constexpr char kMhloReplication[] = "mhlo.is_same_data_across_replicas";
-constexpr char kMhloSharding[] = "mhlo.sharding";
 constexpr char kMhloSpmdOutputSharding[] = "mhlo.spmd_output_sharding";
 constexpr char kMhloSpmdParametersShardings[] =
     "mhlo.spmd_parameters_shardings";
@@ -633,17 +635,6 @@ static xla::RaggedDotDimensionNumbers Convert_ragged_dot_dimension_numbers(
   return ragged_dot_dimension_numbers;
 }
 
-static xla::SparsityDescriptor Convert_sparsity_descriptor(
-    mlir::mhlo::SparsityDescriptorAttr sparsity_attr, bool is_lhs) {
-  xla::SparsityDescriptor sparsity_descriptor;
-  sparsity_descriptor.set_type(xla::SPARSITY_STRUCTURED_N_M);
-  sparsity_descriptor.set_index(is_lhs ? 0 : 1);
-  sparsity_descriptor.set_dimension(sparsity_attr.getDimension());
-  sparsity_descriptor.set_n(sparsity_attr.getN());
-  sparsity_descriptor.set_m(sparsity_attr.getM());
-  return sparsity_descriptor;
-}
-
 xla::ChannelHandle Convert_channel_handle(mlir::mhlo::ChannelHandleAttr attr) {
   xla::ChannelHandle channel_handle;
   channel_handle.set_handle(attr.getHandle());
@@ -893,8 +884,10 @@ static xla::ResultAccuracy Convert_result_accuracy(
 // returns std::nullopt.
 static std::optional<xla::OpSharding> CreateOpShardingFromAttribute(
     mlir::Operation* op) {
-  auto shardingAttr = op->getAttrOfType<mlir::StringAttr>(kMhloSharding);
-  if (!shardingAttr) return std::nullopt;
+  auto shardingAttr = op->getAttrOfType<mlir::StringAttr>(kShardingAttr);
+  if (!shardingAttr) {
+    return std::nullopt;
+  }
   return xla::ConvertSharding(shardingAttr.getValue());
 }
 
@@ -923,7 +916,7 @@ static xla::FrontendAttributes CreateXlaFrontendAttributesFromOp(
     mlir::Operation* op) {
   xla::FrontendAttributes frontend_attributes;
   auto frontend_attributes_dict =
-      op->getAttrOfType<mlir::DictionaryAttr>(kMhloFrontendAttributes);
+      op->getAttrOfType<mlir::DictionaryAttr>(kFrontendAttributesAttr);
   if (!frontend_attributes_dict) return frontend_attributes;
   CreateFrontendAttributes(frontend_attributes_dict, frontend_attributes);
   return frontend_attributes;
@@ -935,7 +928,7 @@ static void ExtractFrontendAttributesFromFunction(
   fe_attrs->resize(function.getNumArguments(), std::nullopt);
   for (int i = 0, end = function.getNumArguments(); i < end; ++i)
     if (auto fe_attr = function.getArgAttrOfType<mlir::DictionaryAttr>(
-            i, kMhloFrontendAttributes)) {
+            i, kFrontendAttributesAttr)) {
       xla::FrontendAttributes frontend_attributes;
       CreateFrontendAttributes(fe_attr, frontend_attributes);
       (*fe_attrs)[i] = frontend_attributes;
@@ -954,20 +947,46 @@ static bool SomeOptionalShardingsAreSet(
 static void ExtractShardingsFromFunction(
     mlir::func::FuncOp function,
     llvm::SmallVectorImpl<std::optional<xla::OpSharding>>* arg_shardings,
-    llvm::SmallVectorImpl<std::optional<xla::OpSharding>>* ret_shardings) {
+    llvm::SmallVectorImpl<std::optional<xla::OpSharding>>* ret_shardings,
+    bool is_entry_function) {
   arg_shardings->resize(function.getNumArguments(),
                         std::optional<xla::OpSharding>());
-  for (int i = 0, end = function.getNumArguments(); i < end; ++i)
+  auto module = function->getParentOfType<mlir::ModuleOp>();
+  std::optional<mlir::DictionaryAttr> sdy_meshes =
+      xla::sdy::tryGetFrontendAttr<mlir::DictionaryAttr>(
+          module, xla::sdy::kMeshesRoundTripAttr);
+
+  for (int i = 0, end = function.getNumArguments(); i < end; ++i) {
     if (auto sharding =
-            function.getArgAttrOfType<mlir::StringAttr>(i, kMhloSharding))
+            function.getArgAttrOfType<mlir::StringAttr>(i, kShardingAttr)) {
       (*arg_shardings)[i] = xla::ConvertSharding(sharding.getValue());
+      // Due to limitations with accurately getting OpShardings from manual
+      // computation bodies with Shardy shardings, only extract OpShardings from
+      // the entry function for now. This is ok since only the entry function
+      // uses the extracted OpShardings to modify layouts/create reshapes, other
+      // functions just use the OpShardings to populate the HloInstructionProto
+      // sharding field.
+    } else if (is_entry_function) {
+      if (auto sharding = xla::ExtractShardyArgShardingFromFrontendAttrs(
+              function, i, sdy_meshes)) {
+        (*arg_shardings)[i] = sharding;
+      }
+    }
+  }
 
   ret_shardings->resize(function.getNumResults(),
                         std::optional<xla::OpSharding>());
-  for (int i = 0, end = function.getNumResults(); i < end; ++i)
+  for (int i = 0, end = function.getNumResults(); i < end; ++i) {
     if (auto sharding =
-            function.getResultAttrOfType<mlir::StringAttr>(i, kMhloSharding))
+            function.getResultAttrOfType<mlir::StringAttr>(i, kShardingAttr)) {
       (*ret_shardings)[i] = xla::ConvertSharding(sharding.getValue());
+    } else if (is_entry_function) {
+      if (auto sharding = xla::ExtractShardyResultShardingFromFrontendAttrs(
+              function, i, sdy_meshes)) {
+        (*ret_shardings)[i] = sharding;
+      }
+    }
+  }
 }
 
 // Creates a tuple sharding with the given shardings if at least one is present.
@@ -1383,7 +1402,7 @@ LogicalResult ExportXlaOp(mlir::stablehlo::ConvolutionOp op,
       xla::ConvertConvDimensionNumbers(op.getDimensionNumbers()),
       Convertuint64_t(op.getFeatureGroupCount()),
       Convertuint64_t(op.getBatchGroupCount()),
-      Unwrap(Convert_precision_config(op.getPrecisionConfig())),
+      Unwrap(Convert_precision_config_stablehlo(op.getPrecisionConfig())),
       preferred_element_type, op.getWindowReversal());
   value_map[op] = xla_result;
   return mlir::success();
@@ -1576,7 +1595,6 @@ LogicalResult ExportXlaOp(RecvOp op, OpLoweringContext ctx) {
   auto result_types = op.getResultTypes();
   auto num_results = op.getNumResults();
 
-  xla::Shape token_shape = xla::TypeToShape(result_types[num_results - 1]);
   std::vector<xla::Shape> subshapes;
   for (const auto& item : llvm::enumerate(result_types)) {
     if (item.index() == num_results - 1) break;
@@ -1663,13 +1681,11 @@ LogicalResult ExportXlaOp(InfeedOp op, OpLoweringContext ctx) {
   // stablehlo.infeed produces multiple results. The shape argument expected
   // by the xla client API is a tuple type with two element-types:
   // data_type : A tuple containing all the stablehlo.infeedOp result types
-  // except
-  //             the token type.
+  //             except the token type.
   // token_type : The last result type of stablehlo.infeedOp.
   auto result_types = op.getResultTypes();
   auto num_results = op.getNumResults();
 
-  xla::Shape token_shape = xla::TypeToShape(result_types[num_results - 1]);
   std::vector<xla::Shape> subshapes;
   for (const auto& item : llvm::enumerate(result_types)) {
     if (item.index() == num_results - 1) break;
@@ -1679,17 +1695,34 @@ LogicalResult ExportXlaOp(InfeedOp op, OpLoweringContext ctx) {
   xla::Shape data_shape = xla::ShapeUtil::MakeTupleShape(subshapes);
   auto xla_result = xla::InfeedWithToken(token, data_shape,
                                          std::string(op.getInfeedConfig()));
+  std::optional<xla::OpSharding> data_sharding = ctx.builder->sharding();
   ctx.builder->ClearSharding();
+  std::optional<xla::OpSharding> last_sharding;
+  if (data_sharding.has_value()) {
+    last_sharding = *data_sharding->mutable_tuple_shardings()->ReleaseLast();
+  }
 
   if (!subshapes.empty()) {
+    xla::XlaScopedShardingAssignment sharding_scope(ctx.builder, data_sharding);
     auto data_tuple_element = xla::GetTupleElement(xla_result, 0);
+
     for (const auto& item : llvm::enumerate(op.getResults())) {
-      if (item.index() == num_results - 1) break;
+      if (item.index() == num_results - 1) {
+        break;
+      }
+
+      xla::XlaScopedShardingAssignment sharding_scope(
+          ctx.builder,
+          data_sharding.has_value()
+              ? std::make_optional(
+                    data_sharding->tuple_shardings().at(item.index()))
+              : std::nullopt);
       value_map[item.value()] =
           xla::GetTupleElement(data_tuple_element, item.index());
     }
   }
 
+  xla::XlaScopedShardingAssignment sharding_scope(ctx.builder, last_sharding);
   value_map[op.getResult(num_results - 1)] =
       xla::GetTupleElement(xla_result, 1);
 
@@ -1705,13 +1738,12 @@ LogicalResult ExportXlaOp(OutfeedOp op, OpLoweringContext ctx) {
   const auto sharding = ctx.builder->sharding();
   xla::XlaOp operand;
 
-  if (sharding.has_value() &&
-      sharding->tuple_shardings_size() != operands.size()) {
-    xla::XlaScopedShardingAssignment scoped_sharding(ctx.builder, std::nullopt);
-    operand = Tuple(ctx.builder, operands);
-  } else {
+  {
+    xla::XlaScopedShardingAssignment scoped_sharding(
+        ctx.builder, CreateTupleSharding(GetXlaOpShardings(operands)));
     operand = Tuple(ctx.builder, operands);
   }
+
   std::vector<xla::Shape> subshapes;
   for (auto operand : op.getInputs())
     subshapes.push_back(xla::TypeToShape(operand.getType()));
@@ -2524,7 +2556,8 @@ LogicalResult ExportXlaOp(CustomCallOp op, OpLoweringContext ctx) {
       auto name = attr.getName();
       return name == kCallTargetName || name == kBackendConfig ||
              name == kApiVersion || name == kCalledComputations ||
-             name == kHasSideEffect || name == kMhloSharding;
+             name == kHasSideEffect || name == kShardingAttr ||
+             name == kFrontendAttributesAttr;
     };
     for (const auto& attr : op->getAttrs()) {
       if (!isSupportedAttrName(attr))
@@ -2589,8 +2622,21 @@ LogicalResult ExportXlaOp(CustomCallOp op, OpLoweringContext ctx) {
     literal_ptr = &*literal;
   }
 
-  auto aliasInfo =
-      xla::ConvertOutputOperandAliasing(op.getOutputOperandAliases());
+  auto aliasInfo = xla::ConvertOutputOperandAliasing<
+      mlir::stablehlo::OutputOperandAliasAttr>(op.getOutputOperandAliases());
+  // Pin and Unpin are the boundary to transition into or out of a buffer
+  // chain and their operands and results are not different types. XLA/HLO
+  // requires alias info for Pin and Unpin custom calls, such as to support
+  // copy insertion to add the needed copies of the Pin operand and the Unpin
+  // result. We keep this detail within XLA/HLO and do not require StableHLO
+  // users to add alias of different types to theses custom calls.
+  if (absl::string_view(op.getCallTargetName()) ==
+          xla::kUnpinCustomCallTarget ||
+      absl::string_view(op.getCallTargetName()) == xla::kPinCustomCallTarget) {
+    aliasInfo = {std::make_pair(
+        xla::ShapeIndex(),
+        std::make_pair(static_cast<int64_t>(0), xla::ShapeIndex()))};
+  }
   auto output_operand_aliasing = absl::MakeSpan(*aliasInfo);
 
   auto custom_call_schedule = xla::SCHEDULE_NONE;
@@ -2608,7 +2654,25 @@ LogicalResult ExportXlaOp(CustomCallOp op, OpLoweringContext ctx) {
   }
 
   xla::XlaOp custom_call;
-  if (op.getCalledComputations().size() == 1) {
+  if (op.getCalledComputations().size() == 1 && op.getOperandLayouts() &&
+      op.getResultLayouts()) {
+    mlir::func::FuncOp callee = ctx.converter->LookUpSymbol(
+        mlir::cast<FlatSymbolRefAttr>(op.getCalledComputations()[0]));
+    if (failed(ctx.converter->RunOnFunction(callee))) {
+      return failure();
+    }
+    xla::XlaComputationId computation =
+        ctx.converter->GetLoweredComputation(callee);
+    auto operand_shapes_with_layout = ConvertTypesToShapesWithLayout(
+        op.getOperandTypes(), op.getOperandLayouts().value());
+    SetLayout(result_shape, op.getResultLayouts().value());
+
+    custom_call = xla::CustomCallWithComputationAndLayouts(
+        ctx.builder, call_target_name, args, computation, result_shape,
+        operand_shapes_with_layout, backend_config, op.getHasSideEffect(),
+        output_operand_aliasing, literal_ptr, custom_call_schedule,
+        *xla_api_version);
+  } else if (op.getCalledComputations().size() == 1) {
     mlir::func::FuncOp callee = ctx.converter->LookUpSymbol(
         mlir::cast<FlatSymbolRefAttr>(op.getCalledComputations()[0]));
     if (failed(ctx.converter->RunOnFunction(callee))) return failure();
@@ -2644,7 +2708,8 @@ LogicalResult ExportXlaOp(CustomCallOp op, OpLoweringContext ctx) {
   return success();
 }
 
-LogicalResult ExportXlaOp(DotGeneralOp op, OpLoweringContext ctx) {
+LogicalResult ExportXlaOp(mlir::stablehlo::DotGeneralOp op,
+                          OpLoweringContext ctx) {
   auto& value_map = *ctx.values;
   xla::XlaOp lhs, rhs;
   if (failed(GetXlaOp(op.getLhs(), value_map, &lhs, op)))
@@ -2655,7 +2720,8 @@ LogicalResult ExportXlaOp(DotGeneralOp op, OpLoweringContext ctx) {
       xla::ConvertMlirTypeToPrimitiveType(getElementTypeOrSelf(op.getType()));
 
   // Precision Config / Algorithm
-  auto precision_config = Convert_precision_config(op.getPrecisionConfig());
+  auto precision_config =
+      Convert_precision_config_stablehlo(op.getPrecisionConfig());
   if (op.getAlgorithmAttr()) {
     absl::StatusOr<xla::PrecisionConfig::Algorithm> algorithm =
         xla::ConvertDotAlgorithm(op.getAlgorithmAttr());
@@ -3669,36 +3735,6 @@ LogicalResult ExportXlaOp(RaggedDotOp op, OpLoweringContext ctx) {
   return mlir::success();
 }
 
-LogicalResult ExportXlaOp(SparseDotOp op, OpLoweringContext ctx) {
-  auto& value_map = *ctx.values;
-  xla::XlaOp lhs, rhs;
-  if (failed(GetXlaOp(op.getLhs(), value_map, &lhs, op)))
-    return mlir::failure();
-  if (failed(GetXlaOp(op.getRhs(), value_map, &rhs, op)))
-    return mlir::failure();
-  xla::PrimitiveType preferred_element_type =
-      xla::ConvertMlirTypeToPrimitiveType(getElementTypeOrSelf(op.getType()));
-
-  llvm::SmallVector<xla::XlaOp> sparse_meta;
-  if (failed(GetTuple(op, op.getMeta(), ctx, sparse_meta))) return failure();
-  std::vector<xla::SparsityDescriptor> sparsity;
-  if (op.getLhsSparsity().has_value()) {
-    sparsity.push_back(
-        Convert_sparsity_descriptor(*op.getLhsSparsity(), /*is_lhs=*/true));
-  }
-  if (op.getRhsSparsity().has_value()) {
-    sparsity.push_back(
-        Convert_sparsity_descriptor(*op.getRhsSparsity(), /*is_lhs=*/false));
-  }
-
-  value_map[op] =
-      xla::SparseDot(lhs, rhs, absl::MakeSpan(sparse_meta), sparsity,
-                     Convert_dot_dimension_numbers(op.getDotDimensionNumbers()),
-                     Unwrap(Convert_precision_config(op.getPrecisionConfig())),
-                     preferred_element_type);
-  return mlir::success();
-}
-
 LogicalResult ExportXlaOp(DomainOp op, OpLoweringContext ctx) {
   auto& valueMap = *ctx.values;
 
@@ -4229,8 +4265,8 @@ LogicalResult ExportXlaOp(CustomCallOp op, OpLoweringContext ctx) {
       auto name = attr.getName();
       return name == kCallTargetName || name == kBackendConfig ||
              name == kApiVersion || name == kCalledComputations ||
-             name == kHasSideEffect || name == kMhloSharding ||
-             name == kMhloFrontendAttributes;
+             name == kHasSideEffect || name == kShardingAttr ||
+             name == kFrontendAttributesAttr;
     };
     for (const auto& attr : op->getAttrs()) {
       if (!isSupportedAttrName(attr))
@@ -4288,7 +4324,16 @@ LogicalResult ExportXlaOp(CustomCallOp op, OpLoweringContext ctx) {
   }
 
   auto aliasInfo =
-      xla::ConvertOutputOperandAliasing(op.getOutputOperandAliases());
+      xla::ConvertOutputOperandAliasing<mlir::mhlo::OutputOperandAliasAttr>(
+          op.getOutputOperandAliases());
+  // XLA/HLO requires alias info for Pin and Unpin custom calls.
+  if (absl::string_view(op.getCallTargetName()) ==
+          xla::kUnpinCustomCallTarget ||
+      absl::string_view(op.getCallTargetName()) == xla::kPinCustomCallTarget) {
+    aliasInfo = {std::make_pair(
+        xla::ShapeIndex(),
+        std::make_pair(static_cast<int64_t>(0), xla::ShapeIndex()))};
+  }
   auto output_operand_aliasing = absl::MakeSpan(*aliasInfo);
   auto custom_call_schedule =
       xla::ConvertCustomCallSchedule(op.getCustomCallSchedule());
@@ -4372,7 +4417,6 @@ LogicalResult ExportXlaOp(InfeedOp op, OpLoweringContext ctx) {
   auto result_types = op.getResultTypes();
   auto num_results = op.getNumResults();
 
-  xla::Shape token_shape = xla::TypeToShape(result_types[num_results - 1]);
   std::vector<xla::Shape> subshapes;
   for (const auto& item : llvm::enumerate(result_types)) {
     if (item.index() == num_results - 1) break;
@@ -4382,17 +4426,31 @@ LogicalResult ExportXlaOp(InfeedOp op, OpLoweringContext ctx) {
   xla::Shape data_shape = xla::ShapeUtil::MakeTupleShape(subshapes);
   auto xla_result = xla::InfeedWithToken(token, data_shape,
                                          std::string(op.getInfeedConfig()));
+
+  std::optional<xla::OpSharding> data_sharding = ctx.builder->sharding();
   ctx.builder->ClearSharding();
+  std::optional<xla::OpSharding> last_sharding;
+  if (data_sharding.has_value()) {
+    last_sharding = *data_sharding->mutable_tuple_shardings()->ReleaseLast();
+  }
 
   if (!subshapes.empty()) {
+    xla::XlaScopedShardingAssignment sharding_scope(ctx.builder, data_sharding);
     auto data_tuple_element = xla::GetTupleElement(xla_result, 0);
     for (const auto& item : llvm::enumerate(op.getResults())) {
       if (item.index() == num_results - 1) break;
+      xla::XlaScopedShardingAssignment sharding_scope(
+          ctx.builder,
+          data_sharding.has_value()
+              ? std::make_optional(
+                    data_sharding->tuple_shardings().at(item.index()))
+              : std::nullopt);
       value_map[item.value()] =
           xla::GetTupleElement(data_tuple_element, item.index());
     }
   }
 
+  xla::XlaScopedShardingAssignment sharding_scope(ctx.builder, last_sharding);
   value_map[op.getResult(num_results - 1)] =
       xla::GetTupleElement(xla_result, 1);
 
@@ -4429,11 +4487,9 @@ LogicalResult ExportXlaOp(OutfeedOp op, OpLoweringContext ctx) {
   const auto sharding = ctx.builder->sharding();
   xla::XlaOp operand;
 
-  if (sharding.has_value() &&
-      sharding->tuple_shardings_size() != operands.size()) {
-    xla::XlaScopedShardingAssignment scoped_sharding(ctx.builder, std::nullopt);
-    operand = Tuple(ctx.builder, operands);
-  } else {
+  {
+    xla::XlaScopedShardingAssignment scoped_sharding(
+        ctx.builder, CreateTupleSharding(GetXlaOpShardings(operands)));
     operand = Tuple(ctx.builder, operands);
   }
   std::vector<xla::Shape> subshapes;
@@ -4494,7 +4550,6 @@ LogicalResult ExportXlaOp(RecvOp op, OpLoweringContext ctx) {
   auto result_types = op.getResultTypes();
   auto num_results = op.getNumResults();
 
-  xla::Shape token_shape = xla::TypeToShape(result_types[num_results - 1]);
   std::vector<xla::Shape> subshapes;
   for (const auto& item : llvm::enumerate(result_types)) {
     if (item.index() == num_results - 1) break;
@@ -4573,6 +4628,13 @@ LogicalResult ExportXlaOp(RecvOp op, OpLoweringContext ctx) {
     }
   }
 
+  // HLO GetTupleElement needs a single sharding,
+  std::optional<xla::OpSharding> sharding = ctx.builder->sharding();
+  if (sharding.has_value() && sharding->type() == xla::OpSharding::TUPLE) {
+    CHECK_GE(ctx.builder->sharding()->tuple_shardings_size(), 2);
+    sharding = ctx.builder->sharding()->tuple_shardings(1);
+  }
+  xla::XlaScopedShardingAssignment sharding_scope(ctx.builder, sharding);
   value_map[op.getResult(num_results - 1)] =
       xla::GetTupleElement(xla_result, 1);
 
@@ -5052,7 +5114,8 @@ LogicalResult ExportXlaOp(FusionOp op, OpLoweringContext ctx) {
 
   auto& values = *ctx.values;
   auto aliasInfo =
-      xla::ConvertOutputOperandAliasing(op.getOutputOperandAliases());
+      xla::ConvertOutputOperandAliasing<mlir::mhlo::OutputOperandAliasAttr>(
+          op.getOutputOperandAliases());
   auto output_operand_aliasing = absl::MakeSpan(*aliasInfo);
   llvm::SmallVector<xla::XlaOp, 4> operands;
   for (auto operand : op.getInputs()) operands.push_back(values[operand]);
@@ -5298,33 +5361,6 @@ LogicalResult ConvertInfeedtLayout(mlir::Operation* op,
   }
 
   return success();
-}
-
-// MHLO and XLA HLO disagree on the meaning of addition of `pred` / `i1`, so
-// there has to be a special case somewhere to account for the difference.  To
-// get the expected behavior of an `AddOp` on `i1`, we have to use `xor`.  Since
-// the majority of the conversion is generated code, we just sidestep it here
-// for this single case, and inline the code to emit an `xor`.
-LogicalResult ExportXlaOperatorWrapped(mlir::Operation* inst,
-                                       OpLoweringContext ctx) {
-  auto op = dyn_cast<mlir::mhlo::AddOp>(inst);
-  if (op && mlir::cast<mlir::TensorType>(op.getResult().getType())
-                .getElementType()
-                .isSignlessInteger(1)) {
-    auto& value_map = *ctx.values;
-    auto result = op.getResult();
-    xla::XlaOp xla_arg_0;
-    if (failed(GetXlaOp(op.getLhs(), value_map, &xla_arg_0, op)))
-      return mlir::failure();
-    xla::XlaOp xla_arg_1;
-    if (failed(GetXlaOp(op.getRhs(), value_map, &xla_arg_1, op)))
-      return mlir::failure();
-    auto xla_result = xla::Xor(Unwrap(xla_arg_0), Unwrap(xla_arg_1));
-    value_map[result] = xla_result;
-    return mlir::success();
-  }
-
-  return ExportXlaOperator(inst, ctx);
 }
 
 LogicalResult ConvertToHloModule::PropagateLayouts(
@@ -5642,25 +5678,24 @@ LogicalResult ConvertToHloModule::LowerReturn(
     return success();
   }
 
-  if (num_return_values == 1) {
-    Value ret = implicit_results.empty() ? inst->getOperand(0)
-                                         : implicit_results.front();
-    xla::XlaOp operand;
-    if (failed(GetXlaOp(ret, value_map, &operand, inst))) return failure();
+  Value ret =
+      implicit_results.empty() ? inst->getOperand(0) : implicit_results.front();
+  xla::XlaOp operand;
+  if (failed(GetXlaOp(ret, value_map, &operand, inst))) {
+    return failure();
+  }
 
-    if (ret_tuple_sharding) {
-      if (std::optional<xla::OpSharding> sharding =
-              getTupleShardingForSingleElementReturnLowering(operand,
-                                                             builder)) {
-        builder->SetSharding(sharding.value());
-      }
-      auto tuple = Tuple(builder, {operand});
-      builder->SetSharding(*ret_shardings[0]);
-      *return_value = GetTupleElement(tuple, 0);
-      builder->ClearSharding();
-    } else {
-      *return_value = operand;
+  if (ret_tuple_sharding) {
+    if (std::optional<xla::OpSharding> sharding =
+            getTupleShardingForSingleElementReturnLowering(operand, builder)) {
+      builder->SetSharding(sharding.value());
     }
+    auto tuple = Tuple(builder, {operand});
+    builder->SetSharding(*ret_shardings[0]);
+    *return_value = GetTupleElement(tuple, 0);
+    builder->ClearSharding();
+  } else {
+    *return_value = operand;
   }
 
   return success();
@@ -5684,9 +5719,8 @@ LogicalResult ConvertToHloModule::Lower(
 
   *return_value = xla::XlaOp();
 
-  if (succeeded(ExportXlaOperatorWrapped(
-          inst,
-          {value_lowering, this, builder, &stack_frame_indexes_builder_}))) {
+  if (succeeded(ExportXlaOperator(inst, {value_lowering, this, builder,
+                                         &stack_frame_indexes_builder_}))) {
     if (inst->getNumResults() == 1) {
       auto iter = value_lowering->find(inst->getResult(0));
       if (iter == value_lowering->end()) {
@@ -5859,7 +5893,8 @@ LogicalResult ConvertToHloModule::RunOnFunction(mlir::func::FuncOp f) {
     if (!any_arg_replicated) entry_args_same_across_replicas.clear();
     ExtractFrontendAttributesFromFunction(f, &arg_fe_attrs);
   }
-  ExtractShardingsFromFunction(f, &arg_shardings, &ret_shardings);
+  ExtractShardingsFromFunction(f, &arg_shardings, &ret_shardings,
+                               entry_function);
   xla::XlaComputationId computation;
   if (failed(LowerBasicBlockAsFunction(
           &f.front(), builder.get(), entry_function, false,
@@ -5878,7 +5913,7 @@ LogicalResult ConvertToHloModule::RunOnFunction(mlir::func::FuncOp f) {
   absl::flat_hash_map<int, std::vector<bool>> parameter_replication;
   for (int i = 0; i < f.getNumArguments(); ++i) {
     if (auto pr =
-            f.getArgAttrOfType<mlir::ArrayAttr>(i, kMhloParameterReplication)) {
+            f.getArgAttrOfType<mlir::ArrayAttr>(i, kParameterReplicationAttr)) {
       auto& replicated_at_leaf_buffers = parameter_replication[i];
       for (auto b : pr.getValue()) {
         replicated_at_leaf_buffers.push_back(
@@ -5979,6 +6014,11 @@ xla::OpMetadata GetOpNameMetadataFromLocation(Value value) {
   return m;
 }
 
+std::string SanitizeOpName(std::string name) {
+  name = llvm::sys::path::filename(name);
+  return xla::SanitizeOpName(name, '.', "_");
+}
+
 }  // namespace
 
 LogicalResult ConvertToHloModule::LowerBasicBlockAsFunction(
@@ -6076,7 +6116,15 @@ LogicalResult ConvertToHloModule::LowerBasicBlockAsFunction(
                                                     : implicit_operands.front();
         xla::XlaScopedOpMetadataAssignment op_metadata(
             builder, GetOpNameMetadataFromLocation(arg));
-        lowering[arg] = xla::Parameter(builder, 0, arg_shapes[0], kArgPrefix);
+        // Use the user-specified op_name from the location if available,
+        // otherwise use the default prefix.
+        std::string name = mhlo::GetDebugNameFromLocation(arg.getLoc());
+        if (!name.empty()) {
+          name = SanitizeOpName(name);
+        } else {
+          name = kArgPrefix;
+        }
+        lowering[arg] = xla::Parameter(builder, 0, arg_shapes[0], name);
       } else {
         // Applicable only for IfOp or CaseOp. No implicit operands implies no
         // xla parameters. In this case, we create an empty tuple as the
@@ -6100,12 +6148,19 @@ LogicalResult ConvertToHloModule::LowerBasicBlockAsFunction(
         // debugging.
         xla::XlaScopedOpMetadataAssignment op_metadata(
             builder, GetOpNameMetadataFromLocation(arg));
+        // Use the user-specified op_name from the location if available,
+        // otherwise use the default prefix.
+        std::string name = mhlo::GetDebugNameFromLocation(arg.getLoc());
+        if (!name.empty()) {
+          name = SanitizeOpName(name);
+        } else {
+          name = absl::StrCat(kArgPrefix, num);
+        }
         if (entry_args_same_across_replicas.empty()) {
-          lowering[arg] = xla::Parameter(builder, num, shape,
-                                         absl::StrCat(kArgPrefix, num));
+          lowering[arg] = xla::Parameter(builder, num, shape, name);
         } else {
           lowering[arg] = xla::Parameter(
-              builder, num, shape, absl::StrCat(kArgPrefix, num),
+              builder, num, shape, name,
               std::vector<bool>(entry_args_same_across_replicas[num],
                                 xla::ShapeUtil::GetLeafCount(shape)));
         }
@@ -6251,7 +6306,7 @@ absl::Status ConvertMlirHloToHlo(mlir::ModuleOp module,
     hlo_module.set_is_dynamic(is_dynamic.getValue());
   }
   if (auto frontend_attributes =
-          module->getAttrOfType<DictionaryAttr>(kMhloFrontendAttributes)) {
+          module->getAttrOfType<DictionaryAttr>(kFrontendAttributesAttr)) {
     CreateFrontendAttributes(frontend_attributes,
                              *hlo_module.mutable_frontend_attributes());
   }
@@ -6386,6 +6441,16 @@ absl::Status ConvertMlirHloToHlo(mlir::ModuleOp module,
   options.use_tuple_args = use_tuple_args;
   options.return_tuple = return_tuple;
   return ConvertMlirHloToHlo(module, hlo_proto, options);
+}
+
+std::optional<xla::OriginalValueProto> CreateOriginalValueFromOp(
+    mlir::Operation* op) {
+  auto original_value_attr =
+      op->getAttrOfType<mlir::StringAttr>(kOriginalValueAttr);
+  if (!original_value_attr) {
+    return std::nullopt;
+  }
+  return xla::ConvertOriginalValue(original_value_attr.getValue());
 }
 
 }  // namespace mlir

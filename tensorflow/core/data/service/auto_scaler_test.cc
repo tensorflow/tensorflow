@@ -207,14 +207,16 @@ TEST(AutoScalerTest, ReportProcessingTimeZeroDuration) {
   AutoScaler auto_scaler;
   absl::Status result = auto_scaler.ReportProcessingTime("/worker/task/0:20000",
                                                          absl::ZeroDuration());
-  EXPECT_THAT(result, StatusIs(absl::StatusCode::kInvalidArgument));
+  EXPECT_THAT(result,
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 TEST(AutoScalerTest, ReportProcessingTimeNegativeDuration) {
   AutoScaler auto_scaler;
   absl::Status result = auto_scaler.ReportProcessingTime(
       "/worker/task/0:20000", absl::Microseconds(-10));
-  EXPECT_THAT(result, StatusIs(absl::StatusCode::kInvalidArgument));
+  EXPECT_THAT(result,
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 TEST(AutoScalerTest, ReportTargetProcessingTimeNewConsumer) {
@@ -251,14 +253,16 @@ TEST(AutoScalerTest, ReportTargetProcessingTimeZeroDuration) {
   AutoScaler auto_scaler;
   absl::Status result =
       auto_scaler.ReportTargetProcessingTime(0, absl::ZeroDuration());
-  EXPECT_THAT(result, StatusIs(absl::StatusCode::kInvalidArgument));
+  EXPECT_THAT(result,
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 TEST(AutoScalerTest, ReportTargetProcessingTimeNegativeDuration) {
   AutoScaler auto_scaler;
   absl::Status result =
       auto_scaler.ReportTargetProcessingTime(0, absl::Microseconds(-10));
-  EXPECT_THAT(result, StatusIs(absl::StatusCode::kInvalidArgument));
+  EXPECT_THAT(result,
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 TEST(AutoScalerTest, RemoveWorkerSuccessful) {
@@ -274,7 +278,7 @@ TEST(AutoScalerTest, RemoveWorkerSuccessful) {
 TEST(AutoScalerTest, RemoveNonexistentWorker) {
   AutoScaler auto_scaler;
   EXPECT_THAT(auto_scaler.RemoveWorker("/worker/task/0:20000"),
-              StatusIs(absl::StatusCode::kNotFound));
+              absl_testing::StatusIs(absl::StatusCode::kNotFound));
 }
 
 TEST(AutoScalerTest, RemoveWorkerAfterNewPTReported) {
@@ -299,7 +303,7 @@ TEST(AutoScalerTest, RemoveConsumerSuccessful) {
 TEST(AutoScalerTest, RemoveNonexistentConsumer) {
   AutoScaler auto_scaler;
   EXPECT_THAT(auto_scaler.RemoveConsumer(0),
-              StatusIs(absl::StatusCode::kNotFound));
+              absl_testing::StatusIs(absl::StatusCode::kNotFound));
 }
 
 TEST(AutoScalerTest, RemoveConsumerAfterNewTPTReported) {
@@ -321,23 +325,25 @@ TEST(MultipleIterationsAutoScalerTest, UnregisterExistingIteration) {
 TEST(MultipleIterationsAutoScalerTest, UnregisterNonexistentIteration) {
   MultipleIterationsAutoScaler auto_scaler;
   EXPECT_THAT(auto_scaler.UnregisterIteration(0),
-              StatusIs(absl::StatusCode::kNotFound));
+              absl_testing::StatusIs(absl::StatusCode::kNotFound));
 }
 
 TEST(MultipleIterationsAutoScalerTest,
      UpdateOptimalNumberOfWorkersMetricInvalidCurrentWorkers) {
   MultipleIterationsAutoScaler auto_scaler;
   absl::Status status = auto_scaler.UpdateOptimalNumberOfWorkersMetric(0);
-  EXPECT_THAT(status, StatusIs(absl::StatusCode::kInvalidArgument));
+  EXPECT_THAT(status,
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
   status = auto_scaler.UpdateOptimalNumberOfWorkersMetric(-1);
-  EXPECT_THAT(status, StatusIs(absl::StatusCode::kInvalidArgument));
+  EXPECT_THAT(status,
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 TEST(MultipleIterationsAutoScalerTest,
      UpdateOptimalNumberOfWorkersMetricNoReportedTimes) {
   MultipleIterationsAutoScaler auto_scaler;
   absl::Status status = auto_scaler.UpdateOptimalNumberOfWorkersMetric(1);
-  EXPECT_THAT(status, StatusIs(absl::StatusCode::kUnavailable));
+  EXPECT_THAT(status, absl_testing::StatusIs(absl::StatusCode::kUnavailable));
 }
 
 TEST(MultipleIterationsAutoScalerTest,
@@ -349,7 +355,7 @@ TEST(MultipleIterationsAutoScalerTest,
   TF_ASSERT_OK(
       auto_scaler.ReportTargetProcessingTime(1, 0, absl::Microseconds(5)));
   absl::Status status = auto_scaler.UpdateOptimalNumberOfWorkersMetric(1);
-  EXPECT_THAT(status, StatusIs(absl::StatusCode::kUnavailable));
+  EXPECT_THAT(status, absl_testing::StatusIs(absl::StatusCode::kUnavailable));
 }
 
 TEST(MultipleIterationsAutoScalerTest,
@@ -361,7 +367,7 @@ TEST(MultipleIterationsAutoScalerTest,
   TF_ASSERT_OK(auto_scaler.ReportProcessingTime(1, "/worker/task/0:20000",
                                                 absl::Microseconds(10)));
   absl::Status status = auto_scaler.UpdateOptimalNumberOfWorkersMetric(1);
-  EXPECT_THAT(status, StatusIs(absl::StatusCode::kUnavailable));
+  EXPECT_THAT(status, absl_testing::StatusIs(absl::StatusCode::kUnavailable));
 }
 
 TEST(MultipleIterationsAutoScalerTest,
@@ -592,7 +598,8 @@ TEST(MultipleIterationsAutoScalerTest, ReportProcessingTimeZeroDuration) {
 
   absl::Status result = auto_scaler.ReportProcessingTime(
       0, "/worker/task/0:20000", absl::ZeroDuration());
-  EXPECT_THAT(result, StatusIs(absl::StatusCode::kInvalidArgument));
+  EXPECT_THAT(result,
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 TEST(MultipleIterationsAutoScalerTest, ReportProcessingTimeNegativeDuration) {
@@ -600,7 +607,8 @@ TEST(MultipleIterationsAutoScalerTest, ReportProcessingTimeNegativeDuration) {
 
   absl::Status result = auto_scaler.ReportProcessingTime(
       0, "/worker/task/0:20000", absl::Microseconds(-10));
-  EXPECT_THAT(result, StatusIs(absl::StatusCode::kInvalidArgument));
+  EXPECT_THAT(result,
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 TEST(MultipleIterationsAutoScalerTest, ReportTargetProcessingTimeNewIteration) {
@@ -660,7 +668,8 @@ TEST(MultipleIterationsAutoScalerTest, ReportTargetProcessingTimeZeroDuration) {
 
   absl::Status result =
       auto_scaler.ReportTargetProcessingTime(0, 0, absl::ZeroDuration());
-  EXPECT_THAT(result, StatusIs(absl::StatusCode::kInvalidArgument));
+  EXPECT_THAT(result,
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 TEST(MultipleIterationsAutoScalerTest,
@@ -669,15 +678,16 @@ TEST(MultipleIterationsAutoScalerTest,
 
   absl::Status result =
       auto_scaler.ReportTargetProcessingTime(0, 0, absl::Microseconds(-10));
-  EXPECT_THAT(result, StatusIs(absl::StatusCode::kInvalidArgument));
+  EXPECT_THAT(result,
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 TEST(MultipleIterationsAutoScalerTest, RemoveWorkerUnregisteredIteration) {
   MultipleIterationsAutoScaler auto_scaler;
   EXPECT_THAT(auto_scaler.RemoveWorker(0, "/worker/task/1:20000"),
-              StatusIs(absl::StatusCode::kNotFound));
+              absl_testing::StatusIs(absl::StatusCode::kNotFound));
   EXPECT_THAT(auto_scaler.RemoveWorker(1, "/worker/task/1:20000"),
-              StatusIs(absl::StatusCode::kNotFound));
+              absl_testing::StatusIs(absl::StatusCode::kNotFound));
 }
 
 TEST(MultipleIterationsAutoScalerTest, RemoveWorkerSuccessful) {
@@ -696,7 +706,7 @@ TEST(MultipleIterationsAutoScalerTest, RemoveNonexistentWorker) {
   TF_ASSERT_OK(auto_scaler.ReportProcessingTime(0, "/worker/task/0:20000",
                                                 absl::Microseconds(10)));
   EXPECT_THAT(auto_scaler.RemoveWorker(0, "/worker/task/1:20000"),
-              StatusIs(absl::StatusCode::kNotFound));
+              absl_testing::StatusIs(absl::StatusCode::kNotFound));
 }
 
 TEST(MultipleIterationsAutoScalerTest, RemoveWorkerAfterNewPTReported) {
@@ -712,9 +722,9 @@ TEST(MultipleIterationsAutoScalerTest, RemoveWorkerAfterNewPTReported) {
 TEST(MultipleIterationsAutoScalerTest, RemoveConsumerUnregisteredIteration) {
   MultipleIterationsAutoScaler auto_scaler;
   EXPECT_THAT(auto_scaler.RemoveConsumer(0, 0),
-              StatusIs(absl::StatusCode::kNotFound));
+              absl_testing::StatusIs(absl::StatusCode::kNotFound));
   EXPECT_THAT(auto_scaler.RemoveConsumer(1, 0),
-              StatusIs(absl::StatusCode::kNotFound));
+              absl_testing::StatusIs(absl::StatusCode::kNotFound));
 }
 
 TEST(MultipleIterationsAutoScalerTest, RemoveConsumerSuccessful) {
@@ -733,7 +743,7 @@ TEST(MultipleIterationsAutoScalerTest, RemoveNonexistentConsumer) {
   TF_ASSERT_OK(
       auto_scaler.ReportTargetProcessingTime(0, 0, absl::Microseconds(10)));
   EXPECT_THAT(auto_scaler.RemoveConsumer(0, 1),
-              StatusIs(absl::StatusCode::kNotFound));
+              absl_testing::StatusIs(absl::StatusCode::kNotFound));
 }
 
 TEST(MultipleIterationsAutoScalerTest, RemoveConsumerAfterNewTPTReported) {

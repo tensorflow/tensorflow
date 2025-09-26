@@ -372,8 +372,9 @@ absl::Status EnablePeerAccess(Context* from, Context* to) {
   }
 
   ScopedActivateContext activated(from);
-  hipError_t result = wrap::hipCtxEnablePeerAccess(
-      tensorflow::down_cast<RocmContext*>(to)->context(), 0 /* = flags */);
+  hipError_t result =
+      wrap::hipDeviceEnablePeerAccess(to->device_ordinal(), 0 /* = flags */);
+
   if (result != hipSuccess && result != hipErrorPeerAccessAlreadyEnabled) {
     return absl::InternalError(
         absl::StrFormat("failed to enable peer access from %d to %d: %s",
@@ -418,7 +419,7 @@ void* DeviceAllocate(Context* context, uint64_t bytes) {
   }
 
   ScopedActivateContext activated(context);
-  hipDeviceptr_t result = 0;
+  hipDeviceptr_t result = nullptr;
   hipError_t res = wrap::hipMalloc(&result, bytes);
   if (res != hipSuccess) {
     // LOG(INFO) because this isn't always important to users (e.g. BFCAllocator

@@ -274,6 +274,7 @@ cc_library(
     deps = [
         "//tensorflow/core/common_runtime:dma_helper",
         "//tensorflow/core/framework:tensor",
+        "@com_google_absl//absl/log:check",
         "@local_tsl//tsl/profiler/lib:traceme",
     ],
 )

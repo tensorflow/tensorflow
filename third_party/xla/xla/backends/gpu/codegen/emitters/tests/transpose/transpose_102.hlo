@@ -1,4 +1,4 @@
-// RUN: test_correctness %s
+// RUN: gpu_test_correctness %s
 
 fusion {
   %p0 = s8[160,170,3] parameter(0)

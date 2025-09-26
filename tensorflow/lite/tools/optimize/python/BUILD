@@ -56,7 +56,7 @@ pybind_extension(
     srcs = ["modify_model_interface.cc"],
     common_lib_packages = [
         "litert/python",
-        "third_party/tensorflow/lite/python",
+        "tensorflow/lite/python",
     ],
     enable_stub_generation = True,
     pytype_srcs = [

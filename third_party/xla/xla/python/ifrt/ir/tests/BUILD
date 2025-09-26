@@ -1,4 +1,5 @@
 load("@bazel_skylib//rules:build_test.bzl", "build_test")
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("//xla:lit.bzl", "lit_test_suite")
 load("//xla:xla.default.bzl", "xla_cc_binary")
 load("//xla/tsl:tsl.bzl", "internal_visibility")
@@ -41,10 +42,11 @@ xla_cc_binary(
         "//xla/python/ifrt/hlo:hlo_program",
         "//xla/python/ifrt/ir",
         "//xla/python/ifrt/ir:atom_program_compiler",
+        "//xla/python/ifrt/ir:ifrt_ir_program",
         "//xla/python/ifrt/ir/transforms:passes",
         "//xla/python/ifrt/support:module_parsing",
+        "//xla/tsl/platform:test",
         "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
@@ -53,6 +55,10 @@ xla_cc_binary(
         "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:MlirOptLib",
+        "@llvm-project//mlir:RegisterAllDialects",
+        "@llvm-project//mlir:RegisterAllExtensions",
+        "@llvm-project//mlir:RegisterAllPasses",
+        "@local_tsl//tsl/platform:path",
         "@local_tsl//tsl/platform:platform_port",
     ],
 )

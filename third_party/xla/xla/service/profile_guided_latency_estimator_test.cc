@@ -298,7 +298,7 @@ TEST_F(ProfileGuidedLatencyEstimatorTest,
       sched_config, std::make_unique<ApproximateLatencyEstimator>(),
       fdo_profile);
   EXPECT_THAT(latency_estimator->CheckAccuracy(*hlo_module),
-              StatusIs(absl::StatusCode::kFailedPrecondition));
+              absl_testing::StatusIs(absl::StatusCode::kFailedPrecondition));
 }
 
 }  // namespace xla

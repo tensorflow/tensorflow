@@ -19,6 +19,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/log/check.h"
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -33,7 +34,6 @@ limitations under the License.
 #include "xla/service/maybe_owning_device_memory.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/casts.h"
 
@@ -41,82 +41,63 @@ namespace xla::cpu {
 
 namespace {
 
-struct LiteralBackedBuffers {
-  std::vector<Literal> backing_literals;
-  std::vector<MaybeOwningDeviceMemory> buffers;
-};
-
-static absl::StatusOr<LiteralBackedBuffers> PrepareBackedBuffers(
+static absl::StatusOr<std::unique_ptr<InputBuffers>> PrepareBackedBuffers(
     absl::Span<const BufferAllocation> allocations) {
-  LiteralBackedBuffers backed_buffers;
-  backed_buffers.buffers.reserve(allocations.size());
-  backed_buffers.backing_literals.reserve(allocations.size());
+  auto backed_buffers = std::make_unique<LiteralBackedCpuBuffers>();
+  backed_buffers->buffers.reserve(allocations.size());
+  backed_buffers->backing_literals.reserve(allocations.size());
 
   for (const BufferAllocation& allocation : allocations) {
     // Allocating allocation.size() bytes.
     Shape shape = ShapeUtil::MakeShape(U8, {allocation.size()});
     Literal literal(shape, true);
 
-    backed_buffers.backing_literals.push_back(std::move(literal));
-    backed_buffers.buffers.emplace_back(stream_executor::DeviceMemoryBase(
-        backed_buffers.backing_literals.back().untyped_data(),
-        backed_buffers.backing_literals.back().size_bytes()));
+    backed_buffers->backing_literals.push_back(std::move(literal));
+    backed_buffers->buffers.emplace_back(stream_executor::DeviceMemoryBase(
+        backed_buffers->backing_literals.back().untyped_data(),
+        backed_buffers->backing_literals.back().size_bytes()));
   }
   return backed_buffers;
 }
 
-absl::StatusOr<LiteralBackedBuffers> CreateExecutableBuffers(
-    Executable* executable) {
-  CpuExecutable* cpu_executable = tsl::down_cast<CpuExecutable*>(executable);
+}  // namespace
+
+absl::StatusOr<std::unique_ptr<InputBuffers>> CpuProfiler::CreateInputBuffers(
+    const Executable* executable) {
+  const CpuExecutable* cpu_executable =
+      tsl::down_cast<const CpuExecutable*>(executable);
   return PrepareBackedBuffers(
       cpu_executable->buffer_assignment().Allocations());
 }
 
-}  // namespace
-
 std::unique_ptr<Profiler> CpuProfiler::Create(ProfileOptions options) {
+  CHECK(options.should_populate_output_buffer == false)
+      << "Output buffer is not supported on CPU.";
   return absl::WrapUnique(new CpuProfiler(options));
 }
 
-absl::StatusOr<std::vector<ProfileResult>>
-CpuProfiler::ProfileWithSharedBuffers(
-    std::vector<std::unique_ptr<Executable>> executables) {
-  std::vector<ProfileResult> results;
-  if (executables.empty()) {
-    return results;
-  }
-  TF_ASSIGN_OR_RETURN(LiteralBackedBuffers backed_buffers,
-                      CreateExecutableBuffers(executables[0].get()));
-  for (auto& executable : executables) {
-    TF_ASSIGN_OR_RETURN(
-        ProfileResult result,
-        ProfileInternal(executable.get(),
-                        absl::MakeSpan(backed_buffers.buffers)));
-    results.push_back(std::move(result));
-  }
-
-  return results;
-}
-
-absl::StatusOr<ProfileResult> CpuProfiler::ProfileInternal(
-    Executable* executable, absl::Span<MaybeOwningDeviceMemory> buffers) {
+absl::StatusOr<ProfileResult> CpuProfiler::Profile(
+    Executable* executable, const InputBuffers& buffers) {
+  const LiteralBackedCpuBuffers& literal_backed_buffers =
+      tsl::down_cast<const LiteralBackedCpuBuffers&>(buffers);
   {
     // Warm up run.
-    TF_RETURN_IF_ERROR(Execute(executable, buffers,
+    TF_RETURN_IF_ERROR(Execute(executable, literal_backed_buffers.buffers,
                                /*profile=*/nullptr));
   }
 
   ExecutionProfile profile;
   profile.set_warmup_run_executed(true);
 
-  TF_RETURN_IF_ERROR(Execute(executable, buffers, &profile));
+  TF_RETURN_IF_ERROR(
+      Execute(executable, literal_backed_buffers.buffers, &profile));
 
   return ProfileResult{absl::Nanoseconds(profile.compute_time_ns())};
 }
 
-absl::Status CpuProfiler::Execute(Executable* executable,
-                                  absl::Span<MaybeOwningDeviceMemory> buffers,
-                                  ExecutionProfile* profile) {
+absl::Status CpuProfiler::Execute(
+    Executable* executable, absl::Span<const MaybeOwningDeviceMemory> buffers,
+    ExecutionProfile* profile) {
   ExecutableRunOptions run_options;
   run_options.set_execution_profile(profile);
   run_options.set_device_ordinal(0);

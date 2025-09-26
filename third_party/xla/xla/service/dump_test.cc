@@ -265,7 +265,7 @@ TEST(DumpTest, DumpHloUnoptimizedSnapshot) {
 
   options.set_xla_dump_to(tsl::testing::TmpDir());
   options.set_xla_dump_hlo_as_text(true);
-  options.set_xla_gpu_dump_hlo_unoptimized_snapshots(true);
+  options.set_xla_dump_hlo_unoptimized_snapshots(true);
   config.set_debug_options(options);
 
   DumpHloUnoptimizedSnapshotIfEnabled(hlo_snapshot, options);
@@ -333,7 +333,7 @@ TEST(DumpTest, DumpHloUnoptimizedSnapshotProtoBinary) {
   EXPECT_TRUE(env->LocalTempFilename(&dump_dir));
   options.set_xla_dump_to(dump_dir);
   options.set_xla_dump_hlo_as_proto(true);
-  options.set_xla_gpu_dump_hlo_unoptimized_snapshots(true);
+  options.set_xla_dump_hlo_unoptimized_snapshots(true);
   config.set_debug_options(options);
 
   DumpHloUnoptimizedSnapshotIfEnabled(hlo_snapshot, options);

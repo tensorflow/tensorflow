@@ -83,6 +83,10 @@ absl::StatusOr<std::unique_ptr<HloModule>> ParseAndReturnUnverifiedModule(
 // "{replicated}".
 absl::StatusOr<HloSharding> ParseSharding(absl::string_view str);
 
+// Parses original value from str.
+absl::StatusOr<std::shared_ptr<OriginalValue>> ParseOriginalValue(
+    absl::string_view str);
+
 // Parses frontend attributes from str. str is supposed to contain the body of
 // the frontend attributes , i.e. just the rhs of the
 // "frontend_attributes={...}" attribute string, e.g.,
@@ -114,6 +118,9 @@ absl::StatusOr<PaddingConfig> ParsePaddingConfig(absl::string_view str);
 
 // Parses and returns a Shape::ToString-format string.
 absl::StatusOr<Shape> ParseShape(absl::string_view str);
+
+// Parses a comma-separated list of Shape::ToString-format strings.
+absl::StatusOr<std::vector<Shape>> ParseShapeList(absl::string_view str);
 
 // Parses and returns a Layout::ToString-format string.
 absl::StatusOr<Layout> ParseLayout(absl::string_view str);

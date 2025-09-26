@@ -15,10 +15,24 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 
+#include <cstdint>
+#include <functional>
+#include <initializer_list>
+#include <memory>
+#include <optional>
+#include <set>
+#include <utility>
+#include <vector>
+
 #include <gmock/gmock.h>
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/cc/framework/ops.h"
+#include "tensorflow/cc/framework/scope.h"
+#include "tensorflow/cc/ops/array_ops.h"
 #include "tensorflow/cc/ops/const_op.h"
 #include "tensorflow/cc/ops/data_flow_ops.h"
 #include "tensorflow/cc/ops/function_ops.h"
@@ -27,22 +41,38 @@ limitations under the License.
 #include "tensorflow/cc/ops/math_ops.h"
 #include "tensorflow/cc/ops/resource_variable_ops.h"
 #include "tensorflow/cc/ops/standard_ops.h"
+#include "tensorflow/compiler/tf2xla/layout_util.h"
 #include "tensorflow/compiler/tf2xla/literal_util.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/side_effect_util.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
+#include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
+#include "tensorflow/compiler/tf2xla/xla_resource.h"
+#include "xla/array.h"
+#include "xla/client/client.h"
 #include "xla/client/client_library.h"
 #include "xla/client/local_client.h"
+#include "xla/debug_options_flags.h"
 #include "xla/hlo/builder/xla_builder.h"
+#include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/hlo/testlib/filecheck.h"
+#include "xla/layout_util.h"
 #include "xla/literal.h"
+#include "xla/literal_util.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_module_util.h"
 #include "xla/service/hlo_proto_util.h"
+#include "xla/service/service.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/tests/literal_test_util.h"
+#include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
@@ -54,16 +84,24 @@ limitations under the License.
 #include "tensorflow/core/framework/graph_to_functiondef.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/node_def_util.h"
+#include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/op_requires.h"
+#include "tensorflow/core/framework/resource_base.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/graph.h"
+#include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/kernels/ops_testutil.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/public/version.h"
 #include "tsl/platform/statusor.h"
 
@@ -289,7 +327,7 @@ TEST_F(XlaCompilerTest, SimpleDynamicShapeParameter) {
   auto hlo = result.computation->proto();
   TF_ASSERT_OK_AND_ASSIGN(auto module, LoadModuleFromHloProto(hlo));
   EXPECT_EQ(module->computation_count(), 1);
-  EXPECT_TRUE(module->mutable_computation(0)
+  EXPECT_TRUE((*module->computations().begin())
                   ->parameter_instruction(0)
                   ->shape()
                   .is_dynamic());
@@ -2116,6 +2154,156 @@ TEST_F(OpsTestBase, CompileSingleOp) {
   xla::Literal expected0 = xla::LiteralUtil::CreateR2<float>({{6.9, 4.2}});
   xla::Literal expected_literal = xla::LiteralUtil::MakeTuple({&expected0});
   EXPECT_TRUE(xla::LiteralTestUtil::Equal(expected_literal, actual_literal));
+}
+
+TEST_F(XlaCompilerTest, SetShardingForParametersAndReturnValues) {
+  Scope scope = Scope::NewRootScope().ExitOnError();
+  auto a = ops::_Arg(scope.WithOpName("A"), DT_INT32, 0);
+  auto b = ops::_Retval(scope.WithOpName("B"), a, 0);
+  std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
+  TF_ASSERT_OK(scope.ToGraph(graph.get()));
+
+  auto node_name_index = graph->BuildNodeNameIndex();
+  Node* arg_node = node_name_index["A"];
+  ASSERT_NE(arg_node, nullptr);
+  Node* ret_node = node_name_index["B"];
+  ASSERT_NE(ret_node, nullptr);
+
+  std::vector<XlaCompiler::Argument> args(1);
+  args[0].kind = XlaCompiler::Argument::kParameter;
+  args[0].type = DT_INT32;
+  args[0].shape = TensorShape({2, 2});
+
+  xla::OpSharding sharding;
+  sharding.set_type(xla::OpSharding::OTHER);
+  int rank = 2;
+  int shard_dim = 1;
+  int num_shards = 2;
+  for (int i = 0; i < rank; i++) {
+    sharding.add_tile_assignment_dimensions(i == shard_dim ? num_shards : 1);
+  }
+  xla::OpSharding sharding_v2(sharding);
+  for (int i = 0; i < num_shards; ++i) {
+    sharding.add_tile_assignment_devices(i);
+  }
+  sharding_v2.add_iota_reshape_dims(num_shards);
+  sharding_v2.add_iota_transpose_perm(0);
+
+  arg_node->AddAttr("_XlaSharding", sharding.SerializeAsString());
+  arg_node->AddAttr("_XlaShardingV2", sharding_v2.SerializeAsString());
+  ret_node->AddAttr("_XlaSharding", sharding.SerializeAsString());
+  ret_node->AddAttr("_XlaShardingV2", sharding_v2.SerializeAsString());
+
+  // Expected HLO module with Shardy attributes
+  const char* const expected = R"(
+    // CHECK:                HloModule test.6, entry_computation_layout={{.*}}, frontend_attributes=
+    // CHECK-SAME:             {xla.sdy.tuple_results_shardings="#sdy.sharding_per_value<[<mesh<[\"_axis_0\"=2]>, [{}, {\"_axis_0\"}]>]>"}
+    //
+    // CHECK:                ENTRY %test.6 (arg0.1: s32[2,2]) -> (s32[2,2]) {
+    // CHECK-NEXT:             %arg0.1 = s32[2,2]{1,0} parameter(0), parameter_replication={false}, sharding={devices=[1,2]<=[2]}, frontend_attributes={xla.sdy.sharding="#sdy.sharding<mesh<[\"_axis_0\"=2]>, [{}, {\"_axis_0\"}]>"}, metadata={op_name="XLA_Args"}
+    // CHECK-NEXT:             %reshape.2 = s32[2,2]{1,0} reshape(%arg0.1)
+    // CHECK-NEXT:             %XLA_Retvals.3 = s32[2,2]{1,0} reshape(%reshape.2), metadata={op_name="XLA_Retvals"}
+    // CHECK-NEXT:             %XLA_Retvals.4 = s32[2,2]{1,0} copy(%XLA_Retvals.3), sharding={devices=[1,2]<=[2]}, frontend_attributes={xla.sdy.sharding="#sdy.sharding_per_value<[<mesh<[\"_axis_0\"=2]>, [{}, {\"_axis_0\"}]>]>"}, metadata={op_name="XLA_Retvals"}
+    // CHECK-NEXT{LITERAL}:    ROOT %XLA_Retvals.5 = (s32[2,2]{1,0}) tuple(%XLA_Retvals.4), sharding={{devices=[1,2]<=[2]}}, metadata={op_name="XLA_Retvals"}
+  })";
+  XlaCompiler::Options compiler_options = DefaultOptions();
+  compiler_options.use_shardy_partitioner = true;
+  XlaCompiler compiler(compiler_options);
+
+  XlaCompiler::CompilationResult result;
+  TF_ASSERT_OK(compiler.CompileGraph(XlaCompiler::CompileOptions(), "test",
+                                     std::move(graph), args, &result));
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module,
+                          LoadModuleFromHloProto(result.computation->proto()));
+  EXPECT_TRUE(*xla::RunFileCheck(hlo_module->ToString(xla::HloPrintOptions{}),
+                                 expected));
+}
+
+TEST_F(XlaCompilerTest, SetShardingForTupleArguments) {
+  Scope scope = Scope::NewRootScope().ExitOnError();
+  auto a = ops::_Arg(scope.WithOpName("A"), DT_INT32, 0);
+  auto b = ops::_Arg(scope.WithOpName("B"), DT_INT32, 1);
+  auto c = ops::_Retval(scope.WithOpName("C"), a, 0);
+  auto d = ops::_Retval(scope.WithOpName("D"), b, 1);
+  std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
+  TF_ASSERT_OK(scope.ToGraph(graph.get()));
+
+  auto node_name_index = graph->BuildNodeNameIndex();
+  Node* arg_node_a = node_name_index["A"];
+  ASSERT_NE(arg_node_a, nullptr);
+  Node* arg_node_b = node_name_index["B"];
+  ASSERT_NE(arg_node_b, nullptr);
+  Node* ret_node_c = node_name_index["C"];
+  ASSERT_NE(ret_node_c, nullptr);
+  Node* ret_node_d = node_name_index["D"];
+  ASSERT_NE(ret_node_d, nullptr);
+
+  std::vector<XlaCompiler::Argument> args(2);
+  args[0].kind = XlaCompiler::Argument::kParameter;
+  args[0].type = DT_INT32;
+  args[0].shape = TensorShape({2, 2});
+  args[1].kind = XlaCompiler::Argument::kParameter;
+  args[1].type = DT_INT32;
+  args[1].shape = TensorShape({2, 2});
+
+  xla::OpSharding sharding;
+  sharding.set_type(xla::OpSharding::OTHER);
+  int rank = 2;
+  int shard_dim = 1;
+  int num_shards = 2;
+  for (int i = 0; i < rank; i++) {
+    sharding.add_tile_assignment_dimensions(i == shard_dim ? num_shards : 1);
+  }
+  xla::OpSharding sharding_v2(sharding);
+  for (int i = 0; i < num_shards; ++i) {
+    sharding.add_tile_assignment_devices(i);
+  }
+
+  sharding_v2.add_iota_reshape_dims(num_shards);
+  sharding_v2.add_iota_transpose_perm(0);
+
+  arg_node_a->AddAttr("_XlaSharding", sharding.SerializeAsString());
+  arg_node_a->AddAttr("_XlaShardingV2", sharding_v2.SerializeAsString());
+  arg_node_b->AddAttr("_XlaSharding", sharding.SerializeAsString());
+  arg_node_b->AddAttr("_XlaShardingV2", sharding_v2.SerializeAsString());
+  ret_node_c->AddAttr("_XlaSharding", sharding.SerializeAsString());
+  ret_node_c->AddAttr("_XlaShardingV2", sharding_v2.SerializeAsString());
+  ret_node_d->AddAttr("_XlaSharding", sharding.SerializeAsString());
+  ret_node_d->AddAttr("_XlaShardingV2", sharding_v2.SerializeAsString());
+
+  // Expected HLO module with Shardy attributes
+  const char* const expected = R"(
+    // CHECK:                HloModule test.11, entry_computation_layout={{.*}}, frontend_attributes={
+    // CHECK-SAME:             xla.sdy.tuple_args_shardings="#sdy.sharding_per_value<[<mesh<[\"_axis_0\"=2]>, [{}, {\"_axis_0\"}]>, <mesh<[\"_axis_0\"=2]>, [{}, {\"_axis_0\"}]>]>",
+    // CHECK-SAME:             xla.sdy.tuple_results_shardings="#sdy.sharding_per_value<[<mesh<[\"_axis_0\"=2]>, [{}, {\"_axis_0\"}]>, <mesh<[\"_axis_0\"=2]>, [{}, {\"_axis_0\"}]>]>",
+    // CHECK-SAME:             xla.sdy.use_tuple_args="True"}
+    //
+    // CHECK:                ENTRY %test.11 (arg_tuple.1: (s32[2,2], s32[2,2])) -> (s32[2,2], s32[2,2]) {
+    // CHECK-NEXT{LITERAL}:    %arg_tuple.1 = (s32[2,2]{1,0}, s32[2,2]{1,0}) parameter(0), parameter_replication={false,false}, sharding={{devices=[1,2]<=[2]}, {devices=[1,2]<=[2]}}, metadata={op_name="XLA_Args"}
+    // CHECK-NEXT:             %get-tuple-element.2 = s32[2,2]{1,0} get-tuple-element(%arg_tuple.1), index=0, sharding={devices=[1,2]<=[2]}, frontend_attributes={xla.sdy.sharding="#sdy.sharding_per_value<[<mesh<[\"_axis_0\"=2]>, [{}, {\"_axis_0\"}]>]>"}
+    // CHECK-NEXT:             %reshape.4 = s32[2,2]{1,0} reshape(%get-tuple-element.2)
+    // CHECK-NEXT:             %XLA_Retvals.6 = s32[2,2]{1,0} reshape(%reshape.4), metadata={op_name="XLA_Retvals"}
+    // CHECK-NEXT:             %XLA_Retvals.7 = s32[2,2]{1,0} copy(%XLA_Retvals.6), sharding={devices=[1,2]<=[2]}, frontend_attributes={xla.sdy.sharding="#sdy.sharding_per_value<[<mesh<[\"_axis_0\"=2]>, [{}, {\"_axis_0\"}]>]>"}, metadata={op_name="XLA_Retvals"}
+    // CHECK-NEXT:             %get-tuple-element.3 = s32[2,2]{1,0} get-tuple-element(%arg_tuple.1), index=1, sharding={devices=[1,2]<=[2]}, frontend_attributes={xla.sdy.sharding="#sdy.sharding_per_value<[<mesh<[\"_axis_0\"=2]>, [{}, {\"_axis_0\"}]>]>"}
+    // CHECK-NEXT:             %reshape.5 = s32[2,2]{1,0} reshape(%get-tuple-element.3)
+    // CHECK-NEXT:             %XLA_Retvals.8 = s32[2,2]{1,0} reshape(%reshape.5), metadata={op_name="XLA_Retvals"}
+    // CHECK-NEXT:             %XLA_Retvals.9 = s32[2,2]{1,0} copy(%XLA_Retvals.8), sharding={devices=[1,2]<=[2]}, frontend_attributes={xla.sdy.sharding="#sdy.sharding_per_value<[<mesh<[\"_axis_0\"=2]>, [{}, {\"_axis_0\"}]>]>"}, metadata={op_name="XLA_Retvals"}
+    // CHECK-NEXT{LITERAL}:    ROOT %XLA_Retvals.10 = (s32[2,2]{1,0}, s32[2,2]{1,0}) tuple(%XLA_Retvals.7, %XLA_Retvals.9), sharding={{devices=[1,2]<=[2]}, {devices=[1,2]<=[2]}}, metadata={op_name="XLA_Retvals"}
+  })";
+
+  XlaCompiler::Options compiler_options = DefaultOptions();
+  compiler_options.use_shardy_partitioner = true;
+  XlaCompiler compiler(compiler_options);
+
+  XlaCompiler::CompileOptions compile_options;
+  compile_options.use_tuple_arg = true;
+  XlaCompiler::CompilationResult result;
+  TF_ASSERT_OK(compiler.CompileGraph(compile_options, "test", std::move(graph),
+                                     args, &result));
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module,
+                          LoadModuleFromHloProto(result.computation->proto()));
+  EXPECT_TRUE(*xla::RunFileCheck(hlo_module->ToString(xla::HloPrintOptions{}),
+                                 expected));
 }
 
 }  // namespace

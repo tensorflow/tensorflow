@@ -4,10 +4,16 @@ load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    # copybara:uncomment_begin(google-only)
+    # default_visibility = [
+    # ":friends",
+    # "//tensorflow:__pkg__",
+    # ],
+    # copybara:uncomment_end_and_comment_begin
     default_visibility = [
-        ":friends",
-        "//tensorflow:__pkg__",
+        "//visibility:public",
     ],
+    # copybara:comment_end
     licenses = ["notice"],
 )
 

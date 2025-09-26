@@ -85,36 +85,32 @@ StatusOr<mlir::Value> GetAllCandidateCheckpointPrefixes(
   if (mesh.num_devices() == 0) return prefix;
 
   mlir::Value new_prefix =
-      builder
-          .create<mlir::TF::AddOp>(
-              prefix.getLoc(),
-              mlir::dyn_cast<mlir::RankedTensorType>(prefix.getType()), prefix,
-              StringConst(builder, prefix.getLoc(),
-                          llvm::SmallVector<llvm::StringRef>(
-                              {DeviceSuffix(0, mesh.num_devices())})))
+      mlir::TF::AddOp::create(
+          builder, prefix.getLoc(),
+          mlir::dyn_cast<mlir::RankedTensorType>(prefix.getType()), prefix,
+          StringConst(builder, prefix.getLoc(),
+                      llvm::SmallVector<llvm::StringRef>(
+                          {DeviceSuffix(0, mesh.num_devices())})))
           .getZ();
 
   for (int64_t device_id = 1; device_id < mesh.num_devices(); ++device_id) {
     mlir::Value prefix_plus_dtensor_suffix =
-        builder
-            .create<mlir::TF::AddOp>(
-                prefix.getLoc(),
-                mlir::dyn_cast<mlir::RankedTensorType>(prefix.getType()),
-                prefix,
-                StringConst(builder, prefix.getLoc(),
-                            llvm::SmallVector<llvm::StringRef>(
-                                {DeviceSuffix(device_id, mesh.num_devices())})))
+        mlir::TF::AddOp::create(
+            builder, prefix.getLoc(),
+            mlir::dyn_cast<mlir::RankedTensorType>(prefix.getType()), prefix,
+            StringConst(builder, prefix.getLoc(),
+                        llvm::SmallVector<llvm::StringRef>(
+                            {DeviceSuffix(device_id, mesh.num_devices())})))
             .getZ();
 
-    new_prefix = builder
-                     .create<mlir::TF::ConcatOp>(
-                         prefix.getLoc(),
-                         /*output=*/prefix.getType(),
-                         /*concat_dim=*/
-                         zero_const,
-                         llvm::SmallVector<mlir::Value, 4>{
-                             new_prefix, prefix_plus_dtensor_suffix})
-                     .getResult();
+    new_prefix =
+        mlir::TF::ConcatOp::create(builder, prefix.getLoc(),
+                                   /*output=*/prefix.getType(),
+                                   /*concat_dim=*/
+                                   zero_const,
+                                   llvm::SmallVector<mlir::Value, 4>{
+                                       new_prefix, prefix_plus_dtensor_suffix})
+            .getResult();
   }
   return new_prefix;
 }
@@ -152,23 +148,24 @@ mlir::Value DeviceIdToLocalBranchIndex(
       IntConst(builder, location,
                llvm::SmallVector<int32_t>(local_device_ids.begin(),
                                           local_device_ids.end()));
-  mlir::Value condition = builder.create<mlir::TF::EqualOp>(
-      location, local_device_id_tensors, device_id,
+  mlir::Value condition = mlir::TF::EqualOp::create(
+      builder, location, local_device_id_tensors, device_id,
       /*incompatible_shape_error=*/builder.getBoolAttr(true));
-  auto where_op = builder.create<mlir::TF::WhereOp>(
-      location, mlir::RankedTensorType::get({1, 1}, builder.getI64Type()),
-      condition);
+  auto where_op = mlir::TF::WhereOp::create(
+      builder, location,
+      mlir::RankedTensorType::get({1, 1}, builder.getI64Type()), condition);
   // cast to int32 as where_op returns a int64 array.
-  auto cast_op = builder.create<mlir::TF::CastOp>(
-      location, mlir::RankedTensorType::get({1, 1}, builder.getI32Type()),
+  auto cast_op = mlir::TF::CastOp::create(
+      builder, location,
+      mlir::RankedTensorType::get({1, 1}, builder.getI32Type()),
       where_op.getResult());
 
   // Reshape the output to i32 Scalar.
   auto size_type = mlir::RankedTensorType::get({}, builder.getI32Type());
   mlir::Value scalar_shape = mlir::TF::collection_ops_util::GetR1Const(
       size_type.getShape(), builder, location);
-  auto branch_index_scalar = builder.create<mlir::TF::ReshapeOp>(
-      location, mlir::ArrayRef<mlir::Type>{size_type},
+  auto branch_index_scalar = mlir::TF::ReshapeOp::create(
+      builder, location, mlir::ArrayRef<mlir::Type>{size_type},
       mlir::ArrayRef<mlir::Value>{cast_op.getResult(), scalar_shape},
       mlir::ArrayRef<mlir::NamedAttribute>{});
 
@@ -247,8 +244,8 @@ StatusOr<mlir::TF::CaseOp> ConditionalSave(
 
       mlir::Block* fn_block = no_op.addEntryBlock();
       mlir::OpBuilder fn_builder = mlir::OpBuilder::atBlockBegin(fn_block);
-      fn_builder.create<mlir::TF::NoOp>(location);
-      fn_builder.create<mlir::func::ReturnOp>(location);
+      mlir::TF::NoOp::create(fn_builder, location);
+      mlir::func::ReturnOp::create(fn_builder, location);
 
       branch_funs.push_back(no_op);
     } else {
@@ -330,19 +327,18 @@ StatusOr<mlir::TF::CaseOp> ConditionalSave(
           // For tensor_names that has more than 1 entry, we concat the list of
           // names into a 1d vector.
           tensor_names =
-              fn_builder
-                  .create<mlir::TF::ConcatOp>(
-                      location,
-                      /*output=*/original_save.getTensorNames().getType(),
-                      /*concat_dim=*/
-                      IntConst(fn_builder, location, /*values=*/{0}),
-                      new_tensor_names)
+              mlir::TF::ConcatOp::create(
+                  fn_builder, location,
+                  /*output=*/original_save.getTensorNames().getType(),
+                  /*concat_dim=*/
+                  IntConst(fn_builder, location, /*values=*/{0}),
+                  new_tensor_names)
                   .getResult();
         }
 
-        fn_builder.create<mlir::TF::SaveV2Op>(
-            location, specs.new_prefixes[save_op_index],
-            /*tensor_name=*/tensor_names,
+        mlir::TF::SaveV2Op::create(
+            fn_builder, location, specs.new_prefixes[save_op_index],
+            /*tensor_names=*/tensor_names,
             /*shape_and_slices=*/
             StringConst(
                 fn_builder, location,
@@ -351,7 +347,7 @@ StatusOr<mlir::TF::CaseOp> ConditionalSave(
             new_tensors);
       }
       branch_funs.push_back(new_save);
-      fn_builder.create<mlir::func::ReturnOp>(location);
+      mlir::func::ReturnOp::create(fn_builder, location);
     }
   }
 
@@ -365,14 +361,14 @@ StatusOr<mlir::TF::CaseOp> ConditionalSave(
   mlir::Value branch_index = DeviceIdToLocalBranchIndex(
       location, local_device_ids, device_id, builder);
 
-  auto case_op = builder.create<mlir::TF::CaseOp>(
-      location,
-      // SaveV2 doesn't return a value.
-      /*output=*/llvm::ArrayRef<mlir::Type>{},
-      /*branch_index=*/branch_index,
-      /*input=*/original_save.getOperands(),
-      /*branches=*/builder.getArrayAttr(symbols),
-      /*is_stateless=*/builder.getBoolAttr(false));
+  auto case_op =
+      mlir::TF::CaseOp::create(builder, location,
+                               // SaveV2 doesn't return a value.
+                               /*output=*/llvm::ArrayRef<mlir::Type>{},
+                               /*branch_index=*/branch_index,
+                               /*input=*/original_save.getOperands(),
+                               /*branches=*/builder.getArrayAttr(symbols),
+                               /*is_stateless=*/builder.getBoolAttr(false));
 
   return case_op;
 }
@@ -484,8 +480,8 @@ StatusOr<mlir::Operation*> ExpandMergeV2Op(mlir::Operation* op) {
   mlir::Block* then_fn_block = then_func.addEntryBlock();
   mlir::OpBuilder then_fn_builder =
       mlir::OpBuilder::atBlockBegin(then_fn_block);
-  then_fn_builder.create<mlir::TF::NoOp>(location);
-  then_fn_builder.create<mlir::func::ReturnOp>(location);
+  mlir::TF::NoOp::create(then_fn_builder, location);
+  mlir::func::ReturnOp::create(then_fn_builder, location);
 
   // Build else_func that is the branch of device_id == 0.
   // The else func is just the original MergeV2 itself.
@@ -512,13 +508,13 @@ StatusOr<mlir::Operation*> ExpandMergeV2Op(mlir::Operation* op) {
 
   mlir::Value destination_prefixes = else_fn_block->getArgument(1);
 
-  else_fn_builder.create<mlir::TF::MergeV2CheckpointsOp>(
-      location, checkpoint_prefixes, destination_prefixes,
+  mlir::TF::MergeV2CheckpointsOp::create(
+      else_fn_builder, location, checkpoint_prefixes, destination_prefixes,
       /*delete_old_dirs=*/
       else_fn_builder.getBoolAttr(merge_v2.getDeleteOldDirs()),
       /*allow_missing_files=*/else_fn_builder.getBoolAttr(true));
 
-  else_fn_builder.create<mlir::func::ReturnOp>(location);
+  mlir::func::ReturnOp::create(else_fn_builder, location);
 
   symbol_table.insert(then_func);
   symbol_table.insert(else_func);
@@ -532,12 +528,12 @@ StatusOr<mlir::Operation*> ExpandMergeV2Op(mlir::Operation* op) {
           builder, location,
           mlir::cast<mlir::TensorType>(device_id.getType()).getElementType()));
 
-  mlir::TF::NotEqualOp not_equal = builder.create<mlir::TF::NotEqualOp>(
-      location, device_id, zero_scalar,
+  mlir::TF::NotEqualOp not_equal = mlir::TF::NotEqualOp::create(
+      builder, location, device_id, zero_scalar,
       /*incompatible_shape_error=*/builder.getBoolAttr(false));
 
-  auto if_op = builder.create<mlir::TF::IfOp>(
-      location, then_func.getFunctionType().getResults(),
+  auto if_op = mlir::TF::IfOp::create(
+      builder, location, then_func.getFunctionType().getResults(),
       /*cond=*/not_equal.getResult(),
       /*input=*/new_operands,
       /*then_branch=*/then_func.getSymName(),
@@ -640,14 +636,15 @@ StatusOr<mlir::Operation*> ExpandRestoreV2OpHelper(
     mlir::Value tensor_names = device_restore_fn.getArgument(1);
     // Constructs shapes and slices ourselves while reusing all other
     // arguments.
-    auto new_restore_v2 = fn_builder.create<mlir::TF::RestoreV2Op>(
-        location, mlir::TypeRange(output_types), prefix, tensor_names,
+    auto new_restore_v2 = mlir::TF::RestoreV2Op::create(
+        fn_builder, location, mlir::TypeRange(output_types), prefix,
+        tensor_names,
         StringConst(
             fn_builder, location,
             llvm::SmallVector<llvm::StringRef>(new_shapes_and_slices.begin(),
                                                new_shapes_and_slices.end())));
-    fn_builder.create<mlir::func::ReturnOp>(location,
-                                            new_restore_v2.getResults());
+    mlir::func::ReturnOp::create(fn_builder, location,
+                                 new_restore_v2.getResults());
 
     branch_funcs[local_device_idx] = device_restore_fn;
   }
@@ -663,13 +660,13 @@ StatusOr<mlir::Operation*> ExpandRestoreV2OpHelper(
   mlir::Value branch_index = DeviceIdToLocalBranchIndex(
       location, local_device_ids, device_id, builder);
 
-  auto case_op = builder.create<mlir::TF::CaseOp>(
-      location,
-      /*output=*/mlir::TypeRange(output_types),
-      /*branch_index=*/branch_index,
-      /*input=*/op->getOperands(),
-      /*branches=*/builder.getArrayAttr(symbols),
-      /*is_stateless=*/builder.getBoolAttr(false));
+  auto case_op =
+      mlir::TF::CaseOp::create(builder, location,
+                               /*output=*/mlir::TypeRange(output_types),
+                               /*branch_index=*/branch_index,
+                               /*input=*/op->getOperands(),
+                               /*branches=*/builder.getArrayAttr(symbols),
+                               /*is_stateless=*/builder.getBoolAttr(false));
 
   op->replaceAllUsesWith(case_op);
   op->erase();

@@ -19,13 +19,14 @@ limitations under the License.
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
-#include <new>
+#include <memory>
 #include <queue>
 #include <string>
 #include <type_traits>
 #include <utility>
 #include <vector>
 
+#include "absl/base/optimization.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/container/fixed_array.h"
 #include "absl/container/inlined_vector.h"
@@ -172,15 +173,6 @@ class ThunkExecutor {
   };
 
  private:
-  // Align all atomic counters to a cache line boundary to avoid false
-  // sharing between multiple worker threads.
-  static constexpr size_t kAtomicAlignment =
-#if defined(__cpp_lib_hardware_interference_size)
-      std::hardware_destructive_interference_size;
-#else
-      64;
-#endif
-
   // A struct to keep the state of a running ThunkExecutor.
   struct ExecuteState {
     // At run time NodeDef instantiated as a Node with an atomic counter that
@@ -188,7 +180,7 @@ class ThunkExecutor {
     struct Node {
       explicit Node(const NodeDef& node_def);
 
-      alignas(kAtomicAlignment) std::atomic<int64_t> counter;
+      ABSL_CACHELINE_ALIGNED std::atomic<int64_t> counter;
       absl::Span<const NodeEdge> out_edges;
     };
 
@@ -201,15 +193,12 @@ class ThunkExecutor {
       alignas(Node) std::byte data[sizeof(Node)];
     };
 
-    ExecuteState(ThunkExecutor* executor, Thunk::TaskRunner* runner);
+    explicit ExecuteState(ThunkExecutor* executor);
 
     Node& node(NodeId id) {
       DCHECK_LT(id, nodes.size()) << "Node id is out of bounds";
       return *reinterpret_cast<Node*>(&nodes.data()[id]);
     }
-
-    ThunkExecutor* executor;
-    Thunk::TaskRunner* runner;
 
     // Note: using alignas(Node) here instead of in NodeStorage does not work:
     // `nodes` would be aligned, but not its elements.
@@ -218,11 +207,11 @@ class ThunkExecutor {
 
     // Once the number of pending nodes drops to zero, the execution is
     // completed and we set `execute_event` as concrete or error.
-    alignas(kAtomicAlignment) std::atomic<int64_t> pending_nodes;
+    ABSL_CACHELINE_ALIGNED std::atomic<int64_t> pending_nodes;
 
     // We store the first error from failed thunks in `abort_status` and at the
     // end of execution the executor forwards it via the `execute_event`.
-    alignas(kAtomicAlignment) std::atomic<bool> abort;
+    ABSL_CACHELINE_ALIGNED std::atomic<bool> abort;
     absl::Mutex abort_mutex;
     absl::Status abort_status ABSL_GUARDED_BY(abort_mutex);
   };
@@ -248,13 +237,15 @@ class ThunkExecutor {
 
   // Executes nodes in the ready queue with given thunk parameters.
   template <typename ReadyQueue>
-  void Execute(ExecuteState* state, const Thunk::ExecuteParams& params,
-               ReadyQueue ready_queue, Thunk::ExecuteSession::Lock lock);
+  void Execute(std::shared_ptr<ExecuteState> state,
+               const Thunk::ExecuteParams& params, ReadyQueue ready_queue,
+               Thunk::ExecuteSession::Lock lock);
 
   // Splits ready queue starting from `start_index` into ThunkExecutor tasks and
   // offloads them to the task runner.
   template <typename ReadyQueue>
-  void SplitReadyQueue(ExecuteState* state, const Thunk::ExecuteParams& params,
+  void SplitReadyQueue(const std::shared_ptr<ExecuteState>& state,
+                       const Thunk::ExecuteParams& params,
                        ReadyQueue& ready_queue, int64_t split_threshold);
 
   // Processes out edges of a scheduled `node` and updates `ready_queue` with
@@ -262,17 +253,19 @@ class ThunkExecutor {
   // edges, and pending nodes counter was incremented, and must be dropped when
   // `node` is completed.
   template <typename ReadyQueue>
-  bool ProcessOutEdges(ExecuteState* state, ExecuteState::Node& node,
-                       ReadyQueue& ready_queue);
+  bool ProcessScheduledOutEdges(ExecuteState* state, ExecuteState::Node& node,
+                                ReadyQueue& ready_queue);
 
   // Processes out edges of a completed `node` and updates `ready_queue` with
   // nodes that are ready to execute. If `node_event` is in error state, aborts
-  // the execution and records the error status to forward it to the caller.
+  // the execution and records the error status to forward it to the caller. We
+  // can combine processing of scheduling edges with processing of completed
+  // edges, if thunk completes execution in the caller thread.
   template <bool process_scheduling_edges, typename ReadyQueue>
-  void ProcessOutEdges(ExecuteState* state,
-                       tsl::AsyncValuePtr<Thunk::ExecuteEvent> node_event,
-                       ExecuteState::Node& node, ReadyQueue& ready_queue,
-                       bool drop_pending_nodes);
+  void ProcessCompletedOutEdges(
+      ExecuteState* state, tsl::AsyncValuePtr<Thunk::ExecuteEvent> node_event,
+      ExecuteState::Node& node, ReadyQueue& ready_queue,
+      bool drop_pending_nodes);
 
   ThunkSequence thunk_sequence_;
   ExecutionGraph execution_graph_;

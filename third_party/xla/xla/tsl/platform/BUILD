@@ -556,28 +556,10 @@ tsl_cc_test(
 cc_library(
     name = "status_matchers",
     testonly = 1,
-    srcs = ["status_matchers.cc"],
     hdrs = ["status_matchers.h"],
     deps = [
-        ":status",
-        ":statusor",
-        ":test",
-        "//xla/tsl/protobuf:error_codes_proto_impl_cc",
-    ],
-)
-
-tsl_cc_test(
-    name = "status_matchers_test",
-    size = "small",
-    srcs = ["status_matchers_test.cc"],
-    deps = [
-        ":errors",
-        ":status",
-        ":status_matchers",
-        ":statusor",
-        ":test",
-        "//xla/tsl/protobuf:error_codes_proto_impl_cc",
-        "@com_google_googletest//:gtest_main",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/status:status_matchers",
     ],
 )
 

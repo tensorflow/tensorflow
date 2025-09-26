@@ -207,15 +207,18 @@ std::ostream& operator<<(std::ostream& os, const Sharding& sharding) {
 std::unique_ptr<SingleDeviceSharding> SingleDeviceSharding::Create(
     Device* device, MemoryKind memory_kind) {
   CHECK(device != nullptr);
+  absl::StatusOr<DeviceListRef> device_list =
+      device->client()->MakeDeviceList({device});
+  CHECK_OK(device_list);
   memory_kind = CanonicalizeMemoryKind(memory_kind, device);
   return std::unique_ptr<SingleDeviceSharding>(
-      new SingleDeviceSharding(device, memory_kind));
+      new SingleDeviceSharding(*std::move(device_list), memory_kind));
 }
 
-SingleDeviceSharding::SingleDeviceSharding(Device* device,
+SingleDeviceSharding::SingleDeviceSharding(DeviceListRef device_list,
                                            MemoryKind memory_kind)
     : llvm::RTTIExtends<SingleDeviceSharding, Sharding>(
-          device->client()->MakeDeviceList({device}), memory_kind,
+          std::move(device_list), memory_kind,
           /*is_fully_replicated=*/true) {}
 
 absl::StatusOr<Shape> SingleDeviceSharding::GetShardShape(

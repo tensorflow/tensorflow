@@ -18,6 +18,18 @@ package_group(
 )
 
 cc_library(
+    name = "hlo_evaluator_interface",
+    hdrs = ["hlo_evaluator_interface.h"],
+    deps = [
+        "//xla:literal",
+        "//xla/hlo/ir:hlo",
+        "//xla/service:dynamic_dimension_inference",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
     name = "hlo_evaluator",
     srcs = [
         "hlo_evaluator.cc",
@@ -45,6 +57,7 @@ cc_library(
     ],
     hdrs = ["hlo_evaluator.h"],
     deps = [
+        ":hlo_evaluator_interface",
         "//xla:array2d",
         "//xla:comparison_util",
         "//xla:literal",
@@ -161,5 +174,53 @@ xla_cc_test(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
+    name = "caching_hlo_evaluator",
+    srcs = ["caching_hlo_evaluator.cc"],
+    hdrs = ["caching_hlo_evaluator.h"],
+    deps = [
+        ":hlo_evaluator_interface",
+        "//xla:literal",
+        "//xla/hlo/ir:hlo",
+        "//xla/service:dynamic_dimension_inference",
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
+        "@local_tsl//tsl/platform:fingerprint",
+        "@local_tsl//tsl/platform:path",
+    ],
+)
+
+xla_cc_test(
+    name = "caching_hlo_evaluator_test",
+    srcs = ["caching_hlo_evaluator_test.cc"],
+    deps = [
+        ":caching_hlo_evaluator",
+        ":hlo_evaluator_interface",
+        "//xla:literal",
+        "//xla:literal_util",
+        "//xla:types",
+        "//xla/hlo/ir:hlo",
+        "//xla/service:dynamic_dimension_inference",
+        "//xla/tsl/lib/core:status_test_util",
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:test",
+        "//xla/tsl/platform:test_main",  # fixdeps: keep
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
+        "@local_tsl//tsl/platform:path",
     ],
 )

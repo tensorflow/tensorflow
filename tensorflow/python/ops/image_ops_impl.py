@@ -5283,7 +5283,7 @@ def _self_suppression(iou, _, iou_sum, iou_threshold):
 
   Returns:
     iou_suppressed: a tensor of shape [batch_size, num_boxes_with_padding].
-    iou_diff: a scalar tensor representing whether any box is supressed in
+    iou_diff: a scalar tensor representing whether any box is suppressed in
       this step.
     iou_sum_new: a scalar tensor of shape [batch_size] that represents
       the iou sum after suppression.
@@ -5315,7 +5315,7 @@ def _cross_suppression(boxes, box_slice, iou_threshold, inner_idx, tile_size):
     box_slice: a tensor of shape [batch_size, tile_size, 4]
     iou_threshold: a scalar tensor
     inner_idx: a scalar tensor representing the tile index of the tile
-      that is used to supress box_slice
+      that is used to suppress box_slice
     tile_size: an integer representing the number of boxes in a tile
 
   Returns:
@@ -5520,7 +5520,7 @@ def non_max_suppression_padded_v2(boxes,
   (i.e., lying in the interval `[0, 1]`) or absolute. The bounding box
   coordinates are cannonicalized to `[y_min, x_min, y_max, x_max]`,
   where `(y_min, x_min)` and `(y_max, x_mas)` are the coordinates of the lower
-  left and upper right corner. User may indiciate the input box coordinates are
+  left and upper right corner. User may indicate the input box coordinates are
   already canonicalized to eliminate redundant work by setting
   canonicalized_coordinates to `True`. Note that this algorithm is agnostic to
   where the origin is in the coordinate system. Note that this algorithm is

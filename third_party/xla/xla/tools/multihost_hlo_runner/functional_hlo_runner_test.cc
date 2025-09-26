@@ -141,7 +141,7 @@ TEST_F(FunctionalHloRunnerTest, GPUProfilerWithEmptyDumpPathReturnsError) {
   std::string empty_profile_dump_path = "";
   EXPECT_THAT(
       HLORunnerProfiler::Create(empty_profile_dump_path, /*keep_xspace=*/true),
-      StatusIs(absl::StatusCode::kInvalidArgument));
+      absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 TEST_F(FunctionalHloRunnerTest, GPUProfilerKeepXSpaceReturnsNonNullXSpace) {
@@ -371,7 +371,8 @@ void CompileAndFilecheck(
     std::string after_opt_hlo;
     TF_ASSERT_OK(
         tsl::ReadFileToString(env, after_opt_hlo_paths[0], &after_opt_hlo));
-    EXPECT_THAT(RunFileCheck(after_opt_hlo, pattern), IsOkAndHolds(true));
+    EXPECT_THAT(RunFileCheck(after_opt_hlo, pattern),
+                absl_testing::IsOkAndHolds(true));
   }
 
   // Check that the LLVM IR has been generated.
@@ -825,7 +826,7 @@ TEST_F(FunctionalHloRunnerTest, DumpsUnoptimizedHLOInUnoptimizedSnapshot) {
   DebugOptions debug_options = xla::DefaultDebugOptionsIgnoringFlags();
   debug_options.set_xla_dump_to(std::getenv("TEST_UNDECLARED_OUTPUTS_DIR"));
   debug_options.set_xla_dump_hlo_as_proto(true);
-  debug_options.set_xla_gpu_dump_hlo_unoptimized_snapshots(true);
+  debug_options.set_xla_dump_hlo_unoptimized_snapshots(true);
   FunctionalHloRunner::PreprocessingOptions preproc_options;
   FunctionalHloRunner::RunningOptions running_options;
   CompileOptions compile_options;

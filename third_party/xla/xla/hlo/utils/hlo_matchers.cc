@@ -469,14 +469,38 @@ bool HloMetadataMatcher::MatchAndExplain(
     return false;
   }
   *listener << metadata_.source_line();
+  if (instruction->metadata().source_end_line() !=
+      metadata_.source_end_line()) {
+    *listener << " has wrong metadata (got "
+              << instruction->metadata().source_end_line() << ", want "
+              << metadata_.source_end_line() << ")";
+    return false;
+  }
+  *listener << metadata_.source_end_line();
+  if (instruction->metadata().source_column() != metadata_.source_column()) {
+    *listener << " has wrong metadata (got "
+              << instruction->metadata().source_column() << ", want "
+              << metadata_.source_column() << ")";
+    return false;
+  }
+  *listener << metadata_.source_column();
+  if (instruction->metadata().source_end_column() !=
+      metadata_.source_end_column()) {
+    *listener << " has wrong metadata (got "
+              << instruction->metadata().source_end_column() << ", want "
+              << metadata_.source_end_column() << ")";
+    return false;
+  }
+  *listener << metadata_.source_end_column();
   *listener << ")";
   return true;
 }
 
 void HloMetadataMatcher::DescribeTo(std::ostream* os) const {
   *os << " (metadata: " << metadata_.op_type() << " " << metadata_.op_name()
-      << " " << metadata_.source_file() << " " << metadata_.source_line()
-      << ")";
+      << " " << metadata_.source_file() << " " << metadata_.source_line() << " "
+      << metadata_.source_end_line() << " " << metadata_.source_column() << " "
+      << metadata_.source_end_column() << ")";
 }
 }  // namespace testing
 

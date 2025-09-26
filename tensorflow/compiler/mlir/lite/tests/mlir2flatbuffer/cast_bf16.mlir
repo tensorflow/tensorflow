@@ -59,7 +59,7 @@ func.func @main(tensor<4x5xbf16>) -> tensor<4x5xbf16> {
 // CHECK-NEXT:      }, {
 // CHECK-EMPTY:
 // CHECK-NEXT:      }, {
-// CHECK-NEXT:        data: [ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 ]
+// CHECK-NEXT:        data: [ 50, 46, 49, 55, 46, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 ]
 // CHECK-NEXT:      } ],
 // CHECK-NEXT:      metadata: [ {
 // CHECK-NEXT:        name: "min_runtime_version",

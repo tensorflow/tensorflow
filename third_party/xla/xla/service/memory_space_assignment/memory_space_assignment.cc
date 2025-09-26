@@ -412,7 +412,7 @@ MemorySpaceAssignment::RunMemorySpaceAssignment(
   ScheduleAsynchronousCopies();
   TF_RETURN_IF_ERROR(SimplifyGraph());
   TF_RETURN_IF_ERROR(FixSchedule());
-  TF_ASSIGN_OR_RETURN(auto alias, HloAliasAnalysis::Run(module_));
+  TF_ASSIGN_OR_RETURN(auto alias, HloAliasAnalysis::Run(module_, alias_info_));
   TF_RETURN_IF_ERROR(ExportAndColorBuffers(*alias));
   std::vector<int64_t> alt_mem_bytes_occupied;
   // alt_mem_bytes_occupied is used for logging in the RuntimeSimulator below.
@@ -423,7 +423,7 @@ MemorySpaceAssignment::RunMemorySpaceAssignment(
       runtime_simulator.has_value() ? &alt_mem_bytes_occupied : nullptr));
   if (VLOG_IS_ON(2) && runtime_simulator.has_value()) {
     float estimated_time = runtime_simulator->SimulateElapsedTime(
-        module_, allocations_, &alt_mem_bytes_occupied);
+        module_, *alias, allocations_, &alt_mem_bytes_occupied);
     LOG(INFO) << "Estimated elapsed time with async copies (sec): "
               << estimated_time;
   }
@@ -659,31 +659,65 @@ absl::Status MemorySpaceAssignment::ExportAndColorBuffers(
   return absl::OkStatus();
 }
 
-void MemorySpaceAssignment::RemoveAssignmentForInstruction(
-    const HloInstruction* instruction) {
-  auto it = alternate_memory_assignments_.begin();
-  auto end = alternate_memory_assignments_.end();
-  while (it != end) {
-    const HloPosition& position = it->first;
-    if (position.instruction == instruction) {
-      VLOG(3) << "Removing instruction from alternate memory assignments.";
-      if (std::next(it) == end) {
-        alternate_memory_assignments_.pop_back();
-        break;
-      } else {
-        // Swap the removed position and chunk with the back and pop back.
-        *it = alternate_memory_assignments_.back();
-        alternate_memory_assignments_.pop_back();
-        end = alternate_memory_assignments_.end();
-      }
-    } else {
+void MemorySpaceAssignment::RemoveAlternateMemoryAssignments(
+    const absl::flat_hash_set<const HloInstruction*>& instructions) {
+  for (auto it = alternate_memory_assignments_.begin();
+       it != alternate_memory_assignments_.end();) {
+    const HloInstruction* instruction = it->first.instruction;
+    if (!instructions.contains(instruction)) {
       ++it;
+      continue;
     }
+
+    VLOG(3) << "Removing instruction from alternate memory assignments.";
+    if (std::next(it) == alternate_memory_assignments_.end()) {
+      alternate_memory_assignments_.pop_back();
+      break;
+    }
+
+    // Swap the removed position and chunk with the back and pop back.
+    *it = alternate_memory_assignments_.back();
+    alternate_memory_assignments_.pop_back();
+  }
+}
+
+void MemorySpaceAssignment::RemoveScopedMemoryAssignments(
+    const absl::flat_hash_set<const HloInstruction*>& instructions) {
+  for (auto it = scoped_memory_assignments_.begin();
+       it != scoped_memory_assignments_.end();) {
+    const HloInstruction* instruction = it->first.instruction;
+    if (!instructions.contains(instruction)) {
+      ++it;
+      continue;
+    }
+
+    VLOG(3) << "Removing instruction from alternate memory assignments.";
+    if (std::next(it) == scoped_memory_assignments_.end()) {
+      scoped_memory_assignments_.pop_back();
+      break;
+    }
+
+    // Swap the removed position and chunk with the back and pop back.
+    *it = scoped_memory_assignments_.back();
+    scoped_memory_assignments_.pop_back();
   }
 }
 
 absl::Status MemorySpaceAssignment::SimplifyGraph() {
   VLOG(1) << "Simplifying graph...";
+
+  // Preprocess flattened_instructions_ for quick index lookup.
+  absl::flat_hash_map<HloInstruction*, int64_t>
+      instruction_to_flattened_instructions_idx;
+  for (int64_t i = 0; i < flattened_instructions_.size(); ++i) {
+    if (flattened_instructions_[i] == nullptr) {
+      continue;
+    }
+    instruction_to_flattened_instructions_idx[flattened_instructions_[i]] = i;
+  }
+
+  absl::flat_hash_set<const HloInstruction*> removed_instructions;
+
   for (HloComputation* computation : module_->MakeNonfusionComputations()) {
     // Parallel computations aren't in the schedule and don't need to be
     // modified.
@@ -717,17 +751,15 @@ absl::Status MemorySpaceAssignment::SimplifyGraph() {
             instruction->opcode() != HloOpcode::kCopyStart &&
             instruction->opcode() != HloOpcode::kCopyDone) {
           VLOG(4) << "Instruction removed: " << instruction->ToString();
-          // Ensure the alternate memory assignments don't contain a reference
-          // to the removed instruction.
-          RemoveAssignmentForInstruction(instruction);
+          removed_instructions.insert(instruction);
           // Instead of deleting the instruction from the schedule, replace it
           // with a nullptr. This is needed because FixSchedule relies on the
           // logical time that is the index into flattened_instructions_ for
           // scheduling asynchronous copies.
-          auto instruction_it =
-              absl::c_find(flattened_instructions_, instruction);
-          if (instruction_it != flattened_instructions_.end()) {
-            *instruction_it = nullptr;
+          if (instruction_to_flattened_instructions_idx.contains(instruction)) {
+            flattened_instructions_
+                [instruction_to_flattened_instructions_idx[instruction]] =
+                    nullptr;
           }
           TF_RETURN_IF_ERROR(computation->RemoveInstruction(instruction));
           computation_modified = true;
@@ -778,6 +810,9 @@ absl::Status MemorySpaceAssignment::SimplifyGraph() {
       }
     }
   }
+
+  RemoveAlternateMemoryAssignments(removed_instructions);
+  RemoveScopedMemoryAssignments(removed_instructions);
 
   return absl::OkStatus();
 }
@@ -1010,6 +1045,15 @@ absl::Status MemorySpaceAssignment::FixSchedule() {
   VLOG(1) << "Fixing schedule...";
   TF_RET_CHECK(module_->has_schedule());
   HloSchedule& schedule = module_->schedule();
+
+  struct ComputationStats {
+    HloInstructionSequence sequence;
+    absl::flat_hash_set<HloInstruction*> inserted_instructions;
+  };
+
+  absl::flat_hash_map<const HloComputation*, ComputationStats>
+      computation_to_stats;
+
   for (const HloComputation* computation :
        module_->MakeNonfusionComputations()) {
     // Parallel computations aren't in the schedule and don't need to be
@@ -1026,73 +1070,85 @@ absl::Status MemorySpaceAssignment::FixSchedule() {
       continue;
     }
     TF_RET_CHECK(schedule.is_computation_scheduled(computation));
-    HloInstructionSequence new_sequence;
+    computation_to_stats[computation] = {};
+  }
 
-    absl::flat_hash_set<HloInstruction*> inserted_instructions;
-
-    VLOG(4) << "Scheduling: " << computation->ToString();
-
-    for (int64_t instruction_index = -1;; ++instruction_index) {
-      auto insts_before_iter = schedule_before_.find(instruction_index);
-      if (insts_before_iter != schedule_before_.end()) {
-        for (HloInstruction* new_instruction : insts_before_iter->second) {
-          if (new_instruction->parent() == computation) {
-            VLOG(4) << "before " << instruction_index << ": "
-                    << new_instruction->ToString();
-            InsertInstructionAndEnsureOperandsInserted(
-                new_instruction, &new_sequence, &inserted_instructions);
-          }
+  // Create the schedule for all computations at the same time, by first
+  // scheduling the before instructions, then the current instruction and
+  // finally the after instructions (each in its respective computation).
+  for (int64_t instruction_index = -1;; ++instruction_index) {
+    auto insts_before_iter = schedule_before_.find(instruction_index);
+    if (insts_before_iter != schedule_before_.end()) {
+      for (HloInstruction* new_instruction : insts_before_iter->second) {
+        HloComputation* computation = new_instruction->parent();
+        if (computation_to_stats.contains(computation)) {
+          ComputationStats& stats = computation_to_stats[computation];
+          VLOG(4) << "before " << instruction_index << ": "
+                  << new_instruction->ToString();
+          InsertInstructionAndEnsureOperandsInserted(
+              new_instruction, &stats.sequence, &stats.inserted_instructions);
         }
       }
+    }
 
-      if (instruction_index != -1) {
-        // We allow scheduling copy dones past the root instruction (for
-        // end-of-program cross-program prefetch). So the loop exit condition is
-        // actually here.
-        if (instruction_index >= flattened_instructions_.size()) {
-          break;
-        }
+    if (instruction_index != -1) {
+      // We allow scheduling copy dones past the root instruction (for
+      // end-of-program cross-program prefetch). So the loop exit condition is
+      // actually here.
+      if (instruction_index >= flattened_instructions_.size()) {
+        break;
+      }
 
-        HloInstruction* instruction =
-            flattened_instructions_[instruction_index];
-        // Insert only if it is not deleted (SimplifyGraph sets it to nullptr if
-        // it was deleted) and not previously inserted. Also bitcasts and tuples
-        // are treated specially and only inserted as a result of operand
-        // dependencies.
-        if (instruction != nullptr && instruction->parent() == computation &&
-            instruction->opcode() != HloOpcode::kBitcast &&
-            instruction->opcode() != HloOpcode::kTuple &&
-            !inserted_instructions.contains(instruction)) {
+      HloInstruction* instruction = flattened_instructions_[instruction_index];
+      // Insert only if it is not deleted (SimplifyGraph sets it to nullptr if
+      // it was deleted) and not previously inserted. Also bitcasts and tuples
+      // are treated specially and only inserted as a result of operand
+      // dependencies.
+      if (instruction != nullptr &&
+          instruction->opcode() != HloOpcode::kBitcast &&
+          instruction->opcode() != HloOpcode::kTuple) {
+        HloComputation* computation = instruction->parent();
+        if (computation_to_stats.contains(computation)) {
+          ComputationStats& stats = computation_to_stats[computation];
           VLOG(4) << "inst " << instruction_index << ": "
                   << instruction->ToString();
-          InsertInstructionAndEnsureOperandsInserted(instruction, &new_sequence,
-                                                     &inserted_instructions);
-        }
-      }
-
-      auto insts_after_iter = schedule_after_.find(instruction_index);
-      if (insts_after_iter != schedule_after_.end()) {
-        for (HloInstruction* new_instruction : insts_after_iter->second) {
-          if (new_instruction->parent() == computation) {
-            VLOG(4) << "after " << instruction_index << ": "
-                    << new_instruction->ToString();
+          if (!stats.inserted_instructions.contains(instruction)) {
             InsertInstructionAndEnsureOperandsInserted(
-                new_instruction, &new_sequence, &inserted_instructions);
+                instruction, &stats.sequence, &stats.inserted_instructions);
           }
         }
       }
     }
 
+    auto insts_after_iter = schedule_after_.find(instruction_index);
+    if (insts_after_iter != schedule_after_.end()) {
+      for (HloInstruction* new_instruction : insts_after_iter->second) {
+        HloComputation* computation = new_instruction->parent();
+        if (computation_to_stats.contains(computation)) {
+          ComputationStats& stats = computation_to_stats[computation];
+          InsertInstructionAndEnsureOperandsInserted(
+              new_instruction, &stats.sequence, &stats.inserted_instructions);
+        }
+      }
+    }
+  }
+
+  for (auto& [computation, stats] : computation_to_stats) {
+    // Parallel computations aren't in the schedule and don't need to be
+    // modified.
+    VLOG(4) << "Scheduling: " << computation->ToString();
+
     // For rare cases where the original sequence is empty, ensure the root
     // instruction and its dependencies are scheduled.
-    InsertInstructionAndEnsureOperandsInserted(
-        computation->root_instruction(), &new_sequence, &inserted_instructions);
+    InsertInstructionAndEnsureOperandsInserted(computation->root_instruction(),
+                                               &stats.sequence,
+                                               &stats.inserted_instructions);
 
-    CHECK_EQ(new_sequence.size(), computation->instruction_count())
+    CHECK_EQ(stats.sequence.size(), computation->instruction_count())
         << "New sequence for computation " << computation->name() << " has "
-        << new_sequence.size() << " instructions, expects "
+        << stats.sequence.size() << " instructions, expects "
         << computation->instruction_count() << ".";
-    schedule.set_sequence(computation, new_sequence);
+    schedule.set_sequence(computation, stats.sequence);
   }
 
   TF_RETURN_IF_ERROR(schedule.Update());

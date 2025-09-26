@@ -20,6 +20,7 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
@@ -27,8 +28,8 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/stream_executor/cuda/compilation_options.h"
 #include "xla/stream_executor/cuda/compilation_provider.h"
-#include "xla/stream_executor/device_description.h"
-#include "tsl/platform/statusor.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace stream_executor::cuda {
 
@@ -134,6 +135,11 @@ absl::StatusOr<Assembly> CachingCompilationProvider::CompileAndLink(
   }
 
   return delegate_->CompileAndLink(cc, modules, options);
+}
+
+absl::StatusOr<int> CachingCompilationProvider::GetLatestPtxIsaVersion() const {
+  return absl::UnimplementedError(
+      "GetLatestPtxIsaVersion is not implemented for " + name() + ".");
 }
 
 }  // namespace stream_executor::cuda

@@ -1,5 +1,6 @@
 # python/lib/core package
 
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable", "tf_external_workspace_visible", "tf_python_pybind_extension")
 
 visibility = [
@@ -153,6 +154,7 @@ cc_library(
     name = "py_func_lib",
     srcs = ["py_func.cc"],
     hdrs = ["py_func.h"],
+    visibility = ["//visibility:public"],
     deps = [
         ":ndarray_tensor",
         ":ndarray_tensor_bridge",

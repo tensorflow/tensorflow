@@ -1,4 +1,5 @@
 load("@local_xla//xla/tsl/platform:build_config_root.bzl", "if_pywrap")
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("//tensorflow:pytype.default.bzl", "pytype_strict_library")
 load(
     "//tensorflow:tensorflow.default.bzl",
@@ -102,6 +103,7 @@ cc_library(
 pytype_strict_library(
     name = "py_function_lib_py",
     srcs = ["py_function_lib.py"],
+    visibility = ["//visibility:public"],
     deps = [
         ":pywrap_function_lib",
         ":representative_dataset",
@@ -163,6 +165,7 @@ cc_library(
     name = "py_function_lib",
     hdrs = ["py_function_lib.h"],
     compatible_with = get_compatible_with_portable(),
+    visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto_cc",
         "//tensorflow/compiler/mlir/quantization/stablehlo/cc/calibration:min_max_value",

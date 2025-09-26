@@ -46,7 +46,7 @@ TEST(RocmKernelTest, GetMaxOccupiedBlocksPerCore) {
   EXPECT_EQ(rocm_kernel->Arity(), 3);
   EXPECT_THAT(rocm_kernel->GetMaxOccupiedBlocksPerCore(
                   ThreadDim(1, 1, 1), /*dynamic_shared_memory_bytes=*/0),
-              IsOkAndHolds(Ge(1)));
+              absl_testing::IsOkAndHolds(Ge(1)));
 }
 
 }  // namespace

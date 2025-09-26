@@ -16,7 +16,6 @@ limitations under the License.
 #include "xla/service/gpu/ir_emitter_unnested.h"
 
 #include <algorithm>
-#include <array>
 #include <cassert>
 #include <cstdint>
 #include <cstring>
@@ -96,11 +95,14 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/fft_thunk.h"
 #include "xla/backends/gpu/runtime/gemm_thunk.h"
 #include "xla/backends/gpu/runtime/gpublas_lt_matmul_thunk.h"
+#include "xla/backends/gpu/runtime/host_execute_thunk.h"
 #include "xla/backends/gpu/runtime/host_send_recv_thunk.h"
 #include "xla/backends/gpu/runtime/infeed_thunk.h"
 #include "xla/backends/gpu/runtime/kernel_thunk.h"
 #include "xla/backends/gpu/runtime/norm_thunk.h"
+#include "xla/backends/gpu/runtime/nvshmem_all_reduce_thunk.h"
 #include "xla/backends/gpu/runtime/nvshmem_collective_permute_thunk.h"
+#include "xla/backends/gpu/runtime/nvshmem_collective_thunk.h"
 #include "xla/backends/gpu/runtime/nvshmem_recv_thunk.h"
 #include "xla/backends/gpu/runtime/nvshmem_send_thunk.h"
 #include "xla/backends/gpu/runtime/outfeed_thunk.h"
@@ -177,16 +179,30 @@ limitations under the License.
 #include "xla/stream_executor/platform/platform_object_registry.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/tools/hlo_decomposer.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/protobuf/dnn.pb.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/casts.h"
 #include "tsl/platform/human_readable_json.h"
+#include "tsl/platform/platform.h"
 #include "triton/Dialect/Triton/IR/Dialect.h"
 
 namespace xla {
 namespace gpu {
+
+namespace {
+// TODO: move into a host_execute specific file.
+bool IsHostExecuteCustomCall(const HloInstruction& hlo) {
+  return hlo.opcode() == HloOpcode::kCustomCall &&
+         hlo.custom_call_target() ==
+             "HostExecute";  // TODO: this constant string should be shared with
+                             // the TPU one
+}
+
+}  // namespace
 
 IrEmitterUnnested::IrEmitterUnnested(IrEmitterContext* ir_emitter_context)
     : IrEmitter(ir_emitter_context, /*is_nested=*/false),
@@ -310,24 +326,20 @@ absl::Status IrEmitterUnnested::EmitPadToStatic(
 
   LaunchDimensions launch_dimensions = CalculateLaunchDimensions(
       input_shape, ir_emitter_context_->gpu_device_info(), {unroll_factor});
-  std::vector<llvm_ir::IrArray> input_arrays;
-  std::vector<llvm_ir::IrArray> output_arrays;
-  TF_ASSIGN_OR_RETURN(std::tie(input_arrays, output_arrays),
-                      BuildKernelThunkForNonFusionOp(instr, instr->operands(),
-                                                     launch_dimensions));
+  TF_ASSIGN_OR_RETURN(std::vector<llvm_ir::IrArray> ir_arrays,
+                      BuildKernelThunkForNonFusionOp(instr, launch_dimensions));
 
-  CHECK_EQ(output_arrays.size(), 0);
-  const llvm_ir::IrArray source_array = input_arrays[0];
-  const llvm_ir::IrArray output_array = input_arrays[1];
+  const llvm_ir::IrArray& source_array = ir_arrays[0];
+  const llvm_ir::IrArray& output_array = ir_arrays[1];
   auto output_dim_arrays =
-      absl::Span<const llvm_ir::IrArray>(input_arrays).subspan(2);
+      absl::Span<const llvm_ir::IrArray>(ir_arrays).subspan(2);
 
   llvm::Type* index_ty =
       GetIndexTypeForKernel(instr, launch_dimensions.launch_bound(), &b_);
 
   // pseudo code for PadToStatic on a 2d array
-  //   int* source_array = input[0];
-  //   int* dest_array = output[0];
+  //   int* source_array = args[0];
+  //   int* dest_array = args[1];
   llvm::Value* source_buffer = source_array.GetBasePointer();
 
   // TODO(jurahul): input_shape here is the static shape of the
@@ -446,10 +458,8 @@ absl::Status IrEmitterUnnested::EmitSliceToDynamic(
       input_shape, ir_emitter_context_->gpu_device_info(), {unroll_factor});
   llvm::Type* index_ty =
       GetIndexTypeForKernel(instr, launch_dimensions.launch_bound(), &b_);
-  std::vector<llvm_ir::IrArray> input_arrays, output_arrays;
-  TF_ASSIGN_OR_RETURN(std::tie(input_arrays, output_arrays),
-                      BuildKernelThunkForNonFusionOp(instr, instr->operands(),
-                                                     launch_dimensions));
+  TF_ASSIGN_OR_RETURN(std::vector<llvm_ir::IrArray> ir_arrays,
+                      BuildKernelThunkForNonFusionOp(instr, launch_dimensions));
 
   const Shape& data_shape = ShapeUtil::MakeStaticShape(instr->shape());
   TF_RET_CHECK(data_shape.IsArray());
@@ -468,18 +478,17 @@ absl::Status IrEmitterUnnested::EmitSliceToDynamic(
   int32_t raw_data_size = ShapeUtil::ByteSizeOf(data_shape);
 
   // pseudo code for sliceToDynamic on a 2d array
-  //   int* source_array = input[0];
-  //   int* dest_array = output[0];
-  const llvm_ir::IrArray data_array = input_arrays.back();
+  //   int* source_array = args[0];
+  //   int* dest_array = args.back();
+  const llvm_ir::IrArray& data_array = ir_arrays.back();
   llvm::Value* dest_buffer = data_array.GetBasePointer();
 
   // Load dynamic dimensions from memory.
   std::vector<llvm::Value*> dynamic_dims;
   int alignment = raw_data_size % sizeof(int32_t);
   for (int64_t i = 1; i < instr->operand_count(); ++i) {
-    llvm::Value* source_buffer = input_arrays[i].GetBasePointer();
-    llvm::Type* source_buffer_pointee_type =
-        input_arrays[i].GetBasePointeeType();
+    llvm::Value* source_buffer = ir_arrays[i].GetBasePointer();
+    llvm::Type* source_buffer_pointee_type = ir_arrays[i].GetBasePointeeType();
     llvm::LoadInst* dyn_dim_size =
         Load(source_buffer_pointee_type, source_buffer, "dyn_dim_size");
     dynamic_dims.push_back(dyn_dim_size);
@@ -543,8 +552,8 @@ absl::Status IrEmitterUnnested::EmitSliceToDynamic(
 
     data_array.EmitWriteArrayElement(
         array_index,
-        input_arrays[0].EmitReadArrayElement(dyn_index, &b_, /*name=*/"",
-                                             /*use_linear_index=*/false),
+        ir_arrays[0].EmitReadArrayElement(dyn_index, &b_, /*name=*/"",
+                                          /*use_linear_index=*/false),
         &b_);
     return absl::OkStatus();
   };
@@ -574,11 +583,25 @@ absl::Status IrEmitterUnnested::EmitCommandBufferThunk(
   // between all recorded commands. This guarantees that we execute
   // all device operations in the exact same order as a thunk
   // sequence.
-  CommandBufferCmdExecutor::SynchronizationMode synchronization_mode =
-      ir_emitter_context_->debug_options()
-              .xla_gpu_graph_enable_concurrent_region()
-          ? CommandBufferCmdExecutor::SynchronizationMode::kAutomatic
-          : CommandBufferCmdExecutor::SynchronizationMode::kSerialize;
+  CommandBufferCmdExecutor::SynchronizationMode synchronization_mode;
+  auto mode = ir_emitter_context_->debug_options()
+                  .xla_gpu_command_buffer_scheduling_mode();
+  switch (mode) {
+    case DebugOptions::SERIALIZE:
+      synchronization_mode =
+          CommandBufferCmdExecutor::SynchronizationMode::kSerialize;
+      break;
+    case DebugOptions::CONCURRENT:
+      synchronization_mode =
+          CommandBufferCmdExecutor::SynchronizationMode::kConcurrent;
+      break;
+    case DebugOptions::LHS:
+      synchronization_mode =
+          CommandBufferCmdExecutor::SynchronizationMode::kLHS;
+      break;
+    default:
+      return Internal("Unsupported command buffer scheduling mode: %d", mode);
+  }
 
   TF_ASSIGN_OR_RETURN(
       CommandBufferCmdExecutor cmd_executor,
@@ -965,11 +988,10 @@ absl::Status IrEmitterUnnested::EmitNormThunk(
 
 absl::Status IrEmitterUnnested::EmitCuDnnThunk(
     const HloCustomCallInstruction* instr) {
-  TF_ASSIGN_OR_RETURN(
-      auto kernel_arguments,
-      emitters::KernelArguments::Create(
-          ir_emitter_context_->buffer_assignment(), GetDefaultBufferAlignment(),
-          instr, instr->operands()));
+  TF_ASSIGN_OR_RETURN(auto kernel_arguments,
+                      emitters::KernelArguments::Create(
+                          ir_emitter_context_->buffer_assignment(),
+                          GetDefaultBufferAlignment(), instr));
   TF_ASSIGN_OR_RETURN(const std::string fingerprint,
                       FingerprintWithBackendConfig<GpuBackendConfig>(*instr));
   // check if sdpa dropout is enabled
@@ -981,7 +1003,8 @@ absl::Status IrEmitterUnnested::EmitCuDnnThunk(
   }
   AddThunkToThunkSequence(std::make_unique<CuDnnThunk>(
       fingerprint, Thunk::ThunkInfo::WithProfileAnnotation(instr),
-      kernel_arguments.args(), dropout_seed));
+      kernel_arguments.GetArgumentBufferSlices(),
+      kernel_arguments.GetArgumentOutputFlags(), dropout_seed));
   return absl::OkStatus();
 }
 
@@ -1142,7 +1165,7 @@ absl::Status IrEmitterUnnested::EmitCustomCallThunk(
             operands.push_back(std::nullopt);
             return absl::OkStatus();
           }
-          if (!subshape.IsArrayOrBuffer()) {
+          if (!subshape.IsArray()) {
             return absl::OkStatus();
           }
           TF_ASSIGN_OR_RETURN(auto slice,
@@ -1159,7 +1182,7 @@ absl::Status IrEmitterUnnested::EmitCustomCallThunk(
           results.push_back(std::nullopt);
           return absl::OkStatus();
         }
-        if (!subshape.IsArrayOrBuffer()) {
+        if (!subshape.IsArray()) {
           return absl::OkStatus();
         }
         TF_ASSIGN_OR_RETURN(auto slice, GetAllocationSliceForHlo(instr, index));
@@ -1181,17 +1204,18 @@ absl::Status IrEmitterUnnested::EmitCustomCallThunk(
   // For information about this calling convention, see
   // xla/g3doc/custom_call.md.
   switch (instr->api_version()) {
-    case CustomCallApiVersion::API_VERSION_ORIGINAL:
-#ifdef PLATFORM_GOOGLE
-      LOG(FATAL)
-#else
-      LOG(ERROR)
-#endif
-          << "Custom call API version `API_VERSION_ORIGINAL` is "
-             "not supported "
-             "by XLA:GPU. Prefer "
-             "https://docs.jax.dev/en/latest/ffi.html. It "
-             "will be fully removed in November 2025.";
+    case CustomCallApiVersion::API_VERSION_ORIGINAL: {
+      constexpr absl::string_view kErrorMessage =
+          "Custom call API version `API_VERSION_ORIGINAL` is "
+          "not supported "
+          "by XLA:GPU. Prefer "
+          "https://docs.jax.dev/en/latest/ffi.html. It "
+          "will be fully removed in November 2025.";
+      if constexpr (tsl::kIsOpenSource) {
+        LOG(ERROR) << kErrorMessage;
+      } else {
+        LOG(FATAL) << kErrorMessage;
+      }
 
       custom_call_target = [call_target](stream_executor::Stream* stream,
                                          void** buffers, const char* opaque,
@@ -1202,6 +1226,7 @@ absl::Status IrEmitterUnnested::EmitCustomCallThunk(
             opaque_len);
       };
       break;
+    }
     case CustomCallApiVersion::API_VERSION_STATUS_RETURNING:
     case CustomCallApiVersion::API_VERSION_STATUS_RETURNING_UNIFIED:
       custom_call_target = [call_target](stream_executor::Stream* stream,
@@ -1407,10 +1432,10 @@ absl::Status IrEmitterUnnested::EmitTopKCustomCall(
   TF_ASSIGN_OR_RETURN(auto kernel_arguments,
                       emitters::KernelArguments::Create(
                           ir_emitter_context_->buffer_assignment(),
-                          GetDefaultBufferAlignment(), instr, operands));
+                          GetDefaultBufferAlignment(), instr));
 
-  auto thunk = std::make_unique<CustomKernelThunk>(
-      instr, std::move(kernel), std::move(kernel_arguments.args()));
+  auto thunk = std::make_unique<CustomKernelThunk>(instr, std::move(kernel),
+                                                   kernel_arguments);
   AddThunkToThunkSequence(std::move(thunk));
 
   return absl::OkStatus();
@@ -1445,7 +1470,6 @@ absl::Status IrEmitterUnnested::EmitTritonCustomCall(
     TF_RET_CHECK(triton_fn)
         << "Call name not found in the Triton module: " << call.name;
     triton_fn.setName(kernel_name);
-    size_t arg_size = triton_fn.getNumArguments();
 
     HloModule* hlo_module = instr->GetModule();
     // If emit_kernels if false (i.e., when deserializing an already
@@ -1469,12 +1493,10 @@ absl::Status IrEmitterUnnested::EmitTritonCustomCall(
                             ir_emitter_context_->llvm_module(), mlir_context,
                             /*is_xla_fusion=*/false, emit_kernels));
 
-    TF_ASSIGN_OR_RETURN(
-        auto kernel_arguments,
-        emitters::KernelArguments::Create(
-            ir_emitter_context_->buffer_assignment(),
-            GetDefaultBufferAlignment(), instr, instr->operands(),
-            /*dedup=*/false));
+    TF_ASSIGN_OR_RETURN(auto kernel_arguments,
+                        emitters::KernelArguments::Create(
+                            ir_emitter_context_->buffer_assignment(),
+                            GetDefaultBufferAlignment(), instr));
     auto launch_dimensions = LaunchDimensions(
         se::BlockDim(call.grid_x, call.grid_y, call.grid_z),
         se::ThreadDim(
@@ -1493,20 +1515,18 @@ absl::Status IrEmitterUnnested::EmitTritonCustomCall(
 
       llvm::IRBuilder builder(ir_emitter_context_->llvm_module()->getContext());
 
-      llvm::Function* kernel;
-      std::vector<llvm_ir::IrArray> inputs;
-      std::vector<llvm_ir::IrArray> outputs;
-      TF_ASSIGN_OR_RETURN(std::tie(kernel, inputs, outputs),
+      TF_ASSIGN_OR_RETURN(llvm::Function * kernel,
                           BuildKernelPrototypeFromUniqueName(
                               *ir_emitter_context_, impl_fn->getName().str(),
-                              sanitized_kernel_name, kernel_arguments.args(),
-                              arg_size, launch_dimensions, &builder));
+                              sanitized_kernel_name, kernel_arguments,
+                              launch_dimensions, &builder));
 
       // Move function body into kernel prototype.
       llvm::Function* prototype_func = builder.GetInsertBlock()->getParent();
       prototype_func->splice(prototype_func->begin(), impl_fn);
-      for (const auto& [arg, input] : llvm::zip(impl_fn->args(), inputs)) {
-        arg.replaceAllUsesWith(input.GetBasePointer());
+      for (const auto& [impl_fn_arg, kernel_arg] :
+           llvm::zip(impl_fn->args(), kernel->args())) {
+        impl_fn_arg.replaceAllUsesWith(&kernel_arg);
       }
       // Triton's kernel ABI expects an additional scratchpad global
       // memory. For now it is only used for on-device creation of
@@ -1541,12 +1561,11 @@ absl::Status IrEmitterUnnested::EmitTritonCustomCall(
   TF_ASSIGN_OR_RETURN(auto kernel_arguments,
                       emitters::KernelArguments::Create(
                           ir_emitter_context_->buffer_assignment(),
-                          GetDefaultBufferAlignment(), instr, instr->operands(),
-                          /*dedup=*/false));
+                          GetDefaultBufferAlignment(), instr));
 
   AddThunkToThunkSequence(std::make_unique<KernelThunk>(
       Thunk::ThunkInfo::WithProfileAnnotation(instr), entry->kernel_name,
-      kernel_arguments.args(), entry->launch_dimensions, entry->cluster_dim,
+      kernel_arguments, entry->launch_dimensions, entry->cluster_dim,
       entry->shmem_bytes));
   return absl::OkStatus();
 }
@@ -1683,7 +1702,9 @@ absl::Status IrEmitterUnnested::EmitWhile(const HloInstruction* instr) {
                       instr->backend_config<xla::WhileLoopBackendConfig>());
 
   std::optional<int64_t> trip_count = std::nullopt;
-  if (config.has_known_trip_count()) trip_count = config.known_trip_count().n();
+  if (config.has_known_trip_count()) {
+    trip_count = config.known_trip_count().n();
+  }
 
   TF_ASSIGN_OR_RETURN(
       auto thunk,
@@ -1699,11 +1720,10 @@ absl::Status IrEmitterUnnested::EmitRngGetAndUpdateState(
   // Emit a kernel to increment the global state for Philox RNG
   // algorithm.
   TF_ASSIGN_OR_RETURN(auto ir_arrays, BuildKernelThunkForNonFusionOp(
-                                          instr, {}, LaunchDimensions()));
-  auto& [inputs, outputs] = ir_arrays;
+                                          instr, LaunchDimensions()));
   llvm::Value* old_state =
       llvm_ir::RngGetAndUpdateState(instr->delta(), module_, &b_);
-  llvm::Value* output_address = inputs[0].EmitArrayElementAddress(
+  llvm::Value* output_address = ir_arrays[0].EmitArrayElementAddress(
       llvm_ir::IrArray::Index(
           /*linear=*/b_.getInt64(0), instr->shape(), &b_),
       &b_, "rng_state_address");
@@ -1781,10 +1801,32 @@ absl::Status IrEmitterUnnested::EmitSort(const HloSortInstruction* sort) {
   // sorting/comparison loop if the comparisons happen within a
   // small block of the array. To make this work, we collect all
   // consecutive masks that are smaller than our chosen power of 2
-  // tile size, and pass them to SortInPlace. Each thread then
+  // tile size, and pass them to SortInPlace. Each block then
   // processes one tile of data.
 
-  const uint64_t kTileSize = std::min(2048ULL, 1ULL << num_stages);
+  const uint64_t kUnrollFactor = 4;
+  // Determine the total element size of all sort operands. We need to choose a
+  // tile size such that we have enough shared memory to store a tile of
+  // elements from each operand.
+  uint64_t total_element_size = 0;
+  for (int64_t i = 0; i < sort->operand_count(); ++i) {
+    total_element_size += ShapeUtil::ByteSizeOfPrimitiveType(
+        sort->operand(i)->shape().element_type());
+  }
+  const uint64_t kMaxSharedMemoryPerBlock =
+      ir_emitter_context_->gpu_device_info().shared_memory_per_block();
+  uint64_t max_tile_size_fitting_into_shared_memory =
+      kMaxSharedMemoryPerBlock / total_element_size;
+  const uint64_t kMaxThreadsPerBlock =
+      ir_emitter_context_->gpu_device_info().threads_per_block_limit();
+  // Choose the tile size based on actual amount of elements to sort, the amount
+  // of shared memory avaiable, and the maximum number of threads per block.
+  uint64_t tile_size =
+      std::min(std::min(kMaxThreadsPerBlock * kUnrollFactor,
+                        max_tile_size_fitting_into_shared_memory),
+               uint64_t{1} << num_stages);
+  // The tile size needs to be a power of 2.
+  tile_size = uint64_t{1} << Log2Floor(tile_size);
 
   // If we cannot combine several xor masks together, we don't use
   // tiling, so we calculate the standard launch dimensions for the
@@ -1793,54 +1835,33 @@ absl::Status IrEmitterUnnested::EmitSort(const HloSortInstruction* sort) {
   // because each iteration compares one pair of elements.
   Shape standard_iteration_shape = keys_shape;
   uint64_t standard_num_iterations_in_sort_dim = 1ULL << (num_stages - 1);
-  standard_iteration_shape.set_dimensions(dimension_to_sort,
-                                          standard_num_iterations_in_sort_dim);
+  standard_iteration_shape.set_dimensions(
+      dimension_to_sort,
+      CeilOfRatio(standard_num_iterations_in_sort_dim, kUnrollFactor));
 
   LaunchDimensions standard_launch_dimensions = CalculateLaunchDimensions(
       standard_iteration_shape, ir_emitter_context_->gpu_device_info());
 
   // Calculate the launch dimensions for the case where we use
   // tiling. We split the dimension that should be sorted into tiles
-  // of size 'kTileSize'. This means we first need to round
+  // of size 'tile_size'. This means we first need to round
   // 'dimension_to_sort_bound' up to be a multiple of the tile size.
-  int64_t rounded_bound = RoundUpTo(dimension_to_sort_bound, kTileSize);
+  uint64_t rounded_bound = RoundUpTo(dimension_to_sort_bound, tile_size);
   Shape iteration_shape = keys_shape;
 
   // We iterate through the element pairs that should be compared.
-  uint64_t num_iterations_in_sort_dim = rounded_bound / 2;
+  uint64_t num_iterations_in_sort_dim =
+      CeilOfRatio(rounded_bound, kUnrollFactor);
   iteration_shape.set_dimensions(dimension_to_sort, num_iterations_in_sort_dim);
   uint64_t num_iterations = ShapeUtil::ElementsIn(iteration_shape);
 
-  // For correctness reasons we need exactly 'kTileSize' / 2 many
+  // For correctness reasons we need exactly `tile_size` / `kUnrollFactor` many
   // threads per block. Each thread is responsible for copying
-  // exactly two adjacent elements into shared memory, and then does
-  // a comparison of two possibly different elements taken from
-  // shared memory.
-  const uint64_t kThreadsPerBlock = kTileSize / 2;
-
-  // Check whether we should use any tiling. We might not be able to
-  // use it if we have not enough threads, or not enough shared
+  // exactly `kUnrollFactor` many adjacent elements into shared memory, and then
+  // does `kUnrollFactor` / 2 many comparisons of two elements taken from shared
   // memory.
-  int64_t total_shared_memory_needed = 0;
-  for (int64_t i = 0; i < sort->operand_count(); ++i) {
-    total_shared_memory_needed +=
-        kTileSize * ShapeUtil::ByteSizeOfPrimitiveType(
-                        sort->operand(i)->shape().element_type());
-  }
-  bool no_tiling =
-      kThreadsPerBlock >
-          ir_emitter_context_->gpu_device_info().threads_per_block_limit() ||
-      total_shared_memory_needed >
-          ir_emitter_context_->gpu_device_info().shared_memory_per_block();
-  VLOG(2) << absl::StreamFormat(
-      "%s %s use tiling. No tiling if any of the following is "
-      "true: "
-      "kThreadsPerBlock=%d > threads_per_block_limit=%d, "
-      "total_shared_memory_needed=%d > shared_memory_per_block=%d",
-      op_name, (no_tiling ? "won't" : "will"), kThreadsPerBlock,
-      ir_emitter_context_->gpu_device_info().threads_per_block_limit(),
-      total_shared_memory_needed,
-      ir_emitter_context_->gpu_device_info().shared_memory_per_block());
+  const uint64_t kThreadsPerBlock =
+      std::max(uint64_t{1}, tile_size / kUnrollFactor);
 
   uint64_t num_blocks = CeilOfRatio(num_iterations, kThreadsPerBlock);
   LaunchDimensions tiled_launch_dimensions(num_blocks, kThreadsPerBlock);
@@ -1855,17 +1876,24 @@ absl::Status IrEmitterUnnested::EmitSort(const HloSortInstruction* sort) {
     LaunchDimensions launch_dimensions = xor_masks.size() > 1
                                              ? tiled_launch_dimensions
                                              : standard_launch_dimensions;
-    TF_ASSIGN_OR_RETURN(auto ir_arrays, BuildKernelThunkForNonFusionOp(
-                                            sort, {}, launch_dimensions));
+    TF_ASSIGN_OR_RETURN(
+        std::vector<llvm_ir::IrArray> ir_arrays,
+        BuildKernelThunkForNonFusionOp(sort, launch_dimensions));
 
-    auto& [inputs, outputs] = ir_arrays;
+    // The first `operand_count()` elements of `ir_arrays` are the input
+    // operands and the rest are the output arrays. Inputs are aliases with
+    // outputs, so we need to pass only the outputs to the in-place sort kernel.
+    auto output_arrays_span =
+        absl::Span<const llvm_ir::IrArray>(ir_arrays).subspan(
+            sort->operand_count());
+
     auto* comparator = sort->called_computations().front();
     return llvm_ir::EmitSortInPlace(
-        dimension_to_sort, inputs, llvm_ir::IrName(op_name), xor_masks, &b_,
-        launch_dimensions,
+        dimension_to_sort, output_arrays_span, llvm_ir::IrName(op_name),
+        xor_masks, &b_, launch_dimensions,
         xor_masks.size() > 1 ? num_iterations_in_sort_dim
                              : standard_num_iterations_in_sort_dim,
-        kTileSize,
+        tile_size, kUnrollFactor,
         [&](absl::Span<llvm::Value* const> operands, llvm::Value* output) {
           return CallNestedComputation(&b_, *ir_emitter_context_, *comparator,
                                        operands, output);
@@ -1880,7 +1908,7 @@ absl::Status IrEmitterUnnested::EmitSort(const HloSortInstruction* sort) {
       } else {
         xor_mask = 1LL << mask;
       }
-      if (xor_mask >= kTileSize || no_tiling) {
+      if (xor_mask >= tile_size) {
         if (!xor_masks.empty()) {
           TF_RETURN_IF_ERROR(emit_kernel(xor_masks));
           xor_masks.clear();
@@ -2125,29 +2153,7 @@ absl::Status IrEmitterUnnested::EmitCollectiveThunk(
     return implementable_status;
   }
 
-  // Signal that start thunk not created with nullptr.
-  GetCollectivesAsyncEvents().insert({async_start, nullptr});
-
-  VLOG(1) << "Collective call is degenerate, not doing NCCL call";
-
-  // Degenerate collectives are simply identity function. Buffer
-  // assignment expects a copy, so that's what we do.
-  ThunkSequence thunks;
-  for (int64_t i = 0; i < buffers.size(); i++) {
-    const Shape shape = inst->operand(i)->shape();
-    thunks.push_back(std::make_unique<DeviceToDeviceCopyThunk>(
-        Thunk::ThunkInfo::WithProfileAnnotation(inst),
-        /*source_buffer=*/buffers[i].source_buffer,
-        /*destination_buffer=*/buffers[i].destination_buffer,
-        /*mem_size=*/ShapeUtil::ByteSizeOf(shape)));
-  }
-  if (thunks.size() == 1) {
-    AddThunkToThunkSequence(std::move(thunks[0]));
-  } else {
-    AddThunkToThunkSequence(std::make_unique<SequentialThunk>(
-        Thunk::ThunkInfo::WithProfileAnnotation(inst), std::move(thunks)));
-  }
-  return absl::OkStatus();
+  return EmitDegeneratedCollectiveThunk(buffers, async_start, inst);
 }
 
 // Find the canonical send/recv start op for one of send, recv,
@@ -2356,7 +2362,9 @@ absl::Status IrEmitterUnnested::EmitCollectiveAsyncDone(
 
   // Can be null if no start thunk was created (e.g. if the start op
   // is degenerate), in which case there's nothing to do here.
-  if (!async_events_it->second) return absl::OkStatus();
+  if (!async_events_it->second) {
+    return absl::OkStatus();
+  }
 
   AsyncStreamKind stream_kind = AsyncStreamKind::kCollective;
   if (is_send_recv) {
@@ -2385,7 +2393,9 @@ absl::Status IrEmitterUnnested::EmitNvshmemAsyncDone(
 
   // Can be null if no start thunk was created (e.g. if the start op is
   // degenerate), in which case there's nothing to do here.
-  if (!async_events_it->second) return absl::OkStatus();
+  if (!async_events_it->second) {
+    return absl::OkStatus();
+  }
 
   AsyncStreamKind stream_kind = AsyncStreamKind::kCollective;
   if (is_send_recv) {
@@ -2400,6 +2410,111 @@ absl::Status IrEmitterUnnested::EmitNvshmemAsyncDone(
     AddThunkToThunkSequence(std::make_unique<NvshmemCollectiveDoneThunk>(
         kind, Thunk::ThunkInfo::WithProfileAnnotation(inst),
         async_events_it->second, stream_kind));
+  }
+  return absl::OkStatus();
+}
+
+template <typename NvshmemAllReduceThunkType, typename HloAllReduceInstruction>
+absl::Status IrEmitterUnnested::EmitNvshmemThunk(
+    Thunk::Kind kind, const HloInstruction* async_start,
+    const HloAllReduceInstruction* inst,
+    std::optional<bool> use_global_device_ids) {
+  CHECK(kind == Thunk::Kind::kNvshmemAllReduceStart);
+  const auto& hlo_config = ir_emitter_context_->hlo_module().config();
+  int64_t replica_count = hlo_config.replica_count();
+  int64_t partition_count = hlo_config.num_partitions();
+  VLOG(2) << NvshmemAllReduceThunkType::GetHloOpName()
+          << "; replica count: " << replica_count
+          << "; partition count: " << partition_count
+          << "; operand count: " << inst->operand_count();
+
+  // A given collective op can be degenerate if across all groups formed
+  // by it are singleton. In such a case, we don't need to do any communication
+  // and we can just copy the input to the output.
+  bool is_degenerate = GetCollectiveConfig(inst, use_global_device_ids)
+                           .IsDegenerate(replica_count, partition_count);
+  absl::Status implementable_status =
+      NvshmemAllReduceThunkType::CheckImplementable(inst, replica_count,
+                                                    partition_count);
+  bool should_use_nvshmem_thunk = !is_degenerate && implementable_status.ok();
+
+  // Stash relevant information in CollectiveThunk::Buffer even if we may
+  // not generate an NvshmemCollectiveThunk.
+  std::vector<CollectiveThunk::Buffer> buffers;
+
+  int64_t operand_count = inst->operand_count();
+  buffers.reserve(operand_count);
+
+  // Adds a source and destination buffers pair to `buffers`.
+  auto add_buffer = [&](int64_t element_count, BufferAllocation::Slice src,
+                        int64_t src_memory_space, BufferAllocation::Slice dst,
+                        int64_t dst_memory_space) {
+    buffers.push_back(
+        CollectiveThunk::Buffer{/*element_count=*/element_count,
+                                /*source_buffer=*/src,
+                                /*destination_buffer=*/dst,
+                                /*source_memory_space=*/src_memory_space,
+                                /*destination_memory_space=*/dst_memory_space,
+                                /*source_value=*/nullptr,
+                                /*destination_value=*/nullptr});
+  };
+
+  // For other operations simply zip operands with results.
+  for (int64_t i = 0; i < operand_count; i++) {
+    ShapeIndex idx = operand_count > 1 ? ShapeIndex({i}) : ShapeIndex({});
+    const Shape& src_shape = inst->operand(i)->shape();
+    const Shape& dst_shape = ShapeUtil::GetSubshape(inst->shape(), idx);
+    TF_ASSIGN_OR_RETURN(auto src, GetAllocationSliceForHlo(inst->operand(i)));
+    TF_ASSIGN_OR_RETURN(auto dst, GetAllocationSliceForHlo(inst, idx));
+    add_buffer(ShapeUtil::ElementsIn(src_shape), src,
+               src_shape.layout().memory_space(), dst,
+               dst_shape.layout().memory_space());
+  }
+
+  if (should_use_nvshmem_thunk) {
+    auto thunk_info = Thunk::ThunkInfo::WithProfileAnnotation(inst);
+    // The wrapper name is used when syntactic sugar is turned on.
+    if (ir_emitter_context_->debug_options().xla_syntax_sugar_async_ops()) {
+      thunk_info.profile_annotation = async_start->name();
+    }
+    auto thunk = std::make_unique<NvshmemAllReduceThunkType>(
+        thunk_info, inst, /*buffers=*/std::move(buffers),
+        ir_emitter_context_->debug_options().xla_gpu_use_memcpy_local_p2p());
+    GetCollectivesAsyncEvents().insert({async_start, thunk->async_events()});
+    AddThunkToThunkSequence(std::move(thunk));
+    return absl::OkStatus();
+  }
+
+  if (!is_degenerate) {
+    return implementable_status;
+  }
+
+  return EmitDegeneratedCollectiveThunk(buffers, async_start, inst);
+}
+
+template <typename HloInstType>
+absl::Status IrEmitterUnnested::EmitDegeneratedCollectiveThunk(
+    std::vector<CollectiveThunk::Buffer>& buffers,
+    const HloInstruction* async_start, const HloInstType* inst) {
+  // Signal that start thunk not created with nullptr.
+  GetCollectivesAsyncEvents().insert({async_start, nullptr});
+
+  // Degenerate collectives are simply identity function. Buffer
+  // assignment expects a copy, so that's what we do.
+  ThunkSequence thunks;
+  for (int64_t i = 0; i < buffers.size(); i++) {
+    const Shape shape = inst->operand(i)->shape();
+    thunks.push_back(std::make_unique<DeviceToDeviceCopyThunk>(
+        Thunk::ThunkInfo::WithProfileAnnotation(inst),
+        /*source_buffer=*/buffers[i].source_buffer,
+        /*destination_buffer=*/buffers[i].destination_buffer,
+        /*mem_size=*/ShapeUtil::ByteSizeOf(shape)));
+  }
+  if (thunks.size() == 1) {
+    AddThunkToThunkSequence(std::move(thunks[0]));
+  } else {
+    AddThunkToThunkSequence(std::make_unique<SequentialThunk>(
+        Thunk::ThunkInfo::WithProfileAnnotation(inst), std::move(thunks)));
   }
   return absl::OkStatus();
 }
@@ -2457,38 +2572,46 @@ absl::Status IrEmitterUnnested::EmitOutfeed(
   return absl::OkStatus();
 }
 
-absl::StatusOr<std::pair<std::vector<llvm_ir::IrArray> /*inputs*/,
-                         std::vector<llvm_ir::IrArray> /*outputs*/>>
+absl::StatusOr<std::vector<llvm_ir::IrArray>>
 IrEmitterUnnested::BuildKernelThunkForNonFusionOp(
-    const HloInstruction* instr,
-    absl::Span<const HloInstruction* const> needed_operands,
-    const LaunchDimensions& launch_dimensions) {
+    const HloInstruction* instr, const LaunchDimensions& launch_dimensions) {
   std::string suggested_kernel_name(instr->name());
 
   TF_ASSIGN_OR_RETURN(auto kernel_arguments,
                       emitters::KernelArguments::Create(
                           ir_emitter_context_->buffer_assignment(),
-                          GetDefaultBufferAlignment(), instr, needed_operands));
+                          GetDefaultBufferAlignment(), instr));
 
   VLOG(3) << "Generating (without reuse check): " << suggested_kernel_name;
 
-  llvm::Function* kernel;
-  std::vector<llvm_ir::IrArray> inputs;
-  std::vector<llvm_ir::IrArray> outputs;
   TF_ASSIGN_OR_RETURN(
-      std::tie(kernel, inputs, outputs),
+      llvm::Function * kernel,
       BuildKernelPrototype(*ir_emitter_context_, suggested_kernel_name,
-                           suggested_kernel_name, kernel_arguments.args(),
-                           kernel_arguments.args().size(), launch_dimensions,
-                           &b_));
+                           suggested_kernel_name, kernel_arguments,
+                           launch_dimensions, &b_));
 
   AddThunkToThunkSequence(std::make_unique<KernelThunk>(
       Thunk::ThunkInfo::WithProfileAnnotation(instr), kernel->getName().str(),
-      kernel_arguments.args(), launch_dimensions,
+      kernel_arguments, launch_dimensions,
       /*cluster_dim=*/std::nullopt,
       /*shmem_bytes=*/0));
 
-  return {{inputs, outputs}};
+  std::vector<llvm_ir::IrArray> ir_arrays;
+  ir_arrays.reserve(kernel_arguments.args().size());
+  for (const auto& [kernel_argument, llvm_arg] :
+       llvm::zip(kernel_arguments.args(), kernel->args())) {
+    llvm::Type* ir_type =
+        llvm_ir::ShapeToIrType(kernel_argument.shape(), llvm_arg.getContext());
+    llvm_ir::IrArray ir_array(&llvm_arg, ir_type, kernel_argument.shape());
+
+    if (!kernel_argument.written()) {
+      ir_array.MarkInvariantOverWholeProgram(&llvm_arg.getContext());
+    }
+
+    ir_arrays.push_back(ir_array);
+  }
+
+  return ir_arrays;
 }
 
 absl::StatusOr<std::unique_ptr<Thunk>> IrEmitterUnnested::BuildWhileThunk(
@@ -2530,7 +2653,9 @@ absl::Status IrEmitterUnnested::EmitTargetElementLoop(
 static absl::flat_hash_map<std::string, std::string> ConvertFrontendAttributes(
     const FrontendAttributes& attrs) {
   absl::flat_hash_map<std::string, std::string> result;
-  for (auto& [k, v] : attrs.map()) result[k] = v;
+  for (auto& [k, v] : attrs.map()) {
+    result[k] = v;
+  }
   return result;
 }
 
@@ -2707,9 +2832,8 @@ absl::Status IrEmitterUnnested::EmitSendDoneThunk(
   if (!instr->is_host_transfer()) {
     if (IsNvshmemCollective(instr)) {
       return EmitNvshmemAsyncDone(Thunk::kNvshmemSendDone, instr);
-    } else {
-      return EmitCollectiveAsyncDone(Thunk::kSendDone, instr);
     }
+    return EmitCollectiveAsyncDone(Thunk::kSendDone, instr);
   }
 
   if (!instr->channel_id().has_value()) {
@@ -2807,9 +2931,8 @@ absl::Status IrEmitterUnnested::EmitRecvDoneThunk(
   if (!instr->is_host_transfer()) {
     if (IsNvshmemCollective(instr)) {
       return EmitNvshmemAsyncDone(Thunk::kNvshmemRecvDone, instr);
-    } else {
-      return EmitCollectiveAsyncDone(Thunk::kRecvDone, instr);
     }
+    return EmitCollectiveAsyncDone(Thunk::kRecvDone, instr);
   }
   if (!instr->channel_id().has_value()) {
     return absl::InternalError(
@@ -2848,10 +2971,20 @@ absl::Status IrEmitterUnnested::EmitHloInstruction(
           all_gather->use_global_device_ids());
     }
 
-    case HloOpcode::kAllReduceDone:
+    case HloOpcode::kAllReduceDone: {
+      if (IsNvshmemCollective(instr)) {
+        return EmitNvshmemAsyncDone(Thunk::kNvshmemAllReduceDone, instr);
+      }
       return EmitCollectiveAsyncDone(Thunk::kAllReduceDone, instr);
+    }
     case HloOpcode::kAllReduceStart: {
       auto* all_reduce = Cast<HloAllReduceInstruction>(instr);
+      if (IsNvshmemCollective(instr)) {
+        return EmitNvshmemThunk<NvshmemAllReduceStartThunk,
+                                HloAllReduceInstruction>(
+            Thunk::kNvshmemAllReduceStart, all_reduce, all_reduce,
+            all_reduce->use_global_device_ids());
+      }
       return EmitCollectiveThunk<AllReduceStartThunk, HloAllReduceInstruction>(
           Thunk::kAllReduceStart, all_reduce, all_reduce,
           all_reduce->use_global_device_ids());
@@ -2895,6 +3028,16 @@ absl::Status IrEmitterUnnested::EmitHloInstruction(
         }
         case HloOpcode::kCall:
         case HloOpcode::kCustomCall: {
+          if (IsHostExecuteCustomCall(*wrapped)) {
+            auto custom_call = Cast<HloCustomCallInstruction>(wrapped);
+
+            auto async_events =
+                GetInstructionToHostExecuteAsyncEvents().at(custom_call);
+
+            AddThunkToThunkSequence(std::make_unique<HostExecuteDoneThunk>(
+                Thunk::ThunkInfo::WithProfileAnnotation(instr), async_events));
+            return absl::OkStatus();
+          }
           // Wait until the concurrent stream has finished.
           auto* async_done = Cast<HloAsyncInstruction>(instr);
           const ExecutionStreamAssignment& stream_assignment =
@@ -2968,6 +3111,66 @@ absl::Status IrEmitterUnnested::EmitHloInstruction(
           return EmitAsyncComputation(instr);
         }
         case HloOpcode::kCustomCall: {
+          if (IsHostExecuteCustomCall(*wrapped)) {
+            auto custom_call = Cast<HloCustomCallInstruction>(wrapped);
+
+            std::unique_ptr<HloModule> hlo_module =
+                ExtractComputationIntoNewModule(
+                    *custom_call->called_computation());
+
+            // All offloaded computations are marked as host computations from
+            // the perspective of the GPU backend. Since these will execute on
+            // the main thread from the CPU backend perspective, we need to mark
+            // them as such.
+            for (auto* computation : hlo_module->computations()) {
+              computation->SetExecutionThread(
+                  HloInstruction::kMainExecutionThread);
+            }
+
+            absl::InlinedVector<HostExecuteStartThunk::SliceAndShape, 4>
+                operand_slices;
+            for (HloInstruction* operand : wrapped->operands()) {
+              for (auto& indexed : ShapeUtil::GetLeafShapes(operand->shape())) {
+                TF_ASSIGN_OR_RETURN(
+                    auto slice,
+                    ir_emitter_context_->buffer_assignment().GetUniqueSlice(
+                        operand, indexed.index));
+                operand_slices.push_back({slice, indexed.shape});
+              }
+            }
+
+            // Collect buffer slices for all results.
+            absl::InlinedVector<HostExecuteStartThunk::SliceAndShape, 4>
+                result_slices;
+            for (auto& indexed : ShapeUtil::GetLeafShapes(wrapped->shape())) {
+              TF_ASSIGN_OR_RETURN(
+                  auto slice,
+                  ir_emitter_context_->buffer_assignment().GetUniqueSlice(
+                      wrapped, indexed.index));
+              result_slices.push_back({slice, indexed.shape});
+            }
+
+            auto thunk = std::make_unique<HostExecuteStartThunk>(
+                Thunk::ThunkInfo::WithProfileAnnotation(instr), *hlo_module,
+                std::move(operand_slices), std::move(result_slices));
+
+            auto async_events = thunk->async_events();
+
+            auto [it, inserted] =
+                GetInstructionToHostExecuteAsyncEvents().emplace(custom_call,
+                                                                 async_events);
+
+            if (!inserted) {
+              return Internal(
+                  "Async events already exist for host offloading custom call "
+                  "%s.",
+                  custom_call->ToString());
+            }
+
+            AddThunkToThunkSequence(std::move(thunk));
+
+            return absl::OkStatus();
+          }
           return EmitAsyncCustomCallStart(instr);
         }
         default:
@@ -3108,9 +3311,10 @@ absl::Status IrEmitterUnnested::EmitHloInstruction(
 absl::Status IrEmitterUnnested::EmitHloComputation(
     const HloComputation* computation) {
   const HloSchedule& schedule = computation->parent()->schedule();
-  if (!schedule.is_computation_scheduled(computation))
+  if (!schedule.is_computation_scheduled(computation)) {
     return Internal("Sequence not found for computation: %s",
                     computation->name());
+  }
 
   const HloInstructionSequence& sequence = schedule.sequence(computation);
   absl::flat_hash_map<const HloInstruction*, Thunk*> instr_to_thunk;

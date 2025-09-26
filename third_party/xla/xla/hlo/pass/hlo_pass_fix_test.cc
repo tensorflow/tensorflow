@@ -208,6 +208,13 @@ TEST_F(HloPassFixTest, OscillationsStillTerminate) {
   // We expect this to terminate and report that the module did not change.
   TF_ASSERT_OK_AND_ASSIGN(bool changed, pass.Run(module.get()));
   EXPECT_FALSE(changed);
+
+  // But don't lie when crash_on_hlo_pass_silent_hlo_change is set.
+  module->mutable_config()
+      .mutable_debug_options()
+      .set_xla_unsupported_crash_on_hlo_pass_silent_hlo_change(true);
+  TF_ASSERT_OK_AND_ASSIGN(changed, pass.Run(module.get()));
+  EXPECT_TRUE(changed);
 }
 
 }  // namespace

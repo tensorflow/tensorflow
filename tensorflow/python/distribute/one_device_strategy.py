@@ -239,7 +239,7 @@ class OneDeviceStrategy(distribute_lib.Strategy):
 @tf_export(v1=["distribute.OneDeviceStrategy"])  # pylint: disable=empty-docstring
 class OneDeviceStrategyV1(distribute_lib.StrategyV1):
 
-  __doc__ = OneDeviceStrategy.__doc__.replace(
+  __doc__ = (OneDeviceStrategy.__doc__ or '').replace(
       "For example:\n  ```",
       "For example:\n  ```\n  tf.enable_eager_execution()")
 

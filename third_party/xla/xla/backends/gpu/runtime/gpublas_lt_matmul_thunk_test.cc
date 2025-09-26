@@ -37,6 +37,7 @@ limitations under the License.
 #include "xla/executable_run_options.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/matmul_utils.h"
@@ -56,6 +57,7 @@ limitations under the License.
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/threadpool.h"
+#include "xla/xla.pb.h"
 
 namespace xla::gpu {
 
@@ -67,6 +69,7 @@ class GpuBlasLtMatmulThunkTest : public HloTestBase {
     auto debug_options = HloTestBase::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_enable_cublaslt(true);
     debug_options.set_xla_gpu_enable_triton_gemm(false);
+    debug_options.set_xla_gpu_autotune_level(0);
     return debug_options;
   }
   se::StreamExecutor* default_exec() {

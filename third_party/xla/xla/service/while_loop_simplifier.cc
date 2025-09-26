@@ -16,8 +16,11 @@ limitations under the License.
 #include "xla/service/while_loop_simplifier.h"
 
 #include <cstdint>
+#include <iterator>
+#include <memory>
 #include <optional>
 #include <utility>
+#include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
@@ -145,7 +148,8 @@ void CopyMetadata(HloInstruction* old_while_op, HloInstruction* new_while_op) {
 // indices in the final shape with a copy of the removed index.
 static absl::StatusOr<HloInstruction*> RemoveDeadTupleIndices(
     HloInstruction* while_op, absl::flat_hash_set<int64_t>& used_tuple_indices,
-    int64_t index_for_replaced = -1) {
+    std::optional<absl::flat_hash_map<int32_t, int32_t>>
+        dead_to_surviving_index = std::nullopt) {
   // Build up maps from the old/new to the new/old tuple indices.
   std::vector<int64_t> new_to_old_tuple_idx(used_tuple_indices.begin(),
                                             used_tuple_indices.end());
@@ -293,10 +297,12 @@ static absl::StatusOr<HloInstruction*> RemoveDeadTupleIndices(
   for (int64_t old_idx = 0; old_idx < tuple_size; ++old_idx) {
     auto new_tuple_idx_it = old_to_new_tuple_idx.find(old_idx);
     if (new_tuple_idx_it != old_to_new_tuple_idx.end() ||
-        index_for_replaced != -1) {
-      int64_t gte_idx = new_tuple_idx_it != old_to_new_tuple_idx.end()
-                            ? new_tuple_idx_it->second
-                            : index_for_replaced;
+        dead_to_surviving_index.has_value()) {
+      int64_t gte_idx =
+          new_tuple_idx_it != old_to_new_tuple_idx.end()
+              ? new_tuple_idx_it->second
+              : old_to_new_tuple_idx.find((*dead_to_surviving_index)[old_idx])
+                    ->second;
       new_tuple_elems.push_back(
           computation->AddInstruction(HloInstruction::CreateGetTupleElement(
               new_while_op->shape().tuple_shapes(gte_idx), new_while_op,
@@ -570,58 +576,6 @@ absl::StatusOr<bool> TryRemoveDeadWhileParams(HloInstruction* while_op) {
   return true;
 }
 
-// This is a helper function for TryRemoveRepeatedWhileTupleIndices. It removes
-// duplicates by replacing them with tuple_index, followed by a call to
-// RemoveDeadTupleIndices.
-static absl::StatusOr<HloInstruction*> TryRemoveRepeatedWhileTupleIndicesHelper(
-    HloInstruction* while_op, const int64_t tuple_index, bool replace_with_init,
-    absl::flat_hash_set<int64_t>& duplicates) {
-  HloComputation* while_cond = while_op->while_condition();
-  HloComputation* while_body = while_op->while_body();
-  HloInstruction* while_init = while_op->mutable_operand(0);
-
-  VLOG(2) << "while_init " << while_init->ToString() << " operands "
-          << while_init->operand_count();
-  VLOG(2) << "while_body_root " << while_body->root_instruction()->ToString()
-          << " operands " << while_body->root_instruction()->operand_count();
-
-  // Change the loop body and condition such that uses of the duplicates are
-  // replaced with the original tuple element.
-  for (HloComputation* comp : {while_body, while_cond}) {
-    auto new_get = comp->AddInstruction(HloInstruction::CreateGetTupleElement(
-        comp->parameter_instruction(0)->shape().tuple_shapes(tuple_index),
-        comp->parameter_instruction(0), tuple_index));
-
-    std::vector<HloInstruction*> instrs_to_replace;
-    for (auto* instr : comp->instructions()) {
-      if (instr->opcode() == HloOpcode::kGetTupleElement &&
-          duplicates.contains(instr->tuple_index()) &&
-          instr->operand(0) == comp->parameter_instruction(0)) {
-        instrs_to_replace.push_back(instr);
-      }
-    }
-
-    for (auto instr : instrs_to_replace) {
-      TF_RETURN_IF_ERROR(comp->ReplaceInstruction(instr, new_get));
-    }
-  }
-
-  // We know which tuple indices are useful; i.e, those which aren't duplicates.
-  absl::flat_hash_set<int64_t> used_tuple_indices;
-  for (int index = 0; index < while_init->shape().tuple_shapes().size();
-       ++index) {
-    if (!duplicates.count(index)) {
-      used_tuple_indices.insert(index);
-    }
-  }
-  // Remove the duplicate tuple elements.
-  TF_ASSIGN_OR_RETURN(
-      while_op, RemoveDeadTupleIndices(while_op, used_tuple_indices,
-                                       replace_with_init ? -1 : tuple_index));
-
-  return while_op;
-}
-
 // Returns if this instruction looks like an insertion inside a variable of a
 // while loop.
 static bool IsDynamicUpdateSliceWhileInsertion(
@@ -631,13 +585,117 @@ static bool IsDynamicUpdateSliceWhileInsertion(
          instr->operand(0)->operand(0) == while_body->parameter_instruction(0);
 }
 
+namespace {
+template <typename KeyToIndicesMap>
+absl::StatusOr<HloInstruction*> RemoveRepeatedWhileTupleIndices(
+    HloInstruction* while_op, const KeyToIndicesMap& key_to_indices,
+    bool replace_with_init) {
+  // We want to do two things here:
+  // a) Make sure that all of the Param -> GTE(i) -> ROOT Tuple chains where the
+  // indices belong to the same equivalence set use the same index.
+  // b) Remove the newly dead indices.
+
+  // First, find all the indices that belong to a non-trivial (size >= 2) set,
+  // and decide, for each set, which index to keep, and which will be removed.
+  absl::flat_hash_map<int32_t, int32_t> dead_to_surviving_index;
+  for (const auto& [key, indices] : key_to_indices) {
+    if (indices.size() < 2) {
+      continue;
+    }
+    int32_t surviving_index = indices[0];
+    for (int i = 1; i < indices.size(); ++i) {
+      int32_t dead_index = indices[i];
+      dead_to_surviving_index[dead_index] = surviving_index;
+    }
+  }
+
+  // Return early if we didn't find any non-trivial sets.
+  if (dead_to_surviving_index.empty()) {
+    return while_op;
+  }
+
+  // For each set, replace GTEs for the indices being removed with one common
+  // GTE for the surviving index.
+  HloComputation* while_cond = while_op->while_condition();
+  HloComputation* while_body = while_op->while_body();
+  for (HloComputation* comp : {while_body, while_cond}) {
+    absl::flat_hash_map<int32_t, HloInstruction*> surviving_indices_to_gte;
+    HloInstruction* param = comp->parameter_instruction(0);
+    // Make a copy of the input's users, since we're going to be mutating it in
+    // the loop.
+    std::vector<HloInstruction*> all_gtes(param->users().begin(),
+                                          param->users().end());
+    for (HloInstruction* gte : all_gtes) {
+      int gte_index = gte->tuple_index();
+      auto it = dead_to_surviving_index.find(gte_index);
+      if (it != dead_to_surviving_index.end()) {
+        int32_t surviving_index = it->second;
+        // We could track down the original GTE for the surviving index, but
+        // it's not worth it, CSE will clean this up.
+        HloInstruction* surviving_gte;
+        auto it = surviving_indices_to_gte.find(surviving_index);
+        if (it == surviving_indices_to_gte.end()) {
+          surviving_gte =
+              comp->AddInstruction(HloInstruction::CreateGetTupleElement(
+                  param->shape().tuple_shapes(surviving_index),
+                  comp->parameter_instruction(0), surviving_index));
+          surviving_indices_to_gte[surviving_index] = surviving_gte;
+        } else {
+          surviving_gte = it->second;
+        }
+        TF_RETURN_IF_ERROR(comp->ReplaceInstruction(gte, surviving_gte));
+      }
+    }
+  }
+
+  // And finally, remove the dead indices.
+  absl::flat_hash_set<int64_t> used_tuple_indices;
+  for (int index = 0;
+       index < while_body->root_instruction()->shape().tuple_shapes().size();
+       ++index) {
+    if (dead_to_surviving_index.find(index) == dead_to_surviving_index.end()) {
+      used_tuple_indices.insert(index);
+    }
+  }
+
+  TF_ASSIGN_OR_RETURN(
+      while_op,
+      RemoveDeadTupleIndices(
+          while_op, used_tuple_indices,
+          replace_with_init ? std::nullopt
+                            : std::make_optional(dead_to_surviving_index)));
+
+  return while_op;
+}
+
+struct RepeatedWhileTupleIndicesKey {
+  const HloInstruction* init_value;
+  const HloInstruction* dynamic_update_slice_value;
+  std::vector<const HloInstruction*> dynamic_update_slice_indices;
+};
+
+bool operator==(const RepeatedWhileTupleIndicesKey& lhs,
+                const RepeatedWhileTupleIndicesKey& rhs) {
+  return lhs.init_value == rhs.init_value &&
+         lhs.dynamic_update_slice_value == rhs.dynamic_update_slice_value &&
+         absl::c_equal(lhs.dynamic_update_slice_indices,
+                       rhs.dynamic_update_slice_indices);
+}
+
+template <typename H>
+H AbslHashValue(H h, const RepeatedWhileTupleIndicesKey& key) {
+  return H::combine(std::move(h), key.init_value,
+                    key.dynamic_update_slice_value,
+                    key.dynamic_update_slice_indices);
+}
+}  // namespace
+
 // If the while loop init passes the same values to several tuple indices, and
 // if the body keeps on passing them through, we can remove the duplicates.
 static absl::StatusOr<bool> TryRemoveRepeatedWhileTupleIndices(
     HloInstruction* while_op) {
   CHECK_EQ(while_op->opcode(), HloOpcode::kWhile);
 
-  int index_to_investigate = 0;
   // Don't try this transformation if the while loop isn't removable, since if
   // it succeeds ultimately we're going to have to replace the old while loop
   // with a new one.
@@ -647,140 +705,83 @@ static absl::StatusOr<bool> TryRemoveRepeatedWhileTupleIndices(
   }
 
   HloInstruction* while_init = while_op->mutable_operand(0);
-  HloComputation* while_cond = while_op->while_condition();
   HloComputation* while_body = while_op->while_body();
   HloInstruction* while_body_root = while_body->root_instruction();
 
-  if (!while_init->shape().IsTuple()) {
+  if (!while_init->shape().IsTuple() ||
+      while_init->opcode() != HloOpcode::kTuple) {
     VLOG(2) << "While op's carried value isn't tuple shaped.";
     return false;
   }
 
-  if (!AllWhileParamConsumersGte(while_op)) {
+  if (while_body_root->opcode() != HloOpcode::kTuple) {
+    VLOG(2) << "While body's root is not a tuple(...) instruction.";
     return false;
   }
 
-  bool changed = false;
-  while (index_to_investigate < while_init->shape().tuple_shapes().size()) {
-    if (!while_init->shape().IsTuple() ||
-        while_init->opcode() != HloOpcode::kTuple) {
-      VLOG(2) << "While op's carried value isn't tuple shaped.";
-      return false;
-    }
-
-    if (while_body_root->opcode() != HloOpcode::kTuple) {
-      VLOG(2) << "While body's root is not a tuple(...) instruction.";
-      return false;
-    }
-
-    auto& while_shape = while_init->shape();
-    VLOG(2) << "Iterating " << index_to_investigate;
-
-    absl::flat_hash_set<int64_t> duplicates;
-    auto* pivot_init_elem = while_init->operand(index_to_investigate);
-    auto* pivot_body_elem = while_body_root->operand(index_to_investigate);
-    bool replace_with_init = true;
-    if (pivot_body_elem->opcode() == HloOpcode::kGetTupleElement &&
-        pivot_body_elem->operand(0) == while_body->parameter_instruction(0)) {
-      if (pivot_body_elem->tuple_index() != index_to_investigate) {
-        VLOG(2) << "Mismatch between pivot_body_elem->tuple_index() "
-                << pivot_body_elem->tuple_index() << " index_to_investigate "
-                << index_to_investigate;
-        index_to_investigate++;
-        continue;
-      }
-    } else if (IsDynamicUpdateSliceWhileInsertion(pivot_body_elem,
-                                                  while_body)) {
-      if (pivot_body_elem->operand(0)->tuple_index() != index_to_investigate) {
-        VLOG(2)
-            << "Mismatch between pivot_body_elem->operand(0)->tuple_index() "
-            << pivot_body_elem->operand(0)->tuple_index()
-            << " index_to_investigate " << index_to_investigate;
-        index_to_investigate++;
-        continue;
-      }
-    } else {
-      index_to_investigate++;
-      continue;
-    }
-
-    // Look from index_to_investigate onwards to see if it is repeated.
-    for (int64_t i = index_to_investigate + 1;
-         i < while_shape.tuple_shapes().size(); ++i) {
-      auto* init_elem = while_init->operand(i);
-      auto* body_elem = while_body_root->operand(i);
-      if (pivot_body_elem->opcode() == HloOpcode::kGetTupleElement &&
-          body_elem->opcode() == HloOpcode::kGetTupleElement &&
-          body_elem->operand(0) == while_body->parameter_instruction(0)) {
-        if (body_elem->tuple_index() != i) {
-          VLOG(2) << "Mismatch between body_elem->tuple_index() "
-                  << body_elem->tuple_index() << " i " << i;
-          continue;
-        }
-      } else if (IsDynamicUpdateSliceWhileInsertion(pivot_body_elem,
-                                                    while_body) &&
-                 IsDynamicUpdateSliceWhileInsertion(body_elem, while_body)) {
-        if (pivot_body_elem->operand_count() != body_elem->operand_count()) {
-          VLOG(2) << "Mismatch in operand count of dynamic-update-slice "
-                  << pivot_body_elem->operand_count() << " vs "
-                  << body_elem->operand_count();
-          continue;
-        }
-        if (body_elem->operand(0)->tuple_index() != i) {
-          VLOG(2) << "Mismatch between body_elem->operand(0)->tuple_index() "
-                  << body_elem->operand(0)->tuple_index() << " i " << i;
-          continue;
-        }
-        if (pivot_body_elem->operand(0) == body_elem->operand(0)) {
-          VLOG(2) << "Inserting in the same input index";
-          continue;
-        }
-        bool mismatch = false;
-        for (int64_t i = 1; i < body_elem->operand_count(); ++i) {
-          if (body_elem->operand(i) != pivot_body_elem->operand(i)) {
-            VLOG(2) << "Mismatch in insertion indices or values";
-            mismatch = true;
-            break;
-          }
-        }
-        if (mismatch) {
-          continue;
-        }
-        replace_with_init = false;
-      } else {
-        continue;
-      }
-
-      if (pivot_init_elem == init_elem) {
-        VLOG(2) << "init_elem " << init_elem->ToString() << " pivot_init_elem "
-                << pivot_init_elem->ToString();
-        VLOG(2) << "body_elem " << body_elem->ToString() << " pivot_body_elem "
-                << pivot_body_elem->ToString();
-        duplicates.insert(i);
-      }
-    }
-
-    // If duplicates are found, call the helper to remove them.
-    if (!duplicates.empty()) {
-      VLOG(2) << "Duplicate found " << duplicates.size() << " pivot_init "
-              << pivot_init_elem->ToString();
-      TF_ASSIGN_OR_RETURN(while_op, TryRemoveRepeatedWhileTupleIndicesHelper(
-                                        while_op, index_to_investigate,
-                                        replace_with_init, duplicates));
-      changed = true;
-      VLOG(2) << "Changed while_op " << while_op->ToString()
-              << " while_op operand count " << while_op->operand_count();
-      // Update the while loop variables so we can continue looking for
-      // duplicates of a different index.
-      while_init = while_op->mutable_operand(0);
-      while_cond = while_op->while_condition();
-      while_body = while_op->while_body();
-      while_body_root = while_body->root_instruction();
-    }
-    index_to_investigate++;
+  if (!AllWhileParamConsumersGte(while_op)) {
+    VLOG(2) << "While body or condition parameter consumers are not all "
+               "get-tuple-element instructions.";
+    return false;
   }
 
-  return changed;
+  absl::flat_hash_map<const HloInstruction*, std::vector<int32_t>>
+      init_to_indices;
+  absl::flat_hash_map<RepeatedWhileTupleIndicesKey, std::vector<int32_t>>
+      dus_key_to_indices;
+  const auto gte_at_index = [](const HloInstruction* maybe_gte, int32_t index) {
+    return maybe_gte->opcode() == HloOpcode::kGetTupleElement &&
+           maybe_gte->operand(0) ==
+               maybe_gte->parent()->parameter_instruction(0) &&
+           maybe_gte->tuple_index() == index;
+  };
+
+  // For each index in the input tuple, find all the indices where the only use
+  // in the while body is either `Param -> GTE(index) -> ROOT Tuple`, or the
+  // dynamic-update-slice equivalent, and split such indices into equivalence
+  // sets based on the input value into the while.
+  for (int index = 0; index < while_init->shape().tuple_shapes().size();
+       ++index) {
+    const HloInstruction* body_elem = while_body_root->operand(index);
+    const HloInstruction* init_elem = while_init->operand(index);
+    if (gte_at_index(body_elem, index)) {
+      init_to_indices[init_elem].push_back(index);
+    }
+  }
+
+  // Only keep one index for each equivalence set.
+  HloInstruction* original_while_op = while_op;
+  TF_ASSIGN_OR_RETURN(
+      while_op, RemoveRepeatedWhileTupleIndices(while_op, init_to_indices,
+                                                /*replace_with_init=*/true));
+
+  // In theory, we could handle the "simple" case and the "dynamic-update-slice"
+  // case in one go, but it's probably not worth the added complexity, so do it
+  // separately.
+  while_init = while_op->mutable_operand(0);
+  while_body = while_op->while_body();
+  while_body_root = while_body->root_instruction();
+  for (int index = 0; index < while_init->shape().tuple_shapes().size();
+       ++index) {
+    const HloInstruction* body_elem = while_body_root->operand(index);
+    const HloInstruction* init_elem = while_init->operand(index);
+    if (body_elem->opcode() == HloOpcode::kDynamicUpdateSlice &&
+        gte_at_index(body_elem->operand(0), index)) {
+      const HloDynamicIndexInstruction* dus =
+          Cast<HloDynamicIndexInstruction>(body_elem);
+      dus_key_to_indices[RepeatedWhileTupleIndicesKey{
+                             init_elem, body_elem->operand(1),
+                             std::vector<const HloInstruction*>(
+                                 dus->index_operands().begin(),
+                                 dus->index_operands().end())}]
+          .push_back(index);
+    }
+  }
+  TF_ASSIGN_OR_RETURN(
+      while_op, RemoveRepeatedWhileTupleIndices(while_op, dus_key_to_indices,
+                                                /*replace_with_init=*/false));
+
+  return while_op != original_while_op;
 }
 
 // Removes each loop parameter (i.e. member of the while loop tuple) that is a
@@ -1006,6 +1007,7 @@ static absl::StatusOr<bool> TryRemoveWhileLoop(HloInstruction* while_op) {
       auto call_op = computation->AddInstruction(HloInstruction::CreateCall(
           while_op->shape(), while_op->operands(), while_op->while_body()));
       TF_RETURN_IF_ERROR(computation->ReplaceInstruction(while_op, call_op));
+      call_op->set_metadata_op_name("");
       TF_ASSIGN_OR_RETURN(auto inlined_instructions_map,
                           CallInliner::Inline(call_op));
       (void)inlined_instructions_map;

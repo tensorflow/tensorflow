@@ -526,7 +526,7 @@ ENTRY entry_computation {
       /*compute_all_tile_offset_indexing_maps=*/false);
   EXPECT_THAT(
       maybe_tiled_hlo_computation.status(),
-      tsl::testing::StatusIs(
+      absl_testing::StatusIs(
           tsl::error::UNIMPLEMENTED,
           ::testing::HasSubstr("Unsupported case of multi-output fusion")));
 }
@@ -612,7 +612,7 @@ ENTRY entry_computation {
       /*compute_all_tile_offset_indexing_maps=*/false);
   EXPECT_THAT(
       maybe_tiled_hlo_computation.status(),
-      tsl::testing::StatusIs(
+      absl_testing::StatusIs(
           tsl::error::UNIMPLEMENTED,
           ::testing::HasSubstr("Unsupported case of multi-output fusion")));
 }
@@ -649,7 +649,7 @@ ENTRY entry_computation {
       /*compute_all_tile_offset_indexing_maps=*/false);
   EXPECT_THAT(
       maybe_tiled_hlo_computation.status(),
-      tsl::testing::StatusIs(
+      absl_testing::StatusIs(
           tsl::error::UNIMPLEMENTED,
           ::testing::HasSubstr("Unsupported case of multi-output fusion")));
 }
@@ -934,7 +934,7 @@ ENTRY main {
       /*constraints_are_known_satisfied=*/false,
       /*compute_all_tile_offset_indexing_maps=*/true);
   ASSERT_THAT(result.status(),
-              tsl::testing::StatusIs(tsl::error::UNIMPLEMENTED,
+              absl_testing::StatusIs(tsl::error::UNIMPLEMENTED,
                                      ::testing::HasSubstr("negative stride")));
 }
 
@@ -990,19 +990,19 @@ ENTRY main {
   // Tile sizes {6, 8} satisfy these constraints.
   Tiling possible_tile_parameters({{fusion_root, FlatTiling({6, 8})}});
   EXPECT_THAT(analysis->ParametersSatisfyConstraints(possible_tile_parameters),
-              IsOkAndHolds(true));
+              absl_testing::IsOkAndHolds(true));
 
   // However, tile sizes {6, 7} do not satisfy these constraints.
   Tiling impossible_tile_parameters({{fusion_root, FlatTiling({6, 7})}});
   EXPECT_THAT(
       analysis->ParametersSatisfyConstraints(impossible_tile_parameters),
-      IsOkAndHolds(false));
+      absl_testing::IsOkAndHolds(false));
 
   // Passing too few tile parameters results in an error since constraints can
   // not be properly evaluated.
   EXPECT_THAT(analysis->ParametersSatisfyConstraints(
                   Tiling({{fusion_root, FlatTiling({6})}})),
-              StatusIs(absl::StatusCode::kFailedPrecondition));
+              absl_testing::StatusIs(absl::StatusCode::kFailedPrecondition));
 
   // Passing tile parameters that satisfy the constraints should let us compute
   // a TiledHloComputation.
@@ -1012,7 +1012,7 @@ ENTRY main {
   // Passing tile parameters that do not satisfy the constraints should result
   // in an error...
   EXPECT_THAT(analysis->ComputeTiledHloInstructions(impossible_tile_parameters),
-              StatusIs(absl::StatusCode::kInvalidArgument));
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
 
   // ... unless we pinky-promise (lie) that they satisfy the constraints ;)
   TF_EXPECT_OK(analysis->ComputeTiledHloInstructions(
@@ -1042,12 +1042,12 @@ TEST_F(SymbolicTileAnalysisTest, EmitterSpecificConstraintsAreUsedCorrectly) {
   // satisfy emitter-specific constraints.
   EXPECT_THAT(analysis->ParametersSatisfyConstraints(
                   Tiling({{fusion_root, FlatTiling({5, 32})}})),
-              IsOkAndHolds(false));
+              absl_testing::IsOkAndHolds(false));
 
   // However, tile sizes {8, 32} do satisfy emitter-specific constraints.
   EXPECT_THAT(analysis->ParametersSatisfyConstraints(
                   Tiling({{fusion_root, FlatTiling({8, 32})}})),
-              IsOkAndHolds(true));
+              absl_testing::IsOkAndHolds(true));
 }
 
 TEST_F(SymbolicTileAnalysisTest, ConstraintsAreAggregatedCorrectly) {
@@ -1808,7 +1808,7 @@ ENTRY main {
                               /*compute_all_tile_offset_indexing_maps=*/false));
 
   const TiledHloInstruction* iota = tiled_hlo_computation.GetRoots()[0];
-  EXPECT_THAT(iota->tile_offsets_indexing().status(), ::tsl::testing::IsOk());
+  EXPECT_THAT(iota->tile_offsets_indexing().status(), absl_testing::IsOk());
 }
 
 TEST_F(SymbolicTileAnalysisTest, TileNestedDotFusions) {
@@ -2098,7 +2098,7 @@ ENTRY main {
       /*compute_all_tile_offset_indexing_maps=*/false);
 
   EXPECT_THAT(tiled_hlo_computation_or,
-              tsl::testing::StatusIs(
+              absl_testing::StatusIs(
                   absl::StatusCode::kUnimplemented,
                   ::testing::HasSubstr("not divisible by tile size")));
 }
@@ -2200,7 +2200,7 @@ ENTRY main {
       /*compute_all_tile_offset_indexing_maps=*/false);
 
   EXPECT_THAT(tiled_hlo_computation_or,
-              tsl::testing::StatusIs(
+              absl_testing::StatusIs(
                   absl::StatusCode::kUnimplemented,
                   ::testing::HasSubstr("not divisible by tile size")));
 }

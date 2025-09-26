@@ -407,6 +407,22 @@ enum CompilationEvent {
   COMPILATION_EVENT_RECOMPILATION = 2;
 }
 
+// The type of profile generation strategy used to generate the profile.
+enum ProfileGenerationStrategy {
+  PROFILE_GENERATION_STRATEGY_UNKNOWN = 0;
+  PROFILE_GENERATION_STRATEGY_GA = 1;
+  PROFILE_GENERATION_STRATEGY_FANTA = 2;
+  PROFILE_GENERATION_STRATEGY_CFO = 3;
+  // The profile was generated using exhaustive search.
+  PROFILE_GENERATION_STRATEGY_EXHAUSTIVE = 4;
+  // The profile was generated using a learned cost model with a GNN
+  // architecture.
+  PROFILE_GENERATION_STRATEGY_LCM_GNN = 5;
+  // The profile was generated using a learned cost model with a MOE
+  // architecture.
+  PROFILE_GENERATION_STRATEGY_LCM_MOE = 6;
+}
+
 // Symbolization metadata for HLO Instructions.
 //
 // This metadata is used for debugging XLA code generation, as well as
@@ -430,6 +446,9 @@ message OpMetadata {
   // e.g. it could be the file and line of user code that generated the op.
   string source_file = 3;
   int32 source_line = 4;
+  int32 source_end_line = 17;
+  int32 source_column = 18;
+  int32 source_end_column = 19;
 
   // Deprecated, use [ProfileInfo][profile_type] instead.
   repeated ProfileType profile_type = 5 [deprecated = true];
@@ -457,6 +476,8 @@ message OpMetadata {
     ProfileSource profile_source = 3;
     // The compilation event that triggered the use of the profiles.
     CompilationEvent compilation_event = 4;
+    // The type of profile generation strategy used to generate the profile.
+    ProfileGenerationStrategy profile_generation_strategy = 5;
   }
 
   // Profile information for the Op.
@@ -806,36 +827,6 @@ message RaggedDotDimensionNumbers {
   repeated int64 rhs_group_dimensions = 3;
 }
 
-enum SparsityType {
-  SPARSITY_INVALID = 0;
-
-  // Structured N:M sparsity.
-  SPARSITY_STRUCTURED_N_M = 1;
-
-  // Next: 2
-}
-
-// Contains sparsity metadata for a sparse dot operation.
-// The only supported type atm is structured 2:4 sparsity, which is natively
-// supported on NVidia GPUs.
-// Restrictions:
-// - only one operand of the dot operation may be sparse;
-// - only the contracting dimension may be sparse.
-message SparsityDescriptor {
-  SparsityType type = 1;
-
-  // Sparse operand index (0 or 1).
-  int32 index = 2;
-  // Sparse dimension number.
-  int32 dimension = 3;
-
-  // Structured N:M sparsity (N < M).
-  int32 n = 4;
-  int32 m = 5;
-
-  // Next: 6
-}
-
 enum RandomDistribution {
   RNG_INVALID = 0;
 
@@ -929,6 +920,8 @@ message OpSharding {
     // This sharding is a placeholder sharding with lowest precedence, it can be
     // overwriten by any other shardings.
     UNKNOWN = 5;
+    // This op is unreduced: its outputs will not be combined via an all-reduce.
+    UNREDUCED = 6;
   }
   Type type = 1;
   // The shape of the sharded tile.
@@ -1200,14 +1193,13 @@ message OriginalArrayProto {
   repeated int64 shape_index = 2;
 }
 
-message OriginalValueNodeProto {
+message OriginalValueElementProto {
   repeated int64 shape_index = 1;
   OriginalArrayProto original_array = 2;
 }
 
 message OriginalValueProto {
-  ShapeProto shape = 1;
-  repeated OriginalValueNodeProto leaves = 2;
+  repeated OriginalValueElementProto elements = 1;
 }
 
 message GemmPerfTableEntry {

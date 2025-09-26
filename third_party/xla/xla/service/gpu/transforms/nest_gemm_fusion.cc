@@ -55,16 +55,17 @@ limitations under the License.
 #include "xla/layout.h"
 #include "xla/service/call_graph.h"
 #include "xla/service/gpu/ir_emission_utils.h"
-#include "xla/service/gpu/matmul_indexing_utils.h"
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/gpu/model/symbolic_tile.h"
 #include "xla/service/gpu/model/symbolic_tile_analysis.h"
 #include "xla/service/gpu/model/symbolic_tiled_hlo_instruction.h"
 #include "xla/service/gpu/model/tiled_hlo_computation.h"
 #include "xla/service/instruction_fusion.h"
+#include "xla/service/matmul_indexing_utils.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/tools/hlo_decomposer.h"
 #include "xla/tools/hlo_extractor.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
@@ -1086,32 +1087,62 @@ class NestGemmFusionVisitor : public DfsHloRewriteVisitor {
         call_graph_(call_graph),
         compute_capability_(compute_capability) {}
 
-  absl::Status AcceptDotInstruction(const HloDotInstruction* dot) {
-    auto dims = dot->dot_dimension_numbers();
+ private:
+  absl::Status AcceptDotOperand(const HloInstruction* operand,
+                                absl::Span<const int64_t> batch_dims,
+                                absl::Span<const int64_t> contracting_dims,
+                                bool is_lhs) {
+    if (contracting_dims.size() != 1) {
+      return absl::InternalError(
+          absl::StrCat("Expected ", is_lhs ? "LHS" : "RHS",
+                       " operand with exactly one contracting dimension, got ",
+                       contracting_dims.size()));
+    }
 
+    TF_ASSIGN_OR_RETURN(
+        std::vector<int64_t> non_contracting_dimensions,
+        GetNonContractingDims(operand->shape(), batch_dims, contracting_dims));
+
+    if (non_contracting_dimensions.size() != 1) {
+      return absl::InternalError(absl::StrCat(
+          "Expected ", is_lhs ? "LHS" : "RHS",
+          " operand with exactly one non-contracting dimension, got ",
+          non_contracting_dimensions.size()));
+    }
+
+    if (is_lhs) {
+      if (non_contracting_dimensions[0] >= contracting_dims[0]) {
+        return absl::InternalError(absl::StrCat(
+            "Expected LHS non-contracting dimension to be before contracting "
+            "dimension, got ",
+            non_contracting_dimensions[0], " >= ", contracting_dims[0]));
+      }
+    } else {
+      if (non_contracting_dimensions[0] <= contracting_dims[0]) {
+        return absl::InternalError(absl::StrCat(
+            "Expected RHS non-contracting dimension to be after contracting "
+            "dimension, got ",
+            non_contracting_dimensions[0], " <= ", contracting_dims[0]));
+      }
+    }
+    return absl::OkStatus();
+  }
+
+  absl::Status AcceptDotInstruction(const HloDotInstruction* dot) {
     if (IsFeatureEnabled(
             dot->GetModule(),
             DebugOptions::GENERIC_TRITON_EMITTER_ALLOW_ALL_GEMM_SHAPES)) {
       return absl::OkStatus();
     }
-    if (dot->shape().dimensions().size() != 2 ||
-        dot->operand(0)->shape().dimensions().size() != 2 ||
-        dot->operand(1)->shape().dimensions().size() != 2) {
-      return absl::InternalError(
-          absl::StrCat("Only basic 2D dot shape is supported in nested GEMM "
-                       "fusion, got ",
-                       dot->shape().ToString()));
-    }
-    if (dims.lhs_contracting_dimensions().size() != 1 ||
-        dims.lhs_contracting_dimensions(0) != 1 ||
-        dims.rhs_contracting_dimensions().size() != 1 ||
-        dims.rhs_contracting_dimensions(0) != 0) {
-      return absl::InternalError(
-          absl::StrCat("Expected dot with LHS contracting dimension 1 "
-                       "and RHS contracting dimension 0, got ",
-                       dims.SerializeAsString()));
-    }
-
+    const HloInstruction* lhs = dot->operand(0);
+    const HloInstruction* rhs = dot->operand(1);
+    auto dims = dot->dot_dimension_numbers();
+    TF_RETURN_IF_ERROR(AcceptDotOperand(lhs, dims.lhs_batch_dimensions(),
+                                        dims.lhs_contracting_dimensions(),
+                                        /*is_lhs=*/true));
+    TF_RETURN_IF_ERROR(AcceptDotOperand(rhs, dims.rhs_batch_dimensions(),
+                                        dims.rhs_contracting_dimensions(),
+                                        /*is_lhs=*/false));
     return absl::OkStatus();
   }
 
@@ -1122,15 +1153,13 @@ class NestGemmFusionVisitor : public DfsHloRewriteVisitor {
     switch (instruction->opcode()) {
       case HloOpcode::kParameter:
       case HloOpcode::kConstant:
-        break;
+        return absl::OkStatus();
+      case HloOpcode::kBroadcast:
+        return absl::OkStatus();
       case HloOpcode::kFusion:
-        TF_RETURN_IF_ERROR(this->AcceptResultingFusion(
-            Cast<HloFusionInstruction>(instruction), /*top_level=*/false));
-        break;
+        return AcceptResultingFusion(Cast<HloFusionInstruction>(instruction));
       case HloOpcode::kDot:
-        TF_RETURN_IF_ERROR(
-            this->AcceptDotInstruction(Cast<HloDotInstruction>(instruction)));
-        break;
+        return AcceptDotInstruction(Cast<HloDotInstruction>(instruction));
       default:
         if (!IsFeatureEnabled(
                 instruction->GetModule(),
@@ -1140,47 +1169,62 @@ class NestGemmFusionVisitor : public DfsHloRewriteVisitor {
               "Instruction ", HloOpcodeString(instruction->opcode()),
               " is not allowed in nested GEMM fusion."));
         }
+        return absl::OkStatus();
+    }
+  }
+
+  // Checks whether all operations are from the "tested" set that we confirmed
+  // to not cause regressions.
+  // That enables a progressive rollout of the new emitter. Eventually we should
+  // remove this check completely as all computations will be supported by the
+  // generic emitter and performance regressions will be addressed.
+  absl::Status AcceptResultingFusion(const HloFusionInstruction* fusion) {
+    const HloComputation* computation = fusion->called_computation();
+    for (const HloInstruction* instruction : computation->instructions()) {
+      TF_RETURN_IF_ERROR(AcceptNestedInstruction(instruction));
     }
     return absl::OkStatus();
   }
 
-  // Checks if we should accept the resulting fusion:
-  // - triton can codegen the computation;
-  // - all operations are from the "tested" set that we confirmed to not cause
-  //   regressions.
-  // That enables a progressive rollout of the new emitter. Eventually we should
-  // remove this check completely as all computations will be supported by the
-  // generic emitter and performance regressions will be addressed.
-  absl::Status AcceptResultingFusion(const HloFusionInstruction* fusion,
-                                     bool top_level) {
-    VLOG(3) << absl::StrCat("CheckResultingFusion ", fusion->ToString());
+  absl::Status RewriteFusion(HloFusionInstruction* fusion,
+                             CallGraph* call_graph) {
     HloComputation* computation = fusion->called_computation();
+    TF_ASSIGN_OR_RETURN(TritonGemmConfig config, GetTritonGemmConfig(*fusion));
+    HloInstruction* instr =
+        hlo_query::GetFirstInstructionWithOpcode(*computation, HloOpcode::kDot);
+    if (instr == nullptr) {
+      return absl::InternalError(absl::StrCat("Computation of fusion ",
+                                              fusion->ToString(),
+                                              " has no dot instruction"));
+    }
+    TF_RETURN_IF_ERROR(
+        TryHoistBitcastsInComputationToCallers(instr, call_graph));
+    HloDotInstruction* dot = Cast<HloDotInstruction>(instr);
+    TF_RETURN_IF_ERROR(
+        MakeNestedFusionFromGemmFusion(fusion, config, dot, ctx_));
 
-    if (top_level) {
-      CodegenDecision can_codegen_computation =
-          IsTritonSupportedComputation(*computation, compute_capability_);
-      if (!can_codegen_computation) {
-        return absl::InternalError(
-            absl::StrCat("Computation of fusion ", fusion->ToString(),
-                         " is not supported by Triton: ",
-                         can_codegen_computation.Explain()));
-      }
+    MarkAsChanged();
+
+    if (CodegenDecision can_codegen_computation = IsTritonSupportedComputation(
+            *fusion->called_computation(), compute_capability_);
+        !can_codegen_computation) {
+      return absl::InternalError(absl::StrCat(
+          "Computation of fusion ", fusion->ToString(),
+          " is not supported by Triton: ", can_codegen_computation.Explain()));
     }
-    for (const HloInstruction* instruction : computation->instructions()) {
-      TF_RETURN_IF_ERROR(this->AcceptNestedInstruction(instruction));
-    }
-    return absl::OkStatus();
+
+    return AcceptResultingFusion(fusion);
   }
 
   absl::Status HandleFusion(HloInstruction* instruction) override {
     HloFusionInstruction* fusion = Cast<HloFusionInstruction>(instruction);
 
+    // Check if we target this fusion.
     absl::StatusOr<TritonGemmConfig> config = GetTritonGemmConfig(*fusion);
     if (!config.ok()) {
       VLOG(2) << "Skipping fusion as it does not have a TritonGemmConfig";
       return absl::OkStatus();
     }
-
     HloComputation* computation = fusion->called_computation();
     HloInstruction* instr =
         hlo_query::GetFirstInstructionWithOpcode(*computation, HloOpcode::kDot);
@@ -1188,15 +1232,43 @@ class NestGemmFusionVisitor : public DfsHloRewriteVisitor {
       VLOG(2) << "Skipping fusion as it has no dot instruction";
       return absl::OkStatus();
     }
-    DCHECK_EQ(GetDotCount(computation), 1) << "Fusion has more than one dot.";
-    HloDotInstruction* dot = Cast<HloDotInstruction>(instr);
-    TF_RETURN_IF_ERROR(
-        TryHoistBitcastsInComputationToCallers(instr, call_graph_));
-    TF_RETURN_IF_ERROR(
-        MakeNestedFusionFromGemmFusion(fusion, config.value(), dot, ctx_));
 
-    this->MarkAsChanged();
-    return this->AcceptResultingFusion(fusion, /*top_level=*/true);
+    {
+      // Symbolic tile analysis and nesting do not support all HLOs yet and
+      // might leave the module in an invalid state. To avoid that we first dry
+      // run the rewrite on an extracted module.
+      // TODO(b/393299275): remove dry-run once we can handle all HLOs.
+      std::unique_ptr<HloModule> extracted_module =
+          ExtractInstructionIntoNewModule(*fusion);
+      extracted_module->mutable_config().set_debug_options(
+          fusion->GetModule()->config().debug_options());
+      HloComputation* entry = extracted_module->entry_computation();
+      HloFusionInstruction* extracted_fusion =
+          Cast<HloFusionInstruction>(entry->root_instruction());
+      if (extracted_fusion == nullptr) {
+        return absl::InternalError(absl::StrCat(
+            "Failed to create a cloned module for fusion ", fusion->name()));
+      }
+      std::unique_ptr<CallGraph> cloned_call_graph =
+          CallGraph::Build(extracted_module.get(), {});
+      absl::Status status =
+          RewriteFusion(extracted_fusion, cloned_call_graph.get());
+      if (!status.ok()) {
+        VLOG(2) << "Failed to rewrite the fusion " << fusion->ToString()
+                << " in a cloned module: " << status;
+        if (IsFeatureEnabled(
+                fusion->GetModule(),
+                DebugOptions::GENERIC_TRITON_EMITTER_DISABLE_LEGACY_GEMM)) {
+          // As legacy emitter is disabled we are doomed to fail now, returning
+          // the dry run result failure as it is a better diagnostic.
+          return status;
+        }
+        return absl::OkStatus();
+      }
+    }
+    absl::Status status = RewriteFusion(fusion, call_graph_);
+    VLOG(2) << "RewriteFusion " << fusion->name() << ": " << status;
+    return status;
   }
 
  private:
@@ -1236,32 +1308,7 @@ absl::StatusOr<bool> NestGemmFusion::Run(
     VLOG(1) << "Generic Triton emitter for gemms is disabled, exiting";
     return false;
   }
-  // Symbolic tile analysis and nesting does not support all HLOs yet, but for
-  // the supported cases we use the generic emitter. To avoid corrupting the
-  // module with rewrite we first run the pass on a clone of the module and do
-  // nothing on error, allowing the legacy emitter to handle the module.
-  // TODO(b/393299275): remove once we can handle all HLOs.
-  VLOG(2) << "dry run on cloned module";
-  auto module_clone = module->Clone();
-  absl::StatusOr<bool> dryrun_result =
-      RunOnModule(module_clone.get(), execution_threads);
 
-  if (!dryrun_result.ok()) {
-    if (IsFeatureEnabled(
-            module, DebugOptions::GENERIC_TRITON_EMITTER_DISABLE_LEGACY_GEMM)) {
-      // As legacy emitter is disabled we are doomed to fail now, returning the
-      // dry run result failure as it is a better diagnostic.
-      return dryrun_result;
-    }
-    VLOG(1) << "Failed to nest GEMM fusion: " << dryrun_result.status()
-            << ". No changes to the module were made.";
-    return false;
-  }
-  if (!*dryrun_result) {
-    VLOG(1) << "no changes were made during dryrun, exiting";
-    return false;
-  }
-  VLOG(2) << "updating module";
   TF_ASSIGN_OR_RETURN(bool result, RunOnModule(module, execution_threads));
   return result;
 }

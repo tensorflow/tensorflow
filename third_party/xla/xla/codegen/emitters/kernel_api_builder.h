@@ -26,6 +26,7 @@ limitations under the License.
 #include "mlir/IR/Value.h"
 #include "xla/codegen/emitters/computation_partitioner.h"
 #include "xla/codegen/emitters/kernel_arguments.h"
+#include "xla/codegen/kernel_spec.h"
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/runtime/work_dimensions.h"
@@ -61,6 +62,12 @@ llvm::SmallVector<mlir::Value> EmitWorkGroupIds(
 
 absl::StatusOr<CallTargetProvider> EmitPartitionedComputations(
     mlir::ModuleOp module, const PartitionedComputations& computations);
+
+absl::StatusOr<KernelSpec> GetKernelSpec(
+    absl::string_view entry_function_name,
+    const HloInstruction& hlo_instruction,
+    const BufferAssignment* buffer_assignment,
+    const WorkDimensions& work_dimensions);
 
 }  // namespace xla::emitters
 

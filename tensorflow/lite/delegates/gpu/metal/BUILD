@@ -1,5 +1,7 @@
 load("@build_bazel_rules_apple//apple:ios.bzl", "ios_application", "ios_unit_test")
 load("@flatbuffers//:build_defs.bzl", "flatbuffer_cc_library")
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
+load("@rules_cc//cc:objc_library.bzl", "objc_library")
 load("//tensorflow:tensorflow.bzl", "workspace_root")
 load(
     "//tensorflow/core/platform:build_config_root.bzl",

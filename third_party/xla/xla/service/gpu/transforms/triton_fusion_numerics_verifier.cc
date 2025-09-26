@@ -209,6 +209,7 @@ absl::Status ForAllTritonFusions(
     for (HloInstruction* instruction : computation->instructions()) {
       TF_ASSIGN_OR_RETURN(auto triton_fusion, AsTritonFusion(instruction));
       if (triton_fusion != nullptr) {
+        VLOG(2) << "processing fusion " << triton_fusion->name();
         TF_RETURN_IF_ERROR(fn(*triton_fusion));
       }
     }
@@ -235,7 +236,7 @@ absl::Status VerifyTritonFusion(AutotunerCompileUtil& util,
   TF_ASSIGN_OR_RETURN(auto stream, config.GetStream());
   auto status = triton_fusion_numerics_pass_internal::CompareBuffers(
       triton_result, emitters_result, fusion.shape(), debug_opts, stream);
-
+  VLOG(2) << "CompareBuffers result: " << status;
   if (!status.ok()) {
     LOG(ERROR) << "Triton numerics verification failed with: "
                << status.message();
@@ -268,6 +269,7 @@ TritonFusionNumericsVerifier::FusionCacheKey CacheKeyForFusion(
 absl::StatusOr<bool> TritonFusionNumericsVerifier::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
+  VLOG(3) << "TritonFusionNumericsVerifier::Run";
   if (config_.IsDeviceless()) {
     return absl::InternalError(
         "Cannot run TritonFusionNumericsVerifier on a deviceless compilation.");

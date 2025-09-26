@@ -203,8 +203,9 @@ TEST(FfiTest, WrongNumAttrs) {
 
   EXPECT_THAT(
       status,
-      StatusIs(absl::StatusCode::kInvalidArgument,
-               HasSubstr("Wrong number of attributes: expected 1 but got 2")));
+      absl_testing::StatusIs(
+          absl::StatusCode::kInvalidArgument,
+          HasSubstr("Wrong number of attributes: expected 1 but got 2")));
 }
 
 TEST(FfiTest, RunId) {
@@ -652,8 +653,9 @@ TEST(FfiTest, WrongRankBufferArgument) {
   auto status = Call(*handler, call_frame);
 
   EXPECT_THAT(status,
-              StatusIs(absl::StatusCode::kInvalidArgument,
-                       HasSubstr("Wrong buffer rank: expected 1 but got 2")));
+              absl_testing::StatusIs(
+                  absl::StatusCode::kInvalidArgument,
+                  HasSubstr("Wrong buffer rank: expected 1 but got 2")));
 }
 
 TEST(FfiTest, WrongTypeBufferArgument) {
@@ -668,10 +670,10 @@ TEST(FfiTest, WrongTypeBufferArgument) {
       [](auto) { return absl::OkStatus(); });
   auto status = Call(*handler, call_frame);
 
-  EXPECT_THAT(
-      status,
-      StatusIs(absl::StatusCode::kInvalidArgument,
-               HasSubstr("Wrong buffer dtype: expected f32 but got s32")));
+  EXPECT_THAT(status,
+              absl_testing::StatusIs(
+                  absl::StatusCode::kInvalidArgument,
+                  HasSubstr("Wrong buffer dtype: expected f32 but got s32")));
 }
 
 TEST(FfiTest, RemainingArgs) {
@@ -689,8 +691,9 @@ TEST(FfiTest, RemainingArgs) {
     absl::StatusOr<AnyBuffer> arg1 = args.get<AnyBuffer>(1);
 
     EXPECT_TRUE(arg0.ok());
-    EXPECT_THAT(arg1.status(), StatusIs(absl::StatusCode::kInvalidArgument,
-                                        HasSubstr("Index out of range")));
+    EXPECT_THAT(arg1.status(),
+                absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
+                                       HasSubstr("Index out of range")));
 
     return absl::OkStatus();
   };
@@ -717,8 +720,9 @@ TEST(FfiTest, RemainingRets) {
     absl::StatusOr<Result<AnyBuffer>> ret1 = rets.get<AnyBuffer>(1);
 
     EXPECT_TRUE(ret0.ok());
-    EXPECT_THAT(ret1.status(), StatusIs(absl::StatusCode::kInvalidArgument,
-                                        HasSubstr("Index out of range")));
+    EXPECT_THAT(ret1.status(),
+                absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
+                                       HasSubstr("Index out of range")));
 
     return absl::OkStatus();
   };

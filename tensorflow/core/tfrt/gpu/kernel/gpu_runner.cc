@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "absl/synchronization/notification.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/SmallVector.h"
 #include "tensorflow/compiler/jit/pjrt_compile_util.h"
@@ -54,7 +55,6 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
-#include "tensorflow/core/platform/notification.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_compat_request_state.h"
 #include "tensorflow/core/tfrt/common/global_state.h"
@@ -95,7 +95,7 @@ tfrt::AsyncValueRef<tfrt_stub::FallbackTensor> TransferTensorToDevice(
   bool enqueued = tfrt::EnqueueBlockingWork(
       host_ctx, [result = result.CopyRef(), gpu_device, pjrt_device_context,
                  src, dst = std::move(dst)]() mutable {
-        tensorflow::Notification n;
+        absl::Notification n;
         absl::Status status;
         pjrt_device_context->CopyCPUTensorToDevice(
             &src, gpu_device, &dst, [&status, &n](absl::Status s) mutable {
@@ -136,7 +136,7 @@ tfrt::AsyncValueRef<tfrt_stub::FallbackTensor> TransferTensorFromDevice(
   bool enqueued = tfrt::EnqueueBlockingWork(
       host_ctx, [result = result.CopyRef(), gpu_device, pjrt_device_context,
                  src, dst = std::move(dst)]() mutable {
-        tensorflow::Notification n;
+        absl::Notification n;
         absl::Status status;
         pjrt_device_context->CopyDeviceTensorToCPU(
             &src, "tensor_name", gpu_device, &dst,

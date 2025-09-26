@@ -1607,7 +1607,7 @@ def _dicts_to_zeros(pyval):
 def _merge_dims_generic(source, outer, inner):
   """Merges outer_axis...inner_axis into a single dimension.
 
-  If outer == inner, this is a NOOP. If inner < outer, then this fials.
+  If outer == inner, this is a NOOP. If inner < outer, then this fails.
   If inner >= source.shape.rank, then the behavior is undefined.
 
   Args:

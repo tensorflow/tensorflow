@@ -16,8 +16,9 @@ limitations under the License.
 #define XLA_STREAM_EXECUTOR_CUDA_PTX_COMPILER_HELPERS_H_
 
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/semantic_version.h"
 
 namespace stream_executor {
@@ -45,13 +46,15 @@ void WarnIfBadPtxasVersion(absl::string_view method,
                            const CudaComputeCapability& cc,
                            SemanticVersion compiler_version);
 
-// Determine whether the PTX extension for a compute capability should be used.
+// Determines the latest supported PTX ISA from an "unsupported version" error
+// log issued by ptxas.
 //
-// Returns true if the argument compute capability has PTX extensions that are
-// only valid for that compute capability. For example, "sm_90" only includes
-// features that are forward compatible, whereas "sm_90a" (the extension) also
-// includes Hopper-specific features, such as WGMMA. We want to use the latter.
-bool ShouldUsePtxExtension(const CudaComputeCapability& cc);
+// The output of ptxas in such a case is expected to look like:
+//
+// ptxas application ptx input, line 1; fatal   :
+// Unsupported .version 99.99; current version is '8.8'
+absl::StatusOr<int> GetLatestPtxIsaVersionFromUnsupportedVersionErrorLog(
+    absl::string_view error_log);
 
 }  // namespace stream_executor
 

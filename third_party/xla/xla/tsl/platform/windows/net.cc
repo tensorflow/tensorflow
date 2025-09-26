@@ -99,10 +99,16 @@ const int kMaximumTrials = 1000;
 }  // namespace
 
 int PickUnusedPortOrDie() {
+  int port = PickUnusedPort();
+  CHECK_GT(port, 0) << "PickUnusedPort() failed";
+  return port;
+}
+
+int PickUnusedPort() {
   WSADATA wsaData;
   if (WSAStartup(MAKEWORD(2, 2), &wsaData) != NO_ERROR) {
     LOG(ERROR) << "Error at WSAStartup()";
-    return false;
+    return -1;
   }
 
   static std::unordered_set<int> chosen_ports;
@@ -113,8 +119,10 @@ int PickUnusedPortOrDie() {
   while (true) {
     int port;
     trial++;
-    CHECK_LE(trial, kMaximumTrials)
-        << "Failed to pick an unused port for testing.";
+    if (trial > kMaximumTrials) {
+      LOG(ERROR) << "Failed to pick an unused port for testing.";
+      return -1;
+    }
     if (trial == 1) {
       port = GetCurrentProcessId() % (65536 - 30000) + 30000;
     } else if (trial <= kNumRandomPortsToPick) {
@@ -130,7 +138,9 @@ int PickUnusedPortOrDie() {
       continue;
     }
 
-    CHECK_GT(port, 0);
+    if (port <= 0) {
+      return -1;
+    }
     if (!IsPortAvailable(&port, !is_tcp)) {
       is_tcp = !is_tcp;
       continue;
@@ -141,7 +151,7 @@ int PickUnusedPortOrDie() {
     return port;
   }
 
-  return 0;
+  return -1;
 }
 
 }  // namespace internal

@@ -150,8 +150,8 @@ void ImportQuantStatsPass::InsertStatsOpAtResult(OpBuilder b, Value res,
                                                  ElementsAttr layer_stats,
                                                  ElementsAttr axis_stats,
                                                  IntegerAttr axis) {
-  auto stats_op = b.create<quantfork::StatisticsOp>(
-      b.getUnknownLoc(), res, layer_stats, axis_stats, axis);
+  auto stats_op = quantfork::StatisticsOp::create(
+      b, b.getUnknownLoc(), res, layer_stats, axis_stats, axis);
   res.replaceAllUsesWith(stats_op);
   stats_op.getOperation()->replaceUsesOfWith(stats_op, res);
 }

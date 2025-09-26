@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <optional>
 
+#include "absl/synchronization/notification.h"
 #include "absl/time/time.h"
 #include "absl/types/optional.h"
 #include "tensorflow/core/common_runtime/device.h"
@@ -138,7 +139,7 @@ class Executor {
   // Synchronous wrapper for RunAsync().
   virtual absl::Status Run(const Args& args) {
     absl::Status ret;
-    Notification n;
+    absl::Notification n;
     RunAsync(args, [&ret, &n](const absl::Status& s) {
       ret = s;
       n.Notify();

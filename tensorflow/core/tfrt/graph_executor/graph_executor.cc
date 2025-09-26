@@ -626,11 +626,9 @@ absl::Status GraphExecutor::Run(
   // Create the actual arguments to the compiled function, which are sorted
   // according to the input tensor names.
   std::vector<tensorflow::Tensor> flat_inputs;
-  if (!loaded_client_graph.is_restore()) {
-    flat_inputs.reserve(inputs.size());
-    for (int original_index : input_original_indices) {
-      flat_inputs.push_back(inputs.at(original_index).second);
-    }
+  flat_inputs.reserve(inputs.size());
+  for (int original_index : input_original_indices) {
+    flat_inputs.push_back(inputs.at(original_index).second);
   }
 
   // Possibly record costs, depending on the particular setting of
@@ -705,24 +703,6 @@ GraphExecutor::ImportAndCompileClientGraph(
       ImportClientGraphToMlirModule(client_graph, context.get()));
   auto& [flib_def, module] = flib_def_and_module;
 
-  // If the module contains a Restore op, then there should be one input,
-  // and it should specify the checkpoint for variable restore.
-  std::string checkpoint_path;
-  if (options_.compile_options.backend_compiler &&
-      mlir::tf_saved_model::IsRestoreGraph(module.get())) {
-    if (inputs.size() != 1) {
-      return absl::InvalidArgumentError(absl::StrCat(
-          "Expected 1 input for restore graph, but got ", inputs.size(), "."));
-    }
-    const tensorflow::Tensor& input = inputs[0].second;
-    if (input.dtype() != tensorflow::DT_STRING) {
-      return absl::InvalidArgumentError(
-          absl::StrCat("Expected string input for restore graph, but got ",
-                       input.dtype(), "."));
-    }
-    checkpoint_path = input.scalar<tstring>()();
-  }
-
   TF_ASSIGN_OR_RETURN(
       auto stream_callback_id,
       CreateStreamCallbackId(options().model_metadata.name(), module.get()));
@@ -749,10 +729,10 @@ GraphExecutor::ImportAndCompileClientGraph(
                                     resource_context_.get());
   // Do not export to flib_def; restore graph may contain non-TF mlir ops.
   // TODO: Make restore graph compatible with flib, remove if statement.
-  if (checkpoint_path.empty()) {
+  if (!options_.compile_options.backend_compiler ||
+      !mlir::tf_saved_model::IsRestoreGraph(module.get())) {
     model_context.set_function_library_definition(&flib_def);
   }
-  model_context.set_checkpoint_path(checkpoint_path);
 
   if (options_.compile_options.compile_to_sync_tfrt_dialect) {
     if (kernel_registry_ == nullptr) {
@@ -800,8 +780,8 @@ GraphExecutor::ImportAndCompileClientGraph(
   return std::make_unique<LoadedClientGraph>(
       client_graph.name, std::move(symbol_uids), this, std::move(context),
       std::move(module_with_op_keys), std::move(module),
-      std::move(executable_context), stream_callback_id,
-      !checkpoint_path.empty(), std::move(flib_def), latency_sampler);
+      std::move(executable_context), stream_callback_id, std::move(flib_def),
+      latency_sampler);
 }
 
 absl::StatusOr<std::unique_ptr<GraphExecutor::LoadedClientGraph>>
@@ -1116,7 +1096,7 @@ GraphExecutor::LoadedClientGraph::LoadedClientGraph(
     mlir::OwningOpRef<mlir::ModuleOp> tf_mlir_with_op_keys,
     mlir::OwningOpRef<mlir::ModuleOp> tfrt_mlir,
     std::shared_ptr<ExecutableContext> executable_context,
-    std::optional<StreamCallbackId> stream_callback_id, bool is_restore,
+    std::optional<StreamCallbackId> stream_callback_id,
     FunctionLibraryDefinition flib_def,
     tsl::monitoring::SamplerCell* latency_sampler)
     : name_(std::move(name)),
@@ -1125,7 +1105,6 @@ GraphExecutor::LoadedClientGraph::LoadedClientGraph(
       mlir_context_(std::move(mlir_context)),
       executable_context_(std::move(executable_context)),
       stream_callback_id_(stream_callback_id),
-      is_restore_(is_restore),
       flib_def_(std::move(flib_def)),
       pflr_(&graph_executor->fallback_state().device_manager(),
             graph_executor->fallback_state().session_options().env,

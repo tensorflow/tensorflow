@@ -73,5 +73,25 @@ benchmarks: [
       runtime_flags: ["--num_repeats=5"]
     }]
     update_frequency_policy: QUARTERLY
+    # TODO(juliagmt): remove this label once the benchmark is stable.
+    github_labels: ["blocking_presubmit_test"]
+  },
+  {
+    name: "nv_maxtext_1n1g_jit_train_step_before_optimization.hlo"
+    description: "Nvidia benchmark for Maxtext 1 node 1 gpu config for gpt3-52k model."
+    owner: "hmonishN@"
+    input_artifact: {
+      input_format: HLO_TEXT
+      artifact_path: "xla/tools/benchmarks/hlo/nv_maxtext_1n1g_jit_train_step_before_optimization.hlo"
+    }
+    model_source_info: ["Maxtext Default gpt3-52k"]
+    hardware_execution_configs: [{
+      hardware_category: GPU_B200
+      topology: { num_hosts: 1, num_devices_per_host: 1, multi_host: false, multi_device: false }
+      target_metrics: [GPU_DEVICE_TIME, GPU_DEVICE_MEMCPY_TIME]
+      workflow_type: [POSTSUBMIT]
+      runtime_flags: ["--num_repeats=5", "--xla_gpu_enable_latency_hiding_scheduler", "--xla_gpu_all_reduce_combine_threshold_bytes=1073741824", "--xla_gpu_all_gather_combine_threshold_bytes=1073741824", "--xla_gpu_reduce_scatter_combine_threshold_bytes=134217728", "--xla_gpu_enable_pipelined_all_gather", "--xla_gpu_enable_pipelined_all_reduce", "--xla_gpu_enable_while_loop_double_buffering", "--xla_gpu_enable_all_gather_combine_by_dim=false", "--xla_gpu_enable_reduce_scatter_combine_by_dim=false", "--xla_disable_hlo_passes=rematerialization"]
+    }]
+    update_frequency_policy: QUARTERLY
   }
 ]

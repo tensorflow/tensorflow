@@ -1140,6 +1140,8 @@ std::optional<HloInstruction*> ExchangeHalo(
     return std::nullopt;
   }
   // Left halo.
+  // Coalescing the zero-bcasted left halos.
+  int64_t left_coalesced_zero_halo_size = 0;
   for (int64_t i = CeilOfRatio(max_left_halo_size, input_shard_size) - 1;
        i >= 0 && (-i - 1) * input_shard_size < right_bound; --i) {
     std::vector<std::pair<int64_t, int64_t>> source_target_pairs;
@@ -1174,10 +1176,24 @@ std::optional<HloInstruction*> ExchangeHalo(
           HloInstruction::CreateSlice(halo_shape, hlo, halo_start_indices,
                                       halo_limit_indices, halo_slice_strides));
     }
+    if (source_target_pairs.empty()) {
+      left_coalesced_zero_halo_size +=
+          source_halo_slice->shape().dimensions(dim);
+      continue;
+    }
     auto left_halo =
         collective_ops_creator.create_cross_partition_collective_permute(
             b, source_halo_slice, source_target_pairs, (*next_channel_id)++);
     concat_pieces.push_back(left_halo);
+  }
+  // Add the zero-bcasted left halo is not inserted yet.
+  if (left_coalesced_zero_halo_size > 0) {
+    auto zero_bcast_shape = hlo->shape();
+    zero_bcast_shape.set_dimensions(dim, left_coalesced_zero_halo_size);
+    HloInstruction* padding = CreateZero(zero_bcast_shape, b);
+    VLOG(10) << "ExchangeHalo:left halo zero-bcasted coalesced "
+             << padding->ToString();
+    concat_pieces.insert(concat_pieces.begin(), padding);
   }
 
   if (left_bound < input_shard_size && right_bound > 0) {
@@ -1204,6 +1220,8 @@ std::optional<HloInstruction*> ExchangeHalo(
                         std::max<int64_t>(max_right_halo_size, 0)) /
       input_shard_size;
   // Right halo.
+  // Coalescing the zero-bcasted right halos.
+  int64_t right_coalesced_zero_halo_size = 0;
   for (int64_t i = skipped_right_halos;
        i < CeilOfRatio(max_right_halo_size, input_shard_size); ++i) {
     std::vector<std::pair<int64_t, int64_t>> source_target_pairs;
@@ -1237,12 +1255,24 @@ std::optional<HloInstruction*> ExchangeHalo(
           HloInstruction::CreateSlice(halo_shape, hlo, halo_start_indices,
                                       halo_limit_indices, halo_slice_strides));
     }
+    if (source_target_pairs.empty()) {
+      right_coalesced_zero_halo_size +=
+          source_halo_slice->shape().dimensions(dim);
+      continue;
+    }
     auto right_halo =
         collective_ops_creator.create_cross_partition_collective_permute(
             b, source_halo_slice, source_target_pairs, (*next_channel_id)++);
     concat_pieces.push_back(right_halo);
   }
-
+  if (right_coalesced_zero_halo_size > 0) {
+    auto zero_bcast_shape = hlo->shape();
+    zero_bcast_shape.set_dimensions(dim, right_coalesced_zero_halo_size);
+    HloInstruction* padding = CreateZero(zero_bcast_shape, b);
+    VLOG(10) << "ExchangeHalo:right halo zero-bcasted coalesced "
+             << padding->ToString();
+    concat_pieces.push_back(padding);
+  }
   auto concat = concat_pieces[0];
   // Concat with halos/padding.
   if (concat_pieces.size() > 1) {
@@ -1254,6 +1284,7 @@ std::optional<HloInstruction*> ExchangeHalo(
     concat_shape.set_dimensions(dim, concat_dim_size);
     concat = b->AddInstruction(
         HloInstruction::CreateConcatenate(concat_shape, concat_pieces, dim));
+    VLOG(10) << "ExchangeHalo: adding concat: " << concat->ToString();
   }
 
   return concat;

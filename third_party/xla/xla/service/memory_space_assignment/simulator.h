@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/types/span.h"
+#include "xla/hlo/analysis/hlo_alias_analysis.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/utils/hlo_live_range.h"
 #include "xla/service/memory_space_assignment/allocation.h"
@@ -104,7 +105,8 @@ class RuntimeSimulator {
   // alt_mem_bytes_occupied is a vector of the amount of alt mem bytes allocated
   // at any given instruction. It may be null.
   float SimulateElapsedTime(
-      const HloModule* hlo_module, const AllocationSequence& allocations,
+      const HloModule* hlo_module, const HloAliasAnalysis& alias_analysis,
+      const AllocationSequence& allocations,
       const std::vector<int64_t>* alt_mem_bytes_occupied = nullptr);
 
   // This is an auxiliary function for simulating the execution

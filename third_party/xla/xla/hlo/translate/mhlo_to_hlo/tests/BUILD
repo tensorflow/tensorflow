@@ -41,6 +41,7 @@ lit_test_suite(
             "ragged_dot.mlir",
             "rng_get_and_update_state.mlir",
             "sharding.mlir",
+            "shardy.mlir",
             "simple.mlir",
             "unsupported_type.mlir",
             "while.mlir",

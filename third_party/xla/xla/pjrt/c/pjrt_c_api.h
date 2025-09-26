@@ -65,6 +65,8 @@ typedef enum {
   PJRT_Extension_Type_PhaseCompile,  // Experimental.
   PJRT_Extension_Type_Example,
   PJRT_Extension_Type_Unknown,
+  PJRT_Extension_Type_CrossHostTransfers,
+  PJRT_Extension_Type_ExecutableMetadata,
 } PJRT_Extension_Type;
 
 // PJRT_Extension_Base contains a type and a pointer to next
@@ -99,7 +101,7 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_Extension_Base, next);
 // Changes include:
 // * Adding a new field to the PJRT_Api or argument structs
 // * Renaming a method or argument (doesn't affect ABI)
-#define PJRT_API_MINOR 72
+#define PJRT_API_MINOR 75
 
 // The plugin should set the major_version and minor_version of
 // PJRT_Api.pjrt_api_version to be the `PJRT_API_MAJOR` and `PJRT_API_MINOR` in
@@ -579,6 +581,45 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_Client_LookupAddressableDevice_Args,
 // PJRT_DeviceDescription_LocalHardwareId.
 typedef PJRT_Error* PJRT_Client_LookupAddressableDevice(
     PJRT_Client_LookupAddressableDevice_Args* args);
+
+typedef enum {
+  PJRT_ProcessState_kUnspecified = 0,
+  PJRT_ProcessState_kUninitialized = 1,
+  PJRT_ProcessState_kDisconnected = 2,
+  PJRT_ProcessState_kConnected = 3,
+  PJRT_ProcessState_kError = 4,
+} PJRT_ProcessState;
+
+// TODO: mwhittaker - Add the remaining fields from
+// tensorflow::CoordinatedTaskStateInfo.
+struct PJRT_ProcessInfo {
+  int task_id;
+  uint64_t incarnation_id;
+  PJRT_ProcessState state;
+  int error_code;
+  const char* error_message;
+  size_t error_message_size;
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_ProcessInfo, error_message_size);
+
+struct PJRT_Client_UpdateGlobalProcessInfo_Args {
+  size_t struct_size;
+  PJRT_Extension_Base* extension_start;
+  PJRT_Client* client;
+  PJRT_ProcessInfo* process_infos;
+  size_t num_process_infos;
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Client_UpdateGlobalProcessInfo_Args,
+                          num_process_infos);
+
+// Updates the PjRt client with information about all global processes.
+//
+// Recall that a distributed program may consist of multiple PjRt clients
+// spanning multiple machines. These clients perform collective operations, like
+// AllGather, to execute a distributed program. UpdateGlobalProcessInfo updates
+// a PjRt client with information about all processes.
+typedef PJRT_Error* PJRT_Client_UpdateGlobalProcessInfo(
+    PJRT_Client_UpdateGlobalProcessInfo_Args* args);
 
 struct PJRT_Client_AddressableMemories_Args {
   size_t struct_size;
@@ -2344,6 +2385,19 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_TopologyDescription_Serialize_Args,
 typedef PJRT_Error* PJRT_TopologyDescription_Serialize(
     PJRT_TopologyDescription_Serialize_Args* args);
 
+struct PJRT_TopologyDescription_Deserialize_Args {
+  size_t struct_size;
+  PJRT_Extension_Base* extension_start;
+  const char* serialized_topology;
+  size_t serialized_topology_size;
+
+  PJRT_TopologyDescription* topology;  // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_TopologyDescription_Deserialize_Args, topology);
+
+typedef PJRT_Error* PJRT_TopologyDescription_Deserialize(
+    PJRT_TopologyDescription_Deserialize_Args* args);
+
 struct PJRT_TopologyDescription_Attributes_Args {
   size_t struct_size;
   PJRT_Extension_Base* extension_start;
@@ -2530,11 +2584,13 @@ typedef struct PJRT_Api {
   _PJRT_API_STRUCT_FIELD(PJRT_Client_DmaUnmap);
 
   _PJRT_API_STRUCT_FIELD(PJRT_Client_CreateUninitializedBuffer);
+  _PJRT_API_STRUCT_FIELD(PJRT_Client_UpdateGlobalProcessInfo);
+  _PJRT_API_STRUCT_FIELD(PJRT_TopologyDescription_Deserialize);
 } PJRT_Api;
 
 enum {
   PJRT_Api_STRUCT_SIZE =
-      PJRT_STRUCT_SIZE(PJRT_Api, PJRT_Client_CreateUninitializedBuffer)
+      PJRT_STRUCT_SIZE(PJRT_Api, PJRT_TopologyDescription_Deserialize)
 };
 
 #undef _PJRT_API_STRUCT_FIELD

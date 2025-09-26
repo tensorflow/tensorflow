@@ -114,10 +114,6 @@ mlir::ArrayAttr ConvertOutputOperandAliasing(
                                 std::pair<int64_t, xla::ShapeIndex>>>& aliaInfo,
     mlir::Builder* builder);
 
-// Converts the sparsity descriptor to attributes.
-absl::StatusOr<mlir::mhlo::SparsityDescriptorAttr> ConvertSparsityDescriptor(
-    xla::SparsityDescriptor sparsity_descriptor, mlir::Builder* builder);
-
 absl::StatusOr<mlir::mhlo::CustomCallApiVersion> ConvertCustomCallApiVersion(
     xla::CustomCallApiVersion api_version);
 

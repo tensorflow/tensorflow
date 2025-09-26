@@ -19,6 +19,7 @@ limitations under the License.
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <iterator>
 #include <memory>
 #include <optional>
@@ -48,6 +49,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_original_value.h"
+#include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/map_util.h"
@@ -99,7 +101,7 @@ HloModule::HloModule(const std::string& name,
 HloModule::~HloModule() {
   // To avoid dangling references between computations, we first clear all the
   // inter-computation references before deleting any of the computations.
-  for (const auto& computation : computations_) {
+  for (HloComputation* computation : computations()) {
     computation->ClearCalledComputations();
   }
 }
@@ -142,6 +144,11 @@ HloModule::StackFrame HloModule::get_stack_frame(int id) const {
   return stack_frame;
 }
 
+void HloModule::Finalize() {
+  instruction_name_uniquer_.reset();
+  computation_name_uniquer_.reset();
+}
+
 HloComputation* HloModule::AddComputationInternal(
     std::unique_ptr<HloComputation> computation, bool is_entry,
     bool uniquify_identifiers, bool preserve_entry_layouts) {
@@ -164,9 +171,9 @@ HloComputation* HloModule::AddComputationInternal(
   }
 
   if (uniquify_identifiers) {
-    computation->UniquifyName(&computation_name_uniquer_);
+    computation->UniquifyName(&computation_name_uniquer());
     for (auto* instruction : computation->instructions()) {
-      instruction->UniquifyName(&instruction_name_uniquer_);
+      instruction->UniquifyName(&instruction_name_uniquer());
     }
 
     // Pick unique IDs for each instruction.
@@ -183,9 +190,9 @@ HloComputation* HloModule::AddComputationInternal(
     // for computations and instructions created later. Also, set the
     // next_unique_id_ to the one greater than the max unique id of any
     // instruction (or the computation) to avoid ID collisions.
-    computation_name_uniquer_.GetUniqueName(computation->name());
+    computation_name_uniquer().GetUniqueName(computation->name());
     for (auto* instruction : computation->instructions()) {
-      instruction_name_uniquer_.GetUniqueName(instruction->name());
+      instruction_name_uniquer().GetUniqueName(instruction->name());
       next_unique_id_ =
           std::max(next_unique_id_, instruction->unique_id_64_bits() + 1);
     }
@@ -225,18 +232,27 @@ HloComputation* HloModule::AddEntryComputationWithLayouts(
 }
 
 absl::Status HloModule::RemoveEmbeddedComputation(HloComputation* to_remove) {
-  if (has_schedule()) {
-    schedule_->remove_computation(to_remove);
-  }
-  topological_sort_.RemoveNode(to_remove);
-
-  auto it = absl::c_find_if(
-      computations_, [&to_remove](const std::unique_ptr<HloComputation>& comp) {
-        return comp.get() == to_remove;
+  auto it =
+      absl::c_find_if(computations_, [to_remove](const auto& computation) {
+        return computation.get() == to_remove;
       });
   TF_RET_CHECK(it != computations_.end());
-  TF_RET_CHECK(it->get() == to_remove);
-  computations_.erase(it);
+  return RemoveEmbeddedComputation(it);
+}
+
+absl::Status HloModule::RemoveEmbeddedComputation(
+    std::vector<std::unique_ptr<HloComputation>>::iterator to_remove) {
+  TF_RET_CHECK(to_remove != computations_.end());
+  auto& computation = *to_remove;
+  if (has_schedule()) {
+    schedule_->remove_computation(computation.get());
+  }
+  topological_sort_.RemoveNode(computation.get());
+
+  to_be_deleted_computations_.push_back(std::move(*to_remove));
+  to_be_deleted_computations_.back()->ClearCalledComputations();
+  // Moving a unique_ptr from computations_ to to_be_deleted_computations_ will
+  // morally reset() the unique_ptr in computations_.
   return absl::OkStatus();
 }
 
@@ -250,7 +266,7 @@ HloComputation* HloModule::AddEmbeddedComputation(
 void HloModule::MarkFusionDuplications(
     const absl::flat_hash_map<HloComputation*, HloComputation*>& replacements)
     const {
-  for (const std::unique_ptr<HloComputation>& computation : computations_) {
+  for (const HloComputation* computation : computations()) {
     for (auto* instruction : computation->instructions()) {
       if (instruction->opcode() == HloOpcode::kFusion) {
         auto rep =
@@ -272,7 +288,10 @@ void HloModule::MarkFusionDuplications(
 
 void HloModule::MoveComputationsFrom(HloModule* module,
                                      bool make_names_unique) {
-  for (size_t i = 0; i < module->computation_count(); ++i) {
+  for (size_t i = 0; i < module->computations_.size(); ++i) {
+    if (module->computations_[i] == nullptr) {
+      continue;
+    }
     for (auto* instruction : module->computations_[i]->instructions()) {
       instruction->ClearUniqueIdInternal();
     }
@@ -288,9 +307,9 @@ void HloModule::MoveComputationsFrom(HloModule* module,
         /*uniquify_identifiers=*/false,
         /*preserve_entry_layouts=*/false);
     if (make_names_unique) {
-      computation_raw_ptr->UniquifyName(&computation_name_uniquer_);
+      computation_raw_ptr->UniquifyName(&computation_name_uniquer());
       for (auto* instruction : computation_raw_ptr->instructions()) {
-        instruction->UniquifyName(&instruction_name_uniquer_);
+        instruction->UniquifyName(&instruction_name_uniquer());
       }
     }
     // Pick unique IDs for each instruction.
@@ -311,73 +330,34 @@ void HloModule::ReplaceComputations(
     const absl::flat_hash_map<HloComputation*, HloComputation*>& replacements) {
   // Replace all uses of non-canonical computations with their
   // representatives.
-  std::vector<std::unique_ptr<HloComputation>> new_computations;
-  new_computations.reserve(computations_.size());
-
-  for (std::unique_ptr<HloComputation>& computation : computations_) {
-    for (auto* instruction : computation->instructions()) {
-      if (instruction->has_to_apply()) {
-        HloComputation* new_arg = tsl::gtl::FindWithDefault(
-            replacements, instruction->to_apply(), nullptr);
-        if (new_arg != nullptr) {
-          instruction->set_to_apply(new_arg);
-        }
-        continue;
-      }
-      switch (instruction->opcode()) {
-        case HloOpcode::kWhile: {
-          HloComputation* new_condition = tsl::gtl::FindWithDefault(
-              replacements, instruction->while_condition(), nullptr);
-          if (new_condition != nullptr) {
-            instruction->set_while_condition(new_condition);
-          }
-          HloComputation* new_body = tsl::gtl::FindWithDefault(
-              replacements, instruction->while_body(), nullptr);
-          if (new_body != nullptr) {
-            instruction->set_while_body(new_body);
-          }
-          break;
-        }
-        case HloOpcode::kConditional: {
-          for (int b = 0; b < instruction->branch_count(); ++b) {
-            HloComputation* new_computation = tsl::gtl::FindWithDefault(
-                replacements, instruction->branch_computation(b), nullptr);
-            if (new_computation != nullptr) {
-              instruction->set_branch_computation(b, new_computation);
+  for (const auto iter : replacements) {
+    HloComputation* old_computation = iter.first;
+    HloComputation* new_computation = iter.second;
+    for (auto* caller_instruction : old_computation->caller_instructions()) {
+      caller_instruction->ReplaceCalledComputations(
+          [&](HloComputation* callee) {
+            if (callee == old_computation) {
+              return new_computation;
             }
-          }
-          break;
-        }
-        case HloOpcode::kSelectAndScatter: {
-          HloComputation* new_select = tsl::gtl::FindWithDefault(
-              replacements, instruction->select(), nullptr);
-          if (new_select != nullptr) {
-            instruction->set_select(new_select);
-          }
-          HloComputation* new_scatter = tsl::gtl::FindWithDefault(
-              replacements, instruction->scatter(), nullptr);
-          if (new_scatter != nullptr) {
-            instruction->set_scatter(new_scatter);
-          }
-          break;
-        }
-        default:
-          break;
-      }
+            return callee;
+          });
     }
+  }
 
-    if (replacements.find(computation.get()) == replacements.end()) {
-      new_computations.push_back(std::move(computation));
-    } else {
-      topological_sort_.RemoveNode(computation.get());
+  for (auto iterator = computations_.begin(); iterator != computations_.end();
+       ++iterator) {
+    if (*iterator == nullptr) {
+      continue;
+    }
+    auto& computation = *iterator;
+    if (replacements.contains(computation.get())) {
+      TF_CHECK_OK(RemoveEmbeddedComputation(iterator));
     }
   }
 
   // Replace entry_computation if necessary.
   entry_computation_ = tsl::gtl::FindWithDefault(
       replacements, entry_computation_, entry_computation_);
-
-  computations_ = std::move(new_computations);
 }
 
 void HloModule::Print(Printer* printer, const HloPrintOptions& options) const {
@@ -952,6 +932,19 @@ bool IsUsedOutsideSubcomputation(const HloInstruction& hlo,
 }
 }  // anonymous namespace
 
+void HloModule::CleanupComputations() {
+  if (to_be_deleted_computations_.empty()) {
+    return;
+  }
+  computations_.erase(
+      std::remove_if(computations_.begin(), computations_.end(),
+                     [](const std::unique_ptr<HloComputation>& comp) {
+                       return comp == nullptr;
+                     }),
+      computations_.end());
+  to_be_deleted_computations_.clear();
+}
+
 HloInstruction* HloModule::OutlineExpressionFromComputation(
     absl::Span<HloInstruction* const> instructions_to_outline,
     const std::string& outlined_computation_name, HloComputation* computation) {
@@ -1039,11 +1032,11 @@ HloInstruction* HloModule::OutlineExpressionFromComputation(
 }
 
 int64_t HloModule::instruction_count() const {
-  int64_t n = 0;
-  for (const auto& computation : computations_) {
-    n += computation->instruction_count();
+  int64_t num_instructions = 0;
+  for (const auto& computation : computations()) {
+    num_instructions += computation->instruction_count();
   }
-  return n;
+  return num_instructions;
 }
 
 std::vector<HloComputation*> HloModule::MakeComputationPostOrder(
@@ -1074,8 +1067,8 @@ std::vector<HloComputation*> HloModule::MakeComputationPostOrder(
     // computations (computations which are called by an instruction in the
     // module).
     absl::flat_hash_set<HloComputation*> nonroot_computations;
-    nonroot_computations.reserve(computations_.size() - 1);
-    for (auto& computation : computations_) {
+    nonroot_computations.reserve(computation_count() - 1);
+    for (auto* computation : computations()) {
       for (const HloInstructionInfo& inst :
            computation->instructions_with_info()) {
         if (HloInstruction::MightHaveCalledComputations(inst.opcode())) {
@@ -1092,10 +1085,12 @@ std::vector<HloComputation*> HloModule::MakeComputationPostOrder(
     // from two different root computations.
     absl::flat_hash_set<HloComputation*> added_computations;
     std::vector<HloComputation*> post_order;
-    added_computations.reserve(computations_.size());
-    post_order.reserve(computations_.size());
-    for (auto& computation : computations_) {
-      if (nonroot_computations.contains(computation.get())) {
+    added_computations.reserve(computation_count());
+    post_order.reserve(computation_count());
+    size_t num_computations = 0;
+    for (auto* computation : computations()) {
+      ++num_computations;
+      if (nonroot_computations.contains(computation)) {
         continue;
       }
       for (HloComputation* embedded_computation :
@@ -1105,22 +1100,22 @@ std::vector<HloComputation*> HloModule::MakeComputationPostOrder(
         }
       }
       // Root computations should only be encountered once.
-      CHECK(!added_computations.contains(computation.get()));
-      post_order.push_back(computation.get());
-      added_computations.insert(computation.get());
+      CHECK(!added_computations.contains(computation));
+      post_order.push_back(computation);
+      added_computations.insert(computation);
     }
-    if (post_order.size() != computations_.size()) {
+    if (post_order.size() != num_computations) {
       for (HloComputation* computation : post_order) {
         LOG(ERROR) << "Post Order: " << computation->name() << " ("
                    << computation->parent()->name() << ")";
       }
-      for (auto& computation : computations_) {
+      for (const HloComputation* computation : computations()) {
         LOG(ERROR) << "Computations: " << computation->name() << " ("
                    << computation->parent()->name() << ")";
       }
       LOG(FATAL) << "Mismatch computation count: post_order="
                  << post_order.size()
-                 << " computation_count=" << computations_.size();
+                 << " num_computations=" << num_computations;
     }
     if (!execution_threads.empty()) {
       post_order.erase(std::remove_if(post_order.begin(), post_order.end(),
@@ -1134,8 +1129,8 @@ std::vector<HloComputation*> HloModule::MakeComputationPostOrder(
   }  // The topological sort is a reverse post-order, reverse it so we get a
   // post-order.
   std::vector<HloComputation*> post_order;
-  post_order.reserve(computations_.size());
-  int num_computations = 0;
+  post_order.reserve(computation_count());
+  size_t num_computations = 0;
   for (auto it = topological_sort_.rbegin(); it != topological_sort_.rend();
        ++it) {
     ++num_computations;
@@ -1145,17 +1140,17 @@ std::vector<HloComputation*> HloModule::MakeComputationPostOrder(
     }
   }
 
-  if (num_computations != computations_.size()) {
+  if (num_computations != computation_count()) {
     for (HloComputation& computation : topological_sort_) {
       LOG(ERROR) << "Reverse postorder: " << computation.name() << " ("
                  << computation.parent()->name() << ")";
     }
-    for (auto& computation : computations_) {
+    for (const HloComputation* computation : computations()) {
       LOG(ERROR) << "Computations: " << computation->name() << " ("
                  << computation->parent()->name() << ")";
     }
     LOG(FATAL) << "Mismatch computation count: post_order=" << post_order.size()
-               << " computation_count=" << computations_.size();
+               << " computation_count=" << computation_count();
   }
   return post_order;
 }
@@ -1271,19 +1266,16 @@ void CopyUniqueIds(const HloModule& source, HloModule* clone,
 
 }  // namespace
 
-std::unique_ptr<HloModule> HloModule::Clone(
-    const std::string& suffix,
-    std::optional<const HloModuleConfig> config_in) const {
-  auto module = CreateModule(suffix, config_in, *this);
-
-  HloCloneContext context(module.get(), suffix);
+void HloModule::Clone(const std::string& suffix, HloCloneContext* context,
+                      std::optional<const HloModuleConfig> config) const {
+  auto module = context->module();
   if (entry_computation_) {
-    auto cloned_computation = entry_computation_->Clone(suffix, &context);
+    auto cloned_computation = entry_computation_->Clone(suffix, context);
     module->AddEntryComputation(std::move(cloned_computation));
   }
 
   // Preserve original instruction and computation ids.
-  CopyUniqueIds(*this, module.get(), context);
+  CopyUniqueIds(*this, module, *context);
   module->next_unique_id_ = next_unique_id_;
 
   module->input_output_alias_config() = input_output_alias_config();
@@ -1291,10 +1283,10 @@ std::unique_ptr<HloModule> HloModule::Clone(
   module->set_is_dynamic(is_dynamic());
   module->set_frontend_attributes(frontend_attributes());
   if (has_schedule() && schedule().Verify().ok()) {
-    HloSchedule clone_schedule(module.get());
+    HloSchedule clone_schedule(module);
     for (HloComputation* computation : computations()) {
       if (schedule().is_computation_scheduled(computation)) {
-        HloComputation* new_computation = context.FindComputation(computation);
+        HloComputation* new_computation = context->FindComputation(computation);
         // The module being cloned may have computations that are dead, i.e.,
         // unreachable from the entry computation. In that case, new_computation
         // is nullptr.
@@ -1303,7 +1295,7 @@ std::unique_ptr<HloModule> HloModule::Clone(
               clone_schedule.GetOrCreateSequence(new_computation);
           for (const HloInstruction* instruction :
                schedule().sequence(computation).instructions()) {
-            clone_sequence.push_back(context.GetInstruction(instruction));
+            clone_sequence.push_back(context->GetInstruction(instruction));
           }
         }
       }
@@ -1318,7 +1310,7 @@ std::unique_ptr<HloModule> HloModule::Clone(
   // module->computations_ to match the order in computations_.
   using ComputationSorter = MappedPtrContainerSorter<HloComputation>;
   auto computation_map_fn = [&context](const HloComputation* c) {
-    return context.FindComputation(c);
+    return context->FindComputation(c);
   };
   auto status = ComputationSorter::Sort(
       computation_map_fn, ComputationSorter::IndexAfterMappedElementsFn(),
@@ -1327,8 +1319,24 @@ std::unique_ptr<HloModule> HloModule::Clone(
     LOG(ERROR) << "Failed to sort module computations for " << name() << "; "
                << status;
   }
+}
 
+std::unique_ptr<HloModule> HloModule::Clone(
+    const std::string& suffix,
+    std::optional<const HloModuleConfig> config) const {
+  auto module = CreateModule(suffix, config, *this);
+  auto clone_context = std::make_unique<HloCloneContext>(module.get(), suffix);
+  Clone(suffix, clone_context.get(), config);
   return module;
+}
+
+std::pair<std::unique_ptr<HloModule>, std::unique_ptr<HloCloneContext>>
+HloModule::CloneWithContext(const std::string& suffix,
+                            std::optional<const HloModuleConfig> config) const {
+  auto module = CreateModule(suffix, config, *this);
+  auto clone_context = std::make_unique<HloCloneContext>(module.get(), suffix);
+  Clone(suffix, clone_context.get(), config);
+  return std::make_pair(std::move(module), std::move(clone_context));
 }
 
 absl::Status HloModule::RemoveUnusedComputations() {
@@ -1352,6 +1360,7 @@ absl::Status HloModule::RemoveUnusedComputations() {
   for (auto computation : to_remove) {
     TF_RETURN_IF_ERROR(RemoveEmbeddedComputation(computation));
   }
+  CleanupComputations();
   return absl::OkStatus();
 }
 
@@ -1417,24 +1426,28 @@ std::string HloModule::OriginalValueRecoveryTable::ToString(
     HloPrintOptions options) const {
   std::string result;
   for (const auto& p : GetOrderedHashMap(*this)) {
-    const auto& removed_original_array = p.first;
-    const auto& remaining_original_array = p.second.first;
+    const auto& replaced_original_array = p.first;
+    const auto& replacing_original_array = p.second.first;
     HloModule* recovery_module = p.second.second;
     // Wraps the recovery module with double quotes so that it can be parsed as
     // a string. This is to make sure it can be parsed as a standalone module
-    // without interferecing with theparseing of the main module the table is
+    // without interfering with the parsing of the main module the table is
     // associated with.
     const std::string tab(2 * (options.indent_amount()), ' ');
-    absl::StrAppend(&result, tab, "{", removed_original_array.ToString(),
-                    "} : {", remaining_original_array.ToString(), "},\n", tab,
-                    "\"\n",
-                    recovery_module->entry_computation()->ToString(
-                        HloPrintOptions()
-                            .set_print_computation_mode(
-                                HloPrintOptions::PrintComputationMode::
-                                    kComputationWithEntryKeyword)
-                            .set_indent_amount(options.indent_amount() + 1)),
-                    "\n", tab, "\"\n");
+    std::string recovery_module_string;
+    if (recovery_module) {
+      absl::StrAppend(&recovery_module_string, ",\n", tab, "\"\n",
+                      recovery_module->entry_computation()->ToString(
+                          HloPrintOptions()
+                              .set_print_computation_mode(
+                                  HloPrintOptions::PrintComputationMode::
+                                      kComputationWithEntryKeyword)
+                              .set_indent_amount(options.indent_amount() + 1)),
+                      "\n", tab, "\"");
+    }
+    absl::StrAppend(&result, tab, "{", replaced_original_array.ToString(),
+                    "} : {", replacing_original_array.ToString(), "}",
+                    recovery_module_string, "\n");
   }
   return result;
 }
@@ -1443,14 +1456,17 @@ OriginalValueRecoveryTableProto HloModule::OriginalValueRecoveryTable::ToProto()
     const {
   OriginalValueRecoveryTableProto original_value_recovery_table_proto;
   for (const auto& p : GetOrderedHashMap(*this)) {
-    const auto& removed_original_array = p.first;
-    const auto& remaining_original_array = p.second.first;
+    const auto& replaced_original_array = p.first;
+    const auto& replacing_original_array = p.second.first;
     HloModule* recovery_module = p.second.second;
     auto* entry = original_value_recovery_table_proto.add_entries();
-    *entry->mutable_removed_original_array() = removed_original_array.ToProto();
-    *entry->mutable_remaining_original_array() =
-        remaining_original_array.ToProto();
-    *entry->mutable_recovery_module() = recovery_module->ToProto();
+    *entry->mutable_replaced_original_array() =
+        replaced_original_array.ToProto();
+    *entry->mutable_replacing_original_array() =
+        replacing_original_array.ToProto();
+    if (recovery_module) {
+      *entry->mutable_recovery_module() = recovery_module->ToProto();
+    }
   }
   return original_value_recovery_table_proto;
 }
@@ -1462,20 +1478,92 @@ HloModule::OriginalValueRecoveryTable::FromProto(
   OriginalValueRecoveryTable original_value_recovery_table;
 
   for (const auto& entry : original_value_recovery_table_proto.entries()) {
-    OriginalArray removed_original_array =
-                      OriginalArray::FromProto(entry.removed_original_array()),
-                  remaining_original_array = OriginalArray::FromProto(
-                      entry.remaining_original_array());
-    const HloModuleProto proto = entry.recovery_module();
-    TF_ASSIGN_OR_RETURN(HloModuleConfig config,
-                        HloModule::CreateModuleConfigFromProto(
-                            proto, GetDebugOptionsFromFlags()));
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> recovery_module,
-                        HloModule::CreateFromProto(proto, config));
-    original_value_recovery_table[removed_original_array] =
-        std::make_pair(remaining_original_array, std::move(recovery_module));
+    OriginalArray replaced_original_array =
+                      OriginalArray::FromProto(entry.replaced_original_array()),
+                  replacing_original_array = OriginalArray::FromProto(
+                      entry.replacing_original_array());
+    std::unique_ptr<HloModule> recovery_module;
+    if (entry.has_recovery_module()) {
+      const HloModuleProto proto = entry.recovery_module();
+      TF_ASSIGN_OR_RETURN(HloModuleConfig config,
+                          HloModule::CreateModuleConfigFromProto(
+                              proto, GetDebugOptionsFromFlags()));
+      TF_ASSIGN_OR_RETURN(recovery_module,
+                          HloModule::CreateFromProto(proto, config));
+    }
+    original_value_recovery_table[replaced_original_array] =
+        std::make_pair(replacing_original_array, std::move(recovery_module));
   }
   return original_value_recovery_table;
+}
+
+namespace {
+void AddEntryToOriginalValueRecoveryTable(
+    OriginalValueRecoveryTable& original_value_recovery_table,
+    std::shared_ptr<OriginalValue> old_original_value,
+    std::shared_ptr<OriginalValue> new_original_value,
+    std::unique_ptr<HloModule> recovery_module) {
+  original_value_recovery_table
+      [*old_original_value->original_arrays().begin()->second] = {
+          *new_original_value->original_arrays().begin()->second,
+          std::move(recovery_module)};
+}
+}  // namespace
+
+void HloModule::OriginalValueRecoveryTable::AddRecoveryModule(
+    const HloInstruction* replaced_inst, HloInstruction* replacing_inst,
+    std::unique_ptr<HloModule> recovery_module) {
+  const std::shared_ptr<OriginalValue>& replaced_original_value =
+      replaced_inst->original_value();
+  if (!replaced_original_value) {
+    return;
+  }
+  std::shared_ptr<OriginalValue> replacing_original_value =
+      replacing_inst->original_value();
+
+  // Creates a placeholder original value for the replacing instruction if it
+  // doesn't have one.
+  if (!replacing_original_value) {
+    replacing_original_value = OriginalValue::CreateFromInstruction(
+        replacing_inst, /*prefix=*/kOriginalValuePlaceholderPrefix);
+    if (!replacing_original_value) {
+      return;
+    }
+  }
+
+  AddEntryToOriginalValueRecoveryTable(*this, replaced_original_value,
+                                       replacing_original_value,
+                                       std::move(recovery_module));
+}
+
+void HloModule::OriginalValueRecoveryTable::BuildAndAddRecoveryModule(
+    const HloInstruction* replaced_inst, HloInstruction* replacing_inst,
+    const std::function<HloInstruction*(
+        xla::HloComputation::Builder& builder, const xla::Shape& input_shape,
+        const xla::Shape& output_shape)>& build_entry_computation) {
+  const std::shared_ptr<OriginalValue>& replaced_original_value =
+      replaced_inst->original_value();
+  if (!replaced_original_value) {
+    return;
+  }
+  std::shared_ptr<OriginalValue> replacing_original_value =
+      replacing_inst->original_value();
+
+  if (build_entry_computation) {
+    xla::HloComputation::Builder builder("recovery_computation");
+    xla::HloModuleConfig config;
+    auto recovery_module =
+        std::make_unique<xla::HloModule>("recovery_module", config);
+    recovery_module->AddEntryComputation(builder.Build(build_entry_computation(
+        builder, replacing_inst->shape(), replaced_inst->shape())));
+
+    return AddRecoveryModule(replaced_inst, replacing_inst,
+                             std::move(recovery_module));
+  }
+
+  AddEntryToOriginalValueRecoveryTable(*this, replaced_original_value,
+                                       replacing_original_value,
+                                       /*recovery_module=*/nullptr);
 }
 
 /* static */ std::atomic<int> HloModule::next_unique_module_id_(0);

@@ -52,7 +52,9 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/hlo/ir/tile_assignment.h"
 #include "xla/hlo/parser/hlo_parser.h"
+#include "xla/hlo/utils/hlo_sharding_util.h"
 #include "xla/tsl/lib/math/math_util.h"
 #include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -645,6 +647,7 @@ mlir::LogicalResult ExtractInputsForLogicalDevices(
             .failed()) {
       return cluster_func.emitError("incorrect sharding format for inputs");
     }
+    xla::hlo_sharding_util::ConvertV2ToV1Sharding(sharding);
 
     const auto input_sharding_type = sharding.type();
     auto tiled_sharding_mismatched = [&](int tiled_input_size) {
@@ -758,6 +761,7 @@ mlir::LogicalResult ParseAndValidateOutputSharding(
             .failed()) {
       return cluster_func.emitError("incorrect sharding format for outputs");
     }
+    xla::hlo_sharding_util::ConvertV2ToV1Sharding(sharding);
 
     if (sharding.type() == xla::OpSharding::OTHER &&
         sharding.tile_assignment_devices_size() != num_cores_per_replica)

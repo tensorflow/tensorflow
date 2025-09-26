@@ -184,7 +184,7 @@ TEST_F(RunHandlerThreadWorkQueueTest, NoHandlerReturnsError) {
   tfrt::RequestContextBuilder ctx_builder(nullptr, nullptr);
   EXPECT_THAT(
       queue->InitializeRequest(/*request_id=*/100),
-      tensorflow::testing::StatusIs(
+      absl_testing::StatusIs(
           absl::StatusCode::kDeadlineExceeded,
           "Could not obtain RunHandler for request after waiting for 1 ms."));
 }

@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "xla/tests/xla_test_backend_predicates.h"  // IWYU pragma: keep, exhaustive_binary_test_f64_instantiation.inc
 #include "xla/tests/exhaustive/exhaustive_binary_test_definitions.h"  // IWYU pragma: keep, exhaustive_binary_test_f64_instantiation.inc
 #include "xla/tests/exhaustive/exhaustive_op_test_utils.h"  // IWYU pragma: keep, exhaustive_binary_test_f64_instantiation.inc
 #include "tsl/platform/test.h"  // IWYU pragma: keep, exhaustive_binary_test_f64_instantiation.inc

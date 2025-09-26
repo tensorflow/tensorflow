@@ -8,13 +8,15 @@ load("//third_party:repo.bzl", "tf_http_archive", "tf_mirror_urls")
 
 def repo():
     """Imports pybind11_abseil."""
-    PA_COMMIT = "2c4932ed6f6204f1656e245838f4f5eae69d2e29"
-    PA_SHA256 = "0223b647b8cc817336a51e787980ebc299c8d5e64c069829bf34b69d72337449"
+
+    # Updating past this commit causes failures with custom ops:
+    #   ModuleNotFoundError: No module named 'pybind11_abseil'
+    PA_COMMIT = "13d4f99d5309df3d5afa80fe2ae332d7a2a64c6b"
+    PA_SHA256 = "c6d0c6784e4d5681919731f1fa86e0b7cd010e770115bdb3a0285b3939ef2394"
     tf_http_archive(
         name = "pybind11_abseil",
         sha256 = PA_SHA256,
         strip_prefix = "pybind11_abseil-{commit}".format(commit = PA_COMMIT),
         urls = tf_mirror_urls("https://github.com/pybind/pybind11_abseil/archive/{commit}.tar.gz".format(commit = PA_COMMIT)),
-        build_file = "//third_party/pybind11_abseil:BUILD.bazel",
         patch_file = ["//third_party/pybind11_abseil:remove_license.patch"],
     )

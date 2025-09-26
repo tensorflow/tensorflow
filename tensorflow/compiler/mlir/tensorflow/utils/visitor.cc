@@ -96,8 +96,8 @@ FailureOr<OwningOpRef<ModuleOp>> CreatePrunedModule(
   SymbolTableCollection symbol_table;
   OpBuilder builder(module.getContext());
 
-  OwningOpRef<ModuleOp> pruned =
-      builder.create<ModuleOp>(module->getLoc());
+  OwningOpRef<ModuleOp> pruned = ModuleOp::create(
+      builder, module->getLoc()); /*ALLOW_MLIR_MODULE_OP_CREATE*/
   (*pruned)->setAttrs(module->getAttrs());
   builder.setInsertionPointToEnd(pruned->getBody());
 

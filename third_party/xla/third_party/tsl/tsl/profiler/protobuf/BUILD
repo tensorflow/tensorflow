@@ -89,7 +89,7 @@ tf_proto_library(
     name = "profile_proto",
     srcs = ["profile.proto"],
     visibility = internal_visibility([
-        "@local_xla//xla/python:__pkg__",
+        ":friends",
         "@local_xla//xla/tsl/profiler:internal",
     ]),
 )

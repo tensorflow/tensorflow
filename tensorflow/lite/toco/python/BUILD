@@ -1,3 +1,4 @@
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("//tensorflow:strict.default.bzl", "py_strict_library")
 
 package(

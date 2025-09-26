@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/ascii.h"
+#include "absl/synchronization/notification.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/platform/errors.h"
 #include "tensorflow/core/common_runtime/device/device_event_mgr.h"
@@ -421,14 +422,14 @@ absl::Status PluggableDevice::MakeTensorFromProto(
     Tensor copy(cpu_allocator(numa_node), DT_VARIANT, parsed.shape());
     Variant* copy_variant = copy.flat<Variant>().data();
 
-    std::list<Notification> notifications;
+    std::list<absl::Notification> notifications;
     absl::Status copy_status;
     auto copier = [this, &alloc_attrs, &notifications, &copy_status](
                       const Tensor& from, Tensor* to) {
       // Copier isn't run in a multithreaded environment, so we don't
       // have to worry about the notifications list being modified in parallel.
       notifications.emplace_back();
-      Notification& n = *notifications.rbegin();
+      absl::Notification& n = *notifications.rbegin();
       return MaybeCopyTensorToPluggableDevice(
           alloc_attrs, from, to, [&n, &copy_status](const absl::Status& s) {
             if (copy_status.ok()) {
@@ -454,7 +455,7 @@ absl::Status PluggableDevice::MakeTensorFromProto(
     *tensor = std::move(copy);
     return copy_status;
   } else {
-    Notification n;
+    absl::Notification n;
     absl::Status status;
     TF_RETURN_IF_ERROR(MaybeCopyTensorToPluggableDevice(
         alloc_attrs, parsed, tensor, [&n, &status](const absl::Status& s) {

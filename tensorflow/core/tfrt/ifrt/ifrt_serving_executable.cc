@@ -21,6 +21,7 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
@@ -44,7 +45,7 @@ limitations under the License.
 #include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
-#include "shardy/dialect/sdy/transforms/import/passes.h"  // from @shardy
+#include "mlir/Support/WalkResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/extract_callback.h"
@@ -73,11 +74,8 @@ limitations under the License.
 #include "xla/python/pjrt_ifrt/pjrt_host_callback.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/dump.h"
-#include "xla/service/spmd/shardy/sdy_round_trip/pipelines.h"
-#include "xla/service/spmd/shardy/stablehlo_round_trip/stablehlo_import.h"
 #include "xla/shape.h"
 #include "xla/tsl/concurrency/ref_count.h"
-#include "xla/tsl/framework/mlir/status_scoped_diagnostic_handler.h"
 #include "xla/tsl/framework/serving_device_selector.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
@@ -227,52 +225,6 @@ GetHostCallbackModulesAndRemoveHostFuncs(mlir::ModuleOp module) {
   return host_callback_modules;
 }
 
-absl::StatusOr<bool> GetUseShardyPartitioner(mlir::ModuleOp module) {
-  std::optional<bool> use_shardy_partitioner;
-  mlir::WalkResult result = module->walk([&](mlir::TF::XlaCallModuleOp op) {
-    if (!use_shardy_partitioner.has_value()) {
-      use_shardy_partitioner = op.getUseShardyPartitioner();
-    } else if (*use_shardy_partitioner != op.getUseShardyPartitioner()) {
-      return mlir::WalkResult::interrupt();
-    }
-    return mlir::WalkResult::advance();
-  });
-  if (result.wasInterrupted()) {
-    return absl::FailedPreconditionError(
-        "use_shardy_partitioner is not consistent across XlaCallModuleOps");
-  }
-
-  if (!use_shardy_partitioner.has_value()) {
-    // If the module doesn't contain any XlaCallModuleOp, disable Shardy.
-    use_shardy_partitioner = false;
-  }
-  VLOG(2) << "use_shardy_partitioner: " << *use_shardy_partitioner;
-  return *use_shardy_partitioner;
-}
-
-// We first convert mhlo.sharding to sdy.sharding. Then, we call
-// the SdyRoundTrip import pass to convert the
-// `mhlo.frontend_attributes={xla.sdy.sharding...}` to sdy.sharding. After
-// that we lift the meshes that were inlined when we built the module for the
-// cluster. We don't need to invoke SdyRoundTrip export here as MLIR to HLO will
-// perform that.
-absl::Status ImportShardingsAndLiftInlinedMeshes(mlir::ModuleOp module) {
-  mlir::PassManager sdy_roundtrip(module->getContext());
-  sdy_roundtrip.addPass(xla::sdy::createImportShardingsPass(
-      /*allowPropagationToArgs=*/false, /*allowPropagationToResults=*/false));
-  xla::sdy::addSdyRoundTripImportPipeline(sdy_roundtrip,
-                                          /*enableConstantImport=*/false);
-  sdy_roundtrip.addPass(mlir::sdy::createLiftInlinedMeshesPass());
-
-  tsl::StatusScopedDiagnosticHandler diagnosticHandler(module->getContext());
-  absl::Status status =
-      diagnosticHandler.consumeStatus(sdy_roundtrip.run(module));
-  if (status.ok() && VLOG_IS_ON(1)) {
-    tensorflow::DumpMlirOpToFile("ifrt_after_bridge_phase2_sdy", module);
-  }
-  return status;
-}
-
 }  // namespace
 
 absl::StatusOr<std::unique_ptr<IfrtServingExecutable>>
@@ -287,7 +239,9 @@ IfrtServingExecutable::Create(
     tensorflow::DeviceMgr* device_mgr,
     tensorflow::XlaHelpers::ShapeRepresentationFn shape_representation_fn,
     IfrtServingCoreSelector* ifrt_serving_core_selector,
-    tsl::protobuf::Message* compilation_environment_proto,
+    std::variant<tsl::protobuf::Message*,
+                 xla::CompileOptions::EnvironmentOptionOverrides>
+        compilation_env_or_overrides,
     TfToHloCompiler* tf_to_hlo_compiler,
     IfrtPersistentCompilationCache* persistent_compilation_cache) {
   TF_ASSIGN_OR_RETURN(
@@ -300,13 +254,15 @@ IfrtServingExecutable::Create(
                          original_compile_metadata.num_replicas(),
                          original_compile_metadata.num_cores_per_replica()));
 
+  TF_ASSIGN_OR_RETURN(xla::ifrt::DeviceListRef device_list,
+                      client->MakeDeviceList(assigned_devices));
   auto executable = absl::WrapUnique(new IfrtServingExecutable(
       program_id, model_name, signature_name, std::move(module), client,
       thread_pool, ifrt_loaded_variable_registry, ifrt_restore,
       checkpoint_loader_queue, device_mgr, std::move(shape_representation_fn),
       ifrt_serving_core_selector, std::move(original_compile_metadata),
-      client->MakeDeviceList(assigned_devices), compilation_environment_proto,
-      tf_to_hlo_compiler, persistent_compilation_cache));
+      std::move(device_list), compilation_env_or_overrides, tf_to_hlo_compiler,
+      persistent_compilation_cache));
 
   return executable;
 }
@@ -473,9 +429,6 @@ IfrtServingExecutable::CreateExecutableSynchronously(
     tensorflow::DumpMlirOpToFile("module_for_bridge_phase2", *module_copy);
   }
 
-  TF_ASSIGN_OR_RETURN(bool use_shardy_partitioner,
-                      GetUseShardyPartitioner(module_copy.get()));
-
   Tf2HloArg tf2hlo_arg{
       .module = module_copy.get(),
       .input_dtypes_and_shapes = std::vector<DtypeAndShape>(
@@ -514,13 +467,6 @@ IfrtServingExecutable::CreateExecutableSynchronously(
                                  mlir_hlo_module.get());
   }
 
-  if (use_shardy_partitioner) {
-    // We have inlined meshes to build the module for the cluster, but Shardy
-    // expects lifted meshes.
-    TF_RETURN_IF_ERROR(
-        ImportShardingsAndLiftInlinedMeshes(mlir_hlo_module.get()));
-  }
-
   const int num_replicas = tf2hlo_result.compile_metadata.num_replicas();
   const int num_partitions =
       tf2hlo_result.compile_metadata.num_cores_per_replica();
@@ -535,13 +481,29 @@ IfrtServingExecutable::CreateExecutableSynchronously(
   }
 
   xla::CompileOptions xla_compile_options;
-  if (compilation_environment_proto_) {
-    tsl::protobuf::Message* comp_env_copy =
-        compilation_environment_proto_->New();
-    comp_env_copy->CopyFrom(*compilation_environment_proto_);
-    TF_RETURN_IF_ERROR(
-        xla_compile_options.executable_build_options.mutable_comp_envs()
-            ->AddEnv(absl::WrapUnique<tsl::protobuf::Message>(comp_env_copy)));
+  if (std::holds_alternative<tsl::protobuf::Message*>(
+          compilation_env_or_overrides_)) {
+    tsl::protobuf::Message* compilation_environment_proto_ =
+        std::get<tsl::protobuf::Message*>(compilation_env_or_overrides_);
+    if (compilation_environment_proto_) {
+      tsl::protobuf::Message* comp_env_copy =
+          compilation_environment_proto_->New();
+      comp_env_copy->CopyFrom(*compilation_environment_proto_);
+      TF_RETURN_IF_ERROR(
+          xla_compile_options.executable_build_options.mutable_comp_envs()
+              ->AddEnv(
+                  absl::WrapUnique<tsl::protobuf::Message>(comp_env_copy)));
+    }
+  } else if (std::holds_alternative<
+                 xla::CompileOptions::EnvironmentOptionOverrides>(
+                 compilation_env_or_overrides_)) {
+    xla_compile_options.env_option_overrides =
+        std::get<xla::CompileOptions::EnvironmentOptionOverrides>(
+            compilation_env_or_overrides_);
+  } else {
+    return absl::NotFoundError(
+        "Either compilation_environment_proto or env_option_overrides is "
+        "expected.");
   }
 
   xla_compile_options.executable_build_options.set_num_replicas(num_replicas);
@@ -551,7 +513,7 @@ IfrtServingExecutable::CreateExecutableSynchronously(
   xla_compile_options.executable_build_options.set_use_spmd_partitioning(
       original_compile_metadata_.use_spmd_for_xla_partitioning());
   xla_compile_options.executable_build_options.set_use_shardy_partitioner(
-      use_shardy_partitioner);
+      compile_metadata.use_shardy_partitioner());
   xla_compile_options.parameter_is_tupled_arguments = false;
   // Use portable execution for single device + core selection.
   if (UsePortableExecution(compile_metadata)) {
@@ -721,7 +683,7 @@ absl::StatusOr<std::vector<tensorflow::Tensor>> IfrtServingExecutable::Execute(
     TF_ASSIGN_OR_RETURN(xla::ifrt::Device * device,
                         ifrt_client_->LookupDevice(xla::ifrt::DeviceId(
                             device_reservation.device_index())));
-    device_list = ifrt_client_->MakeDeviceList({device});
+    TF_ASSIGN_OR_RETURN(device_list, ifrt_client_->MakeDeviceList({device}));
   } else {
     device_list = assigned_device_list_;
   }
@@ -869,7 +831,7 @@ absl::Status IfrtServingExecutable::AsyncLoadIfrtArray(
                        inputs[i].dtype(), " and shape ",
                        inputs[i].shape().DebugString(), " at index ", i));
     }
-    std::string runtime_name = inputs[i].scalar<tsl::tstring>()();
+    std::string tensor_name = inputs[i].scalar<tsl::tstring>()();
     // TODO(b/339521818): Add test cases for OpSharding on variables.
     TF_ASSIGN_OR_RETURN(
         xla::HloSharding hlo_sharding,
@@ -884,7 +846,7 @@ absl::Status IfrtServingExecutable::AsyncLoadIfrtArray(
 
     TF_RETURN_IF_ERROR(
         ifrt_serving::AsyncLoadRestoredTensorAsIfrtLoadedVariable(
-            runtime_name, ifrt_client_, thread_pool_,
+            tensor_name, ifrt_client_, thread_pool_,
             ifrt_restore_tensor_registry_, ifrt_loaded_variable_registry_,
             checkpoint_loader_queue_, sharding_config));
   }

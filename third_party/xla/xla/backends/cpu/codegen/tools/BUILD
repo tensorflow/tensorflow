@@ -1,3 +1,4 @@
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("//xla:xla.default.bzl", "xla_cc_binary")
 load(
     "//xla/tsl/platform:build_config_root.bzl",
@@ -45,10 +46,46 @@ cc_library(
 )
 
 xla_cc_binary(
+    name = "cpu_test_correctness",
+    testonly = True,
+    srcs = ["cpu_test_correctness.cc"],
+    deps = [
+        "//xla:debug_options_flags",
+        "//xla:error_spec",
+        "//xla/codegen/tools:test_lib",
+        "//xla/service:cpu_plugin",
+        "//xla/tests:hlo_test_base",
+        "//xla/tsl/platform:statusor",
+        "//xla/tsl/util:command_line_flags",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_googletest//:gtest_for_library",
+    ],
+)
+
+xla_cc_binary(
     name = "ir-compiler-opt",
     testonly = True,
     linkopts = ["-Wl,-rpath,$$ORIGIN/../lit_lib"],
     deps = [
         ":ir_compiler_opt_main",
+    ],
+)
+
+xla_cc_binary(
+    name = "fusion_to_mlir",
+    testonly = True,
+    srcs = ["fusion_to_mlir.cc"],
+    deps = [
+        "//xla/backends/cpu/codegen:fusion_compiler",
+        "//xla/backends/cpu/codegen:fusion_emitter",
+        "//xla/codegen:mlir_kernel_definition",
+        "//xla/codegen/tools:test_lib",
+        "//xla/hlo/ir:hlo",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@llvm-project//llvm:Support",
+        "@local_tsl//tsl/platform:platform_port",
     ],
 )

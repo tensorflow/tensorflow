@@ -140,6 +140,7 @@ xla_test(
         "//xla/tests:hlo_pjrt_interpreter_reference_mixin",
         "//xla/tests:hlo_pjrt_test_base",
         "//xla/tests:literal_test_util",
+        "//xla/tsl/platform:statusor",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -172,6 +173,7 @@ xla_cc_test(
         "//xla/service:hlo_module_config",
         "//xla/tests:hlo_test_base",
         "//xla/tests:literal_test_util",
+        "//xla/tsl/platform:statusor",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -500,23 +502,8 @@ xla_test(
     backends = ["gpu"],
     deps = [
         ":gpu_codegen_test",
+        "//xla/stream_executor/cuda:cuda_compute_capability",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:test",
-    ],
-)
-
-xla_test(
-    name = "gpu_input_fusible_slice_test",
-    srcs = ["gpu_input_fusible_slice_test.cc"],
-    backends = ["gpu"],
-    tags = ["cuda-only",], #(TODO)(rocm): weekly sync 24-11-05
-    deps = [
-        ":gpu_codegen_test",
-        "//xla:error_spec",
-        "//xla/service:hlo_module_config",
-        "//xla/tests:hlo_test_base",
-        "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:test",
     ],
 )
 
@@ -585,6 +572,7 @@ xla_test(
         "//xla:types",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
+        "//xla/stream_executor/cuda:cuda_compute_capability",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
@@ -635,6 +623,7 @@ lit_test_suite(
     tags = ["no-oneapi"],
     tags_override = {
         "single_instruction.hlo": ["cuda-only"],
+        "sorting.hlo" : ["cuda-only"], #TODO(rocm): weekly sync 25-08-25
     },
     tools = [
         "//xla/tools:hlo-opt",
@@ -661,6 +650,7 @@ lit_test_suite(
 #         "@llvm-project//mlir:AllExtensions",
 #         "@llvm-project//mlir:FuncDialect",
 #         "@llvm-project//mlir:MlirOptLib",
+#         "@llvm-project//mlir:RegisterAllExtensions",
 #         "@llvm-project//mlir:TensorDialect",
 #         "//xla/backends/gpu/codegen/emitters/transforms:passes",
 #         "//xla/backends/gpu/codegen/triton/ir:triton_xla",
@@ -793,7 +783,6 @@ xla_test(
     shard_count = 2,
     deps = [
         ":gpu_codegen_test",
-        "//xla:array3d",
         "//xla:array4d",
         "//xla:error_spec",
         "//xla:literal",
@@ -801,26 +790,21 @@ xla_test(
         "//xla:shape_util",
         "//xla:types",
         "//xla:xla_data_proto_cc",
-        "//xla/hlo/builder:xla_builder",
-        "//xla/hlo/builder:xla_computation",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:test_helpers",
-        "//xla/service:hlo_module_config",
         "//xla/service/gpu:stream_executor_util",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor:dnn",
         "//xla/stream_executor:semantic_version",
         "//xla/stream_executor:stream_executor_h",
+        "//xla/stream_executor/cuda:cuda_compute_capability",
         "//xla/stream_executor/cuda:cuda_platform_id",
         "//xla/tests:hlo_test_base",
-        "//xla/tests:literal_test_util",
-        "//xla/tests:xla_internal_test_main",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
+        "//xla/tsl/lib/core:status_test_util",
+        "//xla/tsl/platform:statusor",
+        "//xla/tsl/platform:test",
         "@com_google_absl//absl/strings:string_view",
-        "@local_tsl//tsl/platform:statusor",
-        "@local_tsl//tsl/platform:test",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -915,6 +899,7 @@ xla_test(
     backends = ["gpu"],
     deps = [
         "//xla:xla_proto_cc",
+        "//xla/stream_executor/cuda:cuda_compute_capability",
         "//xla/tests:hlo_test_base",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
@@ -931,6 +916,7 @@ xla_test(
         "//xla:literal_util",
         "//xla/tests:hlo_pjrt_test_base",
         "//xla/tests:literal_test_util",
+        "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
         "@com_google_googletest//:gtest_main",
     ],

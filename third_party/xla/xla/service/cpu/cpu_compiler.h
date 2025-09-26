@@ -120,14 +120,6 @@ class CpuCompiler : public LLVMCompiler {
       std::unique_ptr<HloModule> module);
 
   absl::StatusOr<std::unique_ptr<AotCompilationResult>>
-  CompileAheadOfTimeLegacy(
-      std::unique_ptr<HloModule> module,
-      IrCompiler::TargetMachineBuilder target_machine_builder,
-      const CpuAotCompilationOptions& aot_options, const llvm::Triple& triple,
-      const llvm::PICLevel::Level& pic_level,
-      const llvm::PIELevel::Level& pie_level);
-
-  absl::StatusOr<std::unique_ptr<AotCompilationResult>>
   CompileAheadOfTimeThunks(
       std::unique_ptr<HloModule> module,
       IrCompiler::TargetMachineBuilder target_machine_builder,

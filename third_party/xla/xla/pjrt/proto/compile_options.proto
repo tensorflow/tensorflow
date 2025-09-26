@@ -7,7 +7,7 @@ import "xla/xla.proto";
 import "xla/xla_data.proto";
 
 // A serialization of xla::ExecutableBuildOptions.
-// Next id: 26.
+// Next id: 27.
 message ExecutableBuildOptionsProto {
   // If set, this is the device to build the computation for. Valid
   // device_ordinal values are: 0 to # of devices - 1. These values are
@@ -143,6 +143,9 @@ message ExecutableBuildOptionsProto {
 
   int64 process_index = 22;
   int64 process_count = 23;
+
+  // The size of the slice.
+  int64 slice_size = 26;
 }
 
 message OptionOverrideProto {

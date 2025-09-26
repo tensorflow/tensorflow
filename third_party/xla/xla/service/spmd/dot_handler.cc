@@ -74,14 +74,6 @@ absl::Status SpmdPartitioningVisitor::HandleDot(HloInstruction* hlo) {
   DotConvolutionDimsInfo mapping =
       dot_as_convolution_util::ParseDotGeneralFromDot(hlo);
 
-  HloDotInstruction* dot = Cast<HloDotInstruction>(hlo);
-  std::vector<SparsityDescriptor> sparsity(dot->sparsity().begin(),
-                                           dot->sparsity().end());
-  std::vector<HloInstruction*> resharded_meta(dot->sparse_operands());
-  for (int i = 0; i < dot->sparse_operands(); ++i) {
-    resharded_meta[i] =
-        GetPartitionedHlo(dot->operand(HloDotInstruction::kOperands + i)).hlo();
-  }
   auto create_sharded_dot =
       [&](HloInstruction* l, HloInstruction* r, SpmdBuilder* b,
           const Window& conv_window) -> absl::StatusOr<HloInstruction*> {
@@ -89,10 +81,10 @@ absl::Status SpmdPartitioningVisitor::HandleDot(HloInstruction* hlo) {
         auto sharded_dot_shape,
         ShapeInference::InferDotOpShape(
             l->shape(), r->shape(), hlo->dot_dimension_numbers(),
-            /*preferred_element_type=*/hlo->shape().element_type(), sparsity));
+            /*preferred_element_type=*/hlo->shape().element_type()));
     return b->AddInstruction(HloInstruction::CreateDot(
         sharded_dot_shape, l, r, hlo->dot_dimension_numbers(),
-        hlo->precision_config(), sparsity, resharded_meta));
+        hlo->precision_config()));
   };
   return HandleDotHelper(hlo, mapping, create_sharded_dot);
 }
@@ -1881,9 +1873,6 @@ absl::StatusOr<HloInstruction*> PartitionBaseCase(
     }
   }
 
-  // Hard limit on iteration count based on empirical data (above this amount
-  // there's pretty significant overhead).
-  constexpr int64_t kMaxIterations = 32;
   std::optional<WindowedEinsumConfig> e_config = std::nullopt;
   if (!should_skip_windowed_einsum) {
     e_config = GetWindowedEinsumConfiguration(
@@ -1898,8 +1887,8 @@ absl::StatusOr<HloInstruction*> PartitionBaseCase(
         lhs_sharding_transposed_to_match_rhs,
         rhs_sharding_transposed_to_match_lhs, lhs_sharding, rhs_sharding,
         output_sharding, conv_window, dims_mapping, indices_map,
-        visitor->call_graph(), kMaxIterations, original_hlo, &lhs, &rhs,
-        create_sharded_dot, b, module, visitor);
+        visitor->call_graph(), options.max_windowed_einsum_iteration,
+        original_hlo, &lhs, &rhs, create_sharded_dot, b, module, visitor);
   }
   if (e_config) {
     int64_t loop_partitions = 1;

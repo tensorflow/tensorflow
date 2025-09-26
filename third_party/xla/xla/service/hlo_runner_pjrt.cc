@@ -400,11 +400,10 @@ absl::StatusOr<Literal> HloRunnerPjRt::TransferLiteralsFromDevice(
 
 absl::StatusOr<Literal> HloRunnerPjRt::Execute(
     std::unique_ptr<HloModule> module,
-    absl::Span<const Literal* const> arguments, bool run_hlo_passes,
-    ExecutionProfile* profile) {
+    absl::Span<const Literal* const> arguments, bool run_hlo_passes) {
   TF_ASSIGN_OR_RETURN(const std::unique_ptr<OpaqueExecutable> executable,
                       CreateExecutable(std::move(module), run_hlo_passes));
-  return ExecuteWithExecutable(executable.get(), arguments, {});
+  return HloRunnerInterface::ExecuteWithExecutable(executable.get(), arguments);
 }
 
 absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
@@ -445,9 +444,10 @@ HloRunnerPjRt::ExecuteWithDeviceBuffers(
   return buffers;
 }
 
-absl::StatusOr<Literal> HloRunnerPjRt::ExecuteWithExecutable(
-    OpaqueExecutable* executable, absl::Span<const Literal* const> arguments,
-    ExecutionProfile* profile) {
+absl::StatusOr<std::vector<absl::StatusOr<Literal>>>
+HloRunnerPjRt::ExecuteWithExecutable(OpaqueExecutable* executable,
+                                     absl::Span<const Literal* const> arguments,
+                                     int64_t num_repeats) {
   TF_ASSIGN_OR_RETURN(HloRunnerPjRtExecutable* const wrapped_executable,
                       HloRunnerPjRtExecutable::TryUnwrap(*this, executable));
 
@@ -462,12 +462,21 @@ absl::StatusOr<Literal> HloRunnerPjRt::ExecuteWithExecutable(
       std::vector<std::unique_ptr<PjRtBuffer>> argument_handles,
       TransferLiteralsToDevice(
           module.entry_computation_layout().parameter_layouts(), arguments));
-  TF_ASSIGN_OR_RETURN(
-      std::vector<std::unique_ptr<PjRtBuffer>> output_buffers,
-      ExecuteWithDeviceBuffers(wrapped_executable, std::move(argument_handles),
-                               &execute_options));
-  return TransferLiteralsFromDevice(std::move(output_buffers),
-                                    execute_options.untuple_result);
+
+  std::vector<absl::StatusOr<Literal>> results;
+  results.reserve(num_repeats);
+  for (int64_t i = 0; i < num_repeats; ++i) {
+    absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> output_buffers =
+        ExecuteWithDeviceBuffers(wrapped_executable, argument_handles,
+                                 &execute_options);
+    if (!output_buffers.ok()) {
+      results.push_back(output_buffers.status());
+      continue;
+    }
+    results.push_back(TransferLiteralsFromDevice(
+        *std::move(output_buffers), execute_options.untuple_result));
+  }
+  return results;
 }
 
 absl::StatusOr<std::unique_ptr<OpaqueExecutable>>
@@ -553,7 +562,7 @@ absl::StatusOr<std::vector<Literal>> HloRunnerPjRt::ExecuteReplicated(
 absl::StatusOr<std::vector<Literal>> HloRunnerPjRt::ExecuteReplicated(
     OpaqueExecutable* executable,
     const HloRunnerInterface::ReplicatedExecuteOptions& options,
-    DeviceAssignment* device_assignment, ExecutionProfile* profile) {
+    DeviceAssignment* device_assignment) {
   TF_ASSIGN_OR_RETURN(HloRunnerPjRtExecutable* const wrapped_executable,
                       HloRunnerPjRtExecutable::TryUnwrap(*this, executable));
 
@@ -805,7 +814,7 @@ absl::StatusOr<Literal> HloRunnerPjRt::TransferLiteralFromDevice(
   // Implementations of ToLiteralSync() do not support empty tuples. Since an
   // empty tuple literal is easy to construct, we do so here.
   if (const Shape& on_device_shape = buffer.on_device_shape();
-      on_device_shape.IsTuple() && on_device_shape.tuple_shapes_size() == 0) {
+      on_device_shape.IsTuple() && on_device_shape.tuple_shapes().size() == 0) {
     return LiteralUtil::MakeTuple({});
   }
   TF_ASSIGN_OR_RETURN(std::shared_ptr<Literal> literal, buffer.ToLiteralSync());

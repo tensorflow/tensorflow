@@ -62,8 +62,9 @@ TEST_F(CalibrationStatisticsSaverTest, MissingOutputPath) {
                   .Attr("calibration_methods", calibration_methods)
                   .Finalize(node_def()));
   ASSERT_THAT(InitOp(),
-              StatusIs(tsl::error::INVALID_ARGUMENT,
-                       HasSubstr("NodeDef missing attr 'output_file_path'")));
+              absl_testing::StatusIs(
+                  tsl::error::INVALID_ARGUMENT,
+                  HasSubstr("NodeDef missing attr 'output_file_path'")));
 }
 
 TEST_F(CalibrationStatisticsSaverTest, WrongNumInputs) {
@@ -82,9 +83,10 @@ TEST_F(CalibrationStatisticsSaverTest, WrongNumInputs) {
                   .Attr("output_file_path", "/tmp/statistics.pbtxt")
                   .Finalize(node_def()));
   ASSERT_THAT(InitOp(),
-              StatusIs(tsl::error::ABORTED,
-                       HasSubstr("The number of inputs must be  three times "
-                                 "the size of the `ids` list.")));
+              absl_testing::StatusIs(
+                  tsl::error::ABORTED,
+                  HasSubstr("The number of inputs must be  three times "
+                            "the size of the `ids` list.")));
 }
 
 TEST_F(CalibrationStatisticsSaverTest, WrongInputTypes) {
@@ -103,10 +105,10 @@ TEST_F(CalibrationStatisticsSaverTest, WrongInputTypes) {
                   .Attr("calibration_methods", calibration_methods)
                   .Attr("output_file_path", "/tmp/statistics.pbtxt")
                   .Finalize(node_def()));
-  ASSERT_THAT(
-      InitOp(),
-      StatusIs(tsl::error::ABORTED,
-               HasSubstr("The input `histogram` must have int64 type")));
+  ASSERT_THAT(InitOp(),
+              absl_testing::StatusIs(
+                  tsl::error::ABORTED,
+                  HasSubstr("The input `histogram` must have int64 type")));
 }
 
 TEST_F(CalibrationStatisticsSaverTest, SimpleMinMax) {

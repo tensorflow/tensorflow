@@ -88,15 +88,15 @@ TFL::CustomOp BuildCustomOp(stablehlo::CompositeOp composite,
   OpBuilder builder(composite->getContext());
   builder.setInsertionPoint(composite);
   if (IsKVCacheCompositeOp(composite)) {
-    return builder.create<TFL::CustomOp>(
-        composite->getLoc(), composite->getResultTypes(),
+    return TFL::CustomOp::create(
+        builder, composite->getLoc(), composite->getResultTypes(),
         composite->getOperands().slice(2, 3), composite.getName(),
         CustomOption(&builder, custom_option_buffer));
   }
-  return builder.create<TFL::CustomOp>(
-      composite->getLoc(), composite->getResultTypes(),
-      composite->getOperands(), composite.getName(),
-      CustomOption(&builder, custom_option_buffer));
+  return TFL::CustomOp::create(builder, composite->getLoc(),
+                               composite->getResultTypes(),
+                               composite->getOperands(), composite.getName(),
+                               CustomOption(&builder, custom_option_buffer));
 }
 
 }  // namespace

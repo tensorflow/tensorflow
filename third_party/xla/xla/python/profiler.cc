@@ -1,4 +1,4 @@
-/* Copyright 2020 The OpenXLA Authors.
+/* Copyright 2025 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -32,7 +32,7 @@ limitations under the License.
 #include "xla/pjrt/exceptions.h"
 #include "xla/pjrt/status_casters.h"
 #include "xla/python/aggregate_profile.h"
-#include "xla/python/profiler/profile_data.h"
+#include "xla/python/profiler/profile_data_lib.h"
 #include "xla/python/profiler_utils.h"
 #include "xla/python/xplane_to_profile_instructions.h"
 #include "xla/tsl/platform/macros.h"
@@ -128,9 +128,7 @@ struct ProfilerSessionWrapper {
 static std::string GetFdoProfile(const std::string& xspace,
                                  bool as_textproto = false) {
   tensorflow::profiler::XSpace xspace_proto;
-  // TODO(phawkins): change to absl::string_view when protobuf is
-  // updated in XLA.
-  xspace_proto.ParseFromString(std::string(xspace.c_str(), xspace.size()));
+  xspace_proto.ParseFromString(xspace);
   tensorflow::profiler::ProfiledInstructionsProto fdo_profile;
   xla::ThrowIfError(xla::ConvertXplaneToProfiledInstructionsProto(
       {xspace_proto}, &fdo_profile));

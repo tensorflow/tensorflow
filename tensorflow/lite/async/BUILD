@@ -1,3 +1,5 @@
+load("@rules_cc//cc:cc_test.bzl", "cc_test")
+
 # Description:
 #
 # This package contains shim library targets for the Async C package.

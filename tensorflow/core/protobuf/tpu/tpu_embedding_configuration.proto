@@ -144,6 +144,10 @@ message TPUEmbeddingConfiguration {
     // automatic SPMD partitioning. This should be true when users use
     // `shard_map`.
     bool use_manual_partitioning = 3;
+
+    // If true, lowers to Shardy custom-call for manual partitioning.
+    // Default is false.
+    bool use_shardy_partitioner = 4;
   }
   SpmdSharding spmd_sharding = 11;
 

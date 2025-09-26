@@ -247,8 +247,8 @@ bool CreateMainFunction(ModuleOp module_op) {
 
   // Creates a new main function.
   auto func_type = FunctionType::get(context, arg_types, result_types);
-  auto main_func = builder.create<func::FuncOp>(
-      module_op.getLoc(), kImportModelDefaultGraphFuncName, func_type);
+  auto main_func = func::FuncOp::create(
+      builder, module_op.getLoc(), kImportModelDefaultGraphFuncName, func_type);
   builder.createBlock(&main_func.getBody(), main_func.begin(), arg_types,
                       arg_locs);
   SmallVector<NamedAttribute> func_attrs;
@@ -304,8 +304,9 @@ bool CreateMainFunction(ModuleOp module_op) {
         result_types.begin() + result_idx, func_op.getNumResults());
     result_idx += func_op.getNumResults();
 
-    auto call_op = builder.create<TF::PartitionedCallOp>(
-        module_op.getLoc(), new_types, new_args, /*args_attrs=*/nullptr,
+    auto call_op = TF::PartitionedCallOp::create(
+        builder, module_op.getLoc(), new_types, new_args,
+        /*args_attrs=*/nullptr,
         /*res_attrs=*/nullptr,
         SymbolRefAttr::get(context, func_op.getSymName()),
         /*config=*/builder.getStringAttr(""),
@@ -353,8 +354,8 @@ bool CreateMainFunction(ModuleOp module_op) {
     Operation* identity_op;
     if (max_tensor_index == 0) {
       Value output_value = node_output_tensors.front().value;
-      identity_op = builder.create<TF::IdentityOp>(
-          new_loc, output_value.getType(), output_value);
+      identity_op = TF::IdentityOp::create(
+          builder, new_loc, output_value.getType(), output_value);
     } else {
       llvm::SmallVector<Value> input_values(node_output_tensors.size(),
                                             scalar_one);
@@ -362,8 +363,8 @@ bool CreateMainFunction(ModuleOp module_op) {
            node_output_tensors) {
         input_values[tensor_index] = tensor_value;
       }
-      identity_op = builder.create<TF::IdentityNOp>(
-          new_loc, TypeRange(ValueRange(input_values)), input_values);
+      identity_op = TF::IdentityNOp::create(
+          builder, new_loc, TypeRange(ValueRange(input_values)), input_values);
     }
 
     for (const auto& [output_index, tensor_index, tensor_value] :
@@ -371,8 +372,8 @@ bool CreateMainFunction(ModuleOp module_op) {
       returning_values[output_index] = identity_op->getResult(tensor_index);
     }
   }
-  builder.create<func::ReturnOp>(main_func.getBody().getLoc(),
-                                 returning_values);
+  func::ReturnOp::create(builder, main_func.getBody().getLoc(),
+                         returning_values);
 
   // Adds the new function to symbol table.
   SymbolTable symbol_table(module_op);

@@ -76,12 +76,12 @@ limitations under the License.
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/launch_dimensions.h"
-#include "xla/service/gpu/matmul_indexing_utils.h"
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/gpu/model/tiled_hlo_computation.h"
 #include "xla/service/gpu/triton_fusion_analysis.h"
 #include "xla/service/gpu/triton_tiling_propagation.h"
 #include "xla/service/llvm_ir/llvm_util.h"
+#include "xla/service/matmul_indexing_utils.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
@@ -493,7 +493,8 @@ absl::StatusOr<Value> EmitBroadcast(EmitterLocOpBuilder b,
     const TensorIterationSpec::DimIterationSpec* spec =
         analysis->IterSpec(side.scope, &broadcast, dim.index);
     if (spec != nullptr && spec->at(0).stride > 0) {
-      out_shape.push_back(dim.block_size);
+      out_shape.push_back(
+          (spec->at(0).broadcast_multiplier != 1) ? 1 : dim.block_size);
       non_trivial_broadcast |= spec->at(0).subfragments.size() != 1;
     }
   }
@@ -1912,7 +1913,12 @@ absl::Status EmitMatMul(EmitterLocOpBuilder& b,
                       TritonFusionAnalysis::Execute(
                           *fusion->called_computation(), config.split_k));
 
-  TF_RETURN_IF_ERROR(CheckGemmTilingComplexityHeuristic(config));
+  absl::Status status = CheckGemmTilingComplexityHeuristic(config);
+  if (!status.ok()) {
+    VLOG(1) << "EmitMatMul heuristic check failed: "
+            << fusion->called_computation()->ToString() << status.message();
+    return status;
+  }
 
   const HloComputation* computation = fusion->fused_instructions_computation();
   const HloInstruction* instr =

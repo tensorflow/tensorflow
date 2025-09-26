@@ -74,6 +74,7 @@ class IrCompiler : public llvm::orc::IRCompileLayer::IRCompiler {
     bool disable_slp_vectorizer = false;
 
     bool disable_loop_unrolling = false;
+    bool disable_platform_dependent_math = false;
 
     bool dfsan_enabled = false;
     std::vector<std::string> dfsan_abi_list_files;

@@ -70,6 +70,7 @@ using FloatArrayUniquePtr = TfLiteArrayUniquePtr<float>;
 template <class T = int>
 TfLiteArrayUniquePtr<T> BuildTfLiteArray(int size);
 
+#ifndef TF_LITE_STATIC_MEMORY
 // Allocates a TfLiteIntArray of given size using malloc.
 template <>
 inline IntArrayUniquePtr BuildTfLiteArray<int>(const int size) {
@@ -81,6 +82,7 @@ template <>
 inline FloatArrayUniquePtr BuildTfLiteArray<float>(const int size) {
   return FloatArrayUniquePtr(TfLiteFloatArrayCreate(size));
 }
+#endif  // TF_LITE_STATIC_MEMORY
 
 // Allocates a TFLiteArray of given size and initializes it with the given
 // values.

@@ -148,7 +148,7 @@ build:macos --features=archive_param_file
 # Settings for MacOS on ARM CPUs.
 build:macos_arm64 --cpu=darwin_arm64
 build:macos_arm64 --macos_minimum_os=11.0
-build:macos_arm64 --platforms=@build_bazel_apple_support//configs/platforms:darwin_arm64
+build:macos_arm64 --platforms=@build_bazel_apple_support//platforms:darwin_arm64
 
 # Config to use a mostly-static build and disable modular op registration
 # support (this will revert to loading TensorFlow with RTLD_GLOBAL in Python).
@@ -184,23 +184,19 @@ build:mkl_aarch64_threadpool --define=build_with_mkl_aarch64=true
 build:mkl_aarch64_threadpool -c opt
 
 # Default CUDA, CUDNN and NVSHMEM versions.
-build:cuda_version --repo_env=HERMETIC_CUDA_VERSION="12.8.0"
+build:cuda_version --repo_env=HERMETIC_CUDA_VERSION="12.9.1"
 build:cuda_version --repo_env=HERMETIC_CUDNN_VERSION="9.8.0"
 build:cuda_version --repo_env=HERMETIC_NVSHMEM_VERSION="3.2.5"
 
 # CUDA: This config refers to building CUDA op kernels with nvcc.
 build:cuda --repo_env TF_NEED_CUDA=1
-build:cuda --crosstool_top=@local_config_cuda//crosstool:toolchain
-build:cuda --@local_config_cuda//:enable_cuda
+build:cuda --@rules_ml_toolchain//common:enable_cuda
 build:cuda --config=cuda_version
 # This flag is needed to include CUDA libraries.
 build:cuda --@local_config_cuda//cuda:include_cuda_libs=true
-# TODO(ybaturina): Remove this once the wheel size issue is fixed.
-build:cuda --config=clang_local
 
 # This configuration is used for building the wheels.
 build:cuda_wheel --@local_config_cuda//cuda:include_cuda_libs=false
-build:cuda_wheel --@local_config_nvshmem//:include_nvshmem_libs=false
 
 # CUDA: This config refers to building CUDA op kernels with clang.
 build:cuda_clang --config=cuda
@@ -235,6 +231,12 @@ build:cuda_nvcc --action_env=TF_NVCC_CLANG="1"
 build:cuda_nvcc --@local_config_cuda//:cuda_compiler=nvcc
 # Old config for backward compatibility
 build:nvcc_clang --config=cuda_nvcc
+
+# TODO(yuriit): Remove this once Linux aarch64 hermetic build is supported.
+# This is a temporary solution to build for Linux aarch64 by using NVCC.
+build:cuda_nvcc_linux_aarch64 --config=cuda_nvcc
+build:cuda_nvcc_linux_aarch64 --config=clang_local
+build:cuda_nvcc_linux_aarch64 --crosstool_top=@local_config_cuda//crosstool:toolchain
 
 # Debug config. Enables Bazel's 'dbg' compilation mode, build with debugging enabled
 build:dbg -c dbg
@@ -284,12 +286,25 @@ build:rocm_ci_hermetic --repo_env="OS=ubuntu_22.04"
 build:rocm_ci_hermetic --repo_env="ROCM_VERSION=6.4.1"
 build:rocm_ci_hermetic --@local_config_rocm//rocm:rocm_path_type=hermetic
 
+# This config option is used for SYCL as GPU backend.
 # SYCL Configuration (non-hermetic)
 build:sycl --crosstool_top=@local_config_sycl//crosstool:toolchain
 build:sycl --define=using_sycl=true
 build:sycl --define=tensorflow_mkldnn_contraction_kernel=0
 build:sycl --repo_env=TF_NEED_SYCL=1
+build:sycl --cxxopt=-std=c++17
+build:sycl --host_cxxopt=-std=c++17
 build:sycl --repo_env=SYCL_BUILD_HERMETIC=0
+build:sycl --config=clang_local
+
+# Enable Clang for host and icpx for SYCL
+build:icpx_clang --repo_env TF_ICPX_CLANG=1
+build:icpx_clang --action_env=CLANG_COMPILER_PATH="/usr/lib/llvm-18/bin/clang"
+build:icpx_clang --linkopt="-fuse-ld=lld"
+build:icpx_clang --linkopt="-lm"
+build:icpx_clang --host_linkopt="-lm"
+build:icpx_clang --host_linkopt="-fuse-ld=lld"
+build:icpx_clang --copt=-fclang-abi-compat=17
 
 # Hermetic SYCL Configuration
 build:sycl_hermetic --config=sycl
@@ -456,7 +471,13 @@ build:resultstore --bes_timeout=600s
 # Flag to enable remote config
 common --experimental_repo_remote_exec
 
+build:use_tar_archive_files --repo_env=USE_CUDA_TAR_ARCHIVE_FILES=1
+build:use_tar_archive_files --repo_env=USE_NVSHMEM_TAR_ARCHIVE_FILES=1
+build:use_tar_archive_files --repo_env=USE_LLVM_TAR_ARCHIVE_FILES=1
+build:use_tar_archive_files --repo_env=USE_MIRRORED_TAR_ARCHIVE_FILES=1
+
 # Make Bazel not try to probe the host system for a C++ toolchain.
+build:rbe_base --config=use_tar_archive_files
 build:rbe_base --config=resultstore
 build:rbe_base --define=EXECUTOR=remote
 build:rbe_base --jobs=800
@@ -517,8 +538,6 @@ build:rbe_linux_cuda --config=rbe_linux_cpu
 # dt9 is based on glibc 2.17, which is outdated and incompatible with CUDA 12.8.0
 # unset TF_SYSROOT
 build:rbe_linux_cuda --repo_env=TF_SYSROOT=
-build:rbe_linux_cuda --repo_env=USE_CUDA_TAR_ARCHIVE_FILES=1
-build:rbe_linux_cuda --repo_env=USE_NVSHMEM_TAR_ARCHIVE_FILES=1
 # For Remote build execution -- GPU configuration
 build:rbe_linux_cuda --repo_env=REMOTE_GPU_TESTING=1
 
@@ -577,7 +596,7 @@ build:release_macos_x86 --config=release_macos_base
 # Build with the AVX instruction set when on macOS x86
 build:release_macos_x86 --config=avx_linux
 build:release_macos_x86 --cpu=darwin
-build:release_macos_x86 --platforms=@build_bazel_apple_support//configs/platforms:darwin_x86_64
+build:release_macos_x86 --platforms=@build_bazel_apple_support//platforms:darwin_x86_64
 # Target Catalina as the minimum compatible OS version
 build:release_macos_x86 --macos_minimum_os=10.15
 build:release_macos_x86 --macos_sdk_version=10.15
@@ -585,7 +604,7 @@ build:release_macos_x86 --macos_sdk_version=10.15
 # Build configs for macOS Arm64
 build:release_macos_arm64 --config=release_macos_base
 build:release_macos_arm64 --cpu=darwin_arm64
-build:release_macos_arm64 --platforms=@build_bazel_apple_support//configs/platforms:darwin_arm64
+build:release_macos_arm64 --platforms=@build_bazel_apple_support//platforms:darwin_arm64
 build:release_macos_arm64 --define=tensorflow_mkldnn_contraction_kernel=0
 # Target Moneterey as the minimum compatible OS version
 build:release_macos_arm64 --macos_minimum_os=12.0

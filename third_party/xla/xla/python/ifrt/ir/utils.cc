@@ -36,7 +36,7 @@ absl::StatusOr<int64_t> GetDeviceMemoryInBytes(absl::string_view device_kind) {
   if (device_kind == "TPU v4") {
     return 32LL * kGB;
   }
-  if (device_kind == "TPU v4 lite") {
+  if (device_kind == "TPU v4 lite" || device_kind == "TPU v4i") {
     return 8LL * kGB;
   }
   if (device_kind == "TPU v5" || device_kind == "TPU v5p") {

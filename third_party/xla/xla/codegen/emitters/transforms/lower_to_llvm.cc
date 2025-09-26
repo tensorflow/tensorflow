@@ -48,6 +48,7 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_description.pb.h"
 #include "xla/tsl/platform/logging.h"
+#include "xla/tsl/platform/status.h"
 #include "tsl/platform/protobuf.h"  // IWYU pragma: keep
 
 namespace xla {
@@ -72,7 +73,10 @@ class LowerToLLVMPass : public impl::LowerToLLVMPassBase<LowerToLLVMPass> {
       se::GpuDeviceInfoProto device_info;
       CHECK(tsl::protobuf::TextFormat::ParseFromString(gpu_device_info_,
                                                        &device_info));
-      *device_spec_.mutable_type() = se::DeviceDescription(device_info);
+      absl::StatusOr<se::DeviceDescription> device_description =
+          se::DeviceDescription::FromProto(device_info);
+      TF_CHECK_OK(device_description.status());
+      *device_spec_.mutable_type() = *device_description;
     } else if (target_type_ == "cpu") {
       CHECK(gpu_device_info_.empty());
       *device_spec_.mutable_type() = CpuDeviceSpec{};

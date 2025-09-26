@@ -379,7 +379,8 @@ TEST_F(TupleHloTest, BitcastAfterGTE) {
   auto module = ParseAndReturnVerifiedModule(testcase).value();
   auto param =
       LiteralUtil::MakeTupleOwned(LiteralUtil::CreateR1<float>({1, 2, 3}));
-  auto result = ExecuteNoHloPasses(std::move(module), {&param});
+  TF_ASSERT_OK_AND_ASSIGN(Literal result, Execute(std::move(module), {&param},
+                                                  /*run_hlo_passes=*/false));
   EXPECT_TRUE(LiteralTestUtil::Equal(
       LiteralUtil::MakeTupleOwned(LiteralUtil::CreateR2<float>({{1, 2, 3}})),
       result));

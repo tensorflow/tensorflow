@@ -91,17 +91,18 @@ void FreezeAssetsPass::runOnOperation() {
           tensorflow::io::JoinPath(saved_model_dir, asset_filename);
       ShapedType shaped_type =
           RankedTensorType::get({1}, TF::StringType::get(builder.getContext()));
-      auto const_op = builder.create<TF::ConstOp>(
-          asset.getLoc(),
+      auto const_op = TF::ConstOp::create(
+          builder, asset.getLoc(),
           DenseStringElementsAttr::get(shaped_type, {filename}));
       for (auto init_op : init_table_from_text_file_ops_to_erase) {
         // Replace the InitializeTableFromTextFileV2Op to use the saved model's
         // asset filepath.
         builder.setInsertionPoint(init_op);
-        builder.create<TF::InitializeTableFromTextFileV2Op>(
-            init_op.getLoc(), init_op.getTableHandle(), const_op.getResult(),
-            init_op.getKeyIndex(), init_op.getValueIndex(),
-            init_op.getVocabSize(), init_op.getDelimiter());
+        TF::InitializeTableFromTextFileV2Op::create(
+            builder, init_op.getLoc(), init_op.getTableHandle(),
+            const_op.getResult(), init_op.getKeyIndex(),
+            init_op.getValueIndex(), init_op.getVocabSize(),
+            init_op.getDelimiter());
         init_op.erase();
       }
     }

@@ -156,9 +156,6 @@ bool IsCustomCallToTopK(const HloInstruction& hlo);
 // is a success/failure code per batch element.
 extern const char* const kCusolverCholeskyCallTarget;
 
-// Returns true if `instr` is a non-strided slice.
-bool IsSliceWithUnitStrides(const HloInstruction* instr);
-
 // Returns true if `instr` is a slice (or dynamic slice) instruction and
 // operates on a contiguous slice of the input buffer.
 bool IsContiguousSlice(const HloInstruction& instr);
@@ -260,12 +257,6 @@ TransposeSpec GetTransposeSpec(const HloTransposeInstruction* transpose);
 // Returns the default tile sizes for the packed transpose emitter.
 absl::StatusOr<absl::InlinedVector<int64_t, 3>> GetPackedTransposeTileSizes(
     const TransposeSpec& spec);
-
-// Checks if the instruction is elementwise.
-bool IsIntermediate(const HloInstruction* instr, int allowed_operand_count = 1);
-
-// Log the given module if the VLOG level is >= level.
-void VLogModule(int level, const llvm::Module& module);
 
 // Verify the given module, and crash if it failed.
 void VerifyModule(const llvm::Module& module);

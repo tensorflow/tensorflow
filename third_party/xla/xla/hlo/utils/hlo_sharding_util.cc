@@ -2121,13 +2121,20 @@ std::optional<int64_t> GetDimensionForIota(const HloInstruction* maybe_iota,
       const int64_t gte_index = gte->tuple_index();
       std::vector<HloInstruction*> callers =
           call_graph.GetComputationCallers(called_computation);
+      // TODO(b/260601110): If the graph isn't flat, bail. We can do better and
+      // trace through all the incoming paths, but it's not clear this is
+      // necessary.
+      if (callers.size() != 1) {
+        return std::nullopt;
+      }
       // FlattenCallGraph pass should have ensured that this call site is
       // associated with an unique computation.
-      CHECK_EQ(callers.size(), 1);
-      HloInstruction* caller =
-          call_graph.GetComputationCallers(called_computation)[0];
+      HloInstruction* caller = callers[0];
       // Support tracing only caller that's either a conditional or while
       // (other types of non-entry computations are not partitioned).
+      // TODO(b/260601110): Support kCall here. This actually requires a bit of
+      // refactoring, since we need the `maybe_iota->opcode() ==
+      // HloOpcode::kParameter` case, not GTE)
       if (caller->opcode() == HloOpcode::kWhile &&
           caller->operand(0)->opcode() == HloOpcode::kTuple) {
         // Check tuple parameter of the while body is invariant at tuple index
@@ -3342,6 +3349,23 @@ DeviceGroupTileAssignment::flattened_device_groups() const {
     result.emplace_back(it, it + num_devices_per_group());
   }
   return result;
+}
+
+void ConvertV2ToV1Sharding(OpSharding& sharding) {
+  if (sharding.type() != OpSharding::OTHER ||
+      sharding.iota_reshape_dims().empty()) {
+    return;
+  }
+
+  // V2 Sharding uses iota_reshape_dims and iota_transpose_perm, while V1
+  // Sharding uses tile_assignment_devices.
+  absl::c_copy(
+      ToArray(sharding.iota_reshape_dims(), sharding.iota_transpose_perm(),
+              sharding.tile_assignment_dimensions()),
+      tsl::protobuf::RepeatedFieldBackInserter(
+          sharding.mutable_tile_assignment_devices()));
+  sharding.clear_iota_reshape_dims();
+  sharding.clear_iota_transpose_perm();
 }
 
 }  // namespace hlo_sharding_util

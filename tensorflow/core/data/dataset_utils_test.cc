@@ -762,17 +762,20 @@ TEST_F(DatasetOpsTestBase, TestVariantEqualityChecking) {
 
   Tensor scalar_1{DT_VARIANT, TensorShape({})};
   scalar_1.scalar<Variant>()() = TestVariant({CreateTensor<int64_t>({}, {1})});
-  EXPECT_THAT(ExpectEqual(scalar_0, scalar_1),
-              StatusIs(tsl::error::INTERNAL, HasSubstr("aren't equal")));
+  EXPECT_THAT(
+      ExpectEqual(scalar_0, scalar_1),
+      absl_testing::StatusIs(tsl::error::INTERNAL, HasSubstr("aren't equal")));
 
   Tensor nonscalar{DT_VARIANT, TensorShape({2})};
   EXPECT_THAT(ExpectEqual(nonscalar, nonscalar),
-              StatusIs(tsl::error::INTERNAL, HasSubstr("must be scalars")));
+              absl_testing::StatusIs(tsl::error::INTERNAL,
+                                     HasSubstr("must be scalars")));
 
   Tensor unsupported{DT_VARIANT, TensorShape({})};
   unsupported.scalar<Variant>()() = 0;
-  EXPECT_THAT(ExpectEqual(unsupported, unsupported),
-              StatusIs(tsl::error::INTERNAL, HasSubstr("types must be")));
+  EXPECT_THAT(
+      ExpectEqual(unsupported, unsupported),
+      absl_testing::StatusIs(tsl::error::INTERNAL, HasSubstr("types must be")));
 }
 
 }  // namespace

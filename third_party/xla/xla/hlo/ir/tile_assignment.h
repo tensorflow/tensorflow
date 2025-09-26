@@ -166,6 +166,11 @@ class IotaTileAssignment {
   std::unique_ptr<char[]> storage_;
 };
 
+// Materializes array representation of IotaTileAssignment.
+Array<int64_t> ToArray(absl::Span<const int64_t> reshape_dims,
+                       absl::Span<const int> transpose_perm,
+                       absl::Span<const int64_t> dims);
+
 // Internal class that represents how an ordered list of device IDs are sharded
 // along different dimensions. It manages full or compact representation of the
 // device IDs without having callers worry about what underlying format is used.

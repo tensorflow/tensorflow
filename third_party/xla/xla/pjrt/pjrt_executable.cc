@@ -25,6 +25,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -34,17 +35,21 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/client/executable_build_options.h"
+#include "xla/debug_options_flags.h"
 #include "xla/layout.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/pjrt/proto/compile_options.pb.h"
 #include "xla/pjrt/proto/execute_options.pb.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/compiler.h"
 #include "xla/service/computation_layout.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/hlo_value.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
@@ -100,12 +105,13 @@ absl::StatusOr<CompileOptionsProto> CompileOptions::ToProto() const {
 
 absl::StatusOr<CompileOptions> CompileOptions::FromProto(
     const CompileOptionsProto& proto) {
+  CompileOptions output;
   if (!proto.serialized_multi_slice_config().empty()) {
-    return Unimplemented(
-        "multi_slice_config not supported in CompileOptions::FromProto.");
+    LOG(WARNING) << "Multi slice config from proto, must deserialize to use.";
+    output.serialized_multi_slice_config =
+        proto.serialized_multi_slice_config();
   }
 
-  CompileOptions output;
   if (proto.argument_layouts_size() > 0) {
     std::vector<Shape> output_argument_layouts;
     output_argument_layouts.reserve(proto.argument_layouts_size());
@@ -126,7 +132,8 @@ absl::StatusOr<CompileOptions> CompileOptions::FromProto(
                       LoadEnvOptionOverrides(proto.env_option_overrides()));
 
   if (proto.has_target_config()) {
-    output.target_config = xla::Compiler::TargetConfig(proto.target_config());
+    TF_ASSIGN_OR_RETURN(output.target_config, Compiler::TargetConfig::FromProto(
+                                                  proto.target_config()));
   }
   return output;
 }
@@ -639,6 +646,12 @@ absl::Status CompileOptions::ApplyOption(const std::string& key,
   auto* xla_field = xla::DebugOptions::descriptor()->FindFieldByName(key);
   if (xla_field == nullptr) {
     return InvalidArgument("No such compile option: '%s'", key);
+  }
+  if (xla::GetFlagStatus(key) == xla::FlagStatus::kDeprecated) {
+    LOG(WARNING) << "Compile option '" << key
+                 << "' is deprecated and will not be supported when 6 months "
+                    "deprecation period ends. Check the flag description "
+                    "for more details.";
   }
   xla::DebugOptions& debug_options =
       *executable_build_options.mutable_debug_options();

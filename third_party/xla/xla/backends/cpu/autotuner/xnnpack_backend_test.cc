@@ -20,6 +20,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/strings/string_view.h"
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/backends/cpu/autotuner/cpu_codegen_backend.h"
@@ -76,9 +77,10 @@ TEST_F(XnnpackBackendTest, GetDefaultConfigTest) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto config, backend_->GetDefaultConfig(
                        *module->entry_computation()->root_instruction()));
-  auto* xnnpack_config = tsl::down_cast<XnnpackBackend::Config*>(config.get());
+  XnnFusionBackendConfig xnnpack_config;
+  config->UnpackTo(&xnnpack_config);
 
-  EXPECT_TRUE(xnnpack_config->use_threadpool());
+  EXPECT_TRUE(xnnpack_config.use_threadpool());
 }
 
 TEST_F(XnnpackBackendTest, InvalidFusionKind) {
@@ -107,7 +109,7 @@ TEST_F(XnnpackBackendTest, InvalidFusionKind) {
       *module->entry_computation()->root_instruction());
 
   EXPECT_THAT(config,
-              tsl::testing::StatusIs(
+              absl_testing::StatusIs(
                   absl::StatusCode::kInvalidArgument,
                   testing::HasSubstr("Backend kind __not_xnn_fusion doesn't "
                                      "match expected kind __xnn_fusion.")));
@@ -121,10 +123,12 @@ TEST_F(XnnpackBackendTest, GetSupportedConfigsTest) {
                         *module->entry_computation()->root_instruction()));
 
   EXPECT_EQ(configs.size(), 2);
-  EXPECT_TRUE(tsl::down_cast<XnnpackBackend::Config*>(configs[0].get())
-                  ->use_threadpool());
-  EXPECT_FALSE(tsl::down_cast<XnnpackBackend::Config*>(configs[1].get())
-                   ->use_threadpool());
+  XnnFusionBackendConfig xnnpack_config0;
+  configs[0]->UnpackTo(&xnnpack_config0);
+  EXPECT_TRUE(xnnpack_config0.use_threadpool());
+  XnnFusionBackendConfig xnnpack_config1;
+  configs[1]->UnpackTo(&xnnpack_config1);
+  EXPECT_FALSE(xnnpack_config1.use_threadpool());
 }
 
 TEST_F(XnnpackBackendTest, CompileSupportedBackends) {
@@ -149,7 +153,8 @@ TEST_F(XnnpackBackendTest, EnsureConfigIsApplied) {
                           backend_->GetSupportedConfigs(*fusion_instruction));
 
   for (const auto& config : configs) {
-    auto xnnpack_config = tsl::down_cast<XnnpackBackend::Config*>(config.get());
+    XnnFusionBackendConfig xnnpack_config;
+    config->UnpackTo(&xnnpack_config);
     EXPECT_TRUE(backend_->ApplyConfig(*fusion_instruction, *config).ok());
 
     TF_ASSERT_OK_AND_ASSIGN(
@@ -159,7 +164,7 @@ TEST_F(XnnpackBackendTest, EnsureConfigIsApplied) {
     EXPECT_EQ(instruction_backend_config.fusion_config()
                   .xnn_fusion_config()
                   .use_threadpool(),
-              xnnpack_config->use_threadpool());
+              xnnpack_config.use_threadpool());
   }
 }
 

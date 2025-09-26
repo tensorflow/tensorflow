@@ -70,16 +70,16 @@ llvm::Error RuntimeSymbolGenerator::tryToGenerate(
     llvm::orc::LookupState&, llvm::orc::LookupKind kind,
     llvm::orc::JITDylib& jit_dylib, llvm::orc::JITDylibLookupFlags,
     const llvm::orc::SymbolLookupSet& names) {
-  llvm::orc::SymbolMap new_defs;
+  llvm::orc::SymbolMap symbols;
+  symbols.reserve(names.size());
 
-  for (const auto& kv : names) {
-    const auto& name = kv.first;
+  for (const auto& [name, flags] : names) {
     if (auto symbol = ResolveRuntimeSymbol(*name)) {
-      new_defs[name] = *symbol;
+      symbols[name] = *symbol;
     }
   }
 
-  cantFail(jit_dylib.define(llvm::orc::absoluteSymbols(std::move(new_defs))));
+  cantFail(jit_dylib.define(llvm::orc::absoluteSymbols(std::move(symbols))));
   return llvm::Error::success();
 }
 
@@ -95,9 +95,12 @@ RuntimeSymbolGenerator::ResolveRuntimeSymbol(llvm::StringRef name) {
     fn_addr = CustomCallTargetRegistry::Global()->Lookup(name.str(), "Host");
   }
 
+  // We register runtime symbols as weak, because during concurrent compilation
+  // different threads may race to register their symbols in the same dylib and
+  // we get spurious "symbol already defined" errors.
   return llvm::orc::ExecutorSymbolDef{
       llvm::orc::ExecutorAddr(reinterpret_cast<uint64_t>(fn_addr)),
-      llvm::JITSymbolFlags::None};
+      llvm::JITSymbolFlags::Weak};
 }
 
 //===----------------------------------------------------------------------===//

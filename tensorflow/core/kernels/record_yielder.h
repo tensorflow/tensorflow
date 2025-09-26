@@ -21,13 +21,13 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/synchronization/notification.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/thread_annotations.h"
-
 namespace tensorflow {
 
 // RecordYielder produces value records from a set of tfrecord files
@@ -125,7 +125,7 @@ class RecordYielder {
   int64_t num_records_yielded_in_epoch_ = 0;
 
   // Trigger when the main loop has exited.
-  Notification main_loop_done_;
+  absl::Notification main_loop_done_;
 
   // condition_variables.
   condition_variable buf_empty_;

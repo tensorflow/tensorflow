@@ -42,7 +42,6 @@ class HloFusionAnalysis {
     kReduction,
     kTranspose,
     kConcatenate,
-    kInputSlices,
     kScatter,
     kCuDnn,
     kDynamicMemcpy,

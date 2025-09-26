@@ -62,7 +62,7 @@ struct MlirDumpConfig {
   }
 
   // Op printing flags.
-  mlir::OpPrintingFlags op_printing_flags = std::nullopt;
+  mlir::OpPrintingFlags op_printing_flags = {};
 
   // The target MLIR dialect.
   Dialect dialect = Dialect::kTFG;

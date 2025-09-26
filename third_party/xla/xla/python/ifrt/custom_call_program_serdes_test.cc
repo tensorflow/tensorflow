@@ -176,8 +176,9 @@ TEST_P(CustomCallCompileOptionsSerDesTest, InvalidSerialized) {
   serialized.set_data("abc");
   EXPECT_THAT(
       Deserialize<CustomCallCompileOptions>(serialized, /*options=*/nullptr),
-      StatusIs(absl::StatusCode::kInvalidArgument,
-               MatchesRegex("Invalid serialized CustomCallCompileOptions.*")));
+      absl_testing::StatusIs(
+          absl::StatusCode::kInvalidArgument,
+          MatchesRegex("Invalid serialized CustomCallCompileOptions.*")));
 }
 
 INSTANTIATE_TEST_SUITE_P(

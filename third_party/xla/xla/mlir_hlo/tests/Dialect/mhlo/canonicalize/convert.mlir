@@ -183,6 +183,17 @@ func.func @const_int_bf16() -> tensor<bf16> {
 
 // -----
 
+// CHECK-LABEL: func @eval_convert_bool_i32
+func.func @eval_convert_bool_i32() -> tensor<2xi32> {
+  // CHECK-NEXT: [[CST:%.+]] = mhlo.constant dense<[0, 1]> : tensor<2xi32>
+  %cst = mhlo.constant dense<[0, 1]> : tensor<2xi1>
+  %0 = mhlo.convert %cst : (tensor<2xi1>) -> tensor<2xi32>
+  // CHECK-NEXT: return [[CST]]
+  func.return %0 : tensor<2xi32>
+}
+
+// -----
+
 // CHECK-LABEL: func @const_bool_f32
 func.func @const_bool_f32() -> tensor<2xf32> {
   // CHECK-NEXT: [[CST:%.+]] = mhlo.constant dense<[0.000000e+00, 1.000000e+00]> : tensor<2xf32>
@@ -190,6 +201,28 @@ func.func @const_bool_f32() -> tensor<2xf32> {
   %0 = mhlo.convert %cst : (tensor<2xi1>) -> tensor<2xf32>
   // CHECK-NEXT: return [[CST]]
   func.return %0 : tensor<2xf32>
+}
+
+// -----
+
+// CHECK-LABEL: func @const_i32_bool
+func.func @const_i32_bool() -> tensor<3xi1> {
+  // CHECK-NEXT: [[CST:%.+]] = mhlo.constant dense<[false, true, true]> : tensor<3xi1>
+  %cst = mhlo.constant dense<[0, 1, 10]> : tensor<3xi32>
+  %0 = mhlo.convert %cst : (tensor<3xi32>) -> tensor<3xi1>
+  // CHECK-NEXT: return [[CST]]
+  func.return %0 : tensor<3xi1>
+}
+
+// -----
+
+// CHECK-LABEL: func @const_f32_bool
+func.func @const_f32_bool() -> tensor<4xi1> {
+  // CHECK-NEXT: [[CST:%.+]] = mhlo.constant dense<[true, false, true, true]> : tensor<4xi1>
+  %cst = mhlo.constant dense<[-1.0, 0.0, 1.0, 10.0]> : tensor<4xf32>
+  %0 = mhlo.convert %cst : (tensor<4xf32>) -> tensor<4xi1>
+  // CHECK-NEXT: return [[CST]]
+  func.return %0 : tensor<4xi1>
 }
 
 // -----

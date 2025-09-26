@@ -207,25 +207,29 @@ class MathTypedTest : public MathTest {
 
     ComputeAndCompareR1<T>(&b, expected, {&param0}, kErrorSpec);
   }
+
+ protected:
+  void SetUp() override {
+    if (std::is_same_v<T, tsl::float4_e2m1fn> &&
+        test::DeviceTypeIs(test::kTpu)) {
+      // TODO(b/385004399): Run tests on these types on TPU.
+      GTEST_SKIP();
+    }
+
+    if (std::is_same_v<T, double> && !test::BackendSupportsFloat64()) {
+      GTEST_SKIP();
+    }
+  }
 };
 
 using TestTypes =
     ::testing::Types<tsl::float8_e3m4, tsl::float8_e4m3, tsl::float8_e4m3fnuz,
                      tsl::float8_e4m3b11fnuz, tsl::float8_e5m2,
                      tsl::float8_e5m2fnuz,
-#ifndef XLA_BACKEND_DOES_NOT_SUPPORT_FLOAT16
                      Eigen::half,
-#endif
-#ifndef XLA_BACKEND_DOES_NOT_SUPPORT_BFLOAT16
                      Eigen::bfloat16,
-#endif
-#ifndef XLA_BACKEND_DOES_NOT_SUPPORT_FLOAT64
                      double,
-#endif
-#ifndef XLA_TEST_BACKEND_TPU
-                     // TODO(b/385004399): Run tests on these types on TPU.
                      tsl::float4_e2m1fn,
-#endif
                      float>;
 
 TYPED_TEST_CASE(MathTypedTest, TestTypes);
@@ -311,8 +315,10 @@ TEST_F(MathTest, SqrtF64) {
   ComputeAndCompareR0<double>(&builder, 0.0f, {&zero_literal}, kErrorSpec);
 }
 
-#ifndef XLA_BACKEND_DOES_NOT_SUPPORT_FLOAT64
 TEST_F(MathTest, ErfInvF64) {
+  if (!test::BackendSupportsFloat64()) {
+    GTEST_SKIP();
+  }
   XlaBuilder builder(TestName());
   auto x = ConstantR1<double>(
       &builder, {-0.9, -0.8, -0.7, -0.6, -0.5, -0.4, -0.3, -0.2, -0.1, 0.0, 0.1,
@@ -331,7 +337,6 @@ TEST_F(MathTest, ErfInvF64) {
                                   1.1630871536766736};
   ComputeAndCompareR1<double>(&builder, expected, {}, ErrorSpec{1e-15});
 }
-#endif
 
 TEST_F(MathTest, SquareTenValues) {
   XlaBuilder builder(TestName());
@@ -437,7 +442,6 @@ TEST_F(MathTest, Lgamma) {
   ComputeAndCompareR1<float>(&builder, expected, {}, ErrorSpec{0.001});
 }
 
-#if !defined(XLA_BACKEND_DOES_NOT_SUPPORT_FLOAT16)
 TEST_F(MathTest, LgammaF16) {
   SetFastMathDisabled(true);
 
@@ -458,7 +462,6 @@ TEST_F(MathTest, LgammaF16) {
   };
   ComputeAndCompareR1<half>(&b, expected, {}, ErrorSpec{0.1});
 }
-#endif
 
 TEST_F(MathTest, Digamma) {
   XlaBuilder builder(TestName());
@@ -527,7 +530,6 @@ TEST_F(MathTest, IgammaSpecialValues) {
   ComputeAndCompareR1<float>(&builder, expected, {}, kErrorSpec);
 }
 
-#if !defined(XLA_BACKEND_DOES_NOT_SUPPORT_FLOAT16)
 TEST_F(MathTest, IgammaF16) {
   SetFastMathDisabled(true);
 
@@ -548,7 +550,6 @@ TEST_F(MathTest, IgammaF16) {
        {half(0.6220287), half(0.6384635), half(0.6152258), half(0.6072449)}}};
   ComputeAndCompareR3<half>(&builder, expected, {}, ErrorSpec{1e-3});
 }
-#endif
 
 TEST_F(MathTest, Igammac) {
   XlaBuilder builder(TestName());
@@ -574,7 +575,6 @@ TEST_F(MathTest, Igammac) {
   ComputeAndCompareR3<float>(&builder, expected, {}, kErrorSpec);
 }
 
-#if !defined(XLA_BACKEND_DOES_NOT_SUPPORT_FLOAT16)
 TEST_F(MathTest, IgammacF16) {
   SetFastMathDisabled(true);
 
@@ -596,7 +596,6 @@ TEST_F(MathTest, IgammacF16) {
         half(0.39275512)}}};
   ComputeAndCompareR3<half>(&builder, expected, {}, ErrorSpec{1e-4});
 }
-#endif
 
 TEST_F(MathTest, RoundToEven) {
   XlaBuilder builder(TestName());

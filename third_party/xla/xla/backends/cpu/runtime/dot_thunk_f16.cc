@@ -15,7 +15,8 @@ limitations under the License.
 
 #include "xla/backends/cpu/runtime/dot_thunk.h"  // NOLINT IWYU pragma: keep
 
-template void ::xla::cpu::DotThunk::TypedMatMul<Eigen::half>(
+template void ::xla::cpu::DotThunk::TypedMatMul<Eigen::half, Eigen::half,
+                                                Eigen::half>(
     const Eigen::ThreadPoolDevice* device, void* out, void* lhs, void* rhs,
     int64_t m, int64_t n, int64_t k, bool transpose_lhs, bool transpose_rhs,
     DoneCallback done);

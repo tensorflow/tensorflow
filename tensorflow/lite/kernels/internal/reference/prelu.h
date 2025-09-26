@@ -26,10 +26,10 @@ namespace tflite {
 namespace reference_ops {
 
 // Broadcast prelu to output_shape for quantized uint8_t/int8_t data.
-template <typename T>
+template <typename T, typename U>
 inline void BroadcastPrelu4DSlow(
     const PreluParams& params, const RuntimeShape& input_shape,
-    const T* input_data, const RuntimeShape& alpha_shape, const T* alpha_data,
+    const T* input_data, const RuntimeShape& alpha_shape, const U* alpha_data,
     const RuntimeShape& output_shape, T* output_data) {
   TFLITE_DCHECK_LE(input_shape.DimensionsCount(), 4);
   TFLITE_DCHECK_LE(alpha_shape.DimensionsCount(), 4);
@@ -74,10 +74,10 @@ inline void BroadcastPrelu4DSlow(
   }
 }
 
-template <typename T>
+template <typename T, typename U>
 inline void Prelu(const PreluParams& params, const RuntimeShape& input_shape,
                   const T* input_data, const RuntimeShape& alpha_shape,
-                  const T* alpha_data, const RuntimeShape& output_shape,
+                  const U* alpha_data, const RuntimeShape& output_shape,
                   T* output_data) {
   const int32_t quantized_min = std::numeric_limits<T>::min();
   const int32_t quantized_max = std::numeric_limits<T>::max();

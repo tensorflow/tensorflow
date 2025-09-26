@@ -42,6 +42,7 @@ class SimpleDelegate {
  public:
   enum Options {
     kNone = 0,
+    kFailOnInit = 1 << 0,  // To simulate failure of Delegate node's Init().
     kFailOnPrepare =
         1 << 1,  // To simulate failure of Delegate node's Prepare().
     kFailOnInvoke = 1 << 2,  // To simulate failure of Delegate node's Invoke().
@@ -87,6 +88,7 @@ class SimpleDelegate {
  private:
   std::vector<int> nodes_;
   TfLiteDelegate delegate_;
+  bool fail_delegate_node_init_ = false;
   bool fail_delegate_node_prepare_ = false;
   bool fail_delegate_node_invoke_ = false;
   int min_ops_per_subset_ = 0;

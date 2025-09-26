@@ -44,8 +44,10 @@ inline BufferAssigner::Colorer CollectiveColorer(bool use_user_buffers,
                                                  bool use_nvshmem) {
   return [use_user_buffers, use_nvshmem](HloAliasAnalysis* alias_analysis,
                                          const HloOrdering&) {
+    // NOTE: The explicit internal constructor is needed as an explicitly typed
+    // variable to avoid a method ambiguity error when compiling for CUDA 12.4.
     static const absl::NoDestructor<absl::flat_hash_set<HloOpcode>>
-        kSupportedOpcodes({
+        kSupportedOpcodes(absl::flat_hash_set<HloOpcode>{
             HloOpcode::kAllReduce,
             HloOpcode::kAllReduceStart,
             HloOpcode::kAllReduceDone,

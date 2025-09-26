@@ -27,6 +27,7 @@
 #include "absl/time/time.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/ExtensibleRTTI.h"
+#include "xla/python/ifrt/basic_device_list.h"
 #include "xla/python/ifrt/compiler.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/future.h"
@@ -162,11 +163,13 @@ class CompilerTest : public testing::Test {
 TEST_F(CompilerTest, Compile) {
   std::vector<MockDevice> devices(2);
   TestQueue<IfrtRequest> requests_queue(/*pop_timeout=*/absl::Minutes(1));
+  auto device_list = BasicDeviceList::Create({&devices[0], &devices[1]});
 
   MockClient client;
   ON_CALL(client, LookupDevice(_)).WillByDefault(Invoke([&](DeviceId id) {
     return &devices[id.value()];
   }));
+  ON_CALL(client, MakeDeviceList(_)).WillByDefault(Return(device_list));
 
   Compiler compiler(&client, rpc_helper_);
 
@@ -211,9 +214,10 @@ TEST_F(CompilerTest, Compile) {
   EXPECT_THAT(executable->addressable_devices(),
               ElementsAre(&devices[0], &devices[1]));
   EXPECT_THAT(executable->Fingerprint(),
-              IsOkAndHolds(Optional(std::string("fingerprint"))));
-  EXPECT_THAT(executable->GetReadyFuture().Await(),
-              StatusIs(absl::StatusCode::kUnknown, "injected error"));
+              absl_testing::IsOkAndHolds(Optional(std::string("fingerprint"))));
+  EXPECT_THAT(
+      executable->GetReadyFuture().Await(),
+      absl_testing::StatusIs(absl::StatusCode::kUnknown, "injected error"));
 
   EXPECT_EQ(requests_queue.Pop().check_future_request().future_handle(), 5678);
 }

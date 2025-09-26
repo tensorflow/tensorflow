@@ -112,12 +112,12 @@ TEST_F(LlvmKernelBackendTest, GetDefaultConfigTest) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto config, backend_->GetDefaultConfig(
                        *module->entry_computation()->root_instruction()));
-  auto* llvm_kernel_config =
-      tsl::down_cast<LlvmKernelBackend::Config*>(config.get());
+  LlvmKernelBackend::Config llvm_kernel_config;
+  ASSERT_TRUE(config->UnpackTo(&llvm_kernel_config));
 
-  EXPECT_FALSE(llvm_kernel_config->disable_loop_unrolling());
-  EXPECT_FALSE(llvm_kernel_config->slp_vectorizer_disabled());
-  EXPECT_FALSE(llvm_kernel_config->optimize_for_size());
+  EXPECT_FALSE(llvm_kernel_config.disable_loop_unrolling());
+  EXPECT_FALSE(llvm_kernel_config.slp_vectorizer_disabled());
+  EXPECT_FALSE(llvm_kernel_config.optimize_for_size());
 }
 
 TEST_F(LlvmKernelBackendTest, GetSupportedConfigsTest) {
@@ -153,8 +153,8 @@ TEST_F(LlvmKernelBackendTest, EnsureConfigIsApplied) {
                           backend_->GetSupportedConfigs(*instruction));
 
   for (const auto& config : configs) {
-    auto llvm_kernel_config =
-        tsl::down_cast<LlvmKernelBackend::Config*>(config.get());
+    LlvmKernelBackend::Config llvm_kernel_config;
+    ASSERT_TRUE(config->UnpackTo(&llvm_kernel_config));
     EXPECT_TRUE(backend_->ApplyConfig(*instruction, *config).ok());
 
     TF_ASSERT_OK_AND_ASSIGN(auto instruction_backend_config,
@@ -162,15 +162,15 @@ TEST_F(LlvmKernelBackendTest, EnsureConfigIsApplied) {
 
     EXPECT_EQ(instruction_backend_config.llvm_kernel_options()
                   .disable_loop_unrolling(),
-              llvm_kernel_config->disable_loop_unrolling());
+              llvm_kernel_config.disable_loop_unrolling());
 
     EXPECT_EQ(instruction_backend_config.llvm_kernel_options()
                   .slp_vectorizer_disabled(),
-              llvm_kernel_config->slp_vectorizer_disabled());
+              llvm_kernel_config.slp_vectorizer_disabled());
 
     EXPECT_EQ(
         instruction_backend_config.llvm_kernel_options().optimize_for_size(),
-        llvm_kernel_config->optimize_for_size());
+        llvm_kernel_config.optimize_for_size());
   }
 }
 

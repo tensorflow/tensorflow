@@ -39,8 +39,8 @@ class BroadcastAndReductionAxesIndependentTest : public ::testing::Test {
 
   // Builds an mlir::Value representing a tensor with the given shape.
   Value BuildTensor(ArrayRef<int64_t> shape) {
-    return builder_.create<arith::ConstantOp>(
-        builder_.getUnknownLoc(),
+    return arith::ConstantOp::create(
+        builder_, builder_.getUnknownLoc(),
         RankedTensorType::get(shape, builder_.getF32Type()),
         builder_.getZeroAttr(
             RankedTensorType::get(shape, builder_.getF32Type())));
@@ -89,8 +89,8 @@ TEST_F(BroadcastAndReductionAxesIndependentTest, EmptyReductionAxes) {
 }
 
 TEST_F(BroadcastAndReductionAxesIndependentTest, UnrankedInput) {
-  Value input_tensor = builder_.create<arith::ConstantOp>(
-      builder_.getUnknownLoc(), builder_.getF32Type(),
+  Value input_tensor = arith::ConstantOp::create(
+      builder_, builder_.getUnknownLoc(), builder_.getF32Type(),
       builder_.getZeroAttr(builder_.getF32Type()));
   DenseElementsAttr reduction_axes = BuildIntArrayAttr({0, 2});
   DenseElementsAttr target_shape = BuildIntArrayAttr({2, 3, 4, 5});

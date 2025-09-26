@@ -31,6 +31,7 @@ gpu_device_info {
   cuda_compute_capability {
     major: 8
     minor: 6
+    feature_extension: NONE
   }
   registers_per_core_limit: 65536
   registers_per_block_limit: 65536

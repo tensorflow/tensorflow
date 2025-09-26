@@ -438,6 +438,16 @@ void PopulateWithRandomIntegralDataWithBounds(Literal* literal,
       ShapeUtil::MakeShape(primitive_type, dimensions));
 }
 
+/* static */ Literal LiteralUtil::ConvertF8E4M3FNToF32(
+    const LiteralSlice& f8e4m3fn_literal) {
+  return ConvertType<tsl::float8_e4m3fn, float>(f8e4m3fn_literal);
+}
+
+/* static */ Literal LiteralUtil::ConvertF8E5M2ToF32(
+    const LiteralSlice& f8e5m2_literal) {
+  return ConvertType<tsl::float8_e5m2, float>(f8e5m2_literal);
+}
+
 /* static */ Literal LiteralUtil::ConvertS8ToF32(
     const LiteralSlice& s8_literal) {
   return ConvertType<int8_t, float>(s8_literal);

@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/hash/hash.h"
 #include "absl/status/status.h"
+#include "absl/synchronization/notification.h"
 #include "tensorflow/core/common_runtime/copy_tensor.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
 #include "tensorflow/core/framework/cancellation.h"
@@ -71,7 +72,7 @@ absl::Status BaseRendezvousMgr::RecvLocal(int64_t step_id,
                                           const Rendezvous::ParsedKey& parsed,
                                           Tensor* val, bool* is_dead) {
   absl::Status ret;
-  Notification n;
+  absl::Notification n;
   RecvLocalAsync(step_id, parsed,
                  [val, is_dead, &ret, &n](const absl::Status& s,
                                           const Rendezvous::Args& send_args,

@@ -124,7 +124,7 @@ struct AsyncBundleTypeStorage final
 
     // Copy in the element types into the trailing storage.
     std::uninitialized_copy(key.begin(), key.end(),
-                            result->getTrailingObjects<Type>());
+                            result->getTrailingObjects());
     return result;
   }
 
@@ -134,9 +134,7 @@ struct AsyncBundleTypeStorage final
   unsigned size() const { return numElements; }
 
   // Return the held types.
-  ArrayRef<Type> getTypes() const {
-    return {getTrailingObjects<Type>(), size()};
-  }
+  ArrayRef<Type> getTypes() const { return {getTrailingObjects(), size()}; }
 
   void getFlattenedTypes(SmallVectorImpl<Type>& types) {
     for (Type type : getTypes()) {
@@ -1240,56 +1238,6 @@ LogicalResult RaggedDotOp::verify() {
         "is incompatible with return type of operation ", resultType, "");
   }
 
-  return success();
-}
-
-//===----------------------------------------------------------------------===//
-// SparseDotOp
-//===----------------------------------------------------------------------===//
-
-LogicalResult SparseDotOp::verify() {
-  RankedTensorType lhsType = dyn_cast<RankedTensorType>(getLhs().getType());
-  RankedTensorType rhsType = dyn_cast<RankedTensorType>(getRhs().getType());
-  // If either operand is unranked, static verification is not possible.
-  if (!lhsType || !rhsType) return success();
-
-  auto applySparsityDescriptor = [&](std::optional<SparsityDescriptorAttr> attr,
-                                     RankedTensorType* type) {
-    if (!attr.has_value()) return success();
-    SmallVector<int64_t> sparseShape(type->getShape());
-    if (static_cast<size_t>(attr->getDimension()) >= sparseShape.size()) {
-      return emitOptionalError(getLoc(), "sparsity dimension is incorrect");
-    }
-    if (attr->getN() != 2 || attr->getM() != 4) {
-      return emitOptionalError(getLoc(), "only 2:4 sparsity is supported");
-    }
-    sparseShape[attr->getDimension()] *= attr->getM() / attr->getN();
-    *type = type->clone(sparseShape);
-    return success();
-  };
-  if (failed(applySparsityDescriptor(getLhsSparsity(), &lhsType)) ||
-      failed(applySparsityDescriptor(getRhsSparsity(), &rhsType)))
-    return failure();
-
-  SmallVector<ShapedTypeComponents> inferredReturnShapes;
-  if (failed(hlo::inferDotGeneralOp(
-          getLoc(), lhsType, rhsType,
-          getDotDimensionNumbersAttr().getLhsBatchingDimensions(),
-          getDotDimensionNumbersAttr().getRhsBatchingDimensions(),
-          getDotDimensionNumbersAttr().getLhsContractingDimensions(),
-          getDotDimensionNumbersAttr().getRhsContractingDimensions(),
-          getPrecisionConfig(), inferredReturnShapes)))
-    return failure();
-
-  auto inferredShape = inferredReturnShapes[0];
-  auto resultType = cast<ShapedType>(getResult().getType());
-  if (inferredShape.hasRank() && resultType.hasRank() &&
-      failed(verifyCompatibleShape(inferredShape.getDims(),
-                                   resultType.getShape())))
-    return emitOptionalError(getLoc(), "inferred shape '",
-                             hlo::dimSizesToString(inferredShape.getDims()),
-                             "' is incompatible with return type of operation ",
-                             resultType);
   return success();
 }
 
@@ -3910,14 +3858,14 @@ void ReduceWindowOp::build(
   locs.reserve(numValues);
   for (auto i : inputs) {
     auto iType = cast<ShapedType>(i.getType());
-    blockArgTypes.push_back(iType.cloneWith(
-        llvm::ArrayRef<int64_t>(std::nullopt), iType.getElementType()));
+    blockArgTypes.push_back(
+        iType.cloneWith(llvm::ArrayRef<int64_t>(), iType.getElementType()));
     locs.push_back(i.getLoc());
   }
   for (auto i : init_values) {
     auto iType = cast<ShapedType>(i.getType());
-    blockArgTypes.push_back(iType.cloneWith(
-        llvm::ArrayRef<int64_t>(std::nullopt), iType.getElementType()));
+    blockArgTypes.push_back(
+        iType.cloneWith(llvm::ArrayRef<int64_t>(), iType.getElementType()));
     locs.push_back(i.getLoc());
   }
 

@@ -19,9 +19,11 @@
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 
 #include "absl/strings/cord.h"
 #include "absl/strings/string_view.h"
+#include "xla/pjrt/semaphore.h"
 #include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt_proxy/client/host_buffer.h"
 #include "xla/python/ifrt_proxy/common/grpc_ifrt_service.grpc.pb.h"
@@ -58,6 +60,9 @@ class GrpcClientHostBufferStore : public ClientHostBufferStore {
   // RPC reads or writes, and then to do `promise.Set()` for the Future returned
   // to the caller.
   std::unique_ptr<tsl::UnboundedWorkQueue> work_queue_;
+
+  std::optional<xla::Semaphore> store_throttler_;
+  std::optional<xla::Semaphore> lookup_throttler_;
 };
 
 }  // namespace proxy

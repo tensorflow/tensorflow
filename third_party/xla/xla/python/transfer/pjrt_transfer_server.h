@@ -25,9 +25,12 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/base/thread_annotations.h"
 #include "absl/container/btree_map.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
@@ -40,6 +43,7 @@ limitations under the License.
 #include "xla/python/transfer/event_loop.h"
 #include "xla/python/transfer/socket-server.h"
 #include "xla/python/transfer/streaming_ifrt.h"
+#include "xla/tsl/concurrency/ref_count.h"
 
 namespace xla {
 namespace ifrt {
@@ -88,6 +92,8 @@ class PjRtTransferServer : public TransferServerInterface {
   absl::Status StartTransferServer();
 
   int64_t CreateNewTransferKey();
+  absl::StatusOr<tsl::RCReference<aux::SocketServer::Connection>> GetConnection(
+      int remote_pid) ABSL_EXCLUSIVE_LOCKS_REQUIRED(connections_mu_);
 
   std::shared_ptr<xla::PjRtClient> pjrt_client_;
   size_t max_num_parallel_copies_;
@@ -99,6 +105,9 @@ class PjRtTransferServer : public TransferServerInterface {
   std::optional<std::shared_ptr<aux::SocketServer>> socket_server_;
   std::optional<std::shared_ptr<aux::PremappedCopierState>> premapped_copier_;
   std::atomic<int64_t> next_transfer_key_ = 0;
+  absl::flat_hash_map<int, tsl::RCReference<aux::SocketServer::Connection>>
+      connections_;
+  absl::Mutex connections_mu_;
 };
 
 }  // namespace ifrt

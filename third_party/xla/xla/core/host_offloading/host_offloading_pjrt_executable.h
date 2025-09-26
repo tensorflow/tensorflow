@@ -31,6 +31,7 @@ limitations under the License.
 #include "xla/service/hlo.pb.h"
 #include "xla/shape.h"
 #include "xla/shape_tree.h"
+#include "xla/tsl/concurrency/async_value_ref.h"
 
 namespace xla {
 
@@ -45,11 +46,10 @@ class HostOffloadingPjRtExecutable : public HostOffloadingExecutable {
   static absl::StatusOr<std::unique_ptr<HostOffloadingPjRtExecutable>>
   LoadFromProto(const HostOffloadingExecutableProto& proto);
 
-  absl::Status Execute(
+  tsl::AsyncValueRef<ExecuteEvent> Execute(
       absl::Span<const ShapeTree<HostOffloadingBuffer>> parameters,
       const xla::ShapeTree<HostOffloadingBuffer>& result,
-      const ExecuteOptions& execute_options,
-      OnResultReady on_result_ready) final;
+      const ExecuteOptions& execute_options) final;
 
   absl::string_view name() const final { return name_; }
 

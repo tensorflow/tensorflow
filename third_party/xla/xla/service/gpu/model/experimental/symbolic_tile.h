@@ -16,17 +16,19 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_MODEL_EXPERIMENTAL_SYMBOLIC_TILE_H_
 #define XLA_SERVICE_GPU_MODEL_EXPERIMENTAL_SYMBOLIC_TILE_H_
 
+#include <cstddef>
 #include <cstdint>
 #include <string>
 
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/Hashing.h"
 #include "llvm/ADT/SmallVector.h"
-#include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
-#include "xla/hlo/ir/hlo_instruction.h"
 
-namespace xla::gpu {
+namespace xla::gpu::experimental {
+
+class TilingSpace;
 
 // A map from tile IDs, sizes and runtime variables to tile's offsets, sizes,
 // strides and upper bounds. Offsets-sizes-strides define what slice to extract,
@@ -58,46 +60,75 @@ namespace xla::gpu {
 //
 // (tid0, tid1)[ts1] -> offsets [17 * tid0 + tid1 * ts1] sizes [ts1] strides [1]
 //              upper bounds [17 * tid0]
-class ExperimentalSymbolicTile {
+struct DimTile {
+  bool operator==(const DimTile& other) const;
+
+  mlir::AffineExpr offset;
+  mlir::AffineExpr size;
+  mlir::AffineExpr stride;
+  mlir::AffineExpr upper_bound;
+};
+template <typename H>
+H AbslHashValue(H h, const DimTile& dim_tile) {
+  llvm::hash_code dim_tile_hash = llvm::hash_combine(
+      dim_tile.offset, dim_tile.size, dim_tile.stride, dim_tile.upper_bound);
+  return H::combine(std::move(h), static_cast<size_t>(dim_tile_hash));
+}
+
+class SymbolicTile {
  public:
-  ExperimentalSymbolicTile(mlir::MLIRContext* mlir_context,
-                           int64_t num_tile_ids, int64_t num_rt_vars,
-                           llvm::ArrayRef<mlir::AffineExpr> offsets,
-                           llvm::ArrayRef<mlir::AffineExpr> sizes,
-                           llvm::ArrayRef<mlir::AffineExpr> strides,
-                           llvm::ArrayRef<mlir::AffineExpr> upper_bounds);
+  SymbolicTile(const TilingSpace& tiling_space,
+               llvm::SmallVector<DimTile> dim_tiles);
 
-  std::string ToString() const;
+  SymbolicTile(const TilingSpace& tiling_space,
+               llvm::ArrayRef<mlir::AffineExpr> offsets,
+               llvm::ArrayRef<mlir::AffineExpr> sizes,
+               llvm::ArrayRef<mlir::AffineExpr> strides,
+               llvm::ArrayRef<mlir::AffineExpr> upper_bounds);
 
-  llvm::ArrayRef<mlir::AffineExpr> offsets() const { return offsets_; }
-  llvm::ArrayRef<mlir::AffineExpr> sizes() const { return sizes_; }
-  llvm::ArrayRef<mlir::AffineExpr> strides() const { return strides_; }
-  llvm::ArrayRef<mlir::AffineExpr> upper_bounds() const {
-    return upper_bounds_;
-  }
+  std::string ToString(bool print_variables = true) const;
 
-  int64_t num_tile_ids() const { return num_tile_ids_; }
-  int64_t num_result_dims() const { return offsets().size(); }
-  int64_t num_rt_vars() const { return num_rt_vars_; }
+  llvm::SmallVector<mlir::AffineExpr> offsets() const;
+  llvm::SmallVector<mlir::AffineExpr> sizes() const;
+  llvm::SmallVector<mlir::AffineExpr> strides() const;
+  llvm::SmallVector<mlir::AffineExpr> upper_bounds() const;
+  llvm::ArrayRef<DimTile> dim_tiles() const { return dim_tiles_; }
+  int64_t num_dim_tiles() const { return dim_tiles_.size(); }
 
-  mlir::MLIRContext* mlir_context() const { return mlir_context_; }
+  const TilingSpace& tiling_space() const { return *tiling_space_; }
+  mlir::MLIRContext* mlir_context() const;
+
+  bool operator==(const SymbolicTile& other) const;
 
   // This allows GUnit to print the tile.
   template <typename Sink>
-  friend void AbslStringify(Sink& sink, const ExperimentalSymbolicTile& tile) {
+  friend void AbslStringify(Sink& sink, const SymbolicTile& tile) {
     sink.Append(tile.ToString());
   }
 
  private:
-  mlir::MLIRContext* mlir_context_;
-  int64_t num_tile_ids_;
-  int64_t num_rt_vars_;
-  llvm::SmallVector<mlir::AffineExpr> offsets_;
-  llvm::SmallVector<mlir::AffineExpr> sizes_;
-  llvm::SmallVector<mlir::AffineExpr> strides_;
-  llvm::SmallVector<mlir::AffineExpr> upper_bounds_;
+  const TilingSpace* tiling_space_;
+  llvm::SmallVector<DimTile> dim_tiles_;
 };
 
-}  // namespace xla::gpu
+template <typename H>
+H AbslHashValue(H h, const SymbolicTile& symbolic_tile) {
+  h = H::combine(std::move(h), &symbolic_tile.tiling_space());
+  for (const DimTile& dim_tile : symbolic_tile.dim_tiles()) {
+    h = H::combine(std::move(h), dim_tile);
+  }
+  return h;
+}
+
+// Returns a DimTile that covers the entire dimension, i.e.
+// offset 0, size = next_power_of_2(dim_size), stride 1, upper_bound = dim_size.
+DimTile GetFullDimTile(int64_t dim_size, mlir::MLIRContext* ctx);
+
+// Returns a DimTile that covers the entire dimension, i.e.
+//  offset = AffineDimExpr(id) * AffineSymbolExpr(id),
+//  size = AffineSymbolExpr(id), stride 1, upper_bound = dim_size.
+DimTile GetDefaultDimTile(int64_t id, int64_t dim_size, mlir::MLIRContext* ctx);
+
+}  // namespace xla::gpu::experimental
 
 #endif  // XLA_SERVICE_GPU_MODEL_EXPERIMENTAL_SYMBOLIC_TILE_H_

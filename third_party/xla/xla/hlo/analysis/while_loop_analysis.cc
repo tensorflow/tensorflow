@@ -454,6 +454,12 @@ optional<int64_t> GetLoopInductionVarTupleIdxWithKnownValues(
     return nullopt;
   }
 
+  if (while_op->operand(0)->opcode() != HloOpcode::kTuple) {
+    VLOG(2) << "While instruction's operand is not a tuple instruction: "
+            << while_op->operand(0)->ToString();
+    return nullopt;
+  }
+
   // Exactly one of `cond_tuple_indices` should be not in known_values.
   int64_t indvar_tuple_idx = -1;
   if (cond_tuple_indices->size() == 1) {

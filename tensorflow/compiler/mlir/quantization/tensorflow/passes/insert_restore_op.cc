@@ -102,10 +102,11 @@ TF::ConstOp Create1DStringConst(const ArrayRef<std::string> str_values,
       RankedTensorType::get(/*shape=*/{static_cast<int64_t>(str_values.size())},
                             /*elementType=*/builder.getType<TF::StringType>());
 
-  return builder.create<TF::ConstOp>(
-      loc, DenseStringElementsAttr::get(
-               tensor_type,
-               SmallVector<StringRef>(str_values.begin(), str_values.end())));
+  return TF::ConstOp::create(
+      builder, loc,
+      DenseStringElementsAttr::get(
+          tensor_type,
+          SmallVector<StringRef>(str_values.begin(), str_values.end())));
 }
 
 // Creates a new argument for `func_op` that accepts a string tensor containing
@@ -179,14 +180,14 @@ void CreateRestoreV2Op(std::vector<TF::VarHandleOp>& target_var_handle_ops,
   TF::ConstOp shape_and_slices_const =
       CreateShapeAndSlicesConst(tensor_names.size(), builder);
 
-  auto restore_op = builder.create<TF::RestoreV2Op>(
-      session_init_func.getLoc(),
+  auto restore_op = TF::RestoreV2Op::create(
+      builder, session_init_func.getLoc(),
       /*tensors=*/tensor_types,
       /*prefix=*/filename_arg, tensor_names_const, shape_and_slices_const);
 
   for (auto [idx, restore_result] : llvm::enumerate(restore_op.getResults())) {
-    builder.create<TF::AssignVariableOp>(
-        restore_op.getLoc(), target_var_handle_ops[idx], restore_result);
+    TF::AssignVariableOp::create(builder, restore_op.getLoc(),
+                                 target_var_handle_ops[idx], restore_result);
   }
 }
 

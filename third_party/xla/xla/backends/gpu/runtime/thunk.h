@@ -22,6 +22,7 @@ limitations under the License.
 #include <optional>
 #include <ostream>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/base/nullability.h"
@@ -158,6 +159,8 @@ class Thunk {
     kGemm,
     kGroupDone,
     kGroupStart,
+    kHostExecuteDone,
+    kHostExecuteStart,
     kHostRecv,
     kHostRecvDone,
     kHostSend,
@@ -167,6 +170,8 @@ class Thunk {
     kMemset32BitValue,
     kMemzero,
     kNorm,
+    kNvshmemAllReduceDone,
+    kNvshmemAllReduceStart,
     kNvshmemCollectivePermute,
     kNvshmemCollectivePermuteDone,
     kNvshmemCollectivePermuteStart,
@@ -219,6 +224,9 @@ class Thunk {
     std::string profile_annotation;
 
     ExecutionStreamId execution_stream_id = kDefaultExecutionStreamId;
+
+    // Serializes a ThunkInfo to a ThunkInfoProto.
+    ThunkInfoProto ToProto() const;
   };
 
   //===--------------------------------------------------------------------===//
@@ -307,6 +315,8 @@ class Thunk {
 
     int64_t collective_max_nchannels;
     int64_t p2p_max_nchannels;
+
+    bool need_barrier = false;
 
    private:
     CollectiveExecuteParams(
@@ -424,6 +434,8 @@ class Thunk {
 
     bool mock_collectives = false;
 
+    int64_t execution_id = 0;
+
    private:
     friend class CommandBufferThunk;
 
@@ -437,22 +449,23 @@ class Thunk {
                   RecvDeviceMemoryFunction* recv_device_memory_function,
                   const ffi::ExecutionContext* ffi_execution_context,
                   ExecutionStreamIdMap additional_compute_streams = {},
-                  bool mock_collectives = false);
+                  bool mock_collectives = false, int64_t execution_id = 0);
   };
 
   //===--------------------------------------------------------------------===//
 
   Thunk(Kind kind, ThunkInfo thunk_info)
-      : kind_(kind),
-        profile_annotation_(thunk_info.profile_annotation),
-        execution_stream_id_(thunk_info.execution_stream_id) {}
+      : kind_(kind), thunk_info_(std::move(thunk_info)) {}
   virtual ~Thunk() = default;
   Thunk(const Thunk&) = delete;
   Thunk& operator=(const Thunk&) = delete;
 
   virtual std::string ToString(int indent) const { return ""; }
   Kind kind() const { return kind_; }
-  absl::string_view profile_annotation() const { return profile_annotation_; }
+  absl::string_view profile_annotation() const {
+    return thunk_info_.profile_annotation;
+  }
+  const ThunkInfo& thunk_info() const { return thunk_info_; }
 
   // Prepares thunk for execution.
   //
@@ -483,9 +496,11 @@ class Thunk {
 
   static absl::string_view KindToString(Thunk::Kind kind);
 
-  ExecutionStreamId execution_stream_id() const { return execution_stream_id_; }
+  ExecutionStreamId execution_stream_id() const {
+    return thunk_info_.execution_stream_id;
+  }
   void set_execution_stream_id(ExecutionStreamId execution_stream_id) {
-    execution_stream_id_ = execution_stream_id;
+    thunk_info_.execution_stream_id = execution_stream_id;
   }
 
   static absl::StatusOr<se::Stream*> GetStreamForExecution(
@@ -544,15 +559,9 @@ class Thunk {
 
   virtual bool IsAsyncDone() const { return false; }
 
- protected:
-  // Returns a ThunkProto that has the common Thunk fields already set.
-  // It's meant to be called by subclasses in its implementation of `ToProto()`.
-  absl::StatusOr<ThunkInfoProto> GetThunkInfoProto() const;
-
  private:
   Kind kind_;
-  std::string profile_annotation_;
-  ExecutionStreamId execution_stream_id_;
+  ThunkInfo thunk_info_;
 
   // The list of control predecessors of the thunk.
   // Thunk needs to maintain the control dependency information because

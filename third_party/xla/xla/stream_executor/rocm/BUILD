@@ -1063,8 +1063,6 @@ cc_library(
         "//xla/stream_executor:platform",
         "//xla/stream_executor:stream_executor_h",
         "//xla/stream_executor/gpu:gpu_command_buffer",
-        "//xla/stream_executor/gpu:scoped_gpu_graph_exec",
-        "//xla/stream_executor/gpu:scoped_update_mode",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",

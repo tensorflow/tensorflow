@@ -114,7 +114,7 @@ arith::ConstantOp BuildEmptyBias(OpBuilder& b, Location loc,
       {data.OutputLayout().SpecialDim2(data.OutputShape())},
       data.ElementType());
   auto bias_const_data = b.getZeroAttr(bias_type);
-  return b.create<arith::ConstantOp>(loc, bias_const_data);
+  return arith::ConstantOp::create(b, loc, bias_const_data);
 }
 
 class LegalizeConv2D : public OpConversionPattern<mhlo::ConvolutionOp> {
@@ -335,8 +335,8 @@ LogicalResult ConvertNonTrivialConvToResizeBilinearOp::matchAndRewrite(
     output_shape_i32.push_back(
         static_cast<int32_t>(data.OutputShape()[spatial_dim]));
   }
-  Value output_sizes_attr = rewriter.create<mlir::arith::ConstantOp>(
-      conv_op.getLoc(), rewriter.getI32TensorAttr(output_shape_i32));
+  Value output_sizes_attr = mlir::arith::ConstantOp::create(
+      rewriter, conv_op.getLoc(), rewriter.getI32TensorAttr(output_shape_i32));
   // The value of half_pixel_centers couldn't be inferred from the IR and XLA
   // only support half_pixel_centers=True as in 01/11/2022. Here
   // half_pixel_centers=False is hardcoded.
@@ -426,19 +426,20 @@ LogicalResult ConvertNonTrivialConvToTransposeConvOp::matchAndRewrite(
   SmallVector<int32_t> kernel_spatial_dims_i32(
       data.KernelLayout().Spatials().begin(),
       data.KernelLayout().Spatials().end());
-  Value axis = rewriter.create<arith::ConstantOp>(
-      op.getLoc(), rewriter.getI32TensorAttr(kernel_spatial_dims_i32));
+  Value axis = arith::ConstantOp::create(
+      rewriter, op.getLoc(),
+      rewriter.getI32TensorAttr(kernel_spatial_dims_i32));
 
   // Create the tfl::ReverseV2Op
-  auto filter = rewriter.create<TFL::ReverseV2Op>(
-      op.getLoc(), op.getRhs().getType(), op.getRhs(), axis);
+  auto filter = TFL::ReverseV2Op::create(
+      rewriter, op.getLoc(), op.getRhs().getType(), op.getRhs(), axis);
 
   // Calculate the output size and shape for TFL::TransposeConv2dOp
   SmallVector<int32_t, 4> output_shape_i32(data.OutputShape().begin(),
                                            data.OutputShape().end());
 
-  auto output_sizes = rewriter.create<arith::ConstantOp>(
-      op.getLoc(), rewriter.getI32TensorAttr(output_shape_i32));
+  auto output_sizes = arith::ConstantOp::create(
+      rewriter, op.getLoc(), rewriter.getI32TensorAttr(output_shape_i32));
 
   rewriter.replaceOpWithNewOp<TFL::TransposeConvOp>(
       op, op.getResult().getType(), /*output_shape=*/output_sizes,
@@ -549,10 +550,10 @@ LogicalResult SliceDepthwiseTransposedConvolution::matchAndRewrite(
     } else {
       limit_indices[channel_idx] = depth_idx + 1;
     }
-    return rewriter.create<mhlo::SliceOp>(
-        conv_op.getLoc(), tensor, rewriter.getI64TensorAttr(start_indices),
-        rewriter.getI64TensorAttr(limit_indices),
-        rewriter.getI64TensorAttr(strides));
+    return mhlo::SliceOp::create(rewriter, conv_op.getLoc(), tensor,
+                                 rewriter.getI64TensorAttr(start_indices),
+                                 rewriter.getI64TensorAttr(limit_indices),
+                                 rewriter.getI64TensorAttr(strides));
   };
 
   // Storage for smaller convolution results
@@ -574,9 +575,9 @@ LogicalResult SliceDepthwiseTransposedConvolution::matchAndRewrite(
         RankedTensorType::get(new_output_shape, output_type.getElementType());
 
     // Create a Smaller Convolution (Ensure compatibility)
-    auto conv_result = rewriter.create<mhlo::ConvolutionOp>(
-        conv_op.getLoc(), new_output_type, sliced_input, sliced_kernel,
-        conv_op.getWindowStridesAttr(), conv_op.getPaddingAttr(),
+    auto conv_result = mhlo::ConvolutionOp::create(
+        rewriter, conv_op.getLoc(), new_output_type, sliced_input,
+        sliced_kernel, conv_op.getWindowStridesAttr(), conv_op.getPaddingAttr(),
         conv_op.getLhsDilationAttr(), conv_op.getRhsDilationAttr(),
         conv_op.getWindowReversalAttr(), conv_op.getDimensionNumbers(),
         /*feature_group_count*/ 1, /*batch_group_count*/ 1,
@@ -585,8 +586,8 @@ LogicalResult SliceDepthwiseTransposedConvolution::matchAndRewrite(
     conv_results.push_back(conv_result);
   }
 
-  auto final_output = rewriter.create<mhlo::ConcatenateOp>(
-      conv_op.getLoc(), conv_results,
+  auto final_output = mhlo::ConcatenateOp::create(
+      rewriter, conv_op.getLoc(), conv_results,
       rewriter.getI64IntegerAttr(dnums.getOutputFeatureDimension()));
   rewriter.replaceOp(conv_op, final_output.getResult());
   return success();
@@ -612,7 +613,7 @@ arith::ConstantOp ShapeToConst(PatternRewriter& rewriter,
   });
   auto attr =
       DenseIntElementsAttr::get(attr_type, llvm::to_vector(casted_shape));
-  return rewriter.create<arith::ConstantOp>(loc, attr_type, attr);
+  return arith::ConstantOp::create(rewriter, loc, attr_type, attr);
 }
 
 std::tuple<llvm::SmallVector<int64_t>, int64_t, Layout> InsertTrivialSpatialDim(
@@ -671,16 +672,16 @@ LogicalResult Conv1DToConv2D::matchAndRewrite(mhlo::ConvolutionOp op,
   auto [lhs_new_shape, lhs_new_expnaded_dim, lhs_new_layout] =
       InsertTrivialSpatialDim(view.InputLayout(), view.InputShape());
   auto lhs_new_type = op.getLhs().getType().clone(lhs_new_shape);
-  auto new_lhs = rewriter.create<TFL::ExpandDimsOp>(
-      op.getLoc(), lhs_new_type, op.getLhs(),
+  auto new_lhs = TFL::ExpandDimsOp::create(
+      rewriter, op.getLoc(), lhs_new_type, op.getLhs(),
       ShapeToConst(rewriter, {lhs_new_expnaded_dim}, op.getLoc()));
 
   // Add new trivial spatial dimension to kernel.
   auto [rhs_new_shape, rhs_new_expnaded_dim, rhs_new_layout] =
       InsertTrivialSpatialDim(view.KernelLayout(), view.KernelShape());
   auto rhs_new_type = op.getRhs().getType().clone(rhs_new_shape);
-  auto new_rhs = rewriter.create<TFL::ExpandDimsOp>(
-      op.getLoc(), rhs_new_type, op.getRhs(),
+  auto new_rhs = TFL::ExpandDimsOp::create(
+      rewriter, op.getLoc(), rhs_new_type, op.getRhs(),
       ShapeToConst(rewriter, {rhs_new_expnaded_dim}, op.getLoc()));
 
   // Add new trivial spatial dimension to output (insert reshape later).
@@ -739,8 +740,8 @@ LogicalResult Conv1DToConv2D::matchAndRewrite(mhlo::ConvolutionOp op,
   // Build 2-D convolution with reshaped output.
   //=-----
 
-  auto conv2d_op = rewriter.create<mhlo::ConvolutionOp>(
-      op.getLoc(), out_new_type, new_lhs, new_rhs, strides_2d_attr,
+  auto conv2d_op = mhlo::ConvolutionOp::create(
+      rewriter, op.getLoc(), out_new_type, new_lhs, new_rhs, strides_2d_attr,
       padding_2d_attr, lhs_dilation_2d_attr, rhs_dilation_2d_attr,
       window_reversal_2d_attr, dnums_2d, op.getFeatureGroupCount(),
       op.getBatchGroupCount(), op.getPrecisionConfigAttr());

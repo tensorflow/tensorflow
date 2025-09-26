@@ -525,5 +525,37 @@ ENTRY entry {
                 _));
 }
 
+TEST_F(WhileLoopConstantSinkingTest, NoIncidentalChanges) {
+  const char* const hlo_string = R"(
+HloModule ModuleWithWhile
+
+body {
+  p_body = (f32[2],f32[2]) parameter(0)
+  p_body.0 = f32[2] get-tuple-element((f32[2],f32[2]) p_body), index=0
+  p_body.1 = f32[2] get-tuple-element((f32[2],f32[2]) p_body), index=1
+
+  add.0 = f32[2] add(p_body.0, p_body.1)
+  ROOT root = (f32[2],f32[2]) tuple(add.0, p_body.1)
+}
+
+ENTRY entry {
+  const_0 = f32[2] constant({1, 2})
+  const_1 = f32[2] constant({2, 1})
+  ROOT add = f32[2] add(const_0, const_1)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      WhileLoopConstantSinking(/*sink_broadcast_of_constants=*/false,
+                               /*sink_only_scalar_constants=*/false)
+          .Run(module.get()));
+  EXPECT_FALSE(changed);
+  EXPECT_EQ(module->computation_count(), 2);
+}
+
 }  // namespace
 }  // namespace xla

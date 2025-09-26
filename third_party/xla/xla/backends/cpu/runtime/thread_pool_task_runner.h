@@ -18,10 +18,9 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
-#include <cstdint>
-#include <optional>
 #include <utility>
 
+#include "absl/base/optimization.h"
 #include "unsupported/Eigen/CXX11/ThreadPool"
 #include "xla/backends/cpu/runtime/thunk.h"
 
@@ -36,19 +35,10 @@ class ThreadPoolTaskRunner : public Thunk::TaskRunner {
       : thread_pool_(thread_pool) {}
 
   void operator()(Thunk::Task task) final {
-    if (thread_pool_ == nullptr) {
+    if (ABSL_PREDICT_FALSE(thread_pool_ == nullptr)) {
       task();
     } else {
       thread_pool_->Schedule(std::move(task));
-    }
-  }
-
-  std::optional<int64_t> current_worker_id() const final {
-    if (thread_pool_ == nullptr) {
-      return {0};
-    } else {
-      int64_t thread_id = thread_pool_->CurrentThreadId();
-      return thread_id == -1 ? std::nullopt : std::make_optional(thread_id);
     }
   }
 

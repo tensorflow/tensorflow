@@ -22,7 +22,7 @@ limitations under the License.
 #include "xla/stream_executor/gpu/gpu_init.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "tsl/platform/statusor.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -62,7 +62,8 @@ TEST(TargetConfigTest, ProtoConstructorFillsAllFields) {
   config_proto.mutable_gpu_device_info()->set_threads_per_block_limit(5);
   config_proto.set_device_description_str("foo");
 
-  Compiler::TargetConfig config(config_proto);
+  TF_ASSERT_OK_AND_ASSIGN(auto config,
+                          Compiler::TargetConfig::FromProto(config_proto));
   stream_executor::GpuTargetConfigProto target = config.ToProto();
 
   EXPECT_EQ(target.dnn_version_info().major(),

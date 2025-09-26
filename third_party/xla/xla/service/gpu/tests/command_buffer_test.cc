@@ -31,7 +31,8 @@ class CommandBufferTest : public HloPjRtTestBase,
                           public ::testing::WithParamInterface<bool> {
   DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = HloPjRtTestBase::GetDebugOptionsForTest();
-    debug_options.set_xla_gpu_graph_enable_concurrent_region(GetParam());
+    debug_options.set_xla_gpu_command_buffer_scheduling_mode(
+        DebugOptions::CONCURRENT);
     return debug_options;
   }
 
@@ -78,7 +79,9 @@ TEST_P(CommandBufferTest, Fusions) {
   Literal argument = LiteralUtil::CreateR2<float>({{1.0, 2.0}, {3.0, 4.0}});
   Literal expected = LiteralUtil::CreateR2<float>({{3.0, 8.0}, {15.0, 24.0}});
 
-  Literal result = ExecuteNoHloPasses(std::move(module), {&argument});
+  TF_ASSERT_OK_AND_ASSIGN(
+      Literal result,
+      Execute(std::move(module), {&argument}, /*run_hlo_passes=*/false));
   EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
 }
 
@@ -130,7 +133,8 @@ TEST_P(CommandBufferTest, TrueFalseConditional) {
 
     Literal pred = LiteralUtil::CreateR0<bool>(true);
     Literal expected = LiteralUtil::CreateR2<float>({{2.0, 4.0}, {6.0, 8.0}});
-    Literal result = ExecuteNoHloPasses(std::move(m), {&pred, &p1});
+    TF_ASSERT_OK_AND_ASSIGN(Literal result, Execute(std::move(m), {&pred, &p1},
+                                                    /*run_hlo_passes=*/false));
     EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
   }
 
@@ -139,7 +143,8 @@ TEST_P(CommandBufferTest, TrueFalseConditional) {
 
     Literal pred = LiteralUtil::CreateR0<bool>(false);
     Literal expected = LiteralUtil::CreateR2<float>({{1.0, 4.0}, {9.0, 16.0}});
-    Literal result = ExecuteNoHloPasses(std::move(m), {&pred, &p1});
+    TF_ASSERT_OK_AND_ASSIGN(Literal result, Execute(std::move(m), {&pred, &p1},
+                                                    /*run_hlo_passes=*/false));
     EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
   }
 }
@@ -191,7 +196,8 @@ TEST_P(CommandBufferTest, IndexConditional) {
 
     Literal index = LiteralUtil::CreateR0<int32_t>(0);
     Literal expected = LiteralUtil::CreateR2<float>({{2.0, 4.0}, {6.0, 8.0}});
-    Literal result = ExecuteNoHloPasses(std::move(m), {&index, &p1});
+    TF_ASSERT_OK_AND_ASSIGN(Literal result, Execute(std::move(m), {&index, &p1},
+                                                    /*run_hlo_passes=*/false));
     EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
   }
 
@@ -200,7 +206,8 @@ TEST_P(CommandBufferTest, IndexConditional) {
 
     Literal index = LiteralUtil::CreateR0<int32_t>(1);
     Literal expected = LiteralUtil::CreateR2<float>({{1.0, 4.0}, {9.0, 16.0}});
-    Literal result = ExecuteNoHloPasses(std::move(m), {&index, &p1});
+    TF_ASSERT_OK_AND_ASSIGN(Literal result, Execute(std::move(m), {&index, &p1},
+                                                    /*run_hlo_passes=*/false));
     EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
   }
 
@@ -209,7 +216,8 @@ TEST_P(CommandBufferTest, IndexConditional) {
 
     Literal index = LiteralUtil::CreateR0<int32_t>(1024);
     Literal expected = LiteralUtil::CreateR2<float>({{1.0, 4.0}, {9.0, 16.0}});
-    Literal result = ExecuteNoHloPasses(std::move(m), {&index, &p1});
+    TF_ASSERT_OK_AND_ASSIGN(Literal result, Execute(std::move(m), {&index, &p1},
+                                                    /*run_hlo_passes=*/false));
     EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
   }
 }
@@ -274,7 +282,9 @@ TEST_P(CommandBufferTest, WhileLoop) {
   Literal expected_value = LiteralUtil::CreateR0<float>(20.0);
   Literal expected = LiteralUtil::MakeTuple({&expected_cnt, &expected_value});
 
-  Literal result = ExecuteNoHloPasses(std::move(module), {&argument});
+  TF_ASSERT_OK_AND_ASSIGN(
+      Literal result,
+      Execute(std::move(module), {&argument}, /*run_hlo_passes=*/false));
   EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
 }
 

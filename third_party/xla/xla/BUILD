@@ -505,6 +505,7 @@ xla_cc_test(
         ":xla_data_proto_cc",
         "//xla/hlo/testlib:test",
         "//xla/tsl/lib/core:status_test_util",
+        "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test_benchmark",
         "//xla/tsl/platform:test_main",
         "@com_google_absl//absl/hash:hash_testing",
@@ -1020,21 +1021,20 @@ xla_cc_test(
 
 cc_library(
     name = "shape_tree",
-    srcs = ["shape_tree.cc"],
     hdrs = ["shape_tree.h"],
     visibility = ["//visibility:public"],
     deps = [
         ":shape_util",
+        ":tuple_tree",
         "//xla/tsl/lib/gtl:iterator_range",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:logging",
         "//xla/tsl/platform:statusor",
-        "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/functional:function_ref",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/types:span",
+        "@com_google_absl//absl/utility",
     ],
 )
 
@@ -1200,12 +1200,13 @@ cc_library(
             "//xla/service:collective_utils",
             "//xla/stream_executor/cuda:nvjitlink_support",
             "//xla/stream_executor/cuda:ptx_compiler_support",
-            "//xla/tsl/platform:env",
             "//xla/tsl/platform:logging",
             "//xla/tsl/util:command_line_flags",
             "@com_google_absl//absl/algorithm:container",
             "@com_google_absl//absl/base",
+            "@com_google_absl//absl/base:no_destructor",
             "@com_google_absl//absl/container:flat_hash_map",
+            "@com_google_absl//absl/container:flat_hash_set",
             "@com_google_absl//absl/container:node_hash_map",
             "@com_google_absl//absl/log",
             "@com_google_absl//absl/log:check",
@@ -1213,7 +1214,6 @@ cc_library(
             "@com_google_absl//absl/status:statusor",
             "@com_google_absl//absl/strings",
             "@com_google_absl//absl/strings:str_format",
-            "@local_tsl//tsl/platform",
             "@local_tsl//tsl/platform:platform_port",
             "@local_tsl//tsl/platform:protobuf",
         ],
@@ -1240,6 +1240,7 @@ cc_library(
     deps = [
         "//xla/backends/cpu:alignment",
         "//xla/tsl/util:safe_reinterpret_cast",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/base:dynamic_annotations",
     ],
 )
@@ -1258,14 +1259,15 @@ xla_cc_test(
             ":xla_proto_cc",
             "//xla/service:dump",
             "//xla/tsl/platform:env",
-            "//xla/tsl/platform:status_matchers",
             "//xla/tsl/platform:test",
             "//xla/tsl/util:command_line_flags",
             "@com_google_absl//absl/container:flat_hash_map",
             "@com_google_absl//absl/status",
+            "@com_google_absl//absl/status:status_matchers",
             "@com_google_absl//absl/status:statusor",
             "@com_google_absl//absl/strings",
             "@com_google_googletest//:gtest",
+            "@local_tsl//tsl/platform:protobuf",
         ],
 )
 
@@ -1407,6 +1409,7 @@ xla_cc_test(
         "//xla/tsl/platform:status_matchers",
         "//xla/tsl/platform:test",
         "//xla/tsl/platform:test_main",
+        "@com_google_absl//absl/status:status_matchers",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -1432,6 +1435,41 @@ xla_cc_test(
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/random",
         "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "tuple_tree",
+    srcs = ["tuple_tree.cc"],
+    hdrs = ["tuple_tree.h"],
+    deps = [
+        ":shape_util",
+        "//xla/tsl/lib/gtl:iterator_range",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/functional:function_ref",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+xla_cc_test(
+    name = "tuple_tree_test",
+    srcs = ["tuple_tree_test.cc"],
+    deps = [
+        ":shape_util",
+        ":tuple_tree",
+        "//xla/tsl/lib/core:status_test_util",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 

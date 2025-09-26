@@ -54,6 +54,7 @@
 #include "xla/python/ifrt/host_callback.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
+#include "xla/python/ifrt/user_context.h"
 #include "xla/python/ifrt_proxy/client/array.h"
 #include "xla/python/ifrt_proxy/client/host_buffer.h"
 #include "xla/python/ifrt_proxy/client/rpc_helper.h"
@@ -335,7 +336,7 @@ class LoadedExecutable::OutputSpecCache {
 
 LoadedExecutable::LoadedExecutable(
     xla::ifrt::Client* client, std::shared_ptr<RpcHelper> rpc_helper,
-    uint64_t handle, std::string name, int num_devices,
+    uint64_t handle, std::string name, int num_devices, DeviceListRef devices,
     std::vector<xla::ifrt::Device*> addressable_devices,
     absl::StatusOr<std::optional<std::string>> fingerprint,
     Future<> ready_future,
@@ -347,9 +348,11 @@ LoadedExecutable::LoadedExecutable(
       handle_(handle),
       name_(std::move(name)),
       num_devices_(num_devices),
+      devices_(devices),
       addressable_devices_(std::move(addressable_devices)),
       fingerprint_(std::move(fingerprint)),
       ready_future_(std::move(ready_future)),
+      user_context_(xla::ifrt::UserContextScope::current()),
       output_spec_cache_(
           std::make_unique<LoadedExecutable::OutputSpecCache>(this)) {
   // Start host callback pollers.
@@ -760,6 +763,8 @@ LoadedExecutable::Execute(absl::Span<xla::ifrt::ArrayRef> args,
 
   return result;
 }
+
+const DeviceListRef& LoadedExecutable::devices() const { return devices_; }
 
 absl::Span<xla::ifrt::Device* const> LoadedExecutable::addressable_devices()
     const {

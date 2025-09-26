@@ -56,14 +56,14 @@ absl::StatusOr<std::unique_ptr<tsl::BFCAllocator>> CreateCollectiveBFCAllocator(
 
 // Represents topology of devices.
 struct TopologySizes {
-  int num_slices = 0;
-  int num_hosts_per_slice = 0;
+  int num_partitions = 0;
+  int num_hosts_per_partition = 0;
   int num_devices_per_host = 0;
 
   // Returns number of devices in the topology.
   int GetDeviceCount();
   // Parses the topology description of the form
-  // "<num_slices> x <num_hosts_per_slice> x <num_devices_per_host>"
+  // "<num_partitions> x <num_hosts_per_partition> x <num_devices_per_host>"
   // and returns the parsed components on success.
   static absl::StatusOr<TopologySizes> FromString(
       absl::string_view topology_string);

@@ -1286,7 +1286,7 @@ absl::Status DepthwiseConv2DNativeShapeImpl(
     absl::Status status = c->GetAttr("explicit_paddings", &explicit_paddings);
     // Use the default value, which is an empty list, if the attribute is not
     // found. Otherwise return the error to the caller.
-    if (!status.ok() && !errors::IsNotFound(status)) {
+    if (!status.ok() && !absl::IsNotFound(status)) {
       return status;
     }
     TF_RETURN_IF_ERROR(CheckValidPadding(padding, explicit_paddings,

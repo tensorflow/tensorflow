@@ -393,7 +393,8 @@ Offset<EdgeTpuSettings> ConvertEdgeTpuSettings(
       static_cast<tflite::EdgeTpuSettings_::QosClass>(settings.qos_class()),
       hardware_cluster_ids_fb, public_model_id,
       static_cast<tflite::EdgeTpuSettings_::UseLayerIrTgcBackend>(
-          settings.use_layer_ir_tgc_backend()));
+          settings.use_layer_ir_tgc_backend()),
+      settings.use_tpu_server());
 }
 
 Offset<CompilationCachingSettings> ConvertCompilationCachingSettings(

@@ -130,7 +130,7 @@ TEST(KernelLoaderSpec, PtxKernelToProto) {
   auto spec = stream_executor::KernelLoaderSpec::CreateCudaPtxInMemorySpec(
       "PTX!", "kernel_name", 42);
 
-  EXPECT_THAT(spec.ToProto(), IsOkAndHolds(EqualsProto(R"pb(
+  EXPECT_THAT(spec.ToProto(), absl_testing::IsOkAndHolds(EqualsProto(R"pb(
                 ptx { data: "PTX!" }
                 kernel_name: "kernel_name"
                 arity: 42
@@ -161,7 +161,7 @@ TEST(KernelLoaderSpec, CubinKernelToProto) {
   auto spec = stream_executor::KernelLoaderSpec::CreateCudaCubinInMemorySpec(
       kCubin, "kernel_name", 42);
 
-  EXPECT_THAT(spec.ToProto(), IsOkAndHolds(EqualsProto(R"pb(
+  EXPECT_THAT(spec.ToProto(), absl_testing::IsOkAndHolds(EqualsProto(R"pb(
                 cubin { data: "CUBIN" }
                 kernel_name: "kernel_name"
                 arity: 42
@@ -172,7 +172,8 @@ TEST(KernelLoaderSpec, InProcessSymbolToProto) {
   auto spec = stream_executor::KernelLoaderSpec::CreateInProcessSymbolSpec(
       nullptr, "kernel_name", 42);
 
-  EXPECT_THAT(spec.ToProto(), StatusIs(absl::StatusCode::kInvalidArgument));
+  EXPECT_THAT(spec.ToProto(),
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 }  // namespace

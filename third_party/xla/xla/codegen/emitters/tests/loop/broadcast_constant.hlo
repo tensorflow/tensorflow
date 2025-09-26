@@ -1,0 +1,21 @@
+// RUN: gpu_fusion_to_mlir %s | emitters_opt --xla-test-optimize \
+// RUN:   --inline="default-pipeline='cse'" \
+// RUN:   | FileCheck %s --check-prefixes=CHECK,CHECK-GPU
+// RUN: cpu_fusion_to_mlir %s | emitters_opt --xla-test-optimize \
+// RUN:   --inline="default-pipeline='cse'" \
+// RUN:   | FileCheck %s --check-prefixes=CHECK,CHECK-CPU
+// RUN: gpu_test_correctness %s --bijection_outputs=broadcast
+// RUN: cpu_test_correctness %s
+
+bcast {
+  zero = bf16[] constant(0)
+  ROOT broadcast = bf16[2,16,48]{2,1,0} broadcast(zero), dimensions={}
+}
+// CHECK: func.func @main(%[[ARG0:.*]]: tensor<2x16x48xbf16>
+// CHECK-GPU: scf.forall {{.*}} shared_outs(%[[FORALL_ARG0:.*]] = %[[ARG0]])
+// CHECK:   xla.loop ({{.*}})[{{.*}}] -> (%[[RA:.*]], %[[RB:.*]], %[[RC:.*]]) in
+// CHECK-SAME: iter_args(%[[ITER:.*]] =
+// CHECK-GPU-SAME: %[[FORALL_ARG0]])
+// CHECK-CPU-SAME: %[[ARG0]])
+// CHECK:     %[[CST:.*]] = arith.constant 0.000
+// CHECK:     %[[INSERTED:.*]] = tensor.insert %[[CST]] into %[[ITER]][%[[RA]], %[[RB]], %[[RC]]]

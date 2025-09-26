@@ -44,15 +44,20 @@ inline constexpr absl::string_view kFoldAllConstants =
     "xla_cpu_fold_all_constants";
 inline constexpr absl::string_view kSmallWhileLoopByteThreshold =
     "xla_cpu_small_while_loop_byte_threshold";
-inline constexpr absl::string_view kUseExperimentalLoopFusion =
-    "xla_cpu_use_experimental_loop_fusion";
+inline constexpr absl::string_view kDisableNewFusionEmitters =
+    "xla_cpu_disable_new_fusion_emitters";
 inline constexpr absl::string_view kFlattenAfterFusion =
     "xla_cpu_flatten_after_fusion";
+inline constexpr absl::string_view kUseMultiOutputFusion =
+    "xla_cpu_use_multi_output_fusion";
+inline constexpr absl::string_view kDisablePlatformDependentMath =
+    "xla_cpu_disable_platform_dependent_math";
 
 bool OptimizeForSizeRequested(const HloModuleConfig& config);
 bool VectorizedReduceDisabled(const HloModuleConfig& config);
 bool SlpVectorizerDisabled(const HloModuleConfig& config);
 bool DisableLoopUnrolling(const HloModuleConfig& config);
+bool DisablePlatformDependentMath(const HloModuleConfig& config);
 bool FoldAllConstants(const HloModuleConfig& config);
 bool ForceEnableExperimentalLlvmIrGemm(const HloModuleConfig& config);
 std::optional<int64_t> LlvmIrGemvTilingFactor(const HloModuleConfig& config);
@@ -62,6 +67,7 @@ absl::StatusOr<int64_t> SmallWhileLoopByteThreshold(
     const HloModuleConfig& config);
 bool UseExperimentalLoopFusion(const HloModuleConfig& config);
 bool FlattenAfterFusion(const HloModuleConfig& config);
+bool UseMultiOutputFusion(const HloModuleConfig& config);
 
 }  // namespace xla::cpu::options
 

@@ -118,7 +118,7 @@ LogicalResult EnsureBias(Operation* op, int bias_idx,
     return failure();
   }
 
-  auto zero_bias = rewriter.create<TFL::ConstOp>(op->getLoc(), bias_attr);
+  auto zero_bias = TFL::ConstOp::create(rewriter, op->getLoc(), bias_attr);
   op->setOperand(bias_idx, zero_bias);
 
   return success();
@@ -247,9 +247,9 @@ LogicalResult LowerPackIntoConcatReshape::matchAndRewrite(
   // Insert the concat op.
   auto concat_out_type =
       RankedTensorType::get(concat_out_shape, input_type.getElementType());
-  auto concat_op = rewriter.create<TFL::ConcatenationOp>(
-      pack_op.getLoc(), concat_out_type, pack_inputs, pack_op.getAxis(),
-      "NONE");
+  auto concat_op =
+      TFL::ConcatenationOp::create(rewriter, pack_op.getLoc(), concat_out_type,
+                                   pack_inputs, pack_op.getAxis(), "NONE");
 
   auto reshape_op =
       InsertReshapeOp(pack_op.getLoc(), concat_op, input_type.getElementType(),
@@ -275,10 +275,10 @@ LogicalResult SquaredDifference::matchAndRewrite(
   if (!result_type) return failure();
 
   auto sub_op =
-      rewriter.create<TF::SubOp>(squared_diff_op.getLoc(), result_type, x, y);
+      TF::SubOp::create(rewriter, squared_diff_op.getLoc(), result_type, x, y);
   auto mul_op =
-      rewriter.create<TF::MulOp>(squared_diff_op.getLoc(), result_type,
-                                 sub_op.getResult(), sub_op.getResult());
+      TF::MulOp::create(rewriter, squared_diff_op.getLoc(), result_type,
+                        sub_op.getResult(), sub_op.getResult());
   rewriter.replaceOp(squared_diff_op, mul_op.getResult());
 
   return success();
@@ -424,8 +424,9 @@ LogicalResult PadSlice::matchAndRewrite(TFL::SliceOp slice_op,
   RankedTensorType new_output_type =
       RankedTensorType::get(new_output_shape, output_type.getElementType());
 
-  auto new_slice = rewriter.create<TFL::SliceOp>(
-      slice_op.getLoc(), new_output_type, reshape_op, new_begin, new_size);
+  auto new_slice =
+      TFL::SliceOp::create(rewriter, slice_op.getLoc(), new_output_type,
+                           reshape_op, new_begin, new_size);
 
   // Append a reshape at the bottom.
   auto output_reshape_op = InsertReshapeOp(slice_op.getLoc(), new_slice,
@@ -509,9 +510,9 @@ LogicalResult FullyConnectedToConv::matchAndRewrite(
   // The output would be [1, 1, width, output].
   auto conv_output_type = RankedTensorType::get({1, 1, width, output_size},
                                                 output_type.getElementType());
-  auto conv = rewriter.create<TFL::Conv2DOp>(
-      fc_op.getLoc(), conv_output_type, reshaped_input, reshaped_weight,
-      fc_op.getBias(), rewriter.getI32IntegerAttr(1),
+  auto conv = TFL::Conv2DOp::create(
+      rewriter, fc_op.getLoc(), conv_output_type, reshaped_input,
+      reshaped_weight, fc_op.getBias(), rewriter.getI32IntegerAttr(1),
       rewriter.getI32IntegerAttr(1), fc_op.getFusedActivationFunctionAttr(),
       rewriter.getStringAttr("VALID"), rewriter.getI32IntegerAttr(1),
       rewriter.getI32IntegerAttr(1));
@@ -584,8 +585,8 @@ LogicalResult PadConcat::matchAndRewrite(TFL::ConcatenationOp concat_op,
   RankedTensorType new_output_type =
       RankedTensorType::get(new_output_shape, output_type.getElementType());
 
-  auto new_concat = rewriter.create<TFL::ConcatenationOp>(
-      concat_op.getLoc(), new_output_type, reshape_ops, axis,
+  auto new_concat = TFL::ConcatenationOp::create(
+      rewriter, concat_op.getLoc(), new_output_type, reshape_ops, axis,
       concat_op.getFusedActivationFunction());
 
   // Append a reshape at the bottom.
@@ -641,8 +642,8 @@ LogicalResult ReduceMeanToAvgPool::matchAndRewrite(
 
   auto avg_pool_output_type = RankedTensorType::get(
       {batch, 1, 1, channel}, input_type.getElementType());
-  auto avg_pool = rewriter.create<TFL::AveragePool2DOp>(
-      mean_op.getLoc(), avg_pool_output_type, input,
+  auto avg_pool = TFL::AveragePool2DOp::create(
+      rewriter, mean_op.getLoc(), avg_pool_output_type, input,
       rewriter.getI32IntegerAttr(height), rewriter.getI32IntegerAttr(width),
       rewriter.getStringAttr("VALID"), rewriter.getI32IntegerAttr(1),
       rewriter.getI32IntegerAttr(1), rewriter.getStringAttr("NONE"));
@@ -691,8 +692,8 @@ LogicalResult InsertRequantForReduceMean::matchAndRewrite(
   auto new_output_type =
       RankedTensorType::get(output_type.getShape(), input_quantized_type);
   auto new_mean_op =
-      rewriter.create<TFL::MeanOp>(mean_op->getLoc(), new_output_type, input,
-                                   mean_op.getAxis(), mean_op.getKeepDims());
+      TFL::MeanOp::create(rewriter, mean_op->getLoc(), new_output_type, input,
+                          mean_op.getAxis(), mean_op.getKeepDims());
 
   // Insert a requant op.
   rewriter.replaceOpWithNewOp<TFL::QuantizeOp>(

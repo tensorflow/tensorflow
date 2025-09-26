@@ -127,7 +127,7 @@ TEST(CreateTmaDescriptorTest, ShapeMismatchFailsGracefully) {
   EXPECT_THAT(
       CreateTmaDescriptor(global_shape, tile_shape, tile_strides, layout,
                           element_byte_size, SwizzleMode::k128b),
-      StatusIs(
+      absl_testing::StatusIs(
           StatusCode::kInvalidArgument,
           HasSubstr("global_shape and tile_shape must have the same size")));
 }
@@ -143,7 +143,7 @@ TEST(CreateTmaDescriptorTest, EmptyShapeFailsGracefully) {
   EXPECT_THAT(
       CreateTmaDescriptor(global_shape, tile_shape, tile_strides, layout,
                           element_byte_size, SwizzleMode::k128b),
-      StatusIs(
+      absl_testing::StatusIs(
           StatusCode::kInvalidArgument,
           HasSubstr("expected global/tile shapes to be between 1D and 5D")));
 }
@@ -159,7 +159,7 @@ TEST(CreateTmaDescriptorTest, UnsupportedShapeFailsGracefully) {
   EXPECT_THAT(
       CreateTmaDescriptor(global_shape, tile_shape, tile_strides, layout,
                           element_byte_size, SwizzleMode::k128b),
-      StatusIs(
+      absl_testing::StatusIs(
           StatusCode::kInvalidArgument,
           HasSubstr("expected global/tile shapes to be between 1D and 5D")));
 }

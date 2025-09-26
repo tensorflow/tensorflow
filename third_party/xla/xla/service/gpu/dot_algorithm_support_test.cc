@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/strings/substitute.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/primitive_util.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/semantic_version.h"
 #include "xla/tests/hlo_test_base.h"
@@ -153,8 +154,8 @@ TEST_P(DotAlgorithmSupportTest, AlgorithmIsSupportedFromCudaCapability) {
   auto gpu_cc = GetGpuComputeCapability();
 
   if (const auto *ccc = std::get_if<se::CudaComputeCapability>(&gpu_cc)) {
-    is_algorithm_supported = ccc->IsAtLeast(params.min_cuda_capability.major,
-                                            params.min_cuda_capability.minor);
+    is_algorithm_supported =
+        ccc->SupportsAllFeaturesOf(params.min_cuda_capability);
   } else if (const auto *rcc =
                  std::get_if<se::RocmComputeCapability>(&gpu_cc)) {
     is_algorithm_supported = rcc->gfx9_mi100_or_later();

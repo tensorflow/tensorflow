@@ -20,6 +20,7 @@
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/strings/str_cat.h"
 #include "xla/python/ifrt_proxy/common/grpc_ifrt_service.grpc.pb.h"
 #include "xla/tsl/platform/status_matchers.h"
@@ -41,21 +42,22 @@ class FakeIfrtService : public grpc::GrpcIfrtService::Service {};
 TEST(GrpcServerTest, CreationTest) {
   auto addr = absl::StrCat("[::1]:", tsl::testing::PickUnusedPortOrDie());
   auto grpc_service_impl = std::make_unique<FakeIfrtService>();
-  ASSERT_THAT(GrpcServer::Create(addr, std::move(grpc_service_impl)), IsOk());
+  ASSERT_THAT(GrpcServer::Create(addr, std::move(grpc_service_impl)),
+              absl_testing::IsOk());
   // Also implicitly tests that the destruction of the GrpcServer object.
 }
 
 TEST(GrpcServerTest, CreationFailsIfImplIsNullptr) {
   auto addr = absl::StrCat("[::1]:", tsl::testing::PickUnusedPortOrDie());
   EXPECT_THAT(GrpcServer::Create(addr, nullptr),
-              StatusIs(absl::StatusCode::kInvalidArgument));
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 TEST(GrpcServerTest, CreationFailsWithInvalidAddress) {
   auto grpc_service_impl = std::make_unique<FakeIfrtService>();
   EXPECT_THAT(GrpcServer::Create(/*address=*/"invalid-address",
                                  std::move(grpc_service_impl)),
-              Not(IsOk()));
+              Not(absl_testing::IsOk()));
 }
 
 TEST(GrpcServerTest, RetrievingServerAddressWorks) {

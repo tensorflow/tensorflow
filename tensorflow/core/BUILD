@@ -354,6 +354,7 @@ cc_library(
         ":lib_internal",
         ":protos_all_cc",
         "//tensorflow/core/kernels:required",
+        "@com_google_absl//absl/status:status_matchers",
         "@local_tsl//tsl/platform:test",
         "@local_tsl//tsl/platform:test_benchmark",
     ] + tf_additional_test_deps(),
@@ -1481,10 +1482,6 @@ cc_library(
     }) +
     # The TF proto implementations that we will statically link here.
     [
-        "//tensorflow/compiler/mlir/lite:converter_flags_proto_cc_impl",
-        "//tensorflow/compiler/mlir/lite:model_flags_proto_cc_impl",
-        "//tensorflow/compiler/mlir/lite:types_proto_cc_impl",
-        "//tensorflow/compiler/mlir/lite/debug:debug_options_proto_cc_impl",
         "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto_cc_impl",
         "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_options_proto_cc_impl",
         "//tensorflow/compiler/mlir/quantization/tensorflow:exported_model_proto_cc_impl",
@@ -1511,6 +1508,10 @@ cc_library(
         # Disable the TF Lite proto implementations in the OSS build for LiteRT repository.
         "//tensorflow:disable_tf_lite_py": [],
         "//conditions:default": [
+            "//tensorflow/compiler/mlir/lite:converter_flags_proto_cc_impl",
+            "//tensorflow/compiler/mlir/lite:model_flags_proto_cc_impl",
+            "//tensorflow/compiler/mlir/lite:types_proto_cc_impl",
+            "//tensorflow/compiler/mlir/lite/debug:debug_options_proto_cc_impl",
             "//tensorflow/lite/toco:model_flags_proto_cc_impl",
             "//tensorflow/lite/toco:toco_flags_proto_cc_impl",
             "//tensorflow/lite/toco:types_proto_cc_impl",
@@ -1844,12 +1845,7 @@ tf_cuda_library(
         "//tensorflow/core/public:session.h",
     ],
     copts = tf_copts(),
-    visibility = [
-        ":dependency_allowlist",
-        "//learning/gemini/gemax/core/models/gemini3/vision/vision_decoder:__pkg__",
-        "//tensorflow:internal",
-        "//tensorflow_models:__subpackages__",
-    ],
+    visibility = ["//visibility:public"],
     deps = ["//tensorflow/core/common_runtime:core_cpu_base_no_ops"] + if_static([
         ":function_ops_op_lib",
         ":functional_grad",
@@ -1913,14 +1909,13 @@ cc_library(
 alias(
     name = "test_main",
     actual = "@local_xla//xla/tsl/platform:test_main",
-    visibility = ["//tensorflow:internal"],
+    visibility = ["//visibility:public"],
 )
 
 tf_cc_tests(
     name = "low_level_library_tests",
     size = "small",
     srcs = [
-        "//tensorflow/core/lib/core:legacy_lib_core_all_tests",
         "//tensorflow/core/lib/gtl:legacy_lib_gtl_tests",
         "//tensorflow/core/lib/monitoring:collection_registry_test.cc",
         "//tensorflow/core/lib/monitoring:counter_test.cc",

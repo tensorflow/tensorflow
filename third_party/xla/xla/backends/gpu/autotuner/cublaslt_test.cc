@@ -132,7 +132,8 @@ TEST_F(CublasLtBackendTest, GetSupportedConfigs) {
   absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>> configs =
       backend_.GetSupportedConfigs(
           *hlo_module->entry_computation()->root_instruction()->operand(0));
-  EXPECT_THAT(configs, IsOkAndHolds(testing::SizeIs(testing::Gt(0))));
+  EXPECT_THAT(configs,
+              absl_testing::IsOkAndHolds(testing::SizeIs(testing::Gt(0))));
 }
 
 TEST_F(CublasLtBackendTest,
@@ -143,7 +144,7 @@ TEST_F(CublasLtBackendTest,
   absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>> configs =
       backend_.GetSupportedConfigs(
           *hlo_module->entry_computation()->root_instruction());
-  EXPECT_THAT(configs, IsOkAndHolds(testing::SizeIs(0)));
+  EXPECT_THAT(configs, absl_testing::IsOkAndHolds(testing::SizeIs(0)));
 }
 
 TEST_F(CublasLtBackendTest, GetDefaultConfig) {
@@ -153,7 +154,7 @@ TEST_F(CublasLtBackendTest, GetDefaultConfig) {
   absl::StatusOr<std::unique_ptr<BackendConfig>> config =
       backend_.GetDefaultConfig(
           (*module->entry_computation()->root_instruction()->operand(0)));
-  EXPECT_THAT(config, IsOk());
+  EXPECT_THAT(config, absl_testing::IsOk());
 }
 
 TEST_F(CublasLtBackendTest, GetDefaultConfigFailsWithoutACublasLtCustomCall) {
@@ -172,7 +173,8 @@ TEST_F(CublasLtBackendTest, GetDefaultConfigFailsWithoutACublasLtCustomCall) {
   absl::StatusOr<std::unique_ptr<BackendConfig>> config =
       backend_.GetDefaultConfig(
           (*module->entry_computation()->root_instruction()));
-  EXPECT_THAT(config, StatusIs(absl::StatusCode::kInvalidArgument));
+  EXPECT_THAT(config,
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 TEST_F(CublasLtBackendTest, ApplyConfig) {
@@ -180,14 +182,16 @@ TEST_F(CublasLtBackendTest, ApplyConfig) {
                           ParseAndReturnVerifiedModule(kCublasLtCustomCallHlo));
   CublasLtBackendConfig config;
   config.set_algorithm(2);
+  google::protobuf::Any any;
+  any.PackFrom(config);
   TF_EXPECT_OK(backend_.ApplyConfig(*hlo_module->entry_computation()
                                          ->root_instruction()
                                          ->mutable_operands()
                                          .at(0),
-                                    config));
+                                    any));
   EXPECT_THAT(RunFileCheck(hlo_module->ToString(),
                            "CHECK: \"selected_algorithm\":\"2\""),
-              IsOkAndHolds(true));
+              absl_testing::IsOkAndHolds(true));
 }
 
 }  // namespace gpu

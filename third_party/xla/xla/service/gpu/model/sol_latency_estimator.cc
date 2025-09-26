@@ -118,9 +118,9 @@ absl::StatusOr<absl::Duration> DCNCollectiveDuration(
     }
     case HloOpcode::kAllReduce:
     case HloOpcode::kAllReduceStart: {
-      result +=
-          gpu_performance_model.EstimateRunTimeForInstruction(&instr, &analysis)
-              .compute_time;
+      result += gpu_performance_model.Get()
+                    .EstimateRunTimeForInstruction(&instr, &analysis)
+                    .compute_time;
       TF_ASSIGN_OR_RETURN(
           absl::Duration runtime,
           sol_model.RingLatency(msg_size, num_participating_hosts,
@@ -130,9 +130,9 @@ absl::StatusOr<absl::Duration> DCNCollectiveDuration(
       break;
     }
     case HloOpcode::kReduceScatter: {
-      result +=
-          gpu_performance_model.EstimateRunTimeForInstruction(&instr, &analysis)
-              .compute_time;
+      result += gpu_performance_model.Get()
+                    .EstimateRunTimeForInstruction(&instr, &analysis)
+                    .compute_time;
       TF_ASSIGN_OR_RETURN(
           absl::Duration runtime,
           sol_model.RingLatency(msg_size, num_participating_hosts,
@@ -143,7 +143,7 @@ absl::StatusOr<absl::Duration> DCNCollectiveDuration(
     }
     case HloOpcode::kAsyncStart: {
       if (instr.async_wrapped_opcode() == HloOpcode::kReduceScatter) {
-        result += gpu_performance_model
+        result += gpu_performance_model.Get()
                       .EstimateRunTimeForInstruction(
                           instr.async_wrapped_instruction(), &analysis)
                       .compute_time;
@@ -341,10 +341,13 @@ SolLatencyEstimator::Create(
 
 /*static*/ bool SolLatencyEstimator::IsSupportedForModule(
     const HloModule& module, const se::DeviceDescription& gpu_device_info) {
+  bool is_supported_device =
+      gpu_device_info.cuda_compute_capability().IsHopper() ||
+      gpu_device_info.cuda_compute_capability().IsBlackwell();
   if (IsPassEnabledAtOptimizationEffort<LatencyHidingScheduler>(module)) {
     // If the user enabled opt effort we turn the estimator on if we're
-    // compiling for Hopper.
-    return gpu_device_info.cuda_compute_capability().IsHopper();
+    // compiling for Hopper/Blackwell.
+    return is_supported_device;
   }
   // If this flag is on by default then we provide users an escape hatch in case
   // they find the new cost model less profitable than T-shirt sizes.
@@ -353,10 +356,9 @@ SolLatencyEstimator::Create(
            .xla_gpu_enable_analytical_sol_latency_estimator()) {
     return false;
   }
-  // Otherwise we are more conservative and we turn it on only for Hopper and if
-  // `module` contains only supported collectives.
-  return gpu_device_info.cuda_compute_capability().IsHopper() &&
-         HasOnlySupportedCollectives(module);
+  // Otherwise we are more conservative and we turn it on only for
+  // Hopper/Blackwell and if `module` contains only supported collectives.
+  return is_supported_device && HasOnlySupportedCollectives(module);
 }
 
 LatencyEstimator::TimeCost SolLatencyEstimator::GetLatencyBetween(
@@ -401,7 +403,7 @@ LatencyEstimator::TimeCost SolLatencyEstimator::NodeCost(
   // sure we can achieve overlap (even at the cost of overextension).
   if (instr->IsLoopFusion() || instr->IsInputFusion()) {
     absl::Duration total_estimated_time =
-        gpu_performance_model_
+        gpu_performance_model_.Get()
             .EstimateRunTimeForInstruction(instr, &*cost_analysis_)
             .exec_time;
     cost_in_us = absl::ToDoubleMicroseconds(total_estimated_time);

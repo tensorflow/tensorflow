@@ -1,3 +1,4 @@
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("//tensorflow:tensorflow.bzl", "if_google")
 
 package(
@@ -272,8 +273,8 @@ cc_library(
         ":saved_model_import_input",
         "//tensorflow/cc/saved_model:reader",
         "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tensorflow:deserialize_mlir_module_utils",
         "//tensorflow/compiler/mlir/tensorflow:import_model",
-        "//tensorflow/compiler/mlir/tensorflow:serialize_mlir_module_utils",
         "//tensorflow/compiler/mlir/tfrt:import_model",
         "//tensorflow/compiler/mlir/tfrt:saved_model",
         "//tensorflow/compiler/mlir/tfrt:tfrt_compile_options",

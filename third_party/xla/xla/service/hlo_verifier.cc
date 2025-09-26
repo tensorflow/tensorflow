@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/service/hlo_verifier.h"
 
 #include <algorithm>
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <iterator>
@@ -23,6 +24,7 @@ limitations under the License.
 #include <memory>
 #include <numeric>
 #include <optional>
+#include <set>
 #include <string>
 #include <utility>
 #include <vector>
@@ -38,6 +40,7 @@ limitations under the License.
 #include "absl/strings/match.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -55,8 +58,11 @@ limitations under the License.
 #include "xla/permutation_util.h"
 #include "xla/primitive_util.h"
 #include "xla/service/collective_ops_utils.h"
+#include "xla/service/collective_permute_cycle.h"
 #include "xla/service/hlo_module_config.h"
+#include "xla/service/matmul_indexing_utils.h"
 #include "xla/service/shape_inference.h"
+#include "xla/service/source_target_pairs.h"
 #include "xla/shape.h"
 #include "xla/shape_layout.h"
 #include "xla/shape_util.h"
@@ -210,34 +216,13 @@ absl::Status ShapeVerifier::HandleCopy(HloInstruction* copy) {
 }
 
 absl::Status ShapeVerifier::HandleDot(HloInstruction* dot) {
-  auto sparsity = Cast<HloDotInstruction>(dot)->sparsity();
-  TF_RETURN_IF_ERROR(
-      CheckOperandCount(dot, HloDotInstruction::kOperands + sparsity.size()));
   TF_ASSIGN_OR_RETURN(
       const Shape expected,
       ShapeInference::InferDotOpShape(
           dot->operand(0)->shape(), dot->operand(1)->shape(),
           dot->dot_dimension_numbers(),
-          /*preferred_element_type=*/dot->shape().element_type(), sparsity));
+          /*preferred_element_type=*/dot->shape().element_type()));
 
-  for (int i = 0; i < sparsity.size(); ++i) {
-    const SparsityDescriptor& descriptor = sparsity[i];
-    TF_RET_CHECK(descriptor.index() == 0 || descriptor.index() == 1);
-    TF_ASSIGN_OR_RETURN(const Shape expected_metadata_shape,
-                        ShapeInference::InferSparseDotMetadataShape(
-                            dot->operand(descriptor.index())->shape(),
-                            dot->dot_dimension_numbers(), descriptor));
-    const Shape actual_metadata_shape =
-        dot->operand(HloDotInstruction::kOperands + i)->shape();
-    if (!ShapeUtil::Compatible(actual_metadata_shape,
-                               expected_metadata_shape)) {
-      return Internal(
-          "Expected sparse dot metadata to have shape equal to %s, actual "
-          "shape is %s:\n%s",
-          StringifyShape(expected_metadata_shape),
-          StringifyShape(actual_metadata_shape), dot->ToString());
-    }
-  }
   return CheckShape(dot, expected);
 }
 
@@ -252,6 +237,114 @@ absl::Status ShapeVerifier::HandleRaggedDot(HloInstruction* ragged_dot) {
           ragged_dot->ragged_dot_dimension_numbers(),
           /*preferred_element_type=*/ragged_dot->shape().element_type()));
   return CheckShape(ragged_dot, expected);
+}
+
+// Check that the scale operand is a constant and equal to 1. This is the
+// magic number for the case when we have no scales for the operand.
+absl::StatusOr<bool> IsNoOpScale(const HloInstruction* dot,
+                                 const HloInstruction* operand,
+                                 const HloInstruction* scale_operand) {
+  // It should be a constant scalar.
+  if (!ShapeUtil::IsScalar(scale_operand->shape()) ||
+      scale_operand->opcode() != HloOpcode::kConstant) {
+    return false;
+  }
+  // If the scale operand is a constant, it must be a scalar of the same type
+  // as the operand.
+  if (scale_operand->shape().element_type() !=
+      operand->shape().element_type()) {
+    return absl::FailedPreconditionError(absl::StrFormat(
+        "Dummy scale operand '%s' has a different type than operand '%s'. %s "
+        "vs %s in %s",
+        scale_operand->name(), operand->name(),
+        PrimitiveType_Name(scale_operand->shape().element_type()),
+        PrimitiveType_Name(operand->shape().element_type()), dot->ToString()));
+  }
+  auto constant = Cast<HloConstantInstruction>(scale_operand);
+
+  // If the element type is float, the scale must be 1.0.
+  if (primitive_util::IsFloatingPointType(operand->shape().element_type())) {
+    if (!constant->literal().IsAllFloat(1.0)) {
+      return absl::FailedPreconditionError(absl::StrFormat(
+          "Dummy scale operand %s of %s is not a scalar with value 1.0",
+          scale_operand->name(), dot->ToString()));
+    }
+    return true;  // Dummy constant scale equal to 1.0 with float type found.
+  }
+
+  // If the element type is not float, the scale must be 1.
+  if (!constant->literal().IsAll(1)) {
+    return absl::FailedPreconditionError(absl::StrFormat(
+        "Dummy scale operand %s of %s is not a constant with value 1",
+        scale_operand->name(), dot->ToString()));
+  }
+  return true;  // Dummy constant scale equal to 1 with integer type found.
+}
+
+absl::Status ScalesShapeVerifier(
+    HloInstruction* dot, const std::array<DotOperandDims, 4>& dim_numbers,
+    int64_t operand_number, int64_t scale_operand_number) {
+  const HloInstruction* operand = dot->operand(operand_number);
+  const HloInstruction* scale_operand = dot->operand(scale_operand_number);
+
+  TF_ASSIGN_OR_RETURN(bool is_dummy_scale,
+                      IsNoOpScale(dot, operand, scale_operand));
+  if (is_dummy_scale) {
+    return absl::OkStatus();
+  }
+
+  // Check that the operand and scale ranks are the same.
+  if (scale_operand->shape().dimensions().size() !=
+      operand->shape().dimensions().size()) {
+    return absl::FailedPreconditionError(absl::StrFormat(
+        "Scale operand %s has a different number of dimensions than "
+        "operand %s in %s",
+        scale_operand->name(), operand->name(), dot->ToString()));
+  }
+
+  // Check that the contracting dimension of the _operand_ has exactly one
+  // dimension.
+  if (dim_numbers[operand_number].DimensionCount(
+          DotOperandDims::kContracting) != 1) {
+    return Internal(
+        "Contracting dimensions must have exactly one dimension in instruction "
+        "%s",
+        dot->ToString());
+  }
+  auto operand_dims = operand->shape().dimensions();
+  auto scale_operand_dims = scale_operand->shape().dimensions();
+  for (int i = 0; i < operand_dims.size(); ++i) {
+    if (operand_dims[i] % scale_operand_dims[i]) {
+      return absl::FailedPreconditionError(absl::StrFormat(
+          "Dimension %d of operand %s should be a multiple of dimension "
+          "%d of scale operand %s in %s",
+          i, operand->name(), i, scale_operand->name(), dot->ToString()));
+    }
+  }
+  return absl::OkStatus();
+}
+
+absl::Status ShapeVerifier::HandleScaledDot(HloInstruction* scaled_dot) {
+  TF_RETURN_IF_ERROR(
+      CheckOperandCount(scaled_dot, HloScaledDotInstruction::kOperands));
+
+  TF_ASSIGN_OR_RETURN(auto dim_numbers,
+                      DotOperandDims::FromScaledDot(scaled_dot));
+  TF_RETURN_IF_ERROR(ScalesShapeVerifier(scaled_dot, dim_numbers, 0, 1));
+  TF_RETURN_IF_ERROR(ScalesShapeVerifier(scaled_dot, dim_numbers, 2, 3));
+  if (ShapeUtil::IsScalar(scaled_dot->operand(1)->shape()) &&
+      ShapeUtil::IsScalar(scaled_dot->operand(3)->shape())) {
+    return absl::FailedPreconditionError(absl::StrFormat(
+        "At least one of the scales should be not a scalar in %s",
+        scaled_dot->ToString()));
+  }
+  TF_ASSIGN_OR_RETURN(
+      const Shape expected,
+      ShapeInference::InferDotOpShape(
+          scaled_dot->operand(0)->shape(), scaled_dot->operand(2)->shape(),
+          scaled_dot->dot_dimension_numbers(),
+          /*preferred_element_type=*/scaled_dot->shape().element_type()));
+  return CheckShape(scaled_dot, expected);
 }
 
 absl::Status ShapeVerifier::HandleConvolution(HloInstruction* convolution) {
@@ -319,28 +412,43 @@ static absl::Status CheckReplicaGroups(HloInstruction* hlo,
                                        CollectiveOpGroupMode group_mode,
                                        bool uniform_replica_group_size = true) {
   if (!hlo->replica_groups().empty()) {
-    absl::flat_hash_set<int64_t> replicas_seen;
+    size_t n = 0;
     for (const ReplicaGroup& g : hlo->replica_groups()) {
-      if (g.replica_ids().empty()) {
+      const size_t size = g.replica_ids_size();
+      if (size == 0) {
         return Internal("Instruction cannot have an empty replica group: %s",
                         hlo->ToString());
       }
+      n += size;
+    }
+    std::vector<bool> seen_replica_ids(n, false);
+    for (const ReplicaGroup& g : hlo->replica_groups()) {
       for (int64_t i : g.replica_ids()) {
-        if (!replicas_seen.insert(i).second) {
+        if (i < 0 || i >= n) {
+          return Internal(
+              "Replica %d is out of range (should be in [0, %d) range) in "
+              "instruction's replica-groups: %s",
+              i, n, hlo->ToString());
+        }
+        if (seen_replica_ids[i]) {
           return Internal(
               "Replica %d is repeated in instruction's replica-groups: %s", i,
               hlo->ToString());
         }
+        seen_replica_ids[i] = true;
       }
     }
-    size_t n = replicas_seen.size();
+    // If we come here then it is guaranteed that we have seen all replicas from
+    // 0 to n-1. This is because we calculate the `n` in the first pass and then
+    // on the second pass we only add to `seen_replica_ids` iff we see a replica
+    // id in the range [0, n) for the first time. So, there is no need to check
+    // that all `seen_replica_ids` values are true.
+#ifndef NDEBUG
     for (int64_t i = 0; i < n; ++i) {
-      if (!replicas_seen.count(i)) {
-        return Internal(
-            "Replica %d is not named in instruction's replica-groups: %s", i,
-            hlo->ToString());
-      }
+      CHECK(seen_replica_ids[i])
+          << "Programming error: seen_replica_ids[" << i << "] is false!";
     }
+#endif  // NDEBUG
 
     // replica-groups have numbers [0, n). This n should be either replica or
     // partition count, or their product. In some cases, replica and/or
@@ -390,13 +498,16 @@ static absl::Status CheckReplicaGroups(HloInstruction* hlo,
 }
 
 static absl::Status CheckCommonAllGatherInvariants(
-    HloInstruction* hlo, int64_t* computed_shard_count) {
+    HloInstruction* hlo, int64_t* computed_shard_count,
+    bool check_replica_groups) {
   auto ag = Cast<HloAllGatherInstruction>(hlo);
   CHECK_NE(computed_shard_count, nullptr) << "Expected a shard count as input";
   TF_ASSIGN_OR_RETURN(CollectiveOpGroupMode group_mode,
                       GetCollectiveOpGroupMode(ag->channel_id().has_value(),
                                                ag->use_global_device_ids()));
-  TF_RETURN_IF_ERROR(CheckReplicaGroups(ag, group_mode));
+  if (check_replica_groups) {
+    TF_RETURN_IF_ERROR(CheckReplicaGroups(ag, group_mode));
+  }
   TF_RET_CHECK(ag->all_gather_dimension() >= 0);
   TF_RET_CHECK(ag->operand_count() >= 1);
 
@@ -439,7 +550,8 @@ static absl::Status CheckCommonAllGatherInvariants(
 absl::Status ShapeVerifier::HandleAllGather(HloInstruction* hlo) {
   auto ag = Cast<HloAllGatherInstruction>(hlo);
   int64_t shard_count;
-  TF_RETURN_IF_ERROR(CheckCommonAllGatherInvariants(hlo, &shard_count));
+  TF_RETURN_IF_ERROR(CheckCommonAllGatherInvariants(
+      hlo, &shard_count, opts_.ShouldCheckReplicaGroups()));
   std::vector<const Shape*> operand_shapes;
   for (const HloInstruction* operand : hlo->operands()) {
     operand_shapes.push_back(&operand->shape());
@@ -452,7 +564,8 @@ absl::Status ShapeVerifier::HandleAllGather(HloInstruction* hlo) {
 absl::Status ShapeVerifier::HandleAllGatherStart(HloInstruction* hlo) {
   auto ag = Cast<HloAllGatherInstruction>(hlo);
   int64_t shard_count;
-  TF_RETURN_IF_ERROR(CheckCommonAllGatherInvariants(hlo, &shard_count));
+  TF_RETURN_IF_ERROR(CheckCommonAllGatherInvariants(
+      hlo, &shard_count, opts_.ShouldCheckReplicaGroups()));
   std::vector<const Shape*> operand_shapes;
   for (const HloInstruction* operand : hlo->operands()) {
     operand_shapes.push_back(&operand->shape());
@@ -469,12 +582,13 @@ absl::Status ShapeVerifier::HandleAllGatherDone(HloInstruction* hlo) {
 
 absl::Status ShapeVerifier::HandleAllReduce(HloInstruction* hlo) {
   auto ar = Cast<HloAllReduceInstruction>(hlo);
-  TF_ASSIGN_OR_RETURN(CollectiveOpGroupMode group_mode,
-                      GetCollectiveOpGroupMode(ar->channel_id().has_value(),
-                                               ar->use_global_device_ids()));
-  TF_RETURN_IF_ERROR(
-      CheckReplicaGroups(ar, group_mode, /*uniform_replica_group_size=*/false));
-
+  if (opts_.ShouldCheckReplicaGroups()) {
+    TF_ASSIGN_OR_RETURN(CollectiveOpGroupMode group_mode,
+                        GetCollectiveOpGroupMode(ar->channel_id().has_value(),
+                                                 ar->use_global_device_ids()));
+    TF_RETURN_IF_ERROR(CheckReplicaGroups(
+        ar, group_mode, /*uniform_replica_group_size=*/false));
+  }
   std::vector<const Shape*> operand_shapes;
   for (const HloInstruction* operand : hlo->operands()) {
     operand_shapes.push_back(&operand->shape());
@@ -487,7 +601,9 @@ absl::Status ShapeVerifier::HandleReduceScatter(HloInstruction* hlo) {
   TF_ASSIGN_OR_RETURN(CollectiveOpGroupMode group_mode,
                       GetCollectiveOpGroupMode(ars->channel_id().has_value(),
                                                ars->use_global_device_ids()));
-  TF_RETURN_IF_ERROR(CheckReplicaGroups(ars, group_mode));
+  if (opts_.ShouldCheckReplicaGroups()) {
+    TF_RETURN_IF_ERROR(CheckReplicaGroups(ars, group_mode));
+  }
   TF_RET_CHECK(ars->scatter_dimension() >= 0);
   TF_RET_CHECK(ars->operand_count() >= 1);
 
@@ -527,12 +643,13 @@ absl::Status ShapeVerifier::HandleReduceScatter(HloInstruction* hlo) {
 
 absl::Status ShapeVerifier::HandleAllReduceStart(HloInstruction* hlo) {
   auto ar = Cast<HloAllReduceInstruction>(hlo);
-  TF_ASSIGN_OR_RETURN(CollectiveOpGroupMode group_mode,
-                      GetCollectiveOpGroupMode(ar->channel_id().has_value(),
-                                               ar->use_global_device_ids()));
-  TF_RETURN_IF_ERROR(
-      CheckReplicaGroups(ar, group_mode, /*uniform_replica_group_size=*/false));
-
+  if (opts_.ShouldCheckReplicaGroups()) {
+    TF_ASSIGN_OR_RETURN(CollectiveOpGroupMode group_mode,
+                        GetCollectiveOpGroupMode(ar->channel_id().has_value(),
+                                                 ar->use_global_device_ids()));
+    TF_RETURN_IF_ERROR(CheckReplicaGroups(
+        ar, group_mode, /*uniform_replica_group_size=*/false));
+  }
   std::vector<const Shape*> operand_shapes;
   for (const HloInstruction* operand : hlo->operands()) {
     operand_shapes.push_back(&operand->shape());
@@ -552,8 +669,9 @@ absl::Status ShapeVerifier::HandleAllToAll(HloInstruction* hlo) {
                       GetCollectiveOpGroupMode(
                           all_to_all->channel_id().has_value(), std::nullopt));
 
-  TF_RETURN_IF_ERROR(CheckReplicaGroups(hlo, group_mode));
-
+  if (opts_.ShouldCheckReplicaGroups()) {
+    TF_RETURN_IF_ERROR(CheckReplicaGroups(hlo, group_mode));
+  }
   TF_RET_CHECK(all_to_all != nullptr);
   const int64_t split_count = GetSubgroupSize(all_to_all, group_mode);
   if (all_to_all->split_dimension()) {
@@ -575,11 +693,14 @@ absl::Status ShapeVerifier::HandleAllToAll(HloInstruction* hlo) {
 
 absl::Status ShapeVerifier::HandleRaggedAllToAll(HloInstruction* hlo) {
   auto* all_to_all = Cast<HloRaggedAllToAllInstruction>(hlo);
-  TF_ASSIGN_OR_RETURN(CollectiveOpGroupMode group_mode,
-                      GetCollectiveOpGroupMode(
-                          all_to_all->channel_id().has_value(), std::nullopt));
+  if (opts_.ShouldCheckReplicaGroups()) {
+    TF_ASSIGN_OR_RETURN(
+        CollectiveOpGroupMode group_mode,
+        GetCollectiveOpGroupMode(all_to_all->channel_id().has_value(),
+                                 std::nullopt));
 
-  TF_RETURN_IF_ERROR(CheckReplicaGroups(hlo, group_mode));
+    TF_RETURN_IF_ERROR(CheckReplicaGroups(hlo, group_mode));
+  }
 
   const int64_t kNumRaggedOperands = 6;
   TF_RET_CHECK(all_to_all != nullptr);
@@ -1271,8 +1392,10 @@ absl::Status ShapeVerifier::HandleFusion(HloInstruction* fusion) {
     if (!ShapesSame(fused_param->shape(), fusion->operand(param_no)->shape())) {
       return Internal(
           "Shape mismatch between parameter number %d and its operand in "
-          "%s.",
-          param_no, fusion->ToString().c_str());
+          "%s. (%s != %s)",
+          param_no, fusion->ToString().c_str(),
+          fused_param->shape().ToString(true),
+          fusion->operand(param_no)->shape().ToString(true));
     }
   }
   const HloFusionInstruction* casted_fusion =
@@ -1598,10 +1721,13 @@ absl::Status CheckCallableInstructionThreadName(
     const HloInstruction* instruction) {
   for (const HloComputation* computation : instruction->called_computations()) {
     if (instruction->parent() != nullptr) {
-      if (instruction->parent()->execution_thread() !=
-          computation->execution_thread()) {
+      if (xla::GetInstructionCallContext(instruction->opcode()) !=
+              CallContext::kEmbedded &&
+          instruction->parent()->execution_thread() !=
+              computation->execution_thread()) {
         return Internal(
-            "callable instruction %s expects parent computation thread name "
+            "Non-Embedded context callable instruction %s expects parent "
+            "computation thread name "
             "same as called computation's thread name (%s vs %s).",
             instruction->ToString(), instruction->parent()->execution_thread(),
             computation->execution_thread());
@@ -2412,6 +2538,176 @@ absl::Status VerifyAsynchronousInstructionPairs(const HloModule& module) {
   return absl::OkStatus();
 }
 
+// Helper function to match source-target pairs for a pair of send/recv
+// instructions.
+absl::Status VerifySourceTargetPairs(const HloInstruction* first,
+                                     const HloInstruction* second) {
+  if (first == nullptr || second == nullptr) {
+    return Internal("Expected send or recv instruction to be non-null");
+  }
+  auto send_source_target_pairs =
+      first->frontend_attributes().map().find(kSendRecvSourceTargetPairsAttr);
+  auto recv_source_target_pairs =
+      second->frontend_attributes().map().find(kSendRecvSourceTargetPairsAttr);
+  // Source-target pairs should be set or unset for both send and recv.
+  if ((send_source_target_pairs == first->frontend_attributes().map().end()) !=
+      (recv_source_target_pairs == second->frontend_attributes().map().end())) {
+    return Internal(
+        "Expected both send and recv instruction to have source-target pairs "
+        "set, but found %s and %s",
+        first->ToString(), second->ToString());
+  }
+
+  // Skip checks if source-target pairs are unset for both send and recv
+  if (send_source_target_pairs == first->frontend_attributes().map().end()) {
+    return absl::OkStatus();
+  }
+
+  if (send_source_target_pairs->second != recv_source_target_pairs->second) {
+    return Internal(
+        "Expected send and recv instructions to have the same source-target "
+        "pairs, but found %s and %s",
+        first->ToString(), second->ToString());
+  }
+
+  TF_ASSIGN_OR_RETURN(
+      SourceTargetPairs send_source_target_pairs_array,
+      SourceTargetPairs::FromString(send_source_target_pairs->second));
+  if (collective_permute_cycle::HasCycles(send_source_target_pairs_array)) {
+    return Internal(
+        "Expected send and recv instructions to have non-cyclical "
+        "source-target pairs, but found %s",
+        first->ToString());
+  }
+  std::set<int> sources;
+  std::set<int> targets;
+  for (int i = 0; i < send_source_target_pairs_array.size(); ++i) {
+    sources.insert(send_source_target_pairs_array[i].source);
+    targets.insert(send_source_target_pairs_array[i].target);
+  }
+  if (sources.size() != send_source_target_pairs_array.size() ||
+      targets.size() != send_source_target_pairs_array.size()) {
+    return Internal(
+        "Expected send and recv instructions to have unique source and target "
+        "pairs, but found %s",
+        first->ToString());
+  }
+
+  return absl::OkStatus();
+}
+
+enum class DfaState { kNoException, kExpectSend, kExpectRecv };
+
+// Helper function to handle the state transitions for a Send instruction.
+absl::Status HandleSendInstruction(const HloInstruction* instruction,
+                                   DfaState& current_state,
+                                   const HloInstruction*& current_instruction) {
+  if (DynCast<HloSendInstruction>(instruction)->is_host_transfer()) {
+    return absl::OkStatus();
+  }
+  switch (current_state) {
+    case DfaState::kNoException:
+      current_instruction = instruction;
+      current_state = DfaState::kExpectRecv;
+      break;
+    case DfaState::kExpectSend:
+      TF_RETURN_IF_ERROR(
+          VerifySourceTargetPairs(current_instruction, instruction));
+      current_state = DfaState::kNoException;
+      current_instruction = nullptr;
+      break;
+    case DfaState::kExpectRecv:
+      return Internal("Expected recv to match send, but found %s",
+                      instruction->ToString());
+    default:
+      break;
+  }
+  return absl::OkStatus();
+}
+
+// Helper function to handle the state transitions for a Recv instruction.
+absl::Status HandleRecvInstruction(const HloInstruction* instruction,
+                                   DfaState& current_state,
+                                   const HloInstruction*& current_instruction) {
+  if (DynCast<HloRecvInstruction>(instruction)->is_host_transfer()) {
+    return absl::OkStatus();
+  }
+  switch (current_state) {
+    case DfaState::kNoException:
+      current_instruction = instruction;
+      current_state = DfaState::kExpectSend;
+      break;
+    case DfaState::kExpectSend:
+      return Internal("Expected send to match recv, but found %s",
+                      instruction->ToString());
+    case DfaState::kExpectRecv:
+      TF_RETURN_IF_ERROR(
+          VerifySourceTargetPairs(current_instruction, instruction));
+      current_state = DfaState::kNoException;
+      current_instruction = nullptr;
+      break;
+    default:
+      break;
+  }
+  return absl::OkStatus();
+}
+
+// Checks that the send/recv instructions in the module do not deadlock. This is
+// only done on scheduled modules and is specific to device-to-device
+// communications on GPU. At a high level, we want to check that:
+// 1. no collectives are scheduled between a matching pair of send and recv
+// 2. no two send instructions are scheduled in a row
+// 3. no two recv instructions are scheduled in a row
+// 4. the program does not terminate with a dangling send or recv
+absl::Status VerifyNoCollectiveDeadlocks(const HloModule& module) {
+  DfaState current_state = DfaState::kNoException;
+  const HloInstruction* current_instruction = nullptr;
+  // TODO: b/434020459 - start the static verification in ENTRY and run the
+  // function recursively instead of iterating through all computations
+  // serially
+
+  for (auto& [computation_id, sequence] : module.schedule().sequences()) {
+    for (const HloInstruction* instruction : sequence.instructions()) {
+      switch (instruction->opcode()) {
+        case HloOpcode::kSend:
+          TF_RETURN_IF_ERROR(HandleSendInstruction(instruction, current_state,
+                                                   current_instruction));
+          break;
+        case HloOpcode::kRecv:
+          TF_RETURN_IF_ERROR(HandleRecvInstruction(instruction, current_state,
+                                                   current_instruction));
+          break;
+        case HloOpcode::kAllGather:
+        case HloOpcode::kAllReduce:
+        case HloOpcode::kAllToAll:
+        case HloOpcode::kRaggedAllToAll:
+        case HloOpcode::kCollectivePermute:
+        case HloOpcode::kReduceScatter:
+        case HloOpcode::kCollectiveBroadcast:
+          switch (current_state) {
+            case DfaState::kExpectSend:
+            case DfaState::kExpectRecv:
+              return Internal("Expected send or recv, but found %s",
+                              instruction->ToString());
+            default:
+              break;
+          }
+          break;
+        default:
+          break;
+      }
+    }
+  }
+  return current_state == DfaState::kNoException
+             ? absl::OkStatus()
+             : Internal(
+                   "Program terminated with dangling send or recv. Last "
+                   "checked instruction: %s",
+                   current_instruction == nullptr
+                       ? ""
+                       : current_instruction->ToString());
+}
+
 // Checks that the asynchronous computation only has a root and parameter
 // instructions.
 absl::Status VerifyAsyncComputation(const HloComputation* async_computation) {
@@ -2455,8 +2751,8 @@ absl::Status VerifyOriginalValue(const HloModule& module) {
       if (auto original_value = instruction->original_value()) {
         // An original value is expected to have intermediate nodes that are
         // always nullopt and leaves with actual values.
-        for (const auto& leaf : original_value->leaves()) {
-          if (!leaf.second.has_value()) {
+        for (const auto& pair : original_value->original_arrays()) {
+          if (!pair.second.has_value()) {
             return Internal(
                 "Leaf nodes in an original value is expected to contain values."
                 " Instruction: %s.",
@@ -2473,32 +2769,29 @@ absl::Status VerifyOriginalValue(const HloModule& module) {
 // collectives).
 absl::Status VerifyChannels(const HloModule& module,
                             const HloVerifierOpts& opts) {
-  // Send/recv instruction must have a unique user. If it is the corresponding
-  // send-done/recv-done operation, channel IDs must match.
+  // 1) Send/recv instruction must have a unique user. If it is the
+  // corresponding send-done/recv-done operation, channel IDs must match.
+  // 2) Host-transfer send/recv instructions that use the same channel must be
+  // exactly the same up to having different operands (but the operands must
+  // still have the same shapes).
+  absl::flat_hash_map<int64_t, std::vector<const HloSendRecvInstruction*>>
+      channel_to_host_transfer_send_recv_instructions;
   for (const HloComputation* computation : module.computations()) {
     for (const HloInstruction* instruction : computation->instructions()) {
-      auto channel_instr = DynCast<HloChannelInstruction>(instruction);
-      if (!channel_instr || !channel_instr->channel_id()) {
+      auto send_recv_instr = DynCast<HloSendRecvInstruction>(instruction);
+      if (!send_recv_instr || !send_recv_instr->channel_id()) {
         continue;
       }
 
       switch (instruction->opcode()) {
-        case HloOpcode::kSend: {
-          // If the instruction is kSend or kRecv, it can have no users if and
-          // only if it is wrapped in an async call.
-          if (instruction->IsRoot() &&
-              instruction->parent()->IsAsyncComputation()) {
-            break;
-          }
-          TF_RET_CHECK(instruction->users().size() == 1);
-          const HloInstruction* send_done = instruction->users().front();
-          if (send_done->opcode() == HloOpcode::kSendDone) {
-            TF_RETURN_IF_ERROR(CheckSameChannel(instruction, send_done));
-            TF_RETURN_IF_ERROR(CheckSameIsHostTransfer(instruction, send_done));
-          }
-          break;
-        }
+        case HloOpcode::kSend:
         case HloOpcode::kRecv: {
+          if (send_recv_instr->is_host_transfer() &&
+              send_recv_instr->channel_id().has_value()) {
+            channel_to_host_transfer_send_recv_instructions
+                [send_recv_instr->channel_id().value()]
+                    .push_back(send_recv_instr);
+          }
           // If the instruction is kSend or kRecv, it can have no users if and
           // only if it is wrapped in an async call.
           if (instruction->IsRoot() &&
@@ -2506,10 +2799,13 @@ absl::Status VerifyChannels(const HloModule& module,
             break;
           }
           TF_RET_CHECK(instruction->users().size() == 1);
-          const HloInstruction* recv_done = instruction->users().front();
-          if (recv_done->opcode() == HloOpcode::kRecvDone) {
-            TF_RETURN_IF_ERROR(CheckSameChannel(instruction, recv_done));
-            TF_RETURN_IF_ERROR(CheckSameIsHostTransfer(instruction, recv_done));
+          auto done_opcode = instruction->opcode() == HloOpcode::kSend
+                                 ? HloOpcode::kSendDone
+                                 : HloOpcode::kRecvDone;
+          const HloInstruction* done = instruction->users().front();
+          if (done->opcode() == done_opcode) {
+            TF_RETURN_IF_ERROR(CheckSameChannel(instruction, done));
+            TF_RETURN_IF_ERROR(CheckSameIsHostTransfer(instruction, done));
           }
           break;
         }
@@ -2523,6 +2819,27 @@ absl::Status VerifyChannels(const HloModule& module,
     }
   }
 
+  for (const auto& [channel, send_recv_instructions] :
+       channel_to_host_transfer_send_recv_instructions) {
+    if (send_recv_instructions.size() > 1) {
+      const HloSendRecvInstruction* reference = send_recv_instructions[0];
+      for (const HloSendRecvInstruction* send_recv_instruction :
+           send_recv_instructions) {
+        auto eq_operand_shapes = [](const HloInstruction* a,
+                                    const HloInstruction* b) {
+          return ShapeUtil::Equal(a->shape(), b->shape());
+        };
+        if (!reference->Identical(*send_recv_instruction, eq_operand_shapes)) {
+          return Internal(
+              "Host-transfer send/recv instructions that use the same channel "
+              "must be identical up to having different operands. Found "
+              "different instructions with the same channel ID: \n%s \nvs "
+              "\n%s.",
+              reference->ToString(), send_recv_instruction->ToString());
+        }
+      }
+    }
+  }
   return absl::OkStatus();
 }
 
@@ -2912,10 +3229,13 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
 
     if (opts_.verify_call_nested_computation_thread_name &&
         instruction->has_to_apply() &&
+        xla::GetInstructionCallContext(instruction->opcode()) !=
+            xla::CallContext::kEmbedded &&
         instruction->to_apply()->execution_thread() !=
             instruction->parent()->execution_thread()) {
       return Internal(
-          "%s top_apply computation execution thread does not match (%s vs %s)",
+          "Non-Embedded context callable instruction %s to_apply computation "
+          "execution thread does not match (%s vs %s)",
           instruction->name(), instruction->to_apply()->execution_thread(),
           instruction->parent()->execution_thread());
     }
@@ -3425,6 +3745,9 @@ absl::StatusOr<bool> HloVerifier::Run(
     // If the module has a schedule, it must be valid.
     if (module->has_schedule()) {
       TF_RETURN_IF_ERROR(module->schedule().Verify());
+      if (target_metadata_->GetVerifierOpts().CheckForCollectiveDeadlocks()) {
+        TF_RETURN_IF_ERROR(VerifyNoCollectiveDeadlocks(*module));
+      }
     }
 
     if (HloInstruction::IsThreadIncluded(

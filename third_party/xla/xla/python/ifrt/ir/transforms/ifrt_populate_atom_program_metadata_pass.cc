@@ -51,6 +51,10 @@ mlir::LogicalResult PopulateMetadata(CallOp call_op, mlir::ModuleOp module_op,
                                      mlir::OpBuilder& builder) {
   module_op->setAttr(kIfrtNumDevicesAttrName,
                      builder.getI32IntegerAttr(call_op.getDevices().size()));
+  // Copy `ifrt.sdy_partitioned` attribute if it exists.
+  if (call_op->hasAttr(kIsSdyPartitioned)) {
+    module_op->setAttr(kIsSdyPartitioned, builder.getUnitAttr());
+  }
   // Copy `ifrt.local_view` attribute if it exists.
   if (call_op->hasAttrOfType<mlir::UnitAttr>(kIfrtLocalViewAttrName)) {
     module_op->setAttr(kIfrtLocalViewAttrName,

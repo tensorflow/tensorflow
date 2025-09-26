@@ -942,6 +942,69 @@ TEST_F(HloEvaluatorTest, RaggedDotNonContracting) {
   EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
 }
 
+TEST_F(HloEvaluatorTest, RaggedDotNonContractingMixedPrecision) {
+  HloComputation::Builder b(TestName());
+
+  // lhs[m,k]:
+  // bf16[4,1] {
+  //  { 1 },
+  //  { 2 },
+  //  { 3 },
+  //  { 4 },
+  // }
+  auto lhs_array = std::make_unique<Array2D<float>>(4, 1);
+  lhs_array->FillUnique(1.0f);
+  auto lhs_literal = LiteralUtil::ConvertF32ToBF16(
+      LiteralUtil::CreateR2FromArray2D<float>(*lhs_array));
+  HloInstruction* lhs_instruction =
+      b.AddInstruction(HloInstruction::CreateConstant(std::move(lhs_literal)));
+
+  // rhs[g,k,n]:
+  // bf16[2,1,3] =
+  //  {{{ 1, 2, 3 }},
+  //   {{4, 5, 6 }}},
+  std::initializer_list<std::initializer_list<std::initializer_list<float>>>
+      rhs_array_data = {{{1.f, 2.f, 3.f}}, {{4.f, 5.f, 6.f}}};
+  auto rhs_array = std::make_unique<Array3D<float>>(rhs_array_data);
+  auto rhs_literal = LiteralUtil::ConvertF32ToBF16(
+      LiteralUtil::CreateR3FromArray3D<float>(*rhs_array));
+  HloInstruction* rhs_instruction =
+      b.AddInstruction(HloInstruction::CreateConstant(std::move(rhs_literal)));
+
+  // group_sizes s32[g]:
+  // { 2, 2 }
+  auto gs_literal = LiteralUtil::CreateR1<int>({2, 2});
+  HloInstruction* gs_instruction =
+      b.AddInstruction(HloInstruction::CreateConstant(std::move(gs_literal)));
+
+  Shape output_shape = ShapeUtil::MakeShape(F32, {4, 3});
+  DotDimensionNumbers dot_dnums;
+  dot_dnums.add_lhs_contracting_dimensions(1);
+  dot_dnums.add_rhs_contracting_dimensions(1);
+  RaggedDotDimensionNumbers ragged_dot_dnums;
+  ragged_dot_dnums.add_lhs_ragged_dimensions(0);
+  ragged_dot_dnums.add_rhs_group_dimensions(0);
+  *ragged_dot_dnums.mutable_dot_dimension_numbers() = dot_dnums;
+  b.AddInstruction(HloInstruction::CreateRaggedDot(
+      output_shape, lhs_instruction, rhs_instruction, gs_instruction,
+      ragged_dot_dnums, DefaultPrecisionConfig(2)));
+  m_->AddEntryComputation(b.Build());
+
+  TF_ASSERT_OK_AND_ASSIGN(Literal result, Evaluate());
+
+  // clang-format off
+  auto expected_array = Array2D<float>({
+      {1.f, 2.f, 3.f},
+      {2.f, 4.f, 6.f},
+      {12.f, 15.f, 18.f},
+      {16.f, 20.f, 24.f},
+  });
+  // clang-format on
+  auto expected = LiteralUtil::CreateR2FromArray2D<float>(expected_array);
+
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
+}
+
 TEST_F(HloEvaluatorTest, RaggedDotNonContractingGroupSizeSumLessThanM) {
   HloComputation::Builder b(TestName());
 
@@ -6336,6 +6399,74 @@ TEST_F(PatternMatchParseWhileLoopTest, BooleanCond) {
   EXPECT_EQ(parsed_while_loop->static_while_loop->induction_var_init_value, 0);
   EXPECT_EQ(parsed_while_loop->static_while_loop->step_size, 1);
   EXPECT_EQ(parsed_while_loop->static_while_loop->loop_bound, 1);
+}
+
+TEST_F(PatternMatchParseWhileLoopTest, DynamicLoopDependentDynamicLoop) {
+  constexpr absl::string_view kHloModule = R"(
+    HloModule accumulated_all_reduce
+
+    %while_condition.1 {
+      %param = (s32[], s32[], f32[1024, 1024], f32[1024, 1024]) parameter(0)
+      %gte.0 = s32[] get-tuple-element(%param), index=0
+      %gte.1 = s32[] get-tuple-element(%param), index=1
+      ROOT result = pred[] compare(%gte.0, %gte.1), direction=LT
+    }
+
+    %while_body.1 {
+      %param = (s32[], s32[], f32[1024, 1024], f32[1024, 1024]) parameter(0)
+      %gte.0 = s32[] get-tuple-element(%param), index=0
+      %gte.1 = s32[] get-tuple-element(%param), index=1
+      %gte.2 = f32[1024, 1024] get-tuple-element(%param), index=2
+      %gte.3 = f32[1024, 1024] get-tuple-element(%param), index=3
+      %accumulation = f32[1024, 1024] add(f32[1024, 1024] %gte.2, f32[1024, 1024] %gte.3)
+      %constant = s32[] constant(1)
+      %increment_iteration = s32[] add(s32[] %gte.0, s32[] %constant)
+      ROOT %loop_result = (s32[], s32[], f32[1024, 1024], f32[1024, 1024]) tuple(%increment_iteration, %gte.1, %gte.2, %accumulation)
+    }
+
+    %while_condition {
+      %param = (s32[], s32[], f32[1024, 1024], f32[1024, 1024]) parameter(0)
+      %gte.0 = s32[] get-tuple-element(%param), index=0
+      %gte.1 = s32[] get-tuple-element(%param), index=1
+      ROOT result = pred[] compare(%gte.0, %gte.1), direction=LT
+    }
+
+    %while_body {
+      %param = (s32[], s32[], f32[1024, 1024], f32[1024, 1024]) parameter(0)
+      %gte.0 = s32[] get-tuple-element(%param), index=0
+      %gte.1 = s32[] get-tuple-element(%param), index=1
+      %gte.2 = f32[1024, 1024] get-tuple-element(%param), index=2
+      %gte.3 = f32[1024, 1024] get-tuple-element(%param), index=3
+      %accumulation = f32[1024, 1024] add(f32[1024, 1024] %gte.2, f32[1024, 1024] %gte.3)
+      %constant = s32[] constant(1)
+      %increment_iteration = s32[] add(s32[] %gte.0, s32[] %constant)
+      ROOT %loop_result = (s32[], s32[], f32[1024, 1024], f32[1024, 1024]) tuple(%increment_iteration, %gte.1, %gte.2, %accumulation)
+    }
+
+    ENTRY main {
+      %param.1 = f32[1024, 1024] parameter(0)
+      %param.2 = s32[] parameter(1)
+      %constant.0 = s32[] constant(0)
+      %accumulation_buffer_init = f32[] constant(0)
+      %accumulation_buffer = f32[1024, 1024] broadcast(f32[] %accumulation_buffer_init), dimensions={}
+      %while_init = (s32[], s32[], f32[1024, 1024], f32[1024, 1024]) tuple(s32[] %constant.0, s32[] %param.2, f32[1024, 1024] %param.1, f32[1024, 1024] %accumulation_buffer)
+      %while = (s32[], s32[], f32[1024, 1024], f32[1024, 1024]) while(%while_init), condition=%while_condition, body=%while_body
+      %result = f32[1024, 1024] get-tuple-element((s32[], s32[], f32[1024, 1024], f32[1024, 1024]) %while), index=3
+      %new_loop_bound = s32[] get-tuple-element((s32[], s32[], f32[1024, 1024], f32[1024, 1024]) %while), index=1
+      %while_init.1 = (s32[], s32[], f32[1024, 1024], f32[1024, 1024]) tuple(s32[] %constant.0, s32[] %new_loop_bound, f32[1024, 1024] %accumulation_buffer, f32[1024, 1024] %result)
+      %while.1 = (s32[], s32[], f32[1024, 1024], f32[1024, 1024]) while(%while_init.1), condition=%while_condition.1, body=%while_body.1
+      ROOT %result.1 = f32[1024, 1024] get-tuple-element((s32[], s32[], f32[1024, 1024], f32[1024, 1024]) %while.1), index=3
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                          ParseAndReturnVerifiedModule(kHloModule));
+  auto* while_op =
+      hlo_module->entry_computation()->GetInstructionWithName("while.1");
+  EXPECT_NE(while_op, nullptr);
+  std::optional<ParsedWhileLoop> parsed_while_loop =
+      PatternMatchParseWhileLoop(while_op);
+  ASSERT_TRUE(parsed_while_loop.has_value());
+  EXPECT_TRUE(parsed_while_loop->is_dynamic());
 }
 
 TEST_F(PatternMatchParseWhileLoopTest, NestedLoop) {

@@ -14,6 +14,8 @@ tf_library(
 )
 """
 
+load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load(
     "//tensorflow:tensorflow.bzl",
     "if_android",
@@ -30,8 +32,9 @@ def _tfcompile_model_library_rule_impl(ctx):
     header_file = ctx.outputs.header_out
     metadata_object_file = ctx.actions.declare_file("%s_tfcompile_metadata.o" % ctx.attr.model_name)
     function_object_file = ctx.actions.declare_file("%s_tfcompile_function.o" % ctx.attr.model_name)
+    constant_buffers_object_file = ctx.actions.declare_file("%s_tfcompile_constant_buffers.o" % ctx.attr.model_name)
     session_module_pb = ctx.actions.declare_file("%s_session_module.pb" % ctx.attr.model_name)
-    out_files = [header_file, metadata_object_file, function_object_file, session_module_pb]
+    out_files = [header_file, metadata_object_file, function_object_file, constant_buffers_object_file, session_module_pb]
     compiler_log_file = None
     if ctx.attr.gen_compiler_log:
         compiler_log_file = ctx.actions.declare_file("%s_compiler.log" % ctx.attr.model_name)
@@ -39,7 +42,7 @@ def _tfcompile_model_library_rule_impl(ctx):
 
     output_dict = {}
     output_dict["header_files"] = [header_file]
-    output_dict["object_files"] = [metadata_object_file, function_object_file]
+    output_dict["object_files"] = [metadata_object_file, function_object_file, constant_buffers_object_file]
     if compiler_log_file:
         output_dict["log_files"] = [compiler_log_file]
 
@@ -47,17 +50,11 @@ def _tfcompile_model_library_rule_impl(ctx):
         "--out_header=" + header_file.path,
         "--out_metadata_object=" + metadata_object_file.path,
         "--out_function_object=" + function_object_file.path,
+        "--out_constant_buffers_object=" + constant_buffers_object_file.path,
         "--out_session_module=" + session_module_pb.path,
     ]
 
     additional_xla_flags = ctx.attr.xla_flags
-
-    # TODO(basioli): Remove once thunk runtime is the only option.
-    if not "--xla_cpu_use_thunk_runtime=false" in additional_xla_flags:
-        constant_buffers_object_file = ctx.actions.declare_file("%s_tfcompile_constant_buffers.o" % ctx.attr.model_name)
-        output_flags.append("--out_constant_buffers_object=" + constant_buffers_object_file.path)
-        out_files.append(constant_buffers_object_file)
-        output_dict["object_files"].append(constant_buffers_object_file)
 
     tfcompile_env = {
         "XLA_FLAGS": ("--xla_cpu_enable_fast_math=true " +
@@ -313,7 +310,7 @@ def _tf_library(
 
     # The cc_library rule packaging up the header and object file, and needed
     # kernel implementations.
-    native.cc_library(
+    cc_library(
         name = name,
         srcs = [tfcompile_gen_object_files],
         hdrs = [header_file],
@@ -444,7 +441,7 @@ def _tf_library(
         #    --copt=-fvisibility=hidden
         #    --copt=-D_LIBCPP_TYPE_VIS=_LIBCPP_HIDDEN
         #    --copt=-D_LIBCPP_EXCEPTION_ABI=_LIBCPP_HIDDEN
-        native.cc_binary(
+        cc_binary(
             name = benchmark_name,
             srcs = [benchmark_file],
             testonly = testonly,

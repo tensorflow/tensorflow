@@ -2527,7 +2527,7 @@ absl::Status IrEmitter::HandleOneDnnMatMulCalls(
   llvm::Value* nargs_val = b()->getInt64(nargs);
   llvm::Value* nargs_ptr =
       llvm_ir::EmitAllocaAtFunctionEntry(i64_type, "nargs", b());
-  b()->CreateLifetimeStart(nargs_ptr, b()->getInt64(-1));
+  b()->CreateLifetimeStart(nargs_ptr);
   b()->CreateStore(nargs_val, nargs_ptr);
   args_val = b()->CreateInsertValue(args_val, nargs_ptr, arg_indx++);
 
@@ -2554,7 +2554,7 @@ absl::Status IrEmitter::HandleOneDnnMatMulCalls(
 
   llvm::Value* args_ptr =
       llvm_ir::EmitAllocaAtFunctionEntry(ptr_array_type, "matmul.args", b());
-  b()->CreateLifetimeStart(args_ptr, b()->getInt64(-1));
+  b()->CreateLifetimeStart(args_ptr);
   b()->CreateStore(args_val, args_ptr);
 
   TF_RETURN_IF_ERROR(EmitTargetAddressForOp(custom_call));
@@ -2598,8 +2598,8 @@ absl::Status IrEmitter::HandleOneDnnMatMulCalls(
                  b()->getVoidTy());
 
   // Lifetime ends for all stack allocations.
-  b()->CreateLifetimeEnd(nargs_ptr, b()->getInt64(-1));
-  b()->CreateLifetimeEnd(args_ptr, b()->getInt64(-1));
+  b()->CreateLifetimeEnd(nargs_ptr);
+  b()->CreateLifetimeEnd(args_ptr);
   for (auto& alloca : operands_stack_alloca) {
     alloca.EmitLifetimeEnd();
   }
@@ -2632,7 +2632,7 @@ absl::Status IrEmitter::HandleOneDnnConvolution(HloInstruction* custom_call) {
   llvm::Value* nargs_val = b()->getInt64(nargs);
   llvm::Value* nargs_ptr =
       llvm_ir::EmitAllocaAtFunctionEntry(i64_type, "nargs", b());
-  b()->CreateLifetimeStart(nargs_ptr, b()->getInt64(-1));
+  b()->CreateLifetimeStart(nargs_ptr);
   b()->CreateStore(nargs_val, nargs_ptr);
   args_val = b()->CreateInsertValue(args_val, nargs_ptr, arg_indx++);
 
@@ -2656,7 +2656,7 @@ absl::Status IrEmitter::HandleOneDnnConvolution(HloInstruction* custom_call) {
 
   llvm::Value* args_ptr = llvm_ir::EmitAllocaAtFunctionEntry(
       ptr_array_type, "convolution.args", b());
-  b()->CreateLifetimeStart(args_ptr, b()->getInt64(-1));
+  b()->CreateLifetimeStart(args_ptr);
   b()->CreateStore(args_val, args_ptr);
 
   TF_RETURN_IF_ERROR(EmitTargetAddressForOp(custom_call));
@@ -2698,8 +2698,8 @@ absl::Status IrEmitter::HandleOneDnnConvolution(HloInstruction* custom_call) {
                  b()->getVoidTy());
 
   // Lifetime ends for all stack allocations.
-  b()->CreateLifetimeEnd(nargs_ptr, b()->getInt64(-1));
-  b()->CreateLifetimeEnd(args_ptr, b()->getInt64(-1));
+  b()->CreateLifetimeEnd(nargs_ptr);
+  b()->CreateLifetimeEnd(args_ptr);
   for (StackAlloca& alloca : operands_stack_alloca) {
     alloca.EmitLifetimeEnd();
   }
@@ -2733,7 +2733,7 @@ absl::Status IrEmitter::HandleOneDnnLayerNorm(HloInstruction* custom_call) {
   llvm::Value* nargs_val = b()->getInt64(nargs);
   llvm::Value* nargs_ptr =
       llvm_ir::EmitAllocaAtFunctionEntry(i64_type, "nargs", b());
-  b()->CreateLifetimeStart(nargs_ptr, b()->getInt64(-1));
+  b()->CreateLifetimeStart(nargs_ptr);
   b()->CreateStore(nargs_val, nargs_ptr);
   args_val = b()->CreateInsertValue(args_val, nargs_ptr, arg_indx++);
 
@@ -2760,7 +2760,7 @@ absl::Status IrEmitter::HandleOneDnnLayerNorm(HloInstruction* custom_call) {
 
   llvm::Value* args_ptr =
       llvm_ir::EmitAllocaAtFunctionEntry(ptr_array_type, "layernorm.args", b());
-  b()->CreateLifetimeStart(args_ptr, b()->getInt64(-1));
+  b()->CreateLifetimeStart(args_ptr);
   b()->CreateStore(args_val, args_ptr);
 
   TF_RETURN_IF_ERROR(EmitTargetAddressForOp(custom_call));
@@ -2771,11 +2771,11 @@ absl::Status IrEmitter::HandleOneDnnLayerNorm(HloInstruction* custom_call) {
                  {result_stack_alloca.value, args_ptr}, b()->getVoidTy());
 
   // Lifetime ends for all stack allocations.
-  b()->CreateLifetimeEnd(nargs_ptr, b()->getInt64(-1));
+  b()->CreateLifetimeEnd(nargs_ptr);
   for (int i = 0; i < num_operands; ++i) {
     operands_stack_alloca[i].EmitLifetimeEnd();
   }
-  b()->CreateLifetimeEnd(args_ptr, b()->getInt64(-1));
+  b()->CreateLifetimeEnd(args_ptr);
   result_stack_alloca.EmitLifetimeEnd();
 
   return absl::OkStatus();

@@ -13,25 +13,24 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#if GOOGLE_CUDA
-
 #include <stdlib.h>
 
+#include <cstdint>
 #include <memory>
+#include <string>
 #include <utility>
+#include <vector>
 
-#include "absl/container/fixed_array.h"
-#include "absl/container/flat_hash_map.h"
-#include "absl/container/flat_hash_set.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "xla/backends/profiler/gpu/cupti_collector.h"
 #include "xla/backends/profiler/gpu/cupti_tracer.h"
-#include "xla/backends/profiler/gpu/cupti_wrapper.h"
+#include "xla/backends/profiler/gpu/cupti_tracer_options_utils.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/profiler/utils/time_utils.h"
 #include "xla/tsl/util/env_var.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/macros.h"
-#include "tsl/platform/thread_annotations.h"
 #include "tsl/profiler/lib/profiler_factory.h"
 #include "tsl/profiler/lib/profiler_interface.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
@@ -46,7 +45,8 @@ using tsl::ReadBoolFromEnvVar;
 // GpuTracer for GPU.
 class GpuTracer : public tsl::profiler::ProfilerInterface {
  public:
-  explicit GpuTracer(CuptiTracer* cupti_tracer) : cupti_tracer_(cupti_tracer) {
+  explicit GpuTracer(CuptiTracer* cupti_tracer, ProfileOptions profile_options)
+      : cupti_tracer_(cupti_tracer), profile_options_(profile_options) {
     VLOG(1) << "GpuTracer created.";
   }
   ~GpuTracer() override {}
@@ -72,6 +72,8 @@ class GpuTracer : public tsl::profiler::ProfilerInterface {
   CuptiTracer* cupti_tracer_;
   CuptiTracerOptions options_;
   std::unique_ptr<CuptiTraceCollector> cupti_collector_;
+  ProfileOptions profile_options_;
+  std::vector<std::unique_ptr<tensorflow::profiler::XPlane>> xplanes_;
 };
 
 absl::Status GpuTracer::DoStart() {
@@ -100,12 +102,24 @@ absl::Status GpuTracer::DoStart() {
 
   CuptiTracerCollectorOptions collector_options;
   collector_options.num_gpus = cupti_tracer_->NumGpus();
+
+  // TODO: Add a test to verify that the options are set correctly and
+  // collectors are generating correct data once ProfileData is
+  // available(b/399675726).
+  TF_RETURN_IF_ERROR(UpdateCuptiTracerOptionsFromProfilerOptions(
+      profile_options_, options_, collector_options));
+
   uint64_t start_gputime_ns = CuptiTracer::GetTimestamp();
   uint64_t start_walltime_ns = tsl::profiler::GetCurrentTimeNanos();
   cupti_collector_ = CreateCuptiCollector(collector_options, start_walltime_ns,
                                           start_gputime_ns);
 
-  cupti_tracer_->Enable(options_, cupti_collector_.get()).IgnoreError();
+  xplanes_.reserve(collector_options.num_gpus);
+  for (int i = 0; i < collector_options.num_gpus; ++i) {
+    xplanes_.push_back(std::make_unique<tensorflow::profiler::XPlane>());
+  }
+  cupti_tracer_->Enable(options_, cupti_collector_.get(), xplanes_)
+      .IgnoreError();
   return absl::OkStatus();
 }
 
@@ -114,10 +128,9 @@ absl::Status GpuTracer::Start() {
   if (status.ok()) {
     profiling_state_ = State::kStartedOk;
     return absl::OkStatus();
-  } else {
-    profiling_state_ = State::kStartedError;
-    return status;
   }
+  profiling_state_ = State::kStartedError;
+  return status;
 }
 
 absl::Status GpuTracer::DoStop() {
@@ -157,6 +170,15 @@ absl::Status GpuTracer::CollectData(XSpace* space) {
       if (!events_dropped.empty()) {
         space->add_warnings(std::move(events_dropped));
       }
+      if (options_.pm_sampler_options.enable) {
+        // Adds PM sampling xplanes to the response before CuptiCollector to
+        // merge and export all the events.
+        for (auto& xplane : xplanes_) {
+          if (xplane) {
+            *space->add_planes() = *xplane;
+          }
+        }
+      }
       if (cupti_collector_) {
         uint64_t end_gpu_ns = cupti_collector_->GetTracingEndTimeNs();
         cupti_collector_->Export(space, end_gpu_ns);
@@ -171,16 +193,19 @@ absl::Status GpuTracer::CollectData(XSpace* space) {
 // Not in anonymous namespace for testing purposes.
 std::unique_ptr<tsl::profiler::ProfilerInterface> CreateGpuTracer(
     const ProfileOptions& options) {
-  if (options.device_tracer_level() == 0) return nullptr;
-  if (options.device_type() != ProfileOptions::GPU &&
-      options.device_type() != ProfileOptions::UNSPECIFIED)
+  if (options.device_tracer_level() == 0) {
     return nullptr;
+  }
+  if (options.device_type() != ProfileOptions::GPU &&
+      options.device_type() != ProfileOptions::UNSPECIFIED) {
+    return nullptr;
+  }
   profiler::CuptiTracer* cupti_tracer =
       profiler::CuptiTracer::GetCuptiTracerSingleton();
   if (!cupti_tracer->IsAvailable()) {
     return nullptr;
   }
-  return std::make_unique<profiler::GpuTracer>(cupti_tracer);
+  return std::make_unique<profiler::GpuTracer>(cupti_tracer, options);
 }
 
 auto register_gpu_tracer_factory = [] {
@@ -190,5 +215,3 @@ auto register_gpu_tracer_factory = [] {
 
 }  // namespace profiler
 }  // namespace xla
-
-#endif  // GOOGLE_CUDA

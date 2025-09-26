@@ -239,6 +239,7 @@ cc_library(
         "//xla:shape_util",
         "//xla:util",
         "//xla:xla_data_proto_cc",
+        "//xla/service/gpu:ir_emission_utils",
         "//xla/service/gpu:launch_dimensions",
         "//xla/service/gpu:parallel_loop_emitter",
         "//xla/service/gpu:target_util",
@@ -306,16 +307,6 @@ cc_library(
 )
 
 cc_library(
-    name = "math_ops",
-    srcs = ["math_ops.cc"],
-    hdrs = ["math_ops.h"],
-    deps = [
-        ":llvm_util",
-        "@llvm-project//llvm:Core",
-    ],
-)
-
-cc_library(
     name = "ir_builder_mixin",
     srcs = [],
     hdrs = ["ir_builder_mixin.h"],
@@ -337,6 +328,27 @@ xla_cc_test(
         "//xla/tsl/platform:statusor",
         "@com_google_googletest//:gtest",
         "@llvm-project//llvm:Support",
+        "@llvm-project//llvm:ir_headers",
+    ],
+)
+
+xla_cc_test(
+    name = "llvm_util_test",
+    srcs = ["llvm_util_test.cc"],
+    deps = [
+        ":llvm_util",
+        "//xla:error_spec",
+        "//xla:literal",
+        "//xla:shape_util",
+        "//xla/hlo/ir:hlo",
+        "//xla/service:hlo_module_config",
+        "//xla/tests:hlo_test_base",
+        "//xla/tests:xla_internal_test_main",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest",
         "@llvm-project//llvm:ir_headers",
     ],
 )

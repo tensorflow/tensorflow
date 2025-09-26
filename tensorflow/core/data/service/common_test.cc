@@ -85,13 +85,13 @@ TEST(CommonTest, DefaultShardingPolicyIsNoShard) {
 
 TEST(CommonTest, ToAutoShardPolicy) {
   EXPECT_THAT(ToAutoShardPolicy(ProcessingModeDef::FILE_OR_DATA),
-              IsOkAndHolds(AutoShardPolicy::AUTO));
+              absl_testing::IsOkAndHolds(AutoShardPolicy::AUTO));
   EXPECT_THAT(ToAutoShardPolicy(ProcessingModeDef::HINT),
-              IsOkAndHolds(AutoShardPolicy::HINT));
+              absl_testing::IsOkAndHolds(AutoShardPolicy::HINT));
   EXPECT_THAT(ToAutoShardPolicy(ProcessingModeDef::OFF),
-              IsOkAndHolds(AutoShardPolicy::OFF));
+              absl_testing::IsOkAndHolds(AutoShardPolicy::OFF));
   EXPECT_THAT(ToAutoShardPolicy(ProcessingModeDef::DYNAMIC),
-              IsOkAndHolds(AutoShardPolicy::OFF));
+              absl_testing::IsOkAndHolds(AutoShardPolicy::OFF));
 }
 
 TEST(CommonTest, ConvertValidShardingPolicyToAutoShardPolicy) {
@@ -104,9 +104,10 @@ TEST(CommonTest, ConvertValidShardingPolicyToAutoShardPolicy) {
 TEST(CommonTest, ConvertInvalidShardingPolicyToAutoShardPolicy) {
   const ProcessingModeDef::ShardingPolicy sharding_policy =
       static_cast<ProcessingModeDef::ShardingPolicy>(-100);
-  EXPECT_THAT(ToAutoShardPolicy(sharding_policy),
-              StatusIs(error::INTERNAL,
-                       HasSubstr("please update the policy mapping.")));
+  EXPECT_THAT(
+      ToAutoShardPolicy(sharding_policy),
+      absl_testing::StatusIs(error::INTERNAL,
+                             HasSubstr("please update the policy mapping.")));
 }
 
 TEST(CommonTest, ValidateProcessingMode) {
@@ -123,25 +124,33 @@ TEST(CommonTest, InvalidProcessingMode) {
   processing_mode.set_sharding_policy(
       static_cast<ProcessingModeDef::ShardingPolicy>(100));
   EXPECT_THAT(ValidateProcessingMode(processing_mode),
-              StatusIs(error::INTERNAL,
-                       HasSubstr("does not specify a valid sharding policy.")));
+              absl_testing::StatusIs(
+                  error::INTERNAL,
+                  HasSubstr("does not specify a valid sharding policy.")));
 }
 
 TEST(CommonTest, ParseTargetWorkers) {
-  EXPECT_THAT(ParseTargetWorkers("AUTO"), IsOkAndHolds(TARGET_WORKERS_AUTO));
-  EXPECT_THAT(ParseTargetWorkers("Auto"), IsOkAndHolds(TARGET_WORKERS_AUTO));
-  EXPECT_THAT(ParseTargetWorkers("ANY"), IsOkAndHolds(TARGET_WORKERS_ANY));
-  EXPECT_THAT(ParseTargetWorkers("any"), IsOkAndHolds(TARGET_WORKERS_ANY));
-  EXPECT_THAT(ParseTargetWorkers("LOCAL"), IsOkAndHolds(TARGET_WORKERS_LOCAL));
-  EXPECT_THAT(ParseTargetWorkers("local"), IsOkAndHolds(TARGET_WORKERS_LOCAL));
-  EXPECT_THAT(ParseTargetWorkers(""), IsOkAndHolds(TARGET_WORKERS_AUTO));
+  EXPECT_THAT(ParseTargetWorkers("AUTO"),
+              absl_testing::IsOkAndHolds(TARGET_WORKERS_AUTO));
+  EXPECT_THAT(ParseTargetWorkers("Auto"),
+              absl_testing::IsOkAndHolds(TARGET_WORKERS_AUTO));
+  EXPECT_THAT(ParseTargetWorkers("ANY"),
+              absl_testing::IsOkAndHolds(TARGET_WORKERS_ANY));
+  EXPECT_THAT(ParseTargetWorkers("any"),
+              absl_testing::IsOkAndHolds(TARGET_WORKERS_ANY));
+  EXPECT_THAT(ParseTargetWorkers("LOCAL"),
+              absl_testing::IsOkAndHolds(TARGET_WORKERS_LOCAL));
+  EXPECT_THAT(ParseTargetWorkers("local"),
+              absl_testing::IsOkAndHolds(TARGET_WORKERS_LOCAL));
+  EXPECT_THAT(ParseTargetWorkers(""),
+              absl_testing::IsOkAndHolds(TARGET_WORKERS_AUTO));
 }
 
 TEST(CommonTest, ParseInvalidTargetWorkers) {
   EXPECT_THAT(ParseTargetWorkers("TARGET_WORKERS_UNSPECIFIED"),
-              testing::StatusIs(error::INVALID_ARGUMENT));
+              absl_testing::StatusIs(error::INVALID_ARGUMENT));
   EXPECT_THAT(ParseTargetWorkers("UNSET"),
-              testing::StatusIs(error::INVALID_ARGUMENT));
+              absl_testing::StatusIs(error::INVALID_ARGUMENT));
 }
 
 TEST(CommonTest, TargetWorkersToString) {
@@ -151,23 +160,29 @@ TEST(CommonTest, TargetWorkersToString) {
 }
 
 TEST(CommonTest, ParseDeploymentMode) {
-  EXPECT_THAT(ParseDeploymentMode("COLOCATED"),
-              IsOkAndHolds(DeploymentMode::DEPLOYMENT_MODE_COLOCATED));
-  EXPECT_THAT(ParseDeploymentMode("Colocated"),
-              IsOkAndHolds(DeploymentMode::DEPLOYMENT_MODE_COLOCATED));
-  EXPECT_THAT(ParseDeploymentMode("REMOTE"),
-              IsOkAndHolds(DeploymentMode::DEPLOYMENT_MODE_REMOTE));
-  EXPECT_THAT(ParseDeploymentMode("remote"),
-              IsOkAndHolds(DeploymentMode::DEPLOYMENT_MODE_REMOTE));
-  EXPECT_THAT(ParseDeploymentMode("HYBRID"),
-              IsOkAndHolds(DeploymentMode::DEPLOYMENT_MODE_HYBRID));
-  EXPECT_THAT(ParseDeploymentMode("hybrid"),
-              IsOkAndHolds(DeploymentMode::DEPLOYMENT_MODE_HYBRID));
+  EXPECT_THAT(
+      ParseDeploymentMode("COLOCATED"),
+      absl_testing::IsOkAndHolds(DeploymentMode::DEPLOYMENT_MODE_COLOCATED));
+  EXPECT_THAT(
+      ParseDeploymentMode("Colocated"),
+      absl_testing::IsOkAndHolds(DeploymentMode::DEPLOYMENT_MODE_COLOCATED));
+  EXPECT_THAT(
+      ParseDeploymentMode("REMOTE"),
+      absl_testing::IsOkAndHolds(DeploymentMode::DEPLOYMENT_MODE_REMOTE));
+  EXPECT_THAT(
+      ParseDeploymentMode("remote"),
+      absl_testing::IsOkAndHolds(DeploymentMode::DEPLOYMENT_MODE_REMOTE));
+  EXPECT_THAT(
+      ParseDeploymentMode("HYBRID"),
+      absl_testing::IsOkAndHolds(DeploymentMode::DEPLOYMENT_MODE_HYBRID));
+  EXPECT_THAT(
+      ParseDeploymentMode("hybrid"),
+      absl_testing::IsOkAndHolds(DeploymentMode::DEPLOYMENT_MODE_HYBRID));
 }
 
 TEST(CommonTest, ParseInvalidDeploymentMode) {
   EXPECT_THAT(ParseDeploymentMode("DEPLOYMENT_MODE_UNSPECIFIED"),
-              testing::StatusIs(error::INVALID_ARGUMENT));
+              absl_testing::StatusIs(error::INVALID_ARGUMENT));
 }
 
 TEST(CommonTest, IsPreemptedError) {

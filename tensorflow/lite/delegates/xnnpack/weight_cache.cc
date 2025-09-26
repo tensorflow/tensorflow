@@ -152,7 +152,8 @@ bool WeightCacheBuilder::StartBuildStep() {
                        "could not read cache file header.");
   if (header.buffer_list_size) {
     MMapHandle buffer_list_data;
-    XNNPACK_RETURN_CHECK(buffer_list_data.Map(fd_, header.buffer_list_offset),
+    XNNPACK_RETURN_CHECK(buffer_list_data.Map(fd_, header.buffer_list_offset,
+                                              file_path_.c_str()),
                          "could not map buffer list mapping");
     cache::schema::GetBufferList(buffer_list_data.data())->UnPackTo(&schema_);
   }
@@ -377,8 +378,8 @@ bool MMapWeightCacheProvider::Load() {
   ScopeGuard unmap_on_fail([this] { mmap_handles_.clear(); });
 
   if (file_descriptor_.IsValid()) {
-    XNNPACK_RETURN_CHECK(mmap_handle.Map(file_descriptor_,
-                                         /*offset=*/0, file_path_.c_str()));
+    XNNPACK_RETURN_CHECK(
+        mmap_handle.Map(file_descriptor_, /*offset=*/0, file_path_.c_str()));
   } else {
     XNNPACK_ABORT_CHECK(!file_path_.empty(),
                         "Path wasn't provided to weight cache provider.");
@@ -477,7 +478,8 @@ bool MMapWeightCacheProvider::LoadLastBuildStep() {
       if (file_descriptor_.IsValid()) {
         XNNPACK_RETURN_CHECK(
             mmap_handles_.back().Map(file_descriptor_,
-                                     /*offset=*/builder_.LastBuildStepStart()),
+                                     /*offset=*/builder_.LastBuildStepStart(),
+                                     file_path_.c_str()),
             "could not map last build step");
       } else {
         XNNPACK_RETURN_CHECK(
@@ -527,7 +529,7 @@ bool MMapWeightCacheProvider::StartBuildStep() {
 
 bool MMapWeightCacheProvider::StopBuildStep() {
   XNNPACK_RETURN_CHECK(builder_.StopBuildStep());
-#if defined(_MSC_VER) || defined(XNNPACK_CACHE_NO_MMAP_FOR_TEST)
+#if defined(XNNPACK_CACHE_NO_MMAP_FOR_TEST)
   if (!mmap_handles_.empty()) {
     // Sync mmap_handles_.data() with the content updated by
     // builder_.StopBuildStep().

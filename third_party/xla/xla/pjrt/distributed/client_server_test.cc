@@ -196,13 +196,13 @@ TEST_F(ClientServerTest, ConnectAndEnumerateDevices) {
   node0->mutable_devices(0)->set_global_device_id(0);
   node0->mutable_devices(1)->set_global_device_id(1);
   node0->mutable_devices(2)->set_global_device_id(2);
-  node0->mutable_devices(0)->set_slice_index(0);
-  node0->mutable_devices(1)->set_slice_index(0);
-  node0->mutable_devices(2)->set_slice_index(0);
+  node0->mutable_devices(0)->set_partition_index(0);
+  node0->mutable_devices(1)->set_partition_index(0);
+  node0->mutable_devices(2)->set_partition_index(0);
   *node1 = locals[1];
   node1->set_boot_id(host_1_boot_id);
   node1->mutable_devices(0)->set_global_device_id(3);
-  node1->mutable_devices(0)->set_slice_index(1);
+  node1->mutable_devices(0)->set_partition_index(1);
 
   // Used to ensure that thread0's client sends their device after thread1's
   // client. This ensures that devices are sent out of turn (compared to their
@@ -292,11 +292,13 @@ TEST_F(ClientServerTest, EnumerateElevenDevices) {
     device->set_vendor("test_vendor");
   }
   GlobalTopologyProto expected_topology;
+  int slice_0_global_id = 0, slice_1_global_id = num_nodes / 2 + 1;
   for (int i = 0; i < num_nodes; ++i) {
     auto* node = expected_topology.add_nodes();
     *node = locals[i];
-    node->mutable_devices(0)->set_global_device_id(i);
-    node->mutable_devices(0)->set_slice_index(i % 2);
+    node->mutable_devices(0)->set_global_device_id(
+        (i % 2 == 0) ? slice_0_global_id++ : slice_1_global_id++);
+    node->mutable_devices(0)->set_partition_index(i % 2);
   }
 
   auto thread_fn = [&](int node_id) -> absl::Status {
@@ -714,10 +716,12 @@ TEST_F(ClientServerTest, ClientRestart_AfterConnect_Fails) {
   // Errors should have been propagated to the clients, and thus the shutdown
   // call will fail with `FailedPrecondition` since the tasks are already in
   // error.
-  EXPECT_THAT(statuses[0], StatusIs(absl::StatusCode::kFailedPrecondition));
-  EXPECT_THAT(statuses[1], StatusIs(absl::StatusCode::kFailedPrecondition));
+  EXPECT_THAT(statuses[0],
+              absl_testing::StatusIs(absl::StatusCode::kFailedPrecondition));
+  EXPECT_THAT(statuses[1],
+              absl_testing::StatusIs(absl::StatusCode::kFailedPrecondition));
   // This client was restarted, so its connection attempt will be aborted.
-  EXPECT_THAT(statuses[2], StatusIs(absl::StatusCode::kAborted));
+  EXPECT_THAT(statuses[2], absl_testing::StatusIs(absl::StatusCode::kAborted));
 }
 
 // If a client restarts during init, it can silently reconnect because no
@@ -783,12 +787,13 @@ TEST_F(ClientServerTest, ClientRestart_DuringConnect_Succeeds) {
       thread_pool.Schedule([&, i]() { statuses[i] = thread_fn(i); });
     }
   }
-  EXPECT_THAT(statuses[0], StatusIs(absl::StatusCode::kOk));
-  EXPECT_THAT(statuses[1], StatusIs(absl::StatusCode::kOk));
+  EXPECT_THAT(statuses[0], absl_testing::StatusIs(absl::StatusCode::kOk));
+  EXPECT_THAT(statuses[1], absl_testing::StatusIs(absl::StatusCode::kOk));
   // This was the initial connection attempt that should be aborted.
-  EXPECT_THAT(statuses[2], StatusIs(absl::StatusCode::kAlreadyExists));
+  EXPECT_THAT(statuses[2],
+              absl_testing::StatusIs(absl::StatusCode::kAlreadyExists));
   // This was the restarted client which should silently reconnect.
-  EXPECT_THAT(statuses[3], StatusIs(absl::StatusCode::kOk));
+  EXPECT_THAT(statuses[3], absl_testing::StatusIs(absl::StatusCode::kOk));
 }
 
 TEST_F(ClientServerTest, WaitAtBarrier_Succeed) {
@@ -1018,7 +1023,7 @@ TEST_F(ClientServerTest, GetLiveTasksWithoutBeingAMember) {
       std::vector<int> nodes{0, 1, 2};
       nodes.erase(nodes.begin() + i);
       EXPECT_THAT(client->GetLiveNodes(nodes),
-                  StatusIs(absl::StatusCode::kInvalidArgument));
+                  absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
     });
   }
 }
@@ -1074,7 +1079,7 @@ TEST_F(ClientServerTest, KeyValueTryGet) {
   TF_ASSERT_OK(client->Connect());
 
   ASSERT_THAT(client->KeyValueTryGet("test_key").status(),
-              StatusIs(absl::StatusCode::kNotFound));
+              absl_testing::StatusIs(absl::StatusCode::kNotFound));
 
   TF_ASSERT_OK(client->KeyValueSet("test_key", "value"));
   auto result = client->KeyValueTryGet("test_key");

@@ -1,3 +1,4 @@
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("//xla:xla.default.bzl", "xla_cc_test")
 load("//xla/tests:build_defs.bzl", "xla_test")
 
@@ -63,12 +64,12 @@ cc_library(
         ":fusion_emitter",
         "//xla/backends/gpu/runtime:cudnn_thunk",
         "//xla/backends/gpu/runtime:thunk",
+        "//xla/codegen/emitters:computation_fingerprint",
         "//xla/codegen/emitters:kernel_arguments",
         "//xla/hlo/ir:hlo",
         "//xla/service/gpu:gpu_constants",
         "//xla/service/gpu:hlo_fusion_analysis",
         "//xla/service/gpu:ir_emitter_context",
-        "//xla/service/gpu:kernel_reuse_cache",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status:statusor",
@@ -104,6 +105,7 @@ xla_test(
         "//xla/stream_executor:stream_executor_h",
         "//xla/stream_executor:stream_executor_memory_allocator",
         "//xla/tsl/lib/core:status_test_util",
+        "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
@@ -142,8 +144,10 @@ cc_library(
         "//xla/hlo/analysis:while_loop_analysis",
         "//xla/hlo/evaluator:hlo_evaluator",
         "//xla/hlo/ir:hlo",
+        "//xla/hlo/ir:ptrvec",
         "//xla/hlo/utils:hlo_traversal",
         "//xla/service:buffer_assignment",
+        "//xla/service:call_graph",
         "//xla/service:custom_call_status",
         "//xla/service:custom_call_target_registry",
         "//xla/service:hlo_proto_cc",
@@ -159,6 +163,8 @@ cc_library(
         "//xla/service/gpu/kernels:custom_kernel_fusion",
         "//xla/stream_executor:stream",
         "//xla/tools:hlo_extractor",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
@@ -170,8 +176,6 @@ cc_library(
         "@llvm-project//mlir:AsmParser",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
@@ -232,7 +236,6 @@ cc_library(
     deps = [
         "//xla:shape_util",
         "//xla:status_macros",
-        "//xla:util",
         "//xla/backends/gpu/runtime:thunk",
         "//xla/codegen/emitters:kernel_api_builder",
         "//xla/codegen/emitters:kernel_arguments",
@@ -245,6 +248,7 @@ cc_library(
         "//xla/service/llvm_ir:ir_array",
         "//xla/service/llvm_ir:llvm_util",
         "//xla/stream_executor:device_description",
+        "//xla/tsl/platform:errors",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
@@ -275,7 +279,6 @@ cc_library(
         "//xla:shape_util",
         "//xla/backends/gpu/codegen/emitters:concatenate",
         "//xla/backends/gpu/codegen/emitters:in_place_dynamic_update_slice",
-        "//xla/backends/gpu/codegen/emitters:input_slices",
         "//xla/backends/gpu/codegen/emitters:loop",
         "//xla/backends/gpu/codegen/emitters:reduction",
         "//xla/backends/gpu/codegen/emitters:scatter",

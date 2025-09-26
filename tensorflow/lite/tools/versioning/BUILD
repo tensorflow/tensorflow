@@ -1,3 +1,4 @@
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
@@ -12,49 +13,12 @@ package(
 
 cc_library(
     name = "versioning",
-    srcs = [
-        "op_version.cc",
-        "runtime_version.cc",
-    ],
     hdrs = [
         "op_version.h",
-        "runtime_version.h",
     ],
     compatible_with = get_compatible_with_portable(),
     deps = [
-        ":op_signature",
-        "//tensorflow/compiler/mlir/lite/schema:schema_fbs",
-        "//tensorflow/compiler/mlir/lite/schema:schema_fbs_with_mutable",
-        "//tensorflow/core:tflite_portable_logging",
-        "//tensorflow/lite:builtin_op_data",
-        "//tensorflow/lite:minimal_logging",
-        "//tensorflow/lite/core/c:c_api_types",
-        "//tensorflow/lite/core/c:common",
-        "//tensorflow/lite/kernels/internal:compatibility",
-        "//tensorflow/lite/schema:schema_fbs",
-        "//tensorflow/lite/schema:schema_utils",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/strings",
-        "@flatbuffers",
-    ],
-)
-
-tf_cc_test(
-    name = "versioning_test",
-    srcs = [
-        "op_version_test.cc",
-        "runtime_version_test.cc",
-    ],
-    deps = [
-        ":versioning",
-        "//tensorflow/lite:builtin_op_data",
-        "//tensorflow/lite/core/c:c_api_types",
-        "//tensorflow/lite/core/c:common",
-        "//tensorflow/lite/core/kernels:builtin_ops",
-        "//tensorflow/lite/schema:schema_fbs",
-        "//tensorflow/lite/schema:schema_fbs_with_mutable",
-        "@com_google_googletest//:gtest_main",
+        "//tensorflow/compiler/mlir/lite/tools/versioning",
     ],
 )
 

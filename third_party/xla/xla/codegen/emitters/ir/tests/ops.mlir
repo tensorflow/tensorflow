@@ -49,10 +49,6 @@ func.func @caller(%a: f32, %b: f32) -> f32 {
 // CHECK: %[[D:.*]] = xla.pure_call @add
 // CHECK: arith.addf %[[C]], %[[D]]
 
-// CHECK-CSE: @caller
-// CHECK-CSE: %[[C:.*]] = xla.pure_call @add
-// CHECK-CSE: arith.addf %[[C]], %[[C]]
-
 // -----
 
 #map0 = #xla.indexing_map<"(d0, d1)[s0] -> (d0, d1 + s0),"

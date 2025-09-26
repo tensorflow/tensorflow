@@ -305,8 +305,8 @@ ENTRY entry_computation {
 CHECK-COUNT-1:  triton_xla.extract
 CHECK:  %[[ABS:.*]] = math.absf
 CHECK: %[[REDUCE:.*]] = "tt.reduce"(%[[ABS:.*]]) <{axis = 1 : i32}>
-CHECK:  triton_xla.insert %[[REDUCE]] {{.*}} : tensor<64xf32> into tensor<128xf32>
-CHECK:  triton_xla.insert %[[ABS]] {{.*}} : tensor<64x512xf32> into tensor<128x512xf32>
+CHECK:  triton_xla.insert %[[REDUCE]] {{.*}} : tensor<64xf32>
+CHECK:  triton_xla.insert %[[ABS]] {{.*}} : tensor<64x512xf32>
 )"));
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, kExactMatch));
 }
@@ -347,8 +347,8 @@ ENTRY entry_computation {
 CHECK-COUNT-1:  triton_xla.extract
 CHECK:  %[[ABS:.*]] = math.absf
 CHECK: %[[REDUCE:.*]] = "tt.reduce"(%[[ABS:.*]]) <{axis = 0 : i32}>
-CHECK:  tensor.insert %[[REDUCE]] {{.*}} : tensor<f32>
-CHECK:  triton_xla.insert %[[ABS]] {{.*}} : tensor<512xf32> into tensor<512xf32>
+CHECK:  tt.store %arg1, %[[REDUCE]] : !tt.ptr<f32>
+CHECK:  triton_xla.insert %[[ABS]] {{.*}} : tensor<512xf32>
 )"));
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, kExactMatch));
 }
@@ -755,7 +755,7 @@ ENTRY entry_computation {
       CreateTritonIrAndFileCheck(this, kHloText, "fused_computation", "");
   EXPECT_THAT(
       status,
-      tsl::testing::StatusIs(
+      absl_testing::StatusIs(
           tsl::error::UNIMPLEMENTED,
           ::testing::HasSubstr("Unsupported case of multi-output fusion")));
 }
@@ -882,7 +882,8 @@ CHECK:        func.func @triton_fn(%[[P0:.*]]: {{.*}}, %[[P1:.*]]: {{.*}})
 CHECK-DAG:        %[[PID:.*]] = tt.get_program_id x : i32
 CHECK-DAG:        %[[PID_I64:.*]] = arith.extsi %[[PID]] : i32 to i64
 CHECK-DAG:        %[[PID_INDEX:.*]] = arith.index_castui %[[PID_I64]] : i64 to index
-CHECK-NEXT:       triton_xla.extract %[[P0]][%[[PID_INDEX]], 0] [1, 128] [1, 1] {layout = array<i64: 1, 0>}
+CHECK-NEXT:       triton_xla.extract from %[[P0]]
+CHECK-SAME:       [%[[PID_INDEX]], 0] [1, 128] [1, 1]
 CHECK:            tt.reduce
 CHECK-NEXT:       ^bb0(%[[ARG2:[^:]*]]: f32, %[[ARG3:[^:]*]]: f32):
 CHECK-NEXT:           %[[ADD:.*]] = arith.addf %[[ARG2]], %[[ARG3]] : f32
@@ -890,7 +891,7 @@ CHECK-NEXT:           tt.reduce.return %[[ADD]] : f32
 CHECK-NEXT:       }) : (tensor<1x128xf32>) -> tensor<1xf32>
 CHECK:            arith.mulf
 CHECK-SAME:       tensor<1x128xf32>
-CHECK:            triton_xla.insert {{.*}} into %[[P1]][%[[PID_INDEX]], 0] [1, 128] [1, 1]  {layout = array<i64: 1, 0>}
+CHECK:            triton_xla.insert {{.*}} [%[[PID_INDEX]], 0] [1, 128] [1, 1]
 CHECK:            return
 CHECK:        }
 )"));
@@ -934,21 +935,22 @@ ENTRY main {
   TF_EXPECT_OK(CreateTritonIrAndFileCheck(this, kHloText,
                                           "triton_softmax_computation", R"(
 CHECK:         func.func @triton_fn(
-CHECK-SAME:                      %[[P0:[A-Za-z0-9_]*]]: tensor<125x127xf32>
-CHECK-SAME:                      %[[P1:[A-Za-z0-9_]*]]: tensor<127xf32>
-CHECK-SAME:                      %[[P2:[A-Za-z0-9_]*]]: tensor<125x127xf32>
+CHECK-SAME:                      %[[P0:[A-Za-z0-9_]*]]: !tt.ptr<f32>
+CHECK-SAME:                      %[[P1:[A-Za-z0-9_]*]]: !tt.ptr<f32>
+CHECK-SAME:                      %[[P2:[A-Za-z0-9_]*]]: !tt.ptr<f32>
 CHECK-DAG:        %[[PID:.*]] = tt.get_program_id x : i32
 CHECK-DAG:        %[[PID_I64:.*]] = arith.extsi %[[PID]] : i32 to i64
 CHECK-DAG:        %[[PID_INDEX:.*]] = arith.index_castui %[[PID_I64]] : i64 to index
-CHECK-DAG:        triton_xla.extract %[[P0]][%[[PID_INDEX]], 0] [1, 128] [1, 1] {layout = array<i64: 1, 0>} : tensor<125x127xf32> to tensor<1x128xf32>
-CHECK-DAG:        triton_xla.extract %[[P1]][0] [128] [1] {layout = array<i64: 0>} : tensor<127xf32> to tensor<128xf32>
+CHECK-DAG:        triton_xla.extract from %[[P0]] {{.*}} [%[[PID_INDEX]], 0] [1, 128] [1, 1] : tensor<1x128xf32>
+CHECK-DAG:        triton_xla.extract from %[[P1]] {{.*}} [0] [128] [1] : tensor<128xf32>
 CHECK:            tt.reduce
 CHECK-NEXT:       ^bb0(%[[ARG3:[^:]*]]: f32, %[[ARG4:[^:]*]]: f32):
 CHECK-NEXT:           %[[ADD:.*]] = arith.addf %[[ARG3]], %[[ARG4]] : f32
 CHECK-NEXT:           tt.reduce.return %[[ADD]] : f32
 CHECK-NEXT:       }) : (tensor<1x128xf32>) -> tensor<1xf32>
 CHECK:            arith.mulf
-CHECK-DAG:        triton_xla.insert {{.*}} into %[[P2]][%[[PID_INDEX]], 0] [1, 128] [1, 1] {layout = array<i64: 1, 0>} : tensor<1x128xf32> into tensor<125x127xf32>
+CHECK-DAG:        triton_xla.insert {{.*}} into %[[P2]]
+CHECK-SAME:       [%[[PID_INDEX]], 0] [1, 128] [1, 1] : tensor<1x128xf32>
 )"));
 }
 
@@ -1002,15 +1004,16 @@ CHECK-DAG:        %[[PID_I64:.*]] = arith.extsi %[[PID]] : i32 to i64
 CHECK-DAG:        %[[PID_INDEX:.*]] = arith.index_castui %[[PID_I64]] : i64 to index
 CHECK-DAG:        %[[ROW_INDEX:.*]] = xla.apply_indexing #[[MAP]](%[[PID_INDEX]]
 CHECK-DAG:        %[[COL_INDEX:.*]] = xla.apply_indexing #[[MAP1]](%[[PID_INDEX]]
-CHECK:            triton_xla.extract %[[P0]][%[[ROW_INDEX]], %[[COL_INDEX]], 0] [1, 1, 128] [1, 1, 1] {layout = array<i64: 2, 1, 0>} : tensor<10x125x127xf32> to tensor<1x1x128xf32>
-CHECK:            triton_xla.extract %[[P1]][0] [128] [1] {layout = array<i64: 0>} : tensor<127xf32> to tensor<128xf32>
-CHECK:            triton_xla.extract %[[P2]][%[[ROW_INDEX]], %[[COL_INDEX]]] [1, 1] [1, 1] {layout = array<i64: 1, 0>} : tensor<10x125xf32> to tensor<1x1xf32>
+CHECK:            triton_xla.extract from %[[P0]] {{.*}} [%[[ROW_INDEX]], %[[COL_INDEX]], 0] [1, 1, 128] [1, 1, 1] : tensor<1x1x128xf32>
+CHECK:            triton_xla.extract from %[[P1]] {{.*}} [0] [128] [1] : tensor<128xf32>
+CHECK:            triton_xla.extract from %[[P2]] {{.*}} [%[[ROW_INDEX]], %[[COL_INDEX]]] [1, 1] [1, 1] : tensor<1x1xf32>
 CHECK:            tt.reduce
 CHECK-NEXT:       ^bb0(%[[ARG4:[^:]*]]: f32, %[[ARG5:[^:]*]]: f32):
 CHECK-NEXT:           %[[MAX:.*]] = arith.maximumf %[[ARG4]], %[[ARG5]] : f32
 CHECK-NEXT:           tt.reduce.return %[[MAX]] : f32
 CHECK-NEXT:       }) : (tensor<1x1x128xf32>) -> tensor<1x1xf32>
-CHECK:            triton_xla.insert {{.*}} into %[[P3]][%[[ROW_INDEX]], %[[COL_INDEX]], 0] [1, 1, 128] [1, 1, 1] {layout = array<i64: 2, 1, 0>} : tensor<1x1x128xf32> into tensor<10x125x127xf32>
+CHECK:            triton_xla.insert {{.*}} into %[[P3]]
+CHECK-SAME:       [%[[ROW_INDEX]], %[[COL_INDEX]], 0] [1, 1, 128] [1, 1, 1] : tensor<1x1x128xf32>
 )"));
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, kExactMatch));
 }
@@ -1196,12 +1199,12 @@ ENTRY main {
 // CHECK:         #xla.indexing_map<"(pid_0) -> (pid_0 floordiv 32), domain: pid_0 in [0, 2047]">
 // CHECK:         #xla.indexing_map<"(pid_0) -> (pid_0 mod 32), domain: pid_0 in [0, 2047]">
 // CHECK-LABEL:   func.func @triton_fn(
-// CHECK-SAME:                       %[[P0:[A-Za-z0-9_]*]]: tensor<64x32x16xf32>
-// CHECK-SAME:                       %[[P1:[A-Za-z0-9_]*]]: tensor<f32>
-// CHECK-SAME:                       %[[P2:[A-Za-z0-9_]*]]: tensor<64x32x16xf32>
-// CHECK-DAG:       tensor.extract {{.*}} : tensor<f32>
-// CHECK-DAG:       triton_xla.extract {{.*}} : tensor<64x32x16xf32> to tensor<1x1x16xf32>
-// CHECK:           triton_xla.insert {{.*}} : tensor<1x1x16xf32> into tensor<64x32x16xf32>
+// CHECK-SAME:                       %[[P0:[A-Za-z0-9_]*]]: !tt.ptr<f32>
+// CHECK-SAME:                       %[[P1:[A-Za-z0-9_]*]]: !tt.ptr<f32>
+// CHECK-SAME:                       %[[P2:[A-Za-z0-9_]*]]: !tt.ptr<f32>
+// CHECK-DAG:       tt.load {{.*}} : !tt.ptr<f32>
+// CHECK-DAG:       triton_xla.extract {{.*}} : tensor<1x1x16xf32>
+// CHECK:           triton_xla.insert {{.*}} : tensor<1x1x16xf32>
 )"));
 
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, kExactMatch));
@@ -1289,7 +1292,7 @@ ENTRY entry {
                                               /*minor=*/0},
                     dev_info, BlockLevelParameters(), &llvm_module,
                     mlir_context),
-      tsl::testing::StatusIs(
+      absl_testing::StatusIs(
           absl::StatusCode::kFailedPrecondition,
           ::testing::HasSubstr("Triton support is only enabled for Ampere GPUs "
                                "(compute capability 8.0) and up, but got")));
@@ -1351,7 +1354,7 @@ ENTRY entry_computation {
   EXPECT_THAT(
       TritonWrapper("test_fn", triton_fusion, compute_capability, dev_info,
                     block_level_parameters, &llvm_module, mlir_context),
-      tsl::testing::StatusIs(
+      absl_testing::StatusIs(
           absl::StatusCode::kInvalidArgument,
           ::testing::HasSubstr("Tiling does not satisfy constraints.")));
 }
@@ -1393,15 +1396,15 @@ ENTRY main {
 
   TF_EXPECT_OK(CreateTritonIrAndFileCheck(this, kHloText,
                                           "triton_reduction_computation", R"(
-CHECK:        func.func @triton_fn(%[[P0:[A-Za-z0-9_]*]]: tensor<125x127xf32>
-CHECK-SAME:                      %[[P1:[A-Za-z0-9_]*]]: tensor<125xf32>
-CHECK-SAME:                      %[[P2:[A-Za-z0-9_]*]]: tensor<125xf32>
-CHECK-DAG:        triton_xla.extract {{.*}} : tensor<125xf32> to tensor<1xf32>
-CHECK-DAG:        triton_xla.extract {{.*}} : tensor<125x127xf32> to tensor<1x128xf32>
+CHECK:        func.func @triton_fn(%[[P0:[A-Za-z0-9_]*]]: !tt.ptr<f32>
+CHECK-SAME:                      %[[P1:[A-Za-z0-9_]*]]: !tt.ptr<f32>
+CHECK-SAME:                      %[[P2:[A-Za-z0-9_]*]]: !tt.ptr<f32>
+CHECK-DAG:        triton_xla.extract {{.*}} : tensor<1xf32>
+CHECK-DAG:        triton_xla.extract {{.*}} : tensor<1x128xf32>
 CHECK:            tt.reduce
 CHECK:              (tensor<1x128xf32>) -> tensor<1xf32>
 CHECK:            arith.mulf {{.*}} tensor<1xf32>
-CHECK:            triton_xla.insert {{.*}} : tensor<1xf32> into tensor<125xf32>
+CHECK:            triton_xla.insert {{.*}} : tensor<1xf32>
 )"));
 }
 
@@ -1716,13 +1719,14 @@ ENTRY main {
                                           R"(
 // #xla.indexing_map<"(pid_0) -> (pid_0 * 32), domain: pid_0 in [0, 1]
 
-// CHECK: func @{{.*}}(%[[IN:.*]]: tensor<17xf32>, %[[OUT:.*]]: tensor<49xf32>)
+// CHECK: func @{{.*}}(%[[IN:.*]]: !tt.ptr<f32>, %[[OUT:.*]]: !tt.ptr<f32>)
 
 // CHECK: %[[PAD_VALUE:.*]] = arith.constant dense<1.000000e+00> : tensor<32xf32>
 // CHECK: %[[C17:.*]] = arith.constant 17 : i32
 // CHECK: %[[TILE_OFFSET:.*]] = xla.apply_indexing
-// CHECK: %[[EXTRACT:.*]] = triton_xla.extract %[[IN]][%[[TILE_OFFSET]]] [32] [1]
-// CHECK-SAME:  {layout = array<i64: 0>} : tensor<17xf32> to tensor<32xf32>
+// CHECK: %[[EXTRACT:.*]] = triton_xla.extract from %[[IN]]
+// CHECK-SAME: %[[TILE_OFFSET]]] [32] [1]
+// CHECK-SAME:  : tensor<32xf32>
 
 // CHECK: %[[IOTA:.*]] = tt.make_range {end = 32 : i32, start = 0 : i32}
 // CHECK: %[[TILE_OFFSET_I32:.*]] = arith.index_castui %[[TILE_OFFSET]]
@@ -1731,8 +1735,8 @@ ENTRY main {
 // CHECK: %[[MASK:.*]] = arith.cmpi slt, %[[IOTA]], %[[THRESHOLD_SPLAT]]
 // CHECK: %[[SELECT:.*]] = arith.select %[[MASK]], %[[EXTRACT]], %[[PAD_VALUE]]
 
-// CHECK:   triton_xla.insert %[[SELECT]] into %[[OUT]][%[[TILE_OFFSET]]] [32]
-// CHECK-SAME:  {layout = array<i64: 0>} : tensor<32xf32> into tensor<49xf32>
+// CHECK:   triton_xla.insert %[[SELECT]] into %[[OUT]]
+// CHECK-SAME: [%[[TILE_OFFSET]]] [32] [1] : tensor<32xf32>
   )"));
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, kExactMatch));
 }
@@ -1759,7 +1763,7 @@ ENTRY main {
 })";
   TF_EXPECT_OK(CreateTritonIrAndFileCheck(this, kHloText, "triton_computation",
                                           R"(
-// CHECK: triton_xla.extract {{.*}} : tensor<17x137xf32> to tensor<32x16xf32>
+// CHECK: triton_xla.extract {{.*}} : tensor<32x16xf32>
 // CHECK: tt.make_range {end = 32 : i32, start = 0 : i32} : tensor<32xi32>
 // CHECK: tt.expand_dims
 // CHECK: tt.broadcast
@@ -2215,7 +2219,7 @@ ENTRY main {
 })";
   TF_EXPECT_OK(
       CreateTritonIrAndFileCheck(this, kHloText, "triton_computation", R"(
-CHECK:      %[[I8_PARAM:.*]] = triton_xla.extract {{.*}} : tensor<15xi8> to tensor<4xi8>
+CHECK:      %[[I8_PARAM:.*]] = triton_xla.extract {{.*}} : tensor<4xi8>
 CHECK:      arith.trunci %[[I8_PARAM]] : tensor<4xi8> to tensor<4xi1>
 )"));
 
@@ -2245,7 +2249,7 @@ ENTRY main {
 })";
   TF_EXPECT_OK(
       CreateTritonIrAndFileCheck(this, kHloText, "triton_computation", R"(
-CHECK:      %[[TILE:.*]] = triton_xla.extract {{.*}} : tensor<15x7x3xf32> to tensor<8x4x1xf32>
+CHECK:      %[[TILE:.*]] = triton_xla.extract {{.*}} : tensor<8x4x1xf32>
 CHECK:      tt.trans %[[TILE]] {order = array<i32: 2, 0, 1>} : tensor<8x4x1xf32> -> tensor<1x8x4xf32>
 )"));
 
@@ -2451,10 +2455,10 @@ ENTRY entry_computation {
 })";
   TF_EXPECT_OK(
       CreateTritonIrAndFileCheck(this, kHloText, "triton_computation", R"(
-CHECK:     tensor.extract {{.*}} tensor<f32>
+CHECK:     tt.load {{.*}} !tt.ptr<f32>
 CHECK:     tt.extern_elementwise {{.*}} (f32) -> f32
 CHECK:     arith.subf {{.*}} f32
-CHECK:     tensor.extract {{.*}} tensor<f32>
+CHECK:     tt.load {{.*}} !tt.ptr<f32>
 CHECK:     tt.extern_elementwise {{.*}} (f32) -> f32
 CHECK:     arith.subf {{.*}} f32
 CHECK:     arith.addf {{.*}} f32
@@ -2462,7 +2466,7 @@ CHECK:     arith.mulf {{.*}} f32
 CHECK:     arith.divf {{.*}} f32
 CHECK:     arith.truncf {{.*}} f32 to bf16
 CHECK:     arith.subf {{.*}} bf16
-CHECK:     tensor.insert {{.*}} tensor<bf16>
+CHECK:     tt.store {{.*}} !tt.ptr<bf16>
 )"));
 
   EXPECT_TRUE(RunAndCompareNoHloPasses(
@@ -2503,11 +2507,11 @@ ENTRY entry_computation {
 })";
   TF_EXPECT_OK(
       CreateTritonIrAndFileCheck(this, kHloText, "triton_computation", R"(
-CHECK:     tensor.extract
+CHECK:     tt.load
 CHECK:     tt.splat
 CHECK:     arith.addf
 CHECK:     tt.reduce
-CHECK:     tensor.insert {{.*}} tensor<f32>
+CHECK:     tt.store {{.*}} !tt.ptr<f32>
 )"));
 
   EXPECT_TRUE(RunAndCompareNoHloPasses(
@@ -2543,7 +2547,7 @@ CHECK:     tt.reshape
 CHECK:     tt.reduce{{.*}}axis = 0
 CHECK-NOT: tt.reshape
 CHECK:     tt.reduce{{.*}}axis = 0
-CHECK:     tensor.insert {{.*}} tensor<f32>
+CHECK:     tt.store {{.*}} !tt.ptr<f32>
 )"));
 
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, kExactMatch));
@@ -2918,19 +2922,19 @@ ENTRY entry {
   const bool is_tma_allowed = GetParam();
   std::string hlo_text = absl::Substitute(kHloTextTemplate, is_tma_allowed);
   TF_EXPECT_OK(CreateTritonIrAndFileCheck(this, hlo_text, "fdot", R"(
-CHECK:      func.func @triton_fn(%[[ARG0:[A-Za-z0-9_]*]]: tensor<32x123xf32>
-CHECK-SAME:                    %[[ARG1:[A-Za-z0-9_]*]]: tensor<123x512xf32>
-CHECK-SAME:                    %[[ARG2:[A-Za-z0-9_]*]]: tensor<32x512xf32>
-CHECK-DAG:  %[[C0:.*]] = arith.constant 0 : i64
-CHECK-DAG:  %[[C4:.*]] = arith.constant 4 : i64
-CHECK-DAG:  %[[C1:.*]] = arith.constant 1 : i64
-CHECK:      {{.*}} = scf.for {{.*}} = %[[C0]] to %[[C4]] step %[[C1]]
-CHECK-SAME: iter_args({{.*}}) -> (tensor<16x64xf32>)  : i64 {
-CHECK-DAG:  triton_xla.extract %[[ARG0]]
-CHECK-DAG:  triton_xla.extract %[[ARG1]]
+CHECK:      func.func @triton_fn(%[[ARG0:[A-Za-z0-9_]*]]: !tt.ptr<f32>
+CHECK-SAME:                    %[[ARG1:[A-Za-z0-9_]*]]: !tt.ptr<f32>
+CHECK-SAME:                    %[[ARG2:[A-Za-z0-9_]*]]: !tt.ptr<f32>)
+CHECK-DAG:  %[[C0:.*]] = arith.constant 0 : index
+CHECK-DAG:  %[[C4:.*]] = arith.constant 4 : index
+CHECK-DAG:  %[[C1:.*]] = arith.constant 1 : index
+CHECK:      {{.*}} = scf.for %{{.*}} = %[[C0]] to %[[C4]] step %[[C1]]
+CHECK-SAME: iter_args({{.*}}) -> (tensor<16x64xf32>) {
+CHECK-DAG:  triton_xla.extract from %[[ARG0]]
+CHECK-DAG:  triton_xla.extract from %[[ARG1]]
 CHECK-DAG:  arith.subf {{.*}} : tensor<16x32xf32>
 CHECK-DAG:  math.absf {{.*}} : tensor<32x64xf32>
-CHECK-DAG:  tt.dot {{.*}} tensor<16x32xf32> * tensor<32x64xf32> -> tensor<16x64xf32>
+CHECK:      tt.dot {{.*}} tensor<16x32xf32> * tensor<32x64xf32> -> tensor<16x64xf32>
 CHECK:      scf.yield {{.*}} : tensor<16x64xf32>
 CHECK-COUNT-1: triton_xla.insert
 )"));

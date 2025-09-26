@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
-#include <optional>
 #include <string>
 #include <tuple>
 #include <vector>
@@ -26,6 +25,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
 #include "absl/log/log.h"
+#include "absl/status/status_matchers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
@@ -84,7 +84,7 @@ TEST_F(HloCseTest, CombineTwoConstants) {
   HloInstruction* constant = *computation->instructions().begin();
   EXPECT_EQ(42.0f, constant->literal().Get<float>({}));
 
-  auto result = ExecuteAndTransfer(module->Clone(), {});
+  TF_ASSERT_OK_AND_ASSIGN(Literal result, Execute(module->Clone(), {}));
   auto expected = LiteralUtil::CreateR0<float>(84.0);
   EXPECT_TRUE(LiteralTestUtil::Near(expected, result, ErrorSpec(1e-4)));
 }
@@ -114,7 +114,7 @@ TEST_F(HloCseTest, CombineTwoConstantsDifferentLayouts) {
   EXPECT_EQ(3, computation->instruction_count());
   EXPECT_THAT(add, op::Add(constant1, constant2));
 
-  auto result = ExecuteAndTransfer(module->Clone(), {});
+  TF_ASSERT_OK_AND_ASSIGN(Literal result, Execute(module->Clone(), {}));
   auto expected = LiteralUtil::CreateR2<float>({{2.0, 4.0}, {6.0, 8.0}});
   EXPECT_TRUE(LiteralTestUtil::Near(expected, result, ErrorSpec(1e-4)));
 }
@@ -556,6 +556,38 @@ ENTRY %entry {
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
   HloCSE cse(/*is_layout_sensitive=*/false);
   EXPECT_FALSE(cse.Run(m.get()).value());
+}
+
+TEST_F(HloCseTest, CombineOpsWithSameSdyShardingFrontendAttrs) {
+  constexpr absl::string_view hlo_string = R"(
+HloModule module, frontend_attributes={xla.sdy.meshes={mesh = #sdy.mesh<["model"=2, "data"=8]>}}
+
+ENTRY %entry {
+  constant.68 = s32[1]{0} constant({0})
+  custom-call.82 = s32[1]{0} custom-call(constant.68), custom_call_target="Sharding", frontend_attributes={xla.sdy.sharding="#sdy.sharding_per_value<[<@mesh, [{\"data\"}]>]>"}
+  custom-call.1343 = s32[1]{0} custom-call(constant.68), custom_call_target="Sharding", frontend_attributes={xla.sdy.sharding="#sdy.sharding_per_value<[<@mesh, [{\"data\"}]>]>"}
+  ROOT tuple = (s32[1]{0}, s32[1]{0}) tuple(custom-call.82, custom-call.1343)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  HloCSE cse(/*is_layout_sensitive=*/false);
+  EXPECT_TRUE(cse.Run(module.get()).value());
+}
+
+TEST_F(HloCseTest, DoNotCombineOpsWithDifferentSdyShardingFrontendAttrs) {
+  constexpr absl::string_view hlo_string = R"(
+HloModule module, frontend_attributes={xla.sdy.meshes={mesh = #sdy.mesh<["model"=2, "data"=8]>}}
+
+ENTRY %entry {
+  constant.68 = s32[1]{0} constant({0})
+  custom-call.82 = s32[1]{0} custom-call(constant.68), custom_call_target="Sharding", frontend_attributes={xla.sdy.sharding="#sdy.sharding_per_value<[<@mesh, [{}]>]>"}
+  custom-call.1343 = s32[1]{0} custom-call(constant.68), custom_call_target="Sharding", frontend_attributes={xla.sdy.sharding="#sdy.sharding_per_value<[<@mesh, [{\"data\"}]>]>"}
+  ROOT tuple = (s32[1]{0}, s32[1]{0}) tuple(custom-call.82, custom-call.1343)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  HloCSE cse(/*is_layout_sensitive=*/false);
+  EXPECT_FALSE(cse.Run(module.get()).value());
 }
 
 TEST_F(HloCseTest, DoNotCombineCallsToImpureFunctions) {
@@ -1037,7 +1069,7 @@ TEST_F(HloCseTest, ResultAccuracyCseKey) {
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
   HloCSE cse(/*is_layout_sensitive=*/false);
   // same result accuracy, so one of the exponentials should be dropped
-  EXPECT_THAT(cse.Run(m.get()), IsOkAndHolds(true));
+  EXPECT_THAT(cse.Run(m.get()), absl_testing::IsOkAndHolds(true));
   HloInstruction* root = m->entry_computation()->root_instruction();
   ASSERT_EQ(root->operand_count(), 4);
   EXPECT_NE(root->operand(0), root->operand(1));
@@ -1066,7 +1098,7 @@ ENTRY main {
         // Ignore that doing this is generally unsafe.
         return instruction->IsCustomCall("custom_call");
       });
-  EXPECT_THAT(cse.Run(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(cse.Run(module.get()), absl_testing::IsOkAndHolds(true));
 
   // Same custom call should used for each tuple element.
   HloInstruction* root = module->entry_computation()->root_instruction();

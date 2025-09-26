@@ -15,7 +15,9 @@
 #include "xla/hlo/tools/hlo_diff/matchers/exact_subgraph_matcher.h"
 
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
+#include <utility>
 #include <vector>
 
 #include "absl/base/nullability.h"
@@ -33,20 +35,34 @@ namespace xla {
 namespace hlo_diff {
 namespace {
 
-struct NodePairSimilarity {
-  const HloInstructionNode* left;
-  const HloInstructionNode* right;
-  double similarity;
-};
+// Gets all mapped descendants of a node, i.e. all descendants that have a
+// mapping to a node in the other graph.
+template <typename IsMappedFn>
+absl::flat_hash_set<const HloInstructionNode*> GetMappedDescendants(
+    const HloInstructionNode* node, const HloGumgraph& graph,
+    IsMappedFn&& is_mapped_fn) {
+  absl::flat_hash_set<const HloInstructionNode*> descendants;
+  HloGumgraphBfs(
+      *node,
+      [&](const HloInstructionNode& descendant) {
+        if (is_mapped_fn(&descendant)) {
+          descendants.insert(&descendant);
+        }
+        return true;
+      },
+      BfsTraversalDirection::kForward, graph.GetNodeCount(),
+      [](const HloInstructionNode&) { return true; });
+  return descendants;
+}
 
-// Maps the two subgraphs starting from the given nodes.
+// Takes the roots of two subgraphs that are found to be matching, performs a
+// BFS to collect all nodes in each subgraph, verifies they are structurally
+// identical, and then adds the one-to-one mappings for all nodes.
 void MapSubgraph(const HloInstructionNode* absl_nonnull left,
-                 int left_graph_size,
+                 const HloGumgraph& left_graph,
                  const HloInstructionNode* absl_nonnull right,
-                 int right_graph_size, const MatcherType matcher_type,
-                 HloGumgraphMappings& mappings,
-                 absl::flat_hash_set<const HloInstructionNode*>&
-                     exact_mapped_subgraph_roots) {
+                 const HloGumgraph& right_graph, const MatcherType matcher_type,
+                 HloGumgraphMappings& mappings) {
   std::vector<const HloInstructionNode*> left_subgraph;
   HloGumgraphBfs(
       *left,
@@ -54,10 +70,15 @@ void MapSubgraph(const HloInstructionNode* absl_nonnull left,
         left_subgraph.push_back(&node);
         return true;
       },
-      BfsTraversalDirection::kForward, left_graph_size,
-      [&exact_mapped_subgraph_roots](const HloInstructionNode& node) {
-        return !exact_mapped_subgraph_roots.contains(&node);
+      BfsTraversalDirection::kForward, left_graph.GetNodeCount(),
+      [&mappings](const HloInstructionNode& node) {
+        auto props =
+            mappings.left_to_right_instruction_map.GetPropsByLeft(&node);
+        // Do not traverse into a subgraph already matched by this matcher.
+        return !props.has_value() ||
+               props->matcher_type != MatcherType::kGreedySubGraphExactMatcher;
       });
+
   std::vector<const HloInstructionNode*> right_subgraph;
   HloGumgraphBfs(
       *right,
@@ -65,10 +86,15 @@ void MapSubgraph(const HloInstructionNode* absl_nonnull left,
         right_subgraph.push_back(&node);
         return true;
       },
-      BfsTraversalDirection::kForward, right_graph_size,
-      [&exact_mapped_subgraph_roots](const HloInstructionNode& node) {
-        return !exact_mapped_subgraph_roots.contains(&node);
+      BfsTraversalDirection::kForward, right_graph.GetNodeCount(),
+      [&mappings](const HloInstructionNode& node) {
+        auto props =
+            mappings.left_to_right_instruction_map.GetPropsByRight(&node);
+        // Do not traverse into an subgraph already matched by this matcher.
+        return !props.has_value() ||
+               props->matcher_type != MatcherType::kGreedySubGraphExactMatcher;
       });
+
   if (left_subgraph.size() != right_subgraph.size()) {
     LOG(WARNING) << "Subgraph (" << left->instruction->name() << " vs "
                  << right->instruction->name() << ") with same fingerprint "
@@ -77,7 +103,8 @@ void MapSubgraph(const HloInstructionNode* absl_nonnull left,
                  << right_subgraph.size();
     return;
   }
-  for (int i = 0; i < left_subgraph.size(); ++i) {
+
+  for (size_t i = 0; i < left_subgraph.size(); ++i) {
     if (left_subgraph[i]->instruction->opcode() !=
         right_subgraph[i]->instruction->opcode()) {
       LOG(WARNING) << "Subgraph (" << left->instruction->name() << " vs "
@@ -89,11 +116,12 @@ void MapSubgraph(const HloInstructionNode* absl_nonnull left,
       return;
     }
   }
-  for (int i = 0; i < left_subgraph.size(); ++i) {
+
+  // Add mappings for each pair of nodes in the subgraphs
+  for (size_t i = 0; i < left_subgraph.size(); ++i) {
     if (mappings.MapInstructionsIfAbsent(left_subgraph[i], right_subgraph[i],
                                          matcher_type)) {
-      exact_mapped_subgraph_roots.insert(left_subgraph[i]);
-      exact_mapped_subgraph_roots.insert(right_subgraph[i]);
+      // Mark all nodes except the root as unchanged.
       if (i != 0) {
         auto props = mappings.left_to_right_instruction_map.GetPropsByLeft(
             left_subgraph[i]);
@@ -105,102 +133,119 @@ void MapSubgraph(const HloInstructionNode* absl_nonnull left,
   }
 }
 
+// Handles cases where multiple subgraphs share the same fingerprint, making the
+// match ambiguous. It attempts to resolve ambiguity by comparing the sets of
+// already-mapped descendants for each potential pair.
+void MatchAmbiguousSubgraphs(
+    const std::vector<const HloInstructionNode*>& left_nodes,
+    const std::vector<const HloInstructionNode*>& right_nodes,
+    const HloGumgraph& left_graph, const HloGumgraph& right_graph,
+    HloGumgraphMappings& mappings, const MatcherType matcher_type) {
+  // Precompute the set of mapped descendants for each ambiguous node.
+  absl::flat_hash_map<const HloInstructionNode*,
+                      absl::flat_hash_set<const HloInstructionNode*>>
+      left_nodes_descendants, right_nodes_descendants;
+  for (const HloInstructionNode* node : left_nodes) {
+    left_nodes_descendants[node] = GetMappedDescendants(
+        node, left_graph, [&mappings](const HloInstructionNode* node) {
+          return mappings.left_to_right_instruction_map.ContainsLeft(node);
+        });
+  }
+  for (const HloInstructionNode* node : right_nodes) {
+    right_nodes_descendants[node] = GetMappedDescendants(
+        node, right_graph, [&mappings](const HloInstructionNode* node) {
+          return mappings.left_to_right_instruction_map.ContainsRight(node);
+        });
+  }
+
+  for (const HloInstructionNode* left_node : left_nodes) {
+    const auto& left_node_descendants = left_nodes_descendants[left_node];
+    if (left_node_descendants.empty()) {
+      continue;
+    }
+
+    // Get the corresponding peers in the right graph for the left descendants.
+    absl::flat_hash_set<const HloInstructionNode*> matched_peers;
+    for (const HloInstructionNode* node : left_node_descendants) {
+      matched_peers.insert(
+          *mappings.left_to_right_instruction_map.GetRight(node));
+    }
+
+    // Find a right node whose descendants perfectly match the left node's
+    // descendant peers.
+    for (const HloInstructionNode* right_node : right_nodes) {
+      const auto& right_node_descendants = right_nodes_descendants[right_node];
+      if (matched_peers == right_node_descendants) {
+        MapSubgraph(left_node, left_graph, right_node, right_graph,
+                    matcher_type, mappings);
+        left_nodes_descendants.erase(left_node);
+        right_nodes_descendants.erase(right_node);
+        break;
+      }
+    }
+  }
+
+  // If only one ambiguous pair remains, they must be a match.
+  if (left_nodes_descendants.size() == 1 &&
+      right_nodes_descendants.size() == 1) {
+    MapSubgraph(left_nodes_descendants.begin()->first, left_graph,
+                right_nodes_descendants.begin()->first, right_graph,
+                matcher_type, mappings);
+  }
+}
+
 }  // namespace
 
 void GreedySubGraphExactMatcher::Match(HloGumgraphMappings& mappings) const {
-  // Find candidate subgraphs that match exactly.
   LOG(INFO) << "Running GreedySubgraphExactMatcher: matching subgraphs that "
                "match exactly";
   int current_mapping_count = mappings.left_to_right_instruction_map.size();
-  absl::flat_hash_map<const HloInstructionNode*,
-                      std::vector<const HloInstructionNode*>>
-      candidates, candidates_reverse;
+
+  absl::flat_hash_map<int, std::vector<const HloInstructionNode*>>
+      left_nodes_by_height, right_nodes_by_height;
+  for (const auto* node : left_.AllNodes()) {
+    left_nodes_by_height[node->props.height].push_back(node);
+  }
+  for (const auto* node : right_.AllNodes()) {
+    right_nodes_by_height[node->props.height].push_back(node);
+  }
+
   int max_height =
       std::max(left_.GetRoot().props.height, right_.GetRoot().props.height);
-  // Cache all subgraphs at each height.
-  absl::flat_hash_map<int, std::vector<const HloInstructionNode*>>
-      source_subgraphs;
-  HloGumgraphBfs(
-      left_.GetRoot(),
-      [&source_subgraphs](const HloInstructionNode& node) {
-        if (!node.is_root) {
-          source_subgraphs[node.props.height].push_back(&node);
-        }
-        return true;
-      },
-      BfsTraversalDirection::kForward, left_.GetNodeCount());
-  absl::flat_hash_map<int, std::vector<const HloInstructionNode*>>
-      target_subgraphs;
-  HloGumgraphBfs(
-      right_.GetRoot(),
-      [&target_subgraphs](const HloInstructionNode& node) {
-        if (!node.is_root) {
-          target_subgraphs[node.props.height].push_back(&node);
-        }
-        return true;
-      },
-      BfsTraversalDirection::kForward, right_.GetNodeCount());
-
-  absl::flat_hash_set<const HloInstructionNode*> ignored;
-  absl::flat_hash_set<const HloInstructionNode*> exact_mapped_subgraph_roots;
-  // Find exact match left-right subgraphs candidates greedly from high to low
-  // height.
-  for (int height = max_height; height >= 0; --height) {
-    if (!source_subgraphs.contains(height) ||
-        !target_subgraphs.contains(height)) {
+  for (int height = max_height; height > 0; --height) {
+    if (!left_nodes_by_height.contains(height) ||
+        !right_nodes_by_height.contains(height)) {
       continue;
     }
-    absl::flat_hash_set<const HloInstructionNode*> found;
-    // Find exact match left-right subgraph candidates at the current height.
-    absl::flat_hash_map<uint64_t,
-                        absl::flat_hash_set<const HloInstructionNode*>>
-        source_by_fingerprint;
-    absl::flat_hash_map<uint64_t,
-                        absl::flat_hash_set<const HloInstructionNode*>>
-        target_by_fingerprint;
-    for (const HloInstructionNode* source_node : source_subgraphs[height]) {
-      if (ignored.contains(source_node) ||
-          mappings.InstructionMapContainsLeft(source_node)) {
-        continue;
+
+    // Within each height, group nodes by their subgraph fingerprint.
+    absl::flat_hash_map<uint64_t, std::vector<const HloInstructionNode*>>
+        left_nodes_by_fingerprint, right_nodes_by_fingerprint;
+    for (const HloInstructionNode* node : left_nodes_by_height[height]) {
+      if (!mappings.InstructionMapContainsLeft(node)) {
+        left_nodes_by_fingerprint[node->props.subgraph_fingerprint].push_back(
+            node);
       }
-      source_by_fingerprint[source_node->props.subgraph_fingerprint].insert(
-          source_node);
     }
-    for (const HloInstructionNode* target_node : target_subgraphs[height]) {
-      if (ignored.contains(target_node) ||
-          mappings.InstructionMapContainsRight(target_node)) {
-        continue;
+    for (const HloInstructionNode* node : right_nodes_by_height[height]) {
+      if (!mappings.InstructionMapContainsRight(node)) {
+        right_nodes_by_fingerprint[node->props.subgraph_fingerprint].push_back(
+            node);
       }
-      target_by_fingerprint[target_node->props.subgraph_fingerprint].insert(
-          target_node);
     }
-    for (const auto& [fingerprint, source_nodes] : source_by_fingerprint) {
-      if (auto it = target_by_fingerprint.find(fingerprint);
-          it != target_by_fingerprint.end()) {
-        // Map 1:1 candidates. Check if the source and target subgraphs are
-        // exactly the same, if so, map them.
-        if (source_nodes.size() == 1 && it->second.size() == 1) {
-          MapSubgraph(*source_nodes.begin(), left_.GetNodeCount(),
-                      *it->second.begin(), right_.GetNodeCount(), type_,
-                      mappings, exact_mapped_subgraph_roots);
+
+    for (auto& [fingerprint, left_nodes] : left_nodes_by_fingerprint) {
+      if (auto it = right_nodes_by_fingerprint.find(fingerprint);
+          it != right_nodes_by_fingerprint.end()) {
+        auto& right_nodes = it->second;
+        if (left_nodes.size() == 1 && right_nodes.size() == 1) {
+          MapSubgraph(left_nodes[0], left_, right_nodes[0], right_, type_,
+                      mappings);
+        } else {
+          MatchAmbiguousSubgraphs(left_nodes, right_nodes, left_, right_,
+                                  mappings, type_);
         }
-        found.insert(source_nodes.begin(), source_nodes.end());
-        found.insert(it->second.begin(), it->second.end());
       }
-    }
-    // Ignore all nodes in the subgraphs that matched in later traversals.
-    for (const HloInstructionNode* found_node : found) {
-      HloGumgraphBfs(
-          *found_node, [](const HloInstructionNode& node) { return true; },
-          BfsTraversalDirection::kForward,
-          std::max(left_.GetNodeCount(), right_.GetNodeCount()),
-          [&ignored](const HloInstructionNode& node) {
-            if (ignored.contains(&node)) {
-              return false;
-            }
-            ignored.insert(&node);
-            return true;
-          });
     }
   }
 

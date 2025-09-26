@@ -23,10 +23,13 @@ GTEST_ALLOW_UNINSTANTIATED_PARAMETERIZED_TEST(ExhaustiveF16UnaryTest);
 
 GTEST_ALLOW_UNINSTANTIATED_PARAMETERIZED_TEST(ExhaustiveF32UnaryTest);
 
-#if !defined(XLA_BACKEND_DOES_NOT_SUPPORT_FLOAT64)
+GTEST_ALLOW_UNINSTANTIATED_PARAMETERIZED_TEST(ExhaustiveF64UnaryTest);
+
 INSTANTIATE_TEST_SUITE_P(
     SpecialValues, ExhaustiveF64UnaryTest,
-    ::testing::ValuesIn(CreateFpValuesForBoundaryTest<double>()));
+    ::xla::test::BackendSupportsFloat64()
+        ? ::testing::ValuesIn(CreateFpValuesForBoundaryTest<double>())
+        : ::xla::test::Empty<FpValues>());
 
 INSTANTIATE_TEST_SUITE_P(NormalValues, ExhaustiveF64UnaryTest,
                          ::testing::Values(GetNormals<double>(1000)));
@@ -35,8 +38,9 @@ INSTANTIATE_TEST_SUITE_P(NormalValues, ExhaustiveF64UnaryTest,
 // sub-test, to keep the peak memory usage low.
 INSTANTIATE_TEST_SUITE_P(
     LargeAndSmallMagnitudeNormalValues, ExhaustiveF64UnaryTest,
-    ::testing::ValuesIn(GetFpValuesForMagnitudeExtremeNormals<double>(
-        4000000000ull, 16000000)));
-#else
-GTEST_ALLOW_UNINSTANTIATED_PARAMETERIZED_TEST(ExhaustiveF64UnaryTest);
-#endif  // !defined(XLA_BACKEND_DOES_NOT_SUPPORT_FLOAT64)
+    ::xla::test::BackendSupportsFloat64()
+        ? ::testing::ValuesIn(GetFpValuesForMagnitudeExtremeNormals<double>(
+              4000000000ull, 16000000))
+        : ::xla::test::Empty<FpValues>()
+
+);

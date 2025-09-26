@@ -17,9 +17,11 @@ limitations under the License.
 #define XLA_SERVICE_SHARDING_CONFIG_H_
 
 #include <optional>
+#include <string>
 #include <vector>
 
 #include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/printer.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 
@@ -33,6 +35,10 @@ struct NodeShardingConfig {
   bool operator==(const NodeShardingConfig& other) const {
     return sharding == other.sharding && nodes == other.nodes;
   }
+  static std::string Indent(int level) { return std::string(level * 2, ' '); }
+  void Print(Printer* printer, int indent = 0) const;
+
+  std::string ToString() const;
 };
 
 // Program's sharding configuration.
@@ -43,6 +49,10 @@ struct ShardingConfig {
   }
   static ShardingConfig FromProto(const ShardingConfigProto& proto);
   static ShardingConfigProto ToProto(const ShardingConfig& config);
+
+  void Print(Printer* printer, int indent = 0) const;
+
+  std::string ToString() const;
 };
 
 }  // namespace xla

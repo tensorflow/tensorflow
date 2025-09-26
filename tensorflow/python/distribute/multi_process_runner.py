@@ -318,11 +318,19 @@ class MultiProcessRunner(object):
         target=_ProcFunc(),
         args=(resources, test_env, fn, args, kwargs, self._use_dill_for_args),
         daemon=self._daemon)
-    logging.info(f"[{task_type}-{task_id}] Starting subprocess (PID will be assigned)")
+    logging.info(
+        '[%s-%d] Starting subprocess (PID will be assigned)', task_type, task_id
+    )
     start_time = time.time()
     p.start()
     startup_time = time.time() - start_time
-    logging.info(f"[{task_type}-{task_id}] Subprocess started in {startup_time:.2f}s, PID: {p.pid}")
+    logging.info(
+        '[%s-%d] Subprocess started in %.2fs, PID: %d',
+        task_type,
+        task_id,
+        startup_time,
+        p.pid,
+    )
     self._processes[(task_type, task_id)] = p
     self._terminated.discard((task_type, task_id))
 
@@ -994,18 +1002,26 @@ class MultiProcessPoolRunner(object):
     process_statuses = []
     total_timeout = 300  # 5 minutes total timeout for all processes
     start_time = time.time()
-    
+
     for (task_type, task_id), conn in self._conn.items():
       remaining_time = total_timeout - (time.time() - start_time)
       if remaining_time <= 0:
-        raise RuntimeError(f'Total timeout of {total_timeout}s exceeded while waiting for processes')
-      
-      logging.info('Waiting for the result from %s-%d (timeout: %.1fs)', task_type, task_id, remaining_time)
-      
+        raise RuntimeError(
+            f'Total timeout of {total_timeout} s exceeded '
+            'while waiting for processes'
+        )
+
+      logging.info(
+          'Waiting for the result from %s-%d (timeout: %.1fs)',
+          task_type,
+          task_id,
+          remaining_time,
+      )
+
       # Use threading to implement timeout for conn.recv()
       result_container = []
       error_container = []
-      
+
       def recv_with_timeout():
         try:
           result = conn.recv()
@@ -1014,36 +1030,54 @@ class MultiProcessPoolRunner(object):
           error_container.append(('eof', e))
         except Exception as e:
           error_container.append(('error', e))
-      
+
       recv_thread = threading.Thread(target=recv_with_timeout)
       recv_thread.daemon = True
       recv_thread.start()
-      recv_thread.join(timeout=min(remaining_time, 120))  # Max 2 minutes run per process
-      
+      recv_thread.join(
+          timeout=min(remaining_time, 120)
+      )  # Max 2 minutes run per process
+
       if recv_thread.is_alive():
         # Timeout occurred
-        logging.info(f"[{task_type}-{task_id}] Timeout waiting for process result after {min(remaining_time, 120)}s")
+        logging.info(
+            '[%s-%d] Timeout waiting for process result after %d s',
+            task_type,
+            task_id,
+            min(remaining_time, 120),
+        )
         # Try to get process status for debugging
         with self._runner._process_lock if self._runner else threading.Lock():
           if self._runner and (task_type, task_id) in self._runner._processes:
             process = self._runner._processes[(task_type, task_id)]
-            logging.info(f"[{task_type}-{task_id}] Process state: exitcode={process.exitcode}, pid={process.pid}")
-        
-        raise RuntimeError(f'Timeout waiting for {task_type}-{task_id} after {min(remaining_time, 120)}s. '
-                         f'This often indicates a subprocess is stuck in initialization or pipe reading. '
-                         f'Try increasing Docker container resources or check for deadlocks.')
-      
+            logging.info(
+                '[%s-%d] Process state: exitcode=%d, pid=%d',
+                task_type,
+                task_id,
+                process.exitcode,
+                process.pid,
+            )
+        # Terminate the process if it is still running
+        raise RuntimeError(f'Timeout waiting for {task_type}-{task_id} ' 
+                           f'after {min(remaining_time, 120):.1f}s. '
+                            'This often indicates a subprocess is stuck ' 
+                            'in initialization or pipe reading. '
+                            'Try increasing Docker container resources '
+                            'or check for deadlocks.')
+
       if error_container:
         error_type, error = error_container[0]
         if error_type == 'eof':
           # This shouldn't happen due to exceptions in fn. This usually
           # means bugs in the runner.
           self.shutdown()
-          raise RuntimeError('Unexpected EOF. Worker process may have died. '
-                           'Please report a bug')
+          raise RuntimeError(
+              'Unexpected EOF. Worker process may have died. '
+              'Please report a bug'
+          )
         else:
           raise error
-      
+
       if result_container:
         process_statuses.append(result_container[0])
       else:

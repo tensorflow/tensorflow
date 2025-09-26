@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/comparison_util.h"
 #include "xla/debug_options_flags.h"
@@ -37,6 +38,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_original_value.h"
+#include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
@@ -52,6 +54,7 @@ limitations under the License.
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/lib/strings/proto_serialization.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/tuple_tree.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/casts.h"
@@ -971,10 +974,9 @@ TEST_F(HloModuleTest, PrintOriginalValue) {
   std::vector<float> values(16, 42.0);
   auto instruction =
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.0f));
-  auto original_value = std::make_shared<OriginalValue>(instruction->shape());
-  for (auto& leaf : original_value->leaves()) {
-    leaf.second = {std::string(instruction->name()), leaf.first};
-  }
+  auto original_value =
+      std::make_shared<OriginalValue>(TupleTree<std::optional<OriginalArray>>(
+          OriginalArray{std::string(instruction->name()), {}}));
   instruction->set_original_value(original_value);
   builder.AddInstruction(std::move(instruction));
   module->AddEntryComputation(builder.Build());

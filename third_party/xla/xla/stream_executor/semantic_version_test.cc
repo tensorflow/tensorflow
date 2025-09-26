@@ -60,7 +60,7 @@ TEST(SemanticVersion, Mutation) {
 TEST(SemanticVersion, ParseFromStringSuccess) {
   absl::StatusOr<SemanticVersion> version =
       SemanticVersion::ParseFromString("1.2.3");
-  ASSERT_THAT(version, tsl::testing::IsOk());
+  ASSERT_THAT(version, absl_testing::IsOk());
   EXPECT_EQ(version->major(), 1);
   EXPECT_EQ(version->minor(), 2);
   EXPECT_EQ(version->patch(), 3);
@@ -71,7 +71,7 @@ TEST(SemanticVersion, ParseFromStringInvalid) {
     absl::StatusOr<SemanticVersion> version =
         SemanticVersion::ParseFromString(str);
     EXPECT_THAT(version,
-                tsl::testing::StatusIs(absl::StatusCode::kInvalidArgument));
+                absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
   };
 
   test("1.2");

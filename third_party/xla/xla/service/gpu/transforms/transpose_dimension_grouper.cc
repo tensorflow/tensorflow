@@ -139,8 +139,8 @@ absl::InlinedVector<int64_t, 3> GetNormalizedLogicalTransposeShape(
   // Drop degenerate dimensions.
   absl::InlinedVector<int64_t, 3> delta(output_shape.dimensions().size() + 1,
                                         0);
-  auto input_dimensions = ComposePermutations(output_shape.dimensions(),
-                                              InversePermutation(dimensions));
+  auto input_dimensions =
+      Permute(output_shape.dimensions(), InversePermutation(dimensions));
   for (int i = 0; i < output_shape.dimensions().size(); ++i) {
     delta[i + 1] = delta[i];
     if (input_dimensions[i] == static_cast<int64_t>(1)) {
@@ -181,7 +181,7 @@ class TransposeDimensionGroupVisitor : public DfsHloRewriteVisitor {
       return absl::OkStatus();
     }
     auto normalized_operand_dims =
-        ComposePermutations(normalized_dims, InversePermutation(permutation));
+        Permute(normalized_dims, InversePermutation(permutation));
     Shape grouped_operand_shape = ShapeUtil::MakeShapeWithDescendingLayout(
         transpose->shape().element_type(), normalized_operand_dims);
     auto new_operand = transpose->AddInstruction(HloInstruction::CreateBitcast(

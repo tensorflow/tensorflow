@@ -45,6 +45,7 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/lib/gtl/value_or_die.h"
+#include "xla/tsl/platform/status.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
@@ -399,9 +400,10 @@ struct PostorderDFSVisitor {
   // kGetDimensionSize or kSetDimensionSize doesn't need evaluation).
   bool IsInstructionOverLimit(const HloInstructionProto* proto,
                               const InferenceContext& context) {
-    auto subshape = std::make_unique<Shape>(ShapeUtil::GetSubshape(
-        tsl::gtl::ValueOrDie(Shape::FromProto(proto->shape())),
-        context.shape_index));
+    auto shape = Shape::FromProto(proto->shape());
+    TF_CHECK_OK(shape.status());
+    auto subshape = std::make_unique<Shape>(
+        ShapeUtil::GetSubshape(*shape, context.shape_index));
 
     if (subshape->IsArray() &&
         ShapeUtil::ElementsIn(*subshape) > kLargeShapeElementLimit) {

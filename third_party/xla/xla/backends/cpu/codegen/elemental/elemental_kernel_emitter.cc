@@ -196,6 +196,10 @@ ElementalKernelEmitter::EmitKernelDefinition() {
   ir_builder.SetInsertPoint(
       kernel_prototype.function->getEntryBlock().getTerminator());
 
+  // Set fast-math flags on the builder.
+  ir_builder.setFastMathFlags(
+      llvm_ir::GetCpuFastMathFlags(hlo_module->config()));
+
   TF_ASSIGN_OR_RETURN(
       CpuElementalIrEmitter::ThreadLocalCallCallback thread_local_call_fn,
       ThreadLocalCallbackFactory(ir_builder, *llvm_module));

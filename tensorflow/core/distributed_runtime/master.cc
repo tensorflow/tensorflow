@@ -35,6 +35,7 @@ limitations under the License.
 #include <unordered_set>
 #include <vector>
 
+#include "absl/synchronization/notification.h"
 #include "xla/tsl/protobuf/rpc_options.pb.h"
 #include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/common_runtime/process_util.h"
@@ -628,7 +629,7 @@ void Master::CleanupWorkers(const ResetRequest& reset) {
                                  env_->worker_cache, &worker_names);
   if (!worker_names.empty()) {
     const int num_workers = worker_names.size();
-    std::vector<Notification> n(num_workers);
+    std::vector<absl::Notification> n(num_workers);
     CleanupAllRequest req;
     (*req.mutable_container()) = reset.container();
     std::vector<CleanupAllResponse> resp(num_workers);

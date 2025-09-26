@@ -20,4 +20,5 @@ message Foo {
   optional string s1 = 1;
   optional int32 i2 = 2;
   repeated string r3 = 3;
+  optional string s4 = 4 [default = "s"];
 }

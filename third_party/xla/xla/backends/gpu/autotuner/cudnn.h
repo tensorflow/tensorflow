@@ -34,7 +34,7 @@ namespace gpu {
 
 // A codegen backend for cuDNN.
 // Determines execution plan id. Requires a device with cuDNN >= 9.0.
-// Note: We only support cudnn fusions containing a dot.
+// Note: We support cudnn fusions containing a dot and cudnn convolutions.
 //
 // A Cudnn fusion is a fusion with a custom call target of "__cudnn$fusion":
 // ```
@@ -58,7 +58,7 @@ class CudnnBackend : public GpuCodegenBackend {
  public:
   explicit CudnnBackend(stream_executor::StreamExecutor* stream_executor,
                         const DebugOptions* debug_options, Compiler* compiler)
-      : GpuCodegenBackend("Cublas", stream_executor, debug_options, compiler) {}
+      : GpuCodegenBackend("Cudnn", stream_executor, debug_options, compiler) {}
 
   absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>>
   GetSupportedConfigs(const HloInstruction& instr) override;
@@ -66,6 +66,8 @@ class CudnnBackend : public GpuCodegenBackend {
   absl::StatusOr<std::unique_ptr<BackendConfig>> GetDefaultConfig(
       const HloInstruction& instr) override;
 
+  // Can replace the instruction with a new one in the parent computation, to
+  // apply the configs with non-zero workspace size.
   absl::Status ApplyConfig(HloInstruction& instr,
                            const BackendConfig& config) override;
 };

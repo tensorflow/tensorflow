@@ -40,6 +40,7 @@ cc_library(
     name = "thunk_proto_execution_deserializer",
     srcs = ["thunk_proto_execution_deserializer.cc"],
     hdrs = ["thunk_proto_execution_deserializer.h"],
+    visibility = ["//visibility:public"],
     deps = [
         "@com_google_absl//absl/numeric:int128",
         "@com_google_absl//absl/status",
@@ -142,10 +143,6 @@ cc_library(
 tf_cc_test(
     name = "codegen_test",
     srcs = ["codegen_test.cc"],
-    data = [
-        "codegen_test_h.golden",
-        "codegen_test_o.golden",
-    ],
     defines = if_llvm_x86_available(["TF_LLVM_X86_AVAILABLE=1"]),
     deps = [
         ":tfcompile_lib",
@@ -355,6 +352,7 @@ cc_library(
     name = "embedded_protocol_buffers",
     srcs = ["embedded_protocol_buffers.cc"],
     hdrs = ["embedded_protocol_buffers.h"],
+    visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:lib",
         "@com_google_absl//absl/memory",
@@ -374,6 +372,7 @@ cc_library(
     name = "embedded_constant_buffers",
     srcs = ["embedded_constant_buffers.cc"],
     hdrs = ["embedded_constant_buffers.h"],
+    visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:lib",
         "@com_google_absl//absl/memory",

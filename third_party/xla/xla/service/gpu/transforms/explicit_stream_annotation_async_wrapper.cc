@@ -59,8 +59,7 @@ static absl::StatusOr<bool> AsynchronizeInstruction(HloInstruction* instr) {
   TF_ASSIGN_OR_RETURN(
       HloInstruction * done,
       computation->CreateAsyncInstructions(
-          instr, {},
-          ExplicitStreamAnnotationAsyncWrapper::kExplicitExecutionThread,
+          instr, {}, ExplicitStreamAnnotationAsyncWrapper::kMainExecutionThread,
           /*replace=*/true));
   // Replace the original attributes after creating the async pair.
   done->set_frontend_attributes(original_attributes);

@@ -30,9 +30,15 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/array.h"
 #include "xla/core/collectives/rank_id.h"
+#include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
+#include "xla/literal.h"
+#include "xla/literal_util.h"
 #include "xla/primitive_util.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/gpu/launch_dimensions.h"
+#include "xla/service/hlo_runner.h"
+#include "xla/service/platform_util.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_handle.h"
@@ -41,6 +47,7 @@ limitations under the License.
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream.h"
+#include "xla/tests/literal_test_util.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
@@ -52,6 +59,8 @@ namespace xla::gpu {
 namespace {
 
 using ::stream_executor::gpu::AllReduceStrategy;
+using ::testing::HasSubstr;
+using ::tsl::testing::StatusIs;
 
 se::StreamExecutor* GetGpuExecutor(int64_t device_ordinal) {
   auto* platform =
@@ -64,6 +73,15 @@ struct TestParams {
   int64_t num_elements;
 };
 
+template <typename T>
+std::vector<T> ToVector(const Array<T>& array) {
+  std::vector<T> result;
+  result.reserve(array.num_elements());
+  array.Each(
+      [&](absl::Span<const int64_t> indices, T val) { result.push_back(val); });
+  return result;
+}
+
 class AllReduceKernelTest : public ::testing::Test,
                             public ::testing::WithParamInterface<TestParams> {
  public:
@@ -73,11 +91,10 @@ class AllReduceKernelTest : public ::testing::Test,
   absl::StatusOr<std::vector<Array<T>>> RunKernel(
       const std::vector<se::StreamExecutor*>& executors,
       const std::vector<Array<T>>& input_data, ReductionKind reduction_kind) {
-    constexpr LaunchDimensions kLaunchDimensions{
-        /*block_x_count=*/8,
-        /*thread_x_count_per_block=*/512};
+    const int64_t num_ranks = input_data.size();
+    const LaunchDimensions launch_dimensions = AllReduceLaunchDimensions(
+        input_data[0].num_elements(), num_ranks, params_.all_reduce_strategy);
 
-    int64_t num_ranks = input_data.size();
     int64_t num_elements = input_data[0].num_elements();
 
     TF_RETURN_IF_ERROR(executors[0]->EnablePeerAccessTo(executors[1]));
@@ -104,7 +121,7 @@ class AllReduceKernelTest : public ::testing::Test,
 
       signal_flags_buffers.emplace_back(
           executor, executor->AllocateArray<uint32_t>(
-                        num_ranks * kLaunchDimensions.num_blocks()));
+                        num_ranks * launch_dimensions.num_blocks()));
       TF_RET_CHECK(!signal_flags_buffers[i].memory().is_null());
 
       TF_RETURN_IF_ERROR(executor->SynchronousMemZero(
@@ -126,7 +143,7 @@ class AllReduceKernelTest : public ::testing::Test,
     for (int i = 0; i < num_ranks; ++i) {
       auto active_context = executors[i]->Activate();
       TF_RETURN_IF_ERROR(RunAllReduceKernel(
-          streams[i].get(), kLaunchDimensions,
+          streams[i].get(), launch_dimensions,
           primitive_util::NativeToPrimitiveType<T>(),
           /*reduction_kind=*/reduction_kind,
           /*all_reduce_strategy=*/params_.all_reduce_strategy,
@@ -192,8 +209,13 @@ TEST_P(AllReduceKernelTest, KernelTestAddF32) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto results, RunKernel<float>(executors, inputs, ReductionKind::SUM));
 
+  const Literal expected_output_literal =
+      LiteralUtil::CreateFromArray<float>(expected_output);
   for (int i = 0; i < kNumRanks; ++i) {
-    EXPECT_EQ(results[i], expected_output);
+    const Literal actual_output_literal =
+        LiteralUtil::CreateFromArray<float>(results[i]);
+    EXPECT_TRUE(
+        LiteralTestUtil::Equal(expected_output_literal, actual_output_literal));
   }
 }
 
@@ -278,7 +300,7 @@ TEST_P(AllReduceKernelTest, KernelTestAddPred_Unsupported) {
 
   auto results = RunKernel<bool>(executors, inputs, ReductionKind::SUM);
   EXPECT_THAT(results.status(),
-              ::tsl::testing::StatusIs(absl::StatusCode::kInvalidArgument));
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
   EXPECT_THAT(results.status().message(),
               ::testing::HasSubstr("AllReduce kernel is not supported"));
 }
@@ -296,6 +318,39 @@ INSTANTIATE_TEST_SUITE_P(
       return absl::StrFormat("%v_%d", info.param.all_reduce_strategy,
                              info.param.num_elements);
     });
+
+class AllReduceHloTest : public HloHardwareIndependentTestBase {};
+
+TEST_F(AllReduceHloTest, NullDeviceAssnWithHloRunner) {
+  // xla::HloRunner passes a null device assignment to the XLA executable.
+  // Test this returns an error gracefully.
+  const char* const hlo_string = R"(
+    HloModule module, replica_count=2
+
+    add {
+      lhs = f32[] parameter(0)
+      rhs = f32[] parameter(1)
+      ROOT add = f32[] add(lhs, rhs)
+    }
+
+    ENTRY test {
+      param = f32[1024] parameter(0)
+      ROOT result = f32[1024] all-reduce(param), to_apply=add, replica_groups={{0,1}}
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  HloRunner runner(PlatformUtil::GetDefaultPlatform().value());
+  Literal input = LiteralUtil::CreateR1<float>(std::vector<float>(1, 2));
+
+  EXPECT_THAT(
+      runner.Execute(std::move(module), {std::move(input)}),
+      absl_testing::StatusIs(
+          absl::StatusCode::kInvalidArgument,
+          HasSubstr("Device assignment is null, but must be specified when "
+                    "running a collective thunk.")));
+}
 
 }  // namespace
 }  // namespace xla::gpu

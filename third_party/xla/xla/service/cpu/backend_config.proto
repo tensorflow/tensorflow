@@ -27,6 +27,7 @@ message LlvmKernelOptions {
   bool slp_vectorizer_disabled = 1;
   bool disable_loop_unrolling = 2;
   bool optimize_for_size = 3;
+  bool disable_platform_dependent_math = 4;
 }
 
 // Backend config for XLA:CPU.

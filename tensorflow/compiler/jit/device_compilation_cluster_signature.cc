@@ -19,6 +19,12 @@ limitations under the License.
 #include <utility>
 #include <variant>
 
+#include "absl/status/statusor.h"
+#include "absl/types/span.h"
+#include "tensorflow/compiler/tf2xla/xla_compiler.h"
+#include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/node_def_util.h"
+
 namespace tensorflow {
 namespace {
 using Signature = DeviceCompilationClusterSignature;
@@ -110,12 +116,8 @@ uint64 Signature::Hash::operator()(const Signature& signature) const {
   return h;
 }
 
-absl::StatusOr<Signature> Signature::Build(
-    const NameAttrList& function,
-    absl::Span<const XlaCompiler::Argument> args) {
-  Signature signature;
-  signature.name = Canonicalize(function.name(), AttrSlice(&function.attr()));
-
+static absl::StatusOr<Signature> AppendArguments(
+    Signature signature, absl::Span<const XlaCompiler::Argument> args) {
   for (const XlaCompiler::Argument& arg : args) {
     switch (arg.kind) {
       case XlaCompiler::Argument::kConstant:
@@ -133,7 +135,23 @@ absl::StatusOr<Signature> Signature::Build(
             arg.HumanString());
     }
   }
-  return std::move(signature);
+  return signature;
+}
+
+absl::StatusOr<Signature> Signature::Build(
+    const NameAttrList& function,
+    absl::Span<const XlaCompiler::Argument> args) {
+  Signature signature;
+  signature.name = Canonicalize(function.name(), AttrSlice(&function.attr()));
+  return AppendArguments(std::move(signature), args);
+}
+
+absl::StatusOr<DeviceCompilationClusterSignature> Signature::Build(
+    const DeviceCompilationCanonicalFunction& canonical_function,
+    absl::Span<const XlaCompiler::Argument> args) {
+  Signature signature;
+  signature.name = canonical_function.canonical;
+  return AppendArguments(std::move(signature), args);
 }
 
 }  // namespace tensorflow

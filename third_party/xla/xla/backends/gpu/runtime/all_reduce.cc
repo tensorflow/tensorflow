@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/backends/gpu/runtime/all_reduce.h"
 
+#include <algorithm>
 #include <cstdint>
 
 #include "absl/algorithm/container.h"
@@ -34,6 +35,7 @@ limitations under the License.
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/safe_reinterpret_cast.h"
 #include "xla/types.h"
+#include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla::gpu {
@@ -62,6 +64,10 @@ static constexpr auto kAddF32Tags = TagRegistry<float, ReductionKind::SUM>{};
 static constexpr auto kAddBF16Tags =
     TagRegistry<bfloat16, ReductionKind::SUM>{};
 static constexpr auto kOrPredTags = TagRegistry<bool, ReductionKind::MAX>{};
+// Heuristic maxima after some benchmarking.
+static constexpr int64_t kMaxBlocksPerGrid = 24;
+static constexpr int64_t kMaxThreadsPerBlock = 512;
+static constexpr int64_t kWarpSize = 32;
 
 template <typename TagType>
 absl::Status LaunchTypedKernel(
@@ -97,6 +103,9 @@ absl::Status LaunchTypedKernel(
   params.num_ranks = num_ranks;
   params.num_elements = num_elements;
   params.num_elements_per_rank = num_elements / (kIsTwoShot ? num_ranks : 1);
+  // NB: num_elements_per_block can be bigger or smaller than blockDim.x.
+  // If its smaller, then the block stride loop will run just once.
+  // If its bigger, then the block stride loop will run multiple times.
   params.num_elements_per_block = RoundUpTo(
       CeilOfRatio(params.num_elements_per_rank,
                   absl::implicit_cast<int64_t>(launch_dimensions.num_blocks())),
@@ -106,19 +115,73 @@ absl::Status LaunchTypedKernel(
       [](se::DeviceMemoryBase buffer) {
         return tsl::safe_reinterpret_cast<uint32_t*>(buffer.opaque());
       });
+  params.rank_offset =
+      kIsTwoShot ? params.rank * params.num_elements_per_rank : 0;
+  for (int i = 0; i < params.num_ranks; ++i) {
+    params.rotated_ranks[i] = (i + rank) % params.num_ranks;
+  }
   params.signal_value = signal_value;
+
+  VLOG(3) << "Launching all-reduce kernel with params: " << "strategy: "
+          << absl::StrFormat("%v", TagType::kAllReduceStrategy)
+          << ", rank: " << params.rank << ", num_ranks: " << params.num_ranks
+          << ", num_elements: " << params.num_elements
+          << ", num_elements_per_rank: " << params.num_elements_per_rank
+          << ", num_elements_per_block: " << params.num_elements_per_block
+          << ", num_threads_per_block: "
+          << launch_dimensions.num_threads_per_block()
+          << ", num_blocks_per_grid: " << launch_dimensions.num_blocks()
+          << ", rank_offset: {" << params.rank_offset << ", rotated_ranks: "
+          << absl::StrJoin(
+                 absl::MakeSpan(params.rotated_ranks.data(), params.num_ranks),
+                 ", ")
+          << "}, signal_value: " << params.signal_value;
 
   return kernel.Launch(launch_dimensions.thread_counts_per_block(),
                        launch_dimensions.block_counts(), stream,
                        std::move(params));
 }
+
+// More types of one-shot all-reduce kernel can be supported. Each element
+// type + reduction kind combination need a new template instantiation.
+// Register more kernel in xla/stream_executor/cuda/all_reduce_kernel_cuda.cc
+bool IsElementReductionSupported(PrimitiveType element_type,
+                                 ReductionKind reduction_kind) {
+  switch (reduction_kind) {
+    case ReductionKind::SUM:
+      return element_type == PrimitiveType::F32 ||
+             element_type == PrimitiveType::BF16;
+    case ReductionKind::MAX:
+      return element_type == PrimitiveType::PRED;
+    default:
+      return false;
+  }
+}
+
 }  // namespace
+
+LaunchDimensions AllReduceLaunchDimensions(int64_t elements, int64_t num_ranks,
+                                           AllReduceStrategy strategy) {
+  int64_t threads_per_block;
+  int64_t blocks_per_grid;
+  const int64_t elements_per_rank =
+      elements / (strategy == AllReduceStrategy::kTwoShot ? num_ranks : 1);
+  // Maximum number of threads such that each thread has elements to process.
+  const int64_t total_threads =
+      RoundUpTo(elements_per_rank / se::gpu::kNumElementsPerThread, kWarpSize);
+  threads_per_block = std::min(kMaxThreadsPerBlock, total_threads);
+  blocks_per_grid = std::min(kMaxBlocksPerGrid,
+                             CeilOfRatio(total_threads, threads_per_block));
+  return LaunchDimensions(blocks_per_grid, threads_per_block);
+}
 
 bool IsAllReduceKernelSupported(int64_t num_ranks, int64_t num_elements,
                                 PrimitiveType element_type,
                                 ReductionKind reduction_kind,
                                 AllReduceStrategy all_reduce_strategy) {
-  // For twoShot each rank processes: num_elements / num_ranks elements.
+  if (!IsElementReductionSupported(element_type, reduction_kind)) {
+    return false;
+  }
   const int64_t alignment_requirement =
       all_reduce_strategy == AllReduceStrategy::kOneShot
           ? se::gpu::kNumElementsPerThread
@@ -129,22 +192,7 @@ bool IsAllReduceKernelSupported(int64_t num_ranks, int64_t num_elements,
   }
 
   // The kernel is only supported for up to 8 devices.
-  if (num_ranks > stream_executor::gpu::kMaxNumAllReduceInputPtrs) {
-    return false;
-  }
-
-  // More types of one-shot all-reduce kernel can be supported. Each element
-  // type + reduction kind combination need a new template instantiation.
-  // Register more kernel in xla/stream_executor/cuda/all_reduce_kernel_cuda.cc
-  switch (reduction_kind) {
-    case ReductionKind::SUM:
-      return element_type == PrimitiveType::F32 ||
-             element_type == PrimitiveType::BF16;
-    case ReductionKind::MAX:
-      return element_type == PrimitiveType::PRED;
-    default:
-      return false;
-  }
+  return num_ranks <= stream_executor::gpu::kMaxNumAllReduceInputPtrs;
 }
 
 absl::Status RunAllReduceKernel(

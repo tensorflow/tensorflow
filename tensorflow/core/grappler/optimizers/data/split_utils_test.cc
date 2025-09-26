@@ -441,7 +441,7 @@ TEST(SplitUtilsTest, UnimplementedErrors) {
       {{"o1", "i1:output"}});
   ASSERT_THAT(SplitFunction(orig, {"split"}, /*num_captured_inputs=*/0,
                             function_library),
-              testing::StatusIs(
+              absl_testing::StatusIs(
                   error::UNIMPLEMENTED,
                   ::testing::HasSubstr("Splitting a function where an edge is "
                                        "a list of tensors is unsupported.")));
@@ -460,7 +460,7 @@ TEST(SplitUtilsTest, UnimplementedErrors) {
       {{"o1", "i2:output"}});
   ASSERT_THAT(
       SplitFunction(orig, {"i1"}, /*num_captured_inputs=*/0, function_library),
-      testing::StatusIs(
+      absl_testing::StatusIs(
           error::UNIMPLEMENTED,
           ::testing::HasSubstr(
               "edge between functions has an AttrValue placeholder dtype")));
@@ -486,7 +486,7 @@ TEST(SplitUtilsTest, EdgeFromSecondToFirstError) {
 
   ASSERT_THAT(
       SplitFunction(orig, {"i2"}, /*num_captured_inputs=*/0, function_library),
-      testing::StatusIs(
+      absl_testing::StatusIs(
           error::INTERNAL,
           ::testing::HasSubstr("Node i2 is in first function but has input "
                                "i1:output which is not in first function")));

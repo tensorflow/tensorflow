@@ -1,0 +1,27 @@
+edition = "2023";
+
+package xla;
+
+import "google/protobuf/any.proto";
+
+option features.field_presence = IMPLICIT;
+
+// A proto used to serialize PjRtTopologyDescription instances.
+message PjRtTopologyDescriptionProto {
+  // The ID that identifies the platform (CPU/GPU/TPU).
+  uint64 platform_id = 1;
+
+  // The name that identifies the platform (CPU/GPU/TPU).
+  string platform_name = 2;
+
+  // A string containing human-readable, platform-specific version info
+  // (e.g. the CUDA version on GPU or libtpu version on Cloud TPU).
+  string platform_version = 3;
+
+  // Whether the topology represents a subslice.
+  bool is_subslice_topology = 4;
+
+  reserved 5 to 8;
+
+  google.protobuf.Any platform_specific_topology = 9;
+}

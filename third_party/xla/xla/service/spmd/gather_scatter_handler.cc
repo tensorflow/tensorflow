@@ -1532,7 +1532,9 @@ absl::StatusOr<HloInstruction*> PartitionScatterIndexPassthroughDimensions(
   auto all_reduce = operands[0].state().partitioner->AllReduceAlongShardingDims(
       b, pscatter, original_indices_sharding, indices.state().next_channel_id,
       index_passthrough_dims.indices_dims,
-      operands[0].state().collective_ops_creator, scatter->to_apply());
+      operands[0].state().collective_ops_creator,
+      operands[0].state().module->AddEmbeddedComputation(
+          scatter->to_apply()->Clone()));
   all_reduce->set_sharding(hlo_sharding_util::UngroupSharding(output_grouped));
   if (allow_recursive) {
     VLOG(5) << "[Scatter partitioning]: Partitioned as index passthrough";
@@ -1791,7 +1793,9 @@ absl::StatusOr<HloInstruction*> PartitionScatter(
   HloInstruction* new_scatter =
       visitor->builder()->AddInstruction(HloInstruction::CreateScatter(
           MaybeMakeTupleShape(operand_hlos), operand_hlos,
-          indices.Replicate().hlo(), update_hlos, scatter->to_apply(),
+          indices.Replicate().hlo(), update_hlos,
+          operands[0].state().module->AddEmbeddedComputation(
+              scatter->to_apply()->Clone()),
           scatter->scatter_dimension_numbers(), scatter->indices_are_sorted(),
           scatter->unique_indices()));
   new_scatter->set_sharding(

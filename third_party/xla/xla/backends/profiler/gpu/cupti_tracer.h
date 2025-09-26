@@ -16,18 +16,21 @@ limitations under the License.
 #ifndef XLA_BACKENDS_PROFILER_GPU_CUPTI_TRACER_H_
 #define XLA_BACKENDS_PROFILER_GPU_CUPTI_TRACER_H_
 
+#include <atomic>
+#include <cstddef>
 #include <cstdint>
-#include <functional>
 #include <memory>
 #include <optional>
+#include <string>
 #include <vector>
 
 #include "absl/status/status.h"
 #include "third_party/gpus/cuda/extras/CUPTI/include/cupti.h"
 #include "third_party/gpus/cuda/include/nvtx3/nvToolsExt.h"
+#include "xla/backends/profiler/gpu/cupti_buffer_events.h"
 #include "xla/backends/profiler/gpu/cupti_collector.h"
 #include "xla/backends/profiler/gpu/cupti_interface.h"
-#include "tsl/platform/types.h"
+#include "xla/backends/profiler/gpu/cupti_pm_sampler.h"
 
 namespace xla {
 namespace profiler {
@@ -49,6 +52,10 @@ struct CuptiTracerOptions {
   bool sync_devices_before_stop = false;
   // Whether to enable NVTX tracking, we need this for TensorRT tracking.
   bool enable_nvtx_tracking = false;
+  // PM sampling configuration (defaults are 2khz rate, 100ms decode)
+  // Only read during creation of a PM sampling object, later changes have
+  // no effect
+  CuptiPmSamplerOptions pm_sampler_options;
 };
 
 class CuptiTracer;
@@ -82,8 +89,12 @@ class CuptiTracer {
   bool IsAvailable() const;
   bool NeedRootAccess() const { return need_root_access_; }
 
-  absl::Status Enable(const CuptiTracerOptions& option,
-                      CuptiTraceCollector* collector);
+  // Enables the CUPTI tracer. XPlanes vector is optional and only needed when
+  // PM sampling is enabled to store sample metrics.
+  absl::Status Enable(
+      const CuptiTracerOptions& option, CuptiTraceCollector* collector,
+      const std::vector<std::unique_ptr<tensorflow::profiler::XPlane>>&
+          xplanes = {});
   void Disable();
 
   // Creates default CUPTI callback IDs to avoid empty set and enabling all
@@ -181,6 +192,7 @@ class CuptiTracer {
                                       const CUpti_CallbackData* cbdata);
   int num_gpus_;
   std::optional<CuptiTracerOptions> option_;
+  std::unique_ptr<xla::profiler::CuptiPmSampler> cupti_pm_sampler_;
   CuptiInterface* cupti_interface_ = nullptr;
   CuptiTraceCollector* collector_ = nullptr;
 
@@ -188,6 +200,7 @@ class CuptiTracer {
   bool need_root_access_ = false;
 
   bool api_tracing_enabled_ = false;
+  bool pm_sampling_enabled_ = false;
   // Cupti handle for driver or runtime API callbacks. Cupti permits a single
   // subscriber to be active at any time and can be used to trace Cuda runtime
   // as and driver calls for all contexts and devices.

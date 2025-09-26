@@ -800,7 +800,8 @@ absl::Status TfrtSessionFactory::InitializeLocked(
     runtime_ = options.runtime;
   } else if (runtime_ == nullptr) {
     owned_runtime_ = tensorflow::tfrt_stub::Runtime::Create(
-        CreateRunHandlerWorkQueue(options.threadpool_options));
+        CreateRunHandlerWorkQueue(options.threadpool_options),
+        options.diag_handler);
     runtime_ = owned_runtime_.get();
   }
   enable_mlrt_ = options.enable_mlrt;

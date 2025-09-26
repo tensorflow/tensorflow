@@ -61,7 +61,14 @@ bool IsDotSupportedByClassicalEmitters(const HloInstruction& dot);
 
 // Returns the accumulator type for the given dot instruction (either extracted
 // from the dot algorithm or inferred from the output type).
-PrimitiveType GetGemmAccumulatorType(HloDotInstruction* dot);
+PrimitiveType GetGemmAccumulatorType(const HloDotInstruction* dot);
+
+// Makes algorithm specific set of instructions which would multiply lhs and rhs
+// like the dot with the given precision algorithm would. Useful e.g. rewriting
+// dot as multiply+reduce.
+absl::StatusOr<HloInstruction*> MakeMultiplyForDotPrecisionAlgorithm(
+    HloInstruction* lhs, HloInstruction* rhs,
+    const PrecisionConfig::Algorithm& algorithm);
 
 // extending plain MatrixLayout struct with creator functions
 struct MatrixLayout : public se::gpu::MatrixLayout {

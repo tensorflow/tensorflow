@@ -442,6 +442,48 @@ TEST_F(ComputationPartitionerTest, ScatterFusion) {
   PrintAndErase(CreateSubgraphMlirFunction(fusion.GetRootSubgraph(), builder));
 }
 
+TEST_F(ComputationPartitionerTest, PartitioningIsDeterministic) {
+  // This is a fusion that used to result in non-deterministic partitioning.
+  auto module = ParseAndReturnVerifiedModule(R"(
+    HloModule test_module
+    ENTRY fused_computation {
+      constant_15990_184 = s32[] constant(0)
+      broadcast.59771.33 = s32[16]{0} broadcast(constant_15990_184), dimensions={}
+      param_1.31375 = s32[16]{0} parameter(1)
+      constant_15774_2 = s32[] constant(262143)
+      broadcast.59775.7 = s32[16]{0} broadcast(constant_15774_2), dimensions={}
+      clamp.6.7 = s32[16]{0} clamp(broadcast.59771.33, param_1.31375, broadcast.59775.7)
+      param_2.20600 = u32[] parameter(2)
+      convert.12580.11 = s32[] convert(param_2.20600)
+      constant_15783_5 = s32[] constant(32768)
+      multiply.10392.11 = s32[] multiply(convert.12580.11, constant_15783_5)
+      broadcast.59778.9 = s32[16]{0} broadcast(multiply.10392.11), dimensions={}
+      compare.12185.5 = pred[16]{0} compare(clamp.6.7, broadcast.59778.9), direction=LT
+      constant_15997_1 = s32[] constant(32767)
+      add.7199.4 = s32[] add(multiply.10392.11, constant_15997_1)
+      broadcast.59780.6 = s32[16]{0} broadcast(add.7199.4), dimensions={}
+      compare.12186.5 = pred[16]{0} compare(clamp.6.7, broadcast.59780.6), direction=GT
+      or.384.3 = pred[16]{0} or(compare.12185.5, compare.12186.5)
+      broadcast.59957.1 = pred[1,16,4096]{2,1,0} broadcast(or.384.3), dimensions={1}
+      constant_16001_1 = bf16[] constant(0)
+      broadcast.59959.1 = bf16[1,16,4096]{2,1,0} broadcast(constant_16001_1), dimensions={}
+      param_0.9142 = bf16[32768,4096]{1,0} parameter(0)
+      clamp.7.1 = s32[16]{0} clamp(broadcast.59778.9, clamp.6.7, broadcast.59780.6)
+      subtract.4322.1 = s32[16]{0} subtract(clamp.7.1, broadcast.59778.9)
+      bitcast.3.3 = s32[16,1]{1,0} bitcast(subtract.4322.1)
+      gather.34.3 = bf16[16,1,4096]{2,0,1} gather(param_0.9142, bitcast.3.3), offset_dims={1,2}, collapsed_slice_dims={}, start_index_map={0}, index_vector_dim=1, slice_sizes={1,4096}
+      bitcast.4104.1 = bf16[1,16,4096]{2,1,0} bitcast(gather.34.3)
+      ROOT select.8499.1 = bf16[1,16,4096]{2,1,0} select(broadcast.59957.1, broadcast.59959.1, bitcast.4104.1)
+    }
+)")
+                    .value();
+
+  auto* fusion = module->GetComputationWithName("fused_computation");
+  ASSERT_NE(fusion, nullptr);
+  PartitionedComputation computation(fusion, &mlir_context_);
+  EXPECT_EQ(computation.subgraphs().size(), 1);
+}
+
 }  // namespace
 }  // namespace emitters
 }  // namespace xla

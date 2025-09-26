@@ -24,6 +24,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/no_destructor.h"
 #include "absl/hash/hash.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -82,6 +83,7 @@ class MockArray : public llvm::RTTIExtends<MockArray, Array> {
   MOCK_METHOD(ShardingRef, shared_ptr_sharding, (), (const, final));
   MOCK_METHOD(absl::StatusOr<std::shared_ptr<const xla::PjRtLayout>>,
               pjrt_layout, (), (const, final));
+  MOCK_METHOD(UserContextRef, user_context, (), (const, final));
   MOCK_METHOD(absl::StatusOr<std::vector<ArrayRef>>,
               DisassembleIntoSingleDeviceArrays,
               (ArrayCopySemantics array_copy_semantics,
@@ -118,19 +120,16 @@ class MockClient : public llvm::RTTIExtends<MockClient, Client> {
               (const void* data, DType dtype, Shape shape,
                std::optional<absl::Span<const int64_t>> byte_strides,
                ShardingRef sharding, HostBufferSemantics semantics,
-               std::function<void()> on_done_with_host_buffer,
-               tsl::RCReference<UserContext> user_context),
+               std::function<void()> on_done_with_host_buffer),
               (final));
   MOCK_METHOD(absl::StatusOr<std::vector<ArrayRef>>,
               MakeArraysFromHostBufferShards,
               (absl::Span<MakeArraysFromHostBufferShardsSpec> specs,
-               HostBufferSemantics semantics,
-               tsl::RCReference<UserContext> user_context),
+               HostBufferSemantics semantics),
               (final));
   MOCK_METHOD(absl::StatusOr<std::vector<ArrayRef>>, MakeErrorArrays,
               (const absl::Status& error,
-               absl::Span<const ArraySpec> array_specs,
-               tsl::RCReference<UserContext> user_context),
+               absl::Span<const ArraySpec> array_specs),
               (final));
   MOCK_METHOD(absl::StatusOr<ArrayRef>, AssembleArrayFromSingleDeviceArrays,
               (DType dtype, Shape shape, ShardingRef sharding,
@@ -171,7 +170,7 @@ class MockClient : public llvm::RTTIExtends<MockClient, Client> {
               (const, final));
   MOCK_METHOD(absl::StatusOr<Device*>, LookupAddressableDevice,
               (int local_hardware_id), (const, final));
-  MOCK_METHOD(DeviceListRef, MakeDeviceList,
+  MOCK_METHOD(absl::StatusOr<DeviceListRef>, MakeDeviceList,
               (absl::Span<Device* const> devices), (const));
   MOCK_METHOD(Compiler*, GetDefaultCompiler, (), (final));
   MOCK_METHOD(absl::StatusOr<std::shared_ptr<Topology>>, GetTopologyForDevices,
@@ -285,11 +284,19 @@ class MockExecutable : public llvm::RTTIExtends<MockExecutable, Executable> {
 class MockLoadedExecutable
     : public llvm::RTTIExtends<MockLoadedExecutable, LoadedExecutable> {
  public:
+  MockLoadedExecutable() {
+    static absl::NoDestructor<DeviceListRef> kEmptyDeviceList(
+        BasicDeviceList::Create({}));
+    ON_CALL(*this, devices())
+        .WillByDefault(testing::ReturnRef(*kEmptyDeviceList));
+  }
+
   MOCK_METHOD(Client*, client, (), (const, final));
   MOCK_METHOD(absl::string_view, name, (), (const, final));
   MOCK_METHOD(absl::StatusOr<std::optional<std::string>>, Fingerprint, (),
               (const, final));
   MOCK_METHOD(absl::StatusOr<std::string>, Serialize, (), (const, final));
+  MOCK_METHOD(UserContextRef, user_context, (), (const, final));
   MOCK_METHOD(Future<>, GetReadyFuture, (), (const, override));
   MOCK_METHOD(int, num_devices, (), (const, final));
   MOCK_METHOD(int64_t, SizeOfGeneratedCodeInBytes, (), (const, final));
@@ -319,6 +326,7 @@ class MockLoadedExecutable
               (final));
   MOCK_METHOD(absl::Span<Device* const>, addressable_devices, (),
               (const, final));
+  MOCK_METHOD(const DeviceListRef&, devices, (), (const, final));
 
   static char ID;  // NOLINT
 };

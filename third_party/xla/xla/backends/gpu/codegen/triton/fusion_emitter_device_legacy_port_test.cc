@@ -168,6 +168,14 @@ class TritonGemmTest : public TritonTest {
     debug_options.set_xla_gpu_enable_split_k_autotuning(false);
     // Always rewrite Gemms with Triton regardless of size.
     debug_options.set_xla_gpu_gemm_rewrite_size_threshold(0);
+    // TODO(b/393299275): remove when generic emitter is fully enabled.
+    debug_options.clear_xla_gpu_unsupported_generic_triton_emitter_features();
+    debug_options.add_xla_gpu_unsupported_generic_triton_emitter_features(
+        DebugOptions::GENERIC_TRITON_EMITTER_ENABLE_NESTED_GEMM);
+    debug_options.add_xla_gpu_unsupported_generic_triton_emitter_features(
+        DebugOptions::GENERIC_TRITON_EMITTER_ALLOW_ALL_OPS_IN_GEMM_FUSION);
+    debug_options.add_xla_gpu_unsupported_generic_triton_emitter_features(
+        DebugOptions::GENERIC_TRITON_EMITTER_ALLOW_ALL_GEMM_SHAPES);
     return debug_options;
   }
 
@@ -256,7 +264,7 @@ ENTRY e {
       CreateTritonIrAndFileCheck(*module_and_metadata.computation,
                                  module_and_metadata.block_level_parameters,
                                  R"(
-CHECK: %[[LOAD:.*]] = triton_xla.extract {{.*}} : tensor<2x2xi8> to tensor<16x16xi8>
+CHECK: %[[LOAD:.*]] = triton_xla.extract {{.*}} : tensor<16x16xi8>
 CHECK: %[[TRUNCI:.*]] = arith.trunci %[[LOAD]] : tensor<16x16xi8> to tensor<16x16xi1>
 CHECK: %{{.*}} = arith.andi %[[TRUNCI]], %{{.*}} : tensor<16x16xi1>
 )"));
@@ -344,12 +352,12 @@ ENTRY e {
     CHECK: func.func @triton_fn(%[[ARG0:.*]]: tensor<2x4xf32>, %[[ARG1:.*]]: tensor<4x5x2xf32>, %[[ARG2:.*]]: tensor<i32>, %[[ARG3:.*]]: tensor<i32>, %[[ARG4:.*]]: tensor<i32>, %[[ARG5:.*]]: tensor<4x5xf32>) -> tensor<4x5xf32> {
     CHECK-DAG: %[[c3:.*]] = arith.constant 3 : i32
     CHECK-DAG: %[[c0:.*]] = arith.constant 0 : i32
-    CHECK-DAG: triton_xla.extract %[[ARG0]][0, 0] [32, 32] [1, 1]
+    CHECK-DAG: triton_xla.extract from  %[[ARG0]] {{.*}} [0, 0] [32, 32] [1, 1]
     CHECK: %[[V2:.*]] = tensor.extract %[[ARG2]][] : tensor<i32>
     CHECK: %[[CLAMP0:.*]] = arith.maxsi %[[V2]], %[[c0]] : i32
     CHECK: %[[CLAMP1:.*]] = arith.minsi %[[CLAMP0]], %[[c3]] : i32
     CHECK: %[[OFFSET:.*]] = arith.index_castui %[[CLAMP1]] : i32 to index
-    CHECK: triton_xla.extract %[[ARG1]][%[[OFFSET]], 0, 0] [1, 32, 32] [0, 1, 1]
+    CHECK: triton_xla.extract from %[[ARG1]] {{.*}} [%[[OFFSET]], 0, 0] [1, 32, 32] [0, 1, 1]
     CHECK: tt.dot
   )"));
 }
@@ -506,12 +514,12 @@ ENTRY entry {
 
   const HloFusionInstruction* fusion1 = Cast<HloFusionInstruction>(
       module1_and_metadata.computation->FusionInstruction());
-  EXPECT_THAT(
-      TritonWrapper("test_fn", fusion1, cc, device_info,
-                    module1_and_metadata.block_level_parameters, &llvm_module,
-                    mlir_context),
-      StatusIs(tsl::error::RESOURCE_EXHAUSTED,
-               ::testing::HasSubstr("Shared memory size limit exceeded")));
+  EXPECT_THAT(TritonWrapper("test_fn", fusion1, cc, device_info,
+                            module1_and_metadata.block_level_parameters,
+                            &llvm_module, mlir_context),
+              absl_testing::StatusIs(
+                  tsl::error::RESOURCE_EXHAUSTED,
+                  ::testing::HasSubstr("Shared memory size limit exceeded")));
 
   TF_ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module2_and_metadata,
                           GetModuleAndNestedFusionMetadata(absl::Substitute(
@@ -859,8 +867,8 @@ ENTRY entry {
   EXPECT_THAT(TritonWrapper("test_fn", fusion1, cc, device_info,
                             module1_and_metadata.block_level_parameters,
                             &llvm_module, mlir_context),
-              StatusIs(tsl::error::RESOURCE_EXHAUSTED,
-                       "Tiling complexity heuristic exceeded"));
+              absl_testing::StatusIs(tsl::error::RESOURCE_EXHAUSTED,
+                                     "Tiling complexity heuristic exceeded"));
 
   // Succeeds if the tiling is not too complex.
   TF_ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module2_and_metadata,

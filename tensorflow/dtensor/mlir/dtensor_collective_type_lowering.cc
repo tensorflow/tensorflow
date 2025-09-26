@@ -52,15 +52,15 @@ mlir::LogicalResult WrapOpWithCasts(const mlir::RankedTensorType& input_type,
       output_type.getShape(), input_type.getElementType());
 
   const mlir::Location loc = reduce_op->getLoc();
-  mlir::TF::CastOp cast_to_long = builder.create<mlir::TF::CastOp>(
-      loc, input_type, reduce_op->getOperand(0));
+  mlir::TF::CastOp cast_to_long = mlir::TF::CastOp::create(
+      builder, loc, input_type, reduce_op->getOperand(0));
   reduce_op->setOperand(0, cast_to_long.getY());
   reduce_op->getResult(0).setType(intermediate_type);
 
   mlir::Value result = reduce_op->getResult(0);
   builder.setInsertionPointAfter(reduce_op);
   mlir::TF::CastOp cast_to_original =
-      builder.create<mlir::TF::CastOp>(loc, output_type, result);
+      mlir::TF::CastOp::create(builder, loc, output_type, result);
   StatusOr<Layout> result_layout =
       ExtractRequiredSingleLayoutFromOp(result.getDefiningOp());
 
@@ -172,10 +172,10 @@ mlir::LogicalResult ConvertComplexReduce(ReduceOpType reduce_op) {
   auto real_result_tensor_type =
       mlir::RankedTensorType::get(complex_result_tensor_type.getShape(),
                                   input_element_type.getElementType());
-  const mlir::Value tensor_temp_real = builder.create<mlir::TF::RealOp>(
-      reduce_op.getLoc(), real_input_tensor_type, tensor_input);
-  const mlir::Value tensor_temp_imag = builder.create<mlir::TF::ImagOp>(
-      reduce_op.getLoc(), real_input_tensor_type, tensor_input);
+  const mlir::Value tensor_temp_real = mlir::TF::RealOp::create(
+      builder, reduce_op.getLoc(), real_input_tensor_type, tensor_input);
+  const mlir::Value tensor_temp_imag = mlir::TF::ImagOp::create(
+      builder, reduce_op.getLoc(), real_input_tensor_type, tensor_input);
   real_reduce_op = mlir::dyn_cast<ReduceOpType>(builder.clone(*reduce_op));
   real_reduce_op->setOperand(0, tensor_temp_real);
   real_reduce_op->getResult(0).setType(real_result_tensor_type);
@@ -183,8 +183,8 @@ mlir::LogicalResult ConvertComplexReduce(ReduceOpType reduce_op) {
   imag_reduce_op->setOperand(0, tensor_temp_imag);
   imag_reduce_op->getResult(0).setType(real_result_tensor_type);
   const mlir::Type output_type = reduce_op.getResult().getType();
-  auto complex_reduce_op = builder.create<mlir::TF::ComplexOp>(
-      reduce_op->getLoc(), output_type, real_reduce_op.getResult(),
+  auto complex_reduce_op = mlir::TF::ComplexOp::create(
+      builder, reduce_op->getLoc(), output_type, real_reduce_op.getResult(),
       imag_reduce_op.getResult());
   StatusOr<Layout> desired_layout =
       ExtractRequiredSingleLayoutFromOp(reduce_op);
@@ -229,10 +229,10 @@ mlir::LogicalResult ConvertComplexCollectives(CollectiveType op) {
   auto real_result_tensor_type =
       mlir::RankedTensorType::get(complex_result_tensor_type.getShape(),
                                   input_element_type.getElementType());
-  const mlir::Value tensor_temp_real = builder.create<mlir::TF::RealOp>(
-      op.getLoc(), real_input_tensor_type, tensor_input);
-  const mlir::Value tensor_temp_imag = builder.create<mlir::TF::ImagOp>(
-      op.getLoc(), real_input_tensor_type, tensor_input);
+  const mlir::Value tensor_temp_real = mlir::TF::RealOp::create(
+      builder, op.getLoc(), real_input_tensor_type, tensor_input);
+  const mlir::Value tensor_temp_imag = mlir::TF::ImagOp::create(
+      builder, op.getLoc(), real_input_tensor_type, tensor_input);
   real_op = mlir::dyn_cast<CollectiveType>(builder.clone(*op));
   real_op->setOperand(0, tensor_temp_real);
   real_op->getResult(0).setType(real_result_tensor_type);
@@ -240,8 +240,9 @@ mlir::LogicalResult ConvertComplexCollectives(CollectiveType op) {
   imag_op->setOperand(0, tensor_temp_imag);
   imag_op->getResult(0).setType(real_result_tensor_type);
   const mlir::Type output_type = op.getResult().getType();
-  auto complex_op = builder.create<mlir::TF::ComplexOp>(
-      op.getLoc(), output_type, real_op.getResult(), imag_op.getResult());
+  auto complex_op =
+      mlir::TF::ComplexOp::create(builder, op.getLoc(), output_type,
+                                  real_op.getResult(), imag_op.getResult());
   const Layout desired_layout = op.getOutputLayout();
   SetSingleLayoutOnOp(complex_op, desired_layout);
   op.getOutput().replaceAllUsesWith(complex_op.getResult());

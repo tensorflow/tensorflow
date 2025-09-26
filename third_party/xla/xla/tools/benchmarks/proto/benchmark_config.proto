@@ -100,7 +100,8 @@ enum InputFormat {
   // Format for specific cases, like post-optimization benchmarks or emulating
   // frameworks that use HLO directly (e.g., current PyTorch/XLA) via PJRT HLO
   // APIs.
-  HLO_TEXT = 2;  // Represents an HLO text dump file (.hlo)
+  HLO_TEXT = 2;                    // Represents an HLO text dump file (.hlo)
+  SERIALIZED_PJRT_EXECUTABLE = 3;  // Represents a serialized PJRT executable
 }
 
 message InputArtifact {

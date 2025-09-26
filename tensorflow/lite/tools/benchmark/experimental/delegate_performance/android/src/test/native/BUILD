@@ -15,6 +15,8 @@
 # Description:
 #  Holds the tests for the native layer of the app.
 
+load("@rules_cc//cc:cc_test.bzl", "cc_test")
+
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     licenses = ["notice"],

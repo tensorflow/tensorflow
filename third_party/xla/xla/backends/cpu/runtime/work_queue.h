@@ -22,7 +22,6 @@ limitations under the License.
 #include <cstdint>
 #include <limits>
 #include <memory>
-#include <new>
 #include <optional>
 #include <type_traits>
 #include <utility>
@@ -60,20 +59,11 @@ class WorkQueue {
  private:
   friend class Worker;
 
-  // Align all atomic counters to a cache line boundary to avoid false
-  // sharing between multiple worker threads.
-  static constexpr size_t kAtomicAlignment =
-#if defined(__cpp_lib_hardware_interference_size)
-      std::hardware_destructive_interference_size;
-#else
-      64;
-#endif
-
   struct Partition {
     void Initialize(size_t begin, size_t end);
 
     // Tracks index of the next task in the assigned partition.
-    alignas(kAtomicAlignment) std::atomic<size_t> index;
+    ABSL_CACHELINE_ALIGNED std::atomic<size_t> index;
     size_t begin;
     size_t end;
   };
@@ -91,8 +81,8 @@ class WorkQueue {
   size_t DecrementWorkStealingWorkers(size_t max_workers);
 
   absl::FixedArray<Partition, 32> partitions_;
-  alignas(kAtomicAlignment) std::atomic<bool> empty_;
-  alignas(kAtomicAlignment) std::atomic<size_t> num_work_stealing_workers_;
+  ABSL_CACHELINE_ALIGNED std::atomic<bool> empty_;
+  ABSL_CACHELINE_ALIGNED std::atomic<size_t> num_work_stealing_workers_;
 };
 
 // Worker processes tasks from the work queue starting from the assigned
@@ -352,6 +342,9 @@ ABSL_ATTRIBUTE_ALWAYS_INLINE tsl::AsyncValueRef<tsl::Chain> Worker::Parallelize(
   if (ABSL_PREDICT_FALSE(num_workers > std::numeric_limits<uint16_t>::max())) {
     num_workers = std::numeric_limits<uint16_t>::max();
   }
+  // Ensure we don't launch more workers than tasks.
+  // Extra workers would be idle or cause out-of-bounds partition access.
+  num_workers = std::min(num_tasks, num_workers);
 
   tsl::CountDownAsyncValueRef<tsl::Chain> count_down(num_tasks);
   auto execute_event = count_down.AsRef();

@@ -1,3 +1,4 @@
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("//xla:xla.default.bzl", "xla_cc_binary", "xla_cc_test")
 
 package(
@@ -28,6 +29,7 @@ xla_cc_test(
         ":myplugin_cpp_pjrt",
         "//xla/tests:xla_internal_test_main",
         "//xla/tsl/platform:status_matchers",
+        "@com_google_absl//absl/status:status_matchers",
         "@com_google_googletest//:gtest",
     ],
 )

@@ -22,6 +22,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -101,9 +102,9 @@ TEST_F(InitPassManagerTest, CrashReproducer) {
   pm.addPass(std::make_unique<AlwaysFailPass>());
   ASSERT_TRUE(mlir::failed(pm.run(*module_)));
 
-  EXPECT_THAT(
-      MatchUndeclaredOutputs(),
-      IsOkAndHolds(Contains(ContainsRegex(R"(ifrt_ir_mlir_repro_.*\.mlir$)"))));
+  EXPECT_THAT(MatchUndeclaredOutputs(),
+              absl_testing::IsOkAndHolds(
+                  Contains(ContainsRegex(R"(ifrt_ir_mlir_repro_.*\.mlir$)"))));
 }
 
 TEST_F(InitPassManagerTest, Dump) {
@@ -114,7 +115,7 @@ TEST_F(InitPassManagerTest, Dump) {
   ASSERT_TRUE(mlir::succeeded(pm.run(*module_)));
 
   EXPECT_THAT(MatchUndeclaredOutputs(),
-              IsOkAndHolds(Contains(
+              absl_testing::IsOkAndHolds(Contains(
                   ContainsRegex(R"(.*\.program\..*NopPass.*\.mlir)"))));
 }
 

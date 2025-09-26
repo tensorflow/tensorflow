@@ -88,9 +88,13 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/concurrency/ref_count.h"
+#include "xla/tsl/distributed_runtime/call_options.h"
+#include "xla/tsl/distributed_runtime/coordination/coordination_service_agent.h"
+#include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/protobuf/coordination_service.pb.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/casts.h"
@@ -354,17 +358,22 @@ absl::StatusOr<GlobalTopology> MakeGlobalTopologyFromPjRtClient(
       // further device ID remapping before IFRT devices are materialized.
       device.set_global_device_id(ifrt_device_id.value());
       device.set_device_kind(
+          // OSS requires explicit string conversion
+          // NOLINTNEXTLINE(*-redundant-string-conversions)
           std::string(pjrt_client->addressable_devices()[0]->device_kind()));
 
-      // TODO(hyeontaek): Take optional device->slice_index mapping in
-      // GlobalDeviceMapping and generate the `slice_index` attribute for both
-      // addressable and non-addressable devices.
+      // TODO(hyeontaek): Take optional device->partition_index mapping in
+      // GlobalDeviceMapping and generate the `partition_index` attribute for
+      // both addressable and non-addressable devices.
       if (pjrt_device == nullptr) {
         device.set_to_string("NonAddressable");
         device.set_debug_string("NonAddressable");
       } else {
+        // OSS requires explicit string conversion
+        // NOLINTBEGIN(*-redundant-string-conversions)
         device.set_to_string(std::string(pjrt_device->ToString()));
         device.set_debug_string(std::string(pjrt_device->DebugString()));
+        // NOLINTEND(*-redundant-string-conversions)
         SerializePjRtDeviceAttributes(pjrt_device->Attributes(), device);
       }
     }
@@ -400,10 +409,13 @@ LocalTopologyProto MakeLocalTopologyFromPjRtClient(
     DeviceProto& device_proto = *local_topology_proto.add_devices();
     device_proto.set_global_device_id(device->global_device_id().value());
     device_proto.set_local_device_ordinal(device->local_device_id().value());
+    // OSS requires explicit string conversion
+    // NOLINTBEGIN(*-redundant-string-conversions)
     device_proto.set_device_kind(
         std::string(device->description().device_kind()));
     device_proto.set_to_string(std::string(device->ToString()));
     device_proto.set_debug_string(std::string(device->DebugString()));
+    // NOLINTEND(*-redundant-string-conversions)
     SerializePjRtDeviceAttributes(device->Attributes(), device_proto);
   }
 
@@ -461,26 +473,26 @@ MakePjRtDevicesFromGlobalTopology(PjRtClient* client,
                                   const GlobalTopology& global_topology) {
   std::vector<std::unique_ptr<PjRtDevice>> devices;
 
-  // Some PJRT implementations (e.g., TPU) assign their own "slice_index"
+  // Some PJRT implementations (e.g., GPU) assign their own "partition_index"
   // values. If these are present, leave them alone. Otherwise, we assign
-  // the same slice_index to all devices of the same host, as determined by
+  // the same partition_index to all devices of the same host, as determined by
   // the boot_id.
-  int next_slice_index = 0;
-  absl::flat_hash_map<std::string, int> boot_id_to_slice_index;
+  int next_partition_index = 0;
+  absl::flat_hash_map<std::string, int> boot_id_to_partition_index;
   for (int process_index = 0;
        process_index < global_topology.global_topology_proto.nodes_size();
        ++process_index) {
     const LocalTopologyProto& node =
         global_topology.global_topology_proto.nodes(process_index);
-    int64_t slice_index = -1;
+    int64_t partition_index = -1;
     if (!node.boot_id().empty()) {
-      // Every new boot_id seen is treated as a new host/slice.
+      // Every new boot_id seen is treated as a new host/partition.
       absl::string_view boot_id = node.boot_id();
       auto [it, inserted] =
-          boot_id_to_slice_index.try_emplace(boot_id, next_slice_index);
-      slice_index = it->second;
+          boot_id_to_partition_index.try_emplace(boot_id, next_partition_index);
+      partition_index = it->second;
       if (inserted) {
-        ++next_slice_index;
+        ++next_partition_index;
       }
     }
 
@@ -489,11 +501,16 @@ MakePjRtDevicesFromGlobalTopology(PjRtClient* client,
       absl::flat_hash_map<std::string, PjRtDeviceAttribute> attributes;
       TF_RETURN_IF_ERROR(
           DeserializePjRtDeviceAttributes(device_proto, attributes));
-      if (slice_index != -1) {
-        // Sets a generated `slice_index` attribute if not already present.
+      if (partition_index != -1) {
+        // Sets a generated `partition_index` attribute if not already present.
+        attributes.insert(
+            {"partition_index",
+             xla::PjRtDeviceAttribute(static_cast<int64_t>(partition_index))});
+        // TODO - b/435521225: `slice_index` is deprecated. Use
+        // `partition_index`, which better aligns with NVIDIA's terminology.
         attributes.insert(
             {"slice_index",
-             xla::PjRtDeviceAttribute(static_cast<int64_t>(slice_index))});
+             xla::PjRtDeviceAttribute(static_cast<int64_t>(partition_index))});
       }
       const DeviceId ifrt_device_id(device_proto.global_device_id());
       xla::PjRtDevice* pjrt_device = nullptr;
@@ -824,14 +841,33 @@ absl::StatusOr<std::unique_ptr<PjRtClient>> PjRtClient::Create(
     }
   }
 
+  client->distributed_client_ = std::move(options.distributed_client);
   client->kv_store_ = std::move(options.kv_store);
   client->cross_host_transfer_timeout_ = options.cross_host_transfer_timeout;
+  client->transfer_server_factory_ = std::move(options.transfer_server_factory);
 
   if (client->pjrt_client()->plugin_attributes().has_value()) {
     auto attrs = client->pjrt_client()->plugin_attributes()->attributes;
     if (attrs.contains("supports_cross_host_transfers")) {
       client->pjrt_supports_cross_host_transfers_ =
           std::get<bool>(attrs.at("supports_cross_host_transfers"));
+    }
+  }
+
+  // Start a background thread to monitor the status of all processes.
+  if (client->distributed_client_) {
+    absl::StatusOr<tsl::CoordinationServiceAgent*> agent =
+        client->distributed_client_->GetCoordinationServiceAgent();
+    if (agent.ok()) {
+      client->global_process_info_thread_.reset(
+          tsl::Env::Default()->StartThread(
+              tsl::ThreadOptions(), "global_process_info",
+              [client = client.get(), agent = *agent]() {
+                absl::Status s = client->WatchGlobalProcessInfo(*agent);
+                if (!s.ok()) {
+                  LOG(ERROR) << s;
+                }
+              }));
     }
   }
 
@@ -851,7 +887,10 @@ PjRtClient::PjRtClient(std::shared_ptr<xla::PjRtClient> pjrt_client)
       default_compiler_(this),
       attributes_(MakeAttributeMap(pjrt_client_.get())) {}
 
-PjRtClient::~PjRtClient() = default;
+PjRtClient::~PjRtClient() {
+  absl::MutexLock lock(&shutting_down_mu_);
+  shutting_down_ = true;
+}
 
 absl::StatusOr<PjRtCompatibleDevice*> PjRtClient::LookupPjRtDevice(
     xla::PjRtDevice* pjrt_device) const {
@@ -903,7 +942,7 @@ absl::StatusOr<Device*> PjRtClient::LookupAddressableDevice(
   return LookupPjRtDevice(pjrt_device);
 }
 
-DeviceListRef PjRtClient::MakeDeviceList(
+absl::StatusOr<DeviceListRef> PjRtClient::MakeDeviceList(
     absl::Span<Device* const> devices) const {
   return xla::ifrt::BasicDeviceList::Create(devices);
 }
@@ -928,9 +967,7 @@ absl::StatusOr<ArrayRef> PjRtClient::MakeArrayFromHostBuffer(
     const void* data, DType dtype, Shape shape,
     std::optional<absl::Span<const int64_t>> byte_strides, ShardingRef sharding,
     Client::HostBufferSemantics semantics,
-    std::function<void()> on_done_with_host_buffer,
-    tsl::RCReference<UserContext> user_context) {
-  // Currently the `user_context` parameter is ignored.
+    std::function<void()> on_done_with_host_buffer) {
   DCHECK(this);
   if (dtype.kind() == DType::kString) {
     return MakeStringArrayFromHostBuffer(this, data, dtype, shape, byte_strides,
@@ -1021,14 +1058,12 @@ absl::StatusOr<ArrayRef> PjRtClient::MakeArrayFromHostBuffer(
 absl::StatusOr<std::vector<ArrayRef>>
 PjRtClient::MakeArraysFromHostBufferShards(
     absl::Span<MakeArraysFromHostBufferShardsSpec> specs,
-    HostBufferSemantics semantics, tsl::RCReference<UserContext> user_context) {
-  return ClientMakeArraysFromHostBufferShards(this, specs, semantics,
-                                              std::move(user_context));
+    HostBufferSemantics semantics) {
+  return ClientMakeArraysFromHostBufferShards(this, specs, semantics);
 }
 
 absl::StatusOr<std::vector<ArrayRef>> PjRtClient::MakeErrorArrays(
-    const absl::Status& error, absl::Span<const ArraySpec> array_specs,
-    tsl::RCReference<UserContext> user_context) {
+    const absl::Status& error, absl::Span<const ArraySpec> array_specs) {
   if (error.ok()) {
     return absl::InvalidArgumentError("Error status must not be OK");
   }
@@ -1225,9 +1260,9 @@ absl::StatusOr<std::vector<ArrayRef>> PjRtClient::CopyArrays(
     }
   }
 
-  std::vector<ArrayRef> new_arrays;
-  new_arrays.reserve(arrays.size());
   if (all_host_local_transfers) {
+    std::vector<ArrayRef> new_arrays;
+    new_arrays.reserve(arrays.size());
     for (const ArrayRef& array : arrays) {
       if (auto* const pjrt_array = llvm::dyn_cast<PjRtArray>(array.get())) {
         TF_ASSIGN_OR_RETURN(new_arrays.emplace_back(),
@@ -1244,11 +1279,18 @@ absl::StatusOr<std::vector<ArrayRef>> PjRtClient::CopyArrays(
     }
     return new_arrays;
   }
-  if (!pjrt_supports_cross_host_transfers_) {
-    return absl::UnimplementedError(
-        "Cross-host transfers are not supported by this backend.");
+  if (pjrt_supports_cross_host_transfers_) {
+    return CopyArraysForCrossHost(arrays, src_devices, dst_devices,
+                                  memory_kind);
   }
-  return CopyArraysForCrossHost(arrays, src_devices, dst_devices, memory_kind);
+  if (transfer_server_factory_ != nullptr) {
+    return CopyArraysForCrossHostFallback(arrays, src_devices, dst_devices,
+                                          memory_kind);
+  }
+  return absl::UnimplementedError(
+      "Cross-host transfers are not supported by this backend. Set the "
+      "`--jax_cross_host_transfer_socket_address` flag to enable DCN transfers "
+      "on Linux for any backend.");
 }
 
 absl::StatusOr<std::vector<xla::ifrt::ArrayRef>>
@@ -1256,11 +1298,6 @@ PjRtClient::CopyArraysForCrossHost(absl::Span<ArrayRef> arrays,
                                    DeviceListRef src_devices,
                                    DeviceListRef dst_devices,
                                    std::optional<MemoryKind> memory_kind) {
-  if (kv_store_ == nullptr) {
-    return absl::FailedPreconditionError(
-        "KV store must be present for cross-host device transfers in "
-        "PjRtClient::CopyArraysForCrossHost.");
-  }
   std::vector<ArrayRef> new_arrays;
   new_arrays.reserve(arrays.size());
   std::vector<PjRtBuffers> recv_buffers;
@@ -1353,7 +1390,107 @@ PjRtClient::CopyArraysForCrossHost(absl::Span<ArrayRef> arrays,
   return new_arrays;
 }
 
+absl::Status PjRtClient::InitializeTransferServer() {
+  if (!transfer_server_.has_value()) {
+    if (transfer_server_factory_ == nullptr) {
+      return absl::FailedPreconditionError("Transfer server factory is null.");
+    }
+    TF_ASSIGN_OR_RETURN(transfer_server_,
+                        transfer_server_factory_(pjrt_client_));
+  }
+  return absl::OkStatus();
+}
+
+absl::StatusOr<std::vector<xla::ifrt::ArrayRef>>
+PjRtClient::CopyArraysForCrossHostFallback(
+    absl::Span<ArrayRef> arrays, DeviceListRef src_devices,
+    DeviceListRef dst_devices, std::optional<MemoryKind> memory_kind) {
+  {
+    absl::MutexLock lock(&(transfer_server_mu_));
+    TF_RETURN_IF_ERROR(InitializeTransferServer());
+  }
+  return (*transfer_server_)
+      ->CopyArraysForCrossHost(this, arrays, src_devices, dst_devices,
+                               memory_kind);
+}
+
 int64_t PjRtClient::CreateNewTransferKey() { return next_transfer_key_++; }
+
+absl::Status PjRtClient::WatchGlobalProcessInfo(
+    tsl::CoordinationServiceAgent& agent) {
+  TF_ASSIGN_OR_RETURN(tensorflow::CoordinatedTask task, agent.GetOwnTask());
+  VLOG(3) << "Watching global process info for task "
+          << task.ShortDebugString();
+
+  int64_t version_number = -1;  // latest job state version
+  while (true) {
+    // Call WatchJobStateAsync.
+    VLOG(3) << "Calling WatchJobStateAsync for task " << task.ShortDebugString()
+            << " with version number " << version_number;
+    absl::StatusOr<tensorflow::WatchJobStateResponse> response;
+    bool done = false;
+    std::shared_ptr<tsl::CallOptions> call_opts = agent.WatchJobStateAsync(
+        task.job_name(), version_number,
+        [this, &response,
+         &done](absl::StatusOr<tensorflow::WatchJobStateResponse> r) {
+          response = std::move(r);
+          absl::MutexLock lock(&shutting_down_mu_);
+          done = true;
+        });
+
+    {
+      // Wait for the WatchJobStateAsync call to finish or for us to shut down,
+      // whichever happens first.
+      absl::MutexLock lock(&shutting_down_mu_);
+      auto done_or_shutting_down = [this, &done]() {
+        shutting_down_mu_.AssertHeld();
+        return done || shutting_down_;
+      };
+      shutting_down_mu_.Await(absl::Condition(&done_or_shutting_down));
+
+      if (shutting_down_) {
+        // Cancel the call the WatchJobStateAsync and wait for it to terminate.
+        VLOG(3) << "WatchGlobalProcessInfo shutting down for task "
+                << task.ShortDebugString();
+        call_opts->StartCancel();
+        shutting_down_mu_.Await(absl::Condition(&done));
+        return absl::OkStatus();
+      }
+
+      if (!response.ok()) {
+        // Sleep to avoid repeatedly issuing a request that fails immediately.
+        //
+        // TODO: mwhittaker - Perform exponential backoff.
+        LOG(WARNING) << "WatchJobStateAsync failed for task "
+                     << task.ShortDebugString() << ": " << response.status();
+        shutting_down_mu_.AwaitWithTimeout(absl::Condition(&shutting_down_),
+                                           absl::Seconds(1));
+        continue;
+      }
+    }
+
+    // Parse the response.
+    version_number = response->version_number();
+    std::vector<tensorflow::CoordinatedTaskStateInfo> state(
+        response->task_state().begin(), response->task_state().end());
+    absl::c_sort(state,
+                 [](const tensorflow::CoordinatedTaskStateInfo& x,
+                    const tensorflow::CoordinatedTaskStateInfo& y) -> bool {
+                   return x.task().task_id() < y.task().task_id();
+                 });
+
+    // Pretty print the job state, if VLOG is on.
+    if (VLOG_IS_ON(3)) {
+      VLOG(3) << "Job state for task " << task.ShortDebugString() << ":";
+      for (const auto& info : state) {
+        VLOG(3) << "- " << info.DebugString();
+      }
+    }
+
+    // Update the client with the job state.
+    pjrt_client_->UpdateGlobalProcessInfo(absl::MakeSpan(state));
+  }
+}
 
 absl::Status PjRtClient::CrossHostSendBuffers(
     PjRtBuffers buffers, const std::vector<int64_t>& keys) {

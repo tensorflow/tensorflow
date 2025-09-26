@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
@@ -35,13 +36,12 @@ limitations under the License.
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/shape_inference.h"
 #include "xla/shape_util.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tests/hlo_test_base.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/status_matchers.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
 
 namespace xla {
 namespace gpu {
@@ -772,7 +772,7 @@ TEST_F(ConvRewriterTest, TestInvalidTypes) {
 
     absl::Status s = ConvRewriter(GetComputeCapability()).Run(m.get()).status();
     EXPECT_THAT(
-        s, tsl::testing::StatusIs(
+        s, absl_testing::StatusIs(
                absl::StatusCode::kUnimplemented,
                ::testing::HasSubstr("Convolutions must have floating-point or "
                                     "integral operands/outputs")));
@@ -785,13 +785,13 @@ TEST_F(ConvRewriterTest, TestInvalidTypes) {
                           ParseAndReturnVerifiedModule(module_with_type));
   absl::Status s =
       ConvRewriter(se::CudaComputeCapability::Ampere()).Run(m.get()).status();
-  EXPECT_THAT(s, tsl::testing::StatusIs(
+  EXPECT_THAT(s, absl_testing::StatusIs(
                      absl::StatusCode::kUnimplemented,
                      ::testing::HasSubstr(
                          "FP8 convolutions are only supported on CUDA "
                          "GPUs with compute capability at least 9.0")));
   s = ConvRewriter(se::RocmComputeCapability{"gfx942"}).Run(m.get()).status();
-  EXPECT_THAT(s, tsl::testing::StatusIs(
+  EXPECT_THAT(s, absl_testing::StatusIs(
                      absl::StatusCode::kUnimplemented,
                      ::testing::HasSubstr(
                          "FP8 convolutions are only supported on CUDA GPUs")));
@@ -801,7 +801,7 @@ TEST_F(ConvRewriterTest, TestInvalidTypes) {
   TF_ASSERT_OK_AND_ASSIGN(m, ParseAndReturnVerifiedModule(module_with_type));
   s = ConvRewriter(GetComputeCapability()).Run(m.get()).status();
   EXPECT_THAT(s,
-              tsl::testing::StatusIs(
+              absl_testing::StatusIs(
                   absl::StatusCode::kUnimplemented,
                   ::testing::HasSubstr("The only FP8 types supported in "
                                        "convolutions are f8e5m2 and f8e4m3")));

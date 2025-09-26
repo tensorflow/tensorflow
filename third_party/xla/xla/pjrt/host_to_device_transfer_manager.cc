@@ -107,24 +107,6 @@ class CommonAsyncHostToDeviceTransferManager
             "Async buffer transfer of tuples not implemented.");
       }
 
-      // We make an event that will become available when the final transfer
-      // is complete.
-      tsl::RCReference<PjRtDeviceEventPromise> definition_event_promise;
-      tsl::RCReference<PjRtDeviceEvent> definition_event;
-      if (client->event_tracking_enabled()) {
-        TF_ASSIGN_OR_RETURN(
-            std::tie(definition_event_promise, definition_event),
-            client->CreateLinkedEventPromise(
-                memory_space,
-                absl::StrCat("AsyncHostToDeviceTransferManager Op:",
-                             debug_info.value_or(""))));
-      } else {
-        TF_ASSIGN_OR_RETURN(
-            std::tie(definition_event_promise, definition_event),
-            client->CreateLinkedEventPromise(memory_space, ""));
-      }
-      definition_events.push_back(std::move(definition_event_promise));
-
       auto allocation_event =
           client->CreateAllocationEventForTransfers(memory_space, debug_info);
       if (allocation_event) {
@@ -150,6 +132,25 @@ class CommonAsyncHostToDeviceTransferManager
           auto raw_buffer,
           client->AllocateRawBuffer(memory_space, on_device_bytes_count,
                                     /*retry_on_oom=*/true, allocation_event));
+
+      // We make an event that will become available when the final transfer
+      // is complete.
+      tsl::RCReference<PjRtDeviceEventPromise> definition_event_promise;
+      tsl::RCReference<PjRtDeviceEvent> definition_event;
+      if (client->event_tracking_enabled()) {
+        TF_ASSIGN_OR_RETURN(
+            std::tie(definition_event_promise, definition_event),
+            client->CreateLinkedEventPromise(
+                memory_space,
+                absl::StrCat("AsyncHostToDeviceTransferManager Op:",
+                             debug_info.value_or(""))));
+      } else {
+        TF_ASSIGN_OR_RETURN(
+            std::tie(definition_event_promise, definition_event),
+            client->CreateLinkedEventPromise(memory_space, ""));
+      }
+      definition_events.push_back(std::move(definition_event_promise));
+
       TF_ASSIGN_OR_RETURN(auto buffer,
                           client->DefineBuffer(device_shape, raw_buffer,
                                                {std::move(definition_event)},

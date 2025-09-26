@@ -1,0 +1,1463 @@
+# Copyright 2025 The OpenXLA Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+diff --git a/arm_compute/runtime/experimental/low_level/CpuGemmAssemblyDispatch.h b/arm_compute/runtime/experimental/low_level/CpuGemmAssemblyDispatch.h
+index 759ff120e..dbbc663c5 100644
+--- a/arm_compute/runtime/experimental/low_level/CpuGemmAssemblyDispatch.h
++++ b/arm_compute/runtime/experimental/low_level/CpuGemmAssemblyDispatch.h
+@@ -1,5 +1,5 @@
+ /*
+- * Copyright (c) 2018-2024 Arm Limited.
++ * Copyright (c) 2018-2025 Arm Limited.
+  *
+  * SPDX-License-Identifier: MIT
+  *
+@@ -26,7 +26,6 @@
+ #define ACL_ARM_COMPUTE_RUNTIME_EXPERIMENTAL_LOW_LEVEL_CPUGEMMASSEMBLYDISPATCH_H
+ 
+ #include "arm_compute/core/ITensorPack.h"
+-#include "arm_compute/core/TensorInfo.h"
+ #include "arm_compute/function_info/GEMMInfo.h"
+ #include "arm_compute/runtime/IOperator.h"
+ 
+@@ -150,6 +149,11 @@ public:
+                                const GEMMInfo            &gemm_info = GEMMInfo());
+ 
+     /** Indicates whether or not there is a implementation for the configured GEMM
++     *
++     * @deprecated All fixed-format kernels are now stateless.
++     * For now this function will always return true, but it will be removed
++     * completely in a future release.
++     *
+      * @return a bool: true if the implementation is stateless; false if not.
+      */
+     bool has_stateless_impl() const;
+diff --git a/src/core/NEON/kernels/arm_gemm/.clang-format b/src/core/NEON/kernels/arm_gemm/.clang-format
+new file mode 100644
+index 000000000..bd90a154e
+--- /dev/null
++++ b/src/core/NEON/kernels/arm_gemm/.clang-format
+@@ -0,0 +1,25 @@
++# Copyright (c) 2025 Arm Limited.
++#
++# SPDX-License-Identifier: MIT
++#
++# Permission is hereby granted, free of charge, to any person obtaining a copy
++# of this software and associated documentation files (the "Software"), to
++# deal in the Software without restriction, including without limitation the
++# rights to use, copy, modify, merge, publish, distribute, sublicense, and/or
++# sell copies of the Software, and to permit persons to whom the Software is
++# furnished to do so, subject to the following conditions:
++#
++# The above copyright notice and this permission notice shall be included in all
++# copies or substantial portions of the Software.
++#
++# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
++# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
++# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
++# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
++# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
++# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
++# SOFTWARE.
++---
++# Disabling clang-format for this directory to reduce the diff-noise when
++# porting changes from arm_gemm
++DisableFormat: true
+diff --git a/src/core/NEON/kernels/arm_gemm/gemm_hybrid.hpp b/src/core/NEON/kernels/arm_gemm/gemm_hybrid.hpp
+index ec8731994..15cca5c79 100644
+--- a/src/core/NEON/kernels/arm_gemm/gemm_hybrid.hpp
++++ b/src/core/NEON/kernels/arm_gemm/gemm_hybrid.hpp
+@@ -1,5 +1,5 @@
+ /*
+- * Copyright (c) 2017-2021, 2024 Arm Limited.
++ * Copyright (c) 2017-2021, 2024-2025 Arm Limited.
+  *
+  * SPDX-License-Identifier: MIT
+  *
+@@ -30,7 +30,6 @@
+ #include "bias_adder.hpp"
+ #include "ndrange.hpp"
+ #include "performance_parameters.hpp"
+-#include "transform.hpp"
+ #include "utils.hpp"
+ 
+ #ifdef CYCLE_PROFILING
+@@ -145,8 +144,8 @@ public:
+         return true;
+     }
+ 
+-    // Stateless execute
+-    void execute_stateless(const ndcoord_t &work_range, const ndcoord_t &, int, GemmArrays<To, To, Tr>& g_array) override {
++    // Common execution logic.
++    void execute_common(const ndcoord_t &work_range, const ndcoord_t &, int, GemmArrays<To, To, Tr>& g_arrays) {
+ #ifdef CYCLE_PROFILING
+         profiler prof;
+ #endif
+@@ -190,27 +189,33 @@ public:
+                 auto p = prof.ScopedProfiler(PROFILE_KERNEL, (unsigned long)(m_end - m_start) * kern_k * roundup(nmax-n0, strategy::out_width()));
+ #endif
+ 
+-                strat.kernel(g_array._Aptr + (multi * g_array._A_multi_stride) + (batch * g_array._A_batch_stride) + (m_start * g_array._lda) + k0, g_array._lda,
++                strat.kernel(g_arrays._Aptr + (multi * g_arrays._A_multi_stride) + (batch * g_arrays._A_batch_stride) + (m_start * g_arrays._lda) + k0, g_arrays._lda,
+                              b_panel,
+-                             g_array._Cptr + (multi * g_array._C_multi_stride) + (batch * g_array._C_batch_stride) + (m_start * g_array._ldc) + n0, g_array._ldc,
++                             g_arrays._Cptr + (multi * g_arrays._C_multi_stride) + (batch * g_arrays._C_batch_stride) + (m_start * g_arrays._ldc) + n0, g_arrays._ldc,
+                              (m_end - m_start), (nmax - n0), kmax-k0,
+-                             (strategy::supports_bias() && first_pass && g_array._bias) ? g_array._bias + (multi * g_array._bias_multi_stride) + n0 : nullptr,
++                             (strategy::supports_bias() && first_pass && g_arrays._bias) ? g_arrays._bias + (multi * g_arrays._bias_multi_stride) + n0 : nullptr,
+                              last_pass ? _act : Activation(), !first_pass);
+ 
+                 // Add bias externally if needed
+-                if (!strategy::supports_bias() && g_array._bias && first_pass) {
+-                    bias_adder(g_array._Cptr + (multi * g_array._C_multi_stride) + (batch * g_array._C_batch_stride) + (m_start * g_array._ldc) + n0, g_array._ldc,
+-                               g_array._bias + (multi * g_array._bias_multi_stride) + n0,
++                if (!strategy::supports_bias() && g_arrays._bias && first_pass) {
++                    bias_adder(g_arrays._Cptr + (multi * g_arrays._C_multi_stride) + (batch * g_arrays._C_batch_stride) + (m_start * g_arrays._ldc) + n0, g_arrays._ldc,
++                               g_arrays._bias + (multi * g_arrays._bias_multi_stride) + n0,
+                                (m_end - m_start), (nmax - n0));
+                 }
+ 
+             } while (p.next_dim1());
+         }
++
++    }
++
++    // Stateless execute
++    void execute_stateless(const ndcoord_t &work_range, const ndcoord_t &thread_locator, int threadid, GemmArrays<To, To, Tr> &g_arrays) override {
++        return execute_common(work_range, thread_locator, threadid, g_arrays);
+     }
+ 
+     // Execute
+     void execute(const ndcoord_t &work_range, const ndcoord_t & thread_locator, int threadid) override {
+-        execute_stateless(work_range, thread_locator, threadid, this->_gemm_array);
++        execute_common(work_range, thread_locator, threadid, this->_gemm_arrays);
+     }
+ 
+     // Interface implementation - pretransposed
+diff --git a/src/core/NEON/kernels/arm_gemm/gemm_hybrid_indirect.hpp b/src/core/NEON/kernels/arm_gemm/gemm_hybrid_indirect.hpp
+index 4d11f042e..9f4b6da33 100644
+--- a/src/core/NEON/kernels/arm_gemm/gemm_hybrid_indirect.hpp
++++ b/src/core/NEON/kernels/arm_gemm/gemm_hybrid_indirect.hpp
+@@ -1,5 +1,5 @@
+ /*
+- * Copyright (c) 2017-2024 Arm Limited.
++ * Copyright (c) 2017-2025 Arm Limited.
+  *
+  * SPDX-License-Identifier: MIT
+  *
+@@ -31,12 +31,10 @@
+ #include <cassert>
+ 
+ #include "arm_gemm.hpp"
+-#include "bias_adder.hpp"
+ #include "convolver.hpp"
+ #include "kernel_weight_format.hpp"
+ #include "ndrange.hpp"
+ #include "performance_parameters.hpp"
+-#include "transform.hpp"
+ #include "utils.hpp"
+ 
+ #ifdef CYCLE_PROFILING
+@@ -423,8 +421,8 @@ public:
+         return true;
+     }
+ 
+-    // Stateless execute
+-    void execute_stateless(const ndcoord_t &work_range, const ndcoord_t &, int, GemmArrays<To, Tw, Tr>& g_array) override {
++    // Common execution logic.
++    void execute_common(const ndcoord_t &work_range, const ndcoord_t &, int, GemmArrays<To, Tw, Tr>& g_arrays) {
+ #ifdef CYCLE_PROFILING
+         profiler prof;
+ #endif
+@@ -452,7 +450,6 @@ public:
+         /* Make sure we've been set up correctly. */
+         assert(FixedFormat || _B_transposed);
+         static_assert(std::is_same<To, Tloi>::value, "gemm_native: Operand types must be the same.");
+-//        static_assert(std::is_same<Tr, Tri>::value, "gemm_native: Result types must be the same.");
+ 
+         /* For now, each work item implies all the K for a given output
+          * pixel (so we don't need to synchronize access to the output
+@@ -504,9 +501,9 @@ public:
+ 
+                 const Troi *b_panel;
+                 if (FixedFormat) {
+-                    b_panel = reinterpret_cast<const Troi *>(g_array._Bptr) +
+-                               (multi * g_array._B_multi_stride) +
+-                               ((n0 / stripe_width<strategy, FixedFormat>::get()) * g_array._ldb) +
++                    b_panel = reinterpret_cast<const Troi *>(g_arrays._Bptr) +
++                               (multi * g_arrays._B_multi_stride) +
++                               ((n0 / stripe_width<strategy, FixedFormat>::get()) * g_arrays._ldb) +
+                                (k0 * stripe_width<strategy, FixedFormat>::get());
+                 } else {
+                     b_panel = _B_transposed +
+@@ -515,7 +512,7 @@ public:
+                                (n0 * kern_k);
+                 }
+ 
+-                IndirectOutputArg<Tr> out_arg(g_array._Cptr + (multi * g_array._C_multi_stride) + (batch * g_array._C_batch_stride) + (m_start * g_array._ldc) + n0, g_array._ldc);
++                IndirectOutputArg<Tr> out_arg(g_arrays._Cptr + (multi * g_arrays._C_multi_stride) + (batch * g_arrays._C_batch_stride) + (m_start * g_arrays._ldc) + n0, g_arrays._ldc);
+ 
+ #ifdef CYCLE_PROFILING
+                 auto p = prof.ScopedProfiler(PROFILE_KERNEL, (unsigned long)(m_end - m_start) * kern_k * roundup(nmax-n0, strategy::out_width()));
+@@ -527,14 +524,14 @@ public:
+ #endif
+                                  strat, sections, string_lengths.data(),
+                                  IndirectInputArg<To>(_indirect_buf + (multi * _args._nbatches * _args._Ksections) + (batch * _args._Ksections) + first_section, m_start, first_offset),
+-                                 (m_end - m_start), (nmax - n0), kern_k, b_panel, g_array._ldb, out_arg,
+-                                 (g_array._bias && first_pass) ? g_array._bias + (multi * g_array._bias_multi_stride) + n0 : nullptr,
++                                 (m_end - m_start), (nmax - n0), kern_k, b_panel, g_arrays._ldb, out_arg,
++                                 (g_arrays._bias && first_pass) ? g_arrays._bias + (multi * g_arrays._bias_multi_stride) + n0 : nullptr,
+                                  last_pass ? _args._act : Activation(),
+                                  !first_pass || _args._accumulate,
+                                  // Quantization parameters
+                                  _os, _col_bias+(multi * _args._Nsize), n0);
+                 } else if (_convolver) {
+-                    auto conv_cols = _convolver->process_columns(g_array._Aptr + (multi * g_array._A_multi_stride) + (batch * g_array._A_batch_stride), g_array._lda, k0, kmax, _rounded_Ksize);
++                    auto conv_cols = _convolver->process_columns(g_arrays._Aptr + (multi * g_arrays._A_multi_stride) + (batch * g_arrays._A_batch_stride), g_arrays._lda, k0, kmax, _rounded_Ksize);
+ 
+                     unsigned int pos=0;
+                     auto conv_rows = conv_cols.process_rows(m_start, m_end - m_start);
+@@ -560,8 +557,8 @@ public:
+ #endif
+                                  strat, sections, string_lengths.data(),
+                                  IndirectInputArg<To>(in_row_strings.data(), 0, first_offset),
+-                                 (m_end - m_start), (nmax - n0), kern_k, b_panel, g_array._ldb, out_arg,
+-                                 (g_array._bias && first_pass) ? g_array._bias + (multi * g_array._bias_multi_stride) + n0 : nullptr,
++                                 (m_end - m_start), (nmax - n0), kern_k, b_panel, g_arrays._ldb, out_arg,
++                                 (g_arrays._bias && first_pass) ? g_arrays._bias + (multi * g_arrays._bias_multi_stride) + n0 : nullptr,
+                                  last_pass ? _args._act : Activation(),
+                                  !first_pass || _args._accumulate,
+                                  // Quantization parameters
+@@ -575,9 +572,9 @@ public:
+                                  prof,
+ #endif
+                                  strat, 1, &len,
+-                                 IndirectInputArg<To>(g_array._Aptr + (multi * g_array._A_multi_stride) + (batch * g_array._A_batch_stride) + m_start * g_array._lda + k0, g_array._lda),
+-                                 (m_end - m_start), (nmax - n0), kern_k, b_panel, g_array._ldb, out_arg,
+-                                 (g_array._bias && first_pass) ? g_array._bias + (multi * g_array._bias_multi_stride) + n0 : nullptr,
++                                 IndirectInputArg<To>(g_arrays._Aptr + (multi * g_arrays._A_multi_stride) + (batch * g_arrays._A_batch_stride) + m_start * g_arrays._lda + k0, g_arrays._lda),
++                                 (m_end - m_start), (nmax - n0), kern_k, b_panel, g_arrays._ldb, out_arg,
++                                 (g_arrays._bias && first_pass) ? g_arrays._bias + (multi * g_arrays._bias_multi_stride) + n0 : nullptr,
+                                  last_pass ? _args._act : Activation(),
+                                  !first_pass || _args._accumulate,
+                                  // Quantization parameters
+@@ -587,9 +584,14 @@ public:
+         }
+     }
+ 
++    // Stateless execute
++    void execute_stateless(const ndcoord_t &work_range, const ndcoord_t &thread_locator, int threadid, GemmArrays<To, Tw, Tr>& g_arrays) override {
++        return execute_common(work_range, thread_locator, threadid, g_arrays);
++    }
++
+     // Execute
+     void execute(const ndcoord_t &work_range, const ndcoord_t & thread_locator, int threadid) override {
+-        execute_stateless(work_range, thread_locator, threadid, this->_gemm_array);
++        execute_common(work_range, thread_locator, threadid, this->_gemm_arrays);
+     }
+ 
+     // Interface implementation - pretransposed
+diff --git a/src/core/NEON/kernels/arm_gemm/gemm_hybrid_quantized.hpp b/src/core/NEON/kernels/arm_gemm/gemm_hybrid_quantized.hpp
+index 073012e5a..1993f7d4d 100644
+--- a/src/core/NEON/kernels/arm_gemm/gemm_hybrid_quantized.hpp
++++ b/src/core/NEON/kernels/arm_gemm/gemm_hybrid_quantized.hpp
+@@ -31,9 +31,6 @@
+ #include "ndrange.hpp"
+ #include "utils.hpp"
+ 
+-#include "mergeresults.hpp"
+-#include "transform.hpp"
+-
+ #ifdef CYCLE_PROFILING
+ #include "profiler.hpp"
+ #endif
+@@ -70,8 +67,6 @@ class GemmHybridQuantized : public GemmCommon<To, To, Tr> {
+     int32_t *row_bias = nullptr;
+     int32_t *col_bias = nullptr;
+ 
+-    void *working_space = nullptr;
+-
+     unsigned int _nthreads;
+ 
+     unsigned int get_col_sum_size() const {
+@@ -171,20 +166,17 @@ public:
+         return true;
+     }
+ 
+-    // Stateless execute
+-    // TODO: Make this actually stateless. This still uses the stateful
+-    // execution data because it requires a workspace which would also need to
+-    // be handled statelessly.
+-    void execute_stateless(const ndcoord_t &work_range, const ndcoord_t &, int threadid, GemmArrays<To, To, Tr> &) override {
+-        auto& g_array = this->_gemm_array;
++    // Common execution logic.
++    void execute_common(const ndcoord_t &work_range, const ndcoord_t &, int threadid, GemmArrays<To, To, Tr> &g_arrays) {
+ #ifdef CYCLE_PROFILING
+         profiler prof;
+ #endif
+         strategy strat(_ci);
+ 
+-        uintptr_t working_int = reinterpret_cast<uintptr_t>(working_space);
++        void *working_space = g_arrays._workspace;
++        auto working_int = reinterpret_cast<uintptr_t>(working_space);
+ 
+-        Tri *result_buffer = reinterpret_cast<Tri *>(working_int + (threadid * strategy::out_height() * _Nsize * sizeof(Tri)));
++        auto *result_buffer = reinterpret_cast<Tri *>(working_int + (threadid * strategy::out_height() * _Nsize * sizeof(Tri)));
+ 
+         /* Make sure we've been set up correctly. */
+         assert(_B_transposed);
+@@ -222,7 +214,7 @@ public:
+ #ifdef CYCLE_PROFILING
+                     auto p = prof.ScopedProfiler(PROFILE_KERNEL, (m_end - m_start) * kern_k * roundup(nmax-n0, strategy::out_width()));
+ #endif
+-                    strat.kernel(g_array._Aptr + (multi * g_array._A_multi_stride) + (batch * g_array._A_batch_stride) + (m_start * g_array._lda) + k0, g_array._lda,
++                    strat.kernel(g_arrays._Aptr + (multi * g_arrays._A_multi_stride) + (batch * g_arrays._A_batch_stride) + (m_start * g_arrays._lda) + k0, g_arrays._lda,
+                                  b_panel,
+                                  result_buffer, (nmax-n0),
+                                  (m_end - m_start), (nmax - n0), kern_k,
+@@ -234,7 +226,7 @@ public:
+                     auto p = prof.ScopedProfiler(PROFILE_ROWSUMS, (m_end - m_start) * _Ksize);
+ #endif
+                     compute_row_sums(_qp, _Ksize, (m_end - m_start),
+-                                     g_array._Aptr + (multi * g_array._A_multi_stride) + (batch * g_array._A_batch_stride) + (m_start * g_array._lda), g_array._lda,
++                                     g_arrays._Aptr + (multi * g_arrays._A_multi_stride) + (batch * g_arrays._A_batch_stride) + (m_start * g_arrays._lda), g_arrays._lda,
+                                      local_row_sums);
+                 }
+ 
+@@ -244,16 +236,21 @@ public:
+ #endif
+ 
+                     requantize_block_32(_qp, (nmax - n0), (m_end - m_start), result_buffer, (nmax - n0),
+-                                        g_array._Cptr + (multi * g_array._C_multi_stride) + (batch * g_array._C_batch_stride) + (m_start * g_array._ldc) + n0, g_array._ldc,
++                                        g_arrays._Cptr + (multi * g_arrays._C_multi_stride) + (batch * g_arrays._C_batch_stride) + (m_start * g_arrays._ldc) + n0, g_arrays._ldc,
+                                         local_row_sums, col_bias + (multi * _Nsize) + n0, n0);
+                 }
+             } while (p.next_dim0());
+         }
+     }
+ 
++    // Stateless execute
++    void execute_stateless(const ndcoord_t &work_range, const ndcoord_t &thread_locator, int threadid, GemmArrays<To, To, Tr> &g_arrays) override {
++        return execute_common(work_range, thread_locator, threadid, g_arrays);
++    }
++
+     // Execute
+     void execute(const ndcoord_t &work_range, const ndcoord_t & thread_locator, int threadid) override {
+-        execute_stateless(work_range, thread_locator, threadid, this->_gemm_array);
++        execute_common(work_range, thread_locator, threadid, this->_gemm_arrays);
+     }
+ 
+     // Working space needed for intermediate result buffers.
+@@ -262,7 +259,7 @@ public:
+     }
+ 
+     void set_working_space(void *buffer) override {
+-        working_space = buffer;
++        this->_gemm_arrays._workspace = buffer;
+     }
+ 
+     // Interface implementation - pretransposed
+diff --git a/src/core/NEON/kernels/arm_gemm/gemm_interleaved.hpp b/src/core/NEON/kernels/arm_gemm/gemm_interleaved.hpp
+index 6e1ea6589..5da2ed352 100644
+--- a/src/core/NEON/kernels/arm_gemm/gemm_interleaved.hpp
++++ b/src/core/NEON/kernels/arm_gemm/gemm_interleaved.hpp
+@@ -1,5 +1,5 @@
+ /*
+- * Copyright (c) 2017-2024 Arm Limited.
++ * Copyright (c) 2017-2025 Arm Limited.
+  *
+  * SPDX-License-Identifier: MIT
+  *
+@@ -31,10 +31,8 @@
+ #include "convolver.hpp"
+ #include "kernel_traits.hpp"
+ #include "kernel_weight_format.hpp"
+-#include "mergeresults.hpp"
+ #include "performance_parameters.hpp"
+ #include "quantized.hpp"
+-#include "transform.hpp"
+ #include "utils.hpp"
+ 
+ #ifdef CYCLE_PROFILING
+@@ -418,6 +416,11 @@ struct get_kernel_weight_format<strategy, true, Tro> {
+     }
+ };
+ 
++// Calculate the offset needed if the address is not a multiple of cache-line length
++inline size_t get_cache_align_offset(uintptr_t addr) {
++    return (addr & 0x3F) ? 0x40 - (addr & 0x3F) : 0;
++}
++
+ } // anonymous namespace
+ 
+ template<typename strategy, typename Tlo, typename Tro, typename Tr, typename OutputStage=Nothing, bool MergeStep=true, bool FixedFormat=false, bool ForceThreadColumns=false, bool ForceFloatAccumulate=false>
+@@ -455,9 +458,6 @@ class GemmInterleaved : public GemmCommon<Tlo, Tro, Tr> {
+ 
+     /* Working space, pretransposed buffer, buffer manager */
+     const Troi *_B_transposed=nullptr;
+-    void *_working_space=nullptr;
+-
+-    Tab *_accumulation_buffer=nullptr;
+ 
+     /* Output stage */
+     OutputStage  _os;
+@@ -600,10 +600,25 @@ class GemmInterleaved : public GemmCommon<Tlo, Tro, Tr> {
+         return num_buffers * size_per_buffer;
+     }
+ 
++    // Set up accumulation buffer
++    Tab *get_accumulation_buffer_offset(void *working_space) const {
++        Tab *accumulation_buffer = nullptr;
++
++        auto working_space_addr = reinterpret_cast<uintptr_t>(working_space);
++
++        if (get_accumulation_buffer_size() > 0) {
++            auto acc_buff_addr = working_space_addr + get_a_working_size() + (get_c_working_size() * _maxthreads);
++            acc_buff_addr += get_cache_align_offset(acc_buff_addr);
++            accumulation_buffer = reinterpret_cast<Tab *>(acc_buff_addr);
++        }
++
++        return accumulation_buffer;
++    }
++
+     // Get pointer into accumulation buffer
+-    Tab *get_accumulation_buffer(unsigned int M, unsigned int N, unsigned int batch, unsigned int multi) const {
++    Tab *get_accumulation_buffer(Tab *accumulation_buffer, unsigned int M, unsigned int N, unsigned int batch, unsigned int multi) const {
+         // Don't do anything if there's no buffer.
+-        if (_accumulation_buffer == nullptr) {
++        if (accumulation_buffer == nullptr) {
+             return nullptr;
+         }
+ 
+@@ -623,7 +638,7 @@ class GemmInterleaved : public GemmCommon<Tlo, Tro, Tr> {
+ 
+         size_t buffer_index = multi * buffers_per_multi + batch * buffers_per_batch + row * buffer_cols + col;
+ 
+-        return _accumulation_buffer + (buffer_index * size_per_buffer);
++        return accumulation_buffer + (buffer_index * size_per_buffer);
+     }
+ 
+     int32_t row_sum_multiplier() const {
+@@ -806,7 +821,7 @@ public:
+                       _Ksections(args._Ksections), _Ktotal(get_ktotal(args)),
+                       _rounded_Ksize(roundup(_Ksize, strategy::k_unroll())),
+                       _nbatches(args._nbatches), _nmulti(args._nmulti), _thread_columns(is_thread_columns(args)),
+-                      _act(args._act), _accumulate(args._accumulate),  _maxthreads(args._maxthreads), _nthreads(args._maxthreads),
++                      _act(args._act), _accumulate(args._accumulate), _maxthreads(args._maxthreads), _nthreads(args._maxthreads),
+                       _k_block(get_k_block_size(args)), _x_block(get_x_block_size(args)), _Mround(roundup(args._Msize, strategy::out_height())),
+                       _os() { }
+ 
+@@ -832,27 +847,25 @@ public:
+         _nthreads = std::min(nthreads, _maxthreads);
+     }
+ 
+-    // Stateless execute
+-    // TODO: Make this actually stateless. This still uses the stateful
+-    // execution data because it requires a workspace which would also need to
+-    // be handled statelessly.
+-    void execute_stateless(const ndcoord_t &work_range, const ndcoord_t &, int threadid, GemmArrays<Tlo, Tro, Tr> &) override {
+-        auto& g_array = this->_gemm_array;
++    // Common execution logic.
++    void execute_common(const ndcoord_t &work_range, const ndcoord_t &, int threadid, GemmArrays<Tlo, Tro, Tr> &g_arrays) {
+ #ifdef CYCLE_PROFILING
+         profiler prof;
+ #endif
+ 
+-        /* Make sure we've been set up correctly. */
++        void *working_space = g_arrays._workspace;
++
++        // Make sure we've been set up correctly.
+         assert(FixedFormat || _B_transposed);
+-        assert(_working_space);
+-        int8_t *working_space_bytes = reinterpret_cast<int8_t *>(_working_space);
+-
+-        /* Align if needed */
+-        intptr_t working_space_v = reinterpret_cast<intptr_t>(_working_space);
+-        if (working_space_v & 0x3f) {
+-            intptr_t alignment_offset = 0x40 - (working_space_v & 0x3f);
+-            working_space_bytes += alignment_offset;
+-        }
++        assert(working_space);
++
++        // Align if needed.
++        auto *working_space_bytes = reinterpret_cast<int8_t *>(working_space);
++        auto working_space_addr = reinterpret_cast<uintptr_t>(working_space);
++        working_space_bytes += get_cache_align_offset(working_space_addr);
++        working_space = reinterpret_cast<void *>(working_space_bytes);
++
++        auto *accumulation_buffer = get_accumulation_buffer_offset(working_space);
+ 
+         strategy strat(_ci);
+ 
+@@ -890,8 +903,8 @@ public:
+                     unsigned int kern_k = roundup(kmax - k0, strategy::k_unroll());
+ 
+                     const Troi *b_ptr = FixedFormat ?
+-                        reinterpret_cast<const Troi *>(g_array._Bptr) + (multi * g_array._B_multi_stride) +
+-                                                     ((start_x / get_stripe_width<strategy, FixedFormat>::get()) * g_array._ldb) +
++                        reinterpret_cast<const Troi *>(g_arrays._Bptr) + (multi * g_arrays._B_multi_stride) +
++                                                     ((start_x / get_stripe_width<strategy, FixedFormat>::get()) * g_arrays._ldb) +
+                                                      (k0 * get_stripe_width<strategy, FixedFormat>::get()) :
+                         _B_transposed + (rounded_width * _Ktotal * multi) + (k0 * rounded_width) + (start_x * kern_k);
+ 
+@@ -916,19 +929,19 @@ public:
+                                                              _rounded_Ksize, start_row, end_row, k0, kmax, row_sum_multiplier());
+                             } else if (_convolver) {
+                                 transforms.PrepareA_convolution(a_panel,
+-                                                                g_array._Aptr + (batch * g_array._A_batch_stride) + (multi * g_array._A_multi_stride),
+-                                                                g_array._lda, *_convolver, _rounded_Ksize, start_row, end_row, k0, kmax, row_sum_multiplier());
++                                                                g_arrays._Aptr + (batch * g_arrays._A_batch_stride) + (multi * g_arrays._A_multi_stride),
++                                                                g_arrays._lda, *_convolver, _rounded_Ksize, start_row, end_row, k0, kmax, row_sum_multiplier());
+                             } else {
+                                 transforms.PrepareA(a_panel,
+-                                                    g_array._Aptr + (batch * g_array._A_batch_stride) + (multi * g_array._A_multi_stride),
+-                                                    g_array._lda, start_row, end_row, k0, std::min(kmax, _Ksize), row_sum_multiplier());
++                                                    g_arrays._Aptr + (batch * g_arrays._A_batch_stride) + (multi * g_arrays._A_multi_stride),
++                                                    g_arrays._lda, start_row, end_row, k0, std::min(kmax, _Ksize), row_sum_multiplier());
+                             }
+                         }
+ 
+-                        Tr *result_ptr = g_array._Cptr + (batch * g_array._C_batch_stride) + (multi * g_array._C_multi_stride);
++                        Tr *result_ptr = g_arrays._Cptr + (batch * g_arrays._C_batch_stride) + (multi * g_arrays._C_multi_stride);
+ 
+                         // If we are using an accumulation buffer and this isn't the last pass, don't pass a result pointer.
+-                        if (_accumulation_buffer && !last_pass) {
++                        if (accumulation_buffer && !last_pass) {
+                             result_ptr = nullptr;
+                         }
+ 
+@@ -938,19 +951,19 @@ public:
+                             prof,
+                         #endif
+                             // Strategy and panel pointers
+-                            strat, a_panel, b_ptr, g_array._ldb, c_panel,
++                            strat, a_panel, b_ptr, g_arrays._ldb, c_panel,
+                             // Result buffer pointers
+-                            result_ptr, g_array._ldc,
++                            result_ptr, g_arrays._ldc,
+                             // K size, and M/N ranges
+                             kern_k, start_row, end_row, start_x, end_x,
+                             // Only do bias on the first pass
+-                            ((bias_pass && g_array._bias) ? g_array._bias + (multi * g_array._bias_multi_stride) : nullptr),
++                            ((bias_pass && g_arrays._bias) ? g_arrays._bias + (multi * g_arrays._bias_multi_stride) : nullptr),
+                             // Only do activation on the last pass, and accumulation on any non-first pass.
+                             (last_pass ? _act : Activation()), (!first_pass || _accumulate),
+                             // Pass in quantization parameters for requantizing kernels (others will ignore)
+                             _os, col_bias + (multi * _Nsize),
+                             // Accumulation buffer
+-                            get_accumulation_buffer(start_row, start_x, batch, multi));
++                            get_accumulation_buffer(accumulation_buffer, start_row, start_x, batch, multi));
+ 
+                         /* Increment to the next block */
+                         start_row += strategy::out_height();
+@@ -1013,12 +1026,12 @@ public:
+                                                       _rounded_Ksize, first_m, last_m, current.k0(), current.kmax(), row_sum_multiplier());
+                         } else if (_convolver) {
+                             transforms.PrepareA_convolution(a_panel + ((batch * _Mround + first_m) * get_total_k_depth()),
+-                                                      g_array._Aptr + (batch * g_array._A_batch_stride) + (current.multi() * g_array._A_multi_stride),
+-                                                      g_array._lda, *_convolver, _rounded_Ksize, first_m, last_m, current.k0(), current.kmax(), row_sum_multiplier());
++                                                      g_arrays._Aptr + (batch * g_arrays._A_batch_stride) + (current.multi() * g_arrays._A_multi_stride),
++                                                      g_arrays._lda, *_convolver, _rounded_Ksize, first_m, last_m, current.k0(), current.kmax(), row_sum_multiplier());
+                         } else {
+                             transforms.PrepareA(a_panel + ((batch * _Mround + first_m) * get_total_k_depth()),
+-                                                      g_array._Aptr + (batch * g_array._A_batch_stride) + (current.multi() * g_array._A_multi_stride),
+-                                                      g_array._lda, first_m, last_m, current.k0(), std::min(_Ksize, current.kmax()), row_sum_multiplier());
++                                                      g_arrays._Aptr + (batch * g_arrays._A_batch_stride) + (current.multi() * g_arrays._A_multi_stride),
++                                                      g_arrays._lda, first_m, last_m, current.k0(), std::min(_Ksize, current.kmax()), row_sum_multiplier());
+                         }
+                     }
+ 
+@@ -1038,8 +1051,8 @@ public:
+ 
+                 // For FixedFormat cases, figure out the B pointer.  The loop below moves through batches and vertically through the output so this will be the same throughout.
+                 if (FixedFormat) {
+-                    b_panel = reinterpret_cast<const Troi *>(g_array._Bptr) + (current.multi() * g_array._B_multi_stride) +
+-                                                                           ((current.x0() / get_stripe_width<strategy, FixedFormat>::get()) * g_array._ldb) +
++                    b_panel = reinterpret_cast<const Troi *>(g_arrays._Bptr) + (current.multi() * g_arrays._B_multi_stride) +
++                                                                           ((current.x0() / get_stripe_width<strategy, FixedFormat>::get()) * g_arrays._ldb) +
+                                                                            (current.k0() * get_stripe_width<strategy, FixedFormat>::get());
+                 }
+ 
+@@ -1061,7 +1074,7 @@ public:
+ 
+                     // But in the case where we have an accumulation buffer, we can't do that after all, unless
+                     // there is no N blocking.
+-                    if (_accumulation_buffer && ((current.x0() != 0) || (current.xmax() < _Nsize))) {
++                    if (accumulation_buffer && ((current.x0() != 0) || (current.xmax() < _Nsize))) {
+                         m_step = strategy::out_height();
+                     }
+ 
+@@ -1075,11 +1088,11 @@ public:
+                         const bool bias_pass = (std::is_same<OutputStage, DequantizeFloat>::value && !MergeStep) ? last_pass : first_pass;
+ 
+                         // Pointer to appropriate part of result array.
+-                        Tr *result_ptr = g_array._Cptr + (batch * g_array._C_batch_stride) + (current.multi() * g_array._C_multi_stride);
++                        Tr *result_ptr = g_arrays._Cptr + (batch * g_arrays._C_batch_stride) + (current.multi() * g_arrays._C_multi_stride);
+ 
+                         // If we are using an accumulation buffer, we don't pass the result buffer to ask the kernel
+                         // to write things into the accumulation buffer instead, except on the last pass.
+-                        if (_accumulation_buffer && !last_pass) {
++                        if (accumulation_buffer && !last_pass) {
+                             result_ptr = nullptr;
+                         }
+ 
+@@ -1089,19 +1102,19 @@ public:
+                             prof,
+                         #endif
+                             // Strategy and panel pointers
+-                            strat, a_ptr, b_panel, g_array._ldb, c_panel,
++                            strat, a_ptr, b_panel, g_arrays._ldb, c_panel,
+                             // Result buffer pointers
+-                            result_ptr, g_array._ldc,
++                            result_ptr, g_arrays._ldc,
+                             // K size, and M/N ranges
+                             kern_k, y, ymax, current.x0(), current.xmax(),
+                             // Only do bias on the first pass
+-                            ((bias_pass && g_array._bias) ? g_array._bias + (current.multi() * g_array._bias_multi_stride) : nullptr),
++                            ((bias_pass && g_arrays._bias) ? g_arrays._bias + (current.multi() * g_arrays._bias_multi_stride) : nullptr),
+                             // Only do activation on the last pass, and accumulation on any non-first pass.
+                             (last_pass ? _act : Activation()), (!first_pass || _accumulate),
+                             // Pass in quantization parameters for requantizing kernels (others will ignore)
+                             _os, col_bias + (current.multi() * _Nsize),
+                             // Accumulation buffer
+-                            get_accumulation_buffer(y, current.x0(), batch, current.multi()) );
++                            get_accumulation_buffer(accumulation_buffer, y, current.x0(), batch, current.multi()) );
+ 
+                         a_ptr += (strategy::out_height() * a_panel_stride);
+                     }
+@@ -1114,9 +1127,14 @@ public:
+         }
+     }
+ 
++    // Stateless execute
++    void execute_stateless(const ndcoord_t &work_range, const ndcoord_t &thread_locator, int threadid, GemmArrays<Tlo, Tro, Tr> &g_arrays) override {
++        return execute_common(work_range, thread_locator, threadid, g_arrays);
++    }
++
+     // Execute
+     void execute(const ndcoord_t &work_range, const ndcoord_t & thread_locator, int threadid) override {
+-        execute_stateless(work_range, thread_locator, threadid, this->_gemm_array);
++        execute_common(work_range, thread_locator, threadid, this->_gemm_arrays);
+     }
+ 
+     // Interface implementation - working space
+@@ -1131,32 +1149,12 @@ public:
+ 
+     void set_working_space(void *working_space) override {
+         // Make sure everything ends up cache line aligned
+-        int8_t *working_space_bytes = reinterpret_cast<int8_t *>(working_space);
+-        intptr_t working_space_int = reinterpret_cast<intptr_t>(working_space);
+-
+-        size_t diff=0;
+-
+-        if (working_space_int & 0x3F) {
+-            diff = 0x40 - (working_space_int & 0x3F);
+-        }
+-
+-        working_space_bytes += diff;
+-        working_space_int += diff;
++        auto *working_space_bytes = reinterpret_cast<int8_t *>(working_space);
++        auto  working_space_addr = reinterpret_cast<uintptr_t>(working_space);
++        working_space_bytes += get_cache_align_offset(working_space_addr);
+ 
+         // Pretransposed case: just set internal pointer to parameter value.
+-        _working_space = reinterpret_cast<void *>(working_space_bytes);
+-
+-        // Set up accumulation buffer
+-        if (get_accumulation_buffer_size() > 0) {
+-            intptr_t acc_buff_int = working_space_int + get_a_working_size() + (get_c_working_size() * _maxthreads);
+-            // Make sure the accumulation buffer is aligned (needed if the other blocks are not a multiple of cache line length)
+-            if (acc_buff_int & 0x3F) {
+-                acc_buff_int += (0x40 - (acc_buff_int & 0x3F));
+-            }
+-            _accumulation_buffer = reinterpret_cast<Tab *>(acc_buff_int);
+-        } else {
+-            _accumulation_buffer = nullptr;
+-        }
++        this->_gemm_arrays._workspace = reinterpret_cast<void *>(working_space_bytes);
+     }
+ 
+     // Interface implementation - pretransposed
+diff --git a/src/core/NEON/kernels/arm_gemm/gemm_q8_mixed.cpp b/src/core/NEON/kernels/arm_gemm/gemm_q8_mixed.cpp
+index a48244cb3..1c33f56a1 100644
+--- a/src/core/NEON/kernels/arm_gemm/gemm_q8_mixed.cpp
++++ b/src/core/NEON/kernels/arm_gemm/gemm_q8_mixed.cpp
+@@ -1,5 +1,5 @@
+ /*
+- * Copyright (c) 2024 Arm Limited.
++ * Copyright (c) 2024-2025 Arm Limited.
+  *
+  * SPDX-License-Identifier: MIT
+  *
+@@ -39,10 +39,8 @@
+ #endif // ARM_COMPUTE_ENABLE_SVE
+ 
+ #include "gemm_hybrid_indirect.hpp"
+-#include "gemm_hybrid_quantized.hpp"
++#include "gemm_implementation.hpp"
+ #include "gemm_interleaved.hpp"
+-#include "gemv_pretransposed.hpp"
+-#include "quantize_wrapper.hpp"
+ #include "utils.hpp"
+ 
+ namespace arm_gemm {
+diff --git a/src/core/NEON/kernels/arm_gemm/gemm_qint8.cpp b/src/core/NEON/kernels/arm_gemm/gemm_qint8.cpp
+index 18008e713..eb4c947b9 100644
+--- a/src/core/NEON/kernels/arm_gemm/gemm_qint8.cpp
++++ b/src/core/NEON/kernels/arm_gemm/gemm_qint8.cpp
+@@ -1,5 +1,5 @@
+ /*
+- * Copyright (c) 2019-2020, 2022-2024 Arm Limited.
++ * Copyright (c) 2019-2020, 2022-2025 Arm Limited.
+  *
+  * SPDX-License-Identifier: MIT
+  *
+@@ -58,9 +58,9 @@
+ 
+ #include "gemm_hybrid_indirect.hpp"
+ #include "gemm_hybrid_quantized.hpp"
++#include "gemm_implementation.hpp"
+ #include "gemm_interleaved.hpp"
+ #include "gemv_pretransposed.hpp"
+-#include "quantize_wrapper.hpp"
+ #include "utils.hpp"
+ 
+ namespace arm_gemm {
+@@ -241,13 +241,6 @@ GemmImplementation<int8_t, int8_t, int8_t, Requantize32>::with_estimate(
+     [](const GemmArgs &args, const Requantize32 &) { return GemmInterleavedQuantized<cls_a64_gemm_s8_4x4, int8_t, int8_t, int8_t>::estimate_cycles<int8_t>(args); },
+     [](const GemmArgs &args, const Requantize32 &qp) { return new GemmInterleavedQuantized<cls_a64_gemm_s8_4x4, int8_t, int8_t, int8_t>(args, qp); }
+ ),
+-{
+-    GemmMethod::QUANTIZE_WRAPPER,
+-    "quantized_wrapper",
+-    [](const GemmArgs &args, const Requantize32 &) { return !args._indirect_input; },
+-    [](const GemmArgs &, const Requantize32 &) { return false; },
+-    [](const GemmArgs &args, const Requantize32 &qp) { return new QuantizeWrapper<int8_t, int8_t, int32_t>(args, qp); }
+-},
+ {
+     GemmMethod::DEFAULT,
+     "",
+diff --git a/src/core/NEON/kernels/arm_gemm/gemm_quint8.cpp b/src/core/NEON/kernels/arm_gemm/gemm_quint8.cpp
+index 7c182b677..c6ee7bff1 100644
+--- a/src/core/NEON/kernels/arm_gemm/gemm_quint8.cpp
++++ b/src/core/NEON/kernels/arm_gemm/gemm_quint8.cpp
+@@ -1,5 +1,5 @@
+ /*
+- * Copyright (c) 2019-2020, 2022-2024 Arm Limited.
++ * Copyright (c) 2019-2020, 2022-2025 Arm Limited.
+  *
+  * SPDX-License-Identifier: MIT
+  *
+@@ -54,9 +54,9 @@
+ 
+ #include "gemm_hybrid_indirect.hpp"
+ #include "gemm_hybrid_quantized.hpp"
++#include "gemm_implementation.hpp"
+ #include "gemm_interleaved.hpp"
+ #include "gemv_pretransposed.hpp"
+-#include "quantize_wrapper.hpp"
+ 
+ namespace arm_gemm {
+ 
+@@ -209,13 +209,6 @@ GemmImplementation<uint8_t, uint8_t, uint8_t, Requantize32>::with_estimate(
+     [](const GemmArgs &args, const Requantize32 &) { return GemmInterleavedQuantized<cls_a64_gemm_u8_4x4, uint8_t, uint8_t, uint8_t>::estimate_cycles<uint8_t>(args); },
+     [](const GemmArgs &args, const Requantize32 &qp) { return new GemmInterleavedQuantized<cls_a64_gemm_u8_4x4, uint8_t, uint8_t, uint8_t>(args, qp); }
+ ),
+-{
+-    GemmMethod::QUANTIZE_WRAPPER,
+-    "quantized_wrapper",
+-    [](const GemmArgs &args, const Requantize32 &) { return !args._indirect_input; },
+-    [](const GemmArgs &, const Requantize32 &) { return false; },
+-    [](const GemmArgs &args, const Requantize32 &qp) { return new QuantizeWrapper<uint8_t, uint8_t, uint32_t>(args, qp); }
+-},
+ {
+     GemmMethod::DEFAULT,
+     "",
+diff --git a/src/core/NEON/kernels/arm_gemm/gemm_u8s8fp32.cpp b/src/core/NEON/kernels/arm_gemm/gemm_u8s8fp32.cpp
+index 606b422b0..d90245f9a 100644
+--- a/src/core/NEON/kernels/arm_gemm/gemm_u8s8fp32.cpp
++++ b/src/core/NEON/kernels/arm_gemm/gemm_u8s8fp32.cpp
+@@ -1,5 +1,5 @@
+ /*
+- * Copyright (c) 2024 Arm Limited.
++ * Copyright (c) 2024-2025 Arm Limited.
+  *
+  * SPDX-License-Identifier: MIT
+  *
+@@ -40,9 +40,9 @@
+ 
+ #include "gemm_hybrid_indirect.hpp"
+ #include "gemm_hybrid_quantized.hpp"
++#include "gemm_implementation.hpp"
+ #include "gemm_interleaved.hpp"
+ #include "gemv_pretransposed.hpp"
+-#include "quantize_wrapper.hpp"
+ #include "utils.hpp"
+ 
+ namespace arm_gemm {
+diff --git a/src/core/NEON/kernels/arm_gemm/gemv_batched.hpp b/src/core/NEON/kernels/arm_gemm/gemv_batched.hpp
+index 0ba7b7870..15941252f 100644
+--- a/src/core/NEON/kernels/arm_gemm/gemv_batched.hpp
++++ b/src/core/NEON/kernels/arm_gemm/gemv_batched.hpp
+@@ -1,5 +1,5 @@
+ /*
+- * Copyright (c) 2017-2021, 2024 Arm Limited.
++ * Copyright (c) 2017-2021, 2024-2025 Arm Limited.
+  *
+  * SPDX-License-Identifier: MIT
+  *
+@@ -64,15 +64,12 @@ public:
+         _subgemm->set_nthreads(nthreads);
+     }
+ 
+-    // TODO: Make this actually stateless. This still uses the stateful
+-    // execution data because it requires a workspace which would also need to
+-    // be handled statelessly.
+     void execute_stateless(const ndcoord_t &work_range, const ndcoord_t &thread_locator, int threadid, GemmArrays<To, To, Tr> &) override {
+         _subgemm->execute(work_range, thread_locator, threadid);
+     }
+ 
+     void execute(const ndcoord_t &work_range, const ndcoord_t &thread_locator, int threadid) override {
+-        execute_stateless(work_range, thread_locator, threadid, this->_gemm_array);
++        execute_stateless(work_range, thread_locator, threadid, this->_gemm_arrays);
+     }
+ 
+     size_t get_working_size() const override {
+diff --git a/src/core/NEON/kernels/arm_gemm/gemv_pretransposed.hpp b/src/core/NEON/kernels/arm_gemm/gemv_pretransposed.hpp
+index 08c419252..fb94dd9c3 100644
+--- a/src/core/NEON/kernels/arm_gemm/gemv_pretransposed.hpp
++++ b/src/core/NEON/kernels/arm_gemm/gemv_pretransposed.hpp
+@@ -1,5 +1,5 @@
+ /*
+- * Copyright (c) 2017-2022, 2024 Arm Limited.
++ * Copyright (c) 2017-2022, 2024-2025 Arm Limited.
+  *
+  * SPDX-License-Identifier: MIT
+  *
+@@ -26,9 +26,6 @@
+ #include <stdio.h>
+ 
+ #include "arm_gemm.hpp"
+-#include "bias_adder.hpp"
+-#include "mergeresults.hpp"
+-#include "transform.hpp"
+ 
+ #ifdef CYCLE_PROFILING
+ #include "profiler.hpp"
+@@ -139,8 +136,8 @@ public:
+         return { iceildiv(_args._Nsize, strategy::out_width()) * _args._nmulti };
+     }
+ 
+-    // Use the stateless interface to execute the GEMV.
+-    void execute_stateless(const ndcoord_t &work_range, const ndcoord_t &, int, GemmArrays<To, To, Tr>& g_array) override {
++    // Common execution logic.
++    void execute_common(const ndcoord_t &work_range, const ndcoord_t &, int, GemmArrays<To, To, Tr>& g_arrays) {
+ #ifdef CYCLE_PROFILING
+         profiler prof;
+ #endif
+@@ -175,11 +172,11 @@ public:
+ #ifdef CYCLE_PROFILING
+                     auto p = prof.ScopedProfiler(PROFILE_KERNEL, (kmax-k0) * (nmax-n));
+ #endif
+-                    run_gemv_kernel<OutputStage>::run(strat, g_array._Aptr + (multi * g_array._A_multi_stride) + k0,
++                    run_gemv_kernel<OutputStage>::run(strat, g_arrays._Aptr + (multi * g_arrays._A_multi_stride) + k0,
+                                  _B_pretransposed + (multi * _buffer_per_multi) + (n * roundup(_args._Ksize, strategy::k_unroll())) + (k0 * strategy::out_width()),
+-                                 g_array._Cptr + (multi * g_array._C_multi_stride) + n,
++                                 g_arrays._Cptr + (multi * g_arrays._C_multi_stride) + n,
+                                  (nmax - n), (kmax-k0),
+-                                 g_array._bias ? g_array._bias + (multi * g_array._bias_multi_stride) + n : nullptr,
++                                 g_arrays._bias ? g_arrays._bias + (multi * g_arrays._bias_multi_stride) + n : nullptr,
+                                  _args._act, (k0 != 0) || _args._accumulate,
+                                  _os, col_bias, n + (_args._Nsize * multi));
+                 }
+@@ -187,9 +184,14 @@ public:
+         }
+     }
+ 
++    // Stateless execute
++    void execute_stateless(const ndcoord_t &work_range, const ndcoord_t &thread_locator, int threadid, GemmArrays<To, To, Tr> &g_arrays) override {
++        return execute_common(work_range, thread_locator, threadid, g_arrays);
++    }
++
+     // Actually execute the GEMV.
+     void execute(const ndcoord_t &work_range, const ndcoord_t &thread_locator, int threadid) override {
+-        execute_stateless(work_range, thread_locator, threadid, this->_gemm_array);
++        execute_common(work_range, thread_locator, threadid, this->_gemm_arrays);
+     }
+ 
+     /* Pretransposed interface implementation */
+diff --git a/src/core/NEON/kernels/arm_gemm/quantize_wrapper.hpp b/src/core/NEON/kernels/arm_gemm/quantize_wrapper.hpp
+deleted file mode 100644
+index 90604e941..000000000
+--- a/src/core/NEON/kernels/arm_gemm/quantize_wrapper.hpp
++++ /dev/null
+@@ -1,247 +0,0 @@
+-/*
+- * Copyright (c) 2019-2021, 2024 Arm Limited.
+- *
+- * SPDX-License-Identifier: MIT
+- *
+- * Permission is hereby granted, free of charge, to any person obtaining a copy
+- * of this software and associated documentation files (the "Software"), to
+- * deal in the Software without restriction, including without limitation the
+- * rights to use, copy, modify, merge, publish, distribute, sublicense, and/or
+- * sell copies of the Software, and to permit persons to whom the Software is
+- * furnished to do so, subject to the following conditions:
+- *
+- * The above copyright notice and this permission notice shall be included in all
+- * copies or substantial portions of the Software.
+- *
+- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+- * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+- * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+- * SOFTWARE.
+- */
+-
+-#pragma once
+-
+-#include "arm_gemm.hpp"
+-
+-#include "barrier.hpp"
+-#include "gemm_implementation.hpp"
+-#include "quantized.hpp"
+-
+-namespace arm_gemm {
+-
+-/* Quantized wrapper - do an integer GEMM and wrap around the quantization. */
+-
+-template<typename To, typename Tr, typename Tgemm>
+-class QuantizeWrapper : public GemmCommon<To, To, Tr> {
+-private:
+-    UniqueGemmCommon<To, To, Tgemm>  _subgemm = nullptr;
+-    int32_t                     *_row_sums = nullptr;
+-    int32_t                     *_col_sums = nullptr;
+-    Requantize32                 _params;
+-    GemmArgs                     _args;
+-    barrier                      _barrier;
+-
+-    void *working_space = nullptr;
+-    bool  arrays_set = false;
+-
+-    /* We need a subgemm which outputs the 32-bit intermediates - how much space is needed for that? */
+-    size_t subgemm_output_size() const {
+-        return (_args._Msize * _args._Nsize * _args._nbatches * _args._nmulti * sizeof(int32_t));
+-    }
+-
+-    size_t col_sum_size() const {
+-        return (_args._Nsize * _args._nmulti * sizeof(int32_t));
+-    }
+-
+-    size_t row_sum_size() const {
+-        return (_args._Msize * _args._nbatches * _args._nmulti * sizeof(int32_t));
+-    }
+-
+-    /* Local working space: We need space for the subgemm output (above) and
+-     * the row sums.  */
+-    size_t local_working_size() const {
+-        return subgemm_output_size() + row_sum_size();
+-    }
+-
+-    void set_child_arrays() {
+-        if (working_space == nullptr || arrays_set == false)
+-            return;
+-
+-        auto& g_array = this->_gemm_array;
+-        /* Use the first part of our working space for the subgemm result, pass the operand details straight through. */
+-        _subgemm->set_arrays(g_array._Aptr, g_array._lda, g_array._A_batch_stride, g_array._A_multi_stride,
+-                             g_array._Bptr, g_array._ldb,                          g_array._B_multi_stride,
+-                             reinterpret_cast<Tgemm *>(working_space), _args._Nsize, (_args._Nsize * _args._Msize), (_args._Nsize * _args._Msize * _args._nbatches),
+-                             nullptr, 0);
+-    }
+-
+-    void col_sums_pretransposed(const To *B, const int ldb, const int B_multi_stride) {
+-        for (unsigned int multi=0; multi<_args._nmulti; multi++) {
+-            compute_col_sums(_params, _args._Nsize, _args._Ksize, B + (multi * B_multi_stride), ldb, _col_sums + (multi * _args._Nsize), _args._Ksize, multi, 0);
+-        }
+-    }
+-
+-    void requantize_runtime(unsigned int threadid) {
+-        unsigned int first_row = (threadid * _args._Msize) / _args._maxthreads;
+-        unsigned int last_row = ((threadid+1) * _args._Msize) / _args._maxthreads;
+-        auto& g_array = this->_gemm_array;
+-
+-        for (unsigned int multi=0; multi<_args._nmulti; multi++) {
+-            for (unsigned int batch=0; batch<_args._nbatches; batch++) {
+-                /* Compute row sums now */
+-                compute_row_sums(_params, _args._Ksize, (last_row - first_row), g_array._Aptr + (multi * g_array._A_multi_stride) +
+-                                    (batch * g_array._A_batch_stride) + (first_row * g_array._lda), g_array._lda, _row_sums +
+-                                    (multi * _args._nbatches * _args._Msize) + (batch * _args._Msize) + first_row);
+-                // If we don't care about negative values, call the version of this function that doesn't correct before shifting.
+-                // 'c_offset' represents zero, so if the lowest possible quantized output value is the same or more than that we will not output negative numbers.
+-                requantize_block_32(_params, _args._Nsize, (last_row - first_row), reinterpret_cast<Tgemm *>(working_space) +
+-                                        (multi * (_args._Msize * _args._Nsize * _args._nbatches)) + (batch * (_args._Msize * _args._Nsize)) +
+-                                        (first_row * _args._Nsize), _args._Nsize, g_array._Cptr + (multi * g_array._C_multi_stride) +
+-                                        (batch * g_array._C_batch_stride) + (first_row * g_array._ldc), g_array._ldc, _row_sums +
+-                                        (multi * _args._nbatches * _args._Msize) + (batch * _args._Msize) + first_row, _col_sums +
+-                                        (multi * _args._Nsize), 0);
+-            }
+-        }
+-    }
+-
+-
+-public:
+-    QuantizeWrapper(const QuantizeWrapper &) = delete;
+-    QuantizeWrapper operator=(const QuantizeWrapper &) = delete;
+-
+-    QuantizeWrapper(const GemmArgs &args, const Requantize32 &qp) : _params(qp), _args(args), _barrier(args._maxthreads) {
+-        GemmArgs newargs = GemmArgs(args._ci, args._Msize, args._Nsize, args._Ksize, args._Ksections, args._nbatches, args._nmulti, args._indirect_input, Activation(), args._maxthreads);
+-        _subgemm = gemm<To, To, Tgemm>(newargs);
+-
+-        if (_subgemm == nullptr) {
+-            return;
+-        }
+-    }
+-
+-    void set_arrays(const To *A, const int lda, const int A_batch_stride, const int A_multi_stride,
+-                    const To *B, const int ldb, const int B_multi_stride,
+-                          Tr *C, const int ldc, const int C_batch_stride, const int C_multi_stride,
+-                    const Tr *bias, const int bias_multi_stride) override {
+-        GemmCommon<To, To, Tr>::set_arrays(A, lda, A_batch_stride, A_multi_stride, B, ldb, B_multi_stride, C, ldc, C_batch_stride, C_multi_stride, bias, bias_multi_stride);
+-
+-        arrays_set = true;
+-        set_child_arrays();
+-    }
+-
+-    ndrange_t get_window_size() const override {
+-        return { _subgemm->get_window_size() };
+-    }
+-
+-    void set_nthreads(int nthreads) override {
+-        _subgemm->set_nthreads(nthreads);
+-        _barrier.set_nthreads(nthreads);
+-        _args._maxthreads = nthreads;
+-    }
+-
+-    // TODO: Make this actually stateless. This still uses the stateful
+-    // execution data because it requires a workspace which would also need to
+-    // be handled statelessly.
+-    void execute_stateless(const ndcoord_t &work_range, const ndcoord_t &thread_locator, int threadid, GemmArrays<To, To, Tr> &) override {
+-        _subgemm->execute(work_range, thread_locator, threadid);
+-
+-        _barrier.arrive_and_wait();
+-
+-        requantize_runtime(threadid);
+-    }
+-
+-    void execute(const ndcoord_t &work_range, const ndcoord_t &thread_locator, int threadid) override {
+-        execute_stateless(work_range, thread_locator, threadid, this->_gemm_array);
+-    }
+-
+-    size_t get_working_size() const override {
+-        return _subgemm->get_working_size() + local_working_size();
+-    }
+-
+-    // Space arrangement:
+-
+-    // ptr
+-    // V
+-    // | subgemm output | row_sums | subgemm working space |
+-    void set_working_space(void *space) override {
+-        uintptr_t space_int = reinterpret_cast<uintptr_t>(space);
+-
+-        working_space = space;
+-        _subgemm->set_working_space(reinterpret_cast<void *>(space_int + local_working_size()));
+-
+-        _row_sums = reinterpret_cast<int32_t *>(space_int + subgemm_output_size());
+-
+-        set_child_arrays();
+-    }
+-
+-    bool B_is_pretransposed() const override {
+-        /* We clear this flag if the subgemm isn't pretransposed, so just return its value */
+-        return _subgemm->B_is_pretransposed();
+-    }
+-
+-    bool B_pretranspose_required() const override {
+-        return _subgemm->B_pretranspose_required();
+-    }
+-
+-    size_t get_B_pretransposed_array_size() const override {
+-        return _subgemm->get_B_pretransposed_array_size() + col_sum_size();
+-    }
+-
+-    void requantize_bias(void *in_buffer, const To *B, const int ldb, const int B_multi_stride) override {
+-        _col_sums = reinterpret_cast<int32_t *>(in_buffer);
+-        col_sums_pretransposed(B, ldb, B_multi_stride);
+-    }
+-
+-    void pretranspose_B_array(void *buffer, const To *B, const int ldb, const int B_multi_stride, bool transposed) override {
+-        assert(!transposed);
+-
+-        uintptr_t buffer_int = reinterpret_cast<uintptr_t>(buffer);
+-        _subgemm->pretranspose_B_array(reinterpret_cast<void *>(buffer_int + col_sum_size()), B, ldb, B_multi_stride, transposed);
+-
+-        requantize_bias(buffer, B, ldb, B_multi_stride);
+-    }
+-
+-    void set_pretransposed_B_data(void *buffer) override {
+-        uintptr_t buffer_int = reinterpret_cast<uintptr_t>(buffer);
+-        _subgemm->set_pretransposed_B_data(reinterpret_cast<void *>(buffer_int + col_sum_size()));
+-        _col_sums = reinterpret_cast<int32_t *>(buffer);
+-    }
+-
+-    void set_quantized_bias(const int32_t *bias, size_t bias_multi_stride) override {
+-        _params.bias = bias;
+-        _params.bias_multi_stride = bias_multi_stride;
+-    }
+-
+-    GemmConfig get_config() override {
+-        GemmConfig c = _subgemm->get_config();
+-
+-        std::string n = "quantize_wrapper[";
+-        n.append(c.filter);
+-        n.append("]");
+-
+-        c.method = GemmMethod::QUANTIZE_WRAPPER;
+-        c.filter = n;
+-
+-        return c;
+-    }
+-
+-    void update_quantization_parameters(const Requantize32 &re) override {
+-        _params.bias = re.bias;
+-        _params.a_offset = re.a_offset;
+-        _params.b_offset = re.b_offset;
+-        _params.c_offset = re.c_offset;
+-        _params.per_layer_left_shift = re.per_layer_left_shift;
+-        _params.per_layer_right_shift = re.per_layer_right_shift;
+-        _params.per_layer_mul = re.per_layer_mul;
+-        _params.per_channel_requant = re.per_channel_requant;
+-        _params.per_channel_left_shifts = re.per_channel_left_shifts;
+-        _params.per_channel_right_shifts = re.per_channel_right_shifts;
+-        _params.per_channel_muls = re.per_channel_muls;
+-        _params.minval = re.minval;
+-        _params.maxval = re.maxval;
+-    }
+-};
+-
+-} // namespace arm_gemm
+diff --git a/src/cpu/kernels/assembly/.clang-format b/src/cpu/kernels/assembly/.clang-format
+new file mode 100644
+index 000000000..bd90a154e
+--- /dev/null
++++ b/src/cpu/kernels/assembly/.clang-format
+@@ -0,0 +1,25 @@
++# Copyright (c) 2025 Arm Limited.
++#
++# SPDX-License-Identifier: MIT
++#
++# Permission is hereby granted, free of charge, to any person obtaining a copy
++# of this software and associated documentation files (the "Software"), to
++# deal in the Software without restriction, including without limitation the
++# rights to use, copy, modify, merge, publish, distribute, sublicense, and/or
++# sell copies of the Software, and to permit persons to whom the Software is
++# furnished to do so, subject to the following conditions:
++#
++# The above copyright notice and this permission notice shall be included in all
++# copies or substantial portions of the Software.
++#
++# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
++# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
++# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
++# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
++# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
++# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
++# SOFTWARE.
++---
++# Disabling clang-format for this directory to reduce the diff-noise when
++# porting changes from arm_gemm
++DisableFormat: true
+diff --git a/src/cpu/kernels/assembly/CpuGemmAssemblyWrapperKernel.h b/src/cpu/kernels/assembly/CpuGemmAssemblyWrapperKernel.h
+index c3a1799e1..219d77a57 100644
+--- a/src/cpu/kernels/assembly/CpuGemmAssemblyWrapperKernel.h
++++ b/src/cpu/kernels/assembly/CpuGemmAssemblyWrapperKernel.h
+@@ -1,5 +1,5 @@
+ /*
+- * Copyright (c) 2018-2022, 2024 Arm Limited.
++ * Copyright (c) 2018-2022, 2024-2025 Arm Limited.
+  *
+  * SPDX-License-Identifier: MIT
+  *
+@@ -104,10 +104,11 @@ public:
+         ARM_COMPUTE_ERROR_ON_NULLPTR((reinterpret_cast<void *>(_kernel)));
+         ARM_COMPUTE_ERROR_ON_UNCONFIGURED_KERNEL(this);
+ 
+-        const auto *Aptr = reinterpret_cast<const TypeInput *>(tensors.get_tensor(ACL_SRC_0)->buffer());
+-        const auto *Bptr = reinterpret_cast<const TypeWeight *>(tensors.get_tensor(ACL_SRC_1)->buffer());
+-        const auto *bias = reinterpret_cast<const TypeOutput *>(tensors.get_tensor(ACL_SRC_2)->buffer());
+-        auto       *Cptr = reinterpret_cast<TypeOutput *>(tensors.get_tensor(ACL_DST)->buffer());
++        const auto *Aptr      = reinterpret_cast<const TypeInput *>(tensors.get_tensor(ACL_SRC_0)->buffer());
++        const auto *Bptr      = reinterpret_cast<const TypeWeight *>(tensors.get_tensor(ACL_SRC_1)->buffer());
++        const auto *bias      = reinterpret_cast<const TypeOutput *>(tensors.get_tensor(ACL_SRC_2)->buffer());
++        void       *workspace = tensors.get_tensor(ACL_SRC_3)->buffer();
++        auto       *Cptr      = reinterpret_cast<TypeOutput *>(tensors.get_tensor(ACL_DST)->buffer());
+ 
+         ARM_COMPUTE_ERROR_ON_NULLPTR(Aptr, Cptr);
+ 
+@@ -119,6 +120,7 @@ public:
+         ga._Bptr = Bptr;
+         ga._bias = bias;
+         ga._Cptr = Cptr;
++        ga.set_working_space(workspace);
+ 
+         auto win = arm_gemm::to_ndcoord(window);
+ 
+diff --git a/src/cpu/kernels/assembly/arm_gemm.hpp b/src/cpu/kernels/assembly/arm_gemm.hpp
+index e65bc00a0..ea8566652 100644
+--- a/src/cpu/kernels/assembly/arm_gemm.hpp
++++ b/src/cpu/kernels/assembly/arm_gemm.hpp
+@@ -44,7 +44,6 @@ enum class GemmMethod
+     GEMM_NATIVE,
+     GEMM_HYBRID,
+     GEMM_INTERLEAVED,
+-    QUANTIZE_WRAPPER,
+     GEMM_HYBRID_QUANTIZED
+ };
+ 
+diff --git a/src/cpu/kernels/assembly/gemm_arrays.hpp b/src/cpu/kernels/assembly/gemm_arrays.hpp
+index 2d4f7e1a0..0b4d79462 100644
+--- a/src/cpu/kernels/assembly/gemm_arrays.hpp
++++ b/src/cpu/kernels/assembly/gemm_arrays.hpp
+@@ -1,5 +1,5 @@
+ /*
+- * Copyright (c) 2024 Arm Limited.
++ * Copyright (c) 2024-2025 Arm Limited.
+  *
+  * SPDX-License-Identifier: MIT
+  *
+@@ -52,6 +52,8 @@ struct IGemmArrays
+                                     const void *bias,
+                                     const int   bias_multi_stride) = 0; /* no row or batch stride needed */
+ 
++    virtual void set_working_space(void *workspace) = 0;
++
+     virtual ~IGemmArrays() = default;
+ };
+ 
+@@ -71,6 +73,7 @@ struct GemmArrays : public IGemmArrays
+     int       _C_multi_stride    = 0;
+     const Tr *_bias              = nullptr;
+     int       _bias_multi_stride = 0;
++    void     *_workspace         = nullptr;
+ 
+     GemmArrays() = default;
+ 
+@@ -159,6 +162,11 @@ struct GemmArrays : public IGemmArrays
+                    B_multi_stride, static_cast<Tr *>(C), ldc, C_batch_stride, C_multi_stride,
+                    static_cast<const Tr *>(bias), bias_multi_stride);
+     }
++
++    void set_working_space(void *workspace) override
++    {
++        _workspace = workspace;
++    }
+ };
+ } // namespace arm_gemm
+ 
+diff --git a/src/cpu/kernels/assembly/gemm_common.hpp b/src/cpu/kernels/assembly/gemm_common.hpp
+index ce1873a49..c26c7a59b 100644
+--- a/src/cpu/kernels/assembly/gemm_common.hpp
++++ b/src/cpu/kernels/assembly/gemm_common.hpp
+@@ -1,5 +1,5 @@
+ /*
+- * Copyright (c) 2017-2021,2023-2024 Arm Limited.
++ * Copyright (c) 2017-2021,2023-2025 Arm Limited.
+  *
+  * SPDX-License-Identifier: MIT
+  *
+@@ -201,21 +201,21 @@ template <typename To, typename Tw, typename Tr>
+ class GemmCommon : public IGemmCommon
+ {
+ protected:
+-    GemmArrays<To, Tw, Tr> _gemm_array{};
++    GemmArrays<To, Tw, Tr> _gemm_arrays{};
+ 
+ public:
+-    /* Pass in the pointers to the arrays to be operated on and their
+-     * strides (templated version with appropriate types). */
+     void set_gemm_arrays(GemmArrays<To, Tw, Tr> &ga)
+     {
+-        _gemm_array = ga;
++        _gemm_arrays = ga;
+     }
+ 
+     const GemmArrays<To, Tw, Tr> &get_gemm_arrays() const
+     {
+-        return _gemm_array;
++        return _gemm_arrays;
+     }
+ 
++    /* Pass in the pointers to the arrays to be operated on and their
++     * strides (templated version with appropriate types). */
+     virtual void set_arrays(const To                                     *A,
+                             const int                                     lda,
+                             const int                                     A_batch_stride,
+@@ -230,8 +230,8 @@ public:
+                             const Tr                                     *bias,
+                             /* no row or batch stride needed */ const int bias_multi_stride)
+     {
+-        _gemm_array.set_arrays(A, lda, A_batch_stride, A_multi_stride, B, ldb, B_multi_stride, C, ldc, C_batch_stride,
+-                               C_multi_stride, bias, bias_multi_stride);
++        _gemm_arrays.set_arrays(A, lda, A_batch_stride, A_multi_stride, B, ldb, B_multi_stride, C, ldc, C_batch_stride,
++                                C_multi_stride, bias, bias_multi_stride);
+     }
+ 
+     /* Implementation of the void * overload which casts its arguments to the appropriate type. */
+diff --git a/src/cpu/operators/internal/CpuGemmAssemblyDispatch.cpp b/src/cpu/operators/internal/CpuGemmAssemblyDispatch.cpp
+index ec2039207..eaceff52e 100644
+--- a/src/cpu/operators/internal/CpuGemmAssemblyDispatch.cpp
++++ b/src/cpu/operators/internal/CpuGemmAssemblyDispatch.cpp
+@@ -29,7 +29,6 @@
+ 
+ #include "src/core/CPP/Validate.h"
+ #include "src/core/helpers/MemoryHelpers.h"
+-#include "src/core/NEON/kernels/arm_gemm/utils.hpp"
+ #include "src/core/utils/AssemblyUtils.h"
+ #include "src/cpu/kernels/assembly/arm_gemm.hpp"
+ #include "src/cpu/kernels/assembly/CpuGemmAssemblyWrapperKernel.h"
+@@ -231,11 +230,6 @@ public:
+         _is_prepared = is_prepared;
+     }
+ 
+-    bool has_stateless_impl() const override
+-    {
+-        return _gemm_kernel_asm->get_working_size() == 0;
+-    }
+-
+ private:
+     enum AuxTensorIdx
+     {
+@@ -806,8 +800,11 @@ void Fallback<TypeInput, TypeWeight, TypeOutput, OutputStage>::run(ITensorPack &
+     out_tensor.allocator()->init(*(d->info()));
+     out_tensor.allocator()->import_memory(out_ptr);
+ 
+-    ITensorPack gemm_pack{
+-        {ACL_SRC_0, &in0_tensor}, {ACL_SRC_1, &in1_tensor}, {ACL_SRC_2, &bias_tensor}, {ACL_DST, &out_tensor}};
++    ITensorPack gemm_pack{{ACL_SRC_0, &in0_tensor},
++                          {ACL_SRC_1, &in1_tensor},
++                          {ACL_SRC_2, &bias_tensor},
++                          {ACL_SRC_3, workspace.get()},
++                          {ACL_DST, &out_tensor}};
+ 
+     // Set gemm parameters
+     _gemm_kernel_asm->set_arrays(in0_ptr, lda, batch_stride_a, multi_stride_a, in1_ptr, ldb, multi_stride_b, out_ptr,
+@@ -1037,11 +1034,6 @@ Status CpuGemmAssemblyDispatch::has_opt_impl(arm_compute::WeightFormat &expected
+     return Status{};
+ }
+ 
+-bool CpuGemmAssemblyDispatch::has_stateless_impl() const
+-{
+-    return _arm_gemm->has_stateless_impl();
+-}
+-
+ Status CpuGemmAssemblyDispatch::validate(
+     const ITensorInfo *a, const ITensorInfo *b, const ITensorInfo *c, const ITensorInfo *d, const AsmGemmInfo &info)
+ {
+diff --git a/src/cpu/operators/internal/CpuGemmAssemblyDispatch.h b/src/cpu/operators/internal/CpuGemmAssemblyDispatch.h
+index 84420f776..b45ce664b 100644
+--- a/src/cpu/operators/internal/CpuGemmAssemblyDispatch.h
++++ b/src/cpu/operators/internal/CpuGemmAssemblyDispatch.h
+@@ -1,5 +1,5 @@
+ /*
+- * Copyright (c) 2018-2024 Arm Limited.
++ * Copyright (c) 2018-2025 Arm Limited.
+  *
+  * SPDX-License-Identifier: MIT
+  *
+@@ -28,7 +28,6 @@
+ 
+ #include "src/core/common/Macros.h"
+ #include "src/cpu/ICpuOperator.h"
+-#include "src/cpu/kernels/assembly/arm_gemm.hpp"
+ 
+ namespace arm_compute
+ {
+@@ -93,7 +92,6 @@ public:
+                                                                                 const bool,
+                                                                                 const bool) = 0;
+         virtual ~IFallback()                                                                = default;
+-        virtual bool has_stateless_impl() const                                             = 0;
+     };
+ 
+ public:
+@@ -172,17 +170,6 @@ public:
+                                const ITensorInfo         *d,
+                                const AsmGemmInfo         &info);
+ 
+-    /** Checks if a stateless implementation is supported
+-     *
+-     * The arm_gemm kernels that have been made stateless so far are those that
+-     * do not require any working space. Once all kernels have been made
+-     * stateless we can deprecate it by always returning true, and eventually
+-     * removing it completely
+-     *
+-     * @return True if stateless execution is supported else false
+-     */
+-    bool has_stateless_impl() const;
+-
+     /** Checks if activation is supported by the gemm assembly dispatcher
+      *
+      * @param[in] activation Activation to check
+diff --git a/src/runtime/IScheduler.cpp b/src/runtime/IScheduler.cpp
+index 9fa815fbd..d0d226d9f 100644
+--- a/src/runtime/IScheduler.cpp
++++ b/src/runtime/IScheduler.cpp
+@@ -90,7 +90,7 @@ void IScheduler::schedule_common(ICPPKernel *kernel, const Hints &hints, const W
+             for (unsigned int mi = 0; mi != m_threads; ++mi)
+             {
+                 workloads.push_back(
+-                    [ni, mi, m_threads, n_threads, &max_window, &kernel](const ThreadInfo &info)
++                    [ni, mi, m_threads, n_threads, &max_window, &kernel, &tensors](const ThreadInfo &info)
+                     {
+                         //narrow the window to our mi-ni workload
+                         Window win = max_window.split_window(Window::DimX, mi, m_threads)
+@@ -104,7 +104,14 @@ void IScheduler::schedule_common(ICPPKernel *kernel, const Hints &hints, const W
+ 
+                         thread_locator.validate();
+ 
+-                        kernel->run_nd(win, info, thread_locator);
++                        if (tensors.empty())
++                        {
++                            kernel->run_nd(win, info, thread_locator);
++                        }
++                        else
++                        {
++                            kernel->run_op(tensors, win, info);
++                        }
+                     });
+             }
+         }
+diff --git a/src/runtime/experimental/low_level/CpuGemmAssemblyDispatch.cpp b/src/runtime/experimental/low_level/CpuGemmAssemblyDispatch.cpp
+index 6021d1330..93b65e31d 100644
+--- a/src/runtime/experimental/low_level/CpuGemmAssemblyDispatch.cpp
++++ b/src/runtime/experimental/low_level/CpuGemmAssemblyDispatch.cpp
+@@ -1,5 +1,5 @@
+ /*
+- * Copyright (c) 2024 Arm Limited.
++ * Copyright (c) 2024-2025 Arm Limited.
+  *
+  * SPDX-License-Identifier: MIT
+  *
+@@ -122,7 +122,7 @@ bool CpuGemmAssemblyDispatch::has_stateless_impl() const
+ {
+     ARM_COMPUTE_ERROR_ON_MSG(!is_configured(), "calling has_stateless_impl() on unconfigured CpuGemmAssemblyDispatch");
+ 
+-    return _impl->cpu_gemm_assembly_dispatch->has_stateless_impl();
++    return true;
+ }
+ 
+ bool CpuGemmAssemblyDispatch::is_activation_supported(const ActivationLayerInfo &activation)

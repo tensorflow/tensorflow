@@ -1,3 +1,4 @@
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 
 # copybara:uncomment package(default_applicable_licenses = ["//tensorflow:license"])

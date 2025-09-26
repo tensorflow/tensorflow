@@ -49,8 +49,8 @@ TEST(DefaultWorkItemIndexingMap, MultiDimensionTile) {
   // are no constraints.
   EXPECT_EQ(indexing_map.GetConstraintsCount(), 0);
 
-  // Chunk id and tile coordinates (1 + 3).
-  EXPECT_EQ(indexing_map.GetSymbolCount(), 4);
+  // Chunk id is unused so it is removed.
+  EXPECT_EQ(indexing_map.GetSymbolCount(), 3);
 
   // 6 dimensions: 3 work groups + 3 work items.
   EXPECT_EQ(indexing_map.GetDimensionCount(), 6);
@@ -62,13 +62,13 @@ TEST(DefaultWorkItemIndexingMap, MultiDimensionTile) {
 
   EXPECT_EQ(affine_map.getResult(0), 3 * work_group_sym + work_item_sym);
 
-  mlir::AffineExpr tile_sym_x = mlir::getAffineSymbolExpr(1, &context);
+  mlir::AffineExpr tile_sym_x = mlir::getAffineSymbolExpr(0, &context);
   EXPECT_EQ(affine_map.getResult(1), tile_sym_x);
 
-  mlir::AffineExpr tile_sym_y = mlir::getAffineSymbolExpr(2, &context);
+  mlir::AffineExpr tile_sym_y = mlir::getAffineSymbolExpr(1, &context);
   EXPECT_EQ(affine_map.getResult(2), tile_sym_y);
 
-  mlir::AffineExpr tile_sym_z = mlir::getAffineSymbolExpr(3, &context);
+  mlir::AffineExpr tile_sym_z = mlir::getAffineSymbolExpr(2, &context);
   EXPECT_EQ(affine_map.getResult(3), tile_sym_z);
 }
 

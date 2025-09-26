@@ -67,8 +67,9 @@ TEST(CudaCommandBufferTest, CuDnnExplicitConstructionAndUpdateWork) {
     GTEST_SKIP() << "Requires cuDNN 9.7.0 or later.";
   }
 
-  if (executor->GetDeviceDescription().cuda_compute_capability() <
-      CudaComputeCapability::Ampere()) {
+  if (!executor->GetDeviceDescription()
+           .cuda_compute_capability()
+           .IsAtLeastAmpere()) {
     GTEST_SKIP() << "Requires at least an Ampere GPU.";
   }
 
@@ -96,7 +97,7 @@ TEST(CudaCommandBufferTest, CuDnnExplicitConstructionAndUpdateWork) {
   TF_ASSERT_OK(graph.Prepare(dnn_support, NumericOptions{}));
   TF_ASSERT_OK(graph.Build(dnn_support, /*plan_id=*/std::nullopt));
   EXPECT_THAT(graph.SupportsExplicitCommandBufferConstruction(),
-              IsOkAndHolds(true));
+              absl_testing::IsOkAndHolds(true));
 
   DeviceMemory<int8_t> input = executor->AllocateArray<int8_t>(kTotalElements);
   TF_ASSERT_OK(stream->MemZero(&input, input.size()));

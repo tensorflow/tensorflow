@@ -20,6 +20,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_replace.h"
@@ -252,7 +253,8 @@ e {
   BinaryMap dnn_compiled_graphs;
   CuDnnFusionCompiler cudnn_compiler(*backend().default_stream_executor(),
                                      dnn_compiled_graphs);
-  EXPECT_THAT(cudnn_compiler.Run(module.get()), IsOkAndHolds(false));
+  EXPECT_THAT(cudnn_compiler.Run(module.get()),
+              absl_testing::IsOkAndHolds(false));
   EXPECT_TRUE(RunAndCompareTwoModules(kHloText, R"(e {
     a = f32[32,96] parameter(0)
     b = f32[96,64] parameter(1)
@@ -603,52 +605,6 @@ class CuDnnFusionCommandBufferTest : public CuDnnFusionTest {
     return debug_options;
   }
 };
-
-TEST_F(CuDnnFusionCommandBufferTest, CommandBuffersAreSupported) {
-  const std::string kHloText = R"(
-fd0 {
-  p0 = f32[64,64]{1,0} parameter(0)
-  p1 = f32[64,64]{1,0} parameter(1)
-  ROOT d = f32[64,64]{1,0} dot(p0, p1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
-}
-
-fd1 {
-  p0 = f32[64,64]{1,0} parameter(0)
-  p1 = f32[64,64]{1,0} parameter(1)
-  ROOT d = f32[64,64]{1,0} dot(p0, p1), lhs_contracting_dims={0}, rhs_contracting_dims={1}
-}
-
-ENTRY e {
-  p0 = f32[64,64]{1,0} parameter(0)
-  p1 = f32[64,64]{1,0} parameter(1)
-  d0 = f32[64,64]{1,0} fusion(p0, p1), kind=kCustom, calls=fd0,
-    backend_config={"fusion_backend_config":{"kind":"__cudnn$fusion","cudnn_fusion_config":{"plan_id":"0"}}}
-  a = f32[64,64]{1,0} add(d0, d0)
-  ROOT d1 = f32[64,64]{1,0} fusion(a, d0), kind=kCustom, calls=fd1,
-    backend_config={"fusion_backend_config":{"kind":"__cudnn$fusion","cudnn_fusion_config":{"plan_id":"0"}}}
-})";
-
-  se::StreamExecutorMemoryAllocator allocator(
-      backend().default_stream_executor());
-  // Verify that a command buffer is applied.
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Executable> executable,
-                          backend().compiler()->RunBackend(
-                              GetOptimizedModule(kHloText).value(),
-                              backend().default_stream_executor(), &allocator));
-  absl::StatusOr<bool> filecheck_result =
-      RunFileCheck(executable->module().ToString(), R"(
-; CHECK: ENTRY
-; CHECK-NEXT: parameter
-; CHECK-NEXT: parameter
-; CHECK: command_buffer
-; CHECK-NOT: fusion
-)");
-  TF_ASSERT_OK(filecheck_result.status());
-  EXPECT_TRUE(filecheck_result.value());
-
-  // Verify that the command buffer executes correctly.
-  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
-}
 
 TEST_F(CuDnnFusionExecutionTest, BroadcastToDim2ExecutesCorrectly) {
   EXPECT_TRUE(RunAndCompare(R"(

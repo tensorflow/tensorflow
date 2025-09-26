@@ -39,8 +39,8 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_structs.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/deserialize_mlir_module_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/device_util.h"
-#include "tensorflow/compiler/mlir/tensorflow/utils/serialize_mlir_module_utils.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/xla_data.pb.h"
 #include "tensorflow/core/platform/status_matchers.h"
@@ -648,7 +648,7 @@ TEST(TPURewriteDeviceUtilTest, InvalidXLADeviceAssignmentMesh1x2x1x3) {
       device_assignment_attr);
 
   EXPECT_THAT(xla_device_assignment,
-              testing::StatusIs(
+              absl_testing::StatusIs(
                   absl::StatusCode::kInvalidArgument,
                   ::testing::HasSubstr(
                       "must be 'num_replicas' * 'num_cores_per_replica' * ")));

@@ -16,11 +16,14 @@ limitations under the License.
 #ifndef XLA_HLO_TRANSLATE_MHLO_TO_HLO_ATTRIBUTE_EXPORTER_H_
 #define XLA_HLO_TRANSLATE_MHLO_TO_HLO_ATTRIBUTE_EXPORTER_H_
 
+#include <cstdint>
+#include <optional>
 #include <utility>
 
 #include "absl/status/statusor.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringRef.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/Support/LLVM.h"
@@ -79,8 +82,43 @@ ConvertOutputOperandAliasing(mlir::ArrayAttr aliasArrayAttr);
 // Will fail if both attempts at parsing failed.
 std::optional<xla::OpSharding> ConvertSharding(mlir::StringRef sharding);
 
+// Returns an OpSharding that represents the Shardy sharding contained within
+// the frontend attributes of the argument at `arg_num` in `function`. Returns
+// std::nullopt if no sharding is found.
+std::optional<xla::OpSharding> ExtractShardyArgShardingFromFrontendAttrs(
+    mlir::func::FuncOp function, int64_t arg_num,
+    std::optional<mlir::DictionaryAttr> sdy_meshes);
+
+// Returns an OpSharding that represents the Shardy sharding contained within
+// the frontend attributes of the result at `res_num` in `function`. Returns
+// std::nullopt if no sharding is found.
+std::optional<xla::OpSharding> ExtractShardyResultShardingFromFrontendAttrs(
+    mlir::func::FuncOp function, int64_t res_num,
+    std::optional<mlir::DictionaryAttr> sdy_meshes);
+
+// Returns an OriginalValueProto that represents a value in the unoptimized HLO
+// graph.
+std::optional<xla::OriginalValueProto> ConvertOriginalValue(
+    llvm::StringRef original_value);
+
 std::optional<xla::HloInputOutputAliasProto> ConvertInputOutputAlias(
     llvm::ArrayRef<mlir::Attribute> aliasing);
+
+template <typename OutputOperandAliasAttrTy>
+absl::StatusOr<
+    std::vector<std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>>>
+ConvertOutputOperandAliasing(mlir::ArrayAttr aliasArrayAttr) {
+  std::vector<std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>> aliasInfo;
+  for (auto attr : aliasArrayAttr.getValue()) {
+    auto alias = mlir::cast<OutputOperandAliasAttrTy>(attr);
+    ShapeIndex outputShapeIndex(alias.getOutputTupleIndices());
+    ShapeIndex operandShapeIndex(alias.getOperandTupleIndices());
+    aliasInfo.push_back(std::make_pair(
+        outputShapeIndex,
+        std::make_pair(alias.getOperandIndex(), operandShapeIndex)));
+  }
+  return aliasInfo;
+}
 
 }  // namespace xla
 #endif  // XLA_HLO_TRANSLATE_MHLO_TO_HLO_ATTRIBUTE_EXPORTER_H_

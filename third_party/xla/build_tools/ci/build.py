@@ -52,10 +52,7 @@ _XLA_DEFAULT_TARGET_PATTERNS = (
     "//build_tools/...",
     "@local_tsl//tsl/...",
 )
-_XLA_ONEAPI_TARGET_PATTERNS = (
-    "//xla/stream_executor/sycl:stream_executor_sycl",
-    "//xla/stream_executor/sycl:sycl_status_test",
-)
+_XLA_ONEAPI_TARGET_PATTERNS = ("//xla/stream_executor/sycl/...",)
 _XLA_CPU_PRESUBMIT_BENCHMARKS_DEFAULT_TARGET_PATTERNS = (
     "//xla/tools/multihost_hlo_runner:hlo_runner_main",
     "//xla/tools:compute_xspace_stats_main",
@@ -108,7 +105,7 @@ class BuildType(enum.Enum):
 
   XLA_LINUX_X86_CPU_GITHUB_ACTIONS = enum.auto()
   XLA_LINUX_ARM64_CPU_GITHUB_ACTIONS = enum.auto()
-  XLA_LINUX_X86_GPU_T4_GITHUB_ACTIONS = enum.auto()
+  XLA_LINUX_X86_GPU_L4_GITHUB_ACTIONS = enum.auto()
   XLA_LINUX_X86_GPU_ONEAPI_GITHUB_ACTIONS = enum.auto()
 
   # Presubmit builds for regression testing.
@@ -122,10 +119,10 @@ class BuildType(enum.Enum):
   XLA_MACOS_ARM64_CPU_KOKORO = enum.auto()
 
   JAX_LINUX_X86_CPU_GITHUB_ACTIONS = enum.auto()
-  JAX_LINUX_X86_GPU_T4_GITHUB_ACTIONS = enum.auto()
+  JAX_LINUX_X86_GPU_L4_GITHUB_ACTIONS = enum.auto()
 
   TENSORFLOW_LINUX_X86_CPU_GITHUB_ACTIONS = enum.auto()
-  TENSORFLOW_LINUX_X86_GPU_T4_GITHUB_ACTIONS = enum.auto()
+  TENSORFLOW_LINUX_X86_GPU_L4_GITHUB_ACTIONS = enum.auto()
 
   @classmethod
   def from_str(cls, s):
@@ -278,7 +275,6 @@ def nvidia_gpu_build_with_compute_capability(
       ),
       options={
           "run_under": "//build_tools/ci:parallel_gpu_execute",
-          "@cuda_driver//:enable_forward_compatibility": "true",
           "//xla/tsl:ci_build": True,
           **_DEFAULT_BAZEL_OPTIONS,
       },
@@ -327,7 +323,7 @@ Build(
 )
 
 nvidia_gpu_build_with_compute_capability(
-    type_=BuildType.XLA_LINUX_X86_GPU_T4_GITHUB_ACTIONS,
+    type_=BuildType.XLA_LINUX_X86_GPU_L4_GITHUB_ACTIONS,
     configs=("warnings", "rbe_linux_cuda_nvcc"),
     compute_capability=75,
 )
@@ -359,11 +355,12 @@ oneapi_test_tag_filter = (
 Build(
     type_=BuildType.XLA_LINUX_X86_GPU_ONEAPI_GITHUB_ACTIONS,
     repo="openxla/xla",
-    configs=("sycl", "sycl_hermetic"),
+    configs=("sycl", "sycl_hermetic", "icpx_clang"),
     target_patterns=_XLA_ONEAPI_TARGET_PATTERNS,
     build_tag_filters=oneapi_build_tag_filter,
     test_tag_filters=oneapi_test_tag_filter,
     options={**_DEFAULT_BAZEL_OPTIONS, "//xla/tsl:ci_build": True},
+    subcommand="build",
 )
 
 Build(
@@ -414,7 +411,6 @@ Build(
     ),
     options={
         "run_under": "//build_tools/ci:parallel_gpu_execute",
-        "@cuda_driver//:enable_forward_compatibility": "false",
         "//xla/tsl:ci_build": True,
         **_DEFAULT_BAZEL_OPTIONS,
     },
@@ -447,7 +443,6 @@ Build(
     ),
     options={
         "run_under": "//build_tools/ci:parallel_gpu_execute",
-        "@cuda_driver//:enable_forward_compatibility": "false",
         "//xla/tsl:ci_build": True,
         **_DEFAULT_BAZEL_OPTIONS,
     },
@@ -481,7 +476,6 @@ Build(
     options={
         "run_under": "//build_tools/ci:parallel_gpu_execute",
         # Use User Mode and Kernel Mode Drivers pre-installed on the system.
-        "@cuda_driver//:enable_forward_compatibility": "true",
         "//xla/tsl:ci_build": True,
         **_DEFAULT_BAZEL_OPTIONS,
     },
@@ -584,7 +578,7 @@ Build(
 )
 
 Build(
-    type_=BuildType.JAX_LINUX_X86_GPU_T4_GITHUB_ACTIONS,
+    type_=BuildType.JAX_LINUX_X86_GPU_L4_GITHUB_ACTIONS,
     repo="google/jax",
     configs=("rbe_linux_x86_64_cuda",),
     target_patterns=("//tests:gpu_tests", "//tests:backend_independent_tests"),
@@ -650,7 +644,7 @@ Build(
 )
 
 Build(
-    type_=BuildType.TENSORFLOW_LINUX_X86_GPU_T4_GITHUB_ACTIONS,
+    type_=BuildType.TENSORFLOW_LINUX_X86_GPU_L4_GITHUB_ACTIONS,
     repo="tensorflow/tensorflow",
     configs=(
         "release_gpu_linux",

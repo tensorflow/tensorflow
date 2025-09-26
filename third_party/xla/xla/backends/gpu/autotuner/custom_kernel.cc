@@ -104,9 +104,11 @@ CustomKernelBackend::GetSupportedConfigs(const HloInstruction& instr) {
   int num_kernels = kernels.size();
   configs.reserve(num_kernels);
   for (int i = 0; i < num_kernels; ++i) {
-    auto config = std::make_unique<CustomKernelBackendConfig>();
-    config->set_kernel_index(i);
-    configs.push_back(std::move(config));
+    CustomKernelBackendConfig config;
+    config.set_kernel_index(i);
+    auto any = std::make_unique<google::protobuf::Any>();
+    any->PackFrom(config);
+    configs.push_back(std::move(any));
   }
   return configs;
 }
@@ -118,9 +120,11 @@ CustomKernelBackend::GetDefaultConfig(const HloInstruction& instr) {
         "CustomKernelBackend does not support this instruction.");
   }
 
-  auto config = std::make_unique<CustomKernelBackendConfig>();
-  config->set_kernel_index(0);
-  return config;
+  CustomKernelBackendConfig config;
+  config.set_kernel_index(0);
+  auto any = std::make_unique<google::protobuf::Any>();
+  any->PackFrom(config);
+  return any;
 }
 
 absl::Status CustomKernelBackend::ApplyConfig(HloInstruction& instr,
@@ -130,8 +134,11 @@ absl::Status CustomKernelBackend::ApplyConfig(HloInstruction& instr,
         "CustomKernelBackend does not support this instruction.");
   }
 
-  const CustomKernelBackendConfig custom_kernel_config =
-      static_cast<const CustomKernelBackendConfig&>(config);
+  CustomKernelBackendConfig custom_kernel_config;
+  if (!config.UnpackTo(&custom_kernel_config)) {
+    return absl::InvalidArgumentError(
+        "Failed to unpack CustomKernelBackendConfig from Any.");
+  }
 
   TF_ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
                       instr.backend_config<GpuBackendConfig>());

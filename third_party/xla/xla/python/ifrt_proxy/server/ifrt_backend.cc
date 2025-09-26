@@ -65,6 +65,7 @@
 #include "xla/python/ifrt/serdes_version.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
+#include "xla/python/ifrt/user_context.h"
 #include "xla/python/ifrt/value.h"
 #include "xla/python/ifrt_proxy/common/array_util.h"
 #include "xla/python/ifrt_proxy/common/ifrt_service.pb.h"
@@ -312,7 +313,7 @@ struct IfrtBackend::LoadedExecutableWithInfo {
       ABSL_GUARDED_BY(mu);
   const xla::ifrt::LoadedExecutableRef executable;
 
-  absl::flat_hash_set<int> donatable_indices ABSL_GUARDED_BY(mu);
+  std::optional<absl::flat_hash_set<int>> donatable_indices ABSL_GUARDED_BY(mu);
 };
 
 class IfrtBackend::InOrderRequestsProcessor {
@@ -936,12 +937,12 @@ IfrtBackend::HandleMakeArraysFromHostBufferShardsRequest(
 
   std::move(cleanup).Invoke();
 
-  TF_ASSIGN_OR_RETURN(std::vector<xla::ifrt::ArrayRef> arrays,
-                      client_->MakeArraysFromHostBufferShards(
-                          absl::MakeSpan(specs),
-                          xla::ifrt::Client::HostBufferSemantics::
-                              kImmutableUntilTransferCompletes,
-                          client_->CreateUserContext()));
+  UserContextScope user_context_scope(client_->CreateUserContext());
+  TF_ASSIGN_OR_RETURN(
+      std::vector<xla::ifrt::ArrayRef> arrays,
+      client_->MakeArraysFromHostBufferShards(
+          absl::MakeSpan(specs), xla::ifrt::Client::HostBufferSemantics::
+                                     kImmutableUntilTransferCompletes));
 
   std::vector<uint64_t> handles;
   handles.reserve(make_arrays_request->specs_size());
@@ -987,9 +988,9 @@ IfrtBackend::HandleMakeErrorArraysRequest(
     array_specs.push_back(std::move(array_spec));
   }
 
+  UserContextScope user_context_scope(client_->CreateUserContext());
   TF_ASSIGN_OR_RETURN(std::vector<IfrtArrayRef> arrays,
-                      client_->MakeErrorArrays(error, array_specs,
-                                               client_->CreateUserContext()));
+                      client_->MakeErrorArrays(error, array_specs));
 
   std::unique_ptr<IfrtResponse> response =
       NewIfrtResponse(request->request_metadata().op_id());
@@ -1249,7 +1250,7 @@ absl::StatusOr<BackendInterface::Response> IfrtBackend::HandleCopyArraysRequest(
       TF_ASSIGN_OR_RETURN(ds.emplace_back(),
                           client_->LookupDevice(DeviceId(device_id)));
     }
-    devices.emplace(client_->MakeDeviceList(std::move(ds)));
+    TF_ASSIGN_OR_RETURN(devices, client_->MakeDeviceList(std::move(ds)));
   }
   std::optional<MemoryKind> memory_kind;
   if (copy_arrays_request.has_memory_kind()) {
@@ -1463,6 +1464,9 @@ Future<BackendInterface::Response> IfrtBackend::HandleCompileRequest(
     for (const auto* device : executable->addressable_devices()) {
       compile_resp->add_addressable_device_ids(device->Id().value());
     }
+    for (const auto* device : executable->devices()->devices()) {
+      compile_resp->add_device_ids(device->Id().value());
+    }
     // TODO(b/282757875): Consider making fingerprint calculation asynchronous
     // if it is expected to take long.
     auto fingerprint = executable->Fingerprint();
@@ -1506,15 +1510,22 @@ Future<BackendInterface::Response> IfrtBackend::HandleCompileRequest(
 Future<BackendInterface::Response>
 IfrtBackend::HandleLoadedExecutableMetadataRequest(
     std::unique_ptr<IfrtRequest> request) {
-  // Call `GetParameterShardings` and `GetOutputShardings` on a thread pool
+  // Call `GetParameterShardings` and `GetOutputShardings` in the background
   // since some implementations may block until compilation completes.
-  return AsyncExecute([this, request = std::shared_ptr<IfrtRequest>(std::move(
-                                 request))]() -> absl::StatusOr<Response> {
-    const uint64_t handle = request->loaded_executable_metadata_request()
-                                .loaded_executable_handle();
-    TF_ASSIGN_OR_RETURN(
-        std::shared_ptr<LoadedExecutableWithInfo> executable_info,
-        GetLoadedExecutable(handle));
+  // But retain a shared-ptr reference to the executable immediately, in case
+  // the client asks to destruct the executable before the background thread
+  // finishes.
+  absl::StatusOr<std::shared_ptr<LoadedExecutableWithInfo>> executable_info =
+      GetLoadedExecutable(request->loaded_executable_metadata_request()
+                              .loaded_executable_handle());
+
+  if (!executable_info.ok()) {
+    return Future<BackendInterface::Response>(executable_info.status());
+  }
+
+  return AsyncExecute([executable_info = *std::move(executable_info),
+                       request = std::shared_ptr<IfrtRequest>(
+                           std::move(request))]() -> absl::StatusOr<Response> {
     LoadedExecutable* executable = executable_info->executable.get();
 
     std::unique_ptr<IfrtResponse> ifrt_resp =
@@ -1640,7 +1651,7 @@ IfrtBackend::HandleLoadedExecutableExecuteRequest(
       TF_ASSIGN_OR_RETURN(d.emplace_back(),
                           client_->LookupDevice(DeviceId(device_id)));
     }
-    devices = client_->MakeDeviceList(std::move(d));
+    TF_ASSIGN_OR_RETURN(devices, client_->MakeDeviceList(std::move(d)));
   }
 
   TF_ASSIGN_OR_RETURN(xla::ifrt::LoadedExecutable::ExecuteResult result,
@@ -1673,7 +1684,8 @@ IfrtBackend::HandleLoadedExecutableExecuteRequest(
       // sequence, so this assumption is satisfied.
       for (int i = 0; i < args.size(); ++i) {
         if (execute_options.non_donatable_input_indices.contains(i) ||
-            !executable_info->donatable_indices.contains(i)) {
+            (executable_info->donatable_indices.has_value() &&
+             !executable_info->donatable_indices->contains(i))) {
           CHECK(!args[i]->IsDeleted());
         }
       }
@@ -1686,15 +1698,17 @@ IfrtBackend::HandleLoadedExecutableExecuteRequest(
             ArraySpec{/*dtype=*/output->dtype(), /*shape=*/output->shape(),
                       /*sharding=*/output->shared_ptr_sharding()});
       }
-      executable_info->donatable_indices = [&] {
-        absl::flat_hash_set<int> result;
+      executable_info->donatable_indices =
+          [&]() -> std::optional<absl::flat_hash_set<int>> {
         absl::StatusOr<absl::Span<const int>> donatable_input_indices =
             executable_info->executable->GetDonatableInputIndices();
         if (donatable_input_indices.ok()) {
+          absl::flat_hash_set<int> result;
           result.insert(donatable_input_indices->begin(),
                         donatable_input_indices->end());
+          return result;
         }
-        return result;
+        return std::nullopt;
       }();
     }
   }

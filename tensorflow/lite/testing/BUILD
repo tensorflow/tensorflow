@@ -1,3 +1,5 @@
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
+load("@rules_cc//cc:cc_test.bzl", "cc_test")
 load("//tensorflow:strict.default.bzl", "py_strict_binary", "py_strict_library")
 load(
     "//tensorflow:tensorflow.bzl",
@@ -709,7 +711,7 @@ pybind_extension(
     ],
     common_lib_packages = [
         "litert/python",
-        "third_party/tensorflow/lite/python",
+        "tensorflow/lite/python",
     ],
     enable_stub_generation = True,
     features = ["-use_header_modules"],

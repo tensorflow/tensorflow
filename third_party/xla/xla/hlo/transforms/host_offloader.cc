@@ -38,24 +38,22 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/layout.h"
 #include "xla/literal_util.h"
 #include "xla/service/call_graph.h"
+#include "xla/service/computation_layout.h"
 #include "xla/service/hlo_buffer.h"
 #include "xla/service/hlo_cse.h"
 #include "xla/service/hlo_value.h"
 #include "xla/service/host_offload_utils.h"
 #include "xla/service/memory_annotations.h"
-#include "xla/service/pattern_matcher.h"
 #include "xla/shape.h"
 #include "xla/shape_tree.h"
 #include "xla/shape_util.h"
-#include "xla/side_effect_util.h"
-#include "xla/status_macros.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/status.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -108,6 +106,21 @@ void PrintTrace(InstructionAndShapeIndex instruction_and_shape_index,
 }
 
 }  // namespace
+
+absl::StatusOr<std::vector<int64_t>>
+HostOffloader::GetPallasCustomCallOutputMemorySpaces(
+    HloInstruction* instruction) const {
+  if (instruction->shape().IsArray()) {
+    return std::vector<int64_t>(1, Layout::kDefaultMemorySpace);
+  }
+  if (instruction->shape().IsTuple()) {
+    return std::vector<int64_t>(instruction->shape().tuple_shapes().size(),
+                                Layout::kDefaultMemorySpace);
+  }
+  CHECK(false) << "When getting the output memory spaces of a Pallas custom "
+                  "call, the shape must be an array or a tuple. Found: "
+               << instruction->shape().ToString();
+}
 
 bool HostOffloader::InstructionIsAllowedBetweenMoveToHostAndDus(
     const HloInstruction* instruction) const {
@@ -674,17 +687,24 @@ absl::Status HostOffloader::CreateAllocateBufferForDynamicUpdateSlice(
   // and the DynamicUpdateSlice.
   std::queue<InstructionAndShapeIndex> queue;
   queue.push(InstructionAndShapeIndex(dynamic_update_slice));
+  HloInstruction* previous_instruction = nullptr;
   bool found_broadcast = false;
   while (!queue.empty()) {
     InstructionAndShapeIndex instruction_and_shape = queue.front();
     queue.pop();
     VLOG(2) << absl::StreamFormat("Setting %s to have host memory space",
                                   instruction_and_shape.ToString());
+    const int64_t previous_memory_space =
+        ShapeUtil::GetSubshape(instruction_and_shape.instruction->shape(),
+                               instruction_and_shape.shape_index)
+            .layout()
+            .memory_space();
     SetMemorySpace(ShapeUtil::GetMutableSubshape(
                        instruction_and_shape.instruction->mutable_shape(),
                        instruction_and_shape.shape_index),
                    Layout::kHostMemorySpace);
     HloInstruction* instruction = instruction_and_shape.instruction;
+    const ShapeIndex& shape_index = instruction_and_shape.shape_index;
     if (instruction->opcode() == HloOpcode::kParameter) {
       // If this is a parameter of a while_body, we also need to find the
       // matching parameter in the while_condition and set the memory spaces
@@ -706,18 +726,18 @@ absl::Status HostOffloader::CreateAllocateBufferForDynamicUpdateSlice(
               while_condition_computation->parameter_instruction(0);
           VLOG(2) << absl::StreamFormat("Setting %s to have host memory space",
                                         while_condition_parameter->name());
-          SetMemorySpace(ShapeUtil::GetMutableSubshape(
-                             while_condition_parameter->mutable_shape(),
-                             instruction_and_shape.shape_index),
-                         Layout::kHostMemorySpace);
+          SetMemorySpace(
+              ShapeUtil::GetMutableSubshape(
+                  while_condition_parameter->mutable_shape(), shape_index),
+              Layout::kHostMemorySpace);
           // Walk further down the graph and set the memory spaces of all uses
           // too. This includes verifying that no compute is done on the buffer.
           // Another, better way, to do this, is to walk down the graph starting
           // from the newly created AllocateBuffer and set everything visited as
           // host memory space.
           std::queue<InstructionAndShapeIndex> nested_queue;
-          nested_queue.push(InstructionAndShapeIndex(
-              while_condition_parameter, instruction_and_shape.shape_index));
+          nested_queue.push(
+              InstructionAndShapeIndex(while_condition_parameter, shape_index));
           while (!nested_queue.empty()) {
             InstructionAndShapeIndex nested_instruction_and_shape =
                 nested_queue.front();
@@ -753,8 +773,50 @@ absl::Status HostOffloader::CreateAllocateBufferForDynamicUpdateSlice(
           "DynamicUpdateSlice \"%s\" already writes into an AllocateBuffer "
           "\"%s\"",
           dynamic_update_slice->name(), instruction->name());
+      // At the start of the iteration of this loop, we overwrote the memory
+      // space of this instruction to host memory space. If the AllocateBuffer
+      // was not already in host memory space and still has at least one
+      // non-host memory space user, we need to restore it to its original
+      // memory space and create a new AllocateBuffer on host just for the
+      // instruction that we're walking up the graph from.
+      CHECK_NE(previous_instruction, nullptr)
+          << "We expect to have a previous instruction at this point.";
+      TF_ASSIGN_OR_RETURN(
+          std::vector<InstructionAndShapeIndex> successors,
+          host_offload_utils::GetSuccessors(
+              InstructionAndShapeIndex(instruction, shape_index)));
+      for (const InstructionAndShapeIndex& successor : successors) {
+        if (ShapeUtil::GetSubshape(successor.instruction->shape(),
+                                   successor.shape_index)
+                .layout()
+                .memory_space() != Layout::kHostMemorySpace) {
+          // We have at least one non-host memory space user. We need to restore
+          // the memory space of this AllocateBuffer. Rather than take over this
+          // AllocateBuffer, we will create a new AllocateBuffer on host.
+          SetMemorySpace(ShapeUtil::GetMutableSubshape(
+                             instruction->mutable_shape(), shape_index),
+                         previous_memory_space);
+          std::vector<int64_t> operand_indices =
+              previous_instruction->operand_indices(instruction);
+          if (operand_indices.size() > 1) {
+            return absl::UnimplementedError(
+                "We do not yet support adjusting AllocateBuffer when it "
+                "appears in multiple operand indices.");
+          }
+          HloInstruction* new_allocate_buffer =
+              instruction->parent()->AddInstruction(
+                  HloInstruction::CreateCustomCall(instruction->shape(), {},
+                                                   "AllocateBuffer"));
+          SetMemorySpace(new_allocate_buffer->mutable_shape(),
+                         Layout::kHostMemorySpace);
+          TF_RETURN_IF_ERROR(previous_instruction->ReplaceOperandWith(
+              operand_indices[0], new_allocate_buffer));
+          break;
+        }
+      }
       return absl::OkStatus();
     }
+    previous_instruction = instruction;
     const std::vector<InstructionAndShapeIndex> predecessors =
         host_offload_utils::GetPredecessors(instruction_and_shape);
     for (const InstructionAndShapeIndex& predecessor : predecessors) {
@@ -773,9 +835,8 @@ absl::Status HostOffloader::CreateAllocateBufferForDynamicUpdateSlice(
             "Created new AllocateBuffer instruction \"%s\" to replace "
             "broadcast \"%s\"'s use at index %s in user \"%s\"",
             allocate_buffer->ToString(), predecessor_instruction->name(),
-            instruction_and_shape.shape_index.ToString(),
-            broadcast_user->name());
-        if (instruction_and_shape.shape_index.size() == 1) {
+            shape_index.ToString(), broadcast_user->name());
+        if (shape_index.size() == 1) {
           // Have a shape index, this broadcast must be going into a tuple
           // (because the shape index is meant to be a tuple index, not a use
           // index). Use only the index from which we arrived here, as any other
@@ -783,11 +844,11 @@ absl::Status HostOffloader::CreateAllocateBufferForDynamicUpdateSlice(
           CHECK_EQ(instruction->opcode(), HloOpcode::kTuple)
               << "Expecting a tuple when shape index has ndim>0";
           TF_RETURN_IF_ERROR(broadcast_user->ReplaceOperandWith(
-              instruction_and_shape.shape_index[0], allocate_buffer));
+              shape_index[0], allocate_buffer));
         } else {
           // Any shape index larger than 1 would mean that the broadcast
           // produces a tuple, which is not possible.
-          CHECK_EQ(instruction_and_shape.shape_index.size(), 0)
+          CHECK_EQ(shape_index.size(), 0)
               << "Only other supported shape index ndim is 0";
           // Ideally, we'd like to know via which index we arrived here, but we
           // do not. We'll look up at which indices this broadcast is used.
@@ -854,7 +915,7 @@ absl::StatusOr<bool> HostOffloader::ApplySchedulingFix(
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
-                      HloAliasAnalysis::Run(module));
+                      HloAliasAnalysis::Run(module, alias_info_));
   auto uses_parameter_buffer = [&](HloInstruction* hlo) {
     for (const HloBuffer* buffer : alias_analysis->ComputeBuffersAt(hlo)) {
       for (const HloValue* value : buffer->values()) {
@@ -1210,6 +1271,67 @@ absl::StatusOr<bool> HostOffloader::HandleDynamicUpdateSlices() {
   return changed;
 }
 
+absl::StatusOr<bool> HostOffloader::HandlePallasKernel(
+    HloInstruction* instruction) {
+  TF_ASSIGN_OR_RETURN(std::vector<int64_t> memory_space_colors,
+                      GetPallasCustomCallOutputMemorySpaces(instruction));
+  if (instruction->shape().IsArray()) {
+    CHECK_EQ(memory_space_colors.size(), 1)
+        << "Pallas custom calls with non-tuple output must have exactly "
+           "one output memory space color.";
+    if (memory_space_colors.at(0) != Layout::kHostMemorySpace) {
+      // Does not output to host memory; skip.
+      return false;
+    }
+    TF_ASSIGN_OR_RETURN(bool result,
+                        WalkDownHostMemoryOffloadPaths(
+                            InstructionAndShapeIndex(instruction, {}),
+                            /*insert_copy_before=*/false));
+    return result;
+  }
+  CHECK(instruction->shape().IsTuple())
+      << "Pallas custom calls must have array or tuple output. Found: "
+      << instruction->shape().ToString();
+  CHECK_EQ(memory_space_colors.size(),
+           instruction->shape().tuple_shapes().size())
+      << "Pallas custom calls with tuple outputs must have exactly one output "
+         "memory space color per tuple element.";
+
+  // Check the output memory space colors for each tuple element.
+  bool changed = false;
+  for (int64_t tuple_index = 0; tuple_index < memory_space_colors.size();
+       ++tuple_index) {
+    const int64_t memory_space_color = memory_space_colors.at(tuple_index);
+    if (memory_space_color != Layout::kHostMemorySpace) {
+      // Does not output to host memory; skip.
+      continue;
+    }
+    TF_ASSIGN_OR_RETURN(
+        bool result, WalkDownHostMemoryOffloadPaths(
+                         InstructionAndShapeIndex(instruction, {tuple_index}),
+                         /*insert_copy_before=*/false));
+    if (result) {
+      changed = true;
+    }
+  }
+  return changed;
+}
+
+absl::StatusOr<bool> HostOffloader::HandlePallasKernels(HloModule* module) {
+  bool changed = false;
+  for (HloComputation* computation : module->computations()) {
+    for (HloInstruction* instruction : computation->instructions()) {
+      if (!instruction->IsCustomCall("tpu_custom_call")) {
+        // Is not a pallas kernel; skip.
+        continue;
+      }
+      TF_ASSIGN_OR_RETURN(bool this_changed, HandlePallasKernel(instruction));
+      changed = changed || this_changed;
+    }
+  }
+  return changed;
+}
+
 absl::StatusOr<bool> HostOffloader::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
@@ -1237,6 +1359,9 @@ absl::StatusOr<bool> HostOffloader::Run(
   TF_ASSIGN_OR_RETURN(const bool input_streaming_changed_module,
                       HandleInputStreaming(module->entry_computation()));
   changed = changed || input_streaming_changed_module;
+
+  TF_ASSIGN_OR_RETURN(const bool handled_mosaic, HandlePallasKernels(module));
+  changed = changed || handled_mosaic;
 
   // Since we're modifying the graph as we iterate over it, any time we change
   // it, we need to re-run the loop.

@@ -21,6 +21,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/synchronization/notification.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/data/name_utils.h"
@@ -543,7 +544,7 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
         InvocationResult() = default;
         explicit InvocationResult(int64_t id) : id(id) {}
 
-        Notification notification;
+        absl::Notification notification;
         absl::Status status;
         std::vector<Tensor> return_values;
         bool end_of_input = false;

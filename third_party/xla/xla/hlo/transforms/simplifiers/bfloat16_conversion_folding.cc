@@ -177,6 +177,7 @@ absl::Status BFloat16ConversionFoldingVisitor::DefaultAction(
       hlo->opcode() == HloOpcode::kConstant ||                          //
       hlo->opcode() == HloOpcode::kParameter ||                         //
       hlo->opcode() == HloOpcode::kFusion ||                            //
+      hlo->opcode() == HloOpcode::kBitcast ||                           //
       hlo->opcode() == HloOpcode::kBitcastConvert ||                    //
       hlo->opcode() == HloOpcode::kConvert ||                           //
       hlo->opcode() == HloOpcode::kCall ||                              //
@@ -185,6 +186,7 @@ absl::Status BFloat16ConversionFoldingVisitor::DefaultAction(
       hlo->opcode() == HloOpcode::kConditional ||                       //
       hlo->opcode() == HloOpcode::kAsyncStart ||                        //
       hlo->opcode() == HloOpcode::kAsyncDone ||                         //
+      hlo->opcode() == HloOpcode::kOptimizationBarrier ||               //
       !HloDataflowAnalysis::GetInPlaceInputOutputPairs(hlo).empty() ||  //
       hlo->HasSideEffectNoRecurse()) {
     return absl::OkStatus();

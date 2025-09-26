@@ -47,9 +47,9 @@ TEST(PjRtUtilTest, SetGetAndDeletePjRtClient) {
 }
 
 TEST(PjRtStateResourceManagerTest, SetNullPjRtClient) {
-  EXPECT_THAT(
-      SetPjRtClientInTFGlobalResourceManager(DEVICE_CPU, nullptr),
-      StatusIs(error::INVALID_ARGUMENT, HasSubstr("PJRT client is nullptr")));
+  EXPECT_THAT(SetPjRtClientInTFGlobalResourceManager(DEVICE_CPU, nullptr),
+              absl_testing::StatusIs(error::INVALID_ARGUMENT,
+                                     HasSubstr("PJRT client is nullptr")));
 }
 
 TEST(PjRtGpuClientCreationInfoTest, SetAndGet) {

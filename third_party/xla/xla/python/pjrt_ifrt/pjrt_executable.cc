@@ -54,6 +54,7 @@ limitations under the License.
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
+#include "xla/python/ifrt/user_context.h"
 #include "xla/python/pjrt_ifrt/pjrt_array.h"
 #include "xla/python/pjrt_ifrt/pjrt_client.h"
 #include "xla/python/pjrt_ifrt/pjrt_device.h"
@@ -506,7 +507,8 @@ PjRtLoadedExecutable::PjRtLoadedExecutable(
       host_send_recv_callbacks_(std::move(host_send_recv_callbacks)),
       output_dtypes_(std::move(output_dtypes)),
       output_shapes_(std::move(output_shapes)),
-      output_shardings_(std::move(output_shardings)) {}
+      output_shardings_(std::move(output_shardings)),
+      user_context_(UserContextScope::current()) {}
 
 PjRtLoadedExecutable::~PjRtLoadedExecutable() = default;
 

@@ -25,6 +25,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/synchronization/notification.h"
 #include "xla/tsl/protobuf/coordination_config.pb.h"
 #include "tensorflow/core/common_runtime/process_util.h"
 #include "tensorflow/core/common_runtime/profile_handler.h"
@@ -45,7 +46,6 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_description.pb.h"
 #include "tensorflow/core/graph/graph_partition.h"
 #include "tensorflow/core/graph/tensor_id.h"
-#include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
@@ -293,7 +293,7 @@ class MasterSession::ReffedClientGraph : public core::RefCounted {
   // Partition initialization and registration only needs to happen
   // once. `!client_graph_before_register_ && !init_done_.HasBeenNotified()`
   // indicates the initialization is ongoing.
-  Notification init_done_;
+  absl::Notification init_done_;
 
   // init_result_ remembers the initialization error if any.
   absl::Status init_result_ TF_GUARDED_BY(mu_);
@@ -1607,7 +1607,7 @@ uint64 MasterSession::NewStepId(int64_t graph_key) {
     uint64 step_id = env_->collective_executor_mgr->NextStepId(graph_key);
     int32_t retry_count = 0;
     while (static_cast<int64_t>(step_id) == CollectiveExecutor::kInvalidId) {
-      Notification note;
+      absl::Notification note;
       absl::Status status;
       env_->collective_executor_mgr->RefreshStepIdSequenceAsync(
           graph_key, [&status, &note](const absl::Status& s) {

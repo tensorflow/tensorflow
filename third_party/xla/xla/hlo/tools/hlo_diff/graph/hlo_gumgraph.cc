@@ -66,7 +66,8 @@ HloPrintOptions CreateHloPrintOptions(
           .set_include_layout_in_shapes(false)
           .set_print_subcomputation_mode(
               HloPrintOptions::PrintSubcomputationMode::kOff)
-          .set_print_parameter_number(false);
+          .set_print_parameter_number(false)
+          .set_print_only_essential_constants(false);
   if (fingerprint_options.ignore_shape) {
     hlo_print_options.set_print_operand_shape(false);
     hlo_print_options.set_print_result_shape(false);
@@ -117,8 +118,8 @@ std::pair<HloInstructionNode*, bool> HloGumgraph::AddNode(
     const HloInstruction& instruction, int unique_node_index) {
   auto node = std::make_unique<HloInstructionNode>(HloInstructionNode{
       .instruction = &instruction, .unique_node_index = unique_node_index});
-  auto [new_node_it, inserted] =
-      instruction_to_node_.try_emplace(&instruction, std::move(node));
+  auto [new_node_it, inserted] = instruction_name_to_node_.try_emplace(
+      instruction.name(), std::move(node));
   return {new_node_it->second.get(), inserted};
 }
 
@@ -138,8 +139,9 @@ absl::Status HloGumgraph::ConstructGraph(const HloModule& hlo_module) {
       node->props.fingerprint = GetHloInstructionFingerprint(
           instruction, CreateHloPrintOptions(fingerprint_options_));
       node->props.canonical_fingerprint = GetHloInstructionFingerprint(
-          instruction,
-          HloPrintOptions::Fingerprint().set_print_parameter_number(false));
+          instruction, HloPrintOptions::Fingerprint()
+                           .set_print_parameter_number(false)
+                           .set_print_only_essential_constants(false));
 
       bool inline_called_computations = false;
       switch (instruction->opcode()) {
@@ -217,7 +219,7 @@ HloGumgraph::PrecomputeGenerations() {
   LOG(INFO) << "Precomputing generations";
   std::vector<HloInstructionNode*> zero_indegrees;
   absl::flat_hash_map<const HloInstructionNode*, int> indegrees;
-  for (const auto& [_, node] : instruction_to_node_) {
+  for (const auto& [_, node] : instruction_name_to_node_) {
     if (node->parents.empty()) {
       zero_indegrees.push_back(node.get());
       continue;

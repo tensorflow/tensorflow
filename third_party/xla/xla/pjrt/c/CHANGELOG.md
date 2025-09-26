@@ -1,5 +1,17 @@
 # PJRT C API changelog
 
+## 0.75
+
+* Added `PJRT_TopologyDescription_Deserialize.`
+
+## 0.74
+
+* Added `PJRT_Extension_Type::PJRT_Extension_Type_CrossHostTransfers.`
+
+## 0.73
+
+* Added `PJRT_Client_UpdateGlobalProcessInfo`.
+
 ## 0.72
 
 * Added `peak_memory_in_bytes` to `CompiledMemoryStats`.

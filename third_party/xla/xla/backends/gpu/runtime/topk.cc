@@ -126,6 +126,15 @@ absl::StatusOr<se::KernelLoaderSpec> GetTopKKernelForKAndPlatformAndN(
   return GetTopKKernelForKAndPlatform<T, uint32_t>(k, id);
 }
 
+// GetTopKKernelForKAndPlatformAndN specialization for float type.
+template <>
+absl::StatusOr<se::KernelLoaderSpec> GetTopKKernelForKAndPlatformAndN<float>(
+    size_t k, se::Platform::Id id, size_t n) {
+  // For float data on the H100, using uint32_t indices provides better overall
+  // performance than uint16_t, even for smaller values of n.
+  return GetTopKKernelForKAndPlatform<float, uint32_t>(k, id);
+}
+
 // Implementation for creating a CustomKernel for TopK operation with element
 // type `T`.
 template <typename T>

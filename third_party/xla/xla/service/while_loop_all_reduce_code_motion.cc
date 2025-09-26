@@ -261,7 +261,7 @@ std::optional<MovableAllReduceContext> MatchDynamicUpdateSliceContext(
       VLOG(5) << "DUS update must contain the all-reduce result.";
       return std::nullopt;
     }
-    int size = dus->shape().dimensions_size();
+    int size = dus->shape().dimensions().size();
     context.update_slice_offsets.resize(size, 0);
     for (int i = 0; i < size; ++i) {
       const HloInstruction* index_op =
@@ -388,12 +388,14 @@ MovableAllReduceContext IsAllReduceMovable(
     return MovableAllReduceContext{};
   }
 
-  // Try matching dynamic update slice context.
-  if (auto update_slice_context = MatchDynamicUpdateSliceContext(
-          all_reduce, while_instructions, call_graph);
-      update_slice_context.has_value()) {
-    return std::move(*update_slice_context);
-  }
+  // TODO(b/433921585): Re-enable dynamic update slice context matching after
+  // the bug is fixed.
+  // // Try matching dynamic update slice context.
+  // if (auto update_slice_context = MatchDynamicUpdateSliceContext(
+  //         all_reduce, while_instructions, call_graph);
+  //     update_slice_context.has_value()) {
+  //   return std::move(*update_slice_context);
+  // }
 
   // We only support numerical types for accumulation.
   const absl::InlinedVector<PrimitiveType, 12> kSupportedTypes{
@@ -592,8 +594,6 @@ MovableAllReduceContext IsAllReduceMovable(
           accumulation.accumulation_instruction;
       int64_t tuple_index = accumulation.param_tuple_index;
       std::stack<HloInstruction*> to_visit;
-      // TODO(b/176437845): simplify the logic below by using
-      // TuplePointsToAnalysis.
 
       // Iterate over all users of the while body parameter and find all
       // instructions that use the accumulation buffer, as specified by

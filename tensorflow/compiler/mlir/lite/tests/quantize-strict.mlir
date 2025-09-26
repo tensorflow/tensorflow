@@ -18,6 +18,28 @@ func.func @QuantizeConvDRQ(%arg0: tensor<1x4x4x3xf32>) -> (tensor<1x4x4x1xf32>) 
 
 // -----
 
+// CHECK-LABEL: QuantizeConvDrqWithPad
+func.func @QuantizeConvDrqWithPad(%arg0: tensor<1x4x4x3xf32>) -> (tensor<1x6x6x1xf32>) {
+  %cst = arith.constant dense<0.000000e+00> : tensor<1xf32>
+  %cst_0 = arith.constant dense<[[[[1.76285899, -0.257785767, 0.20429258], [1.16310906, 0.23124367, 0.529797196]], [[0.348971426, -0.319283515, -0.772461354], [0.316666812, 1.88180697, -1.78054631]]]]> : tensor<1x2x2x3xf32>
+  %0 = stablehlo.composite "quant.fake_quant" %arg0 {composite_attributes = {dtype = "i8", narrow_range = false, quantization_dimension = 0 : i32, scale = dense<> : tensor<0xf64>, zero_point = dense<> : tensor<0xi64>}, decomposition = @XlaCallModule_quant.fake_quant.impl_0} : (tensor<1x4x4x3xf32>) -> tensor<1x4x4x3xf32>
+  %paddings = arith.constant dense<[[0, 0], [1, 1], [1, 1], [0, 0]]> : tensor<4x2xi32>
+  %1 = "tfl.pad"(%0, %paddings) : (tensor<1x4x4x3xf32>, tensor<4x2xi32>) -> tensor<1x6x6x3xf32>
+  %2 = "tfl.quantize"(%cst_0) <{qtype = tensor<1x2x2x3x!quant.uniform<i8:f32, 0.014817377552390099>>}> : (tensor<1x2x2x3xf32>) -> tensor<1x2x2x3x!quant.uniform<i8:f32, 0.014817377552390099>>
+  %3 = "tfl.dequantize"(%2) : (tensor<1x2x2x3x!quant.uniform<i8:f32, 0.014817377552390099>>) -> tensor<1x2x2x3xf32>
+  %4 = "tfl.conv_2d"(%1, %3, %cst) <{dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32, fused_activation_function = "NONE", padding = "SAME", stride_h = 1 : i32, stride_w = 1 : i32}> : (tensor<1x6x6x3xf32>, tensor<1x2x2x3xf32>, tensor<1xf32>) -> tensor<1x6x6x1xf32>
+  return %4 : tensor<1x6x6x1xf32>
+
+// CHECK-LITERAL:    %cst = arith.constant dense<[[0, 0], [1, 1], [1, 1], [0, 0]]> : tensor<4x2xi32>
+// CHECK:    %cst_0 = arith.constant dense<0.000000e+00> : tensor<1xf32>
+// CHECK:    %0 = "tfl.pad"(%arg0, %cst) : (tensor<1x4x4x3xf32>, tensor<4x2xi32>) -> tensor<1x6x6x3xf32>
+// CHECK{LITERAL}:    %1 = "tfl.pseudo_qconst"() <{qtype = tensor<1x2x2x3x!quant.uniform<i8:f32, 0.014817377552390099>>, value = dense<[[[[119, -17, 14], [78, 16, 36]], [[24, -22, -52], [21, 127, -120]]]]> : tensor<1x2x2x3xi8>}> : () -> tensor<1x2x2x3x!quant.uniform<i8:f32, 0.014817377552390099>>
+// CHECK:    %2 = "tfl.conv_2d"(%0, %1, %cst_0) <{dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32, fused_activation_function = "NONE", padding = "SAME", stride_h = 1 : i32, stride_w = 1 : i32}> : (tensor<1x6x6x3xf32>, tensor<1x2x2x3x!quant.uniform<i8:f32, 0.014817377552390099>>, tensor<1xf32>) -> tensor<1x6x6x1xf32>
+// CHECK:    return %2 : tensor<1x6x6x1xf32>
+}
+
+// -----
+
 // CHECK-LABEL: QuantizeConvWithBiasDRQ
 func.func @QuantizeConvWithBiasDRQ(%arg0: tensor<1x4x4x3xf32>) -> (tensor<1x4x4x1xf32>) {
   %cst = arith.constant dense<1.14751196> : tensor<1xf32>

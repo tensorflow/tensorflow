@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <functional>
 #include <map>
 #include <memory>
 #include <optional>
@@ -27,6 +28,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
@@ -118,7 +120,8 @@ absl::Status ValidateInputs(const Tensor& indices_or_row_splits,
 absl::Status ComputeRowIdsBeforePadding(const Tensor& indices_or_row_splits,
                                         const int32 total_id_count,
                                         const int32 sample_count,
-                                        int32* row_ids_before_padding) {
+                                        int32* row_ids_before_padding,
+                                        std::vector<int> shape_strides) {
   // The only difference between dense tensor, sparse tensor and ragged tensor
   // is the row ids output.
   if (indices_or_row_splits.NumElements() == 0) {
@@ -138,23 +141,66 @@ absl::Status ComputeRowIdsBeforePadding(const Tensor& indices_or_row_splits,
     // The row ids are just the sample ids which is the first dim of the
     // indices.
     auto indices_matrix = indices_or_row_splits.matrix<int32>();
-    int32 previous_row_id = -1;
-    for (int32 i = 0; i < total_id_count; ++i) {
-      int32 current_row_id = indices_matrix(i, 0);
-      if (current_row_id < previous_row_id) {
+    // TODO(b/432045101): remove this once the bug is fixed.
+    if (indices_matrix.dimension(1) == 2) {
+      int32 previous_row_id = -1;
+      for (int32 i = 0; i < total_id_count; ++i) {
+        int32 current_row_id = indices_matrix(i, 0);
+        if (current_row_id < previous_row_id) {
+          return absl::InvalidArgumentError(
+              "Invalid indices_or_row_splits input, indices of SparseTensor "
+              "need to be sorted in ascending (non-decreasing) order.");
+        }
+        if (current_row_id >= sample_count) {
+          return absl::InvalidArgumentError(absl::StrCat(
+              "Invalid indices_or_row_splits input, indices of SparseTensor "
+              "contained a row_id ",
+              current_row_id, " that was >= the sample count (", sample_count,
+              ")."));
+        }
+        *(row_ids_before_padding + i) = current_row_id;
+        previous_row_id = current_row_id;
+      }
+    } else if (indices_matrix.dimension(1) > 2) {
+      if (indices_matrix.dimension(1) != shape_strides.size()) {
         return absl::InvalidArgumentError(
-            "Invalid indices_or_row_splits input, indices of SparseTensor need "
-            "to be sorted in ascending (non-decreasing) order.");
+            absl::StrCat("Invalid shape_strides input, expected ",
+                         indices_matrix.dimension(1), " rank but got ",
+                         shape_strides.size(), " rank."));
       }
-      if (current_row_id >= sample_count) {
-        return absl::InvalidArgumentError(absl::StrCat(
-            "Invalid indices_or_row_splits input, indices of SparseTensor "
-            "contained a row_id ",
-            current_row_id, " that was >= the sample count (", sample_count,
-            ")."));
+      if (shape_strides.empty()) {
+        return absl::InvalidArgumentError(
+            "Invalid shape_strides input, expected non-empty shape_strides for "
+            "SparseTensor with rank > 2.");
       }
-      *(row_ids_before_padding + i) = current_row_id;
-      previous_row_id = current_row_id;
+      int32 previous_row_id = -1;
+      int32_t rank = indices_matrix.dimension(1) - 1;
+      for (int32_t i = 0; i < total_id_count; ++i) {
+        int32_t current_row_id = 0;
+        for (int32_t j = 0; j < indices_matrix.dimension(1) - 1; ++j) {
+          current_row_id += indices_matrix(i, rank - j - 1) * shape_strides[j];
+        }
+        if (current_row_id < previous_row_id) {
+          return absl::InvalidArgumentError(
+              "Invalid indices_or_row_splits input, indices of SparseTensor "
+              "need to be sorted in ascending (non-decreasing) order.");
+        }
+        if (current_row_id >= sample_count) {
+          return absl::InvalidArgumentError(absl::StrCat(
+              "Invalid indices_or_row_splits input, indices of SparseTensor "
+              "contained a row_id ",
+              current_row_id, " that was >= the sample count (", sample_count,
+              ")."));
+        }
+        *(row_ids_before_padding + i) = current_row_id;
+        previous_row_id = current_row_id;
+      }
+    } else {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Invalid indices_or_row_splits input for SparseTensor, the second "
+          "dimension of the indices of "
+          "SparseTensor should be equal or greater than 2. But got ",
+          indices_matrix.dimension(1), "."));
     }
   } else if (indices_or_row_splits.dims() == 1 &&
              indices_or_row_splits.NumElements() > 0) {

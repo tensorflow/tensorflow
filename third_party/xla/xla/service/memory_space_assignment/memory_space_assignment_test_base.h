@@ -191,7 +191,7 @@ class MemorySpaceAssignmentTestBase : public HloTestBase {
     for (HloComputation* computation : module->MakeNonfusionComputations()) {
       TF_CHECK_OK(computation->Accept(&hlo_cost_analysis));
     }
-    TF_CHECK_OK(HloAliasAnalysis::Run(module).status());
+    TF_CHECK_OK(HloAliasAnalysis::Run(module, &alias_info_).status());
 
     Options memory_space_options = DefaultMemorySpaceOptions();
     if (memory_space_options_override) {
@@ -211,8 +211,8 @@ class MemorySpaceAssignmentTestBase : public HloTestBase {
             CreateHloCostAnalysisCalculator(hlo_cost_analysis_wrapper),
             /*enable_cache=*/false));
 
-    auto status_or_cost_analysis =
-        CostAnalysis::Create(op_cost_manager, cost_analysis_options, *module);
+    auto status_or_cost_analysis = CostAnalysis::Create(
+        op_cost_manager, cost_analysis_options, &alias_info_, *module);
     TF_CHECK_OK(status_or_cost_analysis.status());
     auto cost_analysis = std::move(status_or_cost_analysis.value());
 
@@ -312,7 +312,8 @@ class MemorySpaceAssignmentTestBase : public HloTestBase {
       options.is_allowed_in_alternate_mem_fn = is_allowed_in_alternate_mem;
     }
 
-    TF_ASSIGN_OR_RETURN(auto alias_analysis, HloAliasAnalysis::Run(module));
+    TF_ASSIGN_OR_RETURN(auto alias_analysis,
+                        HloAliasAnalysis::Run(module, &alias_info_));
     TF_ASSIGN_OR_RETURN(std::unique_ptr<HloLiveRange> hlo_live_range,
                         HloLiveRange::Run(module->schedule(), *alias_analysis,
                                           module->entry_computation()));
@@ -421,7 +422,8 @@ class MemorySpaceAssignmentTestBase : public HloTestBase {
     // Returns the offset of the assignment, -1 if it's not in the alternate
     // memory.
     const HloModule* module = instruction->GetModule();
-    auto status_or_alias_analysis = HloAliasAnalysis::Run(module);
+    AliasInfo alias_info;
+    auto status_or_alias_analysis = HloAliasAnalysis::Run(module, &alias_info);
     TF_CHECK_OK(status_or_alias_analysis.status());
     auto alias_analysis = std::move(status_or_alias_analysis.value());
     const HloBuffer& buffer =

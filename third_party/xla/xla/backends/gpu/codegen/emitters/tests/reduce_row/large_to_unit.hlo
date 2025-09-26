@@ -1,6 +1,6 @@
 // Regression test for a bug where not all threads in the warp produced a valid
 // value for the final warp shuffle.
-// RUN: test_correctness %s
+// RUN: gpu_test_correctness %s
 
 and {
   p0 = pred[] parameter(0)

@@ -599,6 +599,7 @@ cc_library(
         ":reader_base_proto_cc",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/synchronization",
     ],
 )
 
@@ -1419,6 +1420,7 @@ tf_cc_tests(
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
         "@com_google_googletest//:gtest",
         "@eigen_archive//:eigen3",
         "@local_xla//xla/tsl/profiler/utils:xplane_utils",
@@ -1779,6 +1781,7 @@ tf_proto_library(
     name = "types_proto",
     srcs = ["types.proto"],
     make_default_target_header_only = True,
+    visibility = ["//visibility:public"],
 )
 
 tf_jspb_proto_library(

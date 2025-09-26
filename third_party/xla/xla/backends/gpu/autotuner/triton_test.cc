@@ -15,12 +15,14 @@ limitations under the License.
 
 #include "xla/backends/gpu/autotuner/triton.h"
 
+#include <algorithm>
 #include <memory>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "xla/autotuning.pb.h"
 #include "xla/backends/autotuner/codegen_backend.h"
@@ -32,7 +34,6 @@ limitations under the License.
 #include "xla/service/gpu/nvptx_compiler.h"
 #include "xla/service/platform_util.h"
 #include "xla/stream_executor/device_description.pb.h"
-#include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
 #include "xla/xla.pb.h"
@@ -41,9 +42,9 @@ namespace xla {
 namespace gpu {
 namespace {
 
+using absl_testing::IsOk;
+using absl_testing::StatusIs;
 using ::tsl::proto_testing::EqualsProto;
-using ::tsl::testing::IsOk;
-using ::tsl::testing::StatusIs;
 using TritonBackendConfig = AutotuneResult::TritonGemmKey;
 
 const char kHlo[] = R"(
@@ -73,7 +74,11 @@ class TritonBackendTest : public HloHardwareIndependentTestBase {
                      .value()
                      ->ExecutorForDevice(0)
                      .value(),
-                 &debug_options_, &compiler_) {}
+                 &debug_options_, &compiler_) {
+    // TODO(b/315957220): Remove the experimental flags once TMA is enabled by
+    // default.
+    debug_options_.set_xla_gpu_experimental_enable_triton_tma(true);
+  }
 
   DebugOptions debug_options_;
   NVPTXCompiler compiler_;
@@ -87,8 +92,42 @@ TEST_F(TritonBackendTest, GetSupportedConfigs) {
   absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>> configs =
       backend_.GetSupportedConfigs(
           *(module->entry_computation()->root_instruction()));
-  EXPECT_THAT(configs, IsOk());
+  EXPECT_THAT(configs, absl_testing::IsOk());
   EXPECT_GT(configs.value().size(), 0);
+
+  if (backend_.target_config()
+          .device_description.cuda_compute_capability()
+          .IsAtLeastHopper()) {
+    auto count_tma_allowed =
+        [](const std::vector<std::unique_ptr<BackendConfig>>& configs) {
+          return std::count_if(configs.begin(), configs.end(),
+                               [](auto& config) {
+                                 TritonBackendConfig actual_config;
+                                 if (!config->UnpackTo(&actual_config)) {
+                                   return false;
+                                 }
+                                 return actual_config.is_tma_allowed();
+                               });
+        };
+    // The current TMA autotuning duplicates the given configurations with
+    // is_tma_allowed set to true.
+    EXPECT_EQ(count_tma_allowed(configs.value()), configs.value().size() / 2);
+  }
+}
+
+TEST_F(TritonBackendTest, GetSupportedConfigsRestrictedDefaultSearch) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(kHlo));
+  absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>> default_configs =
+      backend_.GetSupportedConfigs(
+          *(module->entry_computation()->root_instruction()));
+  debug_options_.set_xla_gpu_exhaustive_tiling_search(true);
+  absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>>
+      exhaustive_configs = backend_.GetSupportedConfigs(
+          *(module->entry_computation()->root_instruction()));
+  EXPECT_THAT(default_configs, IsOk());
+  EXPECT_THAT(exhaustive_configs, IsOk());
+  EXPECT_GE(exhaustive_configs.value().size(), default_configs.value().size());
 }
 
 TEST_F(TritonBackendTest, GetSupportedConfigsForUnsupportedInstruction) {
@@ -100,7 +139,7 @@ TEST_F(TritonBackendTest, GetSupportedConfigsForUnsupportedInstruction) {
                                           ->root_instruction();
   absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>> configs =
       backend_.GetSupportedConfigs(*unsupported_instr);
-  EXPECT_THAT(configs, IsOk());
+  EXPECT_THAT(configs, absl_testing::IsOk());
   EXPECT_THAT(configs.value(), testing::IsEmpty());
 }
 
@@ -108,15 +147,15 @@ TEST_F(TritonBackendTest, GetDefaultConfig) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(kHlo));
   TritonBackendConfig expected_config =
-      TritonGemmConfig(64, 64, 64, 1, 1, 2, 1).ToProto();
+      TritonGemmConfig(64, 64, 64, 1, 1, 2, 1, false).ToProto();
 
   absl::StatusOr<std::unique_ptr<BackendConfig>> config =
       backend_.GetDefaultConfig(
           *(module->entry_computation()->root_instruction()));
 
-  EXPECT_THAT(config, IsOk());
-  const TritonBackendConfig& actual_config =
-      static_cast<const TritonBackendConfig&>(*config.value());
+  EXPECT_THAT(config, absl_testing::IsOk());
+  TritonBackendConfig actual_config;
+  ASSERT_TRUE(config.value()->UnpackTo(&actual_config));
   EXPECT_THAT(actual_config, EqualsProto(expected_config));
 }
 
@@ -141,7 +180,7 @@ TEST_F(TritonBackendTest, Compile) {
           *(module->entry_computation()->root_instruction())));
   absl::StatusOr<std::unique_ptr<Executable>> executable = backend_.Compile(
       *(module->entry_computation()->root_instruction()), *config);
-  EXPECT_THAT(executable, IsOk());
+  EXPECT_THAT(executable, absl_testing::IsOk());
 }
 
 }  // namespace

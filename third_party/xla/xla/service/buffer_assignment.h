@@ -30,6 +30,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
@@ -51,7 +52,6 @@ limitations under the License.
 #include "xla/service/logical_buffer.h"
 #include "xla/service/memory_space_assignment/memory_space_assignment.h"
 #include "xla/shape_util.h"
-#include "tsl/platform/logging.h"
 
 namespace xla {
 
@@ -67,7 +67,7 @@ absl::Status GatherComputationsByAllocationType(
     std::vector<const HloComputation*>* global_computations);
 
 // This class abstracts an allocation of contiguous memory which can hold the
-// values described by LogicalBuffers. Each LogicalBuffer occupies a sub-range
+// values described by LogicalBuffers. Each LogicalBuffer occupies a subrange
 // of the allocation, represented by a Slice. A single BufferAllocation may hold
 // LogicalBuffers with disjoint liveness, which may have overlapping Slices. A
 // single BufferAllocation may also hold LogicalBuffers with overlapping
@@ -83,7 +83,15 @@ class BufferAllocation {
   using Index = int64_t;
 
   BufferAllocation(Index index, int64_t size, LogicalBuffer::Color color)
-      : index_(index), size_(size), color_(color) {}
+      : index_(index),
+        size_(size),
+        color_(color),
+        is_thread_local_(false),
+        is_tuple_(false),
+        is_entry_computation_parameter_(false),
+        is_parameter_aliased_with_output_(false),
+        maybe_live_out_(false),
+        is_constant_(false) {}
 
   // Returns the index of this allocation.
   Index index() const { return index_; }
@@ -196,8 +204,12 @@ class BufferAllocation {
     }
     bool operator!=(const Slice& other) const { return !(*this == other); }
     bool operator<(const Slice& other) const {
-      if (index() != other.index()) return index() < other.index();
-      if (offset_ != other.offset_) return offset_ < other.offset_;
+      if (index() != other.index()) {
+        return index() < other.index();
+      }
+      if (offset_ != other.offset_) {
+        return offset_ < other.offset_;
+      }
       return size_ < other.size_;
     }
 
@@ -325,7 +337,8 @@ class BufferAllocation {
   friend class BufferAssignment;
 
   // Adds a LogicalBuffer to the set assigned to this buffer.
-  void AddAssignment(const HloValue& buffer, int64_t offset, int64_t size);
+  absl::Status AddAssignment(const HloValue& buffer, int64_t offset,
+                             int64_t size);
 
   void set_index(Index index) { index_ = index; }
   void set_size(int64_t size) { size_ = size; }
@@ -336,39 +349,39 @@ class BufferAllocation {
   // Size of the allocation in bytes.
   int64_t size_;
 
-  // Whether this buffer needs to be thread-local.
-  bool is_thread_local_ = false;
-
-  // Whether this buffer holds a tuple.
-  bool is_tuple_ = false;
-
   // Color of the allocation.
   LogicalBuffer::Color color_;
-
-  // Whether this allocation holds an entry computation parameter. Entry
-  // computation parameters are special because they have lifetimes which may
-  // outlast the computation.
-  bool is_entry_computation_parameter_ = false;
-
-  // Whether this entry computation parameter is aliased with output.
-  bool is_parameter_aliased_with_output_ = false;
 
   // If this allocation holds an entry computation parameter, this field
   // indicates the index (starting from 0) of the parameter.
   int64_t parameter_number_ = 0;
 
-  // If this buffer is for an entry computation parameter, which subshape of the
-  // parameter is it for?
-  ShapeIndex param_shape_index_;
+  // Whether this buffer needs to be thread-local.
+  bool is_thread_local_ : 1;
+
+  // Whether this buffer holds a tuple.
+  bool is_tuple_ : 1;
+
+  // Whether this allocation holds an entry computation parameter. Entry
+  // computation parameters are special because they have lifetimes which may
+  // outlast the computation.
+  bool is_entry_computation_parameter_ : 1;
+
+  // Whether this entry computation parameter is aliased with output.
+  bool is_parameter_aliased_with_output_ : 1;
 
   // Whether the allocation contains a LogicalBuffer which may be live-out of
   // the entry computation. Note that this flag is conservatively computed by
   // TuplePointsToAnalysis.  That is, an allocation marked `maybe_live_out_`
   // might not actually escape.
-  bool maybe_live_out_ = false;
+  bool maybe_live_out_ : 1;
 
   // See comment on the is_constant() accessor.
-  bool is_constant_ = false;
+  bool is_constant_ : 1;
+
+  // If this buffer is for an entry computation parameter, which subshape of the
+  // parameter is it for?
+  ShapeIndex param_shape_index_;
 
   // Mapping from the set of buffers assigned to this allocation to their
   // logical offsets and sizes.
@@ -501,10 +514,18 @@ class BufferAssignment {
 
   HloAliasAnalysis& alias_analysis() const { return *alias_analysis_; }
 
-  const HloOrdering& hlo_ordering() const { return *hlo_ordering_; }
+  const HloOrdering& hlo_ordering() const {
+    DCHECK(hlo_ordering_) << "BufferAssignment was finalized and does not have "
+                             "an HloOrdering anymore.";
+    return *hlo_ordering_;
+  }
 
   // Returns the HloLiveRange object used to construct this assignment.
-  const HloLiveRange& hlo_live_range() const { return *hlo_live_range_; }
+  const HloLiveRange& hlo_live_range() const {
+    DCHECK(hlo_ordering_) << "BufferAssignment was finalized and does not have "
+                             "an HloLiveRange anymore.";
+    return *hlo_live_range_;
+  }
 
   // Is in use by many compilers to dump the buffer-assignment info.
   std::string ToString() const;
@@ -549,6 +570,13 @@ class BufferAssignment {
   };
   const Stats& GetStats() const { return stats_; }
 
+  // Once HLO graph has all buffers assigned, finalizes the BufferAssignment by
+  // freeing the internal data structures that are no longer needed at run time.
+  //
+  // WARNING: Accessing HloOrdering or HloLiveRange after calling this method
+  // will result in a crash.
+  void Finalize();
+
  private:
   // Only BufferAssigner can build or modify BufferAssignments.
   friend class BufferAssigner;
@@ -580,14 +608,17 @@ class BufferAssignment {
 
   // Helper that calls NewEmptyAllocation and AddAssignment in one call,
   // creating an allocation containing a single LogicalBuffer.
-  BufferAllocation* NewAllocation(const HloBuffer& buffer, int64_t size);
+  absl::StatusOr<BufferAllocation*> NewAllocation(const HloBuffer& buffer,
+                                                  int64_t size);
 
   // Adds a LogicalBuffer to the set assigned to the given allocation.
-  void AddAssignment(BufferAllocation* allocation, const HloBuffer& buffer,
-                     int64_t offset, int64_t size);
+  absl::Status AddAssignment(BufferAllocation* allocation,
+                             const HloBuffer& buffer, int64_t offset,
+                             int64_t size);
 
-  void AddAssignment(BufferAllocation* allocation, const HloValue& value,
-                     int64_t offset, int64_t size);
+  absl::Status AddAssignment(BufferAllocation* allocation,
+                             const HloValue& value, int64_t offset,
+                             int64_t size);
 
   // Returns the HloModule used to construct this assignment.
   const HloModule& module() const { return *module_; }
@@ -598,7 +629,9 @@ class BufferAssignment {
 
   int64_t HloBufferSize(const HloBuffer& buffer) {
     auto iter = cached_buffer_sizes_.find(buffer.id());
-    if (iter != cached_buffer_sizes_.end()) return iter->second;
+    if (iter != cached_buffer_sizes_.end()) {
+      return iter->second;
+    }
     int64_t result = 0;
     for (const HloValue* value : buffer.values()) {
       result = std::max(result, buffer_size_(*value));
@@ -608,7 +641,7 @@ class BufferAssignment {
   }
 
   // Combines allocations of temporary buffers into one big BufferAllocation.
-  void CombineTempAllocations(
+  absl::Status CombineTempAllocations(
       const absl::flat_hash_set<BufferValue::Color>& private_stack_colors,
       std::optional<BufferValue::Color> temp_buffer_color);
 
@@ -633,7 +666,7 @@ class BufferAssignment {
 
   const HloModule* module_;
 
-  const std::unique_ptr<HloOrdering> hlo_ordering_;
+  std::unique_ptr<HloOrdering> hlo_ordering_;
 
   // Function which returns the buffer size for a given logical buffer (shape).
   BufferValue::SizeFunction buffer_size_;
@@ -783,7 +816,7 @@ class BufferAssigner {
 
   // Uses the results of the heap simulator to create a single allocation, with
   // LogicalBuffers packed to specific offsets.
-  void AssignBuffersFromHeapSimulator(
+  absl::Status AssignBuffersFromHeapSimulator(
       HeapSimulator::Result<HloValue>& result, BufferAssignment* assignment,
       LogicalBuffer::Color color,
       std::optional<BufferAssignment::BufferIsolationOptions>
@@ -791,8 +824,9 @@ class BufferAssigner {
 
   // Tries to assign the given instruction to the given buffer. Returns if the
   // assignment was successful.
-  bool MaybeAssignBuffer(BufferAllocation* allocation, const HloBuffer& buffer,
-                         BufferAssignment* assignment);
+  absl::StatusOr<bool> MaybeAssignBuffer(BufferAllocation* allocation,
+                                         const HloBuffer& buffer,
+                                         BufferAssignment* assignment);
 
   // Split a set of buffers into several sets, each of which contains buffers
   // colored with the same color.

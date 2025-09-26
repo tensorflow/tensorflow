@@ -20,6 +20,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/log/log.h"
+#include "absl/status/status_matchers.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_print_options.h"
@@ -126,7 +127,7 @@ ENTRY entry {
                                          suggested_threshold_bytes);
   EXPECT_THAT(RunCombiner(module.get(), default_threshold_bytes,
                           default_threshold_bytes),
-              IsOkAndHolds(true));
+              absl_testing::IsOkAndHolds(true));
 
   VLOG(1) << module->ToString();
   // Pipelined all gathers were combined up to the predefined max available
@@ -211,7 +212,7 @@ ENTRY entry {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(kHloString));
   EXPECT_THAT(RunCombiner(module.get(), kDefaultReduceScatterCombineThreshold),
-              IsOkAndHolds(true));
+              absl_testing::IsOkAndHolds(true));
 
   VLOG(1) << module->ToString();
   const absl::string_view kExpected = R"(
@@ -301,7 +302,8 @@ ENTRY entry {
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(kHloString));
-  EXPECT_THAT(RunCombiner(module.get(), threshold_bytes), IsOkAndHolds(true));
+  EXPECT_THAT(RunCombiner(module.get(), threshold_bytes),
+              absl_testing::IsOkAndHolds(true));
 
   VLOG(1) << module->ToString();
   // Pipelined all gathers were combined up to the predefined max available
@@ -354,7 +356,7 @@ TEST_F(GpuReduceScatterCombinerTest,
   AnnotateWithSuggestedCombinerThreshold(module.get(),
                                          suggested_threshold_bytes);
   EXPECT_THAT(RunCombiner(module.get(), kDefaultReduceScatterCombineThreshold),
-              IsOkAndHolds(true));
+              absl_testing::IsOkAndHolds(true));
   Matcher<const HloInstruction*> combined_reduce_scatter =
       op::ReduceScatter(op::Parameter(0), op::Parameter(1));
   EXPECT_THAT(module->entry_computation()->root_instruction(),
@@ -391,7 +393,7 @@ TEST_F(GpuReduceScatterCombinerTest,
   AnnotateWithSuggestedCombinerThreshold(module.get(),
                                          suggested_threshold_bytes);
   EXPECT_THAT(RunCombiner(module.get(), kDefaultReduceScatterCombineThreshold),
-              IsOkAndHolds(false));
+              absl_testing::IsOkAndHolds(false));
 }
 
 }  // namespace

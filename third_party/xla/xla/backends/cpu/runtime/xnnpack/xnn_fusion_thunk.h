@@ -33,14 +33,12 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/backends/cpu/runtime/thunk.h"
+#include "xla/backends/cpu/runtime/xnnpack/xnn_interop.h"
 #include "xla/runtime/object_pool.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/shape.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
-
-// Forward declare XNNPACK types.
-typedef struct xnn_subgraph* xnn_subgraph_t;  // NOLINT
 
 namespace xla::cpu {
 
@@ -59,8 +57,9 @@ class XnnFusionThunk : public Thunk {
   ~XnnFusionThunk() override;
 
   struct Options {
+    // Pass XnnThreadpool constructed from the intra-op threadpool to the
+    // XNNPACK runtime to allow XNNPACK to parallelize the execution.
     bool use_threadpool = true;
-    bool use_slinky = false;
   };
 
   struct Argument {
@@ -74,7 +73,7 @@ class XnnFusionThunk : public Thunk {
   };
 
   // Builder function constructs XNNPACK subgraph for the fusion operation.
-  using Builder = absl::AnyInvocable<absl::StatusOr<xnn_subgraph_t>(
+  using Builder = absl::AnyInvocable<absl::StatusOr<XnnSubgraph>(
       absl::Span<const Argument> arguments, absl::Span<const Result> results)>;
 
   // Builder function that constructs XNNPACK subgraph for the fusion operation
@@ -84,7 +83,7 @@ class XnnFusionThunk : public Thunk {
   // Capturing arguments by value allows XNNPACK to do packing at graph compile
   // time, and avoid re-packing costs at run time (at inference weights stay
   // constant, i.e. convolution filters and one of the dot arguments).
-  using CapturingBuilder = absl::AnyInvocable<absl::StatusOr<xnn_subgraph_t>(
+  using CapturingBuilder = absl::AnyInvocable<absl::StatusOr<XnnSubgraph>(
       absl::Span<const Argument> arguments, absl::Span<const Result> results,
       absl::Span<const se::DeviceMemoryBase> arguments_buffers)>;
 
@@ -98,6 +97,8 @@ class XnnFusionThunk : public Thunk {
       absl::Span<const int64_t> captured_arguments_ids);
 
   tsl::AsyncValueRef<ExecuteEvent> Execute(const ExecuteParams& params) final;
+
+  bool ExecuteMayBlock() const final { return true; }
 
   BufferUses buffer_uses() const final;
 
@@ -131,18 +132,18 @@ class XnnFusionThunk : public Thunk {
   }
 
  private:
-  // XNNPACK runtime instantiated for the fusion operation.
-  struct XnnRuntime;
+  // XNNPACK subgraph + runtime instantiated and ready for execution.
+  struct XnnExecutable;
 
-  // Creates XnnRuntime for the fusion operation using one of the builders.
-  absl::StatusOr<XnnRuntime> CreateXnnRuntime(
-      const Eigen::ThreadPoolDevice* device,
+  // Creates XnnExecutable for the fusion operation using one of the builders.
+  absl::StatusOr<XnnExecutable> CreateXnnExecutable(
+      const XnnThreadpool& threadpool,
       absl::Span<const se::DeviceMemoryBase> arguments_buffers);
 
-  // Updates XnnRuntime to the XNN subgraph constructed with the given
+  // Updates XnnExecutable to the XNN subgraph constructed with the given
   // arguments buffers.
-  absl::Status UpdateXnnRuntime(
-      XnnRuntime& runtime,
+  absl::Status UpdateXnnExecutable(
+      const XnnThreadpool& threadpool, XnnExecutable& executable,
       absl::Span<const se::DeviceMemoryBase> arguments_buffers);
 
   // Returns the list of captured arguments buffers.
@@ -167,12 +168,12 @@ class XnnFusionThunk : public Thunk {
   std::vector<int64_t> captured_arguments_ids_;
 
   // XLA:CPU executable can be called concurrently from multiple threads,
-  // and we need to keep a pool of XNNPACK runtimes to avoid data races.
-  using XnnRuntimePool = ObjectPool<XnnRuntime, const Eigen::ThreadPoolDevice*,
-                                    absl::Span<const se::DeviceMemoryBase>>;
-  XnnRuntimePool xnn_runtime_pool_;
+  // and we need to keep a pool of XNNPACK executables to avoid data races.
+  using XnnExecutablePool = ObjectPool<XnnExecutable, const XnnThreadpool&,
+                                       absl::Span<const se::DeviceMemoryBase>>;
+  XnnExecutablePool xnn_executable_pool_;
 
-  // The number of XNNPACK runtimes created for capturing graphs.
+  // The number of XNNPACK executables created for capturing graphs.
   std::atomic<int64_t> num_capturing_created_{0};
 };
 

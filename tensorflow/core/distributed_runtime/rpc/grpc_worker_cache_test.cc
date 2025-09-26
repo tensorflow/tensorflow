@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/distributed_runtime/rpc/grpc_worker_cache.h"
 
+#include "absl/synchronization/notification.h"
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_channel.h"
 #include "tensorflow/core/distributed_runtime/test_utils.h"
@@ -78,7 +79,7 @@ TEST(GrpcWorkerCacheTest, DestructWorkerCacheInThreadPool) {
   WorkerCacheInterface* worker_cache =
       NewGrpcWorkerCache(channel_cache, grpc_worker_env.get());
   thread::ThreadPool* tp = grpc_worker_env->GetThreadPool();
-  Notification n;
+  absl::Notification n;
   tp->Schedule([worker_cache, &n] {
     delete worker_cache;
     n.Notify();

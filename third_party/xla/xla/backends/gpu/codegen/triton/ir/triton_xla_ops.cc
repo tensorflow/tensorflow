@@ -23,15 +23,14 @@ limitations under the License.
 #include "llvm/ADT/TypeSwitch.h"  // IWYU pragma: keep
 #include "llvm/Support/LogicalResult.h"
 #include "mlir/Dialect/Utils/StaticValueUtils.h"
-#include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"  // IWYU pragma: keep
 #include "mlir/IR/BuiltinAttributes.h"
+#include "mlir/IR/BuiltinTypeInterfaces.h"
 #include "mlir/IR/DialectImplementation.h"  // IWYU pragma: keep
 #include "mlir/IR/MLIRContext.h"  // IWYU pragma: keep
 #include "mlir/IR/OperationSupport.h"
 #include "mlir/IR/PatternMatch.h"  // IWYU pragma: keep
 #include "mlir/IR/TypeUtilities.h"  // IWYU pragma: keep
-#include "mlir/Interfaces/ViewLikeInterface.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
 #include "xla/backends/gpu/codegen/triton/ir/triton_xla_dialect.cc.inc"
@@ -40,6 +39,62 @@ using mlir::LogicalResult;
 using mlir::Type;
 
 namespace mlir::triton::xla {
+
+// Parser hook for triton_xla.extract/insert ops assembly format.
+ParseResult parseAsMemRefType(OpAsmParser& parser, Type& type,
+                              DenseI64ArrayAttr& shape,
+                              DenseI64ArrayAttr& order) {
+  MemRefType memref_type;
+  if (parser.parseCustomTypeWithFallback(memref_type)) {
+    return failure();
+  };
+
+  int address_space = 1;
+  if (auto attr = dyn_cast_or_null<IntegerAttr>(memref_type.getMemorySpace())) {
+    address_space = attr.getInt();
+  }
+  type = PointerType::get(memref_type.getElementType(), address_space);
+  shape = DenseI64ArrayAttr::get(parser.getContext(), memref_type.getShape());
+
+  LayoutAttr layout = dyn_cast<LayoutAttr>(memref_type.getLayout());
+  if (!layout) {
+    parser.emitError(parser.getCurrentLocation())
+        << "expected layout attribute";
+    return failure();
+  }
+  order = layout.getMinorToMajor();
+
+  return success();
+}
+
+// Printer hook for triton_xla.extract/insert ops assembly format.
+void printAsMemRefType(OpAsmPrinter& printer, Operation* op, PointerType type,
+                       DenseI64ArrayAttr shape, DenseI64ArrayAttr order) {
+  auto layout = LayoutAttr::get(
+      op->getContext(), DenseI64ArrayAttr::get(op->getContext(), order));
+  Attribute memory_space;
+  if (int addr_space = type.getAddressSpace(); addr_space != 1) {
+    memory_space = Builder(op).getI32IntegerAttr(addr_space);
+  }
+  printer << MemRefType::get(shape, type.getPointeeType(), layout,
+                             memory_space);
+}
+
+LogicalResult verifyShapeMatchesSizes(Operation* op,
+                                      ArrayRef<int64_t> shape_sizes,
+                                      ArrayRef<OpFoldResult> operand_sizes) {
+  for (auto [shape_size, operand_size] :
+       llvm::zip_equal(shape_sizes, operand_sizes)) {
+    auto attr =
+        dyn_cast_if_present<IntegerAttr>(dyn_cast<Attribute>(operand_size));
+    if (attr && shape_size != ShapedType::kDynamic &&
+        shape_size != attr.getValue()) {
+      return op->emitError("shape size must match operand size");
+    }
+  }
+  return success();
+}
+
 //===----------------------------------------------------------------------===//
 // ExtractOp
 //===----------------------------------------------------------------------===//
@@ -50,42 +105,45 @@ void ExtractOp::getAsmResultNames(
 }
 
 LogicalResult ExtractOp::verify() {
-  int64_t rank = getResultType().getRank();
+  int64_t rank = getType().getRank();
   if (rank == 0) {
     return emitError("cannot extract a 0-d tensor");
   }
-  if (rank != getLayout().size()) {
+  if (rank != getSrcShape().size()) {
+    return emitError("shape attribute has a wrong size");
+  }
+  if (rank != getSrcLayout().size()) {
     return emitError("layout attribute has a wrong size");
   }
-  return success();
+  if (getType().getElementType() != getSrc().getType().getPointeeType()) {
+    return emitError("src pointee type must match result element type");
+  }
+  return verifyShapeMatchesSizes(getOperation(), getType().getShape(),
+                                 getMixedSizes());
 }
 
-void ExtractOp::build(OpBuilder &b, OperationState &result,
+void ExtractOp::build(OpBuilder& b, OperationState& result,
                       RankedTensorType result_type, Value src,
                       ArrayRef<OpFoldResult> offsets,
-                      ArrayRef<OpFoldResult> strides, ArrayRef<int64_t> layout,
-                      ArrayRef<NamedAttribute> attrs) {
-  SmallVector<int64_t> static_offsets, static_sizes, static_strides;
-  SmallVector<Value> dynamic_offsets, dynamic_sizes, dynamic_strides;
+                      ArrayRef<OpFoldResult> strides, ArrayRef<int64_t> shape,
+                      ArrayRef<int64_t> layout) {
+  SmallVector<int64_t> static_offsets, static_strides;
+  SmallVector<Value> dynamic_offsets, dynamic_strides;
   dispatchIndexOpFoldResults(offsets, dynamic_offsets, static_offsets);
   dispatchIndexOpFoldResults(strides, dynamic_strides, static_strides);
-  result.addAttribute(InsertOp::getLayoutAttrName(OperationName(
-                          InsertOp::getOperationName(), b.getContext())),
-                      b.getDenseI64ArrayAttr(layout));
-  result.addAttributes(attrs);
   build(b, result, result_type, src, dynamic_offsets, {}, dynamic_strides,
         b.getDenseI64ArrayAttr(static_offsets),
         b.getDenseI64ArrayAttr(result_type.getShape()),
-        b.getDenseI64ArrayAttr(static_strides), {});
+        b.getDenseI64ArrayAttr(static_strides), b.getDenseI64ArrayAttr(shape),
+        b.getDenseI64ArrayAttr(layout));
 }
 
-void ExtractOp::build(OpBuilder &b, OperationState &result,
+void ExtractOp::build(OpBuilder& b, OperationState& result,
                       RankedTensorType result_type, Value src,
                       ValueRange offsets, ValueRange strides,
-                      ArrayRef<int64_t> layout,
-                      ArrayRef<NamedAttribute> attrs) {
+                      ArrayRef<int64_t> shape, ArrayRef<int64_t> layout) {
   build(b, result, result_type, src, getAsOpFoldResult(offsets),
-        getAsOpFoldResult(strides), layout, attrs);
+        getAsOpFoldResult(strides), shape, layout);
 }
 
 class ExtractOpOffsetsSizesStridesFolder final
@@ -104,9 +162,11 @@ class ExtractOpOffsetsSizesStridesFolder final
       return failure();
     }
     // Create the new op in canonical form.
-    rewriter.replaceOpWithNewOp<ExtractOp>(
-        op, op.getResultType(), op.getSrc(), mixed_offsets, mixed_strides,
-        op.getLayout(), llvm::to_vector(op->getDiscardableAttrs()));
+    auto disable_attrs = to_vector(op->getDiscardableAttrs());
+    auto new_op = rewriter.replaceOpWithNewOp<ExtractOp>(
+        op, op.getType(), op.getSrc(), mixed_offsets, mixed_strides,
+        op.getSrcShape(), op.getSrcLayout());
+    new_op->setDiscardableAttrs(disable_attrs);
     return success();
   }
 };
@@ -120,47 +180,46 @@ void ExtractOp::getCanonicalizationPatterns(RewritePatternSet &results,
 // InsertOp
 //===----------------------------------------------------------------------===//
 
-void InsertOp::getAsmResultNames(
-    function_ref<void(Value, StringRef)> setNameFn) {
-  setNameFn(getResult(), "inserted_tile");
-}
-
 LogicalResult InsertOp::verify() {
-  int64_t rank = getSrcType().getRank();
+  int64_t rank = getSrc().getType().getRank();
   if (rank == 0) {
     return emitError("cannot insert a 0-d tensor");
   }
-  if (rank != getLayout().size()) {
+  if (rank != getDstShape().size()) {
+    return emitError("shape attribute has a wrong size");
+  }
+  if (rank != getDstLayout().size()) {
     return emitError("layout attribute has a wrong size");
   }
-  return success();
+  if (getSrc().getType().getElementType() !=
+      getDst().getType().getPointeeType()) {
+    return emitError("dst pointee type must match src element type");
+  }
+  return verifyShapeMatchesSizes(getOperation(), getSrc().getType().getShape(),
+                                 getMixedSizes());
 }
 
-void InsertOp::build(OpBuilder &b, OperationState &result, Value src, Value dst,
+void InsertOp::build(OpBuilder& b, OperationState& result, Value src, Value dst,
                      ArrayRef<OpFoldResult> offsets,
-                     ArrayRef<OpFoldResult> strides, ArrayRef<int64_t> layout,
-                     ArrayRef<NamedAttribute> attrs) {
+                     ArrayRef<OpFoldResult> strides, ArrayRef<int64_t> shape,
+                     ArrayRef<int64_t> layout) {
   RankedTensorType src_type = mlir::cast<RankedTensorType>(src.getType());
-  RankedTensorType dst_type = mlir::cast<RankedTensorType>(dst.getType());
-  SmallVector<int64_t> static_offsets, static_sizes, static_strides;
-  SmallVector<Value> dynamic_offsets, dynamic_sizes, dynamic_strides;
+  SmallVector<int64_t> static_offsets, static_strides;
+  SmallVector<Value> dynamic_offsets, dynamic_strides;
   dispatchIndexOpFoldResults(offsets, dynamic_offsets, static_offsets);
   dispatchIndexOpFoldResults(strides, dynamic_strides, static_strides);
-  result.addAttribute(InsertOp::getLayoutAttrName(OperationName(
-                          InsertOp::getOperationName(), b.getContext())),
-                      b.getDenseI64ArrayAttr(layout));
-  result.addAttributes(attrs);
-  build(b, result, dst_type, src, dst, dynamic_offsets, {}, dynamic_strides,
+  build(b, result, {}, src, dst, dynamic_offsets, {}, dynamic_strides,
         b.getDenseI64ArrayAttr(static_offsets),
         b.getDenseI64ArrayAttr(src_type.getShape()),
-        b.getDenseI64ArrayAttr(static_strides), {});
+        b.getDenseI64ArrayAttr(static_strides), b.getDenseI64ArrayAttr(shape),
+        b.getDenseI64ArrayAttr(layout));
 }
 
-void InsertOp::build(OpBuilder &b, OperationState &result, Value src, Value dst,
+void InsertOp::build(OpBuilder& b, OperationState& result, Value src, Value dst,
                      ValueRange offsets, ValueRange strides,
-                     ArrayRef<int64_t> layout, ArrayRef<NamedAttribute> attrs) {
+                     ArrayRef<int64_t> shape, ArrayRef<int64_t> layout) {
   build(b, result, src, dst, getAsOpFoldResult(offsets),
-        getAsOpFoldResult(strides), layout, attrs);
+        getAsOpFoldResult(strides), shape, layout);
 }
 
 class InsertOpOffsetsSizesStridesFolder final
@@ -178,9 +237,11 @@ class InsertOpOffsetsSizesStridesFolder final
       return failure();
     }
     // Create the new op in canonical form.
-    rewriter.replaceOpWithNewOp<InsertOp>(
+    auto disable_attrs = to_vector(op->getDiscardableAttrs());
+    auto new_op = rewriter.replaceOpWithNewOp<InsertOp>(
         op, op.getSrc(), op.getDst(), mixed_offsets, mixed_strides,
-        op.getLayout(), llvm::to_vector(op->getDiscardableAttrs()));
+        op.getDstShape(), op.getDstLayout());
+    new_op->setDiscardableAttrs(disable_attrs);
     return success();
   }
 };

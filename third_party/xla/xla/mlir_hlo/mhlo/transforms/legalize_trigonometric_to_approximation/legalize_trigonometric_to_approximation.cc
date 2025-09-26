@@ -75,9 +75,10 @@ class ApproximateOnExtendedF32Lowering : public OpRewritePattern<OpTy> {
     assert(result.getType().isF32() && "Expect f32 intermediate result.");
 
     // Truncate back if needed.
-    if (op.getType().isF16())
+    if (op.getType().isF16()) {
       result =
           rewriter.create<arith::TruncFOp>(loc, rewriter.getF16Type(), result);
+    }
 
     rewriter.replaceOp(op, {result});
     return success();

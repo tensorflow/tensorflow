@@ -22,32 +22,23 @@ limitations under the License.
 
 #include "llvm/ADT/SmallVector.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/service/gpu/model/constraint_expression.h"
 #include "xla/service/gpu/model/experimental/symbolic_tile.h"
 #include "xla/service/gpu/model/experimental/tiling_space.h"
 
-namespace xla::gpu {
+namespace xla::gpu::experimental {
 
-using SymbolicTiles = llvm::SmallVector<ExperimentalSymbolicTile, 2>;
+using SymbolicTiles = llvm::SmallVector<SymbolicTile, 2>;
 
-struct TiledOperands {
-  std::string ToString() const;
+std::string ToString(const SymbolicTiles& tiles);
 
-  // This allows GUnit to print the tile.
-  template <typename Sink>
-  friend void AbslStringify(Sink& sink, const TiledOperands& tiled_operands) {
-    sink.Append(tiled_operands.ToString());
-  }
-
-  // Symbolic tiles per operand.
-  SymbolicTiles tiles;
-  ConstraintExpression constraint;
-};
-
-std::optional<TiledOperands> PropagateTileToInput(
+std::optional<SymbolicTiles> PropagateTileToInput(
     const TilingSpace& tiling_space, const HloInstruction& hlo,
-    const ExperimentalSymbolicTile& result_tile, int64_t result_index);
+    const SymbolicTile& output_tile, int64_t output_index);
 
-}  // namespace xla::gpu
+std::optional<SymbolicTiles> PropagateTileToOutput(
+    const TilingSpace& tiling_space, const HloInstruction& hlo,
+    const SymbolicTile& input_tile, int64_t input_index);
+
+}  // namespace xla::gpu::experimental
 
 #endif  // XLA_SERVICE_GPU_MODEL_EXPERIMENTAL_SYMBOLIC_TILE_PROPAGATION_H_

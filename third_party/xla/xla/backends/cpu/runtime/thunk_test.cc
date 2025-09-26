@@ -26,8 +26,8 @@ limitations under the License.
 namespace xla::cpu {
 namespace {
 
-TEST(ThunkTest, OkExecuteEventSingleton) {
-  auto event = Thunk::OkExecuteEventSingleton();
+TEST(ThunkTest, OkExecuteEvent) {
+  auto event = Thunk::OkExecuteEvent();
   ASSERT_TRUE(event.IsConcrete());
 }
 

@@ -25,6 +25,14 @@ build_test(
 )
 
 cc_library(
+    name = "profiler_interface",
+    hdrs = ["profiler_interface.h"],
+    deps = [
+        "@com_google_absl//absl/status:statusor",
+    ],
+)
+
+cc_library(
     name = "hlo_runner_main_lib",
     testonly = True,
     srcs = ["hlo_runner_main.cc"],
@@ -35,6 +43,7 @@ cc_library(
     deps = [
         ":create_client",
         ":functional_hlo_runner",
+        ":profiler_interface",
         "//xla:debug_options_flags",
         "//xla:status_macros",
         "//xla:xla_data_proto_cc",
@@ -62,9 +71,9 @@ cc_library(
         "@local_tsl//tsl/platform:statusor",
     ] + if_cuda_or_rocm([
         "//xla/service:gpu_plugin",
-        "//xla/backends/profiler/gpu:cupti_tracer",
         "//xla/backends/profiler/gpu:device_tracer",
     ]) + if_cuda([
+        "//xla/backends/profiler/gpu:cupti_tracer",
         "//xla/stream_executor:cuda_platform",
     ] + if_google(
         [
@@ -136,7 +145,10 @@ cc_library(
     name = "hlo_input_output_format",
     srcs = ["hlo_input_output_format.cc"],
     hdrs = ["hlo_input_output_format.h"],
-    visibility = ["//devtools/ml/mlcompass:__subpackages__"],
+    visibility = [
+        "//devtools/ml/mlcompass:__subpackages__",
+        "//xla:internal",
+    ],
     deps = [
         "//xla/tsl/util:fixed_option_set_flag",
         "@com_google_absl//absl/strings:string_view",
@@ -149,6 +161,7 @@ cc_library(
     hdrs = ["functional_hlo_runner.h"],
     deps = [
         ":hlo_input_output_format",
+        ":profiler_interface",
         "//xla:literal",
         "//xla:literal_util",
         "//xla:shape_layout",

@@ -1,5 +1,6 @@
 # python/framework package
 
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("//tensorflow:pytype.default.bzl", "pytype_strict_library")
 load("//tensorflow:strict.default.bzl", "py_strict_library", "py_strict_test")
 
@@ -418,7 +419,7 @@ py_strict_library(
     srcs = ["dtypes.py"],
     # copybara:uncomment_begin(google-only)
     # visibility = visibility + [
-    # "//ads/adsml/ab:__subpackages__",
+    # "//ads/adsml/ab:atls_configs",
     # "//smartass:__subpackages__",
     # "//third_party/cloud_tpu/convergence_tools:__subpackages__",
     # "//third_party/mlperf:__subpackages__",

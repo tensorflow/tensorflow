@@ -66,9 +66,13 @@ constexpr size_t kSmallDataTransferByteSize = 102400;  // 100 KiB
 
 void CpuTrackedDeviceEventPromise::Set(
     tsl::RCReference<PjRtDeviceEvent> event) {
-  auto tpu_event =
+  auto cpu_event =
       tensorflow::down_cast<CpuTrackedDeviceEvent*>(event.get())->event();
-  av_->ForwardTo(std::move(tpu_event));
+  av_->ForwardTo(std::move(cpu_event));
+}
+
+void CpuTrackedDeviceEventPromise::SetReady() {
+  av_->ForwardTo(tsl::MakeAvailableAsyncValueRef<CpuEvent>());
 }
 
 PjRtFuture<> CpuTrackedDeviceEvent::GetReadyFuture() {
@@ -99,10 +103,6 @@ PjRtFuture<> CpuTrackedDeviceEvent::GetReadyFuture() {
       });
 }
 
-void CpuTrackedDeviceEvent::AndThen(absl::AnyInvocable<void() &&> cb) {
-  event_.AndThen(std::move(cb));
-}
-
 /*static*/ absl::StatusOr<tsl::RCReference<CpuRawBuffer>>
 CpuRawBuffer::Allocate(PjRtMemorySpace* memory_space, size_t size_bytes) {
   TF_ASSIGN_OR_RETURN(auto memory, CpuDeviceMemory::Allocate(size_bytes));
@@ -113,13 +113,11 @@ CpuRawBuffer::Allocate(PjRtMemorySpace* memory_space, size_t size_bytes) {
 CpuRawBuffer::ImportForeignMemory(
     void* data, absl::AnyInvocable<void() &&> on_delete_callback,
     size_t on_device_bytes_count, PjRtMemorySpace* memory_space) {
-  if ((absl::bit_cast<std::uintptr_t>(data) &
-       (cpu_function_runtime::MinAlign() - 1)) != 0) {
+  if ((absl::bit_cast<std::uintptr_t>(data) & (cpu::MinAlign() - 1)) != 0) {
     return InvalidArgument(
         "Can't create a view of buffer with unaligned data, ptr: %#x is not "
         "aligned to %d bytes. ",
-        reinterpret_cast<std::uintptr_t>(data),
-        cpu_function_runtime::MinAlign());
+        reinterpret_cast<std::uintptr_t>(data), cpu::MinAlign());
   }
   return tsl::MakeRef<CpuRawBuffer>(
       memory_space,

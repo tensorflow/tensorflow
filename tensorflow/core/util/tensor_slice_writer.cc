@@ -88,9 +88,9 @@ TensorSliceWriter::TensorSliceWriter(const string& filename,
       create_builder_(std::move(create_builder)),
       slices_(0) {
   Env* env = Env::Default();
-  absl::Status status = env->CanCreateTempFile(filename_, &use_temp_file_);
+  absl::Status status = env->HasAtomicMove(filename_, &use_temp_file_);
   if (!status.ok()) {
-    LOG(ERROR) << "Failed to get CanCreateTempFile attribute: " << filename_;
+    LOG(ERROR) << "Failed to get HasAtomicMove attribute: " << filename_;
     use_temp_file_ = true;
   }
 

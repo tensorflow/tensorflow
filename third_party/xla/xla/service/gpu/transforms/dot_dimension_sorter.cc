@@ -71,8 +71,7 @@ absl::Status SortDotDimensions(HloDotInstruction* dot) {
                                                     sorted_rhs.end()};
   std::unique_ptr<HloInstruction> new_dot = HloInstruction::CreateDot(
       dot->shape(), dot->mutable_operand(0), dot->mutable_operand(1), new_dims,
-      dot->precision_config(), {dot->sparsity().begin(), dot->sparsity().end()},
-      absl::MakeSpan(dot->operands()).subspan(HloDotInstruction::kOperands));
+      dot->precision_config());
   dot->SetupDerivedInstruction(new_dot.get());
 
   VLOG(3) << "Sorted dot() dimensions:\n"

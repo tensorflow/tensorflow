@@ -40,7 +40,7 @@ TEST(CudaKernelTest, GetMaxOccupiedBlocksPerCore) {
   EXPECT_EQ(cuda_kernel->Arity(), 3);
   EXPECT_THAT(cuda_kernel->GetMaxOccupiedBlocksPerCore(
                   ThreadDim(1, 1, 1), /*dynamic_shared_memory_bytes=*/0),
-              IsOkAndHolds(Ge(1)));
+              absl_testing::IsOkAndHolds(Ge(1)));
 }
 
 }  // namespace

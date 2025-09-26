@@ -21,6 +21,7 @@ limitations under the License.
 
 #include <vector>
 
+#include "tensorflow/compiler/jit/device_compilation_cluster_signature.h"
 #include "tensorflow/compiler/jit/device_compilation_profiler.h"
 #include "tensorflow/compiler/jit/variable_info.h"
 #include "tensorflow/compiler/jit/variable_info_util.h"
@@ -30,6 +31,7 @@ limitations under the License.
 #include "xla/client/local_client.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -41,9 +43,7 @@ namespace tensorflow {
 // vanilla TensorFlow op as long as the bridge supports it.
 class XlaCompileOnDemandOp : public OpKernel {
  public:
-  explicit XlaCompileOnDemandOp(OpKernelConstruction* ctx)
-      : OpKernel(ctx),
-        platform_info_(XlaPlatformInfoFromDevice(ctx->device())) {}
+  explicit XlaCompileOnDemandOp(OpKernelConstruction* ctx);
   void Compute(OpKernelContext* ctx) override;
 
  private:
@@ -70,6 +70,10 @@ class XlaCompileOnDemandOp : public OpKernel {
                    xla::LocalExecutable* executable, OpKernelContext* ctx);
 
   const XlaPlatformInfo platform_info_;
+
+  // Canonicalized function to compile derived from the Op attributes.
+  NameAttrList function_;
+  DeviceCompilationCanonicalFunction canonical_function_;
 };
 
 }  // namespace tensorflow

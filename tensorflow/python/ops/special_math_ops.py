@@ -847,7 +847,7 @@ def _einsum_v1_parse_and_resolve_equation(equation, input_shapes):
       tensor, filling in missing output subscripts and broadcast axes.
 
   Raises:
-    ValueError: If equation is in the uncorrect format, incorrect number of
+    ValueError: If equation is in the incorrect format, incorrect number of
       inputs given or broadcast axes "..." or output axes could not be resolved.
   """
   equation = equation.replace(' ', '')

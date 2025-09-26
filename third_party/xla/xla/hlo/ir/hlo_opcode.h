@@ -93,7 +93,7 @@ namespace xla {
   V(kCustomCall, "custom-call", kHloOpcodeIsVariadic)                          \
   V(kDivide, "divide", 2)                                                      \
   V(kDomain, "domain", 1)                                                      \
-  V(kDot, "dot", kHloOpcodeIsVariadic)                                         \
+  V(kDot, "dot", 2)                                                            \
   V(kDynamicReshape, "dynamic-reshape", kHloOpcodeIsVariadic)                  \
   V(kDynamicSlice, "dynamic-slice", kHloOpcodeIsVariadic)                      \
   V(kDynamicUpdateSlice, "dynamic-update-slice", kHloOpcodeIsVariadic)         \
@@ -146,6 +146,7 @@ namespace xla {
   V(kRoundNearestAfz, "round-nearest-afz", 1)                                  \
   V(kRoundNearestEven, "round-nearest-even", 1)                                \
   V(kRsqrt, "rsqrt", 1)                                                        \
+  V(kScaledDot, "scaled-dot", 4)                                               \
   V(kScatter, "scatter", kHloOpcodeIsVariadic)                                 \
   V(kSelect, "select", 3)                                                      \
   V(kSelectAndScatter, "select-and-scatter", 3)                                \
@@ -236,6 +237,30 @@ static_assert(HloOpcodeCount() < 256,
               "HloOpcode is a uint8_t. You need to increase its size before "
               "adding new op codes.");
 
+// The context in which a computation is called by another computation. This is
+// decided by the opcode of the callsite instruction.
+enum class CallContext : std::uint8_t {
+  // In an embedded call context, the body of the function cannot allocate
+  // buffers.
+  kEmbedded,
+
+  // A control flow call context can allocate buffers.
+  kControlFlow,
+
+  // A computation is called from both an embedded and control flow context.
+  kBoth,
+
+  // During call graph construction kNone is used to indicate that the context
+  // has not been determined. This is the top value for the context
+  // lattice. After construction, no call sites or call graph nodes should have
+  // this value.
+  kNone
+};
+
+std::string CallContextToString(CallContext context);
+std::ostream& operator<<(std::ostream& out, const CallContext& context);
+
+CallContext GetInstructionCallContext(HloOpcode opcode);
 }  // namespace xla
 
 #endif  // XLA_HLO_IR_HLO_OPCODE_H_

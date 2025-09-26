@@ -1,0 +1,30 @@
+// RUN: gpu_fusion_to_mlir %s | emitters_opt -xla-test-optimize |\
+// RUN:   FileCheck %s --check-prefixes=CHECK,CHECK-GPU
+// RUN: cpu_fusion_to_mlir %s | emitters_opt -xla-test-optimize |\
+// RUN:   FileCheck %s --check-prefixes=CHECK,CHECK-CPU
+// RUN: gpu_test_correctness %s
+// RUN: cpu_test_correctness %s
+
+fusion {
+  param0 = f32[64] parameter(0)
+  param1 = f32[128] parameter(1)
+  log = f32[64] log(param0)
+  exp = f32[128] exponential(param1)
+  concat = f32[192] concatenate(log, exp), dimensions={0}
+  ROOT neg = f32[192] negate(concat)
+}
+// CHECK-CPU-DAG: #[[IDX_MAP_1:.*]] = #xla.indexing_map<"()[s0] -> (s0)
+// CHECK-CPU-DAG: #[[IDX_MAP_2:.*]] = #xla.indexing_map<"()[s0] -> (s0 + 64)
+// CHECK-GPU: scf.forall (%[[IDX:.*]]) in (128)
+
+// CHECK-GPU: xla.loop ({{.*}})[{{.*}}] -> (%[[RA:.*]]) in
+// CHECK-CPU: xla.loop ()[%[[IDX:.*]]] -> (%[[RA:.*]]) in #[[IDX_MAP_1]]
+// CHECK:   %[[VAL_1_1:.*]] = xla.pure_call @fusion_log({{.*}}, %[[IDX]])
+// CHECK:   %[[VAL_1_2:.*]] = xla.pure_call @fusion__epilogue__neg({{.*}}, %[[RA]], %[[VAL_1_1]])
+// CHECK:   tensor.insert %[[VAL_1_2:.*]] into {{.*}}[%[[RA]]]
+
+// CHECK-GPU: xla.loop ({{.*}})[{{.*}}] -> (%[[RA:.*]]) in
+// CHECK-CPU: xla.loop ()[%[[IDX:.*]]] -> (%[[RA:.*]]) in #[[IDX_MAP_2]]
+// CHECK:   %[[VAL_2_1:.*]] = xla.pure_call @fusion_exp({{.*}}, %[[IDX]])
+// CHECK:   %[[VAL_2_2:.*]] = xla.pure_call @fusion__epilogue__neg({{.*}}, %[[RA]], %[[VAL_2_1]])
+// CHECK:   tensor.insert %[[VAL_2_2:.*]] into {{.*}}[%[[RA]]]

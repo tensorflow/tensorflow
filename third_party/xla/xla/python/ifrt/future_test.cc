@@ -58,8 +58,9 @@ TEST(FutureTest, JoinOneFailingFuture) {
 
   ASSERT_FALSE(future.IsReady());
   promise.Set(absl::InvalidArgumentError("Some error"));
-  EXPECT_THAT(future.Await(), StatusIs(absl::StatusCode::kInvalidArgument,
-                                       HasSubstr("Some error")));
+  EXPECT_THAT(future.Await(),
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
+                                     HasSubstr("Some error")));
 }
 
 TEST(FutureTest, JoinAllOkFutures) {
@@ -99,8 +100,9 @@ TEST(FutureTest, JoinAllFailingFutures) {
   for (Promise<>& promise : promises) {
     promise.Set(absl::InvalidArgumentError("Some error"));
   }
-  EXPECT_THAT(future.Await(), StatusIs(absl::StatusCode::kInvalidArgument,
-                                       HasSubstr("Some error")));
+  EXPECT_THAT(future.Await(),
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
+                                     HasSubstr("Some error")));
 }
 
 class JoinAllOkFuturesExceptForOneTest : public testing::TestWithParam<int> {};
@@ -127,8 +129,9 @@ TEST_P(JoinAllOkFuturesExceptForOneTest, JoinAllOkFuturesExceptForOne) {
       promises[i].Set(absl::OkStatus());
     }
   }
-  EXPECT_THAT(future.Await(), StatusIs(absl::StatusCode::kInvalidArgument,
-                                       HasSubstr("Some error")));
+  EXPECT_THAT(future.Await(),
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
+                                     HasSubstr("Some error")));
 }
 
 INSTANTIATE_TEST_SUITE_P(FutureTest, JoinAllOkFuturesExceptForOneTest,

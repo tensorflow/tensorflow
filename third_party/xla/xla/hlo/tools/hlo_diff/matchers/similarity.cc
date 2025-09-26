@@ -27,24 +27,25 @@ limitations under the License.
 namespace xla {
 namespace hlo_diff {
 namespace {
+
 // Returns true if all the users of the left instruction are matched to the
 // right instruction users by fingerprint.
 bool AllInstructionUsersAreMatched(const HloInstructionNode* left,
                                    const HloInstructionNode* right) {
-  absl::flat_hash_set<const HloInstructionNode*> left_users, right_users;
-  for (const HloInstructionNode* user : left->parents) {
-    left_users.insert(user);
+  if (left->parents.size() != right->parents.size()) {
+    return false;
   }
-  for (const HloInstructionNode* user : right->parents) {
-    right_users.insert(user);
+  absl::flat_hash_set<uint64_t> left_user_fingerprints;
+  for (const HloInstructionNode* user : left->parents) {
+    left_user_fingerprints.insert(user->props.fingerprint);
   }
 
-  for (const HloInstructionNode* user : left_users) {
-    if (!right_users.contains(user)) {
-      return false;
-    }
+  absl::flat_hash_set<uint64_t> right_user_fingerprints;
+  for (const HloInstructionNode* user : right->parents) {
+    right_user_fingerprints.insert(user->props.fingerprint);
   }
-  return true;
+
+  return left_user_fingerprints == right_user_fingerprints;
 }
 
 bool InSameChildPositionOfEachParent(const HloInstructionNode* left,

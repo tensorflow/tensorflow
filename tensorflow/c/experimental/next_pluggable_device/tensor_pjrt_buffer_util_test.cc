@@ -79,8 +79,9 @@ TEST(TensorPjRtBufferUtilTest, GetPjRtCBufferFromTensorNoBuffer) {
 
   EXPECT_THAT(
       GetPjRtCBufferFromTensor(&tensor),
-      StatusIs(error::INTERNAL, HasSubstr(absl::StrCat(
-                                    "Input tensor does not have PjRtBuffer"))));
+      absl_testing::StatusIs(
+          error::INTERNAL,
+          HasSubstr(absl::StrCat("Input tensor does not have PjRtBuffer"))));
 }
 
 TEST(TensorPjRtBufferUtilTest, GetPjRtCBufferFromTensorIncoorectType) {
@@ -106,7 +107,7 @@ TEST(TensorPjRtBufferUtilTest, GetPjRtCBufferFromTensorIncoorectType) {
 
   EXPECT_THAT(
       GetPjRtCBufferFromTensor(&tensor),
-      StatusIs(
+      absl_testing::StatusIs(
           error::INTERNAL,
           HasSubstr(absl::StrCat(
               "The PjRtBuffer in the tensor is not type PjRtCApiBuffer"))));
@@ -158,11 +159,11 @@ TEST(TensorPjRtBufferUtilTest, SetPjRtCBufferToTensorSuccess) {
 }
 
 TEST(TensorPjRtBufferUtilTest, GetPjRtCApiClientNotFound) {
-  EXPECT_THAT(
-      GetPjRtCApiClient(tensorflow::DeviceType(DEVICE_CPU)),
-      StatusIs(error::NOT_FOUND,
-               HasSubstr(absl::StrCat("PjRt client not found for device type ",
-                                      DEVICE_CPU))));
+  EXPECT_THAT(GetPjRtCApiClient(tensorflow::DeviceType(DEVICE_CPU)),
+              absl_testing::StatusIs(
+                  error::NOT_FOUND,
+                  HasSubstr(absl::StrCat(
+                      "PjRt client not found for device type ", DEVICE_CPU))));
 }
 
 TEST(TensorPjRtBufferUtilTest, GetPjRtCApiClientIncorrectType) {
@@ -175,9 +176,10 @@ TEST(TensorPjRtBufferUtilTest, GetPjRtCApiClientIncorrectType) {
                                                       std::move(pjrt_client)));
 
   EXPECT_THAT(GetPjRtCApiClient(tensorflow::DeviceType(DEVICE_CPU)),
-              StatusIs(error::INTERNAL,
-                       HasSubstr(absl::StrCat("PjRtClient for ", DEVICE_CPU,
-                                              " is not type PjRtCApiClient"))));
+              absl_testing::StatusIs(
+                  error::INTERNAL,
+                  HasSubstr(absl::StrCat("PjRtClient for ", DEVICE_CPU,
+                                         " is not type PjRtCApiClient"))));
 }
 
 TEST(TensorPjRtBufferUtilTest, GetPjRtCApiClientSuccess) {

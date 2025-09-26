@@ -167,8 +167,8 @@ class LowerToIfrtRestoreVariablePass
     // Insert at the end of the block so that all dependencies are satisfied.
     mlir::OpBuilder builder =
         mlir::OpBuilder::atBlockTerminator(restore_op->getBlock());
-    builder.create<mlir::TF::IfrtRestoreVariableOp>(
-        restore_op->getLoc(), restore_op.getPrefix(),
+    mlir::TF::IfrtRestoreVariableOp::create(
+        builder, restore_op->getLoc(), restore_op.getPrefix(),
         restore_op.getTensorNames(), restore_op.getShapeAndSlices(),
         var_handle_values, builder.getArrayAttr(dtypes),
         builder.getDenseBoolArrayAttr(truncate_in_cast));

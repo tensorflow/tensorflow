@@ -1,3 +1,4 @@
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("//xla:xla.default.bzl", "xla_cc_test")
 
 package(
@@ -21,21 +22,22 @@ cc_library(
         ":emitter_base",
         "//xla:shape_util",
         "//xla/codegen/emitters:computation_partitioner",
-        "//xla/codegen/emitters:elemental_hlo_to_mlir",
+        "//xla/codegen/emitters:concatenate_kernel_emitter",
+        "//xla/codegen/emitters/ir:xla",
         "//xla/hlo/analysis:indexing_analysis",
         "//xla/hlo/ir:hlo",
+        "//xla/service:buffer_assignment",
+        "//xla/service/gpu:gpu_constants",
         "//xla/service/gpu:gpu_fusible",
         "//xla/service/gpu:hlo_fusion_analysis",
         "//xla/service/gpu:launch_dimensions",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/container:flat_hash_map",
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
-        "@llvm-project//llvm:Support",
+        "@com_google_absl//absl/status:statusor",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:TensorDialect",
     ],
 )
 
@@ -57,6 +59,7 @@ cc_library(
         "//xla/codegen/emitters:kernel_api_builder",
         "//xla/codegen/emitters:kernel_arguments",
         "//xla/codegen/emitters/ir:xla",
+        "//xla/codegen/emitters/transforms:pass_pipelines",
         "//xla/codegen/emitters/transforms:passes",
         "//xla/hlo/analysis:indexing_analysis",
         "//xla/hlo/ir:hlo",
@@ -186,34 +189,6 @@ cc_library(
 )
 
 cc_library(
-    name = "input_slices",
-    srcs = ["input_slices.cc"],
-    hdrs = ["input_slices.h"],
-    deps = [
-        ":emitter_base",
-        "//xla:util",
-        "//xla:xla_data_proto_cc",
-        "//xla/backends/gpu/codegen/emitters/ir:xla_gpu",
-        "//xla/codegen/emitters:computation_partitioner",
-        "//xla/codegen/emitters:elemental_hlo_to_mlir",
-        "//xla/hlo/analysis:indexing_analysis",
-        "//xla/hlo/ir:hlo",
-        "//xla/hlo/utils:hlo_traversal",
-        "//xla/service/gpu:hlo_fusion_analysis",
-        "//xla/service/gpu:launch_dimensions",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/status",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:FuncDialect",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:SCFDialect",
-        "@llvm-project//mlir:TensorDialect",
-    ],
-)
-
-cc_library(
     name = "loop",
     srcs = ["loop.cc"],
     hdrs = ["loop.h"],
@@ -258,6 +233,7 @@ cc_library(
         "//xla/codegen/emitters:computation_partitioner",
         "//xla/codegen/emitters:elemental_hlo_to_mlir",
         "//xla/codegen/emitters:type_util",
+        "//xla/codegen/emitters:utils",
         "//xla/hlo/analysis:indexing_analysis",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/utils:hlo_traversal",

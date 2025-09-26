@@ -90,7 +90,7 @@ LogicalResult LegalizePad::matchAndRewrite(
 
   auto tfl_paddings = BuildTFLPaddingAttr(rewriter, op);
   auto paddings_op =
-      rewriter.create<arith::ConstantOp>(op->getLoc(), tfl_paddings);
+      arith::ConstantOp::create(rewriter, op->getLoc(), tfl_paddings);
 
   rewriter.replaceOpWithNewOp<TFL::PadOp>(op, op.getType(), op.getOperand(),
                                           paddings_op);
@@ -122,7 +122,7 @@ LogicalResult LegalizePadV2::matchAndRewrite(
 
   auto tfl_paddings = BuildTFLPaddingAttr(rewriter, op);
   auto paddings_op =
-      rewriter.create<arith::ConstantOp>(op->getLoc(), tfl_paddings);
+      arith::ConstantOp::create(rewriter, op->getLoc(), tfl_paddings);
 
   rewriter.replaceOpWithNewOp<TFL::PadV2Op>(op, op.getType(), op.getOperand(),
                                             paddings_op, op.getPaddingValue());

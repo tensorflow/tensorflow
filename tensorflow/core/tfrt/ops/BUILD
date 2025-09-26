@@ -1,3 +1,4 @@
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("//tensorflow:tensorflow.default.bzl", "tf_gen_op_libs", "tf_gen_op_wrapper_cc")
 
 package(

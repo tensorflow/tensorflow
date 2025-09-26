@@ -41,6 +41,7 @@ mlir::ElementsAttr convertElementsAttr(const mlir::ElementsAttr& elements,
   // Treat signless integers except i1 as signed.
   bool isOldTypeUnsigned = oldType.isInteger(1) || oldType.isUnsignedInteger();
   bool isNewTypeUnsigned = newType.isInteger(1) || newType.isUnsignedInteger();
+  bool isNewTypeBoolean = newType.isSignlessInteger(1);
 
   if (mlir::isa<mlir::FloatType>(oldType)) {
     if (auto newFloatType = mlir::dyn_cast<mlir::FloatType>(newType)) {
@@ -52,6 +53,14 @@ mlir::ElementsAttr convertElementsAttr(const mlir::ElementsAttr& elements,
             convertedFloat.convert(newFloatType.getFloatSemantics(),
                                    APFloat::rmNearestTiesToEven, &losesInfo);
             return convertedFloat.bitcastToAPInt();
+          });
+    }
+    // Float -> Boolean
+    if (isNewTypeBoolean) {
+      return mlir::cast<DenseIntOrFPElementsAttr>(elements).mapValues(
+          newType, [&](const APFloat& floatVal) -> APInt {
+            APInt resVal(1, floatVal.isZero() ? 0 : 1);
+            return resVal.sextOrTrunc(bitWidth);
           });
     }
     // Float -> Int
@@ -77,6 +86,16 @@ mlir::ElementsAttr convertElementsAttr(const mlir::ElementsAttr& elements,
           return floatVal.bitcastToAPInt();
         });
   }
+
+  // Int -> Boolean
+  if (isNewTypeBoolean) {
+    return mlir::cast<DenseIntOrFPElementsAttr>(elements).mapValues(
+        newType, [&](const APInt& intVal) -> APInt {
+          APInt resVal(1, intVal.isZero() ? 0 : 1);
+          return resVal.sextOrTrunc(bitWidth);
+        });
+  }
+
   // new_type is Integer
   // Int -> Int
   return mlir::cast<DenseIntOrFPElementsAttr>(elements).mapValues(

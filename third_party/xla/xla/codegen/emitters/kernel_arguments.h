@@ -16,12 +16,10 @@ limitations under the License.
 #define XLA_CODEGEN_EMITTERS_KERNEL_ARGUMENTS_H_
 
 #include <cstdint>
-#include <optional>
 #include <utility>
 #include <vector>
 
 #include "absl/status/statusor.h"
-#include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/shape.h"
@@ -32,17 +30,22 @@ namespace xla::emitters {
 // Thread-safe.
 class KernelArgument {
  public:
-  KernelArgument(Shape shape, BufferAllocation::Slice slice, bool written)
-      : shape_(shape), slice_(slice), written_(written) {}
+  KernelArgument(Shape shape, BufferAllocation::Slice slice)
+      : shape_(shape), slice_(slice) {}
   const Shape& shape() const { return shape_; }
   const BufferAllocation::Slice& slice() const { return slice_; }
+
   bool written() const { return written_; }
+  void set_written(bool written) { written_ = written; }
+
   int64_t alignment() const { return alignment_; }
-  std::optional<int> first_with_same_slice() const {
-    return first_with_same_slice_;
-  }
+  void set_alignment(int64_t alignment) { alignment_ = alignment; }
+
   bool aliased() const { return aliased_; }
-  int llvm_arg_index() const { return llvm_arg_index_; }
+  void set_aliased(bool aliased) { aliased_ = aliased; }
+
+  int64_t slice_index() const { return slice_index_; }
+  void set_slice_index(int64_t slice_index) { slice_index_ = slice_index; }
 
  private:
   Shape shape_;
@@ -50,10 +53,14 @@ class KernelArgument {
   bool aliased_ = true;
   int64_t alignment_ = 1;
   bool written_ = true;
-  int llvm_arg_index_;
-  // Holds the index of the first argument which has the same slice as this,
-  // if this is not the first such argument.
-  std::optional<int> first_with_same_slice_;
+
+  // The index of the unique slice in the kernel argument list. When the kernel
+  // is called, runtime will pass the same buffer to arguments with the same
+  // slice index.
+  //
+  // This index is used as a hint to XLA emitters to merge uses of arguments
+  // with the same slice index into a single argument.
+  int64_t slice_index_;
 
   friend class KernelArguments;
 };
@@ -77,25 +84,30 @@ class KernelArguments {
       const BufferAlignment& buffer_alignment,
       const HloInstruction* hlo_instruction);
 
-  static absl::StatusOr<KernelArguments> Create(
-      const BufferAssignment& buffer_assignment,
-      const BufferAlignment& buffer_alignment,
-      const HloInstruction* hlo_instruction,
-      absl::Span<const HloInstruction* const> needed_operands,
-      bool dedup = true);
+  explicit KernelArguments(std::vector<KernelArgument>&& args)
+      : args_(std::move(args)) {}
 
   const std::vector<KernelArgument>& args() const { return args_; }
 
+  std::vector<BufferAllocation::Slice> GetArgumentBufferSlices() const {
+    std::vector<BufferAllocation::Slice> arg_slices;
+    arg_slices.reserve(args_.size());
+    for (const KernelArgument& arg : args_) {
+      arg_slices.push_back(arg.slice());
+    }
+    return arg_slices;
+  }
+
+  std::vector<bool> GetArgumentOutputFlags() const {
+    std::vector<bool> output_flags;
+    output_flags.reserve(args_.size());
+    for (const KernelArgument& arg : args_) {
+      output_flags.push_back(arg.written());
+    }
+    return output_flags;
+  }
+
  private:
-  explicit KernelArguments(std::vector<KernelArgument> args,
-                           const BufferAlignment& buffer_alignment,
-                           bool dedup = true)
-      : args_(ProcessArguments(std::move(args), buffer_alignment, dedup)) {}
-
-  static std::vector<KernelArgument> ProcessArguments(
-      std::vector<KernelArgument> kernel_arguments,
-      const BufferAlignment& buffer_alignment, bool dedup);
-
   std::vector<KernelArgument> args_;
 };
 

@@ -37,6 +37,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/strip.h"
 #include "absl/synchronization/mutex.h"
+#include "absl/synchronization/notification.h"
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/compiler/jit/shape_inference.h"
 #include "tensorflow/compiler/tf2xla/sharding_util.h"
@@ -112,6 +113,7 @@ constexpr int kOtherDimOfTpuInputFastPath = 8;
 
 constexpr char kXLAShardingAttrName[] = "sharding";
 constexpr char kXLAShardingAttrAltName[] = "_XlaSharding";
+constexpr char kXLAShardingAttrAltNameV2[] = "_XlaShardingV2";
 
 tpu::TopologyProto GetTPUTopology() {
   const tpu::TpuTopologyExternal& topology =
@@ -1466,7 +1468,7 @@ absl::Status TPUPartitionedCallOp::InitializeVarOnTPU(
 
   std::vector<Tensor> dummy_args;
   std::vector<Tensor>* dummy_rets = new std::vector<Tensor>;
-  Notification done;
+  absl::Notification done;
   absl::Status status;
   tsl::profiler::TraceMe trace_me("TPUPartitionedCallOp-InitializeVarOnTPU");
   library_runtime_->Run(opts, fhandle, dummy_args, dummy_rets,
@@ -1968,7 +1970,8 @@ absl::Status TPUPartitionedCallOp::ReplaceAndPartitionXLAShardingVariable(
   builder.Attr("N", num_cores_per_replica);
   builder.Attr("T", DT_RESOURCE);
   builder.Attr("partition_dim", split_dim);
-  builder.Attr("_XlaSharding", xla_sharding.SerializeAsString());
+  builder.Attr(kXLAShardingAttrAltName, xla_sharding.SerializeAsString());
+  builder.Attr(kXLAShardingAttrAltNameV2, xla_sharding.SerializeAsString());
   std::vector<NodeDefBuilder::NodeOut> inputs;
   inputs.reserve(num_cores_per_replica);
   for (int i = 0; i < num_cores_per_replica; i++) {

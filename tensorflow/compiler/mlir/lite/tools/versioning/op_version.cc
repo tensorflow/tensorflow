@@ -355,6 +355,9 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       return 1;
 
     case BuiltinOperator_TRANSPOSE:
+      if (op_sig.inputs.at(0).type == kTfLiteInt4) {
+        return 7;
+      }
       if (op_sig.inputs.at(0).dims.size() > 5) {
         return 6;
       }
@@ -843,6 +846,9 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
 
     case BuiltinOperator_PAD:
     case BuiltinOperator_PADV2:
+      if (op_sig.inputs.at(0).type == kTfLiteBool) {
+        return 5;
+      }
       if (op_sig.inputs.at(0).dims.size() > 4) {
         return 4;
       }
@@ -1038,15 +1044,21 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
     case BuiltinOperator_EXP:
     case BuiltinOperator_LOG:
     case BuiltinOperator_REDUCE_PROD:
+    case BuiltinOperator_SQRT:
       if (op_sig.inputs.at(0).type == kTfLiteInt8 ||
           op_sig.inputs.at(0).type == kTfLiteInt16) {
         return 2;
       }
       return 1;
     case BuiltinOperator_DYNAMIC_UPDATE_SLICE:
-      if (op_sig.inputs.at(2).type == kTfLiteInt64) return 2;
+      if (op_sig.inputs.at(0).type == kTfLiteInt16) {
+        return 4;
+      } else if (op_sig.inputs.at(0).type == kTfLiteFloat16) {
+        return 3;
+      } else if (op_sig.inputs.at(2).type == kTfLiteInt64) {
+        return 2;
+      }
       return 1;
-
     // The version one of broadcast to op won't be not supported since the
     // version one was rollbacked and the builtin op code number has been
     // changed because of builtin op code shortage problem.

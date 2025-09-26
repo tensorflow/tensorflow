@@ -112,9 +112,9 @@ absl::Status CompileXla(xla::CompileOnlyClient* client,
     return errors::Unknown("XLA compilation failed: ",
                            aot_or.status().message());
   }
-  compile_result->set_aot(
+  compile_result->aot =
       xla::unique_ptr_down_cast<xla::cpu::CpuAotCompilationResult>(
-          std::move(aot_or.value().back())));
+          std::move(aot_or.value().back()));
   compile_result->entry_point = aot_opts.entry_point_name();
   compile_result->pointer_size =
       xla::CompileOnlyClient::PointerSizeForTriple(aot_opts.triple());
@@ -131,9 +131,15 @@ absl::Status ConfigureKernelNamingConvention(
 
   TF_ASSIGN_OR_RETURN(std::string class_name_as_valid_c_name,
                       xla::cpu::ConvertToCName(cpp_class));
+
+  // Prefix the computation name. We use this to blacklist the generated symbols
+  // from dfsan instrumentation.
+  constexpr absl::string_view kModuleNameGeneratorPrefix =
+      "tfcompile_xla_generated";
   // Rename proto to ensure unique symbol names.
   *computation.mutable_proto()->mutable_name() =
-      absl::StrCat(computation.proto().name(), "_", class_name_as_valid_c_name);
+      absl::StrCat(kModuleNameGeneratorPrefix, "_", computation.proto().name(),
+                   "_", class_name_as_valid_c_name);
 
   return absl::OkStatus();
 }
@@ -317,19 +323,11 @@ absl::Status Main(const MainFlags& flags) {
   // Write output files.
   Env* env = Env::Default();
 
-  if (compile_result.is_aot_thunks()) {
-    const auto obj_files = compile_result.get_aot_thunks().value()->obj_files();
-    DCHECK_EQ(obj_files.size(), 1);
-    const absl::string_view obj_file = obj_files[0];
-    TF_RETURN_IF_ERROR(
-        WriteStringToFile(env, flags.out_function_object, obj_file));
-  } else {
-    const std::vector<char>& obj_file =
-        compile_result.get_aot_legacy().value()->object_file_data();
-    TF_RETURN_IF_ERROR(
-        WriteStringToFile(env, flags.out_function_object,
-                          absl::string_view(obj_file.data(), obj_file.size())));
-  }
+  const auto obj_files = compile_result.aot->obj_files();
+  DCHECK_EQ(obj_files.size(), 1);
+  const absl::string_view obj_file = obj_files[0];
+  TF_RETURN_IF_ERROR(
+      WriteStringToFile(env, flags.out_function_object, obj_file));
 
   CodegenOpts codegen_opts;
   codegen_opts.gen_name_to_index = flags.gen_name_to_index;
@@ -354,18 +352,16 @@ absl::Status Main(const MainFlags& flags) {
                                    &codegen_opts.namespaces));
 
   EmbeddedConstantBuffers embedded_constant_buffers;
-  if (compile_result.is_aot_thunks()) {
-    if (flags.out_constant_buffers_object.empty()) {
-      return absl::InvalidArgumentError(
-          "Must specify --out_constant_buffers_object when using AOT thunks");
-    }
-    TF_ASSIGN_OR_RETURN(
-        embedded_constant_buffers,
-        GenerateConstantBuffersData(codegen_opts, compile_result));
-    TF_RETURN_IF_ERROR(
-        WriteStringToFile(env, flags.out_constant_buffers_object,
-                          embedded_constant_buffers.object_file_data));
+  if (flags.out_constant_buffers_object.empty()) {
+    return absl::InvalidArgumentError(
+        "Must specify --out_constant_buffers_object when using AOT thunks");
   }
+  TF_ASSIGN_OR_RETURN(
+      embedded_constant_buffers,
+      GenerateConstantBuffersData(codegen_opts, compile_result));
+  TF_RETURN_IF_ERROR(
+      WriteStringToFile(env, flags.out_constant_buffers_object,
+                        embedded_constant_buffers.object_file_data));
 
   MetadataResult metadata_result;
   TF_RETURN_IF_ERROR(

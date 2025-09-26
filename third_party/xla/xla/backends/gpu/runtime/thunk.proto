@@ -20,6 +20,7 @@ package xla.gpu;
 import "xla/service/buffer_assignment.proto";
 import "xla/service/gpu/launch_dimensions.proto";
 import "xla/stream_executor/gpu/gpu_blas_lt.proto";
+import "xla/stream_executor/gpu/tma_metadata.proto";
 import "xla/stream_executor/launch_dim.proto";
 import "xla/xla_data.proto";
 
@@ -68,6 +69,7 @@ message KernelThunkProto {
   LaunchDimensionsProto launch_dimensions = 4;
   optional stream_executor.ClusterDimProto cluster_dim = 5;
   int64 shmem_bytes = 6;
+  optional stream_executor.gpu.TmaMetadataProto tma_metadata = 7;
 }
 
 message GemmThunkProto {
@@ -105,6 +107,16 @@ message PartitionIdThunkProto {
   xla.buffer_assignment.BufferAllocationSliceProto dest_buffer = 1;
 }
 
+message CudnnThunkProto {
+  string fingerprint = 1;
+  repeated xla.buffer_assignment.BufferAllocationSliceProto args = 2;
+  repeated bool output_args = 4;
+  optional int64 sdpa_dropout_seed = 3;
+}
+
+message HostExecuteStartThunkProto {}
+message HostExecuteDoneThunkProto {}
+
 message ThunkProto {
   ThunkInfoProto thunk_info = 1;
 
@@ -122,6 +134,9 @@ message ThunkProto {
     ReplicaIdThunkProto replica_id_thunk = 12;
     DeviceToDeviceCopyThunkProto device_to_device_copy_thunk = 13;
     PartitionIdThunkProto partition_id_thunk = 14;
+    CudnnThunkProto cudnn_thunk = 15;
+    HostExecuteStartThunkProto host_execute_start_thunk = 16;
+    HostExecuteDoneThunkProto host_execute_done_thunk = 17;
   }
 }
 

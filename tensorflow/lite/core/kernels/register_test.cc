@@ -15,15 +15,36 @@ limitations under the License.
 
 #include "tensorflow/lite/core/kernels/register.h"
 
-#include <memory>
+#include <string>
 
 #include <gtest/gtest.h>
+#include "tensorflow/compiler/mlir/lite/tools/versioning/runtime_version.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/mutable_op_resolver.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
 namespace tflite::ops::builtin {
 namespace {
+
+// This test will fail if an op version is added to a builtin op, but not
+// registered to runtime version.
+TEST(BuiltinOpResolverTest, OpVersionMissing) {
+  BuiltinOpResolver resolver;
+
+  for (int id = BuiltinOperator_MIN; id <= BuiltinOperator_MAX; ++id) {
+    for (int version = 1;; ++version) {
+      auto op_code = static_cast<tflite::BuiltinOperator>(id);
+      if (resolver.FindOp(op_code, version) == nullptr) break;
+      // Throw error if the version is not registered in runtime version.
+      std::string runtime_version =
+          tflite::FindMinimumRuntimeVersionForOp(op_code, version);
+      EXPECT_NE(runtime_version, "")
+          << "Please add the version " << version << " of "
+          << tflite::EnumNamesBuiltinOperator()[op_code]
+          << " to runtime_version.cc";
+    }
+  }
+}
 
 TEST(BuiltinOpResolverTest, SupportsAdd) {
   BuiltinOpResolver builtin_op_resolver;

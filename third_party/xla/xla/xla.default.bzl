@@ -5,6 +5,7 @@ load(
     "@local_config_rocm//rocm:build_defs.bzl",
     "if_rocm_is_configured",
 )
+load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
 load(
     "//xla/tsl:package_groups.bzl",
     "DEFAULT_LOAD_VISIBILITY",
@@ -29,6 +30,9 @@ def xla_py_proto_library(**_kwargs):
 def xla_py_test_deps():
     return []
 
+def xla_internal_plugin_deps():
+    return []
+
 # TODO(ddunleavy): some of these should be removed from here and added to
 # specific targets.
 # We actually shouldn't need this anymore post vendoring. If we build without
@@ -49,7 +53,6 @@ _XLA_SHARED_OBJECT_SENSITIVE_DEPS = [
     Label("//xla/stream_executor:device_description_proto_cc_impl"),
     Label("//xla/stream_executor:stream_executor_impl"),
     Label("//xla/stream_executor/cuda:cuda_compute_capability_proto_cc_impl"),
-    Label("//xla/stream_executor/gpu:gpu_init_impl"),
     Label("//xla/backends/cpu/runtime:thunk_proto_cc_impl"),
     "@com_google_protobuf//:protobuf",
     "//xla/tsl/framework:allocator_registry_impl",
@@ -66,7 +69,7 @@ _XLA_SHARED_OBJECT_SENSITIVE_DEPS = [
 ])
 
 def xla_cc_binary(deps = [], copts = tsl_copts(), **kwargs):
-    native.cc_binary(deps = deps + _XLA_SHARED_OBJECT_SENSITIVE_DEPS, copts = copts, **kwargs)
+    cc_binary(deps = deps + _XLA_SHARED_OBJECT_SENSITIVE_DEPS, copts = copts, **kwargs)
 
 def xla_cc_test(
         name,

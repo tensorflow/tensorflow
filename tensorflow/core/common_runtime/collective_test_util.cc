@@ -365,7 +365,7 @@ absl::Status RunCollective(CollectiveTestEnv* test_env,
 
   // Run the collective.
   absl::Status status;
-  Notification n;
+  absl::Notification n;
   collective_impl->Run([&status, &n](absl::Status s) {
     status = s;
     n.Notify();

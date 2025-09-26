@@ -59,7 +59,7 @@ std::string GetRuntimeNameFromVarHandle(const ResourceHandle& handle);
 // can look for the actual loaded variable value in
 // `ifrt_loaded_variable_registry`.
 absl::Status AsyncLoadRestoredTensorAsIfrtLoadedVariable(
-    absl::string_view runtime_name,
+    absl::string_view tensor_name,
     std::shared_ptr<xla::ifrt::Client> ifrt_client,
     const tsl::thread::ThreadPool& thread_pool,
     const ifrt_serving::IfrtRestoreTensorRegistry& ifrt_restore_tensor_registry,

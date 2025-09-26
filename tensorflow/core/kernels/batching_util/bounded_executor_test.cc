@@ -16,8 +16,8 @@ limitations under the License.
 #include "tensorflow/core/kernels/batching_util/bounded_executor.h"
 
 #include "absl/functional/bind_front.h"
+#include "absl/synchronization/notification.h"
 #include "absl/time/time.h"
-#include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/platform/status_matchers.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/test.h"
@@ -93,27 +93,25 @@ TEST(BoundedExecutorTest, InvalidEmptyEnv) {
   options.num_threads = 2;
   options.env = nullptr;
   EXPECT_THAT(BoundedExecutor::Create(options),
-              ::tensorflow::testing::StatusIs(
-                  error::INVALID_ARGUMENT, "options.env must not be nullptr"));
+              absl_testing::StatusIs(error::INVALID_ARGUMENT,
+                                     "options.env must not be nullptr"));
 }
 
 TEST(BoundedExecutorTest, InvalidNumThreads) {
   {
     BoundedExecutor::Options options;
     options.num_threads = 0;
-    EXPECT_THAT(
-        BoundedExecutor::Create(options),
-        ::tensorflow::testing::StatusIs(
-            error::INVALID_ARGUMENT, "options.num_threads must be positive"));
+    EXPECT_THAT(BoundedExecutor::Create(options),
+                absl_testing::StatusIs(error::INVALID_ARGUMENT,
+                                       "options.num_threads must be positive"));
   }
 
   {
     BoundedExecutor::Options options;
     options.num_threads = -1;
-    EXPECT_THAT(
-        BoundedExecutor::Create(options),
-        ::tensorflow::testing::StatusIs(
-            error::INVALID_ARGUMENT, "options.num_threads must be positive"));
+    EXPECT_THAT(BoundedExecutor::Create(options),
+                absl_testing::StatusIs(error::INVALID_ARGUMENT,
+                                       "options.num_threads must be positive"));
   }
 }
 
@@ -122,9 +120,9 @@ TEST(BoundedExecutorTest, AddRunsFunctionsEventually) {
   options.num_threads = 2;
   TF_ASSERT_OK_AND_ASSIGN(auto executor, BoundedExecutor::Create(options));
 
-  Notification done0;
+  absl::Notification done0;
   executor->Schedule([&done0] { done0.Notify(); });
-  Notification done1;
+  absl::Notification done1;
   executor->Schedule([&done1] { done1.Notify(); });
   done0.WaitForNotification();
   done1.WaitForNotification();

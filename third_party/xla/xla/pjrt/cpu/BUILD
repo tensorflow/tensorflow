@@ -61,6 +61,7 @@ cc_library(
         "//xla/backends/cpu:alignment",
         "//xla/pjrt:abstract_tracked_device_buffer",
         "//xla/pjrt:async_work_runner",
+        "//xla/pjrt:common_pjrt_client",
         "//xla/pjrt:device_event",
         "//xla/pjrt:pjrt_client",
         "//xla/pjrt:pjrt_future",
@@ -162,6 +163,7 @@ cc_library(
         "//xla/hlo/builder:xla_computation",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/ir:hlo_module_group",
+        "//xla/pjrt:abstract_tracked_device_buffer",
         "//xla/pjrt:async_work_runner",
         "//xla/pjrt:common_pjrt_client",
         "//xla/pjrt:device_event",
@@ -177,6 +179,7 @@ cc_library(
         "//xla/pjrt:pjrt_future",
         "//xla/pjrt:raw_buffer",
         "//xla/pjrt:semaphore",
+        "//xla/pjrt:thread_pool_async_work_runner",
         "//xla/pjrt:transpose",
         "//xla/pjrt:utils",
         "//xla/pjrt/plugin/xla_cpu:cpu_client_options",
@@ -270,6 +273,7 @@ xla_cc_test(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@com_google_googletest//:gtest",
+        "@local_tsl//tsl/platform:path",
     ],
 )
 

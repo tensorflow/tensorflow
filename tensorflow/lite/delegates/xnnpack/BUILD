@@ -1,4 +1,6 @@
 load("@flatbuffers//:build_defs.bzl", "flatbuffer_cc_library")
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
+load("@rules_cc//cc:cc_test.bzl", "cc_test")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 load("//tensorflow/lite:build_def.bzl", "tflite_copts")
 load("//tensorflow/lite:special_rules.bzl", "internal_visibility_allowlist", "tflite_portable_test_suite_combined")
@@ -385,6 +387,7 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     deps = [
         ":file_util",
+        ":windows_util",
         "//tensorflow/lite:minimal_logging",
     ],
 )
@@ -408,6 +411,17 @@ cc_library(
     deps = [
         "//tensorflow/lite:minimal_logging",
     ],
+)
+
+cc_library(
+    name = "windows_util",
+    srcs = ["windows_util.cc"],
+    hdrs = ["windows_util.h"],
+    compatible_with = get_compatible_with_portable(),
+    tags = [
+        "keep_dep",  # Build cleaner will want to remove this because it doesn't check for Windows builds.
+    ],
+    deps = [],
 )
 
 ################################ Tester classes ################################

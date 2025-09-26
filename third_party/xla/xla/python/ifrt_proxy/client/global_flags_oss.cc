@@ -37,6 +37,16 @@ bool GetBoolFromEnv(const char* key) {
   return false;
 }
 
+int GetIntFromEnv(const char* key) {
+  if (const char* valptr = std::getenv(key)) {
+    std::string val(valptr);
+    int result;
+    QCHECK(absl::SimpleAtoi(val, &result)) << " " << key << ": '" << val << "'";
+    return result;
+  }
+  return false;
+}
+
 }  // namespace
 
 static GlobalClientFlags DefaultGlobalClientFlags() {
@@ -44,6 +54,10 @@ static GlobalClientFlags DefaultGlobalClientFlags() {
   result.synchronous_host_buffer_store = false;
   result.array_is_deleted_hack =
       GetBoolFromEnv("IFRT_PROXY_ARRAY_IS_DELETED_HACK");
+  result.grpc_max_ongoing_host_buffer_stores =
+      GetIntFromEnv("IFRT_PROXY_GRPC_MAX_ONGOING_HOST_BUFFER_STORES");
+  result.grpc_max_ongoing_host_buffer_lookups =
+      GetIntFromEnv("IFRT_PROXY_GRPC_MAX_ONGOING_HOST_BUFFER_LOOKUPS");
   return result;
 };
 

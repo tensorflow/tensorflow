@@ -159,8 +159,8 @@ ENTRY main {
   auto cloned_module = module->Clone();
   ReductionLayoutNormalizer normalizer;
   EXPECT_THAT(normalizer.Run(module.get()),
-              StatusIs(tsl::error::FAILED_PRECONDITION,
-                       HasSubstr("Layout assignment")));
+              absl_testing::StatusIs(tsl::error::FAILED_PRECONDITION,
+                                     HasSubstr("Layout assignment")));
   EXPECT_TRUE(RunAndCompare(std::move(cloned_module), ErrorSpec{1e-5, 1e-5}));
 }
 

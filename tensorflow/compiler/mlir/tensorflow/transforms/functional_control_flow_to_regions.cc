@@ -87,12 +87,12 @@ YieldOp CreateCall(Operation* op, func::FuncOp func, Region& caller_region,
     Value arg = std::get<0>(ArgAndType);
     Type expected_type = std::get<1>(ArgAndType);
     if (arg.getType() != expected_type) {
-      arg = builder.create<CastOp>(loc, expected_type, arg,
-                                   /*Truncate=*/builder.getBoolAttr(false));
+      arg = CastOp::create(builder, loc, expected_type, arg,
+                           /*Truncate=*/builder.getBoolAttr(false));
     }
     casted_args.push_back(arg);
   }
-  auto call = builder.create<func::CallOp>(loc, func, casted_args);
+  auto call = func::CallOp::create(builder, loc, func, casted_args);
 
   auto results = call.getResults();
   auto block_args = entry->getArguments();
@@ -101,7 +101,7 @@ YieldOp CreateCall(Operation* op, func::FuncOp func, Region& caller_region,
   if (forward_block_args) {
     yield_args.insert(yield_args.end(), block_args.begin(), block_args.end());
   }
-  return builder.create<YieldOp>(loc, yield_args);
+  return YieldOp::create(builder, loc, yield_args);
 }
 
 // Converts the condition for an IfOp/WhileOp to a boolean value.
@@ -112,7 +112,7 @@ Value ConvertConditionToBoolean(Operation* op, Value cond) {
       return cond;
 
   OpBuilder builder(op);
-  Value to_bool = builder.create<TF::ToBoolOp>(op->getLoc(), cond);
+  Value to_bool = TF::ToBoolOp::create(builder, op->getLoc(), cond);
   CopyDeviceAndUnderscoredAttributes(op, to_bool.getDefiningOp());
   return to_bool;
 }
@@ -121,8 +121,9 @@ Value ConvertConditionToBoolean(Operation* op, Value cond) {
 LogicalResult ConvertIfOp(IfOp if_op) {
   Value cond = ConvertConditionToBoolean(if_op, if_op.getCond());
   OpBuilder builder(if_op);
-  auto if_region = builder.create<TF::IfRegionOp>(
-      if_op.getLoc(), if_op.getResultTypes(), cond, if_op.getIsStateless(),
+  auto if_region = TF::IfRegionOp::create(
+      builder, if_op.getLoc(), if_op.getResultTypes(), cond,
+      if_op.getIsStateless(),
       builder.getStringAttr(if_op.then_function().getName()),
       builder.getStringAttr(if_op.else_function().getName()));
   CopyDeviceAndUnderscoredAttributes(if_op, if_region);
@@ -142,9 +143,10 @@ LogicalResult ConvertIfOp(IfOp if_op) {
 
 LogicalResult ConvertCaseOp(CaseOp case_op) {
   OpBuilder builder(case_op);
-  auto case_region = builder.create<TF::CaseRegionOp>(
-      case_op.getLoc(), case_op.getResultTypes(), case_op.getBranchIndex(),
-      case_op.getIsStateless(), case_op.getBranches().size());
+  auto case_region = TF::CaseRegionOp::create(
+      builder, case_op.getLoc(), case_op.getResultTypes(),
+      case_op.getBranchIndex(), case_op.getIsStateless(),
+      case_op.getBranches().size());
   CopyDeviceAndUnderscoredAttributes(case_op, case_region);
 
   for (const auto& item : llvm::enumerate(case_region.getBranches())) {
@@ -159,10 +161,11 @@ LogicalResult ConvertCaseOp(CaseOp case_op) {
 }
 
 LogicalResult ConvertWhileOp(WhileOp while_op, bool allow_passthrough_args) {
-  auto while_region = OpBuilder(while_op).create<TF::WhileRegionOp>(
-      while_op.getLoc(), while_op.getResultTypes(), while_op.getInput(),
-      while_op.getParallelIterations(), while_op.getIsStateless(),
-      while_op.getShapeInvariant());
+  OpBuilder builder(while_op);
+  auto while_region = TF::WhileRegionOp::create(
+      builder, while_op.getLoc(), while_op.getResultTypes(),
+      while_op.getInput(), while_op.getParallelIterations(),
+      while_op.getIsStateless(), while_op.getShapeInvariant());
   CopyDeviceAndUnderscoredAttributes(while_op, while_region);
 
   YieldOp cond_yield =
@@ -184,15 +187,12 @@ LogicalResult ConvertWhileOp(WhileOp while_op, bool allow_passthrough_args) {
 }
 
 LogicalResult ConvertGeneratorDatasetOp(GeneratorDatasetOp generator_op) {
-  auto generator_region =
-      OpBuilder(generator_op)
-          .create<TF::GeneratorDatasetRegionOp>(
-              generator_op.getLoc(), generator_op->getResultTypes(),
-              generator_op.getInitFuncOtherArgs(),
-              generator_op.getNextFuncOtherArgs(),
-              generator_op.getFinalizeFuncOtherArgs(),
-              generator_op.getOutputTypes(), generator_op.getOutputShapes(),
-              generator_op.getMetadata());
+  OpBuilder builder(generator_op);
+  auto generator_region = TF::GeneratorDatasetRegionOp::create(
+      builder, generator_op.getLoc(), generator_op->getResultTypes(),
+      generator_op.getInitFuncOtherArgs(), generator_op.getNextFuncOtherArgs(),
+      generator_op.getFinalizeFuncOtherArgs(), generator_op.getOutputTypes(),
+      generator_op.getOutputShapes(), generator_op.getMetadata());
   CopyDeviceAndUnderscoredAttributes(generator_op, generator_region);
 
   func::FuncOp init_function =

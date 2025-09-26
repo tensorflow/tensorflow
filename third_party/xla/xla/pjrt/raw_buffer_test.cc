@@ -18,6 +18,7 @@ limitations under the License.
 #include <optional>
 
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/platform/errors.h"
@@ -39,7 +40,7 @@ REGISTER_PJRT_RAW_BUFFER_FACTORY(MockFactory);
 TEST(RawBufferTest, FactoryFallback) {
   auto status = PjRtRawBuffer::CreateRawAliasOfBuffer(nullptr).status();
   ASSERT_THAT(status,
-              tsl::testing::StatusIs(tsl::error::INVALID_ARGUMENT,
+              absl_testing::StatusIs(tsl::error::INVALID_ARGUMENT,
                                      testing::HasSubstr("null buffer.")));
 }
 
@@ -49,7 +50,7 @@ TEST(RawBufferTest, FactoryError) {
                     reinterpret_cast<PjRtBuffer*>(&dummy))
                     .status();
   ASSERT_THAT(status,
-              tsl::testing::StatusIs(tsl::error::INVALID_ARGUMENT,
+              absl_testing::StatusIs(tsl::error::INVALID_ARGUMENT,
                                      testing::HasSubstr("MockFactory")));
 }
 

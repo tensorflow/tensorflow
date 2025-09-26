@@ -17,8 +17,10 @@ limitations under the License.
 
 #include <cstdint>
 #include <cstdlib>
+#include <iterator>
 #include <memory>
 #include <optional>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -27,8 +29,10 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
 #include "absl/synchronization/mutex.h"
+#include "absl/types/span.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/backends/gpu/collectives/gpu_communicator.h"
@@ -59,8 +63,6 @@ namespace {
 
 AllToAllConfig GetAllToAllConfig(const HloAllToAllInstruction* instr) {
   AllToAllConfig config;
-  // FIXME(b/180174349): LMHLO AllToAll incorrectly has use_global_device_ids
-  // attribute and it should be removed.
   config.config = GetCollectiveConfig(instr, std::nullopt);
   config.has_split_dimension = instr->split_dimension().has_value();
   return config;
@@ -238,7 +240,8 @@ absl::StatusOr<bool> AllToAllStartThunk::RunCollective(
     return false;
   }
   TF_RETURN_IF_ERROR(xla::gpu::RunAllToAll(
-      config_.has_split_dimension, device_buffers, stream, comm_handle.comm));
+      config_.has_split_dimension, device_buffers, stream, comm_handle.comm,
+      config_.config.use_symmetric_buffer));
   return true;
 }
 
@@ -264,11 +267,13 @@ bool AllToAllStartThunk::is_local() const {
 
 absl::Status RunAllToAll(bool has_split_dimension,
                          std::vector<DeviceBufferPair>& buffers,
-                         se::Stream& stream, Communicator* comm) {
+                         se::Stream& stream, Communicator* comm,
+                         bool use_symmetric_buffer) {
   int device_ordinal = stream.parent()->device_ordinal();
   VLOG(3) << "Performing all-to-all from device ordinal: " << device_ordinal
           << ", has_split_dimension: " << has_split_dimension;
-  TF_RETURN_IF_ERROR(MaybeRegisterBuffers(stream.parent(), buffers, comm));
+  TF_RETURN_IF_ERROR(MaybeRegisterBuffers(stream.parent(), buffers, comm,
+                                          use_symmetric_buffer));
 
   TF_ASSIGN_OR_RETURN(int32_t num_ranks, comm->NumRanks());
 
@@ -381,8 +386,6 @@ absl::Status SyncProgress(absl::string_view name,
   return absl::OkStatus();
 }
 
-// TODO(b/380457503): Memcpy AllToAll implementation must be moved to
-// NcclCommunicator implementation.
 absl::Status RunMemCpyAllToAll(bool has_split_dimension,
                                std::vector<DeviceBufferPair>& buffers,
                                se::Stream& stream, Communicator* comm,

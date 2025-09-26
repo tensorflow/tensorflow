@@ -1,4 +1,4 @@
-// RUN: test_correctness %s --bijection_inputs=reduce.1:0 --bijection_inputs=reduce.2:0 --bijection_outputs=reduce.1 --bijection_outputs=reduce.2
+// RUN: gpu_test_correctness %s --bijection_inputs=reduce.1:0 --bijection_inputs=reduce.2:0 --bijection_outputs=reduce.1 --bijection_outputs=reduce.2
 
 add {
   p0 = f32[] parameter(0)

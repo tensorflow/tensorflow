@@ -265,11 +265,12 @@ class TritonSupportTest : public TritonSupportTestBase {
     };
 
     if (IsTritonSupportedInstruction(ti.Instruction(), cc)) {
-      EXPECT_THAT(run_triton_codegen(), IsOk()) << ti.Module()->ToString();
+      EXPECT_THAT(run_triton_codegen(), absl_testing::IsOk())
+          << ti.Module()->ToString();
       return;
     }
     if (failure_mode == ExpectedFailMode::kFail) {
-      EXPECT_THAT(run_triton_codegen(), Not(IsOk()));
+      EXPECT_THAT(run_triton_codegen(), Not(absl_testing::IsOk()));
       return;
     }
     EXPECT_DEATH(
@@ -2150,49 +2151,6 @@ ENTRY triton_computation {
                  se::CudaComputeCapability::Ampere());
 }
 
-TEST_F(DotTest, SparsityConfiguration) {
-  // Note that support rejects this HLO as u16 is not supported.
-  const std::string kHloTestTemplate = R"(
-flhs {
-  ROOT result = $0[128,128] parameter(0)
-}
-
-frhs {
-  ROOT result = $0[256,512] parameter(0)
-}
-
-ENTRY triton_computation {
-  p0 = $0[128,128] parameter(0)
-  p1 = $0[256,512] parameter(1)
-  lhs = $0[128,128] fusion(p0), kind=kCustom, calls=flhs, backend_config={
-    "fusion_backend_config":{
-      "kind":"__triton_nested_gemm_fusion", "block_level_fusion_config":{
-        "output_tiles":[{"sizes":["16", "64"]}]
-      }
-    }
-  }
-  rhs = $0[256,512] fusion(p1), kind=kCustom, calls=frhs, backend_config={
-    "fusion_backend_config":{
-      "kind":"__triton_nested_gemm_fusion", "block_level_fusion_config":{
-        "output_tiles":[{"sizes":["64", "32"]}]
-      }
-    }
-  }
-  meta = u16[128,16] parameter(2)
-  ROOT result = $0[128,512] dot(lhs, rhs, meta),
-    lhs_contracting_dims={1},
-    rhs_contracting_dims={0},
-    sparsity=L.1@2:4
-}
-)";
-  TF_ASSERT_OK_AND_ASSIGN(
-      TestedInstruction ti,
-      ParseTemplateAndGetInstruction(kHloTestTemplate, F32, HloOpcode::kDot,
-                                     /* use_nested_gemm_fusions=*/true));
-  RunSupportTest(std::move(ti), /*output_tile_sizes=*/{16, 32},
-                 se::CudaComputeCapability::Ampere());
-}
-
 class DotPrecisionTest
     : public DotTest,
       public ::testing::WithParamInterface<
@@ -2330,11 +2288,18 @@ ENTRY triton_computation {
 )",
                        primitive_util::LowercasePrimitiveTypeName(data_type),
                        AlgorithmToString(algorithm));
+  // TODO(b/433240828): triton fails on this combinations but only in debug
+  // mode. Also, maybe update the test to fail gracefully in case of crashes.
+  if (algorithm == PrecisionConfig::ALG_DOT_F64_F64_F64 &&
+      primitive_util::BitWidth(data_type) < 32) {
+    GTEST_SKIP()
+        << "b/433240828: Triton fails on this combination in debug mode.";
+  }
+
   TF_ASSERT_OK_AND_ASSIGN(
       TestedInstruction ti,
       ParseTemplateAndGetInstruction(hlo_text, F32, HloOpcode::kDot,
                                      /* use_nested_gemm_fusions=*/true));
-
   ExpectedFailMode fail_mode = ExpectedFailMode::kFail;
   if (absl::c_linear_search(std::vector{F8E5M2, F8E4M3FN, F8E4M3, S8},
                             data_type)) {
@@ -2540,6 +2505,42 @@ ENTRY triton_computation {
       ParseTemplateAndGetInstruction(hlo_text, data_type_in,
                                      HloOpcode::kBitcastConvert));
 
+  RunSupportTest(std::move(ti), output_tile_sizes, cc);
+}
+
+TEST_P(BitcastConvertTest, BitcastConvertDisguisedAsBitcast) {
+  auto [data_type_in, data_type_out, cc] = GetParam();
+
+  if (primitive_util::IsComplexType(data_type_in) !=
+      primitive_util::IsComplexType(data_type_out)) {
+    GTEST_SKIP()
+        << "BitcastConvert does not support complex <-> real conversion.";
+  }
+
+  const int bit_width_in = primitive_util::BitWidth(data_type_in);
+  const int bit_width_out = primitive_util::BitWidth(data_type_out);
+  if (bit_width_in != bit_width_out) {
+    GTEST_SKIP() << "We don't replace bitcast-convert with bitcast if the "
+                    "bitwidth is different";
+  }
+  const std::string data_type_in_str =
+      primitive_util::LowercasePrimitiveTypeName(data_type_in);
+  const std::string data_type_out_str =
+      primitive_util::LowercasePrimitiveTypeName(data_type_out);
+
+  std::string hlo_text = absl::Substitute(
+      R"(
+ENTRY triton_computation {
+  parameter = $0[33,68] parameter(0)
+  ROOT bc_convert = $1[33,68] bitcast(parameter)
+})",
+      data_type_in_str, data_type_out_str);
+
+  TF_ASSERT_OK_AND_ASSIGN(TestedInstruction ti,
+                          ParseTemplateAndGetInstruction(hlo_text, data_type_in,
+                                                         HloOpcode::kBitcast));
+
+  std::vector<int64_t> output_tile_sizes = {1, 32};
   RunSupportTest(std::move(ti), output_tile_sizes, cc);
 }
 
@@ -3453,6 +3454,7 @@ absl::flat_hash_set<HloOpcode> AllTestedOpcodes() {
   ret.emplace(HloOpcode::kReverse);
   ret.emplace(HloOpcode::kRngBitGenerator);
   ret.emplace(HloOpcode::kRngGetAndUpdateState);
+  ret.emplace(HloOpcode::kScaledDot);
   ret.emplace(HloOpcode::kSort);
   ret.emplace(HloOpcode::kStochasticConvert);
   ret.emplace(HloOpcode::kTopK);

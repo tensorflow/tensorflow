@@ -17,11 +17,14 @@ limitations under the License.
 
 #include <string>
 #include <tuple>
+#include <utility>
 
 #include "absl/strings/str_cat.h"
 #include "xla/backends/cpu/runtime/buffer_allocations.h"
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/backends/cpu/runtime/thunk_testlib.h"
+#include "xla/backends/cpu/runtime/xnnpack/xnn_interop.h"
+#include "xla/backends/cpu/runtime/xnnpack/xnn_threadpool.h"
 #include "xla/literal_util.h"
 #include "xla/primitive_util.h"
 #include "xla/shape.h"
@@ -40,7 +43,7 @@ limitations under the License.
 namespace xla::cpu {
 namespace {
 
-using XnnDotThunkTestSpec = std::tuple<PrimitiveType, bool, bool, bool>;
+using XnnDotThunkTestSpec = std::tuple<PrimitiveType, bool, bool>;
 
 class XnnDotThunkTest : public testing::TestWithParam<XnnDotThunkTestSpec> {
  public:
@@ -49,13 +52,12 @@ class XnnDotThunkTest : public testing::TestWithParam<XnnDotThunkTestSpec> {
     return absl::StrCat(
         primitive_util::LowercasePrimitiveTypeName(std::get<0>(info.param)),
         "_", std::get<1>(info.param) ? "threadpool" : "single_threaded", "_",
-        std::get<2>(info.param) ? "slinky" : "xnnpack", "_",
-        std::get<3>(info.param) ? "capture_rhs" : "no_capture_rhs");
+        std::get<2>(info.param) ? "capture_rhs" : "no_capture_rhs");
   }
 };
 
 TEST_P(XnnDotThunkTest, SimpleDot) {
-  auto [input_type, use_threadpool, use_slinky, capture_rhs] = GetParam();
+  auto [input_type, use_threadpool, capture_rhs] = GetParam();
 
   if (input_type == BF16 &&
       !tsl::port::TestCPUFeature(tsl::port::AVX512_BF16)) {
@@ -89,14 +91,21 @@ TEST_P(XnnDotThunkTest, SimpleDot) {
   dot_dimensions.add_rhs_contracting_dimensions(0);
 
   TF_ASSERT_OK_AND_ASSIGN(
-      auto thunk, XnnDotThunk::Create(
-                      XnnDotThunk::Options{use_threadpool, use_slinky}, {"dot"},
-                      dot_dimensions, lhs_slice, input_shape, rhs_slice,
-                      input_shape, out_slice, output_shape, capture_rhs));
+      auto thunk,
+      XnnDotThunk::Create(XnnDotThunk::Options{use_threadpool}, {"dot"},
+                          dot_dimensions, lhs_slice, input_shape, rhs_slice,
+                          input_shape, out_slice, output_shape, capture_rhs));
+
+  XnnThreadpool threadpool;
+  if (use_threadpool) {
+    TF_ASSERT_OK_AND_ASSIGN(threadpool, CreateXnnThreadpool(&device));
+  }
+  Thunk::XnnParams xnn_params(std::move(threadpool));
 
   Thunk::ExecuteParams params;
   params.buffer_allocations = &allocations;
   params.intra_op_threadpool = use_threadpool ? &device : nullptr;
+  params.xnn_params = &xnn_params;
 
   auto execute_event = thunk->Execute(params);
   tsl::BlockUntilReady(execute_event);
@@ -107,7 +116,6 @@ TEST_P(XnnDotThunkTest, SimpleDot) {
 
 INSTANTIATE_TEST_SUITE_P(XnnDot, XnnDotThunkTest,
                          ::testing::Combine(::testing::ValuesIn({F32, BF16}),
-                                            ::testing::Bool(),
                                             ::testing::Bool(),
                                             ::testing::Bool()),
                          XnnDotThunkTest::Name);

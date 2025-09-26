@@ -20,6 +20,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/strings/string_view.h"
 #include "llvm/Support/Casting.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -116,9 +117,10 @@ module {
     auto program =
         std::make_unique<HloProgram>(std::move(context), std::move(module));
     auto options = std::make_unique<SerializeOptions>(version());
-    EXPECT_THAT(Serialize(*program, std::move(options)),
-                StatusIs(Not(absl::StatusCode::kOk),
-                         HasSubstr("Failed to serialize StableHLO")));
+    EXPECT_THAT(
+        Serialize(*program, std::move(options)),
+        absl_testing::StatusIs(Not(absl::StatusCode::kOk),
+                               HasSubstr("Failed to serialize StableHLO")));
   }
 }
 
@@ -146,8 +148,9 @@ module {
   serialized.set_data("invalid data");
 
   EXPECT_THAT(Deserialize<HloProgram>(serialized, /*options=*/nullptr),
-              StatusIs(Not(absl::StatusCode::kOk),
-                       HasSubstr("Failed to deserialize StableHLO module")));
+              absl_testing::StatusIs(
+                  Not(absl::StatusCode::kOk),
+                  HasSubstr("Failed to deserialize StableHLO module")));
 }
 
 INSTANTIATE_TEST_SUITE_P(

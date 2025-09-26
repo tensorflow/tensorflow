@@ -138,9 +138,10 @@ TEST(OptimizedFunctionGraphUtilsTest,
       )pb",
       &proto);
 
-  EXPECT_THAT(OptimizedFunctionGraphInfo::FromProto(std::move(proto)),
-              StatusIs(tsl::error::INVALID_ARGUMENT,
-                       "Node 'B' is missing a device specification"));
+  EXPECT_THAT(
+      OptimizedFunctionGraphInfo::FromProto(std::move(proto)),
+      absl_testing::StatusIs(tsl::error::INVALID_ARGUMENT,
+                             "Node 'B' is missing a device specification"));
 }
 
 TEST(OptimizedFunctionGraphUtilsTest, FromProtoProducesCorrectResult) {

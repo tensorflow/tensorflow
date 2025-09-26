@@ -322,11 +322,12 @@ TEST(ComposableTest, ChildSplitterUnimplementedTest) {
   std::vector<FieldType> fields = {};
   RepeatedStringSplitter child(&message, &splitter, &fields);
 
-  EXPECT_THAT(child.Split(), StatusIs(absl::StatusCode::kUnimplemented,
-                                      HasSubstr("`Split` function behavior")));
+  EXPECT_THAT(child.Split(),
+              absl_testing::StatusIs(absl::StatusCode::kUnimplemented,
+                                     HasSubstr("`Split` function behavior")));
   EXPECT_THAT(child.Write("str"),
-              StatusIs(absl::StatusCode::kUnimplemented,
-                       HasSubstr("`Write` function behavior")));
+              absl_testing::StatusIs(absl::StatusCode::kUnimplemented,
+                                     HasSubstr("`Write` function behavior")));
 }
 
 class NoOpSplitter : public ComposableSplitter {

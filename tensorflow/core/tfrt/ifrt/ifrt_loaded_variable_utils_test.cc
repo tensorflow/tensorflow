@@ -22,6 +22,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/python/ifrt/array.h"
@@ -53,7 +54,6 @@ namespace ifrt_serving {
 namespace {
 
 using tensorflow::test::TensorEq;
-using tsl::testing::StatusIs;
 
 TEST(ShardingUtilsTest, ShardTensorToIfrtLoadedVariableNotFoundWrongName) {
   auto input_tensor =
@@ -97,7 +97,7 @@ TEST(ShardingUtilsTest, ShardTensorToIfrtLoadedVariableNotFoundWrongName) {
       AsyncLoadRestoredTensorAsIfrtLoadedVariable(
           "var_x", client, thread_pool, restored_tensor_registry,
           loaded_variable_registry, restore_work_queue.get(), sharding_config),
-      StatusIs(absl::StatusCode::kNotFound));
+      absl_testing::StatusIs(absl::StatusCode::kNotFound));
 }
 
 TEST(ShardingUtilsTest, ShardTensorToIfrtLoadedVariableSucceed) {

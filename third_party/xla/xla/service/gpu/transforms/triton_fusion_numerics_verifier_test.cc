@@ -22,6 +22,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -335,7 +336,7 @@ ENTRY main {
   // overwritten inside the autotuner utils and returns a generic error.
   EXPECT_FALSE(compilation_result.ok());
   EXPECT_THAT(compilation_result.status(),
-              tsl::testing::StatusIs(absl::StatusCode::kInternal));
+              absl_testing::StatusIs(absl::StatusCode::kInternal));
   EXPECT_THAT(compilation_result.status().message(),
               ::testing::HasSubstr("Failed to compile Triton fusion"));
 }

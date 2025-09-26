@@ -24,13 +24,11 @@ limitations under the License.
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/AffineExpr.h"
-#include "mlir/IR/BuiltinAttributes.h"
+#include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypes.h"
-#include "mlir/IR/ImplicitLocOpBuilder.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/Types.h"
-#include "mlir/IR/Value.h"
 #include "mlir/Interfaces/DataLayoutInterfaces.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Support/LLVM.h"
@@ -114,6 +112,7 @@ struct ConvertIndexTypePass
     mlir::RewritePatternSet patterns(ctx);
     patterns.add<RewriteIndexBinaryElementwiseOp<arith::AddIOp>,
                  RewriteIndexBinaryElementwiseOp<arith::DivUIOp>,
+                 RewriteIndexBinaryElementwiseOp<arith::DivSIOp>,
                  RewriteIndexBinaryElementwiseOp<arith::MulIOp>,
                  RewriteIndexBinaryElementwiseOp<arith::RemUIOp>,
                  RewriteIndexBinaryElementwiseOp<arith::SubIOp>>(

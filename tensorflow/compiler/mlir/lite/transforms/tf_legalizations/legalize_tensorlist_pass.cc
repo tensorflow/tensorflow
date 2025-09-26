@@ -142,8 +142,8 @@ struct ConvertTensorListPopBack
                                 PatternRewriter& rewriter) const override {
     // It is currently not possible to easily pack the output of a multi-result
     // op into an op with a single varidic output in `.td`.
-    auto converted = rewriter.create<TFL::CustomOp>(
-        op->getLoc(), op->getResultTypes(), op->getOperands(),
+    auto converted = TFL::CustomOp::create(
+        rewriter, op->getLoc(), op->getResultTypes(), op->getOperands(),
         "TensorListPopBack", TFL::ConstBytesAttr::get(getContext(), ""));
     rewriter.replaceOp(op, converted.getResults());
     return success();
@@ -158,8 +158,8 @@ struct ConvertTensorListPushBack
                                 PatternRewriter& rewriter) const override {
     // It is currently not possible to easily pack the output of a multi-result
     // op into an op with a single varidic output in `.td`.
-    auto converted = rewriter.create<TFL::CustomOp>(
-        op->getLoc(), op->getResultTypes(), op->getOperands(),
+    auto converted = TFL::CustomOp::create(
+        rewriter, op->getLoc(), op->getResultTypes(), op->getOperands(),
         "TensorListPushBack", TFL::ConstBytesAttr::get(getContext(), ""));
     rewriter.replaceOp(op, converted.getResults());
     return success();
@@ -174,9 +174,9 @@ struct ConvertVariantAddNOp : public OpRewritePattern<TF::AddNOp> {
     if (!HasVariantInputOrOutput(op.getOperation())) {
       return failure();
     }
-    auto converted = rewriter.create<TFL::CustomOp>(
-        op->getLoc(), op->getResultTypes(), op->getOperands(), "VariantAddN",
-        TFL::ConstBytesAttr::get(getContext(), ""));
+    auto converted = TFL::CustomOp::create(
+        rewriter, op->getLoc(), op->getResultTypes(), op->getOperands(),
+        "VariantAddN", TFL::ConstBytesAttr::get(getContext(), ""));
     rewriter.replaceOp(op, converted.getResults());
     return success();
   }

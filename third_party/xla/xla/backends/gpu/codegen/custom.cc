@@ -56,10 +56,12 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/ptrvec.h"
 #include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/call_graph.h"
 #include "xla/service/custom_call_status.h"
 #include "xla/service/custom_call_target_registry.h"
 #include "xla/service/gpu/backend_configs.pb.h"
@@ -78,9 +80,9 @@ limitations under the License.
 #include "xla/status_macros.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/tools/hlo_extractor.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -97,8 +99,8 @@ absl::StatusOr<std::unique_ptr<Thunk>> BuildCustomKernelThunkForFusion(
       emitters::KernelArguments::Create(ir_emitter_context.buffer_assignment(),
                                         GetDefaultBufferAlignment(), &fusion));
 
-  return std::make_unique<CustomKernelThunk>(
-      &fusion, std::move(custom_kernel), std::move(kernel_arguments.args()));
+  return std::make_unique<CustomKernelThunk>(&fusion, std::move(custom_kernel),
+                                             std::move(kernel_arguments));
 }
 
 absl::StatusOr<BufferAllocation::Slice> GetOperandSlice(

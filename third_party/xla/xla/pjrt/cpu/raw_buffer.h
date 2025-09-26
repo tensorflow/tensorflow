@@ -48,11 +48,13 @@ class CpuTrackedDeviceEventPromise : public PjRtDeviceEventPromise {
       tsl::RCReference<tsl::IndirectAsyncValue> av)
       : av_(av) {}
 
-  tsl::AsyncValue* async_value() override { return av_.get(); }
+  tsl::AsyncValue* async_value() const override { return av_.get(); }
 
   void Set(tsl::RCReference<PjRtDeviceEvent> event) override;
 
   void SetError(absl::Status s) override { av_->SetError(std::move(s)); }
+
+  void SetReady() override;
 
   tsl::RCReference<tsl::IndirectAsyncValue>& av() { return av_; }
 
@@ -72,24 +74,11 @@ class CpuTrackedDeviceEvent : public PjRtDeviceEvent {
 
   const tsl::AsyncValueRef<CpuEvent>& event() const { return event_; }
 
-  const absl::Status& status() const override {
-    return event_.GetAsyncValue()->GetError();
+  tsl::AsyncValue* async_value() const override {
+    return event_.GetAsyncValue();
   }
 
   PjRtFuture<> GetReadyFuture() override;
-
-  PjRtDeviceEvent::State state() const override {
-    switch (event_.GetAsyncValue()->state()) {
-      case tsl::AsyncValue::State::kError:
-        return PjRtDeviceEvent::State::kError;
-      case tsl::AsyncValue::State::kConcrete:
-        return PjRtDeviceEvent::State::kReady;
-      default:
-        return PjRtDeviceEvent::State::kPending;
-    }
-  }
-
-  void AndThen(absl::AnyInvocable<void() &&> cb) override;
 
  private:
   tsl::AsyncValueRef<CpuEvent> event_;

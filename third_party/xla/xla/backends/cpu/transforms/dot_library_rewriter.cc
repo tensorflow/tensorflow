@@ -16,21 +16,17 @@ limitations under the License.
 #include "xla/backends/cpu/transforms/dot_library_rewriter.h"
 
 #include <memory>
-#include <string>
+#include <queue>
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
-#include "xla/backends/cpu/codegen/target_machine_features.h"
 #include "xla/backends/cpu/transforms/library_matcher.h"
-#include "xla/backends/cpu/transforms/onednn_matcher.h"
-#include "xla/backends/cpu/transforms/xnn_matcher.h"
-#include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -39,6 +35,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla::cpu {
@@ -51,17 +48,56 @@ bool IsCustomFusionWithKind(const HloInstruction* instr,
              fusion_kind;
 }
 
+absl::string_view FusionDirectionToString(FusionDirection dir) {
+  switch (dir) {
+    case FusionDirection::kUp:
+      return "Up";
+    case FusionDirection::kDown:
+      return "Down";
+    case FusionDirection::kBoth:
+      return "Both";
+  }
+}
+
+// Creates a new custom library fusion instruction containing a single
+// instruction `instr`, with the given name prefix and kind. Returns the pointer
+// to the newly created fusion instruction.
+absl::StatusOr<HloFusionInstruction*> CreateLibraryFusion(
+    HloInstruction* instr, absl::string_view fusion_name_prefix,
+    absl::string_view fusion_kind) {
+  // Start a new fusion.
+  HloComputation* computation = instr->parent();
+  HloFusionInstruction* fusion = Cast<HloFusionInstruction>(
+      computation->AddInstruction(HloInstruction::CreateFusion(
+          instr->shape(), HloInstruction::FusionKind::kCustom, instr,
+          fusion_name_prefix)));
+
+  // Set the fusion kind.
+  BackendConfig backend_config;
+  FusionBackendConfig* fusion_config = backend_config.mutable_fusion_config();
+  fusion_config->set_kind(fusion_kind);
+  TF_RETURN_IF_ERROR(fusion->set_backend_config(backend_config));
+
+  // Replace the instruction.
+  TF_RETURN_IF_ERROR(
+      computation->ReplaceInstructionWithDifferentShape(instr, fusion));
+
+  return fusion;
+}
+
 // Fuses a consumer `to_fuse` into `fusion` as the new fusion root.
 // - We cannot call `HloFusionInstruction::FuseInstruction()` because it only
 //   supports fusing a producer into the fusion instruction.
 // - Putting `to_fuse` in a new fusion instruction and calling
 //   `to_fuse->MergeFusionInstruction(fusion)` is also not ideal because we will
 //   have to copy many instructions in `fusion` into the new fusion node.
-absl::Status FuseConsumerInstruction(HloFusionInstruction* fusion,
-                                     HloInstruction* to_fuse) {
+absl::StatusOr<HloInstruction*> FuseConsumerInstruction(
+    HloFusionInstruction* fusion, HloInstruction* to_fuse) {
   HloComputation* fused_computation = fusion->fused_instructions_computation();
   HloInstruction* old_root = fusion->fused_expression_root();
   std::vector<HloInstruction*> new_operands;
+
+  // Add new operands as fusion parameters.
   for (auto operand : to_fuse->operands()) {
     if (operand == fusion) {
       new_operands.push_back(old_root);
@@ -74,7 +110,7 @@ absl::Status FuseConsumerInstruction(HloFusionInstruction* fusion,
       if (fusion_operand == operand) {
         break;
       }
-      fusion_param_idx++;
+      ++fusion_param_idx;
     }
     if (fusion_param_idx < fusion->operand_count()) {
       // Reuse the existing fusion parameter.
@@ -87,143 +123,225 @@ absl::Status FuseConsumerInstruction(HloFusionInstruction* fusion,
     }
   }
 
+  bool shape_changed = old_root->shape() != to_fuse->shape();
   HloInstruction* new_root = fused_computation->AddInstruction(
       to_fuse->CloneWithNewOperands(to_fuse->shape(), new_operands));
   fused_computation->set_root_instruction(
       new_root,
-      /*accept_different_shape=*/old_root->shape() != new_root->shape());
+      /*accept_different_shape=*/shape_changed);
+  if (shape_changed) {
+    *fusion->mutable_shape() = new_root->shape();
+  }
 
-  TF_RETURN_IF_ERROR(fusion->parent()->ReplaceInstruction(to_fuse, fusion));
+  TF_RETURN_IF_ERROR(
+      fusion->parent()->ReplaceInstructionWithDifferentShape(to_fuse, fusion));
+  return new_root;
+}
+
+// For `instr` with `dtype`, set its output type to `new_instr_out_dtype` and
+// add a convert node to change the type back to `dtype` instead.
+// This is for when the library can't output the exact type. -- We set the type
+// of the op to what the library supports, and add a convert node to change to
+// the desired type.
+inline absl::Status InsertConvertIfNecessary(
+    HloInstruction* instr, PrimitiveType new_instr_out_dtype) {
+  if (instr->shape().element_type() == new_instr_out_dtype) {
+    return absl::OkStatus();
+  }
+  HloComputation* computation = instr->parent();
+  HloInstruction* convert = computation->AddInstruction(
+      HloInstruction::CreateConvert(instr->shape(), instr));
+  TF_RETURN_IF_ERROR(instr->ReplaceAllUsesWith(convert));
+  instr->mutable_shape()->set_element_type(new_instr_out_dtype);
+
+  if (instr == computation->root_instruction()) {
+    computation->set_root_instruction(convert);
+  }
   return absl::OkStatus();
 }
 
 }  // namespace
 
-class DotLibraryRewriteVisitor : public DfsHloRewriteVisitor {
- public:
-  explicit DotLibraryRewriteVisitor(
-      const TargetMachineFeatures* target_machine_features,
-      const DotLibraryRewriterOptions& options)
-      : target_machine_features_(target_machine_features), options_(options) {
-    if (options.use_onednn) {
-      libs_.push_back(
-          std::make_unique<OneDnnMatcher>(target_machine_features_));
-    }
-    if (options.use_xnnpack) {
-      libs_.push_back(std::make_unique<XnnMatcher>(target_machine_features_));
-    }
-    for (std::unique_ptr<LibraryMatcher>& lib : libs_) {
-      supported_ops_.merge(lib->SupportedOps());
+absl::StatusOr<LibraryMatcher*> DotLibraryRewriter::ChooseLibrary(
+    HloInstruction* instr) {
+  for (std::unique_ptr<LibraryMatcher>& lib : libs_) {
+    TF_ASSIGN_OR_RETURN(bool op_supported, lib->IsOpSupported(instr));
+    if (op_supported && lib->ShouldCreateFusion(instr)) {
+      return lib.get();
     }
   }
+  return nullptr;
+}
 
-  // Groups possible `Dot` with elementwise instructions into a `Fusion` op
-  // with kind `kCustom`.
-  absl::Status HandleDot(HloInstruction* instr) override {
-    // Replace the dot with a fusion node if any library supports it.
-    for (std::unique_ptr<LibraryMatcher>& lib : libs_) {
-      TF_ASSIGN_OR_RETURN(bool op_supported, lib->IsOpSupported(instr));
-      if (op_supported) {
-        Shape fusion_shape = instr->shape();
-        PrimitiveType out_dtype = fusion_shape.element_type();
-        PrimitiveType lib_out_dtype = lib->LibraryOpOutputType(instr);
-        std::unique_ptr<HloInstruction> convert;
-        HloInstruction* fusion_root = instr;
-
-        // Add a convert node if the library op does not support the original
-        // output type.
-        bool convert_output = lib_out_dtype != out_dtype;
-        if (convert_output) {
-          instr->mutable_shape()->set_element_type(lib_out_dtype);
-          fusion_root = instr->parent()->AddInstruction(
-              HloInstruction::CreateConvert(fusion_shape, instr));
-        }
-
-        // Create a fusion with `dot` as root if we don't need output
-        // conversion. Otherwise, the fusion will have `convert` as root.
-        auto fusion = HloInstruction::CreateFusion(
-            fusion_shape, HloInstruction::FusionKind::kCustom, fusion_root,
-            absl::StrCat(lib->fusion_prefix(), "dot_"));
-
-        if (convert_output) {
-          // Convert is the root. Fuse the dot into the fusion too.
-          fusion->FuseInstruction(instr);
-
-          // `ReplaceWithNewInstruction` checks that the instruction to replace
-          // has a matching shape with the original instruction, so we set the
-          // dtype back to original.
-          instr->mutable_shape()->set_element_type(out_dtype);
-
-          // Remove the first `convert` we created in the parent computation
-          // of the fusion op.
-          TF_RETURN_IF_ERROR(instr->parent()->RemoveInstruction(fusion_root));
-        }
-
-        BackendConfig backend_config;
-        FusionBackendConfig* fusion_config =
-            backend_config.mutable_fusion_config();
-        fusion_config->set_kind(std::string(lib->fusion_kind()));
-        TF_RETURN_IF_ERROR(fusion->set_backend_config(backend_config));
-
-        return ReplaceWithNewInstruction(instr, std::move(fusion));
+void DotLibraryRewriter::AddFusionCandidates(
+    HloInstruction* fusion, HloInstruction* instr, FusionDirection dir,
+    std::queue<std::pair<HloInstruction*, FusionDirection>>& queue) {
+  // Don't add anything that has already been fused or require multi-output
+  // fusion support. (We don't support that yet.)
+  if (dir == FusionDirection::kUp || dir == FusionDirection::kBoth) {
+    for (HloInstruction* operand : instr->operands()) {
+      if (!fused_.contains(operand) &&
+          absl::c_all_of(operand->users(), [&](HloInstruction* user) {
+            return user == fusion || user == instr;
+          })) {
+        queue.push(std::make_pair(operand, FusionDirection::kUp));
       }
     }
-
-    // Do nothing if no libraries support this Dot.
-    return absl::OkStatus();
   }
-
-  absl::Status DefaultAction(HloInstruction* instr) override {
-    // Skip this op if no library supports it.
-    if (!supported_ops_.contains(instr->opcode())) {
-      return absl::OkStatus();
-    }
-
-    // If this op follows a library fusion node and is fusible, fuse it.
-    for (std::unique_ptr<LibraryMatcher>& lib : libs_) {
-      TF_ASSIGN_OR_RETURN(bool op_supported, lib->IsOpSupported(instr));
-      if (!op_supported) {
-        continue;
-      }
-
-      // One of the operands must be a fusion of the same library kind.
-      // If there are more than one, we fuse with the first one.
-      HloFusionInstruction* fusion = nullptr;
-      for (auto operand : instr->operands()) {
-        if (IsCustomFusionWithKind(operand, lib->fusion_kind())) {
-          fusion = Cast<HloFusionInstruction>(
-              const_cast<HloInstruction*>(operand));  // NOLINT
-          break;
-        }
-      }
-
-      // If the custom fusion has multiple users, fusing `instr` into it will
-      // require multi-output support. So we do not fuse it for now.
-      // TODO(penporn): Support multi-output fusion.
-      if (fusion == nullptr || fusion->user_count() > 1) {
-        continue;
-      }
-
-      TF_RETURN_IF_ERROR(FuseConsumerInstruction(fusion, instr));
-      return absl::OkStatus();
-    }
-    return absl::OkStatus();
+  // When fusing down, we can only have one user without multi-output support.
+  if (instr->user_count() != 1) {
+    return;
   }
+  HloInstruction* user = instr->users().front();
+  if ((dir == FusionDirection::kDown || dir == FusionDirection::kBoth) &&
+      !fused_.contains(user)) {
+    queue.push(std::make_pair(user, FusionDirection::kDown));
+  }
+}
 
- private:
-  std::vector<std::unique_ptr<LibraryMatcher>> libs_;
-  absl::flat_hash_set<HloOpcode> supported_ops_;
-  const TargetMachineFeatures* target_machine_features_;
-  const DotLibraryRewriterOptions options_;
-};
+absl::Status DotLibraryRewriter::MergeFusionInstructions(
+    HloFusionInstruction* main, HloFusionInstruction* neighbor,
+    FusionDirection dir) {
+  VLOG(3) << "  " << FusionDirectionToString(dir)
+          << ": Fusing with: " << neighbor->ToString();
+  if (dir == FusionDirection::kUp) {
+    main->MergeFusionInstruction(neighbor);
+    TF_RETURN_IF_ERROR(main->parent()->RemoveInstruction(neighbor));
+  } else if (dir == FusionDirection::kDown) {
+    neighbor->MergeFusionInstruction(main);
+    TF_RETURN_IF_ERROR(neighbor->parent()->RemoveInstruction(main));
+  }
+  return absl::OkStatus();
+}
+
+absl::StatusOr<HloInstruction*> DotLibraryRewriter::GrowFusion(
+    HloFusionInstruction* fusion, HloInstruction* to_fuse,
+    FusionDirection dir) {
+  HloInstruction* new_instr = nullptr;
+  VLOG(3) << "  " << FusionDirectionToString(dir)
+          << ": Fusing with: " << to_fuse->ToString();
+  if (dir == FusionDirection::kUp) {
+    new_instr = fusion->FuseInstruction(to_fuse);
+    if (to_fuse->user_count() == 0) {
+      TF_RETURN_IF_ERROR(to_fuse->parent()->RemoveInstruction(to_fuse));
+    }
+  } else if (dir == FusionDirection::kDown) {
+    TF_ASSIGN_OR_RETURN(new_instr, FuseConsumerInstruction(fusion, to_fuse));
+  }
+  return new_instr;
+}
+
+absl::Status DotLibraryRewriter::FuseNeighbors(HloFusionInstruction* fusion,
+                                               LibraryMatcher* lib) {
+  // A queue storing potential candidates for fusion: Each item is a pair of
+  //   - Pointer to immediate neighbors of the current fusion node.
+  //   - Travel direction: up (parents) and down (children).
+  // This queue only tracks original HLO instructions in the parent computation,
+  // not any new instructions created during the fusion process.
+  std::queue<std::pair<HloInstruction*, FusionDirection>> frontier;
+  AddFusionCandidates(fusion, fusion, FusionDirection::kBoth, frontier);
+
+  // BFS and fuse as many neighbors as possible.
+  while (!frontier.empty()) {
+    auto [instr, dir] = frontier.front();
+    frontier.pop();
+    if (dir != FusionDirection::kUp && dir != FusionDirection::kDown) {
+      return InvalidArgument("Invalid travel direction: %c", dir);
+    }
+
+    // If `instr` is another fusion of the same library type, fuse it.
+    // We don't need to add its neighbors to the frontier because anything that
+    // can be fused would have already been fused into `instr`.
+    if (IsCustomFusionWithKind(instr, lib->fusion_kind())) {
+      TF_RETURN_IF_ERROR(MergeFusionInstructions(
+          fusion, Cast<HloFusionInstruction>(instr), dir));
+      continue;
+    }
+
+    // Skip this instruction if it can't be fused.
+    TF_ASSIGN_OR_RETURN(bool op_supported, lib->IsOpSupported(instr));
+    if (!op_supported) {
+      VLOG(4) << "  Skipping unsupported instruction: " << instr->ToString();
+      continue;
+    }
+
+    // Add neighbors to the frontier.
+    fused_.insert(instr);
+    AddFusionCandidates(fusion, instr, dir, frontier);
+
+    // Fuse `instr` into `fusion` according to the travel direction.
+    TF_ASSIGN_OR_RETURN(HloInstruction * new_instr,
+                        GrowFusion(fusion, instr, dir));
+    TF_RETURN_IF_ERROR(
+        InsertConvertIfNecessary(new_instr, lib->LibraryOpOutputType(instr)));
+  }
+  return absl::OkStatus();
+}
+
+absl::StatusOr<bool> DotLibraryRewriter::ProcessComputation(
+    HloComputation* computation) {
+  // Construct a list of instructions that can start a library fusion, starting
+  // from the root up to the top. Prioritize dot ops over element-wise ops.
+  // TODO(penporn): Use priority queue when we have a cost model.
+  std::vector<HloInstruction*> fusion_starters;
+  std::vector<HloInstruction*> eltwise_ops;
+  auto instructions = computation->MakeInstructionPostOrder();
+  for (auto it = instructions.rbegin(); it != instructions.rend(); ++it) {
+    if (fuse_dot_ && (*it)->opcode() == HloOpcode::kDot) {
+      fusion_starters.push_back(*it);
+    } else if (fuse_eltwise_ && (*it)->IsElementwise()) {
+      eltwise_ops.push_back(*it);
+    }
+  }
+  fusion_starters.insert(fusion_starters.end(), eltwise_ops.begin(),
+                         eltwise_ops.end());
+
+  // Grow the fusion around each to-fuse ops.
+  fused_.clear();
+  for (HloInstruction* centroid : fusion_starters) {
+    // Skip this instruction if it has already been fused into some fusion.
+    if (fused_.contains(centroid)) {
+      continue;
+    }
+
+    // Find the best library to use for the current instruction.
+    TF_ASSIGN_OR_RETURN(LibraryMatcher * lib, ChooseLibrary(centroid));
+    if (lib == nullptr) {
+      continue;
+    }
+
+    // Start a fusion node.
+    fused_.insert(centroid);
+    VLOG(3) << "Starting a fusion with: " << centroid->ToString();
+    TF_ASSIGN_OR_RETURN(HloFusionInstruction * fusion,
+                        CreateLibraryFusion(centroid, lib->fusion_prefix(),
+                                            lib->fusion_kind()));
+    TF_RETURN_IF_ERROR(InsertConvertIfNecessary(
+        fusion->fused_expression_root(), lib->LibraryOpOutputType(centroid)));
+
+    // Fuse as many neighbors as as we can.
+    TF_RETURN_IF_ERROR(FuseNeighbors(fusion, lib));
+  }
+  return !fused_.empty();
+}
 
 absl::StatusOr<bool> DotLibraryRewriter::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  DotLibraryRewriteVisitor visitor(target_machine_features_, options_);
-  TF_ASSIGN_OR_RETURN(auto result,
-                      visitor.RunOnModule(module, execution_threads));
-  return result;
+  bool module_changed = false;
+  for (HloComputation* computation : module->MakeNonfusionComputations()) {
+    // Skip computations of reductions.
+    if (absl::c_any_of(computation->caller_instructions(),
+                       [](const HloInstruction* caller) {
+                         return caller->has_to_apply() &&
+                                caller->opcode() != HloOpcode::kCall;
+                       })) {
+      continue;
+    }
+    TF_ASSIGN_OR_RETURN(bool comp_changed, ProcessComputation(computation));
+    module_changed |= comp_changed;
+  }
+  return module_changed;
 }
 
 }  // namespace xla::cpu

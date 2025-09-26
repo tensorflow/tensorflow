@@ -18,16 +18,18 @@ limitations under the License.
 #include <cstdint>
 #include <vector>
 
+#include "absl/log/log.h"
+#include "absl/status/statusor.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/primitive_util.h"
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/window_util.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -50,8 +52,10 @@ absl::StatusOr<bool> CudnnSupportsOptimizedIntegerConvolution(
 
   // Require cc6.1+ for any vectorized integer convolutions
   // Require cc7.5+ for any IMMA convolutions
-  if ((vector_size == 32 && !compute_capability.IsAtLeast(7, 5)) ||
-      !compute_capability.IsAtLeast(6, 1)) {
+  if ((vector_size == 32 && !compute_capability.SupportsAllFeaturesOf(
+                                se::CudaComputeCapability(7, 5))) ||
+      !compute_capability.SupportsAllFeaturesOf(
+          se::CudaComputeCapability(6, 1))) {
     VLOG(3) << "Compute capability " << compute_capability.ToString()
             << " is not sufficent for int8x" << vector_size
             << " vectorization.";

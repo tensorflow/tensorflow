@@ -15,30 +15,27 @@ limitations under the License.
 
 #include "xla/pjrt/pjrt_compiler.h"
 
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
-#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
+#include "mlir/IR/BuiltinOps.h"
 #include "xla/hlo/builder/xla_computation.h"
-#include "xla/pjrt/metrics.h"
+#include "xla/layout.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_device_description.h"
-#include "xla/tsl/lib/monitoring/cell_reader.h"
-#include "tsl/platform/status_matchers.h"
+#include "xla/pjrt/pjrt_executable.h"
 
 namespace xla {
-
-using metrics::kPjrtCompilerCompileComputationMetricName;
-using metrics::kPjrtCompilerCompileModuleMetricName;
-using ::tsl::monitoring::testing::CellReader;
-using ::tsl::testing::StatusIs;
 
 namespace {
 class PjRtTestTopology : public PjRtTopologyDescription {
@@ -58,7 +55,8 @@ class PjRtTestTopology : public PjRtTopologyDescription {
   absl::StatusOr<Layout> GetDefaultLayout(
       PrimitiveType element_type,
       absl::Span<const int64_t> dims) const override {
-    return Unimplemented("TestTopology does not support GetDefaultLayout");
+    return absl::UnimplementedError(
+        "TestTopology does not support GetDefaultLayout");
   }
 };
 
@@ -92,7 +90,8 @@ TEST(PjRtCompilerTest, CompilerRegistered) {
     absl::StatusOr<Layout> GetDefaultLayout(
         PrimitiveType element_type,
         absl::Span<const int64_t> dims) const override {
-      return Unimplemented("TestTopology does not support GetDefaultLayout");
+      return absl::UnimplementedError(
+          "TestTopology does not support GetDefaultLayout");
     }
   };
   PjRtTestTopology topology;
@@ -102,12 +101,17 @@ TEST(PjRtCompilerTest, CompilerRegistered) {
     absl::StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
         CompileOptions options, const XlaComputation& computation,
         const PjRtTopologyDescription& topology, PjRtClient* client) override {
-      return tsl::errors::Unimplemented("test compiler!");
+      return absl::UnimplementedError("test compiler!");
     }
     absl::StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
         CompileOptions options, mlir::ModuleOp module,
         const PjRtTopologyDescription& topology, PjRtClient* client) override {
-      return tsl::errors::Unimplemented("test compiler!");
+      return absl::UnimplementedError("test compiler!");
+    }
+    absl::StatusOr<std::unique_ptr<PjRtTopologyDescription>>
+    DeserializePjRtTopologyDescription(
+        const std::string& serialized_topology) override {
+      return absl::UnimplementedError("test compiler!");
     }
   };
   std::unique_ptr<PjRtCompiler> compiler = std::make_unique<PjRtTestCompiler>();
@@ -120,32 +124,86 @@ TEST(PjRtCompilerTest, CompilerRegistered) {
   EXPECT_TRUE(absl::IsUnimplemented(res.status()));
 }
 
-TEST(PjRtCompilerTest, PjrtCompileComputationMetric) {
-  PjRtTestTopology topology;
-  xla::CompileOptions compile_options;
-  XlaComputation xla_computation;
-  CellReader<bool> metric_reader(
-      std::string{kPjrtCompilerCompileComputationMetricName});
+class PjRtDeserializeTopology : public PjRtTopologyDescription {
+ public:
+  PjRtPlatformId platform_id() const override { return 0; }
+  absl::string_view platform_name() const override {
+    return "deserialize_platform";
+  }
+  absl::string_view platform_version() const override { return "test"; }
+  std::vector<std::unique_ptr<const PjRtDeviceDescription>> DeviceDescriptions()
+      const override {
+    LOG(FATAL) << "Unused";
+  }
+  absl::StatusOr<std::string> Serialize() const override {
+    return "serialized_topology";
+  }
+  const absl::flat_hash_map<std::string, PjRtDeviceAttribute>& Attributes()
+      const override {
+    LOG(FATAL) << "Unused";
+  }
+  absl::StatusOr<Layout> GetDefaultLayout(
+      PrimitiveType element_type,
+      absl::Span<const int64_t> dims) const override {
+    return absl::UnimplementedError(
+        "TestTopology does not support GetDefaultLayout");
+  }
+};
 
-  EXPECT_THAT(PjRtCompile(compile_options, xla_computation, topology,
-                          /*client=*/nullptr),
-              StatusIs(tensorflow::error::NOT_FOUND));
-  // Verify that when the compilation is done, the metric value is always false.
-  EXPECT_FALSE(metric_reader.Read());
+class PjRtDeserializeCompiler : public PjRtCompiler {
+ public:
+  absl::StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
+      CompileOptions options, const XlaComputation& computation,
+      const PjRtTopologyDescription& topology, PjRtClient* client) override {
+    return absl::UnimplementedError("test compiler!");
+  }
+  absl::StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
+      CompileOptions options, mlir::ModuleOp module,
+      const PjRtTopologyDescription& topology, PjRtClient* client) override {
+    return absl::UnimplementedError("test compiler!");
+  }
+  absl::StatusOr<std::unique_ptr<PjRtTopologyDescription>>
+  DeserializePjRtTopologyDescription(
+      const std::string& serialized_topology) override {
+    if (serialized_topology == "serialized_known_topology") {
+      return std::make_unique<PjRtDeserializeTopology>();
+    }
+    return absl::InvalidArgumentError("Unknown topology");
+  }
+};
+
+class PjRtCompilerDeserializeTopologyTest : public ::testing::Test {
+ protected:
+  static void SetUpTestSuite() {
+    auto compiler = std::make_unique<PjRtDeserializeCompiler>();
+    PjRtRegisterCompiler("deserialize_platform", std::move(compiler));
+  }
+};
+
+TEST_F(PjRtCompilerDeserializeTopologyTest, DeserializeKnownTopology) {
+  absl::StatusOr<PjRtCompiler*> compiler_or =
+      GetPjRtCompiler("deserialize_platform");
+  ASSERT_TRUE(compiler_or.ok());
+  PjRtCompiler* looked_up_compiler = *compiler_or;
+
+  absl::StatusOr<std::unique_ptr<const PjRtTopologyDescription>> res =
+      looked_up_compiler->DeserializePjRtTopologyDescription(
+          "serialized_known_topology");
+  ASSERT_TRUE(res.ok());
+  EXPECT_EQ((*res)->platform_name(), "deserialize_platform");
 }
 
-TEST(PjRtCompilerTest, PjrtCompileModuleMetric) {
-  PjRtTestTopology topology;
-  xla::CompileOptions compile_options;
-  mlir::ModuleOp module;
-  CellReader<bool> metric_reader(
-      std::string{kPjrtCompilerCompileModuleMetricName});
+TEST_F(PjRtCompilerDeserializeTopologyTest, DeserializeUnknownTopology) {
+  absl::StatusOr<PjRtCompiler*> compiler_or =
+      GetPjRtCompiler("deserialize_platform");
+  ASSERT_TRUE(compiler_or.ok());
+  PjRtCompiler* looked_up_compiler = *compiler_or;
 
-  EXPECT_THAT(PjRtCompile(compile_options, module, topology,
-                          /*client=*/nullptr),
-              StatusIs(tensorflow::error::NOT_FOUND));
-  EXPECT_FALSE(metric_reader.Read());
+  absl::StatusOr<std::unique_ptr<const PjRtTopologyDescription>> res =
+      looked_up_compiler->DeserializePjRtTopologyDescription(
+          "unknown_topology");
+  EXPECT_TRUE(absl::IsInvalidArgument(res.status()));
 }
+
 }  // namespace
-
 }  // namespace xla

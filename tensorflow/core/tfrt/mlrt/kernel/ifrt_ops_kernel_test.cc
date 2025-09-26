@@ -618,7 +618,7 @@ TEST_P(KernelTest, IfrtRestoreVariableOp) {
           kVariableRuntimeName);
   ASSERT_TRUE(uninitialized_entry.IsReady());
   EXPECT_THAT(uninitialized_entry.Await().status(),
-              ::tsl::testing::StatusIs(absl::StatusCode::kNotFound));
+              absl_testing::StatusIs(absl::StatusCode::kNotFound));
 
   std::vector<mlrt::Value> args;
   args.resize(3);
@@ -681,7 +681,7 @@ TEST_P(KernelTest, IfrtRestoreVariableOp4Variables) {
           kVariableRuntimeName);
   ASSERT_TRUE(uninitialized_entry.IsReady());
   EXPECT_THAT(uninitialized_entry.Await().status(),
-              ::tsl::testing::StatusIs(absl::StatusCode::kNotFound));
+              absl_testing::StatusIs(absl::StatusCode::kNotFound));
 
   std::vector<mlrt::Value> args;
   args.resize(3);
@@ -773,7 +773,7 @@ TEST_P(KernelTest, IfrtRestoreVariableOpInValidInput) {
           kVariableRuntimeName);
   ASSERT_TRUE(uninitialized_entry.IsReady());
   EXPECT_THAT(uninitialized_entry.Await().status(),
-              ::tsl::testing::StatusIs(absl::StatusCode::kNotFound));
+              absl_testing::StatusIs(absl::StatusCode::kNotFound));
 
   std::vector<mlrt::Value> args;
   args.resize(3);
@@ -808,7 +808,7 @@ TEST_P(KernelTest, IfrtRestoreVariableOpInValidInput) {
   notification.WaitForNotification();
 
   EXPECT_THAT(execution_context.status(),
-              ::tsl::testing::StatusIs(absl::StatusCode::kInvalidArgument));
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 INSTANTIATE_TEST_SUITE_P(KernelTest, KernelTest, ::testing::Bool());

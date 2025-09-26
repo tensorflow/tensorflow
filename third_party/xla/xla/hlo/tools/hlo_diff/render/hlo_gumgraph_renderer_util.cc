@@ -21,7 +21,9 @@
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/tools/hlo_diff/hlo_diff_result.h"
@@ -72,7 +74,9 @@ std::vector<ChangedInstructionDiffType> GetChangedInstructionDiffTypes(
   }
 
   // Compare constants
-  if (left.IsConstant() && right.IsConstant()) {
+  if (left.IsConstant() && right.IsConstant() &&
+      Cast<HloConstantInstruction>(&left)->HasLiteral() &&
+      Cast<HloConstantInstruction>(&right)->HasLiteral()) {
     if (left.literal() != right.literal()) {
       diff_types.push_back(ChangedInstructionDiffType::kConstantLiteralChanged);
     }

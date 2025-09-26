@@ -210,7 +210,7 @@ TEST_F(KernelApiIrBuilderTest, BuildKernelPrototype) {
     CHECK: }
 
     #0 = { uwtable "frame-pointer"="all" "prefer-vector-width"="256" }
-    CHECK-DAG: ![[ALIGNMENT]] = !{i64 )", cpu_function_runtime::MinAlign(), R"(}
+    CHECK-DAG: ![[ALIGNMENT]] = !{i64 )", MinAlign(), R"(}
     CHECK-DAG: ![[SCOPE0]] = !{}
     CHECK-DAG: ![[SCOPE1]] = !{![[RES0:.+]], ![[RES1:.+]]}
     CHECK-DAG: ![[SCOPE2]] = !{![[RES0]]}
@@ -429,7 +429,7 @@ TEST_F(KernelApiIrBuilderTestNoBufferValidation, PartialOverlap) {
     CHECK: }
 
     #0 = { uwtable "frame-pointer"="all" "prefer-vector-width"="256" }
-    CHECK-DAG: ![[ALIGNMENT]] = !{i64 )", cpu_function_runtime::MinAlign(), R"(}
+    CHECK-DAG: ![[ALIGNMENT]] = !{i64 )", MinAlign(), R"(}
     CHECK-DAG: ![[EMPTY_NODE]] = !{}
     CHECK-DAG: ![[DOMAIN:.+]] = !{!"XLA host kernel test AA domain"}
     CHECK-DAG: ![[RES0:.+]] = !{!"{{.*}}, offset:288, size:512}", ![[DOMAIN]]}

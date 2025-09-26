@@ -18,6 +18,8 @@ limitations under the License.
 
 #include <cstddef>
 #include <iterator>
+#include <new>
+#include <type_traits>
 #include <utility>
 
 #include "xla/tsl/lib/gtl/iterator_range.h"
@@ -90,6 +92,8 @@ class UnwrappingIterator {
     return !(a == b);
   }
 
+  NestedIter underlying_iterator() const { return iter_; }
+
  private:
   NestedIter iter_;
 };
@@ -143,6 +147,8 @@ class FilteringIterator {
     return !(a == b);
   }
 
+  NestedIter underlying_iterator() const { return iter_; }
+
  private:
   NestedIter iter_;
   NestedIter end_iter_;
@@ -172,6 +178,84 @@ MakeFilteringUnwrappingIteratorRange(NestedIter begin_iter, NestedIter end_iter,
   return {MakeFilteringUnwrappingIterator(begin_iter, end_iter, pred),
           MakeFilteringUnwrappingIterator(end_iter, end_iter, pred)};
 }
+
+// WithIndex wraps a user-supplied iterable object and provides iteration that
+// yields pairs of (i,v) where i is the zero-based iteration index and v is a
+// reference to the value yielded by iteration over the wrapped object.
+//
+// Requires:
+// - The wrapped object must support iteration via begin() and end() methods.
+// - operator* on wrapped object iterators must return a reference.
+//
+// Example:
+//   std::vector<std::string> list = ...;
+//   for (const auto& p : WithIndex(list)) {
+//     const size_t index = p.first;
+//     const std::string& value = p.second;
+//     ...
+//   }
+//
+// Or more conveniently, use structured binding to extract the two parts:
+//   for (const auto& [index, value] : WithIndex(list)) {
+//     ...
+//   }
+template <typename T, typename Storage>
+class WithIndex {
+ private:
+  using wrapped_iterator = decltype(((const T*)nullptr)->begin());
+  using wrapped_result = decltype(*((const T*)nullptr)->begin());
+  static_assert(std::is_reference_v<wrapped_result>);
+
+ public:
+  explicit WithIndex(T&& v) : value_or_ref_(std::move(v)) {}
+  explicit WithIndex(const T& v) : value_or_ref_(v) {}
+
+  class iterator {
+   public:
+    using iterator_category = std::input_iterator_tag;
+    using value_type = std::pair<size_t, const wrapped_result&>;
+    using pointer = const value_type*;
+    using reference = const value_type&;
+    using difference_type = size_t;
+
+    static_assert(std::is_trivially_destructible<value_type>::value);
+
+    iterator& operator++() {
+      ++index_;
+      ++it_;
+      return *this;
+    }
+    bool operator==(const iterator& other) const { return it_ == other.it_; }
+    bool operator!=(const iterator& other) const { return it_ != other.it_; }
+    reference operator*() { return *new (&elem_[0]) value_type(index_, *it_); }
+    pointer operator->() { return new (&elem_[0]) value_type(index_, *it_); }
+
+   private:
+    friend class WithIndex;
+    explicit iterator(wrapped_iterator it) : index_(0), it_(it) {}
+
+    size_t index_;         // current element index
+    wrapped_iterator it_;  // wrapped iterator
+
+    // elem_ holds the current iteration value. We use raw storage to allow
+    // value_type::second (which is a reference) to be overwritten on each
+    // iteration.
+    alignas(value_type) char elem_[sizeof(value_type)];
+  };
+
+  iterator begin() const { return iterator(value_or_ref_.begin()); }
+  iterator end() const { return iterator(value_or_ref_.end()); }
+
+ private:
+  Storage value_or_ref_;
+};
+
+// Pick appropriate storage based on WithIndex constructor argument:
+// - reference if argument is a reference
+// - copy if argument is a temporary to avoid dangling references.
+template <typename T> /**/ WithIndex(const T& v) -> WithIndex<T, const T&>;
+template <typename T> /**/ WithIndex(T& v) -> WithIndex<T, const T&>;
+template <typename T> /**/ WithIndex(T&& v) -> WithIndex<T, T>;
 
 }  // namespace xla
 

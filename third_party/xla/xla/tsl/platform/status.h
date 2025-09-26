@@ -45,11 +45,6 @@ limitations under the License.
 #include "xla/tsl/platform/default/status.h"  // IWYU pragma: export
 #endif
 
-// TODO: b/323943471 - This macro should eventually be provided by Abseil.
-#ifndef ABSL_DEPRECATE_AND_INLINE
-#define ABSL_DEPRECATE_AND_INLINE()
-#endif
-
 namespace tsl {
 
 // Since April 2023, tensorflow::Status is an alias to absl::Status. The first
@@ -107,11 +102,6 @@ namespace tsl {
 ABSL_DEPRECATE_AND_INLINE() inline absl::Status OkStatus() {
   return absl::OkStatus();
 };
-
-ABSL_DEPRECATE_AND_INLINE()
-inline absl::Status FromAbslStatus(const absl::Status& s) { return s; }
-ABSL_DEPRECATE_AND_INLINE()
-inline absl::Status ToAbslStatus(const ::absl::Status& s) { return s; }
 
 // Given `Status.message()` does not guarantee to be always backed by a
 // null-terminated string, we have this utility function when it's needed for

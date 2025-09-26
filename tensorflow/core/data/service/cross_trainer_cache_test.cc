@@ -143,7 +143,8 @@ TEST(CrossTrainerCacheTest, GetFromOneTrainer) {
   CrossTrainerCache<int64_t> cache(
       /*max_cache_size_bytes=*/1024, std::make_unique<InfiniteRange>());
   for (size_t i = 0; i < num_elements; ++i) {
-    EXPECT_THAT(cache.Get("Trainer ID"), IsOkAndHolds(Pointee(i)));
+    EXPECT_THAT(cache.Get("Trainer ID"),
+                absl_testing::IsOkAndHolds(Pointee(i)));
   }
 }
 
@@ -157,7 +158,8 @@ TEST(CrossTrainerCacheTest, GetFromMultipleTrainers) {
     // All the readers get the same element in one step.
     for (size_t j = 0; j < num_trainers; ++j) {
       const std::string trainer_id = absl::StrCat("Trainer ", j);
-      EXPECT_THAT(cache.Get(trainer_id), IsOkAndHolds(Pointee(i)));
+      EXPECT_THAT(cache.Get(trainer_id),
+                  absl_testing::IsOkAndHolds(Pointee(i)));
     }
   }
 }
@@ -166,28 +168,40 @@ TEST(CrossTrainerCacheTest, SlowTrainersSkipData) {
   CrossTrainerCache<int64_t> cache(
       /*max_cache_size_bytes=*/5 * sizeof(int64_t),
       std::make_unique<InfiniteRange>());
-  EXPECT_THAT(cache.Get("Fast trainer 1"), IsOkAndHolds(Pointee(0)));
-  EXPECT_THAT(cache.Get("Fast trainer 2"), IsOkAndHolds(Pointee(0)));
-  EXPECT_THAT(cache.Get("Slow trainer 1"), IsOkAndHolds(Pointee(0)));
-  EXPECT_THAT(cache.Get("Slow trainer 2"), IsOkAndHolds(Pointee(0)));
+  EXPECT_THAT(cache.Get("Fast trainer 1"),
+              absl_testing::IsOkAndHolds(Pointee(0)));
+  EXPECT_THAT(cache.Get("Fast trainer 2"),
+              absl_testing::IsOkAndHolds(Pointee(0)));
+  EXPECT_THAT(cache.Get("Slow trainer 1"),
+              absl_testing::IsOkAndHolds(Pointee(0)));
+  EXPECT_THAT(cache.Get("Slow trainer 2"),
+              absl_testing::IsOkAndHolds(Pointee(0)));
 
   for (int i = 1; i < 20; ++i) {
-    EXPECT_THAT(cache.Get("Fast trainer 1"), IsOkAndHolds(Pointee(i)));
-    EXPECT_THAT(cache.Get("Fast trainer 2"), IsOkAndHolds(Pointee(i)));
+    EXPECT_THAT(cache.Get("Fast trainer 1"),
+                absl_testing::IsOkAndHolds(Pointee(i)));
+    EXPECT_THAT(cache.Get("Fast trainer 2"),
+                absl_testing::IsOkAndHolds(Pointee(i)));
   }
 
   // When 19 is cached, 14 must have been discarded.
-  EXPECT_THAT(cache.Get("Slow trainer 1"), IsOkAndHolds(Pointee(Gt(14))));
-  EXPECT_THAT(cache.Get("Slow trainer 2"), IsOkAndHolds(Pointee(Gt(14))));
+  EXPECT_THAT(cache.Get("Slow trainer 1"),
+              absl_testing::IsOkAndHolds(Pointee(Gt(14))));
+  EXPECT_THAT(cache.Get("Slow trainer 2"),
+              absl_testing::IsOkAndHolds(Pointee(Gt(14))));
 
   for (int i = 20; i < 100; ++i) {
-    EXPECT_THAT(cache.Get("Fast trainer 1"), IsOkAndHolds(Pointee(i)));
-    EXPECT_THAT(cache.Get("Fast trainer 2"), IsOkAndHolds(Pointee(i)));
+    EXPECT_THAT(cache.Get("Fast trainer 1"),
+                absl_testing::IsOkAndHolds(Pointee(i)));
+    EXPECT_THAT(cache.Get("Fast trainer 2"),
+                absl_testing::IsOkAndHolds(Pointee(i)));
   }
 
   // When 99 is cached, 94 must have been discarded.
-  EXPECT_THAT(cache.Get("Slow trainer 1"), IsOkAndHolds(Pointee(Gt(94))));
-  EXPECT_THAT(cache.Get("Slow trainer 2"), IsOkAndHolds(Pointee(Gt(94))));
+  EXPECT_THAT(cache.Get("Slow trainer 1"),
+              absl_testing::IsOkAndHolds(Pointee(Gt(94))));
+  EXPECT_THAT(cache.Get("Slow trainer 2"),
+              absl_testing::IsOkAndHolds(Pointee(Gt(94))));
 }
 
 TEST(CrossTrainerCacheTest, NewTrainersStartLate) {
@@ -195,13 +209,14 @@ TEST(CrossTrainerCacheTest, NewTrainersStartLate) {
       /*max_cache_size_bytes=*/5 * sizeof(int64_t),
       std::make_unique<InfiniteRange>());
   for (int i = 0; i < 100; ++i) {
-    EXPECT_THAT(cache.Get("Old trainer"), IsOkAndHolds(Pointee(i)));
+    EXPECT_THAT(cache.Get("Old trainer"),
+                absl_testing::IsOkAndHolds(Pointee(i)));
   }
 
   // New trainers start to read after the first trainer has finished.
   for (int j = 0; j < 100; ++j) {
     EXPECT_THAT(cache.Get(absl::StrCat("New trainer ", j)),
-                IsOkAndHolds(Pointee(Gt(94))));
+                absl_testing::IsOkAndHolds(Pointee(Gt(94))));
   }
 }
 
@@ -210,29 +225,41 @@ TEST(CrossTrainerCacheTest, AlternateTrainerExtendsCache) {
   CrossTrainerCache<int64_t> cache(
       /*max_cache_size_bytes=*/sizeof(int64_t),
       std::make_unique<InfiniteRange>());
-  EXPECT_THAT(cache.Get("Trainer 1"), IsOkAndHolds(Pointee(0)));
-  EXPECT_THAT(cache.Get("Trainer 1"), IsOkAndHolds(Pointee(1)));
-  EXPECT_THAT(cache.Get("Trainer 1"), IsOkAndHolds(Pointee(2)));
+  EXPECT_THAT(cache.Get("Trainer 1"), absl_testing::IsOkAndHolds(Pointee(0)));
+  EXPECT_THAT(cache.Get("Trainer 1"), absl_testing::IsOkAndHolds(Pointee(1)));
+  EXPECT_THAT(cache.Get("Trainer 1"), absl_testing::IsOkAndHolds(Pointee(2)));
 
   // When 2 is cached, 0 must have been discarded.
-  EXPECT_THAT(cache.Get("Trainer 2"), IsOkAndHolds(Pointee(Gt(0))));
-  EXPECT_THAT(cache.Get("Trainer 2"), IsOkAndHolds(Pointee(Gt(1))));
-  EXPECT_THAT(cache.Get("Trainer 2"), IsOkAndHolds(Pointee(Gt(2))));
+  EXPECT_THAT(cache.Get("Trainer 2"),
+              absl_testing::IsOkAndHolds(Pointee(Gt(0))));
+  EXPECT_THAT(cache.Get("Trainer 2"),
+              absl_testing::IsOkAndHolds(Pointee(Gt(1))));
+  EXPECT_THAT(cache.Get("Trainer 2"),
+              absl_testing::IsOkAndHolds(Pointee(Gt(2))));
 
   // When 3 is cached, 1 must have been discarded.
-  EXPECT_THAT(cache.Get("Trainer 1"), IsOkAndHolds(Pointee(Gt(1))));
-  EXPECT_THAT(cache.Get("Trainer 1"), IsOkAndHolds(Pointee(Gt(2))));
-  EXPECT_THAT(cache.Get("Trainer 1"), IsOkAndHolds(Pointee(Gt(3))));
+  EXPECT_THAT(cache.Get("Trainer 1"),
+              absl_testing::IsOkAndHolds(Pointee(Gt(1))));
+  EXPECT_THAT(cache.Get("Trainer 1"),
+              absl_testing::IsOkAndHolds(Pointee(Gt(2))));
+  EXPECT_THAT(cache.Get("Trainer 1"),
+              absl_testing::IsOkAndHolds(Pointee(Gt(3))));
 
   // When 4 is cached, 2 must have been discarded.
-  EXPECT_THAT(cache.Get("Trainer 2"), IsOkAndHolds(Pointee(Gt(2))));
-  EXPECT_THAT(cache.Get("Trainer 2"), IsOkAndHolds(Pointee(Gt(3))));
-  EXPECT_THAT(cache.Get("Trainer 2"), IsOkAndHolds(Pointee(Gt(4))));
+  EXPECT_THAT(cache.Get("Trainer 2"),
+              absl_testing::IsOkAndHolds(Pointee(Gt(2))));
+  EXPECT_THAT(cache.Get("Trainer 2"),
+              absl_testing::IsOkAndHolds(Pointee(Gt(3))));
+  EXPECT_THAT(cache.Get("Trainer 2"),
+              absl_testing::IsOkAndHolds(Pointee(Gt(4))));
 
   // When 5 is cached, 3 must have been discarded.
-  EXPECT_THAT(cache.Get("Trainer 3"), IsOkAndHolds(Pointee(Gt(3))));
-  EXPECT_THAT(cache.Get("Trainer 3"), IsOkAndHolds(Pointee(Gt(4))));
-  EXPECT_THAT(cache.Get("Trainer 3"), IsOkAndHolds(Pointee(Gt(5))));
+  EXPECT_THAT(cache.Get("Trainer 3"),
+              absl_testing::IsOkAndHolds(Pointee(Gt(3))));
+  EXPECT_THAT(cache.Get("Trainer 3"),
+              absl_testing::IsOkAndHolds(Pointee(Gt(4))));
+  EXPECT_THAT(cache.Get("Trainer 3"),
+              absl_testing::IsOkAndHolds(Pointee(Gt(5))));
 }
 
 TEST(CrossTrainerCacheTest, CacheHitMetrics) {
@@ -247,7 +274,7 @@ TEST(CrossTrainerCacheTest, CacheHitMetrics) {
   CrossTrainerCache<int64_t> cache(
       /*max_cache_size_bytes=*/1024, std::make_unique<InfiniteRange>());
   for (size_t i = 0; i < num_elements; ++i) {
-    EXPECT_THAT(cache.Get("Trainer 1"), IsOkAndHolds(Pointee(i)));
+    EXPECT_THAT(cache.Get("Trainer 1"), absl_testing::IsOkAndHolds(Pointee(i)));
   }
   EXPECT_EQ(cell_reader.Delta("true"), 0);
   EXPECT_EQ(cell_reader.Delta("false"), 10);
@@ -255,7 +282,7 @@ TEST(CrossTrainerCacheTest, CacheHitMetrics) {
   EXPECT_EQ(cell_reader.Read("false"), 10);
 
   for (size_t i = 0; i < num_elements; ++i) {
-    EXPECT_THAT(cache.Get("Trainer 2"), IsOkAndHolds(Pointee(i)));
+    EXPECT_THAT(cache.Get("Trainer 2"), absl_testing::IsOkAndHolds(Pointee(i)));
   }
   EXPECT_EQ(cell_reader.Delta("true"), 10);
   EXPECT_EQ(cell_reader.Delta("false"), 0);
@@ -273,14 +300,14 @@ TEST(CrossTrainerCacheTest, CacheSizeMetrics) {
       std::make_unique<InfiniteRange>());
 
   for (size_t i = 0; i < num_elements; ++i) {
-    EXPECT_THAT(cache.Get("Trainer 1"), IsOkAndHolds(Pointee(i)));
+    EXPECT_THAT(cache.Get("Trainer 1"), absl_testing::IsOkAndHolds(Pointee(i)));
     EXPECT_EQ(cell_reader.Read(), (i + 1) * sizeof(int64_t));
   }
 
   // The cache size does not increase after reaching `num_elements`.
   for (size_t i = 0; i < 100; ++i) {
     EXPECT_THAT(cache.Get("Trainer 1"),
-                IsOkAndHolds(Pointee(num_elements + i)));
+                absl_testing::IsOkAndHolds(Pointee(num_elements + i)));
     EXPECT_EQ(cell_reader.Read(), 5 * sizeof(int64_t));
   }
 }
@@ -388,8 +415,9 @@ TEST(CrossTrainerCacheTest, Cancel) {
   reader_threads.clear();
 
   mutex_lock l(mu);
-  EXPECT_THAT(status, StatusIs(error::CANCELLED));
-  EXPECT_THAT(cache.Get("New trainer"), StatusIs(error::CANCELLED));
+  EXPECT_THAT(status, absl_testing::StatusIs(error::CANCELLED));
+  EXPECT_THAT(cache.Get("New trainer"),
+              absl_testing::StatusIs(error::CANCELLED));
   EXPECT_TRUE(cache.IsCancelled());
 }
 
@@ -406,23 +434,32 @@ TEST(CrossTrainerCacheTest, Errors) {
   CrossTrainerCache<std::string> cache(
       /*max_cache_size_bytes=*/1000, std::move(elements));
 
+  EXPECT_THAT(
+      cache.Get("Trainer ID"),
+      absl_testing::IsOkAndHolds(Pointee(std::string("First element"))));
   EXPECT_THAT(cache.Get("Trainer ID"),
-              IsOkAndHolds(Pointee(std::string("First element"))));
-  EXPECT_THAT(cache.Get("Trainer ID"), StatusIs(error::CANCELLED));
+              absl_testing::StatusIs(error::CANCELLED));
+  EXPECT_THAT(
+      cache.Get("Trainer ID"),
+      absl_testing::IsOkAndHolds(Pointee(std::string("Second element"))));
   EXPECT_THAT(cache.Get("Trainer ID"),
-              IsOkAndHolds(Pointee(std::string("Second element"))));
-  EXPECT_THAT(cache.Get("Trainer ID"), StatusIs(error::INVALID_ARGUMENT));
+              absl_testing::StatusIs(error::INVALID_ARGUMENT));
+  EXPECT_THAT(
+      cache.Get("Trainer ID"),
+      absl_testing::IsOkAndHolds(Pointee(std::string("Third element"))));
   EXPECT_THAT(cache.Get("Trainer ID"),
-              IsOkAndHolds(Pointee(std::string("Third element"))));
-  EXPECT_THAT(cache.Get("Trainer ID"), StatusIs(error::UNAVAILABLE));
+              absl_testing::StatusIs(error::UNAVAILABLE));
 
   // Errors are not stored in the cache.
-  EXPECT_THAT(cache.Get("New Trainer"),
-              IsOkAndHolds(Pointee(std::string("First element"))));
-  EXPECT_THAT(cache.Get("New Trainer"),
-              IsOkAndHolds(Pointee(std::string("Second element"))));
-  EXPECT_THAT(cache.Get("New Trainer"),
-              IsOkAndHolds(Pointee(std::string("Third element"))));
+  EXPECT_THAT(
+      cache.Get("New Trainer"),
+      absl_testing::IsOkAndHolds(Pointee(std::string("First element"))));
+  EXPECT_THAT(
+      cache.Get("New Trainer"),
+      absl_testing::IsOkAndHolds(Pointee(std::string("Second element"))));
+  EXPECT_THAT(
+      cache.Get("New Trainer"),
+      absl_testing::IsOkAndHolds(Pointee(std::string("Third element"))));
 }
 
 TEST(CrossTrainerCacheTest, CacheSizeIsTooSmall) {
@@ -430,17 +467,19 @@ TEST(CrossTrainerCacheTest, CacheSizeIsTooSmall) {
   CrossTrainerCache<Tensor> cache(
       /*max_cache_size_bytes=*/1, std::make_unique<TensorDataset>());
   EXPECT_THAT(cache.Get("Trainer ID"),
-              StatusIs(error::INVALID_ARGUMENT,
-                       HasSubstr("tf.data service element size is larger than "
-                                 "cache size in bytes.")));
+              absl_testing::StatusIs(
+                  error::INVALID_ARGUMENT,
+                  HasSubstr("tf.data service element size is larger than "
+                            "cache size in bytes.")));
 }
 
 TEST(CrossTrainerCacheTest, TrainerIDMustBeNonEmpty) {
   CrossTrainerCache<Tensor> cache(
       /*max_cache_size_bytes=*/1000, std::make_unique<TensorDataset>());
-  EXPECT_THAT(cache.Get(""), StatusIs(error::INVALID_ARGUMENT,
-                                      "tf.data service cross-trainer cache "
-                                      "requires a non-empty trainer ID."));
+  EXPECT_THAT(cache.Get(""),
+              absl_testing::StatusIs(error::INVALID_ARGUMENT,
+                                     "tf.data service cross-trainer cache "
+                                     "requires a non-empty trainer ID."));
 }
 
 }  // namespace

@@ -215,7 +215,7 @@ ENTRY %main {
 
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
   std::vector<Literal*> literals = {std::get<0>(GetParam()).get()};
-  auto result = ExecuteAndTransfer(std::move(module), literals);
+  TF_ASSERT_OK_AND_ASSIGN(Literal result, Execute(std::move(module), literals));
 
   bool has_diff = false;
   for (int i = 1; i < kRadixSortTestSize; ++i) {
@@ -265,8 +265,9 @@ ENTRY %main {
 
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
   std::vector<Literal*> literals = {std::get<0>(GetParam()).get()};
-  auto result_tuple = ExecuteAndTransfer(std::move(module), literals);
-  std::vector<Literal> result = result_tuple.DecomposeTuple();
+  TF_ASSERT_OK_AND_ASSIGN(Literal result_tuple,
+                          Execute(std::move(module), literals));
+  std::vector<Literal> result = std::move(result_tuple).DecomposeTuple();
 
   bool has_diff = false;
   for (int i = 1; i < kRadixSortTestSize; ++i) {

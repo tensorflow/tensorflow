@@ -29,9 +29,6 @@ limitations under the License.
 
 namespace xla {
 
-// Registers dialects necessary for converting MLIR to HLO.
-void RegisterMlirToHloDependentDialects(mlir::DialectRegistry& registry);
-
 // Convert HloModule to StableHLO module.
 absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertHloToStablehlo(
     mlir::MLIRContext& ctx, const xla::HloModule* hlo_module);

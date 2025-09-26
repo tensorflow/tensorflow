@@ -1,5 +1,6 @@
 # Fuzzing TensorFlow.
 
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load(
     "//tensorflow/core/platform:build_config.bzl",
     "tf_proto_library",

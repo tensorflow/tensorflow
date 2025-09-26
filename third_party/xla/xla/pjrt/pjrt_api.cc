@@ -70,6 +70,9 @@ absl::StatusOr<const PJRT_Api*> PjrtApi(absl::string_view device_type) {
 }
 
 absl::StatusOr<std::vector<std::string>> GetRegisteredPjrtApis() {
+  if (pjrt_apis == nullptr) {
+    return absl::FailedPreconditionError("PJRT_Api is not initialized.");
+  }
   std::vector<std::string> device_types;
   for (const auto& [device_type, api_and_initialized] : *pjrt_apis) {
     device_types.push_back(device_type);
@@ -121,6 +124,9 @@ absl::StatusOr<const PJRT_Api*> LoadPjrtPlugin(absl::string_view device_type,
 }
 
 absl::StatusOr<bool> IsPjrtPluginInitialized(absl::string_view device_type) {
+  if (pjrt_apis == nullptr) {
+    return absl::FailedPreconditionError("PJRT_Api is not initialized.");
+  }
   std::string canonicalize_device_type = CanonicalizeDeviceType(device_type);
   auto iter = pjrt_apis->find(canonicalize_device_type);
   if (iter == pjrt_apis->end()) {

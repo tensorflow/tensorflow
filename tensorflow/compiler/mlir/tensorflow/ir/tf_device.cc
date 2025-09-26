@@ -102,8 +102,8 @@ struct TFInlinerInterface : public DialectInlinerInterface {
     if (!mlir::isa<TensorType>(result_type) ||
         !mlir::isa<TensorType>(input.getType()))
       return nullptr;
-    return builder.create<TF::CastOp>(conversion_loc, result_type, input,
-                                      /*truncate=*/builder.getBoolAttr(false));
+    return TF::CastOp::create(builder, conversion_loc, result_type, input,
+                              /*truncate=*/builder.getBoolAttr(false));
   }
 };
 
@@ -775,9 +775,9 @@ static LogicalResult EliminatePassThroughResults(ClusterOp op,
 
   // Rewrite the cluster op.
   rewriter.setInsertionPoint(op);
-  auto new_op = rewriter.create<tf_device::ClusterOp>(
-      op->getLoc(), new_return.getOperandTypes(), op->getOperands(),
-      op->getAttrs());
+  auto new_op = tf_device::ClusterOp::create(rewriter, op->getLoc(),
+                                             new_return.getOperandTypes(),
+                                             op->getOperands(), op->getAttrs());
   rewriter.inlineRegionBefore(op.getBodyRegion(), new_op.getBodyRegion(),
                               new_op.getBodyRegion().end());
 

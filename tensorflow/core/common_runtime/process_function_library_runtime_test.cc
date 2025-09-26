@@ -18,6 +18,7 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
+#include "absl/synchronization/notification.h"
 #include "tensorflow/core/common_runtime/composite_device.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
@@ -232,7 +233,7 @@ class ProcessFunctionLibraryRuntimeTest : public ::testing::Test {
         [](std::function<void()> fn) {
           test::function::FunctionTestSchedClosure(fn);
         };
-    Notification done;
+    absl::Notification done;
     opts.runner = &runner;
     std::vector<K> out;
     pflr->Run(opts, handle, args, &out,
@@ -255,7 +256,7 @@ class ProcessFunctionLibraryRuntimeTest : public ::testing::Test {
     if (!status.ok()) {
       return status;
     }
-    Notification done2;
+    absl::Notification done2;
     pflr->Run(opts, handle, args, &out,
               [&status, &done2](const absl::Status& s) {
                 status = s;
@@ -299,7 +300,7 @@ class ProcessFunctionLibraryRuntimeTest : public ::testing::Test {
 
     opts.runner = &runner;
     absl::Status status;
-    Notification done;
+    absl::Notification done;
     std::vector<Tensor> out;
     proc_flr_->Run(opts, handle, args, &out,
                    [&status, &done](const absl::Status& s) {

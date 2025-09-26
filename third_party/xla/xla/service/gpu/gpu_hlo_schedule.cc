@@ -646,7 +646,8 @@ absl::StatusOr<HloSchedule> ScheduleGpuModuleWithMemoryScheduler(
   return ScheduleModule(
       module,
       DefaultMemoryScheduler(alias_info, size_func, PostProcessSchedule),
-      /*execution_threads=*/{}, peak_memory_bytes);
+      /*execution_threads=*/{HloInstruction::kMainExecutionThread},
+      peak_memory_bytes);
 }
 
 }  // end namespace

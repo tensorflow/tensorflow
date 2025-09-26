@@ -81,8 +81,8 @@ class SdyRoundTripShardMapExportPass
           manualCompBody.getArgumentTypes();
       mlir::TypeRange localResultTypes =
           sdy::getBodyTerminatorOpOperandTypes(manualComputation);
-      auto funcOp = rewriter.create<FuncOp>(
-          loc, kManualComputationBodyFuncName,
+      auto funcOp = FuncOp::create(
+          rewriter, loc, kManualComputationBodyFuncName,
           rewriter.getFunctionType(manualCompBodyArgTypes, localResultTypes));
       mlir::StringAttr funcName = symbolTable.insert(funcOp);
 
@@ -90,8 +90,8 @@ class SdyRoundTripShardMapExportPass
       stablehlo::CustomCallOp globalToLocalShape;
       mlir::ValueRange operands = manualComputation->getOperands();
       if (!operands.empty()) {
-        globalToLocalShape = rewriter.create<stablehlo::CustomCallOp>(
-            loc, manualCompBodyArgTypes, operands);
+        globalToLocalShape = stablehlo::CustomCallOp::create(
+            rewriter, loc, manualCompBodyArgTypes, operands);
         globalToLocalShape.setCallTargetName(kGlobalToLocalShapeCallTargetName);
         // We mark `xla.sdy.GlobalToLocalShape` as side-effecting to avoid
         // CSE deduping it with another taking the same operands, as it would
@@ -105,16 +105,22 @@ class SdyRoundTripShardMapExportPass
       }
 
       auto callOp =
-          rewriter.create<CallOp>(loc, localResultTypes, funcName, operands);
+          CallOp::create(rewriter, loc, localResultTypes, funcName, operands);
+      setFrontendAttribute(callOp, kXlaInlineableAttr,
+                           rewriter.getBoolAttr(false));
 
       mlir::ResultRange results = manualComputation->getResults();
       if (!results.empty()) {
-        auto localToGlobalShape = rewriter.create<stablehlo::CustomCallOp>(
-            loc, manualComputation.getResultTypes(), callOp->getResults());
+        auto localToGlobalShape = stablehlo::CustomCallOp::create(
+            rewriter, loc, manualComputation.getResultTypes(),
+            callOp->getResults());
         // We don't mark `xla.sdy.LocalToGlobalShape` as side-effecting, so if
         // any of its results has a dimension of size 0 (i.e. 0 num-elements),
         // it will be replaced with a constant of the same shape.
         localToGlobalShape.setCallTargetName(kLocalToGlobalShapeCallTargetName);
+        // We mark `xla.sdy.LocalToGlobalShape` as side-effecting to avoid
+        // CSE removing it if it has no users.
+        localToGlobalShape.setHasSideEffect(true);
         setFrontendAttribute(localToGlobalShape, kOutShardings,
                              manualComputation.getOutShardings());
         setFrontendAttribute(localToGlobalShape, kManualAxes,
@@ -132,10 +138,12 @@ class SdyRoundTripShardMapExportPass
   }
 
   StringRef getDescription() const override {
-    return "Converts the body of a ManualComputationOp to a separate function "
-           "with a CallOp and a pair of CustomCallOps that change the shape of "
-           "the arguments/results. The CallOp saves the in/out shardings and "
-           "manual axes as frontend attrs.";
+    return "Converts a `ManualComputationOp` to the following."
+           "1. A separate function for the body of the `ManualComputationOp`."
+           "2. A `CallOp` calling the function in #1, marked as not inlinable."
+           "3. A pair of `CustomCallOp`s that change the shape of the "
+           "   arguments/results. They save the in/out shardings and manual "
+           "   axes as frontend attrs.";
   }
   void getDependentDialects(mlir::DialectRegistry& registry) const final {
     registry.insert<stablehlo::StablehloDialect>();

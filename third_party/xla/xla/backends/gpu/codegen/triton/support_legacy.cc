@@ -405,6 +405,11 @@ CodegenDecision IsTritonSupportedInstruction(
           *Cast<HloDynamicSliceInstruction>(&instr));
     }
     case HloOpcode::kBitcast:
+      if (instr.shape().element_type() !=
+          instr.operand(0)->shape().element_type()) {
+        return CodegenDecision::Forbid("Bitcast-convert is not supported");
+      }
+      return CodegenDecision::Allow();
     case HloOpcode::kTranspose:
     case HloOpcode::kSlice:
     case HloOpcode::kReshape:

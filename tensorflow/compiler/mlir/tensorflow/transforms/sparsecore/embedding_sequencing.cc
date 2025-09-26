@@ -178,8 +178,9 @@ TF::StatefulPartitionedCallOp MakeFuncCaller(
   auto symbol =
       mlir::SymbolRefAttr::get(builder.getContext(), func.getSymName());
   auto result_types = func.getResultTypes();
-  auto caller = builder.create<TF::StatefulPartitionedCallOp>(
-      loc, result_types, operands.getArrayRef(), /*args_attrs=*/nullptr,
+  auto caller = TF::StatefulPartitionedCallOp::create(
+      builder, loc, result_types, operands.getArrayRef(),
+      /*arg_attrs=*/nullptr,
       /*res_attrs=*/nullptr, symbol,
       /*config=*/builder.getStringAttr(""),
       /*config_proto=*/builder.getStringAttr(""),
@@ -199,9 +200,9 @@ func::FuncOp CreateFnWithSignature(ModuleOp module,
   std::vector<Type> input_types = GetValueTypes(inputs);
   std::vector<Type> output_types = GetValueTypes(outputs);
   builder.setInsertionPointToEnd(&module.getBodyRegion().back());
-  func::FuncOp func_op = builder.create<func::FuncOp>(
-      module.getLoc(), name,
-      builder.getFunctionType(input_types, output_types));
+  func::FuncOp func_op =
+      func::FuncOp::create(builder, module.getLoc(), name,
+                           builder.getFunctionType(input_types, output_types));
   func_op.setPrivate();
 
   return func_op;
@@ -242,7 +243,7 @@ TF::StatefulPartitionedCallOp EncapsulateOpsInFunc(
                                new_func.getBody());
 
   builder.setInsertionPointToEnd(block);
-  builder.create<func::ReturnOp>(parent_func.getLoc(), outputs.getArrayRef());
+  func::ReturnOp::create(builder, parent_func.getLoc(), outputs.getArrayRef());
 
   // Replace the original 'outputs' values with the result of the call to the
   // new function.
@@ -494,21 +495,22 @@ LogicalResult FindForwardPassOps(OpBuilder& builder,
       builder.setInsertionPointAfter(op);
       std::vector<Type> types(num_replicas, result.getType());
       TF::TPUReplicatedOutputOp replicated_output =
-          builder.create<TF::TPUReplicatedOutputOp>(op->getLoc(),
-                                                    TypeRange(types), result);
+          TF::TPUReplicatedOutputOp::create(builder, op->getLoc(),
+                                            TypeRange(types), result);
       new_forward_ops.insert(replicated_output);
       // TODO(bfontain): Check for other attributes.
       replicated_output->setAttr(kDevice, builder.getStringAttr(""));
-      TF::TPUReplicatedInputOp input = builder.create<TF::TPUReplicatedInputOp>(
-          op->getLoc(), result.getType(), replicated_output.getResults());
+      TF::TPUReplicatedInputOp input = TF::TPUReplicatedInputOp::create(
+          builder, op->getLoc(), result.getType(),
+          replicated_output.getResults());
       input->setAttr(kDevice, builder.getStringAttr(""));
       mlir::Value new_value = input.getOutput();
 
       if (mlir::isa<TF::TPUAnnotateTensorsWithDynamicShapeOp>(
               result.getDefiningOp())) {
         TF::TPUAnnotateTensorsWithDynamicShapeOp annotate_op =
-            builder.create<TF::TPUAnnotateTensorsWithDynamicShapeOp>(
-                op->getLoc(), result.getType(), new_value,
+            TF::TPUAnnotateTensorsWithDynamicShapeOp::create(
+                builder, op->getLoc(), result.getType(), new_value,
                 result.getDefiningOp()->getAttrs());
         for (auto [operation, index] : out_of_region_use) {
           if (!backward_pass_ops.contains(operation)) {
@@ -614,12 +616,12 @@ LogicalResult FindBackwardPassOps(
     builder.setInsertionPointAfter(value.getDefiningOp());
     std::vector<Type> types(num_replicas, value.getType());
     Location loc = value.getDefiningOp()->getLoc();
-    TF::TPUReplicatedOutputOp output =
-        builder.create<TF::TPUReplicatedOutputOp>(loc, TypeRange(types), value);
+    TF::TPUReplicatedOutputOp output = TF::TPUReplicatedOutputOp::create(
+        builder, loc, TypeRange(types), value);
     // TODO(bfontain): Check for other attributes.
     output->setAttr(kDevice, builder.getStringAttr(""));
-    TF::TPUReplicatedInputOp input = builder.create<TF::TPUReplicatedInputOp>(
-        loc, value.getType(), output.getResults());
+    TF::TPUReplicatedInputOp input = TF::TPUReplicatedInputOp::create(
+        builder, loc, value.getType(), output.getResults());
     input->setAttr(kDevice, builder.getStringAttr(""));
     for (OpOperand& use : value.getUses())
       if (backward_pass_ops.contains(use.getOwner()))

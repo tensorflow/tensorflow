@@ -31,18 +31,18 @@ using tsl::testing::StatusIs;
 
 TEST(ParseRocmVersionTest, Simple) {
   EXPECT_THAT(stream_executor::ParseRocmVersion(60'100'002),
-              IsOkAndHolds(SemanticVersion(6, 1, 2)));
+              absl_testing::IsOkAndHolds(SemanticVersion(6, 1, 2)));
 }
 
 TEST(RocmVersionParserTest, NegativeIntegerIsNotAValidVersion) {
   EXPECT_THAT(ParseRocmVersion(-42),
-              StatusIs(absl::StatusCode::kInvalidArgument));
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 TEST(RocmVersionParserTest, AlignsWithHIPVersion) {
   EXPECT_THAT(ParseRocmVersion(HIP_VERSION),
-              IsOkAndHolds(SemanticVersion{HIP_VERSION_MAJOR, HIP_VERSION_MINOR,
-                                           HIP_VERSION_PATCH}));
+              absl_testing::IsOkAndHolds(SemanticVersion{
+                  HIP_VERSION_MAJOR, HIP_VERSION_MINOR, HIP_VERSION_PATCH}));
 }
 
 }  // namespace

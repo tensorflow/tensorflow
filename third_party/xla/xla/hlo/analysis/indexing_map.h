@@ -27,8 +27,8 @@ limitations under the License.
 
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/Hashing.h"
+#include "llvm/ADT/MapVector.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "mlir/IR/AffineExpr.h"
@@ -249,7 +249,7 @@ class IndexingMap {
 
   IndexingMap(mlir::AffineMap affine_map, std::vector<Variable> dimensions,
               std::vector<Variable> range_vars, std::vector<Variable> rt_vars,
-              const llvm::DenseMap<mlir::AffineExpr, Interval>& constraints);
+              const llvm::MapVector<mlir::AffineExpr, Interval>& constraints);
 
   IndexingMap(const IndexingMap&) = default;
   IndexingMap(IndexingMap&&) noexcept = default;
@@ -317,7 +317,7 @@ class IndexingMap {
   int64_t GetSymbolCount() const { return affine_map_.getNumSymbols(); }
 
   // Getters for affine expression constraints.
-  const llvm::DenseMap<mlir::AffineExpr, Interval>& GetConstraints() const {
+  const llvm::MapVector<mlir::AffineExpr, Interval>& GetConstraints() const {
     return constraints_;
   }
   int64_t GetConstraintsCount() const { return constraints_.size(); }
@@ -429,7 +429,7 @@ class IndexingMap {
   // Inequality constraints for affine expressions. They restrict the feasible
   // set for the domain of the indexing map. It contains affine expressions
   // other than AffineDimExpr and AffineSymbolExpr.
-  llvm::DenseMap<mlir::AffineExpr, Interval> constraints_;
+  llvm::MapVector<mlir::AffineExpr, Interval> constraints_;
   // Flag to indicate that the domain is empty.
   bool is_known_empty_ = false;
 };

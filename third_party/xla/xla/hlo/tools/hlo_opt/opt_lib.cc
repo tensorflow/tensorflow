@@ -76,7 +76,6 @@ limitations under the License.
 #include "xla/hlo/transforms/expanders/stable_sort_expander.h"
 #include "xla/hlo/transforms/expanders/stochastic_convert_decomposer.h"
 #include "xla/hlo/transforms/host_offload_legalize.h"
-#include "xla/hlo/transforms/host_offloader.h"
 #include "xla/hlo/transforms/host_offloading_prepare.h"
 #include "xla/hlo/transforms/literal_canonicalizer.h"
 #include "xla/hlo/transforms/memory_space_propagation.h"
@@ -294,7 +293,6 @@ void OptProvider::RegisterAllHardwareIndependentPasses() {
   RegisterPass<HloTrivialScheduler>();
   RegisterPass<HostMemoryTransferAsyncifier>(/*host_memory_space_color=*/5);
   RegisterPass<HostOffloadLegalize>();
-  RegisterPass<HostOffloader>();
   RegisterPass<HostOffloadingPrepare>(
       /*rewrite=*/HostOffloadingPrepare::Rewrite::kElideMoveToHost);
   RegisterPass<IndexedArrayAnalysisPrinterPass>();

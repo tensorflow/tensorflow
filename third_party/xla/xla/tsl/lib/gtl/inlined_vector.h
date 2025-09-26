@@ -25,11 +25,6 @@ limitations under the License.
 #include "xla/tsl/platform/macros.h"
 #include "xla/tsl/platform/types.h"
 
-// TODO: b/323943471 - This macro should eventually be provided by Abseil.
-#ifndef ABSL_DEPRECATE_AND_INLINE
-#define ABSL_DEPRECATE_AND_INLINE()
-#endif
-
 namespace tsl {
 namespace gtl {
 

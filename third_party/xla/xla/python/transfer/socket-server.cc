@@ -42,6 +42,7 @@ limitations under the License.
 #include "xla/python/transfer/streaming.h"
 #include "xla/python/transfer/transfer_socket.pb.h"
 #include "xla/tsl/concurrency/ref_count.h"
+#include "tsl/profiler/lib/traceme.h"
 
 namespace aux {
 
@@ -88,6 +89,7 @@ class SocketServer::SocketNetworkState : public PollEventLoop::Handler {
   }
 
   bool HandleEvents(const pollfd& events) override {
+    tsl::profiler::TraceMe __trace("SocketServer::HandleEvents");
     if (!is_connected_) {
       // poll() may remind us that fd_ is invalid while waiting to reconnect.
       if (fd_ == -1) {
@@ -107,7 +109,7 @@ class SocketServer::SocketNetworkState : public PollEventLoop::Handler {
     }
     if (events.revents & POLLIN) {
       ssize_t recv_size =
-          recv(fd_, network_buffer_.get(), 4096 - recv_count_, 0);
+          recv(fd_, network_buffer_.get() + recv_count_, 4096 - recv_count_, 0);
       if (recv_size == 0) {
         {
           absl::MutexLock l(&mu_);
@@ -179,6 +181,8 @@ class SocketServer::SocketNetworkState : public PollEventLoop::Handler {
         } else {
           can_send_ = false;
         }
+      } else if (send_size < 0 && errno == EAGAIN) {
+        can_send_ = false;
       } else {
         mu_.Unlock();
         Poison(absl::InternalError(

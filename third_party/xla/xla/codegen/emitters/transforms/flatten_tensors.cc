@@ -340,7 +340,8 @@ struct RewriteVectorTransferRead : OpRewritePattern<mv::TransferReadOp> {
                              loc, GetFlattenedType(tensor_type), tensor)
                          .getResult(0);
     rewriter.replaceOpWithNewOp<mv::TransferReadOp>(
-        op, vector_type, tensor_1D, linear_index, llvm::ArrayRef<bool>{true});
+        op, vector_type, tensor_1D, linear_index, op.getPadding(),
+        llvm::ArrayRef<bool>{true});
     return mlir::success();
   }
 };
@@ -414,6 +415,27 @@ struct RewriteVectorInsert : OpRewritePattern<mv::InsertOp> {
         b.create<mv::InsertOp>(op.getValueToStore(), vector_1D, linear_index);
     auto cast_to_orig_type = b.create<UnrealizedConversionCastOp>(
         vector_type, new_insert.getResult());
+    rewriter.replaceOp(op, cast_to_orig_type.getResult(0));
+    return mlir::success();
+  }
+};
+
+struct RewriteVectorFromElements : OpRewritePattern<mv::FromElementsOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(mv::FromElementsOp op,
+                                PatternRewriter& rewriter) const override {
+    auto vector = op.getDest();
+    auto vector_type = vector.getType();
+    if (vector_type.getRank() < 2) {
+      return rewriter.notifyMatchFailure(op, "the vector is already flat");
+    }
+    auto loc = op.getLoc();
+    mlir::ImplicitLocOpBuilder b(loc, rewriter);
+    auto new_from_elements = b.create<mv::FromElementsOp>(
+        GetFlattenedType(vector_type), op.getElements());
+    auto cast_to_orig_type = b.create<UnrealizedConversionCastOp>(
+        vector_type, new_from_elements.getResult());
     rewriter.replaceOp(op, cast_to_orig_type.getResult(0));
     return mlir::success();
   }
@@ -745,6 +767,7 @@ class FlattenTensorsPass
         RewriteTensorExtract,
         RewriteTensorInsert,
         RewriteVectorExtract,
+        RewriteVectorFromElements,
         RewriteVectorInsert,
         RewriteVectorTransferRead,
         RewriteCpuLoad

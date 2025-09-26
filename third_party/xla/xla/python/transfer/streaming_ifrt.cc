@@ -21,6 +21,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/thread_annotations.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -32,9 +33,11 @@ limitations under the License.
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_future.h"
+#include "xla/pjrt/raw_buffer.h"
 #include "xla/python/transfer/streaming.h"
 #include "xla/python/transfer/transfer_socket.pb.h"
 #include "xla/tsl/concurrency/ref_count.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace aux {
@@ -218,24 +221,28 @@ class DmaDestination : public ChunkDestination {
   absl::Status Put(const void* data, int64_t offset, size_t size,
                    absl::AnyInvocable<void() &&> on_done) override {
     if (offset < 0 || offset > buffer_size_ || buffer_size_ - offset < size) {
-      semaphore_.Poison();
-      atm_->SetBufferError(buffer_index_,
-                           absl::InvalidArgumentError(absl::StrFormat(
-                               "Invalid slicing of buffer size %lld with "
-                               "invalid offset %lld, slice size %lld",
-                               buffer_size_, offset, size)));
+      if (semaphore_.Poison()) {
+        atm_->SetBufferError(buffer_index_,
+                             absl::InvalidArgumentError(absl::StrFormat(
+                                 "Invalid slicing of buffer size %lld with "
+                                 "invalid offset %lld, slice size %lld",
+                                 buffer_size_, offset, size)));
+      }
       return absl::OkStatus();
     }
     return semaphore_.DoWork(size, [&](bool is_last_transfer) {
-      return atm_->TransferRawDataToSubBuffer(buffer_index_, data, offset, size,
-                                              is_last_transfer,
-                                              std::move(on_done));
+      return atm_->TransferRawDataToSubBuffer(
+          buffer_index_, data, offset, size, is_last_transfer,
+          [atm = atm_, on_done = std::move(on_done)]() mutable {
+            std::move(on_done)();
+          });
     });
   }
 
   void Poison(absl::Status s) override {
-    semaphore_.Poison();
-    atm_->SetBufferError(buffer_index_, std::move(s));
+    if (semaphore_.Poison()) {
+      atm_->SetBufferError(buffer_index_, std::move(s));
+    }
   }
 
  private:
@@ -251,6 +258,83 @@ tsl::RCReference<ChunkDestination> MakeDmaDestination(
     std::shared_ptr<xla::PjRtClient::AsyncHostToDeviceTransferManager> atm,
     int buffer_index, size_t transfer_size) {
   return tsl::MakeRef<DmaDestination>(atm, buffer_index, transfer_size);
+}
+
+class SlicedRawBufferChunkDestination : public ChunkDestination {
+ public:
+  SlicedRawBufferChunkDestination(
+      tsl::RCReference<xla::PjRtRawBuffer> raw_buffer, size_t offset,
+      size_t size, xla::PjRtFuture<>::Promise promise)
+      : raw_buffer_(raw_buffer),
+        slice_offset_(offset),
+        slice_size_(size),
+        promise_(std::move(promise)) {}
+
+  absl::Status Put(const void* data, int64_t offset, size_t size,
+                   absl::AnyInvocable<void() &&> on_done) override {
+    if (offset < 0 || offset + size > slice_size_) {
+      return absl::InvalidArgumentError(absl::StrFormat(
+          "Out of bounds SlicedRawBufferChunkDestination Copy: %d+%d vs %d",
+          offset, size, slice_size_));
+    }
+    {
+      absl::MutexLock l(&mu_);
+      TF_RETURN_IF_ERROR(saved_status_);
+      sent_bytes_ += size;
+    }
+    auto future =
+        raw_buffer_->CopyRawHostToDevice(data, offset + slice_offset_, size);
+    future.OnReady([state = tsl::FormRef(this), on_done = std::move(on_done),
+                    size](absl::Status s) mutable {
+      {
+        absl::MutexLock l(&state->mu_);
+        state->copied_bytes_ += size;
+        state->SendResultsIfDone(std::move(s));
+      }
+      std::move(on_done)();
+    });
+    return absl::OkStatus();
+  }
+
+  void SendResultsIfDone(absl::Status s) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+    if (!s.ok() && saved_status_.ok()) {
+      saved_status_ = std::move(s);
+    }
+    if (copied_bytes_ == sent_bytes_ && !saved_status_.ok()) {
+      promise_.Set(saved_status_);
+    } else if (copied_bytes_ == slice_size_) {
+      promise_.Set(absl::OkStatus());
+    }
+  }
+
+  void Poison(absl::Status s) override {
+    absl::MutexLock l(&mu_);
+    if (slice_size_ == sent_bytes_) {
+      return;
+    }
+    if (!s.ok()) {
+      SendResultsIfDone(s);
+    }
+  }
+
+ private:
+  tsl::RCReference<xla::PjRtRawBuffer> raw_buffer_;
+  size_t slice_offset_;
+  size_t slice_size_;
+  size_t sent_bytes_ ABSL_GUARDED_BY(&mu_) = 0;
+  size_t copied_bytes_ ABSL_GUARDED_BY(&mu_) = 0;
+  absl::Mutex mu_;
+  absl::Status saved_status_ ABSL_GUARDED_BY(&mu_);
+  xla::PjRtFuture<>::Promise promise_ ABSL_GUARDED_BY(&mu_);
+};
+
+absl::StatusOr<std::pair<tsl::RCReference<ChunkDestination>, xla::PjRtFuture<>>>
+CreateSlicedRawBufferDest(tsl::RCReference<xla::PjRtRawBuffer> raw_buffer,
+                          size_t offset, size_t size) {
+  auto promise = xla::PjRtFuture<>::CreatePromise();
+  auto dest = tsl::MakeRef<SlicedRawBufferChunkDestination>(raw_buffer, offset,
+                                                            size, promise);
+  return std::make_pair(std::move(dest), xla::PjRtFuture<>(std::move(promise)));
 }
 
 RawBufferEntry::RawBufferEntry(std::vector<BufferRef> arrs,
@@ -287,32 +371,43 @@ bool RawBufferEntry::Handle(tsl::RCReference<ConnectionState> state,
             return;
           }
           for (size_t i = 0; i * xfer_size < buf_size; ++i) {
-            DmaCopyChunk blob;
-            blob.copy_fn = [buffer](
-                               void* dst, int64_t offset,
-                               int64_t transfer_size) -> xla::PjRtFuture<> {
-              return buffer->CopyRawDeviceToHost(dst, offset, transfer_size);
-            };
-            blob.buffer_id = bid;
-            blob.offset = i * xfer_size;
-            blob.size = std::min(xfer_size, buf_size - blob.offset);
-            bool is_largest = blob.size + blob.offset == buf_size;
-            copier_state->ScheduleCopy(
-                std::move(blob),
-                [req_id, state, copier_state, is_largest](
-                    PremappedCopierState* copier_state_ptr,
-                    absl::StatusOr<void*> buf, const DmaCopyChunk& chunk) {
-                  if (!buf.ok()) {
-                    state->SendError(req_id, chunk.offset, chunk.size,
-                                     is_largest, buf.status());
-                    return;
-                  }
-                  CHECK_OK(buf.status());
-                  state->Send(req_id, buf.value(), chunk.offset, chunk.size,
-                              is_largest, [copier_state, buf = buf.value()]() {
-                                copier_state->ReturnBuffer(buf);
-                              });
-                });
+            size_t offset = i * xfer_size;
+            size_t size = std::min(xfer_size, buf_size - offset);
+            bool is_largest = size + offset == buf_size;
+            if (auto* host_pointer = buffer->GetHostPointer()) {
+              size_t offset = i * xfer_size;
+              size_t size = std::min(xfer_size, buf_size - offset);
+              state->Send(req_id,
+                          reinterpret_cast<char*>(host_pointer) + offset,
+                          offset, size, is_largest, [buffer]() {});
+            } else {
+              DmaCopyChunk blob;
+              blob.copy_fn = [buffer](
+                                 void* dst, int64_t offset,
+                                 int64_t transfer_size) -> xla::PjRtFuture<> {
+                return buffer->CopyRawDeviceToHost(dst, offset, transfer_size);
+              };
+              blob.buffer_id = bid;
+              blob.offset = offset;
+              blob.size = size;
+              copier_state->ScheduleCopy(
+                  std::move(blob),
+                  [req_id, state, copier_state, is_largest](
+                      PremappedCopierState* copier_state_ptr,
+                      absl::StatusOr<void*> buf, const DmaCopyChunk& chunk) {
+                    if (!buf.ok()) {
+                      state->SendError(req_id, chunk.offset, chunk.size,
+                                       is_largest, buf.status());
+                      return;
+                    }
+                    CHECK_OK(buf.status());
+                    state->Send(req_id, buf.value(), chunk.offset, chunk.size,
+                                is_largest,
+                                [copier_state, buf = buf.value()]() {
+                                  copier_state->ReturnBuffer(buf);
+                                });
+                  });
+            }
           }
         });
   }

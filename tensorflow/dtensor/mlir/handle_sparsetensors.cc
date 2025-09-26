@@ -222,8 +222,8 @@ struct DTensorSparseTensorToDenseTensor
               .getElementType());
       if (!zero_scalar.ok()) return signalPassFailure();
       mlir::TF::SparseToDenseOp sparse_to_dense_op =
-          builder.create<mlir::TF::SparseToDenseOp>(
-              front_op->getLoc(), sparse_tensor_value.getType(),
+          mlir::TF::SparseToDenseOp::create(
+              builder, front_op->getLoc(), sparse_tensor_value.getType(),
               mlir::ValueRange(
                   {main_func.getArgument(main_func.getNumArguments() - 3),
                    main_func.getArgument(main_func.getNumArguments() - 2),

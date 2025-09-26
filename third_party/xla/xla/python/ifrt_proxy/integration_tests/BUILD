@@ -1,3 +1,5 @@
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
+
 # Copyright 2023 The OpenXLA Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -109,7 +111,6 @@ ifrt_proxy_cc_test(
         "//xla/python/ifrt",
         "//xla/python/ifrt:attribute_map",
         "//xla/python/ifrt:mock",
-        "//xla/python/ifrt:user_context",
         "//xla/python/ifrt_proxy/client",
         "//xla/python/ifrt_proxy/client:grpc_client",
         "//xla/python/ifrt_proxy/client:registry",

@@ -102,6 +102,7 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:stream_executor",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/synchronization",
     ],
 )
 
@@ -110,6 +111,7 @@ cc_library(
     textual_hdrs = [
         "device_event_mgr.h",
     ],
+    deps = ["@com_google_absl//absl/synchronization"],
 )
 
 cc_library(
@@ -168,6 +170,7 @@ tf_cuda_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
         "//tensorflow/core/kernels:cwise_op",
+        "@com_google_absl//absl/synchronization",
         "@local_xla//xla/tsl/framework:device_id",
     ] + if_cuda_or_rocm([
         "@local_xla//xla/stream_executor/gpu:gpu_init",

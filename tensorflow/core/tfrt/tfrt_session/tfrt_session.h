@@ -57,6 +57,8 @@ struct TfrtSessionOptions {
   bool use_tpu = false;
   bool use_gpu = false;
   tensorflow::BackendCompiler* backend_compiler = nullptr;
+  std::function<void(const tfrt::DecodedDiagnostic&)> diag_handler =
+      tfrt_stub::Runtime::LogOnError;
 };
 
 // Factory class to create `TfrtSession` instances.

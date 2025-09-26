@@ -37,6 +37,7 @@ limitations under the License.
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
@@ -105,15 +106,10 @@ absl::Status NvshmemCollectiveThunk::Initialize(
   if (async_events_) {
     TF_RETURN_IF_ERROR(async_events_->Initialize(params.executor));
   }
-  if (!barrier_called_) {
-    TF_ASSIGN_OR_RETURN(auto* collectives, GetNvshmemCollectivesFromRegistry());
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<Communicator> nvshmem_comm,
-                        collectives->CreateCommunicator());
-
-    TF_RETURN_IF_ERROR(
-        nvshmem_comm->Barrier(GpuCollectives::On(*params.stream)));
-    barrier_called_ = true;
-  }
+  // Any nvshmem collective will need to require a barrier at the end of
+  // graph execution to make sure all reads and writes to symmetrics buffers
+  // are finished and ready for the next iteration of executable.
+  params.collective_params->need_barrier = true;
   return absl::OkStatus();
 }
 
@@ -142,10 +138,6 @@ absl::Status NvshmemCollectiveThunk::ExecuteOnStream(
   } else {
     // Launch collective operation on a main stream.
     TF_RETURN_IF_ERROR(RunNvshmemCollective(params, *params.stream));
-  }
-
-  if (barrier_called_) {
-    barrier_called_ = false;
   }
   return absl::OkStatus();
 }

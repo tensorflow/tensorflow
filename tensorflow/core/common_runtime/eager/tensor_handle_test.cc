@@ -291,9 +291,10 @@ TEST_F(PackedTensorHandleTest, PoisonHandle) {
   // Poisoning the handle will make WaitReady fail.
   absl::Status fake_failure_status(absl::StatusCode::kAborted, "Fake failure.");
   packed_handle->Poison(fake_failure_status, packed_handle->device());
-  EXPECT_THAT(WaitReady(packed_handle),
-              StatusIs(fake_failure_status.code(),
-                       std::string(fake_failure_status.message())));
+  EXPECT_THAT(
+      WaitReady(packed_handle),
+      absl_testing::StatusIs(fake_failure_status.code(),
+                             std::string(fake_failure_status.message())));
 }
 
 TEST(TensorHandle_ResourceDeviceTest, OnLocalDevice) {
@@ -489,10 +490,11 @@ TEST_F(RemoteTensorHandleTest, PoisonRemote) {
   h->PoisonRemote(fake_failure_status, d1, context->GetContextViewId());
 
   Device* d2 = device_mgr.ListDevices().at(2);
-  EXPECT_THAT(h->SetRemoteShapeAndDevice(shape, d1, context->GetContextViewId(),
-                                         d2->name()),
-              StatusIs(fake_failure_status.code(),
-                       std::string(fake_failure_status.message())));
+  EXPECT_THAT(
+      h->SetRemoteShapeAndDevice(shape, d1, context->GetContextViewId(),
+                                 d2->name()),
+      absl_testing::StatusIs(fake_failure_status.code(),
+                             std::string(fake_failure_status.message())));
 }
 
 TEST_F(RemoteTensorHandleTest, PoisonRemoteMirror) {
@@ -534,10 +536,11 @@ TEST_F(RemoteTensorHandleTest, PoisonRemoteMirror) {
   absl::Status fake_failure_status(absl::StatusCode::kAborted, "Fake failure.");
   h->PoisonRemote(fake_failure_status, d2, context->GetContextViewId());
 
-  EXPECT_THAT(h->SetRemoteShapeAndDevice(shape, d2, context->GetContextViewId(),
-                                         d2->name()),
-              StatusIs(fake_failure_status.code(),
-                       std::string(fake_failure_status.message())));
+  EXPECT_THAT(
+      h->SetRemoteShapeAndDevice(shape, d2, context->GetContextViewId(),
+                                 d2->name()),
+      absl_testing::StatusIs(fake_failure_status.code(),
+                             std::string(fake_failure_status.message())));
 }
 
 TEST_F(RemoteTensorHandleTest, SetRemoteTensorHandleShapeTwice) {
@@ -594,8 +597,8 @@ TEST_F(RemoteTensorHandleTest, SetRemoteTensorHandleShapeTwice) {
   TensorShape another_shape({1});
   EXPECT_THAT(h->SetRemoteShapeAndDevice(
                   another_shape, d1, context->GetContextViewId(), d1->name()),
-              StatusIs(tensorflow::error::INTERNAL,
-                       HasSubstr("Trying to change shape to")));
+              absl_testing::StatusIs(tensorflow::error::INTERNAL,
+                                     HasSubstr("Trying to change shape to")));
 }
 
 TEST_F(RemoteTensorHandleTest, SetRemoteMirrorShapeTwice) {
@@ -647,8 +650,8 @@ TEST_F(RemoteTensorHandleTest, SetRemoteMirrorShapeTwice) {
   TensorShape another_shape({1});
   EXPECT_THAT(h->SetRemoteShapeAndDevice(
                   another_shape, d1, context->GetContextViewId(), d2->name()),
-              StatusIs(tensorflow::error::INTERNAL,
-                       HasSubstr("Trying to change shape to")));
+              absl_testing::StatusIs(tensorflow::error::INTERNAL,
+                                     HasSubstr("Trying to change shape to")));
 }
 
 TEST(TensorHandle_LocalTest, TensorFromDeviceSameDevice) {
@@ -750,7 +753,7 @@ TEST(TensorHandle_LocalTest, TensorFromDeviceInvalidDevice) {
 
   const Tensor* tensor_from_device;
   EXPECT_THAT(h->TensorFromDevice(d1, &tensor_from_device),
-              StatusIs(tensorflow::error::INTERNAL));
+              absl_testing::StatusIs(tensorflow::error::INTERNAL));
 }
 
 TEST(TensorHandle_ResourceShapeMirror, CreateAndCheckMirror) {
@@ -794,7 +797,7 @@ TEST(TensorHandle_ResourceShapeMirror, CreateAndCheckMirror) {
 
   // Adding a duplicate mirror with inconsistent arguments leads to failure.
   EXPECT_THAT(h->AddResourceShapeMirror(d1, op_id + 1, output_num, context),
-              StatusIs(tensorflow::error::INTERNAL));
+              absl_testing::StatusIs(tensorflow::error::INTERNAL));
 }
 
 TEST(TensorHandle_DeviceNameTest, OnLocalDevice) {

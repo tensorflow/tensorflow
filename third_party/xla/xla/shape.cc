@@ -160,62 +160,6 @@ ShapeProto Shape::ToProto() const {
   return proto;
 }
 
-// Returns the array state of the array state of the buffer shape, assuming
-// that the shape is an array or a buffer shape.
-const Shape::ArrayState& Shape::array_state_maybe_underneath_buffer() const {
-  if (auto* const state = if_array_state()) {
-    return *state;
-  }
-  auto* const state = if_buffer_state();
-  CHECK_NE(state, nullptr);
-  return *state->buffer_shape->if_array_state();
-}
-
-Shape::ArrayState& Shape::array_state_maybe_underneath_buffer() {
-  if (auto* state = if_array_state()) {
-    return *state;
-  }
-  BufferState* state = if_buffer_state();
-  CHECK_NE(state, nullptr);
-  return *state->buffer_shape->if_array_state();
-}
-
-const Shape::ArrayState& Shape::array_state() const {
-  const auto* const state = if_array_state();
-  CHECK(state) << "Expected an array shape. Got " << ToString()
-               << "\nThis is a programmer error. Please read "
-                  "the Shape object's array properties (e.g. dimensions) "
-                  "only when it's an array shape.";
-  return *state;
-}
-
-Shape::ArrayState& Shape::array_state() {
-  auto* const state = if_array_state();
-  CHECK(state) << "Expected an array shape. Got " << ToString()
-               << "\nThis is a programmer error. Please mutate "
-                  "the Shape object's array properties (e.g. dimensions) "
-                  "only when it's an array shape.";
-  return *state;
-}
-
-const Shape::TupleState& Shape::tuple_state() const {
-  const auto* const state = if_tuple_state();
-  CHECK(state) << "Expected a tuple shape. Got " << ToString()
-               << "\nThis is a programmer error. Please read "
-                  "the Shape object's tuple properties (e.g. tuple_shapes) "
-                  "only when it's a tuple shape.";
-  return *state;
-}
-
-Shape::TupleState& Shape::tuple_state() {
-  auto* const state = if_tuple_state();
-  CHECK(state) << "Expected a tuple shape. Got " << ToString()
-               << "\nThis is a programmer error. Please mutate "
-                  "the Shape object's tuple properties (e.g. tuple_shapes) "
-                  "only when it's a tuple shape.";
-  return *state;
-}
-
 Shape::BufferState::BufferState() : buffer_shape(std::make_unique<Shape>()) {}
 
 Shape::BufferState::BufferState(const Shape::BufferState& state)
@@ -229,24 +173,6 @@ Shape::BufferState& Shape::BufferState::operator=(
   return *this;
 }
 
-const Shape::BufferState& Shape::buffer_state() const {
-  const auto* const state = if_buffer_state();
-  CHECK(state) << "Expected a buffer shape. Got " << ToString()
-               << "\nThis is a programmer error. Please read "
-                  "the Shape object's buffer properties (e.g. buffer_shape) "
-                  "only when it's a buffer shape.";
-  return *state;
-}
-
-Shape::BufferState& Shape::buffer_state() {
-  auto* const state = if_buffer_state();
-  CHECK(state) << "Expected a buffer shape. Got " << ToString()
-               << "\nThis is a programmer error. Please mutate "
-                  "the Shape object's buffer properties (e.g. buffer_shape) "
-                  "only when it's a buffer shape.";
-  return *state;
-}
-
 void Shape::Print(Printer* printer, bool print_layout) const {
   if (print_layout) {
     ShapeUtil::PrintHumanStringWithLayout(printer, *this);
@@ -258,9 +184,8 @@ void Shape::Print(Printer* printer, bool print_layout) const {
 std::string Shape::ToString(bool print_layout) const {
   if (print_layout) {
     return ShapeUtil::HumanStringWithLayout(*this);
-  } else {
-    return ShapeUtil::HumanString(*this);
   }
+  return ShapeUtil::HumanString(*this);
 }
 
 bool Shape::AreAllLeavesIntegers() const {
@@ -409,14 +334,6 @@ void Shape::CheckStateIsEmpty() const {
   }
 }
 
-const std::vector<Shape>& Shape::tuple_shapes() const {
-  return tuple_state().tuple_shapes;
-}
-
-const Shape& Shape::buffer_shape() const {
-  return *buffer_state().buffer_shape;
-}
-
 void Shape::Clear() {
   // Before setting the element type to invalid, we need to clear the state
   // because the state may be non-empty if the shape was previously valid.
@@ -483,10 +400,6 @@ void Shape::set_element_type(const PrimitiveType value) {
   }
 }
 
-const Shape& Shape::tuple_shapes(int index) const {
-  return tuple_state().tuple_shapes[index];
-}
-
 Shape* Shape::add_tuple_shapes() {
   auto& state = tuple_state();
   state.tuple_shapes.push_back(Shape());
@@ -496,16 +409,17 @@ Shape* Shape::add_tuple_shapes() {
 bool Shape::Equal::operator()(const Shape& lhs, const Shape& rhs) {
   if (lhs.IsTuple()) {
     return rhs.IsTuple() &&
-           absl::c_equal(
-               lhs.tuple_shapes(), rhs.tuple_shapes(),
-               [=](const Shape& l, const Shape& r) { return (*this)(l, r); });
+           absl::c_equal(lhs.tuple_shapes(), rhs.tuple_shapes(),
+                         [this](const Shape& l, const Shape& r) {
+                           return (*this)(l, r);
+                         });
   }
   if (lhs.IsBuffer() || rhs.IsBuffer()) {
     if (!ignore_buffer_) {
       return lhs.IsBuffer() && rhs.IsBuffer() &&
              (*this)(lhs.buffer_shape(), rhs.buffer_shape());
     }
-    const auto underlying_shape = [](const Shape& shape) -> const Shape& {
+    auto underlying_shape = [](const Shape& shape) -> const Shape& {
       return shape.IsBuffer() ? shape.buffer_shape() : shape;
     };
     return (*this)(underlying_shape(lhs), underlying_shape(rhs));
@@ -535,13 +449,13 @@ bool Shape::Equal::operator()(const Shape& lhs, const Shape& rhs) {
       VLOG(3) << "CompareShapes: lhs rank != rhs rank";
       return false;
     }
-    for (int i = 0; i < lhs.dimensions().size(); ++i) {
-      if (ignore_dynamic_dimension_ &&
-          (lhs.is_unbounded_dynamic_dimension(i) ||
-           rhs.is_unbounded_dynamic_dimension(i))) {
-        continue;
-      }
-      if (lhs.dimensions(i) != rhs.dimensions(i)) {
+    for (auto l = lhs.dimensions().begin(), r = rhs.dimensions().begin();
+         l < lhs.dimensions().end(); ++l, ++r) {
+      if (*l != *r) {
+        if (ignore_dynamic_dimension_ &&
+            (*l == kUnboundedSize || *r == kUnboundedSize)) {
+          continue;
+        }
         VLOG(3) << "CompareShapes: lhs dimensions != rhs dimensions";
         return false;
       }
@@ -585,12 +499,10 @@ bool Shape::Equal::operator()(const Shape& lhs, const Shape& rhs) {
   }
 
   if (!ignore_dynamic_dimension_) {
-    for (int i = 0; i < lhs.dimensions().size(); ++i) {
-      if (lhs.is_dynamic_dimension(i) != rhs.is_dynamic_dimension(i)) {
-        VLOG(3) << "CompareShapes: lhs and rhs have different dynamic "
-                   "dimensions.";
-        return false;
-      }
+    if (lhs.dynamic_dimensions() != rhs.dynamic_dimensions()) {
+      VLOG(3) << "CompareShapes: lhs and rhs have different dynamic "
+                 "dimensions.";
+      return false;
     }
   }
   return true;

@@ -1195,11 +1195,6 @@ def MHLO_SendOp : MHLO_Op<"send",
   );
 
   let results = (outs MHLO_Token);
-  let builders = [
-    OpBuilder<(ins
-      "::mlir::Type":$result_type, "::mlir::Value":$operand,
-      "::mlir::mhlo::ChannelHandleAttr":$channel_handle,
-      "::mlir::DenseIntElementsAttr":$source_target_pairs)>];
   let hasCustomHLOConverter = 1;
 }
 
@@ -1231,11 +1226,6 @@ def MHLO_RecvOp : MHLO_Op<"recv", []> {
   );
 
   let results = (outs Variadic<MHLO_StaticShapeTensorOrToken>);
-  let builders = [
-    OpBuilder<(ins
-      "::mlir::Type":$result_type, "::mlir::Value":$operand,
-      "::mlir::mhlo::ChannelHandleAttr":$channel_handle,
-      "::mlir::DenseIntElementsAttr":$source_target_pairs)>];
   let hasCustomHLOConverter = 1;
   let hasVerifier = 1;
 }
@@ -1504,11 +1494,11 @@ def MHLO_WhileOp: MHLO_Op<"while", [
     }) : (tensor<i32>, tensor<i32>) -> (tensor<i32>, tensor<i32>)
     ```
   }];
-  let arguments = (ins Variadic<MHLO_TensorOrToken>:$operand);
+  let arguments = (ins Variadic<MHLO_TensorOrTokenOrBuffer>:$operand);
 
   let regions = (region SizedRegion<1>:$cond, SizedRegion<1>:$body);
 
-  let results = (outs Variadic<MHLO_TensorOrToken>);
+  let results = (outs Variadic<MHLO_TensorOrTokenOrBuffer>);
 
   let extraClassDeclaration = [{
     // Method of OpAsmOpInterface used during custom printing to name the block
@@ -1810,7 +1800,7 @@ def MHLO_GetTupleElementOp: MHLO_Op<"get_tuple_element", [Pure,
     ConfinedAttr<I32Attr, [IntNonNegative]>:$index
   );
 
-  let results = (outs MHLO_TensorOrTokenOrTuple);
+  let results = (outs MHLO_TensorOrTokenOrTupleOrBuffer);
 
   let hasFolder = 1;
 
@@ -1833,7 +1823,7 @@ def MHLO_TupleOp : MHLO_Op<"tuple", [Pure,
     %result = mhlo.tuple %val0, %val1 : tuple<tensor<2xf32>, tuple<tensor<i32>>>
     ```
    }];
-  let arguments = (ins Variadic<MHLO_TensorOrTokenOrTuple>:$val);
+  let arguments = (ins Variadic<MHLO_TensorOrTokenOrTupleOrBuffer>:$val);
   let results = (outs MHLO_Tuple:$result);
 
   let hasCanonicalizer = 1;
@@ -2762,29 +2752,6 @@ def MHLO_RaggedDotOp: MHLO_Op<"ragged_dot", [Pure]> {
   let hasVerifier = 1;
 }
 
-def MHLO_SparseDotOp: MHLO_Op<"sparse_dot", [Pure]> {
-  let summary = "Sparse dot operation";
-  let description = [{
-    Similar to `dot_general` operation, with one or both of the operands being
-    sparse. An additional argument provides sparsity meta information.
-    Disclaimer: this op is experimental / a work in progress.
-  }];
-  let arguments = (ins
-    MHLO_Tensor:$lhs,
-    MHLO_Tensor:$rhs,
-    Variadic<MHLO_Tensor>:$meta,
-    OptionalAttr<MHLO_SparsityDescriptor>:$lhs_sparsity,
-    OptionalAttr<MHLO_SparsityDescriptor>:$rhs_sparsity,
-    MHLO_DotDimensionNumbers:$dot_dimension_numbers,
-    OptionalAttr<MHLO_PrecisionConfigAttr>:$precision_config
-  );
-  let results = (outs MHLO_Tensor);
-  // SparseDot op required custom exporter to pass the preferred element type
-  // to Xla builder.
-  let hasCustomHLOConverter = 1;
-  let hasVerifier = 1;
-}
-
 def MHLO_EinsumOp: MHLO_Op<"einsum", [Pure]> {
   let summary = "Einsum operation";
   let description = [{
@@ -3500,7 +3467,7 @@ def MHLO_ReturnOp : MHLO_Op<"return", [Pure, Terminator]> {
   }];
 
   let arguments = (ins
-    Variadic<MHLO_TensorOrTokenOrTuple >:$results
+    Variadic<MHLO_TensorOrTokenOrTupleOrBuffer >:$results
   );
 
   // Disable conversion operator for return op as the op is not an actual XLA

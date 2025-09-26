@@ -114,7 +114,7 @@ ENTRY entry_computation {
   EXPECT_THAT(triton_fusion_emitter->GenerateTritonKernelAndWrapper(
                   *::xla::Cast<HloFusionInstruction>(root), "random_name",
                   device_info, /*llvm_module=*/nullptr, &mlir_context),
-              StatusIs(absl::StatusCode::kInvalidArgument));
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 }  // namespace

@@ -1,3 +1,5 @@
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
+
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//xla:internal"],
@@ -49,7 +51,6 @@ cc_library(
         "//xla/hlo/transforms:defuser",
         "//xla/hlo/transforms:despecializer",
         "//xla/hlo/transforms:host_offload_legalize",
-        "//xla/hlo/transforms:host_offloader",
         "//xla/hlo/transforms:host_offloading_prepare",
         "//xla/hlo/transforms:literal_canonicalizer",
         "//xla/hlo/transforms:memory_space_propagation",

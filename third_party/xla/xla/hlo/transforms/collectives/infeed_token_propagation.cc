@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/hlo/transforms/collectives/infeed_token_propagation.h"
 
 #include <cstdint>
+#include <queue>
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
@@ -550,10 +551,35 @@ absl::StatusOr<bool> InfeedTokenPropagation::Run(
 
   if (changed) {
     call_graph_ = CallGraph::Build(module, execution_threads);
-    if (!call_graph_->IsFlattened()) {
-      return FailedPrecondition(
-          "Call graph must be flattened before infeed token propagation.");
+
+    absl::flat_hash_set<HloComputation*> visited;
+    std::queue<HloComputation*> worklist;
+    for (const std::vector<HloInstruction*>& inst_vector :
+         {dangling_infeeds, dangling_outfeeds}) {
+      for (HloInstruction* instruction : inst_vector) {
+        if (visited.insert(instruction->parent()).second) {
+          worklist.push(instruction->parent());
+        }
+      }
     }
+
+    while (!worklist.empty()) {
+      HloComputation* computation = worklist.front();
+      worklist.pop();
+      const CallGraphNode& node = call_graph_->GetNode(computation);
+      if (node.caller_callsites().empty()) {
+        continue;
+      }
+      if (node.caller_callsites().size() > 1) {
+        return FailedPrecondition(
+            "Call graph must be flattened before infeed token propagation.");
+      }
+      HloComputation* parent = node.callers()[0];
+      if (visited.insert(parent).second) {
+        worklist.push(parent);
+      }
+    }
+
     DependencyHloOrdering ordering = DependencyHloOrdering(module);
 
     for (HloInstruction* dangling_infeed : dangling_infeeds) {

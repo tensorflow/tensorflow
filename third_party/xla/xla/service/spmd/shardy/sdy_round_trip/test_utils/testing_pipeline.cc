@@ -31,7 +31,8 @@ void registerSdyRoundTripTestingPipeline() {
       [](mlir::OpPassManager& pm) {
         addSdyRoundTripExportPipeline(pm);
         pm.addPass(createSdyRoundTripStablehloToHloToStablehloPass());
-        addSdyRoundTripImportPipeline(pm);
+        addSdyRoundTripImportPipeline(pm, /*enableConstantImport=*/true,
+                                      /*importFuncCalls=*/true);
       });
 }
 

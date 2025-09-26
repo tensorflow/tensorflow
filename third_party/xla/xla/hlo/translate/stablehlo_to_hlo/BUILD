@@ -15,15 +15,14 @@ cc_library(
     srcs = ["translate.cc"],
     hdrs = ["translate.h"],
     deps = [
+        "//xla/hlo/translate:register",
         "//xla/hlo/translate/mhlo_to_hlo:translate",
         "//xla/mlir_hlo:mhlo_passes",
         "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
-        "@stablehlo//:register",
     ],
 )
 
@@ -33,6 +32,7 @@ cc_library(
     srcs = ["translate_registration.cc"],
     deps = [
         ":translate",
+        "//xla/hlo/translate:register",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:FuncDialect",

@@ -99,73 +99,17 @@ class CpuAotCompilationOptions : public AotCompilationOptions {
   const bool compile_copy_as_llvm_kernel_;
 };
 
-// Temporary base class for CpuAotCompilationResultLegacy and
-// CpuAotCompilationResultThunks, CpuAotCompilationResultThunks will take this
-// name once legacy runtime is removed.
+// This class represents the result of a CPU AOT compilation.
 class CpuAotCompilationResult : public AotCompilationResult {
  public:
-  virtual const std::vector<cpu_function_runtime::BufferInfo>& buffer_infos()
-      const = 0;
-  // NOLINTNEXTLINE clang-tidy complains that `override` should be used here.
-  virtual ~CpuAotCompilationResult() = default;
-};
-
-class CpuAotCompilationResultLegacy : public CpuAotCompilationResult {
- public:
-  CpuAotCompilationResultLegacy(
-      ObjectFileData object_file_data,
-      std::vector<cpu_function_runtime::BufferInfo> buffer_infos,
-      int64_t result_buffer_index, std::unique_ptr<HloModule> module,
-      std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data);
-  ~CpuAotCompilationResultLegacy() override = default;
-
-  HloProfilePrinterData* hlo_profile_printer_data() const {
-    return hlo_profile_printer_data_.get();
-  }
-
-  const ObjectFileData& object_file_data() const { return object_file_data_; }
-  const std::vector<cpu_function_runtime::BufferInfo>& buffer_infos()
-      const override {
-    return buffer_infos_;
-  }
-  int64_t result_buffer_index() const { return result_buffer_index_; }
-
-  const HloModule* optimized_module() const override;
-  std::unique_ptr<HloModule> consume_optimized_module() override;
-
- private:
-  // Contains the compiled computation: an object file.
-  const ObjectFileData object_file_data_;
-
-  // A list of BufferInfo objects describing the buffers used by the XLA
-  // computation.
-  const std::vector<cpu_function_runtime::BufferInfo> buffer_infos_;
-
-  // Contains which buffer index into |buffer_sizes| was designated to the
-  // result of the computation.  This buffer should be passed into the output
-  // parameter when calling the compiled computation.
-  const int64_t result_buffer_index_;
-
-  // Contains the optimized HLO module.
-  std::unique_ptr<HloModule> module_;
-
-  // Contains an instance of HloProfilePrinterData if HLO profiling is enabled,
-  // otherwise is nullptr.
-  std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data_;
-};
-
-// TODO(basioli) Once we fully migrate to new runtime this will be the only
-// implementation of CpuAotCompilationResult.
-class CpuAotCompilationResultThunks : public CpuAotCompilationResult {
- public:
-  static absl::StatusOr<std::unique_ptr<CpuAotCompilationResultThunks>> Create(
+  static absl::StatusOr<std::unique_ptr<CpuAotCompilationResult>> Create(
       const HloModule* hlo_module, const BufferAssignment* buffer_assignment,
       absl::string_view function_name, std::vector<ObjFileProto> obj_files,
       std::vector<SymbolProto> symbols, const ThunkSequence& thunks,
       FunctionLibrary* function_library,
       std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data);
 
-  ~CpuAotCompilationResultThunks() override = default;
+  ~CpuAotCompilationResult() override = default;
 
   absl::StatusOr<std::string> SerializeAsString() const override {
     return proto_.SerializeAsString();
@@ -203,8 +147,7 @@ class CpuAotCompilationResultThunks : public CpuAotCompilationResult {
     return temp_allocation_index_;
   }
 
-  const std::vector<cpu_function_runtime::BufferInfo>& buffer_infos()
-      const override {
+  const std::vector<cpu_function_runtime::BufferInfo>& buffer_infos() const {
     return buffer_infos_;
   }
 
@@ -212,25 +155,23 @@ class CpuAotCompilationResultThunks : public CpuAotCompilationResult {
     return hlo_profile_printer_data_.get();
   }
 
-  static absl::StatusOr<std::unique_ptr<CpuAotCompilationResultThunks>>
-  FromString(const std::string& serialized, FunctionLibrary* function_library) {
+  static absl::StatusOr<std::unique_ptr<CpuAotCompilationResult>> FromString(
+      const std::string& serialized, FunctionLibrary* function_library) {
     CompilationResultProto proto;
     if (!proto.ParseFromString(serialized)) {
-      return Internal(
-          "Failed to parse serialized CpuAotCompilationResultThunks.");
+      return Internal("Failed to parse serialized CpuAotCompilationResult.");
     }
 
     TF_ASSIGN_OR_RETURN(
         std::unique_ptr<HloModule> module,
         HloModule::CreateFromProtoWithConfig(proto.hlo_module()));
 
-    return std::unique_ptr<CpuAotCompilationResultThunks>(
-        new CpuAotCompilationResultThunks(proto, std::move(module),
-                                          std::move(function_library)));
+    return std::unique_ptr<CpuAotCompilationResult>(new CpuAotCompilationResult(
+        proto, std::move(module), std::move(function_library)));
   }
 
  private:
-  CpuAotCompilationResultThunks(
+  CpuAotCompilationResult(
       const HloModule* hlo_module, const BufferAssignment* buffer_assignment,
       absl::string_view function_name, std::vector<ObjFileProto> obj_files,
       std::vector<SymbolProto> symbols, const ThunkSequenceProto& thunks,
@@ -239,9 +180,9 @@ class CpuAotCompilationResultThunks : public CpuAotCompilationResult {
       FunctionLibrary* function_library,
       std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data);
 
-  explicit CpuAotCompilationResultThunks(CompilationResultProto proto,
-                                         std::unique_ptr<HloModule> module,
-                                         FunctionLibrary* function_library)
+  explicit CpuAotCompilationResult(CompilationResultProto proto,
+                                   std::unique_ptr<HloModule> module,
+                                   FunctionLibrary* function_library)
       : proto_(std::move(proto)),
         module_(std::move(module)),
         function_library_(std::move(function_library)) {}

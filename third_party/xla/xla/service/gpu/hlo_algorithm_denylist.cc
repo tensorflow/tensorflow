@@ -55,6 +55,7 @@ constexpr char kDefaultDenylist[] = R"pb(
         leakyrelu_alpha: 0
       },
       force_earliest_schedule: false
+      device_type: DEVICE_TYPE_DEVICE
     }
     cc { major: 7 }
     cudnn_version { major: 9 }

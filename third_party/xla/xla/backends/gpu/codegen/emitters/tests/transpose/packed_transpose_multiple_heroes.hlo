@@ -1,6 +1,6 @@
-// RUN: fusion_to_mlir %s | emitters_opt -xla-gpu-test-optimize |\
+// RUN: fusion_to_mlir %s | emitters_opt -xla-test-optimize |\
 // RUN:   FileCheck %s --dump-input=fail
-// RUN: test_correctness %s
+// RUN: gpu_test_correctness %s
 
  fusion {
    p0 = f16[512,3072]{0,1} parameter(0)

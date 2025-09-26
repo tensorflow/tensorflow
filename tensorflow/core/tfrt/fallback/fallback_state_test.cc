@@ -103,8 +103,8 @@ TEST(FallbackStateTest, CreateRendezvous) {
 
   auto status = pflr.RunSync(opts, pflr.GetHandle("dummy_fn"), {}, nullptr);
 
-  EXPECT_THAT(status, Not(StatusIs(error::FAILED_PRECONDITION,
-                                   HasSubstr("rendezvous"))));
+  EXPECT_THAT(status, Not(absl_testing::StatusIs(error::FAILED_PRECONDITION,
+                                                 HasSubstr("rendezvous"))));
 }
 
 TEST(FallbackStateTest, CreateGraphExecutionState) {

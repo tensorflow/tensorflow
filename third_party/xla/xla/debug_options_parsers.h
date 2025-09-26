@@ -97,7 +97,7 @@ struct RepeatedFlagModifier {
 //
 // parseRepeatedEnumModifiers("+a,-b,+c", "")
 //   -> [(add, "A"), (remove, "B"), (add, "C")]
-absl::StatusOr<std::vector<RepeatedFlagModifier>> parseRepeatedEnumModifiers(
+absl::StatusOr<std::vector<RepeatedFlagModifier>> ParseRepeatedEnumModifiers(
     absl::string_view flag_value, absl::string_view add_prefix = "");
 }  // namespace details
 

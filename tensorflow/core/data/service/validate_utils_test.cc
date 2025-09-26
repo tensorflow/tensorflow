@@ -76,21 +76,21 @@ TEST(ValidateUtilsTest, ElementSpecDoesNotMatch) {
   DataServiceMetadata metadata1 = GetDefaultMetadata();
   DataServiceMetadata metadata2 = GetDefaultMetadata();
   metadata2.clear_element_spec();
-  EXPECT_THAT(
-      ValidateMatchingDataset("dataset_id", metadata1, metadata2),
-      StatusIs(error::INVALID_ARGUMENT,
-               HasSubstr("got diff for dataset ID dataset_id with different "
-                         "element_spec")));
+  EXPECT_THAT(ValidateMatchingDataset("dataset_id", metadata1, metadata2),
+              absl_testing::StatusIs(
+                  error::INVALID_ARGUMENT,
+                  HasSubstr("got diff for dataset ID dataset_id with different "
+                            "element_spec")));
 
   StructuredValue different_decoded_spec;
   different_decoded_spec.mutable_tensor_shape_value()->add_dim()->set_size(1);
   different_decoded_spec.mutable_tensor_shape_value()->add_dim()->set_size(2);
   metadata2.set_element_spec(different_decoded_spec.SerializeAsString());
-  EXPECT_THAT(
-      ValidateMatchingDataset("dataset_id", metadata1, metadata2),
-      StatusIs(error::INVALID_ARGUMENT,
-               HasSubstr("got diff for dataset ID dataset_id with different "
-                         "element_spec")));
+  EXPECT_THAT(ValidateMatchingDataset("dataset_id", metadata1, metadata2),
+              absl_testing::StatusIs(
+                  error::INVALID_ARGUMENT,
+                  HasSubstr("got diff for dataset ID dataset_id with different "
+                            "element_spec")));
 }
 
 TEST(ValidateUtilsTest, InvalidElementSpec) {
@@ -99,9 +99,10 @@ TEST(ValidateUtilsTest, InvalidElementSpec) {
   metadata1.set_element_spec("Invalid element spec");
 
   EXPECT_THAT(ValidateMatchingDataset("dataset_id", metadata1, metadata2),
-              StatusIs(error::INVALID_ARGUMENT,
-                       "Failed to parse element_spec for dataset dataset_id: "
-                       "Invalid element spec."));
+              absl_testing::StatusIs(
+                  error::INVALID_ARGUMENT,
+                  "Failed to parse element_spec for dataset dataset_id: "
+                  "Invalid element spec."));
 }
 
 TEST(ValidateUtilsTest, CompressionDoesNotMatch) {
@@ -110,9 +111,10 @@ TEST(ValidateUtilsTest, CompressionDoesNotMatch) {
   metadata2.set_compression(DataServiceMetadata::COMPRESSION_OFF);
 
   EXPECT_THAT(ValidateMatchingDataset("dataset_id", metadata1, metadata2),
-              StatusIs(error::INVALID_ARGUMENT,
-                       AllOf(HasSubstr("got diff for dataset ID dataset_id"),
-                             HasSubstr("modified: compression"))));
+              absl_testing::StatusIs(
+                  error::INVALID_ARGUMENT,
+                  AllOf(HasSubstr("got diff for dataset ID dataset_id"),
+                        HasSubstr("modified: compression"))));
 }
 
 TEST(ValidateUtilsTest, CardinalityDoesNotMatch) {
@@ -121,9 +123,10 @@ TEST(ValidateUtilsTest, CardinalityDoesNotMatch) {
   metadata2.set_cardinality(kUnknownCardinality);
 
   EXPECT_THAT(ValidateMatchingDataset("dataset_id", metadata1, metadata2),
-              StatusIs(error::INVALID_ARGUMENT,
-                       AllOf(HasSubstr("got diff for dataset ID dataset_id"),
-                             HasSubstr("modified: cardinality"))));
+              absl_testing::StatusIs(
+                  error::INVALID_ARGUMENT,
+                  AllOf(HasSubstr("got diff for dataset ID dataset_id"),
+                        HasSubstr("modified: cardinality"))));
 }
 
 }  // namespace

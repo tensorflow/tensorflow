@@ -49,16 +49,19 @@ const std::string& SyclPlatform::Name() const { return name_; }
 
 absl::StatusOr<std::unique_ptr<DeviceDescription>>
 SyclPlatform::DescriptionForDevice(int ordinal) const {
-  return absl::UnimplementedError("Unimplemented");
+  return absl::UnimplementedError(
+      "DescriptionForDevice is unimplemented for SYCL platform.");
 }
 
 absl::StatusOr<StreamExecutor*> SyclPlatform::ExecutorForDevice(int ordinal) {
-  return absl::UnimplementedError("Unimplemented");
+  return absl::UnimplementedError(
+      "ExecutorForDevice is unimplemented for SYCL platform.");
 }
 
 absl::StatusOr<std::unique_ptr<StreamExecutor>>
 SyclPlatform::GetUncachedExecutor(int ordinal) {
-  return absl::UnimplementedError("Unimplemented");
+  return absl::UnimplementedError(
+      "GetUncachedExecutor is unimplemented for SYCL platform.");
 }
 
 }  // namespace gpu

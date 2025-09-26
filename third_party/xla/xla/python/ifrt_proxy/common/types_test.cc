@@ -39,7 +39,8 @@ TEST_P(VariantTest, ToFromVariantProto) {
   const auto& variant = GetParam();
   TF_ASSERT_OK_AND_ASSIGN(proto::Variant variant_proto,
                           ToVariantProto(variant));
-  EXPECT_THAT(FromVariantProto(variant_proto), IsOkAndHolds(variant));
+  EXPECT_THAT(FromVariantProto(variant_proto),
+              absl_testing::IsOkAndHolds(variant));
 }
 
 INSTANTIATE_TEST_SUITE_P(

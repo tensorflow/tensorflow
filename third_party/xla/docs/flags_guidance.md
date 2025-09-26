@@ -7,6 +7,12 @@ memory utilization. Should any issues, such as crashes, arise after enabling a
 flag, it is recommended to revert to the default setting and create a
 GitHub issue.
 
+## Correctness Flags
+
+Flag                            | Description                                                                                                                                                                                              | Default Values                       | Suggested Values                     | Candidate Values
+:------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :----------------------------------- | :----------------------------------- | :---------------
+`xla_mosaic_on_device_checks` | This flag enables on-device checks for Mosaic codegen. Currently, the supported checks are on bounds, i.e., if an out-of-bounds memory is touched, the compilation/execution would catch it. | `xla_mosaic_on_device_checks=bounds` | `xla_mosaic_on_device_checks=bounds` | `xla_mosaic_on_device_checks=bounds`
+
 ## Performance Flags
 
 The following flags are instrumental in enhancing runtime performance.
@@ -23,6 +29,21 @@ Flag                                                                            
 **Latency-bound** <br> `xla_collective_permute_latency_bound_threshold_in_bytes`                                                                                         | This flag is intended for latency-bound (i.e., small-sized) all-gather operations. Enabling this triggers specific optimizations that can reduce execution time for latency-bound collective-permutes. Typically it’s used in inference workloads. | `xla_collective_permute_latency_bound_threshold_in_bytes=-1` <br> (which is not enabled)                                                                                       | `4~16Mb(i.e. 4~16 * 1024 * 1024)`                                                                                                                                           | `[0, 9223372036854775807]`
 **Latency-bound** <br> `xla_all_to_all_latency_bound_threshold_in_bytes`                                                                                                 | This flag is intended for latency-bound (i.e., small-sized) all-gather operations. Enabling this triggers specific optimizations that can reduce execution time for latency-bound all-to-all. Typically it’s used in inference workloads.          | `xla_all_to_all_latency_bound_threshold_in_bytes=-1` <br> (which is not enabled)                                                                                               | `4~16Mb(i.e. 4~16 * 1024 * 1024)`                                                                                                                                           | `[0, 9223372036854775807]`
 `xla_enable_async_collective_permute`                                                                                                 | Rewrites all collective-permute operations to their asynchronous variants.  When set to `auto`, XLA can turn on async collective based on other configurations or conditions automatically.          | `xla_enable_async_collective_permute=kAuto`                                                                                     | `xla_enable_async_collective_permute=kAuto`                                                                                                                                           | `xla_enable_async_collective_permute=kAuto/kEnabled/kDisabled`
+**Compute centric** <br>
+`xla_tpu_enable_dot_strength_reduction` | This flag rewrites non-compute intensive dots as multiply + reduce operations. | `xla_tpu_enable_dot_strength_reduction=true`  | `xla_tpu_enable_dot_strength_reduction=true` | `xla_tpu_enable_dot_strength_reduction=true/false`
+<br>
+<br>
+`xla_tpu_dot_dot_fusion`                    |  This flag enables dot-dot fusion, which fuses a producer-dot operation with a consumer-dot operation. On doing so, the producer-dot's output is not manifested in slow/main memory driving down memory footprint.     |        `xla_tpu_dot_dot_fusion=true`  |                                                                                                                                           `xla_tpu_dot_dot_fusion=true`                  | `xla_tpu_dot_dot_fusion=true/false`
+<br>
+`xla_jf_enable_multi_output_fusion`   | This flag enables fusions that fuse multiple consumers (i.e. the resultant fusion will have multiple outputs) | `xla_jf_enable_multi_output_fusion=true` | `xla_jf_enable_multi_output_fusion=true` | `xla_jf_enable_multi_output_fusion=true/false`
+<br>
+`xla_tpu_scoped_vmem_limit_kib` |  This flag sets the amount of scratchpad VMEM available to per op for local usage in KiloBytes. Rest of the VMEM is used as buffer space. | `xla_tpu_scoped_vmem_limit_kib=16384` | `xla_tpu_scoped_vmem_limit_kib=16384` | `xla_tpu_scoped_vmem_limit_kib=[4096, VMEM size of the architecture - 1024]`
+<br>
+`xla_tpu_async_copy_bandwidth_scaling_factor` | Scales effective bandwidth for async copies. This is used when making prefetch decisions and deciding which tensors should live in VMEM. | `xla_tpu_async_copy_bandwidth_scaling_factor=1` | `xla_tpu_async_copy_bandwidth_scaling_factor=1` | `xla_tpu_async_copy_bandwidth_scaling_factor=(0, 1]`
+<br>
+`xla_msa_enable_cross_program_prefetch_freeing` | Enables freeing optimization for cross-program-prefetched buffers. | `xla_msa_enable_cross_program_prefetch_freeing=enabled` | `xla_msa_enable_cross_program_prefetch_freeing=enabled` | `xla_msa_enable_cross_program_prefetch_freeing=enabled/disabled`
+<br>
+`xla_tpu_msa_inefficient_use_to_copy_ratio` | The ratio of use bytes to copy bytes for a given allocation site below which we consider the site to be inefficient. This is used while making VMEM placement decisions. A value of 0 would treat all sites as efficient and a value of 1 would require the amount of bytes used at the site to be at least as much as the async copy bytes. | `xla_tpu_msa_inefficient_use_to_copy_ratio=0.5` | `xla_tpu_msa_inefficient_use_to_copy_ratio=0.5` | `xla_tpu_msa_inefficient_use_to_copy_ratio=[0, 1]`
 
 ## Memory Flags
 
@@ -45,14 +66,15 @@ Flag                                                          | Description     
 | :---- | :---- | :----- |
 | `xla_dump_to` | String (filepath) | The folder where pre-optimization HLO files and other artifacts will be placed (see [XLA Tools](https://openxla.org/xla/tools)). |
 
-#### TPU XLA flags
-| Flag | Type | Notes |
-| :---- | :---- | :----- |
-| `xla_tpu_enable_data_parallel_all_reduce_opt` | Boolean (true/false) | Optimization to increase overlap opportunities for DCN (data center networking) all-reduces used for data parallel sharding. |
-| `xla_tpu_data_parallel_opt_different_sized_ops` | Boolean (true/false) | Enables pipelining of data parallel ops across multiple iterations even if their output sizes don't match what can be saved in place in the stacked variables. Can increase memory pressure. |
-| `xla_tpu_spmd_rng_bit_generator_unsafe` | Boolean (true/false) | Whether to run RngBitGenerator HLO in a partitioned way, which is unsafe if deterministic results are expected with different shardings on different parts of the computation. |
-| `xla_tpu_megacore_fusion_allow_ags` | Boolean (true/false) | Allows fusing all-gathers with convolutions/all-reduces. |
-| `xla_tpu_enable_ag_backward_pipelining` | Boolean (true/false) | Pipelines all-gathers (currently megascale all-gathers) backwards through scan loops. |
+### TPU XLA flags
+
+Flag                                            | Type                 | Notes
+:---------------------------------------------- | :------------------- | :----
+`xla_tpu_enable_data_parallel_all_reduce_opt`   | Boolean (true/false) | Optimization to increase overlap opportunities for DCN (data center networking) all-reduces used for data parallel sharding.
+`xla_tpu_data_parallel_opt_different_sized_ops` | Boolean (true/false) | Enables pipelining of data parallel ops across multiple iterations even if their output sizes don't match what can be saved in place in the stacked variables. Can increase memory pressure.
+`xla_tpu_spmd_rng_bit_generator_unsafe`         | Boolean (true/false) | Whether to run RngBitGenerator HLO in a partitioned way, which is unsafe if deterministic results are expected with different shardings on different parts of the computation.
+`xla_tpu_megacore_fusion_allow_ags`             | Boolean (true/false) | Allows fusing all-gathers with convolutions/all-reduces.
+`xla_tpu_enable_ag_backward_pipelining`         | Boolean (true/false) | Pipelines all-gathers (currently megascale all-gathers) backwards through scan loops.
 
 ### GPU XLA flags
 | Flag | Type | Notes |

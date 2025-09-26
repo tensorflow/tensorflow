@@ -26,6 +26,8 @@ limitations under the License.
 #if defined(__linux__)
 #include <sched.h>
 #include <sys/sysinfo.h>
+#elif defined(_WIN32)
+#include <winsock.h>
 #else
 #include <sys/syscall.h>
 #endif

@@ -19,12 +19,14 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/make_batch_pointers.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/blas.h"
@@ -108,7 +110,7 @@ TriangularSolveThunk::FromProto(
 
 absl::StatusOr<ThunkProto> TriangularSolveThunk::ToProto() const {
   ThunkProto proto;
-  TF_ASSIGN_OR_RETURN(*proto.mutable_thunk_info(), GetThunkInfoProto());
+  *proto.mutable_thunk_info() = thunk_info().ToProto();
 
   TriangularSolveThunkProto* triangular_solve_thunk_proto =
       proto.mutable_triangular_solve_thunk();

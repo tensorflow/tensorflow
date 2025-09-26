@@ -119,7 +119,6 @@ absl::StatusOr<HloInstruction*> TryMergeSameOperand(HloInstruction* a,
     return nullptr;
   }
 
-
   VLOG(2) << "Merging dots sharing an operand:\n"
           << "\t" << a->ToString() << "\n"
           << "\t" << b->ToString();
@@ -181,33 +180,6 @@ absl::StatusOr<HloInstruction*> TryMergeSameOperand(HloInstruction* a,
     ++outer_dim;
   }
 
-  HloDotInstruction* dot_a = Cast<HloDotInstruction>(a);
-  std::vector<SparsityDescriptor> sparsity(dot_a->sparsity().begin(),
-                                           dot_a->sparsity().end());
-  std::vector<HloInstruction*> sparse_meta(sparsity.size());
-  for (int i = 0; i < sparsity.size(); ++i) {
-    HloInstruction* meta = a->mutable_operand(HloDotInstruction::kOperands + i);
-    HloInstruction* other_meta =
-        b->mutable_operand(HloDotInstruction::kOperands + i);
-    if (sparsity[i].index() == (lhs_same ? 1 : 0)) {
-      TF_ASSIGN_OR_RETURN(
-          Shape meta_concat_shape,
-          ShapeInference::InferConcatOpShape(
-              {&meta->shape(), &other_meta->shape()}, outer_dim));
-      meta = meta->AddInstruction(HloInstruction::CreateConcatenate(
-          meta_concat_shape, {meta, other_meta}, outer_dim));
-    } else {
-      if (other_meta != meta) {
-        VLOG(3)
-            << "Can't merge dots because the sparsity metadata is different:\n"
-            << "\t" << a->ToString() << "\n"
-            << "\t" << b->ToString();
-        return nullptr;
-      }
-    }
-    sparse_meta[i] = meta;
-  }
-
   TF_ASSIGN_OR_RETURN(
       Shape concat_shape,
       ShapeInference::InferConcatOpShape(
@@ -223,11 +195,10 @@ absl::StatusOr<HloInstruction*> TryMergeSameOperand(HloInstruction* a,
       Shape new_dot_shape,
       ShapeInference::InferDotOpShape(
           dot_lhs->shape(), dot_rhs->shape(), dnums,
-          /*preferred_element_type=*/a->shape().element_type(), sparsity));
+          /*preferred_element_type=*/a->shape().element_type()));
   *new_dot_shape.mutable_layout() = a->shape().layout();
-  HloInstruction* new_dot = a->AddInstruction(
-      HloInstruction::CreateDot(new_dot_shape, dot_lhs, dot_rhs, dnums,
-                                a->precision_config(), sparsity, sparse_meta));
+  HloInstruction* new_dot = a->AddInstruction(HloInstruction::CreateDot(
+      new_dot_shape, dot_lhs, dot_rhs, dnums, a->precision_config()));
 
   // We can't keep both. But one is better then none.
   if (!a->metadata().op_name().empty()) {
@@ -298,14 +269,6 @@ bool EqualTransposed(HloInstruction* lhs, HloInstruction* rhs) {
 
 absl::StatusOr<HloInstruction*> TryMergeLHSWithRHSOperand(HloInstruction* a,
                                                           HloInstruction* b) {
-  if (!Cast<HloDotInstruction>(a)->sparsity().empty() ||
-      !Cast<HloDotInstruction>(b)->sparsity().empty()) {
-    VLOG(3) << "Merging sparse dots is not supported:\n"
-            << "\t" << a->ToString() << "\n"
-            << "\t" << b->ToString();
-    return nullptr;
-  }
-
   const DotDimensionNumbers& dnums_a = a->dot_dimension_numbers();
   const DotDimensionNumbers& dnums_b = b->dot_dimension_numbers();
   // TODO(tjoerg): Add support for batch dimensions.
@@ -435,17 +398,6 @@ absl::StatusOr<HloInstruction*> TryMergeOperand(HloInstruction* a,
                      b->precision_config().operand_precision())) {
     VLOG(3) << "Can't merge dots because they have mismatching operand "
                "precisions:\n"
-            << "\t" << a->ToString() << "\n"
-            << "\t" << b->ToString();
-    return nullptr;
-  }
-
-  HloDotInstruction* dot_a = Cast<HloDotInstruction>(a);
-  HloDotInstruction* dot_b = Cast<HloDotInstruction>(b);
-  if (!absl::c_equal(dot_a->sparsity(), dot_b->sparsity(),
-                     protobuf_util::HaveSameSerialization)) {
-    VLOG(3) << "Can't merge dots because they have mismatching sparsity "
-               "descriptors:\n"
             << "\t" << a->ToString() << "\n"
             << "\t" << b->ToString();
     return nullptr;

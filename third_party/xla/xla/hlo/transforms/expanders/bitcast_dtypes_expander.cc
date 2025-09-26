@@ -31,6 +31,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/primitive_util.h"
+#include "xla/service/call_inliner.h"
 #include "xla/service/hlo_creation_utils.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/shape.h"
@@ -114,8 +115,17 @@ absl::StatusOr<HloInstruction*> BitcastDtypesExpander::ExpandInstruction(
         computation, XlaComputationToHloComputation(xla_computation, module));
   }
 
-  return instruction->parent()->AddInstruction(HloInstruction::CreateCall(
-      instruction->shape(), instruction->operands(), computation));
+  HloInstruction* call =
+      instruction->parent()->AddInstruction(HloInstruction::CreateCall(
+          instruction->shape(), instruction->operands(), computation));
+  HloInstruction* root = call->to_apply()->root_instruction();
+  // TODO(b/260601110): In theory, we shouldn't need to do it, but in practice
+  // this creates reshape/broadcast patterns that can be pretty bad if not
+  // inlined. Since each function only has a single call-site anyway, this isn't
+  // a big deal.
+  CallInliner call_inliner;
+  TF_ASSIGN_OR_RETURN(auto inline_map, call_inliner.Inline(call));
+  return inline_map[root];
 }
 
 bool BitcastDtypesExpander::InstructionMatchesPattern(

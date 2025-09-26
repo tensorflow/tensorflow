@@ -1,0 +1,117 @@
+Fixes necessary to get the tutorials to run in our environment.
+
+We'll likely have to drag this around, but might be able to reduce some of
+the diff if we can fix a few bugs referenced within the patch. Could either be
+an internal or public patch (but probably easier to just have it as public).
+
+diff --git a/python/tutorials/05-layer-norm.py b/python/tutorials/05-layer-norm.py
+--- a/python/tutorials/05-layer-norm.py
++++ b/python/tutorials/05-layer-norm.py
+@@ -372,7 +372,7 @@ def bench_layer_norm(M, N, dtype, provid
+ 
+ 
+ test_layer_norm(1151, 8192, torch.float16)
+-bench_layer_norm.run(save_path='.', print_data=True)
++bench_layer_norm.run(print_data=True)
+ 
+ # %%
+ # References
+diff --git a/python/tutorials/06-fused-attention.py b/python/tutorials/06-fused-attention.py
+--- a/python/tutorials/06-fused-attention.py
++++ b/python/tutorials/06-fused-attention.py
+@@ -750,4 +750,4 @@ def bench_flash_attention(BATCH, H, N_CT
+ 
+ if __name__ == "__main__":
+     # only works on post-Ampere GPUs right now
+-    bench_flash_attention.run(save_path=".", print_data=True)
++    bench_flash_attention.run(print_data=True)
+diff --git a/python/tutorials/09-persistent-matmul.py b/python/tutorials/09-persistent-matmul.py
+--- a/python/tutorials/09-persistent-matmul.py
++++ b/python/tutorials/09-persistent-matmul.py
+@@ -31,7 +31,9 @@ from contextlib import contextmanager
+ 
+ from typing import Optional
+ 
+-if torch.cuda.is_available():
++# Attempts to dlopen cuBLAS, prevent this path
++# TODO: b/436154455 - Re-enable once we can link in cuBLAS properly
++if False and torch.cuda.is_available():
+     from triton._C.libtriton import nvidia
+     cublas_workspace = torch.empty(32 * 1024 * 1024, device="cuda", dtype=torch.uint8)
+     cublas = nvidia.cublas.CublasLt(cublas_workspace)
+@@ -619,11 +621,12 @@ def torch_matmul(a, b):
+ 
+ @contextmanager
+ def proton_context():
+-    proton.activate(0)
++    # proton.activate(0)
+     try:
+         yield
+     finally:
+-        proton.deactivate(0)
++        # proton.deactivate(0)
++        pass
+ 
+ 
+ def bench_fn(label, reps, warmup_reps, fn, *args):
+@@ -734,9 +739,12 @@ if __name__ == "__main__":
+         validate(32, 32, 32, dtype)
+         validate(8192, 8192, args.K_range[0], dtype)
+ 
+-        proton.start("matmul", hook="triton")
+-        proton.deactivate()
++        # Proton tries to dlopen libcupti.so,
++        # If you want to profile this, run it under NCU
++        # TODO: b/436154452 - Re-enabled once this is fixed.
++        # proton.start("matmul", hook="triton")
++        # proton.deactivate()
+         for K in range(args.K_range[0], args.K_range[1] + 1, args.K_step):
+             bench(K, dtype)
+-        proton.finalize()
+-        show_profile(args.prec, "matmul")
++        # proton.finalize()
++        # show_profile(args.prec, "matmul")
+diff --git a/python/tutorials/10-block-scaled-matmul.py b/python/tutorials/10-block-scaled-matmul.py
+--- a/python/tutorials/10-block-scaled-matmul.py
++++ b/python/tutorials/10-block-scaled-matmul.py
+@@ -323,10 +323,10 @@ def bench_block_scaled(K, block_scale_ty
+         M, N, K, block_scale_type, compute_reference=False)
+     _ = block_scaled_matmul(a_desc, a_scale, b_desc, b_scale, torch.float16, M, N, K, rep_m, rep_n, rep_k, configs)
+ 
+-    proton.activate(0)
++    # proton.activate(0)
+     for _ in range(reps):
+         _ = block_scaled_matmul(a_desc, a_scale, b_desc, b_scale, torch.float16, M, N, K, rep_m, rep_n, rep_k, configs)
+-    proton.deactivate(0)
++    # proton.deactivate(0)
+     print("Done benchmarking")
+ 
+ 
+@@ -361,9 +361,12 @@ if __name__ == "__main__":
+         validate_block_scaled(8192, 8192, 8192, block_scale_type=args.format)
+ 
+         if args.bench:
+-            proton.start("block_scaled_matmul", hook="triton")
+-            proton.deactivate(0)  # Skip argument creation
++            # Proton tries to dlopen libcupti.so,
++            # If you want to profile this, run it under NCU
++            # TODO: b/436154452 - Re-enabled once this is fixed.
++            # proton.start("block_scaled_matmul", hook="triton")
++            # proton.deactivate(0)  # Skip argument creation
+             for K in range(args.K_range[0], args.K_range[1] + 1, args.K_step):
+                 bench_block_scaled(K, reps=10000, block_scale_type=args.format)
+-            proton.finalize()
+-            show_profile("block_scaled_matmul")
++            # proton.finalize()
++            # show_profile("block_scaled_matmul")
+diff --git a/python/tutorials/11-programmatic-dependent-launch.py b/python/tutorials/11-programmatic-dependent-launch.py
+--- a/python/tutorials/11-programmatic-dependent-launch.py
++++ b/python/tutorials/11-programmatic-dependent-launch.py
+@@ -111,6 +111,6 @@ if __name__ == "__main__":
+ 
+     if supports_pdl():
+         validate(1024)
+-        benchmark.run(print_data=True, show_plots=True, save_path=".")
++        benchmark.run(print_data=True, show_plots=True)
+     else:
+         print("PDL is not supported on this device")

@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 #include <unordered_set>
 
+#include "absl/synchronization/notification.h"
 #include "tensorflow/core/debug/debug_callback_registry.h"
 #include "tensorflow/core/debug/debug_node_key.h"
 #include "tensorflow/core/debug/debugger_event_metadata.pb.h"
@@ -380,7 +381,7 @@ TEST_F(DebugIOUtilsTest, PublishTensorConcurrentlyToPartiallyOverlappingPaths) {
 
   int dump_count TF_GUARDED_BY(mu) = 0;
   int done_count TF_GUARDED_BY(mu) = 0;
-  Notification all_done;
+  absl::Notification all_done;
 
   auto fn = [this, &dump_count, &done_count, &mu, &dump_root_base, &dump_roots,
              &dump_file_paths, &wall_time, &kDebugNodeKey, &kConcurrentPubs,

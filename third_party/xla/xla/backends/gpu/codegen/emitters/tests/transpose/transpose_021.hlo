@@ -1,4 +1,4 @@
-// RUN: test_correctness %s --bijection_inputs=transpose --bijection_outputs=transpose
+// RUN: gpu_test_correctness %s --bijection_inputs=transpose --bijection_outputs=transpose
 
 fusion {
   %input = f32[100,32,64] parameter(0)

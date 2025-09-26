@@ -21,15 +21,21 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "llvm/IR/Constants.h"
+#include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/Intrinsics.h"
 #include "llvm/IR/Value.h"
-#include "llvm/Support/Casting.h"
+#include "xla/codegen/intrinsic/exp.h"
+#include "xla/codegen/intrinsic/intrinsic.h"
+#include "xla/codegen/intrinsic/rsqrt.h"
+#include "xla/codegen/intrinsic/tanh.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/service/cpu/elemental_math_emitter.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 
 namespace xla::cpu {
+using ::xla::codegen::intrinsics::Type;
 
 absl::StatusOr<llvm::Value*> CpuElementalIrEmitter::EmitAtan2(
     PrimitiveType prim_type, llvm::Value* lhs, llvm::Value* rhs,
@@ -39,6 +45,12 @@ absl::StatusOr<llvm::Value*> CpuElementalIrEmitter::EmitAtan2(
 
 absl::StatusOr<llvm::Value*> CpuElementalIrEmitter::EmitTanh(
     PrimitiveType prim_type, llvm::Value* value) {
+  if (prim_type == F32 || prim_type == F64 || prim_type == F16) {
+    llvm::Function* tanh =
+        xla::codegen::intrinsics::Tanh::GetOrInsertDeclaration(
+            module(), Type::S(prim_type));
+    return b()->CreateCall(tanh, value);
+  }
   return xla::cpu::EmitTanh(module(), *b(), prim_type, value);
 }
 
@@ -51,13 +63,26 @@ absl::StatusOr<llvm::Value*> CpuElementalIrEmitter::EmitExp(
     PrimitiveType prim_type, llvm::Value* value, absl::string_view name) {
   if (prim_type == F64) {
     llvm::Type* f64 = b()->getDoubleTy();
-    llvm::FunctionType* f64_type = llvm::FunctionType::get(f64, {f64}, false);
-    llvm::Function* exp_f64 = llvm::cast<llvm::Function>(
-        module()->getOrInsertFunction("xla.exp.f64", f64_type).getCallee());
+    llvm::Function* exp_f64 =
+        xla::codegen::intrinsics::Exp::GetOrInsertDeclaration(
+            module(), Type::TypeFromIrType(f64));
     return b()->CreateCall(exp_f64, value);
   }
   return llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::exp, {value},
                                       {value->getType()}, b(), name);
+}
+
+absl::StatusOr<llvm::Value*> CpuElementalIrEmitter::EmitRsqrt(
+    PrimitiveType prim_type, llvm::Value* value) {
+  if (prim_type == F32 || prim_type == F64) {
+    llvm::Function* rsqrt_fn =
+        xla::codegen::intrinsics::Rsqrt::GetOrInsertDeclaration(
+            module(), Type::S(prim_type));
+    return b()->CreateCall(rsqrt_fn, value);
+  }
+  llvm::CallInst* sqrt = llvm_ir::EmitCallToIntrinsic(
+      llvm::Intrinsic::sqrt, {value}, {value->getType()}, b());
+  return FDiv(llvm::ConstantFP::get(sqrt->getType(), 1.0), sqrt);
 }
 
 absl::StatusOr<std::vector<llvm::Value*>>

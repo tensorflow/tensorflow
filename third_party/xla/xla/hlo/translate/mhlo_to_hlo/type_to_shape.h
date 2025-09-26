@@ -23,7 +23,8 @@ limitations under the License.
 
 namespace xla {
 
-// Returns a XLA Shape equivalent of a MLIR Type, else returns empty shape.
+// Returns a XLA Shape equivalent of a MLIR Type, else returns empty shape to
+// signify an error, as no MLIR Type maps to an empty Shape.
 Shape TypeToShape(mlir::Type type);
 
 }  // namespace xla

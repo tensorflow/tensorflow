@@ -131,7 +131,7 @@ ENTRY e {
           TritonWrapper("test_fn", &ti.TritonFusion(), GetComputeCapability(),
                         dev_info, block_level_parameters, &llvm_module_,
                         mlir_context_),
-          tsl::testing::StatusIs(
+          absl_testing::StatusIs(
               absl::StatusCode::kInternal,
               ::testing::HasSubstr("Failed to compile Triton kernel")));
     }
@@ -260,7 +260,7 @@ ENTRY e {
         std::move(ti.Module()), ErrorSpec{/*aabs=*/2e-4, /*arel=*/2e-4}));
   } else {
     EXPECT_THAT(TritonFusionAnalysis::Execute(ti.TritonComputation()),
-                tsl::testing::StatusIs(absl::StatusCode::kFailedPrecondition));
+                absl_testing::StatusIs(absl::StatusCode::kFailedPrecondition));
   }
 }
 
@@ -309,7 +309,7 @@ ENTRY e {
       TritonWrapper("test_fn", &ti.TritonFusion(), GetComputeCapability(),
                     dev_info, block_level_parameters, &llvm_module_,
                     mlir_context_),
-      tsl::testing::StatusIs(
+      absl_testing::StatusIs(
           absl::StatusCode::kInternal,
           ::testing::HasSubstr("Failed to verify Triton module for fusion")));
 }
@@ -353,7 +353,7 @@ ENTRY e {
       TritonWrapper("test_fn", &ti.TritonFusion(), GetComputeCapability(),
                     dev_info, block_level_parameters, &llvm_module_,
                     mlir_context_),
-      tsl::testing::StatusIs(absl::StatusCode::kInternal,
+      absl_testing::StatusIs(absl::StatusCode::kInternal,
                              ::testing::HasSubstr("num_batch_dims <= 1")));
 }
 
@@ -382,7 +382,7 @@ ENTRY e {
                   .Explain(),
               ::testing::HasSubstr("No non-contracting dimensions."));
   EXPECT_THAT(TritonFusionAnalysis::Execute(ti.TritonComputation()),
-              tsl::testing::StatusIs(
+              absl_testing::StatusIs(
                   absl::StatusCode::kInternal,
                   ::testing::HasSubstr("non_contracting_dims.size() == 1")));
 }

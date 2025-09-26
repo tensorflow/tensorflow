@@ -1,0 +1,32 @@
+--- /dev/null	2025-08-20 16:29:02.164000374 +0000
++++ b/smoke_test.cc	2025-08-20 21:02:15.000000000 +0000
+@@ -0,0 +1,29 @@
++#include <iostream>
++#include <mdspan/mdspan.hpp>
++
++int main() {
++  constexpr size_t N = 3, M = 4;
++
++  // Flattened storage
++  double data[N * M] = {1.0, 2.0, 3.0, 4.0,  5.0,  6.0,
++                        7.0, 8.0, 9.0, 10.0, 11.0, 12.0};
++
++  // Create mdspan over flat data
++  Kokkos::mdspan<double, Kokkos::extents<size_t, N, M>> view(data);
++
++  // Access elements
++  std::cout << "Original array via mdspan:\n";
++  for (size_t i = 0; i < N; ++i) {
++    for (size_t j = 0; j < M; ++j) {
++      std::cout << view(i, j) << " ";
++    }
++    std::cout << "\n";
++  }
++
++  // Modify a value
++  view(1, 2) = 42.0;
++  std::cout << "\nAfter modification:\n";
++  std::cout << "view(1,2) = " << view(1, 2) << "\n";
++
++  return 0;
++}

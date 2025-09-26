@@ -434,7 +434,7 @@ verify_manylinux_compliance_test(
         "manual",
     ],
     wheel = ":wheel",
-    x86_64_compliance_tag = "manylinux_2_17_x86_64",
+    x86_64_compliance_tag = "manylinux_2_27_x86_64",
 )
 
 py_import(
@@ -452,6 +452,7 @@ py_import(
         "@pypi_nvidia_cusparse_cu12//:pkg",
         "@pypi_nvidia_nccl_cu12//:pkg",
         "@pypi_nvidia_nvjitlink_cu12//:pkg",
+        "@pypi_nvidia_nvshmem_cu12//:pkg",
     ]),
     deps = [
         "@pypi_absl_py//:pkg",

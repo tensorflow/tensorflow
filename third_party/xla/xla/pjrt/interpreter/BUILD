@@ -23,6 +23,7 @@ cc_library(
         "//xla/client:executable_build_options",
         "//xla/hlo/builder:xla_computation",
         "//xla/hlo/evaluator:hlo_evaluator",
+        "//xla/hlo/evaluator:hlo_evaluator_interface",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass_pipeline",
         "//xla/hlo/transforms/expanders:cholesky_expander",

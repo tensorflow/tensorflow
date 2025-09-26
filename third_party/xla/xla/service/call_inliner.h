@@ -51,7 +51,7 @@ class CallInliner : public HloModulePass {
   // If `uniquify_channel_ids` is true, the channel ids of the resulting
   // computation will be uniquified.
   // If the callback `should_inline` is provided, only functions callsite for
-  // which it retuns true will be inlined.
+  // which it returns true will be inlined.
   explicit CallInliner(
       bool single_call_site = false, bool update_domain = false,
       absl::flat_hash_set<std::string> composites_to_preserve = {},
@@ -74,6 +74,9 @@ class CallInliner : public HloModulePass {
   // Returns true if the instruction is a kCall operation and is eligible for
   // inlining.
   virtual bool IsInlineableCallOp(HloInstruction* instruction) const;
+
+  // Maximum length of an op_name that can be formed during inlining.
+  static constexpr int kMaxOpNameSize = 1024;
 
  private:
   absl::StatusOr<bool> InlineAndLegalize(

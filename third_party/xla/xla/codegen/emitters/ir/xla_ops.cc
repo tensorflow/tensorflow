@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "llvm/ADT/MapVector.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/STLFunctionalExtras.h"
 #include "llvm/ADT/SmallBitVector.h"
@@ -1047,7 +1048,7 @@ struct FoldConstantDimensions : public mlir::OpRewritePattern<LoopOp> {
             dim_replacements, {}, used_dim_vars.size(),
             loop_indexing_map.GetSymbolCount());
 
-    llvm::DenseMap<mlir::AffineExpr, Interval> new_constraints;
+    llvm::MapVector<mlir::AffineExpr, Interval> new_constraints;
     for (auto [expr, interval] : loop_indexing_map.GetConstraints()) {
       new_constraints[expr.replaceDims(dim_replacements)] = interval;
     }

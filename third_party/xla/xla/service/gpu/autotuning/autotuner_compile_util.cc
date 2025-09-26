@@ -20,6 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
@@ -31,6 +32,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/compiler.h"
 #include "xla/service/executable.h"
+#include "xla/service/gpu/autotuning/autotuner_util.h"
 #include "xla/service/gpu/gpu_executable_run_options.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/maybe_owning_device_memory.h"
@@ -38,7 +40,6 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/gpu/redzone_allocator.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
@@ -130,8 +131,10 @@ absl::StatusOr<std::unique_ptr<Executable>> AutotunerCompileUtil::Compile(
   absl::StatusOr<std::unique_ptr<HloModule>> new_hlo_module = extractor(opts_);
   if (new_hlo_module.status().GetPayload(kUncompilableFusion).has_value()) {
     // Incompatible value of split-k is an example of an expected failure.
+    VLOG(5) << "Module with uncompilable fusion";
     return std::unique_ptr<Executable>();
-  } else if (!new_hlo_module.status().ok()) {
+  }
+  if (!new_hlo_module.status().ok()) {
     return new_hlo_module.status();
   }
 
@@ -141,9 +144,12 @@ absl::StatusOr<std::unique_ptr<Executable>> AutotunerCompileUtil::Compile(
                                /*layout_canonicalization_callback=*/{},
                                /*is_autotuning_compilation=*/true});
   if (out.status().code() == absl::StatusCode::kResourceExhausted ||
-      out.status().code() == absl::StatusCode::kCancelled) {
+      out.status().code() == absl::StatusCode::kCancelled ||
+      out.status().code() == absl::StatusCode::kInvalidArgument) {
     // Being out of shared memory budget or registers is an expected failure.
     // Cancelling upon register spilling is also an expected failure.
+    VLOG(5) << "Compilation failed with status " << out.status()
+            << " that is ignored";
     return std::unique_ptr<Executable>();
   }
   return out;

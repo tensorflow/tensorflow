@@ -92,6 +92,14 @@ std::vector<IndexingMapSet> ComputeOperandIndexingMaps(
   return indexing_maps_per_operand;
 }
 
+bool HasNoCompute(const HloInstruction* instr) {
+  return HloPredicateIsOp<HloOpcode::kBitcast, HloOpcode::kConstant,
+                          HloOpcode::kIota, HloOpcode::kParameter,
+                          HloOpcode::kReshape, HloOpcode::kReverse,
+                          HloOpcode::kTranspose, HloOpcode::kBroadcast,
+                          HloOpcode::kSlice, HloOpcode::kCopy>(instr);
+}
+
 }  // namespace
 
 EpilogueSpecification EpilogueSpecification::FromIdentityIndexing(
@@ -230,6 +238,7 @@ PartitionedComputation::PartitionedComputation(
       instr_subgraph_data.indexings.clear();
       num_ops_per_subgraph.push_back(1);
     } else {
+      // We checked above that `user_subgraph_ids` contains exactly one value.
       instr_subgraph_data.subgraph_id =
           *instr_subgraph_data.user_subgraph_ids.begin();
       ++num_ops_per_subgraph.at(instr_subgraph_data.subgraph_id);
@@ -253,11 +262,15 @@ PartitionedComputation::PartitionedComputation(
       IndexingMap instr_indexing = instr_subgraph_data.indexings.empty()
                                        ? IndexingMap::GetUndefined()
                                        : *instr_subgraph_data.indexings.begin();
+      // Only fusion ops would have several operand maps, and we don't support
+      // nested fusions here.
+      CHECK_EQ(operand_maps.size(), 1);
       IndexingMap composed_indexing =
           instr_subgraph_data.is_root
               ? *operand_maps.begin()
               : ComposeIndexingMaps(instr_indexing, *operand_maps.begin());
       composed_indexing.Simplify();
+      composed_indexing.RemoveUnusedSymbols();
 
       operand_subgraph_data.user_subgraph_ids.insert(
           instr_subgraph_data.subgraph_id);
@@ -282,11 +295,7 @@ PartitionedComputation::PartitionedComputation(
     const xla::Shape* first_root_shape = nullptr;
     bool has_no_compute = true;
     for (auto* instruction : instructions) {
-      has_no_compute &=
-          HloPredicateIsOp<HloOpcode::kBitcast, HloOpcode::kConstant,
-                           HloOpcode::kIota, HloOpcode::kParameter,
-                           HloOpcode::kReshape, HloOpcode::kReverse,
-                           HloOpcode::kTranspose>(instruction);
+      has_no_compute &= HasNoCompute(instruction);
       if (id_to_subgraph_data[instr_to_id[instruction]].is_root) {
         roots.push_back(instruction);
         if (first_root_shape) {
@@ -360,9 +369,11 @@ PartitionedComputation::Subgraph PartitionedComputation::Subgraph::ForEpilogue(
 
   absl::flat_hash_set<const HloInstruction*> seen;
   std::function<void(const HloInstruction*)> visit;
+  bool has_no_compute = true;
   visit = [&](const HloInstruction* instruction) {
     if (subgraph.injected_value_starts.contains(instruction)) return;
     if (!seen.insert(instruction).second) return;
+    has_no_compute &= HasNoCompute(instruction);
     for (auto [index, operand] : llvm::enumerate(instruction->operands())) {
       visit(operand);
     }
@@ -372,6 +383,7 @@ PartitionedComputation::Subgraph PartitionedComputation::Subgraph::ForEpilogue(
   subgraph.instructions = std::move(seen);
   subgraph.index_ranges = epilogue.index_ranges;
   subgraph.root_indexing = epilogue.root_indexing;
+  subgraph.has_no_compute = has_no_compute;
   return subgraph;
 }
 

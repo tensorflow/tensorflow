@@ -223,19 +223,40 @@ class TPUEmbeddingForServingTest(test.TestCase):
     self.assertAllClose(results, nest.pack_sequence_as(results,
                                                        weighted_sum))
 
+  def test_cpu_partial_structure_for_features(self):
+    mid_level = self._create_mid_level()
+    # Remove one element of the tuple, the inputs are a subset of
+    # feature_config and will be able to excute.
+    features = tuple(self._get_sparse_tensors()[:2])
+    results = mid_level(features, weights=None)
+    reduced = []
+    for i, feature in enumerate(nest.flatten(features)):
+      config = self.feature_config[i]
+      table = mid_level.embedding_tables[config.table].numpy()
+      all_lookups = table[feature.values.numpy()]
+      # With row starts we can use reduceat in numpy. Get row starts from the
+      # ragged tensor API.
+      ragged = ragged_tensor.RaggedTensor.from_sparse(feature)
+      row_starts = ragged.row_starts().numpy()
+      reduced.append(np.add.reduceat(all_lookups, row_starts))
+      if config.table.combiner == 'mean':
+        # for mean, divide by the row lengths.
+        reduced[-1] /= np.expand_dims(ragged.row_lengths().numpy(), axis=1)
+    self.assertAllClose(results, nest.pack_sequence_as(results, reduced))
+
   def test_cpu_invalid_structure_for_features(self):
     mid_level = self._create_mid_level()
-    # Remove one element of the tuple, self.feature_config has 3 so we need to
-    # pass 3.
-    features = tuple(self._get_sparse_tensors()[:2])
+    # Add one element of the tuple, self.feature_config has 3 so we need to
+    # pass no more than 3 elements or None.
+    features = self._get_sparse_tensors() + (self._get_sparse_tensors()[0],)
     with self.assertRaises(ValueError):
       mid_level(features, weights=None)
 
   def test_cpu_invalid_structure_for_weights(self):
     mid_level = self._create_mid_level()
     features = self._get_sparse_tensors()
-    # Remove one element of the tuple, self.feature_config has 3 so we need to
-    # pass 3 (or None).
+    # Remove one element of the tuple, inputs has 3 so we need to pass 3 (or
+    # None).
     weights = tuple(self._get_dense_tensors(dtype=dtypes.float32)[:2])
     with self.assertRaises(ValueError):
       mid_level(features, weights=weights)

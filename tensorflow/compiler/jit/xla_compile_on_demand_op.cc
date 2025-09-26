@@ -23,10 +23,12 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/memory/memory.h"
 #include "absl/types/span.h"
+#include "tensorflow/compiler/jit/device_compilation_cluster_signature.h"
 #include "tensorflow/compiler/jit/device_compilation_profiler.h"
 #include "tensorflow/compiler/jit/device_compiler.h"
 #include "tensorflow/compiler/jit/flags.h"
@@ -103,6 +105,12 @@ absl::Status GetAndLockVariablesAndBuildXlaCompilerArguments(
 }
 }  // namespace
 
+XlaCompileOnDemandOp::XlaCompileOnDemandOp(OpKernelConstruction* ctx)
+    : OpKernel(ctx),
+      platform_info_(XlaPlatformInfoFromDevice(ctx->device())),
+      function_(GetDeviceCompilerFunction(ctx->def())),
+      canonical_function_(Canonicalize(function_)) {}
+
 absl::Status XlaCompileOnDemandOp::Run(
     const ResourceVarsSnapshot& variable_args,
     const XlaCompiler::CompilationResult* result,
@@ -123,7 +131,7 @@ absl::Status XlaCompileOnDemandOp::Run(
           ? platform_info_.xla_device_metadata()->UseMultipleStreams()
           : false);
 
-  std::map<int, const Tensor*> snapshot_ptrs;
+  absl::flat_hash_map<int, const Tensor*> snapshot_ptrs;
   for (auto& p : variable_args) {
     snapshot_ptrs.emplace(p.first,
                           p.second.has_value() ? &p.second.value() : nullptr);
@@ -185,8 +193,9 @@ absl::Status XlaCompileOnDemandOp::Compile(
   XlaCompiler::CompileOptions compile_options = GetCompileOptions(true);
 
   return (*pjrt_device_compiler)
-      ->CompileSingleOpIfNeeded(options, args, compile_options, ctx, *profiler,
-                                result, executable);
+      ->CompileSingleOpIfNeeded(options, function_, canonical_function_, args,
+                                compile_options, ctx, *profiler, result,
+                                executable);
 }
 
 absl::Status XlaCompileOnDemandOp::Compile(
@@ -227,8 +236,9 @@ absl::Status XlaCompileOnDemandOp::Compile(
   XlaCompiler::CompileOptions compile_options = GetCompileOptions();
 
   return (*xla_device_compiler)
-      ->CompileSingleOpIfNeeded(options, args, compile_options, ctx, *profiler,
-                                result, executable);
+      ->CompileSingleOpIfNeeded(options, function_, canonical_function_, args,
+                                compile_options, ctx, *profiler, result,
+                                executable);
 }
 
 void XlaCompileOnDemandOp::Compute(OpKernelContext* ctx) {

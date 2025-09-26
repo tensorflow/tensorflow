@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <cassert>
 #include <cstdint>
+#include <functional>
 #include <iterator>
 #include <map>
 #include <memory>
@@ -168,105 +169,6 @@ void CoordinationServiceAgent::StopErrorPolling() {
 
 void CoordinationServiceAgent::ResetCancellationManager() {
   error_polling_cancellation_manager_ = std::make_unique<CancellationManager>();
-}
-
-void CoordinationServiceAgent::WatchJobState() {
-  // Converts a CoordinatedTaskStateInfo into a tuple.
-  auto tuplify = [](const CoordinatedTaskStateInfo& x) {
-    return std::make_tuple(x.task().job_name(), x.task().task_id(),
-                           x.task().recoverable(), x.state(), x.error_code(),
-                           x.error_message());
-  };
-
-  // Returns if two CoordinatedTaskStateInfos are equal.
-  auto equal = [&tuplify](const CoordinatedTaskStateInfo& x,
-                          const CoordinatedTaskStateInfo& y) -> bool {
-    return tuplify(x) == tuplify(y);
-  };
-
-  // Returns if x < y, determined by task id.
-  auto less = [](const CoordinatedTaskStateInfo& x,
-                 const CoordinatedTaskStateInfo& y) -> bool {
-    return x.task().task_id() < y.task().task_id();
-  };
-
-  VLOG(1) << "Starting to watch job state for job " << task_.job_name();
-  std::vector<CoordinatedTaskStateInfo> previous_state;
-  std::vector<CoordinatedTaskStateInfo> current_state;
-
-  // TODO(mwhittaker): For simplicity, WatchJobState is polling. If needed, we
-  // can switch to a long polling approach to get more timely state updates.
-  // However, due to the way hearbeats are implemented, it takes quite a while
-  // after a machine fails for the coordination service to consider it failed.
-  // Thus, optimizing WatchJobState might be premature.
-  while (true) {
-    // Sleep.
-    {
-      absl::MutexLock lock(&shutdown_mu_);
-      // TODO(mwhittaker): Make this sleep duration an option?
-      shutdown_mu_.AwaitWithTimeout(absl::Condition(&shutting_down_),
-                                    absl::Seconds(1));
-      if (shutting_down_) {
-        return;
-      }
-    }
-
-    // Fetch the current job state.
-    absl::StatusOr<std::vector<CoordinatedTaskStateInfo>> state =
-        GetJobState(task_.job_name());
-    if (!state.ok()) {
-      LOG(ERROR) << "Error getting job state for job " << task_.job_name()
-                 << ": " << state.status();
-      continue;
-    }
-
-    // If the state hasn't changed, don't invoke any callbacks.
-    std::sort(state->begin(), state->end(), less);
-    bool state_changed = !std::equal(current_state.begin(), current_state.end(),
-                                     state->begin(), state->end(), equal);
-    if (!state_changed) {
-      VLOG(3) << "Job state did not change.";
-      continue;
-    }
-
-    // Update the states.
-    previous_state = std::move(current_state);
-    current_state = *std::move(state);
-
-    // Pretty print the job state, if VLOG is on.
-    if (VLOG_IS_ON(3)) {
-      VLOG(3) << "Previous job state for job " << task_.job_name() << ":";
-      for (const CoordinatedTaskStateInfo& info : previous_state) {
-        VLOG(3) << "- " << info.DebugString();
-      }
-      VLOG(3) << "Current job state for job " << task_.job_name() << ":";
-      for (const CoordinatedTaskStateInfo& info : current_state) {
-        VLOG(3) << "- " << info.DebugString();
-      }
-    }
-
-    // Invoke the callbacks.
-    JobStateUpdate update;
-    update.previous_state = previous_state;
-    update.current_state = current_state;
-    {
-      absl::MutexLock lock(&job_state_watcher_mu_);
-      for (JobStateCallback& callback : job_state_callbacks_) {
-        callback(update);
-      }
-    }
-  }
-}
-
-void CoordinationServiceAgent::StopWatchingJobState() {
-  {
-    absl::MutexLock l(&shutdown_mu_);
-    shutting_down_ = true;
-  }
-  {
-    absl::MutexLock lock(&job_state_watcher_mu_);
-    job_state_watcher_thread_ = nullptr;
-  }
 }
 
 absl::Status CoordinationServiceAgent::Connect() {
@@ -533,28 +435,44 @@ CoordinationServiceAgent::GetTaskState(
   return result;
 }
 
-absl::StatusOr<std::vector<CoordinatedTaskStateInfo>>
-CoordinationServiceAgent::GetJobState(absl::string_view job_name) {
-  GetJobStateRequest request;
-  request.set_job_name(std::string(job_name));
-  GetJobStateResponse response;
-  absl::Notification n;
-  absl::StatusOr<std::vector<CoordinatedTaskStateInfo>> result;
-  leader_client_->GetJobStateAsync(
-      &request, &response, [&](const absl::Status& s) {
+std::shared_ptr<CallOptions> CoordinationServiceAgent::WatchJobStateAsync(
+    absl::string_view job_name, std::optional<int64_t> version_number,
+    std::function<void(absl::StatusOr<tensorflow::WatchJobStateResponse>)>
+        callback) {
+  auto request = std::make_shared<WatchJobStateRequest>();
+  auto response = std::make_shared<WatchJobStateResponse>();
+  auto call_opts = std::make_shared<CallOptions>();
+  WatchJobStateRequest* request_ptr = request.get();
+  WatchJobStateResponse* response_ptr = response.get();
+  request->set_job_name(job_name);
+  request->set_version_number(version_number.value_or(-1));
+
+  leader_client_->WatchJobStateAsync(
+      call_opts.get(), request_ptr, response_ptr,
+      [request = std::move(request), response = std::move(response),
+       callback = std::move(callback)](const absl::Status& s) mutable {
         if (s.ok()) {
-          result.emplace();
-          result->reserve(response.task_state_size());
-          for (auto& state : *response.mutable_task_state()) {
-            result->push_back(std::move(state));
-          }
+          callback(*std::move(response));
         } else {
-          result = s;
+          callback(s);
         }
-        n.Notify();
       });
-  n.WaitForNotification();
-  return result;
+  return call_opts;
+}
+
+absl::StatusOr<tensorflow::WatchJobStateResponse>
+CoordinationServiceAgent::WatchJobState(absl::string_view job_name,
+                                        std::optional<int64_t> version_number) {
+  absl::StatusOr<tensorflow::WatchJobStateResponse> response;
+  absl::Notification done;
+  WatchJobStateAsync(
+      job_name, version_number,
+      [&response, &done](absl::StatusOr<tensorflow::WatchJobStateResponse> r) {
+        response = std::move(r);
+        done.Notify();
+      });
+  done.WaitForNotification();
+  return response;
 }
 
 absl::Status CoordinationServiceAgent::ReportError(const absl::Status& error) {
@@ -675,6 +593,7 @@ absl::Status CoordinationServiceAgent::ShutdownInternal() {
 
   // Cancel all pending GetKeyValue() and WaitAtBarrier() RPC calls.
   cancellation_manager_.StartCancel();
+
   return status;
 }
 
@@ -1114,18 +1033,6 @@ CoordinationServiceAgent::Incarnations(absl::Span<const int> tasks) const {
     incarnations.push_back(it->second);
   }
   return incarnations;
-}
-
-void CoordinationServiceAgent::AddJobStateCallback(JobStateCallback callback) {
-  // Add the callback.
-  absl::MutexLock lock(&job_state_watcher_mu_);
-  job_state_callbacks_.push_back(std::move(callback));
-
-  // Start the job watching thread, if it hasn't already been started.
-  if (job_state_watcher_thread_ == nullptr) {
-    job_state_watcher_thread_.reset(env_->StartThread(
-        ThreadOptions(), "job_state_watcher", [this]() { WatchJobState(); }));
-  }
 }
 
 // Returns an error if agent is not running.

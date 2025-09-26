@@ -932,6 +932,12 @@ FieldOffsetsAndSizesForVersion(int major_version, int minor_version) {
     if (minor_version >= 68) {
       add_field("PJRT_Client_CreateUninitializedBuffer", kFnPtrSize);
     }
+    if (minor_version >= 73) {
+      add_field("PJRT_Client_UpdateGlobalProcessInfo", kFnPtrSize);
+    }
+    if (minor_version >= 74) {
+      add_field("PJRT_TopologyDescription_Deserialize", kFnPtrSize);
+    }
     return version_offsets_and_sizes;
   }
   LOG(FATAL) << "Unsupported API version: " << major_version << "."
@@ -1308,6 +1314,12 @@ TEST_F(PjrtCAbiTestBase, FieldOffsetsAndSizes) {
           {"PJRT_Client_CreateUninitializedBuffer",
            {offsetof(PJRT_Api, PJRT_Client_CreateUninitializedBuffer),
             sizeof(PJRT_Api::PJRT_Client_CreateUninitializedBuffer)}},
+          {"PJRT_Client_UpdateGlobalProcessInfo",
+           {offsetof(PJRT_Api, PJRT_Client_UpdateGlobalProcessInfo),
+            sizeof(PJRT_Api::PJRT_Client_UpdateGlobalProcessInfo)}},
+          {"PJRT_TopologyDescription_Deserialize",
+           {offsetof(PJRT_Api, PJRT_TopologyDescription_Deserialize),
+            sizeof(PJRT_Api::PJRT_TopologyDescription_Deserialize)}},
       };
   ASSERT_EQ(api_->pjrt_api_version.major_version, PJRT_API_MAJOR);
   ASSERT_EQ(api_->pjrt_api_version.minor_version, PJRT_API_MINOR);

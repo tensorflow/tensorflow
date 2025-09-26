@@ -27,8 +27,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_query.h"
-#include "xla/service/compiler.h"
-#include "xla/service/gpu/autotuning/redzone_buffers.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/matmul_utils.h"
@@ -40,7 +38,7 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_allocator.h"
-#include "xla/stream_executor/stream_executor.h"
+#include "xla/stream_executor/gpu/gpu_blas_lt.h"
 #include "xla/stream_executor/stream_executor_memory_allocator.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
@@ -49,8 +47,6 @@ namespace xla {
 namespace gpu {
 
 namespace se = ::stream_executor;
-
-using CublasBackendConfig = AutotuneResult::GemmKey;
 
 absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>>
 CublasBackend::GetSupportedConfigs(const HloInstruction& instr) {
@@ -76,37 +72,55 @@ CublasBackend::GetSupportedConfigs(const HloInstruction& instr) {
           &instr, backend_config,
           target_config().device_description.gpu_compute_capability()));
 
-  TF_ASSIGN_OR_RETURN(RedzoneBuffers rz_buffers,
-                      RedzoneBuffers::FromInstruction(
-                          instr, allocator.get(), stream,
-                          RedzoneBuffers::kAllInputsAllOutputs, true, true,
-                          instr.GetModule()
-                              ->config()
-                              .debug_options()
-                              .xla_gpu_redzone_padding_bytes()));
+  auto create_matrix_desc = [](const se::gpu::MatrixLayout& layout)
+      -> absl::StatusOr<se::gpu::MatrixDescriptor> {
+    TF_ASSIGN_OR_RETURN(se::blas::DataType type,
+                        se::gpu::AsBlasDataType(layout.dtype));
+    return se::gpu::MatrixDescriptor{
+        /*data=*/se::DeviceMemoryBase(), layout.leading_dim_stride,
+        layout.batch_stride, type,
+        // BLAS is column-major by default.
+        (layout.order == se::gpu::MatrixLayout::Order::kColumnMajor
+             ? se::blas::Transpose::kNoTranspose
+             : se::blas::Transpose::kTranspose)};
+  };
 
+  TF_ASSIGN_OR_RETURN(se::gpu::MatrixDescriptor lhs_desc,
+                      create_matrix_desc(gemm_config.lhs_layout));
+  TF_ASSIGN_OR_RETURN(se::gpu::MatrixDescriptor rhs_desc,
+                      create_matrix_desc(gemm_config.rhs_layout));
+  TF_ASSIGN_OR_RETURN(se::gpu::MatrixDescriptor output_desc_base,
+                      create_matrix_desc(gemm_config.output_layout));
+
+  se::gpu::OutputMatrixDescriptor out_desc(std::move(output_desc_base));
+  out_desc.batch_size = gemm_config.output_layout.batch_size;
+  out_desc.m = gemm_config.output_layout.num_rows;
+  out_desc.n = gemm_config.output_layout.num_cols;
+  out_desc.k = gemm_config.lhs_layout.num_cols;
   TF_ASSIGN_OR_RETURN(
-      GemmConfig::DescriptorsTuple desc,
-      gemm_config.GetMatrixDescriptors(rz_buffers.input_buffers().at(0),
-                                       rz_buffers.input_buffers().at(1),
-                                       rz_buffers.output_buffers().at(0)));
+      out_desc.compute_type,
+      se::gpu::GetBlasComputationType(
+          gemm_config.precision_algorithm, gemm_config.lhs_layout.dtype,
+          gemm_config.output_layout.dtype, gemm_config.compute_precision));
 
   se::blas::BlasSupport* blas = stream_executor()->AsBlas();
   if (blas == nullptr) {
     return absl::InternalError("Failed to getBlas support.");
   }
   std::vector<se::blas::AlgorithmType> algorithms;
-  blas->GetBlasGemmAlgorithms(stream, desc.lhs, desc.rhs, &desc.output,
+
+  blas->GetBlasGemmAlgorithms(stream, lhs_desc, rhs_desc, &out_desc,
                               &gemm_config.alpha, &gemm_config.beta,
                               &algorithms);
 
   std::vector<std::unique_ptr<BackendConfig>> configs;
   configs.reserve(algorithms.size());
   for (se::blas::AlgorithmType algorithm : algorithms) {
-    std::unique_ptr<CublasBackendConfig> gemm_key =
-        std::make_unique<CublasBackendConfig>();
-    gemm_key->set_algorithm(algorithm);
-    configs.push_back(std::move(gemm_key));
+    AutotuneResult::GemmKey gemm_key;
+    gemm_key.set_algorithm(algorithm);
+    auto any = std::make_unique<google::protobuf::Any>();
+    any->PackFrom(gemm_key);
+    configs.push_back(std::move(any));
   }
   return configs;
 }
@@ -161,16 +175,20 @@ absl::StatusOr<std::unique_ptr<BackendConfig>> CublasBackend::GetDefaultConfig(
         "CublasBackend does not support this instruction.");
   }
 
-  std::unique_ptr<CublasBackendConfig> gemm_key =
-      std::make_unique<CublasBackendConfig>();
-  gemm_key->set_algorithm(se::blas::kDefaultAlgorithm);
-  return gemm_key;
+  AutotuneResult::GemmKey gemm_key;
+  gemm_key.set_algorithm(se::blas::kDefaultAlgorithm);
+  auto any = std::make_unique<google::protobuf::Any>();
+  any->PackFrom(gemm_key);
+  return any;
 }
 
 absl::Status CublasBackend::ApplyConfig(HloInstruction& instr,
                                         const BackendConfig& config) {
-  const CublasBackendConfig& gemm_key =
-      static_cast<const CublasBackendConfig&>(config);
+  AutotuneResult::GemmKey gemm_key;
+  if (!config.UnpackTo(&gemm_key)) {
+    return absl::InvalidArgumentError(
+        "Failed to unpack CublasBackendConfig from Any.");
+  }
   TF_ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
                       instr.backend_config<GpuBackendConfig>());
   GemmBackendConfig& backend_config = *gpu_config.mutable_gemm_backend_config();

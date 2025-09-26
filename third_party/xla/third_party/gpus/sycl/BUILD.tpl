@@ -31,18 +31,20 @@ cc_library(
 )
 
 cc_library(
-    name = "sycl",
+    name = "level_zero",
     srcs = [
-        %{core_sycl_libs}
+        %{level_zero_libs}
     ],
     data = [
-        %{core_sycl_libs}
+        %{level_zero_libs}
+    ],
+    hdrs = [
+        %{level_zero_headers}
     ],
     includes = [
         ".",
-        "sycl/include",
+        "level_zero/include",
     ],
-    linkopts = ["-lze_loader"],
     linkstatic = 1,
     visibility = ["//visibility:public"],
 )
@@ -50,22 +52,23 @@ cc_library(
 cc_library(
     name = "mkl",
     srcs = [
-        "sycl/lib/%{mkl_intel_ilp64_lib}",
-        "sycl/lib/%{mkl_sequential_lib}",
-        "sycl/lib/%{mkl_core_lib}",
-        %{mkl_sycl_libs}
+        %{mkl_intel_ilp64_src}
+        %{mkl_sequential_src}
+        %{mkl_core_src}
+        %{mkl_sycl_srcs}
     ],
     data = [
-        "sycl/lib/%{mkl_intel_ilp64_lib}",
-        "sycl/lib/%{mkl_sequential_lib}",
-        "sycl/lib/%{mkl_core_lib}",
-        %{mkl_sycl_libs}
+        %{mkl_intel_ilp64_src}
+        %{mkl_sequential_src}
+        %{mkl_core_src}
+        %{mkl_sycl_srcs}
+
     ],
     includes = [
         ".",
         "sycl/include",
     ],
-    # linkopts = ["-Wl,-Bstatic,-lsvml,-lirng,-limf,-lirc,-lirc_s,-Bdynamic"],
+    linkopts = ["-Wl,-Bstatic,-lsvml,-lirng,-limf,-lirc,-lirc_s,-Bdynamic"],
     linkstatic = 1,
     visibility = ["//visibility:public"],
 )

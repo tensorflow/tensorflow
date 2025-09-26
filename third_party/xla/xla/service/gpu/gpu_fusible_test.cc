@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -35,16 +36,19 @@ namespace {
 using ::testing::ElementsAre;
 using ::testing::UnorderedElementsAre;
 
-auto MakeDeviceDescription() {
-  stream_executor::DeviceDescription device_description{
-      stream_executor::GpuDeviceInfoProto{}};
+absl::StatusOr<se::DeviceDescription> MakeDeviceDescription() {
+  TF_ASSIGN_OR_RETURN(stream_executor::DeviceDescription device_description,
+                      stream_executor::DeviceDescription::FromProto(
+                          stream_executor::GpuDeviceInfoProto{}));
   device_description.set_threads_per_warp(32);
   return device_description;
 }
 
 class GpuFusibleTest : public HloHardwareIndependentTestBase {
  public:
-  GpuFusibleTest() : device_description_(MakeDeviceDescription()) {}
+  void SetUp() override {
+    TF_ASSERT_OK_AND_ASSIGN(device_description_, MakeDeviceDescription());
+  }
 
   bool IsReduceInputFusion(const HloInstruction& instr) const {
     return ::xla::gpu::IsReduceInputFusion(instr, device_description_);
@@ -82,7 +86,7 @@ class GpuFusibleTest : public HloHardwareIndependentTestBase {
   }
 
  private:
-  const se::DeviceDescription device_description_;
+  se::DeviceDescription device_description_;
 };
 
 const char kModulePrefix[] = R"(

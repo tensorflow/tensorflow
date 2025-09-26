@@ -40,8 +40,11 @@ from tensorflow.python.tpu import embedding_context_utils as ecu
 from tensorflow.python.tpu import tpu_embedding_for_serving
 from tensorflow.python.tpu import tpu_embedding_v2_utils
 from tensorflow.python.tpu import tpu_embedding_v3
+from tensorflow.python.tpu import tpu_embedding_v3_utils
 from tensorflow.python.tpu import tpu_replication
 from tensorflow.python.util import nest
+
+shard_initializer = tpu_embedding_v3_utils.shard_initializer
 
 
 def create_input_data_based_on_hw_requirement(
@@ -365,10 +368,18 @@ class TPUEmbeddingV3Test(parameterized.TestCase, test.TestCase):
       self.assertAllEqual(per_feature_result, per_feature_result_cpu)
 
   def test_embedding_initialization(self):
+    resolver = tpu_cluster_resolver.TPUClusterResolver(tpu='')
+    remote.connect_to_cluster(resolver)
+    tpu_cluster_resolver.initialize_tpu_system(resolver)
+    strategy = tpu_strategy.TPUStrategy(resolver)
 
     def element_id_initializer(shape, dtype):
       values = math_ops.range(0, shape[0] * shape[1], dtype=dtype)
       return array_ops.reshape(values, shape)
+
+    def sharding_aware_const_initializer(shape, dtype, shard_info=None):
+      initializer = init_ops_v2.Constant(23.0)
+      return initializer(shard_info.shape if shard_info else shape, dtype=dtype)
 
     table_video = tpu_embedding_v2_utils.TableConfig(
         vocabulary_size=self.vocabulary_size,
@@ -381,11 +392,18 @@ class TPUEmbeddingV3Test(parameterized.TestCase, test.TestCase):
     table_user = tpu_embedding_v2_utils.TableConfig(
         vocabulary_size=self.vocabulary_size,
         dim=128,
-        initializer=element_id_initializer,
+        initializer=shard_initializer(strategy, element_id_initializer),
         combiner='sum',
         name='user',
     )
 
+    table_country = tpu_embedding_v2_utils.TableConfig(
+        vocabulary_size=self.vocabulary_size,
+        dim=128,
+        initializer=sharding_aware_const_initializer,
+        combiner='sum',
+        name='country',
+    )
     feature_config = {
         'watched': tpu_embedding_v2_utils.FeatureConfig(
             table=table_video, output_shape=[16]
@@ -393,12 +411,11 @@ class TPUEmbeddingV3Test(parameterized.TestCase, test.TestCase):
         'user': tpu_embedding_v2_utils.FeatureConfig(
             table=table_user, output_shape=[16]
         ),
+        'country': tpu_embedding_v2_utils.FeatureConfig(
+            table=table_country, output_shape=[16]
+        ),
     }
 
-    resolver = tpu_cluster_resolver.TPUClusterResolver(tpu='')
-    remote.connect_to_cluster(resolver)
-    tpu_cluster_resolver.initialize_tpu_system(resolver)
-    strategy = tpu_strategy.TPUStrategy(resolver)
     sparse_features = {
         'watched': sparse_ops.sparse_reorder(
             sparse_tensor.SparseTensor(
@@ -411,6 +428,13 @@ class TPUEmbeddingV3Test(parameterized.TestCase, test.TestCase):
             sparse_tensor.SparseTensor(
                 indices=[[i, 0] for i in range(16)],
                 values=np.arange(16) + 16,
+                dense_shape=[16, 1],
+            )
+        ),
+        'country': sparse_ops.sparse_reorder(
+            sparse_tensor.SparseTensor(
+                indices=[[i, 0] for i in range(16)],
+                values=np.arange(16) + 32,
                 dense_shape=[16, 1],
             )
         ),
@@ -450,14 +474,22 @@ class TPUEmbeddingV3Test(parameterized.TestCase, test.TestCase):
     result = test_fn(data)
     watched = result['watched']
     user = result['user']
+    country = result['country']
     self.assertEqual(watched.shape, (16, 128))
     self.assertEqual(user.shape, (16, 128))
+    self.assertEqual(country.shape, (16, 128))
     self.assertAllClose(
         watched, np.ones(16 * 128).reshape((16, 128)), atol=1e-5, rtol=1e-5
     )
     self.assertAllClose(
         user,
         2048 + np.arange(16 * 128).reshape((16, 128)),
+        atol=1e-5,
+        rtol=1e-5,
+    )
+    self.assertAllClose(
+        country,
+        np.ones(16 * 128).reshape((16, 128)) * 23.0,
         atol=1e-5,
         rtol=1e-5,
     )

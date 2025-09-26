@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/gpu/gpu_device.h"
 
+#include "absl/synchronization/notification.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_process_state.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"
@@ -608,7 +609,7 @@ TEST_F(GPUDeviceTest, CopyTensorInSameDevice) {
   CopyCPUToGPU(&cpu_tensor, &output_tensor, device, device_context);
   InitCPUTensor(&cpu_tensor, kNumElements, 1);
   CopyCPUToGPU(&cpu_tensor, &input_tensor, device, device_context);
-  Notification note;
+  absl::Notification note;
   device->CopyTensorInSameDevice(&input_tensor, &output_tensor, device_context,
                                  [&note](const Status& s) {
                                    TF_ASSERT_OK(s);

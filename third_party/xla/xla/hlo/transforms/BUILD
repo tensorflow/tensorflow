@@ -2,6 +2,7 @@
 #   Implementation of XLA’s HLO transformations.
 
 load("//xla:xla.default.bzl", "xla_cc_test")
+load("//xla/tsl:tsl.default.bzl", "get_compatible_with_libtpu_portable")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
@@ -290,20 +291,21 @@ cc_library(
         "//xla:literal_util",
         "//xla:shape_tree",
         "//xla:shape_util",
-        "//xla:side_effect_util",
-        "//xla:status_macros",
         "//xla:util",
         "//xla:xla_data_proto_cc",
+        "//xla/hlo/analysis:alias_info",
         "//xla/hlo/analysis:hlo_alias_analysis",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
         "//xla/service:call_graph",
+        "//xla/service:computation_layout",
         "//xla/service:hlo_buffer",
         "//xla/service:hlo_cse",
         "//xla/service:hlo_value",
         "//xla/service:host_offload_utils",
         "//xla/service:memory_annotations_hdr",
-        "//xla/service:pattern_matcher",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -313,9 +315,6 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:status",
-        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
@@ -328,6 +327,7 @@ xla_cc_test(
         ":host_offloader",
         "//xla:shape_util",
         "//xla:util",
+        "//xla/hlo/analysis:alias_info",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/hlo/testlib:pattern_matcher_gmock",
@@ -500,5 +500,28 @@ xla_cc_test(
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "offloaded_instruction_wrapper",
+    srcs = ["offloaded_instruction_wrapper.cc"],
+    hdrs = ["offloaded_instruction_wrapper.h"],
+    compatible_with = get_compatible_with_libtpu_portable(),
+    deps = [
+        "//xla:side_effect_util",
+        "//xla:util",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/transforms/simplifiers:hlo_dce",
+        "//xla/tsl/platform:errors",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/functional:function_ref",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@local_tsl//tsl/platform:casts",
+        "@local_tsl//tsl/platform:errors",
     ],
 )

@@ -93,6 +93,13 @@ class OneDnnThreadPool : public threadpool_iface {
     return (eigen_interface_->CurrentThreadId() != -1) ? true : false;
   }
   virtual uint64_t get_flags() const override { return ASYNCHRONOUS; }
+#ifdef ENABLE_ONEDNN_ASYNC
+  // wait() method for synchronous execution is basically a no-op.
+  // But we need to implement it to satisfy the interface.
+  // This is the requirement of the new experimental async runtime support
+  // in oneDNN.
+  virtual void wait() override {}
+#endif  // ENABLE_ONEDNN_ASYNC
   virtual void parallel_for(int n,
                             const std::function<void(int, int)>& fn) override {
     // Should never happen (handled by DNNL)
@@ -154,9 +161,7 @@ class OneDnnThreadPool : public threadpool_iface {
   static void set_onednn_max_threads(int num_threads) {
 #if DNNL_VERSION_MAJOR >= 3 || \
     (DNNL_VERSION_MAJOR == 2 && DNNL_VERSION_MINOR >= 7)
-#ifndef DNNL_AARCH64_USE_ACL
     dnnl_threadpool_interop_set_max_concurrency(num_threads);
-#endif  // DNNL_AARCH64_USE_ACL
 #endif  // DNNL_VERSION_MAJOR >= 3 ||
         // (DNNL_VERSION_MAJOR == 2 && DNNL_VERSION_MINOR >= 7)
   }

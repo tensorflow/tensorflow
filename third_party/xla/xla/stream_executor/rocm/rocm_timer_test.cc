@@ -54,9 +54,10 @@ class RocmTimerTest : public ::testing::Test {
     DeviceMemory<int32_t> b = executor->AllocateArray<int32_t>(length, 0);
     DeviceMemory<int32_t> c = executor->AllocateArray<int32_t>(length, 0);
 
-    ASSERT_THAT(stream->Memset32(&a, 1, byte_length), IsOk());
-    ASSERT_THAT(stream->Memset32(&b, 2, byte_length), IsOk());
-    ASSERT_THAT(add.Launch(ThreadDim(), BlockDim(4), stream, a, b, c), IsOk());
+    ASSERT_THAT(stream->Memset32(&a, 1, byte_length), absl_testing::IsOk());
+    ASSERT_THAT(stream->Memset32(&b, 2, byte_length), absl_testing::IsOk());
+    ASSERT_THAT(add.Launch(ThreadDim(), BlockDim(4), stream, a, b, c),
+                absl_testing::IsOk());
   }
 
   RocmExecutor* executor_;
@@ -86,7 +87,7 @@ TEST_F(RocmTimerTest, Create) {
                           timer.GetElapsedDuration());
   EXPECT_THAT(timer_result, Gt(absl::ZeroDuration()));
   EXPECT_THAT(timer.GetElapsedDuration(),
-              tsl::testing::StatusIs(absl::StatusCode::kFailedPrecondition));
+              absl_testing::StatusIs(absl::StatusCode::kFailedPrecondition));
 }
 
 }  // namespace

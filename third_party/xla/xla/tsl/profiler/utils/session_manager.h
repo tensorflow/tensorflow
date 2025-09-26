@@ -32,14 +32,14 @@ absl::Status ValidateRemoteProfilerSessionManagerOptions(
 
 // Get RemoteSessionManagerOptions from logdir and opts.
 tensorflow::RemoteProfilerSessionManagerOptions
-GetRemoteSessionManagerOptionsLockedWithBoolOpts(
+GetRemoteSessionManagerOptionsLocked(
     absl::string_view logdir,
     const absl::flat_hash_map<std::string,
                               std::variant<bool, int, std::string>>& opts);
 
 // Get RemoteSessionManagerOptions from provided options.
 tensorflow::RemoteProfilerSessionManagerOptions
-GetRemoteSessionManagerOptionsLockedWithBoolOpts(
+GetRemoteSessionManagerOptionsLocked(
     absl::string_view service_addresses, absl::string_view logdir,
     absl::string_view worker_list, bool include_dataset_ops,
     int32_t duration_ms,
@@ -48,21 +48,28 @@ GetRemoteSessionManagerOptionsLockedWithBoolOpts(
     bool* is_cloud_tpu_session);
 
 // Get RemoteSessionManagerOptions from logdir and opts.
-tensorflow::RemoteProfilerSessionManagerOptions
-GetRemoteSessionManagerOptionsLocked(
+inline tensorflow::RemoteProfilerSessionManagerOptions
+GetRemoteSessionManagerOptionsLockedWithBoolOpts(
     absl::string_view logdir,
-    const absl::flat_hash_map<std::string, std::variant<int, std::string>>&
-        opts);
+    const absl::flat_hash_map<std::string,
+                              std::variant<bool, int, std::string>>& opts) {
+  return GetRemoteSessionManagerOptionsLocked(logdir, opts);
+}
 
 // Get RemoteSessionManagerOptions from provided options.
-tensorflow::RemoteProfilerSessionManagerOptions
-GetRemoteSessionManagerOptionsLocked(
+inline tensorflow::RemoteProfilerSessionManagerOptions
+GetRemoteSessionManagerOptionsLockedWithBoolOpts(
     absl::string_view service_addresses, absl::string_view logdir,
     absl::string_view worker_list, bool include_dataset_ops,
     int32_t duration_ms,
-    const absl::flat_hash_map<std::string, std::variant<int, std::string>>&
-        options,
-    bool* is_cloud_tpu_session);
+    const absl::flat_hash_map<std::string,
+                              std::variant<bool, int, std::string>>& opts,
+    bool* is_cloud_tpu_session) {
+  bool is_cloud_tpu_session_unused;
+  return GetRemoteSessionManagerOptionsLocked(
+      service_addresses, logdir, worker_list, include_dataset_ops, duration_ms,
+      opts, &is_cloud_tpu_session_unused);
+}
 
 // Validate Host Port pair.
 absl::Status ValidateHostPortPair(absl::string_view host_port);

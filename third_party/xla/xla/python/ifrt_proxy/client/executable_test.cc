@@ -22,6 +22,7 @@
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "llvm/Support/Casting.h"
@@ -50,26 +51,18 @@
 #include "xla/python/ifrt_proxy/common/types.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/util/proto/proto_matchers.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/protobuf.h"  // IWYU pragma: keep
-#include "tsl/platform/status_matchers.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
 
 using ::testing::_;
 using ::testing::ElementsAre;
 using ::testing::Pointee;
 using ::testing::Return;
 using ::testing::SizeIs;
-using ::testing::StrEq;
+using ::tsl::proto_testing::EquivToProto;
+using ::tsl::proto_testing::Partially;
 using ::tsl::protobuf::TextFormat;
-using ::tsl::testing::IsOkAndHolds;
-using ::tsl::testing::StatusIs;
-
-#if defined(PLATFORM_GOOGLE)
-using ::testing::EquivToProto;
-using ::testing::proto::Partially;
-#endif
 
 namespace xla {
 namespace ifrt {
@@ -139,9 +132,14 @@ TEST_F(LoadedExecutableTest, Metadata) {
       .WillOnce(MockClientCaptureAndReturn(&requests_queue, response));
 
   MockClient client;
+  MockDevice device1;
+  ON_CALL(device1, Id()).WillByDefault(Return(DeviceId(1)));
+  MockDevice device2;
+  ON_CALL(device2, Id()).WillByDefault(Return(DeviceId(2)));
   LoadedExecutable executable(
       &client, rpc_helper_, /*handle=*/1234, /*name=*/"foo",
-      /*num_devices=*/2, /*addressable_devices=*/{},
+      /*num_devices=*/2, /*devices=*/{},
+      /*addressable_devices=*/{},
       /*fingerprint=*/"fingerprint",
       /*ready_future=*/Future<>(absl::OkStatus()),
       /*loaded_host_callbacks=*/{}, /*loaded_host_callback_handles=*/{});
@@ -172,19 +170,17 @@ TEST_F(LoadedExecutableTest, Metadata) {
                           executable.GetParameterLayouts());
   ASSERT_EQ(parameter_layouts.size(), 2);
   EXPECT_EQ(parameter_layouts[0]->xla_layout(),
-            xla::LayoutUtil::MakeDescendingLayout(/*rank=*/1));
+            xla::LayoutUtil::MakeDescendingLayout(/*num_dims=*/1));
   EXPECT_EQ(parameter_layouts[1]->xla_layout(),
-            xla::LayoutUtil::MakeDescendingLayout(/*rank=*/2));
+            xla::LayoutUtil::MakeDescendingLayout(/*num_dims=*/2));
   TF_ASSERT_OK_AND_ASSIGN(auto output_layouts, executable.GetOutputLayouts());
   ASSERT_EQ(output_layouts.size(), 1);
   EXPECT_EQ(output_layouts[0]->xla_layout(),
-            xla::LayoutUtil::MakeDescendingLayout(/*rank=*/2));
+            xla::LayoutUtil::MakeDescendingLayout(/*num_dims=*/2));
   EXPECT_THAT(executable.GetOutputMemoryKinds(),
-              IsOkAndHolds(ElementsAre(ElementsAre("foo"))));
+              absl_testing::IsOkAndHolds(ElementsAre(ElementsAre("foo"))));
 }
 
-// TODO(b/315809436): Test needs rewrite because protobuf matchers are not OSS
-#if defined(PLATFORM_GOOGLE)
 TEST_F(LoadedExecutableTest, Execute) {
   MockClient client;
 
@@ -225,7 +221,7 @@ TEST_F(LoadedExecutableTest, Execute) {
 
   LoadedExecutable executable(
       &client, rpc_helper_, /*handle=*/1234, /*name=*/"foo",
-      /*num_devices=*/2, /*addressable_devices=*/{},
+      /*num_devices=*/2, /*devices=*/{}, /*addressable_devices=*/{},
       /*fingerprint=*/"fingerprint",
       /*ready_future=*/Future<>(absl::OkStatus()),
       /*loaded_host_callbacks=*/{}, /*loaded_host_callback_handles=*/{});
@@ -300,8 +296,9 @@ TEST_F(LoadedExecutableTest, Execute) {
       auto result,
       executable.Execute(absl::MakeSpan(args), exec_options, devices));
 
-  EXPECT_THAT(result.status.Await(),
-              StatusIs(absl::StatusCode::kUnknown, "injected error"));
+  EXPECT_THAT(
+      result.status.Await(),
+      absl_testing::StatusIs(absl::StatusCode::kUnknown, "injected error"));
 
   ASSERT_THAT(result.outputs, SizeIs(2));
 
@@ -344,8 +341,9 @@ TEST_F(LoadedExecutableTest, Execute) {
   auto execute_req = requests_queue.Pop().loaded_executable_execute_request();
   auto check_future_req = requests_queue.Pop().check_future_request();
 
-  EXPECT_THAT(result.status.Await(),
-              StatusIs(absl::StatusCode::kUnknown, "injected error"));
+  EXPECT_THAT(
+      result.status.Await(),
+      absl_testing::StatusIs(absl::StatusCode::kUnknown, "injected error"));
   EXPECT_EQ(execute_req.result_status_handle(),
             check_future_req.future_handle());
 
@@ -360,7 +358,6 @@ TEST_F(LoadedExecutableTest, Execute) {
                 ->handle,
             execute_req.result_array_handle()[1]);
 }
-#endif
 
 }  // namespace
 }  // namespace proxy

@@ -262,7 +262,7 @@ TEST_F(CollectivePipelinerTest, MinimalCaseWithoutDefaultLayouts) {
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(
                                            hlo_string, config_, parser_config));
   EXPECT_THAT(RunOptimizer(module.get(), /*last_run=*/true),
-              IsOkAndHolds(true));
+              absl_testing::IsOkAndHolds(true));
 
   XLA_VLOG_LINES(1, module->ToString());
 

@@ -1,3 +1,4 @@
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("//tensorflow:pytype.default.bzl", "pytype_strict_library")
 load("//tensorflow:strict.default.bzl", "py_strict_test")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable", "if_portable", "pybind_extension")
@@ -33,7 +34,7 @@ pybind_extension(
     hdrs = ["wrapper/metrics_wrapper.h"],
     common_lib_packages = [
         "litert/python",
-        "third_party/tensorflow/lite/python",
+        "tensorflow/lite/python",
     ],
     compatible_with = get_compatible_with_portable(),
     enable_stub_generation = True,

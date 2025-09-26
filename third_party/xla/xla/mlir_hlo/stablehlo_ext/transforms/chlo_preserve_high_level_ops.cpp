@@ -66,8 +66,8 @@ mlir::func::FuncOp buildFuncOpWrappingOperation(mlir::Operation* op,
   // SymbolTable will resolve all name conflicts.
   Location loc = op->getLoc();
   auto funcName = (op->getName().getStringRef() + ".impl").str();
-  mlir::func::FuncOp func = builder.create<mlir::func::FuncOp>(
-      loc, funcName,
+  mlir::func::FuncOp func = mlir::func::FuncOp::create(
+      builder, loc, funcName,
       builder.getFunctionType(op->getOperandTypes(), op->getResultTypes()));
   func.setPrivate();
   symbolTable.insert(func);
@@ -76,7 +76,7 @@ mlir::func::FuncOp buildFuncOpWrappingOperation(mlir::Operation* op,
   builder.setInsertionPointToStart(body);
   Operation* clonedOp = builder.clone(*op);
   clonedOp->setOperands(body->getArguments());
-  builder.create<mlir::func::ReturnOp>(loc, clonedOp->getResults());
+  mlir::func::ReturnOp::create(builder, loc, clonedOp->getResults());
 
   LLVM_DEBUG(llvm::dbgs() << "Created function " << func.getName() << "\n");
   return func;
@@ -92,9 +92,10 @@ stablehlo::CompositeOp wrapOperationInComposite(OpBuilder& builder,
   auto compositeAttributes = builder.getDictionaryAttr(attrs);
   auto compositeVersion = version;
   auto compositeDecomposition = decomposition.getSymName();
-  auto composite = builder.create<stablehlo::CompositeOp>(
-      op->getLoc(), op->getResultTypes(), op->getOperands(), compositeName,
-      compositeAttributes, compositeDecomposition, compositeVersion);
+  auto composite = stablehlo::CompositeOp::create(
+      builder, op->getLoc(), op->getResultTypes(), op->getOperands(),
+      compositeName, compositeAttributes, compositeDecomposition,
+      compositeVersion);
   return composite;
 }
 

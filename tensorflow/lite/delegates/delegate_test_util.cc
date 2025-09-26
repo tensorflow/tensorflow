@@ -150,6 +150,7 @@ SimpleDelegate::SimpleDelegate(const std::vector<int>& nodes,
                                int64_t delegate_flags, Options options,
                                int min_ops_per_subset)
     : nodes_(nodes),
+      fail_delegate_node_init_(options & Options::kFailOnInit),
       fail_delegate_node_prepare_(options & Options::kFailOnPrepare),
       fail_delegate_node_invoke_(options & Options::kFailOnInvoke),
       min_ops_per_subset_(min_ops_per_subset),
@@ -268,6 +269,11 @@ SimpleDelegate::SimpleDelegate(const std::vector<int>& nodes,
 TfLiteRegistration SimpleDelegate::FakeFusedRegistration() {
   TfLiteRegistration reg = {nullptr};
   reg.custom_name = "fake_fused_op";
+
+  if (fail_delegate_node_init_) {
+    reg.init = [](TfLiteContext* context, const char* buffer,
+                  size_t length) -> void* { return TfLiteKernelInitFailed(); };
+  }
 
   // Different flavors of the delegate kernel's Invoke(), dependent on
   // testing parameters.

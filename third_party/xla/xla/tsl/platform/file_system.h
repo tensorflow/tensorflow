@@ -22,7 +22,6 @@ limitations under the License.
 #include <functional>
 #include <memory>
 #include <string>
-#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -392,14 +391,6 @@ class FileSystem {
   virtual absl::Status HasAtomicMove(const std::string& path,
                                      bool* has_atomic_move);
 
-  /// Returns whether the give path is on a file system
-  /// that has ability to create a new temp file. This can be used
-  /// to determine if there needs to be a temp location to safely write objects.
-  /// If the file system cannot create a temp file, it's possibile that
-  /// uncomplete result may appear in the given file.
-  virtual absl::Status CanCreateTempFile(const std::string& fname,
-                                         bool* can_create_temp_file);
-
   /// \brief Flushes any cached filesystem objects from memory.
   virtual void FlushCaches() { FlushCaches(nullptr); }
 
@@ -529,32 +520,32 @@ class FileSystem {
 
   /// \brief Set File System Configuration Options
   virtual absl::Status SetOption(const string& key, const string& value) {
-    return errors::Unimplemented("SetOption");
+    return absl::UnimplementedError("SetOption");
   }
 
   /// \brief Set File System Configuration Option
   virtual absl::Status SetOption(const std::string& name,
                                  const std::vector<string>& values) {
-    return errors::Unimplemented("SetOption");
+    return absl::UnimplementedError("SetOption");
   }
 
   /// \brief Set File System Configuration Option
   virtual absl::Status SetOption(const std::string& name,
                                  const std::vector<int64_t>& values) {
-    return errors::Unimplemented("SetOption");
+    return absl::UnimplementedError("SetOption");
   }
 
   /// \brief Set File System Configuration Option
   virtual absl::Status SetOption(const std::string& name,
                                  const std::vector<double>& values) {
-    return errors::Unimplemented("SetOption");
+    return absl::UnimplementedError("SetOption");
   }
 
   /// \brief Set File System ACL checker.
   ///
   /// No checks are enforced if a FileAcl is never set.
   virtual absl::Status SetFileAcl(std::shared_ptr<FileAcl> file_acl) {
-    return errors::Unimplemented("SetFileAcl");
+    return absl::UnimplementedError("SetFileAcl");
   }
 
   FileSystem() {}
@@ -768,7 +759,7 @@ class RandomAccessFile {
   /// This is an optional operation that may not be implemented by every
   /// filesystem.
   virtual absl::Status Name(absl::string_view* result) const {
-    return errors::Unimplemented("This filesystem does not support Name()");
+    return absl::UnimplementedError("This filesystem does not support Name()");
   }
 
   /// \brief Reads up to `n` bytes from the file starting at `offset`.
@@ -814,9 +805,8 @@ class RandomAccessFile {
 #if defined(TF_CORD_SUPPORT)
   /// \brief Read up to `n` bytes from the file starting at `offset`.
   virtual absl::Status Read(uint64 offset, size_t n, absl::Cord* cord) const {
-    return errors::Unimplemented(
-        "Read(uint64, size_t, absl::Cord*) is not "
-        "implemented");
+    return absl::UnimplementedError(
+        "Read(uint64, size_t, absl::Cord*) is not implemented");
   }
 #endif
 
@@ -873,7 +863,7 @@ class WritableFile {
   /// This is an optional operation that may not be implemented by every
   /// filesystem.
   virtual absl::Status Name(absl::string_view* result) const {
-    return errors::Unimplemented("This filesystem does not support Name()");
+    return absl::UnimplementedError("This filesystem does not support Name()");
   }
 
   /// \brief Syncs contents of file to filesystem.
@@ -888,10 +878,10 @@ class WritableFile {
   /// error.
   ///
   /// This is an optional operation, subclasses may choose to return
-  /// errors::Unimplemented.
+  /// absl::UnimplementedError.
   virtual absl::Status Tell(int64_t* position) {
     *position = -1;
-    return errors::Unimplemented("This filesystem does not support Tell()");
+    return absl::UnimplementedError("This filesystem does not support Tell()");
   }
 
  private:

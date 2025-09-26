@@ -79,6 +79,7 @@ absl::StatusOr<TmaDescriptor> CreateTmaDescriptor(
   // dimension should have a stride of 1.
   CHECK(tile_strides[layout[0]] == 1)
       << "tile stride must be 1 for the most minor dimension";
+
   SmallVector<uint32_t, 5> element_strides;
   for (auto layout_dim : layout) {
     element_strides.push_back(tile_strides[layout_dim]);
@@ -116,11 +117,15 @@ absl::StatusOr<TmaDescriptor> CreateTmaDescriptor(
     box_dims[0] = 128 / element_byte_size;
   }
 
+  // Currently we hardcode these values.
+  auto interleave = TmaDescriptor::TmaInterleave::kNone;
+  auto l2_promotion = TmaDescriptor::TmaL2Promotion::k128B;
+
   TF_ASSIGN_OR_RETURN(
-      auto tma_desc, TmaDescriptor::Create(
-                         global_dims, global_strides, box_dims, element_strides,
-                         element_byte_size, TmaDescriptor::TmaInterleave::kNone,
-                         swizzle_mode, TmaDescriptor::TmaL2Promotion::k128B));
+      auto tma_desc,
+      TmaDescriptor::Create(global_dims, global_strides, box_dims,
+                            element_strides, element_byte_size, interleave,
+                            swizzle_mode, l2_promotion));
   return tma_desc;
 }
 

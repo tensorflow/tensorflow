@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/synchronization/notification.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
@@ -85,7 +86,7 @@ TEST_F(RpcCollectiveExecutorMgrTest, NextStepId) {
   EXPECT_EQ(x, CollectiveExecutor::kInvalidId);
   // Calling Refresh should generate a valid id.
   {
-    Notification note;
+    absl::Notification note;
     absl::Status status;
     cme_->RefreshStepIdSequenceAsync(
         7, [this, &status, &note](const absl::Status& s) {
@@ -108,7 +109,7 @@ TEST_F(RpcCollectiveExecutorMgrTest, NextStepId) {
   EXPECT_EQ((x + 1) & (((1uLL << 56) - 1) | (1uLL << 56)), y);
   // Calling refresh should jump to a different point in the random space.
   {
-    Notification note;
+    absl::Notification note;
     absl::Status status;
     cme_->RefreshStepIdSequenceAsync(
         7, [this, &status, &note](const absl::Status& s) {
@@ -135,7 +136,7 @@ TEST_F(RpcCollectiveExecutorMgrTest, GetStepSequence) {
   request.add_graph_key(3);
   request.add_graph_key(4);
   {
-    Notification note;
+    absl::Notification note;
     absl::Status status;
     cme_->GetStepSequenceAsync(&request, &response,
                                [this, &status, &note](const absl::Status& s) {
@@ -155,7 +156,7 @@ TEST_F(RpcCollectiveExecutorMgrTest, GetStepSequence) {
   // Re-get, should be same values.
   response.Clear();
   {
-    Notification note;
+    absl::Notification note;
     absl::Status status;
     cme_->GetStepSequenceAsync(&request, &response,
                                [this, &status, &note](const absl::Status& s) {

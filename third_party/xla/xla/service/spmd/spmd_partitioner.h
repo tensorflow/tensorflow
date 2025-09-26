@@ -131,6 +131,9 @@ struct SpmdPartitionerOptions {
   // This combines sizes in bytes of both operands.
   // When it's set, it will override threshold_for_windowed_einsum_mib.
   std::optional<int64_t> total_bytes_windowed_einsum_threshold = std::nullopt;
+
+  // The maximum number of iterations for windowed einsum.
+  int64_t max_windowed_einsum_iteration = 32;
 };
 
 // Class to wrap the computation builder to capture information during SPMD
@@ -396,6 +399,12 @@ class SpmdPartitioner : public HloModulePass {
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads);
 
+  // Replaces unreduced sharding type with replicated type to decouple unreduced
+  // with other sharding types.
+  absl::Status ConvertUnreducedSharding(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads);
+
   // Returns if the given side-effecting instruction is allowed to have
   // replicated sharding.
   virtual bool CanSideEffectingHaveReplicatedSharding(
@@ -532,9 +541,6 @@ class PartitionedHlo {
   // Returns the SPMD instruction's number of dimensions.
   int64_t num_dimensions() const { return base_shape_.dimensions().size(); }
 
-  // Original full shape of the data.
-  const Shape& base_shape() const { return base_shape_; }
-
   int64_t NewChannel() const { return (*state_.next_channel_id)++; }
 
   // Reshards the HLO to a usable partitioned input for a windowed user. Could
@@ -543,8 +549,6 @@ class PartitionedHlo {
       const Window& window, const HloSharding& target,
       HloInstruction* pad_value, bool mask_invalid_region = true,
       bool force_mask_in_compact = false);
-
-  const PartitioningState& state() const { return state_; }
 
   void AddReshardCache(const HloSharding& sharding, const PartitionedHlo& phlo);
 
@@ -555,7 +559,10 @@ class PartitionedHlo {
   // Helper function to replicate the data for partitions along the given dims.
   HloInstruction* ReplicatePartial(absl::Span<const int64_t> dims) const;
 
-  // Set state of the partitoned HLO.
+  const Shape& base_shape() const { return base_shape_; }
+  void set_base_shape(const Shape& base_shape) { base_shape_ = base_shape; }
+
+  const PartitioningState& state() const { return state_; }
   void set_state(PartitioningState state) { state_ = std::move(state); }
 
  private:
@@ -697,11 +704,7 @@ class SpmdPartitioningVisitor : public DfsHloVisitorWithDefault {
 
   // Sets the PartitionedHlo for the original hlo.
   void SetPartitionedHlo(const HloInstruction* hlo,
-                         PartitionedHlo&& partitioned_hlo) {
-    CHECK_EQ(partitioned_instructions_.count(hlo), 0);
-    partitioned_instructions_.emplace(hlo, partitioned_hlo);
-    changed_ = true;
-  }
+                         PartitionedHlo&& partitioned_hlo);
 
   // Convenient wrapper that creates PartitionedHlo from the result of the func
   // and maps it to the given original hlo.

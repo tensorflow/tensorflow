@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_format.h"
+#include "absl/synchronization/notification.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/status_matchers.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
@@ -395,7 +396,7 @@ TEST_F(DirectSessionMinusAXTest,
   Session::CallableHandle handle;
   EXPECT_THAT(
       session->MakeCallable(MakeCallableOptions({}, {y_ + ":0"}, {}), &handle),
-      ::tsl::testing::StatusIs(
+      absl_testing::StatusIs(
           absl::StatusCode::kFailedPrecondition,
           ::testing::HasSubstr("Session has been finalized.")));
 }
@@ -433,7 +434,7 @@ TEST_F(DirectSessionMinusAXTest, RunSimpleNetwork_ResourceMgrFinalized) {
   TestResource* test_resource = new TestResource();
   EXPECT_THAT(
       rm->Create("", "", test_resource),
-      tsl::testing::StatusIs(absl::StatusCode::kFailedPrecondition,
+      absl_testing::StatusIs(absl::StatusCode::kFailedPrecondition,
                              ::testing::HasSubstr("ResourceMgr is finalized")));
   test_resource->Unref();
 }
@@ -2056,9 +2057,9 @@ class CancellationMgrPollingOp : public OpKernel {
     }
     notification.Notify();
   }
-  static Notification notification;
+  static absl::Notification notification;
 };
-Notification CancellationMgrPollingOp::notification;
+absl::Notification CancellationMgrPollingOp::notification;
 
 REGISTER_KERNEL_BUILDER(Name("CancellationMgrPollingOp").Device(DEVICE_CPU),
                         CancellationMgrPollingOp);
