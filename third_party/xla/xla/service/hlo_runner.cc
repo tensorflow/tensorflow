@@ -109,7 +109,7 @@ HloRunner::HloRunner(se::Platform* platform, int intra_op_parallelism_threads) {
 HloRunner::~HloRunner() {}
 
 se::DeviceMemoryAllocator* HloRunner::GetAllocator() {
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
   if (allocator_ == nullptr) {
     allocator_ = std::make_unique<se::StreamExecutorMemoryAllocator>(
         backend().default_stream_executor());
@@ -649,7 +649,7 @@ absl::StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicated(
               pool.Schedule([&, i] {
                 auto result = executable->ExecuteOnStream(
                     &service_run_options[i], argument_buffer_slices[i]);
-                absl::MutexLock lock(&mutex);
+                absl::MutexLock lock(mutex);
                 thread_results[i] = std::move(result);
               });
             }
@@ -710,7 +710,7 @@ absl::StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicated(
             pool.Schedule([&, i, executable] {
               auto result = executable->executable()->ExecuteOnStream(
                   &service_run_options[i], argument_buffer_slices[i]);
-              absl::MutexLock lock(&mutex);
+              absl::MutexLock lock(mutex);
               thread_results[i] = std::move(result);
             });
           }
@@ -876,7 +876,7 @@ absl::StatusOr<DeviceAssignment> HloRunner::GetDefaultDeviceAssignment(
 }
 
 void HloRunner::MaybeUpdateEntryComputationLayout(HloModule* module) {
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
   if (module_ids_with_updated_layouts_.insert(module->unique_id()).second) {
     xla::UpdateEntryComputationLayout(module, device_shape_representation_fn_);
   }
