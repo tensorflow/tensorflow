@@ -1470,7 +1470,10 @@ std::string HloModule::GetFingerprint128(const HloPrintOptions& options) const {
 
 struct OriginalArrayComparator {
   bool operator()(const OriginalArray& lhs, const OriginalArray& rhs) const {
-    return lhs.instruction_name < rhs.instruction_name;
+    if (lhs.instruction_name != rhs.instruction_name) {
+      return lhs.instruction_name < rhs.instruction_name;
+    }
+    return lhs.shape_index < rhs.shape_index;
   }
 };
 
@@ -1637,7 +1640,7 @@ void HloModule::OriginalValueRecoveryTable::AddRecoveryComputation(
       new_original_array->emplace(
           OriginalArray{GetOriginalValuePlaceholderInstructionName(
                             old_original_array->instruction_name),
-                        shape_index});
+                        old_original_array->shape_index});
     }
     table_.emplace(
         *old_original_array,

@@ -56,7 +56,6 @@ cc_library(
         "//xla/hlo/parser:hlo_lexer",
         "//xla/hlo/pass:hlo_pass",
         "//xla/hlo/pass:hlo_pass_pipeline",
-        "//xla/hlo/transforms/simplifiers:flatten_call_graph",
         "//xla/hlo/transforms/simplifiers:hlo_dce",
         "//xla/hlo/transforms/simplifiers:tuple_simplifier",
         "//xla/hlo/utils:hlo_query",
