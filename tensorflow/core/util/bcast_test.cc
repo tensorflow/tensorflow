@@ -30,14 +30,14 @@ string BCast(const tensorflow::BCast::Vec& x, const tensorflow::BCast::Vec& y,
     return "invalid";
   }
   string ret;
-  strings::StrAppend(&ret, "[", absl::StrJoin(b.x_reshape(), ","), "]");
-  strings::StrAppend(&ret, "[", absl::StrJoin(b.x_bcast(), ","), "]");
-  strings::StrAppend(&ret, "[", absl::StrJoin(b.y_reshape(), ","), "]");
-  strings::StrAppend(&ret, "[", absl::StrJoin(b.y_bcast(), ","), "]");
-  strings::StrAppend(&ret, "[", absl::StrJoin(b.result_shape(), ","), "]");
-  strings::StrAppend(&ret, "[", absl::StrJoin(b.output_shape(), ","), "]");
-  strings::StrAppend(&ret, "[", absl::StrJoin(b.grad_x_reduce_idx(), ","), "]");
-  strings::StrAppend(&ret, "[", absl::StrJoin(b.grad_y_reduce_idx(), ","), "]");
+  absl::StrAppend(&ret, "[", absl::StrJoin(b.x_reshape(), ","), "]");
+  absl::StrAppend(&ret, "[", absl::StrJoin(b.x_bcast(), ","), "]");
+  absl::StrAppend(&ret, "[", absl::StrJoin(b.y_reshape(), ","), "]");
+  absl::StrAppend(&ret, "[", absl::StrJoin(b.y_bcast(), ","), "]");
+  absl::StrAppend(&ret, "[", absl::StrJoin(b.result_shape(), ","), "]");
+  absl::StrAppend(&ret, "[", absl::StrJoin(b.output_shape(), ","), "]");
+  absl::StrAppend(&ret, "[", absl::StrJoin(b.grad_x_reduce_idx(), ","), "]");
+  absl::StrAppend(&ret, "[", absl::StrJoin(b.grad_y_reduce_idx(), ","), "]");
   return ret;
 }
 
@@ -47,8 +47,8 @@ string BCastBatchIndices(const tensorflow::BCast::Vec& x,
   tensorflow::BCast b(x, y, fewer_dims_optimization,
                       /*return_flattened_batch_indices=*/true);
   string ret;
-  strings::StrAppend(&ret, "[", absl::StrJoin(b.x_batch_indices(), ","), "]");
-  strings::StrAppend(&ret, "[", absl::StrJoin(b.y_batch_indices(), ","), "]");
+  absl::StrAppend(&ret, "[", absl::StrJoin(b.x_batch_indices(), ","), "]");
+  absl::StrAppend(&ret, "[", absl::StrJoin(b.y_batch_indices(), ","), "]");
   return ret;
 }
 
@@ -61,17 +61,17 @@ string BCastList3(const tensorflow::BCast::Vec& x,
     return "invalid";
   }
   string ret;
-  strings::StrAppend(&ret, "[", absl::StrJoin(b.reshape(0), ","), "]");
-  strings::StrAppend(&ret, "[", absl::StrJoin(b.bcast(0), ","), "]");
-  strings::StrAppend(&ret, "[", absl::StrJoin(b.reshape(1), ","), "]");
-  strings::StrAppend(&ret, "[", absl::StrJoin(b.bcast(1), ","), "]");
-  strings::StrAppend(&ret, "[", absl::StrJoin(b.reshape(2), ","), "]");
-  strings::StrAppend(&ret, "[", absl::StrJoin(b.bcast(2), ","), "]");
-  strings::StrAppend(&ret, "[", absl::StrJoin(b.result_shape(), ","), "]");
-  strings::StrAppend(&ret, "[", absl::StrJoin(b.output_shape(), ","), "]");
-  strings::StrAppend(&ret, "[", absl::StrJoin(b.grad_reduce_idx(0), ","), "]");
-  strings::StrAppend(&ret, "[", absl::StrJoin(b.grad_reduce_idx(1), ","), "]");
-  strings::StrAppend(&ret, "[", absl::StrJoin(b.grad_reduce_idx(2), ","), "]");
+  absl::StrAppend(&ret, "[", absl::StrJoin(b.reshape(0), ","), "]");
+  absl::StrAppend(&ret, "[", absl::StrJoin(b.bcast(0), ","), "]");
+  absl::StrAppend(&ret, "[", absl::StrJoin(b.reshape(1), ","), "]");
+  absl::StrAppend(&ret, "[", absl::StrJoin(b.bcast(1), ","), "]");
+  absl::StrAppend(&ret, "[", absl::StrJoin(b.reshape(2), ","), "]");
+  absl::StrAppend(&ret, "[", absl::StrJoin(b.bcast(2), ","), "]");
+  absl::StrAppend(&ret, "[", absl::StrJoin(b.result_shape(), ","), "]");
+  absl::StrAppend(&ret, "[", absl::StrJoin(b.output_shape(), ","), "]");
+  absl::StrAppend(&ret, "[", absl::StrJoin(b.grad_reduce_idx(0), ","), "]");
+  absl::StrAppend(&ret, "[", absl::StrJoin(b.grad_reduce_idx(1), ","), "]");
+  absl::StrAppend(&ret, "[", absl::StrJoin(b.grad_reduce_idx(2), ","), "]");
   return ret;
 }
 

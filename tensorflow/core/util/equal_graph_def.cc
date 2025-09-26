@@ -55,8 +55,8 @@ bool EqualRepeatedNodeDef(const protobuf::RepeatedPtrField<NodeDef>& actual,
     auto actual_iter = actual_index.find(expected_node.name());
     if (actual_iter == actual_index.end()) {
       if (diff != nullptr) {
-        *diff = strings::StrCat("Did not find expected node '",
-                                SummarizeNodeDef(expected_node), "'");
+        *diff = absl::StrCat("Did not find expected node '",
+                             SummarizeNodeDef(expected_node), "'");
       }
       return false;
     }
@@ -71,8 +71,8 @@ bool EqualRepeatedNodeDef(const protobuf::RepeatedPtrField<NodeDef>& actual,
   if (!actual_index.empty()) {
     if (diff != nullptr) {
       *diff =
-          strings::StrCat("Found unexpected node '",
-                          SummarizeNodeDef(*actual_index.begin()->second), "'");
+          absl::StrCat("Found unexpected node '",
+                       SummarizeNodeDef(*actual_index.begin()->second), "'");
     }
     return false;
   }
@@ -100,8 +100,8 @@ namespace {
 string JoinStringField(const protobuf::RepeatedPtrField<string>& f) {
   string ret;
   for (int i = 0; i < f.size(); ++i) {
-    if (i > 0) strings::StrAppend(&ret, ", ");
-    strings::StrAppend(&ret, f.Get(i));
+    if (i > 0) absl::StrAppend(&ret, ", ");
+    absl::StrAppend(&ret, f.Get(i));
   }
   return ret;
 }
@@ -154,8 +154,8 @@ bool EqualNodeDef(const NodeDef& actual, const NodeDef& expected, string* diff,
     }
     // Special case for inputs: "tensor" is equivalent to "tensor:0"
     if (actual.input(i) != expected.input(i) &&
-        actual.input(i) != strings::StrCat(expected.input(i), ":0") &&
-        strings::StrCat(actual.input(i), ":0") != expected.input(i)) {
+        actual.input(i) != absl::StrCat(expected.input(i), ":0") &&
+        absl::StrCat(actual.input(i), ":0") != expected.input(i)) {
       if (diff != nullptr) {
         *diff = strings::StrCat("Node named '", actual.name(), "' has input ",
                                 i, " '", actual.input(i),
