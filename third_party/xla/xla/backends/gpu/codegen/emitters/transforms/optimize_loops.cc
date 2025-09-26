@@ -48,7 +48,7 @@ namespace {
 
 bool IsExpensiveToUnroll(mlir::Operation* op) {
   return mlir::isa<mlir::func::CallOp, mlir::scf::ForOp, mlir::math::AcoshOp,
-                   mlir::math::AcosOp>(op);
+                   mlir::math::AcosOp, mlir::math::CoshOp>(op);
 }
 
 int GetUnrollingFactor(mlir::scf::ForOp op) {
