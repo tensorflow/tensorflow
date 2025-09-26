@@ -332,7 +332,7 @@ struct CompiledMemoryStats {
   static CompiledMemoryStats FromProto(const CompiledMemoryStatsProto& proto);
 
   void PopulateBufferStatsFromAllocations(
-      absl::Span<const BufferAllocation> allocs);
+      absl::Span<const BufferAllocation* const> allocs);
 };
 
 class PjRtExecutable {

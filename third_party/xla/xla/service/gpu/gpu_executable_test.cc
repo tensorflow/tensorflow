@@ -43,7 +43,6 @@ limitations under the License.
 #include "xla/stream_executor/gpu/tma_metadata.h"
 #include "xla/stream_executor/semantic_version.h"
 #include "xla/tsl/platform/env.h"
-#include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
 #include "tsl/platform/path.h"
@@ -53,7 +52,6 @@ namespace {
 using ::testing::ElementsAre;
 using ::testing::Property;
 using ::tsl::proto_testing::EqualsProto;
-using ::tsl::testing::IsOkAndHolds;
 
 TEST(GpuExecutableTest, OuputInfoToAndFromProto) {
   const GpuExecutable::OutputInfo output_info0{/*allocation_index=*/42,
@@ -190,6 +188,29 @@ TEST(GpuExecutableTest, ExecutableName) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<GpuExecutable> executable,
                           GpuExecutable::Create(std::move(params)));
   EXPECT_THAT(executable->name(), "test_module");
+}
+
+TEST(GpuExecutableTest, GetMlirAllocations) {
+  GpuExecutable::Params params;
+  params.module_name = "test_module";
+  params.executable =
+      std::make_unique<SequentialThunk>(Thunk::ThunkInfo{}, ThunkSequence{});
+
+  std::vector<BufferAllocation> allocations;
+  allocations.emplace_back(0, 1024, 0);
+  allocations.emplace_back(1, 2048, 0);
+
+  const BufferAllocation* expected_ptr0 = &allocations[0];
+  const BufferAllocation* expected_ptr1 = &allocations[1];
+
+  params.mlir_allocations = std::move(allocations);
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<GpuExecutable> executable,
+                          GpuExecutable::Create(std::move(params)));
+
+  // The pointers must match exactly because the allocations may have Slice
+  // objects which hold pointers to the parent allocations.
+  EXPECT_THAT(executable->GetAllocations(),
+              ElementsAre(expected_ptr0, expected_ptr1));
 }
 
 }  // namespace

@@ -69,9 +69,9 @@ std::vector<ExecutionInput> CreateExecutionInputsFromBuffers(
 
 int GetScratchBytes(const Executable* executable) {
   int scratch_bytes = 0;
-  for (const auto& allocation : executable->GetAllocations()) {
-    if (allocation.IsPreallocatedTempBuffer()) {
-      for (const auto& [buffer, offset] : allocation.assigned_buffers()) {
+  for (const auto* allocation : executable->GetAllocations()) {
+    if (allocation->IsPreallocatedTempBuffer()) {
+      for (const auto& [buffer, offset] : allocation->assigned_buffers()) {
         // Scratch space is allocated as the second element in the output tuple
         // of the instruction.
         const auto& shape_index = buffer->positions().front().index;

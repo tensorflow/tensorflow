@@ -22,6 +22,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/nullability.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
@@ -438,7 +439,8 @@ class Executable {
 
   // Returns the allocations resulting from buffer assignment, or an empty span
   // if unimplemented.
-  virtual absl::Span<const BufferAllocation> GetAllocations() const {
+  virtual absl::Span<const BufferAllocation* absl_nonnull const>
+  GetAllocations() const {
     return {};
   }
 

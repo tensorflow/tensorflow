@@ -267,7 +267,7 @@ CompiledMemoryStats CompiledMemoryStats::FromProto(
 // want, but does not distinguish between device and host memory, and does
 // not account for aliased memory.
 void CompiledMemoryStats::PopulateBufferStatsFromAllocations(
-    absl::Span<const BufferAllocation> allocs) {
+    absl::Span<const BufferAllocation* const> allocs) {
   argument_size_in_bytes = 0;
   output_size_in_bytes = 0;
   temp_size_in_bytes = 0;
@@ -277,7 +277,7 @@ void CompiledMemoryStats::PopulateBufferStatsFromAllocations(
   host_temp_size_in_bytes = 0;
   host_alias_size_in_bytes = 0;
 
-  for (auto& alloc : allocs) {
+  for (const BufferAllocation* alloc : allocs) {
     // All logical buffers assigned to a buffer allocation share a color.
     // With buffer assigner's default colorer the color happens to be the
     // memory space of the underlying HLO value. Callers may choose other
@@ -286,7 +286,7 @@ void CompiledMemoryStats::PopulateBufferStatsFromAllocations(
     // Until buffer allocations provide a stronger guarantee about colors,
     // we sanity-check that the default coloring behavior was used.
     int64_t alloc_memory_space = -1;
-    for (const auto& [value, _] : alloc.assigned_buffers()) {
+    for (const auto& [value, _] : alloc->assigned_buffers()) {
       const HloPosition& defining_position = value->defining_position();
       int64_t memory_space = Layout::kDefaultMemorySpace;
       if (defining_position.shape().has_layout()) {
@@ -301,14 +301,14 @@ void CompiledMemoryStats::PopulateBufferStatsFromAllocations(
     }
 
     bool is_host = alloc_memory_space == Layout::kHostMemorySpace;
-    int64_t size = alloc.size();
-    if (alloc.is_entry_computation_parameter()) {
+    int64_t size = alloc->size();
+    if (alloc->is_entry_computation_parameter()) {
       if (is_host) {
         host_argument_size_in_bytes += size;
       } else {
         argument_size_in_bytes += size;
       }
-      if (alloc.is_parameter_aliased_with_output()) {
+      if (alloc->is_parameter_aliased_with_output()) {
         if (is_host) {
           host_alias_size_in_bytes += size;
         } else {
@@ -316,14 +316,14 @@ void CompiledMemoryStats::PopulateBufferStatsFromAllocations(
         }
       }
     }
-    if (alloc.maybe_live_out()) {
+    if (alloc->maybe_live_out()) {
       if (is_host) {
         host_output_size_in_bytes += size;
       } else {
         output_size_in_bytes += size;
       }
     }
-    if (alloc.IsPreallocatedTempBuffer()) {
+    if (alloc->IsPreallocatedTempBuffer()) {
       if (is_host) {
         host_temp_size_in_bytes += size;
       } else {
