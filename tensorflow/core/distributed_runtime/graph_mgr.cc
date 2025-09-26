@@ -192,7 +192,7 @@ absl::Status GraphMgr::InitItem(const string& handle, const GraphDef& gdef,
   popts.node_to_loc = SplitByDevice;
   popts.new_name = [this](const string& prefix) {
     mutex_lock l(mu_);
-    return strings::StrCat(prefix, "_G", next_id_++);
+    return absl::StrCat(prefix, "_G", next_id_++);
   };
   popts.get_incarnation = [this](const string& name) -> int64 {
     Device* device = nullptr;
