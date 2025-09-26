@@ -312,26 +312,6 @@ ReplicasAndPartitions GetReplicasAndPartitionsInternal(
   return ReplicasAndPartitions{device_count * num_slices, 1};
 }
 
-// Calculates the requested number of replicas and partitions.
-// The explicit num_replicas and num_partitions options override
-// execution_options.
-// Regarding the num_slices parameter, see the comment on
-// xla::MultiSliceConfig.
-ReplicasAndPartitions GetReplicasAndPartitions(
-    const std::optional<ExecutionOptions>& execution_options, int device_count,
-    const std::optional<int>& num_replicas,
-    const std::optional<int>& num_partitions, int num_slices = 1) {
-  CHECK_GE(num_slices, 1);
-  ReplicasAndPartitions result = GetReplicasAndPartitionsInternal(
-      execution_options, device_count, num_replicas, num_partitions,
-      num_slices);
-  VLOG(1) << "Calculated replicas: " << result.replicas
-          << ", partitions: " << result.partitions;
-  CHECK_GE(result.replicas, 1);
-  CHECK_GE(result.partitions, 1);
-  return result;
-}
-
 absl::StatusOr<PerDeviceLiteralVecType> FetchAndLogOutput(
     PjRtClient& client,
     const std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>& output_buffers,
@@ -1007,6 +987,21 @@ absl::StatusOr<ExecutionOptions> LoadExecutionOptions(absl::string_view path) {
   return execution_options;
 }
 
+ReplicasAndPartitions GetReplicasAndPartitions(
+    const std::optional<ExecutionOptions>& execution_options, int device_count,
+    const std::optional<int>& num_replicas,
+    const std::optional<int>& num_partitions, int num_slices) {
+  CHECK_GE(num_slices, 1);
+  ReplicasAndPartitions result = GetReplicasAndPartitionsInternal(
+      execution_options, device_count, num_replicas, num_partitions,
+      num_slices);
+  VLOG(1) << "Calculated replicas: " << result.replicas
+          << ", partitions: " << result.partitions;
+  CHECK_GE(result.replicas, 1);
+  CHECK_GE(result.partitions, 1);
+  return result;
+}
+
 absl::StatusOr<CompileOptions> CreateCompileOptions(
     const PjRtClient& client,
     const FunctionalHloRunner::RawCompileOptions& raw_options, int task_id,
@@ -1020,11 +1015,10 @@ absl::StatusOr<CompileOptions> CreateCompileOptions(
 
   ExecutableBuildOptions& build_options =
       compile_options.executable_build_options;
-  ReplicasAndPartitions replicas_and_partitions =
-      FunctionalHloRunner::GetReplicasAndPartitions(
-          raw_options.execution_options, client.device_count(),
-          raw_options.num_replicas, raw_options.num_partitions,
-          raw_options.num_slices.value_or(1));
+  ReplicasAndPartitions replicas_and_partitions = GetReplicasAndPartitions(
+      raw_options.execution_options, client.device_count(),
+      raw_options.num_replicas, raw_options.num_partitions,
+      raw_options.num_slices.value_or(1));
   build_options.set_num_replicas(replicas_and_partitions.replicas);
   build_options.set_num_partitions(replicas_and_partitions.partitions);
   build_options.set_process_index(task_id);
