@@ -5793,10 +5793,19 @@ AllocationResult MsaAlgorithm::AllocateSegment(AllocationRequest& request) {
   } else if (prev_allocation_in_default_mem_it == allocation_sequence->rend()) {
     VLOG(3) << "Allocation requires contiguous allocation, but it wasn't "
                "possible to find one.";
-    CHECK(!request.require_start_colored_in_default_memory);
-    CHECK(!request.require_end_colored_in_default_memory);
-    return result_mark(AllocationResult::kFailRequiresUncommit,
-                       allocation_result);
+    if ((prev_allocation_it == allocation_sequence->rend() ||
+         (*prev_allocation_it)->memory_space() != MemorySpace::kAlternate) &&
+        (request.require_start_colored_in_default_memory ||
+         request.require_end_colored_in_default_memory)) {
+      allocation_sequence->push_back(std::make_unique<PinnedAllocation>(
+          defining_position, MemorySpace::kDefault,
+          /*chunk=*/std::nullopt, request.inclusive_start_time,
+          request.end_time));
+      prev_allocation_in_default_mem_it = allocation_sequence->rbegin();
+    } else {
+      return result_mark(AllocationResult::kFailRequiresUncommit,
+                         allocation_result);
+    }
   }
 
   CHECK(prev_allocation_in_default_mem_it != allocation_sequence->rend());
