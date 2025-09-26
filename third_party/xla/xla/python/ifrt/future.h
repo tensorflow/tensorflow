@@ -16,12 +16,12 @@ limitations under the License.
 #ifndef XLA_PYTHON_IFRT_FUTURE_H_
 #define XLA_PYTHON_IFRT_FUTURE_H_
 
-#include "xla/pjrt/pjrt_future.h"
+#include "xla/tsl/concurrency/future.h"
 
 namespace xla {
 namespace ifrt {
 
-// Future reuses `xla::PjRtFuture` as the short-term implementation.
+// Future reuses `tsl::Future` as the short-term implementation.
 //
 // We will address the following properties in a new `Future` implementation.
 //
@@ -31,12 +31,12 @@ namespace ifrt {
 // * Awaiting on a `Future` should possibly be cancellable to lower overhead
 // when the `Future` value woudld be no longer useful or relevant.
 template <typename T = void>
-using Future = ::xla::PjRtFuture<T>;
+using Future = ::tsl::Future<T>;
 
 template <typename T = void>
-using Promise = typename ::xla::PjRtFuture<T>::Promise;
+using Promise = ::tsl::Promise<T>;
 
-using ::xla::JoinFutures;
+using ::tsl::JoinFutures;
 
 }  // namespace ifrt
 }  // namespace xla
