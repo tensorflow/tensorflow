@@ -22,6 +22,8 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
+#include "mlir/Conversion/LLVMCommon/MemRefBuilder.h"
+#include "mlir/Conversion/LLVMCommon/TypeConverter.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/LLVMIR/LLVMAttrs.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
@@ -112,9 +114,18 @@ struct LowerLoadOp : public mlir::OpRewritePattern<LoadOp> {
               dereferenceable.getInt(), false));
     }
 
-    auto arg_ptr_cast = b.create<mlir::UnrealizedConversionCastOp>(
-        op.getLoc(), op->getResult(0).getType(), arg_ptr.getResult());
-    rewriter.replaceOp(op, arg_ptr_cast.getResult(0));
+    if (auto memref_type = mlir::dyn_cast<mlir::MemRefType>(op.getType())) {
+      mlir::LLVMTypeConverter converter(rewriter.getContext());
+      mlir::Value memref_desc = mlir::MemRefDescriptor::fromStaticShape(
+          b, op.getLoc(), converter, memref_type, arg_ptr);
+      auto memref_cast = b.create<mlir::UnrealizedConversionCastOp>(
+          op.getLoc(), op.getResult().getType(), memref_desc);
+      rewriter.replaceOp(op, memref_cast);
+    } else {
+      auto arg_ptr_cast = b.create<mlir::UnrealizedConversionCastOp>(
+          op.getLoc(), op.getResult().getType(), arg_ptr.getResult());
+      rewriter.replaceOp(op, arg_ptr_cast.getResult(0));
+    }
     return mlir::success();
   }
 };
