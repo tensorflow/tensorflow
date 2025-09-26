@@ -3392,6 +3392,24 @@ ENTRY entry {
               HasSubstr("Shape and memory space of the result"));
 }
 
+TEST_F(HloVerifierTestLayoutSensitive,
+       CustomCallOperandOutputScalarAliasingSuccessWithMemorySpaceMismatch) {
+  constexpr absl::string_view hlo = R"(
+    HloModule module, input_output_alias={ {}: (0, {}, may-alias) },
+    entry_computation_layout={(f32[1]{0:T(128)})->f32[1]{0:T(128)}}
+
+    ENTRY entry {
+      x = f32[1]{0:T(128)} parameter(0)
+      copy = f32[1]{0:T(128)S(6)} copy(x)
+      ROOT output = f32[1]{0:T(128)} custom-call(copy),
+        custom_call_target="tpu_custom_call",
+        output_to_operand_aliasing={{}: (0, {})}
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  TF_EXPECT_OK(verifier().Run(module.get()).status());
+}
+
 TEST_F(HloVerifierTestLayoutSensitive, LayoutOK) {
   constexpr absl::string_view kHlo = R"(
 HloModule module, entry_computation_layout={(f32[10,10]{1,0},f32[10,10]{1,0})->f32[10,10]{1,0}}
