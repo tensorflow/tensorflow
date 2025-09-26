@@ -309,7 +309,7 @@ BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_MATRIX_DIAG, Register_MATRIX_DIAG());
   AddBuiltin(BuiltinOperator_QUANTIZE, Register_QUANTIZE(),
              /* min_version = */ 1,
-             /* max_version = */ 3);
+             /* max_version = */ 4);
   AddBuiltin(BuiltinOperator_MATRIX_SET_DIAG, Register_MATRIX_SET_DIAG());
   AddBuiltin(BuiltinOperator_IF, tflite::ops::builtin::Register_IF());
   AddBuiltin(BuiltinOperator_WHILE, tflite::ops::builtin::Register_WHILE());
