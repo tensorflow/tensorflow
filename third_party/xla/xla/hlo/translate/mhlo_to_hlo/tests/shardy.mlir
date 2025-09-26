@@ -117,3 +117,37 @@ module @sdy_frontend_attributes_inlined_meshes {
         // CHECK-SAME{LITERAL}: sharding={{devices=[8,4]<=[32]}, {replicated}}
       }
     }
+
+// -----
+
+// Ensure frontend attributes are propagated to nested functions.
+// CHECK-LABEL: HloModule non_main_func_frontend_attributes{{.*}}frontend_attributes={xla.sdy.meshes={mesh = #sdy.mesh<["x"=2, "y"=4, "z"=4]>}
+module @non_main_func_frontend_attributes attributes {mhlo.frontend_attributes = {xla.sdy.meshes =
+      "{mesh = #sdy.mesh<[\"x\"=2, \"y\"=4, \"z\"=4]>}"
+    }} {
+      func.func @called_func(
+          %arg0: tensor<8x8xf32> {mhlo.sharding = "{devices=[1,4,8]<=[2,4,4]T(1,0,2) last_tile_dim_replicate}",
+                                  mhlo.frontend_attributes = {xla.sdy.sharding = "#sdy.sharding<@mesh, [{}, {\"y\"}]>"}}
+      ) -> tensor<8x8xf32> {
+      // CHECK: %[[ARG:.*]] = f32[8,8] parameter(0), sharding={devices=[1,4,8]<=[2,4,4]T(1,0,2) last_tile_dim_replicate}
+      // CHECK-SAME: frontend_attributes={xla.sdy.sharding="#sdy.sharding<@mesh, [{}, {\"y\"}]>"}
+        %0 = mhlo.add %arg0, %arg0 : tensor<8x8xf32>
+        return %0 : tensor<8x8xf32>
+      }
+
+      func.func @main(
+          %arg0: tensor<8x8xf32> {mhlo.sharding = "{devices=[2,1,16]<=[32] last_tile_dim_replicate}",
+                                  mhlo.frontend_attributes = {xla.sdy.sharding = "#sdy.sharding<@mesh, [{\"x\"}, {}]>"}},
+          %arg1: tensor<8x8xf32> {mhlo.sharding = "{devices=[1,4,8]<=[2,4,4]T(1,0,2) last_tile_dim_replicate}",
+                                  mhlo.frontend_attributes = {xla.sdy.sharding = "#sdy.sharding<@mesh, [{}, {\"y\"}]>"}}
+      ) -> tensor<8x8xf32> {
+      // CHECK: %[[ARG:.*]] = f32[8,8] parameter(0)
+      // CHECK-SAME: sharding={devices=[2,1,16]<=[32] last_tile_dim_replicate}
+      // CHECK-SAME: frontend_attributes={xla.sdy.sharding="#sdy.sharding<@mesh, [{\"x\"}, {}]>"}
+      // CHECK-NEXT: %[[ARG:.*]] = f32[8,8] parameter(1)
+      // CHECK-SAME: sharding={devices=[1,4,8]<=[2,4,4]T(1,0,2) last_tile_dim_replicate}
+      // CHECK-SAME: frontend_attributes={xla.sdy.sharding="#sdy.sharding<@mesh, [{}, {\"y\"}]>"}
+        %0 = call @called_func(%arg1) : (tensor<8x8xf32>) -> tensor<8x8xf32>
+        return %0 : tensor<8x8xf32>
+      }
+    }

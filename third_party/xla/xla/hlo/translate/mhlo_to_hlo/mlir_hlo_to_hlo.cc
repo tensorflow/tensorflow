@@ -5937,8 +5937,8 @@ LogicalResult ConvertToHloModule::RunOnFunction(mlir::func::FuncOp f) {
     // means no replication. This avoids the need for unrelated tests to handle
     // this field.
     if (!any_arg_replicated) entry_args_same_across_replicas.clear();
-    ExtractFrontendAttributesFromFunction(f, &arg_fe_attrs);
   }
+  ExtractFrontendAttributesFromFunction(f, &arg_fe_attrs);
   ExtractShardingsFromFunction(f, &arg_shardings, &ret_shardings,
                                entry_function);
   xla::XlaComputationId computation;
