@@ -248,7 +248,7 @@ def lit_test(
         testonly = True,
         deps = [
             "@llvm-project//llvm:lit_lib",
-            "@pypi_lit//:pkg",
+            "@pypi//lit",
         ],
     )
 
@@ -282,7 +282,7 @@ def lit_test(
                    # called lit.cfg.py
                    cfg,
                    tools_on_path_target_name,
-               ] + data + if_oss(["@pypi_lit//:pkg"]) +
+               ] + data + if_oss(["@pypi//lit"]) +
                if_google([
                    "//xla:lit_google_cfg.py",
                ]),
