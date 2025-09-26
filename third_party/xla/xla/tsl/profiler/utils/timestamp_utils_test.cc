@@ -15,9 +15,11 @@ limitations under the License.
 
 #include "xla/tsl/profiler/utils/timestamp_utils.h"
 
+#include <cstdint>
+#include <optional>
+#include <utility>
+
 #include "xla/tsl/platform/test.h"
-#include "xla/tsl/profiler/utils/xplane_schema.h"
-#include "xla/tsl/profiler/utils/xplane_utils.h"
 #include "xla/tsl/profiler/utils/xplane_visitor.h"
 
 namespace tsl {
@@ -29,15 +31,12 @@ TEST(TimestampUtilsTest, StartAndStopTimestampAreAdded) {
 
   SetSessionTimestamps(1000, 2000, xspace);
 
-  const XPlane* xplane = FindPlaneWithName(xspace, kTaskEnvPlaneName);
+  const std::optional<std::pair<uint64_t, uint64_t>> timestamps =
+      GetSessionTimestamps(xspace);
 
-  XPlaneVisitor visitor(xplane, {}, {FindTaskEnvStatType});
-
-  auto start_time = visitor.GetStat(TaskEnvStatType::kEnvProfileStartTime);
-  auto stop_time = visitor.GetStat(TaskEnvStatType::kEnvProfileStopTime);
-
-  EXPECT_THAT(start_time->IntOrUintValue(), Eq(1000));
-  EXPECT_THAT(stop_time->IntOrUintValue(), Eq(2000));
+  ASSERT_TRUE(timestamps.has_value());
+  EXPECT_THAT(timestamps->first, Eq(1000));
+  EXPECT_THAT(timestamps->second, Eq(2000));
 }
 
 }  // namespace profiler
