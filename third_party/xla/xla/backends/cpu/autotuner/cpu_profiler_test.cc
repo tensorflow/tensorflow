@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <memory>
 #include <utility>
-#include <vector>
 
 #include <gtest/gtest.h>
 #include "absl/status/statusor.h"
