@@ -81,7 +81,7 @@ SessionOptions Options(const string& target, int placement_period) {
   SessionOptions options;
   // NOTE(mrry): GrpcSession requires a grpc:// scheme prefix in the target
   // string.
-  options.target = strings::StrCat("grpc://", target);
+  options.target = absl::StrCat("grpc://", target);
   options.config.set_placement_period(placement_period);
   options.config.mutable_graph_options()
       ->mutable_optimizer_options()
@@ -141,7 +141,7 @@ class GrpcSessionDebugTest : public ::testing::Test {
   void CreateDumpDir() {
     char dir_template[] = "/tmp/tfdbg_grpc_sessions_XXXXXX";
     dump_dir_ = mkdtemp(dir_template);
-    debug_url_ = strings::StrCat("file://", dump_dir_);
+    debug_url_ = absl::StrCat("file://", dump_dir_);
   }
 
   string dump_dir_;
