@@ -504,7 +504,7 @@ std::unique_ptr<ActivateContext> RocmExecutor::Activate() {
 }
 
 bool RocmExecutor::UnloadModule(ModuleHandle module_handle) {
-  absl::MutexLock lock{&in_memory_modules_mu_};
+  absl::MutexLock lock{in_memory_modules_mu_};
   return UnloadGpuBinary(module_handle);
 }
 
@@ -533,7 +533,7 @@ absl::StatusOr<DeviceMemoryBase> RocmExecutor::GetMemoryRange(
 absl::StatusOr<std::shared_ptr<DeviceMemoryBase>>
 RocmExecutor::CreateOrShareConstant(Stream* stream,
                                     absl::Span<const uint8_t> content) {
-  absl::MutexLock lock{&shared_constants_mu_};
+  absl::MutexLock lock{shared_constants_mu_};
   // We assume all constants are uniquely identified by this hash. In the
   // (highly unlikely) event of a hash collision, the program will likely crash
   // (because the cached constant that will be returned by mistake is unlikely
@@ -615,7 +615,7 @@ bool RocmExecutor::UnloadGpuBinary(ModuleHandle module_handle) {
 void RocmExecutor::UnloadKernel(const Kernel* kernel) {
   VLOG(3) << "Unloading kernel " << kernel << " : " << kernel->name();
 
-  absl::MutexLock lock{&in_memory_modules_mu_};
+  absl::MutexLock lock{in_memory_modules_mu_};
   loaded_kernels_.erase(kernel);
   auto gpu_binary_it = kernel_to_gpu_binary_.find(kernel);
   if (kernel_to_gpu_binary_.end() == gpu_binary_it) {
@@ -651,7 +651,7 @@ absl::StatusOr<std::unique_ptr<Kernel>> RocmExecutor::LoadKernel(
   if (spec.has_cuda_cubin_in_memory()) {
     const char* hsaco = reinterpret_cast<const char*>(
         spec.cuda_cubin_in_memory()->cubin_bytes.data());
-    absl::MutexLock lock{&in_memory_modules_mu_};
+    absl::MutexLock lock{in_memory_modules_mu_};
     ModuleHandle module_handle{hsaco};
     hipModule_t& module = in_memory_modules_[module_handle];
 
@@ -686,7 +686,7 @@ absl::StatusOr<std::unique_ptr<Kernel>> RocmExecutor::LoadKernel(
     return absl::InternalError("No method of loading ROCM kernel provided");
   }
 
-  absl::MutexLock lock{&in_memory_modules_mu_};
+  absl::MutexLock lock{in_memory_modules_mu_};
   loaded_kernels_.insert(rocm_kernel.get());
 
   // We have to trust the kernel loader spec arity because there doesn't appear
@@ -710,7 +710,7 @@ absl::StatusOr<ModuleHandle> RocmExecutor::LoadModule(
 
   // TODO(ROCm): Need  generic term instead of cubin/cuda/ptx
   if (spec.has_cuda_cubin_in_memory()) {
-    absl::MutexLock lock{&in_memory_modules_mu_};
+    absl::MutexLock lock{in_memory_modules_mu_};
     return LoadModuleFromHsaco(
         reinterpret_cast<const char*>(spec.cuda_cubin_in_memory().data()));
   } else {
@@ -918,18 +918,18 @@ absl::Status RocmExecutor::SynchronousMemcpy(void* host_dst,
 
 void RocmExecutor::DeallocateStream(Stream* stream) {
   {
-    absl::MutexLock lock(&mu_);
+    absl::MutexLock lock(mu_);
     if (dnn_ != nullptr) {
       dnn_->NotifyStreamDestroyed(stream);
     }
   }
   RocmStream* rocm_stream = static_cast<RocmStream*>(stream);
-  absl::MutexLock l(&alive_gpu_streams_mu_);
+  absl::MutexLock l(alive_gpu_streams_mu_);
   alive_gpu_streams_.erase(rocm_stream->stream_handle());
 }
 
 absl::Status RocmExecutor::InitBlas() {
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
   PluginRegistry* registry = PluginRegistry::Instance();
   TF_ASSIGN_OR_RETURN(
       auto factory,
@@ -939,12 +939,12 @@ absl::Status RocmExecutor::InitBlas() {
 }
 
 blas::BlasSupport* RocmExecutor::AsBlas() {
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
   return blas_.get();
 }
 
 dnn::DnnSupport* RocmExecutor::AsDnn() {
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
   if (dnn_ != nullptr) {
     return dnn_.get();
   }
@@ -965,7 +965,7 @@ dnn::DnnSupport* RocmExecutor::AsDnn() {
 }
 
 fft::FftSupport* RocmExecutor::AsFft() {
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
   if (fft_ != nullptr) {
     return fft_.get();
   }
@@ -1003,7 +1003,7 @@ absl::StatusOr<DeviceMemoryBase> RocmExecutor::GetSymbol(
   void* mem = nullptr;
   size_t bytes = 0;
 
-  absl::MutexLock lock{&in_memory_modules_mu_};
+  absl::MutexLock lock{in_memory_modules_mu_};
   if (static_cast<bool>(module_handle)) {
     auto it = gpu_binary_to_module_.find(module_handle);
     CHECK(it != gpu_binary_to_module_.end());
@@ -1052,7 +1052,7 @@ absl::StatusOr<std::unique_ptr<Event>> RocmExecutor::CreateEvent() {
 absl::StatusOr<std::unique_ptr<Stream>> RocmExecutor::CreateStream(
     std::optional<std::variant<StreamPriority, int>> priority) {
   TF_ASSIGN_OR_RETURN(auto stream, RocmStream::Create(this, priority));
-  absl::MutexLock l(&alive_gpu_streams_mu_);
+  absl::MutexLock l(alive_gpu_streams_mu_);
   alive_gpu_streams_[stream->stream_handle()] = stream.get();
   return std::move(stream);
 }
@@ -1201,7 +1201,7 @@ absl::StatusOr<MemoryType> RocmExecutor::GetPointerMemorySpace(
 
 absl::StatusOr<const RocmKernel*> RocmExecutor::GetRocmKernel(
     const Kernel* kernel) {
-  absl::MutexLock lock{&in_memory_modules_mu_};
+  absl::MutexLock lock{in_memory_modules_mu_};
   auto it = loaded_kernels_.find(kernel);
   if (it == loaded_kernels_.end()) {
     return absl::NotFoundError("Kernel not loaded in this executor.");
