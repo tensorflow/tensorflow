@@ -579,7 +579,7 @@ const string DebugEventsWriter::GetSuffix(DebugEventFileType type) {
 
 string DebugEventsWriter::GetFileNameInternal(DebugEventFileType type) {
   const string suffix = GetSuffix(type);
-  return strings::StrCat(file_prefix_, ".", suffix);
+  return absl::StrCat(file_prefix_, ".", suffix);
 }
 
 }  // namespace tfdbg

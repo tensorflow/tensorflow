@@ -38,6 +38,7 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/client/executable_build_options.h"
+#include "xla/future.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/literal.h"
@@ -48,7 +49,6 @@ limitations under the License.
 #include "xla/pjrt/c/pjrt_c_api_test_base.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_device_description.h"
-#include "xla/pjrt/pjrt_future.h"
 #include "xla/pjrt/proto/compile_options.pb.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/hlo.pb.h"
@@ -678,7 +678,7 @@ TEST_F(PjrtCApiBufferTest, ToHostBufferNoHostLayout) {
   args.event = nullptr;
 
   PJRT_Error* error = api_->PJRT_Buffer_ToHostBuffer(&args);
-  xla::PjRtFuture<> transfer_to_host =
+  xla::Future<> transfer_to_host =
       ::pjrt::ConvertCEventToCppFuture(args.event, api_);
   TF_CHECK_OK(transfer_to_host.Await());
 

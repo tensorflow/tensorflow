@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/types/span.h"
 #include "xla/client/executable_build_options.h"
+#include "xla/future.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
@@ -34,7 +35,6 @@ limitations under the License.
 #include "xla/pjrt/c/pjrt_c_api_wrapper_impl.h"  // IWYU pragma: keep
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_executable.h"
-#include "xla/pjrt/pjrt_future.h"
 #include "xla/pjrt/proto/compile_options.pb.h"
 #include "xla/service/computation_placer.h"
 #include "xla/shape.h"
@@ -186,7 +186,7 @@ PjrtCApiTestBase::create_buffer(PJRT_Device* device) {
 }
 
 std::pair<std::unique_ptr<PJRT_Buffer, ::pjrt::PJRT_BufferDeleter>,
-          xla::PjRtFuture<>>
+          xla::Future<>>
 PjrtCApiTestBase::create_iota_buffer(PJRT_Device* device) {
   xla::Shape shape = xla::ShapeUtil::MakeShapeWithType<float>({4});
   std::vector<float> float_data(4);
@@ -195,7 +195,7 @@ PjrtCApiTestBase::create_iota_buffer(PJRT_Device* device) {
 }
 
 std::pair<std::unique_ptr<PJRT_Buffer, ::pjrt::PJRT_BufferDeleter>,
-          xla::PjRtFuture<>>
+          xla::Future<>>
 PjrtCApiTestBase::create_buffer_from_data(const std::vector<float>& float_data,
                                           const xla::Shape& shape,
                                           PJRT_Device* device) {
@@ -221,7 +221,7 @@ PjrtCApiTestBase::create_buffer_from_data(const std::vector<float>& float_data,
   auto ready_event_error =
       ToUniquePtr(api_->PJRT_Buffer_ReadyEvent(&get_event_args));
   EXPECT_EQ(ready_event_error, nullptr);
-  xla::PjRtFuture<> buffer_ready_event =
+  xla::Future<> buffer_ready_event =
       ::pjrt::ConvertCEventToCppFuture(get_event_args.event, api_);
 
   return std::make_pair(std::move(buffer), buffer_ready_event);
