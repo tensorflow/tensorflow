@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// This file implements utilities for lowering CHLO/HLO/LHLO dialect to Linalg
+// This file implements utilities for lowering CHLO/HLO dialect to Linalg
 // dialect.
 
 #include "mhlo/utils/legalize_to_linalg_utils.h"

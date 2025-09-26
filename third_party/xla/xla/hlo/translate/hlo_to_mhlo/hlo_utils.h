@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// This file defines helpers useful when creating or manipulating lhlo/hlo.
+// This file defines helpers useful when creating or manipulating hlo.
 
 #ifndef XLA_HLO_TRANSLATE_HLO_TO_MHLO_HLO_UTILS_H_
 #define XLA_HLO_TRANSLATE_HLO_TO_MHLO_HLO_UTILS_H_
