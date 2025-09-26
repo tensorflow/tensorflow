@@ -177,7 +177,7 @@ absl::Status LoopInvariantNodeMotionOptimizer::HandleConst(
       return errors::InvalidArgument("LoopCond node of Frame ", frame_id,
                                      " doesn't connect to any Switch node");
     }
-    string switch_output = StrCat(switch_node->name(), ":1");
+    string switch_output = absl::StrCat(switch_node->name(), ":1");
     const string ctrl_dep = ConstantFolding::AddControlDependency(
         switch_output, optimized_graph_, node_map_.get());
     const_node->add_input(ctrl_dep);
@@ -230,7 +230,7 @@ absl::Status LoopInvariantNodeMotionOptimizer::HandleInvariantNode(
         new_enter->set_op("Enter");
         new_enter->set_device(node->device());
         new_enter->set_name(AddPrefixToNodeName(
-            StrCat(fname, "_enter_", new_enter_id_++), kLoopOptimizer));
+            absl::StrCat(fname, "_enter_", new_enter_id_++), kLoopOptimizer));
         AttrValue data_type;
         data_type.set_type(output_type);
         new_enter->mutable_attr()->insert({"T", data_type});
@@ -984,7 +984,7 @@ absl::Status LoopOptimizer::RemoveDeadBranches(
       int live_port_id = (dead_port_id + 1) % 2;
       string live_output_name = sw_node->name();
       if (live_port_id == 1) {
-        live_output_name = StrCat(sw_node->name(), ":1");
+        live_output_name = absl::StrCat(sw_node->name(), ":1");
       }
 
       // Get consumers of live port and update the input names
