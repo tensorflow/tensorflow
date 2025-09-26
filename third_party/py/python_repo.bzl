@@ -180,6 +180,10 @@ def _get_injected_local_wheels(
         py_version,
         local_wheel_workspaces,
         base_requirements):
+    os_name = ctx.os.name
+    is_windows = "windows" in os_name.lower()
+    local_file_path_prefix = "file:" if is_windows else "file://"
+
     local_wheel_requirements = []
     py_ver_marker = "-cp%s-" % py_version.replace(".", "")
     py_major_ver_marker = "-py%s-" % py_version.split(".")[0]
@@ -211,7 +215,8 @@ def _get_injected_local_wheels(
         else:
             local_package_name = wheel_name
         local_wheel_requirements.append(
-            "{pypi_package_name} @ file://{wheel_path}".format(
+            "{pypi_package_name} @ {local_file_path_prefix}{wheel_path}".format(
+                local_file_path_prefix = local_file_path_prefix,
                 pypi_package_name = local_package_name,
                 wheel_path = wheel_path.realpath,
             ),
