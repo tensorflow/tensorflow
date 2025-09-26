@@ -44,7 +44,7 @@ class TrimFunctionsPass
  public:
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(TrimFunctionsPass)
 
-  explicit TrimFunctionsPass() {}
+  explicit TrimFunctionsPass() = default;
   explicit TrimFunctionsPass(llvm::ArrayRef<std::string> trim_funcs_allowlist) {
     this->trim_funcs_allowlist_ = trim_funcs_allowlist;
   }
