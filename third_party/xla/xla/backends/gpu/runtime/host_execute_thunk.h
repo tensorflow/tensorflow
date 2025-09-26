@@ -81,6 +81,13 @@ class HostExecuteStartThunk : public Thunk {
                         const HloModule& hlo_module,
                         absl::InlinedVector<SliceAndShape, 4> args,
                         absl::InlinedVector<SliceAndShape, 4> results);
+
+  static absl::StatusOr<std::unique_ptr<HostExecuteStartThunk>> Create(
+      Thunk::ThunkInfo thunk_info,
+      const HostOffloadingExecutableProto& host_offloading_executable_proto,
+      absl::InlinedVector<SliceAndShape, 4> args,
+      absl::InlinedVector<SliceAndShape, 4> results);
+
   HostExecuteStartThunk(const HostExecuteStartThunk&) = delete;
   HostExecuteStartThunk& operator=(const HostExecuteStartThunk&) = delete;
   ~HostExecuteStartThunk() override = default;
@@ -100,6 +107,23 @@ class HostExecuteStartThunk : public Thunk {
   std::shared_ptr<HostExecuteAsyncEvents> async_events() const {
     return async_events_;
   }
+
+  absl::Status LoadExecutable();
+
+  const HostOffloadingExecutableProto& executable_proto() const {
+    return executable_proto_;
+  }
+
+  HostOffloadingExecutableProto* mutable_executable_proto() {
+    return &executable_proto_;
+  }
+
+ protected:
+  HostExecuteStartThunk(
+      Thunk::ThunkInfo thunk_info,
+      const HostOffloadingExecutableProto& host_offloading_executable_proto,
+      absl::InlinedVector<SliceAndShape, 4> args,
+      absl::InlinedVector<SliceAndShape, 4> results);
 
  private:
   absl::once_flag executable_init_flag_;
