@@ -768,7 +768,7 @@ std::vector<string> CompleteDevices(const std::vector<string>& v) {
   std::vector<string> result;
   result.reserve(v.size());
   for (const string& s : v) {
-    result.push_back(strings::StrCat("/job:a/replica:0/task:0/device:", s));
+    result.push_back(absl::StrCat("/job:a/replica:0/task:0/device:", s));
   }
   return result;
 }
