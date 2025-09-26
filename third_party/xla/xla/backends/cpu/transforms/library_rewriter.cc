@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/backends/cpu/transforms/dot_library_rewriter.h"
+#include "xla/backends/cpu/transforms/library_rewriter.h"
 
 #include <memory>
 #include <queue>
@@ -162,7 +162,7 @@ inline absl::Status InsertConvertIfNecessary(
 
 }  // namespace
 
-absl::StatusOr<LibraryMatcher*> DotLibraryRewriter::ChooseLibrary(
+absl::StatusOr<LibraryMatcher*> LibraryRewriter::ChooseLibrary(
     HloInstruction* instr) {
   for (std::unique_ptr<LibraryMatcher>& lib : libs_) {
     TF_ASSIGN_OR_RETURN(bool op_supported, lib->IsOpSupported(instr));
@@ -173,7 +173,7 @@ absl::StatusOr<LibraryMatcher*> DotLibraryRewriter::ChooseLibrary(
   return nullptr;
 }
 
-void DotLibraryRewriter::AddFusionCandidates(
+void LibraryRewriter::AddFusionCandidates(
     HloInstruction* fusion, HloInstruction* instr, FusionDirection dir,
     std::queue<std::pair<HloInstruction*, FusionDirection>>& queue) {
   // Don't add anything that has already been fused or require multi-output
@@ -199,10 +199,9 @@ void DotLibraryRewriter::AddFusionCandidates(
   }
 }
 
-absl::StatusOr<HloFusionInstruction*>
-DotLibraryRewriter::MergeFusionInstructions(HloFusionInstruction* main,
-                                            HloFusionInstruction* neighbor,
-                                            FusionDirection dir) {
+absl::StatusOr<HloFusionInstruction*> LibraryRewriter::MergeFusionInstructions(
+    HloFusionInstruction* main, HloFusionInstruction* neighbor,
+    FusionDirection dir) {
   VLOG(3) << "  " << FusionDirectionToString(dir)
           << ": Fusing with: " << neighbor->ToString();
   if (dir == FusionDirection::kUp) {
@@ -219,7 +218,7 @@ DotLibraryRewriter::MergeFusionInstructions(HloFusionInstruction* main,
                          FusionDirectionToString(dir));
 }
 
-absl::StatusOr<HloInstruction*> DotLibraryRewriter::GrowFusion(
+absl::StatusOr<HloInstruction*> LibraryRewriter::GrowFusion(
     HloFusionInstruction* fusion, HloInstruction* to_fuse,
     FusionDirection dir) {
   HloInstruction* new_instr = nullptr;
@@ -236,8 +235,8 @@ absl::StatusOr<HloInstruction*> DotLibraryRewriter::GrowFusion(
   return new_instr;
 }
 
-absl::Status DotLibraryRewriter::FuseNeighbors(HloFusionInstruction* fusion,
-                                               LibraryMatcher* lib) {
+absl::Status LibraryRewriter::FuseNeighbors(HloFusionInstruction* fusion,
+                                            LibraryMatcher* lib) {
   // A queue storing potential candidates for fusion: Each item is a pair of
   //   - Pointer to immediate neighbors of the current fusion node.
   //   - Travel direction: up (parents) and down (children).
@@ -285,7 +284,7 @@ absl::Status DotLibraryRewriter::FuseNeighbors(HloFusionInstruction* fusion,
   return absl::OkStatus();
 }
 
-absl::StatusOr<bool> DotLibraryRewriter::ProcessComputation(
+absl::StatusOr<bool> LibraryRewriter::ProcessComputation(
     HloComputation* computation) {
   // Construct a list of instructions that can start a library fusion, starting
   // from the root up to the top. Prioritize dot and reduce ops over
@@ -335,7 +334,7 @@ absl::StatusOr<bool> DotLibraryRewriter::ProcessComputation(
   return !fused_.empty();
 }
 
-absl::StatusOr<bool> DotLibraryRewriter::Run(
+absl::StatusOr<bool> LibraryRewriter::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool module_changed = false;

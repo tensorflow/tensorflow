@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/backends/cpu/transforms/dot_library_rewriter.h"
+#include "xla/backends/cpu/transforms/library_rewriter.h"
 
 #include <memory>
 #include <string>
@@ -101,12 +101,12 @@ class CpuLibraryTest : public TargetMachineTestBase {
     tsl::protobuf::RepeatedField<int> empty_fusion_types;
     bool use_onednn = spec.lib == "onednn";
     bool use_xnnpack = spec.lib == "xnn";
-    DotLibraryRewriterOptions options = {
+    LibraryRewriterOptions options = {
         use_onednn, use_xnnpack,
         /*onednn_fusion_types=*/
         use_onednn ? &fusion_types : &empty_fusion_types,
         /*xnn_fusion_types=*/use_xnnpack ? &fusion_types : &empty_fusion_types};
-    DotLibraryRewriter rewriter(features.get(), options);
+    LibraryRewriter rewriter(features.get(), options);
     EXPECT_EQ(expected.changed, rewriter.Run(module.get()).value());
     if (!expected.changed) {
       return;  // No further checks if the module was not changed.

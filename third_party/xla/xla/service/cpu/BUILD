@@ -236,7 +236,7 @@ cc_library(
         "//xla/backends/cpu/runtime:thunk",
         "//xla/backends/cpu/runtime:thunk_proto_cc_impl",
         "//xla/backends/cpu/runtime:thunk_proto_serdes",
-        "//xla/backends/cpu/transforms:dot_library_rewriter",
+        "//xla/backends/cpu/transforms:library_rewriter",
         "//xla/backends/cpu/transforms:xnn_graph_fusion",
         "//xla/backends/cpu/transforms/collectives:all_reduce_combiner",
         "//xla/hlo/analysis:alias_info",

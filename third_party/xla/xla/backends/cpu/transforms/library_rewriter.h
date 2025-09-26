@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_BACKENDS_CPU_TRANSFORMS_DOT_LIBRARY_REWRITER_H_
-#define XLA_BACKENDS_CPU_TRANSFORMS_DOT_LIBRARY_REWRITER_H_
+#ifndef XLA_BACKENDS_CPU_TRANSFORMS_LIBRARY_REWRITER_H_
+#define XLA_BACKENDS_CPU_TRANSFORMS_LIBRARY_REWRITER_H_
 
 #include <memory>
 #include <queue>
@@ -47,7 +47,7 @@ enum class FusionDirection {
   kBoth,  // Traverse both up and down.
 };
 
-struct DotLibraryRewriterOptions {
+struct LibraryRewriterOptions {
   bool use_onednn = false;
   bool use_xnnpack = false;
   const tsl::protobuf::RepeatedField<int>* onednn_fusion_types = nullptr;
@@ -55,11 +55,10 @@ struct DotLibraryRewriterOptions {
 };
 
 // Rewrites suitable Dot operations into library fusions.
-class DotLibraryRewriter : public HloModulePass {
+class LibraryRewriter : public HloModulePass {
  public:
-  explicit DotLibraryRewriter(
-      const TargetMachineFeatures* target_machine_features,
-      const DotLibraryRewriterOptions& options)
+  explicit LibraryRewriter(const TargetMachineFeatures* target_machine_features,
+                           const LibraryRewriterOptions& options)
       : target_machine_features_(target_machine_features),
         options_(std::move(options)) {
     // Initialize library matchers.
@@ -87,7 +86,7 @@ class DotLibraryRewriter : public HloModulePass {
     fuse_eltwise_ = absl::c_any_of(
         libs_, [](const auto& lib) { return lib->fuse_eltwise(); });
   }
-  ~DotLibraryRewriter() override = default;
+  ~LibraryRewriter() override = default;
 
   // Returns the first library matcher that supports the given instruction.
   absl::StatusOr<LibraryMatcher*> ChooseLibrary(HloInstruction* instr);
@@ -127,7 +126,7 @@ class DotLibraryRewriter : public HloModulePass {
 
  private:
   const TargetMachineFeatures* target_machine_features_;
-  const DotLibraryRewriterOptions options_;
+  const LibraryRewriterOptions options_;
   std::vector<std::unique_ptr<LibraryMatcher>> libs_;
   absl::flat_hash_set<HloOpcode> supported_ops_;
   absl::flat_hash_set<HloInstruction*> fused_;
@@ -138,4 +137,4 @@ class DotLibraryRewriter : public HloModulePass {
 
 }  // namespace xla::cpu
 
-#endif  // XLA_BACKENDS_CPU_TRANSFORMS_DOT_LIBRARY_REWRITER_H_
+#endif  // XLA_BACKENDS_CPU_TRANSFORMS_LIBRARY_REWRITER_H_

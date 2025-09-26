@@ -100,7 +100,7 @@ limitations under the License.
 #include "xla/backends/cpu/runtime/thunk.pb.h"
 #include "xla/backends/cpu/runtime/thunk_proto_serdes.h"
 #include "xla/backends/cpu/transforms/collectives/all_reduce_combiner.h"
-#include "xla/backends/cpu/transforms/dot_library_rewriter.h"
+#include "xla/backends/cpu/transforms/library_rewriter.h"
 #include "xla/backends/cpu/transforms/xnn_graph_fusion.h"
 #include "xla/backends/cpu/xnn_support.h"
 #include "xla/cpu_function_runtime.h"
@@ -931,7 +931,7 @@ absl::Status CpuCompiler::RunHloPassesAfterLayoutAssn(
   // XNNPACK ops availability checks depend on the layout information,
   // so until another solution is developed the passes creating XNNPACK fusions
   // have to run after layout assignment.
-  DotLibraryRewriterOptions options = {
+  LibraryRewriterOptions options = {
       /*use_onednn=*/module->config().debug_options().xla_cpu_use_onednn(),
       /*use_xnnpack=*/module->config().debug_options().xla_cpu_use_xnnpack(),
       /*onednn_fusion_types=*/
@@ -943,7 +943,7 @@ absl::Status CpuCompiler::RunHloPassesAfterLayoutAssn(
   if (options.use_onednn || options.use_xnnpack) {
     HloPassPipeline lib_pipeline("dot-library-passes");
     lib_pipeline.AddPass<DotDecomposer>();
-    lib_pipeline.AddPass<DotLibraryRewriter>(target_machine_features, options);
+    lib_pipeline.AddPass<LibraryRewriter>(target_machine_features, options);
     TF_RETURN_IF_ERROR(lib_pipeline.Run(module).status());
   }
 

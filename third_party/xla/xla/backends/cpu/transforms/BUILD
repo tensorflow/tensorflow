@@ -18,9 +18,9 @@ package_group(
 )
 
 cc_library(
-    name = "dot_library_rewriter",
-    srcs = ["dot_library_rewriter.cc"],
-    hdrs = ["dot_library_rewriter.h"],
+    name = "library_rewriter",
+    srcs = ["library_rewriter.cc"],
+    hdrs = ["library_rewriter.h"],
     local_defines = if_graph_api(["XLA_ONEDNN_USE_GRAPH_API=1"]),
     deps = [
         ":library_matcher",
@@ -46,11 +46,11 @@ cc_library(
 )
 
 xla_cc_test(
-    name = "dot_library_rewriter_test",
-    srcs = ["dot_library_rewriter_test.cc"],
+    name = "library_rewriter_test",
+    srcs = ["library_rewriter_test.cc"],
     local_defines = if_graph_api(["XLA_ONEDNN_USE_GRAPH_API=1"]),
     deps = [
-        ":dot_library_rewriter",
+        ":library_rewriter",
         "//xla:xla_data_proto_cc",
         "//xla:xla_proto_cc",
         "//xla/backends/cpu:xnn_gemm_config",
