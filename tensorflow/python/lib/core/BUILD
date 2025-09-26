@@ -64,8 +64,8 @@ cc_library(
     features = ["-parse_headers"],
     visibility = tf_external_workspace_visible(visibility),
     deps = [
-        "//tensorflow/core/platform:stringpiece",
         "@pybind11",
+        "@pybind11_abseil//pybind11_abseil:absl_casters",
     ],
 )
 
@@ -88,6 +88,7 @@ cc_library(
         "//tensorflow/c:headers",
         "//tensorflow/c:tf_status_internal_headers",
         "//tensorflow/c/eager:headers",
+        "@local_xla//xla/tsl/platform:lib_hdrs",
     ],
     features = [
         "-parse_headers",
@@ -97,8 +98,11 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/common_runtime:core_cpu_headers_lib",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:string_view",
         "@local_xla//third_party/python_runtime:headers",
         "@pybind11",
+        "@pybind11_abseil//pybind11_abseil:status_caster",
+        "@pybind11_abseil//pybind11_abseil:statusor_caster",
     ],
 )
 
@@ -112,8 +116,10 @@ cc_library(
     visibility = tf_external_workspace_visible(visibility),
     deps = [
         ":pybind11_status_headers",
-        "//tensorflow/core:lib",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:string_view",
+        "@pybind11_abseil//pybind11_abseil:status_caster",
+        "@pybind11_abseil//pybind11_abseil:statusor_caster",
     ],
 )
 
