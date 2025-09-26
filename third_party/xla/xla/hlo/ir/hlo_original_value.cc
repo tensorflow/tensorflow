@@ -306,4 +306,19 @@ bool OriginalValue::IsCompatibleWith(const Shape& shape) const {
   return tree().IsStructurallyCompatible(shape);
 }
 
+std::optional<std::string> OriginalValue::GetOriginalCallInstructionName()
+    const {
+  if (is_synthetic_call()) {
+    return std::nullopt;
+  }
+  if (IsEmpty()) {
+    return std::nullopt;
+  }
+  auto original_array = original_arrays().begin()->second;
+  if (!original_array.has_value()) {
+    return std::nullopt;
+  }
+  return original_array->instruction_name;
+}
+
 }  // namespace xla

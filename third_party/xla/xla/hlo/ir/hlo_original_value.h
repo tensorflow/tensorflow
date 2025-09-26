@@ -135,6 +135,11 @@ class OriginalValue {
     return !(*this == other);
   }
 
+  // Gets the instruction name of the original call instruction that this
+  // OriginalValue is associated with. Returns std::nullopt if this
+  // OriginalValue is not associated with a call instruction.
+  std::optional<std::string> GetOriginalCallInstructionName() const;
+
   template <typename H>
   friend H AbslHashValue(H h, const OriginalValue& value) {
     h = H::combine(std::move(h), value.is_synthetic_call());
