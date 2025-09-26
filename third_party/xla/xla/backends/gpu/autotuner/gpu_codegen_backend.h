@@ -82,6 +82,9 @@ class GpuCodegenBackend : public CodegenBackend {
     opts.set_xla_gpu_async_dot(false);
     opts.set_xla_embed_ir_in_executable(false);
     opts.set_xla_gpu_kernel_cache_file("");
+    if (allow_register_spills_) {
+      opts.set_xla_gpu_filter_kernels_spilling_registers_on_autotuning(false);
+    }
 
     Compiler::CompileOptions options;
     options.target_config = target_config_;
@@ -93,6 +96,11 @@ class GpuCodegenBackend : public CodegenBackend {
   }
 
   bool CanProduceWrongResults() const override { return false; }
+  // TODO b/443207721 - Remove this once we have a better way to handle register
+  // spilling during autotuning.
+  // Prevents the backend from failing compilation if the kernel spills
+  // registers.
+  void AllowRegisterSpills() { allow_register_spills_ = true; }
 
  private:
   // Optimize the HLO module.
@@ -113,6 +121,7 @@ class GpuCodegenBackend : public CodegenBackend {
   // and the codegen backend can directly produce an executable without a
   // compiler instance.
   Compiler* compiler_;
+  bool allow_register_spills_ = false;
 };
 
 }  // namespace gpu
