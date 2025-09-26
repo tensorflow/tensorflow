@@ -7,8 +7,8 @@ cuda_label = "cuda" + cuda_major_version if cuda_major_version else "null"
 wheel_version = "0.0.0.dev0"
 
 wheel_platform = select({
-    "//conditions:default": "manylinux2014_x86_64",
-    "//xla/tsl:linux_aarch64": "manylinux2014_aarch64",
+    "//conditions:default": "manylinux_2_27_x86_64",
+    "//xla/tsl:linux_aarch64": "manylinux_2_27_aarch64",
 })
 
 # Aliases and filegroups don't move files within bazel-out, so we need to use genrules to place them
