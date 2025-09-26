@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_UTIL_GPU_LAUNCH_CONFIG_H_
 #define TENSORFLOW_CORE_UTIL_GPU_LAUNCH_CONFIG_H_
 
+#include <limits>
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #include <algorithm>
@@ -107,6 +108,7 @@ https://github.com/tensorflow/tensorflow/blob/master/tensorflow/core/util/gpu_ke
 namespace tensorflow {
 
 inline int DivUp(int a, int b) { return (a + b - 1) / b; }
+inline int64 DivUp(int64 a, int64 b) { return (a + b - 1) / b; }
 
 struct GpuLaunchConfig {
   // Logical number of thread that works on the elements. If each logical
@@ -124,22 +126,32 @@ CREATE_CUDA_TYPE_ALIAS(GpuLaunchConfig, CudaLaunchConfig);
 // This is assuming the kernel is quite simple and will largely be
 // memory-limited.
 // REQUIRES: work_element_count >= 0.
-inline GpuLaunchConfig GetGpuLaunchConfig(int work_element_count,
-                                          const Eigen::GpuDevice& d) {
+inline GpuLaunchConfig GetGpuLaunchConfig(
+    int64 work_element_count, const Eigen::GpuDevice& d,
+    bool allow_int64_work_element_count = false) {
   CHECK_GE(work_element_count, 0);
-  GpuLaunchConfig config;
-  const int virtual_thread_count = work_element_count;
-  const int physical_thread_count = std::min(
-      d.getNumGpuMultiProcessors() * d.maxGpuThreadsPerMultiProcessor(),
-      virtual_thread_count);
-  const int thread_per_block = std::min(1024, d.maxGpuThreadsPerBlock());
-  const int block_count =
-      std::min(DivUp(physical_thread_count, thread_per_block),
-               d.getNumGpuMultiProcessors());
+  if (!allow_int64_work_element_count) {
+    CHECK_LE(work_element_count, std::numeric_limits<int>::max());  // Crash OK
+  }
 
-  config.virtual_thread_count = virtual_thread_count;
-  config.thread_per_block = thread_per_block;
-  config.block_count = block_count;
+  const int64 virtual_thread_count = work_element_count;
+  const int64 physical_thread_count =
+      std::min(static_cast<int64>(d.getNumGpuMultiProcessors()) *
+                   d.maxGpuThreadsPerMultiProcessor(),
+               virtual_thread_count);
+  const int64 thread_per_block =
+      std::min(1024L, static_cast<int64>(d.maxGpuThreadsPerBlock()));
+  const int64 block_count =
+      std::min(DivUp(physical_thread_count, thread_per_block),
+               static_cast<int64>(d.getNumGpuMultiProcessors()));
+
+  CHECK_LE(thread_per_block, std::numeric_limits<int>::max());  // Crash OK
+  CHECK_LE(block_count, std::numeric_limits<int>::max());       // Crash OK
+
+  GpuLaunchConfig config{
+      .virtual_thread_count = static_cast<int>(virtual_thread_count),
+      .thread_per_block = static_cast<int>(thread_per_block),
+      .block_count = static_cast<int>(block_count)};
   return config;
 }
 #ifndef TENSORFLOW_USE_ROCM
@@ -153,12 +165,14 @@ inline CudaLaunchConfig GetCudaLaunchConfig(int work_element_count,
 // variant takes the resource limits of func into account to maximize occupancy.
 // REQUIRES: work_element_count >= 0.
 template <typename DeviceFunc>
-GpuLaunchConfig GetGpuLaunchConfig(int work_element_count,
-                                   const Eigen::GpuDevice& d, DeviceFunc func,
-                                   size_t dynamic_shared_memory_size,
-                                   int block_size_limit) {
+GpuLaunchConfig GetGpuLaunchConfig(
+    int64 work_element_count, const Eigen::GpuDevice& d, DeviceFunc func,
+    size_t dynamic_shared_memory_size, int block_size_limit,
+    bool allow_int64_work_element_count = false) {
   CHECK_GE(work_element_count, 0);
-  GpuLaunchConfig config;
+  if (!allow_int64_work_element_count) {
+    CHECK_LE(work_element_count, std::numeric_limits<int>::max());  // Crash OK
+  }
   int block_count = 0;
   int thread_per_block = 0;
 
@@ -174,12 +188,16 @@ GpuLaunchConfig GetGpuLaunchConfig(int work_element_count,
   CHECK_EQ(err, hipSuccess);
 #endif
 
-  block_count =
-      std::min(block_count, DivUp(work_element_count, thread_per_block));
+  int64 block_count_int64 =
+      std::min(static_cast<int64>(block_count),
+               DivUp(work_element_count, static_cast<int64>(thread_per_block)));
+  CHECK_LE(block_count_int64, std::numeric_limits<int>::max());  // Crash OK
+  block_count = static_cast<int>(block_count_int64);
 
-  config.virtual_thread_count = work_element_count;
-  config.thread_per_block = thread_per_block;
-  config.block_count = block_count;
+  GpuLaunchConfig config{
+      .virtual_thread_count = static_cast<int>(work_element_count),
+      .thread_per_block = thread_per_block,
+      .block_count = block_count};
   return config;
 }
 CREATE_CUDA_HOST_FUNCTION_ALIAS(GetGpuLaunchConfig, GetCudaLaunchConfig);
