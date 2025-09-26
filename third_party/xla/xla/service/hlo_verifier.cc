@@ -1720,13 +1720,10 @@ absl::Status CheckCallableInstructionThreadName(
     const HloInstruction* instruction) {
   for (const HloComputation* computation : instruction->called_computations()) {
     if (instruction->parent() != nullptr) {
-      if (xla::GetInstructionCallContext(instruction->opcode()) !=
-              CallContext::kEmbedded &&
-          instruction->parent()->execution_thread() !=
-              computation->execution_thread()) {
+      if (instruction->parent()->execution_thread() !=
+          computation->execution_thread()) {
         return Internal(
-            "Non-Embedded context callable instruction %s expects parent "
-            "computation thread name "
+            "Callable instruction %s expects parent computation thread name "
             "same as called computation's thread name (%s vs %s).",
             instruction->ToString(), instruction->parent()->execution_thread(),
             computation->execution_thread());
@@ -3747,13 +3744,10 @@ absl::Status InstructionVerifier::Preprocess(HloInstruction* instruction) {
 
   if (opts_.verify_call_nested_computation_thread_name &&
       instruction->has_to_apply() &&
-      xla::GetInstructionCallContext(instruction->opcode()) !=
-          xla::CallContext::kEmbedded &&
       instruction->to_apply()->execution_thread() !=
           instruction->parent()->execution_thread()) {
     return Internal(
-        "Non-Embedded context callable instruction %s to_apply computation "
-        "execution thread does not match (%s vs %s)",
+        "%s to_apply computation execution thread does not match (%s vs %s)",
         instruction->name(), instruction->to_apply()->execution_thread(),
         instruction->parent()->execution_thread());
   }

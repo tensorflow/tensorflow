@@ -219,8 +219,7 @@ TEST_F(HloVerifierTest, CheckCallThreadMismatch) {
           .status();
   ASSERT_FALSE(status.ok());
   EXPECT_THAT(status.message(),
-              HasSubstr("Non-Embedded context callable instruction mycall "
-                        "to_apply computation execution thread does not match "
+              HasSubstr("to_apply computation execution thread does not match "
                         "(parallel_thread vs main)"));
 }
 
@@ -2303,27 +2302,62 @@ TEST_F(HloVerifierTest, FusionShapeVerifier) {
               HasSubstr("Fused computation shape"));
 }
 
-TEST_F(HloVerifierTest, CallThreadVerifier) {
+TEST_F(HloVerifierTest, FusionThreadVerifier) {
   const char* const kModuleStr = R"(
   HloModule test
 
-  called_computation {
+  fused_computation {
     ROOT p0 = f32[8,12] parameter(0)
   }, execution_thread="parallel_thread"
 
   ENTRY entry {
     p0 = f32[8,12] parameter(0)
-    ROOT out = f32[8,12] call(p0), to_apply=called_computation
+    ROOT out = f32[8,12] fusion(p0), kind=kInput, calls=fused_computation
   }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnUnverifiedModule(kModuleStr));
-  EXPECT_THAT(
+  EXPECT_THAT(verifier().Run(module.get()).status().message(),
+              HasSubstr("expects parent computation thread name same as called "
+                        "computation's thread name"));
+}
+
+TEST_F(HloVerifierTest, FusionNestedComputationThreadVerifier) {
+  const char* const kModuleStr = R"(
+  HloModule test
+
+  add {
+    lhs = f32[] parameter(0)
+    rhs = f32[] parameter(1)
+    ROOT add = f32[] add(lhs, rhs)
+  }, execution_thread="parallel_thread"
+
+  fused_computation {
+    p0 = f32[8,12] parameter(0)
+    p1 = f32[8,12] parameter(1)
+    crs0 = f32[8,12] all-reduce(p1), replica_groups={}, to_apply=add
+    ROOT result = add(p0, crs0)
+  }
+
+  ENTRY entry {
+    p0 = f32[8,12] parameter(0)
+    p1 = f32[8,12] parameter(1)
+    ROOT out = f32[8,12] fusion(p0, p1), kind=kInput, calls=fused_computation
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(kModuleStr));
+
+  absl::Status status =
       HloVerifier{HloVerifierOpts{}.VerifyCallNestedComputationThreadName()}
           .Run(module.get())
-          .status()
-          .message(),
-      HasSubstr("to_apply computation execution thread does not match"));
+          .status();
+
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(
+      status.message(),
+      HasSubstr("crs0 to_apply computation execution thread does not match "
+                "(parallel_thread vs main)"));
 }
 
 TEST_F(HloVerifierTest, AllReduceVerifier) {
@@ -3057,8 +3091,11 @@ TEST_F(HloVerifierTest, VerifyCustomCallThread) {
       HloVerifier{HloVerifierOpts{}.VerifyCallNestedComputationThreadName()}
           .Run(module.get())
           .status();
-  // Embedded call context computation thread name is not checked.
-  ASSERT_TRUE(status.ok());
+
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(status.message(),
+              HasSubstr("custom to_apply computation execution thread does "
+                        "not match (parallel_thread vs main)"));
 }
 
 TEST_F(HloVerifierTest, CheckWhileThread) {
