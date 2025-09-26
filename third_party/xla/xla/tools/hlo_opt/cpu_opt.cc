@@ -112,14 +112,15 @@ class CpuOptProvider : public CompiledOptProvider {
     DebugOptions debug_opts = GetDebugOptionsFromFlags();
     auto executor = GetExecutor();
     HloModuleConfig module_config = module.config();
-    BufferValue::SizeFunction size_func = [](const BufferValue& buffer) {
-      const Shape& shape = buffer.shape();
-      // On the cpu, opaques are pointers.
-      if (shape.IsOpaque()) {
-        return static_cast<int64_t>(sizeof(void*));
-      }
-      return ShapeUtil::ByteSizeOf(shape, sizeof(void*));
-    };
+    static BufferValue::SizeFunction* const kSizeFunction =
+        new BufferValue::SizeFunction([](const BufferValue& buffer) {
+          const Shape& shape = buffer.shape();
+          // On the cpu, opaques are pointers.
+          if (shape.IsOpaque()) {
+            return static_cast<int64_t>(sizeof(void*));
+          }
+          return ShapeUtil::ByteSizeOf(shape, sizeof(void*));
+        });
     absl::StatusOr<std::unique_ptr<llvm::TargetMachine>> jit_target_machine =
         cpu::IrCompiler::InferTargetMachine(
             CompilerTargetOptions(module_config),
@@ -167,7 +168,7 @@ class CpuOptProvider : public CompiledOptProvider {
         },
         TransposeFolding::NeverFoldTranspose);
     RegisterPass<cpu::ConvCanonicalization>(&target_machine_features);
-    RegisterPass<HloMemoryScheduler>(alias_info_.get(), size_func);
+    RegisterPass<HloMemoryScheduler>(alias_info_.get(), kSizeFunction);
     RegisterPass<HostOffloader>(alias_info_.get());
 
     // Fails to register if module does not have entry computation layout

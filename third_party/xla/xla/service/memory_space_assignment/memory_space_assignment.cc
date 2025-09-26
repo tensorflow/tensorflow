@@ -47,7 +47,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/utils/hlo_live_range.h"
 #include "xla/layout.h"
-#include "xla/service/buffer_value.h"
 #include "xla/service/heap_simulator/heap_simulator.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_buffer.h"
@@ -456,12 +455,10 @@ absl::Status MemorySpaceAssignment::FindAllocationSequence(
   HeapSimulator::Options heap_simulator_options;
   heap_simulator_options.may_reuse_operand_buffers = false;
   heap_simulator_options.alloc_constants = true;
-  TF_RETURN_IF_ERROR(HeapSimulator::Run(std::move(algorithm), *module_,
-                                        module_->schedule(), alias_analysis,
-                                        alias_info_, options_.size_fn,
-                                        heap_simulator_options)
-                         .status());
-  return absl::OkStatus();
+  return HeapSimulator::Run(std::move(algorithm), *module_, module_->schedule(),
+                            alias_analysis, alias_info_, &options_.size_fn,
+                            heap_simulator_options)
+      .status();
 }
 
 MemorySpaceAssignment::ScopedMemorySource

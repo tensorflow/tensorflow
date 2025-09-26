@@ -149,17 +149,18 @@ class GpuOptProvider : public CompiledOptProvider {
              "--xla_gpu_target_config_filename= to specify a target config.";
       gpu_compute_capability = stream_executor::CudaComputeCapability::Hopper();
     }
-    BufferValue::SizeFunction size_func = [](const BufferValue& buffer) {
-      const Shape& shape = buffer.shape();
-      if (shape.has_layout() &&
-          shape.layout().memory_space() == Layout::kHostMemorySpace) {
-        return static_cast<int64_t>(0);
-      }
-      return ShapeUtil::ByteSizeOf(shape, sizeof(void*));
-    };
+    static BufferValue::SizeFunction* const kSizeFunction =
+        new BufferValue::SizeFunction([](const BufferValue& buffer) {
+          const Shape& shape = buffer.shape();
+          if (shape.has_layout() &&
+              shape.layout().memory_space() == Layout::kHostMemorySpace) {
+            return static_cast<int64_t>(0);
+          }
+          return ShapeUtil::ByteSizeOf(shape, sizeof(void*));
+        });
     // go/keep-sorted start
     RegisterPass<CopyInsertion>(alias_info_.get());
-    RegisterPass<HloMemoryScheduler>(alias_info_.get(), size_func);
+    RegisterPass<HloMemoryScheduler>(alias_info_.get(), kSizeFunction);
     RegisterPass<HostOffloader>(alias_info_.get());
     RegisterPass<gpu::AllGatherOptimizer>();
     RegisterPass<gpu::CuDnnCustomCallConverter>();
@@ -223,12 +224,14 @@ class GpuOptProvider : public CompiledOptProvider {
     }
 
     llvm::LLVMContext llvm_context;
+    BufferValue::SizeFunction buffer_size_bytes_function =
+        gpu_compiler->BufferSizeBytesFunction();
     TF_ASSIGN_OR_RETURN(
         xla::gpu::CompileModuleResults results,
         xla::gpu::CompileModuleToLlvmIr(
             optimized_module, &llvm_context, gpu_compiler->GetTargetTriple(),
             gpu_compiler->GetDataLayout(), platform, device_description,
-            alias_info.get(), gpu_compiler->BufferSizeBytesFunction()));
+            alias_info.get(), std::move(buffer_size_bytes_function)));
     return llvm_ir::DumpToString(results.llvm_module.get());
   }
 };
