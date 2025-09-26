@@ -484,7 +484,7 @@ absl::Status SpmdPartitioningVisitor::HandleCustomCall(HloInstruction* hlo) {
   // Block-scaled dot with MX operands.
   if (hlo->custom_call_target() == "__op$block_scaled_dot") {
     // Evaluate the dimension numbers of the block-scaled dot.
-    int dimensions_size = hlo->operand(0)->shape().dimensions_size();
+    int dimensions_size = hlo->operand(0)->shape().dimensions().size();
     TF_RET_CHECK(dimensions_size == 2 || dimensions_size == 3);
     DotDimensionNumbers dimension_numbers;
     dimension_numbers.add_lhs_contracting_dimensions(dimensions_size - 1);
