@@ -112,6 +112,16 @@ static absl::StatusOr<const PjRtCApiTopologyDescription> InitClientTopoDesc(
   return PjRtCApiTopologyDescription(c_api, *c_topo, /*owned=*/false);
 }
 
+static absl::flat_hash_map<PJRT_Extension_Type, PJRT_Extension_Base*>
+InitExtensions(const PJRT_Api* c_api) {
+  absl::flat_hash_map<PJRT_Extension_Type, PJRT_Extension_Base*> extensions;
+  for (PJRT_Extension_Base* ext = c_api->extension_start; ext != nullptr;
+       ext = ext->next) {
+    extensions.emplace(ext->type, ext);
+  }
+  return extensions;
+}
+
 PjRtCApiClient::PjRtCApiClient(
     const PJRT_Api* c_api, PJRT_Client* c_client,
     std::unique_ptr<pjrt::PJRT_KeyValueCallbackData> kv_callback_data)
@@ -120,6 +130,7 @@ PjRtCApiClient::PjRtCApiClient(
           c_client, ::pjrt::MakeClientDeleter(c_api))),
       kv_callback_data_(std::move(kv_callback_data)),
       topo_desc_(InitClientTopoDesc(c_api, c_client)),
+      extensions_(InitExtensions(c_api)),
       // Example platform version string:
       //   PJRT C API
       //   TFRT TPU v2
@@ -258,13 +269,21 @@ void PjRtCApiClient::InitAttributes() {
   attributes_ =
       pjrt::ConvertFromPjRtNamedValueList(args.attributes, args.num_attributes);
   attributes_["serialize_with_sdy"] = true;
-  const PJRT_Api* c_api = pjrt_c_api();
   PJRT_CrossHostTransfers_Extension* extension =
-      pjrt::FindExtension<PJRT_CrossHostTransfers_Extension>(
-          c_api, PJRT_Extension_Type::PJRT_Extension_Type_CrossHostTransfers);
+      FindExtension<PJRT_CrossHostTransfers_Extension>(
+          PJRT_Extension_Type::PJRT_Extension_Type_CrossHostTransfers);
   if (extension != nullptr) {
     attributes_["supports_cross_host_transfers"] = true;
   }
+}
+
+PJRT_Extension_Base* PjRtCApiClient::FindExtensionImpl(
+    PJRT_Extension_Type type) const {
+  auto it = extensions_.find(type);
+  if (it == extensions_.end()) {
+    return nullptr;
+  }
+  return it->second;
 }
 
 int PjRtCApiClient::device_count() const { return devices_.size(); }
@@ -827,9 +846,8 @@ PjRtCApiClient::CreateViewOfDeviceBuffer(
 absl::StatusOr<Layout> PjRtCApiClient::GetDefaultLayout(
     PrimitiveType element_type, absl::Span<const int64_t> dims) {
   const PJRT_Api* c_api = pjrt_c_api();
-  PJRT_Layouts_Extension* extension =
-      pjrt::FindExtension<PJRT_Layouts_Extension>(
-          c_api, PJRT_Extension_Type::PJRT_Extension_Type_Layouts);
+  PJRT_Layouts_Extension* extension = FindExtension<PJRT_Layouts_Extension>(
+      PJRT_Extension_Type::PJRT_Extension_Type_Layouts);
   if (extension == nullptr) {
     return LayoutUtil::MakeDescendingLayout(dims.size());
   }
@@ -944,8 +962,8 @@ PjRtCApiClient::MakeCrossHostReceiveBuffers(
     PjRtCrossHostRecvNotifier notifier) {
   const PJRT_Api* c_api = pjrt_c_api();
   PJRT_CrossHostTransfers_Extension* extension =
-      pjrt::FindExtension<PJRT_CrossHostTransfers_Extension>(
-          c_api, PJRT_Extension_Type::PJRT_Extension_Type_CrossHostTransfers);
+      FindExtension<PJRT_CrossHostTransfers_Extension>(
+          PJRT_Extension_Type::PJRT_Extension_Type_CrossHostTransfers);
   if (extension == nullptr) {
     return absl::UnimplementedError(
         "MakeCrossHostReceiveBuffers is not implemented in this PJRT plugin.");
@@ -1446,8 +1464,9 @@ absl::StatusOr<tsl::AllocatorStats> PjRtCApiDevice::GetAllocatorStats() const {
 absl::StatusOr<std::intptr_t> PjRtCApiDevice::GetStreamForExternalReadyEvents()
     const {
   const PJRT_Api* c_api = client_->pjrt_c_api();
-  PJRT_Stream_Extension* extension = pjrt::FindExtension<PJRT_Stream_Extension>(
-      c_api, PJRT_Extension_Type::PJRT_Extension_Type_Stream);
+  PJRT_Stream_Extension* extension =
+      client_->FindExtension<PJRT_Stream_Extension>(
+          PJRT_Extension_Type::PJRT_Extension_Type_Stream);
   if (extension == nullptr) {
     return absl::UnimplementedError(
         "Stream extension not implemented in this PJRT plugin.");
@@ -2171,14 +2190,15 @@ PjRtCApiLoadedExecutable::GetCommonExecuteArgs(
 }
 
 static absl::StatusOr<PJRT_ExecuteContext*> ForwardExecuteContext(
-    const PJRT_Api* c_api, const ExecuteContext* context) {
+    const PjRtCApiClient* client, const ExecuteContext* context) {
+  const PJRT_Api* c_api = client->pjrt_c_api();
   // If the execute context is null, we don't have anything to forward.
   if (context == nullptr) return nullptr;
 
   // If we can't find the FFI extension, we can't forward anything from the
   // execute context to the C API.
-  PJRT_FFI_Extension* ffi_extension = pjrt::FindExtension<PJRT_FFI_Extension>(
-      c_api, PJRT_Extension_Type::PJRT_Extension_Type_FFI);
+  PJRT_FFI_Extension* ffi_extension = client->FindExtension<PJRT_FFI_Extension>(
+      PJRT_Extension_Type::PJRT_Extension_Type_FFI);
   if (ffi_extension == nullptr) return nullptr;
 
   // Create a new instance of the PJRT_ExecuteContext.
@@ -2223,7 +2243,7 @@ PjRtCApiLoadedExecutable::Execute(
 
   PJRT_ExecuteOptions c_options = {PJRT_ExecuteOptions_STRUCT_SIZE, nullptr};
   TF_ASSIGN_OR_RETURN(c_options.context,
-                      ForwardExecuteContext(pjrt_c_api(), options.context));
+                      ForwardExecuteContext(client_, options.context));
 
   // Don't forget to destroy execute context if we created it.
   auto destroy_context = absl::MakeCleanup([&]() {
@@ -2457,8 +2477,8 @@ std::shared_ptr<const PjRtLayout> PjRtCApiBuffer::layout() const {
     if (layout_ == nullptr) {
       const PJRT_Api* c_api = pjrt_c_api();
       PJRT_Layouts_Extension* extension =
-          pjrt::FindExtension<PJRT_Layouts_Extension>(
-              c_api, PJRT_Extension_Type::PJRT_Extension_Type_Layouts);
+          client_->FindExtension<PJRT_Layouts_Extension>(
+              PJRT_Extension_Type::PJRT_Extension_Type_Layouts);
       if (extension == nullptr) {
         layout_ = std::make_shared<PjRtLayout>(
             LayoutUtil::MakeDescendingLayout(dimensions().size()));
@@ -2821,10 +2841,9 @@ PjRtCApiBuffer::AcquireExternalReference() {
 
 void PjRtCApiBuffer::CopyToRemoteDevice(
     PjRtFuture<std::string> serialized_descriptor, RemoteSendCallback on_done) {
-  const PJRT_Api* c_api = pjrt_c_api();
   PJRT_CrossHostTransfers_Extension* extension =
-      pjrt::FindExtension<PJRT_CrossHostTransfers_Extension>(
-          c_api, PJRT_Extension_Type::PJRT_Extension_Type_CrossHostTransfers);
+      client_->FindExtension<PJRT_CrossHostTransfers_Extension>(
+          PJRT_Extension_Type::PJRT_Extension_Type_CrossHostTransfers);
   if (extension == nullptr) {
     LOG(FATAL) << "PjRtBuffer::CopyToRemoteDevice: Cross host transfers "
                   "extension not found in PJRT plugin.";
@@ -2857,8 +2876,9 @@ PjRtCApiExternalReference::~PjRtCApiExternalReference() {
 absl::Status PjRtCApiExternalReference::WaitUntilBufferReadyOnStream(
     std::intptr_t stream) {
   const PJRT_Api* c_api = buffer_->pjrt_c_api();
-  PJRT_Stream_Extension* extension = pjrt::FindExtension<PJRT_Stream_Extension>(
-      c_api, PJRT_Extension_Type::PJRT_Extension_Type_Stream);
+  PJRT_Stream_Extension* extension =
+      client_->FindExtension<PJRT_Stream_Extension>(
+          PJRT_Extension_Type::PJRT_Extension_Type_Stream);
   if (extension == nullptr) {
     return absl::UnimplementedError(
         "Stream extension not implemented in this PJRT plugin.");

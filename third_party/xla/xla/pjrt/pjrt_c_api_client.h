@@ -402,9 +402,15 @@ class PjRtCApiClient : public PjRtClient {
   using CrossHostRecvNotifierFunction =
       std::function<void(PJRT_Error*, const char**, size_t*, size_t)>;
 
+  template <typename ExtType>
+  ExtType* FindExtension(PJRT_Extension_Type type) const {
+    return reinterpret_cast<ExtType*>(FindExtensionImpl(type));  // NOLINT
+  }
+
  private:
   void InitDevicesAndMemorySpaces();
   void InitAttributes();
+  PJRT_Extension_Base* FindExtensionImpl(PJRT_Extension_Type type) const;
 
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostBufferInternalImpl(
       const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
@@ -428,6 +434,7 @@ class PjRtCApiClient : public PjRtClient {
   // (e.g. unimplemented). Save the error during client init so we can return it
   // from GetTopologyDescription().
   absl::StatusOr<const PjRtCApiTopologyDescription> topo_desc_;
+  absl::flat_hash_map<PJRT_Extension_Type, PJRT_Extension_Base*> extensions_;
 
   const std::string platform_version_;
   const std::string platform_name_;
