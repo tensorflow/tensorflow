@@ -28,6 +28,8 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/thread_annotations.h"
+#include "absl/log/log.h"
+#include "absl/strings/str_format.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/synchronization/notification.h"
 #include "tensorflow/c/env.h"
@@ -69,8 +71,8 @@ class RamFileBlockCache {
       pruning_thread_.reset(
           TF_StartThread(&thread_options, "TF_prune_FBC", PruneThread, this));
     }
-    TF_VLog(1, "GCS file block cache is %s.\n",
-            (IsCacheEnabled() ? "enabled" : "disabled"));
+    VLOG(1) << absl::StrFormat("GCS file block cache is %s.\n",
+                               (IsCacheEnabled() ? "enabled" : "disabled"));
   }
 
   ~RamFileBlockCache() {
