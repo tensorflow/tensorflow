@@ -82,7 +82,7 @@ static absl::flat_hash_set<std::string>* kBlockList =
     });
 
 std::string CoreDevice(int core) {
-  return strings::StrCat("/device:", DEVICE_TPU_REPLICATED_CORE, ":", core);
+  return absl::StrCat("/device:", DEVICE_TPU_REPLICATED_CORE, ":", core);
 }
 
 static constexpr char kArgOp[] = "_Arg";
