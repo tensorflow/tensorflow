@@ -33,6 +33,7 @@ limitations under the License.
 #include "mlir/Dialect/Arith/Transforms/Passes.h"
 #include "mlir/Dialect/Bufferization/IR/BufferizableOpInterface.h"
 #include "mlir/Dialect/Bufferization/IR/Bufferization.h"
+#include "mlir/Dialect/Bufferization/IR/BufferizationTypeInterfaces.h"
 #include "mlir/Dialect/Bufferization/Transforms/Bufferize.h"
 #include "mlir/Dialect/Bufferization/Transforms/FuncBufferizableOpInterfaceImpl.h"
 #include "mlir/Dialect/Bufferization/Transforms/OneShotAnalysis.h"
@@ -271,17 +272,28 @@ struct OneShotBufferizePass
     opts.allowReturnAllocsFromLoops = true;
     opts.bufferizeFunctionBoundaries = true;
     opts.functionArgTypeConverterFn =
-        [=](TensorType tensorType, Attribute memorySpace,
+        [=](bufferization::TensorLikeType type, Attribute memorySpace,
             FunctionOpInterface funcOp,
             const bufferization::BufferizationOptions& /*options*/) {
-          // Functions created by fusion outlining should have fully dynamic
-          // layout. All other functions (for now only "main") gets static
-          // layout.
-          if (funcOp->hasAttr(kFusionFunctionLabel))
-            return bufferization::getMemRefTypeWithFullyDynamicLayout(
-                tensorType, memorySpace);
-          return bufferization::getMemRefTypeWithStaticIdentityLayout(
-              tensorType, memorySpace);
+          if (auto tensorType = mlir::dyn_cast<TensorType>(type)) {
+            // Functions created by fusion outlining should have fully dynamic
+            // layout. All other functions (for now only "main") gets static
+            // layout.
+            if (funcOp->hasAttr(kFusionFunctionLabel)) {
+              return cast<bufferization::BufferLikeType>(
+                  bufferization::getMemRefTypeWithFullyDynamicLayout(
+                      tensorType, memorySpace));
+            }
+            return cast<bufferization::BufferLikeType>(
+                bufferization::getMemRefTypeWithStaticIdentityLayout(
+                    tensorType, memorySpace));
+          }
+          // If not builtin, fallback to TensorLikeType::getBufferType()
+          auto bufferType =
+              type.getBufferType(opts, [&]() { return funcOp->emitError(); });
+          assert(succeeded(bufferType) &&
+                 "a valid buffer is always expected at function boundary");
+          return *bufferType;
         };
     opts.inferFunctionResultLayout = false;
     opts.bufferAlignment = 64;
