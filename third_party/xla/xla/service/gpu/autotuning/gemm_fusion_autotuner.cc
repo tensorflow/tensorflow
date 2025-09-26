@@ -318,8 +318,7 @@ absl::StatusOr<std::unique_ptr<HloModule>> TritonGemmAutotuneExtractor(
     TF_RETURN_IF_ERROR(fusion_wrapper.Run(new_module.get()).status());
   }
 
-  NestGemmFusion nest_gemm_fusion(gpu_device_info.gpu_compute_capability(),
-                                  mlir_context);
+  NestGemmFusion nest_gemm_fusion(gpu_device_info, mlir_context);
   TF_RETURN_IF_ERROR(nest_gemm_fusion.Run(new_module.get()).status());
   return new_module;
 }
@@ -1138,6 +1137,11 @@ GemmFusionAutotunerImpl::CompileAll(AutotunerCompileUtil& compile_util,
       VLOG(10) << "Compiling fusion: " << fusion->name();
       VLOG(10) << "Dumping fusion computation: "
                << fusion->called_computation()->ToString();
+      VLOG(1) << "WARNING: you are running in multithreaded-mode, the "
+                 "last configuration printed out might not be the one "
+                 "causing issues! Use "
+                 "--xla_gpu_force_compilation_parallelism=1 to compile "
+                 "sequentially.";
       for (const BackendConfig& config : gemm_config_set) {
         thread_pool_->Schedule([&, fusion] {
           VLOG(10) << "Trying configuration forceable through: "

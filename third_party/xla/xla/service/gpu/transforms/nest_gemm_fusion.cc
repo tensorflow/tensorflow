@@ -60,6 +60,7 @@ limitations under the License.
 #include "xla/service/gpu/model/symbolic_tile_analysis.h"
 #include "xla/service/gpu/model/symbolic_tiled_hlo_instruction.h"
 #include "xla/service/gpu/model/tiled_hlo_computation.h"
+#include "xla/service/gpu/model/triton_emitter_constraints.h"
 #include "xla/service/instruction_fusion.h"
 #include "xla/service/matmul_indexing_utils.h"
 #include "xla/shape.h"
@@ -265,9 +266,9 @@ absl::Status FuseAndAnnotateConcatOperands(HloComputation* computation) {
 
 // Transforms a fusion into an equivalent nested fusion if it has a single dot.
 // Returns ok if the transformation was successful.
-absl::Status MakeNestedFusionFromGemmFusion(HloFusionInstruction* fusion,
-                                            HloInstruction* dot,
-                                            mlir::MLIRContext* ctx) {
+absl::Status MakeNestedFusionFromGemmFusion(
+    HloFusionInstruction* fusion, HloInstruction* dot, mlir::MLIRContext* ctx,
+    const se::DeviceDescription& device_description) {
   TF_RETURN_IF_ERROR(IsDot(*dot));
   const bool is_scaled_dot = dot->opcode() == HloOpcode::kScaledDot;
   const int lhs = 0;
@@ -324,9 +325,9 @@ absl::Status MakeNestedFusionFromGemmFusion(HloFusionInstruction* fusion,
   backend_config.clear_triton_gemm_config();
   backend_config.set_kind(kTritonNestedGemmFusionKind);
 
-  TF_ASSIGN_OR_RETURN(
-      BlockLevelParameters block_level_parameters,
-      ::xla::gpu::detail::FindBlockLevelParameters(dot, config, ctx));
+  TF_ASSIGN_OR_RETURN(BlockLevelParameters block_level_parameters,
+                      ::xla::gpu::detail::FindBlockLevelParameters(
+                          dot, config, ctx, device_description));
 
   *backend_config.mutable_block_level_fusion_config() =
       block_level_parameters.ToBlockLevelFusionConfig();
@@ -1114,10 +1115,10 @@ class NestGemmFusionVisitor : public DfsHloRewriteVisitor {
  public:
   explicit NestGemmFusionVisitor(
       mlir::MLIRContext* ctx, CallGraph* call_graph,
-      const se::GpuComputeCapability compute_capability)
+      const se::DeviceDescription& device_description)
       : ctx_(ctx),
         call_graph_(call_graph),
-        compute_capability_(compute_capability) {}
+        device_description_(device_description) {}
 
  private:
   absl::Status AcceptDotOperand(const HloInstruction* operand,
@@ -1243,7 +1244,8 @@ class NestGemmFusionVisitor : public DfsHloRewriteVisitor {
 
     TF_RETURN_IF_ERROR(
         TryHoistBitcastsInComputationToCallers(instr, call_graph));
-    TF_RETURN_IF_ERROR(MakeNestedFusionFromGemmFusion(fusion, instr, ctx_));
+    TF_RETURN_IF_ERROR(MakeNestedFusionFromGemmFusion(fusion, instr, ctx_,
+                                                      device_description_));
 
     MarkAsChanged();
     bool scaled_dot_enabled =
@@ -1252,7 +1254,8 @@ class NestGemmFusionVisitor : public DfsHloRewriteVisitor {
             .debug_options()
             .xla_gpu_experimental_scaled_dot_with_triton();
     if (CodegenDecision can_codegen_computation = IsTritonSupportedComputation(
-            *fusion->called_computation(), compute_capability_);
+            *fusion->called_computation(),
+            device_description_.gpu_compute_capability());
         !scaled_dot_enabled && !can_codegen_computation) {
       return absl::InternalError(absl::StrCat(
           "Computation of fusion ", fusion->ToString(),
@@ -1323,7 +1326,7 @@ class NestGemmFusionVisitor : public DfsHloRewriteVisitor {
  private:
   mlir::MLIRContext* ctx_;
   CallGraph* call_graph_;
-  const se::GpuComputeCapability compute_capability_;
+  const se::DeviceDescription& device_description_;
 };
 
 }  // namespace
@@ -1336,7 +1339,7 @@ absl::StatusOr<bool> NestGemmFusion::RunOnModule(
   for (HloComputation* computation :
        module->MakeNonfusionComputations(execution_threads)) {
     NestGemmFusionVisitor visitor(mlir_context_, call_graph.get(),
-                                  compute_capability_);
+                                  device_description_);
     TF_RETURN_IF_ERROR(computation->Accept(&visitor));
     changed |= visitor.changed();
   }
@@ -1365,14 +1368,16 @@ absl::StatusOr<bool> NestGemmFusion::Run(
 namespace detail {
 
 absl::StatusOr<BlockLevelParameters> FindBlockLevelParameters(
-    HloInstruction* dot, const TritonGemmConfig& config,
-    mlir::MLIRContext* ctx) {
+    HloInstruction* dot, const TritonGemmConfig& config, mlir::MLIRContext* ctx,
+    const se::DeviceDescription& device_description) {
   TF_RETURN_IF_ERROR(IsDot(*dot));
   HloComputation* computation = dot->parent();
   VLOG(3) << "FindOutputTileSizesForEpilogue of computation: "
           << computation->ToString();
   SymbolicTileAnalysisOrError analysis_or =
-      SymbolicTileAnalysis::AnalyzeComputation(*computation, ctx);
+      SymbolicTileAnalysis::AnalyzeComputation(
+          *computation, ctx,
+          TritonEmitterConstraints::GetBuilder(device_description));
   if (std::holds_alternative<FusionDecision>(analysis_or)) {
     std::unique_ptr<HloModule> extracted_computation_module =
         ExtractModule(computation->FusionInstruction());

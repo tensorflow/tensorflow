@@ -2042,6 +2042,7 @@ cc_library(
         "//xla/service/gpu/model:symbolic_tile_analysis",
         "//xla/service/gpu/model:symbolic_tiled_hlo_instruction",
         "//xla/service/gpu/model:tiled_hlo_instruction_or_computation",
+        "//xla/service/gpu/model:triton_emitter_constraints",
         "//xla/stream_executor:device_description",
         "//xla/tools:hlo_decomposer_lib",
         "//xla/tools:hlo_extractor",
