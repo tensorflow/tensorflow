@@ -180,6 +180,7 @@ bool IsAlwaysDuplicable(const HloInstruction& instruction) {
     case HloOpcode::kAddDependency:
     case HloOpcode::kAfterAll:
     case HloOpcode::kAtan2:
+    case HloOpcode::kAtanh:
     case HloOpcode::kAsyncStart:
     case HloOpcode::kAsyncUpdate:
     case HloOpcode::kAsyncDone:

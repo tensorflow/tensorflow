@@ -1306,6 +1306,7 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
       case HloOpcode::kAsin:
       case HloOpcode::kAcos:
       case HloOpcode::kAcosh:
+      case HloOpcode::kAtanh:
       case HloOpcode::kCos:
       case HloOpcode::kCosh:
       case HloOpcode::kErf:
@@ -1500,6 +1501,7 @@ HloInstruction::CreateRngBitGenerator(const Shape& shape, HloInstruction* state,
     case HloOpcode::kAcos:
     case HloOpcode::kAcosh:
     case HloOpcode::kAsin:
+    case HloOpcode::kAtanh:
     case HloOpcode::kCos:
     case HloOpcode::kCosh:
     case HloOpcode::kErf:
@@ -2727,6 +2729,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kAsin:
     case HloOpcode::kAcos:
     case HloOpcode::kAcosh:
+    case HloOpcode::kAtanh:
     case HloOpcode::kAllGatherDone:
     case HloOpcode::kAllReduceDone:
     case HloOpcode::kRoundNearestAfz:
@@ -3198,6 +3201,7 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kAllGatherDone:
     case HloOpcode::kAllReduceDone:
     case HloOpcode::kAtan2:
+    case HloOpcode::kAtanh:
     case HloOpcode::kAdd:
     case HloOpcode::kBitcast:
     case HloOpcode::kBitcastConvert:
@@ -3827,6 +3831,7 @@ bool HloInstruction::IsOpElementwise(HloOpcode opcode) {
     case HloOpcode::kAcos:
     case HloOpcode::kAcosh:
     case HloOpcode::kAsin:
+    case HloOpcode::kAtanh:
     case HloOpcode::kRoundNearestAfz:
     case HloOpcode::kRoundNearestEven:
     case HloOpcode::kCeil:
@@ -4532,6 +4537,8 @@ absl::Status HloInstruction::Visit(
       return visitor->HandleAsin(this);
     case HloOpcode::kAtan2:
       return visitor->HandleAtan2(this);
+    case HloOpcode::kAtanh:
+      return visitor->HandleAtanh(this);
     case HloOpcode::kRoundNearestAfz:
       return visitor->HandleRound(this);
     case HloOpcode::kRoundNearestEven:
@@ -5243,6 +5250,7 @@ bool IsUnaryOpWithResultAccuracy(HloOpcode opcode) {
     opcode == HloOpcode::kAcos ||
     opcode == HloOpcode::kAcosh ||
     opcode == HloOpcode::kAsin ||
+    opcode == HloOpcode::kAtanh ||
     opcode == HloOpcode::kCbrt ||
     opcode == HloOpcode::kCos ||
     opcode == HloOpcode::kCosh ||

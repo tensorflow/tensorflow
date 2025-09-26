@@ -30,6 +30,7 @@ bool FusionWrapper::MustWrapInstruction(HloOpcode opcode) {
     case HloOpcode::kAdd:
     case HloOpcode::kAnd:
     case HloOpcode::kAtan2:
+    case HloOpcode::kAtanh:
     case HloOpcode::kBitcastConvert:
     case HloOpcode::kBroadcast:
     case HloOpcode::kCeil:

@@ -1038,6 +1038,8 @@ absl::StatusOr<SmallVector<Value, 1>> HloToMlir(
       return MapElementwiseOp<mhlo::AndOp>(arg_types, operands, builder);
     case HloOpcode::kAtan2:
       return MapElementwiseOp<mhlo::Atan2Op>(arg_types, operands, builder);
+    case HloOpcode::kAtanh:
+      return MapElementwiseOp<mhlo::AtanhOp>(arg_types, operands, builder);
     case HloOpcode::kCbrt:
       return MapElementwiseOp<mhlo::CbrtOp>(arg_types, operands, builder);
     case HloOpcode::kCeil:

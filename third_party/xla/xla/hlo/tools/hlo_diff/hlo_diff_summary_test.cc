@@ -133,7 +133,7 @@ TEST_F(HloDiffTest, FindMainMatchedComputationWorks) {
                          Pointee(Property(&HloComputation::name, "entry")),
                          /*max_matched_instruction_count=*/7,
                          /*split_allegiance_instruction=*/0,
-                         /*diff_fingerprint=*/8746466958018090388U,
+                         /*diff_fingerprint=*/5339951275989465718U,
                          /*all_unchanged=*/true)),
           Pair(Pointee(Property(&HloComputation::name, "fused_computation.1")),
                FieldsAre(/*side=*/DiffSide::kLeft,
@@ -142,7 +142,7 @@ TEST_F(HloDiffTest, FindMainMatchedComputationWorks) {
                                           "fused_computation.1")),
                          /*max_matched_instruction_count=*/2,
                          /*split_allegiance_instruction=*/1,
-                         /*diff_fingerprint=*/3622034715216632574U,
+                         /*diff_fingerprint=*/3869737221237740494U,
                          /*all_unchanged=*/true)),
           Pair(Pointee(Property(&HloComputation::name, "fused_computation.2")),
                FieldsAre(/*side=*/DiffSide::kLeft,
@@ -151,7 +151,7 @@ TEST_F(HloDiffTest, FindMainMatchedComputationWorks) {
                                           "fused_computation.2")),
                          /*max_matched_instruction_count=*/2,
                          /*split_allegiance_instruction=*/1,
-                         /*diff_fingerprint=*/3622034715216632574U,
+                         /*diff_fingerprint=*/3869737221237740494U,
                          /*all_unchanged=*/true))));
   EXPECT_THAT(
       right_computation_summary,
@@ -162,7 +162,7 @@ TEST_F(HloDiffTest, FindMainMatchedComputationWorks) {
                          Pointee(Property(&HloComputation::name, "entry")),
                          /*max_matched_instruction_count=*/7,
                          /*split_allegiance_instruction=*/0,
-                         /*diff_fingerprint=*/8746466958018090388U,
+                         /*diff_fingerprint=*/5339951275989465718U,
                          /*all_unchanged=*/true)),
           Pair(Pointee(Property(&HloComputation::name, "fused_computation.1")),
                FieldsAre(/*side=*/DiffSide::kRight,
@@ -171,7 +171,7 @@ TEST_F(HloDiffTest, FindMainMatchedComputationWorks) {
                                           "fused_computation.1")),
                          /*max_matched_instruction_count=*/2,
                          /*split_allegiance_instruction=*/1,
-                         /*diff_fingerprint=*/3622034715216632574U,
+                         /*diff_fingerprint=*/3869737221237740494U,
                          /*all_unchanged=*/true)),
           Pair(Pointee(Property(&HloComputation::name, "fused_computation.2")),
                FieldsAre(/*side=*/DiffSide::kRight,
@@ -180,7 +180,7 @@ TEST_F(HloDiffTest, FindMainMatchedComputationWorks) {
                                           "fused_computation.2")),
                          /*max_matched_instruction_count=*/2,
                          /*split_allegiance_instruction=*/1,
-                         /*diff_fingerprint=*/3622034715216632574U,
+                         /*diff_fingerprint=*/3869737221237740494U,
                          /*all_unchanged=*/true))));
 }
 
@@ -322,7 +322,7 @@ TEST_F(HloDiffTest, ComputationDiffFingerprintWorks) {
                             Pointee(Property(&HloComputation::name, "entry")),
                             /*max_matched_instruction_count=*/1,
                             /*split_allegiance_instruction=*/0,
-                            /*diff_fingerprint=*/10050492088520597242U,
+                            /*diff_fingerprint=*/9262444860155808583U,
                             /*all_unchanged=*/false))));
   EXPECT_THAT(right_computation_summary,
               UnorderedElementsAre(Pair(
@@ -332,11 +332,11 @@ TEST_F(HloDiffTest, ComputationDiffFingerprintWorks) {
                             Pointee(Property(&HloComputation::name, "entry")),
                             /*max_matched_instruction_count=*/1,
                             /*split_allegiance_instruction=*/0,
-                            /*diff_fingerprint=*/10050492088520597242U,
+                            /*diff_fingerprint=*/9262444860155808583U,
                             /*all_unchanged=*/false))));
   EXPECT_THAT(diff_summary->computation_diff_patterns,
               UnorderedElementsAre(FieldsAre(
-                  /*fingerprint=*/9586543086928908508U,
+                  /*fingerprint=*/16389208373574701189U,
                   /*computation_groups=*/
                   UnorderedElementsAre(FieldsAre(
                       /*left_computations=*/UnorderedElementsAre(
@@ -415,7 +415,7 @@ TEST_F(HloDiffTest, FindConnectedComponentsWorks) {
       diff_summary->computation_diff_patterns,
       UnorderedElementsAre(
           FieldsAre(
-              /*fingerprint=*/9586543086928908508U,
+              /*fingerprint=*/16389208373574701189U,
               /*computation_groups=*/
               UnorderedElementsAre(
                   FieldsAre(/*left_computations=*/UnorderedElementsAre(
@@ -434,7 +434,7 @@ TEST_F(HloDiffTest, FindConnectedComponentsWorks) {
               FieldsAre(/*changed_instruction_count=*/0,
                         /*left_unmatched_instruction_count=*/2,
                         /*right_unmatched_instruction_count=*/2)),
-          FieldsAre(/*fingerprint=*/1707947588792844340U,
+          FieldsAre(/*fingerprint=*/7215429851241772700U,
                     /*computation_groups=*/
                     UnorderedElementsAre(FieldsAre(
                         /*left_computations=*/UnorderedElementsAre(
@@ -493,7 +493,7 @@ subtract.0 = f32[] subtract(constant.0, constant.1)
   EXPECT_THAT(diff_summary->computation_diff_patterns,
               UnorderedElementsAre(
                   FieldsAre(
-                      /*fingerprint=*/4712432809499276507U,
+                      /*fingerprint=*/6836711927496849530U,
                       /*computation_groups=*/
                       UnorderedElementsAre(FieldsAre(
                           /*left_computations=*/UnorderedElementsAre(Pointee(
@@ -504,7 +504,7 @@ subtract.0 = f32[] subtract(constant.0, constant.1)
                                 /*left_unmatched_instruction_count=*/3,
                                 /*right_unmatched_instruction_count=*/0)),
                   FieldsAre(
-                      /*fingerprint=*/14132500182780837002U,
+                      /*fingerprint=*/4208103866131904389U,
                       /*computation_groups=*/
                       UnorderedElementsAre(FieldsAre(
                           /*left_computations=*/IsEmpty(),
@@ -663,7 +663,7 @@ TEST_F(HloDiffTest, DiffSummaryToProtoWorks) {
       proto.computation_diff_patterns(),
       ElementsAre(AllOf(
           Property(&ComputationDiffPatternProto::fingerprint,
-                   9586543086928908508U),
+                   16389208373574701189U),
           Property(
               &ComputationDiffPatternProto::computation_group,
               ElementsAre(AllOf(

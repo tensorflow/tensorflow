@@ -498,6 +498,19 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
     return UnsupportedTypeError(atan2);
   }
 
+  absl::Status HandleAtanh(const HloInstruction* atanh) override {
+    if constexpr (!is_complex_v<ReturnT>) {
+      TF_ASSIGN_OR_RETURN(
+          Literal literal,
+          ElementWiseUnaryOp(atanh, [](ElementwiseT elem_operand) {
+            return std::atanh(elem_operand);
+          }));
+      parent_->SetEvaluatedLiteralFor(atanh, std::move(literal));
+      return absl::OkStatus();
+    }
+    return UnsupportedTypeError(atanh);
+  }
+
   absl::Status HandleTanh(const HloInstruction* tanh) override {
     TF_ASSIGN_OR_RETURN(Literal literal,
                         ElementWiseUnaryOp(tanh, [](ElementwiseT elem_operand) {

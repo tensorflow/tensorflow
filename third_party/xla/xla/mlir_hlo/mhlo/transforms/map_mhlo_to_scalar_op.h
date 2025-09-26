@@ -190,6 +190,10 @@ struct MhloToScalarOp<mhlo::Atan2Op> {
   using COp = ::mlir::complex::Atan2Op;
 };
 template <>
+struct MhloToScalarOp<mhlo::AtanhOp> {
+  using FOp = ::mlir::math::AtanhOp;
+};
+template <>
 struct MhloToScalarOp<mhlo::TanhOp> {
   using FOp = ::mlir::math::TanhOp;
   using COp = ::mlir::complex::TanhOp;

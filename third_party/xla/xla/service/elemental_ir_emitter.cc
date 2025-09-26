@@ -715,6 +715,8 @@ absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitFloatUnaryOp(
       return EmitAsin(op->shape().element_type(), operand_value);
     case HloOpcode::kAcosh:
       return EmitAcosh(op->shape().element_type(), operand_value);
+    case HloOpcode::kAtanh:
+      return EmitAtanh(op->shape().element_type(), operand_value);
     case HloOpcode::kConvert: {
       PrimitiveType from_type = op->operand(0)->shape().element_type();
       PrimitiveType to_type = op->shape().element_type();
@@ -2208,6 +2210,11 @@ absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitAtan2(
   return Unimplemented("atan2");
 }
 
+absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitAtanh(
+    PrimitiveType prim_type, llvm::Value* value) {
+  return Unimplemented("atanh");
+}
+
 absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitTanh(
     PrimitiveType prim_type, llvm::Value* value) {
   return Unimplemented("tanh");
@@ -3191,6 +3198,7 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
     case HloOpcode::kAsin:
     case HloOpcode::kAcos:
     case HloOpcode::kAcosh:
+    case HloOpcode::kAtanh:
     case HloOpcode::kRoundNearestAfz:
     case HloOpcode::kRoundNearestEven:
     case HloOpcode::kCeil:

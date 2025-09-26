@@ -198,6 +198,14 @@ add {
   ROOT %atan2 = f32[4] atan2(f32[4] %Arg_0.1, f32[4] %Arg_1.2)
 }
 
+// CHECK-LABEL:  func private @test_atanh(%arg0: tensor<1x16x16x3xf32>) -> tensor<1x16x16x3xf32>
+%test_atanh (arg0.1: f32[1,16,16,3]) -> f32[1,16,16,3] {
+  %arg0.1 = f32[1,16,16,3]{3,2,1,0} parameter(0), metadata={op_name="HLO_Args"}
+
+  // CHECK-NEXT:  mhlo.atanh %arg0 : tensor<1x16x16x3xf32>
+  ROOT %atanh.3 = f32[1,16,16,3]{3,2,1,0} atanh(f32[1,16,16,3]{3,2,1,0} %arg0.1)
+}
+
 // CHECK-LABEL:  func private @test_broadcast_in_dim
 %test_broadcast_in_dim {
   %Arg_0.1 = f32[1, 2] parameter(0)
