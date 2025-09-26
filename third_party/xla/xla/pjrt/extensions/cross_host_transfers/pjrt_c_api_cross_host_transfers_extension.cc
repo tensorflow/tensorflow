@@ -24,11 +24,11 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "xla/future.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/c/pjrt_c_api_helpers.h"
 #include "xla/pjrt/c/pjrt_c_api_wrapper_impl.h"
 #include "xla/pjrt/pjrt_client.h"
-#include "xla/pjrt/pjrt_future.h"
 #include "xla/shape.h"
 
 namespace pjrt {
@@ -91,8 +91,7 @@ void PJRT_Transfers_PJRT_Buffer_CopyToRemoteDevice(
     PJRT_Transfers_PJRT_Buffer_CopyToRemoteDevice_Args* args) {
   std::string serialized_descriptor = std::string(
       args->serialized_descriptor, args->serialized_descriptor_size);
-  xla::PjRtFuture<std::string> descriptor_future(
-      std::move(serialized_descriptor));
+  xla::Future<std::string> descriptor_future(std::move(serialized_descriptor));
 
   // TODO(emilyaf): Support on_done callback.
   xla::PjRtBuffer::RemoteSendCallback on_done =
