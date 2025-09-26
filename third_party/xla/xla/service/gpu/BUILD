@@ -1361,6 +1361,7 @@ cc_library(
         "//xla/service/gpu/transforms:fusion_block_level_rewriter",
         "//xla/service/gpu/transforms:fusion_dynamic_memcpy_rewriter",
         "//xla/stream_executor:device_description",
+        "@llvm-project//mlir:IR",
     ],
 )
 

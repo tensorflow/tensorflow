@@ -2892,7 +2892,7 @@ HloRematerialization::Options CreateRematOpts(
 absl::Status GpuCompiler::RunPostSchedulingPipelines(
     HloModule* module, int64_t scheduler_mem_limit,
     const se::DeviceDescription& gpu_device_info,
-    const GpuAliasInfo* alias_info) const {
+    const GpuAliasInfo* alias_info) {
   tsl::profiler::TraceMe traceme("RunPostSchedulingPipelines");
   TF_RETURN_IF_ERROR(RunPostSchedulingCopyInsertion(module, alias_info));
   HloPassPipeline main_pipeline("post-scheduling-passes");
@@ -2946,8 +2946,8 @@ absl::Status GpuCompiler::RunPostSchedulingPipelines(
   if (cuda_cc != nullptr && cuda_cc->IsAtLeastAmpere()) {
     // This needs to run after every pass affecting fusions. The last passes
     // that create new fusions are FusionWrapper and StreamAttributeAnnotator.
-    main_pipeline.AddPass<HloPassPipeline>(
-        FusionDispatchPipeline(gpu_device_info, ShapeSizeBytesFunction()));
+    main_pipeline.AddPass<HloPassPipeline>(FusionDispatchPipeline(
+        gpu_device_info, ShapeSizeBytesFunction(), mlir_context()));
   }
 
   // Pipeline with passes which wrap a scheduled module into command buffers.
