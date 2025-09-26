@@ -293,22 +293,15 @@ build:rocm_ci_hermetic --@local_config_rocm//rocm:rocm_path_type=hermetic
 
 # This config option is used for SYCL as GPU backend.
 # SYCL Configuration (non-hermetic)
-build:sycl --crosstool_top=@local_config_sycl//crosstool:toolchain
-build:sycl --define=using_sycl=true
+build:sycl --@rules_ml_toolchain//common:enable_sycl=True
 build:sycl --define=tensorflow_mkldnn_contraction_kernel=0
 build:sycl --repo_env=TF_NEED_SYCL=1
 build:sycl --cxxopt=-std=c++17
 build:sycl --host_cxxopt=-std=c++17
 build:sycl --repo_env=SYCL_BUILD_HERMETIC=0
-build:sycl --config=clang_local
 
 # Enable Clang for host and icpx for SYCL
 build:icpx_clang --repo_env TF_ICPX_CLANG=1
-build:icpx_clang --action_env=CLANG_COMPILER_PATH="/usr/lib/llvm-18/bin/clang"
-build:icpx_clang --linkopt="-fuse-ld=lld"
-build:icpx_clang --linkopt="-lm"
-build:icpx_clang --host_linkopt="-lm"
-build:icpx_clang --host_linkopt="-fuse-ld=lld"
 build:icpx_clang --copt=-fclang-abi-compat=17
 
 # Hermetic SYCL Configuration
