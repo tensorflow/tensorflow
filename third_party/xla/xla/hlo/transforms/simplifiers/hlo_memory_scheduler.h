@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <string>
 #include <utility>
 
 #include "absl/container/flat_hash_set.h"
@@ -181,10 +182,14 @@ class DefaultMemoryScheduler : public ModuleSchedulerAlgorithm {
       const absl::flat_hash_set<absl::string_view>& execution_threads,
       int64_t* peak_memory) const override;
 
+  // Returns the memory scheduler used by default scheduler.
+  const std::string& algorithm_used() const { return algorithm_used_; }
+
  private:
   ListMemoryScheduler list_scheduler_;
   DFSMemoryScheduler dfs_scheduler_;
   PostOrderScheduler post_order_scheduler_;
+  mutable std::string algorithm_used_;
 };
 
 // Returns an HloSchedule which seeks to minimize the memory required for the
