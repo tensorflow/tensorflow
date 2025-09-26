@@ -34,6 +34,7 @@ limitations under the License.
 #include "unsupported/Eigen/CXX11/Tensor"
 #include "xla/client/local_client.h"
 #include "xla/executable_run_options.h"
+#include "xla/future.h"
 #include "xla/layout.h"
 #include "xla/layout_util.h"
 #include "xla/literal.h"
@@ -48,7 +49,6 @@ limitations under the License.
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
-#include "xla/pjrt/pjrt_future.h"
 #include "xla/pjrt/proto/compile_options.pb.h"
 #include "xla/pjrt/transpose.h"
 #include "xla/primitive_util.h"
@@ -167,34 +167,34 @@ absl::StatusOr<Shape> TfrtGpuBuffer::logical_on_device_shape() {
   return shape_or;
 }
 
-PjRtFuture<> TfrtGpuBuffer::GetReadyFuture() {
+Future<> TfrtGpuBuffer::GetReadyFuture() {
   VLOG(4) << "TfrtGpuBuffer::GetReadyFuture";
   absl::MutexLock lock(mu_);
   if (!tracked_device_buffer_) {
-    return PjRtFuture<>(InvalidArgument(
+    return Future<>(InvalidArgument(
         "GetReadyFuture() called on deleted or donated buffer"));
   }
   if (!ready_future_) {
     ready_future_ = CreateFutureForEvent(tracked_device_buffer_->ready_event());
   }
-  return PjRtFutureHelpers::WithProfiling(
+  return FutureHelpers::WithProfiling(
       ready_future_,
       /*on_block_start=*/
       []() {
         tsl::profiler::TraceMeProducer traceme("TfrtGpuBuffer::Await");
         VLOG(4) << "TfrtGpuBuffer::Await";
-        return PjRtFutureHelpers::ProfilingKeys(
+        return FutureHelpers::ProfilingKeys(
             {/*traceme_context_id=*/traceme.GetContextId()});
       },
       /*on_block_end=*/
-      [](PjRtFutureHelpers::ProfilingKeys keys) {
+      [](FutureHelpers::ProfilingKeys keys) {
         tsl::profiler::TraceMeConsumer traceme("TfrtGpuBuffer::Await",
                                                keys.traceme_context_id);
       });
 }
 
 absl::StatusOr<std::unique_ptr<PjRtBuffer>>
-TfrtGpuBuffer::DonateWithControlDependency(PjRtFuture<> dependency) {
+TfrtGpuBuffer::DonateWithControlDependency(Future<> dependency) {
   VLOG(4) << "TfrtGpuBuffer::DonateWithControlDependency";
 
   TF_ASSIGN_OR_RETURN(DonationTransaction donation_transaction,
@@ -325,16 +325,15 @@ TfrtGpuBuffer::ReleaseDeviceMemoryOwnership(
   return ref;
 }
 
-PjRtFuture<> TfrtGpuBuffer::ToLiteral(MutableLiteralBase* literal) {
+Future<> TfrtGpuBuffer::ToLiteral(MutableLiteralBase* literal) {
   VLOG(3) << "TfrtGpuBuffer::ToLiteral for a tensor of shape "
           << literal->shape().ToString();
-  return ToLiteralHelper(PjRtFuture<MutableLiteralBase*>(literal));
+  return ToLiteralHelper(Future<MutableLiteralBase*>(literal));
 }
 
-PjRtFuture<> TfrtGpuBuffer::ToLiteralHelper(
-    PjRtFuture<MutableLiteralBase*> literal) {
+Future<> TfrtGpuBuffer::ToLiteralHelper(Future<MutableLiteralBase*> literal) {
   tsl::profiler::TraceMe traceme("TfrtGpuBuffer::ToLiteral");
-  auto [promise, future] = PjRtFuture<>::MakePromise();
+  auto [promise, future] = Future<>::MakePromise();
   auto usage_event = tsl::MakeConstructedAsyncValueRef<GpuEvent>();
   auto* device_buffer = AcquireUsage(usage_event);
   if (device_buffer == nullptr) {
@@ -347,8 +346,8 @@ PjRtFuture<> TfrtGpuBuffer::ToLiteralHelper(
       client_->xla_client()->backend().transfer_manager()->PackSubbyteTypes();
 
   auto [literal_and_transpose_promise, literal_and_transpose_future] =
-      PjRtFuture<std::pair<MutableLiteralBase*,
-                           std::shared_ptr<TransposePlan>>>::MakePromise();
+      Future<std::pair<MutableLiteralBase*,
+                       std::shared_ptr<TransposePlan>>>::MakePromise();
   literal.OnReady(
       [client = client_, on_device_shape{on_device_shape_},
        promise = std::move(literal_and_transpose_promise)](
@@ -530,46 +529,46 @@ PjRtFuture<> TfrtGpuBuffer::ToLiteralHelper(
                        {device_buffer->definition_event().CopyRCRef()},
                        std::move(d2h_copy));
 
-  return PjRtFutureHelpers::WithProfiling(
+  return FutureHelpers::WithProfiling(
       std::move(future),
       /*on_block_start=*/
       []() {
         tsl::profiler::TraceMeProducer traceme("TfrtGpuBuffer::ToLiteral");
         VLOG(3) << "TfrtGpuBuffer::ToLiteral::OnBlockStart";
-        return PjRtFutureHelpers::ProfilingKeys(
+        return FutureHelpers::ProfilingKeys(
             {/*traceme_context_id =*/traceme.GetContextId()});
       },
       /*on_block_end=*/
-      [](PjRtFutureHelpers::ProfilingKeys keys) {
+      [](FutureHelpers::ProfilingKeys keys) {
         tsl::profiler::TraceMeConsumer traceme("TfrtGpuBuffer::ToLiteral",
                                                keys.traceme_context_id);
       });
 }
 
-PjRtFuture<> TfrtGpuBuffer::LazyToLiteral(
-    absl::AnyInvocable<PjRtFuture<MutableLiteralBase*>() &&> generator) {
+Future<> TfrtGpuBuffer::LazyToLiteral(
+    absl::AnyInvocable<Future<MutableLiteralBase*>() &&> generator) {
   VLOG(3) << "TfrtGpuBuffer::LazyToLiteral";
   auto buffer = std::move(generator)();
   return ToLiteralHelper(std::move(buffer));
 }
 
-PjRtFuture<> TfrtGpuBuffer::CopyRawToHostFuture(PjRtFuture<void*> dst_future,
-                                                int64_t offset,
-                                                int64_t transfer_size) {
+Future<> TfrtGpuBuffer::CopyRawToHostFuture(Future<void*> dst_future,
+                                            int64_t offset,
+                                            int64_t transfer_size) {
   VLOG(3) << "TfrtGpuBuffer::CopyRawToHostFuture";
   tsl::profiler::TraceMe traceme("TfrtGpuBuffer::CopyRawToHostFuture");
-  auto [promise, future] = PjRtFuture<>::MakePromise();
+  auto [promise, future] = Future<>::MakePromise();
   auto usage_event = tsl::MakeConstructedAsyncValueRef<GpuEvent>();
   auto* device_buffer = AcquireUsage(usage_event);
   MarkGpuEventReadyOnExit usage_event_holder(std::move(usage_event));
   if (device_buffer == nullptr) {
-    return PjRtFuture<>(
+    return Future<>(
         InvalidArgument("ToLiteral() called on deleted or donated buffer"));
   }
   auto d2h_copy = [device(device_), device_buffer,
                    usage_event_holder = std::move(usage_event_holder),
-                   client = client_, offset, transfer_size](
-                      PjRtFuture<>::Promise promise, void* dst) mutable {
+                   client = client_, offset,
+                   transfer_size](Promise<> promise, void* dst) mutable {
     if (device_buffer->definition_event().IsError()) {
       LOG(ERROR) << "device_buffer->definition_event().GetError(): "
                  << device_buffer->definition_event().GetError();
@@ -658,18 +657,18 @@ PjRtFuture<> TfrtGpuBuffer::CopyRawToHostFuture(PjRtFuture<void*> dst_future,
             });
       });
 
-  return PjRtFutureHelpers::WithProfiling(
+  return FutureHelpers::WithProfiling(
       std::move(future),
       /*on_block_start=*/
       []() {
         tsl::profiler::TraceMeProducer traceme(
             "TfrtGpuBuffer::CopyRawToHostFuture");
         VLOG(3) << "TfrtGpuBuffer::CopyRawToHostFuture";
-        return PjRtFutureHelpers::ProfilingKeys(
+        return FutureHelpers::ProfilingKeys(
             {/*traceme_context_id =*/traceme.GetContextId()});
       },
       /*on_block_end=*/
-      [](PjRtFutureHelpers::ProfilingKeys keys) {
+      [](FutureHelpers::ProfilingKeys keys) {
         tsl::profiler::TraceMeConsumer traceme(
             "TfrtGpuBuffer::CopyRawToHostFuture", keys.traceme_context_id);
       });

@@ -34,6 +34,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"
 #include "xla/client/local_client.h"
 #include "xla/executable_run_options.h"
+#include "xla/future.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/layout.h"
 #include "xla/pjrt/distributed/client.h"
@@ -45,7 +46,6 @@ limitations under the License.
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
-#include "xla/pjrt/pjrt_future.h"
 #include "xla/pjrt/pjrt_stream_executor_client.h"
 #include "xla/pjrt/plugin/xla_gpu/xla_gpu_client_options.h"
 #include "xla/pjrt/tracked_device_buffer.h"
@@ -140,9 +140,9 @@ class StreamExecutorGpuClient : public xla::PjRtStreamExecutorClient {
       std::optional<absl::Span<const std::optional<Layout>>> device_layouts,
       PjRtMemorySpace* memory_space) override;
 
-  PjRtFuture<> CopyRawSubBufferToHost(PjRtBuffer* buffer, PjRtFuture<void*> dst,
-                                      int64_t offset,
-                                      int64_t transfer_size) override;
+  Future<> CopyRawSubBufferToHost(PjRtBuffer* buffer, Future<void*> dst,
+                                  int64_t offset,
+                                  int64_t transfer_size) override;
 
   void CopyToRemoteDevice(PjRtBuffer* buffer,
                           absl::string_view serialized_descriptor,

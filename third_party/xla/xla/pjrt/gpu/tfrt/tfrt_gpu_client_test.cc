@@ -46,6 +46,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "xla/ffi/ffi.h"
 #include "xla/ffi/ffi_api.h"
+#include "xla/future.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/test.h"
@@ -65,7 +66,6 @@ limitations under the License.
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
-#include "xla/pjrt/pjrt_future.h"
 #include "xla/pjrt/plugin/xla_gpu/xla_gpu_client_options.h"
 #include "xla/pjrt/proto/compile_options.pb.h"
 #include "xla/pjrt/raw_buffer.h"
@@ -512,7 +512,7 @@ TEST(TfrtGpuClientTest, DonateWithControlDependency) {
       std::unique_ptr<PjRtBuffer> buffer,
       client->BufferFromHostLiteral(literal, client->memory_spaces()[0]));
 
-  auto [promise, future] = PjRtFuture<>::MakePromise();
+  auto [promise, future] = Future<>::MakePromise();
   auto blocked_buffer =
       std::move(*(buffer->DonateWithControlDependency(future)));
   EXPECT_TRUE(buffer->IsDeleted());
@@ -701,7 +701,7 @@ TEST(TfrtGpuClientTest, ToLiteralAsync) {
   Shape host_shape =
       ShapeUtil::DeviceShapeToHostShape(buffer->on_device_shape());
   auto [literal_promise, literal_future] =
-      PjRtFuture<MutableLiteralBase*>::MakePromise();
+      Future<MutableLiteralBase*>::MakePromise();
 
   // Literal is not ready.
   buffer->LazyToLiteral([f = std::move(literal_future)]() { return f; })
@@ -756,7 +756,7 @@ TEST(TfrtGpuClientTest, ToLiteralAsyncWithNonCompactLayout) {
   Shape host_shape =
       ShapeUtil::DeviceShapeToHostShape(buffer->on_device_shape());
   auto [literal_promise, literal_future] =
-      PjRtFuture<MutableLiteralBase*>::MakePromise();
+      Future<MutableLiteralBase*>::MakePromise();
 
   absl::Notification n;
   buffer->LazyToLiteral([f = std::move(literal_future)]() { return f; })
@@ -1233,7 +1233,7 @@ TEST(TfrtGpuClientTest, CopyRawToHostFuture) {
       std::unique_ptr<PjRtBuffer> buffer,
       client->BufferFromHostLiteral(literal, client->memory_spaces()[0]));
 
-  auto [dst_promise, dst_future] = xla::PjRtFuture<void*>::MakePromise();
+  auto [dst_promise, dst_future] = xla::Future<void*>::MakePromise();
 
   TF_ASSERT_OK_AND_ASSIGN(int64_t size, buffer->GetOnDeviceSizeInBytes());
   auto ready = buffer->GetReadyFuture();
@@ -1654,7 +1654,7 @@ TEST(TfrtGpuClientTest, AsyncCopyToDevice) {
 
   auto literal = std::make_shared<Literal>(src_literal.shape());
 
-  PjRtFuture<> local_recv_literal = local_recv_buffer->ToLiteral(literal.get());
+  Future<> local_recv_literal = local_recv_buffer->ToLiteral(literal.get());
   TF_EXPECT_OK(local_recv_literal.Await());
 
   EXPECT_TRUE(ShapeUtil::Compatible(src_literal.shape(), literal->shape()));
