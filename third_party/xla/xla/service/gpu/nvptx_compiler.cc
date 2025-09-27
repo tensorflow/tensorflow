@@ -593,7 +593,7 @@ void WarnIfBadDriverJITVersion() {
 
 absl::StatusOr<const se::cuda::CompilationProvider*>
 NVPTXCompiler::GetCompilationProvider(const DebugOptions& debug_options) {
-  absl::MutexLock lock(&compilation_providers_mutex_);
+  absl::MutexLock lock(compilation_providers_mutex_);
   std::unique_ptr<se::cuda::CompilationProvider>& compilation_provider =
       compilation_providers_[se::cuda::CompilationProviderOptions::
                                  FromDebugOptions(debug_options)];
