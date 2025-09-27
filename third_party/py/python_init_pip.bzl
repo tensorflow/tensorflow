@@ -8,6 +8,7 @@ load(
 )
 
 def python_init_pip():
+    # TODO(pcloudy): Remove this once the whl_filegroup change lands in TensorFlow
     numpy_annotations = {
         "numpy": package_annotation(
             additive_build_content = """\
