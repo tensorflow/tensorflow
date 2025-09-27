@@ -32,11 +32,13 @@ func.func @push_transpose_up_through_expand_dims(%arg0: tensor<4x8xi1>) -> tenso
 }
 
 // CHECK-LABEL: func @push_transpose_up_through_elementwise
-func.func @push_transpose_up_through_elementwise(%arg0: tensor<4x8xf32>) -> tensor<8x4xf32> {
+func.func @push_transpose_up_through_elementwise(%arg0: tensor<4x8xi4>) -> tensor<8x4xf32> {
+  // CHECK: arith.sitofp %arg0
+  %0 = arith.sitofp %arg0 : tensor<4x8xi4> to tensor<4x8xf32>
   // CHECK: arith.negf {{.*}} : tensor<8x4xf32>
-  %0 = arith.negf %arg0 : tensor<4x8xf32>
-  %1 = tt.trans %0 {order = array<i32: 1, 0>} : tensor<4x8xf32> -> tensor<8x4xf32>
-  return %1 : tensor<8x4xf32>
+  %1 = arith.negf %0 : tensor<4x8xf32>
+  %2 = tt.trans %1 {order = array<i32: 1, 0>} : tensor<4x8xf32> -> tensor<8x4xf32>
+  return %2 : tensor<8x4xf32>
 }
 
 // CHECK-LABEL: func @push_transpose_up_through_if
