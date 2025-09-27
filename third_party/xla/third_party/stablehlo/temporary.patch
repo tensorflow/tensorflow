@@ -9,6 +9,317 @@ diff --ruN a/stablehlo/BUILD.bazel b/stablehlo/BUILD.bazel
          ":stablehlo_aggressive_simplification_inc_gen",
          ":stablehlo_ops",
          ":stablehlo_pass_inc_gen",
+diff --ruN a/stablehlo/stablehlo/conversions/linalg/tests/pointwise.mlir b/stablehlo/stablehlo/conversions/linalg/tests/pointwise.mlir
+--- stablehlo/stablehlo/conversions/linalg/tests/pointwise.mlir
++++ stablehlo/stablehlo/conversions/linalg/tests/pointwise.mlir
+@@ -1,5 +1,6 @@
+ // RUN: stablehlo-opt %s --stablehlo-legalize-to-linalg --split-input-file --canonicalize | FileCheck %s
+ // RUN: stablehlo-opt %s --stablehlo-legalize-to-linalg="enable-primitive-ops=true" --split-input-file --canonicalize | FileCheck %s --check-prefix=CHECK-PRIMITIVE
++// RUN: stablehlo-opt %s --stablehlo-legalize-to-linalg="capture-scalar-inputs=false" --split-input-file --canonicalize | FileCheck %s --check-prefix=CHECK-NO-CAPTURE
+ 
+ // CHECK: #map = affine_map<(d0, d1) -> (d0, d1)>
+ // CHECK-LABEL: func @float_add
+@@ -534,6 +535,19 @@
+   %0 = "stablehlo.sign"(%arg0) : (tensor<2x2xcomplex<f32>>)
+                           -> tensor<2x2xcomplex<f32>>
+   func.return %0 : tensor<2x2xcomplex<f32>>
++}
++
++// -----
++
++// CHECK-LABEL: func @float_tan
++// CHECK-PRIMITIVE-LABEL: func @float_tan
++func.func @float_tan(%arg0: tensor<2x2xf32>) -> tensor<2x2xf32> {
++  // CHECK: linalg.generic
++  // CHECK: tan
++  // CHECK-PRIMITIVE: linalg.map
++  // CHECK-PRIMITIVE: tan
++  %0 = "stablehlo.tan"(%arg0) : (tensor<2x2xf32>) -> tensor<2x2xf32>
++  func.return %0 : tensor<2x2xf32>
+ }
+ 
+ // -----
+@@ -926,6 +940,23 @@
+ // CHECK-PRIMITIVE:      (%[[LHS_:.*]]: f32, %[[RHS_:.*]]: f32) {
+ // CHECK-PRIMITIVE:        %[[RES:.*]] = arith.select %[[PRED_ELEM]], %[[LHS_]], %[[RHS_]] : f32
+ // CHECK-PRIMITIVE:        linalg.yield %[[RES]]
++
++// CHECK-NO-CAPTURE:      #[[SCALAR_MAP:.*]] = affine_map<(d0, d1) -> ()>
++// CHECK-NO-CAPTURE:      #[[ID_MAP:.*]] = affine_map<(d0, d1) -> (d0, d1)>
++// CHECK-NO-CAPTURE:      func @select_scalar_pred_dyn
++// CHECK-NO-CAPTURE-SAME:  (%[[PRED:.*]]: tensor<i1>, %[[LHS:.*]]: tensor<2x?xf32>, %[[RHS:.*]]: tensor<2x?xf32>)
++// CHECK-NO-CAPTURE-DAG:  %[[C1:.*]] = arith.constant 1
++// CHECK-NO-CAPTURE-DAG:  %[[DIM:.*]] =  tensor.dim %[[LHS]], %[[C1]]
++// CHECK-NO-CAPTURE-DAG:  %[[DST:.*]] = tensor.empty(%[[DIM]])
++// CHECK-NO-CAPTURE:      linalg.generic
++// CHECK-NO-CAPTURE-SAME:   indexing_maps = [#[[SCALAR_MAP]], #[[ID_MAP]], #[[ID_MAP]], #[[ID_MAP]]]
++// CHECK-NO-CAPTURE-SAME:   iterator_types = ["parallel", "parallel"]
++// CHECK-NO-CAPTURE-SAME:   ins(%[[PRED]], %[[LHS]], %[[RHS]] : tensor<i1>, tensor<2x?xf32>, tensor<2x?xf32>)
++// CHECK-NO-CAPTURE-SAME:   outs(%[[DST]] : tensor<2x?xf32>)
++// CHECK-NO-CAPTURE-SAME:   {someattr}
++// CHECK-NO-CAPTURE:      ^bb0(%[[PRED_:.*]]: i1, %[[LHS_:.*]]: f32, %[[RHS_:.*]]: f32, %{{.*}}: f32):
++// CHECK-NO-CAPTURE:        %[[RES:.*]] = arith.select %[[PRED_]], %[[LHS_]], %[[RHS_]] : f32
++// CHECK-NO-CAPTURE:        linalg.yield %[[RES]]
+ 
+ // -----
+ 
+diff --ruN a/stablehlo/stablehlo/conversions/linalg/transforms/LegalizeToLinalgUtils.cpp b/stablehlo/stablehlo/conversions/linalg/transforms/LegalizeToLinalgUtils.cpp
+--- stablehlo/stablehlo/conversions/linalg/transforms/LegalizeToLinalgUtils.cpp
++++ stablehlo/stablehlo/conversions/linalg/transforms/LegalizeToLinalgUtils.cpp
+@@ -140,12 +140,11 @@
+   // (any sign-op, or an integral abs-op).
+   // TODO(peiming, ajcbik): these all can potentially be optimized by applying
+   // value transform on sparse_tenosr.value memref
+-  if (isa<mlir::stablehlo::SignOp>(op) || isa<mlir::stablehlo::NegOp>(op) ||
++  if (isa<mlir::stablehlo::SignOp, mlir::stablehlo::NegOp,
++          mlir::stablehlo::TanOp>(op) ||
+       (isa<mlir::stablehlo::AbsOp>(op) && hasIntegralShapeType(op)) ||
+-      isa<chlo::AsinOp>(op) || isa<chlo::AsinhOp>(op) ||
+-      isa<chlo::AtanOp>(op) || isa<chlo::AtanhOp>(op) ||
+-      isa<chlo::BesselI1eOp>(op) || isa<chlo::SinhOp>(op) ||
+-      isa<chlo::TanOp>(op)) {
++      isa<chlo::AsinOp, chlo::AsinhOp, chlo::AtanOp, chlo::AtanhOp,
++          chlo::BesselI1eOp, chlo::SinhOp, chlo::TanOp>(op)) {
+     if (!sparse_tensor::getSparseTensorEncoding(op->getResult(0).getType()) &&
+         !sparse_tensor::getSparseTensorEncoding(op->getOperand(0).getType()))
+       return Value();
+diff --ruN a/stablehlo/stablehlo/conversions/linalg/transforms/MapStablehloToScalarOp.h b/stablehlo/stablehlo/conversions/linalg/transforms/MapStablehloToScalarOp.h
+--- stablehlo/stablehlo/conversions/linalg/transforms/MapStablehloToScalarOp.h
++++ stablehlo/stablehlo/conversions/linalg/transforms/MapStablehloToScalarOp.h
+@@ -153,14 +153,11 @@
+   using FOp = ::mlir::math::SinOp;
+   using COp = ::mlir::complex::SinOp;
+ };
+-// FIXME(Jakub)
+-/*
+ template <>
+ struct StablehloToScalarOp<stablehlo::TanOp> {
+   using FOp = ::mlir::math::TanOp;
+   using COp = ::mlir::complex::TanOp;
+ };
+-*/
+ template <>
+ struct StablehloToScalarOp<stablehlo::Atan2Op> {
+   using FOp = ::mlir::math::Atan2Op;
+diff --ruN a/stablehlo/stablehlo/conversions/linalg/transforms/Passes.td b/stablehlo/stablehlo/conversions/linalg/transforms/Passes.td
+--- stablehlo/stablehlo/conversions/linalg/transforms/Passes.td
++++ stablehlo/stablehlo/conversions/linalg/transforms/Passes.td
+@@ -39,7 +39,11 @@
+                  Option<"enableSparseOps", "enable-sparse-ops", "bool",
+                         /*default=*/"false",
+                         "Lower to Sparse Tensor ops (sparse_tensor.concatenate)"
+-                        "when possible, instead of linalg.generic">];
++                        "when possible, instead of linalg.generic">,
++                 Option<"captureScalarInputs", "capture-scalar-inputs", "bool",
++                        /*default=*/"true",
++                        "Capture scalar inputs in generic ops instead of"
++                        "passing as tensor-scalar argument.">];
+ }
+ 
+ #endif  // STABLEHLO_TO_LINALG_PASSES
+diff --ruN a/stablehlo/stablehlo/conversions/linalg/transforms/Rewriters.h b/stablehlo/stablehlo/conversions/linalg/transforms/Rewriters.h
+--- stablehlo/stablehlo/conversions/linalg/transforms/Rewriters.h
++++ stablehlo/stablehlo/conversions/linalg/transforms/Rewriters.h
+@@ -26,11 +26,12 @@
+ //===----------------------------------------------------------------------===//
+ 
+ /// Populates the patterns that convert from StableHLO to Linalg on tensors.
+-void populateStablehloToLinalgConversionPatterns(MLIRContext *context,
+-                                                 TypeConverter &typeConverter,
+-                                                 RewritePatternSet *patterns,
++void populateStablehloToLinalgConversionPatterns(MLIRContext* context,
++                                                 TypeConverter& typeConverter,
++                                                 RewritePatternSet* patterns,
+                                                  bool enablePrimitiveOps,
+-                                                 bool enableSparseOps);
++                                                 bool enableSparseOps,
++                                                 bool captureScalarInputs);
+ 
+ //===----------------------------------------------------------------------===//
+ // Fine-grained patterns used by the implementation.
+@@ -39,8 +40,9 @@
+ /// Populates the patterns that convert from elementwise StableHLO ops to Linalg
+ /// on tensors.
+ void populatePointwiseStablehloToLinalgConversionPatterns(
+-    MLIRContext *context, TypeConverter &typeConverter,
+-    RewritePatternSet *patterns, bool enablePrimitiveOps);
++    MLIRContext* context, TypeConverter& typeConverter,
++    RewritePatternSet* patterns, bool enablePrimitiveOps,
++    bool captureScalarInputs);
+ 
+ /// Populates the patterns that convert from convolution StableHLO ops to Linalg
+ /// on tensors.
+diff --ruN a/stablehlo/stablehlo/conversions/linalg/transforms/StablehloLegalizeToLinalg.cpp b/stablehlo/stablehlo/conversions/linalg/transforms/StablehloLegalizeToLinalg.cpp
+--- stablehlo/stablehlo/conversions/linalg/transforms/StablehloLegalizeToLinalg.cpp
++++ stablehlo/stablehlo/conversions/linalg/transforms/StablehloLegalizeToLinalg.cpp
+@@ -2634,7 +2634,8 @@
+ 
+     RewritePatternSet patterns_(context);
+     populateStablehloToLinalgConversionPatterns(
+-        context, converter, &patterns_, enablePrimitiveOps, enableSparseOps);
++        context, converter, &patterns_, enablePrimitiveOps, enableSparseOps,
++        captureScalarInputs);
+     patterns = std::move(patterns_);
+ 
+     return success();
+@@ -2657,7 +2658,8 @@
+                                                  TypeConverter& typeConverter,
+                                                  RewritePatternSet* patterns,
+                                                  bool enablePrimitiveOps,
+-                                                 bool enableSparseOps) {
++                                                 bool enableSparseOps,
++                                                 bool captureScalarInputs) {
+   // clang-format off
+   patterns->add<ConcatenateConverter>(typeConverter, context,
+                                       enablePrimitiveOps);
+@@ -2680,7 +2682,8 @@
+       >(typeConverter, context);
+ 
+   detail::populatePointwiseStablehloToLinalgConversionPatterns(
+-      context, typeConverter, patterns, enablePrimitiveOps);
++      context, typeConverter, patterns, enablePrimitiveOps,
++      captureScalarInputs);
+ 
+   if (enableSparseOps) {
+     patterns->add<SparseConcatenateConverter>(typeConverter, context);
+diff --ruN a/stablehlo/stablehlo/conversions/linalg/transforms/StablehloToArith.cpp b/stablehlo/stablehlo/conversions/linalg/transforms/StablehloToArith.cpp
+--- stablehlo/stablehlo/conversions/linalg/transforms/StablehloToArith.cpp
++++ stablehlo/stablehlo/conversions/linalg/transforms/StablehloToArith.cpp
+@@ -145,6 +145,7 @@
+       ScalarHloToArithmeticPattern<mlir::stablehlo::SineOp>,
+       ScalarHloToArithmeticPattern<mlir::stablehlo::SqrtOp>,
+       ScalarHloToArithmeticPattern<mlir::stablehlo::SubtractOp>,
++      ScalarHloToArithmeticPattern<mlir::stablehlo::TanOp>,
+       ScalarHloToArithmeticPattern<mlir::stablehlo::TanhOp>,
+       ScalarHloToArithmeticPattern<mlir::stablehlo::XorOp>>(typeConverter,
+                                                             context, filterFn);
+diff --ruN a/stablehlo/stablehlo/conversions/linalg/transforms/StablehloToLinalgPointwise.cpp b/stablehlo/stablehlo/conversions/linalg/transforms/StablehloToLinalgPointwise.cpp
+--- stablehlo/stablehlo/conversions/linalg/transforms/StablehloToLinalgPointwise.cpp
++++ stablehlo/stablehlo/conversions/linalg/transforms/StablehloToLinalgPointwise.cpp
+@@ -23,6 +23,7 @@
+ 
+ #include "llvm/ADT/STLExtras.h"
+ #include "llvm/ADT/SmallVector.h"
++#include "llvm/Support/Debug.h"
+ #include "mlir/Dialect/Linalg/IR/Linalg.h"
+ #include "mlir/Dialect/Tensor/IR/Tensor.h"
+ #include "mlir/IR/AffineMap.h"
+@@ -43,6 +44,8 @@
+ #include "stablehlo/conversions/linalg/transforms/Rewriters.h"
+ #include "stablehlo/dialect/StablehloOps.h"
+ 
++#define DEBUG_TYPE "stablehlo-conversions"
++
+ namespace mlir::stablehlo {
+ namespace {
+ int64_t getRank(Value v) { return cast<ShapedType>(v.getType()).getRank(); }
+@@ -142,6 +145,11 @@
+ struct PointwiseToLinalgMapConverter : OpConversionPattern<OpTy> {
+   using OpConversionPattern<OpTy>::OpConversionPattern;
+   using OpAdaptor = typename OpTy::Adaptor;
++
++  PointwiseToLinalgMapConverter(TypeConverter& typeConverter,
++                                MLIRContext* context, bool captureScalarInputs)
++      : OpConversionPattern<OpTy>(typeConverter, context),
++        captureScalarInputs(captureScalarInputs) {}
+ 
+   virtual FailureOr<Operation *> createLinalgOp(
+       OpTy &op, ConversionPatternRewriter &rewriter,
+@@ -190,8 +198,11 @@
+             rewriter, loc, cast<TypedValue<ShapedType>>(input),
+             cast<ShapedType>(emptyTensor.getType())));
+         scalarInputs.push_back(nullptr);
++      } else if (captureScalarInputs) {
++        scalarInputs.push_back(rewriter.create<tensor::ExtractOp>(loc, input));
+       } else {
+-        scalarInputs.push_back(rewriter.create<tensor::ExtractOp>(loc, input));
++        mappedInputs.push_back(input);
++        scalarInputs.push_back(nullptr);
+       }
+     }
+ 
+@@ -202,6 +213,8 @@
+     rewriter.replaceOp(op, (*mapOp)->getResults());
+     return success();
+   }
++
++  bool captureScalarInputs;
+ };
+ 
+ /// Converts a HLO operation to a linalg.generic op that contains the
+@@ -211,12 +224,12 @@
+   using PointwiseToLinalgMapConverter<OpTy>::PointwiseToLinalgMapConverter;
+   using OpAdaptor = typename OpTy::Adaptor;
+ 
+-  FailureOr<Operation *> createLinalgOp(OpTy &op,
+-                                        ConversionPatternRewriter &rewriter,
+-                                        ArrayRef<Value> mappedInputs,
+-                                        ArrayRef<Value> scalarVals,
+-                                        Value emptyTensor,
+-                                        int64_t maxRank) const override {
++  FailureOr<Operation*> createLinalgOp(OpTy& op,
++                                       ConversionPatternRewriter& rewriter,
++                                       ArrayRef<Value> mappedInputs,
++                                       ArrayRef<Value> scalarVals,
++                                       Value emptyTensor,
++                                       int64_t maxRank) const override {
+     // Create indexing maps.
+     AffineMap scalarMap = AffineMap::get(maxRank, 0, rewriter.getContext());
+     AffineMap idMap = rewriter.getMultiDimIdentityMap(maxRank);
+@@ -225,10 +238,10 @@
+       maps.push_back(isScalar(v) ? scalarMap : idMap);
+     maps.push_back(idMap);
+     bool failed = false;
+-    Operation *linalgOp = rewriter.create<linalg::GenericOp>(
++    Operation* linalgOp = rewriter.create<linalg::GenericOp>(
+         op.getLoc(), emptyTensor.getType(), mappedInputs, emptyTensor, maps,
+         getNParallelLoopsAttrs(maxRank),
+-        [&](OpBuilder &nestedBuilder, Location /*nested_loc*/,
++        [&](OpBuilder& nestedBuilder, Location /*nested_loc*/,
+             ValueRange args) {
+           Type innerResultTy = getElementTypeOrSelf(emptyTensor);
+           auto argvec =
+@@ -253,8 +266,9 @@
+ 
+ namespace detail {
+ void populatePointwiseStablehloToLinalgConversionPatterns(
+-    MLIRContext *context, TypeConverter &typeConverter,
+-    RewritePatternSet *patterns, bool enablePrimitiveOps) {
++    MLIRContext* context, TypeConverter& typeConverter,
++    RewritePatternSet* patterns, bool enablePrimitiveOps,
++    bool captureScalarInputs) {
+   if (enablePrimitiveOps) {
+     patterns->add<
+         PointwiseToLinalgMapConverter<mlir::stablehlo::AbsOp>,
+@@ -301,12 +315,12 @@
+         PointwiseToLinalgMapConverter<mlir::stablehlo::SineOp>,
+         PointwiseToLinalgMapConverter<mlir::stablehlo::SqrtOp>,
+         PointwiseToLinalgMapConverter<mlir::stablehlo::SubtractOp>,
++        PointwiseToLinalgMapConverter<mlir::stablehlo::TanOp>,
+         PointwiseToLinalgMapConverter<mlir::stablehlo::TanhOp>,
+-        PointwiseToLinalgMapConverter<mlir::stablehlo::XorOp>>(typeConverter,
+-                                                               context);
++        PointwiseToLinalgMapConverter<mlir::stablehlo::XorOp>>(
++        typeConverter, context, captureScalarInputs);
+     return;
+   }
+-
+   patterns
+       ->add<PointwiseToLinalgConverter<mlir::stablehlo::AbsOp>,
+             PointwiseToLinalgConverter<mlir::stablehlo::AddOp>,
+@@ -352,9 +366,10 @@
+             PointwiseToLinalgConverter<mlir::stablehlo::SineOp>,
+             PointwiseToLinalgConverter<mlir::stablehlo::SqrtOp>,
+             PointwiseToLinalgConverter<mlir::stablehlo::SubtractOp>,
++            PointwiseToLinalgConverter<mlir::stablehlo::TanOp>,
+             PointwiseToLinalgConverter<mlir::stablehlo::TanhOp>,
+-            PointwiseToLinalgConverter<mlir::stablehlo::XorOp>>(typeConverter,
+-                                                                context);
++            PointwiseToLinalgConverter<mlir::stablehlo::XorOp>>(
++          typeConverter, context, captureScalarInputs);
+ }
+ }  // namespace detail
+ }  // namespace mlir::stablehlo
 diff --ruN a/stablehlo/stablehlo/conversions/tosa/tests/legalize_quant_ops_to_tosa_rescale.mlir b/stablehlo/stablehlo/conversions/tosa/tests/legalize_quant_ops_to_tosa_rescale.mlir
 --- stablehlo/stablehlo/conversions/tosa/tests/legalize_quant_ops_to_tosa_rescale.mlir
 +++ stablehlo/stablehlo/conversions/tosa/tests/legalize_quant_ops_to_tosa_rescale.mlir
