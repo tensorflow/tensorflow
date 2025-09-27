@@ -34,7 +34,7 @@ const char kAutoParallelPrefix[] = "AutoParallel";
 
 NodeDef* AutoParallel::AddNodeDivConst() {
   NodeDef* node = graph_.add_node();
-  node->set_name(strings::StrCat(kAutoParallelPrefix, "-Div-Const"));
+  node->set_name(absl::StrCat(kAutoParallelPrefix, "-Div-Const"));
   node->set_op("Const");
 
   AttrValue attr_data_type;
@@ -52,7 +52,7 @@ NodeDef* AutoParallel::AddNodeDivConst() {
 NodeDef* AutoParallel::AddNodeDiv(const string& name, const string& input_a,
                                   const string& input_b) {
   NodeDef* node = graph_.add_node();
-  node->set_name(strings::StrCat(kAutoParallelPrefix, "-Div-", name));
+  node->set_name(absl::StrCat(kAutoParallelPrefix, "-Div-", name));
   node->set_op("RealDiv");
   node->add_input(input_a);
   node->add_input(input_b);
@@ -69,7 +69,7 @@ NodeDef* AutoParallel::AddNodeControl(const string& name,
   node->set_name(name);
   node->set_op("NoOp");
   for (const auto& dep : deps) {
-    node->add_input(strings::StrCat("^", dep));
+    node->add_input(absl::StrCat("^", dep));
   }
   return node;
 }
@@ -207,7 +207,7 @@ bool AutoParallel::NotSharedNode(const string& name) {
 }
 
 void AutoParallel::AddSharedNodes(GraphDef* graph) {
-  string prefix = strings::StrCat(kAutoParallelPrefix, "-Replica-", 0);
+  string prefix = absl::StrCat(kAutoParallelPrefix, "-Replica-", 0);
   for (const auto& node : shared_nodes_) {
     auto new_node = graph->add_node();
     *new_node = *all_nodes_[node];
@@ -221,14 +221,14 @@ void AutoParallel::AddSharedNodes(GraphDef* graph) {
 }
 
 void AutoParallel::AddOneReplica(GraphDef* graph, int number) {
-  string prefix = strings::StrCat(kAutoParallelPrefix, "-Replica-", number);
+  string prefix = absl::StrCat(kAutoParallelPrefix, "-Replica-", number);
   for (const auto& node : replica_nodes_) {
     auto new_node = graph->add_node();
     *new_node = *all_nodes_[node];
     if (NotSharedNode(new_node->name())) {
       new_node->set_name(AddPrefixToNodeName(new_node->name(), prefix));
       if (num_gpus_ > 0) {
-        new_node->set_device(strings::StrCat("/gpu:", number % num_gpus_));
+        new_node->set_device(absl::StrCat("/gpu:", number % num_gpus_));
       }
       for (int i = 0; i < new_node->input_size(); i++) {
         if (NotSharedNode(NodeName(new_node->input(i)))) {
@@ -248,13 +248,12 @@ void AutoParallel::BuildGraph(GraphDef* graph) {
   std::set<string> fetches;
   for (size_t i = 0; i < item_->fetch.size(); i++) {
     for (int j = 0; j < num_replicas_; j++) {
-      string prefix = strings::StrCat(kAutoParallelPrefix, "-Replica-", j);
+      string prefix = absl::StrCat(kAutoParallelPrefix, "-Replica-", j);
       string fetch = AddPrefixToNodeName(item_->fetch[i], prefix);
       fetches.insert(fetch);
     }
   }
-  string name_control =
-      strings::StrCat(kAutoParallelPrefix, "-Control-", "Fetch");
+  string name_control = absl::StrCat(kAutoParallelPrefix, "-Control-", "Fetch");
   auto control = AddNodeControl(name_control, fetches, graph);
 
   for (const auto& fetch : item_->fetch) {

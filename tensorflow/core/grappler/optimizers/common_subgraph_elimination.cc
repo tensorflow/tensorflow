@@ -245,11 +245,11 @@ absl::Status CommonSubgraphElimination::DedupComputations(
             }
             updated_fanout = true;
             if (position > 0) {
-              *fanout_input = StrCat(rep->name(), ":", position);
+              *fanout_input = absl::StrCat(rep->name(), ":", position);
             } else if (position == 0) {
               *fanout_input = rep->name();
             } else {
-              *fanout_input = StrCat("^", rep->name());
+              *fanout_input = absl::StrCat("^", rep->name());
             }
           }
         }
