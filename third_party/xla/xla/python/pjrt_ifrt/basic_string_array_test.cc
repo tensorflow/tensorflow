@@ -159,7 +159,7 @@ TEST(BasicStringArrayTest, Destruction) {
       [&on_done_with_buffer_called]() { on_done_with_buffer_called.Notify(); };
 
   auto [array_creation_promise, array_creation_future] =
-      PjRtFuture<>::MakePromise();
+      Future<>::MakePromise();
 
   tsl::Env::Default()->SchedClosure(
       ([&, promise = std::move(array_creation_promise)]() mutable {
