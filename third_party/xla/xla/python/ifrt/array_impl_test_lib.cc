@@ -39,7 +39,6 @@ limitations under the License.
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
-#include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt/ir/sharding_param.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/shape.h"
@@ -47,6 +46,7 @@ limitations under the License.
 #include "xla/python/ifrt/test_util.h"
 #include "xla/python/ifrt/user_context.h"
 #include "xla/python/ifrt/value.h"
+#include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
@@ -396,7 +396,7 @@ TEST(ArrayImplTest, MakeArrayFromHostBufferWithNonCompactByteStrides) {
   TF_ASSERT_OK(array->GetReadyFuture().Await());
 
   std::vector<int8_t> out_data(4);
-  Future<> future =
+  tsl::Future<> future =
       array->CopyToHostBuffer(out_data.data(), /*byte_strides=*/std::nullopt,
                               ArrayCopySemantics::kAlwaysCopy);
   TF_ASSERT_OK(future.Await());
@@ -898,7 +898,7 @@ TEST(ArrayImplTest, HostBufferRoundTripAllMemoryKinds) {
     TF_ASSERT_OK(array->GetReadyFuture().Await());
 
     std::vector<float> new_data(6);
-    Future<> future = array->CopyToHostBuffer(
+    tsl::Future<> future = array->CopyToHostBuffer(
         static_cast<void*>(new_data.data()), /*byte_strides=*/std::nullopt,
         ArrayCopySemantics::kReuseInput);
     TF_ASSERT_OK(future.Await());
@@ -934,7 +934,7 @@ TEST(ArrayImplTest, HostBufferInt4) {
     TF_ASSERT_OK(array->GetReadyFuture().Await());
 
     std::vector<int8_t> out_data(4);
-    Future<> future =
+    tsl::Future<> future =
         array->CopyToHostBuffer(out_data.data(), /*byte_strides=*/std::nullopt,
                                 ArrayCopySemantics::kAlwaysCopy);
     TF_ASSERT_OK(future.Await());
@@ -1505,7 +1505,7 @@ TEST(ArrayImplTest, MakeAndCopyZeroSizedBuffers) {
                              ArrayCopySemantics::kReuseInput));
       TF_ASSERT_OK(copied[0]->GetReadyFuture().Await());
 
-      Future<> future =
+      tsl::Future<> future =
           copied[0]->CopyToHostBuffer(nullptr, /*byte_strides=*/std::nullopt,
                                       ArrayCopySemantics::kAlwaysCopy);
       TF_ASSERT_OK(future.Await());
@@ -1556,7 +1556,7 @@ TEST(ArrayImplTest, CopyArraysExhaustive) {
         EXPECT_EQ(new_array->sharding().memory_kind(), dst_memory->Kind());
 
         std::vector<float> out_data(6);
-        Future<void> future = new_array->CopyToHostBuffer(
+        tsl::Future<void> future = new_array->CopyToHostBuffer(
             out_data.data(), /*byte_strides=*/std::nullopt,
             ArrayCopySemantics::kAlwaysCopy);
         TF_ASSERT_OK(future.Await());

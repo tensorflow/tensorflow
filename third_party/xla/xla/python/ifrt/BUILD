@@ -240,6 +240,7 @@ xla_cc_test(
     srcs = ["future_test.cc"],
     deps = [
         ":ifrt",
+        "//xla/tsl/concurrency:future",
         "//xla/tsl/lib/core:status_test_util",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_matchers",
@@ -483,6 +484,7 @@ cc_library(
         "//xla:shape_util",
         "//xla/pjrt:pjrt_layout",
         "//xla/python/ifrt/ir:sharding_param",
+        "//xla/tsl/concurrency:future",
         "//xla/tsl/concurrency:ref_count",
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:statusor",
@@ -586,6 +588,7 @@ cc_library(
         "//xla/hlo/testlib:test",
         "//xla/pjrt:pjrt_executable",
         "//xla/pjrt:pjrt_layout",
+        "//xla/tsl/concurrency:future",
         "//xla/tsl/concurrency:ref_count",
         "//xla/tsl/framework:allocator",
         "@com_google_absl//absl/base:no_destructor",

@@ -511,6 +511,7 @@ cc_library(
         "//xla/python/ifrt",
         "//xla/python/ifrt:remap_plan_proto_cc",
         "//xla/python/ifrt/ir/transforms:utils",
+        "//xla/tsl/concurrency:future",
         "//xla/tsl/concurrency:ref_count",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",

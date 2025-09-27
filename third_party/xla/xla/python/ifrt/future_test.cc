@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/types/span.h"
+#include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 
 namespace xla::ifrt {
@@ -32,16 +33,16 @@ namespace {
 using ::testing::HasSubstr;
 
 TEST(FutureTest, JoinZeroFuture) {
-  Future<> future = JoinFutures({});
+  tsl::Future<> future = JoinFutures({});
 
   TF_EXPECT_OK(future.Await());
 }
 
 TEST(FutureTest, JoinOneOkFuture) {
-  auto [promise, future] = Future<>::MakePromise();
-  std::vector<Future<>> futures = {std::move(future)};
+  auto [promise, future] = tsl::Future<>::MakePromise();
+  std::vector<tsl::Future<>> futures = {std::move(future)};
 
-  Future<> joined = JoinFutures(absl::MakeSpan(futures));
+  tsl::Future<> joined = JoinFutures(absl::MakeSpan(futures));
 
   ASSERT_FALSE(joined.IsReady());
   promise.Set(absl::OkStatus());
@@ -49,10 +50,10 @@ TEST(FutureTest, JoinOneOkFuture) {
 }
 
 TEST(FutureTest, JoinOneFailingFuture) {
-  auto [promise, future] = Future<>::MakePromise();
-  std::vector<Future<>> futures = {std::move(future)};
+  auto [promise, future] = tsl::Future<>::MakePromise();
+  std::vector<tsl::Future<>> futures = {std::move(future)};
 
-  Future<> joined = JoinFutures(absl::MakeSpan(futures));
+  tsl::Future<> joined = JoinFutures(absl::MakeSpan(futures));
 
   ASSERT_FALSE(joined.IsReady());
   promise.Set(absl::InvalidArgumentError("Some error"));
@@ -63,19 +64,19 @@ TEST(FutureTest, JoinOneFailingFuture) {
 
 TEST(FutureTest, JoinAllOkFutures) {
   constexpr int kNumFutures = 3;
-  std::vector<Promise<>> promises;
-  std::vector<Future<>> futures;
+  std::vector<tsl::Promise<>> promises;
+  std::vector<tsl::Future<>> futures;
   promises.reserve(kNumFutures);
   futures.reserve(kNumFutures);
   for (int i = 0; i < kNumFutures; ++i) {
     std::tie(promises.emplace_back(), futures.emplace_back()) =
-        Future<>::MakePromise();
+        tsl::Future<>::MakePromise();
   }
 
-  Future<> joined = JoinFutures(absl::MakeSpan(futures));
+  tsl::Future<> joined = JoinFutures(absl::MakeSpan(futures));
 
   ASSERT_FALSE(joined.IsReady());
-  for (Promise<>& promise : promises) {
+  for (tsl::Promise<>& promise : promises) {
     promise.Set(absl::OkStatus());
   }
   TF_EXPECT_OK(joined.Await());
@@ -83,19 +84,19 @@ TEST(FutureTest, JoinAllOkFutures) {
 
 TEST(FutureTest, JoinAllFailingFutures) {
   constexpr int kNumFutures = 3;
-  std::vector<Promise<>> promises;
-  std::vector<Future<>> futures;
+  std::vector<tsl::Promise<>> promises;
+  std::vector<tsl::Future<>> futures;
   promises.reserve(kNumFutures);
   futures.reserve(kNumFutures);
   for (int i = 0; i < kNumFutures; ++i) {
     std::tie(promises.emplace_back(), futures.emplace_back()) =
-        Future<>::MakePromise();
+        tsl::Future<>::MakePromise();
   }
 
-  Future<> joined = JoinFutures(absl::MakeSpan(futures));
+  tsl::Future<> joined = JoinFutures(absl::MakeSpan(futures));
 
   ASSERT_FALSE(joined.IsReady());
-  for (Promise<>& promise : promises) {
+  for (tsl::Promise<>& promise : promises) {
     promise.Set(absl::InvalidArgumentError("Some error"));
   }
   EXPECT_THAT(joined.Await(),
@@ -108,16 +109,16 @@ class JoinAllOkFuturesExceptForOneTest : public testing::TestWithParam<int> {};
 TEST_P(JoinAllOkFuturesExceptForOneTest, JoinAllOkFuturesExceptForOne) {
   const int kNumFutures = 3;
   const int failing_future_idx = GetParam();
-  std::vector<Promise<>> promises;
-  std::vector<Future<>> futures;
+  std::vector<tsl::Promise<>> promises;
+  std::vector<tsl::Future<>> futures;
   promises.reserve(kNumFutures);
   futures.reserve(kNumFutures);
   for (int i = 0; i < kNumFutures; ++i) {
     std::tie(promises.emplace_back(), futures.emplace_back()) =
-        Future<>::MakePromise();
+        tsl::Future<>::MakePromise();
   }
 
-  Future<> joined = JoinFutures(absl::MakeSpan(futures));
+  tsl::Future<> joined = JoinFutures(absl::MakeSpan(futures));
 
   ASSERT_FALSE(joined.IsReady());
   for (int i = 0; i < kNumFutures; ++i) {

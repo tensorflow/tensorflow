@@ -35,11 +35,11 @@ limitations under the License.
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/execute_options.pb.h"
-#include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt/serdes.h"
 #include "xla/python/ifrt/serdes_default_version_accessor.h"
 #include "xla/python/ifrt/serdes_version.h"
 #include "xla/python/ifrt/user_context.h"
+#include "xla/tsl/concurrency/future.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -190,7 +190,7 @@ class LoadedExecutable
   // compilation work in the background. Implementations must still ensure that
   // all other methods can be used even without explicitly waiting for the ready
   // future (e.g., via blocking).
-  virtual Future<> GetReadyFuture() const = 0;
+  virtual tsl::Future<> GetReadyFuture() const = 0;
 
   // The following APIs are taken from `xla::PjRtExecutable` for fast
   // prototyping.
@@ -247,7 +247,7 @@ class LoadedExecutable
   struct ExecuteResult {
     // Resulting status of the execution. Filled only if
     // `ExecuteOptions::fill_status` is true.
-    Future<> status;
+    tsl::Future<> status;
     // Output arrays.
     std::vector<ArrayRef> outputs;
   };

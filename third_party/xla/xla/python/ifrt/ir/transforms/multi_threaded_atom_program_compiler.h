@@ -25,15 +25,15 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/python/ifrt/compiler.h"
-#include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt/ir/atom_program_compiler.h"
 #include "xla/python/ifrt/ir/ifrt_ops.h"
+#include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/platform/threadpool.h"
 
 namespace xla {
 namespace ifrt {
 
-using CompileFuture = Future<AtomProgramCompileResult>;
+using CompileFuture = tsl::Future<AtomProgramCompileResult>;
 
 // Wrapper around `AtomProgramCompiler` that offers multi-threaded dispatch
 // of atom program compilations.

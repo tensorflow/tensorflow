@@ -39,7 +39,6 @@ limitations under the License.
 #include "xla/client/executable_build_options.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/python/ifrt/dtype.h"
-#include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt/hlo/hlo_program.h"
 #include "xla/python/ifrt/ir/atom_program_compiler.h"
 #include "xla/python/ifrt/ir/constants.h"

@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_PYTHON_IFRT_FUTURE_H_
 #define XLA_PYTHON_IFRT_FUTURE_H_
 
+#include "absl/base/macros.h"
 #include "xla/tsl/concurrency/future.h"
 
 namespace xla {
@@ -31,10 +32,10 @@ namespace ifrt {
 // * Awaiting on a `Future` should possibly be cancellable to lower overhead
 // when the `Future` value woudld be no longer useful or relevant.
 template <typename T = void>
-using Future = ::tsl::Future<T>;
+using Future ABSL_DEPRECATE_AND_INLINE() = ::tsl::Future<T>;
 
 template <typename T = void>
-using Promise = ::tsl::Promise<T>;
+using Promise ABSL_DEPRECATE_AND_INLINE() = ::tsl::Promise<T>;
 
 using ::tsl::JoinFutures;
 

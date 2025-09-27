@@ -89,6 +89,7 @@ cc_library(
         "//xla/service:hlo_proto_cc",
         "//xla/service/spmd/shardy:constants",
         "//xla/service/spmd/shardy:utils",
+        "//xla/tsl/concurrency:future",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:status",
