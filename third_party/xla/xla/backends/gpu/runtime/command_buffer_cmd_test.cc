@@ -15,9 +15,11 @@ limitations under the License.
 
 #include "xla/backends/gpu/runtime/command_buffer_cmd.h"
 
+#include <algorithm>
 #include <array>
 #include <cstdint>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/functional/function_ref.h"
