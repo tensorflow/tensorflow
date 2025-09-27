@@ -311,6 +311,16 @@ add {
   ROOT %call.2 = (s64[], s64[]) call(%arg2, %arg1), to_apply=%call_tuple_args_result
 }
 
+// CHECK-LABEL:  func private @test_get_tuple_element_fe_attrs
+// FLATTEN-CHECK-LABEL:  func private @test_get_tuple_element_fe_attrs
+%test_get_tuple_element_fe_attrs () -> f32[] {
+  %custom-call.2 = (f32[], f32[]) custom-call(), custom_call_target="CustomCallTuple", metadata={source_file="<stdin>" source_line=3 source_end_line=3 source_column=10 source_end_column=10}, backend_config={"_xla_data": "true"}
+  // CHECK: get_tuple_element{{.*}}mhlo.frontend_attributes = {_xla_data = "true"}
+  // FLATTEN-CHECK-LABEL: get_tuple_element{{.*}}mhlo.frontend_attributes = {_xla_data = "true"}
+  %get-tuple-element.1 = f32[] get-tuple-element(%custom-call.2), index=0, frontend_attributes={_xla_data="true"}, metadata={source_file="<stdin>" source_line=4 source_end_line=4 source_column=10 source_end_column=10}
+  ROOT %custom-call.3 = f32[] custom-call(%get-tuple-element.1), custom_call_target="CustomCallConsumeTuple", metadata={source_file="<stdin>" source_line=5 source_end_line=5 source_column=10 source_end_column=10}, backend_config={"_xla_data": "true"}
+}
+
 // CHECK-LABEL:  func private @test_cholesky
 // CHECK-SAME:  ([[ARG:%.*]]: tensor<1x291x291xf32>) -> tensor<1x291x291xf32>
 %test_cholesky (a: f32[1,291,291]) -> f32[1,291,291] {

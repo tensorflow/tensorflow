@@ -208,8 +208,8 @@ Operation* GetTupleElementOp(mlir::OpBuilder* builder, Value value,
                              llvm::SmallVector<NamedAttribute>&& attributes) {
   attributes.push_back(
       builder->getNamedAttr("index", builder->getI32IntegerAttr(index)));
-  return builder->create<mlir::stablehlo::GetTupleElementOp>(
-      value.getLoc(), value, builder->getI32IntegerAttr(index));
+  return mlir::stablehlo::GetTupleElementOp::create(*builder, value.getLoc(),
+                                                    value, attributes);
 }
 
 // Creates an array of zeros like the given MLIR type, if type has bounded
