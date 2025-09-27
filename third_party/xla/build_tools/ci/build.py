@@ -286,6 +286,7 @@ def nvidia_gpu_build_with_compute_capability(
       ),
       options={
           "run_under": "//build_tools/ci:parallel_gpu_execute",
+          "@cuda_driver//:enable_forward_compatibility": "true",
           "//xla/tsl:ci_build": True,
           **_DEFAULT_BAZEL_OPTIONS,
       },
@@ -422,6 +423,7 @@ Build(
     ),
     options={
         "run_under": "//build_tools/ci:parallel_gpu_execute",
+        "@cuda_driver//:enable_forward_compatibility": "false",
         "//xla/tsl:ci_build": True,
         **_DEFAULT_BAZEL_OPTIONS,
     },
@@ -487,6 +489,7 @@ Build(
     ),
     options={
         "run_under": "//build_tools/ci:parallel_gpu_execute",
+        "@cuda_driver//:enable_forward_compatibility": "false",
         "//xla/tsl:ci_build": True,
         **_DEFAULT_BAZEL_OPTIONS,
     },
@@ -553,6 +556,7 @@ Build(
     options={
         "run_under": "//build_tools/ci:parallel_gpu_execute",
         # Use User Mode and Kernel Mode Drivers pre-installed on the system.
+        "@cuda_driver//:enable_forward_compatibility": "true",
         "//xla/tsl:ci_build": True,
         **_DEFAULT_BAZEL_OPTIONS,
     },
