@@ -1112,6 +1112,22 @@ class ReadySetLt {
       RETURN_LOGIC(v, reason_str);                      \
     }                                                   \
   } while (0)
+#define CMP_PROPERTY_WITH_RTOL(property, rtol, reason_str) \
+  do {                                                     \
+    auto avalue = an->property;                            \
+    auto bvalue = bn->property;                            \
+    if (avalue == 0 && bvalue == 0) {                      \
+      /* Nothing to do if both are zero. */                \
+    } else {                                               \
+      double diff = std::abs(avalue - bvalue);             \
+      double max_val = std::max(avalue, bvalue);           \
+      if (max_val > 0 && (diff / max_val) > rtol) {        \
+        if (int v = ThreeWay(avalue, bvalue)) {            \
+          RETURN_LOGIC(v, reason_str);                     \
+        }                                                  \
+      }                                                    \
+    }                                                      \
+  } while (0)
 #define CMP_EXPLICIT(pa, pb, reason_str) \
   do {                                   \
     if (int v = ThreeWay((pa), (pb))) {  \
@@ -1120,13 +1136,16 @@ class ReadySetLt {
   } while (0)
 
  public:
+  static constexpr double kAsyncDepthRtolCoefficient = 0.35;
+
   // Nullptr is not a valid value for 'sched_graph'. It needs to be a valid
   // schedule graph containing the nodes this comparator is meant to compare.
   // It needs to outlive the comparator object.
   explicit ReadySetLt(
       const DefaultSchedulerCore::SchedulingState* sched_state,
       DefaultSchedulerCore::TargetSchedulingRule target_scheduling_rule,
-      DefaultSchedulerCore::TargetSchedulingRule early_target_scheduling_rule)
+      DefaultSchedulerCore::TargetSchedulingRule early_target_scheduling_rule,
+      int64_t run_index)
       : sched_state_(*sched_state),
         target_scheduling_rule_(target_scheduling_rule),
         early_target_scheduling_rule_(early_target_scheduling_rule),
@@ -1134,7 +1153,10 @@ class ReadySetLt {
         config_has_memory_limit_(config_memory_limit_ != UINT64_MAX),
         has_target_scheduling_rule_(target_scheduling_rule_ != nullptr),
         has_early_target_scheduling_rule_(early_target_scheduling_rule_ !=
-                                          nullptr) {}
+                                          nullptr),
+        run_index_(run_index),
+        async_depth_rtol_(
+            std::min(1.0, kAsyncDepthRtolCoefficient * run_index_)) {}
 
   std::optional<bool> MemoryPressurePolicy(
       const HloGraphNode* an, std::pair<int64_t, int64_t>& a_increase,
@@ -1387,7 +1409,7 @@ class ReadySetLt {
       // Try to favor paths that are dependent of chains of async operations
       // with long latency as we want to get to them as soon as possible to
       // overlap them with computation.
-      CMP_PROPERTY(GetAsyncDepth(), "kAsyncDepth");
+      CMP_PROPERTY_WITH_RTOL(GetAsyncDepth(), async_depth_rtol_, "kAsyncDepth");
 
       // Favor nodes that are the closest in amount of latency they hide
       // with the highest amount of latency that needs to be hidden to avoid
@@ -1477,6 +1499,8 @@ class ReadySetLt {
   bool config_has_memory_limit_;
   bool has_target_scheduling_rule_;
   bool has_early_target_scheduling_rule_;
+  int64_t run_index_;
+  double async_depth_rtol_;
 
   static bool IsNop(const HloGraphNode& gn) {
     return IsNopInstruction(gn.GetOpcode(), gn.GetInstr());
@@ -1629,7 +1653,8 @@ absl::string_view SkipNodeReasonString(SkipNodeReason reason) {
 absl::StatusOr<HloGraphNode*>
 DefaultSchedulerCore::FindAndExtractBestNodeAvailable(
     DefaultSchedulerCore::SchedulingState& sched_state,
-    DefaultSchedulerCore::ShouldSkipNodeFunction should_skip_node) {
+    DefaultSchedulerCore::ShouldSkipNodeFunction should_skip_node,
+    int64_t run_index) {
   // Schedule a nop instruction if available.
   if (!sched_state.nop_set.empty()) {
     HloGraphNode* node = sched_state.nop_set.back();
@@ -1640,7 +1665,7 @@ DefaultSchedulerCore::FindAndExtractBestNodeAvailable(
       skipped_nodes_and_reasons;
   VLOG(2) << "Current time: " << sched_state.current_time;
   ReadySetLt ready_lt{&sched_state, target_scheduling_rule_,
-                      early_target_scheduling_rule_};
+                      early_target_scheduling_rule_, run_index};
   // Construct a schedule candidate for caching.
   ScheduleCandidate ready_chosen;
   ScheduleCandidate ready_chosen_orig;
@@ -3087,15 +3112,17 @@ DefaultSchedulerCore::MakeSchedulingState(const HloComputation* computation) {
 }
 
 absl::StatusOr<std::vector<HloInstruction*>>
-DefaultSchedulerCore::ScheduleComputation(const HloComputation* computation) {
+DefaultSchedulerCore::ScheduleComputation(const HloComputation* computation,
+                                          int64_t run_index) {
   TF_ASSIGN_OR_RETURN(auto sched_state, MakeSchedulingState(computation));
-  return ScheduleComputation(computation, sched_state);
+  return ScheduleComputation(computation, sched_state, run_index);
 }
 
 absl::StatusOr<std::vector<HloInstruction*>>
 DefaultSchedulerCore::ScheduleComputation(
     const HloComputation* computation,
-    std::shared_ptr<SchedulerCore::SchedulingState> _sched_state) {
+    std::shared_ptr<SchedulerCore::SchedulingState> _sched_state,
+    int64_t run_index) {
   // Up-cast the scheduling state DefaultSchedulerCore::SchedulingState.
   std::shared_ptr<DefaultSchedulerCore::SchedulingState> sched_state =
       std::dynamic_pointer_cast<DefaultSchedulerCore::SchedulingState>(
@@ -3612,8 +3639,9 @@ absl::StatusOr<bool> LatencyHidingScheduler::Run(
     TF_RETURN_IF_ERROR(scheduler_core_->InitializeScheduler(module));
     scheduler_core_->SetMemoryLimit(scheduler_core_->GetMemoryLimit() * 0.9);
     for (HloComputation* computation : computations_to_schedule_) {
-      TF_ASSIGN_OR_RETURN(std::vector<HloInstruction*> new_schedule,
-                          scheduler_core_->ScheduleComputation(computation));
+      TF_ASSIGN_OR_RETURN(
+          std::vector<HloInstruction*> new_schedule,
+          scheduler_core_->ScheduleComputation(computation, iter));
       scheduling_context_->GetAsyncTracker()->UpdateTargetDefinedStates(
           computation);
       module->schedule().set_sequence(computation,

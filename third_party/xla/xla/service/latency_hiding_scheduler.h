@@ -406,12 +406,12 @@ class SchedulerCore {
     return absl::UnimplementedError("Not implemented.");
   }
   virtual absl::StatusOr<std::vector<HloInstruction*>> ScheduleComputation(
-      const HloComputation* computation) {
+      const HloComputation* computation, int64_t run_index) {
     return absl::UnimplementedError("Not implemented.");
   }
   virtual absl::StatusOr<std::vector<HloInstruction*>> ScheduleComputation(
       const HloComputation* computation,
-      std::shared_ptr<SchedulingState> sched_state) {
+      std::shared_ptr<SchedulingState> sched_state, int64_t run_index) {
     return absl::UnimplementedError("Not implemented.");
   }
 
@@ -1676,10 +1676,11 @@ class DefaultSchedulerCore : public SchedulerCore {
   absl::StatusOr<std::shared_ptr<SchedulerCore::SchedulingState>>
   MakeSchedulingState(const HloComputation* computation) override;
   absl::StatusOr<std::vector<HloInstruction*>> ScheduleComputation(
-      const HloComputation* computation) override;
+      const HloComputation* computation, int64_t run_index) override;
   absl::StatusOr<std::vector<HloInstruction*>> ScheduleComputation(
       const HloComputation* computation,
-      std::shared_ptr<SchedulerCore::SchedulingState> sched_state) override;
+      std::shared_ptr<SchedulerCore::SchedulingState> sched_state,
+      int64_t run_index) override;
   static bool AddOccupierToResource(
       HloGraphNode::TimeCost current_time, HloEdge& new_edge,
       std::vector<std::pair<HloEdge*, HloGraphNode::TimeCost>>& occupiers);
@@ -1752,7 +1753,8 @@ class DefaultSchedulerCore : public SchedulerCore {
   // Pick a node to schedule according to cost model.
   virtual absl::StatusOr<HloGraphNode*> FindAndExtractBestNodeAvailable(
       SchedulingState& sched_state,
-      DefaultSchedulerCore::ShouldSkipNodeFunction should_skip_node);
+      DefaultSchedulerCore::ShouldSkipNodeFunction should_skip_node,
+      int64_t run_index);
 
   std::unique_ptr<ModulePressureState> module_pressure_state_;
   SchedulerConfig config_;
