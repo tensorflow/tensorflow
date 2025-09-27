@@ -921,12 +921,17 @@ Future<> Array::CopyToHostBuffer(
             promise.Set(status);
             return;
           }
+          if (!mem_region.empty()) {
 #if defined(PLATFORM_GOOGLE)
-          data->CopyToArray(const_cast<char*>(mem_region.data()));
+            // NOLINTNEXTLINE
+            data->CopyToArray(const_cast<char*>(mem_region.data()));
+
 #else
-          std::memcpy(const_cast<char*>(mem_region.data()),
-                      data->Flatten().data(), data->size());
+            // NOLINTNEXTLINE
+            std::memcpy(const_cast<char*>(mem_region.data()),
+                        data->Flatten().data(), data->size());
 #endif
+          }
           promise.Set();
         });
   };
