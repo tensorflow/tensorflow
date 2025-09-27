@@ -60,7 +60,7 @@ class TestChildExecutableCompiler : public AtomProgramCompiler {
   absl::StatusOr<AtomProgramCompileResult> CompileXla(
       std::unique_ptr<HloProgram> hlo_program,
       xla::CompileOptions options) override ABSL_LOCKS_EXCLUDED(mu_) {
-    absl::MutexLock lock(&mu_);
+    absl::MutexLock lock(mu_);
     methods_.push_back(absl::StrCat("fake_method_", methods_.size()));
     CHECK_LT(methods_.size(), kMaxTestMethods)
         << "push_back() might have caused reallocation, which might have "
@@ -102,7 +102,7 @@ class TestChildExecutableCompiler : public AtomProgramCompiler {
       std::vector<IfrtArrayType> in_array_types,
       std::vector<IfrtArrayType> out_array_types) override
       ABSL_LOCKS_EXCLUDED(mu_) {
-    absl::MutexLock lock(&mu_);
+    absl::MutexLock lock(mu_);
     methods_.push_back(absl::StrCat("fake_method_", methods_.size()));
     CHECK_LT(methods_.size(), kMaxTestMethods)
         << "push_back() might have caused reallocation, which might have "
