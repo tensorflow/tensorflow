@@ -18,6 +18,7 @@ limitations under the License.
 #include <cmath>
 #include <cstdint>
 #include <iterator>
+#include <optional>
 #include <stack>
 #include <utility>
 #include <vector>
