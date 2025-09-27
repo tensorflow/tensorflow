@@ -50,10 +50,12 @@ namespace mhlo {
 namespace {
 
 ChloLegalizeToHighLevelMhloPassOptions FromPassOptions(bool enableAcosh,
-                                                       bool enableAcos) {
+                                                       bool enableAcos,
+                                                       bool enableAsin) {
   ChloLegalizeToHighLevelMhloPassOptions options;
   options.enable_acosh_ = enableAcosh;
   options.enable_acos_ = enableAcos;
+  options.enable_asin_ = enableAsin;
   return options;
 }
 
@@ -62,6 +64,10 @@ static bool isLegalAcosh(chlo::AcoshOp op) {
 }
 
 static bool isLegalAcos(chlo::AcosOp op) {
+  return !llvm::isa<FloatType>(getElementTypeOrSelf(op.getType()));
+}
+
+static bool isLegalAsin(chlo::AsinOp op) {
   return !llvm::isa<FloatType>(getElementTypeOrSelf(op.getType()));
 }
 
@@ -81,7 +87,7 @@ struct ChloLegalizeToHighLevelMhloPass
 
     chlo::populateChloToHighLevelMhloOpPatterns(
         &context, &conversionPatterns,
-        FromPassOptions(enable_acosh_, enable_acos_));
+        FromPassOptions(enable_acosh_, enable_acos_, enable_asin_));
 
     // Consider the mhlo dialect legal for tests. Also add helper dialects
     // that are needed by the patterns.
@@ -91,6 +97,9 @@ struct ChloLegalizeToHighLevelMhloPass
     }
     if (enable_acos_) {
       conversionTarget.addDynamicallyLegalOp<chlo::AcosOp>(isLegalAcos);
+    }
+    if (enable_asin_) {
+      conversionTarget.addDynamicallyLegalOp<chlo::AsinOp>(isLegalAsin);
     }
     conversionTarget
         .addIllegalOp<chlo::TopKOp, chlo::ErfOp, chlo::RaggedDotOp>();
@@ -207,6 +216,15 @@ LogicalResult convertAcosChloToMhlo(chlo::AcosOp op,
   return success();
 }
 
+LogicalResult convertAsinChloToMhlo(chlo::AsinOp op,
+                                    PatternRewriter& rewriter) {
+  if (mhlo::isLegalAsin(op)) {
+    return failure();
+  }
+  rewriter.replaceOpWithNewOp<mhlo::AsinOp>(op, op->getOperands());
+  return success();
+}
+
 }  // namespace
 
 ChloLegalizeToHighLevelMhloPassOptions getDefaultChloToHighLevelMhloOptions() {
@@ -217,6 +235,7 @@ ChloLegalizeToHighLevelMhloPassOptions getGpuChloToHighLevelMhloOptions() {
   ChloLegalizeToHighLevelMhloPassOptions opts;
   opts.enable_acosh_ = true;
   opts.enable_acos_ = true;
+  opts.enable_asin_ = true;
   return opts;
 }
 
@@ -236,6 +255,9 @@ void populateChloToHighLevelMhloOpPatterns(
   }
   if (options.enable_acos_) {
     patterns->add(mhlo::convertAcosChloToMhlo, kBenefit);
+  }
+  if (options.enable_asin_) {
+    patterns->add(mhlo::convertAsinChloToMhlo, kBenefit);
   }
   patterns->add(mhlo::convertRaggedDotChloToMhlo, kBenefit);
   populateWithGenerated(*patterns);

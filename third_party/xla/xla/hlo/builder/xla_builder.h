@@ -1742,6 +1742,9 @@ class XlaBuilder {
   friend XlaOp Acosh(XlaOp x,
                      const std::optional<ResultAccuracy>& result_accuracy,
                      bool expand);
+  friend XlaOp Asin(XlaOp x,
+                    const std::optional<ResultAccuracy>& result_accuracy,
+                    bool expand);
   friend XlaOp Atan2(XlaOp y, XlaOp x,
                      absl::Span<const int64_t> broadcast_dimensions);
   friend XlaOp Atanh(XlaOp x,

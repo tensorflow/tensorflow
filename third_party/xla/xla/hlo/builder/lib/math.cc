@@ -1191,7 +1191,11 @@ XlaOp Acos(XlaOp x, const std::optional<ResultAccuracy>& result_accuracy,
 }
 
 // asin(x) = 2 * atan(x / (1 + sqrt(1 - x^2)))
-XlaOp Asin(XlaOp x) {
+XlaOp Asin(XlaOp x, const std::optional<ResultAccuracy>& result_accuracy,
+           bool expand) {
+  if (!expand) {
+    return x.builder()->UnaryOp(HloOpcode::kAsin, x, result_accuracy);
+  }
   XlaBuilder* b = x.builder();
   auto do_it = [&](XlaOp z) -> absl::StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(auto shape, b->GetShape(z));
