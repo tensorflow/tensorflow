@@ -19,9 +19,12 @@ limitations under the License.
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <utility>
 
+#include "absl/base/nullability.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/die_if_null.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/analysis/alias_info.h"
@@ -81,14 +84,24 @@ class ComputationSchedulerAlgorithm : public ModuleSchedulerAlgorithm {
       int64_t* peak_memory) const override;
 
  protected:
+  ComputationSchedulerAlgorithm(
+      const AliasInfo* alias_info,
+      const BufferValue::SizeFunction* absl_nonnull size_function,
+      SchedulerPostprocessor postprocessor)
+      : ModuleSchedulerAlgorithm(alias_info),
+        size_function_(ABSL_DIE_IF_NULL(size_function)),
+        postprocessor_(std::move(postprocessor)) {}
+  // Variant of the above constructor that takes ownership of the size function.
   ComputationSchedulerAlgorithm(const AliasInfo* alias_info,
                                 BufferValue::SizeFunction size_function,
                                 SchedulerPostprocessor postprocessor)
       : ModuleSchedulerAlgorithm(alias_info),
-        size_function_(std::move(size_function)),
+        owned_size_function_(std::move(size_function)),
+        size_function_(&*owned_size_function_),
         postprocessor_(std::move(postprocessor)) {}
 
-  BufferValue::SizeFunction size_function_;
+  std::optional<BufferValue::SizeFunction> owned_size_function_;
+  const BufferValue::SizeFunction* absl_nonnull size_function_;
   SchedulerPostprocessor postprocessor_;
 };
 
@@ -97,6 +110,12 @@ class ComputationSchedulerAlgorithm : public ModuleSchedulerAlgorithm {
 // frees bigger buffer and defines smaller outputs.
 class ListMemoryScheduler : public ComputationSchedulerAlgorithm {
  public:
+  ListMemoryScheduler(
+      const AliasInfo* alias_info,
+      const BufferValue::SizeFunction* absl_nonnull size_function,
+      SchedulerPostprocessor postprocessor = {})
+      : ComputationSchedulerAlgorithm(alias_info, size_function,
+                                      std::move(postprocessor)) {}
   ListMemoryScheduler(const AliasInfo* alias_info,
                       BufferValue::SizeFunction size_function,
                       SchedulerPostprocessor postprocessor = {})
@@ -112,6 +131,12 @@ class ListMemoryScheduler : public ComputationSchedulerAlgorithm {
 // DFS-order scheduler with a heuristic to decide which operand to visit first.
 class DFSMemoryScheduler : public ComputationSchedulerAlgorithm {
  public:
+  DFSMemoryScheduler(
+      const AliasInfo* alias_info,
+      const BufferValue::SizeFunction* absl_nonnull size_function,
+      SchedulerPostprocessor postprocessor = {})
+      : ComputationSchedulerAlgorithm(alias_info, size_function,
+                                      std::move(postprocessor)) {}
   DFSMemoryScheduler(const AliasInfo* alias_info,
                      BufferValue::SizeFunction size_function,
                      SchedulerPostprocessor postprocessor = {})
@@ -137,6 +162,11 @@ class DFSMemoryScheduler : public ComputationSchedulerAlgorithm {
 class BFScheduler : public ComputationSchedulerAlgorithm {
  public:
   BFScheduler(const AliasInfo* alias_info,
+              const BufferValue::SizeFunction* absl_nonnull size_function,
+              SchedulerPostprocessor postprocessor = {})
+      : ComputationSchedulerAlgorithm(alias_info, size_function,
+                                      std::move(postprocessor)) {}
+  BFScheduler(const AliasInfo* alias_info,
               BufferValue::SizeFunction size_function,
               SchedulerPostprocessor postprocessor = {})
       : ComputationSchedulerAlgorithm(alias_info, std::move(size_function),
@@ -150,6 +180,12 @@ class BFScheduler : public ComputationSchedulerAlgorithm {
 // Naive Post Order scheduler
 class PostOrderScheduler : public ComputationSchedulerAlgorithm {
  public:
+  explicit PostOrderScheduler(
+      const AliasInfo* alias_info,
+      const BufferValue::SizeFunction* absl_nonnull size_function,
+      SchedulerPostprocessor postprocessor = {})
+      : ComputationSchedulerAlgorithm(alias_info, size_function,
+                                      std::move(postprocessor)) {}
   explicit PostOrderScheduler(const AliasInfo* alias_info,
                               BufferValue::SizeFunction size_function,
                               SchedulerPostprocessor postprocessor = {})
@@ -168,13 +204,25 @@ class PostOrderScheduler : public ComputationSchedulerAlgorithm {
 // to the peak memory of the resulting schedule according to the HeapSimulator.
 class DefaultMemoryScheduler : public ModuleSchedulerAlgorithm {
  public:
+  DefaultMemoryScheduler(
+      const AliasInfo* alias_info,
+      const BufferValue::SizeFunction* absl_nonnull size_function,
+      const SchedulerPostprocessor& postprocessor = {})
+      : ModuleSchedulerAlgorithm(alias_info),
+        size_function_(size_function),
+        list_scheduler_(alias_info, size_function_, postprocessor),
+        dfs_scheduler_(alias_info, size_function_, postprocessor),
+        post_order_scheduler_(alias_info, size_function_, postprocessor) {}
+  // Variant of the above constructor that takes ownership of the size function.
   DefaultMemoryScheduler(const AliasInfo* alias_info,
-                         const BufferValue::SizeFunction& size_function,
+                         BufferValue::SizeFunction size_function,
                          const SchedulerPostprocessor& postprocessor = {})
       : ModuleSchedulerAlgorithm(alias_info),
-        list_scheduler_(alias_info, size_function, postprocessor),
-        dfs_scheduler_(alias_info, size_function, postprocessor),
-        post_order_scheduler_(alias_info, size_function, postprocessor) {}
+        owned_size_function_(std::move(size_function)),
+        size_function_(&*owned_size_function_),
+        list_scheduler_(alias_info, size_function_, postprocessor),
+        dfs_scheduler_(alias_info, size_function_, postprocessor),
+        post_order_scheduler_(alias_info, size_function_, postprocessor) {}
   absl::StatusOr<HloSchedule> Run(
       const HloModule* module, const TuplePointsToAnalysis& points_to_analysis,
       const HloAliasAnalysis& alias_analysis,
@@ -182,6 +230,8 @@ class DefaultMemoryScheduler : public ModuleSchedulerAlgorithm {
       int64_t* peak_memory) const override;
 
  private:
+  std::optional<BufferValue::SizeFunction> owned_size_function_;
+  const BufferValue::SizeFunction* absl_nonnull size_function_;
   ListMemoryScheduler list_scheduler_;
   DFSMemoryScheduler dfs_scheduler_;
   PostOrderScheduler post_order_scheduler_;
@@ -198,7 +248,7 @@ absl::StatusOr<HloSchedule> ScheduleModule(
 // Schedule the module using the DefaultMemoryScheduler algorithm.
 absl::StatusOr<HloSchedule> ScheduleModule(
     const HloModule* module, const AliasInfo* alias_info,
-    const BufferValue::SizeFunction& size_function,
+    BufferValue::SizeFunction size_function,
     const absl::flat_hash_set<absl::string_view>& execution_threads = {},
     int64_t* peak_memory = nullptr);
 
@@ -212,10 +262,16 @@ class HloMemoryScheduler : public HloModulePass {
   explicit HloMemoryScheduler(
       std::unique_ptr<ModuleSchedulerAlgorithm> algorithm)
       : algorithm_(std::move(algorithm)) {}
-  HloMemoryScheduler(const AliasInfo* alias_info,
-                     const BufferValue::SizeFunction& size_function)
+  HloMemoryScheduler(
+      const AliasInfo* alias_info,
+      const BufferValue::SizeFunction* absl_nonnull size_function)
       : algorithm_(std::make_unique<DefaultMemoryScheduler>(alias_info,
                                                             size_function)) {}
+  // Variant of the above constructor that takes ownership of the size function.
+  HloMemoryScheduler(const AliasInfo* alias_info,
+                     BufferValue::SizeFunction size_function)
+      : algorithm_(std::make_unique<DefaultMemoryScheduler>(
+            alias_info, std::move(size_function))) {}
 
   absl::string_view name() const override { return "hlo-memory-scheduler"; }
 
