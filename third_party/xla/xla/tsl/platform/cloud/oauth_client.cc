@@ -57,7 +57,7 @@ absl::Status ReadJsonValue(const Json::Value& json, const string& name,
   *value = json.get(name, Json::Value::null);
   if (*value == Json::Value::null) {
     return errors::FailedPrecondition(
-        strings::StrCat("Couldn't read a JSON value '", name, "'."));
+        absl::StrCat("Couldn't read a JSON value '", name, "'."));
   }
   return absl::OkStatus();
 }
@@ -68,7 +68,7 @@ absl::Status ReadJsonString(const Json::Value& json, const string& name,
   TF_RETURN_IF_ERROR(ReadJsonValue(json, name, &json_value));
   if (!json_value.isString()) {
     return errors::FailedPrecondition(
-        strings::StrCat("JSON value '", name, "' is not string."));
+        absl::StrCat("JSON value '", name, "' is not string."));
   }
   *value = json_value.asString();
   return absl::OkStatus();
@@ -80,7 +80,7 @@ absl::Status ReadJsonInt(const Json::Value& json, const string& name,
   TF_RETURN_IF_ERROR(ReadJsonValue(json, name, &json_value));
   if (!json_value.isIntegral()) {
     return errors::FailedPrecondition(
-        strings::StrCat("JSON value '", name, "' is not integer."));
+        absl::StrCat("JSON value '", name, "' is not integer."));
   }
   *value = json_value.asInt64();
   return absl::OkStatus();
@@ -219,7 +219,7 @@ absl::Status OAuthClient::GetTokenFromServiceAccountJson(
   TF_RETURN_IF_ERROR(CreateSignature(private_key.get(), to_sign, &signature));
   const string jwt = to_sign + "." + signature;
   const string request_body =
-      strings::StrCat("grant_type=", kGrantType, "&assertion=", jwt);
+      absl::StrCat("grant_type=", kGrantType, "&assertion=", jwt);
 
   // Send the request to the Google OAuth 2.0 server to get the token.
   std::unique_ptr<HttpRequest> request(http_request_factory_->Create());
