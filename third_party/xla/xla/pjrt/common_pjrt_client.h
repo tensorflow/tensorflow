@@ -33,6 +33,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/future.h"
 #include "xla/layout.h"
 #include "xla/literal.h"
 #include "xla/pjrt/abstract_tracked_device_buffer.h"
@@ -125,19 +126,19 @@ class CommonPjRtClient : public PjRtClient {
   // event_tracking_enabled()).
   virtual void TrackFuture(PjRtMemorySpace* memory_space,
                            absl::string_view debug_info,
-                           const PjRtFuture<>& future);
+                           const Future<>& future);
 
   // Creates a future from a user-provided future with profiling and
   // traceme scopes.
-  virtual PjRtFuture<> CreateProfiledFuture(PjRtMemorySpace* memory_space,
-                                            const char* callee_type,
-                                            const char* callee_method,
-                                            PjRtFuture<> future);
+  virtual Future<> CreateProfiledFuture(PjRtMemorySpace* memory_space,
+                                        const char* callee_type,
+                                        const char* callee_method,
+                                        Future<> future);
 
-  // Create a linked PjRtFuture<> and ::Promise pair for operations on
+  // Create a linked Future<> and Promise<> pair for operations on
   // buffers in memory_space which populates debug information like linked
   // tracmes.
-  std::pair<PjRtFuture<>::Promise, PjRtFuture<>> CreateLinkedUserPromise(
+  std::pair<Promise<>, Future<>> CreateLinkedUserPromise(
       PjRtMemorySpace* memory_space, const char* callee_type,
       const char* callee_method, absl::string_view debug_info);
 
@@ -236,7 +237,7 @@ class CommonPjRtClient : public PjRtClient {
       tsl::RCReference<CommonPjRtRawBuffer> raw_buffer,
       std::vector<tsl::RCReference<tsl::AsyncValue>> definition_events,
       tsl::RCReference<PjRtDeviceEventPromise> usage_event_promise,
-      PjRtFuture<std::string> serialized_descriptor,
+      Future<std::string> serialized_descriptor,
       PjRtBuffer::RemoteSendCallback on_done);
 };
 
@@ -269,15 +270,15 @@ class CommonPjRtBufferImpl : public CommonPjRtBuffer {
   ReleaseDeviceMemoryOwnership(bool wait_for_operations_to_complete) override;
 
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> DonateWithControlDependency(
-      PjRtFuture<> dependency) override;
+      Future<> dependency) override;
 
-  PjRtFuture<> GetReadyFuture() override;
+  Future<> GetReadyFuture() override;
 
   // The implementation of logical_on_device_shape may involve a blocking
   // device to host transfer to read the metadata of dynamic shape.
   absl::StatusOr<Shape> logical_on_device_shape() override;
 
-  void CopyToRemoteDevice(PjRtFuture<std::string> serialized_descriptor,
+  void CopyToRemoteDevice(Future<std::string> serialized_descriptor,
                           RemoteSendCallback on_done) override;
 
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> CopyToMemorySpace(
@@ -301,21 +302,20 @@ class CommonPjRtBufferImpl : public CommonPjRtBuffer {
   CopyToMemorySpaceSyncThroughLiteral(PjRtMemorySpace* dst_memory_space);
 
   using PjRtBuffer::ToLiteralSync;
-  PjRtFuture<> ToLiteral(MutableLiteralBase* literal) override;
-  PjRtFuture<> LazyToLiteral(
-      absl::AnyInvocable<PjRtFuture<MutableLiteralBase*>() &&> generator)
-      override;
+  Future<> ToLiteral(MutableLiteralBase* literal) override;
+  Future<> LazyToLiteral(
+      absl::AnyInvocable<Future<MutableLiteralBase*>() &&> generator) override;
 
   absl::StatusOr<tsl::RCReference<PjRtRawBuffer>> CreateRawAliasOfBuffer();
 
   absl::StatusOr<std::unique_ptr<ExternalReference>> AcquireExternalReference()
       override;
 
-  PjRtFuture<> CopyRawToHost(void* dst, int64_t offset,
-                             int64_t transfer_size) override;
+  Future<> CopyRawToHost(void* dst, int64_t offset,
+                         int64_t transfer_size) override;
 
-  PjRtFuture<> CopyRawToHostFuture(PjRtFuture<void*> dst, int64_t offset,
-                                   int64_t transfer_size) override;
+  Future<> CopyRawToHostFuture(Future<void*> dst, int64_t offset,
+                               int64_t transfer_size) override;
 
   void Delete() override;
 
@@ -324,9 +324,9 @@ class CommonPjRtBufferImpl : public CommonPjRtBuffer {
  protected:
   // Shared implementation for ToLiteral and LazyToLiteral. If `literal` is
   // null, will call the function in the generator.
-  PjRtFuture<> ToLiteralImpl(
+  Future<> ToLiteralImpl(
       MutableLiteralBase* literal,
-      absl::AnyInvocable<PjRtFuture<MutableLiteralBase*>() &&> generator);
+      absl::AnyInvocable<Future<MutableLiteralBase*>() &&> generator);
 
  private:
   const Shape on_device_shape_;

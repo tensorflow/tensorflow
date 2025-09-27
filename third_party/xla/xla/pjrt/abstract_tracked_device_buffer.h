@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
+#include "xla/future.h"
 #include "xla/pjrt/device_event.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_future.h"
@@ -64,15 +65,15 @@ class AbstractTrackedDeviceBuffer {
   // Clones an abstract buffer with an additional control dependency.
   virtual absl::StatusOr<std::unique_ptr<AbstractTrackedDeviceBuffer>>
   CloneWithControlDependency(PjRtMemorySpace* memory_space,
-                             PjRtFuture<> dependency) {
+                             Future<> dependency) {
     return Unimplemented("DonateWithControlDependency is not supported.");
   }
 
   // Returns a future that becomes available when all definition events are
   // complete.
-  virtual PjRtFuture<> GetReadyFuture(PjRtMemorySpace* memory_space) {
-    return PjRtFuture<>(Unimplemented("GetReadyFuture not supported for %s",
-                                      memory_space->DebugString()));
+  virtual Future<> GetReadyFuture(PjRtMemorySpace* memory_space) {
+    return Future<>(Unimplemented("GetReadyFuture not supported for %s",
+                                  memory_space->DebugString()));
   }
 
   // Waits for all usage and definition events to complete synchronously
@@ -294,7 +295,7 @@ class CommonPjRtBuffer : public PjRtBuffer {
   }
 
   mutable absl::Mutex mu_;
-  PjRtFuture<> definition_future_ ABSL_GUARDED_BY(mu_);
+  Future<> definition_future_ ABSL_GUARDED_BY(mu_);
   PjRtMemorySpace* const memory_space_;
 
  private:

@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "xla/future.h"
 #include "xla/literal.h"
 #include "xla/pjrt/async_work_runner.h"
 #include "xla/pjrt/device_event.h"
@@ -60,8 +61,8 @@ class PjRtRawBuffer : public tsl::ReferenceCounted<PjRtRawBuffer> {
   // Note that the underlying driver may have requirements
   // on the alignment of `src` and `offset` as well. Look at implementations of
   // this method for specific alignment requirements.
-  virtual PjRtFuture<> CopyRawHostToDevice(const void* src, int64_t offset,
-                                           int64_t transfer_size) = 0;
+  virtual Future<> CopyRawHostToDevice(const void* src, int64_t offset,
+                                       int64_t transfer_size) = 0;
 
   // Transfers a sub-range of the on-device representation of the buffer.
   // offset+transfer_size must be less than GetOnDeviceSizeInBytes. The
@@ -71,8 +72,8 @@ class PjRtRawBuffer : public tsl::ReferenceCounted<PjRtRawBuffer> {
   // Note that the underlying driver may have requirements
   // on the alignment of `dst` and `offset` as well. Look at implementations of
   // this method for specific alignment requirements.
-  virtual PjRtFuture<> CopyRawDeviceToHost(void* dst, int64_t offset,
-                                           int64_t transfer_size) = 0;
+  virtual Future<> CopyRawDeviceToHost(void* dst, int64_t offset,
+                                       int64_t transfer_size) = 0;
 };
 
 // Adds methods common to all implementations of PjRtRawBuffer based on device
@@ -94,8 +95,8 @@ class CommonPjRtRawBuffer : public PjRtRawBuffer {
   CopyRawHostToDeviceAndReturnEvent(const void* src, int64_t offset,
                                     int64_t transfer_size) = 0;
 
-  PjRtFuture<> CopyRawHostToDevice(const void* src, int64_t offset,
-                                   int64_t transfer_size) override;
+  Future<> CopyRawHostToDevice(const void* src, int64_t offset,
+                               int64_t transfer_size) override;
 
   // Transfers a sub-range of the on-device representation of the buffer.
   // offset+transfer_size must be less than GetOnDeviceSizeInBytes. The
@@ -109,8 +110,8 @@ class CommonPjRtRawBuffer : public PjRtRawBuffer {
   CopyRawDeviceToHostAndReturnEvent(void* dst, int64_t offset,
                                     int64_t transfer_size) = 0;
 
-  PjRtFuture<> CopyRawDeviceToHost(void* dst, int64_t offset,
-                                   int64_t transfer_size) override;
+  Future<> CopyRawDeviceToHost(void* dst, int64_t offset,
+                               int64_t transfer_size) override;
 
   // A sliced buffer is a view into the offset and range of this buffer.
   //
@@ -145,7 +146,7 @@ class CommonPjRtRawBuffer : public PjRtRawBuffer {
   // Interprets buffer contents as having shape and linearizes these contents
   // async into the provided literal.
   virtual void CopyToLiteralAsync(
-      PjRtFuture<>::Promise promise,
+      Promise<> promise,
       tsl::RCReference<PjRtDeviceEventPromise> device_promise,
       MutableLiteralBase* literal, xla::Shape shape) = 0;
 

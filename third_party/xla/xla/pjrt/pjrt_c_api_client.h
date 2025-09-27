@@ -37,6 +37,7 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "mlir/IR/BuiltinOps.h"
+#include "xla/future.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/layout.h"
@@ -474,15 +475,14 @@ class PjRtCApiBuffer : public PjRtBuffer {
   absl::StatusOr<std::unique_ptr<ExternalReference>> AcquireExternalReference()
       override;
 
-  PjRtFuture<> ToLiteral(MutableLiteralBase* literal) override;
-  PjRtFuture<> LazyToLiteral(
-      absl::AnyInvocable<PjRtFuture<MutableLiteralBase*>() &&> generator)
-      override;
+  Future<> ToLiteral(MutableLiteralBase* literal) override;
+  Future<> LazyToLiteral(
+      absl::AnyInvocable<Future<MutableLiteralBase*>() &&> generator) override;
 
   absl::StatusOr<size_t> GetOnDeviceSizeInBytes() const override;
 
-  PjRtFuture<> CopyRawToHost(void* dst, int64_t offset,
-                             int64_t transfer_size) override;
+  Future<> CopyRawToHost(void* dst, int64_t offset,
+                         int64_t transfer_size) override;
 
   void Delete() override;
 
@@ -497,10 +497,10 @@ class PjRtCApiBuffer : public PjRtBuffer {
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> CopyToMemorySpace(
       PjRtMemorySpace* dst_memory_space) override;
 
-  void CopyToRemoteDevice(PjRtFuture<std::string> serialized_descriptor,
+  void CopyToRemoteDevice(Future<std::string> serialized_descriptor,
                           RemoteSendCallback on_done) override;
 
-  PjRtFuture<> GetReadyFuture() override;
+  Future<> GetReadyFuture() override;
 
   bool IsOnCpu() const override;
 
@@ -524,9 +524,9 @@ class PjRtCApiBuffer : public PjRtBuffer {
   // This is a shared_ptr to keep the underlying future alive even if
   // `readiness_promise` is destroyed before `readiness_event`, and the callback
   // we set on `readiness_event` modifies `readiness_promise_`.
-  std::shared_ptr<PjRtFuture<>::Promise> readiness_promise_;
+  std::shared_ptr<Promise<>> readiness_promise_;
   // Future tied to the `readiness_promise_`.
-  PjRtFuture<> readiness_future_;
+  Future<> readiness_future_;
   // Set and cached the first time layout() is called.
   mutable std::shared_ptr<const PjRtLayout> layout_;
   // Set and cached the first time is_dynamic_dimension() is called.
@@ -671,19 +671,16 @@ class PjRtCApiLoadedExecutable : public PjRtLoadedExecutable {
   absl::StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>> Execute(
       absl::Span<const std::vector<PjRtBuffer*>> argument_handles,
       const ExecuteOptions& options,
-      std::optional<std::vector<PjRtFuture<>>>& returned_futures)
-      const override;
+      std::optional<std::vector<Future<>>>& returned_futures) const override;
 
   absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> ExecuteSharded(
       absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
-      const ExecuteOptions& options,
-      std::optional<PjRtFuture<>>& returned_future,
+      const ExecuteOptions& options, std::optional<Future<>>& returned_future,
       bool fill_future) const override;
 
   absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> ExecutePortable(
       absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
-      const ExecuteOptions& options,
-      std::optional<PjRtFuture<>>& returned_future,
+      const ExecuteOptions& options, std::optional<Future<>>& returned_future,
       bool fill_future) const override;
 
   void Delete() override;
@@ -750,7 +747,7 @@ class PjRtCApiLoadedExecutable : public PjRtLoadedExecutable {
   absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
   ExecuteWithSingleDevice(absl::Span<PjRtBuffer* const> argument_handles,
                           PjRtDevice* device, const ExecuteOptions& options,
-                          std::optional<PjRtFuture<>>& returned_future,
+                          std::optional<Future<>>& returned_future,
                           bool fill_future) const;
 
   PjRtCApiClient* client_;
@@ -768,7 +765,7 @@ class CApiCopyToDeviceStream : public CopyToDeviceStream {
                          const PJRT_Api* c_api);
   ~CApiCopyToDeviceStream() override;
 
-  PjRtFuture<> AddChunk(PjRtChunk chunk) override;
+  Future<> AddChunk(PjRtChunk chunk) override;
 
  private:
   PJRT_CopyToDeviceStream* c_stream_;

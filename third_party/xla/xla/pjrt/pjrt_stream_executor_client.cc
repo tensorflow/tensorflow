@@ -100,6 +100,7 @@ limitations under the License.
 #include "xla/client/executable_build_options.h"
 #include "xla/client/local_client.h"
 #include "xla/executable_run_options.h"
+#include "xla/future.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_print_options.h"
@@ -840,7 +841,7 @@ PjRtStreamExecutorBuffer::ReleaseDeviceMemoryOwnership(
 }
 
 absl::StatusOr<std::unique_ptr<PjRtBuffer>>
-PjRtStreamExecutorBuffer::DonateWithControlDependency(PjRtFuture<> dependency) {
+PjRtStreamExecutorBuffer::DonateWithControlDependency(Future<> dependency) {
   VLOG(1) << "PjRtStreamExecutorBuffer::DonateWithControlDependency";
   std::unique_ptr<PjRtBuffer> new_buffer;
 
@@ -1516,32 +1517,32 @@ void PjRtStreamExecutorBuffer::ConvertUsageHold(TrackedDeviceBuffer* buffer,
   DecrementUsage();
 }
 
-PjRtFuture<> PjRtStreamExecutorBuffer::LazyToLiteral(
-    absl::AnyInvocable<PjRtFuture<MutableLiteralBase*>() &&> generator) {
+Future<> PjRtStreamExecutorBuffer::LazyToLiteral(
+    absl::AnyInvocable<Future<MutableLiteralBase*>() &&> generator) {
   auto buffer = std::move(generator)();
   return ToLiteralHelper(std::move(buffer));
 }
 
-PjRtFuture<> PjRtStreamExecutorBuffer::ToLiteral(MutableLiteralBase* literal) {
-  return ToLiteralHelper(PjRtFuture<MutableLiteralBase*>(literal));
+Future<> PjRtStreamExecutorBuffer::ToLiteral(MutableLiteralBase* literal) {
+  return ToLiteralHelper(Future<MutableLiteralBase*>(literal));
 }
 
-PjRtFuture<> PjRtStreamExecutorBuffer::ToLiteralHelper(
-    PjRtFuture<MutableLiteralBase*> literal) {
+Future<> PjRtStreamExecutorBuffer::ToLiteralHelper(
+    Future<MutableLiteralBase*> literal) {
   VLOG(3) << "PjRtStreamExecutorBuffer::ToLiteral";
   if (IsEmptyTuple()) {
-    return PjRtFuture<>(InvalidArgument("ToLiteral called on empty tuple"));
+    return Future<>(InvalidArgument("ToLiteral called on empty tuple"));
   }
   LocalDeviceState* local_device = device_->local_device_state();
   se::Stream* stream = local_device->GetDeviceToHostStream();
   auto device_buffer = GetBufferWithUsageHold();
   if (!device_buffer.ok()) {
-    return PjRtFuture<>(
+    return Future<>(
         InvalidArgument("ToLiteral() called on deleted or donated buffer: %s",
                         device_buffer.status().ToString()));
   }
 
-  auto [promise, future] = PjRtFuture<>::MakePromise();
+  auto [promise, future] = Future<>::MakePromise();
   auto usage_event = BufferSequencingEvent::Create(client_->thread_pool());
 
   TransferManager* transfer_manager =
@@ -1565,8 +1566,8 @@ PjRtFuture<> PjRtStreamExecutorBuffer::ToLiteralHelper(
   device_buffer.ConvertUsageHold(stream, usage_event, /*reference_held=*/true);
 
   auto [literal_and_transpose_promise, literal_and_transpose_future] =
-      PjRtFuture<std::pair<MutableLiteralBase*,
-                           std::shared_ptr<TransposePlan>>>::MakePromise();
+      Future<std::pair<MutableLiteralBase*,
+                       std::shared_ptr<TransposePlan>>>::MakePromise();
 
   literal.OnReady(
       [client = client_, on_device_shape{on_device_shape_},
@@ -1724,18 +1725,18 @@ PjRtFuture<> PjRtStreamExecutorBuffer::ToLiteralHelper(
   first_definition_event->ExecuteOrAddToFutureTasks(
       "async_to_literal", std::move(async_to_literal));
 
-  return PjRtFutureHelpers::WithProfiling(
+  return FutureHelpers::WithProfiling(
       std::move(future),
       /*on_block_start=*/
       []() {
         tsl::profiler::TraceMeProducer traceme(
             "PjRtStreamExecutorBuffer::ToLiteral");
         VLOG(3) << "PjRtStreamExecutorBuffer::ToLiteral";
-        return PjRtFutureHelpers::ProfilingKeys(
+        return FutureHelpers::ProfilingKeys(
             {/*traceme_context_id =*/traceme.GetContextId()});
       },
       /*on_block_end=*/
-      [](PjRtFutureHelpers::ProfilingKeys keys) {
+      [](FutureHelpers::ProfilingKeys keys) {
         tsl::profiler::TraceMeConsumer traceme(
             "PjRtStreamExecutorBuffer::ToLiteral", keys.traceme_context_id);
       });
@@ -1751,14 +1752,15 @@ absl::StatusOr<size_t> PjRtStreamExecutorBuffer::GetOnDeviceSizeInBytes()
   return device_buffer()->device_memory()->mem().size();
 }
 
-PjRtFuture<> PjRtStreamExecutorBuffer::CopyRawToHost(void* dst, int64_t offset,
-                                                     int64_t transfer_size) {
-  return client_->CopyRawSubBufferToHost(this, PjRtFuture<void*>(dst), offset,
+Future<> PjRtStreamExecutorBuffer::CopyRawToHost(void* dst, int64_t offset,
+                                                 int64_t transfer_size) {
+  return client_->CopyRawSubBufferToHost(this, Future<void*>(dst), offset,
                                          transfer_size);
 }
 
-PjRtFuture<> PjRtStreamExecutorBuffer::CopyRawToHostFuture(
-    PjRtFuture<void*> dst, int64_t offset, int64_t transfer_size) {
+Future<> PjRtStreamExecutorBuffer::CopyRawToHostFuture(Future<void*> dst,
+                                                       int64_t offset,
+                                                       int64_t transfer_size) {
   return client_->CopyRawSubBufferToHost(this, dst, offset, transfer_size);
 }
 
@@ -1941,7 +1943,7 @@ PjRtStreamExecutorBuffer::CopyToMemorySpace(PjRtMemorySpace* dst_memory_space) {
 }
 
 void PjRtStreamExecutorBuffer::CopyToRemoteDevice(
-    PjRtFuture<std::string> serialized_descriptor, RemoteSendCallback on_done) {
+    Future<std::string> serialized_descriptor, RemoteSendCallback on_done) {
   VLOG(3) << "PjRtStreamExecutorBuffer::CopyToRemoteDevice";
   auto desc = serialized_descriptor.Await();
   if (desc.ok()) {
@@ -1951,20 +1953,20 @@ void PjRtStreamExecutorBuffer::CopyToRemoteDevice(
   }
 }
 
-PjRtFuture<> PjRtStreamExecutorBuffer::GetReadyFuture() {
+Future<> PjRtStreamExecutorBuffer::GetReadyFuture() {
   absl::InlinedVector<BufferSequencingEventRef, 2> definition_events;
-  PjRtFuture<>::Promise definition_promise;
-  PjRtFuture<> definition_future;
+  Promise<> definition_promise;
+  Future<> definition_future;
   {
     absl::MutexLock lock(&mu_);
     if (device_buffer() == nullptr) {
-      return PjRtFuture<>(InvalidArgument(
+      return Future<>(InvalidArgument(
           "GetReadyFuture() called on deleted or donated buffer"));
     }
     if (!definition_future_) {
       definition_events = device_buffer()->definition_events();
       std::tie(definition_promise, definition_future_) =
-          PjRtFuture<>::MakePromise();
+          Future<>::MakePromise();
     }
     definition_future = definition_future_;
   }
@@ -1975,7 +1977,7 @@ PjRtFuture<> PjRtStreamExecutorBuffer::GetReadyFuture() {
     auto async_wait_for_events =
         [definition_events = std::move(definition_events),
          local_device_state = std::move(local_device_state),
-         definition_promise = std::make_shared<PjRtFuture<>::Promise>(
+         definition_promise = std::make_shared<Promise<>>(
              std::move(definition_promise))]() mutable {
           std::unique_ptr<se::Stream> stream;
           absl::Status defined_status =
@@ -2023,18 +2025,18 @@ PjRtFuture<> PjRtStreamExecutorBuffer::GetReadyFuture() {
         std::move(async_wait_for_events));
   }
 
-  return PjRtFutureHelpers::WithProfiling(
+  return FutureHelpers::WithProfiling(
       std::move(definition_future),
       /*on_block_start=*/
       [] {
         tsl::profiler::TraceMeProducer traceme(
             "PjRtStreamExecutorBuffer::Await");
         VLOG(3) << "PjRtStreamExecutorBuffer::Await";
-        return PjRtFutureHelpers::ProfilingKeys(
+        return FutureHelpers::ProfilingKeys(
             {/*traceme_context_id=*/traceme.GetContextId()});
       },
       /*on_block_end=*/
-      [](PjRtFutureHelpers::ProfilingKeys keys) {
+      [](FutureHelpers::ProfilingKeys keys) {
         tsl::profiler::TraceMeConsumer traceme(
             "PjRtStreamExecutorBuffer::Await", keys.traceme_context_id);
       });
@@ -2504,7 +2506,7 @@ class StreamExecutorCopyToDeviceStream : public CopyToDeviceStream {
         dst_(dst),
         done_(std::move(done)) {}
 
-  PjRtFuture<> AddChunk(PjRtChunk chunk) final {
+  Future<> AddChunk(PjRtChunk chunk) final {
     tsl::profiler::TraceMe trace([&] {
       return tsl::profiler::TraceMeEncode(
           "StreamExecutorCopyToDeviceStream::AddChunk",
@@ -2522,7 +2524,7 @@ class StreamExecutorCopyToDeviceStream : public CopyToDeviceStream {
       done_.SetError(absl::InvalidArgumentError(absl::StrFormat(
           "Chunk size (%d) was not a multiple of the granule size (%d)",
           chunk.size(), granule_size_in_bytes())));
-      return PjRtFuture<>(done_.GetError());
+      return Future<>(done_.GetError());
     }
 
     if (current_bytes_ + chunk.size() > total_bytes_) {
@@ -2530,7 +2532,7 @@ class StreamExecutorCopyToDeviceStream : public CopyToDeviceStream {
           absl::StrFormat("Adding chunk of size %d would overflow buffer of "
                           "size %d (%d already transferred)",
                           chunk.size(), total_bytes_, current_bytes_)));
-      return PjRtFuture<>(done_.GetError());
+      return Future<>(done_.GetError());
     }
 
     se::DeviceMemoryBase dst(
@@ -2544,7 +2546,7 @@ class StreamExecutorCopyToDeviceStream : public CopyToDeviceStream {
     auto copied = stream_->Memcpy(&dst, chunk.data(), chunk.size());
     if (!copied.ok()) {
       done_.SetError(copied);
-      return PjRtFuture<>(done_.GetError());
+      return Future<>(done_.GetError());
     }
 
     // Delete chunk once the memcpy operation completes.
@@ -2552,7 +2554,7 @@ class StreamExecutorCopyToDeviceStream : public CopyToDeviceStream {
     auto deleted = stream_->DoHostCallback([chunk_ptr]() { delete chunk_ptr; });
     if (!deleted.ok()) {
       done_.SetError(deleted);
-      return PjRtFuture<>(done_.GetError());
+      return Future<>(done_.GetError());
     }
 
     // Record done event once processed the last chunk. It is the caller
@@ -2562,12 +2564,12 @@ class StreamExecutorCopyToDeviceStream : public CopyToDeviceStream {
       auto recorded = stream_->RecordEvent(done_.get().get());
       if (!recorded.ok()) {
         done_.SetError(recorded);
-        return PjRtFuture<>(done_.GetError());
+        return Future<>(done_.GetError());
       }
       done_.SetStateConcrete();
     }
 
-    return PjRtFuture<>(absl::OkStatus());
+    return Future<>(absl::OkStatus());
   }
 
  private:
@@ -3044,7 +3046,7 @@ PjRtStreamExecutorLoadedExecutable::ExecuteHelper(
         outputs.push_back(std::move(error_buffer));
       }
     }
-    auto future = std::make_optional(PjRtFuture<>(input_error));
+    auto future = std::make_optional(Future<>(input_error));
     return Result({std::move(future), /*buffers=*/std::move(outputs)});
   }
 
@@ -3113,9 +3115,9 @@ PjRtStreamExecutorLoadedExecutable::ExecuteHelper(
     }
   }
 
-  std::optional<PjRtFuture<>> maybe_future;
+  std::optional<Future<>> maybe_future;
   if (fill_future) {
-    auto [promise, future] = PjRtFuture<>::MakePromise();
+    auto [promise, future] = Future<>::MakePromise();
     maybe_future = std::move(future);
     compute_callbacks.push_back(
         [promise = std::move(promise)]() mutable { promise.Set(); });
@@ -3156,7 +3158,7 @@ absl::StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>>
 PjRtStreamExecutorLoadedExecutable::Execute(
     absl::Span<const std::vector<PjRtBuffer*>> argument_handles,
     const ExecuteOptions& options,
-    std::optional<std::vector<PjRtFuture<>>>& returned_futures) const {
+    std::optional<std::vector<Future<>>>& returned_futures) const {
   if (device_assignment_ == nullptr) {
     return InvalidArgument("Execute expects a non-null device_assignment");
   }
@@ -3298,7 +3300,7 @@ PjRtStreamExecutorLoadedExecutable::Execute(
 absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
 PjRtStreamExecutorLoadedExecutable::ExecuteSharded(
     absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
-    const ExecuteOptions& options, std::optional<PjRtFuture<>>& returned_future,
+    const ExecuteOptions& options, std::optional<Future<>>& returned_future,
     bool fill_future) const {
   if (device_assignment_ == nullptr) {
     return InvalidArgument("ExecuteShard expects a non-null device_assignment");
@@ -3327,7 +3329,7 @@ PjRtStreamExecutorLoadedExecutable::ExecuteSharded(
 absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
 PjRtStreamExecutorLoadedExecutable::ExecutePortable(
     absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
-    const ExecuteOptions& options, std::optional<PjRtFuture<>>& returned_future,
+    const ExecuteOptions& options, std::optional<Future<>>& returned_future,
     bool fill_future) const {
   if (device_assignment_ != nullptr) {
     return InvalidArgument("ExecutePortable gets a non-portable executable");

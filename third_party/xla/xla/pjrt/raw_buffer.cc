@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
+#include "xla/future.h"
 #include "xla/pjrt/async_work_runner.h"
 #include "xla/pjrt/device_event.h"
 #include "xla/pjrt/pjrt_client.h"
@@ -40,12 +41,12 @@ std::vector<RegisterRawBufferFactory::FactoryFuncT>& GetFactoryFuncs() {
   return *funcs;
 }
 
-PjRtFuture<> CommonPjRtRawBuffer::CopyRawHostToDevice(const void* src,
-                                                      int64_t offset,
-                                                      int64_t transfer_size) {
+Future<> CommonPjRtRawBuffer::CopyRawHostToDevice(const void* src,
+                                                  int64_t offset,
+                                                  int64_t transfer_size) {
   auto event = CopyRawHostToDeviceAndReturnEvent(src, offset, transfer_size);
   if (!event.ok()) {
-    return PjRtFuture<>(event.status());
+    return Future<>(event.status());
   }
   return (*event)->GetReadyFuture();
 }
@@ -69,11 +70,11 @@ CommonPjRtRawBuffer::MultiSlice(absl::Span<const SliceInfo> slices) {
                                                memory_space()->DebugString()));
 }
 
-PjRtFuture<> CommonPjRtRawBuffer::CopyRawDeviceToHost(void* dst, int64_t offset,
-                                                      int64_t transfer_size) {
+Future<> CommonPjRtRawBuffer::CopyRawDeviceToHost(void* dst, int64_t offset,
+                                                  int64_t transfer_size) {
   auto event = CopyRawDeviceToHostAndReturnEvent(dst, offset, transfer_size);
   if (!event.ok()) {
-    return PjRtFuture<>(event.status());
+    return Future<>(event.status());
   }
   return (*event)->GetReadyFuture();
 }

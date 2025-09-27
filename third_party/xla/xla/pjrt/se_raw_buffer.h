@@ -21,6 +21,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/status/statusor.h"
+#include "xla/future.h"
 #include "xla/pjrt/pjrt_future.h"
 #include "xla/pjrt/pjrt_stream_executor_client.h"
 #include "xla/pjrt/raw_buffer.h"
@@ -47,7 +48,7 @@ class PjRtStreamExecutorDeviceEvent : public PjRtDeviceEvent {
     return event_.GetAsyncValue();
   }
 
-  PjRtFuture<> GetReadyFuture() override;
+  Future<> GetReadyFuture() override;
 
  private:
   tsl::AsyncValueRef<BufferSequencingEvent> event_;
@@ -104,7 +105,7 @@ class PjRtStreamExecutorRawBuffer : public CommonPjRtRawBuffer {
                         xla::Shape shape) override;
 
   void CopyToLiteralAsync(
-      PjRtFuture<>::Promise promise,
+      Promise<> promise,
       tsl::RCReference<PjRtDeviceEventPromise> device_promise,
       MutableLiteralBase* literal, xla::Shape shape) override;
   void CopyTo(tsl::RCReference<CommonPjRtRawBuffer> dst_raw_buffer,

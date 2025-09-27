@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "xla/future.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_future.h"
 #include "xla/pjrt/pjrt_stream_executor_client.h"
@@ -36,8 +37,8 @@ limitations under the License.
 
 namespace xla {
 
-PjRtFuture<> PjRtStreamExecutorDeviceEvent::GetReadyFuture() {
-  auto [promise, future] = PjRtFuture<>::MakePromise();
+Future<> PjRtStreamExecutorDeviceEvent::GetReadyFuture() {
+  auto [promise, future] = Future<>::MakePromise();
   event_.AndThen([promise = std::move(promise), event = event_]() mutable {
     if (auto* error = event.GetErrorIfPresent()) {
       promise.Set(*error);
@@ -46,17 +47,17 @@ PjRtFuture<> PjRtStreamExecutorDeviceEvent::GetReadyFuture() {
     }
   });
 
-  return PjRtFutureHelpers::WithProfiling(
+  return FutureHelpers::WithProfiling(
       std::move(future),
       /*on_block_start=*/
       [callee_method = callee_method_, callee_type = callee_type_]() {
         tsl::profiler::TraceMeProducer traceme(
             [&] { return absl::StrCat(callee_type, "::", callee_method); });
-        return PjRtFutureHelpers::ProfilingKeys({traceme.GetContextId()});
+        return FutureHelpers::ProfilingKeys({traceme.GetContextId()});
       },
       /*on_block_end=*/
       [callee_method = callee_method_,
-       callee_type = callee_type_](PjRtFutureHelpers::ProfilingKeys keys) {
+       callee_type = callee_type_](FutureHelpers::ProfilingKeys keys) {
         tsl::profiler::TraceMeConsumer traceme(
             [&] { return absl::StrCat(callee_type, "::", callee_method); },
             keys.traceme_context_id);
@@ -147,8 +148,7 @@ void PjRtStreamExecutorRawBuffer::ReadDynamicShape(
 }
 
 void PjRtStreamExecutorRawBuffer::CopyToLiteralAsync(
-    PjRtFuture<>::Promise promise,
-    tsl::RCReference<PjRtDeviceEventPromise> device_promise,
+    Promise<> promise, tsl::RCReference<PjRtDeviceEventPromise> device_promise,
     MutableLiteralBase* literal, xla::Shape shape) {
   device_promise->SetError(
       absl::UnimplementedError("Cannot CopyToLiteralAsync."));

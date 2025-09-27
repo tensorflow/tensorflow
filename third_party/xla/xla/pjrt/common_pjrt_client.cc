@@ -38,6 +38,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "xla/future.h"
 #include "xla/layout.h"
 #include "xla/layout_util.h"
 #include "xla/literal.h"
@@ -67,36 +68,35 @@ namespace xla {
 
 void CommonPjRtClient::TrackFuture(PjRtMemorySpace* memory_space,
                                    absl::string_view debug_info,
-                                   const PjRtFuture<>& future) {}
+                                   const Future<>& future) {}
 
-PjRtFuture<> CommonPjRtClient::CreateProfiledFuture(
-    PjRtMemorySpace* memory_space, const char* callee_type,
-    const char* callee_method, PjRtFuture<> future) {
-  return PjRtFutureHelpers::WithProfiling(
+Future<> CommonPjRtClient::CreateProfiledFuture(PjRtMemorySpace* memory_space,
+                                                const char* callee_type,
+                                                const char* callee_method,
+                                                Future<> future) {
+  return FutureHelpers::WithProfiling(
       std::move(future),
       /*on_block_start=*/
       [callee_type, callee_method] {
         tsl::profiler::TraceMeProducer traceme(
             [&] { return absl::StrCat(callee_type, "::", callee_method); });
         VLOG(1) << callee_type << "::" << callee_method;
-        PjRtFutureHelpers::ProfilingKeys keys;
+        FutureHelpers::ProfilingKeys keys;
         keys.traceme_context_id = traceme.GetContextId();
         return keys;
       },
       /*on_block_end=*/
-      [callee_type, callee_method](PjRtFutureHelpers::ProfilingKeys keys) {
+      [callee_type, callee_method](FutureHelpers::ProfilingKeys keys) {
         tsl::profiler::TraceMeConsumer traceme(
             [&] { return absl::StrCat(callee_type, "::", callee_method); },
             keys.traceme_context_id);
       });
 }
 
-std::pair<PjRtFuture<>::Promise, PjRtFuture<>>
-CommonPjRtClient::CreateLinkedUserPromise(PjRtMemorySpace* memory_space,
-                                          const char* callee_type,
-                                          const char* callee_method,
-                                          absl::string_view debug_info) {
-  auto [promise, future] = PjRtFuture<>::MakePromise();
+std::pair<Promise<>, Future<>> CommonPjRtClient::CreateLinkedUserPromise(
+    PjRtMemorySpace* memory_space, const char* callee_type,
+    const char* callee_method, absl::string_view debug_info) {
+  auto [promise, future] = Future<>::MakePromise();
   auto profiled_future = CreateProfiledFuture(memory_space, callee_type,
                                               callee_method, std::move(future));
   TrackFuture(memory_space, debug_info, profiled_future);
@@ -310,7 +310,7 @@ absl::StatusOr<xla::Shape> CommonPjRtClient::MakeDefaultShapeForMemorySpace(
 }
 
 void CommonPjRtBufferImpl::CopyToRemoteDevice(
-    PjRtFuture<std::string> serialized_descriptor, RemoteSendCallback on_done) {
+    Future<std::string> serialized_descriptor, RemoteSendCallback on_done) {
   auto* common_client = tensorflow::down_cast<CommonPjRtClient*>(client());
   std::vector<tsl::RCReference<tsl::AsyncValue>> definition_events;
   tsl::RCReference<PjRtDeviceEventPromise> usage_event_promise;
@@ -360,7 +360,7 @@ void CommonPjRtClient::ScheduleRemoteSend(
     tsl::RCReference<CommonPjRtRawBuffer> raw_buffer,
     std::vector<tsl::RCReference<tsl::AsyncValue>> definition_events,
     tsl::RCReference<PjRtDeviceEventPromise> usage_event_promise,
-    PjRtFuture<std::string> serialized_descriptor,
+    Future<std::string> serialized_descriptor,
     PjRtBuffer::RemoteSendCallback on_done) {
   auto error = absl::UnimplementedError(
       absl::StrCat("ScheduleRemoteSend is not implemented for %s",
@@ -717,11 +717,11 @@ CommonPjRtBufferImpl::CopyToMemorySpaceFallbackThroughLiteral(
   std::unique_ptr<PjRtBuffer> dst_buffer = manager->RetrieveBuffer(0);
 
   auto literal = std::make_unique<Literal>();
-  PjRtFuture<> d2h_future = LazyToLiteral(
+  Future<> d2h_future = LazyToLiteral(
       [raw_literal = literal.get(),
-       shape = std::move(shape)]() -> PjRtFuture<MutableLiteralBase*> {
+       shape = std::move(shape)]() -> Future<MutableLiteralBase*> {
         *raw_literal = Literal(shape);
-        return PjRtFuture<MutableLiteralBase*>(raw_literal);
+        return Future<MutableLiteralBase*>(raw_literal);
       });
   d2h_future.OnReady(
       [manager = std::move(manager),
@@ -774,21 +774,21 @@ CommonPjRtBufferImpl::DirectCopyToMemorySpace(
   return dst_buffer;
 }
 
-PjRtFuture<> CommonPjRtBufferImpl::LazyToLiteral(
-    absl::AnyInvocable<PjRtFuture<MutableLiteralBase*>() &&> generator) {
+Future<> CommonPjRtBufferImpl::LazyToLiteral(
+    absl::AnyInvocable<Future<MutableLiteralBase*>() &&> generator) {
   return ToLiteralImpl(nullptr, std::move(generator));
 }
 
-PjRtFuture<> CommonPjRtBufferImpl::ToLiteral(MutableLiteralBase* literal) {
+Future<> CommonPjRtBufferImpl::ToLiteral(MutableLiteralBase* literal) {
   return ToLiteralImpl(literal, [] {
-    return PjRtFuture<MutableLiteralBase*>(
+    return Future<MutableLiteralBase*>(
         FailedPrecondition("ToLiteral generator should never be called"));
   });
 }
 
-PjRtFuture<> CommonPjRtBufferImpl::ToLiteralImpl(
+Future<> CommonPjRtBufferImpl::ToLiteralImpl(
     MutableLiteralBase* literal,
-    absl::AnyInvocable<PjRtFuture<MutableLiteralBase*>() &&> generator) {
+    absl::AnyInvocable<Future<MutableLiteralBase*>() &&> generator) {
   tsl::profiler::TraceMe traceme("CommonPjRtBuffer::ToLiteral");
   VLOG(1) << "CommonPjRtBuffer::ToLiteral";
   auto common_client = tensorflow::down_cast<CommonPjRtClient*>(client());
@@ -796,12 +796,12 @@ PjRtFuture<> CommonPjRtBufferImpl::ToLiteralImpl(
     // Because TPU is single threaded, and the host callback currently blocking
     // the TPU, we should not block on any outstanding computations because that
     // risks deadlocking the TPU.
-    return PjRtFuture<>(
+    return Future<>(
         InvalidArgument("ToLiteral() called from inside host callback."));
   }
   absl::StatusOr<Shape> device_shape = logical_on_device_shape();
   if (!device_shape.ok()) {
-    return PjRtFuture<>(device_shape.status());
+    return Future<>(device_shape.status());
   }
 
   // TODO(zhangqiaorjc): Fast path if zero device_buffer wait events.
@@ -828,7 +828,7 @@ PjRtFuture<> CommonPjRtBufferImpl::ToLiteralImpl(
       },
       "ToLiteral()");
   if (!hold_status.ok()) {
-    return PjRtFuture<>(std::move(hold_status));
+    return Future<>(std::move(hold_status));
   }
 
   auto [promise, result] = common_client->CreateLinkedUserPromise(
@@ -899,7 +899,7 @@ PjRtFuture<> CommonPjRtBufferImpl::ToLiteralImpl(
         if (literal != nullptr) {
           copy_literal_async(literal);
         } else {
-          PjRtFuture<MutableLiteralBase*> generated = std::move(generator)();
+          Future<MutableLiteralBase*> generated = std::move(generator)();
           generated.OnReady(
               [copy_literal_async = std::move(copy_literal_async)](
                   const absl::StatusOr<MutableLiteralBase*>& value) mutable {
@@ -966,14 +966,14 @@ CommonPjRtBufferImpl::AcquireExternalReference() {
                                                       std::move(raw_buffer)));
 }
 
-PjRtFuture<> CommonPjRtBufferImpl::CopyRawToHost(void* dst, int64_t offset,
-                                                 int64_t transfer_size) {
-  return CopyRawToHostFuture(PjRtFuture<void*>(dst), offset, transfer_size);
+Future<> CommonPjRtBufferImpl::CopyRawToHost(void* dst, int64_t offset,
+                                             int64_t transfer_size) {
+  return CopyRawToHostFuture(Future<void*>(dst), offset, transfer_size);
 }
 
-PjRtFuture<> CommonPjRtBufferImpl::CopyRawToHostFuture(PjRtFuture<void*> dst,
-                                                       int64_t offset,
-                                                       int64_t transfer_size) {
+Future<> CommonPjRtBufferImpl::CopyRawToHostFuture(Future<void*> dst,
+                                                   int64_t offset,
+                                                   int64_t transfer_size) {
   auto buf_client = tensorflow::down_cast<CommonPjRtClient*>(client());
   std::vector<tsl::RCReference<tsl::AsyncValue>> definition_events;
   tsl::RCReference<CommonPjRtRawBuffer> raw_buffer;
@@ -1012,7 +1012,7 @@ PjRtFuture<> CommonPjRtBufferImpl::CopyRawToHostFuture(PjRtFuture<void*> dst,
       },
       "CopyRawSubBufferToHost()");
   if (!hold_status.ok()) {
-    return PjRtFuture<>(std::move(hold_status));
+    return Future<>(std::move(hold_status));
   }
 
   if (buf_client->event_tracking_enabled()) {
@@ -1186,7 +1186,7 @@ CommonPjRtBufferImpl::ReleaseDeviceMemoryOwnership(
 }
 
 absl::StatusOr<std::unique_ptr<PjRtBuffer>>
-CommonPjRtBufferImpl::DonateWithControlDependency(PjRtFuture<> dependency) {
+CommonPjRtBufferImpl::DonateWithControlDependency(Future<> dependency) {
   auto hold = GetBufferWithHold(CommonPjRtBuffer::ScopedHold::kDonation);
   if (!hold.ok()) {
     return InvalidArgument(
@@ -1208,10 +1208,10 @@ CommonPjRtBufferImpl::DonateWithControlDependency(PjRtFuture<> dependency) {
       memory_space());
 }
 
-PjRtFuture<> CommonPjRtBufferImpl::GetReadyFuture() {
+Future<> CommonPjRtBufferImpl::GetReadyFuture() {
   absl::MutexLock lock(mu_);
   if (!device_buffer()) {
-    return PjRtFuture<>(InvalidArgument(
+    return Future<>(InvalidArgument(
         "GetReadyFuture() called on deleted or donated buffer"));
   }
   if (!definition_future_) {

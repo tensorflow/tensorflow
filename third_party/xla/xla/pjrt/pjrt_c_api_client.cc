@@ -43,6 +43,7 @@ limitations under the License.
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Support/LogicalResult.h"
 #include "xla/ffi/execution_context.h"
+#include "xla/future.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/translate/mhlo_to_hlo/mlir_hlo_to_hlo.h"
@@ -98,7 +99,7 @@ namespace xla {
         error, pjrt::MakeErrorDeleter(c_api));                           \
     absl::Status _status = pjrt::PjrtErrorToStatus(_error.get(), c_api); \
     if (!_status.ok()) {                                                 \
-      return PjRtFuture<>(_status);                                      \
+      return Future<>(_status);                                          \
     }                                                                    \
   } while (false)
 
@@ -1956,7 +1957,7 @@ CApiCopyToDeviceStream::~CApiCopyToDeviceStream() {
       c_api_->PJRT_CopyToDeviceStream_Destroy(&destroy_args), c_api_);
 }
 
-PjRtFuture<> CApiCopyToDeviceStream::AddChunk(PjRtChunk chunk) {
+Future<> CApiCopyToDeviceStream::AddChunk(PjRtChunk chunk) {
   PJRT_Chunk c_chunk = ::pjrt::ConvertFromCppChunk(std::move(chunk));
 
   PJRT_CopyToDeviceStream_AddChunk_Args add_chunk_args;
@@ -2230,7 +2231,7 @@ absl::StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>>
 PjRtCApiLoadedExecutable::Execute(
     absl::Span<const std::vector<PjRtBuffer*>> argument_handles,
     const ExecuteOptions& options,
-    std::optional<std::vector<PjRtFuture<>>>& returned_futures) const {
+    std::optional<std::vector<Future<>>>& returned_futures) const {
   std::vector<std::vector<PJRT_Buffer*>> c_argument_lists_storage;
   std::vector<int64_t> non_donatable_input_indices_storage;
   std::vector<int> task_ids_storage;
@@ -2285,7 +2286,7 @@ PjRtCApiLoadedExecutable::Execute(
       pjrt_c_api()->PJRT_LoadedExecutable_Execute(&args), pjrt_c_api());
 
   if (device_complete_events.has_value()) {
-    std::vector<PjRtFuture<>> device_complete_futures;
+    std::vector<Future<>> device_complete_futures;
     device_complete_futures.reserve(args.num_devices);
     for (int i = 0; i < args.num_devices; ++i) {
       device_complete_futures.push_back(pjrt::ConvertCEventToCppFuture(
@@ -2314,7 +2315,7 @@ PjRtCApiLoadedExecutable::Execute(
 absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
 PjRtCApiLoadedExecutable::ExecuteWithSingleDevice(
     absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
-    const ExecuteOptions& options, std::optional<PjRtFuture<>>& returned_future,
+    const ExecuteOptions& options, std::optional<Future<>>& returned_future,
     bool fill_future) const {
   if (!options.send_callbacks.empty() || !options.recv_callbacks.empty()) {
     return absl::Status(absl::StatusCode::kUnimplemented,
@@ -2377,7 +2378,7 @@ PjRtCApiLoadedExecutable::ExecuteWithSingleDevice(
 absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
 PjRtCApiLoadedExecutable::ExecuteSharded(
     absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
-    const ExecuteOptions& options, std::optional<PjRtFuture<>>& returned_future,
+    const ExecuteOptions& options, std::optional<Future<>>& returned_future,
     bool fill_future) const {
   return ExecuteWithSingleDevice(argument_handles, device, options,
                                  returned_future, fill_future);
@@ -2386,7 +2387,7 @@ PjRtCApiLoadedExecutable::ExecuteSharded(
 absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
 PjRtCApiLoadedExecutable::ExecutePortable(
     absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
-    const ExecuteOptions& options, std::optional<PjRtFuture<>>& returned_future,
+    const ExecuteOptions& options, std::optional<Future<>>& returned_future,
     bool fill_future) const {
   return ExecuteWithSingleDevice(argument_handles, device, options,
                                  returned_future, fill_future);
@@ -2593,17 +2594,17 @@ absl::StatusOr<std::vector<int64_t>> PjRtCApiBuffer::logical_dimensions() {
                               args.unpadded_dims + args.num_dims);
 }
 
-PjRtFuture<> PjRtCApiBuffer::LazyToLiteral(
-    absl::AnyInvocable<PjRtFuture<MutableLiteralBase*>() &&> generator) {
-  PjRtFuture<MutableLiteralBase*> future = std::move(generator)();
+Future<> PjRtCApiBuffer::LazyToLiteral(
+    absl::AnyInvocable<Future<MutableLiteralBase*>() &&> generator) {
+  Future<MutableLiteralBase*> future = std::move(generator)();
   const absl::StatusOr<MutableLiteralBase*>& literal = future.Await();
   if (!literal.ok()) {
-    return PjRtFuture<>(literal.status());
+    return Future<>(literal.status());
   }
   return ToLiteral(literal.value());
 }
 
-PjRtFuture<> PjRtCApiBuffer::ToLiteral(MutableLiteralBase* literal) {
+Future<> PjRtCApiBuffer::ToLiteral(MutableLiteralBase* literal) {
   PJRT_Buffer_ToHostBuffer_Args args;
   args.struct_size = PJRT_Buffer_ToHostBuffer_Args_STRUCT_SIZE;
   args.extension_start = nullptr;
@@ -2612,7 +2613,7 @@ PjRtFuture<> PjRtCApiBuffer::ToLiteral(MutableLiteralBase* literal) {
   const xla::Shape& shape = literal->shape();
 
   if (!shape.IsArray()) {
-    return PjRtFuture<>(
+    return Future<>(
         Unimplemented("PjRtCApiBuffer::ToLiteral: Shapes other than array are"
                       "not supported."));
   }
@@ -2624,7 +2625,7 @@ PjRtFuture<> PjRtCApiBuffer::ToLiteral(MutableLiteralBase* literal) {
     c_layout_data =
         pjrt::ConvertToBufferMemoryLayoutData(literal->shape().layout());
     if (!c_layout_data.ok()) {
-      return PjRtFuture<>(c_layout_data.status());
+      return Future<>(c_layout_data.status());
     }
     args.host_layout = &(c_layout_data->c_layout);
   } else {
@@ -2638,7 +2639,7 @@ PjRtFuture<> PjRtCApiBuffer::ToLiteral(MutableLiteralBase* literal) {
       ::pjrt::MakeErrorDeleter(api)};
 
   if (error != nullptr) {
-    return PjRtFuture<>(::pjrt::PjrtErrorToStatus(error.get(), api));
+    return Future<>(::pjrt::PjrtErrorToStatus(error.get(), api));
   }
 
   return pjrt::ConvertCEventToCppFuture(args.event, api);
@@ -2702,8 +2703,8 @@ bool PjRtCApiBuffer::IsDeleted() const {
   return args.is_deleted;
 }
 
-PjRtFuture<> PjRtCApiBuffer::CopyRawToHost(void* dst, int64_t offset,
-                                           int64_t transfer_size) {
+Future<> PjRtCApiBuffer::CopyRawToHost(void* dst, int64_t offset,
+                                       int64_t transfer_size) {
   PJRT_Buffer_CopyRawToHost_Args args;
   args.struct_size = PJRT_Buffer_CopyRawToHost_Args_STRUCT_SIZE;
   args.extension_start = nullptr;
@@ -2800,9 +2801,9 @@ void PjRtCApiBuffer::MakePromiseTrackEvent() {
   }
 }
 
-PjRtFuture<> PjRtCApiBuffer::GetReadyFuture() {
+Future<> PjRtCApiBuffer::GetReadyFuture() {
   if (readiness_promise_ == nullptr) {
-    auto [promise, future] = PjRtFuture<>::MakePromise();
+    auto [promise, future] = Future<>::MakePromise();
     readiness_promise_ = std::move(promise).ToShared();
     readiness_future_ = std::move(future);
     MakePromiseTrackEvent();
@@ -2840,7 +2841,7 @@ PjRtCApiBuffer::AcquireExternalReference() {
 }
 
 void PjRtCApiBuffer::CopyToRemoteDevice(
-    PjRtFuture<std::string> serialized_descriptor, RemoteSendCallback on_done) {
+    Future<std::string> serialized_descriptor, RemoteSendCallback on_done) {
   PJRT_CrossHostTransfers_Extension* extension =
       client_->FindExtension<PJRT_CrossHostTransfers_Extension>(
           PJRT_Extension_Type::PJRT_Extension_Type_CrossHostTransfers);
