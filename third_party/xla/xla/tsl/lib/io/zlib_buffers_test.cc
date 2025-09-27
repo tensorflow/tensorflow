@@ -134,7 +134,7 @@ void TestMultipleWrites(uint8 input_buf_size, uint8 output_buf_size,
     if (with_flush) {
       TF_ASSERT_OK(out.Flush());
     }
-    strings::StrAppend(&expected_result, data);
+    absl::StrAppend(&expected_result, data);
   }
   TF_ASSERT_OK(out.Close());
   TF_ASSERT_OK(file_writer->Flush());
@@ -150,7 +150,7 @@ void TestMultipleWrites(uint8 input_buf_size, uint8 output_buf_size,
   for (int i = 0; i < num_writes; i++) {
     tstring decompressed_output;
     TF_ASSERT_OK(in.ReadNBytes(data.size(), &decompressed_output));
-    strings::StrAppend(&actual_result, decompressed_output);
+    absl::StrAppend(&actual_result, decompressed_output);
   }
 
   EXPECT_EQ(actual_result, expected_result);
