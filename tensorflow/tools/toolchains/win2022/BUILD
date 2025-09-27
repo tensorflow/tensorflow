@@ -21,7 +21,7 @@ platform(
     remote_execution_properties = """
         properties:{
           name: "container-image"
-	  value: "docker://gcr.io/tensorflow-testing/tf-win2022@sha256:915cb093630432c38b028f56bd31116a5559ebbc688d427b6092d86828ae03bc"
+          value: "docker://gcr.io/tensorflow-testing/tf-win2022@sha256:915cb093630432c38b028f56bd31116a5559ebbc688d427b6092d86828ae03bc"
         }
         properties:{
           name: "OSFamily"
@@ -33,5 +33,9 @@ platform(
         properties:{
           name: "dockerNetwork" value: "off"
         }
+        properties:{
+          name: "cache-silo-key"
+          value: "2025-07-29"
+        },
         """,
 )
