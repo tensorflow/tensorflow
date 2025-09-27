@@ -357,7 +357,7 @@ absl::Mutex& GetGpuMutex(const se::StreamExecutor* stream_exec) {
       new std::map<std::pair<const se::Platform*, /*device_ordinal*/ int64_t>,
                    absl::Mutex>();
 
-  absl::MutexLock global_lock(&mu);
+  absl::MutexLock global_lock(mu);
   auto it = mutexes
                 ->emplace(std::piecewise_construct,
                           std::make_tuple(stream_exec->GetPlatform(),
