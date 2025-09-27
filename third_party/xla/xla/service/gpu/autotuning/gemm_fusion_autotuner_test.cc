@@ -569,10 +569,13 @@ ENTRY e {
     lhs_contracting_dims={1}, rhs_contracting_dims={0}
 })";
 
+  // To check for splitk, we check that two fusions are created - one for dot
+  // and the second for reduce.
   MatchOptimizedHlo(kHloText, R"(
 ; CHECK: reduce
 ; CHECK: ENTRY
-; CHECK: ROOT {{.*}} fusion({{.*}}), kind=kLoop
+; CHECK: f32[16,7,18]{2,1,0} fusion({{.*}})
+; CHECK: ROOT {{.*}} f16[7,18]{1,0} fusion({{.*}})
 )");
 
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-2, /*arel=*/1e-3}));
@@ -594,6 +597,9 @@ ENTRY e {
     backend_config={"fusion_backend_config":{kind: "__triton_gemm", triton_gemm_config: {"block_m":16,"block_n":64,"block_k":32,"split_k":3,"num_stages":1,"num_warps":2,"num_ctas":1}}}
 })";
 
+  // Check for tiling and splitk.
+  // To check for splitk, we check that two fusions are created - one for dot
+  // and the second for reduce.
   MatchOptimizedHlo(kHloText, R"(
 ; CHECK: f16[55,3,40]{2,1,0} fusion
 ; CHECK-SAME: "kind":"__triton_nested_gemm_fusion"
@@ -602,7 +608,8 @@ ENTRY e {
 ; CHECK-SAME: "kind":"__triton_nested_gemm_fusion"
 ; CHECK-SAME: "sizes":["1","32","64"]
 ; CHECK: ENTRY
-; CHECK: ROOT {{.*}} f16[55,20]{1,0} fusion({{.*}}), kind=kLoop
+; CHECK: f32[3,55,20]{2,1,0} fusion({{.*}})
+; CHECK: ROOT {{.*}} f16[55,20]{1,0} fusion({{.*}})
 )");
 
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
