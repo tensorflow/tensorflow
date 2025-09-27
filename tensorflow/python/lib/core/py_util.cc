@@ -84,7 +84,7 @@ void TryAppendTraceback(PyObject* ptype, PyObject* pvalue, PyObject* ptraceback,
 #if PY_MAJOR_VERSION < 3
     strings::StrAppend(out, PyString_AS_STRING(v), "\n");
 #else
-    strings::StrAppend(out, PyUnicode_AsUTF8(v), "\n");
+    absl::StrAppend(out, PyUnicode_AsUTF8(v), "\n");
 #endif
   }
 
@@ -108,11 +108,11 @@ string PyExceptionFetch() {
 #if PY_MAJOR_VERSION < 3
       strings::StrAppend(&err, ": ", PyString_AS_STRING(str), "\n");
 #else
-      strings::StrAppend(&err, ": ", PyUnicode_AsUTF8(str), "\n");
+      absl::StrAppend(&err, ": ", PyUnicode_AsUTF8(str), "\n");
 #endif
       Py_DECREF(str);
     } else {
-      strings::StrAppend(&err, "(unknown error message)\n");
+      absl::StrAppend(&err, "(unknown error message)\n");
     }
 
     TryAppendTraceback(ptype, pvalue, ptraceback, &err);
