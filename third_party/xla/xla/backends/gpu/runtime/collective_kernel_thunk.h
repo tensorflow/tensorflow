@@ -18,13 +18,14 @@ limitations under the License.*/
 #include <array>
 #include <cstdint>
 #include <memory>
+#include <string>
 #include <utility>
 
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
-#include "absl/container/inlined_vector.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
@@ -35,6 +36,7 @@ limitations under the License.*/
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_handle.h"
 #include "xla/stream_executor/gpu/all_reduce_kernel.h"
+#include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/stream.h"
 
 namespace xla::gpu {
@@ -57,12 +59,14 @@ class CollectiveKernelThunk : public Thunk {
   CollectiveKernelThunk(ThunkInfo info, CollectiveConfig collective_config,
                         ReductionKind reduction_kind, bool is_async,
                         absl::Span<const CollectiveThunk::Buffer> buffers,
-                        bool is_collective_kernel_enabled)
+                        bool is_collective_kernel_enabled,
+                        absl::string_view kernel_name = "")
       : Thunk{Thunk::kCollectiveKernel, info},
         collective_kernel_enabled_(is_collective_kernel_enabled),
         is_async_(is_async),
         collective_config_(std::move(collective_config)),
         reduction_kind_(reduction_kind),
+        kernel_name_(kernel_name),
         buffers_(buffers) {
     per_stream_state_.reserve(kMaxNumExecutors);
   }
@@ -77,6 +81,8 @@ class CollectiveKernelThunk : public Thunk {
                        ResourceRequestsInterface& resource_requests) final;
 
   // Allocate buffers and events as needed for cross device communication.
+  // If InitializeParams contains a PTX kernel, it will be used instead of the
+  // custom cuda kernel.
   absl::Status Initialize(const InitializeParams& params) final;
 
   // Execute the kernel on all devices.
@@ -108,15 +114,19 @@ class CollectiveKernelThunk : public Thunk {
     // changed.
     std::array<se::DeviceMemoryBase, kNumBuffers> remote_buffer_ptrs;
     std::array<se::DeviceMemoryBase, kNumBuffers> signal_buffer_ptrs;
+    // Kernel entry for the stream executor.
+    std::unique_ptr<se::Kernel> kernel;
     uint32_t invocation_count = 0;
 
     // Constructor to make OSS builds happy.
     StreamState() = default;
     StreamState(int device_ordinal_arg, RankId rank_arg,
-                se::DeviceMemoryHandle local_buffer_arg)
+                se::DeviceMemoryHandle local_buffer_arg,
+                std::unique_ptr<se::Kernel> kernel_arg)
         : device_ordinal(device_ordinal_arg),
           rank(rank_arg),
-          local_buffer(std::move(local_buffer_arg)) {}
+          local_buffer(std::move(local_buffer_arg)),
+          kernel(std::move(kernel_arg)) {}
   };
 
   // Returns the input size in bytes for the collective.
@@ -135,7 +145,10 @@ class CollectiveKernelThunk : public Thunk {
   // Collective config being used. Copied over to avoid lifetime issues.
   const CollectiveConfig collective_config_;
   // Reduction kind being to use for AllReduce collective.
-  ReductionKind reduction_kind_;
+  const ReductionKind reduction_kind_;
+  // Kernel name to execute. Required when Codegen/PTX kernel is used.
+  // Must match the kernel name in the generated PTX kernel.
+  const std::string kernel_name_;
   // Reference to the buffer related information required for the collective.
   absl::Span<const CollectiveThunk::Buffer> buffers_;
 
