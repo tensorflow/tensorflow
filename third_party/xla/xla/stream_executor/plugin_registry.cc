@@ -62,7 +62,7 @@ absl::Status PluginRegistry::RegisterFactory(Platform::Id platform_id,
                                              const std::string& name,
                                              FactoryT factory) {
   PluginKind plugin_kind = GetPluginKind<FactoryT>();
-  absl::MutexLock lock(&registry_mutex_);
+  absl::MutexLock lock(registry_mutex_);
   auto [_, inserted] = factories_.insert({{platform_id, plugin_kind}, factory});
   if (!inserted) {
     return absl::AlreadyExistsError(
@@ -77,7 +77,7 @@ template <typename FactoryT>
 absl::StatusOr<FactoryT> PluginRegistry::GetFactory(
     Platform::Id platform_id) const {
   PluginKind plugin_kind = GetPluginKind<FactoryT>();
-  absl::MutexLock lock(&registry_mutex_);
+  absl::MutexLock lock(registry_mutex_);
   auto it = factories_.find({platform_id, plugin_kind});
   if (it == factories_.end()) {
     absl::string_view name = GetPluginName<FactoryT>();
@@ -91,7 +91,7 @@ absl::StatusOr<FactoryT> PluginRegistry::GetFactory(
 
 bool PluginRegistry::HasFactory(Platform::Id platform_id,
                                 PluginKind plugin_kind) const {
-  absl::MutexLock lock(&registry_mutex_);
+  absl::MutexLock lock(registry_mutex_);
   return factories_.contains({platform_id, plugin_kind});
 }
 
