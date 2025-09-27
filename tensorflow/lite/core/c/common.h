@@ -154,20 +154,9 @@ void TfLiteIntArrayFree(TfLiteIntArray* a);
 
 /// Fixed size list of floats. Used for per-channel quantization.
 typedef struct TfLiteFloatArray {
+  float* data;
   int size;
-#if defined(_MSC_VER)
-  // Context for why this is needed is in http://b/189926408#comment21
-  float data[1];
-#elif (!defined(__clang__) && defined(__GNUC__) && __GNUC__ == 6 && \
-       __GNUC_MINOR__ >= 1) ||                                      \
-    defined(HEXAGON) ||                                             \
-    (defined(__clang__) && __clang_major__ == 7 && __clang_minor__ == 1)
-  // gcc 6.1+ have a bug where flexible members aren't properly handled
-  // https://github.com/google/re2/commit/b94b7cd42e9f02673cd748c1ac1d16db4052514c
-  float data[0];
-#else
-  float data[];
-#endif
+  bool owning;
 } TfLiteFloatArray;
 
 /// Given the size (number of elements) in a TfLiteFloatArray, calculate its
@@ -178,6 +167,10 @@ int TfLiteFloatArrayGetSizeInBytes(int size);
 /// Create a array of a given `size` (uninitialized entries).
 /// This returns a pointer, that you must free using TfLiteFloatArrayFree().
 TfLiteFloatArray* TfLiteFloatArrayCreate(int size);
+
+// Create an array of a given size but do not allocate memory. This array is a
+// view over existing memory.
+TfLiteFloatArray* TfLiteFloatArrayCreateView(int size, float* data);
 
 /// Create a copy of an array passed as `src`.
 /// You are expected to free memory with TfLiteFloatArrayFree.
