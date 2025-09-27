@@ -45,6 +45,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "xla/array.h"
+#include "xla/backends/cpu/alignment.h"
 #include "xla/backends/cpu/codegen/cpu_features.h"
 #include "xla/backends/cpu/collectives/cpu_collectives.h"
 #include "xla/backends/cpu/constant_allocation.h"

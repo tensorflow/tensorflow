@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 
 #include "xla/cpu_function_runtime.h"
+
+#include "xla/backends/cpu/alignment.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/platform/test.h"
 
