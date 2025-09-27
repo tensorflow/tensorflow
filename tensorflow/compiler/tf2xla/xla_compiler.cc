@@ -1682,7 +1682,7 @@ absl::Status XlaCompiler::CompileGraph(
 xla::ChannelHandle XlaCompiler::NewChannel(
     xla::ChannelHandle::ChannelType type) {
   xla::ChannelHandle new_handle;
-  absl::MutexLock lock(&channel_mutex_);
+  absl::MutexLock lock(channel_mutex_);
   // Create a new channel handle with a unique value.
   new_handle.set_handle(next_channel_++);
   new_handle.set_type(type);
