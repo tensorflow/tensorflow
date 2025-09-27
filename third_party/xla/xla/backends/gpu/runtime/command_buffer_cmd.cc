@@ -1593,7 +1593,7 @@ GemmCmd::GemmCmd(GemmConfig config, const BufferAllocation::Slice& lhs_buffer,
 
 absl::Status GemmCmd::Initialize(const Thunk::InitializeParams& params,
                                  StateManager& state) {
-  if (!params.stream->parent()->AsBlas()) {
+  if (!params.stream->AsBlas()) {
     return absl::InternalError("Failed to initialize BLAS support for GemmCmd");
   }
   return absl::OkStatus();

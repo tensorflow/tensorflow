@@ -268,7 +268,6 @@ cc_library(
     deps = [
         ":cuda_blas_utils",
         ":cuda_compute_capability",
-        ":cuda_executor",
         ":cuda_helpers",
         ":cuda_platform_id",
         "//xla:shape_util",
@@ -1340,6 +1339,7 @@ cc_library(
         "gpu",
     ],
     deps = [
+        ":cublas_plugin",
         ":cuda_context",
         ":cuda_event",
         ":cuda_status",

@@ -153,7 +153,7 @@ CublasLtMatmulThunk::GetCachedMatmulPlan(const ExecuteParams& params) {
 }
 
 absl::Status CublasLtMatmulThunk::Initialize(const InitializeParams& params) {
-  if (!params.executor->AsBlas()) {
+  if (!params.stream->AsBlas()) {
     return absl::InternalError("Failed to initialize BLASLT support");
   }
   return absl::OkStatus();

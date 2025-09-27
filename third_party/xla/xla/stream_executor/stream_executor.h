@@ -259,10 +259,6 @@ class StreamExecutor {
 
   // Gets-or-creates a BlasSupport datatype that can be used to execute BLAS
   // routines on the current platform.
-  //
-  // Returns null if there was an error initializing the BLAS support for the
-  // underlying platform.
-  virtual blas::BlasSupport* AsBlas() { return nullptr; }
 
   // Gets or creates a FftSupport datatype that can be used to execute FFT
   // routines on the current platform.

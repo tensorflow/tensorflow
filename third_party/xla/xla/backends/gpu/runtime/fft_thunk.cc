@@ -85,7 +85,7 @@ std::string FftTypeToString(se::fft::Type type) {
 
 absl::StatusOr<stream_executor::blas::BlasSupport*> GetBlas(
     se::Stream* stream) {
-  auto blas = stream->parent()->AsBlas();
+  auto blas = stream->AsBlas();
   if (blas == nullptr) {
     return absl::InternalError("Unable to get Blas support");
   }
