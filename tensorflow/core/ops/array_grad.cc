@@ -153,9 +153,9 @@ absl::Status ConcatGradHelper(const AttrSlice& attrs, FunctionDef* g,
   std::vector<string> offset_i;
   std::vector<string> dx_i;
   for (int i = 0; i < N; ++i) {
-    shape_i.push_back(strings::StrCat("shapes:output:", i));
-    offset_i.push_back(strings::StrCat("offset:offset:", i));
-    dx_i.push_back(strings::StrCat("dx_", i, ":output:0"));
+    shape_i.push_back(absl::StrCat("shapes:output:", i));
+    offset_i.push_back(absl::StrCat("offset:offset:", i));
+    dx_i.push_back(absl::StrCat("dx_", i, ":output:0"));
   }
 
   // ConcatGrad(dim, x, dy):
@@ -175,7 +175,7 @@ absl::Status ConcatGradHelper(const AttrSlice& attrs, FunctionDef* g,
   // For each dx[i], we take a slice of dy. The offset and size of the
   // slice is given by offset[i] and shape[i].
   for (int i = 0; i < N; ++i) {
-    nodes.push_back({{strings::StrCat("dx_", i)},
+    nodes.push_back({{absl::StrCat("dx_", i)},
                      "Slice",
                      {"dy", offset_i[i], shape_i[i]},
                      {{"T", "$T"}, {"Index", DT_INT32}}});
@@ -273,7 +273,7 @@ absl::Status ArrayToListGrad(const AttrSlice& attrs, FunctionDef* g) {
   std::vector<string> dys;
   dys.reserve(N);
   for (int i = 0; i < N; ++i) {
-    dys.push_back(strings::StrCat("dy:", i));
+    dys.push_back(absl::StrCat("dy:", i));
   }
   // clang-format off
   *g = FDH::Define(
