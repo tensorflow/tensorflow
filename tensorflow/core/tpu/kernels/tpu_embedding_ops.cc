@@ -26,7 +26,6 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "xla/hlo/builder/xla_builder.h"
-#include "xla/layout_util.h"
 #include "xla/literal_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -43,7 +42,6 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/protobuf/tpu/tpu_embedding_configuration.pb.h"
-#include "tensorflow/core/tpu/tpu_embedding_spmd_sharding_utils.h"
 
 namespace tensorflow {
 
@@ -542,64 +540,8 @@ class SplitDedupDataOp : public XlaOpKernel {
                                                /*operands=*/floats_vec,
                                                /*dimension=*/0);
 
-    if (config_string_.empty() || !spmd_enabled_) {
-      ctx->SetOutput(0, integer_tensor);
-      ctx->SetOutput(1, float_tensor);
-      return;
-    }
-
-    const int num_cores_per_replica =
-        tpu_embedding_config_.spmd_sharding().num_cores_per_replica();
-    // Creating full shape of integer tensor based on accumulated
-    // `integer_offset` from original tuple mask proto. Similarly, make full
-    // shape of float tensor in following.
-    xla::PrimitiveType int_elements_type = xla::U32;
-    if (!integers_vec.empty()) {
-      int_elements_type = builder->GetShape(integers_vec[0])->element_type();
-    }
-    xla::Shape integer_tensor_full_shape =
-        xla::ShapeUtil::MakeShape(int_elements_type, {integer_offset});
-
-    // Compute SPMD sharding if TPUEmbeddingConfig SPMD is enabled.
-    // When using TPUEmbedding SPMD, we need manually convert integer tensor
-    // and floating tensor to full shape, and convert them to local shards
-    // in `MergeDedupDataOp`.
-    OP_REQUIRES_VALUE(
-        const xla::OpSharding integer_tensor_spmd, ctx,
-        tensorflow::tpu::SpmdShardingAnnotationOnFirstDim(
-            integer_tensor_full_shape, num_cores_per_replica, builder));
-
-    OP_REQUIRES_VALUE(xla::XlaOp full_shaped_integer_tensor, ctx,
-                      xla::ConvertSpmdShardToFullShape(
-                          builder,
-                          /*input=*/integer_tensor,
-                          /*output_shape=*/integer_tensor_full_shape,
-                          /*single_dim=*/0,
-                          /*manual_sharding=*/integer_tensor_spmd,
-                          /*unspecified_dims=*/absl::Span<const int64_t>{}));
-
-    xla::PrimitiveType float_elements_type = xla::F32;
-    if (!floats_vec.empty()) {
-      float_elements_type = builder->GetShape(floats_vec[0])->element_type();
-    }
-    xla::Shape float_tensor_full_shape =
-        xla::ShapeUtil::MakeShape(float_elements_type, {float_offset});
-    OP_REQUIRES_VALUE(
-        const xla::OpSharding float_tensor_spmd, ctx,
-        tensorflow::tpu::SpmdShardingAnnotationOnFirstDim(
-            float_tensor_full_shape, num_cores_per_replica, builder));
-    OP_REQUIRES_VALUE(xla::XlaOp full_shaped_float_tensor, ctx,
-                      xla::ConvertSpmdShardToFullShape(
-                          builder,
-                          /*input=*/float_tensor,
-                          /*output_shape=*/float_tensor_full_shape,
-                          /*single_dim=*/0,
-                          /*manual_sharding=*/float_tensor_spmd,
-                          /*unspecified_dims=*/absl::Span<const int64_t>{}));
-
-    ctx->SetOutput(0, full_shaped_integer_tensor);
-    ctx->SetOutput(1, full_shaped_float_tensor);
-    VLOG(1) << "Compile SplitDedupDataOp done";
+    ctx->SetOutput(0, integer_tensor);
+    ctx->SetOutput(1, float_tensor);
   }
 
  private:
@@ -643,45 +585,8 @@ class MergeDedupDataOp : public XlaOpKernel {
                                 "gets ", ctx->num_inputs()));
 
     auto builder = ctx->builder();
-    xla::XlaOp integer_input = ctx->Input(0);
-    xla::XlaOp float_input = ctx->Input(1);
-
-    xla::XlaOp integer_tensor, float_tensor;
-    if (spmd_enabled_) {
-      // Compute SPMD sharding of integer tensor and float tensor.
-      const int num_cores_per_replica =
-          tpu_embedding_config_.spmd_sharding().num_cores_per_replica();
-
-      OP_REQUIRES_VALUE(const xla::Shape integer_input_shape, ctx,
-                        builder->GetShape(integer_input));
-      OP_REQUIRES_VALUE(
-          const xla::OpSharding integer_tensor_spmd, ctx,
-          tensorflow::tpu::SpmdShardingAnnotationOnFirstDim(
-              integer_input_shape, num_cores_per_replica, builder));
-      OP_REQUIRES_VALUE(integer_tensor, ctx,
-                        xla::ConvertSpmdFullToShardShape(
-                            builder,
-                            /*input=*/integer_input,
-                            /*single_dim=*/0,
-                            /*manual_sharding=*/integer_tensor_spmd,
-                            /*unspecified_dims=*/absl::Span<const int64_t>{}));
-
-      OP_REQUIRES_VALUE(const xla::Shape float_input_shape, ctx,
-                        builder->GetShape(float_input));
-      OP_REQUIRES_VALUE(const xla::OpSharding float_tensor_spmd, ctx,
-                        tensorflow::tpu::SpmdShardingAnnotationOnFirstDim(
-                            float_input_shape, num_cores_per_replica, builder));
-      OP_REQUIRES_VALUE(float_tensor, ctx,
-                        xla::ConvertSpmdFullToShardShape(
-                            builder,
-                            /*input=*/float_input,
-                            /*single_dim=*/0,
-                            /*manual_sharding=*/float_tensor_spmd,
-                            /*unspecified_dims=*/absl::Span<const int64_t>{}));
-    } else {
-      integer_tensor = integer_input;
-      float_tensor = float_input;
-    }
+    xla::XlaOp integer_tensor = ctx->Input(0);
+    xla::XlaOp float_tensor = ctx->Input(1);
 
     // `integer_tensor` should be a 1-D tensor.
     absl::StatusOr<xla::Shape> integer_tensor_shape =
@@ -725,26 +630,12 @@ class MergeDedupDataOp : public XlaOpKernel {
     std::vector<xla::XlaOp> output_vec;
     output_vec.reserve(num_tuple_elements);
 
-    const int num_cores_per_replica =
-        tpu_embedding_config_.spmd_sharding().num_cores_per_replica();
     // Merge elements of integer and float tensor into a tuple.
     int integer_offset = 0;
     int float_offset = 0;
     for (int i = 0; i < num_tuple_elements; ++i) {
       const int element_type = tuple_mask_tensor_.int_val(2 * i);
       int span_size = tuple_mask_tensor_.int_val(2 * i + 1);
-      if (spmd_enabled_) {
-        // When TPUEmbedding SPMD is enabled, the `span_size` got from
-        // `tuple_mask` is full size of this span, need to be divided by
-        // `num_cores_per_replica` for local span size.
-        OP_REQUIRES(
-            ctx, span_size % num_cores_per_replica == 0,
-            errors::InvalidArgument(
-                "Expects all `span_size` in tuple mask are divisible by ",
-                "`num_cores_per_replica`. But get span_size = ", span_size,
-                "while num_cores_per_replica = ", num_cores_per_replica));
-        span_size /= num_cores_per_replica;
-      }
       OP_REQUIRES(
           ctx,
           element_type == DedupTupleElementType::kInteger ||
