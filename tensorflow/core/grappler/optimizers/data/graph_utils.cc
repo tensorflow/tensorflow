@@ -316,9 +316,9 @@ void SetUniqueGraphNodeName(absl::string_view prefix, GraphDef* graph,
   while (ContainsGraphNodeWithName(name, *graph)) {
     if (name.rfind("_generated") != string::npos &&
         (name.rfind("_generated") == (name.size() - strlen("_generated")))) {
-      name.insert(name.rfind("_generated"), strings::StrCat("/_", id));
+      name.insert(name.rfind("_generated"), absl::StrCat("/_", id));
     } else {
-      name = strings::StrCat(prefix, "/_", id);
+      name = absl::StrCat(prefix, "/_", id);
     }
     ++id;
   }
@@ -331,7 +331,7 @@ void SetUniqueGraphFunctionName(absl::string_view prefix,
   string name = string(prefix);
   int id = library->function_size();
   while (ContainsGraphFunctionWithName(name, *library)) {
-    name = strings::StrCat(prefix, "/_", id);
+    name = absl::StrCat(prefix, "/_", id);
     ++id;
   }
   function->mutable_signature()->set_name(std::move(name));
@@ -360,7 +360,7 @@ absl::Status EnsureNodeNamesUnique(Graph* g) {
     if (auto entry = gtl::FindOrNull(name_map, prefix)) {
       string unique_name;
       do {
-        unique_name = strings::StrCat(prefix, "_", ++(*entry));
+        unique_name = absl::StrCat(prefix, "_", ++*entry);
       } while (name_map.find(unique_name) != name_map.end());
       name_map.insert({unique_name, 0});
       node->set_name(std::move(unique_name));
