@@ -4236,6 +4236,393 @@ ENTRY e {
                             ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
+TEST_F(TritonTest, ScaledDot_MXFP8_E4M3) {
+  const std::string hlo_text = R"(
+HloModule test_mxfp8_e4m3
+
+triton_dot {
+  lhs = f8e4m3fn[384,256] parameter(0)
+  lhs_scale = f8e8m0fnu[384,8] parameter(1)
+  rhs = f8e4m3fn[256,48] parameter(2)
+  rhs_scale = f8e8m0fnu[8,48] parameter(3)
+  ROOT out = bf16[384,48] scaled-dot(lhs, lhs_scale, rhs, rhs_scale),
+      lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+
+ENTRY main {
+  lhs = f8e4m3fn[384,256] parameter(0)
+  lhs_scale = f8e8m0fnu[384,8] parameter(1)
+  rhs = f8e4m3fn[256,48] parameter(2)
+  rhs_scale = f8e8m0fnu[8,48] parameter(3)
+  ROOT fusion_dot = bf16[384,48] fusion(lhs, lhs_scale, rhs, rhs_scale),
+       kind=kCustom, calls=triton_dot, backend_config=
+       {"fusion_backend_config":{"kind":"__triton_gemm","triton_gemm_config":
+         {"block_m":"128","block_n":"16","block_k":"128","split_k":"1",
+          "num_stages":"1","num_warps":"4","num_ctas":"1"}}}
+})";
+
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{/*aabs=*/1e-2, /*arel=*/1e-3}));
+
+  if (GetCudaComputeCapability().IsBlackwell()) {
+    TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> verified_module,
+                            ParseAndReturnVerifiedModule(hlo_text));
+    CompileAndOptionallyVerifyPtx(std::move(verified_module), R"(
+CHECK: tcgen05.mma.cta_group::1.kind::mxf8f6f4.block_scale.scale_vec::1X
+)");
+  }
+}
+
+TEST_F(TritonTest, ScaledDot_MXFP8_E5M2) {
+  const std::string hlo_text = R"(
+HloModule test_mxfp8_e5m2
+
+triton_dot {
+  lhs = f8e5m2[2,384,256] parameter(0)
+  lhs_scale = f8e8m0fnu[2,384,8] parameter(1)
+  rhs = f8e5m2[2,256,48] parameter(2)
+  rhs_scale = f8e8m0fnu[2,8,48] parameter(3)
+  ROOT out = bf16[2,384,48] scaled-dot(lhs, lhs_scale, rhs, rhs_scale),
+      lhs_batch_dims={0}, lhs_contracting_dims={2},
+      rhs_batch_dims={0}, rhs_contracting_dims={1}
+}
+
+ENTRY main {
+  lhs = f8e5m2[2,384,256] parameter(0)
+  lhs_scale = f8e8m0fnu[2,384,8] parameter(1)
+  rhs = f8e5m2[2,256,48] parameter(2)
+  rhs_scale = f8e8m0fnu[2,8,48] parameter(3)
+  ROOT fusion_dot = bf16[2,384,48] fusion(lhs, lhs_scale, rhs, rhs_scale),
+       kind=kCustom, calls=triton_dot, backend_config=
+       {"fusion_backend_config":{"kind":"__triton_gemm","triton_gemm_config":
+         {"block_m":"128","block_n":"16","block_k":"128","split_k":"1",
+          "num_stages":"1","num_warps":"4","num_ctas":"1"}}}
+})";
+
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{/*aabs=*/1e-2, /*arel=*/1e-3}));
+
+  if (GetCudaComputeCapability().IsBlackwell()) {
+    TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> verified_module,
+                            ParseAndReturnVerifiedModule(hlo_text));
+    CompileAndOptionallyVerifyPtx(std::move(verified_module), R"(
+CHECK: tcgen05.mma.cta_group::1.kind::mxf8f6f4.block_scale.scale_vec::1X
+)");
+  }
+}
+
+TEST_F(TritonTest, ScaledDot_MXFP8_Mixed) {
+  const std::string hlo_text = R"(
+HloModule test_mxfp8_mixed
+
+triton_dot {
+  lhs = f8e4m3fn[2,384,256] parameter(0)
+  lhs_scale = f8e8m0fnu[2,384] parameter(1)
+  lhs_scale_mx = f8e8m0fnu[2,384,8] broadcast(lhs_scale), dimensions={0,1}
+  rhs = f8e5m2[2,48,256] parameter(2)
+  rhs_scale = f8e8m0fnu[2,48] parameter(3)
+  rhs_scale_mx = f8e8m0fnu[2,48,8] broadcast(rhs_scale), dimensions={0,1}
+  ROOT out = bf16[2,384,48] scaled-dot(lhs, lhs_scale_mx, rhs, rhs_scale_mx),
+      lhs_batch_dims={0}, lhs_contracting_dims={2},
+      rhs_batch_dims={0}, rhs_contracting_dims={2}
+}
+
+ENTRY main {
+  lhs = f8e4m3fn[2,384,256] parameter(0)
+  lhs_scale = f8e8m0fnu[2,384] parameter(1)
+  rhs = f8e5m2[2,48,256] parameter(2)
+  rhs_scale = f8e8m0fnu[2,48] parameter(3)
+  ROOT fusion_dot = bf16[2,384,48] fusion(lhs, lhs_scale, rhs, rhs_scale),
+       kind=kCustom, calls=triton_dot, backend_config=
+       {"fusion_backend_config":{"kind":"__triton_gemm","triton_gemm_config":
+         {"block_m":"128","block_n":"16","block_k":"128","split_k":"1",
+          "num_stages":"1","num_warps":"4","num_ctas":"1"}}}
+})";
+
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{/*aabs=*/1e-2, /*arel=*/1e-3}));
+
+  if (GetCudaComputeCapability().IsBlackwell()) {
+    TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> verified_module,
+                            ParseAndReturnVerifiedModule(hlo_text));
+    CompileAndOptionallyVerifyPtx(std::move(verified_module), R"(
+CHECK: tcgen05.mma.cta_group::1.kind::mxf8f6f4.block_scale.scale_vec::1X
+)");
+  }
+}
+
+TEST_F(TritonTest, ScaledDot_MaskedLoad) {
+  const std::string hlo_text = R"(
+HloModule test_masked_load
+
+triton_dot {
+  lhs = f8e4m3fn[240,192] parameter(0)
+  lhs_scale = f8e8m0fnu[240,6] parameter(1)
+  rhs = f8e4m3fn[24,192] parameter(2)
+  rhs_scale = f8e8m0fnu[24,6] parameter(3)
+  ROOT out = bf16[240,24] scaled-dot(lhs, lhs_scale, rhs, rhs_scale),
+      lhs_contracting_dims={1}, rhs_contracting_dims={1}
+}
+
+ENTRY main {
+  lhs = f8e4m3fn[240,192] parameter(0)
+  lhs_scale = f8e8m0fnu[240,6] parameter(1)
+  rhs = f8e4m3fn[24,192] parameter(2)
+  rhs_scale = f8e8m0fnu[24,6] parameter(3)
+  ROOT fusion_dot = bf16[240,24] fusion(lhs, lhs_scale, rhs, rhs_scale),
+       kind=kCustom, calls=triton_dot, backend_config=
+       {"fusion_backend_config":{"kind":"__triton_gemm","triton_gemm_config":
+         {"block_m":"128","block_n":"16","block_k":"128","split_k":"1",
+          "num_stages":"1","num_warps":"4","num_ctas":"1"}}}
+})";
+
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{/*aabs=*/1e-2, /*arel=*/1e-3}));
+}
+
+TEST_F(TritonTest, ScaledDot_SplitK) {
+  const std::string hlo_text = R"(
+HloModule test_splitk
+
+triton_dot {
+  lhs = f8e4m3fn[2,384,1024] parameter(0)
+  lhs_scale = f8e8m0fnu[2,384,32] parameter(1)
+  rhs = f8e4m3fn[2,32,1024] parameter(2)
+  rhs_scale = f8e8m0fnu[2,32,32] parameter(3)
+  ROOT out = bf16[2,384,32] scaled-dot(lhs, lhs_scale, rhs, rhs_scale),
+      lhs_batch_dims={0}, lhs_contracting_dims={2},
+      rhs_batch_dims={0}, rhs_contracting_dims={2}
+}
+
+ENTRY main {
+  lhs = f8e4m3fn[2,384,1024] parameter(0)
+  lhs_scale = f8e8m0fnu[2,384,32] parameter(1)
+  rhs = f8e4m3fn[2,32,1024] parameter(2)
+  rhs_scale = f8e8m0fnu[2,32,32] parameter(3)
+  ROOT fusion_dot = bf16[2,384,32] fusion(lhs, lhs_scale, rhs, rhs_scale),
+       kind=kCustom, calls=triton_dot, backend_config=
+       {"fusion_backend_config":{"kind":"__triton_gemm","triton_gemm_config":
+         {"block_m":"128","block_n":"16","block_k":"128","split_k":"4",
+          "num_stages":"1","num_warps":"4","num_ctas":"1"}}}
+})";
+
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{/*aabs=*/1e-2, /*arel=*/1e-3}));
+}
+
+TEST_F(TritonTest, ScaledDot_SplitK_Padded) {
+  const std::string hlo_text = R"(
+HloModule test_splitk_padded
+
+triton_dot {
+  lhs = f8e4m3fn[2,384,1024] parameter(0)
+  lhs_scale = f8e8m0fnu[2,384,32] parameter(1)
+  rhs = f8e4m3fn[2,32,1024] parameter(2)
+  rhs_scale = f8e8m0fnu[2,32,32] parameter(3)
+  ROOT out = bf16[2,384,32] scaled-dot(lhs, lhs_scale, rhs, rhs_scale),
+      lhs_batch_dims={0}, lhs_contracting_dims={2},
+      rhs_batch_dims={0}, rhs_contracting_dims={2}
+}
+
+ENTRY main {
+  lhs = f8e4m3fn[2,384,1024] parameter(0)
+  lhs_scale = f8e8m0fnu[2,384,32] parameter(1)
+  rhs = f8e4m3fn[2,32,1024] parameter(2)
+  rhs_scale = f8e8m0fnu[2,32,32] parameter(3)
+  ROOT fusion_dot = bf16[2,384,32] fusion(lhs, lhs_scale, rhs, rhs_scale),
+       kind=kCustom, calls=triton_dot, backend_config=
+       {"fusion_backend_config":{"kind":"__triton_gemm","triton_gemm_config":
+         {"block_m":"128","block_n":"16","block_k":"128","split_k":"3",
+          "num_stages":"1","num_warps":"4","num_ctas":"1"}}}
+})";
+
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{/*aabs=*/1e-2, /*arel=*/1e-3}));
+}
+
+TEST_F(TritonTest, ScaledDot_Concatenate) {
+  const std::string hlo_text = R"(
+HloModule test_concatenate
+
+triton_dot {
+  lhs_1 = f8e4m3fn[128,256] parameter(0)
+  lhs_2 = f8e4m3fn[128,256] parameter(1)
+  lhs = f8e4m3fn[256,256] concatenate(lhs_1, lhs_2), dimensions={0}
+  lhs_scale = f8e8m0fnu[256,8] parameter(2)
+  rhs = f8e4m3fn[256,48] parameter(3)
+  rhs_scale = f8e8m0fnu[8,48] parameter(4)
+  ROOT out = bf16[256,48] scaled-dot(lhs, lhs_scale, rhs, rhs_scale),
+      lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+
+ENTRY main {
+  lhs_1 = f8e4m3fn[128,256] parameter(0)
+  lhs_2 = f8e4m3fn[128,256] parameter(1)
+  lhs_scale = f8e8m0fnu[256,8] parameter(2)
+  rhs = f8e4m3fn[256,48] parameter(3)
+  rhs_scale = f8e8m0fnu[8,48] parameter(4)
+  ROOT fusion_dot = bf16[256,48] fusion(lhs_1, lhs_2, lhs_scale, rhs, rhs_scale),
+       kind=kCustom, calls=triton_dot, backend_config=
+       {"fusion_backend_config":{"kind":"__triton_gemm","triton_gemm_config":
+         {"block_m":"128","block_n":"16","block_k":"128","split_k":"1",
+          "num_stages":"1","num_warps":"4","num_ctas":"1"}}}
+})";
+
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{/*aabs=*/1e-2, /*arel=*/1e-3}));
+}
+
+TEST_F(TritonTest, ScaledDot_LhsScaleOnly) {
+  const std::string hlo_text = R"(
+HloModule test_mxfp8_lhs_scale
+
+triton_dot {
+  lhs = f8e4m3fn[384,256] parameter(0)
+  lhs_scale = f8e8m0fnu[384,8] parameter(1)
+  rhs = f8e4m3fn[256,48] parameter(2)
+  rhs_scale = f8e4m3fn[] constant(1.0)
+  ROOT out = bf16[384,48] scaled-dot(lhs, lhs_scale, rhs, rhs_scale),
+      lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+
+ENTRY main {
+  lhs = f8e4m3fn[384,256] parameter(0)
+  lhs_scale = f8e8m0fnu[384,8] parameter(1)
+  rhs = f8e4m3fn[256,48] parameter(2)
+  ROOT fusion_dot = bf16[384,48] fusion(lhs, lhs_scale, rhs),
+       kind=kCustom, calls=triton_dot, backend_config=
+       {"fusion_backend_config":{"kind":"__triton_gemm","triton_gemm_config":
+         {"block_m":"128","block_n":"16","block_k":"128","split_k":"1",
+          "num_stages":"1","num_warps":"4","num_ctas":"1"}}}
+})";
+
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{/*aabs=*/1e-2, /*arel=*/1e-3}));
+}
+
+TEST_F(TritonTest, ScaledDot_RhsScaleOnly) {
+  const std::string hlo_text = R"(
+HloModule test_mxfp8_rhs_scale
+
+triton_dot {
+  lhs = f8e4m3fn[384,256] parameter(0)
+  lhs_scale = f8e4m3fn[] constant(1.0)
+  rhs = f8e4m3fn[256,48] parameter(1)
+  rhs_scale = f8e8m0fnu[8,48] parameter(2)
+  ROOT out = bf16[384,48] scaled-dot(lhs, lhs_scale, rhs, rhs_scale),
+      lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+
+ENTRY main {
+  lhs = f8e4m3fn[384,256] parameter(0)
+  rhs = f8e4m3fn[256,48] parameter(1)
+  rhs_scale = f8e8m0fnu[8,48] parameter(2)
+  ROOT fusion_dot = bf16[384,48] fusion(lhs, rhs, rhs_scale),
+       kind=kCustom, calls=triton_dot, backend_config=
+       {"fusion_backend_config":{"kind":"__triton_gemm","triton_gemm_config":
+         {"block_m":"128","block_n":"16","block_k":"128","split_k":"1",
+          "num_stages":"1","num_warps":"4","num_ctas":"1"}}}
+})";
+
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{/*aabs=*/1e-2, /*arel=*/1e-3}));
+}
+
+TEST_F(TritonTest, ScaledDot_ConstE8M0) {
+  const std::string hlo_text = R"(
+HloModule test_const_e8m0
+
+triton_dot {
+  lhs = f8e4m3fn[128,256] parameter(0)
+  lhs_scale = f8e8m0fnu[128,8] parameter(1)
+  rhs = f8e4m3fn[256,16] parameter(2)
+  const_2 = f8e8m0fnu[] constant(2.0)  // Verify const emitter
+  rhs_scale = f8e8m0fnu[8,16] broadcast(const_2), dimensions={}
+  ROOT out = bf16[128,16] scaled-dot(lhs, lhs_scale, rhs, rhs_scale),
+      lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+
+ENTRY main {
+  lhs = f8e4m3fn[128,256] parameter(0)
+  lhs_scale = f8e8m0fnu[128,8] parameter(1)
+  rhs = f8e4m3fn[256,16] parameter(2)
+  ROOT fusion_dot = bf16[128,16] fusion(lhs, lhs_scale, rhs),
+       kind=kCustom, calls=triton_dot, backend_config=
+       {"fusion_backend_config":{"kind":"__triton_gemm","triton_gemm_config":
+         {"block_m":"128","block_n":"16","block_k":"128","split_k":"1",
+          "num_stages":"1","num_warps":"4","num_ctas":"1"}}}
+})";
+
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{/*aabs=*/1e-2, /*arel=*/1e-3}));
+}
+
+TEST_F(TritonTest, ScaledDot_FailOnUnsupportedElementwise) {
+  const std::string hlo_text = R"(
+HloModule test_elementwise_e8m0
+
+triton_dot {
+  input = f8e4m3fn[128,128] parameter(0)
+  scale = f8e8m0fnu[128,4] parameter(1)
+  scale_mod = f8e8m0fnu[128,4] multiply(scale, scale)
+  ROOT out = bf16[128,128] scaled-dot(input, scale, input, scale_mod),
+      lhs_contracting_dims={1}, rhs_contracting_dims={1}
+}
+
+ENTRY main {
+  input = f8e4m3fn[128,128] parameter(0)
+  scale = f8e8m0fnu[128,4] parameter(1)
+  ROOT fusion_dot = bf16[128,128] fusion(input, scale),
+       kind=kCustom, calls=triton_dot, backend_config=
+       {"fusion_backend_config":{"kind":"__triton_gemm","triton_gemm_config":
+         {"block_m":"128","block_n":"16","block_k":"128","split_k":"1",
+          "num_stages":"1","num_warps":"4","num_ctas":"1"}}}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> hlo_module,
+                          ParseAndReturnVerifiedModule(hlo_text));
+  HloFusionInstruction* triton_dot_fusion = Cast<HloFusionInstruction>(
+      hlo_module->entry_computation()->root_instruction());
+  llvm::LLVMContext llvm_ctx;
+  llvm::Module llvm_module("module", llvm_ctx);
+  mlir::MLIRContext mlir_context;
+
+  EXPECT_THAT(
+      TritonWrapper("test_fn", triton_dot_fusion, CudaAmpereOrRocm(),
+                    TestGpuDeviceInfo::RTXA6000DeviceInfo(),
+                    BlockLevelParameters{}, &llvm_module, mlir_context),
+      absl_testing::StatusIs(
+          tsl::error::INVALID_ARGUMENT,
+          ::testing::HasSubstr("Elementwise operation on unsupported type")));
+}
+
+TEST_F(TritonTest, ScaledDot_FailOnSmallBlockK) {
+  const std::string hlo_text = R"(
+HloModule test_small_block
+
+triton_dot {
+  input = f8e4m3fn[128,128] parameter(0)
+  scale = f8e8m0fnu[128,4] parameter(1)
+  ROOT out = bf16[128,128] scaled-dot(input, scale, input, scale),
+      lhs_contracting_dims={1}, rhs_contracting_dims={1}
+}
+
+ENTRY main {
+  input = f8e4m3fn[128,128] parameter(0)
+  scale = f8e8m0fnu[128,4] parameter(1)
+  ROOT fusion_dot = bf16[128,128] fusion(input, scale),
+       kind=kCustom, calls=triton_dot, backend_config=
+       {"fusion_backend_config":{"kind":"__triton_gemm","triton_gemm_config":
+         {"block_m":"128","block_n":"16","block_k":"16","split_k":"1",
+          "num_stages":"1","num_warps":"4","num_ctas":"1"}}}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> hlo_module,
+                          ParseAndReturnVerifiedModule(hlo_text));
+  HloFusionInstruction* triton_dot_fusion = Cast<HloFusionInstruction>(
+      hlo_module->entry_computation()->root_instruction());
+  llvm::LLVMContext llvm_ctx;
+  llvm::Module llvm_module("module", llvm_ctx);
+  mlir::MLIRContext mlir_context;
+
+  EXPECT_THAT(
+      TritonWrapper("test_fn", triton_dot_fusion, CudaAmpereOrRocm(),
+                    TestGpuDeviceInfo::RTXA6000DeviceInfo(),
+                    BlockLevelParameters{}, &llvm_module, mlir_context),
+      absl_testing::StatusIs(tsl::error::CANCELLED,
+                             "Tile size is not divisible by the block size."));
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla
