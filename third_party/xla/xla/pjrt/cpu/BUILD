@@ -153,6 +153,7 @@ cc_library(
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla:xla_proto_cc",
+        "//xla/backends/cpu:alignment",
         "//xla/backends/cpu:constant_allocation",
         "//xla/backends/cpu/codegen:cpu_features",
         "//xla/backends/cpu/collectives:cpu_collectives",
