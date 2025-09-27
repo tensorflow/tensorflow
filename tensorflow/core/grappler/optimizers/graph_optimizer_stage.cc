@@ -102,15 +102,15 @@ const string MakeOptimizedNodeName(const NodeScopeAndName& node,
       << "Either optimized node name prefix or sub-scope must be non-empty";
   string optimized_node_name;
   if (!node.scope.empty()) {
-    strings::StrAppend(&optimized_node_name, node.scope, "/");
+    absl::StrAppend(&optimized_node_name, node.scope, "/");
   }
   if (!sub_scope.empty()) {
-    strings::StrAppend(&optimized_node_name, sub_scope, "/");
+    absl::StrAppend(&optimized_node_name, sub_scope, "/");
   }
   if (!prefix.empty()) {
-    strings::StrAppend(&optimized_node_name, prefix, "_");
+    absl::StrAppend(&optimized_node_name, prefix, "_");
   }
-  strings::StrAppend(&optimized_node_name, node.name);
+  absl::StrAppend(&optimized_node_name, node.name);
   return optimized_node_name;
 }
 
@@ -121,7 +121,7 @@ const string MakeOptimizedNodeName(const NodeScopeAndName& root,
   string optimized_node_name = MakeOptimizedNodeName(root, sub_scope, prefix);
   for (const string& node_name : node_names) {
     auto name_and_scope = ParseNodeScopeAndName(node_name);
-    strings::StrAppend(&optimized_node_name, "_", name_and_scope.name);
+    absl::StrAppend(&optimized_node_name, "_", name_and_scope.name);
   }
   return optimized_node_name;
 }
