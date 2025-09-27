@@ -281,7 +281,6 @@ cc_library(
     name = "dot_search_space",
     srcs = ["dot_search_space.cc"],
     hdrs = ["dot_search_space.h"],
-    tags = ["gpu"],
     deps = [
         "//xla:shape_util",
         "//xla:util",
@@ -304,7 +303,6 @@ cc_library(
 xla_cc_test(
     name = "dot_search_space_test",
     srcs = ["dot_search_space_test.cc"],
-    tags = ["gpu"],
     deps = [
         ":dot_search_space",
         "//xla/hlo/ir:hlo",
