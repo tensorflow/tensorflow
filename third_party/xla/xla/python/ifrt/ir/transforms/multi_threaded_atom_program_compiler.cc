@@ -46,6 +46,7 @@ limitations under the License.
 #include "xla/python/ifrt/ir/ifrt_ops.h"
 #include "xla/python/ifrt/ir/transforms/utils.h"
 #include "xla/python/ifrt/shape.h"
+#include "xla/python/ifrt/user_context.h"
 #include "xla/service/compilation_environments.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/hlo.pb.h"
@@ -204,7 +205,9 @@ absl::StatusOr<CompileFuture> MultiThreadedAtomProgramCompiler::CompileXla(
   auto [promise, future] = CompileFuture::MakePromise();
   ScheduleWork(thread_pool, [this, hlo_program = std::move(hlo_program),
                              compile_options = std::move(compile_options),
+                             user_context = UserContextScope::current(),
                              promise = std::move(promise)]() mutable {
+    UserContextScope user_context_scope(std::move(user_context));
     promise.Set(compiler_->CompileXla(std::move(hlo_program),
                                       std::move(compile_options)));
   });
