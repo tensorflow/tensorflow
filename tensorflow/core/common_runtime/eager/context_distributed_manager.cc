@@ -690,8 +690,8 @@ absl::Status UpdateContextWithServerDef(EagerContext* context,
                                         int64_t init_timeout_in_ms, int retries,
                                         bool clear_existing_contexts = false) {
   string worker_name =
-      strings::StrCat("/job:", server_def.job_name(),
-                      "/replica:0/task:", server_def.task_index());
+      absl::StrCat("/job:", server_def.job_name(),
+                   "/replica:0/task:", server_def.task_index());
 
   // List of current remote workers before updating server_def. Unused if
   // resetting the server_def.
@@ -883,7 +883,7 @@ absl::Status UpdateContextWithServerDef(EagerContext* context,
     }
   }
 
-  auto session_name = strings::StrCat("eager_", context_id);
+  auto session_name = absl::StrCat("eager_", context_id);
   auto* session_mgr = server->worker_env()->session_mgr;
   if (reset_context) {
     tsl::core::RefCountPtr<RemoteRendezvous> r =
@@ -944,8 +944,7 @@ absl::Status EagerContextDistributedManager::SetOrUpdateServerDef(
           for (int i = 0; i < tdf.second.device_filters_size(); i++) {
             device_filters[i] = tdf.second.device_filters(i);
           }
-          const string remote_worker =
-              strings::StrCat(remote_prefix, task_index);
+          const string remote_worker = absl::StrCat(remote_prefix, task_index);
           TF_RETURN_IF_ERROR(
               context_->SetRemoteDeviceFilters(remote_worker, device_filters));
         }
@@ -974,8 +973,8 @@ absl::Status EagerContextDistributedManager::SetOrUpdateServerDef(
 absl::Status EagerContextDistributedManager::InitializeLocalOnlyContext(
     const ServerDef& server_def, int keep_alive_secs) {
   string worker_name =
-      strings::StrCat("/job:", server_def.job_name(),
-                      "/replica:0/task:", server_def.task_index());
+      absl::StrCat("/job:", server_def.job_name(),
+                   "/replica:0/task:", server_def.task_index());
   // New server created for new server_def. Unused if updating server_def.
   std::unique_ptr<ServerInterface> new_server;
   ServerInterface* server;
@@ -995,7 +994,7 @@ absl::Status EagerContextDistributedManager::InitializeLocalOnlyContext(
   server->worker_env()->device_mgr->ListDeviceAttributes(
       &local_device_attributes);
 
-  auto session_name = strings::StrCat("eager_", context_id);
+  auto session_name = absl::StrCat("eager_", context_id);
   auto* session_mgr = server->worker_env()->session_mgr;
   tsl::core::RefCountPtr<RemoteRendezvous> r =
       server->worker_env()->rendezvous_mgr->Find(context_id);
@@ -1054,7 +1053,7 @@ absl::Status EagerContextDistributedManager::EnableCollectiveOps(
     const bool enable_coordination =
         !config.experimental().coordination_config().service_type().empty();
     if (enable_coordination) {
-      auto session_name = strings::StrCat("eager_", context_->GetContextId());
+      auto session_name = absl::StrCat("eager_", context_->GetContextId());
       std::shared_ptr<WorkerSession> worker_session;
       auto* session_mgr = server->worker_env()->session_mgr;
       // Start coordination service within session if this is the leader.
