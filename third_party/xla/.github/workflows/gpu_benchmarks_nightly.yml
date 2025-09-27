@@ -16,10 +16,18 @@ name: Nightly GPU Benchmarks
 permissions:
   contents: read
 on:
-  workflow_dispatch:  # Allows manual triggering
   schedule:
     - cron: "0 0 * * *"  # Run at midnight every day
-
+  workflow_dispatch:
+      inputs:
+        halt-for-connection:
+          description: 'Should this workflow run wait for a remote connection?'
+          type: choice
+          required: true
+          default: 'yes'
+          options:
+          - 'yes'
+          - 'no'
 
 jobs:
   Tests:
@@ -67,9 +75,15 @@ jobs:
           wget https://storage.googleapis.com/xla-benchmarking-temp/gemma3_1b_flax_sample_loop.hlo
           cd ..
 
-      - name: Configure GPU backend
-        run: |
-          ./configure.py --backend=CUDA --cuda_compiler=nvcc
+      # - name: Configure GPU backend
+      #   run: |
+      #     ./configure.py --backend=CUDA --cuda_compiler=nvcc
+
+      - name: Wait For Connection
+        uses: google-ml-infra/actions/ci_connection@main
+        with:
+          halt-dispatch-input: ${{ inputs.halt-for-connection }}
+
 
       - name: "Run build.py"
         run: |
