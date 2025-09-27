@@ -2106,7 +2106,6 @@ void DTensorDevice::ExecuteRegularOperation(
   // into the three component tensors.
   std::vector<std::vector<TFE_TensorHandle*>> global_parallel_inputs;
   std::vector<std::vector<TFE_TensorHandle*>> global_parallel_sparse_inputs;
-  absl::flat_hash_set<int> global_sparse_input_indices;
   for (auto input : inputs_tf) {
     if (auto* sparse_input = llvm::dyn_cast<SparseTensorWithLayout>(input);
         sparse_input) {
