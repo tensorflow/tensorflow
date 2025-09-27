@@ -513,7 +513,7 @@ absl::Status BatchResourceBase::RegisterInput(
       /* op_name= */ context->op_kernel().name(), /* queue= */ &batcher_queue));
 
   if (!session_metadata().name().empty()) {
-    absl::MutexLock lock(&outstanding_batch_mu_);
+    absl::MutexLock lock(outstanding_batch_mu_);
     WarmupStateRegistry::Key key(session_metadata().name(),
                                  session_metadata().version());
     if (GetGlobalWarmupStateRegistry().Lookup(key)) {
@@ -1208,7 +1208,7 @@ void BatchResourceBase::ProcessBatchCallBack(
     std::unique_ptr<Batch<BatchTask>> batch,
     std::vector<std::unique_ptr<BatchTask>> unbatched_tasks) {
   if (!session_metadata().name().empty()) {
-    absl::MutexLock lock(&outstanding_batch_mu_);
+    absl::MutexLock lock(outstanding_batch_mu_);
     num_outstanding_batched_items_ -= batch->size();
   }
   if (!has_process_batch_function_) {
