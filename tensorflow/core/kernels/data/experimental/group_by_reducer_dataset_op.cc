@@ -99,7 +99,7 @@ class GroupByReducerDatasetOp : public UnaryDatasetOpKernel {
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
       return std::make_unique<Iterator>(
-          Iterator::Params{this, strings::StrCat(prefix, "::GroupByReducer")});
+          Iterator::Params{this, absl::StrCat(prefix, "::GroupByReducer")});
     }
 
     const DataTypeVector& output_dtypes() const override {
@@ -312,10 +312,10 @@ class GroupByReducerDatasetOp : public UnaryDatasetOpKernel {
           for (auto it = states_.begin(); it != states_.end(); ++idx, ++it) {
             int64_t key = it->first;
             TF_RETURN_IF_ERROR(writer->WriteScalar(
-                full_name(strings::StrCat("states[", idx, "]->key")), key));
+                full_name(absl::StrCat("states[", idx, "]->key")), key));
             if (!it->second.empty()) {
               TF_RETURN_IF_ERROR(writer->WriteScalar(
-                  full_name(strings::StrCat("states[", idx, "]->state_size")),
+                  full_name(absl::StrCat("states[", idx, "]->state_size")),
                   it->second.size()));
               for (int j = 0; j < it->second.size(); ++j) {
                 TF_RETURN_IF_ERROR(writer->WriteTensor(
@@ -336,7 +336,7 @@ class GroupByReducerDatasetOp : public UnaryDatasetOpKernel {
                 writer->WriteScalar(full_name("keys_size"), keys_.size()));
             for (int idx = 0; idx < keys_.size(); ++idx) {
               TF_RETURN_IF_ERROR(writer->WriteScalar(
-                  full_name(strings::StrCat("keys[", idx, "]")), keys_[idx]));
+                  full_name(absl::StrCat("keys[", idx, "]")), keys_[idx]));
             }
           }
         }
@@ -359,13 +359,13 @@ class GroupByReducerDatasetOp : public UnaryDatasetOpKernel {
           for (int idx = 0; idx < size; ++idx) {
             int64_t key;
             TF_RETURN_IF_ERROR(reader->ReadScalar(
-                full_name(strings::StrCat("states[", idx, "]->key")), &key));
+                full_name(absl::StrCat("states[", idx, "]->key")), &key));
             std::vector<Tensor> state;
-            if (reader->Contains(full_name(
-                    strings::StrCat("states[", idx, "]->state_size")))) {
+            if (reader->Contains(
+                    full_name(absl::StrCat("states[", idx, "]->state_size")))) {
               int64_t state_size;
               TF_RETURN_IF_ERROR(reader->ReadScalar(
-                  full_name(strings::StrCat("states[", idx, "]->state_size")),
+                  full_name(absl::StrCat("states[", idx, "]->state_size")),
                   &state_size));
               state.resize(state_size);
               for (int j = 0; j < state_size; ++j) {
@@ -392,7 +392,7 @@ class GroupByReducerDatasetOp : public UnaryDatasetOpKernel {
             for (int idx = 0; idx < size; ++idx) {
               int64_t key;
               TF_RETURN_IF_ERROR(reader->ReadScalar(
-                  full_name(strings::StrCat("keys[", idx, "]")), &key));
+                  full_name(absl::StrCat("keys[", idx, "]")), &key));
               keys_[idx] = key;
             }
           }
