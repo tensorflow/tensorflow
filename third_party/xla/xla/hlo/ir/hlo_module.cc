@@ -1448,7 +1448,7 @@ HloComputation* HloModule::DeepCloneComputation(HloComputation* computation,
 }
 
 uint64_t HloModule::RandomNew64() const {
-  absl::MutexLock l(&rng_mutex_);
+  absl::MutexLock l(rng_mutex_);
   return rng_();
 }
 
