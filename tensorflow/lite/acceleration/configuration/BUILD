@@ -111,6 +111,7 @@ genrule(
       cat < $(<) >> $(@)
       echo ')Delimiter";' >> $(@)
     """,
+    compatible_with = get_compatible_with_portable(),
 )
 
 exports_files(["configuration.proto"])
