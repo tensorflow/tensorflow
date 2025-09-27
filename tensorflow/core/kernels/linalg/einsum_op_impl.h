@@ -609,7 +609,7 @@ class EinsumOp : public OpKernel {
 
   string TraceString(const OpKernelContext& ctx, bool verbose) const override {
     string op = profiler::TraceMeOp(name_view(), type_string_view());
-    string equation = strings::StrCat("(", equation_, ")");
+    string equation = absl::StrCat("(", equation_, ")");
     if (verbose) {
       string shape = ShapeTraceString(ctx);
       if (!shape.empty()) {
