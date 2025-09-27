@@ -1090,40 +1090,6 @@ PjRtStreamExecutorClient::LinearizeHostBufferInto(
   return definition_event;
 }
 
-absl::StatusOr<std::unique_ptr<PjRtBuffer>>
-PjRtStreamExecutorClient::CreateUninitializedBuffer(
-    const Shape& shape, PjRtMemorySpace* memory_space) {
-  return CreateUninitializedBuffer(shape, memory_space, nullptr);
-}
-
-absl::StatusOr<std::unique_ptr<PjRtBuffer>>
-PjRtStreamExecutorClient::CreateUninitializedBuffer(
-    const Shape& shape, PjRtMemorySpace* memory_space,
-    BufferSequencingEventRef definition_event) {
-  tsl::profiler::TraceMe traceme(
-      "PjRtStreamExecutorClient::CreateUninitializedBuffer");
-  VLOG(1) << "PjRtStreamExecutorClient::CreateUninitializedBuffer: shape: "
-          << shape.ToString()
-          << " memory_space: " << memory_space->DebugString();
-  CHECK_EQ(memory_space->devices().size(), 1);
-  PjRtDevice* device = memory_space->devices().front();
-  TF_ASSIGN_OR_RETURN(LocalDeviceState * local_device,
-                      tensorflow::down_cast<PjRtStreamExecutorDevice*>(device)
-                          ->GetLocalDeviceState());
-
-  TransferManager* transfer_manager = client()->backend().transfer_manager();
-  TF_ASSIGN_OR_RETURN(Shape compact_shape,
-                      transfer_manager->ChooseCompactLayoutForShape(shape));
-
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<PjRtStreamExecutorBuffer> py_buffer,
-      AllocateDestinationBuffer(compact_shape, device, local_device,
-                                /*copy_stream=*/nullptr,
-                                /*is_uninitialized_create=*/true, this,
-                                definition_event));
-  return std::unique_ptr<PjRtBuffer>(std::move(py_buffer));
-}
-
 tsl::RCReference<PjRtDeviceEvent>
 PjRtStreamExecutorClient::CreateErrorDeviceEvent(absl::Status error) {
   auto definition_event = BufferSequencingEvent::Create(this->thread_pool());

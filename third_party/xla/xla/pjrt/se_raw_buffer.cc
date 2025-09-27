@@ -157,16 +157,21 @@ void PjRtStreamExecutorRawBuffer::CopyToLiteralAsync(
 
 absl::StatusOr<tsl::RCReference<PjRtDeviceEvent>>
 PjRtStreamExecutorRawBuffer::MakeAllocationReadyEvent() {
+  auto* client =
+      tensorflow::down_cast<PjRtStreamExecutorClient*>(memory_space_->client());
+  auto result = BufferSequencingEvent::Create(client->thread_pool());
   if (local_device_->allocation_model() ==
       LocalDeviceState::kComputeSynchronized) {
-    auto* client = tensorflow::down_cast<PjRtStreamExecutorClient*>(
-        memory_space_->client());
-    auto result = BufferSequencingEvent::Create(client->thread_pool());
     TF_RETURN_IF_ERROR(client->AllocateAndRecordEvent(
         result, local_device_, local_device_->compute_stream()));
-    return tsl::MakeRef<PjRtStreamExecutorDeviceEvent>(std::move(result));
+  } else {
+    auto stream = local_device_->BorrowStreamFromPool();
+    auto status =
+        client->AllocateAndRecordEvent(result, local_device_, stream.get());
+    local_device_->ReturnStreamToPool(std::move(stream));
+    TF_RETURN_IF_ERROR(status);
   }
-  return absl::UnimplementedError("Cannot make ready event");
+  return tsl::MakeRef<PjRtStreamExecutorDeviceEvent>(std::move(result));
 }
 
 void PjRtStreamExecutorRawBuffer::CopyTo(
