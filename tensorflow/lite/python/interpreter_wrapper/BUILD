@@ -40,12 +40,15 @@ cc_library(
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/core/kernels:builtin_ops",
+        "//tensorflow/lite/delegates/utils/experimental/stable_delegate:delegate_loader",
+        "//tensorflow/lite/delegates/utils/experimental/stable_delegate:tflite_settings_json_parser",
         "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate",
         "//tensorflow/lite/kernels:reference_ops",
         "//tensorflow/lite/kernels/internal:compatibility",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
+        "@flatbuffers",
         "@local_xla//third_party/python_runtime:headers",  # buildcleaner: keep
     ],
 )
