@@ -34,6 +34,7 @@ limitations under the License.
 #include "xla/service/compiler.h"
 #include "xla/service/cpu/cpu_aot_compilation_result.h"
 #include "xla/service/cpu/executable.pb.h"
+#include "xla/service/cpu/thunk_emitter.h"
 #include "xla/service/executable.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_cost_analysis.h"
@@ -117,7 +118,11 @@ class CpuCompiler : public LLVMCompiler {
       const CompileOptions& compile_options);
 
   absl::StatusOr<std::unique_ptr<CpuExecutable>> CompileCpuExecutable(
-      std::unique_ptr<HloModule> module);
+      std::unique_ptr<HloModule> module,
+      const ThunkEmitter::Options& thunk_emitter_options,
+      std::unique_ptr<IrCompiler> ir_compiler,
+      const llvm::PICLevel::Level& pic_level = llvm::PICLevel::NotPIC,
+      const llvm::PIELevel::Level& pie_level = llvm::PIELevel::Default);
 
   absl::StatusOr<std::unique_ptr<AotCompilationResult>>
   CompileAheadOfTimeThunks(
