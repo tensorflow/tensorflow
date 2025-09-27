@@ -31,7 +31,7 @@ class TFRecordReader : public ReaderBase {
  public:
   TFRecordReader(const string& node_name, const string& compression_type,
                  Env* env)
-      : ReaderBase(strings::StrCat("TFRecordReader '", node_name, "'")),
+      : ReaderBase(absl::StrCat("TFRecordReader '", node_name, "'")),
         env_(env),
         offset_(0),
         compression_type_(compression_type) {}
@@ -54,7 +54,7 @@ class TFRecordReader : public ReaderBase {
 
   absl::Status ReadLocked(tstring* key, tstring* value, bool* produced,
                           bool* at_end) override {
-    *key = strings::StrCat(current_work(), ":", offset_);
+    *key = absl::StrCat(current_work(), ":", offset_);
     absl::Status status = reader_->ReadRecord(&offset_, value);
     if (absl::IsOutOfRange(status)) {
       *at_end = true;
