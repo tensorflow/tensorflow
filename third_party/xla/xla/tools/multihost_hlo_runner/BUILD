@@ -161,6 +161,7 @@ cc_library(
     deps = [
         ":hlo_input_output_format",
         ":profiler_interface",
+        "//xla:future",
         "//xla:literal",
         "//xla:literal_util",
         "//xla:shape_layout",

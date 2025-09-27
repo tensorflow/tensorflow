@@ -659,7 +659,7 @@ PjRtLoadedExecutable::Execute(absl::Span<ArrayRef> args,
   std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> pjrt_outputs;
   xla::ifrt::Future<> status;
   if (portable_execution) {
-    std::optional<PjRtFuture<>> returned_pjrt_future;
+    std::optional<Future<>> returned_pjrt_future;
     TF_RET_CHECK(portable_execution_device->IsAddressable());
     TF_ASSIGN_OR_RETURN(
         std::vector<std::unique_ptr<PjRtBuffer>> single_device_pjrt_results,
@@ -671,7 +671,7 @@ PjRtLoadedExecutable::Execute(absl::Span<ArrayRef> args,
     pjrt_outputs.push_back(std::move(single_device_pjrt_results));
     status = *std::move(returned_pjrt_future);
   } else {
-    std::optional<std::vector<PjRtFuture<>>> returned_pjrt_futures;
+    std::optional<std::vector<Future<>>> returned_pjrt_futures;
     returned_pjrt_futures.emplace();
 
     TF_ASSIGN_OR_RETURN(

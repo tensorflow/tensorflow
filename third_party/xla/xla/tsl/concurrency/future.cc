@@ -47,7 +47,7 @@ struct State {
   }
 
   std::atomic<int32_t> pending_count;
-  Future<>::Promise promise;
+  Promise<> promise;
   Future<> future;
 
   absl::Mutex mu;
