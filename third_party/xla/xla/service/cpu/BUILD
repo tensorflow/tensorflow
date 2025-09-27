@@ -1748,7 +1748,7 @@ onednn_cc_library(
     ],
 )
 
-cc_library(
+onednn_cc_library(
     name = "onednn_matmul",
     srcs = ["onednn_matmul.cc"],
     hdrs = ["onednn_matmul.h"],
@@ -1761,20 +1761,21 @@ cc_library(
         ":onednn_util",
         ":runtime_lightweight_check",
         "//xla:executable_run_options",
+        "//xla:literal",
         "//xla:shape_util",
         "//xla/hlo/ir:hlo",
         "//xla/tsl/mkl:onednn",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/base:dynamic_annotations",
-        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/types:span",
         "@eigen_archive//:eigen3",
-        "@local_tsl//tsl/platform:env",
-        "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:platform_port",
     ],
 )
 
-cc_library(
+onednn_cc_library(
     name = "onednn_convolution",
     srcs = ["onednn_convolution.cc"],
     hdrs = ["onednn_convolution.h"],
@@ -1791,16 +1792,12 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "//xla/tsl/mkl:onednn",
         "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/base:dynamic_annotations",
-        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/status:statusor",
         "@eigen_archive//:eigen3",
-        "@local_tsl//tsl/platform:env",
-        "@local_tsl//tsl/platform:logging",
-        "@local_tsl//tsl/platform:platform_port",
     ],
 )
 
-cc_library(
+onednn_cc_library(
     name = "onednn_layer_norm",
     srcs = ["onednn_layer_norm.cc"],
     hdrs = [
@@ -1818,15 +1815,13 @@ cc_library(
         "//xla/tsl/mkl:onednn",
         "//xla/tsl/platform:env",
         "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/base:dynamic_annotations",
         "@com_google_absl//absl/synchronization",
         "@eigen_archive//:eigen3",
-        "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:platform_port",
     ],
 )
 
-cc_library(
+onednn_cc_library(
     name = "onednn_softmax",
     srcs = ["onednn_softmax.cc"],
     hdrs = [
@@ -1844,10 +1839,8 @@ cc_library(
         "//xla/tsl/mkl:onednn",
         "//xla/tsl/platform:env",
         "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/base:dynamic_annotations",
         "@com_google_absl//absl/synchronization",
         "@eigen_archive//:eigen3",
-        "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:platform_port",
     ],
 )
@@ -1860,7 +1853,6 @@ onednn_cc_library(
         ":onednn_util",
         "//xla/hlo/ir:hlo",
         "//xla/service:pattern_matcher",
-        "//xla/tsl/mkl:onednn",
     ],
 )
 
@@ -1885,17 +1877,14 @@ cc_library(
         "//xla:executable_run_options",
         "//xla:shape_util",
         "//xla:status_macros",
-        "//xla:xla_data_proto_cc",
         "//xla/hlo/evaluator:hlo_evaluator",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
         "//xla/service:hlo_cost_analysis",
-        "//xla/service:hlo_creation_utils",
         "//xla/service:pattern_matcher",
         "//xla/tsl/mkl:onednn",
         "//xla/tsl/platform:env",
         "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/synchronization",
         "@eigen_archive//:eigen3",
         "@local_tsl//tsl/platform:env",

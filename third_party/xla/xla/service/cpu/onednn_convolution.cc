@@ -13,41 +13,41 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#if defined(INTEL_MKL)
-
 #include "xla/service/cpu/onednn_convolution.h"
 
-#include <algorithm>
-#include <cmath>
-#include <cstring>
+#include <cstdint>
 #include <initializer_list>
-#include <iterator>
+#include <memory>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
-#include "absl/base/dynamic_annotations.h"
+#include "absl/base/attributes.h"
+#include "absl/status/statusor.h"
 #include "unsupported/Eigen/CXX11/Tensor"
-#include "dnnl.hpp"
+#include "oneapi/dnnl/dnnl.hpp"
+#include "oneapi/dnnl/dnnl_common.hpp"
 #include "oneapi/dnnl/dnnl_threadpool.hpp"
+#include "oneapi/dnnl/dnnl_types.h"
 #include "xla/executable_run_options.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/cpu/backend_config.pb.h"
 #include "xla/service/cpu/onednn_config.pb.h"
 #include "xla/service/cpu/onednn_memory_util.h"
 #include "xla/service/cpu/onednn_util.h"
 #include "xla/service/cpu/runtime_lightweight_check.h"
 #include "xla/shape.h"
-#include "xla/shape_util.h"
 #include "xla/tsl/util/onednn_threadpool.h"
-#include "tsl/platform/cpu_info.h"
-#include "tsl/platform/logging.h"
 
 #define EIGEN_USE_THREADS
 
 namespace xla {
 namespace cpu {
 namespace {
+
 using dnnl::algorithm;
 using dnnl::convolution_forward;
 using dnnl::memory;
@@ -58,7 +58,9 @@ memory::dims GetPrimitiveParameter(
     const tsl::protobuf::RepeatedField<uint64_t>& field, int offset) {
   memory::dims param_field(field.begin(), field.end());
   // Subtract the offset so that values are interpreted accurately
-  for (int64_t& n : param_field) n -= offset;
+  for (int64_t& n : param_field) {
+    n -= offset;
+  }
   return param_field;
 }
 
@@ -69,7 +71,9 @@ std::vector<int> ComputePermutations(
   perm_axes[dim0] = 0;
   perm_axes[dim1] = 1;
   int index = 2;
-  for (uint64_t n : spatial_dims) perm_axes[n - 1] = index++;
+  for (uint64_t n : spatial_dims) {
+    perm_axes[n - 1] = index++;
+  }
   return perm_axes;
 }
 
@@ -373,5 +377,3 @@ ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_OneDnnConvolution(
 
 }  // namespace cpu
 }  // namespace xla
-
-#endif  // INTEL_MKL

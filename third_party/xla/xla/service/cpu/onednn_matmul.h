@@ -15,9 +15,7 @@ limitations under the License.
 
 #ifndef XLA_SERVICE_CPU_ONEDNN_MATMUL_H_
 #define XLA_SERVICE_CPU_ONEDNN_MATMUL_H_
-#if defined(INTEL_MKL)
 
-#include "dnnl.hpp"
 #include "xla/service/cpu/backend_config.pb.h"
 #include "xla/service/cpu/onednn_memory_util.h"
 #include "xla/service/cpu/onednn_util.h"
@@ -57,5 +55,4 @@ struct PrimitiveTrait<kOnednnMatmulConfig> {
 }  // namespace cpu
 }  // namespace xla
 
-#endif  // INTEL_MKL
 #endif  // XLA_SERVICE_CPU_ONEDNN_MATMUL_H_

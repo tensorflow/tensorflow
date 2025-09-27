@@ -13,38 +13,38 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#if defined(INTEL_MKL)
-
 #include "xla/service/cpu/onednn_layer_norm.h"
 
-#include <algorithm>
-#include <cmath>
-#include <initializer_list>
-#include <vector>
+#include <cstdint>
+#include <string>
+#include <unordered_map>
 
 #define EIGEN_USE_THREADS
 
-#include "absl/base/dynamic_annotations.h"
-#include "dnnl.hpp"
+#include "absl/base/attributes.h"
 #include "oneapi/dnnl/dnnl_threadpool.hpp"
+#include "oneapi/dnnl/dnnl_types.h"
 #include "xla/executable_run_options.h"
 #include "xla/service/cpu/backend_config.pb.h"
 #include "xla/service/cpu/onednn_config.pb.h"
 #include "xla/service/cpu/onednn_memory_util.h"
 #include "xla/service/cpu/runtime_lightweight_check.h"
 #include "xla/tsl/util/onednn_threadpool.h"
-// Below must come after `onednn_threadpool.h`
+
+// Eigen Tensor must come after `onednn_threadpool.h`
 #include "unsupported/Eigen/CXX11/Tensor"  // NOLINT
 
 namespace xla {
 namespace cpu {
 namespace {
+
 using dnnl::engine;
 using dnnl::layer_normalization_forward;
 using dnnl::memory;
 using dnnl::normalization_flags;
 using dnnl::prop_kind;
 using dnnl::stream;
+
 }  // namespace
 
 ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_OneDnnLayerNorm(
@@ -105,5 +105,3 @@ ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_OneDnnLayerNorm(
 
 }  // namespace cpu
 }  // namespace xla
-
-#endif  // INTEL_MKL

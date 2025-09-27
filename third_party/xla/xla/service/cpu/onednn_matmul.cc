@@ -12,38 +12,50 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#if defined(INTEL_MKL)
+
 #include "xla/service/cpu/onednn_matmul.h"
 
 #include <algorithm>
-#include <cmath>
+#include <cstdint>
 #include <cstring>
 #include <initializer_list>
 #include <iterator>
+#include <memory>
+#include <numeric>
+#include <string>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
-#include "absl/base/dynamic_annotations.h"
+#include "absl/algorithm/container.h"
+#include "absl/base/attributes.h"
+#include "absl/log/log.h"
+#include "absl/status/statusor.h"
+#include "absl/types/span.h"
 #include "unsupported/Eigen/CXX11/Tensor"
-#include "dnnl.hpp"
+#include "oneapi/dnnl/dnnl.hpp"
+#include "oneapi/dnnl/dnnl_common.hpp"
+#include "oneapi/dnnl/dnnl_types.h"
 #include "xla/executable_run_options.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/literal.h"
 #include "xla/service/cpu/backend_config.pb.h"
 #include "xla/service/cpu/onednn_config.pb.h"
+#include "xla/service/cpu/onednn_memory_util.h"
 #include "xla/service/cpu/onednn_util.h"
 #include "xla/service/cpu/runtime_lightweight_check.h"
 #include "xla/shape.h"
-#include "xla/shape_util.h"
-#include "xla/tsl/util/onednn_threadpool.h"
 #include "tsl/platform/cpu_info.h"
-#include "tsl/platform/logging.h"
 
 #define EIGEN_USE_THREADS
 
 namespace xla {
 namespace cpu {
 namespace {
+
 using dnnl::engine;
 using dnnl::matmul;
 using dnnl::memory;
@@ -53,7 +65,9 @@ using dnnl::stream;
 void TransposeIfNecessary(
     const tsl::protobuf::RepeatedField<uint64_t> dimensions,
     bool transpose_last_2_dims, dnnl::memory::desc& mem_desc) {
-  if (mem_desc.get_ndims() < 2) return;
+  if (mem_desc.get_ndims() < 2) {
+    return;
+  }
   std::vector<int> permutation(mem_desc.get_ndims());
   std::iota(permutation.begin(), permutation.end(), 0);
   int counter = 0;
@@ -503,5 +517,3 @@ ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_OneDnnMatMulReorder(
 
 }  // namespace cpu
 }  // namespace xla
-
-#endif  // INTEL_MKL

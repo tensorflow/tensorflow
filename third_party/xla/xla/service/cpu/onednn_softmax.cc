@@ -12,17 +12,17 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#if defined(INTEL_MKL)
+
 #include "xla/service/cpu/onednn_softmax.h"
 
-#include <algorithm>
-#include <cmath>
-#include <initializer_list>
-#include <vector>
+#include <string>
+#include <unordered_map>
 
-#include "absl/base/dynamic_annotations.h"
-#include "dnnl.hpp"
+#include "absl/base/attributes.h"
+#include "oneapi/dnnl/dnnl.hpp"
+#include "oneapi/dnnl/dnnl_common.hpp"
 #include "oneapi/dnnl/dnnl_threadpool.hpp"
+#include "oneapi/dnnl/dnnl_types.h"
 #include "xla/executable_run_options.h"
 #include "xla/service/cpu/backend_config.pb.h"
 #include "xla/service/cpu/onednn_config.pb.h"
@@ -82,5 +82,3 @@ ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_OneDnnSoftmax(
 
 }  // namespace cpu
 }  // namespace xla
-
-#endif  // INTEL_MKL
