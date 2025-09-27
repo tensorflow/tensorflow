@@ -43,6 +43,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
+#include "xla/future.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/layout.h"
@@ -58,7 +59,6 @@ limitations under the License.
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_device_description.h"
 #include "xla/pjrt/pjrt_executable.h"
-#include "xla/pjrt/pjrt_future.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/pjrt/proto/compile_options.pb.h"
 #include "xla/pjrt/proto/topology_description.pb.h"
@@ -696,7 +696,7 @@ PJRT_Error* PJRT_AsyncHostToDeviceTransferManager_TransferData(
       "PJRT_AsyncHostToDeviceTransferManager_TransferData_Args",
       PJRT_AsyncHostToDeviceTransferManager_TransferData_Args_STRUCT_SIZE,
       args->struct_size));
-  auto [promise, future] = xla::PjRtFuture<>::MakePromise();
+  auto [promise, future] = xla::Future<>::MakePromise();
   absl::AnyInvocable<void() &&> on_done_with_d2h_transfer =
       [promise = std::move(promise)]() mutable { promise.Set(); };
   PJRT_RETURN_IF_ERROR(
@@ -1040,7 +1040,7 @@ PJRT_Error* PJRT_Client_BufferFromHostBuffer(
     }
   }
 
-  auto [promise, future] = xla::PjRtFuture<>::MakePromise();
+  auto [promise, future] = xla::Future<>::MakePromise();
 
   absl::AnyInvocable<void() &&> on_done_with_host_buffer =
       [promise = std::move(promise)]() mutable { promise.Set(); };
@@ -1849,7 +1849,7 @@ PJRT_Error* PJRT_LoadedExecutable_Execute(
     std::vector<std::vector<std::unique_ptr<xla::PjRtBuffer>>> cpp_buffer_lists;
     if (args->device_complete_events != nullptr ||
         !cpp_send_callbacks->empty() || !cpp_recv_callbacks->empty()) {
-      std::optional<std::vector<xla::PjRtFuture<>>> returned_futures;
+      std::optional<std::vector<xla::Future<>>> returned_futures;
       returned_futures.emplace();
       PJRT_ASSIGN_OR_RETURN(cpp_buffer_lists,
                             args->executable->get()->Execute(
@@ -1858,7 +1858,7 @@ PJRT_Error* PJRT_LoadedExecutable_Execute(
 
       // We assume that these OnReady callbacks will fire even if
       // returned_futures is destroyed first. This is true for the
-      // AsyncValue-based implementation of PjRtFuture.
+      // AsyncValue-based implementation of Future.
       if (!cpp_send_callbacks->empty() || !cpp_recv_callbacks->empty()) {
         for (int i = 0; i < returned_futures->size(); ++i) {
           (*returned_futures)[i].OnReady(
@@ -1903,7 +1903,7 @@ PJRT_Error* PJRT_LoadedExecutable_Execute(
     }
 
     std::vector<std::unique_ptr<xla::PjRtBuffer>> cpp_buffer_list;
-    std::optional<xla::PjRtFuture<>> returned_future;
+    std::optional<xla::Future<>> returned_future;
     bool fill_future = args->device_complete_events != nullptr;
     PJRT_ASSIGN_OR_RETURN(
         xla::CompileOptions compile_options,
@@ -2175,7 +2175,7 @@ PJRT_Error* PJRT_Buffer_CopyRawToHost(PJRT_Buffer_CopyRawToHost_Args* args) {
   PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
       "PJRT_Buffer_CopyRawToHost_Args",
       PJRT_Buffer_CopyRawToHost_Args_STRUCT_SIZE, args->struct_size));
-  xla::PjRtFuture<> wrapped_promise = args->buffer->buffer->CopyRawToHost(
+  xla::Future<> wrapped_promise = args->buffer->buffer->CopyRawToHost(
       args->dst, args->offset, args->transfer_size);
   args->event = new PJRT_Event{std::move(wrapped_promise)};
   return nullptr;
@@ -2252,7 +2252,7 @@ PJRT_Error* PJRT_Buffer_ToHostBuffer(PJRT_Buffer_ToHostBuffer_Args* args) {
 
   auto literal = std::make_unique<xla::MutableBorrowingLiteral>(
       static_cast<char*>(args->dst), host_shape);
-  xla::PjRtFuture<> future = args->src->buffer->ToLiteral(literal.get());
+  xla::Future<> future = args->src->buffer->ToLiteral(literal.get());
 
   args->event = new PJRT_Event{std::move(future)};
   args->event->future.OnReady(
@@ -2275,7 +2275,7 @@ PJRT_Error* PJRT_Buffer_ReadyEvent(PJRT_Buffer_ReadyEvent_Args* args) {
   PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
       "PJRT_Buffer_ReadyEvent_Args", PJRT_Buffer_ReadyEvent_Args_STRUCT_SIZE,
       args->struct_size));
-  xla::PjRtFuture<> wrapped_promise = args->buffer->buffer->GetReadyFuture();
+  xla::Future<> wrapped_promise = args->buffer->buffer->GetReadyFuture();
   args->event = new PJRT_Event{std::move(wrapped_promise)};
   return nullptr;
 }
@@ -2353,7 +2353,7 @@ PJRT_Error* PJRT_CopyToDeviceStream_AddChunk(
       "PJRT_CopyToDeviceStream_AddChunk_Args",
       PJRT_CopyToDeviceStream_AddChunk_Args_STRUCT_SIZE, args->struct_size));
 
-  xla::PjRtFuture<> future =
+  xla::Future<> future =
       args->stream->stream->AddChunk(ConvertToCppChunk(*args->chunk));
   args->transfer_complete = new PJRT_Event{std::move(future)};
   return nullptr;

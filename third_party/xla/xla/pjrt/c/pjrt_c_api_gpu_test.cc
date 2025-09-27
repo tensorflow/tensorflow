@@ -44,6 +44,7 @@ limitations under the License.
 #include "xla/ffi/execution_context.h"
 #include "xla/ffi/ffi_api.h"
 #include "xla/ffi/type_id_registry.h"
+#include "xla/future.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
@@ -60,7 +61,6 @@ limitations under the License.
 #include "xla/pjrt/gpu/se_gpu_pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_compiler.h"
-#include "xla/pjrt/pjrt_future.h"
 #include "xla/service/custom_call_target_registry.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -167,7 +167,7 @@ TEST_F(PjrtCApiGpuTest, CreateViewOfDeviceBuffer) {
   PJRT_Error* to_host_error = api_->PJRT_Buffer_ToHostBuffer(&to_host_args);
 
   ASSERT_EQ(to_host_error, nullptr);
-  xla::PjRtFuture<> transfer_to_host =
+  xla::Future<> transfer_to_host =
       ::pjrt::ConvertCEventToCppFuture(to_host_args.event, api_);
   TF_CHECK_OK(transfer_to_host.Await());
   ASSERT_EQ(literal->data<float>().size(), 4);
@@ -219,8 +219,7 @@ TEST_F(PjrtCApiGpuBufferTest, CopyRawToHost) {
   args.transfer_size = size;
   PJRT_Error* error = api_->PJRT_Buffer_CopyRawToHost(&args);
   ASSERT_THAT(error, IsNull());
-  xla::PjRtFuture<> copy_to_host_event =
-      ConvertCEventToCppFuture(args.event, api_);
+  xla::Future<> copy_to_host_event = ConvertCEventToCppFuture(args.event, api_);
   TF_EXPECT_OK(copy_to_host_event.Await());
   EXPECT_EQ(*(static_cast<float*>(args.dst)), 41);
   tsl::port::AlignedSizedFree(args.dst, tsl::Allocator::kAllocatorAlignment,
@@ -239,8 +238,7 @@ TEST_F(PjrtCApiGpuBufferTest, CopyRawToHostWithInvalidOffset) {
   args.transfer_size = size;
   PJRT_Error* error = api_->PJRT_Buffer_CopyRawToHost(&args);
   ASSERT_EQ(error, nullptr);
-  xla::PjRtFuture<> copy_to_host_event =
-      ConvertCEventToCppFuture(args.event, api_);
+  xla::Future<> copy_to_host_event = ConvertCEventToCppFuture(args.event, api_);
   absl::Status status = copy_to_host_event.Await();
   std::string expected_message = absl::StrFormat(
       "Copy raw buffer called on buffer size %lld with "
