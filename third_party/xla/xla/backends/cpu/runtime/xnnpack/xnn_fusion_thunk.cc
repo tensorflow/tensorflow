@@ -149,7 +149,8 @@ XnnFusionThunk::CreateXnnExecutable(
         capturing_builder_(arguments_, results_, arguments_buffers));
   }
 
-  uint32_t flags = XNN_FLAG_SLINKY_ENABLED | XNN_FLAG_SLINKY_STATIC_BOUNDS;
+  uint32_t flags = XNN_FLAG_SLINKY_ENABLED | XNN_FLAG_SLINKY_STATIC_BOUNDS |
+                   XNN_FLAG_DONT_SPIN_WORKERS;
 
   TF_ASSIGN_OR_RETURN(
       executable.runtime, CreateXnnRuntime([&](xnn_runtime_t* runtime) {
@@ -191,7 +192,8 @@ absl::Status XnnFusionThunk::UpdateXnnExecutable(
       executable.subgraph,
       capturing_builder_(arguments_, results_, arguments_buffers));
 
-  uint32_t flags = XNN_FLAG_SLINKY_ENABLED | XNN_FLAG_SLINKY_STATIC_BOUNDS;
+  uint32_t flags = XNN_FLAG_SLINKY_ENABLED | XNN_FLAG_SLINKY_STATIC_BOUNDS |
+                   XNN_FLAG_DONT_SPIN_WORKERS;
 
   TF_ASSIGN_OR_RETURN(
       executable.runtime, CreateXnnRuntime([&](xnn_runtime_t* runtime) {
