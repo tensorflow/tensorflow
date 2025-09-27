@@ -33,7 +33,6 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/synchronization/notification.h"
 #include "tensorflow/c/env.h"
-#include "tensorflow/c/logging.h"
 #include "tensorflow/c/tf_status.h"
 
 namespace tf_gcs_filesystem {
