@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "xla/client/executable_build_options.h"
+#include "xla/future.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/evaluator/hlo_evaluator.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -48,7 +49,6 @@ limitations under the License.
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_executable.h"
-#include "xla/pjrt/pjrt_future.h"
 #include "xla/pjrt/utils.h"
 #include "xla/service/batchnorm_expander.h"
 #include "xla/service/computation_placer.h"
@@ -188,7 +188,7 @@ absl::StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>>
 InterpreterLoadedExecutable::Execute(
     absl::Span<const std::vector<PjRtBuffer*>> argument_handles,
     const ExecuteOptions& options,
-    std::optional<std::vector<PjRtFuture<>>>& returned_futures) const {
+    std::optional<std::vector<Future<>>>& returned_futures) const {
   if (device_assignment_ == nullptr) {
     return absl::InvalidArgumentError(
         "Execute expects a non-null device_assignment");
@@ -207,7 +207,7 @@ InterpreterLoadedExecutable::Execute(
                         addressable_devices_.size()));
   }
 
-  std::optional<PjRtFuture<>> returned_future;
+  std::optional<Future<>> returned_future;
   TF_ASSIGN_OR_RETURN(
       std::vector<std::unique_ptr<PjRtBuffer>> replica_result,
       ExecuteSharded(argument_handles[0], addressable_devices_[0], options,
@@ -218,7 +218,7 @@ InterpreterLoadedExecutable::Execute(
     CHECK(returned_future.has_value())
         << "returned_future must be set because ExecuteSharded was called with "
            "fill_future=true.";
-    returned_futures = std::vector<PjRtFuture<>>({*std::move(returned_future)});
+    returned_futures = std::vector<Future<>>({*std::move(returned_future)});
   }
   return result;
 }
@@ -226,7 +226,7 @@ InterpreterLoadedExecutable::Execute(
 absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
 InterpreterLoadedExecutable::ExecuteSharded(
     absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
-    const ExecuteOptions& options, std::optional<PjRtFuture<>>& returned_future,
+    const ExecuteOptions& options, std::optional<Future<>>& returned_future,
     bool fill_future) const {
   if (device_assignment_ == nullptr) {
     return absl::InvalidArgumentError(
@@ -274,7 +274,7 @@ InterpreterLoadedExecutable::ExecuteSharded(
   // Shrink the generated dynamic shape into static shape.
   result_literal = result_literal.ToStatic();
   if (fill_future) {
-    returned_future = PjRtFuture<>(absl::OkStatus());
+    returned_future = Future<>(absl::OkStatus());
   }
 
   TF_ASSIGN_OR_RETURN(PjRtMemorySpace * memory_space,
@@ -306,7 +306,7 @@ InterpreterLoadedExecutable::ExecuteSharded(
 absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
 InterpreterLoadedExecutable::ExecutePortable(
     absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
-    const ExecuteOptions& options, std::optional<PjRtFuture<>>& returned_future,
+    const ExecuteOptions& options, std::optional<Future<>>& returned_future,
     bool fill_future) const {
   return absl::UnimplementedError("ExecutePortable is not implemented");
 }
