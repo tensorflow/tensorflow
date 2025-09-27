@@ -16,6 +16,7 @@ limitations under the License.
 #include <memory>
 #include <variant>
 
+#include <gtest/gtest.h>
 #include "absl/status/statusor.h"
 #include "xla/error_spec.h"
 #include "xla/service/gpu/tests/gpu_codegen_test.h"

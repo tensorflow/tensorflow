@@ -15,8 +15,9 @@ limitations under the License.
 
 #include <memory>
 #include <utility>
+#include <variant>
 
-#include "absl/strings/str_replace.h"
+#include <gtest/gtest.h>
 #include "xla/error_spec.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -25,6 +26,7 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/service/gpu/tests/gpu_codegen_test.h"
+#include "xla/xla.pb.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
 

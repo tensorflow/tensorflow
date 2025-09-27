@@ -15,8 +15,11 @@ limitations under the License.
 
 #include <cstdint>
 #include <utility>
+#include <variant>
+#include <vector>
 
 #include <gtest/gtest.h>
+#include "absl/strings/ascii.h"
 #include "absl/strings/string_view.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
@@ -30,6 +33,7 @@ limitations under the License.
 #include "xla/tests/literal_test_util.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
+#include "xla/xla.pb.h"
 
 namespace xla::gpu {
 namespace {
