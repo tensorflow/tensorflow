@@ -3477,7 +3477,7 @@ With `src_format` of `NHWC`, `dst_format` of `NCHW`, and input:
   }];
 }
 
-def TF_DebugIdentityOp : TF_Op<"DebugIdentity", [Pure, TF_SameOperandsAndResultTypeResolveRef]> {
+def TF_DebugIdentityOp : TF_Op<"DebugIdentity", [TF_SameOperandsAndResultTypeResolveRef]> {
   let summary = [{
 Provides an identity mapping of the non-Ref type input tensor for debugging.
   }];
