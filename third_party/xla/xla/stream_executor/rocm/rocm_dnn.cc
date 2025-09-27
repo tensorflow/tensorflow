@@ -628,7 +628,7 @@ class CachedFusionPlans {
                            miopenFusionPlanDescriptor_t* fusion_plan,
                            miopenFusionDirection_t fusion_direction,
                            miopenTensorDescriptor_t input_descriptor) {
-    absl::MutexLock lock{&cached_plans_mutex};
+    absl::MutexLock lock{cached_plans_mutex};
 
     bool found_cached_plan = false;
 
@@ -654,7 +654,7 @@ class CachedFusionPlans {
 
   // Need to figure out the right place to call this routine
   static void Clear() {
-    absl::MutexLock lock{&cached_plans_mutex};
+    absl::MutexLock lock{cached_plans_mutex};
 
     for (auto it : cached_plans) {
       auto status = wrap::miopenDestroyFusionPlan(it.second);
@@ -671,13 +671,13 @@ class CachedFusionPlans {
 
   // Is the Fusion plan corresponding to this hash unsupported
   static bool IsUnsupportedFusionPlan(uint64_t hash) {
-    absl::MutexLock lock{&cached_plans_mutex};
+    absl::MutexLock lock{cached_plans_mutex};
     return unsupported_plans.count(hash) > 0;
   }
 
   // Mark the given hash value as corresponding to an unsupported fusion plan
   static void MarkFusionPlanUnsupported(uint64_t hash) {
-    absl::MutexLock lock{&cached_plans_mutex};
+    absl::MutexLock lock{cached_plans_mutex};
     unsupported_plans.insert(hash);
   }
 
@@ -747,7 +747,7 @@ class MIOpenAccess {
   explicit MIOpenAccess(miopenHandle_t handle) : handle_(handle) {}
 
   ~MIOpenAccess() {
-    absl::MutexLock lock(&mutex_);
+    absl::MutexLock lock(mutex_);
     wrap::miopenDestroy(handle_);
   }
 
