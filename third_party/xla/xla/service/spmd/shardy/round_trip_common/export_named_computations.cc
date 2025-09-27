@@ -18,7 +18,6 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <tuple>
-#include <utility>
 
 #include "absl/log/check.h"
 #include "llvm/ADT/DenseMap.h"
