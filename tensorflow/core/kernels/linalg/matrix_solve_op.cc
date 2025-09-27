@@ -105,6 +105,16 @@ class MatrixSolveOp : public LinearAlgebraOp<Scalar> {
     // The necessary changes to Eigen are in
     // https://bitbucket.org/eigen/eigen/pull-requests/174/
     // add-matrix-condition-number-estimation/diff
+
+    // Near-singular check: estimate condition number using machine epsilon
+    const RealScalar max_abs_pivot =
+        lu_decomposition.matrixLU().diagonal().cwiseAbs().maxCoeff();
+    RealScalar cond_number = max_abs_pivot / min_abs_pivot;
+    const int n = matrix.rows();
+    const RealScalar eps = std::numeric_limits<RealScalar>::epsilon();
+    const RealScalar kCondThreshold = static_cast<RealScalar>(n) / eps;
+    OP_REQUIRES(context, cond_number < kCondThreshold,
+                errors::InvalidArgument(kErrMsg));
     outputs->at(0) = lu_decomposition.solve(rhs);
   }
 

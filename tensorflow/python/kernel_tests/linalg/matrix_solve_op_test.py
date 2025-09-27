@@ -143,6 +143,17 @@ class MatrixSolveOpTest(test.TestCase):
     for i in range(0, len(all_ops), 2):
       self.assertAllEqual(val[i], val[i + 1])
 
+@test_util.run_in_graph_and_eager_modes(use_gpu=True)
+def testNearSingularMatrix(self):
+  # The input should be near-singular (very high condition number).
+  with self.assertRaisesOpError("Input matrix is not invertible."):
+    matrix = constant_op.constant([
+        [1.0, 2.0, 3.0],
+        [2.0, 5.0, 6.0],
+        [3.0, 6.0, 9.0]
+    ], dtype=dtypes.float64)
+    rhs = constant_op.constant([[1.0], [1.0], [1.0]], dtype=dtypes.float64)
+    self.evaluate(linalg_ops.matrix_solve(matrix, rhs))
 
 class MatrixSolveBenchmark(test.Benchmark):
 
