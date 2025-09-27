@@ -946,9 +946,9 @@ absl::StatusOr<std::shared_ptr<const PjRtLayout>> Array::pjrt_layout() const {
   }
 
   TF_ASSIGN_OR_RETURN(auto shard_shape, sharding_->GetShardShape(shape_));
-  return client_->GetDefaultLayout(dtype_, shard_shape.dims(),
-                                   sharding_->devices()->devices().front(),
-                                   sharding_->memory_kind());
+  return client_->GetDefaultPjRtLayout(dtype_, shard_shape.dims(),
+                                       sharding_->devices()->devices().front(),
+                                       sharding_->memory_kind());
 }
 
 xla::ifrt::Client* Array::client() const { return client_; }

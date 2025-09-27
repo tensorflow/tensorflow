@@ -2006,8 +2006,8 @@ IfrtBackend::HandleGetDefaultLayoutRequest(
           : MemoryKind(get_default_layout_request.memory_kind());
   TF_ASSIGN_OR_RETURN(
       std::shared_ptr<const xla::PjRtLayout> layout,
-      client_->GetDefaultLayout(dtype, get_default_layout_request.dims(),
-                                device, memory_kind));
+      client_->GetDefaultPjRtLayout(dtype, get_default_layout_request.dims(),
+                                    device, memory_kind));
 
   auto ifrt_resp = NewIfrtResponse(request->request_metadata().op_id());
 

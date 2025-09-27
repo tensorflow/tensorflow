@@ -734,7 +734,7 @@ PjRtLoadedExecutable::Execute(absl::Span<ArrayRef> args,
           layout = std::make_shared<xla::PjRtLayout>(xla::Layout());
         } else {
           TF_ASSIGN_OR_RETURN(layout,
-                              client_->GetDefaultLayout(
+                              client_->GetDefaultPjRtLayout(
                                   output_dtypes_[i], output_shapes_[i].dims(),
                                   devices_->devices().front(),
                                   output_shardings_[i]->memory_kind()));

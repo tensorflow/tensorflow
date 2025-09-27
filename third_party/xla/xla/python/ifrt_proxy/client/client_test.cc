@@ -316,8 +316,8 @@ TEST_P(ClientTest, GetDefaultLayoutSuccess) {
 
   TF_ASSERT_OK_AND_ASSIGN(
       auto resolved_layout,
-      client_->GetDefaultLayout(DType(DType::kF64), {1, 2, 3}, device_,
-                                MemoryKind("mock")));
+      client_->GetDefaultPjRtLayout(DType(DType::kF64), {1, 2, 3}, device_,
+                                    MemoryKind("mock")));
   EXPECT_EQ(resolved_layout->ToString(), layout.ToString());
 }
 
@@ -331,13 +331,13 @@ TEST_P(ClientTest, GetCachedDefaultLayoutSuccess) {
 
   TF_ASSERT_OK_AND_ASSIGN(
       auto resolved_layout,
-      client_->GetDefaultLayout(DType(DType::kF64), {1, 2, 3}, device_,
-                                MemoryKind("mock")));
+      client_->GetDefaultPjRtLayout(DType(DType::kF64), {1, 2, 3}, device_,
+                                    MemoryKind("mock")));
   EXPECT_EQ(resolved_layout->ToString(), layout_1_->ToString());
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      resolved_layout, client_->GetDefaultLayout(DType(DType::kF64), {1, 2, 3},
-                                                 device_, MemoryKind("mock")));
+  TF_ASSERT_OK_AND_ASSIGN(resolved_layout, client_->GetDefaultPjRtLayout(
+                                               DType(DType::kF64), {1, 2, 3},
+                                               device_, MemoryKind("mock")));
   EXPECT_EQ(resolved_layout->ToString(), layout_1_->ToString());
 }
 
@@ -347,8 +347,8 @@ TEST_P(ClientTest, GetDefaultLayoutFailure) {
       .WillOnce(Return(Future<ClientSession::Response>(
           absl::InternalError("injected from test"))));
 
-  EXPECT_THAT(client_->GetDefaultLayout(DType(DType::kF64), {1, 2, 3}, device_,
-                                        MemoryKind("mock")),
+  EXPECT_THAT(client_->GetDefaultPjRtLayout(DType(DType::kF64), {1, 2, 3},
+                                            device_, MemoryKind("mock")),
               Not(absl_testing::IsOk()));
 }
 

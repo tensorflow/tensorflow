@@ -169,7 +169,7 @@ GetParameterLayoutFromConsumer(
     const auto& out_spec = out_specs[param_operand.getOperandNumber()];
     TF_ASSIGN_OR_RETURN(auto shard_shape,
                         out_spec.sharding->GetShardShape(out_spec.shape));
-    return client->GetDefaultLayout(
+    return client->GetDefaultPjRtLayout(
         out_spec.dtype, shard_shape.dims(),
         out_spec.sharding->devices()->devices().front(),
         out_spec.sharding->memory_kind());
@@ -180,7 +180,7 @@ GetParameterLayoutFromConsumer(
       const auto& arg_spec = in_specs[arg.getArgNumber()];
       TF_ASSIGN_OR_RETURN(auto shard_shape,
                           arg_spec.sharding->GetShardShape(arg_spec.shape));
-      return client->GetDefaultLayout(
+      return client->GetDefaultPjRtLayout(
           arg_spec.dtype, shard_shape.dims(),
           arg_spec.sharding->devices()->devices().front(),
           arg_spec.sharding->memory_kind());
@@ -216,7 +216,7 @@ absl::Status PopulateLayouts(mlir::ModuleOp mlir_module,
       TF_ASSIGN_OR_RETURN(auto shard_shape,
                           arg_spec.sharding->GetShardShape(arg_spec.shape));
       TF_ASSIGN_OR_RETURN(parameter_layout,
-                          client->GetDefaultLayout(
+                          client->GetDefaultPjRtLayout(
                               arg_spec.dtype, shard_shape.dims(),
                               arg_spec.sharding->devices()->devices().front(),
                               arg_spec.sharding->memory_kind()));
@@ -256,7 +256,7 @@ absl::Status PopulateLayouts(mlir::ModuleOp mlir_module,
       TF_ASSIGN_OR_RETURN(auto shard_shape,
                           out_spec.sharding->GetShardShape(out_spec.shape));
       TF_ASSIGN_OR_RETURN(out_spec.layout,
-                          client->GetDefaultLayout(
+                          client->GetDefaultPjRtLayout(
                               out_spec.dtype, shard_shape.dims(),
                               out_spec.sharding->devices()->devices().front(),
                               out_spec.sharding->memory_kind()));

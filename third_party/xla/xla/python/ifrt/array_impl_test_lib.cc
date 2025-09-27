@@ -302,9 +302,9 @@ TEST(ArrayImplTest, MakeArrayFromHostBufferDefaultLayout) {
   for (Memory* const memory : device->Memories()) {
     SCOPED_TRACE(absl::StrCat(memory->Kind()));
 
-    TF_ASSERT_OK_AND_ASSIGN(
-        auto default_layout,
-        client->GetDefaultLayout(dtype, shape.dims(), device, memory->Kind()));
+    TF_ASSERT_OK_AND_ASSIGN(auto default_layout,
+                            client->GetDefaultPjRtLayout(
+                                dtype, shape.dims(), device, memory->Kind()));
 
     TF_ASSERT_OK_AND_ASSIGN(
         auto array,
@@ -1451,8 +1451,8 @@ TEST(ArrayImplTest, CopyPreservesDefaultLayouts) {
       TF_ASSERT_OK_AND_ASSIGN(auto src_layout, array->pjrt_layout());
       TF_ASSERT_OK_AND_ASSIGN(
           auto src_default_layout,
-          client->GetDefaultLayout(dtype, shape.dims(), device,
-                                   src_memory->Kind()));
+          client->GetDefaultPjRtLayout(dtype, shape.dims(), device,
+                                       src_memory->Kind()));
       EXPECT_EQ(*src_layout, *src_default_layout);
 
       TF_ASSERT_OK_AND_ASSIGN(
@@ -1463,8 +1463,8 @@ TEST(ArrayImplTest, CopyPreservesDefaultLayouts) {
       TF_ASSERT_OK_AND_ASSIGN(auto dst_layout, new_arrays[0]->pjrt_layout());
       TF_ASSERT_OK_AND_ASSIGN(
           auto dst_default_layout,
-          client->GetDefaultLayout(dtype, shape.dims(), device,
-                                   dst_memory->Kind()));
+          client->GetDefaultPjRtLayout(dtype, shape.dims(), device,
+                                       dst_memory->Kind()));
       EXPECT_EQ(*dst_layout, *dst_default_layout);
     }
   }
