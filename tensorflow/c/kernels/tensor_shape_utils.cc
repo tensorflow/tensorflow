@@ -15,8 +15,10 @@ limitations under the License.
 
 #include "tensorflow/c/kernels/tensor_shape_utils.h"
 
+#include <cstdint>
 #include <string>
 
+#include "absl/log/check.h"
 #include "tensorflow/c/tf_tensor.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/strcat.h"
