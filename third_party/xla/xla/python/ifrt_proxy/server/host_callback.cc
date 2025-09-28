@@ -33,13 +33,13 @@
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/pjrt/host_callback.h"
 #include "xla/python/ifrt/client.h"
-#include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt/host_callback.h"
 #include "xla/python/ifrt_proxy/common/proto_util.h"
 #include "xla/python/pjrt_ifrt/pjrt_host_callback.h"
 #include "xla/python/pjrt_ifrt/xla_host_callback.pb.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
@@ -164,8 +164,8 @@ absl::Status RemoteLoadedHostCallback::Execute(void** result_ptrs,
   to_buffer(host_callback().operands, operand_ptrs, request.operands);
   to_buffer(host_callback().results, result_ptrs, request.results);
 
-  Future<> status;
-  std::tie(request.status, status) = Future<>::MakePromise();
+  tsl::Future<> status;
+  std::tie(request.status, status) = tsl::Future<>::MakePromise();
 
   // Enqueue the execution request. `IfrtBackend` retrieves this by calling
   // `PopExecutionRequest` and fulfills the `results` promise.

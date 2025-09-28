@@ -32,8 +32,8 @@
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/pjrt/host_callback.h"
 #include "xla/python/ifrt/client.h"
-#include "xla/python/ifrt/future.h"
 #include "xla/python/pjrt_ifrt/pjrt_host_callback.h"
+#include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/concurrency/ref_count.h"
 
 namespace xla {
@@ -55,7 +55,7 @@ class RemoteLoadedHostCallbackQueue {
   struct ExecutionRequest {
     std::vector<Buffer> operands;
     std::vector<Buffer> results;
-    Future<>::Promise status;
+    tsl::Promise<> status;
   };
 
   ~RemoteLoadedHostCallbackQueue();

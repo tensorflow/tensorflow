@@ -54,7 +54,6 @@
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/executable.h"
-#include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt/host_callback.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/mock.h"
@@ -75,6 +74,7 @@
 #include "xla/service/computation_placer.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
+#include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/env.h"
@@ -759,7 +759,7 @@ TEST_P(IfrtBackendHandlerTest, CopyToHostSuccess) {
   const std::optional<absl::Span<const int64_t>> expected_byte_strides =
       absl::Span<const int64_t>(expected_byte_strides_vec);
   EXPECT_CALL(*array, CopyToHostBuffer(_, expected_byte_strides, _))
-      .WillOnce(Return(Future<>(absl::OkStatus())));
+      .WillOnce(Return(tsl::Future<>(absl::OkStatus())));
 
   TF_ASSERT_OK_AND_ASSIGN(auto response, CallBackend(std::move(ifrt_request)));
   // Given the above shape, dtype, and compact byte_strides, the size of the
@@ -814,7 +814,7 @@ TEST_P(IfrtBackendHandlerTest, CopyToHostSuccessWithStringArray) {
         for (int i = 0; i < input_strings.size(); ++i) {
           dst[i] = input_strings[i];
         }
-        return Future<>(absl::OkStatus());
+        return tsl::Future<>(absl::OkStatus());
       });
 
   EXPECT_CALL(*mock_client_,
@@ -1004,8 +1004,8 @@ TEST_P(IfrtBackendHandlerTest,
   TF_ASSERT_OK_AND_ASSIGN(auto array_handle,
                           MakeTestArray(std::move(mock_array)));
   EXPECT_CALL(*mock_client_, GetReadyFuture(_))
-      .WillOnce(Return(Future<>(absl::OkStatus())))
-      .WillOnce(Return(Future<>(absl::UnknownError("injected error"))));
+      .WillOnce(Return(tsl::Future<>(absl::OkStatus())))
+      .WillOnce(Return(tsl::Future<>(absl::UnknownError("injected error"))));
 
   {
     auto ifrt_request = NewIfrtRequest(NewOpId());
@@ -1040,10 +1040,10 @@ TEST_P(IfrtBackendHandlerTest,
 TEST_P(IfrtBackendHandlerTest, DeleteArraySuccess) {
   auto mock_array1 = tsl::MakeRef<xla::ifrt::MockArray>();
   EXPECT_CALL(*mock_array1, Delete())
-      .WillOnce(Return(Future<>(absl::OkStatus())));
+      .WillOnce(Return(tsl::Future<>(absl::OkStatus())));
   auto mock_array2 = tsl::MakeRef<xla::ifrt::MockArray>();
   EXPECT_CALL(*mock_array2, Delete())
-      .WillOnce(Return(Future<>(absl::OkStatus())));
+      .WillOnce(Return(tsl::Future<>(absl::OkStatus())));
 
   TF_ASSERT_OK_AND_ASSIGN(auto array_handle1,
                           MakeTestArray(std::move(mock_array1)));
@@ -1066,7 +1066,7 @@ TEST_P(IfrtBackendHandlerTest,
   // Create one existing array.
   auto mock_array1 = tsl::MakeRef<xla::ifrt::MockArray>();
   EXPECT_CALL(*mock_array1, Delete())
-      .WillOnce(Return(Future<>(absl::OkStatus())));
+      .WillOnce(Return(tsl::Future<>(absl::OkStatus())));
   TF_ASSERT_OK_AND_ASSIGN(auto real_handle,
                           MakeTestArray(std::move(mock_array1)));
 
@@ -1162,7 +1162,7 @@ TEST_P(IfrtBackendHandlerTest, CompileSuccess) {
       .WillOnce(Return(absl::MakeSpan(addressable_devices)));
   EXPECT_CALL(*executable, Fingerprint()).WillOnce(Return("fingerprint"));
   EXPECT_CALL(*executable, GetReadyFuture())
-      .WillOnce(Return(Future<>(absl::OkStatus())));
+      .WillOnce(Return(tsl::Future<>(absl::OkStatus())));
 
   TF_ASSERT_OK_AND_ASSIGN(CompileResponse response,
                           CompileTestLoadedExecutable(std::move(executable)));
@@ -1331,7 +1331,7 @@ TEST_P(IfrtBackendHandlerTest, LoadedExecutableExecute) {
                     std::optional<DeviceListRef> devices)
                     -> absl::StatusOr<LoadedExecutable::ExecuteResult> {
         return LoadedExecutable::ExecuteResult{
-            .status = Future<>(absl::InternalError("injected error")),
+            .status = tsl::Future<>(absl::InternalError("injected error")),
             .outputs = outputs,
         };
       });

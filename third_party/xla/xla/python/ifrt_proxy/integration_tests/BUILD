@@ -135,6 +135,7 @@ ifrt_proxy_cc_test(
         "//xla/python/ifrt_proxy/client:registry",
         "//xla/python/ifrt_proxy/server:grpc_server",
         "//xla/python/pjrt_ifrt",
+        "//xla/tsl/concurrency:future",
         "//xla/tsl/concurrency:ref_count",
         "//xla/tsl/platform:status_matchers",
         "//xla/tsl/platform:statusor",
