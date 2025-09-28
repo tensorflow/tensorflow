@@ -32,6 +32,7 @@ limitations under the License.
 #include "xla/stream_executor/gpu/gpu_test_kernels.h"
 #include "xla/stream_executor/gpu/gpu_test_kernels_fatbin.h"
 #include "xla/stream_executor/gpu/tma_metadata.h"
+#include "xla/stream_executor/gpu/tma_metadata.pb.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/launch_dim.h"
