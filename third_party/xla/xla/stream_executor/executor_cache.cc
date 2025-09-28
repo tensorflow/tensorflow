@@ -44,13 +44,13 @@ absl::StatusOr<StreamExecutor*> ExecutorCache::GetOrCreate(
   VLOG(2) << "building executor";
   TF_ASSIGN_OR_RETURN(std::unique_ptr<StreamExecutor> result, factory());
   auto returned_executor = result.get();
-  absl::MutexLock lock(&mutex_);
+  absl::MutexLock lock(mutex_);
   cache_.emplace(ordinal, std::move(result));
   return returned_executor;
 }
 
 absl::StatusOr<StreamExecutor*> ExecutorCache::Get(int ordinal) {
-  absl::ReaderMutexLock lock{&mutex_};
+  absl::ReaderMutexLock lock{mutex_};
 
   if (auto it = cache_.find(ordinal); it != cache_.end()) {
     return it->second.get();
