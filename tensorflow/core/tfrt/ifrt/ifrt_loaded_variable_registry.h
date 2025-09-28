@@ -30,7 +30,7 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/python/ifrt/array.h"
-#include "xla/python/ifrt/future.h"
+#include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/concurrency/ref_count.h"
 
 namespace tensorflow {
@@ -69,7 +69,7 @@ class IfrtLoadedVariableRegistry {
   };
 
   struct LoadedVariable {
-    xla::ifrt::Future<xla::ifrt::ArrayRef> array;
+    tsl::Future<xla::ifrt::ArrayRef> array;
   };
   using LoadedVariableConstructor =
       absl::AnyInvocable<absl::StatusOr<LoadedVariable>() const>;

@@ -40,7 +40,6 @@ limitations under the License.
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
-#include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt/index.h"
 #include "xla/python/ifrt/index_domain.h"
 #include "xla/python/ifrt/memory.h"
@@ -49,6 +48,7 @@ limitations under the License.
 #include "xla/python/pjrt_ifrt/xla_sharding.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
@@ -464,7 +464,7 @@ absl::StatusOr<xla::ifrt::ArrayRef> MakeAssembledArrayFromHostBuffer(
       xla::ifrt::ArrayCopySemantics::kDonateInput);
 }
 
-absl::StatusOr<xla::ifrt::Future<tensorflow::Tensor>> MakeTensorFromArrayHelper(
+absl::StatusOr<tsl::Future<tensorflow::Tensor>> MakeTensorFromArrayHelper(
     xla::ifrt::Client& ifrt_client, xla::ifrt::Array& input_array,
     const xla::HloSharding& hlo_sharding,
     const xla::ifrt::DeviceListRef& device_list,
@@ -477,7 +477,7 @@ absl::StatusOr<xla::ifrt::Future<tensorflow::Tensor>> MakeTensorFromArrayHelper(
           << hlo_sharding.ToString();
 
   auto [promise, output_tensor_future] =
-      xla::ifrt::Future<tensorflow::Tensor>::MakePromise();
+      tsl::Future<tensorflow::Tensor>::MakePromise();
 
   if (hlo_sharding.IsReplicated()) {
     VLOG(1) << "Fast path for replication";
@@ -599,7 +599,7 @@ absl::StatusOr<xla::ifrt::Future<tensorflow::Tensor>> MakeTensorFromArrayHelper(
         {index_domains[i], disassembled_array[i]});
   }
 
-  std::vector<xla::ifrt::Future<>> arrays_copy_status;
+  std::vector<tsl::Future<>> arrays_copy_status;
   std::vector<tensorflow::Tensor> input_tensors;
   input_tensors.reserve(index_domain_device_arrays.size());
   arrays_copy_status.reserve(index_domain_device_arrays.size());
@@ -609,7 +609,7 @@ absl::StatusOr<xla::ifrt::Future<tensorflow::Tensor>> MakeTensorFromArrayHelper(
                         ToTensorDataType(array->dtype()));
     tensorflow::Tensor tensor(dtype, tensor_shape);
     input_tensors.push_back(tensor);
-    xla::ifrt::Future<> copy_status = array->CopyToHostBuffer(
+    tsl::Future<> copy_status = array->CopyToHostBuffer(
         tensor.data(), GetByteStrides(dtype, tensor_shape),
         xla::ifrt::ArrayCopySemantics::kAlwaysCopy);
     copy_status.OnReady([tensor](absl::Status status) {
@@ -619,7 +619,7 @@ absl::StatusOr<xla::ifrt::Future<tensorflow::Tensor>> MakeTensorFromArrayHelper(
     arrays_copy_status.push_back(std::move(copy_status));
   }
 
-  xla::ifrt::JoinFutures(absl::MakeSpan(arrays_copy_status))
+  tsl::JoinFutures(absl::MakeSpan(arrays_copy_status))
       .OnReady([promise = std::move(promise), &ifrt_client,
                 input_tensors = std::move(input_tensors), num_concats,
                 data_type, tensor_shape,
@@ -645,16 +645,16 @@ absl::StatusOr<xla::ifrt::Future<tensorflow::Tensor>> MakeTensorFromArrayHelper(
 
 }  // namespace
 
-xla::ifrt::Future<tensorflow::Tensor> MakeTensorFromArray(
+tsl::Future<tensorflow::Tensor> MakeTensorFromArray(
     xla::ifrt::Client& ifrt_client, xla::ifrt::Array& input_array,
     const xla::HloSharding& hlo_sharding,
     const xla::ifrt::DeviceListRef& device_list,
     tsl::thread::ThreadPool& thread_pool) {
-  absl::StatusOr<xla::ifrt::Future<tensorflow::Tensor>> output_tensor_future =
+  absl::StatusOr<tsl::Future<tensorflow::Tensor>> output_tensor_future =
       MakeTensorFromArrayHelper(ifrt_client, input_array, hlo_sharding,
                                 device_list, thread_pool);
   if (!output_tensor_future.ok()) {
-    return xla::ifrt::Future<tensorflow::Tensor>(
+    return tsl::Future<tensorflow::Tensor>(
         std::move(output_tensor_future).status());
   }
   return *std::move(output_tensor_future);

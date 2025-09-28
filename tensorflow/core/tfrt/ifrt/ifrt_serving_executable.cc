@@ -66,7 +66,6 @@ limitations under the License.
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/executable.h"
-#include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt/hlo/hlo_program.h"
 #include "xla/python/ifrt/host_callback.h"
 #include "xla/python/ifrt/program.h"
@@ -76,6 +75,7 @@ limitations under the License.
 #include "xla/service/computation_placer.h"
 #include "xla/service/dump.h"
 #include "xla/shape.h"
+#include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/framework/serving_device_selector.h"
 #include "xla/tsl/platform/errors.h"
@@ -568,7 +568,7 @@ IfrtServingExecutable::CreateExecutableSynchronously(
   return executable_bundle;
 }
 
-xla::ifrt::Future<IfrtServingExecutable::SharedCachedExecutableBundle>
+tsl::Future<IfrtServingExecutable::SharedCachedExecutableBundle>
 IfrtServingExecutable::LookUpOrCreateExecutable(
     const tensorflow::tpu::TPUCompileMetadataProto& compile_metadata,
     absl::Span<const DtypeAndShape> dtypes_and_shapes,
@@ -579,8 +579,8 @@ IfrtServingExecutable::LookUpOrCreateExecutable(
   }
   Key key = {.input_shapes = std::move(input_shapes)};
 
-  xla::ifrt::Promise<SharedCachedExecutableBundle> promise;
-  xla::ifrt::Future<SharedCachedExecutableBundle> future;
+  tsl::Promise<SharedCachedExecutableBundle> promise;
+  tsl::Future<SharedCachedExecutableBundle> future;
   mlir::OwningOpRef<mlir::ModuleOp> module_copy;
   {
     absl::MutexLock lock(mutex_);
@@ -591,7 +591,7 @@ IfrtServingExecutable::LookUpOrCreateExecutable(
     }
 
     if (is_frozen_) {
-      xla::ifrt::Future<SharedCachedExecutableBundle> frozen_future(
+      tsl::Future<SharedCachedExecutableBundle> frozen_future(
           absl::FailedPreconditionError(
               "Cannot compile for new input shapes after the executable is "
               "already frozen."));
@@ -600,7 +600,7 @@ IfrtServingExecutable::LookUpOrCreateExecutable(
 
     // Only create promise and future when cache missed.
     std::tie(promise, future) =
-        xla::ifrt::Future<SharedCachedExecutableBundle>::MakePromise();
+        tsl::Future<SharedCachedExecutableBundle>::MakePromise();
 
     executable_bundles_.emplace(key, future);
     // Clone the module to avoid race condition between Freeze() and
@@ -790,7 +790,7 @@ absl::StatusOr<std::vector<tensorflow::Tensor>> IfrtServingExecutable::Execute(
         " but got ", execution_result->outputs.size(), " outputs"));
   }
 
-  std::vector<xla::ifrt::Future<tensorflow::Tensor>> output_futures;
+  std::vector<tsl::Future<tensorflow::Tensor>> output_futures;
   output_futures.reserve(execution_result->outputs.size());
   for (int i = 0; i < execution_result->outputs.size(); ++i) {
     tensorflow::TensorShape tensor_shape;

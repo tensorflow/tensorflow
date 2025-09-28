@@ -43,9 +43,9 @@ limitations under the License.
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/executable.h"
-#include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
+#include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/platform/threadpool.h"
 #include "xla/xla_data.pb.h"
@@ -206,7 +206,7 @@ class IfrtServingExecutable {
       compilation_env_or_overrides_;  // proto is NOT OWNED. can be nullptr.
 
   mutable absl::Mutex mutex_;
-  absl::flat_hash_map<Key, xla::ifrt::Future<SharedCachedExecutableBundle>>
+  absl::flat_hash_map<Key, tsl::Future<SharedCachedExecutableBundle>>
       executable_bundles_ ABSL_GUARDED_BY(mutex_);
 
   bool is_frozen_ ABSL_GUARDED_BY(mutex_) = false;
@@ -232,7 +232,7 @@ class IfrtServingExecutable {
       const xla::ifrt::DeviceListRef& device_list,
       const xla::OpSharding& sharding);
 
-  xla::ifrt::Future<SharedCachedExecutableBundle> LookUpOrCreateExecutable(
+  tsl::Future<SharedCachedExecutableBundle> LookUpOrCreateExecutable(
       const tensorflow::tpu::TPUCompileMetadataProto& compile_metadata,
       absl::Span<const DtypeAndShape> dtypes_and_shapes,
       absl::Span<const int> variable_arg_indices);

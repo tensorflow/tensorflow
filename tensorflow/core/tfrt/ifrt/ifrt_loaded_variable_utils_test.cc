@@ -28,8 +28,8 @@ limitations under the License.
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/device.h"
-#include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt/test_util.h"
+#include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/env.h"
@@ -83,7 +83,7 @@ TEST(ShardingUtilsTest, ShardTensorToIfrtLoadedVariableNotFoundWrongName) {
       .hlo_sharding = xla::HloSharding::Replicate(),
   };
 
-  auto [promise, future] = xla::ifrt::Future<tensorflow::Tensor>::MakePromise();
+  auto [promise, future] = tsl::Future<tensorflow::Tensor>::MakePromise();
 
   IfrtRestoreTensorRegistry::RestoredTensorInfo restored_tensor_info = {
       false,
@@ -127,7 +127,7 @@ TEST(ShardingUtilsTest, ShardTensorToIfrtLoadedVariableSucceed) {
       .hlo_sharding = xla::HloSharding::Replicate(),
   };
 
-  auto [promise, future] = xla::ifrt::Future<tensorflow::Tensor>::MakePromise();
+  auto [promise, future] = tsl::Future<tensorflow::Tensor>::MakePromise();
 
   IfrtRestoreTensorRegistry::RestoredTensorInfo restored_tensor_info = {
       false,

@@ -29,7 +29,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/ifrt_types.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/client.h"
-#include "xla/python/ifrt/future.h"
+#include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
@@ -104,14 +104,14 @@ absl::Status AsyncLoadRestoredTensorAsIfrtLoadedVariable(
     return absl::OkStatus();
   }
 
-  xla::ifrt::Future<tensorflow::Tensor> restored_tensor_future =
+  tsl::Future<tensorflow::Tensor> restored_tensor_future =
       restore_tensor_registry.GetRestoredTensor(tensor_name);
   if (!restored_tensor_future.IsValid()) {
     return absl::InternalError(absl::StrCat(
         "LoadVariableOp: failed to fetch variable tensor: ", tensor_name));
   }
   auto [loaded_variable_promise, loaded_variable_future] =
-      xla::ifrt::Future<xla::ifrt::ArrayRef>::MakePromise();
+      tsl::Future<xla::ifrt::ArrayRef>::MakePromise();
   TF_ASSIGN_OR_RETURN(
       absl::StatusOr<ifrt_serving::DtypeAndShape> dtype_and_shape,
       restore_tensor_registry.GetDtypeAndShape(tensor_name));
