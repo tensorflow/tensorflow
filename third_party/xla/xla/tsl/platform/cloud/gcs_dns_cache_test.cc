@@ -77,7 +77,7 @@ class GcsDnsCacheTest : public ::testing::Test {
   void AnnotateRequestTest() {
     GcsDnsCache d;
     {
-      absl::MutexLock l(&d.mu_);
+      absl::MutexLock l(d.mu_);
       d.started_ = true;  // Avoid creating a thread.
       d.addresses_ = {{"192.168.1.1"}, {"172.134.1.1"}};
     }
