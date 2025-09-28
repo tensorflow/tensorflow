@@ -87,7 +87,6 @@ cc_library(
         "//xla:types",
         "//xla:util",
         "//xla/backends/gpu/collectives:gpu_clique_key",
-        "//xla/backends/gpu/collectives:gpu_collectives",
         "//xla/core/collectives:communicator",
         "//xla/ffi:attribute_map",
         "//xla/ffi:call_frame",
