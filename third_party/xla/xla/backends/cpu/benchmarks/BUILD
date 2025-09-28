@@ -1,5 +1,6 @@
 load("//xla:xla.default.bzl", "xla_cc_test")
 load("//xla/tsl:tsl.bzl", "tsl_copts")
+load("//xla/tsl/mkl:graph.bzl", "onednn_cc_test")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
@@ -473,12 +474,10 @@ xla_cc_test(
     ],
 )
 
-xla_cc_test(
+onednn_cc_test(
     name = "onednn_matmul_benchmark_test",
     srcs = ["onednn_matmul_benchmark_test.cc"],
     copts = tsl_copts(),
-    fail_if_no_test_linked = False,  # NOLINT=This contains benchmarks only, no tests.
-    fail_if_no_test_selected = False,  # NOLINT=This contains benchmarks only, no tests.
     deps = [
         ":hlo_benchmark_runner",
         "//xla:literal",
@@ -488,6 +487,8 @@ xla_cc_test(
         "//xla/service/cpu:onednn_util",
         "//xla/tsl/platform:test",
         "//xla/tsl/platform:test_benchmark",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",

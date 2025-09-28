@@ -296,7 +296,7 @@ xla_cc_test(
     ],
 )
 
-xla_cc_test(
+onednn_cc_test(
     name = "onednn_matmul_test",
     srcs = ["onednn_matmul_test.cc"],
     copts = tsl_copts(),
@@ -306,23 +306,17 @@ xla_cc_test(
         "notap",
     ],
     deps = [
-        "//xla:literal",
-        "//xla:shape_util",
-        "//xla/hlo/testlib:filecheck",
+        "//xla:error_spec",
         "//xla/hlo/testlib:test",
-        "//xla/hlo/testlib:test_helpers",
-        "//xla/hlo/utils:hlo_matchers",
         "//xla/service:cpu_plugin",
-        "//xla/service/cpu:onednn_contraction_rewriter",
         "//xla/service/cpu:onednn_util",
         "//xla/tests:hlo_test_base",
         "//xla/tests:xla_internal_test_main",
         "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/platform:platform_port",
     ],
 )
 
-xla_cc_test(
+onednn_cc_test(
     name = "onednn_convolution_test",
     srcs = ["onednn_convolution_test.cc"],
     copts = tsl_copts(),

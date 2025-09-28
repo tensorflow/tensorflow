@@ -13,24 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#if defined(INTEL_MKL)
-
 #include <string>
-#include <utility>
 
 #include "absl/strings/str_replace.h"
-#include "xla/hlo/testlib/filecheck.h"
+#include "xla/error_spec.h"
 #include "xla/hlo/testlib/test.h"
-#include "xla/hlo/testlib/test_helpers.h"
-#include "xla/hlo/utils/hlo_matchers.h"
-#include "xla/literal.h"
-#include "xla/service/cpu/onednn_contraction_rewriter.h"
 #include "xla/service/cpu/onednn_util.h"
-#include "xla/shape_util.h"
 #include "xla/tests/hlo_test_base.h"
-#include "tsl/platform/cpu_info.h"
-
-namespace op = xla::testing::opcode_matchers;
 
 namespace xla {
 namespace cpu {
@@ -1892,5 +1881,3 @@ TEST_F(MatmulTest, MulTanhMul) {
 
 }  // namespace cpu
 }  // namespace xla
-
-#endif  // INTEL_MKL

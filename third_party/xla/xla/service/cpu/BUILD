@@ -1856,7 +1856,7 @@ onednn_cc_library(
     ],
 )
 
-cc_library(
+onednn_cc_library(
     name = "onednn_contraction_rewriter",
     srcs = ["onednn_contraction_rewriter.cc"],
     hdrs = [
@@ -1875,8 +1875,11 @@ cc_library(
         ":onednn_pattern_utils",
         ":onednn_util",
         "//xla:executable_run_options",
+        "//xla:literal",
         "//xla:shape_util",
         "//xla:status_macros",
+        "//xla:types",
+        "//xla:util",
         "//xla/hlo/evaluator:hlo_evaluator",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
@@ -1884,10 +1887,17 @@ cc_library(
         "//xla/service:pattern_matcher",
         "//xla/tsl/mkl:onednn",
         "//xla/tsl/platform:env",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/synchronization",
         "@eigen_archive//:eigen3",
-        "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:platform_port",
     ],
@@ -1918,13 +1928,14 @@ cc_library(
     ],
 )
 
-cc_library(
+onednn_cc_library(
     name = "onednn_float_support",
     srcs = ["onednn_float_support.cc"],
     hdrs = ["onednn_float_support.h"],
     copts = tsl_copts(),
     deps = [
         ":onednn_contraction_rewriter",
+        "//xla/hlo/ir:hlo",
         "//xla/service:float_support",
     ],
 )
