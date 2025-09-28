@@ -20,7 +20,9 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include "absl/base/macros.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/statusor.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringRef.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
@@ -39,7 +41,8 @@ class ShapedType;
 
 namespace tensorflow {
 
-using tsl::StatusOr;
+template <typename T>
+using StatusOr ABSL_DEPRECATE_AND_INLINE() = ::absl::StatusOr<T>;
 
 // Add custom op prefix for TensorFlow dialects.
 absl::Status AddTensorFlowOpPrefix(std::string);

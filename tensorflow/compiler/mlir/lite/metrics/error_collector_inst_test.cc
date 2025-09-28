@@ -49,7 +49,7 @@ limitations under the License.
 namespace mlir {
 namespace TFL {
 namespace {
-using tsl::StatusOr;
+using absl::StatusOr;
 
 // MockSuccessPass reports errors but doesn't fail.
 class MockSuccessPass

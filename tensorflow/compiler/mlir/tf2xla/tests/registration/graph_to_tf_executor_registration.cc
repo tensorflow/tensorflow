@@ -50,7 +50,7 @@ namespace tf2xla {
 namespace v2 {
 namespace testing {
 
-using tsl::Status;
+using absl::Status;
 
 static constexpr char kMlirToGraphCompilationCheckName[] =
     "mlir-to-graph-compilation-check";

@@ -16,11 +16,13 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PLATFORM_STATUSOR_H_
 #define TENSORFLOW_CORE_PLATFORM_STATUSOR_H_
 
+#include "absl/base/macros.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/status.h"
 #include "tsl/platform/statusor.h"
 namespace tensorflow {
-using tsl::StatusOr;  // NOLINT
+template <typename T>
+using StatusOr ABSL_DEPRECATE_AND_INLINE() = ::absl::StatusOr<T>;
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_PLATFORM_STATUSOR_H_

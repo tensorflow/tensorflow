@@ -26,8 +26,6 @@ limitations under the License.
 
 namespace tensorflow {
 
-using tsl::StatusOr;
-
 class CloneConstantsForBetterClusteringPassImpl {
  public:
   explicit CloneConstantsForBetterClusteringPassImpl(Graph* graph)

@@ -70,7 +70,7 @@ limitations under the License.
 
 #include "absl/base/attributes.h"
 #include "absl/base/macros.h"
-#include "absl/status/statusor.h"
+#include "absl/status/statusor.h"  // IWYU pragma: export
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/macros.h"
 #include "xla/tsl/platform/status.h"
@@ -86,7 +86,7 @@ limitations under the License.
 namespace tsl {
 
 template <typename T>
-using StatusOr ABSL_DEPRECATE_AND_INLINE() = absl::StatusOr<T>;
+using StatusOr ABSL_DEPRECATE_AND_INLINE() = ::absl::StatusOr<T>;
 
 }  // namespace tsl
 

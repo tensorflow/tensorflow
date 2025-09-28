@@ -26,9 +26,8 @@ limitations under the License.
 #include "tensorflow/core/framework/graph.pb.h"
 
 namespace mlir {
-using tsl::Status;
-using tsl::StatusOr;
-
+using absl::Status;
+using absl::StatusOr;
 
 static OwningOpRef<mlir::ModuleOp> GraphdefToSplattedMlirTranslateFunction(
     llvm::StringRef input, MLIRContext* context) {

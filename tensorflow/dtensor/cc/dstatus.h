@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <vector>
 
+#include "absl/base/macros.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
@@ -31,7 +32,7 @@ namespace tensorflow {
 namespace dtensor {
 
 template <typename T>
-using StatusOr = tsl::StatusOr<T>;
+using StatusOr ABSL_DEPRECATE_AND_INLINE() = absl::StatusOr<T>;
 
 inline absl::Status WithContext(const absl::Status& ds, absl::string_view file,
                                 int line_number,

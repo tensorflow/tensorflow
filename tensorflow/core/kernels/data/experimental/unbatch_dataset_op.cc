@@ -44,9 +44,9 @@ namespace data {
 namespace experimental {
 namespace {
 
+using absl::Status;
 using tsl::mutex;
 using tsl::mutex_lock;
-using tsl::Status;
 using tsl::strings::StrCat;
 
 constexpr char kInputImplEmpty[] = "input_impl_empty";

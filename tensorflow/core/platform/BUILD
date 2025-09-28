@@ -765,6 +765,7 @@ cc_library(
     deps = [
         ":macros",
         ":status",
+        "@com_google_absl//absl/base:core_headers",
         "@local_tsl//tsl/platform:statusor",
     ],
 )
