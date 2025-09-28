@@ -44,7 +44,7 @@ class TfToPlatformDeviceIdMap {
       TF_LOCKS_EXCLUDED(mu_) {
     std::pair<IdMapType::iterator, bool> result;
     {
-      absl::MutexLock lock(&mu_);
+      absl::MutexLock lock(mu_);
       TypeIdMapType::iterator device_id_map_iter =
           id_map_.insert({type.type_string(), IdMapType()}).first;
       result = device_id_map_iter->second.insert(
@@ -69,7 +69,7 @@ class TfToPlatformDeviceIdMap {
             PlatformDeviceId* platform_device_id) const TF_LOCKS_EXCLUDED(mu_) {
     // TODO(mrry): Consider replacing this with an atomic `is_initialized` bit,
     // to avoid writing to a shared cache line in the tf_shared_lock.
-    absl::ReaderMutexLock lock(&mu_);
+    absl::ReaderMutexLock lock(mu_);
     auto type_id_map_iter = id_map_.find(type.type_string());
     if (type_id_map_iter == id_map_.end()) return false;
     auto id_map_iter = type_id_map_iter->second.find(tf_device_id.value());
@@ -81,7 +81,7 @@ class TfToPlatformDeviceIdMap {
   absl::StatusOr<std::vector<TfDeviceId>> GetTfDevicesOnPlatform(
       const DeviceType& type, PlatformDeviceId platform_device_id) const
       TF_LOCKS_EXCLUDED(mu_) {
-    absl::ReaderMutexLock lock(&mu_);
+    absl::ReaderMutexLock lock(mu_);
     auto type_id_map_iter = id_map_.find(type.type_string());
     if (type_id_map_iter == id_map_.end()) {
       return absl::NotFoundError(
@@ -101,7 +101,7 @@ class TfToPlatformDeviceIdMap {
   TfToPlatformDeviceIdMap() = default;
 
   void TestOnlyReset() TF_LOCKS_EXCLUDED(mu_) {
-    absl::MutexLock lock(&mu_);
+    absl::MutexLock lock(mu_);
     id_map_.clear();
   }
 
