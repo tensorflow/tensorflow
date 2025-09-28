@@ -37,7 +37,6 @@
 #include "xla/python/ifrt/array_spec.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/dtype.h"
-#include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt/remap_plan.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
@@ -46,6 +45,7 @@
 #include "xla/python/ifrt/value.h"
 #include "xla/python/ifrt_proxy/client/rpc_helper.h"
 #include "xla/python/ifrt_proxy/common/types.h"
+#include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/concurrency/ref_count.h"
 
 namespace xla {
@@ -145,8 +145,8 @@ class Array final : public llvm::RTTIExtends<Array, xla::ifrt::Array> {
   }
 
   xla::ifrt::Client* client() const override;
-  Future<> GetReadyFuture() const override;
-  Future<> Delete() override;
+  tsl::Future<> GetReadyFuture() const override;
+  tsl::Future<> Delete() override;
   bool IsDeleted() const override;
   std::string DebugString() const override;
 
@@ -167,7 +167,7 @@ class Array final : public llvm::RTTIExtends<Array, xla::ifrt::Array> {
       xla::ifrt::ArrayCopySemantics semantics) override;
 
   ABSL_MUST_USE_RESULT
-  Future<> CopyToHostBuffer(
+  tsl::Future<> CopyToHostBuffer(
       void* data, std::optional<absl::Span<const int64_t>> byte_strides,
       ArrayCopySemantics semantics) override;
 
@@ -177,7 +177,7 @@ class Array final : public llvm::RTTIExtends<Array, xla::ifrt::Array> {
   template <typename T, typename... Args>
   friend tsl::RCReference<T> tsl::MakeRef(Args&&... args);
 
-  Future<> CopyToStringHostBuffer(
+  tsl::Future<> CopyToStringHostBuffer(
       void* data, std::optional<absl::Span<const int64_t>> byte_strides,
       ArrayCopySemantics semantics);
 
@@ -210,7 +210,7 @@ class Array final : public llvm::RTTIExtends<Array, xla::ifrt::Array> {
   };
   mutable DeletionState deleted_ ABSL_GUARDED_BY(mu_) = DeletionState::kAlive;
 
-  mutable Future<> ready_future_ ABSL_GUARDED_BY(mu_);
+  mutable tsl::Future<> ready_future_ ABSL_GUARDED_BY(mu_);
 };
 
 }  // namespace proxy

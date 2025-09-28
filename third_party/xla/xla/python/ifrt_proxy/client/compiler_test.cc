@@ -30,7 +30,6 @@
 #include "xla/python/ifrt/basic_device_list.h"
 #include "xla/python/ifrt/compiler.h"
 #include "xla/python/ifrt/device.h"
-#include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt/mock.h"
 #include "xla/python/ifrt/program.h"
 #include "xla/python/ifrt/serdes.h"
@@ -43,6 +42,7 @@
 #include "xla/python/ifrt_proxy/client/version.h"
 #include "xla/python/ifrt_proxy/common/ifrt_service.pb.h"
 #include "xla/python/ifrt_proxy/common/test_utils.h"
+#include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/platform/statusor.h"
 #include "tsl/platform/protobuf.h"  // IWYU pragma: keep
 #include "tsl/platform/status_matchers.h"
@@ -151,7 +151,7 @@ class CompilerTest : public testing::Test {
     // Default handler that ignores all uninteresting requests but still
     // invokes the callback in order to avoid hanging the caller forever.
     EXPECT_CALL(*session_, Enqueue(_))
-        .WillRepeatedly(Return(Future<ClientSession::Response>(
+        .WillRepeatedly(Return(tsl::Future<ClientSession::Response>(
             absl::InternalError("Request has no mock handlers"))));
   }
 

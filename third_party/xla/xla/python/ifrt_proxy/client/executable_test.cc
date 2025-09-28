@@ -33,7 +33,6 @@
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/executable.h"
-#include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/mock.h"
 #include "xla/python/ifrt/serdes_version.h"
@@ -49,6 +48,7 @@
 #include "xla/python/ifrt_proxy/common/ifrt_service.pb.h"
 #include "xla/python/ifrt_proxy/common/test_utils.h"
 #include "xla/python/ifrt_proxy/common/types.h"
+#include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
@@ -89,7 +89,7 @@ class LoadedExecutableTest : public ::testing::Test {
     // Default handler that ignores all uninteresting requests, but still
     // invokes the callback in order to avoid hanging the caller forever.
     EXPECT_CALL(*session_, Enqueue(_))
-        .WillRepeatedly(Return(Future<ClientSession::Response>(
+        .WillRepeatedly(Return(tsl::Future<ClientSession::Response>(
             absl::InternalError("Request has no mock handlers"))));
   }
 
@@ -141,7 +141,7 @@ TEST_F(LoadedExecutableTest, Metadata) {
       /*num_devices=*/2, /*devices=*/{},
       /*addressable_devices=*/{},
       /*fingerprint=*/"fingerprint",
-      /*ready_future=*/Future<>(absl::OkStatus()),
+      /*ready_future=*/tsl::Future<>(absl::OkStatus()),
       /*loaded_host_callbacks=*/{}, /*loaded_host_callback_handles=*/{});
 
   EXPECT_EQ(requests_queue.Pop()
@@ -223,7 +223,7 @@ TEST_F(LoadedExecutableTest, Execute) {
       &client, rpc_helper_, /*handle=*/1234, /*name=*/"foo",
       /*num_devices=*/2, /*devices=*/{}, /*addressable_devices=*/{},
       /*fingerprint=*/"fingerprint",
-      /*ready_future=*/Future<>(absl::OkStatus()),
+      /*ready_future=*/tsl::Future<>(absl::OkStatus()),
       /*loaded_host_callbacks=*/{}, /*loaded_host_callback_handles=*/{});
 
   xla::ifrt::LoadedExecutable::ExecuteOptions exec_options;

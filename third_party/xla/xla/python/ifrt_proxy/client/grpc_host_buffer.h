@@ -24,10 +24,10 @@
 #include "absl/strings/cord.h"
 #include "absl/strings/string_view.h"
 #include "xla/pjrt/semaphore.h"
-#include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt_proxy/client/host_buffer.h"
 #include "xla/python/ifrt_proxy/common/grpc_ifrt_service.grpc.pb.h"
 #include "xla/python/ifrt_proxy/common/ifrt_service.pb.h"
+#include "xla/tsl/concurrency/future.h"
 #include "tsl/platform/unbounded_work_queue.h"
 
 namespace xla {
@@ -44,13 +44,13 @@ class GrpcClientHostBufferStore : public ClientHostBufferStore {
 
   // Implements ClientHostBufferStore.
 
-  Future<> Store(uint64_t handle, absl::string_view data) override;
-  Future<> Store(uint64_t handle, const absl::Cord& data) override;
-  Future<absl::Cord> Lookup(uint64_t handle) override;
-  Future<> Delete(uint64_t handle) override;
+  tsl::Future<> Store(uint64_t handle, absl::string_view data) override;
+  tsl::Future<> Store(uint64_t handle, const absl::Cord& data) override;
+  tsl::Future<absl::Cord> Lookup(uint64_t handle) override;
+  tsl::Future<> Delete(uint64_t handle) override;
 
  private:
-  Future<> StoreToDisk(uint64_t handle, absl::string_view data);
+  tsl::Future<> StoreToDisk(uint64_t handle, absl::string_view data);
 
   const std::shared_ptr<grpc::GrpcIfrtService::StubInterface> stub_;
   const IfrtProxyVersion version_;

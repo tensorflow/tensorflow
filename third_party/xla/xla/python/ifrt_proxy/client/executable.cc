@@ -50,7 +50,6 @@
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/executable.h"
-#include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt/host_callback.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
@@ -63,6 +62,7 @@
 #include "xla/python/ifrt_proxy/common/versions.h"
 #include "xla/python/pjrt_ifrt/pjrt_host_callback.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
@@ -339,7 +339,7 @@ LoadedExecutable::LoadedExecutable(
     uint64_t handle, std::string name, int num_devices, DeviceListRef devices,
     std::vector<xla::ifrt::Device*> addressable_devices,
     absl::StatusOr<std::optional<std::string>> fingerprint,
-    Future<> ready_future,
+    tsl::Future<> ready_future,
     std::vector<tsl::RCReference<xla::ifrt::LoadedHostCallback>>
         loaded_host_callbacks,
     std::vector<uint64_t> loaded_host_callback_handles)
@@ -376,7 +376,8 @@ LoadedExecutable::LoadedExecutable(
   // eagerly schedule this fetch since, in some implementations, it may take a
   // long time for sharding information to be available.
 
-  auto [promise, future] = Future<std::shared_ptr<Metadata>>::MakePromise();
+  auto [promise, future] =
+      tsl::Future<std::shared_ptr<Metadata>>::MakePromise();
   metadata_future_ = std::move(future);
 
   auto req = std::make_unique<LoadedExecutableMetadataRequest>();
@@ -530,7 +531,7 @@ absl::StatusOr<std::string> LoadedExecutable::Serialize() const {
       "underlying serialization format is not stable");
 }
 
-Future<> LoadedExecutable::GetReadyFuture() const { return ready_future_; }
+tsl::Future<> LoadedExecutable::GetReadyFuture() const { return ready_future_; }
 
 int LoadedExecutable::num_devices() const { return num_devices_; }
 

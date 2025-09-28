@@ -32,13 +32,13 @@
 #include "grpcpp/support/sync_stream.h"
 #include "xla/pjrt/distributed/util.h"
 #include "xla/pjrt/semaphore.h"
-#include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt_proxy/client/global_flags.h"
 #include "xla/python/ifrt_proxy/common/grpc_ifrt_service.grpc.pb.h"
 #include "xla/python/ifrt_proxy/common/grpc_ifrt_service.pb.h"
 #include "xla/python/ifrt_proxy/common/prof_util.h"
 #include "xla/python/ifrt_proxy/common/transfer_util.h"
 #include "xla/python/ifrt_proxy/common/versions.h"
+#include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/protobuf/status.pb.h"
 #include "tsl/platform/unbounded_work_queue.h"
@@ -94,9 +94,9 @@ GrpcClientHostBufferStore::~GrpcClientHostBufferStore() {
   LOG(INFO) << "Destructed HostBufferStoreLookupsWorkQueue.";
 }
 
-Future<> GrpcClientHostBufferStore::StoreToDisk(uint64_t handle,
-                                                absl::string_view data) {
-  auto [promise, future] = Future<>::MakePromise();
+tsl::Future<> GrpcClientHostBufferStore::StoreToDisk(uint64_t handle,
+                                                     absl::string_view data) {
+  auto [promise, future] = tsl::Future<>::MakePromise();
 
   XFlowHelper flow("GrpcClientHostBufferStore::StoreToDisk");
   flow.InstantActivity<XFlowHelper::kSend>();
@@ -135,8 +135,8 @@ Future<> GrpcClientHostBufferStore::StoreToDisk(uint64_t handle,
   return std::move(future);
 }
 
-Future<> GrpcClientHostBufferStore::Store(uint64_t handle,
-                                          absl::string_view data) {
+tsl::Future<> GrpcClientHostBufferStore::Store(uint64_t handle,
+                                               absl::string_view data) {
   if (version_.protocol_version() >=
       protocol_version::kGrpcAllowLargeTransferOptimizationViaSharedDirectory) {
     int64_t threshold = GetGlobalClientFlags()
@@ -146,7 +146,7 @@ Future<> GrpcClientHostBufferStore::Store(uint64_t handle,
     }
   }
 
-  auto [promise, future] = Future<>::MakePromise();
+  auto [promise, future] = tsl::Future<>::MakePromise();
 
   XFlowHelper flow("GrpcClientHostBufferStore::StoreAsync");
   flow.InstantActivity<XFlowHelper::kSend>();
@@ -199,8 +199,8 @@ Future<> GrpcClientHostBufferStore::Store(uint64_t handle,
   return std::move(future);
 }
 
-Future<> GrpcClientHostBufferStore::Store(uint64_t handle,
-                                          const absl::Cord& data) {
+tsl::Future<> GrpcClientHostBufferStore::Store(uint64_t handle,
+                                               const absl::Cord& data) {
   // The current implementation synchronously sends host buffer chunks. We may
   // consider making it asynchronous if the caller can leverage such asynchrony.
   tsl::profiler::TraceMe traceme("GrpcClientHostBufferStore::StoreSync");
@@ -235,7 +235,7 @@ Future<> GrpcClientHostBufferStore::Store(uint64_t handle,
     }
     if (!writer->WritesDone()) {
       absl::Status s = xla::FromGrpcStatus(writer->Finish());
-      return Future<>(absl::InternalError(absl::StrCat(
+      return tsl::Future<>(absl::InternalError(absl::StrCat(
           "Failed to write all host buffer chunks, Finish() returned: ",
           s.ToString())));
     }
@@ -243,11 +243,11 @@ Future<> GrpcClientHostBufferStore::Store(uint64_t handle,
   VLOG(3) << "GrpcClientHostBufferStore::Store done "
           << metadata.ShortDebugString();
 
-  return Future<>(xla::FromGrpcStatus(writer->Finish()));
+  return tsl::Future<>(xla::FromGrpcStatus(writer->Finish()));
 }
 
-Future<absl::Cord> GrpcClientHostBufferStore::Lookup(uint64_t handle) {
-  auto [promise, future] = Future<absl::Cord>::MakePromise();
+tsl::Future<absl::Cord> GrpcClientHostBufferStore::Lookup(uint64_t handle) {
+  auto [promise, future] = tsl::Future<absl::Cord>::MakePromise();
 
   XFlowHelper flow("GrpcClientHostBufferStore::Lookup");
   flow.InstantActivity<XFlowHelper::kSend>();
@@ -287,7 +287,7 @@ Future<absl::Cord> GrpcClientHostBufferStore::Lookup(uint64_t handle) {
   return std::move(future);
 }
 
-Future<> GrpcClientHostBufferStore::Delete(uint64_t handle) {
+tsl::Future<> GrpcClientHostBufferStore::Delete(uint64_t handle) {
   GrpcHostBufferDeleteRequest request;
   request.set_session_id(session_id_);
   request.set_handle(handle);
@@ -300,7 +300,7 @@ Future<> GrpcClientHostBufferStore::Delete(uint64_t handle) {
       stub_->HostBufferDelete(&context, request, &response));
   VLOG(3) << "GrpcClientHostBufferStore::Delete done "
           << request.ShortDebugString();
-  return Future<>(result);
+  return tsl::Future<>(result);
 }
 
 }  // namespace proxy

@@ -45,7 +45,6 @@
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
-#include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/remap_plan.h"
 #include "xla/python/ifrt/shape.h"
@@ -59,6 +58,7 @@
 #include "xla/python/ifrt_proxy/common/types.h"
 #include "xla/python/ifrt_proxy/common/versions.h"
 #include "xla/python/pjrt_ifrt/pjrt_attribute_map_util.h"
+#include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
@@ -375,13 +375,13 @@ absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> Client::RemapArrays(
   return Array::RemapArrays(this, rpc_helper_, plan, arrays, semantics);
 }
 
-xla::ifrt::Future<> Client::GetReadyFuture(
+tsl::Future<> Client::GetReadyFuture(
     absl::Span<const xla::ifrt::ValueRef> values) {
   tsl::profiler::TraceMe traceme_ifrt_entrypoint([n_values = values.size()]() {
     return tsl::profiler::TraceMeEncode("IfrtProxyEntrypointGetReadyFuture",
                                         {{"n_values", n_values}});
   });
-  absl::InlinedVector<Future<>, 1> futures;
+  absl::InlinedVector<tsl::Future<>, 1> futures;
 
   auto req = std::make_unique<CheckValueReadyRequest>();
   for (const auto& value : values) {
@@ -392,7 +392,7 @@ xla::ifrt::Future<> Client::GetReadyFuture(
       absl::StatusOr<ArrayHandle> handle =
           proxy_array->GetHandle(ArrayCopySemantics::kAlwaysCopy);
       if (!handle.ok()) {
-        futures.push_back(Future<>(handle.status()));
+        futures.push_back(tsl::Future<>(handle.status()));
       } else {
         req->add_value_handles(handle->handle);
       }
@@ -401,7 +401,7 @@ xla::ifrt::Future<> Client::GetReadyFuture(
     }
   }
 
-  auto [promise, future] = Future<>::MakePromise();
+  auto [promise, future] = tsl::Future<>::MakePromise();
   rpc_helper_->CheckValueReady(std::move(req))
       .OnReady([promise = std::move(promise)](
                    absl::StatusOr<std::shared_ptr<CheckValueReadyResponse>>

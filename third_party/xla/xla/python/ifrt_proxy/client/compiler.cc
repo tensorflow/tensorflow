@@ -32,7 +32,6 @@
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/executable.h"
-#include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt/host_callback.h"
 #include "xla/python/ifrt/program.h"
 #include "xla/python/ifrt/serdes.h"
@@ -44,6 +43,7 @@
 #include "xla/python/ifrt_proxy/server/host_callback.h"
 #include "xla/python/pjrt_ifrt/pjrt_host_callback.h"
 #include "xla/python/pjrt_ifrt/xla_compiler.h"
+#include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/status_to_from_proto.h"
@@ -152,7 +152,7 @@ absl::StatusOr<xla::ifrt::LoadedExecutableRef> Compiler::CompileAndLoad(
       break;
   }
 
-  Future<> ready_future =
+  tsl::Future<> ready_future =
       rpc_helper_->CheckFuture(response->ready_future_handle());
 
   std::vector<uint64_t> loaded_host_callback_handles(

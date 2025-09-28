@@ -31,7 +31,6 @@
 #include "xla/python/ifrt/basic_device_list.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/dtype.h"
-#include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/mock.h"
 #include "xla/python/ifrt/remap_plan.h"
@@ -48,6 +47,7 @@
 #include "xla/python/ifrt_proxy/common/test_utils.h"
 #include "xla/python/ifrt_proxy/common/types.h"
 #include "xla/python/ifrt_proxy/common/types.pb.h"
+#include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/status_matchers.h"
@@ -92,10 +92,10 @@ class ArrayTest : public ::testing::Test {
     // Default handler that ignores all uninteresting requests, but still
     // invokes the callback in order to avoid hanging the caller forever.
     EXPECT_CALL(*session_, Enqueue(_))
-        .WillRepeatedly(Return(Future<ClientSession::Response>(
+        .WillRepeatedly(Return(tsl::Future<ClientSession::Response>(
             absl::InternalError("Request has no mock handlers"))));
     EXPECT_CALL(*host_buffer_store_, Store(_, testing::An<absl::string_view>()))
-        .WillRepeatedly(Return(Future<>(absl::OkStatus())));
+        .WillRepeatedly(Return(tsl::Future<>(absl::OkStatus())));
 
     ON_CALL(*mock_client_, MakeDeviceList(_))
         .WillByDefault([](absl::Span<xla::ifrt::Device* const> devices) {

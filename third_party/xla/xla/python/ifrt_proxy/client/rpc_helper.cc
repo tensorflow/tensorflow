@@ -33,12 +33,12 @@
 #include "absl/synchronization/mutex.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
-#include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt_proxy/client/client_session.h"
 #include "xla/python/ifrt_proxy/common/ifrt_service.pb.h"
 #include "xla/python/ifrt_proxy/common/prof_util.h"
 #include "xla/python/ifrt_proxy/common/test_utils.h"
 #include "xla/python/ifrt_proxy/common/types.h"
+#include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/status_to_from_proto.h"
 #include "xla/tsl/platform/threadpool.h"
@@ -112,12 +112,12 @@ class RpcHelper::Batcher {
 
   // Sends the given request immediately after sending any batched operations
   // that have been previously enqueued.
-  Future<ClientSession::Response> Immediate(
+  tsl::Future<ClientSession::Response> Immediate(
       std::unique_ptr<IfrtRequest> request) {
     absl::MutexLock l(mu_);
     if (finished_) {
       LOG(WARNING) << "After RpcHelper::Finish(): " << request->DebugString();
-      return Future<ClientSession::Response>(
+      return tsl::Future<ClientSession::Response>(
           absl::FailedPreconditionError("RpcHelper::Finish() already called."));
     }
     Flush();
@@ -239,19 +239,19 @@ class RpcHelper::Batcher {
 //
 // `profiling_name` needs to be a string literal.
 template <typename Req, typename Resp>
-Future<std::shared_ptr<Resp>> DoRpc(RpcHelper::Batcher* batcher,
-                                    void (IfrtRequest::*set_req)(Req*),
-                                    Resp* (IfrtResponse::*get_resp)(),
-                                    bool (IfrtResponse::*has_resp)() const,
-                                    std::unique_ptr<Req> req,
-                                    absl::string_view profiling_name) {
+tsl::Future<std::shared_ptr<Resp>> DoRpc(RpcHelper::Batcher* batcher,
+                                         void (IfrtRequest::*set_req)(Req*),
+                                         Resp* (IfrtResponse::*get_resp)(),
+                                         bool (IfrtResponse::*has_resp)() const,
+                                         std::unique_ptr<Req> req,
+                                         absl::string_view profiling_name) {
   auto ifrt_req = std::make_unique<IfrtRequest>();
   (ifrt_req.get()->*set_req)(req.release());
 
   XFlowHelper x_flow_helper(profiling_name);
   auto traceme = x_flow_helper.Span<XFlowHelper::kSend>();
 
-  auto [promise, future] = Future<std::shared_ptr<Resp>>::MakePromise();
+  auto [promise, future] = tsl::Future<std::shared_ptr<Resp>>::MakePromise();
   auto on_ready = [promise = std::move(promise), has_resp, get_resp,
                    profiling_name, x_flow_helper](
                       absl::StatusOr<std::shared_ptr<IfrtResponse>> r) mutable {
@@ -349,11 +349,11 @@ RPC(LoadedHostCallbackPoll, loaded_host_callback_poll);
 RPC(LoadedHostCallbackReturn, loaded_host_callback_return);
 RPC(GetDefaultLayout, get_default_layout);
 
-Future<> RpcHelper::CheckFuture(uint64_t handle) {
+tsl::Future<> RpcHelper::CheckFuture(uint64_t handle) {
   auto req = std::make_unique<CheckFutureRequest>();
   req->set_future_handle(handle);
 
-  auto [promise, future] = Future<>::MakePromise();
+  auto [promise, future] = tsl::Future<>::MakePromise();
   CheckFuture(std::move(req))
       .OnReady([promise = std::move(promise)](
                    absl::StatusOr<std::shared_ptr<CheckFutureResponse>>

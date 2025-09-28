@@ -28,7 +28,6 @@
 #include "grpcpp/grpcpp.h"
 #include "xla/pjrt/distributed/util.h"
 #include "xla/python/ifrt/attribute_map.h"
-#include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt/serdes_any_version_accessor.h"
 #include "xla/python/ifrt/serdes_version.h"
 #include "xla/python/ifrt_proxy/client/client.h"
@@ -40,6 +39,7 @@
 #include "xla/python/ifrt_proxy/client/version.h"
 #include "xla/python/ifrt_proxy/common/grpc_ifrt_service.pb.h"
 #include "xla/python/ifrt_proxy/common/ifrt_service.pb.h"
+#include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "tsl/platform/stacktrace.h"
@@ -67,7 +67,7 @@ absl::StatusOr<std::unique_ptr<Client>> AttemptConnection(
     const ClientConnectionOptions& options) {
   std::unique_ptr<RpcHelper> rpc_helper;
   auto [init_response_promise, init_response_future] =
-      Future<std::shared_ptr<InitResponse>>::MakePromise();
+      tsl::Future<std::shared_ptr<InitResponse>>::MakePromise();
 
   // TODO(b/266635130): Move gRPC stub creation to be outside of `Client` so
   // that we can pass mock `ClientSession` to the client.

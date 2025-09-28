@@ -23,7 +23,6 @@
 #include "absl/status/status.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
-#include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt/serdes_version.h"
 #include "xla/python/ifrt_proxy/client/client_session.h"
 #include "xla/python/ifrt_proxy/client/mock_client_session.h"
@@ -32,6 +31,7 @@
 #include "xla/python/ifrt_proxy/common/test_utils.h"
 #include "xla/python/ifrt_proxy/common/types.h"
 #include "xla/python/ifrt_proxy/common/types.pb.h"
+#include "xla/tsl/concurrency/future.h"
 #include "tsl/platform/test.h"
 
 using ::testing::_;
@@ -85,7 +85,7 @@ class RpcHelperTest : public ::testing::Test {
     ON_CALL(*session_, Enqueue)
         .WillByDefault([this](std::unique_ptr<IfrtRequest> req) {
           requests_.Push(std::move(req));
-          return Future<ClientSession::Response>(
+          return tsl::Future<ClientSession::Response>(
               absl::InternalError("Fake error response"));
         });
   }

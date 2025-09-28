@@ -38,11 +38,11 @@
 #include "grpcpp/security/credentials.h"
 #include "grpcpp/support/channel_arguments.h"
 #include "xla/pjrt/distributed/util.h"
-#include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt_proxy/common/grpc_credentials_possibly_insecure_wrapper.h"
 #include "xla/python/ifrt_proxy/common/grpc_ifrt_service.grpc.pb.h"
 #include "xla/python/ifrt_proxy/common/grpc_ifrt_service.pb.h"
 #include "xla/python/ifrt_proxy/common/ifrt_service.pb.h"
+#include "xla/tsl/concurrency/future.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
@@ -122,9 +122,10 @@ GrpcClientSession::GrpcClientSession(
       absl::bind_front(&GrpcClientSession::ReadLoop, this));
 }
 
-Future<std::shared_ptr<IfrtResponse>> GrpcClientSession::Enqueue(
+tsl::Future<std::shared_ptr<IfrtResponse>> GrpcClientSession::Enqueue(
     std::unique_ptr<IfrtRequest> request) {
-  auto [promise, future] = Future<std::shared_ptr<IfrtResponse>>::MakePromise();
+  auto [promise, future] =
+      tsl::Future<std::shared_ptr<IfrtResponse>>::MakePromise();
   auto shared_promise = std::move(promise).ToShared();
   absl::Status status = Enqueue(
       std::move(request),
