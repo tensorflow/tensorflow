@@ -271,6 +271,7 @@ cc_library(
         ":pjrt_executable",
         ":pjrt_future",
         ":pjrt_layout",
+        ":scoped_async_tracking_event",
         ":utils",
         "//xla:future",
         "//xla:literal",
@@ -805,6 +806,17 @@ cc_library(
         "//xla/tsl/concurrency:async_value",
         "//xla/tsl/concurrency:ref_count",
         "@com_google_absl//absl/base:core_headers",
+    ],
+)
+
+cc_library(
+    name = "scoped_async_tracking_event",
+    hdrs = ["scoped_async_tracking_event.h"],
+    visibility = internal_visibility([":friends"]),
+    deps = [
+        "//xla:future",
+        "//xla/tsl/concurrency:async_value",
+        "//xla/tsl/concurrency:ref_count",
     ],
 )
 
