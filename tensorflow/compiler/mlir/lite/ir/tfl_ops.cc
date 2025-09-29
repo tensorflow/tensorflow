@@ -1353,6 +1353,13 @@ LogicalResult GatherOp::verify() {
 }
 
 OpFoldResult GatherOp::fold(GatherOp::FoldAdaptor adaptor) {
+  // Don't fold when the tensor we gather from (params) has non-int/float/index
+  // type. E.g. in case of quantized type, casting to DenseElementsAttr will
+  // strip the quantization information and cause type mismatch problems.
+  if (!getType().getElementType().isIntOrIndexOrFloat()) {
+    return {};
+  }
+
   // Get the params tensor type/shape/data
   auto params = mlir::dyn_cast_or_null<DenseElementsAttr>(adaptor.getParams());
   if (!params) {

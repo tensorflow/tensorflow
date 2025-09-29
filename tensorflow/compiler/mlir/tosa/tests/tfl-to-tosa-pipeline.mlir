@@ -3416,7 +3416,16 @@ func.func @test_gather_cast(%arg0: tensor<13x21x3xf32>, %arg1: tensor<7x7xi64>) 
 }
 
 // -----
+// CHECK-LABEL: test_gather_dont_fold_quantized
+// CHECK: tosa.gather
+func.func @test_gather_dont_fold_quantized() -> tensor<4x4x4x!quant.uniform<i8:f32, 0.1026>> {
+  %0 = "tfl.pseudo_qconst"() <{qtype = tensor<4x3x!quant.uniform<i8:f32, 0.1026>>, value = dense<[[1, 2, 3], [4, 5, 6], [7, 8, 9], [10, 11, 12]]> : tensor<4x3xi8>}> : () -> tensor<4x3x!quant.uniform<i8:f32, 0.1026>>
+  %1 = "tfl.pseudo_const"() <{value = dense<[[0, 1, 2, 0], [2, 1, 0, 2], [1, 0, 2, 1], [0, 2, 1, 0]]> : tensor<4x4xi32>}> : () -> tensor<4x4xi32>
+  %2 = "tfl.gather"(%0, %1) <{axis = 1 : i32, batch_dims = 0 : i32}> : (tensor<4x3x!quant.uniform<i8:f32, 0.1026>>, tensor<4x4xi32>) -> tensor<4x4x4x!quant.uniform<i8:f32, 0.1026>>
+  func.return %2 : tensor<4x4x4x!quant.uniform<i8:f32, 0.1026>>
+}
 
+// -----
 // CHECK-LABEL: test_sparse_to_dense
 // CHECK-DAG: %[[CONST0:.*]] = tosa.const_shape {values = dense<[1, -1, 1]> : tensor<3xindex>} : () -> !tosa.shape<3>
 // CHECK-DAG: %[[CONST1:.*]] = tosa.const_shape {values = dense<[1, -1]> : tensor<2xindex>} : () -> !tosa.shape<2>
