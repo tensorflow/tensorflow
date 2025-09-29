@@ -1148,7 +1148,7 @@ class Subgraph {
     }
 
     xnn_runtime_t runtime_ptr = nullptr;
-    uint32_t flags = XNN_FLAG_YIELD_WORKERS;
+    uint32_t flags = XNN_FLAG_DONT_SPIN_WORKERS;
     if (has_sparse_weights) {
       flags |= XNN_FLAG_HINT_SPARSE_INFERENCE;
     }
