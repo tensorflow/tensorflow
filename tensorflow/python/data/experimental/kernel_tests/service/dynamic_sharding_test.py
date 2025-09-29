@@ -14,6 +14,7 @@
 # ==============================================================================
 """Tests for dynamic sharding."""
 import collections
+
 from absl.testing import parameterized
 import numpy as np
 
@@ -24,6 +25,7 @@ from tensorflow.python.data.kernel_tests import tf_record_test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import readers
 from tensorflow.python.framework import combinations
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
@@ -321,8 +323,7 @@ class DynamicShardingTest(data_service_test_base.TestBase,
     self.assertDatasetProduces(
         ds, expected, assert_items_equal=assert_items_equal)
 
-  @combinations.generate(
-      combinations.times(test_base.default_test_combinations()))
+  @combinations.generate(test_base.default_test_combinations())
   def testEnumerateReplicateOnSplit(self):
     num_workers = 3
     cluster = data_service_test_base.TestCluster(num_workers)
@@ -341,6 +342,26 @@ class DynamicShardingTest(data_service_test_base.TestBase,
 
     for i in range(10):
       self.assertEqual(counts[i], num_workers)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testZipReplicateOnSplit(self):
+    num_workers = 3
+    cluster = data_service_test_base.TestCluster(num_workers)
+
+    ds1 = dataset_ops.Dataset.range(100, 1000, output_type=dtypes.int32)
+    ds2 = dataset_ops.Dataset.from_tensor_slices(range(0, 5))
+    ds2 = dataset_ops._apply_rewrite(ds2, "replicate_on_split")
+
+    ds = dataset_ops.Dataset.zip(ds1, ds2)
+    ds = ds.apply(
+        data_service_ops.distribute(
+            data_service_ops.ShardingPolicy.DYNAMIC,
+            cluster.dispatcher_address(),
+            job_name="shared_job",
+        )
+    )
+    ds2_output = [y for x, y in self.getDatasetOutput(ds)]
+    self.assertCountEqual(ds2_output, [0, 1, 2, 3, 4] * num_workers)
 
   @combinations.generate(
       combinations.times(test_base.default_test_combinations(),
