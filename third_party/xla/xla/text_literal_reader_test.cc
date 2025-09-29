@@ -18,6 +18,7 @@ limitations under the License.
 #include <string>
 
 #include <gtest/gtest.h>
+#include "absl/status/status.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/literal.h"
 #include "xla/shape_util.h"
@@ -50,6 +51,38 @@ TEST(TextLiteralReaderTest, ReadsR3File) {
   EXPECT_EQ(45.5, literal.Get<float>({0, 1, 0}));
   EXPECT_EQ(46.5, literal.Get<float>({0, 1, 1}));
   EXPECT_EQ(47.5, literal.Get<float>({0, 1, 2}));
+}
+
+TEST(TextLiteralReaderTest,
+     WhitespaceOnlyLineAfterShapeDoesNotCrashAndYieldsScalarNaN) {
+  // Equivalent to the fuzzed input: "f32[]\n "
+  std::string contents = "f32[]\n ";
+
+  std::string fname =
+      tsl::testing::TmpDir() + "/WhitespaceOnlyAfterShape.data.txt";
+  EXPECT_TRUE(
+      tsl::WriteStringToFile(tsl::Env::Default(), fname, contents).ok());
+
+  absl::StatusOr<Literal> literal_or = TextLiteralReader::ReadPath(fname);
+  ASSERT_TRUE(literal_or.ok()) << literal_or.status();
+  const Literal& literal = *literal_or;
+  EXPECT_TRUE(ShapeUtil::Equal(ShapeUtil::MakeShape(F32, {}), literal.shape()));
+  float value = literal.Get<float>({});
+  EXPECT_TRUE(std::isnan(value));
+}
+
+TEST(TextLiteralReaderTest, MissingColonReturnsInvalidArgument) {
+  std::string contents = R"(f32[1]
+ (0) 1.0
+)";
+
+  std::string fname = tsl::testing::TmpDir() + "/MissingColon.data.txt";
+  EXPECT_TRUE(
+      tsl::WriteStringToFile(tsl::Env::Default(), fname, contents).ok());
+
+  absl::StatusOr<Literal> literal_or = TextLiteralReader::ReadPath(fname);
+  EXPECT_FALSE(literal_or.ok());
+  EXPECT_EQ(literal_or.status().code(), absl::StatusCode::kInvalidArgument);
 }
 
 }  // namespace
