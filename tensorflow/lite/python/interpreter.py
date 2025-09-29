@@ -664,6 +664,7 @@ class Interpreter:
             'scales': tensor_quantization_params[0],
             'zero_points': tensor_quantization_params[1],
             'quantized_dimension': tensor_quantization_params[2],
+            'block_size': tensor_quantization_params[3],
         },
         'sparsity_parameters': tensor_sparsity_params,
     }
