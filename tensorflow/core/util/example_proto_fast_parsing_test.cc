@@ -98,7 +98,7 @@ TEST(FastParse, IgnoresPrecedingUnknownTopLevelFields) {
       .mutable_int64_list()
       ->add_value(94043);
 
-  TestCorrectness(strings::StrCat(Serialize(example), Serialize(context)));
+  TestCorrectness(absl::StrCat(Serialize(example), Serialize(context)));
 }
 
 TEST(FastParse, IgnoresTrailingUnknownTopLevelFields) {
@@ -122,7 +122,7 @@ TEST(FastParse, IgnoresTrailingUnknownTopLevelFields) {
       .mutable_int64_list()
       ->add_value(1337);
 
-  TestCorrectness(strings::StrCat(Serialize(example), Serialize(context)));
+  TestCorrectness(absl::StrCat(Serialize(example), Serialize(context)));
 }
 
 TEST(FastParse, SingleInt64WithContext) {
@@ -136,7 +136,7 @@ TEST(FastParse, SingleInt64WithContext) {
       .mutable_int64_list()
       ->add_value(94043);
 
-  TestCorrectness(strings::StrCat(Serialize(example), Serialize(context)));
+  TestCorrectness(absl::StrCat(Serialize(example), Serialize(context)));
 }
 
 TEST(FastParse, DenseInt64WithContext) {

@@ -80,9 +80,8 @@ void VerifyFile(const string& filename) {
   double current_time = env()->NowMicros() / 1000000.0;
   EXPECT_LT(fabs(actual.wall_time() - current_time), 5);
   // Should have the current version number.
-  EXPECT_EQ(actual.file_version(),
-            strings::StrCat(EventsWriter::kVersionPrefix,
-                            EventsWriter::kCurrentVersion));
+  EXPECT_EQ(actual.file_version(), absl::StrCat(EventsWriter::kVersionPrefix,
+                                                EventsWriter::kCurrentVersion));
   // Should have the current source metadata.
   EXPECT_EQ(actual.source_metadata().writer(),
             EventsWriter::kWriterSourceMetadata);
