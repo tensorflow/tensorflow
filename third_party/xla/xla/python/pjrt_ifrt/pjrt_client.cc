@@ -65,7 +65,6 @@ limitations under the License.
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
-#include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/remap_plan.h"
 #include "xla/python/ifrt/shape.h"
@@ -88,6 +87,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
+#include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/distributed_runtime/call_options.h"
 #include "xla/tsl/distributed_runtime/coordination/coordination_service_agent.h"
@@ -605,7 +605,7 @@ absl::StatusOr<ArrayRef> MakeStringArrayFromHostBuffer(
 
   return BasicStringArray::Create(
       client, std::move(shape), std::move(sharding),
-      Future<BasicStringArray::Buffers>(std::move(buffers)),
+      tsl::Future<BasicStringArray::Buffers>(std::move(buffers)),
       std::move(buffer_releaser));
 }
 
@@ -658,7 +658,7 @@ absl::StatusOr<ArrayRef> AssembleStringArrayFromSingleDeviceStringArrays(
       arrays.size(), std::move(buffer_backing_store));
 
   auto [buffers_promise, buffers_future] =
-      Future<BasicStringArray::Buffers>::MakePromise();
+      tsl::Future<BasicStringArray::Buffers>::MakePromise();
 
   auto buffer_copier = [state = buffer_copying_state,
                         promise = std::move(buffers_promise).ToShared()](
@@ -1077,11 +1077,11 @@ absl::StatusOr<std::vector<ArrayRef>> PjRtClient::MakeErrorArrays(
   arrays.reserve(array_specs.size());
   for (const auto& array_spec : array_specs) {
     if (array_spec.dtype.kind() == DType::kString) {
-      TF_ASSIGN_OR_RETURN(
-          arrays.emplace_back(),
-          BasicStringArray::Create(this, array_spec.shape, array_spec.sharding,
-                                   Future<BasicStringArray::Buffers>(error),
-                                   /*on_done_with_buffer=*/[]() {}));
+      TF_ASSIGN_OR_RETURN(arrays.emplace_back(),
+                          BasicStringArray::Create(
+                              this, array_spec.shape, array_spec.sharding,
+                              tsl::Future<BasicStringArray::Buffers>(error),
+                              /*on_done_with_buffer=*/[]() {}));
       continue;
     }
 
@@ -1507,7 +1507,7 @@ absl::Status PjRtClient::CrossHostSendBuffers(
   // TODO(emilyaf): Use an async version of KeyValueStore::Get or query batched
   // keys together to reduce the number of threads used.
   for (int i = 0; i < keys.size(); ++i) {
-    auto [promise, descriptor_future] = Future<std::string>::MakePromise();
+    auto [promise, descriptor_future] = tsl::Future<std::string>::MakePromise();
     work_queue_->Schedule(
         [this, k = keys[i], promise = std::move(promise).ToShared()]() mutable {
           std::string key = absl::StrCat(kKeyPrefix, k);
@@ -1596,8 +1596,8 @@ absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> PjRtClient::ReshardArrays(
   return Unimplemented("ReshardArrays not available with pjrt-ifrt client.");
 }
 
-Future<> PjRtClient::GetReadyFuture(absl::Span<const ValueRef> values) {
-  absl::InlinedVector<Future<>, 1> futures;
+tsl::Future<> PjRtClient::GetReadyFuture(absl::Span<const ValueRef> values) {
+  absl::InlinedVector<tsl::Future<>, 1> futures;
   futures.reserve(values.size());
   for (const auto& value : values) {
     futures.push_back(value->GetReadyFuture());

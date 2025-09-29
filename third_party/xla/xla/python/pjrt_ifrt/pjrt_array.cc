@@ -42,7 +42,6 @@ limitations under the License.
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
-#include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
@@ -53,6 +52,7 @@ limitations under the License.
 #include "xla/python/pjrt_ifrt/pjrt_memory.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
+#include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
@@ -344,7 +344,7 @@ PjRtArray::DisassembleIntoSingleDeviceArrays(
   return result;
 }
 
-Future<> PjRtArray::CopyToHostBuffer(
+tsl::Future<> PjRtArray::CopyToHostBuffer(
     void* data, std::optional<absl::Span<const int64_t>> byte_strides,
     ArrayCopySemantics semantics) {
   DCHECK(this);
@@ -352,18 +352,18 @@ Future<> PjRtArray::CopyToHostBuffer(
     if (sharding_->IsFullyReplicated()) {
       absl::StatusOr<ArrayRef> replicated = FullyReplicatedShard(semantics);
       if (!replicated.ok()) {
-        return Future<>(std::move(replicated).status());
+        return tsl::Future<>(std::move(replicated).status());
       }
       return (*replicated)->CopyToHostBuffer(data, byte_strides, semantics);
     }
-    return Future<>(
+    return tsl::Future<>(
         InvalidArgument("Only single-shard is implemented, but got %d",
                         sharding_->devices()->size()));
   }
 
   auto dtype = ToPrimitiveType(dtype_);
   if (!dtype.ok()) {
-    return Future<>(std::move(dtype).status());
+    return tsl::Future<>(std::move(dtype).status());
   }
 
   PjRtBuffer* pjrt_buffer = pjrt_buffers_.front().get();
@@ -380,7 +380,7 @@ Future<> PjRtArray::CopyToHostBuffer(
     // TODO(b/314805296): Use the new dynamic shape here.
     logical_dims = pjrt_buffer->logical_dimensions();
     if (!logical_dims.ok()) {
-      return Future<>(std::move(logical_dims).status());
+      return tsl::Future<>(std::move(logical_dims).status());
     }
     dims = *logical_dims;
   }
@@ -390,7 +390,7 @@ Future<> PjRtArray::CopyToHostBuffer(
     auto xla_shape =
         MakeShapeWithTrivialByteStrides(*dtype, dims, *byte_strides);
     if (!xla_shape.ok()) {
-      return Future<>(std::move(xla_shape).status());
+      return tsl::Future<>(std::move(xla_shape).status());
     }
     literal = std::make_unique<xla::MutableBorrowingLiteral>(
         static_cast<char*>(data), *xla_shape);
@@ -400,7 +400,7 @@ Future<> PjRtArray::CopyToHostBuffer(
         static_cast<char*>(data), xla_shape);
   }
   auto* literal_ptr = literal.get();
-  auto [promise, future] = Future<>::MakePromise();
+  auto [promise, future] = tsl::Future<>::MakePromise();
   // TODO(hyeontaek): Handle semantics == kDonateInput.
   pjrt_buffer->ToLiteral(literal_ptr)
       .OnReady([literal = std::move(literal),
@@ -545,12 +545,12 @@ absl::StatusOr<ArrayRef> PjRtArray::Copy(
       shape_);
 }
 
-Future<> PjRtArray::GetReadyFuture() const {
+tsl::Future<> PjRtArray::GetReadyFuture() const {
   DCHECK(this);
   if (pjrt_buffers_.size() == 1) {
     return pjrt_buffers_.front()->GetReadyFuture();
   }
-  std::vector<Future<>> futures;
+  std::vector<tsl::Future<>> futures;
   futures.reserve(pjrt_buffers_.size());
   for (auto& buf : pjrt_buffers_) {
     futures.push_back(buf->GetReadyFuture());
@@ -558,14 +558,14 @@ Future<> PjRtArray::GetReadyFuture() const {
   return JoinFutures(absl::MakeSpan(futures));
 }
 
-Future<> PjRtArray::Delete() {
+tsl::Future<> PjRtArray::Delete() {
   DCHECK(this);
   for (auto& buffer : pjrt_buffers_) {
     buffer->Delete();
   }
   is_deleted_ = true;
   // TODO(hyeontaek): Return a correct future.
-  return Future<>(absl::OkStatus());
+  return tsl::Future<>(absl::OkStatus());
 }
 
 bool PjRtArray::IsDeleted() const {

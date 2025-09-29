@@ -41,7 +41,6 @@ limitations under the License.
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/executable.h"
-#include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt/hlo/hlo_program.h"
 #include "xla/python/ifrt/layout.h"
 #include "xla/python/ifrt/memory.h"
@@ -53,6 +52,7 @@ limitations under the License.
 #include "xla/python/pjrt_ifrt/pjrt_layout.h"
 #include "xla/python/pjrt_ifrt/xla_compiler.h"
 #include "xla/python/pjrt_ifrt/xla_executable_version.h"
+#include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
@@ -548,7 +548,7 @@ module @add_sub {
   // Enqueue a read operation just before donation. The scheduler must not
   // reorder read and donation.
   std::vector<int32_t> data(6);
-  Future<> copy_future =
+  tsl::Future<> copy_future =
       arrays[0]->CopyToHostBuffer(data.data(), /*byte_strides=*/std::nullopt,
                                   ArrayCopySemantics::kAlwaysCopy);
 
@@ -838,7 +838,7 @@ TEST(ExecutableTest, ExecutableSerialization) {
 
   {
     std::vector<int32_t> out_data(6);
-    xla::ifrt::Future<> future = result.outputs[0]->CopyToHostBuffer(
+    tsl::Future<> future = result.outputs[0]->CopyToHostBuffer(
         out_data.data(), /*byte_strides=*/std::nullopt,
         xla::ifrt::ArrayCopySemantics::kAlwaysCopy);
     TF_ASSERT_OK(future.Await());

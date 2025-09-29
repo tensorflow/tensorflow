@@ -45,7 +45,6 @@ limitations under the License.
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
-#include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt/index.h"
 #include "xla/python/ifrt/index_domain.h"
 #include "xla/python/ifrt/memory.h"
@@ -55,6 +54,7 @@ limitations under the License.
 #include "xla/python/pjrt_ifrt/pjrt_dtype.h"
 #include "xla/python/pjrt_ifrt/xla_sharding.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
@@ -139,7 +139,7 @@ absl::StatusOr<xla::Literal> CopyArrayToLiteral(ArrayRef array) {
     TF_ASSIGN_OR_RETURN(xla::Literal slice,
                         xla::Literal::Make(xla::ShapeUtil::MakeShape(
                             element_type, shard_shape.dims())));
-    Future<> future = shards[i]->CopyToHostBuffer(
+    tsl::Future<> future = shards[i]->CopyToHostBuffer(
         slice.untyped_data(), std::nullopt, ArrayCopySemantics::kAlwaysCopy);
     TF_RETURN_IF_ERROR(future.Await());
     VLOG(2) << "Slice #" << i << " (" << index_domains[i]

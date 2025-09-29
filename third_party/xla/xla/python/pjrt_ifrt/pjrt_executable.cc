@@ -51,7 +51,6 @@ limitations under the License.
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/executable.h"
-#include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt/host_callback.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/shape.h"
@@ -69,6 +68,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
+#include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
@@ -657,9 +657,9 @@ PjRtLoadedExecutable::Execute(absl::Span<ArrayRef> args,
 
   // Execute the computation.
   std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> pjrt_outputs;
-  xla::ifrt::Future<> status;
+  tsl::Future<> status;
   if (portable_execution) {
-    std::optional<Future<>> returned_pjrt_future;
+    std::optional<tsl::Future<>> returned_pjrt_future;
     TF_RET_CHECK(portable_execution_device->IsAddressable());
     TF_ASSIGN_OR_RETURN(
         std::vector<std::unique_ptr<PjRtBuffer>> single_device_pjrt_results,
@@ -671,7 +671,7 @@ PjRtLoadedExecutable::Execute(absl::Span<ArrayRef> args,
     pjrt_outputs.push_back(std::move(single_device_pjrt_results));
     status = *std::move(returned_pjrt_future);
   } else {
-    std::optional<std::vector<Future<>>> returned_pjrt_futures;
+    std::optional<std::vector<tsl::Future<>>> returned_pjrt_futures;
     returned_pjrt_futures.emplace();
 
     TF_ASSIGN_OR_RETURN(
