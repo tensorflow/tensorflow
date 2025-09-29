@@ -55,7 +55,6 @@ cc_library(
         "device_list.h",
         "dtype.h",
         "executable.h",
-        "future.h",
         "host_callback.h",
         "index.h",
         "index_domain.h",
@@ -230,21 +229,6 @@ xla_cc_test(
         ":serdes_version",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-xla_cc_test(
-    name = "future_test",
-    size = "small",
-    srcs = ["future_test.cc"],
-    deps = [
-        ":ifrt",
-        "//xla/tsl/concurrency:future",
-        "//xla/tsl/lib/core:status_test_util",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:status_matchers",
-        "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
     ],
 )
