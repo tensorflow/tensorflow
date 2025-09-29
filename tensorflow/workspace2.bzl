@@ -534,7 +534,7 @@ def _tf_repositories():
 
     tf_http_archive(
         name = "nccl_archive",
-        build_file = "@local_xla//third_party:nccl/archive.BUILD",
+        build_file = "@local_xla//third_party/nccl:archive.BUILD",
         patch_file = ["@local_xla//third_party/nccl:archive.patch"],
         sha256 = "98e6262bd55932c51e7c8ffc50cc764f019e4b94a8fd6694d839ae828ec8d128",
         strip_prefix = "nccl-2.27.7-1",
