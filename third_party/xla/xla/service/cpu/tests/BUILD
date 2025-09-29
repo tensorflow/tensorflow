@@ -374,6 +374,7 @@ xla_cc_test(
         "notap",
     ],
     deps = [
+        "//xla:error_spec",
         "//xla/hlo/testlib:test",
         "//xla/service:cpu_plugin",
         "//xla/service/cpu:onednn_util",
