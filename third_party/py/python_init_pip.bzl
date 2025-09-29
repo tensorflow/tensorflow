@@ -35,5 +35,8 @@ cc_library(
         python_interpreter_target = "@{}_host//:python".format(
             get_toolchain_name_per_python_version("python"),
         ),
+        extra_hub_aliases = {
+            "numpy": ["numpy_headers"],
+        },
         requirements_lock = REQUIREMENTS_WITH_LOCAL_WHEELS,
     )
