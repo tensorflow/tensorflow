@@ -201,6 +201,12 @@ class HloRunnerInterface {
     // If true, executes on multiple threads using se::Stream::ExecuteOnStream.
     // Otherwise, executes using xla::Executable::ExecuteOnStreams.
     bool use_threads = false;
+
+    // If true, the infeed values will be fed to a single replica.
+    // (N values, 1 replica).
+    // If false, each replica will get one infeed value.
+    // (N values, N replicas).
+    bool infeed_to_single_replica = false;
   };
 
   HloRunnerInterface() = default;
