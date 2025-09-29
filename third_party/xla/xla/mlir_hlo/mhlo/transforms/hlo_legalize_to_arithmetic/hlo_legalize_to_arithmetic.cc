@@ -196,6 +196,7 @@ void populateScalarHloToArithmeticConversionPatterns(
       ScalarHloToArithmeticPattern<mhlo::AbsOp>,
       ScalarHloToArithmeticPattern<mhlo::AcosOp>,
       ScalarHloToArithmeticPattern<mhlo::AcoshOp>,
+      ScalarHloToArithmeticPattern<mhlo::AsinOp>,
       ScalarHloToArithmeticPattern<mhlo::AddOp>,
       ScalarHloToArithmeticPattern<mhlo::AndOp>,
       ScalarHloToArithmeticPattern<mhlo::Atan2Op>,
