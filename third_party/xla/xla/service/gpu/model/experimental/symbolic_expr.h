@@ -27,6 +27,7 @@ limitations under the License.
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/Hashing.h"
 #include "llvm/Support/raw_ostream.h"
+#include "mlir/IR/MLIRContext.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/StorageUniquer.h"
 
@@ -149,17 +150,22 @@ inline ::llvm::hash_code hash_value(SymbolicExpr expr) {
 
 class SymbolicExprContext {
  public:
-  SymbolicExprContext();
+  explicit SymbolicExprContext(mlir::MLIRContext* mlir_context);
   SymbolicExpr Parse(absl::string_view expr_str);
   SymbolicExpr CreateConstant(int64_t value);
   SymbolicExpr CreateVariable(int64_t var_id);
   SymbolicExpr CreateBinaryOp(SymbolicExprType type, SymbolicExpr lhs,
                               SymbolicExpr rhs);
 
+  mlir::MLIRContext* GetMLIRContext() const { return mlir_context_; }
+
  private:
   SymbolicExpr GetOrCreate(SymbolicExprType type, int64_t value,
                            SymbolicExpr lhs, SymbolicExpr rhs);
   mlir::StorageUniquer uniquer_;
+  // TODO(b/446856305): MLIRContext is only used here temporarily while we have
+  // AffineMap <-> SymbolicMap convertors.
+  mlir::MLIRContext* mlir_context_;
 };
 
 }  // namespace gpu
