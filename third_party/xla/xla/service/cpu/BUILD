@@ -470,6 +470,7 @@ cc_library(
         "cpu_compiler_pure",
         ":cpu_aot_compilation_result",
         ":executable_proto_cc",
+        ":thunk_emitter",
         "//xla:util",
         "//xla/backends/cpu/codegen:ir_compiler",
         "//xla/backends/cpu/codegen:target_machine_features",
