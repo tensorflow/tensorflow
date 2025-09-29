@@ -50,19 +50,25 @@ namespace mhlo {
 namespace {
 
 ChloLegalizeToHighLevelMhloPassOptions FromPassOptions(bool enableAcosh,
-                                                       bool enableAcos) {
+                                                       bool enableAcos,
+                                                       bool enableAtanh) {
   ChloLegalizeToHighLevelMhloPassOptions options;
   options.enable_acosh_ = enableAcosh;
   options.enable_acos_ = enableAcos;
+  options.enable_atanh_ = enableAtanh;
   return options;
 }
 
-static bool isLegalAcosh(chlo::AcoshOp op) {
-  return !llvm::isa<FloatType>(getElementTypeOrSelf(op.getType()));
+static bool qualifiesForDirectMhloLoweringAcosh(chlo::AcoshOp op) {
+  return llvm::isa<FloatType>(getElementTypeOrSelf(op.getType()));
 }
 
-static bool isLegalAcos(chlo::AcosOp op) {
-  return !llvm::isa<FloatType>(getElementTypeOrSelf(op.getType()));
+static bool qualifiesForDirectMhloLoweringAcos(chlo::AcosOp op) {
+  return llvm::isa<FloatType>(getElementTypeOrSelf(op.getType()));
+}
+
+static bool qualifiesForDirectMhloLoweringAtanh(chlo::AtanhOp op) {
+  return llvm::isa<FloatType>(getElementTypeOrSelf(op.getType()));
 }
 
 struct ChloLegalizeToHighLevelMhloPass
@@ -81,16 +87,27 @@ struct ChloLegalizeToHighLevelMhloPass
 
     chlo::populateChloToHighLevelMhloOpPatterns(
         &context, &conversionPatterns,
-        FromPassOptions(enable_acosh_, enable_acos_));
+        FromPassOptions(enable_acosh_, enable_acos_, enable_atanh_));
 
     // Consider the mhlo dialect legal for tests. Also add helper dialects
     // that are needed by the patterns.
     conversionTarget.addLegalDialect<chlo::ChloDialect, mhlo::MhloDialect>();
     if (enable_acosh_) {
-      conversionTarget.addDynamicallyLegalOp<chlo::AcoshOp>(isLegalAcosh);
+      conversionTarget.addDynamicallyLegalOp<chlo::AcoshOp>(
+          [](chlo::AcoshOp op) {
+            return !qualifiesForDirectMhloLoweringAcosh(op);
+          });
     }
     if (enable_acos_) {
-      conversionTarget.addDynamicallyLegalOp<chlo::AcosOp>(isLegalAcos);
+      conversionTarget.addDynamicallyLegalOp<chlo::AcosOp>([](chlo::AcosOp op) {
+        return !qualifiesForDirectMhloLoweringAcos(op);
+      });
+    }
+    if (enable_atanh_) {
+      conversionTarget.addDynamicallyLegalOp<chlo::AtanhOp>(
+          [](chlo::AtanhOp op) {
+            return !qualifiesForDirectMhloLoweringAtanh(op);
+          });
     }
     conversionTarget
         .addIllegalOp<chlo::TopKOp, chlo::ErfOp, chlo::RaggedDotOp>();
@@ -191,7 +208,7 @@ LogicalResult convertRaggedDotChloToMhlo(chlo::RaggedDotOp raggedDotOp,
 
 LogicalResult convertAcoshChloToMhlo(chlo::AcoshOp op,
                                      PatternRewriter& rewriter) {
-  if (mhlo::isLegalAcosh(op)) {
+  if (!mhlo::qualifiesForDirectMhloLoweringAcosh(op)) {
     return failure();
   }
   rewriter.replaceOpWithNewOp<mhlo::AcoshOp>(op, op->getOperands());
@@ -200,10 +217,19 @@ LogicalResult convertAcoshChloToMhlo(chlo::AcoshOp op,
 
 LogicalResult convertAcosChloToMhlo(chlo::AcosOp op,
                                     PatternRewriter& rewriter) {
-  if (mhlo::isLegalAcos(op)) {
+  if (!mhlo::qualifiesForDirectMhloLoweringAcos(op)) {
     return failure();
   }
   rewriter.replaceOpWithNewOp<mhlo::AcosOp>(op, op->getOperands());
+  return success();
+}
+
+LogicalResult convertAtanhChloToMhlo(chlo::AtanhOp op,
+                                     PatternRewriter& rewriter) {
+  if (!mhlo::qualifiesForDirectMhloLoweringAtanh(op)) {
+    return failure();
+  }
+  rewriter.replaceOpWithNewOp<mhlo::AtanhOp>(op, op->getOperands());
   return success();
 }
 
@@ -217,6 +243,7 @@ ChloLegalizeToHighLevelMhloPassOptions getGpuChloToHighLevelMhloOptions() {
   ChloLegalizeToHighLevelMhloPassOptions opts;
   opts.enable_acosh_ = true;
   opts.enable_acos_ = true;
+  opts.enable_atanh_ = true;
   return opts;
 }
 
@@ -236,6 +263,9 @@ void populateChloToHighLevelMhloOpPatterns(
   }
   if (options.enable_acos_) {
     patterns->add(mhlo::convertAcosChloToMhlo, kBenefit);
+  }
+  if (options.enable_atanh_) {
+    patterns->add(mhlo::convertAtanhChloToMhlo, kBenefit);
   }
   patterns->add(mhlo::convertRaggedDotChloToMhlo, kBenefit);
   populateWithGenerated(*patterns);

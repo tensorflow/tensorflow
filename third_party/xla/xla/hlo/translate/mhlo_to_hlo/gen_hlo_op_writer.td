@@ -206,6 +206,7 @@ defvar CustomHloConverterOps = [
   MHLO_AsyncDoneOp,
   MHLO_AsyncStartOp,
   MHLO_AsyncUpdateOp,
+  MHLO_AtanhOp,
   MHLO_BatchNormGradOp,
   MHLO_BatchNormTrainingOp,
   MHLO_BitcastConvertOp,

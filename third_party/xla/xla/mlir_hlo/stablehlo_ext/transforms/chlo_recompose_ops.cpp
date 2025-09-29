@@ -280,6 +280,22 @@ struct AcosOpRecomposePattern
   }
 };
 
+struct AtanhOpRecomposePattern
+    : public OpRewritePattern<stablehlo::CompositeOp> {
+  using OpRewritePattern::OpRewritePattern;
+  LogicalResult matchAndRewrite(stablehlo::CompositeOp op,
+                                PatternRewriter& rewriter) const override {
+    if (op.getName() != "chlo.atanh") {
+      return rewriter.notifyMatchFailure(op, "not a chlo.atanh");
+    }
+    if (op.getVersion() != 1) {
+      return rewriter.notifyMatchFailure(
+          op, "unsupported version for chlo.atanh composite");
+    }
+    return recomposeChloOpFromCompositeOp<chlo::AtanhOp>(op, rewriter);
+  }
+};
+
 struct ErfOpRecomposePattern : public OpRewritePattern<stablehlo::CompositeOp> {
   using OpRewritePattern::OpRewritePattern;
   LogicalResult matchAndRewrite(stablehlo::CompositeOp op,
@@ -389,6 +405,16 @@ struct AcosOpCustomCallRecomposePattern
   }
 };
 
+struct AtanhOpCustomCallRecomposePattern
+    : public OpRewritePattern<stablehlo::CustomCallOp> {
+  using OpRewritePattern::OpRewritePattern;
+  LogicalResult matchAndRewrite(stablehlo::CustomCallOp op,
+                                PatternRewriter& rewriter) const override {
+    return recomposeChloOpFromCustomCall<chlo::AtanhOp>(
+        op, {"mhlo.atanh", "chlo.atanh"}, rewriter);
+  }
+};
+
 }  // namespace
 
 struct ChloRecomposeOpsPass
@@ -411,6 +437,7 @@ struct ChloRecomposeOpsPass
     patterns.add<
       AcosOpCustomCallRecomposePattern,
       AcoshOpCustomCallRecomposePattern,
+      AtanhOpCustomCallRecomposePattern,
       ErfOpCustomCallRecomposePattern,
       RaggedDotOpCustomCallRecomposePattern,
       TanOpCustomCallRecomposePattern,
@@ -420,6 +447,7 @@ struct ChloRecomposeOpsPass
     patterns.add<
       AcosOpRecomposePattern,
       AcoshOpRecomposePattern,
+      AtanhOpRecomposePattern,
       ErfOpRecomposePattern,
       RaggedDotOpRecomposePattern,
       TopKOpRecomposePattern>(ctx);
