@@ -103,7 +103,7 @@ xla_cc_test(
 tf_proto_library(
     name = "autotuner_cache_proto",
     srcs = ["autotuner_cache.proto"],
-    deps = if_google(["@com_google_protobuf//:any"]),
+    deps = if_google(["@com_google_protobuf//:any_proto"]),
 )
 
 cc_library(

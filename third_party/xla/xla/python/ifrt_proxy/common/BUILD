@@ -83,7 +83,7 @@ tf_proto_library(
     srcs = ["ifrt_service.proto"],
     protodeps = [
         ":types_proto",
-        # copybara:uncomment "@com_google_protobuf//:any",
+        # copybara:uncomment "@com_google_protobuf//:any_proto",
         "//xla:xla_data_proto",
         "//xla/pjrt/proto:execute_options_proto",
         "//xla/python/ifrt:array_spec_proto",

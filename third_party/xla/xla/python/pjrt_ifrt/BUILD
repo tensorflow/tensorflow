@@ -65,7 +65,7 @@ tf_proto_library(
     srcs = ["xla_host_callback.proto"],
     protodeps = [
         "//xla:xla_data_proto",
-    ] + if_google(["@com_google_protobuf//:any"]),
+    ] + if_google(["@com_google_protobuf//:any_proto"]),
 )
 
 tf_proto_library(

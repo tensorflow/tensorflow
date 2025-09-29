@@ -151,7 +151,7 @@ tf_proto_library(
         "//xla/service:buffer_assignment_proto",
         "//xla:xla_data_proto",
         "//xla/service:hlo_proto",
-    ] + if_google(["@com_google_protobuf//:any"]),
+    ] + if_google(["@com_google_protobuf//:any_proto"]),
     visibility = ["//visibility:public"],
 )
 

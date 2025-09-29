@@ -75,7 +75,7 @@ tf_proto_library(
     protodeps = [
         ":xla_data_proto",
         "//xla/service:hlo_proto",
-    ] + if_google(["@com_google_protobuf//:any"]),
+    ] + if_google(["@com_google_protobuf//:any_proto"]),
     visibility = ["//visibility:public"],
 )
 
@@ -1236,8 +1236,8 @@ cc_library(
             "@com_google_absl//absl/status:statusor",
             "@com_google_absl//absl/strings",
             "@com_google_absl//absl/strings:str_format",
+            "@com_google_protobuf//:protobuf",
             "@local_tsl//tsl/platform:platform_port",
-            "@local_tsl//tsl/platform:protobuf",
         ],
 )
 
@@ -1288,7 +1288,7 @@ xla_cc_test(
             "@com_google_absl//absl/status:statusor",
             "@com_google_absl//absl/strings",
             "@com_google_googletest//:gtest",
-            "@local_tsl//tsl/platform:protobuf",
+            "@com_google_protobuf//:protobuf_lite",
         ],
 )
 
@@ -1340,8 +1340,8 @@ tf_proto_library(
     protodeps = [
         "//xla/tsl/protobuf:dnn_proto",
     ] + if_google([
-        "@com_google_protobuf//:any",
-        "@com_google_protobuf//:duration",
+        "@com_google_protobuf//:any_proto",
+        "@com_google_protobuf//:duration_proto",
     ]),
 )
 
