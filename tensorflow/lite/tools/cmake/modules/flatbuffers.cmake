@@ -23,7 +23,7 @@ OverridableFetchContent_Declare(
   flatbuffers
   GIT_REPOSITORY https://github.com/google/flatbuffers
   # Keep in sync with tensorflow/third_party/flatbuffers/workspace.bzl
-  GIT_TAG v25.2.10
+  GIT_TAG v25.9.23
   # NOTE: b/340264458 - `GIT_SHALLOW TRUE` works for tag name only.
   GIT_SHALLOW FALSE
   GIT_PROGRESS TRUE
