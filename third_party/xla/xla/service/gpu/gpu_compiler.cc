@@ -2530,13 +2530,15 @@ GpuCompiler::CompileToBackendResult(
   {
     xla::llvm_ir::LLVMCommandLineOptionsLock llvm_options_lock(
         GetLLVMCommandLineOptions(module->config().debug_options()));
+    BufferValue::SizeFunction buffer_size_bytes_function =
+        BufferSizeBytesFunction();
     // Compile the module to thnks and llvm IR.
-    TF_ASSIGN_OR_RETURN(
-        compile_module_results,
-        CompileModuleToLlvmIr(module, llvm_context, target_triple_,
-                              data_layout_, *platform, gpu_device_info,
-                              alias_info.get(), BufferSizeBytesFunction(),
-                              /*split_constants_module=*/use_cache));
+    TF_ASSIGN_OR_RETURN(compile_module_results,
+                        CompileModuleToLlvmIr(
+                            module, llvm_context, target_triple_, data_layout_,
+                            *platform, gpu_device_info, alias_info.get(),
+                            std::move(buffer_size_bytes_function),
+                            /*split_constants_module=*/use_cache));
   }
 
   if (user_pre_optimization_hook_) {

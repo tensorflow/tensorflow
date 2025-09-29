@@ -24,6 +24,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/nullability.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
@@ -382,7 +383,7 @@ class MemoryBoundLoopOptimizer {
       const HloLiveRange& hlo_live_range,
       const HloAliasAnalysis& alias_analysis_,
       const CostAnalysis& cost_analysis,
-      const BufferValue::SizeFunction& size_function,
+      const BufferValue::SizeFunction* absl_nonnull size_function,
       const ReservedScopedMemoryFunction& reserved_scoped_memory_fn,
       int64_t alignment_in_bytes);
 
@@ -451,7 +452,7 @@ class MemoryBoundLoopOptimizer {
   const HloLiveRange& hlo_live_range_;
   const HloAliasAnalysis& alias_analysis_;
   const CostAnalysis& cost_analysis_;
-  BufferValue::SizeFunction size_function_;
+  const BufferValue::SizeFunction* absl_nonnull size_function_;
 
   absl::flat_hash_map<const HloInstruction*, int64_t> instructions_in_loop_;
   absl::flat_hash_map<const HloInstruction*, int64_t>
