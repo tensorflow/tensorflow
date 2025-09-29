@@ -201,6 +201,15 @@ class FutureBase : public FutureMoveControl<is_move_only> {
     Promise(Promise&& other) = default;
     Promise& operator=(Promise&& other) = default;
 
+    ~Promise() {
+      if (promise_ && !IsUniqueReference() && promise_.IsUnavailable()) {
+        // At this point, we know that the underlying AsyncValueRef will
+        // otherwise not fulfilled ever because `Promise` is move-only.
+        promise_.emplace(
+            absl::InternalError("Promise destroyed without being set"));
+      }
+    }
+
     explicit operator bool() const { return static_cast<bool>(promise_); }
 
     // Returns if this promise is the unique reference to the underlying value.
@@ -218,6 +227,7 @@ class FutureBase : public FutureMoveControl<is_move_only> {
     // debugging easier. Also, be aware that the current promise may still be
     // used to mint a future.
     bool IsUniqueReference() const {
+      CHECK(promise_) << "Promise must wrap an async value";
       return promise_.IsUnique() && !promise_.HasWaiter();
     }
 
@@ -227,7 +237,9 @@ class FutureBase : public FutureMoveControl<is_move_only> {
 
     template <typename... Args>
     void emplace(Args&&... args) const {
-      DCHECK(promise_) << "Promise must wrap an async value";
+      CHECK(promise_) << "Promise must wrap an async value";
+      CHECK(promise_.IsUnavailable())
+          << "Promise must not be fulfilled more than once";
       promise_.template emplace<Args...>(std::forward<Args>(args)...);
     }
 

@@ -2183,6 +2183,15 @@ class GpuCompilerSelectKTest
 TEST_P(GpuCompilerSelectKTest, SelectKOrCustomKernelThunk) {
   auto [n, k, expected_impl] = GetParam();
 
+  bool is_rocm = std::holds_alternative<stream_executor::RocmComputeCapability>(
+      backend()
+          .default_stream_executor()
+          ->GetDeviceDescription()
+          .gpu_compute_capability());
+
+  if (is_rocm && expected_impl == TopKImpl::kSelectK) {
+    GTEST_SKIP() << "raft::select_k is not supported in ROCm.";
+  }
   // Generate HLO text with parameters substituted.
   std::string hlo_text = absl::Substitute(R"(
 HloModule m

@@ -485,7 +485,10 @@ absl::Status HostExecuteStartThunk::ExecuteOnStream(
       std::make_shared<HostExecuteCallFrame>(std::move(tmp_call_frame));
 
   auto execute = [this, call_frame = std::move(call_frame), params,
-                  shared_execute_event = std::move(execute_event)]() mutable {
+                  // We skip reference counting because destroying the event
+                  // would trigger a CUDA API call which is not allowed in host
+                  // callbacks.
+                  execute_event_ptr = execute_event.AsPtr()]() mutable {
     tsl::profiler::TraceMe trace(
         "HostExecuteStartThunk::ExecuteOnStream::execute (host_callback)");
     HostOffloadingExecutable::ExecuteOptions execute_options{
@@ -503,23 +506,23 @@ absl::Status HostExecuteStartThunk::ExecuteOnStream(
 
       tsl::BlockUntilReady(execute_event);
       if (execute_event.IsError()) {
-        shared_execute_event.SetError(execute_event.GetError());
+        execute_event_ptr.SetError(execute_event.GetError());
         return;
       }
     }
     auto publish_result_status = std::move(*call_frame).PublishResult();
     if (!publish_result_status.ok()) {
-      shared_execute_event.SetError(publish_result_status);
+      execute_event_ptr.SetError(publish_result_status);
       return;
     }
     auto record_event_status = params.host_to_device_stream->RecordEvent(
-        shared_execute_event.get().get());
+        execute_event_ptr.get().get());
     if (!record_event_status.ok()) {
-      shared_execute_event.SetError(record_event_status);
+      execute_event_ptr.SetError(record_event_status);
       return;
     }
 
-    shared_execute_event.SetStateConcrete();
+    execute_event_ptr.SetStateConcrete();
   };
 
   TF_RETURN_IF_ERROR(device_to_host_stream->DoHostCallbackWithStatus(
@@ -571,6 +574,9 @@ absl::Status HostExecuteDoneThunk::ExecuteOnStream(
   if (event.IsError()) {
     return event.GetError();
   }
+
+  // We queue this event on the compute stream so that the host to device copy
+  // finishes before the consumer of the data can start.
   TF_RETURN_IF_ERROR(stream->WaitFor(event.get().get()));
 
   return absl::OkStatus();
