@@ -36,6 +36,7 @@ limitations under the License.
 #include "xla/codegen/intrinsic/intrinsic.h"
 #include "xla/codegen/intrinsic/simple_jit_runner.h"
 #include "xla/codegen/intrinsic/test_matchers.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla::codegen::intrinsics {
 namespace {
