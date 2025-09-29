@@ -216,7 +216,8 @@ bool ShouldKeepSharding(const HloInstruction* hlo) {
 // called only after all SPMD transformation is complete.
 absl::Status ClearShardingAttributes(
     HloModule* module,
-    const absl::flat_hash_set<absl::string_view>& execution_threads) {
+    const absl::flat_hash_set<absl::string_view>& execution_threads,
+    bool keep_shardings = false) {
   auto has_unreduced_axes = [](const HloInstruction* hlo) -> bool {
     return hlo->frontend_attributes().map().contains(sdy::kHasUnreducedAxes);
   };
@@ -227,6 +228,11 @@ absl::Status ClearShardingAttributes(
       param->set_sharding(module->spmd_parameters_shardings()[i]);
     }
   }
+
+  if (keep_shardings) {
+    return absl::OkStatus();
+  }
+
   for (HloComputation* computation : module->computations(execution_threads)) {
     for (HloInstruction* hlo : computation->instructions()) {
       if (has_unreduced_axes(hlo)) {
@@ -5571,7 +5577,8 @@ absl::StatusOr<bool> SpmdPartitioner::Run(
     TF_RETURN_IF_ERROR(pass.Run(module, execution_threads).status());
   }
 
-  TF_RETURN_IF_ERROR(ClearShardingAttributes(module, execution_threads));
+  TF_RETURN_IF_ERROR(ClearShardingAttributes(
+      module, execution_threads, options_.keep_shardings_at_the_end));
   return changed;
 }
 
