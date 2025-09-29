@@ -69,7 +69,7 @@ Future<> JoinFutures(absl::Span<const Future<>> futures) {
   for (const Future<>& future : futures) {
     future.OnReady([state](absl::Status status) {
       if (ABSL_PREDICT_FALSE(!status.ok())) {
-        absl::MutexLock lock(&state->mu);
+        absl::MutexLock lock(state->mu);
         if (VLOG_IS_ON(2)) {
           if (!state->status.ok() && status.code() != state->status.code()) {
             VLOG(2) << "Ignoring status " << status
@@ -84,7 +84,7 @@ Future<> JoinFutures(absl::Span<const Future<>> futures) {
       CHECK_GE(pending_count, 1) << "Pending count can't drop below 0";
 
       if (pending_count == 1) {
-        absl::MutexLock lock(&state->mu);
+        absl::MutexLock lock(state->mu);
         state->promise.Set(std::move(state->status));
       }
     });
