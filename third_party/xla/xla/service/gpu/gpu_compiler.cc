@@ -1867,9 +1867,8 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
 
   // Match the location of this pass in `gemm_fusion_autotuner.cc` to make sure
   // that there is no discrepancy.
-  pipeline.AddPass<NestGemmFusion>(
-      gpu_target_config.device_description.gpu_compute_capability(),
-      &mlir_context_);
+  pipeline.AddPass<NestGemmFusion>(gpu_target_config.device_description,
+                                   &mlir_context_);
 
   // Clean up new_tuple described above.
   pipeline.AddPass<TupleSimplifier>();

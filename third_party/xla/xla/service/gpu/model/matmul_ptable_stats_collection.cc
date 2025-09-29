@@ -93,7 +93,8 @@ HloDotInstruction* GetTritonGemmInstruction(const HloInstruction& dot_fusion) {
 absl::StatusOr<BlockLevelParameters> GetBlockLevelParams(
     HloDotInstruction& dot, TritonGemmConfig& config) {
   mlir::MLIRContext ctx;
-  return ::xla::gpu::detail::FindBlockLevelParameters(&dot, config, &ctx);
+  return ::xla::gpu::detail::FindBlockLevelParameters(&dot, config, &ctx,
+                                                      se::DeviceDescription());
 }
 
 absl::Status SetReificationCost(HloInstruction& instr, absl::Duration exec_time,

@@ -210,8 +210,7 @@ absl::StatusOr<std::unique_ptr<HloModule>> TritonBackend::RunHloPasses(
   FusionWrapper fusion_wrapper(gpu_device_info);
   TF_RETURN_IF_ERROR(fusion_wrapper.Run(hlo_module.get()).status());
 
-  NestGemmFusion nest_gemm_fusion(gpu_device_info.gpu_compute_capability(),
-                                  mlir_context_);
+  NestGemmFusion nest_gemm_fusion(gpu_device_info, mlir_context_);
   TF_RETURN_IF_ERROR(nest_gemm_fusion.Run(hlo_module.get()).status());
   return hlo_module;
 }

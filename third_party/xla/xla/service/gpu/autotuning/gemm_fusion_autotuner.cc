@@ -318,8 +318,7 @@ absl::StatusOr<std::unique_ptr<HloModule>> TritonGemmAutotuneExtractor(
     TF_RETURN_IF_ERROR(fusion_wrapper.Run(new_module.get()).status());
   }
 
-  NestGemmFusion nest_gemm_fusion(gpu_device_info.gpu_compute_capability(),
-                                  mlir_context);
+  NestGemmFusion nest_gemm_fusion(gpu_device_info, mlir_context);
   TF_RETURN_IF_ERROR(nest_gemm_fusion.Run(new_module.get()).status());
   return new_module;
 }

@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/memory/memory.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_join.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
@@ -36,6 +37,8 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "xla/hlo/analysis/indexing_analysis.h"
 #include "xla/hlo/analysis/indexing_map.h"
+#include "xla/hlo/analysis/indexing_map_serialization.h"
+#include "xla/hlo/analysis/interval.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_traversal.h"
@@ -61,6 +64,10 @@ using ::mlir::MLIRContext;
 // elements, otherwise it will fail to compile. (See `TRITON_MAX_TENSOR_NUMEL`
 // in the Triton codebase.)
 constexpr int64_t kMaxTensorNumElements = 1048576;
+// For dot operations we don't want to tile the contracting dimension to a size
+// larger than this as that leads to a large number of registers being used.
+// Also for MMA instruction we don't want tiles greater than 256.
+constexpr int64_t kMaxMMADimSize = 256;
 
 llvm::SmallVector<int64_t> GetPaddedTileSizes(
     llvm::SmallVector<int64_t> tile_sizes) {
@@ -85,6 +92,23 @@ TritonEmitterConstraints::DeriveCustomConstraints(
     const HloInstruction* hlo = instruction->hlo();
     // Don't consider operands to the fusion computation for constraints.
     if (!fusion_adaptor.ContainsInstruction(hlo)) {
+      continue;
+    }
+
+    if (hlo->opcode() == HloOpcode::kDot) {
+      auto ctx = instruction->symbolic_tile().size_map().getContext();
+      AffineMap identity_map = AffineMap::getMultiDimIdentityMap(
+          instruction->symbolic_tile().size_map().getNumDims(), ctx);
+      for (const auto& operand : instruction->operands()) {
+        for (AffineExpr tile_size :
+             operand->symbolic_tile().size_map().getResults()) {
+          // TODO(393299275): There is also a lower bound limit for Triton
+          // on what is accepted for dimension size (both contracting and free).
+          ConstraintExpression dim_constraint(ConstraintExpression::Constraint{
+              tile_size, Interval{1, kMaxMMADimSize}});
+          result.push_back(CustomConstraints{identity_map, dim_constraint});
+        }
+      }
       continue;
     }
 
@@ -275,7 +299,12 @@ absl::StatusOr<bool> TritonEmitterConstraints::ParametersSatisfyConstraints(
   //
   // TODO(b/365727080): get rid of this once tiling is using power of twos
   // everywhere, including when propagating into the prologue of reductions.
+  VLOG(5) << "Checking custom constraints for tile parameters: "
+          << absl::StrJoin(tile_parameters, ", ");
   for (const auto& custom_constraint : custom_constraints_) {
+    VLOG(5) << "Checking custom constraint: transform  "
+            << xla::ToString(custom_constraint.tile_parameters_transform)
+            << " constraints " << custom_constraint.constraints.ToString();
     llvm::SmallVector<int64_t> transformed_tile_parameters =
         EvaluateAffineMap(custom_constraint.tile_parameters_transform,
                           /*dim_values=*/tile_parameters);

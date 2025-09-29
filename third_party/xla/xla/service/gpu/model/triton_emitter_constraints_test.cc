@@ -23,6 +23,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/log/log.h"
+#include "absl/status/status_matchers.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -34,15 +35,12 @@ limitations under the License.
 #include "xla/service/gpu/model/symbolic_tile_analysis.h"
 #include "xla/service/instruction_fusion.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 
 namespace xla {
 namespace gpu {
 namespace {
-
-using ::tsl::testing::IsOkAndHolds;
 
 class TritonEmitterConstraintsTest : public HloHardwareIndependentTestBase {
  public:
@@ -122,6 +120,39 @@ ENTRY entry_computation {
   // 1048576.
   EXPECT_THAT(analysis->ParametersSatisfyConstraints(
                   Tiling({{fusion_root, FlatTiling({1024, 1})}})),
+              absl_testing::IsOkAndHolds(false));
+}
+
+TEST_F(TritonEmitterConstraintsTest, DotOperandSizeConstraintIsEnforced) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+fused_computation {
+  p0 = f32[4,5376] parameter(0)
+  p1 = f32[32768,5376] parameter(1)
+  ROOT dot = f32[4,32768] dot(p0, p1), lhs_contracting_dims={1}, rhs_contracting_dims={1}
+}
+
+ENTRY entry_computation {
+  param_0 = f32[4,5376] parameter(0)
+  param_1 =  f32[32768,5376] parameter(1)
+  ROOT fusion = f32[4,32768] fusion(param_0, param_1), kind=kCustom, calls=fused_computation, backend_config={"fusion_backend_config":{"kind":"__triton"}}
+}
+)"));
+
+  std::optional<SymbolicTileAnalysis> analysis = TryAnalyzeModule(module.get());
+  ASSERT_TRUE(analysis.has_value());
+  const HloInstruction* fusion_root =
+      module->entry_computation()->root_instruction()->fused_expression_root();
+
+  EXPECT_THAT(analysis->ParametersSatisfyConstraints(
+                  Tiling({{fusion_root, FlatTiling({4, 4, 4})}})),
+              absl_testing::IsOkAndHolds(true));
+
+  // Having any tile larger than 256 is not allowed for dots.
+  EXPECT_THAT(analysis->ParametersSatisfyConstraints(
+                  Tiling({{fusion_root, FlatTiling({512, 4, 4})}})),
               absl_testing::IsOkAndHolds(false));
 }
 

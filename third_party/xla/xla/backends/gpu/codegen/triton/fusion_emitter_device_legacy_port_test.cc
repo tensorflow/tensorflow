@@ -128,9 +128,9 @@ class TritonTest : public GpuCodegenTest {
   GetModuleAndNestedFusionMetadata(absl::string_view hlo_text) {
     TF_ASSIGN_OR_RETURN(std::unique_ptr<VerifiedHloModule> module,
                         ParseAndReturnVerifiedModule(hlo_text));
-    TF_ASSIGN_OR_RETURN(bool fusion_was_nested,
-                        NestGemmFusion(GpuComputeCapability(), &mlir_context_)
-                            .Run(module.get()));
+    TF_ASSIGN_OR_RETURN(
+        bool fusion_was_nested,
+        NestGemmFusion(device_desc(), &mlir_context_).Run(module.get()));
     if (!fusion_was_nested) {
       return absl::InternalError("Failed to nest the GEMM fusion.");
     }
@@ -508,7 +508,7 @@ ENTRY entry {
 })";
   TF_ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module1_and_metadata,
                           GetModuleAndNestedFusionMetadata(absl::Substitute(
-                              kHloTextTemplate, 16, 32, 512, 8)));
+                              kHloTextTemplate, 256, 256, 256, 8)));
 
   const HloFusionInstruction* fusion1 = Cast<HloFusionInstruction>(
       module1_and_metadata.computation->FusionInstruction());
