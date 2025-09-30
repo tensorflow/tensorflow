@@ -31,6 +31,7 @@
 #include "absl/log/log.h"
 #include "absl/log/log_sink_registry.h"
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/synchronization/mutex.h"
