@@ -20,6 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include <gmock/gmock.h>
+#include "absl/status/status_matchers.h"
 #include "xla/tsl/platform/status_matchers.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/dtensor/cc/tensor_layout.h"
