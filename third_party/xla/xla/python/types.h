@@ -114,7 +114,8 @@ absl::StatusOr<nanobind::object> LiteralToPython(
     std::shared_ptr<Literal> literal);
 
 template <typename T>
-nanobind::tuple SpanToNbTuple(absl::Span<T const> xs) {
+nanobind::typed<nanobind::tuple, T, nanobind::ellipsis> SpanToNbTuple(
+    absl::Span<T const> xs) {
   nanobind::tuple out =
       nanobind::steal<nanobind::tuple>(PyTuple_New(xs.size()));
   for (int i = 0; i < xs.size(); ++i) {
