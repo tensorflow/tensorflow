@@ -1200,9 +1200,7 @@ class DataServiceOpsTest(
         self.assertAllEqual(self.evaluate(get_next()), element)
     self.assertEmpty(self.getIteratorOutput(get_next))
 
-  @combinations.generate(
-      combinations.times(test_base.default_test_combinations())
-  )
+  @combinations.generate(test_base.default_test_combinations())
   def testDistributeLargeGraph(self):
     cluster = self.make_test_cluster(
         num_workers=1, work_dir=NO_WORK_DIR, fault_tolerant_mode=False
@@ -1213,9 +1211,7 @@ class DataServiceOpsTest(
     ds = self.make_distributed_dataset(ds, cluster)
     self.assertDatasetProduces(ds, [tensor])
 
-  @combinations.generate(
-      combinations.times(test_base.default_test_combinations())
-  )
+  @combinations.generate(test_base.default_test_combinations())
   def testBatchDropsAllElements(self):
     cluster = self.make_test_cluster(
         num_workers=2, fault_tolerant_mode=False
@@ -1226,9 +1222,7 @@ class DataServiceOpsTest(
     )
     self.assertDatasetProduces(dataset, [])
 
-  @combinations.generate(
-      combinations.times(test_base.default_test_combinations())
-  )
+  @combinations.generate(test_base.default_test_combinations())
   def testBatchDoesNotDropRemainder(self):
     num_workers = 2
     cluster = self.make_test_cluster(

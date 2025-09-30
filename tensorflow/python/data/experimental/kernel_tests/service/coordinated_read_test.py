@@ -42,8 +42,7 @@ class CoordinatedReadTest(data_service_test_base.TestBase,
     self.checkCoordinatedReadGroups(results, num_consumers)
     cluster.stop_workers()
 
-  @combinations.generate(
-      combinations.times(test_base.default_test_combinations()))
+  @combinations.generate(test_base.default_test_combinations())
   def testConsumerRestart(self):
     cluster = data_service_test_base.TestCluster(num_workers=1)
     num_consumers = 3
