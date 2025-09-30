@@ -1,4 +1,5 @@
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
+load("//xla:py_strict.bzl", "py_strict_binary")
 load("//xla:xla.default.bzl", "xla_cc_test")
 load(
     "//xla/tsl:tsl.bzl",
@@ -120,11 +121,58 @@ cc_library(
     ],
 )
 
+py_strict_binary(
+    name = "generate_amdgpu_device_lib_data_tool",
+    srcs = ["generate_amdgpu_device_lib_data_tool.py"],
+)
+
+genrule(
+    name = "generate_amdgpu_device_lib_data",
+    srcs = [
+        "@rocm_device_libs//:ockl",
+        "@rocm_device_libs//:ocml",
+    ],
+    outs = ["amdgpu_device_lib_data.h"],
+    cmd = "$(location {}) --llvm_link_bin $(location {}) $(SRCS) -o $@ --cpp_identifier=kAMDGPUDeviceLibData".format(
+        ":generate_amdgpu_device_lib_data_tool",
+        "@llvm-project//llvm:llvm-link",
+    ),
+    tags = if_google([
+        # Embedding libdevice is not supported in the Google-internal build.
+        "manual",
+        "notap",
+        "nobuilder",
+    ]),
+    tools = [
+        ":generate_amdgpu_device_lib_data_tool",
+        "@llvm-project//llvm:llvm-link",
+    ],
+)
+
+cc_library(
+    name = "amdgpu_device_lib_data",
+    hdrs = [
+        ":generate_amdgpu_device_lib_data",
+    ],
+    tags = if_google([
+        # Embedding libdevice is not supported in the Google-internal build.
+        "manual",
+        "notap",
+        "nobuilder",
+    ]),
+    deps = [
+        "@llvm-project//llvm:Support",
+    ],
+)
+
 cc_library(
     name = "amdgpu_backend",
     srcs = ["amdgpu_backend.cc"],
     hdrs = ["amdgpu_backend.h"],
-    local_defines = if_oss(["HAS_SUPPORT_FOR_LLD_AS_A_LIBRARY=1"]),
+    local_defines = if_oss([
+        "HAS_SUPPORT_FOR_LLD_AS_A_LIBRARY=1",
+        "HAS_SUPPORT_FOR_EMBEDDED_LIB_DEVICE=1",
+    ]),
     deps = [
         ":llvm_gpu_backend",
         ":load_ir_module",
@@ -140,11 +188,13 @@ cc_library(
         "//xla/tsl/platform:statusor",
         "//xla/tsl/util:env_var",
         "@com_google_absl//absl/base",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
         "@llvm-project//llvm:AMDGPUAsmParser",  # buildcleaner: keep
         "@llvm-project//llvm:Analysis",
         "@llvm-project//llvm:BitReader",
@@ -159,13 +209,13 @@ cc_library(
         "@llvm-project//llvm:Scalar",
         "@llvm-project//llvm:Support",
         "@llvm-project//llvm:Target",
+        "@llvm-project//llvm:TargetParser",
         "@local_tsl//tsl/platform:path",
         "@local_tsl//tsl/platform:random",
         "@local_tsl//tsl/profiler/lib:traceme",
     ] + if_oss([
         # keep sorted
-        "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/synchronization",
+        ":amdgpu_device_lib_data",
         "@llvm-project//lld:Common",
         "@llvm-project//lld:ELF",  # buildcleaner: keep
     ]),
@@ -229,6 +279,33 @@ xla_cc_test(
         "//xla/stream_executor/cuda:cuda_compute_capability",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
+    ],
+)
+
+xla_cc_test(
+    name = "amdgpu_bitcode_link_test",
+    size = "small",
+    srcs = ["amdgpu_bitcode_link_test.cc"],
+    data = [
+        "tests_data/amdgpu.ll",
+    ],
+    tags = if_google([
+        # Embedded libdevice is required for this test, but not supported in the Google-internal build.
+        "notap",
+        "manual",
+        "nobuilder",
+    ]) + [
+        "gpu",
+        "rocm-only",
+    ],
+    deps = [
+        ":amdgpu_backend",
+        ":load_ir_module",
+        "//xla/tsl/platform:rocm_rocdl_path",
+        "//xla/tsl/platform:test",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//llvm:ir_headers",
+        "@local_tsl//tsl/platform:path",
     ],
 )
 

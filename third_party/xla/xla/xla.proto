@@ -895,6 +895,9 @@ message DebugOptions {
   // ragged-all-to-all operations.
   optional bool xla_gpu_unsupported_use_ragged_all_to_all_one_shot_kernel = 375;
 
+  // Use embeded device library in codegen
+  optional bool xla_gpu_use_embeded_device_lib = 414;
+
   // Use lld as a library for the linking step
   optional bool xla_gpu_use_inprocess_lld = 389;
 
@@ -1336,7 +1339,7 @@ message DebugOptions {
   // Note: when adding a new flag, please add it to one of the hardware-specific
   // or hardware-agnostic sections at the top of this proto message.
 
-  // Next id: 414
+  // Next id: 415
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
