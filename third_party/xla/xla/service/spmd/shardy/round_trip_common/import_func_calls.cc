@@ -176,9 +176,7 @@ void importCallOp(
       // TODO(b/439018088): Take func result shardings if call op result
       // shardings are empty.
       /*outShardings=*/
-      callOpResultShardings
-          ? callOpResultShardings
-          : getFuncResultShardings(callOp, funcOp, symbolTable));
+      callOpResultShardings);
   namedCompOp->setAttrs(namedCompAttrs);
 
   mlir::Region& namedCompRegion = namedCompOp.getRegion();
