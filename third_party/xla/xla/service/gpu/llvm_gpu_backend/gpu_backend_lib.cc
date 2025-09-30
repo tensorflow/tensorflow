@@ -131,9 +131,8 @@ std::unique_ptr<llvm::TargetMachine> GetTargetMachine(
       codegen_opt_level = llvm::CodeGenOptLevel::None;
   }
   return absl::WrapUnique(target->createTargetMachine(
-      triple.str(), llvm_ir::AsStringRef(cpu_name),
-      llvm_ir::AsStringRef(feature_str), target_options,
-      llvm::codegen::getExplicitRelocModel(),
+      triple, llvm_ir::AsStringRef(cpu_name), llvm_ir::AsStringRef(feature_str),
+      target_options, llvm::codegen::getExplicitRelocModel(),
       llvm::codegen::getExplicitCodeModel(), codegen_opt_level));
 }
 

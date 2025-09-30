@@ -1666,6 +1666,7 @@ xla_cc_test(
         "@llvm-project//llvm:Core",
         "@llvm-project//llvm:MC",
         "@llvm-project//llvm:Target",
+        "@llvm-project//llvm:TargetParser",
         "@local_tsl//tsl/platform:statusor",
     ],
 )

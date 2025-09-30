@@ -100,8 +100,8 @@ absl::StatusOr<std::unique_ptr<llvm::TargetMachine>> CreateTargetMachine(
   opt.MCOptions.AsmVerbose = true;
   opt.MCOptions.PreserveAsmComments = true;
   return std::unique_ptr<llvm::TargetMachine>(target->createTargetMachine(
-      module->getTargetTriple().str(), arch_name, features, opt,
-      llvm::Reloc::PIC_, std::nullopt, llvm::CodeGenOptLevel::Aggressive));
+      module->getTargetTriple(), arch_name, features, opt, llvm::Reloc::PIC_,
+      std::nullopt, llvm::CodeGenOptLevel::Aggressive));
 }
 
 absl::StatusOr<std::string> GetLibdeviceDir() {
