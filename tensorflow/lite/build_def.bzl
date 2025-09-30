@@ -810,7 +810,7 @@ def tflite_combine_cc_tests(
             size = "large",
             srcs = list(combined_test_srcs),
             tags = ["manual", "notap"] + extra_cc_test_tags,
-            deps = list(combined_test_deps),
+            deps = list(set(combined_test_deps)),
             **kwargs
         )
         build_test(
