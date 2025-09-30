@@ -1,6 +1,5 @@
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("//xla:xla.default.bzl", "xla_cc_test")
-load("//xla/tsl:tsl.bzl", "if_google")
 load("//xla/tsl/platform:build_config.bzl", "tf_proto_library")
 
 package(
@@ -59,11 +58,12 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/time",
+        "@com_google_protobuf//:any_cc_proto",
         "@local_tsl//tsl/platform:blocking_counter",
         "@local_tsl//tsl/platform:fingerprint",
         "@local_tsl//tsl/platform:path",
         "@local_tsl//tsl/platform:protobuf",
-    ] + if_google(["@com_google_protobuf//:any_cc_proto"]),
+    ],
 )
 
 xla_cc_test(
@@ -94,16 +94,17 @@ xla_cc_test(
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:optional",
         "@com_google_googletest//:gtest_main",
+        "@com_google_protobuf//:any_cc_proto",
         "@local_tsl//tsl/platform:path",
         "@local_tsl//tsl/platform:protobuf",
         "@local_tsl//tsl/platform:test",
-    ] + if_google(["@com_google_protobuf//:any_cc_proto"]),
+    ],
 )
 
 tf_proto_library(
     name = "autotuner_cache_proto",
     srcs = ["autotuner_cache.proto"],
-    deps = if_google(["@com_google_protobuf//:any_proto"]),
+    protodeps = ["@com_google_protobuf//:any_proto"],
 )
 
 cc_library(
@@ -175,6 +176,7 @@ xla_cc_test(
         "//xla/tsl/util/proto:proto_matchers",
         "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest_main",
+        "@com_google_protobuf//:any_cc_proto",
         "@local_tsl//tsl/platform:path",
-    ] + if_google(["@com_google_protobuf//:any_cc_proto"]),
+    ],
 )

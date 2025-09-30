@@ -1,6 +1,6 @@
 load("//xla:xla.default.bzl", "xla_cc_test", "xla_internal")
 load("//xla/service/cpu:build_defs.bzl", "runtime_copts")
-load("//xla/tsl:tsl.bzl", "if_google", "if_windows", "internal_visibility")
+load("//xla/tsl:tsl.bzl", "if_windows", "internal_visibility")
 load("//xla/tsl:tsl.default.bzl", "filegroup")
 load("//xla/tsl/platform:build_config.bzl", "tf_proto_library")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
@@ -151,7 +151,8 @@ tf_proto_library(
         "//xla/service:buffer_assignment_proto",
         "//xla:xla_data_proto",
         "//xla/service:hlo_proto",
-    ] + if_google(["@com_google_protobuf//:any_proto"]),
+        "@com_google_protobuf//:any_proto",
+    ],
     visibility = ["//visibility:public"],
 )
 

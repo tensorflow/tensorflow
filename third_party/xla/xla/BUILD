@@ -75,7 +75,8 @@ tf_proto_library(
     protodeps = [
         ":xla_data_proto",
         "//xla/service:hlo_proto",
-    ] + if_google(["@com_google_protobuf//:any_proto"]),
+        "@com_google_protobuf//:any_proto",
+    ],
     visibility = ["//visibility:public"],
 )
 
@@ -1339,10 +1340,9 @@ tf_proto_library(
     make_default_target_header_only = True,
     protodeps = [
         "//xla/tsl/protobuf:dnn_proto",
-    ] + if_google([
         "@com_google_protobuf//:any_proto",
         "@com_google_protobuf//:duration_proto",
-    ]),
+    ],
 )
 
 cc_library(
