@@ -1372,22 +1372,32 @@ using SharedBatchSchedulerPriorityPolicyTest = SharedBatchSchedulerTest;
 
 TEST_P(SharedBatchSchedulerPriorityPolicyTest,
        HighPriorityBatchPaddedUptoMaxBatchSize) {
-  bool queue_callback_called = false;
-  auto queue_callback = [&queue_callback_called](
+  int queue_callback_counter = 0;
+  auto queue_callback = [&queue_callback_counter](
                             std::unique_ptr<Batch<FakeTask>> batch,
                             std::vector<std::unique_ptr<FakeTask>> tasks) {
-    // Skip if this was called already, which is the low priority task only
-    // batch case.
-    if (queue_callback_called) return;
+    if (queue_callback_counter++ == 0) {
+      // For the first batch, the high priority batch has a total size of 4. The
+      // first two low priority tasks (size 3, 3) are used to pad the batch to
+      // the max batch size 10. Notice: since the mixed_priority_batching_policy
+      // is not kPriorityMerge, the low priority tasks are padded in
+      // GetLowPriorityTasksForPadding() instead of GetNextWorkItem_Locked().
+      ASSERT_TRUE(batch->IsClosed());
+      ASSERT_EQ(2, batch->num_tasks());
+      EXPECT_EQ(1, batch->task(0).size());
+      EXPECT_EQ(3, batch->task(1).size());
+      EXPECT_EQ(2, tasks.size());
+      EXPECT_EQ(3, tasks[0]->size());
+      EXPECT_EQ(3, tasks[1]->size());
+      return;
+    }
 
-    queue_callback_called = true;
+    // For the second batch, there is no high priority task, so the last low
+    // priority tasks (size 3) is used to form a batch.
     ASSERT_TRUE(batch->IsClosed());
-    ASSERT_EQ(2, batch->num_tasks());
-    EXPECT_EQ(1, batch->task(0).size());
-    EXPECT_EQ(3, batch->task(1).size());
-    EXPECT_EQ(2, tasks.size());
-    EXPECT_EQ(3, tasks[0]->size());
-    EXPECT_EQ(3, tasks[1]->size());
+    ASSERT_EQ(1, batch->num_tasks());
+    EXPECT_EQ(0, tasks.size());
+    return;
   };
 
   {
@@ -1409,8 +1419,7 @@ TEST_P(SharedBatchSchedulerPriorityPolicyTest,
     std::unique_ptr<Queue> queue =
         CreateQueue(scheduler, queue_options, queue_callback);
 
-    // Submit tasks to the queue. The high priority batch is padded by the low
-    // priority tasks only up to 10, which is the max batch size.
+    // Submit tasks to the queue.
     TF_ASSERT_OK(ScheduleTask(1, queue.get(),
                               tsl::criticality::Criticality::kCriticalPlus));
     TF_ASSERT_OK(ScheduleTask(3, queue.get(),
@@ -1422,7 +1431,7 @@ TEST_P(SharedBatchSchedulerPriorityPolicyTest,
     TF_ASSERT_OK(ScheduleTask(3, queue.get(),
                               tsl::criticality::Criticality::kSheddable));
   }
-  EXPECT_TRUE(queue_callback_called);
+  EXPECT_EQ(queue_callback_counter, 2);
 }
 
 TEST_P(SharedBatchSchedulerPriorityPolicyTest,
@@ -1470,6 +1479,63 @@ TEST_P(SharedBatchSchedulerPriorityPolicyTest,
                               tsl::criticality::Criticality::kSheddable));
   }
   EXPECT_TRUE(queue_callback_called);
+}
+
+TEST_P(SharedBatchSchedulerPriorityPolicyTest,
+       HighPriorityBatchNotPaddedWithLargeLowPriorityTask) {
+  int queue_callback_counter = 0;
+  auto queue_callback = [&queue_callback_counter](
+                            std::unique_ptr<Batch<FakeTask>> batch,
+                            std::vector<std::unique_ptr<FakeTask>> tasks) {
+    if (queue_callback_counter++ == 0) {
+      // For the first batch, the high priority batch has a total size of 4. The
+      // low priority task (size 7) is not padded, because the batch size would
+      // be 11 and exceeds the max batch size 10.
+      ASSERT_TRUE(batch->IsClosed());
+      ASSERT_EQ(2, batch->num_tasks());
+      EXPECT_EQ(1, batch->task(0).size());
+      EXPECT_EQ(3, batch->task(1).size());
+      EXPECT_EQ(0, tasks.size());
+      return;
+    }
+
+    // For the second batch, there is no high priority task, so the low priority
+    // task (size 7) is used to form a batch.
+    ASSERT_TRUE(batch->IsClosed());
+    ASSERT_EQ(1, batch->num_tasks());
+    EXPECT_EQ(7, batch->task(0).size());
+    EXPECT_EQ(0, tasks.size());
+    return;
+  };
+
+  {
+    std::shared_ptr<Scheduler> scheduler =
+        CreateSharedBatchScheduler(/*num_batch_threads=*/3);
+
+    // Create a queue with the priority queue enabled.
+    QueueOptions queue_options = CreateQueueOptions(
+        /*max_execution_batch_size=*/10, /*input_batch_size_limit=*/10,
+        /*batch_timeout_micros=*/1 * 1000 * 1000, /*max_enqueued_batches=*/2,
+        /*enable_priority_queue=*/true);
+    queue_options.low_priority_queue_options.max_execution_batch_size = 10;
+    queue_options.low_priority_queue_options.batch_timeout_micros =
+        1 * 1000 * 1000;
+    queue_options.low_priority_queue_options.input_batch_size_limit = 10;
+    queue_options.low_priority_queue_options.max_enqueued_batches = 2;
+    queue_options.mixed_priority_batching_policy =
+        MixedPriorityBatchingPolicy::kLowPriorityPaddingWithMaxBatchSize;
+    std::unique_ptr<Queue> queue =
+        CreateQueue(scheduler, queue_options, queue_callback);
+
+    // Submit tasks to the queue.
+    TF_ASSERT_OK(ScheduleTask(1, queue.get(),
+                              tsl::criticality::Criticality::kCriticalPlus));
+    TF_ASSERT_OK(ScheduleTask(3, queue.get(),
+                              tsl::criticality::Criticality::kCriticalPlus));
+    TF_ASSERT_OK(ScheduleTask(7, queue.get(),
+                              tsl::criticality::Criticality::kSheddable));
+  }
+  EXPECT_EQ(queue_callback_counter, 2);
 }
 
 TEST_P(SharedBatchSchedulerPriorityPolicyTest,
@@ -1530,19 +1596,27 @@ TEST_P(SharedBatchSchedulerPriorityPolicyTest,
 
 TEST_P(SharedBatchSchedulerPriorityPolicyTest,
        HighPriorityBatchNotPaddedWhenAllowedBatchSizeMissing) {
-  bool queue_callback_called = false;
-  auto queue_callback = [&queue_callback_called](
+  int queue_callback_counter = 0;
+  auto queue_callback = [&queue_callback_counter](
                             std::unique_ptr<Batch<FakeTask>> batch,
                             std::vector<std::unique_ptr<FakeTask>> tasks) {
-    // Skip if this was called already, which is the low priority task only
-    // batch case.
-    if (queue_callback_called) return;
+    if (queue_callback_counter++ == 0) {
+      // The first batch is a high priority only batch. It is not padded with
+      // the low priority tasks since the allowed batch size is not specified.
+      ASSERT_TRUE(batch->IsClosed());
+      ASSERT_EQ(2, batch->num_tasks());
+      EXPECT_EQ(1, batch->task(0).size());
+      EXPECT_EQ(3, batch->task(1).size());
+      EXPECT_EQ(0, tasks.size());
+      return;
+    }
 
-    queue_callback_called = true;
+    // The second batch is a low priority only batch.
     ASSERT_TRUE(batch->IsClosed());
-    ASSERT_EQ(2, batch->num_tasks());
-    EXPECT_EQ(1, batch->task(0).size());
-    EXPECT_EQ(3, batch->task(1).size());
+    ASSERT_EQ(3, batch->num_tasks());
+    for (int i = 0; i < 3; ++i) {
+      EXPECT_EQ(2, batch->task(i).size());
+    }
     EXPECT_EQ(0, tasks.size());
   };
 
@@ -1565,9 +1639,7 @@ TEST_P(SharedBatchSchedulerPriorityPolicyTest,
     std::unique_ptr<Queue> queue =
         CreateQueue(scheduler, queue_options, queue_callback);
 
-    // Submit tasks to the queue. The high priority batch is padded by the low
-    // priority tasks up to 10, which is the max batch size because the allowed
-    // batch sizes are missing.
+    // Submit tasks to the queue.
     TF_ASSERT_OK(ScheduleTask(1, queue.get(),
                               tsl::criticality::Criticality::kCriticalPlus));
     TF_ASSERT_OK(ScheduleTask(3, queue.get(),
@@ -1579,7 +1651,7 @@ TEST_P(SharedBatchSchedulerPriorityPolicyTest,
     TF_ASSERT_OK(ScheduleTask(2, queue.get(),
                               tsl::criticality::Criticality::kSheddable));
   }
-  EXPECT_TRUE(queue_callback_called);
+  EXPECT_EQ(queue_callback_counter, 2);
 }
 
 TEST_P(SharedBatchSchedulerPriorityPolicyTest,
@@ -1624,7 +1696,8 @@ TEST_P(SharedBatchSchedulerPriorityPolicyTest,
         CreateQueue(scheduler, queue_options, queue_callback);
 
     // Submit tasks to the queue. The high priority batch and the low priority
-    // batch are scheduled separately.
+    // batch are scheduled separately since the kPriorityIsolation policy does
+    // not allow padding.
     TF_ASSERT_OK(ScheduleTask(1, queue.get(),
                               tsl::criticality::Criticality::kCriticalPlus));
     TF_ASSERT_OK(ScheduleTask(3, queue.get(),
@@ -1861,7 +1934,7 @@ TEST_P(SharedBatchSchedulerPriorityPolicyTest,
        PriorityMergedMixedPriorityBatchAfterHighPriorityTimeout) {
   // With the kPriorityMerge strategy, if there are both low and high priority
   // tasks, the timeout will be measured from the earliest task (in this case a
-  // low priority task). After the timeout elapsed the high and low pri tasks
+  // high priority task). After the timeout elapsed the high and low pri tasks
   // will be concatenated together.
 
   test_util::FakeClockEnv env(Env::Default());

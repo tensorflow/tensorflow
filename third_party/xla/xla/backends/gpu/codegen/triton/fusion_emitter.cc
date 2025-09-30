@@ -1617,7 +1617,7 @@ absl::StatusOr<ScalarOrTensor> EmitScope(
       TF_RET_CHECK(values.contains(hlo)) << hlo->ToString();
       continue;
     } else if (hlo->opcode() == HloOpcode::kConstant) {
-      return EmitConstant(b, *hlo);
+      TF_ASSIGN_OR_RETURN(result, EmitConstant(b, *hlo));
     } else if (hlo->opcode() == HloOpcode::kBroadcast) {
       return absl::InvalidArgumentError(
           "Broadcast is not yet supported in EmitScope().");
