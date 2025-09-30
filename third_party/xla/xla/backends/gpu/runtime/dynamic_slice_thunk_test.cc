@@ -23,11 +23,14 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/ascii.h"
+#include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/custom_call_thunk.h"
+#include "xla/backends/gpu/runtime/dynamic_slice_thunk.pb.h"
 #include "xla/backends/gpu/runtime/gemm_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/ffi/ffi.h"
@@ -52,12 +55,14 @@ limitations under the License.
 #include "xla/stream_executor/stream_executor_memory_allocator.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/util/proto/proto_matchers.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla::gpu {
 namespace {
 
 using DynamicSliceThunkTest = HloHardwareIndependentTestBase;
+using ::tsl::proto_testing::EqualsProto;
 
 std::string GetPlatformName() {
   return absl::AsciiStrToUpper(
@@ -68,6 +73,66 @@ se::StreamExecutor* GpuExecutor() {
   stream_executor::Platform* platform =
       se::PlatformManager::PlatformWithName(GetPlatformName()).value();
   return platform->ExecutorForDevice(0).value();
+}
+absl::Status CheckProtoRoundTrip(const DynamicSliceThunk& thunk,
+                                 DynamicSliceThunkProto& proto) {
+  std::vector<BufferAllocation> buffer_allocations;
+  for (int i = 0; i < 10; ++i) {
+    buffer_allocations.push_back(BufferAllocation(
+        /*index=*/i, /*size=*/1024, /*color=*/0));
+  }
+
+  std::vector<BufferAllocation> fake_allocations_span;
+  const auto& arguments = thunk.get_arguments();
+  for (int i = 0; i < arguments.size(); ++i) {
+    if (arguments[i].has_value()) {
+      fake_allocations_span.push_back(
+          BufferAllocation(i, arguments[i].value().allocation()->size(), 0));
+    }
+  }
+  TF_ASSIGN_OR_RETURN(
+      auto thunk_from_proto,
+      DynamicSliceThunk::FromProto(Thunk::ThunkInfo(), proto,
+                                   /*buffer_allocations=*/buffer_allocations,
+                                   /*fake_allocations=*/fake_allocations_span));
+  TF_ASSIGN_OR_RETURN(auto proto_roundtrip, thunk_from_proto->ToProto());
+  auto dynamic_slice_thunk_proto_roundtrip =
+      proto_roundtrip.dynamic_slice_thunk();
+  // Hlo ids are expected to be different after roundtrip, thus we drop them
+  // from comparison.
+  proto.mutable_offset_as_function_of_indvar_modules_metadata()
+      ->mutable_indvar_init()
+      ->mutable_hlo_module()
+      ->clear_id();
+  proto.mutable_offset_as_function_of_indvar_modules_metadata()
+      ->mutable_indvar_update()
+      ->mutable_hlo_module()
+      ->clear_id();
+  for (auto& module_with_config :
+       *proto.mutable_offset_as_function_of_indvar_modules_metadata()
+            ->mutable_extracted_offset_modules()) {
+    module_with_config.mutable_hlo_module()->clear_id();
+  }
+
+  dynamic_slice_thunk_proto_roundtrip
+      .mutable_offset_as_function_of_indvar_modules_metadata()
+      ->mutable_indvar_init()
+      ->mutable_hlo_module()
+      ->clear_id();
+  dynamic_slice_thunk_proto_roundtrip
+      .mutable_offset_as_function_of_indvar_modules_metadata()
+      ->mutable_indvar_update()
+      ->mutable_hlo_module()
+      ->clear_id();
+  for (auto& module_with_config :
+       *dynamic_slice_thunk_proto_roundtrip
+            .mutable_offset_as_function_of_indvar_modules_metadata()
+            ->mutable_extracted_offset_modules()) {
+    module_with_config.mutable_hlo_module()->clear_id();
+  }
+
+  EXPECT_THAT(dynamic_slice_thunk_proto_roundtrip, EqualsProto(proto));
+  return absl::OkStatus();
 }
 
 TEST_F(DynamicSliceThunkTest, SlicedGemm) {
@@ -148,6 +213,9 @@ TEST_F(DynamicSliceThunkTest, SlicedGemm) {
       {ShapeUtil::MakeShape(PrimitiveType::F32, {1, 3}), std::nullopt,
        std::nullopt, std::nullopt},
       {sizeof(int64_t), std::nullopt, std::nullopt, std::nullopt});
+
+  auto proto = thunk.ToProto().value().dynamic_slice_thunk();
+  TF_ASSERT_OK(CheckProtoRoundTrip(thunk, proto));
 
   // Step 2:
   // Execute address computation thunk.
@@ -305,6 +373,9 @@ TEST_F(DynamicSliceThunkTest, MulipleSlicedOperandsGemm) {
        ShapeUtil::MakeShape(PrimitiveType::F32, {3, 1}), std::nullopt,
        std::nullopt},
       {sizeof(int64_t), sizeof(int64_t), std::nullopt, std::nullopt});
+
+  auto proto = thunk.ToProto().value().dynamic_slice_thunk();
+  TF_ASSERT_OK(CheckProtoRoundTrip(thunk, proto));
 
   // Step 2:
   // Execute address computation thunk.
@@ -830,6 +901,9 @@ TEST_F(DynamicSliceThunkTest, SlicedGemmArbitraryArgumentOrder) {
        std::nullopt, std::nullopt},
       {sizeof(int64_t), std::nullopt, std::nullopt, std::nullopt});
 
+  auto proto = thunk.ToProto().value().dynamic_slice_thunk();
+  TF_ASSERT_OK(CheckProtoRoundTrip(thunk, proto));
+
   // Step 2:
   // Execute address computation thunk.
   //
@@ -979,6 +1053,9 @@ TEST_F(DynamicSliceThunkTest, SlicedGemmArbitraryNumberOfArguments) {
        std::nullopt, std::nullopt},
       {sizeof(int64_t), std::nullopt, std::nullopt, std::nullopt});
 
+  auto proto = thunk.ToProto().value().dynamic_slice_thunk();
+  TF_ASSERT_OK(CheckProtoRoundTrip(thunk, proto));
+
   // Step 2:
   // Execute address computation thunk.
   //
@@ -1120,6 +1197,9 @@ TEST_F(DynamicSliceThunkTest, SlicedTupledOperandGemm) {
       {ShapeUtil::MakeShape(PrimitiveType::F32, {1, 3}), std::nullopt,
        std::nullopt, std::nullopt},
       {sizeof(int64_t), std::nullopt, std::nullopt, std::nullopt});
+
+  auto proto = thunk.ToProto().value().dynamic_slice_thunk();
+  TF_ASSERT_OK(CheckProtoRoundTrip(thunk, proto));
 
   // Step 2:
   // Execute address computation thunk.
@@ -1478,6 +1558,9 @@ TEST_F(DynamicSliceThunkTest, SlicedOperandsSameBufferGemm) {
        std::nullopt, std::nullopt},
       {sizeof(int64_t), std::nullopt, std::nullopt, std::nullopt});
 
+  auto proto = thunk.ToProto().value().dynamic_slice_thunk();
+  TF_ASSERT_OK(CheckProtoRoundTrip(thunk, proto));
+
   // Step 2:
   // Execute address computation thunk.
   //
@@ -1654,7 +1737,7 @@ TEST_F(DynamicSliceThunkTest,
       /*output_buffer=*/slice_out,
       /*workspace=*/slice_workspace, /*deterministic=*/true));
 
-  // Wrapping address computation thunk around the GEMM thunk.
+  // Wrapping dynamic slice thunk around the GEMM thunk.
   std::vector<DynamicSliceThunk::Offset> lhs_offsets{offset_module, 0l};
   DynamicSliceThunk::OffsetAsFunctionOfIndvarModulesMetadata
       offset_as_function_of_indvar_modules_metadata(
@@ -1676,6 +1759,9 @@ TEST_F(DynamicSliceThunkTest,
       {sizeof(int64_t), std::nullopt, std::nullopt, std::nullopt},
       /*offset_as_function_of_indvar_metadata=*/
       std::move(offset_as_function_of_indvar_modules_metadata));
+
+  auto proto = thunk.ToProto().value().dynamic_slice_thunk();
+  TF_ASSERT_OK(CheckProtoRoundTrip(thunk, proto));
 
   // Step 2:
   // Execute address computation thunk.

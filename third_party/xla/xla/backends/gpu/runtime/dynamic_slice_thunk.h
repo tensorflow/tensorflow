@@ -164,6 +164,13 @@ class DynamicSliceThunk : public Thunk {
 
   void ForAllThunks(absl::FunctionRef<void(const Thunk*)> fn) const override;
 
+  absl::StatusOr<ThunkProto> ToProto() const override;
+
+  static absl::StatusOr<std::unique_ptr<DynamicSliceThunk>> FromProto(
+      ThunkInfo thunk_info, const DynamicSliceThunkProto& proto,
+      absl::Span<const BufferAllocation> buffer_allocations,
+      absl::Span<const BufferAllocation> fake_allocations);
+
  private:
   std::unique_ptr<SequentialThunk> embedded_thunk_;
   std::vector<std::optional<BufferAllocation::Slice>> arguments_;
