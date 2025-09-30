@@ -1772,10 +1772,12 @@ static std::vector<std::vector<xla::PjRtBuffer*>> Convert2DCBuffersToCppBuffers(
   std::vector<std::vector<xla::PjRtBuffer*>> cpp_lists;
   cpp_lists.reserve(outer_size);
   for (int i = 0; i < outer_size; ++i) {
-    auto& cpp_list = cpp_lists.emplace_back();
-    cpp_list.reserve(inner_size);
+    // Since this function gets called very frequently, we initialize the inner
+    // vector with the correct size to avoid resizing and maximize performance.
+    cpp_lists.emplace_back(inner_size);
+    auto& inner_list = cpp_lists.back();
     for (int j = 0; j < inner_size; ++j) {
-      cpp_list.push_back(c_lists[i][j]->buffer.get());
+      inner_list[j] = c_lists[i][j]->buffer.get();
     }
   }
   return cpp_lists;
