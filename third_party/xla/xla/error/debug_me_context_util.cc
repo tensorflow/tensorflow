@@ -46,22 +46,29 @@ std::string DebugMeContextToErrorMessageString() {
     const std::vector<std::string> compiler_values =
         tsl::DebugMeContext<DebugMeContextKey>::GetValues(
             DebugMeContextKey::kCompiler);
-    absl::StrAppend(&error_message,
-                    "Compiler: ", absl::StrJoin(compiler_values, "/"), "\n");
+    if (!compiler_values.empty()) {
+      absl::StrAppend(&error_message,
+                      "Compiler: ", absl::StrJoin(compiler_values, "/"), "\n");
+    }
   }
   {
     const std::vector<std::string> hlo_pass_values =
         tsl::DebugMeContext<DebugMeContextKey>::GetValues(
             DebugMeContextKey::kHloPass);
-    absl::StrAppend(&error_message,
-                    "HLO Passes: ", absl::StrJoin(hlo_pass_values, "/"), "\n");
+    if (!hlo_pass_values.empty()) {
+      absl::StrAppend(&error_message,
+                      "HLO Passes: ", absl::StrJoin(hlo_pass_values, "/"),
+                      "\n");
+    }
   }
   {
     const std::vector<std::string> hlo_instruction_values =
         tsl::DebugMeContext<DebugMeContextKey>::GetValues(
             DebugMeContextKey::kHloInstruction);
-    absl::StrAppend(&error_message, "HLO Instructions: ",
-                    absl::StrJoin(hlo_instruction_values, "/"), "\n");
+    if (!hlo_instruction_values.empty()) {
+      absl::StrAppend(&error_message, "HLO Instructions: ",
+                      absl::StrJoin(hlo_instruction_values, "/"), "\n");
+    }
   }
   return error_message;
 }
