@@ -4837,8 +4837,7 @@ absl::Status SpmdPartitioningVisitor::HandleTuple(HloInstruction* hlo) {
 }
 
 absl::StatusOr<bool> SpmdPartitioningVisitor::DoPartition(
-    HloComputation* computation, const HloSharding& root_sharding,
-    const SpmdPartitionerOptions& options) {
+    HloComputation* computation, const HloSharding& root_sharding) {
   VLOG(2) << "Partitioning computation " << computation->name() << " for "
           << num_replicas_ << " replicas and " << num_partitions_
           << " partitions" << " with root sharding " << root_sharding;
@@ -4849,8 +4848,7 @@ absl::StatusOr<bool> SpmdPartitioningVisitor::DoPartition(
       GetPartitionedHlo(computation->root_instruction()).Reshard(root_sharding);
   auto new_computation =
       module->AddEmbeddedComputation(b_.Build(new_root.hlo()));
-  TF_RETURN_IF_ERROR(
-      DoCodeMotionForWindowedDotGeneralLoops(new_computation, options));
+  TF_RETURN_IF_ERROR(DoCodeMotionForWindowedDotGeneralLoops());
 
   // Replace the original computation with the new SPMD computation.
   absl::flat_hash_map<HloComputation*, HloComputation*> replacement;
@@ -5350,7 +5348,7 @@ absl::StatusOr<bool> SpmdPartitioner::PartitionComputation(
   auto visitor = CreateVisitor(computation, num_partitions_, num_replicas_,
                                collective_ops_creator_, next_channel_id, logger,
                                options_, call_graph);
-  return visitor->DoPartition(computation, root_sharding, options_);
+  return visitor->DoPartition(computation, root_sharding);
 }
 
 std::unique_ptr<SpmdPartitioningVisitor> SpmdPartitioner::CreateVisitor(
