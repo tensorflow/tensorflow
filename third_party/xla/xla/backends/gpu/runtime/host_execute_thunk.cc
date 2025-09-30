@@ -387,21 +387,6 @@ absl::Status HostExecuteStartThunk::LoadExecutable() {
 }
 
 HostExecuteStartThunk::HostExecuteStartThunk(
-    Thunk::ThunkInfo thunk_info, const HloModule& hlo_module,
-    absl::InlinedVector<HostExecuteStartThunk::SliceAndShape, 4> args,
-    absl::InlinedVector<HostExecuteStartThunk::SliceAndShape, 4> results)
-    : Thunk(Thunk::Kind::kHostExecuteStart, std::move(thunk_info)),
-      args_(std::move(args)),
-      results_(std::move(results)),
-      async_events_(std::make_shared<HostExecuteAsyncEvents>()) {
-  HostOffloadingExecutableProto host_offloading_executable_proto;
-  *host_offloading_executable_proto.mutable_hlo_module() = hlo_module.ToProto();
-  host_offloading_executable_proto.set_executable_type(
-      HostOffloadingExecutableProto::EXECUTABLE_TYPE_NANORT);
-  executable_proto_ = std::move(host_offloading_executable_proto);
-}
-
-HostExecuteStartThunk::HostExecuteStartThunk(
     Thunk::ThunkInfo thunk_info,
     const HostOffloadingExecutableProto& host_offloading_executable_proto,
     absl::InlinedVector<HostExecuteStartThunk::SliceAndShape, 4> args,
@@ -436,21 +421,8 @@ absl::Status HostExecuteStartThunk::Initialize(const InitializeParams& params) {
   if (!allocator_) {
     allocator_ = GetHostOffloadingAllocator(params.executor);
   }
-  // NOTE(basioli): We load the executable here so that we don't get a deadlock
-  // when locking llvm command line options.
-  absl::Status initialization_status = absl::OkStatus();
-  absl::call_once(executable_init_flag_, [this, &initialization_status]() {
-    if (executable_ == nullptr) {
-      auto executable_or_status =
-          HostOffloadingNanoRtExecutable::LoadFromProto(executable_proto_);
-      initialization_status = executable_or_status.status();
-      if (initialization_status.ok()) {
-        executable_ = std::move(executable_or_status.value());
-      }
-    }
-  });
 
-  return initialization_status;
+  return absl::OkStatus();
 }
 
 absl::Status HostExecuteStartThunk::ExecuteOnStream(

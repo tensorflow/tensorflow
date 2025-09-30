@@ -113,27 +113,8 @@ HostOffloadingNanoRtExecutable::HostOffloadingNanoRtExecutable(
                        GetIntraOpThreadPool().NumThreads()) {}
 
 namespace {
-
 using ::tsl::profiler::TraceMe;
 using ::tsl::profiler::TraceMeEncode;
-
-// A mutex for a global NANORT CPU client initialization.
-ABSL_CONST_INIT absl::Mutex host_offloading_client_mutex(absl::kConstInit);
-
-// Returns a global NANORT CPU client for host offloading computations.
-absl::StatusOr<xla::cpu::NanoRtClient*> GetHostOffloadingNanoRtClient() {
-  static xla::cpu::NanoRtClient* client = nullptr;
-
-  absl::MutexLock lock(host_offloading_client_mutex);
-  if (client != nullptr) {
-    return client;
-  }
-
-  VLOG(1) << "Create host offloading NanoRt client for a current process";
-  client = new xla::cpu::NanoRtClient();
-  return client;
-}
-
 }  // namespace
 
 absl::StatusOr<std::unique_ptr<HostOffloadingNanoRtExecutable>>
@@ -142,7 +123,10 @@ HostOffloadingNanoRtExecutable::LoadFromProto(
   TF_RET_CHECK(proto.executable_type() ==
                HostOffloadingExecutableProto::EXECUTABLE_TYPE_NANORT);
 
-  auto& hlo_module_proto = proto.hlo_module();
+  TF_RET_CHECK(proto.has_aot_compilation_result());
+
+  auto& hlo_module_proto =
+      proto.aot_compilation_result().hlo_module().hlo_module();
 
   VLOG(3) << "Load NanoRt host offloading executable: name="
           << hlo_module_proto.name();
@@ -167,21 +151,9 @@ HostOffloadingNanoRtExecutable::LoadFromProto(
                                                       .hlo_module()
                                                       .input_output_alias()));
 
-  std::unique_ptr<xla::cpu::NanoRtExecutable> executable;
-
-  if (proto.has_aot_compilation_result()) {
-    TF_ASSIGN_OR_RETURN(executable,
-                        xla::cpu::NanoRtExecutable::Create(
-                            proto.aot_compilation_result(), program_shape));
-  } else {
-    XlaComputation computation;
-    computation = XlaComputation(proto.hlo_module());
-
-    TF_ASSIGN_OR_RETURN(xla::cpu::NanoRtClient * client,
-                        GetHostOffloadingNanoRtClient());
-
-    TF_ASSIGN_OR_RETURN(executable, client->Compile(computation));
-  }
+  TF_ASSIGN_OR_RETURN(auto executable,
+                      xla::cpu::NanoRtExecutable::Create(
+                          proto.aot_compilation_result(), program_shape));
 
   // TODO(basioli): Add support for compile options.
   CompileOptions compile_options;
