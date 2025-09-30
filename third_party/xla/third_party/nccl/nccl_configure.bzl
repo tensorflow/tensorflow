@@ -194,7 +194,7 @@ remote_nccl_configure = repository_rule(
     attrs = {
         "environ": attr.string_dict(),
         "_find_cuda_config": attr.label(
-            default = Label("@local_xla//third_party/gpus:find_cuda_config.py"),
+            default = Label("//third_party/gpus:find_cuda_config.py"),
         ),
     },
 )
@@ -204,7 +204,7 @@ nccl_configure = repository_rule(
     environ = _ENVIRONS,
     attrs = {
         "_find_cuda_config": attr.label(
-            default = Label("@local_xla//third_party/gpus:find_cuda_config.py"),
+            default = Label("//third_party/gpus:find_cuda_config.py"),
         ),
     },
 )
