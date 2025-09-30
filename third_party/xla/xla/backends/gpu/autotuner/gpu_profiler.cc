@@ -29,7 +29,6 @@ limitations under the License.
 #include "xla/backends/autotuner/profiler.h"
 #include "xla/backends/gpu/runtime/buffer_comparator.h"
 #include "xla/executable_run_options.h"
-#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/executable.h"
 #include "xla/service/gpu/autotuning/redzone_buffers.h"
 #include "xla/service/gpu/gpu_executable_run_options.h"
@@ -158,14 +157,7 @@ absl::StatusOr<ProfileResult> GpuProfiler::Profile(
       Execute(executable, std::move(execution_inputs), &profile));
 
   result.duration = absl::Nanoseconds(profile.compute_time_ns());
-  ScopedShapedBuffer output_buffers = execution_output.Commit().ConsumeResult();
-  if (output_buffers.on_device_shape().IsTuple() &&
-      !output_buffers.on_device_shape().tuple_shapes().empty()) {
-    result.output_buffer = output_buffers.TakeSubTree({0});
-  } else {
-    result.output_buffer = std::move(output_buffers);
-  }
-
+  result.output_buffer = execution_output.Commit().ConsumeResult();
   return result;
 }
 
@@ -206,16 +198,22 @@ absl::Status GpuProfiler::CheckInputBuffers(InputBuffers& buffers) {
 absl::Status GpuProfiler::CheckOutputBuffer(ScopedShapedBuffer& output,
                                             ScopedShapedBuffer& reference,
                                             float rtol) {
-  BufferComparator comparator(output.on_device_shape(), rtol,
-                              /*verbose=*/false);
+  return ShapeUtil::ForEachLeafShapeWithStatus(
+      reference.on_device_shape(),
+      [&](const Shape& subshape, const ShapeIndex& index) -> absl::Status {
+        BufferComparator comparator(subshape, rtol,
+                                    /*verbose=*/false);
 
-  TF_ASSIGN_OR_RETURN(bool outputs_match,
-                      comparator.CompareEqual(stream_, output.root_buffer(),
-                                              reference.root_buffer()));
-  if (outputs_match) {
-    return absl::OkStatus();
-  }
-  return absl::InternalError("Output buffer does not match reference buffer.");
+        TF_ASSIGN_OR_RETURN(
+            bool outputs_match,
+            comparator.CompareEqual(stream_, output.buffer(index),
+                                    reference.buffer(index)));
+        if (outputs_match) {
+          return absl::OkStatus();
+        }
+        return absl::InternalError(
+            "Output buffer does not match reference buffer.");
+      });
 }
 
 }  // namespace gpu
