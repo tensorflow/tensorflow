@@ -8,7 +8,7 @@ module {
 }
 
 // CHECK: func @exp_f64
-// CHECK: %[[RESULT:.*]] = call @local_xla.exp.f64(%arg0) : (f64) -> f64
+// CHECK: %[[RESULT:.*]] = call @xla.exp.f64(%arg0) : (f64) -> f64
 // CHECK: return %[[RESULT]] : f64
 
 // -----
@@ -21,7 +21,7 @@ module {
 }
 
 // CHECK: func @exp_f32
-// CHECK-NOT: @local_xla.exp.f64
+// CHECK-NOT: @xla.exp.f64
 // CHECK: math.exp %arg0 : f32
 // CHECK: return
 
@@ -36,7 +36,7 @@ module {
 
 // CHECK: func @exp_f64_vector
 // CHECK-NOT: math.exp %arg0 : vector<4xf64>
-// CHECK: @local_xla.exp.v4f64
+// CHECK: @xla.exp.v4f64
 
 // -----
 
@@ -48,7 +48,7 @@ module {
 }
 // CHECK-LABEL: @trunc
 // CHECK-SAME: (%[[ARG:.*]]: f32) -> bf16
-// CHECK: %[[TRUNC_CALL:.*]] = call @local_xla.fptrunc.f32.to.bf16(%[[ARG]])
+// CHECK: %[[TRUNC_CALL:.*]] = call @xla.fptrunc.f32.to.bf16(%[[ARG]])
 // CHECK: return %[[TRUNC_CALL]]
 
 // -----
@@ -62,7 +62,7 @@ module {
 
 // CHECK-LABEL: @erf32
 // CHECK-NOT: math.erf
-// CHECK: %[[ERF_CALL:.*]] = call @local_xla.erf.f32
+// CHECK: %[[ERF_CALL:.*]] = call @xla.erf.f32
 // CHECK: return %[[ERF_CALL]]
 
 // -----
@@ -89,9 +89,9 @@ module {
   }
 }
 
-// CHECK-LABEL: @local_xla.rsqrt.f32
+// CHECK-LABEL: @xla.rsqrt.f32
 // CHECK-NOT: math.rsqrt
-// CHECK: %[[RSQRT_CALL:.*]] = call @local_xla.rsqrt.f32
+// CHECK: %[[RSQRT_CALL:.*]] = call @xla.rsqrt.f32
 // CHECK: return %[[RSQRT_CALL]]
 
 // -----
@@ -103,7 +103,7 @@ module {
   }
 }
 
-// CHECK-LABEL: @local_xla.rsqrt.f64
+// CHECK-LABEL: @xla.rsqrt.f64
 // CHECK-NOT: math.rsqrt
-// CHECK: %[[RSQRT_CALL:.*]] = call @local_xla.rsqrt.f64
+// CHECK: %[[RSQRT_CALL:.*]] = call @xla.rsqrt.f64
 // CHECK: return %[[RSQRT_CALL]]

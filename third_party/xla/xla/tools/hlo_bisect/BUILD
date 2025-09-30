@@ -34,7 +34,7 @@ xla_cc_binary(
         "//xla/service:gpu_plugin",
         "//xla/service:interpreter_plugin",
         "//xla/tsl/util:command_line_flags",
-        "@local_tsl//tsl/platform:platform_port",
+        "@tsl//tsl/platform:platform_port",
     ] + if_cuda(["//xla/stream_executor/cuda:cublas_plugin"]),
 )
 
@@ -99,6 +99,6 @@ cc_library(
         "//xla/tsl/platform:subprocess",
         "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/container:flat_hash_map",
-        "@local_tsl//tsl/platform:path",
+        "@tsl//tsl/platform:path",
     ],
 )

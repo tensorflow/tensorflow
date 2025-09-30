@@ -1,6 +1,6 @@
 load("@bazel_skylib//rules:write_file.bzl", "write_file")
 load(
-    "@local_xla//xla/tsl/platform/default:cuda_build_defs.bzl",
+    "@xla//xla/tsl/platform/default:cuda_build_defs.bzl",
     "cuda_rpath_flags"
 )
 

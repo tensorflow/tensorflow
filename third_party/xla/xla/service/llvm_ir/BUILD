@@ -82,7 +82,7 @@ cc_library(
         "@llvm-project//llvm:TargetParser",
         "@llvm-project//llvm:TransformUtils",
         "@llvm-project//mlir:IR",
-        "@local_tsl//tsl/profiler/lib:scoped_annotation",
+        "@tsl//tsl/profiler/lib:scoped_annotation",
     ],
 )
 

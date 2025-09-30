@@ -29,8 +29,8 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@jsoncpp_git//:jsoncpp",  # buildcleaner: keep
-        "@local_tsl//tsl/platform:path",
-        "@local_tsl//tsl/platform:protobuf",
+        "@tsl//tsl/platform:path",
+        "@tsl//tsl/platform:protobuf",
     ],
 )
 
@@ -49,7 +49,7 @@ xla_cc_test(
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
         "@jsoncpp_git//:jsoncpp",
-        "@local_tsl//tsl/platform:path",
+        "@tsl//tsl/platform:path",
     ],
 )
 
@@ -68,6 +68,6 @@ xla_cc_binary(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@jsoncpp_git//:jsoncpp",
-        "@local_tsl//tsl/platform:platform_port",
+        "@tsl//tsl/platform:platform_port",
     ],
 )

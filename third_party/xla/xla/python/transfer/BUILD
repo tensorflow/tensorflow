@@ -60,7 +60,7 @@ xla_cc_test(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/synchronization",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:env",
+        "@tsl//tsl/platform:env",
     ],
 )
 
@@ -79,7 +79,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
-        "@local_tsl//tsl/platform:env",
+        "@tsl//tsl/platform:env",
     ],
 )
 
@@ -96,7 +96,7 @@ xla_cc_test(
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:statusor",
+        "@tsl//tsl/platform:statusor",
     ],
 )
 
@@ -139,7 +139,7 @@ cc_library(
         "//xla/python/ifrt",
         "//xla/tsl/concurrency:ref_count",
         "@com_google_absl//absl/status:statusor",
-        "@local_tsl//tsl/platform:test",
+        "@tsl//tsl/platform:test",
     ],
 )
 
@@ -167,7 +167,7 @@ xla_cc_test(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/synchronization",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:casts",
+        "@tsl//tsl/platform:casts",
     ],
 )
 
@@ -188,7 +188,7 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
-        "@local_tsl//tsl/platform:env",
+        "@tsl//tsl/platform:env",
     ],
 )
 
@@ -230,7 +230,7 @@ cc_library(
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/profiler/lib:traceme",
+        "@tsl//tsl/profiler/lib:traceme",
     ],
 )
 
@@ -285,6 +285,6 @@ cc_library(
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
-        "@local_tsl//tsl/platform:casts",
+        "@tsl//tsl/platform:casts",
     ],
 )

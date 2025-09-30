@@ -46,9 +46,9 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@local_config_cuda//cuda:cuda_headers",
-        "@local_tsl//tsl/profiler/lib:profiler_factory",
-        "@local_tsl//tsl/profiler/lib:profiler_interface",
-        "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc",
+        "@tsl//tsl/profiler/lib:profiler_factory",
+        "@tsl//tsl/profiler/lib:profiler_interface",
+        "@tsl//tsl/profiler/protobuf:xplane_proto_cc",
     ],
     alwayslink = True,
 )
@@ -79,8 +79,8 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@local_config_rocm//rocm:rocm_headers",
-        "@local_tsl//tsl/profiler/lib:profiler_factory",
-        "@local_tsl//tsl/profiler/lib:profiler_interface",
+        "@tsl//tsl/profiler/lib:profiler_factory",
+        "@tsl//tsl/profiler/lib:profiler_interface",
     ],
     alwayslink = True,
 )
@@ -97,8 +97,8 @@ cc_library(
     deps = [
         "//xla/tsl/cuda:cupti",
         "@local_config_cuda//cuda:cuda_headers",
-        "@local_tsl//tsl/platform:macros",
-        "@local_tsl//tsl/platform:types",
+        "@tsl//tsl/platform:macros",
+        "@tsl//tsl/platform:types",
     ],
 )
 
@@ -113,7 +113,7 @@ cc_library(
     deps = [
         ":cupti_interface",
         "@local_config_cuda//cuda:cuda_headers",
-        "@local_tsl//tsl/platform:test",
+        "@tsl//tsl/platform:test",
     ],
 )
 
@@ -133,8 +133,8 @@ cc_library(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/synchronization",
         "@local_config_cuda//cuda:cuda_headers",
-        "@local_tsl//tsl/platform:logging",
-        "@local_tsl//tsl/platform:thread_annotations",
+        "@tsl//tsl/platform:logging",
+        "@tsl//tsl/platform:thread_annotations",
     ],
 )
 
@@ -238,13 +238,13 @@ cc_library(
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:span",
         "@local_config_cuda//cuda:cuda_headers",
-        "@local_tsl//tsl/platform:env",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:logging",
-        "@local_tsl//tsl/platform:macros",
-        "@local_tsl//tsl/platform:platform_port",
-        "@local_tsl//tsl/platform:thread_annotations",
-        "@local_tsl//tsl/platform:types",
+        "@tsl//tsl/platform:env",
+        "@tsl//tsl/platform:errors",
+        "@tsl//tsl/platform:logging",
+        "@tsl//tsl/platform:macros",
+        "@tsl//tsl/platform:platform_port",
+        "@tsl//tsl/platform:thread_annotations",
+        "@tsl//tsl/platform:types",
     ],
 )
 
@@ -326,7 +326,7 @@ cc_library(
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
         "@local_config_cuda//cuda:cupti_headers",
-        "@local_tsl//tsl/platform:errors",
+        "@tsl//tsl/platform:errors",
     ],
 )
 
@@ -350,13 +350,13 @@ cc_library(
         "@com_google_absl//absl/container:node_hash_set",
         "@com_google_absl//absl/status",
         "@local_config_cuda//cuda:cuda_headers",
-        "@local_tsl//tsl/platform:env",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:logging",
-        "@local_tsl//tsl/platform:macros",
-        "@local_tsl//tsl/platform:platform_port",
-        "@local_tsl//tsl/platform:types",
-        "@local_tsl//tsl/profiler/lib:scoped_annotation",
+        "@tsl//tsl/platform:env",
+        "@tsl//tsl/platform:errors",
+        "@tsl//tsl/platform:logging",
+        "@tsl//tsl/platform:macros",
+        "@tsl//tsl/platform:platform_port",
+        "@tsl//tsl/platform:types",
+        "@tsl//tsl/profiler/lib:scoped_annotation",
     ],
 )
 
@@ -388,15 +388,15 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
-        "@local_tsl//tsl/platform:abi",
-        "@local_tsl//tsl/platform:env_time",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:macros",
-        "@local_tsl//tsl/platform:status",
-        "@local_tsl//tsl/platform:thread_annotations",
-        "@local_tsl//tsl/platform:types",
-        "@local_tsl//tsl/profiler/lib:profiler_factory",
-        "@local_tsl//tsl/profiler/lib:profiler_interface",
+        "@tsl//tsl/platform:abi",
+        "@tsl//tsl/platform:env_time",
+        "@tsl//tsl/platform:errors",
+        "@tsl//tsl/platform:macros",
+        "@tsl//tsl/platform:status",
+        "@tsl//tsl/platform:thread_annotations",
+        "@tsl//tsl/platform:types",
+        "@tsl//tsl/profiler/lib:profiler_factory",
+        "@tsl//tsl/profiler/lib:profiler_interface",
     ],
 )
 
@@ -425,14 +425,14 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/synchronization",
         "@local_config_rocm//rocm:rocm_headers",
-        "@local_tsl//tsl/platform:env",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:logging",
-        "@local_tsl//tsl/platform:macros",
-        "@local_tsl//tsl/platform:platform_port",
-        "@local_tsl//tsl/platform:status",
-        "@local_tsl//tsl/platform:thread_annotations",
-        "@local_tsl//tsl/platform:types",
+        "@tsl//tsl/platform:env",
+        "@tsl//tsl/platform:errors",
+        "@tsl//tsl/platform:logging",
+        "@tsl//tsl/platform:macros",
+        "@tsl//tsl/platform:platform_port",
+        "@tsl//tsl/platform:status",
+        "@tsl//tsl/platform:thread_annotations",
+        "@tsl//tsl/platform:types",
     ],
 )
 
@@ -448,8 +448,8 @@ cc_library(
     deps = [
         "@com_google_absl//absl/strings",
         "@local_config_cuda//cuda:cuda_headers",
-        "@local_tsl//tsl/platform",
-        "@local_tsl//tsl/platform:macros",
+        "@tsl//tsl/platform",
+        "@tsl//tsl/platform:macros",
     ],
 )
 
@@ -486,11 +486,11 @@ cc_library(
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
         "@local_config_cuda//cuda:cuda_headers",
-        "@local_tsl//tsl/platform:abi",
-        "@local_tsl//tsl/platform:platform_port",
-        "@local_tsl//tsl/platform:thread_annotations",
-        "@local_tsl//tsl/platform:types",
-        "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc",
+        "@tsl//tsl/platform:abi",
+        "@tsl//tsl/platform:platform_port",
+        "@tsl//tsl/platform:thread_annotations",
+        "@tsl//tsl/platform:types",
+        "@tsl//tsl/profiler/protobuf:xplane_proto_cc",
     ],
 )
 
@@ -519,9 +519,9 @@ cc_library(
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/synchronization",
         "@local_config_cuda//cuda:cuda_headers",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:platform_port",
-        "@local_tsl//tsl/platform:thread_annotations",
+        "@tsl//tsl/platform:errors",
+        "@tsl//tsl/platform:platform_port",
+        "@tsl//tsl/platform:thread_annotations",
     ],
 )
 
@@ -542,8 +542,8 @@ cc_library(
         "//xla/tsl/util:env_var",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/memory",
-        "@local_tsl//tsl/platform:logging",
-        "@local_tsl//tsl/platform:stringpiece",
+        "@tsl//tsl/platform:logging",
+        "@tsl//tsl/platform:stringpiece",
     ],
     alwayslink = 1,
 )
@@ -573,7 +573,7 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
-        "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc",
+        "@tsl//tsl/profiler/protobuf:xplane_proto_cc",
     ],
 )
 
@@ -593,8 +593,8 @@ xla_cc_test(
         "//xla/tsl/profiler/utils:xplane_builder",
         "//xla/tsl/profiler/utils:xplane_schema",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:test",
-        "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc",
+        "@tsl//tsl/platform:test",
+        "@tsl//tsl/profiler/protobuf:xplane_proto_cc",
     ],
 )
 
@@ -627,7 +627,7 @@ xla_cc_test(
         ":cupti_collector",  # buildcleaner: keep
         ":cupti_utils",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:test",
+        "@tsl//tsl/platform:test",
     ],
 )
 
@@ -650,7 +650,7 @@ xla_cc_test(
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc",
+        "@tsl//tsl/profiler/protobuf:xplane_proto_cc",
     ],
 )
 
@@ -738,6 +738,6 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@local_config_cuda//cuda:cuda_headers",
-        "@local_tsl//tsl/profiler/protobuf:profiler_options_proto_cc",
+        "@tsl//tsl/profiler/protobuf:profiler_options_proto_cc",
     ],
 )

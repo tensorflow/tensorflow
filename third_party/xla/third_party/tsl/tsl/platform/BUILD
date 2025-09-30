@@ -5,13 +5,13 @@
 #   to other TF components outside of TSL.
 
 load(
-    "@local_xla//xla/tsl:tsl.bzl",
+    "@xla//xla/tsl:tsl.bzl",
     "internal_visibility",
     "tsl_copts",
 )
-load("@local_xla//xla/tsl:tsl.default.bzl", "get_compatible_with_portable")
+load("@xla//xla/tsl:tsl.default.bzl", "get_compatible_with_portable")
 load(
-    "@local_xla//xla/tsl/platform:build_config.bzl",
+    "@xla//xla/tsl/platform:build_config.bzl",
     "tf_cuda_root_path_deps",
     "tf_error_logging_deps",
     "tf_fingerprint_deps",
@@ -23,7 +23,7 @@ load(
     "tsl_protobuf_deps",
 )
 load(
-    "@local_xla//xla/tsl/platform:rules_cc.bzl",
+    "@xla//xla/tsl/platform:rules_cc.bzl",
     "cc_library",
 )
 
@@ -42,10 +42,10 @@ cc_library(
     deps = [
         ":stringpiece",
         "@com_google_absl//absl/status",
-        "@local_xla//xla/tsl/platform:errors",
-        "@local_xla//xla/tsl/platform:macros",
-        "@local_xla//xla/tsl/platform:status",
-        "@local_xla//xla/tsl/platform:types",
+        "@xla//xla/tsl/platform:errors",
+        "@xla//xla/tsl/platform:macros",
+        "@xla//xla/tsl/platform:status",
+        "@xla//xla/tsl/platform:types",
     ],
 )
 
@@ -55,7 +55,7 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     deps = [
         ":mutex",
-        "@local_xla//xla/tsl/platform:logging",
+        "@xla//xla/tsl/platform:logging",
     ],
 )
 
@@ -66,8 +66,8 @@ cc_library(
     deps = [
         ":stringpiece",
         ":tstring",
-        "@local_xla//xla/tsl/platform:byte_order",
-        "@local_xla//xla/tsl/platform:types",
+        "@xla//xla/tsl/platform:byte_order",
+        "@xla//xla/tsl/platform:types",
     ],
 )
 
@@ -78,7 +78,7 @@ tsl_cc_test(
     deps = [
         ":platform_port",
         "@com_google_googletest//:gtest_main",
-        "@local_xla//xla/tsl/platform:test",
+        "@xla//xla/tsl/platform:test",
     ],
 )
 
@@ -89,7 +89,7 @@ cc_library(
     deps = [
         ":platform",
         ":platform_port",
-        "@local_xla//xla/tsl/platform:macros",
+        "@xla//xla/tsl/platform:macros",
     ],
 )
 
@@ -100,7 +100,7 @@ tsl_cc_test(
     deps = [
         ":denormal",
         "@com_google_googletest//:gtest_main",
-        "@local_xla//xla/tsl/platform:test",
+        "@xla//xla/tsl/platform:test",
     ],
 )
 
@@ -113,7 +113,7 @@ cc_library(
         "threadpool.h",
     ],
     deps = [
-        "@local_xla//xla/tsl/platform:env",
+        "@xla//xla/tsl/platform:env",
     ],
 )
 
@@ -121,14 +121,14 @@ cc_library(
     name = "threadpool_async_executor",
     hdrs = ["threadpool_async_executor.h"],
     deps = [
-        "@local_xla//xla/tsl/platform:threadpool_async_executor",
+        "@xla//xla/tsl/platform:threadpool_async_executor",
     ],
 )
 
 cc_library(
     name = "env_impl",
     deps = [
-        "@local_xla//xla/tsl/platform:env_impl",
+        "@xla//xla/tsl/platform:env_impl",
     ],
 )
 
@@ -137,7 +137,7 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     textual_hdrs = ["env_time.h"],
     deps = [
-        "@local_xla//xla/tsl/platform:env_time",
+        "@xla//xla/tsl/platform:env_time",
     ],
 )
 
@@ -145,7 +145,7 @@ cc_library(
     name = "errors",
     hdrs = ["errors.h"],
     deps = [
-        "@local_xla//xla/tsl/platform:errors",
+        "@xla//xla/tsl/platform:errors",
     ],
 )
 
@@ -171,9 +171,9 @@ cc_library(
         ":stringprintf",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/strings",
-        "@local_xla//xla/tsl/platform:logging",
-        "@local_xla//xla/tsl/platform:macros",
-        "@local_xla//xla/tsl/platform:types",
+        "@xla//xla/tsl/platform:logging",
+        "@xla//xla/tsl/platform:macros",
+        "@xla//xla/tsl/platform:types",
     ],
 )
 
@@ -188,8 +188,8 @@ cc_library(
         ":strcat",
         ":stringpiece",
         "@com_google_absl//absl/algorithm:container",
-        "@local_xla//xla/tsl/platform:logging",
-        "@local_xla//xla/tsl/platform:types",
+        "@xla//xla/tsl/platform:logging",
+        "@xla//xla/tsl/platform:types",
     ],
     alwayslink = True,
 )
@@ -204,7 +204,7 @@ cc_library(
     deps = [
         ":platform",
         ":tstring",
-        "@local_xla//xla/tsl/platform:types",
+        "@xla//xla/tsl/platform:types",
     ] + tsl_protobuf_deps(),
 )
 
@@ -221,7 +221,7 @@ cc_library(
     name = "status",
     hdrs = ["status.h"],
     deps = [
-        "@local_xla//xla/tsl/platform:status",
+        "@xla//xla/tsl/platform:status",
     ],
 )
 
@@ -229,7 +229,7 @@ cc_library(
     name = "status_to_from_proto",
     hdrs = ["status_to_from_proto.h"],
     deps = [
-        "@local_xla//xla/tsl/platform:status_to_from_proto",
+        "@xla//xla/tsl/platform:status_to_from_proto",
     ],
 )
 
@@ -238,7 +238,7 @@ cc_library(
     testonly = 1,
     hdrs = ["status_matchers.h"],
     deps = [
-        "@local_xla//xla/tsl/platform:status_matchers",
+        "@xla//xla/tsl/platform:status_matchers",
     ],
 )
 
@@ -246,7 +246,7 @@ cc_library(
     name = "statusor",
     hdrs = ["statusor.h"],
     deps = [
-        "@local_xla//xla/tsl/platform:statusor",
+        "@xla//xla/tsl/platform:statusor",
     ],
 )
 
@@ -262,7 +262,7 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     textual_hdrs = ["test.h"],
     deps = [
-        "@local_xla//xla/tsl/platform:test",
+        "@xla//xla/tsl/platform:test",
     ],
 )
 
@@ -272,7 +272,7 @@ cc_library(
     hdrs = ["test_benchmark.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
-        "@local_xla//xla/tsl/platform:test_benchmark",
+        "@xla//xla/tsl/platform:test_benchmark",
     ],
 )
 
@@ -282,7 +282,7 @@ filegroup(
     srcs = [
         "test.h",
         "test_benchmark.h",
-        "@local_xla//xla/tsl/platform:test_hdrs",
+        "@xla//xla/tsl/platform:test_hdrs",
     ],
     compatible_with = get_compatible_with_portable(),
     visibility = internal_visibility([
@@ -296,7 +296,7 @@ filegroup(
     testonly = 1,
     srcs = [
         "test.h",
-        "@local_xla//xla/tsl/platform:android_test_srcs",
+        "@xla//xla/tsl/platform:android_test_srcs",
     ],
     compatible_with = get_compatible_with_portable(),
     visibility = internal_visibility([
@@ -331,7 +331,7 @@ filegroup(
     srcs = [
         "ctstring.h",
         "ctstring_internal.h",
-        "@local_xla//xla/tsl/platform:ctstring",
+        "@xla//xla/tsl/platform:ctstring",
     ],
     compatible_with = get_compatible_with_portable(),
 )
@@ -367,11 +367,11 @@ filegroup(
         "stringpiece.h",
         "stringprintf.h",
         "thread_annotations.h",
-        "@local_xla//xla/tsl/platform:lib_hdrs",
-        "@local_xla//xla/tsl/platform/profile_utils:android_armv7a_cpu_utils_helper.h",
-        "@local_xla//xla/tsl/platform/profile_utils:clock_cycle_profiler.h",
-        "@local_xla//xla/tsl/platform/profile_utils:cpu_utils.h",
-        "@local_xla//xla/tsl/platform/profile_utils:i_cpu_utils_helper.h",
+        "@xla//xla/tsl/platform:lib_hdrs",
+        "@xla//xla/tsl/platform/profile_utils:android_armv7a_cpu_utils_helper.h",
+        "@xla//xla/tsl/platform/profile_utils:clock_cycle_profiler.h",
+        "@xla//xla/tsl/platform/profile_utils:cpu_utils.h",
+        "@xla//xla/tsl/platform/profile_utils:i_cpu_utils_helper.h",
     ],
     compatible_with = get_compatible_with_portable(),
 )
@@ -385,7 +385,7 @@ filegroup(
         "threadpool.h",
         "threadpool_interface.h",
         "threadpool_options.h",
-        "@local_xla//xla/tsl/platform:base_hdrs",
+        "@xla//xla/tsl/platform:base_hdrs",
     ],
     compatible_with = get_compatible_with_portable(),
 )
@@ -399,7 +399,7 @@ filegroup(
         "platform.h",
         "protobuf.h",
         "thread_annotations.h",
-        "@local_xla//xla/tsl/platform:framework_lite_hdrs",
+        "@xla//xla/tsl/platform:framework_lite_hdrs",
     ],
     compatible_with = get_compatible_with_portable(),
 )
@@ -467,12 +467,12 @@ filegroup(
         "threadpool.h",
         "threadpool_interface.h",
         "tracing.h",
-        "@local_xla//xla/tsl/platform:mobile_srcs_no_runtime",
+        "@xla//xla/tsl/platform:mobile_srcs_no_runtime",
     ] + select({
-        "@local_xla//xla/tsl:fuchsia": tf_google_mobile_srcs_no_runtime(),
+        "@xla//xla/tsl:fuchsia": tf_google_mobile_srcs_no_runtime(),
         "//conditions:default": [
             "tracing.cc",
-            "@local_xla//xla/tsl/platform/default:mobile_srcs_no_runtime",
+            "@xla//xla/tsl/platform/default:mobile_srcs_no_runtime",
         ],
     }),
     compatible_with = get_compatible_with_portable(),
@@ -489,12 +489,12 @@ filegroup(
         "test_benchmark.h",
         "threadpool_options.h",
         "unbounded_work_queue.h",
-        "@local_xla//xla/tsl/platform:mobile_srcs_only_runtime",
-        "@local_xla//xla/tsl/platform/profile_utils:android_armv7a_cpu_utils_helper.cc",
-        "@local_xla//xla/tsl/platform/profile_utils:android_armv7a_cpu_utils_helper.h",
-        "@local_xla//xla/tsl/platform/profile_utils:cpu_utils.cc",
-        "@local_xla//xla/tsl/platform/profile_utils:cpu_utils.h",
-        "@local_xla//xla/tsl/platform/profile_utils:i_cpu_utils_helper.h",
+        "@xla//xla/tsl/platform:mobile_srcs_only_runtime",
+        "@xla//xla/tsl/platform/profile_utils:android_armv7a_cpu_utils_helper.cc",
+        "@xla//xla/tsl/platform/profile_utils:android_armv7a_cpu_utils_helper.h",
+        "@xla//xla/tsl/platform/profile_utils:cpu_utils.cc",
+        "@xla//xla/tsl/platform/profile_utils:cpu_utils.h",
+        "@xla//xla/tsl/platform/profile_utils:i_cpu_utils_helper.h",
     ],
     compatible_with = get_compatible_with_portable(),
     visibility = internal_visibility([
@@ -513,11 +513,11 @@ filegroup(
             "dynamic_annotations.h",
         ],
     ) + [
-        "@local_xla//xla/tsl/platform:legacy_lib_internal_headers",
-        "@local_xla//xla/tsl/platform/profile_utils:android_armv7a_cpu_utils_helper.h",
-        "@local_xla//xla/tsl/platform/profile_utils:clock_cycle_profiler.h",
-        "@local_xla//xla/tsl/platform/profile_utils:cpu_utils.h",
-        "@local_xla//xla/tsl/platform/profile_utils:i_cpu_utils_helper.h",
+        "@xla//xla/tsl/platform:legacy_lib_internal_headers",
+        "@xla//xla/tsl/platform/profile_utils:android_armv7a_cpu_utils_helper.h",
+        "@xla//xla/tsl/platform/profile_utils:clock_cycle_profiler.h",
+        "@xla//xla/tsl/platform/profile_utils:cpu_utils.h",
+        "@xla//xla/tsl/platform/profile_utils:i_cpu_utils_helper.h",
     ],
     compatible_with = get_compatible_with_portable(),
 )
@@ -567,7 +567,7 @@ filegroup(
         "platform.h",
         "protobuf.h",
         "stringpiece.h",
-        "@local_xla//xla/tsl/platform:lib_proto_parsing_hdrs",
+        "@xla//xla/tsl/platform:lib_proto_parsing_hdrs",
     ],
     compatible_with = get_compatible_with_portable(),
     visibility = internal_visibility([
@@ -590,7 +590,7 @@ filegroup(
         "statusor.h",
         "tracing.h",
         "unbounded_work_queue.h",
-        "@local_xla//xla/tsl/platform:lib_internal_public_hdrs",
+        "@xla//xla/tsl/platform:lib_internal_public_hdrs",
     ],
     compatible_with = get_compatible_with_portable(),
     visibility = internal_visibility([
@@ -605,7 +605,7 @@ filegroup(
         "bfloat16.h",
         "macros.h",
         "platform.h",
-        "@local_xla//xla/tsl/platform:tflite_portable_logging_hdrs",
+        "@xla//xla/tsl/platform:tflite_portable_logging_hdrs",
     ],
     compatible_with = get_compatible_with_portable(),
     visibility = internal_visibility([
@@ -622,7 +622,7 @@ filegroup(
         "mem.h",
         "platform.h",
         "stringpiece.h",
-        "@local_xla//xla/tsl/platform:jpeg_internal_hdrs",
+        "@xla//xla/tsl/platform:jpeg_internal_hdrs",
     ],
     compatible_with = get_compatible_with_portable(),
     visibility = internal_visibility([
@@ -639,7 +639,7 @@ filegroup(
         "macros.h",
         "mem.h",
         "platform.h",
-        "@local_xla//xla/tsl/platform:gif_internal_hdrs",
+        "@xla//xla/tsl/platform:gif_internal_hdrs",
     ],
     compatible_with = get_compatible_with_portable(),
     visibility = internal_visibility([
@@ -654,7 +654,7 @@ cc_library(
     hdrs = ["macros.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
-        "@local_xla//xla/tsl/platform:macros",
+        "@xla//xla/tsl/platform:macros",
     ],
 )
 
@@ -665,7 +665,7 @@ filegroup(
         "env_time.h",
         "macros.h",
         "platform.h",
-        "@local_xla//xla/tsl/platform:xla_cpu_runtime_srcs",
+        "@xla//xla/tsl/platform:xla_cpu_runtime_srcs",
     ],
     compatible_with = get_compatible_with_portable(),
 )
@@ -696,9 +696,9 @@ cc_library(
     ],
     deps = tf_windows_aware_platform_deps("platform_port") + [
         ":platform",
-        "@local_xla//xla/tsl/platform:byte_order",
-        "@local_xla//xla/tsl/platform:dynamic_annotations",
-        "@local_xla//xla/tsl/platform:types",
+        "@xla//xla/tsl/platform:byte_order",
+        "@xla//xla/tsl/platform:dynamic_annotations",
+        "@xla//xla/tsl/platform:types",
     ],
 )
 
@@ -715,7 +715,7 @@ cc_library(
     hdrs = ["random.h"],
     deps = [
         ":mutex",
-        "@local_xla//xla/tsl/platform:types",
+        "@xla//xla/tsl/platform:types",
     ],
 )
 
@@ -723,7 +723,7 @@ filegroup(
     name = "stacktrace_handler_hdrs",
     srcs = [
         "stacktrace_handler.h",
-        "@local_xla//xla/tsl/platform:stacktrace_handler_hdrs",
+        "@xla//xla/tsl/platform:stacktrace_handler_hdrs",
     ],
     compatible_with = get_compatible_with_portable(),
 )
@@ -752,9 +752,9 @@ tsl_cc_test(
     deps = [
         ":stacktrace",
         ":stacktrace_handler",
-        "@local_xla//xla/tsl/platform:logging",
-        "@local_xla//xla/tsl/platform:test",
-        "@local_xla//xla/tsl/platform:test_main",
+        "@xla//xla/tsl/platform:logging",
+        "@xla//xla/tsl/platform:test",
+        "@xla//xla/tsl/platform:test_main",
     ],
 )
 
@@ -766,9 +766,9 @@ cc_library(
         ":stringpiece",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/strings",
-        "@local_xla//xla/tsl/platform:logging",
-        "@local_xla//xla/tsl/platform:macros",
-        "@local_xla//xla/tsl/platform:types",
+        "@xla//xla/tsl/platform:logging",
+        "@xla//xla/tsl/platform:macros",
+        "@xla//xla/tsl/platform:types",
     ],
 )
 
@@ -781,9 +781,9 @@ cc_library(
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/meta:type_traits",
         "@com_google_absl//absl/strings",
-        "@local_xla//xla/tsl/platform:logging",
-        "@local_xla//xla/tsl/platform:macros",
-        "@local_xla//xla/tsl/platform:types",
+        "@xla//xla/tsl/platform:logging",
+        "@xla//xla/tsl/platform:macros",
+        "@xla//xla/tsl/platform:types",
     ],
 )
 
@@ -802,8 +802,8 @@ cc_library(
     srcs = ["stringprintf.cc"],
     hdrs = ["stringprintf.h"],
     deps = [
-        "@local_xla//xla/tsl/platform:macros",
-        "@local_xla//xla/tsl/platform:types",
+        "@xla//xla/tsl/platform:macros",
+        "@xla//xla/tsl/platform:types",
     ],
 )
 
@@ -821,7 +821,7 @@ cc_library(
     hdrs = ["threadpool_interface.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
-        "@local_xla//xla/tsl/platform:threadpool_interface",
+        "@xla//xla/tsl/platform:threadpool_interface",
     ],
 )
 
@@ -830,7 +830,7 @@ cc_library(
     hdrs = ["types.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
-        "@local_xla//xla/tsl/platform:types",
+        "@xla//xla/tsl/platform:types",
     ],
 )
 
@@ -848,9 +848,9 @@ cc_library(
         ":platform_strings",
         ":stacktrace_handler",
         ":stringpiece",
-        "@local_xla//xla/tsl/platform:byte_order",
-        "@local_xla//xla/tsl/platform:macros",
-        "@local_xla//xla/tsl/platform:threadpool_interface",
+        "@xla//xla/tsl/platform:byte_order",
+        "@xla//xla/tsl/platform:macros",
+        "@xla//xla/tsl/platform:threadpool_interface",
     ],
 )
 
@@ -860,7 +860,7 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     deps = [
         "@eigen_archive//:eigen3",
-        "@local_xla//xla/tsl/platform:byte_order",
+        "@xla//xla/tsl/platform:byte_order",
     ],
 )
 
@@ -891,7 +891,7 @@ cc_library(
         "//visibility:public",
     ],
     deps = [
-        "@local_xla//xla/tsl/platform:logging",
+        "@xla//xla/tsl/platform:logging",
     ],
 )
 
@@ -916,8 +916,8 @@ cc_library(
     deps = [
         ":raw_coding",
         ":stringpiece",
-        "@local_xla//xla/tsl/platform:macros",
-        "@local_xla//xla/tsl/platform:types",
+        "@xla//xla/tsl/platform:macros",
+        "@xla//xla/tsl/platform:types",
     ],
 )
 
@@ -932,8 +932,8 @@ cc_library(
     hdrs = ["raw_coding.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
-        "@local_xla//xla/tsl/platform:byte_order",
-        "@local_xla//xla/tsl/platform:types",
+        "@xla//xla/tsl/platform:byte_order",
+        "@xla//xla/tsl/platform:types",
     ],
 )
 
@@ -944,7 +944,7 @@ filegroup(
         "raw_coding.h",
         "scanner.h",
         "str_util.h",
-        "@local_xla//xla/tsl/platform:lib_internal_private_hdrs",
+        "@xla//xla/tsl/platform:lib_internal_private_hdrs",
     ],
     compatible_with = get_compatible_with_portable(),
     visibility = internal_visibility(["//tensorflow/core:__pkg__"]),
@@ -963,8 +963,8 @@ cc_library(
     srcs = ["setround.cc"],
     hdrs = ["setround.h"],
     deps = [
-        "@local_xla//xla/tsl/platform:logging",
-        "@local_xla//xla/tsl/platform:macros",
+        "@xla//xla/tsl/platform:logging",
+        "@xla//xla/tsl/platform:macros",
     ],
 )
 
@@ -988,8 +988,8 @@ tsl_cc_test(
     deps = [
         ":stacktrace",
         "@com_google_googletest//:gtest_main",
-        "@local_xla//xla/tsl/platform:logging",
-        "@local_xla//xla/tsl/platform:test",
+        "@xla//xla/tsl/platform:logging",
+        "@xla//xla/tsl/platform:test",
     ],
 )
 
@@ -1004,7 +1004,7 @@ cc_library(
     name = "file_statistics",
     hdrs = ["file_statistics.h"],
     deps = [
-        "@local_xla//xla/tsl/platform:file_statistics",
+        "@xla//xla/tsl/platform:file_statistics",
     ],
 )
 
@@ -1015,7 +1015,7 @@ cc_library(
     deps = [
         ":platform",
         ":stringpiece",
-        "@local_xla//xla/tsl/platform:types",
+        "@xla//xla/tsl/platform:types",
     ] + tf_fingerprint_deps(),
 )
 
@@ -1026,8 +1026,8 @@ tsl_cc_test(
     deps = [
         ":fingerprint",
         "@com_google_googletest//:gtest_main",
-        "@local_xla//xla/tsl/platform:test",
-        "@local_xla//xla/tsl/platform:types",
+        "@xla//xla/tsl/platform:test",
+        "@xla//xla/tsl/platform:types",
     ],
 )
 
@@ -1046,7 +1046,7 @@ cc_library(
     deps = [
         ":str_util",
         ":stringpiece",
-        "@local_xla//xla/tsl/platform:macros",
+        "@xla//xla/tsl/platform:macros",
     ],
 )
 
@@ -1054,7 +1054,7 @@ filegroup(
     name = "tensor_float_32_hdr",
     srcs = [
         "tensor_float_32_utils.h",
-        "@local_xla//xla/tsl/platform:tensor_float_32_hdr",
+        "@xla//xla/tsl/platform:tensor_float_32_hdr",
     ],
     compatible_with = get_compatible_with_portable(),
 )
@@ -1072,7 +1072,7 @@ tsl_cc_test(
     deps = [
         ":tstring",
         "@com_google_googletest//:gtest_main",
-        "@local_xla//xla/tsl/platform:test",
+        "@xla//xla/tsl/platform:test",
     ],
 )
 
@@ -1083,9 +1083,9 @@ tsl_cc_test(
     deps = [
         ":hash",
         "@com_google_googletest//:gtest_main",
-        "@local_xla//xla/tsl/platform:logging",
-        "@local_xla//xla/tsl/platform:test",
-        "@local_xla//xla/tsl/platform:test_benchmark",
+        "@xla//xla/tsl/platform:logging",
+        "@xla//xla/tsl/platform:test",
+        "@xla//xla/tsl/platform:test_benchmark",
     ],
 )
 
@@ -1097,9 +1097,9 @@ tsl_cc_test(
         ":path",
         ":stringpiece",
         "@com_google_googletest//:gtest_main",
-        "@local_xla//xla/tsl/platform:env",
-        "@local_xla//xla/tsl/platform:env_impl",
-        "@local_xla//xla/tsl/platform:test",
+        "@xla//xla/tsl/platform:env",
+        "@xla//xla/tsl/platform:env_impl",
+        "@xla//xla/tsl/platform:test",
     ],
 )
 
@@ -1109,8 +1109,8 @@ tsl_cc_test(
     deps = [
         ":random",
         "@com_google_googletest//:gtest_main",
-        "@local_xla//xla/tsl/platform:test",
-        "@local_xla//xla/tsl/platform:types",
+        "@xla//xla/tsl/platform:test",
+        "@xla//xla/tsl/platform:types",
     ],
 )
 
@@ -1125,7 +1125,7 @@ tsl_cc_test(
         ":tstring",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
-        "@local_xla//xla/tsl/platform:test",
+        "@xla//xla/tsl/platform:test",
     ],
 )
 
@@ -1133,7 +1133,7 @@ cc_library(
     name = "test_main",
     testonly = 1,
     deps = [
-        "@local_xla//xla/tsl/platform:test_main",
+        "@xla//xla/tsl/platform:test_main",
     ],
     alwayslink = 1,
 )
@@ -1149,7 +1149,7 @@ cc_library(
     hdrs = ["threadpool_options.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
-        "@local_xla//xla/tsl/platform:threadpool_options",
+        "@xla//xla/tsl/platform:threadpool_options",
     ],
 )
 
@@ -1171,9 +1171,9 @@ tsl_cc_test(
         ":unbounded_work_queue",
         "@com_google_absl//absl/memory",
         "@com_google_googletest//:gtest_main",
-        "@local_xla//xla/tsl/platform:env",
-        "@local_xla//xla/tsl/platform:env_impl",
-        "@local_xla//xla/tsl/platform:test",
+        "@xla//xla/tsl/platform:env",
+        "@xla//xla/tsl/platform:env_impl",
+        "@xla//xla/tsl/platform:test",
     ],
 )
 
@@ -1188,7 +1188,7 @@ cc_library(
     name = "load_library",
     textual_hdrs = ["load_library.h"],
     deps = [
-        "@local_xla//xla/tsl/platform:status",
+        "@xla//xla/tsl/platform:status",
     ] + tf_windows_aware_platform_deps("load_library"),
 )
 
@@ -1197,7 +1197,7 @@ cc_library(
     srcs = ["abi.cc"],
     hdrs = ["abi.h"],
     deps = [
-        "@local_xla//xla/tsl/platform:types",
+        "@xla//xla/tsl/platform:types",
     ],
 )
 
@@ -1208,7 +1208,7 @@ cc_library(
         ":mutex",
         ":thread_annotations",
         "@com_google_absl//absl/base:nullability",
-        "@local_xla//xla/tsl/platform:logging",
+        "@xla//xla/tsl/platform:logging",
     ],
 )
 
@@ -1216,7 +1216,7 @@ cc_library(
     name = "null_file_system",
     hdrs = ["null_file_system.h"],
     deps = [
-        "@local_xla//xla/tsl/platform:env",
+        "@xla//xla/tsl/platform:env",
     ],
 )
 
@@ -1233,8 +1233,8 @@ tsl_cc_test(
     deps = [
         ":platform_port",
         "@com_google_googletest//:gtest_main",
-        "@local_xla//xla/tsl/platform:logging",
-        "@local_xla//xla/tsl/platform:test",
+        "@xla//xla/tsl/platform:logging",
+        "@xla//xla/tsl/platform:test",
     ],
 )
 
@@ -1246,7 +1246,7 @@ tsl_cc_test(
     deps = [
         ":setround",
         "@com_google_googletest//:gtest_main",
-        "@local_xla//xla/tsl/platform:test",
+        "@xla//xla/tsl/platform:test",
     ],
 )
 
@@ -1259,9 +1259,9 @@ tsl_cc_test(
     deps = [
         ":refcount",
         "@com_google_googletest//:gtest_main",
-        "@local_xla//xla/tsl/platform:env",
-        "@local_xla//xla/tsl/platform:env_impl",
-        "@local_xla//xla/tsl/platform:test",
+        "@xla//xla/tsl/platform:env",
+        "@xla//xla/tsl/platform:env_impl",
+        "@xla//xla/tsl/platform:test",
     ],
 )
 
@@ -1273,8 +1273,8 @@ tsl_cc_test(
     ],
     deps = [
         "@com_google_googletest//:gtest_main",
-        "@local_xla//xla/tsl/platform:test",
-        "@local_xla//xla/tsl/platform:types",
+        "@xla//xla/tsl/platform:test",
+        "@xla//xla/tsl/platform:types",
     ],
 )
 
@@ -1294,12 +1294,12 @@ tsl_cc_test(
         ":stringpiece",
         ":stringprintf",
         "@com_google_googletest//:gtest_main",
-        "@local_xla//xla/tsl/platform:env",
-        "@local_xla//xla/tsl/platform:env_impl",
-        "@local_xla//xla/tsl/platform:env_time",
-        "@local_xla//xla/tsl/platform:logging",
-        "@local_xla//xla/tsl/platform:test",
-        "@local_xla//xla/tsl/platform:types",
+        "@xla//xla/tsl/platform:env",
+        "@xla//xla/tsl/platform:env_impl",
+        "@xla//xla/tsl/platform:env_time",
+        "@xla//xla/tsl/platform:logging",
+        "@xla//xla/tsl/platform:test",
+        "@xla//xla/tsl/platform:types",
     ],
 )
 
@@ -1312,8 +1312,8 @@ tsl_cc_test(
     deps = [
         ":net",
         "@com_google_googletest//:gtest_main",
-        "@local_xla//xla/tsl/platform:logging",
-        "@local_xla//xla/tsl/platform:test",
+        "@xla//xla/tsl/platform:logging",
+        "@xla//xla/tsl/platform:test",
     ],
 )
 
@@ -1330,9 +1330,9 @@ tsl_cc_test(
         ":mutex",
         ":platform_port",
         "@com_google_googletest//:gtest_main",
-        "@local_xla//xla/tsl/platform:env",
-        "@local_xla//xla/tsl/platform:env_time",
-        "@local_xla//xla/tsl/platform:test",
+        "@xla//xla/tsl/platform:env",
+        "@xla//xla/tsl/platform:env_time",
+        "@xla//xla/tsl/platform:test",
     ],
 )
 
@@ -1345,7 +1345,7 @@ tsl_cc_test(
     deps = [
         ":scanner",
         "@com_google_googletest//:gtest_main",
-        "@local_xla//xla/tsl/platform:test",
+        "@xla//xla/tsl/platform:test",
     ],
 )
 
@@ -1358,7 +1358,7 @@ tsl_cc_test(
     deps = [
         ":str_util",
         "@com_google_googletest//:gtest_main",
-        "@local_xla//xla/tsl/platform:test",
+        "@xla//xla/tsl/platform:test",
     ],
 )
 
@@ -1371,7 +1371,7 @@ tsl_cc_test(
     deps = [
         ":stringpiece",
         "@com_google_googletest//:gtest_main",
-        "@local_xla//xla/tsl/platform:test",
+        "@xla//xla/tsl/platform:test",
     ],
 )
 
@@ -1384,7 +1384,7 @@ tsl_cc_test(
     deps = [
         ":stringprintf",
         "@com_google_googletest//:gtest_main",
-        "@local_xla//xla/tsl/platform:test",
+        "@xla//xla/tsl/platform:test",
     ],
 )
 
@@ -1398,8 +1398,8 @@ tsl_cc_test(
         ":numbers",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
-        "@local_xla//xla/tsl/platform:test",
-        "@local_xla//xla/tsl/platform:types",
+        "@xla//xla/tsl/platform:test",
+        "@xla//xla/tsl/platform:types",
     ],
 )
 
@@ -1415,10 +1415,10 @@ cc_library(
     deps = [
         ":random",
         "@com_google_absl//absl/time",
-        "@local_xla//xla/tsl/platform:env",
-        "@local_xla//xla/tsl/platform:errors",
-        "@local_xla//xla/tsl/platform:logging",
-        "@local_xla//xla/tsl/platform:status",
+        "@xla//xla/tsl/platform:env",
+        "@xla//xla/tsl/platform:errors",
+        "@xla//xla/tsl/platform:logging",
+        "@xla//xla/tsl/platform:status",
     ],
 )
 
@@ -1431,9 +1431,9 @@ cc_library(
     deps = [
         ":random",
         ":retrying_utils",
-        "@local_xla//xla/tsl/platform:env",
-        "@local_xla//xla/tsl/platform:errors",
-        "@local_xla//xla/tsl/platform:status",
+        "@xla//xla/tsl/platform:env",
+        "@xla//xla/tsl/platform:errors",
+        "@xla//xla/tsl/platform:status",
     ],
 )
 
@@ -1445,9 +1445,9 @@ tsl_cc_test(
         ":retrying_file_system",
         ":str_util",
         "@com_google_googletest//:gtest_main",
-        "@local_xla//xla/tsl/lib/core:status_test_util",
-        "@local_xla//xla/tsl/platform:env_impl",
-        "@local_xla//xla/tsl/platform:test",
+        "@xla//xla/tsl/lib/core:status_test_util",
+        "@xla//xla/tsl/platform:env_impl",
+        "@xla//xla/tsl/platform:test",
     ],
 )
 
@@ -1460,10 +1460,10 @@ tsl_cc_test(
         ":str_util",
         "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest_main",
-        "@local_xla//xla/tsl/lib/core:status_test_util",
-        "@local_xla//xla/tsl/platform:env",
-        "@local_xla//xla/tsl/platform:env_impl",
-        "@local_xla//xla/tsl/platform:errors",
-        "@local_xla//xla/tsl/platform:test",
+        "@xla//xla/tsl/lib/core:status_test_util",
+        "@xla//xla/tsl/platform:env",
+        "@xla//xla/tsl/platform:env_impl",
+        "@xla//xla/tsl/platform:errors",
+        "@xla//xla/tsl/platform:test",
     ],
 )

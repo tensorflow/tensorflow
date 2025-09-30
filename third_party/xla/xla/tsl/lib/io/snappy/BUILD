@@ -40,7 +40,7 @@ cc_library(
         "//xla/tsl/platform:status",
         "//xla/tsl/platform:types",
         "@com_google_absl//absl/status",
-        "@local_tsl//tsl/platform:platform_port",
+        "@tsl//tsl/platform:platform_port",
     ],
     alwayslink = True,
 )
@@ -54,8 +54,8 @@ cc_library(
         "//xla/tsl/platform:macros",
         "//xla/tsl/platform:status",
         "//xla/tsl/platform:types",
-        "@local_tsl//tsl/platform",
-        "@local_tsl//tsl/platform:platform_port",
+        "@tsl//tsl/platform",
+        "@tsl//tsl/platform:platform_port",
     ],
     alwayslink = True,
 )
@@ -68,7 +68,7 @@ cc_library(
         "//xla/tsl/lib/io:inputstream_interface",
         "//xla/tsl/platform:errors",
         "@com_google_absl//absl/memory",
-        "@local_tsl//tsl/platform:platform_port",
+        "@tsl//tsl/platform:platform_port",
     ],
     alwayslink = True,
 )

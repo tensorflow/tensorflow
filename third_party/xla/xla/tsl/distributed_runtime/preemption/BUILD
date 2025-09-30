@@ -24,7 +24,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
-        "@local_tsl//tsl/platform:thread_annotations",
+        "@tsl//tsl/platform:thread_annotations",
     ],
 )
 

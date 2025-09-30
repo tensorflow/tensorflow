@@ -216,7 +216,7 @@ cc_library(
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
-        "@local_tsl//tsl/platform:casts",
+        "@tsl//tsl/platform:casts",
     ],
 )
 
@@ -299,8 +299,8 @@ cc_library(
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:span",
         "@llvm-project//mlir:IR",
-        "@local_tsl//tsl/profiler/lib:connected_traceme",
-        "@local_tsl//tsl/profiler/lib:context_types_hdrs",
+        "@tsl//tsl/profiler/lib:connected_traceme",
+        "@tsl//tsl/profiler/lib:context_types_hdrs",
     ],
 )
 
@@ -339,9 +339,9 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/profiler/lib:connected_traceme",
-        "@local_tsl//tsl/profiler/lib:context_types_hdrs",
         "@stablehlo//:version",
+        "@tsl//tsl/profiler/lib:connected_traceme",
+        "@tsl//tsl/profiler/lib:context_types_hdrs",
     ],
 )
 
@@ -473,7 +473,7 @@ cc_library(
         ":pjrt_c_api_macros",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/log:initialize",
-        "@local_tsl//tsl/platform",
+        "@tsl//tsl/platform",
     ],
     alwayslink = 1,
 )
@@ -585,7 +585,7 @@ xla_test(
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:platform_port",
+        "@tsl//tsl/platform:platform_port",
     ],
 )
 

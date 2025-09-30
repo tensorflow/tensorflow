@@ -203,7 +203,7 @@ xla_cc_test(
         "@com_google_googletest//:gtest",
         "@llvm-project//llvm:JITLink",
         "@llvm-project//llvm:ir_headers",
-        "@local_tsl//tsl/platform:casts",
+        "@tsl//tsl/platform:casts",
     ],
 )
 

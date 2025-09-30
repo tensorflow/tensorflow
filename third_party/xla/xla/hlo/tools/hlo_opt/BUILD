@@ -25,8 +25,8 @@ cc_library(
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/platform:path",
-        "@local_tsl//tsl/platform:platform_port",
+        "@tsl//tsl/platform:path",
+        "@tsl//tsl/platform:platform_port",
     ],
 )
 

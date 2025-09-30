@@ -125,8 +125,8 @@ cc_library(
         "@highwayhash",
         "@highwayhash//:arch_specific",
         "@highwayhash//:hh_types",
-        "@local_tsl//tsl/platform:fingerprint",
-        "@local_tsl//tsl/platform:protobuf",
+        "@tsl//tsl/platform:fingerprint",
+        "@tsl//tsl/platform:protobuf",
     ],
 )
 
@@ -203,7 +203,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/platform:protobuf",
+        "@tsl//tsl/platform:protobuf",
     ],
 )
 
@@ -239,7 +239,7 @@ xla_cc_test(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:protobuf",
+        "@tsl//tsl/platform:protobuf",
     ],
 )
 
@@ -254,8 +254,8 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/synchronization",
-        "@local_tsl//tsl/platform:human_readable_json",
-        "@local_tsl//tsl/platform:protobuf",
+        "@tsl//tsl/platform:human_readable_json",
+        "@tsl//tsl/platform:protobuf",
     ],
 )
 

@@ -137,13 +137,13 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "@eigen_archive//:eigen3",
         "@llvm-project//mlir:IR",
-        "@local_tsl//tsl/platform:casts",
-        "@local_tsl//tsl/platform:fingerprint",
-        "@local_tsl//tsl/platform:platform_port",
-        "@local_tsl//tsl/platform:protobuf",
-        "@local_tsl//tsl/profiler/lib:connected_traceme",
-        "@local_tsl//tsl/profiler/lib:context_types_hdrs",
-        "@local_tsl//tsl/profiler/lib:traceme",
+        "@tsl//tsl/platform:casts",
+        "@tsl//tsl/platform:fingerprint",
+        "@tsl//tsl/platform:platform_port",
+        "@tsl//tsl/platform:protobuf",
+        "@tsl//tsl/profiler/lib:connected_traceme",
+        "@tsl//tsl/profiler/lib:context_types_hdrs",
+        "@tsl//tsl/profiler/lib:traceme",
     ] + if_cuda([
         # keep sorted
         "@local_config_cuda//cuda:cuda_headers",
@@ -225,9 +225,9 @@ xla_test(
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:status",
         "//xla/tsl/platform:statusor",
-        "@local_tsl//tsl/platform:casts",
-        "@local_tsl//tsl/platform:platform_port",
-        "@local_tsl//tsl/platform:protobuf",
+        "@tsl//tsl/platform:casts",
+        "@tsl//tsl/platform:platform_port",
+        "@tsl//tsl/platform:protobuf",
     ],
 )
 
@@ -279,7 +279,7 @@ cc_library(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/platform:stacktrace",
+        "@tsl//tsl/platform:stacktrace",
     ],
 )
 
@@ -349,7 +349,7 @@ xla_cc_test(
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:casts",
+        "@tsl//tsl/platform:casts",
     ],
 )
 

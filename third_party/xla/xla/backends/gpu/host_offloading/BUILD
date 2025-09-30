@@ -35,7 +35,7 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/platform:numbers",
+        "@tsl//tsl/platform:numbers",
     ],
 )
 
