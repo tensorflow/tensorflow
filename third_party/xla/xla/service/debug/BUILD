@@ -49,6 +49,7 @@ cc_library(
     hdrs = ["unstable_reduction_detector.h"],
     deps = [
         ":unstable_reduction_finder",
+        "//xla:xla_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -66,6 +67,7 @@ xla_cc_test(
     srcs = ["unstable_reduction_detector_test.cc"],
     deps = [
         ":unstable_reduction_detector",
+        "//xla:xla_proto_cc",
         "//xla/hlo/parser:hlo_parser",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/base:log_severity",
