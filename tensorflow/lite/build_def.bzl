@@ -6,9 +6,6 @@ load("//tensorflow/lite:special_rules.bzl", "tflite_copts_extra")
 load("//tensorflow/lite/java:aar_with_jni.bzl", "aar_with_jni")
 load("@build_bazel_rules_android//android:rules.bzl", "android_library")
 load("@bazel_skylib//rules:build_test.bzl", "build_test")
-load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
-load("@rules_cc//cc:cc_library.bzl", "cc_library")
-load("@rules_cc//cc:cc_test.bzl", "cc_test")
 
 # buildifier: disable=out-of-order-load
 def register_extension_info(**kwargs):
@@ -243,7 +240,7 @@ def tflite_jni_binary(
             "-Wl,-soname," + name,
         ],
     })
-    cc_binary(
+    native.cc_binary(
         name = name,
         copts = copts,
         linkshared = linkshared,
@@ -530,7 +527,7 @@ def tflite_custom_cc_library(
         deps: Additional dependencies to build all the custom operators.
         visibility: Visibility setting for the generated target. Default to private.
         experimental: Whether to include experimental APIs or not.
-        **kwargs: Additional arguments for cc_library.
+        **kwargs: Additional arguments for native.cc_library.
     """
     real_srcs = []
     real_srcs.extend(srcs)
@@ -553,7 +550,7 @@ def tflite_custom_cc_library(
         framework = "//tensorflow/lite:framework_experimental"
     else:
         framework = "//tensorflow/lite:framework_stable"
-    cc_library(
+    native.cc_library(
         name = name,
         srcs = real_srcs,
         hdrs = [
@@ -627,7 +624,7 @@ def tflite_custom_android_library(
         ] + delegate_deps,
     )
 
-    cc_library(
+    native.cc_library(
         name = "%s_jni" % name,
         srcs = ["libtensorflowlite_jni.so"],
         visibility = visibility,
@@ -685,7 +682,7 @@ def tflite_custom_c_library(
         else:
             framework = "//tensorflow/lite:framework_stable"
 
-        cc_library(
+        native.cc_library(
             name = "%s_create_op_resolver" % name,
             srcs = [
                 ":%s_registration" % name,
@@ -730,7 +727,7 @@ def tflite_custom_c_library(
             "//tensorflow/lite/c:c_api_opaque_without_op_resolver_without_alwayslink",
             "//tensorflow/lite/core/c:private_c_api_opaque_without_op_resolver_without_alwayslink",
         ]
-    cc_library(
+    native.cc_library(
         name = name,
         hdrs = hdrs,
         copts = tflite_copts(),
@@ -805,7 +802,7 @@ def tflite_combine_cc_tests(
         combined_test_deps.update({d: True for d in r["deps"]})
 
     if combined_test_srcs:
-        cc_test(
+        native.cc_test(
             name = name,
             size = "large",
             srcs = list(combined_test_srcs),
@@ -822,7 +819,7 @@ def tflite_combine_cc_tests(
             ] + extra_build_test_tags,
         )
         if generate_cc_library:
-            cc_library(
+            native.cc_library(
                 name = "%s_lib" % name,
                 srcs = list(combined_test_srcs),
                 deps = [d for d in combined_test_deps if d not in deps_conditions],
@@ -896,7 +893,7 @@ def tflite_cc_library_with_c_headers_test(name, hdrs, **kwargs):
       hdrs: (list of string) as per cc_library.
       **kwargs: Additional kwargs to pass to cc_library.
     """
-    cc_library(name = name, hdrs = hdrs, **kwargs)
+    native.cc_library(name = name, hdrs = hdrs, **kwargs)
 
     build_tests = []
     for hdr in hdrs:
@@ -916,7 +913,7 @@ def tflite_cc_library_with_c_headers_test(name, hdrs, **kwargs):
         kwargs.pop("srcs", [])
         kwargs.pop("tags", [])
         kwargs.pop("testonly", [])
-        cc_library(
+        native.cc_library(
             name = "%s_lib" % basename,
             srcs = ["%s.c" % basename],
             deps = [":" + name],
