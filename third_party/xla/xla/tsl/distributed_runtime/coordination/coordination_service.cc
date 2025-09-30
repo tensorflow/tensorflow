@@ -278,8 +278,6 @@ void CoordinationService::CheckHeartbeatTimeout() {
 absl::flat_hash_map<std::string, int>
 CoordinationService::GetCountOfOutOfSyncTasksPerBarrier() {
   absl::MutexLock l(state_mu_);
-  absl::flat_hash_map<std::string, absl::flat_hash_set<std::string>>
-      unsynced_tasks_to_barriers;
   absl::flat_hash_map<std::string, int> out_of_sync_tasks_per_barrier;
   for (absl::string_view barrier_id : ongoing_barriers_) {
     out_of_sync_tasks_per_barrier[barrier_id] = 0;
