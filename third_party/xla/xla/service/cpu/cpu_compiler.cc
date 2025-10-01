@@ -1920,16 +1920,16 @@ CpuCompiler::CompileCpuExecutable(
 
   VLOG(3) << "Collected " << compiled_symbols.size() << " compiled symbols";
 
-  TraceMe trace_codegen([&] {
-    return TraceMeEncode("Codegen",
-                         {{"num_default_parts", num_default_parts},
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<FunctionLibrary> function_library, std::invoke([&] {
+        TraceMe trace_codegen([&] {
+          return TraceMeEncode(
+              "Codegen", {{"num_default_parts", num_default_parts},
                           {"num_extra_parts", num_extra_parts},
                           {"num_compiled_functions", num_compiled_functions}});
-  });
-
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<FunctionLibrary> function_library,
-      std::move(*llvm_module_compiler).Compile(compiled_symbols));
+        });
+        return std::move(*llvm_module_compiler).Compile(compiled_symbols);
+      }));
 
   // Create constant allocations from the buffer assignment.
   TF_ASSIGN_OR_RETURN(std::vector<ConstantAllocation> constants,

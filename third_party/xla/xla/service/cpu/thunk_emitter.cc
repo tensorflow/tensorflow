@@ -227,6 +227,7 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitEntryComputation(
 
 absl::StatusOr<std::vector<ThunkEmitter::EmittedKernel>>
 ThunkEmitter::ConsumeKernels() {
+  tsl::profiler::TraceMe trace("ThunkEmitter::ConsumeKernels");
   TF_ASSIGN_OR_RETURN(std::vector<LlvmKernelDefinition> fusion_kernels,
                       parallel_fusion_emitter_.ConsumeKernels());
 
