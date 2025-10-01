@@ -29,6 +29,10 @@
 #     mkl:          Enable full mkl support.
 #     nonccl:       Disable nccl support.
 #
+# PJRT Releases:
+#     pjrt_{x86,aarch64}: Used to build PJRT CPU plugins.
+#     pjrt_{x86,aarch64}_{cuda12,cuda13}: Used to build PJRT GPU plugins.
+#
 #
 # Remote build execution options (only configured to work with TF team projects for now.)
 #     rbe_base:                       General RBE options shared by all flavors.
@@ -712,3 +716,38 @@ common:rbe_cross_compile_macos_x86 --jobs=100
 test:rbe_cross_compile_macos_x86 --jobs=100
 # END MACOS CROSS-COMPILE CONFIGS
 # END CROSS-COMPILE CONFIGS
+
+# START PJRT RELEASE CONFIGS
+build:pjrt_release -c opt --@local_config_cuda//cuda:include_cuda_libs=false
+build:pjrt_nightly -c opt --@local_config_cuda//cuda:include_cuda_libs=true
+
+build:pjrt_x86 --cpu=k8
+build:pjrt_aarch64 --cpu=aarch64
+
+build:pjrt_cuda12 --config=cuda_nvcc
+build:pjrt_cuda12 --repo_env=HERMETIC_CUDA_VERSION="12.9.1"
+build:pjrt_cuda12 --repo_env=HERMETIC_CUDNN_VERSION="9.8.0"
+build:pjrt_cuda12 --repo_env=HERMETIC_NVSHMEM_VERSION="3.2.5"
+build:pjrt_cuda12 --repo_env=HERMETIC_CUDA_COMPUTE_CAPABILITIES="sm_50,sm_60,sm_70,sm_80,sm_90,sm_100,compute_120"
+
+build:pjrt_cuda13 --config=cuda_nvcc
+build:pjrt_cuda13 --repo_env=HERMETIC_CUDA_VERSION="13.0.0"
+build:pjrt_cuda13 --repo_env=HERMETIC_CUDNN_VERSION="9.12.0"
+build:pjrt_cuda13 --repo_env=HERMETIC_NVSHMEM_VERSION="3.3.20"
+build:pjrt_cuda13 --repo_env=HERMETIC_CUDA_COMPUTE_CAPABILITIES="sm_75,sm_80,sm_90,sm_100,compute_120"
+
+build:pjrt_x86_release --config=pjrt_release --config=pjrt_x86
+build:pjrt_aarch64_release --config=pjrt_release --config=pjrt_aarch64
+build:pjrt_x86_nightly --config=pjrt_nightly --config=pjrt_x86
+build:pjrt_aarch64_nightly --config=pjrt_nightly --config=pjrt_aarch64
+
+build:pjrt_x86_cuda12_release --config=pjrt_x86_release --config=pjrt_cuda12
+build:pjrt_aarch64_cuda12_release --config=pjrt_aarch64_release --config=pjrt_cuda12
+build:pjrt_x86_cuda13_release --config=pjrt_x86_release --config=pjrt_cuda13
+build:pjrt_aarch64_cuda13_release --config=pjrt_aarch64_release --config=pjrt_cuda13
+
+build:pjrt_x86_cuda12_nightly --config=pjrt_x86_nightly --config=pjrt_cuda12
+build:pjrt_aarch64_cuda12_nightly --config=pjrt_aarch64_nightly --config=pjrt_cuda12
+build:pjrt_x86_cuda13_nightly --config=pjrt_x86_nightly --config=pjrt_cuda13
+build:pjrt_aarch64_cuda13_nightly --config=pjrt_aarch64_nightly --config=pjrt_cuda13
+# END PJRT RELEASE CONFIGS
