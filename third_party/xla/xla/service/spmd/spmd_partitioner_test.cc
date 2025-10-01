@@ -83,37 +83,9 @@ class SpmdPartitioningTest
  public:
   absl::StatusOr<std::unique_ptr<HloModule>> PartitionComputation(
       absl::string_view hlo_module, int64_t num_devices,
-      bool use_all_gather = false, bool conv_halo_exchange_always_on_lhs = true,
-      bool choose_faster_windowed_einsum = false,
-      bool unroll_windowed_einsum = false,
-      bool bidirectional_windowed_einsum = false,
-      int64_t threshold_for_windowed_einsum_mib = -1,
-      std::vector<GatherScatterPartitioningMethod> gather_methods =
-          {GatherScatterPartitioningMethod::kExplicitBatch,
-           GatherScatterPartitioningMethod::kIndexParallel},
-      std::vector<GatherScatterPartitioningMethod> scatter_methods =
-          {GatherScatterPartitioningMethod::kExplicitBatch,
-           GatherScatterPartitioningMethod::kIndexParallel},
-      std::optional<int64_t> total_bytes_windowed_einsum_threshold =
-          std::nullopt) {
-    // Some tests (BackpropFilter convs) set this flag false to test two
-    // different paths of the implementation.
-    SpmdPartitionerOptions options;
-    options.conv_halo_exchange_always_on_lhs = conv_halo_exchange_always_on_lhs;
+      SpmdPartitionerOptions options = SpmdPartitionerOptions(),
+      bool use_all_gather = false) {
     options.allow_module_signature_change = true;
-    options.choose_faster_windowed_einsum_over_mem =
-        choose_faster_windowed_einsum;
-    options.unroll_windowed_einsum = unroll_windowed_einsum;
-    options.bidirectional_windowed_einsum = bidirectional_windowed_einsum;
-    options.partial_windowed_einsum = true;
-    options.total_bytes_windowed_einsum_threshold =
-        total_bytes_windowed_einsum_threshold;
-    if (threshold_for_windowed_einsum_mib >= 0) {
-      options.threshold_for_windowed_einsum_mib =
-          threshold_for_windowed_einsum_mib;
-    }
-    options.preferred_gather_partition_methods = gather_methods;
-    options.preferred_scatter_partition_methods = scatter_methods;
     auto collective_ops_creator =
         GetDefaultCollectiveOpsCreator(num_devices, /*num_replicas=*/1);
     // Do not use all-gather for pattern-matching purpose, as the partitioner
@@ -2230,11 +2202,11 @@ ENTRY entry {
     window={size=28x28 pad=1_1x1_1}, dim_labels=f01b_i01o->01bf, sharding={replicated}
 })";
 
+  SpmdPartitionerOptions options;
+  options.conv_halo_exchange_always_on_lhs = false;
   TF_ASSERT_OK_AND_ASSIGN(
       auto module,
-      PartitionComputation(hlo_string, /*num_devices=*/2,
-                           /*use_all_gather=*/false,
-                           /*conv_halo_exchange_always_on_lhs=*/false));
+      PartitionComputation(hlo_string, /*num_devices=*/2, options));
   VLOG(1) << module->ToString();
 
   const auto root = module->entry_computation()->root_instruction();
@@ -2270,12 +2242,11 @@ ENTRY entry {
   ROOT %conv = f32[7,7,3,64] convolution(%lhs.copy, %rhs.copy),
     window={size=112x112 pad=3_2x3_2 rhs_dilate=2x2}, dim_labels=f01b_i01o->01bf, sharding={replicated}
 })";
-
+  SpmdPartitionerOptions options;
+  options.conv_halo_exchange_always_on_lhs = false;
   TF_ASSERT_OK_AND_ASSIGN(
       auto module,
-      PartitionComputation(hlo_string, /*num_devices=*/2,
-                           /*use_all_gather=*/false,
-                           /*conv_halo_exchange_always_on_lhs=*/false));
+      PartitionComputation(hlo_string, /*num_devices=*/2, options));
   VLOG(1) << module->ToString();
 
   const auto root = module->entry_computation()->root_instruction();
@@ -2313,11 +2284,11 @@ ENTRY entry {
     window={size=28x28 pad=0_-1x0_-1 rhs_dilate=2x2}, dim_labels=f01b_i01o->01bf, sharding={replicated}
 })";
 
+  SpmdPartitionerOptions options;
+  options.conv_halo_exchange_always_on_lhs = false;
   TF_ASSERT_OK_AND_ASSIGN(
       auto module,
-      PartitionComputation(hlo_string, /*num_devices=*/2,
-                           /*use_all_gather=*/false,
-                           /*conv_halo_exchange_always_on_lhs=*/false));
+      PartitionComputation(hlo_string, /*num_devices=*/2, options));
   VLOG(1) << module->ToString();
 
   const auto root = module->entry_computation()->root_instruction();
@@ -2347,11 +2318,11 @@ ENTRY entry {
     window={size=7x7 pad=1_0x1_0 rhs_dilate=2x2}, dim_labels=f01b_i01o->01bf, sharding={replicated}
 })";
 
+  SpmdPartitionerOptions options;
+  options.conv_halo_exchange_always_on_lhs = false;
   TF_ASSERT_OK_AND_ASSIGN(
       auto module,
-      PartitionComputation(hlo_string, /*num_devices=*/2,
-                           /*use_all_gather=*/false,
-                           /*conv_halo_exchange_always_on_lhs=*/false));
+      PartitionComputation(hlo_string, /*num_devices=*/2, options));
   VLOG(1) << module->ToString();
 
   const auto root = module->entry_computation()->root_instruction();
@@ -5142,11 +5113,11 @@ ENTRY entry {
     dim_labels=bf_io->bf, sharding={replicated}
 })";
 
+  SpmdPartitionerOptions options;
+  options.conv_halo_exchange_always_on_lhs = false;
   TF_ASSERT_OK_AND_ASSIGN(
       auto module,
-      PartitionComputation(hlo_string, /*num_devices=*/2,
-                           /*use_all_gather=*/false,
-                           /*conv_halo_exchange_always_on_lhs=*/false));
+      PartitionComputation(hlo_string, /*num_devices=*/2, options));
   VLOG(1) << module->ToString();
 
   const auto root = module->entry_computation()->root_instruction();
@@ -5304,15 +5275,11 @@ ENTRY entry {
   ROOT %dot.224 = f32[2048,2176]{1,0} dot(f32[2048,2,3264]{2,1,0} %p0, f32[2,3264,2176]{2,1,0} %p1), lhs_contracting_dims={1,2}, rhs_contracting_dims={0,1}, sharding={devices=[1,2]0,1}
 })";
 
+  SpmdPartitionerOptions options;
+  options.threshold_for_windowed_einsum_mib = 0;
   TF_ASSERT_OK_AND_ASSIGN(
       auto module,
-      PartitionComputation(hlo_string, /*num_devices=*/2,
-                           /*use_all_gather=*/false,
-                           /*conv_halo_exchange_always_on_lhs=*/true,
-                           /*choose_faster_windowed_einsum=*/false,
-                           /*unroll_windowed_einsum=*/false,
-                           /*bidirectional_windowed_einsum=*/false,
-                           /*threshold_for_windowed_einsum_mib=*/0));
+      PartitionComputation(hlo_string, /*num_devices=*/2, options));
   VLOG(1) << module->ToString();
 
   // Check while op.
@@ -5357,15 +5324,11 @@ ENTRY entry {
   ROOT %dot.224 = f32[4096,2176]{1,0} dot(f32[4096,2,3264]{2,1,0} %p0, f32[2,3264,2176]{2,1,0} %p1), lhs_contracting_dims={1,2}, rhs_contracting_dims={0,1}, sharding={devices=[1,2]0,1}
 })";
 
+  SpmdPartitionerOptions options;
+  options.threshold_for_windowed_einsum_mib = 0;
   TF_ASSERT_OK_AND_ASSIGN(
       auto module,
-      PartitionComputation(hlo_string, /*num_devices=*/2,
-                           /*use_all_gather=*/false,
-                           /*conv_halo_exchange_always_on_lhs=*/true,
-                           /*choose_faster_windowed_einsum=*/false,
-                           /*unroll_windowed_einsum=*/false,
-                           /*bidirectional_windowed_einsum=*/false,
-                           /*threshold_for_windowed_einsum_mib=*/0));
+      PartitionComputation(hlo_string, /*num_devices=*/2, options));
   VLOG(1) << module->ToString();
 
   // Check while op.
@@ -5415,15 +5378,12 @@ ENTRY entry {
   ROOT %dot.128 = bf16[512,768]{1,0} dot(bf16[512,4,512]{2,1,0} %multiply.611, bf16[4,512,768]{2,1,0} %reshape.1074), lhs_contracting_dims={1,2}, rhs_contracting_dims={0,1}, sharding={devices=[16,4]<=[64]}
 })";
 
+  SpmdPartitionerOptions options;
+  options.choose_faster_windowed_einsum_over_mem = true;
+  options.threshold_for_windowed_einsum_mib = 0;
   TF_ASSERT_OK_AND_ASSIGN(
       auto module,
-      PartitionComputation(hlo_string, /*num_devices=*/64,
-                           /*use_all_gather=*/false,
-                           /*conv_halo_exchange_always_on_lhs=*/true,
-                           /*choose_faster_windowed_einsum=*/true,
-                           /*unroll_windowed_einsum=*/false,
-                           /*bidirectional_windowed_einsum=*/false,
-                           /*threshold_for_windowed_einsum_mib=*/0));
+      PartitionComputation(hlo_string, /*num_devices=*/64, options));
   VLOG(1) << module->ToString();
 
   // Check while op.
@@ -5469,15 +5429,14 @@ ENTRY entry {
   ROOT dot.1104 = bf16[32,64,1025,16384]{3,2,1,0} dot(reshape.9434, reshape.9438), lhs_batch_dims={2}, lhs_contracting_dims={3}, rhs_batch_dims={0}, rhs_contracting_dims={1}, sharding={devices=[1,8,1,8]<=[64]}
 })";
 
+  SpmdPartitionerOptions options;
+  options.unroll_windowed_einsum = true;
+  options.bidirectional_windowed_einsum = true;
+  options.choose_faster_windowed_einsum_over_mem = true;
+  options.threshold_for_windowed_einsum_mib = 0;
   TF_ASSERT_OK_AND_ASSIGN(
       auto module,
-      PartitionComputation(hlo_string, /*num_devices=*/64,
-                           /*use_all_gather=*/false,
-                           /*conv_halo_exchange_always_on_lhs=*/true,
-                           /*choose_faster_windowed_einsum=*/true,
-                           /*unroll_windowed_einsum=*/true,
-                           /*bidirectional_windowed_einsum=*/true,
-                           /*threshold_for_windowed_einsum_mib=*/0));
+      PartitionComputation(hlo_string, /*num_devices=*/64, options));
   VLOG(1) << module->ToString();
   TF_ASSERT_OK(HloVerifier(/*layout_sensitive=*/false,
                            /*allow_mixed_precision=*/false)
@@ -5511,18 +5470,12 @@ ENTRY entry {
   ROOT %dot.224 = f32[2048,2176]{1,0} dot(f32[2048,2,3264]{2,1,0} %p0, f32[2,3264,2176]{2,1,0} %p1), lhs_contracting_dims={1,2}, rhs_contracting_dims={0,1}, sharding={devices=[1,2]0,1}
 })";
 
+  SpmdPartitionerOptions options;
+  options.threshold_for_windowed_einsum_mib = 5;
+  options.total_bytes_windowed_einsum_threshold = 1 << 30;
   TF_ASSERT_OK_AND_ASSIGN(
       auto module,
-      PartitionComputation(hlo_string, /*num_devices=*/2,
-                           /*use_all_gather=*/false,
-                           /*conv_halo_exchange_always_on_lhs=*/true,
-                           /*choose_faster_windowed_einsum=*/false,
-                           /*unroll_windowed_einsum=*/false,
-                           /*bidirectional_windowed_einsum=*/false,
-                           /*threshold_for_windowed_einsum_mib=*/5,
-                           {GatherScatterPartitioningMethod::kExplicitBatch},
-                           {GatherScatterPartitioningMethod::kExplicitBatch},
-                           /*total_bytes_windowed_einsum_threshold=*/1 << 30));
+      PartitionComputation(hlo_string, /*num_devices=*/2, options));
   VLOG(1) << module->ToString();
   // Total bytes threshold overrides threshold_for_windowed_einsum_mib,
   // there shouldn't be any while loop after partitioner.
@@ -5564,15 +5517,11 @@ ENTRY entry {
   ROOT %dot.224 = f32[2048,2176]{1,0} dot(f32[2048,2,3264]{2,1,0} %p0, f32[2,3264,2176]{2,1,0} %p1), lhs_contracting_dims={1,2}, rhs_contracting_dims={0,1}, sharding={devices=[1,2]0,1}, frontend_attributes={_xla_collective_matmul="none"}
 })";
 
+  SpmdPartitionerOptions options;
+  options.threshold_for_windowed_einsum_mib = 0;
   TF_ASSERT_OK_AND_ASSIGN(
       auto module,
-      PartitionComputation(hlo_string, /*num_devices=*/2,
-                           /*use_all_gather=*/false,
-                           /*conv_halo_exchange_always_on_lhs=*/true,
-                           /*choose_faster_windowed_einsum=*/false,
-                           /*unroll_windowed_einsum=*/false,
-                           /*bidirectional_windowed_einsum=*/false,
-                           /*threshold_for_windowed_einsum_mib=*/0));
+      PartitionComputation(hlo_string, /*num_devices=*/2, options));
   ASSERT_FALSE(absl::c_any_of(module->entry_computation()->instructions(),
                               [](const HloInstruction* inst) {
                                 return inst->opcode() == HloOpcode::kWhile;
@@ -5975,13 +5924,11 @@ ENTRY entry {
     sharding={devices=[1,4,1]<=[4]}
 })";
 
+  SpmdPartitionerOptions options;
+  options.unroll_windowed_einsum = true;
   TF_ASSERT_OK_AND_ASSIGN(
       auto module,
-      PartitionComputation(hlo_string, /*num_devices=*/4,
-                           /*use_all_gather=*/false,
-                           /*conv_halo_exchange_always_on_lhs =*/true,
-                           /*choose_faster_windowed_einsum =*/false,
-                           /*unroll_windowed_einsum =*/true));
+      PartitionComputation(hlo_string, /*num_devices=*/4, options));
   VLOG(1) << module->ToString();
 
   const auto lhs = AllOf(
@@ -6051,14 +5998,11 @@ ENTRY entry {
     sharding={devices=[1,4,1]<=[4]}
 })";
 
+  SpmdPartitionerOptions options;
+  options.bidirectional_windowed_einsum = true;
   TF_ASSERT_OK_AND_ASSIGN(
       auto module,
-      PartitionComputation(hlo_string, /*num_devices=*/4,
-                           /*use_all_gather=*/false,
-                           /*conv_halo_exchange_always_on_lhs =*/true,
-                           /*choose_faster_windowed_einsum =*/false,
-                           /*unroll_windowed_einsum =*/false,
-                           /*bidirectional_windowed_einsum =*/true));
+      PartitionComputation(hlo_string, /*num_devices=*/4, options));
   VLOG(1) << module->ToString();
   const auto lhs = AllOf(
       op::Copy(op::DynamicSlice(op::Parameter(0), op::Constant(),
@@ -6220,13 +6164,11 @@ ENTRY entry {
     sharding={devices=[2,1,4,1]<=[8]}
 })";
 
+  SpmdPartitionerOptions options;
+  options.unroll_windowed_einsum = true;
   TF_ASSERT_OK_AND_ASSIGN(
       auto module,
-      PartitionComputation(hlo_string, /*num_devices=*/8,
-                           /*use_all_gather=*/false,
-                           /*conv_halo_exchange_always_on_lhs =*/true,
-                           /*choose_faster_windowed_einsum =*/false,
-                           /*unroll_windowed_einsum =*/true));
+      PartitionComputation(hlo_string, /*num_devices=*/8, options));
   VLOG(1) << module->ToString();
 
   const auto lhs =
@@ -6296,14 +6238,11 @@ ENTRY entry {
     sharding={devices=[2,1,4,1]<=[8]}
 })";
 
+  SpmdPartitionerOptions options;
+  options.bidirectional_windowed_einsum = true;
   TF_ASSERT_OK_AND_ASSIGN(
       auto module,
-      PartitionComputation(hlo_string, /*num_devices=*/8,
-                           /*use_all_gather=*/false,
-                           /*conv_halo_exchange_always_on_lhs =*/true,
-                           /*choose_faster_windowed_einsum =*/false,
-                           /*unroll_windowed_einsum =*/false,
-                           /*bidirectional_windowed_einsum =*/true));
+      PartitionComputation(hlo_string, /*num_devices=*/8, options));
   VLOG(1) << module->ToString();
 
   const auto lhs =
@@ -6511,13 +6450,11 @@ ENTRY entry {
   ROOT %t = tuple(%dot, %dot2)
 })";
 
+  SpmdPartitionerOptions options;
+  options.unroll_windowed_einsum = true;
   TF_ASSERT_OK_AND_ASSIGN(
       auto module,
-      PartitionComputation(hlo_string, /*num_devices=*/2,
-                           /*use_all_gather=*/false,
-                           /*conv_halo_exchange_always_on_lhs =*/true,
-                           /*choose_faster_windowed_einsum =*/false,
-                           /*unroll_windowed_einsum =*/true));
+      PartitionComputation(hlo_string, /*num_devices=*/2, options));
   VLOG(1) << module->ToString();
   const auto root = module->entry_computation()->root_instruction();
   EXPECT_THAT(
@@ -6583,14 +6520,11 @@ ENTRY entry {
   ROOT %t = tuple(%dot, %dot2)
 })";
 
+  SpmdPartitionerOptions options;
+  options.bidirectional_windowed_einsum = true;
   TF_ASSERT_OK_AND_ASSIGN(
       auto module,
-      PartitionComputation(hlo_string, /*num_devices=*/4,
-                           /*use_all_gather=*/false,
-                           /*conv_halo_exchange_always_on_lhs =*/true,
-                           /*choose_faster_windowed_einsum =*/false,
-                           /*unroll_windowed_einsum =*/false,
-                           /*bidirectional_windowed_einsum =*/true));
+      PartitionComputation(hlo_string, /*num_devices=*/4, options));
   VLOG(1) << module->ToString();
   const auto root = module->entry_computation()->root_instruction();
   EXPECT_THAT(
@@ -6724,13 +6658,11 @@ ENTRY entry {
     sharding={devices=[1,2,1]0,1}
 })";
 
+  SpmdPartitionerOptions options;
+  options.unroll_windowed_einsum = true;
   TF_ASSERT_OK_AND_ASSIGN(
       auto module,
-      PartitionComputation(hlo_string, /*num_devices=*/2,
-                           /*use_all_gather=*/false,
-                           /*conv_halo_exchange_always_on_lhs =*/true,
-                           /*choose_faster_windowed_einsum =*/false,
-                           /*unroll_windowed_einsum =*/true));
+      PartitionComputation(hlo_string, /*num_devices=*/2, options));
   VLOG(1) << module->ToString();
 
   const auto root = module->entry_computation()->root_instruction();
@@ -6796,14 +6728,11 @@ ENTRY entry {
     sharding={devices=[1,4,1]<=[4]}
 })";
 
+  SpmdPartitionerOptions options;
+  options.bidirectional_windowed_einsum = true;
   TF_ASSERT_OK_AND_ASSIGN(
       auto module,
-      PartitionComputation(hlo_string, /*num_devices=*/4,
-                           /*use_all_gather=*/false,
-                           /*conv_halo_exchange_always_on_lhs =*/true,
-                           /*choose_faster_windowed_einsum =*/false,
-                           /*unroll_windowed_einsum =*/false,
-                           /*bidirectional_windowed_einsum =*/true));
+      PartitionComputation(hlo_string, /*num_devices=*/4, options));
   VLOG(1) << module->ToString();
 
   const auto root = module->entry_computation()->root_instruction();
@@ -6947,13 +6876,11 @@ ENTRY entry {
     sharding={devices=[1,2,1]0,1}
 })";
 
+  SpmdPartitionerOptions options;
+  options.unroll_windowed_einsum = true;
   TF_ASSERT_OK_AND_ASSIGN(
       auto module,
-      PartitionComputation(hlo_string, /*num_devices=*/2,
-                           /*use_all_gather=*/false,
-                           /*conv_halo_exchange_always_on_lhs =*/true,
-                           /*choose_faster_windowed_einsum =*/false,
-                           /*unroll_windowed_einsum =*/true));
+      PartitionComputation(hlo_string, /*num_devices=*/2, options));
   VLOG(1) << module->ToString();
 
   const auto root = module->entry_computation()->root_instruction();
@@ -7024,14 +6951,11 @@ ENTRY entry {
     sharding={devices=[1,4,1]<=[4]}
 })";
 
+  SpmdPartitionerOptions options;
+  options.bidirectional_windowed_einsum = true;
   TF_ASSERT_OK_AND_ASSIGN(
       auto module,
-      PartitionComputation(hlo_string, /*num_devices=*/4,
-                           /*use_all_gather=*/false,
-                           /*conv_halo_exchange_always_on_lhs =*/true,
-                           /*choose_faster_windowed_einsum =*/false,
-                           /*unroll_windowed_einsum =*/false,
-                           /*bidirectional_windowed_einsum =*/true));
+      PartitionComputation(hlo_string, /*num_devices=*/4, options));
   VLOG(1) << module->ToString();
 
   const auto root = module->entry_computation()->root_instruction();
@@ -7285,13 +7209,11 @@ ENTRY entry {
     to_apply=sum, sharding={devices=[1,2]0,1}
 })";
 
+  SpmdPartitionerOptions options;
+  options.unroll_windowed_einsum = true;
   TF_ASSERT_OK_AND_ASSIGN(
       auto module,
-      PartitionComputation(hlo_string, /*num_devices=*/2,
-                           /*use_all_gather=*/false,
-                           /*conv_halo_exchange_always_on_lhs =*/true,
-                           /*choose_faster_windowed_einsum =*/false,
-                           /*unroll_windowed_einsum =*/true));
+      PartitionComputation(hlo_string, /*num_devices=*/2, options));
   VLOG(1) << module->ToString();
 
   const auto root = module->entry_computation()->root_instruction();
@@ -7389,14 +7311,11 @@ ENTRY entry {
     to_apply=sum, sharding={devices=[1,4]<=[4]}
 })";
 
+  SpmdPartitionerOptions options;
+  options.bidirectional_windowed_einsum = true;
   TF_ASSERT_OK_AND_ASSIGN(
       auto module,
-      PartitionComputation(hlo_string, /*num_devices=*/4,
-                           /*use_all_gather=*/false,
-                           /*conv_halo_exchange_always_on_lhs =*/true,
-                           /*choose_faster_windowed_einsum =*/false,
-                           /*unroll_windowed_einsum =*/false,
-                           /*bidirectional_windowed_einsum =*/true));
+      PartitionComputation(hlo_string, /*num_devices=*/4, options));
   VLOG(1) << module->ToString();
 
   const auto root = module->entry_computation()->root_instruction();
@@ -7534,13 +7453,11 @@ ENTRY entry {
     to_apply=sum, sharding={replicated}
 })";
 
+  SpmdPartitionerOptions options;
+  options.unroll_windowed_einsum = true;
   TF_ASSERT_OK_AND_ASSIGN(
       auto module,
-      PartitionComputation(hlo_string, /*num_devices=*/2,
-                           /*use_all_gather=*/false,
-                           /*conv_halo_exchange_always_on_lhs =*/true,
-                           /*choose_faster_windowed_einsum =*/false,
-                           /*unroll_windowed_einsum =*/true));
+      PartitionComputation(hlo_string, /*num_devices=*/2, options));
   VLOG(1) << module->ToString();
 
   const auto root = module->entry_computation()->root_instruction();
@@ -7634,14 +7551,11 @@ ENTRY entry {
     to_apply=sum, sharding={replicated}
 })";
 
+  SpmdPartitionerOptions options;
+  options.bidirectional_windowed_einsum = true;
   TF_ASSERT_OK_AND_ASSIGN(
       auto module,
-      PartitionComputation(hlo_string, /*num_devices=*/4,
-                           /*use_all_gather=*/false,
-                           /*conv_halo_exchange_always_on_lhs =*/true,
-                           /*choose_faster_windowed_einsum =*/false,
-                           /*unroll_windowed_einsum =*/false,
-                           /*bidirectional_windowed_einsum =*/true));
+      PartitionComputation(hlo_string, /*num_devices=*/4, options));
   VLOG(1) << module->ToString();
 
   const auto root = module->entry_computation()->root_instruction();
@@ -7753,13 +7667,11 @@ ENTRY entry {
     sharding={devices=[1,2,1]0,1}
 })";
 
+  SpmdPartitionerOptions options;
+  options.unroll_windowed_einsum = true;
   TF_ASSERT_OK_AND_ASSIGN(
       auto module,
-      PartitionComputation(hlo_string, /*num_devices=*/2,
-                           /*use_all_gather=*/false,
-                           /*conv_halo_exchange_always_on_lhs =*/true,
-                           /*choose_faster_windowed_einsum =*/false,
-                           /*unroll_windowed_einsum =*/true));
+      PartitionComputation(hlo_string, /*num_devices=*/2, options));
   VLOG(1) << module->ToString();
 
   const auto root = module->entry_computation()->root_instruction();
@@ -7834,14 +7746,11 @@ ENTRY entry {
     sharding={devices=[1,4,1]<=[4]}
 })";
 
+  SpmdPartitionerOptions options;
+  options.bidirectional_windowed_einsum = true;
   TF_ASSERT_OK_AND_ASSIGN(
       auto module,
-      PartitionComputation(hlo_string, /*num_devices=*/4,
-                           /*use_all_gather=*/false,
-                           /*conv_halo_exchange_always_on_lhs =*/true,
-                           /*choose_faster_windowed_einsum =*/false,
-                           /*unroll_windowed_einsum =*/false,
-                           /*bidirectional_windowed_einsum =*/true));
+      PartitionComputation(hlo_string, /*num_devices=*/4, options));
   VLOG(1) << module->ToString();
 
   auto input_subtuple =
@@ -12210,19 +12119,14 @@ ENTRY %module {
     collapsed_slice_dims={0,1}, start_index_map={1,0}, index_vector_dim=0,
     slice_sizes={1,1,2,2}, sharding={devices=[4,2,1,1]<=[8]}
 })";
+  SpmdPartitionerOptions options;
   for (const GatherScatterPartitioningMethod& method :
        {GatherScatterPartitioningMethod::kIndexParallel,
         GatherScatterPartitioningMethod::kIndexPassthrough}) {
+    options.preferred_gather_partition_methods = {method};
     TF_ASSERT_OK_AND_ASSIGN(
         auto module,
-        PartitionComputation(hlo_string, /*num_devices=*/8,
-                             /*use_all_gather=*/false,
-                             /*conv_halo_exchange_always_on_lhs=*/true,
-                             /*choose_faster_windowed_einsum=*/false,
-                             /*unroll_windowed_einsum=*/false,
-                             /*bidirectional_windowed_einsum=*/false,
-                             /*threshold_for_windowed_einsum_mib=*/-1, {method},
-                             {method}));
+        PartitionComputation(hlo_string, /*num_devices=*/8, options));
     VLOG(1) << module->ToString();
     auto operand = AllOf(op::Shape("s32[2,4,2,2]"), op::Parameter());
     auto indices = AllOf(op::Shape("s32[2,2,2]"), op::Subtract());
@@ -12500,12 +12404,12 @@ ENTRY entry {
     collapsed_slice_dims={0}, start_index_map={0}, index_vector_dim=2,
     slice_sizes={1,16}, sharding={devices=[4,1,1,8]<=[32] last_tile_dim_replicate}
 })";
+  SpmdPartitionerOptions options;
+  options.preferred_gather_partition_methods = {
+      GatherScatterPartitioningMethod::kTrivialSlicedOperand};
   TF_ASSERT_OK_AND_ASSIGN(
       auto module,
-      PartitionComputation(
-          hlo_string, /*num_devices=*/32, /*use_all_gather=*/false, true, false,
-          false, false, -1,
-          {GatherScatterPartitioningMethod::kTrivialSlicedOperand}));
+      PartitionComputation(hlo_string, /*num_devices=*/32, options));
   VLOG(1) << module->ToString();
   HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, op::AllReduce(op::Select(_, _, op::Gather(_, _))));
@@ -12532,11 +12436,12 @@ ENTRY entry {
     collapsed_slice_dims={0}, start_index_map={0}, index_vector_dim=2,
     slice_sizes={1,16}, sharding={devices=[4,1,1,8]<=[32] last_tile_dim_replicate}
 })";
+  SpmdPartitionerOptions options;
+  options.preferred_gather_partition_methods = {
+      GatherScatterPartitioningMethod::kIndexParallel};
   TF_ASSERT_OK_AND_ASSIGN(
       auto module,
-      PartitionComputation(
-          hlo_string, /*num_devices=*/32, /*use_all_gather=*/false, true, false,
-          false, false, -1, {GatherScatterPartitioningMethod::kIndexParallel}));
+      PartitionComputation(hlo_string, /*num_devices=*/32, options));
   VLOG(1) << module->ToString();
   HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(
@@ -13204,19 +13109,14 @@ ENTRY %module {
     index_vector_dim=0, sharding={replicated}
 })";
 
+  SpmdPartitionerOptions options;
   for (const GatherScatterPartitioningMethod& method :
        {GatherScatterPartitioningMethod::kIndexParallel,
         GatherScatterPartitioningMethod::kIndexPassthrough}) {
+    options.preferred_scatter_partition_methods = {method};
     TF_ASSERT_OK_AND_ASSIGN(
         auto module,
-        PartitionComputation(hlo_string, /*num_devices=*/8,
-                             /*use_all_gather=*/false,
-                             /*conv_halo_exchange_always_on_lhs=*/true,
-                             /*choose_faster_windowed_einsum=*/false,
-                             /*unroll_windowed_einsum=*/false,
-                             /*bidirectional_windowed_einsum=*/false,
-                             /*threshold_for_windowed_einsum_mib=*/-1, {method},
-                             {method}));
+        PartitionComputation(hlo_string, /*num_devices=*/8, options));
     VLOG(1) << module->ToString();
     auto operand = AllOf(op::Shape("s32[2,4,2,2]"), op::Select());
     auto indices = AllOf(op::Shape("s32[2,2,2]"), op::Subtract());
@@ -13491,12 +13391,12 @@ ENTRY entry {
       scatter_dims_to_operand_dims={0},
       index_vector_dim=2, sharding={devices=[8,1,4]<=[4,8]T(1,0) last_tile_dim_replicate}
 })";
+  SpmdPartitionerOptions options;
+  options.preferred_scatter_partition_methods = {
+      GatherScatterPartitioningMethod::kTrivialSlicedOperand};
   TF_ASSERT_OK_AND_ASSIGN(
       auto module,
-      PartitionComputation(
-          hlo_string, /*num_devices=*/32, /*use_all_gather=*/false, true, false,
-          false, false, -1,
-          {GatherScatterPartitioningMethod::kTrivialSlicedOperand}));
+      PartitionComputation(hlo_string, /*num_devices=*/32, options));
   VLOG(1) << module->ToString();
   HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, op::AllReduce(op::Scatter(op::Select(_, _, _),
@@ -13530,11 +13430,12 @@ ENTRY entry {
       scatter_dims_to_operand_dims={0},
       index_vector_dim=2, sharding={devices=[8,1,4]<=[4,8]T(1,0) last_tile_dim_replicate}
 })";
+  SpmdPartitionerOptions options;
+  options.preferred_scatter_partition_methods = {
+      GatherScatterPartitioningMethod::kIndexParallel};
   TF_ASSERT_OK_AND_ASSIGN(
       auto module,
-      PartitionComputation(
-          hlo_string, /*num_devices=*/32, /*use_all_gather=*/false, true, false,
-          false, false, -1, {GatherScatterPartitioningMethod::kIndexParallel}));
+      PartitionComputation(hlo_string, /*num_devices=*/32, options));
   VLOG(1) << module->ToString();
   auto all_to_all = FindInstruction(module.get(), HloOpcode::kAllToAll);
   EXPECT_NE(all_to_all, nullptr);
@@ -13775,12 +13676,8 @@ ENTRY %module {
     reshape(bf16[128,1024,4,176,256,1,1]{6,5,4,3,2,1,0} %convolution.3),
     sharding={replicated}
 })";
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto module,
-      PartitionComputation(hlo_string, /*num_devices=*/8,
-                           /*use_all_gather=*/false,
-                           /*conv_halo_exchange_always_on_lhs =*/true,
-                           /*choose_faster_windowed_einsum =*/false));
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/8));
   const HloInstruction* while_inst = FindInstruction(module.get(), "while");
   EXPECT_NE(while_inst, nullptr);
   const HloComputation* cond_comp = while_inst->while_condition();
@@ -13811,12 +13708,11 @@ ENTRY %module {
     reshape(bf16[128,1024,4,176,256,1,1]{6,5,4,3,2,1,0} %convolution.3),
     sharding={replicated}
 })";
+  SpmdPartitionerOptions options;
+  options.choose_faster_windowed_einsum_over_mem = true;
   TF_ASSERT_OK_AND_ASSIGN(
       auto module,
-      PartitionComputation(hlo_string, /*num_devices=*/8,
-                           /*use_all_gather=*/false,
-                           /*conv_halo_exchange_always_on_lhs =*/true,
-                           /*choose_faster_windowed_einsum =*/true));
+      PartitionComputation(hlo_string, /*num_devices=*/8, options));
   const HloInstruction* while_inst = FindInstruction(module.get(), "while");
   EXPECT_NE(while_inst, nullptr);
   const HloComputation* cond_comp = while_inst->while_condition();
@@ -13854,12 +13750,11 @@ ENTRY entry {
   ROOT %output = bf16[16,36,256,16,4,288,1]{6,5,4,3,2,1,0}
    copy(%convolution.10), sharding={replicated}
 })";
+  SpmdPartitionerOptions options;
+  options.choose_faster_windowed_einsum_over_mem = true;
   TF_ASSERT_OK_AND_ASSIGN(
       auto module,
-      PartitionComputation(hlo_string, /*num_devices=*/32,
-                           /*use_all_gather=*/false,
-                           /*conv_halo_exchange_always_on_lhs =*/true,
-                           /*choose_faster_windowed_einsum =*/true));
+      PartitionComputation(hlo_string, /*num_devices=*/32, options));
   const HloInstruction* while_inst = FindInstruction(module.get(), "while");
   EXPECT_NE(while_inst, nullptr);
   const HloComputation* cond_comp = while_inst->while_condition();
@@ -13897,12 +13792,8 @@ ENTRY entry {
   ROOT %output = bf16[16,36,256,16,4,288,1]{6,5,4,3,2,1,0}
    copy(%convolution.10), sharding={replicated}
 })";
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto module,
-      PartitionComputation(hlo_string, /*num_devices=*/32,
-                           /*use_all_gather=*/false,
-                           /*conv_halo_exchange_always_on_lhs =*/true,
-                           /*choose_faster_windowed_einsum =*/false));
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/32));
   const HloInstruction* while_inst = FindInstruction(module.get(), "while");
   EXPECT_NE(while_inst, nullptr);
   const HloComputation* cond_comp = while_inst->while_condition();
@@ -13932,12 +13823,11 @@ ENTRY entry {
     sharding={devices=[2,2,2]<=[8]}
   ROOT %output = f32[8,2,2] copy(%dot), sharding={replicated}
 })";
+  SpmdPartitionerOptions options;
+  options.choose_faster_windowed_einsum_over_mem = true;
   TF_ASSERT_OK_AND_ASSIGN(
       auto module,
-      PartitionComputation(hlo_string, /*num_devices=*/8,
-                           /*use_all_gather=*/false,
-                           /*conv_halo_exchange_always_on_lhs =*/true,
-                           /*choose_faster_windowed_einsum =*/true));
+      PartitionComputation(hlo_string, /*num_devices=*/8, options));
 
   const HloInstruction* dot_op = FindInstruction(module.get(), HloOpcode::kDot);
   auto op1 = op::Shape("f32[4,2,4,4]");
@@ -13960,12 +13850,8 @@ ENTRY entry {
     sharding={devices=[1,2,1,2]<=[4]}
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto module,
-      PartitionComputation(hlo_string, /*num_devices=*/4,
-                           /*use_all_gather=*/false,
-                           /*conv_halo_exchange_always_on_lhs=*/true,
-                           /*choose_faster_windowed_einsum=*/true));
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/4));
   VLOG(1) << module->ToString();
   const auto root = module->entry_computation()->root_instruction();
   auto dot = AllOf(op::Shape("f32[16,32,24,1024]"),
@@ -15849,15 +15735,12 @@ ENTRY %entry {
   ROOT %dot.339 = bf16[64,2048,65536]{2,1,0} dot(bf16[64,2048,20480]{2,1,0} %copy.11, bf16[20480,65536]{1,0} %reshape.44), lhs_contracting_dims={2}, rhs_contracting_dims={0}, sharding={devices=[8,1,4]<=[32]}
 })";
 
+  SpmdPartitionerOptions options;
+  options.choose_faster_windowed_einsum_over_mem = true;
+  options.bidirectional_windowed_einsum = true;
   TF_ASSERT_OK_AND_ASSIGN(
       auto module,
-      PartitionComputation(hlo_string, /*num_devices=*/32,
-                           /*use_all_gather=*/false,
-                           /*conv_halo_exchange_always_on_lhs=*/true,
-                           /*choose_faster_windowed_einsum=*/true,
-                           /*unroll_windowed_einsum=*/false,
-                           /*bidirectional_windowed_einsum=*/true,
-                           /*threshold_for_windowed_einsum_mib=*/-1));
+      PartitionComputation(hlo_string, /*num_devices=*/32, options));
   XLA_VLOG_LINES(1, module->ToString());
 
   // Check while op.
@@ -15884,15 +15767,12 @@ ENTRY entry {
   ROOT %dot = f32[8,2048,2176]{2,1,0} dot(f32[8,2048,3264]{2,1,0} %p0, f32[3264,2176]{1,0} %p1), lhs_contracting_dims={2}, rhs_contracting_dims={0}, sharding={devices=[2,1,4]<=[8]}
 })";
 
+  SpmdPartitionerOptions options;
+  options.partial_windowed_einsum = true;
+  options.threshold_for_windowed_einsum_mib = 0;
   TF_ASSERT_OK_AND_ASSIGN(
       auto module,
-      PartitionComputation(hlo_string, /*num_devices=*/8,
-                           /*use_all_gather=*/false,
-                           /*conv_halo_exchange_always_on_lhs=*/true,
-                           /*choose_faster_windowed_einsum=*/false,
-                           /*unroll_windowed_einsum=*/false,
-                           /*bidirectional_windowed_einsum=*/false,
-                           /*threshold_for_windowed_einsum_mib=*/0));
+      PartitionComputation(hlo_string, /*num_devices=*/8, options));
 
   // While op.
   const auto arg0 = AllOf(op::Parameter(0), op::Shape("f32[4,512,3264]"));
@@ -15961,15 +15841,12 @@ ENTRY entry {
   ROOT %dot = f32[8,2048,2176]{2,1,0} dot(f32[8,2048,3264]{2,1,0} %p0, f32[3264,2176]{1,0} %p1), lhs_contracting_dims={2}, rhs_contracting_dims={0}, sharding={devices=[2,1,4]<=[8]}
 })";
 
+  SpmdPartitionerOptions options;
+  options.partial_windowed_einsum = true;
+  options.threshold_for_windowed_einsum_mib = 0;
   TF_ASSERT_OK_AND_ASSIGN(
       auto module,
-      PartitionComputation(hlo_string, /*num_devices=*/8,
-                           /*use_all_gather=*/false,
-                           /*conv_halo_exchange_always_on_lhs=*/true,
-                           /*choose_faster_windowed_einsum=*/false,
-                           /*unroll_windowed_einsum=*/true,
-                           /*bidirectional_windowed_einsum=*/false,
-                           /*threshold_for_windowed_einsum_mib=*/0));
+      PartitionComputation(hlo_string, /*num_devices=*/8, options));
 
   // While op.
   const auto arg0 = AllOf(op::Parameter(0), op::Shape("f32[4,512,3264]"));
@@ -16038,15 +15915,11 @@ ENTRY entry {
   ROOT %dot = f32[8,2048,2176]{2,1,0} dot(f32[8,2048,3264]{2,1,0} %p0, f32[3264,2176]{1,0} %p1), lhs_contracting_dims={2}, rhs_contracting_dims={0}, sharding={devices=[2,1,4]0,2,4,6,1,3,5,7}
 })";
 
+  SpmdPartitionerOptions options;
+  options.threshold_for_windowed_einsum_mib = 0;
   TF_ASSERT_OK_AND_ASSIGN(
       auto module,
-      PartitionComputation(hlo_string, /*num_devices=*/8,
-                           /*use_all_gather=*/false,
-                           /*conv_halo_exchange_always_on_lhs=*/true,
-                           /*choose_faster_windowed_einsum=*/false,
-                           /*unroll_windowed_einsum=*/false,
-                           /*bidirectional_windowed_einsum=*/false,
-                           /*threshold_for_windowed_einsum_mib=*/0));
+      PartitionComputation(hlo_string, /*num_devices=*/8, options));
 
   const auto root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, AllOf(op::Dot(), op::Shape("f32[4,2048,544]")));
@@ -16064,15 +15937,11 @@ ENTRY entry {
   ROOT %dot = f32[8,2048,2176]{2,1,0} dot(f32[8,2048,3264]{2,1,0} %p0, f32[3264,2176]{1,0} %p1), lhs_contracting_dims={2}, rhs_contracting_dims={0}, sharding={devices=[2,1,4]<=[8]}
 })";
 
+  SpmdPartitionerOptions options;
+  options.threshold_for_windowed_einsum_mib = 0;
   TF_ASSERT_OK_AND_ASSIGN(
       auto module,
-      PartitionComputation(hlo_string, /*num_devices=*/8,
-                           /*use_all_gather=*/false,
-                           /*conv_halo_exchange_always_on_lhs=*/true,
-                           /*choose_faster_windowed_einsum=*/false,
-                           /*unroll_windowed_einsum=*/false,
-                           /*bidirectional_windowed_einsum=*/false,
-                           /*threshold_for_windowed_einsum_mib=*/0));
+      PartitionComputation(hlo_string, /*num_devices=*/8, options));
 
   const auto root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, AllOf(op::Dot(), op::Shape("f32[4,2048,544]")));
@@ -16090,15 +15959,11 @@ ENTRY entry {
   ROOT %dot = f32[8,2048,2176]{2,1,0} dot(f32[8,2048,3264]{2,1,0} %p0, f32[3264,2176]{1,0} %p1), lhs_contracting_dims={2}, rhs_contracting_dims={0}, sharding={devices=[1,1,8]<=[8]}
 })";
 
+  SpmdPartitionerOptions options;
+  options.threshold_for_windowed_einsum_mib = 0;
   TF_ASSERT_OK_AND_ASSIGN(
       auto module,
-      PartitionComputation(hlo_string, /*num_devices=*/8,
-                           /*use_all_gather=*/false,
-                           /*conv_halo_exchange_always_on_lhs=*/true,
-                           /*choose_faster_windowed_einsum=*/false,
-                           /*unroll_windowed_einsum=*/false,
-                           /*bidirectional_windowed_einsum=*/false,
-                           /*threshold_for_windowed_einsum_mib=*/0));
+      PartitionComputation(hlo_string, /*num_devices=*/8, options));
 
   const auto root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, AllOf(op::Dot(), op::Shape("f32[8,2048,272]")));
@@ -16119,14 +15984,7 @@ ENTRY %extracted_computation (param: f32[13,128,312,16,312]) -> f32[13,39936,499
 })";
 
   TF_ASSERT_OK_AND_ASSIGN(
-      auto module,
-      PartitionComputation(hlo_string, /*num_devices=*/128,
-                           /*use_all_gather=*/false,
-                           /*conv_halo_exchange_always_on_lhs=*/true,
-                           /*choose_faster_windowed_einsum=*/true,
-                           /*unroll_windowed_einsum=*/false,
-                           /*bidirectional_windowed_einsum=*/true,
-                           /*threshold_for_windowed_einsum_mib=*/-1));
+      auto module, PartitionComputation(hlo_string, /*num_devices=*/128));
   XLA_VLOG_LINES(1, module->ToString());
   // Check an all-to-all is emitted for resharding.
   auto all_to_all = FindInstruction(module.get(), HloOpcode::kAllToAll);
@@ -16151,13 +16009,8 @@ ENTRY entry {
   ROOT sort.209 = (f32[4,16384,4096]{2,1,0}, s32[4,16384,4096]{2,1,0}) sort(param.0, param.1), dimensions={2}, to_apply=top_k_gt_f32_comparator_64.35303, sharding={{devices=[4,4,4]<=[64]}, {devices=[4,4,4]<=[64]}}
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto module,
-      PartitionComputation(
-          hlo_string, /*num_devices=*/64,
-          /*use_all_gather=*/false,
-          /*conv_halo_exchange_always_on_lhs=*/true,
-          /*xla_tpu_enable_log_recorder_partitioned_logging=*/true));
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/64));
   XLA_VLOG_LINES(1, module->ToString());
 
   EXPECT_THAT(
@@ -16195,13 +16048,9 @@ ENTRY offloading (param0: f32[1,256,128]) -> f32[1,256,128] {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto module,
-      PartitionComputation(
-          hlo_string, /*num_devices=*/4,
-          /*use_all_gather=*/false,
-          /*conv_halo_exchange_always_on_lhs=*/true,
-          /*xla_tpu_enable_log_recorder_partitioned_logging=*/true));
+  SpmdPartitionerOptions options;
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/4));
   XLA_VLOG_LINES(1, module->ToString());
 
   // Check that the partitioner does not insert any sharding code between
@@ -16627,6 +16476,7 @@ ENTRY entry {
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           PartitionComputation(hlo_string, /*num_devices=*/16,
+                                               SpmdPartitionerOptions(),
                                                /*use_all_gather=*/true));
   const HloComputation* recovery_computation =
       module->original_value_recovery_table()
@@ -16689,6 +16539,7 @@ ENTRY entry {
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           PartitionComputation(hlo_string, /*num_devices=*/16,
+                                               SpmdPartitionerOptions(),
                                                /*use_all_gather=*/true));
   const HloComputation* recovery_computation =
       module->original_value_recovery_table()
