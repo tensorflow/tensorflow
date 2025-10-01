@@ -15,11 +15,13 @@ limitations under the License.
 
 #include "tensorflow/core/data/service/auto_scaler.h"
 
+#include <cstdint>
 #include <optional>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/time/time.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/status_matchers.h"
