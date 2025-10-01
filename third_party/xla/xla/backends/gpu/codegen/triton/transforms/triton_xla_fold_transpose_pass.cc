@@ -58,6 +58,71 @@ namespace {
   return guard;
 }
 
+template <typename T>
+auto Permute(T range, ArrayRef<int32_t> permutation) {
+  SmallVector<std::decay_t<decltype(*range.begin())>> result;
+  result.reserve(range.size());
+  for (int32_t dim : permutation) {
+    result.push_back(range[dim]);
+  }
+  return result;
+}
+
+SmallVector<int32_t> GetInversePermutation(ArrayRef<int32_t> permutation) {
+  SmallVector<int32_t> result(permutation.size());
+  for (auto [i, dim] : llvm::enumerate(permutation)) {
+    result[dim] = i;
+  }
+  return result;
+}
+
+// Computes the dimensions that are retained when other dimensions are
+// dropped/expanded. `changed_dims` must be sorted.
+SmallVector<unsigned> GetRetainedDims(size_t rank,
+                                      ArrayRef<unsigned> changed_dims) {
+  SmallVector<unsigned> retained_dims;
+  retained_dims.reserve(rank - changed_dims.size());
+  for (auto [i, dim] : llvm::enumerate(changed_dims)) {
+    for (unsigned j = retained_dims.size() + i; j < dim; ++j) {
+      retained_dims.push_back(j);
+    }
+  }
+  while (retained_dims.size() < rank - changed_dims.size()) {
+    retained_dims.push_back(retained_dims.size() + changed_dims.size());
+  }
+  return retained_dims;
+}
+
+// Computes the permutation of a rank-changing transpose.
+SmallVector<int32_t> GetRankReducedPermutation(ArrayRef<int32_t> permutation,
+                                               ArrayRef<unsigned> retained_dims,
+                                               size_t rank) {
+  SmallVector<int32_t> result;
+  result.reserve(rank);
+  for (auto [retained_dim, order_dim] :
+       llvm::zip_equal(retained_dims, permutation)) {
+    while (result.size() < retained_dim) {
+      result.push_back(result.size());
+    }
+    result.push_back(retained_dims[order_dim]);
+  }
+  while (result.size() < rank) {
+    result.push_back(result.size());
+  }
+  return result;
+}
+
+SmallVector<int64_t> GetPermutedLayout(ArrayRef<int64_t> layout,
+                                       ArrayRef<int32_t> permutation) {
+  auto inv_permutation = GetInversePermutation(permutation);
+  SmallVector<int64_t> result;
+  result.reserve(layout.size());
+  for (auto dim : layout) {
+    result.push_back(inv_permutation[dim]);
+  }
+  return result;
+}
+
 LogicalResult FoldTransposeOfExtract(TransOp op, PatternRewriter& rewriter) {
   auto extract = op.getSrc().getDefiningOp<ExtractOp>();
   if (!extract) {
@@ -74,60 +139,62 @@ LogicalResult FoldTransposeOfExtract(TransOp op, PatternRewriter& rewriter) {
   SmallVector<unsigned> reduced_dims = to_vector(*reduction_mask);
   absl::c_sort(reduced_dims);
 
-  // Compute the set of not-reduced dimensions.
-  size_t dst_rank = extract.getType().getRank();
-  SmallVector<unsigned> retained_dims;
-  retained_dims.reserve(dst_rank);
-  for (auto [i, dim] : llvm::enumerate(reduced_dims)) {
-    for (unsigned j = retained_dims.size() + i; j < dim; ++j) {
-      retained_dims.push_back(j);
-    }
-  }
-  while (retained_dims.size() < dst_rank) {
-    retained_dims.push_back(retained_dims.size() + reduced_dims.size());
-  }
-
-  // Compute the permutation of source dimensions.
   size_t src_rank = extract.getSrcShape().size();
-  SmallVector<int32_t> permutation;
-  permutation.reserve(src_rank);
-  for (auto [src_dim, dst_dim] :
-       llvm::zip_equal(retained_dims, op.getOrder())) {
-    while (permutation.size() < src_dim) {
-      permutation.push_back(permutation.size());
-    }
-    permutation.push_back(retained_dims[dst_dim]);
-  }
-  while (permutation.size() < src_rank) {
-    permutation.push_back(permutation.size());
-  }
+  SmallVector<unsigned> retained_dims = GetRetainedDims(src_rank, reduced_dims);
 
-  auto permute = [&](auto range) {
-    SmallVector<std::decay_t<decltype(*range.begin())>> result;
-    result.reserve(range.size());
-    for (int32_t dim : permutation) {
-      result.push_back(range[dim]);
-    }
-    return result;
-  };
+  SmallVector<int32_t> permutation =
+      GetRankReducedPermutation(op.getOrder(), retained_dims, src_rank);
 
-  SmallVector<int32_t> inv_permutation(permutation.size());
-  for (auto [i, dim] : llvm::enumerate(permutation)) {
-    inv_permutation[dim] = i;
-  }
-
-  SmallVector<int64_t> layout;
-  layout.reserve(extract.getSrcLayout().size());
-  for (auto dim : extract.getSrcLayout()) {
-    layout.push_back(inv_permutation[dim]);
-  }
+  SmallVector<int64_t> layout =
+      GetPermutedLayout(extract.getSrcLayout(), permutation);
 
   rewriter.replaceOpWithNewOp<ExtractOp>(
-      op, op.getType(), extract.getSrc(), permute(extract.getMixedOffsets()),
-      permute(extract.getStaticSizes()), permute(extract.getStaticStrides()),
-      permute(extract.getSrcShape()), layout);
+      op, op.getType(), extract.getSrc(),
+      Permute(extract.getMixedOffsets(), permutation),
+      Permute(extract.getStaticSizes(), permutation),
+      Permute(extract.getStaticStrides(), permutation),
+      Permute(extract.getSrcShape(), permutation), layout);
   if (extract->use_empty()) {
     rewriter.eraseOp(extract);
+  }
+  return success();
+}
+
+LogicalResult FoldInsertOfTranspose(InsertOp op, PatternRewriter& rewriter) {
+  auto trans = op.getSrc().getDefiningOp<TransOp>();
+  if (!trans) {
+    return rewriter.notifyMatchFailure(op, "Insert source is not a transpose.");
+  }
+
+  // Compute the dimensions added to the source.
+  std::optional<llvm::SmallDenseSet<unsigned>> expansion_mask =
+      computeRankReductionMask(op.getStaticSizes(),
+                               op.getSrc().getType().getShape());
+  if (!expansion_mask) {
+    return rewriter.notifyMatchFailure(op, "Unsupported rank expansion.");
+  }
+  SmallVector<unsigned> expanded_dims = to_vector(*expansion_mask);
+  absl::c_sort(expanded_dims);
+
+  size_t dst_rank = op.getStaticSizes().size();
+  SmallVector<unsigned> retained_dims =
+      GetRetainedDims(dst_rank, expanded_dims);
+
+  auto inv_order = GetInversePermutation(trans.getOrder());
+  SmallVector<int32_t> permutation =
+      GetRankReducedPermutation(inv_order, retained_dims, dst_rank);
+
+  SmallVector<int64_t> layout =
+      GetPermutedLayout(op.getDstLayout(), permutation);
+
+  rewriter.replaceOpWithNewOp<InsertOp>(
+      op, trans.getSrc(), op.getDst(),
+      Permute(op.getMixedOffsets(), permutation),
+      Permute(op.getStaticSizes(), permutation),
+      Permute(op.getStaticStrides(), permutation),
+      Permute(op.getDstShape(), permutation), layout);
+  if (trans->use_empty()) {
+    rewriter.eraseOp(trans);
   }
   return success();
 }
@@ -266,14 +333,6 @@ LogicalResult HoistTransposeUpFromIf(TransOp op, PatternRewriter& rewriter) {
   return success();
 }
 
-SmallVector<int32_t> GetInversePermutation(ArrayRef<int32_t> permutation) {
-  SmallVector<int32_t> result(permutation.size());
-  for (int32_t i = 0; i < permutation.size(); ++i) {
-    result[permutation[i]] = i;
-  }
-  return result;
-}
-
 LogicalResult PushTransposeUpThroughReshape(TransOp op,
                                             PatternRewriter& rewriter) {
   auto reshape = op.getSrc().getDefiningOp<ReshapeOp>();
@@ -333,6 +392,7 @@ class TritonXLAFoldTransposePass
   void runOnOperation() override {
     RewritePatternSet patterns(&getContext());
     patterns.add(FoldTransposeOfExtract);
+    patterns.add(FoldInsertOfTranspose, /*benefit=*/2);
     patterns.add(PushTransposeUpIntoIf);
     patterns.add(HoistTransposeUpFromIf, /*benefit=*/2);
     patterns.add(PushTransposeUpThroughBroadcast);
