@@ -433,7 +433,7 @@ cc_library(
         "//xla/service:name_uniquer",
         "//xla/service:platform_util",
         "//xla/service/gpu/kernels:custom_kernel",
-        "//xla/service/gpu/model:tiled_hlo_instruction_or_computation",
+        "//xla/service/gpu/model:block_level_parameters",
         "//xla/service/llvm_ir:buffer_assignment_util",
         "//xla/service/llvm_ir:ir_array",
         "//xla/service/llvm_ir:kernel_support_library",

@@ -13,27 +13,24 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_SERVICE_GPU_MODEL_TILED_HLO_INSTRUCTION_H_
-#define XLA_SERVICE_GPU_MODEL_TILED_HLO_INSTRUCTION_H_
+#ifndef XLA_CODEGEN_TILING_TILED_HLO_INSTRUCTION_H_
+#define XLA_CODEGEN_TILING_TILED_HLO_INSTRUCTION_H_
 
 #include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
 #include <utility>
-#include <vector>
 
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/SmallVector.h"
-#include "xla/hlo/analysis/indexing_analysis.h"
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 
 namespace xla {
-namespace gpu {
 
 // A wrapper around HloInstruction that represents a tiled HLO instruction.
 //
@@ -43,6 +40,9 @@ namespace gpu {
 // `(block_id) -> (tile_offset0, tile_offset1, ...)`
 class TiledHloInstruction {
  public:
+  TiledHloInstruction& operator=(TiledHloInstruction&&) = default;
+  TiledHloInstruction(TiledHloInstruction&&) = default;
+
   virtual ~TiledHloInstruction() = default;
 
   // Creates an instance of TiledHloInstruction. Returns an error if any of the
@@ -187,47 +187,6 @@ H AbslHashValue(H h, const TiledHloInstruction& tiled_hlo_instruction) {
           tiled_hlo_instruction.runtime_variables()));
 }
 
-class TiledHloComputation;
-
-// `TiledHloFusionInstruction` is to `TiledHloInstruction` what
-// `HloFusionInstruction` is to `HloInstruction`.
-//
-// The main use case for `TiledHloFusionInstruction`s is to support nested
-// fusions in block-level codegen.
-//
-// Similarly to `HloFusionInstruction`, this subclass holds a nested
-// `TiledHloComputation` accessible through the `called_computation()` method.
-class TiledHloFusionInstruction : public TiledHloInstruction {
- public:
-  static absl::StatusOr<std::unique_ptr<TiledHloFusionInstruction>> Create(
-      const HloInstruction* hlo,
-      llvm::SmallVector<const TiledHloInstruction*> operands,
-      llvm::SmallVector<const TiledHloInstruction*> runtime_variables,
-      std::unique_ptr<TiledHloComputation> called_computation,
-      llvm::SmallVector<int64_t> tile_sizes,
-      llvm::SmallVector<int64_t> tile_strides,
-      std::optional<IndexingMap> tile_offsets_indexing);
-
-  // The `TiledHloComputation` called by this instruction.
-  const TiledHloComputation* called_computation() const {
-    return called_computation_.get();
-  }
-
- private:
-  TiledHloFusionInstruction(
-      const HloInstruction* hlo,
-      llvm::SmallVector<const TiledHloInstruction*> operands,
-      llvm::SmallVector<const TiledHloInstruction*> runtime_variables,
-      std::unique_ptr<TiledHloComputation> called_computation,
-      llvm::SmallVector<int64_t> tile_sizes,
-      llvm::SmallVector<int64_t> tile_strides,
-      std::optional<IndexingMap> tile_offsets_indexing);
-
-  // See comment for `called_computation()`.
-  std::unique_ptr<TiledHloComputation> called_computation_;
-};
-
-}  // namespace gpu
 }  // namespace xla
 
-#endif  // XLA_SERVICE_GPU_MODEL_TILED_HLO_INSTRUCTION_H_
+#endif  // XLA_CODEGEN_TILING_TILED_HLO_INSTRUCTION_H_

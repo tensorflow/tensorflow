@@ -51,7 +51,6 @@ limitations under the License.
 #include "xla/service/gpu/model/gpu_performance_model.h"
 #include "xla/service/gpu/model/gpu_performance_model_base.h"
 #include "xla/service/gpu/model/symbolic_tile_analysis.h"
-#include "xla/service/gpu/model/tiled_hlo_computation.h"
 #include "xla/service/gpu/model/triton_emitter_constraints.h"
 #include "xla/service/gpu/transforms/reduction_dimension_grouper.h"
 #include "xla/service/gpu/transforms/reduction_splitter.h"
