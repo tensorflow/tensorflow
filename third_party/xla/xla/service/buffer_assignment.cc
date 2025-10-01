@@ -726,7 +726,7 @@ absl::Status BufferAssignment::CombineTempAllocations(
       VLOG(1) << "Due to size constraint, reset temp allocation for color "
               << color << " to: " << temp_allocation;
       combined_allocations.push_back(std::move(temp_allocation));
-      combined_allocation_map.emplace(color, &combined_allocations.back());
+      combined_it->second = &combined_allocations.back();
       continue;
     }
 

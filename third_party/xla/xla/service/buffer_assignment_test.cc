@@ -2068,6 +2068,80 @@ TEST_F(BufferAssignmentTest, OneTempAllocation) {
   }
 }
 
+TEST_F(BufferAssignmentTest, TempAllocationLimitResetsBuffer) {
+  // Test that temporary buffers are combined into allocations up to the limit
+  // specified by xla_multiheap_size_constraint_per_heap.
+  auto builder = HloComputation::Builder(TestName());
+  Shape shape_10x10 = ShapeUtil::MakeShape(F32, {10, 10});
+  Shape shape_40x10 = ShapeUtil::MakeShape(F32, {40, 10});
+
+  auto param_a = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, shape_10x10, "param_a"));
+  auto param_b = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, shape_10x10, "param_b"));
+  auto param_c = builder.AddInstruction(
+      HloInstruction::CreateParameter(2, shape_10x10, "param_c"));
+  auto param_d = builder.AddInstruction(
+      HloInstruction::CreateParameter(3, shape_10x10, "param_d"));
+  auto param_e = builder.AddInstruction(
+      HloInstruction::CreateParameter(4, shape_10x10, "param_e"));
+  DotDimensionNumbers dot_dnums;
+  dot_dnums.add_lhs_contracting_dimensions(1);
+  dot_dnums.add_rhs_contracting_dimensions(0);
+  PrecisionConfig precision_config;
+  precision_config.mutable_operand_precision()->Resize(
+      2, PrecisionConfig::DEFAULT);
+  auto dot_ab = builder.AddInstruction(HloInstruction::CreateDot(
+      shape_10x10, param_a, param_b, dot_dnums, precision_config));
+  auto dot_bc = builder.AddInstruction(HloInstruction::CreateDot(
+      shape_10x10, param_b, param_c, dot_dnums, precision_config));
+  auto dot_cd = builder.AddInstruction(HloInstruction::CreateDot(
+      shape_10x10, param_c, param_d, dot_dnums, precision_config));
+  auto dot_de = builder.AddInstruction(HloInstruction::CreateDot(
+      shape_10x10, param_d, param_e, dot_dnums, precision_config));
+  builder.AddInstruction(HloInstruction::CreateConcatenate(
+      shape_40x10, {dot_ab, dot_bc, dot_cd, dot_de}, 0));
+
+  // Run buffer assignment with alignment=1.
+  auto module = CreateNewVerifiedModule();
+  module->AddEntryComputation(builder.Build());
+  module->mutable_config()
+      .mutable_debug_options()
+      .set_xla_multiheap_size_constraint_per_heap(801);
+  auto assignment = RunBufferAssignment(module.get(), /*alignment=*/1);
+
+  // 5 params allocations, 1 output, and 2 temp allocations.
+  // Dots are size 400. 400+400=800 < 801, so two dots fit in one allocation.
+  // The next dot comes: 800+400=1200 >= 801, so we reset to a new allocation.
+  // The new allocation takes 400, and 400+400=800 < 801 for the next dot.
+  // So we expect 2 allocations of size 800.
+  EXPECT_EQ(8, assignment->Allocations().size());
+
+  BufferAllocation::Slice slice_ab =
+      assignment->GetUniqueTopLevelSlice(dot_ab).value();
+  BufferAllocation::Slice slice_bc =
+      assignment->GetUniqueTopLevelSlice(dot_bc).value();
+  BufferAllocation::Slice slice_cd =
+      assignment->GetUniqueTopLevelSlice(dot_cd).value();
+  BufferAllocation::Slice slice_de =
+      assignment->GetUniqueTopLevelSlice(dot_de).value();
+
+  EXPECT_EQ(400, slice_ab.size());
+  EXPECT_EQ(400, slice_bc.size());
+  EXPECT_EQ(400, slice_cd.size());
+  EXPECT_EQ(400, slice_de.size());
+
+  EXPECT_EQ(800, slice_ab.allocation()->size());
+  EXPECT_EQ(800, slice_bc.allocation()->size());
+  EXPECT_EQ(800, slice_cd.allocation()->size());
+  EXPECT_EQ(800, slice_de.allocation()->size());
+
+  absl::flat_hash_set<const BufferAllocation*> allocs = {
+      slice_ab.allocation(), slice_bc.allocation(), slice_cd.allocation(),
+      slice_de.allocation()};
+  EXPECT_EQ(allocs.size(), 2);
+}
+
 TEST_F(BufferAssignmentTest, TrivialPeakBuffers) {
   // paramscalar -(bc)- (mul) -- (add) -- (sub)
   //                     /        /        /
