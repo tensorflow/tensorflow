@@ -17,14 +17,21 @@ limitations under the License.
 
 #include <algorithm>
 #include <atomic>
+#include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <utility>
 #include <vector>
 
-#include "absl/memory/memory.h"
+#include "base/tracer.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/time/time.h"
 #include "absl/types/optional.h"
+#include "xla/tsl/protobuf/error_codes.pb.h"
 #include "tensorflow/core/activity_watcher/activity.h"
 #include "tensorflow/core/common_runtime/costmodel_manager.h"
 #include "tensorflow/core/common_runtime/entry.h"
@@ -77,6 +84,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/lib/scoped_annotation.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/profiler/lib/traceme_encode.h"
+#include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/core/util/determinism.h"
 #include "tensorflow/core/util/managed_stack_trace.h"
