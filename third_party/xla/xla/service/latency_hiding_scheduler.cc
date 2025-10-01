@@ -3668,7 +3668,7 @@ absl::StatusOr<bool> LatencyHidingScheduler::Run(
               << " bytes, does not fit in limit: "
               << scheduler_core_->GetMemoryLimit()
               << ". Setting the new limit to "
-              << scheduler_core_->GetMemoryLimit() * 0.9;
+              << static_cast<uint64_t>(scheduler_core_->GetMemoryLimit() * 0.9);
     SchedulerCore::RetryState retry_state = {iter + 1,
                                              scheduler_core_->GetMemoryLimit(),
                                              scheduler_core_->GetMemoryPeak()};
