@@ -13,27 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_ERROR_FATAL_ERROR_SINK_H_
-#define XLA_ERROR_FATAL_ERROR_SINK_H_
+#include "xla/error/fatal_error_sink.h"
 
-#include "absl/log/log_entry.h"
-#include "absl/log/log_sink.h"
-
-namespace xla::error {
-
-// An absl::LogSink that selectively handles FATAL errors to add additional
-// XLA-specific debugging context.
-class FatalErrorSink : public absl::LogSink {
- public:
-  ~FatalErrorSink() override;
-
-  void Send(const absl::LogEntry& entry) override;
-};
-
-// Adds the FatalErrorSink as an Absl::LogSink.
-// This is thread-safe and idempotent - can be called multiple times.
-void AddFatalErrorSink();
-
-}  // namespace xla::error
-
-#endif  // XLA_ERROR_FATAL_ERROR_SINK_H_
+[[maybe_unused]] static bool register_fatal_error_sink = []() -> bool {
+  xla::error::AddFatalErrorSink();
+  return true;
+}();

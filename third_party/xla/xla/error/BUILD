@@ -41,17 +41,6 @@ cc_library(
     ],
 )
 
-cc_library(
-    name = "fatal_error_sink",
-    hdrs = ["fatal_error_sink.h"],
-    deps = [
-        ":debug_me_context_util",
-        "@com_google_absl//absl/base:log_severity",
-        "@com_google_absl//absl/log:log_entry",
-        "@com_google_absl//absl/log:log_sink",
-    ],
-)
-
 xla_cc_test(
     name = "debug_me_context_util_test",
     srcs = ["debug_me_context_util_test.cc"],
@@ -60,6 +49,21 @@ xla_cc_test(
         "//xla/tsl/platform:debug_me_context",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "fatal_error_sink",
+    srcs = ["fatal_error_sink.cc"],
+    hdrs = ["fatal_error_sink.h"],
+    deps = [
+        ":debug_me_context_util",
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/base:log_severity",
+        "@com_google_absl//absl/base:no_destructor",
+        "@com_google_absl//absl/log:log_entry",
+        "@com_google_absl//absl/log:log_sink",
+        "@com_google_absl//absl/log:log_sink_registry",
     ],
 )
 
@@ -75,4 +79,11 @@ xla_cc_test(
         "@com_google_absl//absl/log:log_sink_registry",
         "@com_google_googletest//:gtest_main",
     ],
+)
+
+cc_library(
+    name = "fatal_error_sink_registration",
+    srcs = ["fatal_error_sink_registration.cc"],
+    deps = [":fatal_error_sink"],
+    alwayslink = True,
 )
