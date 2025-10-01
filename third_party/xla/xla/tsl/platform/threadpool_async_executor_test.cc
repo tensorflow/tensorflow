@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/tsl/platform/threadpool_executor.h"
+#include "xla/tsl/platform/threadpool_async_executor.h"
 
 #include "absl/synchronization/notification.h"
 #include "xla/tsl/platform/env.h"
@@ -23,9 +23,9 @@ limitations under the License.
 namespace tsl::thread {
 namespace {
 
-TEST(ThreadPoolExecutorTest, ExecuteTasks) {
+TEST(ThreadPoolAsyncExecutorTest, ExecuteTasks) {
   ThreadPool thread_pool(Env::Default(), "test", 4);
-  ThreadPoolExecutor executor(&thread_pool);
+  ThreadPoolAsyncExecutor executor(&thread_pool);
 
   absl::Notification notification;
   executor.Execute([&] { notification.Notify(); });
