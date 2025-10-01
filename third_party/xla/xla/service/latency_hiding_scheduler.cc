@@ -65,6 +65,7 @@ limitations under the License.
 #include "xla/status_macros.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
+#include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
@@ -462,8 +463,22 @@ ResourcesVector AsyncTracker::GetResourcesFromInstructionImpl(
       }
       return result;
     }
-    default:
-      return ResourcesVector{};
+    default: {
+      // At this point we are dealing with sync instructions that did not fall
+      // into any of the cases above. We model their resources as a
+      // kResourceOccupy and a kResourceRelease that follows immediately after.
+      ResourcesVector res;
+      if (config_.track_sync_op_resource_usage) {
+        ResourceType type = get_resource_for_op(hlo.opcode());
+        if (type != ResourceType::kNoResource) {
+          res.push_back(std::make_pair(ResourceTypeToIndex(type),
+                                       ResourceUsageType::kResourceOccupy));
+          res.push_back(std::make_pair(ResourceTypeToIndex(type),
+                                       ResourceUsageType::kResourceRelease));
+        }
+      }
+      return res;
+    }
   }
 }
 
@@ -1061,6 +1076,28 @@ int64_t GetNumHopsToClosestSelectiveOverlap(
   return num_hops_to_closest_selective_resource_occupier;
 }
 
+static constexpr double kAsyncDepthRtolCoefficient = 0.35;
+static constexpr double kAsyncDepthDeprioritizationThreshold = 0.5;
+
+// Returns a relative tolerance for the async depth comparison. When retrying
+// due to high memory peak we want to deprioritize async depth and let other
+// properties be considered.
+double AsyncDepthRtol(const DefaultSchedulerCore::RetryState& retry_state) {
+  if (retry_state.run_index == 0) {
+    return 0.0;
+  }
+  if (retry_state.memory_peak < retry_state.memory_limit) {
+    return 0.0;
+  }
+  double memory_excess =
+      static_cast<double>(retry_state.memory_peak - retry_state.memory_limit) /
+      static_cast<double>(retry_state.memory_limit + 1.0);
+  if (memory_excess < kAsyncDepthDeprioritizationThreshold) {
+    return 0.0;
+  }
+  return std::min(1.0, kAsyncDepthRtolCoefficient * retry_state.run_index);
+}
+
 // Comparator for the ready set. This class represents the priority policies
 // for the nodes in the ready set. The policy can be whatever is appropriate to
 // reduce the execution time of the graph or achieve interesting properties
@@ -1097,6 +1134,28 @@ class ReadySetLt {
       RETURN_LOGIC(v, reason_str);                      \
     }                                                   \
   } while (0)
+
+// This is a generalization of CMP_PROPERTY that allows for a relative tolerance
+// to be specified such that this comparison is only performed if relative
+// difference between the properties is above the specified relative tolerance.
+// This is to allow skipping the comparison for minimal differences and let
+// other properties be considered.
+#define CMP_PROPERTY_WITH_RTOL(property, rtol, reason_str) \
+  do {                                                     \
+    auto avalue = an->property;                            \
+    auto bvalue = bn->property;                            \
+    if (avalue == 0 && bvalue == 0) {                      \
+      /* Nothing to do if both are zero. */                \
+    } else {                                               \
+      double diff = std::abs(avalue - bvalue);             \
+      double max_val = std::max(avalue, bvalue);           \
+      if (max_val > 0 && (diff / max_val) > rtol) {        \
+        if (int v = ThreeWay(avalue, bvalue)) {            \
+          RETURN_LOGIC(v, reason_str);                     \
+        }                                                  \
+      }                                                    \
+    }                                                      \
+  } while (0)
 #define CMP_EXPLICIT(pa, pb, reason_str) \
   do {                                   \
     if (int v = ThreeWay((pa), (pb))) {  \
@@ -1119,7 +1178,8 @@ class ReadySetLt {
         config_has_memory_limit_(config_memory_limit_ != UINT64_MAX),
         has_target_scheduling_rule_(target_scheduling_rule_ != nullptr),
         has_early_target_scheduling_rule_(early_target_scheduling_rule_ !=
-                                          nullptr) {}
+                                          nullptr),
+        async_depth_rtol_(AsyncDepthRtol(sched_state_.retry_state)) {}
 
   std::optional<bool> MemoryPressurePolicy(
       const HloGraphNode* an, std::pair<int64_t, int64_t>& a_increase,
@@ -1372,7 +1432,7 @@ class ReadySetLt {
       // Try to favor paths that are dependent of chains of async operations
       // with long latency as we want to get to them as soon as possible to
       // overlap them with computation.
-      CMP_PROPERTY(GetAsyncDepth(), "kAsyncDepth");
+      CMP_PROPERTY_WITH_RTOL(GetAsyncDepth(), async_depth_rtol_, "kAsyncDepth");
 
       // Favor nodes that are the closest in amount of latency they hide
       // with the highest amount of latency that needs to be hidden to avoid
@@ -1462,6 +1522,7 @@ class ReadySetLt {
   bool config_has_memory_limit_;
   bool has_target_scheduling_rule_;
   bool has_early_target_scheduling_rule_;
+  double async_depth_rtol_;
 
   static bool IsNop(const HloGraphNode& gn) {
     return IsNopInstruction(gn.GetOpcode(), gn.GetInstr());
@@ -2924,9 +2985,9 @@ absl::Status DefaultSchedulerCore::SchedulingStep(
     SchedulingState* sched_state) {
   // Get the first available node for scheduling that is the node that
   // satisfies our ready heuristic the best.
-  TF_ASSIGN_OR_RETURN(HloGraphNode * node,
-                      FindAndExtractBestNodeAvailable(
-                          *sched_state, /*should_skip_node=*/nullptr));
+  TF_ASSIGN_OR_RETURN(HloGraphNode * node, FindAndExtractBestNodeAvailable(
+                                               *sched_state,
+                                               /*should_skip_node=*/nullptr));
   CHECK(node != nullptr);
   TF_ASSIGN_OR_RETURN(sched_state->current_time,
                       ScheduleNode(node, sched_state));
@@ -2937,7 +2998,8 @@ absl::Status DefaultSchedulerCore::SchedulingStep(
 
 absl::flat_hash_map<int64_t, int64_t>
 DefaultSchedulerCore::GetNumResourcesNeededForAnnotation(
-    const SchedulingState& sched_state, int64_t annotation) {
+    const SchedulingState& sched_state, int64_t annotation,
+    bool get_max_resources) {
   absl::flat_hash_map<int64_t, int64_t> num_resources_needed;
   const HloComputation* comp =
       sched_state.sched_graph.GetOriginalInstrList()[0]->parent();
@@ -2952,11 +3014,17 @@ DefaultSchedulerCore::GetNumResourcesNeededForAnnotation(
         sched_state.async_tracker->GetNumResourcesPerInstruction(*instr);
     for (const auto& [resource, usage] : num_resources_needed_per_instr) {
       if (instr->opcode() == HloOpcode::kAsyncDone) {
-        // Special case: if a async-done op's matching start op is not in the
+        // There are two cases where the resources used by the async-done op
+        // need to be accumulated:
+        // 1. if a async-done op's matching start op is not in the
         // same annotation group, then the live range of the resources used
         // by this async-done op extends beyond this annotation group.
+        // 2. if get_max_resources is true, then we compute the resource usage
+        // assuming maximum overlapping, where the resources used by the
+        // async-done ops need to be accumulated.
         const HloInstruction* start = instr->operand(0);
-        if (std::find(instrs.begin(), instrs.end(), start) == instrs.end()) {
+        if (std::find(instrs.begin(), instrs.end(), start) == instrs.end() ||
+            get_max_resources) {
           num_resources_needed[resource] += usage;
           continue;
         }
@@ -2994,9 +3062,11 @@ int64_t DefaultSchedulerCore::GetNumSuccessorsForAnnotation(
 }
 
 bool DefaultSchedulerCore::SchedulingAnnotationCrossesOverlapLimit(
-    const SchedulingState& sched_state, int64_t annotation) {
+    const SchedulingState& sched_state, int64_t annotation,
+    bool use_max_resources) {
   absl::flat_hash_map<int64_t, int64_t> num_resources_needed =
-      GetNumResourcesNeededForAnnotation(sched_state, annotation);
+      GetNumResourcesNeededForAnnotation(sched_state, annotation,
+                                         use_max_resources);
   for (const auto& [resource, num_needed] : num_resources_needed) {
     int64_t limit = sched_state.max_concurrent_resource.at(resource);
     if (num_needed > limit) {
@@ -3005,6 +3075,43 @@ bool DefaultSchedulerCore::SchedulingAnnotationCrossesOverlapLimit(
   }
   return false;
 }
+
+absl::StatusOr<bool> DefaultSchedulerCore::TryScheduleOneAnnotationGroup(
+    DefaultSchedulerCore::SchedulingState* sched_state,
+    const HloComputation* computation, bool use_max_resources) {
+  if (sched_state->ready_annotations.empty() ||
+      !sched_state->nodes_holding_annotations.empty()) {
+    return false;
+  }
+  // Pick the first ready annotation whose scheduling will not cross the
+  // overlap limit. If there is no such annotation, continue with
+  // scheduling non-annotated ops.
+  int64_t annotation_index = -1;
+  for (int64_t i = 0; i < sched_state->ready_annotations.size(); ++i) {
+    if (SchedulingAnnotationCrossesOverlapLimit(
+            *sched_state, sched_state->ready_annotations[i],
+            /*use_max_resources=*/use_max_resources)) {
+      continue;
+    }
+    annotation_index = i;
+    break;
+  }
+  if (annotation_index != -1) {
+    std::swap(sched_state->ready_annotations[annotation_index],
+              sched_state->ready_annotations.back());
+    int64_t annotation = sched_state->ready_annotations.back();
+    sched_state->ready_annotations.pop_back();
+    VLOG(2) << "------- BEGIN ANNOTATION: " << annotation << " -------";
+    sched_state->ongoing_annotation = annotation;
+    TF_RETURN_IF_ERROR(
+        ScheduleAnnotation(computation, annotation, sched_state));
+    VLOG(2) << "-------  END ANNOTATION: " << annotation << " --------";
+    sched_state->ongoing_annotation = -1;
+    return true;
+  }
+  return false;
+}
+
 absl::StatusOr<std::shared_ptr<SchedulerCore::SchedulingState>>
 DefaultSchedulerCore::MakeSchedulingState(const HloComputation* computation) {
   const HloSchedule& module_schedule = computation->parent()->schedule();
@@ -3024,11 +3131,27 @@ DefaultSchedulerCore::MakeSchedulingState(const HloComputation* computation) {
   sched_state->sched_graph.InitializeGraphAnalysis();
   return sched_state;
 }
+
+absl::StatusOr<std::vector<HloInstruction*>>
+DefaultSchedulerCore::ScheduleComputation(
+    const HloComputation* computation, SchedulerCore::RetryState retry_state) {
+  TF_ASSIGN_OR_RETURN(auto sched_state, MakeSchedulingState(computation));
+  std::shared_ptr<DefaultSchedulerCore::SchedulingState> sched_state_ =
+      std::dynamic_pointer_cast<DefaultSchedulerCore::SchedulingState>(
+          sched_state);
+  CHECK_NE(sched_state_, nullptr)
+      << "ScheduleComputation must be called with a "
+      << "DefaultSchedulerCore::SchedulingState object.";
+  sched_state_->retry_state = retry_state;
+  return ScheduleComputation(computation, sched_state);
+}
+
 absl::StatusOr<std::vector<HloInstruction*>>
 DefaultSchedulerCore::ScheduleComputation(const HloComputation* computation) {
   TF_ASSIGN_OR_RETURN(auto sched_state, MakeSchedulingState(computation));
   return ScheduleComputation(computation, sched_state);
 }
+
 absl::StatusOr<std::vector<HloInstruction*>>
 DefaultSchedulerCore::ScheduleComputation(
     const HloComputation* computation,
@@ -3104,36 +3227,34 @@ DefaultSchedulerCore::ScheduleComputation(
       };
       return absl::StrJoin(sched_state->ready_set, "\n", LogFormatter());
     }());
-    if (!sched_state->ready_annotations.empty() &&
-        sched_state->nodes_holding_annotations.empty()) {
-      // Pick the first ready annotation whose scheduling will not cross the
-      // overlap limit. If there is no such annotation, continue with
-      // scheduling non-annotated ops.
-      int64_t annotation_index = -1;
-      for (int64_t i = 0; i < sched_state->ready_annotations.size(); ++i) {
-        if (SchedulingAnnotationCrossesOverlapLimit(
-                *sched_state, sched_state->ready_annotations[i])) {
-          continue;
-        }
-        annotation_index = i;
-        break;
+    auto scheduled_with_max_resources = TryScheduleOneAnnotationGroup(
+        sched_state.get(), computation, /*use_max_resource*/ true);
+    if (!scheduled_with_max_resources.ok()) {
+      return scheduled_with_max_resources.status();
+    }
+    if (*scheduled_with_max_resources) {
+      continue;
+    }
+    auto scheduling_step_status = SchedulingStep(sched_state.get());
+    // If we cannot schedule any non-annotated ops, try scheduling any of the
+    // ready annotation groups again using minimum resources.
+    if (!scheduling_step_status.ok()) {
+      VLOG(3) << "Failed to schedule any non-annotated ops, trying again with "
+                 "minimum resources for annotation groups";
+      auto scheduled_with_min_resources = TryScheduleOneAnnotationGroup(
+          sched_state.get(), computation, /*use_max_resource*/ false);
+      if (!scheduled_with_min_resources.ok()) {
+        return scheduled_with_min_resources.status();
       }
-      if (annotation_index != -1) {
-        std::swap(sched_state->ready_annotations[annotation_index],
-                  sched_state->ready_annotations.back());
-        int64_t annotation = sched_state->ready_annotations.back();
-        sched_state->ready_annotations.pop_back();
-        VLOG(2) << "------- BEGIN ANNOTATION: " << annotation << " -------";
-        sched_state->ongoing_annotation = annotation;
-        TF_RETURN_IF_ERROR(
-            ScheduleAnnotation(computation, annotation, sched_state.get()));
-        VLOG(2) << "-------  END ANNOTATION: " << annotation << " --------";
-        sched_state->ongoing_annotation = -1;
+      if (*scheduled_with_min_resources) {
         continue;
       }
+      VLOG(3)
+          << "Failed to schedule any annotation groups with minimum resources";
+      return scheduling_step_status;
     }
-    TF_RETURN_IF_ERROR(SchedulingStep(sched_state.get()));
   }
+
   if (VLOG_IS_ON(5)) {
     VLOG(5) << "New order";
     for (auto r_it = sched_state->new_sequence_reversed.rbegin(),
@@ -3548,11 +3669,14 @@ absl::StatusOr<bool> LatencyHidingScheduler::Run(
               << scheduler_core_->GetMemoryLimit()
               << ". Setting the new limit to "
               << scheduler_core_->GetMemoryLimit() * 0.9;
-    TF_RETURN_IF_ERROR(scheduler_core_->InitializeScheduler(module));
+    SchedulerCore::RetryState retry_state = {iter + 1,
+                                             scheduler_core_->GetMemoryLimit(),
+                                             scheduler_core_->GetMemoryPeak()};
     scheduler_core_->SetMemoryLimit(scheduler_core_->GetMemoryLimit() * 0.9);
     for (HloComputation* computation : computations_to_schedule_) {
-      TF_ASSIGN_OR_RETURN(std::vector<HloInstruction*> new_schedule,
-                          scheduler_core_->ScheduleComputation(computation));
+      TF_ASSIGN_OR_RETURN(
+          std::vector<HloInstruction*> new_schedule,
+          scheduler_core_->ScheduleComputation(computation, retry_state));
       scheduling_context_->GetAsyncTracker()->UpdateTargetDefinedStates(
           computation);
       module->schedule().set_sequence(computation,

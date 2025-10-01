@@ -27,10 +27,12 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
+#include "xla/service/compiler.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/nvptx_compiler.h"
 #include "xla/service/platform_util.h"
 #include "xla/stream_executor/device_description.pb.h"
+#include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
@@ -110,6 +112,8 @@ class CudnnBackendTest : public HloHardwareIndependentTestBase {
  protected:
   DebugOptions debug_options_;
   NVPTXCompiler compiler_;
+  se::StreamExecutor* stream_executor_;
+  Compiler::TargetConfig target_config_;
   CudnnBackend backend_;
 
   CudnnBackendTest()
@@ -118,11 +122,13 @@ class CudnnBackendTest : public HloHardwareIndependentTestBase {
           debug_options.set_xla_gpu_cudnn_gemm_fusion_level(2);
           return debug_options;
         }()),
-        backend_(PlatformUtil::GetDefaultPlatform()
-                     .value()
-                     ->ExecutorForDevice(0)
-                     .value(),
-                 &debug_options_, &compiler_) {}
+        stream_executor_(PlatformUtil::GetDefaultPlatform()
+                             .value()
+                             ->ExecutorForDevice(0)
+                             .value()),
+        target_config_(stream_executor_),
+        backend_(stream_executor_, &debug_options_, &compiler_,
+                 &target_config_) {}
 };
 
 TEST_F(CudnnBackendTest, CanCreateCublasBackend) {

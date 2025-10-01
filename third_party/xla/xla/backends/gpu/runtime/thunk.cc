@@ -36,11 +36,13 @@ limitations under the License.
 #include "xla/backends/gpu/collectives/gpu_cliques.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
+#include "xla/backends/gpu/runtime/thunk_id.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
 #include "xla/executable_run_options.h"
 #include "xla/ffi/execution_context.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/service/buffer_assignment.h"
 #include "xla/service/global_device_id.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/buffer_allocations.h"
@@ -106,14 +108,17 @@ using GlobalDeviceIdMap = Thunk::CollectiveExecuteParams::GlobalDeviceIdMap;
 static absl::StatusOr<GlobalDeviceId> GetGlobalDeviceId(
     const GlobalDeviceIdMap* device_id_map, int64_t local_device_ordinal) {
   // No local -> global mapping was provided; assume the identity mapping.
-  if (!device_id_map) return GlobalDeviceId(local_device_ordinal);
+  if (!device_id_map) {
+    return GlobalDeviceId(local_device_ordinal);
+  }
 
   // Find a global device id in a global device id map.
   auto it = device_id_map->find(local_device_ordinal);
-  if (it == device_id_map->end())
+  if (it == device_id_map->end()) {
     return absl::NotFoundError(
         absl::StrCat("No global device id found for local device ordinal: ",
                      local_device_ordinal));
+  }
 
   return it->second;
 }
@@ -352,13 +357,15 @@ absl::StatusOr<Thunk::ThunkInfo> Thunk::ThunkInfo::FromProto(
   Thunk::ThunkInfo thunk_info;
   thunk_info.profile_annotation = proto.profile_annotation();
   thunk_info.execution_stream_id = proto.execution_stream_id();
+  thunk_info.thunk_id = ThunkId(proto.thunk_id());
   return thunk_info;
 }
 
 Thunk::ThunkInfo Thunk::ThunkInfo::WithProfileAnnotation(
-    const HloInstruction* instr) {
+    const HloInstruction* instr, ThunkId thunk_id) {
   ThunkInfo thunk_info;
   thunk_info.profile_annotation = instr->name();
+  thunk_info.thunk_id = thunk_id;
   auto gpu_backend_config = instr->backend_config<GpuBackendConfig>();
   if (gpu_backend_config.ok()) {
     thunk_info.execution_stream_id =
@@ -409,6 +416,10 @@ void Thunk::ForAllThunks(absl::FunctionRef<void(const Thunk*)> fn) const {
   fn(this);
 }
 
+void Thunk::ForAllThunksMutable(absl::FunctionRef<void(Thunk*)> fn) {
+  fn(this);
+}
+
 absl::StatusOr<ThunkProto> Thunk::ToProto() const {
   return absl::UnimplementedError(absl::StrFormat(
       "Proto serialization for thunk of type %s is not implemented",
@@ -427,7 +438,27 @@ ThunkInfoProto Thunk::ThunkInfo::ToProto() const {
   ThunkInfoProto proto;
   proto.set_profile_annotation(profile_annotation);
   proto.set_execution_stream_id(execution_stream_id.value());
+  proto.set_thunk_id(thunk_id.value());
   return proto;
 }
+
+absl::StatusOr<ShapedSlice> ShapedSlice::FromProto(
+    const ShapedSliceProto& proto,
+    absl::Span<const BufferAllocation> buffer_allocations) {
+  ShapedSlice shaped_slice;
+  TF_ASSIGN_OR_RETURN(
+      shaped_slice.slice,
+      BufferAllocation::Slice::FromProto(proto.slice(), buffer_allocations));
+  TF_ASSIGN_OR_RETURN(shaped_slice.shape, Shape::FromProto(proto.shape()));
+  return shaped_slice;
+}
+
+absl::StatusOr<ShapedSliceProto> ShapedSlice::ToProto() const {
+  ShapedSliceProto proto;
+  TF_ASSIGN_OR_RETURN(*proto.mutable_slice(), slice.ToProto());
+  *proto.mutable_shape() = shape.ToProto();
+  return proto;
+}
+
 }  // namespace gpu
 }  // namespace xla

@@ -133,7 +133,7 @@ absl::Status AllToAllStartThunk::Initialize(const InitializeParams& params) {
     TF_ASSIGN_OR_RETURN(int32_t num_ranks, comm_handle.comm->NumRanks());
     se::StreamExecutor* executor = params.executor;
     {
-      absl::MutexLock lock(&pointer_maps_mutex_);
+      absl::MutexLock lock(pointer_maps_mutex_);
       if (!receive_pointer_maps_.count(executor)) {
         TF_ASSIGN_OR_RETURN(
             std::unique_ptr<se::MemoryAllocation> alloc,
@@ -144,7 +144,7 @@ absl::Status AllToAllStartThunk::Initialize(const InitializeParams& params) {
       }
     }
     {
-      absl::MutexLock lock(&events_mutex_);
+      absl::MutexLock lock(events_mutex_);
       if (!events_.count(executor)) {
         TF_ASSIGN_OR_RETURN(std::unique_ptr<se::Event> event,
                             executor->CreateEvent());
@@ -196,7 +196,7 @@ absl::Status AllToAllStartThunk::Initialize(const InitializeParams& params) {
           (rank.value().value() - peer + num_ranks) % num_ranks;
       uint64_t* recv_ptr;
       {
-        absl::MutexLock lock(&pointer_maps_mutex_);
+        absl::MutexLock lock(pointer_maps_mutex_);
         recv_ptr = reinterpret_cast<uint64_t*>(
             receive_pointer_maps_[executor]->opaque());
       }
@@ -218,7 +218,7 @@ absl::StatusOr<bool> AllToAllStartThunk::RunCollective(
   if (is_local() && p2p_memcpy_enabled_) {
     uint64_t* receive_pointer_map = nullptr;
     {
-      absl::MutexLock lock(&pointer_maps_mutex_);
+      absl::MutexLock lock(pointer_maps_mutex_);
       receive_pointer_map = reinterpret_cast<uint64_t*>(
           receive_pointer_maps_[stream.parent()]->opaque());
     }
@@ -226,12 +226,12 @@ absl::StatusOr<bool> AllToAllStartThunk::RunCollective(
         comm_handle.clique_key.rank(params.collective_params->global_device_id);
     se::Event* event = nullptr;
     {
-      absl::MutexLock lock(&events_mutex_);
+      absl::MutexLock lock(events_mutex_);
       event = events_[stream.parent()].get();
     }
     std::vector<se::Event*> events;
     {
-      absl::MutexLock lock(&events_mutex_);
+      absl::MutexLock lock(events_mutex_);
       absl::c_transform(events_, std::back_inserter(events),
                         [](const auto& pair) { return pair.second.get(); });
     }

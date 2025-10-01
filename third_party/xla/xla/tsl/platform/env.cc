@@ -74,7 +74,7 @@ class FileSystemRegistryImpl : public FileSystemRegistry {
 
 absl::Status FileSystemRegistryImpl::Register(
     const std::string& scheme, FileSystemRegistry::Factory factory) {
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
   if (!registry_.emplace(scheme, std::unique_ptr<FileSystem>(factory()))
            .second) {
     return errors::AlreadyExists("File factory for ", scheme,
@@ -85,7 +85,7 @@ absl::Status FileSystemRegistryImpl::Register(
 
 absl::Status FileSystemRegistryImpl::Register(
     const std::string& scheme, std::unique_ptr<FileSystem> filesystem) {
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
   if (!registry_.emplace(scheme, std::move(filesystem)).second) {
     return errors::AlreadyExists("File system for ", scheme,
                                  " already registered");
@@ -94,7 +94,7 @@ absl::Status FileSystemRegistryImpl::Register(
 }
 
 FileSystem* FileSystemRegistryImpl::Lookup(const std::string& scheme) {
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
   const auto found = registry_.find(scheme);
   if (found == registry_.end()) {
     return nullptr;
@@ -104,7 +104,7 @@ FileSystem* FileSystemRegistryImpl::Lookup(const std::string& scheme) {
 
 absl::Status FileSystemRegistryImpl::GetRegisteredFileSystemSchemes(
     std::vector<std::string>* schemes) {
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
   for (const auto& e : registry_) {
     schemes->push_back(e.first);
   }

@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
+#include "mlir/IR/MLIRContext.h"
 #include "xla/backends/gpu/codegen/fusion_emitter.h"
 #include "xla/backends/gpu/codegen/fusions.h"
 #include "xla/backends/gpu/codegen/triton/fusion.h"
@@ -85,7 +86,7 @@ std::optional<EstimateRunTimeData> GpuPerformanceModelCache::Get(
 
 std::optional<absl::Duration> GpuPerformanceModelCache::Get(
     const HloInstruction& producer, const HloInstruction& consumer) {
-  absl::MutexLock lock(&mutex_);
+  absl::MutexLock lock(mutex_);
 
   auto it = fusion_runtime_data_.find(&producer);
   if (it != fusion_runtime_data_.end()) {
@@ -115,7 +116,7 @@ void GpuPerformanceModelCache::Set(const HloInstruction& instruction,
 void GpuPerformanceModelCache::Set(const HloInstruction& producer,
                                    const HloInstruction& consumer,
                                    absl::Duration runtime) {
-  absl::MutexLock lock(&mutex_);
+  absl::MutexLock lock(mutex_);
   fusion_runtime_data_[&producer][&consumer] = runtime;
 }
 
@@ -142,9 +143,9 @@ void GpuPerformanceModelCache::Invalidate(const HloInstruction& instruction) {
 
 /*static*/
 LaunchDimensions GpuPerformanceModelBase::EstimateFusionLaunchDimensions(
-    const HloFusionAnalysis& fusion_analysis) {
+    const HloFusionAnalysis& fusion_analysis, mlir::MLIRContext* ctx) {
   auto emitter =
-      GetFusionEmitter(PreBufferAssignmentFusionInfo{fusion_analysis});
+      GetFusionEmitter(PreBufferAssignmentFusionInfo{fusion_analysis}, ctx);
   if (const auto* kernel_emitter =
           dynamic_cast<const KernelFusionInterface*>(emitter.get())) {
     return kernel_emitter->launch_dimensions();

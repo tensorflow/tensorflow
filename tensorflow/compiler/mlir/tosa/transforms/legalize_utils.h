@@ -67,13 +67,13 @@ std::optional<Value> buildReshapeWithDynamicDims(PatternRewriter& rewriter,
 Value buildRescale(PatternRewriter& rewriter, Operation* op,
                    ShapedType output_type, Value input_val,
                    int32_t scale_multiplier, int32_t scale_shit,
-                   int64_t input_zp, int64_t output_zp, StringRef rounding_mode,
+                   int64_t input_zp, int64_t output_zp, tosa::RoundingMode rounding_mode,
                    bool scale32);
 
 // Create a TOSA rescale op from TFLite scaling, zero points and rounding mode
 Value buildRescale(PatternRewriter& rewriter, Operation* op,
                    ShapedType output_type, Value input_val, double scale,
-                   int64_t input_zp, int64_t output_zp, StringRef rounding_mode,
+                   int64_t input_zp, int64_t output_zp, tosa::RoundingMode rounding_mode,
                    bool scale32);
 
 // Removes the zero point and cast to int32, no need to handle roundings modes
@@ -253,7 +253,7 @@ void CreateReplaceOpAndInfer(PatternRewriter& rewriter, Operation* op,
 // Nan propagation mode is only applied to maximum and mininum.
 template <typename TOSA_OP>
 LogicalResult ConvertBinaryOp(Operation* op, PatternRewriter& rewriter,
-                              StringRef nan_mode = "") {
+                              std::optional<tosa::NanPropagationMode> nan_mode = std::nullopt) {
   TensorType output_type = dyn_cast<TensorType>(op->getResults()[0].getType());
   if (!output_type) return failure();
 
@@ -266,10 +266,12 @@ LogicalResult ConvertBinaryOp(Operation* op, PatternRewriter& rewriter,
 
   if constexpr (std::is_same_v<tosa::ReduceMaxOp, TOSA_OP> ||
                 std::is_same_v<tosa::ReduceMinOp, TOSA_OP>) {
-    if (nan_mode != "PROPAGATE" && nan_mode != "IGNORE") {
+    if (!nan_mode) {
       (void)rewriter.notifyMatchFailure(op, "invalid NaN mode: must be either 'PROPAGATE' or 'IGNORE'");
       return failure();
     }
+    const auto nan_mode_attr = tosa::NanPropagationModeAttr::get(
+        rewriter.getContext(), *nan_mode);
     CreateReplaceOpAndInfer<TOSA_OP>(rewriter, op, output_type, x, y, nan_mode);
   } else
     CreateReplaceOpAndInfer<TOSA_OP>(rewriter, op, output_type, x, y);

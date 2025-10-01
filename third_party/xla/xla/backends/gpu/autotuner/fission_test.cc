@@ -25,16 +25,18 @@ limitations under the License.
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "mlir/IR/MLIRContext.h"
 #include "xla/autotuning.pb.h"
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
+#include "xla/service/compiler.h"
 #include "xla/service/gpu/nvptx_compiler.h"
 #include "xla/service/platform_util.h"
 #include "xla/stream_executor/device_description.pb.h"
+#include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
 
@@ -42,9 +44,9 @@ namespace xla {
 namespace gpu {
 namespace {
 
+using ::absl_testing::IsOkAndHolds;
+using ::absl_testing::StatusIs;
 using ::testing::SizeIs;
-using ::tsl::testing::IsOkAndHolds;
-using ::tsl::testing::StatusIs;
 
 const char kTritonFusionHlo[] = R"(
   HloModule module
@@ -70,14 +72,19 @@ class FissionBackendTest : public HloHardwareIndependentTestBase {
  protected:
   DebugOptions debug_options_;
   NVPTXCompiler compiler_;
+  se::StreamExecutor* stream_executor_;
+  Compiler::TargetConfig target_config_;
   FissionBackend backend_;
+  mlir::MLIRContext mlir_context_;
 
   FissionBackendTest()
-      : backend_(PlatformUtil::GetDefaultPlatform()
-                     .value()
-                     ->ExecutorForDevice(0)
-                     .value(),
-                 &debug_options_, &compiler_) {}
+      : stream_executor_(PlatformUtil::GetDefaultPlatform()
+                             .value()
+                             ->ExecutorForDevice(0)
+                             .value()),
+        target_config_(stream_executor_),
+        backend_(stream_executor_, &debug_options_, &compiler_, &target_config_,
+                 &mlir_context_) {}
 };
 
 TEST_F(FissionBackendTest, CanCreateCublasBackend) {
@@ -132,6 +139,9 @@ TEST_F(FissionBackendTest, GetDefaultConfigFails) {
 TEST_F(FissionBackendTest, ApplyCublasConfigToFusionInstruction) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
                           ParseAndReturnVerifiedModule(kTritonFusionHlo));
+  hlo_module->mutable_config()
+      .mutable_debug_options()
+      .set_xla_gpu_enable_cublaslt(false);
   AutotuneResult::GemmKey config;
   config.set_algorithm(3);
   google::protobuf::Any any;
@@ -139,8 +149,26 @@ TEST_F(FissionBackendTest, ApplyCublasConfigToFusionInstruction) {
   TF_EXPECT_OK(backend_.ApplyConfig(
       *hlo_module->entry_computation()->root_instruction(), any));
   EXPECT_THAT(RunFileCheck(hlo_module->ToString(),
+                           "CHECK: \"__cublas$gemm\"\n"
                            "CHECK: \"selected_algorithm\":\"3\""),
               IsOkAndHolds(true));
+}
+
+TEST_F(FissionBackendTest, ApplyCublasLtConfigToFusionInstruction) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                          ParseAndReturnVerifiedModule(kTritonFusionHlo));
+  hlo_module->mutable_config()
+      .mutable_debug_options()
+      .set_xla_gpu_enable_cublaslt(true);
+  AutotuneResult::GemmKey config;
+  config.set_algorithm(3);
+  google::protobuf::Any any;
+  any.PackFrom(config);
+  TF_EXPECT_OK(backend_.ApplyConfig(
+      *hlo_module->entry_computation()->root_instruction(), any));
+  EXPECT_THAT(
+      RunFileCheck(hlo_module->ToString(), "CHECK: \"__cublas$lt$matmul\""),
+      IsOkAndHolds(true));
 }
 
 TEST_F(FissionBackendTest, ApplyCustomKernelConfigToFusionInstruction) {

@@ -62,7 +62,7 @@ absl::StatusOr<se::OwningDeviceMemory> TestAllocator::Allocate(
     int64_t memory_space) {
   VLOG(2) << "Allocate(" << device_ordinal << ", " << size << ")";
   {
-    absl::MutexLock lock(&count_mutex_);
+    absl::MutexLock lock(count_mutex_);
     allocation_count_++;
     device_allocation_count_[device_ordinal]++;
   }
@@ -74,7 +74,7 @@ absl::Status TestAllocator::Deallocate(int device_ordinal,
                                        se::DeviceMemoryBase mem) {
   VLOG(2) << "Deallocate(" << device_ordinal << ")";
   {
-    absl::MutexLock lock(&count_mutex_);
+    absl::MutexLock lock(count_mutex_);
     deallocation_count_++;
     device_deallocation_count_[device_ordinal]++;
   }
@@ -82,12 +82,12 @@ absl::Status TestAllocator::Deallocate(int device_ordinal,
 }
 
 int64_t TestAllocator::allocation_count() const {
-  absl::MutexLock lock(&count_mutex_);
+  absl::MutexLock lock(count_mutex_);
   return allocation_count_;
 }
 
 int64_t TestAllocator::allocation_count(int device_ordinal) const {
-  absl::MutexLock lock(&count_mutex_);
+  absl::MutexLock lock(count_mutex_);
   auto it = device_allocation_count_.find(device_ordinal);
   if (it == device_allocation_count_.end()) {
     return 0;
@@ -97,12 +97,12 @@ int64_t TestAllocator::allocation_count(int device_ordinal) const {
 }
 
 int64_t TestAllocator::deallocation_count() const {
-  absl::MutexLock lock(&count_mutex_);
+  absl::MutexLock lock(count_mutex_);
   return deallocation_count_;
 }
 
 int64_t TestAllocator::deallocation_count(int device_ordinal) const {
-  absl::MutexLock lock(&count_mutex_);
+  absl::MutexLock lock(count_mutex_);
   auto it = device_deallocation_count_.find(device_ordinal);
   if (it == device_deallocation_count_.end()) {
     return 0;
@@ -114,7 +114,7 @@ int64_t TestAllocator::deallocation_count(int device_ordinal) const {
 /* static */ TestAllocator* LocalClientTestBase::GetOrCreateAllocator(
     se::Platform* platform) {
   static absl::Mutex mu(absl::kConstInit);
-  absl::MutexLock lock(&mu);
+  absl::MutexLock lock(mu);
 
   if (allocator_ == nullptr) {
     allocator_ = new TestAllocator(

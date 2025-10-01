@@ -99,6 +99,7 @@ cc_library(
         "@local_xla//xla/mlir_hlo:transforms_gpu_passes",
         "@local_xla//xla/mlir_hlo:transforms_passes",
         "@stablehlo//:chlo_ops",
+        "@stablehlo//:linalg_passes",
         "@stablehlo//:stablehlo_passes",
     ],
 )

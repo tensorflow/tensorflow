@@ -46,8 +46,7 @@ class ChunkDestination : public tsl::ReferenceCounted<ChunkDestination> {
   virtual void Poison(absl::Status s) = 0;
 
   // For testing.
-  static std::pair<xla::PjRtFuture<std::string>,
-                   tsl::RCReference<ChunkDestination>>
+  static std::pair<xla::Future<std::string>, tsl::RCReference<ChunkDestination>>
   MakeStringDest();
 };
 

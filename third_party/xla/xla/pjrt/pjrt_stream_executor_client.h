@@ -42,6 +42,7 @@ limitations under the License.
 #include "xla/client/executable_build_options.h"
 #include "xla/client/local_client.h"
 #include "xla/executable_run_options.h"
+#include "xla/future.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/layout.h"
@@ -317,26 +318,8 @@ class PjRtStreamExecutorClient : public CommonPjRtClient {
   absl::StatusOr<std::unique_ptr<HloCostAnalysis>> GetHloCostAnalysis()
       const override;
 
-  // Creates a buffer on the device without initializing or copying any data.
-  // An optional `definition_event` may be speficied that can be used to
-  // ensure the buffer isn't referenced until some external mechanism has
-  // initialized the data.
-  absl::StatusOr<std::unique_ptr<PjRtBuffer>> CreateUninitializedBuffer(
-      const Shape& shape, PjRtMemorySpace* memory_space) override;
-  using PjRtClient::CreateUninitializedBuffer;
-  absl::StatusOr<std::unique_ptr<PjRtBuffer>> CreateUninitializedBuffer(
-      const Shape& shape, PjRtMemorySpace* memory_space,
-      BufferSequencingEventRef definition_event);
-
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> CreateErrorBuffer(
       absl::Status error, const Shape& shape, PjRtMemorySpace* memory) override;
-
-  absl::StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostBuffer(
-      const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
-      std::optional<absl::Span<int64_t const>> byte_strides,
-      HostBufferSemantics host_buffer_semantics,
-      absl::AnyInvocable<void() &&> on_done_with_host_buffer,
-      PjRtMemorySpace* memory_space, const Layout* device_layout) override;
 
   using PjRtClient::BufferFromHostLiteral;
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostLiteral(
@@ -371,7 +354,8 @@ class PjRtStreamExecutorClient : public CommonPjRtClient {
     return should_stage_host_to_device_transfers_;
   }
 
-  virtual gpu::GpuExecutableRunOptions* gpu_run_options() {
+  virtual gpu::GpuExecutableRunOptions* gpu_run_options(
+      const ExecuteOptions& options) {
     return gpu_run_options_.get();
   }
 
@@ -442,11 +426,10 @@ class PjRtStreamExecutorClient : public CommonPjRtClient {
             /*sends_were_enqueued=*/false);
   }
 
-  virtual PjRtFuture<> CopyRawSubBufferToHost(PjRtBuffer* buffer,
-                                              PjRtFuture<void*> dst,
-                                              int64_t offset,
-                                              int64_t transfer_size) {
-    return PjRtFuture<>(Unimplemented("Raw copies to host not implemented."));
+  virtual Future<> CopyRawSubBufferToHost(PjRtBuffer* buffer, Future<void*> dst,
+                                          int64_t offset,
+                                          int64_t transfer_size) {
+    return Future<>(Unimplemented("Raw copies to host not implemented."));
   }
 
   virtual tsl::RCReference<PjRtDeviceEvent> CopyRawHostToDevice(
@@ -516,14 +499,6 @@ class PjRtStreamExecutorClient : public CommonPjRtClient {
       std::optional<HloModuleProto> unoptimized_hlo_module_proto,
       std::vector<std::unique_ptr<LocalExecutable>> local_executables,
       CompileOptions compile_options, bool dump);
-
-  absl::StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostBufferInternal(
-      const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
-      std::optional<absl::Span<int64_t const>> byte_strides,
-      HostBufferSemantics host_buffer_semantics,
-      absl::AnyInvocable<void() &&> on_done_with_host_buffer,
-      PjRtDevice* device, const Layout* device_layout,
-      PjRtMemorySpace* memory_space);
 
   const PjRtPlatformId platform_id_;
   const std::string platform_name_;
@@ -640,18 +615,17 @@ class PjRtStreamExecutorBuffer : public CommonPjRtBuffer {
   ReleaseDeviceMemoryOwnership(bool wait_for_operations_to_complete) override;
 
   using PjRtBuffer::ToLiteralSync;
-  PjRtFuture<> ToLiteral(MutableLiteralBase* literal) override;
-  PjRtFuture<> LazyToLiteral(
-      absl::AnyInvocable<PjRtFuture<MutableLiteralBase*>() &&> generator)
-      override;
+  Future<> ToLiteral(MutableLiteralBase* literal) override;
+  Future<> LazyToLiteral(
+      absl::AnyInvocable<Future<MutableLiteralBase*>() &&> generator) override;
 
   absl::StatusOr<size_t> GetOnDeviceSizeInBytes() const override;
 
-  PjRtFuture<> CopyRawToHost(void* dst, int64_t offset,
-                             int64_t transfer_size) override;
+  Future<> CopyRawToHost(void* dst, int64_t offset,
+                         int64_t transfer_size) override;
 
-  PjRtFuture<> CopyRawToHostFuture(PjRtFuture<void*> dst, int64_t offset,
-                                   int64_t transfer_size) override;
+  Future<> CopyRawToHostFuture(Future<void*> dst, int64_t offset,
+                               int64_t transfer_size) override;
 
   // Drops the buffer's reference to its associated device memory, leaving the
   // buffer in an invalid state. The memory will be freed lazily when all async
@@ -677,10 +651,10 @@ class PjRtStreamExecutorBuffer : public CommonPjRtBuffer {
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> CopyToMemorySpace(
       PjRtMemorySpace* dst_memory_space) override;
 
-  void CopyToRemoteDevice(PjRtFuture<std::string> serialized_descriptor,
+  void CopyToRemoteDevice(Future<std::string> serialized_descriptor,
                           RemoteSendCallback on_done) override;
 
-  PjRtFuture<> GetReadyFuture() override;
+  Future<> GetReadyFuture() override;
 
   bool IsOnCpu() const override;
 
@@ -703,7 +677,7 @@ class PjRtStreamExecutorBuffer : public CommonPjRtBuffer {
       bool wait_for_operations_to_complete);
 
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> DonateWithControlDependency(
-      PjRtFuture<> dependency) override;
+      Future<> dependency) override;
 
  private:
   friend class PjRtClient;
@@ -730,7 +704,7 @@ class PjRtStreamExecutorBuffer : public CommonPjRtBuffer {
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> CopyToDeviceMemorySpace(
       PjRtDevice* dst_device, PjRtMemorySpace* dst_memory_space = nullptr);
 
-  PjRtFuture<> ToLiteralHelper(PjRtFuture<MutableLiteralBase*> literal);
+  Future<> ToLiteralHelper(Future<MutableLiteralBase*> literal);
 
   PjRtStreamExecutorClient* const client_;
   const Shape on_device_shape_;
@@ -836,21 +810,18 @@ class PjRtStreamExecutorLoadedExecutable : public PjRtLoadedExecutable {
   absl::StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>> Execute(
       absl::Span<const std::vector<PjRtBuffer*>> argument_handles,
       const ExecuteOptions& options,
-      std::optional<std::vector<PjRtFuture<>>>& returned_futures)
-      const override;
+      std::optional<std::vector<Future<>>>& returned_futures) const override;
 
   using PjRtLoadedExecutable::ExecuteSharded;
   absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> ExecuteSharded(
       absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
-      const ExecuteOptions& options,
-      std::optional<PjRtFuture<>>& returned_future,
+      const ExecuteOptions& options, std::optional<Future<>>& returned_future,
       bool fill_future) const override;
 
   using PjRtLoadedExecutable::ExecutePortable;
   absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> ExecutePortable(
       absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
-      const ExecuteOptions& options,
-      std::optional<PjRtFuture<>>& returned_future,
+      const ExecuteOptions& options, std::optional<Future<>>& returned_future,
       bool fill_future) const override;
 
   void Delete() override { executables_.clear(); }

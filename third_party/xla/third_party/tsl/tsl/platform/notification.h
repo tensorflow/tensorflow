@@ -16,19 +16,4 @@ limitations under the License.
 #ifndef TENSORFLOW_TSL_PLATFORM_NOTIFICATION_H_
 #define TENSORFLOW_TSL_PLATFORM_NOTIFICATION_H_
 
-#include <chrono>              // NOLINT
-#include <condition_variable>  // NOLINT
-#include <cstdint>
-#include <mutex>  // NOLINT
-
-#include "absl/base/macros.h"
-#include "absl/synchronization/notification.h"
-#include "absl/time/time.h"
-
-namespace tsl {
-
-using Notification ABSL_DEPRECATE_AND_INLINE() = absl::Notification;
-
-}  // namespace tsl
-
 #endif  // TENSORFLOW_TSL_PLATFORM_NOTIFICATION_H_

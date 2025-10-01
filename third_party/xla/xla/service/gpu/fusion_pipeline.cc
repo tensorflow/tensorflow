@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "mlir/IR/MLIRContext.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/pass/hlo_pass_fix.h"
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
@@ -42,7 +43,8 @@ HloPassPipeline FusionPipeline(
     const DebugOptions& debug_options,
     HloCostAnalysis::ShapeSizeFunction shape_size_bytes_function,
     tsl::thread::ThreadPool* thread_pool,
-    const se::DeviceDescription& gpu_device_info) {
+    const se::DeviceDescription& gpu_device_info,
+    mlir::MLIRContext* mlir_context) {
   HloPassFix<HloPassPipeline> fusion("fusion");
   // We try to split variadic ops with many parameters into several such ops
   // to avoid exceeding the parameter space.
@@ -61,7 +63,8 @@ HloPassPipeline FusionPipeline(
       /*min_latencies_seconds=*/{},
       /*count_multiple_input_accesses=*/true};
   fusion.AddPass<PriorityFusion>(thread_pool, gpu_device_info,
-                                 std::move(cost_analysis_options));
+                                 std::move(cost_analysis_options),
+                                 mlir_context);
 
   // Running CSE affects how many users an op has. This plays a role in what
   // we detect as a tiled transpose fusion.
@@ -69,7 +72,8 @@ HloPassPipeline FusionPipeline(
       /*is_layout_sensitive=*/true, /*ignore_control_dependencies=*/false,
       /*should_eliminate_computation=*/&HloComputation::IsFusionComputation);
   fusion.AddPass<HloDCE>();
-  fusion.AddPass<MultiOutputFusion>(gpu_device_info, shape_size_bytes_function);
+  fusion.AddPass<MultiOutputFusion>(gpu_device_info, shape_size_bytes_function,
+                                    mlir_context);
   fusion.AddPass<HloCSE>(
       /*is_layout_sensitive=*/true, /*ignore_control_dependencies=*/false,
       /*should_eliminate_computation=*/&HloComputation::IsFusionComputation);

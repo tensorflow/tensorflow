@@ -98,12 +98,12 @@ TEST_F(PropagateOriginalValueTest, CallInlinerMultipleCallSites) {
                             CallInliner(/*single_call_site=*/false));
 }
 
-TEST_F(PropagateOriginalValueTest, CallInlinerNoCallInstructionName) {
+TEST_F(PropagateOriginalValueTest,
+       CallInlinerMissingOriginalValueInCallInstruction) {
   const absl::string_view hlo_string = R"(
 // CHECK-LABEL:test
-// CHECK: %[[LHS:.*]] =
-// CHECK:  %[[RHS:.*]] = f32[] constant(2), origin={{[{]}}{"/rhs"}
-// CHECK: %[[ADD:.*]] = f32[] add(%[[LHS]], %[[RHS]]), origin={{[{]}}{"/add"}
+// CHECK-NOT:origin
+// CHECK-NOT:call(
 
   HloModule test
 
@@ -116,6 +116,31 @@ TEST_F(PropagateOriginalValueTest, CallInlinerNoCallInstructionName) {
   ENTRY main () -> f32[] {
     lhs = f32[] constant(42)
     ROOT call = f32[] call(f32[] lhs), to_apply=incr
+  })";
+
+  RunAndFilecheckHloRewrite(hlo_string,
+                            CallInliner(/*single_call_site=*/false));
+}
+
+TEST_F(PropagateOriginalValueTest, CallInlinerSyntheticCallInstruction) {
+  const absl::string_view hlo_string = R"(
+// CHECK-LABEL:test
+// CHECK: %[[LHS:.*]] =
+// CHECK:  %[[RHS:.*]] = f32[] constant(2), origin={{[{]}}{"rhs"}
+// CHECK: %[[ADD:.*]] = f32[] add(%[[LHS]], %[[RHS]]), origin={{[{]}}{"add"}
+// CHECK-NOT:call(
+
+  HloModule test
+
+  incr (lhs: f32[]) -> f32[] {
+    lhs = f32[] parameter(0)
+    rhs = f32[] constant(2), origin={{"rhs"}}
+    ROOT add = f32[] add(f32[] lhs, f32[] rhs), origin={{"add"}}
+  }
+
+  ENTRY main () -> f32[] {
+    lhs = f32[] constant(42)
+    ROOT call = f32[] call(f32[] lhs), to_apply=incr, origin={[synthetic_call]}
   })";
 
   RunAndFilecheckHloRewrite(hlo_string,
@@ -150,8 +175,24 @@ ENTRY %ReshapeAndBroadcastMerged (param0: f32[5]) -> f32[1,2,3,5,1] {
   RunAndFilecheckHloRewrite(hlo_string, AlgebraicSimplifier(options));
 }
 
-TEST_F(OriginalValueRecoveryTableTest, FailedToGetPlaceholderOriginalValue) {
+TEST_F(OriginalValueRecoveryTableTest,
+       NullOriginalValueOnTupleGetTupleElementIsNotContagious) {
   constexpr absl::string_view hlo_string = R"(
+// CHECK:      HloModule test, entry_computation_layout={((f32[5]{0}, f32[5]{0}))->f32[1,2,3,5,1]{4,3,2,1,0}}, origin_recovery_table={
+// CHECK-NEXT:   {"reshape"} : {"reshape__ovp0"},
+// CHECK-NEXT:   "
+// CHECK-NEXT:     ENTRY %recovery_computation (p: f32[5]) -> f32[1,5,1] {
+// CHECK-NEXT:       %p = f32[5]{0} parameter(0)
+// CHECK-NEXT:       ROOT %reshape = f32[1,5,1]{2,1,0} reshape(%p)
+// CHECK-NEXT:     }
+// CHECK-NEXT:   "
+// CHECK-NEXT: }
+// CHECK:      ENTRY %main (param: (f32[5], f32[5])) -> f32[1,2,3,5,1] {
+// CHECK-NEXT:   %param = (f32[5]{0}, f32[5]{0}) parameter(0)
+// CHECK-NEXT:   %get-tuple-element = f32[5]{0} get-tuple-element(%param), index=1, origin={{[{]}}{"reshape__ovp0"}}
+// CHECK-NEXT:   ROOT %broadcast = f32[1,2,3,5,1]{4,3,2,1,0} broadcast(%get-tuple-element), dimensions={3}
+// CHECK-NEXT: }
+  
 HloModule test
 
 ENTRY %main (param0: (f32[5]{0}, f32[5]{0})) -> f32[1,2,3,5,1] {
@@ -164,12 +205,7 @@ ENTRY %main (param0: (f32[5]{0}, f32[5]{0})) -> f32[1,2,3,5,1] {
   )";
 
   AlgebraicSimplifierOptions options;
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          AlgebraicSimplifier(options).Run(module.get()));
-  EXPECT_TRUE(changed);
-  EXPECT_TRUE(module->original_value_recovery_table().empty());
+  RunAndFilecheckHloRewrite(hlo_string, AlgebraicSimplifier(options));
 }
 
 }  // namespace

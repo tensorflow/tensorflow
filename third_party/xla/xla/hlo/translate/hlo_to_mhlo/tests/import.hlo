@@ -180,6 +180,14 @@ add {
   ROOT %and.3 = pred[4] and(pred[4] %Arg_0.1, pred[4] %Arg_1.2)
 }
 
+// CHECK-LABEL:  func private @test_acos(%arg0: tensor<1x16x16x3xf32>) -> tensor<1x16x16x3xf32>
+%test_acos (arg0.1: f32[1,16,16,3]) -> f32[1,16,16,3] {
+  %arg0.1 = f32[1,16,16,3]{3,2,1,0} parameter(0), metadata={op_name="HLO_Args"}
+
+  // CHECK-NEXT:  mhlo.acos %arg0 : tensor<1x16x16x3xf32>
+  ROOT %acos.3 = f32[1,16,16,3]{3,2,1,0} acos(f32[1,16,16,3]{3,2,1,0} %arg0.1)
+}
+
 // CHECK-LABEL:  func private @test_atan2
 // CHECK-SAME:    ([[VAL_0:%.*]]: tensor<4xf32>, [[VAL_1:%.*]]: tensor<4xf32>) -> tensor<4xf32>
 %test_atan2 (Arg_0.1: f32[4], Arg_1.2: f32[4]) -> f32[4] {
@@ -188,6 +196,14 @@ add {
 
   // CHECK:  mhlo.atan2 [[VAL_0]], [[VAL_1]]
   ROOT %atan2 = f32[4] atan2(f32[4] %Arg_0.1, f32[4] %Arg_1.2)
+}
+
+// CHECK-LABEL:  func private @test_atanh(%arg0: tensor<1x16x16x3xf32>) -> tensor<1x16x16x3xf32>
+%test_atanh (arg0.1: f32[1,16,16,3]) -> f32[1,16,16,3] {
+  %arg0.1 = f32[1,16,16,3]{3,2,1,0} parameter(0), metadata={op_name="HLO_Args"}
+
+  // CHECK-NEXT:  mhlo.atanh %arg0 : tensor<1x16x16x3xf32>
+  ROOT %atanh.3 = f32[1,16,16,3]{3,2,1,0} atanh(f32[1,16,16,3]{3,2,1,0} %arg0.1)
 }
 
 // CHECK-LABEL:  func private @test_broadcast_in_dim
@@ -293,6 +309,16 @@ add {
   // FLATTEN-CHECK-NEXT:  return %[[CALL]]#0, %[[CALL]]#1
 
   ROOT %call.2 = (s64[], s64[]) call(%arg2, %arg1), to_apply=%call_tuple_args_result
+}
+
+// CHECK-LABEL:  func private @test_get_tuple_element_fe_attrs
+// FLATTEN-CHECK-LABEL:  func private @test_get_tuple_element_fe_attrs
+%test_get_tuple_element_fe_attrs () -> f32[] {
+  %custom-call.2 = (f32[], f32[]) custom-call(), custom_call_target="CustomCallTuple", metadata={source_file="<stdin>" source_line=3 source_end_line=3 source_column=10 source_end_column=10}, backend_config={"_xla_data": "true"}
+  // CHECK: get_tuple_element{{.*}}mhlo.frontend_attributes = {_xla_data = "true"}
+  // FLATTEN-CHECK-LABEL: get_tuple_element{{.*}}mhlo.frontend_attributes = {_xla_data = "true"}
+  %get-tuple-element.1 = f32[] get-tuple-element(%custom-call.2), index=0, frontend_attributes={_xla_data="true"}, metadata={source_file="<stdin>" source_line=4 source_end_line=4 source_column=10 source_end_column=10}
+  ROOT %custom-call.3 = f32[] custom-call(%get-tuple-element.1), custom_call_target="CustomCallConsumeTuple", metadata={source_file="<stdin>" source_line=5 source_end_line=5 source_column=10 source_end_column=10}, backend_config={"_xla_data": "true"}
 }
 
 // CHECK-LABEL:  func private @test_cholesky
@@ -575,6 +601,14 @@ add {
 
   // CHECK-NEXT:  mhlo.cosine %arg0 : tensor<1x16x16x3xf32>
   ROOT %cosine.3 = f32[1,16,16,3]{3,2,1,0} cosine(f32[1,16,16,3]{3,2,1,0} %arg0.1)
+}
+
+// CHECK-LABEL:  func private @test_cosh(%arg0: tensor<1x16x16x3xf32>) -> tensor<1x16x16x3xf32>
+%test_cosh (arg0.1: f32[1,16,16,3]) -> f32[1,16,16,3] {
+  %arg0.1 = f32[1,16,16,3]{3,2,1,0} parameter(0), metadata={op_name="HLO_Args"}
+
+  // CHECK-NEXT:  mhlo.cosh %arg0 : tensor<1x16x16x3xf32>
+  ROOT %cosh.3 = f32[1,16,16,3]{3,2,1,0} cosh(f32[1,16,16,3]{3,2,1,0} %arg0.1)
 }
 
 // CHECK-LABEL:  func private @test_tan(%arg0: tensor<1x16x16x3xf32>) -> tensor<1x16x16x3xf32>
@@ -2094,11 +2128,3 @@ add {
 
 // FLATTEN-CHECK-LABEL:  func private @test_topk
 // FLATTEN-CHECK-SAME:  ([[ARG:%.*]]: tensor<4x4xf32>) -> (tensor<4x2xf32>, tensor<4x2xi32>)
-
-// Test HLO original value
-// CHECK-LABEL:  func private @test_original_value
-%test_original_value (Arg_0: f32[192]) -> f32[1,17,17,192] {
-  %Arg_0 = f32[192]{0} parameter(0)
-  // CHECK: "mhlo.broadcast_in_dim"(%arg0) <{broadcast_dimensions = dense<3> : tensor<1xi64>}> {mhlo.original_value = "{{[{][{]}}\22broadcast.2342\22{{[}][}]}}"} : (tensor<192xf32>) -> tensor<1x17x17x192xf32>
-  ROOT %broadcast.2342 = f32[1,17,17,192]{3,2,1,0} broadcast(f32[192]{0} %Arg_0), dimensions={3}, origin={{"broadcast.2342"}}
-}

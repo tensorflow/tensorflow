@@ -22,6 +22,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/log/log.h"
 #include "absl/strings/string_view.h"
+#include "mlir/IR/MLIRContext.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
@@ -62,6 +63,7 @@ class SolGpuCostModelStatsCollectionTest
       TestGpuDeviceInfo::RTXA6000DeviceInfo(se::CudaComputeCapability(9, 0));
   ShapeSizeFn shape_size_fn_;
   int pointer_size_ = 8;
+  mlir::MLIRContext mlir_context_;
 };
 
 TEST_F(SolGpuCostModelStatsCollectionTest,
@@ -85,10 +87,10 @@ TEST_F(SolGpuCostModelStatsCollectionTest,
 
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      bool changed, SolGpuCostModelStatsCollection(device_info_, shape_size_fn_,
-                                                   pointer_size_)
-                        .Run(module.get()));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, SolGpuCostModelStatsCollection(
+                                            device_info_, shape_size_fn_,
+                                            pointer_size_, &mlir_context_)
+                                            .Run(module.get()));
 
   VLOG(1) << module->ToString();
 

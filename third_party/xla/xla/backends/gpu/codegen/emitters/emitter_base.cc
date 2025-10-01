@@ -16,7 +16,6 @@ limitations under the License.
 
 #include <cstdint>
 #include <functional>
-#include <iterator>
 #include <memory>
 #include <optional>
 #include <string>
@@ -24,7 +23,6 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
-#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -67,7 +65,6 @@ limitations under the License.
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/DialectRegistry.h"
-#include "mlir/IR/ImplicitLocOpBuilder.h"
 #include "mlir/IR/Location.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
@@ -80,6 +77,7 @@ limitations under the License.
 #include "mlir/Target/LLVMIR/Dialect/ROCDL/ROCDLToLLVMIRTranslation.h"
 #include "mlir/Target/LLVMIR/Export.h"
 #include "mlir/Transforms/Passes.h"
+#include "stablehlo/transforms/Passes.h"
 #include "xla/backends/gpu/codegen/emitters/ir/xla_gpu_ops.h"
 #include "xla/backends/gpu/codegen/emitters/transforms/passes.h"
 #include "xla/backends/gpu/codegen/fusion_emitter.h"
@@ -100,7 +98,6 @@ limitations under the License.
 #include "xla/mlir/tools/mlir_replay/public/compiler_trace.pb.h"
 #include "xla/mlir/tools/mlir_replay/public/compiler_trace_instrumentation.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
-#include "xla/mlir_hlo/mhlo/transforms/passes.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/dump.h"
 #include "xla/service/gpu/gpu_constants.h"
@@ -111,10 +108,10 @@ limitations under the License.
 #include "xla/service/gpu/llvm_gpu_backend/ptx_version_util.h"
 #include "xla/service/gpu/target_util.h"
 #include "xla/service/llvm_ir/llvm_util.h"
-#include "xla/shape.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/gpu/tma_metadata.h"
 #include "xla/stream_executor/semantic_version.h"
 #include "xla/tsl/framework/mlir/status_scoped_diagnostic_handler.h"
 #include "xla/tsl/platform/errors.h"
@@ -319,8 +316,11 @@ absl::StatusOr<FusionEmissionResult> EmitterBase::Emit(
 
   FusionEmissionResult result;
   result.thunks.emplace_back(std::make_unique<KernelThunk>(
-      Thunk::ThunkInfo::WithProfileAnnotation(&fusion), entry->kernel_name,
-      args, launch_dims, entry->cluster_dim, entry->shmem_bytes));
+      Thunk::ThunkInfo::WithProfileAnnotation(
+          &fusion, ir_emitter_context.GetNextThunkId()),
+      entry->kernel_name, args, launch_dims, entry->cluster_dim,
+      entry->shmem_bytes,
+      /*tma_metadata=*/se::gpu::TmaMetadata()));
   return result;
 }
 
@@ -457,7 +457,7 @@ void AddLoopTransformationPasses(mlir::OpPassManager& pm,
   pm.addPass(mlir::createCSEPass());
   pm.addNestedPass<FuncOp>(CreatePeelLoopsPass());
   pm.addNestedPass<FuncOp>(emitters::CreateLowerXlaLoopsToScfPass());
-  pm.addPass(mlir::mhlo::createConvertToSignlessPass());
+  pm.addPass(mlir::stablehlo::createStablehloConvertToSignlessPass());
   pm.addPass(emitters::CreatePropagateSliceIndicesPass());
   pm.addPass(emitters::CreateFlattenTensorsPass());
   // We need LICM before unswitching loops, because our loop unswitcher only

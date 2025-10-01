@@ -63,7 +63,6 @@ limitations under the License.
 #include "xla/service/gpu/model/gpu_indexing_performance_model.h"
 #include "xla/service/gpu/model/gpu_performance_model.h"
 #include "xla/service/gpu/model/gpu_performance_model_base.h"
-#include "xla/service/gpu/model/tiled_hlo_computation.h"
 #include "xla/service/gpu/model/triton_emitter_constraints.h"
 #include "xla/service/hlo_graph_dumper.h"
 #include "xla/service/instruction_fusion.h"
@@ -165,7 +164,7 @@ class PriorityFusionQueue {
         thread_pool_(thread_pool),
         fusion_analysis_cache_(fusion_analysis_cache),
         gpu_performance_model_(*device_info, fusion_analysis_cache,
-                               gpu_performance_model_cache_),
+                               gpu_performance_model_cache_, mlir_context),
         fusion_deduplication_cache_(fusion_deduplication_cache),
         fusion_info_cache_(*device_info_),
         reachability_(HloDfsReachability::Build(computation)),
@@ -279,7 +278,7 @@ class PriorityFusionQueue {
 
   std::optional<HloInstruction*> GetPreferredConsumer(
       HloInstruction* producer) {
-    absl::MutexLock lock(&preferred_consumer_mutex_);
+    absl::MutexLock lock(preferred_consumer_mutex_);
     auto it = preferred_consumer_.find(producer);
     if (it == preferred_consumer_.end()) {
       return std::nullopt;
@@ -355,7 +354,7 @@ class PriorityFusionQueue {
     }
 
     {
-      absl::MutexLock lock(&block_level_parameters_cache_mutex_);
+      absl::MutexLock lock(block_level_parameters_cache_mutex_);
       block_level_parameters_cache_.erase(instruction);
       for (const HloInstruction* operand : instruction->operands()) {
         auto it = block_level_parameters_cache_.find(operand);
@@ -366,7 +365,6 @@ class PriorityFusionQueue {
     }
 
     gpu_performance_model_cache_.Invalidate(*instruction);
-    fusion_analysis_cache_.Invalidate(*instruction);
     fusion_info_cache_.Invalidate(instruction);
   }
 
@@ -418,15 +416,16 @@ class PriorityFusionQueue {
   void OnFusingInstruction(HloInstruction* fusion,
                            HloInstruction* original_producer,
                            HloInstruction* original_consumer,
-                           int64_t original_consumer_operand_index) {
+                           int64_t original_consumer_operand_index,
+                           int64_t original_consumer_unique_id) {
     bool creates_multi_output_fusion = false;
     {
-      absl::MutexLock lock(&preferred_consumer_mutex_);
+      absl::MutexLock lock(preferred_consumer_mutex_);
       creates_multi_output_fusion =
           preferred_consumer_.contains(original_producer);
     }
     {
-      absl::MutexLock lock(&fusion_deduplication_cache_mutex_);
+      absl::MutexLock lock(fusion_deduplication_cache_mutex_);
       fusion_deduplication_cache_.UpdateFusedInstructionId(
           fusion, original_producer, original_consumer,
           original_consumer_operand_index, creates_multi_output_fusion);
@@ -453,7 +452,7 @@ class PriorityFusionQueue {
     if (fusion == original_consumer) {
       // We need to check again whether we can use `original_consumer` as a
       // producer for a ProducerConsumer multi-output fusion.
-      absl::MutexLock lock(&preferred_consumer_mutex_);
+      absl::MutexLock lock(preferred_consumer_mutex_);
       preferred_consumer_.erase(original_consumer);
     } else {
       // The original consumer was replaced with the fusion, but it's pointer
@@ -463,6 +462,7 @@ class PriorityFusionQueue {
       reachability_->OnInstructionReplaced(/*previous=*/original_consumer,
                                            /*now=*/fusion);
       RemoveInstruction(original_consumer);
+      fusion_analysis_cache_.Invalidate(original_consumer_unique_id);
     }
     if (creates_multi_output_fusion) {
       // After a multi-output fusion was created, we need to rebuild the
@@ -490,7 +490,7 @@ class PriorityFusionQueue {
 
       // We may need to reset `preferred_consumer_`, as we don't know yet
       // whether that fusion would still be valid.
-      absl::MutexLock lock(&preferred_consumer_mutex_);
+      absl::MutexLock lock(preferred_consumer_mutex_);
       auto it = preferred_consumer_.find(operand);
       if (it != preferred_consumer_.end() && it->second == original_consumer) {
         preferred_consumer_.erase(it);
@@ -506,7 +506,6 @@ class PriorityFusionQueue {
   // Removes data for the instruction.
   void RemoveInstruction(HloInstruction* instruction) {
     to_update_priority_.erase(instruction);
-    fusion_analysis_cache_.Invalidate(*instruction);
 
     auto reverse_it = reverse_map_.find(instruction);
     if (reverse_it == reverse_map_.end()) {
@@ -514,7 +513,7 @@ class PriorityFusionQueue {
     }
     producer_priority_queue_.erase(reverse_it->second);
     reverse_map_.erase(reverse_it);
-    absl::MutexLock lock(&preferred_consumer_mutex_);
+    absl::MutexLock lock(preferred_consumer_mutex_);
     preferred_consumer_.erase(instruction);
   }
 
@@ -522,7 +521,7 @@ class PriorityFusionQueue {
   // determine if a producer-consumer fusion is a Triton fusion.
   absl::flat_hash_map<const HloInstruction*, BlockLevelParameters>
   GetBlockLevelParametersMap(const HloInstruction* producer) {
-    absl::MutexLock lock(&block_level_parameters_cache_mutex_);
+    absl::MutexLock lock(block_level_parameters_cache_mutex_);
     auto it = block_level_parameters_cache_.find(producer);
     if (it == block_level_parameters_cache_.end()) {
       return {};
@@ -543,7 +542,7 @@ class PriorityFusionQueue {
     // First cleanup any potentially remaining preferred consumer. We will
     // recompute it here.
     {
-      absl::MutexLock lock(&preferred_consumer_mutex_);
+      absl::MutexLock lock(preferred_consumer_mutex_);
       preferred_consumer_.erase(producer);
     }
     // Bitcasts should always be fused first, since they are no-ops.
@@ -569,13 +568,13 @@ class PriorityFusionQueue {
             gpu_performance_model_.EstimateRunTimes(
                 producer, &cost_analysis_,
                 /*fused_consumers=*/possible_consumers);
-        absl::MutexLock lock(&preferred_consumer_mutex_);
+        absl::MutexLock lock(preferred_consumer_mutex_);
         preferred_consumer_[producer] = possible_consumers[0];
         return run_times.time_unfused - run_times.time_fused;
       }
       // Don't fuse if we can't fuse in all users.
       if (fusion_process_dump_) {
-        absl::MutexLock lock(&fusion_process_dump_mutex_);
+        absl::MutexLock lock(fusion_process_dump_mutex_);
         auto* step = fusion_process_dump_->add_fusion_steps()
                          ->mutable_producer_ineligible();
         step->set_producer_name(producer->name());
@@ -611,7 +610,7 @@ class PriorityFusionQueue {
     }
 
     if (fusion_process_dump_) {
-      absl::MutexLock lock(&fusion_process_dump_mutex_);
+      absl::MutexLock lock(fusion_process_dump_mutex_);
       auto* step =
           fusion_process_dump_->add_fusion_steps()->mutable_update_priority();
       step->set_producer_name(producer->name());
@@ -650,13 +649,13 @@ class PriorityFusionQueue {
       const HloInstruction* producer, const HloInstruction* consumer,
       bool use_multi_output_fusion = false) {
     FusionDeduplicationCache::FusionId fusion_id = [&]() {
-      absl::MutexLock lock(&fusion_deduplication_cache_mutex_);
+      absl::MutexLock lock(fusion_deduplication_cache_mutex_);
       return fusion_deduplication_cache_.GetFusionId(producer, consumer,
                                                      use_multi_output_fusion);
     }();
 
     {
-      absl::MutexLock lock(&tiled_run_time_data_cache_mutex_);
+      absl::MutexLock lock(tiled_run_time_data_cache_mutex_);
 
       auto it = tiled_run_time_data_cache_.find(fusion_id);
       if (it != tiled_run_time_data_cache_.end()) {
@@ -690,7 +689,7 @@ class PriorityFusionQueue {
                        fusion_decision->Explain()));
     }
 
-    absl::MutexLock lock(&tiled_run_time_data_cache_mutex_);
+    absl::MutexLock lock(tiled_run_time_data_cache_mutex_);
     tiled_run_time_data_cache_.emplace(fusion_id, tiled_run_time_data_or_error);
     return tiled_run_time_data_or_error;
   }
@@ -751,7 +750,7 @@ class PriorityFusionQueue {
     gpu_performance_model_cache_.Set(
         *producer, *consumer, tiled_run_time_data.runtime_data.exec_time);
     {
-      absl::MutexLock lock(&block_level_parameters_cache_mutex_);
+      absl::MutexLock lock(block_level_parameters_cache_mutex_);
       block_level_parameters_cache_[producer][consumer] =
           tiled_run_time_data.block_level_parameters;
     }
@@ -867,7 +866,7 @@ class PriorityFusionQueue {
   FusionDecision CanFuseCached(HloInstruction* producer,
                                HloInstruction* consumer) {
     {
-      absl::MutexLock lock(&can_fuse_cache_mutex_);
+      absl::MutexLock lock(can_fuse_cache_mutex_);
       auto& producer_cache = can_fuse_cache_[producer];
 
       auto it = producer_cache.find(consumer);
@@ -882,7 +881,7 @@ class PriorityFusionQueue {
     // concurrently for the same producer, so it's guaranteed that we don't
     // override any value.
     {
-      absl::MutexLock lock(&can_fuse_cache_mutex_);
+      absl::MutexLock lock(can_fuse_cache_mutex_);
       can_fuse_cache_[producer].insert_or_assign(consumer, fusion_decision);
     }
 
@@ -992,7 +991,7 @@ class PriorityFusionQueue {
   // The priority queue of producers, implemented as an ordered map, where a
   // key is a pair: the first element is the priority and the second element is
   // the unique ID of the instruction to break ties.
-  using PriorityQueue = std::map<std::pair<Priority, int>, HloInstruction*>;
+  using PriorityQueue = std::map<std::pair<Priority, int64_t>, HloInstruction*>;
   PriorityQueue producer_priority_queue_;
 
   // A reverse map that helps find an instruction in the priority queue.
@@ -1161,7 +1160,7 @@ absl::StatusOr<bool> PriorityFusion::Run(
 
     auto fusion_queue = std::make_unique<PriorityFusionQueue>(
         computation, cost_analysis_options_, &device_info_,
-        fusion_process_dump_.get(), thread_pool_, &mlir_context_,
+        fusion_process_dump_.get(), thread_pool_, mlir_context_,
         fusion_analysis_cache_, fusion_deduplication_cache,
         triton_heroless_fusion_enabled);
 
@@ -1176,7 +1175,8 @@ absl::StatusOr<bool> PriorityFusion::Run(
       std::vector<HloInstruction*> consumers =
           fusion_queue->current_consumers();
       bool use_multi_output_fusion = preferred_consumer.has_value();
-
+      int64_t pre_fusion_producer_id = producer->unique_id();
+      absl::flat_hash_set<int64_t> pre_fusion_consumer_ids;
       for (auto* consumer : consumers) {
         // Don't fuse into single bitcasts. We ignore them in the check
         // CanFuseWithAllNonBitcastUsers(), so we need to check it here.
@@ -1193,6 +1193,8 @@ absl::StatusOr<bool> PriorityFusion::Run(
         int64_t consumer_operand_index = consumer->operand_index(producer);
 
         fusion_queue->PreFusion(producer, consumer);
+        int64_t consumer_pre_fusion_id = consumer->unique_id();
+        pre_fusion_consumer_ids.insert(consumer_pre_fusion_id);
         auto fusion_instruction =
             Fuse(producer, consumer, use_multi_output_fusion);
         auto backend_config_it = block_level_parameters_map.find(consumer);
@@ -1203,7 +1205,8 @@ absl::StatusOr<bool> PriorityFusion::Run(
               HloInstruction::FusionKind::kCustom);
         }
         fusion_queue->OnFusingInstruction(fusion_instruction, producer,
-                                          consumer, consumer_operand_index);
+                                          consumer, consumer_operand_index,
+                                          consumer_pre_fusion_id);
 
         changed = true;
       }
@@ -1212,6 +1215,7 @@ absl::StatusOr<bool> PriorityFusion::Run(
       if (use_multi_output_fusion || producer->user_count() == 0) {
         fusion_queue->InvalidateCaches(producer);
         fusion_queue->RemoveInstruction(producer);
+        fusion_analysis_cache_.Invalidate(pre_fusion_producer_id);
         // When we use ProducerConsumer multi-output fusion, `producer` will
         // have been removed already.
         if (!use_multi_output_fusion) {
@@ -1222,6 +1226,9 @@ absl::StatusOr<bool> PriorityFusion::Run(
 
       for (auto* consumer : consumers) {
         fusion_queue->InvalidateCaches(consumer);
+      }
+      for (auto consumer_id : pre_fusion_consumer_ids) {
+        fusion_analysis_cache_.Invalidate(consumer_id);
       }
       TF_RETURN_IF_ERROR(fusion_queue->UpdatePriorities());
     }

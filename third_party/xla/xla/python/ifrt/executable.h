@@ -35,10 +35,11 @@ limitations under the License.
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/execute_options.pb.h"
-#include "xla/python/ifrt/future.h"
+#include "xla/python/ifrt/serdes.h"
 #include "xla/python/ifrt/serdes_default_version_accessor.h"
 #include "xla/python/ifrt/serdes_version.h"
 #include "xla/python/ifrt/user_context.h"
+#include "xla/tsl/concurrency/future.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -47,6 +48,15 @@ namespace ifrt {
 class Client;
 struct CompileOptions;
 struct DeserializeExecutableOptions;
+
+struct ExecutableVersion : llvm::RTTIExtends<ExecutableVersion, Serializable> {
+  // Returns true iff this version is compatible with `other`. The logic for
+  // checking the version compatibility is an implementation detail of
+  // `ExecutableVersion` subclasses.
+  virtual bool IsCompatibleWith(const ExecutableVersion& other) const = 0;
+
+  static char ID;  // NOLINT
+};
 
 // Wraps a computation that has been partially compiled and can be loaded.
 class Executable : public llvm::RTTIExtends<Executable, llvm::RTTIRoot> {
@@ -158,6 +168,11 @@ class LoadedExecutable
   // Returns a fingerprint of this executable.
   virtual absl::StatusOr<std::optional<std::string>> Fingerprint() const = 0;
 
+  // Returns the executable version that can be used for verifying the
+  // compatibility with a runtime.
+  virtual absl::StatusOr<std::unique_ptr<ExecutableVersion>>
+  executable_version() const = 0;
+
   // Serializes this executable into a string. The compatibility of the
   // serialized executable is implementation-specific.
   virtual absl::StatusOr<std::string> Serialize() const = 0;
@@ -175,7 +190,7 @@ class LoadedExecutable
   // compilation work in the background. Implementations must still ensure that
   // all other methods can be used even without explicitly waiting for the ready
   // future (e.g., via blocking).
-  virtual Future<> GetReadyFuture() const = 0;
+  virtual tsl::Future<> GetReadyFuture() const = 0;
 
   // The following APIs are taken from `xla::PjRtExecutable` for fast
   // prototyping.
@@ -232,7 +247,7 @@ class LoadedExecutable
   struct ExecuteResult {
     // Resulting status of the execution. Filled only if
     // `ExecuteOptions::fill_status` is true.
-    Future<> status;
+    tsl::Future<> status;
     // Output arrays.
     std::vector<ArrayRef> outputs;
   };

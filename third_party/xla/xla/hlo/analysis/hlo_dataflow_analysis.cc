@@ -1818,15 +1818,33 @@ bool HloDataflowAnalysis::CanShareOperandBufferWithUser(
   if (shapes_equal) {
     // Must-alias relationship returns true for in-place operations (DUS and DUS
     // fusions), regardless of the backend.
-    for (const auto& operand_and_output_index :
-         alias_info->GetInPlaceInputOutputPairs(user)) {
-      if (operand_and_output_index.second != user_index) {
-        continue;
+    // Cache uses of value and alias_info->GetInPlaceInputOutputPairs to speed
+    // up repeated calls.
+    auto [operand_it, operand_inserted] =
+        cache_share_buffer_with_operand_.try_emplace(
+            std::make_pair(operand, operand_index),
+            absl::flat_hash_set<HloUse>());
+    if (operand_inserted) {
+      auto uses = GetUniqueValueAt(operand, operand_index).GetUses();
+      operand_it->second.insert(uses.begin(), uses.end());
+    }
+    auto [user_it, user_inserted] = cache_share_buffer_with_user_.try_emplace(
+        user, absl::flat_hash_map<ShapeIndex, std::vector<HloOperandIndex>>());
+    if (user_inserted) {
+      auto& pairs = user_it->second;
+      for (const auto& operand_and_output_index :
+           alias_info->GetInPlaceInputOutputPairs(user)) {
+        pairs[operand_and_output_index.second].push_back(
+            operand_and_output_index.first);
       }
-      for (const HloUse& use :
-           GetUniqueValueAt(operand, operand_index).GetUses()) {
-        if (use == HloUse{user, operand_and_output_index.first.operand_number,
-                          operand_and_output_index.first.operand_index}) {
+    }
+    auto& uses = operand_it->second;
+    auto& user_pairs = user_it->second;
+    auto pairs_it = user_pairs.find(user_index);
+    if (pairs_it != user_pairs.end()) {
+      for (const auto& operand_index : pairs_it->second) {
+        if (uses.contains(HloUse{user, operand_index.operand_number,
+                                 operand_index.operand_index})) {
           return true;
         }
       }

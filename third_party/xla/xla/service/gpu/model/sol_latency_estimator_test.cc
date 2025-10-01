@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/time/time.h"
+#include "mlir/IR/MLIRContext.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
@@ -32,7 +33,6 @@ limitations under the License.
 #include "xla/literal_util.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/model/collective_interpolator.h"
-#include "xla/service/gpu/model/gpu_performance_model_base.h"
 #include "xla/service/gpu/model/sol_gpu_cost_model.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/hlo_module_config.h"
@@ -42,6 +42,7 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tests/hlo_test_base.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla::gpu {
@@ -95,7 +96,7 @@ class SolLatencyEstimatorTest : public HloHardwareIndependentTestBase,
   absl::StatusOr<absl::Duration> ComputeCollectiveTime(
       const HloInstruction& instr) {
     return SolLatencyEstimator::ComputeCollectiveTime(
-        instr, gpu_device_info_, shape_size_fn_, sol_flags_,
+        instr, gpu_device_info_, shape_size_fn_, sol_flags_, &mlir_context_,
         collective_interpolator_.get());
   }
 
@@ -104,7 +105,7 @@ class SolLatencyEstimatorTest : public HloHardwareIndependentTestBase,
     std::unique_ptr<SolLatencyEstimator> estimator =
         *SolLatencyEstimator::Create(
             scheduler_config_, std::make_unique<DummyLatencyEstimator>(),
-            gpu_device_info_, shape_size_fn_, computation);
+            gpu_device_info_, shape_size_fn_, computation, &mlir_context_);
     LatencyEstimator::TimeCost cost_val = estimator->NodeCost(&instr);
     return absl::Microseconds(static_cast<int64_t>(cost_val));
   }
@@ -114,6 +115,7 @@ class SolLatencyEstimatorTest : public HloHardwareIndependentTestBase,
   const SolGPUCostModel::Config sol_flags_;
   SchedulerConfig scheduler_config_;
   std::unique_ptr<CollectiveInterpolator> collective_interpolator_;
+  mlir::MLIRContext mlir_context_;
 };
 
 TEST_P(SolLatencyEstimatorTest, TestLatencyEstimation) {
@@ -424,6 +426,19 @@ class IsSolLatencyEstimatorEnabledTest : public HloTestBase {
         shape, dummy_operand, /*source_target_pairs=*/{}, std::nullopt));
   }
 
+  absl::Status AddHostOffloaded(HloModule* module) {
+    HloComputation* entry = module->entry_computation();
+    Shape shape = ShapeUtil::MakeShape(F32, {2});
+    auto dummy_operand = entry->AddInstruction(
+        HloInstruction::CreateConstant(LiteralUtil::CreateR1<float>({2})));
+    HloInstruction* call =
+        entry->AddInstruction(HloInstruction::CreateCall(shape, dummy_operand));
+    TF_ASSIGN_OR_RETURN(GpuBackendConfig new_backend_config,
+                        call->backend_config<GpuBackendConfig>());
+    new_backend_config.set_device_type(DEVICE_TYPE_HOST);
+    return call->set_backend_config(new_backend_config);
+  }
+
   se::DeviceDescription gpu_device_info_;
 };
 
@@ -444,6 +459,9 @@ TEST_F(IsSolLatencyEstimatorEnabledTest, DisabledIfFlagIsOffOnHopper) {
 
   gpu_device_info_.set_cuda_compute_capability(
       stream_executor::CudaComputeCapability::Hopper());
+
+  config.mutable_debug_options()
+      .set_xla_gpu_enable_analytical_sol_latency_estimator(false);
 
   auto module = CreateTestModule(config);
 
@@ -494,6 +512,21 @@ TEST_F(IsSolLatencyEstimatorEnabledTest, DisabledIfNotHopper) {
 
   auto module = CreateTestModule(config);
   AddAllReduce(module.get());  // Supported collective
+
+  EXPECT_FALSE(
+      SolLatencyEstimator::IsSupportedForModule(*module, gpu_device_info_));
+}
+
+TEST_F(IsSolLatencyEstimatorEnabledTest, DisabledForHopperWithHostOffloaded) {
+  HloModuleConfig config;
+  config.mutable_debug_options()
+      .set_xla_gpu_enable_analytical_sol_latency_estimator(true);
+
+  gpu_device_info_.set_cuda_compute_capability(
+      stream_executor::CudaComputeCapability::Hopper());
+
+  auto module = CreateTestModule(config);
+  TF_ASSERT_OK(AddHostOffloaded(module.get()));
 
   EXPECT_FALSE(
       SolLatencyEstimator::IsSupportedForModule(*module, gpu_device_info_));

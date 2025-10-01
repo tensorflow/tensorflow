@@ -13,7 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -24,7 +23,6 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/matmul_utils.h"
-#include "xla/service/gpu/model/tiled_hlo_computation.h"
 #include "xla/service/gpu/triton_fusion_analysis.h"
 #include "xla/stream_executor/device_description.h"
 

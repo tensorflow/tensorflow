@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "mlir/IR/MLIRContext.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
@@ -37,10 +38,12 @@ class CollectiveCombinerAnnotator : public HloModulePass {
  public:
   CollectiveCombinerAnnotator(se::DeviceDescription device_info,
                               const GpuAliasInfo* alias_info,
-                              int64_t pointer_size)
+                              int64_t pointer_size,
+                              mlir::MLIRContext* mlir_context)
       : device_info_(std::move(device_info)),
         alias_info_(alias_info),
-        pointer_size_(pointer_size) {}
+        pointer_size_(pointer_size),
+        mlir_context_(mlir_context) {}
 
   absl::StatusOr<bool> Run(
       HloModule* module,
@@ -54,6 +57,7 @@ class CollectiveCombinerAnnotator : public HloModulePass {
   const se::DeviceDescription device_info_;
   const GpuAliasInfo* alias_info_;
   const int64_t pointer_size_;
+  mlir::MLIRContext* mlir_context_;
 };
 
 // Returns true if `instr` is a combinable sync collective. False otherwise.

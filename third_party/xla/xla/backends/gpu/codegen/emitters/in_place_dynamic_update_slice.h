@@ -20,6 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/backends/gpu/codegen/emitters/emitter_base.h"
@@ -61,9 +62,8 @@ class InPlaceDynamicUpdateSliceFusion : public EmitterBase {
     return std::nullopt;
   }
 
-  std::optional<IndexingMap> ComputeThreadIdToInputIndexing(
-      int64_t root_index, int64_t hero_operand_index,
-      mlir::MLIRContext* indexing_context) const override;
+  std::optional<std::vector<IndexingMap>> ComputeThreadIdToInputIndexing(
+      int64_t root_index, mlir::MLIRContext* indexing_context) const override;
 
  protected:
   absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateMLIRModule(

@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <type_traits>
 
 #include "absl/container/flat_hash_set.h"
@@ -35,7 +36,7 @@ limitations under the License.
 namespace xla {
 
 // Do an HLO pass to a fix point.
-template <typename Pass, int kIterationLimit = 25>
+template <typename Pass>
 class HloPassFix : public Pass {
  public:
   static_assert(std::is_base_of<HloPassInterface, Pass>::value,
@@ -43,6 +44,13 @@ class HloPassFix : public Pass {
   using RunState = HloPassInterface::RunState;
   template <typename... Args>
   explicit HloPassFix(Args&&... args) : Pass(args...) {}
+  template <typename... Args>
+  static std::unique_ptr<HloPassFix> Create(int iteration_limit,
+                                            Args&&... args) {
+    auto pass = std::make_unique<HloPassFix>(args...);
+    pass->iteration_limit_ = iteration_limit;
+    return pass;
+  }
 
   absl::Status RunOnChangedComputations(
       HloModule* module, RunState* outer_run_state,
@@ -81,7 +89,7 @@ class HloPassFix : public Pass {
       changed |= changed_this_iteration;
       VLOG(3) << "changed_this_iteration: " << changed_this_iteration;
       ++iteration_count;
-      if (iteration_count == kIterationLimit) {
+      if (iteration_count == iteration_limit_) {
         const DebugOptions& debug_options =
             module_group->module(0).config().debug_options();
         if (debug_options
@@ -131,12 +139,12 @@ class HloPassFix : public Pass {
               << " changed_this_iteration: "
               << !run_state->changed_this_iteration.empty();
       run_state->IncrementIteration();
-      if (run_state->iteration == kIterationLimit) {
+      if (run_state->iteration == iteration_limit_) {
         const DebugOptions& debug_options = module->config().debug_options();
         if (debug_options
                 .xla_unsupported_crash_on_hlo_pass_fix_max_iterations()) {
           LOG(FATAL) << "Unexpectedly high number of iterations "
-                     << kIterationLimit << " in HLO pass '" << Pass::name()
+                     << iteration_limit_ << " in HLO pass '" << Pass::name()
                      << "' for module '" << module->name() << "'";
         }
         VLOG(1) << "Unexpectedly high number of iterations in HLO passes '"
@@ -176,6 +184,9 @@ class HloPassFix : public Pass {
     }
     return absl::OkStatus();
   }
+
+  static constexpr int kDefaultIterationLimit = 25;
+  int iteration_limit_ = kDefaultIterationLimit;
 };
 
 }  // namespace xla

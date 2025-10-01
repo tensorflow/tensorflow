@@ -46,7 +46,7 @@ static size_t EraseExpiredLiterals(
 }
 
 size_t LiteralPool::GarbageCollect() {
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
   size_t num_erased = 0;
 
   for (auto& [shape, literals] : literals_) {
@@ -58,7 +58,7 @@ size_t LiteralPool::GarbageCollect() {
 }
 
 size_t LiteralPool::GarbageCollect(Shape shape) {
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
   size_t num_erased = 0;
 
   if (auto it = literals_.find(shape); it != literals_.end()) {
@@ -86,7 +86,7 @@ static std::shared_ptr<Literal> FindCanonicalLiteral(
 
 std::shared_ptr<Literal> LiteralPool::GetCanonicalLiteral(
     const Literal& literal) {
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
 
   auto& literals = literals_[literal.shape()];
   if (auto ptr = FindCanonicalLiteral(literals, literal)) {
@@ -100,7 +100,7 @@ std::shared_ptr<Literal> LiteralPool::GetCanonicalLiteral(
 
 std::shared_ptr<Literal> LiteralPool::GetCanonicalLiteral(
     std::shared_ptr<Literal> literal) {
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
 
   auto& literals = literals_[literal->shape()];
   if (auto ptr = FindCanonicalLiteral(literals, *literal)) {

@@ -47,13 +47,13 @@ class ClientFactory {
  public:
   void Register(
       std::function<absl::StatusOr<std::shared_ptr<Client>>()> factory) {
-    absl::MutexLock lock(&mu_);
+    absl::MutexLock lock(mu_);
     CHECK(!factory_) << "Client factory has been already registered.";
     factory_ = std::move(factory);
   }
 
   std::function<absl::StatusOr<std::shared_ptr<Client>>()> Get() const {
-    absl::MutexLock lock(&mu_);
+    absl::MutexLock lock(mu_);
     return factory_;
   }
 
@@ -129,24 +129,24 @@ namespace {
 
 class TestUserContext : public llvm::RTTIExtends<TestUserContext, UserContext> {
  public:
-  explicit TestUserContext(uint64_t id) : id_(id) {}
+  explicit TestUserContext(UserContextId id) : id_(id) {}
 
-  uint64_t Fingerprint() const override { return id_; }
+  UserContextId Id() const override { return id_; }
 
   std::string DebugString() const override {
-    return absl::StrCat("TestUserContext(", id_, ")");
+    return absl::StrCat("TestUserContext(", id_.value(), ")");
   }
 
   // No new `ID` is not defined because tests below do not exercise RTTI.
 
  private:
-  uint64_t id_;
+  UserContextId id_;
 };
 
 }  // namespace
 
 UserContextRef MakeUserContext(uint64_t id) {
-  return tsl::MakeRef<TestUserContext>(id);
+  return tsl::MakeRef<TestUserContext>(UserContextId(id));
 }
 
 }  // namespace test_util

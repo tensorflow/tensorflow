@@ -296,6 +296,10 @@ namespace opcode_matchers {
         ::xla::HloOpcode::k##opcode, {operands...}));                      \
   }
 HLO_MATCHER(Abs);
+HLO_MATCHER(Acos);
+HLO_MATCHER(Acosh);
+HLO_MATCHER(Asin);
+HLO_MATCHER(Atanh);
 HLO_MATCHER(Add);
 HLO_MATCHER(AddDependency);
 HLO_MATCHER(AfterAll);
@@ -330,6 +334,7 @@ HLO_MATCHER(Convolution);
 HLO_MATCHER(Copy);
 HLO_MATCHER(CopyDone);
 HLO_MATCHER(CopyStart);
+HLO_MATCHER(Cosh);
 HLO_MATCHER(Divide);
 HLO_MATCHER(Domain);
 HLO_MATCHER(DynamicSlice);
@@ -381,6 +386,7 @@ HLO_MATCHER(ShiftLeft);
 HLO_MATCHER(ShiftRightArithmetic);
 HLO_MATCHER(ShiftRightLogical);
 HLO_MATCHER(Sign);
+HLO_MATCHER(Sinh);
 HLO_MATCHER(Slice);
 HLO_MATCHER(Sort);
 HLO_MATCHER(Subtract);

@@ -110,6 +110,7 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/functional:function_ref",
+        "@com_google_absl//absl/functional:overload",
         "@com_google_absl//absl/hash",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
@@ -160,6 +161,7 @@ xla_cc_test(
     srcs = ["hlo_instruction_test.cc"],
     deps = [
         ":hlo",
+        "//xla:printer",
         "//xla:shape_util",
         "//xla:side_effect_util",
         "//xla:xla_data_proto_cc",
@@ -232,10 +234,12 @@ xla_cc_test(
         "//xla/tsl/platform:status",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
+        "@com_google_absl//absl/container:btree",
         "@com_google_absl//absl/hash",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:protobuf",
     ],
 )
 
@@ -400,6 +404,22 @@ xla_cc_test(
         "//xla/tsl/lib/core:status_test_util",
         "@com_google_absl//absl/status:statusor",
         "@com_google_googletest//:gtest",
+    ],
+)
+
+xla_cc_test(
+    name = "dfs_hlo_visitor_test",
+    srcs = ["dfs_hlo_visitor_test.cc"],
+    deps = [
+        ":hlo",
+        "//xla:literal_util",
+        "//xla:status_macros",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/service:hlo_module_config",
+        "//xla/tsl/lib/core:status_test_util",
+        "//xla/tsl/platform:test",
+        "@com_google_absl//absl/status",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 

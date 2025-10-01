@@ -366,31 +366,30 @@ ScatterFusion::ScatterFusion(const HloFusionAnalysis& analysis,
       warp_size_(WarpSize(analysis_.device_info())),
       vector_size_(vector_size) {}
 
-std::optional<IndexingMap> ScatterFusion::ComputeThreadIdToInputIndexing(
-    int64_t root_index, int64_t hero_operand_index, MLIRContext* ctx) const {
+std::optional<std::vector<IndexingMap>>
+ScatterFusion::ComputeThreadIdToInputIndexing(int64_t root_index,
+                                              MLIRContext* ctx) const {
   CHECK(ScatterSimplifier::IsSimplifiedScatter(description_.scatter))
       << "Non-simplified HLO Scatter is not supported.";
 
   int64_t scatter_operand_count = description_.scatter->scatter_operand_count();
-  // Scatter operands a packed in the following way:
+  // Scatter operands are packed in the following way:
   // Operand IDs [0, scatter_operand_count - 1] for `scatter operands`.
   // Operand ID  scatter_operand_count for `scatter indices`.
   // Operand IDs [scatter_operand_count + 1, 2 * scatter_operand_count] for
   // `scatter updates`.
 
+  std::vector<IndexingMap> results(description_.scatter->operand_count(),
+                                   IndexingMap::GetUndefined());
+  // Compute the indexing for the scatter indices operand.
+  ComputeIndexing(ctx, /*updates_map=*/nullptr,
+                  &results[scatter_operand_count]);
   // For scatter operands we do not know the thread ID indexing.
-  if (hero_operand_index < scatter_operand_count) {
-    return std::nullopt;
+  for (int64_t operand_index = scatter_operand_count + 1;
+       operand_index < results.size(); ++operand_index) {
+    ComputeIndexing(ctx, &results[operand_index], /*indices_map=*/nullptr);
   }
-
-  bool is_indices_operand = hero_operand_index == scatter_operand_count;
-  auto map = IndexingMap::GetUndefined();
-  if (is_indices_operand) {
-    ComputeIndexing(ctx, /*updates_map=*/nullptr, &map);
-    return map;
-  }
-  ComputeIndexing(ctx, &map, /*indices_map=*/nullptr);
-  return map;
+  return results;
 }
 
 std::vector<emitters::EpilogueSpecification> ScatterFusion::GetEpilogues(

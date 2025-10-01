@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_HLO_IR_HLO_MODULE_H_
 #define XLA_HLO_IR_HLO_MODULE_H_
 
+#include <algorithm>
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
@@ -25,12 +26,16 @@ limitations under the License.
 #include <random>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
+#include "absl/base/thread_annotations.h"
+#include "absl/container/btree_map.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
 #include "absl/strings/cord.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
@@ -61,12 +66,13 @@ limitations under the License.
 
 namespace xla {
 
-inline constexpr absl::string_view kOriginalValuePlaceholderPrefix =
-    "_ovplaceholder_";
+inline constexpr absl::string_view kOriginalValuePlaceholderDelimiter = "__ovp";
 
 using LayoutCanonicalizationCallback =
     std::function<absl::StatusOr<std::pair<std::vector<Shape>, Shape>>(
         const HloModule& module)>;
+
+using NumericOrString = std::variant<std::string, int64_t, double>;
 
 // Describes a compilation unit at the HLO level.
 //
@@ -330,11 +336,16 @@ class HloModule {
   void CleanupComputations();
 
   // Runs HloModule::CleanupComputations() and HloComputation::Cleanup() on all
-  // computations.
+  // computations. Cleanup can cause instruction's unique ids to change so it
+  // will also update the schedule's ids.
   void Cleanup() {
     CleanupComputations();
     for (HloComputation* comp : computations()) {
       comp->Cleanup();
+      if (schedule_.has_value() && schedule_->is_computation_scheduled(comp)) {
+        // Update the schedule's instruction unique IDs.
+        schedule_->GetOrCreateSequence(comp).update_id_sequence();
+      }
     }
   }
 
@@ -432,14 +443,25 @@ class HloModule {
   bool is_dynamic() const { return is_dynamic_; }
   void set_is_dynamic(bool is_dynamic) { is_dynamic_ = is_dynamic; }
 
+ private:
+  void PrintComputations(Printer* printer,
+                         const HloPrintOptions& options) const;
+  void PrintConfig(Printer* printer, const HloModuleConfig& config) const;
+
+ public:
   // Prints a string representation of the module.
   //
   // (We express the default options using an overload rather than a default
   // param because gdb ignores default params, but does resolve overloads.)
   void Print(Printer* printer) const {
-    return Print(printer, HloPrintOptions::Default());
+    return Print(printer, HloPrintOptions::Default(), {});
   }
-  void Print(Printer* printer, const HloPrintOptions& options) const;
+  void Print(Printer* printer, const HloPrintOptions& options) const {
+    return Print(printer, options, {});
+  }
+  void Print(
+      Printer* printer, const HloPrintOptions& options,
+      const absl::btree_map<std::string, NumericOrString>& custom_fields) const;
 
   // Return a string representation of the module.
   //
@@ -456,10 +478,37 @@ class HloModule {
   absl::Cord ToCord(const HloPrintOptions& options) const;
 
   // Returns a stable fingerprint of the module using the given print options.
-  uint64_t ToFingerprint(const HloPrintOptions& options) const;
+  //
+  // (We express the default options using an overload rather than a default
+  // param because gdb ignores default params, but does resolve overloads.)
+  uint64_t ToFingerprint(const HloPrintOptions& options) const {
+    return ToFingerprint(options, {});
+  }
+  uint64_t ToFingerprint(
+      const HloPrintOptions& options,
+      const absl::btree_map<std::string, NumericOrString>& custom_fields) const;
+
+  // Remaps the instruction ids in the proto to be consecutive. This is useful
+  // for loading a proto that had its ids manually created, created incorrectly
+  // or in an older version of the compiler. Instructions will only have the
+  // local id in the id field.
+  static absl::StatusOr<HloModuleProto> RemapInstructionIds(
+      const HloModuleProto& proto);
+
+  // Updates the instruction ids in the computation's schedule to match the new
+  // instruction ids as defined by the old_instr_id_to_new_id map. The map only
+  // needs to be consistent and unique within the computation level.
+  static absl::Status UpdateIdsInSchedule(
+      HloModuleProto& proto, int64_t computation_proto_id,
+      absl::flat_hash_map<int64_t, int64_t>& old_instr_id_to_new_id);
 
   // Convert an HloModule to or from a proto.
   HloModuleProto ToProto() const;
+
+  // Converts an HloModuleProto to an HloModule. If the module had its ids
+  // manually changed or was created in an older version of the compiler, it
+  // might be necessary to call RemapInstructionIds to make the ids consistent
+  // and compact.
   static absl::StatusOr<std::unique_ptr<HloModule>> CreateFromProto(
       const HloModuleProto& proto, const HloModuleConfig& module_config,
       bool prohibit_empty_literal = true,
@@ -510,12 +559,10 @@ class HloModule {
         << "Can't get computation name uniquer after HloModule was finalized";
     return *computation_name_uniquer_;
   }
-
-  // Assign a new unique dense id for an instruction
-  int64_t NewUniqueInstructionId() {
-    int64_t result = next_unique_id_;
-    next_unique_id_++;
-    return result;
+  // Returns the next unique computation id that will be handed out by this
+  // module.
+  int64_t next_unique_computation_id() const {
+    return ReadNextUniqueComputationId();
   }
 
   // input_output_alias_config indicates the list of aliased buffers that are
@@ -566,10 +613,6 @@ class HloModule {
 
   HloComputation* AddComputationAndUnifyNamesAndIds(
       std::unique_ptr<HloComputation> computation, bool is_entry) {
-    computation->ClearUniqueIdInternal();
-    for (auto* instruction : computation->instructions()) {
-      instruction->ClearUniqueIdInternal();
-    }
     return AddComputationInternal(std::move(computation), is_entry,
                                   /*uniquify_identifiers=*/true,
                                   /*preserve_entry_layouts=*/true);
@@ -783,10 +826,40 @@ class HloModule {
   // unique per module. Will be reset to nullopt when Finalize() is called.
   std::optional<NameUniquer> computation_name_uniquer_{/*separator=*/"."};
   std::optional<NameUniquer> instruction_name_uniquer_{/*separator=*/"."};
-  int64_t next_unique_id_ = 0;
 
   // Used to keep track of the next unique module id that should be assigned.
   static std::atomic<int> next_unique_module_id_;
+
+  // Used to keep track of the next unique computation id that should be
+  // assigned to computations in this module.
+  mutable absl::Mutex next_unique_computation_id_mutex_;
+  int32_t next_unique_computation_id_
+      ABSL_GUARDED_BY(next_unique_computation_id_mutex_) = 0;
+
+  void SetNextUniqueComputationId(int32_t next_unique_computation_id)
+      ABSL_LOCKS_EXCLUDED(next_unique_computation_id_mutex_) {
+    absl::MutexLock mx_lock(&next_unique_computation_id_mutex_);
+    next_unique_computation_id_ = next_unique_computation_id;
+  }
+
+  void ResyncNextUniqueComputationId(int32_t last_assigned_unique_id)
+      ABSL_LOCKS_EXCLUDED(next_unique_computation_id_mutex_) {
+    absl::MutexLock mx_lock(&next_unique_computation_id_mutex_);
+    next_unique_computation_id_ =
+        std::max(next_unique_computation_id_, last_assigned_unique_id + 1);
+  }
+
+  int32_t ReadAndIncrementNextUniqueComputationId()
+      ABSL_LOCKS_EXCLUDED(next_unique_computation_id_mutex_) {
+    absl::MutexLock mx_lock(&next_unique_computation_id_mutex_);
+    return next_unique_computation_id_++;
+  }
+
+  int32_t ReadNextUniqueComputationId() const
+      ABSL_LOCKS_EXCLUDED(next_unique_computation_id_mutex_) {
+    absl::MutexLock mx_lock(&next_unique_computation_id_mutex_);
+    return next_unique_computation_id_;
+  }
   // A unique id to label modules with.
   const int unique_id_;
 
@@ -869,11 +942,12 @@ class HloModule {
       topological_sort_;
 
  public:
-  class OriginalValueRecoveryTable
-      : public absl::flat_hash_map<
-            OriginalArray,
-            std::pair<OriginalArray, std::unique_ptr<HloModule>>> {
+  class OriginalValueRecoveryTable {
    public:
+    using Table = absl::flat_hash_map<
+        OriginalArray, std::pair<OriginalArray, std::unique_ptr<HloModule>>>;
+    using iterator = Table::iterator;
+    using const_iterator = Table::const_iterator;
     std::string ToString(HloPrintOptions options = HloPrintOptions()) const;
 
     OriginalValueRecoveryTableProto ToProto() const;
@@ -882,26 +956,92 @@ class HloModule {
         const xla::OriginalValueRecoveryTableProto&
             original_value_recovery_table);
 
-    // Adds an entry to the original value recovery table. Each entry contains a
-    // recovery computation that can be used to recover the original array in
-    // the old original value from the original array in the new original value.
+    // Populates the original value recovery table for a transformation that
+    // replaces `old_inst` with `new_inst`.
+    //
+    // This method facilitates tracking of "original values" across HLO passes.
+    // When an instruction is replaced, this method helps establish the link
+    // between the original values of the old instruction and the new one.
+    //
+    // It iterates through each `OriginalArray` associated with the
+    // `old_inst`. For each, it invokes the `build_recovery_computation`
+    // callback to determine how to recover the original value. The callback can
+    // either provide a recovery computation (as an `HloModule`), indicate that
+    // the original value can be directly propagated, or that it cannot be
+    // recovered. If the callback is not provided, the original value is
+    // passed through unchanged. This is the same as if the callback always
+    // returns `nullptr` (see below).
+    //
+    // Precondition: `old_inst` and `new_inst` must have shapes with
+    // identical tuple structures.
+    //
+    // The `build_recovery_computation` callback has the following signature:
+    // `std::optional<std::unique_ptr<HloModule>>(
+    //     const ShapeIndex& index,
+    //     const OriginalArray& old_original_array,
+    //     const xla::Shape& old_array_shape,
+    //     const xla::Shape& new_array_shape)`
+    //
+    // It is called for each `OriginalArray` in `old_inst` and should
+    // return one of the following:
+    //
+    //  - A valid `std::unique_ptr<HloModule>`: This HLO module represents the
+    //    recovery computation. Its entry computation must take one parameter
+    //    (the value corresponding to the `OriginalArray` in `new_inst`)
+    //    and return the recovered value (which should produce the value of the
+    //    `OriginalArray` in `old_inst`). An entry will be added to the
+    //    recovery table.
+    //
+    //  - `nullptr` (as a `std::unique_ptr<HloModule>`): This indicates that the
+    //    original value should be passed through unchanged.
+    //    - If `new_inst` does not have an `OriginalArray` at this
+    //      `ShapeIndex`, the `OriginalArray` from `old_inst` is directly
+    //      propagated to it. No entry is added to the recovery table.
+    //    - If `new_inst` already has an `OriginalArray`, an entry is
+    //      added to the table mapping the old `OriginalArray` to the new one
+    //      with a `nullptr` recovery module, signifying they are equivalent.
+    //
+    //  - `std::nullopt`: This indicates that the original value cannot be
+    //    recovered and should be dropped.
+    //
+    // This method will create `OriginalValue` and placeholder `OriginalArray`s
+    // for `new_inst` if they don't already exist and a recovery is
+    // established.
+    void AddRecoveryComputation(
+        const HloInstruction* old_inst, HloInstruction* new_inst,
+        std::function<std::optional<std::unique_ptr<HloModule>>(
+            const ShapeIndex& index, const OriginalArray& old_original_array,
+            const xla::Shape& old_array_shape,
+            const xla::Shape& new_array_shape)>&& build_recovery_computation =
+            nullptr);
 
-    // Adds an entry to the original value recovery table. Tries to
-    // create a placeholder original value for the replacing instruction if it
-    // doesn't have one.
-    void AddRecoveryModule(const HloInstruction* replaced_inst,
-                           HloInstruction* replacing_inst,
-                           std::unique_ptr<HloModule> recovery_module);
+    // Similar to `AddRecoveryComputation`, but the callback is provided an
+    // HLO module builder so that caller can directly build the recovery
+    // computation with less boilerplate.
+    void BuildAndAddRecoveryComputation(
+        const HloInstruction* old_inst, HloInstruction* new_inst,
+        std::function<std::optional<HloInstruction*>(
+            xla::HloComputation::Builder& builder, const ShapeIndex& index,
+            const OriginalArray& old_original_array,
+            const xla::Shape& old_array_shape,
+            const xla::Shape& new_array_shape)>&& build_recovery_computation);
 
-    // Creates a recovery module using the computation built from
-    // build_recovery_computation as the entry computation, and adds an entry to
-    // the original value recovery table using the recovery module.
-    void BuildAndAddRecoveryModule(
-        const HloInstruction* replaced_inst, HloInstruction* replacing_inst,
-        const std::function<HloInstruction*(
-            xla::HloComputation::Builder& builder,
-            const xla::Shape& input_shape, const xla::Shape& output_shape)>&
-            build_entry_computation);
+    bool empty() const { return table_.empty(); }
+
+    void emplace(const OriginalArray& old_original_array,
+                 std::pair<OriginalArray, std::unique_ptr<HloModule>>&&
+                     recovery_computation) {
+      table_.emplace(old_original_array, std::move(recovery_computation));
+    }
+
+    iterator begin() { return table_.begin(); }
+    iterator end() { return table_.end(); }
+    const_iterator begin() const { return table_.begin(); }
+    const_iterator end() const { return table_.end(); }
+
+   private:
+    friend class HloModule;
+    Table table_;
   };
 
   const OriginalValueRecoveryTable& original_value_recovery_table() const {
@@ -912,11 +1052,9 @@ class HloModule {
   }
 
   void set_original_value_recovery_table(
-      OriginalValueRecoveryTable& original_value_recovery_table) {
-    for (auto& p : original_value_recovery_table) {
-      original_value_recovery_table_[p.first] =
-          std::make_pair(p.second.first, std::move(p.second.second));
-    }
+      OriginalValueRecoveryTable&& original_value_recovery_table) {
+    original_value_recovery_table_.table_ =
+        std::move(original_value_recovery_table.table_);
   }
 
  private:

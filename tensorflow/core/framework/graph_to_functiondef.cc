@@ -113,7 +113,7 @@ string NodeNameMapping::UniquifyHelper(const string& name) {
 
   // Add a suffix to name to make it unique.
   while (true) {
-    const string candidate = strings::StrCat(name, "_", it.first->second);
+    const string candidate = absl::StrCat(name, "_", it.first->second);
     it.first->second++;
     if (used_names_.emplace(candidate, 0).second) return candidate;
   }
@@ -245,7 +245,7 @@ absl::Status FillFunctionBody(
             ParseTensorName(node->requested_inputs()[i]).ToString();
       } else {
         original_input_name =
-            strings::StrCat(edge->src()->name(), ":", edge->src_output());
+            absl::StrCat(edge->src()->name(), ":", edge->src_output());
       }
 
       const auto iter = tensor_renaming.find(original_input_name);
@@ -272,7 +272,7 @@ absl::Status FillFunctionBody(
             " is not in the body. Encountered while creating function '",
             fn_name, "'");
       }
-      node_def->add_input(strings::StrCat("^", normalized));
+      node_def->add_input(absl::StrCat("^", normalized));
     }
 
     // A function is stateful if any of its nodes are stateful.
@@ -418,7 +418,7 @@ absl::Status GraphToFunctionDefHelper(
     if (resource_arg_unique_id >= 0) {
       (*fdef->mutable_resource_arg_unique_id())[idx] = resource_arg_unique_id;
     }
-    tensor_renaming[strings::StrCat(node->name(), ":", idx)] = input_name;
+    tensor_renaming[absl::StrCat(node->name(), ":", idx)] = input_name;
   }
 
   // Populate tensor_renaming and node_names.
@@ -443,7 +443,7 @@ absl::Status GraphToFunctionDefHelper(
       int index_start = output.second.first;
       int index_end = output.second.second;
       for (int i = index_start; i < index_end; ++i) {
-        const string& original_name = strings::StrCat(node->name(), ":", i);
+        const string& original_name = absl::StrCat(node->name(), ":", i);
         const string& new_name =
             strings::StrCat(node_name, ":", output_name, ":", i - index_start);
         // Record the mapping if this tensor is not already mapped.
@@ -468,11 +468,10 @@ absl::Status GraphToFunctionDefHelper(
     if (outputs[r].node->IsRetval()) {
       Edge const* edge;
       TF_RETURN_IF_ERROR(outputs[r].node->input_edge(0, &edge));
-      return_value =
-          strings::StrCat(edge->src()->name(), ":", edge->src_output());
+      return_value = absl::StrCat(edge->src()->name(), ":", edge->src_output());
     } else {
       return_value =
-          strings::StrCat(outputs[r].node->name(), ":", outputs[r].index);
+          absl::StrCat(outputs[r].node->name(), ":", outputs[r].index);
     }
     const auto iter = tensor_renaming.find(return_value);
     if (iter == tensor_renaming.end()) {
@@ -497,7 +496,7 @@ absl::Status GraphToFunctionDefHelper(
     // keeps more entropy.
     std::replace(encoded.begin(), encoded.end(), '-', 'a');
     std::replace(encoded.begin(), encoded.end(), '_', 'A');
-    fdef->mutable_signature()->set_name(strings::StrCat(fn_name, "_", encoded));
+    fdef->mutable_signature()->set_name(absl::StrCat(fn_name, "_", encoded));
   } else {
     fdef->mutable_signature()->set_name(fn_name);
   }

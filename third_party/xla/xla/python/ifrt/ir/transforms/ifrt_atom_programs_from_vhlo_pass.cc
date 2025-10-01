@@ -54,7 +54,6 @@ class IfrtAtomProgramsFromVhloPass
   }
 
   void getDependentDialects(::mlir::DialectRegistry& registry) const override {
-    mlir::registerAllDialects(registry);
     mlir::stablehlo::registerAllDialects(registry);
   }
 

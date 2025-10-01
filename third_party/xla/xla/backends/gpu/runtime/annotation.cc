@@ -30,7 +30,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
-#include "absl/strings/str_format.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
@@ -243,11 +243,12 @@ class SourceLocationVisitor : public ConstDfsHloVisitorWithDefault {
 
 std::string MakeTitle(const HloModule& mod, absl::string_view longest_prefix) {
   if (longest_prefix.empty()) {
-    return absl::StrFormat("XlaModule:#hlo_module=%s,program_id=%d#",
-                           mod.name(), mod.unique_id());
+    return absl::StrCat("XlaModule:#hlo_module=", mod.name(),
+                        ",program_id=", mod.unique_id(), "#");
   }
-  return absl::StrFormat("XlaModule:#prefix=%s,hlo_module=%s,program_id=%d#",
-                         longest_prefix, mod.name(), mod.unique_id());
+  return absl::StrCat("XlaModule:#prefix=", longest_prefix,
+                      ",hlo_module=", mod.name(),
+                      ",program_id=", mod.unique_id(), "#");
 }
 
 std::string FormatSourceLocations(HloInstruction const& inst,
@@ -305,7 +306,7 @@ std::pair<StringHandle, int32_t> GetLongestSourceLocationPrefix(
 }  // namespace
 
 ModuleAnnotation::ModuleAnnotation(absl::string_view module_name_)
-    : title_str_(absl::StrFormat("XlaModule:#hlo_module=%s#", module_name_)),
+    : title_str_(absl::StrCat("XlaModule:#hlo_module=", module_name_, "#")),
       title_(RegisterString(title_str_)),
       module_name_(RegisterString(std::string{module_name_})) {}
 
@@ -383,21 +384,20 @@ std::string MakeKernelName(absl::string_view prefix,
   // and attach the longest prefix to this launch.
   absl::string_view op_name = GetLongestOpNamePrefix(inst);
   if (op_name.empty()) {
-    return absl::StrFormat("Thunk:#hlo_op=%s#", inst.name());
-  } else if (op_name.substr(0, prefix.size()) != prefix) {
+    return absl::StrCat("Thunk:#hlo_op=", inst.name(), "#");
+  }
+  if (op_name.substr(0, prefix.size()) != prefix) {
     // the op_name we got for this instruction does not start with the prefix
     // that we thought was common to all instructions in the module
-    return absl::StrFormat("Thunk:#name=%s,hlo_op=%s#", op_name, inst.name());
-  } else {
-    // remove the prefix that's in the parent module annotation
-    auto short_name = op_name.substr(prefix.size());
-    // remove the leading / if there is one (prefix might be an empty string)
-    if (!short_name.empty() && short_name.front() == '/') {
-      short_name = short_name.substr(1);
-    }
-    return absl::StrFormat("Thunk:#name=%s,hlo_op=%s#", short_name,
-                           inst.name());
+    return absl::StrCat("Thunk:#name=", op_name, ",hlo_op=", inst.name(), "#");
   }
+  // remove the prefix that's in the parent module annotation
+  auto short_name = op_name.substr(prefix.size());
+  // remove the leading / if there is one (prefix might be an empty string)
+  if (!short_name.empty() && short_name.front() == '/') {
+    short_name = short_name.substr(1);
+  }
+  return absl::StrCat("Thunk:#name=", short_name, ",hlo_op=", inst.name(), "#");
 }
 }  // namespace
 

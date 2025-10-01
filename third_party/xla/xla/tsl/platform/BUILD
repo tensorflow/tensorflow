@@ -531,6 +531,7 @@ cc_library(
     name = "macros",
     hdrs = ["macros.h"],
     compatible_with = get_compatible_with_portable(),
+    deps = ["@com_google_absl//absl/base:core_headers"],
 )
 
 cc_library(
@@ -692,22 +693,22 @@ cc_library(
 )
 
 cc_library(
-    name = "threadpool_async_executor",
-    hdrs = ["threadpool_async_executor.h"],
+    name = "threadpool_executor",
+    hdrs = ["threadpool_executor.h"],
     deps = [
         ":env",
-        "//xla/tsl/concurrency:async_value",
+        "//xla/tsl/concurrency:executor",
     ],
 )
 
 tsl_cc_test(
-    name = "threadpool_async_executor_test",
-    srcs = ["threadpool_async_executor_test.cc"],
+    name = "threadpool_executor_test",
+    srcs = ["threadpool_executor_test.cc"],
     deps = [
         ":env",
         ":env_impl",
         ":test",
-        ":threadpool_async_executor",
+        ":threadpool_executor",
         "@com_google_absl//absl/synchronization",
         "@com_google_googletest//:gtest_main",
     ],
@@ -800,6 +801,7 @@ cc_library(
     hdrs = ["prefetch.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/base:prefetch",
     ],
 )
@@ -867,4 +869,10 @@ cc_library(
     name = "recordphase",
     textual_hdrs = ["recordphase.h"],
     deps = tf_platform_deps("recordphase") + ["@com_google_absl//absl/strings:string_view"],
+)
+
+cc_library(
+    name = "debug_me_context",
+    hdrs = ["debug_me_context.h"],
+    deps = ["@com_google_absl//absl/container:flat_hash_map"],
 )

@@ -79,6 +79,10 @@ cc_library(
 xla_test(
     name = "cudnn_test",
     srcs = ["cudnn_test.cc"],
+    backend_tags = {
+        # TODO(b/445172709): Re-enable once fixed.
+        "b200": ["broken"],
+    },
     backends = ["gpu"],
     tags = ["cuda-only"],
     deps = [
@@ -293,5 +297,6 @@ cc_library(
         "//xla/service/gpu:ir_emission_utils",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
+        "@llvm-project//mlir:IR",
     ],
 )

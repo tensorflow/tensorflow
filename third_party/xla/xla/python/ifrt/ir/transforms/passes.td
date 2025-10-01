@@ -19,6 +19,12 @@ limitations under the License.
 
 include "mlir/Pass/PassBase.td"
 
+def IfrtIRCompileOptions :
+    Option<"compile_options", "compile_options",
+           "std::shared_ptr<xla::ifrt::IfrtIRCompileOptions>",
+           "std::make_shared<xla::ifrt::IfrtIRCompileOptions>()",
+           "The IFRT IR compile options used for compilation.">;
+
 def SpmdExpandableInterfaceVerificationPass
     : Pass<"spmd-expandable-interface-verification", "mlir::ModuleOp"> {
   let summary = "Verify all ops have IFRT SpmdExpandableInterface implemented";
@@ -294,8 +300,8 @@ def IfrtLowerAtomProgramMetadataToXlaPass :
     Pass<"ifrt-lower-atom-program-metadata-to-xla", "mlir::ModuleOp"> {
   let summary = "Converts IFRT metadata to XLA-compatible attributes";
   let description = [{
-Replaces `ifrt.sharding` attr by `mhlo.sharding` attr, and `ifrt.memory_kind`
-by `mhlo.memory_kind`.
+Replaces `ifrt.sharding` attr by `mhlo.sharding` attr (if Shardy is disabled)
+and `ifrt.memory_kind` by `mhlo.memory_kind`.
 
 For example, the following code
 
@@ -319,6 +325,10 @@ module attributes {
 }
 ```
   }];
+
+  let options = [
+    IfrtIRCompileOptions
+  ];
 }
 
 def IfrtRemoveIfrtAttrsPass :
@@ -422,7 +432,8 @@ This passes visits each CallOp and does the following:
 
   let options = [
     ListOption<"platform_names", "platform_names", "std::string",
-               "The mapping from logical device ID to platform name (e.g., tpu, cuda) corresponding to the logical device ID.">
+               "The mapping from logical device ID to platform name (e.g., tpu, cuda) corresponding to the logical device ID.">,
+    IfrtIRCompileOptions,
   ];
 }
 

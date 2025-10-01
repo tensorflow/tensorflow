@@ -28,7 +28,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
-#include "absl/container/flat_hash_set.h"
+#include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
@@ -41,10 +41,9 @@ limitations under the License.
 #include "xla/primitive_util.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/ir_emission_utils.h"
-#include "xla/service/gpu/model/tiled_hlo_computation.h"
+#include "xla/service/gpu/model/block_level_parameters.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
@@ -55,7 +54,6 @@ namespace gpu {
 namespace {
 
 using ::testing::Not;
-using ::tsl::testing::IsOk;
 
 // Returns true if the given `opcode` supports the given `type` with respect to
 // HLO semantics. This is completely independent of the what Triton supports or
@@ -93,7 +91,13 @@ bool DoesOpSupportType(HloOpcode opcode, PrimitiveType type) {
     case HloOpcode::kCholesky:
     case HloOpcode::kTriangularSolve:
       return pu::IsFloatingPointType(type) || pu::IsComplexType(type);
+    case HloOpcode::kAcos:
+    case HloOpcode::kAcosh:
+    case HloOpcode::kAtanh:
+    case HloOpcode::kSinh:
+    case HloOpcode::kAsin:
     case HloOpcode::kCbrt:
+    case HloOpcode::kCosh:
     case HloOpcode::kErf:
     case HloOpcode::kFloor:
     case HloOpcode::kCeil:
@@ -443,11 +447,16 @@ constexpr std::array kTestedOpsUnaryElementwise = {
     // clang-format off
     // go/keep-sorted start
     HloOpcode::kAbs,
+    HloOpcode::kAcos,
+    HloOpcode::kAcosh,
+    HloOpcode::kAsin,
+    HloOpcode::kAtanh,
     HloOpcode::kCbrt,
     HloOpcode::kCeil,
     HloOpcode::kClz,
     HloOpcode::kCopy,
     HloOpcode::kCos,
+    HloOpcode::kCosh,
     HloOpcode::kErf,
     HloOpcode::kExp,
     HloOpcode::kExpm1,
@@ -468,6 +477,7 @@ constexpr std::array kTestedOpsUnaryElementwise = {
     HloOpcode::kRsqrt,
     HloOpcode::kSign,
     HloOpcode::kSin,
+    HloOpcode::kSinh,
     HloOpcode::kSqrt,
     HloOpcode::kTan,
     HloOpcode::kTanh
@@ -686,11 +696,11 @@ using ReduceTest = TritonSupportTestWithTypeAndOpcodeAndDeviceParam;
 static absl::string_view init_value(PrimitiveType dtype) {
   if (dtype == C64 || dtype == C128) {
     return "(0, 0)";
-  } else if (dtype == F8E8M0FNU) {
-    return "1e-40";
-  } else {
-    return "0";
   }
+  if (dtype == F8E8M0FNU) {
+    return "1e-40";
+  }
+  return "0";
 }
 
 TEST_P(ReduceTest, IsTritonSupportedReduction) {

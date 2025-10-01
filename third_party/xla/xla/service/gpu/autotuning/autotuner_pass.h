@@ -27,6 +27,7 @@ limitations under the License.
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
+#include "xla/service/compiler.h"
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/platform/threadpool.h"
@@ -37,10 +38,12 @@ namespace gpu {
 
 class AutotunerPass : public HloModulePass {
  public:
+  // Note: the target_config must outlive the pass.
   static absl::StatusOr<std::unique_ptr<AutotunerPass>> Create(
       std::vector<std::unique_ptr<CodegenBackend>> backends,
       const DebugOptions& debug_options, se::StreamExecutor* stream_executor,
       tsl::thread::ThreadPool* thread_pool, InstructionFilterFn should_autotune,
+      const Compiler::TargetConfig* target_config,
       se::DeviceMemoryAllocator* allocator = nullptr);
 
   absl::string_view name() const override { return "autotuner"; }

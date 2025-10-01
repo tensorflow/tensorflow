@@ -20,6 +20,7 @@ limitations under the License.
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/InitAllDialects.h"
@@ -58,7 +59,7 @@ llvm::cl::opt<std::string> atom_program_version_option(
 
 mlir::TranslateFromMLIRRegistration serializeRegistration(
     "serialize", "Serialize IFRT IR program into a VIFRT artifact",
-    [](mlir::ModuleOp module, llvm::raw_ostream &os) -> mlir::LogicalResult {
+    [](mlir::ModuleOp module, llvm::raw_ostream& os) -> mlir::LogicalResult {
       std::string ifrt_version = ifrt_version_option.getValue();
       if (ifrt_version == "current") {
         ifrt_version = Version::getCurrentVersion().toString();
@@ -71,8 +72,9 @@ mlir::TranslateFromMLIRRegistration serializeRegistration(
       if (strip_debug_info_option) {
         mlir::PassManager pm(module->getContext());
         pm.addPass(mlir::createStripDebugInfoPass());
-        if (mlir::failed(pm.run(module)))
+        if (mlir::failed(pm.run(module))) {
           return module.emitError("failed to strip debuginfo");
+        }
       }
 
       auto program = std::make_unique<IfrtIRProgram>(module);
@@ -82,23 +84,20 @@ mlir::TranslateFromMLIRRegistration serializeRegistration(
       if (serialized_or.ok()) {
         os << serialized_or->SerializeAsString();
         return mlir::success();
-      } else {
-        module.emitError(absl::StrCat("failed to serialize: ",
-                                      serialized_or.status().message()));
-        return mlir::failure();
       }
+      module.emitError(absl::StrCat("failed to serialize: ",
+                                    serialized_or.status().message()));
+      return mlir::failure();
     },
-    [](mlir::DialectRegistry &registry) {
-      mlir::registerAllDialects(registry);
+    [](mlir::DialectRegistry& registry) {
       mlir::stablehlo::registerAllDialects(registry);
-      registry.insert<xla::ifrt::IfrtDialect>();
-      registry.insert<xla::ifrt::VifrtDialect>();
+      registry.insert<IfrtDialect, VifrtDialect, mlir::func::FuncDialect>();
     });
 
 mlir::TranslateToMLIRRegistration deserializeRegistration(
     "deserialize", "Deserialize VIFRT into an IFRT IR program",
     [](llvm::StringRef input,
-       mlir::MLIRContext *context) -> mlir::OwningOpRef<mlir::ModuleOp> {
+       mlir::MLIRContext* context) -> mlir::OwningOpRef<mlir::ModuleOp> {
       Serialized serialized_proto;
       if (!serialized_proto.ParseFromString(std::string(input))) {
         return nullptr;
@@ -109,14 +108,12 @@ mlir::TranslateToMLIRRegistration deserializeRegistration(
       if (deserialized_program_or.ok()) {
         return mlir::OwningOpRef<mlir::ModuleOp>(
             deserialized_program_or.value()->mlir_module);
-      } else {
-        llvm::dbgs() << "failed to deserialize: "
-                     << deserialized_program_or.status().message() << "\n";
-        return nullptr;
       }
+      llvm::dbgs() << "failed to deserialize: "
+                   << deserialized_program_or.status().message() << "\n";
+      return nullptr;
     },
-    [](mlir::DialectRegistry &registry) {
-      mlir::registerAllDialects(registry);
+    [](mlir::DialectRegistry& registry) {
       mlir::stablehlo::registerAllDialects(registry);
       registry.insert<xla::ifrt::IfrtDialect>();
       registry.insert<xla::ifrt::VifrtDialect>();

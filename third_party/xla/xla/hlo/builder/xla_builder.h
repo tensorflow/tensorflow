@@ -51,6 +51,7 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/service/hlo.pb.h"
+#include "xla/service/name_uniquer.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/lib/core/bitmap.h"
@@ -369,6 +370,11 @@ class XlaBuilder {
 
   // Returns the OpSharding that will be attached to all instructions.
   const std::optional<OpSharding>& sharding() const { return sharding_; }
+
+  // Returns the OriginalValueProto that will be attached to all instructions.
+  const std::optional<OriginalValueProto>& original_value() const {
+    return original_value_;
+  }
 
   // Sets the builder to a mode where it will die immediately when an error is
   // encountered, rather than producing it in a deferred fashion when Build() is
@@ -1224,8 +1230,19 @@ class XlaBuilder {
       const Shape& lhs_shape, const Shape& rhs_shape,
       const ConvolutionDimensionNumbers& dimension_numbers) const;
 
-  int64_t GetNextId() {
-    return parent_builder_ ? parent_builder_->GetNextId() : ++next_id_;
+  int64_t GetNextInstructionId() {
+    // Instruction Ids exist within the context of its parent computation. No
+    // need to uniquify across computations.
+    return ++next_instruction_id_;
+  }
+
+  int64_t GetNextComputationId() {
+    // Computation Ids exist within the context of its parent module. No need to
+    // uniquify across modules.
+    if (parent_builder_ == nullptr) {
+      return ++next_computation_id_;
+    }
+    return parent_builder_->GetNextComputationId();
   }
 
   // Populates the module with the input/output alias information stored within
@@ -1238,9 +1255,27 @@ class XlaBuilder {
 
   std::string name_;  // Name to use for the built computation.
 
-  // The next sequential ID for every instruction/computation contained within
+  // The next sequential ID for every instruction contained within
   // this computation. Unused if this builder has a parent.
-  int64_t next_id_ = 0;
+  int64_t next_instruction_id_ = 0;
+
+  // The next sequential ID for every computation contained within
+  // this module.
+  int64_t next_computation_id_ = 0;
+
+  // For uniquifying instruction names within this computation / module.
+  NameUniquer instruction_name_uniquer_ = NameUniquer(".");
+
+  // Uniquifies the names of instructions within this computation / module,
+  // using always the highest available parent builder.
+  std::string UniquifyInstructionName(absl::string_view name) {
+    XlaBuilder* highest_parent_builder = this;
+    while (highest_parent_builder->parent_builder_ != nullptr) {
+      highest_parent_builder = highest_parent_builder->parent_builder_;
+    }
+    return highest_parent_builder->instruction_name_uniquer_.GetUniqueName(
+        name);
+  }
 
   // The first error encountered while building the computation.
   // This is OK until the first error is encountered.
@@ -1701,8 +1736,17 @@ class XlaBuilder {
       absl::Span<const std::pair<int64_t, int64_t>> padding, XlaOp source,
       XlaOp init_value, XlaComputationId scatter);
   friend XlaOp Abs(XlaOp operand);
+  friend XlaOp Acos(XlaOp x,
+                    const std::optional<ResultAccuracy>& result_accuracy,
+                    bool expand);
+  friend XlaOp Acosh(XlaOp x,
+                     const std::optional<ResultAccuracy>& result_accuracy,
+                     bool expand);
   friend XlaOp Atan2(XlaOp y, XlaOp x,
                      absl::Span<const int64_t> broadcast_dimensions);
+  friend XlaOp Atanh(XlaOp x,
+                     const std::optional<ResultAccuracy>& result_accuracy,
+                     bool expand);
   friend XlaOp Erf(XlaOp operand,
                    const std::optional<ResultAccuracy>& result_accuracy);
   friend XlaOp Exp(XlaOp operand,
@@ -1949,10 +1993,8 @@ class XlaScopedOriginalValueAssignment {
   XlaScopedOriginalValueAssignment(
       xla::XlaBuilder* builder,
       std::optional<OriginalValueProto> original_value_proto)
-      : builder_(builder) {
-    if (original_value_proto.has_value()) {
-      builder_->SetOriginalValue(original_value_proto.value());
-    }
+      : builder_(builder), prev_original_value_(builder->original_value()) {
+    SetOriginalValue(original_value_proto);
   }
 
   XlaScopedOriginalValueAssignment(const XlaScopedOriginalValueAssignment&) =
@@ -1960,11 +2002,22 @@ class XlaScopedOriginalValueAssignment {
   XlaScopedOriginalValueAssignment& operator=(
       const XlaScopedOriginalValueAssignment&) = delete;
 
-  ~XlaScopedOriginalValueAssignment() { builder_->ClearOriginalValue(); }
+  ~XlaScopedOriginalValueAssignment() {
+    SetOriginalValue(prev_original_value_);
+  }
 
  private:
+  void SetOriginalValue(
+      const std::optional<OriginalValueProto>& original_value_proto) {
+    if (original_value_proto.has_value()) {
+      builder_->SetOriginalValue(original_value_proto.value());
+    } else {
+      builder_->ClearOriginalValue();
+    }
+  }
+
   xla::XlaBuilder* const builder_;
-  std::optional<OpSharding> prev_sharding_;
+  std::optional<OriginalValueProto> prev_original_value_;
 };
 
 // RAII-style object: save the current builder's frontend attributes, and merge

@@ -34,7 +34,6 @@
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
-#include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/serdes_version.h"
 #include "xla/python/ifrt/shape.h"
@@ -49,6 +48,7 @@
 #include "xla/python/ifrt_proxy/common/ifrt_service.pb.h"
 #include "xla/python/ifrt_proxy/common/types.h"
 #include "xla/service/computation_placer.h"
+#include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
@@ -316,8 +316,8 @@ TEST_P(ClientTest, GetDefaultLayoutSuccess) {
 
   TF_ASSERT_OK_AND_ASSIGN(
       auto resolved_layout,
-      client_->GetDefaultLayout(DType(DType::kF64), {1, 2, 3}, device_,
-                                MemoryKind("mock")));
+      client_->GetDefaultPjRtLayout(DType(DType::kF64), {1, 2, 3}, device_,
+                                    MemoryKind("mock")));
   EXPECT_EQ(resolved_layout->ToString(), layout.ToString());
 }
 
@@ -331,24 +331,24 @@ TEST_P(ClientTest, GetCachedDefaultLayoutSuccess) {
 
   TF_ASSERT_OK_AND_ASSIGN(
       auto resolved_layout,
-      client_->GetDefaultLayout(DType(DType::kF64), {1, 2, 3}, device_,
-                                MemoryKind("mock")));
+      client_->GetDefaultPjRtLayout(DType(DType::kF64), {1, 2, 3}, device_,
+                                    MemoryKind("mock")));
   EXPECT_EQ(resolved_layout->ToString(), layout_1_->ToString());
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      resolved_layout, client_->GetDefaultLayout(DType(DType::kF64), {1, 2, 3},
-                                                 device_, MemoryKind("mock")));
+  TF_ASSERT_OK_AND_ASSIGN(resolved_layout, client_->GetDefaultPjRtLayout(
+                                               DType(DType::kF64), {1, 2, 3},
+                                               device_, MemoryKind("mock")));
   EXPECT_EQ(resolved_layout->ToString(), layout_1_->ToString());
 }
 
 TEST_P(ClientTest, GetDefaultLayoutFailure) {
   EXPECT_CALL(*session_,
               Enqueue(IfrtRequestOfType(IfrtRequest::kGetDefaultLayoutRequest)))
-      .WillOnce(Return(Future<ClientSession::Response>(
+      .WillOnce(Return(tsl::Future<ClientSession::Response>(
           absl::InternalError("injected from test"))));
 
-  EXPECT_THAT(client_->GetDefaultLayout(DType(DType::kF64), {1, 2, 3}, device_,
-                                        MemoryKind("mock")),
+  EXPECT_THAT(client_->GetDefaultPjRtLayout(DType(DType::kF64), {1, 2, 3},
+                                            device_, MemoryKind("mock")),
               Not(absl_testing::IsOk()));
 }
 
@@ -456,7 +456,7 @@ TEST_P(ClientTest, GetDefaultDeviceAssignmentFailure) {
                                  num_partitions: 3
                                }
                              )pb")))))
-      .WillOnce(Return(Future<ClientSession::Response>(
+      .WillOnce(Return(tsl::Future<ClientSession::Response>(
           absl::InternalError("injected from test"))));
 
   EXPECT_THAT(client_->GetDefaultDeviceAssignment(1, 3),

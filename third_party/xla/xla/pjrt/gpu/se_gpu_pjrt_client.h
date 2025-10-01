@@ -34,6 +34,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"
 #include "xla/client/local_client.h"
 #include "xla/executable_run_options.h"
+#include "xla/future.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/layout.h"
 #include "xla/pjrt/distributed/client.h"
@@ -45,7 +46,6 @@ limitations under the License.
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
-#include "xla/pjrt/pjrt_future.h"
 #include "xla/pjrt/pjrt_stream_executor_client.h"
 #include "xla/pjrt/plugin/xla_gpu/xla_gpu_client_options.h"
 #include "xla/pjrt/tracked_device_buffer.h"
@@ -111,7 +111,6 @@ class StreamExecutorGpuClient : public xla::PjRtStreamExecutorClient {
       bool should_stage_host_to_device_transfers,
       std::unique_ptr<gpu::GpuExecutableRunOptions> gpu_run_options,
       std::shared_ptr<KeyValueStoreInterface> kv_store,
-      std::shared_ptr<DistributedRuntimeClient> distributed_client,
       bool abort_collectives_on_failure,
       std::shared_ptr<const GpuTopology> gpu_topology,
       std::optional<int> num_nodes);
@@ -121,7 +120,8 @@ class StreamExecutorGpuClient : public xla::PjRtStreamExecutorClient {
     return kv_store_;
   }
 
-  gpu::GpuExecutableRunOptions* gpu_run_options() override;
+  gpu::GpuExecutableRunOptions* gpu_run_options(
+      const ExecuteOptions& options) override;
 
   absl::StatusOr<xla::DeviceAssignment> GetDefaultDeviceAssignment(
       int num_replicas, int num_partitions) const override;
@@ -140,9 +140,9 @@ class StreamExecutorGpuClient : public xla::PjRtStreamExecutorClient {
       std::optional<absl::Span<const std::optional<Layout>>> device_layouts,
       PjRtMemorySpace* memory_space) override;
 
-  PjRtFuture<> CopyRawSubBufferToHost(PjRtBuffer* buffer, PjRtFuture<void*> dst,
-                                      int64_t offset,
-                                      int64_t transfer_size) override;
+  Future<> CopyRawSubBufferToHost(PjRtBuffer* buffer, Future<void*> dst,
+                                  int64_t offset,
+                                  int64_t transfer_size) override;
 
   void CopyToRemoteDevice(PjRtBuffer* buffer,
                           absl::string_view serialized_descriptor,
@@ -180,13 +180,12 @@ class StreamExecutorGpuClient : public xla::PjRtStreamExecutorClient {
 
  private:
   absl::StatusOr<absl::flat_hash_map<GlobalDeviceId, IncarnationId>>
-  GetLatestIncarnations();
+  GetLatestIncarnations(const ExecuteOptions& options);
 
   std::optional<int> num_nodes_;
   const bool abort_collectives_on_failure_ = false;
   std::optional<xla::StreamExecutorGpuTopologyDescription> topology_;
   std::shared_ptr<KeyValueStoreInterface> kv_store_;
-  std::shared_ptr<DistributedRuntimeClient> distributed_client_;
 
   absl::Mutex task_state_infos_mu_;
   std::vector<tensorflow::CoordinatedTaskStateInfo> task_state_infos_

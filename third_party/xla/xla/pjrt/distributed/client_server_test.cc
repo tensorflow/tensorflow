@@ -126,7 +126,7 @@ TEST_F(ClientServerTest, ConnectAndShutdownAreBarriers) {
       return connect_count == node_id;
     };
     {
-      absl::MutexLock lock(&mu);
+      absl::MutexLock lock(mu);
       mu.Await(absl::Condition(&my_connect_turn));
       ++connect_count;
     }
@@ -134,7 +134,7 @@ TEST_F(ClientServerTest, ConnectAndShutdownAreBarriers) {
     // Verify that all of the threads have called Connect() by the time we get
     // here.
     {
-      absl::MutexLock lock(&mu);
+      absl::MutexLock lock(mu);
       TF_RET_CHECK(connect_count == num_nodes);
     }
 
@@ -144,13 +144,13 @@ TEST_F(ClientServerTest, ConnectAndShutdownAreBarriers) {
       return shutdown_count == node_id;
     };
     {
-      absl::MutexLock lock(&mu);
+      absl::MutexLock lock(mu);
       mu.Await(absl::Condition(&my_shutdown_turn));
       ++shutdown_count;
     }
     TF_RETURN_IF_ERROR(client->Shutdown());
     {
-      absl::MutexLock lock(&mu);
+      absl::MutexLock lock(mu);
       TF_RET_CHECK(shutdown_count == num_nodes);
     }
 
@@ -1093,8 +1093,10 @@ TEST_F(ClientServerTest, KeyValueIncrement) {
   auto client = GetClient(/*node_id=*/0);
   TF_ASSERT_OK(client->Connect());
   TF_ASSERT_OK(client->KeyValueSet("test_key", "10"));
-  EXPECT_THAT(client->KeyValueIncrement("test_key", 1), IsOkAndHolds(11));
-  EXPECT_THAT(client->KeyValueTryGet("test_key"), IsOkAndHolds("11"));
+  EXPECT_THAT(client->KeyValueIncrement("test_key", 1),
+              absl_testing::IsOkAndHolds(11));
+  EXPECT_THAT(client->KeyValueTryGet("test_key"),
+              absl_testing::IsOkAndHolds("11"));
 }
 
 TEST_F(ClientServerTest, KeyValueDelete) {

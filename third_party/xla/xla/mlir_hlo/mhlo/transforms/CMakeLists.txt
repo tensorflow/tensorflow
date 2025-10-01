@@ -30,7 +30,6 @@ add_public_tablegen_target(MLIRChloLegalizeToHloIncGen)
 
 add_mlir_library(MhloPasses
   collapse_elementwise_map/collapse_elementwise_map.cc
-  convert_to_signless/convert_to_signless_pass.cc
   expand_hlo_tuples/expand_hlo_tuples.cc
   legalize_dot_to_dot_general/legalize_dot_to_dot_general.cc
   legalize_einsum_to_dot_general/legalize_einsum_to_dot_general.cc

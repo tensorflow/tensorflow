@@ -22,10 +22,8 @@ limitations under the License.
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/pattern_matcher_gmock.h"
 #include "xla/service/pattern_matcher.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/status_matchers.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
 
 namespace xla::gpu {
 namespace {
@@ -33,7 +31,6 @@ namespace {
 namespace m = ::xla::match;
 
 using DotNormalizerTest = HloHardwareIndependentTestBase;
-using ::tsl::testing::IsOkAndHolds;
 
 TEST_F(DotNormalizerTest, DotWithoutContractingDims) {
   constexpr char kHlo[] = R"(

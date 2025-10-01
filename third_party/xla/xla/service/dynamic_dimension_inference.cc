@@ -48,6 +48,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/hlo_original_value.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/service/call_inliner.h"
@@ -60,12 +61,12 @@ limitations under the License.
 #include "xla/shape_tree.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/status.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/window_util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/status.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -95,6 +96,8 @@ WidenComputation(HloComputation* narrow_comp, const Shape& wide_shape) {
   HloInstruction* call_narrow_comp = wide_comp->AddInstruction(
       HloInstruction::CreateCall(narrow_comp->root_instruction()->shape(),
                                  {truncated_parameter}, narrow_comp));
+  call_narrow_comp->set_original_value(
+      std::make_shared<OriginalValue>(OriginalValue::SyntheticCall()));
   wide_comp->set_root_instruction(call_narrow_comp,
                                   /*accept_different_shape=*/true);
   TF_ASSIGN_OR_RETURN(auto inline_map, CallInliner::Inline(call_narrow_comp));

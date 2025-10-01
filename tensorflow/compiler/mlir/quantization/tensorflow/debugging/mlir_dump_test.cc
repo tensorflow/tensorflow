@@ -18,7 +18,6 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "absl/cleanup/cleanup.h"
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/LogicalResult.h"

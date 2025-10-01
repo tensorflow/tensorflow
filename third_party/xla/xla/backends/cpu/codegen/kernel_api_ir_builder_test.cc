@@ -33,7 +33,7 @@ limitations under the License.
 #include "llvm/IR/Metadata.h"
 #include "llvm/IR/Type.h"
 #include "llvm/Support/Casting.h"
-#include "xla/cpu_function_runtime.h"
+#include "xla/backends/cpu/alignment.h"
 #include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_ordering.h"
 #include "xla/hlo/ir/hlo_instruction.h"

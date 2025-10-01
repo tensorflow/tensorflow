@@ -18,6 +18,7 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -62,9 +63,9 @@ std::optional<IndexingMap> LoopFusion::ComputeThreadIdToOutputIndexing(
       GetIndexShape(analysis_.fusion_root(root_index).shape()), ctx);
 }
 
-std::optional<IndexingMap> LoopFusion::ComputeThreadIdToInputIndexing(
-    int64_t root_index, int64_t hero_operand_index,
-    mlir::MLIRContext* ctx) const {
+std::optional<std::vector<IndexingMap>>
+LoopFusion::ComputeThreadIdToInputIndexing(int64_t root_index,
+                                           mlir::MLIRContext* ctx) const {
   std::optional<IndexingMap> thread_id_to_output_indexing =
       ComputeThreadIdToOutputIndexing(root_index, ctx);
   if (!thread_id_to_output_indexing.has_value()) {
@@ -74,15 +75,22 @@ std::optional<IndexingMap> LoopFusion::ComputeThreadIdToInputIndexing(
       &analysis_.fusion_root(root_index).instruction();
   auto output_to_input_indexing =
       ComputeOutputToInputIndexing(fusion_root, /*output_id=*/0, ctx);
-  IndexingMapSet output_to_input_indexing_set = ToIndexingMapSet(
-      output_to_input_indexing.indexing_maps[hero_operand_index]);
-  // Since we are computing the indexing for a non-fusion op, there is only one
-  // indexing map per operand.
-  CHECK_EQ(output_to_input_indexing_set.size(), 1);
-  IndexingMap thread_id_to_input_indexing_map = ComposeIndexingMaps(
-      *thread_id_to_output_indexing, *output_to_input_indexing_set.begin());
-  thread_id_to_input_indexing_map.Simplify();
-  return thread_id_to_input_indexing_map;
+  std::vector<IndexingMap> result;
+  result.reserve(fusion_root->operand_count());
+  for (int64_t operand_index = 0; operand_index < fusion_root->operand_count();
+       ++operand_index) {
+    auto output_to_input_indexing_maps =
+        output_to_input_indexing.indexing_maps[operand_index];
+    // Since we are computing the indexing for a non-fusion op, there is only
+    // one indexing map per operand.
+    CHECK_EQ(output_to_input_indexing_maps.size(), 1);
+    IndexingMap thread_id_to_input_indexing_map =
+        ComposeIndexingMaps(*thread_id_to_output_indexing,
+                            output_to_input_indexing_maps.begin()->map());
+    thread_id_to_input_indexing_map.Simplify();
+    result.push_back(thread_id_to_input_indexing_map);
+  }
+  return result;
 }
 
 LaunchDimensions LoopFusion::launch_dimensions() const {

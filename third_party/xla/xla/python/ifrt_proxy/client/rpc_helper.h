@@ -25,13 +25,13 @@
 #include "absl/base/thread_annotations.h"
 #include "absl/log/check.h"
 #include "absl/synchronization/mutex.h"
-#include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt/serdes_any_version_accessor.h"
 #include "xla/python/ifrt/serdes_version.h"
 #include "xla/python/ifrt_proxy/client/client_session.h"
 #include "xla/python/ifrt_proxy/client/host_buffer.h"
 #include "xla/python/ifrt_proxy/common/ifrt_service.pb.h"
 #include "xla/python/ifrt_proxy/common/types.h"
+#include "xla/tsl/concurrency/future.h"
 
 namespace xla {
 namespace ifrt {
@@ -76,7 +76,7 @@ class RpcHelper {
   }
 
   template <typename T>
-  using ResponseFuture = Future<std::shared_ptr<T>>;
+  using ResponseFuture = tsl::Future<std::shared_ptr<T>>;
 
   class Batcher;
   enum BatchOperation { kDeleteArray, kDestructArray, kSentinelDoNotUse };
@@ -162,7 +162,7 @@ class RpcHelper {
   // generated at the server side by IfrtBackend.
   uint64_t NextHandle();
 
-  Future<> CheckFuture(uint64_t handle);
+  tsl::Future<> CheckFuture(uint64_t handle);
 
  private:
   const std::unique_ptr<Batcher> batcher_;

@@ -33,7 +33,7 @@ ShapePool* ShapePool::Default() {
 }
 
 size_t ShapePool::GarbageCollect() {
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
   size_t num_erased = absl::erase_if(
       canonical_shapes_, [](auto& entry) { return entry.second.expired(); });
   VLOG(3) << "Garbage collected " << num_erased << " shapes";
@@ -41,7 +41,7 @@ size_t ShapePool::GarbageCollect() {
 }
 
 std::shared_ptr<Shape> ShapePool::GetCanonicalShape(const Shape& shape) {
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
 
   auto [it, _] = canonical_shapes_.try_emplace(shape, std::weak_ptr<Shape>());
 
@@ -57,7 +57,7 @@ std::shared_ptr<Shape> ShapePool::GetCanonicalShape(const Shape& shape) {
 
 std::shared_ptr<Shape> ShapePool::GetCanonicalShape(
     std::shared_ptr<Shape> shape) {
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
 
   auto [it, _] = canonical_shapes_.try_emplace(*shape, std::weak_ptr<Shape>());
 

@@ -263,7 +263,7 @@ class CudnnAccess {
   }
 
   ~CudnnAccess() {
-    absl::MutexLock lock(&mutex_);
+    absl::MutexLock lock(mutex_);
     cudnnDestroy(handle_);
 
     if (compilation_handle_) {
@@ -311,7 +311,7 @@ class CudnnAccess {
   void NotifyStreamDestroyed(Stream* stream) {
     CUstream cu_stream =
         absl::bit_cast<CUstream>(stream->platform_specific_handle().stream);
-    absl::MutexLock lock(&mutex_);
+    absl::MutexLock lock(mutex_);
     if (current_stream_ && cu_stream == *current_stream_) {
       current_stream_.reset();
     }
@@ -3037,9 +3037,9 @@ OpNameStringToOperandKindAndMode(std::string opstring) {
 // Struct describing the convolution, pointwise and reduction ops in the
 // graph.
 struct OpDescriptor {
-  int uid;                        // The UID of the op.
-  std::vector<int> operand_uids;  // The UIDs of the operands of the op that
-                                  // are part of the graph.
+  int64_t uid;                        // The UID of the op.
+  std::vector<int64_t> operand_uids;  // The UIDs of the operands of the op that
+                                      // are part of the graph.
   OpMode mode;                    // The mode describing the op.
   TensorKind operand_kind;        // The kind of a second operand.
   TensorKind result_kind;         // The kind of the output.
@@ -3054,13 +3054,13 @@ class OpGraph {
  public:
   OpGraph() = default;
 
-  absl::Status AddOp(int uid, std::vector<int> operand_uids, OpMode mode,
-                     TensorKind operand_kind, TensorKind result_kind,
-                     dnn::DataType result_type) {
+  absl::Status AddOp(int64_t uid, std::vector<int64_t> operand_uids,
+                     OpMode mode, TensorKind operand_kind,
+                     TensorKind result_kind, dnn::DataType result_type) {
     ops_.emplace_back(OpDescriptor({uid, operand_uids, mode, operand_kind,
                                     result_kind, result_type, false, -1}));
     // If they exist, the operands are virtual.
-    for (int operand_uid : operand_uids) {
+    for (int64_t operand_uid : operand_uids) {
       auto it = std::find_if(
           ops_.begin(), ops_.end(),
           [operand_uid](OpDescriptor op) { return op.uid == operand_uid; });
@@ -3072,7 +3072,7 @@ class OpGraph {
     return absl::OkStatus();
   }
 
-  absl::StatusOr<OpDescriptor> FindOpDescriptor(int uid) const {
+  absl::StatusOr<OpDescriptor> FindOpDescriptor(int64_t uid) const {
     auto it = std::find_if(ops_.begin(), ops_.end(),
                            [uid](OpDescriptor op) { return op.uid == uid; });
     if (it == ops_.end()) {
@@ -3088,7 +3088,7 @@ class OpGraph {
     return ops_[index];
   }
 
-  absl::Status SetSequenceIndex(int uid, int index) {
+  absl::Status SetSequenceIndex(int64_t uid, int index) {
     auto it = std::find_if(ops_.begin(), ops_.end(),
                            [uid](OpDescriptor op) { return op.uid == uid; });
     if (it == ops_.end()) {
@@ -3137,15 +3137,15 @@ GetGenericCudnnOperationGraph(
       dnn::DataType output_type;
       std::string::size_type m = serialized_graph.find('[', pos);
       std::string::size_type n = serialized_graph.find(']', pos);
-      int uid = std::stoi(serialized_graph.substr(pos, m - pos - 1));
+      int64_t uid = std::stol(serialized_graph.substr(pos, m - pos - 1));
       std::string data_type_string = serialized_graph.substr(m + 1, n - m - 1);
       m = serialized_graph.find('(', pos);
       std::string op_string = serialized_graph.substr(n + 1, m - n - 1);
-      std::vector<int> operands;
+      std::vector<int64_t> operands;
       std::string::size_type l = serialized_graph.find_first_of(",)", m + 1);
       while (l > m + 1) {
         operands.push_back(
-            std::stoi(serialized_graph.substr(m + 1, l - m - 1)));
+            std::stol(serialized_graph.substr(m + 1, l - m - 1)));
         if (serialized_graph[l] == ')') {
           break;
         }
@@ -3329,7 +3329,7 @@ GetGenericCudnnOperationGraph(
     TF_ASSIGN_OR_RETURN(op_descriptor, op_graph.OpDescriptorAt(op_index));
     std::vector<OpDescriptor> preceding_ops;
     preceding_ops.reserve(op_descriptor.operand_uids.size());
-    for (int operand_uid : op_descriptor.operand_uids) {
+    for (int64_t operand_uid : op_descriptor.operand_uids) {
       preceding_ops.emplace_back(
           op_graph.FindOpDescriptor(operand_uid).value());
     }
@@ -4795,9 +4795,6 @@ absl::StatusOr<CudnnGraph> GetCudnnFlashAttentionBackwardOperationGraph(
     DCHECK(bias_descriptor != std::nullopt);
     auto bias_dims = bias_descriptor->dimensions();
     auto bias_strides = bias_descriptor->GetLogicalStrides();
-    auto b = bias_dims[0];
-    auto n = bias_dims[1];
-    auto q_n = q_dims[1];
     auto bias_tensor = graph.tensor(Tensor_attributes()
                                         .set_name("bias")
                                         .set_dim(bias_dims)
@@ -4805,11 +4802,10 @@ absl::StatusOr<CudnnGraph> GetCudnnFlashAttentionBackwardOperationGraph(
                                         .set_uid(next_uid()));
     sdpa_backward_options.set_bias(bias_tensor);
 
-    // shapes [1, 1, s, s], [b, 1, s, s], [b, h, s, s] are not supported for
-    // dbias calculation but they are supported for forward bias calculation
+    // shapes [1, 1, s, s], [1, h, s, s], [b, 1, s, s], [b, h, s, s] are
+    // supported for dbias calculation.
     // Set UID later: this is the last output tuple element.
     if (dbias_descriptor != std::nullopt) {
-      DCHECK(b == 1 && n == q_n);
       d_bias_tensor =
           graph.tensor(Tensor_attributes()
                            .set_name("dBias")

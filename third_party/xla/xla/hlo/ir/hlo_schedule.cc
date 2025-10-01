@@ -66,16 +66,19 @@ namespace xla {
 
     absl::flat_hash_map<int64_t, HloInstruction*> id_to_instruction;
     for (HloInstruction* instruction : computation->instructions()) {
-      id_to_instruction[instruction->unique_id_64_bits()] = instruction;
+      id_to_instruction[instruction->unique_id()] = instruction;
     }
 
     HloInstructionSequence& sequence =
         schedule.GetOrCreateSequence(computation);
     for (const int64_t instruction_id : id_sequence.second.instruction_ids()) {
-      auto instr_it = id_to_instruction.find(instruction_id);
+      int64_t complete_unique_id = HloInstruction::CalculateUniqueId(
+          computation->unique_id(), instruction_id);
+      auto instr_it = id_to_instruction.find(complete_unique_id);
       TF_RET_CHECK(instr_it != id_to_instruction.end())
           << "No instruction exists in HLO computation " << computation->name()
-          << " with id " << instruction_id;
+          << " with unique id " << instruction_id << " (complete unique id "
+          << complete_unique_id << ")";
       sequence.push_back(instr_it->second);
     }
   }
@@ -136,13 +139,12 @@ absl::Status HloSchedule::UpdateComputationSchedule(
   // computation.
   absl::flat_hash_map<int64_t, HloInstruction*> id_to_instruction;
   for (HloInstruction* instruction : computation->instructions()) {
-    InsertOrDie(&id_to_instruction, instruction->unique_id_64_bits(),
-                instruction);
+    InsertOrDie(&id_to_instruction, instruction->unique_id(), instruction);
   }
 
   // Set of all HloInstructions in the schedule.
   absl::flat_hash_set<int64_t> ids_in_schedule;
-  for (int id : sequences_.at(computation->unique_id()).ids()) {
+  for (int64_t id : sequences_.at(computation->unique_id()).ids()) {
     InsertOrDie(&ids_in_schedule, id);
   }
 
@@ -164,7 +166,7 @@ absl::Status HloSchedule::UpdateComputationSchedule(
   std::queue<HloInstruction*> worklist;
 
   for (HloInstruction* instruction : computation->instructions()) {
-    if (!ids_in_schedule.contains(instruction->unique_id_64_bits())) {
+    if (!ids_in_schedule.contains(instruction->unique_id())) {
       // `instruction` is a newly added instruction which is not in the
       // schedule.
       if (instruction->operands().empty() &&
@@ -410,7 +412,7 @@ std::string HloSchedule::ToString() const {
       // stored in this object.
       pieces.push_back(absl::StrFormat(
           "computation with id %d (no longer in HLO module):", id));
-      for (int id : sequence.ids()) {
+      for (int64_t id : sequence.ids()) {
         pieces.push_back(absl::StrCat("  ", id));
       }
     } else {

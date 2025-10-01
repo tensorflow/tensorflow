@@ -16,27 +16,35 @@ limitations under the License.
 #include "xla/service/gpu/runtime_intrinsics.h"
 
 #include <cstdint>
+#include <memory>
 #include <string>
+#include <vector>
 
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/ascii.h"
+#include "absl/strings/match.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
+#include "absl/strings/substitute.h"
+#include "xla/ffi/ffi.h"
+#include "xla/ffi/ffi_api.h"
+#include "xla/layout_util.h"
+#include "xla/literal.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/custom_call_status.h"
 #include "xla/service/custom_call_target_registry.h"
 #include "xla/service/platform_util.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/platform.h"
-#include "xla/stream_executor/platform_manager.h"
+#include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/stream.h"
-#include "xla/stream_executor/stream_finder.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -47,23 +55,18 @@ std::string GetGpuPlatformName() {
       PlatformUtil::CanonicalPlatformName("gpu").value());
 }
 
-absl::Status AssertOnGpu(void* stream_handle, void* buffer,
-                         absl::string_view error_msg) {
-  TF_ASSIGN_OR_RETURN(
-      se::Platform * platform,
-      se::PlatformManager::PlatformWithName(GetGpuPlatformName()));
-  TF_ASSIGN_OR_RETURN(se::Stream * stream,
-                      stream_executor::FindStream(platform, stream_handle));
+absl::Status AssertionCustomCall(
+    se::Stream* stream, ffi::Buffer<PRED> buffer, absl::string_view error_msg,
+    xla::ffi::Result<xla::ffi::Buffer<xla::TOKEN>> res) {
   if (!stream) {
-    return Internal("Stream not found for: %p", stream_handle);
+    return Internal("Stream is nullptr.");
   }
 
   int8_t expected = false;
   int64_t byte_size = sizeof(int8_t);
   CHECK_EQ(byte_size, ShapeUtil::ByteSizeOfPrimitiveType(PrimitiveType::PRED));
-  TF_RETURN_IF_ERROR(stream->Memcpy(
-      &expected, se::DeviceMemoryBase{buffer, static_cast<uint64_t>(byte_size)},
-      byte_size));
+  TF_RETURN_IF_ERROR(
+      stream->Memcpy(&expected, buffer.device_memory(), byte_size));
   TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
   if (!static_cast<bool>(expected)) {
     return Internal("%s", error_msg);
@@ -72,29 +75,84 @@ absl::Status AssertOnGpu(void* stream_handle, void* buffer,
   return absl::OkStatus();
 }
 
-void AssertionCustomCall(void* stream_handle, void** buffers,
-                         const char* opaque, int opaque_len,
-                         XlaCustomCallStatus* status) {
-  absl::Status s =
-      AssertOnGpu(stream_handle, buffers[0],
-                  absl::string_view{opaque, static_cast<uint64_t>(opaque_len)});
-  if (!s.ok()) {
-    auto msg = s.message();
-    XlaCustomCallStatusSetFailure(status, msg.data(), msg.size());
-  }
-}
-
 void NopReturnTokenCustomCall(void* stream_handle, void** buffers,
                               const char* opaque, int opaque_len,
                               XlaCustomCallStatus* status) {
   VLOG(1) << "NopReturnTokenCustomCall called.";
 }
 
+absl::Status DebugPrintCustomCall(se::Stream* stream, ffi::RemainingArgs args,
+                                  absl::string_view format,
+                                  ffi::Result<ffi::Buffer<xla::TOKEN>> res) {
+  if (!stream) {
+    return Internal("Stream is nullptr.");
+  }
+
+  std::vector<ffi::AnyBuffer> args_buffers;
+  args_buffers.reserve(args.size());
+  for (int i = 0; i < args.size(); ++i) {
+    absl::StatusOr<ffi::AnyBuffer> arg = args.get<ffi::AnyBuffer>(i);
+    if (!arg.ok()) {
+      return arg.status();
+    }
+    args_buffers.push_back(*arg);
+  }
+
+  std::string formatted(format);
+
+  // Iterate in reverse order to match the longest string to substitute first.
+  for (int i = args_buffers.size() - 1; i >= 0; --i) {
+    std::string to_substitute = absl::StrCat("$", i);
+    if (!absl::StrContains(formatted, to_substitute)) {
+      return absl::FailedPreconditionError(absl::Substitute(
+          "Missing formatter for argument $0 in debug print custom call", i));
+    }
+    const ffi::AnyBuffer& arg = args_buffers[i];
+    int64_t size_bytes = arg.size_bytes();
+    TF_ASSIGN_OR_RETURN(std::unique_ptr<se::MemoryAllocation> host_buffer,
+                        stream->parent()->HostMemoryAllocate(size_bytes));
+    TF_RETURN_IF_ERROR(
+        stream->Memcpy(host_buffer->opaque(), arg.device_memory(), size_bytes));
+    TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
+
+    Shape shape = ShapeUtil::MakeShape(arg.element_type(), arg.dimensions());
+    LayoutUtil::SetToDefaultLayout(&shape);
+    MutableBorrowingLiteral literal(static_cast<char*>(host_buffer->opaque()),
+                                    shape);
+    formatted =
+        absl::StrReplaceAll(formatted, {{to_substitute, literal.ToString()}});
+  }
+
+  LOG(INFO) << formatted;
+
+  return absl::OkStatus();
+}
+
 }  // namespace
 
-XLA_REGISTER_CUSTOM_CALL_TARGET_WITH_SYM(
-    std::string(kXlaGpuAssertCustomCallTag), AssertionCustomCall,
-    GetGpuPlatformName());
+// This custom call copies its arguments to the host and pretty-prints them as
+// an info log. It takes in a "format" attribute to help identify the arguments
+// in the log. "Format" follows the convention of `absl::Substitute`, i.e.,
+// positional arguments are specified by `$0`, `$1`, etc.
+XLA_FFI_DEFINE_HANDLER(kXlaGpuDebugPrintCustomCall, DebugPrintCustomCall,
+                       ffi::Ffi::Bind()
+                           .Ctx<ffi::Stream>()
+                           .RemainingArgs()
+                           .Attr<absl::string_view>("format")
+                           .Ret<xla::ffi::Buffer<xla::TOKEN>>());
+
+XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), kXlaGpuDebugPrintCustomCallTag,
+                         GetGpuPlatformName(), kXlaGpuDebugPrintCustomCall);
+
+XLA_FFI_DEFINE_HANDLER(kXlaGpuAssertCustomCall, AssertionCustomCall,
+                       ffi::Ffi::Bind()
+                           .Ctx<ffi::Stream>()
+                           .Arg<ffi::Buffer<xla::PRED>>()
+                           .Attr<absl::string_view>("error_msg")
+                           .Ret<xla::ffi::Buffer<xla::TOKEN>>());
+
+XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), kXlaGpuAssertCustomCallTag,
+                         GetGpuPlatformName(), kXlaGpuAssertCustomCall);
 
 // This allows measuring exported HLOs where kOutfeed and kSendDone has been
 // replaced with NopReturnToken. In that case the runtime of the original

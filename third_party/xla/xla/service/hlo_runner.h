@@ -235,6 +235,9 @@ class HloRunner : public HloRunnerInterface {
     return false;
   }
 
+  absl::StatusOr<DeviceAssignment> GetDefaultDeviceAssignment(
+      int num_replicas, int num_partitions) const override;
+
  private:
   absl::StatusOr<ScopedShapedBuffer> TransferLiteralToDevice(
       const Literal& literal,

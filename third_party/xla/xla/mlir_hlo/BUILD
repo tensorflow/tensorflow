@@ -32,7 +32,6 @@ td_library(
     deps = [
         "@llvm-project//mlir:BuiltinDialectTdFiles",
         "@llvm-project//mlir:ControlFlowInterfacesTdFiles",
-        "@llvm-project//mlir:CopyOpInterfaceTdFiles",
         "@llvm-project//mlir:InferTypeOpInterfaceTdFiles",
         "@llvm-project//mlir:LoopLikeInterfaceTdFiles",
         "@llvm-project//mlir:MemRefOpsTdFiles",
@@ -273,6 +272,7 @@ cc_library(
         ":hlo_ops_inc_gen",
         ":hlo_ops_pattern_inc_gen",
         ":hlo_ops_typedefs_inc_gen",
+        ":unregistered_attributes",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:Analysis",
         "@llvm-project//mlir:ArithDialect",
@@ -304,6 +304,14 @@ cc_library(
 )
 
 cc_library(
+    name = "unregistered_attributes",
+    srcs = ["utils/unregistered_attributes.cc"],
+    hdrs = ["utils/unregistered_attributes.h"],
+    strip_include_prefix = ".",
+    deps = [],
+)
+
+cc_library(
     name = "hlo_dialect_registration",
     srcs = ["mhlo/IR/init.cc"],
     hdrs = ["mhlo/IR/register.h"],
@@ -322,7 +330,6 @@ cc_library(
     srcs = [
         "mhlo/transforms/chlo_legalize_to_hlo/chlo_legalize_to_hlo_pass.cc",
         "mhlo/transforms/collapse_elementwise_map/collapse_elementwise_map.cc",
-        "mhlo/transforms/convert_to_signless/convert_to_signless_pass.cc",
         "mhlo/transforms/expand_hlo_tuples/expand_hlo_tuples.cc",
         "mhlo/transforms/hlo_legalize_to_arithmetic/hlo_legalize_to_arithmetic.cc",
         "mhlo/transforms/hlo_legalize_to_memref/hlo_legalize_to_memref.cc",
@@ -698,7 +705,6 @@ cc_library(
         "@llvm-project//mlir:ComplexToLLVM",
         "@llvm-project//mlir:ControlFlowDialect",
         "@llvm-project//mlir:ControlFlowToLLVM",
-        "@llvm-project//mlir:CopyOpInterface",
         "@llvm-project//mlir:DialectUtils",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:FuncToLLVM",
@@ -924,7 +930,10 @@ cc_binary(
         "@llvm-project//mlir:RegisterAllPasses",
         "@llvm-project//mlir:Support",
         "@shardy//shardy/dialect/sdy/ir:dialect",
+        "@stablehlo//:linalg_passes",
         "@stablehlo//:register",
+        "@stablehlo//:stablehlo_passes",
+        "@stablehlo//:stablehlo_passes_optimization",
     ],
 )
 
@@ -1029,6 +1038,7 @@ cc_library(
         "stablehlo_ext/transforms/stablehlo_legalize_quant_composite.cpp",
         "stablehlo_ext/transforms/stablehlo_prepare_for_hlo_export.cpp",
         "stablehlo_ext/transforms/stablehlo_refine_shapes.cpp",
+        "stablehlo_ext/transforms/stablehlo_sanitize_unregistered_attributes.cpp",
         "stablehlo_ext/transforms/symbolic_shape_optimization.cpp",
     ],
     hdrs = [
@@ -1043,6 +1053,7 @@ cc_library(
         ":stablehlo_extension_base",
         ":stablehlo_extension_ops",
         ":stablehlo_extension_pass_inc_gen",
+        ":unregistered_attributes",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:AsmParser",

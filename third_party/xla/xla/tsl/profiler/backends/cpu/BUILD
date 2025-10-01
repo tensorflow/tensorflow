@@ -70,8 +70,8 @@ tsl_cc_test(
         "//xla/tsl/profiler/utils:time_utils_impl",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:notification",
     ],
 )
 

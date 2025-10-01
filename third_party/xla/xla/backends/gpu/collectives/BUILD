@@ -26,6 +26,27 @@ bool_flag(
     build_setting_default = True,
 )
 
+# NVSHMEM requires builtin functions since it uses printf's for debugging.
+config_setting(
+    name = "no_builtin_used",
+    values = {
+        "copt": "-fno-builtin",
+    },
+)
+
+cc_library(
+    name = "nvshmem_collectives_if_builtin_used",
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
+    deps =
+        select({
+            ":no_builtin_used": [],
+            "//conditions:default": [":nvshmem_collectives"],
+        }),
+)
+
 config_setting(
     name = "nvshmem_supported",
     constraint_values = [
@@ -45,7 +66,7 @@ cc_library(
     ],
     deps =
         select({
-            ":nvshmem_supported": [":nvshmem_collectives"],
+            ":nvshmem_supported": [":nvshmem_collectives_if_builtin_used"],
             "//conditions:default": [],
         }),
 )
@@ -356,6 +377,7 @@ cc_library(
         "//xla/stream_executor:stream_executor_h",
         "//xla/stream_executor/gpu:gpu_stream",
         "//xla/tsl/concurrency:async_value",
+        "//xla/tsl/concurrency:executor",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:logging",
@@ -440,6 +462,10 @@ cc_library(
 xla_test(
     name = "nccl_communicator_test",
     srcs = ["nccl_communicator_test.cc"],
+    backend_tags = {
+        # TODO(b/445172709): Re-enable once fixed.
+        "b200": ["broken"],
+    },
     backends = ["gpu"],
     local_defines =
         if_rocm_is_configured([
@@ -453,6 +479,8 @@ xla_test(
         # go/cuda#memorysanitizer
         "nomsan",
         "no-oneapi",
+        # TODO(b/435404154): Reenable once this is fixed.
+        "no_oss",
     ],
     visibility = ["//visibility:private"],
     deps = [
@@ -520,9 +548,9 @@ cc_library(
     srcs = ["single_threaded_executor.cc"],
     hdrs = ["single_threaded_executor.h"],
     deps = [
-        "//xla/tsl/concurrency:async_value",
+        "//xla/tsl/concurrency:executor",
         "//xla/tsl/platform:env",
-        "//xla/tsl/platform:threadpool_async_executor",
+        "//xla/tsl/platform:threadpool_executor",
     ],
 )
 

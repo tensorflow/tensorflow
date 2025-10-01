@@ -32,7 +32,7 @@ namespace {
 std::function<tsl::protobuf::RepeatedField<int64_t>(int64_t)>  // NOLINT
 Convert(const std::vector<std::vector<int64_t>>& live) {
   return [live](int64_t live_idx) {
-    return ::proto2::RepeatedField<int64_t>(live[live_idx].begin(),  // NOLINT
+    return ::google::protobuf::RepeatedField<int64_t>(live[live_idx].begin(),  // NOLINT
                                             live[live_idx].end());
   };
 }

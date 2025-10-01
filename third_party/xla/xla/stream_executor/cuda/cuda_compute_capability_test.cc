@@ -143,6 +143,73 @@ TEST(CudaComputeCapabilityTest, FromProtoWithFeatureExtensionUnspecified) {
   EXPECT_EQ(cc.major, 10);
   EXPECT_EQ(cc.minor, 2);
   EXPECT_EQ(cc.feature_extension, FeatureExtension::kAcceleratedFeatures);
+
+  proto.set_major(12);
+  proto.set_minor(0);
+  TF_ASSERT_OK_AND_ASSIGN(cc, CudaComputeCapability::FromProto(proto));
+  EXPECT_EQ(cc.major, 12);
+  EXPECT_EQ(cc.minor, 0);
+  EXPECT_NE(cc.feature_extension, FeatureExtension::kAcceleratedFeatures);
+}
+
+TEST(CudaComputeCapabilityTest, IsAtLeastMethods) {
+  using FeatureExtension = CudaComputeCapability::FeatureExtension;
+
+  // IsAtLeastVolta (sm_75)
+  EXPECT_TRUE(CudaComputeCapability(7, 0).IsAtLeastVolta());
+  EXPECT_TRUE(CudaComputeCapability(7, 4).IsAtLeastVolta());
+  EXPECT_TRUE(CudaComputeCapability(7, 5).IsAtLeastVolta());
+  EXPECT_TRUE(
+      CudaComputeCapability(7, 5, FeatureExtension::kAcceleratedFeatures)
+          .IsAtLeastVolta());
+  EXPECT_TRUE(CudaComputeCapability(8, 0).IsAtLeastVolta());
+
+  // IsAtLeastAmpere (sm_80)
+  EXPECT_FALSE(CudaComputeCapability(7, 5).IsAtLeastAmpere());
+  EXPECT_FALSE(
+      CudaComputeCapability(7, 5, FeatureExtension::kForwardCompatibleFeatures)
+          .IsAtLeastAmpere());
+  EXPECT_TRUE(CudaComputeCapability(8, 0).IsAtLeastAmpere());
+  EXPECT_TRUE(
+      CudaComputeCapability(8, 0, FeatureExtension::kAcceleratedFeatures)
+          .IsAtLeastAmpere());
+  EXPECT_TRUE(CudaComputeCapability(8, 6).IsAtLeastAmpere());
+  EXPECT_TRUE(CudaComputeCapability(9, 0).IsAtLeastAmpere());
+
+  // IsAtLeastHopper (sm_90)
+  EXPECT_FALSE(CudaComputeCapability(8, 9).IsAtLeastHopper());
+  EXPECT_TRUE(CudaComputeCapability(9, 0).IsAtLeastHopper());
+  EXPECT_TRUE(
+      CudaComputeCapability(9, 0, FeatureExtension::kAcceleratedFeatures)
+          .IsAtLeastHopper());
+  EXPECT_TRUE(CudaComputeCapability(9, 1).IsAtLeastHopper());
+  EXPECT_TRUE(CudaComputeCapability(10, 0).IsAtLeastHopper());
+
+  // IsAtLeastBlackwell (sm_100)
+  EXPECT_FALSE(CudaComputeCapability(9, 0).IsAtLeastBlackwell());
+  EXPECT_FALSE(
+      CudaComputeCapability(9, 0, FeatureExtension::kForwardCompatibleFeatures)
+          .IsAtLeastBlackwell());
+  EXPECT_TRUE(CudaComputeCapability(10, 0).IsAtLeastBlackwell());
+  EXPECT_TRUE(
+      CudaComputeCapability(10, 0, FeatureExtension::kAcceleratedFeatures)
+          .IsAtLeastBlackwell());
+  EXPECT_TRUE(CudaComputeCapability(10, 1).IsAtLeastBlackwell());
+
+  // IsAtLeastBlackwellPro (sm_120)
+  EXPECT_FALSE(CudaComputeCapability(11, 0).IsAtLeastBlackwellPro());
+  EXPECT_FALSE(
+      CudaComputeCapability(11, 0, FeatureExtension::kForwardCompatibleFeatures)
+          .IsAtLeastBlackwellPro());
+  EXPECT_TRUE(CudaComputeCapability(12, 0).IsAtLeastBlackwellPro());
+  EXPECT_TRUE(
+      CudaComputeCapability(12, 0, FeatureExtension::kAcceleratedFeatures)
+          .IsAtLeastBlackwellPro());
+  EXPECT_TRUE(CudaComputeCapability(12, 0).IsAtLeastBlackwellPro());
+  EXPECT_TRUE(CudaComputeCapability(12, 0).IsAtLeastBlackwellPro());
+  EXPECT_TRUE(
+      CudaComputeCapability(12, 0, FeatureExtension::kForwardCompatibleFeatures)
+          .IsAtLeastBlackwellPro());
 }
 
 TEST(CudaComputeCapabilityTest, FromProtoWithFeatureExtensionSpecified) {

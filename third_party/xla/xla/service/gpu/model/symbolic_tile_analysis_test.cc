@@ -35,6 +35,9 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "mlir/IR/MLIRContext.h"
+#include "xla/codegen/tiling/constraint_expression.h"
+#include "xla/codegen/tiling/tiled_hlo_computation.h"
+#include "xla/codegen/tiling/tiled_hlo_fusion_instruction.h"
 #include "xla/hlo/analysis/indexing_test_utils.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -43,10 +46,7 @@ limitations under the License.
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/hlo/utils/hlo_traversal.h"
-#include "xla/service/gpu/model/constraint_expression.h"
 #include "xla/service/gpu/model/symbolic_tiled_hlo_instruction.h"
-#include "xla/service/gpu/model/tiled_hlo_computation.h"
-#include "xla/service/gpu/model/tiled_hlo_instruction.h"
 #include "xla/service/instruction_fusion.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/errors.h"
@@ -1630,8 +1630,8 @@ ENTRY e {
   EXPECT_EQ(dynamic_slice->hlo()->opcode(), HloOpcode::kDynamicSlice);
   const TiledHloInstruction* p0 = dynamic_slice->operand(0);
   EXPECT_THAT(*p0, MatchTiledHloInstruction(
-                       /*tile_sizes=*/{1, 8, 2},
-                       /*tile_strides=*/{0, 1, 1},
+                       /*tile_sizes=*/{2, 8, 2},
+                       /*tile_strides=*/{1, 1, 1},
                        /*tile_offsets_indexing=*/R"(
     (pid_0){rt0} -> (rt0, 0, 0), domain: pid_0 in [0, 0], rt0 in [0, 3]
   )"));

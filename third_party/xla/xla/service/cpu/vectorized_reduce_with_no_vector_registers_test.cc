@@ -28,6 +28,7 @@ limitations under the License.
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/MC/TargetRegistry.h"
 #include "llvm/Target/TargetMachine.h"
+#include "llvm/TargetParser/Triple.h"
 #include "xla/backends/cpu/codegen/target_machine_features.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_module_group.h"
@@ -64,7 +65,8 @@ absl::StatusOr<unsigned int> GetTargetVectorRegisterByteSize(
 
   std::unique_ptr<llvm::TargetMachine> target_machine =
       absl::WrapUnique(target->createTargetMachine(
-          /*TT=*/triple, /*CPU=*/"", /*Features=*/"", llvm::TargetOptions{},
+          /*TT=*/llvm::Triple(triple), /*CPU=*/"", /*Features=*/"",
+          llvm::TargetOptions{},
           /*RM=*/std::nullopt));
   cpu::TargetMachineFeatures target_machine_features(target_machine.get());
   return target_machine_features.vector_register_byte_size(*function);

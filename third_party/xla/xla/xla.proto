@@ -193,6 +193,9 @@ message DebugOptions {
   // below!
   optional bool xla_cpu_enable_fast_min_max = 140;
 
+  // Call oneDNN custom call thunks in the CPU backend
+  optional bool xla_cpu_experimental_onednn_custom_call = 412;
+
   // Stores the fusion types enabled for oneDNN in DotLibraryRewriter pass.
   repeated LibraryFusionType xla_cpu_experimental_onednn_fusion_type = 399;
 
@@ -337,8 +340,8 @@ message DebugOptions {
   // estimator precision; comma-separated list of 'key=val' strings (=val may be
   // omitted); no whitespace around commas. Available options:
   // --xla_gpu_analytical_latency_estimator_options=
-  //'nccl_op_launch_ms=55,nic_speed_gbps=40,
-  // chunk_prep_ms=1,rtt_ms=2,gpus_per_node=4,chunk_size_bytes=1024'
+  // 'nccl_op_launch_us=55,nic_speed_gbps=40,chunk_prep_us=1,rtt_us=2,
+  // gpus_per_node=4,chunk_size_bytes=1024'
   map<string, string> xla_gpu_analytical_latency_estimator_options = 357;
 
   // If true, XLA will wrap `dot` operations into async computations in an
@@ -394,6 +397,10 @@ message DebugOptions {
 
   optional CommandBufferSchedulingMode xla_gpu_command_buffer_scheduling_mode =
       404;
+
+  // During command buffer lowering, unroll the loop command if loop has known
+  // loop count and the loop body does not have unsupported commands.
+  optional bool xla_gpu_command_buffer_unroll_loops = 411;
 
   optional bool xla_gpu_copy_insertion_use_region_analysis = 236;
 
@@ -472,15 +479,6 @@ message DebugOptions {
   // Rewrite layer norm patterns into cuDNN library calls.
   optional bool xla_gpu_enable_cudnn_layer_norm = 262;
 
-  // If true, XLA will try to pattern match subgraphs of HLO operations into
-  // custom fusions registered in the current process (pre-compiled hand written
-  // kernels, e.g. various GEMM fusions written in CUTLASS).
-  optional bool xla_gpu_enable_custom_fusions = 263;
-
-  // A regular expression enabling only a subset of custom fusions. Enabled only
-  // if `xla_gpu_enable_custom_fusion` set to true.
-  optional string xla_gpu_enable_custom_fusions_re = 264;
-
   // Enables address computation fusion to optimize dynamic-slice and
   // dynamic-update-slice operations around library calls.
   optional bool xla_gpu_enable_dynamic_slice_fusion = 105;
@@ -550,9 +548,6 @@ message DebugOptions {
   optional bool xla_gpu_enable_split_k_autotuning = 241;
 
   optional bool xla_gpu_enable_triton_gemm = 188;
-
-  // Enables currently disabled features within Triton for Hopper.
-  optional bool xla_gpu_enable_triton_hopper = 266;
 
   // Enable double buffering for loops.
   optional bool xla_gpu_enable_while_loop_double_buffering = 248;
@@ -819,9 +814,6 @@ message DebugOptions {
   // scratch), so this can be multiplied by quite a lot.
   optional int64 xla_gpu_redzone_padding_bytes = 228;
 
-  // Size threshold (in megabytes) for the GPU redzone scratch allocator.
-  optional int64 xla_gpu_redzone_scratch_max_megabytes = 167;
-
   // If true, will require complete AOT autotuning results; in the case of
   // missing AOT result, the model will not be compiled or executed, a
   // `NotFound` error will be returned.
@@ -920,6 +912,8 @@ message DebugOptions {
 
   // go/keep-sorted end
 
+  reserved 167;  // xla_gpu_redzone_scratch_max_megabytes
+  reserved 266;  // xla_gpu_enable_triton_hopper
   reserved 276;  // xla_gpu_enable_nccl_per_stream_comms
   reserved 226;  // xla_gpu_triton_gemm_disable_reduced_precision_reduction
   reserved 385;  // xla_gpu_experimental_enable_dynamic_dot_search_space
@@ -1195,6 +1189,8 @@ message DebugOptions {
   reserved 230;  // Was xla_gpu_graph_eviction_timeout_seconds
   reserved 168;  // Was xla_gpu_simplify_all_fp_conversions.
   reserved 172;  // Was xla_gpu_normalize_layouts.
+  reserved 263;  // Was xla_gpu_enable_custom_fusions
+  reserved 264;  // Was xla_gpu_enable_custom_fusions_re
 
   // Generate calls to Arm Compute Library in the CPU backend.
   optional bool xla_cpu_use_acl = 174;
@@ -1334,10 +1330,13 @@ message DebugOptions {
   // We need this to enable triton scaled dot emitter for testing.
   optional bool xla_gpu_experimental_scaled_dot_with_triton = 410;
 
+  // If true, use third-party library raft::matrix::select_k to implement TopK.
+  optional bool xla_gpu_experimental_use_raft_select_k = 413;
+
   // Note: when adding a new flag, please add it to one of the hardware-specific
   // or hardware-agnostic sections at the top of this proto message.
 
-  // Next id: 411
+  // Next id: 414
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

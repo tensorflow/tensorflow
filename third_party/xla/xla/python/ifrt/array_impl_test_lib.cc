@@ -39,7 +39,6 @@ limitations under the License.
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
-#include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt/ir/sharding_param.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/shape.h"
@@ -47,6 +46,7 @@ limitations under the License.
 #include "xla/python/ifrt/test_util.h"
 #include "xla/python/ifrt/user_context.h"
 #include "xla/python/ifrt/value.h"
+#include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
@@ -106,7 +106,7 @@ TEST(ArrayImplTest, MakeArrayFromHostBuffer) {
   EXPECT_EQ(array->dtype(), dtype);
   EXPECT_EQ(array->shape(), shape);
   EXPECT_EQ(array->shared_ptr_sharding().get(), sharding.get());
-  EXPECT_EQ(array->user_context()->Fingerprint(), 100);
+  EXPECT_EQ(array->user_context()->Id(), UserContextId(100));
 }
 
 TEST(ArrayImplTest,
@@ -146,7 +146,7 @@ TEST(ArrayImplTest,
   EXPECT_EQ(array->dtype(), dtype);
   EXPECT_EQ(array->shape(), shape);
   EXPECT_EQ(array->shared_ptr_sharding().get(), sharding.get());
-  EXPECT_EQ(array->user_context()->Fingerprint(), 100);
+  EXPECT_EQ(array->user_context()->Id(), UserContextId(100));
 }
 
 class ArrayImplWithHostBufferSemanticsTest
@@ -302,9 +302,9 @@ TEST(ArrayImplTest, MakeArrayFromHostBufferDefaultLayout) {
   for (Memory* const memory : device->Memories()) {
     SCOPED_TRACE(absl::StrCat(memory->Kind()));
 
-    TF_ASSERT_OK_AND_ASSIGN(
-        auto default_layout,
-        client->GetDefaultLayout(dtype, shape.dims(), device, memory->Kind()));
+    TF_ASSERT_OK_AND_ASSIGN(auto default_layout,
+                            client->GetDefaultPjRtLayout(
+                                dtype, shape.dims(), device, memory->Kind()));
 
     TF_ASSERT_OK_AND_ASSIGN(
         auto array,
@@ -315,7 +315,7 @@ TEST(ArrayImplTest, MakeArrayFromHostBufferDefaultLayout) {
             /*on_done_with_host_buffer=*/nullptr));
     TF_ASSERT_OK(array->GetReadyFuture().Await());
 
-    TF_ASSERT_OK_AND_ASSIGN(auto layout, array->layout());
+    TF_ASSERT_OK_AND_ASSIGN(auto layout, array->pjrt_layout());
     EXPECT_EQ(*layout, *default_layout);
   }
 }
@@ -396,7 +396,7 @@ TEST(ArrayImplTest, MakeArrayFromHostBufferWithNonCompactByteStrides) {
   TF_ASSERT_OK(array->GetReadyFuture().Await());
 
   std::vector<int8_t> out_data(4);
-  Future<> future =
+  tsl::Future<> future =
       array->CopyToHostBuffer(out_data.data(), /*byte_strides=*/std::nullopt,
                               ArrayCopySemantics::kAlwaysCopy);
   TF_ASSERT_OK(future.Await());
@@ -540,7 +540,7 @@ TEST(ArrayImplTest, MakeArraysFromHostBufferShardsAndCopyToHostBuffer) {
   // There should be no use-after-free.
 
   for (int i = 0; i < arrays.size(); ++i) {
-    EXPECT_EQ(arrays[i]->user_context()->Fingerprint(), 100);
+    EXPECT_EQ(arrays[i]->user_context()->Id(), UserContextId(100));
     TF_ASSERT_OK_AND_ASSIGN(
         auto single_device_arrays,
         arrays[i]->DisassembleIntoSingleDeviceArrays(
@@ -710,7 +710,7 @@ TEST(ArrayImplTest, MakeArraysFromHostBufferShardsWithLayout) {
   }
 
   TF_ASSERT_OK(array->GetReadyFuture().Await());
-  TF_ASSERT_OK_AND_ASSIGN(auto result_layout, array->layout());
+  TF_ASSERT_OK_AND_ASSIGN(auto result_layout, array->pjrt_layout());
   EXPECT_EQ(*result_layout, *layout);
 }
 
@@ -741,7 +741,7 @@ TEST(ArrayImplTest, MakeArrayFromHostBufferAndCopyToHostBufferWithString) {
           /*byte_strides=*/std::nullopt, std::move(sharding),
           Client::HostBufferSemantics::kImmutableUntilTransferCompletes,
           /*on_done_with_host_buffer=*/[cords = std::move(cords)]() {}));
-  EXPECT_EQ(array->user_context()->Fingerprint(), 100);
+  EXPECT_EQ(array->user_context()->Id(), UserContextId(100));
 
   std::vector<absl::Cord> out_data(shape.num_elements());
   auto future =
@@ -837,7 +837,7 @@ TEST(ArrayImplTest,
   cords1 = nullptr;
 
   for (int i = 0; i < arrays.size(); ++i) {
-    EXPECT_EQ(arrays[i]->user_context()->Fingerprint(), 100);
+    EXPECT_EQ(arrays[i]->user_context()->Id(), UserContextId(100));
     TF_ASSERT_OK_AND_ASSIGN(
         auto single_device_arrays,
         arrays[i]->DisassembleIntoSingleDeviceArrays(
@@ -898,7 +898,7 @@ TEST(ArrayImplTest, HostBufferRoundTripAllMemoryKinds) {
     TF_ASSERT_OK(array->GetReadyFuture().Await());
 
     std::vector<float> new_data(6);
-    Future<> future = array->CopyToHostBuffer(
+    tsl::Future<> future = array->CopyToHostBuffer(
         static_cast<void*>(new_data.data()), /*byte_strides=*/std::nullopt,
         ArrayCopySemantics::kReuseInput);
     TF_ASSERT_OK(future.Await());
@@ -934,7 +934,7 @@ TEST(ArrayImplTest, HostBufferInt4) {
     TF_ASSERT_OK(array->GetReadyFuture().Await());
 
     std::vector<int8_t> out_data(4);
-    Future<> future =
+    tsl::Future<> future =
         array->CopyToHostBuffer(out_data.data(), /*byte_strides=*/std::nullopt,
                                 ArrayCopySemantics::kAlwaysCopy);
     TF_ASSERT_OK(future.Await());
@@ -969,8 +969,8 @@ TEST(ArrayImplTest, MakeErrorArrays) {
               StatusIs(_, HasSubstr("injected error")));
   EXPECT_THAT(arrays[1]->GetReadyFuture().Await(),
               StatusIs(_, HasSubstr("injected error")));
-  EXPECT_EQ(arrays[0]->user_context()->Fingerprint(), 100);
-  EXPECT_EQ(arrays[1]->user_context()->Fingerprint(), 100);
+  EXPECT_EQ(arrays[0]->user_context()->Id(), UserContextId(100));
+  EXPECT_EQ(arrays[1]->user_context()->Id(), UserContextId(100));
 }
 
 TEST(ArrayImplTest, MakeErrorArraysWithAddressableAndNonAddressableDevice) {
@@ -1009,8 +1009,8 @@ TEST(ArrayImplTest, MakeErrorArraysWithAddressableAndNonAddressableDevice) {
               StatusIs(_, HasSubstr("injected error")));
   EXPECT_THAT(arrays[1]->GetReadyFuture().Await(),
               StatusIs(_, HasSubstr("injected error")));
-  EXPECT_EQ(arrays[0]->user_context()->Fingerprint(), 100);
-  EXPECT_EQ(arrays[1]->user_context()->Fingerprint(), 100);
+  EXPECT_EQ(arrays[0]->user_context()->Id(), UserContextId(100));
+  EXPECT_EQ(arrays[1]->user_context()->Id(), UserContextId(100));
 }
 
 TEST(ArrayImplTest, AssembleArray) {
@@ -1059,7 +1059,7 @@ TEST(ArrayImplTest, AssembleArray) {
   EXPECT_EQ(assembled_array->shape(), assembled_shape);
   EXPECT_EQ(assembled_array->shared_ptr_sharding().get(),
             assembled_sharding.get());
-  EXPECT_EQ(assembled_array->user_context()->Fingerprint(), 100);
+  EXPECT_EQ(assembled_array->user_context()->Id(), UserContextId(100));
 }
 
 TEST(ArrayImplTest, AssembleAndDisassembleArray) {
@@ -1128,12 +1128,14 @@ TEST(ArrayImplTest, AssembleAndDisassembleArray) {
     EXPECT_EQ(single_device_arrays[0]->shape(), array0->shape());
     EXPECT_THAT(single_device_arrays[0]->sharding().devices()->devices(),
                 ElementsAreArray(array0->sharding().devices()->devices()));
-    EXPECT_EQ(single_device_arrays[0]->user_context()->Fingerprint(), 100);
+    EXPECT_EQ(single_device_arrays[0]->user_context()->Id(),
+              UserContextId(100));
     EXPECT_EQ(single_device_arrays[1]->dtype(), array1->dtype());
     EXPECT_EQ(single_device_arrays[1]->shape(), array1->shape());
     EXPECT_THAT(single_device_arrays[1]->sharding().devices()->devices(),
                 ElementsAreArray(array1->sharding().devices()->devices()));
-    EXPECT_EQ(single_device_arrays[1]->user_context()->Fingerprint(), 100);
+    EXPECT_EQ(single_device_arrays[1]->user_context()->Id(),
+              UserContextId(100));
   }
 }
 
@@ -1182,7 +1184,7 @@ TEST(ArrayImplTest, AssembleAndDisassembleSingleDeviceArray) {
   ASSERT_EQ(single_device_arrays[0]->shape(), array->shape());
   EXPECT_THAT(single_device_arrays[0]->sharding().devices()->devices(),
               ElementsAreArray(array->sharding().devices()->devices()));
-  EXPECT_EQ(single_device_arrays[0]->user_context()->Fingerprint(), 100);
+  EXPECT_EQ(single_device_arrays[0]->user_context()->Id(), UserContextId(100));
 }
 
 TEST(ArrayImplTest, CopyToSameDevices) {
@@ -1208,7 +1210,7 @@ TEST(ArrayImplTest, CopyToSameDevices) {
       client->CopyArrays(absl::MakeSpan(&array, 1), sharding->devices(),
                          MemoryKind(), ArrayCopySemantics::kAlwaysCopy));
   ASSERT_THAT(new_arrays, SizeIs(1));
-  EXPECT_EQ(new_arrays[0]->user_context()->Fingerprint(), 100);
+  EXPECT_EQ(new_arrays[0]->user_context()->Id(), UserContextId(100));
 
   std::vector<float> out_data(6);
   auto future = new_arrays[0]->CopyToHostBuffer(
@@ -1265,7 +1267,7 @@ TEST(ArrayImplTest, AssembleAndDisassembleNonAddressableArray) {
             dtype, assembled_shape, assembled_sharding, absl::MakeSpan(arrays),
             ArrayCopySemantics::kAlwaysCopy,
             SingleDeviceShardSemantics::kAddressableShards));
-    EXPECT_EQ(assembled_array->user_context()->Fingerprint(), 100);
+    EXPECT_EQ(assembled_array->user_context()->Id(), UserContextId(100));
 
     TF_ASSERT_OK_AND_ASSIGN(
         auto single_device_arrays,
@@ -1341,7 +1343,7 @@ TEST(ArrayImplTest, CopyToDifferentDevice) {
         auto expected_sharding,
         arrays[i]->sharding().WithDeviceAssignment(device_list, MemoryKind()));
     EXPECT_EQ(new_arrays[i]->sharding(), *expected_sharding);
-    EXPECT_EQ(new_arrays[i]->user_context()->Fingerprint(), 100);
+    EXPECT_EQ(new_arrays[i]->user_context()->Id(), UserContextId(100));
 
     TF_ASSERT_OK_AND_ASSIGN(
         auto shards, arrays[i]->DisassembleIntoSingleDeviceArrays(
@@ -1446,11 +1448,11 @@ TEST(ArrayImplTest, CopyPreservesDefaultLayouts) {
               /*on_done_with_host_buffer=*/nullptr));
       TF_ASSERT_OK(array->GetReadyFuture().Await());
 
-      TF_ASSERT_OK_AND_ASSIGN(auto src_layout, array->layout());
+      TF_ASSERT_OK_AND_ASSIGN(auto src_layout, array->pjrt_layout());
       TF_ASSERT_OK_AND_ASSIGN(
           auto src_default_layout,
-          client->GetDefaultLayout(dtype, shape.dims(), device,
-                                   src_memory->Kind()));
+          client->GetDefaultPjRtLayout(dtype, shape.dims(), device,
+                                       src_memory->Kind()));
       EXPECT_EQ(*src_layout, *src_default_layout);
 
       TF_ASSERT_OK_AND_ASSIGN(
@@ -1458,11 +1460,11 @@ TEST(ArrayImplTest, CopyPreservesDefaultLayouts) {
                                               std::nullopt, dst_memory->Kind(),
                                               ArrayCopySemantics::kAlwaysCopy));
       ASSERT_THAT(new_arrays, SizeIs(1));
-      TF_ASSERT_OK_AND_ASSIGN(auto dst_layout, new_arrays[0]->layout());
+      TF_ASSERT_OK_AND_ASSIGN(auto dst_layout, new_arrays[0]->pjrt_layout());
       TF_ASSERT_OK_AND_ASSIGN(
           auto dst_default_layout,
-          client->GetDefaultLayout(dtype, shape.dims(), device,
-                                   dst_memory->Kind()));
+          client->GetDefaultPjRtLayout(dtype, shape.dims(), device,
+                                       dst_memory->Kind()));
       EXPECT_EQ(*dst_layout, *dst_default_layout);
     }
   }
@@ -1503,7 +1505,7 @@ TEST(ArrayImplTest, MakeAndCopyZeroSizedBuffers) {
                              ArrayCopySemantics::kReuseInput));
       TF_ASSERT_OK(copied[0]->GetReadyFuture().Await());
 
-      Future<> future =
+      tsl::Future<> future =
           copied[0]->CopyToHostBuffer(nullptr, /*byte_strides=*/std::nullopt,
                                       ArrayCopySemantics::kAlwaysCopy);
       TF_ASSERT_OK(future.Await());
@@ -1554,7 +1556,7 @@ TEST(ArrayImplTest, CopyArraysExhaustive) {
         EXPECT_EQ(new_array->sharding().memory_kind(), dst_memory->Kind());
 
         std::vector<float> out_data(6);
-        Future<void> future = new_array->CopyToHostBuffer(
+        tsl::Future<void> future = new_array->CopyToHostBuffer(
             out_data.data(), /*byte_strides=*/std::nullopt,
             ArrayCopySemantics::kAlwaysCopy);
         TF_ASSERT_OK(future.Await());

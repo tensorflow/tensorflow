@@ -43,7 +43,7 @@ namespace gpu {
 
 absl::Status ExecutionCounters::Initialize(se::StreamExecutor* executor,
                                            RunId run_id) {
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
   CounterKey key = {executor, run_id};
   if (counters_.contains(key)) return absl::OkStatus();
   counters_.emplace(key, 0);
@@ -52,7 +52,7 @@ absl::Status ExecutionCounters::Initialize(se::StreamExecutor* executor,
 
 absl::StatusOr<int64_t*> ExecutionCounters::GetCounter(
     se::StreamExecutor* executor, RunId run_id) {
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
   CounterKey key = {executor, run_id};
   auto counter = counters_.find(key);
   if (counter == counters_.end()) {

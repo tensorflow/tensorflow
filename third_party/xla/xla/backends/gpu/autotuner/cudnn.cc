@@ -78,7 +78,7 @@ absl::Status ApplyConfigAndUpdateWorkspaceInOutputTuple(
     new_call_element_shapes.emplace_back(instr.shape().tuple_shapes(i));
   }
   // The final element is the size of the workspace.
-  int workspace_size = config.workspace_size().value();
+  int64_t workspace_size = config.workspace_size().value();
   new_call_element_shapes.emplace_back(
       ShapeUtil::MakeShape(U8, {workspace_size}));
   Shape new_call_shape = ShapeUtil::MakeTupleShape(new_call_element_shapes);
@@ -169,6 +169,83 @@ bool IsSupportedByCudnn(const HloInstruction& instr,
   return false;
 }
 
+absl::StatusOr<std::vector<CudnnBackendConfig>> GetAlgorithms(
+    se::dnn::DnnSupport* dnn, se::dnn::ConvolutionKind conv_kind,
+    se::dnn::DataType input_type, se::dnn::DataType output_type,
+    se::Stream* stream, const GpuConvConfig& gpu_conv_config,
+    const se::NumericOptions& numeric_options, bool use_fallback) {
+  std::vector<std::unique_ptr<const se::dnn::ConvRunner>> conv_runners;
+  std::vector<std::unique_ptr<const se::dnn::FusedConvRunner>>
+      fused_conv_runners;
+  std::vector<std::unique_ptr<const se::dnn::GraphConvRunner>>
+      graph_conv_runners;
+  switch (conv_kind) {
+    case se::dnn::ConvolutionKind::FORWARD_BIAS_ACTIVATION: {
+      if (!gpu_conv_config.fusion) {
+        return absl::InvalidArgumentError(
+            "GpuConvConfig had fusion ConvolutionKind but no FusionConfig.");
+      }
+      TF_RETURN_IF_ERROR(dnn->GetFusedConvolveRunners(
+          se::dnn::ConvolutionKind::FORWARD, input_type,
+          BiasTypeForInputType(input_type), output_type,
+          gpu_conv_config.conv_result_scale,
+          gpu_conv_config.fusion->side_input_scale,
+          gpu_conv_config.fusion->leakyrelu_alpha, stream,
+          gpu_conv_config.input_descriptor, gpu_conv_config.filter_descriptor,
+          gpu_conv_config.bias_descriptor, gpu_conv_config.output_descriptor,
+          gpu_conv_config.conv_desc, use_fallback, gpu_conv_config.fusion->mode,
+          numeric_options, &fused_conv_runners));
+      break;
+    }
+    case se::dnn::ConvolutionKind::FORWARD_GRAPH: {
+      TF_RETURN_IF_ERROR(dnn->GetGraphConvolveRunners(
+          conv_kind, input_type, output_type, stream,
+          gpu_conv_config.input_descriptor, gpu_conv_config.filter_descriptor,
+          gpu_conv_config.output_descriptor, gpu_conv_config.conv_desc,
+          use_fallback, numeric_options, &graph_conv_runners,
+          gpu_conv_config.serialized_graph));
+      break;
+    }
+    case se::dnn::ConvolutionKind::FORWARD:
+    case se::dnn::ConvolutionKind::BACKWARD_DATA:
+    case se::dnn::ConvolutionKind::BACKWARD_FILTER: {
+      TF_RETURN_IF_ERROR(dnn->GetConvolveRunners(
+          conv_kind, input_type, output_type, stream,
+          gpu_conv_config.input_descriptor,
+          /*input_data=*/se::DeviceMemoryBase(nullptr),
+          gpu_conv_config.filter_descriptor,
+          /*filter_data=*/se::DeviceMemoryBase(nullptr),
+          gpu_conv_config.output_descriptor,
+          /*output_data=*/se::DeviceMemoryBase(nullptr),
+          gpu_conv_config.conv_desc, use_fallback,
+          /*scratch_allocator=*/nullptr, numeric_options, &conv_runners));
+      break;
+    }
+    default:
+      return absl::InvalidArgumentError(
+          "Cudnn backend doesn't support this convolution kind.");
+  }
+
+  std::vector<CudnnBackendConfig> configs;
+  if (!conv_runners.empty()) {
+    configs.reserve(conv_runners.size());
+    for (const auto& runner : conv_runners) {
+      configs.push_back(runner->ToAlgorithmDesc()->ToProto());
+    }
+  } else if (!fused_conv_runners.empty()) {
+    configs.reserve(fused_conv_runners.size());
+    for (const auto& runner : fused_conv_runners) {
+      configs.push_back(runner->ToAlgorithmDesc()->ToProto());
+    }
+  } else if (!graph_conv_runners.empty()) {
+    configs.reserve(graph_conv_runners.size());
+    for (const auto& runner : graph_conv_runners) {
+      configs.push_back(runner->ToAlgorithmDesc()->ToProto());
+    }
+  }
+  return configs;
+}
+
 absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>>
 GetCudnnFusionConfigs(const HloInstruction& instr,
                       se::StreamExecutor* stream_executor) {
@@ -189,7 +266,6 @@ GetCudnnFusionConfigs(const HloInstruction& instr,
 absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>>
 GetConvolutionCustomCallConfigs(const HloCustomCallInstruction* instr,
                                 se::StreamExecutor* stream_executor) {
-  std::vector<std::unique_ptr<BackendConfig>> configs;
   TF_ASSIGN_OR_RETURN(GpuConvConfig gpu_conv_config, GetGpuConvConfig(instr));
   TF_ASSIGN_OR_RETURN(se::dnn::ConvolutionKind conv_kind,
                       GetDNNConvKindFromCudnnConvKind(gpu_conv_config.kind));
@@ -209,76 +285,28 @@ GetConvolutionCustomCallConfigs(const HloCustomCallInstruction* instr,
       [](int precision) { return precision <= PrecisionConfig::HIGH; });
   const se::NumericOptions numeric_options{
       RequireDeterminism(instr->GetModule()->config()), allow_tf32};
-  switch (conv_kind) {
-    case se::dnn::ConvolutionKind::FORWARD_BIAS_ACTIVATION: {
-      if (!gpu_conv_config.fusion) {
-        return absl::InvalidArgumentError(
-            "GpuConvConfig had fusion ConvolutionKind but no FusionConfig.");
-      }
-      std::vector<std::unique_ptr<const se::dnn::FusedConvRunner>> runners;
-      TF_RETURN_IF_ERROR(dnn->GetFusedConvolveRunners(
-          // This refers to the kind of convolution op inside the fusion, not
-          // the whole fused graph.
-          se::dnn::ConvolutionKind::FORWARD, input_type,
-          BiasTypeForInputType(input_type), output_type,
-          /*conv_input_scale=*/gpu_conv_config.conv_result_scale,
-          /*side_input_scale=*/gpu_conv_config.fusion->side_input_scale,
-          /*leakyrelu_alpha=*/gpu_conv_config.fusion->leakyrelu_alpha, stream,
-          gpu_conv_config.input_descriptor, gpu_conv_config.filter_descriptor,
-          gpu_conv_config.bias_descriptor, gpu_conv_config.output_descriptor,
-          gpu_conv_config.conv_desc,
-          /*use_fallback=*/false, gpu_conv_config.fusion->mode, numeric_options,
-          &runners));
-      for (const auto& runner : runners) {
-        auto any = std::make_unique<google::protobuf::Any>();
-        any->PackFrom(runner->ToAlgorithmDesc()->ToProto());
-        configs.push_back(std::move(any));
-      }
-      return configs;
-    }
-    case se::dnn::ConvolutionKind::FORWARD_GRAPH: {
-      std::vector<std::unique_ptr<const se::dnn::GraphConvRunner>> runners;
-      // This path is cuDNN-only, where the DeviceMemoryBase arguments and the
-      // allocator are unused; so, they're all provided as nullptr.
-      TF_RETURN_IF_ERROR(dnn->GetGraphConvolveRunners(
-          conv_kind, input_type, output_type, stream,
-          gpu_conv_config.input_descriptor, gpu_conv_config.filter_descriptor,
-          gpu_conv_config.output_descriptor, gpu_conv_config.conv_desc,
-          /*use_fallback=*/false, numeric_options, &runners,
-          gpu_conv_config.serialized_graph));
-      for (const auto& runner : runners) {
-        auto any = std::make_unique<google::protobuf::Any>();
-        any->PackFrom(runner->ToAlgorithmDesc()->ToProto());
-        configs.push_back(std::move(any));
-      }
-      return configs;
-    }
-    case se::dnn::ConvolutionKind::FORWARD:
-    case se::dnn::ConvolutionKind::BACKWARD_DATA:
-    case se::dnn::ConvolutionKind::BACKWARD_FILTER: {
-      std::vector<std::unique_ptr<const se::dnn::ConvRunner>> runners;
-      // This path is cuDNN-only, where the DeviceMemoryBase arguments and the
-      // allocator are unused; so, they're all provided as nullptr.
-      TF_RETURN_IF_ERROR(dnn->GetConvolveRunners(
-          conv_kind, input_type, output_type, stream,
-          gpu_conv_config.input_descriptor,
-          /*input_data=*/se::DeviceMemoryBase(nullptr),
-          gpu_conv_config.filter_descriptor,
-          /*filter_data=*/se::DeviceMemoryBase(nullptr),
-          gpu_conv_config.output_descriptor,
-          /*output_data=*/se::DeviceMemoryBase(nullptr),
-          gpu_conv_config.conv_desc,
-          /*use_fallback=*/false, nullptr, numeric_options, &runners));
-      for (const auto& runner : runners) {
-        auto any = std::make_unique<google::protobuf::Any>();
-        any->PackFrom(runner->ToAlgorithmDesc()->ToProto());
-        configs.push_back(std::move(any));
-      }
-      return configs;
-    }
-    default:
-      return absl::InvalidArgumentError(
-          "Cudnn backend doesn't support this convolution kind.");
+
+  // Try to get algorithms without fallback first, as fallback algorithms can be
+  // very slow.
+  std::vector<CudnnBackendConfig> algorithm_configs;
+  TF_ASSIGN_OR_RETURN(
+      algorithm_configs,
+      GetAlgorithms(dnn, conv_kind, input_type, output_type, stream,
+                    gpu_conv_config, numeric_options, /*use_fallback=*/false));
+
+  if (algorithm_configs.empty()) {
+    TF_ASSIGN_OR_RETURN(
+        algorithm_configs,
+        GetAlgorithms(dnn, conv_kind, input_type, output_type, stream,
+                      gpu_conv_config, numeric_options, /*use_fallback=*/true));
+  }
+
+  std::vector<std::unique_ptr<BackendConfig>> configs;
+  configs.reserve(algorithm_configs.size());
+  for (const auto& algorithm_config : algorithm_configs) {
+    auto any = std::make_unique<google::protobuf::Any>();
+    any->PackFrom(algorithm_config);
+    configs.push_back(std::move(any));
   }
   return configs;
 }

@@ -154,7 +154,7 @@ HloHardwareIndependentTestBase::ParseAndReturnVerifiedModule(
     std::function<int64_t(const xla::Shape&)> shape_size_fn) const {
   HloModuleConfig config_with_device_assignment = config;
   if (!config.has_static_device_assignment()) {
-    absl::MutexLock ml(&device_assignment_mu_);
+    absl::MutexLock ml(device_assignment_mu_);
     default_device_assignment_ =
         std::make_unique<DeviceAssignment>(GetDefaultDeviceAssignment(
             config.replica_count(), config.num_partitions()));
@@ -256,7 +256,7 @@ void HloHardwareIndependentTestBase::RunAndFilecheckHloRewrite(
         RunFileCheck(
             module->ToString(HloPrintOptions().set_print_large_constants(true)),
             *expected));
-    EXPECT_TRUE(filecheck_matches);
+    EXPECT_TRUE(filecheck_matches) << module->ToString();
     if (after_pass_checks) {
       after_pass_checks(module.get());
     }
@@ -300,7 +300,7 @@ void HloHardwareIndependentTestBase::RunAndFilecheckHloModuleGroupRewrite(
         RunFileCheck(module_group.module(index).ToString(
                          HloPrintOptions().set_print_large_constants(true)),
                      expected_str));
-    EXPECT_TRUE(filecheck_matches);
+    EXPECT_TRUE(filecheck_matches) << module_group.module(index).ToString();
     index++;
   }
 }

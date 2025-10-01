@@ -22,13 +22,16 @@ limitations under the License.
 
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
+#include "xla/core/collectives/rank_id.h"
+#include "xla/hlo/ir/collective_op_group_mode.h"
 #include "xla/hlo/ir/hlo_instructions.h"
-#include "xla/service/collective_ops_utils.h"
 #include "xla/stream_executor/device_memory_handle.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/memory_allocation.h"
@@ -75,6 +78,38 @@ class RaggedAllToAllStartThunk : public CollectiveThunk {
                                      CommunicatorHandle comm) override;
 
  private:
+  struct StreamState {
+    int device_ordinal;
+    RankId rank;
+
+    // Host memory allocations for ragged metadata.
+    absl::InlinedVector<std::unique_ptr<se::MemoryAllocation>, 8>
+        host_buffer_allocs;
+
+    // Device memory buffer for output offsets.
+    se::DeviceMemoryHandle output_offsets_device_buffer;
+
+    // Event to synchronize streams on different devices at the start of the
+    // kernel.
+    std::unique_ptr<se::Event> start_event;
+
+    // Event to synchronize streams on different devices at the end of the
+    // kernel.
+    std::unique_ptr<se::Event> end_event;
+
+    StreamState(int device_ordinal, RankId rank)
+        : device_ordinal(device_ordinal), rank(rank) {}
+  };
+
+  absl::Status RunMemCpyRaggedAllToAll(
+      const GpuCliqueKey& clique_key, se::Stream& stream,
+      const StreamState& state, absl::Span<DeviceBufferPair const> buffers,
+      absl::Span<int64_t* const> ragged_metadata_allocs);
+
+  absl::Status RunOneShotRaggedAllToAll(
+      const GpuCliqueKey& clique_key, se::Stream& stream,
+      const StreamState& state, absl::Span<DeviceBufferPair const> buffers);
+
   bool is_local() const;
   bool should_use_memcpy() const { return p2p_memcpy_enabled_ && is_local(); }
 
@@ -85,21 +120,8 @@ class RaggedAllToAllStartThunk : public CollectiveThunk {
   const bool one_shot_kernel_enabled_;
 
   absl::Mutex mutex_;
-  absl::flat_hash_map<se::StreamExecutor*,
-                      std::vector<std::unique_ptr<se::MemoryAllocation>>>
-      host_buffer_allocs_ ABSL_GUARDED_BY(mutex_);
-
-  absl::flat_hash_map<se::StreamExecutor*, se::DeviceMemoryHandle>
-      device_buffer_allocs_ ABSL_GUARDED_BY(mutex_);
-
-  absl::Mutex events_mutex_;
-  // Events to synchronize steams on different devices at the start of the
-  // kernel.
-  absl::flat_hash_map<se::StreamExecutor*, std::unique_ptr<se::Event>>
-      start_events_ ABSL_GUARDED_BY(events_mutex_);
-  // Events to synchronize steams on different devices at the end of the kernel.
-  absl::flat_hash_map<se::StreamExecutor*, std::unique_ptr<se::Event>>
-      end_events_ ABSL_GUARDED_BY(events_mutex_);
+  absl::flat_hash_map<se::StreamExecutor*, std::unique_ptr<StreamState>>
+      per_stream_states_ ABSL_GUARDED_BY(mutex_);
 };
 
 }  // namespace gpu

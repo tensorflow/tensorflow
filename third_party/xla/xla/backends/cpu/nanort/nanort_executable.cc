@@ -39,7 +39,9 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/computation_layout.h"
 #include "xla/service/computation_placer.h"
+#include "xla/service/cpu/cpu_aot_loader.h"
 #include "xla/service/cpu/cpu_executable.h"
+#include "xla/service/cpu/executable.pb.h"
 #include "xla/service/executable.h"
 #include "xla/service/hlo_value.h"
 #include "xla/shape.h"
@@ -279,6 +281,15 @@ absl::StatusOr<std::unique_ptr<NanoRtExecutable>> NanoRtExecutable::Create(
                            std::move(argument_to_allocation_index),
                            std::move(result_to_allocation_index),
                            temp_allocation_index, program_shape));
+}
+
+absl::StatusOr<std::unique_ptr<NanoRtExecutable>> NanoRtExecutable::Create(
+    CompilationResultProto aot_compilation_result,
+    std::optional<ProgramShape> program_shape) {
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<Executable> executable,
+      CpuAotLoader::LoadExecutable(std::move(aot_compilation_result)));
+  return Create(std::move(executable), program_shape);
 }
 
 NanoRtExecutable::NanoRtExecutable(

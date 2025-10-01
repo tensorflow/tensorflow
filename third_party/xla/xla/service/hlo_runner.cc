@@ -51,6 +51,7 @@ limitations under the License.
 #include "xla/shape_tree.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_allocator.h"
@@ -823,6 +824,12 @@ bool HloRunner::HasProperty(const HloRunnerPropertyTag::Type tag) const {
   if (tag == HloRunnerPropertyTag::kCpu) {
     return backend().platform()->Name() == "Host";
   }
+  if (tag == HloRunnerPropertyTag::kUsingGpuCuda) {
+    const stream_executor::DeviceDescription& device_description =
+        backend().default_stream_executor()->GetDeviceDescription();
+    return std::holds_alternative<stream_executor::CudaComputeCapability>(
+        device_description.gpu_compute_capability());
+  }
   return false;
 }
 
@@ -860,6 +867,12 @@ absl::StatusOr<const HloProto* absl_nonnull> HloRunner::HloProtoFromWrapped(
   TF_ASSIGN_OR_RETURN(const HloRunnerExecutable* const hlo_runner_executable,
                       HloRunnerExecutable::TryUnwrap(*this, wrapped));
   return hlo_runner_executable->executable()->hlo_proto();
+}
+
+absl::StatusOr<DeviceAssignment> HloRunner::GetDefaultDeviceAssignment(
+    int num_replicas, int num_partitions) const {
+  return backend().computation_placer()->AssignDevices(num_replicas,
+                                                       num_partitions);
 }
 
 void HloRunner::MaybeUpdateEntryComputationLayout(HloModule* module) {

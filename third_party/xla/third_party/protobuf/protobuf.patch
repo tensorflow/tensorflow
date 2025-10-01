@@ -57,7 +57,7 @@ diff --git a/python/dist/system_python.bzl b/python/dist/system_python.bzl
 -   visibility = ["//visibility:public"],
 +alias(
 +    name = "python_headers",
-+    actual = "@python//:python_headers",
++    actual = "@rules_python//python/cc:current_py_cc_headers",
 +    visibility = ["//visibility:public"],
  )
 

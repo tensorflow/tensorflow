@@ -357,7 +357,7 @@ absl::Mutex& GetGpuMutex(const se::StreamExecutor* stream_exec) {
       new std::map<std::pair<const se::Platform*, /*device_ordinal*/ int64_t>,
                    absl::Mutex>();
 
-  absl::MutexLock global_lock(&mu);
+  absl::MutexLock global_lock(mu);
   auto it = mutexes
                 ->emplace(std::piecewise_construct,
                           std::make_tuple(stream_exec->GetPlatform(),
@@ -409,12 +409,8 @@ absl::Status ExecuteKernelOnStream(
       std::unique_ptr<se::KernelArgsPackedArrayBase> kernel_args,
       se::PackKernelArgs(args, kernel.metadata()));
 
-  if (cluster_dim.has_value()) {
-    return kernel.Launch(dims.thread_counts_per_block(), dims.block_counts(),
-                         cluster_dim.value(), stream, *kernel_args);
-  }
   return kernel.Launch(dims.thread_counts_per_block(), dims.block_counts(),
-                       stream, *kernel_args);
+                       cluster_dim, stream, *kernel_args);
 }
 
 // Unimplemented for integers yet.

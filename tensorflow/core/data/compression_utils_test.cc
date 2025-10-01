@@ -18,6 +18,7 @@ limitations under the License.
 #include <vector>
 
 #include <gmock/gmock.h>
+#include "absl/status/status_matchers.h"
 #include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/protobuf/error_codes.pb.h"
 #include "tensorflow/core/data/dataset_test_base.h"

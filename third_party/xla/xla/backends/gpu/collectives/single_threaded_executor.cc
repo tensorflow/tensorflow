@@ -19,7 +19,7 @@ limitations under the License.
 
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/threadpool.h"
-#include "xla/tsl/platform/threadpool_async_executor.h"
+#include "xla/tsl/platform/threadpool_executor.h"
 
 namespace xla::gpu {
 

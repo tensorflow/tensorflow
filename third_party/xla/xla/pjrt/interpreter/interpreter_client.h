@@ -38,6 +38,7 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "mlir/IR/BuiltinOps.h"
+#include "xla/future.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/evaluator/hlo_evaluator.h"
 #include "xla/hlo/evaluator/hlo_evaluator_interface.h"
@@ -198,8 +199,8 @@ class InterpreterLiteralWrapperBuffer final : public PjRtBuffer {
         "InterpreterLiteralWrapperBuffer.");
   }
 
-  PjRtFuture<> ToLiteral(MutableLiteralBase* literal) override {
-    return PjRtFuture<>(ShapeUtil::ForEachSubshapeWithStatus(
+  Future<> ToLiteral(MutableLiteralBase* literal) override {
+    return Future<>(ShapeUtil::ForEachSubshapeWithStatus(
         literal_.shape(),
         [&](const Shape& subshape, const ShapeIndex& index) -> absl::Status {
           if (!subshape.IsArray()) {
@@ -220,15 +221,14 @@ class InterpreterLiteralWrapperBuffer final : public PjRtBuffer {
         }));
   }
 
-  PjRtFuture<> LazyToLiteral(
-      absl::AnyInvocable<PjRtFuture<MutableLiteralBase*>() &&> generator)
-      override {
+  Future<> LazyToLiteral(
+      absl::AnyInvocable<Future<MutableLiteralBase*>() &&> generator) override {
     // Underlying buffer is always ready, so we can immediately call the
     // generator.
-    PjRtFuture<MutableLiteralBase*> future = std::move(generator)();
+    Future<MutableLiteralBase*> future = std::move(generator)();
     const absl::StatusOr<MutableLiteralBase*>& literal = future.Await();
     if (!literal.ok()) {
-      return PjRtFuture<>(literal.status());
+      return Future<>(literal.status());
     }
     return ToLiteral(*literal);
   }
@@ -237,9 +237,9 @@ class InterpreterLiteralWrapperBuffer final : public PjRtBuffer {
     return literal_.size_bytes();
   }
 
-  PjRtFuture<> CopyRawToHost(void* dst, int64_t offset,
-                             int64_t transfer_size) override {
-    return PjRtFuture<>(absl::UnimplementedError(
+  Future<> CopyRawToHost(void* dst, int64_t offset,
+                         int64_t transfer_size) override {
+    return Future<>(absl::UnimplementedError(
         "CopyRawToHost not supported by InterpreterLiteralWrapperBuffer."));
   }
 
@@ -268,15 +268,13 @@ class InterpreterLiteralWrapperBuffer final : public PjRtBuffer {
         "InterpreterLiteralWrapperBuffer.");
   }
 
-  void CopyToRemoteDevice(PjRtFuture<std::string> serialized_descriptor,
+  void CopyToRemoteDevice(Future<std::string> serialized_descriptor,
                           RemoteSendCallback on_done) override {
     LOG(ERROR) << "InterpreterLiteralWrapperBuffer::CopyToRemoteDevice was "
                   "called but is not implemented.";
   }
 
-  PjRtFuture<> GetReadyFuture() override {
-    return PjRtFuture<>(absl::OkStatus());
-  }
+  Future<> GetReadyFuture() override { return Future<>(absl::OkStatus()); }
 
   bool IsOnCpu() const override { return true; }
 
@@ -357,19 +355,16 @@ class InterpreterLoadedExecutable final : public PjRtLoadedExecutable {
   absl::StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>> Execute(
       absl::Span<const std::vector<PjRtBuffer*>> argument_handles,
       const ExecuteOptions& options,
-      std::optional<std::vector<PjRtFuture<>>>& returned_futures)
-      const override;
+      std::optional<std::vector<Future<>>>& returned_futures) const override;
 
   absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> ExecuteSharded(
       absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
-      const ExecuteOptions& options,
-      std::optional<PjRtFuture<>>& returned_future,
+      const ExecuteOptions& options, std::optional<Future<>>& returned_future,
       bool fill_future) const override;
 
   absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> ExecutePortable(
       absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
-      const ExecuteOptions& options,
-      std::optional<PjRtFuture<>>& returned_future,
+      const ExecuteOptions& options, std::optional<Future<>>& returned_future,
       bool fill_future) const override;
 
   void Delete() override { hlo_module_ = nullptr; }

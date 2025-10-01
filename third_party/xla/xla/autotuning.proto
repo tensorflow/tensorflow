@@ -88,6 +88,11 @@ message AutotuneResult {
     int64 kernel_index = 1;
   }
 
+  message BackendConfigKey {
+    string name = 1;
+    google.protobuf.Any config = 2;
+  }
+
   int64 scratch_bytes = 8;
   google.protobuf.Duration run_time = 9;
 
@@ -100,6 +105,7 @@ message AutotuneResult {
     CudaConvPlanKey cuda_conv_plan = 15;
     CustomKernelFusionKey custom_kernel_fusion = 18;
     stream_executor.dnn.AlgorithmProto algorithm = 16;
+    BackendConfigKey other = 19;
   }
 }
 

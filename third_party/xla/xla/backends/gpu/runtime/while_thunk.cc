@@ -110,7 +110,7 @@ absl::Status WhileThunk::Initialize(const InitializeParams& params) {
   TF_RETURN_IF_ERROR(condition_thunk_sequence_->Initialize(params));
   TF_RETURN_IF_ERROR(body_thunk_sequence_->Initialize(params));
 
-  absl::MutexLock lock(&mutex_);
+  absl::MutexLock lock(mutex_);
   if (!host_memory_pools_.contains(params.executor)) {
     TF_ASSIGN_OR_RETURN(
         std::unique_ptr<HostMemoryPool> pool,
@@ -142,7 +142,7 @@ absl::Status WhileThunk::ExecuteOnStream(const ExecuteParams& params) {
 
   HostMemoryPool* pool;
   {
-    absl::MutexLock lock(&mutex_);
+    absl::MutexLock lock(mutex_);
     pool = host_memory_pools_.at(stream.parent()).get();
   }
   TF_ASSIGN_OR_RETURN(HostMemoryPool::Handle handle, pool->Acquire());
@@ -189,6 +189,12 @@ void WhileThunk::ForAllThunks(absl::FunctionRef<void(const Thunk*)> fn) const {
   fn(this);
   condition_thunk_sequence_->ForAllThunks(fn);
   body_thunk_sequence_->ForAllThunks(fn);
+}
+
+void WhileThunk::ForAllThunksMutable(absl::FunctionRef<void(Thunk*)> fn) {
+  fn(this);
+  condition_thunk_sequence_->ForAllThunksMutable(fn);
+  body_thunk_sequence_->ForAllThunksMutable(fn);
 }
 
 std::string WhileThunk::ToString(int indent) const {

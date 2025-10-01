@@ -76,6 +76,8 @@ absl::Status StablehloToMhlo(mlir::ModuleOp module, bool run_canonicalizer) {
   pm.addPass(mlir::mhlo::createStablehloLegalizeToHloPass());
   if (run_canonicalizer) {
     pm.addNestedPass<mlir::func::FuncOp>(mlir::createCanonicalizerPass());
+    pm.addPass(mlir::stablehlo_ext::
+                   createStablehloSanitizeDiscardableAttributesPass());
   }
   // In order to export to XLA, we must sink constants to control flow
   // regions, since XLA uses functional control flow.

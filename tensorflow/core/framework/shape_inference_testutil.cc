@@ -92,9 +92,8 @@ absl::Status ShapeInferenceTestutil::InferShapes(ShapeInferenceTestOp op,
     absl::string_view expected(expected_outs_v[i]);
     shape_inference::ShapeHandle out = c.output(i);
 
-    string err_prefix = strings::StrCat("Output ", i);
-    string err_suffix =
-        strings::StrCat(". Output shape was ", c.DebugString(out));
+    string err_prefix = absl::StrCat("Output ", i);
+    string err_suffix = absl::StrCat(". Output shape was ", c.DebugString(out));
 
     int in_index = -1;
     for (int i = 0; i < c.num_inputs(); ++i) {
@@ -113,7 +112,7 @@ absl::Status ShapeInferenceTestutil::InferShapes(ShapeInferenceTestOp op,
                        err_suffix);
       }
       auto v = str_util::Split(expected, '|');
-      if (std::find(v.begin(), v.end(), strings::StrCat("in", in_index)) ==
+      if (std::find(v.begin(), v.end(), absl::StrCat("in", in_index)) ==
           v.end()) {
         return Unknown(
             err_prefix, " matched input ", in_index,
@@ -154,7 +153,7 @@ absl::Status ShapeInferenceTestutil::InferShapes(ShapeInferenceTestOp op,
                      " but was ", c.Rank(out), err_suffix);
     }
     for (int j = 0; j < expected_dims.size(); ++j) {
-      err_prefix = strings::StrCat("Output dim ", i, ",", j);
+      err_prefix = absl::StrCat("Output dim ", i, ",", j);
       absl::string_view expected_dim(expected_dims[j]);
       DimensionHandle out_dim = c.Dim(out, j);
 
@@ -191,8 +190,8 @@ absl::Status ShapeInferenceTestutil::InferShapes(ShapeInferenceTestOp op,
               "DimensionHandle for an input, but did not", err_suffix);
         }
         if (std::find(v.begin(), v.end(),
-                      strings::StrCat("d", in_dim_idx.first, "_",
-                                      in_dim_idx.second)) == v.end()) {
+                      absl::StrCat("d", in_dim_idx.first, "_",
+                                   in_dim_idx.second)) == v.end()) {
           return Unknown(err_prefix, " matched input d", in_dim_idx.first, "_",
                          in_dim_idx.second,
                          ", but should have matched one of (", expected_dim,

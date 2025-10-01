@@ -143,7 +143,7 @@ TEST(AttrValueUtil, DeepAttr) {
 TEST(AttrValueUtil, SummarizeAttrValueDoesNotElideShortStrings) {
   AttrValue attr_value;
   SetAttrValue(string(40, '-'), &attr_value);
-  EXPECT_EQ(strings::StrCat("\"", string(40, '-'), "\""),
+  EXPECT_EQ(absl::StrCat("\"", string(40, '-'), "\""),
             SummarizeAttrValue(attr_value));
 }
 

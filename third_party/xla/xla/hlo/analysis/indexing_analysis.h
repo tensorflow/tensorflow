@@ -208,6 +208,24 @@ GroupedByOpIndexing ComputeGroupedOutputToInputIndexing(
     const HloFusionAdaptor& fusion_adaptor, HloInstructionAdaptor target_instr,
     mlir::MLIRContext* ctx);
 
+// Returns the indexing map from logical to linearized physical shape for each
+// operand.
+llvm::SmallVector<IndexingMap, 4> MapLogicalToLinearizedPhysicalShape(
+    absl::Span<const HloInstruction* const> operands,
+    mlir::MLIRContext* mlir_context);
+
+// Computes the indexing map from logical to linearized physical shape for each
+// operand and adds them to `result`. `result` may be non-empty when this
+// function is called and can be used to accumulate results from several calls
+// of this function (e.g. with different `root_index`).
+void GetThreadIdToInputMemoryLayoutsMaps(
+    const HloFusionAdaptor& fusion_adaptor,
+    absl::Span<const IndexingMap> hero_indexing_maps,
+    const HloInstructionAdaptor& hero,
+    absl::Span<const HloInstruction* const> operands,
+    absl::Span<const IndexingMap> operand_logical_to_linearized_physical_maps,
+    mlir::MLIRContext* mlir_context, GroupedByOpIndexingMap& result);
+
 // Groups indexing maps by instructions.
 GroupedByOpIndexing GroupIndexingMapsByProducers(
     const HloInstructionIndexing& indexing, const HloInstruction* instr);

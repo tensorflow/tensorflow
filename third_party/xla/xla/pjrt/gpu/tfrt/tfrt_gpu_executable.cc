@@ -38,6 +38,7 @@ limitations under the License.
 #include "xla/client/executable_build_options.h"
 #include "xla/client/local_client.h"
 #include "xla/executable_run_options.h"
+#include "xla/future.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/layout.h"
@@ -108,13 +109,13 @@ class TfrtGpuCopyToDeviceStream : public CopyToDeviceStream {
         dst_(dst),
         done_(std::move(done)) {}
 
-  PjRtFuture<> AddChunk(PjRtChunk chunk) final {
+  Future<> AddChunk(PjRtChunk chunk) final {
     tsl::profiler::TraceMe trace([&] {
       return tsl::profiler::TraceMeEncode("TfrtGpuCopyToDeviceStream::AddChunk",
                                           {{"channel_id", channel_id_}});
     });
 
-    absl::ReleasableMutexLock lock(&mu_);
+    absl::ReleasableMutexLock lock(mu_);
 
     VLOG(4) << "Add chunk to a H2D channel #" << channel_id_ << ": "
             << "size=" << chunk.size() << ", "
@@ -125,7 +126,7 @@ class TfrtGpuCopyToDeviceStream : public CopyToDeviceStream {
       done_.SetError(absl::InvalidArgumentError(absl::StrFormat(
           "Chunk size (%d) was not a multiple of the granule size (%d)",
           chunk.size(), granule_size_in_bytes())));
-      return PjRtFuture<>(done_.GetError());
+      return Future<>(done_.GetError());
     }
 
     if (current_bytes_ + chunk.size() > total_bytes_) {
@@ -133,7 +134,7 @@ class TfrtGpuCopyToDeviceStream : public CopyToDeviceStream {
           absl::StrFormat("Adding chunk of size %d would overflow buffer of "
                           "size %d (%d already transferred)",
                           chunk.size(), total_bytes_, current_bytes_)));
-      return PjRtFuture<>(done_.GetError());
+      return Future<>(done_.GetError());
     }
 
     se::DeviceMemoryBase dst(
@@ -149,7 +150,7 @@ class TfrtGpuCopyToDeviceStream : public CopyToDeviceStream {
     auto copied = stream_->Memcpy(&dst, chunk.data(), chunk.size());
     if (!copied.ok()) {
       done_.SetError(copied);
-      return PjRtFuture<>(done_.GetError());
+      return Future<>(done_.GetError());
     }
 
     // Delete chunk once the memcpy operation completes.
@@ -159,7 +160,7 @@ class TfrtGpuCopyToDeviceStream : public CopyToDeviceStream {
         });
     if (!deleted.ok()) {
       done_.SetError(deleted);
-      return PjRtFuture<>(done_.GetError());
+      return Future<>(done_.GetError());
     }
 
     // Record done event once processed the last chunk. It is the caller
@@ -169,12 +170,12 @@ class TfrtGpuCopyToDeviceStream : public CopyToDeviceStream {
       auto recorded = stream_->RecordEvent(done_.get().get());
       if (!recorded.ok()) {
         done_.SetError(recorded);
-        return PjRtFuture<>(done_.GetError());
+        return Future<>(done_.GetError());
       }
       done_.SetStateConcrete();
     }
 
-    return PjRtFuture<>(absl::OkStatus());
+    return Future<>(absl::OkStatus());
   }
 
  private:
@@ -513,6 +514,8 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
     input_deps.push_back(std::move(ordering_event));
   }
 
+  TF_ASSIGN_OR_RETURN(auto output_cuda_execute_event, CreateCudaEvent(device));
+
   std::vector<tsl::AsyncValueRef<GpuDeviceMemory>> output_buffers;
   std::vector<std::unique_ptr<PjRtBuffer>> outputs;
   auto gpu_executable = executables_[executable_idx];
@@ -531,7 +534,7 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
       auto leaf_tracked_device_buffer =
           std::make_unique<TrackedGpuDeviceBuffer>(
               output_buffers.back().CopyRef(), scheduled_event.CopyRef(),
-              complete_event.CopyRef());
+              complete_event.CopyRef(), nullptr, output_cuda_execute_event);
       VLOG(4) << "created leaf_tracked_device_buffer: "
               << leaf_tracked_device_buffer.get();
 
@@ -556,7 +559,7 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
     auto tracked_device_buffer = std::make_unique<TrackedGpuDeviceBuffer>(
         output_buffers.back().CopyRef(),
         /*definition_event=*/scheduled_event.CopyRef(),
-        complete_event.CopyRef());
+        complete_event.CopyRef(), nullptr, output_cuda_execute_event);
     VLOG(4) << "created tracked_device_buffer: " << tracked_device_buffer.get();
 
     const Shape& shape = result_shape;
@@ -598,6 +601,7 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
        execution_profile(options.execution_profile),
        send_device_memory(std::move(send_device_memory)),
        recv_device_memory(std::move(recv_device_memory)),
+       output_cuda_execute_event(std::move(output_cuda_execute_event)),
        compute_reservation(std::move(compute_reservation)),
        client = client_](std::vector<ExecutionInput> execution_inputs) mutable {
         VLOG(1) << "execute_fn for " << executable_name
@@ -711,6 +715,15 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
                      << device->DebugString()
                      << ", status = " << result_buffer_or_status.status();
           set_error(result_buffer_or_status.status());
+          return;
+        }
+
+        auto record_event_status =
+            stream->RecordEvent(output_cuda_execute_event.get());
+        if (!record_event_status.ok()) {
+          LOG(ERROR) << "Failed to record cuda event: " << record_event_status;
+          scheduled_event.SetError(record_event_status);
+          complete_event.SetError(record_event_status);
           return;
         }
 
@@ -863,11 +876,9 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
                        std::move(prepare_inputs));
 
   // Create output TFRT buffers.
-  std::optional<PjRtFuture<>> future;
+  std::optional<Future<>> future;
   if (fill_future) {
-    PjRtFuture<>::Promise complete_promise =
-        CreatePromiseForEvent(complete_event);
-    future = PjRtFuture<>(complete_promise);
+    future = CreateFutureForEvent(complete_event);
   }
   return Result({/*future=*/std::move(future),
                  /*buffers=*/std::move(outputs)});
@@ -877,7 +888,7 @@ absl::StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>>
 TfrtGpuExecutable::Execute(
     absl::Span<const std::vector<PjRtBuffer*>> argument_handles,
     const ExecuteOptions& options,
-    std::optional<std::vector<PjRtFuture<>>>& returned_futures) const {
+    std::optional<std::vector<Future<>>>& returned_futures) const {
   tsl::profiler::TraceMeProducer activity("TfrtGpuExecutable::Execute",
                                           tsl::profiler::ContextType::kPjRt,
                                           options.launch_id);
@@ -968,7 +979,7 @@ TfrtGpuExecutable::Execute(
               }
             }
 
-            absl::MutexLock lock(&mu);
+            absl::MutexLock lock(mu);
             --running;
             if (!statusor.ok()) {
               if (failed == 0) {
@@ -990,7 +1001,7 @@ TfrtGpuExecutable::Execute(
         mu.AssertHeld();
         return running == 0;
       };
-      absl::MutexLock lock(&mu);
+      absl::MutexLock lock(mu);
       mu.Await(absl::Condition(&done_running));
     }
 
@@ -1004,7 +1015,7 @@ TfrtGpuExecutable::Execute(
 absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
 TfrtGpuExecutable::ExecuteSharded(
     absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
-    const ExecuteOptions& options, std::optional<PjRtFuture<>>& returned_future,
+    const ExecuteOptions& options, std::optional<Future<>>& returned_future,
     bool fill_future) const {
   tsl::profiler::TraceMeProducer activity("TfrtGpuExecutable::ExecuteSharded",
                                           tsl::profiler::ContextType::kPjRt,
@@ -1036,7 +1047,7 @@ TfrtGpuExecutable::ExecuteSharded(
 absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
 TfrtGpuExecutable::ExecutePortable(
     absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
-    const ExecuteOptions& options, std::optional<PjRtFuture<>>& returned_future,
+    const ExecuteOptions& options, std::optional<Future<>>& returned_future,
     bool fill_future) const {
   tsl::profiler::TraceMeProducer activity("TfrtGpuExecutable::ExecutePortable",
                                           tsl::profiler::ContextType::kPjRt,

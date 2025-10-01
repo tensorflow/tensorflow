@@ -22,6 +22,14 @@ def ChloLegalizeToHighLevelMhloPass : Pass<"chlo-legalize-to-high-level-mhlo", "
     ops with XLA support. These are MHLO ops that directly model the CHLO op,
     such as TopK and Erf.
   }];
+  let options = [
+    Option<"enable_acosh_", "enable-acosh", "bool", /*default=*/"false",
+           "Enable chlo.acosh to mhlo.acosh lowering.">,
+    Option<"enable_acos_", "enable-acos", "bool", /*default=*/"false",
+           "Enable chlo.acos to mhlo.acos lowering.">,
+    Option<"enable_atanh_", "enable-atanh", "bool", /*default=*/"false",
+           "Enable chlo.atanh to mhlo.atanh lowering.">
+  ];
   let dependentDialects = ["mhlo::MhloDialect"];
 }
 
@@ -151,11 +159,6 @@ def FlattenTuplePass : Pass<"mhlo-flatten-tuple", "func::FuncOp"> {
   let summary = "Flatten tuples in operands and results of operators that "
     "support both tuple and variadic type.";
   let constructor = "createFlattenTuplePass()";
-}
-
-def ConvertToSignlessPass : Pass<"convert-to-signless", "ModuleOp"> {
-  let summary = "Pass to transform the IR to be on signless integers.";
-  let constructor = "createConvertToSignlessPass()";
 }
 
 def CollapseElementwiseMapPass

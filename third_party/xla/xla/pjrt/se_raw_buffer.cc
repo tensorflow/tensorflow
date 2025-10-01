@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "xla/future.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_future.h"
 #include "xla/pjrt/pjrt_stream_executor_client.h"
@@ -36,9 +37,9 @@ limitations under the License.
 
 namespace xla {
 
-PjRtFuture<> PjRtStreamExecutorDeviceEvent::GetReadyFuture() {
-  PjRtFuture<>::Promise promise = PjRtFuture<>::CreatePromise();
-  event_.AndThen([promise, event = event_]() mutable {
+Future<> PjRtStreamExecutorDeviceEvent::GetReadyFuture() {
+  auto [promise, future] = Future<>::MakePromise();
+  event_.AndThen([promise = std::move(promise), event = event_]() mutable {
     if (auto* error = event.GetErrorIfPresent()) {
       promise.Set(*error);
     } else {
@@ -46,18 +47,17 @@ PjRtFuture<> PjRtStreamExecutorDeviceEvent::GetReadyFuture() {
     }
   });
 
-  return PjRtFuture<>(
-      promise,
+  return FutureHelpers::WithProfiling(
+      std::move(future),
       /*on_block_start=*/
-      [ready_event = FormRef(promise.async_value()),
-       callee_method = callee_method_, callee_type = callee_type_]() {
+      [callee_method = callee_method_, callee_type = callee_type_]() {
         tsl::profiler::TraceMeProducer traceme(
             [&] { return absl::StrCat(callee_type, "::", callee_method); });
-        return PjRtFutureHelpers::ProfilingKeys({traceme.GetContextId()});
+        return FutureHelpers::ProfilingKeys({traceme.GetContextId()});
       },
       /*on_block_end=*/
       [callee_method = callee_method_,
-       callee_type = callee_type_](PjRtFutureHelpers::ProfilingKeys keys) {
+       callee_type = callee_type_](FutureHelpers::ProfilingKeys keys) {
         tsl::profiler::TraceMeConsumer traceme(
             [&] { return absl::StrCat(callee_type, "::", callee_method); },
             keys.traceme_context_id);
@@ -148,8 +148,7 @@ void PjRtStreamExecutorRawBuffer::ReadDynamicShape(
 }
 
 void PjRtStreamExecutorRawBuffer::CopyToLiteralAsync(
-    PjRtFuture<>::Promise promise,
-    tsl::RCReference<PjRtDeviceEventPromise> device_promise,
+    Promise<> promise, tsl::RCReference<PjRtDeviceEventPromise> device_promise,
     MutableLiteralBase* literal, xla::Shape shape) {
   device_promise->SetError(
       absl::UnimplementedError("Cannot CopyToLiteralAsync."));
@@ -158,16 +157,21 @@ void PjRtStreamExecutorRawBuffer::CopyToLiteralAsync(
 
 absl::StatusOr<tsl::RCReference<PjRtDeviceEvent>>
 PjRtStreamExecutorRawBuffer::MakeAllocationReadyEvent() {
+  auto* client =
+      tensorflow::down_cast<PjRtStreamExecutorClient*>(memory_space_->client());
+  auto result = BufferSequencingEvent::Create(client->thread_pool());
   if (local_device_->allocation_model() ==
       LocalDeviceState::kComputeSynchronized) {
-    auto* client = tensorflow::down_cast<PjRtStreamExecutorClient*>(
-        memory_space_->client());
-    auto result = BufferSequencingEvent::Create(client->thread_pool());
     TF_RETURN_IF_ERROR(client->AllocateAndRecordEvent(
         result, local_device_, local_device_->compute_stream()));
-    return tsl::MakeRef<PjRtStreamExecutorDeviceEvent>(std::move(result));
+  } else {
+    auto stream = local_device_->BorrowStreamFromPool();
+    auto status =
+        client->AllocateAndRecordEvent(result, local_device_, stream.get());
+    local_device_->ReturnStreamToPool(std::move(stream));
+    TF_RETURN_IF_ERROR(status);
   }
-  return absl::UnimplementedError("Cannot make ready event");
+  return tsl::MakeRef<PjRtStreamExecutorDeviceEvent>(std::move(result));
 }
 
 void PjRtStreamExecutorRawBuffer::CopyTo(

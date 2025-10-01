@@ -151,7 +151,7 @@ absl::Status DynamicSliceThunk::Prepare(
 absl::Status DynamicSliceThunk::Initialize(const InitializeParams& params) {
   TF_RETURN_IF_ERROR(embedded_thunk_->Initialize(params));
 
-  absl::MutexLock lock(&mutex_);
+  absl::MutexLock lock(mutex_);
   if (offsets_allocs_.contains(params.executor)) return absl::OkStatus();
 
   VLOG(2) << "Allocate " << offsets_allocs_size_
@@ -173,7 +173,7 @@ absl::Status DynamicSliceThunk::ExecuteOnStream(const ExecuteParams& params) {
 
   // Get memory allocation for copying offsets from device.
   int64_t* offsets_alloc = [&] {
-    absl::MutexLock lock(&mutex_);
+    absl::MutexLock lock(mutex_);
     return reinterpret_cast<int64_t*>(
         offsets_allocs_.at(stream.parent())->opaque());
   }();
@@ -322,6 +322,12 @@ void DynamicSliceThunk::ForAllThunks(
     absl::FunctionRef<void(const Thunk*)> fn) const {
   fn(this);
   embedded_thunk_->ForAllThunks(fn);
+}
+
+void DynamicSliceThunk::ForAllThunksMutable(
+    absl::FunctionRef<void(Thunk*)> fn) {
+  fn(this);
+  embedded_thunk_->ForAllThunksMutable(fn);
 }
 }  // namespace gpu
 }  // namespace xla

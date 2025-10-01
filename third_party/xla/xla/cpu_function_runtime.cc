@@ -15,7 +15,11 @@ limitations under the License.
 
 #include "xla/cpu_function_runtime.h"
 
+#include <cstdint>
+#include <cstdlib>
+
 #include "absl/base/dynamic_annotations.h"
+#include "xla/backends/cpu/alignment.h"
 
 namespace xla {
 namespace {
@@ -33,11 +37,13 @@ void* aligned_malloc(size_t size, int minimum_alignment) {
   // sizeof(void*). In this case, fall back on malloc which should return memory
   // aligned to at least the size of a pointer.
   const int required_alignment = sizeof(void*);
-  if (minimum_alignment < required_alignment) return malloc(size);
-  if (posix_memalign(&ptr, minimum_alignment, size) != 0)
+  if (minimum_alignment < required_alignment) {
+    return malloc(size);
+  }
+  if (posix_memalign(&ptr, minimum_alignment, size) != 0) {
     return nullptr;
-  else
-    return ptr;
+  }
+  return ptr;
 #endif
 }
 

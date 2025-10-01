@@ -46,6 +46,20 @@ namespace gpu {
 
 namespace {
 
+bool IsExpensiveToUnroll(mlir::Operation* op) {
+  return mlir::isa<
+      // clang-format off
+      // go/keep-sorted start
+      mlir::func::CallOp,
+      mlir::math::AcosOp,
+      mlir::math::AcoshOp,
+      mlir::math::AtanhOp,
+      mlir::scf::ForOp
+      // go/keep-sorted end
+      // clang-format on
+      >(op);
+}
+
 int GetUnrollingFactor(mlir::scf::ForOp op) {
   // We only unroll loops with a step of 1 and a lower bound of 0. That's the
   // only type we generate.
@@ -68,7 +82,7 @@ int GetUnrollingFactor(mlir::scf::ForOp op) {
   int64_t size = 0;
   bool can_unroll = true;
   op.getBodyRegion().walk([&](mlir::Operation* op) {
-    if (mlir::isa<mlir::func::CallOp, mlir::scf::ForOp>(op)) {
+    if (IsExpensiveToUnroll(op)) {
       can_unroll = false;
       return;
     }

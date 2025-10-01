@@ -55,7 +55,6 @@ limitations under the License.
 #include "xla/service/gpu/kernel_reuse_cache.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/matmul_utils.h"
-#include "xla/service/gpu/model/tiled_hlo_computation.h"
 #include "xla/service/gpu/triton_fusion_analysis.h"
 #include "xla/service/llvm_ir/ir_array.h"
 #include "xla/service/llvm_ir/llvm_util.h"
@@ -236,15 +235,20 @@ absl::StatusOr<FusionEmissionResult> TritonFusion::Emit(
          llvm::zip(impl_fn->args(), kernel->args())) {
       impl_fn_arg.replaceAllUsesWith(&kernel_arg);
     }
-    // Triton's kernel ABI expects an additional scratchpad global memory.
+    // Triton's kernel ABI expects additional scratchpad global memory for
+    // TMA and profiling information.
     // For now it is only used for on-device creation of TMA descriptors, which
     // we do not use yet, so we are just replacing this argument with a null
     // pointer.
     // TODO: b/381242007 - Allocate a proper buffer if we want to use
     // device-side TMA APIs.
-    auto scratchpad_arg = impl_fn->getArg(impl_fn->arg_size() - 1);
-    scratchpad_arg->replaceAllUsesWith(llvm::ConstantPointerNull::get(
-        llvm::cast<llvm::PointerType>(scratchpad_arg->getType())));
+    CHECK_EQ(impl_fn->arg_size(), kernel->arg_size() + 2);
+    auto tma_scratchpad_arg = impl_fn->getArg(impl_fn->arg_size() - 2);
+    tma_scratchpad_arg->replaceAllUsesWith(llvm::ConstantPointerNull::get(
+        llvm::cast<llvm::PointerType>(tma_scratchpad_arg->getType())));
+    auto profiling_scratchpad_arg = impl_fn->getArg(impl_fn->arg_size() - 1);
+    profiling_scratchpad_arg->replaceAllUsesWith(llvm::ConstantPointerNull::get(
+        llvm::cast<llvm::PointerType>(profiling_scratchpad_arg->getType())));
 
     return {{kernel->getName().str(), launch_dimensions,
              triton_wrapper_result.cluster_dim,
@@ -260,9 +264,10 @@ absl::StatusOr<FusionEmissionResult> TritonFusion::Emit(
 
   FusionEmissionResult result;
   result.thunks.emplace_back(std::make_unique<KernelThunk>(
-      Thunk::ThunkInfo::WithProfileAnnotation(&fusion), entry->kernel_name,
-      kernel_arguments, entry->launch_dimensions, entry->cluster_dim,
-      entry->shmem_bytes, entry->tma_metadata));
+      Thunk::ThunkInfo::WithProfileAnnotation(
+          &fusion, ir_emitter_context.GetNextThunkId()),
+      entry->kernel_name, kernel_arguments, entry->launch_dimensions,
+      entry->cluster_dim, entry->shmem_bytes, entry->tma_metadata));
 
   return result;
 }

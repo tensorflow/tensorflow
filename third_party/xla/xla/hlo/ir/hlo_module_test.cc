@@ -18,12 +18,14 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/container/btree_map.h"
 #include "absl/hash/hash.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
@@ -44,11 +46,13 @@ limitations under the License.
 #include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/protobuf.h"
 
 namespace xla {
 namespace {
 
 using ::testing::ElementsAre;
+using ::testing::Eq;
 using ::testing::IsEmpty;
 using ::testing::UnorderedElementsAre;
 
@@ -73,12 +77,17 @@ TEST(HloModuleTest, AbslHashValue) {
 }
 
 TEST(HloModuleTest, ToFingerprint) {
-  auto fp = [](const HloModule& module) {
-    return module.ToFingerprint(HloPrintOptions::ModuleFingerprint());
+  auto fp = [](const HloModule& module,
+               std::optional<absl::btree_map<std::string, NumericOrString>>
+                   custom_fields) {
+    return custom_fields.has_value()
+               ? module.ToFingerprint(HloPrintOptions::ModuleFingerprint(),
+                                      *custom_fields)
+               : module.ToFingerprint(HloPrintOptions::ModuleFingerprint());
   };
   HloModule module1("m1", HloModuleConfig());
   HloModule module2("m2", HloModuleConfig());
-  EXPECT_EQ(fp(module1), fp(module2));
+  EXPECT_EQ(fp(module1, std::nullopt), fp(module2, std::nullopt));
 
   absl::string_view hlo = R"(
       HloModule m3
@@ -91,8 +100,25 @@ TEST(HloModuleTest, ToFingerprint) {
                           ParseAndReturnUnverifiedModule(hlo));
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module4,
                           ParseAndReturnUnverifiedModule(hlo));
-  EXPECT_EQ(fp(*module3), fp(*module4));
-  EXPECT_NE(fp(module1), fp(*module4));
+  EXPECT_EQ(fp(*module3, std::nullopt), fp(*module4, std::nullopt));
+  EXPECT_NE(fp(module1, std::nullopt), fp(*module4, std::nullopt));
+
+  const absl::btree_map<std::string, NumericOrString> custom_fields = {
+      {"parameter_0", int64_t{50}},
+      {"parameter_1", "string_value"},
+      {"parameter_2", 10.594},
+  };
+
+  EXPECT_NE(fp(*module3, custom_fields), fp(*module3, std::nullopt));
+  EXPECT_NE(fp(module1, custom_fields), fp(*module4, custom_fields));
+
+  EXPECT_EQ(fp(*module3, custom_fields), fp(*module4, custom_fields));
+  EXPECT_EQ(fp(*module4, custom_fields), fp(*module4, custom_fields));
+
+  const absl::btree_map<std::string, NumericOrString> custom_fields2 = {
+      {"parameter_0", int64_t{1}},
+  };
+  EXPECT_NE(fp(*module3, custom_fields), fp(*module3, custom_fields2));
 }
 
 TEST(HloModuleTest, MutableAndReadOnlyConfigEquals) {
@@ -280,6 +306,36 @@ TEST(HloModuleTest, CloneWithNewConfig) {
   EXPECT_EQ(pm2->config().device_type(), m1.config().device_type());
   EXPECT_NE(pm2->config().device_memory_size(),
             m1.config().device_memory_size());
+}
+
+TEST(HloModuleTest, UniqueIdProvidesComputationPrefix) {
+  HloModule m1("temp_module", HloModuleConfig());
+  HloSchedule schedule(&m1);
+  CreateComputation(m1, "TestComputation1", true, schedule);
+  CreateComputation(m1, "TestComputation2", false, schedule);
+  CreateComputation(m1, "TestComputation3", false, schedule);
+  TF_EXPECT_OK(m1.set_schedule(schedule));
+
+  EXPECT_EQ(m1.GetComputationWithName("TestComputation1")
+                ->GetInstructionWithName("p0")
+                ->unique_id(),
+            0);
+  EXPECT_EQ(m1.GetComputationWithName("TestComputation2")
+                ->GetInstructionWithName("p0.1")
+                ->unique_id(),
+            (static_cast<int64_t>(1) << 32) + 0);
+  EXPECT_EQ(m1.GetComputationWithName("TestComputation1")
+                ->GetInstructionWithName("call")
+                ->unique_id(),
+            1);
+  EXPECT_EQ(m1.GetComputationWithName("TestComputation3")
+                ->GetInstructionWithName("p0.2")
+                ->unique_id(),
+            (static_cast<int64_t>(2) << 32) + 0);
+  EXPECT_EQ(m1.GetComputationWithName("TestComputation1")
+                ->GetInstructionWithName("call.1")
+                ->unique_id(),
+            2);
 }
 
 TEST(HloModuleTest, ClonePreservesUniqueId) {
@@ -709,20 +765,120 @@ TEST(HloModuleTest, TestUniqueIdIs64Bits) {
   HloInstruction* tparam = f->GetInstructionWithName("tparam");
   HloComputation* g = module->GetComputationWithName("g");
   HloInstruction* fparam = g->GetInstructionWithName("fparam");
-  int64_t new_tparam_unique_id = 1 + (static_cast<int64_t>(1) << 32);
-  int64_t new_fparam_unique_id = 1 + (static_cast<int64_t>(2) << 32);
 
-  tparam->ClearUniqueIdInternal();
-  tparam->SetUniqueId(new_tparam_unique_id);
-  fparam->ClearUniqueIdInternal();
-  fparam->SetUniqueId(new_fparam_unique_id);
-  // Upper 32 bits should be preserved
-  EXPECT_EQ(tparam->unique_id_64_bits(), new_tparam_unique_id);
-  EXPECT_EQ(fparam->unique_id_64_bits(), new_fparam_unique_id);
-  TF_EXPECT_OK(module->CheckUniqueNamesAndIdsForComputationsAndInstructions());
+  // Upper 32 bits should make them different
+  EXPECT_NE(tparam->unique_id(), fparam->unique_id());
   // Lower 32 bits should be preserved and therefore the same
-  EXPECT_EQ(tparam->unique_id_64_bits() & 0xFFFFFFFF,
-            fparam->unique_id_64_bits() & 0xFFFFFFFF);
+  EXPECT_EQ(tparam->unique_id() & 0xFFFFFFFF, fparam->unique_id() & 0xFFFFFFFF);
+  TF_EXPECT_OK(module->CheckUniqueNamesAndIdsForComputationsAndInstructions());
+}
+
+TEST(HloModuleTest, TestRemapInstructionIdsResolvesOperands) {
+  HloModuleProto hlo_module_proto;
+  ASSERT_TRUE(tsl::protobuf::TextFormat::ParseFromString(R"(
+  name: "hlo_module_proto"
+  entry_computation_id: 1
+computations {
+  name: "basic_computation"
+  id: 2
+  root_id: 1
+  instructions {
+    name: "parameter.0"
+    opcode: "parameter"
+    id: 1
+  }
+  instructions {
+    name: "parameter.1"
+    opcode: "parameter"
+    id: 2
+  }
+  instructions {
+    name: "add.0"
+    opcode: "add"
+    id: 3
+    operand_ids: 1
+    operand_ids: 2
+  }
+  instructions {
+    name: "add.1"
+    opcode: "add"
+    id: 4
+    operand_ids: 1
+    operand_ids: 3
+  }
+  instructions {
+    name: "add.2"
+    opcode: "add"
+    id: 5
+    operand_ids: 2
+    operand_ids: 3
+  }
+}
+
+computations {
+  name: "entry_computation"
+  id: 1
+  root_id: 12884901895
+  instructions {
+    name: "Arg_0.1"
+    opcode: "parameter"
+    id: 12884901889
+  }
+  instructions {
+    name: "slice.2"
+    opcode: "slice"
+    id: 12884901890
+    operand_ids: 1
+  }
+  instructions {
+    name: "squeeze.2"
+    opcode: "reshape"
+    id: 12884901891
+    operand_ids: 2
+  }
+  instructions {
+    name: "add.39"
+    opcode: "broadcast"
+    id: 12884901892
+    operand_ids: 3
+  }
+  instructions {
+    name: "iota_2x32_shape.1"
+    opcode: "iota"
+    id: 12884901893
+  }
+  instructions {
+    name: "slice.3"
+    opcode: "slice"
+    id: 12884901894
+    operand_ids: 1
+  }
+  instructions {
+    name: "squeeze.3"
+    opcode: "reshape"
+    id: 7
+    operand_ids: 6
+  }
+}
+
+)",
+                                                         &hlo_module_proto));
+
+  TF_ASSERT_OK_AND_ASSIGN(HloModuleProto remapped_hlo_module_proto,
+                          HloModule::RemapInstructionIds(hlo_module_proto));
+
+  HloInstructionProto squeeze_3_instr =
+      remapped_hlo_module_proto.computations(1).instructions(6);
+
+  // Instruction squeeze.3's operand is slice.3, which should be remapped to
+  // id 5.
+  EXPECT_THAT(
+      remapped_hlo_module_proto.computations(1).instructions(6).operand_ids(),
+      ElementsAre(5));
+  // squeeze.3 is the root because its local id matches the local part of the
+  // root id specified in the proto.
+  EXPECT_THAT(remapped_hlo_module_proto.computations(1).instructions(6).id(),
+              Eq(remapped_hlo_module_proto.computations(1).root_id()));
 }
 
 }  // namespace

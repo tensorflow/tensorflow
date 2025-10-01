@@ -120,8 +120,8 @@ class RemoteExecuteNode : public AsyncRemoteExecuteNode {
 
   string DebugString() const override {
     string out = "[RemoteExecuteNode]";
-    strings::StrAppend(&out, " request: ", request_->DebugString());
-    strings::StrAppend(&out, ", target_device: ", device_->name());
+    absl::StrAppend(&out, " request: ", request_->DebugString());
+    absl::StrAppend(&out, ", target_device: ", device_->name());
     return out;
   }
 

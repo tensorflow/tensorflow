@@ -1589,8 +1589,8 @@ def TFL_NotEqualOp : TFL_Op<"not_equal", [
   }];
 
   let arguments = (
-      ins TFL_TensorOf<[I1, F32, I32, I64, QUI8, QI8, TFL_Quint8, TFL_Str]>:$lhs,
-      TFL_TensorOf<[I1, F32, I32, I64, QUI8, QI8, TFL_Quint8, TFL_Str]>:$rhs);
+      ins TFL_TensorOf<[I1, F32, I32, I64, QUI8, QI8, QI16, TFL_Quint8, TFL_Str]>:$lhs,
+      TFL_TensorOf<[I1, F32, I32, I64, QUI8, QI8, QI16, TFL_Quint8, TFL_Str]>:$rhs);
 
   let results = (outs TFL_BoolTensor:$output);
 
@@ -1620,7 +1620,7 @@ def TFL_DivOp : TFL_Op<"div", [
     // TODO(fengliuai): NoQuantizableResult is only correct for int8
     // quantization. update to handle Uint8 quantization.
     BinaryOpSameElementTypeConstraint,
-    TFL_OperandsHaveSameShapesOrBroadcastableShape<[0, 1], 5>,
+    TFL_OperandsHaveSameShapesOrBroadcastableShape<[0, 1], 6>,
     ResultsBroadcastableShape,
     Pure,
     QuantizableResult,
@@ -1729,8 +1729,8 @@ def TFL_EqualOp: TFL_Op<"equal", [
 
   let arguments = (
     ins
-    TFL_TensorOf<[I1, F32, I16, I32, I64, QI8, QUI8, UI8, TFL_Str]>:$x,
-    TFL_TensorOf<[I1, F32, I16, I32, I64, QI8, QUI8, UI8, TFL_Str]>:$y
+    TFL_TensorOf<[I1, F32, I16, I32, I64, QI8, QUI8, QI16, UI8, TFL_Str]>:$x,
+    TFL_TensorOf<[I1, F32, I16, I32, I64, QI8, QUI8, QI16, UI8, TFL_Str]>:$y
   );
 
   let results = (outs TFL_BoolTensor:$output);
@@ -2455,8 +2455,8 @@ def TFL_SliceOp : TFL_Op<"slice", [
       TFL_TCresVTEtIsSameAsOp<0, 0>>,
     Pure,
     SameOperandsAndResultsScale,
-    TFL_RuntimePredOpTrait<"input must have rank at most 5",
-      TFL_OperandHasRankAtMostPred<0, 5>>,
+    TFL_RuntimePredOpTrait<"input must have rank at most 6",
+      TFL_OperandHasRankAtMostPred<0, 6>>,
     TFL_OperandHasRankAtMost<1, 1>,
     TFL_OperandHasRankAtMost<2, 1>]> {
   let summary = "Return a slice from 'input'.";
@@ -4020,7 +4020,7 @@ def TFL_StridedSliceOp: TFL_Op<"strided_slice", [
     PredOpTrait<"input and output must have same element type",
       TFL_TCresVTEtIsSameAsOp<0, 0>>,
     SameOperandsAndResultsScale,
-    TFL_RuntimePredOpTrait<"input (with new_axis) must have rank at most 5",
+    TFL_RuntimePredOpTrait<"input (with new_axis) must have rank at most 6",
       CPred<"TFL::VerifyStridedSliceOpInputRankConstraints(llvm::cast<StridedSliceOp>($_op))">>,
     TFL_OperandHasRank<1, 1>,
     TFL_OperandHasRank<2, 1>,

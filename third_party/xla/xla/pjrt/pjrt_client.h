@@ -42,6 +42,7 @@ limitations under the License.
 #include "absl/synchronization/notification.h"
 #include "absl/types/span.h"
 #include "mlir/IR/BuiltinOps.h"
+#include "xla/future.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/layout.h"
 #include "xla/literal.h"
@@ -50,8 +51,8 @@ limitations under the License.
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_device_description.h"
 #include "xla/pjrt/pjrt_executable.h"
-#include "xla/pjrt/pjrt_future.h"
 #include "xla/pjrt/pjrt_layout.h"
+#include "xla/pjrt/scoped_async_tracking_event.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/shape.h"
@@ -67,11 +68,15 @@ limitations under the License.
 // PjRt stands for "Pretty much Just another RunTime".
 namespace xla {
 
+class PjRtBuffer;
 class PjRtClient;
 class PjRtDevice;
 class PjRtLoadedExecutable;
 class PjRtExecutableForwarder;
 struct CompileOptions;
+
+typedef absl::AnyInvocable<absl::Status(absl::StatusOr<PjRtBuffer*>)>
+    PjRtFulfillAliasBufferCallback;
 
 class PjRtMemorySpace {
  public:
@@ -253,9 +258,6 @@ class PjRtDevice {
   }
 };
 
-// Forward declaration.
-class PjRtBuffer;
-
 // Helper struct for cross host transfers, returned by the callback from a call
 // to PjRtBuffer::MakeCrossHostReceiveBuffers or
 // PjRtBuffer::MakeCrossHostReceiveBuffersForGather.
@@ -375,7 +377,7 @@ class CopyToDeviceStream {
   //
   // The transfer is started immediately, and the returned future is fulfilled
   // when the transfer completes or fails.
-  virtual PjRtFuture<> AddChunk(PjRtChunk chunk) = 0;
+  virtual Future<> AddChunk(PjRtChunk chunk) = 0;
 
   // Returns the total amount of data the stream expects to be transferred.
   int64_t total_bytes() const { return total_bytes_; }
@@ -675,6 +677,14 @@ class PjRtClient {
       const Shape& shape, PjRtMemorySpace* memory_space) {
     return absl::UnimplementedError(
         "CreateUninitializedBuffer is not supported.");
+  }
+
+  // Creates a buffer that is an alias of another buffer. The alias buffer
+  // is initially uninitialized and must be fulfilled later.
+  virtual absl::StatusOr<
+      std::pair<std::unique_ptr<PjRtBuffer>, PjRtFulfillAliasBufferCallback>>
+  CreateAliasBuffer(const Shape& shape, PjRtMemorySpace* memory_space) {
+    return absl::UnimplementedError("CreateAliasBuffer is not supported.");
   }
 
   // Creates buffer in the given memory space that carries an error future
@@ -1086,14 +1096,14 @@ class PjRtBuffer {
   // Return value is a future the caller can use to discover when the copy has
   // completed. The transfer respects the layout of `literal`; to specify a
   // particular layout, set the layout before calling `ToLiteral`.
-  virtual PjRtFuture<> ToLiteral(MutableLiteralBase* literal) = 0;
+  virtual Future<> ToLiteral(MutableLiteralBase* literal) = 0;
   // This version of ToLiteral allows the implementation to defer the
   // construction of the literal (e.g. until the underlying buffer is ready).
   // The specific timing of calling `generator` is implementation defined, and
   // might be done eagerly, but it is guaranteed to be earlier than when the
   // returned future becomes ready.
-  virtual PjRtFuture<> LazyToLiteral(
-      absl::AnyInvocable<PjRtFuture<MutableLiteralBase*>() &&> generator) = 0;
+  virtual Future<> LazyToLiteral(
+      absl::AnyInvocable<Future<MutableLiteralBase*>() &&> generator) = 0;
 
   // Synchronous overload of ToLiteral, as a convenience.
   absl::Status ToLiteralSync(MutableLiteralBase* literal) {
@@ -1160,8 +1170,8 @@ class PjRtBuffer {
   // Note that the underlying driver may have requirements
   // on the alignment of `dst` and `offset` as well. Look at implementations of
   // this method for specific alignment requirements.
-  virtual PjRtFuture<> CopyRawToHost(void* dst, int64_t offset,
-                                     int64_t transfer_size) = 0;
+  virtual Future<> CopyRawToHost(void* dst, int64_t offset,
+                                 int64_t transfer_size) = 0;
 
   // As above, but the transfer will not happen until `dst` is fulfilled with a
   // valid pointer. If `dst` is fulfilled with a non-Ok status, then the
@@ -1174,9 +1184,8 @@ class PjRtBuffer {
   //
   // The default implementation always returns a future that is fulfilled with
   // an UNIMPLEMENTED error.
-  virtual PjRtFuture<> CopyRawToHostFuture(PjRtFuture<void*> dst,
-                                           int64_t offset,
-                                           int64_t transfer_size);
+  virtual Future<> CopyRawToHostFuture(Future<void*> dst, int64_t offset,
+                                       int64_t transfer_size);
 
   // Drops the buffer's reference to its associated device memory, leaving the
   // buffer in an invalid state. The memory will be freed lazily when all async
@@ -1254,7 +1263,7 @@ class PjRtBuffer {
   // comment for PjRtClient.
   using RemoteSendCallback =
       std::function<void(absl::Status status, bool sends_were_enqueued)>;
-  virtual void CopyToRemoteDevice(PjRtFuture<std::string> serialized_descriptor,
+  virtual void CopyToRemoteDevice(Future<std::string> serialized_descriptor,
                                   RemoteSendCallback on_done) = 0;
 
   // Donates 'this' and returns a new buffer that is ready only when both 'this'
@@ -1266,7 +1275,7 @@ class PjRtBuffer {
   // If either 'this' or 'dependency' transitions to error, then the returned
   // buffer will transition to error.
   virtual absl::StatusOr<std::unique_ptr<PjRtBuffer>>
-  DonateWithControlDependency(PjRtFuture<> dependency) {
+  DonateWithControlDependency(Future<> dependency) {
     return absl::UnimplementedError(
         "DonateWithControlDependency is not supported.");
   }
@@ -1280,7 +1289,7 @@ class PjRtBuffer {
   // the buffer has been deleted or donated then the returned future will stay
   // valid (will not transition to error as a consequence of buffer deletion)
   // even if the buffer is subsequently donated or deleted.
-  virtual PjRtFuture<> GetReadyFuture() = 0;
+  virtual Future<> GetReadyFuture() = 0;
 
   // Whether this buffer is on CPU and thus allows for certain optimizations.
   virtual bool IsOnCpu() const = 0;
@@ -1359,12 +1368,12 @@ class PjRtLoadedExecutable {
   virtual absl::StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>>
   Execute(absl::Span<const std::vector<PjRtBuffer*>> argument_handles,
           const ExecuteOptions& options,
-          std::optional<std::vector<PjRtFuture<>>>& returned_futures) const = 0;
+          std::optional<std::vector<Future<>>>& returned_futures) const = 0;
   // Convenience wrapper for Execute that never returns futures.
   absl::StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>> Execute(
       absl::Span<const std::vector<PjRtBuffer*>> argument_handles,
       const ExecuteOptions& options) const {
-    std::optional<std::vector<PjRtFuture<>>> returned_futures;
+    std::optional<std::vector<Future<>>> returned_futures;
     return Execute(std::move(argument_handles), options, returned_futures);
   }
 
@@ -1381,13 +1390,13 @@ class PjRtLoadedExecutable {
   virtual absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
   ExecuteSharded(absl::Span<PjRtBuffer* const> argument_handles,
                  PjRtDevice* device, const ExecuteOptions& options,
-                 std::optional<PjRtFuture<>>& returned_future,
+                 std::optional<Future<>>& returned_future,
                  bool fill_future) const = 0;
   // Convenience wrapper for ExecuteSharded that always returns a future.
   absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> ExecuteSharded(
       absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
       const ExecuteOptions& options,
-      std::optional<PjRtFuture<>>& returned_future) const {
+      std::optional<Future<>>& returned_future) const {
     return ExecuteSharded(std::move(argument_handles), device, options,
                           returned_future, /*fill_future=*/true);
   }
@@ -1395,7 +1404,7 @@ class PjRtLoadedExecutable {
   absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> ExecuteSharded(
       absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
       const ExecuteOptions& options) const {
-    std::optional<PjRtFuture<>> returned_future;
+    std::optional<Future<>> returned_future;
     return ExecuteSharded(std::move(argument_handles), device, options,
                           returned_future, /*fill_future=*/false);
   }
@@ -1413,13 +1422,13 @@ class PjRtLoadedExecutable {
   virtual absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
   ExecutePortable(absl::Span<PjRtBuffer* const> argument_handles,
                   PjRtDevice* device, const ExecuteOptions& options,
-                  std::optional<PjRtFuture<>>& returned_future,
+                  std::optional<Future<>>& returned_future,
                   bool fill_future) const = 0;
   // Convenience wrapper for ExecutePortable that always returns a future.
   absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> ExecutePortable(
       absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
       const ExecuteOptions& options,
-      std::optional<PjRtFuture<>>& returned_future) const {
+      std::optional<Future<>>& returned_future) const {
     return ExecutePortable(std::move(argument_handles), device, options,
                            returned_future, /*fill_future=*/true);
   }
@@ -1427,7 +1436,7 @@ class PjRtLoadedExecutable {
   absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> ExecutePortable(
       absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
       const ExecuteOptions& options) const {
-    std::optional<PjRtFuture<>> returned_future;
+    std::optional<Future<>> returned_future;
     return ExecutePortable(std::move(argument_handles), device, options,
                            returned_future, /*fill_future=*/false);
   }
@@ -1534,7 +1543,7 @@ class PjRtLoadedExecutable {
   // combining the result buffers with a future that becomes ready when the
   // execution completes.
   struct Result {
-    std::optional<PjRtFuture<>> future;
+    std::optional<Future<>> future;
     std::vector<std::unique_ptr<PjRtBuffer>> buffers;
   };
 

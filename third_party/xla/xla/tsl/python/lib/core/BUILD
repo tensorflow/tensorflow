@@ -40,8 +40,8 @@ cc_library(
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/synchronization",
-        "@local_config_python//:python_headers",  # build_cleaner: keep; DNR: b/35864863
         "@pybind11",
+        "@rules_python//python/cc:current_py_cc_headers",  # build_cleaner: keep; DNR: b/35864863
     ],
 )
 
@@ -51,6 +51,6 @@ cc_library(
     hdrs = ["numpy.h"],
     deps = [
         "//third_party/py/numpy:headers",
-        "@local_config_python//:python_headers",
+        "@rules_python//python/cc:current_py_cc_headers",
     ],
 )

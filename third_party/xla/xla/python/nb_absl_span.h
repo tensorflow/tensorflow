@@ -29,14 +29,15 @@ namespace detail {
 
 template <typename T>
 struct type_caster<absl::Span<T const>> {
-  NB_TYPE_CASTER(absl::Span<T const>,
-                 const_name("Span[") + make_caster<T>::Name + const_name("]"))
+  NB_TYPE_CASTER(absl::Span<T const>, const_name("collections.abc.Sequence[") +
+                                          make_caster<T>::Name +
+                                          const_name("]"))
 
   using Caster = make_caster<T>;
 
   list_caster<std::vector<T>, T> vec_caster;
 
-  bool from_python(handle src, uint8_t flags, cleanup_list *cleanup) noexcept {
+  bool from_python(handle src, uint8_t flags, cleanup_list* cleanup) noexcept {
     if (!vec_caster.from_python(src, flags, cleanup)) {
       return false;
     }
@@ -45,11 +46,11 @@ struct type_caster<absl::Span<T const>> {
   }
 
   static handle from_cpp(absl::Span<T const> src, rv_policy policy,
-                         cleanup_list *cleanup) noexcept {
+                         cleanup_list* cleanup) noexcept {
     object ret = steal(PyList_New(src.size()));
     if (ret.is_valid()) {
       Py_ssize_t i = 0;
-      for (const T &value : src) {
+      for (const T& value : src) {
         handle h = Caster::from_cpp(value, policy, cleanup);
         if (!h.is_valid()) {
           ret.reset();

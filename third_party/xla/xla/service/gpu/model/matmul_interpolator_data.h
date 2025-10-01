@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_MODEL_MATMUL_INTERPOLATOR_DATA_H_
 #define XLA_SERVICE_GPU_MODEL_MATMUL_INTERPOLATOR_DATA_H_
 
+// BEGIN_DEFAULT_PERF_TABLE
 constexpr char kDefaultMatmulPTable[] = R"pb(
   entries {
     key: "sm_90"
@@ -6028,5 +6029,6 @@ constexpr char kDefaultMatmulPTable[] = R"pb(
     }
   }
 )pb";
+// END_DEFAULT_PERF_TABLE
 
 #endif  // XLA_SERVICE_GPU_MODEL_MATMUL_INTERPOLATOR_DATA_H_

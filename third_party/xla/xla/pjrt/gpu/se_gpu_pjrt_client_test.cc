@@ -53,6 +53,7 @@ limitations under the License.
 #include "xla/debug_options_flags.h"
 #include "xla/ffi/ffi.h"
 #include "xla/ffi/ffi_api.h"
+#include "xla/future.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/test.h"
@@ -73,7 +74,6 @@ limitations under the License.
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_device_description.h"
 #include "xla/pjrt/pjrt_executable.h"
-#include "xla/pjrt/pjrt_future.h"
 #include "xla/pjrt/pjrt_stream_executor_client.h"
 #include "xla/pjrt/plugin/xla_gpu/xla_gpu_client_options.h"
 #include "xla/pjrt/profiling/device_time_measurement.h"
@@ -608,14 +608,14 @@ TEST(StreamExecutorGpuClientTest, ToLiteralAsync) {
       transfer_manager->TransferLiteralToBuffer(0, src_literal, [&]() {}));
 
   buffer->ToLiteral(literal.get()).OnReady([&](absl::Status s) {
-    absl::MutexLock l(&mu);
+    absl::MutexLock l(mu);
     TF_ASSERT_OK(s);
     got_literal = true;
   });
   buffer.reset();
 
   {
-    absl::MutexLock l(&mu);
+    absl::MutexLock l(mu);
     mu.Await(absl::Condition(&got_literal));
   }
 
@@ -754,7 +754,7 @@ TEST(StreamExecutorGpuClientTest, ToLiteralAsyncBeforeBufferReady) {
   bool got_literal = false;
 
   buffer->ToLiteral(literal.get()).OnReady([&](absl::Status s) {
-    absl::MutexLock l(&mu);
+    absl::MutexLock l(mu);
     TF_ASSERT_OK(s);
     got_literal = true;
   });
@@ -767,7 +767,7 @@ TEST(StreamExecutorGpuClientTest, ToLiteralAsyncBeforeBufferReady) {
   buffer.reset();
 
   {
-    absl::MutexLock l(&mu);
+    absl::MutexLock l(mu);
     mu.Await(absl::Condition(&got_literal));
   }
 
@@ -815,12 +815,12 @@ TEST(StreamExecutorGpuClientTest, FromHostAsync) {
     literals.push_back(std::make_shared<Literal>(
         ShapeUtil::DeviceShapeToHostShape(buffer->on_device_shape())));
     buffer->ToLiteral(literals.back().get()).OnReady([&](absl::Status s) {
-      absl::MutexLock l(&mu);
+      absl::MutexLock l(mu);
       TF_ASSERT_OK(s);
       ++got_literal_count;
     });
     buffer->GetReadyFuture().OnReady([&](absl::Status s) {
-      absl::MutexLock l(&mu);
+      absl::MutexLock l(mu);
       TF_ASSERT_OK(s);
       ++got_callback_count;
     });
@@ -832,7 +832,7 @@ TEST(StreamExecutorGpuClientTest, FromHostAsync) {
       return got_literal_count == src_literals.size() &&
              got_callback_count == src_literals.size();
     };
-    absl::MutexLock l(&mu);
+    absl::MutexLock l(mu);
     mu.Await(absl::Condition(&done));
   }
 
@@ -887,12 +887,12 @@ TEST(StreamExecutorGpuClientTest, FromHostAsyncPinnedHost) {
     literals.push_back(std::make_shared<Literal>(
         ShapeUtil::DeviceShapeToHostShape(buffer->on_device_shape())));
     buffer->ToLiteral(literals.back().get()).OnReady([&](absl::Status s) {
-      absl::MutexLock l(&mu);
+      absl::MutexLock l(mu);
       TF_ASSERT_OK(s);
       ++got_literal_count;
     });
     buffer->GetReadyFuture().OnReady([&](absl::Status s) {
-      absl::MutexLock l(&mu);
+      absl::MutexLock l(mu);
       TF_ASSERT_OK(s);
       ++got_callback_count;
     });
@@ -904,7 +904,7 @@ TEST(StreamExecutorGpuClientTest, FromHostAsyncPinnedHost) {
       return got_literal_count == src_literals.size() &&
              got_callback_count == src_literals.size();
     };
-    absl::MutexLock l(&mu);
+    absl::MutexLock l(mu);
     mu.Await(absl::Condition(&done));
   }
 
@@ -1067,8 +1067,7 @@ TEST(StreamExecutorGpuClientTest, CopyRawToHostFuture) {
       std::unique_ptr<PjRtBuffer> buffer,
       client->BufferFromHostLiteral(literal, client->memory_spaces()[0]));
 
-  auto dst_promise = xla::PjRtFuture<void*>::CreatePromise();
-  xla::PjRtFuture<void*> dst_future(dst_promise);
+  auto [dst_promise, dst_future] = xla::Future<void*>::MakePromise();
 
   TF_ASSERT_OK_AND_ASSIGN(int64_t size, buffer->GetOnDeviceSizeInBytes());
   auto ready = buffer->GetReadyFuture();
@@ -1156,7 +1155,7 @@ TEST(StreamExecutorGpuClientTest, CreateMixOfErrorBuffers) {
       TF_ASSERT_OK(transfer_manager->TransferLiteralToBuffer(i, src_literals[i],
                                                              [&]() {}));
       buffer->GetReadyFuture().OnReady([&](absl::Status s) {
-        absl::MutexLock l(&mu);
+        absl::MutexLock l(mu);
         TF_ASSERT_OK(s);
         ++got_callback_count;
       });
@@ -1165,7 +1164,7 @@ TEST(StreamExecutorGpuClientTest, CreateMixOfErrorBuffers) {
       transfer_manager->SetBufferError(i, error);
       buffer->GetReadyFuture().OnReady(
           [error, &mu, &got_callback_count](absl::Status s) {
-            absl::MutexLock l(&mu);
+            absl::MutexLock l(mu);
             ASSERT_EQ(s, error);
             ++got_callback_count;
           });
@@ -1175,7 +1174,7 @@ TEST(StreamExecutorGpuClientTest, CreateMixOfErrorBuffers) {
 
   {
     auto done = [&]() { return got_callback_count == src_literals.size(); };
-    absl::MutexLock l(&mu);
+    absl::MutexLock l(mu);
     QCHECK(mu.AwaitWithTimeout(absl::Condition(&done), absl::Seconds(60)));
   }
 }
@@ -1873,7 +1872,7 @@ TEST(StreamExecutorGpuClientTest, CollectiveMemorySpaceSmoke) {
 
   // Override default memory space to collective memory space.
   EXPECT_EQ(buf->on_device_shape().layout().memory_space(),
-            gpu::kCollectiveMemorySpaceColor);
+            (int)gpu::MemorySpaceColor::kCollective);
 }
 
 TEST(StreamExecutorGpuClientTest,

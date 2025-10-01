@@ -49,9 +49,9 @@ absl::Status ValidatePhases(
   }
 
   for (const auto& partial_program : partial_programs_in) {
-    auto next_phases = partial_program.next_phases();
-    if (std::find(next_phases.begin(), next_phases.end(), phases_to_run[0]) ==
-        next_phases.end()) {
+    auto consumer_phases = partial_program.consumer_phases();
+    if (std::find(consumer_phases.begin(), consumer_phases.end(),
+                  phases_to_run[0]) == consumer_phases.end()) {
       return absl::InvalidArgumentError(absl::StrCat(
           "Input partial programs cannot be compiled by a phase with name \"",
           phases_to_run[0], "\""));

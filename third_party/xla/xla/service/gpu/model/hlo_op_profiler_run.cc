@@ -28,13 +28,13 @@ limitations under the License.
 #include "xla/service/hlo_runner.h"
 #include "xla/service/platform_util.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/status.h"
 #include "xla/tsl/util/command_line_flags.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/env.h"
 #include "tsl/platform/init_main.h"
 #include "tsl/platform/path.h"
 #include "tsl/platform/protobuf.h"
-#include "tsl/platform/status.h"
 
 namespace xla {
 namespace gpu {
@@ -99,6 +99,7 @@ int RunProfiler(int argc, char** argv) {
       HloOpcode::kLogistic,
       HloOpcode::kRsqrt,
       HloOpcode::kSin,
+      HloOpcode::kSinh,
       HloOpcode::kSqrt,
       HloOpcode::kTanh,
       // Binary
@@ -112,8 +113,8 @@ int RunProfiler(int argc, char** argv) {
 
   HloInstructionProfileList instr_profiles;
 
-  for (const PrimitiveType data_type : dtypes) {
-    for (const HloOpcode op : ops) {
+  for (const PrimitiveType data_type : HloOpProfiler::AllSupportedDtypes()) {
+    for (const HloOpcode op : HloOpProfiler::AllSupportedOps()) {
       auto result = profiler.MeasureClockCyclesPerOp(op, data_type);
       if (result.ok()) {
         instr_profiles.add_entries()->Swap(&*result);

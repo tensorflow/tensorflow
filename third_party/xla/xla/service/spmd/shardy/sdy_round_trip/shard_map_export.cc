@@ -51,7 +51,6 @@ namespace sdy {
 
 namespace {
 
-using ::mlir::MLIRContext;
 using ::mlir::ModuleOp;
 using ::mlir::StringRef;
 using ::mlir::func::CallOp;
@@ -68,11 +67,10 @@ class SdyRoundTripShardMapExportPass
 
   void runOnOperation() final {
     ModuleOp moduleOp = getOperation();
-    MLIRContext* context = moduleOp.getContext();
     mlir::SymbolTableCollection symbolTableCollection;
     mlir::SymbolTable& symbolTable =
         symbolTableCollection.getSymbolTable(moduleOp);
-    auto rewriter = mlir::IRRewriter(context);
+    auto rewriter = mlir::IRRewriter(moduleOp.getContext());
     moduleOp->walk([&](sdy::ManualComputationOp manualComputation) {
       rewriter.setInsertionPointToEnd(&moduleOp.getRegion().front());
       mlir::Location loc = manualComputation.getLoc();
@@ -87,10 +85,9 @@ class SdyRoundTripShardMapExportPass
       mlir::StringAttr funcName = symbolTable.insert(funcOp);
 
       rewriter.setInsertionPoint(manualComputation);
-      stablehlo::CustomCallOp globalToLocalShape;
       mlir::ValueRange operands = manualComputation->getOperands();
       if (!operands.empty()) {
-        globalToLocalShape = stablehlo::CustomCallOp::create(
+        auto globalToLocalShape = stablehlo::CustomCallOp::create(
             rewriter, loc, manualCompBodyArgTypes, operands);
         globalToLocalShape.setCallTargetName(kGlobalToLocalShapeCallTargetName);
         // We mark `xla.sdy.GlobalToLocalShape` as side-effecting to avoid
@@ -114,9 +111,6 @@ class SdyRoundTripShardMapExportPass
         auto localToGlobalShape = stablehlo::CustomCallOp::create(
             rewriter, loc, manualComputation.getResultTypes(),
             callOp->getResults());
-        // We don't mark `xla.sdy.LocalToGlobalShape` as side-effecting, so if
-        // any of its results has a dimension of size 0 (i.e. 0 num-elements),
-        // it will be replaced with a constant of the same shape.
         localToGlobalShape.setCallTargetName(kLocalToGlobalShapeCallTargetName);
         // We mark `xla.sdy.LocalToGlobalShape` as side-effecting to avoid
         // CSE removing it if it has no users.

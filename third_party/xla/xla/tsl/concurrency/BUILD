@@ -15,6 +15,7 @@ filegroup(
         "async_value_ref.h",
         "chain.h",
         "concurrent_vector.h",
+        "executor.h",
         "ref_count.h",
     ],
     compatible_with = get_compatible_with_portable(),
@@ -43,6 +44,7 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     deps = [
         ":concurrent_vector",
+        ":executor",
         ":ref_count",
         "//xla/tsl/platform:logging",
         "//xla/tsl/util:safe_reinterpret_cast",
@@ -76,6 +78,7 @@ tsl_cc_test(
     srcs = ["async_value_ptr_test.cc"],
     deps = [
         ":async_value",
+        ":executor",
         "//xla/tsl/platform:test",
         "//xla/tsl/platform:test_benchmark",
         "//xla/tsl/platform:test_main",
@@ -91,6 +94,7 @@ tsl_cc_test(
     srcs = ["async_value_ref_test.cc"],
     deps = [
         ":async_value",
+        ":executor",
         ":ref_count",
         "//xla/tsl/platform:test",
         "//xla/tsl/platform:test_benchmark",
@@ -123,6 +127,48 @@ tsl_cc_test(
         "//xla/tsl/platform:env_impl",
         "//xla/tsl/platform:test",
         "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "executor",
+    hdrs = ["executor.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = ["@com_google_absl//absl/functional:any_invocable"],
+)
+
+cc_library(
+    name = "future",
+    srcs = ["future.cc"],
+    hdrs = ["future.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        ":async_value",
+        ":ref_count",
+        "//xla/tsl/platform:logging",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/base:no_destructor",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/meta:type_traits",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/types:span",
+        "@com_google_absl//absl/utility",
+    ],
+)
+
+tsl_cc_test(
+    name = "future_test",
+    srcs = ["future_test.cc"],
+    deps = [
+        ":future",
+        "//xla/tsl/platform:test",
+        "//xla/tsl/platform:test_benchmark",
+        "//xla/tsl/platform:test_main",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/status:statusor",
     ],
 )
 

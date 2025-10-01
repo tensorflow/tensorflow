@@ -23,8 +23,8 @@ limitations under the License.
 
 #include "absl/types/span.h"
 #include "mlir/IR/AffineExpr.h"
+#include "xla/codegen/tiling/constraint_expression.h"
 #include "xla/hlo/analysis/indexing_map.h"
-#include "xla/service/gpu/model/constraint_expression.h"
 
 namespace xla::gpu {
 

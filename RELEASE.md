@@ -21,6 +21,7 @@
 
 * `tf.lite`
     * Adds int8 and int16x8 support for SQRT operator.
+    * Adds int16x8 support for EQUAL and NOT_EQUAL operators.
 
 ### Bug Fixes and Other Changes
 

@@ -29,7 +29,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/ifrt_types.h"
-#include "xla/python/ifrt/future.h"
+#include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/common_runtime/process_function_library_runtime.h"
@@ -89,7 +89,7 @@ struct AsyncState {
   const tensorflow::ProcessFunctionLibraryRuntime&
       process_function_library_runtime;
 
-  std::vector<xla::ifrt::Promise<tensorflow::Tensor>> results;
+  std::vector<tsl::Promise<tensorflow::Tensor>> results;
 };
 
 // Returns a casted tensor if successful.
@@ -245,8 +245,7 @@ absl::Status RunShard(RestoreVariableShard shard,
       fallback_request_state.process_function_library_runtime());
 
   for (int i = 0; i < num_outputs; ++i) {
-    auto promise = xla::ifrt::Future<tensorflow::Tensor>::CreatePromise();
-    auto future = xla::ifrt::Future<tensorflow::Tensor>(promise);
+    auto [promise, future] = tsl::Future<tensorflow::Tensor>::MakePromise();
     const ResourceHandle& var_handle =
         shard.var_handles[i].tensor().scalar<tensorflow::ResourceHandle>()();
 

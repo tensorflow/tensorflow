@@ -95,6 +95,10 @@ def LoadInt4RewritePass
   let dependentDialects = [
     "triton::TritonDialect"
   ];
+  let options = [
+    Option<"enable_bf16x2_", "enable_bf16x2", "bool", "true",
+           "Whether to enable bf16x2.">,
+  ];
 }
 
 def RoundF32ToTF32ForTf32DotRewritePass
@@ -117,6 +121,73 @@ def TritonXLALowerGetTidPass
     the register and returning it.
   }];
   let constructor = "CreateTritonXLALowerGetTidPass()";
+}
+
+def TritonXLALowerAtomicsPass
+    : Pass<"triton-xla-atomics", "mlir::ModuleOp"> {
+  let summary = "Lower triton_xla.atomic operations.";
+  let description = [{
+    This pass lowers atomic operations to the PTX intrinsic with the given
+    memory semantics.
+  }];
+  let constructor = "CreateTritonXLALowerAtomicsPass()";
+}
+
+def TritonXLALowerBlockBarrierPass
+    : Pass<"triton-xla-block-barrier", "mlir::ModuleOp"> {
+  let summary = "Lower a block barrier to triton_xla/triton operations.";
+  let description = [{
+    This pass lowers a block barrier to Triton IR using atomic write and
+    spin-wait operations.
+  }];
+  let constructor = "CreateTritonXLALowerBlockBarrierPass()";
+}
+
+def TritonXLAConvertUnsupportedTypesPass
+    : Pass<"convert-unsupported-types", "mlir::ModuleOp"> {
+  let summary = "Converts types unsupported by Triton into their supported equivalents.";
+  let description = [{
+    This pass converts types unsupported by Triton into their supported
+    equivalents.
+
+    This is essentially useful to support e.g. flavors of float8 types that
+    Triton decides to represent as int8s from the very beginning, but that have
+    both a proper representation in HLO and upstream MLIR.
+
+    The important invariant of this pass is that the types it converts to have
+    the same bitwidth as the original type.
+
+    This pass may not be replaced by a simple `TypeConverter`, because the type
+    replacement it performs do not preserve semantics in a vacuum (but may for
+    specific ops, such as loads, stores, or bitcasts).
+  }];
+  let constructor = "CreateTritonXLAConvertUnsupportedTypesPass()";
+}
+
+def TritonXLALowerRemoteAccessPass
+    : Pass<"triton-xla-remote-access", "mlir::ModuleOp"> {
+  let summary = "Lower triton_xla.get_rank/get_peer operations used to remote access kernels.";
+  let description = [{
+    This pass lowers collective operations (get_rank, get_peer).
+  }];
+  let constructor = "CreateTritonXLALowerRemoteAccessPass()";
+}
+
+def TritonXLAUnswitchLoopsPass :
+   Pass<"triton-xla-unswitch-loops", "mlir::ModuleOp"> {
+  let summary = "Hoists scf.if out of scf.for.";
+
+  let description = [{
+      Hoists a single scf.if out of scf.for when the condition is loop invariant.
+      That removes the conditional from the loop body but increases the code size.
+      Pass expects to run after loop-invariant-code-motion.
+  }];
+
+  let dependentDialects = [
+    "mlir::func::FuncDialect", "mlir::scf::SCFDialect"
+  ];
+
+  let constructor = "CreateTritonXLAUnswitchLoopsPass()";
 }
 
 #endif  // XLA_BACKENDS_GPU_CODEGEN_TRITON_PASSES_TD_

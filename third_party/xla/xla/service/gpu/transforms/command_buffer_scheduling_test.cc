@@ -23,8 +23,10 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "absl/status/statusor.h"
+#include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/filecheck.h"
@@ -37,9 +39,9 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/status.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
-#include "tsl/platform/status.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla::gpu {
 namespace {
@@ -101,9 +103,9 @@ TEST_F(CommandBufferSchedulingTest, SingleCommandBuffer) {
 // CHECK: %command_buffer ([[P0:.+]]: s32[], [[P1:.+]]: s32[]) -> (s32[], s32[]) {
 // CHECK:   %[[P0]] = s32[] parameter(0)
 // CHECK:   %[[P1]] = s32[] parameter(1)
-// CHECK:   %fusion = s32[] fusion(%[[P0]], %[[P1]]), kind=kLoop, calls=%fused_computation
-// CHECK:   %fusion.1 = s32[] fusion(%[[P0]], %[[P1]]), kind=kLoop, calls=%fused_computation.1
-// CHECK:   ROOT %tuple = (s32[], s32[]) tuple(%fusion, %fusion.1)
+// CHECK:   %fusion.2 = s32[] fusion(%[[P0]], %[[P1]]), kind=kLoop, calls=%fused_computation
+// CHECK:   %fusion.3 = s32[] fusion(%[[P0]], %[[P1]]), kind=kLoop, calls=%fused_computation.1
+// CHECK:   ROOT %tuple = (s32[], s32[]) tuple(%fusion.2, %fusion.3)
 // CHECK: }
 //
 // CHECK: ENTRY %main (a: s32[], b: s32[]) -> s32[] {
@@ -173,7 +175,7 @@ TEST_F(CommandBufferSchedulingTest, MultipleCommandBuffers) {
 // CHECK:    ROOT {{.*}} = s32[] fusion(%[[F0]], %[[P2]]), kind=kLoop, calls=%fused_computation.1
 // CHECK:  }
 
-// CHECK:  %command_buffer.2 ([[P0:.+]]: s32[], [[P1:.+]]: s32[]) -> s32[] {
+// CHECK:  %command_buffer.1 ([[P0:.+]]: s32[], [[P1:.+]]: s32[]) -> s32[] {
 // CHECK:    %[[P0]] = s32[] parameter(0)
 // CHECK:    %[[P1]] = s32[] parameter(1)
 // CHECK:    %[[F2:.+]] = s32[] fusion(%[[P0]], %[[P1]]), kind=kLoop, calls=%fused_computation.2
@@ -188,7 +190,7 @@ TEST_F(CommandBufferSchedulingTest, MultipleCommandBuffers) {
 // CHECK:    %e = s32[] get-tuple-element(%c), index=1
 // CHECK:    %[[CMD0:.+]] = s32[] call(%a, %b, %d), to_apply=%command_buffer
 // CHECK:    %[[CALL:.+]] = s32[] custom-call(%[[CMD0]], %e), custom_call_target="some target"
-// CHECK:    %[[CMD1:.+]] = s32[] call(%[[CALL]], %a), to_apply=%command_buffer.2
+// CHECK:    %[[CMD1:.+]] = s32[] call(%[[CALL]], %a), to_apply=%command_buffer.1
 // CHECK:    ROOT {{.*}} = s32[] custom-call(%[[CMD1]]), custom_call_target="some target"
 // CHECK:  })";
 
@@ -437,8 +439,8 @@ TEST_F(CommandBufferSchedulingTest, DoNotCaptureUnmatchedAsyncDone) {
     CHECK: %command_buffer ([[P0:.+]]: s32[], [[P1:.+]]: s32[]) -> s32[] {
     CHECK:   %[[P0]] = s32[] parameter(0)
     CHECK:   %[[P1]] = s32[] parameter(1)
-    CHECK:   %fusion = s32[] fusion(%[[P0]], %[[P1]]), kind=kLoop, calls=%fused_computation
-    CHECK:   ROOT %fusion.1 = s32[] fusion(%[[P0]], %[[P1]]), kind=kLoop, calls=%fused_computation.1
+    CHECK:   %fusion.2 = s32[] fusion(%[[P0]], %[[P1]]), kind=kLoop, calls=%fused_computation
+    CHECK:   ROOT %fusion.3 = s32[] fusion(%[[P0]], %[[P1]]), kind=kLoop, calls=%fused_computation.1
     CHECK: }
 
     CHECK: ENTRY %main (a: s32[4], b: s32[]) -> s32[] {
@@ -1373,8 +1375,8 @@ TEST_F(CommandBufferSchedulingTest, MoveGTEs) {
 // CHECK:  %command_buffer ([[P0:.+]]: s32[], [[P1:.+]]: s32[]) -> s32[] {
 // CHECK:    %[[P0]] = s32[] parameter(0)
 // CHECK:    %[[P1]] = s32[] parameter(1)
-// CHECK:    %fusion0 = s32[] fusion(%[[P0]], %[[P0]]), kind=kLoop, calls=%fused_computation
-// CHECK:    ROOT %fusion1 = s32[] fusion(%fusion0, %[[P1]]), kind=kLoop, calls=%fused_computation.1
+// CHECK:    %fusion0.1 = s32[] fusion(%[[P0]], %[[P0]]), kind=kLoop, calls=%fused_computation
+// CHECK:    ROOT %fusion1.1 = s32[] fusion(%fusion0.1, %[[P1]]), kind=kLoop, calls=%fused_computation.1
 // CHECK:  }
 
 // CHECK:  ENTRY %main (x: s32[]) -> s32[] {

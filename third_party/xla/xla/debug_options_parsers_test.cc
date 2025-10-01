@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "google/protobuf/repeated_field.h"
 #include "xla/debug_options_flags.h"
 #include "xla/parse_flags_from_env.h"
 #include "xla/service/dump.h"
@@ -35,7 +36,6 @@ limitations under the License.
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/util/command_line_flags.h"
 #include "xla/xla.pb.h"
-#include "tsl/platform/protobuf.h"  // IWYU pragma: keep
 
 namespace xla {
 namespace {
@@ -497,7 +497,7 @@ void TestLibraryFusionType(absl::string_view lib) {
       absl::StrCat("--xla_cpu_experimental_", lib, "_fusion_type");
 
   {
-    const tsl::protobuf::RepeatedField<int> enabled_types =
+    const google::protobuf::RepeatedField<int> enabled_types =
         lib == "onednn"
             ? debug_options.xla_cpu_experimental_onednn_fusion_type()
             : debug_options.xla_cpu_experimental_xnn_fusion_type();
@@ -510,7 +510,7 @@ void TestLibraryFusionType(absl::string_view lib) {
     // Overwriting the default setting.
     SetXlaFlagsEnvVar(absl::StrCat(flag_name, "=dot,eltwise"));
     ParseFlagsFromEnvAndDieIfUnknown("XLA_FLAGS", flag_objects);
-    const tsl::protobuf::RepeatedField<int> enabled_types =
+    const google::protobuf::RepeatedField<int> enabled_types =
         lib == "onednn"
             ? debug_options.xla_cpu_experimental_onednn_fusion_type()
             : debug_options.xla_cpu_experimental_xnn_fusion_type();
@@ -525,7 +525,7 @@ void TestLibraryFusionType(absl::string_view lib) {
     // Adding / removing options from the existing setting.
     SetXlaFlagsEnvVar(absl::StrCat(flag_name, "=+reduce,-eltwise"));
     ParseFlagsFromEnvAndDieIfUnknown("XLA_FLAGS", flag_objects);
-    const tsl::protobuf::RepeatedField<int> enabled_types =
+    const google::protobuf::RepeatedField<int> enabled_types =
         lib == "onednn"
             ? debug_options.xla_cpu_experimental_onednn_fusion_type()
             : debug_options.xla_cpu_experimental_xnn_fusion_type();

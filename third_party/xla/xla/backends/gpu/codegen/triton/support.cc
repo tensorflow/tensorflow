@@ -105,11 +105,31 @@ absl::flat_hash_set<HloOpcode> TritonSupportedUnaryElementwiseOps(
       element_type == PrimitiveType::F32 ||
       element_type == PrimitiveType::F64) {
     absl::flat_hash_set<HloOpcode> additional_opcodes{
-        HloOpcode::kCos,   HloOpcode::kExp,   HloOpcode::kExpm1,
-        HloOpcode::kFloor, HloOpcode::kCeil,  HloOpcode::kLog,
-        HloOpcode::kLog1p, HloOpcode::kRsqrt, HloOpcode::kSin,
-        HloOpcode::kSqrt,  HloOpcode::kCbrt,  HloOpcode::kTan,
-        HloOpcode::kTanh,  HloOpcode::kErf};
+        // clang-format off
+        // go/keep-sorted start
+        HloOpcode::kAcos,
+        HloOpcode::kAcosh,
+        HloOpcode::kAsin,
+        HloOpcode::kAtanh,
+        HloOpcode::kCbrt,
+        HloOpcode::kCeil,
+        HloOpcode::kCos,
+        HloOpcode::kCosh,
+        HloOpcode::kErf,
+        HloOpcode::kExp,
+        HloOpcode::kExpm1,
+        HloOpcode::kFloor,
+        HloOpcode::kLog,
+        HloOpcode::kLog1p,
+        HloOpcode::kRsqrt,
+        HloOpcode::kSin,
+        HloOpcode::kSinh,
+        HloOpcode::kSqrt,
+        HloOpcode::kTan,
+        HloOpcode::kTanh,
+        // go/keep-sorted end
+        // clang-format on
+    };
     ret.insert(additional_opcodes.begin(), additional_opcodes.end());
   }
 

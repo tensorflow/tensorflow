@@ -160,8 +160,8 @@ absl::Status NodeBuilder::Finalize(Graph* graph, Node** created_node,
 void NodeBuilder::AddIndexError(const Node* node, int i) {
   if (node == nullptr) {
     errors_.emplace_back(
-        strings::StrCat("Attempt to add nullptr Node to node with type ",
-                        def_builder_.op_def().name()));
+        absl::StrCat("Attempt to add nullptr Node to node with type ",
+                     def_builder_.op_def().name()));
   } else {
     errors_.emplace_back(strings::StrCat(
         "Attempt to add output ", i, " of ", node->name(), " not in range [0, ",

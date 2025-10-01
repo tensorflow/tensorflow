@@ -18,11 +18,15 @@ limitations under the License.
 #include <cstdint>
 #include <variant>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/strings/string_view.h"
 #include "xla/service/gpu/model/hlo_op_profile.pb.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tests/hlo_test_base.h"
+#include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/util/proto/proto_matchers.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla::gpu {
@@ -217,6 +221,102 @@ TEST_F(MatmulPerfTableGenTest, CompactTableInDeterministicOrder) {
        compact_table.entries().begin()->second.entries()) {
     EXPECT_EQ(entry.b(), expect_b++);
   }
+}
+
+TEST_F(MatmulPerfTableGenTest, MergeGemmTables) {
+  const absl::string_view kGemmTableOld = R"pb(
+    entries {
+      key: "sm_90"
+      value {
+        entries {
+          b: 1
+          m: 1024
+          n: 2048
+          k: 256
+          flops { key: "bf16xbf16->bf16" value: 123000 }
+          flops { key: "f32xf32->f32" value: 456000 }
+        }
+      }
+    }
+  )pb";
+  const absl::string_view kGemmTableNew = R"pb(
+    entries {
+      key: "sm_90"
+      value {
+        entries {
+          b: 2
+          m: 256
+          n: 2048
+          k: 2048
+          flops { key: "bf16xbf16->bf16" value: 789000 }
+          flops { key: "f32xf32->f32" value: 123000 }
+        }
+      }
+    }
+    entries {
+      key: "sm_100"
+      value {
+        entries {
+          b: 2
+          m: 256
+          n: 2048
+          k: 2048
+          flops { key: "bf16xbf16->bf16" value: 789 }
+          flops { key: "f32xf32->f32" value: 123 }
+        }
+      }
+    }
+  )pb";
+  const absl::string_view kGemmTableExpected = R"pb(
+    entries {
+      key: "sm_90"
+      value {
+        entries {
+          b: 1
+          m: 1024
+          n: 2048
+          k: 256
+          flops { key: "bf16xbf16->bf16" value: 123000 }
+          flops { key: "f32xf32->f32" value: 456000 }
+        }
+        entries {
+          b: 2
+          m: 256
+          n: 2048
+          k: 2048
+          flops { key: "bf16xbf16->bf16" value: 789000 }
+          flops { key: "f32xf32->f32" value: 123000 }
+        }
+      }
+    }
+    entries {
+      key: "sm_100"
+      value {
+        entries {
+          b: 2
+          m: 256
+          n: 2048
+          k: 2048
+          flops { key: "bf16xbf16->bf16" value: 789 }
+          flops { key: "f32xf32->f32" value: 123 }
+        }
+      }
+    }
+  )pb";
+  GemmPerfTable old_perf_table;
+  EXPECT_TRUE(tsl::protobuf::TextFormat::ParseFromString(kGemmTableOld,
+                                                         &old_perf_table));
+  GemmPerfTable new_perf_table;
+  ASSERT_TRUE(tsl::protobuf::TextFormat::ParseFromString(kGemmTableNew,
+                                                         &new_perf_table));
+  GemmPerfTable expected_merged_perf_table;
+  ASSERT_TRUE(tsl::protobuf::TextFormat::ParseFromString(
+      kGemmTableExpected, &expected_merged_perf_table));
+  GemmPerfTable actual_merged_perf_table =
+      MatmulPerfTableGen::Merge({old_perf_table, new_perf_table});
+  EXPECT_THAT(expected_merged_perf_table,
+              tsl::proto_testing::IgnoringRepeatedFieldOrdering(
+                  tsl::proto_testing::EqualsProto(actual_merged_perf_table)));
 }
 
 }  // namespace

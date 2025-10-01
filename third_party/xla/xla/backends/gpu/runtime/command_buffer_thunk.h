@@ -57,6 +57,7 @@ class CommandBufferThunk : public Thunk {
       const ExecuteParams& params, int64_t index);
 
   void ForAllThunks(absl::FunctionRef<void(const Thunk*)> fn) const override;
+  void ForAllThunksMutable(absl::FunctionRef<void(Thunk*)> fn) override;
 
   std::string ToString(int indent) const override;
 

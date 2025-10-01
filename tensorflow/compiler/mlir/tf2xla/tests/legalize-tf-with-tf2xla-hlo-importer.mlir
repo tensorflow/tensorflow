@@ -655,7 +655,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
   // CHECK-LABEL: func @tf_mod
   func.func @tf_mod(%arg1: tensor<2x2xf32>) -> tensor<2x2xf32> {
     %cst = "tf.Const"() {value = dense<7.000000e+00> : tensor<f32>} : () -> tensor<f32>
-    // CHECK: "mhlo.dynamic_broadcast_in_dim"
+    // CHECK: mhlo.broadcast_in_dim
     // CHECK: mhlo.remainder
     %6 = "tf.Mod"(%arg1, %cst) {_global_shape = [#tf_type.shape<4x8>], device = ""} : (tensor<2x2xf32>, tensor<f32>) -> tensor<2x2xf32>
     return %6 : tensor<2x2xf32>
@@ -696,13 +696,13 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
     //     return %0 : tensor<f32>
     //   }
     // }
-    // CHECK: call @main.2
+    // CHECK: call @main.1
     %0 = "tf.XlaCallModule"(%arg0) {Sout = [#tf_type.shape<*>], device = "", dim_args_spec = [], function_list = [], disabled_checks = [], has_token_input_output = false, module = "ML\EFR\03MLIRxxx-trunk\00\01\17\05\01\05\01\03\05\03\07\07\t\0B\03K5\07\01\1B\07\0B\13\0B3\0B\0B\0B\0B\0F\0B\13\0B\03\1B\0F\1B\0B\0B\0B\0B\0B\0F\13\0B\0B\0B\0B\03\07\0F\17\07\02\A7\1F\05\0D\03\03\03\07\05\0F\03\0B\0B\1B\0D'\0F)\031\113\05\11\05\13\05\15\05\17\1D\15\17\05\19\17\19\EF\01\05\1B\03\03\1D\0D\05\1F!#%\1D\1D\1D\1F\1D!\1D##\03\03\03+\0D\03-/\1D%\1D'\1D)\1D+)\01\05\11\03\01\03\01\t\04A\05\01\11\01\05\07\03\01\05\03\11\01\t\05\03\05\0B\03\01\01\05\06\13\03\01\03\01\07\04\01\03\03\06\03\01\05\01\00\9A\04-\0F\0B\03!\1B\1D\05\1B\83/\1F\15\1D\15\11\13\15\11\11\0F\0B\11builtin\00vhlo\00module\00func_v1\00sine_v1\00return_v1\00sym_name\00jit_sin\00arg_attrs\00function_type\00res_attrs\00sym_visibility\00jit(sin)/jit(main)/sin\00third_party/py/jax/experimental/jax2tf/tests/back_compat_test.py\00jax.arg_info\00x\00mhlo.sharding\00{replicated}\00jax.result_info\00\00main\00public\00", platforms = ["CPU"], version = 6 : i64} : (tensor<f32>) -> tensor<*xf32>
     func.return %0 : tensor<*xf32>
   }
 
   // Verifies that the following functions are added from xla_call_module. Note this must be at the end of the file.
-  // CHECK: func.func private @main.2(%arg0: tensor<f32> {mhlo.sharding = "{replicated}"}) -> tensor<f32> {
+  // CHECK: func.func private @main.1(%arg0: tensor<f32> {mhlo.sharding = "{replicated}"}) -> tensor<f32> {
   // CHECK:   %0 = mhlo.sine %arg0 : tensor<f32>
   // CHECK:   return %0 : tensor<f32>
   // CHECK: }

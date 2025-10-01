@@ -56,7 +56,7 @@ bool ExpectBefore(const std::vector<std::pair<string, string>>& ordered_pairs,
     bool seen_both = false;
     for (const Node* node : inputs) {
       if (!seen_before && after_node == node->name()) {
-        *error = strings::StrCat("Saw ", after_node, " before ", before_node);
+        *error = absl::StrCat("Saw ", after_node, " before ", before_node);
         return false;
       }
 
@@ -68,8 +68,8 @@ bool ExpectBefore(const std::vector<std::pair<string, string>>& ordered_pairs,
       }
     }
     if (!seen_both) {
-      *error = strings::StrCat("didn't see either ", before_node, " or ",
-                               after_node);
+      *error =
+          absl::StrCat("didn't see either ", before_node, " or ", after_node);
       return false;
     }
   }
@@ -142,7 +142,7 @@ TEST(AlgorithmTest, ReversePostOrderStable) {
     // implemented correctly.
     for (int64_t j = 0; j < i; ++j) {
       BinaryOp("TestMul", w1, {input, 1},
-               b.opts().WithName(strings::StrCat("internal", j)));
+               b.opts().WithName(absl::StrCat("internal", j)));
     }
 
     BinaryOp("TestMul", w1, {input, 1}, b.opts().WithName("t3"));

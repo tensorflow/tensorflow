@@ -24,8 +24,10 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status_matchers.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
+#include "mlir/IR/MLIRContext.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
@@ -39,15 +41,13 @@ limitations under the License.
 #include "xla/service/pattern_matcher.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tsl/platform/env.h"
-#include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/threadpool.h"
+#include "xla/xla.pb.h"
 
 namespace m = ::xla::match;
 
 using ::testing::UnorderedElementsAre;
-using ::tsl::testing::IsOk;
-using ::tsl::testing::IsOkAndHolds;
 
 namespace xla {
 namespace gpu {
@@ -74,9 +74,11 @@ class PriorityFusionTest : public HloHardwareIndependentTestBase {
   }
 
   se::DeviceDescription device_info_ = TestGpuDeviceInfo::RTXA6000DeviceInfo();
+  mlir::MLIRContext mlir_context_;
   PriorityFusion priority_fusion_{
       /*thread_pool=*/nullptr, device_info_,
-      GpuHloCostAnalysis::Options{.count_multiple_input_accesses = true}};
+      GpuHloCostAnalysis::Options{.count_multiple_input_accesses = true},
+      &mlir_context_};
 };
 
 TEST_F(PriorityFusionTest, FuseWithSharedArgument) {
@@ -1372,8 +1374,8 @@ TEST_F(PriorityFusionWithTritonEnabledTest,
   tsl::thread::ThreadPool pool(tsl::Env::Default(), "priority-fusion-test", 8);
   GpuHloCostAnalysis::Options options;
   options.count_multiple_input_accesses = true;
-  PriorityFusion priority_fusion_with_thread_pool{/*thread_pool=*/&pool,
-                                                  device_info_, options};
+  PriorityFusion priority_fusion_with_thread_pool{
+      /*thread_pool=*/&pool, device_info_, options, &mlir_context_};
   EXPECT_THAT(priority_fusion_with_thread_pool.Run(module.get()),
               absl_testing::IsOkAndHolds(true));
   HloInstruction* root = module->entry_computation()->root_instruction();

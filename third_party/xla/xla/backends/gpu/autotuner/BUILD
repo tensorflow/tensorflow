@@ -1,6 +1,7 @@
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm_is_configured")
-load("//xla:xla.default.bzl", "xla_cc_binary")
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
+load("//xla:xla.default.bzl", "xla_cc_binary", "xla_cc_test")
 load("//xla/tests:build_defs.bzl", "xla_test")
 load(
     "//xla/tsl/platform/default:cuda_build_defs.bzl",
@@ -31,6 +32,16 @@ cc_library(
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+xla_cc_test(
+    name = "gpu_codegen_backend_test",
+    srcs = ["gpu_codegen_backend_test.cc"],
+    deps = [
+        ":gpu_codegen_backend",
+        "//xla:xla_proto_cc",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -73,6 +84,10 @@ cc_library(
 xla_test(
     name = "block_level_emitter_test",
     srcs = ["block_level_emitter_test.cc"],
+    backend_tags = {
+        # TODO(b/445172709): Re-enable once fixed.
+        "b200": ["broken"],
+    },
     backends = [
         "a100",
         "h100",
@@ -89,12 +104,14 @@ xla_test(
         "//xla/backends/autotuner:codegen_backend",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/service:compiler",
         "//xla/service:executable",
         "//xla/service:platform_util",
         "//xla/service/gpu:backend_configs_cc",
         "//xla/service/gpu:ir_emission_utils",
         "//xla/service/gpu:nvptx_compiler_impl",
         "//xla/stream_executor:device_description_proto_cc",
+        "//xla/stream_executor:stream_executor_h",
         "//xla/tsl/platform:status_matchers",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/util/proto:proto_matchers",
@@ -126,7 +143,6 @@ cc_library(
         "//xla/service/gpu/autotuning:redzone_buffers",
         "//xla/service/gpu/transforms:dot_algorithm_rewriter",
         "//xla/service/gpu/transforms:gemm_rewriter",
-        "//xla/service/gpu/transforms:priority_fusion",
         "//xla/stream_executor:blas",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor:device_memory",
@@ -175,7 +191,6 @@ xla_test(
         "//xla/service:compiler",
         "//xla/service:executable",
         "//xla/service:platform_util",
-        "//xla/service/gpu:gpu_device_info_for_tests",
         "//xla/service/gpu:nvptx_compiler_impl",
         "//xla/stream_executor:blas",
         "//xla/stream_executor:device_description_proto_cc",
@@ -242,7 +257,6 @@ xla_test(
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/service:compiler",
         "//xla/service:platform_util",
-        "//xla/service/gpu:gpu_device_info_for_tests",
         "//xla/service/gpu:nvptx_compiler_impl",
         "//xla/stream_executor:blas",
         "//xla/stream_executor:device_description_proto_cc",
@@ -320,10 +334,12 @@ xla_test(
         "//xla/backends/autotuner:codegen_backend",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/service:compiler",
         "//xla/service:platform_util",
         "//xla/service/gpu:backend_configs_cc",
         "//xla/service/gpu:nvptx_compiler_impl",
         "//xla/stream_executor:device_description_proto_cc",
+        "//xla/stream_executor:stream_executor_h",
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:status_matchers",
         "//xla/tsl/platform:statusor",
@@ -384,7 +400,6 @@ xla_test(
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/service:compiler",
         "//xla/service:platform_util",
-        "//xla/service/gpu:gpu_device_info_for_tests",
         "//xla/service/gpu:nvptx_compiler_impl",
         "//xla/stream_executor:device_description_proto_cc",
         "//xla/stream_executor:stream_executor_h",
@@ -436,6 +451,7 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
+        "@llvm-project//mlir:IR",
     ],
 )
 
@@ -459,17 +475,19 @@ xla_test(
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:filecheck",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/service:compiler",
         "//xla/service:platform_util",
         "//xla/service/gpu:nvptx_compiler_impl",
         "//xla/stream_executor:device_description_proto_cc",
+        "//xla/stream_executor:stream_executor_h",
         "//xla/tsl/lib/core:status_test_util",
-        "//xla/tsl/platform:status_matchers",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
+        "@llvm-project//mlir:IR",
     ],
 )
 
@@ -511,12 +529,17 @@ cc_library(
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
+        "@llvm-project//mlir:IR",
     ],
 )
 
 xla_test(
     name = "triton_test",
     srcs = ["triton_test.cc"],
+    backend_tags = {
+        # TODO(b/445172709): Re-enable once fixed.
+        "b200": ["broken"],
+    },
     backends = [
         "a100",
         "h100",
@@ -533,17 +556,20 @@ xla_test(
         "//xla/backends/autotuner:codegen_backend",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/service:compiler",
         "//xla/service:executable",
         "//xla/service:platform_util",
         "//xla/service/gpu:matmul_utils",
         "//xla/service/gpu:nvptx_compiler_impl",
         "//xla/stream_executor:device_description_proto_cc",
+        "//xla/stream_executor:stream_executor_h",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/util/proto:proto_matchers",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/status:statusor",
         "@com_google_googletest//:gtest_main",
+        "@llvm-project//mlir:IR",
     ],
 )
 
@@ -606,6 +632,10 @@ cc_library(
 xla_test(
     name = "native_emitter_test",
     srcs = ["native_emitter_test.cc"],
+    backend_tags = {
+        # TODO(b/445172709): Re-enable once fixed.
+        "b200": ["broken"],
+    },
     backends = [
         "a100",
         "h100",
@@ -656,6 +686,7 @@ cc_library(
         "//xla/stream_executor:stream_executor_h",
         "//xla/stream_executor/cuda:cuda_platform_id",
         "//xla/stream_executor/platform:platform_object_registry",
+        "@llvm-project//mlir:IR",
     ],
     alwayslink = True,
 )
@@ -676,6 +707,7 @@ cc_library(
         "//xla/stream_executor:stream_executor_h",
         "//xla/stream_executor/platform:platform_object_registry",
         "//xla/stream_executor/rocm:rocm_platform_id",
+        "@llvm-project//mlir:IR",
     ],
     alwayslink = True,
 )
@@ -686,8 +718,8 @@ cc_library(
     deps = [
         "//xla/backends/autotuner:codegen_backend",
         "//xla/service:compiler",
-        "//xla/stream_executor:platform",
         "//xla/stream_executor:stream_executor_h",
+        "@llvm-project//mlir:IR",
     ],
 )
 
@@ -729,6 +761,47 @@ xla_test(
     ],
 )
 
+cc_library(
+    name = "legacy_cache",
+    srcs = ["legacy_cache.cc"],
+    hdrs = ["legacy_cache.h"],
+    deps = [
+        "//xla:autotuning_proto_cc",
+        "//xla:xla_proto_cc",
+        "//xla/backends/autotuner:autotuner_cache_interface",
+        "//xla/hlo/ir:hlo",
+        "//xla/service/gpu/autotuning:autotune_cache_key",
+        "//xla/service/gpu/autotuning:autotuner_util",
+        "//xla/stream_executor:device_description",
+        "//xla/tsl/protobuf:dnn_proto_cc",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_protobuf//:duration_cc_proto",
+    ],
+)
+
+xla_cc_test(
+    name = "legacy_cache_test",
+    srcs = ["legacy_cache_test.cc"],
+    deps = [
+        ":legacy_cache",
+        "//xla:literal_util",
+        "//xla/backends/autotuner:autotuner_cache_interface",
+        "//xla/backends/autotuner:autotuner_cache_proto_cc",
+        "//xla/hlo/ir:hlo",
+        "//xla/stream_executor:device_description",
+        "//xla/stream_executor/cuda:cuda_compute_capability",
+        "//xla/tsl/lib/core:status_test_util",
+        "//xla/tsl/platform:env",
+        "//xla/tsl/protobuf:dnn_proto_cc",
+        "@com_google_absl//absl/status",
+        "@com_google_googletest//:gtest_main",
+        "@com_google_protobuf//:any_cc_proto",
+        "@local_tsl//tsl/platform:path",
+    ],
+)
+
 xla_cc_binary(
     name = "autotuner_main",
     srcs = ["autotuner_main.cc"],
@@ -738,9 +811,11 @@ xla_cc_binary(
     deps = [
         ":factory",
         ":gpu_profiler",
+        ":legacy_cache",
         "//xla:debug_options_flags",
         "//xla:xla_proto_cc",
         "//xla/backends/autotuner",
+        "//xla/backends/autotuner:autotuner_cache_interface",
         "//xla/backends/autotuner:codegen_backend",
         "//xla/backends/autotuner:file_based_autotuner_cache",
         "//xla/backends/autotuner:profiler",
@@ -766,6 +841,7 @@ xla_cc_binary(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
+        "@llvm-project//mlir:IR",
         "@local_tsl//tsl/platform:platform_port",
     ] + if_cuda_is_configured([
         ":factory_cuda",

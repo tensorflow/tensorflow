@@ -21,6 +21,7 @@ limitations under the License.
 #include <cstdint>
 #include <functional>
 #include <limits>
+#include <optional>
 #include <type_traits>
 #include <vector>
 
@@ -35,6 +36,7 @@ limitations under the License.
 #include "xla/hlo/builder/lib/loops.h"
 #include "xla/hlo/builder/lib/math_impl.h"
 #include "xla/hlo/builder/xla_builder.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/primitive_util.h"
 #include "xla/shape.h"
 #include "xla/status_macros.h"
@@ -1162,7 +1164,11 @@ XlaOp RoundToEven(XlaOp x) {
 //           pi                                if x == -1
 // For complex:
 // acos(x) = -(i * log(x + i * sqrt((1 + x) * (1 - x))))
-XlaOp Acos(XlaOp x) {
+XlaOp Acos(XlaOp x, const std::optional<ResultAccuracy>& result_accuracy,
+           bool expand) {
+  if (!expand) {
+    return x.builder()->UnaryOp(HloOpcode::kAcos, x, result_accuracy);
+  }
   XlaBuilder* b = x.builder();
   return b->ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(auto shape, b->GetShape(x));
@@ -1223,7 +1229,11 @@ XlaOp Atan(XlaOp x) { return Atan2(x, ScalarLike(x, 1.0)); }
 // If x^2 will overflow, we approximate sqrt(x^2 - 1) == x and compute as
 // log(2*x) = log(2) + log(x).  (Note this works because negative x never
 // overflows; x < -1 simply yields nan.  This is quite different than asinh!)
-XlaOp Acosh(XlaOp x) {
+XlaOp Acosh(XlaOp x, const std::optional<ResultAccuracy>& result_accuracy,
+            bool expand) {
+  if (!expand) {
+    return x.builder()->UnaryOp(HloOpcode::kAcosh, x, result_accuracy);
+  }
   XlaBuilder* b = x.builder();
   return b->ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(auto shape, b->GetShape(x));
@@ -1321,7 +1331,11 @@ XlaOp Asinh(XlaOp x) {
 
 // atanh(x) = 0.5 * log((1 + x) / (1 - x)) if abs(x) <= 1
 // atanh(x) = nan                          otherwise
-XlaOp Atanh(XlaOp x) {
+XlaOp Atanh(XlaOp x, const std::optional<ResultAccuracy>& result_accuracy,
+            bool expand) {
+  if (!expand) {
+    return x.builder()->UnaryOp(HloOpcode::kAtanh, x, result_accuracy);
+  }
   XlaBuilder* b = x.builder();
   auto do_it = [&](XlaOp x) -> absl::StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(auto shape, b->GetShape(x));

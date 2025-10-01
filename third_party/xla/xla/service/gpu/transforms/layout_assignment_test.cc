@@ -20,6 +20,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status_matchers.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -43,9 +44,8 @@ limitations under the License.
 #include "xla/stream_executor/dnn.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/status_matchers.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -498,8 +498,10 @@ e {
   EXPECT_THAT(layout_assignment.Run(module.get()),
               absl_testing::IsOkAndHolds(true));
   EXPECT_THAT(module->entry_computation()->root_instruction(),
-              GmockMatch(m::Copy(m::BitcastConvert(m::Parameter())
-                                     .WithShape(S4, {3, 5, 2}, {2, 0, 1}))));
+              GmockMatch(m::Copy(
+                  m::BitcastConvert(
+                      m::Copy(m::Parameter()).WithShape(S8, {3, 5}, {0, 1}))
+                      .WithShape(S4, {3, 5, 2}, {2, 0, 1}))));
 }
 
 TEST_F(LayoutAssignmentTest, FftLayout) {

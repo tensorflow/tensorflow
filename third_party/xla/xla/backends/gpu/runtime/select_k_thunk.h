@@ -16,12 +16,12 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_RUNTIME_SELECT_K_THUNK_H_
 #define XLA_BACKENDS_GPU_RUNTIME_SELECT_K_THUNK_H_
 
-#include <cstddef>
 #include <cstdint>
 #include <string>
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/codegen/emitters/kernel_arguments.h"
@@ -50,7 +50,8 @@ class SelectKThunk : public Thunk {
   SelectKThunk(const HloInstruction* inst, std::uint32_t batch_size,
                std::uint32_t num_elements, std::uint32_t k,
                xla::PrimitiveType dtype,
-               const emitters::KernelArguments& kernel_arguments);
+               const emitters::KernelArguments& kernel_arguments,
+               ThunkId thunk_id);
 
   std::string ToString(int indent) const override;
 
@@ -60,6 +61,8 @@ class SelectKThunk : public Thunk {
   const std::vector<BufferAllocation::Slice>& arguments() const {
     return args_;
   }
+
+  absl::StatusOr<ThunkProto> ToProto() const override;
 
  private:
   std::uint32_t batch_size_;

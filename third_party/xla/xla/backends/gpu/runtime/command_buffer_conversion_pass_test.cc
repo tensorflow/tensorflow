@@ -648,6 +648,9 @@ TEST(CommandBufferConversionPassTest, ConvertWhileThunk) {
 
 TEST(CommandBufferConversionPassTest,
      DontConvertConditionalThunkWithNonConvertibleBranch) {
+  // Check that if a branch of a conditional thunk is not convertible, the
+  // conditional thunk is not convertible either, but the branches are attempted
+  // to be converted independently.
   CommandBufferConversionPass pass;
 
   std::vector<std::unique_ptr<Thunk>> thunks;
@@ -660,7 +663,9 @@ TEST(CommandBufferConversionPassTest,
   std::vector<std::unique_ptr<Thunk>> branch1_thunks;
   BufferAllocation alloc1(1, 16 * 4, 0);
   BufferAllocation alloc2(1, 16 * 4, 0);
+  BufferAllocation alloc3(1, 16 * 4, 0);
   branch1_thunks.push_back(CreateAllGatherStartThunk(alloc1, alloc2));
+  branch1_thunks.push_back(CreateCopyThunk(alloc3));
 
   // Create a conditional thunk
   std::vector<std::vector<std::unique_ptr<Thunk>>> branch_thunks;
@@ -680,11 +685,19 @@ TEST(CommandBufferConversionPassTest,
   ASSERT_EQ(root_thunk->thunks().size(), 1);
 
   ASSERT_THAT(pass.Run(root_thunk.get(), debug_options, device_info),
-              IsOkAndHolds(false));
+              IsOkAndHolds(true));
 
-  // Expected no transformation, because one of the branches has an unclosed
-  // async thunk => is not convertible.
+  // Expected transformation is: kConditional({kCopy}, {kAllGatherStart, kCopy})
+  // -> kConditional(kCommandBuffer(kCopy), {kAllGatherStart,
+  // kCommandBuffer(kCopy)}).
   EXPECT_THAT(root_thunk->thunks(), ThunkKindsAre(Thunk::kConditional));
+  auto* conditional_thunk =
+      dynamic_cast<const ConditionalThunk*>(root_thunk->thunks()[0].get());
+  ASSERT_NE(conditional_thunk, nullptr);
+  EXPECT_THAT(conditional_thunk->branch_thunks()[0]->thunks(),
+              ThunkKindsAre(Thunk::kCommandBuffer));
+  EXPECT_THAT(conditional_thunk->branch_thunks()[1]->thunks(),
+              ThunkKindsAre(Thunk::kAllGatherStart, Thunk::kCommandBuffer));
 }
 
 TEST(CommandBufferConversionPassTest, ConvertWhileThunkWithAsyncPair) {

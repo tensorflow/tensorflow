@@ -33,6 +33,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/ArrayRef.h"
@@ -43,6 +44,7 @@ limitations under the License.
 #include "llvm/IR/Module.h"
 #include "llvm/Linker/Linker.h"
 #include "llvm/Support/FileSystem.h"
+#include "llvm/Support/LogicalResult.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Conversion/AffineToStandard/AffineToStandard.h"
 #include "mlir/Conversion/ArithToLLVM/ArithToLLVM.h"
@@ -86,9 +88,7 @@ limitations under the License.
 #include "mlir/Target/LLVMIR/Dialect/ROCDL/ROCDLToLLVMIRTranslation.h"
 #include "mlir/Target/LLVMIR/Export.h"
 #include "mlir/Transforms/Passes.h"
-#include "xla/autotuning.pb.h"
 #include "xla/backends/gpu/codegen/emitters/ir/xla_gpu_ops.h"
-#include "xla/backends/gpu/codegen/emitters/transforms/passes.h"
 #include "xla/backends/gpu/codegen/triton/compilation_pipeline.h"
 #include "xla/backends/gpu/codegen/triton/dot_algorithms.h"
 #include "xla/backends/gpu/codegen/triton/emitter_helpers.h"
@@ -101,6 +101,9 @@ limitations under the License.
 #include "xla/codegen/emitters/elemental_hlo_to_mlir.h"
 #include "xla/codegen/emitters/ir/xla_ops.h"
 #include "xla/codegen/emitters/transforms/passes.h"
+#include "xla/codegen/tiling/tiled_hlo_computation.h"
+#include "xla/codegen/tiling/tiled_hlo_fusion_instruction.h"
+#include "xla/codegen/tiling/tiled_hlo_instruction.h"
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -118,9 +121,10 @@ limitations under the License.
 #include "xla/service/dump.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/ir_emission_utils.h"
+#include "xla/service/gpu/llvm_gpu_backend/amdgpu_backend.h"
+#include "xla/service/gpu/llvm_gpu_backend/nvptx_libdevice_path.h"
+#include "xla/service/gpu/model/block_level_parameters.h"
 #include "xla/service/gpu/model/symbolic_tile_analysis.h"
-#include "xla/service/gpu/model/tiled_hlo_computation.h"
-#include "xla/service/gpu/model/tiled_hlo_instruction.h"
 #include "xla/service/gpu/model/triton_emitter_constraints.h"
 #include "xla/service/gpu/triton_fusion_analysis.h"
 #include "xla/service/hlo_module_config.h"
@@ -135,16 +139,15 @@ limitations under the License.
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/tools/hlo_decomposer.h"
 #include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/rocm_rocdl_path.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/path.h"
-#include "triton/Conversion/TritonGPUToLLVM/Passes.h"
 #include "triton/Dialect/Triton/IR/Dialect.h"
 #include "triton/Dialect/Triton/IR/Types.h"
 #include "triton/Dialect/TritonGPU/IR/Dialect.h"
-#include "triton/Dialect/TritonNvidiaGPU/Transforms/Passes.h"
 
 namespace xla {
 namespace gpu {
@@ -214,17 +217,6 @@ absl::StatusOr<SmallVector<Value>> ComputeOffsetsForTile(
   }
   return emitters::ApplyIndexing(dim_only_tiling, /*dims=*/dims,
                                  /*symbols=*/{}, b);
-}
-
-SmallVector<Value> CreateIndexValues(EmitterLocOpBuilder builder,
-                                     const ArrayRef<int64_t>& values) {
-  SmallVector<Value> result;
-  result.reserve(values.size());
-  for (int64_t value : values) {
-    result.push_back(
-        CreateConst(builder, builder.getIndexType(), value).UnwrapScalar());
-  }
-  return result;
 }
 
 // Constructs and holds information needed to construct a tile. This information
@@ -641,8 +633,16 @@ absl::StatusOr<ScalarOrTensor> EmitTiledReshape(EmitterLocOpBuilder b,
   }
 
   // At this point we know that neither the input nor the output are 0D tensors.
-  Type output_tensor_type = mlir::RankedTensorType::get(
+  auto output_tensor_type = mlir::RankedTensorType::get(
       padded_tile_sizes, input_shaped_type.getElementType());
+
+  if (input_shaped_type.getNumElements() !=
+      output_tensor_type.getNumElements()) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Reshape input and output shapes must be the same, got ",
+                     absl::StrJoin(input_shaped_type.getShape(), "x"), " -> ",
+                     absl::StrJoin(output_tensor_type.getShape(), "x")));
+  }
 
   // Conservatively prevent Triton from reordering elements within the tile.
   // TODO(b/353637689): see if this restriction can be lifted.
@@ -1617,7 +1617,7 @@ absl::StatusOr<ScalarOrTensor> EmitScope(
       TF_RET_CHECK(values.contains(hlo)) << hlo->ToString();
       continue;
     } else if (hlo->opcode() == HloOpcode::kConstant) {
-      return EmitConstant(b, *hlo);
+      TF_ASSIGN_OR_RETURN(result, EmitConstant(b, *hlo));
     } else if (hlo->opcode() == HloOpcode::kBroadcast) {
       return absl::InvalidArgumentError(
           "Broadcast is not yet supported in EmitScope().");
@@ -1887,7 +1887,8 @@ absl::Status CreateInternalError(absl::string_view message,
 void AppendFuncArgType(absl::Span<const int64_t> dims, Type ir_type,
                        SmallVector<Type>& fn_arg_types) {
   fn_arg_types.push_back(ttir::PointerType::get(
-      StorageType(ir_type), mlir::NVVM::kGlobalMemorySpace));
+      StorageType(ir_type),
+      static_cast<unsigned>(mlir::NVVM::NVVMMemorySpace::Global)));
 }
 
 // Legacy emitter works with tt.func. New emitter works with func.func.
@@ -2074,21 +2075,24 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateTritonModule(
   return std::move(triton_module);
 }
 
+absl::Status CheckAtLeastAmpere(const se::GpuComputeCapability& gpu_cc) {
+  if (auto* cuda_cc = std::get_if<se::CudaComputeCapability>(&gpu_cc);
+      cuda_cc != nullptr && !cuda_cc->IsAtLeastAmpere()) {
+    return absl::FailedPreconditionError(
+        absl::StrCat("Triton support is only enabled for Ampere GPUs (compute ",
+                     "capability 8.0) and up, but got compute capability ",
+                     cuda_cc->ToString(), "."));
+  }
+  return absl::OkStatus();
+}
+
 absl::StatusOr<TritonWrapperResult> TritonWrapper(
     absl::string_view fn_name, const HloFusionInstruction* fusion,
-    const se::GpuComputeCapability& cc,
+    const se::GpuComputeCapability& gpu_cc,
     const se::DeviceDescription& device_info,
     const BlockLevelParameters& block_level_parameters,
     llvm::Module* llvm_module, mlir::MLIRContext& mlir_context) {
-  if (std::holds_alternative<se::CudaComputeCapability>(cc)) {
-    auto ccCuda = std::get<se::CudaComputeCapability>(cc);
-    if (!ccCuda.IsAtLeastAmpere()) {
-      return absl::FailedPreconditionError(absl::StrCat(
-          "Triton support is only enabled for Ampere GPUs (compute ",
-          "capability 8.0) and up, but got compute capability ", ccCuda.major,
-          ".", ccCuda.minor, "."));
-    }
-  }
+  TF_RETURN_IF_ERROR(CheckAtLeastAmpere(gpu_cc));
 
   TF_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> triton_module,
                       CreateTritonModule(fn_name, fusion, device_info,
@@ -2112,18 +2116,10 @@ absl::StatusOr<TritonWrapperResult> CompileTritonToLLVM(
     const BlockLevelParameters& block_level_parameters,
     mlir::ModuleOp triton_module, llvm::Module* llvm_module,
     mlir::MLIRContext& mlir_context, bool is_xla_fusion, bool emit_kernel) {
-  const auto& cc = device_info.gpu_compute_capability();
+  const auto& gpu_cc = device_info.gpu_compute_capability();
+  TF_RETURN_IF_ERROR(CheckAtLeastAmpere(gpu_cc));
   std::string arch_name =
-      std::visit([](auto& cc) { return cc.ToString(); }, cc);
-  if (std::holds_alternative<se::CudaComputeCapability>(cc)) {
-    auto ccCuda = std::get<se::CudaComputeCapability>(cc);
-    if (!ccCuda.IsAtLeastAmpere()) {
-      return absl::FailedPreconditionError(absl::StrCat(
-          "Triton support is only enabled for Ampere GPUs (compute ",
-          "capability 8.0) and up, but got compute capability ", ccCuda.major,
-          ".", ccCuda.minor, "."));
-    }
-  }
+      std::visit([](auto& cc) { return cc.ToString(); }, gpu_cc);
 
   const HloModuleConfig& hlo_config = hlo_module.config();
 
@@ -2180,50 +2176,32 @@ absl::StatusOr<TritonWrapperResult> CompileTritonToLLVM(
     }
   }
 
-  pm.addPass(mlir::triton::xla::CreateTritonXLASqueezeDimsPass());
-  pm.addPass(mlir::triton::xla::CreateTritonXLAFoldTransposePass());
+  CreateTritonXlaPipeline(&pm, gpu_cc, /*rewrite_int4=*/is_xla_fusion,
+                          block_level_parameters.is_tma_allowed,
+                          /*convert_unsupported_types=*/
+                          hlo_module.config()
+                              .debug_options()
+                              .xla_gpu_experimental_scaled_dot_with_triton());
 
-  if (is_xla_fusion) {
-    pm.addPass(
-        mlir::triton::xla::CreateInt4ToPackedInt4RewritePass(device_info));
-  }
-
-  pm.addPass(mlir::triton::xla::CreateTritonXLAExtractInsertToTritonPass(
-      block_level_parameters.is_tma_allowed &&
-      stream_executor::gpu::IsTmaAvailableForDevice(device_info)));
-
-  // Lower affine expressions into arithmetic ops.
-  pm.addPass(mlir::createLowerAffinePass());
-
-  // Lower xla_gpu.apply_indexing into arithmetic ops.
-  pm.addPass(emitters::CreateSimplifyAffinePass());
-  pm.addPass(CreateConvertIndexTypePass());
-
-  int64_t num_warps = block_level_parameters.num_warps;
+  int num_warps = block_level_parameters.num_warps;
   int num_ctas = block_level_parameters.num_ctas;
   int num_stages = block_level_parameters.num_stages;
-
   if (num_warps <= 0 || num_ctas <= 0 || num_stages <= 0) {
     return absl::FailedPreconditionError(absl::StrCat(
         "(num_warps, num_ctas, num_stages) must be positive, but got: (",
         num_warps, ", ", num_ctas, ", ", num_stages, ")"));
   }
-
   mlir::triton::nvidia_gpu::ClusterInfo cluster_info;
-  if (!CreateTritonPipeline(&pm, arch_name, num_warps, num_ctas, num_stages,
-                            cluster_info)
-           .ok()) {
-    return Internal("Failed to create Triton pipeline.");
-  }
+  CreateTritonPipeline(&pm, gpu_cc, num_warps, num_ctas, num_stages,
+                       cluster_info);
+
   // Triton generates pointers to the global address space, while XLA needs a
   // kernel signature with pointers to the generic address space.
   pm.addPass(mlir::triton::xla::CreateGeneralizeKernelSignaturePass());
   // llvm::Linker::linkModules() segfaults if we don't strip locations.
   pm.addPass(mlir::createStripDebugInfoPass());
 
-  bool succeeded = mlir::succeeded(pm.run(triton_module));
-
-  if (!succeeded) {
+  if (failed(pm.run(triton_module))) {
     return Internal("Failed to compile Triton kernel.");
   }
 
@@ -2236,8 +2214,8 @@ absl::StatusOr<TritonWrapperResult> CompileTritonToLLVM(
         shared_mem_bytes, device_info.shared_memory_per_block_optin()));
   }
 
-  if (std::holds_alternative<se::CudaComputeCapability>(cc) &&
-      std::get<se::CudaComputeCapability>(cc).IsBlackwell()) {
+  if (auto* cuda_cc = std::get_if<se::CudaComputeCapability>(&gpu_cc);
+      cuda_cc != nullptr && cuda_cc->IsBlackwell()) {
     // https://docs.nvidia.com/cuda/parallel-thread-execution/#tensor-memory
     constexpr int kTensorMemoryColumns = 512;
     const int tensor_mem_columns =
@@ -2312,6 +2290,17 @@ absl::StatusOr<TritonWrapperResult> CompileTritonToLLVM(
 
   return {
       {shared_mem_bytes, cluster_dim, tma_metadata, captured_nvvm_annotations}};
+}
+
+std::string GetLibdevicePath(const HloModuleConfig& hlo_config,
+                             const se::DeviceDescription& device_info) {
+  if (std::holds_alternative<se::CudaComputeCapability>(
+          device_info.gpu_compute_capability())) {
+    return nvptx::LibDevicePath(
+        hlo_config.debug_options().xla_gpu_cuda_data_dir());
+  }
+  return amdgpu::LibDevicePath(
+      device_info.rocm_compute_capability().gcn_arch_name(), tsl::RocdlRoot());
 }
 
 }  // namespace gpu

@@ -10,7 +10,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstddef>
+#include <cstdint>
+#include <memory>
+
 #include <gtest/gtest.h>
+#include "absl/types/span.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/platform/status_matchers.h"

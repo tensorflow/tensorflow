@@ -15,6 +15,7 @@
 """Tests for TPUStrategy."""
 
 import os
+import unittest
 
 from absl.testing import parameterized
 
@@ -143,6 +144,7 @@ class TPUStrategyModelParallelismTest(
     test_read(w)
     test_structure(w.values)
 
+  @unittest.skip("Non-SPMD model parallelism is no longer supported")
   def test_logical_device_assignment(self):
     strategy, num_replicas = get_tpu_strategy()
     with strategy.scope():
@@ -180,6 +182,7 @@ class TPUStrategyModelParallelismTest(
       self.assertEqual(30. * num_replicas,
                        self.evaluate(strategy.reduce("SUM", result, axis=None)))
 
+  @unittest.skip("Non-SPMD model parallelism is no longer supported")
   def test_paritioned_model_checkpointing(self):
 
     class PartitionedModel(module.Module):

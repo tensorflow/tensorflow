@@ -20,6 +20,7 @@ limitations under the License.
 #include <functional>
 #include <initializer_list>
 #include <memory>
+#include <string>
 #include <tuple>
 #include <utility>
 #include <variant>
@@ -46,24 +47,24 @@ limitations under the License.
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/gpu/reduction_utils.h"
 #include "xla/service/gpu/stream_executor_util.h"
+#include "xla/service/layout_assignment.h"
 #include "xla/service/logical_buffer.h"
 #include "xla/service/matmul_indexing_utils.h"
 #include "xla/service/memory_annotations.h"
 #include "xla/shape.h"
 #include "xla/shape_layout.h"
 #include "xla/shape_util.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/protobuf/dnn.pb.h"
 #include "xla/tsl/util/env_var.h"
 #include "xla/util.h"
-#include "xla/window_util.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/status.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -151,19 +152,21 @@ HeuristicLayoutAssignment(const HloInstruction* instr,
         // TODO(b/383560056): find the right filter for 3D convolutions. 3D
         // convolutions also have a much smaller surface of support. We filter
         // them out completely as well for now.
-      } else if (num_spatial_dimensions > 2) {
+      }
+      if (num_spatial_dimensions > 2) {
         VLOG(2) << "Using NHWC for " << num_spatial_dimensions << "D conv "
                 << instr->ToString() << " on " << cc->ToString();
         return kAllNCHW;
-      } else {
-        return kAllNHWC;
       }
+      return kAllNHWC;
     }
   }
 
   const auto* rocm_compute_capability =
       std::get_if<se::RocmComputeCapability>(&gpu_version);
-  if (rocm_compute_capability && input_ty == F16) return kAllNHWC;
+  if (rocm_compute_capability && input_ty == F16) {
+    return kAllNHWC;
+  }
 
   // If we're not Volta or not fp16/bfloat16, or not conv2D, the decision is
   // easy: Use NCHW.
@@ -747,7 +750,9 @@ absl::Status GpuLayoutAssignment::SetOperandMajorToMinorLayout(
     std::initializer_list<absl::Span<const int64_t>> dim_groups,
     bool mandatory) {
   size_t size = 0;
-  for (auto group : dim_groups) size += group.size();
+  for (auto group : dim_groups) {
+    size += group.size();
+  }
   std::vector<int64_t> major_to_minor;
   major_to_minor.reserve(size);
   for (const auto& group : dim_groups) {

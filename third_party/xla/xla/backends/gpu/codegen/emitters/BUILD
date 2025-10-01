@@ -46,7 +46,6 @@ cc_library(
     srcs = ["emitter_base.cc"],
     hdrs = ["emitter_base.h"],
     deps = [
-        "//xla:shape_util",
         "//xla:status_macros",
         "//xla:util",
         "//xla:xla_data_proto_cc",
@@ -66,7 +65,6 @@ cc_library(
         "//xla/mlir/tools/mlir_replay/public:compiler_trace_instrumentation",
         "//xla/mlir/tools/mlir_replay/public:compiler_trace_proto_cc",
         "//xla/mlir_hlo",
-        "//xla/mlir_hlo:mhlo_passes",
         "//xla/service:buffer_assignment",
         "//xla/service:dump",
         "//xla/service/gpu:gpu_constants",
@@ -80,10 +78,10 @@ cc_library(
         "//xla/stream_executor:device_description",
         "//xla/stream_executor:semantic_version",
         "//xla/stream_executor/cuda:cuda_compute_capability",
+        "//xla/stream_executor/gpu:tma_metadata",
         "//xla/tsl/framework/mlir:status_scoped_diagnostic_handler",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",
-        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
@@ -125,6 +123,7 @@ cc_library(
         "@llvm-project//mlir:ToLLVMIRTranslation",
         "@llvm-project//mlir:Transforms",
         "@llvm-project//mlir:VectorDialect",
+        "@stablehlo//:stablehlo_passes",
     ],
 )
 
@@ -185,6 +184,7 @@ cc_library(
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:FuncDialect",

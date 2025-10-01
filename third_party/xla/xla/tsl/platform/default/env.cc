@@ -84,6 +84,9 @@ class PThread : public Thread {
     CHECK_EQ(ret, 0) << "Thread " << name
                      << " creation via pthread_create() failed.";
     pthread_attr_destroy(&attributes);
+#if !defined(__APPLE__) && !defined(__EMSCRIPTEN__)
+    pthread_setname_np(thread_, name.c_str());
+#endif
   }
 
   ~PThread() override {
@@ -101,12 +104,12 @@ class PThread : public Thread {
     std::unique_ptr<ThreadParams> params(
         reinterpret_cast<ThreadParams*>(params_arg));
     {
-      absl::MutexLock l(&name_mutex);
+      absl::MutexLock l(name_mutex);
       GetThreadNameRegistry().emplace(std::this_thread::get_id(), params->name);
     }
     params->fn();
     {
-      absl::MutexLock l(&name_mutex);
+      absl::MutexLock l(name_mutex);
       GetThreadNameRegistry().erase(std::this_thread::get_id());
     }
     return nullptr;
@@ -165,7 +168,7 @@ class PosixEnv : public Env {
 
   bool GetCurrentThreadName(string* name) override {
     {
-      absl::MutexLock l(&name_mutex);
+      absl::MutexLock l(name_mutex);
       auto thread_name =
           GetThreadNameRegistry().find(std::this_thread::get_id());
       if (thread_name != GetThreadNameRegistry().end()) {

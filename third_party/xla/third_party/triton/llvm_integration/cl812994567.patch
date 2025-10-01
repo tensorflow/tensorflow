@@ -1,0 +1,12 @@
+
+--- a/third_party/amd/lib/TritonAMDGPUToLLVM/BufferOpsEmitter.cpp	2025-08-22 04:02:56.000000000 -0700
++++ b/third_party/amd/lib/TritonAMDGPUToLLVM/BufferOpsEmitter.cpp	2025-09-29 17:07:00.000000000 -0700
+@@ -82,7 +82,7 @@
+ 
+   Value flagsConst = b.int_val(32, flags);
+   Type rsrcType = LLVM::LLVMPointerType::get(rewriter.getContext(), 8);
+-  Value numRecordsByte = b.int_val(32, std::numeric_limits<int>::max() - 1);
++  Value numRecordsByte = b.int_val(64, std::numeric_limits<int>::max() - 1);
+ 
+   Value resource = rewriter.createOrFold<ROCDL::MakeBufferRsrcOp>(
+       loc, rsrcType, basePtr, stride, numRecordsByte, flagsConst);

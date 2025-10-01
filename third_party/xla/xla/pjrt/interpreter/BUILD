@@ -14,6 +14,7 @@ cc_library(
     hdrs = ["interpreter_client.h"],
     visibility = internal_visibility(["//xla:friends"]),
     deps = [
+        "//xla:future",
         "//xla:literal",
         "//xla:shape_util",
         "//xla:util",

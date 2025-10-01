@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// This file supports the lowering of CHLO/HLO/LHLO dialect to Linalg dialect.
+// This file supports the lowering of CHLO/HLO dialect to Linalg dialect.
 
 #ifndef MLIR_HLO_DIALECT_MHLO_TRANSFORMS_LEGALIZE_TO_LINALG_UTILS_H_
 #define MLIR_HLO_DIALECT_MHLO_TRANSFORMS_LEGALIZE_TO_LINALG_UTILS_H_

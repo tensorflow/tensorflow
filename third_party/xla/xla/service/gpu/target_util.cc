@@ -235,11 +235,26 @@ struct TargetDeviceFunction {
 struct TargetDeviceFunction GetDeviceFunctionRoot(
     TargetDeviceFunctionID func_id) {
   switch (func_id) {
+    case TargetDeviceFunctionID::kAcos: {
+      return {"__nv_acos", "__ocml_acos", "_Z16__spirv_ocl_acos"};
+    }
+    case TargetDeviceFunctionID::kAcosh: {
+      return {"__nv_acosh", "__ocml_acosh", "_Z15__spirv_ocl_acosh"};
+    }
     case TargetDeviceFunctionID::kAtan2: {
       return {"__nv_atan2", "__ocml_atan2", "_Z17__spirv_ocl_atan2"};
     }
+    case TargetDeviceFunctionID::kAsin: {
+      return {"__nv_asin", "__ocml_asin", "_Z16__spirv_ocl_asin"};
+    }
+    case TargetDeviceFunctionID::kAtanh: {
+      return {"__nv_atanh", "__ocml_atanh", "_Z15__spirv_ocl_atanh"};
+    }
     case TargetDeviceFunctionID::kCos: {
       return {"__nv_cos", "__ocml_cos", "_Z15__spirv_ocl_cos"};
+    }
+    case TargetDeviceFunctionID::kCosh: {
+      return {"__nv_cosh", "__ocml_cosh", "_Z16__spirv_ocl_cosh"};
     }
     case TargetDeviceFunctionID::kErf: {
       return {"__nv_erf", "__ocml_erf", "_Z15__spirv_ocl_erf"};
@@ -271,6 +286,9 @@ struct TargetDeviceFunction GetDeviceFunctionRoot(
     case TargetDeviceFunctionID::kSin: {
       return {"__nv_sin", "__ocml_sin", "_Z15__spirv_ocl_sin"};
     }
+    case TargetDeviceFunctionID::kSinh: {
+      return {"__nv_sinh", "__ocml_sinh", "_Z15__spirv_ocl_sinh"};
+    }
     case TargetDeviceFunctionID::kSqrt: {
       return {"__nv_sqrt", "__ocml_sqrt", "_Z16__spirv_ocl_sqrt"};
     }
@@ -289,10 +307,20 @@ struct TargetDeviceFunction GetDeviceFunctionRoot(
 
 std::optional<TargetDeviceFunctionID> GetTargetDeviceFunctionID(HloOpcode op) {
   switch (op) {
+    case HloOpcode::kAcos:
+      return TargetDeviceFunctionID::kAcos;
+    case HloOpcode::kAcosh:
+      return TargetDeviceFunctionID::kAcosh;
+    case HloOpcode::kAsin:
+      return TargetDeviceFunctionID::kAsin;
     case HloOpcode::kAtan2:
       return TargetDeviceFunctionID::kAtan2;
+    case HloOpcode::kAtanh:
+      return TargetDeviceFunctionID::kAtanh;
     case HloOpcode::kCos:
       return TargetDeviceFunctionID::kCos;
+    case HloOpcode::kCosh:
+      return TargetDeviceFunctionID::kCosh;
     case HloOpcode::kExp:
       return TargetDeviceFunctionID::kExp;
     case HloOpcode::kErf:
@@ -311,6 +339,8 @@ std::optional<TargetDeviceFunctionID> GetTargetDeviceFunctionID(HloOpcode op) {
       return TargetDeviceFunctionID::kRsqrt;
     case HloOpcode::kSin:
       return TargetDeviceFunctionID::kSin;
+    case HloOpcode::kSinh:
+      return TargetDeviceFunctionID::kSinh;
     case HloOpcode::kSqrt:
       return TargetDeviceFunctionID::kSqrt;
     case HloOpcode::kTan:

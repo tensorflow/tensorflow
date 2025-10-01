@@ -26,6 +26,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "xla/backends/gpu/codegen/fusion_emitter.h"
 #include "xla/backends/gpu/codegen/fusions.h"
+#include "xla/codegen/tiling/tiled_hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
@@ -33,8 +34,6 @@ limitations under the License.
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/model/symbolic_tile_analysis.h"
-#include "xla/service/gpu/model/tiled_hlo_computation.h"
-#include "xla/service/gpu/model/tiled_hlo_instruction.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -60,7 +59,8 @@ class CoalescingTest : public HloHardwareIndependentTestBase {
   std::vector<bool> IsReadCoalescedPerOperand(const HloInstruction* root) {
     auto fusion_adaptor = HloFusionAdaptor::ForInstruction(root);
     auto analysis = HloFusionAnalysis::Create(*root, device_info_);
-    auto emitter = GetFusionEmitter(PreBufferAssignmentFusionInfo{analysis});
+    auto emitter = GetFusionEmitter(PreBufferAssignmentFusionInfo{analysis},
+                                    &mlir_context_);
     auto fusion = dynamic_cast<KernelFusionInterface*>(emitter.get());
     EXPECT_NE(fusion, nullptr);
 

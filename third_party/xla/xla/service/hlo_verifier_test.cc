@@ -3695,7 +3695,22 @@ ENTRY %entry_computation {
                           ParseAndReturnUnverifiedModule(hlo_string));
 
   auto status = verifier().Run(module.get()).status();
+  EXPECT_TRUE(status.ok());
+}
+
+TEST_F(HloVerifierTest, MismatchedTupleInOriginalValue) {
+  const std::string hlo_string = R"(
+HloModule module
+ENTRY %entry_computation {
+  ROOT op = f32[] parameter(0),  origin={(({}, {"v2"}), {"v3"})}
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
+
+  auto status = verifier().Run(module.get()).status();
   EXPECT_FALSE(status.ok());
+  EXPECT_THAT(status.message(), HasSubstr("Mismatched tuple structure"));
 }
 
 TEST_F(HloVerifierTest, RaggedAllToAllWithRank1OffsetsSizes) {

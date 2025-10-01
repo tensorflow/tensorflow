@@ -50,12 +50,12 @@ class CollectivePermuteStartThunk : public CollectiveThunk {
   class RecvPtrMap {
    public:
     bool IsInitialized(int64_t current_id) {
-      absl::MutexLock lock(&mutex_);
+      absl::MutexLock lock(mutex_);
       return recv_ptrs_.find(current_id) != recv_ptrs_.end();
     }
 
     absl::Status InitializeId(int64_t current_id) {
-      absl::MutexLock lock(&mutex_);
+      absl::MutexLock lock(mutex_);
       recv_ptrs_[current_id] =
           tsl::MakeUnconstructedAsyncValueRef<std::vector<void*>>();
       return absl::OkStatus();
@@ -67,7 +67,7 @@ class CollectivePermuteStartThunk : public CollectiveThunk {
         return absl::InternalError(absl::StrCat("Current ID ", current_id,
                                                 " has not been initialized!"));
       }
-      absl::MutexLock lock(&mutex_);
+      absl::MutexLock lock(mutex_);
       if (recv_ptrs_.at(current_id).IsUnavailable()) {
         VLOG(3) << "Putting pointers to current_id " << current_id;
         recv_ptrs_.at(current_id).emplace(ptrs);
@@ -81,7 +81,7 @@ class CollectivePermuteStartThunk : public CollectiveThunk {
         return absl::InternalError(absl::StrCat("Target ID ", target_id,
                                                 " has not been initialized!"));
       }
-      absl::MutexLock lock(&mutex_);
+      absl::MutexLock lock(mutex_);
       return recv_ptrs_[target_id];
     }
 

@@ -341,15 +341,23 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
   // the program.
   int64_t MaxReservedScopedMemory();
 
-  // Returns the earliest time that chunk can be reserved for a block prefetch
-  // where the start time is between [definition_time, use_time] and use_time
-  // and the end time is the use_time. The chunk.end() should be within the
-  // block_prefetching_limit_bytes.
+  // Finds and returns the earliest block prefetch start time subject to the
+  // following constraints:
+  // - We can reserve a chunk of size buffer_size.
+  // - The chunk's start_time lies between [definition_time, first_use_time].
+  // - The chunk's end_time is equal to last_use_time.
+  // - The chunk's ending offset is less than or equal to
+  //   block_prefetching_limit_bytes.
+  // - The number of concurrent prefetches is less than or equal to
+  //   max_in_flight_prefetches_allowed.
+  // If no such prefetch_start_time exists, returns std::nullopt.
   std::optional<int64_t> EarliestBlockPrefetchStartTime(
-      int64_t earliest_start_time_candidate, int64_t first_use_time,
-      int64_t last_use_time, int64_t buffer_size,
+      int64_t previous_block_start_time, int64_t definition_time,
+      int64_t first_use_time, int64_t last_use_time, int64_t buffer_size,
       int64_t block_prefetching_limit_bytes,
-      std::vector<int64_t>& prefetch_end_times);
+      int64_t max_in_flight_prefetches_allowed,
+      std::vector<int64_t>& copy_done_schedule_before_times,
+      std::vector<int64_t>& block_prefetch_allocation_end_times);
 
  protected:
   // Given a buffer interval, returns the colocated intervals. Unlike the

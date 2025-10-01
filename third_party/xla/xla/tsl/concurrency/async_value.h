@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/types/span.h"
 #include "xla/tsl/concurrency/concurrent_vector.h"
+#include "xla/tsl/concurrency/executor.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/util/safe_reinterpret_cast.h"
@@ -59,8 +60,6 @@ constexpr bool kMaybeBase = std::is_class<T>::value && !std::is_final<T>::value;
 // data and the payload data in consecutive memory locations.
 class AsyncValue {
  public:
-  class Executor;
-
   ~AsyncValue();
 
   // Return true if state is kUnconstructed.
@@ -254,24 +253,6 @@ class AsyncValue {
   State state() const {
     return waiters_and_state_.load(std::memory_order_acquire).state();
   }
-
-  // AsyncValue executor allows to customize where the waiter callback is
-  // executed. By default the waiter callback is executed on the caller thread
-  // if async value is already available, or on a thread that sets async value
-  // available (emplacing a value or setting an error), which can accidentally
-  // lead to executing a very expensive computations on a low-latency thread.
-  //
-  // IMPORTANT: It's the caller responsibility to ensure that executor passed to
-  // all `AndThen` or `Map` function calls stay alive while async values have
-  // unresolved waiters waiting to be invoked.
-  class Executor {
-   public:
-    using Task = absl::AnyInvocable<void()>;
-
-    virtual ~Executor() = default;
-
-    virtual void Execute(Task task) = 0;
-  };
 
  protected:
   friend class IndirectAsyncValue;

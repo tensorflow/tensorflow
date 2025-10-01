@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/backends/gpu/runtime/command_buffer_cmd_emitter.h"
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <utility>
@@ -30,6 +31,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/all_gather_thunk.h"
 #include "xla/backends/gpu/runtime/all_reduce_thunk.h"
 #include "xla/backends/gpu/runtime/all_to_all_thunk.h"
+#include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/command_buffer_cmd.h"
 #include "xla/backends/gpu/runtime/conditional_thunk.h"
 #include "xla/backends/gpu/runtime/copy_thunk.h"
@@ -79,7 +81,7 @@ static auto ArgsAccess(const std::vector<bool>& written) {
 static absl::StatusOr<Command> Convert(const KernelThunk& thunk) {
   return std::make_unique<LaunchCmd>(
       thunk.kernel_name(), thunk.arguments(), ArgsAccess(thunk.written()),
-      thunk.launch_dimensions(), thunk.shmem_bytes());
+      thunk.launch_dimensions(), thunk.shmem_bytes(), thunk.tma_metadata());
 }
 
 static absl::StatusOr<Command> Convert(const CustomKernelThunk& thunk) {
@@ -114,8 +116,9 @@ static absl::StatusOr<Command> Convert(
       CommandBufferCmdExecutor body_cmds,
       ConvertToCommands(thunk.body_thunk_sequence()->thunks(), options));
 
-  return std::make_unique<WhileCmd>(thunk.condition_result_buffer(),
-                                    std::move(cond_cmds), std::move(body_cmds));
+  return std::make_unique<WhileCmd>(
+      thunk.condition_result_buffer(), std::move(cond_cmds),
+      std::move(body_cmds), thunk.trip_count(), options.enable_loop_unroll);
 }
 
 static absl::StatusOr<Command> Convert(const GemmThunk& thunk) {

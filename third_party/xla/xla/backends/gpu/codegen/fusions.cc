@@ -19,6 +19,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/strings/string_view.h"
+#include "mlir/IR/MLIRContext.h"
 #include "xla/backends/gpu/codegen/copy.h"
 #include "xla/backends/gpu/codegen/cudnn.h"
 #include "xla/backends/gpu/codegen/custom.h"
@@ -76,8 +77,8 @@ bool HloFusionInfo::CanEmitDynamicUpdateSliceInPlace() const {
   return ret.ok() && *ret;
 }
 
-std::unique_ptr<FusionInterface> GetFusionEmitter(
-    const FusionInfo& fusion_info) {
+std::unique_ptr<FusionInterface> GetFusionEmitter(const FusionInfo& fusion_info,
+                                                  mlir::MLIRContext* ctx) {
   const auto& analysis = fusion_info.analysis();
   const FusionBackendConfig& backend_config = analysis.fusion_backend_config();
 
@@ -108,7 +109,7 @@ std::unique_ptr<FusionInterface> GetFusionEmitter(
           fusion_info.CanEmitDynamicUpdateSliceInPlace()) {
         return std::make_unique<InPlaceDynamicUpdateSliceFusion>(analysis);
       }
-      return std::make_unique<LoopFusion>(analysis);
+      return std::make_unique<LoopFusion>(analysis, ctx);
     }
     case HloFusionAnalysis::EmitterFusionKind::kReduction: {
       return CreateReductionFusion(analysis);

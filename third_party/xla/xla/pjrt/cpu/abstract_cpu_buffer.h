@@ -41,7 +41,6 @@ limitations under the License.
 #include "xla/pjrt/cpu/cpu_event.h"
 #include "xla/pjrt/cpu/tracked_cpu_device_buffer.h"
 #include "xla/pjrt/pjrt_client.h"
-#include "xla/pjrt/pjrt_future.h"
 #include "xla/pjrt/transpose.h"
 #include "xla/shape.h"
 #include "xla/tsl/concurrency/async_value.h"
@@ -94,7 +93,7 @@ class AbstractCpuBuffer {
       absl::InlinedVector<tsl::RCReference<tsl::AsyncValue>, 4>* avs,
       absl::InlinedVector<tsl::AsyncValueRef<CpuEvent>, 4>* definition_events);
 
-  // A helper function to determine if a BufferFromHostBuffer call is elligable
+  // A helper function to determine if a BufferFromHostBuffer call is eligible
   // for zero copy construction.
   static bool BufferFromHostBufferSupportsZeroCopy(
       const void* data, PrimitiveType type, absl::Span<int64_t const> dims,

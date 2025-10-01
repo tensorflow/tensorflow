@@ -18,16 +18,24 @@ limitations under the License.
 
 #include <cstdint>
 #include <string>
+#include <vector>
 
+#include "absl/base/nullability.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/tsl/concurrency/ref_count.h"
+#include "xla/tsl/lib/gtl/int_type.h"
 
 namespace xla {
 namespace ifrt {
 
-// UserContext is an interface that must be implemented by any object that the
+// Globally unique ID for a `UserContext`.
+TSL_LIB_GTL_DEFINE_INT_TYPE(UserContextId, uint64_t);
+
+// `UserContext` is an interface that must be implemented by any object that the
 // user would like to be associated with the runtime operations triggered by an
-// IFRT call. For example, a UserContext can be based on a stack trace for
+// IFRT call. For example, a `UserContext` can be based on a stack trace for
 // Python frameworks (e.g.: JAX), or on a "request_id" in case of request
 // serving applications.
 class UserContext : public tsl::ReferenceCounted<UserContext>,
@@ -35,17 +43,10 @@ class UserContext : public tsl::ReferenceCounted<UserContext>,
  public:
   ~UserContext() override = default;
 
-  // Returns a fingerprint of the UserContext. The returned fingerprint must
-  // be non-zero, as the special value of zero is reserved for the IFRT
-  // implementations for their internal default UserContext.  IFRT
-  // implementations may use internally. IFRT implementations
-  // may also use this as a key for holding the UserContexts in a container, and
-  // so this should be efficient enough to called multiple times.
-  //
-  // TODO(hyeontaek): Remove this method once we migrate the UserContext to
-  // a unique id scheme, where the id can be chosen without fingerprinting the
-  // content of the UserContext.
-  virtual uint64_t Fingerprint() const = 0;
+  // Returns the unique ID of the `UserContext`. This ID is expected to be
+  // globally unique for a certain context. For instance, both a global random
+  // ID and the fingerprint of the `UserContext` content may be used as the ID.
+  virtual UserContextId Id() const = 0;
 
   // Returns a human readable string. Meant for debugging, logging, and for
   // putting together statusz-like pages.
@@ -64,6 +65,117 @@ class UserContext : public tsl::ReferenceCounted<UserContext>,
 
 using UserContextRef = tsl::RCReference<UserContext>;
 
+// 'AnnotatedUserContext` represents a `UserContext` with a human-readable short
+// message. The annotation adds extra contextual information that is known after
+// creation time of the original `UserContext`, but before actually observing
+// any error. For example, if the dispatch logic of a runtime takes a certain
+// internal implementation path, the runtime can mention this choice in the
+// annotation. If an error ends up happening later, this annotation will provide
+// an extra context to the user.
+class AnnotatedUserContext
+    : public llvm::RTTIExtends<AnnotatedUserContext, UserContext> {
+ public:
+  static absl_nonnull UserContextRef Create(UserContextRef user_context,
+                                            std::string msg);
+
+  const UserContextRef& user_context() const { return user_context_; }
+  absl::string_view msg() const { return msg_; }
+
+  // `UserContext` implementation.
+
+  UserContextId Id() const override;
+  std::string DebugString() const override;
+
+  static char ID;  // NOLINT
+
+ private:
+  template <typename T, typename... Args>
+  friend tsl::RCReference<T> tsl::MakeRef(Args&&... args);
+
+  explicit AnnotatedUserContext(UserContextRef user_context, std::string msg);
+
+  UserContextId id_;
+  UserContextRef user_context_;
+  std::string msg_;
+};
+
+// `ChainedUserContext` represents a chain of `UserContext`s of the operations,
+// each of which is dependent on its preceding operation. This expresses how an
+// error is propagated from one operation to another operation that uses the
+// result of the former operation. `user_contexts` is order-dependent: for
+// example, `user_contexts.front()` indicates the context of the earliest
+// operation that is the original source of the error, and
+// `user_contexts.back()` indicates the context of the latest operation that is
+// finally surfacing the error to the user.
+class ChainedUserContext
+    : public llvm::RTTIExtends<ChainedUserContext, UserContext> {
+ public:
+  static absl_nonnull UserContextRef
+  Create(absl::Span<const UserContextRef> user_contexts);
+
+  // Not copyable or movable.
+  ChainedUserContext(const ChainedUserContext&) = delete;
+  ChainedUserContext& operator=(const ChainedUserContext&) = delete;
+
+  absl::Span<const UserContextRef> user_contexts() const {
+    return user_contexts_;
+  }
+
+  // `UserContext` implementation.
+
+  UserContextId Id() const override;
+  std::string DebugString() const override;
+
+  static char ID;  // NOLINT
+
+ private:
+  template <typename T, typename... Args>
+  friend tsl::RCReference<T> tsl::MakeRef(Args&&... args);
+
+  explicit ChainedUserContext(absl::Span<const UserContextRef> user_contexts);
+
+  UserContextId id_;
+  std::vector<UserContextRef> user_contexts_;
+};
+
+// `FusedUserContext` represents a set of `UserContext`s whose operations may
+// contribute to an error, but are indistinguishable from each other from a
+// runtime's perspective. For instance, the runtime can batch multiple API calls
+// together while getting a single aggregate error status for the whole batch.
+// Then, the runtime can use this user context to indicate that the error can
+// come from any of the batched operations. The ordering of user contexts in a
+// fused user context is insignificant.
+class FusedUserContext
+    : public llvm::RTTIExtends<FusedUserContext, UserContext> {
+ public:
+  static absl_nonnull UserContextRef
+  Create(absl::Span<const UserContextRef> user_contexts);
+
+  // Not copyable or movable.
+  FusedUserContext(const FusedUserContext&) = delete;
+  FusedUserContext& operator=(const FusedUserContext&) = delete;
+
+  absl::Span<const UserContextRef> user_contexts() const {
+    return user_contexts_;
+  }
+
+  // `UserContext` implementation.
+
+  UserContextId Id() const override;
+  std::string DebugString() const override;
+
+  static char ID;  // NOLINT
+
+ private:
+  template <typename T, typename... Args>
+  friend tsl::RCReference<T> tsl::MakeRef(Args&&... args);
+
+  explicit FusedUserContext(absl::Span<const UserContextRef> user_contexts);
+
+  UserContextId id_;
+  std::vector<UserContextRef> user_contexts_;
+};
+
 // Tracks the active `UserContext` within the scope. It holds a pointer to the
 // `UserContext` instance and uses a thread-local variable to make it
 // discoverable through a static method.
@@ -71,7 +183,7 @@ class UserContextScope {
  public:
   // Sets up the current thread's `UserContextRef` to the given `context`.
   // `context` must be valid throughout the lifetime of the scope.
-  explicit UserContextScope(UserContextRef context);
+  explicit UserContextScope(absl_nullable UserContextRef context);
 
   // Restores the current thread's `UserContextRef` to the state before this
   // scope was created.
@@ -90,14 +202,14 @@ class UserContextScope {
   // `UserContextRef`.
   //
   // Returns `nullptr` if there is no `UserContextRef` in the scope.
-  static const UserContextRef& current();
+  static absl_nullable const UserContextRef& current();
 
  private:
   // The outer scope's `UserContext`. When this scope is destroyed, the current
   // scope's `UserContext` will be restored to it.
-  const UserContextRef* const outer_context_;  // Not owned.
+  absl_nullable const UserContextRef* const outer_context_;  // Not owned.
   // The current scope's `UserContext`.
-  const UserContextRef context_;
+  absl_nullable const UserContextRef context_;
 };
 
 }  // namespace ifrt

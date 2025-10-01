@@ -38,7 +38,7 @@ class HloFusionSpec {
         fusion_heroes_(std::move(fusion_heroes)) {}
 
   HloFusionSpec(HloFusionSpec&&) = default;
-  HloFusionSpec& operator=(HloFusionSpec&&) = default;
+  HloFusionSpec& operator=(HloFusionSpec&&) noexcept = default;
 
   const HloFusionAdaptor& fusion() const { return *fusion_; }
 

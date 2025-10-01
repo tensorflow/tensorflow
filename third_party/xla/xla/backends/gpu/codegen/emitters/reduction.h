@@ -58,9 +58,8 @@ class ReductionFusion : public EmitterBase {
   std::optional<IndexingMap> ComputeThreadIdToOutputIndexing(
       int64_t root_index, mlir::MLIRContext* ctx) const override;
 
-  std::optional<IndexingMap> ComputeThreadIdToInputIndexing(
-      int64_t root_index, int64_t hero_operand_index,
-      mlir::MLIRContext* ctx) const override;
+  std::optional<std::vector<IndexingMap>> ComputeThreadIdToInputIndexing(
+      int64_t root_index, mlir::MLIRContext* ctx) const override;
 
   LaunchDimensions launch_dimensions() const override;
 

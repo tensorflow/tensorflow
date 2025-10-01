@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/pjrt/pjrt_c_api_client.h"
 
+#include <unistd.h>
+
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -32,7 +34,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
 #include "stablehlo/dialect/Version.h"
-#include "xla/cpu_function_runtime.h"
+#include "xla/backends/cpu/alignment.h"
 #include "xla/ffi/ffi.h"
 #include "xla/ffi/ffi_api.h"
 #include "xla/hlo/builder/xla_builder.h"
@@ -68,6 +70,60 @@ static void SetUpCpuPjRtApi() {
     TF_ASSERT_OK(
         pjrt::SetPjrtApi(device_type, ::pjrt::cpu_plugin::GetCpuPjrtApi()));
   }
+}
+
+TEST(PjRtCApiClientTest, FulfillAliasBuffer) {
+  SetUpCpuPjRtApi();
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                          GetCApiClient("cpu"));
+
+  std::vector<int32_t> data{1, 2, 3, 4, 5, 6};
+  Shape shape = ShapeUtil::MakeShape(S32, {2, 3});
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto alias_buffer,
+      client->CreateAliasBuffer(shape, client->memory_spaces()[0]));
+
+  // Create a buffer from host data.
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto param,
+      client->BufferFromHostBuffer(
+          data.data(), shape.element_type(), shape.dimensions(),
+          /*byte_strides=*/std::nullopt,
+          PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall, nullptr,
+          client->memory_spaces()[0], /*device_layout=*/nullptr));
+
+  // Define a simple "add one" kernel.
+  XlaBuilder builder("add_one");
+  auto input = Parameter(&builder, 0, shape, "input");
+  auto one = ConstantR0<int32_t>(&builder, 1);
+  auto add = Add(input, one);
+  auto computation = builder.Build(add).value();
+
+  // Compile and load the executable.
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtLoadedExecutable> executable,
+      client->CompileAndLoad(computation, CompileOptions()));
+
+  // Execute the kernel.
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> results,
+      executable->Execute({{param.get()}}, ExecuteOptions()));
+  ASSERT_EQ(results.size(), 1);
+  ASSERT_EQ(results[0].size(), 1);
+  std::unique_ptr<PjRtBuffer>& result_buffer = results[0][0];
+
+  // Wait for the result buffer to be ready.
+  TF_ASSERT_OK(result_buffer->GetReadyFuture().Await());
+
+  // Fulfill the alias buffer with the result of the add one kernel.
+  ASSERT_NE(alias_buffer.second, nullptr);
+  TF_ASSERT_OK(std::move(alias_buffer.second)(result_buffer.get()));
+  TF_ASSERT_OK_AND_ASSIGN(auto alias_literal,
+                          alias_buffer.first->ToLiteralSync());
+
+  // Expected result: data + 1
+  EXPECT_TRUE(LiteralTestUtil::Equal(
+      LiteralUtil::CreateR2<int32_t>({{2, 3, 4}, {5, 6, 7}}), *alias_literal));
 }
 
 TEST(PjRtCApiClientTest, IsDynamicDimension) {
@@ -292,6 +348,35 @@ TEST(PjRtClientTest, CanQueryMemoryDescriptions) {
       EXPECT_GE(memory->kind_id(), 0);
     }
   }
+}
+
+TEST(PjRtCApiClientTest, GetDeviceAssignment) {
+  SetUpCpuPjRtApi();
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                          GetCApiClient("cpu"));
+  ASSERT_GT(client->addressable_devices().size(), 1);
+
+  XlaBuilder builder("Identity");
+  Shape shape = ShapeUtil::MakeShape(S32, {2, 3});
+  auto input = Parameter(&builder, 0, shape, "input");
+  auto computation = builder.Build(input).value();
+
+  DeviceAssignment device_assignment(1, 2);
+  device_assignment(0, 0) = 0;
+  device_assignment(0, 1) = 1;
+
+  CompileOptions options;
+  options.executable_build_options.set_device_assignment(device_assignment);
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtLoadedExecutable> executable,
+                          client->CompileAndLoad(computation, options));
+
+  const DeviceAssignment& retrieved_assignment =
+      executable->device_assignment();
+  EXPECT_EQ(retrieved_assignment.replica_count(), 1);
+  EXPECT_EQ(retrieved_assignment.computation_count(), 2);
+  EXPECT_EQ(retrieved_assignment(0, 0), 0);
+  EXPECT_EQ(retrieved_assignment(0, 1), 1);
 }
 
 TEST(PjRtCApiClientTest, WrapClientAroundCApi) {

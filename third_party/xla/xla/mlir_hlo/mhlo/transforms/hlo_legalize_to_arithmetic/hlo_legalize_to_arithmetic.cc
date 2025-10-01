@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// This file implements logic for lowering HLO dialect to LHLO dialect.
+// This file implements logic for lowering HLO dialect to Arithmetic dialect.
 
 #include <memory>
 #include <optional>
@@ -194,9 +194,12 @@ void populateScalarHloToArithmeticConversionPatterns(
   // clang-format off
   patterns->add<
       ScalarHloToArithmeticPattern<mhlo::AbsOp>,
+      ScalarHloToArithmeticPattern<mhlo::AcosOp>,
+      ScalarHloToArithmeticPattern<mhlo::AcoshOp>,
       ScalarHloToArithmeticPattern<mhlo::AddOp>,
       ScalarHloToArithmeticPattern<mhlo::AndOp>,
       ScalarHloToArithmeticPattern<mhlo::Atan2Op>,
+      ScalarHloToArithmeticPattern<mhlo::AtanhOp>,
       ScalarHloToArithmeticPattern<mhlo::BitcastConvertOp>,
       ScalarHloToArithmeticPattern<mhlo::CbrtOp>,
       ScalarHloToArithmeticPattern<mhlo::CeilOp>,

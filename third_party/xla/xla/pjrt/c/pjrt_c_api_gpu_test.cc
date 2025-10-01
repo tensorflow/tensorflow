@@ -30,6 +30,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/cleanup/cleanup.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -44,6 +45,7 @@ limitations under the License.
 #include "xla/ffi/execution_context.h"
 #include "xla/ffi/ffi_api.h"
 #include "xla/ffi/type_id_registry.h"
+#include "xla/future.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
@@ -60,7 +62,7 @@ limitations under the License.
 #include "xla/pjrt/gpu/se_gpu_pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_compiler.h"
-#include "xla/pjrt/pjrt_future.h"
+#include "xla/service/computation_placer.h"
 #include "xla/service/custom_call_target_registry.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -167,7 +169,7 @@ TEST_F(PjrtCApiGpuTest, CreateViewOfDeviceBuffer) {
   PJRT_Error* to_host_error = api_->PJRT_Buffer_ToHostBuffer(&to_host_args);
 
   ASSERT_EQ(to_host_error, nullptr);
-  xla::PjRtFuture<> transfer_to_host =
+  xla::Future<> transfer_to_host =
       ::pjrt::ConvertCEventToCppFuture(to_host_args.event, api_);
   TF_CHECK_OK(transfer_to_host.Await());
   ASSERT_EQ(literal->data<float>().size(), 4);
@@ -219,8 +221,7 @@ TEST_F(PjrtCApiGpuBufferTest, CopyRawToHost) {
   args.transfer_size = size;
   PJRT_Error* error = api_->PJRT_Buffer_CopyRawToHost(&args);
   ASSERT_THAT(error, IsNull());
-  xla::PjRtFuture<> copy_to_host_event =
-      ConvertCEventToCppFuture(args.event, api_);
+  xla::Future<> copy_to_host_event = ConvertCEventToCppFuture(args.event, api_);
   TF_EXPECT_OK(copy_to_host_event.Await());
   EXPECT_EQ(*(static_cast<float*>(args.dst)), 41);
   tsl::port::AlignedSizedFree(args.dst, tsl::Allocator::kAllocatorAlignment,
@@ -239,8 +240,7 @@ TEST_F(PjrtCApiGpuBufferTest, CopyRawToHostWithInvalidOffset) {
   args.transfer_size = size;
   PJRT_Error* error = api_->PJRT_Buffer_CopyRawToHost(&args);
   ASSERT_EQ(error, nullptr);
-  xla::PjRtFuture<> copy_to_host_event =
-      ConvertCEventToCppFuture(args.event, api_);
+  xla::Future<> copy_to_host_event = ConvertCEventToCppFuture(args.event, api_);
   absl::Status status = copy_to_host_event.Await();
   std::string expected_message = absl::StrFormat(
       "Copy raw buffer called on buffer size %lld with "
@@ -284,6 +284,44 @@ TEST_F(PjrtCApiGpuExecutableTest, GetCompiledMemoryStats) {
             stats.host_output_size_in_bytes);
   EXPECT_EQ(ref_stats.host_alias_size_in_bytes, stats.host_alias_size_in_bytes);
   EXPECT_EQ(ref_stats.host_temp_size_in_bytes, stats.host_temp_size_in_bytes);
+}
+
+TEST_F(PjrtCApiGpuExecutableTest, GetDeviceAssignment) {
+  PJRT_LoadedExecutable_GetDeviceAssignment_Args args;
+  args.struct_size = PJRT_LoadedExecutable_GetDeviceAssignment_Args_STRUCT_SIZE;
+  args.extension_start = nullptr;
+  args.executable = executable_.get();
+
+  PJRT_Error* error = api_->PJRT_LoadedExecutable_GetDeviceAssignment(&args);
+  ASSERT_EQ(error, nullptr);
+
+  absl::Cleanup cleanup = [&args] {
+    args.serialized_device_assignment_deleter(
+        args.serialized_device_assignment);
+  };
+
+  // Deserialize
+  xla::DeviceAssignmentProto proto;
+  std::string serialized_proto(args.serialized_bytes,
+                               args.serialized_bytes_size);
+  ASSERT_TRUE(proto.ParseFromString(serialized_proto));
+  TF_ASSERT_OK_AND_ASSIGN(auto device_assignment,
+                          xla::DeviceAssignment::Deserialize(proto));
+
+  // Use the PJRT C++ API to create a reference device assignment.
+  const xla::DeviceAssignment& ref_device_assignment =
+      executable_->get()->device_assignment();
+
+  // Compare with reference to ensure the C++ and C APIs are equivalent.
+  EXPECT_EQ(device_assignment->replica_count(),
+            ref_device_assignment.replica_count());
+  EXPECT_EQ(device_assignment->computation_count(),
+            ref_device_assignment.computation_count());
+  for (int i = 0; i < device_assignment->replica_count(); ++i) {
+    for (int j = 0; j < device_assignment->computation_count(); ++j) {
+      EXPECT_EQ((*device_assignment)(i, j), ref_device_assignment(i, j));
+    }
+  }
 }
 
 TEST_F(PjrtCApiGpuTest, CreateAndDestroyExecuteContext) {

@@ -47,7 +47,7 @@ PlatformObjectRegistry& PlatformObjectRegistry::GetGlobalRegistry() {
 absl::StatusOr<std::reference_wrapper<const PlatformObjectRegistry::Container>>
 PlatformObjectRegistry::FindObject(const std::type_info& type,
                                    Platform::Id platform_id) const {
-  absl::MutexLock lock(&mutex_);
+  absl::MutexLock lock(mutex_);
   auto it = objects_.find({std::type_index(type), platform_id});
   if (it != objects_.end()) {
     return it->second;
@@ -66,7 +66,7 @@ PlatformObjectRegistry::FindObject(const std::type_info& type,
 absl::Status PlatformObjectRegistry::RegisterObject(const std::type_info& type,
                                                     Platform::Id platform_id,
                                                     Container object) {
-  absl::MutexLock lock(&mutex_);
+  absl::MutexLock lock(mutex_);
   const auto [it, inserted] = objects_.insert(std::make_pair(
       std::make_tuple(std::type_index(type), platform_id), std::move(object)));
   if (!inserted) {

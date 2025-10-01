@@ -1,4 +1,4 @@
-# Placeholder: load py_proto_library
+load("@rules_python//python:proto.bzl", "py_proto_library")
 load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library")
 
 package(

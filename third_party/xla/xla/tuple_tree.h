@@ -356,6 +356,21 @@ class TupleTree {
     return entry_or.value()->children_start_id == -1;
   }
 
+  // Checks if the structure of this TupleTree is compatible with the given
+  // shape.
+  bool IsStructurallyCompatible(const Shape& shape) const {
+    internal::IndexTable shape_table(shape);
+    auto shape_root_or = shape_table.GetEntry({});
+    auto tree_root_or = index_table_.GetEntry({});
+    if (!shape_root_or.ok() || !tree_root_or.ok()) {
+      return false;
+    }
+    return internal::IndexTable::IsSubtreeCompatible(
+               shape_table, shape_root_or.value(), index_table_,
+               tree_root_or.value())
+        .ok();
+  }
+
   absl::Status CopyCompatibleSubtreeFrom(const TupleTree<T>& other,
                                          const ShapeIndex& src_index,
                                          const ShapeIndex& dst_index) {

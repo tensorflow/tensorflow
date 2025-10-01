@@ -75,7 +75,7 @@ absl::Status HostSendRecvAsyncEvents::Emplace(
     tsl::AsyncValueRef<std::unique_ptr<se::Event>> event) {
   Key key = {executor, channel_id};
 
-  absl::MutexLock lock(&mutex_);
+  absl::MutexLock lock(mutex_);
   if (auto it = events_.try_emplace(key, std::move(event)); it.second)
     return absl::OkStatus();
 
@@ -88,7 +88,7 @@ HostSendRecvAsyncEvents::Extract(se::StreamExecutor* executor,
                                  int32_t channel_id) {
   Key key = {executor, channel_id};
 
-  absl::MutexLock lock(&mutex_);
+  absl::MutexLock lock(mutex_);
   if (auto event = events_.extract(key)) return std::move(event.mapped());
 
   return absl::InternalError(absl::StrFormat(

@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_PYTHON_IFRT_IR_IFRT_IR_PROGRAM_H_
 #define XLA_PYTHON_IFRT_IR_IFRT_IR_PROGRAM_H_
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -25,7 +26,10 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "llvm/ADT/StringRef.h"
+#include "llvm/Support/CommandLine.h"
 #include "llvm/Support/ExtensibleRTTI.h"
+#include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
@@ -176,11 +180,39 @@ struct IfrtIRCompileOptions
   static char ID;  // NOLINT
 };
 
+llvm::raw_ostream& operator<<(llvm::raw_ostream& os,
+                              const IfrtIRCompileOptions& options);
+
+llvm::raw_ostream& operator<<(llvm::raw_ostream& os,
+                              std::shared_ptr<IfrtIRCompileOptions> options);
+
 // Gets `xla::ifrt::IfrtIRCompileOptions` from `xla::ifrt::CompileOptions`.
 absl::StatusOr<std::unique_ptr<IfrtIRCompileOptions>> GetIfrtIRCompileOptions(
     std::unique_ptr<CompileOptions> options);
 
 }  // namespace ifrt
 }  // namespace xla
+
+namespace llvm::cl {
+
+extern template class basic_parser<
+    std::shared_ptr<xla::ifrt::IfrtIRCompileOptions>>;
+
+template <>
+class parser<std::shared_ptr<xla::ifrt::IfrtIRCompileOptions>>
+    : public basic_parser<std::shared_ptr<xla::ifrt::IfrtIRCompileOptions>> {
+ public:
+  explicit parser(Option& opt) : basic_parser(opt) {}
+  bool parse(Option& opt, StringRef argName, StringRef arg,
+             std::shared_ptr<xla::ifrt::IfrtIRCompileOptions>& value);
+  StringRef getValueName() const override { return "ifrt-ir-compile-options"; }
+  void printOptionDiff(
+      const Option& opt,
+      const std::shared_ptr<xla::ifrt::IfrtIRCompileOptions>& value,
+      const OptVal& defaultValue, size_t globalWidth) const;
+  void anchor() override;
+};
+
+}  // namespace llvm::cl
 
 #endif  // XLA_PYTHON_IFRT_IR_IFRT_IR_PROGRAM_H_

@@ -24,16 +24,19 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
+#include "mlir/IR/MLIRContext.h"
 #include "xla/autotuning.pb.h"
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
+#include "xla/service/compiler.h"
 #include "xla/service/executable.h"
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/gpu/nvptx_compiler.h"
 #include "xla/service/platform_util.h"
 #include "xla/stream_executor/device_description.pb.h"
+#include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
 #include "xla/xla.pb.h"
@@ -70,11 +73,12 @@ const char kHlo[] = R"(
 class TritonBackendTest : public HloHardwareIndependentTestBase {
  protected:
   TritonBackendTest()
-      : backend_(PlatformUtil::GetDefaultPlatform()
-                     .value()
-                     ->ExecutorForDevice(0)
-                     .value(),
-                 &debug_options_, &compiler_) {
+      : stream_executor_(PlatformUtil::GetDefaultPlatform()
+                             .value()
+                             ->ExecutorForDevice(0)
+                             .value()),
+        target_config_(stream_executor_),
+        backend_(&debug_options_, &compiler_, &target_config_, &mlir_context_) {
     // TODO(b/315957220): Remove the experimental flags once TMA is enabled by
     // default.
     debug_options_.set_xla_gpu_experimental_enable_triton_tma(true);
@@ -82,7 +86,10 @@ class TritonBackendTest : public HloHardwareIndependentTestBase {
 
   DebugOptions debug_options_;
   NVPTXCompiler compiler_;
+  se::StreamExecutor* stream_executor_;
+  Compiler::TargetConfig target_config_;
   TritonBackend backend_;
+  mlir::MLIRContext mlir_context_;
 };
 
 TEST_F(TritonBackendTest, GetSupportedConfigs) {

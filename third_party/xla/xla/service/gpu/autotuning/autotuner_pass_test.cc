@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/service/gpu/autotuning/autotuner_pass.h"
 
-#include <cstdint>
 #include <memory>
 #include <string>
 #include <utility>
@@ -25,6 +24,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status_matchers.h"
 #include "absl/strings/ascii.h"
 #include "xla/backends/autotuner/autotuner.h"
 #include "xla/backends/autotuner/autotuner_cache.pb.h"
@@ -36,18 +36,16 @@ limitations under the License.
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/cublas_cudnn.h"
+#include "xla/service/gpu/gpu_compiler.h"
 #include "xla/service/gpu/nvptx_compiler.h"
 #include "xla/service/platform_util.h"
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/stream_executor_memory_allocator.h"
-#include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/env.h"
-#include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/threadpool.h"
-#include "tsl/platform/path.h"
 
 namespace xla {
 namespace gpu {
@@ -108,17 +106,19 @@ TEST_F(AutotunerPassTest, CublasGemmIsAutotuned) {
   tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "autotuning",
                                       /*num_threads=*/4);
   std::vector<std::unique_ptr<CodegenBackend>> backends;
+  GpuCompiler::TargetConfig target_config(stream_executor_);
   backends.push_back(std::make_unique<CublasBackend>(
-      stream_executor_, &module->config().debug_options(), &compiler_));
+      stream_executor_, &module->config().debug_options(), &compiler_,
+      &target_config));
 
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<AutotunerPass> pass,
       AutotunerPass::Create(std::move(backends),
                             module->config().debug_options(), stream_executor_,
                             &thread_pool, IsCublasGemmInstruction,
-                            allocator_.get()));
+                            &target_config, allocator_.get()));
   EXPECT_THAT(pass->Run(module.get(), /*execution_threads=*/{}),
-              tsl::testing::IsOkAndHolds(true));
+              absl_testing::IsOkAndHolds(true));
   // Verify that the backend config has been updated in the HLO.
   auto gemm =
       module->entry_computation()->GetInstructionWithName("custom-call.1");
@@ -134,9 +134,11 @@ TEST_F(AutotunerPassTest, CublasGemmIsNotAutotunedWhenFilterReturnsFalse) {
 
   tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "autotuning",
                                       /*num_threads=*/4);
+  GpuCompiler::TargetConfig target_config(stream_executor_);
   std::vector<std::unique_ptr<CodegenBackend>> backends;
   backends.push_back(std::make_unique<CublasBackend>(
-      stream_executor_, &module->config().debug_options(), &compiler_));
+      stream_executor_, &module->config().debug_options(), &compiler_,
+      &target_config));
 
   auto should_autotune = [](const HloInstruction& instruction) {
     return false;
@@ -145,9 +147,10 @@ TEST_F(AutotunerPassTest, CublasGemmIsNotAutotunedWhenFilterReturnsFalse) {
       std::unique_ptr<AutotunerPass> pass,
       AutotunerPass::Create(std::move(backends),
                             module->config().debug_options(), stream_executor_,
-                            &thread_pool, should_autotune, allocator_.get()));
+                            &thread_pool, should_autotune, &target_config,
+                            allocator_.get()));
   EXPECT_THAT(pass->Run(module.get(), /*execution_threads=*/{}),
-              tsl::testing::IsOkAndHolds(true));
+              absl_testing::IsOkAndHolds(true));
   // Verify that the backend config has *not* been updated in the HLO.
   auto gemm =
       module->entry_computation()->GetInstructionWithName("custom-call.1");
@@ -169,21 +172,23 @@ TEST_F(AutotunerPassTest, CublasGemmIsAutotunedAndCached) {
 
   tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "autotuning",
                                       /*num_threads=*/4);
+  GpuCompiler::TargetConfig target_config(stream_executor_);
 
   // Run the pass for the first time, this should populate the cache.
   {
     std::vector<std::unique_ptr<CodegenBackend>> backends;
     backends.push_back(std::make_unique<CublasBackend>(
-        stream_executor_, &module->config().debug_options(), &compiler_));
+        stream_executor_, &module->config().debug_options(), &compiler_,
+        &target_config));
 
     TF_ASSERT_OK_AND_ASSIGN(
         std::unique_ptr<AutotunerPass> pass,
-        AutotunerPass::Create(std::move(backends),
-                              module->config().debug_options(),
-                              stream_executor_, &thread_pool,
-                              IsCublasGemmInstruction, allocator_.get()));
+        AutotunerPass::Create(
+            std::move(backends), module->config().debug_options(),
+            stream_executor_, &thread_pool, IsCublasGemmInstruction,
+            &target_config, allocator_.get()));
     EXPECT_THAT(pass->Run(module.get(), /*execution_threads=*/{}),
-                tsl::testing::IsOkAndHolds(true));
+                absl_testing::IsOkAndHolds(true));
   }
 
   // Verify that the backend config has been updated in the HLO.
@@ -197,54 +202,37 @@ TEST_F(AutotunerPassTest, CublasGemmIsAutotunedAndCached) {
   ASSERT_TRUE(gpu_backend_config_after_first_run.gemm_backend_config()
                   .has_selected_algorithm());
 
-  // Find the cache file and make sure it's not empty.
-  std::vector<std::string> children;
-  TF_ASSERT_OK(tsl::Env::Default()->GetChildren(cache_dir, &children));
-  std::string cache_file;
-  for (const auto& child : children) {
-    std::string filename = tsl::io::JoinPath(cache_dir, child);
-    if (!tsl::Env::Default()->IsDirectory(filename).ok()) {
-      uint64_t file_size;
-      TF_ASSERT_OK(tsl::Env::Default()->GetFileSize(filename, &file_size));
-      if (file_size > 0) {
-        cache_file = filename;
-        break;
-      }
-    }
-  }
-  ASSERT_FALSE(cache_file.empty());
+  // Run the pass on the same original HLO reusing the cache
+  // Make sure it hits the cache by setting
+  // xla_gpu_require_complete_aot_autotune_results to true.
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module_2,
+                          ParseAndReturnVerifiedModule(kCublasCustomCallHlo));
 
-  // Clear the selected algorithm to simulate a pre-autotuning state.
-  HloInstruction* custom_call =
-      module->entry_computation()->GetInstructionWithName("custom-call.1");
-  TF_ASSERT_OK_AND_ASSIGN(auto gpu_backend_config_before_second_run,
-                          custom_call->backend_config<GpuBackendConfig>());
-  GemmBackendConfig gemm_config =
-      gpu_backend_config_before_second_run.gemm_backend_config();
-  gemm_config.clear_selected_algorithm();
-  *gpu_backend_config_before_second_run.mutable_gemm_backend_config() =
-      gemm_config;
-  TF_ASSERT_OK(
-      custom_call->set_backend_config(gpu_backend_config_before_second_run));
-
-  // Run the pass for the second time, this should hit the cache.
+  module_2->mutable_config()
+      .mutable_debug_options()
+      .set_xla_gpu_experimental_autotuner_cache_dir(cache_dir);
+  module_2->mutable_config()
+      .mutable_debug_options()
+      .set_xla_gpu_require_complete_aot_autotune_results(true);
   {
     std::vector<std::unique_ptr<CodegenBackend>> backends2;
     backends2.push_back(std::make_unique<CublasBackend>(
-        stream_executor_, &module->config().debug_options(), &compiler_));
+        stream_executor_, &module_2->config().debug_options(), &compiler_,
+        &target_config));
+
     TF_ASSERT_OK_AND_ASSIGN(
         std::unique_ptr<AutotunerPass> pass2,
-        AutotunerPass::Create(std::move(backends2),
-                              module->config().debug_options(),
-                              stream_executor_, &thread_pool,
-                              IsCublasGemmInstruction, allocator_.get()));
-    EXPECT_THAT(pass2->Run(module.get(), /*execution_threads=*/{}),
-                tsl::testing::IsOkAndHolds(true));
+        AutotunerPass::Create(
+            std::move(backends2), module_2->config().debug_options(),
+            stream_executor_, &thread_pool, IsCublasGemmInstruction,
+            &target_config, allocator_.get()));
+    EXPECT_THAT(pass2->Run(module_2.get(), /*execution_threads=*/{}),
+                absl_testing::IsOkAndHolds(true));
   }
 
   // Verify that the backend config in the HLO matches the cache.
   const HloInstruction* gemm =
-      module->entry_computation()->GetInstructionWithName("custom-call.1");
+      module_2->entry_computation()->GetInstructionWithName("custom-call.1");
   TF_ASSERT_OK_AND_ASSIGN(auto hlo_gpu_backend_config,
                           gemm->backend_config<GpuBackendConfig>());
   const GemmBackendConfig& hlo_backend_config =
@@ -254,6 +242,108 @@ TEST_F(AutotunerPassTest, CublasGemmIsAutotunedAndCached) {
   // We can't easily verify that the HLO config matches the cache content
   // because the autotuning might not be deterministic. However, we have
   // logged that the cache was hit, which is the main purpose of this test.
+}
+
+TEST_F(AutotunerPassTest, CublasGemmIsAutotunedWithCacheOnly) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(kCublasCustomCallHlo));
+
+  std::string cache_dir = ::testing::TempDir();
+  module->mutable_config()
+      .mutable_debug_options()
+      .set_xla_gpu_experimental_autotuner_cache_dir(cache_dir);
+
+  tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "autotuning",
+                                      /*num_threads=*/4);
+  GpuCompiler::TargetConfig target_config(stream_executor_);
+
+  // Run the pass for the first time, this should populate the cache.
+  {
+    std::vector<std::unique_ptr<CodegenBackend>> backends;
+    backends.push_back(std::make_unique<CublasBackend>(
+        stream_executor_, &module->config().debug_options(), &compiler_,
+        &target_config));
+
+    TF_ASSERT_OK_AND_ASSIGN(
+        std::unique_ptr<AutotunerPass> pass,
+        AutotunerPass::Create(
+            std::move(backends), module->config().debug_options(),
+            stream_executor_, &thread_pool, IsCublasGemmInstruction,
+            &target_config, allocator_.get()));
+    EXPECT_THAT(pass->Run(module.get(), /*execution_threads=*/{}),
+                absl_testing::IsOkAndHolds(true));
+  }
+
+  // Run the pass on the same original HLO with cache_only=true.
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module_2,
+                          ParseAndReturnVerifiedModule(kCublasCustomCallHlo));
+
+  module_2->mutable_config()
+      .mutable_debug_options()
+      .set_xla_gpu_experimental_autotuner_cache_dir(cache_dir);
+
+  {
+    std::vector<std::unique_ptr<CodegenBackend>> backends2;
+    backends2.push_back(std::make_unique<CublasBackend>(
+        stream_executor_, &module_2->config().debug_options(), &compiler_,
+        &target_config));
+
+    TF_ASSERT_OK_AND_ASSIGN(
+        std::unique_ptr<AutotunerPass> pass2,
+        AutotunerPass::Create(
+            std::move(backends2), module_2->config().debug_options(),
+            /*stream_executor=*/nullptr, &thread_pool, IsCublasGemmInstruction,
+            &target_config, /*allocator=*/nullptr));
+    EXPECT_THAT(pass2->Run(module_2.get(), /*execution_threads=*/{}),
+                absl_testing::IsOkAndHolds(true));
+  }
+
+  // Verify that the backend config in the HLO matches the cache.
+  const HloInstruction* gemm =
+      module_2->entry_computation()->GetInstructionWithName("custom-call.1");
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_gpu_backend_config,
+                          gemm->backend_config<GpuBackendConfig>());
+  const GemmBackendConfig& hlo_backend_config =
+      hlo_gpu_backend_config.gemm_backend_config();
+  EXPECT_TRUE(hlo_backend_config.has_selected_algorithm());
+}
+
+TEST_F(AutotunerPassTest, DevicelessUsesDefaultConfigIfNoCache) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(kCublasCustomCallHlo));
+
+  std::string cache_dir = ::testing::TempDir();
+  module->mutable_config()
+      .mutable_debug_options()
+      .set_xla_gpu_experimental_autotuner_cache_dir(cache_dir);
+
+  tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "autotuning",
+                                      /*num_threads=*/4);
+  GpuCompiler::TargetConfig target_config(stream_executor_);
+
+  std::vector<std::unique_ptr<CodegenBackend>> backends;
+  backends.push_back(std::make_unique<CublasBackend>(
+      stream_executor_, &module->config().debug_options(), &compiler_,
+      &target_config));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<AutotunerPass> pass,
+      AutotunerPass::Create(std::move(backends),
+                            module->config().debug_options(),
+                            /*stream_executor=*/nullptr, &thread_pool,
+                            IsCublasGemmInstruction, &target_config,
+                            /*allocator=*/nullptr));
+  EXPECT_THAT(pass->Run(module.get(), /*execution_threads=*/{}),
+              absl_testing::IsOkAndHolds(true));
+
+  // Verify that the backend config has been updated in the HLO with default
+  // config.
+  auto gemm =
+      module->entry_computation()->GetInstructionWithName("custom-call.1");
+  TF_ASSERT_OK_AND_ASSIGN(auto gpu_backend_config,
+                          gemm->backend_config<GpuBackendConfig>());
+  ASSERT_TRUE(
+      gpu_backend_config.gemm_backend_config().has_selected_algorithm());
 }
 
 }  // namespace

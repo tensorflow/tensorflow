@@ -26,6 +26,8 @@ limitations under the License.
 #include "llvm/ADT/DenseMapInfo.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/Hashing.h"
+#include "llvm/Support/raw_ostream.h"
+#include "mlir/IR/MLIRContext.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/StorageUniquer.h"
 
@@ -80,12 +82,10 @@ class SymbolicExpr {
   // rest.
   SymbolicExpr ReplaceSymbols(absl::Span<const SymbolicExpr> replacements,
                               int64_t num_dims) const;
-  // ReplaceDimsAndSymbols assumes the total number of dimensions and symbols in
-  // the expression is the same the size of dim_replacements and
-  // symbol_replacements.
   SymbolicExpr ReplaceDimsAndSymbols(
       absl::Span<const SymbolicExpr> dim_replacements,
-      absl::Span<const SymbolicExpr> symbol_replacements) const;
+      absl::Span<const SymbolicExpr> symbol_replacements,
+      int64_t num_dims) const;
 
   SymbolicExpr Canonicalize() const;
 
@@ -134,6 +134,12 @@ class SymbolicExpr {
     sink.Append(expr.ToString());
   }
 
+  friend llvm::raw_ostream& operator<<(llvm::raw_ostream& os,
+                                       const SymbolicExpr expr) {
+    os << expr.ToString();
+    return os;
+  }
+
  private:
   const ImplType* impl_ = nullptr;
 };
@@ -144,17 +150,22 @@ inline ::llvm::hash_code hash_value(SymbolicExpr expr) {
 
 class SymbolicExprContext {
  public:
-  SymbolicExprContext();
+  explicit SymbolicExprContext(mlir::MLIRContext* mlir_context);
   SymbolicExpr Parse(absl::string_view expr_str);
   SymbolicExpr CreateConstant(int64_t value);
   SymbolicExpr CreateVariable(int64_t var_id);
   SymbolicExpr CreateBinaryOp(SymbolicExprType type, SymbolicExpr lhs,
                               SymbolicExpr rhs);
 
+  mlir::MLIRContext* GetMLIRContext() const { return mlir_context_; }
+
  private:
   SymbolicExpr GetOrCreate(SymbolicExprType type, int64_t value,
                            SymbolicExpr lhs, SymbolicExpr rhs);
   mlir::StorageUniquer uniquer_;
+  // TODO(b/446856305): MLIRContext is only used here temporarily while we have
+  // AffineMap <-> SymbolicMap convertors.
+  mlir::MLIRContext* mlir_context_;
 };
 
 }  // namespace gpu

@@ -54,7 +54,6 @@
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/executable.h"
-#include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt/host_callback.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/program.h"
@@ -79,6 +78,7 @@
 #include "xla/python/ifrt_proxy/server/version.h"
 #include "xla/python/pjrt_ifrt/xla_compiler.h"
 #include "xla/status_macros.h"
+#include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
@@ -95,7 +95,7 @@ namespace {
 using IfrtArrayRef = xla::ifrt::ArrayRef;
 
 absl::StatusOr<IfrtArrayRef> MakeStringArrayFromHostBuffer(
-    Client* client, std::shared_ptr<const std::string> host_buffer, DType dtype,
+    Client* client, HostBufferStore::MemRegion host_buffer, DType dtype,
     Shape shape, std::optional<absl::Span<const int64_t>> byte_strides,
     ShardingRef sharding) {
   TF_ASSIGN_OR_RETURN(std::vector<absl::Cord> string_host_buffer,
@@ -143,7 +143,7 @@ ParseMakeArraysFromHostBufferShardsSpecHostBufferProto(
     byte_strides = FromByteStridesProto(host_buffer_proto.byte_strides());
   }
   TF_ASSIGN_OR_RETURN(
-      std::shared_ptr<const std::string> host_buffer,
+      HostBufferStore::MemRegion host_buffer,
       host_buffer_store->Lookup(host_buffer_proto.host_buffer_handle(),
                                 /*timeout=*/absl::InfiniteDuration()));
   const void* data;
@@ -240,7 +240,7 @@ class IfrtBackend::ArrayStore::Reservation {
 
   // Checks that `Fill()` and `ProcessResponse()` have been called as expected.
   ~Reservation() {
-    absl::MutexLock l(&mu_);
+    absl::MutexLock l(mu_);
     CHECK(filled_);
   }
 
@@ -276,7 +276,7 @@ absl::StatusOr<IfrtBackend::Response>
 IfrtBackend::ArrayStore::Reservation::ProcessResponse(
     absl::StatusOr<Response> result) {
   if (!result.ok()) {
-    absl::MutexLock l(&mu_);
+    absl::MutexLock l(mu_);
     CHECK(!filled_);
     filled_ = true;
     parent_->Insert(reserved_handles_, result.status());
@@ -286,7 +286,7 @@ IfrtBackend::ArrayStore::Reservation::ProcessResponse(
 
 std::vector<uint64_t> IfrtBackend::ArrayStore::Reservation::Fill(
     absl::Span<const IfrtArrayRef> arrays) {
-  absl::MutexLock l(&mu_);
+  absl::MutexLock l(mu_);
   CHECK(!filled_);
   filled_ = true;
 
@@ -319,7 +319,7 @@ struct IfrtBackend::LoadedExecutableWithInfo {
 class IfrtBackend::InOrderRequestsProcessor {
   struct Entry {
     std::unique_ptr<IfrtRequest> req;
-    Future<Response>::Promise promise;
+    tsl::Promise<Response> promise;
     XFlowHelper xflow;
   };
 
@@ -332,7 +332,7 @@ class IfrtBackend::InOrderRequestsProcessor {
 
   void Shutdown(std::string reason) {
     {
-      absl::MutexLock l(&mu_);
+      absl::MutexLock l(mu_);
       if (shutdown_msg_.has_value()) {
         return;
       }
@@ -345,7 +345,7 @@ class IfrtBackend::InOrderRequestsProcessor {
     std::deque<Entry> should_cancel;
 
     {
-      absl::MutexLock l(&mu_);
+      absl::MutexLock l(mu_);
       entries_.swap(should_cancel);
     }
 
@@ -357,22 +357,21 @@ class IfrtBackend::InOrderRequestsProcessor {
     LOG(INFO) << "IfrtBackend::InOrderRequestsProcessor has been destroyed.";
   }
 
-  Future<Response> Push(std::unique_ptr<IfrtRequest> request) {
+  tsl::Future<Response> Push(std::unique_ptr<IfrtRequest> request) {
     VLOG(3) << "Enqueuing " << request->ShortDebugString();
-    auto promise = Future<Response>::CreatePromise();
-    Future<Response> result(promise);
-    absl::MutexLock l(&mu_);
+    auto [promise, future] = tsl::Future<Response>::MakePromise();
+    absl::MutexLock l(mu_);
     if (shutdown_msg_.has_value()) {
       promise.Set(absl::InternalError(absl::StrCat(
           "InOrderRequestsProcessor already stopped: ", *shutdown_msg_)));
-      return result;
+      return std::move(future);
     }
     absl::string_view req_name = GetRequestName(request.get());
     Entry entry{/*req=*/std::move(request), /*promise=*/std::move(promise),
                 XFlowHelper(req_name)};
     entry.xflow.InstantActivity<XFlowHelper::kSend>();
     entries_.push_back(std::move(entry));
-    return result;
+    return std::move(future);
   }
 
   ~InOrderRequestsProcessor() {
@@ -381,7 +380,7 @@ class IfrtBackend::InOrderRequestsProcessor {
 
  private:
   std::optional<Entry> Pop() {
-    absl::MutexLock l(&mu_);
+    absl::MutexLock l(mu_);
     auto cond = [&]() ABSL_SHARED_LOCKS_REQUIRED(mu_) {
       return shutdown_msg_.has_value() || !entries_.empty();
     };
@@ -490,7 +489,7 @@ IfrtBackend::~IfrtBackend() {
 
   // Cancel all in-flight host callback executions.
   {
-    absl::MutexLock lock(&host_callback_queues_mutex_);
+    absl::MutexLock lock(host_callback_queues_mutex_);
     for (const auto& [key, queue] : host_callback_queues_) {
       queue->Close();
     }
@@ -498,7 +497,7 @@ IfrtBackend::~IfrtBackend() {
   absl::flat_hash_map<uint64_t, RemoteLoadedHostCallbackQueue::ExecutionRequest>
       host_callback_executions;
   {
-    absl::MutexLock lock(&host_callback_executions_mutex_);
+    absl::MutexLock lock(host_callback_executions_mutex_);
     host_callback_executions.swap(host_callback_executions_);
   }
   for (auto& [handle, execution_request] : host_callback_executions) {
@@ -514,51 +513,51 @@ IfrtBackend::~IfrtBackend() {
     auto done = [this]() ABSL_SHARED_LOCKS_REQUIRED(in_flight_count_mutex_) {
       return in_flight_count_ == 0;
     };
-    absl::MutexLock lock(&in_flight_count_mutex_, absl::Condition(&done));
+    absl::MutexLock lock(in_flight_count_mutex_, absl::Condition(&done));
   }
 }
 
-Future<BackendInterface::Response> IfrtBackend::Process(
+tsl::Future<BackendInterface::Response> IfrtBackend::Process(
     std::unique_ptr<IfrtRequest> request) {
   return in_order_requests_processor_->Push(std::move(request));
 }
 
-Future<BackendInterface::Response> IfrtBackend::ProcessInternal(
+tsl::Future<BackendInterface::Response> IfrtBackend::ProcessInternal(
     std::unique_ptr<IfrtRequest> request) {
   std::optional<ArrayStore::Reservation> asr;
   switch (request->request_case()) {
     case IfrtRequest::RequestCase::kInitRequest:
-      return Future<Response>(HandleInit(std::move(request)));
+      return tsl::Future<Response>(HandleInit(std::move(request)));
     case IfrtRequest::RequestCase::kCheckFutureRequest:
       return HandleCheckFutureRequest(std::move(request));
     case IfrtRequest::RequestCase::kMakeArrayFromHostBufferRequest:
       asr.emplace(request->make_array_from_host_buffer_request().array_handle(),
                   &array_store_);
-      return Future<Response>(asr->ProcessResponse(
+      return tsl::Future<Response>(asr->ProcessResponse(
           HandleMakeArrayFromHostBufferRequest(*asr, std::move(request))));
     case IfrtRequest::RequestCase::kMakeArraysFromHostBufferShardsRequest:
       asr.emplace(request->make_arrays_from_host_buffer_shards_request()
                       .array_handles(),
                   &array_store_);
-      return Future<Response>(
+      return tsl::Future<Response>(
           asr->ProcessResponse(HandleMakeArraysFromHostBufferShardsRequest(
               *asr, std::move(request))));
     case IfrtRequest::RequestCase::kMakeErrorArraysRequest:
       asr.emplace(request->make_error_arrays_request().array_handles(),
                   &array_store_);
-      return Future<Response>(asr->ProcessResponse(
+      return tsl::Future<Response>(asr->ProcessResponse(
           HandleMakeErrorArraysRequest(*asr, std::move(request))));
     case IfrtRequest::RequestCase::kAssembleArrayFromSingleDeviceArraysRequest:
       asr.emplace(request->assemble_array_from_single_device_arrays_request()
                       .result_handle(),
                   &array_store_);
-      return Future<Response>(
+      return tsl::Future<Response>(
           asr->ProcessResponse(HandleAssembleArrayFromSingleDeviceArraysRequest(
               *asr, std::move(request))));
     case IfrtRequest::RequestCase::kRemapArraysRequest:
       asr.emplace(request->remap_arrays_request().result_handles(),
                   &array_store_);
-      return Future<Response>(asr->ProcessResponse(
+      return tsl::Future<Response>(asr->ProcessResponse(
           HandleRemapArraysRequest(*asr, std::move(request))));
     case IfrtRequest::RequestCase::kCopyToHostBufferRequest:
       return HandleCopyToHostBufferRequest(std::move(request));
@@ -566,29 +565,33 @@ Future<BackendInterface::Response> IfrtBackend::ProcessInternal(
       asr.emplace(request->disassemble_into_single_device_arrays_request()
                       .result_handles(),
                   &array_store_);
-      return Future<Response>(
+      return tsl::Future<Response>(
           asr->ProcessResponse(HandleDisassembleIntoSingleDeviceArraysRequest(
               *asr, std::move(request))));
     case IfrtRequest::RequestCase::kCheckValueReadyRequest:
-      return Future<Response>(HandleCheckValueReadyRequest(std::move(request)));
+      return tsl::Future<Response>(
+          HandleCheckValueReadyRequest(std::move(request)));
     case IfrtRequest::RequestCase::kCopyArraysRequest:
       asr.emplace(request->copy_arrays_request().result_handles(),
                   &array_store_);
-      return Future<Response>(asr->ProcessResponse(
+      return tsl::Future<Response>(asr->ProcessResponse(
           HandleCopyArraysRequest(*asr, std::move(request))));
     case IfrtRequest::RequestCase::kFullyReplicatedShardRequest:
       asr.emplace(request->fully_replicated_shard_request().result_handle(),
                   &array_store_);
-      return Future<Response>(asr->ProcessResponse(
+      return tsl::Future<Response>(asr->ProcessResponse(
           HandleFullyReplicatedShardRequest(*asr, std::move(request))));
     case IfrtRequest::RequestCase::kDeleteArrayRequest:
-      return Future<Response>(HandleDeleteArrayRequest(std::move(request)));
+      return tsl::Future<Response>(
+          HandleDeleteArrayRequest(std::move(request)));
     case IfrtRequest::RequestCase::kIsArrayDeletedRequest:
-      return Future<Response>(HandleIsArrayDeletedRequest(std::move(request)));
+      return tsl::Future<Response>(
+          HandleIsArrayDeletedRequest(std::move(request)));
     case IfrtRequest::RequestCase::kDestructArrayRequest:
-      return Future<Response>(HandleDestructArrayRequest(std::move(request)));
+      return tsl::Future<Response>(
+          HandleDestructArrayRequest(std::move(request)));
     case IfrtRequest::RequestCase::kCompileRequest:
-      return Future<Response>(HandleCompileRequest(std::move(request)));
+      return tsl::Future<Response>(HandleCompileRequest(std::move(request)));
     case IfrtRequest::RequestCase::kLoadedExecutableMetadataRequest:
       return HandleLoadedExecutableMetadataRequest(std::move(request));
     case IfrtRequest::RequestCase::kLoadedExecutableExecuteRequest: {
@@ -601,10 +604,10 @@ Future<BackendInterface::Response> IfrtBackend::ProcessInternal(
           HandleLoadedExecutableExecuteRequest(*asr, std::move(request));
       if (client_generated_status_handle != 0) {
         // Populate the handle if not already populated.
-        absl::MutexLock l(&futures_mutex_);
+        absl::MutexLock l(futures_mutex_);
         const bool inserted = futures_
                                   .insert({client_generated_status_handle,
-                                           Future<>(result.status())})
+                                           tsl::Future<>(result.status())})
                                   .second;
         // If `HandleLoadedExecutableExecuteRequest` returned OK, verify that
         // it already has populated status_handle.
@@ -612,32 +615,32 @@ Future<BackendInterface::Response> IfrtBackend::ProcessInternal(
           CHECK(!inserted);
         }
       }
-      return Future<Response>(asr->ProcessResponse(std::move(result)));
+      return tsl::Future<Response>(asr->ProcessResponse(std::move(result)));
     }
     case IfrtRequest::RequestCase::kLoadedExecutableDeleteRequest:
-      return Future<Response>(
+      return tsl::Future<Response>(
           HandleLoadedExecutableDeleteRequest(std::move(request)));
     case IfrtRequest::RequestCase::kLoadedExecutableIsDeletedRequest:
-      return Future<Response>(
+      return tsl::Future<Response>(
           HandleLoadedExecutableIsDeletedRequest(std::move(request)));
     case IfrtRequest::RequestCase::kLoadedExecutableDestructRequest:
-      return Future<Response>(
+      return tsl::Future<Response>(
           HandleLoadedExecutableDestructRequest(std::move(request)));
     case IfrtRequest::RequestCase::kLoadedHostCallbackPollRequest:
       return HandleLoadedHostCallbackPollRequest(std::move(request));
     case IfrtRequest::RequestCase::kLoadedHostCallbackReturnRequest:
-      return Future<Response>(
+      return tsl::Future<Response>(
           HandleLoadedHostCallbackReturnRequest(std::move(request)));
     case IfrtRequest::RequestCase::kGetDefaultDeviceAssignmentRequest:
-      return Future<Response>(
+      return tsl::Future<Response>(
           HandleGetDefaultDeviceAssignmentRequest(std::move(request)));
     case IfrtRequest::RequestCase::kGetDefaultLayoutRequest:
-      return Future<Response>(
+      return tsl::Future<Response>(
           HandleGetDefaultLayoutRequest(std::move(request)));
     default:
       LOG(ERROR) << "Got unimplemented request type: "
                  << request->DebugString();
-      return Future<Response>(absl::UnimplementedError(absl::StrCat(
+      return tsl::Future<Response>(absl::UnimplementedError(absl::StrCat(
           "Got unimplemented request type: ", request->request_case())));
   }
 }
@@ -646,7 +649,7 @@ IfrtBackend::HandleGenerator::HandleGenerator(IfrtBackend* parent)
     : parent_(parent), current_(kServerGeneratedHandlesMinValue) {}
 
 uint64_t IfrtBackend::HandleGenerator::GenerateAtServer() {
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
   uint64_t result = current_++;
   CHECK_GE(result, kServerGeneratedHandlesMinValue);
   return result;
@@ -654,24 +657,25 @@ uint64_t IfrtBackend::HandleGenerator::GenerateAtServer() {
 
 void IfrtBackend::HandleGenerator::GenerateAtServerBulk(
     absl::Span<uint64_t> result_handles) {
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
   std::iota(result_handles.begin(), result_handles.end(), current_);
   current_ += result_handles.size();
   CHECK_GE(current_, kServerGeneratedHandlesMinValue);
 }
 
-Future<BackendInterface::Response> IfrtBackend::AsyncExecute(
+tsl::Future<BackendInterface::Response> IfrtBackend::AsyncExecute(
     std::function<absl::StatusOr<Response>()> handle_fn,
     tsl::thread::ThreadPool* thread_pool) {
   {
-    absl::MutexLock lock(&in_flight_count_mutex_);
+    absl::MutexLock lock(in_flight_count_mutex_);
     ++in_flight_count_;
   }
-  auto promise = Future<Response>::CreatePromise();
-  auto f = [this, promise, handle_fn = std::move(handle_fn)]() mutable {
-    promise.Set(handle_fn());
+  auto [promise, future] = tsl::Future<Response>::MakePromise();
+  auto f = [this, promise = std::move(promise).ToShared(),
+            handle_fn = std::move(handle_fn)]() mutable {
+    promise->Set(handle_fn());
     {
-      absl::MutexLock lock(&in_flight_count_mutex_);
+      absl::MutexLock lock(in_flight_count_mutex_);
       --in_flight_count_;
     }
   };
@@ -680,7 +684,7 @@ Future<BackendInterface::Response> IfrtBackend::AsyncExecute(
   } else {
     tsl::Env::Default()->SchedClosure(std::move(f));
   }
-  return Future<Response>(std::move(promise));
+  return std::move(future);
 }
 
 /////////////////////////////////////////////////////////////////////////////
@@ -768,27 +772,29 @@ absl::StatusOr<BackendInterface::Response> IfrtBackend::HandleInit(
   return response;
 }
 
-Future<BackendInterface::Response> IfrtBackend::HandleCheckFutureRequest(
+tsl::Future<BackendInterface::Response> IfrtBackend::HandleCheckFutureRequest(
     std::unique_ptr<IfrtRequest> request) {
   const CheckFutureRequest& check_request = request->check_future_request();
 
-  Future<> future;
+  tsl::Future<> future;
   {
-    absl::MutexLock lock(&futures_mutex_);
+    absl::MutexLock lock(futures_mutex_);
     const auto it = futures_.find(check_request.future_handle());
     if (it == futures_.end()) {
-      return Future<Response>(absl::NotFoundError(absl::StrCat(
+      return tsl::Future<Response>(absl::NotFoundError(absl::StrCat(
           "Unknown future handle: ", check_request.future_handle())));
     }
     future = std::move(it->second);
     futures_.erase(it);
   }
 
-  auto promise = Future<BackendInterface::Response>::CreatePromise();
-  // With PjRtFuture, the `Future` needs to be owned by one or more owners until
+  auto [promise, resp_future] =
+      tsl::Future<BackendInterface::Response>::MakePromise();
+  // With Future, the `future` needs to be owned by one or more owners until
   // `OnReady()`'s lambda gets executed. So, capture a copy of `future` in the
   // lambda, making the lambda itself an owner of `future`.
-  future.OnReady([op_id = request->request_metadata().op_id(), promise,
+  future.OnReady([op_id = request->request_metadata().op_id(),
+                  promise = std::move(promise),
                   hold = future](absl::Status status) mutable {
     if (!status.ok()) {
       promise.Set(std::move(status));
@@ -799,10 +805,11 @@ Future<BackendInterface::Response> IfrtBackend::HandleCheckFutureRequest(
     promise.Set(std::move(ifrt_resp));
   });
 
-  return Future<BackendInterface::Response>(std::move(promise));
+  return std::move(resp_future);
 }
 
-Future<BackendInterface::Response> IfrtBackend::HandleCheckValueReadyRequest(
+tsl::Future<BackendInterface::Response>
+IfrtBackend::HandleCheckValueReadyRequest(
     std::unique_ptr<IfrtRequest> request) {
   std::vector<xla::ifrt::ValueRef> values;
   values.reserve(request->check_value_ready_request().value_handles_size());
@@ -812,15 +819,13 @@ Future<BackendInterface::Response> IfrtBackend::HandleCheckValueReadyRequest(
     // type, but this may be extended later to other types such as Tuples.
     absl::StatusOr<IfrtArrayRef> array = array_store_.Find(value_handle);
     if (!array.ok()) {
-      return Future<Response>(array.status());
+      return tsl::Future<Response>(array.status());
     }
     values.push_back(*std::move(array));
   }
 
-  auto ifrt_response_promise =
-      Future<BackendInterface::Response>::CreatePromise();
-  Future<BackendInterface::Response> ifrt_response_future(
-      ifrt_response_promise);
+  auto [ifrt_response_promise, ifrt_response_future] =
+      tsl::Future<BackendInterface::Response>::MakePromise();
 
   client_->GetReadyFuture(values).OnReady(
       [op_id = request->request_metadata().op_id(),
@@ -834,7 +839,7 @@ Future<BackendInterface::Response> IfrtBackend::HandleCheckValueReadyRequest(
         ifrt_response->mutable_check_value_ready_response();
         promise.Set(std::move(ifrt_response));
       });
-  return ifrt_response_future;
+  return std::move(ifrt_response_future);
 }
 
 absl::StatusOr<BackendInterface::Response>
@@ -862,7 +867,7 @@ IfrtBackend::HandleMakeArrayFromHostBufferRequest(
     host_buffer_store_->Delete(host_buffer_handle).IgnoreError();
   };
   TF_ASSIGN_OR_RETURN(
-      std::shared_ptr<const std::string> host_buffer,
+      HostBufferStore::MemRegion host_buffer,
       host_buffer_store_->Lookup(host_buffer_handle,
                                  /*timeout=*/absl::InfiniteDuration()));
   std::move(cleanup).Invoke();
@@ -1079,7 +1084,7 @@ IfrtBackend::HandleRemapArraysRequest(ArrayStore::Reservation& asr,
   return response;
 }
 
-Future<BackendInterface::Response>
+tsl::Future<BackendInterface::Response>
 IfrtBackend::HandleCopyToStringHostBufferRequest(
     std::unique_ptr<IfrtRequest> request) {
   const CopyToHostBufferRequest& copy_to_host =
@@ -1088,23 +1093,23 @@ IfrtBackend::HandleCopyToStringHostBufferRequest(
   absl::StatusOr<IfrtArrayRef> array =
       array_store_.Find(copy_to_host.array_handle());
   if (!array.ok()) {
-    return Future<Response>(array.status());
+    return tsl::Future<Response>(array.status());
   }
 
   if (copy_to_host.has_byte_strides()) {
-    return Future<Response>(absl::InvalidArgumentError(
+    return tsl::Future<Response>(absl::InvalidArgumentError(
         "Byte strides are not supported for string arrays."));
   }
 
   // Allocate the host buffer and start the copy.
   auto host_buffer = std::make_unique<std::vector<absl::Cord>>(
       (*array)->shape().num_elements());
-  Future<> copy_status = (*array)->CopyToHostBuffer(
+  tsl::Future<> copy_status = (*array)->CopyToHostBuffer(
       host_buffer->data(), /*byte_strides=*/std::nullopt,
       ArrayCopySemantics::kAlwaysCopy);
 
-  auto resp_promise = Future<BackendInterface::Response>::CreatePromise();
-  Future<BackendInterface::Response> resp_future(resp_promise);
+  auto [resp_promise, resp_future] =
+      tsl::Future<BackendInterface::Response>::MakePromise();
 
   // Make the response proto when the copy is done.
   auto response_maker =
@@ -1130,10 +1135,11 @@ IfrtBackend::HandleCopyToStringHostBufferRequest(
     promise.Set(response_maker(status));
   });
 
-  return resp_future;
+  return std::move(resp_future);
 }
 
-Future<BackendInterface::Response> IfrtBackend::HandleCopyToHostBufferRequest(
+tsl::Future<BackendInterface::Response>
+IfrtBackend::HandleCopyToHostBufferRequest(
     std::unique_ptr<IfrtRequest> request) {
   const CopyToHostBufferRequest& copy_to_host =
       request->copy_to_host_buffer_request();
@@ -1141,7 +1147,7 @@ Future<BackendInterface::Response> IfrtBackend::HandleCopyToHostBufferRequest(
   absl::StatusOr<IfrtArrayRef> array =
       array_store_.Find(copy_to_host.array_handle());
   if (!array.ok()) {
-    return Future<Response>(array.status());
+    return tsl::Future<Response>(array.status());
   }
 
   if ((*array)->dtype().kind() == DType::kString) {
@@ -1161,7 +1167,7 @@ Future<BackendInterface::Response> IfrtBackend::HandleCopyToHostBufferRequest(
       /*zeroth_element=*/nullptr, (*array)->dtype(), (*array)->shape(),
       byte_strides);
   if (!pseudo_mem_region.ok()) {
-    return Future<Response>(pseudo_mem_region.status());
+    return tsl::Future<Response>(pseudo_mem_region.status());
   }
 
   // Use `std::unique_ptr<std::string>` for pointer stability.
@@ -1172,16 +1178,16 @@ Future<BackendInterface::Response> IfrtBackend::HandleCopyToHostBufferRequest(
       absl::string_view(*host_buffer), (*array)->dtype(), (*array)->shape(),
       byte_strides);
   if (!mem_region.ok()) {
-    return Future<Response>(mem_region.status());
+    return tsl::Future<Response>(mem_region.status());
   }
 
   // TODO(b/282757875): Consider other ArrayCopySemantics.
-  Future<> copy_status =
+  tsl::Future<> copy_status =
       (*array)->CopyToHostBuffer(mem_region->zeroth_element(), byte_strides,
                                  ArrayCopySemantics::kAlwaysCopy);
 
-  auto resp_promise = Future<BackendInterface::Response>::CreatePromise();
-  Future<BackendInterface::Response> resp_future(resp_promise);
+  auto [resp_promise, resp_future] =
+      tsl::Future<BackendInterface::Response>::MakePromise();
   auto on_ready = [this, op_id = request->request_metadata().op_id(),
                    host_buffer = std::move(host_buffer),
                    host_buffer_handle = copy_to_host.host_buffer_handle()](
@@ -1200,7 +1206,7 @@ Future<BackendInterface::Response> IfrtBackend::HandleCopyToHostBufferRequest(
       [promise = std::move(resp_promise), on_ready = std::move(on_ready)](
           absl::Status status) mutable { promise.Set(on_ready(status)); });
 
-  return resp_future;
+  return std::move(resp_future);
 }
 
 absl::StatusOr<BackendInterface::Response>
@@ -1309,14 +1315,14 @@ IfrtBackend::HandleFullyReplicatedShardRequest(
 absl::StatusOr<BackendInterface::Response>
 IfrtBackend::HandleDeleteArrayRequest(std::unique_ptr<IfrtRequest> request) {
   std::vector<uint64_t> bad_handles;
-  std::vector<Future<>> deletion_futures;
+  std::vector<tsl::Future<>> deletion_futures;
 
   auto delete_handle = [&](uint64_t handle) {
     absl::StatusOr<IfrtArrayRef> array = array_store_.Find(handle);
     if (array.ok()) {
       deletion_futures.push_back(array.value()->Delete());
     } else {
-      deletion_futures.push_back(Future<>(array.status()));
+      deletion_futures.push_back(tsl::Future<>(array.status()));
     }
   };
 
@@ -1332,7 +1338,7 @@ IfrtBackend::HandleDeleteArrayRequest(std::unique_ptr<IfrtRequest> request) {
 
   uint64_t future_handle = handle_generator_.GenerateAtServer();
   {
-    absl::MutexLock lock(&futures_mutex_);
+    absl::MutexLock lock(futures_mutex_);
     futures_.insert({future_handle, JoinFutures(deletion_futures)});
   }
 
@@ -1381,7 +1387,7 @@ IfrtBackend::HandleDestructArrayRequest(std::unique_ptr<IfrtRequest> request) {
   return ifrt_resp;
 }
 
-Future<BackendInterface::Response> IfrtBackend::HandleCompileRequest(
+tsl::Future<BackendInterface::Response> IfrtBackend::HandleCompileRequest(
     std::unique_ptr<IfrtRequest> request) {
   // Perform compilation on a thread pool in order to (1) avoid blocking the RPC
   // thread during compilation and (2) run compilation with bigger stacks (often
@@ -1482,7 +1488,7 @@ Future<BackendInterface::Response> IfrtBackend::HandleCompileRequest(
     // `futures_` without checking its status for situations where futures are
     // not used.
     {
-      absl::MutexLock lock(&futures_mutex_);
+      absl::MutexLock lock(futures_mutex_);
       compile_resp->set_ready_future_handle(
           handle_generator_.GenerateAtServer());
       futures_.insert(
@@ -1490,12 +1496,12 @@ Future<BackendInterface::Response> IfrtBackend::HandleCompileRequest(
     }
 
     {
-      absl::MutexLock lock(&executables_mutex_);
+      absl::MutexLock lock(executables_mutex_);
       executables_.insert({handle, std::make_shared<LoadedExecutableWithInfo>(
                                        std::move(executable))});
     }
     {
-      absl::MutexLock lock(&host_callback_queues_mutex_);
+      absl::MutexLock lock(host_callback_queues_mutex_);
       for (int i = 0; i < host_callback_queues.size(); ++i) {
         host_callback_queues_.insert(
             {host_callback_handles[i], std::move(host_callback_queues[i])});
@@ -1507,7 +1513,7 @@ Future<BackendInterface::Response> IfrtBackend::HandleCompileRequest(
   return AsyncExecute(std::move(f), &compile_thread_pool_);
 }
 
-Future<BackendInterface::Response>
+tsl::Future<BackendInterface::Response>
 IfrtBackend::HandleLoadedExecutableMetadataRequest(
     std::unique_ptr<IfrtRequest> request) {
   // Call `GetParameterShardings` and `GetOutputShardings` in the background
@@ -1520,7 +1526,7 @@ IfrtBackend::HandleLoadedExecutableMetadataRequest(
                               .loaded_executable_handle());
 
   if (!executable_info.ok()) {
-    return Future<BackendInterface::Response>(executable_info.status());
+    return tsl::Future<BackendInterface::Response>(executable_info.status());
   }
 
   return AsyncExecute([executable_info = *std::move(executable_info),
@@ -1662,7 +1668,7 @@ IfrtBackend::HandleLoadedExecutableExecuteRequest(
   // output specs of a `LoadedExecutable` remains constant across `Execute()`
   // calls. Verify that this expectation is satisfied.
   {
-    absl::MutexLock l(&executable_info->mu);
+    absl::MutexLock l(executable_info->mu);
     if (executable_info->output_spec.has_value()) {
       CHECK_EQ(result.outputs.size(), executable_info->output_spec->size())
           << "LoadedExecutable::Execute returned different number of outputs "
@@ -1736,7 +1742,7 @@ IfrtBackend::HandleLoadedExecutableExecuteRequest(
     if (execute_options.fill_status) {
       // Caller is expected to call `CheckFuture` exactly once to check for its
       // status and erase it.
-      absl::MutexLock lock(&futures_mutex_);
+      absl::MutexLock lock(futures_mutex_);
       uint64_t status_handle = execute.result_status_handle();
       if (status_handle == 0) {
         status_handle = handle_generator_.GenerateAtServer();
@@ -1771,14 +1777,14 @@ IfrtBackend::HandleLoadedExecutableExecuteRequest(
 absl::StatusOr<BackendInterface::Response>
 IfrtBackend::HandleLoadedExecutableDeleteRequest(
     std::unique_ptr<IfrtRequest> request) {
-  Future<> future(absl::UnimplementedError(
+  tsl::Future<> future(absl::UnimplementedError(
       "LoadedExecutable::Delete is no longer supported"));
 
   auto ifrt_resp = NewIfrtResponse(request->request_metadata().op_id());
   auto* del_response = ifrt_resp->mutable_loaded_executable_delete_response();
 
   {
-    absl::MutexLock lock(&futures_mutex_);
+    absl::MutexLock lock(futures_mutex_);
     del_response->set_future_handle(handle_generator_.GenerateAtServer());
     futures_.insert({del_response->future_handle(), std::move(future)});
   }
@@ -1806,7 +1812,7 @@ IfrtBackend::HandleLoadedExecutableDestructRequest(
 
   std::shared_ptr<LoadedExecutableWithInfo> executable;
   {
-    absl::MutexLock lock(&executables_mutex_);
+    absl::MutexLock lock(executables_mutex_);
     const auto it = executables_.find(destruct.loaded_executable_handle());
     if (it == executables_.end()) {
       return absl::NotFoundError(
@@ -1827,7 +1833,7 @@ IfrtBackend::HandleLoadedExecutableDestructRequest(
   return ifrt_resp;
 }
 
-Future<BackendInterface::Response>
+tsl::Future<BackendInterface::Response>
 IfrtBackend::HandleLoadedHostCallbackPollRequest(
     std::unique_ptr<IfrtRequest> request) {
   return AsyncExecute([this, request = std::shared_ptr<IfrtRequest>(std::move(
@@ -1838,7 +1844,7 @@ IfrtBackend::HandleLoadedHostCallbackPollRequest(
     // Find the host callback queue associated with the given handle.
     std::shared_ptr<RemoteLoadedHostCallbackQueue> queue;
     {
-      absl::MutexLock lock(&host_callback_queues_mutex_);
+      absl::MutexLock lock(host_callback_queues_mutex_);
       auto it = host_callback_queues_.find(handle);
       if (it == host_callback_queues_.end()) {
         return absl::NotFoundError(
@@ -1853,7 +1859,7 @@ IfrtBackend::HandleLoadedHostCallbackPollRequest(
     auto execution_request = queue->Pop();
     if (!execution_request.has_value()) {
       {
-        absl::MutexLock lock(&host_callback_queues_mutex_);
+        absl::MutexLock lock(host_callback_queues_mutex_);
         host_callback_queues_.erase(handle);
       }
       auto ifrt_resp = NewIfrtResponse(request->request_metadata().op_id());
@@ -1883,7 +1889,7 @@ IfrtBackend::HandleLoadedHostCallbackPollRequest(
 
     const uint64_t execution_handle = handle_generator_.GenerateAtServer();
     {
-      absl::MutexLock lock(&host_callback_executions_mutex_);
+      absl::MutexLock lock(host_callback_executions_mutex_);
       host_callback_executions_.insert(
           {execution_handle, *std::move(execution_request)});
     }
@@ -1904,7 +1910,7 @@ IfrtBackend::HandleLoadedHostCallbackReturnRequest(
 
   RemoteLoadedHostCallbackQueue::ExecutionRequest execution_request;
   {
-    absl::MutexLock lock(&host_callback_executions_mutex_);
+    absl::MutexLock lock(host_callback_executions_mutex_);
     const auto it =
         host_callback_executions_.find(ret.host_callback_execution_handle());
     if (it == host_callback_executions_.end()) {
@@ -1927,7 +1933,7 @@ IfrtBackend::HandleLoadedHostCallbackReturnRequest(
   absl::Status status;
   if (ret.has_result_host_buffer_handle()) {
     TF_ASSIGN_OR_RETURN(
-        std::shared_ptr<const std::string> buffer,
+        HostBufferStore::MemRegion buffer,
         host_buffer_store_->Lookup(ret.result_host_buffer_handle(),
                                    /*timeout=*/absl::InfiniteDuration()));
     absl::Cleanup cleanup = [&] {
@@ -2006,8 +2012,8 @@ IfrtBackend::HandleGetDefaultLayoutRequest(
           : MemoryKind(get_default_layout_request.memory_kind());
   TF_ASSIGN_OR_RETURN(
       std::shared_ptr<const xla::PjRtLayout> layout,
-      client_->GetDefaultLayout(dtype, get_default_layout_request.dims(),
-                                device, memory_kind));
+      client_->GetDefaultPjRtLayout(dtype, get_default_layout_request.dims(),
+                                    device, memory_kind));
 
   auto ifrt_resp = NewIfrtResponse(request->request_metadata().op_id());
 
@@ -2019,7 +2025,7 @@ IfrtBackend::HandleGetDefaultLayoutRequest(
 
 absl::StatusOr<std::shared_ptr<IfrtBackend::LoadedExecutableWithInfo>>
 IfrtBackend::GetLoadedExecutable(uint64_t handle) {
-  absl::MutexLock lock(&executables_mutex_);
+  absl::MutexLock lock(executables_mutex_);
   auto it = executables_.find(handle);
   if (it == executables_.end()) {
     return absl::NotFoundError(
@@ -2029,7 +2035,7 @@ IfrtBackend::GetLoadedExecutable(uint64_t handle) {
 }
 
 absl::StatusOr<IfrtArrayRef> IfrtBackend::ArrayStore::Find(uint64_t handle) {
-  absl::MutexLock l(&mu_);
+  absl::MutexLock l(mu_);
   auto it = arrays_.find(handle);
   if (it == arrays_.end()) {
     return absl::NotFoundError(absl::StrCat("Unknown array handle: ", handle));
@@ -2041,7 +2047,7 @@ absl::StatusOr<std::vector<IfrtArrayRef>> IfrtBackend::ArrayStore::Find(
     absl::Span<const uint64_t> handles) {
   std::vector<IfrtArrayRef> result;
   result.reserve(handles.size());
-  absl::MutexLock l(&mu_);
+  absl::MutexLock l(mu_);
   for (const uint64_t h : handles) {
     auto it = arrays_.find(h);
     if (it == arrays_.end()) {
@@ -2060,7 +2066,7 @@ std::vector<uint64_t> IfrtBackend::ArrayStore::EraseAndReturnMissing(
   std::vector<uint64_t> missing_handles;
   std::vector<xla::ifrt::ArrayRef> to_destruct;
   {
-    absl::MutexLock l(&mu_);
+    absl::MutexLock l(mu_);
     for (const uint64_t h : handles) {
       auto it = arrays_.find(h);
       if (it == arrays_.end()) {
@@ -2078,7 +2084,7 @@ std::vector<uint64_t> IfrtBackend::ArrayStore::EraseAndReturnMissing(
 
 void IfrtBackend::ArrayStore::Insert(absl::Span<const uint64_t> handles,
                                      const absl::Status& status) {
-  absl::MutexLock l(&mu_);
+  absl::MutexLock l(mu_);
   for (const uint64_t h : handles) {
     CHECK(arrays_.insert({h, status}).second) << h;
   }
@@ -2088,7 +2094,7 @@ void IfrtBackend::ArrayStore::Insert(
     absl::Span<const uint64_t> handles,
     absl::Span<const xla::ifrt::ArrayRef> arrays) {
   CHECK_EQ(handles.size(), arrays.size());
-  absl::MutexLock l(&mu_);
+  absl::MutexLock l(mu_);
   for (int i = 0; i < handles.size(); ++i) {
     CHECK(arrays_.insert({handles[i], arrays[i]}).second) << handles[i];
   }

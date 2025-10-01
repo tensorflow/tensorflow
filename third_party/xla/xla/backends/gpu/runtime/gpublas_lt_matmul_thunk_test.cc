@@ -33,6 +33,7 @@ limitations under the License.
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/backends/gpu/runtime/thunk_id.h"
 #include "xla/error_spec.h"
 #include "xla/executable_run_options.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -145,7 +146,8 @@ class GpuBlasLtThunkBuilder {
       bias = slices[has_matrix_bias ? 3 : 2];
     }
 
-    Thunk::ThunkInfo thunk_info = Thunk::ThunkInfo::WithProfileAnnotation(gemm);
+    Thunk::ThunkInfo thunk_info =
+        Thunk::ThunkInfo::WithProfileAnnotation(gemm, ThunkId(1));
     std::string canonical_hlo = gemm->ToString(
         HloPrintOptions::Fingerprint().set_print_backend_config(true));
 

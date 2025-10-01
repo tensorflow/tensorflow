@@ -151,6 +151,7 @@ cc_library(
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
@@ -514,8 +515,6 @@ cc_library(
     deps = [
         ":gpu_kernel_registry",
         ":gpu_test_kernel_traits",
-        "//xla/stream_executor:device_memory",
-        "//xla/stream_executor:kernel",
         "//xla/stream_executor:kernel_spec",
         "//xla/stream_executor:platform",
         "//xla/stream_executor:stream_executor_h",
@@ -569,11 +568,18 @@ xla_cc_test(
 xla_test(
     name = "gpu_kernel_test",
     srcs = ["gpu_kernel_test.cc"],
+    backend_tags = {
+        # TODO(b/445172709): Re-enable once fixed.
+        "b200": ["broken"],
+    },
     backends = ["gpu"],
     deps = [
         ":gpu_test_kernels",
         ":gpu_test_kernels_fatbin",
+        ":tma_metadata",
+        ":tma_metadata_proto_cc",
         "//xla/service:platform_util",
+        "//xla/stream_executor:command_buffer",
         "//xla/stream_executor:device_memory",
         "//xla/stream_executor:kernel",
         "//xla/stream_executor:kernel_spec",
@@ -593,6 +599,7 @@ xla_test(
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest",
         "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:protobuf",
     ],
 )
 
@@ -853,9 +860,15 @@ cc_library(
     name = "all_reduce_kernel",
     hdrs = ["all_reduce_kernel.h"],
     deps = [
+        ":collective_kernel_metadata",
         "//xla/service:collective_ops_utils",
         "//xla/stream_executor:kernel",
     ],
+)
+
+cc_library(
+    name = "collective_kernel_metadata",
+    hdrs = ["collective_kernel_metadata.h"],
 )
 
 cc_library(

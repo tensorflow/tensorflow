@@ -24,7 +24,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
 #include "xla/service/gpu/matmul_utils.h"
-#include "xla/service/gpu/model/tiled_hlo_computation.h"
+#include "xla/service/gpu/model/block_level_parameters.h"
 #include "xla/stream_executor/device_description.h"
 
 namespace xla::gpu {
@@ -46,8 +46,9 @@ namespace xla::gpu {
 // nested fusions, each with their own BlockLevelFusionConfig.
 class NestGemmFusion : public HloModulePass {
  public:
-  explicit NestGemmFusion(const se::GpuComputeCapability& compute_capability)
-      : compute_capability_(compute_capability) {}
+  explicit NestGemmFusion(const se::DeviceDescription& device_description,
+                          mlir::MLIRContext* mlir_context)
+      : device_description_(device_description), mlir_context_(mlir_context) {}
 
   absl::string_view name() const override { return "nest_gemm_fusion"; }
 
@@ -57,7 +58,8 @@ class NestGemmFusion : public HloModulePass {
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
-  const se::GpuComputeCapability compute_capability_;
+  const se::DeviceDescription device_description_;
+  mlir::MLIRContext* mlir_context_;
   absl::StatusOr<bool> RunOnModule(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads);
@@ -75,8 +77,8 @@ namespace detail {
 // function can be removed once `GpuDotFusionCostModel::EstimateRunTimeForDotOp`
 // is implemented.
 absl::StatusOr<BlockLevelParameters> FindBlockLevelParameters(
-    HloDotInstruction* dot, const TritonGemmConfig& config,
-    mlir::MLIRContext* ctx);
+    HloInstruction* dot, const TritonGemmConfig& config, mlir::MLIRContext* ctx,
+    const se::DeviceDescription& device_description);
 
 }  // namespace detail
 

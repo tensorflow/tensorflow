@@ -82,7 +82,8 @@ class FileBasedAutotunerCache : public AutotunerCacheInterface {
   std::optional<Config> Lookup(const HloInstruction* instr) override
       ABSL_LOCKS_EXCLUDED(mutex_);
 
-  absl::Status Insert(const HloInstruction* instr, Config& best_config) override
+  absl::Status Insert(const HloInstruction* instr,
+                      const Config& best_config) override
       ABSL_LOCKS_EXCLUDED(mutex_);
 
  private:

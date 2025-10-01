@@ -135,7 +135,7 @@ std::optional<AutotunerCacheInterface::Config> FileBasedAutotunerCache::Lookup(
     LOG(ERROR) << "Failed to get map key: " << map_key.status();
     return std::nullopt;
   }
-  absl::MutexLock lock(&mutex_);
+  absl::MutexLock lock(mutex_);
   auto it = in_memory_cache_.find(*map_key);
   if (it == in_memory_cache_.end()) {
     return std::nullopt;
@@ -147,14 +147,15 @@ std::optional<AutotunerCacheInterface::Config> FileBasedAutotunerCache::Lookup(
 }
 
 absl::Status FileBasedAutotunerCache::Insert(
-    const HloInstruction* instr, AutotunerCacheInterface::Config& best_config) {
+    const HloInstruction* instr,
+    const AutotunerCacheInterface::Config& best_config) {
   if (cache_config_.autotune_cache_mode ==
       FileBasedCacheConfig::CacheMode::READ) {
     return absl::OkStatus();
   }
   TF_ASSIGN_OR_RETURN(const std::string map_key, GetMapKey(instr));
   TF_ASSIGN_OR_RETURN(AutotunerCacheKey proto_key, GetProtoKey(instr));
-  absl::MutexLock lock(&mutex_);
+  absl::MutexLock lock(mutex_);
   AutotunerCacheEntry entry;
   *entry.mutable_key() = proto_key;
   entry.set_codegen_backend(best_config.codegen_backend_name);
@@ -179,7 +180,7 @@ std::string FileBasedAutotunerCache::GetCacheFilePattern() {
 }
 
 absl::Status FileBasedAutotunerCache::Load() {
-  absl::MutexLock lock(&mutex_);
+  absl::MutexLock lock(mutex_);
   const std::string file_pattern = GetCacheFilePattern();
   VLOG(1) << "Loading autotuner cache from: " << file_pattern;
 

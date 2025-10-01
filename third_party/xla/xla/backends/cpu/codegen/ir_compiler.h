@@ -20,6 +20,7 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/base/thread_annotations.h"
@@ -130,6 +131,11 @@ class IrCompiler : public llvm::orc::IRCompileLayer::IRCompiler {
   // Build the target machine and add any target specific features.
   absl::StatusOr<std::unique_ptr<llvm::TargetMachine>> build_target_machine()
       const;
+
+  void register_compilation_hooks(CompilationHooks hooks) {
+    absl::MutexLock lock(mutex_);
+    hooks_ = std::move(hooks);
+  }
 
  private:
   TargetMachineBuilder target_machine_builder_;

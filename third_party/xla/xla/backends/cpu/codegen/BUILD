@@ -155,7 +155,6 @@ cc_library(
         "//xla/codegen/emitters/transforms:passes",
         "//xla/mlir/tools/mlir_replay/public:compiler_trace_proto_cc",
         "//xla/mlir_hlo",
-        "//xla/mlir_hlo:mhlo_passes",
         "//xla/tsl/framework/mlir:status_scoped_diagnostic_handler",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",
@@ -194,6 +193,7 @@ cc_library(
         "@llvm-project//mlir:VectorDialect",
         "@local_tsl//tsl/profiler/lib:traceme",
         "@local_tsl//tsl/profiler/lib:traceme_encode",
+        "@stablehlo//:stablehlo_passes",
     ],
 )
 
@@ -367,9 +367,9 @@ cc_library(
     hdrs = ["kernel_api_ir_builder.h"],
     deps = [
         ":symbol_name_util",
-        "//xla:cpu_function_runtime",
         "//xla:shape_util",
         "//xla:util",
+        "//xla/backends/cpu:alignment",
         "//xla/hlo/ir:hlo",
         "//xla/service:buffer_assignment",
         "//xla/service:hlo_module_config",
@@ -397,9 +397,9 @@ xla_cc_test(
     srcs = ["kernel_api_ir_builder_test.cc"],
     deps = [
         ":kernel_api_ir_builder",
-        "//xla:cpu_function_runtime",
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
+        "//xla/backends/cpu:alignment",
         "//xla/hlo/analysis:alias_info",
         "//xla/hlo/analysis:hlo_ordering",
         "//xla/hlo/ir:hlo",

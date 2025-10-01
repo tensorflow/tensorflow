@@ -519,10 +519,10 @@ TEST(OpDefEqualityTest, EqualAndHash) {
   string a1 = "attr { name: 'a' type: 'string' } ";
   string a2 = "attr { name: 'b' type: 'string' } ";
   string a3 = "attr { name: 'c' type: 'int32' } ";
-  OpDef o1 = FromText(strings::StrCat("name: 'MatMul' ", a1));
-  OpDef o2 = FromText(strings::StrCat("name: 'MatMul' ", a2));
-  OpDef o3 = FromText(strings::StrCat("name: 'MatMul' ", a1, a2));
-  OpDef o4 = FromText(strings::StrCat("name: 'MatMul' ", a2, a1));
+  OpDef o1 = FromText(absl::StrCat("name: 'MatMul' ", a1));
+  OpDef o2 = FromText(absl::StrCat("name: 'MatMul' ", a2));
+  OpDef o3 = FromText(absl::StrCat("name: 'MatMul' ", a1, a2));
+  OpDef o4 = FromText(absl::StrCat("name: 'MatMul' ", a2, a1));
 
   ExpectEqual(o1, o1);
   ExpectEqual(o3, o4);

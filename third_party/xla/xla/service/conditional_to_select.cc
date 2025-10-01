@@ -81,10 +81,12 @@ static absl::StatusOr<bool> DoConditionalToSelect(HloInstruction* conditional) {
   HloInstruction* if_call_op =
       computation->AddInstruction(HloInstruction::CreateCall(
           conditional->shape(), {true_operand}, true_computation));
+  if_call_op->set_original_value(conditional->original_value());
   conditional->SetupDerivedInstruction(if_call_op);
   HloInstruction* else_call_op =
       computation->AddInstruction(HloInstruction::CreateCall(
           conditional->shape(), {false_operand}, false_computation));
+  else_call_op->set_original_value(conditional->original_value());
   conditional->SetupDerivedInstruction(else_call_op);
   HloInstruction* condition = conditional->mutable_operand(0);
   if (is_form2) {

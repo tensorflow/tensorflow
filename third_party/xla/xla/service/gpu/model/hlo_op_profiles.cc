@@ -27,6 +27,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/gpu/model/hlo_op_profile.pb.h"
 #include "xla/service/gpu/model/hlo_op_profiles_data.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "tsl/platform/protobuf.h"
 

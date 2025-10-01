@@ -134,6 +134,7 @@ bool WeightCacheBuilder::Start(const char* path, const FileDescriptor& fd) {
   XNNPackCacheHeader header{XNNPackCacheHeader::kInvalidHeader};
   header.buffer_list_offset = sizeof(header);
 
+  XNNPACK_RETURN_CHECK(fd_.Truncate(0), "could not truncate weight cache");
   XNNPACK_RETURN_CHECK(fd_.Write(&header, sizeof(header)),
                        "could not write initial cache header in %s: %s.",
                        file_path_.c_str(), strerror(errno));
@@ -286,7 +287,6 @@ MMapWeightCacheProvider::MMapWeightCacheProvider(
       XNN_MOVE_CONSTRUCT_MEMBER(file_descriptor_),
       XNN_MOVE_CONSTRUCT_MEMBER(builder_),
       XNN_MOVE_CONSTRUCT_MEMBER(building_run_),
-      XNN_MOVE_CONSTRUCT_MEMBER(is_build_step_),
       XNN_MOVE_CONSTRUCT_MEMBER(offset_to_addr_) {
   // The contexts need to keep pointing to their owning object.
   cache_provider_.context = this;
@@ -310,7 +310,6 @@ MMapWeightCacheProvider& MMapWeightCacheProvider::operator=(
   XNN_MOVE_MEMBER(file_descriptor_);
   XNN_MOVE_MEMBER(builder_);
   XNN_MOVE_MEMBER(building_run_);
-  XNN_MOVE_MEMBER(is_build_step_);
   XNN_MOVE_MEMBER(offset_to_addr_);
 #undef XNN_MOVE_MEMBER
   return *this;
@@ -528,8 +527,7 @@ bool MMapWeightCacheProvider::StartBuildStep() {
   if (IsBuilding()) {
     return true;
   }
-  is_build_step_ = builder_.StartBuildStep();
-  return is_build_step_;
+  return builder_.StartBuildStep();
 }
 
 bool MMapWeightCacheProvider::StopBuildStep() {
@@ -543,7 +541,6 @@ bool MMapWeightCacheProvider::StopBuildStep() {
         file_descriptor_, /*offset=*/0, file_path_.c_str()));
   }
 #endif
-  is_build_step_ = false;
   return LoadLastBuildStep();
 }
 
@@ -592,9 +589,6 @@ size_t MMapWeightCacheProvider::LookUpOrInsert(
       offset_it != cache_key_to_offset_.end()) {
     return offset_it->second.offset;
   }
-
-  XNNPACK_ABORT_CHECK(
-      IsBuilding(), "Cannot insert a buffer in a cache that is not building.");
 
   const BufferLocation location = builder_.Append(pack_id, ptr, size);
   XNNPACK_ABORT_CHECK(!location.IsInvalid(),

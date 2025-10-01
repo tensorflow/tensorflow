@@ -57,20 +57,20 @@ LaunchDimensions InPlaceDynamicUpdateSliceFusion::launch_dimensions() const {
                                    config_);
 }
 
-std::optional<IndexingMap>
+std::optional<std::vector<IndexingMap>>
 InPlaceDynamicUpdateSliceFusion::ComputeThreadIdToInputIndexing(
-    int64_t root_index, int64_t hero_operand_index,
-    mlir::MLIRContext* indexing_context) const {
+    int64_t root_index, mlir::MLIRContext* indexing_context) const {
   // TODO(b/331355203): Implement thread ID -> operand indexing.
-  if (hero_operand_index != kDUSUpdateIndex) {
-    return std::nullopt;
-  }
+  std::vector<IndexingMap> result(
+      analysis_.fusion_hero(root_index).GetOperands().size(),
+      IndexingMap::GetUndefined());
 
   using KernelEmitter = emitters::DynamicUpdateSliceKernelEmitter;
-  return KernelEmitter::ComputeWorkItemIdToOutputIndexing(
+  result[kDUSUpdateIndex] = KernelEmitter::ComputeWorkItemIdToOutputIndexing(
       GetWorkDimensions(),
       KernelEmitter::GetIndexingShape(analysis_.fusion_spec()),
       indexing_context);
+  return result;
 }
 
 std::vector<emitters::EpilogueSpecification>

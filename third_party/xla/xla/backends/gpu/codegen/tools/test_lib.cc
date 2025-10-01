@@ -41,7 +41,8 @@ absl::StatusOr<std::unique_ptr<EmitterData>> GetEmitter(
   data->analysis.emplace(
       HloFusionAnalysis::Create(*data->fusion, data->device.value()));
   PreBufferAssignmentFusionInfo info(data->analysis.value());
-  auto fusion_emitter = GetFusionEmitter(info);
+  mlir::MLIRContext ctx = GetMlirContextForTest();
+  auto fusion_emitter = GetFusionEmitter(info, &ctx);
 
   auto emitter = dynamic_cast<EmitterBase*>(fusion_emitter.get());
   TF_RET_CHECK(emitter != nullptr) << "Expected emitter to be an EmitterBase";

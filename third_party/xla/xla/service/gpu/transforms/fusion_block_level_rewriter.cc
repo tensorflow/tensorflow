@@ -49,6 +49,7 @@ limitations under the License.
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace gpu {
@@ -242,7 +243,6 @@ absl::StatusOr<bool> FusionBlockLevelRewriter::Run(
   TF_RETURN_IF_ERROR(EnsureTritonSupportsComputeCapability(
       device_info_.gpu_compute_capability()));
 
-  MLIRContext ctx;
   bool has_changed = false;
 
   for (HloComputation* computation :
@@ -254,7 +254,7 @@ absl::StatusOr<bool> FusionBlockLevelRewriter::Run(
         ::xla::Cast<HloFusionInstruction>(computation->FusionInstruction());
     TF_ASSIGN_OR_RETURN(
         bool changed, ProcessFusionInstruction(fusion_instruction, device_info_,
-                                               shape_size_, &ctx));
+                                               shape_size_, mlir_context_));
 
     has_changed |= changed;
   }

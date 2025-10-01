@@ -15,18 +15,20 @@ limitations under the License.
 
 #ifndef XLA_SERVICE_CPU_ONEDNN_CONTRACTION_REWRITER_H_
 #define XLA_SERVICE_CPU_ONEDNN_CONTRACTION_REWRITER_H_
-#if defined(INTEL_MKL)
 
-#include <optional>
+#include <variant>
 
-#include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_set.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "unsupported/Eigen/CXX11/Tensor"
-#include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
 #include "xla/service/cpu/onednn_convolution.h"
 #include "xla/service/cpu/onednn_matmul.h"
-#include "tsl/platform/threadpool.h"
+#include "xla/service/cpu/onednn_util.h"
+#include "xla/tsl/platform/threadpool.h"
 
 namespace xla {
 namespace cpu {
@@ -86,5 +88,4 @@ struct PrimitiveTrait<config, OneDnnOptimizationConfig*> {
 }  // namespace cpu
 }  // namespace xla
 
-#endif  // INTEL_MKL
 #endif  // XLA_SERVICE_CPU_ONEDNN_CONTRACTION_REWRITER_H_

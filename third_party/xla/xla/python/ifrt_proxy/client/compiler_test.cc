@@ -22,6 +22,7 @@
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
@@ -30,7 +31,6 @@
 #include "xla/python/ifrt/basic_device_list.h"
 #include "xla/python/ifrt/compiler.h"
 #include "xla/python/ifrt/device.h"
-#include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt/mock.h"
 #include "xla/python/ifrt/program.h"
 #include "xla/python/ifrt/serdes.h"
@@ -43,6 +43,7 @@
 #include "xla/python/ifrt_proxy/client/version.h"
 #include "xla/python/ifrt_proxy/common/ifrt_service.pb.h"
 #include "xla/python/ifrt_proxy/common/test_utils.h"
+#include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/platform/statusor.h"
 #include "tsl/platform/protobuf.h"  // IWYU pragma: keep
 #include "tsl/platform/status_matchers.h"
@@ -151,7 +152,7 @@ class CompilerTest : public testing::Test {
     // Default handler that ignores all uninteresting requests but still
     // invokes the callback in order to avoid hanging the caller forever.
     EXPECT_CALL(*session_, Enqueue(_))
-        .WillRepeatedly(Return(Future<ClientSession::Response>(
+        .WillRepeatedly(Return(tsl::Future<ClientSession::Response>(
             absl::InternalError("Request has no mock handlers"))));
   }
 
@@ -166,9 +167,9 @@ TEST_F(CompilerTest, Compile) {
   auto device_list = BasicDeviceList::Create({&devices[0], &devices[1]});
 
   MockClient client;
-  ON_CALL(client, LookupDevice(_)).WillByDefault(Invoke([&](DeviceId id) {
+  ON_CALL(client, LookupDevice(_)).WillByDefault([&](DeviceId id) {
     return &devices[id.value()];
-  }));
+  });
   ON_CALL(client, MakeDeviceList(_)).WillByDefault(Return(device_list));
 
   Compiler compiler(&client, rpc_helper_);

@@ -6014,10 +6014,15 @@ INSTANTIATE_TEST_SUITE_P(
 INSTANTIATE_TEST_SUITE_P(UnboundedDynamism, UnboundedUnaryOpShapeInferenceTest,
                          ::testing::ValuesIn<UnaryOpTestCase>(
                              {{"f32[?]", "f32[?]", HloOpcode::kAbs},
+                              {"f32[?]", "f32[?]", HloOpcode::kAcos},
+                              {"f32[?]", "f32[?]", HloOpcode::kAcosh},
+                              {"f32[?]", "f32[?]", HloOpcode::kAsin},
+                              {"f32[?]", "f32[?]", HloOpcode::kAtanh},
                               {"f32[?]", "f32[?]", HloOpcode::kCbrt},
                               {"f32[?]", "f32[?]", HloOpcode::kCeil},
                               {"u32[?]", "u32[?]", HloOpcode::kClz},
                               {"f32[?]", "f32[?]", HloOpcode::kCos},
+                              {"f32[?]", "f32[?]", HloOpcode::kCosh},
                               {"f32[?]", "f32[?]", HloOpcode::kErf},
                               {"f32[?]", "f32[?]", HloOpcode::kExp},
                               {"f32[?]", "f32[?]", HloOpcode::kExpm1},
@@ -6037,8 +6042,8 @@ INSTANTIATE_TEST_SUITE_P(UnboundedDynamism, UnboundedUnaryOpShapeInferenceTest,
                               {"f32[?]", "f32[?]", HloOpcode::kRsqrt},
                               {"f32[?]", "f32[?]", HloOpcode::kSign},
                               {"f32[?]", "f32[?]", HloOpcode::kSin},
+                              {"f32[?]", "f32[?]", HloOpcode::kSinh},
                               {"f32[?]", "f32[?]", HloOpcode::kSqrt},
                               {"f32[?]", "f32[?]", HloOpcode::kTanh}}));
-
 }  // namespace
 }  // namespace xla

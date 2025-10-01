@@ -52,7 +52,6 @@ limitations under the License.
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/gpu_float_support.h"
 #include "xla/service/gpu/ir_emission_utils.h"
-#include "xla/service/gpu/model/tiled_hlo_computation.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"

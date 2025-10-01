@@ -104,28 +104,13 @@ cc_library(
         "//xla/service/spmd/shardy:utils",
         "@com_google_absl//absl/log:check",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:Analysis",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
         "@shardy//shardy/dialect/sdy/ir:dialect",
-        "@stablehlo//:stablehlo_ops",
-    ],
-)
-
-cc_library(
-    name = "clone_manual_computation_calls",
-    srcs = ["clone_manual_computation_calls.cc"],
-    hdrs = ["clone_manual_computation_calls.h"],
-    deps = [
-        "//xla/service/spmd/shardy:constants",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:FuncDialect",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:Support",
-        "@llvm-project//mlir:TransformUtils",
         "@stablehlo//:stablehlo_ops",
     ],
 )
@@ -151,7 +136,6 @@ cc_library(
     hdrs = ["pipelines.h"],
     visibility = internal_visibility([":friends"]),
     deps = [
-        ":clone_manual_computation_calls",
         ":dedup_meshes",
         ":export_ops",
         ":export_shardy_attrs",

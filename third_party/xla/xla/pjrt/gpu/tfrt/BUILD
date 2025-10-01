@@ -2,6 +2,7 @@ load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
 load("//xla:xla.default.bzl", "xla_cc_test")
 load("//xla/pjrt/gpu:package_groups.bzl", "xla_gpu_internal_packages")
+load("//xla/tests:build_defs.bzl", "xla_test")
 load("//xla/tsl:tsl.bzl", "internal_visibility")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
@@ -40,6 +41,7 @@ cc_library(
         ":tracked_gpu_device_buffer",
         "//xla:debug_options_flags",
         "//xla:executable_run_options",
+        "//xla:future",
         "//xla:literal",
         "//xla:shape_layout",
         "//xla:shape_tree",
@@ -55,6 +57,8 @@ cc_library(
         "//xla/core/collectives:collectives_registry",
         "//xla/hlo/builder:xla_computation",
         "//xla/hlo/ir:hlo",
+        "//xla/pjrt:abstract_tracked_device_buffer",
+        "//xla/pjrt:device_event",
         "//xla/pjrt:host_callback",
         "//xla/pjrt:host_memory_spaces",
         "//xla/pjrt:layout_mode",
@@ -66,6 +70,7 @@ cc_library(
         "//xla/pjrt:pjrt_executable",
         "//xla/pjrt:pjrt_future",
         "//xla/pjrt:pjrt_stream_executor_device_description",
+        "//xla/pjrt:raw_buffer",
         "//xla/pjrt:semaphore",
         "//xla/pjrt:stream_executor_executable",
         "//xla/pjrt:transpose",
@@ -149,15 +154,17 @@ cc_library(
     ]),
 )
 
-xla_cc_test(
+xla_test(
     name = "tfrt_gpu_client_test",
     srcs = ["tfrt_gpu_client_test.cc"],
+    backends = [
+        "nvgpu_any",
+    ],
     tags = [
-        "gpu",
+        "multi_gpu",
         "no_oss",
         "noasan",
         "nomsan",
-        "requires-gpu-nvidia:2",
     ],
     deps = [
         ":gpu_event",
@@ -177,6 +184,7 @@ xla_cc_test(
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:span",
         "@llvm-project//mlir:IR",
+        "//xla:future",
         "//xla:literal",
         "//xla:literal_util",
         "//xla:shape_util",
@@ -203,7 +211,6 @@ xla_cc_test(
         "//xla/pjrt/gpu:gpu_topology_proto_cc",
         "//xla/pjrt/plugin/xla_gpu:xla_gpu_client_options",
         "//xla/pjrt/proto:compile_options_proto_cc",
-        "//xla/service:gpu_plugin",
         "//xla/service:platform_util",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor:device_memory",
@@ -263,11 +270,11 @@ cc_library(
         "//xla/service:shaped_buffer",
         "//xla/stream_executor:device_memory",
         "//xla/stream_executor:device_memory_allocator",
+        "//xla/stream_executor:event",
         "//xla/stream_executor:stream_executor_h",
         "//xla/tsl/concurrency:async_value",
         "//xla/tsl/framework:allocator",
         "//xla/tsl/platform:statusor",
-        "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",

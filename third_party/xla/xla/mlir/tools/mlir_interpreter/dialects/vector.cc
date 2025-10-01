@@ -760,8 +760,7 @@ llvm::SmallVector<InterpreterValue> TransferWrite(
              src_view.num_dimensions() &&
          "expected matching number of results");
 
-  dst =
-      mlir::isa<TensorType>(transfer.getSource().getType()) ? dst.Clone() : dst;
+  dst = mlir::isa<TensorType>(transfer.getBase().getType()) ? dst.Clone() : dst;
   auto dst_slice = ExtractMemorySlice(state, transfer.getPermutationMap(), dst,
                                       src, offsets, transfer.getInBounds());
   if (!dst_slice) {

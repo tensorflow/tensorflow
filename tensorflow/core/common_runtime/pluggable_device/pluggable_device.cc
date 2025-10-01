@@ -108,7 +108,6 @@ class PluggableDevice::StreamGroupFactory {
                    << " with status: " << stream_or_status.status();
         return group;
       }
-      group->compute = stream_or_status->get();
       group->host_to_device = stream_or_status->get();
       allocated_streams_.emplace_back(std::move(stream_or_status.value()));
       VLOG(2) << "Created host_to_device_stream[" << stream_group_within_device
@@ -121,7 +120,6 @@ class PluggableDevice::StreamGroupFactory {
                    << " with status: " << stream_or_status.status();
         return group;
       }
-      group->compute = stream_or_status->get();
       group->device_to_host = stream_or_status->get();
       allocated_streams_.emplace_back(std::move(stream_or_status.value()));
       VLOG(2) << "Created device_to_host_stream[" << stream_group_within_device
@@ -144,7 +142,6 @@ class PluggableDevice::StreamGroupFactory {
                      << " with status: " << stream_or_status.status();
           return group;
         }
-        group->compute = stream_or_status->get();
         group->device_to_device.push_back(stream_or_status->get());
         allocated_streams_.emplace_back(std::move(stream_or_status.value()));
         VLOG(2) << "Created device_to_device_stream["
@@ -257,7 +254,7 @@ absl::Status PluggableDevice::Init(const SessionOptions& options) {
     if (device_thread_mode == "gpu_private") {
       thread_pool_ = std::make_unique<thread::ThreadPool>(
           options.env, ThreadOptions(),
-          strings::StrCat("gpu_private_", tf_device_id_.value()),
+          absl::StrCat("gpu_private_", tf_device_id_.value()),
           static_cast<int32>(device_thread_count),
           !options.config.experimental().disable_thread_spinning(),
           /*allocator=*/nullptr);
@@ -271,7 +268,7 @@ absl::Status PluggableDevice::Init(const SessionOptions& options) {
       set_tensorflow_device_thread_pool(thread_pool);
     } else {
       string error_message =
-          strings::StrCat("Invalid gpu_thread_mode: ", device_thread_mode);
+          absl::StrCat("Invalid gpu_thread_mode: ", device_thread_mode);
       LOG(WARNING) << error_message;
       return errors::InvalidArgument(error_message);
     }

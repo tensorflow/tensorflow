@@ -28,6 +28,7 @@ cc_library(
         "//xla/python/pjrt_ifrt:pjrt_attribute_map_util",
         "//xla/python/pjrt_ifrt:pjrt_dtype",
         "//xla/service:computation_placer_hdr",
+        "//xla/tsl/concurrency:future",
         "//xla/tsl/concurrency:ref_count",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status",

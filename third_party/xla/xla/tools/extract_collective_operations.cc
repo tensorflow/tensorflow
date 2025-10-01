@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <functional>
+#include <iostream>
 #include <memory>
 #include <string>
 #include <vector>
@@ -140,7 +141,9 @@ int main(int argc, char** argv) {
   bool parse_ok = tsl::Flags::Parse(&argc, argv, flag_list);
   tsl::port::InitMain(kUsageString.c_str(), &argc, &argv);
   if (!parse_ok) {
-    LOG(QFATAL) << kUsageString;
+    // Print the usage using cerr to avoid truncation by LOG.
+    std::cerr << kUsageString;
+    return 1;
   }
 
   absl::flat_hash_set<xla::HloOpcode> operation_types;

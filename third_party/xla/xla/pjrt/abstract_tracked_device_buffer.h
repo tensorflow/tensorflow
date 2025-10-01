@@ -18,15 +18,22 @@ limitations under the License.
 
 #include <array>
 #include <memory>
+#include <vector>
 
 #include "absl/base/thread_annotations.h"
+#include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
+#include "xla/future.h"
+#include "xla/pjrt/device_event.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_future.h"
 #include "xla/pjrt/raw_buffer.h"
+#include "xla/tsl/concurrency/async_value.h"
+#include "xla/tsl/concurrency/ref_count.h"
+#include "xla/util.h"
 
 namespace xla {
 
@@ -58,28 +65,29 @@ class AbstractTrackedDeviceBuffer {
   // Clones an abstract buffer with an additional control dependency.
   virtual absl::StatusOr<std::unique_ptr<AbstractTrackedDeviceBuffer>>
   CloneWithControlDependency(PjRtMemorySpace* memory_space,
-                             PjRtFuture<> dependency) {
-    return absl::UnimplementedError(
-        "DonateWithControlDependency is not supported.");
+                             Future<> dependency) {
+    return Unimplemented("DonateWithControlDependency is not supported.");
   }
 
-  // Populates a future::promise when all the definition events are complete.
-  virtual PjRtFuture<>::Promise GetReadyFuturePromise(
-      PjRtMemorySpace* memory_space) {
-    auto promise = PjRtFuture<>::CreatePromise();
-    promise.Set(absl::UnimplementedError(
-        absl::StrCat("GetReadyFuturePromise not supported for ",
-                     memory_space->DebugString())));
-    return promise;
+  // Returns a future that becomes available when all definition events are
+  // complete.
+  virtual Future<> GetReadyFuture(PjRtMemorySpace* memory_space) {
+    return Future<>(Unimplemented("GetReadyFuture not supported for %s",
+                                  memory_space->DebugString()));
   }
 
   // Waits for all usage and definition events to complete synchronously
   // and returns the status.
   virtual absl::Status BlockForOperationsToComplete(
       PjRtMemorySpace* memory_space) {
-    return absl::UnimplementedError(
-        absl::StrCat("BlockForOperationsToComplete not supported for ",
-                     memory_space->DebugString()));
+    return Unimplemented("BlockForOperationsToComplete not supported for %s",
+                         memory_space->DebugString());
+  }
+
+  virtual absl::StatusOr<tsl::RCReference<PjRtDeviceEvent>> GetDefinitionEvent(
+      PjRtMemorySpace* memory_space) {
+    return Unimplemented("GetDefinitionEvent is not supported for %s",
+                         memory_space->ToString());
   }
 };
 
@@ -218,9 +226,8 @@ class CommonPjRtBuffer : public PjRtBuffer {
 
   absl::Status AcquireScopedRawBuffer(
       absl::AnyInvocable<absl::StatusOr<tsl::RCReference<PjRtDeviceEvent>>(
-                             tsl::RCReference<CommonPjRtRawBuffer> raw_buffer,
-                             std::vector<tsl::RCReference<tsl::AsyncValue>>
-                                 definition_events) &&>
+          tsl::RCReference<CommonPjRtRawBuffer> raw_buffer,
+          std::vector<tsl::RCReference<tsl::AsyncValue>> definition_events) &&>
           scoped_acquire,
       const char* caller_name = "AcquireScopedRawBuffer");
 
@@ -288,7 +295,7 @@ class CommonPjRtBuffer : public PjRtBuffer {
   }
 
   mutable absl::Mutex mu_;
-  PjRtFuture<>::Promise definition_promise_ ABSL_GUARDED_BY(mu_);
+  Future<> definition_future_ ABSL_GUARDED_BY(mu_);
   PjRtMemorySpace* const memory_space_;
 
  private:

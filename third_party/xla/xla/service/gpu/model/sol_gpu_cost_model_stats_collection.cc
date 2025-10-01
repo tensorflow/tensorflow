@@ -104,7 +104,7 @@ absl::StatusOr<bool> SolGpuCostModelStatsCollection::Run(
       SolLatencyEstimator::Create(
           scheduler_config,
           std::make_unique<GpuLatencyEstimator>(pointer_size_), device_info_,
-          shape_size_in_bytes_fn_, module->entry_computation(),
+          shape_size_in_bytes_fn_, module->entry_computation(), mlir_context_,
           std::move(cost_analysis)));
 
   for (HloComputation* comp : module->MakeComputationPostOrder()) {

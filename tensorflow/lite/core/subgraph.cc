@@ -322,6 +322,7 @@ void Subgraph::CleanupNode(int node_index) {
   TfLiteIntArrayFree(node.intermediates);
   if (node.builtin_data) free(node.builtin_data);
   OpFree(registration, node.user_data);
+  node.user_data = nullptr;
   node.builtin_data = nullptr;
 }
 

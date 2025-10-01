@@ -32,6 +32,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "llvm/Support/MathExtras.h"
 #include "xla/backends/gpu/codegen/triton/fusion.h"
+#include "xla/codegen/tiling/tiled_hlo_computation.h"
 #include "xla/hlo/analysis/indexing_analysis.h"
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -45,8 +46,6 @@ limitations under the License.
 #include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
 #include "xla/service/gpu/model/gpu_performance_model_base.h"
 #include "xla/service/gpu/model/symbolic_tile_analysis.h"
-#include "xla/service/gpu/model/tiled_hlo_computation.h"
-#include "xla/service/gpu/model/tiled_hlo_instruction.h"
 #include "xla/service/gpu/model/triton_emitter_constraints.h"
 #include "xla/service/instruction_fusion.h"
 #include "xla/shape.h"
@@ -87,8 +86,8 @@ int64_t GetPaddedTileSize(absl::Span<int64_t const> tile_sizes) {
 //
 // Spilling almost always causes significant performance regressions, so this
 // heuristic tries to be safe and increase recall at the cost of precision.
-bool DoesTileFitsInRegisters(int64_t tile_size,
-                             const se::DeviceDescription& device_info) {
+bool DoesTileFitInRegisters(int64_t tile_size,
+                            const se::DeviceDescription& device_info) {
   // This is a conservative estimate to make sure that we don't get a tile that
   // is too big and results in register spills.
   //
@@ -141,8 +140,8 @@ bool DoesComputationFitInRegisters(
     const se::DeviceDescription& device_info) {
   // Check that output tiles fit in registers.
   for (const TiledHloInstruction* root : tiled_hlo_computation.GetRoots()) {
-    if (!DoesTileFitsInRegisters(GetPaddedTileSize(root->tile_sizes()),
-                                 device_info)) {
+    if (!DoesTileFitInRegisters(GetPaddedTileSize(root->tile_sizes()),
+                                device_info)) {
       return false;
     }
   }
@@ -154,8 +153,8 @@ bool DoesComputationFitInRegisters(
     // Iota is not an operand, but usually needs to be materialized in
     // registers.
     if ((is_operand || tiled_hlo->hlo()->opcode() == HloOpcode::kIota) &&
-        !DoesTileFitsInRegisters(GetPaddedTileSize(tiled_hlo->tile_sizes()),
-                                 device_info)) {
+        !DoesTileFitInRegisters(GetPaddedTileSize(tiled_hlo->tile_sizes()),
+                                device_info)) {
       return false;
     }
   }
@@ -311,7 +310,7 @@ GpuPerformanceModelWithIndexingAnalysis::EstimateRunTimeForFusion(
   auto root_shape = roots.front().shape();
 
   LaunchDimensions launch_dimensions =
-      EstimateFusionLaunchDimensions(fusion_analysis);
+      EstimateFusionLaunchDimensions(fusion_analysis, mlir_context_);
 
   int64_t num_blocks = launch_dimensions.num_blocks();
 

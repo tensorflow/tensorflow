@@ -39,7 +39,7 @@ class TestQueue {
 
   // Pushes `t` into the queue.
   void Push(T t) {
-    absl::MutexLock l(&mu_);
+    absl::MutexLock l(mu_);
     queue_.push_back(std::move(t));
   }
 
@@ -47,7 +47,7 @@ class TestQueue {
   // appears within `pop_timeout` (because `Push` is called). Otherwise returns
   // std::nullopt.
   std::optional<T> PopOrTimeout() {
-    absl::MutexLock l(&mu_);
+    absl::MutexLock l(mu_);
     auto cond = [this]() ABSL_SHARED_LOCKS_REQUIRED(mu_) -> bool {
       return !queue_.empty();
     };
@@ -71,14 +71,14 @@ class TestQueue {
   // Sets whether the queue is allowed to be destructed while it contains
   // unpopped elements.
   void AllowNonEmptyDestruction(bool allow) {
-    absl::MutexLock l(&mu_);
+    absl::MutexLock l(mu_);
     allow_non_empty_destruction_ = allow;
   }
 
   // Checks that the queue is either empty, or `AllowNonEmptyDestruction(true)`
   // has been called.
   ~TestQueue() {
-    absl::MutexLock l(&mu_);
+    absl::MutexLock l(mu_);
     if (!allow_non_empty_destruction_) CHECK(queue_.empty()) << " " << this;
   }
 

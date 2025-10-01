@@ -78,6 +78,8 @@ class HloRunnerPropertyTag final {
   static constexpr Type kUsingGpuRocm = 1;
   // Indicates that this runner is a CPU runner.
   static constexpr Type kCpu = 2;
+  // Indicates that the runner is using CUDA.
+  static constexpr Type kUsingGpuCuda = 3;
 
  private:
   HloRunnerPropertyTag() = default;
@@ -319,6 +321,9 @@ class HloRunnerInterface {
   virtual bool ExecutablesAreEquivalent(
       const OpaqueExecutable* absl_nonnull lhs,
       const OpaqueExecutable* absl_nonnull rhs) const = 0;
+
+  virtual absl::StatusOr<DeviceAssignment> GetDefaultDeviceAssignment(
+      int num_replicas, int num_partitions) const = 0;
 };
 
 }  // namespace xla

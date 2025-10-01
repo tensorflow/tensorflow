@@ -323,15 +323,17 @@ class CoordinationServiceAgent {
   absl::StatusOr<std::vector<tensorflow::CoordinatedTask>> GetAliveTasks(
       const std::vector<tensorflow::CoordinatedTask>& tasks);
 
-  // Returns the latest known set of incarnation ids for the provided
-  // tasks. Incarnation ids can be refreshed by calling GetAliveTasks.
+  // Returns the latest known set of incarnation ids for every task. Incarnation
+  // ids can be refreshed by calling GetAliveTasks.
   //
   // When a task starts executing, it generates a random 64 bit incarnation id.
   // If a task fails and restarts, for example, it will have a different
   // incarnation id before and after it fails. This allows us to distinguish
   // different executions of the same task.
-  absl::StatusOr<std::vector<IncarnationId>> Incarnations(
-      absl::Span<const int> tasks) const;
+  absl::flat_hash_map<int, IncarnationId> Incarnations() const {
+    absl::MutexLock lock(incarnations_mu_);
+    return incarnations_;
+  }
 
   // Get unowned Env* that the agent was initialized with.
   absl::StatusOr<Env*> GetEnv();

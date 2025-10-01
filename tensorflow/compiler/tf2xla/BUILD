@@ -408,6 +408,7 @@ cc_library(
         # Keep dependencies to a minimum here; this library is used in every AOT
         # binary produced by tfcompile.
         "@local_xla//xla/backends/cpu/runtime:rng_state_lib",
+        "@local_xla//xla/backends/cpu:alignment",
         "@local_xla//xla:cpu_function_runtime",
         "@local_xla//xla:executable_run_options",
         "//tensorflow/core/platform:types",
@@ -472,6 +473,7 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "@local_xla//xla:cpu_function_runtime",
+        "@local_xla//xla/backends/cpu:alignment",
     ],
 )
 
@@ -836,9 +838,10 @@ cc_library(
         ":host_compute_metadata_proto_cc",
         ":xla_resource",
         "//tensorflow/core:framework",
-        "@com_google_absl//absl/types:optional",
+        "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
+        "@local_xla//xla:shape_util",
         "@local_xla//xla/hlo/builder:xla_builder",
         "@local_xla//xla/hlo/ir:hlo",
     ],

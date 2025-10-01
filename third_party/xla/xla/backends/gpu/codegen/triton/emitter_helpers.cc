@@ -441,6 +441,11 @@ absl::StatusOr<Value> EmitElementwise(EmitterLocOpBuilder& b,
     }
     case HloOpcode::kAdd:
       if (is_integer) {
+        // XLA add semantics for predicates is equal to bitwise OR, while Arith
+        // defines it differently. Replace add with or in this case.
+        if (inputs[0].getType().isInteger(1)) {
+          return b.create<ma::OrIOp>(inputs[0], inputs[1]);
+        }
         return b.create<ma::AddIOp>(inputs[0], inputs[1]);
       }
       return b.create<ma::AddFOp>(inputs[0], inputs[1]);

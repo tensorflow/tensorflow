@@ -72,7 +72,7 @@ SerDesVersion GetRequestedSerDesVersion(const SerializeOptions* options) {
 
 void RegisterSerDes(const void* type_id, std::unique_ptr<SerDes> serdes) {
   Registry* const r = registry();
-  absl::MutexLock l(&r->mu);
+  absl::MutexLock l(r->mu);
 
   CHECK(r->type_id_to_serdes.insert({type_id, serdes.get()}).second)
       << "xla::ifrt::SerDes cannot be registered more than once for the same "
@@ -96,7 +96,7 @@ absl::StatusOr<Serialized> Serialize(
   SerDes* serdes;
   {
     Registry* const r = registry();
-    absl::MutexLock l(&r->mu);
+    absl::MutexLock l(r->mu);
     auto it = r->type_id_to_serdes.find(serializable.dynamicClassID());
     if (it == r->type_id_to_serdes.end()) {
       return absl::UnimplementedError(
@@ -121,7 +121,7 @@ absl::StatusOr<std::unique_ptr<Serializable>> DeserializeUnchecked(
   SerDes* serdes;
   {
     Registry* const r = registry();
-    absl::MutexLock l(&r->mu);
+    absl::MutexLock l(r->mu);
     auto it = r->name_to_serdes.find(serialized.type_name());
     if (it == r->name_to_serdes.end()) {
       return absl::UnimplementedError(absl::StrCat(

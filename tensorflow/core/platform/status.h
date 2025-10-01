@@ -36,8 +36,6 @@ using Status ABSL_DEPRECATE_AND_INLINE() = ::absl::Status;
 #endif
 using tsl::StatusCallback;
 using tsl::StatusGroup;
-using tsl::TfCheckOpHelper;
-using tsl::TfCheckOpHelperOutOfLine;
 
 namespace errors {
 #ifdef SWIG

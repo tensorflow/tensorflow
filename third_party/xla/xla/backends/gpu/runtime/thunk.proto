@@ -29,6 +29,7 @@ import "xla/xla_data.proto";
 message ThunkInfoProto {
   string profile_annotation = 1;
   int64 execution_stream_id = 2;
+  int64 thunk_id = 3;
 }
 
 message CopyThunkProto {
@@ -129,6 +130,23 @@ message DynamicSliceThunkProto {
       offset_as_function_of_indvar_modules_metadata = 7;
 }
 
+message MemzeroThunkProto {
+  xla.buffer_assignment.BufferAllocationSliceProto dest_buffer = 1;
+}
+
+message ShapedSliceProto {
+  xla.buffer_assignment.BufferAllocationSliceProto slice = 1;
+  xla.ShapeProto shape = 2;
+}
+
+message InfeedThunkProto {
+  repeated ShapedSliceProto dest_slices = 1;
+}
+
+message SelectKThunkProto {
+  // TODO(upwind): Add fields for SelectKThunkProto.
+}
+
 message ThunkProto {
   ThunkInfoProto thunk_info = 1;
 
@@ -150,6 +168,9 @@ message ThunkProto {
     HostExecuteStartThunkProto host_execute_start_thunk = 16;
     HostExecuteDoneThunkProto host_execute_done_thunk = 17;
     DynamicSliceThunkProto dynamic_slice_thunk = 18;
+    MemzeroThunkProto memzero_thunk = 19;
+    SelectKThunkProto select_k_thunk = 20;
+    InfeedThunkProto infeed_thunk = 21;
   }
 }
 

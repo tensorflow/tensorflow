@@ -28,7 +28,10 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
+#include "xla/shape.h"
+#include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {

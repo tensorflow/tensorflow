@@ -45,6 +45,7 @@ limitations under the License.
 #include "xla/hlo/translate/mhlo_to_hlo/mlir_hlo_to_hlo.h"
 #include "xla/hlo/translate/mhlo_to_hlo/type_to_shape.h"
 #include "xla/hlo/translate/register.h"
+#include "xla/mlir_hlo/utils/unregistered_attributes.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_proto_util.h"
@@ -52,8 +53,6 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
-
-constexpr char kParameterReplicationAttr[] = "mhlo.parameter_replication";
 
 namespace xla {
 
@@ -127,17 +126,19 @@ absl::Status ConvertMlirHloToHloViaBuilder(
     computation.mutable_proto()->mutable_computations(0)->set_execution_thread(
         execution_thread.str());
   }
-  for (int i = 0; i < main.getNumArguments(); ++i)
+  for (int i = 0; i < main.getNumArguments(); ++i) {
     if (auto pr = main.getArgAttrOfType<mlir::ArrayAttr>(
-            i, kParameterReplicationAttr))
-      for (auto b : pr.getValue())
+            i, xla::kMhloParameterReplication)) {
+      for (auto b : pr.getValue()) {
         computation.mutable_proto()
             ->mutable_computations(0)
             ->mutable_instructions(i)
             ->mutable_parameter_replication()
             ->add_replicated_at_leaf_buffers(
                 mlir::cast<mlir::BoolAttr>(b).getValue());
-
+      }
+    }
+  }
   auto hlo_module = computation.proto();
   mlir::StringRef module_name = module.getName() ? *module.getName() : "main";
   hlo_module.set_name(module_name.str());

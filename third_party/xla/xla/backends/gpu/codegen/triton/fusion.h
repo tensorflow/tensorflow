@@ -23,11 +23,11 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "xla/backends/gpu/codegen/fusion_emitter.h"
 #include "xla/backends/gpu/codegen/triton/fusion_emitter.h"
+#include "xla/codegen/tiling/tiled_hlo_computation.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/ir_emitter_context.h"
 #include "xla/service/gpu/launch_dimensions.h"
-#include "xla/service/gpu/model/tiled_hlo_computation.h"
 #include "xla/stream_executor/device_description.h"
 
 namespace xla {

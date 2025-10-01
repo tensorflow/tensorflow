@@ -137,6 +137,7 @@ tf_py_strict_test(
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/ops:readers",
         "//tensorflow/python/framework:combinations",
+        "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/ops:math_ops",
         "//tensorflow/python/ops:random_ops",

@@ -2,8 +2,7 @@ load("@bazel_skylib//lib:selects.bzl", "selects")
 load("@bazel_skylib//rules:build_test.bzl", "build_test")
 load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
-
-# Placeholder: load py_proto_library
+load("@rules_python//python:proto.bzl", "py_proto_library")
 load("//tensorflow:tensorflow.bzl", "if_google", "if_oss", "tf_cc_binary", "tf_cc_test", "tf_native_cc_binary")
 load("//tensorflow:tensorflow.default.bzl", "filegroup", "get_compatible_with_portable")
 load("//tensorflow/compiler/mlir/lite:build_def.bzl", "tflite_copts_warnings")
@@ -1367,6 +1366,7 @@ cc_library(
         "transforms/prepare_quantize_dynamic_range.cc",
         "transforms/prepare_quantize_helper.cc",
         "transforms/quantization/bias_quantizer_pass.cc",
+        "transforms/quantization/fuse_qdq_pass.cc",
         "transforms/quantization/propagate_qsv_pass.cc",
         "transforms/quantization/quant_utils.cc",
         "transforms/quantize.cc",
@@ -1407,8 +1407,10 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:logging",
+        "@com_google_absl//absl/base:no_destructor",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",

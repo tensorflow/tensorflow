@@ -107,9 +107,9 @@ string StringifyShape(const TensorShape& shape) {
     if (first) {
       first = false;
     } else {
-      strings::StrAppend(&result, ",");
+      absl::StrAppend(&result, ",");
     }
-    strings::StrAppend(&result, dim.size);
+    absl::StrAppend(&result, dim.size);
   }
   return result;
 }
@@ -1136,8 +1136,8 @@ class SummaryDbWriter : public SummaryWriterInterface {
     // See tensorboard/plugins/image/summary.py and data_compat.py
     Tensor t{DT_STRING, {3}};
     auto img = s->mutable_image();
-    t.flat<tstring>()(0) = strings::StrCat(img->width());
-    t.flat<tstring>()(1) = strings::StrCat(img->height());
+    t.flat<tstring>()(0) = absl::StrCat(img->width());
+    t.flat<tstring>()(1) = absl::StrCat(img->height());
     t.flat<tstring>()(2) = std::move(*img->mutable_encoded_image_string());
     int64_t tag_id;
     PatchPluginName(s->mutable_metadata(), kImagePluginName);

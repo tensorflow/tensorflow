@@ -1006,6 +1006,7 @@ static absl::StatusOr<bool> TryRemoveWhileLoop(HloInstruction* while_op) {
       auto computation = while_op->parent();
       auto call_op = computation->AddInstruction(HloInstruction::CreateCall(
           while_op->shape(), while_op->operands(), while_op->while_body()));
+      call_op->set_original_value(while_op->original_value());
       TF_RETURN_IF_ERROR(computation->ReplaceInstruction(while_op, call_op));
       call_op->set_metadata_op_name("");
       TF_ASSIGN_OR_RETURN(auto inlined_instructions_map,

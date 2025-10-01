@@ -23,6 +23,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status_matchers.h"
 #include "absl/strings/str_cat.h"
 #include "xla/backends/gpu/runtime/copy_thunk.h"
 #include "xla/backends/gpu/runtime/kernel_thunk.h"
@@ -34,10 +35,12 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/launch_dimensions.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/shape_layout.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/gpu/tma_metadata.h"
 #include "xla/stream_executor/semantic_version.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/status_matchers.h"
@@ -113,9 +116,13 @@ TEST(GpuExecutableTest, RunThunkPasses) {
 
     ThunkSequence thunk_sequence;
     thunk_sequence.push_back(std::make_unique<KernelThunk>(
-        thunk_info, "test_kernel",
-        emitters::KernelArguments(std::vector<emitters::KernelArgument>()),
-        LaunchDimensions(), std::nullopt, 0));
+        thunk_info,
+        /*kernel_name=*/"test_kernel",
+        /*kernel_arguments=*/emitters::KernelArguments({}),
+        /*launch_dimensions=*/LaunchDimensions(),
+        /*cluster_dim=*/std::nullopt,
+        /*shmem_bytes=*/0,
+        /*tma_metadata=*/se::gpu::TmaMetadata()));
     thunk_sequence.push_back(std::make_unique<DeviceToDeviceCopyThunk>(
         thunk_info, slice, slice, 1024));
 

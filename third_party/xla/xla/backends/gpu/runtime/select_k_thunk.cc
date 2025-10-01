@@ -22,10 +22,12 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "xla/backends/gpu/runtime/select_k_exec.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
+#include "xla/backends/gpu/runtime/thunk_id.h"
 #include "xla/codegen/emitters/kernel_arguments.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/primitive_util.h"
@@ -44,8 +46,10 @@ namespace xla::gpu {
 SelectKThunk::SelectKThunk(const HloInstruction* inst, std::uint32_t batch_size,
                            std::uint32_t num_elements, std::uint32_t k,
                            xla::PrimitiveType dtype,
-                           const emitters::KernelArguments& kernel_arguments)
-    : Thunk(Kind::kSelectK, Thunk::ThunkInfo::WithProfileAnnotation(inst)),
+                           const emitters::KernelArguments& kernel_arguments,
+                           ThunkId thunk_id)
+    : Thunk(Kind::kSelectK,
+            Thunk::ThunkInfo::WithProfileAnnotation(inst, thunk_id)),
       batch_size_(batch_size),
       num_elements_(num_elements),
       k_(k),
@@ -98,5 +102,15 @@ absl::Status SelectKThunk::ExecuteOnStream(const ExecuteParams& params) {
           absl::StrCat("SelectKThunk: Unsupported dtype: ",
                        primitive_util::LowercasePrimitiveTypeName(dtype_)));
   }
+}
+
+absl::StatusOr<ThunkProto> SelectKThunk::ToProto() const {
+  ThunkProto proto;
+  *proto.mutable_thunk_info() = thunk_info().ToProto();
+
+  SelectKThunkProto* select_k_thunk_proto = proto.mutable_select_k_thunk();
+  (void)select_k_thunk_proto;
+  // TODO(upwind): Add fields for SelectKThunkProto.
+  return proto;
 }
 }  // namespace xla::gpu

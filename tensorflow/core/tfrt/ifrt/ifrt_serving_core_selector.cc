@@ -30,7 +30,7 @@ IfrtServingCoreSelector::IfrtServingCoreSelector(
 
 tsl::DeviceReservation IfrtServingCoreSelector::ReserveDevice(
     int64_t program_id) {
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
   int64_t run_count = run_counter_[program_id]++;
   if (run_count < num_cores_) {
     // If run_count is less than the number of TPU cores, we use run_count

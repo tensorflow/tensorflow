@@ -75,7 +75,7 @@ void SimpleFloatHelper(
   //   .   .   .   .   .
   //   .   .   .   .   .
   {
-    const string fname = strings::StrCat(fname_base, "_0");
+    const string fname = absl::StrCat(fname_base, "_0");
     TensorSliceWriter writer(fname, create_function);
     const float data[] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9};
     TensorSlice slice = TensorSlice::ParseOrDie("0,2:-");
@@ -97,7 +97,7 @@ void SimpleFloatHelper(
   //   .   .   .   .   .
   //   .   .   .  18  19
   {
-    const string fname = strings::StrCat(fname_base, "_1");
+    const string fname = absl::StrCat(fname_base, "_1");
     TensorSliceWriter writer(fname, create_function);
     // slice #0
     {
@@ -121,7 +121,7 @@ void SimpleFloatHelper(
   //   .   .   .   .   .
 
   // Now we need to read the tensor slices
-  const string filepattern = strings::StrCat(fname_base, "_*");
+  const string filepattern = absl::StrCat(fname_base, "_*");
   TensorSliceReader reader(filepattern, std::move(open_function));
   TF_EXPECT_OK(reader.status());
   EXPECT_EQ(2, reader.num_files());
@@ -200,7 +200,7 @@ void SimpleIntXHelper(
   //   .   .   .   .   .
   //   .   .   .   .   .
   {
-    const string fname = strings::StrCat(fname_base, "_0");
+    const string fname = absl::StrCat(fname_base, "_0");
     TensorSliceWriter writer(fname, create_function);
     const T data[] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9};
     TensorSlice slice = TensorSlice::ParseOrDie("0,2:-");
@@ -222,7 +222,7 @@ void SimpleIntXHelper(
   //   .   .   .   .   .
   //   .   .   .  18  19
   {
-    const string fname = strings::StrCat(fname_base, "_1");
+    const string fname = absl::StrCat(fname_base, "_1");
     TensorSliceWriter writer(fname, create_function);
     // slice #0
     {
@@ -246,7 +246,7 @@ void SimpleIntXHelper(
   //   .   .   .   .   .
 
   // Now we need to read the tensor slices
-  const string filepattern = strings::StrCat(fname_base, "_*");
+  const string filepattern = absl::StrCat(fname_base, "_*");
   TensorSliceReader reader(filepattern, std::move(open_function));
   TF_EXPECT_OK(reader.status());
   EXPECT_EQ(2, reader.num_files());
@@ -503,7 +503,7 @@ void CachedTensorSliceReaderTesterHelper(
   //   .   .   .   .   .
   //   .   .   .   .   .
   {
-    const string fname = strings::StrCat(fname_base, "_0");
+    const string fname = absl::StrCat(fname_base, "_0");
     TensorSliceWriter writer(fname, create_function);
     const float data[] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9};
     TensorSlice slice = TensorSlice::ParseOrDie("0,2:-");
@@ -525,7 +525,7 @@ void CachedTensorSliceReaderTesterHelper(
   //   .   .   .   .   .
   //   .   .   .  18  19
   {
-    const string fname = strings::StrCat(fname_base, "_1");
+    const string fname = absl::StrCat(fname_base, "_1");
     TensorSliceWriter writer(fname, create_function);
     // slice #0
     {
@@ -550,7 +550,7 @@ void CachedTensorSliceReaderTesterHelper(
 
   // Now we need to read the tensor slices
   TensorSliceReaderCache cache;
-  const string filepattern = strings::StrCat(fname_base, "_*");
+  const string filepattern = absl::StrCat(fname_base, "_*");
   const TensorSliceReader* reader = cache.GetReader(
       filepattern, open_function, TensorSliceReader::kLoadAllShards);
   EXPECT_TRUE(reader != nullptr);
@@ -635,7 +635,7 @@ TEST(CheckpointVersionTest, BadConsumer) {
   versions.add_bad_consumers(TF_CHECKPOINT_VERSION);
   VersionTest(
       versions,
-      strings::StrCat(
+      absl::StrCat(
           "Checkpoint disallows consumer version ", TF_CHECKPOINT_VERSION,
           ".  Please upgrade TensorFlow: this version is likely buggy."));
 }

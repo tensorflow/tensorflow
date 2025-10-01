@@ -37,6 +37,7 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "mlir/IR/BuiltinOps.h"
+#include "xla/future.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/layout.h"
@@ -332,6 +333,10 @@ class PjRtCApiClient : public PjRtClient {
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> CreateUninitializedBuffer(
       const Shape& shape, PjRtMemorySpace* memory_space) override;
 
+  absl::StatusOr<
+      std::pair<std::unique_ptr<PjRtBuffer>, PjRtFulfillAliasBufferCallback>>
+  CreateAliasBuffer(const Shape& shape, PjRtMemorySpace* memory_space) override;
+
   absl::StatusOr<const PjRtTopologyDescription*> GetTopologyDescription()
       const override;
 
@@ -398,9 +403,15 @@ class PjRtCApiClient : public PjRtClient {
   using CrossHostRecvNotifierFunction =
       std::function<void(PJRT_Error*, const char**, size_t*, size_t)>;
 
+  template <typename ExtType>
+  ExtType* FindExtension(PJRT_Extension_Type type) const {
+    return reinterpret_cast<ExtType*>(FindExtensionImpl(type));  // NOLINT
+  }
+
  private:
   void InitDevicesAndMemorySpaces();
   void InitAttributes();
+  PJRT_Extension_Base* FindExtensionImpl(PJRT_Extension_Type type) const;
 
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostBufferInternalImpl(
       const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
@@ -424,6 +435,7 @@ class PjRtCApiClient : public PjRtClient {
   // (e.g. unimplemented). Save the error during client init so we can return it
   // from GetTopologyDescription().
   absl::StatusOr<const PjRtCApiTopologyDescription> topo_desc_;
+  absl::flat_hash_map<PJRT_Extension_Type, PJRT_Extension_Base*> extensions_;
 
   const std::string platform_version_;
   const std::string platform_name_;
@@ -463,15 +475,14 @@ class PjRtCApiBuffer : public PjRtBuffer {
   absl::StatusOr<std::unique_ptr<ExternalReference>> AcquireExternalReference()
       override;
 
-  PjRtFuture<> ToLiteral(MutableLiteralBase* literal) override;
-  PjRtFuture<> LazyToLiteral(
-      absl::AnyInvocable<PjRtFuture<MutableLiteralBase*>() &&> generator)
-      override;
+  Future<> ToLiteral(MutableLiteralBase* literal) override;
+  Future<> LazyToLiteral(
+      absl::AnyInvocable<Future<MutableLiteralBase*>() &&> generator) override;
 
   absl::StatusOr<size_t> GetOnDeviceSizeInBytes() const override;
 
-  PjRtFuture<> CopyRawToHost(void* dst, int64_t offset,
-                             int64_t transfer_size) override;
+  Future<> CopyRawToHost(void* dst, int64_t offset,
+                         int64_t transfer_size) override;
 
   void Delete() override;
 
@@ -486,10 +497,10 @@ class PjRtCApiBuffer : public PjRtBuffer {
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> CopyToMemorySpace(
       PjRtMemorySpace* dst_memory_space) override;
 
-  void CopyToRemoteDevice(PjRtFuture<std::string> serialized_descriptor,
+  void CopyToRemoteDevice(Future<std::string> serialized_descriptor,
                           RemoteSendCallback on_done) override;
 
-  PjRtFuture<> GetReadyFuture() override;
+  Future<> GetReadyFuture() override;
 
   bool IsOnCpu() const override;
 
@@ -513,9 +524,9 @@ class PjRtCApiBuffer : public PjRtBuffer {
   // This is a shared_ptr to keep the underlying future alive even if
   // `readiness_promise` is destroyed before `readiness_event`, and the callback
   // we set on `readiness_event` modifies `readiness_promise_`.
-  std::shared_ptr<PjRtFuture<>::Promise> readiness_promise_;
+  std::shared_ptr<Promise<>> readiness_promise_;
   // Future tied to the `readiness_promise_`.
-  PjRtFuture<> readiness_future_;
+  Future<> readiness_future_;
   // Set and cached the first time layout() is called.
   mutable std::shared_ptr<const PjRtLayout> layout_;
   // Set and cached the first time is_dynamic_dimension() is called.
@@ -613,7 +624,11 @@ class PjRtCApiLoadedExecutable : public PjRtLoadedExecutable {
   }
 
   const DeviceAssignment& device_assignment() const override {
-    CHECK(false) << "PJRT C API does not support device_assignment";
+    CHECK(device_assignment_ != nullptr)
+        << "device_assignment_ is a nullptr. This is likely because "
+           "PjRtCApiLoadedExecutable::device_assignment() was called on a "
+           "portable executable, which does not have a device assignment.";
+    return *device_assignment_;
   }
 
   absl::Span<const LogicalDeviceIds> addressable_device_logical_ids()
@@ -660,19 +675,16 @@ class PjRtCApiLoadedExecutable : public PjRtLoadedExecutable {
   absl::StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>> Execute(
       absl::Span<const std::vector<PjRtBuffer*>> argument_handles,
       const ExecuteOptions& options,
-      std::optional<std::vector<PjRtFuture<>>>& returned_futures)
-      const override;
+      std::optional<std::vector<Future<>>>& returned_futures) const override;
 
   absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> ExecuteSharded(
       absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
-      const ExecuteOptions& options,
-      std::optional<PjRtFuture<>>& returned_future,
+      const ExecuteOptions& options, std::optional<Future<>>& returned_future,
       bool fill_future) const override;
 
   absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> ExecutePortable(
       absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
-      const ExecuteOptions& options,
-      std::optional<PjRtFuture<>>& returned_future,
+      const ExecuteOptions& options, std::optional<Future<>>& returned_future,
       bool fill_future) const override;
 
   void Delete() override;
@@ -710,24 +722,36 @@ class PjRtCApiLoadedExecutable : public PjRtLoadedExecutable {
     std::vector<RecvCallbackFunction> recv_callback_functions;
   };
 
-  // Gets common Execute_Args between Execute, ExecuteSharded and
-  // ExecutePortable. device_complete_events in the return is set if the input
+  // Returns the number of outputs of the executable.
+  absl::StatusOr<size_t> GetNumOutputs() const;
+
+  // Allocates memory for the `Execute` output.
+  // These functions are a little verbose, but allocating the correct amount of
+  // memory on initialization (thus avoiding `resize` calls) provides a
+  // significant performance optimization.
+  absl::StatusOr<std::vector<std::vector<PJRT_Buffer*>>>
+  InitializeOutputListsStorage(size_t outer_size) const;
+  absl::StatusOr<std::vector<PJRT_Buffer**>> InitializeOutputLists(
+      std::vector<std::vector<PJRT_Buffer*>>& c_output_lists_storage) const;
+
+  // Gets common Execute_Args for use in various Execute* functions.
+  // device_complete_events in the return is set if the input
   // device_complete_events has value.
   absl::StatusOr<PJRT_LoadedExecutable_Execute_Args> GetCommonExecuteArgs(
       absl::Span<const std::vector<PjRtBuffer*>> argument_handles,
       const ExecuteOptions& options, PJRT_ExecuteOptions& c_options,
       std::vector<std::vector<PJRT_Buffer*>>& c_argument_lists_storage,
       std::vector<PJRT_Buffer**>& c_arguments,
-      std::vector<std::vector<PJRT_Buffer*>>& c_output_lists_storage,
-      std::vector<PJRT_Buffer**>& c_output_lists,
       std::optional<std::vector<PJRT_Event*>>& device_complete_events,
       SendRecvCallbackData& send_recv_callback_data,
-      std::vector<int64_t>& non_donatable_input_indices_storage) const;
+      std::vector<int64_t>& non_donatable_input_indices_storage,
+      std::vector<int>& task_ids_storage,
+      std::vector<int64_t>& incarnation_ids_storage) const;
 
   absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
   ExecuteWithSingleDevice(absl::Span<PjRtBuffer* const> argument_handles,
                           PjRtDevice* device, const ExecuteOptions& options,
-                          std::optional<PjRtFuture<>>& returned_future,
+                          std::optional<Future<>>& returned_future,
                           bool fill_future) const;
 
   PjRtCApiClient* client_;
@@ -735,8 +759,10 @@ class PjRtCApiLoadedExecutable : public PjRtLoadedExecutable {
       loaded_executable_;
   std::unique_ptr<PjRtCApiExecutable> executable_;
   std::vector<PjRtDevice*> addressable_devices_;
+  std::unique_ptr<const DeviceAssignment> device_assignment_;
 
   void InitDevices();
+  void InitDeviceAssignment();
 };
 
 class CApiCopyToDeviceStream : public CopyToDeviceStream {
@@ -745,7 +771,7 @@ class CApiCopyToDeviceStream : public CopyToDeviceStream {
                          const PJRT_Api* c_api);
   ~CApiCopyToDeviceStream() override;
 
-  PjRtFuture<> AddChunk(PjRtChunk chunk) override;
+  Future<> AddChunk(PjRtChunk chunk) override;
 
  private:
   PJRT_CopyToDeviceStream* c_stream_;

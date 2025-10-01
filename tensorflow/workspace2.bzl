@@ -3,6 +3,7 @@
 load("@bazel_features//:deps.bzl", "bazel_features_deps")
 load("@bazel_skylib//lib:versions.bzl", "versions")
 load("@bazel_tools//tools/build_defs/repo:java.bzl", "java_import_external")
+load("@bazel_tools//tools/build_defs/repo:utils.bzl", "maybe")
 load("@local_xla//third_party/absl:workspace.bzl", absl = "repo")
 load("@local_xla//third_party/benchmark:workspace.bzl", benchmark = "repo")
 load("@local_xla//third_party/clang_toolchain:cc_configure_clang.bzl", "cc_download_clang_toolchain")
@@ -10,6 +11,7 @@ load("@local_xla//third_party/dlpack:workspace.bzl", dlpack = "repo")
 load("@local_xla//third_party/ducc:workspace.bzl", ducc = "repo")
 load("@local_xla//third_party/eigen3:workspace.bzl", eigen3 = "repo")
 load("@local_xla//third_party/farmhash:workspace.bzl", farmhash = "repo")
+load("@local_xla//third_party/fmt:workspace.bzl", fmt = "repo")
 load("@local_xla//third_party/FP16:workspace.bzl", FP16 = "repo")
 load("@local_xla//third_party/gemmlowp:workspace.bzl", gemmlowp = "repo")
 load("@local_xla//third_party/git:git_configure.bzl", "git_configure")
@@ -24,8 +26,12 @@ load("@local_xla//third_party/nasm:workspace.bzl", nasm = "repo")
 load("@local_xla//third_party/nvshmem:workspace.bzl", nvshmem = "repo")
 load("@local_xla//third_party/pybind11_abseil:workspace.bzl", pybind11_abseil = "repo")
 load("@local_xla//third_party/pybind11_bazel:workspace.bzl", pybind11_bazel = "repo")
+load("@local_xla//third_party/raft:workspace.bzl", raft = "repo")
+load("@local_xla//third_party/rapids_logger:workspace.bzl", rapids_logger = "repo")
+load("@local_xla//third_party/rmm:workspace.bzl", rmm = "repo")
 load("@local_xla//third_party/robin_map:workspace.bzl", robin_map = "repo")
 load("@local_xla//third_party/shardy:workspace.bzl", shardy = "repo")
+load("@local_xla//third_party/spdlog:workspace.bzl", spdlog = "repo")
 load("@local_xla//third_party/stablehlo:workspace.bzl", stablehlo = "repo")
 load("@local_xla//third_party/tensorrt:tensorrt_configure.bzl", "tensorrt_configure")
 load("@local_xla//third_party/tensorrt:workspace.bzl", tensorrt = "repo")
@@ -67,6 +73,7 @@ def _initialize_third_party():
     eigen3()
     farmhash()
     flatbuffers()
+    fmt()
     gemmlowp()
     hexagon_nn()
     highwayhash()
@@ -84,9 +91,13 @@ def _initialize_third_party():
     pasta()
     pybind11_abseil()
     pybind11_bazel()
+    raft()
+    rapids_logger()
+    rmm()
     robin_map()
     ruy()
     shardy()
+    spdlog()
     sobol_data()
     stablehlo()
     vulkan_headers()
@@ -153,18 +164,18 @@ def _tf_repositories():
     # LINT.IfChange(xnnpack)
     tf_http_archive(
         name = "XNNPACK",
-        sha256 = "d6871c9e499924d0efe6c759b976615f8704804d4fda782626db130abe0bc599",
-        strip_prefix = "XNNPACK-dd9be413f1a49957f0c7617caf315b64566c3ed2",
-        urls = tf_mirror_urls("https://github.com/google/XNNPACK/archive/dd9be413f1a49957f0c7617caf315b64566c3ed2.zip"),
+        sha256 = "d36a005c707c0cf26696acfb5ef27d55a37551a49ed2eeb5979815a61138f07d",
+        strip_prefix = "XNNPACK-ea1906f8df2faf8172da1b341c563bf9115581dd",
+        urls = tf_mirror_urls("https://github.com/google/XNNPACK/archive/ea1906f8df2faf8172da1b341c563bf9115581dd.zip"),
     )
     # LINT.ThenChange(//tensorflow/lite/tools/cmake/modules/xnnpack.cmake)
 
     # XNNPack dependency.
     tf_http_archive(
         name = "KleidiAI",
-        sha256 = "919683ceeedd6dd9db26c341eef448f9096616dfc4e9270e0209e481921e78e4",
-        strip_prefix = "kleidiai-45bf06030727ce049793ce6749e943cc2ea896fe",
-        urls = tf_mirror_urls("https://github.com/ARM-software/kleidiai/archive/45bf06030727ce049793ce6749e943cc2ea896fe.zip"),
+        sha256 = "42155cfc084bf1f80e9ef486470f949502ea8d1b845b2f1bebd58978a1b540aa",
+        strip_prefix = "kleidiai-8ca226712975f24f13f71d04cda039a0ee9f9e2f",
+        urls = tf_mirror_urls("https://github.com/ARM-software/kleidiai/archive/8ca226712975f24f13f71d04cda039a0ee9f9e2f.zip"),
     )
 
     tf_http_archive(
@@ -177,18 +188,18 @@ def _tf_repositories():
     # LINT.IfChange(pthreadpool)
     tf_http_archive(
         name = "pthreadpool",
-        sha256 = "516ba8d05c30e016d7fd7af6a7fc74308273883f857faf92bc9bb630ab6dba2c",
-        strip_prefix = "pthreadpool-c2ba5c50bb58d1397b693740cf75fad836a0d1bf",
-        urls = tf_mirror_urls("https://github.com/google/pthreadpool/archive/c2ba5c50bb58d1397b693740cf75fad836a0d1bf.zip"),
+        sha256 = "8b1d13195842c9b7e8ef5aa7d9b44ca4168a41b8ae97b4e50db4fcc562211f5b",
+        strip_prefix = "pthreadpool-d561aae9dfeab38ff595a0ae3e6bbd90b862c5f8",
+        urls = tf_mirror_urls("https://github.com/google/pthreadpool/archive/d561aae9dfeab38ff595a0ae3e6bbd90b862c5f8.zip"),
     )
     # LINT.ThenChange(//tensorflow/lite/cmake/DownloadPThreadPool.cmake)
 
     tf_http_archive(
         name = "cpuinfo",
-        sha256 = "a074e612706113048f1bb2937e7af3c5b57a037ce048d3cfaaca2931575819d2",
-        strip_prefix = "cpuinfo-e4cadd02a8b386c38b84f0a19eddacec3f433baa",
+        sha256 = "c0254ce97f7abc778dd2df0aaca1e0506dba1cd514fdb9fe88c07849393f8ef4",
+        strip_prefix = "cpuinfo-8a9210069b5a37dd89ed118a783945502a30a4ae",
         patch_file = ["//third_party/cpuinfo:cpuinfo_ppc64le_support.patch"],
-        urls = tf_mirror_urls("https://github.com/pytorch/cpuinfo/archive/e4cadd02a8b386c38b84f0a19eddacec3f433baa.zip"),
+        urls = tf_mirror_urls("https://github.com/pytorch/cpuinfo/archive/8a9210069b5a37dd89ed118a783945502a30a4ae.zip"),
     )
 
     tf_http_archive(
@@ -206,14 +217,6 @@ def _tf_repositories():
         sha256 = "a7739ca3dc74e3a5cb57f93fc95224c5e2a3c2dff2c16bb09a5e459463604c08",
         strip_prefix = "cutlass-3.8.0",
         urls = tf_mirror_urls("https://github.com/NVIDIA/cutlass/archive/refs/tags/v3.8.0.zip"),
-    )
-
-    tf_http_archive(
-        name = "mkl_dnn_v1",
-        build_file = "@local_xla//third_party/mkl_dnn:mkldnn_v1.BUILD",
-        sha256 = "a50993aa6265b799b040fe745e0010502f9f7103cc53a9525d59646aef006633",
-        strip_prefix = "oneDNN-2.7.3",
-        urls = tf_mirror_urls("https://github.com/oneapi-src/oneDNN/archive/refs/tags/v2.7.3.tar.gz"),
     )
 
     tf_http_archive(
@@ -389,7 +392,8 @@ def _tf_repositories():
         urls = tf_mirror_urls("https://github.com/abseil/abseil-py/archive/refs/tags/v2.1.0.tar.gz"),
     )
 
-    tf_http_archive(
+    maybe(
+        tf_http_archive,
         name = "com_google_protobuf",
         patch_file = ["@local_xla//third_party/protobuf:protobuf.patch"],
         sha256 = "6e09bbc950ba60c3a7b30280210cd285af8d7d8ed5e0a6ed101c72aff22e8d88",
@@ -530,7 +534,7 @@ def _tf_repositories():
 
     tf_http_archive(
         name = "nccl_archive",
-        build_file = "@local_xla//third_party:nccl/archive.BUILD",
+        build_file = "@local_xla//third_party/nccl:archive.BUILD",
         patch_file = ["@local_xla//third_party/nccl:archive.patch"],
         sha256 = "98e6262bd55932c51e7c8ffc50cc764f019e4b94a8fd6694d839ae828ec8d128",
         strip_prefix = "nccl-2.27.7-1",

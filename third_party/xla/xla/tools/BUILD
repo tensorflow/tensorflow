@@ -705,10 +705,14 @@ xla_test(
     deps = [
         ":matmul_perf_table_gen",
         "//xla:xla_data_proto_cc",
+        "//xla/hlo/testlib:pattern_matcher_gmock",
         "//xla/service/gpu/model:hlo_op_profile_proto_cc",
         "//xla/stream_executor:device_description",
         "//xla/tests:hlo_test_base",
+        "//xla/tsl/platform:env",
         "//xla/tsl/platform:statusor",
+        "//xla/tsl/util/proto:proto_matchers",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -770,7 +774,6 @@ cc_library(
 
 cc_library(
     name = "collective_perf_table_gen_main_lib",
-    testonly = True,
     srcs = ["collective_perf_table_gen_main.cc"],
     compatible_with = None,
     tags = [
@@ -858,7 +861,6 @@ xla_test(
 
 xla_cc_binary(
     name = "collective_perf_table_gen_main",
-    testonly = True,
     tags = [
         "no_mac",
     ],
@@ -1074,8 +1076,8 @@ xla_test(
     ],
     data = [
         ":data/add.hlo",
-        "//xla/service:xla_aot_compile_test_gpu_target_config.txtpb",
         "//xla/service/gpu:gpu_compiler_test_autotune_db.textproto",
+        "//xla/tools/hlo_opt:gpu_specs/h100_sxm.txtpb",
     ],
     deps = [
         ":xla_compile_lib",

@@ -21,4 +21,8 @@ cc_library(
     name = "cudnn_frontend",
     hdrs = [":cudnn_frontend_header_files"],
     include_prefix = "third_party/cudnn_frontend",
+    deps = [
+        "@local_config_cuda//cuda:cuda_headers",
+        "@local_config_cuda//cuda:cudnn_header",
+    ],
 )

@@ -13,12 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// This file defines helpers useful when creating or manipulating lhlo/hlo.
+// This file defines helpers useful when creating or manipulating hlo.
 
 #ifndef XLA_HLO_TRANSLATE_HLO_TO_MHLO_HLO_UTILS_H_
 #define XLA_HLO_TRANSLATE_HLO_TO_MHLO_HLO_UTILS_H_
 
-#include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <utility>
@@ -27,7 +26,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
-#include "mlir/Dialect/SparseTensor/IR/Enums.h"
+#include "llvm/ADT/StringRef.h"
 #include "mlir/Dialect/SparseTensor/IR/SparseTensor.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
@@ -216,6 +215,10 @@ static bool HasCustomLayout(const Shape& shape) {
 
 inline llvm::StringRef ToStringRef(absl::string_view str) {
   return llvm::StringRef(str.data(), str.size());
+}
+
+inline absl::string_view ToStringView(llvm::StringRef str) {
+  return absl::string_view(str.data(), str.size());
 }
 
 }  // namespace xla

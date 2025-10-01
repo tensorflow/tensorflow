@@ -38,8 +38,8 @@ limitations under the License.
 #include "xla/service/hlo_creation_utils.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -75,7 +75,9 @@ class TopkSplitterVisitor : public DfsHloRewriteVisitor {
     if (n % kRequiredAlignment != 0) {
       return absl::OkStatus();
     }
-    if (n <= split_threshold_) return absl::OkStatus();
+    if (n <= split_threshold_) {
+      return absl::OkStatus();
+    }
     int new_batch =
         std::min(absl::bit_floor(n / split_threshold_), kMaximumBatchSize);
     int new_n = n / new_batch;

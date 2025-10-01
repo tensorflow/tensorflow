@@ -20,6 +20,8 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
+#include "xla/service/gpu/model/hlo_op_profiles_data.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/xla_data.pb.h"
 
@@ -27,7 +29,7 @@ namespace xla {
 namespace gpu {
 namespace {
 
-constexpr char kDeviceHloOpProfiles[] = R"pb(
+constexpr char kDeviceHloOpProfilesTest[] = R"pb(
   entries {
     key: "sm_90"
     value {
@@ -58,7 +60,7 @@ constexpr char kDeviceHloOpProfiles[] = R"pb(
 using HloOpProfilesTest = ::testing::Test;
 
 TEST_F(HloOpProfilesTest, GetProfile) {
-  auto hlo_op_profiles = HloOpProfiles::Load(kDeviceHloOpProfiles,
+  auto hlo_op_profiles = HloOpProfiles::Load(kDeviceHloOpProfilesTest,
                                              /*default_profile_name=*/"sm_80");
   auto device_info_sm_90 = TestGpuDeviceInfo::RTXA6000DeviceInfo(
       stream_executor::CudaComputeCapability(9, 0));
@@ -72,7 +74,7 @@ TEST_F(HloOpProfilesTest, GetProfile) {
 }
 
 TEST_F(HloOpProfilesTest, GetProfileDefault) {
-  auto hlo_op_profiles = HloOpProfiles::Load(kDeviceHloOpProfiles,
+  auto hlo_op_profiles = HloOpProfiles::Load(kDeviceHloOpProfilesTest,
                                              /*default_profile_name=*/"sm_80");
   auto device_info_sm_85 = TestGpuDeviceInfo::RTXA6000DeviceInfo(
       stream_executor::CudaComputeCapability(8, 5));
@@ -84,6 +86,33 @@ TEST_F(HloOpProfilesTest, GetProfileDefault) {
   EXPECT_EQ(
       op_profile.at(std::make_pair(HloOpcode::kMultiply, PrimitiveType::F32)),
       64);
+}
+
+TEST_F(HloOpProfilesTest, GetProfileA6000) {
+  auto hlo_op_profiles = HloOpProfiles::Load(kDeviceHloOpProfiles,
+                                             /*default_profile_name=*/"sm_80");
+  auto device_info_sm_85 = TestGpuDeviceInfo::RTXA6000DeviceInfo(
+      stream_executor::CudaComputeCapability(8, 5));
+  const auto& op_profile = hlo_op_profiles->GetProfile(device_info_sm_85);
+  ASSERT_TRUE(op_profile.contains(
+      std::make_pair(HloOpcode::kDivide, PrimitiveType::F64)));
+  EXPECT_EQ(
+      op_profile.at(std::make_pair(HloOpcode::kDivide, PrimitiveType::F64)),
+      831);
+}
+
+TEST_F(HloOpProfilesTest, GetProfileH100) {
+  auto hlo_op_profiles = HloOpProfiles::Load(kDeviceHloOpProfiles,
+                                             /*default_profile_name=*/"sm_100");
+  auto device_info_sm_85 = TestGpuDeviceInfo::RTXH100SXMDeviceInfo(
+      stream_executor::CudaComputeCapability(9, 0));
+
+  const auto& op_profile = hlo_op_profiles->GetProfile(device_info_sm_85);
+  ASSERT_TRUE(op_profile.contains(
+      std::make_pair(HloOpcode::kMultiply, PrimitiveType::F32)));
+  EXPECT_EQ(
+      op_profile.at(std::make_pair(HloOpcode::kMultiply, PrimitiveType::F32)),
+      3);
 }
 
 }  // namespace

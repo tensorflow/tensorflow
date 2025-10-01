@@ -16,6 +16,7 @@ limitations under the License.
 #include <array>
 #include <cstdint>
 #include <memory>
+#include <ostream>
 #include <string>
 #include <tuple>
 #include <utility>
@@ -26,6 +27,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_replace.h"
@@ -50,7 +52,6 @@ limitations under the License.
 #include "xla/service/algorithm_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
-#include "xla/service/gpu/model/tiled_hlo_computation.h"
 #include "xla/service/gpu/tests/gpu_codegen_test.h"
 #include "xla/shape.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
@@ -202,6 +203,33 @@ ENTRY entry {
       hlo_text, ErrorSpec{/*aabs=*/1e-4, /*arel=*/1e-6}));
 }
 
+TEST_F(TritonEmitterTest, PredicateAddIsEmittedCorrectly) {
+  constexpr absl::string_view kHloText = R"(
+HloModule m
+
+fused_add {
+  param_0 = pred[] parameter(0)
+  param_1 = pred[] parameter(1)
+  ROOT add = pred[] add(param_0, param_1)
+}
+
+ENTRY main {
+  c0 = pred[] constant(1)
+  c1 = pred[] constant(1)
+  ROOT add = pred[] fusion(c0, c1), kind=kCustom, calls=fused_add,
+    backend_config={"fusion_backend_config":{
+      "kind":"__triton",
+      "block_level_fusion_config":{
+        "num_warps":"1","output_tiles":[{"sizes":[]}],
+        "num_ctas":1,"num_stages":1,"is_tma_allowed":false}}}
+}
+)";
+  TF_EXPECT_OK(CreateTritonIrAndFileCheck(this, kHloText, "fused_add", R"(
+CHECK: arith.ori {{.*}} : i1
+)"));
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, kExactMatch));
+}
+
 // TODO(bchetioui): turn this into a general binary elementwise test.
 TEST_F(TritonEmitterTest, MinimumIsEmittedCorrectly) {
   constexpr absl::string_view kHloText = R"(
@@ -264,6 +292,46 @@ ENTRY entry_computation {
 CHECK:  "tt.reduce"(%[[LOAD:.*]]) <{axis = 1 : i32}>
 )"));
 
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, kExactMatch));
+}
+
+// Regression test for b/448150702 - reduction with a constant inside returned
+// early, not fully emitting the reduction.
+TEST_F(TritonEmitterTest, ComplexReductionIsEmittedCorrectly) {
+  constexpr absl::string_view kHloText = R"(
+HloModule m
+
+unusual {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  add = f32[] add(lhs, rhs)
+  eight = f32[] constant(8)
+  ROOT minimum = f32[] minimum(add, eight)
+}
+
+fused_reduce {
+  p0 = f32[2,2]{1,0} parameter(0)
+  zero = f32[] constant(0)
+  ROOT reduce = f32[2]{0} reduce(p0, zero), dimensions={1}, to_apply=unusual
+}
+
+ENTRY entry_computation {
+  p0 = f32[2,2]{1,0} parameter(0)
+  ROOT input_reduce_fusion = f32[2]{0} fusion(p0),
+    kind=kCustom, calls=fused_reduce,
+    backend_config={"fusion_backend_config":{"kind":"__triton",
+      "block_level_fusion_config":{
+        "num_warps":"1","output_tiles":[{"sizes":["1"]}],
+        "num_ctas":1,"num_stages":1,"is_tma_allowed":false}}}
+}
+)";
+  TF_EXPECT_OK(CreateTritonIrAndFileCheck(this, kHloText, "fused_reduce", R"(
+CHECK: "tt.reduce"
+CHECK: ^bb0(%[[ARG0:.*]]: f32, %[[ARG1:.*]]: f32)
+CHECK: %[[ADD:.*]] = arith.addf %[[ARG0]], %[[ARG1]]
+CHECK: %[[MIN:.*]] = arith.minimumf %[[ADD]]
+CHECK: tt.reduce.return %[[MIN]]
+)"));
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, kExactMatch));
 }
 
@@ -3797,6 +3865,314 @@ TEST_F(TritonEmitterTest, RocmWarpSizeIsSetCorrectly) {
     )";
   EXPECT_THAT(RunFileCheck(triton_passes_log, kPattern_n), true);
 }
+
+TEST_F(TritonEmitterTest, EmitsCorrectlyForReshapeOfPad) {
+  // Note: this test needs a dot for ShouldDerivationSimplifyPointDimensions()
+  // to return false. Otherwise the tile will still be simplified.
+  const std::string kHloText = R"(
+lhs {
+  ROOT p0 = bf16[16,32,67,133] parameter(0)
+}
+
+rhs {
+  p0 = bf16[16,2128,1] parameter(0)
+  zero = bf16[] constant(0)
+  pad = bf16[16,2144,1] pad(p0, zero), padding=0_0x0_16x0_0
+  ROOT bitcast = bf16[16,32,67,1] bitcast(pad)
+}
+
+fusion {
+  p0 = bf16[16,32,67,133] parameter(0)
+  p1 = bf16[16,2128,1] parameter(1)
+  lhs = bf16[16,32,67,133] fusion(p0), kind=kCustom, calls=lhs, backend_config={
+      "fusion_backend_config":{
+          "kind":"__triton_nested_gemm_fusion",
+          "block_level_fusion_config":{
+              "num_warps":"2",
+              "output_tiles":[{"sizes":["1","1","16","256"]}],
+              "num_ctas":1,
+              "num_stages":1,
+              "is_tma_allowed":false
+          }
+      }
+  }
+  rhs = bf16[16,32,67,1] fusion(p1), kind=kCustom, calls=rhs, backend_config={
+      "fusion_backend_config":{
+          "kind":"__triton_nested_gemm_fusion",
+          "block_level_fusion_config":{
+              "num_warps":"2",
+              "output_tiles":[{"sizes":["1","1","16","16"]}],
+              "num_ctas":1,
+              "num_stages":1,
+              "is_tma_allowed":false
+          }
+      }
+  }
+  ROOT dot = f32[32,16,133,1] dot(lhs, rhs),
+      lhs_batch_dims={1,0}, lhs_contracting_dims={2},
+      rhs_batch_dims={1,0}, rhs_contracting_dims={2}
+}
+
+ENTRY entry {
+  p0 = bf16[16,32,67,133] parameter(0)
+  p1 = bf16[16,2128,1] parameter(1)
+  ROOT micro_kernel = f32[32,16,133,1] fusion(p0, p1), kind=kCustom, calls=fusion, backend_config={
+      "fusion_backend_config":{
+          "kind":"__triton_nested_gemm_fusion",
+          "block_level_fusion_config":{
+              "num_warps":"2",
+              "output_tiles":[{"sizes":["1","1","256","16"]}],
+              "num_ctas":1,
+              "num_stages":1,
+              "is_tma_allowed":false
+          }
+      }
+  }
+})";
+  EXPECT_TRUE(RunAndCompareNoHloPasses(
+      kHloText, ErrorSpec{/*aabs=*/1e-4, /*arel=*/1e-6}));
+}
+
+struct ScaleDotTestParams {
+  std::string lhs_type;
+  std::string lhs_scale_type;
+  std::string rhs_type;
+  std::string rhs_scale_type;
+  std::string output_type;
+  std::string expected_triton_type;
+
+  std::string PrepareHloText(absl::string_view hlo_template) const {
+    return absl::StrReplaceAll(hlo_template,
+                               {{"$lhs_type", lhs_type},
+                                {"$lhs_scale_type", lhs_scale_type},
+                                {"$rhs_type", rhs_type},
+                                {"$rhs_scale_type", rhs_scale_type},
+                                {"$output_type", output_type}});
+  }
+  static std::string ToString(
+      const ::testing::TestParamInfo<ScaleDotTestParams>& info) {
+    const ScaleDotTestParams& params = info.param;
+    auto name = absl::StrCat(params.lhs_type, "_", params.lhs_scale_type, "_",
+                             params.rhs_type, "_", params.rhs_scale_type, "_",
+                             params.output_type);
+    absl::StrReplaceAll({{"[", "_"}, {"]", "_"}, {",", "x"}}, &name);
+    return name;
+  }
+};
+
+std::ostream& operator<<(std::ostream& stream, const ScaleDotTestParams& tc) {
+  return stream << "{\n\tlhs_type:" << tc.lhs_type
+                << ",\n\tlhs_scale_type:" << tc.lhs_scale_type
+                << ",\n\trhs_type:" << tc.rhs_type
+                << ",\n\trhs_scale_type:" << tc.rhs_scale_type
+                << ",\n\toutput_type:" << tc.output_type << "\n}";
+}
+
+class TritonScaledDotGemmTest
+    : public TritonEmitterTest,
+      public ::testing::WithParamInterface<ScaleDotTestParams> {
+ public:
+  DebugOptions GetDebugOptionsForTest() const override {
+    DebugOptions debug_options = TritonEmitterTest::GetDebugOptionsForTest();
+    debug_options.set_xla_gpu_experimental_scaled_dot_with_triton(true);
+    debug_options.set_xla_gpu_autotune_level(0);
+    debug_options.set_xla_gpu_cublas_fallback(false);
+    debug_options.add_xla_gpu_unsupported_generic_triton_emitter_features(
+        DebugOptions::GENERIC_TRITON_EMITTER_ENABLE_NESTED_GEMM);
+    return debug_options;
+  }
+  stream_executor::CudaComputeCapability GetCudaComputeCapability() {
+    return backend()
+        .default_stream_executor()
+        ->GetDeviceDescription()
+        .cuda_compute_capability();
+  }
+};
+
+TEST_P(TritonScaledDotGemmTest,
+       FP8ScaledDotCompilesToPtxIntrinsicsWhenAvailable) {
+  const ScaleDotTestParams& params = GetParam();
+  constexpr absl::string_view kHloTextTemplate = R"hlo(
+HloModule m
+flhs (p0: $lhs_type) -> $lhs_type {
+  ROOT p0 = $lhs_type{1,0} parameter(0)
+}
+flhs_scale (p0: $lhs_scale_type) -> $lhs_scale_type {
+  ROOT p0 = $lhs_scale_type{1,0} parameter(0)
+}
+frhs (p0: $rhs_type) -> $rhs_type {
+  ROOT p0 = $rhs_type{1,0} parameter(0)
+}
+frhs_scale (p0: $rhs_scale_type) -> $rhs_scale_type {
+  ROOT p0 = $rhs_scale_type{1,0} parameter(0)
+}
+
+triton_dot {
+  lhs = $lhs_type parameter(0)
+  lhs1 = $lhs_type{1,0} fusion(lhs),
+    kind=kCustom,
+    calls=flhs,
+    backend_config={
+      "fusion_backend_config":{
+        "kind":"__triton_nested_gemm_fusion",
+        "block_level_fusion_config":{
+          "output_tiles":[{"sizes":["128","128"]}],
+          "num_warps":"4",
+          "num_stages":"1",
+          "num_ctas":"1",
+        }
+      }
+    }
+  lhs_scale = $lhs_scale_type parameter(1)
+  lhs_scale1 = $lhs_scale_type{1,0} fusion(lhs_scale),
+    kind=kCustom,
+    calls=flhs_scale,
+    backend_config={
+      "fusion_backend_config":{
+        "kind":"__triton_nested_gemm_fusion",
+        "block_level_fusion_config":{
+          "output_tiles":[{"sizes":["128","128"]}],
+          "num_warps":"4",
+          "num_stages":"1",
+          "num_ctas":"1",
+        }
+      }
+    }
+  rhs = $rhs_type parameter(2)
+  rhs1 = $rhs_type{1,0} fusion(rhs),
+    kind=kCustom,
+    calls=frhs,
+    backend_config={
+      "fusion_backend_config":{
+        "kind":"__triton_nested_gemm_fusion",
+        "block_level_fusion_config":{
+          "output_tiles":[{"sizes":["128","256"]}],
+          "num_warps":"4",
+          "num_stages":"1",
+          "num_ctas":"1",
+        }
+      }
+    }
+  rhs_scale = $rhs_scale_type parameter(3)
+  rhs_scale1 = $rhs_scale_type{1,0} fusion(rhs_scale),
+    kind=kCustom,
+    calls=frhs_scale,
+    backend_config={
+      "fusion_backend_config":{
+        "kind":"__triton_nested_gemm_fusion",
+        "block_level_fusion_config":{
+          "output_tiles":[{"sizes":["128", "256"]}],
+          "num_warps":"4",
+          "num_stages":"1",
+          "num_ctas":"1",
+        }
+      }
+    }
+  ROOT _ = $output_type{1,0} scaled-dot(lhs1, lhs_scale1, rhs1, rhs_scale1),
+    lhs_contracting_dims={1},
+    rhs_contracting_dims={0}
+}
+
+ENTRY e {
+  p0 = $lhs_type{1,0} parameter(0)
+  p1 = $lhs_scale_type{1,0} parameter(1)
+  p2 = $rhs_type{1,0} parameter(2)
+  p3 = $rhs_scale_type{1,0} parameter(3)
+  ROOT _ = $output_type{1,0} fusion(p0, p1, p2, p3),
+    kind=kCustom,
+    calls=triton_dot,
+    backend_config={
+      "fusion_backend_config": {
+        kind: "__triton_scaled_dot_fusion",
+        "block_level_fusion_config":{
+          "output_tiles":[{"sizes":["128", "256"]}],
+          "num_warps":"4",
+          "num_stages":"1",
+          "num_ctas":"1"
+        }
+      }
+    }
+}
+)hlo";
+
+  auto hlo_text = params.PrepareHloText(kHloTextTemplate);
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_text));
+
+  constexpr absl::string_view kExpectedTritonIrTmpl = R"(
+      CHECK: tt.dot_scaled
+      CHECK: tensor<128x128x$triton_type>, tensor<128x4xi8>
+      CHECK: tensor<128x256x$triton_type>, tensor<256x4xi8>
+      CHECK: -> tensor<128x256xf32>
+  )";
+  auto expected_triton_ir = absl::StrReplaceAll(
+      kExpectedTritonIrTmpl, {{"$triton_type", params.expected_triton_type}});
+  EXPECT_THAT(
+      CreateTritonIrAndFileCheck(*module->GetComputationWithName("triton_dot"),
+                                 /*block_level_parameters=*/
+                                 {
+                                     {{128, 256}},
+                                     4,
+                                     1,
+                                     1,
+                                     true,
+                                 },
+                                 expected_triton_ir),
+      absl_testing::IsOk());
+  if (GetCudaComputeCapability().IsAtLeastBlackwell()) {
+    CompileAndOptionallyVerifyPtx(
+        std::move(module), R"(CHECK: mxf8f6f4.block_scale.scale_vec::1X)");
+  }
+}
+
+TEST_P(TritonScaledDotGemmTest, FP8ScaledDotGetsFusedAndExecutesCorrectly) {
+  const ScaleDotTestParams& params = GetParam();
+  if (!GetCudaComputeCapability().IsAtLeastBlackwell()) {
+    GTEST_SKIP() << "Skipping test for pre-Blackwell GPUs.";
+  }
+  constexpr absl::string_view kHloTextTemplate = R"hlo(
+HloModule FP8ScaledDotGetsFused
+
+ENTRY e {
+  lhs = $lhs_type parameter(0)
+  lhs_scale = $lhs_scale_type parameter(1)
+  rhs = $rhs_type parameter(2)
+  rhs_scale = $rhs_scale_type parameter(3)
+  ROOT _ = $output_type{1,0} scaled-dot(lhs, lhs_scale, rhs, rhs_scale),
+    lhs_contracting_dims={1},
+    rhs_contracting_dims={0}
+}
+)hlo";
+
+  auto hlo_text = params.PrepareHloText(kHloTextTemplate);
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_text));
+
+  TF_ASSERT_OK_AND_ASSIGN(auto optimized_module,
+                          GetOptimizedModule(std::move(module)));
+  EXPECT_TRUE(*RunFileCheck(optimized_module->ToString(), R"(
+    CHECK: fusion
+    CHECK: ROOT {{.*}} scaled-dot
+    CHECK: ENTRY
+    CHECK: __triton_nested_gemm_fusion
+  )"));
+  EXPECT_TRUE(RunAndCompareNoHloPasses(
+      std::move(optimized_module), ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    TritonScaledDotGemmTest, TritonScaledDotGemmTest,
+    ::testing::Values(ScaleDotTestParams{"f8e4m3fn[128,128]",
+                                         "f8e8m0fnu[128,4]",
+                                         "f8e4m3fn[128,256]",
+                                         "f8e8m0fnu[4,256]", "bf16[128,256]",
+                                         "f8E4M3FN"},
+                      ScaleDotTestParams{"f8e5m2[128,128]", "f8e8m0fnu[128,4]",
+                                         "f8e5m2[128,256]", "f8e8m0fnu[4,256]",
+                                         "bf16[128,256]", "f8E5M2"}),
+    ScaleDotTestParams::ToString);
 
 }  // namespace
 }  // namespace gpu

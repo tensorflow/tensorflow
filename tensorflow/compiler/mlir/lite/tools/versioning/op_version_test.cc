@@ -177,21 +177,35 @@ void SimpleOutputVersioningTest(BuiltinOperator op) {
 }
 
 TEST(OpVersionTest, VersioningEqualTest) {
-  SimpleVersioningTest(BuiltinOperator_EQUAL);
-  OpSignature fake_op_sig = {
-      .op = BuiltinOperator_EQUAL,
-      .inputs = CreateOpSignatureTensorSpecs(kTfLiteString),
-  };
+  OpSignature fake_op_sig = {};
+  fake_op_sig.op = BuiltinOperator_EQUAL;
+  fake_op_sig.inputs = CreateOpSignatureTensorSpecs(kTfLiteFloat32);
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 1);
+
+  fake_op_sig.inputs = CreateOpSignatureTensorSpecs(kTfLiteInt8);
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 2);
+
+  fake_op_sig.inputs = CreateOpSignatureTensorSpecs(kTfLiteString);
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 3);
+
+  fake_op_sig.inputs = CreateOpSignatureTensorSpecs(kTfLiteInt16);
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 5);
 }
 
 TEST(OpVersionTest, VersioningNotEqualTest) {
-  SimpleVersioningTest(BuiltinOperator_NOT_EQUAL);
-  OpSignature fake_op_sig = {
-      .op = BuiltinOperator_NOT_EQUAL,
-      .inputs = CreateOpSignatureTensorSpecs(kTfLiteString),
-  };
+  OpSignature fake_op_sig = {};
+  fake_op_sig.op = BuiltinOperator_NOT_EQUAL;
+  fake_op_sig.inputs = CreateOpSignatureTensorSpecs(kTfLiteFloat32);
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 1);
+
+  fake_op_sig.inputs = CreateOpSignatureTensorSpecs(kTfLiteInt8);
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 2);
+
+  fake_op_sig.inputs = CreateOpSignatureTensorSpecs(kTfLiteString);
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 3);
+
+  fake_op_sig.inputs = CreateOpSignatureTensorSpecs(kTfLiteInt16);
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 4);
 }
 
 TEST(OpVersionTest, VersioningLessTest) {

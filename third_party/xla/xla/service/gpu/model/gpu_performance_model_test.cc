@@ -71,7 +71,8 @@ class GpuPerformanceModelTest : public HloHardwareIndependentTestBase {
   GpuHloCostAnalysis analysis_{options_, device_info_};
   GpuPerformanceModelCache gpu_performance_model_cache_;
   GpuPerformanceModel gpu_performance_model_{
-      device_info_, fusion_analysis_cache_, gpu_performance_model_cache_};
+      device_info_, fusion_analysis_cache_, gpu_performance_model_cache_,
+      &mlir_context_};
 
   GpuPerformanceModelWithIndexingAnalysis indexing_cost_model_{
       &device_info_, &fusion_analysis_cache_, HloCostAnalysis::DefaultShapeSize,

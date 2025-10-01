@@ -2984,6 +2984,12 @@ absl::StatusOr<bool> HloRematerialization::RematerializeComputation(
   for (auto* item = instruction_list.first(); item != nullptr;
        item = instruction_list.next(item)) {
     HloInstruction* instruction = item->instruction;
+    if (instruction->parent() == nullptr) {
+      // TODO(b/446297799): Stop it before it reaches this point.
+      VLOG(2) << "Instruction " << instruction->name()
+              << " is not in a computation. Ignoring";
+      continue;
+    }
     sequence.push_back(instruction);
   }
   rematerialized_computations_.insert(computation);

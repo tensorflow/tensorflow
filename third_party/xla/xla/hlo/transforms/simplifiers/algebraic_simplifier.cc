@@ -50,6 +50,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction_utils.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/hlo_original_value.h"
 #include "xla/hlo/utils/hlo_sharding_util.h"
 #include "xla/layout.h"
 #include "xla/layout_util.h"
@@ -792,8 +793,6 @@ void AlgebraicSimplifierVisitor::ReplaceWithBitcast(HloInstruction* instruction,
   if (operand == nullptr) {
     operand = instruction->mutable_operand(0);
   }
-  CHECK_EQ(ShapeUtil::ElementsIn(instruction->shape()),
-           ShapeUtil::ElementsIn(operand->shape()));
   CHECK_EQ(ShapeUtil::ByteSizeOf(instruction->shape()),
            ShapeUtil::ByteSizeOf(operand->shape()));
 
@@ -1627,15 +1626,40 @@ absl::Status AlgebraicSimplifierVisitor::HandleBitcastConvert(
     return absl::OkStatus();
   }
   if (options_.is_layout_sensitive() &&
-      options_.rewrite_no_op_bitcast_convert_to_bitcast() &&
-      // Equal shape ignoring element type implies same bitwidth, as for
-      // different bitwidth shape inference would yield a different shape for
-      // the output. A bitcast-convert with same shape but different bitwidth
-      // would fail the HloVerifier.
-      ShapeUtil::EqualIgnoringElementType(bitcast->shape(), operand->shape())) {
-    ReplaceWithBitcast(bitcast);
-    return absl::OkStatus();
+      options_.rewrite_no_op_bitcast_convert_to_bitcast()) {
+    // Equal shape ignoring element type implies same bitwidth, as for
+    // different bitwidth shape inference would yield a different shape for
+    // the output. A bitcast-convert with same shape but different bitwidth
+    // would fail the HloVerifier.
+    if (ShapeUtil::EqualIgnoringElementType(bitcast->shape(),
+                                            operand->shape())) {
+      ReplaceWithBitcast(bitcast);
+      return absl::OkStatus();
+    }
+
+    auto last_dim_is_contiguous = [](const Shape& shape) {
+      if (!ShapeUtil::LastDimIsMinorMost(shape)) {
+        return false;
+      }
+      const int type_bit_width = primitive_util::BitWidth(shape.element_type());
+      if (!shape.has_layout() || shape.layout().element_size_in_bits() == 0) {
+        return type_bit_width % 8 == 0;
+      }
+      return shape.layout().element_size_in_bits() == type_bit_width;
+    };
+
+    const Shape& shape_with_extra_dimension =
+        operand->shape().dimensions().size() >
+                bitcast->shape().dimensions().size()
+            ? operand->shape()
+            : bitcast->shape();
+
+    if (last_dim_is_contiguous(shape_with_extra_dimension)) {
+      ReplaceWithBitcast(bitcast);
+      return absl::OkStatus();
+    }
   }
+
   // Eliminate bitcast converts between same shape.
   ReplaceInstructionIfCompatible(bitcast, bitcast->mutable_operand(0));
   return absl::OkStatus();
@@ -5094,12 +5118,11 @@ absl::Status AlgebraicSimplifierVisitor::HandleOptimizationBarrier(
   // optimization barrier. Additionally if the operand is a tuple producing
   // instruction it should also be safe to create a sub tuple of only the used
   // components to enable module level dce.
-  std::vector<bool> used_elements(barrier->shape().tuple_shapes().size());
-  bool has_non_gte_use = false;
+  std::vector<bool> used_elements(barrier->shape().tuple_shapes().size(),
+                                  false);
   for (auto use : barrier->users()) {
     if (use->opcode() != HloOpcode::kGetTupleElement) {
-      has_non_gte_use = true;
-      break;
+      return absl::OkStatus();
     }
     used_elements[use->tuple_index()] = true;
   }
@@ -5118,7 +5141,7 @@ absl::Status AlgebraicSimplifierVisitor::HandleOptimizationBarrier(
     }
   }
 
-  if (has_non_gte_use || !absl::c_linear_search(used_elements, false)) {
+  if (absl::c_all_of(used_elements, [](bool v) { return v; })) {
     return absl::OkStatus();
   }
 
@@ -5240,23 +5263,18 @@ absl::Status AlgebraicSimplifierVisitor::HandleBroadcast(
         dims.erase(dims.begin() + inserted_index);
       }
 
-      HloInstruction* replaced_inst = operand;
-      if (replaced_inst->original_value()) {
-        HloInstruction* replacing_inst = operand->mutable_operand(0);
-        auto build_entry_computation = [](xla::HloComputation::Builder& builder,
-                                          const xla::Shape& input_shape,
-                                          const xla::Shape& output_shape) {
-          xla::HloInstruction* param = builder.AddInstruction(
-              xla::HloInstruction::CreateParameter(0, input_shape, "p"));
-          return builder.AddInstruction(
-              xla::HloInstruction::CreateReshape(output_shape, param));
-        };
-        HloModule* module = broadcast->parent()->parent();
-        module->mutable_original_value_recovery_table()
-            .BuildAndAddRecoveryModule(replaced_inst, replacing_inst,
-                                       build_entry_computation);
-      }
-
+      HloModule* module = broadcast->parent()->parent();
+      module->mutable_original_value_recovery_table()
+          .BuildAndAddRecoveryComputation(
+              operand, operand->mutable_operand(0),
+              [](xla::HloComputation::Builder& builder, const ShapeIndex& index,
+                 const OriginalArray& old_original_array,
+                 const xla::Shape& old_shape, const xla::Shape& new_shape) {
+                xla::HloInstruction* param = builder.AddInstruction(
+                    xla::HloInstruction::CreateParameter(0, new_shape, "p"));
+                return builder.AddInstruction(
+                    xla::HloInstruction::CreateReshape(old_shape, param));
+              });
       return ReplaceWithNewInstruction(
           broadcast,
           HloInstruction::CreateBroadcast(broadcast->shape(),
@@ -6269,6 +6287,8 @@ absl::Status AlgebraicSimplifierVisitor::HandleReshape(
     }
   }
 
+  // reshape(broadcast(x)) -> new_broadcast(x) if x's dimensions are unmodified
+  // by reshape.
   if (HloOpcode::kBroadcast == operand->opcode()) {
     auto opt_dims =
         ReshapeLeavesDimensionsUnmodified(reshape, operand->dimensions());

@@ -227,6 +227,19 @@ GetCalledApproximatableFunctions(
   return called_targets;
 }
 
+bool ElementTypesMatch(const std::vector<Type>& types1,
+                       const std::vector<Type>& types2) {
+  if (types1.size() != types2.size()) {
+    return false;
+  }
+  for (int i = 0; i < types1.size(); ++i) {
+    if (types1[i].element_type() != types2[i].element_type()) {
+      return false;
+    }
+  }
+  return true;
+}
+
 }  // anonymous namespace
 
 std::vector<llvm::VecDesc> IntrinsicFunctionLib::Vectorizations() {
@@ -238,8 +251,7 @@ std::vector<llvm::VecDesc> IntrinsicFunctionLib::Vectorizations() {
          math_func->SupportedVectorTypes(options_.features)) {
       for (const auto& vector_types :
            math_func->SupportedVectorTypes(options_.features)) {
-        if (target_types.front().element_type() !=
-            vector_types.front().element_type()) {
+        if (!ElementTypesMatch(target_types, vector_types)) {
           continue;
         }
         absl::string_view target_name = intrinsic::StringInterner::Get().Intern(

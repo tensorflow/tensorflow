@@ -174,7 +174,7 @@ class CollectiveGatherOpKernel : public CollectiveOpV1Kernel {
         c, c->GetAttr("timeout_seconds",
                       &col_params_->instance.impl_details.timeout_seconds));
     const NodeDef& real_node = c->def();
-    col_params_->name = strings::StrCat(real_node.name(), ": Gather");
+    col_params_->name = absl::StrCat(real_node.name(), ": Gather");
     col_params_->group.device_type = c->device_type();
   }
 
@@ -367,7 +367,7 @@ class CollectiveBcastSendOpKernel : public CollectiveOpV1Kernel {
     col_params_->instance.impl_details.subdiv_offsets = {0};
 
     col_params_->name =
-        strings::StrCat(name(), ": Broadcast(", col_params_->is_source, ")");
+        absl::StrCat(name(), ": Broadcast(", col_params_->is_source, ")");
     col_params_->group.device_type = c->device_type();
   }
 
@@ -446,7 +446,7 @@ class CollectiveBcastRecvOpKernel : public CollectiveOpV1Kernel {
     col_params_->instance.impl_details.subdiv_offsets = {0};
 
     col_params_->name =
-        strings::StrCat(name(), ": Broadcast(", col_params_->is_source, ")");
+        absl::StrCat(name(), ": Broadcast(", col_params_->is_source, ")");
     col_params_->group.device_type = c->device_type();
   }
 
@@ -850,7 +850,7 @@ class CollectiveGatherV2OpKernel : public CollectiveOpV2Kernel {
  public:
   explicit CollectiveGatherV2OpKernel(OpKernelConstruction* c)
       : CollectiveOpV2Kernel(c) {
-    name_ = strings::StrCat(c->def().name(), ": GatherV2");
+    name_ = absl::StrCat(c->def().name(), ": GatherV2");
     VLOG(2) << "CollectiveGatherV2 " << this << " name " << name_
             << " communication_hint " << communication_hint_;
   }
@@ -897,7 +897,7 @@ class CollectiveBcastSendV2OpKernel : public CollectiveOpV2Kernel {
   explicit CollectiveBcastSendV2OpKernel(OpKernelConstruction* c)
       : CollectiveOpV2Kernel(c) {
     const bool is_source = true;
-    name_ = strings::StrCat(name(), ": Broadcast(", is_source, ")");
+    name_ = absl::StrCat(name(), ": Broadcast(", is_source, ")");
   }
 
  protected:
@@ -947,7 +947,7 @@ class CollectiveBcastRecvV2OpKernel : public CollectiveOpV2Kernel {
   explicit CollectiveBcastRecvV2OpKernel(OpKernelConstruction* c)
       : CollectiveOpV2Kernel(c) {
     const bool is_source = false;
-    name_ = strings::StrCat(name(), ": Broadcast(", is_source, ")");
+    name_ = absl::StrCat(name(), ": Broadcast(", is_source, ")");
   }
 
  protected:
@@ -1289,7 +1289,7 @@ class CollectiveReduceV3OpKernel : public CollectiveOpV3Kernel {
     SetAttrValue(data_type_, &(*sub_node.mutable_attr())["T"]);
     merge_op_ = BuildOpKernel(c, reduction, &sub_node);
     final_op_ = BuildOpKernel(c, "Id", &sub_node);
-    name_ = strings::StrCat(c->def().name(), ": ReduceV3(", reduction, ")");
+    name_ = absl::StrCat(c->def().name(), ": ReduceV3(", reduction, ")");
     VLOG(2) << "CollectiveReduceV3 " << this << " name " << name_;
   }
 
@@ -1339,7 +1339,7 @@ class CollectiveAllToAllV2OpKernel : public CollectiveOpV2Kernel {
  public:
   explicit CollectiveAllToAllV2OpKernel(OpKernelConstruction* c)
       : CollectiveOpV2Kernel(c) {
-    name_ = strings::StrCat(c->def().name(), ": AllToAllV2");
+    name_ = absl::StrCat(c->def().name(), ": AllToAllV2");
     VLOG(2) << "CollectiveAllToAllV2 " << this << " name " << name_
             << " communication_hint " << communication_hint_;
   }
@@ -1387,7 +1387,7 @@ class CollectiveAllToAllV3OpKernel : public CollectiveOpV3Kernel {
  public:
   explicit CollectiveAllToAllV3OpKernel(OpKernelConstruction* c)
       : CollectiveOpV3Kernel(c) {
-    name_ = strings::StrCat(c->def().name(), ": AllToAllV3");
+    name_ = absl::StrCat(c->def().name(), ": AllToAllV3");
     VLOG(2) << "CollectiveAllToAllV3 " << this << " name " << name_;
   }
 

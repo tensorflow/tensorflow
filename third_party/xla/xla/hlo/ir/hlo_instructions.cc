@@ -707,12 +707,17 @@ HloInstructionProto HloChannelInstruction::ToProto() const {
 }
 
 void HloChannelInstruction::PrintExtraAttributesImpl(
-    AttributePrinter& printer, const HloPrintOptions& /*options*/) const {
+    AttributePrinter& printer, const HloPrintOptions& options) const {
   if (!channel_id_) {
     return;
   }
-  printer.Next([this](Printer* printer) {
-    AppendCat(printer, "channel_id=", *channel_id_);
+  printer.Next([this, &options](Printer* printer) {
+    printer->Append("channel_id=");
+    if (options.print_channel_id()) {
+      printer->Append(*channel_id_);
+    } else {
+      printer->Append("_");
+    }
   });
 }
 

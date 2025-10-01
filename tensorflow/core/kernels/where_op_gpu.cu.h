@@ -219,6 +219,7 @@ class WhereOutputIterator {
       iterator_category;  ///< The iterator category
 #endif  // THRUST_VERSION
 
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE
   WhereOutputIterator(int64* ptr, const Eigen::DenseIndex max_row)
       : ptr_(ptr), max_row_(max_row) {}
 
@@ -231,6 +232,16 @@ class WhereOutputIterator {
     // the end and confirm that it matches the number of rows of output.
     const bool valid = FastBoundsCheck(n, max_row_);
     return *(ptr_ + (valid ? (NDIM * n) : 0));
+  }
+
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE reference operator*() const {
+    // Dereference the current pointer
+    return *ptr_;
+  }
+
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE self_type
+  operator+(std::ptrdiff_t n) const {
+    return self_type(ptr_ + NDIM * n, max_row_);
   }
 
  private:

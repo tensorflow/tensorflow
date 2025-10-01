@@ -41,7 +41,6 @@
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/dtype.h"
-#include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/mock.h"
 #include "xla/python/ifrt/shape.h"
@@ -51,6 +50,7 @@
 #include "xla/python/ifrt_proxy/client/registry.h"
 #include "xla/python/ifrt_proxy/server/grpc_server.h"
 #include "xla/python/pjrt_ifrt/pjrt_client.h"
+#include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
@@ -131,20 +131,20 @@ class MockArrayTest : public testing::Test {
               auto result = tsl::MakeRef<MockArray>(delegated);
               ON_CALL(*result, GetReadyFuture)
                   .WillByDefault([this, delegated]() {
-                    absl::MutexLock l(&mu_);
+                    absl::MutexLock l(mu_);
                     if (get_ready_hook_) {
                       absl::Status s = get_ready_hook_();
-                      if (!s.ok()) return Future<>(s);
+                      if (!s.ok()) return tsl::Future<>(s);
                     }
                     return delegated->GetReadyFuture();
                   });
               ON_CALL(*result, CopyToHostBuffer)
                   .WillByDefault([this, delegated](auto data, auto byte_strides,
                                                    auto semantics) {
-                    absl::MutexLock l(&mu_);
+                    absl::MutexLock l(mu_);
                     if (copy_host_hook_) {
                       absl::Status s = copy_host_hook_();
-                      if (!s.ok()) return Future<>(s);
+                      if (!s.ok()) return tsl::Future<>(s);
                     }
                     return delegated->CopyToHostBuffer(data, byte_strides,
                                                        semantics);
@@ -154,7 +154,7 @@ class MockArrayTest : public testing::Test {
 
     ON_CALL(*mock_backend, GetReadyFuture)
         .WillByDefault([](absl::Span<const ValueRef> values) {
-          std::vector<Future<>> futures;
+          std::vector<tsl::Future<>> futures;
           futures.reserve(values.size());
           for (const auto& value : values) {
             futures.push_back(value->GetReadyFuture());
@@ -176,7 +176,7 @@ TEST_F(MockArrayTest, ReadyFutureWaitsUntilReady) {
   absl::Notification wait_ready;
 
   {
-    absl::MutexLock l(&mu_);
+    absl::MutexLock l(mu_);
     get_ready_hook_ = [&]() {
       wait_ready.WaitForNotification();
       return absl::OkStatus();
@@ -198,7 +198,7 @@ TEST_F(MockArrayTest, ReadyFuturePropagatesError) {
   absl::Notification wait_ready;
 
   {
-    absl::MutexLock l(&mu_);
+    absl::MutexLock l(mu_);
     get_ready_hook_ = [&]() { return absl::InternalError("testing"); };
   }
 
@@ -211,7 +211,7 @@ TEST_F(MockArrayTest, CopyToHostFutureWaitsUntilCopied) {
   absl::Notification wait_ready;
 
   {
-    absl::MutexLock l(&mu_);
+    absl::MutexLock l(mu_);
     copy_host_hook_ = [&]() {
       wait_ready.WaitForNotification();
       return absl::OkStatus();
@@ -235,7 +235,7 @@ TEST_F(MockArrayTest, CopyToHostFuturePropagatesError) {
   absl::Notification wait_ready;
 
   {
-    absl::MutexLock l(&mu_);
+    absl::MutexLock l(mu_);
     copy_host_hook_ = [&]() { return absl::InternalError("testing"); };
   }
 

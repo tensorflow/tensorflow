@@ -3021,8 +3021,10 @@ cc_test(
     srcs = ["quantize_test.cc"],
     tags = ["tflite_nnapi"],
     deps = [
+        ":kernel_util",
         ":test_main",
         ":test_util",
+        "//tensorflow/lite/kernels/internal:tensor_utils",
         "//tensorflow/lite/kernels/internal:types",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",

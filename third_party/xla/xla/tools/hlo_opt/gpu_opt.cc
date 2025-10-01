@@ -26,8 +26,10 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "llvm/IR/LLVMContext.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/tools/hlo_opt/opt_lib.h"
 #include "xla/hlo/transforms/host_offloader.h"
 #include "xla/hlo/transforms/simplifiers/hlo_memory_scheduler.h"
+#include "xla/layout.h"
 #include "xla/service/buffer_value.h"
 #include "xla/service/compiler.h"
 #include "xla/service/copy_insertion.h"
@@ -174,7 +176,7 @@ class GpuOptProvider : public CompiledOptProvider {
     RegisterPass<gpu::ReductionLayoutNormalizer>();
     RegisterPass<gpu::SanitizeConstantNames>();
     RegisterPass<gpu::TopKSplitter>();
-    RegisterPass<gpu::TopkSpecializer>();
+    RegisterPass<gpu::TopkSpecializer>(gpu_compute_capability);
     RegisterPass<gpu::TransposeDimensionGrouper>();
     RegisterPass<gpu::WindowedEinsumHandler>();
     // go/keep-sorted end
@@ -213,7 +215,8 @@ class GpuOptProvider : public CompiledOptProvider {
       TF_ASSIGN_OR_RETURN(gpu::ScheduleMetadata schedule_metadata,
                           gpu::ScheduleGpuModule(
                               optimized_module, gpu_compiler->GetPointerSize(),
-                              device_description, alias_info.get()));
+                              device_description, gpu_compiler->mlir_context(),
+                              alias_info.get()));
       TF_RETURN_IF_ERROR(gpu_compiler->RunPostSchedulingPipelines(
           optimized_module, schedule_metadata.scheduler_mem_limit,
           device_description, alias_info.get()));

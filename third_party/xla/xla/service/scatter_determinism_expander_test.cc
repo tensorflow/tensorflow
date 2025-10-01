@@ -883,7 +883,7 @@ TEST_F(ScatterDeterminismExpanderTest, ScatterAddHloVerificationTest) {
     CHECK-DAG:   %[[CONSTANT:.*]] = s32[1]{0} constant({2})
     CHECK-DAG:   %[[BROADCAST0:.*]] = s32[2,1]{1,0} broadcast(%[[CONSTANT]]), dimensions={1}
     CHECK-DAG:   %[[SELECT1:.*]] = s32[2,1]{1,0} select(%[[BROADCAST3]], %[[RESHAPE5]], %[[BROADCAST0]])
-    CHECK-DAG:   %[[CONSTANT2:.*]] = s32[] constant(0)
+    CHECK-DAG:   %[[CONSTANT2:.*]] = s32[] constant(2)
     CHECK-DAG:   %[[BROADCAST1:.*]] = s32[1]{0} broadcast(%[[CONSTANT2]]), dimensions={}
     CHECK-DAG:   %[[SLICE1:.*]] = s32[1]{0} slice(%[[GET_TUPLE_ELEMENT]]), slice={[0:1]}
     CHECK-DAG:   %[[CONCATENATE1:.*]] = s32[2]{0} concatenate(%[[BROADCAST1]], %[[SLICE1]]), dimensions={0}

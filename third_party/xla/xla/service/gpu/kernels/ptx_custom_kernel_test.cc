@@ -86,7 +86,6 @@ TEST(PtxCustomKernelTest, GetPtxCustomKernel) {
       CustomKernel custom_kernel,
       GetPtxCustomKernel("AddI32", kAddI32KernelPtx, 3, se::BlockDim(4),
                          se::ThreadDim(1), byte_length));
-
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<se::Kernel> kernel,
                           executor->LoadKernel(custom_kernel.kernel_spec()));
 
@@ -112,6 +111,48 @@ TEST(PtxCustomKernelTest, GetPtxCustomKernel) {
 
   std::vector<int32_t> expected = {3, 3, 3, 3};
   ASSERT_EQ(dst, expected);
+  ASSERT_EQ(
+      custom_kernel.ToString(),
+      "AddI32 grid: [4, 1, 1] threads: [1, 1, 1]  shared_memory: 16 bytes");
 }
 
+TEST(PtxCustomKernelTest, GetPtxCustomKernelWithClusterDim) {
+  int64_t length = 4;
+  int64_t byte_length = sizeof(int32_t) * length;
+  se::gpu::CudaPlatform platform;
+  TF_ASSERT_OK_AND_ASSIGN(se::StreamExecutor * executor,
+                          platform.ExecutorForDevice(0));
+  TF_ASSERT_OK_AND_ASSIGN(
+      CustomKernel custom_kernel,
+      GetPtxCustomKernel("AddI32", kAddI32KernelPtx, 3, se::BlockDim(4),
+                         se::ThreadDim(1), se::ClusterDim(2), byte_length));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<se::Kernel> kernel,
+                          executor->LoadKernel(custom_kernel.kernel_spec()));
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<se::Stream> stream,
+                          executor->CreateStream());
+  se::DeviceMemory<int32_t> a = executor->AllocateArray<int32_t>(length, 0);
+  se::DeviceMemory<int32_t> b = executor->AllocateArray<int32_t>(length, 0);
+  se::DeviceMemory<int32_t> c = executor->AllocateArray<int32_t>(length, 0);
+  TF_CHECK_OK(stream->Memset32(&a, 1, byte_length));
+  TF_CHECK_OK(stream->Memset32(&b, 2, byte_length));
+  TF_CHECK_OK(stream->MemZero(&c, byte_length));
+
+  se::KernelArgsDeviceMemoryArray args(
+      std::vector<se::DeviceMemoryBase>({a, b, c}),
+      custom_kernel.shared_memory_bytes());
+  TF_CHECK_OK(kernel->Launch(custom_kernel.thread_dims(),
+                             custom_kernel.block_dims(), stream.get(), args));
+
+  TF_CHECK_OK(stream->BlockHostUntilDone());
+
+  std::vector<int32_t> dst(4, 42);
+  TF_CHECK_OK(stream->Memcpy(dst.data(), c, byte_length));
+
+  std::vector<int32_t> expected = {3, 3, 3, 3};
+  ASSERT_EQ(dst, expected);
+  ASSERT_EQ(custom_kernel.ToString(),
+            "AddI32 grid: [4, 1, 1] threads: [1, 1, 1] cluster: [2, 1, 1] "
+            "shared_memory: 16 bytes");
+}
 }  // namespace xla::gpu::kernel

@@ -24,6 +24,7 @@ tf_cc_test(
         "//tensorflow/dtensor/cc:slice_util",
         "//tensorflow/dtensor/cc:tensor_layout",
         "//tensorflow/dtensor/proto:layout_proto_cc",
+        "@com_google_absl//absl/status:status_matchers",
         "@com_google_googletest//:gtest_main",
         "@local_xla//xla/tsl/platform:status_matchers",
     ],

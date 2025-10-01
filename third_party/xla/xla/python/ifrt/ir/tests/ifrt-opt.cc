@@ -25,14 +25,18 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
+#include "mlir/Dialect/Math/IR/Math.h"
 #include "mlir/IR/DialectRegistry.h"
 #include "mlir/InitAllPasses.h"
 #include "mlir/Tools/mlir-opt/MlirOptMain.h"
+#include "shardy/dialect/mpmd/ir/dialect.h"
+#include "shardy/dialect/sdy/ir/dialect.h"
 #include "xla/mlir_hlo/mhlo/IR/register.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/hlo/hlo_program.h"
 #include "xla/python/ifrt/ir/atom_program_compiler.h"
+#include "xla/python/ifrt/ir/conversions/mpmd/lower_to_ifrt.h"
 #include "xla/python/ifrt/ir/ifrt_dialect.h"
 #include "xla/python/ifrt/ir/ifrt_ir_program.h"
 #include "xla/python/ifrt/ir/transforms/passes.h"
@@ -56,7 +60,7 @@ class TestChildExecutableCompiler : public AtomProgramCompiler {
   absl::StatusOr<AtomProgramCompileResult> CompileXla(
       std::unique_ptr<HloProgram> hlo_program,
       xla::CompileOptions options) override ABSL_LOCKS_EXCLUDED(mu_) {
-    absl::MutexLock lock(&mu_);
+    absl::MutexLock lock(mu_);
     methods_.push_back(absl::StrCat("fake_method_", methods_.size()));
     CHECK_LT(methods_.size(), kMaxTestMethods)
         << "push_back() might have caused reallocation, which might have "
@@ -98,7 +102,7 @@ class TestChildExecutableCompiler : public AtomProgramCompiler {
       std::vector<IfrtArrayType> in_array_types,
       std::vector<IfrtArrayType> out_array_types) override
       ABSL_LOCKS_EXCLUDED(mu_) {
-    absl::MutexLock lock(&mu_);
+    absl::MutexLock lock(mu_);
     methods_.push_back(absl::StrCat("fake_method_", methods_.size()));
     CHECK_LT(methods_.size(), kMaxTestMethods)
         << "push_back() might have caused reallocation, which might have "
@@ -151,8 +155,12 @@ int main(int argc, char** argv) {
   mlir::registerAllPasses();
   xla::ifrt::registerIfrtPassesAndPipelines(
       compiler, compile_options, atom_executable_map, bound_executable_map);
+  xla::ifrt::mpmd::RegisterLowerToIfrtPasses();
   mlir::DialectRegistry registry;
   xla::ifrt::support::InitializeMlirDialectRegistry(registry);
+  // Register dialects that are only used in the MLIR lit tests.
+  registry.insert<mlir::math::MathDialect, mlir::sdy::SdyDialect,
+                  mlir::mpmd::MpmdDialect>();
 
   return mlir::asMainReturnCode(
       mlir::MlirOptMain(argc, argv, "IFRT IR dialect driver\n", registry));

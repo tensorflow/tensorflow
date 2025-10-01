@@ -3284,6 +3284,14 @@ absl::Status HloEvaluator::HandleAddDependency(
   return absl::OkStatus();
 }
 
+absl::Status HloEvaluator::HandleOptimizationBarrier(
+    const HloInstruction* optimization_barrier) {
+  SetEvaluatedLiteralFor(
+      optimization_barrier,
+      GetEvaluatedLiteralFor(optimization_barrier->operand(0)).Clone());
+  return absl::OkStatus();
+}
+
 absl::Status HloEvaluator::HandleGetTupleElement(
     const HloInstruction* get_tuple_element) {
   const auto result_shape = get_tuple_element->shape();

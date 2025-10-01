@@ -33,6 +33,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/service/cpu/elemental_math_emitter.h"
 #include "xla/service/llvm_ir/llvm_util.h"
+#include "xla/util.h"
 
 namespace xla::cpu {
 using ::xla::codegen::intrinsics::Type;
@@ -41,6 +42,11 @@ absl::StatusOr<llvm::Value*> CpuElementalIrEmitter::EmitAtan2(
     PrimitiveType prim_type, llvm::Value* lhs, llvm::Value* rhs,
     absl::string_view) {
   return xla::cpu::EmitAtan2(module(), *b(), prim_type, lhs, rhs);
+}
+
+absl::StatusOr<llvm::Value*> CpuElementalIrEmitter::EmitAtanh(
+    PrimitiveType prim_type, llvm::Value* value) {
+  return Unimplemented("atanh");
 }
 
 absl::StatusOr<llvm::Value*> CpuElementalIrEmitter::EmitTanh(
@@ -52,6 +58,31 @@ absl::StatusOr<llvm::Value*> CpuElementalIrEmitter::EmitTanh(
     return b()->CreateCall(tanh, value);
   }
   return xla::cpu::EmitTanh(module(), *b(), prim_type, value);
+}
+
+absl::StatusOr<llvm::Value*> CpuElementalIrEmitter::EmitAcos(
+    PrimitiveType prim_type, llvm::Value* value) {
+  return Unimplemented("acos");
+}
+
+absl::StatusOr<llvm::Value*> CpuElementalIrEmitter::EmitAcosh(
+    PrimitiveType prim_type, llvm::Value* value) {
+  return Unimplemented("acosh");
+}
+
+absl::StatusOr<llvm::Value*> CpuElementalIrEmitter::EmitCosh(
+    PrimitiveType prim_type, llvm::Value* value) {
+  return Unimplemented("cosh");
+}
+
+absl::StatusOr<llvm::Value*> CpuElementalIrEmitter::EmitSinh(
+    PrimitiveType prim_type, llvm::Value* value) {
+  return Unimplemented("sinh");
+}
+
+absl::StatusOr<llvm::Value*> CpuElementalIrEmitter::EmitAsin(
+    PrimitiveType prim_type, llvm::Value* value) {
+  return Unimplemented("asin");
 }
 
 absl::StatusOr<llvm::Value*> CpuElementalIrEmitter::EmitErf(

@@ -8,7 +8,7 @@
 
 // CHECK: %[[ARG0:.*]] = f32[4] parameter(0)
 // CHECK: %[[ARG1:.*]] = f32[4] parameter(1)
-// CHECK: ROOT %add.3 = f32[4] add(%[[ARG0]], %[[ARG1]])
+// CHECK: ROOT %add.1 = f32[4] add(%[[ARG0]], %[[ARG1]])
 func.func @main(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<4xf32> {
   %0 = stablehlo.add %arg0, %arg1 : tensor<4xf32>  func.return %0 : tensor<4xf32>
 }
@@ -1951,29 +1951,14 @@ module {
 // -----
 
 // CHECK-LABEL: HloModule main
-
-// CHECK: ENTRY
-// CHECK: %[[ARG0:.*]] = f32[192] parameter(0)
-// CHECK: ROOT %[[RESULT:.*]] = f32[1,17,17,192] broadcast(%[[ARG0]]), dimensions={3}, origin={{[{][{]}}"broadcast.2342"{{[}][}]}}
-
-module {
-  func.func @main(%arg0: tensor<192xf32>) -> tensor<1x17x17x192xf32> {
-    %0 = stablehlo.broadcast_in_dim %arg0, dims = [3] {mhlo.original_value = "{{\22broadcast.2342\22}}"} : (tensor<192xf32>) -> tensor<1x17x17x192xf32>
-    return %0 : tensor<1x17x17x192xf32>
-  }
-}
-
-// -----
-
-// CHECK-LABEL: HloModule main
 // CHECK: ENTRY
 func.func @main() -> tensor<128x2048xf32> {
   // CHECK-NEXT: %after-all.1 = token[] after-all(), sharding={manual}
-  // CHECK-NEXT: %infeed.2 = ((f32[2048,128]), token[]) infeed(%after-all.1), sharding={{[{][{]manual}, {manual[}][}]}}
-  // CHECK-NEXT: %get-tuple-element.5 = token[] get-tuple-element(%infeed.2), index=1, sharding={manual}
-  // CHECK-NEXT: %get-tuple-element.3 = (f32[2048,128]) get-tuple-element(%infeed.2), index=0, sharding={{[{][{]manual[}][}]}}
+  // CHECK-NEXT: %infeed.1 = ((f32[2048,128]), token[]) infeed(%after-all.1), sharding={{[{][{]manual}, {manual[}][}]}}
+  // CHECK-NEXT: %get-tuple-element.5 = token[] get-tuple-element(%infeed.1), index=1, sharding={manual}
+  // CHECK-NEXT: %get-tuple-element.3 = (f32[2048,128]) get-tuple-element(%infeed.1), index=0, sharding={{[{][{]manual[}][}]}}
   // CHECK-NEXT: %get-tuple-element.4 = f32[2048,128] get-tuple-element(%get-tuple-element.3), index=0, sharding={manual}
-  // CHECK-NEXT: ROOT %transpose.6 = f32[128,2048] transpose(%get-tuple-element.4), dimensions={1,0}, sharding={manual}
+  // CHECK-NEXT: ROOT %transpose.1 = f32[128,2048] transpose(%get-tuple-element.4), dimensions={1,0}, sharding={manual}
   %0 = stablehlo.create_token {mhlo.sharding = "{manual}", xla_shape = "token[]"} : !stablehlo.token
   %1:2 = "stablehlo.infeed"(%0) <{infeed_config = "", layout = [[1, 0]]}> {mhlo.sharding = "{{manual}, {manual}}"} : (!stablehlo.token) -> (tensor<2048x128xf32>, !stablehlo.token)
   %2 = stablehlo.transpose %1#0, dims = [1, 0] {mhlo.sharding = "{manual}", result_layout = dense<[0, 1]> : tensor<2xindex>, xla_shape = "f32[128,2048]{0,1}"} : (tensor<2048x128xf32>) -> tensor<128x2048xf32>
@@ -2100,4 +2085,15 @@ func.func @main(%arg0: tensor<i1>, %arg1: memref<2xf32>) -> memref<2xf32> {
       stablehlo.return %iterArg0, %1 : tensor<i1>, memref<2xf32>
     }
   func.return %0#1: memref<2xf32>
+}
+
+// -----
+
+// CHECK-LABEL: HloModule main
+// CHECK: set-dimension-size
+// CHECK-NOT: cast
+func.func @main(%arg0: tensor<4xf32>, %arg1: tensor<i32>) -> tensor<?xf32> {
+  %0 = stablehlo.set_dimension_size %arg0, %arg1, dim = 0 : (tensor<4xf32>, tensor<i32>) -> tensor<?xf32, #stablehlo.bounds<4>>
+  %cast = tensor.cast %0 : tensor<?xf32, #stablehlo.bounds<4>> to tensor<?xf32>
+  return %cast : tensor<?xf32>
 }

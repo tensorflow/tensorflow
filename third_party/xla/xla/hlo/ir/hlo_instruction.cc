@@ -16,7 +16,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 
 #include <algorithm>
-#include <climits>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -37,6 +36,7 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/function_ref.h"
 #include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/strings/ascii.h"
@@ -317,13 +317,13 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
 
   std::unique_ptr<HloInstruction> instruction;
   const auto operands = [&instruction_map, &proto](int index) {
-    return instruction_map.at(proto.operand_ids(index));
+    return instruction_map.at(CalculateLocalId(proto.operand_ids(index)));
   };
   const auto all_operands = [&instruction_map, &proto]() {
     std::vector<HloInstruction*> result(proto.operand_ids_size());
     std::transform(proto.operand_ids().begin(), proto.operand_ids().end(),
                    result.begin(), [&instruction_map](int64_t operand_id) {
-                     return instruction_map.at(operand_id);
+                     return instruction_map.at(CalculateLocalId(operand_id));
                    });
     return result;
   };
@@ -353,14 +353,17 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
     return result;
   };
 
-  TF_RET_CHECK(
-      absl::c_all_of(proto.operand_ids(),
-                     [&](int64_t id) { return instruction_map.contains(id); }))
+  TF_RET_CHECK(absl::c_all_of(proto.operand_ids(),
+                              [&](int64_t id) {
+                                return instruction_map.contains(
+                                    CalculateLocalId(id));
+                              }))
       << proto.name() << " instruction contains invalid operand id(s)";
-
-  TF_RET_CHECK(
-      absl::c_all_of(proto.called_computation_ids(),
-                     [&](int64_t id) { return computation_map.contains(id); }))
+  TF_RET_CHECK(absl::c_all_of(proto.called_computation_ids(),
+                              [&](int64_t id) {
+                                return computation_map.contains(
+                                    CalculateLocalId(id));
+                              }))
       << proto.name() << " instruction references invalid computation id(s)";
 
   TF_ASSIGN_OR_RETURN(Shape shape, Shape::FromProto(proto.shape()));
@@ -1300,7 +1303,12 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
             output_to_operand_aliasing());
       }
       break;
+      case HloOpcode::kAsin:
+      case HloOpcode::kAcos:
+      case HloOpcode::kAcosh:
+      case HloOpcode::kAtanh:
       case HloOpcode::kCos:
+      case HloOpcode::kCosh:
       case HloOpcode::kErf:
       case HloOpcode::kExp:
       case HloOpcode::kExpm1:
@@ -1309,6 +1317,7 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
       case HloOpcode::kRsqrt:
       case HloOpcode::kLogistic:
       case HloOpcode::kSin:
+      case HloOpcode::kSinh:
       case HloOpcode::kSqrt:
       case HloOpcode::kCbrt:
       case HloOpcode::kTanh:
@@ -1335,7 +1344,8 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
       }
 
       for (const int64_t operand_id : proto.operand_ids()) {
-        instruction->AppendOperand(instruction_map.at(operand_id));
+        instruction->AppendOperand(
+            instruction_map.at(CalculateLocalId(operand_id)));
       }
       for (const int64_t computation_id : proto.called_computation_ids()) {
         instruction->AppendComputation(computation_map.at(computation_id));
@@ -1349,9 +1359,12 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
   }
 
   for (const int64_t predecessor_id : proto.control_predecessor_ids()) {
-    TF_RET_CHECK(ContainsKey(instruction_map, predecessor_id))
-        << "No instruction with id " << predecessor_id;
-    TF_RETURN_IF_ERROR(instruction_map.at(predecessor_id)
+    int32_t local_predecessor_id = CalculateLocalId(predecessor_id);
+    TF_RET_CHECK(ContainsKey(instruction_map, local_predecessor_id))
+        << "No instruction with id " << predecessor_id
+        << " (local id: " << local_predecessor_id << ") in computation "
+        << proto.name();
+    TF_RETURN_IF_ERROR(instruction_map.at(local_predecessor_id)
                            ->AddControlDependencyTo(instruction.get()));
   }
 
@@ -1365,13 +1378,8 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
 
   TF_RET_CHECK(proto.id() >= 0)
       << "Instruction with negative id: " << proto.id();
-  // TODO(b/399394039): Reinforce the condition on INT64_MAX when upgrading
-  // unique_id_ to int64_t.
-  LOG_IF(INFO, proto.id() > INT_MAX)
-      << "Instruction with id > INT_MAX: " << proto.id()
-      << " this is not intended behavior and might indicate a bug in the HLO "
-         "proto serialization.";
-  instruction->unique_id_ = proto.id();
+  // Drops the most significant 32 bits to ignore parent prefix.
+  instruction->local_id_ = CalculateLocalId(proto.id());
 
   if (proto.has_sharding()) {
     TF_ASSIGN_OR_RETURN(HloSharding sharding,
@@ -1490,7 +1498,12 @@ HloInstruction::CreateRngBitGenerator(const Shape& shape, HloInstruction* state,
     case HloOpcode::kReal:
     case HloOpcode::kSign:
       return CreateNary(shape, opcode, {operand});
+    case HloOpcode::kAcos:
+    case HloOpcode::kAcosh:
+    case HloOpcode::kAsin:
+    case HloOpcode::kAtanh:
     case HloOpcode::kCos:
+    case HloOpcode::kCosh:
     case HloOpcode::kErf:
     case HloOpcode::kExp:
     case HloOpcode::kExpm1:
@@ -1499,6 +1512,7 @@ HloInstruction::CreateRngBitGenerator(const Shape& shape, HloInstruction* state,
     case HloOpcode::kRsqrt:
     case HloOpcode::kLogistic:
     case HloOpcode::kSin:
+    case HloOpcode::kSinh:
     case HloOpcode::kSqrt:
     case HloOpcode::kCbrt:
     case HloOpcode::kTanh:
@@ -2712,6 +2726,10 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
       break;
     // Unary ops.
     case HloOpcode::kAbs:
+    case HloOpcode::kAsin:
+    case HloOpcode::kAcos:
+    case HloOpcode::kAcosh:
+    case HloOpcode::kAtanh:
     case HloOpcode::kAllGatherDone:
     case HloOpcode::kAllReduceDone:
     case HloOpcode::kRoundNearestAfz:
@@ -2724,6 +2742,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kOptimizationBarrier:
     case HloOpcode::kCopyDone:
     case HloOpcode::kCos:
+    case HloOpcode::kCosh:
     case HloOpcode::kErf:
     case HloOpcode::kExp:
     case HloOpcode::kExpm1:
@@ -3176,9 +3195,13 @@ bool HloInstruction::IdenticalSlowPath(
     // The result of these instructions only depend upon their opcode and
     // operands.
     case HloOpcode::kAbs:
+    case HloOpcode::kAcos:
+    case HloOpcode::kAcosh:
+    case HloOpcode::kAsin:
     case HloOpcode::kAllGatherDone:
     case HloOpcode::kAllReduceDone:
     case HloOpcode::kAtan2:
+    case HloOpcode::kAtanh:
     case HloOpcode::kAdd:
     case HloOpcode::kBitcast:
     case HloOpcode::kBitcastConvert:
@@ -3192,6 +3215,7 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kCopyStart:
     case HloOpcode::kCopyDone:
     case HloOpcode::kCos:
+    case HloOpcode::kCosh:
     case HloOpcode::kDivide:
     case HloOpcode::kDynamicUpdateSlice:
     case HloOpcode::kErf:
@@ -3229,6 +3253,7 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kLogistic:
     case HloOpcode::kSign:
     case HloOpcode::kSin:
+    case HloOpcode::kSinh:
     case HloOpcode::kSqrt:
     case HloOpcode::kStochasticConvert:
     case HloOpcode::kCbrt:
@@ -3803,6 +3828,10 @@ bool HloInstruction::IsOpElementwise(HloOpcode opcode) {
   switch (opcode) {
     // Unary elementwise operations.
     case HloOpcode::kAbs:
+    case HloOpcode::kAcos:
+    case HloOpcode::kAcosh:
+    case HloOpcode::kAsin:
+    case HloOpcode::kAtanh:
     case HloOpcode::kRoundNearestAfz:
     case HloOpcode::kRoundNearestEven:
     case HloOpcode::kCeil:
@@ -3811,6 +3840,7 @@ bool HloInstruction::IsOpElementwise(HloOpcode opcode) {
     case HloOpcode::kBitcastConvert:
     case HloOpcode::kCopy:
     case HloOpcode::kCos:
+    case HloOpcode::kCosh:
     case HloOpcode::kErf:
     case HloOpcode::kExp:
     case HloOpcode::kExpm1:
@@ -3828,6 +3858,7 @@ bool HloInstruction::IsOpElementwise(HloOpcode opcode) {
     case HloOpcode::kLogistic:
     case HloOpcode::kSign:
     case HloOpcode::kSin:
+    case HloOpcode::kSinh:
     case HloOpcode::kSqrt:
     case HloOpcode::kCbrt:
     case HloOpcode::kTan:
@@ -4369,18 +4400,18 @@ std::string HloInstruction::ToShortString() const {
 
 HloInstructionProto HloInstruction::ToProto() const {
   HloInstructionProto proto;
-  CHECK(unique_id_ != -1)
+  CHECK(local_id_ != -1)
       << "This instruction does not have a valid id. Please make sure the "
          "instruction is inside a module before dumping it.";
-  proto.set_id(unique_id_);
+  proto.set_id(unique_id());
   proto.set_name(name_);
   *proto.mutable_opcode() = std::string(HloOpcodeString(opcode_));
   *proto.mutable_shape() = shape().ToProto();
   for (const HloInstruction* operand : operands_) {
-    proto.add_operand_ids(operand->unique_id_64_bits());
+    proto.add_operand_ids(operand->unique_id());
   }
   for (const HloInstruction* control : control_predecessors()) {
-    proto.add_control_predecessor_ids(control->unique_id_64_bits());
+    proto.add_control_predecessor_ids(control->unique_id());
   }
 
   *proto.mutable_metadata() = metadata();
@@ -4480,8 +4511,7 @@ bool HloInstruction::IsFusible() const {
 }
 
 HloInstruction::HloInstruction(HloOpcode opcode, const Shape& shape)
-    : unique_id_(-1),
-      index_in_parent_(~0u),
+    : local_id_(-1),
       opcode_(opcode),
       is_default_config_(false),
       cleaned_up_(false),
@@ -4499,8 +4529,16 @@ absl::Status HloInstruction::Visit(
   switch (opcode_) {
     case HloOpcode::kAbs:
       return visitor->HandleAbs(this);
+    case HloOpcode::kAcos:
+      return visitor->HandleAcos(this);
+    case HloOpcode::kAcosh:
+      return visitor->HandleAcosh(this);
+    case HloOpcode::kAsin:
+      return visitor->HandleAsin(this);
     case HloOpcode::kAtan2:
       return visitor->HandleAtan2(this);
+    case HloOpcode::kAtanh:
+      return visitor->HandleAtanh(this);
     case HloOpcode::kRoundNearestAfz:
       return visitor->HandleRound(this);
     case HloOpcode::kRoundNearestEven:
@@ -4641,8 +4679,12 @@ absl::Status HloInstruction::Visit(
       return visitor->HandleTanh(this);
     case HloOpcode::kCos:
       return visitor->HandleCos(this);
+    case HloOpcode::kCosh:
+      return visitor->HandleCosh(this);
     case HloOpcode::kSin:
       return visitor->HandleSin(this);
+    case HloOpcode::kSinh:
+      return visitor->HandleSinh(this);
     case HloOpcode::kSqrt:
       return visitor->HandleSqrt(this);
     case HloOpcode::kCbrt:
@@ -4763,7 +4805,7 @@ template <typename Visitor>
 inline bool PushDFSChild(Visitor* visitor, DFSStack* dfs_stack,
                          HloInstruction* child) {
   CHECK(child != nullptr);
-  const int64_t id = child->unique_id_64_bits();
+  const int64_t id = child->unique_id();
   CHECK_GE(id, 0) << "instruction may not have a parent computation";
   switch (visitor->GetVisitState(id)) {
     case Visitor::kVisiting:
@@ -4780,8 +4822,8 @@ inline bool PushDFSChild(Visitor* visitor, DFSStack* dfs_stack,
 }
 
 using InternalCompareFunction =
-    absl::FunctionRef<bool(std::pair<int, const HloInstruction*>,
-                           std::pair<int, const HloInstruction*>)>;
+    absl::FunctionRef<bool(std::pair<int64_t, const HloInstruction*>,
+                           std::pair<int64_t, const HloInstruction*>)>;
 template <typename Visitor>
 static absl::Status PostOrderDFS(
     HloInstruction* root, Visitor* visitor,
@@ -4789,19 +4831,19 @@ static absl::Status PostOrderDFS(
     bool ignore_control_predecessors, bool cross_computation) {
   visitor->ReserveVisitStates(root->parent()->instruction_count());
 
-  // dfs_stack holds pairs of <HloInstruction*->unique_id(), HloInstruction*>.
+  // dfs_stack holds pairs of <HloInstruction*->unique_id, HloInstruction*>.
   //
   // We need to keep track of both the id and the instruction because
   // instructions can get deleted while they are on the stack, so we
   // can't always use the (potentially dead) instruction object to grab
   // its id.
   DFSStack dfs_stack;
-  dfs_stack.emplace_back(root->unique_id_64_bits(), root);
+  dfs_stack.emplace_back(root->unique_id(), root);
 
   do {
     DCHECK(!dfs_stack.empty());
 
-    int current_id = dfs_stack.back().first;
+    int64_t current_id = dfs_stack.back().first;
     HloInstruction* current_node = dfs_stack.back().second;
     CHECK_GE(current_id, 0) << current_id << ": " << current_node->name()
                             << ": instruction may not have parent computation";
@@ -4907,8 +4949,8 @@ absl::Status HloInstruction::AcceptWithOperandOrder(
     DfsHloVisitor* visitor, CompareFunction operand_order,
     bool call_finish_visit) {
   VLOG(2) << "HloInstruction::AcceptWithOperandOrder(%" << name() << ")";
-  auto func = [operand_order](std::pair<int, const HloInstruction*> a,
-                              std::pair<int, const HloInstruction*> b) {
+  auto func = [operand_order](std::pair<int64_t, const HloInstruction*> a,
+                              std::pair<int64_t, const HloInstruction*> b) {
     // Call the client's comparison function on the actual HloInstruction*
     // objects (ignoring the internal ids we also have in our stack entries)
     return operand_order(a.second, b.second);
@@ -5202,13 +5244,30 @@ bool IsValidResultAccuracy(const ResultAccuracy& accuracy) {
 }
 
 bool IsUnaryOpWithResultAccuracy(HloOpcode opcode) {
-  return opcode == HloOpcode::kExp || opcode == HloOpcode::kExpm1 ||
-         opcode == HloOpcode::kLog || opcode == HloOpcode::kLog1p ||
-         opcode == HloOpcode::kRsqrt || opcode == HloOpcode::kSqrt ||
-         opcode == HloOpcode::kCbrt || opcode == HloOpcode::kTanh ||
-         opcode == HloOpcode::kCos || opcode == HloOpcode::kSin ||
-         opcode == HloOpcode::kTan || opcode == HloOpcode::kErf ||
-         opcode == HloOpcode::kLogistic;
+  return
+      // clang-format off
+    // go/keep-sorted start
+    opcode == HloOpcode::kAcos ||
+    opcode == HloOpcode::kAcosh ||
+    opcode == HloOpcode::kAsin ||
+    opcode == HloOpcode::kAtanh ||
+    opcode == HloOpcode::kCbrt ||
+    opcode == HloOpcode::kCos ||
+    opcode == HloOpcode::kCosh ||
+    opcode == HloOpcode::kErf ||
+    opcode == HloOpcode::kExp ||
+    opcode == HloOpcode::kExpm1 ||
+    opcode == HloOpcode::kLog ||
+    opcode == HloOpcode::kLog1p ||
+    opcode == HloOpcode::kLogistic ||
+    opcode == HloOpcode::kRsqrt ||
+    opcode == HloOpcode::kSin ||
+    opcode == HloOpcode::kSinh ||
+    opcode == HloOpcode::kSqrt ||
+    opcode == HloOpcode::kTan ||
+    opcode == HloOpcode::kTanh;
+    // go/keep-sorted end
+  // clang-format on
 }
 
 std::string AlgorithmToString(const PrecisionConfig::Algorithm& algorithm) {
@@ -5398,7 +5457,21 @@ bool HloPtrComparator::operator()(const HloInstruction* const& lhs,
       lhs_module->unique_id() != rhs_module->unique_id()) {
     return lhs_module->unique_id() < rhs_module->unique_id();
   }
-  return lhs->unique_id_64_bits() < rhs->unique_id_64_bits();
+  return lhs->unique_id() < rhs->unique_id();
+}
+
+bool HloPtrComparatorInternal::operator()(
+    const HloInstruction* const& lhs, const HloInstruction* const& rhs) const {
+  // Nothing compares less than nullptr.
+  if (rhs == nullptr) {
+    return false;
+  }
+  if (lhs == nullptr) {
+    return true;
+  }
+  CHECK(lhs->GetModule() == rhs->GetModule())
+      << "Instructions are not in the same module or both outside a module.";
+  return lhs->local_id() < rhs->local_id();
 }
 
 const PrecisionConfig& HloInstruction::precision_config() const {
@@ -5452,8 +5525,21 @@ void HloInstruction::UniquifyName(HloModule* module) {
   UniquifyName(&module->instruction_name_uniquer());
 }
 
-void HloInstruction::UniquifyId(HloModule* module) {
-  SetUniqueId(module->NewUniqueInstructionId());
+int64_t HloInstruction::unique_id() const {
+  CHECK(parent_ != nullptr)
+      << "Instruction " << name()
+      << " must have a parent in order to have a unique ID.";
+  // The parent's unique ID is stored in the most significant 32 bits of the
+  // unique ID.
+  return CalculateUniqueId(parent_->unique_id(), local_id_);
+}
+
+int32_t HloInstruction::local_id() const { return local_id_; }
+
+int64_t HloInstruction::CalculateUniqueId(int32_t computation_unique_id,
+                                          int32_t instruction_local_id) {
+  return ((static_cast<int64_t>(computation_unique_id) << 32) |
+          static_cast<int64_t>(instruction_local_id));
 }
 
 void HloInstruction::SortInstructionUsersAndControlLists(

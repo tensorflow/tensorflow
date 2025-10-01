@@ -108,8 +108,8 @@ func.func @al_reduce_multiple_axes(%arg0: tensor<8x8xf32> {sdy.sharding = #sdy.s
 
 // CHECK-LABEL: func @al_reduce_multiple_axes_2
 func.func @al_reduce_multiple_axes_2(%arg0: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh_x_2_y_2, [{}, {}], unreduced={"x", "y"}>}) -> tensor<8x8xf32> {
-  // CHECK{LITERAL}: replica_groups = dense<[[0, 2, 1, 3]]>
-  %0 = sdy.all_reduce {"y", "x"} %arg0 out_sharding=<@mesh_x_2_y_2, [{}, {}]> : tensor<8x8xf32>
+  // CHECK{LITERAL}: replica_groups = dense<[[0, 1, 2, 3]]>
+  %0 = sdy.all_reduce {"x", "y"} %arg0 out_sharding=<@mesh_x_2_y_2, [{}, {}]> : tensor<8x8xf32>
   return %0 : tensor<8x8xf32>
 }
 
@@ -122,8 +122,8 @@ func.func @all_reduce_non_iota_device_order(%arg0: tensor<8x8xf32> {sdy.sharding
 
 // CHECK-LABEL: func @all_reduce_sub_axis
 func.func @all_reduce_sub_axis(%arg0: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh_x_4_y_6, [{}, {}], unreduced={"x", "y"}>}) -> tensor<8x8xf32> {
-  // CHECK{LITERAL}: replica_groups = dense<[[0, 6, 12, 18, 1, 7, 13, 19, 2, 8, 14, 20], [3, 9, 15, 21, 4, 10, 16, 22, 5, 11, 17, 23]]>
-  %0 = sdy.all_reduce {"y":(2)3, "x"} %arg0 out_sharding=<@mesh_x_4_y_6, [{}, {}]> : tensor<8x8xf32>
+  // CHECK{LITERAL}: replica_groups = dense<[[0, 1, 2, 6, 7, 8, 12, 13, 14, 18, 19, 20], [3, 4, 5, 9, 10, 11, 15, 16, 17, 21, 22, 23]]>
+  %0 = sdy.all_reduce {"x", "y":(2)3} %arg0 out_sharding=<@mesh_x_4_y_6, [{}, {}]> : tensor<8x8xf32>
   return %0 : tensor<8x8xf32>
 }
 

@@ -103,7 +103,8 @@ absl::flat_hash_set<HloInstruction*> PropagateAnnotationFromSources(
 // the instructions already has an annotation.
 absl::Status AttachAnnotation(
     Annotation annotation,
-    const absl::flat_hash_set<HloInstruction*>& instructions) {
+    const absl::flat_hash_set<HloInstruction*>& instructions,
+    bool dry_run = false) {
   for (HloInstruction* instr : instructions) {
     TF_ASSIGN_OR_RETURN(std::optional<Annotation> instr_annotation,
                         GetSchedulingAnnotation(instr));
@@ -116,16 +117,27 @@ absl::Status AttachAnnotation(
     }
     LOG(INFO) << "Propagating annotation " << annotation.ToString() << " to "
               << instr->name();
-    TF_RETURN_IF_ERROR(SetSchedulingAnnotation(instr, annotation));
+    if (!dry_run) {
+      TF_RETURN_IF_ERROR(SetSchedulingAnnotation(instr, annotation));
+    }
   }
   return absl::OkStatus();
 }
 
-bool IsSupportedAsyncOp(HloInstruction* instr, bool supports_async_start) {
+bool IsSupportedAsyncOp(HloInstruction* instr, bool supports_async_start,
+                        bool check_sync_versions) {
   if (instr->opcode() == HloOpcode::kAsyncStart && !supports_async_start) {
     VLOG(1) << "Dropping annotation on async start operation: "
             << instr->name();
     return false;
+  }
+  if (check_sync_versions) {
+    if (HloPredicateIsOp<HloOpcode::kAllGather, HloOpcode::kAllReduce,
+                         HloOpcode::kCollectivePermute, HloOpcode::kSendDone,
+                         HloOpcode::kSend, HloOpcode::kRecvDone,
+                         HloOpcode::kRecv>(instr)) {
+      return true;
+    }
   }
   return HloPredicateIsOp<
       HloOpcode::kAllGatherDone, HloOpcode::kAllGatherStart,
@@ -332,13 +344,14 @@ absl::StatusOr<bool> RemoveLoopIterationAnnotation(HloModule* module) {
 absl::StatusOr<bool> LegalizeSchedulingAnnotations::PropagateAnnotations(
     const HloComputation* computation,
     const absl::btree_map<Annotation, std::vector<HloInstruction*>>&
-        annotation_to_instruction) {
+        annotation_to_instruction,
+    bool dry_run) {
   bool changed = false;
   for (auto& [annotation, sources] : annotation_to_instruction) {
     absl::flat_hash_set<HloInstruction*> to_annotate =
         PropagateAnnotationFromSources(sources, computation);
     changed |= (!to_annotate.empty());
-    auto status = AttachAnnotation(annotation, to_annotate);
+    auto status = AttachAnnotation(annotation, to_annotate, dry_run);
     if (!status.ok()) {
       return status;
     }
@@ -354,7 +367,8 @@ bool LegalizeSchedulingAnnotations::KeepSchedulingAnnotation(
     return false;
   }
 
-  return IsSupportedAsyncOp(instr, config_.keep_start_annotation) ||
+  return IsSupportedAsyncOp(instr, config_.keep_start_annotation,
+                            /*check_sync_versions=*/false) ||
          config_.keep_sync_annotation(instr);
 }
 
@@ -409,6 +423,11 @@ absl::Status LegalizeSchedulingAnnotations::Verify(HloModule* module) {
       if (HasSchedulingAnnotation(instr)) {
         auto scheduling_annotation_or = GetSchedulingAnnotation(instr);
         if (!scheduling_annotation_or.ok()) {
+          continue;
+        }
+        if (!IsSupportedAsyncOp(instr, config_.keep_start_annotation,
+                                /*check_sync_versions=*/true) &&
+            !config_.keep_sync_annotation(instr)) {
           continue;
         }
         std::optional<Annotation> scheduling_annotation =
@@ -570,7 +589,8 @@ absl::StatusOr<bool> LegalizeSchedulingAnnotations::Run(
         continue;
       }
       auto result = PropagateAnnotations(
-          computation, per_computation_annotation_to_instruction);
+          computation, per_computation_annotation_to_instruction,
+          /*dry_run=*/config_.check_non_mitigatable_gap_only);
       if (!result.ok()) {
         return result.status();
       }

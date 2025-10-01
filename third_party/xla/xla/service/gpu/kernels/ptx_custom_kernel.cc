@@ -57,4 +57,16 @@ absl::StatusOr<CustomKernel> GetPtxCustomKernel(std::string kernel_name,
                       /*shared_memory_bytes=*/shared_memory_bytes);
 };
 
+absl::StatusOr<CustomKernel> GetPtxCustomKernel(
+    std::string kernel_name, absl::string_view ptx, int num_args,
+    se::BlockDim block_dim, se::ThreadDim thread_dim,
+    se::ClusterDim cluster_dim, size_t shared_memory_bytes) {
+  se::KernelLoaderSpec kernel_spec =
+      se::KernelLoaderSpec::CreateCudaPtxInMemorySpec(
+          ptx, kernel_name, /*arity=*/num_args, KernelArgsPacking);
+  return CustomKernel(std::move(kernel_name), kernel_spec, block_dim,
+                      thread_dim, cluster_dim,
+                      /*shared_memory_bytes=*/shared_memory_bytes);
+};
+
 }  // namespace xla::gpu::kernel

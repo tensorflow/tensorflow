@@ -248,60 +248,48 @@ class CommonAsyncHostToDeviceTransferManager
     tsl::profiler::TraceMeProducer producer("TransferLiteralToBuffer",
                                             tsl::profiler::ContextType::kPjRt);
 
-    // The host to device transfer is performed on a thread pool, mostly because
-    // it includes linearization that may be slow.
-    // TODO(misard) assess if it would be preferable to introduce a heuristic to
-    // put the transfer into the calling thread for small literals.
-    async_work_runner_->Schedule(
-        [this, buffer_index, literal, raw_buffer = std::move(raw_buffer),
-         definition_event = std::move(definition_event),
-         on_done = std::move(on_done),
-         context_id = producer.GetContextId()]() mutable {
-          tsl::profiler::TraceMeConsumer consumer(
-              "TransferLiteralToBuffer H2D Dispatch",
-              tsl::profiler::ContextType::kPjRt, context_id);
-          auto status_or_h2d_transfer_event = client_->LinearizeInto(
-              literal, device_shapes_[buffer_index].layout(), raw_buffer);
-          CHECK_OK(status_or_h2d_transfer_event);
-          auto h2d_transfer_event = *std::move(status_or_h2d_transfer_event);
-          if (client_->event_tracking_enabled()) {
-            h2d_transfer_event->AppendDescriptionToEvent(
-                " TransferToDevice TransferLiteralToBuffer",
-                {definition_event.get()});
-          }
+    TF_ASSIGN_OR_RETURN(
+        auto h2d_transfer_event,
+        client_->LinearizeInto(
+            literal, device_shapes_[buffer_index].layout(),
+            PjRtClient::HostBufferSemantics::kImmutableUntilTransferCompletes,
+            raw_buffer));
+    if (client_->event_tracking_enabled()) {
+      h2d_transfer_event->AppendDescriptionToEvent(
+          " TransferToDevice TransferLiteralToBuffer",
+          {definition_event.get()});
+    }
 
-          auto cleanup = [this, buffer_index,
-                          transfer_event = h2d_transfer_event,
-                          definition_event = std::move(definition_event),
-                          on_done = std::move(on_done)]() mutable {
-            {
-              absl::MutexLock l(&mu_);
+    auto cleanup = [this, buffer_index, transfer_event = h2d_transfer_event,
+                    definition_event = std::move(definition_event),
+                    on_done = std::move(on_done)]() mutable {
+      {
+        absl::MutexLock l(&mu_);
 
-              CHECK_GT(transfers_in_flight_, 0);
-              --transfers_in_flight_;
-              CHECK_EQ(buffer_transfers_in_flight_[buffer_index], 1);
-              --buffer_transfers_in_flight_[buffer_index];
-              CHECK_GT(remaining_buffer_count_, 0);
-              --remaining_buffer_count_;
-            }
+        CHECK_GT(transfers_in_flight_, 0);
+        --transfers_in_flight_;
+        CHECK_EQ(buffer_transfers_in_flight_[buffer_index], 1);
+        --buffer_transfers_in_flight_[buffer_index];
+        CHECK_GT(remaining_buffer_count_, 0);
+        --remaining_buffer_count_;
+      }
 
-            // Call on_done after finishing all housekeeping and releasing the
-            // lock.
-            //
-            // NOTE: on_done may call ~AsyncHostToDeviceTransferManager(), so we
-            // don't touch any class members after this point.
-            std::move(on_done)();
+      // Call on_done after finishing all housekeeping and releasing the
+      // lock.
+      //
+      // NOTE: on_done may call ~AsyncHostToDeviceTransferManager(), so we
+      // don't touch any class members after this point.
+      std::move(on_done)();
 
-            // Unblock the definition event after calling on_done, just in case
-            // the caller wanted some serialization between finding out about
-            // the buffers becoming available and them being released.
-            CHECK(definition_event);
-            // Dependency of event on transfer_event was recorded above in
-            // AppendDescriptionToEvent.
-            definition_event->Set(std::move(transfer_event));
-          };
-          h2d_transfer_event->AndThen(std::move(cleanup));
-        });
+      // Unblock the definition event after calling on_done, just in case
+      // the caller wanted some serialization between finding out about
+      // the buffers becoming available and them being released.
+      CHECK(definition_event);
+      // Dependency of event on transfer_event was recorded above in
+      // AppendDescriptionToEvent.
+      definition_event->Set(std::move(transfer_event));
+    };
+    h2d_transfer_event->AndThen(std::move(cleanup));
 
     return absl::OkStatus();
   }

@@ -83,9 +83,8 @@ class ScatterFusion : public EmitterBase {
     return std::nullopt;
   }
 
-  std::optional<IndexingMap> ComputeThreadIdToInputIndexing(
-      int64_t root_index, int64_t hero_operand_index,
-      mlir::MLIRContext* ctx) const override;
+  std::optional<std::vector<IndexingMap>> ComputeThreadIdToInputIndexing(
+      int64_t root_index, mlir::MLIRContext* ctx) const override;
 
  protected:
   virtual absl::Status EmitEntryFunctionImpl(

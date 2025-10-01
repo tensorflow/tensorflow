@@ -191,6 +191,16 @@ absl::StatusOr<HloInstruction*> MakeRaggedDotHlo(
     const PrecisionConfig& precision_config,
     std::optional<PrimitiveType> preferred_element_type);
 
+// Creates a ScaledDot HLO instruction and adds it to the computation containing
+// `lhs`, `lhs_scale`, `rhs`, and `rhs_scale` (all must be in the same
+// computation). An optional preferred_element_type can be specified to override
+// the element type.
+absl::StatusOr<HloInstruction*> MakeScaledDotHlo(
+    HloInstruction* lhs, HloInstruction* lhs_scale, HloInstruction* rhs,
+    HloInstruction* rhs_scale, const DotDimensionNumbers& dim_numbers,
+    const PrecisionConfig& precision_config,
+    std::optional<PrimitiveType> preferred_element_type);
+
 // Creates a Map HLO instruction and adds it to the computation containing the
 // operands. All operands must be in the same computation.
 absl::StatusOr<HloInstruction*> MakeMapHlo(
@@ -305,18 +315,15 @@ HloInstruction* MakeR0ConstantHlo(HloComputation* computation, NativeT value) {
 
 // Makes a scalar that is elementwise compatible with the shape of the base
 // instruction.
+HloInstruction* MakeScalarLikeFromLiteral(HloInstruction* base,
+                                          Literal literal);
+
 template <class NativeT>
 HloInstruction* MakeScalarLike(HloInstruction* base, NativeT value) {
-  auto scalar = base->AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<NativeT>(value)
-                                         .Convert(base->shape().element_type())
-                                         .value()));
-  if (base->shape().dimensions().empty()) {
-    *scalar->mutable_shape() = base->shape();
-    return scalar;
-  }
-  return base->AddInstruction(HloInstruction::CreateBroadcast(
-      ShapeUtil::MakeStaticShape(base->shape()), scalar, {}));
+  return MakeScalarLikeFromLiteral(base,
+                                   LiteralUtil::CreateR0<NativeT>(value)
+                                       .Convert(base->shape().element_type())
+                                       .value());
 }
 
 // Creates a fusion instruction and fuses `fused` into the created fusion

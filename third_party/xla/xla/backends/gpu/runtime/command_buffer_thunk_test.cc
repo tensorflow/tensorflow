@@ -26,6 +26,7 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/statusor.h"
 #include "absl/strings/ascii.h"
@@ -75,6 +76,7 @@ limitations under the License.
 #include "tsl/profiler/lib/profiler_lock.h"
 
 namespace xla::gpu {
+using ::testing::HasSubstr;
 
 using MemoryAccess = BufferUse::MemoryAccess;
 using KernelArgsPacking = se::KernelLoaderSpec::KernelArgsPacking;
@@ -1581,8 +1583,8 @@ TEST(CommandBufferThunkTest, ToStringPrintsNestedThunks) {
   CommandBufferThunk thunk(
       std::move(executor), Thunk::ThunkInfo(),
       std::make_unique<SequentialThunk>(Thunk::ThunkInfo(), std::move(thunks)));
-  EXPECT_TRUE(
-      absl::StrContains(thunk.ToString(/*indent=*/1), "    kMemset32BitValue"));
+  EXPECT_THAT(thunk.ToString(/*indent=*/1),
+              HasSubstr("    000: kMemset32BitValue"));
 }
 
 }  // namespace xla::gpu

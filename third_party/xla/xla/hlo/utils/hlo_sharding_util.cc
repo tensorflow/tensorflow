@@ -882,9 +882,8 @@ HloSharding TransposeSharding(const HloSharding& sharding,
     }
     return HloSharding::Subgroup(tile_assignment, subgroup_types,
                                  sharding.metadata());
-  } else {
-    return HloSharding::PartialTile(tile_assignment, sharding.metadata());
   }
+  return HloSharding::PartialTile(tile_assignment, sharding.metadata());
 }
 
 std::optional<HloSharding> ReshapeSharding(const Shape& source_shape,
@@ -911,154 +910,132 @@ std::optional<HloSharding> ReshapeSharding(const Shape& source_shape,
   // For example, given the source_shape f32[6,4], target_shape f32[4,6] and
   // sharding {devices=[6,1]<=[6]}, the output sharding is {devices=[2,1,3]<=[6]
   // last_tile_dim_replicate}.
-  DimensionVector target_tile_assignment_dimensions;
-  DimensionVector source_dims_stack(source_shape.dimensions().rbegin(),
-                                    source_shape.dimensions().rend());
-  DimensionVector target_dims_stack(target_shape.dimensions().rbegin(),
-                                    target_shape.dimensions().rend());
-  DimensionVector sharding_tile_dims_stack(
-      source_sharding.tile_assignment().dimensions().begin(),
-      source_sharding.tile_assignment().dimensions().begin() +
-          source_shape.dimensions().size());
-  std::reverse(sharding_tile_dims_stack.begin(),
-               sharding_tile_dims_stack.end());
-  int64_t source_dims_index = -1;
-  std::vector<int64_t> dims_to_replicate;
 
-  auto source_dims_push = [&](int64_t shape_size, int64_t partitions) {
-    source_dims_stack.push_back(shape_size);
-    sharding_tile_dims_stack.push_back(partitions);
-    source_dims_index--;
-  };
-  auto source_dims_pop = [&]() {
-    source_dims_stack.pop_back();
-    sharding_tile_dims_stack.pop_back();
-    source_dims_index++;
-  };
+  int64_t source_rank = source_shape.dimensions().size();
+  int64_t target_rank = target_shape.dimensions().size();
+  int64_t source_index = -1;
+  int64_t target_index = -1;
 
-  bool inplace_add_sharding_dim = false;
-  auto append_target_sharding_dim = [&](int64_t size) {
-    if (inplace_add_sharding_dim) {
-      target_tile_assignment_dimensions.back() *= size;
-    } else {
-      target_tile_assignment_dimensions.push_back(size);
+  int64_t source_size;
+  int64_t target_size;
+  int64_t source_tile_dim;
+  DimensionVector target_tile_dims(target_rank, 1);
+  std::vector<int64_t> source_dims_to_replicate;
+
+  auto advance_source = [&]() {
+    source_index++;
+    if (source_index == source_rank) {
+      return false;
     }
-    inplace_add_sharding_dim = false;
+    source_size = source_shape.dimensions()[source_index];
+    source_tile_dim = source_sharding.tile_assignment().dim(source_index);
+    return true;
+  };
+  auto advance_target = [&]() {
+    target_index++;
+    if (target_index == target_rank) {
+      return false;
+    }
+    target_size = target_shape.dimensions()[target_index];
+    return true;
   };
 
-  while (!source_dims_stack.empty() && !target_dims_stack.empty() &&
-         Product(sharding_tile_dims_stack) != 1) {
+  advance_source();
+  advance_target();
+  while (source_index < source_rank && target_index < target_rank) {
     int64_t source_dims_product = 1;
-    while (!sharding_tile_dims_stack.empty() &&
-           sharding_tile_dims_stack.back() == 1) {
-      source_dims_product *= source_dims_stack.back();
-      source_dims_pop();
-    }
-    while (!target_dims_stack.empty() && target_dims_stack.back() > 1 &&
-           source_dims_product % target_dims_stack.back() == 0) {
-      source_dims_product /= target_dims_stack.back();
-      target_dims_stack.pop_back();
-      append_target_sharding_dim(1);
-    }
-    if (source_dims_product != 1) {
-      source_dims_push(source_dims_product, 1);
-    }
-
-    if (source_dims_stack.empty() || target_dims_stack.empty()) {
-      break;
-    }
-    int64_t s_size = source_dims_stack.back();
-    int64_t s_partitions = sharding_tile_dims_stack.back();
-    source_dims_pop();
-
-    int64_t t_size = target_dims_stack.back();
-    target_dims_stack.pop_back();
-
-    if (s_size == t_size) {
-      // Same dimension size.
-      append_target_sharding_dim(s_partitions);
-    } else if (t_size == 1) {
-      // Trivial dimension added.
-      append_target_sharding_dim(1);
-      source_dims_push(s_size, s_partitions);
-    } else if (s_size == 1) {
-      // Trivial dimension removed.
-      target_dims_stack.push_back(t_size);
-      if (s_partitions > 1) {
-        dims_to_replicate.push_back(source_dims_index);
-      }
-    } else if (s_partitions == 1) {
-      if (!source_dims_stack.empty() && sharding_tile_dims_stack.back() == 1) {
-        source_dims_stack.back() *= s_size;
-      } else {
+    while (source_tile_dim == 1) {
+      source_dims_product *= source_size;
+      if (!advance_source()) {
         break;
       }
-    } else if (s_size % s_partitions != 0) {
-      // TODO(zixuanjiang): Although we can propagate thd gcd(s_size,
-      // s_partitions), we return std::nullopt since the current partitioner
+    }
+    while (source_dims_product != 1 && source_dims_product % target_size == 0) {
+      source_dims_product /= target_size;
+      if (!advance_target()) {
+        break;
+      }
+    }
+    if (source_index == source_rank || target_index == target_rank ||
+        source_dims_product != 1) {
+      break;
+    }
+
+    if (source_size == target_size) {
+      if (target_size != target_shape.dimensions()[target_index] &&
+          source_size % source_tile_dim != 0) {
+        target_tile_dims[target_index] *=
+            std::gcd(source_size, source_tile_dim);
+        break;
+      }
+      target_tile_dims[target_index] *= source_tile_dim;
+      advance_source();
+      advance_target();
+    } else if (target_size == 1) {
+      advance_target();
+    } else if (source_size == 1) {
+      if (source_tile_dim > 1) {
+        source_dims_to_replicate.push_back(source_index);
+      }
+      advance_source();
+    } else if (source_size % source_tile_dim != 0) {
+      // TODO(zixuanjiang): Although we can propagate gcd(source_size,
+      // source_tile_dim), we return std::nullopt since the current partitioner
       // reply on that to create halo exchange. Revisit it later.
       return std::nullopt;
     } else {
-      int64_t gcd = std::gcd(s_partitions, t_size);
+      int64_t gcd = std::gcd(source_tile_dim, target_size);
       if (gcd == 1) {
         break;
       }
 
-      source_dims_push(s_size / gcd, s_partitions / gcd);
-      target_dims_stack.push_back(t_size / gcd);
-      append_target_sharding_dim(gcd);
-      inplace_add_sharding_dim = true;
+      source_size /= gcd;
+      source_tile_dim /= gcd;
+      target_size /= gcd;
+      target_tile_dims[target_index] *= gcd;
     }
   }
 
-  if (Product(target_tile_assignment_dimensions) == 1) {
+  if (Product(target_tile_dims) == 1) {
     return std::nullopt;
-  }
-  while (target_tile_assignment_dimensions.size() <
-         target_shape.dimensions().size()) {
-    target_tile_assignment_dimensions.push_back(1);
   }
 
   // If there is a source dimension satisfying (1) size is 1, (2) partition > 1,
   // and (3) there is no corresponding target dimension, we replicate the source
   // sharding along this dimension since the source sharding cannot be
   // propagated along this dimension.
-  const HloSharding sharding = !dims_to_replicate.empty()
-                                   ? PartiallyReplicateTiledShardingOnDims(
-                                         source_sharding, dims_to_replicate)
-                                   : source_sharding;
+  const HloSharding sharding = PartiallyReplicateTiledShardingOnDims(
+      source_sharding, source_dims_to_replicate);
 
   for (int64_t i = sharding.TiledDataRank();
        i < sharding.tile_assignment().num_dimensions(); ++i) {
-    target_tile_assignment_dimensions.push_back(
-        i == sharding.SubgroupReplicationDim()
-            ? 1
-            : sharding.tile_assignment().dim(i));
+    target_tile_dims.push_back(i == sharding.SubgroupReplicationDim()
+                                   ? 1
+                                   : sharding.tile_assignment().dim(i));
   }
 
   auto subgroup_types = sharding.subgroup_types();
-  auto partially_replicated = std::div(
-      sharding.TotalNumTiles(), Product(target_tile_assignment_dimensions));
+  auto partially_replicated =
+      std::div(sharding.TotalNumTiles(), Product(target_tile_dims));
   CHECK_EQ(partially_replicated.rem, 0);
   if (partially_replicated.quot > 1) {
     if (sharding.ReplicateOnLastTileDim()) {
-      target_tile_assignment_dimensions.back() = partially_replicated.quot;
+      target_tile_dims.back() = partially_replicated.quot;
       subgroup_types.push_back(OpSharding::REPLICATED);
     } else if (absl::c_linear_search(subgroup_types, OpSharding::REPLICATED)) {
-      target_tile_assignment_dimensions[sharding.SubgroupReplicationDim() -
-                                        sharding.TiledDataRank() +
-                                        target_shape.dimensions().size()] =
+      target_tile_dims[sharding.SubgroupReplicationDim() -
+                       sharding.TiledDataRank() +
+                       target_shape.dimensions().size()] =
           partially_replicated.quot;
     } else {
-      target_tile_assignment_dimensions.push_back(partially_replicated.quot);
+      target_tile_dims.push_back(partially_replicated.quot);
       subgroup_types.push_back(OpSharding::REPLICATED);
     }
   }
 
-  auto new_tile_assignment =
-      sharding.tile_assignment().Reshape(target_tile_assignment_dimensions);
-  return HloSharding::Subgroup(new_tile_assignment, subgroup_types,
-                               sharding.metadata());
+  return HloSharding::Subgroup(
+      sharding.tile_assignment().Reshape(target_tile_dims), subgroup_types,
+      sharding.metadata());
 }
 
 HloSharding PropagateShardingThroughReshape(const Shape& source_shape,

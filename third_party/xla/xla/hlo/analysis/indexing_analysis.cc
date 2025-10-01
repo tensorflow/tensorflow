@@ -1100,16 +1100,14 @@ AffineMap ComputeReshapeIndexingMap(const Shape& input, const Shape& output,
          output_dim_id < output.dimensions().size() ||
          !input_subshape.empty()) {
     if (input_dim_id < input.dimensions().size() &&
-        (input_subshape.empty() || input_num_elements < output_num_elements ||
-         input_dims[input_dim_id] == 1)) {
+        (input_subshape.empty() || input_num_elements < output_num_elements)) {
       input_num_elements *= input_dims[input_dim_id];
       input_subshape.push_back(input_dims[input_dim_id]);
       ++input_dim_id;
       continue;
     }
     if (output_dim_id < output.dimensions().size() &&
-        (output_subshape.empty() || output_num_elements < input_num_elements ||
-         output_dims[output_dim_id] == 1)) {
+        (output_subshape.empty() || output_num_elements < input_num_elements)) {
       output_num_elements *= output_dims[output_dim_id];
       output_subshape.push_back(output_dims[output_dim_id]);
       output_dims_exprs.push_back(
@@ -1137,7 +1135,8 @@ HloInstructionIndexing ComputeOutputToInputReshapeOpIndexing(
   IndexingMap reshape_indexing_map = IndexingMap::FromTensorSizes(
       ComputeReshapeIndexingMap(input, output, mlir_context),
       output.dimensions(), {});
-  reshape_indexing_map.Simplify();
+  reshape_indexing_map.Simplify(
+      IndexingMap::SimplifyPointDimensions::kPreserve);
   return HloInstructionIndexing::FromIndexingMaps({reshape_indexing_map});
 }
 HloInstructionIndexing ComputeInputToOutputReshapeOpIndexing(
@@ -1148,7 +1147,8 @@ HloInstructionIndexing ComputeInputToOutputReshapeOpIndexing(
   IndexingMap reshape_indexing_map = IndexingMap::FromTensorSizes(
       ComputeReshapeIndexingMap(output, input, mlir_context),
       input.dimensions(), {});
-  reshape_indexing_map.Simplify();
+  reshape_indexing_map.Simplify(
+      IndexingMap::SimplifyPointDimensions::kPreserve);
   return HloInstructionIndexing::FromIndexingMaps({reshape_indexing_map});
 }
 
@@ -1310,7 +1310,7 @@ HloInstructionIndexing ComputeOutputToInputBitcastOpIndexing(
     const HloInstruction* bitcast, MLIRContext* mlir_context) {
   auto bitcast_map = GetBitcastMap(bitcast->shape(),
                                    bitcast->operand(0)->shape(), mlir_context);
-  bitcast_map.Simplify();
+  bitcast_map.Simplify(IndexingMap::SimplifyPointDimensions::kPreserve);
   return HloInstructionIndexing::FromIndexingMaps({bitcast_map});
 }
 
@@ -1318,7 +1318,7 @@ HloInstructionIndexing ComputeInputToOutputBitcastOpIndexing(
     const HloInstruction* bitcast, MLIRContext* mlir_context) {
   auto bitcast_map = GetBitcastMap(bitcast->operand(0)->shape(),
                                    bitcast->shape(), mlir_context);
-  bitcast_map.Simplify();
+  bitcast_map.Simplify(IndexingMap::SimplifyPointDimensions::kPreserve);
   return HloInstructionIndexing::FromIndexingMaps({bitcast_map});
 }
 
@@ -1545,6 +1545,93 @@ GroupedByOpIndexing ComputeGroupedOutputToInputIndexing(
     }
   }
   return grouped_indexing_maps;
+}
+
+namespace {
+// Returns a linearized shape, i.e. tensor<num_elements(input) x element_type>.
+Shape GetLinearizedShape(const Shape& shape) {
+  if (shape.dimensions().empty()) {
+    return shape;
+  }
+  std::vector<int64_t> dims{ShapeUtil::ElementsIn(shape)};
+  auto result = Shape(shape.element_type(), dims);
+  *result.mutable_layout() = xla::Layout({0});
+  return result;
+}
+}  // namespace
+
+llvm::SmallVector<IndexingMap, 4> MapLogicalToLinearizedPhysicalShape(
+    absl::Span<const HloInstruction* const> operands,
+    mlir::MLIRContext* mlir_context) {
+  llvm::SmallVector<IndexingMap, 4> indexing_maps;
+  // For every operand compute thread ID -> physical layout of operand
+  // indexing map.
+  for (const HloInstruction* operand : operands) {
+    const Shape& operand_shape = operand->shape();
+
+    IndexingMap operand_logical_to_physical_map =
+        GetIndexingMapFromLogicalToPhysicalLayout(operand_shape, mlir_context);
+    IndexingMap operand_physical_to_linearized_shape = GetBitcastMap(
+        ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
+            operand_shape),
+        GetLinearizedShape(operand_shape), mlir_context);
+    IndexingMap operand_logical_to_linearized_physical_shape =
+        operand_logical_to_physical_map * operand_physical_to_linearized_shape;
+    operand_logical_to_linearized_physical_shape.Simplify();
+    indexing_maps.push_back(
+        std::move(operand_logical_to_linearized_physical_shape));
+  }
+  return indexing_maps;
+}
+
+void GetThreadIdToInputMemoryLayoutsMaps(
+    const HloFusionAdaptor& fusion_adaptor,
+    absl::Span<const IndexingMap> hero_indexing_maps,
+    const HloInstructionAdaptor& hero,
+    absl::Span<const HloInstruction* const> operands,
+    absl::Span<const IndexingMap> operand_logical_to_linearized_physical_maps,
+    MLIRContext* mlir_context, GroupedByOpIndexingMap& result) {
+  for (const auto& [hero_operand_index, hero_operand] :
+       llvm::enumerate(hero.GetOperands())) {
+    if (hero_operand.shape().dimensions().empty()) {
+      continue;
+    }
+    // Compute thread ID -> hero operand indexing map.
+    const IndexingMap& thread_id_to_hero_operand_map =
+        hero_indexing_maps[hero_operand_index];
+    // Compute indexing from output to inputs for logical layout.
+    GroupedByOpIndexing instr_indexing_keyed_by_operands =
+        ComputeGroupedOutputToInputIndexing(fusion_adaptor, hero_operand,
+                                            mlir_context);
+    // For every operand compute thread ID -> physical layout of operand
+    // indexing map.
+    for (auto&& [operand, operand_linarized_physical_map] :
+         llvm::zip(operands, operand_logical_to_linearized_physical_maps)) {
+      auto operand_indexing_maps_it =
+          instr_indexing_keyed_by_operands.find(operand);
+      if (operand_indexing_maps_it == instr_indexing_keyed_by_operands.end()) {
+        continue;
+      }
+
+      for (const OperandIndexing& operand_indexing :
+           operand_indexing_maps_it->second) {
+        const IndexingMap& operand_indexing_map = operand_indexing.map();
+        // If one of the indexing maps for the operand is undefined, we remove
+        // all indexing maps for it and store only the undefined one.
+        if (operand_indexing_map.IsUndefined()) {
+          result[operand] = {operand_indexing_map};
+          break;
+        }
+        IndexingMap logical_output_to_linearized_physical_input_map =
+            operand_indexing_map * operand_linarized_physical_map;
+        IndexingMap thread_id_to_linearized_physical_input_map =
+            thread_id_to_hero_operand_map *
+            logical_output_to_linearized_physical_input_map;
+        thread_id_to_linearized_physical_input_map.Simplify();
+        result[operand].insert(thread_id_to_linearized_physical_input_map);
+      }
+    }
+  }
 }
 
 HloInstructionIndexing ComputeOutputToInputAllGatherOpIndexing(

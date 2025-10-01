@@ -311,7 +311,7 @@ static std::vector<HloInstruction*> SortIndicesAndUpdates(
 //   input for the next iteration.
 static absl::StatusOr<HloInstruction*> CreateScanWithIndices(
     HloComputation* parent, HloInstruction* updates, HloInstruction* indices,
-    HloComputation* to_apply) {
+    HloComputation* to_apply, absl::Span<const int64_t> operand_dims) {
   const Shape& updates_shape = updates->shape();
   const Shape& indices_shape = indices->shape();
   // Get the length of the input array
@@ -351,11 +351,19 @@ static absl::StatusOr<HloInstruction*> CreateScanWithIndices(
 
     auto* shifted_indices = parent->AddInstruction(HloInstruction::CreateSlice(
         shifted_indices_shape, indices, start_indices, end_indices, strides));
+    // Use the total size of the operand tensor as out-of-bounds value
+    // This matches how FlattenIndices works - it uses the total tensor size
+    int64_t total_size = 1;
+    for (int64_t dim : operand_dims) {
+      total_size *= dim;
+    }
+    int64_t out_of_bounds_value = total_size;
     auto* padding_indices =
         parent->AddInstruction(HloInstruction::CreateBroadcast(
             padding_indices_shape,
-            parent->AddInstruction(HloInstruction::CreateConstant(
-                LiteralUtil::CreateR0(indices_shape.element_type(), 0))),
+            parent->AddInstruction(
+                HloInstruction::CreateConstant(LiteralUtil::CreateR0(
+                    indices_shape.element_type(), out_of_bounds_value))),
             {}));
 
     auto* concatenated_updates =
@@ -382,16 +390,17 @@ static absl::StatusOr<HloInstruction*> CreateScanWithIndices(
 absl::StatusOr<std::vector<HloInstruction*>> ComputePrefixScan(
     const std::vector<HloInstruction*>& sorted_updates,
     HloInstruction* sorted_scalar_indices, HloScatterInstruction* scatter,
-    HloComputation* parent) {
+    HloComputation* parent, absl::Span<const int64_t> operand_dims) {
   std::vector<HloInstruction*> prefix_scans(sorted_updates.size());
   HloInstruction* prefix_scan_update = nullptr;
   for (int i = 0; i < sorted_updates.size(); i++) {
     TF_ASSIGN_OR_RETURN(
         HloComputation * to_apply,
         CallComputationAndGetIthOutputWithBinaryParams(scatter->to_apply(), i));
-    TF_ASSIGN_OR_RETURN(prefix_scan_update,
-                        CreateScanWithIndices(parent, sorted_updates[i],
-                                              sorted_scalar_indices, to_apply));
+    TF_ASSIGN_OR_RETURN(
+        prefix_scan_update,
+        CreateScanWithIndices(parent, sorted_updates[i], sorted_scalar_indices,
+                              to_apply, operand_dims));
     CHECK(prefix_scan_update != nullptr) << i << "th update is nullptr";
     prefix_scans[i] = prefix_scan_update;
   }
@@ -833,9 +842,10 @@ absl::StatusOr<HloInstruction*> ScatterDeterminismExpander::ExpandInstruction(
     sorted_indices = sorted_tensors[sorted_tensors.size() - 1];
   }
 
-  TF_ASSIGN_OR_RETURN(std::vector<HloInstruction*> prefix_scan_updates,
-                      ComputePrefixScan(sorted_updates, sorted_scalar_indices,
-                                        scatter, parent));
+  TF_ASSIGN_OR_RETURN(
+      std::vector<HloInstruction*> prefix_scan_updates,
+      ComputePrefixScan(sorted_updates, sorted_scalar_indices, scatter, parent,
+                        scatter_operands[0]->shape().dimensions()));
   if (non_scalar_update) {
     // As the indices are expanded, we need to recompute out-of-bound tensor
     // with the same shape

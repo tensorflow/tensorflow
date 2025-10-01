@@ -507,30 +507,42 @@ HloValueMap ReductionFusion::GetInits(int group_id, EmitterState& state) const {
   return result;
 }
 
-std::optional<IndexingMap> ReductionFusion::ComputeThreadIdToInputIndexing(
-    int64_t root_index, int64_t hero_operand_index, MLIRContext* ctx) const {
+std::optional<std::vector<IndexingMap>>
+ReductionFusion::ComputeThreadIdToInputIndexing(int64_t root_index,
+                                                MLIRContext* ctx) const {
   const auto& hero = analysis_.fusion_hero(root_index).instruction();
-  if (groups_.is_reduction_root[root_index] &&
-      hero_operand_index >= hero.operand_count() / 2) {
-    // We don't have indexing for the init values.
-    return std::nullopt;
-  }
+  std::vector<IndexingMap> result(hero.operand_count(),
+                                  IndexingMap::GetUndefined());
   if (!groups_.is_reduction_root[root_index]) {
-    return ComposeIndexingMaps(
-        *ComputeThreadIdToOutputIndexing(root_index, ctx),
-        ComputeOutputToInputIndexing(
-            &analysis_.fusion_root(root_index).instruction(), 0, ctx)
-            .indexing_maps[hero_operand_index]
-            .begin()
-            ->map());
+    auto thread_id_to_output_indexing =
+        ComputeThreadIdToOutputIndexing(root_index, ctx);
+    if (!thread_id_to_output_indexing.has_value()) {
+      return std::nullopt;
+    }
+    for (int64_t operand_index = 0; operand_index < hero.operand_count();
+         ++operand_index) {
+      result[operand_index] = ComposeIndexingMaps(
+          *thread_id_to_output_indexing,
+          ComputeOutputToInputIndexing(
+              &analysis_.fusion_root(root_index).instruction(), 0, ctx)
+              .indexing_maps[operand_index]
+              .begin()
+              ->map());
+      result[operand_index].Simplify();
+    }
+    return result;
   }
-  auto projected_map = ComputeReductionInputIndexing(ctx);
-  AddGroupIdConstraint(projected_map, root_index, groups_);
-  auto map = projected_map *
-             GetBitcastMap(input_shape_,
-                           hero.operand(hero_operand_index)->shape(), ctx);
-  map.Simplify();
-  return map;
+  // We don't have indexing for the init values.
+  for (int64_t operand_index = 0; operand_index < hero.operand_count() / 2;
+       ++operand_index) {
+    auto projected_map = ComputeReductionInputIndexing(ctx);
+    AddGroupIdConstraint(projected_map, root_index, groups_);
+    result[operand_index] =
+        projected_map *
+        GetBitcastMap(input_shape_, hero.operand(operand_index)->shape(), ctx);
+    result[operand_index].Simplify();
+  }
+  return result;
 }
 
 std::optional<IndexingMap> ReductionFusion::ComputeThreadIdToOutputIndexing(

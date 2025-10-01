@@ -16,8 +16,9 @@ limitations under the License.
 #ifndef XLA_SERVICE_CPU_ONEDNN_FLOAT_SUPPORT_H_
 #define XLA_SERVICE_CPU_ONEDNN_FLOAT_SUPPORT_H_
 
-#if defined(INTEL_MKL)
+#include <cstdint>
 
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/float_support.h"
 
 namespace xla {
@@ -48,5 +49,4 @@ class OneDnnFloatSupport : public FloatSupport {
 }  // namespace cpu
 }  // namespace xla
 
-#endif  // INTEL_MKL
 #endif  // XLA_SERVICE_CPU_ONEDNN_FLOAT_SUPPORT_H_

@@ -167,6 +167,8 @@ struct SchedulerConfig {
   // If true, estimate the fragmentation size of the module by running the heap
   // simulator.
   bool estimate_fragmentation_size = false;
+  // If true, track the resource usage of sync ops in latency hiding scheduler.
+  bool track_sync_op_resource_usage = false;
 };
 
 // Class used estimate latency between instructions and cost of HLOs.
@@ -390,6 +392,12 @@ class SchedulerCore {
     virtual ~SchedulingState() = default;
   };
 
+  struct RetryState {
+    int64_t run_index = 0;
+    uint64_t memory_limit = UINT64_MAX;
+    int64_t memory_peak = 0;
+  };
+
   // Hook function to modify scheduling graph before scheduler runs.
   using GraphProcessingHook = std::function<absl::Status(HloScheduleGraph*)>;
 
@@ -401,6 +409,11 @@ class SchedulerCore {
 
   virtual absl::StatusOr<std::shared_ptr<SchedulerCore::SchedulingState>>
   MakeSchedulingState(const HloComputation* computation) {
+    return absl::UnimplementedError("Not implemented.");
+  }
+  virtual absl::StatusOr<std::vector<HloInstruction*>> ScheduleComputation(
+      const HloComputation* computation,
+      const SchedulerCore::RetryState retry_state) {
     return absl::UnimplementedError("Not implemented.");
   }
   virtual absl::StatusOr<std::vector<HloInstruction*>> ScheduleComputation(
@@ -1570,6 +1583,10 @@ class DefaultSchedulerCore : public SchedulerCore {
     // reversed before assigning to the HloSchedule.
     std::vector<HloInstruction*> new_sequence_reversed;
 
+    // The RetryState is optional, meaning retry-specific logic might
+    // not be active for all scheduling runs.
+    SchedulerCore::RetryState retry_state;
+
     // Memory pressure during and after an instruction in a schedule.
     // (memory_after, memory_peak)
     absl::flat_hash_map<const HloInstruction*, std::pair<int64_t, int64_t>>
@@ -1674,6 +1691,9 @@ class DefaultSchedulerCore : public SchedulerCore {
   absl::StatusOr<std::shared_ptr<SchedulerCore::SchedulingState>>
   MakeSchedulingState(const HloComputation* computation) override;
   absl::StatusOr<std::vector<HloInstruction*>> ScheduleComputation(
+      const HloComputation* computation,
+      SchedulerCore::RetryState retry_state) override;
+  absl::StatusOr<std::vector<HloInstruction*>> ScheduleComputation(
       const HloComputation* computation) override;
   absl::StatusOr<std::vector<HloInstruction*>> ScheduleComputation(
       const HloComputation* computation,
@@ -1697,12 +1717,34 @@ class DefaultSchedulerCore : public SchedulerCore {
     this->config_.memory_limit = new_limit;
   }
   int64_t GetRerunTimes() override { return config_.rerun; }
-  bool SchedulingAnnotationCrossesOverlapLimit(
-      const SchedulingState& sched_state, int64_t annotation);
+
+  // Returns the amount of resources an annotation group needs. The amount of
+  // resources needed is schedule-order dependent. This function returns the
+  // minimum or the maximum amount of resources needed for the given annotation
+  // group based on the value of get_max_resources.
   absl::flat_hash_map<int64_t, int64_t> GetNumResourcesNeededForAnnotation(
-      const SchedulingState& sched_state, int64_t annotation);
+      const SchedulingState& sched_state, int64_t annotation,
+      bool get_max_resources = false);
+
+  // Returns true if the given annotation group crosses the overlap limit.
+  // If use_max_resources is true, the maximum amount of resources needed for
+  // the annotation group is used to compare against the overlap limit.
+  // Otherwise, the minimum amount of resources needed for the annotation group
+  // is used.
+  bool SchedulingAnnotationCrossesOverlapLimit(
+      const SchedulingState& sched_state, int64_t annotation,
+      bool use_max_resources = false);
+
   int64_t GetNumSuccessorsForAnnotation(const SchedulingState& sched_state,
                                         int64_t annotation) const;
+
+  // Tries to schedule any of the ready annotation groups using either the
+  // maximum or minimum amount of resources needed for the annotation group
+  // based on value of use_max_resources. Returns true if any annotation group
+  // is scheduled, false otherwise.
+  absl::StatusOr<bool> TryScheduleOneAnnotationGroup(
+      DefaultSchedulerCore::SchedulingState* sched_state,
+      const HloComputation* computation, bool use_max_resources);
 
   ScheduleProto::ComputationScheduleProto ComputationScheduleToProto(
       const HloComputation* computation, const SchedulingState& sched_state,

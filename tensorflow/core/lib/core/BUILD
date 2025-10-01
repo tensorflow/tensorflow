@@ -89,9 +89,6 @@ cc_library(
 cc_library(
     name = "notification",
     hdrs = ["notification.h"],
-    deps = [
-        "//tensorflow/core/platform:notification",
-    ],
 )
 
 cc_library(

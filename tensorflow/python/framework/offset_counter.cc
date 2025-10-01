@@ -60,7 +60,7 @@ int main(int argc, char* argv[]) {
     std::ofstream f(out_path);
     if (f.bad()) {
       TF_CHECK_OK(tsl::errors::IOError(
-          tsl::strings::StrCat("Cannot open file: ", out_path), errno));
+          absl::StrCat("Cannot open file: ", out_path), errno));
     }
     f << op_reg_offsets.SerializeAsString();
     f.close();

@@ -20,9 +20,12 @@ limitations under the License.
 #include <cstdint>
 #include <functional>
 
-#include "dnnl_threadpool.hpp"
+#include "Eigen/ThreadPool"
+#include "oneapi/dnnl/dnnl_threadpool.h"  // IWYU pragma: keep
 #include "oneapi/dnnl/dnnl_threadpool_iface.hpp"
 #include "xla/backends/cpu/runtime/work_queue.h"
+#include "xla/tsl/concurrency/async_value_ref.h"
+#include "xla/tsl/concurrency/chain.h"
 
 #define EIGEN_USE_THREADS
 #include "unsupported/Eigen/CXX11/Tensor"

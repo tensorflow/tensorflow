@@ -19,11 +19,11 @@ limitations under the License.
 #include <cstdint>
 #include <vector>
 
+#include "absl/status/statusor.h"
 #include "oneapi/dnnl/dnnl.hpp"
 #include "oneapi/dnnl/dnnl_common.hpp"
 #include "oneapi/dnnl/dnnl_graph.hpp"
 #include "oneapi/dnnl/dnnl_threadpool.hpp"
-#include "absl/status/statusor.h"
 #include "xla/backends/cpu/runtime/onednn/onednn_interop.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/platform/env.h"
