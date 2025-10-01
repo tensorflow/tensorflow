@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/model/affine_map_evaluator.h"
+#include "xla/codegen/tiling/affine_map_evaluator.h"
 
 #include <cstdint>
 
@@ -26,7 +26,6 @@ limitations under the License.
 #include "tsl/platform/logging.h"  // IWYU pragma: keep
 
 namespace xla {
-namespace gpu {
 
 namespace {
 
@@ -90,5 +89,4 @@ SmallVector<int64_t> EvaluateAffineMap(
   return results;
 }
 
-}  // namespace gpu
 }  // namespace xla

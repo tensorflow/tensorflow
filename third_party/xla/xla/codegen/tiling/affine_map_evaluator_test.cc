@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/model/affine_map_evaluator.h"
+#include "xla/codegen/tiling/affine_map_evaluator.h"
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -24,7 +24,6 @@ limitations under the License.
 #include "tsl/platform/test.h"
 
 namespace xla {
-namespace gpu {
 namespace {
 
 using ::mlir::AffineExpr;
@@ -57,5 +56,4 @@ TEST_F(AffineMapEvaluator, EvaluateMap) {
 }
 
 }  // namespace
-}  // namespace gpu
 }  // namespace xla

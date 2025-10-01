@@ -109,3 +109,30 @@ xla_cc_test(
         "@llvm-project//mlir:IR",
     ],
 )
+
+cc_library(
+    name = "affine_map_evaluator",
+    srcs = ["affine_map_evaluator.cc"],
+    hdrs = ["affine_map_evaluator.h"],
+    deps = [
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/types:span",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+        "@local_tsl//tsl/platform:logging",
+    ],
+)
+
+xla_cc_test(
+    name = "affine_map_evaluator_test",
+    srcs = ["affine_map_evaluator_test.cc"],
+    deps = [
+        ":affine_map_evaluator",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/tests:xla_internal_test_main",
+        "@com_google_googletest//:gtest",
+        "@llvm-project//mlir:IR",
+        "@local_tsl//tsl/platform:test",
+    ],
+)

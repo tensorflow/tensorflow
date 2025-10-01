@@ -22,10 +22,10 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/codegen/tiling/affine_map_evaluator.h"
 #include "xla/hlo/analysis/indexing_analysis.h"
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/analysis/indexing_test_utils.h"
-#include "xla/service/gpu/model/affine_map_evaluator.h"
 
 namespace xla {
 namespace gpu {

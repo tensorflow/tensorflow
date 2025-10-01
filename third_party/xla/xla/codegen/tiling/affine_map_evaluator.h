@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_SERVICE_GPU_MODEL_AFFINE_MAP_EVALUATOR_H_
-#define XLA_SERVICE_GPU_MODEL_AFFINE_MAP_EVALUATOR_H_
+#ifndef XLA_CODEGEN_TILING_AFFINE_MAP_EVALUATOR_H_
+#define XLA_CODEGEN_TILING_AFFINE_MAP_EVALUATOR_H_
 
 #include <cstdint>
 #include <vector>
@@ -25,7 +25,6 @@ limitations under the License.
 #include "mlir/IR/AffineMap.h"
 
 namespace xla {
-namespace gpu {
 
 // Given an AffineExpr and the values for its dimensions and symbols, evaluates
 // the result.
@@ -39,7 +38,6 @@ llvm::SmallVector<int64_t> EvaluateAffineMap(
     mlir::AffineMap affine_map, absl::Span<int64_t const> dim_values,
     absl::Span<int64_t const> symbol_values = {});
 
-}  // namespace gpu
 }  // namespace xla
 
-#endif  // XLA_SERVICE_GPU_MODEL_AFFINE_MAP_EVALUATOR_H_
+#endif  // XLA_CODEGEN_TILING_AFFINE_MAP_EVALUATOR_H_
