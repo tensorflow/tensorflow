@@ -122,7 +122,7 @@ KernelLoaderSpec GetTmaPtxKernelSpec() {
   // num_stages: 4 num_warps: 4 num_ctas: 1 is_tma_allowed: true '
   static constexpr absl::string_view kTmaKernelPtx = R"(
 .version 8.2
-.target sm_90a
+.target sm_90
 .address_size 64
 
     // .globl    tma_dot_kernel
