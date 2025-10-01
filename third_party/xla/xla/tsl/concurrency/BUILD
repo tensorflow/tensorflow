@@ -15,6 +15,7 @@ filegroup(
         "async_value_ref.h",
         "chain.h",
         "concurrent_vector.h",
+        "executor.h",
         "ref_count.h",
     ],
     compatible_with = get_compatible_with_portable(),
