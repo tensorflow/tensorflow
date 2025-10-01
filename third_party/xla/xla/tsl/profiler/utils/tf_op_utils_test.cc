@@ -33,6 +33,15 @@ TEST(TfOpUtilsTest, TfOpTest) {
   EXPECT_EQ(TfOpEventName(kName), "OpType");  // type only
 }
 
+TEST(TfOpUtilsTest, EmptyOpNameTest) {
+  const absl::string_view kName = "";
+  TfOp tf_op = ParseTfOpFullname(kName);
+  EXPECT_EQ(tf_op.category, Category::kUnknown);
+  EXPECT_EQ(tf_op.name, "");
+  EXPECT_EQ(tf_op.type, kUnknownOp);
+  EXPECT_EQ(tf_op.id, 0);
+}
+
 TEST(TfOpUtilsTest, InternalTfOpTest) {
   const absl::string_view kName = "OpName:_InternalOpType";
   TfOp tf_op = ParseTfOpFullname(kName);
