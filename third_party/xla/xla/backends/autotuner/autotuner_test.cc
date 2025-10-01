@@ -127,6 +127,8 @@ class MockAutotunerCache : public AutotunerCacheInterface {
 using absl_testing::IsOk;
 using absl_testing::StatusIs;
 using ::testing::_;
+using ::testing::AtMost;
+using ::testing::ByMove;
 using ::testing::Return;
 using tsl::proto_utils::ToDurationProto;
 
@@ -649,6 +651,51 @@ TEST_F(AutotunerTest, SelectFirstConfig) {
   auto module = ParseAndReturnVerifiedModule(kHlo).value();
   auto dummy_instr = module->entry_computation()->root_instruction();
   EXPECT_THAT(autotuner->Autotune(dummy_instr), absl_testing::IsOk());
+}
+
+TEST_F(AutotunerTest, UseDefaultConfig) {
+  config_.use_default_config = true;
+
+  auto backend = std::make_unique<MockCodegenBackend>();
+  EXPECT_CALL(*backend, GetSupportedConfigs(_)).Times(0);
+  EXPECT_CALL(*backend, GetDefaultConfig(_))
+      .WillOnce(Return(ByMove(GetTestConfig("default"))));
+  EXPECT_CALL(*backend, ApplyConfig(_, ConfigMatcher("default")))
+      .Times(1)
+      .WillRepeatedly(Return(absl::OkStatus()));
+  std::vector<std::unique_ptr<CodegenBackend>> backends;
+  backends.push_back(std::move(backend));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto autotuner,
+      Autotuner::Create(std::move(backends), /*profiler=*/nullptr, config_,
+                        /*cache=*/nullptr));
+  auto module = ParseAndReturnVerifiedModule(kHlo).value();
+  auto dummy_instr = module->entry_computation()->root_instruction();
+  EXPECT_THAT(autotuner->Autotune(dummy_instr), absl_testing::IsOk());
+}
+
+TEST_F(AutotunerTest, UseDefaultConfigUnimplemented) {
+  config_.use_default_config = true;
+
+  auto backend = std::make_unique<MockCodegenBackend>();
+  EXPECT_CALL(*backend, name()).WillRepeatedly(Return("mock_backend"));
+  EXPECT_CALL(*backend, GetSupportedConfigs(_)).Times(0);
+  EXPECT_CALL(*backend, GetDefaultConfig(_))
+      .Times(AtMost(1))
+      .WillRepeatedly(
+          [] { return absl::UnimplementedError("not implemented"); });
+  std::vector<std::unique_ptr<CodegenBackend>> backends;
+  backends.push_back(std::move(backend));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto autotuner,
+      Autotuner::Create(std::move(backends), /*profiler=*/nullptr, config_,
+                        /*cache=*/nullptr));
+  auto module = ParseAndReturnVerifiedModule(kHlo).value();
+  auto dummy_instr = module->entry_computation()->root_instruction();
+  EXPECT_DEATH(autotuner->Autotune(dummy_instr).IgnoreError(),
+               "GetDefaultConfig is not implemented for mock_backend");
 }
 
 }  // namespace

@@ -75,6 +75,25 @@ std::string UnpackedAnyShortDebugString(const google::protobuf::Any& any) {
 
 }  // namespace
 
+absl::StatusOr<Autotuner::Config> Autotuner::GetDefaultConfig(
+    const HloInstruction& instr) {
+  // TODO(b/446870267): Improve default backend selection. Currently we just
+  // return the first backend that supports the instruction.
+  for (auto& backend : codegen_backends_) {
+    auto config = backend->GetDefaultConfig(instr);
+    if (absl::IsUnimplemented(config.status())) {
+      LOG(FATAL) << "GetDefaultConfig is not implemented for "
+                 << backend->name();
+    }
+    if (config.ok()) {
+      return Config{backend.get(), std::move(*config)};
+    }
+  }
+  return absl::NotFoundError(
+      absl::StrCat("No backend with default config found for instruction: ",
+                   instr.ToString()));
+}
+
 absl::StatusOr<std::unique_ptr<Autotuner>> Autotuner::Create(
     std::vector<std::unique_ptr<CodegenBackend>> codegen_backends,
     std::unique_ptr<Profiler> profiler, AutotuneConfig autotune_config,
@@ -96,14 +115,12 @@ absl::Status Autotuner::Autotune(HloModule* module,
     VLOG(1) << "No instructions to autotune.";
     return absl::OkStatus();
   }
-
   VLOG(1) << "Autotuning " << instrunctions_by_fingerprint.size()
           << " unique instructions.";
   for (auto& [_, instructions] : instrunctions_by_fingerprint) {
     CHECK(!instructions.empty());
     VLOG(1) << "Autotuning instruction:" << instructions[0]->ToString();
-    TF_ASSIGN_OR_RETURN(Config best_config,
-                        GetCachedOrTuneBestConfig(instructions[0]));
+    TF_ASSIGN_OR_RETURN(Config best_config, GetConfig(instructions[0]));
     CodegenBackend* best_codegen_backend = best_config.codegen_backend;
     for (auto* instr : instructions) {
       TF_RETURN_IF_ERROR(best_codegen_backend->ApplyConfig(
@@ -115,27 +132,31 @@ absl::Status Autotuner::Autotune(HloModule* module,
 
 absl::Status Autotuner::Autotune(HloInstruction* instr) {
   VLOG(1) << "Autotuning HLO: " << instr->ToString();
-  TF_ASSIGN_OR_RETURN(Config best_config, GetCachedOrTuneBestConfig(instr));
+  TF_ASSIGN_OR_RETURN(Config best_config, GetConfig(instr));
   CodegenBackend* best_codegen_backend = best_config.codegen_backend;
   TF_RETURN_IF_ERROR(
       best_codegen_backend->ApplyConfig(*instr, *best_config.backend_config));
   return DumpLogsToFile();
 }
 
-absl::StatusOr<Autotuner::Config> Autotuner::GetCachedOrTuneBestConfig(
-    HloInstruction* instr) {
+absl::StatusOr<Autotuner::Config> Autotuner::GetConfig(HloInstruction* instr) {
   std::optional<Config> cached_config = LookUp(instr);
-  Config best_config;
   if (cached_config.has_value()) {
-    best_config = std::move(*cached_config);
-  } else {
-    if (autotune_config_.expect_all_instructions_in_cache) {
-      return absl::NotFoundError("No cached config found for HLO instr: " +
-                                 instr->ToString());
-    }
-    TF_ASSIGN_OR_RETURN(best_config, TuneBestConfig(instr));
-    Insert(instr, best_config);
+    return std::move(cached_config.value());
   }
+
+  if (autotune_config_.expect_all_instructions_in_cache) {
+    return absl::NotFoundError("No cached config found for HLO instr: " +
+                               instr->ToString());
+  }
+
+  if (autotune_config_.use_default_config) {
+    return GetDefaultConfig(*instr);
+  }
+
+  Config best_config;
+  TF_ASSIGN_OR_RETURN(best_config, TuneBestConfig(instr));
+  Insert(instr, best_config);
   return best_config;
 }
 

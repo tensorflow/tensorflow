@@ -75,6 +75,12 @@ struct AutotuneConfig {
   // If true, the autotuner selects the first valid config instead of the best
   // performing one. This is to guarantee run-to-run determinism.
   bool select_first_config = false;
+  // If true, use hardcoded default backend configs instead of autotuning.
+  // Default configs depend on the backend order. Currently the first backend
+  // that supports the instruction will be used (see b/446870267).
+  // Note: If cache is provided, the cached config will be used instead of the
+  // default config.
+  bool use_default_config = false;
 };
 
 class Autotuner {
@@ -151,9 +157,14 @@ class Autotuner {
   InstructionsByFingerprint GetAutotuningCandidates(
       const HloModule* module, const InstructionFilterFn& should_autotune);
 
-  // Gets the best config for the given instruction either from cache or by
-  // tuning all supported configs if the instruction is not in the cache.
-  absl::StatusOr<Config> GetCachedOrTuneBestConfig(HloInstruction* instr);
+  // Gets the default config for the given instruction.
+  absl::StatusOr<Config> GetDefaultConfig(const HloInstruction& instr);
+
+  // Gets the config for the given instruction. If instruction is in cache,
+  // cached config is returned. If not in cache and use_default_config is
+  // true, default config is returned. Otherwise, tunes all supported configs
+  // to find the best config, inserts it into cache and returns it.
+  absl::StatusOr<Config> GetConfig(HloInstruction* instr);
   // Gets the best config for the given instruction by compiling and profiling
   // all supported configs.
   absl::StatusOr<Config> TuneBestConfig(HloInstruction* instr);
