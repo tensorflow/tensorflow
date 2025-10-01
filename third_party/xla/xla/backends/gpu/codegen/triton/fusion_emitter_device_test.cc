@@ -203,6 +203,33 @@ ENTRY entry {
       hlo_text, ErrorSpec{/*aabs=*/1e-4, /*arel=*/1e-6}));
 }
 
+TEST_F(TritonEmitterTest, PredicateAddIsEmittedCorrectly) {
+  constexpr absl::string_view kHloText = R"(
+HloModule m
+
+fused_add {
+  param_0 = pred[] parameter(0)
+  param_1 = pred[] parameter(1)
+  ROOT add = pred[] add(param_0, param_1)
+}
+
+ENTRY main {
+  c0 = pred[] constant(1)
+  c1 = pred[] constant(1)
+  ROOT add = pred[] fusion(c0, c1), kind=kCustom, calls=fused_add,
+    backend_config={"fusion_backend_config":{
+      "kind":"__triton",
+      "block_level_fusion_config":{
+        "num_warps":"1","output_tiles":[{"sizes":[]}],
+        "num_ctas":1,"num_stages":1,"is_tma_allowed":false}}}
+}
+)";
+  TF_EXPECT_OK(CreateTritonIrAndFileCheck(this, kHloText, "fused_add", R"(
+CHECK: arith.ori {{.*}} : i1
+)"));
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, kExactMatch));
+}
+
 // TODO(bchetioui): turn this into a general binary elementwise test.
 TEST_F(TritonEmitterTest, MinimumIsEmittedCorrectly) {
   constexpr absl::string_view kHloText = R"(
