@@ -24,6 +24,8 @@ limitations under the License.
 #include "absl/status/status_matchers.h"
 #include "xla/client/executable_build_options.h"
 #include "xla/pjrt/proto/compile_options.pb.h"
+#include "xla/pjrt/proto/executable_metadata.pb.h"
+#include "xla/pjrt/proto/execute_options.pb.h"
 #include "xla/service/computation_placer.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"

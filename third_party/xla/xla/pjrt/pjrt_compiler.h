@@ -35,6 +35,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/proto/pjrt_partial_program.pb.h"
 #include "xla/pjrt/proto/topology_description.pb.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/fingerprint.h"
 
 namespace xla {

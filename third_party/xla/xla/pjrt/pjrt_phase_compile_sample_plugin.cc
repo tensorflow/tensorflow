@@ -15,8 +15,6 @@ limitations under the License.
 
 #include "xla/pjrt/pjrt_phase_compile_sample_plugin.h"
 
-#include <cstdio>
-#include <cstdlib>
 #include <memory>
 #include <string>
 #include <utility>
