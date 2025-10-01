@@ -4,6 +4,7 @@ syntax = "proto2";
 
 package tensorflow.contrib.proto;
 
+import "tensorflow/core/framework/tensor.proto";
 import "tensorflow/core/framework/types.proto";
 
 // A TestCase holds a proto and assertions about how it should decode.
@@ -73,6 +74,11 @@ message TestValue {
   optional sint32 sint32_value_with_default = 33 [default = 12];
   optional sint64 sint64_value_with_default = 34 [default = 13];
   optional Color enum_value_with_default = 36 [default = GREEN];
+
+  // TensorProto field, to test parsing TensorProtos, no default.
+  optional TensorProto tensor_proto_value = 37;
+  // A map field, to demonstrate parsing maps of strings and Message Types.
+  map<string, TensorProto> tensor_proto_map_value = 38;
 
   extensions 100 to 199;
 }
