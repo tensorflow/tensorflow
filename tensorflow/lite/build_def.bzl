@@ -8,7 +8,6 @@ load("@build_bazel_rules_android//android:rules.bzl", "android_library")
 load("@bazel_skylib//rules:build_test.bzl", "build_test")
 load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
-load("@rules_cc//cc:cc_test.bzl", "cc_test")
 
 # buildifier: disable=out-of-order-load
 def register_extension_info(**kwargs):
@@ -805,7 +804,8 @@ def tflite_combine_cc_tests(
         combined_test_deps.update({d: True for d in r["deps"]})
 
     if combined_test_srcs:
-        cc_test(
+        # Use native.cc_test here because cc_test adds duplicated deps in OSS.
+        native.cc_test(
             name = name,
             size = "large",
             srcs = list(combined_test_srcs),
