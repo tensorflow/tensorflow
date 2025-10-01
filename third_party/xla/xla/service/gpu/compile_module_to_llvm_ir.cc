@@ -251,20 +251,11 @@ absl::StatusOr<std::unique_ptr<BufferAssignment>> RunBufferAssignment(
   ScopedAnnotation annotation(Phase("XlaBufferAssignment", module));
 
   const DebugOptions& options = module->config().debug_options();
-  BufferAssigner::Colorer colorer =
-      (options.xla_gpu_enable_nccl_user_buffers() ||
-       options.xla_gpu_experimental_enable_nvshmem() ||
-       options.xla_gpu_experimental_enable_nccl_symmetric_buffers())
-          ? CollectiveColorer(
-                options.xla_gpu_enable_nccl_user_buffers() ||
-                    options
-                        .xla_gpu_experimental_enable_nccl_symmetric_buffers(),
-                options.xla_gpu_experimental_enable_nvshmem())
-          : BufferAssigner::DefaultColorer();
 
   std::optional<BufferValue::Color> color =
       options.xla_gpu_temp_buffer_use_separate_color()
-          ? std::optional<BufferValue::Color>(kTempBufferMemorySpaceColor)
+          ? std::optional<BufferValue::Color>(
+                (int)MemorySpaceColor::kTempBuffer)
           : std::nullopt;
 
   TF_ASSIGN_OR_RETURN(
@@ -275,7 +266,7 @@ absl::StatusOr<std::unique_ptr<BufferAssignment>> RunBufferAssignment(
           /*color_alignment=*/
           [](LogicalBuffer::Color) { return kXlaAllocatedBufferAlignBytes; },
           /*allocate_buffers_for_constants=*/true,
-          /*colorer=*/colorer,
+          /*colorer=*/CreateColorer(options),
           /*must_not_live_out=*/{},
           /*preset_assignments*/ {},
           /*private_stack*/ {}, /*heap_buffer_interval_compare*/ nullptr,

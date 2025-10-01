@@ -1872,7 +1872,7 @@ TEST(StreamExecutorGpuClientTest, CollectiveMemorySpaceSmoke) {
 
   // Override default memory space to collective memory space.
   EXPECT_EQ(buf->on_device_shape().layout().memory_space(),
-            gpu::kCollectiveMemorySpaceColor);
+            (int)gpu::MemorySpaceColor::kCollective);
 }
 
 TEST(StreamExecutorGpuClientTest,

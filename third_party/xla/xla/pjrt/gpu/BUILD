@@ -111,6 +111,7 @@ cc_library(
         "//xla/service:shaped_buffer",
         "//xla/service:transfer_manager",
         "//xla/service/gpu:gpu_executable_run_options",
+        "//xla/service/gpu:gpu_memory_space_assignment",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor:device_memory",
         "//xla/stream_executor:device_memory_allocator",
@@ -168,7 +169,6 @@ cc_library(
         "//xla/service/gpu:gpu_compiler",
         "//xla/service/gpu:gpu_constants",
         "//xla/service/gpu:gpu_executable",
-        "//xla/service/gpu:gpu_memory_space_assignment",
         "//xla/service/gpu:stream_executor_util",
     ]) + if_cuda([
         # keep sorted

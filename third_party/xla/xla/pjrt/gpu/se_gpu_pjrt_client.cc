@@ -86,6 +86,7 @@ limitations under the License.
 #include "xla/service/compiler.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/global_device_id.h"
+#include "xla/service/gpu/gpu_memory_space_assignment.h"
 #include "xla/service/shaped_buffer.h"
 #include "xla/service/transfer_manager.h"
 #include "xla/shape.h"
@@ -123,7 +124,6 @@ limitations under the License.
 #include "xla/service/gpu/gpu_compiler.h"
 #include "xla/service/gpu/gpu_constants.h"
 #include "xla/service/gpu/gpu_executable.h"
-#include "xla/service/gpu/gpu_memory_space_assignment.h"
 #include "xla/service/gpu/stream_executor_util.h"
 #include "xla/xla.pb.h"
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -1323,9 +1323,10 @@ GetStreamExecutorGpuDeviceAllocator(
             CreateCudaAsyncAllocator(
                 *(ordinal_and_device.second), allocator_config.memory_fraction,
                 allocator_config.preallocate, false, false, true));
-        allocators.emplace_back(std::move(async_allocator),
-                                ordinal_and_device.second->compute_stream(),
-                                /*memory_space=*/0);
+        allocators.emplace_back(
+            std::move(async_allocator),
+            ordinal_and_device.second->compute_stream(),
+            /*memory_space=*/(int)xla::gpu::MemorySpaceColor::kDefault);
       }
       break;
     }
@@ -1340,9 +1341,10 @@ GetStreamExecutorGpuDeviceAllocator(
                                allocator_config.memory_fraction,
                                allocator_config.preallocate,
                                allocator_config.gpu_system_memory_size));
-        allocators.emplace_back(std::move(bfc_allocator),
-                                ordinal_and_device.second->compute_stream(),
-                                /*memory_space=*/0);
+        allocators.emplace_back(
+            std::move(bfc_allocator),
+            ordinal_and_device.second->compute_stream(),
+            /*memory_space=*/(int)xla::gpu::MemorySpaceColor::kDefault);
       }
       break;
     }
@@ -1367,9 +1369,10 @@ GetStreamExecutorGpuDeviceAllocator(
             ordinal_and_device.second->executor(),
             /*memory_fraction=*/1.0 - allocator_config.memory_fraction,
             allocator_config.collective_memory_size));
-    allocators.emplace_back(std::move(collective_bfc_allocator),
-                            ordinal_and_device.second->compute_stream(),
-                            /*memory_space=*/1);
+    allocators.emplace_back(
+        std::move(collective_bfc_allocator),
+        ordinal_and_device.second->compute_stream(),
+        /*memory_space=*/(int)xla::gpu::MemorySpaceColor::kCollective);
   }
 
   for (const auto& ordinal_and_device : addressable_devices) {
@@ -1395,7 +1398,7 @@ GetStreamExecutorGpuDeviceAllocator(
       allocators.emplace_back(
           std::move(async_allocator),
           ordinal_and_device.second->compute_stream(),
-          /*memory_space=*/gpu::kTempBufferMemorySpaceColor);
+          /*memory_space=*/(int)xla::gpu::MemorySpaceColor::kTempBuffer);
     }
   }
 #endif
