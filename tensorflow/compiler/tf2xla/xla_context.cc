@@ -15,10 +15,15 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/xla_context.h"
 
+#include <cstdint>
+#include <functional>
 #include <memory>
 #include <utility>
 #include <vector>
 
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/tf2xla/literal_util.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
@@ -29,7 +34,9 @@ limitations under the License.
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/layout_util.h"
 #include "xla/literal.h"
+#include "xla/xla_data.pb.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/statusor.h"
 
