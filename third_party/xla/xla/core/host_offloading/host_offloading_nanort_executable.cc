@@ -198,12 +198,20 @@ HostOffloadingNanoRtExecutable::LoadFromProto(
       },
       &num_replicas, &num_partitions, &device_assignment));
 
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> hlo_module,
+                      HloModule::CreateFromProto(
+                          proto.hlo_module(), HloModuleConfig(program_shape)));
+
+  TF_ASSIGN_OR_RETURN(
+      bool needs_layout_conversion,
+      HostOffloadingLayoutAnalysis::NeedsLayoutConversion(hlo_module.get()));
+
   return absl::WrapUnique(new HostOffloadingNanoRtExecutable(
       hlo_module_proto.name(),
       executable->program_shape() ? *executable->program_shape()
                                   : program_shape,
-      std::move(alias_config), std::move(executable),
-      /*needs_layout_conversion=*/false, std::move(device_assignment)));
+      std::move(alias_config), std::move(executable), needs_layout_conversion,
+      std::move(device_assignment)));
 }
 
 tsl::AsyncValueRef<HostOffloadingExecutable::ExecuteEvent>
