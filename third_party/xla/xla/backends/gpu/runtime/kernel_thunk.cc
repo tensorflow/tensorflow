@@ -34,6 +34,7 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
+#include "xla/backends/gpu/runtime/thunk_buffer.h"
 #include "xla/backends/gpu/runtime/thunk_id.h"
 #include "xla/codegen/emitters/kernel_arguments.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -52,6 +53,23 @@ limitations under the License.
 
 namespace xla {
 namespace gpu {
+
+std::vector<ThunkBuffer> ThunkBuffersFromKernelArguments(
+    absl::Span<const BufferAllocation::Slice> args,
+    const std::vector<bool>& written) {
+  std::vector<ThunkBuffer> buffers;
+  buffers.reserve(args.size());
+  for (int i = 0; i < args.size(); ++i) {
+    buffers.push_back(ThunkBuffer{
+        /*slice=*/args[i],
+        // We assume that any buffer is either an input or an output of the
+        // kernel, and inout buffers are represented as 2 separate arguments.
+        /*is_content_defined_on_input=*/!written[i],
+        /*is_content_defined_on_output=*/written[i],
+    });
+  }
+  return buffers;
+}
 
 //===----------------------------------------------------------------------===//
 // KernelThunk
@@ -255,6 +273,10 @@ absl::Status KernelThunk::ExecuteOnStream(const ExecuteParams& params) {
       launch_dimensions_, cluster_dim_, stream);
 }
 
+std::vector<ThunkBuffer> KernelThunk::GetBuffers() const {
+  return ThunkBuffersFromKernelArguments(absl::MakeConstSpan(args_), written_);
+}
+
 //===----------------------------------------------------------------------===//
 // CustomKernelThunk
 //===----------------------------------------------------------------------===//
@@ -321,6 +343,10 @@ absl::Status CustomKernelThunk::ExecuteOnStream(const ExecuteParams& params) {
   return kernel->Launch(custom_kernel_.thread_dims(),
                         custom_kernel_.block_dims(),
                         custom_kernel_.cluster_dims(), params.stream, args);
+}
+
+std::vector<ThunkBuffer> CustomKernelThunk::GetBuffers() const {
+  return ThunkBuffersFromKernelArguments(absl::MakeConstSpan(args_), written_);
 }
 
 }  // namespace gpu
