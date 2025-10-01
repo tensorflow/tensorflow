@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
+#include "xla/tsl/concurrency/executor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/platform/test_benchmark.h"
 
@@ -671,6 +672,62 @@ TEST(FutureTest, MakeSharedPromise) {
 
     EXPECT_TRUE(future.IsReady());
     EXPECT_EQ(*future.Await(), 42);
+  }
+}
+
+struct InlineExecutor : public Executor {
+  void Execute(Task task) final { std::move(task)(); }
+};
+
+TEST(FutureTest, MakeOnStateless) {
+  InlineExecutor e;
+
+  {
+    auto future = Future<>::MakeOn(e, [] { return absl::OkStatus(); });
+    EXPECT_TRUE(future.IsReady());
+    EXPECT_EQ(future.Await(), absl::OkStatus());
+  }
+
+  {
+    auto future =
+        Future<>::MakeOn(e, [] { return absl::InternalError("test"); });
+    EXPECT_TRUE(future.IsReady());
+    EXPECT_EQ(future.Await(), absl::InternalError("test"));
+  }
+}
+
+TEST(FutureTest, MakeOnStateful) {
+  InlineExecutor executor;
+
+  struct Foo {
+    Foo(int32_t value) : value(value) {}  // NOLINT
+    int32_t value;
+  };
+
+  {
+    auto future = Future<int32_t>::MakeOn(executor, [] { return 42; });
+    EXPECT_TRUE(future.IsReady());
+    EXPECT_EQ(*future.Await(), 42);
+  }
+
+  {
+    auto future = Future<Foo>::MakeOn(executor, [] { return 42; });
+    EXPECT_TRUE(future.IsReady());
+    EXPECT_EQ(future.Await()->value, 42);
+  }
+
+  {
+    auto future = Future<std::unique_ptr<int32_t>>::MakeOn(
+        executor, [] { return std::make_unique<int32_t>(42); });
+    EXPECT_TRUE(future.IsReady());
+    EXPECT_EQ(**future.Await(), 42);
+  }
+
+  {
+    auto future = Future<int32_t>::MakeOn(
+        executor, [] { return absl::InternalError("test"); });
+    EXPECT_TRUE(future.IsReady());
+    EXPECT_EQ(future.Await().status(), absl::InternalError("test"));
   }
 }
 

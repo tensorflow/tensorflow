@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/utility/utility.h"
 #include "xla/tsl/concurrency/async_value.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
+#include "xla/tsl/concurrency/executor.h"
 #include "xla/tsl/platform/logging.h"
 
 namespace tsl {
@@ -478,6 +479,18 @@ class Future : public internal::FutureBase<absl::StatusOr<T>> {
     return std::make_pair(std::move(promise), std::move(future));
   }
 
+  // Returns a future that is constructed from the result of invoking functor
+  // `f` on the given `executor`.
+  template <typename F, typename R = std::invoke_result_t<F>,
+            std::enable_if_t<std::is_constructible_v<absl::StatusOr<T>, R>>* =
+                nullptr>
+  static Future<T> MakeOn(Executor& executor, F&& f) {
+    auto [promise, future] = MakePromise();
+    executor.Execute([promise = std::move(promise),
+                      f = std::forward<F>(f)]() mutable { promise.Set(f()); });
+    return std::move(future);
+  }
+
   using Base::Await;
   using Base::GetReadyFuture;
   using Base::OnReady;
@@ -766,6 +779,17 @@ class Future<void> : public internal::FutureBase<absl::Status> {
     Future<> future(promise, std::move(on_block_start),
                     std::move(on_block_end));
     return std::make_pair(std::move(promise), std::move(future));
+  }
+
+  // Returns a future that is constructed from the result of invoking functor
+  // `f` on the given `executor`.
+  template <typename F, typename R = std::invoke_result_t<F>,
+            std::enable_if_t<std::is_same_v<R, absl::Status>>* = nullptr>
+  static Future<> MakeOn(Executor& executor, F&& f) {
+    auto [promise, future] = MakePromise();
+    executor.Execute([promise = std::move(promise),
+                      f = std::forward<F>(f)]() mutable { promise.Set(f()); });
+    return std::move(future);
   }
 
   using Base::Await;
