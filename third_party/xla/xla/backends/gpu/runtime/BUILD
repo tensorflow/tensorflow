@@ -1620,10 +1620,32 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "thunk_buffer",
+    srcs = ["thunk_buffer.cc"],
+    hdrs = ["thunk_buffer.h"],
+    deps = [
+        "//xla/service:buffer_assignment",
+        "@com_google_absl//absl/strings:str_format",
+    ],
+)
+
+xla_cc_test(
+    name = "thunk_buffer_test",
+    srcs = ["thunk_buffer_test.cc"],
+    deps = [
+        ":thunk_buffer",
+        "//xla/service:buffer_assignment",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "thunk",
     srcs = ["thunk.cc"],
     hdrs = ["thunk.h"],
     deps = [
+        ":thunk_buffer",
         ":thunk_id",
         ":thunk_proto_cc",
         "//xla:executable_run_options",

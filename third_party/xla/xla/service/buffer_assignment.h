@@ -243,6 +243,11 @@ class BufferAllocation {
         const xla::buffer_assignment::BufferAllocationSliceProto& proto,
         absl::Span<const BufferAllocation> buffer_allocations);
 
+    template <typename Sink>
+    friend void AbslStringify(Sink& sink, const Slice& slice) {
+      absl::Format(&sink, "%v", slice.ToString());
+    }
+
    private:
     const BufferAllocation* allocation_ = nullptr;
     int64_t offset_ = 0;

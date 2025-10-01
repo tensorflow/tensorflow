@@ -38,6 +38,7 @@ limitations under the License.
 #include "xla/backends/gpu/collectives/gpu_cliques.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
+#include "xla/backends/gpu/runtime/thunk_buffer.h"
 #include "xla/backends/gpu/runtime/thunk_id.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
@@ -499,6 +500,13 @@ class Thunk {
   // Precondition: Initialize(initialize_params) has been called.
   virtual absl::Status ExecuteOnStream(const ExecuteParams& params) = 0;
 
+  // Returns all device buffers used by the thunk.
+  //
+  // Does not propagate buffers from nested thunks.
+  //
+  // The order of the buffers in returned vector is consistent across calls.
+  virtual std::vector<ThunkBuffer> GetBuffers() const { return {}; }
+
   static absl::string_view KindToString(Thunk::Kind kind);
 
   ExecutionStreamId execution_stream_id() const {
@@ -599,6 +607,7 @@ struct ShapedSlice {
 // Returns if the thunk implements a reduction collective (all-reduce or
 // reduce-scatter).
 bool IsReductionCollective(Thunk::Kind kind);
+
 }  // namespace gpu
 }  // namespace xla
 
