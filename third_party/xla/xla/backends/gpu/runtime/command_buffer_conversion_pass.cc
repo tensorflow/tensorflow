@@ -231,18 +231,22 @@ bool IsConvertible(const Thunk& thunk, const CommandBufferConfig& config) {
     return false;  // Thunk kind is not supported for command buffer conversion.
   }
 
-  if (thunk.kind() == Thunk::kWhile) {
-    return IsConvertible(static_cast<const WhileThunk&>(thunk), config);
+  switch (thunk.kind()) {
+    case Thunk::kWhile:
+      return IsConvertible(static_cast<const WhileThunk&>(thunk), config);
+    case Thunk::kConditional:
+      return IsConvertible(static_cast<const ConditionalThunk&>(thunk), config);
+    case Thunk::kCustomCall:
+      return IsConvertible(static_cast<const CustomCallThunk&>(thunk), config);
+    case Thunk::kCollectiveBroadcastStart:
+    case Thunk::kCollectivePermuteStart:
+    case Thunk::kRaggedAllToAllStart:
+    case Thunk::kRecv:
+    case Thunk::kSend:
+      return false;
+    default:
+      return true;
   }
-
-  if (thunk.kind() == Thunk::kConditional) {
-    return IsConvertible(static_cast<const ConditionalThunk&>(thunk), config);
-  }
-
-  if (thunk.kind() == Thunk::kCustomCall) {
-    return IsConvertible(static_cast<const CustomCallThunk&>(thunk), config);
-  }
-  return true;
 }
 
 bool AllThunksInSequentialThunkAreConvertible(
