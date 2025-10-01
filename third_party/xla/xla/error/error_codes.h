@@ -158,7 +158,8 @@ inline std::string GetErrorUrl(ErrorCode code) {
     auto status = absl::Status(                                          \
         status_code,                                                     \
         absl::StrCat(GetErrorCodeAndName(ErrorCode::k##enum_name), ": ", \
-                     absl::StrFormat(format, args...)));                 \
+                     absl::StrFormat(format, args...), "\n",             \
+                     GetErrorUrl(ErrorCode::k##enum_name)));             \
     error::AttachDebugMeContextPayload(status);                          \
     return status;                                                       \
   }

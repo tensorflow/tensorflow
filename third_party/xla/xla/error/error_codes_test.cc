@@ -61,7 +61,8 @@ TEST(ErrorCodesTest, FactoryFunction) {
 
   // Check the full formatted error message.
   EXPECT_EQ(status.message(),
-            "E0002: InvalidArgument: Test error: Something was wrong");
+            "E0002: InvalidArgument: Test error: Something was "
+            "wrong\nhttps://openxla.org/xla/errors/E0002");
 }
 
 TEST(ErrorCodesTest, FactoryFunctionNoDebugPayloadIfContextIsEmpty) {
