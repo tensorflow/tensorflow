@@ -790,7 +790,7 @@ tsl::Future<BackendInterface::Response> IfrtBackend::HandleCheckFutureRequest(
 
   auto [promise, resp_future] =
       tsl::Future<BackendInterface::Response>::MakePromise();
-  // With PjRtFuture, the `Future` needs to be owned by one or more owners until
+  // With Future, the `future` needs to be owned by one or more owners until
   // `OnReady()`'s lambda gets executed. So, capture a copy of `future` in the
   // lambda, making the lambda itself an owner of `future`.
   future.OnReady([op_id = request->request_metadata().op_id(),

@@ -31,7 +31,7 @@ namespace xla {
 // that depends on activities happening on the PjRtDevice.
 //
 // The caller can indicate that a ScopedAsyncTrackingEvent event cannot complete
-// until after some PjRtFuture becomes ready, by calling
+// until after some Future becomes ready, by calling
 // event.AddDependency(future).
 //
 // The caller indicates that the work tracked by the ScopedAsyncTrackingEvent
