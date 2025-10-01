@@ -1,8 +1,8 @@
-load("//xla:xla.default.bzl", "xla_cc_test")
 load("//xla/tsl:tsl.bzl", "tsl_copts")
 load("//xla/tsl:tsl.default.bzl", "get_compatible_with_portable")
 load(
     "//xla/tsl/mkl:graph.bzl",
+    "onednn_cc_test",
     "onednn_graph_cc_library",
     "onednn_graph_cc_test",
 )
@@ -123,42 +123,47 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":onednn_threadpool",
-        "//xla:status_macros",
+        "//xla:shape_util",
         "//xla/backends/cpu/runtime:thunk",
         "//xla/runtime:buffer_use",
-        "//xla/runtime:object_pool",
+        "//xla/service:buffer_assignment",
+        "//xla/service/cpu:onednn_config_proto_cc",
         "//xla/service/cpu:onednn_matmul",
         "//xla/service/cpu:onednn_memory_util",
-        "//xla/service/cpu:onednn_util",
         "//xla/stream_executor:device_memory",
         "//xla/tsl/concurrency:async_value",
         "//xla/tsl/mkl:onednn",
         "//xla/tsl/platform:logging",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/base",
-        "@com_google_absl//absl/container:inlined_vector",
-        "@com_google_absl//absl/functional:function_ref",
+        "@com_google_absl//absl/base:dynamic_annotations",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
+        "@eigen_archive//:eigen3",
     ],
 )
 
-xla_cc_test(
+onednn_cc_test(
     name = "onednn_op_thunk_test",
     srcs = ["onednn_op_thunk_test.cc"],
     copts = tsl_copts(),
-    fail_if_no_test_linked = False,  # NOLINT=No tests if we don't build with oneDNN.
-    fail_if_no_test_selected = False,  # NOLINT=No tests to select if we don't build with oneDNN.
     deps = [
         ":onednn_op_thunk",
+        "//xla:array2d",
+        "//xla:literal",
         "//xla:literal_util",
         "//xla:shape_util",
+        "//xla/backends/cpu/runtime:buffer_allocations",
+        "//xla/backends/cpu/runtime:thunk",
         "//xla/backends/cpu/runtime:thunk_testlib",
         "//xla/tsl/concurrency:async_value",
         "//xla/tsl/platform:env",
+        "//xla/tsl/platform:statusor",
+        "//xla/tsl/platform:test",
         "@com_google_googletest//:gtest_main",
         "@eigen_archive//:eigen3",
     ],

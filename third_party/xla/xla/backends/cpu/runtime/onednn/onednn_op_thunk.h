@@ -16,18 +16,16 @@ limitations under the License.
 #ifndef XLA_BACKENDS_CPU_RUNTIME_ONEDNN_ONEDNN_OP_THUNK_H_
 #define XLA_BACKENDS_CPU_RUNTIME_ONEDNN_ONEDNN_OP_THUNK_H_
 
-#ifdef INTEL_MKL
-
 #include <memory>
 #include <string>
+#include <variant>
 #include <vector>
 
 #include "absl/status/statusor.h"
-#include "absl/types/span.h"
 #include "xla/backends/cpu/runtime/thunk.h"
-#include "xla/runtime/object_pool.h"
-#include "xla/service/cpu/onednn_memory_util.h"
-#include "xla/service/cpu/onednn_util.h"
+#include "xla/service/buffer_assignment.h"
+#include "xla/service/cpu/onednn_config.pb.h"
+#include "xla/shape.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 
 namespace xla::cpu {
@@ -72,5 +70,4 @@ class OneDnnOpThunk : public Thunk {
 
 }  // namespace xla::cpu
 
-#endif  // INTEL_MKL
 #endif  // XLA_BACKENDS_CPU_RUNTIME_ONEDNN_ONEDNN_OP_THUNK_H_

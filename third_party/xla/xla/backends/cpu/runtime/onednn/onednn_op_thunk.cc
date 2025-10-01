@@ -13,29 +13,31 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifdef INTEL_MKL
-
 #include "xla/backends/cpu/runtime/onednn/onednn_op_thunk.h"
 
 #include <cstddef>
+#include <cstdint>
 #include <memory>
+#include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/base/call_once.h"
-#include "absl/container/inlined_vector.h"
-#include "absl/functional/function_ref.h"
+#include "absl/base/dynamic_annotations.h"
 #include "absl/log/check.h"
 #include "absl/memory/memory.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
+#include "Eigen/ThreadPool"
+#include "oneapi/dnnl/dnnl_common.hpp"
 #include "oneapi/dnnl/dnnl_threadpool.hpp"
 #include "xla/backends/cpu/runtime/onednn/onednn_threadpool.h"
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/runtime/buffer_use.h"
 #include "xla/service/cpu/onednn_matmul.h"
-#include "xla/status_macros.h"
+#include "xla/service/cpu/onednn_memory_util.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/platform/logging.h"
@@ -45,7 +47,7 @@ namespace xla::cpu {
 
 // oneDNN runtime instantiated for the oneDNN operation.
 struct OneDnnOpThunk::OneDnnRuntime {
-  OneDnnRuntime(Eigen::ThreadPoolInterface* thread_pool);
+  explicit OneDnnRuntime(Eigen::ThreadPoolInterface* thread_pool);
 
   OneDnnRuntime(OneDnnRuntime&&) = default;
   OneDnnRuntime& operator=(OneDnnRuntime&&) = default;
@@ -194,4 +196,3 @@ tsl::AsyncValueRef<OneDnnOpThunk::ExecuteEvent> OneDnnOpThunk::Execute(
 
 }  // namespace xla::cpu
 
-#endif  // INTEL_MKL

@@ -13,15 +13,23 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifdef INTEL_MKL
-
 #include "xla/backends/cpu/runtime/onednn/onednn_op_thunk.h"
 
-#include "gtest/gtest.h"
+#include <vector>
+
+// #include "gtest/gtest.h"
+#include "xla/array2d.h"
+#include "xla/backends/cpu/runtime/buffer_allocations.h"
+#include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/backends/cpu/runtime/thunk_testlib.h"
+#include "xla/literal.h"
 #include "xla/literal_util.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/test.h"
 #include "xla/tsl/platform/threadpool.h"
 
 #define EIGEN_USE_THREADS
@@ -29,8 +37,6 @@ limitations under the License.
 
 namespace xla::cpu {
 namespace {
-using dnnl::engine;
-using dnnl::stream;
 
 TEST(OneDnnOpThunkTest, SimpleOneDnnMatMulThunk) {
   // Set up a thread pool for parallel execution
@@ -108,5 +114,3 @@ TEST(OneDnnOpThunkTest, SimpleOneDnnMatMulThunk) {
 
 }  // namespace
 }  // namespace xla::cpu
-
-#endif  // INTEL_MKL
