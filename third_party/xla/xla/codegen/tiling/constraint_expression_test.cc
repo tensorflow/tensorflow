@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/model/constraint_expression.h"
+#include "xla/codegen/tiling/constraint_expression.h"
 
 #include <cstdint>
 #include <string>
@@ -26,7 +26,6 @@ limitations under the License.
 #include "xla/hlo/analysis/indexing_test_utils.h"
 
 namespace xla {
-namespace gpu {
 namespace {
 
 using ::testing::ExplainMatchResult;
@@ -133,16 +132,16 @@ TEST_F(
               MatchConstraintExpressionString("d0 in [0, 5] || d1 in [0, 5]"));
 
   // `conjunction_1` && `conjunction_3` is an unsatisfiable constraint. Taking
-  // the conjunction of the existing constraint expression with `conjunction_3`
-  // should therefore evict the unsatisfiable intersection of `conjunction_1`
-  // and `conjunction_3` from the disjoint expression.
+  // the conjunction of the existing constraint expression with
+  // `conjunction_3` should therefore evict the unsatisfiable intersection of
+  // `conjunction_1` and `conjunction_3` from the disjoint expression.
   constraints = constraints && GetConstraint("d0", 6, 6);
 
   EXPECT_THAT(constraints,
               MatchConstraintExpressionString("d0 in [6, 6] && d1 in [0, 5]"));
 
-  // But becomes unsatisfiable if we eliminate the last remaining constraint by
-  // constructing another unsatisfiable conjunction.
+  // But becomes unsatisfiable if we eliminate the last remaining constraint
+  // by constructing another unsatisfiable conjunction.
   constraints = constraints && GetConstraint("d0", 7, 7);
   EXPECT_THAT(constraints, MatchConstraintExpressionString("unsatisfiable"));
 }
@@ -172,8 +171,8 @@ TEST_F(
                                        GetConstraint("d3", 0, 5) ||
                                        GetConstraint("d4", 0, 5);
 
-  // Taking the conjunction of the two `ConstraintExpression`s should result in
-  // a `ConstraintExpression` of the form
+  // Taking the conjunction of the two `ConstraintExpression`s should result
+  // in a `ConstraintExpression` of the form
   //   a && c || a && d || a && e || b && c || b && d || b && e.
   ConstraintExpression result_constraint_expression =
       constraints_1 && constraints_2;
@@ -189,8 +188,8 @@ TEST_F(
           "d1 in [0, 5] && d3 in [0, 5] || d1 in [0, 5] && d4 in [0, 5]"));
 
   // Lastly, make sure that the conjunction of an empty `ConstraintExpression`
-  // with a non-empty one results in passing the non-empty one through, on both
-  // sides.
+  // with a non-empty one results in passing the non-empty one through, on
+  // both sides.
   ConstraintExpression always_satisfied =
       ConstraintExpression::GetAlwaysSatisfied();
   EXPECT_THAT(always_satisfied && constraints_2,
@@ -215,8 +214,8 @@ TEST_F(
                                        GetConstraint("d3", 0, 5) ||
                                        GetConstraint("d4", 0, 5);
 
-  // Taking the disjunction of the two `ConstraintExpression`s should result in
-  // a `ConstraintExpression` of the form
+  // Taking the disjunction of the two `ConstraintExpression`s should result
+  // in a `ConstraintExpression` of the form
   //   a || b || c || d || e.
   ConstraintExpression result_constraint_expression =
       constraints_1 || constraints_2;
@@ -301,5 +300,4 @@ TEST_F(ConstraintExpressionTest, ConstraintSatisfactionIsEvaluatedCorrectly) {
 }
 
 }  // namespace
-}  // namespace gpu
 }  // namespace xla

@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_SERVICE_GPU_MODEL_CONSTRAINT_EXPRESSION_H_
-#define XLA_SERVICE_GPU_MODEL_CONSTRAINT_EXPRESSION_H_
+#ifndef XLA_CODEGEN_TILING_CONSTRAINT_EXPRESSION_H_
+#define XLA_CODEGEN_TILING_CONSTRAINT_EXPRESSION_H_
 
 #include <cstdint>
 #include <ostream>
@@ -27,7 +27,6 @@ limitations under the License.
 #include "xla/hlo/analysis/indexing_map.h"
 
 namespace xla {
-namespace gpu {
 
 // `ConstraintExpression` represents a "flat" constraint expression of the form
 //   ((expr0 in interval0) && (expr1 in interval1)...) ||
@@ -180,7 +179,6 @@ inline ConstraintExpression operator||(
   return ConstraintExpression(first) || ConstraintExpression(second);
 }
 
-}  // namespace gpu
 }  // namespace xla
 
-#endif  // XLA_SERVICE_GPU_MODEL_CONSTRAINT_EXPRESSION_H_
+#endif  // XLA_CODEGEN_TILING_CONSTRAINT_EXPRESSION_H_

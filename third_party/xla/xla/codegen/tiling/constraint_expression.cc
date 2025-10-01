@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/model/constraint_expression.h"
+#include "xla/codegen/tiling/constraint_expression.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -43,7 +43,6 @@ limitations under the License.
 #include "xla/hlo/analysis/indexing_map_serialization.h"
 
 namespace xla {
-namespace gpu {
 namespace {
 
 using ::llvm::SmallVector;
@@ -313,5 +312,4 @@ void ConstraintExpression::Simplify() {
   is_satisfiable_ = !disjoint_conjoint_constraints_.empty();
 }
 
-}  // namespace gpu
 }  // namespace xla

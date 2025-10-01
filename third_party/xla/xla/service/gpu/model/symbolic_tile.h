@@ -27,8 +27,8 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/AffineMap.h"
+#include "xla/codegen/tiling/constraint_expression.h"
 #include "xla/hlo/analysis/indexing_map.h"
-#include "xla/service/gpu/model/constraint_expression.h"
 
 namespace xla {
 namespace gpu {

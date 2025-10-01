@@ -25,10 +25,10 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/MLIRContext.h"
+#include "xla/codegen/tiling/constraint_expression.h"
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/utils/hlo_traversal.h"
-#include "xla/service/gpu/model/constraint_expression.h"
 #include "xla/service/gpu/model/experimental/symbolic_tile.h"
 #include "xla/shape.h"
 

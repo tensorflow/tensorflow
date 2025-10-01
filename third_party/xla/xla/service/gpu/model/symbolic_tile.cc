@@ -37,9 +37,9 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/Support/LLVM.h"
 #include "xla/codegen/tiling/affine_map_evaluator.h"
+#include "xla/codegen/tiling/constraint_expression.h"
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/analysis/indexing_map_serialization.h"
-#include "xla/service/gpu/model/constraint_expression.h"
 #include "xla/service/gpu/model/size_and_stride_expression.h"
 
 namespace xla {

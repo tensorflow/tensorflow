@@ -585,43 +585,11 @@ xla_cc_test(
 )
 
 cc_library(
-    name = "constraint_expression",
-    srcs = ["constraint_expression.cc"],
-    hdrs = ["constraint_expression.h"],
-    deps = [
-        "//xla/codegen/tiling:affine_map_evaluator",
-        "//xla/hlo/analysis:indexing_analysis",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:span",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Support",
-    ],
-)
-
-xla_cc_test(
-    name = "constraint_expression_test",
-    srcs = ["constraint_expression_test.cc"],
-    deps = [
-        ":constraint_expression",
-        "//xla/hlo/analysis:indexing_analysis",
-        "//xla/hlo/analysis:indexing_test_utils",
-        "//xla/tests:xla_internal_test_main",
-        "@com_google_absl//absl/types:span",
-        "@com_google_googletest//:gtest",
-    ],
-)
-
-cc_library(
     name = "size_and_stride_expression",
     srcs = ["size_and_stride_expression.cc"],
     hdrs = ["size_and_stride_expression.h"],
     deps = [
-        ":constraint_expression",
+        "//xla/codegen/tiling:constraint_expression",
         "//xla/hlo/analysis:indexing_analysis",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/log",
@@ -638,9 +606,9 @@ cc_library(
     srcs = ["symbolic_tile.cc"],
     hdrs = ["symbolic_tile.h"],
     deps = [
-        ":constraint_expression",
         ":size_and_stride_expression",
         "//xla/codegen/tiling:affine_map_evaluator",
+        "//xla/codegen/tiling:constraint_expression",
         "//xla/hlo/analysis:indexing_analysis",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/log",
@@ -719,11 +687,11 @@ cc_library(
     srcs = ["symbolic_tile_analysis.cc"],
     hdrs = ["symbolic_tile_analysis.h"],
     deps = [
-        ":constraint_expression",
         ":symbolic_tile",
         ":symbolic_tiled_hlo_instruction",
         "//xla:shape_util",
         "//xla:util",
+        "//xla/codegen/tiling:constraint_expression",
         "//xla/codegen/tiling:tiled_hlo_computation",
         "//xla/codegen/tiling:tiled_hlo_fusion_instruction",
         "//xla/codegen/tiling:tiled_hlo_instruction",
@@ -758,10 +726,10 @@ xla_cc_test(
     name = "symbolic_tile_analysis_test",
     srcs = ["symbolic_tile_analysis_test.cc"],
     deps = [
-        ":constraint_expression",
         ":symbolic_tile_analysis",
         ":symbolic_tiled_hlo_instruction",
         "//xla:util",
+        "//xla/codegen/tiling:constraint_expression",
         "//xla/codegen/tiling:tiled_hlo_computation",
         "//xla/codegen/tiling:tiled_hlo_fusion_instruction",
         "//xla/hlo/analysis:indexing_test_utils",
@@ -791,13 +759,13 @@ cc_library(
     srcs = ["triton_emitter_constraints.cc"],
     hdrs = ["triton_emitter_constraints.h"],
     deps = [
-        ":constraint_expression",
         ":symbolic_tile",
         ":symbolic_tile_analysis",
         ":symbolic_tiled_hlo_instruction",
         "//xla:shape_util",
         "//xla:util",
         "//xla/codegen/tiling:affine_map_evaluator",
+        "//xla/codegen/tiling:constraint_expression",
         "//xla/hlo/analysis:indexing_analysis",
         "//xla/hlo/analysis:interval",
         "//xla/hlo/ir:hlo",
