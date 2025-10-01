@@ -22,6 +22,7 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -288,14 +289,6 @@ class PjRtCpuClient final : public CommonPjRtClient {
   // temporary allocations passed to XLA:CPU executable.
   std::shared_ptr<CpuDeviceMemory::Allocator> allocator_;
 
-  // TODO(zhangqiaorjc): Use tsl::compat::EigenHostContextThreadPool.
-  std::unique_ptr<tsl::thread::ThreadPool> eigen_intraop_pool_;
-  std::unique_ptr<Eigen::ThreadPoolDevice> eigen_intraop_device_;
-
-  // Thread pool for running PjRtClient tasks.
-  std::unique_ptr<tsl::thread::ThreadPool> pjrt_client_thread_pool_;
-  std::unique_ptr<AsyncWorkRunner> async_work_runner_;
-
   // Launching collectives are prone to deadlock when we use fixed-sized
   // threadpools since ExecuteHelper will block until all replicas reach the
   // barrier. We ensure that
@@ -326,6 +319,19 @@ class PjRtCpuClient final : public CommonPjRtClient {
 
   // A callback to customize the HloModuleConfig for each compiled module.
   std::function<void(HloModuleConfig&)> customize_hlo_module_config_;
+
+  // IMPORTANT: All thread pools must be destroyed first, because thread pool
+  // destruction guarantees that all scheduled tasks are completed. Otherwise,
+  // we might get use-after-free races when dispatched executables try to access
+  // the member variables of this class that are already destroyed.
+
+  // TODO(zhangqiaorjc): Use tsl::compat::EigenHostContextThreadPool.
+  std::unique_ptr<tsl::thread::ThreadPool> eigen_intraop_pool_;
+  std::unique_ptr<Eigen::ThreadPoolDevice> eigen_intraop_device_;
+
+  // Thread pool for running PjRtClient tasks.
+  std::unique_ptr<tsl::thread::ThreadPool> pjrt_client_thread_pool_;
+  std::unique_ptr<AsyncWorkRunner> async_work_runner_;
 };
 
 class PjRtCpuExecutable final : public PjRtLoadedExecutable {
