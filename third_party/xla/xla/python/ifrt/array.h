@@ -22,11 +22,13 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/attributes.h"
+#include "absl/log/check.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/dtype.h"
+#include "xla/python/ifrt/layout.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt/value.h"
@@ -79,10 +81,10 @@ class Array : public llvm::RTTIExtends<Array, Value> {
   // return UNIMPLEMENTED instead.
   virtual absl::StatusOr<std::shared_ptr<const xla::PjRtLayout>> pjrt_layout()
       const = 0;
-  // Legacy name for `pjrt_layout()`. Will be removed, and then re-introduced as
-  // a new signature that returns `xla::ifrt::LayoutRef`.
-  absl::StatusOr<std::shared_ptr<const xla::PjRtLayout>> layout() const {
-    return pjrt_layout();
+  virtual CustomLayoutRef layout() const {
+    // TODO(hyeontaek): Change to a pure virtual method once all implementations
+    // override this method.
+    CHECK(false) << "Placeholder; do not use yet";
   }
 
   // Breaks an array up into per-device arrays. This is the elimination

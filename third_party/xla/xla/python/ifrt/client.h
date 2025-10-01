@@ -24,8 +24,8 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/macros.h"
-#include "absl/base/nullability.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -41,6 +41,7 @@ limitations under the License.
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
+#include "xla/python/ifrt/layout.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/remap_plan.h"
 #include "xla/python/ifrt/shape.h"
@@ -344,15 +345,20 @@ class Client : public llvm::RTTIExtends<Client, llvm::RTTIRoot> {
                        Device* device,
                        xla::ifrt::MemoryKind memory_kind) const = 0;
 
-  // Legacy name for `GetDefaultPjRtLayout()`. Will be removed, and then
-  // re-introduced as a new signature that returns `xla::ifrt::CustomLayoutRef`.
-  // TODO(hyeontaek): Change the API to take `Shape` and `Sharding` instead of
-  // single-shard dimensions and device.
-  absl::StatusOr<std::shared_ptr<const xla::PjRtLayout>> GetDefaultLayout(
-      DType dtype, absl::Span<const int64_t> dims, Device* device,
-      xla::ifrt::MemoryKind memory_kind) const {
-    return GetDefaultPjRtLayout(dtype, dims, device, memory_kind);
+  // Returns the default layout for an array with `dtype`, `shape`, and
+  // `sharding`.
+  virtual absl::StatusOr<CustomLayoutRef> GetDefaultLayout(
+      DType dtype, const Shape& shape, const ShardingRef& sharding) const {
+    // TODO(hyeontaek): Change to a pure virtual method once all implementations
+    // override this method.
+    CHECK(false) << "Placeholder; do not use yet";
+    return absl::UnimplementedError("Not implemented yet");
   }
+  // Helper method for `GetDefaultLayout` for when shard shape dims are known.
+  // TODO(hyeontaek): Remove this sugar API once the transition is complete.
+  absl::StatusOr<CustomLayoutRef> GetDefaultLayout(
+      DType dtype, absl::Span<const int64_t> shard_dims, Device* device,
+      xla::ifrt::MemoryKind memory_kind) const;
 
   // Returns a UserContext that captures the current context information such as
   // the stack trace. IFRT implementations that do not support UserContext will

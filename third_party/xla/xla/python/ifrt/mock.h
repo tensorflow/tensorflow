@@ -48,6 +48,7 @@ limitations under the License.
 #include "xla/python/ifrt/executable_serdes.h"
 #include "xla/python/ifrt/host_callback.h"
 #include "xla/python/ifrt/index_domain.h"
+#include "xla/python/ifrt/layout.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/program.h"
 #include "xla/python/ifrt/remap_plan.h"
@@ -83,6 +84,7 @@ class MockArray : public llvm::RTTIExtends<MockArray, Array> {
   MOCK_METHOD(ShardingRef, shared_ptr_sharding, (), (const, final));
   MOCK_METHOD(absl::StatusOr<std::shared_ptr<const xla::PjRtLayout>>,
               pjrt_layout, (), (const, final));
+  MOCK_METHOD(CustomLayoutRef, layout, (), (const, final));
   MOCK_METHOD(UserContextRef, user_context, (), (const, final));
   MOCK_METHOD(absl::StatusOr<std::vector<ArrayRef>>,
               DisassembleIntoSingleDeviceArrays,
@@ -183,6 +185,9 @@ class MockClient : public llvm::RTTIExtends<MockClient, Client> {
               GetDefaultPjRtLayout,
               (xla::ifrt::DType dtype, absl::Span<const int64_t> dims,
                xla::ifrt::Device* device, xla::ifrt::MemoryKind memory_kind),
+              (const, final));
+  MOCK_METHOD(absl::StatusOr<CustomLayoutRef>, GetDefaultLayout,
+              (DType dtype, const Shape& shape, const ShardingRef& sharding),
               (const, final));
   MOCK_METHOD(tsl::RCReference<xla::ifrt::UserContext>, CreateUserContext, (),
               (final));
