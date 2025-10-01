@@ -1076,6 +1076,28 @@ int64_t GetNumHopsToClosestSelectiveOverlap(
   return num_hops_to_closest_selective_resource_occupier;
 }
 
+static constexpr double kAsyncDepthRtolCoefficient = 0.35;
+static constexpr double kAsyncDepthDeprioritizationThreshold = 0.5;
+
+// Returns a relative tolerance for the async depth comparison. When retrying
+// due to high memory peak we want to deprioritize async depth and let other
+// properties be considered.
+double AsyncDepthRtol(const DefaultSchedulerCore::RetryState& retry_state) {
+  if (retry_state.run_index == 0) {
+    return 0.0;
+  }
+  if (retry_state.memory_peak < retry_state.memory_limit) {
+    return 0.0;
+  }
+  double memory_excess =
+      static_cast<double>(retry_state.memory_peak - retry_state.memory_limit) /
+      static_cast<double>(retry_state.memory_limit + 1.0);
+  if (memory_excess < kAsyncDepthDeprioritizationThreshold) {
+    return 0.0;
+  }
+  return std::min(1.0, kAsyncDepthRtolCoefficient * retry_state.run_index);
+}
+
 // Comparator for the ready set. This class represents the priority policies
 // for the nodes in the ready set. The policy can be whatever is appropriate to
 // reduce the execution time of the graph or achieve interesting properties
@@ -1112,6 +1134,28 @@ class ReadySetLt {
       RETURN_LOGIC(v, reason_str);                      \
     }                                                   \
   } while (0)
+
+// This is a generalization of CMP_PROPERTY that allows for a relative tolerance
+// to be specified such that this comparison is only performed if relative
+// difference between the properties is above the specified relative tolerance.
+// This is to allow skipping the comparison for minimal differences and let
+// other properties be considered.
+#define CMP_PROPERTY_WITH_RTOL(property, rtol, reason_str) \
+  do {                                                     \
+    auto avalue = an->property;                            \
+    auto bvalue = bn->property;                            \
+    if (avalue == 0 && bvalue == 0) {                      \
+      /* Nothing to do if both are zero. */                \
+    } else {                                               \
+      double diff = std::abs(avalue - bvalue);             \
+      double max_val = std::max(avalue, bvalue);           \
+      if (max_val > 0 && (diff / max_val) > rtol) {        \
+        if (int v = ThreeWay(avalue, bvalue)) {            \
+          RETURN_LOGIC(v, reason_str);                     \
+        }                                                  \
+      }                                                    \
+    }                                                      \
+  } while (0)
 #define CMP_EXPLICIT(pa, pb, reason_str) \
   do {                                   \
     if (int v = ThreeWay((pa), (pb))) {  \
@@ -1134,7 +1178,8 @@ class ReadySetLt {
         config_has_memory_limit_(config_memory_limit_ != UINT64_MAX),
         has_target_scheduling_rule_(target_scheduling_rule_ != nullptr),
         has_early_target_scheduling_rule_(early_target_scheduling_rule_ !=
-                                          nullptr) {}
+                                          nullptr),
+        async_depth_rtol_(AsyncDepthRtol(sched_state_.retry_state)) {}
 
   std::optional<bool> MemoryPressurePolicy(
       const HloGraphNode* an, std::pair<int64_t, int64_t>& a_increase,
@@ -1387,7 +1432,7 @@ class ReadySetLt {
       // Try to favor paths that are dependent of chains of async operations
       // with long latency as we want to get to them as soon as possible to
       // overlap them with computation.
-      CMP_PROPERTY(GetAsyncDepth(), "kAsyncDepth");
+      CMP_PROPERTY_WITH_RTOL(GetAsyncDepth(), async_depth_rtol_, "kAsyncDepth");
 
       // Favor nodes that are the closest in amount of latency they hide
       // with the highest amount of latency that needs to be hidden to avoid
@@ -1477,6 +1522,7 @@ class ReadySetLt {
   bool config_has_memory_limit_;
   bool has_target_scheduling_rule_;
   bool has_early_target_scheduling_rule_;
+  double async_depth_rtol_;
 
   static bool IsNop(const HloGraphNode& gn) {
     return IsNopInstruction(gn.GetOpcode(), gn.GetInstr());
@@ -2939,9 +2985,9 @@ absl::Status DefaultSchedulerCore::SchedulingStep(
     SchedulingState* sched_state) {
   // Get the first available node for scheduling that is the node that
   // satisfies our ready heuristic the best.
-  TF_ASSIGN_OR_RETURN(HloGraphNode * node,
-                      FindAndExtractBestNodeAvailable(
-                          *sched_state, /*should_skip_node=*/nullptr));
+  TF_ASSIGN_OR_RETURN(HloGraphNode * node, FindAndExtractBestNodeAvailable(
+                                               *sched_state,
+                                               /*should_skip_node=*/nullptr));
   CHECK(node != nullptr);
   TF_ASSIGN_OR_RETURN(sched_state->current_time,
                       ScheduleNode(node, sched_state));
@@ -3084,6 +3130,20 @@ DefaultSchedulerCore::MakeSchedulingState(const HloComputation* computation) {
           std::move(memory_pressure_tracker), config_);
   sched_state->sched_graph.InitializeGraphAnalysis();
   return sched_state;
+}
+
+absl::StatusOr<std::vector<HloInstruction*>>
+DefaultSchedulerCore::ScheduleComputation(
+    const HloComputation* computation, SchedulerCore::RetryState retry_state) {
+  TF_ASSIGN_OR_RETURN(auto sched_state, MakeSchedulingState(computation));
+  std::shared_ptr<DefaultSchedulerCore::SchedulingState> sched_state_ =
+      std::dynamic_pointer_cast<DefaultSchedulerCore::SchedulingState>(
+          sched_state);
+  CHECK_NE(sched_state_, nullptr)
+      << "ScheduleComputation must be called with a "
+      << "DefaultSchedulerCore::SchedulingState object.";
+  sched_state_->retry_state = retry_state;
+  return ScheduleComputation(computation, sched_state);
 }
 
 absl::StatusOr<std::vector<HloInstruction*>>
@@ -3609,11 +3669,14 @@ absl::StatusOr<bool> LatencyHidingScheduler::Run(
               << scheduler_core_->GetMemoryLimit()
               << ". Setting the new limit to "
               << scheduler_core_->GetMemoryLimit() * 0.9;
-    TF_RETURN_IF_ERROR(scheduler_core_->InitializeScheduler(module));
+    SchedulerCore::RetryState retry_state = {iter + 1,
+                                             scheduler_core_->GetMemoryLimit(),
+                                             scheduler_core_->GetMemoryPeak()};
     scheduler_core_->SetMemoryLimit(scheduler_core_->GetMemoryLimit() * 0.9);
     for (HloComputation* computation : computations_to_schedule_) {
-      TF_ASSIGN_OR_RETURN(std::vector<HloInstruction*> new_schedule,
-                          scheduler_core_->ScheduleComputation(computation));
+      TF_ASSIGN_OR_RETURN(
+          std::vector<HloInstruction*> new_schedule,
+          scheduler_core_->ScheduleComputation(computation, retry_state));
       scheduling_context_->GetAsyncTracker()->UpdateTargetDefinedStates(
           computation);
       module->schedule().set_sequence(computation,

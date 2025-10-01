@@ -392,6 +392,12 @@ class SchedulerCore {
     virtual ~SchedulingState() = default;
   };
 
+  struct RetryState {
+    int64_t run_index = 0;
+    uint64_t memory_limit = UINT64_MAX;
+    int64_t memory_peak = 0;
+  };
+
   // Hook function to modify scheduling graph before scheduler runs.
   using GraphProcessingHook = std::function<absl::Status(HloScheduleGraph*)>;
 
@@ -403,6 +409,11 @@ class SchedulerCore {
 
   virtual absl::StatusOr<std::shared_ptr<SchedulerCore::SchedulingState>>
   MakeSchedulingState(const HloComputation* computation) {
+    return absl::UnimplementedError("Not implemented.");
+  }
+  virtual absl::StatusOr<std::vector<HloInstruction*>> ScheduleComputation(
+      const HloComputation* computation,
+      const SchedulerCore::RetryState retry_state) {
     return absl::UnimplementedError("Not implemented.");
   }
   virtual absl::StatusOr<std::vector<HloInstruction*>> ScheduleComputation(
@@ -1572,6 +1583,10 @@ class DefaultSchedulerCore : public SchedulerCore {
     // reversed before assigning to the HloSchedule.
     std::vector<HloInstruction*> new_sequence_reversed;
 
+    // The RetryState is optional, meaning retry-specific logic might
+    // not be active for all scheduling runs.
+    SchedulerCore::RetryState retry_state;
+
     // Memory pressure during and after an instruction in a schedule.
     // (memory_after, memory_peak)
     absl::flat_hash_map<const HloInstruction*, std::pair<int64_t, int64_t>>
@@ -1675,6 +1690,9 @@ class DefaultSchedulerCore : public SchedulerCore {
 
   absl::StatusOr<std::shared_ptr<SchedulerCore::SchedulingState>>
   MakeSchedulingState(const HloComputation* computation) override;
+  absl::StatusOr<std::vector<HloInstruction*>> ScheduleComputation(
+      const HloComputation* computation,
+      SchedulerCore::RetryState retry_state) override;
   absl::StatusOr<std::vector<HloInstruction*>> ScheduleComputation(
       const HloComputation* computation) override;
   absl::StatusOr<std::vector<HloInstruction*>> ScheduleComputation(
