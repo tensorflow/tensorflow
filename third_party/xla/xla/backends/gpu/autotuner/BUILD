@@ -35,6 +35,16 @@ cc_library(
     ],
 )
 
+xla_cc_test(
+    name = "gpu_codegen_backend_test",
+    srcs = ["gpu_codegen_backend_test.cc"],
+    deps = [
+        ":gpu_codegen_backend",
+        "//xla:xla_proto_cc",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 cc_library(
     name = "block_level_emitter",
     srcs = ["block_level_emitter.cc"],
