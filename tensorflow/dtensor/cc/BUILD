@@ -43,6 +43,8 @@ cc_library(
     hdrs = ["dtensor_utils.h"],
     deps = [
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@local_xla//xla/tsl/util:env_var",
     ],
@@ -58,12 +60,16 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/dtensor/proto:layout_proto_cc",
+        "//third_party/protobuf/util:differencer",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
+        "@com_google_absl//absl/types:span",
         "@llvm-project//mlir:IR",
     ],
 )
@@ -85,6 +91,7 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:tstring",
         "//tensorflow/dtensor/proto:layout_proto_cc",
+        "//third_party/protobuf/util:differencer",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
@@ -100,6 +107,7 @@ cc_library(
         ":tensor_layout",
         "//tensorflow/c/eager:c_api",
         "//tensorflow/core:framework",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:fingerprint",
         "@llvm-project//llvm:Support",
     ],
@@ -147,6 +155,7 @@ cc_library(
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
@@ -178,6 +187,7 @@ cc_library(
     deps = [
         ":tensor_layout",
         "//tensorflow/core:framework",
+        "@com_google_absl//absl/status",
     ],
     alwayslink = 1,
 )
@@ -189,6 +199,7 @@ cc_library(
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/time",
     ],
 )
@@ -203,6 +214,9 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/dtensor/mlir:value_utils",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
@@ -215,6 +229,7 @@ cc_library(
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/status",
     ],
     alwayslink = 1,
 )
@@ -245,6 +260,8 @@ tf_kernel_library(
         "//tensorflow/core/tpu/kernels:tpu_op_consts",
         "//tensorflow/core/tpu/kernels:tpu_pod_state",
         "@com_google_absl//absl/cleanup",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/time",
         "@local_xla//xla/stream_executor/tpu:c_api_decl",
         "@local_xla//xla/stream_executor/tpu:status_helper",
@@ -252,6 +269,7 @@ tf_kernel_library(
         "@local_xla//xla/stream_executor/tpu:tpu_executor_base",
         "@local_xla//xla/stream_executor/tpu:tpu_ops_c_api_hdrs",
         "@local_xla//xla/stream_executor/tpu:tpu_topology_external",
+        "@local_xla//xla/tsl/protobuf:error_codes_proto_impl_cc",
     ],
     alwayslink = 1,
 )
@@ -278,6 +296,8 @@ cc_library(
         "//tensorflow/dtensor/mlir:tf_dtensor_dialect",
         "//tensorflow/dtensor/mlir/dtensor_dialect:Dialect",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@llvm-project//mlir:AllExtensions",
         "@llvm-project//mlir:IR",
@@ -300,6 +320,7 @@ cc_library(
     deps = [
         ":parallel_executor_interface",
         "//tensorflow/core/platform:logging",
+        "@com_google_absl//absl/log",
         "@local_xla//xla/tsl/platform:statusor",
     ],
 )
@@ -362,10 +383,14 @@ cc_library(
         "//tensorflow/dtensor/mlir:spmd_expander",
         "//tensorflow/dtensor/proto:layout_proto_cc",
         "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:fixed_array",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@local_xla//xla:status_macros",
@@ -410,6 +435,10 @@ cc_library(
     deps = [
         ":tensor_layout",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
         "@llvm-project//mlir:IR",
     ],
 )
