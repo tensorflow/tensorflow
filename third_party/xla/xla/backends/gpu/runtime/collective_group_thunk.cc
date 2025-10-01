@@ -131,5 +131,13 @@ void CollectiveGroupThunk::ForAllThunks(
   }
 }
 
+void CollectiveGroupThunk::ForAllThunksMutable(
+    absl::FunctionRef<void(Thunk*)> fn) {
+  fn(this);
+  for (const std::unique_ptr<Thunk>& thunk : thunks_) {
+    thunk->ForAllThunksMutable(fn);
+  }
+}
+
 }  // namespace gpu
 }  // namespace xla

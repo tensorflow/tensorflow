@@ -372,6 +372,14 @@ void CommandBufferThunk::ForAllThunks(
   }
 }
 
+void CommandBufferThunk::ForAllThunksMutable(
+    absl::FunctionRef<void(Thunk*)> fn) {
+  fn(this);
+  if (thunks_ != nullptr) {
+    thunks_->ForAllThunksMutable(fn);
+  }
+}
+
 std::string CommandBufferThunk::ToString(int indent) const {
   std::string result = "\n";
   absl::StrAppend(&result, thunks_->ToString(indent + 1));

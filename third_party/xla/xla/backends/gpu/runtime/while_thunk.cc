@@ -191,6 +191,12 @@ void WhileThunk::ForAllThunks(absl::FunctionRef<void(const Thunk*)> fn) const {
   body_thunk_sequence_->ForAllThunks(fn);
 }
 
+void WhileThunk::ForAllThunksMutable(absl::FunctionRef<void(Thunk*)> fn) {
+  fn(this);
+  condition_thunk_sequence_->ForAllThunksMutable(fn);
+  body_thunk_sequence_->ForAllThunksMutable(fn);
+}
+
 std::string WhileThunk::ToString(int indent) const {
   std::string indent_str(indent * 2, ' ');
   std::string result;

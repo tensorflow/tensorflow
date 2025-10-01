@@ -158,6 +158,13 @@ void ConditionalThunk::ForAllThunks(
   }
 }
 
+void ConditionalThunk::ForAllThunksMutable(absl::FunctionRef<void(Thunk*)> fn) {
+  fn(this);
+  for (const std::unique_ptr<SequentialThunk>& branch_thunk : branch_thunks_) {
+    branch_thunk->ForAllThunksMutable(fn);
+  }
+}
+
 absl::StatusOr<ThunkProto> ConditionalThunk::ToProto() const {
   ThunkProto proto;
   *proto.mutable_thunk_info() = thunk_info().ToProto();

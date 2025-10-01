@@ -92,6 +92,7 @@ class WhileThunk : public Thunk {
       const HloInstruction* while_instr);
 
   void ForAllThunks(absl::FunctionRef<void(const Thunk*)> fn) const override;
+  void ForAllThunksMutable(absl::FunctionRef<void(Thunk*)> fn) override;
 
   std::string ToString(int indent) const override;
 

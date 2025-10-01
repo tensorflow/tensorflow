@@ -163,6 +163,7 @@ class DynamicSliceThunk : public Thunk {
   }
 
   void ForAllThunks(absl::FunctionRef<void(const Thunk*)> fn) const override;
+  void ForAllThunksMutable(absl::FunctionRef<void(Thunk*)> fn) override;
 
  private:
   std::unique_ptr<SequentialThunk> embedded_thunk_;

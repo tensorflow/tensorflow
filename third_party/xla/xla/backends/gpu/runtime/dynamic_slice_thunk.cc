@@ -323,5 +323,11 @@ void DynamicSliceThunk::ForAllThunks(
   fn(this);
   embedded_thunk_->ForAllThunks(fn);
 }
+
+void DynamicSliceThunk::ForAllThunksMutable(
+    absl::FunctionRef<void(Thunk*)> fn) {
+  fn(this);
+  embedded_thunk_->ForAllThunksMutable(fn);
+}
 }  // namespace gpu
 }  // namespace xla

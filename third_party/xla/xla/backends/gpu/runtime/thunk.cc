@@ -416,6 +416,10 @@ void Thunk::ForAllThunks(absl::FunctionRef<void(const Thunk*)> fn) const {
   fn(this);
 }
 
+void Thunk::ForAllThunksMutable(absl::FunctionRef<void(Thunk*)> fn) {
+  fn(this);
+}
+
 absl::StatusOr<ThunkProto> Thunk::ToProto() const {
   return absl::UnimplementedError(absl::StrFormat(
       "Proto serialization for thunk of type %s is not implemented",

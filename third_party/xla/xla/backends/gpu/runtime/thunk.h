@@ -523,6 +523,9 @@ class Thunk {
   // Invokes `fn` with this thunk and all nested thunks.
   virtual void ForAllThunks(absl::FunctionRef<void(const Thunk*)> fn) const;
 
+  // Invokes `fn` with this thunk and all nested thunks.
+  virtual void ForAllThunksMutable(absl::FunctionRef<void(Thunk*)> fn);
+
   // A helper function to get the `GpuCollectives*` pointer from the
   // CollectiveExecuteParams.
   static absl::StatusOr<GpuCollectives* absl_nonnull> GetGpuCollectives(
