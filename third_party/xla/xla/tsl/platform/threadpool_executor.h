@@ -13,30 +13,30 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_TSL_PLATFORM_THREADPOOL_ASYNC_EXECUTOR_H_
-#define XLA_TSL_PLATFORM_THREADPOOL_ASYNC_EXECUTOR_H_
+#ifndef XLA_TSL_PLATFORM_THREADPOOL_EXECUTOR_H_
+#define XLA_TSL_PLATFORM_THREADPOOL_EXECUTOR_H_
 
 #include <utility>
 
-#include "xla/tsl/concurrency/async_value.h"
+#include "xla/tsl/concurrency/executor.h"
 #include "xla/tsl/platform/threadpool.h"
 
 namespace tsl::thread {
 
-// An adaptor for a ThreadPool that converts it into the AsyncValue:Executor.
+// An adaptor for a ThreadPool that converts it into the tsl::Executor.
 //
-// AsncValue::Executor task is a move-only absl::AnyInvocable, and ThreadPool
+// tsl::Executor task is a move-only absl::AnyInvocable, and ThreadPool
 // expects a copyable std::function. This class adapts the two and makes sure
 // that the task is deleted when it's done executing.
-class ThreadPoolAsyncExecutor : public AsyncValue::Executor {
+class ThreadPoolExecutor : public Executor {
  public:
-  explicit ThreadPoolAsyncExecutor(ThreadPool* thread_pool)
+  explicit ThreadPoolExecutor(ThreadPool* thread_pool)
       : thread_pool_(thread_pool) {}
 
   void Execute(Task task) final {
     auto* task_ptr = new Task(std::move(task));
     thread_pool_->Schedule([task_ptr] {
-      (*task_ptr)();
+      std::move((*task_ptr))();
       delete task_ptr;
     });
   }
@@ -47,4 +47,4 @@ class ThreadPoolAsyncExecutor : public AsyncValue::Executor {
 
 }  // namespace tsl::thread
 
-#endif  // XLA_TSL_PLATFORM_THREADPOOL_ASYNC_EXECUTOR_H_
+#endif  // XLA_TSL_PLATFORM_THREADPOOL_EXECUTOR_H_

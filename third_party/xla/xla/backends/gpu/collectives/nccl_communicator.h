@@ -38,8 +38,8 @@ limitations under the License.
 #include "xla/core/collectives/rank_id.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/stream_executor/device_memory.h"
-#include "xla/tsl/concurrency/async_value.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
+#include "xla/tsl/concurrency/executor.h"
 #include "xla/tsl/platform/env.h"
 
 #if TENSORFLOW_USE_ROCM
@@ -146,7 +146,7 @@ class NcclCommunicator : public GpuCommunicator {
   class NcclRegisteredBufferHandle;
 
   explicit NcclCommunicator(ncclComm_t comm,
-                            std::unique_ptr<tsl::AsyncValue::Executor> executor)
+                            std::unique_ptr<tsl::Executor> executor)
       : comm_(comm), executor_(std::move(executor)) {
     VLOG(1) << "Created " << *this;
   }
@@ -226,7 +226,7 @@ class NcclCommunicator : public GpuCommunicator {
   // ncclComm_t is accessed from multiple threads. Emperically, the lack of
   // thread safety only manifests as buggy behavior when using non-blocking
   // communicators.
-  std::unique_ptr<tsl::AsyncValue::Executor> executor_;
+  std::unique_ptr<tsl::Executor> executor_;
 
   // Should all pending collectives cancel?
   std::atomic_bool canceling_ = false;

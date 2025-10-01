@@ -377,6 +377,7 @@ cc_library(
         "//xla/stream_executor:stream_executor_h",
         "//xla/stream_executor/gpu:gpu_stream",
         "//xla/tsl/concurrency:async_value",
+        "//xla/tsl/concurrency:executor",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:logging",
@@ -547,9 +548,9 @@ cc_library(
     srcs = ["single_threaded_executor.cc"],
     hdrs = ["single_threaded_executor.h"],
     deps = [
-        "//xla/tsl/concurrency:async_value",
+        "//xla/tsl/concurrency:executor",
         "//xla/tsl/platform:env",
-        "//xla/tsl/platform:threadpool_async_executor",
+        "//xla/tsl/platform:threadpool_executor",
     ],
 )
 

@@ -43,6 +43,7 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     deps = [
         ":concurrent_vector",
+        ":executor",
         ":ref_count",
         "//xla/tsl/platform:logging",
         "//xla/tsl/util:safe_reinterpret_cast",
@@ -76,6 +77,7 @@ tsl_cc_test(
     srcs = ["async_value_ptr_test.cc"],
     deps = [
         ":async_value",
+        ":executor",
         "//xla/tsl/platform:test",
         "//xla/tsl/platform:test_benchmark",
         "//xla/tsl/platform:test_main",
@@ -91,6 +93,7 @@ tsl_cc_test(
     srcs = ["async_value_ref_test.cc"],
     deps = [
         ":async_value",
+        ":executor",
         ":ref_count",
         "//xla/tsl/platform:test",
         "//xla/tsl/platform:test_benchmark",
@@ -124,6 +127,13 @@ tsl_cc_test(
         "//xla/tsl/platform:test",
         "@com_google_googletest//:gtest_main",
     ],
+)
+
+cc_library(
+    name = "executor",
+    hdrs = ["executor.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = ["@com_google_absl//absl/functional:any_invocable"],
 )
 
 cc_library(

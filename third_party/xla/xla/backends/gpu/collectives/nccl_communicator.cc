@@ -48,6 +48,7 @@ limitations under the License.
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/concurrency/async_value.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
+#include "xla/tsl/concurrency/executor.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
@@ -182,8 +183,8 @@ class NcclCommunicator::NcclRegisteredBufferHandle
     : public Communicator::RegisteredBufferHandle {
  public:
   NcclRegisteredBufferHandle(NcclCommunicator& comm, void* handle,
-                             tsl::AsyncValue::Executor* executor,
-                             bool symmetric_handle, int device_ordinal)
+                             tsl::Executor* executor, bool symmetric_handle,
+                             int device_ordinal)
       : comm_(comm),
         handle_(handle),
         executor_(),
@@ -249,7 +250,7 @@ class NcclCommunicator::NcclRegisteredBufferHandle
  private:
   NcclCommunicator& comm_;
   void* handle_;
-  tsl::AsyncValue::Executor* executor_;
+  tsl::Executor* executor_;
   bool symmetric_handle_;
   int device_ordinal_;
 };
