@@ -2106,9 +2106,14 @@ absl::flat_hash_set<HloPosition> GetParameterInstructionsAliasedToOutput(
 
 }  // namespace
 
-void MsaAlgorithm::ProcessBlockPrefetches() {
+absl::Status MsaAlgorithm::ProcessBlockPrefetches() {
+  if (!options_.hlo_position_to_custom_call_prefetch_details.empty()) {
+    return absl::UnimplementedError(
+        "Block prefetching for custom call prefetches is not yet implemented "
+        "in MSA.");
+  }
   if (options_.reserved_bytes_for_block_prefetches <= 0) {
-    return;
+    return absl::OkStatus();
   }
   absl::flat_hash_set<HloPosition> aliased_parameter_positions =
       GetParameterInstructionsAliasedToOutput(
@@ -2335,6 +2340,7 @@ void MsaAlgorithm::ProcessBlockPrefetches() {
   }
   // Clear the pending chunks.
   ClearPendingChunks();
+  return absl::OkStatus();
 }
 
 absl::StatusOr<HeapSimulator::Result<HloValue>> MsaAlgorithm::Finish() {
@@ -2350,7 +2356,8 @@ absl::StatusOr<HeapSimulator::Result<HloValue>> MsaAlgorithm::Finish() {
                                                                  : "disabled");
 
   AllocateReservedScopedAllocations();
-  ProcessBlockPrefetches();
+  TF_RETURN_IF_ERROR(ProcessBlockPrefetches());
+
   std::vector<MsaBufferInterval> sorted_buffer_intervals =
       GetSortedBufferIntervals();
 
