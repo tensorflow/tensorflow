@@ -17,15 +17,20 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <tuple>
 #include <utility>
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/platform/test_benchmark.h"
 
 namespace tsl {
+
+using ::absl_testing::IsOk;
+using ::testing::Not;
 
 TEST(FutureTest, StatusConstructedFuture) {
   Future<> future = Future<>(absl::OkStatus());
@@ -160,6 +165,22 @@ TEST(FutureTest, OnReadyMoveOnlyFuture) {
   std::move(future).OnReady([](absl::StatusOr<std::unique_ptr<int32_t>> value) {
     EXPECT_EQ(**value, 42);
   });
+}
+
+TEST(FutureTest, PromiseNotSet) {
+  Future<> future;
+  {
+    Promise<> promise;
+    std::tie(promise, future) = Future<>::MakePromise();
+  }
+  ASSERT_TRUE(future.IsReady());
+  EXPECT_THAT(future.Await(), Not(IsOk()));
+}
+
+TEST(FutureTest, PromiseSetTwice) {
+  auto [promise, future] = Future<>::MakePromise();
+  promise.Set();
+  EXPECT_DEATH(promise.Set(), "Promise must not be fulfilled more than once");
 }
 
 TEST(FutureTest, UnlinkedPromiseIsUnique) {
