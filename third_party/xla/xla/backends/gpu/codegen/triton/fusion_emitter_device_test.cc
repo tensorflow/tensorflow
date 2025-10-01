@@ -295,6 +295,46 @@ CHECK:  "tt.reduce"(%[[LOAD:.*]]) <{axis = 1 : i32}>
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, kExactMatch));
 }
 
+// Regression test for b/448150702 - reduction with a constant inside returned
+// early, not fully emitting the reduction.
+TEST_F(TritonEmitterTest, ComplexReductionIsEmittedCorrectly) {
+  constexpr absl::string_view kHloText = R"(
+HloModule m
+
+unusual {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  add = f32[] add(lhs, rhs)
+  eight = f32[] constant(8)
+  ROOT minimum = f32[] minimum(add, eight)
+}
+
+fused_reduce {
+  p0 = f32[2,2]{1,0} parameter(0)
+  zero = f32[] constant(0)
+  ROOT reduce = f32[2]{0} reduce(p0, zero), dimensions={1}, to_apply=unusual
+}
+
+ENTRY entry_computation {
+  p0 = f32[2,2]{1,0} parameter(0)
+  ROOT input_reduce_fusion = f32[2]{0} fusion(p0),
+    kind=kCustom, calls=fused_reduce,
+    backend_config={"fusion_backend_config":{"kind":"__triton",
+      "block_level_fusion_config":{
+        "num_warps":"1","output_tiles":[{"sizes":["1"]}],
+        "num_ctas":1,"num_stages":1,"is_tma_allowed":false}}}
+}
+)";
+  TF_EXPECT_OK(CreateTritonIrAndFileCheck(this, kHloText, "fused_reduce", R"(
+CHECK: "tt.reduce"
+CHECK: ^bb0(%[[ARG0:.*]]: f32, %[[ARG1:.*]]: f32)
+CHECK: %[[ADD:.*]] = arith.addf %[[ARG0]], %[[ARG1]]
+CHECK: %[[MIN:.*]] = arith.minimumf %[[ADD]]
+CHECK: tt.reduce.return %[[MIN]]
+)"));
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, kExactMatch));
+}
+
 TEST_F(TritonEmitterTest,
        ReductionOnMinormostAxisWithExtraOutputIsEmittedCorrectly) {
   constexpr absl::string_view kHloText = R"(
