@@ -942,6 +942,9 @@ FieldOffsetsAndSizesForVersion(int major_version, int minor_version) {
       add_field("PJRT_Client_CreateAliasBuffer", kFnPtrSize);
       add_field("PJRT_Client_FulfillAliasBuffer", kFnPtrSize);
     }
+    if (minor_version >= 79) {
+      add_field("PJRT_LoadedExecutable_GetDeviceAssignment", kFnPtrSize);
+    }
     return version_offsets_and_sizes;
   }
   LOG(FATAL) << "Unsupported API version: " << major_version << "."
@@ -1330,6 +1333,9 @@ TEST_F(PjrtCAbiTestBase, FieldOffsetsAndSizes) {
           {"PJRT_Client_FulfillAliasBuffer",
            {offsetof(PJRT_Api, PJRT_Client_FulfillAliasBuffer),
             sizeof(PJRT_Api::PJRT_Client_FulfillAliasBuffer)}},
+          {"PJRT_LoadedExecutable_GetDeviceAssignment",
+           {offsetof(PJRT_Api, PJRT_LoadedExecutable_GetDeviceAssignment),
+            sizeof(PJRT_Api::PJRT_LoadedExecutable_GetDeviceAssignment)}},
       };
   ASSERT_EQ(api_->pjrt_api_version.major_version, PJRT_API_MAJOR);
   ASSERT_EQ(api_->pjrt_api_version.minor_version, PJRT_API_MINOR);

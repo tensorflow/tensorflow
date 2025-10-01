@@ -1822,6 +1822,7 @@ PjRtCApiLoadedExecutable::PjRtCApiLoadedExecutable(
   executable_ =
       std::make_unique<PjRtCApiExecutable>(pjrt_c_api(), args.executable);
   InitDevices();
+  InitDeviceAssignment();
 }
 
 void PjRtCApiLoadedExecutable::InitDevices() {
@@ -1844,6 +1845,45 @@ void PjRtCApiLoadedExecutable::InitDevices() {
     PjRtCApiDevice* c_api_device = client_->GetCppDevice(device);
     addressable_devices_.push_back(c_api_device);
   }
+}
+
+void PjRtCApiLoadedExecutable::InitDeviceAssignment() {
+  if (pjrt_c_api()->pjrt_api_version.major_version == 0 &&
+      pjrt_c_api()->pjrt_api_version.minor_version < 79) {
+    device_assignment_ = nullptr;
+    return;
+  }
+  PJRT_LoadedExecutable_GetDeviceAssignment_Args args;
+  args.struct_size = PJRT_LoadedExecutable_GetDeviceAssignment_Args_STRUCT_SIZE;
+  args.extension_start = nullptr;
+  args.executable = c_loaded_executable();
+
+  const PJRT_Api* api = pjrt_c_api();
+
+  pjrt::LogFatalIfPjrtError(
+      api->PJRT_LoadedExecutable_GetDeviceAssignment(&args), api);
+
+  absl::Cleanup cleanup = [&args] {
+    args.serialized_device_assignment_deleter(
+        args.serialized_device_assignment);
+  };
+
+  // If `serialized_bytes_size` is 0, this executable is portable and has no
+  // device assignment.
+  if (args.serialized_bytes_size == 0) {
+    device_assignment_ = nullptr;
+    return;
+  }
+
+  std::string serialized_proto(args.serialized_bytes,
+                               args.serialized_bytes_size);
+  DeviceAssignmentProto proto;
+  CHECK(proto.ParseFromString(serialized_proto));
+
+  absl::StatusOr<std::unique_ptr<DeviceAssignment>> device_assignment =
+      DeviceAssignment::Deserialize(proto);
+  CHECK_OK(device_assignment.status());
+  device_assignment_ = std::move(*device_assignment);
 }
 
 static std::vector<std::vector<PJRT_Buffer*>> Convert2DCppBuffersToCBuffers(
