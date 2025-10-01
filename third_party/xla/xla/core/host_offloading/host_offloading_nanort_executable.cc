@@ -142,7 +142,10 @@ HostOffloadingNanoRtExecutable::LoadFromProto(
   TF_RET_CHECK(proto.executable_type() ==
                HostOffloadingExecutableProto::EXECUTABLE_TYPE_NANORT);
 
-  auto& hlo_module_proto = proto.hlo_module();
+  auto& hlo_module_proto =
+      proto.has_aot_compilation_result()
+          ? proto.aot_compilation_result().hlo_module().hlo_module()
+          : proto.hlo_module();
 
   VLOG(3) << "Load NanoRt host offloading executable: name="
           << hlo_module_proto.name();
@@ -154,18 +157,14 @@ HostOffloadingNanoRtExecutable::LoadFromProto(
 
   // We keep program shape and alias config of the original HLO module and not
   // the destination-passing-style module with extra output parameters.
-  TF_ASSIGN_OR_RETURN(ProgramShape program_shape,
-                      ProgramShape::FromProto(proto.aot_compilation_result()
-                                                  .hlo_module()
-                                                  .hlo_module()
-                                                  .host_program_shape()));
+  TF_ASSIGN_OR_RETURN(
+      ProgramShape program_shape,
+      ProgramShape::FromProto(hlo_module_proto.host_program_shape()));
 
-  TF_ASSIGN_OR_RETURN(auto alias_config,
-                      HloInputOutputAliasConfig::CreateFromProto(
-                          program_shape.result(), proto.aot_compilation_result()
-                                                      .hlo_module()
-                                                      .hlo_module()
-                                                      .input_output_alias()));
+  TF_ASSIGN_OR_RETURN(
+      auto alias_config,
+      HloInputOutputAliasConfig::CreateFromProto(
+          program_shape.result(), hlo_module_proto.input_output_alias()));
 
   std::unique_ptr<xla::cpu::NanoRtExecutable> executable;
 
