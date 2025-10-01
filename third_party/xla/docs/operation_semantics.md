@@ -110,11 +110,11 @@ See also
 
 Performs concatenation across replicas.
 
-**`AllGather(operand, all_gather_dimension, shard_count, replica_group_ids,
+**`AllGather(operand, all_gather_dimension, shard_count, replica_groups,
 channel_id, layout, use_global_device_ids)`**
 
 | Arguments               | Type                 | Semantics                   |
-| :---------------------- | :------------------- | :-------------------------- |
+| ----------------------- | -------------------- | --------------------------- |
 | `operand`               | `XlaOp`              | Array to concatenate across |
 :                         :                      : replicas                    :
 | `all_gather_dimension`  | `int64`              | Concatenation dimension     |
@@ -122,8 +122,8 @@ channel_id, layout, use_global_device_ids)`**
 :                         :                      : group                       :
 | `replica_groups`        | vector of vectors of | Groups between which the    |
 :                         : `int64`              : concatenation is performed  :
-| `channel_id`            | optional `int64`     | Optional channel ID for     |
-:                         :                      : cross-module communication  :
+| `channel_id`            | optional             | Optional channel ID for     |
+:                         : `ChannelHandle`      : cross-module communication  :
 | `layout`                | optional `Layout`    | Creates a layout pattern    |
 :                         :                      : that will capture the       :
 :                         :                      : matched layout in the       :
@@ -149,11 +149,11 @@ channel_id, layout, use_global_device_ids)`**
     instead of a replica id. This enables more flexible grouping of devices if
     this all-reduce is both cross-partition and cross-replica.
 
-The output shape is the input shape with the `all_gather_dim` made `shard_count`
-times larger. For example, if there are two replicas and the operand has the
-value `[1.0, 2.5]` and `[3.0, 5.25]` respectively on the two replicas, then the
-output value from this op where `all_gather_dim` is `0` will be `[1.0, 2.5, 3.0,
-5.25]` on both replicas.
+The output shape is the input shape with the `all_gather_dimension` made
+`shard_count` times larger. For example, if there are two replicas and the
+operand has the value `[1.0, 2.5]` and `[3.0, 5.25]` respectively on the two
+replicas, then the output value from this op where `all_gather_dim` is `0` will
+be `[1.0, 2.5, 3.0,5.25]` on both replicas.
 
 The API of `AllGather` is internally decomposed into 2 HLO instructions
 (`AllGatherStart` and `AllGatherDone`).
@@ -181,21 +181,21 @@ Performs a custom computation across replicas.
 **`AllReduce(operand, computation, replica_groups, channel_id,
 shape_with_layout, use_global_device_ids)`**
 
-| Arguments               | Type                 | Semantics                  |
-| :---------------------- | :------------------- | :------------------------- |
-| `operand`               | `XlaOp`              | Array or a non-empty tuple |
-:                         :                      : of arrays to reduce across :
-:                         :                      : replicas                   :
-| `computation`           | `XlaComputation`     | Reduction computation      |
-| `replica_groups`        | vector of vectors of | Groups between which the   |
-:                         : `int64`              : reductions are performed   :
-| `channel_id`            | optional `int64`     | Optional channel ID for    |
-:                         :                      : cross-module communication :
-| `shape_with_layout`     | optional `Shape`     | Defines the layout of the  |
-:                         :                      : data transferred           :
-| `use_global_device_ids` | optional `bool`      | Returns true if the ids in |
-:                         :                      : the ReplicaGroup config    :
-:                         :                      : represent a global id      :
+| Arguments               | Type                  | Semantics                  |
+| ----------------------- | --------------------- | -------------------------- |
+| `operand`               | `XlaOp`               | Array or a non-empty tuple |
+:                         :                       : of arrays to reduce across :
+:                         :                       : replicas                   :
+| `computation`           | `XlaComputation`      | Reduction computation      |
+| `replica_groups`        | `ReplicaGroup` vector | Groups between which the   |
+:                         :                       : reductions are performed   :
+| `channel_id`            | optional              | Optional channel ID for    |
+:                         : `ChannelHandle`       : cross-module communication :
+| `shape_with_layout`     | optional `Shape`      | Defines the layout of the  |
+:                         :                       : data transferred           :
+| `use_global_device_ids` | optional `bool`       | Returns true if the ids in |
+:                         :                       : the ReplicaGroup config    :
+:                         :                       : represent a global id      :
 
 -   When `operand` is a tuple of arrays, the all-reduce is performed on each
     element of the tuple.
@@ -899,17 +899,17 @@ See also
 
 Invokes a computation with the given arguments.
 
-**`Call(computation, args...)`**
+**`Call(computation, operands...)`**
 
 | Arguments     | Type                   | Semantics                           |
 | ------------- | ---------------------- | ----------------------------------- |
 | `computation` | `XlaComputation`       | computation of type `T_0, T_1, ..., |
 :               :                        : T_{N-1} -> S` with N parameters of  :
 :               :                        : arbitrary type                      :
-| `args`        | sequence of N `XlaOp`s | N arguments of arbitrary type       |
+| `operands`    | sequence of N `XlaOp`s | N arguments of arbitrary type       |
 
-The arity and types of the `args` must match the parameters of the
-`computation`. It is allowed to have no `args`.
+The arity and types of the `operands` must match the parameters of the
+`computation`. It is allowed to have no `operands`.
 
 ### CompositeCall
 
@@ -941,19 +941,19 @@ frontend_attributes = {
 }
 ```
 
-**`Call(computation, args..., name, attributes, version)`**
+**`CompositeCall(computation, operands..., name, attributes, version)`**
 
-| Arguments       | Type              | Semantics                              |
-| --------------- | ----------------- | -------------------------------------- |
-| `inputs`        | `XlaOp`           | variadic number of values              |
-| `name`          | `string`          | name of the composite                  |
-| `attributes`    | optional `string` | optional stringified dictionary of     |
-:                 :                   : attributes                             :
-| `decomposition` | `XlaComputation`  | computation of type `T_0, T_1, ...,    |
-:                 :                   : T_{N-1} -> S` with N parameters of     :
-:                 :                   : arbitrary type                         :
-| `version`       | `int64`.          | number to version updates to semantics |
-:                 :                   : of the composite op                    :
+| Arguments     | Type                   | Semantics                           |
+| ------------- | ---------------------- | ----------------------------------- |
+| `computation` | `XlaComputation`       | computation of type `T_0, T_1, ..., |
+:               :                        : T_{N-1} -> S` with N parameters of  :
+:               :                        : arbitrary type                      :
+| `operands`    | sequence of N `XlaOp`s | variadic number of values           |
+| `name`        | `string`               | name of the composite               |
+| `attributes`  | optional `string`      | optional stringified dictionary of  |
+:               :                        : attributes                          :
+| `version`     | optional `int64`       | number to version updates to        |
+:               :                        : semantics of the composite op       :
 
 An op’s `decomposition` isn’t a field called, but instead appears as a to_apply
 attribute that points to the function which contains the lower-level
@@ -1193,20 +1193,23 @@ replicas.
 
 **`CollectivePermute(operand, source_target_pairs, channel_id, inplace)`**
 
-| Arguments             | Type                    | Semantics                  |
-| :-------------------- | :---------------------- | :------------------------- |
-| `operand`             | `XlaOp`                 | n dimensional input array  |
-| `source_target_pairs` | `<int64, int64>` vector | A list of                  |
-:                       :                         : (source_replica_id,        :
-:                       :                         : target_replica_id) pairs.  :
-:                       :                         : For each pair, the operand :
-:                       :                         : is sent from source        :
-:                       :                         : replica to target replica. :
-| `channel_id`          | optional `int64`        | Optional channel ID for    |
-:                       :                         : cross-module communication :
-| `inplace`             | bool                    | Optional inplace           |
+| Arguments             | Type                     | Semantics                 |
+| --------------------- | ------------------------ | ------------------------- |
+| `operand`             | `XlaOp`                  | n dimensional input array |
+| `source_target_pairs` | `<int64, int64>` vector  | A list of                 |
+:                       :                          : (source_replica_id,       :
+:                       :                          : target_replica_id) pairs. :
+:                       :                          : For each pair, the        :
+:                       :                          : operand is sent from      :
+:                       :                          : source replica to target  :
+:                       :                          : replica.                  :
+| `channel_id`          | optional `ChannelHandle` | Optional channel ID for   |
+:                       :                          : cross-module              :
+:                       :                          : communication             :
+| `inpace`              | optional `bool`          | flag whether permutation  |
+:                       :                          : should be done inplace    :
 
-Note that there are the following restrictions on the `source_target_pair`:
+Note that there are the following restrictions on the `source_target_pairs`:
 
 -   Any two pairs should not have the same target replica id, and they should
     not have the same source replica id.
@@ -1724,7 +1727,7 @@ false_computation)`**
 | `false_computation` | `XlaComputation` | XlaComputation of type $T_1 \to S$ |
 
 Executes `true_computation` if `predicate` is `true`, `false_computation` if
-`pred` is `false`, and returns the result.
+`predicate` is `false`, and returns the result.
 
 The `true_computation` must take in a single argument of type $T_0$ and will
 be invoked with `true_operand` which must be of the same type. The
@@ -1735,7 +1738,7 @@ returned value of `true_computation` and `false_computation` must be the same.
 <!-- mdformat on -->
 
 Note that only one of `true_computation` and `false_computation` will be
-executed depending on the value of `pred`.
+executed depending on the value of `predicate`.
 
 **`Conditional(branch_index, branch_computations, branch_operands)`**
 
@@ -2485,7 +2488,7 @@ dimension: [start, start + size). The shape of `start_indices` must be
 1-dimensional, with dimension size equal to the number of dimensions of
 `operand`.
 
-**`DynamicSlice(operand, start_indices, size_indices)`**
+**`DynamicSlice(operand, start_indices, slice_sizes)`**
 
 | Arguments       | Type                  | Semantics                          |
 | --------------- | --------------------- | ---------------------------------- |
@@ -2507,7 +2510,7 @@ The effective slice indices are computed by applying the following
 transformation for each index `i` in `[1, N)` before performing the slice:
 
 ```cpp
-start_indices[i] = clamp(start_indices[i], 0, operand.dimension_size[i] - size_indices[i])
+start_indices[i] = clamp(start_indices[i], 0, operand.dimension_size[i] - slice_sizes[i])
 ```
 
 This ensures that the extracted slice is always in-bounds with respect to the
@@ -3077,14 +3080,16 @@ For StableHLO information see
 See also
 [`XlaBuilder::Infeed`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
-**`Infeed(shape)`**
+**`Infeed(shape, config)`**
 
-| Argument | Type    | Semantics                                             |
-| -------- | ------- | ----------------------------------------------------- |
-| `shape`  | `Shape` | Shape of the data read from the Infeed interface. The |
-:          :         : layout field of the shape must be set to match the    :
-:          :         : layout of the data sent to the device; otherwise its  :
-:          :         : behavior is undefined.                                :
+| Argument | Type              | Semantics                                     |
+| -------- | ----------------- | --------------------------------------------- |
+| `shape`  | `Shape`           | Shape of the data read from the Infeed        |
+:          :                   : interface. The layout field of the shape must :
+:          :                   : be set to match the layout of the data sent   :
+:          :                   : to the device; otherwise its behavior is      :
+:          :                   : undefined.                                    :
+| `config` | optional `string` | Configuration of the op.                      |
 
 Reads a single data item from the implicit Infeed streaming interface of the
 device, interpreting the data as the given shape and its layout, and returns a
@@ -3272,14 +3277,16 @@ See also
 
 **`Map(operands..., computation, dimensions)`**
 
-| Arguments     | Type                   | Semantics                          |
-| ------------- | ---------------------- | ---------------------------------- |
-| `operands`    | sequence of N `XlaOp`s | N arrays of types T_0..T_{N-1}     |
-| `computation` | `XlaComputation`       | computation of type `T_0, T_1, .., |
-:               :                        : T_{N + M -1} -> S` with N          :
-:               :                        : parameters of type T and M of      :
-:               :                        : arbitrary type                     :
-| `dimensions`  | `int64` array          | array of map dimensions            |
+| Arguments         | Type                   | Semantics                      |
+| ----------------- | ---------------------- | ------------------------------ |
+| `operands`        | sequence of N `XlaOp`s | N arrays of types T_0..T_{N-1} |
+| `computation`     | `XlaComputation`       | Computation of type `T_0, T_1, |
+:                   :                        : .., T_{N + M -1} -> S` with N  :
+:                   :                        : parameters of type T and M of  :
+:                   :                        : arbitrary type.                :
+| `dimensions`      | `int64` array          | Array of map dimensions        |
+| `static_operands` | sequence of N `XlaOp`s | Static ops for the map         |
+:                   :                        : operation                      :
 
 Applies a scalar function over the given `operands` arrays, producing an array
 of the same dimensions where each element is the result of the mapped function
@@ -3961,22 +3968,22 @@ shard.
 **`ReduceScatter(operand, computation, scatter_dimension, shard_count,
 replica_groups, channel_id, layout, use_global_device_ids)`**
 
-| Arguments               | Type                 | Semantics                  |
-| :---------------------- | :------------------- | :------------------------- |
-| `operand`               | `XlaOp`              | Array or a non-empty tuple |
-:                         :                      : of arrays to reduce across :
-:                         :                      : replicas.                  :
-| `computation`           | `XlaComputation`     | Reduction computation      |
-| `scatter_dimension`     | `int64`              | Dimension to scatter.      |
-| `shard_count`           | `int64`              | Number of blocks to split  |
-:                         :                      : `scatter_dimension`        :
-| `replica_groups`        | vector of vectors of | Groups between which the   |
-:                         : `int64`              : reductions are performed   :
-| `channel_id`            | optional `int64`     | Optional channel ID for    |
-:                         :                      : cross-module communication :
-| `layout`                | optional `Layout`    | user-specified memory      |
-:                         :                      : layout                     :
-| `use_global_device_ids` | optional `bool`      | user-specified flag        |
+| Arguments               | Type                  | Semantics                  |
+| ----------------------- | --------------------- | -------------------------- |
+| `operand`               | `XlaOp`               | Array or a non-empty tuple |
+:                         :                       : of arrays to reduce across :
+:                         :                       : replicas.                  :
+| `computation`           | `XlaComputation`      | Reduction computation      |
+| `scatter_dimension`     | `int64`               | Dimension to scatter.      |
+| `shard_count`           | `int64`               | Number of blocks to split  |
+:                         :                       : `scatter_dimension`        :
+| `replica_groups`        | `ReplicaGroup` vector | Groups between which the   |
+:                         :                       : reductions are performed   :
+| `channel_id`            | optional              | Optional channel ID for    |
+:                         : `ChannelHandle`       : cross-module communication :
+| `layout`                | optional `Layout`     | user-specified memory      |
+:                         :                       : layout                     :
+| `use_global_device_ids` | optional `bool`       | user-specified flag        |
 
 -   When `operand` is a tuple of arrays, the reduce-scatter is performed on each
     element of the tuple.
@@ -4839,12 +4846,12 @@ communication primitives in HLO. These ops typically appear in HLO dumps as part
 of low-level input/output or cross-device transfer, but they are not intended to
 be constructed manually by end users.
 
-**`Send(operand, channel_handle)`**
+**`Send(operand, handle)`**
 
-Arguments        | Type            | Semantics
----------------- | --------------- | -----------------------------------------
-`operand`        | `XlaOp`         | data to send (array of type T)
-`channel_handle` | `ChannelHandle` | unique identifier for each send/recv pair
+Arguments | Type            | Semantics
+--------- | --------------- | -----------------------------------------
+`operand` | `XlaOp`         | data to send (array of type T)
+`handle`  | `ChannelHandle` | unique identifier for each send/recv pair
 
 Sends the given operand data to a [`Recv`](#recv) instruction in another
 computation that shares the same channel handle. Does not return any data.
