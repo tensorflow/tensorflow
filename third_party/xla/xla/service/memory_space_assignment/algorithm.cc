@@ -381,6 +381,13 @@ bool MsaAlgorithm::IsIntervalPinnedToAlternateMemory(
          shape.layout().memory_space() == options_.alternate_memory_space;
 }
 
+int MsaAlgorithm::ComparePinnedStatus(const MsaBufferInterval& lhs,
+                                      const MsaBufferInterval& rhs) const {
+  bool is_lhs_pinned = IsIntervalPinnedToAlternateMemory(lhs);
+  bool is_rhs_pinned = IsIntervalPinnedToAlternateMemory(rhs);
+  return static_cast<int>(is_rhs_pinned) - static_cast<int>(is_lhs_pinned);
+}
+
 bool MsaAlgorithm::MatchesPrefetchContext(
     const PrefetchContext& context, absl::string_view producer_name,
     ShapeIndex producer_shape_index, absl::string_view consumer_name) const {
@@ -420,13 +427,9 @@ MsaAlgorithm::MsaAlgorithm(HloModule* module, AllocationSequence* allocations,
   buffer_interval_compare_ =
       [this, comparison_function = std::move(comparison_function)](
           const MsaBufferInterval& a, const MsaBufferInterval& b) {
-        bool is_a_pinned = IsIntervalPinnedToAlternateMemory(a);
-        bool is_b_pinned = IsIntervalPinnedToAlternateMemory(b);
-        if (is_a_pinned && !is_b_pinned) {
-          return true;
-        }
-        if (!is_a_pinned && is_b_pinned) {
-          return false;
+        int pinned_cmp = ComparePinnedStatus(a, b);
+        if (pinned_cmp != 0) {
+          return pinned_cmp < 0;
         }
         return comparison_function(a, b);
       };
@@ -2351,8 +2354,30 @@ absl::StatusOr<HeapSimulator::Result<HloValue>> MsaAlgorithm::Finish() {
 
   AllocateReservedScopedAllocations();
   ProcessBlockPrefetches();
-  std::vector<MsaBufferInterval> sorted_buffer_intervals =
-      GetSortedBufferIntervals();
+
+  std::vector<MsaBufferInterval> sorted_buffer_intervals;
+  if (options_.buffer_interval_comparator != nullptr) {
+    sorted_buffer_intervals.reserve(buffer_intervals_.size());
+    for (auto& entry : buffer_intervals_) {
+      sorted_buffer_intervals.push_back(entry.second);
+    }
+    // `options_.buffer_interval_comparator` (and as a result
+    // `buffer_interval_compare_`) can do expensive operations for each pairwise
+    // comparisons. In order to cache the expensive operations (doing N
+    // expensive operations) instead of O(n lg n) times, we directly call the
+    // Sort method which is optimized. Both the `if-true` and `if-false` paths
+    // must yield the same result.
+    //
+    // TODO(nafi): Redesign the BufferIntervalComparator and related interfaces
+    // to clean this up.
+    options_.buffer_interval_comparator->Sort(
+        [this](const MsaBufferInterval& a, const MsaBufferInterval& b) -> int {
+          return ComparePinnedStatus(a, b);
+        },
+        sorted_buffer_intervals);
+  } else {
+    sorted_buffer_intervals = GetSortedBufferIntervals();
+  }
 
   if (options_.reserved_bytes_for_block_prefetches > 0) {
     // All prefetches will happen as a part of block prefetching, regular MSA
