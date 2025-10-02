@@ -16,7 +16,6 @@ limitations under the License.
 #include "xla/python/ifrt/user_context_status_util.h"
 
 #include <optional>
-#include <string>
 #include <utility>
 
 #include <gtest/gtest.h>
@@ -24,10 +23,9 @@ limitations under the License.
 #include "absl/strings/cord.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
-#include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/python/ifrt/user_context.h"
 #include "xla/python/ifrt/user_context_registry.h"
-#include "xla/tsl/concurrency/ref_count.h"
+#include "xla/python/ifrt/user_context_test_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/status_to_from_proto.h"
 
@@ -37,26 +35,6 @@ namespace {
 
 constexpr absl::string_view kIfrtUserContextPayloadUrl =
     "type.googleapis.com/ifrt.UserContext";
-
-class TestUserContext : public llvm::RTTIExtends<TestUserContext, UserContext> {
- public:
-  static UserContextRef Create(UserContextId id) {
-    return tsl::TakeRef<TestUserContext>(new TestUserContext(id));
-  }
-
-  UserContextId Id() const override { return id_; }
-
-  std::string DebugString() const override {
-    return absl::StrCat("user context ", id_.value());
-  }
-
-  // No new `ID` is not defined because tests below do not exercise RTTI.
-
- private:
-  explicit TestUserContext(UserContextId id) : id_(id) {}
-
-  UserContextId id_;
-};
 
 TEST(UserContextStatusUtilTest, AttachUserContextId) {
   absl::Status status = absl::InvalidArgumentError("test");
@@ -226,7 +204,7 @@ TEST(UserContextStatusUtilTest, ExpandUserContexts) {
   }
   {
     absl::Status expanded_status = ExpandUserContexts(status);
-    EXPECT_EQ(expanded_status.message(), "test\n\t\nuser context 100");
+    EXPECT_EQ(expanded_status.message(), "test\n\t\nTestUserContext(100)");
     std::optional<absl::Cord> payload =
         expanded_status.GetPayload(kIfrtUserContextPayloadUrl);
     EXPECT_FALSE(payload.has_value());
@@ -240,7 +218,7 @@ TEST(UserContextStatusUtilTest, RoundtripPreserveUserContextIds) {
                                 TestUserContext::Create(kUserContextId));
   {
     absl::Status expanded_status = ExpandUserContexts(status);
-    EXPECT_EQ(expanded_status.message(), "test\n\t\nuser context 100");
+    EXPECT_EQ(expanded_status.message(), "test\n\t\nTestUserContext(100)");
   }
 
   tensorflow::StatusProto status_proto = tsl::StatusToProto(status);
@@ -256,7 +234,7 @@ TEST(UserContextStatusUtilTest, RoundtripPreserveUserContextIds) {
             TestUserContext::Create(kUserContextId));
     absl::Status expanded_status =
         ExpandUserContexts(ReattachUserContextRefs(std::move(status)));
-    EXPECT_EQ(expanded_status.message(), "test\n\t\nuser context 100");
+    EXPECT_EQ(expanded_status.message(), "test\n\t\nTestUserContext(100)");
   }
 }
 

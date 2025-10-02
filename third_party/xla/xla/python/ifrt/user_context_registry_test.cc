@@ -23,36 +23,15 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
 #include "absl/memory/memory.h"
-#include "absl/strings/str_cat.h"
 #include "absl/synchronization/barrier.h"
-#include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/python/ifrt/user_context.h"
+#include "xla/python/ifrt/user_context_test_util.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/platform/env.h"
 
 namespace xla {
 namespace ifrt {
 namespace {
-
-class TestUserContext : public llvm::RTTIExtends<TestUserContext, UserContext> {
- public:
-  static UserContextRef Create(UserContextId id) {
-    return tsl::TakeRef<TestUserContext>(new TestUserContext(id));
-  }
-
-  UserContextId Id() const override { return UserContextId(id_); }
-
-  std::string DebugString() const override {
-    return absl::StrCat("user context ", id_.value());
-  }
-
-  // No new `ID` is not defined because tests below do not exercise RTTI.
-
- private:
-  explicit TestUserContext(UserContextId id) : id_(id) {}
-
-  const UserContextId id_;
-};
 
 TEST(UserContextRegistryTest, NullptrUserContext) {
   TrackedUserContextRef tracked_user_context =
