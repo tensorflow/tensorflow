@@ -103,6 +103,25 @@ absl::StatusOr<ScopedShapedBuffer> CreateTestBuffer(
   return output;
 }
 
+absl::StatusOr<ScopedShapedBuffer> CreateTupleTestBuffer(
+    se::DeviceMemoryAllocator* allocator, se::StreamExecutor* stream_exec,
+    se::Stream* stream, int32_t value1, int32_t value2) {
+  Shape test_shape = ShapeUtil::MakeShape(S32, {});
+  Shape test_shape_tuple = ShapeUtil::MakeTupleShape({test_shape, test_shape});
+  TF_ASSIGN_OR_RETURN(auto* transfer_manager, TransferManager::GetForPlatform(
+                                                  stream_exec->GetPlatform()));
+  TF_ASSIGN_OR_RETURN(
+      ScopedShapedBuffer output,
+      transfer_manager->AllocateScopedShapedBuffer(
+          test_shape_tuple, allocator, stream_exec->device_ordinal()));
+  Literal literal1 = LiteralUtil::CreateR0<int32_t>(value1);
+  Literal literal2 = LiteralUtil::CreateR0<int32_t>(value2);
+  Literal tuple_literal = LiteralUtil::MakeTuple({&literal1, &literal2});
+  TF_RETURN_IF_ERROR(
+      transfer_manager->TransferLiteralToDevice(stream, tuple_literal, output));
+  return output;
+}
+
 class GpuProfilerTest : public HloHardwareIndependentTestBase {
  public:
   GpuProfilerTest() {
@@ -237,6 +256,54 @@ TEST_F(GpuProfilerTest, CheckOutputBufferWhenBuffersAreDifferent) {
                           CreateTestBuffer(allocator.get(), stream_exec_,
                                            stream.get(), /*value=*/2));
   EXPECT_THAT(profiler->CheckOutputBuffer(output, reference, /*rtol=*/0.0),
+              StatusIs(absl::StatusCode::kInternal));
+}
+
+TEST_F(GpuProfilerTest, CheckOutputBufferWithTupleShapeAreSame) {
+  ProfileOptions options;
+  auto profiler = GpuProfiler::Create(stream_exec_, options, allocator_.get());
+
+  TF_ASSERT_OK_AND_ASSIGN(auto stream, stream_exec_->CreateStream());
+  auto allocator =
+      std::make_unique<stream_executor::StreamExecutorMemoryAllocator>(
+          stream_exec_);
+  TF_ASSERT_OK_AND_ASSIGN(
+      ScopedShapedBuffer output,
+      CreateTupleTestBuffer(allocator.get(), stream_exec_, stream.get(),
+                            /*value1=*/1, /*value2=*/2));
+  TF_ASSERT_OK_AND_ASSIGN(
+      ScopedShapedBuffer reference,
+      CreateTupleTestBuffer(allocator.get(), stream_exec_, stream.get(),
+                            /*value1=*/1, /*value2=*/2));
+  EXPECT_THAT(profiler->CheckOutputBuffer(output, reference, /*rtol=*/0.0),
+              StatusIs(absl::StatusCode::kOk));
+}
+
+TEST_F(GpuProfilerTest, CheckOutputBufferWithTupleShapeAreDifferent) {
+  ProfileOptions options;
+  auto profiler = GpuProfiler::Create(stream_exec_, options, allocator_.get());
+
+  TF_ASSERT_OK_AND_ASSIGN(auto stream, stream_exec_->CreateStream());
+  auto allocator =
+      std::make_unique<stream_executor::StreamExecutorMemoryAllocator>(
+          stream_exec_);
+  TF_ASSERT_OK_AND_ASSIGN(
+      ScopedShapedBuffer reference,
+      CreateTupleTestBuffer(allocator.get(), stream_exec_, stream.get(),
+                            /*value1=*/1, /*value2=*/2));
+  TF_ASSERT_OK_AND_ASSIGN(
+      ScopedShapedBuffer output_error_in_first_element,
+      CreateTupleTestBuffer(allocator.get(), stream_exec_, stream.get(),
+                            /*value1=*/0, /*value2=*/2));
+  TF_ASSERT_OK_AND_ASSIGN(
+      ScopedShapedBuffer output_error_in_second_element,
+      CreateTupleTestBuffer(allocator.get(), stream_exec_, stream.get(),
+                            /*value1=*/1, /*value2=*/3));
+  EXPECT_THAT(profiler->CheckOutputBuffer(output_error_in_first_element,
+                                          reference, /*rtol=*/0.0),
+              StatusIs(absl::StatusCode::kInternal));
+  EXPECT_THAT(profiler->CheckOutputBuffer(output_error_in_second_element,
+                                          reference, /*rtol=*/0.0),
               StatusIs(absl::StatusCode::kInternal));
 }
 

@@ -206,16 +206,22 @@ absl::Status GpuProfiler::CheckInputBuffers(InputBuffers& buffers) {
 absl::Status GpuProfiler::CheckOutputBuffer(ScopedShapedBuffer& output,
                                             ScopedShapedBuffer& reference,
                                             float rtol) {
-  BufferComparator comparator(output.on_device_shape(), rtol,
-                              /*verbose=*/false);
+  return ShapeUtil::ForEachLeafShapeWithStatus(
+      reference.on_device_shape(),
+      [&](const Shape& subshape, const ShapeIndex& index) -> absl::Status {
+        BufferComparator comparator(subshape, rtol,
+                                    /*verbose=*/false);
 
-  TF_ASSIGN_OR_RETURN(bool outputs_match,
-                      comparator.CompareEqual(stream_, output.root_buffer(),
-                                              reference.root_buffer()));
-  if (outputs_match) {
-    return absl::OkStatus();
-  }
-  return absl::InternalError("Output buffer does not match reference buffer.");
+        TF_ASSIGN_OR_RETURN(
+            bool outputs_match,
+            comparator.CompareEqual(stream_, output.buffer(index),
+                                    reference.buffer(index)));
+        if (outputs_match) {
+          return absl::OkStatus();
+        }
+        return absl::InternalError(
+            "Output buffer does not match reference buffer.");
+      });
 }
 
 }  // namespace gpu
