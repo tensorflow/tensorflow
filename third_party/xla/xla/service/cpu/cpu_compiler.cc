@@ -1156,11 +1156,20 @@ absl::StatusOr<std::unique_ptr<HloModule>> CpuCompiler::RunHloPasses(
     const CompileOptions& options) {
   auto& config = module->config();
 
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<llvm::TargetMachine> jit_target_machine,
-      IrCompiler::InferTargetMachine(
-          CompilerTargetOptions(config), IrCompiler::GetCodeGenOptLevel(config),
-          CpuFeatureFromString(config.debug_options().xla_cpu_max_isa())));
+  std::unique_ptr<llvm::TargetMachine> jit_target_machine;
+
+  {
+    auto llvm_options = llvm_ir::ExtractXlaBackendExtraOptions(
+        module->config().debug_options().xla_backend_extra_options());
+    llvm_ir::LLVMCommandLineOptionsLock llvm_lock(llvm_options);
+
+    TF_ASSIGN_OR_RETURN(
+        jit_target_machine,
+        IrCompiler::InferTargetMachine(
+            CompilerTargetOptions(config),
+            IrCompiler::GetCodeGenOptLevel(config),
+            CpuFeatureFromString(config.debug_options().xla_cpu_max_isa())));
+  }
 
   TF_RETURN_IF_ERROR(RunHloPasses(module.get(), /*is_aot_compile=*/false,
                                   jit_target_machine.get(),
