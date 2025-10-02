@@ -18,7 +18,6 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <string>
-#include <utility>
 
 #include "absl/base/casts.h"
 #include "absl/container/flat_hash_map.h"
