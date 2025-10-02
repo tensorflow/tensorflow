@@ -15,9 +15,18 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/optimizers/data/disable_intra_op_parallelism.h"
 
+#include <cstdint>
+#include <tuple>
+#include <utility>
+#include <vector>
+
+#include "absl/types/span.h"
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/function_testlib.h"
+#include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/optimizers/data/graph_test_utils.h"
 #include "tensorflow/core/grappler/optimizers/data/graph_utils.h"
