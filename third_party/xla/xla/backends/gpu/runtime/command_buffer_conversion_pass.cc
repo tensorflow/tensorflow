@@ -49,6 +49,7 @@ limitations under the License.
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "tsl/platform/platform.h"
+#include "tsl/profiler/lib/profiler_lock.h"
 #include "tsl/profiler/lib/traceme.h"
 
 namespace xla {
@@ -350,6 +351,10 @@ ConvertThunksToCommandBuffer(
 
   Thunk::ThunkInfo thunk_info;
   thunk_info.profile_annotation = "command_buffer";
+  if (tsl::profiler::ProfilerLock::HasActiveSession() &&
+      !debug_options.xla_enable_command_buffers_during_profiling()) {
+    thunk_info.profile_annotation += " (disabled for profiling)";
+  }
   return std::make_unique<CommandBufferThunk>(
       std::move(cmd_executor), std::move(thunk_info),
       std::make_unique<SequentialThunk>(Thunk::ThunkInfo(),
