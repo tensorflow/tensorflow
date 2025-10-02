@@ -321,7 +321,6 @@ def tf_additional_lib_hdrs():
         clean_dep("//xla/tsl/platform/default:casts.h"),
         clean_dep("//xla/tsl/platform/default:context.h"),
         clean_dep("//xla/tsl/platform/default:criticality.h"),
-        clean_dep("//xla/tsl/platform/default:integral_types.h"),
         clean_dep("//xla/tsl/platform/default:stacktrace.h"),
         clean_dep("//xla/tsl/platform/default:status.h"),
         clean_dep("//xla/tsl/platform/default:statusor.h"),
