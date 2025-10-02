@@ -362,6 +362,8 @@ class FutureBase : public FutureMoveControl<is_move_only> {
             f(*promise);
           }
         });
+    // Reset the promise to make the moved-from future "empty".
+    promise_.reset();
   }
 
  protected:
