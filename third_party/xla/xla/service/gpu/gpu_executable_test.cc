@@ -301,7 +301,6 @@ TEST(GpuExecutableTest, ThunkChecksumPassAddsAllocation) {
   GpuExecutable::Params params_without_pass;
   params_without_pass.executable =
       std::make_unique<SequentialThunk>(Thunk::ThunkInfo{}, ThunkSequence{});
-  params_without_pass.enable_experimental_checksum_pass = false;
 
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<GpuExecutable> executable_without_pass,
@@ -312,7 +311,8 @@ TEST(GpuExecutableTest, ThunkChecksumPassAddsAllocation) {
   GpuExecutable::Params params_with_pass;
   params_with_pass.executable =
       std::make_unique<SequentialThunk>(Thunk::ThunkInfo{}, ThunkSequence{});
-  params_with_pass.enable_experimental_checksum_pass = true;
+  params_with_pass.debug_options
+      .set_xla_gpu_experimental_enable_checksum_tracing_on_thunks(true);
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<GpuExecutable> executable_with_pass,
                           GpuExecutable::Create(std::move(params_with_pass)));

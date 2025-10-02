@@ -171,12 +171,11 @@ static absl::flat_hash_set<ExecutionStreamId> GetExecutionStreamIds(
 
 static absl::Status RunThunkPasses(const DebugOptions& debug_options,
                                    const se::DeviceDescription& device_info,
-                                   bool enable_experimental_checksum_pass,
                                    SequentialThunk* root_thunk,
                                    HloModule* hlo_module,
                                    ThunkPassBufferAllocator& allocator) {
   ThunkPassPipeline pipeline("thunk-passes");
-  if (enable_experimental_checksum_pass) {
+  if (debug_options.xla_gpu_experimental_enable_checksum_tracing_on_thunks()) {
     pipeline.AddPass(std::make_unique<ThunkChecksumTracingPass>());
   }
   if (debug_options.xla_gpu_experimental_enable_command_buffer_on_thunks()) {
@@ -208,8 +207,7 @@ absl::StatusOr<std::unique_ptr<GpuExecutable>> GpuExecutable::Create(
   GpuExecutableThunkPassBufferAllocator allocator(next_idx);
 
   TF_RETURN_IF_ERROR(RunThunkPasses(
-      params.debug_options, params.device_description,
-      params.enable_experimental_checksum_pass, params.executable.get(),
+      params.debug_options, params.device_description, params.executable.get(),
       params.debug_module.get(), allocator));
 
   return std::unique_ptr<GpuExecutable>(new GpuExecutable(

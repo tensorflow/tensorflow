@@ -113,10 +113,6 @@ class GpuExecutable : public Executable {
     se::DeviceDescription device_description;
     std::unique_ptr<HloModule> debug_module = nullptr;
     bool enable_debug_info_manager = true;
-    // TODO: b/444183764 - Guard by a flag instead of param.
-    // For now the pass is so experimental it's not supposed to be possible
-    // to enable.
-    bool enable_experimental_checksum_pass = false;
   };
 
   static absl::StatusOr<std::unique_ptr<GpuExecutable>> Create(Params params);
