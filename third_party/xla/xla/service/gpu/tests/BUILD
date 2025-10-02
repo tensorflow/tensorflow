@@ -211,10 +211,6 @@ xla_test(
     name = "gpu_spmd_e2e_compile_test",
     size = "small",
     srcs = ["gpu_spmd_e2e_compile_test.cc"],
-    backend_tags = {
-        # TODO(b/445172709): Re-enable once fixed.
-        "b200": ["broken"],
-    },
     backends = ["gpu"],
     deps = [
         ":gpu_codegen_test",
