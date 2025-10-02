@@ -149,7 +149,7 @@ TEST(ImmutableConstantOpTest, ExecutionError) {
 absl::Status CreateTempFileFloat(Env* env, float value, uint64 size,
                                  string* filename) {
   const string dir = testing::TmpDir();
-  *filename = io::JoinPath(dir, strings::StrCat("file_", value));
+  *filename = io::JoinPath(dir, absl::StrCat("file_", value));
   std::unique_ptr<WritableFile> file;
   TF_RETURN_IF_ERROR(env->NewWritableFile(*filename, &file));
   for (uint64 i = 0; i < size; ++i) {
@@ -194,7 +194,7 @@ TEST(ImmutableConstantOpTest, FromFile) {
 absl::Status CreateTempFileBadString(Env* env, char value, uint64 size,
                                      const string suffix, string* filename) {
   const string dir = testing::TmpDir();
-  *filename = io::JoinPath(dir, strings::StrCat("file_", suffix));
+  *filename = io::JoinPath(dir, absl::StrCat("file_", suffix));
   std::unique_ptr<WritableFile> file;
   TF_RETURN_IF_ERROR(env->NewWritableFile(*filename, &file));
   TF_RETURN_IF_ERROR(file->Append(std::string(size, value)));

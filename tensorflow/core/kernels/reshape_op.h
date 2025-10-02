@@ -148,7 +148,7 @@ class ReshapeOp : public OpKernel {
           string msg;
           for (int ii = 0; ii < num_dims; ++ii) {
             if (ii != 0) {
-              strings::StrAppend(&msg, ", ");
+              absl::StrAppend(&msg, ", ");
             }
             strings::StrAppend(&msg, Svec(ii));
           }
