@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_SPMD_DOT_HANDLER_H_
 #define XLA_SERVICE_SPMD_DOT_HANDLER_H_
 
+#include "absl/status/statusor.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/spmd/spmd_partitioner.h"
 #include "xla/service/spmd/spmd_partitioner_util.h"

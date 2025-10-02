@@ -18,11 +18,13 @@ limitations under the License.
 #include <algorithm>
 #include <cstdint>
 #include <deque>
+#include <functional>
 #include <memory>
 #include <numeric>
 #include <optional>
 #include <string>
 #include <tuple>
+#include <type_traits>
 #include <utility>
 #include <vector>
 

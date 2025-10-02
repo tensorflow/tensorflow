@@ -19,11 +19,13 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 
+#include "absl/status/statusor.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/shape_inference.h"
 #include "xla/service/spmd/dot_handler.h"
 #include "xla/service/spmd/spmd_partitioner.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace spmd {
