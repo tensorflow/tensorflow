@@ -487,9 +487,14 @@ xla_cc_test(
         ":gpu_blas_lt_proto_cc",
         "//xla:xla_data_proto_cc",
         "//xla/stream_executor:blas",
+        "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
+        "@com_google_protobuf//:protobuf",
     ],
 )
 

@@ -25,6 +25,7 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -32,6 +33,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
+#include "google/protobuf/text_format.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk_id.h"
 #include "xla/error_spec.h"
@@ -59,11 +61,14 @@ limitations under the License.
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/threadpool.h"
+#include "xla/tsl/util/proto/proto_matchers.h"
 #include "xla/xla.pb.h"
 
 namespace xla::gpu {
 
 namespace {
+using absl_testing::IsOkAndHolds;
+using tsl::proto_testing::EqualsProto;
 
 class GpuBlasLtMatmulThunkTest : public HloTestBase {
  public:
@@ -376,6 +381,80 @@ TEST_F(GpuBlasLtMatmulThunkTest, CacheUnitTest) {
     }
   }
   EXPECT_TRUE(size.has_value() && static_cast<int>(*size <= mod));
+}
+
+TEST_F(GpuBlasLtMatmulThunkTest, ThunkProtoSerialization) {
+  constexpr absl::string_view kCublasLtMatmulThunkProtoText = R"pb(
+    gemm_config {
+      lhs_layout {
+        order: ORDER_ROW_MAJOR
+        num_rows: 101
+        num_cols: 407
+        batch_size: 1
+        leading_dim_stride: 407
+        dtype: F32
+      }
+      rhs_layout {
+        order: ORDER_ROW_MAJOR
+        num_rows: 407
+        num_cols: 400
+        batch_size: 1
+        leading_dim_stride: 400
+        dtype: F32
+      }
+      c_layout {
+        order: ORDER_ROW_MAJOR
+        num_rows: 101
+        num_cols: 400
+        batch_size: 1
+        leading_dim_stride: 400
+        dtype: F32
+      }
+      output_layout {
+        order: ORDER_ROW_MAJOR
+        num_rows: 101
+        num_cols: 400
+        batch_size: 1
+        leading_dim_stride: 400
+        dtype: F32
+      }
+      alpha_real: 1
+      algorithm: -1
+    }
+    epilogue: EPILOGUE_DEFAULT
+    canonical_hlo: "(f32[101,400]{1,0}, s8[33554432]{0}) custom-call(f32[101,407]{1,0}, f32[407,400]{1,0}), custom_call_target=\"__cublas$lt$matmul\", backend_config={\"operation_queue_id\":\"0\",\"wait_on_operation_queues\":[],\"gemm_backend_config\":{\"alpha_real\":1,\"beta\":0,\"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"1\"],\"rhs_contracting_dimensions\":[\"0\"],\"lhs_batch_dimensions\":[],\"rhs_batch_dimensions\":[]},\"alpha_imag\":0,\"precision_config\":{\"operand_precision\":[\"DEFAULT\",\"DEFAULT\"],\"algorithm\":\"ALG_UNSET\"},\"epilogue\":\"DEFAULT\",\"lhs_stride\":\"41107\",\"rhs_stride\":\"162800\",\"grad_x\":false,\"grad_y\":false,\"damax_output\":false},\"force_earliest_schedule\":false,\"reification_cost\":[]}"
+    a { size: 164428 buffer_allocation_index: 3 }
+    b { size: 651200 buffer_allocation_index: 4 }
+    c { size: 161600 buffer_allocation_index: 5 }
+    d { size: 161600 buffer_allocation_index: 5 }
+  )pb";
+
+  Thunk::ThunkInfo thunk_info;
+  thunk_info.profile_annotation = "test";
+  thunk_info.execution_stream_id = 0;
+
+  CublasLtMatmulThunkProto proto;
+  ASSERT_TRUE(google::protobuf::TextFormat::ParseFromString(kCublasLtMatmulThunkProtoText,
+                                                  &proto));
+
+  std::vector<BufferAllocation> allocations = {
+      BufferAllocation(/*index=*/0, /*size=*/4, /*color=*/0),  // UNUSED
+      BufferAllocation(/*index=*/1, /*size=*/4, /*color=*/0),  // UNUSED
+      BufferAllocation(/*index=*/2, /*size=*/4, /*color=*/0),  // UNUSED
+      BufferAllocation(/*index=*/3, /*size=*/164428, /*color=*/0),
+      BufferAllocation(/*index=*/4, /*size=*/651200, /*color=*/0),
+      BufferAllocation(/*index=*/5, /*size=*/161600, /*color=*/0),
+  };
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<Thunk> thunk,
+      CublasLtMatmulThunk::FromProto(thunk_info, proto, allocations));
+
+  ThunkProto reference_thunk_proto;
+  *reference_thunk_proto.mutable_thunk_info() = thunk_info.ToProto();
+  *reference_thunk_proto.mutable_cublas_lt_matmul_thunk() = proto;
+  EXPECT_THAT(thunk->ToProto(),
+              IsOkAndHolds(EqualsProto(reference_thunk_proto)));
 }
 
 }  // namespace

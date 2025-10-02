@@ -741,6 +741,7 @@ cc_library(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -776,12 +777,14 @@ xla_test(
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",
+        "//xla/tsl/util/proto:proto_matchers",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest_main",
+        "@com_google_protobuf//:protobuf",
     ],
 )
 
@@ -2235,6 +2238,7 @@ cc_library(
         ":copy_thunk",
         ":cudnn_thunk",
         ":gemm_thunk",
+        ":gpublas_lt_matmul_thunk",
         ":infeed_thunk",
         ":kernel_thunk",
         ":memset_thunk",

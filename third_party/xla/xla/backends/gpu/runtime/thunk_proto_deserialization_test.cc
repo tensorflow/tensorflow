@@ -414,6 +414,73 @@ TEST(ThunkProtoDeserializationTest, CudnnThunk) {
   EXPECT_THAT(round_trip_proto, EqualsProto(proto));
 }
 
+TEST(ThunkProtoDeserializationTest, CublasLtMatmulThunk) {
+  ThunkProto proto;
+  ASSERT_TRUE(tsl::protobuf::TextFormat::ParseFromString(
+      R"pb(
+        thunk_info { profile_annotation: "custom-call.4" }
+        cublas_lt_matmul_thunk {
+          gemm_config {
+            lhs_layout {
+              order: ORDER_ROW_MAJOR
+              num_rows: 101
+              num_cols: 407
+              batch_size: 1
+              leading_dim_stride: 407
+              dtype: F32
+            }
+            rhs_layout {
+              order: ORDER_ROW_MAJOR
+              num_rows: 407
+              num_cols: 400
+              batch_size: 1
+              leading_dim_stride: 400
+              dtype: F32
+            }
+            c_layout {
+              order: ORDER_ROW_MAJOR
+              num_rows: 101
+              num_cols: 400
+              batch_size: 1
+              leading_dim_stride: 400
+              dtype: F32
+            }
+            output_layout {
+              order: ORDER_ROW_MAJOR
+              num_rows: 101
+              num_cols: 400
+              batch_size: 1
+              leading_dim_stride: 400
+              dtype: F32
+            }
+            alpha_real: 1
+            algorithm: -1
+          }
+          epilogue: EPILOGUE_DEFAULT
+          canonical_hlo: "(f32[101,400]{1,0}, s8[33554432]{0}) custom-call(f32[101,407]{1,0}, f32[407,400]{1,0}), custom_call_target=\"__cublas$lt$matmul\", backend_config={\"operation_queue_id\":\"0\",\"wait_on_operation_queues\":[],\"gemm_backend_config\":{\"alpha_real\":1,\"beta\":0,\"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"1\"],\"rhs_contracting_dimensions\":[\"0\"],\"lhs_batch_dimensions\":[],\"rhs_batch_dimensions\":[]},\"alpha_imag\":0,\"precision_config\":{\"operand_precision\":[\"DEFAULT\",\"DEFAULT\"],\"algorithm\":\"ALG_UNSET\"},\"epilogue\":\"DEFAULT\",\"lhs_stride\":\"41107\",\"rhs_stride\":\"162800\",\"grad_x\":false,\"grad_y\":false,\"damax_output\":false},\"force_earliest_schedule\":false,\"reification_cost\":[]}"
+          a { size: 164428 buffer_allocation_index: 3 }
+          b { size: 651200 buffer_allocation_index: 4 }
+          c { size: 161600 buffer_allocation_index: 5 }
+          d { size: 161600 buffer_allocation_index: 5 }
+        }
+      )pb",
+      &proto));
+
+  std::vector<BufferAllocation> allocations = {
+      BufferAllocation(/*index=*/0, /*size=*/4, /*color=*/0),  // UNUSED
+      BufferAllocation(/*index=*/1, /*size=*/4, /*color=*/0),  // UNUSED
+      BufferAllocation(/*index=*/2, /*size=*/4, /*color=*/0),  // UNUSED
+      BufferAllocation(/*index=*/3, /*size=*/164428, /*color=*/0),
+      BufferAllocation(/*index=*/4, /*size=*/651200, /*color=*/0),
+      BufferAllocation(/*index=*/5, /*size=*/161600, /*color=*/0),
+  };
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Thunk> thunk,
+                          DeserializeThunkProto(proto, allocations));
+  TF_ASSERT_OK_AND_ASSIGN(ThunkProto round_trip_proto, thunk->ToProto());
+  EXPECT_THAT(round_trip_proto, EqualsProto(proto));
+}
+
 TEST(ThunkProtoDeserializationTest, EmptyThunkImplReturnsAnError) {
   ThunkProto proto;
   CHECK(tsl::protobuf::TextFormat::ParseFromString(
