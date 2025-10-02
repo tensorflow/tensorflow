@@ -89,8 +89,8 @@ class GpuOptProvider : public CompiledOptProvider {
       TF_ASSIGN_OR_RETURN(std::string llvm_ir,
                           LlvmIrBeforeOptimizations(optimized_module.get()));
       return llvm_ir;
-
-    } else if (s == "llvm" || s == "llvm-after-optimizations") {
+    }
+    if (s == "llvm" || s == "llvm-after-optimizations") {
       TF_ASSIGN_OR_RETURN(std::unique_ptr<Executable> executable,
                           GetExecutable(std::move(module)));
       return static_cast<gpu::GpuExecutable*>(executable.get())
