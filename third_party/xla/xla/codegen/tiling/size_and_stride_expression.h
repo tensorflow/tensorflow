@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_SERVICE_GPU_MODEL_SIZE_AND_STRIDE_EXPRESSION_H_
-#define XLA_SERVICE_GPU_MODEL_SIZE_AND_STRIDE_EXPRESSION_H_
+#ifndef XLA_CODEGEN_TILING_SIZE_AND_STRIDE_EXPRESSION_H_
+#define XLA_CODEGEN_TILING_SIZE_AND_STRIDE_EXPRESSION_H_
 
 #include <cstdint>
 #include <optional>
@@ -23,10 +23,10 @@ limitations under the License.
 
 #include "absl/types/span.h"
 #include "mlir/IR/AffineExpr.h"
-#include "xla/codegen/tiling/constraint_expression.h"
 #include "xla/hlo/analysis/indexing_map.h"
+#include "xla/codegen/tiling/constraint_expression.h"
 
-namespace xla::gpu {
+namespace xla {
 
 // Encapsulates expressions for size and stride and the corresponding
 // constraints on the dimension values that need to be satisfied.
@@ -77,6 +77,6 @@ std::optional<SizeAndStrideExpression> ExtractSizeAndStride(
     absl::Span<Interval const> dimension_intervals,
     absl::Span<Interval const> symbol_intervals);
 
-}  // namespace xla::gpu
+}  // namespace xla
 
-#endif  // XLA_SERVICE_GPU_MODEL_SIZE_AND_STRIDE_EXPRESSION_H_
+#endif  // XLA_CODEGEN_TILING_SIZE_AND_STRIDE_EXPRESSION_H_

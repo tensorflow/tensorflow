@@ -168,3 +168,20 @@ xla_cc_test(
         "@com_google_googletest//:gtest",
     ],
 )
+
+cc_library(
+    name = "size_and_stride_expression",
+    srcs = ["size_and_stride_expression.cc"],
+    hdrs = ["size_and_stride_expression.h"],
+    deps = [
+        ":constraint_expression",
+        "//xla/hlo/analysis:indexing_analysis",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/types:span",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+    ],
+)

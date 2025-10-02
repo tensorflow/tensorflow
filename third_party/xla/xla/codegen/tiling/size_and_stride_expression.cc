@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/model/size_and_stride_expression.h"
+#include "xla/codegen/tiling/size_and_stride_expression.h"
 
 #include <cstdint>
 #include <cstdlib>
@@ -38,7 +38,6 @@ limitations under the License.
 #include "xla/hlo/analysis/indexing_map_serialization.h"
 
 namespace xla {
-namespace gpu {
 namespace {
 
 using ::llvm::SmallVector;
@@ -631,5 +630,4 @@ std::optional<SizeAndStrideExpression> ExtractSizeAndStride(
   LOG(FATAL) << "unreachable";
 }
 
-}  // namespace gpu
 }  // namespace xla

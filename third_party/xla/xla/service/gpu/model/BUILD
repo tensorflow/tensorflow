@@ -585,30 +585,13 @@ xla_cc_test(
 )
 
 cc_library(
-    name = "size_and_stride_expression",
-    srcs = ["size_and_stride_expression.cc"],
-    hdrs = ["size_and_stride_expression.h"],
-    deps = [
-        "//xla/codegen/tiling:constraint_expression",
-        "//xla/hlo/analysis:indexing_analysis",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/types:span",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Support",
-    ],
-)
-
-cc_library(
     name = "symbolic_tile",
     srcs = ["symbolic_tile.cc"],
     hdrs = ["symbolic_tile.h"],
     deps = [
-        ":size_and_stride_expression",
         "//xla/codegen/tiling:affine_map_evaluator",
         "//xla/codegen/tiling:constraint_expression",
+        "//xla/codegen/tiling:size_and_stride_expression",
         "//xla/hlo/analysis:indexing_analysis",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/log",
