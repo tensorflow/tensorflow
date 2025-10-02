@@ -3621,7 +3621,11 @@ tf_cc_fuzz_test(
     name = "graph_constructor_fuzz",
     srcs = ["graph_constructor_fuzz.cc"],
     shard_count = 10,
-    tags = ["no_oss"],
+    tags = [
+        "no_oss",
+        # TODO(b/440068704): Remove tag when a timeout is not considered an error in presubmits anymore.
+        "nofuzzing-presubmit",
+    ],
     deps = [
         ":core",
         ":session",
