@@ -1922,6 +1922,7 @@ cc_library(
         "//xla/backends/gpu/autotuner:block_level_emitter",
         "//xla/backends/gpu/autotuner:cublas",
         "//xla/backends/gpu/autotuner:cublaslt",
+        "//xla/backends/gpu/autotuner:cudnn",
         "//xla/backends/gpu/autotuner:native_emitter",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
