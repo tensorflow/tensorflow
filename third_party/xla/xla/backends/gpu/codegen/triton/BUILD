@@ -223,6 +223,7 @@ cc_library(
         "@llvm-project//llvm:ir_headers",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
+        "@stablehlo//:stablehlo_ops",
         "@triton//:TritonDialects",
     ] + if_cuda_or_rocm_is_configured([
         ":compilation_pipeline",
