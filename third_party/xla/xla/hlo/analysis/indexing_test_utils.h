@@ -28,12 +28,12 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
-#include "mlir/IR/MLIRContext.h"
 #include "xla/hlo/analysis/indexing_analysis.h"
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/analysis/indexing_map_serialization.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
+#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/tests/hlo_test_base.h"
 
 namespace xla {
@@ -68,6 +68,8 @@ MATCHER_P(MatchIndexingString, indexing_string, "") {
 
 class IndexingTestBase : public HloTestBase {
  public:
+  IndexingTestBase() : symbolic_expr_context_(&mlir_context_) {}
+
   HloInstruction* ParseAndGetRoot(absl::string_view hlo_string);
 
   HloInstructionIndexing GetOutputToInputIndexing(
@@ -79,24 +81,26 @@ class IndexingTestBase : public HloTestBase {
       bool use_physical_layout = false);
 
   mlir::MLIRContext mlir_context_;
+  gpu::SymbolicExprContext symbolic_expr_context_;
   std::unique_ptr<VerifiedHloModule> module_;
 };
 
 HloInstructionIndexing ComputeOutputToInputIndexingForEntryComputation(
-    HloTestBase* test_base, mlir::MLIRContext* mlir_context,
+    HloTestBase* test_base, gpu::SymbolicExprContext* symbolic_expr_context,
     absl::string_view hlo_string, int output_id = 0,
     bool use_physical_layout = false);
 
 HloInstructionIndexing ComputeInputToOutputIndexingForEntryComputation(
-    HloTestBase* test_base, mlir::MLIRContext* mlir_context,
+    HloTestBase* test_base, gpu::SymbolicExprContext* symbolic_expr_context,
     absl::string_view hlo_string, int input_id = 0,
     bool use_physical_layout = false);
 
 mlir::AffineMap ParseAffineMap(absl::string_view serialized_affine_map,
-                               mlir::MLIRContext* context);
+                               gpu::SymbolicExprContext* symbolic_expr_context);
 
-mlir::AffineExpr ParseAffineExpr(absl::string_view serialized_affine_expr,
-                                 mlir::MLIRContext* context);
+mlir::AffineExpr ParseAffineExpr(
+    absl::string_view serialized_affine_expr,
+    gpu::SymbolicExprContext* symbolic_expr_context);
 
 // Safely evaluates the given expression, returning nullopt if the result is
 // undefined (due to undefined behavior, e.g. division by zero or overflow).

@@ -24,6 +24,7 @@ limitations under the License.
 #include "xla/hlo/analysis/indexing_test_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
+#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/platform/status_matchers.h"
 #include "xla/xla_data.pb.h"
@@ -36,6 +37,7 @@ using ::testing::HasSubstr;
 class TiledHloFusionInstructionTest : public HloHardwareIndependentTestBase {
  public:
   mlir::MLIRContext mlir_context_;
+  gpu::SymbolicExprContext symbolic_expr_context_{&mlir_context_};
 };
 
 TEST_F(TiledHloFusionInstructionTest,
@@ -46,7 +48,7 @@ TEST_F(TiledHloFusionInstructionTest,
 
   IndexingMap tile_offsets_indexing = IndexingMap::FromTensorSizes(
       ParseAffineMap("(d0) -> (d0 floordiv 16, (d0 mod 16) * 16)",
-                     &mlir_context_),
+                     &symbolic_expr_context_),
       /*dim_upper_bounds=*/{8},
       /*symbol_upper_bounds=*/{});
 
