@@ -671,13 +671,6 @@ StreamExecutorGpuClient::CreateBuffersForAsyncHostToDevice(
 
 absl::StatusOr<absl::flat_hash_map<GlobalDeviceId, IncarnationId>>
 StreamExecutorGpuClient::GetLatestIncarnations(const ExecuteOptions& options) {
-  // Get the latest incarnation for every task.
-  if (!num_nodes_.has_value()) {
-    return FailedPrecondition("Unknown number of nodes");
-  }
-  std::vector<int> tasks(*num_nodes_);
-  std::iota(tasks.begin(), tasks.end(), 0);
-
   // Map every device to its incarnation.
   absl::flat_hash_map<GlobalDeviceId, IncarnationId> device_incarnations;
   for (const PjRtDevice* device : devices()) {

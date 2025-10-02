@@ -939,4 +939,22 @@ void EnqueueWorkWhenReady(
   });
 }
 
+absl::StatusOr<absl::flat_hash_map<GlobalDeviceId, IncarnationId>>
+GetLatestIncarnations(
+    absl::Span<PjRtDevice* const> devices,
+    const absl::flat_hash_map<int, IncarnationId>& incarnations) {
+  // Map every device to its incarnation.
+  absl::flat_hash_map<GlobalDeviceId, IncarnationId> device_incarnations;
+  for (const PjRtDevice* device : devices) {
+    int task_id = device->process_index();
+    auto it = incarnations.find(task_id);
+    if (it == incarnations.end()) {
+      return FailedPrecondition("Incarnation for task %d not found", task_id);
+    }
+    GlobalDeviceId device_id(device->global_device_id().value());
+    device_incarnations[device_id] = it->second;
+  }
+  return device_incarnations;
+}
+
 }  // namespace xla

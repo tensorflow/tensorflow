@@ -179,6 +179,11 @@ void EnqueueWorkWhenReady(
     absl::Span<const tsl::RCReference<tsl::AsyncValue>> values,
     absl::AnyInvocable<void()> callee);
 
+absl::StatusOr<absl::flat_hash_map<GlobalDeviceId, IncarnationId>>
+GetLatestIncarnations(
+    absl::Span<PjRtDevice* const> devices,
+    const absl::flat_hash_map<int, IncarnationId>& incarnations);
+
 }  // namespace xla
 
 #endif  // XLA_PJRT_GPU_TFRT_UTILS_H_

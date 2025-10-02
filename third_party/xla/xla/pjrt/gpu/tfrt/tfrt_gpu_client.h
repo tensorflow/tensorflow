@@ -118,6 +118,7 @@ class TfrtGpuClient final : public PjRtClient {
                 xla::LocalClient* xla_client,
                 std::vector<std::unique_ptr<TfrtGpuDevice>> devices,
                 bool should_stage_host_to_device_transfers,
+                bool abort_collectives_on_failure,
                 MaybeOwning<se::DeviceMemoryAllocator> allocator,
                 std::unique_ptr<tsl::Allocator> host_memory_allocator,
                 std::unique_ptr<gpu::GpuExecutableRunOptions> gpu_run_options,
@@ -147,6 +148,9 @@ class TfrtGpuClient final : public PjRtClient {
 
   absl::StatusOr<PjRtDevice*> LookupAddressableDevice(
       PjRtLocalDeviceId local_device_id) const override;
+
+  void UpdateGlobalProcessInfo(
+      absl::Span<tensorflow::CoordinatedTaskStateInfo> infos) override;
 
   absl::Span<PjRtMemorySpace* const> memory_spaces() const override;
 
@@ -328,6 +332,7 @@ class TfrtGpuClient final : public PjRtClient {
   xla::LocalClient* xla_client_;
 
   bool should_stage_host_to_device_transfers_;
+  const bool abort_collectives_on_failure_ = false;
 
   // Device memory allocator. If owned, the allocator must outlive the devices,
   // because it is the device destructor that waits for any outstanding work to

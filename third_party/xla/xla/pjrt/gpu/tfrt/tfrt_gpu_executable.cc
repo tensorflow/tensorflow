@@ -56,10 +56,13 @@ limitations under the License.
 #include "xla/pjrt/proto/compile_options.pb.h"
 #include "xla/pjrt/semaphore.h"
 #include "xla/pjrt/utils.h"
+#include "xla/runtime/device_id.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/compiler.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/executable.h"
+#include "xla/service/global_device_id.h"
+#include "xla/service/gpu/gpu_executable_run_options.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/maybe_owning_device_memory.h"
 #include "xla/service/shaped_buffer.h"
@@ -98,6 +101,7 @@ limitations under the License.
 #endif
 
 namespace xla {
+
 class TfrtGpuCopyToDeviceStream : public CopyToDeviceStream {
  public:
   TfrtGpuCopyToDeviceStream(int64_t channel_id, se::Stream* stream,
@@ -602,8 +606,9 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
        send_device_memory(std::move(send_device_memory)),
        recv_device_memory(std::move(recv_device_memory)),
        output_cuda_execute_event(std::move(output_cuda_execute_event)),
-       compute_reservation(std::move(compute_reservation)),
-       client = client_](std::vector<ExecutionInput> execution_inputs) mutable {
+       compute_reservation(std::move(compute_reservation)), client = client_,
+       task_incarnations = options.incarnations](
+          std::vector<ExecutionInput> execution_inputs) mutable {
         VLOG(1) << "execute_fn for " << executable_name
                 << ", launch_id: " << launch_id << ", replica: " << replica
                 << ", device: " << device->DebugString();
@@ -633,6 +638,19 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
           }
         }
 
+        // Set the incarnations in gpu_run_options.
+        gpu::GpuExecutableRunOptions* gpu_run_options =
+            CHECK_NOTNULL(client->gpu_run_options());
+        absl::StatusOr<absl::flat_hash_map<GlobalDeviceId, IncarnationId>>
+            device_incarnations =
+                GetLatestIncarnations(client->devices(), task_incarnations);
+        if (!device_incarnations.ok()) {
+          VLOG(1) << "Unable to set incarnations in GpuExecutableRunOptions: "
+                  << device_incarnations.status();
+        } else {
+          gpu_run_options->set_incarnations(*std::move(device_incarnations));
+        }
+
         auto stream = device->stream();
         ExecutableRunOptions run_options;
         run_options.set_stream(stream);
@@ -642,8 +660,7 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
         run_options.set_device_assignment(device_assignment.get());
         run_options.set_run_id(RunId(launch_id));
         run_options.set_rng_seed(device->GetNewPrngSeed());
-        run_options.set_gpu_executable_run_options(
-            CHECK_NOTNULL(client->gpu_run_options()));
+        run_options.set_gpu_executable_run_options(gpu_run_options);
         run_options.set_launch_id(launch_id);
         run_options.set_local_device_count(client->device_count());
         run_options.set_device_ordinal(device->local_device_id().value());
