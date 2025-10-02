@@ -74,7 +74,7 @@ struct Endpoint {
     if (index == 0) {
       return node->name();
     } else {
-      return strings::StrCat(node->name(), ":", index);
+      return absl::StrCat(node->name(), ":", index);
     }
   }
 
@@ -617,7 +617,7 @@ absl::Status InlineFunctionBody(const FunctionLibraryDefinition& flib_def,
     //  1) to node name to avoid collisions
     //  2) to frame name to avoid multiple LoopCond nodes in one frame
     //  3) to colocation attribute
-    const string prefix = strings::StrCat(caller->name(), "/");
+    const string prefix = absl::StrCat(caller->name(), "/");
     TF_RETURN_IF_ERROR(AddPrefixAndSuffixToNode(prefix, /*suffix=*/"", &ndef,
                                                 options.uniquify_frame_names));
 

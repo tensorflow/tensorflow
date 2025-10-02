@@ -44,7 +44,7 @@ string NodeOut::name() const {
   if (index == 0) {
     return node->name();
   } else {
-    return strings::StrCat(node->name(), ":", index);
+    return absl::StrCat(node->name(), ":", index);
   }
 }
 
