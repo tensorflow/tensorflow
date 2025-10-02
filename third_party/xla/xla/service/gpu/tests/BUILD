@@ -984,3 +984,24 @@ xla_test(
         "@com_google_googletest//:gtest_main",
     ],
 )
+
+xla_test(
+    name = "ptx_kernel_test",
+    srcs = ["ptx_kernel_test.cc"],
+    backends = ["gpu"],
+    tags = [
+        "cuda-only",
+        "test_migrated_to_hlo_runner_pjrt",
+    ],
+    deps = [
+        "//xla/backends/gpu/runtime:kernel_thunk",
+        "//xla/hlo/ir:hlo",
+        "//xla/service:buffer_assignment",
+        "//xla/service/gpu:buffer_allocations",
+        "//xla/service/gpu:launch_dimensions",
+        "//xla/tests:hlo_pjrt_test_base",
+        "//xla/tests:hlo_test_base",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
