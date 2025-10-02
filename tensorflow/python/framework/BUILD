@@ -1728,6 +1728,7 @@ py_strict_library(
         ":composite_tensor",
         ":type_spec",
         ":type_spec_registry",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 

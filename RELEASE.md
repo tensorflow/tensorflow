@@ -29,6 +29,10 @@
 * <IF A CHANGE CLOSES A GITHUB ISSUE, IT SHOULD BE DOCUMENTED HERE>
 * <NOTES SHOULD BE GROUPED PER AREA>
 
+* `tf.data`
+    * Adds `NoneTensorSpec` to the public API so that `None`s in `element_spec`
+      can be identified via `isinstance(..., tf.NoneTensorSpec)`.
+
 ## Thanks to our Contributors
 
 This release contains contributions from many people at Google, as well as:
