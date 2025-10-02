@@ -5,8 +5,8 @@ load("//third_party:repo.bzl", "tf_vendored")
 load("//third_party/tf_runtime:workspace.bzl", tf_runtime = "repo")
 
 def workspace():
-    tf_vendored(name = "local_xla", relpath = "third_party/xla")
-    tf_vendored(name = "local_tsl", relpath = "third_party/xla/third_party/tsl")
+    tf_vendored(name = "local_xla", path = "third_party/xla")
+    tf_vendored(name = "local_tsl", path = "third_party/xla/third_party/tsl")
 
     http_archive(
         name = "io_bazel_rules_closure",
