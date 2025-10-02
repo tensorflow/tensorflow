@@ -176,13 +176,6 @@ class HloHardwareIndependentTestBase : public ::testing::Test {
       std::function<void(HloModule*)> after_pass_checks = nullptr,
       const HloModuleConfig* config = nullptr) const;
 
-  // Runs pass `hlo_pass` on a group of input HLO modules `hlo_module_strs`,
-  // and FileChecks the result against `expected`.
-  void RunAndFilecheckHloModuleGroupRewrite(
-      absl::Span<const absl::string_view> hlo_module_strs,
-      HloPassInterface&& hlo_pass,
-      std::optional<absl::Span<const absl::string_view>> expected) const;
-
   using FixedMapping =
       std::initializer_list<std::pair<absl::string_view, absl::string_view>>;
 

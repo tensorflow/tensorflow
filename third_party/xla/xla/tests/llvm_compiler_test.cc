@@ -85,23 +85,5 @@ TEST_F(LLVMCompilerTest, HooksTest) {
   EXPECT_EQ(1, post_opt_hook_call_count);
 }
 
-TEST_F(LLVMCompilerTest, DISABLED_MultiModuleCompilation) {
-  auto hlo_module = ParseAndReturnVerifiedModule(kHloText).value();
-  auto hlo_module2 = ParseAndReturnVerifiedModule(kHloText).value();
-  std::vector<std::unique_ptr<HloModule>> modules;
-  modules.push_back(std::move(hlo_module));
-  modules.push_back(std::move(hlo_module2));
-  auto module_group =
-      std::make_unique<HloModuleGroup>("test_module_group", std::move(modules));
-
-  std::vector<std::vector<se::StreamExecutor*>> executors;
-  executors.push_back({backend().default_stream_executor()});
-  executors.push_back({backend().default_stream_executor()});
-
-  EXPECT_IS_OK(backend().compiler()->Compile(std::move(module_group),
-                                             std::move(executors),
-                                             backend().memory_allocator()));
-}
-
 }  // namespace
 }  // namespace xla
