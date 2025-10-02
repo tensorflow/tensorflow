@@ -33,11 +33,11 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
-#include "xla/backends/gpu/runtime/thunk_buffer.h"
 #include "xla/backends/gpu/runtime/thunk_id.h"
 #include "xla/codegen/emitters/kernel_arguments.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/literal.h"
+#include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/kernels/custom_kernel.h"
@@ -282,14 +282,10 @@ TEST(KernelThunkTest, GetBuffersReturnsCorrectBuffers) {
                     LaunchDimensions(), se::ClusterDim(), /*shmem_bytes=*/0,
                     se::gpu::TmaMetadata());
 
-  std::vector<ThunkBuffer> buffers = thunk.GetBuffers();
+  std::vector<BufferUse> buffers = thunk.GetBuffers();
 
-  ASSERT_THAT(buffers,
-              testing::UnorderedElementsAre(
-                  ThunkBuffer{slice0, /*is_content_defined_on_input=*/true,
-                              /*is_content_defined_on_output=*/false},
-                  ThunkBuffer{slice1, /*is_content_defined_on_input=*/false,
-                              /*is_content_defined_on_output=*/true}));
+  ASSERT_THAT(buffers, testing::UnorderedElementsAre(BufferUse::Read(slice0),
+                                                     BufferUse::Write(slice1)));
 }
 
 TEST(KernelThunkTest, GetBuffersReturnsBuffersInConsistentOrder) {
@@ -305,8 +301,8 @@ TEST(KernelThunkTest, GetBuffersReturnsBuffersInConsistentOrder) {
                     LaunchDimensions(), se::ClusterDim(), /*shmem_bytes=*/0,
                     se::gpu::TmaMetadata());
 
-  std::vector<ThunkBuffer> buffers1 = thunk.GetBuffers();
-  std::vector<ThunkBuffer> buffers2 = thunk.GetBuffers();
+  std::vector<BufferUse> buffers1 = thunk.GetBuffers();
+  std::vector<BufferUse> buffers2 = thunk.GetBuffers();
 
   ASSERT_THAT(buffers1, testing::ContainerEq(buffers2));
 }
@@ -328,14 +324,10 @@ TEST(CustomKernelThunkTest, GetBuffersReturnsCorrectBuffers) {
   auto hlo = HloInstruction::CreateConstant(Literal());
   CustomKernelThunk thunk(hlo.get(), kernel, kernel_arguments, ThunkId{0});
 
-  std::vector<ThunkBuffer> buffers = thunk.GetBuffers();
+  std::vector<BufferUse> buffers = thunk.GetBuffers();
 
-  ASSERT_THAT(buffers,
-              testing::UnorderedElementsAre(
-                  ThunkBuffer{slice0, /*is_content_defined_on_input=*/true,
-                              /*is_content_defined_on_output=*/false},
-                  ThunkBuffer{slice1, /*is_content_defined_on_input=*/false,
-                              /*is_content_defined_on_output=*/true}));
+  ASSERT_THAT(buffers, testing::UnorderedElementsAre(BufferUse::Read(slice0),
+                                                     BufferUse::Write(slice1)));
 }
 
 TEST(CustomKernelThunkTest, GetBuffersReturnsBuffersInConsistentOrder) {
@@ -355,8 +347,8 @@ TEST(CustomKernelThunkTest, GetBuffersReturnsBuffersInConsistentOrder) {
   auto hlo = HloInstruction::CreateConstant(Literal());
   CustomKernelThunk thunk(hlo.get(), kernel, kernel_arguments, ThunkId{0});
 
-  std::vector<ThunkBuffer> buffers1 = thunk.GetBuffers();
-  std::vector<ThunkBuffer> buffers2 = thunk.GetBuffers();
+  std::vector<BufferUse> buffers1 = thunk.GetBuffers();
+  std::vector<BufferUse> buffers2 = thunk.GetBuffers();
 
   ASSERT_THAT(buffers1, testing::ContainerEq(buffers2));
 }

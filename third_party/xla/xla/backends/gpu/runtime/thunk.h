@@ -38,13 +38,13 @@ limitations under the License.
 #include "xla/backends/gpu/collectives/gpu_cliques.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
-#include "xla/backends/gpu/runtime/thunk_buffer.h"
 #include "xla/backends/gpu/runtime/thunk_id.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
 #include "xla/executable_run_options.h"
 #include "xla/ffi/execution_context.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/global_device_id.h"
 #include "xla/service/gpu/buffer_allocations.h"
@@ -505,7 +505,7 @@ class Thunk {
   // Does not propagate buffers from nested thunks.
   //
   // The order of the buffers in returned vector is consistent across calls.
-  virtual std::vector<ThunkBuffer> GetBuffers() const { return {}; }
+  virtual std::vector<BufferUse> GetBuffers() const { return {}; }
 
   static absl::string_view KindToString(Thunk::Kind kind);
 
