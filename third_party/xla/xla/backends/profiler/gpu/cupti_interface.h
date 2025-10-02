@@ -135,6 +135,8 @@ class CuptiInterface {
 
   virtual CUptiResult SetThreadIdType(CUpti_ActivityThreadIdType type) = 0;
 
+  virtual CUptiResult ActivityEnableHWTrace(bool enable) = 0;
+
   // Functions related to profiling APIs - range profiling, PC sampling, PM
   // sampling Equivalent functions are declared in
   // cuda/extras/CUPTI/include/cupti_profiler_host.h and
