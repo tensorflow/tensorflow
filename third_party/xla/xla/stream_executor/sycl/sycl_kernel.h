@@ -17,9 +17,9 @@ limitations under the License.
 
 #include "absl/status/statusor.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "tsl/platform/logging.h"
+#include "xla/tsl/platform/logging.h"
 
-namespace stream_executor::gpu {
+namespace stream_executor::sycl {
 
 class SyclKernel : public Kernel {
  public:
@@ -55,6 +55,6 @@ class SyclKernel : public Kernel {
   unsigned arity_ = 0;  // number of formal parameters the kernel takes
 };
 
-}  // namespace stream_executor::gpu
+}  // namespace stream_executor::sycl
 
 #endif  // XLA_STREAM_EXECUTOR_SYCL_SYCL_KERNEL_H_
