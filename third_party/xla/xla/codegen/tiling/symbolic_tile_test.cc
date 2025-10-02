@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/model/symbolic_tile.h"
+#include "xla/codegen/tiling/symbolic_tile.h"
 
 #include <optional>
 #include <vector>
@@ -28,7 +28,6 @@ limitations under the License.
 #include "xla/hlo/analysis/indexing_test_utils.h"
 
 namespace xla {
-namespace gpu {
 namespace {
 
 using ::testing::ElementsAre;
@@ -900,5 +899,4 @@ TEST_F(SymbolicTileTest, PointDimensionsAreNotSimplified) {
 }
 
 }  // namespace
-}  // namespace gpu
 }  // namespace xla
