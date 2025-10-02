@@ -34,10 +34,8 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/hlo/transforms/simplifiers/hlo_dce.h"
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/service/pattern_matcher.h"
-#include "xla/service/while_loop_simplifier.h"
 #include "xla/service/while_util.h"
 #include "xla/shape_util.h"
 #include "xla/util.h"
@@ -55,8 +53,7 @@ bool IsPurelyExpanding(const HloInstruction* instr) {
   return instr->opcode() == HloOpcode::kBroadcast ||
          (instr->opcode() == HloOpcode::kConstant &&
           instr->shape().dimensions().empty()) ||
-         instr->opcode() == HloOpcode::kIota ||
-         instr->IsCustomCall("AllocateBuffer");
+         instr->opcode() == HloOpcode::kIota;
 }
 
 bool IsFusionCandidate(const HloInstruction* instr) {
@@ -144,8 +141,7 @@ std::vector<int64_t> GetLoopShapeCoveringWriteIndices(
     HloInstruction* arg_operand = tuple->mutable_operand(tuple_index);
     // We're looking for an argument that is a broadcast(constant) feeds a while
     // loop.
-    if (!Match(arg_operand, match::Broadcast(match::ConstantScalar())) &&
-        !arg_operand->IsCustomCall("AllocateBuffer")) {
+    if (!Match(arg_operand, match::Broadcast(match::ConstantScalar()))) {
       continue;
     }
     HloInstruction* broadcast_gte = hlo_query::GetUniqueGteInstruction(
@@ -542,11 +538,6 @@ absl::StatusOr<bool> WhileLoopFusibleSinking::Run(
         }
       }
     }
-  }
-  if (changed) {
-    TF_ASSIGN_OR_RETURN(bool t, HloDCE().Run(module));
-    TF_ASSIGN_OR_RETURN(bool t2, WhileLoopSimplifier().Run(module));
-    changed |= t | t2;
   }
   return changed;
 }
