@@ -1124,59 +1124,42 @@ PjRtStreamExecutorClient::CreateErrorBuffer(absl::Status error,
       shape, std::move(dummy_device_buffer), this, device, memory);
 }
 
-absl::StatusOr<std::unique_ptr<PjRtBuffer>>
-PjRtStreamExecutorClient::BufferFromHostLiteral(const LiteralSlice& literal,
-                                                PjRtMemorySpace* memory_space,
-                                                const Layout* device_layout) {
-  if (device_layout) {
-    return absl::UnimplementedError(absl::StrCat(
-        "BufferFromHostLiteral with device_layout is not implemented on "
-        "platform: ",
-        platform_name()));
-  }
+absl::StatusOr<tsl::RCReference<PjRtDeviceEvent>>
+PjRtStreamExecutorClient::LinearizeInto(
+    const LiteralSlice& literal, const xla::Shape& device_shape,
+    HostBufferSemantics host_buffer_semantics,
+    tsl::RCReference<CommonPjRtRawBuffer> raw_buffer) {
+  auto* memory_space = raw_buffer->memory_space();
+
   CHECK_EQ(memory_space->devices().size(), 1);
   PjRtDevice* device = memory_space->devices().front();
-
-  tsl::profiler::TraceMe traceme(
-      "PjRtStreamExecutorClient::BufferFromHostLiteral");
-  VLOG(1) << "PjRtStreamExecutorClient::BufferFromHostLiteral: shape: "
-          << literal.shape().ToString() << " device: " << device->DebugString();
-  TF_ASSIGN_OR_RETURN(LocalDeviceState * local_device,
-                      tensorflow::down_cast<PjRtStreamExecutorDevice*>(device)
-                          ->GetLocalDeviceState());
+  auto* local_device =
+      tensorflow::down_cast<PjRtStreamExecutorRawBuffer*>(raw_buffer.get())
+          ->local_device();
+  auto* copy_stream = local_device->host_to_device_stream();
+  BufferSequencingEventRef event = BufferSequencingEvent::Create(thread_pool());
+  WaitForAllocation(copy_stream, *raw_buffer);
+  auto on_device_shape = device_shape;
 
   TransferManager* transfer_manager = client()->backend().transfer_manager();
-  TF_ASSIGN_OR_RETURN(
-      Shape compact_shape,
-      transfer_manager->ChooseCompactLayoutForShape(literal.shape()));
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<PjRtStreamExecutorBuffer> py_buffer,
-      AllocateDestinationBuffer(compact_shape, device, local_device,
-                                local_device->host_to_device_stream(),
-                                /*is_uninitialized_create=*/false, this));
-
-  PjRtStreamExecutorBuffer::ScopedHold device_buffer(
-      py_buffer->GetBufferWithUsageHold());
-  CHECK(device_buffer.ok());
-
-  BufferSequencingEventRef event = device_buffer->definition_events()[0];
 
   // The host to device transfer is performed on a thread pool, mostly because
-  // it includes linearization that may be slow. It is OK to capture the
-  // py_buffer pointer because the py_buffer can't be deleted until all the
-  // usage holds have gone away.
+  // it includes linearization that may be slow.
   // TODO(misard) assess if it would be preferable to introduce a heuristic to
   // put the transfer into the calling thread for small literals.
   auto transfer_h2d =
       [this, local_client = client(), transfer_manager, local_device,
-       device_memory = device_buffer->device_memory(), device, event, literal,
-       py_buffer{py_buffer.get()},
-       on_device_shape{py_buffer->on_device_shape()}]() mutable {
+       raw_buffer, device, event, literal,
+       on_device_shape = std::move(on_device_shape)]() mutable {
         // This function uses TF_CHECK_OK and value() since we have no way
         // to report failures from a callback. However, the operations here are
         // unlikely to fail and not recoverable even if we were to fail: DMAs to
         // memory that has already been allocated, and a possible Event
         // allocation.
+        auto device_memory =
+            tensorflow::down_cast<PjRtStreamExecutorRawBuffer*>(
+                raw_buffer.get())
+                ->device_buffer();
 
         se::Stream* h2d_stream = local_device->host_to_device_stream();
 
@@ -1197,9 +1180,7 @@ PjRtStreamExecutorClient::BufferFromHostLiteral(const LiteralSlice& literal,
         QCHECK(h2d_stream->ok());
       };
   thread_pool()->Schedule(WrapClosureAsCopyable(std::move(transfer_h2d)));
-  RecordUsage(std::move(device_buffer), local_device, local_device, event,
-              local_device->host_to_device_stream());
-  return std::unique_ptr<PjRtBuffer>(std::move(py_buffer));
+  return tsl::MakeRef<PjRtStreamExecutorDeviceEvent>(event);
 }
 
 absl::StatusOr<std::unique_ptr<PjRtBuffer>>

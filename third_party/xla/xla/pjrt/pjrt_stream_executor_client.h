@@ -321,11 +321,6 @@ class PjRtStreamExecutorClient : public CommonPjRtClient {
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> CreateErrorBuffer(
       absl::Status error, const Shape& shape, PjRtMemorySpace* memory) override;
 
-  using PjRtClient::BufferFromHostLiteral;
-  absl::StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostLiteral(
-      const LiteralSlice& literal, PjRtMemorySpace* memory_space,
-      const Layout* device_layout) override;
-
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> CreateViewOfDeviceBuffer(
       void* device_ptr, const Shape& shape, PjRtMemorySpace* memory_space,
       std::function<void()> on_delete_callback,
@@ -403,6 +398,11 @@ class PjRtStreamExecutorClient : public CommonPjRtClient {
       absl::InlinedVector<tsl::RCReference<PjRtDeviceEvent>, 4>
           definition_device_events,
       bool raw_buffer_is_mutable) override;
+
+  absl::StatusOr<tsl::RCReference<PjRtDeviceEvent>> LinearizeInto(
+      const LiteralSlice& literal, const xla::Shape& device_shape,
+      HostBufferSemantics host_buffer_semantics,
+      tsl::RCReference<CommonPjRtRawBuffer> raw_buffer) override;
 
   absl::StatusOr<tsl::RCReference<PjRtDeviceEvent>> LinearizeHostBufferInto(
       const void* data, PrimitiveType type, absl::Span<int64_t const> dims,

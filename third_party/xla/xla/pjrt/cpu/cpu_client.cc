@@ -945,7 +945,7 @@ PjRtCpuClient::LinearizeHostBufferInto(
 }
 
 absl::StatusOr<tsl::RCReference<PjRtDeviceEvent>> PjRtCpuClient::LinearizeInto(
-    const LiteralSlice& literal, const xla::Layout& layout,
+    const LiteralSlice& literal, const xla::Shape& device_shape,
     HostBufferSemantics host_buffer_semantics,
     tsl::RCReference<CommonPjRtRawBuffer> raw_buffer) {
   if (host_buffer_semantics ==
@@ -954,7 +954,7 @@ absl::StatusOr<tsl::RCReference<PjRtDeviceEvent>> PjRtCpuClient::LinearizeInto(
         "ImmutableOnlyDuringCall semantics is not supported on CPU.");
   }
   return tsl::down_cast<CpuRawBuffer*>(raw_buffer.get())
-      ->CopyFromLiteral(literal, layout, async_work_runner());
+      ->CopyFromLiteral(literal, device_shape.layout(), async_work_runner());
 }
 
 absl::StatusOr<CompiledMemoryStats> PjRtCpuExecutable::GetCompiledMemoryStats()

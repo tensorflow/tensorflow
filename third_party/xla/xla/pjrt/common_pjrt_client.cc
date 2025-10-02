@@ -150,7 +150,7 @@ CommonPjRtClient::BufferFromHostLiteral(const LiteralSlice& literal,
                                         /*allocate_after=*/{}));
   TF_ASSIGN_OR_RETURN(
       auto definition_event,
-      LinearizeInto(literal, device_shape.layout(),
+      LinearizeInto(literal, device_shape,
                     HostBufferSemantics::kImmutableUntilTransferCompletes,
                     raw_buffer));
   return DefineBuffer(device_shape, std::move(raw_buffer),
@@ -419,7 +419,7 @@ CommonPjRtBufferImpl::CopyToCpuMemorySpace(const xla::Shape& dst_shape,
           status_or_h2d_transfer_event;
       if (needs_second_copy) {
         status_or_h2d_transfer_event = dst_client->LinearizeInto(
-            *literal, dst_shape.layout(),
+            *literal, dst_shape,
             PjRtClient::HostBufferSemantics::kImmutableUntilTransferCompletes,
             dst_raw_buffer);
       } else {
@@ -601,7 +601,7 @@ CommonPjRtBufferImpl::CopyFromCpuToMemorySpace(
         definition_events_span,
         [dst_raw_buffer = std::move(dst_raw_buffer),
          src_raw_buffer = std::move(src_raw_buffer), dst_client = dst_client,
-         src_shape = on_device_shape(), device_layout = dst_shape.layout(),
+         src_shape = on_device_shape(), device_shape = dst_shape,
          definition_events = std::move(definition_events),
          definition_event_promise = std::move(definition_event_promise),
          src_usage_event_promise = std::move(src_usage_event_promise),
@@ -633,7 +633,7 @@ CommonPjRtBufferImpl::CopyFromCpuToMemorySpace(
               std::make_unique<MutableBorrowingLiteral>(
                   reinterpret_cast<char*>(base_ptr), src_shape);
           auto status_or_h2d_transfer_event = dst_client->LinearizeInto(
-              *literal, device_layout,
+              *literal, device_shape,
               PjRtClient::HostBufferSemantics::kImmutableUntilTransferCompletes,
               std::move(dst_raw_buffer));
           CHECK_OK(status_or_h2d_transfer_event);

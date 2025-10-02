@@ -92,7 +92,7 @@ class CommonPjRtClient : public PjRtClient {
   // Linearizes a literal into a raw buffer and returns a DeviceEvent
   // for when the linearization is complete.
   virtual absl::StatusOr<tsl::RCReference<PjRtDeviceEvent>> LinearizeInto(
-      const LiteralSlice& literal, const xla::Layout& layout,
+      const LiteralSlice& literal, const xla::Shape& device_shape,
       HostBufferSemantics host_buffer_semantics,
       tsl::RCReference<CommonPjRtRawBuffer> raw_buffer) {
     return absl::UnimplementedError("LinearizeInto is not supported");

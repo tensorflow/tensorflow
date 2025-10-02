@@ -234,7 +234,7 @@ class PjRtCpuClient final : public CommonPjRtClient {
       tsl::RCReference<CommonPjRtRawBuffer> raw_buffer) override;
 
   absl::StatusOr<tsl::RCReference<PjRtDeviceEvent>> LinearizeInto(
-      const LiteralSlice& literal, const xla::Layout& layout,
+      const LiteralSlice& literal, const xla::Shape& device_shape,
       HostBufferSemantics host_buffer_semantics,
       tsl::RCReference<CommonPjRtRawBuffer> raw_buffer) override;
 
