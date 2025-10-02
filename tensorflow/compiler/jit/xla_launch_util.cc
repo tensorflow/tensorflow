@@ -925,7 +925,7 @@ absl::StatusOr<std::vector<std::unique_ptr<xla::PjRtBuffer>>> RunPjRtExecutable(
       &executable_args, &owned_executable_args, &non_donatable_input_indices));
 
   std::vector<std::unique_ptr<xla::PjRtBuffer>> execute_outputs;
-  std::optional<xla::PjRtFuture<>> future;
+  std::optional<tsl::Future<void>> future;
   if (executable->num_replicas() != 1 || executable->num_partitions() != 1) {
     TF_ASSIGN_OR_RETURN(
         execute_outputs,
