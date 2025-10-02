@@ -312,6 +312,11 @@ absl::Status GetGridLimits(int* x, int* y, int* z, hipDevice_t device) {
   return absl::OkStatus();
 }
 
+absl::StatusOr<int64_t> GetMaxRegistersPerMultiprocessor(hipDevice_t device) {
+  return GetSimpleAttribute<int64_t>(
+      device, hipDeviceAttributeMaxRegistersPerMultiprocessor);
+}
+
 // Returns the device associated with the given device_ordinal.
 absl::StatusOr<hipDevice_t> GetDevice(int device_ordinal) {
   hipDevice_t device;
@@ -398,6 +403,14 @@ std::string GetPCIBusID(hipDevice_t device) {
   }
   pci_bus_id = chars.begin();
   return pci_bus_id;
+}
+
+absl::StatusOr<bool> IsEccEnabled(hipDevice_t device) {
+  int value = 0;
+  TF_RETURN_IF_ERROR(ToStatus(
+      wrap::hipDeviceGetAttribute(&value, hipDeviceAttributeEccEnabled, device),
+      "hipDeviceGetAttribute(hipDeviceAttributeEccEnabled) failed"));
+  return value != 0;
 }
 
 bool GetDeviceProperties(hipDeviceProp_t* device_properties,
@@ -1108,8 +1121,15 @@ RocmExecutor::CreateDeviceDescription(int device_ordinal) {
     desc.set_l2_cache_size(prop.l2CacheSize);
   }
 
-  // No way to query ECC status from the API.
-  desc.set_ecc_enabled(false);
+  {
+    auto ecc_enabled_or = IsEccEnabled(device);
+    if (!ecc_enabled_or.ok()) {
+      LOG(ERROR) << "Device " << device_ordinal
+                 << ": ECC status query failed: " << ecc_enabled_or.status();
+      return ecc_enabled_or.status();
+    }
+    desc.set_ecc_enabled(*ecc_enabled_or);
+  }
 
   uint64_t device_memory_size = -1;
   (void)RocmContext::GetDeviceTotalMemory(device, &device_memory_size);
@@ -1147,7 +1167,11 @@ RocmExecutor::CreateDeviceDescription(int device_ordinal) {
       GetMaxThreadsPerMultiprocessor(device).value());
   desc.set_registers_per_block_limit(GetMaxRegistersPerBlock(device).value());
   desc.set_threads_per_warp(GetThreadsPerWarp(device).value());
-  desc.set_registers_per_core_limit(64 * 1024);
+  {
+    TF_ASSIGN_OR_RETURN(int64_t regs_per_mp,
+                        GetMaxRegistersPerMultiprocessor(device));
+    desc.set_registers_per_core_limit(regs_per_mp);
+  }
   desc.set_compile_time_toolkit_version(
       SemanticVersion{HIP_VERSION_MAJOR, HIP_VERSION_MINOR, HIP_VERSION_PATCH});
   int32_t runtime_version;
