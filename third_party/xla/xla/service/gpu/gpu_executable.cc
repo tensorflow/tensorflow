@@ -281,6 +281,10 @@ absl::Status ExecuteThunksImpl(
   se::StreamExecutor* executor = main_stream->parent();
   stream_executor::StreamPriority stream_priority =
       stream_executor::StreamPriority::Default;
+  // TODO(intel-tf): Enable stream priorities for sycl backend.
+  if (executor->GetPlatform()->id() == stream_executor::sycl::kSyclPlatformId) {
+    use_highest_priority_for_async_stream = false;
+  }
   if (use_highest_priority_for_async_stream) {
     stream_priority = stream_executor::StreamPriority::Highest;
   }
