@@ -81,26 +81,6 @@ Value materializeCastToIllegal(OpBuilder& builder, Type type,
       ->getResult(0);
 }
 
-Value scalarToTensor(OpBuilder& builder, Type type,
-                                    ValueRange inputs, Location loc) {
-  assert(inputs.size() == 1);
-  if (mlir::isa<ShapedType>(inputs.front().getType())) {
-    return Value();
-  }
-  Value result =
-      tensor::FromElementsOp::create(
-          builder, loc, RankedTensorType::get({}, inputs.front().getType()),
-          inputs.front())
-          .getResult();
-  // Convert to a signed integer if necessary.
-  Type elementType = mlir::getElementTypeOrSelf(type);
-  if (elementType.isInteger() && !elementType.isSignlessInteger()) {
-    result = UnrealizedConversionCastOp::create(builder, loc, type, result)
-                 ->getResult(0);
-  }
-  return result;
-}
-
 // Flatten the given value ranges into a single vector of values.
 SmallVector<Value> flattenValues(ArrayRef<ValueRange> values) {
   SmallVector<Value> result;
@@ -160,11 +140,6 @@ RemoveSignTypeConverter::RemoveSignTypeConverter() {
 
   addSourceMaterialization(materializeCastToIllegal);
   addTargetMaterialization(materializeCastFromIllegal);
-}
-
-LinalgTypeConverter::LinalgTypeConverter() : RemoveSignTypeConverter() {
-  addSourceMaterialization(scalarToTensor);
-  addTargetMaterialization(scalarToTensor);
 }
 
 }  // namespace mhlo

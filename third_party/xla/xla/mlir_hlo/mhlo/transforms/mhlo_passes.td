@@ -49,11 +49,6 @@ def ChloLegalizeToHloPass : Pass<"chlo-legalize-to-hlo", "func::FuncOp"> {
   ];
 }
 
-def HloLegalizeToArithmeticPass :Pass<"hlo-legalize-to-arithmetic", "ModuleOp"> {
-  let summary = "Legalize from HLO dialect to arithmetic dialect.";
-  let constructor = "createLegalizeToArithmeticPass()";
-}
-
 def LegalizeDotToDotGeneralPass : Pass<"mhlo-legalize-dot-to-dot-general", "func::FuncOp"> {
   let summary = "Legalizes dot ops to dot_general ops.";
   let constructor = "createLegalizeDotToDotGeneralPass()";
@@ -73,15 +68,6 @@ def LegalizeTorchIndexSelectToGatherPass : Pass<"mhlo-legalize-torch-index-selec
 def LegalizeTanhToApproximationPass : Pass<"mhlo-legalize-trigonometric-to-approximation", "func::FuncOp"> {
   let summary = "Legalize trigonometric operations from standard dialect to an approximation.";
   let constructor = "createLegalizeTrigonometricToApproximationPass()";
-}
-
-def HloLegalizeToLinalgPass : Pass<"hlo-legalize-to-linalg", "func::FuncOp"> {
-  let summary = "Legalize from HLO dialect to Linalg dialect.";
-  let constructor = "createLegalizeHloToLinalgPass()";
-  let options = [Option<"enablePrimitiveOps", "enable-primitive-ops", "bool",
-                        /*default=*/"false",
-                        "Lower to primitive Linalg ops (map, reduce and "
-                        "transpose) when possible, instead of linalg.generic">];
 }
 
 def TestMaterializeBroadcastsPass : Pass<"mhlo-test-materialize-broadcasts", "func::FuncOp"> {

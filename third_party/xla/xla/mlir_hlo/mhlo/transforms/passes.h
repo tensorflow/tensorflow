@@ -44,13 +44,6 @@ ChloLegalizeToHighLevelMhloPassOptions getDefaultChloToHighLevelMhloOptions();
 /// Returns options for the ChloLegalizeToHighLevelMhloPass for the GPU backend.
 ChloLegalizeToHighLevelMhloPassOptions getGpuChloToHighLevelMhloOptions();
 
-/// Lowers from HLO dialect to Arithmetic dialect.
-std::unique_ptr<OperationPass<ModuleOp>> createLegalizeToArithmeticPass();
-
-/// Lowers from HLO dialect to Linalg dialect.
-std::unique_ptr<OperationPass<func::FuncOp>> createLegalizeHloToLinalgPass(
-    bool enablePrimitiveOps = false);
-
 // Sinks constants implicitly captured in control flow regions. This is
 // necessary to export to XLA.
 std::unique_ptr<OperationPass<func::FuncOp>>
