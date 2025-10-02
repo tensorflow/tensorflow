@@ -25,13 +25,20 @@ limitations under the License.
 #include <utility>
 
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/types/span.h"
 #include "xla/hlo/analysis/hlo_dataflow_analysis.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/primitive_util.h"
 #include "xla/service/hlo_verifier.h"
 #include "xla/service/transfer_manager.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
+#include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -251,7 +258,11 @@ absl::StatusOr<Literal> CreateLiteralForConstrainedUses(
         break;
 
       case HloOpcode::kSort:
-        no_duplicates = true;
+        if (ShapeUtil::ElementIsIntegral(use->operand(0)->shape())) {
+          // Turn on no_duplicates for integer keys. It's basically shuffled
+          // iota from [0, N) for unsigned, or [-N/2, N/2) for signed.
+          no_duplicates = true;
+        }
         break;
 
       default:
