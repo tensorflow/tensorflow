@@ -3723,6 +3723,74 @@ absl::Status SpmdPartitioningVisitor::HandleDynamicUpdateSlice(
     return DefaultAction(hlo);
   }
 
+  DynamicUpdateSliceAnalysis analysis = AnalyzeDynamicUpdateSlice(hlo);
+
+  // Method 1. Replicate the slice dimensions for all involved tensors.
+
+  auto add_hlo = [&](std::unique_ptr<HloInstruction> to_add) {
+    return b_.AddInstruction(std::move(to_add));
+  };
+
+  if (analysis.method ==
+      DynamicUpdateSliceMethod::kAllPartitionedSliceDimsHaveConstantIndices) {
+    const Shape& operand_pred_shape =
+        ShapeUtil::ChangeElementType(hlo->shape(), PRED);
+
+    const Shape& update_pred_shape =
+        ShapeUtil::ChangeElementType(hlo->operand(1)->shape(), PRED);
+
+    auto oneOp = add_hlo(
+        HloInstruction::CreateConstant(LiteralUtil::CreateR0<bool>(true)));
+
+    auto zeroOp = add_hlo(
+        HloInstruction::CreateConstant(LiteralUtil::CreateR0<bool>(false)));
+
+    auto zeroElemOp = add_hlo(HloInstruction::CreateConstant(
+        LiteralUtil::Zero(hlo->shape().element_type())));
+
+    auto zeroUpdate =
+        add_hlo(HloInstruction::CreateBroadcast(update_pred_shape, zeroOp, {}));
+
+    zeroUpdate->set_sharding(hlo->operand(1)->sharding());
+
+    PaddingConfig padding_config;
+
+    for (int64_t i = 0; i < hlo->shape().dimensions().size(); ++i) {
+      auto dim = padding_config.add_dimensions();
+      dim->set_interior_padding(0);
+
+      assert(hlo->operand(i + 2)->IsConstant());
+
+      int64_t slice_size = hlo->operand(1)->shape().dimensions(i);
+
+      const PrimitiveType elemType =
+          hlo->operand(i + 2)->shape().element_type();
+      int64_t start_index =
+          elemType == S64 ? hlo->operand(i + 2)->literal().Get<int64_t>({})
+                          : hlo->operand(i + 2)->literal().Get<int>({});
+      int64_t end_index = start_index + slice_size;
+
+      dim->set_edge_padding_low(start_index);
+      dim->set_edge_padding_high(hlo->shape().dimensions(i) - end_index);
+    }
+
+    auto maskOp = add_hlo(HloInstruction::CreatePad(
+        operand_pred_shape, zeroUpdate, oneOp, padding_config));
+    maskOp->set_sharding(hlo->sharding());
+
+    auto newOperand = add_hlo(HloInstruction::CreatePad(
+        hlo->shape(), hlo->mutable_operand(1), zeroElemOp, padding_config));
+    newOperand->set_sharding(hlo->sharding());
+
+    auto result = add_hlo(
+        HloInstruction::CreateTernary(hlo->shape(), HloOpcode::kSelect, maskOp,
+                                      hlo->mutable_operand(0), newOperand));
+    result->set_sharding(hlo->sharding());
+
+    SetPartitionedHlo(hlo, [&]() -> HloInstruction* { return result; });
+    return absl::OkStatus();
+  }
+
   std::vector<HloInstruction*> new_indices;
   new_indices.reserve(hlo->shape().dimensions().size());
   for (int64_t i = 0; i < hlo->shape().dimensions().size(); ++i) {
@@ -3735,14 +3803,7 @@ absl::Status SpmdPartitioningVisitor::HandleDynamicUpdateSlice(
     }
   }
 
-  DynamicUpdateSliceAnalysis analysis = AnalyzeDynamicUpdateSlice(hlo);
-
-  // Method 1. Replicate the slice dimensions for all involved tensors.
-  // TODO(b/407610806). Add support if all partitioned slice dimensions have
-  // constant indices.
-  if (analysis.method == DynamicUpdateSliceMethod::kDefault ||
-      analysis.method == DynamicUpdateSliceMethod::
-                             kAllPartitionedSliceDimsHaveConstantIndices) {
+  if (analysis.method == DynamicUpdateSliceMethod::kDefault) {
     const HloSharding& input_sharding = hlo->operand(0)->sharding();
     const HloSharding& output_sharding = hlo->sharding();
     const HloSharding& better_sharding =
@@ -3767,10 +3828,6 @@ absl::Status SpmdPartitioningVisitor::HandleDynamicUpdateSlice(
   // Method 2. Keep the sharding for input and output since the update is fully
   // contained in a single partition.
   CHECK(analysis.method == DynamicUpdateSliceMethod::kUpdateOnASinglePartition);
-
-  auto add_hlo = [&](std::unique_ptr<HloInstruction> to_add) {
-    return b_.AddInstruction(std::move(to_add));
-  };
 
   // Get partitioned input.
   const auto& dus_sharding = hlo->sharding();
