@@ -157,8 +157,15 @@ class LoadedExecutable final
   const std::unique_ptr<OutputSpecCache> output_spec_cache_;
 
   // Metadata queried when the executable is created. Declared as `mutable`
-  // since `tsl::Future::Await()` is not const.
+  // since `Future::Await()` is not const.
   mutable tsl::Future<std::shared_ptr<Metadata>> metadata_future_;
+
+  // The cached value of `GetCostAnalysis()`. The value is obtained from the
+  // proxy-server the first time that the user invokes `GetCostAnalysis()`, and
+  // is cached afterwards.
+  mutable absl::Mutex cost_analysis_mu_;
+  mutable std::optional<absl::StatusOr<xla::ifrt::AttributeMap>>
+      cost_analysis_response_ ABSL_GUARDED_BY(cost_analysis_mu_);
 };
 
 }  // namespace proxy

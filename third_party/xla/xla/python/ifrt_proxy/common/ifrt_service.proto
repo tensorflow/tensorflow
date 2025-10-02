@@ -37,6 +37,7 @@ message IfrtProxyVersion {
   int32 ifrt_serdes_version_number = 2;
 }
 
+// Next ID: 29.
 message IfrtRequest {
   RequestMetadata request_metadata = 1;
 
@@ -72,6 +73,8 @@ message IfrtRequest {
     // ===== LoadedExecutable =====
     LoadedExecutableMetadataRequest loaded_executable_metadata_request = 14;
     LoadedExecutableExecuteRequest loaded_executable_execute_request = 15;
+    LoadedExecutableCostAnalysisRequest
+        loaded_executable_cost_analysis_request = 28;
     LoadedExecutableDeleteRequest loaded_executable_delete_request = 16
         [deprecated = true];
     LoadedExecutableIsDeletedRequest loaded_executable_is_deleted_request = 17
@@ -91,6 +94,7 @@ message IfrtRequest {
   reserved 10;
 }
 
+// Next ID: 29.
 message IfrtResponse {
   ResponseMetadata response_metadata = 1;
 
@@ -126,6 +130,8 @@ message IfrtResponse {
     // ===== LoadedExecutable =====
     LoadedExecutableMetadataResponse loaded_executable_metadata_response = 14;
     LoadedExecutableExecuteResponse loaded_executable_execute_response = 15;
+    LoadedExecutableCostAnalysisResponse
+        loaded_executable_cost_analysis_response = 28;
     LoadedExecutableDeleteResponse loaded_executable_delete_response = 16;
     LoadedExecutableIsDeletedResponse loaded_executable_is_deleted_response =
         17;
@@ -498,6 +504,20 @@ message LoadedExecutableMetadataResponse {
   }
 
   int64 size_of_generated_code_in_bytes = 12;
+}
+
+// Queries the value of `LoadedExecutable::GetCostAnalysis()`. Separate from
+// LoadedExecutableMetadataRequest since `GetCostAnalysis()` has non-trivial
+// cost.
+message LoadedExecutableCostAnalysisRequest {
+  fixed64 loaded_executable_handle = 1;
+}
+
+message LoadedExecutableCostAnalysisResponse {
+  oneof result {
+    tensorflow.StatusProto status = 1;
+    AttributeMapProto attributes = 2;
+  }
 }
 
 // Mirrors `LoadedExecutable::Execute`. Returns output array handles and a

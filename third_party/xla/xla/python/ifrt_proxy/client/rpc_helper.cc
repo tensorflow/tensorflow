@@ -341,6 +341,7 @@ RPC(FullyReplicatedShard, fully_replicated_shard);
 RPC(DeleteArray, delete_array);
 RPC(Compile, compile);
 RPC(LoadedExecutableMetadata, loaded_executable_metadata);
+RPC(LoadedExecutableCostAnalysis, loaded_executable_cost_analysis);
 RPC(LoadedExecutableExecute, loaded_executable_execute);
 RPC(LoadedExecutableDelete, loaded_executable_delete);
 RPC(LoadedExecutableIsDeleted, loaded_executable_is_deleted);

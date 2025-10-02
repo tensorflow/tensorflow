@@ -594,6 +594,8 @@ tsl::Future<BackendInterface::Response> IfrtBackend::ProcessInternal(
       return tsl::Future<Response>(HandleCompileRequest(std::move(request)));
     case IfrtRequest::RequestCase::kLoadedExecutableMetadataRequest:
       return HandleLoadedExecutableMetadataRequest(std::move(request));
+    case IfrtRequest::RequestCase::kLoadedExecutableCostAnalysisRequest:
+      return HandleLoadedExecutableCostAnalysisRequest(std::move(request));
     case IfrtRequest::RequestCase::kLoadedExecutableExecuteRequest: {
       asr.emplace(
           request->loaded_executable_execute_request().result_array_handle(),
@@ -1622,6 +1624,32 @@ IfrtBackend::HandleLoadedExecutableMetadataRequest(
 
     return ifrt_resp;
   });
+}
+
+tsl::Future<BackendInterface::Response>
+IfrtBackend::HandleLoadedExecutableCostAnalysisRequest(
+    std::unique_ptr<IfrtRequest> request) {
+  absl::StatusOr<std::shared_ptr<LoadedExecutableWithInfo>> executable_info =
+      GetLoadedExecutable(request->loaded_executable_cost_analysis_request()
+                              .loaded_executable_handle());
+
+  if (!executable_info.ok()) {
+    return tsl::Future<BackendInterface::Response>(executable_info.status());
+  }
+
+  auto cost_analysis = executable_info->get()->executable->GetCostAnalysis();
+
+  std::unique_ptr<IfrtResponse> ifrt_resp =
+      NewIfrtResponse(request->request_metadata().op_id());
+
+  if (cost_analysis.ok()) {
+    *ifrt_resp->mutable_loaded_executable_cost_analysis_response()
+         ->mutable_attributes() = cost_analysis->ToProto();
+  } else {
+    *ifrt_resp->mutable_loaded_executable_cost_analysis_response()
+         ->mutable_status() = tsl::StatusToProto(cost_analysis.status());
+  }
+  return tsl::Future<BackendInterface::Response>(std::move(ifrt_resp));
 }
 
 absl::StatusOr<BackendInterface::Response>

@@ -212,6 +212,8 @@ class IfrtBackend final : public BackendInterface {
 
   tsl::Future<Response> HandleLoadedExecutableMetadataRequest(
       std::unique_ptr<IfrtRequest> request);
+  Future<Response> HandleLoadedExecutableCostAnalysisRequest(
+      std::unique_ptr<IfrtRequest> request);
   absl::StatusOr<Response> HandleLoadedExecutableExecuteRequest(
       ArrayStore::Reservation& asr, std::unique_ptr<IfrtRequest> request);
   absl::StatusOr<Response> HandleLoadedExecutableDeleteRequest(

@@ -369,7 +369,6 @@ LoadedExecutable::LoadedExecutable(
   }
 
   tsl::profiler::TraceMe traceme_ifrt_entrypoint(
-
       "IfrtProxyEntrypointLoadedExecutableCreate");
   // Asynchronously fetch shardings. Since users of `LoadedExecutable` typically
   // require sharding information to invoke the executable, it is beneficial to
@@ -620,7 +619,35 @@ LoadedExecutable::GetHloModules() const {
 
 absl::StatusOr<xla::ifrt::AttributeMap> LoadedExecutable::GetCostAnalysis()
     const {
-  return absl::UnimplementedError("Unimplemented");
+  if (rpc_helper_->protocol_version() <
+      protocol_version::kLoadedExecutableGetCostAnalysis) {
+    return absl::UnimplementedError(
+        "LoadedExecutable::GetCostAnalysis() is unimplemented by IFRT proxy");
+  }
+
+  absl::MutexLock l(cost_analysis_mu_);
+  if (!cost_analysis_response_.has_value()) {
+    auto req = std::make_unique<LoadedExecutableCostAnalysisRequest>();
+    req->set_loaded_executable_handle(handle_);
+
+    absl::StatusOr<std::shared_ptr<LoadedExecutableCostAnalysisResponse>>
+        response =
+            rpc_helper_->LoadedExecutableCostAnalysis(std::move(req)).Await();
+
+    if (!response.ok()) {
+      // Connection-related error, so log the error.
+      LOG(ERROR) << "LoadedExecutableCostAnalysis: Got " << response.status();
+      cost_analysis_response_ = response.status();
+    }
+    if (response.ok() && response.value()->has_attributes()) {
+      cost_analysis_response_ =
+          AttributeMap::FromProto(response.value()->attributes());
+    } else {
+      cost_analysis_response_ =
+          tsl::StatusFromProto(response.value()->status());
+    }
+  }
+  return *cost_analysis_response_;
 }
 
 absl::StatusOr<xla::ifrt::LoadedExecutable::ExecuteResult>

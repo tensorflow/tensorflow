@@ -331,7 +331,8 @@ int main(int argc, char** argv) {
       "*LoadedExecutableImplTest.Properties*:"
       // Incorrect deleted state of donated inputs.
       "*LoadedExecutableImplTest.Donation*:"
-      // Analysis methods are not implemented.
+      // GetHloModules and Analysis methods are not implemented.
+      "*LoadedExecutableImplTest.GetHloModules*:"
       "*LoadedExecutableImplTest.Analysis*:"
       // Serialization is not implemented.
       "*SerializeAndLoad*";

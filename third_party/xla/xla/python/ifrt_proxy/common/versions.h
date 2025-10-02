@@ -54,6 +54,9 @@ enum {
   // machine to by using the file system.
   kGrpcAllowLargeTransferOptimizationViaSharedDirectory = 17,
 
+  // kLoadedExecutableGetCostAnalysis implements GetCostAnalysis in Executable.
+  kLoadedExecutableGetCostAnalysis = 18,
+
   // kSentiel is used to derive kCurrent below. Keep this as the last value of
   // the enum.
   kSentiel,

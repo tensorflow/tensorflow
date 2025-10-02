@@ -97,7 +97,6 @@ ifrt_proxy_cc_test(
     ] + if_oss(["not_run:arm"]),  # TODO(b/394180263): reenable this.
     deps = [
         ":register_pjrt_cpu_for_ifrt_api_tests",  # buildcleaner: keep
-        "//xla/python/ifrt:test_util",
         "//xla/python/pjrt_ifrt:xla_executable_impl_test_lib",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest",

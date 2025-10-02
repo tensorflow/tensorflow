@@ -138,6 +138,9 @@ class RpcHelper {
 
   ResponseFuture<LoadedExecutableMetadataResponse> LoadedExecutableMetadata(
       std::unique_ptr<LoadedExecutableMetadataRequest> req);
+  ResponseFuture<LoadedExecutableCostAnalysisResponse>
+  LoadedExecutableCostAnalysis(
+      std::unique_ptr<LoadedExecutableCostAnalysisRequest> req);
   ResponseFuture<LoadedExecutableExecuteResponse> LoadedExecutableExecute(
       std::unique_ptr<LoadedExecutableExecuteRequest> req);
   ResponseFuture<LoadedExecutableDeleteResponse> LoadedExecutableDelete(
