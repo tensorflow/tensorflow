@@ -19,7 +19,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/strings/string_view.h"
-#include "xla/service/gpu/model/symbolic_tile.h"
+#include "xla/codegen/tiling/symbolic_tile.h"
 
 namespace xla {
 namespace gpu {

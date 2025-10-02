@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_SERVICE_GPU_MODEL_SYMBOLIC_TILE_H_
-#define XLA_SERVICE_GPU_MODEL_SYMBOLIC_TILE_H_
+#ifndef XLA_CODEGEN_TILING_SYMBOLIC_TILE_H_
+#define XLA_CODEGEN_TILING_SYMBOLIC_TILE_H_
 
 #include <cstddef>
 #include <cstdint>
@@ -27,11 +27,10 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/AffineMap.h"
-#include "xla/codegen/tiling/constraint_expression.h"
 #include "xla/hlo/analysis/indexing_map.h"
+#include "xla/codegen/tiling/constraint_expression.h"
 
 namespace xla {
-namespace gpu {
 
 // Tiling in the simpler case, when we don't have dynamic offsets (see the
 // general case later):
@@ -219,7 +218,6 @@ llvm::SmallVector<int64_t> EvaluateTileSizes(
 llvm::SmallVector<int64_t> EvaluateTileStrides(
     const SymbolicTile& symbolic_tile, absl::Span<int64_t const> parameters);
 
-}  // namespace gpu
 }  // namespace xla
 
-#endif  // XLA_SERVICE_GPU_MODEL_SYMBOLIC_TILE_H_
+#endif  // XLA_CODEGEN_TILING_SYMBOLIC_TILE_H_
