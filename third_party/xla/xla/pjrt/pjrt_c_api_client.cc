@@ -2839,6 +2839,33 @@ PJRT_Event* PjRtCApiBuffer::GetReadyEvent() {
 void PjRtCApiBuffer::MakePromiseTrackEvent() {
   CHECK(readiness_promise_ != nullptr);
   const PJRT_Api* api = pjrt_c_api();
+
+  // Check if device execution has finished via `PJRT_Event_IsReady`. If true,
+  // fetch the status with `PJRT_Event_Error()` and fulfill the promise
+  // immediately. This avoids unnecessary overhead for already completed events.
+  // Otherwise, register an asynchronous callback with
+  // `PJRT_Event_OnReady` to be notified when the event is ready.
+  PJRT_Event_IsReady_Args is_ready_args;
+  is_ready_args.struct_size = PJRT_Event_IsReady_Args_STRUCT_SIZE;
+  is_ready_args.extension_start = nullptr;
+  is_ready_args.event = GetReadyEvent();
+  std::unique_ptr<PJRT_Error, pjrt::PJRT_ErrorDeleter> is_ready_error{
+      api->PJRT_Event_IsReady(&is_ready_args), pjrt::MakeErrorDeleter(api)};
+  if (is_ready_error != nullptr) {
+    readiness_promise_->Set(pjrt::PjrtErrorToStatus(is_ready_error.get(), api));
+    return;
+  }
+  if (is_ready_args.is_ready) {
+    PJRT_Event_Error_Args error_args;
+    error_args.struct_size = PJRT_Event_Error_Args_STRUCT_SIZE;
+    error_args.extension_start = nullptr;
+    error_args.event = is_ready_args.event;
+    PJRT_Error* error = api->PJRT_Event_Error(&error_args);
+    readiness_promise_->Set(pjrt::PjrtErrorToStatus(error, api));
+    pjrt::MakeErrorDeleter(api)(error);
+    return;
+  }
+
   PJRT_Event_OnReady_Args args;
   args.struct_size = PJRT_Event_OnReady_Args_STRUCT_SIZE;
   args.extension_start = nullptr;
