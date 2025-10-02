@@ -15,13 +15,18 @@ limitations under the License.
 
 #include "tensorflow/core/distributed_runtime/worker_cache_partial.h"
 
+#include <memory>
+
+#include "absl/status/status.h"
 #include "tensorflow/core/common_runtime/process_util.h"
 #include "tensorflow/core/distributed_runtime/worker_interface.h"
+#include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/protobuf/worker.pb.h"
 #include "tensorflow/core/util/device_name_utils.h"
 
 namespace tensorflow {
