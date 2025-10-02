@@ -16,9 +16,9 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_RUNTIME_COMMAND_BUFFER_CONVERSION_PASS_H_
 #define XLA_BACKENDS_GPU_RUNTIME_COMMAND_BUFFER_CONVERSION_PASS_H_
 
-#include <memory>
 #include <string>
 
+#include "absl/base/nullability.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -40,7 +40,8 @@ class CommandBufferConversionPass : public ThunkPassInterface {
 
   absl::StatusOr<bool> Run(SequentialThunk* root_thunk,
                            const DebugOptions& debug_options,
-                           const se::DeviceDescription& device_info) override;
+                           const se::DeviceDescription& device_info,
+                           ThunkPassBufferAllocator& allocator) override;
   struct CommandBufferConfig {
     // DebugOptions control which commands are enabled. Long term we want to
     // remove that flag and enable all supported commands by default.

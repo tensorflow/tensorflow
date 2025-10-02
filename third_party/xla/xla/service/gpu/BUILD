@@ -635,6 +635,7 @@ cc_library(
         "//xla/backends/gpu/runtime:nvshmem_collective_thunk",
         "//xla/backends/gpu/runtime:sequential_thunk",
         "//xla/backends/gpu/runtime:thunk",
+        "//xla/backends/gpu/runtime:thunk_checksum_tracing_pass",
         "//xla/backends/gpu/runtime:thunk_pass_pipeline",
         "//xla/hlo/ir:hlo",
         "//xla/service:buffer_assignment",

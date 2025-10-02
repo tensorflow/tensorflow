@@ -40,6 +40,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/custom_call_thunk.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/backends/gpu/runtime/thunk_pass_pipeline.h"
 #include "xla/backends/gpu/runtime/while_thunk.h"
 #include "xla/ffi/ffi_api.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
@@ -397,7 +398,8 @@ absl::Status FlushCommandBuffer(
 
 absl::StatusOr<bool> CommandBufferConversionPass::Run(
     SequentialThunk* root_thunk, const DebugOptions& debug_options,
-    const se::DeviceDescription& device_info) {
+    const se::DeviceDescription& device_info,
+    ThunkPassBufferAllocator& allocator) {
   tsl::profiler::TraceMe traceme("CommandBufferConversionPass");
 
   CommandBufferConfig config =
@@ -452,9 +454,9 @@ absl::StatusOr<bool> CommandBufferConversionPass::Run(
       // If a `WhileThunk` itself is not eligible for conversion into a
       // command buffer, we attempt to convert thunks within its body
       auto while_thunk = static_cast<WhileThunk*>(thunk.get());
-      TF_ASSIGN_OR_RETURN(
-          bool changed_in_body,
-          Run(while_thunk->body_thunk_sequence(), debug_options, device_info));
+      TF_ASSIGN_OR_RETURN(bool changed_in_body,
+                          Run(while_thunk->body_thunk_sequence(), debug_options,
+                              device_info, allocator));
       changed |= changed_in_body;
     } else if (thunk->kind() == Thunk::kConditional) {
       // If a `ConditionalThunk` itself is not eligible for conversion into a
@@ -463,7 +465,7 @@ absl::StatusOr<bool> CommandBufferConversionPass::Run(
       for (auto& branch_thunk : conditional_thunk->branch_thunks()) {
         TF_ASSIGN_OR_RETURN(
             bool changed_in_branch,
-            Run(branch_thunk.get(), debug_options, device_info));
+            Run(branch_thunk.get(), debug_options, device_info, allocator));
         changed |= changed_in_branch;
       }
     }

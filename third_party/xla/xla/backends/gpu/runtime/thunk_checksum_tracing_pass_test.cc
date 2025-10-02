@@ -13,19 +13,18 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/backends/gpu/runtime/thunk_pass_pipeline.h"
+#include "xla/backends/gpu/runtime/thunk_checksum_tracing_pass.h"
 
 #include <cstdint>
 #include <memory>
 #include <vector>
 
 #include <gtest/gtest.h>
-#include "absl/base/nullability.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/backends/gpu/runtime/thunk_pass_pipeline.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tsl/platform/statusor.h"
@@ -34,44 +33,35 @@ namespace xla {
 namespace gpu {
 namespace {
 
-// A simple ThunkPass that adds a new thunk to the root thunk.
-class TestPass : public ThunkPassInterface {
- public:
-  absl::string_view name() const override { return "test-pass"; }
-  absl::StatusOr<bool> Run(SequentialThunk* root_thunk,
-                           const DebugOptions& debug_options,
-                           const se::DeviceDescription& device_info,
-                           ThunkPassBufferAllocator& /*allocator*/) override {
-    root_thunk->thunks().push_back(std::make_unique<SequentialThunk>(
-        Thunk::ThunkInfo(), std::vector<std::unique_ptr<Thunk>>()));
-    return true;
-  }
-};
-
 class FakeThunkPassBufferAllocator : public ThunkPassBufferAllocator {
-  absl::StatusOr<BufferAllocation* absl_nonnull> NewEmptyAllocation(
-      int64_t size) override {
-    return absl::UnimplementedError("NewEmptyAllocation is not implemented.");
+ public:
+  absl::StatusOr<BufferAllocation*> NewEmptyAllocation(int64_t size) override {
+    if (CreatedAlloc()) {
+      return absl::InvalidArgumentError("Expected only one allocation");
+    }
+    alloc_ = std::make_unique<BufferAllocation>(0, size, 0);
+    return alloc_.get();
   }
+
+  bool CreatedAlloc() { return alloc_ != nullptr; }
+
+ private:
+  std::unique_ptr<BufferAllocation> alloc_;
 };
 
-TEST(ThunkPassPipelineTest, PipelineRunsPass) {
-  ThunkPassPipeline pipeline("test-pipeline");
-  pipeline.AddPass(std::make_unique<TestPass>());
-
+TEST(ThunkChecksumTracingPassTest, CreatesLogAlloc) {
+  ThunkChecksumTracingPass pass;
   auto root_thunk = std::make_unique<SequentialThunk>(
       Thunk::ThunkInfo(), std::vector<std::unique_ptr<Thunk>>());
   DebugOptions debug_options;
   se::DeviceDescription device_info;
   FakeThunkPassBufferAllocator allocator;
 
-  EXPECT_EQ(root_thunk->thunks().size(), 0);
-
   TF_ASSERT_OK_AND_ASSIGN(
       bool changed,
-      pipeline.Run(root_thunk.get(), debug_options, device_info, allocator));
-  EXPECT_TRUE(changed);
-  EXPECT_EQ(root_thunk->thunks().size(), 1);
+      pass.Run(root_thunk.get(), debug_options, device_info, allocator));
+  EXPECT_FALSE(changed);
+  EXPECT_TRUE(allocator.CreatedAlloc());
 }
 
 }  // namespace

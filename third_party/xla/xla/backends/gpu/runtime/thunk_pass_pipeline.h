@@ -16,26 +16,41 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_RUNTIME_THUNK_PASS_PIPELINE_H_
 #define XLA_BACKENDS_GPU_RUNTIME_THUNK_PASS_PIPELINE_H_
 
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/base/nullability.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
+#include "xla/service/buffer_assignment.h"
 #include "xla/stream_executor/device_description.h"
 
 namespace xla {
 namespace gpu {
 
+class ThunkPassBufferAllocator {
+ public:
+  virtual ~ThunkPassBufferAllocator() = default;
+
+  // Creates a new allocation of the provided size.
+  // The ownership of the returned pointer stays with the
+  // ThunkPassBufferAllocator object.
+  virtual absl::StatusOr<BufferAllocation* absl_nonnull> NewEmptyAllocation(
+      int64_t size) = 0;
+};
+
 class ThunkPassInterface {
  public:
   virtual ~ThunkPassInterface() = default;
 
-  virtual absl::StatusOr<bool> Run(
-      SequentialThunk* root_thunk, const DebugOptions& debug_options,
-      const se::DeviceDescription& device_info) = 0;
+  virtual absl::StatusOr<bool> Run(SequentialThunk* root_thunk,
+                                   const DebugOptions& debug_options,
+                                   const se::DeviceDescription& device_info,
+                                   ThunkPassBufferAllocator& allocator) = 0;
 
   virtual absl::string_view name() const = 0;
 };
@@ -54,7 +69,8 @@ class ThunkPassPipeline : public ThunkPassInterface {
   // Returns true if any pass changed the thunk tree.
   absl::StatusOr<bool> Run(SequentialThunk* root_thunk,
                            const DebugOptions& debug_options,
-                           const se::DeviceDescription& device_info) override;
+                           const se::DeviceDescription& device_info,
+                           ThunkPassBufferAllocator& allocator) override;
 
  private:
   std::string name_;

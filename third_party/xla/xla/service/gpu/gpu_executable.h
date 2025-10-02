@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_SERVICE_GPU_GPU_EXECUTABLE_H_
 
 #include <cstdint>
+#include <deque>
 #include <memory>
 #include <optional>
 #include <string>
@@ -112,6 +113,10 @@ class GpuExecutable : public Executable {
     se::DeviceDescription device_description;
     std::unique_ptr<HloModule> debug_module = nullptr;
     bool enable_debug_info_manager = true;
+    // TODO: b/444183764 - Guard by a flag instead of param.
+    // For now the pass is so experimental it's not supposed to be possible
+    // to enable.
+    bool enable_experimental_checksum_pass = false;
   };
 
   static absl::StatusOr<std::unique_ptr<GpuExecutable>> Create(Params params);
@@ -211,7 +216,8 @@ class GpuExecutable : public Executable {
 
  private:
   // Use GpuExecutable::Create() to create an instance.
-  explicit GpuExecutable(Params params);
+  explicit GpuExecutable(Params params,
+                         std::deque<BufferAllocation> thunk_pass_allocations);
 
   // GpuExecutable check with either AMD's ISA version, or Nvidia's major minor
   // version for compute capability, depending on the hardware.
@@ -289,6 +295,11 @@ class GpuExecutable : public Executable {
   //
   // This object is also used for dumping debug info.
   std::shared_ptr<const xla::BufferAssignment> buffer_assignment_;
+
+  // Extra allocations added by thunk passes outside of the normal buffer
+  // assignment process.
+  // std::deque is used to ensure pointer stability.
+  const std::deque<BufferAllocation> thunk_pass_allocations_;
 
   // Backend specific aliasing information whether operands can/should share the
   // buffer with the user.

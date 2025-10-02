@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/gpu/gpu_executable.h"
 
+#include <cstddef>
 #include <memory>
 #include <optional>
 #include <string>
@@ -294,6 +295,29 @@ TEST(GpuExecutableTest, MlirAllocationsArePreferred) {
   // Expect that the allocations from mlir_allocations are returned.
   EXPECT_THAT(executable->GetAllocations(),
               ElementsAre(expected_ptr0, expected_ptr1));
+}
+
+TEST(GpuExecutableTest, ThunkChecksumPassAddsAllocation) {
+  GpuExecutable::Params params_without_pass;
+  params_without_pass.executable =
+      std::make_unique<SequentialThunk>(Thunk::ThunkInfo{}, ThunkSequence{});
+  params_without_pass.enable_experimental_checksum_pass = false;
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<GpuExecutable> executable_without_pass,
+      GpuExecutable::Create(std::move(params_without_pass)));
+  size_t allocations_without_pass =
+      executable_without_pass->GetAllocations().size();
+
+  GpuExecutable::Params params_with_pass;
+  params_with_pass.executable =
+      std::make_unique<SequentialThunk>(Thunk::ThunkInfo{}, ThunkSequence{});
+  params_with_pass.enable_experimental_checksum_pass = true;
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<GpuExecutable> executable_with_pass,
+                          GpuExecutable::Create(std::move(params_with_pass)));
+  EXPECT_EQ(executable_with_pass->GetAllocations().size(),
+            allocations_without_pass + 1);
 }
 
 }  // namespace

@@ -13,32 +13,32 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/backends/gpu/runtime/thunk_pass_pipeline.h"
+#ifndef XLA_BACKENDS_GPU_RUNTIME_THUNK_CHECKSUM_TRACING_PASS_H_
+#define XLA_BACKENDS_GPU_RUNTIME_THUNK_CHECKSUM_TRACING_PASS_H_
 
-#include <memory>
-
-#include "absl/log/log.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
+#include "xla/backends/gpu/runtime/thunk_pass_pipeline.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
 
-absl::StatusOr<bool> ThunkPassPipeline::Run(
-    SequentialThunk* root_thunk, const DebugOptions& debug_options,
-    const se::DeviceDescription& device_info,
-    ThunkPassBufferAllocator& allocator) {
-  bool changed = false;
-  for (const auto& pass : passes_) {
-    VLOG(1) << "Running ThunkPass: " << pass->name();
-    TF_ASSIGN_OR_RETURN(bool pass_changed, pass->Run(root_thunk, debug_options,
-                                                     device_info, allocator));
-    changed |= pass_changed;
-  }
-  return changed;
-}
+// Adds checksum tracing to thunks.
+class ThunkChecksumTracingPass : public ThunkPassInterface {
+ public:
+  ThunkChecksumTracingPass() = default;
+
+  absl::string_view name() const override { return "thunk-checksum-tracing"; }
+
+  absl::StatusOr<bool> Run(SequentialThunk* root_thunk,
+                           const DebugOptions& debug_options,
+                           const se::DeviceDescription& device_info,
+                           ThunkPassBufferAllocator& allocator) override;
+};
 
 }  // namespace gpu
 }  // namespace xla
+
+#endif  // XLA_BACKENDS_GPU_RUNTIME_THUNK_CHECKSUM_TRACING_PASS_H_
