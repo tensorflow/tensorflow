@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_TPU_KERNELS_TPU_EXECUTE_OP_OPTIONS_H_
 #define TENSORFLOW_CORE_TPU_KERNELS_TPU_EXECUTE_OP_OPTIONS_H_
 
+#include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/platform/status.h"
 
