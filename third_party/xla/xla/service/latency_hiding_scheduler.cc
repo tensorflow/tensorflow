@@ -3669,7 +3669,6 @@ absl::StatusOr<bool> LatencyHidingScheduler::Run(
               << scheduler_core_->GetMemoryLimit()
               << ". Setting the new limit to "
               << static_cast<uint64_t>(scheduler_core_->GetMemoryLimit() * 0.9);
-    TF_RETURN_IF_ERROR(scheduler_core_->InitializeScheduler(module));
     SchedulerCore::RetryState retry_state = {iter + 1,
                                              scheduler_core_->GetMemoryLimit(),
                                              scheduler_core_->GetMemoryPeak()};
