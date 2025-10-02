@@ -340,6 +340,16 @@ absl::Status ApplyConfigToCudnnCustomCall(HloInstruction& instr,
 
 absl::StatusOr<std::unique_ptr<BackendConfig>> CudnnBackend::GetDefaultConfig(
     const HloInstruction& instr) {
+  if (IsCustomCallToDnnConvolution(instr)) {
+    // If the instruction is a custom call to a DnnConvolution, we can return
+    // the default config.
+    CudnnBackendConfig config;
+    config.set_algo_id(-1);
+    auto any = std::make_unique<google::protobuf::Any>();
+    any->PackFrom(config);
+    return any;
+  }
+
   // Default config would require stream_executor to check if the fusion is
   // supported by Cudnn.
   return absl::InvalidArgumentError(
@@ -354,7 +364,7 @@ CudnnBackend::GetSupportedConfigs(const HloInstruction& instr) {
   if (instr.opcode() == HloOpcode::kFusion) {
     return GetCudnnFusionConfigs(instr, stream_executor());
   }
-  if (instr.opcode() == HloOpcode::kCustomCall) {
+  if (IsCustomCallToDnnConvolution(instr)) {
     auto custom_call_instr = Cast<HloCustomCallInstruction>(&instr);
     return GetConvolutionCustomCallConfigs(custom_call_instr,
                                            stream_executor());

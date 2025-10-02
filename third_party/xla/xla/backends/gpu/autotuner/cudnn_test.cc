@@ -174,6 +174,18 @@ TEST_F(CudnnBackendTest, GetDefaultConfigFromCudnnFusionFails) {
               absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
+TEST_F(CudnnBackendTest, GetDefaultConfigFromCudnnCustomCall) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                          ParseAndReturnVerifiedModule(kCudnnCustomCallHlo));
+  absl::StatusOr<std::unique_ptr<BackendConfig>> config =
+      backend_.GetDefaultConfig(
+          (*hlo_module->entry_computation()->root_instruction()->operand(0)));
+  TF_ASSERT_OK(config);
+  CudnnBackendConfig algorithm_config;
+  ASSERT_TRUE(config->get()->UnpackTo(&algorithm_config));
+  EXPECT_EQ(algorithm_config.algo_id(), -1);
+}
+
 TEST_F(CudnnBackendTest, ApplyConfigToCudnnFusion) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
                           ParseAndReturnVerifiedModule(kCudnnFusionHlo));
