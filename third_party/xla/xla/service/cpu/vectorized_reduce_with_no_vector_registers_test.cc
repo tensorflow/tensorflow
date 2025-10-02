@@ -92,8 +92,7 @@ ENTRY main {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
                           ParseAndReturnVerifiedModule(text));
   cpu::CpuCompiler cpu_compiler;
-  auto module_group = std::make_unique<HloModuleGroup>("group");
-  module_group->push_back(std::move(hlo_module));
+  auto module_group = std::make_unique<HloModuleGroup>(std::move(hlo_module));
 
   // Check that the GetTargetVectorRegisterByteSize is itself working.
   TF_ASSERT_OK_AND_ASSIGN(
