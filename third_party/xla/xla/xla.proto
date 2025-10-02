@@ -833,7 +833,7 @@ message DebugOptions {
   optional ShapeChecks xla_gpu_shape_checks = 170;
 
   // If true, shards the autotuning work between participating compiler
-  // processes (typically in multi-host setups) and joins the results when
+  // processes (typically multi-host setups) and joins the results when
   // it's done.
   optional bool xla_gpu_shard_autotuning = 304;
 
@@ -876,6 +876,11 @@ message DebugOptions {
   // Internal testing flag to switch RaggedAllToAllDecomposer on or off.
   optional bool xla_gpu_unsupported_enable_ragged_all_to_all_decomposer = 350;
 
+  // Internal testing flag to switch RaggedAllToAllMultiHostDecomposer on or
+  // off.
+  optional bool
+      xla_gpu_unsupported_enable_ragged_all_to_all_multi_host_decomposer = 415;
+
   // Internal debug/testing flag to switch Triton GEMM fusions on or off.
   optional bool xla_gpu_unsupported_enable_triton_gemm = 322;
 
@@ -890,6 +895,12 @@ message DebugOptions {
   // emitter.
   repeated GenericTritonEmitterFeature
       xla_gpu_unsupported_generic_triton_emitter_features = 398;
+
+  // Internal debug/testing flag to override the number of devices in the fast
+  // interconnect domain. Default is 0, which means the number of devices is not
+  // overridden.
+  optional int64 xla_gpu_unsupported_override_fast_interconnect_slice_size =
+      416;
 
   // Internal testing flag to enable one-shot kernel for single-host
   // all-reduce operations.
@@ -1340,7 +1351,7 @@ message DebugOptions {
   // Note: when adding a new flag, please add it to one of the hardware-specific
   // or hardware-agnostic sections at the top of this proto message.
 
-  // Next id: 415
+  // Next id: 417
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

@@ -2649,14 +2649,12 @@ enum class RaggedAllToAllImplType {
   kOneShot,
 };
 
-class RaggedAllToAllTest : public CollectiveOpsWithFlagsBase,
-                           public ::testing::WithParamInterface<
-                               std::tuple<bool, RaggedAllToAllImplType>> {
+class RaggedAllToAllTestBase : public CollectiveOpsWithFlagsBase {
  public:
-  RaggedAllToAllTest()
+  RaggedAllToAllTestBase(bool enable_async, RaggedAllToAllImplType impl_type)
       : CollectiveOpsWithFlagsBase(
-            std::get<0>(GetParam()),
-            std::get<1>(GetParam()) == RaggedAllToAllImplType::kMemcpy) {}
+            enable_async, impl_type == RaggedAllToAllImplType::kMemcpy),
+        impl_type_(impl_type) {}
 
   // Creates random test data for a ragged-all-to-all.
   //
@@ -2813,9 +2811,9 @@ class RaggedAllToAllTest : public CollectiveOpsWithFlagsBase,
   DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions opts = CollectiveOpsWithFlagsBase::GetDebugOptionsForTest();
     opts.set_xla_gpu_unsupported_enable_ragged_all_to_all_decomposer(
-        std::get<1>(GetParam()) == RaggedAllToAllImplType::kDecomposer);
+        impl_type_ == RaggedAllToAllImplType::kDecomposer);
     opts.set_xla_gpu_unsupported_use_ragged_all_to_all_one_shot_kernel(
-        std::get<1>(GetParam()) == RaggedAllToAllImplType::kOneShot);
+        impl_type_ == RaggedAllToAllImplType::kOneShot);
     return opts;
   }
 
@@ -2901,6 +2899,17 @@ class RaggedAllToAllTest : public CollectiveOpsWithFlagsBase,
   std::vector<Literal> output_sizes_;
 
   Literal output_init_;
+
+  RaggedAllToAllImplType impl_type_;
+};
+
+class RaggedAllToAllTest : public RaggedAllToAllTestBase,
+                           public ::testing::WithParamInterface<
+                               std::tuple<bool, RaggedAllToAllImplType>> {
+ public:
+  RaggedAllToAllTest()
+      : RaggedAllToAllTestBase(std::get<0>(GetParam()),
+                               std::get<1>(GetParam())) {}
 };
 
 TEST_P(RaggedAllToAllTest, RaggedAllToAll_2GPUs) {
@@ -3432,18 +3441,129 @@ std::string RaggedAllToAllImplTypeName(
   }
 }
 
-INSTANTIATE_TEST_SUITE_P(
-    RaggedAllToAllTest, RaggedAllToAllTest,
-    ::testing::Combine(::testing::Bool(),
-                       ::testing::Values(RaggedAllToAllImplType::kNccl,
-                                         RaggedAllToAllImplType::kMemcpy,
-                                         RaggedAllToAllImplType::kDecomposer,
-                                         RaggedAllToAllImplType::kOneShot)),
-    [](const ::testing::TestParamInfo<std::tuple<bool, RaggedAllToAllImplType>>&
-           info) {
-      return absl::StrCat(GetAsyncTestName(std::get<0>(info.param)), "_",
-                          RaggedAllToAllImplTypeName(std::get<1>(info.param)));
-    });
+class RaggedAllToAllMultiHostDecomposerTest : public RaggedAllToAllTestBase {
+ public:
+  RaggedAllToAllMultiHostDecomposerTest()
+      : RaggedAllToAllTestBase(/*enable_async=*/false,
+                               /*impl_type=*/RaggedAllToAllImplType::kOneShot) {
+  }
+
+ protected:
+  DebugOptions GetDebugOptionsForTest() const override {
+    DebugOptions debug_options =
+        RaggedAllToAllTestBase::GetDebugOptionsForTest();
+    debug_options
+        .set_xla_gpu_unsupported_enable_ragged_all_to_all_multi_host_decomposer(
+            true);
+    return debug_options;
+  }
+};
+
+TEST_F(RaggedAllToAllMultiHostDecomposerTest, RaggedAllToAll_2GPUs_SliceSize1) {
+  absl::string_view kModuleReplicatedStr = R"(
+  HloModule module, num_partitions=1
+
+  ENTRY entry {
+    input = f32[512,5,32] parameter(0)
+    output = f32[512,5,32] parameter(1)
+    input_offsets = s32[32] parameter(2)
+    send_sizes = s32[32] parameter(3)
+    output_offsets = s32[32] parameter(4)
+    recv_sizes = s32[32] parameter(5)
+    ROOT ra2a = f32[512,5,32] ragged-all-to-all(input, output,
+      input_offsets, send_sizes, output_offsets, recv_sizes), 
+      replica_groups={{0,1}}
+  })";
+
+  const int64_t kNumReplicas = 2;
+  const int64_t kNumPartitions = 1;
+  const int64_t kNumUpdatesPerReplica = 16;
+  if (test_runner().device_count() < kNumReplicas * kNumPartitions) {
+    GTEST_SKIP() << "Test requires at least " << kNumReplicas * kNumPartitions
+                 << " devices (" << test_runner().device_count()
+                 << " available)";
+  }
+
+  HloModuleConfig config =
+      GetModuleConfigForTest(/*replica_count=*/kNumReplicas * kNumPartitions);
+
+  config.mutable_debug_options()
+      .set_xla_gpu_unsupported_override_fast_interconnect_slice_size(1);
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module, ParseAndReturnVerifiedModule(kModuleReplicatedStr, config));
+
+  Array<int64_t> input_sizes(
+      {kNumReplicas, kNumReplicas, kNumUpdatesPerReplica});
+  input_sizes.FillRandomUniform(0, 10);
+
+  TF_ASSERT_OK(CreateRandomTestData(module.get(), input_sizes));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::vector<Literal> results,
+      HloTestBase::ExecuteReplicated(std::move(module), GetInputLiteralPtrs(),
+                                     /*num_replicas=*/kNumReplicas,
+                                     /*run_hlo_passes=*/true,
+                                     /*device_assignment=*/nullptr));
+  ASSERT_EQ(results.size(), kNumReplicas);
+
+  for (int i = 0; i < kNumReplicas; ++i) {
+    EXPECT_TRUE(LiteralTestUtil::Equal(expected_outputs_[i], results[i]));
+  }
+}
+
+TEST_F(RaggedAllToAllMultiHostDecomposerTest, RaggedAllToAll_8GPUs_SliceSize4) {
+  absl::string_view kModuleReplicatedStr = R"(
+  HloModule module, num_partitions=1
+
+  ENTRY entry {
+    input = f32[512,5,32] parameter(0)
+    output = f32[512,5,32] parameter(1)
+    input_offsets = s32[32] parameter(2)
+    send_sizes = s32[32] parameter(3)
+    output_offsets = s32[32] parameter(4)
+    recv_sizes = s32[32] parameter(5)
+    ROOT ra2a = f32[512,5,32] ragged-all-to-all(input, output,
+      input_offsets, send_sizes, output_offsets, recv_sizes), 
+      replica_groups={{0,1,2,3,4,5,6,7}}
+  })";
+
+  const int64_t kNumReplicas = 8;
+  const int64_t kNumPartitions = 1;
+  const int64_t kNumUpdatesPerReplica = 4;
+  if (test_runner().device_count() < kNumReplicas * kNumPartitions) {
+    GTEST_SKIP() << "Test requires at least " << kNumReplicas * kNumPartitions
+                 << " devices (" << test_runner().device_count()
+                 << " available)";
+  }
+
+  HloModuleConfig config =
+      GetModuleConfigForTest(/*replica_count=*/kNumReplicas * kNumPartitions);
+
+  config.mutable_debug_options()
+      .set_xla_gpu_unsupported_override_fast_interconnect_slice_size(4);
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module, ParseAndReturnVerifiedModule(kModuleReplicatedStr, config));
+
+  Array<int64_t> input_sizes(
+      {kNumReplicas, kNumReplicas, kNumUpdatesPerReplica});
+  input_sizes.FillRandomUniform(0, 10);
+
+  TF_ASSERT_OK(CreateRandomTestData(module.get(), input_sizes));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::vector<Literal> results,
+      HloTestBase::ExecuteReplicated(std::move(module), GetInputLiteralPtrs(),
+                                     /*num_replicas=*/kNumReplicas,
+                                     /*run_hlo_passes=*/true,
+                                     /*device_assignment=*/nullptr));
+  ASSERT_EQ(results.size(), kNumReplicas);
+
+  for (int i = 0; i < kNumReplicas; ++i) {
+    EXPECT_TRUE(LiteralTestUtil::Equal(expected_outputs_[i], results[i]));
+  }
+}
 
 TEST_F(CollectiveOpsTestE2E, MemcpyP2pWhileLoopCorrectness) {
   absl::string_view hlo_string = R"(

@@ -1654,6 +1654,7 @@ cc_library(
         "//xla/service/gpu/transforms:nest_gemm_fusion",
         "//xla/service/gpu/transforms:ragged_all_to_all_canonicalizer",
         "//xla/service/gpu/transforms:ragged_all_to_all_decomposer",
+        "//xla/service/gpu/transforms:ragged_all_to_all_multi_host_decomposer",
         "//xla/service/gpu/transforms:reduce_scatter_creator",
         "//xla/service/gpu/transforms:reduction_degenerate_dim_remover",
         "//xla/service/gpu/transforms:reduction_dimension_grouper",
