@@ -18,6 +18,7 @@
 #include <cstdint>
 #include <functional>
 #include <optional>
+#include <ostream>
 #include <sstream>
 #include <string>
 #include <utility>
@@ -27,6 +28,7 @@
 #include "absl/container/flat_hash_set.h"
 #include "absl/functional/function_ref.h"
 #include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
@@ -1507,6 +1509,7 @@ std::string PrintRepetitiveDiffPatterns(
         return a_diff_size > b_diff_size;
       });
   std::string computation_group_list;
+  LOG(INFO) << "Found " << sorted_diff_patterns.size() << " patterns.";
   for (const ComputationDiffPattern& diff_pattern : sorted_diff_patterns) {
     absl::StrAppend(
         &computation_group_list,
@@ -1520,8 +1523,8 @@ std::string PrintRepetitiveDiffPatterns(
 void RenderHtml(const DiffResult& diff_result, const DiffSummary& diff_summary,
                 GraphUrlGenerator* url_generator,
                 OpMetricGetter* left_op_metric_getter,
-                OpMetricGetter* right_op_metric_getter,
-                std::ostringstream& out) {
+                OpMetricGetter* right_op_metric_getter, std::ostream& out) {
+  LOG(INFO) << "Starting HTML generation...";
   const absl::flat_hash_set<HloOpcode> ignored_opcodes(kIgnoredOpcodes.begin(),
                                                        kIgnoredOpcodes.end());
 
@@ -1541,6 +1544,7 @@ void RenderHtml(const DiffResult& diff_result, const DiffSummary& diff_summary,
 
   // Print profile metrics diff
   if (left_op_metric_getter != nullptr && right_op_metric_getter != nullptr) {
+    LOG(INFO) << "Printing profile metrics diff...";
     out << PrintSectionWithHeader(
         "XProf Op Metrics Diff by Instructions (Ordered by absolute execution "
         "time difference in descending order)",
@@ -1567,16 +1571,20 @@ void RenderHtml(const DiffResult& diff_result, const DiffSummary& diff_summary,
                              filtered_diff_result.unchanged_instructions,
                              *left_op_metric_getter, *right_op_metric_getter,
                              url_generator))));
+    LOG(INFO) << "Finished printing profile metrics diff.";
   }
 
   // Print repetitive computation groups
+  LOG(INFO) << "Printing repetitive computation groups...";
   out << PrintSectionWithHeader(
       "Diffs grouped by computation (Ordered by # of different instructions) " +
           PrintButton("toggleButton", "Hide Unchanged Instructions"),
       PrintRepetitiveDiffPatterns(diff_summary.computation_diff_patterns,
                                   span_attributes, url_generator));
+  LOG(INFO) << "Finished printing repetitive computation groups.";
 
   // Print full diff results
+  LOG(INFO) << "Printing full diff results...";
   out << PrintSectionWithHeader(
       "Full Diff Results",
       absl::StrCat(
@@ -1601,10 +1609,12 @@ void RenderHtml(const DiffResult& diff_result, const DiffSummary& diff_summary,
                               filtered_diff_result.changed_instructions.size()),
               PrintChangedInstructions(
                   filtered_diff_result.changed_instructions, url_generator))));
+  LOG(INFO) << "Finished printing full diff results.";
 
   out << PrintSystemMessagePlaceholder();
   out << PrintJavascriptForHoverEvent();
   out << PrintJavascriptForToggleButton();
+  LOG(INFO) << "HTML generation finished.";
 }
 
 }  // namespace hlo_diff

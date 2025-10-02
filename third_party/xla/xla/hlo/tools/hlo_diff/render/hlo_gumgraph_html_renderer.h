@@ -17,7 +17,7 @@
 #ifndef XLA_HLO_TOOLS_HLO_DIFF_RENDER_HLO_GUMGRAPH_HTML_RENDERER_H_
 #define XLA_HLO_TOOLS_HLO_DIFF_RENDER_HLO_GUMGRAPH_HTML_RENDERER_H_
 
-#include <sstream>
+#include <ostream>
 
 #include "xla/hlo/tools/hlo_diff/hlo_diff_result.h"
 #include "xla/hlo/tools/hlo_diff/hlo_diff_summary.h"
@@ -33,19 +33,16 @@ namespace hlo_diff {
 void RenderHtml(const DiffResult& diff_result, const DiffSummary& diff_summary,
                 GraphUrlGenerator* url_generator,
                 OpMetricGetter* left_op_metric_getter,
-                OpMetricGetter* right_op_metric_getter,
-                std::ostringstream& out);
+                OpMetricGetter* right_op_metric_getter, std::ostream& out);
 inline void RenderHtml(const DiffResult& diff_result,
                        const DiffSummary& diff_summary,
-                       GraphUrlGenerator* url_generator,
-                       std::ostringstream& out) {
+                       GraphUrlGenerator* url_generator, std::ostream& out) {
   RenderHtml(diff_result, diff_summary, url_generator,
              /*left_op_metric_getter=*/nullptr,
              /*right_op_metric_getter=*/nullptr, out);
 }
 inline void RenderHtml(const DiffResult& diff_result,
-                       const DiffSummary& diff_summary,
-                       std::ostringstream& out) {
+                       const DiffSummary& diff_summary, std::ostream& out) {
   RenderHtml(diff_result, diff_summary, /*url_generator=*/nullptr,
              /*left_op_metric_getter=*/nullptr,
              /*right_op_metric_getter=*/nullptr, out);
