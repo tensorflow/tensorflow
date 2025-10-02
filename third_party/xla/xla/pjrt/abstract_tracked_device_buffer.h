@@ -157,7 +157,7 @@ class CommonPjRtBuffer : public PjRtBuffer {
     };
 
     ~ScopedHold();
-    ScopedHold(ScopedHold&& other);
+    ScopedHold(ScopedHold&& other) noexcept;
     ScopedHold(const ScopedHold&) = delete;
     ScopedHold& operator=(const ScopedHold&) = delete;
 
