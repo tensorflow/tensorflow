@@ -174,6 +174,7 @@ cc_library(
         ":all_gather_thunk",
         ":all_reduce_thunk",
         ":all_to_all_thunk",
+        ":collective_broadcast_thunk",
         ":collective_thunk",
         ":command_buffer_cmd",
         ":conditional_thunk",
