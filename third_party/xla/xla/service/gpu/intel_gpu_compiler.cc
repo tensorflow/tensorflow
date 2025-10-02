@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "xla/service/gpu/intel_gpu_compiler.h"
 
+#include "xla/debug_options_flags.h"
+#include "xla/service/dump.h"
+#include "xla/service/gpu/llvm_gpu_backend/spirv_backend.h"
 #include "xla/service/gpu/target_constants.h"
 #include "xla/stream_executor/sycl/sycl_platform_id.h"
 
@@ -39,13 +42,28 @@ IntelGpuCompiler::CompileTargetBinary(
     const stream_executor::DeviceDescription& device_description,
     bool relocatable, const HloModule* debug_module,
     const CompileOptions& options, std::optional<int> shard_number) {
-  // Note: this is a stub.
-  return BackendCompileResult{};
+  TF_ASSIGN_OR_RETURN(
+      auto spirv_str,
+      spirv::CompileToSPIRV(llvm_module,
+                            device_description.gpu_compute_capability(),
+                            module_config.debug_options()));
+  if (DumpingEnabledForHloModule(debug_module ? debug_module->name() : "",
+                                 module_config.debug_options())) {
+    if (debug_module) {
+      DumpToFileInDirOrStdout(*debug_module, "", "spv", spirv_str);
+    } else {
+      LOG(ERROR) << "Dumping is not implemented since the file name cannot be "
+                    "inferred. Please implement (potentially MLIR) module -> "
+                    "filename heuristic.";
+    }
+  }
+  std::vector<uint8_t> spirv_bin(spirv_str.begin(), spirv_str.end());
+  return BackendCompileResult{/*asm_text=*/"", std::move(spirv_bin)};
 }
 
 std::vector<std::string> IntelGpuCompiler::GetLLVMCommandLineOptions(
     const DebugOptions& debug_options) const {
-  return {};
+  return spirv::GetSPIRVBackendOptions(debug_options);
 }
 
 }  // namespace gpu

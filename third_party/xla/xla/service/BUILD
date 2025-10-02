@@ -8,6 +8,10 @@ load(
     "if_rocm_is_configured",
 )
 load(
+    "@local_config_sycl//sycl:build_defs.bzl",
+    "if_sycl_is_configured",
+)
+load(
     "//xla:xla.default.bzl",
     "xla_cc_binary",
     "xla_cc_test",
@@ -1408,6 +1412,8 @@ cc_library(
     ]) + if_rocm_is_configured([
         "//xla/service/gpu:amdgpu_compiler",
         "//xla/stream_executor/rocm:stream_executor_rocm",
+    ]) + if_sycl_is_configured([
+        "//xla/service/gpu:intel_gpu_compiler",
     ]),
 )
 

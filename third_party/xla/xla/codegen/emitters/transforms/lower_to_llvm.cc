@@ -23,6 +23,7 @@ limitations under the License.
 #include "mlir/Conversion/ComplexToLLVM/ComplexToLLVM.h"
 #include "mlir/Conversion/ControlFlowToLLVM/ControlFlowToLLVM.h"
 #include "mlir/Conversion/FuncToLLVM/ConvertFuncToLLVM.h"
+#include "mlir/Conversion/GPUToLLVMSPV/GPUToLLVMSPVPass.h"
 #include "mlir/Conversion/GPUToNVVM/GPUToNVVMPass.h"
 #include "mlir/Conversion/GPUToROCDL/GPUToROCDLPass.h"
 #include "mlir/Conversion/LLVMCommon/ConversionTarget.h"
@@ -108,6 +109,20 @@ class LowerToLLVMPass : public impl::LowerToLLVMPassBase<LowerToLLVMPass> {
             type_converter, patterns, mlir::gpu::amd::Runtime::Unknown,
             *maybeChipset);
         mlir::configureGpuToROCDLConversionLegality(target);
+      } else if (device_spec_.IsIntelGpu()) {
+        // Add sub-group-size attribute to functions.
+        int32_t sub_group_size = device_spec_.gpu().threads_per_warp();
+        if (auto module_op = mlir::dyn_cast<mlir::ModuleOp>(getOperation())) {
+          module_op.walk([sub_group_size](mlir::func::FuncOp func) {
+            if (!func.getBody().empty()) {
+              mlir::OpBuilder b(func.getContext());
+              auto sub_group_attr = b.getI32IntegerAttr(sub_group_size);
+              func->setAttr("intel_reqd_sub_group_size", sub_group_attr);
+            }
+          });
+        }
+        populateGpuToLLVMSPVConversionPatterns(type_converter, patterns);
+        populateGpuMemorySpaceAttributeConversions(type_converter);
       } else {
         mlir::populateGpuToNVVMConversionPatterns(type_converter, patterns);
         mlir::configureGpuToNVVMConversionLegality(target);

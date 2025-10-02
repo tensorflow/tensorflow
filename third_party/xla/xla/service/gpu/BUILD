@@ -3193,6 +3193,7 @@ cc_library(
         ":target_constants",
         "//xla/hlo/analysis:hlo_dataflow_analysis",
         "//xla/hlo/ir:hlo",
+        "//xla/service/gpu/llvm_gpu_backend:spirv_backend",
         "//xla/stream_executor:semantic_version",
         "//xla/stream_executor:stream_executor_h",
         "//xla/stream_executor/sycl:sycl_platform_id",

@@ -268,3 +268,23 @@ xla_cc_test(
         "@local_tsl//tsl/platform:test",
     ],
 )
+
+cc_library(
+    name = "spirv_backend",
+    srcs = [
+        "spirv_backend.cc",
+    ],
+    hdrs = [
+        "spirv_backend.h",
+    ],
+    tags = [
+        "gpu",
+        "oneapi-only",
+    ],
+    deps = [
+        ":llvm_gpu_backend",
+        "//xla/service/llvm_ir:llvm_command_line_options",
+        "@llvm-project//llvm:SPIRVCodeGen",
+        "@local_tsl//tsl/platform:errors",
+    ],
+)
