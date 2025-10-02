@@ -51,7 +51,6 @@ limitations under the License.
 #include "xla/core/collectives/collectives.h"
 #include "xla/core/collectives/collectives_registry.h"
 #include "xla/stream_executor/activate_context.h"
-#include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/cuda/cuda_command_buffer.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
@@ -1180,26 +1179,6 @@ void CudaExecutor::DeallocateStream(Stream* stream) {
   }
   absl::MutexLock l(alive_gpu_streams_mu_);
   alive_gpu_streams_.erase(stream->platform_specific_handle().stream);
-}
-
-blas::BlasSupport* CudaExecutor::AsBlas() {
-  absl::MutexLock lock(mu_);
-  if (blas_ != nullptr) {
-    return blas_.get();
-  }
-
-  PluginRegistry* registry = PluginRegistry::Instance();
-  absl::StatusOr<PluginRegistry::BlasFactory> status =
-      registry->GetFactory<PluginRegistry::BlasFactory>(cuda::kCudaPlatformId);
-  if (!status.ok()) {
-    LOG(ERROR) << "Unable to retrieve BLAS factory: "
-               << status.status().message();
-    return nullptr;
-  }
-
-  auto blas = status.value()(this);
-  blas_.reset(blas);
-  return blas_.get();
 }
 
 dnn::DnnSupport* CudaExecutor::AsDnn() {
