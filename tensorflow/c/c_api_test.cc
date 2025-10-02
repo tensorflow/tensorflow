@@ -2026,9 +2026,8 @@ class CApiAttributesTest : public ::testing::Test {
       type = type.replace(type.size() - 1, 1, "");
     }
     op_name += type;
-    return TF_NewOperation(
-        graph_, op_name.c_str(),
-        ::tensorflow::strings::StrCat("name", counter_++).c_str());
+    return TF_NewOperation(graph_, op_name.c_str(),
+                           absl::StrCat("name", counter_++).c_str());
   }
 
   TF_Status* s_;
