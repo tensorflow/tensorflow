@@ -29,6 +29,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
+#include "xla/future.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/gpu/transforms/collectives/collective_ops_utils.h"
@@ -76,7 +77,7 @@ absl::StatusOr<bool> CollectiveBroadcastStartThunk::RunCollective(
 absl::Status RunCollectiveBroadcast(std::vector<DeviceBufferPair>& buffers,
                                     se::Stream& stream, Communicator* comm) {
   auto* gpu_comm = tsl::down_cast<GpuCommunicator*>(comm);
-  tsl::AsyncValueRef<Communicator::Event> event = gpu_comm->GroupExecute(
+  Future<> future = gpu_comm->GroupExecute(
       [&buffers, &stream](GpuCommunicator* comm) -> absl::Status {
         for (auto buffer : buffers) {
           se::DeviceMemoryBase src_addr = buffer.source_buffer;
@@ -89,11 +90,7 @@ absl::Status RunCollectiveBroadcast(std::vector<DeviceBufferPair>& buffers,
         }
         return absl::OkStatus();
       });
-  tsl::BlockUntilReady(event);
-  if (event.IsError()) {
-    return event.GetError();
-  }
-  return absl::OkStatus();
+  return future.Await();
 }
 
 }  // namespace xla::gpu

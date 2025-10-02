@@ -30,10 +30,10 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk_id.h"
 #include "xla/core/collectives/communicator.h"
+#include "xla/future.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/stream.h"
-#include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
@@ -104,17 +104,14 @@ absl::Status CollectiveGroupThunk::ExecuteOnStream(
 
   Communicator* comm = *communicator_set.begin();
   auto* gpu_comm = tsl::down_cast<GpuCommunicator*>(comm);
-  tsl::AsyncValueRef<Communicator::Event> group_event = gpu_comm->GroupExecute(
+  Future<> group_future = gpu_comm->GroupExecute(
       [this, &params](GpuCommunicator* comm) -> absl::Status {
         for (const std::unique_ptr<Thunk>& thunk : thunks_) {
           TF_RETURN_IF_ERROR(thunk->ExecuteOnStream(params));
         }
         return absl::OkStatus();
       });
-  tsl::BlockUntilReady(group_event);
-  if (group_event.IsError()) {
-    return group_event.GetError();
-  }
+  TF_RETURN_IF_ERROR(group_future.Await());
 
   TF_ASSIGN_OR_RETURN(se::Event * event,
                       async_events_->GetEvent(params.stream->parent()));

@@ -132,14 +132,10 @@ absl::StatusOr<bool> SendThunk::RunCollective(const ExecuteParams& params,
     if (should_run) {
       TF_RETURN_IF_ERROR(
           MaybeRegisterBuffers(stream.parent(), {buffer}, comm_handle.comm));
-      auto event = comm_handle.comm->Send(
+      auto future = comm_handle.comm->Send(
           src_addr, buffer.element_type, buffer.element_count,
           RankId(*target_id), GpuCollectives::On(stream));
-
-      tsl::BlockUntilReady(event);
-      if (event.IsError()) {
-        return event.GetError();
-      }
+      TF_RETURN_IF_ERROR(future.Await());
     } else {
       VLOG(3) << "[" << device_ordinal << "] Skipping Send";
     }

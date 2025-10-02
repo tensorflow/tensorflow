@@ -41,16 +41,15 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
+#include "xla/hlo/ir/collective_op_group_mode.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
-#include "xla/service/collective_ops_utils.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/global_device_id.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/transforms/collectives/collective_ops_utils.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/stream.h"
-#include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
@@ -203,13 +202,10 @@ absl::Status RunCollectivePermute(P2PConfig::SourceTargetMapEntry source_target,
       VLOG(1) << "CollectivePermute: rank " << device_ordinal
               << " sending data to target " << *target_id;
 
-      auto send_event = nvshmem_comm->Send(
+      auto send_future = nvshmem_comm->Send(
           dest_addr, src_addr, buffer.element_type, buffer.element_count,
           RankId(*target_id), GpuCollectives::On(stream));
-      tsl::BlockUntilReady(send_event);
-      if (send_event.IsError()) {
-        return send_event.GetError();
-      }
+      TF_RETURN_IF_ERROR(send_future.Await());
     }
 
     if (source_id) {

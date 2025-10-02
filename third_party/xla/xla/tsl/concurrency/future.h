@@ -496,8 +496,10 @@ class Future : public internal::FutureBase<absl::StatusOr<T>> {
                 nullptr>
   static Future<T> MakeOn(Executor& executor, F&& f) {
     auto [promise, future] = MakePromise();
-    executor.Execute([promise = std::move(promise),
-                      f = std::forward<F>(f)]() mutable { promise.Set(f()); });
+    executor.Execute(
+        [promise = std::move(promise), f = std::forward<F>(f)]() mutable {
+          promise.Set(std::move(f)());
+        });
     return std::move(future);
   }
 
@@ -696,12 +698,20 @@ class Future<void> : public internal::FutureBase<absl::Status> {
   // For futures that are immediately ready with OK status, we use a global non
   // reference-counted async value that avoids heap allocation and reference
   // counting operations on a hot path.
-  explicit Future(absl::Status status)
+  Future(absl::Status status)  // NOLINT
       : Base(ABSL_PREDICT_TRUE(status.ok())
                  ? ready_promise_->AsRef()
                  : tsl::MakeAvailableAsyncValueRef<absl::Status>(
                        std::move(status)),
              /*on_block_start=*/nullptr, /*on_block_end=*/nullptr) {}
+
+  // Support implicit construction from immediate `Status` convertible to
+  // `absl::Status`.
+  template <
+      typename Status,
+      std::enable_if_t<std::is_convertible_v<Status, absl::Status>>* = nullptr>
+  Future(Status&& status)  // NOLINT
+      : Future(absl::Status(std::forward<Status>(status))) {}
 
   class Promise : public Base::Promise {
    public:
@@ -750,8 +760,10 @@ class Future<void> : public internal::FutureBase<absl::Status> {
             std::enable_if_t<internal::is_status_v<R>>* = nullptr>
   static Future<> MakeOn(Executor& executor, F&& f) {
     auto [promise, future] = MakePromise();
-    executor.Execute([promise = std::move(promise),
-                      f = std::forward<F>(f)]() mutable { promise.Set(f()); });
+    executor.Execute(
+        [promise = std::move(promise), f = std::forward<F>(f)]() mutable {
+          promise.Set(std::move(f)());
+        });
     return std::move(future);
   }
 

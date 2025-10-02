@@ -346,6 +346,7 @@ cc_library(
     deps = [
         ":collective_thunk",
         ":thunk",
+        "//xla:future",
         "//xla:shape_util",
         "//xla/backends/cpu/collectives:cpu_collectives",
         "//xla/core/collectives:communicator",
@@ -468,6 +469,7 @@ cc_library(
     deps = [
         ":collective_thunk",
         ":thunk",
+        "//xla:future",
         "//xla:shape_util",
         "//xla:util",
         "//xla/backends/cpu/collectives:cpu_collectives",
@@ -495,6 +497,7 @@ cc_library(
     deps = [
         ":collective_thunk",
         ":thunk",
+        "//xla:future",
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
         "//xla/backends/cpu/collectives:cpu_collectives",
@@ -520,6 +523,7 @@ cc_library(
     deps = [
         ":collective_thunk",
         ":thunk",
+        "//xla:future",
         "//xla:shape_util",
         "//xla:util",
         "//xla:xla_data_proto_cc",
@@ -546,6 +550,7 @@ cc_library(
     deps = [
         ":collective_thunk",
         ":thunk",
+        "//xla:future",
         "//xla:shape_util",
         "//xla:status_macros",
         "//xla:xla_data_proto_cc",
@@ -576,6 +581,7 @@ cc_library(
     hdrs = ["collective_thunk.h"],
     deps = [
         ":thunk",
+        "//xla:future",
         "//xla:shape_util",
         "//xla:status_macros",
         "//xla:util",
@@ -585,6 +591,7 @@ cc_library(
         "//xla/backends/cpu/collectives:cpu_collectives",
         "//xla/core/collectives:communicator",
         "//xla/core/collectives:rank_id",
+        "//xla/hlo/ir:collective_op_group_mode",
         "//xla/runtime:buffer_use",
         "//xla/runtime:resource_use",
         "//xla/service:buffer_assignment",

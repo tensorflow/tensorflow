@@ -29,6 +29,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/core/collectives/communicator.h"
+#include "xla/future.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/collective_ops_utils.h"
@@ -92,7 +93,7 @@ absl::Status RunAllReduce(ReductionKind reduction_kind,
                                           use_symmetric_buffer));
 
   auto* gpu_comm = tsl::down_cast<GpuCommunicator*>(comm);
-  tsl::AsyncValueRef<Communicator::Event> event =
+  Future<> future =
       gpu_comm->GroupExecute([reduction_kind, &buffers,
                               &stream](GpuCommunicator* comm) -> absl::Status {
         for (DeviceBufferPair& buffer : buffers) {
@@ -103,11 +104,8 @@ absl::Status RunAllReduce(ReductionKind reduction_kind,
         }
         return absl::OkStatus();
       });
-  tsl::BlockUntilReady(event);
+  TF_RETURN_IF_ERROR(future.Await());
   VLOG(3) << "[" << device_ordinal << "] Done performing all-reduce";
-  if (event.IsError()) {
-    return event.GetError();
-  }
   return absl::OkStatus();
 }
 
@@ -242,7 +240,7 @@ absl::Status RunReduceScatter(ReductionKind reduction_kind,
   TF_ASSIGN_OR_RETURN(int32_t num_ranks, comm->NumRanks());
 
   auto* gpu_comm = tsl::down_cast<GpuCommunicator*>(comm);
-  tsl::AsyncValueRef<Communicator::Event> event =
+  Future<> future =
       gpu_comm->GroupExecute([num_ranks, reduction_kind, &buffers,
                               &stream](GpuCommunicator* comm) -> absl::Status {
         for (DeviceBufferPair& buffer : buffers) {
@@ -259,11 +257,8 @@ absl::Status RunReduceScatter(ReductionKind reduction_kind,
         }
         return absl::OkStatus();
       });
-  tsl::BlockUntilReady(event);
+  TF_RETURN_IF_ERROR(future.Await());
   VLOG(3) << "[" << device_ordinal << "] Done performing reduce-scatter";
-  if (event.IsError()) {
-    return event.GetError();
-  }
   return absl::OkStatus();
 }
 

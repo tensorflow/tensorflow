@@ -413,19 +413,16 @@ absl::Status RunCollectivePermute(
         const auto src_addr = src_addrs.at(idx);
         const auto dest_addr = dest_addrs.at(idx);
         const auto buffer = buffers.at(idx);
-        auto event = comm->CollectivePermute(
+        auto future = comm->CollectivePermute(
             src_addr, dest_addr, buffer.element_type, buffer.element_count,
             source_rank, target_ranks, GpuCollectives::On(stream));
-        tsl::BlockUntilReady(event);
-        if (event.IsError()) {
-          return event.GetError();
-        }
+        TF_RETURN_IF_ERROR(future.Await());
       }
     } else {
       TF_RETURN_IF_ERROR(MaybeRegisterBuffers(stream.parent(), buffers, comm,
                                               use_symmetric_buffer));
       auto* gpu_comm = tsl::down_cast<GpuCommunicator*>(comm);
-      tsl::AsyncValueRef<Communicator::Event> event = gpu_comm->GroupExecute(
+      auto future = gpu_comm->GroupExecute(
           [source_rank, &buffers, &src_addrs, &dest_addrs, &target_ranks,
            &stream](GpuCommunicator* comm) -> absl::Status {
             for (uint64_t idx = 0; idx < buffers.size(); ++idx) {
@@ -439,10 +436,7 @@ absl::Status RunCollectivePermute(
             }
             return absl::OkStatus();
           });
-      tsl::BlockUntilReady(event);
-      if (event.IsError()) {
-        return event.GetError();
-      }
+      TF_RETURN_IF_ERROR(future.Await());
     }
   }
 

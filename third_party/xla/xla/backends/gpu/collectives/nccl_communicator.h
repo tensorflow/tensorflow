@@ -21,7 +21,6 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
-#include <tuple>
 #include <utility>
 
 #include "absl/base/thread_annotations.h"
@@ -36,6 +35,7 @@ limitations under the License.
 #include "xla/backends/gpu/collectives/gpu_communicator.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
+#include "xla/future.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
@@ -90,49 +90,44 @@ class NcclCommunicator : public GpuCommunicator {
                                   int device_ordinal,
                                   bool use_symmetric_buffer) final;
 
-  tsl::AsyncValueRef<Communicator::Event> GroupExecute(
+  Future<> GroupExecute(
       absl::AnyInvocable<absl::Status(GpuCommunicator*)> f) final;
 
-  tsl::AsyncValueRef<Event> AllReduce(se::DeviceMemoryBase send_buffer,
-                                      se::DeviceMemoryBase recv_buffer,
-                                      PrimitiveType dtype, size_t count,
-                                      ReductionKind reduction_kind,
-                                      const Executor& executor) final;
+  Future<> AllReduce(se::DeviceMemoryBase send_buffer,
+                     se::DeviceMemoryBase recv_buffer, PrimitiveType dtype,
+                     size_t count, ReductionKind reduction_kind,
+                     const Executor& executor) final;
 
-  tsl::AsyncValueRef<Event> Broadcast(se::DeviceMemoryBase send_buffer,
-                                      se::DeviceMemoryBase recv_buffer,
-                                      PrimitiveType dtype, size_t count,
-                                      RankId root,
-                                      const Executor& executor) final;
+  Future<> Broadcast(se::DeviceMemoryBase send_buffer,
+                     se::DeviceMemoryBase recv_buffer, PrimitiveType dtype,
+                     size_t count, RankId root, const Executor& executor) final;
 
-  tsl::AsyncValueRef<Event> ReduceScatter(se::DeviceMemoryBase send_buffer,
-                                          se::DeviceMemoryBase recv_buffer,
-                                          PrimitiveType dtype, size_t count,
-                                          ReductionKind reduction_kind,
-                                          const Executor& executor) final;
+  Future<> ReduceScatter(se::DeviceMemoryBase send_buffer,
+                         se::DeviceMemoryBase recv_buffer, PrimitiveType dtype,
+                         size_t count, ReductionKind reduction_kind,
+                         const Executor& executor) final;
 
-  tsl::AsyncValueRef<Event> AllGather(se::DeviceMemoryBase send_buffer,
-                                      se::DeviceMemoryBase recv_buffer,
-                                      PrimitiveType dtype, size_t count,
-                                      const Executor& executor) final;
+  Future<> AllGather(se::DeviceMemoryBase send_buffer,
+                     se::DeviceMemoryBase recv_buffer, PrimitiveType dtype,
+                     size_t count, const Executor& executor) final;
 
-  tsl::AsyncValueRef<Event> AllToAll(
-      absl::InlinedVector<se::DeviceMemoryBase, 4> send_buffers,
-      absl::InlinedVector<se::DeviceMemoryBase, 4> recv_buffers,
-      PrimitiveType dtype, size_t count, const Executor& executor) final;
+  Future<> AllToAll(absl::InlinedVector<se::DeviceMemoryBase, 4> send_buffers,
+                    absl::InlinedVector<se::DeviceMemoryBase, 4> recv_buffers,
+                    PrimitiveType dtype, size_t count,
+                    const Executor& executor) final;
 
-  tsl::AsyncValueRef<Event> CollectivePermute(
-      se::DeviceMemoryBase send_buffer, se::DeviceMemoryBase recv_buffer,
-      PrimitiveType dtype, size_t count, std::optional<RankId> source_rank,
-      absl::Span<const RankId> target_ranks, const Executor& executor) final;
+  Future<> CollectivePermute(se::DeviceMemoryBase send_buffer,
+                             se::DeviceMemoryBase recv_buffer,
+                             PrimitiveType dtype, size_t count,
+                             std::optional<RankId> source_rank,
+                             absl::Span<const RankId> target_ranks,
+                             const Executor& executor) final;
 
-  tsl::AsyncValueRef<Event> Send(se::DeviceMemoryBase send_buffer,
-                                 PrimitiveType dtype, size_t count, RankId peer,
-                                 const Executor& executor) final;
+  Future<> Send(se::DeviceMemoryBase send_buffer, PrimitiveType dtype,
+                size_t count, RankId peer, const Executor& executor) final;
 
-  tsl::AsyncValueRef<Event> Recv(se::DeviceMemoryBase recv_buffer,
-                                 PrimitiveType dtype, size_t count, RankId peer,
-                                 const Executor& executor) final;
+  Future<> Recv(se::DeviceMemoryBase recv_buffer, PrimitiveType dtype,
+                size_t count, RankId peer, const Executor& executor) final;
 
   std::string ToString() const final;
 
@@ -201,12 +196,21 @@ class NcclCommunicator : public GpuCommunicator {
   absl::Status PollUntilDone() const;
 
   // Executes f on executor_, or calls f directly if executor_ is null.
-  tsl::AsyncValueRef<Event> Execute(absl::AnyInvocable<absl::Status()> f) const;
+  Future<> Execute(absl::AnyInvocable<absl::Status() &&> f) const;
 
   // Executes f on executor_, or calls f directly if executor_ is null.
   template <typename T>
-  tsl::AsyncValueRef<T> Execute(
-      absl::AnyInvocable<absl::StatusOr<T>()> f) const;
+  Future<T> Execute(absl::AnyInvocable<absl::StatusOr<T>() &&> f) const;
+
+  absl::Status ExecuteAwait(absl::AnyInvocable<absl::Status() &&> f) const {
+    return Execute(std::move(f)).Await();
+  }
+
+  template <typename T>
+  absl::StatusOr<T> ExecuteAwait(
+      absl::AnyInvocable<absl::StatusOr<T>() &&> f) const {
+    return Execute<T>(std::move(f)).Await();
+  }
 
   // Underlying NCCL communicator.
   ncclComm_t comm_;

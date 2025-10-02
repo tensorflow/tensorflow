@@ -133,6 +133,7 @@ cc_library(
     hdrs = ["in_process_communicator.h"],
     deps = [
         ":cpu_collectives",
+        "//xla:future",
         "//xla:shape_util",
         "//xla:util",
         "//xla:xla_data_proto_cc",
@@ -259,6 +260,7 @@ cc_library(
     features = ["-use_header_modules"],
     deps = [
         ":cpu_collectives",
+        "//xla:future",
         "//xla:shape_util",
         "//xla:status_macros",
         "//xla:types",
@@ -325,6 +327,7 @@ cc_library(
     ],
     features = ["-use_header_modules"],
     deps = [
+        "//xla:future",
         "//xla:shape_util",
         "//xla:status_macros",
         "//xla:util",
@@ -336,12 +339,12 @@ cc_library(
         "//xla/tsl/concurrency:async_value",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:logging",
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/platform:statusor",
         "@mpitrampoline",
     ],
 )

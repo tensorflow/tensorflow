@@ -317,51 +317,23 @@ absl::Status RunAllToAll(bool has_split_dimension,
       }
     }
 
-    auto event = comm->AllToAll(
+    auto future = comm->AllToAll(
         std::move(send_buffers), std::move(recv_buffers), element_type,
         chunk_element_count, GpuCollectives::On(stream));
-
-    tsl::BlockUntilReady(event);
-    if (event.IsError()) {
-      return event.GetError();
-    }
+    TF_RETURN_IF_ERROR(future.Await());
   } else {
     for (const DeviceBufferPair& buffer : buffers) {
       send_buffers.push_back(buffer.source_buffer);
       recv_buffers.push_back(buffer.destination_buffer);
     }
 
-    auto event =
+    auto future =
         comm->AllToAll(std::move(send_buffers), std::move(recv_buffers),
                        element_type, element_count, GpuCollectives::On(stream));
-
-    tsl::BlockUntilReady(event);
-    if (event.IsError()) {
-      return event.GetError();
-    }
+    TF_RETURN_IF_ERROR(future.Await());
   }
 
   return absl::OkStatus();
-}
-
-static absl::Status SendPtrToPeer(void* ptr, RankId peer, GpuCommunicator* comm,
-                                  se::Stream& stream) {
-  VLOG(3) << absl::StreamFormat(
-      "RecvPtrFromPeer on device #%d; peer=%d; comm=%p; stream=%p",
-      stream.parent()->device_ordinal(), peer.value(), comm, &stream);
-
-  return comm->LaunchSend(se::DeviceMemoryBase(ptr, sizeof(void*)), U64, 1,
-                          peer, GpuCollectives::On(stream));
-}
-
-static absl::Status RecvPtrFromPeer(void* ptr, RankId peer,
-                                    GpuCommunicator* comm, se::Stream& stream) {
-  VLOG(3) << absl::StreamFormat(
-      "RecvPtrFromPeer on device #%d; peer=%d; comm=%p; stream=%p",
-      stream.parent()->device_ordinal(), peer.value(), comm, &stream);
-
-  return comm->LaunchRecv(se::DeviceMemoryBase(ptr, sizeof(void*)), U64, 1,
-                          peer, GpuCollectives::On(stream));
 }
 
 // Syncs the execution progress across all devices.

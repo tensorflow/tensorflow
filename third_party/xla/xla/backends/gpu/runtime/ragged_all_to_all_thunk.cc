@@ -42,6 +42,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
+#include "xla/future.h"
 #include "xla/hlo/ir/collective_op_group_mode.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -114,7 +115,7 @@ absl::Status RunAllToAllOnIndexBuffer(
   TF_ASSIGN_OR_RETURN(int32_t num_ranks, comm->NumRanks());
 
   auto* gpu_comm = tsl::down_cast<GpuCommunicator*>(comm);
-  tsl::AsyncValueRef<Communicator::Event> event = gpu_comm->GroupExecute(
+  Future<> future = gpu_comm->GroupExecute(
       [num_ranks, num_updates_per_replica, element_type, &source_buffer,
        &destination_buffer, &stream](GpuCommunicator* comm) -> absl::Status {
         for (int peer = 0; peer < num_ranks; ++peer) {
@@ -136,10 +137,7 @@ absl::Status RunAllToAllOnIndexBuffer(
         }
         return absl::OkStatus();
       });
-  tsl::BlockUntilReady(event);
-  if (event.IsError()) {
-    return event.GetError();
-  }
+  TF_RETURN_IF_ERROR(future.Await());
   return stream.BlockHostUntilDone();
 }
 
@@ -180,7 +178,7 @@ absl::Status RunRaggedAllToAll(
   const int64_t* recv_sizes = ragged_metadata_allocs[3];
 
   auto* gpu_comm = tsl::down_cast<GpuCommunicator*>(comm);
-  tsl::AsyncValueRef<Communicator::Event> event = gpu_comm->GroupExecute(
+  Future<> future = gpu_comm->GroupExecute(
       [num_updates_per_replica, num_ranks, input_offsets, send_sizes,
        output_offsets, recv_sizes, ragged_row_element_size, &buffers,
        &stream](GpuCommunicator* comm) -> absl::Status {
@@ -216,11 +214,7 @@ absl::Status RunRaggedAllToAll(
 
         return absl::OkStatus();
       });
-  tsl::BlockUntilReady(event);
-  if (event.IsError()) {
-    return event.GetError();
-  }
-  return absl::OkStatus();
+  return future.Await();
 }
 
 // Contains the values that are passed between host threads with rendezvous.

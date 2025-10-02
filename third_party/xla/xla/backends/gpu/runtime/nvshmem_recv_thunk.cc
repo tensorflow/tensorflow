@@ -157,13 +157,10 @@ absl::Status NvshmemRecvThunk::RunNvshmemCollective(const ExecuteParams& params,
           << " source_buffer=" << buffer.source_buffer.opaque()
           << " element_count=" << buffer.element_count
           << " source_id=" << *source_id;
-  auto recv_event = nvshmem_comm->Recv(
+  auto recv_future = nvshmem_comm->Recv(
       buffer.destination_buffer, buffer.source_buffer, buffer.element_type,
       buffer.element_count, RankId(*source_id), GpuCollectives::On(stream));
-  tsl::BlockUntilReady(recv_event);
-  if (recv_event.IsError()) {
-    return recv_event.GetError();
-  }
+  TF_RETURN_IF_ERROR(recv_future.Await());
   TF_RETURN_IF_ERROR(nvshmem_comm->Quiet(GpuCollectives::On(stream)));
 
   return absl::OkStatus();
