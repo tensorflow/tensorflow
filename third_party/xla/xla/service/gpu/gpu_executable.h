@@ -24,6 +24,7 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include "absl/base/nullability.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
@@ -172,20 +173,9 @@ class GpuExecutable : public Executable {
       const ServiceExecutableRunOptions* run_options,
       VariantArguments arguments);
 
-  absl::Span<const BufferAllocation> GetAllocations() const override {
-    // A GpuExecutable can get its allocations in three ways:
-    // 1 - From a regular compilation that uses allocations from MLIR.
-    // 2 - From a regular compilation that uses the original allocations from
-    //     the buffer assignment.
-    // 3 - From loading the executable from an object file.
-    //
-    // In cases 1 and 3, the allocations are stored in allocations_ and in
-    // case 2, they are part of the buffer_assignment.
-    //
-    // This function chooses the correct allocations to be used within the
-    // GpuExecutable code.
-    return allocations_.has_value() ? *allocations_
-                                    : buffer_assignment_->Allocations();
+  absl::Span<const BufferAllocation* absl_nonnull const> GetAllocations()
+      const override {
+    return allocation_ptrs_;
   }
 
   const std::vector<ConstantInfo>& constants() const { return constants_; }
@@ -273,14 +263,29 @@ class GpuExecutable : public Executable {
 
   ProgramShape program_shape_;
 
+  // Provides information for allocating memory for every output/temp buffer.
+  //
+  // Non-owning pointers - allocation objects reside either in allocations_
+  // or buffer_assignment_.
+  //
+  // A GpuExecutable can get its allocations in three ways:
+  // 1 - From a regular compilation that uses allocations from MLIR.
+  // 2 - From a regular compilation that uses the original allocations from
+  //     the buffer assignment.
+  // 3 - From loading the executable from an object file.
+  //
+  // In cases 1 and 3, the allocations are stored in allocations_ and in
+  // case 2, they are part of the buffer_assignment.
+  const std::vector<const BufferAllocation*> allocation_ptrs_;
+
   // The allocations_ object contains allocations that **may** be used to
   // provide information for allocating memory for every output/temp buffer.
-  // See the comment on GetAllocations().
+  // See the comment on allocation_ptrs_.
   std::optional<const std::vector<BufferAllocation>> allocations_;
 
   // The buffer_assignment_ object contains allocations that **may** be used to
   // provide information for allocating memory for every output/temp buffer.
-  // See the comment on GetAllocations().
+  // See the comment on allocation_ptrs_.
   //
   // This object is also used for dumping debug info.
   std::shared_ptr<const xla::BufferAssignment> buffer_assignment_;

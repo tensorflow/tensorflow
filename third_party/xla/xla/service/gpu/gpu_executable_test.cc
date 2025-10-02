@@ -24,6 +24,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status_matchers.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "xla/backends/gpu/runtime/copy_thunk.h"
 #include "xla/backends/gpu/runtime/kernel_thunk.h"
@@ -31,11 +32,16 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/codegen/emitters/kernel_arguments.h"
 #include "xla/debug_options_flags.h"
+#include "xla/hlo/analysis/alias_info.h"
+#include "xla/hlo/analysis/hlo_ordering.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/parser/hlo_parser.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/buffer_value.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/hlo_module_config.h"
+#include "xla/service/logical_buffer.h"
 #include "xla/shape_layout.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
@@ -43,7 +49,6 @@ limitations under the License.
 #include "xla/stream_executor/gpu/tma_metadata.h"
 #include "xla/stream_executor/semantic_version.h"
 #include "xla/tsl/platform/env.h"
-#include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
 #include "tsl/platform/path.h"
@@ -51,9 +56,9 @@ limitations under the License.
 namespace xla::gpu {
 namespace {
 using ::testing::ElementsAre;
+using ::testing::ElementsAreArray;
 using ::testing::Property;
 using ::tsl::proto_testing::EqualsProto;
-using ::tsl::testing::IsOkAndHolds;
 
 TEST(GpuExecutableTest, OuputInfoToAndFromProto) {
   const GpuExecutable::OutputInfo output_info0{/*allocation_index=*/42,
@@ -190,6 +195,105 @@ TEST(GpuExecutableTest, ExecutableName) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<GpuExecutable> executable,
                           GpuExecutable::Create(std::move(params)));
   EXPECT_THAT(executable->name(), "test_module");
+}
+
+TEST(GpuExecutableTest, GetMlirAllocations) {
+  GpuExecutable::Params params;
+  params.module_name = "test_module";
+  params.executable =
+      std::make_unique<SequentialThunk>(Thunk::ThunkInfo{}, ThunkSequence{});
+
+  std::vector<BufferAllocation> allocations;
+  allocations.emplace_back(0, 1024, 0);
+  allocations.emplace_back(1, 2048, 0);
+
+  const BufferAllocation* expected_ptr0 = &allocations[0];
+  const BufferAllocation* expected_ptr1 = &allocations[1];
+
+  params.mlir_allocations = std::move(allocations);
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<GpuExecutable> executable,
+                          GpuExecutable::Create(std::move(params)));
+
+  // The pointers must match exactly because the allocations may have Slice
+  // objects which hold pointers to the parent allocations.
+  EXPECT_THAT(executable->GetAllocations(),
+              ElementsAre(expected_ptr0, expected_ptr1));
+}
+
+absl::StatusOr<std::unique_ptr<BufferAssignment>>
+MakeNonEmptyBufferAssignment() {
+  const char* hlo_text = R"(
+    HloModule m
+    ENTRY main {
+      a = f32[128] parameter(0)
+      b = f32[128] parameter(1)
+      ROOT c = f32[128] add(a, b)
+    })";
+  TF_ASSIGN_OR_RETURN(auto hlo, ParseAndReturnUnverifiedModule(hlo_text));
+
+  AliasInfo alias_info;
+  TF_ASSIGN_OR_RETURN(
+      auto buffer_assignment,
+      BufferAssigner::Run(
+          hlo.get(), std::make_unique<DependencyHloOrdering>(hlo.get()),
+          [](const BufferValue& buffer) {
+            return ShapeUtil::ByteSizeOf(buffer.shape(), sizeof(void*));
+          },
+          &alias_info, [](LogicalBuffer::Color) { return /*alignment=*/1; }));
+  EXPECT_FALSE(buffer_assignment->Allocations().empty());
+  return buffer_assignment;
+}
+
+TEST(GpuExecutableTest, GetBufferAssignmentAllocations) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<BufferAssignment> buffer_assignment,
+                          MakeNonEmptyBufferAssignment());
+
+  GpuExecutable::Params params;
+  params.module_name = "test_module";
+  params.executable =
+      std::make_unique<SequentialThunk>(Thunk::ThunkInfo{}, ThunkSequence{});
+
+  std::vector<const BufferAllocation*> expected_allocs;
+  expected_allocs.reserve(buffer_assignment->Allocations().size());
+  for (const auto& alloc : buffer_assignment->Allocations()) {
+    expected_allocs.push_back(&alloc);
+  }
+
+  params.buffer_assignment = std::move(buffer_assignment);
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<GpuExecutable> executable,
+                          GpuExecutable::Create(std::move(params)));
+
+  // The pointers must match exactly because the allocations may have Slice
+  // objects which hold pointers to the parent allocations.
+  EXPECT_THAT(executable->GetAllocations(), ElementsAreArray(expected_allocs));
+}
+
+TEST(GpuExecutableTest, MlirAllocationsArePreferred) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<BufferAssignment> buffer_assignment,
+                          MakeNonEmptyBufferAssignment());
+
+  GpuExecutable::Params params;
+  params.module_name = "test_module";
+  params.executable =
+      std::make_unique<SequentialThunk>(Thunk::ThunkInfo{}, ThunkSequence{});
+
+  std::vector<BufferAllocation> allocations;
+  allocations.emplace_back(0, 1024, 0);
+  allocations.emplace_back(1, 2048, 0);
+
+  const BufferAllocation* expected_ptr0 = &allocations[0];
+  const BufferAllocation* expected_ptr1 = &allocations[1];
+
+  params.buffer_assignment = std::move(buffer_assignment);
+  params.mlir_allocations = std::move(allocations);
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<GpuExecutable> executable,
+                          GpuExecutable::Create(std::move(params)));
+
+  // Expect that the allocations from mlir_allocations are returned.
+  EXPECT_THAT(executable->GetAllocations(),
+              ElementsAre(expected_ptr0, expected_ptr1));
 }
 
 }  // namespace

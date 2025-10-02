@@ -161,6 +161,13 @@ CpuExecutable::CpuExecutable(
     XlaDebugInfoManager::Get()->RegisterModule(shared_module(), assignment_);
   }
 
+  if (assignment_) {
+    alloc_ptrs_.reserve(assignment_->Allocations().size());
+    for (const BufferAllocation& alloc : assignment_->Allocations()) {
+      alloc_ptrs_.push_back(&alloc);
+    }
+  }
+
   // Once we compiled HLO module to CPU executable, we don't need to keep the
   // HLO module metadata around.
   if (has_module()) {

@@ -23,6 +23,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/nullability.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -37,7 +38,6 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/cpu/executable.pb.h"
 #include "xla/service/custom_call_status.h"
-#include "xla/service/custom_call_status_internal.h"
 #include "xla/service/executable.h"
 #include "xla/service/hlo_execution_profile.h"
 #include "xla/service/hlo_profile_printer_data.pb.h"
@@ -159,8 +159,9 @@ class CpuExecutable : public Executable {
 
   int64_t SizeOfGeneratedCodeInBytes() const override;
 
-  absl::Span<const BufferAllocation> GetAllocations() const override {
-    return assignment_->Allocations();
+  absl::Span<const BufferAllocation* absl_nonnull const> GetAllocations()
+      const override {
+    return alloc_ptrs_;
   }
 
   FunctionLibrary* function_library() const { return function_library_.get(); }
@@ -225,6 +226,7 @@ class CpuExecutable : public Executable {
 
   // Buffer assignment for the buffers we need to allocate.
   std::shared_ptr<BufferAssignment> assignment_;
+  std::vector<const BufferAllocation*> alloc_ptrs_;
 
   // The LLVM IR, in string format, of the unoptimized module generated for this
   // CpuExecutable. We save a string instead of an llvm::Module* because leaving

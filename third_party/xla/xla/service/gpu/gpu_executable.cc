@@ -95,6 +95,33 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
+namespace {
+
+// Chooses the correct allocations to be used within the GpuExecutable code.
+std::vector<const BufferAllocation*> GatherAllocationPtrs(
+    const GpuExecutable::Params& params) {
+  const std::vector<BufferAllocation>* allocation_vec = nullptr;
+  if (params.mlir_allocations.has_value()) {
+    allocation_vec = &params.mlir_allocations.value();
+  } else if (params.buffer_assignment != nullptr) {
+    allocation_vec = &params.buffer_assignment->Allocations();
+  }
+
+  if (allocation_vec == nullptr) {
+    return {};
+  }
+
+  std::vector<const BufferAllocation*> alloc_ptrs;
+  alloc_ptrs.reserve(allocation_vec->size());
+  for (const BufferAllocation& alloc : *allocation_vec) {
+    alloc_ptrs.push_back(&alloc);
+  }
+
+  return alloc_ptrs;
+}
+
+}  // namespace
+
 using ::tsl::profiler::ScopedAnnotation;
 
 // Returns the set of `ExecutionStreamIds` requested by all `Thunks` in the
@@ -153,6 +180,7 @@ GpuExecutable::GpuExecutable(GpuExecutable::Params params)
       execution_stream_ids_(GetExecutionStreamIds(*thunks_)),
       module_name_(params.module_name),
       program_shape_(params.program_shape),
+      allocation_ptrs_(GatherAllocationPtrs(params)),
       allocations_(std::move(params.mlir_allocations)),
       buffer_assignment_(std::move(params.buffer_assignment)),
       alias_info_(std::move(params.alias_info)),
@@ -675,16 +703,16 @@ absl::StatusOr<BufferAllocations> GpuExecutable::GenerateBufferAllocations(
       [&] { return std::string("Build buffer allocations"); },
       tsl::profiler::TraceMeLevel::kInfo);
 
-  absl::Span<const BufferAllocation> allocations = GetAllocations();
+  absl::Span<const BufferAllocation* const> allocations = GetAllocations();
   const int64_t num_buffers = allocations.size();
   std::vector<se::DeviceMemoryBase> buffers;
   buffers.reserve(num_buffers);
   for (int64_t i = 0; i < num_buffers; ++i) {
-    const BufferAllocation& allocation = allocations[i];
+    const BufferAllocation& allocation = *allocations[i];
     TF_ASSIGN_OR_RETURN(
         buffers.emplace_back(),
-        BufferForAllocation(arguments, globals, allocations[i],
-                            memory_allocator, device_ordinal, i));
+        BufferForAllocation(arguments, globals, allocation, memory_allocator,
+                            device_ordinal, i));
     TF_RETURN_IF_ERROR(CheckAlignment(allocation, buffers.back(), i));
   }
   return {{buffers, device_ordinal, memory_allocator}};
@@ -753,7 +781,7 @@ absl::StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
       GenerateBufferAllocations(arguments, globals, memory_allocator,
                                 device_ordinal));
   VLOG(3) << buffer_allocations.ToString();
-  absl::Span<const BufferAllocation> allocations = GetAllocations();
+  absl::Span<const BufferAllocation* const> allocations = GetAllocations();
 
   std::set<se::DeviceMemoryBase> buffers_in_result;
 
@@ -777,7 +805,7 @@ absl::StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
     }
     const OutputInfo& output_info = output_info_.at(index);
     const BufferAllocation* allocation =
-        &allocations[output_info.allocation_index];
+        allocations[output_info.allocation_index];
     se::DeviceMemoryBase& result_buffer = p.second;
 
     VLOG(4) << "Looking at: allocation " << output_info.allocation_index
@@ -950,9 +978,9 @@ int64_t GpuExecutable::SizeOfGeneratedCodeInBytes() const {
     return -1;
   }
   int64_t size = binary().size();
-  for (const auto& allocation : GetAllocations()) {
-    if (allocation.is_constant()) {
-      size += allocation.size();
+  for (const BufferAllocation* allocation : GetAllocations()) {
+    if (allocation->is_constant()) {
+      size += allocation->size();
     }
   }
   return size;
