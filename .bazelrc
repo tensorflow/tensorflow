@@ -543,7 +543,6 @@ common:win_clang_base --linkopt=/demangle:no --host_linkopt=/demangle:no
 common:win_clang_base --linkopt=/errorlimit:0 --host_linkopt=/errorlimit:0
 common:win_clang_base --copt=/clang:-Weverything
 common:win_clang_base --host_copt=/clang:-Weverything
-common:win_clang_base --compiler=clang-cl
 common:win_clang_base --linkopt=/FORCE:MULTIPLE
 common:win_clang_base --host_linkopt=/FORCE:MULTIPLE
 common:win_clang_base --action_env=PATHEXT=.COM;.EXE;.BAT;.CMD;.VBS;.VBE;.JS;.JSE;.WSF;.WSH;.MSC;.PY;.PYW
@@ -558,7 +557,6 @@ common:win_clang --extra_execution_platforms=//tensorflow/tools/toolchains/win:x
 common:win_clang --host_platform=//tensorflow/tools/toolchains/win:x64_windows-clang-cl
 
 common:windows_x86_cpu_2022 --config=win_clang_base
-common:windows_x86_cpu_2022 --crosstool_top="//tensorflow/tools/toolchains/win2022/20241118:toolchain"
 common:windows_x86_cpu_2022 --extra_toolchains="//tensorflow/tools/toolchains/win2022/20241118:cc-toolchain-x64_windows-clang-cl"
 common:windows_x86_cpu_2022 --extra_execution_platforms="//tensorflow/tools/toolchains/win2022:windows_ltsc2022_clang"
 common:windows_x86_cpu_2022 --host_platform="//tensorflow/tools/toolchains/win2022:windows_ltsc2022_clang"
@@ -687,6 +685,7 @@ common:rbe_win_base --nobuild_runfile_links
 common:rbe_win_base --define=override_eigen_strong_inline=true
 
 common:rbe_windows_x86_cpu_2022 --config=rbe_win_base --config=windows_x86_cpu_2022
+common:rbe_windows_x86_cpu_2022 --noincompatible_enable_cc_toolchain_resolution
 
 # END TF REMOTE BUILD EXECUTION OPTIONS
 
