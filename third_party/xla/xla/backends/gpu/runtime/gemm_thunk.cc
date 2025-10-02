@@ -77,7 +77,7 @@ absl::Status GemmThunk::ExecuteOnStream(const ExecuteParams& params) {
 }
 
 absl::Status GemmThunk::Initialize(const InitializeParams& params) {
-  if (!params.executor->AsBlas()) {
+  if (!params.stream->AsBlas()) {
     return absl::InternalError("Failed to initialize BLAS support");
   }
   return absl::OkStatus();

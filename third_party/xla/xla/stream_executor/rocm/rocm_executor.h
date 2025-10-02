@@ -34,7 +34,6 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "rocm/include/hip/hip_runtime.h"
 #include "xla/stream_executor/activate_context.h"
-#include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_memory.h"
@@ -66,7 +65,6 @@ class RocmExecutor : public GpuExecutor {
   std::unique_ptr<ActivateContext> Activate() override;
 
   absl::Status Init() override;
-  blas::BlasSupport* AsBlas() override;
   fft::FftSupport* AsFft() override;
   dnn::DnnSupport* AsDnn() override;
   absl::StatusOr<std::unique_ptr<Event>> CreateEvent() override;
@@ -134,9 +132,6 @@ class RocmExecutor : public GpuExecutor {
       MemoryType type) override;
 
  private:
-  // Initializes Blas interfaces
-  absl::Status InitBlas();
-
   // Loads a module in HSACO format.
   absl::StatusOr<ModuleHandle> LoadModuleFromHsaco(const char* hsaco)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(in_memory_modules_mu_);
@@ -182,10 +177,6 @@ class RocmExecutor : public GpuExecutor {
   // Memoized FFT support object -- we only want to create this once when asked
   // for a FFT interface.
   std::unique_ptr<fft::FftSupport> fft_ ABSL_GUARDED_BY(mu_);
-
-  // Memoized BLAS support object -- we only want to create this once when asked
-  // for a BLAS interface.
-  std::unique_ptr<blas::BlasSupport> blas_ ABSL_GUARDED_BY(mu_);
 
   absl::Mutex alive_gpu_streams_mu_;
 

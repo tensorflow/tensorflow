@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 // Exposes the family of BLAS routines as pre-canned high performance calls for
-// use in conjunction with the StreamExecutor abstraction.
+// use in conjunction with the Stream abstraction.
 //
 // Note that this interface is optionally supported by platforms.
 
@@ -37,9 +37,7 @@ limitations under the License.
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/numeric_options.h"
 #include "xla/stream_executor/scratch_allocator.h"
-#include "xla/stream_executor/stream.h"
 #include "xla/tsl/protobuf/dnn.pb.h"
-#include "tsl/platform/errors.h"
 
 namespace Eigen {
 struct half;
@@ -215,9 +213,9 @@ constexpr bool is_any_of() {
 
 }  // namespace detail
 
-// BLAS support interface -- this can be derived from a GPU executor when the
+// BLAS support interface -- this can be derived from a GPU stream when the
 // underlying platform has an BLAS library implementation available. See
-// StreamExecutor::AsBlas().
+// Stream::AsBlas().
 //
 // Thread-hostile: CUDA associates a CUDA-context with a particular thread in
 // the system. Any operation that a user attempts to perform by enqueueing BLAS
