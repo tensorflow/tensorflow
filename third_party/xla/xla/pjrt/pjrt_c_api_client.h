@@ -45,6 +45,7 @@ limitations under the License.
 #include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/c/pjrt_c_api_helpers.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
+#include "xla/pjrt/extensions/host_allocator/host_allocator_interface_impl.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_compiler.h"
@@ -340,6 +341,8 @@ class PjRtCApiClient : public PjRtClient {
   absl::StatusOr<const PjRtTopologyDescription*> GetTopologyDescription()
       const override;
 
+  absl::StatusOr<HostAllocator*> GetHostAllocator() const override;
+
   absl::StatusOr<std::unique_ptr<AsyncHostToDeviceTransferManager>>
   CreateBuffersForAsyncHostToDevice(
       absl::Span<const ShapeSpec> shape_specs,
@@ -436,6 +439,8 @@ class PjRtCApiClient : public PjRtClient {
   // from GetTopologyDescription().
   absl::StatusOr<const PjRtCApiTopologyDescription> topo_desc_;
   absl::flat_hash_map<PJRT_Extension_Type, PJRT_Extension_Base*> extensions_;
+  // Not all PJRT C API implementations support the host allocator extension.
+  absl::StatusOr<std::unique_ptr<PjRtClient::HostAllocator>> host_allocator_;
 
   const std::string platform_version_;
   const std::string platform_name_;

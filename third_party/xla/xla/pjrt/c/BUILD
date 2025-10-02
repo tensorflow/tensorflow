@@ -29,7 +29,6 @@ cc_library(
     name = "pjrt_c_api_hdrs",
     hdrs = ["pjrt_c_api.h"],
     visibility = ["//visibility:public"],
-    deps = ["@com_google_absl//absl/status"],
 )
 
 cc_library(

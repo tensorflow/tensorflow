@@ -702,6 +702,35 @@ class PjRtClient {
                         platform_name()));
   }
 
+  // An allocator for host-side memory.
+  //
+  // This is used to allocate memory that lives on the host that may have
+  // performance benefits when used for certain operations (e.g. premapped
+  // memory when transferring data to a device via DMA).
+  //
+  // This interface is just for host memory, it has nothing to with device
+  // memory allocation.
+  //
+  // Implementations must be thread-safe.
+  class HostAllocator {
+   public:
+    virtual ~HostAllocator() = default;
+
+    // Returns the preferred alignment for allocations.
+    virtual size_t GetPreferredAlignment() const = 0;
+
+    // Allocates `size` bytes of memory.
+    virtual void* Allocate(size_t size, size_t alignment) = 0;
+
+    // Frees `ptr` allocated by this allocator.
+    virtual void Free(void* ptr) = 0;
+  };
+
+  // Returns the host allocator for the client if supported.
+  virtual absl::StatusOr<HostAllocator*> GetHostAllocator() const {
+    return absl::UnimplementedError("GetHostAllocator is not supported.");
+  }
+
   // A client may want to create a buffer, and hand the buffer to other PjRt
   // methods, before the data to store in the buffer is available to the client.
   // This is supported using CreateBuffersForAsyncHostToDevice, which returns an

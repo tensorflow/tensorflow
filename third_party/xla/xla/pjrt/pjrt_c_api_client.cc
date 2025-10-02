@@ -61,6 +61,8 @@ limitations under the License.
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/pjrt/extensions/cross_host_transfers/pjrt_c_api_cross_host_transfers_extension.h"
 #include "xla/pjrt/extensions/executable_metadata/executable_metadata_extension.h"
+#include "xla/pjrt/extensions/host_allocator/host_allocator_extension.h"
+#include "xla/pjrt/extensions/host_allocator/host_allocator_interface_impl.h"
 #include "xla/pjrt/mlir_to_hlo.h"
 #include "xla/pjrt/pjrt_api.h"
 #include "xla/pjrt/pjrt_client.h"
@@ -123,6 +125,17 @@ InitExtensions(const PJRT_Api* c_api) {
   return extensions;
 }
 
+static absl::StatusOr<std::unique_ptr<PjRtClient::HostAllocator>>
+InitHostAllocator(const PJRT_Api* c_api, PJRT_Client* c_client) {
+  PJRT_HostAllocator_Extension* extension =
+      pjrt::FindExtension<PJRT_HostAllocator_Extension>(
+          c_api, PJRT_Extension_Type::PJRT_Extension_Type_HostAllocator);
+  if (extension == nullptr) {
+    return absl::UnimplementedError("HostAllocator extension not found");
+  }
+  return std::make_unique<HostAllocatorInterfaceImpl>(c_client, extension);
+}
+
 PjRtCApiClient::PjRtCApiClient(
     const PJRT_Api* c_api, PJRT_Client* c_client,
     std::unique_ptr<pjrt::PJRT_KeyValueCallbackData> kv_callback_data)
@@ -132,6 +145,7 @@ PjRtCApiClient::PjRtCApiClient(
       kv_callback_data_(std::move(kv_callback_data)),
       topo_desc_(InitClientTopoDesc(c_api, c_client)),
       extensions_(InitExtensions(c_api)),
+      host_allocator_(InitHostAllocator(c_api, c_client)),
       // Example platform version string:
       //   PJRT C API
       //   TFRT TPU v2
@@ -678,6 +692,14 @@ PjRtCApiClient::GetTopologyDescription() const {
     return topo_desc_.status();
   }
   return &(*topo_desc_);
+}
+
+absl::StatusOr<PjRtClient::HostAllocator*> PjRtCApiClient::GetHostAllocator()
+    const {
+  if (!host_allocator_.ok()) {
+    return host_allocator_.status();
+  }
+  return host_allocator_->get();
 }
 
 absl::StatusOr<std::uintptr_t> PjRtCApiClient::UnsafeBufferPointer(
