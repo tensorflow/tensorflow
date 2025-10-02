@@ -81,7 +81,7 @@ def GetOptionValue(argv, option):
 
 
 def GetHostCompilerOptions(argv):
-  """Collect the -isystem, -iquote, and --sysroot option values from argv.
+  """Collect the -isystem, isystem-after, -iquote, and --sysroot option values from argv.
 
   Args:
     argv: A list of strings, possibly the argv passed to main().
@@ -92,6 +92,7 @@ def GetHostCompilerOptions(argv):
 
   parser = ArgumentParser()
   parser.add_argument('-isystem', nargs='*', action='append')
+  parser.add_argument('-isystem-after', nargs='*', action='append')
   parser.add_argument('-iquote', nargs='*', action='append')
   parser.add_argument('--sysroot', nargs=1)
   parser.add_argument('-g', nargs='*', action='append')
@@ -104,6 +105,8 @@ def GetHostCompilerOptions(argv):
 
   if args.isystem:
     opts += ' -isystem ' + ' -isystem '.join(sum(args.isystem, []))
+  if args.isystem_after:
+    opts += ' -isystem-after ' + ' -isystem-after '.join(sum(args.isystem_after, []))
   if args.iquote:
     opts += ' -iquote ' + ' -iquote '.join(sum(args.iquote, []))
   if args.g:
