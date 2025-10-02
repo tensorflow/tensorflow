@@ -48,6 +48,7 @@ limitations under the License.
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test_benchmark.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/casts.h"
 
 namespace xla {
