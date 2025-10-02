@@ -134,6 +134,10 @@ struct SpmdPartitionerOptions {
 
   // The maximum number of iterations for windowed einsum.
   int64_t max_windowed_einsum_iteration = 32;
+
+  // If false, remove shardings for most instructions at the end of the pass.
+  // If true, keep shardings for all instructions at the end of the pass.
+  bool keep_shardings_at_the_end = false;
 };
 
 // Class to wrap the computation builder to capture information during SPMD
