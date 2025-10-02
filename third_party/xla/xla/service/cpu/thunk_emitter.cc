@@ -116,9 +116,9 @@ limitations under the License.
 #include "xla/xla_data.pb.h"
 #include "tsl/profiler/lib/traceme.h"
 
-#ifdef INTEL_MKL
+#ifdef XLA_ONEDNN
 #include "xla/backends/cpu/runtime/onednn/onednn_op_thunk.h"
-#endif  // INTEL_MKL
+#endif  // XLA_ONEDNN
 
 #if XLA_ONEDNN_USE_GRAPH_API
 #include "xla/backends/cpu/onednn_emitter.h"
@@ -1205,7 +1205,7 @@ static absl::StatusOr<OpBuffers> GetOpBuffers(
   };
 }
 
-#ifdef INTEL_MKL
+#ifdef XLA_ONEDNN
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitOneDnnOpThunk(
     const HloInstruction* instruction) {
   auto custom_call = Cast<HloCustomCallInstruction>(instruction);
@@ -1226,7 +1226,7 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitOneDnnOpThunk(
   return ThunkSequence::Of<OneDnnOpThunk>(
       custom_call_target, ThunkInfo(custom_call), op_buffers, config);
 }
-#endif  // INTEL_MKL
+#endif  // XLA_ONEDNN
 
 static bool IsValidCustomCallApiVersion(CustomCallApiVersion api_version) {
   switch (api_version) {
@@ -1258,11 +1258,11 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCustomCallThunk(
   } else if (custom_call_target == "SliceToDynamic") {
     return EmitSliceToDynamicThunk(instruction);
   } else if (absl::StartsWith(custom_call->custom_call_target(), "__onednn$")) {
-#ifdef INTEL_MKL
+#ifdef XLA_ONEDNN
     return EmitOneDnnOpThunk(instruction);
 #else
     return Unimplemented("XLA is not built with oneDNN.");
-#endif  // INTEL_MKL
+#endif  // XLA_ONEDNN
   }
 
   // Check the API version.
