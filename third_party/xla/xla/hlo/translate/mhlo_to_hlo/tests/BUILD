@@ -18,6 +18,7 @@ lit_test_suite(
             "call.mlir",
             "case.mlir",
             "composite.mlir",
+            "cosh.mlir",
             "dynamic.mlir",
             "export-with-layouts.mlir",
             "export.mlir",

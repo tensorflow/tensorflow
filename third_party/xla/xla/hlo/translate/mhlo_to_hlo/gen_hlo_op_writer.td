@@ -220,6 +220,7 @@ defvar CustomHloConverterOps = [
   MHLO_ConvertOp,
   MHLO_ConvolutionOp,
   MHLO_CopyOp,
+  MHLO_CoshOp,
   MHLO_CosineOp,
   MHLO_CustomCallOp,
   MHLO_DomainOp,

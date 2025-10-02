@@ -2187,6 +2187,38 @@ For more information on `result_accuracy` see
 For StableHLO information see
 [StableHLO - cosine](https://openxla.org/stablehlo/spec#cosine).
 
+## Cosh
+
+See also
+[`XlaBuilder::Cosh`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
+
+Element-wise hyperbolic cosine `x -> cosh(x)`.
+
+**`Cosh(operand)`**
+
+Arguments | Type    | Semantics
+--------- | ------- | ---------------------------
+`operand` | `XlaOp` | The operand to the function
+
+Cosh also supports the optional `result_accuracy` argument:
+
+**`Cosh(operand, result_accuracy)`**
+
+| Arguments         | Type                      | Semantics                   |
+| ----------------- | ------------------------- | --------------------------- |
+| `operand`         | `XlaOp`                   | The operand to the function |
+| `result_accuracy` | optional `ResultAccuracy` | The types of accuracy the   |
+:                   :                           : user can request for unary  :
+:                   :                           : ops with multiple           :
+:                   :                           : implementations             :
+
+For more information on `result_accuracy` see
+[Result Accuracy](https://github.com/openxla/stablehlo/blob/main/rfcs/20241015-result-accuracy.md).
+
+> **Note:** `Cosh` is only found in HLO and not found in StableHLO. CHLO `Cosh`
+> in Frameworks will lower to HLO `Cosh` see
+> [StableHLO - chlo.cosh](https://openxla.org/stablehlo/generated/chlo?hl=en#chlocosh_chlocoshop)
+
 ## CustomCall
 
 See also

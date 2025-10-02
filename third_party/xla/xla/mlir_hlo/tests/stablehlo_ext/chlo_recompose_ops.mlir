@@ -10,7 +10,7 @@ func.func @erf_recompose_composite(%arg0: tensor<3x20x20xbf16>) -> tensor<?x20x2
   %0 = stablehlo.composite "chlo.erf" %arg0 {decomposition = @chlo.erf.impl, version = 1 : i32} : (tensor<3x20x20xbf16>) -> tensor<?x20x20xbf16>
   return %0 : tensor<?x20x20xbf16>
 }
-// CHECK-NOT: @chlo.erf.imp
+// CHECK-NOT: @chlo.erf.impl
 func.func private @chlo.erf.impl(%arg0: tensor<3x20x20xbf16>) -> tensor<?x20x20xbf16> {
   %0 = chlo.erf %arg0 : tensor<3x20x20xbf16> -> tensor<?x20x20xbf16>
   return %0 : tensor<?x20x20xbf16>
@@ -25,7 +25,7 @@ func.func @acosh_recompose_composite(%arg0: tensor<3x20x20xbf16>) -> tensor<?x20
   %0 = stablehlo.composite "chlo.acosh" %arg0 {decomposition = @chlo.acosh.impl, version = 1 : i32} : (tensor<3x20x20xbf16>) -> tensor<?x20x20xbf16>
   return %0 : tensor<?x20x20xbf16>
 }
-// CHECK-NOT: @chlo.acosh.imp
+// CHECK-NOT: @chlo.acosh.impl
 func.func private @chlo.acosh.impl(%arg0: tensor<3x20x20xbf16>) -> tensor<?x20x20xbf16> {
   %0 = chlo.acosh %arg0 : tensor<3x20x20xbf16> -> tensor<?x20x20xbf16>
   return %0 : tensor<?x20x20xbf16>
@@ -55,9 +55,24 @@ func.func @acos_recompose_composite(%arg0: tensor<3x20x20xbf16>) -> tensor<?x20x
   %0 = stablehlo.composite "chlo.acos" %arg0 {decomposition = @chlo.acos.impl, version = 1 : i32} : (tensor<3x20x20xbf16>) -> tensor<?x20x20xbf16>
   return %0 : tensor<?x20x20xbf16>
 }
-// CHECK-NOT: @chlo.acos.imp
+// CHECK-NOT: @chlo.acos.impl
 func.func private @chlo.acos.impl(%arg0: tensor<3x20x20xbf16>) -> tensor<?x20x20xbf16> {
   %0 = chlo.acos %arg0 : tensor<3x20x20xbf16> -> tensor<?x20x20xbf16>
+  return %0 : tensor<?x20x20xbf16>
+}
+
+// -----
+
+// CHECK-LABEL: func @cosh_recompose_composite
+func.func @cosh_recompose_composite(%arg0: tensor<3x20x20xbf16>) -> tensor<?x20x20xbf16> {
+  // CHECK-NEXT: chlo.cosh
+  // CHECK-NOT: stablehlo.composite
+  %0 = stablehlo.composite "chlo.cosh" %arg0 {decomposition = @chlo.cosh.impl, version = 1 : i32} : (tensor<3x20x20xbf16>) -> tensor<?x20x20xbf16>
+  return %0 : tensor<?x20x20xbf16>
+}
+// CHECK-NOT: @chlo.cosh.impl
+func.func private @chlo.cosh.impl(%arg0: tensor<3x20x20xbf16>) -> tensor<?x20x20xbf16> {
+  %0 = chlo.cosh %arg0 : tensor<3x20x20xbf16> -> tensor<?x20x20xbf16>
   return %0 : tensor<?x20x20xbf16>
 }
 
@@ -144,6 +159,20 @@ func.func @atanh_recompose_cc(%arg0: tensor<3x20x20xbf16>) -> tensor<?x20x20xbf1
   %0 = "stablehlo.custom_call"(%arg0) {
     backend_config = "",
     call_target_name = "mhlo.atanh",
+    mhlo.attributes = {},
+    mhlo.version = 1 : i64
+  } : (tensor<3x20x20xbf16>) -> tensor<?x20x20xbf16>
+  func.return %0 : tensor<?x20x20xbf16>
+}
+
+// -----
+
+// CHECK-LABEL: @cosh_recompose_cc
+func.func @cosh_recompose_cc(%arg0: tensor<3x20x20xbf16>) -> tensor<?x20x20xbf16> {
+  // CHECK: %0 = chlo.cosh %arg0 : tensor<3x20x20xbf16> -> tensor<?x20x20xbf16>
+  %0 = "stablehlo.custom_call"(%arg0) {
+    backend_config = "",
+    call_target_name = "mhlo.cosh",
     mhlo.attributes = {},
     mhlo.version = 1 : i64
   } : (tensor<3x20x20xbf16>) -> tensor<?x20x20xbf16>

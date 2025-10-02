@@ -110,7 +110,9 @@ XlaOp Atanh(XlaOp x,
             bool expand = true);
 
 // Computes the hyperbolic cosine of 'x'.
-XlaOp Cosh(XlaOp x);
+XlaOp Cosh(XlaOp x,
+           const std::optional<ResultAccuracy>& result_accuracy = std::nullopt,
+           bool expand = true);
 
 // Computes the hyperbolic sine of 'x'.
 XlaOp Sinh(XlaOp x);
