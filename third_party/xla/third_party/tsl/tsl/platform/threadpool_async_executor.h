@@ -1,4 +1,4 @@
-/* Copyright 2025 The OpenXLA Authors.
+/* Copyright 2024 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,22 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/backends/gpu/collectives/single_threaded_executor.h"
+#ifndef TENSORFLOW_TSL_PLATFORM_THREADPOOL_ASYNC_EXECUTOR_H_
+#define TENSORFLOW_TSL_PLATFORM_THREADPOOL_ASYNC_EXECUTOR_H_
 
-#include <utility>
-
-#include "xla/tsl/platform/env.h"
-#include "xla/tsl/platform/threadpool.h"
 #include "xla/tsl/platform/threadpool_async_executor.h"
 
-namespace xla::gpu {
-
-SingleThreadedExecutor::SingleThreadedExecutor(tsl::Env& env)
-    : thread_pool_(&env, "SingleThreadedExecutor", 1),
-      executor_(&thread_pool_) {}
-
-void SingleThreadedExecutor::Execute(SingleThreadedExecutor::Task task) {
-  executor_.Execute(std::move(task));
-}
-
-}  // namespace xla::gpu
+#endif  // TENSORFLOW_TSL_PLATFORM_THREADPOOL_ASYNC_EXECUTOR_H_
