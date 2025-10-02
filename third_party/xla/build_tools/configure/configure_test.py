@@ -16,8 +16,8 @@ import os
 
 from absl.testing import absltest
 
-from xla.build_tools import test_utils
-from xla.build_tools.configure import configure
+from build_tools import test_utils
+from build_tools.configure import configure
 
 
 XLAConfigOptions = configure.XLAConfigOptions

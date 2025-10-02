@@ -32,7 +32,7 @@ env:
   # as long as the python file has imports as if it expects bazel to invoke it,
   # and only depends on other python files in this workspace or the standard
   # library.
-  PYTHONPATH: ".."
+  PYTHONPATH: "."
 
 jobs:
   check-contents:
