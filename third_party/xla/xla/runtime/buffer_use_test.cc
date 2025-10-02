@@ -34,6 +34,23 @@ TEST(BufferUseTest, Equality) {
   EXPECT_EQ(use0, use2);
 }
 
+TEST(BufferUseTest, HasReadWriteAccess) {
+  BufferAllocation alloc(/*index=*/0, /*size=*/1024, /*color=*/0);
+  BufferAllocation::Slice slice(&alloc, 0, 10);
+
+  BufferUse read = BufferUse::Read(slice);
+  EXPECT_TRUE(read.HasReadAccess());
+  EXPECT_FALSE(read.HasWriteAccess());
+
+  BufferUse write = BufferUse::Write(slice);
+  EXPECT_FALSE(write.HasReadAccess());
+  EXPECT_TRUE(write.HasWriteAccess());
+
+  BufferUse read_write = BufferUse::ReadWrite(slice);
+  EXPECT_TRUE(read_write.HasReadAccess());
+  EXPECT_TRUE(read_write.HasWriteAccess());
+}
+
 TEST(BufferUseTest, ReadWriteSet) {
   BufferUse::ReadWriteSet rwset;
 

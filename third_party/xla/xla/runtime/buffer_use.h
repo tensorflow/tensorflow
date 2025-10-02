@@ -16,21 +16,31 @@ limitations under the License.
 #ifndef XLA_RUNTIME_BUFFER_USE_H_
 #define XLA_RUNTIME_BUFFER_USE_H_
 
+#include <cstdint>
+
 #include "absl/container/flat_hash_set.h"
 #include "absl/types/span.h"
 #include "xla/service/buffer_assignment.h"
 
 namespace xla {
 
-// BufferUse tracks memory access type for a buffer slice, so that XLA can
-// correctly insert synchronization primitives at run time to avoid read/write
-// conflicts. Synchronization primitives are specific to the target backend.
+// BufferUse tracks memory access type for a buffer slice. This is used to
+// let XLA:
+// - Correctly insert synchronization primitives at run time to avoid read/write
+//   conflicts. Synchronization primitives are specific to the target backend.
+// - Determine whether a buffer has defined contents before/after we execute a
+//   thunk. This is used to detect non-deterministic behavior via checksumming.
 class BufferUse {
  public:
-  enum class MemoryAccess { kRead, kWrite };
+  enum class MemoryAccess : uint32_t {
+    kRead = 1 << 0,
+    kWrite = 1 << 1,
+    kReadWrite = kRead | kWrite,
+  };
 
   static constexpr MemoryAccess kRead = MemoryAccess::kRead;
   static constexpr MemoryAccess kWrite = MemoryAccess::kWrite;
+  static constexpr MemoryAccess kReadWrite = MemoryAccess::kReadWrite;
 
   BufferUse(BufferAllocation::Slice slice, MemoryAccess access)
       : slice_(slice), access_(access) {}
@@ -41,6 +51,18 @@ class BufferUse {
 
   static BufferUse Write(BufferAllocation::Slice slice) {
     return BufferUse(slice, MemoryAccess::kWrite);
+  }
+
+  static BufferUse ReadWrite(BufferAllocation::Slice slice) {
+    return BufferUse(slice, MemoryAccess::kReadWrite);
+  }
+
+  bool HasReadAccess() const {
+    return static_cast<uint32_t>(access_) & static_cast<uint32_t>(kRead);
+  }
+
+  bool HasWriteAccess() const {
+    return static_cast<uint32_t>(access_) & static_cast<uint32_t>(kWrite);
   }
 
   // ReadWriteSet tracks a set of read and write buffer slices.

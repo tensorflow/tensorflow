@@ -32,6 +32,10 @@ void BufferUse::ReadWriteSet::Add(BufferUse use) {
     case BufferUse::kWrite:
       AddWrite(use.slice());
       break;
+    case BufferUse::kReadWrite:
+      AddRead(use.slice());
+      AddWrite(use.slice());
+      break;
   }
 }
 
@@ -57,9 +61,8 @@ bool BufferUse::ReadWriteSet::HasConflicts(const BufferUse& use) const {
            });
   };
 
-  return use.access() == MemoryAccess::kWrite
-             ? overlaps(write_, use) || overlaps(read_, use)
-             : overlaps(write_, use);
+  return use.HasWriteAccess() ? overlaps(write_, use) || overlaps(read_, use)
+                              : overlaps(write_, use);
 }
 
 bool BufferUse::ReadWriteSet::HasConflicts(const ReadWriteSet& other) {
