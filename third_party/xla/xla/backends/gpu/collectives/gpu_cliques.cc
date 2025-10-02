@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/container/btree_map.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/node_hash_map.h"
 #include "absl/functional/function_ref.h"
@@ -100,6 +101,8 @@ namespace {
 struct ProcessGpuCliques {
   absl::Mutex mu;
   absl::node_hash_map<GpuCliqueKey, LockableGpuClique> map ABSL_GUARDED_BY(mu);
+  std::vector<tensorflow::CoordinatedTaskStateInfo> task_state_infos
+      ABSL_GUARDED_BY(mu);
 };
 }  // namespace
 
@@ -225,6 +228,43 @@ static absl::StatusOr<bool> EnablePeerAccess(
   return true;
 }
 
+// Returns a non-ok status if the provided clique key is "stale". A clique key
+// is stale if its incarnations don't match the latest incarnations or if any of
+// the tasks specified in the clique key have failed.
+//
+// REQUIRES: GetProcessGpuCliques().mu held
+static absl::Status CheckCliqueKeyIsntStale(
+    absl::Span<const tensorflow::CoordinatedTaskStateInfo> task_state_infos,
+    const GpuCliqueKey& clique_key) {
+  if (task_state_infos.empty()) {
+    // If we don't have any task state info, assume the clique key isn't stale.
+    return absl::OkStatus();
+  }
+
+  // Create an index from incarnation id to task state info.
+  using Info = tensorflow::CoordinatedTaskStateInfo;
+  absl::flat_hash_map<IncarnationId, const Info*> incarnation_to_info;
+  for (const Info& info : task_state_infos) {
+    incarnation_to_info[IncarnationId(info.incarnation())] = &info;
+  }
+
+  // Check that every incarnation is fresh.
+  for (IncarnationId id : clique_key.incarnations()) {
+    auto it = incarnation_to_info.find(id);
+    if (it == incarnation_to_info.end()) {
+      return FailedPrecondition("Incarnation id %d is stale", id.value());
+    }
+    const auto& [unused, info] = *it;
+    if (info->state() !=
+        tensorflow::CoordinatedTaskState::TASKSTATE_CONNECTED) {
+      return FailedPrecondition("Task with incarnation id %d is not connected",
+                                id.value());
+    }
+  }
+
+  return absl::OkStatus();
+}
+
 // Joins a GpuClique initialization rendezvous for a `clique_key` and returns
 // a lock that gives an access to initialized clique (access is shared between
 // all participating ranks that own a shared pointer).
@@ -300,6 +340,13 @@ InitializeGpuClique(GpuCollectives* collectives, se::StreamExecutor* device,
         clique_key.ToString(), DeviceRanksToString(ranks), nroots,
         clique_ids.fingerprint(), peer_access_enabled);
 
+    ProcessGpuCliques& cliques = GetProcessGpuCliques();
+    {
+      absl::MutexLock lock(cliques.mu);
+      TF_RETURN_IF_ERROR(
+          CheckCliqueKeyIsntStale(cliques.task_state_infos, clique_key));
+    }
+
     TF_ASSIGN_OR_RETURN(
         std::vector<std::unique_ptr<Communicator>> created_comms,
         collectives->CreateCommunicators(clique_key, clique_ids, ranks,
@@ -316,8 +363,17 @@ InitializeGpuClique(GpuCollectives* collectives, se::StreamExecutor* device,
         clique_key.ToString(), DeviceRanksToString(ranks), nroots,
         clique_ids.fingerprint(), peer_access_enabled);
 
-    ProcessGpuCliques& cliques = GetProcessGpuCliques();
     absl::MutexLock lock(cliques.mu);
+    if (absl::Status s =
+            CheckCliqueKeyIsntStale(cliques.task_state_infos, clique_key);
+        !s.ok()) {
+      LOG(WARNING) << "Clique key " << clique_key.ToString()
+                   << " is stale. Aborting recently created communicators.";
+      for (std::unique_ptr<Communicator>& comm : created_comms) {
+        TF_RETURN_IF_ERROR(comm->Abort());
+      }
+      return s;
+    }
 
     // Create a new clique with given clique key and communicators.
     auto emplaced =
@@ -473,6 +529,13 @@ InitializeGpuClique(GpuCollectives* collectives, se::StreamExecutor* device,
         peer_access_enabled,
         absl::StrJoin(rank_mapping, ",", rank_mapping_formatter));
 
+    ProcessGpuCliques& cliques = GetProcessGpuCliques();
+    {
+      absl::MutexLock lock(cliques.mu);
+      TF_RETURN_IF_ERROR(
+          CheckCliqueKeyIsntStale(cliques.task_state_infos, clique_key));
+    }
+
     TF_ASSIGN_OR_RETURN(
         auto splitted_comms,
         collectives->SplitCommunicators(parent_comms, color, keys, config));
@@ -490,8 +553,17 @@ InitializeGpuClique(GpuCollectives* collectives, se::StreamExecutor* device,
         peer_access_enabled,
         absl::StrJoin(rank_mapping, ",", rank_mapping_formatter));
 
-    ProcessGpuCliques& cliques = GetProcessGpuCliques();
     absl::MutexLock lock(cliques.mu);
+    if (absl::Status s =
+            CheckCliqueKeyIsntStale(cliques.task_state_infos, clique_key);
+        !s.ok()) {
+      LOG(WARNING) << "Clique key " << clique_key.ToString()
+                   << " is stale. Aborting recently split communicators.";
+      for (std::unique_ptr<Communicator>& comm : splitted_comms) {
+        TF_RETURN_IF_ERROR(comm->Abort());
+      }
+      return s;
+    }
 
     // Create a new clique with given clique key and communicators.
     auto emplaced =
@@ -564,7 +636,10 @@ absl::StatusOr<std::shared_ptr<LockableGpuClique::Lock>> AcquireGpuClique(
             auto lockable_clique = [&]() -> LockableGpuClique* {
               absl::MutexLock lock(cliques.mu);
               auto it = cliques.map.find(clique_key);
-              return it == cliques.map.end() ? nullptr : &it->second;
+              absl::Status stale =
+                  CheckCliqueKeyIsntStale(cliques.task_state_infos, clique_key);
+              return it == cliques.map.end() || !stale.ok() ? nullptr
+                                                            : &it->second;
             }();
 
             return lockable_clique ? lockable_clique->Acquire()
@@ -617,7 +692,14 @@ bool CliqueKeyContainsIncarnation(
                         });
 }
 
-absl::Status AbortCliquesWithIncarnations(
+// Aborts and invalidates all cliques that have been created via
+// AcquireGpuClique with any of the provided incarnations. For example, if
+// incarnations is [1, 2], then all cliques with a clique key that includes
+// incarnations 1 or 2 will be aborted.
+//
+// REQUIRES: GetProcessGpuCliques().mu held
+static absl::Status AbortCliquesWithIncarnations(
+    absl::node_hash_map<GpuCliqueKey, LockableGpuClique>& map,
     absl::Span<const IncarnationId> incarnations) {
   VLOG(1) << "Aborting GPU cliques for incarnations "
           << absl::StrJoin(incarnations, ", ",
@@ -626,10 +708,8 @@ absl::Status AbortCliquesWithIncarnations(
                            });
   const absl::flat_hash_set<IncarnationId> incarnation_set(incarnations.begin(),
                                                            incarnations.end());
-  ProcessGpuCliques& cliques = GetProcessGpuCliques();
-  absl::MutexLock lock(cliques.mu);
   absl::Status result;
-  for (auto it = cliques.map.begin(); it != cliques.map.end();) {
+  for (auto it = map.begin(); it != map.end();) {
     auto copy = it++;
     auto& [key, lockable_clique] = *copy;
     if (!CliqueKeyContainsIncarnation(key, incarnation_set)) {
@@ -641,9 +721,73 @@ absl::Status AbortCliquesWithIncarnations(
       LOG(ERROR) << "Error aborting GPU clique " << key.ToString() << ": " << s;
       result = std::move(s);
     }
-    cliques.map.erase(copy);
+    map.erase(copy);
   }
   return result;
+}
+
+// Aborts all NCCL collectives when a task fails, as reported by the
+// UpdateGlobalProcessInfo.
+//
+// REQUIRES: GetProcessGpuCliques().mu held
+static absl::Status AbortOnFailure(
+    absl::node_hash_map<GpuCliqueKey, LockableGpuClique>& map,
+    absl::Span<const tensorflow::CoordinatedTaskStateInfo> previous_state,
+    absl::Span<const tensorflow::CoordinatedTaskStateInfo> current_state) {
+  if (previous_state.empty()) {
+    // When a job first starts, there is no previous job state.
+    return absl::OkStatus();
+  }
+
+  // We expect previous_state and current_state to have the same size, and we
+  // expect for every i, previous_state[i] and current_state[i] correspond to
+  // the same task.
+  if (previous_state.size() != current_state.size()) {
+    return FailedPrecondition(
+        "Previous and current job states have different sizes: %d vs %d",
+        previous_state.size(), current_state.size());
+  }
+
+  std::vector<IncarnationId> failed_incarnations;
+  for (int i = 0; i < previous_state.size(); ++i) {
+    const tensorflow::CoordinatedTaskStateInfo& previous = previous_state[i];
+    const tensorflow::CoordinatedTaskStateInfo& current = current_state[i];
+    if (previous.task().task_id() != current.task().task_id()) {
+      return FailedPrecondition(
+          "Previous and current job states have mismatched task ids: %d vs %d",
+          previous.task().task_id(), current.task().task_id());
+    }
+    if (previous.state() !=
+        tensorflow::CoordinatedTaskState::TASKSTATE_CONNECTED) {
+      // A task that was not previously connected cannot fail.
+      continue;
+    }
+    if (current.state() !=
+            tensorflow::CoordinatedTaskState::TASKSTATE_CONNECTED ||
+        previous.incarnation() != current.incarnation()) {
+      // The task is either failed, or restarted with a different incarnation.
+      VLOG(1) << "Task " << previous.task().task_id() << " (incarnation "
+              << previous.incarnation() << ") failed";
+      failed_incarnations.push_back(IncarnationId(previous.incarnation()));
+    }
+  }
+
+  if (!failed_incarnations.empty()) {
+    return AbortCliquesWithIncarnations(map, failed_incarnations);
+  }
+  return absl::OkStatus();
+}
+
+absl::Status UpdateGlobalProcessInfo(
+    absl::Span<tensorflow::CoordinatedTaskStateInfo> infos) {
+  ProcessGpuCliques& cliques = GetProcessGpuCliques();
+  absl::MutexLock lock(&cliques.mu);
+  absl::Status s = AbortOnFailure(cliques.map, cliques.task_state_infos, infos);
+  if (!s.ok()) {
+    LOG(WARNING) << s;
+  }
+  cliques.task_state_infos = {infos.begin(), infos.end()};
+  return s;
 }
 
 }  // namespace xla::gpu

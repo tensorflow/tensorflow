@@ -186,10 +186,6 @@ class StreamExecutorGpuClient : public xla::PjRtStreamExecutorClient {
   const bool abort_collectives_on_failure_ = false;
   std::optional<xla::StreamExecutorGpuTopologyDescription> topology_;
   std::shared_ptr<KeyValueStoreInterface> kv_store_;
-
-  absl::Mutex task_state_infos_mu_;
-  std::vector<tensorflow::CoordinatedTaskStateInfo> task_state_infos_
-      ABSL_GUARDED_BY(task_state_infos_mu_);
 };
 
 std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> BuildLocalDevices(
