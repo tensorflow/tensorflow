@@ -17,23 +17,30 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include <gtest/gtest.h>
 #include "absl/base/prefetch.h"
+#include "tensorflow/cc/client/client_session.h"
+#include "tensorflow/cc/framework/ops.h"
+#include "tensorflow/cc/framework/scope.h"
+#include "tensorflow/cc/ops/array_ops.h"
+#include "tensorflow/cc/ops/const_op.h"
 #include "tensorflow/core/common_runtime/kernel_benchmark_testlib.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/graph/testlib.h"
-#include "tensorflow/core/kernels/ops_testutil.h"
-#include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/platform/test_benchmark.h"
+#include "tensorflow/core/platform/tstring.h"
 
 namespace tensorflow {
 namespace {
+
+using tensorflow::tstring;
 
 template <typename T>
 void FillTensorWithRandomValues(Tensor* t, int string_length, int64_t* bytes) {
@@ -182,6 +189,87 @@ static void ConcatManyHelper(::testing::benchmark::State& state,
   test::Benchmark("cpu", g, /*old_benchmark_api*/ false).Run(state);
   state.SetBytesProcessed(static_cast<int64_t>(state.iterations()) * kDim1 *
                           dim2 * kNumInputs * sizeof(T));
+}
+
+TEST(ConcatOnTStringTest, TestTStringsAreDeepCopied) {
+  // 1. Create a new graph scope.
+  tensorflow::Scope root = tensorflow::Scope::NewRootScope();
+
+  // 2. Define input placeholders.
+  auto input1 =
+      tensorflow::ops::Placeholder(root.WithOpName("input1"), DT_STRING,
+                                   ops::Placeholder::Shape({
+                                       2,
+                                   }));
+  auto input2 =
+      tensorflow::ops::Placeholder(root.WithOpName("input2"), DT_STRING,
+                                   ops::Placeholder::Shape({
+                                       2,
+                                   }));
+
+  // 3. Define the axis for concatenation. Concatenates over the first dimension
+  auto axis = ops::Const(root.WithOpName("axis"), {0});
+
+  // 4. Add the ConcatV2 operation.
+  std::vector<Output> inputs = {input1, input2};
+  auto concat_op =
+      tensorflow::ops::Concat(root.WithOpName("my_concat"), inputs, axis);
+
+  // 5. Create a session and run the graph (example)
+  ClientSession session(root);
+  std::vector<tstring> owned_tstrings = {"abc", "def", "ghi", "jkl"};
+
+  // 6. Create view-typed `tstring` for checking data content are deep-copied.
+  tstring first_element;
+  first_element.assign_as_view(owned_tstrings[0]);
+
+  tstring second_element;
+  second_element.assign_as_view(owned_tstrings[1]);
+
+  tstring third_element;
+  third_element.assign_as_view(owned_tstrings[2]);
+
+  tstring fourth_element;
+  fourth_element.assign_as_view(owned_tstrings[3]);
+
+  Tensor t1(DT_STRING, TensorShape({
+                           2,
+                       }));
+
+  t1.flat<tstring>().setValues({first_element, second_element});
+  Tensor t2(DT_STRING, TensorShape({
+                           2,
+                       }));
+  t2.flat<tstring>().setValues({third_element, fourth_element});
+
+  std::vector<Tensor> outputs;
+
+  TF_ASSERT_OK(
+      session.Run({{input1, t1}, {input2, t2}}, {concat_op.output}, &outputs));
+
+  ASSERT_EQ(outputs.size(), 1);
+
+  Tensor& output = outputs[0];
+
+  EXPECT_EQ(output.flat<tstring>()(0), tstring("abc"));
+  EXPECT_EQ(output.flat<tstring>()(1), tstring("def"));
+  EXPECT_EQ(output.flat<tstring>()(2), tstring("ghi"));
+  EXPECT_EQ(output.flat<tstring>()(3), tstring("jkl"));
+
+  // 7. Mutates the upstream `owned_tstrings` should not change the output
+  //    because Concat should always deep copy the data content even when
+  //    the input `tstring` are of view type. This is served as a guardrail to
+  //    simulate use-after-free scenario when upstream `tstring` is freed but we
+  //    still want to manipulate downstream output.
+  owned_tstrings[0].mdata()[0] = 'q';
+  owned_tstrings[1].mdata()[0] = 'z';
+  owned_tstrings[2].mdata()[0] = 'x';
+  owned_tstrings[3].mdata()[0] = 'y';
+
+  EXPECT_EQ(output.flat<tstring>()(0), tstring("abc"));
+  EXPECT_EQ(output.flat<tstring>()(1), tstring("def"));
+  EXPECT_EQ(output.flat<tstring>()(2), tstring("ghi"));
+  EXPECT_EQ(output.flat<tstring>()(3), tstring("jkl"));
 }
 
 void BM_ConcatManyDim1bfloat16(::testing::benchmark::State& state) {
