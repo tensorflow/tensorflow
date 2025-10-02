@@ -221,25 +221,18 @@ absl::Status PopulateLayouts(mlir::ModuleOp mlir_module,
                               arg_spec.sharding->devices()->devices().front(),
                               arg_spec.sharding->memory_kind()));
     } else {
-      mlir::OpOperand& first_use = *arg.getUses().begin();
-      TF_ASSIGN_OR_RETURN(parameter_layout,
-                          GetParameterLayoutFromConsumer(
-                              client, atom_program_executables, in_specs,
-                              out_specs, symbol_table, first_use));
-      for (mlir::OpOperand& use : llvm::drop_begin(arg.getUses())) {
-        TF_ASSIGN_OR_RETURN(auto layout_from_executable,
+      // Find the layout from the first LoadedExecutableOp consumer or just
+      // return any of the users otherwise. Possible users: CopyArraysOp,
+      // ReturnOp, and other LoadedExecutableOp.
+      for (mlir::OpOperand& use : arg.getUses()) {
+        TF_ASSIGN_OR_RETURN(parameter_layout,
                             GetParameterLayoutFromConsumer(
                                 client, atom_program_executables, in_specs,
                                 out_specs, symbol_table, use));
-        // Verify that all uses of the parameter have the same layout.
-        if (*parameter_layout != *layout_from_executable) {
-          return absl::InternalError(absl::StrFormat(
-              "Parameter %d is used by atom programs with incompatible "
-              "layouts: %s vs. %s. This happens because support for layout "
-              "progation within MPMD programs is limited. Contact "
-              "ml-pathways-team@ for help",
-              arg.getArgNumber(), parameter_layout->ToString(),
-              layout_from_executable->ToString()));
+
+        if (auto call_op = llvm::dyn_cast<xla::ifrt::CallLoadedExecutableOp>(
+                use.getOwner())) {
+          break;
         }
       }
     }
@@ -251,15 +244,9 @@ absl::Status PopulateLayouts(mlir::ModuleOp mlir_module,
     auto& out_spec = out_specs[return_operand.getOperandNumber()];
     if (mlir::BlockArgument block_arg =
             llvm::dyn_cast<mlir::BlockArgument>(return_operand.get())) {
-      // The output is an argument of the IFRT IR program. Assume device
-      // default layout.
-      TF_ASSIGN_OR_RETURN(auto shard_shape,
-                          out_spec.sharding->GetShardShape(out_spec.shape));
-      TF_ASSIGN_OR_RETURN(out_spec.layout,
-                          client->GetDefaultPjRtLayout(
-                              out_spec.dtype, shard_shape.dims(),
-                              out_spec.sharding->devices()->devices().front(),
-                              out_spec.sharding->memory_kind()));
+      // If result is a main func BlockArg, then it has already propagated the
+      // layout above.
+      out_spec.layout = in_specs[block_arg.getArgNumber()].layout;
       continue;
     }
     auto op_result = llvm::cast<mlir::OpResult>(return_operand.get());
