@@ -418,11 +418,15 @@ absl::Status NVPTXCompiler::AddFusionAutotuningPass(
   }
 
   std::vector<std::unique_ptr<CodegenBackend>> backends;
-  backends.push_back(std::make_unique<BlockLevelEmitterBackend>(
+  auto ble_backend = std::make_unique<BlockLevelEmitterBackend>(
       &debug_options, this, shape_size_fn, target_config,
-      /*use_default_config=*/true));
-  backends.push_back(std::make_unique<NativeEmitterBackend>(
-      &debug_options, this, target_config));
+      /*use_default_config=*/true);
+  ble_backend->AllowRegisterSpills();
+  backends.push_back(std::move(ble_backend));
+  auto native_backend = std::make_unique<NativeEmitterBackend>(
+      &debug_options, this, target_config);
+  native_backend->AllowRegisterSpills();
+  backends.push_back(std::move(native_backend));
 
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<AutotunerPass> autotuner_pass,
