@@ -124,6 +124,9 @@ UserContextScope::~UserContextScope() {
 
 absl_nullable const UserContextRef& UserContextScope::current() {
   if (current_context == nullptr) {
+#ifdef IFRT_REQUIRE_USER_CONTEXT
+    CHECK(false) << "User context is required but not set";
+#endif
     return *kNullContext;
   }
   return *current_context;

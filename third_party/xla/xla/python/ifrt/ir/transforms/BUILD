@@ -74,6 +74,7 @@ cc_library(
         "//xla/pjrt:pjrt_executable",
         "//xla/python/ifrt",
         "//xla/python/ifrt:attribute_map",
+        "//xla/python/ifrt:user_context",
         "//xla/python/ifrt/hlo:hlo_program",
         "//xla/python/ifrt/ir",
         "//xla/python/ifrt/ir:atom_program_compiler",
