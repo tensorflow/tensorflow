@@ -286,6 +286,20 @@ TEST_F(PjrtCApiGpuExecutableTest, GetCompiledMemoryStats) {
   EXPECT_EQ(ref_stats.host_temp_size_in_bytes, stats.host_temp_size_in_bytes);
 }
 
+TEST_F(PjrtCApiGpuExecutableTest, GetNumOutputs) {
+  auto executable = PjrtCApiTestBase::GetExecutable(executable_.get(), api_);
+  PJRT_Executable_NumOutputs_Args num_outputs_args;
+  num_outputs_args.struct_size = PJRT_Executable_NumOutputs_Args_STRUCT_SIZE;
+  num_outputs_args.extension_start = nullptr;
+  num_outputs_args.executable = executable.get();
+  LogFatalIfPjrtError(api_->PJRT_Executable_NumOutputs(&num_outputs_args),
+                      api_);
+
+  TF_ASSERT_OK_AND_ASSIGN(auto ref_output_shapes,
+                          executable.get()->get()->GetOutputShapes());
+  EXPECT_EQ(num_outputs_args.num_outputs, ref_output_shapes.size());
+}
+
 TEST_F(PjrtCApiGpuExecutableTest, GetDeviceAssignment) {
   PJRT_LoadedExecutable_GetDeviceAssignment_Args args;
   args.struct_size = PJRT_LoadedExecutable_GetDeviceAssignment_Args_STRUCT_SIZE;

@@ -209,6 +209,16 @@ static absl::Status PopulateExecutableOutputDimensions(
   return absl::OkStatus();
 }
 
+static absl::Status EnsureExecutableOutputDimensionsPopulated(
+    PJRT_Executable* executable) {
+  absl::MutexLock lock(&executable->mutex);
+  if (!executable->out_dimension_ran) {
+    TF_RETURN_IF_ERROR(PopulateExecutableOutputDimensions(executable));
+    executable->out_dimension_ran = true;
+  }
+  return absl::OkStatus();
+}
+
 static absl::Status PopulateExecutableOutputMemoryKinds(
     PJRT_Executable* executable) {
   TF_ASSIGN_OR_RETURN(
@@ -1476,26 +1486,9 @@ PJRT_Error* PJRT_Executable_NumOutputs(PJRT_Executable_NumOutputs_Args* args) {
   PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
       "PJRT_Executable_NumOutputs_Args",
       PJRT_Executable_NumOutputs_Args_STRUCT_SIZE, args->struct_size));
-  PJRT_ASSIGN_OR_RETURN(std::vector<xla::Shape> output_shapes,
-                        args->executable->get()->GetOutputShapes());
-  if (output_shapes.empty()) {
-    return new PJRT_Error{
-        xla::InvalidArgument("Can't get number of executable outputs, output "
-                             "shapes is empty for executable %s.",
-                             args->executable->get()->name())};
-  }
-  if (output_shapes.size() != 1) {
-    return new PJRT_Error{
-        xla::Unimplemented("MPMD execution not supported by PJRT C API (in "
-                           "function PJRT_Executable_NumOutputs).")};
-  }
-  const xla::Shape& shape = output_shapes[0];
-  if (shape.IsTuple()) {
-    args->num_outputs = shape.tuple_shapes().size();
-  } else {
-    // The output size is 1, as it is not a tuple.
-    args->num_outputs = 1;
-  }
+  PJRT_RETURN_IF_ERROR(
+      EnsureExecutableOutputDimensionsPopulated(args->executable));
+  args->num_outputs = args->executable->out_dimension_sizes.size();
   return nullptr;
 }
 
@@ -1637,14 +1630,8 @@ PJRT_Error* PJRT_Executable_OutputDimensions(
       "PJRT_Executable_OutputDimensions_Args",
       PJRT_Executable_OutputDimensions_Args_STRUCT_SIZE, args->struct_size));
 
-  {
-    absl::MutexLock lock(args->executable->mutex);
-    if (!args->executable->out_dimension_ran) {
-      PJRT_RETURN_IF_ERROR(
-          PopulateExecutableOutputDimensions(args->executable));
-      args->executable->out_dimension_ran = true;
-    }
-  }
+  PJRT_RETURN_IF_ERROR(
+      EnsureExecutableOutputDimensionsPopulated(args->executable));
 
   args->num_outputs = args->executable->out_dimension_sizes.size();
   args->dim_sizes = args->executable->out_dimension_sizes.data();
