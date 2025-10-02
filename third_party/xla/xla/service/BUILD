@@ -1897,30 +1897,6 @@ cc_library(
     ],
 )
 
-cc_library(
-    name = "hlo_module_group_util",
-    srcs = ["hlo_module_group_util.cc"],
-    hdrs = ["hlo_module_group_util.h"],
-    deps = [
-        ":hlo_module_group_metadata",
-        "//xla:status_macros",
-        "//xla:types",
-        "//xla:util",
-        "//xla/hlo/analysis:hlo_reachability",
-        "//xla/hlo/ir:hlo",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/functional:function_ref",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:logging",
-        "@local_tsl//tsl/platform:status",
-    ],
-)
-
 xla_cc_test(
     name = "hlo_schedule_test",
     srcs = ["hlo_schedule_test.cc"],
