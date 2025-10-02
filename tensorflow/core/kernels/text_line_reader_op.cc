@@ -30,7 +30,7 @@ namespace tensorflow {
 class TextLineReader : public ReaderBase {
  public:
   TextLineReader(const string& node_name, int skip_header_lines, Env* env)
-      : ReaderBase(strings::StrCat("TextLineReader '", node_name, "'")),
+      : ReaderBase(absl::StrCat("TextLineReader '", node_name, "'")),
         skip_header_lines_(skip_header_lines),
         env_(env),
         line_number_(0) {}
@@ -63,7 +63,7 @@ class TextLineReader : public ReaderBase {
     absl::Status status = input_buffer_->ReadLine(value);
     ++line_number_;
     if (status.ok()) {
-      *key = strings::StrCat(current_work(), ":", line_number_);
+      *key = absl::StrCat(current_work(), ":", line_number_);
       *produced = true;
       return status;
     }

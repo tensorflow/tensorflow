@@ -40,15 +40,13 @@ class Mutex : public ResourceBase {
       : locked_(false),
         thread_pool_(new thread::ThreadPool(
             c->env(), ThreadOptions(),
-            strings::StrCat("mutex_lock_thread_", SanitizeThreadSuffix(name)),
+            absl::StrCat("mutex_lock_thread_", SanitizeThreadSuffix(name)),
             1 /* num_threads */, false /* low_latency_hint */)),
         name_(name) {
     VLOG(2) << "Creating mutex with name " << name << ": " << this;
   }
 
-  string DebugString() const override {
-    return strings::StrCat("Mutex ", name_);
-  }
+  string DebugString() const override { return absl::StrCat("Mutex ", name_); }
 
   class LockReleaser {
    public:
