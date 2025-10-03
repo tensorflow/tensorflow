@@ -138,6 +138,45 @@ TEST_F(HloShardingTest, IotaProtoRoundTrip) {
   EXPECT_THAT(sharding.ToProto(), EqualsProto(proto));
 }
 
+TEST_F(HloShardingTest, NamedShardingProtoRoundTrip) {
+  OpSharding proto;
+  auto* named_sharding = proto.mutable_named_sharding();
+  auto* mesh = named_sharding->mutable_mesh();
+  auto* axis1 = mesh->add_axes();
+  axis1->set_name("x");
+  axis1->set_size(2);
+  auto* axis2 = mesh->add_axes();
+  axis2->set_name("y");
+  axis2->set_size(4);
+  mesh->add_device_ids(0);
+  mesh->add_device_ids(1);
+  mesh->add_device_ids(2);
+  mesh->add_device_ids(3);
+
+  auto* dim_sharding1 = named_sharding->add_dim_shardings();
+  dim_sharding1->add_axes_indices(1);
+  dim_sharding1->add_axes_indices(0);
+  dim_sharding1->set_is_closed(true);
+  auto* dim_sharding2 = named_sharding->add_dim_shardings();
+  dim_sharding2->add_axes_indices(0);
+
+  named_sharding->add_replicated_axes_indices(0);
+  named_sharding->add_unreduced_axes_indices(1);
+
+  *named_sharding->add_metadata() = GetMetadata("a");
+  *named_sharding->add_metadata() = GetMetadata("b");
+
+  HloSharding sharding = HloSharding::FromProto(proto).value();
+  EXPECT_THAT(sharding.ToProto(), EqualsProto(proto));
+
+  OpSharding tuple_proto;
+  auto* tuple_named = tuple_proto.mutable_named_sharding();
+  *tuple_named->add_tuple_sharding() = *named_sharding;
+  *tuple_named->add_tuple_sharding() = *named_sharding;
+  HloSharding tuple_sharding = HloSharding::FromProto(tuple_proto).value();
+  EXPECT_THAT(tuple_sharding.ToProto(), EqualsProto(tuple_proto));
+}
+
 TEST_F(HloShardingTest, Tile) {
   {
     // Test should fail because of a duplicate tile assignment.

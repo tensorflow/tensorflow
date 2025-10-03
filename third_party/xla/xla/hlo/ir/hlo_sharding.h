@@ -53,6 +53,43 @@ class HloSharding {
   static inline constexpr absl::string_view kShardingFrontendAttrName =
       "xla.sdy.sharding";
 
+  // Corresponding C++ representation of `OpSharding::NamedSharding` proto
+  // message so same documentation applies, except dimension sharding axes,
+  // replicated axes and unreduced axes contain pointers to `MeshAxis` elements
+  // within `mesh_` instead of indices into `mesh_.axes`.
+  class NamedSharding {
+   private:
+    friend class HloSharding;
+
+    static absl::StatusOr<HloSharding::NamedSharding> FromProto(
+        const OpSharding::NamedSharding& proto);
+
+    OpSharding::NamedSharding ToProto() const;
+
+    struct MeshAxis {
+      std::string name;
+      int64_t size;
+    };
+
+    struct Mesh {
+      std::vector<MeshAxis> axes;
+      std::vector<int64_t> device_ids;
+    };
+
+    struct DimensionSharding {
+      std::vector<const MeshAxis*> axes;
+      bool is_closed;
+    };
+
+    std::vector<NamedSharding> tuple_sharding_;
+
+    Mesh mesh_;
+    std::vector<DimensionSharding> dim_shardings_;
+    std::vector<const MeshAxis*> replicated_axes_;
+    std::vector<const MeshAxis*> unreduced_axes_;
+    std::vector<OpMetadata> metadata_;
+  };
+
   // Creates a trivial sharding that replicates a maximal tile across all
   // devices.
   static HloSharding Replicate(absl::Span<const OpMetadata> metadata = {}) {
@@ -685,6 +722,8 @@ class HloSharding {
         unknown_(false),
         unreduced_(false),
         replicate_on_last_tile_dim_(false) {}
+  explicit HloSharding(HloSharding::NamedSharding sdy_sharding)
+      : named_sharding_(std::move(sdy_sharding)) {}
 
   // Test-only constructor for sharding format code coverage. Copies the
   // original sharding with provided tile assignment.
@@ -767,6 +806,12 @@ class HloSharding {
   // within the same shard group (i.e. under the same shard_group_id) will be
   // sharded alike or exactly the same as each other.
   ShardGroup shard_group_ = NotShardGroup();
+
+  // Optional field to migrate HloSharding to the new NamedSharding
+  // representation. If this field is populated, all other fields in HloSharding
+  // should be empty. This is to facilitate migration from the old sharding
+  // format to the new one.
+  std::optional<NamedSharding> named_sharding_;
 };
 
 std::ostream& operator<<(std::ostream& out, const HloSharding& sharding);

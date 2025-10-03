@@ -989,6 +989,99 @@ message OpSharding {
   }
 
   ShardGroupType shard_group_type = 13;
+
+  // A NamedSharding is bound to a specific mesh, and can only reference axis
+  // names from that mesh. The dimension shardings tell us for each dimension of
+  // the tensor, along which axes it is sharded from major to minor. All other
+  // axes that don’t shard a dimension are either implicitly or explicitly (if
+  // they appear in the list of replicated axes) replicated. A sharding can have
+  // unreduced axes (specified by `unreduced_axes`), meaning the tensor is
+  // unreduced along these axes.
+  // Note that no sharding attribute on a tensor is equivalent to a fully open
+  // sharding.
+  message NamedSharding {
+    message MeshAxis {
+      string name = 1;
+      int64 size = 2;
+    }
+
+    // A mesh is a list of axes and an optional list of device IDs specifying
+    // the device ordering.
+    //
+    // If the list of axes is empty, the mesh has an implicit unnamed axis of
+    // size 1. In this case, if a device ID list is not provided, the implicit
+    // device ID list is [0]; if a device ID list is provided, it must
+    // contains a single integer of any non-negative value. We call this
+    // maximal-sharding case.
+    //
+    // For all non-maximal-sharding cases, if a device ID list is specified,
+    // the product of the axis sizes should match the number of devices. If a
+    // device ID list is not specified, the implicit device ID list is
+    // iota(product(axes)). For simplicity, we also disallow specifying a
+    // device ID list that is the same as iota(product(axes)); in this case, a
+    // device ID list shouldn't be specified.
+    //
+    // Here are some examples of meshes:
+    // - An empty mesh represents a placeholder mesh that can be replaced during
+    // propagation: <[]>
+    // - A mesh with an unnamed axis and an explicit device ID, which is
+    // typically used to represent maximal sharding: <[], device_ids=[3]>
+    // - A mesh with two axes and implicit device IDs iota(6): <["a"=2, "b"=3]>
+    // - A mesh with two axes and explicit device IDs specifying the device
+    // ordering: <["a"=3, "b"=2], device_ids=[0, 2, 4, 1, 3, 5]>
+    //
+    // Note that:
+    // - Elements in `axes` must not have duplicate names.
+    // - If `device_ids` is specified:
+    //   * The product of axis sizes must match the number of devices.
+    //   * All of its elements must be non-negative.
+    //   * `device_ids` should not be equal to `iota(product(axis_sizes))`.
+    //   * Sorted `device_ids` must be `iota(product(axis_sizes))`.
+    message Mesh {
+      repeated MeshAxis axes = 1;
+      repeated int64 device_ids = 2;
+    }
+
+    // Describes how a tensor dimension is sharded using indices into
+    // mesh.axes, from major to minor, and a boolean indicating whether
+    // the dimension can be further sharded.
+    message DimensionSharding {
+      // List of indices of axes in mesh.axes to shard a tensor dimension on
+      // from major to minor. There should be no duplicate axes in this list
+      // and each axis index should be a valid index into mesh.axes. The
+      // dimension should have at least one axis if it is closed.
+      repeated int64 axes_indices = 1;
+      // If true, this dimension is "closed" and can't be further sharded.
+      bool is_closed = 2;
+    }
+
+    // If this is non-empty, then all the other fields are ignored and this
+    // represents a tuple sharding.
+    repeated NamedSharding tuple_sharding = 1;
+
+    Mesh mesh = 2;
+    // The dimension shardings tell us for each dimension of the tensor, along
+    // which axes it is sharded from major to minor.
+    repeated DimensionSharding dim_shardings = 3;
+    // All axes in this list are explicitly replicated. Each element is an index
+    // into mesh.axes.
+    repeated int64 replicated_axes_indices = 4;
+    // A sharding can have unreduced axes, meaning the tensor is unreduced
+    // along these axes. Each element is an index into mesh.axes.
+    repeated int64 unreduced_axes_indices = 5;
+
+    // This field is used to track the source of this sharding, usually derived
+    // from instructions. Multple metadata may be populated if sharding is
+    // combined with other shardings. Metadata should be set on individual tuple
+    // elements and not tuple_sharding.
+    repeated OpMetadata metadata = 6;
+  }
+
+  // Optional field to migrate OpSharding to new NamedSharding representation.
+  // If this field is populated, all other fields in OpSharding should be empty.
+  // This is to facilitate migration from the old sharding format to the new
+  // one.
+  optional NamedSharding named_sharding = 14;
 }
 // LINT.ThenChange()
 

@@ -883,8 +883,74 @@ absl::Status HloSharding::ValidateNonTuple(
   return absl::OkStatus();
 }
 
+/*static*/ absl::StatusOr<HloSharding::NamedSharding>
+HloSharding::NamedSharding::FromProto(const OpSharding::NamedSharding& proto) {
+  HloSharding::NamedSharding result;
+  if (proto.tuple_sharding_size() > 0) {
+    TF_RET_CHECK(proto.metadata().empty())
+        << "Tuple sharding is expected to have no metadata.";
+    result.tuple_sharding_.reserve(proto.tuple_sharding_size());
+    for (const auto& sharding_proto : proto.tuple_sharding()) {
+      TF_ASSIGN_OR_RETURN(NamedSharding sharding, FromProto(sharding_proto));
+      result.tuple_sharding_.push_back(std::move(sharding));
+    }
+    return result;
+  }
+
+  result.mesh_.axes.reserve(proto.mesh().axes_size());
+  for (const auto& axis_proto : proto.mesh().axes()) {
+    result.mesh_.axes.push_back({axis_proto.name(), axis_proto.size()});
+  }
+  result.mesh_.device_ids.assign(proto.mesh().device_ids().begin(),
+                                 proto.mesh().device_ids().end());
+
+  // TODO: Should I add more extensive checks like: checking for device ids if
+  // list of axises is empty, produce of axis size should be equal to number of
+  // devices, etc?
+  auto check_mesh_axis_index = [&](int64_t axis_index) -> absl::Status {
+    TF_RET_CHECK(axis_index >= 0 && axis_index < result.mesh_.axes.size())
+        << "Invalid axis index: " << axis_index
+        << " for mesh with axes size: " << result.mesh_.axes.size();
+    return absl::OkStatus();
+  };
+
+  result.dim_shardings_.reserve(proto.dim_shardings_size());
+  for (const auto& dim_sharding_proto : proto.dim_shardings()) {
+    NamedSharding::DimensionSharding& dim_sharding =
+        result.dim_shardings_.emplace_back();
+    dim_sharding.axes.reserve(dim_sharding_proto.axes_indices_size());
+    for (const auto& axis_index : dim_sharding_proto.axes_indices()) {
+      TF_RETURN_IF_ERROR(check_mesh_axis_index(axis_index));
+      dim_sharding.axes.push_back(&result.mesh_.axes[axis_index]);
+    }
+    dim_sharding.is_closed = dim_sharding_proto.is_closed();
+  }
+
+  result.replicated_axes_.reserve(proto.replicated_axes_indices_size());
+  for (const auto& axis_index : proto.replicated_axes_indices()) {
+    TF_RETURN_IF_ERROR(check_mesh_axis_index(axis_index));
+    result.replicated_axes_.push_back(&result.mesh_.axes[axis_index]);
+  }
+
+  result.unreduced_axes_.reserve(proto.unreduced_axes_indices_size());
+  for (const auto& axis_index : proto.unreduced_axes_indices()) {
+    TF_RETURN_IF_ERROR(check_mesh_axis_index(axis_index));
+    result.unreduced_axes_.push_back(&result.mesh_.axes[axis_index]);
+  }
+
+  result.metadata_.assign(proto.metadata().begin(), proto.metadata().end());
+
+  return result;
+}
+
 /*static*/ absl::StatusOr<HloSharding> HloSharding::FromProto(
     const OpSharding& proto) {
+  if (proto.has_named_sharding()) {
+    TF_ASSIGN_OR_RETURN(NamedSharding named_sharding,
+                        NamedSharding::FromProto(proto.named_sharding()));
+    return HloSharding(std::move(named_sharding));
+  }
+
   std::vector<OpMetadata> metadata(proto.metadata().begin(),
                                    proto.metadata().end());
   std::vector<int> subgroup_types_int(proto.last_tile_dims().begin(),
@@ -1001,8 +1067,67 @@ absl::Status HloSharding::ValidateNonTuple(
                        .SetShardGroupFromProto(proto));
 }
 
+OpSharding::NamedSharding HloSharding::NamedSharding::ToProto() const {
+  OpSharding::NamedSharding result;
+
+  if (!tuple_sharding_.empty()) {
+    CHECK(metadata_.empty());
+    for (const NamedSharding& sharding : tuple_sharding_) {
+      *result.add_tuple_sharding() = sharding.ToProto();
+    }
+    return result;
+  }
+
+  auto* mesh_proto = result.mutable_mesh();
+  for (const auto& axis : mesh_.axes) {
+    auto* axis_proto = mesh_proto->add_axes();
+    axis_proto->set_name(axis.name);
+    axis_proto->set_size(axis.size);
+  }
+  mesh_proto->mutable_device_ids()->Reserve(mesh_.device_ids.size());
+  absl::c_copy(mesh_.device_ids, tsl::protobuf::RepeatedFieldBackInserter(
+                                     mesh_proto->mutable_device_ids()));
+
+  // Get the index of an axis in the mesh.axes array
+  auto get_axis_index = [&](const MeshAxis* axis) -> int64_t {
+    return std::distance(mesh_.axes.data(), axis);
+  };
+
+  for (const auto& dim_sharding : dim_shardings_) {
+    auto* dim_sharding_proto = result.add_dim_shardings();
+    dim_sharding_proto->mutable_axes_indices()->Reserve(
+        dim_sharding.axes.size());
+    for (const auto& axis : dim_sharding.axes) {
+      dim_sharding_proto->add_axes_indices(get_axis_index(axis));
+    }
+    dim_sharding_proto->set_is_closed(dim_sharding.is_closed);
+  }
+
+  result.mutable_replicated_axes_indices()->Reserve(replicated_axes_.size());
+  for (const auto& axis : replicated_axes_) {
+    result.add_replicated_axes_indices(get_axis_index(axis));
+  }
+
+  result.mutable_unreduced_axes_indices()->Reserve(unreduced_axes_.size());
+  for (const auto& axis : unreduced_axes_) {
+    result.add_unreduced_axes_indices(get_axis_index(axis));
+  }
+
+  result.mutable_metadata()->Reserve(metadata_.size());
+  for (const auto& metadata : metadata_) {
+    *result.add_metadata() = metadata;
+  }
+
+  return result;
+}
+
 OpSharding HloSharding::ToProto() const {
   OpSharding result;
+
+  if (named_sharding_.has_value()) {
+    *result.mutable_named_sharding() = named_sharding_->ToProto();
+    return result;
+  }
 
   if (IsTuple()) {
     CHECK(metadata_.empty());
