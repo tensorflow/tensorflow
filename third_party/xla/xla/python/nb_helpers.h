@@ -50,19 +50,23 @@ void PythonDeprecationWarning(int stacklevel,
   explicit operator Value&&() { return (Value&&)value; } \
   Value value;
 
-template <typename Func>
-nanobind::object nb_property_readonly(Func&& get) {
+template <typename Func, typename... Extra>
+nanobind::object nb_property_readonly(Func&& get, const Extra&... extra) {
   nanobind::handle property(reinterpret_cast<PyObject*>(&PyProperty_Type));
-  return property(nanobind::cpp_function(std::forward<Func>(get)),
-                  nanobind::none(), nanobind::none(), "");
+  return property(
+      nanobind::cpp_function(std::forward<Func>(get), nanobind::is_method(),
+                             nanobind::is_getter(), extra...),
+      nanobind::none(), nanobind::none(), "");
 }
 
 template <typename GetFunc, typename SetFunc>
 nanobind::object nb_property(GetFunc&& get, SetFunc&& set) {
   nanobind::handle property(reinterpret_cast<PyObject*>(&PyProperty_Type));
-  return property(nanobind::cpp_function(std::forward<GetFunc>(get)),
-                  nanobind::cpp_function(std::forward<SetFunc>(set)),
-                  nanobind::none(), "");
+  return property(
+      nanobind::cpp_function(std::forward<GetFunc>(get), nanobind::is_method(),
+                             nanobind::is_getter()),
+      nanobind::cpp_function(std::forward<SetFunc>(set), nanobind::is_method()),
+      nanobind::none(), "");
 }
 
 }  // namespace xla
