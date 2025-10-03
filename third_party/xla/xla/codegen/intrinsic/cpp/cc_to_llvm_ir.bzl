@@ -29,7 +29,7 @@ def _cc_to_llvm_ir_impl(ctx):
             "-S",
             "-emit-llvm",
         ],
-        name = "cc_to_llvm_ir",
+        name = ctx.label.name,
         compilation_contexts = dep_compilation_contexts,
     )
 

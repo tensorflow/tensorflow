@@ -75,3 +75,50 @@ xla_cc_test(
         "@local_tsl//tsl/platform:test",
     ],
 )
+
+cc_library(
+    name = "eigen_unary",
+    srcs = ["eigen_unary.cc"],
+    hdrs = ["eigen_unary.h"],
+    deps = [
+        ":vector_ops",
+        "@eigen_archive//:eigen3",
+    ],
+)
+
+cc_to_llvm_ir(
+    name = "eigen_unary_ir_file",
+    src = "eigen_unary.cc",
+    out = "eigen_unary.ll",
+    deps = [
+        ":cpp_context_provider",
+        ":eigen_unary",
+    ],
+)
+
+cc_library(
+    name = "eigen_unary_ll_header_lib",
+    hdrs = [":eigen_unary_ll_header"],
+)
+
+genrule(
+    name = "eigen_unary_ll_header",
+    srcs = [":eigen_unary_ir_file"],
+    outs = ["eigen_unary_ll.h"],
+    cmd = """
+        echo 'constexpr const char* eigen_unary_ir_string = R"gen_ir(' > $@ && \\
+        cat $(location :eigen_unary_ir_file) >> $@ && \\
+        echo ')gen_ir";' >> $@
+    """,
+)
+
+xla_cc_test(
+    name = "eigen_unary_test",
+    srcs = ["eigen_unary_test.cc"],
+    deps = [
+        ":eigen_unary",
+        ":eigen_unary_ll_header_lib",
+        "@com_google_googletest//:gtest_main",
+        "@eigen_archive//:eigen3",
+    ],
+)
