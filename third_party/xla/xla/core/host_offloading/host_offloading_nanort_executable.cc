@@ -39,6 +39,7 @@ limitations under the License.
 #include "xla/backends/cpu/nanort/nanort_executable.h"
 #include "xla/core/host_offloading/host_offloading_buffer.h"
 #include "xla/core/host_offloading/host_offloading_executable.h"
+#include "xla/core/host_offloading/host_offloading_executable.pb.h"
 #include "xla/core/host_offloading/host_offloading_layout_analysis.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/builder/xla_computation.h"
