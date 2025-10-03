@@ -828,17 +828,68 @@ static void BM_CreateOkFuture(benchmark::State& state) {
   }
 }
 
-static void BM_StatelessMapTo(benchmark::State& state) {
-  std::shared_ptr<float> value = std::make_shared<float>(42.0f);
+static void BM_CopyFuture(benchmark::State& state) {
+  Future<> future(absl::OkStatus());
 
   for (auto _ : state) {
-    Future<> future(absl::OkStatus());
-    Future<std::shared_ptr<float>> mapped = future.MapTo(value);
+    Future<> copy = future;
+    benchmark::DoNotOptimize(copy);
+  }
+}
+
+static void BM_MapStatelessFuture(benchmark::State& state) {
+  Future<> future(absl::OkStatus());
+
+  for (auto _ : state) {
+    Future<int32_t> mapped = future.Map([] { return 42; });
+    benchmark::DoNotOptimize(mapped);
+  }
+}
+
+static void BM_TryMapStatelessFuture(benchmark::State& state) {
+  Future<> future(absl::OkStatus());
+
+  for (auto _ : state) {
+    Future<int32_t> mapped =
+        future.Map([]() -> absl::StatusOr<int32_t> { return 42; });
+    benchmark::DoNotOptimize(mapped);
+  }
+}
+
+static void BM_MapToFromStatelessFuture(benchmark::State& state) {
+  Future<> future(absl::OkStatus());
+
+  for (auto _ : state) {
+    Future<int32_t> mapped = future.MapTo(42);
+    benchmark::DoNotOptimize(mapped);
+  }
+}
+
+static void BM_MapStatefulFuture(benchmark::State& state) {
+  Future<int32_t> future(42);
+
+  for (auto _ : state) {
+    Future<int32_t> mapped = future.Map([](int32_t x) { return x + 1; });
+    benchmark::DoNotOptimize(mapped);
+  }
+}
+
+static void BM_TryMapStatefulFuture(benchmark::State& state) {
+  Future<int32_t> future(42);
+
+  for (auto _ : state) {
+    Future<int32_t> mapped =
+        future.Map([](int32_t x) -> absl::StatusOr<int32_t> { return x + 1; });
     benchmark::DoNotOptimize(mapped);
   }
 }
 
 BENCHMARK(BM_CreateOkFuture);
-BENCHMARK(BM_StatelessMapTo);
+BENCHMARK(BM_CopyFuture);
+BENCHMARK(BM_MapStatelessFuture);
+BENCHMARK(BM_TryMapStatelessFuture);
+BENCHMARK(BM_MapToFromStatelessFuture);
+BENCHMARK(BM_MapStatefulFuture);
+BENCHMARK(BM_TryMapStatefulFuture);
 
 }  // namespace tsl
