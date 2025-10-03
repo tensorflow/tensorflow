@@ -186,7 +186,7 @@ void MMapHandle::UnMap() {
     UnmapViewOfFile(data_);
     CloseHandle(file_mapping_);
 #else
-    munmap(data_, size_);
+    munmap(data_, size_ + offset_page_adjustment_);
 #endif
   }
   data_ = nullptr;
