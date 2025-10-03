@@ -953,6 +953,10 @@ CommonPjRtBufferImpl::AcquireExternalReference() {
       }
     }
 
+    absl::Status WaitUntilBufferReadyOnStream(std::intptr_t stream) override {
+      return external_reference_.buffer()->WaitUntilBufferReadyOnStream(stream);
+    }
+
     ~ScopedHoldAsExternalReference() override = default;
 
    private:

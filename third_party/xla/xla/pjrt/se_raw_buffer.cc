@@ -187,29 +187,4 @@ void PjRtStreamExecutorRawBuffer::CopyTo(
   definition_event_promise->SetError(status);
 }
 
-std::optional<absl::StatusOr<tsl::RCReference<PjRtRawBuffer>>>
-CreateGPURawBuffer(PjRtBuffer* buffer) {
-  if (auto* se_buffer = dynamic_cast<PjRtStreamExecutorBuffer*>(buffer)) {
-    auto* se_client = dynamic_cast<PjRtStreamExecutorClient*>(buffer->client());
-    if (se_client == nullptr) {
-      return absl::InvalidArgumentError("invalid se-client");
-    }
-    PjRtStreamExecutorBuffer::ScopedHold hold(
-        se_buffer->GetBufferWithUsageHold());
-    if (!hold.ok()) {
-      return hold.status();
-    }
-    if (!hold->device_memory()) {
-      return absl::InvalidArgumentError(
-          "Create raw buffer called on an invalid buffer");
-    }
-    return tsl::MakeRef<PjRtStreamExecutorRawBuffer>(
-        se_client, se_buffer->memory_space(),
-        se_buffer->device()->local_device_state(), hold->device_memory());
-  }
-  return std::nullopt;
-}
-
-REGISTER_PJRT_RAW_BUFFER_FACTORY(CreateGPURawBuffer);
-
 }  // namespace xla

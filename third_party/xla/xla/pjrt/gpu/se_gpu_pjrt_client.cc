@@ -719,7 +719,8 @@ Future<> StreamExecutorGpuClient::CopyRawSubBufferToHost(
     int64_t transfer_size) {
   auto* buffer = tensorflow::down_cast<PjRtStreamExecutorBuffer*>(pjrt_buffer);
   DCHECK(buffer);
-  PjRtStreamExecutorDevice* device = buffer->device();
+  auto* device =
+      tensorflow::down_cast<PjRtStreamExecutorDevice*>(buffer->device());
   LocalDeviceState* local_device = device->local_device_state();
   se::Stream* stream = local_device->GetDeviceToHostStream();
 
