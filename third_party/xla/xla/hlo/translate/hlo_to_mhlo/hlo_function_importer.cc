@@ -564,7 +564,6 @@ absl::Status HloFunctionImporter::ImportAsRegion(
 absl::StatusOr<Value> HloFunctionImporter::ImportInstructionsImpl(
     const HloComputation& computation,
     const llvm::SmallVectorImpl<Value>& arguments, mlir::OpBuilder* builder) {
-  llvm::errs() << "computation: " << computation.name() << "\n";
   // Setup the input parameters.
   const int num_parameters = computation.num_parameters();
 
