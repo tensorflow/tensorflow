@@ -11,9 +11,9 @@ load(
 load(
     "//xla/tsl/mkl:build_defs.bzl",
     "if_enable_mkl",
-    "if_mkl",
     "if_mkldnn_aarch64_acl",
     "if_mkldnn_openmp",
+    "if_onednn",
     "if_onednn_async",
     "onednn_v3_define",
 )
@@ -338,7 +338,7 @@ def tsl_copts(
         if_tensorrt(["-DGOOGLE_TENSORRT=1"]) +
         if_rocm(["-DTENSORFLOW_USE_ROCM=1"]) +
         # Compile in oneDNN based ops when building for x86 platforms
-        if_mkl(["-DXLA_ONEDNN"]) +
+        if_onednn(["-DXLA_ONEDNN"]) +
         # Enable additional ops (e.g., ops with non-NHWC data layout) and
         # optimizations for Intel builds using oneDNN if configured
         if_enable_mkl(["-DENABLE_MKL"]) +
@@ -411,7 +411,7 @@ def tsl_gpu_library(deps = None, cuda_deps = None, copts = tsl_copts(), **kwargs
             "@local_config_rocm//rocm:hip",
             "@local_config_rocm//rocm:rocm_headers",
         ]),
-        copts = (copts + if_cuda(["-DGOOGLE_CUDA=1", "-DNV_CUDNN_DISABLE_EXCEPTION"]) + if_rocm(["-DTENSORFLOW_USE_ROCM=1"]) + if_xla_available(["-DTENSORFLOW_USE_XLA=1"]) + if_mkl(["-DXLA_ONEDNN"]) + if_enable_mkl(["-DENABLE_MKL"]) + if_tensorrt(["-DGOOGLE_TENSORRT=1"])),
+        copts = (copts + if_cuda(["-DGOOGLE_CUDA=1", "-DNV_CUDNN_DISABLE_EXCEPTION"]) + if_rocm(["-DTENSORFLOW_USE_ROCM=1"]) + if_xla_available(["-DTENSORFLOW_USE_XLA=1"]) + if_onednn(["-DXLA_ONEDNN"]) + if_enable_mkl(["-DENABLE_MKL"]) + if_tensorrt(["-DGOOGLE_TENSORRT=1"])),
         **kwargs
     )
 
