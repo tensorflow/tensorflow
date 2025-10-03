@@ -78,10 +78,10 @@ TEST_F(DebugIdentityOpTest, Int32Success_6_FileURLs) {
   std::vector<string> dump_roots;
   std::vector<string> debug_urls;
   for (int i = 0; i < kNumDumpDirs; ++i) {
-    const string dump_root = strings::StrCat(tmp_dir, "_", i);
+    const string dump_root = absl::StrCat(tmp_dir, "_", i);
     dump_roots.push_back(dump_root);
 
-    debug_urls.push_back(strings::StrCat("file://", dump_root));
+    debug_urls.push_back(absl::StrCat("file://", dump_root));
   }
 
   uint64 wall_time = Env::Default()->NowMicros();
@@ -104,7 +104,7 @@ TEST_F(DebugIdentityOpTest, Int32Success_6_FileURLs) {
     std::vector<string> children;
     TF_ASSERT_OK(fs->GetChildren(dump_roots[i], &children));
 
-    const string kDeviceDirPrefix = strings::StrCat(
+    const string kDeviceDirPrefix = absl::StrCat(
         DebugNodeKey::kMetadataFilePrefix, DebugNodeKey::kDeviceTag);
     for (const string child : children) {
       if (!strncmp(child.c_str(), kDeviceDirPrefix.c_str(),
