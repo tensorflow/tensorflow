@@ -133,6 +133,7 @@ cc_library(
     hdrs = ["in_process_communicator.h"],
     deps = [
         ":cpu_collectives",
+        "//xla:debug_options_flags",
         "//xla:future",
         "//xla:shape_util",
         "//xla:util",

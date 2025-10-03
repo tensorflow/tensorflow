@@ -452,6 +452,9 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
       DebugOptions::UNSTABLE_REDUCTION_DETECTION_MODE_NONE);
   opts.set_xla_gpu_experimental_scaled_dot_with_triton(false);
   opts.set_xla_gpu_experimental_use_raft_select_k(false);
+
+  opts.set_xla_cpu_collective_call_warn_stuck_seconds(20);
+  opts.set_xla_cpu_collective_call_terminate_timeout_seconds(40);
   return opts;
 }
 
@@ -2563,6 +2566,19 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
           &DebugOptions::set_xla_gpu_experimental_scaled_dot_with_triton),
       debug_options->xla_gpu_experimental_scaled_dot_with_triton(),
       "If true, use the Triton emitter for scaled dot."));
+
+  flag_list->push_back(tsl::Flag(
+      "xla_cpu_collective_call_warn_stuck_timeout_seconds",
+      int32_setter_for(
+          &DebugOptions::set_xla_cpu_collective_call_warn_stuck_seconds),
+      debug_options->xla_cpu_collective_call_warn_stuck_seconds(),
+      "Set timeout for Collective Call Rendezvous stuck warning"));
+  flag_list->push_back(tsl::Flag(
+      "xla_cpu_collective_call_terminate_timeout_seconds",
+      int32_setter_for(
+          &DebugOptions::set_xla_cpu_collective_call_terminate_timeout_seconds),
+      debug_options->xla_cpu_collective_call_terminate_timeout_seconds(),
+      "Set timeout for Collective Call Rendezvous termination"));
 }  // NOLINT(readability/fn_size)
 
 // Allocates flag_values and flag_objects; this function must not be called more
