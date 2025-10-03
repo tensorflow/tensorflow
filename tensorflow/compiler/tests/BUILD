@@ -1492,6 +1492,7 @@ tf_xla_py_strict_test(
 tf_xla_py_strict_test(
     name = "scan_ops_test",
     size = "medium",
+    timeout = "long",
     srcs = ["scan_ops_test.py"],
     shard_count = 6,
     tags = [
