@@ -464,6 +464,33 @@ TEST(FutureTest, TryMapUnusedResult) {
   EXPECT_FALSE(called);
 }
 
+TEST(FutureTest, MapWithVoidFunctor) {
+  {
+    auto [promise, future] = Future<>::MakePromise();
+    promise.Set(absl::OkStatus());
+
+    Future<> mapped = future.Map([] {});
+    EXPECT_EQ(mapped.Await(), absl::OkStatus());
+  }
+
+  {
+    auto [promise, future] = Future<int32_t>::MakePromise();
+    promise.Set(42);
+
+    Future<> mapped = future.Map([](int32_t value) { EXPECT_EQ(value, 42); });
+    EXPECT_EQ(mapped.Await(), absl::OkStatus());
+  }
+
+  {
+    auto [promise, future] = Future<std::unique_ptr<int32_t>>::MakePromise();
+    promise.Set(std::make_unique<int32_t>(42));
+
+    Future<> mapped = std::move(future).Map(
+        [](std::unique_ptr<int32_t> value) { EXPECT_EQ(*value, 42); });
+    EXPECT_EQ(mapped.Await(), absl::OkStatus());
+  }
+}
+
 TEST(FutureTest, StatelessError) {
   auto [promise, future] = Future<>::MakePromise();
 

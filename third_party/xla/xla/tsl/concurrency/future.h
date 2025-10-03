@@ -391,6 +391,8 @@ class FutureBase : public FutureMoveControl<is_move_only> {
 template <typename R, typename U>
 struct IsMappable : public std::is_constructible<R, U> {};
 template <>
+struct IsMappable<void, void> : public std::true_type {};
+template <>
 struct IsMappable<void, absl::Status> : public std::true_type {};
 template <typename R, typename U>
 struct IsMappable<R, absl::StatusOr<U>> : public std::is_constructible<R, U> {};
@@ -523,6 +525,7 @@ class Future : public internal::FutureBase<absl::StatusOr<T>> {
   //
   // Supported `R` and `U` type combinations:
   //
+  // - `Future<>`  from `(const T&) -> void`
   // - `Future<>`  from `(const T&) -> absl::Status`
   // - `Future<R>` from `(const T&) -> absl::StatusOr<U>`
   // - `Future<R>` from `(const T&) -> U`
@@ -550,7 +553,9 @@ class Future : public internal::FutureBase<absl::StatusOr<T>> {
       }
 
       // Set the result future available with a result of invoking `f`.
-      if constexpr (internal::is_status_v<U>) {
+      if constexpr (std::is_void_v<U>) {
+        promise.Set((f(*value), absl::OkStatus()));
+      } else if constexpr (internal::is_status_v<U>) {
         promise.Set(f(*value));
       } else if constexpr (internal::is_status_or_v<U>) {
         absl::StatusOr<typename U::value_type> result = f(*value);
@@ -583,6 +588,7 @@ class Future : public internal::FutureBase<absl::StatusOr<T>> {
   //
   // Supported `R` and `U` type combinations: (*)
   //
+  // - `Future<>`  from `(T) -> void`
   // - `Future<>`  from `(T) -> absl::Status`
   // - `Future<R>` from `(T) -> absl::StatusOr<U>`
   // - `Future<R>` from `(T) -> U`
@@ -614,7 +620,9 @@ class Future : public internal::FutureBase<absl::StatusOr<T>> {
       }
 
       // Set the result future available with a result of invoking `f`.
-      if constexpr (internal::is_status_v<U>) {
+      if constexpr (std::is_void_v<U>) {
+        promise.Set((f(std::move(*value)), absl::OkStatus()));
+      } else if constexpr (internal::is_status_v<U>) {
         promise.Set(f(std::move(*value)));
       } else if constexpr (internal::is_status_or_v<U>) {
         absl::StatusOr<typename U::value_type> result = f(std::move(*value));
@@ -639,7 +647,9 @@ class Future : public internal::FutureBase<absl::StatusOr<T>> {
   //
   template <typename F, typename R = std::invoke_result_t<F, const T&>>
   auto Map(F&& f) const& {
-    if constexpr (internal::is_status_v<R>) {
+    if constexpr (std::is_void_v<R>) {
+      return Map<void>(std::forward<F>(f));
+    } else if constexpr (internal::is_status_v<R>) {
       return Map<void>(std::forward<F>(f));
     } else if constexpr (internal::is_status_or_v<R>) {
       return Map<typename R::value_type>(std::forward<F>(f));
@@ -657,7 +667,9 @@ class Future : public internal::FutureBase<absl::StatusOr<T>> {
   template <typename F, typename R = std::invoke_result_t<
                             F, std::conditional_t<is_move_only, T, const T&>>>
   auto Map(F&& f) && {
-    if constexpr (internal::is_status_v<R>) {
+    if constexpr (std::is_void_v<R>) {
+      return std::move(*this).template Map<void>(std::forward<F>(f));
+    } else if constexpr (internal::is_status_v<R>) {
       return std::move(*this).template Map<void>(std::forward<F>(f));
     } else if constexpr (internal::is_status_or_v<R>) {
       return std::move(*this).template Map<typename R::value_type>(
@@ -787,6 +799,7 @@ class Future<void> : public internal::FutureBase<absl::Status> {
   //
   // Supported `R` and `U` type combinations:
   //
+  // - `Future<>`  from `() -> void`
   // - `Future<>`  from `() -> absl::Status`
   // - `Future<R>` from `() -> absl::StatusOr<U>`
   // - `Future<R>` from `() -> U`
@@ -812,7 +825,9 @@ class Future<void> : public internal::FutureBase<absl::Status> {
       }
 
       // Set the result future available with a result of invoking `f`.
-      if constexpr (internal::is_status_v<U>) {
+      if constexpr (std::is_void_v<U>) {
+        promise.Set((f(), absl::OkStatus()));
+      } else if constexpr (internal::is_status_v<U>) {
         promise.Set(f());
       } else if constexpr (internal::is_status_or_v<U>) {
         absl::StatusOr<typename U::value_type> result = f();
@@ -837,7 +852,9 @@ class Future<void> : public internal::FutureBase<absl::Status> {
   //
   template <typename F, typename R = std::invoke_result_t<F>>
   auto Map(F&& f) {
-    if constexpr (internal::is_status_v<R>) {
+    if constexpr (std::is_void_v<R>) {
+      return Map<void>(std::forward<F>(f));
+    } else if constexpr (internal::is_status_v<R>) {
       return Map<void>(std::forward<F>(f));
     } else if constexpr (internal::is_status_or_v<R>) {
       return Map<typename R::value_type>(std::forward<F>(f));
