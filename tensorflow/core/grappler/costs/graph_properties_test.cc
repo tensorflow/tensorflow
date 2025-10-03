@@ -98,16 +98,16 @@ class GraphPropertiesTest : public ::testing::Test {
   // Returns a string form of <p>, suitable for comparing type and shape.
   // Example output for 4-d float tensor: "float: [10,2,30,4]"
   string PropToString(const OpInfo::TensorProperties& p) {
-    string s = strings::StrCat(DataTypeString(p.dtype()), ": ");
+    string s = absl::StrCat(DataTypeString(p.dtype()), ": ");
     if (p.shape().unknown_rank()) {
-      strings::StrAppend(&s, "?");
+      absl::StrAppend(&s, "?");
     } else {
-      strings::StrAppend(&s, "[");
+      absl::StrAppend(&s, "[");
       for (int i = 0; i < p.shape().dim_size(); ++i) {
-        strings::StrAppend(&s, i == 0 ? "" : ",",
-                           std::max<int64_t>(p.shape().dim(i).size(), -1));
+        absl::StrAppend(&s, i == 0 ? "" : ",",
+                        std::max<int64_t>(p.shape().dim(i).size(), -1));
       }
-      strings::StrAppend(&s, "]");
+      absl::StrAppend(&s, "]");
     }
     return s;
   }
