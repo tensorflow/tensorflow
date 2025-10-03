@@ -89,6 +89,11 @@ class AbstractTrackedDeviceBuffer {
     return Unimplemented("GetDefinitionEvent is not supported for %s",
                          memory_space->ToString());
   }
+
+  virtual absl::Status WaitUntilBufferReadyOnStream(std::intptr_t stream) {
+    return absl::UnimplementedError(
+        "WaitUntilBufferReadyOnStream is only implemented for GPU.");
+  }
 };
 
 class CommonPjRtBuffer : public PjRtBuffer {
