@@ -315,6 +315,34 @@ TEST_F(CommunicationTypeTest, DetectNonRailAligned) {
               IsOkAndHolds(GPUCommunicationType::NON_RAIL_ALIGNED));
 }
 
+TEST_F(CommunicationTypeTest, DetectsNonRailAlignedAllReduce) {
+  absl::string_view kHlo = R"(
+    HloModule m, num_partitions=16
+
+    wrapped_add {
+      a = f32[] parameter(0)
+      b = f32[] parameter(1)
+      ROOT _ = f32[] add(a,b)
+    }
+
+    ENTRY e {
+      p = f32[128] parameter(0)
+      ROOT _ = f32[128] all-reduce(p),
+        to_apply=wrapped_add,
+        replica_groups={{0,8},{1,9},{2,10},{3,11},{4,12},{5,13},{6,14},{7,15}},
+        use_global_device_ids=true
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHlo));
+
+  HloCollectiveInstruction* instr = Cast<HloCollectiveInstruction>(
+      module->entry_computation()->root_instruction());
+  EXPECT_THAT(CommunicationType(/*num_devices_per_host=*/8, *instr,
+                                device_info().gpu_compute_capability()),
+              IsOkAndHolds(GPUCommunicationType::NON_RAIL_ALIGNED));
+}
+
 TEST_F(CommunicationTypeTest, DetectsSingleHost16DevicesForEmptyReplicaGroups) {
   absl::string_view kHlo = R"(
     HloModule m, replica_count=16
