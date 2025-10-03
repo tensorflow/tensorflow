@@ -44,6 +44,7 @@ limitations under the License.
 #include "mlir/Interfaces/DataLayoutInterfaces.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/DialectConversion.h"
+#include "google/protobuf/text_format.h"
 #include "xla/codegen/device_spec.h"
 #include "xla/codegen/emitters/transforms/passes.h"
 #include "xla/stream_executor/device_description.h"
