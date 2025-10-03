@@ -2563,106 +2563,6 @@ absl::Status IrEmitter::HandleOneDnnMatMulCalls(
   return absl::OkStatus();
 }
 
-absl::Status IrEmitter::HandleOneDnnConvolution(HloInstruction* custom_call) {
-  //      args[0]: ptr to nargs
-  //      args[1]: ptr to ExecutableRunOptions
-  //      args[2]: ptr to OneDnnConvolutionConfig
-  //      args[3...]: ptrs to operands
-
-  // First three arguments: nargs, ExecutableRunOptions, and
-  // OneDnnConvolutionConfig.
-  const int nargs_offset = 3;
-  const int num_operands = custom_call->operand_count();
-  const int nargs = nargs_offset + num_operands;
-  int arg_indx = 0;
-
-  llvm::Type* i64_type = b()->getInt64Ty();
-  llvm::Type* ptr_type = b()->getPtrTy();
-  llvm::ArrayType* ptr_array_type = llvm::ArrayType::get(ptr_type, nargs);
-  llvm::Value* args_val = llvm::UndefValue::get(ptr_array_type);
-
-  llvm::Value* nargs_val = b()->getInt64(nargs);
-  llvm::Value* nargs_ptr =
-      llvm_ir::EmitAllocaAtFunctionEntry(i64_type, "nargs", b());
-  b()->CreateLifetimeStart(nargs_ptr);
-  b()->CreateStore(nargs_val, nargs_ptr);
-  args_val = b()->CreateInsertValue(args_val, nargs_ptr, arg_indx++);
-
-  llvm::Value* run_opts_val = GetExecutableRunOptionsArgument();
-  args_val = b()->CreateInsertValue(args_val, run_opts_val, arg_indx++);
-
-  auto typed_custom_call = Cast<HloCustomCallInstruction>(custom_call);
-  auto backend_config = typed_custom_call->backend_config<BackendConfig>();
-  OneDnnConvolutionConfig conv_config;
-  conv_config.CopyFrom(backend_config->onednn_conv_config());
-  std::string str_config;
-  conv_config.SerializeToString(&str_config);
-  llvm::Value* conv_config_val =
-      b()->CreateGlobalStringPtr(llvm_ir::AsStringRef(str_config));
-  args_val = b()->CreateInsertValue(args_val, conv_config_val, arg_indx++);
-
-  auto operands_stack_alloca =
-      EmitOneDnnOperandsAlloca(custom_call, args_val, arg_indx);
-  TF_RET_CHECK(nargs == arg_indx)
-      << "Number of arguments don't equal the last argument index.";
-
-  llvm::Value* args_ptr = llvm_ir::EmitAllocaAtFunctionEntry(
-      ptr_array_type, "convolution.args", b());
-  b()->CreateLifetimeStart(args_ptr);
-  b()->CreateStore(args_val, args_ptr);
-
-  TF_RETURN_IF_ERROR(EmitTargetAddressForOp(custom_call));
-
-  StackAlloca result_stack_alloca;
-  StackAlloca scratch_stack_alloca;
-  std::vector<llvm::Value*> fn_call_args;
-  fn_call_args.reserve(3);
-  // Add the scratch buffer to the output, so that oneDNN can use it as a
-  // user-provided scratchpad
-  const bool use_scratchpad = custom_call->shape().IsTuple();
-  if (use_scratchpad) {
-    llvm::Value* result_slice_ptr;
-    llvm::Value* scratch_slice_ptr;
-    TF_ASSIGN_OR_RETURN(const BufferAllocation::Slice result_slice,
-                        assignment_.GetUniqueSlice(custom_call, {0}));
-    const Shape& result_shape = custom_call->shape().tuple_shapes(0);
-    std::tie(result_slice_ptr, result_stack_alloca) =
-        GetPtrAndAllocaFromBufferSlice(result_slice, result_shape);
-    fn_call_args.push_back(result_stack_alloca.value);
-
-    TF_ASSIGN_OR_RETURN(const BufferAllocation::Slice scratch_slice,
-                        assignment_.GetUniqueSlice(custom_call, {1}));
-    const Shape& scratch_shape = custom_call->shape().tuple_shapes(1);
-    std::tie(scratch_slice_ptr, scratch_stack_alloca) =
-        GetPtrAndAllocaFromBufferSlice(scratch_slice, scratch_shape);
-    fn_call_args.push_back(scratch_stack_alloca.value);
-    llvm_ir::EmitTuple(GetIrArrayFor(custom_call),
-                       {result_slice_ptr, scratch_slice_ptr}, b());
-  } else {
-    llvm_ir::IrArray result_array;
-    result_array = GetIrArrayFor(custom_call);
-    result_stack_alloca = GetAllocaAndEmitMemrefInfo(*b(), result_array);
-    fn_call_args.push_back(result_stack_alloca.value);
-    fn_call_args.push_back(llvm::ConstantPointerNull::get(b()->getPtrTy()));
-  }
-  fn_call_args.push_back(args_ptr);
-  EmitCallToFunc(runtime::kOneDnnConvolutionSymbolName, fn_call_args,
-                 b()->getVoidTy());
-
-  // Lifetime ends for all stack allocations.
-  b()->CreateLifetimeEnd(nargs_ptr);
-  b()->CreateLifetimeEnd(args_ptr);
-  for (StackAlloca& alloca : operands_stack_alloca) {
-    alloca.EmitLifetimeEnd();
-  }
-  result_stack_alloca.EmitLifetimeEnd();
-  if (use_scratchpad) {
-    scratch_stack_alloca.EmitLifetimeEnd();
-  }
-
-  return absl::OkStatus();
-}
-
 absl::Status IrEmitter::HandleOneDnnLayerNorm(HloInstruction* custom_call) {
   //      args[0]: ptr to nargs
   //      args[1]: ptr to ExecutableRunOptions
@@ -2784,9 +2684,6 @@ absl::Status IrEmitter::HandleCustomCall(HloInstruction* custom_call) {
   }
   if (custom_call->custom_call_target() == "__onednn$layernorm") {
     return HandleOneDnnLayerNorm(custom_call);
-  }
-  if (custom_call->custom_call_target() == "__onednn$convolution") {
-    return HandleOneDnnConvolution(custom_call);
   }
   if (custom_call->custom_call_target() == "__onednn$matmul_reorder") {
     return HandleOneDnnMatMulCalls(custom_call,

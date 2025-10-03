@@ -51,6 +51,7 @@ namespace {
 using dnnl::algorithm;
 using dnnl::convolution_forward;
 using dnnl::memory;
+using dnnl::primitive;
 using dnnl::prop_kind;
 using dnnl::stream;
 
@@ -213,36 +214,15 @@ CreateOneDnnPrimDesc<dnnl::convolution_forward::primitive_desc>(
       any_res_md, strides, rhs_dilations, pad_left, pad_right, attrs);
 }
 
-ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_OneDnnConvolution(
-    void* result, void* scratch, void** args) {
-  // args[0]: ptr to nargs
-  // args[1]: ptr to ExecutableRunOptions
-  // args[2]: ptr to OneDnnConvolutionConfig
-  // args[3...]: ptrs to operands
-  int arg_indx = 0;
-  const int64_t num_args = *(static_cast<int64_t*>(args[arg_indx++]));
-
-  const xla::ExecutableRunOptions* run_options =
-      static_cast<const xla::ExecutableRunOptions*>(args[arg_indx++]);
-  XLA_LIGHTWEIGHT_CHECK(run_options != nullptr);
-  XLA_LIGHTWEIGHT_CHECK(run_options->intra_op_thread_pool() != nullptr);
-  tsl::OneDnnThreadPool thread_pool(
-      run_options->intra_op_thread_pool()->getPool(), false);
-  dnnl::engine cpu_engine(dnnl::engine::kind::cpu, 0);
-#ifndef ENABLE_ONEDNN_OPENMP
-  auto onednn_stream =
-      stream(dnnl::threadpool_interop::make_stream(cpu_engine, &thread_pool));
-#else
-  auto onednn_stream = stream(cpu_engine);
-#endif  // ENABLE_ONEDNN_OPENMP
-
-  std::string config_str(static_cast<const char*>(args[arg_indx++]));
-  OneDnnConvolutionConfig conv_config;
-  conv_config.ParseFromString(config_str);
-
-  MemrefInfo inp_minfo(args[arg_indx++]);
-  MemrefInfo ker_minfo(args[arg_indx++]);
-  MemrefInfo res_minfo(result);
+void ExecuteOneDnnConvolution(absl::Span<MemrefInfoHandler> arguments,
+                              absl::Span<MemrefInfoHandler> results,
+                              OneDnnConvolutionConfig conv_config,
+                              const dnnl::engine& cpu_engine,
+                              dnnl::stream& onednn_stream,
+                              OneDnnResources& resources) {
+  MemrefInfo inp_minfo(arguments[0].get());
+  MemrefInfo ker_minfo(arguments[1].get());
+  MemrefInfo res_minfo(results[0].get());
 
   memory::desc inp_md = inp_minfo.GetOneDnnMemDesc();
   memory::desc ker_md = ker_minfo.GetOneDnnMemDesc();
@@ -279,11 +259,11 @@ ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_OneDnnConvolution(
     new_ker_md = new_ker_md.reshape(corr_dims);
   }
 
-  const int64_t num_fused_operands = num_args - arg_indx;
+  const int64_t num_fused_operands = arguments.size() - 2;
   std::vector<memory::desc> fused_mds;
   std::vector<void*> fused_bufs;
   for (int64_t i = 0; i < num_fused_operands; ++i) {
-    MemrefInfo operand_minfo(args[arg_indx++]);
+    MemrefInfo operand_minfo(arguments[i + 2].get());
     memory::desc mem_desc = operand_minfo.GetOneDnnMemDesc();
     if (mem_desc.get_ndims() == new_res_md.get_ndims()) {
       mem_desc = mem_desc.permute_axes(ComputePermutations(
@@ -295,8 +275,7 @@ ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_OneDnnConvolution(
     fused_bufs.push_back(operand_minfo.Data());
   }
 
-  std::vector<std::pair<int, dnnl::memory>> postop_args;
-  FusedOperandsRef fused_operands_ref{fused_bufs, postop_args};
+  FusedOperandsRef fused_operands_ref{fused_bufs, resources.postop_args};
 
   memory::desc bias_md = memory::desc();
 
@@ -313,8 +292,6 @@ ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_OneDnnConvolution(
   auto any_res_md =
       memory::desc(new_res_md.get_dims(), new_res_md.get_data_type(),
                    GetFormatTag(new_res_md.get_ndims()));
-
-  XLA_LIGHTWEIGHT_CHECK(num_args == arg_indx);
 
   dnnl::primitive_attr attrs;
 
@@ -335,43 +312,46 @@ ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_OneDnnConvolution(
   auto ker_mem = memory(new_ker_md, cpu_engine, ker_minfo.Data());
   auto res_mem = memory(new_res_md, cpu_engine, res_minfo.Data());
 
-  auto new_inp_mem = (conv_pd->src_desc() == inp_mem.get_desc())
-                         ? inp_mem
-                         : ReorderMemory(cpu_engine, conv_pd->src_desc(),
-                                         inp_mem, onednn_stream);
-  auto new_ker_mem = (conv_pd->weights_desc() == ker_mem.get_desc())
-                         ? ker_mem
-                         : ReorderMemory(cpu_engine, conv_pd->weights_desc(),
-                                         ker_mem, onednn_stream);
-  auto new_res_mem = (conv_pd->dst_desc() == res_mem.get_desc())
-                         ? res_mem
-                         : memory(conv_pd->dst_desc(), cpu_engine);
+  resources.src_mem = (conv_pd->src_desc() == inp_mem.get_desc())
+                          ? inp_mem
+                          : ReorderMemory(cpu_engine, conv_pd->src_desc(),
+                                          inp_mem, onednn_stream);
+  resources.wei_mem = (conv_pd->weights_desc() == ker_mem.get_desc())
+                          ? ker_mem
+                          : ReorderMemory(cpu_engine, conv_pd->weights_desc(),
+                                          ker_mem, onednn_stream);
+  resources.dst_mem = (conv_pd->dst_desc() == res_mem.get_desc())
+                          ? res_mem
+                          : memory(conv_pd->dst_desc(), cpu_engine);
 
-  auto conv_prim = convolution_forward(*conv_pd);
+  resources.primitive = primitive(*conv_pd);
 
-  std::unordered_map<int, memory> conv_args{{DNNL_ARG_SRC, new_inp_mem},
-                                            {DNNL_ARG_WEIGHTS, new_ker_mem},
-                                            {DNNL_ARG_DST, new_res_mem}};
+  std::unordered_map<int, memory> conv_args{
+      {DNNL_ARG_SRC, resources.src_mem},
+      {DNNL_ARG_WEIGHTS, resources.wei_mem},
+      {DNNL_ARG_DST, resources.dst_mem}};
 
   if (conv_config.optimization_config().user_scratchpad()) {
-    XLA_LIGHTWEIGHT_CHECK(scratch != nullptr);
-    MemrefInfo scratch_minfo(scratch);
-    memory::desc scratchpad_md = conv_pd->scratchpad_desc();
-    XLA_LIGHTWEIGHT_CHECK(scratchpad_md.get_size() <=
-                          scratch_minfo.GetOneDnnDims()[0]);
-    memory scratch_mem =
-        memory(scratchpad_md, cpu_engine, scratch_minfo.Data());
-    conv_args.insert({DNNL_ARG_SCRATCHPAD, scratch_mem});
+    XLA_LIGHTWEIGHT_CHECK(results.size() > 1);
+    MemrefInfo scratch_minfo(results[1].get());
+
+    size_t required_size = conv_pd->scratchpad_desc().get_size();
+    size_t provided_size = scratch_minfo.GetOneDnnDims()[0];  // bytes (u8)
+    XLA_LIGHTWEIGHT_CHECK(required_size <= provided_size);
+
+    resources.scratch_mem =
+        memory(conv_pd->scratchpad_desc(), cpu_engine, scratch_minfo.Data());
+    conv_args.insert({DNNL_ARG_SCRATCHPAD, resources.scratch_mem});
   }
 
-  conv_args.insert(postop_args.begin(), postop_args.end());
-  conv_prim.execute(onednn_stream, conv_args);
+  conv_args.insert(resources.postop_args.begin(), resources.postop_args.end());
+  resources.primitive.execute(onednn_stream, conv_args);
 
   if (conv_pd->dst_desc() == res_mem.get_desc()) {
-    res_mem = new_res_mem;
+    res_mem = resources.dst_mem;
   } else {
-    dnnl::reorder(new_res_mem, res_mem)
-        .execute(onednn_stream, new_res_mem, res_mem);
+    dnnl::reorder(resources.dst_mem, res_mem)
+        .execute(onednn_stream, resources.dst_mem, res_mem);
   }
 }
 

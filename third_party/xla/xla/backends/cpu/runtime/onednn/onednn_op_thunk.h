@@ -46,7 +46,8 @@ class OneDnnOpThunk : public Thunk {
 
   // Variant config for supported oneDNN ops.
   // TODO(intel-tf): Add more oneDNN operation configs as needed.
-  using OneDnnOpConfig = std::variant<OneDnnMatMulConfig>;
+  using OneDnnOpConfig =
+      std::variant<OneDnnMatMulConfig, OneDnnConvolutionConfig>;
 
   static absl::StatusOr<std::unique_ptr<OneDnnOpThunk>> Create(
       const std::string& custom_call_target, Info info, OpBuffers buffers,

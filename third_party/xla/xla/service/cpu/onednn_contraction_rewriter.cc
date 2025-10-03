@@ -554,11 +554,6 @@ bool OneDnnContractionRewriter::ShouldRewriteDot(
 
 bool OneDnnContractionRewriter::ShouldRewriteConv(
     const HloInstruction* conv_instr) {
-  // TODO(intel-tf): remove this restriction after enabling oneDNN convolution
-  // support in thunk runtime.
-  return false;
-
-  // NOLINTBEGIN(clang-diagnostic-unreachable-code)
   if (conv_instr->opcode() != HloOpcode::kConvolution ||
       conv_instr->HasControlDependencies() ||
       !IsSupportedType(conv_instr->shape().element_type()) ||
@@ -592,7 +587,6 @@ bool OneDnnContractionRewriter::ShouldRewriteConv(
   }
 
   return true;
-  // NOLINTEND(clang-diagnostic-unreachable-code)
 }
 
 class OneDnnContractionRewriteVisitor : public DfsHloRewriteVisitor {

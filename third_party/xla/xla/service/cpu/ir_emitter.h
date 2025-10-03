@@ -346,7 +346,6 @@ class IrEmitter : public DfsHloVisitorWithDefault,
                                        std::string runtime_symbol_name);
   absl::Status HandleOneDnnSoftmax(HloInstruction* hlo);
   absl::Status HandleOneDnnLayerNorm(HloInstruction* hlo);
-  absl::Status HandleOneDnnConvolution(HloInstruction* hlo);
 #endif  // XLA_ONEDNN
   // Private helper to initialize an IR function for the computation.
   void InitializeIrFunction(const std::string& function_name);
