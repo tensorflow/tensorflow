@@ -73,8 +73,21 @@ class CustomCallThunk : public Thunk {
 
   static absl::StatusOr<std::unique_ptr<CustomCallThunk>> Create(
       ThunkInfo thunk_info, std::string target_name,
+      std::vector<std::optional<Slice>> operands,
+      std::vector<std::optional<Slice>> results, std::string opaque,
+      CustomCallApiVersion api_version, absl::string_view platform_name);
+
+  static absl::StatusOr<std::unique_ptr<CustomCallThunk>> Create(
+      ThunkInfo thunk_info, std::string target_name,
       CustomCallTarget call_target, std::vector<std::optional<Slice>> operands,
       std::vector<std::optional<Slice>> results, const std::string& opaque);
+
+  static absl::StatusOr<std::unique_ptr<CustomCallThunk>> Create(
+      ThunkInfo thunk_info, std::string target_name,
+      std::vector<std::optional<Slice>> operands,
+      std::vector<std::optional<Slice>> results, AttributesMap attributes,
+      const HloComputation* called_computation,
+      absl::string_view platform_name);
 
   static absl::StatusOr<std::unique_ptr<CustomCallThunk>> Create(
       ThunkInfo thunk_info, std::string target_name,
@@ -103,16 +116,16 @@ class CustomCallThunk : public Thunk {
 
  private:
   CustomCallThunk(ThunkInfo thunk_info, std::string target_name,
-                  CustomCallTarget call_target,
                   std::vector<std::optional<Slice>> operands,
-                  std::vector<std::optional<Slice>> results,
-                  const std::string& opaque);
+                  std::vector<std::optional<Slice>> results, std::string opaque,
+                  CustomCallTarget call_target,
+                  std::optional<CustomCallApiVersion> api_version);
 
   CustomCallThunk(ThunkInfo thunk_info, std::string target_name,
                   XLA_FFI_Handler_Bundle bundle,
                   std::vector<std::optional<Slice>> operands,
                   std::vector<std::optional<Slice>> results,
-                  ffi::CallFrame call_frame,
+                  ffi::CallFrame call_frame, AttributesMap attributes,
                   std::unique_ptr<ffi::ExecutionState> execution_state,
                   const HloComputation* called_computation);
 
@@ -124,6 +137,9 @@ class CustomCallThunk : public Thunk {
                                  const ffi::ExecutionContext* execution_context,
                                  const BufferAllocations* buffer_allocations);
 
+  // API version of the custom call. If not set, it means the custom call was
+  // initialized from an opaque callback and can't be serialized to a proto.
+  std::optional<CustomCallApiVersion> api_version_;
   std::string target_name_;
 
   std::vector<std::optional<Slice>> operands_;
@@ -138,6 +154,7 @@ class CustomCallThunk : public Thunk {
   // functions with XLA runtime. It's under construction, and still misses
   // a lot of features. Long term it will replace legacy custom calls.
   std::optional<XLA_FFI_Handler_Bundle> bundle_;
+  std::optional<AttributesMap> attributes_;
 
   // Reference call frame pre-initialized at construction time.
   std::optional<ffi::CallFrame> call_frame_;

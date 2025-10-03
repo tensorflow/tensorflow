@@ -21,6 +21,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/status_matchers.h"
 #include "xla/shape.h"
 
 #if GOOGLE_CUDA
@@ -95,6 +96,8 @@ XLA_FFI_REGISTER_STRUCT_ATTR_DECODING(::xla::Range, StructMember<int64_t>("lo"),
 
 namespace xla {
 namespace {
+using ::absl_testing::StatusIs;
+using ::testing::HasSubstr;
 
 using CustomCallTest = ClientLibraryTestRunnerMixin<HloTestBase>;
 
@@ -364,9 +367,12 @@ TEST_F(CustomCallTest, ExportedFfiUnknownTarget) {
              /*schedule=*/CustomCallSchedule::SCHEDULE_NONE,
              /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI);
   auto status = ExecuteAndTransfer(&b, {}).status();
-  EXPECT_EQ(status.code(), absl::StatusCode::kUnimplemented);
-  EXPECT_THAT(status.message(),
-              ::testing::HasSubstr("No registered implementation"));
+  EXPECT_THAT(
+      status,
+      StatusIs(
+          absl::StatusCode::kNotFound,
+          HasSubstr(
+              "No FFI handler registered for __xla_test$$unknown_target")));
 }
 
 // Memcpy and SubBuffers tests are already ported in
