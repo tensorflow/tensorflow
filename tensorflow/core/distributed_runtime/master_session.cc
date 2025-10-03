@@ -100,9 +100,9 @@ class MasterSession::ReffedClientGraph : public core::RefCounted {
     for (Node* n : client_graph_before_register_->graph.nodes()) {
       name_to_node_details_.emplace(
           n->name(),
-          NodeDetails(n->type_string(),
-                      strings::StrCat(
-                          "(", absl::StrJoin(n->requested_inputs(), ", "))));
+          NodeDetails(
+              n->type_string(),
+              absl::StrCat("(", absl::StrJoin(n->requested_inputs(), ", "))));
     }
   }
 
@@ -542,12 +542,12 @@ class RunManyGraphs {
       mutex_lock l(mu_);
       absl::Status resp_status = call->resp->status();
       ReportBadStatus(errors::CreateWithUpdatedMessage(
-          resp_status, strings::StrCat("From ", *call->worker_name, ":\n",
-                                       resp_status.message())));
+          resp_status, absl::StrCat("From ", *call->worker_name, ":\n",
+                                    resp_status.message())));
     } else if (!s.ok()) {
       mutex_lock l(mu_);
       ReportBadStatus(errors::CreateWithUpdatedMessage(
-          s, strings::StrCat("From ", *call->worker_name, ":\n", s.message())));
+          s, absl::StrCat("From ", *call->worker_name, ":\n", s.message())));
     }
     pending_.DecrementCount();
   }
@@ -1220,20 +1220,20 @@ uint64 HashBuildGraphOptions(const BuildGraphOptions& opts) {
 string BuildGraphOptionsString(const BuildGraphOptions& opts) {
   string buf;
   for (const string& name : opts.callable_options.feed()) {
-    strings::StrAppend(&buf, " FdE: ", name);
+    absl::StrAppend(&buf, " FdE: ", name);
   }
-  strings::StrAppend(&buf, "\n");
+  absl::StrAppend(&buf, "\n");
   for (const string& name : opts.callable_options.target()) {
-    strings::StrAppend(&buf, " TN: ", name);
+    absl::StrAppend(&buf, " TN: ", name);
   }
-  strings::StrAppend(&buf, "\n");
+  absl::StrAppend(&buf, "\n");
   for (const string& name : opts.callable_options.fetch()) {
-    strings::StrAppend(&buf, " FeE: ", name);
+    absl::StrAppend(&buf, " FeE: ", name);
   }
   if (opts.collective_graph_key != BuildGraphOptions::kNoCollectiveGraphKey) {
-    strings::StrAppend(&buf, "\nGK: ", opts.collective_graph_key);
+    absl::StrAppend(&buf, "\nGK: ", opts.collective_graph_key);
   }
-  strings::StrAppend(&buf, "\n");
+  absl::StrAppend(&buf, "\n");
   return buf;
 }
 
@@ -1708,7 +1708,7 @@ absl::Status MasterSession::BuildAndRegisterPartitions(ReffedClientGraph* rcg) {
   // "this" alive during the closure.
   popts.new_name = [this](const string& prefix) {
     mutex_lock l(mu_);
-    return strings::StrCat(prefix, "_S", next_node_id_++);
+    return absl::StrCat(prefix, "_S", next_node_id_++);
   };
   popts.get_incarnation = [this](const string& name) -> int64 {
     Device* d = devices_->FindDeviceByName(name);
