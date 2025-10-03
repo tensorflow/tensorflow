@@ -310,7 +310,7 @@ struct EnumToDataType {};  // Specializations below
 #define MATCH_TYPE_AND_ENUM(TYPE, ENUM)                 \
   template <>                                           \
   struct DataTypeToEnum<TYPE> {                         \
-    static DataType v() { return ENUM; }                \
+    static constexpr DataType v() { return ENUM; }      \
     static DataType ref() { return MakeRefType(ENUM); } \
     static constexpr DataType value = ENUM;             \
   };                                                    \
@@ -356,7 +356,7 @@ MATCH_TYPE_AND_ENUM(Variant, DT_VARIANT);
 
 template <>
 struct DataTypeToEnum<long> {
-  static DataType v() { return value; }
+  static constexpr DataType v() { return value; }
   static DataType ref() { return MakeRefType(value); }
   static constexpr DataType value = sizeof(long) == 4 ? DT_INT32 : DT_INT64;
 };
@@ -371,7 +371,7 @@ struct EnumToDataType<DT_INT64> {
 
 template <>
 struct DataTypeToEnum<unsigned long> {
-  static DataType v() { return value; }
+  static constexpr DataType v() { return value; }
   static DataType ref() { return MakeRefType(value); }
   static constexpr DataType value =
       sizeof(unsigned long) == 4 ? DT_UINT32 : DT_UINT64;
@@ -387,7 +387,7 @@ struct EnumToDataType<DT_UINT64> {
 
 template <>
 struct DataTypeToEnum<long long> {
-  static DataType v() { return DT_INT64; }
+  static constexpr DataType v() { return DT_INT64; }
   static DataType ref() { return MakeRefType(DT_INT64); }
   static constexpr DataType value = DT_INT64;
 };
@@ -398,7 +398,7 @@ struct IsValidDataType<long long> {
 
 template <>
 struct DataTypeToEnum<unsigned long long> {
-  static DataType v() { return DT_UINT64; }
+  static constexpr DataType v() { return DT_UINT64; }
   static DataType ref() { return MakeRefType(DT_UINT64); }
   static constexpr DataType value = DT_UINT64;
 };
@@ -432,7 +432,7 @@ constexpr DataTypeSet kDataTypesCanUseMemcpy =
     ToSet(DT_FLOAT8_E4M3B11FNUZ) | ToSet(DT_FLOAT8_E5M2FNUZ) | ToSet(DT_INT4) |
     ToSet(DT_UINT4) | ToSet(DT_INT2) | ToSet(DT_UINT2);
 
-inline bool DataTypeCanUseMemcpy(DataType dt) {
+constexpr bool DataTypeCanUseMemcpy(DataType dt) {
   return kDataTypesCanUseMemcpy.Contains(dt);
 }
 

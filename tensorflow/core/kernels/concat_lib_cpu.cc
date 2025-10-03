@@ -30,7 +30,7 @@ namespace {
 template <typename T>
 struct MemCpyCopier {
   inline void Copy(T* dst, const T* src, int input_index, size_t n) {
-    if (DataTypeCanUseMemcpy(DataTypeToEnum<T>::v())) {
+    if constexpr (DataTypeCanUseMemcpy(DataTypeToEnum<T>::v())) {
       memcpy(dst, src, n * sizeof(T));
     } else {
       for (size_t k = 0; k < n; ++k) {
