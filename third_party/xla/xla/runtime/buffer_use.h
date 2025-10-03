@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_RUNTIME_BUFFER_USE_H_
 
 #include <cstdint>
+#include <string>
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/types/span.h"
@@ -34,13 +35,20 @@ class BufferUse {
  public:
   enum class MemoryAccess : uint32_t {
     kRead = 1 << 0,
+    // Written to, with meaningful contents.
     kWrite = 1 << 1,
+    // Written to, but contents are not meaningful.
+    kScratch = 1 << 2,
     kReadWrite = kRead | kWrite,
+    // Read from, but left undefined after use.
+    kConsume = kRead | kScratch,
   };
 
   static constexpr MemoryAccess kRead = MemoryAccess::kRead;
   static constexpr MemoryAccess kWrite = MemoryAccess::kWrite;
+  static constexpr MemoryAccess kScratch = MemoryAccess::kScratch;
   static constexpr MemoryAccess kReadWrite = MemoryAccess::kReadWrite;
+  static constexpr MemoryAccess kConsume = MemoryAccess::kConsume;
 
   BufferUse(BufferAllocation::Slice slice, MemoryAccess access)
       : slice_(slice), access_(access) {}
@@ -57,12 +65,33 @@ class BufferUse {
     return BufferUse(slice, MemoryAccess::kReadWrite);
   }
 
+  static BufferUse Scratch(BufferAllocation::Slice slice) {
+    return BufferUse(slice, MemoryAccess::kScratch);
+  }
+
+  static BufferUse Consume(BufferAllocation::Slice slice) {
+    return BufferUse(slice, MemoryAccess::kConsume);
+  }
+
   bool HasReadAccess() const {
     return static_cast<uint32_t>(access_) & static_cast<uint32_t>(kRead);
   }
 
   bool HasWriteAccess() const {
-    return static_cast<uint32_t>(access_) & static_cast<uint32_t>(kWrite);
+    return static_cast<uint32_t>(access_) &
+           (static_cast<uint32_t>(kWrite) | static_cast<uint32_t>(kScratch));
+  }
+
+  // Returns true if the buffer contains initialized data when thunk starts
+  // execution.
+  bool HasDefinedContentsOnInput() const {
+    return static_cast<uint32_t>(access_) & static_cast<uint32_t>(kRead);
+  }
+
+  // Returns true if the buffer contains initialized data when thunk finishes
+  // execution.
+  bool HasDefinedContentsOnOutput() const {
+    return !(static_cast<uint32_t>(access_) & static_cast<uint32_t>(kScratch));
   }
 
   // ReadWriteSet tracks a set of read and write buffer slices.
@@ -98,6 +127,21 @@ class BufferUse {
   template <typename H>
   friend H AbslHashValue(H h, const BufferUse& use) {
     return H::combine(std::move(h), use.slice_, use.access_);
+  }
+
+  template <typename Sink>
+  friend void AbslStringify(Sink& sink, const BufferUse& use) {
+    absl::Format(
+        &sink, "slice: %v, access: %s%s%s", use.slice_,
+        (static_cast<uint32_t>(use.access()) & static_cast<uint32_t>(kRead))
+            ? "R"
+            : "",
+        (static_cast<uint32_t>(use.access()) & static_cast<uint32_t>(kWrite))
+            ? "W"
+            : "",
+        (static_cast<uint32_t>(use.access()) & static_cast<uint32_t>(kScratch))
+            ? "S"
+            : "");
   }
 
  private:

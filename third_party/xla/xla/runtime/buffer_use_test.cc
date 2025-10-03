@@ -16,8 +16,8 @@ limitations under the License.
 #include "xla/runtime/buffer_use.h"
 
 #include <gtest/gtest.h>
+#include "absl/strings/str_cat.h"
 #include "xla/service/buffer_assignment.h"
-#include "tsl/platform/test.h"
 
 namespace xla {
 namespace {
@@ -49,6 +49,55 @@ TEST(BufferUseTest, HasReadWriteAccess) {
   BufferUse read_write = BufferUse::ReadWrite(slice);
   EXPECT_TRUE(read_write.HasReadAccess());
   EXPECT_TRUE(read_write.HasWriteAccess());
+
+  BufferUse scratch = BufferUse::Scratch(slice);
+  EXPECT_FALSE(scratch.HasReadAccess());
+  EXPECT_TRUE(scratch.HasWriteAccess());
+
+  BufferUse consume = BufferUse::Consume(slice);
+  EXPECT_TRUE(consume.HasReadAccess());
+  EXPECT_TRUE(consume.HasWriteAccess());
+}
+
+TEST(BufferUseTest, HasDefinedContents) {
+  BufferAllocation alloc(/*index=*/0, /*size=*/1024, /*color=*/0);
+  BufferAllocation::Slice slice(&alloc, 0, 10);
+
+  BufferUse read = BufferUse::Read(slice);
+  EXPECT_TRUE(read.HasDefinedContentsOnInput());
+  EXPECT_TRUE(read.HasDefinedContentsOnOutput());
+
+  BufferUse write = BufferUse::Write(slice);
+  EXPECT_FALSE(write.HasDefinedContentsOnInput());
+  EXPECT_TRUE(write.HasDefinedContentsOnOutput());
+
+  BufferUse read_write = BufferUse::ReadWrite(slice);
+  EXPECT_TRUE(read_write.HasDefinedContentsOnInput());
+  EXPECT_TRUE(read_write.HasDefinedContentsOnOutput());
+
+  BufferUse scratch = BufferUse::Scratch(slice);
+  EXPECT_FALSE(scratch.HasDefinedContentsOnInput());
+  EXPECT_FALSE(scratch.HasDefinedContentsOnOutput());
+
+  BufferUse consume = BufferUse::Consume(slice);
+  EXPECT_TRUE(consume.HasDefinedContentsOnInput());
+  EXPECT_FALSE(consume.HasDefinedContentsOnOutput());
+}
+
+TEST(BufferUseTest, AbslStringify) {
+  BufferAllocation alloc(/*index=*/0, /*size=*/1024, /*color=*/0);
+  BufferAllocation::Slice slice(&alloc, 0, 10);
+
+  EXPECT_EQ(absl::StrCat(BufferUse::Read(slice)),
+            "slice: {index:0, offset:0, size:10}, access: R");
+  EXPECT_EQ(absl::StrCat(BufferUse::Write(slice)),
+            "slice: {index:0, offset:0, size:10}, access: W");
+  EXPECT_EQ(absl::StrCat(BufferUse::ReadWrite(slice)),
+            "slice: {index:0, offset:0, size:10}, access: RW");
+  EXPECT_EQ(absl::StrCat(BufferUse::Scratch(slice)),
+            "slice: {index:0, offset:0, size:10}, access: S");
+  EXPECT_EQ(absl::StrCat(BufferUse::Consume(slice)),
+            "slice: {index:0, offset:0, size:10}, access: RS");
 }
 
 TEST(BufferUseTest, ReadWriteSet) {
