@@ -34,14 +34,6 @@ namespace mhlo {
 xla::OpMetadata CreateOpMetadataFromLocation(
     Operation* op, StackFrameIndexBuilder* frame_index_builder);
 
-// Returns an OriginalValueProto based on the location. If the location is
-// unknown or the original value is not present, an empty proto is returned.
-std::optional<xla::OriginalValueProto> CreateOriginalValueFromLocation(
-    mlir::Location loc);
-
-// Returns an OriginalValueProto based on the location of the op.
-std::optional<xla::OriginalValueProto> CreateOriginalValueFromOp(Operation* op);
-
 // Returns a name that can be used for debugging purposes, e.g., naming
 // variable names in generated IR or producing logging output.
 std::string GetDebugNameFromLocation(Location location);

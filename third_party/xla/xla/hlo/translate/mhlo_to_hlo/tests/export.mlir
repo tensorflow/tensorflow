@@ -3170,6 +3170,30 @@ func.func @main(%input0: tensor<16x16xf32>, %input1: tensor<16x16xi32>) {
 }
 
 // -----
+// CHECK: HloModule
+// CHECK: ENTRY
+// CHECK: %[[ARG0:.*]] = f32[192] parameter(0)
+// CHECK: ROOT %[[RESULT:.*]] = f32[1,17,17,192] broadcast(%[[ARG0]]), dimensions={3}, origin={{[{][{]}}"broadcast.2342"{{[}][}]}}
+
+func.func @main(%arg0: tensor<192xf32>) -> tensor<1x17x17x192xf32> {
+  %0 = "mhlo.broadcast_in_dim"(%arg0) <{broadcast_dimensions = dense<3> : tensor<1xi64>}> {mhlo.original_value = "{{\22broadcast.2342\22}}"} : (tensor<192xf32>) -> tensor<1x17x17x192xf32>
+  return %0 : tensor<1x17x17x192xf32>
+}
+
+// -----
+
+// CHECK: HloModule
+// CHECK: ENTRY
+// CHECK:  %Arg_0.1 = f32[10] parameter(0)
+// CHECK:  %[[TOPK:.*]] = (f32[8], s32[8]) topk(%Arg_0.1), k=8, largest=true, origin={({"t" {0}{{[}]}}, {"t" {1}{{[}]}})}
+// CHECK:  ROOT %[[GTE0:.*]] = f32[8] get-tuple-element(%[[TOPK]]), index=0, origin={{[{][{]}}"t" {0}{{[}][}]}}
+// CHECK:  %[[GTE1:.*]] = s32[8] get-tuple-element(%[[TOPK]]), index=1, origin={{[{][{]}}"t" {1}{{[}][}]}}
+func.func @main(%arg0: tensor<10xf32>) -> tensor<8xf32> {
+  %0:2 = mhlo.topk(%arg0, k=8, largest=true) {mhlo.original_value="{({\22t\22 {0}}, {\22t\22 {1}})}"} : tensor<10xf32> -> (tensor<8xf32>, tensor<8xi32>)
+  return %0#0 : tensor<8xf32>
+}
+
+// -----
 
 // CHECK: HloModule
 // CHECK: ENTRY
