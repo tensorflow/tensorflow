@@ -99,7 +99,7 @@ class Stack : public ResourceBase {
 
   string DebugString() const override {
     mutex_lock l(mu_);
-    return strings::StrCat("Stack[", stack_name_, "]");
+    return absl::StrCat("Stack[", stack_name_, "]");
   }
 
   const string& stack_name() { return stack_name_; }
@@ -137,7 +137,7 @@ absl::Status GetStack(OpKernelContext* ctx, Stack** stack) {
     }
     const string& container = Tstack_handle.flat<tstring>()(0);
     const string& stack_name = Tstack_handle.flat<tstring>()(1);
-    string key = strings::StrCat(container, stack_name);
+    string key = absl::StrCat(container, stack_name);
     ResourceMgr* rm = ctx->resource_manager();
     if (rm == nullptr) {
       return errors::Internal("No resource manager.");
@@ -180,11 +180,11 @@ void StackOp::Compute(OpKernelContext* ctx) {
 
   static const char kContainer[] = "_stacks";
   auto stack_id = Stack::stack_counter.fetch_add(1);
-  string stack_name = strings::StrCat(stack_name_, "_", stack_id);
+  string stack_name = absl::StrCat(stack_name_, "_", stack_id);
   // Store the handle in a per-step container.
   ResourceMgr* rm = ctx->resource_manager();
   OP_REQUIRES(ctx, rm != nullptr, errors::Internal("No resource manager."));
-  string key = strings::StrCat(kContainer, stack_name);
+  string key = absl::StrCat(kContainer, stack_name);
   auto* step_container = ctx->step_container();
   OP_REQUIRES(ctx, step_container != nullptr,
               errors::Internal("No step container."));
