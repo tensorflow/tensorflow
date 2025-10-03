@@ -97,8 +97,8 @@ TFStats::TFStats(const string& filename,
     id_to_string_[entry.first] = entry.second;
   }
   for (const auto& node_pb : profile.nodes()) {
-    std::unique_ptr<TFGraphNode> node(
-        new TFGraphNode(node_pb.second, profile, &id_to_string_, &nodes_map_));
+    std::unique_ptr<TFGraphNode> node = std::make_unique<TFGraphNode>(
+        node_pb.second, profile, &id_to_string_, &nodes_map_);
     nodes_map_.insert(std::pair<string, std::unique_ptr<TFGraphNode>>(
         node_pb.second.name(), std::move(node)));
   }
