@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/service/matmul_indexing_utils.h"
 
 #include <gtest/gtest.h>
+#include "absl/status/status_matchers.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/test.h"
