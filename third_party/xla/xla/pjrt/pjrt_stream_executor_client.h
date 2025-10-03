@@ -550,7 +550,7 @@ class PjRtStreamExecutorClient : public CommonPjRtClient {
 absl::StatusOr<DeviceAssignment> DevicesToDeviceAssignment(
     absl::Span<const std::vector<PjRtDevice*>> devices);
 
-class PjRtStreamExecutorBuffer : public CommonPjRtBuffer {
+class PjRtStreamExecutorBuffer : public CommonPjRtBufferImpl {
  public:
   class ScopedHold : public CommonPjRtBuffer::ScopedHold {
    public:
@@ -594,25 +594,6 @@ class PjRtStreamExecutorBuffer : public CommonPjRtBuffer {
   PjRtStreamExecutorBuffer(PjRtStreamExecutorBuffer&&) = delete;
   PjRtStreamExecutorBuffer& operator=(const PjRtStreamExecutorBuffer&) = delete;
   PjRtStreamExecutorBuffer& operator=(PjRtStreamExecutorBuffer&&) = delete;
-
-  const Shape& on_device_shape() const override { return on_device_shape_; }
-
-  absl::StatusOr<Shape> logical_on_device_shape() override;
-  PjRtMemorySpace* memory_space() const override { return memory_space_; }
-  PjRtStreamExecutorDevice* device() const override { return device_; }
-  PjRtPlatformId platform_id() const { return client_->platform_id(); }
-  absl::string_view platform_name() const { return client_->platform_name(); }
-  PjRtStreamExecutorClient* client() const override { return client_; }
-  bool IsEmptyTuple() const {
-    return on_device_shape_.IsTuple() &&
-           on_device_shape_.tuple_shapes().size() == 0;
-  }
-
-  absl::StatusOr<std::unique_ptr<ExternalReference>> AcquireExternalReference()
-      override;
-
-  absl::StatusOr<std::unique_ptr<ExternalReference>>
-  ReleaseDeviceMemoryOwnership(bool wait_for_operations_to_complete) override;
 
   using PjRtBuffer::ToLiteralSync;
   Future<> ToLiteral(MutableLiteralBase* literal) override;
@@ -705,10 +686,6 @@ class PjRtStreamExecutorBuffer : public CommonPjRtBuffer {
       PjRtDevice* dst_device, PjRtMemorySpace* dst_memory_space = nullptr);
 
   Future<> ToLiteralHelper(Future<MutableLiteralBase*> literal);
-
-  PjRtStreamExecutorClient* const client_;
-  const Shape on_device_shape_;
-  PjRtStreamExecutorDevice* const device_;
 };
 
 // Allocates the device buffers for a buffer that will be used as the

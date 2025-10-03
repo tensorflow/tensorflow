@@ -308,6 +308,13 @@ class TrackedDeviceBuffer : public AbstractTrackedDeviceBuffer {
     LOG(FATAL) << "Implement";
   }
 
+  absl::Status WaitUntilBufferReadyOnStream(std::intptr_t stream) override {
+    for (const BufferSequencingEventRef& event : definition_events()) {
+      TF_RETURN_IF_ERROR(event->WaitForEventOnExternalStream(stream));
+    }
+    return absl::OkStatus();
+  }
+
  private:
   PjRtDevice* device_;
 
