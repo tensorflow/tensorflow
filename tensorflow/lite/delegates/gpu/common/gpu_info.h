@@ -177,6 +177,8 @@ enum class AppleGpu {
   kA17Pro,
   kA18,
   kA18Pro,
+  kA19,
+  kA19Pro,
   kM1,
   kM1Pro,
   kM1Max,
@@ -194,6 +196,7 @@ enum class AppleGpu {
 struct AppleInfo {
   // https://developer.apple.com/documentation/metal/mtlgpufamily
   enum class Family {
+    kApple10 = 10,
     kApple9 = 9,
     kApple8 = 8,
     kApple7 = 7,
@@ -218,6 +221,7 @@ struct AppleInfo {
   bool IsFamilyApple7() const;
   bool IsFamilyApple8() const;
   bool IsFamilyApple9() const;
+  bool IsFamilyApple10() const;
 
   bool IsFamilyOrLower(Family family) const;
 
