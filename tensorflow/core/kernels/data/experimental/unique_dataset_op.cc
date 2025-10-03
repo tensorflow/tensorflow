@@ -49,7 +49,7 @@ class UniqueDatasetOp::Dataset : public DatasetBase {
   std::unique_ptr<IteratorBase> MakeIteratorInternal(
       const string& prefix) const override {
     return std::make_unique<Iterator>(
-        Iterator::Params{this, strings::StrCat(prefix, "::Unique")});
+        Iterator::Params{this, absl::StrCat(prefix, "::Unique")});
   }
 
   const DataTypeVector& output_dtypes() const override {
@@ -61,7 +61,7 @@ class UniqueDatasetOp::Dataset : public DatasetBase {
   }
 
   string DebugString() const override {
-    return strings::StrCat("UniqueDatasetOp::Dataset");
+    return absl::StrCat("UniqueDatasetOp::Dataset");
   }
 
   absl::Status InputDatasets(
@@ -133,7 +133,7 @@ class UniqueDatasetOp::Dataset : public DatasetBase {
       size_t i = 0;
       for (const Tensor& t : unique_elements_) {
         TF_RETURN_IF_ERROR(writer->WriteTensor(
-            full_name(strings::StrCat("unique_elements[", i++, "]")), t));
+            full_name(absl::StrCat("unique_elements[", i++, "]")), t));
       }
       return absl::OkStatus();
     }
@@ -153,7 +153,7 @@ class UniqueDatasetOp::Dataset : public DatasetBase {
       for (int64_t i = 0; i < num_unique_elements; ++i) {
         Tensor unique_element;
         TF_RETURN_IF_ERROR(reader->ReadTensor(
-            ctx->flr(), full_name(strings::StrCat("unique_elements[", i, "]")),
+            ctx->flr(), full_name(absl::StrCat("unique_elements[", i, "]")),
             &unique_element));
         auto insert_result = unique_elements_.insert(unique_element);
         if (!insert_result.second) {

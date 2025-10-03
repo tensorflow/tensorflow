@@ -51,11 +51,11 @@ class StatsAggregatorWithTagAndPrefix : public StatsAggregator {
   void IncrementCounter(const string& name, const string& label,
                         int64_t val) override {
     if (!prefix_.empty()) {
-      wrapped_->IncrementCounter(
-          strings::StrCat(prefix_, "/", TaggedName(name)), label, val);
+      wrapped_->IncrementCounter(absl::StrCat(prefix_, "/", TaggedName(name)),
+                                 label, val);
     } else {
-      wrapped_->IncrementCounter(
-          strings::StrCat("/tensorflow/", TaggedName(name)), label, val);
+      wrapped_->IncrementCounter(absl::StrCat("/tensorflow/", TaggedName(name)),
+                                 label, val);
     }
   }
 
@@ -67,7 +67,7 @@ class StatsAggregatorWithTagAndPrefix : public StatsAggregator {
  private:
   string TaggedName(const string& name) const {
     if (!tag_.empty()) {
-      string tagged_name = strings::StrCat(tag_, stats_utils::kDelimiter, name);
+      string tagged_name = absl::StrCat(tag_, stats_utils::kDelimiter, name);
       return tagged_name;
     }
     return name;
@@ -125,8 +125,8 @@ class SetStatsAggregatorDatasetOp : public UnaryDatasetOpKernel {
 
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
-      return std::make_unique<Iterator>(Iterator::Params{
-          this, strings::StrCat(prefix, "::SetStatsAggregator")});
+      return std::make_unique<Iterator>(
+          Iterator::Params{this, absl::StrCat(prefix, "::SetStatsAggregator")});
     }
 
     const DataTypeVector& output_dtypes() const override {
