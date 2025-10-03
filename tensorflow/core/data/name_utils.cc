@@ -17,6 +17,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/attributes.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 
 namespace tensorflow {
