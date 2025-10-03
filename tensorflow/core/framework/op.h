@@ -227,21 +227,21 @@ class OpDefBuilderWrapper {
     return *this;
   }
   OpDefBuilderWrapper& Attr(const char* spec) TF_ATTRIBUTE_NOINLINE {
-    return Attr(std::string(spec));
+    return Attr(spec);
   }
   OpDefBuilderWrapper& Input(std::string spec) {
     builder_.Input(std::move(spec));
     return *this;
   }
   OpDefBuilderWrapper& Input(const char* spec) TF_ATTRIBUTE_NOINLINE {
-    return Input(std::string(spec));
+    return Input(spec);
   }
   OpDefBuilderWrapper& Output(std::string spec) {
     builder_.Output(std::move(spec));
     return *this;
   }
   OpDefBuilderWrapper& Output(const char* spec) TF_ATTRIBUTE_NOINLINE {
-    return Output(std::string(spec));
+    return Output(spec);
   }
   OpDefBuilderWrapper& SetIsCommutative() {
     builder_.SetIsCommutative();
