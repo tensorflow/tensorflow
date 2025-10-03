@@ -453,7 +453,6 @@ filegroup(
         "str_util.h",
         "strcat.h",
         "stringpiece.h",
-        "stringprintf.cc",
         "stringprintf.h",
         "thread_annotations.h",
         "threadpool.h",
@@ -791,11 +790,10 @@ cc_library(
 
 cc_library(
     name = "stringprintf",
-    srcs = ["stringprintf.cc"],
     hdrs = ["stringprintf.h"],
     deps = [
-        "@local_xla//xla/tsl/platform:macros",
-        "@local_xla//xla/tsl/platform:types",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/strings:str_format",
     ],
 )
 
