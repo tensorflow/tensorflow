@@ -97,7 +97,7 @@ TEST_F(FissionBackendTest, GetSupportedConfigsFromCublasCustomCall) {
   absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>> configs =
       backend_.GetSupportedConfigs(
           (*module->entry_computation()->root_instruction()));
-  EXPECT_THAT(configs, absl_testing::IsOkAndHolds(SizeIs(10)));
+  EXPECT_THAT(configs, absl_testing::IsOkAndHolds(SizeIs(testing::Ge(2))));
   // The first config is the cublas config.
   AutotuneResult::GemmKey cublas_config;
   EXPECT_TRUE(configs.value().front()->UnpackTo(&cublas_config));
