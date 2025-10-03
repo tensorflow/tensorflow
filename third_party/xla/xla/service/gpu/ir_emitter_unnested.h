@@ -124,6 +124,7 @@ class IrEmitterUnnested : public IrEmitter {
       const HloCustomCallInstruction* instr);
   absl::Status EmitNormThunk(const HloCustomCallInstruction* instr);
   absl::Status EmitCuDnnThunk(const HloCustomCallInstruction* instr);
+  absl::Status EmitPtxCustomCall(const HloCustomCallInstruction* instr);
   absl::Status EmitCubDeviceRadixSort(const HloCustomCallInstruction* instr);
   absl::Status EmitCholeskyThunk(const HloInstruction* instr);
   absl::Status EmitCustomCallThunk(const HloCustomCallInstruction* instr);

@@ -155,6 +155,10 @@ bool IsCustomCallToCusolver(const HloInstruction& hlo);
 // Returns true if `hlo` will be implemented as a call to a TopK routine.
 bool IsCustomCallToTopK(const HloInstruction& hlo);
 
+// Returns true if `hlo` will be implmented as a call to a custom PTX kernel
+// implementation.
+bool IsCustomCallToPtxKernel(const HloInstruction& hlo);
+
 // Cholesky decomposition. Takes a (batched) matrix as input, and returns a
 // tuple of (result, workspace, info), where result is the result of the
 // Cholesky decomposition, workspace is scratch space for cuSolver, and info

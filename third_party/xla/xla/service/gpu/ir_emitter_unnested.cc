@@ -144,6 +144,7 @@ limitations under the License.
 #include "xla/service/global_device_id.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/cublas_cudnn.h"
+#include "xla/service/gpu/custom_kernel_emitter.h"
 #include "xla/service/gpu/execution_stream_assignment.h"
 #include "xla/service/gpu/gpu_constants.h"
 #include "xla/service/gpu/gpu_conv_runner.h"
@@ -1033,6 +1034,14 @@ absl::Status IrEmitterUnnested::EmitCuDnnThunk(
           instr, ir_emitter_context_->GetNextThunkId()),
       kernel_arguments.GetArgumentBufferSlices(),
       kernel_arguments.GetArgumentOutputFlags(), dropout_seed));
+  return absl::OkStatus();
+}
+
+absl::Status IrEmitterUnnested::EmitPtxCustomCall(
+    const HloCustomCallInstruction* instr) {
+  TF_ASSIGN_OR_RETURN(auto thunk,
+                      EmitPtxCustomKernelThunk(instr, ir_emitter_context_));
+  AddThunkToThunkSequence(std::move(thunk));
   return absl::OkStatus();
 }
 
@@ -3348,6 +3357,9 @@ absl::Status IrEmitterUnnested::EmitHloInstruction(
       if (IsCustomCallTofMHA(*instr) || IsCustomCallTofMHAF8(*instr) ||
           IsCustomCallToBlockScaledDot(*instr)) {
         return EmitCuDnnThunk(custom_call);
+      }
+      if (IsCustomCallToPtxKernel(*instr)) {
+        return EmitPtxCustomCall(custom_call);
       }
       if (IsCustomCallToTopK(*instr)) {
         return EmitTopKCustomCall(custom_call);
