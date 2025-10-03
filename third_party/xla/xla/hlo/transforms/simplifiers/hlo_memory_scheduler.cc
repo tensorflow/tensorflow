@@ -23,6 +23,7 @@ limitations under the License.
 #include <map>
 #include <memory>
 #include <queue>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -111,11 +112,11 @@ class ListScheduler {
 
  private:
   // The scheduling priority of an instruction is first the number of bytes
-  // freed by scheduling the instruction, and second (tie-breaker) by the number
-  // of users. This is represented as a std::pair containing these two values
-  // (first element is the bytes freed). std::pair provides the necessary
+  // freed by scheduling the instruction, second by the number of users, and
+  // third by the post-order index. This is represented as a std::tuple
+  // containing these three values. std::tuple provides the necessary
   // comparison operators.
-  using Priority = std::pair<int64_t, int64_t>;
+  using Priority = std::tuple<int64_t, int64_t, int64_t>;
 
   ListScheduler(HloComputation* computation,
                 const TuplePointsToAnalysis& points_to_analysis,
@@ -123,6 +124,10 @@ class ListScheduler {
       : computation_(computation),
         points_to_analysis_(points_to_analysis),
         size_function_(ABSL_DIE_IF_NULL(size_function)) {
+    auto post_order = computation->MakeInstructionPostOrder();
+    for (int64_t i = 0; i < post_order.size(); ++i) {
+      post_order_index_[post_order[i]] = i;
+    }
     // Create a map containing the LogicalBuffer uses for each HLO
     // instruction. An HLO instruction "uses" a LogicalBuffer if the
     // LogicalBuffer is in an operand of the instruction as indicated by
@@ -243,7 +248,11 @@ class ListScheduler {
         freed_bytes += (*size_function_)(*buffer);
       }
     }
-    return freed_bytes - entry.bytes_defined;
+    // To be less greedy, we don't subtract the exact number of bytes defined.
+    // Instead, we subtract 1 if any bytes are defined. This makes the
+    // scheduler less averse to scheduling instructions that allocate large
+    // output buffers, as long as they also free up input buffers.
+    return freed_bytes - (entry.bytes_defined > 0);
   }
 
   // Constructs the scheduling priority of the given instruction.
@@ -253,9 +262,15 @@ class ListScheduler {
     // excessive spilling.
     if (ShapeUtil::IsEffectiveScalar(entry.instruction->shape())) {
       return {std::numeric_limits<int64_t>::max(),
+              std::numeric_limits<int64_t>::max(),
               std::numeric_limits<int64_t>::max()};
     }
-    return {BytesFreedIfScheduled(entry), entry.instruction->user_count()};
+    // Use negative post-order index to prefer instructions that appear earlier
+    // in post-order (leaves first). This acts as a tie-breaker when net memory
+    // change and user count are equal, biasing the schedule towards a
+    // post-order traversal.
+    return {BytesFreedIfScheduled(entry), entry.instruction->user_count(),
+            -post_order_index_.at(entry.instruction)};
   }
 
   HloInstructionSequence CreateSchedule() {
@@ -303,7 +318,7 @@ class ListScheduler {
       --best_it;
       HloInstruction* best = best_it->second.instruction;
       VLOG(2) << "Schedule instruction: " << best->ToShortString()
-              << " Bytes freed: " << best_it->first.first;
+              << " Bytes freed: " << std::get<0>(best_it->first);
       ready_queue.erase(best_it);
       ready_instructions.erase(best);
       schedule.push_back(best);
@@ -382,6 +397,9 @@ class ListScheduler {
 
   // Set of instructions which have been scheduled.
   absl::flat_hash_set<const HloInstruction*> scheduled_instructions_;
+
+  // Map from HloInstruction to its index in post-order.
+  absl::flat_hash_map<const HloInstruction*, int64_t> post_order_index_;
 };
 
 int64_t SumBufferSizes(const HloInstruction* hlo, const HloValueSet& value_set,
