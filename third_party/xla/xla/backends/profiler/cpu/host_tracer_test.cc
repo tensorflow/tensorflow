@@ -115,7 +115,9 @@ TEST(HostTracerTest, CollectsTraceMeEventsAsXSpace) {
   {
     std::optional<std::string> value;
     e3.ForEachStat([&](const XStatVisitor& stat) {
-      if (stat.Name() == "key1") value = stat.ToString();
+      if (stat.Name() == "key1") {
+        value = stat.ToString();
+      }
     });
     ASSERT_TRUE(value);           // The stat key is present.
     EXPECT_EQ(*value, "value1");  // The stat value is expected.
