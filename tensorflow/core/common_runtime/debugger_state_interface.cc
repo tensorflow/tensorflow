@@ -31,7 +31,7 @@ const string SummarizeDebugTensorWatches(
 
   for (const DebugTensorWatch& watch : watches) {
     string tensor_name =
-        strings::StrCat(watch.node_name(), ":", watch.output_slot());
+        absl::StrCat(watch.node_name(), ":", watch.output_slot());
     if (watch.tolerate_debug_op_creation_failures()) {
       oss << "(TOL)";  // Shorthand for "tolerate".
     }
