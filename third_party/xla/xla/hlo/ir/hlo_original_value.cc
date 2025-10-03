@@ -309,4 +309,24 @@ bool OriginalValue::IsCompatibleWith(const Shape& shape) const {
   return tree().IsStructurallyCompatible(shape);
 }
 
+std::optional<std::string> OriginalValue::GetOriginalCallLikeInstructions()
+    const {
+  if (is_synthetic_call()) {
+    // Synthetic call are transparent and hence resulting in empty call
+    // instructions.
+    return "";
+  }
+  if (IsEmpty()) {
+    // Currently we don't track original call information separately and rely
+    // on the first leaf to find the original call information. So if there are
+    // no leaves we return std::nullopt.
+    return std::nullopt;
+  }
+  auto original_array = original_arrays().begin()->second;
+  if (!original_array.has_value()) {
+    return std::nullopt;
+  }
+  return original_array->instruction_name;
+}
+
 }  // namespace xla

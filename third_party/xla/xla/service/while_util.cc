@@ -164,6 +164,33 @@ WhileUtil::MakeInstructionsLiveIn(
   HloInstruction* new_while = while_instr->AddInstruction(
       HloInstruction::CreateWhile(new_while_shape, new_while_condition,
                                   new_while_body, new_while_init));
+  if (while_instr->original_value() != nullptr) {
+    OriginalValue new_original_value(new_while_shape);
+    for (auto& [shape_index, original_array] :
+         new_original_value.mutable_original_arrays()) {
+      // The hoisted instructions are appended to the end of the while
+      // instruction, so the shape indices smaller than
+      // `elements_in_old_while_shape` are all the old original arrays that
+      // need to be propagated.
+      if (shape_index[0] < elements_in_old_while_shape) {
+        original_array =
+            while_instr->original_value()->tree().element(shape_index);
+      } else {
+        // If the element is new (i.e., hoisted), fetch its original value from
+        // the instruction that was hoisted.
+        int instruction_idx = shape_index[0] - elements_in_old_while_shape;
+        HloInstruction* instruction = instructions[instruction_idx];
+        if (instruction->original_value() != nullptr) {
+          ShapeIndex shape_index_in_instruction = shape_index;
+          shape_index_in_instruction.erase(shape_index_in_instruction.begin());
+          original_array = instruction->original_value()->original_array(
+              shape_index_in_instruction);
+        }
+      }
+    }
+    new_while->set_original_value(
+        std::make_shared<OriginalValue>(std::move(new_original_value)));
+  }
 
   // We want to get rid of the old while instruction even if it has side
   // effecting operations so we do a manual HloComputation::RemoveInstruction

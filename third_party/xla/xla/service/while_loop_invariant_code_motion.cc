@@ -17,7 +17,10 @@ limitations under the License.
 
 #include <cstdint>
 #include <iterator>
+#include <memory>
+#include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -26,11 +29,14 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/analysis/while_loop_analysis.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/hlo_original_value.h"
+#include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/transforms/simplifiers/hlo_dce.h"
 #include "xla/hlo/transforms/simplifiers/tuple_simplifier.h"
 #include "xla/map_util.h"
@@ -38,9 +44,9 @@ limitations under the License.
 #include "xla/service/while_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -92,6 +98,33 @@ static void CreateLoopInvariantCopy(
       HloInstruction* new_instruction =
           parent_of_while->AddInstruction(old_instruction->CloneWithNewOperands(
               old_instruction->shape(), new_operands));
+
+      std::optional<std::string> original_call_instructions;
+      if (while_instr->original_value() != nullptr) {
+        original_call_instructions =
+            while_instr->original_value()->GetOriginalCallLikeInstructions();
+      }
+      if (original_call_instructions.has_value() &&
+          old_instruction->original_value() != nullptr) {
+        std::string original_call_prefix;
+        if (!original_call_instructions->empty()) {
+          // We only add the wildcard iteration count if the call-like
+          // instruction is available.
+          original_call_prefix =
+              absl::StrCat(*original_call_instructions, "#*/");
+        }
+
+        auto new_original_value =
+            std::make_shared<OriginalValue>(*old_instruction->original_value());
+        for (auto& [shape_index, original_array] :
+             new_original_value->mutable_original_arrays()) {
+          if (original_array) {
+            original_array->instruction_name = absl::StrCat(
+                original_call_prefix, original_array->instruction_name);
+          }
+        }
+        new_instruction->set_original_value(std::move(new_original_value));
+      }
 
       InsertOrDie(hoisted_instructions, old_instruction, new_instruction);
 

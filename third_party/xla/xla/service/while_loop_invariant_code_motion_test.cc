@@ -32,8 +32,8 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -769,6 +769,64 @@ TEST_F(WhileLoopInvariantCodeMotionTest, RespectFrontendAttrDisablingHoisting) {
   TF_ASSERT_OK_AND_ASSIGN(bool simplified_loop,
                           WhileLoopInvariantCodeMotion{}.Run(module.get()));
   EXPECT_FALSE(simplified_loop);
+}
+
+TEST_F(WhileLoopInvariantCodeMotionTest, HoistWithOriginalValue) {
+  const char* const hlo_string = R"(
+HloModule licm_ov_test
+
+body {
+  p_body = (s32[], s32[]) parameter(0)
+  gte0 = s32[] get-tuple-element(p_body), index=0
+  c = s32[] constant(1), origin={{"c.1"}}
+  add = s32[] add(gte0, c), origin={{"add.1"}}
+  ROOT tuple = (s32[], s32[]) tuple(gte0, add)
+}
+
+cond {
+  p_cond = (s32[], s32[]) parameter(0)
+  ROOT result = pred[] constant(true)
+}
+
+ENTRY entry {
+  p_entry_0 = s32[] parameter(0)
+  while_init = (s32[], s32[]) tuple(p_entry_0, p_entry_0)
+  ROOT while0 = (s32[], s32[]) while(while_init), condition=cond, body=body, origin={({"while.5" {0}},{"while.5" {1}})}
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
+  HloComputation* body = m->GetComputationWithName("body");
+  HloInstruction* c = body->GetInstructionWithName("c");
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool simplified_loop,
+      WhileLoopInvariantCodeMotion{/*hoist_constants=*/true}.Run(m.get()));
+  EXPECT_TRUE(simplified_loop);
+
+  HloInstruction* transformed_while;
+  FindOnlyWhileInstruction(m->entry_computation(), &transformed_while);
+
+  HloInstruction* hoisted_c = nullptr;
+  HloInstruction* hoisted_add = nullptr;
+  for (auto* instr : m->entry_computation()->instructions()) {
+    if (instr->opcode() == HloOpcode::kConstant &&
+        instr->shape() == c->shape()) {
+      hoisted_c = instr;
+    }
+    if (instr->opcode() == HloOpcode::kAdd) {
+      hoisted_add = instr;
+    }
+  }
+  ASSERT_NE(hoisted_c, nullptr);
+  ASSERT_NE(hoisted_add, nullptr);
+  ASSERT_NE(hoisted_c->original_value(), nullptr);
+  EXPECT_EQ(hoisted_c->original_value()->ToString(), "{\"while.5#*/c.1\"}");
+  ASSERT_NE(hoisted_add->original_value(), nullptr);
+  EXPECT_EQ(hoisted_add->original_value()->ToString(), "{\"while.5#*/add.1\"}");
+  ASSERT_NE(transformed_while->original_value(), nullptr);
+  EXPECT_EQ(transformed_while->original_value()->ToString(),
+            "({\"while.5\" {0}}, {\"while.5\" {1}}, {\"while.5#*/c.1\"}, "
+            "{\"while.5#*/add.1\"})");
 }
 
 }  // namespace

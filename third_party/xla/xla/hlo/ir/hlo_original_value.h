@@ -135,6 +135,12 @@ class OriginalValue {
     return !(*this == other);
   }
 
+  // Gets the (partial) call hierarchy string of the original call instructions
+  // that this OriginalValue is associated with. Returns std::nullopt if this
+  // OriginalValue is not associated with a call instruction or the call
+  // hierarchy is lost (e.g., after complicated optimizations).
+  std::optional<std::string> GetOriginalCallLikeInstructions() const;
+
   template <typename H>
   friend H AbslHashValue(H h, const OriginalValue& value) {
     h = H::combine(std::move(h), value.is_synthetic_call());

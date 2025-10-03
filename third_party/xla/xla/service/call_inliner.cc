@@ -214,9 +214,21 @@ class SubcomputationInsertionVisitor : public DfsHloVisitorWithDefault {
       new_hlo_pointer->set_original_value(nullptr);
       return;
     }
+    std::optional<std::string> call_instructions =
+        call_original_value->GetOriginalCallLikeInstructions();
+    if (!call_instructions.has_value()) {
+      // If the call instruction is lost, we must drop the original values
+      // on the inlined instructions because the call hierarchy is lost.
+      new_hlo_pointer->set_original_value(nullptr);
+      return;
+    }
     new_hlo_pointer->CopyOriginalValue(hlo, /*clone=*/true,
                                        /*issue_warning=*/true);
-    if (call_original_value->is_synthetic_call()) {
+    if (call_instructions->empty()) {
+      // Empty call instructions means the call is synthetic and hence the
+      // inlined instruction do not need to be prefixed with the call
+      // instructions. Hence we can just return here to have the copied original
+      // value to be used.
       return;
     }
     std::shared_ptr<OriginalValue> original_value =
@@ -227,12 +239,8 @@ class SubcomputationInsertionVisitor : public DfsHloVisitorWithDefault {
     for (auto& pair : original_value->mutable_original_arrays()) {
       std::optional<OriginalArray>& original_array = pair.second;
       if (original_array.has_value()) {
-        std::string call_instruction_name =
-            call_original_value->original_arrays()
-                .begin()
-                ->second->instruction_name;
         original_array->instruction_name = absl::StrCat(
-            call_instruction_name, "/", original_array->instruction_name);
+            *call_instructions, "/", original_array->instruction_name);
       }
     }
   }
