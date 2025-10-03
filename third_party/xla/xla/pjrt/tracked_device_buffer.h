@@ -163,6 +163,8 @@ class BufferSequencingEvent : tsl::AsyncPayload::KeepOnError {
     se::Stream* definition_stream;
   };
 
+  se::Stream* definition_stream() const { return event_->definition_stream; }
+
  private:
   uint64_t sequence_number() const;
 
@@ -218,8 +220,6 @@ class TrackedDeviceBuffer : public AbstractTrackedDeviceBuffer {
  public:
   // Helper object to keep track of usage of the buffer on streams.
   struct StreamAndEvent {
-    // A stream the buffer has been used on.
-    se::Stream* stream;
     // An event that is later than the most recent usage of the buffer on
     // stream.
     BufferSequencingEventRef event;
@@ -282,8 +282,7 @@ class TrackedDeviceBuffer : public AbstractTrackedDeviceBuffer {
   //                   reference to *this to stay live until after the host
   //                   is sure that the usage (transfer or execution) has
   //                   completed.
-  void AddUsageEvent(se::Stream* usage_stream, BufferSequencingEventRef event,
-                     bool reference_held);
+  void AddUsageEvent(BufferSequencingEventRef event, bool reference_held);
 
   using StreamAndEventContainer = absl::InlinedVector<StreamAndEvent, 3>;
   // Returns the set of streams that the buffer was used on, and for each stream
@@ -303,9 +302,7 @@ class TrackedDeviceBuffer : public AbstractTrackedDeviceBuffer {
   tsl::RCReference<CommonPjRtRawBuffer> GetRawBuffer(
       PjRtMemorySpace* memory_space) override;
 
-  void AddUsageEvent(tsl::RCReference<PjRtDeviceEvent> event) override {
-    LOG(FATAL) << "Implement";
-  }
+  void AddUsageEvent(tsl::RCReference<PjRtDeviceEvent> event) override;
 
   void Delete(PjRtMemorySpace* memory_space) override {
     LOG(FATAL) << "Implement";

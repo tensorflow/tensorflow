@@ -32,6 +32,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "xla/pjrt/device_event.h"
 #include "xla/pjrt/event_pool.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
@@ -257,23 +258,23 @@ void TrackedDeviceBuffer::ConfirmDonation() {
   ReleaseDeviceMemory();
 }
 
-void TrackedDeviceBuffer::AddUsageEvent(se::Stream* usage_stream,
-                                        BufferSequencingEventRef event,
+void TrackedDeviceBuffer::AddUsageEvent(BufferSequencingEventRef event,
                                         bool reference_held) {
   CHECK(in_use_);
 
   // If the event is 0, it means that the event is not recorded yet and the task
   // related to this event is deferred, so just add it.
   if (!event->IsDefined()) {
-    usage_events_.push_back({usage_stream, event, reference_held});
+    usage_events_.push_back({event, reference_held});
     return;
   }
+  auto* usage_stream = event->definition_stream();
 
   for (auto& existing : usage_events_) {
     // If the existing event is 0, it means that the event is not recorded yet
     // and the task related to this event is deferred, so don't replace it.
     if (!existing.event->IsDefined()) continue;
-    if (existing.stream == usage_stream) {
+    if (existing.event->definition_stream() == usage_stream) {
       if (*existing.event < *event) {
         existing.event = event;
         existing.reference_held = reference_held;
@@ -281,7 +282,7 @@ void TrackedDeviceBuffer::AddUsageEvent(se::Stream* usage_stream,
       return;
     }
   }
-  usage_events_.push_back({usage_stream, event, reference_held});
+  usage_events_.push_back({event, reference_held});
 }
 
 TrackedDeviceBuffer::StreamAndEventContainer
@@ -310,6 +311,16 @@ tsl::RCReference<CommonPjRtRawBuffer> TrackedDeviceBuffer::GetRawBuffer(
           memory_space->devices()[0])
           ->local_device_state(),
       device_memory_);
+}
+
+void TrackedDeviceBuffer::AddUsageEvent(
+    tsl::RCReference<PjRtDeviceEvent> event) {
+  if (event) {
+    AddUsageEvent(
+        tensorflow::down_cast<PjRtStreamExecutorDeviceEvent*>(event.get())
+            ->event(),
+        true);
+  }
 }
 
 void GetDeviceBufferEvents(

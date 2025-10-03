@@ -1420,7 +1420,9 @@ PjRtStreamExecutorBuffer::Release(bool wait_for_operations_to_complete) {
       for (const auto& stream_and_event : events) {
         VLOG(4)
             << "Checking whether need to wait for stream_and_event: stream: "
-            << stream_and_event.stream
+            << (stream_and_event.event->IsDefined()
+                    ? stream_and_event.event->definition_stream()
+                    : nullptr)
             << "; event: " << &*stream_and_event.event
             << "; reference_held: " << stream_and_event.reference_held
             << "; is_predetermined_error: "
@@ -1494,7 +1496,7 @@ void PjRtStreamExecutorBuffer::ConvertUsageHold(TrackedDeviceBuffer* buffer,
                                                 bool reference_held) {
   absl::MutexLock lock(&mu_);
   CHECK(device_buffer() == buffer || device_buffer() == nullptr);
-  buffer->AddUsageEvent(usage_stream, std::move(event), reference_held);
+  buffer->AddUsageEvent(std::move(event), reference_held);
   DecrementUsage();
 }
 
