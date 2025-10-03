@@ -144,7 +144,9 @@ limitations under the License.
 #include "xla/service/global_device_id.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/cublas_cudnn.h"
+#include "xla/service/gpu/custom_kernel_emitter.h"
 #include "xla/service/gpu/execution_stream_assignment.h"
+#include "xla/service/gpu/gpu_asm_opts_util.h"
 #include "xla/service/gpu/gpu_constants.h"
 #include "xla/service/gpu/gpu_conv_runner.h"
 #include "xla/service/gpu/gpu_norm_runner.h"
@@ -153,6 +155,7 @@ limitations under the License.
 #include "xla/service/gpu/ir_emitter.h"
 #include "xla/service/gpu/ir_emitter_context.h"
 #include "xla/service/gpu/ir_emitter_nested.h"
+#include "xla/service/gpu/kernel_call.h"
 #include "xla/service/gpu/kernel_reuse_cache.h"
 #include "xla/service/gpu/kernels/custom_kernel.h"
 #include "xla/service/gpu/launch_dimensions.h"
@@ -174,6 +177,7 @@ limitations under the License.
 #include "xla/status_macros.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/gpu/gpu_asm_opts.h"
 #include "xla/stream_executor/gpu/gpu_blas_lt.h"
 #include "xla/stream_executor/gpu/tma_metadata.h"
 #include "xla/stream_executor/gpu_solver_context.h"
@@ -1033,6 +1037,14 @@ absl::Status IrEmitterUnnested::EmitCuDnnThunk(
           instr, ir_emitter_context_->GetNextThunkId()),
       kernel_arguments.GetArgumentBufferSlices(),
       kernel_arguments.GetArgumentOutputFlags(), dropout_seed));
+  return absl::OkStatus();
+}
+
+absl::Status IrEmitterUnnested::EmitPtxCustomCall(
+    const HloCustomCallInstruction* instr) {
+  TF_ASSIGN_OR_RETURN(auto thunk,
+                      EmitPtxCustomKernelThunk(instr, ir_emitter_context_));
+  AddThunkToThunkSequence(std::move(thunk));
   return absl::OkStatus();
 }
 
@@ -3348,6 +3360,9 @@ absl::Status IrEmitterUnnested::EmitHloInstruction(
       if (IsCustomCallTofMHA(*instr) || IsCustomCallTofMHAF8(*instr) ||
           IsCustomCallToBlockScaledDot(*instr)) {
         return EmitCuDnnThunk(custom_call);
+      }
+      if (IsCustomCallToPtxKernel(*instr)) {
+        return EmitPtxCustomCall(custom_call);
       }
       if (IsCustomCallToTopK(*instr)) {
         return EmitTopKCustomCall(custom_call);

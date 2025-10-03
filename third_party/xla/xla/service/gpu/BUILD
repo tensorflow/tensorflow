@@ -333,6 +333,57 @@ cc_library(
 )
 
 cc_library(
+    name = "ptx_custom_kernel_emitter_cuda",
+    srcs = ["custom_kernel_emitter_cuda.cc"],
+    hdrs = ["custom_kernel_emitter.h"],
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
+    deps = [
+        ":gpu_constants",
+        ":ir_emitter_context",
+        ":kernel_call",
+        "//xla/backends/gpu/runtime:kernel_thunk",
+        "//xla/hlo/ir:hlo",
+        "//xla/service/gpu/kernels:ptx_custom_kernel",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "ptx_custom_kernel_emitter_rocm",
+    srcs = ["custom_kernel_emitter_rocm.cc"],
+    hdrs = ["custom_kernel_emitter.h"],
+    tags = [
+        "gpu",
+        "rocm-only",
+    ],
+    deps = [
+        ":ir_emitter_context",
+        "//xla/hlo/ir:hlo",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+    ],
+)
+
+cc_library(
+    name = "ptx_custom_kernel_emitter",
+    hdrs = ["custom_kernel_emitter.h"],
+    tags = ["gpu"],
+    deps = if_cuda_is_configured([
+        ":ptx_custom_kernel_emitter_cuda",
+    ]) + if_rocm_is_configured([
+        ":ptx_custom_kernel_emitter_rocm",
+    ]) + [
+        "//xla/hlo/ir:hlo",
+        "@com_google_absl//absl/status:statusor",
+    ],
+)
+
+cc_library(
     name = "ir_emitter_context",
     srcs = ["ir_emitter_context.cc"],
     hdrs = ["ir_emitter_context.h"],
@@ -369,6 +420,7 @@ cc_library(
         ":backend_configs_cc",
         ":cublas_cudnn",
         ":execution_stream_assignment",
+        ":gpu_asm_opts_util",
         ":gpu_constants",
         ":gpu_conv_runner",
         ":gpu_norm_runner",
@@ -376,10 +428,12 @@ cc_library(
         ":ir_emission_utils",
         ":ir_emitter",
         ":ir_emitter_context",
+        ":kernel_call",
         ":kernel_reuse_cache",
         ":launch_dimensions",
         ":matmul_utils",
         ":parallel_loop_emitter",
+        ":ptx_custom_kernel_emitter",
         ":stream_executor_util",
         ":triton_call",
         "//xla:autotuning_proto_cc",
@@ -502,7 +556,9 @@ cc_library(
         "@local_tsl//tsl/platform:casts",
         "@local_tsl//tsl/platform:human_readable_json",
         "@triton//:TritonDialects",
-    ],
+    ] + if_cuda_is_configured([
+        "//xla/service/gpu/kernels:ptx_custom_kernel",
+    ]),
 )
 
 cc_library(
@@ -545,6 +601,30 @@ cc_library(
         "@llvm-project//llvm:Support",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+cc_library(
+    name = "kernel_call",
+    srcs = ["kernel_call.cc"],
+    hdrs = ["kernel_call.h"],
+    deps = [
+        ":launch_dimensions",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Parser",
+    ],
+)
+
+xla_cc_test(
+    name = "kernel_call_test",
+    srcs = ["kernel_call_test.cc"],
+    deps = [
+        ":kernel_call",
+        "//xla/tests:xla_internal_test_main",
+        "@com_google_googletest//:gtest",
+        "@llvm-project//mlir:IR",
     ],
 )
 
