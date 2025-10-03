@@ -247,7 +247,7 @@ absl::Status LoadCache(IrEmitterContext& ir_emitter_context,
 
 absl::StatusOr<std::unique_ptr<BufferAssignment>> RunBufferAssignment(
     const HloModule* module, const GpuAliasInfo* alias_info,
-    const BufferValue::SizeFunction& buffer_size_bytes_function) {
+    BufferValue::SizeFunction buffer_size_bytes_function) {
   ScopedAnnotation annotation(Phase("XlaBufferAssignment", module));
 
   const DebugOptions& options = module->config().debug_options();
@@ -262,7 +262,7 @@ absl::StatusOr<std::unique_ptr<BufferAssignment>> RunBufferAssignment(
       std::unique_ptr<BufferAssignment> buffer_assignment,
       BufferAssigner::Run(
           module, std::make_unique<SequentialHloOrdering>(module->schedule()),
-          buffer_size_bytes_function, alias_info,
+          std::move(buffer_size_bytes_function), alias_info,
           /*color_alignment=*/
           [](LogicalBuffer::Color) { return kXlaAllocatedBufferAlignBytes; },
           /*allocate_buffers_for_constants=*/true,
@@ -282,7 +282,7 @@ absl::StatusOr<CompileModuleResults> CompileModuleToLlvmIr(
     const std::string& target_triple, const std::string& data_layout,
     const se::Platform* platform, const se::DeviceDescription& device_desc,
     const GpuAliasInfo* alias_info,
-    const BufferValue::SizeFunction& buffer_size_bytes_function,
+    BufferValue::SizeFunction buffer_size_bytes_function,
     bool split_constants_module) {
   tsl::profiler::TraceMe traceme("CompileModuleToLlvmIr");
   const bool use_cache =
@@ -294,7 +294,8 @@ absl::StatusOr<CompileModuleResults> CompileModuleToLlvmIr(
 
   TF_ASSIGN_OR_RETURN(
       results.buffer_assignment,
-      RunBufferAssignment(hlo_module, alias_info, buffer_size_bytes_function));
+      RunBufferAssignment(hlo_module, alias_info,
+                          std::move(buffer_size_bytes_function)));
   TF_ASSIGN_OR_RETURN(results.output_info,
                       GetOutputInfo(*hlo_module, *results.buffer_assignment));
 
