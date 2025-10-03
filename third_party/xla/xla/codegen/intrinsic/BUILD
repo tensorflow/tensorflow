@@ -53,6 +53,7 @@ xla_cc_test(
         "//xla:xla_data_proto_cc",
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:status_matchers",
+        "@com_google_absl//absl/status:status_matchers",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -359,6 +360,7 @@ xla_cc_test(
         ":intrinsic",
         ":simple_jit_runner",
         ":test_matchers",
+        "//xla:xla_data_proto_cc",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//llvm:JITLink",
         "@llvm-project//llvm:ir_headers",
