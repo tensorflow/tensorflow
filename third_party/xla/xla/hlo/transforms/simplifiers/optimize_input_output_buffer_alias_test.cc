@@ -20,7 +20,6 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
-#include "absl/status/status.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/shape.h"
