@@ -107,7 +107,7 @@ absl::Status CompileXla(xla::CompileOnlyClient* client,
                       xla::Shape::FromProto(pshape->result()));
   instance.result_layout = &result_shape;
   absl::StatusOr<std::vector<std::unique_ptr<xla::AotCompilationResult>>>
-      aot_or = client->CompileAheadOfTime({instance}, aot_opts);
+      aot_or = client->CompileAheadOfTime(instance, aot_opts);
   if (!aot_or.ok()) {
     return errors::Unknown("XLA compilation failed: ",
                            aot_or.status().message());
