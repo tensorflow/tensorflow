@@ -868,7 +868,8 @@ absl::Status EmitFastConcatenate(
     const HloInstruction* instr,
     absl::Span<const llvm_ir::IrArray> source_arrays,
     const llvm_ir::IrArray& target_array, llvm::Module* module,
-    llvm::IRBuilderBase& b);
+    llvm::IRBuilderBase& b, llvm::Value* workgroup_id = nullptr,
+    int64_t num_workgroups = -1);
 
 // For each called computation called by the instruction, determines if that
 // computation calls a custom-call function, either directly or transitively.

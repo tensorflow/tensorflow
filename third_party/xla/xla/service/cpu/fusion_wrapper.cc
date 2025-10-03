@@ -37,7 +37,6 @@ bool FusionWrapper::MustWrapInstruction(HloOpcode opcode) {
     case HloOpcode::kClz:
     case HloOpcode::kCompare:
     case HloOpcode::kComplex:
-    case HloOpcode::kConcatenate:
     case HloOpcode::kConvert:
     case HloOpcode::kCos:
     case HloOpcode::kDivide:
@@ -88,6 +87,7 @@ bool FusionWrapper::MustWrapInstruction(HloOpcode opcode) {
     // The following ops are supported but the performance is not as good as the
     // non-fusion path.
     // TODO(willfroom): Remove this once the performance is improved.
+    case HloOpcode::kConcatenate:
     case HloOpcode::kDynamicUpdateSlice:
     case HloOpcode::kTranspose:
     case HloOpcode::kDot:

@@ -2944,10 +2944,14 @@ absl::Status EmitFastConcatenate(
     const HloInstruction* instr,
     absl::Span<const llvm_ir::IrArray> source_arrays,
     const llvm_ir::IrArray& target_array, llvm::Module* module,
-    llvm::IRBuilderBase& b) {
+    llvm::IRBuilderBase& b, llvm::Value* workgroup_id, int64_t num_workgroups) {
   // We split the dimensions into three categories: the dimension over which we
   // are concatenating (concat_dim), the dimensions that are minor to it
   // (inner_dims) and the dimensions that are major to it (outer_dims).
+
+  if (workgroup_id != nullptr && num_workgroups <= 0) {
+    return absl::UnimplementedError("Missing number of workgroups");
+  }
 
   auto* concatenate = Cast<HloConcatenateInstruction>(instr);
   const Shape& output_shape = concatenate->shape();
@@ -2962,8 +2966,46 @@ absl::Status EmitFastConcatenate(
                                   output_min2maj.end());
 
   llvm_ir::ForLoopNest loops(IrName(concatenate), &b);
+
+  bool has_workgroup_id = workgroup_id != nullptr;
+  bool has_multiple_workers = num_workgroups > 1;
+  bool has_outer_dims = !outer_dims.empty();
+  bool is_parallel = has_workgroup_id && has_multiple_workers && has_outer_dims;
+
+  llvm::Value* workgroup_ind_var = nullptr;
+  if (is_parallel) {
+    int64_t outer_dim_size = output_shape.dimensions(outer_dims.back());
+    int64_t workgroup_size = CeilOfRatio(outer_dim_size, num_workgroups);
+    llvm::Value* workgroup_size_value =
+        llvm::ConstantInt::get(b.getInt64Ty(), workgroup_size);
+    llvm::Value* constant_1 = llvm::ConstantInt::get(b.getInt64Ty(), 1);
+    llvm::Value* constant_dim_size =
+        llvm::ConstantInt::get(b.getInt64Ty(), outer_dim_size);
+    llvm::Value* workgroup_start_idx =
+        b.CreateMul(workgroup_id, workgroup_size_value);
+    llvm::Value* workgroup_end_idx = b.CreateBinaryIntrinsic(
+        llvm::Intrinsic::smin,
+        b.CreateMul(b.CreateAdd(workgroup_id, constant_1),
+                    workgroup_size_value),
+        constant_dim_size);
+
+    auto workgroup_loop =
+        loops.AddLoop("workgroup", workgroup_start_idx, workgroup_end_idx);
+    workgroup_ind_var = workgroup_loop->GetIndVarValue();
+  }
+
   std::vector<llvm::Value*> target_multi_index =
-      loops.AddLoopsForShapeOnDimensions(output_shape, outer_dims, "concat");
+      loops.AddLoopsForShapeOnDimensions(
+          output_shape,
+          workgroup_ind_var
+              ? absl::MakeSpan(outer_dims).first(outer_dims.size() - 1)
+              : absl::MakeSpan(outer_dims),
+          "concat");
+
+  if (workgroup_ind_var) {
+    target_multi_index[outer_dims.back()] = workgroup_ind_var;
+  }
+
   absl::c_replace(target_multi_index, static_cast<llvm::Value*>(nullptr),
                   static_cast<llvm::Value*>(b.getInt64(0)));
   llvm_ir::IrArray::Index target_index(target_multi_index, output_shape,

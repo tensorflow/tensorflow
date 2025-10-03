@@ -15,9 +15,12 @@ limitations under the License.
 
 #include "xla/backends/cpu/codegen/elemental/concatenate_kernel_emitter.h"
 
+#include <cstdint>
+#include <functional>
 #include <memory>
 #include <utility>
 
+#include "absl/algorithm/container.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -48,13 +51,6 @@ limitations under the License.
 namespace xla::cpu {
 
 static absl::Status CanDoFastConcatenate(const HloInstruction* concatenate) {
-  if (!concatenate->backend_config<BackendConfig>()
-           ->outer_dimension_partitions()
-           .empty()) {
-    return absl::Status(
-        absl::StatusCode::kFailedPrecondition,
-        "Cannot generate memcpy-based concat for the parallel CPU backend");
-  }
   const Shape& output_shape = concatenate->shape();
   for (auto* op : concatenate->operands()) {
     if (!LayoutUtil::Equal(op->shape().layout(), output_shape.layout())) {
@@ -88,6 +84,11 @@ ConcatenateKernelEmitter::EmitKernelDefinition() {
     return Internal("HloModule is null");
   }
 
+  const auto& backend_config = instr_->backend_config<BackendConfig>();
+  const auto& partitions = backend_config->outer_dimension_partitions();
+  auto total_workgroups =
+      absl::c_accumulate(partitions, 1, std::multiplies<int64_t>());
+
   KernelApiIrBuilder kernel_api_ir_builder(
       *ctx,
       KernelApiIrBuilder::Options::FromHloModuleConfig(hlo_module->config()));
@@ -105,12 +106,13 @@ ConcatenateKernelEmitter::EmitKernelDefinition() {
       kernel_prototype.function->getEntryBlock().getTerminator());
 
   llvm_ir::IrArray output_array = kernel_prototype.results[0];
-  TF_RETURN_IF_ERROR(EmitFastConcatenate(instr_, kernel_prototype.arguments,
-                                         output_array, llvm_module.get(),
-                                         ir_builder));
+  TF_RETURN_IF_ERROR(EmitFastConcatenate(
+      instr_, kernel_prototype.arguments, output_array, llvm_module.get(),
+      ir_builder, kernel_prototype.workgroup_id.x, total_workgroups));
 
   LlvmIrKernelSource source(std::move(ctx), std::move(llvm_module));
-  KernelSpec spec(kernel_prototype.function->getName(), NumWorkGroups(),
+  KernelSpec spec(kernel_prototype.function->getName(),
+                  NumWorkGroups{static_cast<uint64_t>(total_workgroups)},
                   std::move(kernel_prototype.argument_buffers),
                   std::move(kernel_prototype.result_buffers),
                   std::move(kernel_prototype.invariant_arguments));
