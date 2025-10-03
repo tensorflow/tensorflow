@@ -9,6 +9,8 @@ common:clang_local --noincompatible_enable_cc_toolchain_resolution
 common:clang_local --@rules_ml_toolchain//common:enable_hermetic_cc=False
 common:clang_local --repo_env USE_HERMETIC_CC_TOOLCHAIN=0
 
+build --features=layering_check
+
 # Load the TensorFlow bazelrc
 import %workspace%/tensorflow.bazelrc
 import %workspace%/warnings.bazelrc
