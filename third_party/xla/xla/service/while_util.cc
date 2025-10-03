@@ -16,8 +16,11 @@ limitations under the License.
 #include "xla/service/while_util.h"
 
 #include <cstdint>
+#include <functional>
 #include <iterator>
 #include <memory>
+#include <optional>
+#include <string>
 #include <tuple>
 #include <utility>
 #include <vector>
@@ -132,6 +135,90 @@ WidenWhileBody(HloComputation* narrow_body, const Shape& wide_shape) {
   TF_ASSIGN_OR_RETURN(auto inlined_instructions_map,
                       CallInliner::Inline(call_narrow_body));
   return {{wide_while_body, std::move(inlined_instructions_map)}};
+}
+
+/*static*/ void WhileUtil::CreateLoopInvariantCopy(
+    HloInstruction* to_hoist, HloInstruction* while_instr,
+    const std::function<bool(HloInstruction*)>& is_hoisted,
+    const std::function<HloInstruction*(HloInstruction*)>& get_hoisted,
+    const std::function<void(HloInstruction*, HloInstruction*)>& set_hoisted) {
+  HloComputation* parent_of_while = while_instr->parent();
+  HloComputation* while_body = while_instr->while_body();
+
+  struct DFSFrame {
+    HloInstruction* instruction;
+    int64_t operand_index;
+  };
+
+  absl::InlinedVector<DFSFrame, 8> dfs_stack;
+  dfs_stack.push_back({to_hoist, 0});
+
+  HloInstruction* while_body_param = while_body->parameter_instruction(0);
+  HloInstruction* while_operand = while_instr->mutable_operand(0);
+
+  do {
+    DFSFrame* frame = &dfs_stack.back();
+    // All of the operands for old_instruction have been cloned, so it is time
+    // to clone old_instruction itself.
+    if (frame->operand_index == frame->instruction->operand_count()) {
+      HloInstruction* old_instruction = frame->instruction;
+
+      // Check if this instruction might have already been hoisted.
+      if (!is_hoisted(old_instruction)) {
+        auto get_new_operand = [&](HloInstruction* old_operand) {
+          return old_operand == while_body_param ? while_operand
+                                                 : get_hoisted(old_operand);
+        };
+
+        absl::InlinedVector<HloInstruction*, 4> new_operands;
+        absl::c_transform(old_instruction->operands(),
+                          std::back_inserter(new_operands), get_new_operand);
+
+        HloInstruction* new_instruction = parent_of_while->AddInstruction(
+            old_instruction->CloneWithNewOperands(old_instruction->shape(),
+                                                  new_operands));
+
+        std::optional<std::string> original_call_instructions;
+        if (while_instr->original_value() != nullptr) {
+          original_call_instructions =
+              while_instr->original_value()->GetOriginalCallLikeInstructions();
+        }
+        if (original_call_instructions.has_value() &&
+            old_instruction->original_value() != nullptr) {
+          std::string original_call_prefix;
+          if (!original_call_instructions->empty()) {
+            // We only add the wildcard iteration count if the call-like
+            // instruction is available.
+            original_call_prefix =
+                absl::StrCat(*original_call_instructions, "#*/");
+          }
+
+          auto new_original_value = std::make_shared<OriginalValue>(
+              *old_instruction->original_value());
+          for (auto& [shape_index, original_array] :
+               new_original_value->mutable_original_arrays()) {
+            if (original_array) {
+              original_array->instruction_name = absl::StrCat(
+                  original_call_prefix, original_array->instruction_name);
+            }
+          }
+          new_instruction->set_original_value(std::move(new_original_value));
+        }
+        set_hoisted(old_instruction, new_instruction);
+      }
+
+      dfs_stack.pop_back();
+      continue;
+    }
+
+    HloInstruction* next_operand =
+        frame->instruction->mutable_operand(frame->operand_index++);
+    if (next_operand == while_body_param || is_hoisted(next_operand)) {
+      continue;
+    }
+
+    dfs_stack.push_back({next_operand, 0});
+  } while (!dfs_stack.empty());
 }
 
 /*static*/ absl::StatusOr<WhileUtil::MakeInstructionsLiveInResult>

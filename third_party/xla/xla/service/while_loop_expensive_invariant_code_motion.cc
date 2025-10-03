@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <cstdint>
 #include <iterator>
-#include <memory>
 #include <optional>
 #include <string>
 #include <utility>
@@ -30,13 +29,11 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/analysis/while_loop_analysis.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/hlo/ir/hlo_original_value.h"
 #include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/map_util.h"
 #include "xla/service/while_util.h"
@@ -66,98 +63,6 @@ struct InvariantInfo {
   // Hoistable instructions depending on this op to be hoisted.
   InlinedVector<HloInstruction*, 2> blocked_users;
 };
-
-// Copies `to_hoist` to the computation containing `while_instr`, hoisting its
-// operands as needed.  All of its transitive operands are expected to be in
-// `invariant_instructions`. This function hoists the operands in
-// `invariant_instructions` and sets the entry's hoisted_copy to the hoisted
-// instruction.
-static void CreateLoopInvariantCopy(
-    flat_hash_map<HloInstruction*, InvariantInfo>* invariant_instructions,
-    HloInstruction* while_instr, HloInstruction* to_hoist) {
-  HloComputation* parent_of_while = while_instr->parent();
-  HloComputation* while_body = while_instr->while_body();
-
-  struct DFSFrame {
-    HloInstruction* instruction;
-    int64_t operand_index;
-  };
-
-  InlinedVector<DFSFrame, 8> dfs_stack;
-  dfs_stack.push_back({to_hoist, 0});
-
-  HloInstruction* while_body_param = while_body->parameter_instruction(0);
-  HloInstruction* while_operand = while_instr->mutable_operand(0);
-
-  do {
-    DFSFrame* frame = &dfs_stack.back();
-    // All of the operands for old_instruction have been cloned, so it is time
-    // to clone old_instruction itself.
-    if (frame->operand_index == frame->instruction->operand_count()) {
-      HloInstruction* old_instruction = frame->instruction;
-      InvariantInfo& info = FindOrDie(*invariant_instructions, old_instruction);
-
-      // Check if this instruction might have already been hoisted.
-      if (info.hoisted_copy == nullptr) {
-        auto get_new_operand = [&](HloInstruction* old_operand) {
-          return old_operand == while_body_param
-                     ? while_operand
-                     : FindOrDie(*invariant_instructions, old_operand)
-                           .hoisted_copy;
-        };
-
-        InlinedVector<HloInstruction*, 4> new_operands;
-        absl::c_transform(old_instruction->operands(),
-                          std::back_inserter(new_operands), get_new_operand);
-
-        HloInstruction* new_instruction = parent_of_while->AddInstruction(
-            old_instruction->CloneWithNewOperands(old_instruction->shape(),
-                                                  new_operands));
-
-        std::optional<std::string> original_call_instructions;
-        if (while_instr->original_value() != nullptr) {
-          original_call_instructions =
-              while_instr->original_value()->GetOriginalCallLikeInstructions();
-        }
-        if (original_call_instructions.has_value() &&
-            old_instruction->original_value() != nullptr) {
-          std::string original_call_prefix;
-          if (!original_call_instructions->empty()) {
-            // We only add the wildcard iteration count if the call-like
-            // instruction is available.
-            original_call_prefix =
-                absl::StrCat(*original_call_instructions, "#*/");
-          }
-
-          auto new_original_value = std::make_shared<OriginalValue>(
-              *old_instruction->original_value());
-          for (auto& [shape_index, original_array] :
-               new_original_value->mutable_original_arrays()) {
-            if (original_array) {
-              original_array->instruction_name = absl::StrCat(
-                  original_call_prefix, original_array->instruction_name);
-            }
-          }
-          new_instruction->set_original_value(std::move(new_original_value));
-        }
-        info.hoisted_copy = new_instruction;
-      }
-
-      dfs_stack.pop_back();
-      continue;
-    }
-
-    HloInstruction* next_operand =
-        frame->instruction->mutable_operand(frame->operand_index++);
-    if (next_operand == while_body_param ||
-        FindOrDie(*invariant_instructions, next_operand).hoisted_copy !=
-            nullptr) {
-      continue;
-    }
-
-    dfs_stack.push_back({next_operand, 0});
-  } while (!dfs_stack.empty());
-}
 }  // namespace
 
 absl::StatusOr<bool> WhileLoopExpensiveInvariantCodeMotion::
@@ -230,14 +135,26 @@ absl::StatusOr<bool> WhileLoopExpensiveInvariantCodeMotion::
   std::vector<HloInstruction*> instructions_to_replace;
   std::vector<HloInstruction*> replacement_instructions;
 
-  auto hoist = [&](HloInstruction* instruction, const InvariantInfo& info) {
+  auto hoist = [&](HloInstruction* instruction, InvariantInfo& info) {
     if (info.hoisted_copy) {
       // Already hoisted.
       return;
     }
     VLOG(2) << "Hoisting " << instruction->ToString(print_no_metadata);
 
-    CreateLoopInvariantCopy(&invariant_instructions, while_instr, instruction);
+    HloInstruction* to_hoist = instruction;
+    auto is_hoisted = [&](HloInstruction* instr) {
+      return FindOrDie(invariant_instructions, instr).hoisted_copy != nullptr;
+    };
+    auto get_hoisted = [&](HloInstruction* instr) {
+      return FindOrDie(invariant_instructions, instr).hoisted_copy;
+    };
+    auto set_hoisted = [&](HloInstruction* old_instr,
+                           HloInstruction* new_instr) {
+      FindOrDie(invariant_instructions, old_instr).hoisted_copy = new_instr;
+    };
+    WhileUtil::CreateLoopInvariantCopy(to_hoist, while_instr, is_hoisted,
+                                       get_hoisted, set_hoisted);
 
     instructions_to_replace.push_back(instruction);
     replacement_instructions.push_back(info.hoisted_copy);

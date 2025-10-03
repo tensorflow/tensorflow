@@ -17,10 +17,8 @@ limitations under the License.
 
 #include <cstdint>
 #include <iterator>
-#include <memory>
 #include <optional>
 #include <string>
-#include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -29,13 +27,11 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
-#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/analysis/while_loop_analysis.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/hlo/ir/hlo_original_value.h"
 #include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/transforms/simplifiers/hlo_dce.h"
 #include "xla/hlo/transforms/simplifiers/tuple_simplifier.h"
@@ -52,102 +48,6 @@ namespace xla {
 
 using absl::flat_hash_map;
 using absl::flat_hash_set;
-using absl::InlinedVector;
-
-// Copies `to_hoist` to the computation containing `while_instr`, hoisting its
-// operands as needed.  All of its transitive operands are expected to be either
-// in `hoisted_instructions` or `unhoisted_invariant_instructions`.  This
-// function hoists the operands in `unhoisted_invariant_instructions` and moves
-// them into `hoisted_instructions`.
-static void CreateLoopInvariantCopy(
-    flat_hash_map<HloInstruction*, HloInstruction*>* hoisted_instructions,
-    flat_hash_set<HloInstruction*>* unhoisted_invariant_instructions,
-    HloInstruction* while_instr, HloInstruction* to_hoist) {
-  HloComputation* parent_of_while = while_instr->parent();
-  HloComputation* while_body = while_instr->while_body();
-
-  struct DFSFrame {
-    HloInstruction* instruction;
-    int64_t operand_index;
-  };
-
-  InlinedVector<DFSFrame, 8> dfs_stack;
-  dfs_stack.push_back({to_hoist, 0});
-
-  HloInstruction* while_body_param = while_body->parameter_instruction(0);
-  HloInstruction* while_operand = while_instr->mutable_operand(0);
-
-  do {
-    DFSFrame* frame = &dfs_stack.back();
-    if (frame->operand_index == frame->instruction->operand_count()) {
-      HloInstruction* old_instruction = frame->instruction;
-
-      // All of the operands for old_instruction have been cloned, so it is
-      // time to clone old_instruction itself.
-
-      auto get_new_operand = [&](HloInstruction* old_operand) {
-        return old_operand == while_body_param
-                   ? while_operand
-                   : FindOrDie(*hoisted_instructions, old_operand);
-      };
-
-      InlinedVector<HloInstruction*, 4> new_operands;
-      absl::c_transform(old_instruction->operands(),
-                        std::back_inserter(new_operands), get_new_operand);
-
-      HloInstruction* new_instruction =
-          parent_of_while->AddInstruction(old_instruction->CloneWithNewOperands(
-              old_instruction->shape(), new_operands));
-
-      std::optional<std::string> original_call_instructions;
-      if (while_instr->original_value() != nullptr) {
-        original_call_instructions =
-            while_instr->original_value()->GetOriginalCallLikeInstructions();
-      }
-      if (original_call_instructions.has_value() &&
-          old_instruction->original_value() != nullptr) {
-        std::string original_call_prefix;
-        if (!original_call_instructions->empty()) {
-          // We only add the wildcard iteration count if the call-like
-          // instruction is available.
-          original_call_prefix =
-              absl::StrCat(*original_call_instructions, "#*/");
-        }
-
-        auto new_original_value =
-            std::make_shared<OriginalValue>(*old_instruction->original_value());
-        for (auto& [shape_index, original_array] :
-             new_original_value->mutable_original_arrays()) {
-          if (original_array) {
-            original_array->instruction_name = absl::StrCat(
-                original_call_prefix, original_array->instruction_name);
-          }
-        }
-        new_instruction->set_original_value(std::move(new_original_value));
-      }
-
-      InsertOrDie(hoisted_instructions, old_instruction, new_instruction);
-
-      // Approximately half of the instructions that would normally be present
-      // in unhoisted_invariant_instructions are constants.  We save a bit of
-      // compile time by not putting these in the hashtable.
-      CHECK_EQ(unhoisted_invariant_instructions->erase(old_instruction),
-               to_hoist != old_instruction &&
-                   old_instruction->opcode() != HloOpcode::kConstant);
-      dfs_stack.pop_back();
-      continue;
-    }
-
-    HloInstruction* next_operand =
-        frame->instruction->mutable_operand(frame->operand_index++);
-    if (hoisted_instructions->contains(next_operand) ||
-        next_operand == while_body_param) {
-      continue;
-    }
-
-    dfs_stack.push_back({next_operand, 0});
-  } while (!dfs_stack.empty());
-}
 
 // Returns true if `instruction` is worth hoisting only if it lets us hoist some
 // instruction using it. The rationale is that hoisting these instructions will
@@ -336,9 +236,22 @@ WhileLoopInvariantCodeMotion::TryHoistingInvariantInstructionsFromWhileBody(
 
     VLOG(2) << "Hoisting " << instruction->ToString(print_no_metadata);
 
-    CreateLoopInvariantCopy(&hoisted_instructions,
-                            &unhoisted_invariant_instructions, while_instr,
-                            instruction);
+    HloInstruction* to_hoist = instruction;
+    auto is_hoisted = [&](HloInstruction* instr) {
+      return hoisted_instructions.count(instr);
+    };
+    auto get_hoisted = [&](HloInstruction* instr) {
+      return FindOrDie(hoisted_instructions, instr);
+    };
+    auto set_hoisted = [&](HloInstruction* old_instr,
+                           HloInstruction* new_instr) {
+      InsertOrDie(&hoisted_instructions, old_instr, new_instr);
+      CHECK_EQ(
+          unhoisted_invariant_instructions.erase(old_instr),
+          to_hoist != old_instr && old_instr->opcode() != HloOpcode::kConstant);
+    };
+    WhileUtil::CreateLoopInvariantCopy(to_hoist, while_instr, is_hoisted,
+                                       get_hoisted, set_hoisted);
 
     instructions_to_replace.push_back(instruction);
     replacement_instructions.push_back(
