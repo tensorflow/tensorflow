@@ -1587,9 +1587,9 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
 
     std::string DebugString() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
       std::string result;
-      result.append(strings::StrCat("Cycle index: ", cycle_index_, "\n"));
-      result.append(strings::StrCat("Block index: ", block_index_, "\n"));
-      result.append(strings::StrCat("End of input: ", end_of_input_, "\n"));
+      result.append(absl::StrCat("Cycle index: ", cycle_index_, "\n"));
+      result.append(absl::StrCat("Block index: ", block_index_, "\n"));
+      result.append(absl::StrCat("End of input: ", end_of_input_, "\n"));
       {
         result.append("Current elements:\n");
         for (int i = 0; i < current_elements_.size(); ++i) {

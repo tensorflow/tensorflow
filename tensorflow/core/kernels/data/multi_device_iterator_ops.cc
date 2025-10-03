@@ -105,8 +105,8 @@ class MultiDeviceIterator : public ResourceBase {
   }
 
   string DebugString() const override {
-    return strings::StrCat("MultiDeviceIterator for ", devices_.size(),
-                           " devices");
+    return absl::StrCat("MultiDeviceIterator for ", devices_.size(),
+                        " devices");
   }
 
   absl::Status Init(std::unique_ptr<IteratorBase> iterator,
@@ -532,8 +532,8 @@ class MultiDeviceIteratorHandleOp : public OpKernel {
         MultiDeviceIterator* resource;
 
         if (name_ == ResourceHandle::ANONYMOUS_NAME) {
-          unique_name = strings::StrCat("_AnonymousMultiDeviceIterator",
-                                        current_id_.fetch_add(1));
+          unique_name = absl::StrCat("_AnonymousMultiDeviceIterator",
+                                     current_id_.fetch_add(1));
           container_name = kAnonymousMultiDeviceIterator;
           resource = new MultiDeviceIterator(
               context->env(), output_types_, output_shapes_, devices_,

@@ -68,12 +68,12 @@ class PaddedBatchDatasetParams : public DatasetParams {
     // Create the input names for the input padded_shapes.
     for (int i = 0; i < num_padded_shapes_; ++i) {
       input_names->emplace_back(
-          strings::StrCat(PaddedBatchDatasetOp::kPaddedShapes, "_", i));
+          absl::StrCat(PaddedBatchDatasetOp::kPaddedShapes, "_", i));
     }
     // Create the input names for the input padding_values.
     for (int j = 0; j < padded_values_.size(); ++j) {
       input_names->emplace_back(
-          strings::StrCat(PaddedBatchDatasetOp::kPaddingValues, "_", j));
+          absl::StrCat(PaddedBatchDatasetOp::kPaddingValues, "_", j));
     }
     input_names->push_back(PaddedBatchDatasetOp::kDropRemainder);
     return absl::OkStatus();
