@@ -222,6 +222,21 @@ static absl::StatusOr<CustomCallThunk::CustomCallTarget> ToCustomCallTarget(
         fn(out, in, status);
       };
     case CustomCallApiVersion::API_VERSION_STATUS_RETURNING_UNIFIED:
+#ifdef PLATFORM_GOOGLE
+      return InvalidArgument(
+          "Custom call API version `API_VERSION_STATUS_RETURNING_UNIFIED` "
+          "is not supported by XLA:CPU. Prefer "
+          "https://docs.jax.dev/en/latest/ffi.html. It will be fully removed "
+          "in November 2025. Custom call target: %s",
+          target_name);
+#else
+      LOG(ERROR)
+          << "Custom call API version `API_VERSION_STATUS_RETURNING_UNIFIED` "
+             "is not supported by XLA:CPU. Prefer "
+             "https://docs.jax.dev/en/latest/ffi.html. It will be fully "
+             "removed in November 2025. Custom call target: "
+          << target_name;
+#endif
       using v3_signature =
           void (*)(void* /*out*/, const void** /*in*/, const char* /*opaque*/,
                    size_t /*opaque_len*/, XlaCustomCallStatus* /*status*/);
