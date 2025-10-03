@@ -16675,6 +16675,35 @@ ENTRY entry {
   TF_EXPECT_OK(partitioner.Run(module.get()).status());
 }
 
+TEST_P(SpmdPartitioningTest, KeepShardings) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  a = f32[32] parameter(0), sharding={devices=[4]<=[4]}
+  b = f32[32] parameter(1), sharding={devices=[4]<=[4]}
+  c = f32[32] add(a, b), sharding={devices=[4]<=[4]}
+  ROOT d = f32[32] abs(c), sharding={devices=[4]<=[4]}
+})";
+
+  HloModuleConfig config = GetModuleConfigForTest();
+  config.set_use_spmd_partitioning(true);
+  config.set_num_partitions(4);
+  config.mutable_debug_options().set_xla_keep_shardings_after_spmd(true);
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string, config));
+  SpmdPartitionerOptions options;
+  options.allow_module_signature_change = true;
+  SpmdPartitioner partitioner(/*num_partitions=*/4, /*num_replicas=*/1,
+                              options);
+  TF_EXPECT_OK(partitioner.Run(module.get()).status());
+  for (const HloInstruction* inst :
+       module->entry_computation()->instructions()) {
+    EXPECT_TRUE(inst->has_sharding());
+    EXPECT_EQ(inst->shape().dimensions()[0], 8);
+  }
+}
+
 }  // namespace
 }  // namespace spmd
 }  // namespace xla
