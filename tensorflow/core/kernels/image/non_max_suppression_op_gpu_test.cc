@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 
 #include <memory>
-#include <string>
 #include <vector>
 
 #include "absl/strings/match.h"
