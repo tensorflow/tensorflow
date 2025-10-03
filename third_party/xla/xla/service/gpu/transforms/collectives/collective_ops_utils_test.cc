@@ -15,8 +15,6 @@ limitations under the License.
 
 #include "xla/service/gpu/transforms/collectives/collective_ops_utils.h"
 
-#include <cstdint>
-
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status_matchers.h"
@@ -25,10 +23,8 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
-#include "xla/service/hlo_module_config.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla::gpu {
@@ -36,134 +32,6 @@ namespace {
 
 using ::absl_testing::IsOkAndHolds;
 using ::testing::Test;
-
-bool EnableHeuristicCollectiveCombining(
-    se::CudaComputeCapability compute_capability, int num_partitions,
-    int replica_count, int64_t nvlink_slice_size) {
-  HloModuleConfig config;
-  config.mutable_debug_options()
-      .set_xla_gpu_experimental_enable_heuristic_collective_combining(true);
-  config.set_num_partitions(num_partitions);
-  config.set_replica_count(replica_count);
-  se::DeviceDescription device_description =
-      TestGpuDeviceInfo::RTXA6000DeviceInfo(compute_capability);
-  return xla::gpu::EnableHeuristicCollectiveCombining(
-      config, device_description, nvlink_slice_size);
-}
-
-TEST(EnableHeuristicCollectiveCombiningTest, SingleHostSingleDevice) {
-  // B200
-  EXPECT_FALSE(
-      EnableHeuristicCollectiveCombining(se::CudaComputeCapability::Blackwell(),
-                                         /*num_partitions=*/1,
-                                         /*replica_count=*/1,
-                                         /*nvlink_slice_size=*/8));
-  // H100
-  EXPECT_FALSE(
-      EnableHeuristicCollectiveCombining(se::CudaComputeCapability::Hopper(),
-                                         /*num_partitions=*/1,
-                                         /*replica_count=*/1,
-                                         /*nvlink_slice_size=*/8));
-  // A100
-  EXPECT_FALSE(
-      EnableHeuristicCollectiveCombining(se::CudaComputeCapability::Ampere(),
-                                         /*num_partitions=*/1,
-                                         /*replica_count=*/1,
-                                         /*nvlink_slice_size=*/16));
-}
-
-TEST(EnableHeuristicCollectiveCombiningTest, SingleHostMultiDevices) {
-  // B200
-  EXPECT_FALSE(
-      EnableHeuristicCollectiveCombining(se::CudaComputeCapability::Blackwell(),
-                                         /*num_partitions=*/8,
-                                         /*replica_count=*/1,
-                                         /*nvlink_slice_size=*/8));
-  EXPECT_FALSE(
-      EnableHeuristicCollectiveCombining(se::CudaComputeCapability::Blackwell(),
-                                         /*num_partitions=*/1,
-                                         /*replica_count=*/8,
-                                         /*nvlink_slice_size=*/8));
-  // H100
-  EXPECT_FALSE(
-      EnableHeuristicCollectiveCombining(se::CudaComputeCapability::Hopper(),
-                                         /*num_partitions=*/8,
-                                         /*replica_count=*/1,
-                                         /*nvlink_slice_size=*/8));
-  EXPECT_FALSE(
-      EnableHeuristicCollectiveCombining(se::CudaComputeCapability::Hopper(),
-                                         /*num_partitions=*/1,
-                                         /*replica_count=*/8,
-                                         /*nvlink_slice_size=*/8));
-  // A100
-  EXPECT_FALSE(
-      EnableHeuristicCollectiveCombining(se::CudaComputeCapability::Ampere(),
-                                         /*num_partitions=*/1,
-                                         /*replica_count=*/16,
-                                         /*nvlink_slice_size=*/16));
-  EXPECT_FALSE(
-      EnableHeuristicCollectiveCombining(se::CudaComputeCapability::Ampere(),
-                                         /*num_partitions=*/16,
-                                         /*replica_count=*/1,
-                                         /*nvlink_slice_size=*/16));
-}
-
-TEST(EnableHeuristicCollectiveCombiningTest, MultiHosts) {
-  // B200
-  EXPECT_TRUE(
-      EnableHeuristicCollectiveCombining(se::CudaComputeCapability::Blackwell(),
-                                         /*num_partitions=*/16,
-                                         /*replica_count=*/1,
-                                         /*nvlink_slice_size=*/8));
-  EXPECT_TRUE(
-      EnableHeuristicCollectiveCombining(se::CudaComputeCapability::Blackwell(),
-                                         /*num_partitions=*/1,
-                                         /*replica_count=*/16,
-                                         /*nvlink_slice_size=*/8));
-  // H100
-  EXPECT_TRUE(
-      EnableHeuristicCollectiveCombining(se::CudaComputeCapability::Hopper(),
-                                         /*num_partitions=*/16,
-                                         /*replica_count=*/1,
-                                         /*nvlink_slice_size=*/8));
-  EXPECT_TRUE(
-      EnableHeuristicCollectiveCombining(se::CudaComputeCapability::Hopper(),
-                                         /*num_partitions=*/1,
-                                         /*replica_count=*/16,
-                                         /*nvlink_slice_size=*/8));
-  // A100
-  EXPECT_TRUE(
-      EnableHeuristicCollectiveCombining(se::CudaComputeCapability::Ampere(),
-                                         /*num_partitions=*/1,
-                                         /*replica_count=*/32,
-                                         /*nvlink_slice_size=*/16));
-  EXPECT_TRUE(
-      EnableHeuristicCollectiveCombining(se::CudaComputeCapability::Ampere(),
-                                         /*num_partitions=*/32,
-                                         /*replica_count=*/1,
-                                         /*nvlink_slice_size=*/16));
-}
-
-TEST(EnableHeuristicCollectiveCombiningTest, UnsupportedGPU) {
-  EXPECT_FALSE(
-      EnableHeuristicCollectiveCombining(se::CudaComputeCapability::Volta(),
-                                         /*num_partitions=*/1,
-                                         /*replica_count=*/1,
-                                         /*nvlink_slice_size=*/8));
-}
-
-TEST(EnableHeuristicCollectiveCombiningTest, DisabledByFlag) {
-  HloModuleConfig config;
-  config.mutable_debug_options()
-      .set_xla_gpu_experimental_enable_heuristic_collective_combining(false);
-  config.set_num_partitions(16);
-  config.set_replica_count(1);
-  se::DeviceDescription device_description =
-      TestGpuDeviceInfo::RTXA6000DeviceInfo(
-          se::CudaComputeCapability::Blackwell());
-  EXPECT_FALSE(xla::gpu::EnableHeuristicCollectiveCombining(
-      config, device_description, /*nvlink_slice_size=*/8));
-}
 
 class CommunicationTypeTest : public Test {
  protected:

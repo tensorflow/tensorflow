@@ -18,7 +18,6 @@ limitations under the License.
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
-#include <optional>
 #include <variant>
 #include <vector>
 
@@ -161,33 +160,6 @@ absl::StatusOr<GPUCommunicationType> CommunicationType(
   }
 
   return GPUCommunicationType::UNDEFINED;
-}
-
-bool EnableHeuristicCollectiveCombining(
-    const HloModuleConfig& config,
-    const se::DeviceDescription& device_description,
-    int64_t nvlink_slice_size) {
-  if (!config.debug_options()
-           .xla_gpu_experimental_enable_heuristic_collective_combining()) {
-    return false;
-  }
-  se::CudaComputeCapability cc = device_description.cuda_compute_capability();
-  // Heuristic collective combining is not turned on before Ampere GPUs.
-  if (!cc.IsAtLeastAmpere()) {
-    return false;
-  }
-  int hlo_device_count = config.num_partitions() * config.replica_count();
-  if (hlo_device_count <= nvlink_slice_size) {
-    VLOG(1) << "Disabled heuristic collective combining for intra-NVLink "
-               "domain communication: HLO device count "
-            << hlo_device_count << " <= NVLink slice size "
-            << nvlink_slice_size;
-    return false;
-  }
-  VLOG(1) << "Enabled heuristic collective combining for inter-NVLink domain "
-             "communication: HLO device count "
-          << hlo_device_count << " > NVLink slice size " << nvlink_slice_size;
-  return true;
 }
 
 }  // namespace gpu
