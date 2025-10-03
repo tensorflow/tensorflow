@@ -339,6 +339,10 @@ absl::Status NVPTXCompiler::AddConvAndGemmAutotuningPasses(
     return absl::OkStatus();
   }
 
+  if (stream_exec == nullptr) {
+    return absl::OkStatus();
+  }
+
   std::vector<std::unique_ptr<CodegenBackend>> backends;
   backends.push_back(std::make_unique<CublasBackend>(
       stream_exec, &debug_options, this, target_config));
