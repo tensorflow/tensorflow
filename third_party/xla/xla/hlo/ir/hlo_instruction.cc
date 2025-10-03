@@ -2869,9 +2869,9 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
   if (!suffix.empty()) {
     clone->AddSuffixToInstructionName(suffix);
   }
-  if (shape == this->shape()) {
-    clone->CopyOriginalValue(this, /*clone=*/false);
-  }
+  // Copy the original value of the instruction if its shape is compatible with
+  // the clone.
+  clone->CopyOriginalValue(this);
   return clone;
 }
 
@@ -3601,6 +3601,9 @@ absl::Status HloInstruction::ReplaceAllUsesWithDifferentShape(
     parent_->set_root_instruction(new_producer,
                                   /*accept_different_shape=*/true);
   }
+  // Copy the original value recovery table from this instruction to the new
+  // producer instruction if their shapes are compatible.
+  new_producer->CopyOriginalValue(/*instruction=*/this);
 
   return absl::OkStatus();
 }
@@ -6039,9 +6042,9 @@ void HloInstruction::set_original_value(
 }
 
 void HloInstruction::CopyOriginalValue(const HloInstruction* instruction,
-                                       bool clone) {
+                                       bool clone, bool issue_warning) {
   ::xla::CopyOriginalValue(/*src_instruction=*/instruction,
-                           /*dest_instruction=*/this, clone);
+                           /*dest_instruction=*/this, clone, issue_warning);
 }
 
 }  // namespace xla

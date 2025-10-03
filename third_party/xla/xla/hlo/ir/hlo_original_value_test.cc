@@ -330,10 +330,10 @@ ENTRY main {
 
   std::unique_ptr<HloInstruction> clone = p0->Clone();
 
-  CopyOriginalValue(p0, clone.get(), /*clone=*/false);
+  CopyOriginalValue(p0, clone.get(), /*clone=*/false, /*issue_warning=*/false);
   EXPECT_EQ(p0->original_value(), clone->original_value());
 
-  CopyOriginalValue(p0, clone.get(), /*clone=*/true);
+  CopyOriginalValue(p0, clone.get(), /*clone=*/true, /*issue_warning=*/false);
   EXPECT_NE(p0->original_value(), clone->original_value());
   EXPECT_EQ(*p0->original_value(), *clone->original_value());
 }
@@ -354,10 +354,10 @@ ENTRY main {
 
   std::unique_ptr<HloInstruction> clone = p0->Clone();
 
-  CopyOriginalValue(p0, clone.get(), /*clone=*/false);
+  CopyOriginalValue(p0, clone.get(), /*clone=*/false, /*issue_warning=*/false);
   EXPECT_EQ(p0->original_value(), clone->original_value());
 
-  CopyOriginalValue(p0, clone.get(), /*clone=*/true);
+  CopyOriginalValue(p0, clone.get(), /*clone=*/true, /*issue_warning=*/false);
   EXPECT_EQ(p0->original_value(), clone->original_value());
 }
 

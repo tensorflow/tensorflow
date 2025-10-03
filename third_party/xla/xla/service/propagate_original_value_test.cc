@@ -15,10 +15,17 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
+#include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_original_value.h"
+#include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/transforms/simplifiers/algebraic_simplifier.h"
+#include "xla/literal_util.h"
 #include "xla/service/call_inliner.h"
 #include "xla/service/instruction_fusion.h"
+#include "xla/shape_util.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 
@@ -27,6 +34,51 @@ namespace {
 
 using PropagateOriginalValueTest = HloHardwareIndependentTestBase;
 using OriginalValueRecoveryTableTest = HloHardwareIndependentTestBase;
+
+TEST_F(PropagateOriginalValueTest, Clone) {
+  HloComputation::Builder builder(TestName());
+  auto* constant = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR2<float>({
+          {1, 2},
+          {3, 4},
+      })));
+  constant->set_original_value(OriginalValue::CreateFromInstruction(constant));
+  auto* tuple =
+      builder.AddInstruction(HloInstruction::CreateTuple({constant, constant}));
+  tuple->set_original_value(OriginalValue::CreateFromInstruction(constant));
+  auto clone_shape = ShapeUtil::MakeShape(F32, {2, 2});
+  auto tuple_clone_same_shape = tuple->CloneWithNewOperands(
+      ShapeUtil::MakeTupleShape({clone_shape, clone_shape}), {});
+  clone_shape = ShapeUtil::MakeShape(F32, {3, 3});
+  auto tuple_clone_different_shape = tuple->CloneWithNewOperands(
+      ShapeUtil::MakeTupleShape({clone_shape, clone_shape}), {});
+  // Only the tuple clone with the same shape as the original tuple should
+  // preserve the original value.
+  EXPECT_TRUE(tuple_clone_same_shape->original_value());
+  EXPECT_FALSE(tuple_clone_different_shape->original_value());
+}
+
+TEST_F(PropagateOriginalValueTest, ReplaceAllUses) {
+  const absl::string_view hlo_string = R"(
+HloModule test
+
+ENTRY %main (param: s32[2,8], param.1: s32[8,8]) -> s32[2,8] {
+  %param = s32[2,8]{1,0:T(2,128)} parameter(0)
+  %param.1 = s32[8,8]{1,0:T(8,128)} parameter(1)
+  ROOT %convolution = s32[2,8]{1,0:T(2,128)} convolution(%param, %param.1), dim_labels=bf_io->bf, origin={{"dot_general.1__ovp0"}}
+}
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  HloComputation* entry_computation = module->entry_computation();
+  HloInstruction* root = entry_computation->root_instruction();
+  HloInstruction* new_root = entry_computation->AddInstruction(root->Clone());
+  new_root->set_original_value(nullptr);
+
+  TF_ASSERT_OK(root->ReplaceAllUsesWith(new_root));
+  EXPECT_NE(new_root->original_value(), nullptr);
+}
 
 TEST_F(PropagateOriginalValueTest, InstructionFusion) {
   constexpr absl::string_view hlo_string = R"(

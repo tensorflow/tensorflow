@@ -214,7 +214,8 @@ class SubcomputationInsertionVisitor : public DfsHloVisitorWithDefault {
       new_hlo_pointer->set_original_value(nullptr);
       return;
     }
-    new_hlo_pointer->CopyOriginalValue(hlo, /*clone=*/true);
+    new_hlo_pointer->CopyOriginalValue(hlo, /*clone=*/true,
+                                       /*issue_warning=*/true);
     if (call_original_value->is_synthetic_call()) {
       return;
     }

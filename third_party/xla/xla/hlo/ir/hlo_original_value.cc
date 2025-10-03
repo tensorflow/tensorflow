@@ -246,13 +246,16 @@ std::shared_ptr<OriginalValue> OriginalValue::CreateFromInstruction(
 }
 
 void CopyOriginalValue(const HloInstruction* src_instruction,
-                       HloInstruction* dest_instruction, bool clone) {
-  // This is not expected to happen in practice.
+                       HloInstruction* dest_instruction, bool clone,
+                       bool issue_warning) {
   if (!src_instruction || !dest_instruction ||
       !ShapeUtil::Compatible(src_instruction->shape(),
                              dest_instruction->shape())) {
-    VLOG(1) << "Expect the new instruction to have the same shape with the old "
-               "instruction when moving over original_value";
+    if (issue_warning) {
+      LOG(WARNING)
+          << "Expect the new instruction to have the same shape with the old "
+             "instruction when moving over original_value";
+    }
     return;
   }
 
