@@ -1212,6 +1212,32 @@ xla_cc_test(
     ],
 )
 
+cc_library(
+    name = "with_user_context",
+    hdrs = ["with_user_context.h"],
+    visibility = internal_visibility([
+        ":friends",
+        ":internal",
+        ":users",
+    ]),
+    deps = [":user_context"],
+)
+
+xla_cc_test(
+    name = "with_user_context_test",
+    srcs = ["with_user_context_test.cc"],
+    deps = [
+        ":user_context",
+        ":user_context_test_util",
+        ":with_user_context",
+        "//xla/tsl/lib/core:status_test_util",
+        "@com_google_absl//absl/functional:any_invocable",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 xla_cc_test(
     name = "custom_call_program_serdes_test",
     srcs = ["custom_call_program_serdes_test.cc"],
