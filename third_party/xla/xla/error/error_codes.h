@@ -17,12 +17,18 @@ limitations under the License.
 #define XLA_ERROR_ERROR_CODES_H_
 
 #include <string>
+#include <utility>
 
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "xla/error/debug_me_context_util.h"
+#include "tsl/platform/platform.h"
+
+#if defined(PLATFORM_GOOGLE)
+#include "absl/types/source_location.h"
+#endif  // PLATFORM_GOOGLE
 
 namespace xla::error {
 
@@ -146,25 +152,83 @@ inline std::string GetErrorUrl(ErrorCode code) {
                       ErrorCodeToStringIdentifier(code));
 }
 
-// === ErrorCode specific absl::Status factory functions ===
-// Automatically generates a factory function for each error code
-// to easily create a properly formatted absl::Status object.
-// e.g. can be used as:
-// error::InvalidArgument("Compilation failed with error: %s", my_message);
-#define DEFINE_ERROR_FACTORY_FUNCTION(string_id, enum_name, status_code) \
-  template <typename... Args>                                            \
-  inline absl::Status enum_name(const absl::FormatSpec<Args...>& format, \
-                                const Args&... args) {                   \
-    auto status = absl::Status(                                          \
-        status_code,                                                     \
-        absl::StrCat(GetErrorCodeAndName(ErrorCode::k##enum_name), ": ", \
-                     absl::StrFormat(format, args...), "\n",             \
-                     GetErrorUrl(ErrorCode::k##enum_name)));             \
-    error::AttachDebugMeContextPayload(status);                          \
-    return status;                                                       \
-  }
+// The following three macros implement a factory pattern for creating
+// absl::Status objects. This pattern is necessary to reliably capture the
+// caller's source location while supporting variadic arguments.
+//
+// It is split into three parts (PREFIX, SUFFIX, and the main macro) for
+// modularity and readability - separating the boilerplate of the
+// struct definition from the implementation of its constructor.
+#define DEFINE_ERROR_FACTORY_FUNCTION_PREFIX(enum_name) \
+  template <typename... Args>                           \
+  struct enum_name {                                    \
+    absl::Status status;
+
+// The SUFFIX macro defines the end of the error-generating struct. It provides
+// A class template deduction guide (CTAD), which is essential for making the
+// factory's calling syntax work. It tells the compiler how to deduce the
+// template arguments `Args...` from the constructor call.
+#define DEFINE_ERROR_FACTORY_FUNCTION_SUFFIX(enum_name)                       \
+  /* NOLINTNEXTLINE(google-explicit-constructor) */                           \
+  operator absl::Status() const& { return status; }                           \
+  operator absl::Status() && { return std::move(status); }                    \
+  }                                                                           \
+  ;                                                                           \
+  /* Deduction guide to make variadic arguments play nice with the default */ \
+  /* absl::SourceLocation argument. */                                        \
+  template <typename... Args>                                                 \
+  enum_name(const absl::FormatSpec<Args...>&, Args&&...)                      \
+      -> enum_name<Args...>;
+
+// Main macro that generates a status factory function for each error code that
+// can be used to create an absl::Status object with an error code and a
+// formatted error message. Additionally attaches a payload with DebugMeContext
+// details if present. e.g. can be used as: error::InvalidArgument("Compilation
+// failed with error: %s", my_message);
+#if defined(PLATFORM_GOOGLE)
+// This version captures the caller's source location and attaches it to the
+// absl::Status object on platforms that support it.
+#define DEFINE_ERROR_FACTORY_FUNCTION(string_id, enum_name, status_code)      \
+  DEFINE_ERROR_FACTORY_FUNCTION_PREFIX(enum_name)                             \
+  /* NOLINTNEXTLINE(google-explicit-constructor) */                           \
+  enum_name(const absl::FormatSpec<Args...>& format, Args&&... args,          \
+            absl::SourceLocation location = absl::SourceLocation::current())  \
+      : status([&] {                                                          \
+          auto s = absl::Status(                                              \
+              status_code,                                                    \
+              absl::StrCat(                                                   \
+                  GetErrorCodeAndName(ErrorCode::k##enum_name), ": ",         \
+                  absl::StrFormat(format, std::forward<Args>(args)...), "\n", \
+                  GetErrorUrl(ErrorCode::k##enum_name)),                      \
+              location);                                                      \
+          error::AttachDebugMeContextPayload(s);                              \
+          return s;                                                           \
+        }()) {}                                                               \
+  DEFINE_ERROR_FACTORY_FUNCTION_SUFFIX(enum_name)
+#else  // !PLATFORM_GOOGLE
+// Absl::SourceLocation is not yet open-source. This version does NOT capture
+// the source location.
+#define DEFINE_ERROR_FACTORY_FUNCTION(string_id, enum_name, status_code)      \
+  DEFINE_ERROR_FACTORY_FUNCTION_PREFIX(enum_name)                             \
+  /* NOLINTNEXTLINE(google-explicit-constructor) */                           \
+  enum_name(const absl::FormatSpec<Args...>& format, Args&&... args)          \
+      : status([&] {                                                          \
+          auto s = absl::Status(                                              \
+              status_code,                                                    \
+              absl::StrCat(                                                   \
+                  GetErrorCodeAndName(ErrorCode::k##enum_name), ": ",         \
+                  absl::StrFormat(format, std::forward<Args>(args)...), "\n", \
+                  GetErrorUrl(ErrorCode::k##enum_name)));                     \
+          error::AttachDebugMeContextPayload(s);                              \
+          return s;                                                           \
+        }()) {}                                                               \
+  DEFINE_ERROR_FACTORY_FUNCTION_SUFFIX(enum_name)
+#endif  // PLATFORM_GOOGLE
 
 XLA_ERROR_CODE_LIST(DEFINE_ERROR_FACTORY_FUNCTION)
+
+#undef DEFINE_ERROR_FACTORY_FUNCTION_PREFIX
+#undef DEFINE_ERROR_FACTORY_FUNCTION_SUFFIX
 #undef DEFINE_ERROR_FACTORY_FUNCTION
 
 }  // namespace xla::error
