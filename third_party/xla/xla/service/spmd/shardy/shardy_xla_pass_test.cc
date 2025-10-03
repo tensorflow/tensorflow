@@ -1092,11 +1092,11 @@ TEST_F(ShardyXLATest, PreserveOriginalValueRecoveryTable) {
   const char* const expected = R"(
   // CHECK:       {"reshape.2341"} : {"placeholder_reshape.201"},
   // CHECK-NEXT:  "
-  // CHECK-NEXT:    ENTRY %recovery_computation.1 (p.1: f32[192]) -> f32[1,192] {
+  // CHECK:       ENTRY %recovery_computation.1 (p.1: f32[192]) -> f32[1,192] {
   // CHECK-NEXT:      %p.1 = f32[192]{0} parameter(0)
   // CHECK-NEXT:      ROOT %reshape.2 = f32[1,192]{1,0} reshape(%p.1)
   // CHECK-NEXT:    }
-  // CHECK-NEXT:  "
+  // CHECK:       "
   )";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,

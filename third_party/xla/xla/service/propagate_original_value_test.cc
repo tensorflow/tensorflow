@@ -233,11 +233,11 @@ TEST_F(OriginalValueRecoveryTableTest,
 // CHECK:      HloModule test, entry_computation_layout={((f32[5]{0}, f32[5]{0}))->f32[1,2,3,5,1]{4,3,2,1,0}}, origin_recovery_table={
 // CHECK-NEXT:   {"reshape"} : {"reshape__ovp0"},
 // CHECK-NEXT:   "
-// CHECK-NEXT:     ENTRY %recovery_computation (p: f32[5]) -> f32[1,5,1] {
+// CHECK:          ENTRY %recovery_computation (p: f32[5]) -> f32[1,5,1] {
 // CHECK-NEXT:       %p = f32[5]{0} parameter(0)
 // CHECK-NEXT:       ROOT %reshape = f32[1,5,1]{2,1,0} reshape(%p)
 // CHECK-NEXT:     }
-// CHECK-NEXT:   "
+// CHECK:        "
 // CHECK-NEXT: }
 // CHECK:      ENTRY %main (param: (f32[5], f32[5])) -> f32[1,2,3,5,1] {
 // CHECK-NEXT:   %param = (f32[5]{0}, f32[5]{0}) parameter(0)

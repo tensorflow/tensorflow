@@ -351,6 +351,8 @@ void HloModule::ReplaceComputations(
 void HloModule::Print(
     Printer* printer, const HloPrintOptions& options,
     const absl::btree_map<std::string, NumericOrString>& custom_fields) const {
+  const std::string tab(2 * options.indent_amount(), ' ');
+  printer->Append(tab);
   printer->Append("HloModule ");
   if (options.print_ids()) {
     // When print_ids() is false, exclude module's name because it includes and
@@ -1508,14 +1510,11 @@ std::string HloModule::OriginalValueRecoveryTable::ToString(
     const std::string tab(2 * (options.indent_amount()), ' ');
     std::string recovery_module_string;
     if (recovery_module) {
-      absl::StrAppend(&recovery_module_string, ",\n", tab, "\"\n",
-                      recovery_module->entry_computation()->ToString(
-                          HloPrintOptions()
-                              .set_print_computation_mode(
-                                  HloPrintOptions::PrintComputationMode::
-                                      kComputationWithEntryKeyword)
-                              .set_indent_amount(options.indent_amount() + 1)),
-                      "\n", tab, "\"");
+      absl::StrAppend(
+          &recovery_module_string, ",\n", tab, "\"\n",
+          recovery_module->ToString(
+              HloPrintOptions().set_indent_amount(options.indent_amount() + 1)),
+          "\n", tab, "\"");
     }
     absl::StrAppend(&result, tab, "{", old_original_array.ToString(), "} : {",
                     new_original_array.ToString(), "}", recovery_module_string,
