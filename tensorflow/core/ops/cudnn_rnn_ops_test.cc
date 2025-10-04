@@ -27,7 +27,7 @@ namespace tensorflow {
 static string JoinedCopies(const string& s, int copies) {
   string res;
   for (int i = 0; i < copies; ++i) {
-    strings::StrAppend(&res, i > 0 ? ";" : "", s);
+    absl::StrAppend(&res, i > 0 ? ";" : "", s);
   }
   return res;
 }
@@ -58,7 +58,7 @@ TEST(CudnnRNNOpsTest, ForwardLstm_ShapeFn) {
   std::vector<int> output_shape = {seq_length, batch_size,
                                    num_units * dir_count};
   auto shape_to_str = [](const std::vector<int>& v) {
-    return strings::StrCat("[", absl::StrJoin(v, ","), "]");
+    return absl::StrCat("[", absl::StrJoin(v, ","), "]");
   };
   string input_shapes_desc = strings::StrCat(
       shape_to_str(input_shape), ";", shape_to_str(input_h_shape), ";",
@@ -95,7 +95,7 @@ TEST(CudnnRNNOpsTest, ForwardV2Lstm_ShapeFn) {
   std::vector<int> output_shape = {seq_length, batch_size,
                                    num_units * dir_count};
   auto shape_to_str = [](const std::vector<int>& v) {
-    return strings::StrCat("[", absl::StrJoin(v, ","), "]");
+    return absl::StrCat("[", absl::StrJoin(v, ","), "]");
   };
   string input_shapes_desc = strings::StrCat(
       shape_to_str(input_shape), ";", shape_to_str(input_h_shape), ";",
@@ -135,7 +135,7 @@ TEST(CudnnRNNOpsTest, ForwardV3Lstm_ShapeFn) {
                                    num_units * dir_count};
   std::vector<int> seq_lengths_shape = {batch_size};
   auto shape_to_str = [](const std::vector<int>& v) {
-    return strings::StrCat("[", absl::StrJoin(v, ","), "]");
+    return absl::StrCat("[", absl::StrJoin(v, ","), "]");
   };
   string input_shapes_desc = strings::StrCat(
       shape_to_str(input_shape), ";", shape_to_str(input_h_shape), ";",
@@ -177,7 +177,7 @@ TEST(CudnnRNNOpsTest, ForwardV3Gru) {
                                    num_units * dir_count};
   std::vector<int> seq_lengths_shape = {batch_size};
   auto shape_to_str = [](const std::vector<int>& v) {
-    return strings::StrCat("[", absl::StrJoin(v, ","), "]");
+    return absl::StrCat("[", absl::StrJoin(v, ","), "]");
   };
   string input_shapes_desc = strings::StrCat(
       shape_to_str(input_shape), ";", shape_to_str(input_h_shape), ";",
@@ -207,7 +207,7 @@ TEST(CudnnRNNOpsTest, LSTMBlockCell_ShapeFn) {
   ShapeInferenceTestOp op("LSTMBlockCell");
 
   // Last 6 inputs don't affect shape inference.
-  string input_suffix = strings::StrCat(";", JoinedCopies("?", 6));
+  string input_suffix = absl::StrCat(";", JoinedCopies("?", 6));
 
   // Rank checks.
   INFER_ERROR("must be rank 2", op, "[?];?" + input_suffix);
