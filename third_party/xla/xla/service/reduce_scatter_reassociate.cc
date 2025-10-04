@@ -53,9 +53,9 @@ bool AreCompatible(const HloReduceScatterInstruction *rs0,
 
 }  // namespace
 
-absl::StatusOr<bool> ReduceScatterReassociate::Run(
-    HloModule *module,
-    const absl::flat_hash_set<absl::string_view> &execution_threads) {
+absl::StatusOr<bool> ReduceScatterReassociate::RunImpl(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   if (hlo_query::ContainsLayoutConstrainedCollective(
           *module, HloOpcode::kReduceScatter)) {
     VLOG(1)

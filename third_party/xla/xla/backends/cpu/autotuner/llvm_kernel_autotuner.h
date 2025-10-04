@@ -40,7 +40,8 @@ class LlvmKernelAutotuner : public HloModulePass {
 
   absl::string_view name() const override { return kLlvmKernelAutotunerName; }
 
-  absl::StatusOr<bool> Run(
+ protected:
+  absl::StatusOr<bool> RunImpl(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 };

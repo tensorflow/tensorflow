@@ -170,11 +170,11 @@ absl::StatusOr<bool> IdentityReshapeRemoving(HloInstruction* reshape) {
 
 }  // namespace
 
-absl::StatusOr<bool> DynamicDimensionSimplifier::Run(
+absl::StatusOr<bool> DynamicDimensionSimplifier::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  XLA_VLOG_LINES(
-      2, "DynamicDimensionSimplifier::Run(), before:\n" + module->ToString());
+  XLA_VLOG_LINES(2, "DynamicDimensionSimplifier::RunImpl(), before:\n" +
+                        module->ToString());
   bool changed = false;
 
   for (auto* comp : module->MakeNonfusionComputations(execution_threads)) {
@@ -215,8 +215,8 @@ absl::StatusOr<bool> DynamicDimensionSimplifier::Run(
       changed |= local_changed;
     }
   }
-  XLA_VLOG_LINES(
-      2, "DynamicDimensionSimplifier::Run(), after:\n" + module->ToString());
+  XLA_VLOG_LINES(2, "DynamicDimensionSimplifier::RunImpl(), after:\n" +
+                        module->ToString());
   return changed;
 }
 }  // namespace xla

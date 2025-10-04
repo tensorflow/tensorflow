@@ -130,10 +130,6 @@ class ShardingPropagation : public HloModulePass {
     }
   }
   absl::string_view name() const override { return "sharding-propagation"; }
-  using HloPassInterface::Run;
-  absl::StatusOr<bool> Run(
-      HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
   // Function which can be used to apply a spatially partitioned sharding onto a
   // given domain. It will apply the sharding into the exit edges of the domain
@@ -146,6 +142,11 @@ class ShardingPropagation : public HloModulePass {
       const HloInstruction& instruction, const HloInstruction& user,
       int64_t aggressiveness, bool is_spmd, const CallGraph& call_graph,
       const CustomCallShardingHelper* sharding_helper);
+
+ protected:
+  absl::StatusOr<bool> RunImpl(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
   bool InferShardingFromShardGroup(

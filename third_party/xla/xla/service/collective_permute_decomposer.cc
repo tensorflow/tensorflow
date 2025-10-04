@@ -307,7 +307,7 @@ void RemoveAllButOne(std::vector<HloCollectivePermuteInstruction*>& cps) {
   cps = {cps[cp_index]};
 }
 
-absl::StatusOr<bool> CollectivePermuteDecomposer::Run(
+absl::StatusOr<bool> CollectivePermuteDecomposer::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module);

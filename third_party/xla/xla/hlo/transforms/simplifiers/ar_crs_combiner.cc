@@ -632,7 +632,7 @@ absl::StatusOr<bool> ArCrsCombiner::RewriteGraph() {
   return true;
 }
 
-absl::StatusOr<bool> ArCrsCombiner::Run(
+absl::StatusOr<bool> ArCrsCombiner::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   call_graph_ = CallGraph::Build(module);

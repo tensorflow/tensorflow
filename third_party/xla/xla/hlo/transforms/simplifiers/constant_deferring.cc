@@ -86,7 +86,7 @@ HloInstructionSequence DeferConstants(const HloInstructionSequence& sequence) {
   return new_sequence;
 }
 
-absl::StatusOr<bool> ConstantDeferring::Run(
+absl::StatusOr<bool> ConstantDeferring::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;

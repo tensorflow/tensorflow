@@ -202,13 +202,6 @@ class InstructionFusion : public HloModulePass {
   ~InstructionFusion() override = default;
   absl::string_view name() const override { return "fusion"; }
 
-  // Run instruction fusion on the given computation. Returns whether the
-  // computation was changed (instructions were fused).
-  using HloPassInterface::Run;
-  absl::StatusOr<bool> Run(
-      HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
-
   // Returns true if the computation of the given instruction is significantly
   // more expensive than just writing all the values of the instructions' result
   // array. Expensive operations will not be duplicated.
@@ -339,6 +332,12 @@ class InstructionFusion : public HloModulePass {
       const HloReachabilityMap& reachability);
 
   bool may_duplicate() const { return may_duplicate_; }
+
+  // Run instruction fusion on the given computation. Returns whether the
+  // computation was changed (instructions were fused).
+  absl::StatusOr<bool> RunImpl(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
   // Returns the reused operands of `instruction` from reused_fusion_operands_,
