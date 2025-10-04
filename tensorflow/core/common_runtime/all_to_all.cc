@@ -122,8 +122,7 @@ void AllToAll::Run(StatusCallback done) {
 
 void AllToAll::DispatchSend(int src_rank, int target_rank, const Tensor* tensor,
                             const StatusCallback& done) {
-  string send_buf_key =
-      strings::StrCat(col_ctx_->exec_key, src_rank, target_rank);
+  string send_buf_key = absl::StrCat(col_ctx_->exec_key, src_rank, target_rank);
   col_ctx_->col_exec->remote_access()->PostToPeer(
       col_params_->group.members[target_rank].device.name(),
       col_params_->group.members[target_rank].task, send_buf_key,
@@ -134,8 +133,7 @@ void AllToAll::DispatchSend(int src_rank, int target_rank, const Tensor* tensor,
 
 void AllToAll::DispatchRecv(int src_rank, int target_rank, Tensor* tensor,
                             const StatusCallback& done) {
-  string recv_buf_key =
-      strings::StrCat(col_ctx_->exec_key, src_rank, target_rank);
+  string recv_buf_key = absl::StrCat(col_ctx_->exec_key, src_rank, target_rank);
   col_ctx_->col_exec->remote_access()->RecvFromPeer(
       col_params_->group.members[src_rank].device.name(),
       col_params_->group.members[src_rank].task,
