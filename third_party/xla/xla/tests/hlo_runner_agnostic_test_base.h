@@ -189,6 +189,16 @@ class HloRunnerAgnosticTestBase : public HloHardwareIndependentTestBase {
       std::vector<std::vector<Literal*>> arguments, int64_t num_replicas,
       bool run_hlo_passes, DeviceAssignment* device_assignment = nullptr);
 
+  // Same as above but builds the hlo module from the builder.
+  absl::StatusOr<std::vector<Literal>> ExecuteReplicated(
+      XlaBuilder* builder, const ExecutionOptions& execution_options,
+      const HloRunnerInterface::ReplicatedExecuteOptions& options);
+
+  absl::StatusOr<std::vector<Literal>> ExecuteReplicated(
+      XlaBuilder* builder, const ExecutionOptions& execution_options,
+      const HloRunnerInterface::ReplicatedExecuteOptions& options,
+      DeviceAssignment* device_assignment);
+
   // Executes an hlo module with fake inputs and checks that the execution is
   // successful.
   ::testing::AssertionResult Run(

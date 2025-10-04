@@ -215,6 +215,44 @@ HloRunnerAgnosticTestBase::ExecuteReplicated(
       /*device_assignment=*/device_assignment);
 }
 
+absl::StatusOr<std::vector<Literal>>
+HloRunnerAgnosticTestBase::ExecuteReplicated(
+    XlaBuilder* builder, const ExecutionOptions& execution_options,
+    const HloRunnerInterface::ReplicatedExecuteOptions& options) {
+  TF_ASSIGN_OR_RETURN(XlaComputation computation, builder->Build());
+  TF_ASSIGN_OR_RETURN(
+      HloModuleConfig module_config,
+      HloModule::CreateModuleConfigFromProto(computation.proto(),
+                                             execution_options.debug_options(),
+                                             &execution_options));
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<HloModule> module,
+      HloModule::CreateFromProto(computation.proto(), module_config));
+  TF_RETURN_IF_ERROR(verifier().Run(module.get()).status());
+
+  return test_runner_->ExecuteReplicated(std::move(module), options);
+}
+
+absl::StatusOr<std::vector<Literal>>
+HloRunnerAgnosticTestBase::ExecuteReplicated(
+    XlaBuilder* builder, const ExecutionOptions& execution_options,
+    const HloRunnerInterface::ReplicatedExecuteOptions& options,
+    DeviceAssignment* device_assignment) {
+  TF_ASSIGN_OR_RETURN(XlaComputation computation, builder->Build());
+  TF_ASSIGN_OR_RETURN(
+      HloModuleConfig module_config,
+      HloModule::CreateModuleConfigFromProto(computation.proto(),
+                                             execution_options.debug_options(),
+                                             &execution_options));
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<HloModule> module,
+      HloModule::CreateFromProto(computation.proto(), module_config));
+  TF_RETURN_IF_ERROR(verifier().Run(module.get()).status());
+
+  return test_runner_->ExecuteReplicated(std::move(module), options,
+                                         device_assignment);
+}
+
 ::testing::AssertionResult HloRunnerAgnosticTestBase::Run(
     std::unique_ptr<HloModule> module, const bool run_hlo_passes,
     const std::function<void(HloModule*)>& test_preprocessor) {
