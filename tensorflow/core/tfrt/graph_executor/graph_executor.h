@@ -274,14 +274,17 @@ class GraphExecutor {
       std::vector<tensorflow::Tensor>* outputs);
 
   // Similar as `Run`, but it requires additional input parameters to specify
-  // the sorted input/output names and the original indices of the
-  // inputs/outputs. The caller must guarantee that inputs are in the same order
-  // as of `sorted_input_names`. The sorted input/output names are needed to
-  // consistently build the key for looking up the `LoadedClientGraph` in the
+  // the `graph_name`, the sorted input/output names and the original indices of
+  // the inputs/outputs. The caller must guarantee that inputs are in the same
+  // order as of `sorted_input_names`. The sorted input/output names are needed
+  // to consistently build the key for looking up the `LoadedClientGraph` in the
   // cache. The original indices are needed to map the results to the original
-  // inputs/outputs.
+  // inputs/outputs. The `graph_name` will be used to lookup the compiled graph
+  // in the cache. It is usually the signature name of the graph. If it is
+  // empty, a joined name will be constructed from the sorted input/output names
+  // to lookup the `LoadedClientGraph` in the cache.
   absl::Status RunWithSortedInputsOutputs(
-      const RunOptions& run_options,
+      const RunOptions& run_options, absl::string_view graph_name,
       absl::Span<const std::pair<std::string, tensorflow::Tensor>> inputs,
       absl::Span<const std::string> sorted_input_names,
       absl::Span<const tensorflow::DataType> sorted_input_dtypes,

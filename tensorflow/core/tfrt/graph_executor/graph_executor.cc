@@ -560,7 +560,7 @@ void CreateSortedNamesAndOriginalIndices(absl::Span<const std::string> names,
 }
 
 absl::Status GraphExecutor::RunWithSortedInputsOutputs(
-    const RunOptions& run_options,
+    const RunOptions& run_options, absl::string_view graph_name,
     absl::Span<const std::pair<std::string, tensorflow::Tensor>> inputs,
     absl::Span<const std::string> sorted_input_names,
     absl::Span<const tensorflow::DataType> sorted_input_dtypes,
@@ -570,12 +570,11 @@ absl::Status GraphExecutor::RunWithSortedInputsOutputs(
     absl::Span<const int> output_original_indices,
     std::vector<tensorflow::Tensor>* outputs) {
   // Load the client graph.
-  TF_ASSIGN_OR_RETURN(
-      LoadedClientGraph & loaded_client_graph,
-      GetOrCreateLoadedClientGraph(
-          run_options, sorted_input_names, sorted_input_dtypes,
-          sorted_output_names, sorted_target_node_names, run_options.work_queue,
-          /*graph_name=*/{}, inputs));
+  TF_ASSIGN_OR_RETURN(LoadedClientGraph & loaded_client_graph,
+                      GetOrCreateLoadedClientGraph(
+                          run_options, sorted_input_names, sorted_input_dtypes,
+                          sorted_output_names, sorted_target_node_names,
+                          run_options.work_queue, graph_name, inputs));
 
   // Get a shared_ptr of the executable so that during the current request the
   // executable to use is guaranteed to be alive.
@@ -683,9 +682,9 @@ absl::Status GraphExecutor::Run(
   std::sort(sorted_target_node_names.begin(), sorted_target_node_names.end());
 
   return RunWithSortedInputsOutputs(
-      run_options, inputs, sorted_input_names, sorted_input_dtypes,
-      sorted_output_names, sorted_target_node_names, input_original_indices,
-      output_original_indices, outputs);
+      run_options, /*graph_name=*/"", inputs, sorted_input_names,
+      sorted_input_dtypes, sorted_output_names, sorted_target_node_names,
+      input_original_indices, output_original_indices, outputs);
 }
 
 absl::Status GraphExecutor::Extend(const GraphDef& graph) {
