@@ -8085,6 +8085,36 @@ ENTRY entry {
                     op::Shape("s32[128,32]")));
 }
 
+TEST_P(SpmdPartitioningTest, DynamicUpdateSliceOfConstant) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %input = s32[128,64] parameter(0), sharding={devices=[1,2]0,1}
+  %update = s32[128,20] parameter(1), sharding={devices=[1,2]0,1}
+  %constant0 = s32[] constant(20)
+  %constant = s32[] constant(60)
+  ROOT %dynamic-update-slice = s32[128,64]
+    dynamic-update-slice(%input, %update, %constant0, %constant),
+    sharding={devices=[1,2]0,1}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/2));
+  VLOG(1) << module->ToString();
+
+  const auto root = module->entry_computation()->root_instruction();
+  auto input = AllOf(op::Parameter(0), op::Shape("s32[128,32]"));
+  auto update = AllOf(op::Parameter(1), op::Shape("s32[128,10]"));
+
+  EXPECT_THAT(root,
+              AllOf(op::Select(op::Broadcast(),
+                               op::DynamicUpdateSlice(
+                                   input, update, op::Constant(), op::Select()),
+                               input),
+                    op::Shape("s32[128,32]")));
+}
+
 TEST_P(SpmdPartitioningTest, DynamicUpdateSliceAlongPartitionedDimension2) {
   absl::string_view hlo_string = R"(
 HloModule module
