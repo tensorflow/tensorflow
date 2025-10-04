@@ -545,8 +545,14 @@ absl::StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicatedImpl(
   }
 
   std::unique_ptr<tsl::thread::ThreadPool> pool;
-  TF_RET_CHECK(options.infeed_values.empty() ||
-               options.infeed_values.size() == options.num_replicas);
+  if (options.infeed_to_single_replica) {
+    // N values, 1 replica.
+    TF_RET_CHECK(options.infeed_values.empty() || options.num_replicas == 1);
+  } else {
+    // N values, N replicas.
+    TF_RET_CHECK(options.infeed_values.empty() ||
+                 options.infeed_values.size() == options.num_replicas);
+  }
   int64_t num_threads = options.infeed_values.size();
   if (ShapeUtil::IsInitialized(options.outfeed_shape)) {
     num_threads += options.num_replicas;
@@ -566,8 +572,17 @@ absl::StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicatedImpl(
         VLOG(1) << "Starting infeed on device " << device;
         for (int64_t step = 1;
              options.infeed_steps < 0 || step <= options.infeed_steps; ++step) {
-          TF_CHECK_OK(backend().transfer_manager()->TransferLiteralToInfeed(
-              executor, *options.infeed_values[i]));
+          if (options.infeed_to_single_replica) {
+            // N values, 1 replica.
+            for (int inf_i = 0; inf_i < options.infeed_values.size(); ++inf_i) {
+              TF_CHECK_OK(backend().transfer_manager()->TransferLiteralToInfeed(
+                  executor, *options.infeed_values[inf_i]));
+            }
+          } else {
+            // N values, N replicas.
+            TF_CHECK_OK(backend().transfer_manager()->TransferLiteralToInfeed(
+                executor, *options.infeed_values[i]));
+          }
           if (step % 100 == 0) {
             VLOG(1) << "Infeed step " << step;
           }

@@ -671,8 +671,14 @@ absl::StatusOr<std::vector<Literal>> HloRunnerPjRt::ExecuteReplicatedImpl(
     std::function<const Literal*(int64_t, int64_t)> argument_provider,
     const ReplicatedExecuteOptions& options,
     DeviceAssignment* device_assignment) {
-  TF_RET_CHECK(options.infeed_values.empty() ||
-               options.infeed_values.size() == options.num_replicas);
+  if (options.infeed_to_single_replica) {
+    // N values, 1 replica.
+    TF_RET_CHECK(options.infeed_values.empty() || options.num_replicas == 1);
+  } else {
+    // N values, N replicas.
+    TF_RET_CHECK(options.infeed_values.empty() ||
+                 options.infeed_values.size() == options.num_replicas);
+  }
 
   std::vector<PjRtDevice*> replica_devices(options.num_replicas, nullptr);
   std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> argument_buffer_slices;
@@ -725,23 +731,31 @@ absl::StatusOr<std::vector<Literal>> HloRunnerPjRt::ExecuteReplicatedImpl(
   }
   if (has_infeed) {
     for (int64_t i = 0; i < options.num_replicas; ++i) {
-      pool->Schedule(
-          [device = replica_devices[i],
-           &infeed_literal = *ABSL_DIE_IF_NULL(options.infeed_values[i]),
-           infeed_steps = options.infeed_steps, &infeed_outfeed_status_mu,
-           &infeed_outfeed_status]() {
-            VLOG(1) << "Starting infeed on device " << device->ToString();
-            absl::Status per_feed_status = absl::OkStatus();
-            for (int64_t step = 1; infeed_steps < 0 || step <= infeed_steps;
-                 ++step) {
-              per_feed_status.Update(device->TransferToInfeed(infeed_literal));
-              if (step % 100 == 0) {
-                VLOG(1) << "Infeed step " << step;
-              }
+      pool->Schedule([device = replica_devices[i], &options,
+                      infeed_steps = options.infeed_steps,
+                      &infeed_outfeed_status_mu, &infeed_outfeed_status, i]() {
+        VLOG(1) << "Starting infeed on device " << device->ToString();
+        absl::Status per_feed_status = absl::OkStatus();
+        for (int64_t step = 1; infeed_steps < 0 || step <= infeed_steps;
+             ++step) {
+          if (options.infeed_to_single_replica) {
+            // N values, 1 replica.
+            for (int inf_i = 0; inf_i < options.infeed_values.size(); ++inf_i) {
+              per_feed_status.Update(
+                  device->TransferToInfeed(*options.infeed_values[inf_i]));
             }
-            absl::MutexLock lock(&infeed_outfeed_status_mu);
-            infeed_outfeed_status.Update(per_feed_status);
-          });
+          } else {
+            // N values, N replicas.
+            per_feed_status.Update(
+                device->TransferToInfeed(*options.infeed_values[i]));
+          }
+          if (step % 100 == 0) {
+            VLOG(1) << "Infeed step " << step;
+          }
+        }
+        absl::MutexLock lock(&infeed_outfeed_status_mu);
+        infeed_outfeed_status.Update(per_feed_status);
+      });
     }
   }
   if (has_outfeed) {
