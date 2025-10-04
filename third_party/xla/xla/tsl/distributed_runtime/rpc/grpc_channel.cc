@@ -335,10 +335,10 @@ class SparseGrpcChannelCache : public CachingGrpcChannelCache {
     task_strings.reserve(host_ports_.size());
     for (const auto& id_host_port : host_ports_) {
       task_strings.emplace_back(
-          strings::StrCat(id_host_port.first, " -> ", id_host_port.second));
+          absl::StrCat(id_host_port.first, " -> ", id_host_port.second));
     }
-    return strings::StrCat(job_id_, " -> {", absl::StrJoin(task_strings, ", "),
-                           "}");
+    return absl::StrCat(job_id_, " -> {", absl::StrJoin(task_strings, ", "),
+                        "}");
   }
 
   const string job_id_;
