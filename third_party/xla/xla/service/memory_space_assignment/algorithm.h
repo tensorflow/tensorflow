@@ -335,7 +335,7 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
   absl::StatusOr<HeapSimulator::Result<HloValue>> Finish() override;
 
   // Processes all block prefetches.
-  void ProcessBlockPrefetches();
+  absl::Status ProcessBlockPrefetches();
 
   // Returns the maximum amount of scoped memory that is reserved at any time in
   // the program.
