@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/hlo/ir/collective_device_list.h"
+#include "xla/hlo/ir/replica_group.h"
 
 #include <cstdint>
 #include <memory>
