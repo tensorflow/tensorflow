@@ -28,6 +28,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/ir/tile_assignment.h"
 #include "xla/shape.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace sdy {
