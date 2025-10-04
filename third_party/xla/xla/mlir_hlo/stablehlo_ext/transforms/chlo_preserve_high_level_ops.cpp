@@ -266,6 +266,15 @@ struct CoshOpToCustomCallPattern : public OpRewritePattern<chlo::CoshOp> {
   }
 };
 
+struct SinhOpToCustomCallPattern : public OpRewritePattern<chlo::SinhOp> {
+  using OpRewritePattern::OpRewritePattern;
+  LogicalResult matchAndRewrite(chlo::SinhOp op,
+                                PatternRewriter& rewriter) const override {
+    return wrapChloOperationInCustomCall(rewriter, op, "mhlo.sinh",
+                                         /*version=*/1);
+  }
+};
+
 ///////
 // CHLO to CompositeOp Patterns
 ///////
@@ -341,6 +350,14 @@ struct CoshOpToCompositePattern : public OpRewritePattern<chlo::CoshOp> {
   }
 };
 
+struct SinhOpToCompositePattern : public OpRewritePattern<chlo::SinhOp> {
+  using OpRewritePattern::OpRewritePattern;
+  LogicalResult matchAndRewrite(chlo::SinhOp op,
+                                PatternRewriter& rewriter) const override {
+    return wrapChloOpInComposite(op, /*version=*/1, rewriter);
+  }
+};
+
 }  // namespace
 
 struct ChloPreserveHighLevelOpsPass
@@ -368,6 +385,7 @@ struct ChloPreserveHighLevelOpsPass
         AcoshOpToCustomCallPattern,
         AtanhOpToCustomCallPattern,
         CoshOpToCustomCallPattern,
+        SinhOpToCustomCallPattern,
         ErfOpToCustomCallPattern,
         RaggedDotOpToCustomCallPattern,
         TopKOpToCustomCallPattern>(ctx);
@@ -377,6 +395,7 @@ struct ChloPreserveHighLevelOpsPass
         AcoshOpToCompositePattern,
         AtanhOpToCompositePattern,
         CoshOpToCompositePattern,
+        SinhOpToCompositePattern,
         ErfOpToCompositePattern,
         RaggedDotOpToCompositePattern,
         TopKOpToCompositePattern>(ctx);
