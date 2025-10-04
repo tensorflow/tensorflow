@@ -221,6 +221,9 @@ class HloEvaluator : public ConstDfsHloVisitorWithDefault,
     custom_call_handler_ = std::move(handler);
   }
 
+  // Gets the handler for custom call ops.
+  CustomCallHandler custom_call_handler() { return custom_call_handler_; }
+
   // Callback for each multiply-accumulate in each dot or convolution operation.
   using TraceMACHandler = std::function<void(
       int64_t result_index, int64_t lhs_index, int64_t rhs_index)>;
