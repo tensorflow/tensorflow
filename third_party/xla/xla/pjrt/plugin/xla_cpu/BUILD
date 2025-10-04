@@ -28,6 +28,7 @@ xla_cc_test(
         "//xla/pjrt:pjrt_client",
         "//xla/pjrt/cpu:cpu_client",
         "//xla/tests:xla_internal_test_main",
+        "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:test",
     ],
@@ -80,6 +81,7 @@ cc_library(
         ":cpu_device_description",
         ":cpu_topology",
         "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
         "//xla/pjrt:pjrt_client",
         "//xla/pjrt:pjrt_compiler",
         "//xla/pjrt:pjrt_device_description",
@@ -116,6 +118,7 @@ xla_cc_test(
         ":cpu_topology_proto_cc",
         "//xla/pjrt:pjrt_common",
         "@com_google_googletest//:gtest_main",
+        "@com_google_protobuf//:protobuf",
         "@local_tsl//tsl/platform:protobuf",
     ],
 )
