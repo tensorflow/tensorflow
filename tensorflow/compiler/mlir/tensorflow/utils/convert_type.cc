@@ -98,10 +98,12 @@ absl::Status ConvertDataType(DataType dtype, Builder builder, Type* type) {
       *type = builder.getType<mlir::Float8E5M2FNUZType>();
       return absl::OkStatus();
     case DT_INT4:
-      *type = builder.getIntegerType(4, /*isSigned=*/true);
+      *type = builder.getIntegerType(4);
       return absl::OkStatus();
     case DT_UINT4:
-      *type = builder.getIntegerType(4, /*isSigned=*/false);
+      *type = mlir::IntegerType::get(
+          builder.getContext(), 4,
+          mlir::IntegerType::SignednessSemantics::Unsigned);
       return absl::OkStatus();
 #define HANDLE_TF_TYPE(tftype, enumerant, name)             \
   case DT_##enumerant:                                      \

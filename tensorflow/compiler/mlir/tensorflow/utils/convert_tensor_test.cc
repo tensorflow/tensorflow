@@ -42,7 +42,7 @@ using ::testing::Eq;
 using ::testing::IsFalse;
 using ::testing::IsTrue;
 
-static void RegisterDialects(mlir::MLIRContext &context) {
+static void RegisterDialects(mlir::MLIRContext& context) {
   context.loadDialect<mlir::TF::TensorFlowDialect>();
 }
 
@@ -159,10 +159,9 @@ TEST_F(ConvertTensorTest, Simple) {
       {tsl::float8_e5m2fnuz{1.0}, tsl::float8_e5m2fnuz{-1.0}},
       DT_FLOAT8_E5M2FNUZ, mlir::Float8E5M2FNUZType::get(&context)));
 
-  ASSERT_NO_FATAL_FAILURE(VerifyConversion<int4>(
-      {static_cast<int4>(1), static_cast<int4>(-1)}, DT_INT4,
-      mlir::IntegerType::get(&context, 4,
-                             mlir::IntegerType::SignednessSemantics::Signed)));
+  ASSERT_NO_FATAL_FAILURE(VerifyConversion<tsl::int4>(
+      {static_cast<tsl::int4>(1), static_cast<tsl::int4>(-1)}, DT_INT4,
+      mlir::IntegerType::get(&context, 4)));
   ASSERT_NO_FATAL_FAILURE(VerifyConversion<int8>(
       {1, -1}, DT_INT8, mlir::IntegerType::get(&context, 8)));
   ASSERT_NO_FATAL_FAILURE(VerifyConversion<int16>(
@@ -172,8 +171,8 @@ TEST_F(ConvertTensorTest, Simple) {
   ASSERT_NO_FATAL_FAILURE(VerifyConversion<int64_t>(
       {1, -1}, DT_INT64, mlir::IntegerType::get(&context, 64)));
 
-  ASSERT_NO_FATAL_FAILURE(VerifyConversion<uint4>(
-      {static_cast<uint4>(1), static_cast<uint4>(2)}, DT_UINT4,
+  ASSERT_NO_FATAL_FAILURE(VerifyConversion<tsl::uint4>(
+      {static_cast<tsl::uint4>(1), static_cast<tsl::uint4>(2)}, DT_UINT4,
       mlir::IntegerType::get(
           &context, 4, mlir::IntegerType::SignednessSemantics::Unsigned)));
   ASSERT_NO_FATAL_FAILURE(VerifyConversion<uint8>(
@@ -220,11 +219,9 @@ TEST_F(ConvertTensorTest, SimpleDenseResourceElements) {
       {tsl::float8_e4m3fn{1.0}, tsl::float8_e4m3fn{-1.0}}, DT_FLOAT8_E4M3FN,
       mlir::Float8E4M3FNType::get(&context), true));
 
-  ASSERT_NO_FATAL_FAILURE(VerifyConversion<int4>(
-      {static_cast<int4>(1), static_cast<int4>(-1)}, DT_INT4,
-      mlir::IntegerType::get(&context, 4,
-                             mlir::IntegerType::SignednessSemantics::Signed),
-      true));
+  ASSERT_NO_FATAL_FAILURE(VerifyConversion<tsl::int4>(
+      {static_cast<tsl::int4>(1), static_cast<tsl::int4>(-1)}, DT_INT4,
+      mlir::IntegerType::get(&context, 4), true));
   ASSERT_NO_FATAL_FAILURE(VerifyConversion<int8>(
       {1, -1}, DT_INT8, mlir::IntegerType::get(&context, 8), true));
   ASSERT_NO_FATAL_FAILURE(VerifyConversion<int16>(
@@ -234,8 +231,8 @@ TEST_F(ConvertTensorTest, SimpleDenseResourceElements) {
   ASSERT_NO_FATAL_FAILURE(VerifyConversion<int64_t>(
       {1, -1}, DT_INT64, mlir::IntegerType::get(&context, 64), true));
 
-  ASSERT_NO_FATAL_FAILURE(VerifyConversion<uint4>(
-      {static_cast<uint4>(1), static_cast<uint4>(2)}, DT_UINT4,
+  ASSERT_NO_FATAL_FAILURE(VerifyConversion<tsl::uint4>(
+      {static_cast<tsl::uint4>(1), static_cast<tsl::uint4>(2)}, DT_UINT4,
       mlir::IntegerType::get(&context, 4,
                              mlir::IntegerType::SignednessSemantics::Unsigned),
       true));
