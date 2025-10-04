@@ -2791,6 +2791,7 @@ xla_test(
         "//xla:types",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:pattern_matcher_gmock",
         "//xla/hlo/testlib:verified_hlo_module",
         "//xla/hlo/utils:hlo_matchers",
         "//xla/service:computation_placer_hdr",
