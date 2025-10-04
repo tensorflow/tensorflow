@@ -26,6 +26,7 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/ErrorHandling.h"
+#include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/IR/BuiltinTypes.h"
@@ -182,6 +183,11 @@ LogicalResult PushTransposeUpThroughElementwise(TransOp op,
       !elementwise->hasTrait<OpTrait::Elementwise>()) {
     return rewriter.notifyMatchFailure(
         op, "source is not a single-result elementwise op");
+  }
+  if (auto sitofp = dyn_cast<arith::SIToFPOp>(elementwise);
+      sitofp &&
+      getElementTypeOrSelf(sitofp.getIn()).getIntOrFloatBitWidth() < 8) {
+    return rewriter.notifyMatchFailure(op, "sitofp source is too narrow");
   }
 
   SmallVector<Value> new_operands;
