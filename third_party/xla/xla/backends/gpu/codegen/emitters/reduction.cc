@@ -44,7 +44,6 @@ limitations under the License.
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/ImplicitLocOpBuilder.h"
-#include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/TypeRange.h"
 #include "mlir/IR/Value.h"
 #include "mlir/IR/ValueRange.h"
@@ -64,6 +63,7 @@ limitations under the License.
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/launch_dimensions.h"
+#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/service/gpu/reduction_utils.h"
 #include "xla/service/platform_util.h"
 #include "xla/shape.h"
@@ -178,8 +178,10 @@ struct ReductionFusion::EmitterState {
 
 PerThreadOutputs ReductionFusion::EmitterState::EmitPerThreadElements(
     int group_id, const HloValueMap& inits, const SmallVector<Value>& outputs) {
+  // TODO(karupayun): Fix this.
+  SymbolicExprContext symbolic_expr_context(builder.getContext());
   auto tile_indexing =
-      owner.ComputeReductionInputIndexing(builder.getContext());
+      owner.ComputeReductionInputIndexing(&symbolic_expr_context);
   tile_indexing
       .GetMutableDimensionBound(
           KernelFusionInterface::kIndexingMapBlockIdxDims[1])
@@ -200,6 +202,8 @@ PerThreadOutputs ReductionFusion::EmitterState::EmitPerThreadElements(
   auto body_builder = [&](ImplicitLocOpBuilder& nested_b,
                           ValueRange symbol_values, ValueRange map_results,
                           ValueRange iter_args) -> SmallVector<Value> {
+    // TODO(karupayun): Fix this.
+    SymbolicExprContext symbolic_expr_context(builder.getContext());
     llvm::SmallVector<Value> results = iter_args;
     for (auto* reduction : reductions) {
       int arity = reduction->operand_count() / 2;
@@ -207,7 +211,7 @@ PerThreadOutputs ReductionFusion::EmitterState::EmitPerThreadElements(
       SmallVector<Value> reduce_args = iter_args.slice(start, arity);
       auto indices = emitters::ApplyIndexing(
           GetBitcastMap(owner.input_shape_, reduction->operand(0)->shape(),
-                        nested_b.getContext()),
+                        &symbolic_expr_context),
           map_results, {}, nested_b);
       reduce_args.append(ProvideParameterRange(computation, reduction, 0, arity,
                                                indices, call_target,
@@ -232,7 +236,7 @@ PerThreadOutputs ReductionFusion::EmitterState::EmitPerThreadElements(
     for (auto* side_output : side_outputs) {
       auto indices = emitters::ApplyIndexing(
           GetBitcastMap(owner.input_shape_, side_output->shape(),
-                        builder.getContext()),
+                        &symbolic_expr_context),
           map_results, {}, builder);
       auto* root_tuple = fusion.fused_expression_root();
       Value value = emitters::ProvideParameter(
@@ -268,7 +272,9 @@ SmallVector<Value> ReductionFusion::EmitterState::WriteToSharedMemory(
     absl::Span<const HloInstruction* const> reductions,
     const HloValueMap& values, std::optional<int> padding) {
   SmallVector<int64_t> shape;
-  auto map = owner.GetSharedMemoryWriteMap(builder.getContext());
+  // TODO(karupayun): Fix this.
+  SymbolicExprContext symbolic_expr_context(builder.getContext());
+  auto map = owner.GetSharedMemoryWriteMap(&symbolic_expr_context);
   for (auto result : map.GetAffineMap().getResults()) {
     shape.push_back(
         map.GetRangeEvaluator().ComputeExpressionRange(result).upper + 1);
@@ -335,8 +341,10 @@ mlir::ValueRange ReductionFusion::EmitterState::ReduceViaSharedMemory(
     int group_id, const PerThreadOutputs& per_thread, const HloValueMap& inits,
     std::optional<int> padding, int max_dist) {
   const auto& reductions = owner.reduction_heroes_[group_id];
+  // TODO(karupayun): Fix this.
+  SymbolicExprContext symbolic_expr_context(builder.getContext());
   auto read_indexing =
-      owner.GetSharedMemoryReductionReadMap(builder.getContext());
+      owner.GetSharedMemoryReductionReadMap(&symbolic_expr_context);
   auto loop_indexing = read_indexing;
   // All threads must participate in the shuffle, so we clear the constraints
   // for the iteration. Otherwise, some threads might not be part of the loop,
@@ -418,13 +426,14 @@ ReductionFusion::ReductionFusion(const HloFusionAnalysis& analysis)
 IndexingMap ReductionFusion::GetIndexingMap(
     llvm::ArrayRef<mlir::AffineExpr> results,
     absl::Span<int64_t const> symbol_sizes) const {
-  auto* ctx = results.front().getContext();
+  auto* mlir_context = results.front().getContext();
   auto num_groups = static_cast<int64_t>(reduction_heroes_.size());
-  return IndexingMap{AffineMap::get(6, symbol_sizes.size(), results, ctx),
-                     DimVarsFromGPUGrid({Product(num_threads_), 1, 1,
-                                         Product(num_blocks_), num_groups, 1}),
-                     RangeVarsFromTensorSizes(symbol_sizes),
-                     /*rt_vars=*/{}};
+  return IndexingMap{
+      AffineMap::get(6, symbol_sizes.size(), results, mlir_context),
+      DimVarsFromGPUGrid(
+          {Product(num_threads_), 1, 1, Product(num_blocks_), num_groups, 1}),
+      RangeVarsFromTensorSizes(symbol_sizes),
+      /*rt_vars=*/{}};
 }
 
 IndexingMap ReductionFusion::GetThreadIndexingMap(
@@ -451,20 +460,21 @@ LaunchDimensions ReductionFusion::launch_dimensions() const {
 }
 
 std::vector<emitters::EpilogueSpecification> ReductionFusion::GetEpilogues(
-    const HloFusionInstruction& fusion, MLIRContext* mlir_context) const {
+    const HloFusionInstruction& fusion,
+    SymbolicExprContext* symbolic_expr_context) const {
   std::vector<emitters::EpilogueSpecification> epilogues;
   epilogues.reserve(reduction_heroes_.size());
   for (const auto& [heroes, roots] :
        llvm::zip(reduction_heroes_, reduction_roots_)) {
-    epilogues.push_back(
-        GetEpilogueForOutputIndexing(analysis_, heroes, roots, mlir_context));
+    epilogues.push_back(GetEpilogueForOutputIndexing(analysis_, heroes, roots,
+                                                     symbolic_expr_context));
   }
   // Add empty epilogues for the side outputs. This ensures their roots don't
   // get "fused" into the tuple function.
   for (const auto& roots : side_output_roots_) {
     for (const auto* root : roots) {
       epilogues.push_back(emitters::EpilogueSpecification::FromIdentityIndexing(
-          root, root, mlir_context));
+          root, root, symbolic_expr_context));
     }
   }
   return epilogues;
@@ -508,14 +518,14 @@ HloValueMap ReductionFusion::GetInits(int group_id, EmitterState& state) const {
 }
 
 std::optional<std::vector<IndexingMap>>
-ReductionFusion::ComputeThreadIdToInputIndexing(int64_t root_index,
-                                                MLIRContext* ctx) const {
+ReductionFusion::ComputeThreadIdToInputIndexing(
+    int64_t root_index, SymbolicExprContext* symbolic_expr_context) const {
   const auto& hero = analysis_.fusion_hero(root_index).instruction();
   std::vector<IndexingMap> result(hero.operand_count(),
                                   IndexingMap::GetUndefined());
   if (!groups_.is_reduction_root[root_index]) {
     auto thread_id_to_output_indexing =
-        ComputeThreadIdToOutputIndexing(root_index, ctx);
+        ComputeThreadIdToOutputIndexing(root_index, symbolic_expr_context);
     if (!thread_id_to_output_indexing.has_value()) {
       return std::nullopt;
     }
@@ -524,7 +534,8 @@ ReductionFusion::ComputeThreadIdToInputIndexing(int64_t root_index,
       result[operand_index] = ComposeIndexingMaps(
           *thread_id_to_output_indexing,
           ComputeOutputToInputIndexing(
-              &analysis_.fusion_root(root_index).instruction(), 0, ctx)
+              &analysis_.fusion_root(root_index).instruction(), 0,
+              symbolic_expr_context)
               .indexing_maps[operand_index]
               .begin()
               ->map());
@@ -535,29 +546,31 @@ ReductionFusion::ComputeThreadIdToInputIndexing(int64_t root_index,
   // We don't have indexing for the init values.
   for (int64_t operand_index = 0; operand_index < hero.operand_count() / 2;
        ++operand_index) {
-    auto projected_map = ComputeReductionInputIndexing(ctx);
+    auto projected_map = ComputeReductionInputIndexing(symbolic_expr_context);
     AddGroupIdConstraint(projected_map, root_index, groups_);
     result[operand_index] =
-        projected_map *
-        GetBitcastMap(input_shape_, hero.operand(operand_index)->shape(), ctx);
+        projected_map * GetBitcastMap(input_shape_,
+                                      hero.operand(operand_index)->shape(),
+                                      symbolic_expr_context);
     result[operand_index].Simplify();
   }
   return result;
 }
 
 std::optional<IndexingMap> ReductionFusion::ComputeThreadIdToOutputIndexing(
-    int64_t root_index, MLIRContext* ctx) const {
+    int64_t root_index, SymbolicExprContext* symbolic_expr_context) const {
   if (!groups_.is_reduction_root[root_index]) {
     auto map = ComposeIndexingMaps(
-        ComputeReductionInputIndexing(ctx),
+        ComputeReductionInputIndexing(symbolic_expr_context),
         GetBitcastMap(input_shape_, analysis_.fusion_root(root_index).shape(),
-                      ctx));
+                      symbolic_expr_context));
     AddGroupIdConstraint(map, root_index, groups_);
     map.Simplify();
     return map;
   }
 
-  auto projected_indexing = ComputeReductionOutputIndexing(ctx);
+  auto projected_indexing =
+      ComputeReductionOutputIndexing(symbolic_expr_context);
   auto output_shape = reduction_dimensions_.GetOutputShape();
   CHECK_EQ(output_shape.size(),
            projected_indexing.GetAffineMap().getNumResults());
@@ -570,8 +583,8 @@ std::optional<IndexingMap> ReductionFusion::ComputeThreadIdToOutputIndexing(
   const auto& hero = analysis_.fusion_hero(root_index).instruction();
   auto physical_shape =
       ShapeUtil::DeleteDimensions(hero.dimensions(), hero.operand(0)->shape());
-  auto map =
-      projected_indexing * GetBitcastMap(output_shape, physical_shape, ctx);
+  auto map = projected_indexing *
+             GetBitcastMap(output_shape, physical_shape, symbolic_expr_context);
   map.Simplify();
   return map;
 }
@@ -579,7 +592,9 @@ std::optional<IndexingMap> ReductionFusion::ComputeThreadIdToOutputIndexing(
 SmallVector<Value> ReductionFusion::EvaluateEpilogue(
     const HloValueMap& results, llvm::SmallVector<Value> outputs,
     EmitterState& state, int group_id, ValueRange symbol_values) const {
+  // TODO(karupayun): Fix this
   ImplicitLocOpBuilder& b = state.builder;
+  SymbolicExprContext symbolic_expr_context(b.getContext());
   const auto& epilogue = state.computations.epilogues()[group_id];
   if (epilogue.roots.empty()) return outputs;
 
@@ -589,9 +604,10 @@ SmallVector<Value> ReductionFusion::EvaluateEpilogue(
   auto values = EmitEpilogue(group_id, state.computations, state.entry_function,
                              results, epilogue_input_indices, b);
   int first_root_index = state.root_indices[epilogue.roots.front()];
-  auto thread_has_output = emitters::CheckConstraints(
-      *ComputeThreadIdToOutputIndexing(first_root_index, b.getContext()),
-      state.thread_and_block_ids, symbol_values, b);
+  auto thread_has_output =
+      emitters::CheckConstraints(*ComputeThreadIdToOutputIndexing(
+                                     first_root_index, &symbolic_expr_context),
+                                 state.thread_and_block_ids, symbol_values, b);
   for (auto [index, root] : llvm::enumerate(epilogue.roots)) {
     auto output_indices =
         emitters::ApplyIndexing(epilogue.root_indexing[index],
@@ -634,12 +650,13 @@ ColumnReductionFusion::ColumnReductionFusion(const HloFusionAnalysis& analysis)
 }
 
 IndexingMap ColumnReductionFusion::ComputeReductionOutputIndexing(
-    MLIRContext* ctx) const {
+    SymbolicExprContext* symbolic_expr_context) const {
+  MLIRContext* mlir_context = symbolic_expr_context->GetMLIRContext();
   auto thread_id =
-      DelinearizeInBoundsIndex(getAffineDimExpr(0, ctx), num_threads_);
+      DelinearizeInBoundsIndex(getAffineDimExpr(0, mlir_context), num_threads_);
   auto block_id =
-      DelinearizeInBoundsIndex(getAffineDimExpr(3, ctx), num_blocks_);
-  auto vector_index = getAffineSymbolExpr(0, ctx);
+      DelinearizeInBoundsIndex(getAffineDimExpr(3, mlir_context), num_blocks_);
+  auto vector_index = getAffineSymbolExpr(0, mlir_context);
   SmallVector<AffineExpr, 2> results{
       block_id[0],
       (block_id[1] * kTileSize + thread_id[0]) * vector_size_ + vector_index};
@@ -650,13 +667,14 @@ IndexingMap ColumnReductionFusion::ComputeReductionOutputIndexing(
 }
 
 IndexingMap ColumnReductionFusion::ComputeReductionInputIndexing(
-    mlir::MLIRContext* ctx) const {
+    SymbolicExprContext* symbolic_expr_context) const {
+  MLIRContext* mlir_context = symbolic_expr_context->GetMLIRContext();
   auto thread_id =
-      DelinearizeInBoundsIndex(getAffineDimExpr(0, ctx), num_threads_);
+      DelinearizeInBoundsIndex(getAffineDimExpr(0, mlir_context), num_threads_);
   auto block_id =
-      DelinearizeInBoundsIndex(getAffineDimExpr(3, ctx), num_blocks_);
-  AffineExpr element_index = getAffineSymbolExpr(0, ctx);
-  AffineExpr vector_index = getAffineSymbolExpr(1, ctx);
+      DelinearizeInBoundsIndex(getAffineDimExpr(3, mlir_context), num_blocks_);
+  AffineExpr element_index = getAffineSymbolExpr(0, mlir_context);
+  AffineExpr vector_index = getAffineSymbolExpr(1, mlir_context);
 
   SmallVector<AffineExpr, 3> results{
       block_id[0], thread_id[0] + element_index * num_threads_[1],
@@ -670,20 +688,22 @@ IndexingMap ColumnReductionFusion::ComputeReductionInputIndexing(
 }
 
 IndexingMap ColumnReductionFusion::GetSharedMemoryReductionReadMap(
-    mlir::MLIRContext* ctx) const {
+    SymbolicExprContext* symbolic_expr_context) const {
+  MLIRContext* mlir_context = symbolic_expr_context->GetMLIRContext();
   auto thread_id =
-      DelinearizeInBoundsIndex(getAffineDimExpr(0, ctx), num_threads_);
-  auto vector_index = getAffineSymbolExpr(0, ctx);
+      DelinearizeInBoundsIndex(getAffineDimExpr(0, mlir_context), num_threads_);
+  auto vector_index = getAffineSymbolExpr(0, mlir_context);
   return GetThreadIndexingMap(
       {thread_id[0], thread_id[1] * vector_size_ + vector_index}, {},
       /*symbol_sizes=*/{vector_size_});
 }
 
 IndexingMap ColumnReductionFusion::GetSharedMemoryWriteMap(
-    mlir::MLIRContext* ctx) const {
+    SymbolicExprContext* symbolic_expr_context) const {
+  MLIRContext* mlir_context = symbolic_expr_context->GetMLIRContext();
   auto thread_id =
-      DelinearizeInBoundsIndex(getAffineDimExpr(0, ctx), num_threads_);
-  auto vector_index = getAffineSymbolExpr(0, ctx);
+      DelinearizeInBoundsIndex(getAffineDimExpr(0, mlir_context), num_threads_);
+  auto vector_index = getAffineSymbolExpr(0, mlir_context);
   return GetThreadIndexingMap(
       {thread_id[1], thread_id[0] * vector_size_ + vector_index}, {},
       /*symbol_sizes=*/{vector_size_});
@@ -731,10 +751,11 @@ SmallColumnReductionFusion::SmallColumnReductionFusion(
 }
 
 IndexingMap SmallColumnReductionFusion::ComputeReductionOutputIndexing(
-    MLIRContext* ctx) const {
-  auto thread_id = getAffineDimExpr(0, ctx);
-  auto block_id = getAffineDimExpr(3, ctx);
-  auto vector_index = getAffineSymbolExpr(0, ctx);
+    SymbolicExprContext* symbolic_expr_context) const {
+  MLIRContext* mlir_context = symbolic_expr_context->GetMLIRContext();
+  auto thread_id = getAffineDimExpr(0, mlir_context);
+  auto block_id = getAffineDimExpr(3, mlir_context);
+  auto vector_index = getAffineSymbolExpr(0, mlir_context);
   SmallVector<AffineExpr, 2> results{
       block_id,
       (thread_id + vector_index * num_threads_[0]).floorDiv(shared_rows_)};
@@ -745,11 +766,12 @@ IndexingMap SmallColumnReductionFusion::ComputeReductionOutputIndexing(
 }
 
 IndexingMap SmallColumnReductionFusion::ComputeReductionInputIndexing(
-    mlir::MLIRContext* ctx) const {
-  auto thread_id = getAffineDimExpr(0, ctx);
-  auto block_id = getAffineDimExpr(3, ctx);
-  AffineExpr loop_index = getAffineSymbolExpr(0, ctx);
-  AffineExpr vector_index = getAffineSymbolExpr(1, ctx);
+    SymbolicExprContext* symbolic_expr_context) const {
+  MLIRContext* mlir_context = symbolic_expr_context->GetMLIRContext();
+  auto thread_id = getAffineDimExpr(0, mlir_context);
+  auto block_id = getAffineDimExpr(3, mlir_context);
+  AffineExpr loop_index = getAffineSymbolExpr(0, mlir_context);
+  AffineExpr vector_index = getAffineSymbolExpr(1, mlir_context);
 
   AffineExpr linear_index = thread_id * vector_size_ + vector_index +
                             loop_index * (vector_size_ * num_threads_[0]);
@@ -758,7 +780,7 @@ IndexingMap SmallColumnReductionFusion::ComputeReductionInputIndexing(
       GetBitcastMap({num_blocks_[0], input_shape_[1] * input_shape_[2]},
                     ShapeUtil::MakeShapeWithDescendingLayout(PrimitiveType::U8,
                                                              input_shape_),
-                    ctx);
+                    symbolic_expr_context);
 
   for (auto [result, dim_size] :
        llvm::zip(map.GetAffineMap().getResults(), input_shape_)) {
@@ -768,18 +790,22 @@ IndexingMap SmallColumnReductionFusion::ComputeReductionInputIndexing(
 }
 
 IndexingMap SmallColumnReductionFusion::GetSharedMemoryReductionReadMap(
-    mlir::MLIRContext* ctx) const {
+    SymbolicExprContext* symbolic_expr_context) const {
+  MLIRContext* mlir_context = symbolic_expr_context->GetMLIRContext();
   auto indices = DelinearizeInBoundsIndex(
-      getAffineDimExpr(0, ctx) + getAffineSymbolExpr(0, ctx) * num_threads_[0],
+      getAffineDimExpr(0, mlir_context) +
+          getAffineSymbolExpr(0, mlir_context) * num_threads_[0],
       {input_shape_[2], shared_rows_});
   return GetThreadIndexingMap({indices[1], indices[0]}, {},
                               /*symbol_sizes=*/{vector_size_});
 }
 
 IndexingMap SmallColumnReductionFusion::GetSharedMemoryWriteMap(
-    mlir::MLIRContext* ctx) const {
+    SymbolicExprContext* symbolic_expr_context) const {
+  MLIRContext* mlir_context = symbolic_expr_context->GetMLIRContext();
   auto indices = DelinearizeInBoundsIndex(
-      getAffineDimExpr(0, ctx) * vector_size_ + getAffineSymbolExpr(0, ctx),
+      getAffineDimExpr(0, mlir_context) * vector_size_ +
+          getAffineSymbolExpr(0, mlir_context),
       {shared_rows_, input_shape_[2]});
   return GetThreadIndexingMap(indices, {},
                               /*symbol_sizes=*/{vector_size_});
@@ -876,14 +902,15 @@ RowReductionFusion::RowReductionFusion(const HloFusionAnalysis& analysis)
 }
 
 IndexingMap RowReductionFusion::ComputeReductionInputIndexing(
-    mlir::MLIRContext* ctx) const {
-  auto thread_id =
-      DelinearizeInBoundsIndex(mlir::getAffineDimExpr(0, ctx), num_threads_);
-  auto block_id =
-      DelinearizeInBoundsIndex(mlir::getAffineDimExpr(3, ctx), num_blocks_);
-  auto major_reduced = getAffineSymbolExpr(0, ctx);
-  auto minor_reduced = getAffineSymbolExpr(1, ctx);
-  auto vector_index = getAffineSymbolExpr(2, ctx);
+    SymbolicExprContext* symbolic_expr_context) const {
+  MLIRContext* mlir_context = symbolic_expr_context->GetMLIRContext();
+  auto thread_id = DelinearizeInBoundsIndex(
+      mlir::getAffineDimExpr(0, mlir_context), num_threads_);
+  auto block_id = DelinearizeInBoundsIndex(
+      mlir::getAffineDimExpr(3, mlir_context), num_blocks_);
+  auto major_reduced = getAffineSymbolExpr(0, mlir_context);
+  auto minor_reduced = getAffineSymbolExpr(1, mlir_context);
+  auto vector_index = getAffineSymbolExpr(2, mlir_context);
 
   SmallVector<AffineExpr> indices{
       major_reduced,
@@ -901,11 +928,12 @@ IndexingMap RowReductionFusion::ComputeReductionInputIndexing(
 }
 
 IndexingMap RowReductionFusion::ComputeReductionOutputIndexing(
-    MLIRContext* ctx) const {
-  auto thread_id =
-      DelinearizeInBoundsIndex(mlir::getAffineDimExpr(0, ctx), num_threads_);
-  auto block_id =
-      DelinearizeInBoundsIndex(mlir::getAffineDimExpr(3, ctx), num_blocks_);
+    SymbolicExprContext* symbolic_expr_context) const {
+  MLIRContext* mlir_context = symbolic_expr_context->GetMLIRContext();
+  auto thread_id = DelinearizeInBoundsIndex(
+      mlir::getAffineDimExpr(0, mlir_context), num_threads_);
+  auto block_id = DelinearizeInBoundsIndex(
+      mlir::getAffineDimExpr(3, mlir_context), num_blocks_);
   IndexingMap projected_index =
       GetIndexingMap(block_id[0] * tile_sizes_per_block_[0] + thread_id[0]);
   projected_index.AddConstraint(thread_id[1], {0, 0});
@@ -917,18 +945,20 @@ int RowReductionFusion::GetWarpsPerRow() const {
 }
 
 IndexingMap RowReductionFusion::GetSharedMemoryReductionReadMap(
-    mlir::MLIRContext* ctx) const {
+    SymbolicExprContext* symbolic_expr_context) const {
+  MLIRContext* mlir_context = symbolic_expr_context->GetMLIRContext();
   auto thread_id =
-      DelinearizeInBoundsIndex(getAffineDimExpr(0, ctx), num_threads_);
+      DelinearizeInBoundsIndex(getAffineDimExpr(0, mlir_context), num_threads_);
   auto lane_id = thread_id[1] % WarpSize();
   return GetThreadIndexingMap({thread_id[0], lane_id},
                               {{thread_id[1], {0, GetWarpsPerRow() - 1}}});
 }
 
 IndexingMap RowReductionFusion::GetSharedMemoryWriteMap(
-    mlir::MLIRContext* ctx) const {
+    SymbolicExprContext* symbolic_expr_context) const {
+  MLIRContext* mlir_context = symbolic_expr_context->GetMLIRContext();
   auto thread_id =
-      DelinearizeInBoundsIndex(getAffineDimExpr(0, ctx), num_threads_);
+      DelinearizeInBoundsIndex(getAffineDimExpr(0, mlir_context), num_threads_);
   // The reduced dimension is tiled; each warp writes one element to shared
   // memory (from lane 0).
   auto lane_id = thread_id[1] % WarpSize();
@@ -1080,13 +1110,15 @@ int64_t MultiRowReductionFusion::GetNumBlocks(
 }
 
 IndexingMap MultiRowReductionFusion::ComputeReductionInputIndexing(
-    mlir::MLIRContext* ctx) const {
-  auto thread_id =
-      DelinearizeInBoundsIndex(mlir::getAffineDimExpr(0, ctx), num_threads_);
-  auto block_id = num_blocks_.front() == 1 ? mlir::getAffineConstantExpr(0, ctx)
-                                           : mlir::getAffineDimExpr(3, ctx);
-  auto major_reduced = getAffineSymbolExpr(0, ctx);
-  auto vector_index = getAffineSymbolExpr(1, ctx);
+    SymbolicExprContext* symbolic_expr_context) const {
+  MLIRContext* mlir_context = symbolic_expr_context->GetMLIRContext();
+  auto thread_id = DelinearizeInBoundsIndex(
+      mlir::getAffineDimExpr(0, mlir_context), num_threads_);
+  auto block_id = num_blocks_.front() == 1
+                      ? mlir::getAffineConstantExpr(0, mlir_context)
+                      : mlir::getAffineDimExpr(3, mlir_context);
+  auto major_reduced = getAffineSymbolExpr(0, mlir_context);
+  auto vector_index = getAffineSymbolExpr(1, mlir_context);
 
   SmallVector<AffineExpr> indices{
       major_reduced, block_id * num_threads_[0] + thread_id[0],
@@ -1100,11 +1132,13 @@ IndexingMap MultiRowReductionFusion::ComputeReductionInputIndexing(
 }
 
 IndexingMap MultiRowReductionFusion::ComputeReductionOutputIndexing(
-    MLIRContext* ctx) const {
-  auto thread_id =
-      DelinearizeInBoundsIndex(mlir::getAffineDimExpr(0, ctx), num_threads_);
-  auto block_id = num_blocks_.front() == 1 ? mlir::getAffineConstantExpr(0, ctx)
-                                           : mlir::getAffineDimExpr(3, ctx);
+    SymbolicExprContext* symbolic_expr_context) const {
+  MLIRContext* mlir_context = symbolic_expr_context->GetMLIRContext();
+  auto thread_id = DelinearizeInBoundsIndex(
+      mlir::getAffineDimExpr(0, mlir_context), num_threads_);
+  auto block_id = num_blocks_.front() == 1
+                      ? mlir::getAffineConstantExpr(0, mlir_context)
+                      : mlir::getAffineDimExpr(3, mlir_context);
   IndexingMap projected_index =
       GetIndexingMap(block_id * num_threads_[0] + thread_id[0]);
   projected_index.AddConstraint(thread_id[1] % num_threads_[1], {0, 0});

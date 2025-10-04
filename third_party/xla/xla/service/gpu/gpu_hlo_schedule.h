@@ -21,10 +21,10 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "mlir/IR/MLIRContext.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/service/gpu/alias_info.h"
+#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/service/latency_hiding_scheduler.h"
 #include "xla/stream_executor/device_description.h"
 #include "tsl/profiler/protobuf/profiled_instructions.pb.h"
@@ -57,7 +57,7 @@ uint64_t GetSchedulerMemoryLimit(const HloModule& module,
 absl::StatusOr<ScheduleMetadata> ScheduleGpuModule(
     HloModule* module, int64_t pointer_size,
     const se::DeviceDescription& gpu_device_info,
-    mlir::MLIRContext* mlir_context, const GpuAliasInfo* alias_info);
+    SymbolicExprContext* symbolic_expr_context, const GpuAliasInfo* alias_info);
 
 HloInstructionSequence PostProcessSchedule(const HloInstructionSequence& input);
 

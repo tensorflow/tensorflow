@@ -27,7 +27,6 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Module.h"
-#include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Operation.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/host_execute_thunk.h"
@@ -39,6 +38,7 @@ limitations under the License.
 #include "xla/service/gpu/gpu_executable.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/kernel_reuse_cache.h"
+#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/service/name_uniquer.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
@@ -68,14 +68,15 @@ class IrEmitterContext {
                    const ExecutionStreamAssignment* execution_stream_assignment,
                    std::string platform_name,
                    const se::DeviceDescription& gpu_device_info,
-                   mlir::MLIRContext* mlir_context, llvm::Module* llvm_module,
+                   SymbolicExprContext* symbolic_expr_context,
+                   llvm::Module* llvm_module,
                    llvm::Module* llvm_module_constants, bool emit_kernels)
       : hlo_module_(hlo_module),
         buffer_assignment_(buffer_assignment),
         execution_stream_assignment_(execution_stream_assignment),
         platform_name_(std::move(platform_name)),
         gpu_device_info_(gpu_device_info),
-        mlir_context_(mlir_context),
+        symbolic_expr_context_(symbolic_expr_context),
         llvm_module_(llvm_module),
         llvm_module_constants_(llvm_module_constants),
         emit_kernels_(emit_kernels) {}
@@ -108,7 +109,9 @@ class IrEmitterContext {
         std::get_if<se::RocmComputeCapability>(&gpu_compute_capability());
     return cc != nullptr ? *cc : se::RocmComputeCapability();
   }
-  mlir::MLIRContext* mlir_context() { return mlir_context_; }
+  SymbolicExprContext* symbolic_expr_context() {
+    return symbolic_expr_context_;
+  }
   llvm::Module* llvm_module() { return llvm_module_; }
   // A separate module can optionally be used to emit constants.
   llvm::Module* llvm_module_constants() {
@@ -149,7 +152,7 @@ class IrEmitterContext {
   const ExecutionStreamAssignment* execution_stream_assignment_;
   std::string platform_name_;
   const se::DeviceDescription& gpu_device_info_;
-  mlir::MLIRContext* mlir_context_;
+  SymbolicExprContext* symbolic_expr_context_;
   llvm::Module* llvm_module_;
   llvm::Module* llvm_module_constants_;
   NameUniquer name_uniquer_;

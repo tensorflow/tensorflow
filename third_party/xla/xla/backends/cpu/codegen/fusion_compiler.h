@@ -1,3 +1,4 @@
+#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 /* Copyright 2025 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -26,7 +27,6 @@ limitations under the License.
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
 #include "mlir/IR/BuiltinOps.h"
-#include "mlir/IR/MLIRContext.h"
 #include "mlir/Pass/PassManager.h"
 #include "xla/codegen/llvm_ir_kernel_source.h"
 #include "xla/codegen/mlir_kernel_source.h"
@@ -50,7 +50,7 @@ class FusionCompiler {
     llvm::FastMathFlags fast_math_flags;
   };
 
-  FusionCompiler(mlir::MLIRContext* context, Options options,
+  FusionCompiler(gpu::SymbolicExprContext* context, Options options,
                  CompilationHooks hooks = {});
 
   // Compile a given MLIR module to LLVM, using the provided LLVM context.

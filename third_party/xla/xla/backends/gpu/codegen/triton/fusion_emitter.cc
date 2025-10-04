@@ -124,6 +124,7 @@ limitations under the License.
 #include "xla/service/gpu/llvm_gpu_backend/amdgpu_backend.h"
 #include "xla/service/gpu/llvm_gpu_backend/nvptx_libdevice_path.h"
 #include "xla/service/gpu/model/block_level_parameters.h"
+#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/service/gpu/model/symbolic_tile_analysis.h"
 #include "xla/service/gpu/model/triton_emitter_constraints.h"
 #include "xla/service/gpu/triton_fusion_analysis.h"
@@ -1741,9 +1742,11 @@ absl::Status EmitGeneric(mlir::OpBuilder builder,
             << ExtractInstructionIntoNewModule(*fusion)->ToString();
   }
   const HloComputation* computation = fusion->fused_instructions_computation();
+  // TODO(karupayun): Fix this.
+  SymbolicExprContext symbolic_expr_context(builder.getContext());
   SymbolicTileAnalysisOrError symbolic_tile_analysis_or =
       SymbolicTileAnalysis::AnalyzeComputation(
-          *computation, builder.getContext(),
+          *computation, &symbolic_expr_context,
           TritonEmitterConstraints::GetBuilder(device_info));
   if (std::holds_alternative<FusionDecision>(symbolic_tile_analysis_or)) {
     return Internal(
@@ -1839,7 +1842,8 @@ absl::Status EmitGeneric(mlir::OpBuilder builder,
 
 }  // namespace
 
-void LoadMlirDialectsForTriton(mlir::MLIRContext& mlir_context) {
+void LoadMlirDialectsForTriton(SymbolicExprContext& symbolic_expr_context) {
+  mlir::MLIRContext& mlir_context = *symbolic_expr_context.GetMLIRContext();
   mlir_context
       .loadDialect<ttir::TritonDialect, ttir::gpu::TritonGPUDialect,
                    mlir::arith::ArithDialect, mlir::affine::AffineDialect,
@@ -1961,8 +1965,9 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateTritonModule(
     absl::string_view fn_name, const HloFusionInstruction* fusion,
     const se::DeviceDescription& device_info,
     const BlockLevelParameters& block_level_parameters,
-    mlir::MLIRContext& mlir_context) {
-  LoadMlirDialectsForTriton(mlir_context);
+    SymbolicExprContext& symbolic_expr_context) {
+  mlir::MLIRContext& mlir_context = *symbolic_expr_context.GetMLIRContext();
+  LoadMlirDialectsForTriton(symbolic_expr_context);
   const auto debug_options = fusion->GetModule()->config().debug_options();
 
   const HloComputation* hlo_computation =
@@ -2110,12 +2115,13 @@ absl::StatusOr<TritonWrapperResult> TritonWrapper(
     const se::GpuComputeCapability& gpu_cc,
     const se::DeviceDescription& device_info,
     const BlockLevelParameters& block_level_parameters,
-    llvm::Module* llvm_module, mlir::MLIRContext& mlir_context) {
+    llvm::Module* llvm_module, SymbolicExprContext& symbolic_expr_context) {
   TF_RETURN_IF_ERROR(CheckAtLeastAmpere(gpu_cc));
 
-  TF_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> triton_module,
-                      CreateTritonModule(fn_name, fusion, device_info,
-                                         block_level_parameters, mlir_context));
+  TF_ASSIGN_OR_RETURN(
+      mlir::OwningOpRef<mlir::ModuleOp> triton_module,
+      CreateTritonModule(fn_name, fusion, device_info, block_level_parameters,
+                         symbolic_expr_context));
 
   VLOG(3) << fusion->ToString(HloPrintOptions::ShortParsable());
   VLOG(3) << fusion->fused_instructions_computation()->ToString(
@@ -2125,7 +2131,7 @@ absl::StatusOr<TritonWrapperResult> TritonWrapper(
   const HloModule* hlo_module = fusion->GetModule();
   return CompileTritonToLLVM(fn_name, *hlo_module, device_info,
                              block_level_parameters, triton_module.get(),
-                             llvm_module, mlir_context,
+                             llvm_module, symbolic_expr_context,
                              /*is_xla_fusion=*/true);
 }
 
@@ -2134,7 +2140,8 @@ absl::StatusOr<TritonWrapperResult> CompileTritonToLLVM(
     const se::DeviceDescription& device_info,
     const BlockLevelParameters& block_level_parameters,
     mlir::ModuleOp triton_module, llvm::Module* llvm_module,
-    mlir::MLIRContext& mlir_context, bool is_xla_fusion, bool emit_kernel) {
+    SymbolicExprContext& symbolic_expr_context, bool is_xla_fusion,
+    bool emit_kernel) {
   const auto& gpu_cc = device_info.gpu_compute_capability();
   TF_RETURN_IF_ERROR(CheckAtLeastAmpere(gpu_cc));
   std::string arch_name =
@@ -2154,7 +2161,7 @@ absl::StatusOr<TritonWrapperResult> CompileTritonToLLVM(
       DumpingEnabledForHloPass("triton-fusion-emitter",
                                hlo_config.debug_options());
 
-  mlir::PassManager pm(&mlir_context);
+  mlir::PassManager pm(symbolic_expr_context.GetMLIRContext());
   pm.enableVerifier(should_verify);
 
   std::optional<llvm::raw_fd_ostream> log_stream;

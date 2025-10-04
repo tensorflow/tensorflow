@@ -1303,7 +1303,8 @@ absl::Status IrEmitterUnnested::EmitCustomCallThunk(
             : instr->raw_backend_config_string();
     if (!backend_config_str.empty()) {
       mlir::Attribute attr = mlir::parseAttribute(
-          backend_config_str, ir_emitter_context_->mlir_context());
+          backend_config_str,
+          ir_emitter_context_->symbolic_expr_context()->GetMLIRContext());
       auto dict = mlir::dyn_cast_or_null<mlir::DictionaryAttr>(attr);
       if (dict == nullptr) {
         return absl::InternalError(
@@ -1523,8 +1524,10 @@ absl::Status IrEmitterUnnested::EmitTopKCustomCall(
 absl::Status IrEmitterUnnested::EmitTritonCustomCall(
     const HloCustomCallInstruction* instr) {
   auto generate = [this, &instr]() -> absl::StatusOr<KernelReuseCache::Entry> {
-    mlir::MLIRContext& mlir_context = *ir_emitter_context_->mlir_context();
-    LoadMlirDialectsForTriton(mlir_context);
+    SymbolicExprContext& symbolic_expr_context =
+        *ir_emitter_context_->symbolic_expr_context();
+    mlir::MLIRContext& mlir_context = *symbolic_expr_context.GetMLIRContext();
+    LoadMlirDialectsForTriton(symbolic_expr_context);
     auto call =
         TritonCall::Parse(instr->raw_backend_config_string(), &mlir_context);
     auto kernel_name =
@@ -1566,11 +1569,11 @@ absl::Status IrEmitterUnnested::EmitTritonCustomCall(
 
     TF_ASSIGN_OR_RETURN(
         auto result,
-        CompileTritonToLLVM(kernel_name, *hlo_module,
-                            ir_emitter_context_->gpu_device_info(),
-                            block_level_parameters, triton_module.get(),
-                            ir_emitter_context_->llvm_module(), mlir_context,
-                            /*is_xla_fusion=*/false, emit_kernels));
+        CompileTritonToLLVM(
+            kernel_name, *hlo_module, ir_emitter_context_->gpu_device_info(),
+            block_level_parameters, triton_module.get(),
+            ir_emitter_context_->llvm_module(), symbolic_expr_context,
+            /*is_xla_fusion=*/false, emit_kernels));
 
     TF_ASSIGN_OR_RETURN(auto kernel_arguments,
                         emitters::KernelArguments::Create(
@@ -1700,7 +1703,7 @@ absl::Status IrEmitterUnnested::EmitFusion(const HloFusionInstruction* instr) {
           /*buffer_assignment=*/
           &ir_emitter_context_->buffer_assignment(),
           /*call_graph=*/*call_graph_),
-      ir_emitter_context_->mlir_context());
+      ir_emitter_context_->symbolic_expr_context());
   TF_ASSIGN_OR_RETURN(auto result, emitter->Emit(*ir_emitter_context_, *instr));
 
   const ExecutionStreamAssignment& stream_assignment =

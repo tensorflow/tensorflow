@@ -80,6 +80,7 @@ limitations under the License.
 #include "xla/codegen/trace_pass_instrumentation.h"
 #include "xla/mlir/tools/mlir_replay/public/compiler_trace.pb.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
+#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/framework/mlir/status_scoped_diagnostic_handler.h"
 #include "xla/tsl/platform/errors.h"
@@ -219,13 +220,14 @@ static void ApplyFastMathFlags(llvm::Module& llvm_module,
   }
 }
 
-FusionCompiler::FusionCompiler(mlir::MLIRContext* context, Options options,
-                               CompilationHooks hooks)
+FusionCompiler::FusionCompiler(gpu::SymbolicExprContext* context,
+                               Options options, CompilationHooks hooks)
     : options_(std::move(options)),
       hooks_(std::move(hooks)),
       optimization_pass_manager_(
-          mlir::PassManager::on<mlir::ModuleOp>(context)),
-      lowering_pass_manager_(mlir::PassManager::on<mlir::ModuleOp>(context)) {
+          mlir::PassManager::on<mlir::ModuleOp>(context->GetMLIRContext())),
+      lowering_pass_manager_(
+          mlir::PassManager::on<mlir::ModuleOp>(context->GetMLIRContext())) {
   emitters::RegisterOptimizationPasses(optimization_pass_manager_);
   AddLoopTransformationPasses(optimization_pass_manager_,
                               options_.vector_width);

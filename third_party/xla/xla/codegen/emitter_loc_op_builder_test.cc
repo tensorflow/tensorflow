@@ -30,6 +30,7 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/triton/fusion_emitter.h"
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
+#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "tsl/platform/status_matchers.h"
 
@@ -44,8 +45,11 @@ using ::xla::gpu::ir_emitter_triton_internal::DumpTritonIR;
 
 class EmitterLocOpBuilderTest : public HloHardwareIndependentTestBase {
  protected:
-  void SetUp() override { gpu::LoadMlirDialectsForTriton(context_); }
+  void SetUp() override {
+    gpu::LoadMlirDialectsForTriton(symbolic_expr_context_);
+  }
 
+  gpu::SymbolicExprContext symbolic_expr_context_{&context_};
   mlir::MLIRContext context_;
 };
 

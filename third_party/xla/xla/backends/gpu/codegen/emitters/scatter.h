@@ -25,7 +25,6 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/ImplicitLocOpBuilder.h"
-#include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Value.h"
 #include "mlir/IR/ValueRange.h"
 #include "xla/backends/gpu/codegen/emitters/emitter_base.h"
@@ -35,6 +34,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/launch_dimensions.h"
+#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/shape.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/util.h"
@@ -77,14 +77,14 @@ class ScatterFusion : public EmitterBase {
   }
 
   std::optional<IndexingMap> ComputeThreadIdToOutputIndexing(
-      int64_t root_index, mlir::MLIRContext* ctx) const override {
+      int64_t root_index, SymbolicExprContext* ctx) const override {
     // Since the access pattern to the output is not statically known, we cannot
     // compute the output->input indexing map.
     return std::nullopt;
   }
 
   std::optional<std::vector<IndexingMap>> ComputeThreadIdToInputIndexing(
-      int64_t root_index, mlir::MLIRContext* ctx) const override;
+      int64_t root_index, SymbolicExprContext* ctx) const override;
 
  protected:
   virtual absl::Status EmitEntryFunctionImpl(
@@ -93,12 +93,13 @@ class ScatterFusion : public EmitterBase {
       mlir::ValueRange thread_and_block_ids,
       mlir::Value output_tensor) const = 0;
 
-  virtual void ComputeIndexing(mlir::MLIRContext* ctx, IndexingMap* updates_map,
+  virtual void ComputeIndexing(SymbolicExprContext* ctx,
+                               IndexingMap* updates_map,
                                IndexingMap* indices_map) const = 0;
 
   std::vector<emitters::EpilogueSpecification> GetEpilogues(
       const HloFusionInstruction& fusion,
-      mlir::MLIRContext* mlir_context) const final;
+      SymbolicExprContext* symbolic_expr_context) const final;
 
   const HloFusionAnalysis& analysis_;
   ScatterDescription description_;
@@ -131,7 +132,8 @@ class ScatterWithDistributedUpdates : public ScatterFusion {
                                      mlir::ValueRange thread_and_block_ids,
                                      mlir::Value output_tensor) const override;
 
-  void ComputeIndexing(mlir::MLIRContext* ctx, IndexingMap* updates_map,
+  void ComputeIndexing(SymbolicExprContext* symbolic_expr_context,
+                       IndexingMap* updates_map,
                        IndexingMap* indices_map) const override;
 };
 
@@ -191,7 +193,8 @@ class ScatterWithDistributedIndices : public ScatterFusion {
                                          int64_t indices_vector_size);
 
  protected:
-  void ComputeIndexing(mlir::MLIRContext* ctx, IndexingMap* updates_map,
+  void ComputeIndexing(SymbolicExprContext* symbolic_expr_context,
+                       IndexingMap* updates_map,
                        IndexingMap* indices_map) const override;
 
   absl::Status EmitEntryFunctionImpl(mlir::ImplicitLocOpBuilder& b,

@@ -147,7 +147,7 @@ absl::StatusOr<LlvmIrKernelSource> LowerToLlvm(
   options.vector_width = 256;
   options.verification_level = 1;
   options.fast_min_max = true;
-  FusionCompiler fusion_compiler(mlir_kernel_source.module().getContext(),
+  FusionCompiler fusion_compiler(mlir_kernel_source.symbolic_expr_context(),
                                  options);
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<llvm::Module> llvm_module,

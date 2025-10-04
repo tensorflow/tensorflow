@@ -46,6 +46,7 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
+#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/service/gpu/tests/gpu_codegen_test.h"
 #include "xla/service/gpu/transforms/nest_gemm_fusion.h"
 #include "xla/service/pattern_matcher.h"
@@ -127,9 +128,9 @@ class TritonTest : public GpuCodegenTest {
   GetModuleAndNestedFusionMetadata(absl::string_view hlo_text) {
     TF_ASSIGN_OR_RETURN(std::unique_ptr<VerifiedHloModule> module,
                         ParseAndReturnVerifiedModule(hlo_text));
-    TF_ASSIGN_OR_RETURN(
-        bool fusion_was_nested,
-        NestGemmFusion(device_desc(), &mlir_context_).Run(module.get()));
+    TF_ASSIGN_OR_RETURN(bool fusion_was_nested,
+                        NestGemmFusion(device_desc(), &symbolic_expr_context_)
+                            .Run(module.get()));
     if (!fusion_was_nested) {
       return absl::InternalError("Failed to nest the GEMM fusion.");
     }
@@ -152,6 +153,7 @@ class TritonTest : public GpuCodegenTest {
   }
 
   mlir::MLIRContext mlir_context_;
+  SymbolicExprContext symbolic_expr_context_{&mlir_context_};
 };
 
 class TritonGemmTest : public TritonTest {
@@ -485,6 +487,7 @@ TEST_F(TritonGemmTest, FailIfTooMuchShmem) {
   llvm::LLVMContext llvm_ctx;
   llvm::Module llvm_module("module", llvm_ctx);
   mlir::MLIRContext mlir_context;
+  SymbolicExprContext symbolic_expr_context(&mlir_context);
 
   constexpr absl::string_view kHloTextTemplate = R"(
 triton_gemm_dot {
@@ -513,7 +516,7 @@ ENTRY entry {
       module1_and_metadata.computation->FusionInstruction());
   EXPECT_THAT(TritonWrapper("test_fn", fusion1, cc, device_info,
                             module1_and_metadata.block_level_parameters,
-                            &llvm_module, mlir_context),
+                            &llvm_module, symbolic_expr_context),
               absl_testing::StatusIs(
                   tsl::error::RESOURCE_EXHAUSTED,
                   ::testing::HasSubstr("Shared memory size limit exceeded")));
@@ -529,7 +532,7 @@ ENTRY entry {
       const auto result,
       TritonWrapper("test_fn", fusion2, cc, device_info,
                     module2_and_metadata.block_level_parameters, &llvm_module,
-                    mlir_context));
+                    symbolic_expr_context));
   // Use optin shared memory which is > shared_memory_per_block.
   EXPECT_GT(result.shmem_bytes, device_info.shared_memory_per_block());
 }
@@ -828,6 +831,7 @@ TEST_F(TritonGemmTest, DISABLED_FailForTooComplexTiling) {
   llvm::LLVMContext llvm_ctx;
   llvm::Module llvm_module("module", llvm_ctx);
   mlir::MLIRContext mlir_context;
+  SymbolicExprContext symbolic_expr_context(&mlir_context);
 
   constexpr absl::string_view kHloTextTemplate = R"(
 HloModule module
@@ -859,7 +863,7 @@ ENTRY entry {
       module1_and_metadata.computation->FusionInstruction());
   EXPECT_THAT(TritonWrapper("test_fn", fusion1, cc, device_info,
                             module1_and_metadata.block_level_parameters,
-                            &llvm_module, mlir_context),
+                            &llvm_module, symbolic_expr_context),
               absl_testing::StatusIs(tsl::error::RESOURCE_EXHAUSTED,
                                      "Tiling complexity heuristic exceeded"));
 
@@ -873,7 +877,7 @@ ENTRY entry {
 
   TF_EXPECT_OK(TritonWrapper("test_fn", fusion2, cc, device_info,
                              module2_and_metadata.block_level_parameters,
-                             &llvm_module, mlir_context)
+                             &llvm_module, symbolic_expr_context)
                    .status());
 }
 
@@ -2016,13 +2020,14 @@ ENTRY e {
   llvm::LLVMContext llvm_ctx;
   llvm::Module llvm_module("module", llvm_ctx);
   mlir::MLIRContext mlir_context;
+  SymbolicExprContext symbolic_expr_context(&mlir_context);
 
   TF_ASSERT_OK_AND_ASSIGN(
       const auto result,
       TritonWrapper("test_fn", triton_dot_fusion, GpuComputeCapability(),
                     dev_info,
                     optin_shmem_module_and_metadata.block_level_parameters,
-                    &llvm_module, mlir_context));
+                    &llvm_module, symbolic_expr_context));
   // The config is chosen so that the used memory size is slightly above the
   // 48 kB boundary of standard / opt-in shared memory so that any GPU that
   // has the opt-in one should be able to execute the test.

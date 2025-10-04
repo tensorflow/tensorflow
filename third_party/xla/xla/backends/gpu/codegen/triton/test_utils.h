@@ -37,6 +37,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/gpu/model/block_level_parameters.h"
+#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/xla.pb.h"
@@ -135,6 +136,7 @@ class TritonSupportTestBase : public HloTestBase {
   llvm::LLVMContext llvm_ctx_;
   llvm::Module llvm_module_{"module", llvm_ctx_};
   mlir::MLIRContext mlir_context_;
+  SymbolicExprContext symbolic_expr_context_{&mlir_context_};
   TritonGemmConfig config_{16, 32, 512, 1, 4, 8};
 };
 

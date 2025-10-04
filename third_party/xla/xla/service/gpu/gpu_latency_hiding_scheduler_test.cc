@@ -34,6 +34,7 @@ limitations under the License.
 #include "xla/service/gpu/alias_info.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/gpu_hlo_schedule.h"
+#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/latency_hiding_scheduler.h"
 #include "xla/service/profile_guided_latency_estimator.h"
@@ -78,8 +79,8 @@ class GpuLatencyHidingSchedulerBaseTest
     options.set_xla_gpu_pgle_accuracy_checker(strictness);
 
     TF_RETURN_IF_ERROR(ScheduleGpuModule(module, /*pointer_size=*/8,
-                                         gpu_device_info, &mlir_context_,
-                                         &alias_info)
+                                         gpu_device_info,
+                                         &symbolic_expr_context_, &alias_info)
                            .status());
     return module;
   }
@@ -99,6 +100,7 @@ class GpuLatencyHidingSchedulerBaseTest
   }
 
   mlir::MLIRContext mlir_context_;
+  SymbolicExprContext symbolic_expr_context_{&mlir_context_};
 };
 
 TEST_F(GpuLatencyHidingSchedulerBaseTest,

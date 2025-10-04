@@ -77,6 +77,7 @@ limitations under the License.
 #include "xla/mlir_hlo/mhlo/transforms/map_mhlo_to_scalar_op.h"
 #include "xla/primitive_util.h"
 #include "xla/service/algorithm_util.h"
+#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/xla_data.pb.h"
@@ -87,6 +88,7 @@ namespace xla {
 namespace emitters {
 namespace {
 
+using gpu::SymbolicExprContext;
 using llvm::SmallVector;
 using llvm::SmallVectorImpl;
 using mlir::Block;
@@ -178,8 +180,10 @@ absl::StatusOr<SmallVector<Value, 1>> EmitReduce(
     const OperandProvider& operand_provider,
     const CallTargetProvider& call_target_provider, ImplicitLocOpBuilder& b) {
   auto* mlir_context = b.getContext();
+  // TODO(karupayun): Fix this.
+  SymbolicExprContext symbolic_expr_context(mlir_context);
   HloInstructionIndexing indexing =
-      ComputeOutputToInputIndexing(instr, 0, mlir_context);
+      ComputeOutputToInputIndexing(instr, 0, &symbolic_expr_context);
   const IndexingMap& indexing_map = indexing.indexing_maps[0].begin()->map();
 
   SmallVector<Value, 1> init_values;
@@ -213,8 +217,10 @@ absl::StatusOr<SmallVector<Value, 1>> EmitReduceWindow(
     const OperandProvider& operand_provider,
     const CallTargetProvider& call_target_provider, ImplicitLocOpBuilder& b) {
   MLIRContext* mlir_context = b.getContext();
+  // TODO(karupayun): Fix this.
+  SymbolicExprContext symbolic_expr_context(mlir_context);
   HloInstructionIndexing indexing =
-      ComputeOutputToInputIndexing(instr, 0, mlir_context);
+      ComputeOutputToInputIndexing(instr, 0, &symbolic_expr_context);
   IndexingMap indexing_map = indexing.indexing_maps[0].begin()->map();
   indexing_map.RescaleSymbols();
 
@@ -453,7 +459,10 @@ absl::StatusOr<SmallVector<Value, 1>> EmitPad(
     const OperandProvider& operand_provider, ImplicitLocOpBuilder& b) {
   auto result_element_type =
       PrimitiveTypeToMlirType(instr->shape().element_type(), b);
-  auto indexing = ComputeOutputToInputIndexing(instr, 0, b.getContext());
+  // TODO(karupayun): Fix this.
+  SymbolicExprContext symbolic_expr_context(b.getContext());
+  auto indexing =
+      ComputeOutputToInputIndexing(instr, 0, &symbolic_expr_context);
   const IndexingMap& indexing_map = indexing.indexing_maps[0].begin()->map();
   Value is_in_bounds = CheckConstraints(indexing_map, indices, {}, b);
 
@@ -521,8 +530,10 @@ absl::StatusOr<SmallVector<Value, 1>> EmitDotLoop(
     const OperandProvider& operand_provider, ImplicitLocOpBuilder& b) {
   auto result_element_type =
       PrimitiveTypeToMlirType(instr->shape().element_type(), b);
-  HloInstructionIndexing indexing =
-      ComputeOutputToInputIndexing(instr, /*output_id=*/0, b.getContext());
+  // TODO(karupayun): Fix this.
+  SymbolicExprContext symbolic_expr_context(b.getContext());
+  HloInstructionIndexing indexing = ComputeOutputToInputIndexing(
+      instr, /*output_id=*/0, &symbolic_expr_context);
   const IndexingMap& lhs_indexing_map =
       indexing.indexing_maps.at(0).begin()->map();
   const IndexingMap& rhs_indexing_map =
@@ -717,6 +728,8 @@ absl::StatusOr<SmallVector<Value, 1>> EmitTuple(
   CHECK_EQ(first_shape->dimensions().size(), indices.size())
       << "Indices for tuple must be for the first tuple element";
   SmallVector<Value, 1> operands;
+  // TODO(karupayun): Fix this.
+  SymbolicExprContext symbolic_expr_context(builder.getContext());
   for (int i = 0; i < instr->operand_count(); ++i) {
     SmallVector<Value> operand_indices;
     // The tuple shapes only need to be bitcast compatible, so insert
@@ -729,7 +742,7 @@ absl::StatusOr<SmallVector<Value, 1>> EmitTuple(
     if (i > 0 && !ShapeUtil::EqualIgnoringElementType(*first_shape,
                                                       *operand_index_shape)) {
       auto operand_map = GetBitcastMap(*first_shape, *operand_index_shape,
-                                       builder.getContext());
+                                       &symbolic_expr_context);
       operand_indices = ApplyIndexing(operand_map, indices, {}, builder);
     } else {
       operand_indices = indices;
@@ -775,6 +788,8 @@ absl::StatusOr<SmallVector<Value, 1>> EmitConstant(
 absl::StatusOr<SmallVector<Value, 2>> GetOperands(
     const HloInstruction* instr, ValueRange indices,
     const OperandProvider& operand_provider, ImplicitLocOpBuilder& builder) {
+  // TODO(karupayun): Fix this.
+  SymbolicExprContext symbolic_expr_context(builder.getContext());
   SmallVector<Value, 2> operands;
   bool is_elementwise = HloInstruction::IsOpElementwise(instr->opcode()) ||
                         instr->opcode() == HloOpcode::kMap;
@@ -798,7 +813,7 @@ absl::StatusOr<SmallVector<Value, 2>> GetOperands(
     }
   } else {
     auto input_indices = GetInputIndices(
-        ComputeOutputToInputIndexing(instr, 0, builder.getContext()), indices,
+        ComputeOutputToInputIndexing(instr, 0, &symbolic_expr_context), indices,
         builder);
     for (auto&& [operand_number, operand_indices] :
          llvm::enumerate(input_indices)) {

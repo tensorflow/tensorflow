@@ -24,6 +24,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
+#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/stream_executor/device_description.h"
 
 namespace xla {
@@ -43,6 +44,11 @@ absl::StatusOr<std::unique_ptr<EmitterData>> GetEmitter(
 
 // Returns an MLIR context with all the dialects needed for testing.
 mlir::MLIRContext GetMlirContextForTest();
+
+// Returns a symbolic expression context with all the dialects needed for
+// testing.
+SymbolicExprContext GetSymbolicExprContextForTest(
+    mlir::MLIRContext* mlir_context);
 
 }  // namespace gpu
 }  // namespace xla

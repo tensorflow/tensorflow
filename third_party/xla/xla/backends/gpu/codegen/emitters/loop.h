@@ -1,3 +1,4 @@
+#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 /* Copyright 2024 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -22,7 +23,6 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
-#include "mlir/IR/MLIRContext.h"
 #include "xla/backends/gpu/codegen/emitters/emitter_base.h"
 #include "xla/codegen/emitters/computation_partitioner.h"
 #include "xla/hlo/analysis/indexing_map.h"
@@ -37,19 +37,19 @@ namespace gpu {
 // Generic loop fusion. Lowers to LLVM via MLIR.
 class LoopFusion final : public EmitterBase {
  public:
-  LoopFusion(const HloFusionAnalysis& analysis, mlir::MLIRContext* ctx)
+  LoopFusion(const HloFusionAnalysis& analysis, gpu::SymbolicExprContext* ctx)
       : analysis_(analysis), config_(ComputeLoopFusionConfig(analysis)) {}
   LaunchDimensions launch_dimensions() const override;
 
   std::optional<IndexingMap> ComputeThreadIdToOutputIndexing(
-      int64_t root_index, mlir::MLIRContext* ctx) const override;
+      int64_t root_index, SymbolicExprContext* ctx) const override;
 
   std::optional<std::vector<IndexingMap>> ComputeThreadIdToInputIndexing(
-      int64_t root_index, mlir::MLIRContext* ctx) const override;
+      int64_t root_index, SymbolicExprContext* ctx) const override;
 
  private:
   absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateMLIRModule(
-      mlir::MLIRContext& context, const HloFusionInstruction& fusion,
+      SymbolicExprContext& context, const HloFusionInstruction& fusion,
       const std::string& entry_function_name,
       const BufferAssignment* buffer_assignment) const override;
 

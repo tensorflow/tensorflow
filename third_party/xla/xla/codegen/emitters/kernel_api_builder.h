@@ -22,7 +22,6 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/ImplicitLocOpBuilder.h"
-#include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Value.h"
 #include "xla/codegen/emitters/computation_partitioner.h"
 #include "xla/codegen/emitters/kernel_arguments.h"
@@ -32,6 +31,7 @@ limitations under the License.
 #include "xla/runtime/work_dimensions.h"
 #include "xla/runtime/work_group.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/shape.h"
 
 namespace xla::emitters {
@@ -52,9 +52,9 @@ void SetIndexDataLayout(mlir::ModuleOp module,
 
 // Get the default indexing map for the given work dimensions, unroll factor,
 // and output shape.
-IndexingMap GetDefaultWorkItemIndexingMap(const WorkDimensions& work_dimensions,
-                                          const Shape& shape,
-                                          mlir::MLIRContext* ctx);
+IndexingMap GetDefaultWorkItemIndexingMap(
+    const WorkDimensions& work_dimensions, const Shape& shape,
+    gpu::SymbolicExprContext* symbolic_expr_context);
 
 // Emits the work group id ops annotated with the range of each dimension.
 llvm::SmallVector<mlir::Value> EmitWorkGroupIds(

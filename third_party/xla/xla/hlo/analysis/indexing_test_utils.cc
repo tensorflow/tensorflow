@@ -39,7 +39,6 @@ limitations under the License.
 #include "mlir/AsmParser/AsmParser.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/BuiltinAttributes.h"
-#include "mlir/IR/MLIRContext.h"
 #include "mlir/Support/LLVM.h"
 #include "xla/hlo/analysis/indexing_analysis.h"
 #include "xla/hlo/analysis/indexing_map.h"
@@ -53,7 +52,6 @@ namespace {
 
 using ::mlir::AffineExpr;
 using ::mlir::AffineMap;
-using ::mlir::MLIRContext;
 
 std::string FormatDimsAndSyms(absl::Span<int64_t const> dims,
                               absl::Span<int64_t const> syms) {
@@ -73,22 +71,20 @@ HloInstruction* IndexingTestBase::ParseAndGetRoot(
 
 HloInstructionIndexing IndexingTestBase::GetOutputToInputIndexing(
     const HloInstruction* instr, int output_id, bool use_physical_layout) {
-  HloInstructionIndexing indexing = ComputeOutputToInputIndexing(
-      instr, output_id, symbolic_expr_context_.GetMLIRContext());
+  HloInstructionIndexing indexing =
+      ComputeOutputToInputIndexing(instr, output_id, &symbolic_expr_context_);
 
   if (!use_physical_layout) {
     return indexing;
   }
 
   IndexingMap output_permutation = GetIndexingMapFromPhysicalLayoutToLogical(
-      GetOutputShape(instr, output_id),
-      symbolic_expr_context_.GetMLIRContext());
+      GetOutputShape(instr, output_id), &symbolic_expr_context_);
 
   for (const auto& [operand_id, indexing_maps] :
        llvm::enumerate(indexing.indexing_maps)) {
     IndexingMap operand_permutation = GetIndexingMapFromLogicalToPhysicalLayout(
-        instr->operand(operand_id)->shape(),
-        symbolic_expr_context_.GetMLIRContext());
+        instr->operand(operand_id)->shape(), &symbolic_expr_context_);
 
     OperandIndexingSet operand_indexing_maps;
     for (const OperandIndexing& indexing_map : indexing_maps) {
@@ -110,8 +106,8 @@ HloInstructionIndexing IndexingTestBase::GetOutputToInputIndexing(
 
 HloInstructionIndexing IndexingTestBase::GetInputToOutputIndexing(
     const HloInstruction* instr, int input_id, bool use_physical_layout) {
-  HloInstructionIndexing indexing = ComputeInputToOutputIndexing(
-      instr, input_id, symbolic_expr_context_.GetMLIRContext());
+  HloInstructionIndexing indexing =
+      ComputeInputToOutputIndexing(instr, input_id, &symbolic_expr_context_);
 
   if (!use_physical_layout) {
     return indexing;
@@ -119,15 +115,13 @@ HloInstructionIndexing IndexingTestBase::GetInputToOutputIndexing(
 
   OperandIndexing input_permutation =
       OperandIndexing(GetIndexingMapFromPhysicalLayoutToLogical(
-          instr->operand(input_id)->shape(),
-          symbolic_expr_context_.GetMLIRContext()));
+          instr->operand(input_id)->shape(), &symbolic_expr_context_));
 
   for (const auto& [output_id, indexing_maps] :
        llvm::enumerate(indexing.indexing_maps)) {
     OperandIndexing operand_permutation =
         OperandIndexing(GetIndexingMapFromLogicalToPhysicalLayout(
-            GetOutputShape(instr, output_id),
-            symbolic_expr_context_.GetMLIRContext()));
+            GetOutputShape(instr, output_id), &symbolic_expr_context_));
 
     OperandIndexingSet operand_indexing_maps;
     for (const OperandIndexing& indexing_map : indexing_maps) {

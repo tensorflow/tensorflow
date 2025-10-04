@@ -26,6 +26,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
+#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/status_macros.h"
 
 namespace xla {
@@ -41,8 +42,10 @@ absl::StatusOr<std::unique_ptr<EmitterData>> GetEmitter(
   data->analysis.emplace(
       HloFusionAnalysis::Create(*data->fusion, data->device.value()));
   PreBufferAssignmentFusionInfo info(data->analysis.value());
-  mlir::MLIRContext ctx = GetMlirContextForTest();
-  auto fusion_emitter = GetFusionEmitter(info, &ctx);
+  mlir::MLIRContext mlir_context = GetMlirContextForTest();
+  SymbolicExprContext symbolic_expr_context =
+      GetSymbolicExprContextForTest(&mlir_context);
+  auto fusion_emitter = GetFusionEmitter(info, &symbolic_expr_context);
 
   auto emitter = dynamic_cast<EmitterBase*>(fusion_emitter.get());
   TF_RET_CHECK(emitter != nullptr) << "Expected emitter to be an EmitterBase";
@@ -54,6 +57,11 @@ absl::StatusOr<std::unique_ptr<EmitterData>> GetEmitter(
 
 mlir::MLIRContext GetMlirContextForTest() {
   return mlir::MLIRContext(EmitterBase::GetDialectRegistry());
+}
+
+SymbolicExprContext GetSymbolicExprContextForTest(
+    mlir::MLIRContext* mlir_context) {
+  return SymbolicExprContext(mlir_context);
 }
 
 }  // namespace gpu

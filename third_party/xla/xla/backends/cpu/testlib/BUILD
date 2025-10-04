@@ -169,6 +169,7 @@ tsl_pybind_extension(
         "//xla/service:hlo_module_config",
         "//xla/service/cpu:cpu_compiler_pure",
         "//xla/service/cpu:fusion_wrapper",
+        "//xla/service/gpu/model/experimental:symbolic_expr",
     ],
 )
 

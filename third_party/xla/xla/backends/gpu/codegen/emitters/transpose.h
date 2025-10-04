@@ -29,7 +29,6 @@ limitations under the License.
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/ImplicitLocOpBuilder.h"
-#include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Value.h"
 #include "mlir/IR/ValueRange.h"
 #include "mlir/Support/LLVM.h"
@@ -41,6 +40,7 @@ limitations under the License.
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/launch_dimensions.h"
+#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/shape.h"
 #include "xla/xla_data.pb.h"
 
@@ -61,7 +61,7 @@ class TransposeFusionBase : public EmitterBase {
 
   std::vector<emitters::EpilogueSpecification> GetEpilogues(
       const HloFusionInstruction& fusion,
-      mlir::MLIRContext* mlir_context) const override;
+      SymbolicExprContext* symbolic_expr_context) const override;
 
   struct WriteResult {
     // All output tensors of the fusion, with side outputs written to them.
@@ -119,10 +119,12 @@ class TransposeFusion : public TransposeFusionBase {
   LaunchDimensions launch_dimensions() const override;
 
   std::optional<IndexingMap> ComputeThreadIdToOutputIndexing(
-      int64_t root_index, mlir::MLIRContext* mlir_context) const override;
+      int64_t root_index,
+      SymbolicExprContext* symbolic_expr_context) const override;
 
   std::optional<std::vector<IndexingMap>> ComputeThreadIdToInputIndexing(
-      int64_t root_index, mlir::MLIRContext* mlir_context) const override;
+      int64_t root_index,
+      SymbolicExprContext* symbolic_expr_context) const override;
 
  protected:
   WriteResult EmitWriteToShMemMlir(
@@ -141,11 +143,12 @@ class TransposeFusion : public TransposeFusionBase {
 
  private:
   IndexingMap GetIndexing(bool input, const xla::Shape& shape,
-                          mlir::MLIRContext* ctx) const;
-  IndexingMap GetSharedMemoryIndexing(bool read, mlir::MLIRContext* ctx) const;
+                          SymbolicExprContext* symbolic_expr_context) const;
+  IndexingMap GetSharedMemoryIndexing(
+      bool read, SymbolicExprContext* symbolic_expr_context) const;
 
   llvm::SmallVector<mlir::AffineExpr, 4> GetThreadOffsets(
-      bool read, mlir::MLIRContext* ctx) const;
+      bool read, SymbolicExprContext* symbolic_expr_context) const;
   bool MostMinorDimensionUnchanged() const;
 
   TransposeDescription transpose_;
@@ -235,10 +238,12 @@ class PackedTranspose : public TransposeFusionBase {
   LaunchDimensions launch_dimensions() const override;
 
   std::optional<IndexingMap> ComputeThreadIdToOutputIndexing(
-      int64_t root_index, mlir::MLIRContext* mlir_context) const override;
+      int64_t root_index,
+      SymbolicExprContext* symbolic_expr_context) const override;
 
   std::optional<std::vector<IndexingMap>> ComputeThreadIdToInputIndexing(
-      int64_t root_index, mlir::MLIRContext* mlir_context) const override;
+      int64_t root_index,
+      SymbolicExprContext* symbolic_expr_context) const override;
 
  protected:
   WriteResult EmitWriteToShMemMlir(
@@ -257,11 +262,11 @@ class PackedTranspose : public TransposeFusionBase {
       mlir::ValueRange thread_and_block_ids) const override;
 
  private:
-  IndexingMap GetInputIndexing(mlir::MLIRContext* ctx) const;
-  IndexingMap GetShmemWriteIndexing(mlir::MLIRContext* ctx) const;
+  IndexingMap GetInputIndexing(SymbolicExprContext* ctx) const;
+  IndexingMap GetShmemWriteIndexing(SymbolicExprContext* ctx) const;
 
-  IndexingMap GetShmemReadIndexing(mlir::MLIRContext* ctx) const;
-  IndexingMap GetOutputIndexing(mlir::MLIRContext* ctx) const;
+  IndexingMap GetShmemReadIndexing(SymbolicExprContext* ctx) const;
+  IndexingMap GetOutputIndexing(SymbolicExprContext* ctx) const;
 
   TransposeSpec spec_;
 

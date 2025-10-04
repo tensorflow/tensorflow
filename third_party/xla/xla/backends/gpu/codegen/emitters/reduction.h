@@ -28,7 +28,6 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/Bufferization/IR/BufferizableOpInterface.h"
 #include "mlir/IR/AffineExpr.h"
-#include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Value.h"
 #include "mlir/IR/ValueRange.h"
 #include "xla/backends/gpu/codegen/emitters/emitter_base.h"
@@ -39,6 +38,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/launch_dimensions.h"
+#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/service/gpu/reduction_utils.h"
 #include "xla/shape.h"
 
@@ -56,10 +56,10 @@ class ReductionFusion : public EmitterBase {
   explicit ReductionFusion(const HloFusionAnalysis& analysis);
 
   std::optional<IndexingMap> ComputeThreadIdToOutputIndexing(
-      int64_t root_index, mlir::MLIRContext* ctx) const override;
+      int64_t root_index, SymbolicExprContext* ctx) const override;
 
   std::optional<std::vector<IndexingMap>> ComputeThreadIdToInputIndexing(
-      int64_t root_index, mlir::MLIRContext* ctx) const override;
+      int64_t root_index, SymbolicExprContext* ctx) const override;
 
   LaunchDimensions launch_dimensions() const override;
 
@@ -80,7 +80,7 @@ class ReductionFusion : public EmitterBase {
 
   std::vector<emitters::EpilogueSpecification> GetEpilogues(
       const HloFusionInstruction& fusion,
-      mlir::MLIRContext* mlir_context) const override;
+      SymbolicExprContext* symbolic_expr_context) const override;
 
   llvm::SmallVector<mlir::Value> EvaluateEpilogue(
       const HloValueMap& results, llvm::SmallVector<mlir::Value> outputs,
@@ -101,22 +101,22 @@ class ReductionFusion : public EmitterBase {
   // Returns the input indexing. The inputs are given in the projected shape
   // (i.e., the indexing map has three results).
   virtual IndexingMap ComputeReductionInputIndexing(
-      mlir::MLIRContext* ctx) const = 0;
+      SymbolicExprContext* ctx) const = 0;
   // Returns the output indexing. The outputs are given in the  projected
   // reduced shape (i.e., one or two results, depending on the reduction type).
   virtual IndexingMap ComputeReductionOutputIndexing(
-      mlir::MLIRContext* ctx) const = 0;
+      SymbolicExprContext* ctx) const = 0;
 
   // Returns the (thread ID, vector index) -> (shared index...) map for the
   // shared memory reduction.
   virtual IndexingMap GetSharedMemoryReductionReadMap(
-      mlir::MLIRContext* ctx) const {
+      SymbolicExprContext* ctx) const {
     return IndexingMap::GetUndefined();
   }
 
   // Returns the (thread ID, vector index) -> (shared index...) map for the
   // write to shared memory.
-  virtual IndexingMap GetSharedMemoryWriteMap(mlir::MLIRContext* ctx) const {
+  virtual IndexingMap GetSharedMemoryWriteMap(SymbolicExprContext* ctx) const {
     return IndexingMap::GetUndefined();
   }
 
@@ -157,12 +157,12 @@ class RowReductionFusion : public ReductionFusion {
   llvm::SmallVector<mlir::Value> EmitReduction(
       int group_id, EmitterState& state) const override;
   IndexingMap ComputeReductionInputIndexing(
-      mlir::MLIRContext* ctx) const override;
+      SymbolicExprContext* ctx) const override;
   IndexingMap ComputeReductionOutputIndexing(
-      mlir::MLIRContext* ctx) const override;
+      SymbolicExprContext* ctx) const override;
   IndexingMap GetSharedMemoryReductionReadMap(
-      mlir::MLIRContext* ctx) const override;
-  IndexingMap GetSharedMemoryWriteMap(mlir::MLIRContext* ctx) const override;
+      SymbolicExprContext* ctx) const override;
+  IndexingMap GetSharedMemoryWriteMap(SymbolicExprContext* ctx) const override;
 
   absl::InlinedVector<int64_t, 4> tile_sizes_per_block_;
 };
@@ -188,9 +188,9 @@ class MultiRowReductionFusion : public ReductionFusion {
   llvm::SmallVector<mlir::Value> EmitReduction(
       int group_id, EmitterState& state) const override;
   IndexingMap ComputeReductionInputIndexing(
-      mlir::MLIRContext* ctx) const override;
+      SymbolicExprContext* ctx) const override;
   IndexingMap ComputeReductionOutputIndexing(
-      mlir::MLIRContext* ctx) const override;
+      SymbolicExprContext* ctx) const override;
 };
 
 class ColumnReductionFusion : public ReductionFusion {
@@ -201,12 +201,12 @@ class ColumnReductionFusion : public ReductionFusion {
   llvm::SmallVector<mlir::Value> EmitReduction(
       int group_id, EmitterState& state) const override;
   IndexingMap ComputeReductionInputIndexing(
-      mlir::MLIRContext* ctx) const override;
+      SymbolicExprContext* ctx) const override;
   IndexingMap ComputeReductionOutputIndexing(
-      mlir::MLIRContext* ctx) const override;
+      SymbolicExprContext* ctx) const override;
   IndexingMap GetSharedMemoryReductionReadMap(
-      mlir::MLIRContext* ctx) const override;
-  IndexingMap GetSharedMemoryWriteMap(mlir::MLIRContext* ctx) const override;
+      SymbolicExprContext* ctx) const override;
+  IndexingMap GetSharedMemoryWriteMap(SymbolicExprContext* ctx) const override;
 
   const int64_t kTileSize = 32;
 };
@@ -221,12 +221,12 @@ class SmallColumnReductionFusion : public ReductionFusion {
   llvm::SmallVector<mlir::Value> EmitReduction(
       int group_id, EmitterState& state) const override;
   IndexingMap ComputeReductionInputIndexing(
-      mlir::MLIRContext* ctx) const override;
+      SymbolicExprContext* ctx) const override;
   IndexingMap ComputeReductionOutputIndexing(
-      mlir::MLIRContext* ctx) const override;
+      SymbolicExprContext* ctx) const override;
   IndexingMap GetSharedMemoryReductionReadMap(
-      mlir::MLIRContext* ctx) const override;
-  IndexingMap GetSharedMemoryWriteMap(mlir::MLIRContext* ctx) const override;
+      SymbolicExprContext* ctx) const override;
+  IndexingMap GetSharedMemoryWriteMap(SymbolicExprContext* ctx) const override;
 
   const int64_t kTileSize = 32;
 

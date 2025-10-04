@@ -32,7 +32,6 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
 #include "mlir/IR/Builders.h"
-#include "mlir/IR/MLIRContext.h"
 #include "xla/backends/cpu/alignment.h"
 #include "xla/backends/cpu/codegen/kernel_api_ir_builder.h"
 #include "xla/backends/cpu/codegen/symbol_name_util.h"
@@ -57,6 +56,7 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/cpu/backend_config.pb.h"
 #include "xla/service/gpu/ir_emission_utils.h"
+#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/platform/statusor.h"
@@ -208,7 +208,7 @@ static HloFusionSpec GetLoopFusionSpec(const HloFusionInstruction& fusion) {
 }
 
 static absl::StatusOr<MlirKernelDefinition> EmitLoopFusionKernel(
-    mlir::MLIRContext& context, const HloFusionInstruction& fusion,
+    gpu::SymbolicExprContext& context, const HloFusionInstruction& fusion,
     const BufferAssignment* buffer_assignment, absl::string_view name) {
   VLOG(2) << "Emitting loop fusion kernel: " << name;
   HloFusionSpec fusion_spec = GetLoopFusionSpec(fusion);
@@ -225,7 +225,7 @@ static absl::StatusOr<MlirKernelDefinition> EmitLoopFusionKernel(
   auto [kernel_spec, kernel_source] =
       std::move(mlir_kernel_definition).ReleaseStorage();
 
-  mlir::OpBuilder builder(&context);
+  mlir::OpBuilder builder(context.GetMLIRContext());
   kernel_source.module().getOperation()->setAttr(
       xla::CpuMemoryRegionNameAttr::name,
       builder.getStringAttr(
@@ -234,7 +234,7 @@ static absl::StatusOr<MlirKernelDefinition> EmitLoopFusionKernel(
 }
 
 static absl::StatusOr<MlirKernelDefinition> EmitConcatenateFusionKernel(
-    mlir::MLIRContext& context, const HloFusionInstruction& fusion,
+    gpu::SymbolicExprContext& context, const HloFusionInstruction& fusion,
     const BufferAssignment* buffer_assignment, absl::string_view name) {
   VLOG(2) << "Emitting concatenate fusion kernel: " << name;
   HloFusionSpec fusion_spec = GetLoopFusionSpec(fusion);
@@ -251,7 +251,7 @@ static absl::StatusOr<MlirKernelDefinition> EmitConcatenateFusionKernel(
   auto [kernel_spec, kernel_source] =
       std::move(mlir_kernel_definition).ReleaseStorage();
 
-  mlir::OpBuilder builder(&context);
+  mlir::OpBuilder builder(context.GetMLIRContext());
   kernel_source.module().getOperation()->setAttr(
       xla::CpuMemoryRegionNameAttr::name,
       builder.getStringAttr(BuildModuleMemoryRegionName(
@@ -260,7 +260,7 @@ static absl::StatusOr<MlirKernelDefinition> EmitConcatenateFusionKernel(
 }
 
 static absl::StatusOr<MlirKernelDefinition> EmitDynamicUpdateSliceFusionKernel(
-    mlir::MLIRContext& context, const HloFusionInstruction& fusion,
+    gpu::SymbolicExprContext& context, const HloFusionInstruction& fusion,
     const BufferAssignment* buffer_assignment, absl::string_view name) {
   VLOG(2) << "Emitting dynamic update slice fusion kernel: " << name;
   HloFusionSpec fusion_spec = GetLoopFusionSpec(fusion);
@@ -278,7 +278,7 @@ static absl::StatusOr<MlirKernelDefinition> EmitDynamicUpdateSliceFusionKernel(
   auto [kernel_spec, kernel_source] =
       std::move(mlir_kernel_definition).ReleaseStorage();
 
-  mlir::OpBuilder builder(&context);
+  mlir::OpBuilder builder(context.GetMLIRContext());
   kernel_source.module().getOperation()->setAttr(
       xla::CpuMemoryRegionNameAttr::name,
       builder.getStringAttr(
@@ -287,7 +287,7 @@ static absl::StatusOr<MlirKernelDefinition> EmitDynamicUpdateSliceFusionKernel(
 }
 
 absl::StatusOr<MlirKernelDefinition> EmitFusionKernel(
-    mlir::MLIRContext& context, const HloFusionInstruction& fusion,
+    gpu::SymbolicExprContext& context, const HloFusionInstruction& fusion,
     const BufferAssignment* buffer_assignment, bool use_unique_c_name) {
   if (fusion.fusion_kind() == HloFusionInstruction::FusionKind::kLoop) {
     TF_ASSIGN_OR_RETURN(std::string name, GetName(fusion, use_unique_c_name));
