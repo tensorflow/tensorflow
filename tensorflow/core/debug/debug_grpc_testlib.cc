@@ -138,7 +138,7 @@ void TestEventListenerImpl::RequestDebugOpStateChangeAtNextStream(
 
 void TestEventListenerImpl::RunServer(const int server_port) {
   ::grpc::ServerBuilder builder;
-  builder.AddListeningPort(strings::StrCat("localhost:", server_port),
+  builder.AddListeningPort(absl::StrCat("localhost:", server_port),
                            ::grpc::InsecureServerCredentials());
   builder.RegisterService(this);
   std::unique_ptr<::grpc::Server> server = builder.BuildAndStart();
