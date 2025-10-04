@@ -20,8 +20,8 @@ limitations under the License.
 #include <string>
 
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/debug_me_context.h"
 
 // This file provides XLA-specific specializations and utilities for the
 // thread-local debugging context system.
@@ -58,6 +58,20 @@ std::string DebugMeContextToErrorMessageString();
 // Attaches the DebugMeContextToErrorMessageString as a payload to the given
 // status, if the context is not empty and the status is not OK.
 void AttachDebugMeContextPayload(absl::Status& status);
+
+// If the status contains a DebugMeContext payload, this function will add it to
+// the status's message and remove the payload. Otherwise, do nothing.
+absl::Status FlattenDebugPayloadIntoMessage(const absl::Status& status);
+
+template <typename T>
+inline absl::StatusOr<T> FlattenDebugPayloadIntoMessage(
+    const absl::StatusOr<T>& status_or) {
+  if (status_or.ok()) {
+    return status_or;
+  }
+
+  return FlattenDebugPayloadIntoMessage(status_or.status());
+}
 
 }  // namespace error
 }  // namespace xla

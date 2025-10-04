@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/error/debug_me_context_util.h"
 
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -22,19 +23,11 @@ limitations under the License.
 #include "absl/strings/cord.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "absl/strings/string_view.h"
 #include "xla/tsl/platform/debug_me_context.h"
+#include "tsl/platform/platform.h"
 
 namespace xla::error {
-
-void AttachDebugMeContextPayload(absl::Status& status) {
-  if (!status.ok()) {
-    std::string error_message_string = DebugMeContextToErrorMessageString();
-    if (!error_message_string.empty()) {
-      status.SetPayload(kDebugContextPayloadUrl,
-                        absl::Cord(error_message_string));
-    }
-  }
-}
 
 std::string DebugMeContextToErrorMessageString() {
   if (!tsl::DebugMeContext<DebugMeContextKey>::HasAnyValues()) {
@@ -71,6 +64,47 @@ std::string DebugMeContextToErrorMessageString() {
     }
   }
   return error_message;
+}
+
+void AttachDebugMeContextPayload(absl::Status& status) {
+  if (!status.ok()) {
+    std::string error_message_string = DebugMeContextToErrorMessageString();
+    if (!error_message_string.empty()) {
+      status.SetPayload(kDebugContextPayloadUrl,
+                        absl::Cord(error_message_string));
+    }
+  }
+}
+
+absl::Status FlattenDebugPayloadIntoMessage(const absl::Status& status) {
+  if (status.ok()) {
+    return status;
+  }
+
+  std::optional<absl::Cord> debug_context_payload =
+      status.GetPayload(kDebugContextPayloadUrl);
+  if (!debug_context_payload.has_value()) {
+    return status;
+  }
+
+  std::string new_message =
+      absl::StrCat(status.message(), "\n", debug_context_payload.value());
+#if defined(PLATFORM_GOOGLE)
+  absl::Status new_status(status.code(), new_message,
+                          status.GetSourceLocations().front());
+#else   // ndef PLATFORM_GOOGLE
+  absl::Status new_status(status.code(), new_message);
+#endif  // ndef PLATFORM_GOOGLE
+
+  // Copy all other payloads from the old status to the new one.
+  status.ForEachPayload([&](absl::string_view type_url, const absl::Cord& p) {
+    if (type_url != kDebugContextPayloadUrl) {
+      new_status.SetPayload(type_url, p);
+    }
+  });
+
+  // Replace the original status with our new, updated one.
+  return new_status;
 }
 
 }  // namespace xla::error
