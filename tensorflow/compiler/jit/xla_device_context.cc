@@ -294,7 +294,7 @@ void XlaDeviceContext::CopyDeviceTensorToCPU(const Tensor* device_tensor,
 
 se::Stream* XlaDeviceContext::GetDeviceToDeviceStream() {
   DCHECK_GT(device_to_device_streams_.size(), 0);
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
   int stream = next_stream_;
   next_stream_ = (next_stream_ + 1) % device_to_device_streams_.size();
   return device_to_device_stream(stream);

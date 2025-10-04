@@ -130,7 +130,7 @@ Compiler::GetPlatformCompilers() {
 
 /* static */ void Compiler::RegisterCompilerFactory(
     se::Platform::Id platform_id, CompilerFactory compiler_factory) {
-  absl::MutexLock lock(&platform_compiler_mutex_);
+  absl::MutexLock lock(platform_compiler_mutex_);
   auto* factories = GetPlatformCompilerFactories();
   CHECK(factories->find(platform_id) == factories->end())
       << "Compiler factory already registered for platform";
@@ -139,7 +139,7 @@ Compiler::GetPlatformCompilers() {
 
 /* static */ absl::StatusOr<std::unique_ptr<Compiler>> Compiler::GetForPlatform(
     const se::Platform* platform) {
-  absl::MutexLock lock(&platform_compiler_mutex_);
+  absl::MutexLock lock(platform_compiler_mutex_);
 
   auto* factories = GetPlatformCompilerFactories();
   auto it = factories->find(platform->id());

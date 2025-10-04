@@ -116,11 +116,11 @@ TEST(ParsingOpsTest, ParseExample_ShapeFn) {
   // Verify the sparse and dense outputs.
   set_outputs(2 /* num_sparse */, 3 /* num_dense */);
   INFER_OK(op, "?;?;?;?;?;?;?;?;?;?",
-           ("[?,2];[?,2];[?];[?];[2];[2];"  // sparse outputs
-            "[?,1];[?,1,2];[?,1,2,3]"));    // dense outputs
+           "[?,2];[?,2];[?];[?];[2];[2];"  // sparse outputs
+           "[?,1];[?,1,2];[?,1,2,3]");     // dense outputs
   INFER_OK(op, "[10];?;?;?;?;?;?;?;?;?",
-           ("[?,2];[?,2];[?];[?];[2];[2];"         // sparse outputs
-            "[d0_0,1];[d0_0,1,2];[d0_0,1,2,3]"));  // dense outputs
+           "[?,2];[?,2];[?];[?];[2];[2];"        // sparse outputs
+           "[d0_0,1];[d0_0,1,2];[d0_0,1,2,3]");  // dense outputs
 
   // Confirm an error from ParseExampleAttrs.Init().
   set_outputs(2, 3, true /* add_extra_shape */);
@@ -130,14 +130,14 @@ TEST(ParsingOpsTest, ParseExample_ShapeFn) {
   // Allow variable strides
   set_outputs(2, 3, false /* add_extra_shape */, 1 /* unknown_outer_dims */);
   INFER_OK(op, "?;?;?;?;?;?;?;?;?;?",
-           ("[?,2];[?,2];[?];[?];[2];[2];"      // sparse outputs
-            "[?,?,1];[?,?,1,2];[?,?,1,2,3]"));  // dense outputs
+           "[?,2];[?,2];[?];[?];[2];[2];"     // sparse outputs
+           "[?,?,1];[?,?,1,2];[?,?,1,2,3]");  // dense outputs
   INFER_OK(op, "[?];?;?;?;?;?;?;?;?;?",
-           ("[?,2];[?,2];[?];[?];[2];[2];"               // sparse outputs
-            "[d0_0,?,1];[d0_0,?,1,2];[d0_0,?,1,2,3]"));  // dense outputs
+           "[?,2];[?,2];[?];[?];[2];[2];"              // sparse outputs
+           "[d0_0,?,1];[d0_0,?,1,2];[d0_0,?,1,2,3]");  // dense outputs
   INFER_OK(op, "[10];?;?;?;?;?;?;?;?;?",
-           ("[?,2];[?,2];[?];[?];[2];[2];"               // sparse outputs
-            "[d0_0,?,1];[d0_0,?,1,2];[d0_0,?,1,2,3]"));  // dense outputs
+           "[?,2];[?,2];[?];[?];[2];[2];"              // sparse outputs
+           "[d0_0,?,1];[d0_0,?,1,2];[d0_0,?,1,2,3]");  // dense outputs
 
   set_outputs(2, 3, true /* add_extra_shape */, 1 /* unknown_outer_dims */);
   INFER_ERROR("len(dense_keys) != len(dense_shapes)", op,
@@ -203,25 +203,25 @@ TEST(ParsingOpsTest, ParseSequenceExample_ShapeFn) {
   // context inputs with no feature_list inputs.
   set_outputs(2 /* num_context_sparse */, 3 /* num_context_dense */, 0, 0);
   INFER_OK(op, "[?];[?];?;?;?",
-           ("[?,2];[?,2];[?];[?];[2];[2];"         // context sparse
-            "[d0_0,1];[d0_0,1,2];[d0_0,1,2,3]"));  // context dense
+           "[?,2];[?,2];[?];[?];[2];[2];"        // context sparse
+           "[d0_0,1];[d0_0,1,2];[d0_0,1,2,3]");  // context dense
 
   // feature_list inputs with no context inputs.
   set_outputs(0, 0, 2 /* num_feature_list_sparse */,
               3 /* num_feature_list_dense */);
   INFER_OK(op, "[?];[?]",
-           ("[?,3];[?,3];[?];[?];[3];[3];"             // feature_list sparse
-            "[d0_0,?,1];[d0_0,?,1,2];[d0_0,?,1,2,3];"  // feature_list dense
-            "in0;in0;in0"));                           // feature_list length
+           "[?,3];[?,3];[?];[?];[3];[3];"             // feature_list sparse
+           "[d0_0,?,1];[d0_0,?,1,2];[d0_0,?,1,2,3];"  // feature_list dense
+           "in0;in0;in0");                            // feature_list length
 
   // Combine previous two test cases.
   set_outputs(2, 3, 2, 3);
   INFER_OK(op, "[7];[7];?;?;?",
-           ("[?,2];[?,2];[?];[?];[2];[2];"             // context sparse
-            "[d0_0,1];[d0_0,1,2];[d0_0,1,2,3];"        // context dense
-            "[?,3];[?,3];[?];[?];[3];[3];"             // feature_list sparse
-            "[d0_0,?,1];[d0_0,?,1,2];[d0_0,?,1,2,3];"  // feature_list dense
-            "in0;in0;in0"));                           // feature_list length
+           "[?,2];[?,2];[?];[?];[2];[2];"             // context sparse
+           "[d0_0,1];[d0_0,1,2];[d0_0,1,2,3];"        // context dense
+           "[?,3];[?,3];[?];[?];[3];[3];"             // feature_list sparse
+           "[d0_0,?,1];[d0_0,?,1,2];[d0_0,?,1,2,3];"  // feature_list dense
+           "in0;in0;in0");                            // feature_list length
 
   // Confirm an error from ParseSequenceExampleAttrs.Init().
   set_outputs(1, 1, 1, 1, true /* add_extra_shape */);
@@ -276,23 +276,23 @@ TEST(ParsingOpsTest, ParseSingleSequenceExample_ShapeFn) {
   // context inputs with no feature_list inputs.
   set_outputs(2 /* num_context_sparse */, 3 /* num_context_dense */, 0, 0);
   INFER_OK(op, "?;?;?;?;?;?;?;?;?;?;?",
-           ("[?,1];[?,1];[?];[?];[1];[1];"  // context sparse outputs
-            "[1];[1,2];[1,2,3]"));          // context dense outputs
+           "[?,1];[?,1];[?];[?];[1];[1];"  // context sparse outputs
+           "[1];[1,2];[1,2,3]");           // context dense outputs
 
   // feature_list inputs with no context inputs.
   set_outputs(0, 0, 2 /* num_feature_list_sparse */,
               3 /* num_feature_list_dense */);
   INFER_OK(op, "?;?;?;?;?;?;?;?",
-           ("[?,2];[?,2];[?];[?];[2];[2];"  // feature_list sparse outputs
-            "[?,1];[?,1,2];[?,1,2,3]"));    // feature_list dense outputs
+           "[?,2];[?,2];[?];[?];[2];[2];"  // feature_list sparse outputs
+           "[?,1];[?,1,2];[?,1,2,3]");     // feature_list dense outputs
 
   // Combine previous two test cases.
   set_outputs(2, 3, 2, 3);
   INFER_OK(op, "?;?;?;?;?;?;?;?;?;?;?;?;?;?;?;?",
-           ("[?,1];[?,1];[?];[?];[1];[1];"  // context sparse outputs
-            "[1];[1,2];[1,2,3];"            // context dense outputs
-            "[?,2];[?,2];[?];[?];[2];[2];"  // feature_list sparse outputs
-            "[?,1];[?,1,2];[?,1,2,3]"));    // feature_list dense outputs
+           "[?,1];[?,1];[?];[?];[1];[1];"  // context sparse outputs
+           "[1];[1,2];[1,2,3];"            // context dense outputs
+           "[?,2];[?,2];[?];[?];[2];[2];"  // feature_list sparse outputs
+           "[?,1];[?,1,2];[?,1,2,3]");     // feature_list dense outputs
 
   // Confirm an error from ParseSingleSequenceExampleAttrs.Init().
   set_outputs(1, 1, 1, 1, true /* add_extra_shape */);
@@ -336,34 +336,34 @@ TEST(ParsingOpsTest, ParseExampleV2_ShapeFn) {
 
   // Verify the sparse, dense, and ragged outputs.
   set_outputs(2 /* num_sparse */, 3 /* num_dense */, 4 /* num_ragged */);
-  INFER_OK(op, "[?];?;?;?;?;?;?;?",              // Vector input, unknown size
-           ("[?,2];[?,2];"                       // sparse indices
-            "[?];[?];"                           // sparse values
-            "[2];[2];"                           // sparse dense_shapes
-            "[d0_0,1];[d0_0,1,2];[d0_0,1,2,3];"  // dense outputs
-            "[?];[?];[?];[?];"                   // ragged values
-            "[?];[?];[?];[?]"));                 // ragged row_splits
-  INFER_OK(op, "[10];?;?;?;?;?;?;?",             // Vector input, known size
-           ("[?,2];[?,2];"                       // sparse indices
-            "[?];[?];"                           // sparse values
-            "[2];[2];"                           // sparse dense_shapes
-            "[d0_0,1];[d0_0,1,2];[d0_0,1,2,3];"  // dense outputs
-            "[?];[?];[?];[?];"                   // ragged values
-            "[11];[11];[11];[11]"));             // ragged row_splits
-  INFER_OK(op, "[];?;?;?;?;?;?;?",               // Scalar input
-           ("[?,1];[?,1];"                       // sparse indices
-            "[?];[?];"                           // sparse values
-            "[1];[1];"                           // sparse dense_shapes
-            "[1];[1,2];[1,2,3];"                 // dense outputs
-            "[?];[?];[?];[?];"                   // ragged values
-            "[?];[?];[?];[?]"));                 // ragged row_splits
-  INFER_OK(op, "?;?;?;?;?;?;?;?",                // Input with unknown rank
-           ("[?,?];[?,?];"                       // sparse indices
-            "[?];[?];"                           // sparse values
-            "[?];[?];"                           // sparse dense_shapes
-            "?;?;?;"                             // dense outputs
-            "[?];[?];[?];[?];"                   // ragged values
-            "[?];[?];[?];[?]"));                 // ragged row_splits
+  INFER_OK(op, "[?];?;?;?;?;?;?;?",             // Vector input, unknown size
+           "[?,2];[?,2];"                       // sparse indices
+           "[?];[?];"                           // sparse values
+           "[2];[2];"                           // sparse dense_shapes
+           "[d0_0,1];[d0_0,1,2];[d0_0,1,2,3];"  // dense outputs
+           "[?];[?];[?];[?];"                   // ragged values
+           "[?];[?];[?];[?]");                  // ragged row_splits
+  INFER_OK(op, "[10];?;?;?;?;?;?;?",            // Vector input, known size
+           "[?,2];[?,2];"                       // sparse indices
+           "[?];[?];"                           // sparse values
+           "[2];[2];"                           // sparse dense_shapes
+           "[d0_0,1];[d0_0,1,2];[d0_0,1,2,3];"  // dense outputs
+           "[?];[?];[?];[?];"                   // ragged values
+           "[11];[11];[11];[11]");              // ragged row_splits
+  INFER_OK(op, "[];?;?;?;?;?;?;?",              // Scalar input
+           "[?,1];[?,1];"                       // sparse indices
+           "[?];[?];"                           // sparse values
+           "[1];[1];"                           // sparse dense_shapes
+           "[1];[1,2];[1,2,3];"                 // dense outputs
+           "[?];[?];[?];[?];"                   // ragged values
+           "[?];[?];[?];[?]");                  // ragged row_splits
+  INFER_OK(op, "?;?;?;?;?;?;?;?",               // Input with unknown rank
+           "[?,?];[?,?];"                       // sparse indices
+           "[?];[?];"                           // sparse values
+           "[?];[?];"                           // sparse dense_shapes
+           "?;?;?;"                             // dense outputs
+           "[?];[?];[?];[?];"                   // ragged values
+           "[?];[?];[?];[?]");                  // ragged row_splits
 
   // Confirm an error from ParseExampleAttrs.Init().
   set_outputs(2, 3, 0, true /* add_extra_shape */);
@@ -374,11 +374,11 @@ TEST(ParsingOpsTest, ParseExampleV2_ShapeFn) {
   // Allow variable strides
   set_outputs(2, 3, 0, false /* add_extra_shape */, 1 /* unknown_outer_dims */);
   INFER_OK(op, "[?];?;?;?;?;?;?;?",
-           ("[?,2];[?,2];[?];[?];[2];[2];"               // sparse outputs
-            "[d0_0,?,1];[d0_0,?,1,2];[d0_0,?,1,2,3]"));  // dense outputs
+           "[?,2];[?,2];[?];[?];[2];[2];"              // sparse outputs
+           "[d0_0,?,1];[d0_0,?,1,2];[d0_0,?,1,2,3]");  // dense outputs
   INFER_OK(op, "[10];?;?;?;?;?;?;?",
-           ("[?,2];[?,2];[?];[?];[2];[2];"               // sparse outputs
-            "[d0_0,?,1];[d0_0,?,1,2];[d0_0,?,1,2,3]"));  // dense outputs
+           "[?,2];[?,2];[?];[?];[2];[2];"              // sparse outputs
+           "[d0_0,?,1];[d0_0,?,1,2];[d0_0,?,1,2,3]");  // dense outputs
 
   // Variable inner dimensions are not supported
   set_outputs(2, 3, 0, false /* add_extra_shape */, 2 /* unknown_outer_dims */);
@@ -447,143 +447,143 @@ TEST(ParsingOpsTest, ParseSequenceExampleV2_ShapeFn) {
   // context inputs with no feature_list inputs.
   set_outputs(2 /* num_context_sparse */, 3 /* num_context_dense */,
               4 /* num_ragged */, 0, 0, 0);
-  INFER_OK(op, "[?];[?];?;?;?;?;?;?;?;?;?;?",    // Vector input, unknown size
-           ("[?,2];[?,2];"                       //  context sparse indices
-            "[?];[?];"                           //  context sparse values
-            "[2];[2];"                           //  context sparse dense_shapes
-            "[d0_0,1];[d0_0,1,2];[d0_0,1,2,3];"  //  context dense outputs
-            "[?];[?];[?];[?];"                   //  context ragged values
-            "[?];[?];[?];[?]"));                 //  context ragged row_splits
-  INFER_OK(op, "[5];[?];?;?;?;?;?;?;?;?;?;?",    // Vector input, known size
-           ("[?,2];[?,2];"                       //  context sparse indices
-            "[?];[?];"                           //  context sparse values
-            "[2];[2];"                           //  context sparse dense_shapes
-            "[d0_0,1];[d0_0,1,2];[d0_0,1,2,3];"  //  context dense outputs
-            "[?];[?];[?];[?];"                   //  context ragged values
-            "[6];[6];[6];[6]"));                 //  context ragged row_splits
-  INFER_OK(op, "[];[?];?;?;?;?;?;?;?;?;?;?",     // Scalar input
-           ("[?,1];[?,1];"                       //  context sparse indices
-            "[?];[?];"                           //  context sparse values
-            "[1];[1];"                           //  context sparse dense_shapes
-            "[1];[1,2];[1,2,3];"                 //  context dense outputs
-            "[?];[?];[?];[?];"                   //  context ragged values
-            "[?];[?];[?];[?]"));                 //  context ragged row_splits
-  INFER_OK(op, "?;[?];?;?;?;?;?;?;?;?;?;?",      // Unknown rank
-           ("[?,?];[?,?];"                       //  context sparse indices
-            "[?];[?];"                           //  context sparse values
-            "[?];[?];"                           //  context sparse dense_shapes
-            "?;?;?;"                             //  context dense outputs
-            "[?];[?];[?];[?];"                   //  context ragged values
-            "[?];[?];[?];[?]"));                 //  context ragged row_splits
+  INFER_OK(op, "[?];[?];?;?;?;?;?;?;?;?;?;?",   // Vector input, unknown size
+           "[?,2];[?,2];"                       //  context sparse indices
+           "[?];[?];"                           //  context sparse values
+           "[2];[2];"                           //  context sparse dense_shapes
+           "[d0_0,1];[d0_0,1,2];[d0_0,1,2,3];"  //  context dense outputs
+           "[?];[?];[?];[?];"                   //  context ragged values
+           "[?];[?];[?];[?]");                  //  context ragged row_splits
+  INFER_OK(op, "[5];[?];?;?;?;?;?;?;?;?;?;?",   // Vector input, known size
+           "[?,2];[?,2];"                       //  context sparse indices
+           "[?];[?];"                           //  context sparse values
+           "[2];[2];"                           //  context sparse dense_shapes
+           "[d0_0,1];[d0_0,1,2];[d0_0,1,2,3];"  //  context dense outputs
+           "[?];[?];[?];[?];"                   //  context ragged values
+           "[6];[6];[6];[6]");                  //  context ragged row_splits
+  INFER_OK(op, "[];[?];?;?;?;?;?;?;?;?;?;?",    // Scalar input
+           "[?,1];[?,1];"                       //  context sparse indices
+           "[?];[?];"                           //  context sparse values
+           "[1];[1];"                           //  context sparse dense_shapes
+           "[1];[1,2];[1,2,3];"                 //  context dense outputs
+           "[?];[?];[?];[?];"                   //  context ragged values
+           "[?];[?];[?];[?]");                  //  context ragged row_splits
+  INFER_OK(op, "?;[?];?;?;?;?;?;?;?;?;?;?",     // Unknown rank
+           "[?,?];[?,?];"                       //  context sparse indices
+           "[?];[?];"                           //  context sparse values
+           "[?];[?];"                           //  context sparse dense_shapes
+           "?;?;?;"                             //  context dense outputs
+           "[?];[?];[?];[?];"                   //  context ragged values
+           "[?];[?];[?];[?]");                  //  context ragged row_splits
 
   // feature_list inputs with no context inputs.
   set_outputs(0, 0, 0, 2 /* num_context_sparse */, 3 /* num_context_dense */,
               4 /* num_ragged */);
   INFER_OK(op, "[?];[?];?;?;?;?;?;?;?",  // Vector input, unknown size
-           ("[?,3];[?,3];"               //  f_list sparse indices
-            "[?];[?];"                   //  f_list sparse values
-            "[3];[3];"                   //  f_list sparse dense_shapes
-            "[d0_0,?,1];[d0_0,?,1,2];"   //  f_list dense outputs
-            "[d0_0,?,1,2,3];"            //     (continued)
-            "in0;in0;in0;"               //  f_list dense lengths
-            "[?];[?];[?];[?];"           //  f_list ragged values
-            "[?];[?];[?];[?];"           //  f_list ragged outer_splits
-            "[?];[?];[?];[?]"));         //  f_list ragged inner_splits
+           "[?,3];[?,3];"                //  f_list sparse indices
+           "[?];[?];"                    //  f_list sparse values
+           "[3];[3];"                    //  f_list sparse dense_shapes
+           "[d0_0,?,1];[d0_0,?,1,2];"    //  f_list dense outputs
+           "[d0_0,?,1,2,3];"             //     (continued)
+           "in0;in0;in0;"                //  f_list dense lengths
+           "[?];[?];[?];[?];"            //  f_list ragged values
+           "[?];[?];[?];[?];"            //  f_list ragged outer_splits
+           "[?];[?];[?];[?]");           //  f_list ragged inner_splits
   INFER_OK(op, "[5];[?];?;?;?;?;?;?;?",  // Vector input, known size
-           ("[?,3];[?,3];"               //  f_list sparse indices
-            "[?];[?];"                   //  f_list sparse values
-            "[3];[3];"                   //  f_list sparse dense_shapes
-            "[d0_0,?,1];[d0_0,?,1,2];"   //  f_list dense outputs
-            "[d0_0,?,1,2,3];"            //    (continued)
-            "in0;in0;in0;"               //  f_list dense lengths
-            "[?];[?];[?];[?];"           //  f_list ragged values
-            "[6];[6];[6];[6];"           //  f_list ragged outer_splits
-            "[?];[?];[?];[?]"));         //  f_list ragged inner_splits
+           "[?,3];[?,3];"                //  f_list sparse indices
+           "[?];[?];"                    //  f_list sparse values
+           "[3];[3];"                    //  f_list sparse dense_shapes
+           "[d0_0,?,1];[d0_0,?,1,2];"    //  f_list dense outputs
+           "[d0_0,?,1,2,3];"             //    (continued)
+           "in0;in0;in0;"                //  f_list dense lengths
+           "[?];[?];[?];[?];"            //  f_list ragged values
+           "[6];[6];[6];[6];"            //  f_list ragged outer_splits
+           "[?];[?];[?];[?]");           //  f_list ragged inner_splits
   INFER_OK(op, "[];[?];?;?;?;?;?;?;?",   // Scalar input
-           ("[?,2];[?,2];"               //  f_list sparse indices
-            "[?];[?];"                   //  f_list sparse values
-            "[2];[2];"                   //  f_list sparse dense_shapes
-            "[?,1];[?,1,2];[?,1,2,3];"   //  f_list dense outputs
-            "in0;in0;in0;"               //  f_list dense lengths
-            "[?];[?];[?];[?];"           //  f_list ragged values
-            "[?];[?];[?];[?];"           //  f_list ragged outer_splits
-            "[?];[?];[?];[?]"));         //  f_list ragged inner_splits
+           "[?,2];[?,2];"                //  f_list sparse indices
+           "[?];[?];"                    //  f_list sparse values
+           "[2];[2];"                    //  f_list sparse dense_shapes
+           "[?,1];[?,1,2];[?,1,2,3];"    //  f_list dense outputs
+           "in0;in0;in0;"                //  f_list dense lengths
+           "[?];[?];[?];[?];"            //  f_list ragged values
+           "[?];[?];[?];[?];"            //  f_list ragged outer_splits
+           "[?];[?];[?];[?]");           //  f_list ragged inner_splits
   INFER_OK(op, "?;[?];?;?;?;?;?;?;?",    // Unknown rank
-           ("[?,?];[?,?];"               //  f_list sparse indices
-            "[?];[?];"                   //  f_list sparse values
-            "[?];[?];"                   //  f_list sparse dense_shapes
-            "?;?;?;"                     //  f_list dense outputs
-            "in0;in0;in0;"               //  f_list dense lengths
-            "[?];[?];[?];[?];"           //  f_list ragged values
-            "[?];[?];[?];[?];"           //  f_list ragged outer_splits
-            "[?];[?];[?];[?]"));         //  f_list ragged inner_splits
+           "[?,?];[?,?];"                //  f_list sparse indices
+           "[?];[?];"                    //  f_list sparse values
+           "[?];[?];"                    //  f_list sparse dense_shapes
+           "?;?;?;"                      //  f_list dense outputs
+           "in0;in0;in0;"                //  f_list dense lengths
+           "[?];[?];[?];[?];"            //  f_list ragged values
+           "[?];[?];[?];[?];"            //  f_list ragged outer_splits
+           "[?];[?];[?];[?]");           //  f_list ragged inner_splits
 
   // Combine previous two test cases.
   set_outputs(2 /* num_context_sparse */, 3 /* num_context_dense */,
               4 /* num_ragged */, 2 /* num_context_sparse */,
               3 /* num_context_dense */, 4 /* num_ragged */);
-  INFER_OK(op, "[?];[?];?;?;?;?;?;?;?;?;?;?",    // Vector input, unknown size
-           ("[?,2];[?,2];"                       //  context sparse indices
-            "[?];[?];"                           //  context sparse values
-            "[2];[2];"                           //  context sparse dense_shapes
-            "[d0_0,1];[d0_0,1,2];[d0_0,1,2,3];"  //  context dense outputs
-            "[?];[?];[?];[?];"                   //  context ragged values
-            "[?];[?];[?];[?];"                   //  context ragged row_splits
-            "[?,3];[?,3];"                       //  f_list sparse indices
-            "[?];[?];"                           //  f_list sparse values
-            "[3];[3];"                           //  f_list sparse dense_shapes
-            "[d0_0,?,1];[d0_0,?,1,2];"           //  f_list dense outputs
-            "[d0_0,?,1,2,3];"                    //     (continued)
-            "in0;in0;in0;"                       //  f_list dense lengths
-            "[?];[?];[?];[?];"                   //  f_list ragged values
-            "[?];[?];[?];[?];"                   //  f_list ragged outer_splits
-            "[?];[?];[?];[?]"));                 //  f_list ragged inner_splits
-  INFER_OK(op, "[5];[?];?;?;?;?;?;?;?;?;?;?",    // Vector input, known size
-           ("[?,2];[?,2];"                       //  context sparse indices
-            "[?];[?];"                           //  context sparse values
-            "[2];[2];"                           //  context sparse dense_shapes
-            "[d0_0,1];[d0_0,1,2];[d0_0,1,2,3];"  //  context dense outputs
-            "[?];[?];[?];[?];"                   //  context ragged values
-            "[6];[6];[6];[6];"                   //  context ragged row_splits
-            "[?,3];[?,3];"                       //  f_list sparse indices
-            "[?];[?];"                           //  f_list sparse values
-            "[3];[3];"                           //  f_list sparse dense_shapes
-            "[d0_0,?,1];[d0_0,?,1,2];"           //  f_list dense outputs
-            "[d0_0,?,1,2,3];"                    //    (continued)
-            "in0;in0;in0;"                       //  f_list dense lengths
-            "[?];[?];[?];[?];"                   //  f_list ragged values
-            "[6];[6];[6];[6];"                   //  f_list ragged outer_splits
-            "[?];[?];[?];[?]"));                 //  f_list ragged inner_splits
-  INFER_OK(op, "[];[?];?;?;?;?;?;?;?;?;?;?",     // Scalar input
-           ("[?,1];[?,1];"                       //  context sparse indices
-            "[?];[?];"                           //  context sparse values
-            "[1];[1];"                           //  context sparse dense_shapes
-            "[1];[1,2];[1,2,3];"                 //  context dense outputs
-            "[?];[?];[?];[?];"                   //  context ragged values
-            "[?];[?];[?];[?];"                   //  context ragged row_splits
-            "[?,2];[?,2];"                       //  f_list sparse indices
-            "[?];[?];"                           //  f_list sparse values
-            "[2];[2];"                           //  f_list sparse dense_shapes
-            "[?,1];[?,1,2];[?,1,2,3];"           //  f_list dense outputs
-            "in0;in0;in0;"                       //  f_list dense lengths
-            "[?];[?];[?];[?];"                   //  f_list ragged values
-            "[?];[?];[?];[?];"                   //  f_list ragged outer_splits
-            "[?];[?];[?];[?]"));                 //  f_list ragged inner_splits
-  INFER_OK(op, "?;[?];?;?;?;?;?;?;?;?;?;?",      // Unknown rank
-           ("[?,?];[?,?];"                       //  context sparse indices
-            "[?];[?];"                           //  context sparse values
-            "[?];[?];"                           //  context sparse dense_shapes
-            "?;?;?;"                             //  context dense outputs
-            "[?];[?];[?];[?];"                   //  context ragged values
-            "[?];[?];[?];[?];"                   //  context ragged row_splits
-            "[?,?];[?,?];"                       //  f_list sparse indices
-            "[?];[?];"                           //  f_list sparse values
-            "[?];[?];"                           //  f_list sparse dense_shapes
-            "?;?;?;"                             //  f_list dense outputs
-            "in0;in0;in0;"                       //  f_list dense lengths
-            "[?];[?];[?];[?];"                   //  f_list ragged values
-            "[?];[?];[?];[?];"                   //  f_list ragged outer_splits
-            "[?];[?];[?];[?]"));                 //  f_list ragged inner_splits
+  INFER_OK(op, "[?];[?];?;?;?;?;?;?;?;?;?;?",   // Vector input, unknown size
+           "[?,2];[?,2];"                       //  context sparse indices
+           "[?];[?];"                           //  context sparse values
+           "[2];[2];"                           //  context sparse dense_shapes
+           "[d0_0,1];[d0_0,1,2];[d0_0,1,2,3];"  //  context dense outputs
+           "[?];[?];[?];[?];"                   //  context ragged values
+           "[?];[?];[?];[?];"                   //  context ragged row_splits
+           "[?,3];[?,3];"                       //  f_list sparse indices
+           "[?];[?];"                           //  f_list sparse values
+           "[3];[3];"                           //  f_list sparse dense_shapes
+           "[d0_0,?,1];[d0_0,?,1,2];"           //  f_list dense outputs
+           "[d0_0,?,1,2,3];"                    //     (continued)
+           "in0;in0;in0;"                       //  f_list dense lengths
+           "[?];[?];[?];[?];"                   //  f_list ragged values
+           "[?];[?];[?];[?];"                   //  f_list ragged outer_splits
+           "[?];[?];[?];[?]");                  //  f_list ragged inner_splits
+  INFER_OK(op, "[5];[?];?;?;?;?;?;?;?;?;?;?",   // Vector input, known size
+           "[?,2];[?,2];"                       //  context sparse indices
+           "[?];[?];"                           //  context sparse values
+           "[2];[2];"                           //  context sparse dense_shapes
+           "[d0_0,1];[d0_0,1,2];[d0_0,1,2,3];"  //  context dense outputs
+           "[?];[?];[?];[?];"                   //  context ragged values
+           "[6];[6];[6];[6];"                   //  context ragged row_splits
+           "[?,3];[?,3];"                       //  f_list sparse indices
+           "[?];[?];"                           //  f_list sparse values
+           "[3];[3];"                           //  f_list sparse dense_shapes
+           "[d0_0,?,1];[d0_0,?,1,2];"           //  f_list dense outputs
+           "[d0_0,?,1,2,3];"                    //    (continued)
+           "in0;in0;in0;"                       //  f_list dense lengths
+           "[?];[?];[?];[?];"                   //  f_list ragged values
+           "[6];[6];[6];[6];"                   //  f_list ragged outer_splits
+           "[?];[?];[?];[?]");                  //  f_list ragged inner_splits
+  INFER_OK(op, "[];[?];?;?;?;?;?;?;?;?;?;?",    // Scalar input
+           "[?,1];[?,1];"                       //  context sparse indices
+           "[?];[?];"                           //  context sparse values
+           "[1];[1];"                           //  context sparse dense_shapes
+           "[1];[1,2];[1,2,3];"                 //  context dense outputs
+           "[?];[?];[?];[?];"                   //  context ragged values
+           "[?];[?];[?];[?];"                   //  context ragged row_splits
+           "[?,2];[?,2];"                       //  f_list sparse indices
+           "[?];[?];"                           //  f_list sparse values
+           "[2];[2];"                           //  f_list sparse dense_shapes
+           "[?,1];[?,1,2];[?,1,2,3];"           //  f_list dense outputs
+           "in0;in0;in0;"                       //  f_list dense lengths
+           "[?];[?];[?];[?];"                   //  f_list ragged values
+           "[?];[?];[?];[?];"                   //  f_list ragged outer_splits
+           "[?];[?];[?];[?]");                  //  f_list ragged inner_splits
+  INFER_OK(op, "?;[?];?;?;?;?;?;?;?;?;?;?",     // Unknown rank
+           "[?,?];[?,?];"                       //  context sparse indices
+           "[?];[?];"                           //  context sparse values
+           "[?];[?];"                           //  context sparse dense_shapes
+           "?;?;?;"                             //  context dense outputs
+           "[?];[?];[?];[?];"                   //  context ragged values
+           "[?];[?];[?];[?];"                   //  context ragged row_splits
+           "[?,?];[?,?];"                       //  f_list sparse indices
+           "[?];[?];"                           //  f_list sparse values
+           "[?];[?];"                           //  f_list sparse dense_shapes
+           "?;?;?;"                             //  f_list dense outputs
+           "in0;in0;in0;"                       //  f_list dense lengths
+           "[?];[?];[?];[?];"                   //  f_list ragged values
+           "[?];[?];[?];[?];"                   //  f_list ragged outer_splits
+           "[?];[?];[?];[?]");                  //  f_list ragged inner_splits
 
   // Confirm an error from ParseSequenceExampleAttrs.Init().
   set_outputs(1, 1, 1, 1, 1, 1, true /* add_extra_shape */);
