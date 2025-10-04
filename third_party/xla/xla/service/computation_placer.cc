@@ -178,7 +178,7 @@ PlacerFactoryMap& GetPlatformComputationPlacers() {
 /* static */
 void ComputationPlacer::RegisterComputationPlacer(
     se::Platform::Id id, CreationFunction creation_function) {
-  absl::MutexLock lock(&placer_mutex);
+  absl::MutexLock lock(placer_mutex);
   PlacerFactoryMap& placers = GetPlatformComputationPlacers();
   if (placers.find(id) != placers.end()) {
     LOG(WARNING) << "Computation placer creation function is already "
@@ -190,7 +190,7 @@ void ComputationPlacer::RegisterComputationPlacer(
 /* static */
 absl::StatusOr<ComputationPlacer*> ComputationPlacer::GetForPlatform(
     const se::Platform* platform) {
-  absl::MutexLock lock(&placer_mutex);
+  absl::MutexLock lock(placer_mutex);
   PlacerFactoryMap& placers = GetPlatformComputationPlacers();
 
   auto it = placers.find(platform->id());
