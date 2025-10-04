@@ -2721,6 +2721,12 @@ absl::StatusOr<bool> AlgebraicSimplifierVisitor::MoveDotParamToRhs(
   dot->SetupDerivedInstruction(new_dot);
   dot->SetupDerivedInstruction(new_transpose);
   TF_RETURN_IF_ERROR(ReplaceInstruction(dot, new_transpose));
+  // Don't propagate the user-guided fusion attribute to the new auto-generated
+  // transpose if it is not an intervening instruction before another must-fuse
+  // instruction.
+  VLOG(0) << "Replacing old dot: " << dot->name()
+          << ", with new dot: " << new_dot->name();
+  AmendUserGuidedFusionAttr(new_transpose);
   return true;
 }
 
