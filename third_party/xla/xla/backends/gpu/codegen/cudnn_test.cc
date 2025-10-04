@@ -1097,8 +1097,7 @@ ENTRY e {
 ; CHECK: ENTRY
 ; CHECK-NEXT: parameter
 ; CHECK-NEXT: parameter
-; CHECK-NEXT: ROOT
-; CHECK-SAME: fusion
+; CHECK-NEXT: fusion
 ; CHECK-NOT: cudnn
 )");
 }

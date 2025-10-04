@@ -81,10 +81,6 @@ class AlgorithmTest : public GpuCodegenTest {
   DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = GpuCodegenTest::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_autotune_level(0);
-    // TODO(b/393299275): remove when the flag is enabled by default.
-    debug_options.clear_xla_gpu_unsupported_generic_triton_emitter_features();
-    debug_options.add_xla_gpu_unsupported_generic_triton_emitter_features(
-        DebugOptions::GENERIC_TRITON_EMITTER_ENABLE_NESTED_GEMM);
     return debug_options;
   }
 
@@ -1819,7 +1815,8 @@ class PrecisionTests
     module->mutable_config().set_debug_options(debug_options);
     TF_ASSIGN_OR_RETURN(module, GetOptimizedModule(std::move(module)));
     if (backend == Backend::kTriton) {
-      TF_RETURN_IF_ERROR(CheckGemmPattern(*module, "CHECK: __triton_gemm"));
+      TF_RETURN_IF_ERROR(
+          CheckGemmPattern(*module, "CHECK: __triton_nested_gemm_fusion"));
     } else if (backend == Backend::kBlas) {
       TF_RETURN_IF_ERROR(CheckGemmPattern(*module, "CHECK: __cublas$gemm"));
     } else {
