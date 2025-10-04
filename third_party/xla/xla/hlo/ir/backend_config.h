@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <memory>
 #include <string>
+#include <type_traits>
 #include <utility>
 
 #include "absl/base/thread_annotations.h"
@@ -91,6 +92,35 @@ class BackendConfigWrapper {
     return GetRawStringWithoutMutex();
   }
   absl::Status GetProto(tsl::protobuf::Message* output_proto) const;
+
+  // Returns a mutable pointer to the underlying proto of the given type.
+  // If the proto is not already parsed, it will be parsed from the raw string.
+  // The raw string cache is invalidated after this call, as the proto can be
+  // modified.
+  template <typename ConfigProto,
+            typename = typename std::enable_if_t<
+                std::is_base_of<tsl::protobuf::Message, ConfigProto>::value>>
+  absl::StatusOr<ConfigProto*> GetMutableProto() {
+    absl::WriterMutexLock lock{&mutex_};
+    if (proto_ == nullptr) {
+      auto proto = std::make_unique<ConfigProto>();
+      if (!raw_string_.empty()) {
+        tsl::protobuf::util::JsonParseOptions options;
+        options.ignore_unknown_fields = true;
+        auto status = tsl::protobuf::util::JsonStringToMessage(
+            raw_string_, proto.get(), options);
+        if (!status.ok()) {
+          return absl::InvalidArgumentError(absl::StrCat(
+              "Failed to parse backend config string: ", status.ToString()));
+        }
+      }
+      proto_ = std::move(proto);
+    }
+
+    // Invalidate string cache, as the proto can now be mutated.
+    raw_string_.clear();
+    return dynamic_cast<ConfigProto*>(proto_.get());
+  }
 
   bool empty() const {
     absl::MutexLock lock{mutex_};
