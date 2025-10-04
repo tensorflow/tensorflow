@@ -32,7 +32,7 @@ namespace xla::gpu {
 void CreateTritonXlaPipeline(
     mlir::OpPassManager* pm,
     const stream_executor::GpuComputeCapability& gpu_cc, bool rewrite_int4,
-    bool allow_tma, bool convert_unsupported_types) {
+    bool allow_tma) {
   pm->addPass(mlir::triton::xla::CreateTritonXLASqueezeDimsPass());
   pm->addPass(mlir::triton::xla::CreateTritonXLAFoldTransposePass());
 
@@ -42,10 +42,6 @@ void CreateTritonXlaPipeline(
   if (rewrite_int4) {
     pm->addPass(mlir::triton::xla::CreateInt4ToPackedInt4RewritePass(
         /*enable_bf16x2=*/is_at_least_hopper));
-  }
-  if (convert_unsupported_types) {
-    pm->addPass(
-        mlir::triton::xla::CreateTritonXLAConvertUnsupportedTypesPass());
   }
 
   pm->addPass(mlir::triton::xla::CreateTritonXLAExtractInsertToTritonPass(

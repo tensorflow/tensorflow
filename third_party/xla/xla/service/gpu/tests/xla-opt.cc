@@ -47,8 +47,6 @@ struct TritonPipelineOptions
   Option<std::string> target{*this, "target", llvm::cl::init("8.0")};
   Option<bool> rewrite_int4{*this, "rewrite-int4", llvm::cl::init(true)};
   Option<bool> allow_tma{*this, "allow-tma", llvm::cl::init(false)};
-  Option<bool> convert_unsupported_types{*this, "convert-unsupported-types",
-                                         llvm::cl::init(true)};
   Option<int> num_warps{*this, "num-warps", llvm::cl::init(4)};
   Option<int> num_ctas{*this, "num-ctas", llvm::cl::init(1)};
   Option<int> num_stages{*this, "num-stages", llvm::cl::init(3)};
@@ -71,8 +69,7 @@ mlir::PassPipelineRegistration<TritonPipelineOptions>
             gpu_cc = rocm_cc;
           }
           xla::gpu::CreateTritonXlaPipeline(&pm, gpu_cc, options.rewrite_int4,
-                                            options.allow_tma,
-                                            options.convert_unsupported_types);
+                                            options.allow_tma);
           xla::gpu::CreateTritonPipeline(&pm, gpu_cc, options.num_warps,
                                          options.num_ctas, options.num_stages,
                                          cluster_info);

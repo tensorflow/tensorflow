@@ -869,11 +869,11 @@ absl::StatusOr<Value> MaskDotOperand(EmitterLocOpBuilder b,
 // Returns `shape` without all its unit dimensions, as well as the index of the
 // remaining dimensions in the original `shape`.
 std::pair<SmallVector<int64_t>, SmallVector<int64_t>> CollapseUnitDims(
-    llvm::ArrayRef<int64_t> shape, bool scaled_dot = false) {
+    llvm::ArrayRef<int64_t> shape) {
   SmallVector<int64_t> shape_without_unit_dims;
   SmallVector<int64_t> non_unit_dims_indices;
   for (auto [i, size] : llvm::enumerate(shape)) {
-    if (size != 1 || scaled_dot) {
+    if (size != 1) {
       shape_without_unit_dims.push_back(size);
       non_unit_dims_indices.push_back(i);
     }
@@ -892,12 +892,11 @@ enum class DotOperandSide { kLhs, kRhs };
 absl::StatusOr<Value> CanonicalizeDotOperand(EmitterLocOpBuilder b,
                                              Value operand,
                                              int64_t contracting_dim_idx,
-                                             DotOperandSide side,
-                                             bool scaled_dot = false) {
+                                             DotOperandSide side) {
   llvm::ArrayRef<int64_t> shape =
       mlir::cast<ShapedType>(operand.getType()).getShape();
   auto [shape_without_unit_dims, non_unit_dims_indices] =
-      CollapseUnitDims(shape, scaled_dot);
+      CollapseUnitDims(shape);
 
   if (shape_without_unit_dims.size() != 2) {
     return absl::FailedPreconditionError(
@@ -1111,19 +1110,23 @@ absl::StatusOr<ScalarOrTensor> EmitScaledDot(
   SmallVector<int64_t> padded_tile_sizes =
       GetPaddedTileSizes(tiled_hlo_dot.tile_sizes());
 
+  SmallVector<int64_t, 2> padded_tile_sizes_no_unit_dims =
+      CollapseUnitDims(padded_tile_sizes).first;
+
   // Sanity check: Triton historically did not support non-2D dots (and still
   // doesn't support arbitrary nD dots), so we require that the dot is tiled
   // with exactly two non-unit tile sizes. This anyway matches the hardware's
   // expectations, so seems like a reasonable requirement.
   // TODO(b/393299275): this needs to be enforced in tiling.
-  if (padded_tile_sizes.size() != 2) {
+  if (padded_tile_sizes_no_unit_dims.size() != 2) {
     return absl::FailedPreconditionError(
         "Expected dot to be tiled with exactly two non-unit tile sizes");
   }
 
   Type accumulator_type = b.getF32Type();
   Value accumulator =
-      CreateConst(b, accumulator_type, 0.0f, padded_tile_sizes).UnwrapTensor();
+      CreateConst(b, accumulator_type, 0.0f, padded_tile_sizes_no_unit_dims)
+          .UnwrapTensor();
 
   TF_ASSIGN_OR_RETURN(int64_t loop_iteration_count,
                       GetDotLoopIterationCount(tiled_hlo_dot));
@@ -1199,20 +1202,18 @@ absl::StatusOr<ScalarOrTensor> EmitScaledDot(
 
     // Canonicalize the dot operands to match Triton's/the hardware's
     // expectations.
+    TF_ASSIGN_OR_RETURN(lhs,
+                        CanonicalizeDotOperand(b, lhs, lhs_contracting_dim_idx,
+                                               DotOperandSide::kLhs));
     TF_ASSIGN_OR_RETURN(
-        lhs, CanonicalizeDotOperand(b, lhs, lhs_contracting_dim_idx,
-                                    DotOperandSide::kLhs, /*scaled_dot=*/true));
+        lhs_scale, CanonicalizeDotOperand(b, lhs_scale, lhs_contracting_dim_idx,
+                                          DotOperandSide::kLhs));
+    TF_ASSIGN_OR_RETURN(rhs,
+                        CanonicalizeDotOperand(b, rhs, rhs_contracting_dim_idx,
+                                               DotOperandSide::kRhs));
     TF_ASSIGN_OR_RETURN(
-        lhs_scale,
-        CanonicalizeDotOperand(b, lhs_scale, lhs_contracting_dim_idx,
-                               DotOperandSide::kLhs, /*scaled_dot=*/true));
-    TF_ASSIGN_OR_RETURN(
-        rhs, CanonicalizeDotOperand(b, rhs, rhs_contracting_dim_idx,
-                                    DotOperandSide::kRhs, /*scaled_dot=*/true));
-    TF_ASSIGN_OR_RETURN(
-        rhs_scale,
-        CanonicalizeDotOperand(b, rhs_scale, rhs_contracting_dim_idx,
-                               DotOperandSide::kRhs, /*scaled_dot=*/true));
+        rhs_scale, CanonicalizeDotOperand(b, rhs_scale, rhs_contracting_dim_idx,
+                                          DotOperandSide::kRhs));
 
     TF_ASSIGN_OR_RETURN(
         Value acc_next,
@@ -1230,6 +1231,13 @@ absl::StatusOr<ScalarOrTensor> EmitScaledDot(
   Value result = for_op.getResult(0);
   if (dot_output_type != accumulator_type) {
     result = Cast(b, result, dot_output_type);
+  }
+
+  if (padded_tile_sizes.size() != padded_tile_sizes_no_unit_dims.size()) {
+    TF_ASSIGN_OR_RETURN(
+        ScalarOrTensor wrapped_result,
+        EmitTiledReshape(b, padded_tile_sizes, ScalarOrTensor(result)));
+    result = wrapped_result.UnwrapTensor();
   }
 
   return ScalarOrTensor(result);
@@ -2042,6 +2050,17 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateTritonModule(
         ExtractInstructionIntoNewModule(*fusion)->ToString());
   }
 
+  if (debug_options.xla_gpu_experimental_scaled_dot_with_triton()) {
+    // Convert unsupported types before verification.
+    mlir::PassManager pm(&mlir_context);
+    pm.addPass(mlir::triton::xla::CreateTritonXLAConvertUnsupportedTypesPass());
+    if (mlir::failed(pm.run(triton_module.get()))) {
+      return CreateInternalError(
+          "Failed to fix unsupported types in Triton module for fusion:",
+          fusion, *triton_module);
+    }
+  }
+
   if (mlir::failed(mlir::verify(*triton_module))) {
     return CreateInternalError(
         "Failed to verify Triton module for fusion:", fusion, *triton_module);
@@ -2177,11 +2196,7 @@ absl::StatusOr<TritonWrapperResult> CompileTritonToLLVM(
   }
 
   CreateTritonXlaPipeline(&pm, gpu_cc, /*rewrite_int4=*/is_xla_fusion,
-                          block_level_parameters.is_tma_allowed,
-                          /*convert_unsupported_types=*/
-                          hlo_module.config()
-                              .debug_options()
-                              .xla_gpu_experimental_scaled_dot_with_triton());
+                          block_level_parameters.is_tma_allowed);
 
   int num_warps = block_level_parameters.num_warps;
   int num_ctas = block_level_parameters.num_ctas;

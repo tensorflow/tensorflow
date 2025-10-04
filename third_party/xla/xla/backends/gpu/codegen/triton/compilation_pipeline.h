@@ -26,7 +26,7 @@ namespace xla::gpu {
 void CreateTritonXlaPipeline(
     mlir::OpPassManager* pm,
     const stream_executor::GpuComputeCapability& gpu_cc, bool rewrite_int4,
-    bool allow_tma, bool convert_unsupported_types);
+    bool allow_tma);
 
 // Creates a Triton compilation pipeline.
 //
