@@ -432,7 +432,8 @@ absl::Status NVPTXCompiler::AddFusionAutotuningPass(
       std::unique_ptr<AutotunerPass> autotuner_pass,
       AutotunerPass::Create(std::move(backends), debug_options, stream_executor,
                             thread_pool, ShouldAutotuneBetweenFusionEmitters,
-                            target_config, options.device_allocator));
+                            target_config, options.device_allocator,
+                            /*optimize_scratch_bytes=*/false));
   pipeline->AddPass(std::move(autotuner_pass));
   return absl::OkStatus();
 }
