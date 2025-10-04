@@ -3172,10 +3172,10 @@ func.func @main(%input0: tensor<16x16xf32>, %input1: tensor<16x16xi32>) {
 // -----
 // CHECK: HloModule
 // CHECK: ENTRY
-// CHECK: %[[ARG0:.*]] = f32[192] parameter(0)
+// CHECK: %[[ARG0:.*]] = f32[192] parameter(0), origin={{[{][{]}}"a"{{[}][}]}}
 // CHECK: ROOT %[[RESULT:.*]] = f32[1,17,17,192] broadcast(%[[ARG0]]), dimensions={3}, origin={{[{][{]}}"broadcast.2342"{{[}][}]}}
 
-func.func @main(%arg0: tensor<192xf32>) -> tensor<1x17x17x192xf32> {
+func.func @main(%arg0: tensor<192xf32> {mhlo.original_value = "{{\22a\22}}"}) -> tensor<1x17x17x192xf32> {
   %0 = "mhlo.broadcast_in_dim"(%arg0) <{broadcast_dimensions = dense<3> : tensor<1xi64>}> {mhlo.original_value = "{{\22broadcast.2342\22}}"} : (tensor<192xf32>) -> tensor<1x17x17x192xf32>
   return %0 : tensor<1x17x17x192xf32>
 }

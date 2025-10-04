@@ -567,9 +567,18 @@ absl::StatusOr<Value> HloFunctionImporter::ImportInstructionsImpl(
   // Setup the input parameters.
   const int num_parameters = computation.num_parameters();
 
+  FuncOp func = llvm::dyn_cast<FuncOp>(builder->getBlock()->getParentOp());
   for (int i = 0; i < num_parameters; i++) {
     auto* hlo_parameter = computation.parameter_instruction(i);
     instruction_value_map_[hlo_parameter] = arguments[i];
+    // Only add original value attributes to parameters in functions. Skip
+    // regions.
+    if (hlo_parameter->original_value() && func) {
+      func.setArgAttr(
+          i, kMhloOriginalValueAttr,
+          builder_->getStringAttr(
+              "{" + hlo_parameter->original_value()->ToString() + "}"));
+    }
   }
 
   for (auto instruction : computation.MakeInstructionPostOrder()) {

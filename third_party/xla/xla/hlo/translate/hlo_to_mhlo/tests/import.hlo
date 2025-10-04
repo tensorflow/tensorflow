@@ -2130,9 +2130,23 @@ add {
 // FLATTEN-CHECK-SAME:  ([[ARG:%.*]]: tensor<4x4xf32>) -> (tensor<4x2xf32>, tensor<4x2xi32>)
 
 // Test HLO original value
-// CHECK-LABEL:  func private @test_original_value
-%test_original_value (Arg_0: f32[192]) -> f32[1,17,17,192] {
-  %Arg_0 = f32[192]{0} parameter(0)
-  // CHECK: "mhlo.broadcast_in_dim"(%arg0) <{broadcast_dimensions = dense<3> : tensor<1xi64>}> {mhlo.original_value = "{{[{][{]}}\22broadcast.2342\22{{[}][}]}}"} : (tensor<192xf32>) -> tensor<1x17x17x192xf32>
-  ROOT %broadcast.2342 = f32[1,17,17,192]{3,2,1,0} broadcast(f32[192]{0} %Arg_0), dimensions={3}, origin={{"broadcast.2342"}}
+// CHECK-LABEL:  func private @add_original_value
+// CHECK-SAME:  {mhlo.original_value = "{{[{][{]}}\22a\22{{[}][}]}}"}
+add_original_value {
+  lhs = f32[] parameter(0), origin={{"a"}}
+  rhs = f32[] parameter(1)
+  ROOT add = f32[] add(lhs, rhs)
+}
+
+// CHECK-LABEL:  func private @test_orignal_value
+// CHECK-SAME:  ([[INPUT:%.*]]: tensor<8xf32>
+// CHECK-SAME:  {mhlo.original_value = "{{[{][{]}}\22b\22{{[}][}]}}"})
+%test_orignal_value {
+  input = f32[8] parameter(0), origin={{"b"}}
+  // CHECK-NEXT:  "mhlo.all_reduce"([[INPUT]]) <{
+  // CHECK:  ^bb0([[ARG0:%.*]]: tensor<f32>, [[ARG1:%.*]]: tensor<f32>):
+  // CHECK:    [[ADD:%.*]] = mhlo.add [[ARG0]], [[ARG1]]
+  // CHECK:    mhlo.return [[ADD]] : tensor<f32>
+  // CHECK:  }) {mhlo.original_value = "{{[{][{]}}\22c\22{{[}][}]}}"}
+  ROOT result = f32[8] all-reduce(input), channel_id=1, replica_groups={{0,1,2,3}, {4,5,6,7}}, to_apply=add_original_value, origin={{"c"}}
 }
