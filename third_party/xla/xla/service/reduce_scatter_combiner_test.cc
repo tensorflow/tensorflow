@@ -16,9 +16,12 @@ limitations under the License.
 #include "xla/service/reduce_scatter_combiner.h"
 
 #include <cstddef>
+#include <cstdint>
+#include <memory>
 #include <utility>
 
 #include <gmock/gmock.h>
+#include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
 #include "absl/log/log.h"
 #include "absl/strings/string_view.h"
@@ -27,6 +30,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/utils/hlo_matchers.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace {
