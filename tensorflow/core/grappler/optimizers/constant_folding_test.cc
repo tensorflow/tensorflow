@@ -844,10 +844,10 @@ TEST_F(ConstantFoldingTest, NeutralElement) {
     const string suffix =
         (const_type == kConst ? "_const"
                               : (const_type == kLike ? "_like" : "_fill"));
-    const string zeros_name = strings::StrCat("zeros", suffix);
-    const string ones_name = strings::StrCat("ones", suffix);
-    const string ctrl_zeros_name = strings::StrCat("^zeros", suffix);
-    const string ctrl_ones_name = strings::StrCat("^ones", suffix);
+    const string zeros_name = absl::StrCat("zeros", suffix);
+    const string ones_name = absl::StrCat("ones", suffix);
+    const string ctrl_zeros_name = absl::StrCat("^zeros", suffix);
+    const string ctrl_ones_name = absl::StrCat("^ones", suffix);
 
     EXPECT_EQ(const_type == kFill ? 43 : 39, output.node_size());
     for (int i = 0; i < output.node_size(); ++i) {
@@ -1096,7 +1096,7 @@ TEST_F(ConstantFoldingTest, NeutralElement_PartialShape_UnknownOutputShape) {
   for (const auto* x : {&x_known, &x_partially_known, &x_unknown}) {
     for (const auto* zeros :
          {&zeros_known, &zeros_partially_known, &zeros_unknown}) {
-      const string name = strings::StrCat("mul_", count++);
+      const string name = absl::StrCat("mul_", count++);
       muls.push_back(ops::Mul(s.WithOpName(name), *x, *zeros));
       if (x == &x_partially_known && zeros == &zeros_partially_known) {
         to_identity.insert(name);
@@ -1170,7 +1170,7 @@ TEST_F(ConstantFoldingTest, NeutralElement_PartialShape_KnownOutputShape) {
   int count = 0;
   for (const auto& x : {x_partially_known, x_unknown}) {
     for (const auto& zeros : {zeros_partially_known, zeros_unknown}) {
-      const string name = strings::StrCat("mul_", count++);
+      const string name = absl::StrCat("mul_", count++);
       muls_deduced_output_shape.push_back(
           ops::Mul(s.WithOpName(name), x, zeros));
       to_const.insert(name);
@@ -1468,7 +1468,7 @@ TEST_F(ConstantFoldingTest, VariableNumberOfOutputs) {
 
   std::vector<string> outputs;
   for (int i = 0; i < num_partitions; ++i) {
-    string part_out_name = strings::StrCat("part_out", i);
+    string part_out_name = absl::StrCat("part_out", i);
     ops::Identity partition_out(scope.WithOpName(part_out_name),
                                 {part.outputs[i]});
     outputs.push_back(part_out_name);
@@ -1481,7 +1481,7 @@ TEST_F(ConstantFoldingTest, VariableNumberOfOutputs) {
   Tensor initial_val(DT_INT32, TensorShape({3}));
   test::FillIota<int>(&initial_val, 7);
   for (int i = 1; i < 5; ++i) {
-    TF_CHECK_OK(NodeDefBuilder(strings::StrCat("in", i), "Const")
+    TF_CHECK_OK(NodeDefBuilder(absl::StrCat("in", i), "Const")
                     .Attr("dtype", DT_INT32)
                     .Attr("value", initial_val)
                     .Finalize(item.graph.add_node()));
@@ -1502,7 +1502,7 @@ TEST_F(ConstantFoldingTest, VariableNumberOfOutputs) {
                   .Finalize(item.graph.add_node()));
 
   for (int i = 0; i < 4; ++i) {
-    string concat_offset_out_name = strings::StrCat("concat_offset_out", i);
+    string concat_offset_out_name = absl::StrCat("concat_offset_out", i);
     TF_CHECK_OK(NodeDefBuilder(concat_offset_out_name, "Identity")
                     .Attr("T", DT_INT32)
                     .Input("concat_offsets", i, DT_INT32)
@@ -4265,8 +4265,8 @@ TEST_F(ConstantFoldingTest, SimplifySelect_BroadcastTo) {
           ASSERT_EQ(node.input_size(), 4);
           EXPECT_EQ(node.input(0), pred_val ? "then" : "else");
           EXPECT_EQ(node.input(1),
-                    strings::StrCat("ConstantFolding/select-broadcastto_shape-",
-                                    pred_val ? 1 : 2));
+                    absl::StrCat("ConstantFolding/select-broadcastto_shape-",
+                                 pred_val ? 1 : 2));
           EXPECT_EQ(node.input(2), pred_val ? "^else" : "^if");
           EXPECT_EQ(node.input(3), pred_val ? "^if" : "^then");
         }
