@@ -49,7 +49,7 @@ class GrpcDebugTest : public ::testing::Test {
   void SetUpInProcessServer(ServerData* server_data,
                             int64_t server_start_delay_micros) {
     server_data->port = testing::PickUnusedPortOrDie();
-    server_data->url = strings::StrCat("grpc://localhost:", server_data->port);
+    server_data->url = absl::StrCat("grpc://localhost:", server_data->port);
     server_data->server = std::make_unique<test::TestEventListenerImpl>();
 
     server_data->thread_pool =
@@ -87,7 +87,7 @@ TEST_F(GrpcDebugTest, ConnectionTimeoutWorks) {
   ASSERT_EQ(kShortTimeoutMicros, GetChannelConnectionTimeoutMicros());
 
   const string& kInvalidGrpcUrl =
-      strings::StrCat("grpc://localhost:", testing::PickUnusedPortOrDie());
+      absl::StrCat("grpc://localhost:", testing::PickUnusedPortOrDie());
   Tensor tensor(DT_FLOAT, TensorShape({1, 1}));
   tensor.flat<float>()(0) = 42.0;
   absl::Status publish_status = DebugIO::PublishDebugTensor(
@@ -213,7 +213,7 @@ TEST_F(GrpcDebugTest, SendMultipleDebugTensorsSynchronizedViaGrpcTest) {
     const uint64 wall_time = Env::Default()->NowMicros();
     absl::Status publish_status = DebugIO::PublishDebugTensor(
         DebugNodeKey("/job:localhost/replica:0/task:0/cpu:0",
-                     strings::StrCat("synchronized_node_", this_count), 0,
+                     absl::StrCat("synchronized_node_", this_count), 0,
                      "DebugIdentity"),
         tensors[this_count], wall_time, urls);
 
