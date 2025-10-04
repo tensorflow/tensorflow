@@ -127,7 +127,9 @@ absl::Status HostTracer::CollectData(  // TENSORFLOW_STATUS_OK
 
 std::unique_ptr<tsl::profiler::ProfilerInterface> CreateHostTracer(
     const HostTracerOptions& options) {
-  if (options.trace_level == 0) return nullptr;
+  if (options.trace_level == 0) {
+    return nullptr;
+  }
   std::vector<std::unique_ptr<tsl::profiler::ProfilerInterface>> profilers;
   profilers.push_back(
       std::make_unique<HostTracer>(options.trace_level, options.filter_mask));
