@@ -77,9 +77,9 @@ module @multiple_func_result_shardings attributes {mhlo.frontend_attributes = {x
   func.func @func_result_shardings_used_by_other_ops(
     %arg0: tensor<32xi32>, %arg1: tensor<32xi32>
   ) -> (tensor<32xi32>, tensor<32xi32>) {
-    // CHECK-NEXT: %[[SC0:.*]] = sdy.sharding_constraint %arg0 <@mesh, [{"a"}p0]>
-    // CHECK-NEXT: %[[SC1:.*]] = sdy.sharding_constraint %[[SC0]] <@mesh, [{"b"}p2]>
-    // CHECK-NEXT: %[[SC2:.*]] = sdy.sharding_constraint %arg1 <@mesh, [{"a"}p3]>
+    // CHECK-NEXT: %[[SC0:.*]] = sdy.sharding_constraint %arg0 <@mesh, [{"a", ?}p0]>
+    // CHECK-NEXT: %[[SC1:.*]] = sdy.sharding_constraint %[[SC0]] <@mesh, [{"b", ?}p2]>
+    // CHECK-NEXT: %[[SC2:.*]] = sdy.sharding_constraint %arg1 <@mesh, [{"a", ?}p3]>
     // CHECK-NEXT: %[[ADD:.*]] = stablehlo.add %[[SC1]], %[[SC2]]
     // CHECK-NEXT: return %[[SC1]], %[[ADD]]
     %0 = stablehlo.custom_call @local_xla.sdy.FuncResultSharding(%arg0) {mhlo.frontend_attributes = {xla.sdy.sharding = "#sdy.sharding_per_value<[<@mesh, [{\"a\"}p0]>]>"}} : (tensor<32xi32>) -> tensor<32xi32>
