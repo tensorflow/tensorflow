@@ -1,1 +1,45 @@
 Auto generated patch. Do not edit or delete it, even if empty.
+diff -ruN --strip-trailing-cr a/llvm/unittests/Analysis/FunctionPropertiesAnalysisTest.cpp b/llvm/unittests/Analysis/FunctionPropertiesAnalysisTest.cpp
+--- a/llvm/unittests/Analysis/FunctionPropertiesAnalysisTest.cpp
++++ b/llvm/unittests/Analysis/FunctionPropertiesAnalysisTest.cpp
+@@ -46,8 +46,8 @@
+     MAM.registerPass([VocabVector = std::move(VocabVector)]() mutable {
+       return IR2VecVocabAnalysis(std::move(VocabVector));
+     });
+-    IR2VecVocab =
+-        new ir2vec::Vocabulary(ir2vec::Vocabulary::createDummyVocabForTest(1));
++    IR2VecVocab = std::make_unique<ir2vec::Vocabulary>(
++        ir2vec::Vocabulary::createDummyVocabForTest(1));
+     MAM.registerPass([&] { return PassInstrumentationAnalysis(); });
+     FAM.registerPass([&] { return ModuleAnalysisManagerFunctionProxy(MAM); });
+     FAM.registerPass([&] { return DominatorTreeAnalysis(); });
+@@ -69,7 +69,7 @@
+   std::unique_ptr<LoopInfo> LI;
+   FunctionAnalysisManager FAM;
+   ModuleAnalysisManager MAM;
+-  ir2vec::Vocabulary *IR2VecVocab;
++  std::unique_ptr<ir2vec::Vocabulary> IR2VecVocab;
+ 
+   void TearDown() override {
+     // Restore original IR2Vec weights
+diff -ruN --strip-trailing-cr a/llvm/unittests/Analysis/IR2VecTest.cpp b/llvm/unittests/Analysis/IR2VecTest.cpp
+--- a/llvm/unittests/Analysis/IR2VecTest.cpp
++++ b/llvm/unittests/Analysis/IR2VecTest.cpp
+@@ -295,7 +295,7 @@
+ // Fixture for IR2Vec tests requiring IR setup.
+ class IR2VecTestFixture : public ::testing::Test {
+ protected:
+-  Vocabulary *V;
++  std::unique_ptr<Vocabulary> V;
+   LLVMContext Ctx;
+   std::unique_ptr<Module> M;
+   Function *F = nullptr;
+@@ -304,7 +304,7 @@
+   Instruction *RetInst = nullptr;
+ 
+   void SetUp() override {
+-    V = new Vocabulary(Vocabulary::createDummyVocabForTest(2));
++    V = std::make_unique<Vocabulary>(Vocabulary::createDummyVocabForTest(2));
+ 
+     // Setup IR
+     M = std::make_unique<Module>("TestM", Ctx);

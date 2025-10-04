@@ -1,1139 +1,441 @@
-diff --git a/shardy/dialect/mpmd/transforms/optimize/optimize_pipeline.cc b/shardy/dialect/mpmd/transforms/optimize/optimize_pipeline.cc
-index 291749c..6a5596c 100644
---- a/shardy/dialect/mpmd/transforms/optimize/optimize_pipeline.cc
-+++ b/shardy/dialect/mpmd/transforms/optimize/optimize_pipeline.cc
-@@ -31,15 +31,6 @@ namespace mlir::mpmd {
+diff --git a/shardy/dialect/mpmd/ir/utils.cc b/shardy/dialect/mpmd/ir/utils.cc
+index 67724a9..2d4a5de 100644
+--- a/shardy/dialect/mpmd/ir/utils.cc
++++ b/shardy/dialect/mpmd/ir/utils.cc
+@@ -58,6 +58,7 @@ namespace {
+ 
  using ::mlir::func::FuncOp;
  
- void addOptimizePipeline(OpPassManager& pm, OptimizeOptions options) {
--  // Adds pipeline scheduling pass.
--  if (!options.fragmentScheduleRules.empty()) {
--    pm.addNestedPass<FuncOp>(
--        createRuleBasedSchedulePass(RuleBasedSchedulePassOptions{
--            std::move(options.fragmentScheduleRules)}));
--  } else {
--    AddSchedulingPass(pm, options.pipelineSchedule);
++
+ SpmdTensorPartitionSpec ExtractTensorPartitionSpec(MeshTensorType type) {
+   if (!type.getSharding()) {
+     return {};
+@@ -486,60 +487,13 @@ bool IsExecutedImmediatelyAfter(FragmentOp fragment1, FragmentOp fragment2) {
+   return false;
+ }
+ 
+-namespace {
+-
+-// Returns true if two meshes are equal, ignoring axes of size 1.
+-bool IsEquivalentMesh(sdy::MeshAttr mesh1, sdy::MeshAttr mesh2) {
+-  if (mesh1.getDeviceIds() != mesh2.getDeviceIds()) {
+-    return false;
 -  }
 -
-   // Merge fragments according to the user-specified rules. Do this before other
-   // merge passes since those modify the origins of fragments, invalidating the
-   // rules.
-@@ -48,6 +39,9 @@ void addOptimizePipeline(OpPassManager& pm, OptimizeOptions options) {
-         RuleBasedMergePassOptions{std::move(options.fragmentMergeRules)}));
-   }
+-  const auto* it1 = mesh1.getAxes().begin();
+-  const auto* end1 = mesh1.getAxes().end();
+-  const auto* it2 = mesh2.getAxes().begin();
+-  const auto* end2 = mesh2.getAxes().end();
+-
+-  while (it1 != end1 && it2 != end2) {
+-    if (it1->getSize() == 1) {
+-      ++it1;
+-      continue;
+-    }
+-    if (it2->getSize() == 1) {
+-      ++it2;
+-      continue;
+-    }
+-    if (*it1 != *it2) {
+-      return false;
+-    }
+-    ++it1;
+-    ++it2;
+-  }
+-
+-  while (it1 != end1) {
+-    if (it1->getSize() != 1) {
+-      return false;
+-    }
+-    ++it1;
+-  }
+-
+-  while (it2 != end2) {
+-    if (it2->getSize() != 1) {
+-      return false;
+-    }
+-    ++it2;
+-  }
+-
+-  return true;
+-}
+-
+-}  // namespace
+-
+ bool HasHomogeneousTopology(FuncOp func) {
+   ArrayRef<NamedMeshAttr> named_meshes = GetTopologyMeshes(func);
+-  return llvm::all_of(named_meshes, [&](NamedMeshAttr named_mesh) {
+-    return IsEquivalentMesh(named_mesh.getMesh(),
+-                            named_meshes.front().getMesh());
+-  });
++  DenseSet<sdy::MeshAttr> meshes;
++  for (NamedMeshAttr named_mesh : named_meshes) {
++    meshes.insert(named_mesh.getMesh());
++  }
++  return meshes.size() == 1;
+ }
  
-+  // Adds pipeline scheduling pass.
-+  AddSchedulingPass(pm, options.pipelineSchedule);
+ ArrayAttr GetFragmentOriginUnion(FragmentOp fragment1, FragmentOp fragment2,
+@@ -720,3 +674,4 @@ std::optional<ReductionType> ComputeReductionType(Block& block) {
+ }
+ 
+ }  // namespace mlir::mpmd
 +
-   // The remat passes will run after inlining the call ops and scheduling.
-   // The reason why we choose to remat after scheduling is so that we don't need
-   // to schedule the remat fragments. For example, given the following fragments
-diff --git a/shardy/dialect/mpmd/transforms/optimize/passes.h b/shardy/dialect/mpmd/transforms/optimize/passes.h
-index fb48d9c..7d4f111 100644
---- a/shardy/dialect/mpmd/transforms/optimize/passes.h
-+++ b/shardy/dialect/mpmd/transforms/optimize/passes.h
-@@ -42,8 +42,6 @@ namespace mlir::mpmd {
- struct OptimizeOptions {
-   // A list of fragment merge rules.
-   SmallVector<FragmentMergeRule> fragmentMergeRules;
--  // A list of fragment schedule rules.
--  SmallVector<FragmentScheduleRule> fragmentScheduleRules;
-   // Whether to merge inferred fragments only after scheduling.
-   bool mergeAfterScheduling = false;
-   // Whether to identify matching forward and backward fragments and clone the
-diff --git a/shardy/dialect/sdy/transforms/export/test/insert_explicit_reshards/dot_dot_general.mlir b/shardy/dialect/sdy/transforms/export/test/insert_explicit_reshards/dot_dot_general.mlir
-index 6bc02eb..e7545f9 100644
---- a/shardy/dialect/sdy/transforms/export/test/insert_explicit_reshards/dot_dot_general.mlir
-+++ b/shardy/dialect/sdy/transforms/export/test/insert_explicit_reshards/dot_dot_general.mlir
-@@ -572,15 +572,3 @@ func.func @dot_genaral_overlaps_and_trimmable_on_subaxis_multiple_axes(%arg0: te
-   %0 = stablehlo.dot_general %arg0, %arg1, batching_dims = [0] x [0], contracting_dims = [2] x [1] {sdy.sharding = #sdy.sharding_per_value<[<@mesh_xyzt, [{}, {"x","y","z"}, {}]>]>} : (tensor<64x8x32xf32>, tensor<64x32x16xf32>) -> tensor<64x8x16xf32>
-   return %0 : tensor<64x8x16xf32>
+diff --git a/shardy/dialect/mpmd/transforms/import/test/call_op_set_topology.mlir b/shardy/dialect/mpmd/transforms/import/test/call_op_set_topology.mlir
+index 9122ee7..2a83989 100644
+--- a/shardy/dialect/mpmd/transforms/import/test/call_op_set_topology.mlir
++++ b/shardy/dialect/mpmd/transforms/import/test/call_op_set_topology.mlir
+@@ -1,4 +1,4 @@
+-// RUN: mpmd_opt %s -mpmd-copy-topology-from-main -split-input-file 2>&1 | FileCheck %s
++// RUN: mpmd_opt %s -mpmd-copy-topology-from-main 2>&1 | FileCheck %s
+ 
+ // CHECK-LABEL: sdy.mesh @mesh = <["a"=4, "b"=2]>
+ #topology = #mpmd.topology<<"mesh1": <["a"=4, "b"=2]>>, <"mesh2": <["a"=4, "b"=2]>>>
+@@ -38,18 +38,3 @@ func.func @shardy_mpmd_i(%arg0: tensor<5xf32>, %arg1: tensor<5xf32>) -> tensor<5
+   %0 = stablehlo.add %arg0, %arg1 : tensor<5xf32>
+   return %0 : tensor<5xf32>
  }
 -
--// CHECK-LABEL: func @dot_only_contracting_dims_sharded_and_has_same_shardings
--func.func @dot_only_contracting_dims_sharded_and_has_same_shardings(
--    %arg0: tensor<8x32xf32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {"y"}]>},
--    %arg1: tensor<32x16xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"y"}, {}]>})
--    -> tensor<8x16xf32> {
--  // CHECK-NEXT: %[[DOT:.*]] = stablehlo.dot %arg0, %arg1
--  // CHECK-NEXT: %[[ALL_REDUCE:.*]] = sdy.all_reduce {"y"} %[[DOT]] out_sharding=<@mesh, [{}, {}]>
--  // CHECK: return %[[ALL_REDUCE]]
--  %0 = stablehlo.dot %arg0, %arg1 : (tensor<8x32xf32>, tensor<32x16xf32>) -> tensor<8x16xf32>
--  return %0 : tensor<8x16xf32>
+-// -----
+-
+-// Verify that the homogeneous topology check ignores axes of size 1.
+-// CHECK-LABEL: func.func public @main(%arg0: tensor<8xf32>) -> tensor<8xf32>
+-func.func public @main(%arg0: tensor<8xf32>) -> tensor<8xf32> attributes {
+-  topology=#mpmd.topology<
+-    <"mesh1": <["a"=4, "b"=2]>>,
+-    <"mesh2": <["x"=1, "a"=4, "b"=2]>>,
+-    <"mesh3": <["a"=4, "b"=2, "y"=1]>>,
+-    <"mesh4": <["a"=4, "z"=1, "b"=2]>>
+-  >
+-}{
+-  return %arg0 : tensor<8xf32>
 -}
-diff --git a/shardy/integrations/python/jax/mpmd/jaxlib/mpmd_program.h b/shardy/integrations/python/jax/mpmd/jaxlib/mpmd_program.h
-index 65166c5..da4da35 100644
---- a/shardy/integrations/python/jax/mpmd/jaxlib/mpmd_program.h
-+++ b/shardy/integrations/python/jax/mpmd/jaxlib/mpmd_program.h
-@@ -48,9 +48,8 @@ namespace mlir::mpmd {
- enum PartitioningPhase : int32_t {
-   kNone = 0,
-   kImport = 1 << 0,
--  kOptimize = 1 << 1,
--  kPartition = 1 << 2,
--  kAll = kImport | kOptimize | kPartition,
-+  kPartition = 1 << 1,
-+  kAll = kImport | kPartition,
- };
+diff --git a/shardy/dialect/mpmd/transforms/optimize/utils.cc b/shardy/dialect/mpmd/transforms/optimize/utils.cc
+index 39e05f0..d3fd142 100644
+--- a/shardy/dialect/mpmd/transforms/optimize/utils.cc
++++ b/shardy/dialect/mpmd/transforms/optimize/utils.cc
+@@ -76,9 +76,9 @@ SmallVector<mpmd::NamedMeshAttr> GetSchedulableMeshes(func::FuncOp func) {
+   auto all_meshes = mpmd::GetTopologyMeshes(func);
+   SmallVector<mpmd::NamedMeshAttr> hbm_meshes;
+   llvm::copy_if(all_meshes, std::back_inserter(hbm_meshes),
+-                [](const mpmd::NamedMeshAttr& mesh) {
+-                  return !mesh.getName().ends_with(mpmd::kCpuMeshSuffix);
+-                });
++                  [](const mpmd::NamedMeshAttr& mesh) {
++                    return !mesh.getName().ends_with("#cpu");
++                  });
+   return hbm_meshes;
+ }
  
- struct PartitioningResult {
-diff --git a/shardy/integrations/python/jax/mpmd/types.py b/shardy/integrations/python/jax/mpmd/types.py
-index 7dfa3aa..1facb95 100644
---- a/shardy/integrations/python/jax/mpmd/types.py
-+++ b/shardy/integrations/python/jax/mpmd/types.py
-@@ -73,7 +73,6 @@ class FragmentInfo:
-   split_type: SplitFragmentType | None = None
-   mesh_name: str = ''
+diff --git a/shardy/dialect/sdy/ir/dialect.cc b/shardy/dialect/sdy/ir/dialect.cc
+index 5113b47..008bb20 100644
+--- a/shardy/dialect/sdy/ir/dialect.cc
++++ b/shardy/dialect/sdy/ir/dialect.cc
+@@ -972,11 +972,11 @@ bool TensorShardingAttr::isEquivalent(TensorShardingAttr otherSharding) const {
+   if (!otherSharding) {
+     return false;
+   }
++  ArrayRef<DimensionShardingAttr> left = getDimShardings();
++  ArrayRef<DimensionShardingAttr> right = otherSharding.getDimShardings();
+   if (getMeshOrRef() != otherSharding.getMeshOrRef()) {
+     return false;
+   }
+-  ArrayRef<DimensionShardingAttr> left = getDimShardings();
+-  ArrayRef<DimensionShardingAttr> right = otherSharding.getDimShardings();
+   return left.size() == right.size() &&
+          llvm::all_of(llvm::zip_equal(left, right), [](auto&& pair) {
+            return std::get<0>(pair).getAxes() == std::get<1>(pair).getAxes();
+diff --git a/shardy/dialect/sdy/transforms/export/insert_explicit_reshards.cc b/shardy/dialect/sdy/transforms/export/insert_explicit_reshards.cc
+index 2f21374..a109df3 100644
+--- a/shardy/dialect/sdy/transforms/export/insert_explicit_reshards.cc
++++ b/shardy/dialect/sdy/transforms/export/insert_explicit_reshards.cc
+@@ -158,7 +158,7 @@ void insertExplicitReshardsOnDataFlowOp(ShardableDataFlowOpInterface& op,
+ // return %reshard  : tensor<4x8xf32>
+ // ```
+ template <class OpTy>
+-void processDot(OpTy op, ShardingProjection& shardingProjection,
++void processDot(OpTy op, ArrayRef<TensorShardingAttr> inShardings,
+                 ArrayRef<TensorShardingAttr> outShardings, IRRewriter& rewriter,
+                 const SymbolTable& symbolTable, OpShardingRuleAttr shardingRule,
+                 const Mesh& mesh) {
+@@ -166,6 +166,10 @@ void processDot(OpTy op, ShardingProjection& shardingProjection,
+     // Result doesn't have a sharding.
+     return;
+   }
++  ShardingProjection shardingProjection =
++      ShardingProjection::build(inShardings, outShardings, shardingRule,
++                                mesh.attr(), /*closedIfMissing=*/true);
++
+   const TensorFactorShardings& lhsSharding = shardingProjection.getOperand(0);
+   const TensorFactorShardings& rhsSharding = shardingProjection.getOperand(1);
+   TensorFactorShardings& resultSharding =
+@@ -445,11 +449,11 @@ SmallVector<AxisRefAttr> processOp(Operation* op,
  
--
- @dataclasses.dataclass(frozen=True)
- class FragmentMergeRule:
-   """A rule for merging fragments of a computation."""
-@@ -85,16 +84,6 @@ class FragmentMergeRule:
- FragmentMergeRules = Sequence[FragmentMergeRule]
+   TypeSwitch<Operation*>(op)
+       .Case<stablehlo::DotOp>([&](stablehlo::DotOp dotOp) {
+-        processDot(dotOp, shardingProjection, outShardings, rewriter,
+-                   symbolTable, shardingRule, mesh);
++        processDot(dotOp, inShardings, outShardings, rewriter, symbolTable,
++                   shardingRule, mesh);
+       })
+       .Case<stablehlo::DotGeneralOp>([&](stablehlo::DotGeneralOp dotGeneralOp) {
+-        processDot(dotGeneralOp, shardingProjection, outShardings, rewriter,
++        processDot(dotGeneralOp, inShardings, outShardings, rewriter,
+                    symbolTable, shardingRule, mesh);
+       });
  
+diff --git a/shardy/dialect/sdy/transforms/export/reshard_to_collectives.cc b/shardy/dialect/sdy/transforms/export/reshard_to_collectives.cc
+index 845eeab..4e6c593 100644
+--- a/shardy/dialect/sdy/transforms/export/reshard_to_collectives.cc
++++ b/shardy/dialect/sdy/transforms/export/reshard_to_collectives.cc
+@@ -469,8 +469,8 @@ class CollectiveInserter {
+       collectiveAxes = AxisRefListAttr::get(getContext(), gatheringAxes);
+     }
+     if (hasGatheringAxes) {
+-      result = AllGatherOp::create(rewriter, loc, result, collectiveAxesPerDim,
+-                                   getCurrentSharding());
++      result = rewriter.create<AllGatherOp>(loc, result, collectiveAxesPerDim,
++                                            getCurrentSharding());
+     }
+   }
  
--@dataclasses.dataclass(frozen=True)
--class FragmentScheduleRule:
--  """A rule for scheduling fragments of a computation."""
--
--  ordered_fragments: Sequence[FragmentInfo]
--
--
--FragmentScheduleRules = Sequence[FragmentScheduleRule]
--
--
- @dataclasses.dataclass(frozen=True)
- class MpmdConfig:
-   """Config for constructing an MPMD program with PartIR.
-@@ -131,9 +120,6 @@ class MpmdConfig:
-     fragment_merge_rules: A sequence of fragment merge rules. Each merge rule
-       contains a sequence of fragment metadata objects that should be merged
-       into a single fragment, together with metadata for the resulting fragment.
--    fragment_schedule_rules: A sequence of fragment schedule rules. Each
--      schedule rule contains a sequence of fragment metadata objects in the
--      order that they should be scheduled.
-   """
+@@ -484,7 +484,7 @@ class CollectiveInserter {
+   // - Splits A into two sub-axes A1 and A2, such that
+   //   `size(A1) == capacityPerDim[d]`, adds A1 to `inAxesPerDim[d]`, and adds
+   //   A2 back to the front of `getAvailableAxes(d)`.
+-  // - Skips A if it isn't divisible by `capacityPerDim[d]` or vice versa, and
++  // - Skips A if it isn't divisible by `capacityPerDim[d]` or visa versa, and
+   //   adds it back to the front of `getAvailableAxes(d)`.
+   //
+   // For each axis A that is added to `inAxesPerDim[d]`, calls
+@@ -861,8 +861,8 @@ class CollectiveInserter {
+            llvm::zip_equal(collectiveAxesPerDim, *slicingAxesPerDim)) {
+         collectiveAxes = AxisRefListAttr::get(getContext(), slicingAxes);
+       }
+-      result = AllSliceOp::create(rewriter, loc, result, collectiveAxesPerDim,
+-                                  getCurrentSharding());
++      result = rewriter.create<AllSliceOp>(loc, result, collectiveAxesPerDim,
++                                           getCurrentSharding());
+     }
+   }
  
-   topology: Topology
-@@ -144,7 +130,6 @@ class MpmdConfig:
-   partitioning_options: PartitioningOptions | None
-   read_input_output_mesh_from_shardings: bool
-   fragment_merge_rules: FragmentMergeRules | None
--  fragment_schedule_rules: FragmentScheduleRules | None
+@@ -1148,8 +1148,8 @@ class CollectiveInserter {
+     // TODO(b/392797233): if the order of device ids changes, but the input or
+     // output sharding is fully replicated, we can skip the collective permute.
  
-   @property
-   def _spmd_mesh(self) -> jax.sharding.Mesh:
-@@ -213,7 +198,6 @@ def make_config(
-     partitioning_options: PartitioningOptions | None = None,
-     read_input_output_mesh_from_shardings: bool = False,
-     fragment_merge_rules: FragmentMergeRules | None = None,
--    fragment_schedule_rules: FragmentScheduleRules | None = None,
- ) -> MpmdConfig:
-   """Creates a `MpmdConfig`, inferring the tpu topology if not provided.
+-    result = CollectivePermuteOp::create(rewriter, loc, result,
+-                                         getCurrentSharding());
++    result =
++        rewriter.create<CollectivePermuteOp>(loc, result, getCurrentSharding());
+   }
  
-@@ -229,7 +213,6 @@ def make_config(
-     partitioning_options: See `MpmdConfig`.
-     read_input_output_mesh_from_shardings: see `MpmdConfig`.
-     fragment_merge_rules: See `MpmdConfig`.
--    fragment_schedule_rules: See `MpmdConfig`.
+   // TODO(b/392952931): currently we are greedily all-to-all-ing axes even if
+@@ -1291,8 +1291,8 @@ class CollectiveInserter {
+   void tryAllToAlls(bool allowOutOfOrderTarget) {
+     for (int64_t srcDim = 0; srcDim < getRank(); ++srcDim) {
+       while (auto info = getAllToAllInfo(srcDim, allowOutOfOrderTarget)) {
+-        result = AllToAllOp::create(
+-            rewriter, loc, result,
++        result = rewriter.create<AllToAllOp>(
++            loc, result,
+             AllToAllParamAttr::get(rewriter.getContext(), info->axes, srcDim,
+                                    info->tgtDim),
+             getCurrentSharding());
+diff --git a/shardy/dialect/sdy/transforms/propagation/aggressive_propagation.cc b/shardy/dialect/sdy/transforms/propagation/aggressive_propagation.cc
+index 30a4324..a800444 100644
+--- a/shardy/dialect/sdy/transforms/propagation/aggressive_propagation.cc
++++ b/shardy/dialect/sdy/transforms/propagation/aggressive_propagation.cc
+@@ -25,9 +25,9 @@ limitations under the License.
+ #include "mlir/Pass/PassRegistry.h"
+ #include "mlir/Support/LLVM.h"
+ #include "mlir/Support/LogicalResult.h"
+-#include "shardy/dialect/sdy/transforms/common/propagation_options.h"
+ #include "shardy/dialect/sdy/transforms/propagation/basic_propagation.h"
+ #include "shardy/dialect/sdy/transforms/propagation/factor_propagation.h"
++#include "shardy/dialect/sdy/transforms/propagation/passes.h"
+ #include "shardy/dialect/sdy/transforms/propagation/sharding_group_map.h"
  
-   Returns:
-     An `MpmdConfig` object.
-@@ -260,10 +243,6 @@ def make_config(
-     fragment_merge_rules = []
-   validate_fragment_merge_rules(fragment_merge_rules)
+ namespace mlir {
+diff --git a/shardy/dialect/sdy/transforms/propagation/aggressive_propagation.h b/shardy/dialect/sdy/transforms/propagation/aggressive_propagation.h
+index 7b3835e..941cd0e 100644
+--- a/shardy/dialect/sdy/transforms/propagation/aggressive_propagation.h
++++ b/shardy/dialect/sdy/transforms/propagation/aggressive_propagation.h
+@@ -24,9 +24,9 @@ limitations under the License.
+ #include "mlir/Pass/Pass.h"
+ #include "mlir/Support/LLVM.h"
+ #include "mlir/Support/LogicalResult.h"
+-#include "shardy/dialect/sdy/transforms/common/propagation_options.h"
+ #include "shardy/dialect/sdy/transforms/propagation/aggressive_factor_propagation.h"
+ #include "shardy/dialect/sdy/transforms/propagation/basic_propagation.h"
++#include "shardy/dialect/sdy/transforms/propagation/passes.h"
+ #include "shardy/dialect/sdy/transforms/propagation/sharding_group_map.h"
  
--  if fragment_schedule_rules is None:
--    fragment_schedule_rules = []
--  validate_fragment_schedule_rules(fragment_schedule_rules)
--
-   return MpmdConfig(
-       topology,
-       name_to_mesh_assignment,
-@@ -273,7 +252,6 @@ def make_config(
-       partitioning_options,
-       read_input_output_mesh_from_shardings,
-       fragment_merge_rules,
--      fragment_schedule_rules,
-   )
+ namespace mlir {
+diff --git a/shardy/dialect/sdy/transforms/propagation/basic_propagation.cc b/shardy/dialect/sdy/transforms/propagation/basic_propagation.cc
+index 336748e..1c5a9ca 100644
+--- a/shardy/dialect/sdy/transforms/propagation/basic_propagation.cc
++++ b/shardy/dialect/sdy/transforms/propagation/basic_propagation.cc
+@@ -23,6 +23,7 @@ limitations under the License.
+ #include <utility>
  
+ #include "llvm/ADT/STLExtras.h"
++#include "llvm/Support/Threading.h"
+ #include "mlir/Dialect/Func/IR/FuncOps.h"
+ #include "mlir/IR/BuiltinAttributes.h"
+ #include "mlir/IR/BuiltinOps.h"
+@@ -41,8 +42,8 @@ limitations under the License.
+ #include "mlir/Pass/PassRegistry.h"
+ #include "mlir/Support/LLVM.h"
+ #include "mlir/Support/LogicalResult.h"
+-#include "mlir/Support/WalkResult.h"
+ #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
++#include "shardy/common/file_utils.h"
+ #include "shardy/dialect/sdy/ir/dialect.h"
+ #include "shardy/dialect/sdy/ir/enums.h"
+ #include "shardy/dialect/sdy/ir/utils.h"
+@@ -51,6 +52,7 @@ limitations under the License.
+ #include "shardy/dialect/sdy/transforms/propagation/factor_propagation.h"
+ #include "shardy/dialect/sdy/transforms/propagation/op_sharding_rule_builder.h"
+ #include "shardy/dialect/sdy/transforms/propagation/op_sharding_rule_registry.h"
++#include "shardy/dialect/sdy/transforms/propagation/passes.h"
+ #include "shardy/dialect/sdy/transforms/propagation/sharding_group_map.h"
+ #include "shardy/dialect/sdy/transforms/propagation/sharding_projection.h"
  
-@@ -344,30 +322,6 @@ def validate_input_output_mesh_assignments(
-       )
+diff --git a/shardy/dialect/sdy/transforms/propagation/basic_propagation.h b/shardy/dialect/sdy/transforms/propagation/basic_propagation.h
+index de1527e..bfda43c 100644
+--- a/shardy/dialect/sdy/transforms/propagation/basic_propagation.h
++++ b/shardy/dialect/sdy/transforms/propagation/basic_propagation.h
+@@ -34,6 +34,7 @@ limitations under the License.
+ #include "shardy/dialect/sdy/transforms/common/propagation_options.h"
+ #include "shardy/dialect/sdy/transforms/propagation/basic_factor_propagation.h"
+ #include "shardy/dialect/sdy/transforms/propagation/factor_propagation.h"
++#include "shardy/dialect/sdy/transforms/propagation/passes.h"
+ #include "shardy/dialect/sdy/transforms/propagation/sharding_group_map.h"
  
+ namespace mlir {
+diff --git a/shardy/dialect/sdy/transforms/propagation/op_priority_propagation.cc b/shardy/dialect/sdy/transforms/propagation/op_priority_propagation.cc
+index 81d9858..ff05e4f 100644
+--- a/shardy/dialect/sdy/transforms/propagation/op_priority_propagation.cc
++++ b/shardy/dialect/sdy/transforms/propagation/op_priority_propagation.cc
+@@ -34,9 +34,9 @@ limitations under the License.
+ #include "shardy/dialect/sdy/ir/dialect.h"
+ #include "shardy/dialect/sdy/ir/utils.h"
+ #include "shardy/dialect/sdy/transforms/common/op_properties.h"
+-#include "shardy/dialect/sdy/transforms/common/propagation_options.h"
+ #include "shardy/dialect/sdy/transforms/propagation/aggressive_propagation.h"
+ #include "shardy/dialect/sdy/transforms/propagation/basic_propagation.h"
++#include "shardy/dialect/sdy/transforms/propagation/passes.h"
+ #include "shardy/dialect/sdy/transforms/propagation/sharding_group_map.h"
+ #include "shardy/dialect/sdy/transforms/propagation/utils.h"
+ #include "stablehlo/dialect/StablehloOps.h"
+diff --git a/shardy/dialect/sdy/transforms/propagation/op_priority_propagation.h b/shardy/dialect/sdy/transforms/propagation/op_priority_propagation.h
+index b0eecb6..ebd91d8 100644
+--- a/shardy/dialect/sdy/transforms/propagation/op_priority_propagation.h
++++ b/shardy/dialect/sdy/transforms/propagation/op_priority_propagation.h
+@@ -24,9 +24,9 @@ limitations under the License.
+ #include "mlir/Pass/Pass.h"
+ #include "mlir/Support/LLVM.h"
+ #include "mlir/Support/LogicalResult.h"
+-#include "shardy/dialect/sdy/transforms/common/propagation_options.h"
+ #include "shardy/dialect/sdy/transforms/propagation/aggressive_propagation.h"
+ #include "shardy/dialect/sdy/transforms/propagation/basic_propagation.h"
++#include "shardy/dialect/sdy/transforms/propagation/passes.h"
+ #include "shardy/dialect/sdy/transforms/propagation/sharding_group_map.h"
  
--def validate_fragment_rule_origins(
--    fragment_sequence: Sequence[FragmentInfo],
--) -> None:
--  for fragment in fragment_sequence:
--    if not fragment.origins:
--      raise ValueError(
--          f'Each fragment must have at least one origin, but got {fragment} in'
--          f' {fragment_sequence}.'
--      )
--
--
--def validate_fragment_rule_meshes(
--    fragment_sequence: Sequence[FragmentInfo],
--) -> None:
--  first_mesh = fragment_sequence[0].mesh_name
--  if not all(
--      fragment.mesh_name == first_mesh for fragment in fragment_sequence
--  ):
--    raise ValueError(
--        'Fragments being merged/scheduled must be on the same mesh, but got'
--        f' {fragment_sequence}.'
--    )
--
--
- def validate_fragment_merge_rules(
-     fragment_merge_rules: FragmentMergeRules,
- ) -> None:
-@@ -379,8 +333,12 @@ def validate_fragment_merge_rules(
-           'Fragment merge rule must contain at least two source fragments, but'
-           f' got {rule}.'
-       )
--    validate_fragment_rule_origins(rule.sources)
--    validate_fragment_rule_meshes(rule.sources)
-+    for fragment in rule.sources:
-+      if not fragment.origins:
-+        raise ValueError(
-+            'Each source fragment must have at least one origin, but got'
-+            f' {rule}.'
-+        )
+ namespace mlir {
+diff --git a/shardy/dialect/sdy/transforms/propagation/user_priority_propagation.cc b/shardy/dialect/sdy/transforms/propagation/user_priority_propagation.cc
+index f7571a6..7c3f9fa 100644
+--- a/shardy/dialect/sdy/transforms/propagation/user_priority_propagation.cc
++++ b/shardy/dialect/sdy/transforms/propagation/user_priority_propagation.cc
+@@ -37,10 +37,10 @@ limitations under the License.
+ #include "mlir/Support/LogicalResult.h"
+ #include "shardy/common/file_utils.h"
+ #include "shardy/dialect/sdy/ir/dialect.h"
+-#include "shardy/dialect/sdy/transforms/common/propagation_options.h"
+ #include "shardy/dialect/sdy/transforms/common/sharding_walker.h"
+ #include "shardy/dialect/sdy/transforms/propagation/basic_propagation.h"
+ #include "shardy/dialect/sdy/transforms/propagation/op_priority_propagation.h"
++#include "shardy/dialect/sdy/transforms/propagation/passes.h"
+ #include "shardy/dialect/sdy/transforms/propagation/sharding_group_map.h"
  
-     if not rule.target.origins:
-       raise ValueError(
-@@ -388,21 +346,6 @@ def validate_fragment_merge_rules(
-       )
+ namespace mlir {
+diff --git a/shardy/dialect/sdy/transforms/propagation/user_priority_propagation.h b/shardy/dialect/sdy/transforms/propagation/user_priority_propagation.h
+index 061d7ad..c59c923 100644
+--- a/shardy/dialect/sdy/transforms/propagation/user_priority_propagation.h
++++ b/shardy/dialect/sdy/transforms/propagation/user_priority_propagation.h
+@@ -23,9 +23,9 @@ limitations under the License.
+ #include "mlir/Pass/Pass.h"
+ #include "mlir/Support/LLVM.h"
+ #include "mlir/Support/LogicalResult.h"
+-#include "shardy/dialect/sdy/transforms/common/propagation_options.h"
+ #include "shardy/dialect/sdy/transforms/propagation/basic_propagation.h"
+ #include "shardy/dialect/sdy/transforms/propagation/op_priority_propagation.h"
++#include "shardy/dialect/sdy/transforms/propagation/passes.h"
+ #include "shardy/dialect/sdy/transforms/propagation/sharding_group_map.h"
  
- 
--def validate_fragment_schedule_rules(
--    fragment_schedule_rules: FragmentScheduleRules,
--) -> None:
--  """Validates the fragment schedule rules."""
--  for rule in fragment_schedule_rules:
--    if len(rule.ordered_fragments) < 2:
--      raise ValueError(
--          'Fragment schedule rule must contain at least two fragments, but'
--          f' got {rule}.'
--      )
--
--    validate_fragment_rule_origins(rule.ordered_fragments)
--    validate_fragment_rule_meshes(rule.ordered_fragments)
--
--
- def mesh_names(
-     pytree: PyTree[
-         jax.Array
+ namespace mlir {
 diff --git a/third_party/llvm/generated.patch b/third_party/llvm/generated.patch
-index 9fa7155..509398d 100644
+index 509398d..7731e08 100644
 --- a/third_party/llvm/generated.patch
 +++ b/third_party/llvm/generated.patch
-@@ -1,877 +1 @@
+@@ -1 +1,45 @@
  Auto generated patch. Do not edit or delete it, even if empty.
--diff -ruN --strip-trailing-cr a/libcxx/include/ext/hash_set b/libcxx/include/ext/hash_set
----- a/libcxx/include/ext/hash_set
--+++ b/libcxx/include/ext/hash_set
--@@ -534,10 +534,7 @@
-- }
-- 
-- template <class _Value, class _Hash, class _Pred, class _Alloc>
---hash_multiset<_Value, _Hash, _Pred, _Alloc>::hash_multiset(const hash_multiset& __u) : __table_(__u.__table_) {
---  __table_.__rehash_multi(__u.bucket_count());
---  insert(__u.begin(), __u.end());
---}
--+hash_multiset<_Value, _Hash, _Pred, _Alloc>::hash_multiset(const hash_multiset& __u) : __table_(__u.__table_) {}
-- 
-- template <class _Value, class _Hash, class _Pred, class _Alloc>
-- template <class _InputIterator>
--diff -ruN --strip-trailing-cr a/libcxx/test/extensions/gnu/hash_multiset/copy.pass.cpp b/libcxx/test/extensions/gnu/hash_multiset/copy.pass.cpp
----- a/libcxx/test/extensions/gnu/hash_multiset/copy.pass.cpp
--+++ b/libcxx/test/extensions/gnu/hash_multiset/copy.pass.cpp
--@@ -0,0 +1,27 @@
--+//===----------------------------------------------------------------------===//
--+//
--+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
--+// See https://llvm.org/LICENSE.txt for license information.
--+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
--+//
--+//===----------------------------------------------------------------------===//
--+
--+// ADDITIONAL_COMPILE_FLAGS: -Wno-deprecated
--+
--+// hash_multiset::hash_multiset(const hash_multiset&)
--+
--+#include <cassert>
--+#include <ext/hash_set>
--+
--+int main(int, char**) {
--+  __gnu_cxx::hash_multiset<int> set;
--+
--+  set.insert(1);
--+  set.insert(1);
--+
--+  auto set2 = set;
--+
--+  assert(set2.size() == 2);
--+
--+  return 0;
--+}
--diff -ruN --strip-trailing-cr a/llvm/lib/CodeGen/AsmPrinter/DwarfExpression.cpp b/llvm/lib/CodeGen/AsmPrinter/DwarfExpression.cpp
----- a/llvm/lib/CodeGen/AsmPrinter/DwarfExpression.cpp
--+++ b/llvm/lib/CodeGen/AsmPrinter/DwarfExpression.cpp
--@@ -154,7 +154,7 @@
--     unsigned Size = TRI.getSubRegIdxSize(Idx);
--     unsigned Offset = TRI.getSubRegIdxOffset(Idx);
--     Reg = TRI.getDwarfRegNum(SR, false);
---    if (Reg < 0)
--+    if (Reg < 0 || Offset + Size > RegSize)
--       continue;
-- 
--     // Used to build the intersection between the bits we already
--diff -ruN --strip-trailing-cr a/llvm/lib/Transforms/Vectorize/VPlan.h b/llvm/lib/Transforms/Vectorize/VPlan.h
----- a/llvm/lib/Transforms/Vectorize/VPlan.h
--+++ b/llvm/lib/Transforms/Vectorize/VPlan.h
--@@ -705,6 +705,9 @@
--   VPIRFlags(WrapFlagsTy WrapFlags)
--       : OpType(OperationType::OverflowingBinOp), WrapFlags(WrapFlags) {}
-- 
--+  VPIRFlags(TruncFlagsTy TruncFlags)
--+      : OpType(OperationType::Trunc), TruncFlags(TruncFlags) {}
--+
--   VPIRFlags(FastMathFlags FMFs) : OpType(OperationType::FPMathOp), FMFs(FMFs) {}
-- 
--   VPIRFlags(DisjointFlagsTy DisjointFlags)
--@@ -1494,9 +1497,10 @@
-- 
--   VPWidenCastRecipe(Instruction::CastOps Opcode, VPValue *Op, Type *ResultTy,
--                     const VPIRFlags &Flags = {},
--+                    const VPIRMetadata &Metadata = {},
--                     DebugLoc DL = DebugLoc::getUnknown())
--       : VPRecipeWithIRFlags(VPDef::VPWidenCastSC, Op, Flags, DL),
---        VPIRMetadata(), Opcode(Opcode), ResultTy(ResultTy) {
--+        VPIRMetadata(Metadata), Opcode(Opcode), ResultTy(ResultTy) {
--     assert(flagsValidForOpcode(Opcode) &&
--            "Set flags not supported for the provided opcode");
--   }
--@@ -1504,11 +1508,11 @@
--   ~VPWidenCastRecipe() override = default;
-- 
--   VPWidenCastRecipe *clone() override {
--+    auto *New = new VPWidenCastRecipe(Opcode, getOperand(0), ResultTy, *this,
--+                                      *this, getDebugLoc());
--     if (auto *UV = getUnderlyingValue())
---      return new VPWidenCastRecipe(Opcode, getOperand(0), ResultTy,
---                                   *cast<CastInst>(UV));
---
---    return new VPWidenCastRecipe(Opcode, getOperand(0), ResultTy);
--+      New->setUnderlyingValue(UV);
--+    return New;
--   }
-- 
--   VP_CLASSOF_IMPL(VPDef::VPWidenCastSC)
--diff -ruN --strip-trailing-cr a/llvm/lib/Transforms/Vectorize/VPlanRecipes.cpp b/llvm/lib/Transforms/Vectorize/VPlanRecipes.cpp
----- a/llvm/lib/Transforms/Vectorize/VPlanRecipes.cpp
--+++ b/llvm/lib/Transforms/Vectorize/VPlanRecipes.cpp
--@@ -2016,13 +2016,13 @@
--     return Opcode == Instruction::FAdd || Opcode == Instruction::FMul ||
--            Opcode == Instruction::FSub || Opcode == Instruction::FNeg ||
--            Opcode == Instruction::FDiv || Opcode == Instruction::FRem ||
--+           Opcode == Instruction::FPExt || Opcode == Instruction::FPTrunc ||
--            Opcode == Instruction::FCmp || Opcode == Instruction::Select ||
--            Opcode == VPInstruction::WideIVStep ||
--            Opcode == VPInstruction::ReductionStartVector ||
--            Opcode == VPInstruction::ComputeReductionResult;
--   case OperationType::NonNegOp:
---    return Opcode == Instruction::ZExt;
---    break;
--+    return Opcode == Instruction::ZExt || Opcode == Instruction::UIToFP;
--   case OperationType::Cmp:
--     return Opcode == Instruction::FCmp || Opcode == Instruction::ICmp;
--   case OperationType::Other:
--diff -ruN --strip-trailing-cr a/llvm/lib/Transforms/Vectorize/VPlanTransforms.cpp b/llvm/lib/Transforms/Vectorize/VPlanTransforms.cpp
----- a/llvm/lib/Transforms/Vectorize/VPlanTransforms.cpp
--+++ b/llvm/lib/Transforms/Vectorize/VPlanTransforms.cpp
--@@ -2195,7 +2195,8 @@
--         auto [ProcessedIter, IterIsEmpty] = ProcessedTruncs.try_emplace(Op);
--         VPWidenCastRecipe *NewOp =
--             IterIsEmpty
---                ? new VPWidenCastRecipe(Instruction::Trunc, Op, NewResTy)
--+                ? new VPWidenCastRecipe(Instruction::Trunc, Op, NewResTy,
--+                                        VPIRFlags::TruncFlagsTy(false, false))
--                 : ProcessedIter->second;
--         R.setOperand(Idx, NewOp);
--         if (!IterIsEmpty)
--@@ -3566,13 +3567,13 @@
--                                    Mul, Ext0, Ext1, Ext)) {
--       auto *NewExt0 = new VPWidenCastRecipe(
--           Ext0->getOpcode(), Ext0->getOperand(0), Ext->getResultType(), *Ext0,
---          Ext0->getDebugLoc());
--+          *Ext0, Ext0->getDebugLoc());
--       NewExt0->insertBefore(Ext0);
-- 
--       VPWidenCastRecipe *NewExt1 = NewExt0;
--       if (Ext0 != Ext1) {
--         NewExt1 = new VPWidenCastRecipe(Ext1->getOpcode(), Ext1->getOperand(0),
---                                        Ext->getResultType(), *Ext1,
--+                                        Ext->getResultType(), *Ext1, *Ext1,
--                                         Ext1->getDebugLoc());
--         NewExt1->insertBefore(Ext1);
--       }
--diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/AArch64/debug-info-sve-pair.mir b/llvm/test/CodeGen/AArch64/debug-info-sve-pair.mir
----- a/llvm/test/CodeGen/AArch64/debug-info-sve-pair.mir
--+++ b/llvm/test/CodeGen/AArch64/debug-info-sve-pair.mir
--@@ -0,0 +1,344 @@
--+# RUN: llc -start-before=aarch64-asm-printer -o - %s | FileCheck %s
--+
--+# Check that z30_z31 debug info does not crash.
--+
--+# CHECK: .Ldebug_loc0:
--+# CHECK:        .byte   4                               // DW_LLE_offset_pair
--+# CHECK:        .uleb128 .Ltmp2-.Lfunc_begin0           //   starting offset
--+# CHECK:        .uleb128 .Ltmp3-.Lfunc_begin0           //   ending offset
--+# CHECK:        .byte   2                               // Loc expr size
--+# CHECK:        .byte   144                             // DW_OP_regx
--+# CHECK:        .byte   126                             // 126
--+# CHECK:        .byte   4                               // DW_LLE_offset_pair
--+# CHECK:        .uleb128 .Ltmp3-.Lfunc_begin0           //   starting offset
--+# CHECK:        .uleb128 .Lfunc_end0-.Lfunc_begin0      //   ending offset
--+# CHECK:        .byte   6                               // Loc expr size
--+# CHECK:        .byte   144                             // sub-register DW_OP_regx
--+# CHECK:        .byte   94                              // 94
--+# CHECK:        .byte   147                             // DW_OP_piece
--+# CHECK:        .byte   16                              // 16
--+# CHECK:        .byte   147                             // DW_OP_piece
--+# CHECK:        .byte   31                              // 31
--+# CHECK:        .byte   0                               // DW_LLE_end_of_list
--+
--+
--+--- |
--+  target datalayout = "e-m:e-p270:32:32-p271:32:32-p272:64:64-i8:8:32-i16:16:32-i64:64-i128:128-n32:64-S128-Fn32"
--+  target triple = "aarch64"
--+
--+  define void @_Z10Sort16RowsILi6EEv12SharedTraitsI10TraitsLaneEP22Trans_NS_hwy_float16_tiS4_(i8 %st.coerce, ptr noundef %keys, i32 noundef %0, ptr noundef %1) #2 !dbg !2 {
--+      unreachable
--+  }
--+
--+  attributes #2 = { mustprogress uwtable vscale_range(1,16) "frame-pointer"="non-leaf" "no-trapping-math"="true" "stack-protector-buffer-size"="8" "target-cpu"="neoverse-n1" "target-features"="+aes,+crc,+dotprod,+fp-armv8,+fullfp16,+lse,+neon,+perfmon,+ras,+rcpc,+rdm,+sha2,+spe,+ssbs,+sve,+sve-aes,+sve2,+sve2-aes,+v8.1a,+v8.2a,+v8a,-fmv" "tune-cpu"="generic" }
--+
--+  !llvm.dbg.cu = !{!3}
--+  !llvm.module.flags = !{!4, !5, !6, !7, !8, !9}
--+  !llvm.ident = !{!10}
--+
--+  !2 = distinct !DISubprogram(name: "Sort16Rows<6>", linkageName: "_Z10Sort16RowsILi6EEv12SharedTraitsI10TraitsLaneEP22Trans_NS_hwy_float16_tiS4_", scope: !12, file: !12, line: 369, type: !18, scopeLine: 370, flags: DIFlagPrototyped | DIFlagAllCallsDescribed, spFlags: DISPFlagDefinition | DISPFlagOptimized, unit: !3, templateParams: !19, retainedNodes: !20, keyInstructions: true)
--+  !3 = distinct !DICompileUnit(language: DW_LANG_C_plus_plus_14, file: !14, producer: "clang version 22.0.0git (https://github.com/llvm/llvm-project.git)", isOptimized: true, runtimeVersion: 0, emissionKind: FullDebug, splitDebugInlining: false, nameTableKind: None)
--+  !4 = !{i32 7, !"Dwarf Version", i32 5}
--+  !5 = !{i32 2, !"Debug Info Version", i32 3}
--+  !6 = !{i32 1, !"wchar_size", i32 4}
--+  !7 = !{i32 7, !"uwtable", i32 2}
--+  !8 = !{i32 7, !"frame-pointer", i32 1}
--+  !9 = !{i32 7, !"debug-info-assignment-tracking", i1 true}
--+  !10 = !{!"clang version 22.0.0git (https://github.com/llvm/llvm-project.git)"}
--+  !12 = !DIFile(filename: "example.cpp", directory: "/app", checksumkind: CSK_MD5, checksum: "5fbaafea0ede06ddd1ffc371aeee276e")
--+  !14 = !DIFile(filename: "/app/example.cpp", directory: "/app", checksumkind: CSK_MD5, checksum: "5fbaafea0ede06ddd1ffc371aeee276e")
--+  !17 = !DIBasicType(name: "__fp16", size: 16, encoding: DW_ATE_float)
--+  !18 = !DISubroutineType(types: !21)
--+  !19 = !{!120}
--+  !20 = !{!77, !78, !79, !80, !81, !82, !83, !84, !85, !86, !87, !88, !89, !90, !91, !92, !93, !94, !95, !96, !97, !98, !99, !100, !101, !102, !103, !104, !105}
--+  !21 = !{null, !22, !23, !24, !23}
--+  !22 = distinct !DICompositeType(tag: DW_TAG_structure_type, name: "SharedTraits<TraitsLane>", file: !12, line: 272, size: 8, flags: DIFlagTypePassByValue, elements: !25, templateParams: !26, identifier: "_ZTS12SharedTraitsI10TraitsLaneE")
--+  !23 = !DIDerivedType(tag: DW_TAG_pointer_type, baseType: !55, size: 64)
--+  !24 = !DIBasicType(name: "int", size: 32, encoding: DW_ATE_signed)
--+  !25 = !{!27}
--+  !26 = !{!76}
--+  !27 = !DIDerivedType(tag: DW_TAG_inheritance, scope: !22, baseType: !28, extraData: i32 0)
--+  !28 = distinct !DICompositeType(tag: DW_TAG_structure_type, name: "TraitsLane", file: !12, line: 325, size: 8, flags: DIFlagTypePassByValue, elements: !29, identifier: "_ZTS10TraitsLane")
--+  !29 = !{!30, !31, !32, !33}
--+  !30 = !DIDerivedType(tag: DW_TAG_inheritance, scope: !28, baseType: !34, extraData: i32 0)
--+  !31 = !DISubprogram(name: "Sort2", linkageName: "_ZN10TraitsLane5Sort2E4SimdI22Trans_NS_hwy_float16_tLi1ELi0EERu13__SVFloat16_tS4_", scope: !28, file: !12, line: 326, type: !70, scopeLine: 326, flags: DIFlagPrototyped, spFlags: DISPFlagOptimized)
--+  !32 = !DISubprogram(name: "SortPairsDistance1", linkageName: "_ZN10TraitsLane18SortPairsDistance1E4SimdI22Trans_NS_hwy_float16_tLi1ELi0EEu13__SVFloat16_t", scope: !28, file: !12, line: 344, type: !74, scopeLine: 344, flags: DIFlagPrototyped, spFlags: DISPFlagOptimized)
--+  !33 = !DISubprogram(name: "SortPairsDistance4", linkageName: "_ZN10TraitsLane18SortPairsDistance4E4SimdI22Trans_NS_hwy_float16_tLi1ELi0EEu13__SVFloat16_t", scope: !28, file: !12, line: 352, type: !74, scopeLine: 352, flags: DIFlagPrototyped, spFlags: DISPFlagOptimized)
--+  !34 = distinct !DICompositeType(tag: DW_TAG_structure_type, name: "KeyLane", file: !12, line: 307, size: 8, flags: DIFlagTypePassByValue, elements: !35, identifier: "_ZTS7KeyLane")
--+  !35 = !{!36, !37, !38}
--+  !36 = !DISubprogram(name: "SwapAdjacentPairs", linkageName: "_ZN7KeyLane17SwapAdjacentPairsE4SimdI22Trans_NS_hwy_float16_tLi1ELi0EEu13__SVFloat16_t", scope: !34, file: !12, line: 309, type: !39, scopeLine: 309, flags: DIFlagPrototyped, spFlags: DISPFlagOptimized)
--+  !37 = !DISubprogram(name: "SwapAdjacentPairs", linkageName: "_ZN7KeyLane17SwapAdjacentPairsEu13__SVFloat32_t", scope: !34, file: !12, line: 314, type: !58, scopeLine: 314, flags: DIFlagPrototyped, spFlags: DISPFlagOptimized)
--+  !38 = !DISubprogram(name: "OddEvenPairs", linkageName: "_ZN7KeyLane12OddEvenPairsE4SimdI22Trans_NS_hwy_float16_tLi1ELi0EEu13__SVFloat16_tS3_", scope: !34, file: !12, line: 318, type: !68, scopeLine: 318, flags: DIFlagPrototyped, spFlags: DISPFlagOptimized)
--+  !39 = !DISubroutineType(types: !40)
--+  !40 = !{!41, !42, !43, !41}
--+  !41 = !DIDerivedType(tag: DW_TAG_typedef, name: "Vec<Simd<Trans_NS_hwy_float16_t, 1, 0> >", file: !12, line: 270, baseType: !44)
--+  !42 = !DIDerivedType(tag: DW_TAG_pointer_type, baseType: !34, size: 64, flags: DIFlagArtificial | DIFlagObjectPointer)
--+  !43 = distinct !DICompositeType(tag: DW_TAG_structure_type, name: "Simd<Trans_NS_hwy_float16_t, 1, 0>", file: !12, line: 83, size: 8, flags: DIFlagTypePassByValue, elements: !50, templateParams: !51, identifier: "_ZTS4SimdI22Trans_NS_hwy_float16_tLi1ELi0EE")
--+  !44 = !DIDerivedType(tag: DW_TAG_typedef, name: "VFromD<Simd<Trans_NS_hwy_float16_t, 1, 0> >", file: !12, line: 142, baseType: !45)
--+  !45 = !DIDerivedType(tag: DW_TAG_typedef, name: "svfloat16_t", file: !12, line: 26, baseType: !46)
--+  !46 = !DIDerivedType(tag: DW_TAG_typedef, name: "__SVFloat16_t", file: !12, baseType: !47)
--+  !47 = !DICompositeType(tag: DW_TAG_array_type, baseType: !17, flags: DIFlagVector, elements: !48)
--+  !48 = !{!49}
--+  !49 = !DISubrange(lowerBound: 0, upperBound: !DIExpression(DW_OP_constu, 4, DW_OP_bregx, 46, 0, DW_OP_mul, DW_OP_constu, 1, DW_OP_minus))
--+  !50 = !{}
--+  !51 = !{!52, !53, !54}
--+  !52 = !DITemplateTypeParameter(name: "Lane", type: !55)
--+  !53 = !DITemplateValueParameter(type: !24, value: i32 1)
--+  !54 = !DITemplateValueParameter(name: "kPow2", type: !24, value: i32 0)
--+  !55 = distinct !DICompositeType(tag: DW_TAG_structure_type, name: "Trans_NS_hwy_float16_t", file: !12, line: 6, size: 16, flags: DIFlagTypePassByValue, elements: !56, identifier: "_ZTS22Trans_NS_hwy_float16_t")
--+  !56 = !{!57}
--+  !57 = !DIDerivedType(tag: DW_TAG_member, name: "native", scope: !55, file: !12, line: 7, baseType: !17, size: 16)
--+  !58 = !DISubroutineType(types: !59)
--+  !59 = !{!60, !42, !60}
--+  !60 = !DIDerivedType(tag: DW_TAG_typedef, name: "Vec<Simd<float, 0, 0> >", file: !12, line: 270, baseType: !61)
--+  !61 = !DIDerivedType(tag: DW_TAG_typedef, name: "VFromD<Simd<float, 0, 0> >", file: !12, line: 142, baseType: !62)
--+  !62 = !DIDerivedType(tag: DW_TAG_typedef, name: "svfloat32_t", file: !12, line: 27, baseType: !63)
--+  !63 = !DIDerivedType(tag: DW_TAG_typedef, name: "__SVFloat32_t", file: !12, baseType: !64)
--+  !64 = !DICompositeType(tag: DW_TAG_array_type, baseType: !65, flags: DIFlagVector, elements: !66)
--+  !65 = !DIBasicType(name: "float", size: 32, encoding: DW_ATE_float)
--+  !66 = !{!67}
--+  !67 = !DISubrange(lowerBound: 0, upperBound: !DIExpression(DW_OP_constu, 2, DW_OP_bregx, 46, 0, DW_OP_mul, DW_OP_constu, 1, DW_OP_minus))
--+  !68 = !DISubroutineType(types: !69)
--+  !69 = !{!41, !42, !43, !41, !41}
--+  !70 = !DISubroutineType(types: !71)
--+  !71 = !{null, !72, !43, !73, !73}
--+  !72 = !DIDerivedType(tag: DW_TAG_pointer_type, baseType: !28, size: 64, flags: DIFlagArtificial | DIFlagObjectPointer)
--+  !73 = !DIDerivedType(tag: DW_TAG_reference_type, baseType: !41, size: 64)
--+  !74 = !DISubroutineType(types: !75)
--+  !75 = !{!41, !72, !43, !41}
--+  !76 = !DITemplateTypeParameter(name: "Base", type: !28)
--+  !77 = !DILocalVariable(name: "st", arg: 1, scope: !2, file: !12, line: 369, type: !22)
--+  !78 = !DILocalVariable(name: "keys", arg: 2, scope: !2, file: !12, line: 369, type: !23)
--+  !79 = !DILocalVariable(arg: 3, scope: !2, file: !12, line: 369, type: !24)
--+  !80 = !DILocalVariable(arg: 4, scope: !2, file: !12, line: 370, type: !23)
--+  !81 = !DILocalVariable(name: "d", scope: !2, file: !12, line: 371, type: !106)
--+  !82 = !DILocalVariable(name: "v8", scope: !2, file: !12, line: 373, type: !112)
--+  !83 = !DILocalVariable(name: "v9", scope: !2, file: !12, line: 373, type: !112)
--+  !84 = !DILocalVariable(name: "va", scope: !2, file: !12, line: 373, type: !112)
--+  !85 = !DILocalVariable(name: "vb", scope: !2, file: !12, line: 373, type: !112)
--+  !86 = !DILocalVariable(name: "vc", scope: !2, file: !12, line: 373, type: !112)
--+  !87 = !DILocalVariable(name: "vd", scope: !2, file: !12, line: 373, type: !112)
--+  !88 = !DILocalVariable(name: "ve", scope: !2, file: !12, line: 373, type: !112)
--+  !89 = !DILocalVariable(name: "vf", scope: !2, file: !12, line: 373, type: !112)
--+  !90 = !DILocalVariable(name: "v2", scope: !2, file: !12, line: 373, type: !112)
--+  !91 = !DILocalVariable(name: "v4", scope: !2, file: !12, line: 373, type: !112)
--+  !92 = !DILocalVariable(name: "v7", scope: !2, file: !12, line: 373, type: !112)
--+  !93 = !DILocalVariable(name: "v0", scope: !2, file: !12, line: 374, type: !112)
--+  !94 = !DILocalVariable(name: "v3", scope: !2, file: !12, line: 375, type: !112)
--+  !95 = !DILocalVariable(name: "v5", scope: !2, file: !12, line: 376, type: !112)
--+  !96 = !DILocalVariable(name: "v6", scope: !2, file: !12, line: 377, type: !112)
--+  !97 = !DILocalVariable(name: "kIota", scope: !2, file: !12, line: 378, type: !112)
--+  !98 = !DILocalVariable(name: "m8", scope: !2, file: !12, line: 379, type: !113)
--+  !99 = !DILocalVariable(name: "m9", scope: !2, file: !12, line: 380, type: !113)
--+  !100 = !DILocalVariable(name: "ma", scope: !2, file: !12, line: 381, type: !113)
--+  !101 = !DILocalVariable(name: "mb", scope: !2, file: !12, line: 382, type: !113)
--+  !102 = !DILocalVariable(name: "mc", scope: !2, file: !12, line: 383, type: !113)
--+  !103 = !DILocalVariable(name: "md", scope: !2, file: !12, line: 384, type: !113)
--+  !104 = !DILocalVariable(name: "me", scope: !2, file: !12, line: 385, type: !113)
--+  !105 = !DILocalVariable(name: "mf", scope: !2, file: !12, line: 386, type: !113)
--+  !106 = !DIDerivedType(tag: DW_TAG_typedef, name: "CappedTag<Trans_NS_hwy_float16_t, 6>", file: !12, line: 97, baseType: !107)
--+  !107 = !DIDerivedType(tag: DW_TAG_typedef, name: "type", scope: !108, file: !12, line: 89, baseType: !43)
--+  !108 = distinct !DICompositeType(tag: DW_TAG_structure_type, name: "ClampNAndPow2<Trans_NS_hwy_float16_t, 1>", file: !12, line: 88, size: 8, flags: DIFlagTypePassByValue, elements: !50, templateParams: !109, identifier: "_ZTS13ClampNAndPow2I22Trans_NS_hwy_float16_tLi1EE")
--+  !109 = !{!110, !111}
--+  !110 = !DITemplateTypeParameter(name: "T", type: !55)
--+  !111 = !DITemplateValueParameter(name: "N", type: !24, value: i32 1)
--+  !112 = !DIDerivedType(tag: DW_TAG_typedef, name: "V", scope: !2, file: !12, line: 372, baseType: !41)
--+  !113 = !DIDerivedType(tag: DW_TAG_typedef, name: "Mask<Simd<Trans_NS_hwy_float16_t, 1, 0> >", file: !12, line: 271, baseType: !114)
--+  !114 = !DIDerivedType(tag: DW_TAG_typedef, name: "svbool_t", file: !12, line: 28, baseType: !115)
--+  !115 = !DIDerivedType(tag: DW_TAG_typedef, name: "__SVBool_t", file: !12, baseType: !116)
--+  !116 = !DICompositeType(tag: DW_TAG_array_type, baseType: !117, flags: DIFlagVector, elements: !118)
--+  !117 = !DIBasicType(name: "unsigned char", size: 8, encoding: DW_ATE_unsigned_char)
--+  !118 = !{!119}
--+  !119 = !DISubrange(lowerBound: 0, upperBound: !DIExpression(DW_OP_constu, 1, DW_OP_bregx, 46, 0, DW_OP_mul, DW_OP_constu, 1, DW_OP_minus))
--+  !120 = !DITemplateValueParameter(name: "kKeysPerRow", type: !24, value: i32 6)
--+  !121 = !DILocalVariable(name: "this", arg: 1, scope: !122, type: !123, flags: DIFlagArtificial | DIFlagObjectPointer)
--+  !122 = distinct !DISubprogram(name: "Sort2", linkageName: "_ZN10TraitsLane5Sort2E4SimdI22Trans_NS_hwy_float16_tLi1ELi0EERu13__SVFloat16_tS4_", scope: !28, file: !12, line: 326, type: !70, scopeLine: 328, flags: DIFlagPrototyped | DIFlagAllCallsDescribed, spFlags: DISPFlagDefinition | DISPFlagOptimized, unit: !3, declaration: !31, retainedNodes: !124, keyInstructions: true)
--+  !123 = !DIDerivedType(tag: DW_TAG_pointer_type, baseType: !28, size: 64)
--+  !124 = !{!121, !125, !126, !127, !128, !129, !130, !131, !132}
--+  !125 = !DILocalVariable(name: "d", arg: 2, scope: !122, file: !12, line: 326, type: !43)
--+  !126 = !DILocalVariable(name: "a", arg: 3, scope: !122, file: !12, line: 327, type: !73)
--+  !127 = !DILocalVariable(name: "b", arg: 4, scope: !122, file: !12, line: 328, type: !73)
--+  !128 = !DILocalVariable(name: "__trans_tmp_52", scope: !122, file: !12, line: 329, type: !41)
--+  !129 = !DILocalVariable(name: "a_copy", scope: !122, file: !12, line: 329, type: !41)
--+  !130 = !DILocalVariable(name: "__trans_tmp_45", scope: !122, file: !12, line: 330, type: !41)
--+  !131 = !DILocalVariable(name: "__trans_tmp_53", scope: !133, file: !12, line: 334, type: !41)
--+  !132 = !DILocalVariable(name: "__trans_tmp_29", scope: !134, file: !12, line: 336, type: !45)
--+  !133 = distinct !DILexicalBlock(scope: !122, file: !12, line: 333, column: 5)
--+  !134 = distinct !DILexicalBlock(scope: !133, file: !12, line: 335, column: 7)
--+  !137 = distinct !DISubprogram(name: "SortPairsDistance1", linkageName: "_ZN10TraitsLane18SortPairsDistance1E4SimdI22Trans_NS_hwy_float16_tLi1ELi0EEu13__SVFloat16_t", scope: !28, file: !12, line: 344, type: !74, scopeLine: 345, flags: DIFlagPrototyped | DIFlagAllCallsDescribed, spFlags: DISPFlagDefinition | DISPFlagOptimized, unit: !3, declaration: !32, retainedNodes: !139, keyInstructions: true)
--+  !139 = !{!140, !141, !142, !143}
--+  !140 = !DILocalVariable(name: "this", arg: 1, scope: !137, type: !123, flags: DIFlagArtificial | DIFlagObjectPointer)
--+  !141 = !DILocalVariable(name: "d", arg: 2, scope: !137, file: !12, line: 344, type: !43)
--+  !142 = !DILocalVariable(name: "v", arg: 3, scope: !137, file: !12, line: 345, type: !41)
--+  !143 = !DILocalVariable(name: "__trans_tmp_48", scope: !137, file: !12, line: 346, type: !41)
--+  !144 = distinct !DISubprogram(name: "Merge16x16<6, SharedTraits<TraitsLane>, __SVFloat16_t>", linkageName: "_Z10Merge16x16ILi6E12SharedTraitsI10TraitsLaneEu13__SVFloat16_tEvT0_RT1_S6_S6_S6_S6_S6_S6_S6_S6_S6_S6_S6_", scope: !12, file: !12, line: 286, type: !146, scopeLine: 288, flags: DIFlagPrototyped | DIFlagAllCallsDescribed, spFlags: DISPFlagDefinition | DISPFlagOptimized, unit: !3, templateParams: !147, retainedNodes: !148, keyInstructions: true)
--+  !145 = distinct !DILocation(line: 388, column: 3, scope: !2)
--+  !146 = !DISubroutineType(types: !149)
--+  !147 = !{!164, !165, !166}
--+  !148 = !{!151, !152, !153, !154, !155, !156, !157, !158, !159, !160, !161, !162, !163}
--+  !149 = !{null, !22, !150, !150, !150, !150, !150, !150, !150, !150, !150, !150, !150, !150}
--+  !150 = !DIDerivedType(tag: DW_TAG_reference_type, baseType: !47, size: 64)
--+  !151 = !DILocalVariable(name: "st", arg: 1, scope: !144, file: !12, line: 286, type: !22)
--+  !152 = !DILocalVariable(name: "v0", arg: 2, scope: !144, file: !12, line: 286, type: !150)
--+  !153 = !DILocalVariable(name: "v2", arg: 3, scope: !144, file: !12, line: 286, type: !150)
--+  !154 = !DILocalVariable(name: "v5", arg: 4, scope: !144, file: !12, line: 286, type: !150)
--+  !155 = !DILocalVariable(name: "v6", arg: 5, scope: !144, file: !12, line: 287, type: !150)
--+  !156 = !DILocalVariable(name: "v7", arg: 6, scope: !144, file: !12, line: 287, type: !150)
--+  !157 = !DILocalVariable(name: "v9", arg: 7, scope: !144, file: !12, line: 287, type: !150)
--+  !158 = !DILocalVariable(name: "va", arg: 8, scope: !144, file: !12, line: 287, type: !150)
--+  !159 = !DILocalVariable(name: "vb", arg: 9, scope: !144, file: !12, line: 287, type: !150)
--+  !160 = !DILocalVariable(name: "vc", arg: 10, scope: !144, file: !12, line: 288, type: !150)
--+  !161 = !DILocalVariable(name: "vd", arg: 11, scope: !144, file: !12, line: 288, type: !150)
--+  !162 = !DILocalVariable(name: "ve", arg: 12, scope: !144, file: !12, line: 288, type: !150)
--+  !163 = !DILocalVariable(name: "vf", arg: 13, scope: !144, file: !12, line: 288, type: !150)
--+  !164 = !DITemplateValueParameter(type: !24, value: i32 6)
--+  !165 = !DITemplateTypeParameter(name: "Traits", type: !22)
--+  !166 = !DITemplateTypeParameter(name: "V", type: !47)
--+  !184 = !DILocalVariable(name: "this", arg: 1, scope: !185, type: !186, flags: DIFlagArtificial | DIFlagObjectPointer)
--+  !185 = distinct !DISubprogram(name: "SortPairsDistance2<Simd<Trans_NS_hwy_float16_t, 1, 0> >", linkageName: "_ZN12SharedTraitsI10TraitsLaneE18SortPairsDistance2I4SimdI22Trans_NS_hwy_float16_tLi1ELi0EEEEDTcl4ZerocvT__EEES6_S7_", scope: !22, file: !12, line: 273, type: !187, scopeLine: 273, flags: DIFlagPrototyped | DIFlagAllCallsDescribed, spFlags: DISPFlagDefinition | DISPFlagOptimized, unit: !3, templateParams: !188, declaration: !189, retainedNodes: !190, keyInstructions: true)
--+  !186 = !DIDerivedType(tag: DW_TAG_pointer_type, baseType: !22, size: 64)
--+  !187 = !DISubroutineType(types: !191)
--+  !188 = !{!193}
--+  !189 = !DISubprogram(name: "SortPairsDistance2<Simd<Trans_NS_hwy_float16_t, 1, 0> >", linkageName: "_ZN12SharedTraitsI10TraitsLaneE18SortPairsDistance2I4SimdI22Trans_NS_hwy_float16_tLi1ELi0EEEEDTcl4ZerocvT__EEES6_S7_", scope: !22, file: !12, line: 273, type: !187, scopeLine: 273, flags: DIFlagPrototyped, spFlags: DISPFlagOptimized, templateParams: !188)
--+  !190 = !{!184, !194, !195, !196, !197}
--+  !191 = !{!41, !192, !43, !41}
--+  !192 = !DIDerivedType(tag: DW_TAG_pointer_type, baseType: !22, size: 64, flags: DIFlagArtificial | DIFlagObjectPointer)
--+  !193 = !DITemplateTypeParameter(name: "D", type: !43)
--+  !194 = !DILocalVariable(name: "d", arg: 2, scope: !185, file: !12, line: 273, type: !43)
--+  !195 = !DILocalVariable(name: "v", arg: 3, scope: !185, file: !12, line: 273, type: !41)
--+  !196 = !DILocalVariable(name: "base", scope: !185, file: !12, line: 274, type: !28)
--+  !197 = !DILocalVariable(name: "swapped", scope: !185, file: !12, line: 275, type: !41)
--+  !200 = !DILocation(line: 0, scope: !122, inlinedAt: !201)
--+  !201 = distinct !DILocation(line: 358, column: 5, scope: !202, inlinedAt: !203)
--+  !202 = distinct !DISubprogram(name: "SortPairsDistance4", linkageName: "_ZN10TraitsLane18SortPairsDistance4E4SimdI22Trans_NS_hwy_float16_tLi1ELi0EEu13__SVFloat16_t", scope: !28, file: !12, line: 352, type: !74, scopeLine: 353, flags: DIFlagPrototyped | DIFlagAllCallsDescribed, spFlags: DISPFlagDefinition | DISPFlagOptimized, unit: !3, declaration: !33, retainedNodes: !204, keyInstructions: true)
--+  !203 = distinct !DILocation(line: 298, column: 11, scope: !144, inlinedAt: !145)
--+  !204 = !{!205, !206, !207, !208, !209, !210, !211}
--+  !205 = !DILocalVariable(name: "this", arg: 1, scope: !202, type: !123, flags: DIFlagArtificial | DIFlagObjectPointer)
--+  !206 = !DILocalVariable(name: "d", arg: 2, scope: !202, file: !12, line: 352, type: !43)
--+  !207 = !DILocalVariable(name: "v", arg: 3, scope: !202, file: !12, line: 353, type: !41)
--+  !208 = !DILocalVariable(name: "__trans_tmp_42", scope: !202, file: !12, line: 354, type: !41)
--+  !209 = !DILocalVariable(name: "__trans_tmp_39", scope: !202, file: !12, line: 354, type: !41)
--+  !210 = !DILocalVariable(name: "dw", scope: !202, file: !12, line: 355, type: !212)
--+  !211 = !DILocalVariable(name: "__trans_tmp_51", scope: !219, file: !12, line: 360, type: !44)
--+  !212 = !DIDerivedType(tag: DW_TAG_typedef, name: "RepartitionToWide<Simd<Trans_NS_hwy_float16_t, 1, 0> >", file: !12, line: 103, baseType: !213)
--+  !213 = !DIDerivedType(tag: DW_TAG_typedef, name: "Repartition<float, Simd<Trans_NS_hwy_float16_t, 1, 0> >", file: !12, line: 101, baseType: !214)
--+  !214 = !DIDerivedType(tag: DW_TAG_typedef, name: "Repartition<float>", scope: !43, file: !12, line: 86, baseType: !215)
--+  !215 = distinct !DICompositeType(tag: DW_TAG_structure_type, name: "Simd<float, 0, 0>", file: !12, line: 83, size: 8, flags: DIFlagTypePassByValue, elements: !50, templateParams: !216, identifier: "_ZTS4SimdIfLi0ELi0EE")
--+  !216 = !{!217, !218, !54}
--+  !217 = !DITemplateTypeParameter(name: "Lane", type: !65)
--+  !218 = !DITemplateValueParameter(type: !24, value: i32 0)
--+  !219 = distinct !DILexicalBlock(scope: !202, file: !12, line: 359, column: 5)
--+  !220 = !DILocalVariable(name: "this", arg: 1, scope: !221, type: !222, flags: DIFlagArtificial | DIFlagObjectPointer)
--+  !221 = distinct !DISubprogram(name: "SwapAdjacentPairs", linkageName: "_ZN7KeyLane17SwapAdjacentPairsEu13__SVFloat32_t", scope: !34, file: !12, line: 314, type: !58, scopeLine: 314, flags: DIFlagPrototyped | DIFlagAllCallsDescribed, spFlags: DISPFlagDefinition | DISPFlagOptimized, unit: !3, declaration: !37, retainedNodes: !223, keyInstructions: true)
--+  !222 = !DIDerivedType(tag: DW_TAG_pointer_type, baseType: !34, size: 64)
--+  !223 = !{!220, !224}
--+  !224 = !DILocalVariable(name: "v", arg: 2, scope: !221, file: !12, line: 314, type: !60)
--+  !225 = distinct !DILocation(line: 357, column: 38, scope: !202, inlinedAt: !203)
--+  !226 = !DILocalVariable(name: "v", arg: 1, scope: !227, file: !12, line: 264, type: !64)
--+  !227 = distinct !DISubprogram(name: "Shuffle1032<__SVFloat32_t>", linkageName: "_Z11Shuffle1032Iu13__SVFloat32_tET_S1_", scope: !12, file: !12, line: 264, type: !228, scopeLine: 264, flags: DIFlagPrototyped | DIFlagAllCallsDescribed, spFlags: DISPFlagDefinition | DISPFlagOptimized, unit: !3, templateParams: !229, retainedNodes: !230, keyInstructions: true)
--+  !228 = !DISubroutineType(types: !231)
--+  !229 = !{!262}
--+  !230 = !{!226, !232, !233, !234}
--+  !231 = !{!64, !64}
--+  !232 = !DILocalVariable(name: "d", scope: !227, file: !12, line: 265, type: !235)
--+  !233 = !DILocalVariable(name: "d8", scope: !227, file: !12, line: 266, type: !252)
--+  !234 = !DILocalVariable(name: "v8", scope: !227, file: !12, line: 267, type: !257)
--+  !235 = !DIDerivedType(tag: DW_TAG_typedef, name: "DFromV<__SVFloat32_t>", file: !12, line: 108, baseType: !236)
--+  !236 = !DIDerivedType(tag: DW_TAG_typedef, name: "type", scope: !237, file: !12, line: 116, baseType: !238)
--+  !237 = distinct !DICompositeType(tag: DW_TAG_structure_type, name: "DFromV_t<__SVFloat32_t>", file: !12, line: 115, size: 8, flags: DIFlagTypePassByValue, elements: !50, templateParams: !239, identifier: "_ZTS8DFromV_tIu13__SVFloat32_tE")
--+  !238 = !DIDerivedType(tag: DW_TAG_typedef, name: "ScalableTag<float>", file: !12, line: 95, baseType: !241)
--+  !239 = !{!240}
--+  !240 = !DITemplateTypeParameter(type: !64)
--+  !241 = !DIDerivedType(tag: DW_TAG_typedef, name: "type", scope: !242, file: !12, line: 92, baseType: !243)
--+  !242 = distinct !DICompositeType(tag: DW_TAG_structure_type, name: "ScalableTagChecker<float>", file: !12, line: 91, size: 8, flags: DIFlagTypePassByValue, elements: !50, templateParams: !244, identifier: "_ZTS18ScalableTagCheckerIfE")
--+  !243 = !DIDerivedType(tag: DW_TAG_typedef, name: "type", scope: !246, file: !12, line: 89, baseType: !247)
--+  !244 = !{!245}
--+  !245 = !DITemplateTypeParameter(name: "T", type: !65)
--+  !246 = distinct !DICompositeType(tag: DW_TAG_structure_type, name: "ClampNAndPow2<float, 64>", file: !12, line: 88, size: 8, flags: DIFlagTypePassByValue, elements: !50, templateParams: !248, identifier: "_ZTS13ClampNAndPow2IfLi64EE")
--+  !247 = distinct !DICompositeType(tag: DW_TAG_structure_type, name: "Simd<float, 64, 0>", file: !12, line: 83, size: 8, flags: DIFlagTypePassByValue, elements: !50, templateParams: !250, identifier: "_ZTS4SimdIfLi64ELi0EE")
--+  !248 = !{!245, !249}
--+  !249 = !DITemplateValueParameter(name: "N", type: !24, value: i32 64)
--+  !250 = !{!217, !251, !54}
--+  !251 = !DITemplateValueParameter(type: !24, value: i32 64)
--+  !252 = !DIDerivedType(tag: DW_TAG_typedef, name: "Repartition<unsigned char, Simd<float, 64, 0> >", file: !12, line: 101, baseType: !253)
--+  !253 = !DIDerivedType(tag: DW_TAG_typedef, name: "Repartition<unsigned char>", scope: !247, file: !12, line: 86, baseType: !254)
--+  !254 = distinct !DICompositeType(tag: DW_TAG_structure_type, name: "Simd<unsigned char, 0, 0>", file: !12, line: 83, size: 8, flags: DIFlagTypePassByValue, elements: !50, templateParams: !255, identifier: "_ZTS4SimdIhLi0ELi0EE")
--+  !255 = !{!256, !218, !54}
--+  !256 = !DITemplateTypeParameter(name: "Lane", type: !117)
--+  !257 = !DIDerivedType(tag: DW_TAG_typedef, name: "svuint8_t", file: !12, line: 22, baseType: !258)
--+  !258 = !DIDerivedType(tag: DW_TAG_typedef, name: "__SVUint8_t", file: !12, baseType: !259)
--+  !259 = !DICompositeType(tag: DW_TAG_array_type, baseType: !117, flags: DIFlagVector, elements: !260)
--+  !260 = !{!261}
--+  !261 = !DISubrange(lowerBound: 0, upperBound: !DIExpression(DW_OP_constu, 8, DW_OP_bregx, 46, 0, DW_OP_mul, DW_OP_constu, 1, DW_OP_minus))
--+  !262 = !DITemplateTypeParameter(name: "V", type: !64)
--+  !263 = !DILocalVariable(name: "hi", arg: 1, scope: !264, file: !12, line: 248, type: !259)
--+  !264 = distinct !DISubprogram(name: "CombineShiftRightBytes<8, __SVUint8_t>", linkageName: "_Z22CombineShiftRightBytesILi8Eu11__SVUint8_tET0_S1_S1_", scope: !12, file: !12, line: 248, type: !265, scopeLine: 248, flags: DIFlagPrototyped | DIFlagAllCallsDescribed, spFlags: DISPFlagDefinition | DISPFlagOptimized, unit: !3, templateParams: !266, retainedNodes: !267, keyInstructions: true)
--+  !265 = !DISubroutineType(types: !268)
--+  !266 = !{!283, !284}
--+  !267 = !{!263, !269, !270, !271, !272, !273, !274, !275, !276}
--+  !268 = !{!259, !259, !259}
--+  !269 = !DILocalVariable(name: "lo", arg: 2, scope: !264, file: !12, line: 248, type: !259)
--+  !270 = !DILocalVariable(name: "__trans_tmp_33", scope: !264, file: !12, line: 249, type: !257)
--+  !271 = !DILocalVariable(name: "__trans_tmp_15", scope: !264, file: !12, line: 249, type: !257)
--+  !272 = !DILocalVariable(name: "__trans_tmp_32", scope: !264, file: !12, line: 250, type: !257)
--+  !273 = !DILocalVariable(name: "d8", scope: !264, file: !12, line: 251, type: !277)
--+  !274 = !DILocalVariable(name: "__trans_tmp_16", scope: !264, file: !12, line: 252, type: !114)
--+  !275 = !DILocalVariable(name: "lo_down", scope: !264, file: !12, line: 254, type: !257)
--+  !276 = !DILocalVariable(name: "__trans_tmp_34", scope: !264, file: !12, line: 255, type: !114)
--+  !277 = !DIDerivedType(tag: DW_TAG_typedef, name: "Repartition<unsigned char, Simd<char, 0, 0> >", file: !12, line: 101, baseType: !278)
--+  !278 = !DIDerivedType(tag: DW_TAG_typedef, name: "Repartition<unsigned char>", scope: !279, file: !12, line: 86, baseType: !254)
--+  !279 = distinct !DICompositeType(tag: DW_TAG_structure_type, name: "Simd<char, 0, 0>", file: !12, line: 83, size: 8, flags: DIFlagTypePassByValue, elements: !50, templateParams: !280, identifier: "_ZTS4SimdIcLi0ELi0EE")
--+  !280 = !{!281, !218, !54}
--+  !281 = !DITemplateTypeParameter(name: "Lane", type: !282)
--+  !282 = !DIBasicType(name: "char", size: 8, encoding: DW_ATE_unsigned_char)
--+  !283 = !DITemplateValueParameter(name: "kBytes", type: !24, value: i32 8)
--+  !284 = !DITemplateTypeParameter(name: "V", type: !259)
--+  !285 = !DILocalVariable(name: "hi", arg: 1, scope: !286, file: !12, line: 216, type: !257)
--+  !286 = distinct !DISubprogram(name: "Ext<8>", linkageName: "_Z3ExtILi8EEu11__SVUint8_tS0_S0_", scope: !12, file: !12, line: 216, type: !287, scopeLine: 216, flags: DIFlagPrototyped | DIFlagAllCallsDescribed, spFlags: DISPFlagDefinition | DISPFlagOptimized, unit: !3, templateParams: !288, retainedNodes: !289, keyInstructions: true)
--+  !287 = !DISubroutineType(types: !290)
--+  !288 = !{!292}
--+  !289 = !{!285, !291}
--+  !290 = !{!257, !257, !257}
--+  !291 = !DILocalVariable(name: "lo", arg: 2, scope: !286, file: !12, line: 216, type: !257)
--+  !292 = !DITemplateValueParameter(name: "kIndex", type: !24, value: i32 8)
--+  !293 = !DILocalVariable(name: "a", arg: 1, scope: !294, file: !12, line: 180, type: !47)
--+  !294 = distinct !DISubprogram(name: "Min<__SVFloat16_t>", linkageName: "_Z3MinIu13__SVFloat16_tET_S1_S1_", scope: !12, file: !12, line: 180, type: !295, scopeLine: 180, flags: DIFlagPrototyped | DIFlagAllCallsDescribed, spFlags: DISPFlagDefinition | DISPFlagOptimized, unit: !3, templateParams: !296, retainedNodes: !297, keyInstructions: true)
--+  !295 = !DISubroutineType(types: !298)
--+  !296 = !{!166}
--+  !297 = !{!293, !299, !300, !301, !302, !303, !304}
--+  !298 = !{!47, !47, !47}
--+  !299 = !DILocalVariable(name: "b", arg: 2, scope: !294, file: !12, line: 180, type: !47)
--+  !300 = !DILocalVariable(name: "__trans_tmp_36", scope: !294, file: !12, line: 181, type: !45)
--+  !301 = !DILocalVariable(name: "__trans_tmp_25", scope: !294, file: !12, line: 181, type: !45)
--+  !302 = !DILocalVariable(name: "__trans_tmp_27", scope: !294, file: !12, line: 182, type: !114)
--+  !303 = !DILocalVariable(name: "__trans_tmp_24", scope: !294, file: !12, line: 183, type: !114)
--+  !304 = !DILocalVariable(name: "__trans_tmp_19", scope: !294, file: !12, line: 184, type: !114)
--+  !308 = distinct !DILocation(line: 315, column: 12, scope: !221, inlinedAt: !225)
--+  !309 = distinct !DILocation(line: 268, column: 21, scope: !227, inlinedAt: !308)
--+  !311 = distinct !DILocation(line: 254, column: 18, scope: !264, inlinedAt: !309)
--+  !312 = !DILocation(line: 217, column: 10, scope: !286, inlinedAt: !311, atomGroup: 1, atomRank: 2)
--+  !313 = !DILocation(line: 257, column: 20, scope: !264, inlinedAt: !309, atomGroup: 5, atomRank: 2)
--+  !314 = !DILocation(line: 0, scope: !294, inlinedAt: !315)
--+  !315 = distinct !DILocation(line: 331, column: 22, scope: !122, inlinedAt: !201)
--+  !316 = !DILocation(line: 185, column: 20, scope: !294, inlinedAt: !315)
--+  !317 = !DILocation(line: 403, column: 1, scope: !2, atomGroup: 19449, atomRank: 1)
--+
--+...
--+---
--+name:            _Z10Sort16RowsILi6EEv12SharedTraitsI10TraitsLaneEP22Trans_NS_hwy_float16_tiS4_
--+body:             |
--+  bb.0:
--+    liveins: $x1, $z0, $z1, $p0
--+
--+    $z30 = LDR_ZXI $x1, -14
--+    $z31 = LDR_ZXI $x1, -13
--+    $z23 = ORR_ZZZ $z30, $z30
--+    renamable $z2 = EXT_ZZI_B renamable $z30_z31, 8,  debug-location !312
--+    renamable $z7 = SEL_ZPZZ_B renamable $p0, renamable $z0, killed renamable $z1,  debug-location !313
--+    DBG_VALUE $z30, $noreg, !129, !DIExpression(),  debug-location !200
--+    renamable $p3 = nofpexcept FCMGT_PPzZZ_H renamable $p0, renamable $z0, undef renamable $z1,  debug-location !316
--+    DBG_VALUE $z30_z31, $noreg, !129, !DIExpression(),  debug-location !200
--+    DBG_VALUE $z30_z31, $noreg, !293, !DIExpression(),  debug-location !314
--+    RET undef $lr,  debug-location !317
--+...
--+
--diff -ruN --strip-trailing-cr a/llvm/test/Transforms/LoopVectorize/cse-casts.ll b/llvm/test/Transforms/LoopVectorize/cse-casts.ll
----- a/llvm/test/Transforms/LoopVectorize/cse-casts.ll
--+++ b/llvm/test/Transforms/LoopVectorize/cse-casts.ll
--@@ -0,0 +1,351 @@
--+; NOTE: Assertions have been autogenerated by utils/update_test_checks.py UTC_ARGS: --check-globals none --filter-out-after "scalar.ph:" --version 6
--+; RUN: opt -p loop-vectorize -force-vector-width=4 -force-vector-interleave=2 -S %s | FileCheck %s
--+
--+define i8 @preserve_flags_when_cloning_trunc(i8 %start, ptr noalias %src, ptr noalias %dst) {
--+; CHECK-LABEL: define i8 @preserve_flags_when_cloning_trunc(
--+; CHECK-SAME: i8 [[START:%.*]], ptr noalias [[SRC:%.*]], ptr noalias [[DST:%.*]]) {
--+; CHECK-NEXT:  [[ENTRY:.*:]]
--+; CHECK-NEXT:    br label %[[VECTOR_PH:.*]]
--+; CHECK:       [[VECTOR_PH]]:
--+; CHECK-NEXT:    [[TMP0:%.*]] = insertelement <4 x i8> splat (i8 1), i8 [[START]], i32 0
--+; CHECK-NEXT:    br label %[[VECTOR_BODY:.*]]
--+; CHECK:       [[VECTOR_BODY]]:
--+; CHECK-NEXT:    [[INDEX:%.*]] = phi i64 [ 0, %[[VECTOR_PH]] ], [ [[INDEX_NEXT:%.*]], %[[VECTOR_BODY]] ]
--+; CHECK-NEXT:    [[VEC_PHI:%.*]] = phi <4 x i8> [ [[TMP0]], %[[VECTOR_PH]] ], [ [[TMP6:%.*]], %[[VECTOR_BODY]] ]
--+; CHECK-NEXT:    [[VEC_PHI1:%.*]] = phi <4 x i8> [ splat (i8 1), %[[VECTOR_PH]] ], [ [[TMP7:%.*]], %[[VECTOR_BODY]] ]
--+; CHECK-NEXT:    [[TMP1:%.*]] = load i32, ptr [[SRC]], align 4
--+; CHECK-NEXT:    [[BROADCAST_SPLATINSERT:%.*]] = insertelement <4 x i32> poison, i32 [[TMP1]], i64 0
--+; CHECK-NEXT:    [[BROADCAST_SPLAT:%.*]] = shufflevector <4 x i32> [[BROADCAST_SPLATINSERT]], <4 x i32> poison, <4 x i32> zeroinitializer
--+; CHECK-NEXT:    [[TMP2:%.*]] = icmp ne <4 x i32> [[BROADCAST_SPLAT]], zeroinitializer
--+; CHECK-NEXT:    [[TMP3:%.*]] = zext <4 x i1> [[TMP2]] to <4 x i16>
--+; CHECK-NEXT:    [[TMP4:%.*]] = getelementptr i16, ptr [[DST]], i64 [[INDEX]]
--+; CHECK-NEXT:    [[TMP5:%.*]] = getelementptr i16, ptr [[TMP4]], i32 4
--+; CHECK-NEXT:    store <4 x i16> [[TMP3]], ptr [[TMP4]], align 2
--+; CHECK-NEXT:    store <4 x i16> [[TMP3]], ptr [[TMP5]], align 2
--+; CHECK-NEXT:    [[TMP6]] = mul <4 x i8> [[VEC_PHI]], splat (i8 3)
--+; CHECK-NEXT:    [[TMP7]] = mul <4 x i8> [[VEC_PHI1]], splat (i8 3)
--+; CHECK-NEXT:    [[INDEX_NEXT]] = add nuw i64 [[INDEX]], 8
--+; CHECK-NEXT:    [[TMP8:%.*]] = icmp eq i64 [[INDEX_NEXT]], 416
--+; CHECK-NEXT:    br i1 [[TMP8]], label %[[MIDDLE_BLOCK:.*]], label %[[VECTOR_BODY]], !llvm.loop [[LOOP0:![0-9]+]]
--+; CHECK:       [[MIDDLE_BLOCK]]:
--+; CHECK-NEXT:    [[BIN_RDX:%.*]] = mul <4 x i8> [[TMP7]], [[TMP6]]
--+; CHECK-NEXT:    [[TMP9:%.*]] = call i8 @llvm.vector.reduce.mul.v4i8(<4 x i8> [[BIN_RDX]])
--+; CHECK-NEXT:    br label %[[SCALAR_PH:.*]]
--+; CHECK:       [[SCALAR_PH]]:
--+;
--+entry:
--+  br label %loop
--+
--+loop:
--+  %iv = phi i64 [ %iv.next, %loop ], [ 0, %entry ]
--+  %red = phi i8 [ %red.next, %loop ], [ %start, %entry ]
--+  %l = load i32, ptr %src, align 4
--+  %cmp = icmp ne i32 %l, 0
--+  %cmp.ext = zext i1 %cmp to i64
--+  %cmp.trunc = trunc i64 %cmp.ext to i16
--+  %gep.dst = getelementptr i16, ptr %dst, i64 %iv
--+  store i16 %cmp.trunc, ptr %gep.dst, align 2
--+  %red.next = mul i8 %red, 3
--+  %iv.next = add i64 %iv, 1
--+  %ec = icmp ult i64 %iv, 416
--+  br i1 %ec, label %loop, label %exit
--+
--+exit:
--+  ret i8 %red.next
--+}
--+
--+
--+define void @preserve_flags_narrowing_extends_and_truncs(ptr noalias %A, ptr noalias %B, ptr noalias %C) {
--+; CHECK-LABEL: define void @preserve_flags_narrowing_extends_and_truncs(
--+; CHECK-SAME: ptr noalias [[A:%.*]], ptr noalias [[B:%.*]], ptr noalias [[C:%.*]]) {
--+; CHECK-NEXT:  [[ENTRY:.*:]]
--+; CHECK-NEXT:    br label %[[VECTOR_PH:.*]]
--+; CHECK:       [[VECTOR_PH]]:
--+; CHECK-NEXT:    br label %[[VECTOR_BODY:.*]]
--+; CHECK:       [[VECTOR_BODY]]:
--+; CHECK-NEXT:    br i1 true, label %[[PRED_LOAD_IF:.*]], label %[[PRED_LOAD_CONTINUE:.*]]
--+; CHECK:       [[PRED_LOAD_IF]]:
--+; CHECK-NEXT:    [[TMP0:%.*]] = getelementptr inbounds i8, ptr [[A]], i64 0
--+; CHECK-NEXT:    [[TMP1:%.*]] = load i8, ptr [[TMP0]], align 1
--+; CHECK-NEXT:    [[TMP2:%.*]] = insertelement <4 x i8> poison, i8 [[TMP1]], i32 0
--+; CHECK-NEXT:    br label %[[PRED_LOAD_CONTINUE]]
--+; CHECK:       [[PRED_LOAD_CONTINUE]]:
--+; CHECK-NEXT:    [[TMP3:%.*]] = phi <4 x i8> [ poison, %[[VECTOR_BODY]] ], [ [[TMP2]], %[[PRED_LOAD_IF]] ]
--+; CHECK-NEXT:    br i1 true, label %[[PRED_LOAD_IF1:.*]], label %[[PRED_LOAD_CONTINUE2:.*]]
--+; CHECK:       [[PRED_LOAD_IF1]]:
--+; CHECK-NEXT:    [[TMP4:%.*]] = getelementptr inbounds i8, ptr [[A]], i64 1
--+; CHECK-NEXT:    [[TMP5:%.*]] = load i8, ptr [[TMP4]], align 1
--+; CHECK-NEXT:    [[TMP6:%.*]] = insertelement <4 x i8> [[TMP3]], i8 [[TMP5]], i32 1
--+; CHECK-NEXT:    br label %[[PRED_LOAD_CONTINUE2]]
--+; CHECK:       [[PRED_LOAD_CONTINUE2]]:
--+; CHECK-NEXT:    [[TMP7:%.*]] = phi <4 x i8> [ [[TMP3]], %[[PRED_LOAD_CONTINUE]] ], [ [[TMP6]], %[[PRED_LOAD_IF1]] ]
--+; CHECK-NEXT:    br i1 false, label %[[PRED_LOAD_IF3:.*]], label %[[PRED_LOAD_CONTINUE4:.*]]
--+; CHECK:       [[PRED_LOAD_IF3]]:
--+; CHECK-NEXT:    [[TMP8:%.*]] = getelementptr inbounds i8, ptr [[A]], i64 2
--+; CHECK-NEXT:    [[TMP9:%.*]] = load i8, ptr [[TMP8]], align 1
--+; CHECK-NEXT:    [[TMP10:%.*]] = insertelement <4 x i8> [[TMP7]], i8 [[TMP9]], i32 2
--+; CHECK-NEXT:    br label %[[PRED_LOAD_CONTINUE4]]
--+; CHECK:       [[PRED_LOAD_CONTINUE4]]:
--+; CHECK-NEXT:    [[TMP11:%.*]] = phi <4 x i8> [ [[TMP7]], %[[PRED_LOAD_CONTINUE2]] ], [ [[TMP10]], %[[PRED_LOAD_IF3]] ]
--+; CHECK-NEXT:    br i1 false, label %[[PRED_LOAD_IF5:.*]], label %[[PRED_LOAD_CONTINUE6:.*]]
--+; CHECK:       [[PRED_LOAD_IF5]]:
--+; CHECK-NEXT:    [[TMP12:%.*]] = getelementptr inbounds i8, ptr [[A]], i64 3
--+; CHECK-NEXT:    [[TMP13:%.*]] = load i8, ptr [[TMP12]], align 1
--+; CHECK-NEXT:    [[TMP14:%.*]] = insertelement <4 x i8> [[TMP11]], i8 [[TMP13]], i32 3
--+; CHECK-NEXT:    br label %[[PRED_LOAD_CONTINUE6]]
--+; CHECK:       [[PRED_LOAD_CONTINUE6]]:
--+; CHECK-NEXT:    [[TMP15:%.*]] = phi <4 x i8> [ [[TMP11]], %[[PRED_LOAD_CONTINUE4]] ], [ [[TMP14]], %[[PRED_LOAD_IF5]] ]
--+; CHECK-NEXT:    br i1 false, label %[[PRED_LOAD_IF7:.*]], label %[[PRED_LOAD_CONTINUE8:.*]]
--+; CHECK:       [[PRED_LOAD_IF7]]:
--+; CHECK-NEXT:    [[TMP16:%.*]] = getelementptr inbounds i8, ptr [[A]], i64 4
--+; CHECK-NEXT:    [[TMP17:%.*]] = load i8, ptr [[TMP16]], align 1
--+; CHECK-NEXT:    [[TMP18:%.*]] = insertelement <4 x i8> poison, i8 [[TMP17]], i32 0
--+; CHECK-NEXT:    br label %[[PRED_LOAD_CONTINUE8]]
--+; CHECK:       [[PRED_LOAD_CONTINUE8]]:
--+; CHECK-NEXT:    [[TMP19:%.*]] = phi <4 x i8> [ poison, %[[PRED_LOAD_CONTINUE6]] ], [ [[TMP18]], %[[PRED_LOAD_IF7]] ]
--+; CHECK-NEXT:    br i1 false, label %[[PRED_LOAD_IF9:.*]], label %[[PRED_LOAD_CONTINUE10:.*]]
--+; CHECK:       [[PRED_LOAD_IF9]]:
--+; CHECK-NEXT:    [[TMP20:%.*]] = getelementptr inbounds i8, ptr [[A]], i64 5
--+; CHECK-NEXT:    [[TMP21:%.*]] = load i8, ptr [[TMP20]], align 1
--+; CHECK-NEXT:    [[TMP22:%.*]] = insertelement <4 x i8> [[TMP19]], i8 [[TMP21]], i32 1
--+; CHECK-NEXT:    br label %[[PRED_LOAD_CONTINUE10]]
--+; CHECK:       [[PRED_LOAD_CONTINUE10]]:
--+; CHECK-NEXT:    [[TMP23:%.*]] = phi <4 x i8> [ [[TMP19]], %[[PRED_LOAD_CONTINUE8]] ], [ [[TMP22]], %[[PRED_LOAD_IF9]] ]
--+; CHECK-NEXT:    br i1 false, label %[[PRED_LOAD_IF11:.*]], label %[[PRED_LOAD_CONTINUE12:.*]]
--+; CHECK:       [[PRED_LOAD_IF11]]:
--+; CHECK-NEXT:    [[TMP24:%.*]] = getelementptr inbounds i8, ptr [[A]], i64 6
--+; CHECK-NEXT:    [[TMP25:%.*]] = load i8, ptr [[TMP24]], align 1
--+; CHECK-NEXT:    [[TMP26:%.*]] = insertelement <4 x i8> [[TMP23]], i8 [[TMP25]], i32 2
--+; CHECK-NEXT:    br label %[[PRED_LOAD_CONTINUE12]]
--+; CHECK:       [[PRED_LOAD_CONTINUE12]]:
--+; CHECK-NEXT:    [[TMP27:%.*]] = phi <4 x i8> [ [[TMP23]], %[[PRED_LOAD_CONTINUE10]] ], [ [[TMP26]], %[[PRED_LOAD_IF11]] ]
--+; CHECK-NEXT:    br i1 false, label %[[PRED_LOAD_IF13:.*]], label %[[PRED_LOAD_CONTINUE14:.*]]
--+; CHECK:       [[PRED_LOAD_IF13]]:
--+; CHECK-NEXT:    [[TMP28:%.*]] = getelementptr inbounds i8, ptr [[A]], i64 7
--+; CHECK-NEXT:    [[TMP29:%.*]] = load i8, ptr [[TMP28]], align 1
--+; CHECK-NEXT:    [[TMP30:%.*]] = insertelement <4 x i8> [[TMP27]], i8 [[TMP29]], i32 3
--+; CHECK-NEXT:    br label %[[PRED_LOAD_CONTINUE14]]
--+; CHECK:       [[PRED_LOAD_CONTINUE14]]:
--+; CHECK-NEXT:    [[TMP31:%.*]] = phi <4 x i8> [ [[TMP27]], %[[PRED_LOAD_CONTINUE12]] ], [ [[TMP30]], %[[PRED_LOAD_IF13]] ]
--+; CHECK-NEXT:    [[TMP32:%.*]] = zext <4 x i8> [[TMP15]] to <4 x i64>
--+; CHECK-NEXT:    [[TMP33:%.*]] = zext <4 x i8> [[TMP31]] to <4 x i64>
--+; CHECK-NEXT:    br i1 true, label %[[PRED_STORE_IF:.*]], label %[[PRED_STORE_CONTINUE:.*]]
--+; CHECK:       [[PRED_STORE_IF]]:
--+; CHECK-NEXT:    [[TMP34:%.*]] = getelementptr inbounds i8, ptr [[C]], i64 0
--+; CHECK-NEXT:    [[TMP35:%.*]] = extractelement <4 x i64> [[TMP32]], i32 0
--+; CHECK-NEXT:    store i64 [[TMP35]], ptr [[TMP34]], align 4
--+; CHECK-NEXT:    br label %[[PRED_STORE_CONTINUE]]
--+; CHECK:       [[PRED_STORE_CONTINUE]]:
--+; CHECK-NEXT:    br i1 true, label %[[PRED_STORE_IF15:.*]], label %[[PRED_STORE_CONTINUE16:.*]]
--+; CHECK:       [[PRED_STORE_IF15]]:
--+; CHECK-NEXT:    [[TMP36:%.*]] = getelementptr inbounds i8, ptr [[C]], i64 1
--+; CHECK-NEXT:    [[TMP37:%.*]] = extractelement <4 x i64> [[TMP32]], i32 1
--+; CHECK-NEXT:    store i64 [[TMP37]], ptr [[TMP36]], align 4
--+; CHECK-NEXT:    br label %[[PRED_STORE_CONTINUE16]]
--+; CHECK:       [[PRED_STORE_CONTINUE16]]:
--+; CHECK-NEXT:    br i1 false, label %[[PRED_STORE_IF17:.*]], label %[[PRED_STORE_CONTINUE18:.*]]
--+; CHECK:       [[PRED_STORE_IF17]]:
--+; CHECK-NEXT:    [[TMP38:%.*]] = getelementptr inbounds i8, ptr [[C]], i64 2
--+; CHECK-NEXT:    [[TMP39:%.*]] = extractelement <4 x i64> [[TMP32]], i32 2
--+; CHECK-NEXT:    store i64 [[TMP39]], ptr [[TMP38]], align 4
--+; CHECK-NEXT:    br label %[[PRED_STORE_CONTINUE18]]
--+; CHECK:       [[PRED_STORE_CONTINUE18]]:
--+; CHECK-NEXT:    br i1 false, label %[[PRED_STORE_IF19:.*]], label %[[PRED_STORE_CONTINUE20:.*]]
--+; CHECK:       [[PRED_STORE_IF19]]:
--+; CHECK-NEXT:    [[TMP40:%.*]] = getelementptr inbounds i8, ptr [[C]], i64 3
--+; CHECK-NEXT:    [[TMP41:%.*]] = extractelement <4 x i64> [[TMP32]], i32 3
--+; CHECK-NEXT:    store i64 [[TMP41]], ptr [[TMP40]], align 4
--+; CHECK-NEXT:    br label %[[PRED_STORE_CONTINUE20]]
--+; CHECK:       [[PRED_STORE_CONTINUE20]]:
--+; CHECK-NEXT:    br i1 false, label %[[PRED_STORE_IF21:.*]], label %[[PRED_STORE_CONTINUE22:.*]]
--+; CHECK:       [[PRED_STORE_IF21]]:
--+; CHECK-NEXT:    [[TMP42:%.*]] = getelementptr inbounds i8, ptr [[C]], i64 4
--+; CHECK-NEXT:    [[TMP43:%.*]] = extractelement <4 x i64> [[TMP33]], i32 0
--+; CHECK-NEXT:    store i64 [[TMP43]], ptr [[TMP42]], align 4
--+; CHECK-NEXT:    br label %[[PRED_STORE_CONTINUE22]]
--+; CHECK:       [[PRED_STORE_CONTINUE22]]:
--+; CHECK-NEXT:    br i1 false, label %[[PRED_STORE_IF23:.*]], label %[[PRED_STORE_CONTINUE24:.*]]
--+; CHECK:       [[PRED_STORE_IF23]]:
--+; CHECK-NEXT:    [[TMP44:%.*]] = getelementptr inbounds i8, ptr [[C]], i64 5
--+; CHECK-NEXT:    [[TMP45:%.*]] = extractelement <4 x i64> [[TMP33]], i32 1
--+; CHECK-NEXT:    store i64 [[TMP45]], ptr [[TMP44]], align 4
--+; CHECK-NEXT:    br label %[[PRED_STORE_CONTINUE24]]
--+; CHECK:       [[PRED_STORE_CONTINUE24]]:
--+; CHECK-NEXT:    br i1 false, label %[[PRED_STORE_IF25:.*]], label %[[PRED_STORE_CONTINUE26:.*]]
--+; CHECK:       [[PRED_STORE_IF25]]:
--+; CHECK-NEXT:    [[TMP46:%.*]] = getelementptr inbounds i8, ptr [[C]], i64 6
--+; CHECK-NEXT:    [[TMP47:%.*]] = extractelement <4 x i64> [[TMP33]], i32 2
--+; CHECK-NEXT:    store i64 [[TMP47]], ptr [[TMP46]], align 4
--+; CHECK-NEXT:    br label %[[PRED_STORE_CONTINUE26]]
--+; CHECK:       [[PRED_STORE_CONTINUE26]]:
--+; CHECK-NEXT:    br i1 false, label %[[PRED_STORE_IF27:.*]], label %[[PRED_STORE_CONTINUE28:.*]]
--+; CHECK:       [[PRED_STORE_IF27]]:
--+; CHECK-NEXT:    [[TMP48:%.*]] = getelementptr inbounds i8, ptr [[C]], i64 7
--+; CHECK-NEXT:    [[TMP49:%.*]] = extractelement <4 x i64> [[TMP33]], i32 3
--+; CHECK-NEXT:    store i64 [[TMP49]], ptr [[TMP48]], align 4
--+; CHECK-NEXT:    br label %[[PRED_STORE_CONTINUE28]]
--+; CHECK:       [[PRED_STORE_CONTINUE28]]:
--+; CHECK-NEXT:    [[TMP50:%.*]] = getelementptr inbounds i8, ptr [[B]], i64 0
--+; CHECK-NEXT:    [[TMP51:%.*]] = getelementptr inbounds i8, ptr [[B]], i64 1
--+; CHECK-NEXT:    [[TMP52:%.*]] = getelementptr inbounds i8, ptr [[B]], i64 2
--+; CHECK-NEXT:    [[TMP53:%.*]] = getelementptr inbounds i8, ptr [[B]], i64 3
--+; CHECK-NEXT:    [[TMP54:%.*]] = insertelement <4 x ptr> poison, ptr [[TMP50]], i32 0
--+; CHECK-NEXT:    [[TMP55:%.*]] = insertelement <4 x ptr> [[TMP54]], ptr [[TMP51]], i32 1
--+; CHECK-NEXT:    [[TMP56:%.*]] = insertelement <4 x ptr> [[TMP55]], ptr [[TMP52]], i32 2
--+; CHECK-NEXT:    [[TMP57:%.*]] = insertelement <4 x ptr> [[TMP56]], ptr [[TMP53]], i32 3
--+; CHECK-NEXT:    [[TMP58:%.*]] = getelementptr inbounds i8, ptr [[B]], i64 4
--+; CHECK-NEXT:    [[TMP59:%.*]] = getelementptr inbounds i8, ptr [[B]], i64 5
--+; CHECK-NEXT:    [[TMP60:%.*]] = getelementptr inbounds i8, ptr [[B]], i64 6
--+; CHECK-NEXT:    [[TMP61:%.*]] = getelementptr inbounds i8, ptr [[B]], i64 7
--+; CHECK-NEXT:    [[TMP62:%.*]] = insertelement <4 x ptr> poison, ptr [[TMP58]], i32 0
--+; CHECK-NEXT:    [[TMP63:%.*]] = insertelement <4 x ptr> [[TMP62]], ptr [[TMP59]], i32 1
--+; CHECK-NEXT:    [[TMP64:%.*]] = insertelement <4 x ptr> [[TMP63]], ptr [[TMP60]], i32 2
--+; CHECK-NEXT:    [[TMP65:%.*]] = insertelement <4 x ptr> [[TMP64]], ptr [[TMP61]], i32 3
--+; CHECK-NEXT:    br i1 true, label %[[PRED_LOAD_IF29:.*]], label %[[PRED_LOAD_CONTINUE30:.*]]
--+; CHECK:       [[PRED_LOAD_IF29]]:
--+; CHECK-NEXT:    [[TMP66:%.*]] = load i8, ptr [[TMP50]], align 1
--+; CHECK-NEXT:    [[TMP67:%.*]] = insertelement <4 x i8> poison, i8 [[TMP66]], i32 0
--+; CHECK-NEXT:    br label %[[PRED_LOAD_CONTINUE30]]
--+; CHECK:       [[PRED_LOAD_CONTINUE30]]:
--+; CHECK-NEXT:    [[TMP68:%.*]] = phi <4 x i8> [ poison, %[[PRED_STORE_CONTINUE28]] ], [ [[TMP67]], %[[PRED_LOAD_IF29]] ]
--+; CHECK-NEXT:    br i1 true, label %[[PRED_LOAD_IF31:.*]], label %[[PRED_LOAD_CONTINUE32:.*]]
--+; CHECK:       [[PRED_LOAD_IF31]]:
--+; CHECK-NEXT:    [[TMP69:%.*]] = load i8, ptr [[TMP51]], align 1
--+; CHECK-NEXT:    [[TMP70:%.*]] = insertelement <4 x i8> [[TMP68]], i8 [[TMP69]], i32 1
--+; CHECK-NEXT:    br label %[[PRED_LOAD_CONTINUE32]]
--+; CHECK:       [[PRED_LOAD_CONTINUE32]]:
--+; CHECK-NEXT:    [[TMP71:%.*]] = phi <4 x i8> [ [[TMP68]], %[[PRED_LOAD_CONTINUE30]] ], [ [[TMP70]], %[[PRED_LOAD_IF31]] ]
--+; CHECK-NEXT:    br i1 false, label %[[PRED_LOAD_IF33:.*]], label %[[PRED_LOAD_CONTINUE34:.*]]
--+; CHECK:       [[PRED_LOAD_IF33]]:
--+; CHECK-NEXT:    [[TMP72:%.*]] = load i8, ptr [[TMP52]], align 1
--+; CHECK-NEXT:    [[TMP73:%.*]] = insertelement <4 x i8> [[TMP71]], i8 [[TMP72]], i32 2
--+; CHECK-NEXT:    br label %[[PRED_LOAD_CONTINUE34]]
--+; CHECK:       [[PRED_LOAD_CONTINUE34]]:
--+; CHECK-NEXT:    [[TMP74:%.*]] = phi <4 x i8> [ [[TMP71]], %[[PRED_LOAD_CONTINUE32]] ], [ [[TMP73]], %[[PRED_LOAD_IF33]] ]
--+; CHECK-NEXT:    br i1 false, label %[[PRED_LOAD_IF35:.*]], label %[[PRED_LOAD_CONTINUE36:.*]]
--+; CHECK:       [[PRED_LOAD_IF35]]:
--+; CHECK-NEXT:    [[TMP75:%.*]] = load i8, ptr [[TMP53]], align 1
--+; CHECK-NEXT:    [[TMP76:%.*]] = insertelement <4 x i8> [[TMP74]], i8 [[TMP75]], i32 3
--+; CHECK-NEXT:    br label %[[PRED_LOAD_CONTINUE36]]
--+; CHECK:       [[PRED_LOAD_CONTINUE36]]:
--+; CHECK-NEXT:    [[TMP77:%.*]] = phi <4 x i8> [ [[TMP74]], %[[PRED_LOAD_CONTINUE34]] ], [ [[TMP76]], %[[PRED_LOAD_IF35]] ]
--+; CHECK-NEXT:    br i1 false, label %[[PRED_LOAD_IF37:.*]], label %[[PRED_LOAD_CONTINUE38:.*]]
--+; CHECK:       [[PRED_LOAD_IF37]]:
--+; CHECK-NEXT:    [[TMP78:%.*]] = load i8, ptr [[TMP58]], align 1
--+; CHECK-NEXT:    [[TMP79:%.*]] = insertelement <4 x i8> poison, i8 [[TMP78]], i32 0
--+; CHECK-NEXT:    br label %[[PRED_LOAD_CONTINUE38]]
--+; CHECK:       [[PRED_LOAD_CONTINUE38]]:
--+; CHECK-NEXT:    [[TMP80:%.*]] = phi <4 x i8> [ poison, %[[PRED_LOAD_CONTINUE36]] ], [ [[TMP79]], %[[PRED_LOAD_IF37]] ]
--+; CHECK-NEXT:    br i1 false, label %[[PRED_LOAD_IF39:.*]], label %[[PRED_LOAD_CONTINUE40:.*]]
--+; CHECK:       [[PRED_LOAD_IF39]]:
--+; CHECK-NEXT:    [[TMP81:%.*]] = load i8, ptr [[TMP59]], align 1
--+; CHECK-NEXT:    [[TMP82:%.*]] = insertelement <4 x i8> [[TMP80]], i8 [[TMP81]], i32 1
--+; CHECK-NEXT:    br label %[[PRED_LOAD_CONTINUE40]]
--+; CHECK:       [[PRED_LOAD_CONTINUE40]]:
--+; CHECK-NEXT:    [[TMP83:%.*]] = phi <4 x i8> [ [[TMP80]], %[[PRED_LOAD_CONTINUE38]] ], [ [[TMP82]], %[[PRED_LOAD_IF39]] ]
--+; CHECK-NEXT:    br i1 false, label %[[PRED_LOAD_IF41:.*]], label %[[PRED_LOAD_CONTINUE42:.*]]
--+; CHECK:       [[PRED_LOAD_IF41]]:
--+; CHECK-NEXT:    [[TMP84:%.*]] = load i8, ptr [[TMP60]], align 1
--+; CHECK-NEXT:    [[TMP85:%.*]] = insertelement <4 x i8> [[TMP83]], i8 [[TMP84]], i32 2
--+; CHECK-NEXT:    br label %[[PRED_LOAD_CONTINUE42]]
--+; CHECK:       [[PRED_LOAD_CONTINUE42]]:
--+; CHECK-NEXT:    [[TMP86:%.*]] = phi <4 x i8> [ [[TMP83]], %[[PRED_LOAD_CONTINUE40]] ], [ [[TMP85]], %[[PRED_LOAD_IF41]] ]
--+; CHECK-NEXT:    br i1 false, label %[[PRED_LOAD_IF43:.*]], label %[[PRED_LOAD_CONTINUE44:.*]]
--+; CHECK:       [[PRED_LOAD_IF43]]:
--+; CHECK-NEXT:    [[TMP87:%.*]] = load i8, ptr [[TMP61]], align 1
--+; CHECK-NEXT:    [[TMP88:%.*]] = insertelement <4 x i8> [[TMP86]], i8 [[TMP87]], i32 3
--+; CHECK-NEXT:    br label %[[PRED_LOAD_CONTINUE44]]
--+; CHECK:       [[PRED_LOAD_CONTINUE44]]:
--+; CHECK-NEXT:    [[TMP89:%.*]] = phi <4 x i8> [ [[TMP86]], %[[PRED_LOAD_CONTINUE42]] ], [ [[TMP88]], %[[PRED_LOAD_IF43]] ]
--+; CHECK-NEXT:    [[TMP90:%.*]] = trunc <4 x i8> [[TMP77]] to <4 x i1>
--+; CHECK-NEXT:    [[TMP91:%.*]] = trunc <4 x i8> [[TMP89]] to <4 x i1>
--+; CHECK-NEXT:    [[TMP92:%.*]] = and <4 x i1> [[TMP90]], splat (i1 true)
--+; CHECK-NEXT:    [[TMP93:%.*]] = and <4 x i1> [[TMP91]], splat (i1 true)
--+; CHECK-NEXT:    [[TMP94:%.*]] = select <4 x i1> [[TMP90]], <4 x float> splat (float 1.000000e+00), <4 x float> zeroinitializer
--+; CHECK-NEXT:    [[TMP95:%.*]] = select <4 x i1> [[TMP91]], <4 x float> splat (float 1.000000e+00), <4 x float> zeroinitializer
--+; CHECK-NEXT:    [[TMP96:%.*]] = select <4 x i1> [[TMP92]], <4 x float> splat (float 3.000000e+00), <4 x float> [[TMP94]]
--+; CHECK-NEXT:    [[TMP97:%.*]] = select <4 x i1> [[TMP93]], <4 x float> splat (float 3.000000e+00), <4 x float> [[TMP95]]
--+; CHECK-NEXT:    [[TMP98:%.*]] = bitcast <4 x float> [[TMP96]] to <4 x i32>
--+; CHECK-NEXT:    [[TMP99:%.*]] = bitcast <4 x float> [[TMP97]] to <4 x i32>
--+; CHECK-NEXT:    [[TMP100:%.*]] = trunc <4 x i32> [[TMP98]] to <4 x i8>
--+; CHECK-NEXT:    [[TMP101:%.*]] = trunc <4 x i32> [[TMP99]] to <4 x i8>
--+; CHECK-NEXT:    br i1 true, label %[[PRED_STORE_IF45:.*]], label %[[PRED_STORE_CONTINUE46:.*]]
--+; CHECK:       [[PRED_STORE_IF45]]:
--+; CHECK-NEXT:    [[TMP102:%.*]] = extractelement <4 x i8> [[TMP100]], i32 0
--+; CHECK-NEXT:    store i8 [[TMP102]], ptr [[TMP50]], align 1
--+; CHECK-NEXT:    br label %[[PRED_STORE_CONTINUE46]]
--+; CHECK:       [[PRED_STORE_CONTINUE46]]:
--+; CHECK-NEXT:    br i1 true, label %[[PRED_STORE_IF47:.*]], label %[[PRED_STORE_CONTINUE48:.*]]
--+; CHECK:       [[PRED_STORE_IF47]]:
--+; CHECK-NEXT:    [[TMP103:%.*]] = extractelement <4 x i8> [[TMP100]], i32 1
--+; CHECK-NEXT:    store i8 [[TMP103]], ptr [[TMP51]], align 1
--+; CHECK-NEXT:    br label %[[PRED_STORE_CONTINUE48]]
--+; CHECK:       [[PRED_STORE_CONTINUE48]]:
--+; CHECK-NEXT:    br i1 false, label %[[PRED_STORE_IF49:.*]], label %[[PRED_STORE_CONTINUE50:.*]]
--+; CHECK:       [[PRED_STORE_IF49]]:
--+; CHECK-NEXT:    [[TMP104:%.*]] = extractelement <4 x i8> [[TMP100]], i32 2
--+; CHECK-NEXT:    store i8 [[TMP104]], ptr [[TMP52]], align 1
--+; CHECK-NEXT:    br label %[[PRED_STORE_CONTINUE50]]
--+; CHECK:       [[PRED_STORE_CONTINUE50]]:
--+; CHECK-NEXT:    br i1 false, label %[[PRED_STORE_IF51:.*]], label %[[PRED_STORE_CONTINUE52:.*]]
--+; CHECK:       [[PRED_STORE_IF51]]:
--+; CHECK-NEXT:    [[TMP105:%.*]] = extractelement <4 x i8> [[TMP100]], i32 3
--+; CHECK-NEXT:    store i8 [[TMP105]], ptr [[TMP53]], align 1
--+; CHECK-NEXT:    br label %[[PRED_STORE_CONTINUE52]]
--+; CHECK:       [[PRED_STORE_CONTINUE52]]:
--+; CHECK-NEXT:    br i1 false, label %[[PRED_STORE_IF53:.*]], label %[[PRED_STORE_CONTINUE54:.*]]
--+; CHECK:       [[PRED_STORE_IF53]]:
--+; CHECK-NEXT:    [[TMP106:%.*]] = extractelement <4 x i8> [[TMP101]], i32 0
--+; CHECK-NEXT:    store i8 [[TMP106]], ptr [[TMP58]], align 1
--+; CHECK-NEXT:    br label %[[PRED_STORE_CONTINUE54]]
--+; CHECK:       [[PRED_STORE_CONTINUE54]]:
--+; CHECK-NEXT:    br i1 false, label %[[PRED_STORE_IF55:.*]], label %[[PRED_STORE_CONTINUE56:.*]]
--+; CHECK:       [[PRED_STORE_IF55]]:
--+; CHECK-NEXT:    [[TMP107:%.*]] = extractelement <4 x i8> [[TMP101]], i32 1
--+; CHECK-NEXT:    store i8 [[TMP107]], ptr [[TMP59]], align 1
--+; CHECK-NEXT:    br label %[[PRED_STORE_CONTINUE56]]
--+; CHECK:       [[PRED_STORE_CONTINUE56]]:
--+; CHECK-NEXT:    br i1 false, label %[[PRED_STORE_IF57:.*]], label %[[PRED_STORE_CONTINUE58:.*]]
--+; CHECK:       [[PRED_STORE_IF57]]:
--+; CHECK-NEXT:    [[TMP108:%.*]] = extractelement <4 x i8> [[TMP101]], i32 2
--+; CHECK-NEXT:    store i8 [[TMP108]], ptr [[TMP60]], align 1
--+; CHECK-NEXT:    br label %[[PRED_STORE_CONTINUE58]]
--+; CHECK:       [[PRED_STORE_CONTINUE58]]:
--+; CHECK-NEXT:    br i1 false, label %[[PRED_STORE_IF59:.*]], label %[[PRED_STORE_CONTINUE60:.*]]
--+; CHECK:       [[PRED_STORE_IF59]]:
--+; CHECK-NEXT:    [[TMP109:%.*]] = extractelement <4 x i8> [[TMP101]], i32 3
--+; CHECK-NEXT:    store i8 [[TMP109]], ptr [[TMP61]], align 1
--+; CHECK-NEXT:    br label %[[PRED_STORE_CONTINUE60]]
--+; CHECK:       [[PRED_STORE_CONTINUE60]]:
--+; CHECK-NEXT:    br label %[[MIDDLE_BLOCK:.*]]
--+; CHECK:       [[MIDDLE_BLOCK]]:
--+; CHECK-NEXT:    br [[EXIT:label %.*]]
--+; CHECK:       [[SCALAR_PH:.*:]]
--+;
--+entry:
--+  br label %loop
--+
--+loop:
--+  %iv = phi i64 [ 0, %entry ], [ %iv.next, %loop ]
--+  %gep.A = getelementptr inbounds i8, ptr %A, i64 %iv
--+  %l = load i8, ptr %gep.A
--+  %l.ext = zext i8 %l to i64
--+  %gep.C = getelementptr inbounds i8, ptr %C, i64 %iv
--+  store i64 %l.ext, ptr %gep.C
--+  %gep.B = getelementptr inbounds i8, ptr %B, i64 %iv
--+  %l.1 = load i8, ptr %gep.B, align 1
--+  %masked = and i8 %l.1, 1
--+  %l.1.trunc = trunc i8 %l.1 to i1
--+  %sel.0 = select i1 %l.1.trunc, float 1.000000e+00, float 0.000000e+00
--+  %masked.trunc = trunc i8 %masked to i1
--+  %sel.1 = select i1 %masked.trunc, float 3.000000e+00, float %sel.0
--+  %bc = bitcast float %sel.1 to i32
--+  %bc.trunc = trunc i32 %bc to i8
--+  store i8 %bc.trunc, ptr %gep.B, align 1
--+  %iv.next = add i64 %iv, 1
--+  %ec = icmp eq i64 %iv, 1
--+  br i1 %ec, label %exit, label %loop
--+
--+exit:
--+  ret void
--+}
--diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel b/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
----- a/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
--+++ b/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
--@@ -4970,6 +4970,22 @@
-- )
-- 
-- cc_binary(
--+    name = "llvm-remarkutil",
--+    srcs = glob([
--+        "tools/llvm-remarkutil/**/*.cpp",
--+        "tools/llvm-remarkutil/**/*.h",
--+    ]),
--+    copts = llvm_copts,
--+    includes = ["tools/llvm-remarkutil"],
--+    stamp = 0,
--+    deps = [
--+        ":Demangle",
--+        ":Remarks",
--+        ":Support",
--+    ],
--+)
--+
--+cc_binary(
--     name = "llvm-rtdyld",
--     srcs = glob([
--         "tools/llvm-rtdyld/*.cpp",
++diff -ruN --strip-trailing-cr a/llvm/unittests/Analysis/FunctionPropertiesAnalysisTest.cpp b/llvm/unittests/Analysis/FunctionPropertiesAnalysisTest.cpp
++--- a/llvm/unittests/Analysis/FunctionPropertiesAnalysisTest.cpp
+++++ b/llvm/unittests/Analysis/FunctionPropertiesAnalysisTest.cpp
++@@ -46,8 +46,8 @@
++     MAM.registerPass([VocabVector = std::move(VocabVector)]() mutable {
++       return IR2VecVocabAnalysis(std::move(VocabVector));
++     });
++-    IR2VecVocab =
++-        new ir2vec::Vocabulary(ir2vec::Vocabulary::createDummyVocabForTest(1));
+++    IR2VecVocab = std::make_unique<ir2vec::Vocabulary>(
+++        ir2vec::Vocabulary::createDummyVocabForTest(1));
++     MAM.registerPass([&] { return PassInstrumentationAnalysis(); });
++     FAM.registerPass([&] { return ModuleAnalysisManagerFunctionProxy(MAM); });
++     FAM.registerPass([&] { return DominatorTreeAnalysis(); });
++@@ -69,7 +69,7 @@
++   std::unique_ptr<LoopInfo> LI;
++   FunctionAnalysisManager FAM;
++   ModuleAnalysisManager MAM;
++-  ir2vec::Vocabulary *IR2VecVocab;
+++  std::unique_ptr<ir2vec::Vocabulary> IR2VecVocab;
++ 
++   void TearDown() override {
++     // Restore original IR2Vec weights
++diff -ruN --strip-trailing-cr a/llvm/unittests/Analysis/IR2VecTest.cpp b/llvm/unittests/Analysis/IR2VecTest.cpp
++--- a/llvm/unittests/Analysis/IR2VecTest.cpp
+++++ b/llvm/unittests/Analysis/IR2VecTest.cpp
++@@ -295,7 +295,7 @@
++ // Fixture for IR2Vec tests requiring IR setup.
++ class IR2VecTestFixture : public ::testing::Test {
++ protected:
++-  Vocabulary *V;
+++  std::unique_ptr<Vocabulary> V;
++   LLVMContext Ctx;
++   std::unique_ptr<Module> M;
++   Function *F = nullptr;
++@@ -304,7 +304,7 @@
++   Instruction *RetInst = nullptr;
++ 
++   void SetUp() override {
++-    V = new Vocabulary(Vocabulary::createDummyVocabForTest(2));
+++    V = std::make_unique<Vocabulary>(Vocabulary::createDummyVocabForTest(2));
++ 
++     // Setup IR
++     M = std::make_unique<Module>("TestM", Ctx);
 diff --git a/third_party/llvm/workspace.bzl b/third_party/llvm/workspace.bzl
-index 1b17fe9..9431f26 100644
+index 996e2ec..c407321 100644
 --- a/third_party/llvm/workspace.bzl
 +++ b/third_party/llvm/workspace.bzl
 @@ -4,8 +4,8 @@ load("//third_party:repo.bzl", "tf_http_archive")
  
  def repo(name):
      """Imports LLVM."""
--    LLVM_COMMIT = "113f01aa82d055410f22a9d03b3468fa68600589"
--    LLVM_SHA256 = "9aee00a35aa76639746589c6d09e8c18249be16b5b6aa6b788a570a4bc6c4543"
-+    LLVM_COMMIT = "d28c07b7550af47ff7adc068d6078388cdeed61d"
-+    LLVM_SHA256 = "627cba3a53a992a67cddebdb2a6e849385444c3fdb5f71ccf230f28f840caf04"
+-    LLVM_COMMIT = "ca84f2aa3be6e46a4dccb1bec56b93f2bb3d8ef0"
+-    LLVM_SHA256 = "5cea44df2e0c3dcb6119c2ca5d7a900001e93ec43369ed1b58eb4ed4d4c9f9f0"
++    LLVM_COMMIT = "fd9a1dcc01766c71932898e9643ce28bf2801bad"
++    LLVM_SHA256 = "85b7a4524078549ef1b3271569241a14deec1b7f4c42048877601166f3d1fee9"
  
      tf_http_archive(
          name = name,
-diff --git a/third_party/remote_config/remote_platform_configure.bzl b/third_party/remote_config/remote_platform_configure.bzl
-index 068e09e..3368a16 100644
---- a/third_party/remote_config/remote_platform_configure.bzl
-+++ b/third_party/remote_config/remote_platform_configure.bzl
-@@ -38,7 +38,7 @@ def _remote_platform_configure_impl(repository_ctx):
- 
-     repository_ctx.template(
-         "BUILD",
--        Label("//third_party/remote_config:BUILD.tpl"),
-+        Label("@local_xla//third_party/remote_config:BUILD.tpl"),
-         {
-             "%{platform}": platform,
-             "%{exec_properties}": serialized_exec_properties,
