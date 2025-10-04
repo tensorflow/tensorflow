@@ -204,6 +204,9 @@ class UserContextScope {
   // Returns `nullptr` if there is no `UserContextRef` in the scope.
   static absl_nullable const UserContextRef& current();
 
+  // Returns true iff any scope is active for the current thread.
+  static bool HasAnyScope();
+
  private:
   // The outer scope's `UserContext`. When this scope is destroyed, the current
   // scope's `UserContext` will be restored to it.
