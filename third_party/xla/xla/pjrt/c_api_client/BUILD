@@ -26,8 +26,14 @@ package_group(
 
 cc_library(
     name = "pjrt_c_api_client",
-    srcs = ["pjrt_c_api_client.cc"],
-    hdrs = ["pjrt_c_api_client.h"],
+    srcs = [
+        "pjrt_c_api_client.cc",
+        "pjrt_c_api_phase_compiler.cc",
+    ],
+    hdrs = [
+        "pjrt_c_api_client.h",
+        "pjrt_c_api_phase_compiler.h",
+    ],
     visibility = internal_visibility([":friends"]),
     deps = [
         "//xla:future",
@@ -42,6 +48,7 @@ cc_library(
         "//xla/hlo/translate/mhlo_to_hlo:mlir_hlo_to_hlo",
         "//xla/mlir_hlo:mhlo_passes",
         "//xla/pjrt:mlir_to_hlo",
+        "//xla/pjrt:partial_program_utils",
         "//xla/pjrt:pjrt_api",
         "//xla/pjrt:pjrt_client",
         "//xla/pjrt:pjrt_common",
@@ -50,11 +57,13 @@ cc_library(
         "//xla/pjrt:pjrt_executable",
         "//xla/pjrt:pjrt_future",
         "//xla/pjrt:pjrt_layout",
+        "//xla/pjrt:string_utils",
         "//xla/pjrt/c:pjrt_c_api_ffi_extension_hdrs",
         "//xla/pjrt/c:pjrt_c_api_hdrs",
         "//xla/pjrt/c:pjrt_c_api_helpers",
         "//xla/pjrt/c:pjrt_c_api_layouts_extension_hdrs",
         "//xla/pjrt/c:pjrt_c_api_memory_descriptions_extension_hdrs",
+        "//xla/pjrt/c:pjrt_c_api_phase_compile_extension_hdrs",
         "//xla/pjrt/c:pjrt_c_api_profiler_extension_hdrs",
         "//xla/pjrt/c:pjrt_c_api_stream_extension_hdrs",
         "//xla/pjrt/distributed:key_value_store_interface",

@@ -13,7 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <cstdlib>
 #include <memory>
 #include <string>
 #include <utility>
@@ -23,35 +22,30 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
 #include "absl/status/status.h"
-#include "absl/status/statusor.h"
+#include "absl/status/status_matchers.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
 #include "mlir/Support/LLVM.h"
 #include "stablehlo/reference/Api.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
-#include "xla/pjrt/c/pjrt_c_api_cpu_internal.h"
-#include "xla/pjrt/c/pjrt_c_api_helpers.h"
 #include "xla/pjrt/c/pjrt_c_api_phase_compile_extension.h"
-#include "xla/pjrt/c/pjrt_c_api_phase_compile_internal.h"
+#include "xla/pjrt/c_api_client/pjrt_c_api_client.h"
 #include "xla/pjrt/pjrt_api.h"
-#include "xla/pjrt/pjrt_c_api_client.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
-#include "xla/pjrt/pjrt_phase_compile.h"
 #include "xla/pjrt/pjrt_phase_compile_sample_plugin.h"
 #include "xla/pjrt/proto/pjrt_partial_program.pb.h"
+#include "xla/pjrt/string_utils.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/status_matchers.h"
 
 namespace pjrt {
 namespace {
 
 using ::testing::ElementsAre;
 using ::testing::HasSubstr;
-using ::tsl::testing::IsOkAndHolds;
-using ::tsl::testing::StatusIs;
 
 constexpr absl::string_view kStablehloModuleStr = R"(
   module {
@@ -65,6 +59,17 @@ constexpr absl::string_view kStablehloModuleStr = R"(
 
 constexpr absl::string_view kStablehloBytecodeFormat = "bytecode";
 constexpr absl::string_view kPhaseName = "stablehlo_to_optimized_stablehlo";
+
+// We don't need a plugin registration target for this test, but we need to
+// ensure that the plugin is registered before the first use of the phase
+// compiler. Thus, we use a static initializer to ensure that the plugin is
+// registered before the PhaseCompileExtensionTest class is instantiated.
+bool sample_plugin_registered = []() {
+  auto status = pjrt::SetPjrtApi(
+      "sample-cpu",
+      pjrt::phase_compile_sample_plugin::GetSamplePhaseCompilePjrtApi());
+  return status.ok();
+}();
 
 std::vector<xla::PjRtPartialProgramProto> PrepareInputPartialPrograms(
     const std::string& next_phase, const absl::string_view program_format) {
@@ -92,43 +97,16 @@ std::vector<xla::PjRtPartialProgramProto> PrepareInputPartialPrograms(
 
 class PhaseCompileExtensionTest : public ::testing::Test {
  protected:
-  std::unique_ptr<pjrt::CApiPjrtPhaseCompiler> phase_compile_extension_wrapper_;
+  std::unique_ptr<xla::PjRtPhaseCompiler> phase_compile_extension_wrapper_;
   const xla::PjRtTopologyDescription* topology_description_;
   std::unique_ptr<xla::PjRtClient> client_;
 
   PhaseCompileExtensionTest() {
-    // For the CPU plugin, a few callbacks for the phase compile extension are
-    // set to null. So we need to set them with the ones from the sample plugin
-    // for testing.
-
-    // During the first test case, the registration won't have occurred yet, so
-    // we expect a failure and need to register explicitly.
-    auto api = PjrtApi("cpu");
-    if (!api.ok()) {
-      CHECK_OK(pjrt::SetPjrtApi("cpu", cpu_plugin::GetCpuPjrtApi()));
-    }
-    api = PjrtApi("cpu");
-    CHECK_OK(api);
-    auto phase_compile_extension =
-        pjrt::FindExtension<PJRT_PhaseCompile_Extension>(
-            *api, PJRT_Extension_Type::PJRT_Extension_Type_PhaseCompile);
-    PJRT_PhaseCompile_Extension sample_plugin_phase_compile_extension =
-        pjrt::phase_compile_sample_plugin::CreateSamplePhaseCompileExtension();
-    phase_compile_extension->phase_compile_get_compiler =
-        sample_plugin_phase_compile_extension.phase_compile_get_compiler;
-    phase_compile_extension->phase_compile_destroy_compiler =
-        sample_plugin_phase_compile_extension.phase_compile_destroy_compiler;
-
-    // Get the phase compile extension wrapper.
-    absl::StatusOr<std::unique_ptr<pjrt::CApiPjrtPhaseCompiler>>
-        phase_compile_extension_wrapper_or_status =
-            pjrt::GetCApiPjrtPhaseCompiler(*api);
-    CHECK_OK(phase_compile_extension_wrapper_or_status);
-    phase_compile_extension_wrapper_ =
-        std::move(*phase_compile_extension_wrapper_or_status);
+    auto phase_compile_extension = xla::GetCApiPhaseCompiler("sample-cpu");
+    phase_compile_extension_wrapper_ = std::move(*phase_compile_extension);
 
     // Create a topology description.
-    auto client_or_status = xla::GetCApiClient("cpu");
+    auto client_or_status = xla::GetCApiClient("sample-cpu");
     CHECK_OK(client_or_status);
     client_ = std::move(*client_or_status);
     auto topology_or_status = client_->GetTopologyDescription();
@@ -178,10 +156,11 @@ TEST(BasicPhaseCompileExtensionTest,
   ASSERT_EQ(error, nullptr);
   // Convert the C-style phase names to C++ strings.
   std::vector<std::string> converted_strings =
-      pjrt::ConvertCharBuffersToCppStrings(
-          get_phase_names_args.phase_names,
-          get_phase_names_args.phase_names_sizes,
-          get_phase_names_args.num_phase_names);
+      xla::ConvertCharBuffersToCppStrings(
+          absl::MakeSpan(get_phase_names_args.phase_names,
+                         get_phase_names_args.num_phase_names),
+          absl::MakeConstSpan(get_phase_names_args.phase_names_sizes,
+                              get_phase_names_args.num_phase_names));
 
   // Destroy the C-style buffer.
   PJRT_PhaseCompile_C_Buffers_Destroy_Args destroy_c_buffers_args;

@@ -809,6 +809,11 @@ absl::StatusOr<std::unique_ptr<PjRtCompiler>> GetCApiCompiler(
 
 absl::StatusOr<std::unique_ptr<PjRtCompiler>> GetCApiCompiler();
 
+absl::StatusOr<std::unique_ptr<PjRtPhaseCompiler>> GetCApiPhaseCompiler(
+    absl::string_view device_type);
+
+absl::StatusOr<std::unique_ptr<PjRtPhaseCompiler>> GetCApiPhaseCompiler();
+
 }  // namespace xla
 
 #endif  // XLA_PJRT_C_API_CLIENT_PJRT_C_API_CLIENT_H_

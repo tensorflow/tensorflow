@@ -20,14 +20,20 @@ limitations under the License.
 #include <functional>
 #include <memory>
 #include <optional>
+#include <string>
+#include <utility>
 #include <variant>
+#include <vector>
 
 #include "absl/cleanup/cleanup.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
@@ -39,6 +45,7 @@ limitations under the License.
 #include "xla/ffi/execution_context.h"
 #include "xla/future.h"
 #include "xla/hlo/builder/xla_computation.h"
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/translate/mhlo_to_hlo/mlir_hlo_to_hlo.h"
 #include "xla/layout.h"
 #include "xla/layout_util.h"
@@ -49,8 +56,10 @@ limitations under the License.
 #include "xla/pjrt/c/pjrt_c_api_helpers.h"
 #include "xla/pjrt/c/pjrt_c_api_layouts_extension.h"
 #include "xla/pjrt/c/pjrt_c_api_memory_descriptions_extension.h"
+#include "xla/pjrt/c/pjrt_c_api_phase_compile_extension.h"
 #include "xla/pjrt/c/pjrt_c_api_profiler_extension.h"
 #include "xla/pjrt/c/pjrt_c_api_stream_extension.h"
+#include "xla/pjrt/c_api_client/pjrt_c_api_phase_compiler.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/pjrt/extensions/cross_host_transfers/pjrt_c_api_cross_host_transfers_extension.h"
 #include "xla/pjrt/extensions/executable_metadata/executable_metadata_extension.h"
@@ -74,6 +83,7 @@ limitations under the License.
 #include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/protobuf/coordination_service.pb.h"
+#include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/casts.h"
@@ -3273,6 +3283,62 @@ absl::StatusOr<std::unique_ptr<PjRtCompiler>> GetCApiCompiler() {
         "instead.");
   }
   return GetCApiCompiler(device_types[0]);
+}
+
+absl::StatusOr<std::unique_ptr<PjRtPhaseCompiler>> GetCApiPhaseCompiler(
+    absl::string_view device_type) {
+  TF_ASSIGN_OR_RETURN(const PJRT_Api* c_api, pjrt::PjrtApi(device_type));
+  if (c_api == nullptr) {
+    return absl::InternalError(
+        absl::StrCat("PJRT C API is nullptr for ", device_type));
+  }
+  // Ensure the Phase Compile extension is available and that the
+  // 'phase_compile_get_compiler' and 'phase_compile_destroy_compiler'
+  // callbacks are defined, as they are mandatory for the PjRtCApiPhaseCompiler
+  // to function.
+  auto phase_compile_extension =
+      pjrt::FindExtension<PJRT_PhaseCompile_Extension>(
+          c_api, PJRT_Extension_Type::PJRT_Extension_Type_PhaseCompile);
+  if (phase_compile_extension == nullptr) {
+    return absl::InternalError("Phase compile extension not found");
+  }
+
+  if (phase_compile_extension->phase_compile_get_compiler == nullptr) {
+    return absl::InternalError(
+        "phase_compile_get_compiler callback of the phase compile extension "
+        "must not be null");
+  }
+  if (phase_compile_extension->phase_compile_destroy_compiler == nullptr) {
+    return absl::InternalError(
+        "phase_compile_destroy_compiler callback of the phase compile "
+        "extension must not be null");
+  }
+
+  PJRT_PhaseCompile_Get_Compiler_Args get_compiler_args;
+  get_compiler_args.struct_size =
+      PJRT_PhaseCompile_Get_Compiler_Args_STRUCT_SIZE;
+  get_compiler_args.extension_start = nullptr;
+  RETURN_STATUS_IF_PJRT_ERROR(
+      phase_compile_extension->phase_compile_get_compiler(&get_compiler_args),
+      c_api);
+
+  return std::make_unique<PjRtCApiPhaseCompiler>(
+      c_api, phase_compile_extension, get_compiler_args.phase_compiler);
+}
+
+absl::StatusOr<std::unique_ptr<PjRtPhaseCompiler>> GetCApiPhaseCompiler() {
+  TF_ASSIGN_OR_RETURN(std::vector<std::string> device_types,
+                      pjrt::GetRegisteredPjrtApis());
+  if (device_types.empty()) {
+    return absl::FailedPreconditionError("PJRT_Api is not initialized.");
+  }
+  if (device_types.size() > 1) {
+    return absl::FailedPreconditionError(
+        "More than one device type registered. Please use "
+        "GetCApiPhaseCompiler(absl::string_view device_type) "
+        "instead.");
+  }
+  return GetCApiPhaseCompiler(device_types[0]);
 }
 
 }  // namespace xla

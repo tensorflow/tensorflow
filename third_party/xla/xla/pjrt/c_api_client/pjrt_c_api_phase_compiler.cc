@@ -13,11 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/pjrt/pjrt_phase_compile.h"
+#include "xla/pjrt/c_api_client/pjrt_c_api_phase_compiler.h"
 
 #include <algorithm>
 #include <cstddef>
-#include <memory>
 #include <string>
 #include <vector>
 
@@ -25,18 +24,21 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/types/span.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/c/pjrt_c_api_helpers.h"
 #include "xla/pjrt/c/pjrt_c_api_phase_compile_extension.h"
-#include "xla/pjrt/c/pjrt_c_api_phase_compile_internal.h"
-#include "xla/pjrt/pjrt_c_api_client.h"
+#include "xla/pjrt/c_api_client/pjrt_c_api_client.h"
+#include "xla/pjrt/partial_program_utils.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
+#include "xla/pjrt/string_utils.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "tsl/platform/casts.h"
 
-namespace pjrt {
+namespace xla {
+
 namespace {
 
 // Checks if the input partial programs are compatible with the first phase in
@@ -63,17 +65,10 @@ absl::Status ValidatePhases(
 // Cleans up C buffers allocated by the caller-side code and passed to the
 // plugin-side code. Example buffers include those used to propagate
 // input programs, names of phases to run.
-void CleanUpCallerDefinedCBuffers(const char** char_buffers,
-                                  const size_t* char_buffer_sizes,
-                                  size_t num_char_buffers) {
-  if (char_buffers != nullptr) {
-    for (size_t i = 0; i < num_char_buffers; ++i) {
-      delete[] char_buffers[i];
-    }
+void CleanUpCallerDefinedCBuffers(absl::Span<const char* const> char_buffers) {
+  for (const char* buffer : char_buffers) {
+    delete[] buffer;
   }
-
-  delete[] char_buffers;
-  delete[] char_buffer_sizes;
 }
 
 // Cleans up C buffers allocated by the plugin-side code and passed to the
@@ -95,44 +90,31 @@ void CleanUpPluginDefinedCBuffers(
 
 }  // namespace
 
-absl::StatusOr<std::unique_ptr<CApiPjrtPhaseCompiler>> GetCApiPjrtPhaseCompiler(
-    const PJRT_Api* api) {
-  // Ensure the Phase Compile extension is available and that the
-  // 'phase_compile_get_compiler' and 'phase_compile_destroy_compiler'
-  // callbacks are defined, as they are mandatory for the CApiPjrtPhaseCompiler
-  // to function.
-  auto phase_compile_extension =
-      pjrt::FindExtension<PJRT_PhaseCompile_Extension>(
-          api, PJRT_Extension_Type::PJRT_Extension_Type_PhaseCompile);
-  if (phase_compile_extension == nullptr) {
-    return absl::InternalError("Phase compile extension not found");
-  }
+PjRtCApiPhaseCompiler::PjRtCApiPhaseCompiler(
+    const PJRT_Api* api,
+    const PJRT_PhaseCompile_Extension* phase_compile_extension,
+    const PJRT_PhaseCompiler* phase_compiler)
+    : api_(api),
+      phase_compile_extension_(phase_compile_extension),
+      phase_compiler_(
+          phase_compiler,
+          [phase_compile_extension](const PJRT_PhaseCompiler* p_compiler) {
+            PJRT_PhaseCompile_Destroy_Compiler_Args destroy_args;
+            destroy_args.struct_size =
+                PJRT_PhaseCompile_Destroy_Compiler_Args_STRUCT_SIZE;
+            destroy_args.extension_start = nullptr;
+            destroy_args.phase_compiler = p_compiler;
+            phase_compile_extension->phase_compile_destroy_compiler(
+                &destroy_args);
+          }) {}
 
-  if (phase_compile_extension->phase_compile_get_compiler == nullptr) {
-    return absl::InternalError(
-        "phase_compile_get_compiler callback of the phase compile extension "
-        "must not be null");
-  }
-  if (phase_compile_extension->phase_compile_destroy_compiler == nullptr) {
-    return absl::InternalError(
-        "phase_compile_destroy_compiler callback of the phase compile "
-        "extension must not be null");
-  }
-
-  PJRT_PhaseCompile_Get_Compiler_Args get_compiler_args;
-  get_compiler_args.struct_size =
-      PJRT_PhaseCompile_Get_Compiler_Args_STRUCT_SIZE;
-  get_compiler_args.extension_start = nullptr;
-  RETURN_STATUS_IF_PJRT_ERROR(
-      phase_compile_extension->phase_compile_get_compiler(&get_compiler_args),
-      api);
-
-  return std::make_unique<CApiPjrtPhaseCompiler>(
-      api, phase_compile_extension, get_compiler_args.phase_compiler);
+// Returns the reference to the phase compiler.
+const PJRT_PhaseCompiler* PjRtCApiPhaseCompiler::GetPhaseCompiler() const {
+  return phase_compiler_.get();
 }
 
 absl::StatusOr<std::vector<std::string>>
-CApiPjrtPhaseCompiler::GetPhaseNames() {
+PjRtCApiPhaseCompiler::GetPhaseNames() {
   PJRT_PhaseCompile_Get_PhaseNames_Args args;
   args.struct_size = PJRT_PhaseCompile_Get_PhaseNames_Args_STRUCT_SIZE;
   args.extension_start = nullptr;
@@ -140,8 +122,9 @@ CApiPjrtPhaseCompiler::GetPhaseNames() {
   RETURN_STATUS_IF_PJRT_ERROR(
       phase_compile_extension_->phase_compile_get_phase_names(&args), api_);
 
-  std::vector<std::string> phase_names = ConvertCharBuffersToCppStrings(
-      args.phase_names, args.phase_names_sizes, args.num_phase_names);
+  std::vector<std::string> phase_names = xla::ConvertCharBuffersToCppStrings(
+      absl::MakeSpan(args.phase_names, args.num_phase_names),
+      absl::MakeConstSpan(args.phase_names_sizes, args.num_phase_names));
   CleanUpPluginDefinedCBuffers(args.phase_names, args.phase_names_sizes,
                                args.num_phase_names, phase_compile_extension_);
 
@@ -149,7 +132,7 @@ CApiPjrtPhaseCompiler::GetPhaseNames() {
 }
 
 absl::StatusOr<std::vector<xla::PjRtPartialProgramProto>>
-CApiPjrtPhaseCompiler::RunPhases(
+PjRtCApiPhaseCompiler::RunPhases(
     xla::CompileOptions options,
     const std::vector<xla::PjRtPartialProgramProto>& partial_programs_in,
     const xla::PjRtTopologyDescription& topology,
@@ -161,31 +144,34 @@ CApiPjrtPhaseCompiler::RunPhases(
       tensorflow::down_cast<const xla::PjRtCApiTopologyDescription*>(&topology)
           ->c_topology();
 
-  const size_t* programs_in_buffer_sizes = nullptr;
+  const size_t* programs_in_buffer_sizes;
   TF_ASSIGN_OR_RETURN(const char** programs_in_buffers,
-                      ConvertPjRtPartialProgramProtosToCharBuffers(
+                      xla::ConvertPjRtPartialProgramProtosToCharBuffers(
                           partial_programs_in, programs_in_buffer_sizes));
   size_t num_programs_in = partial_programs_in.size();
   absl::Cleanup cleanup_programs_in_buffers =
       [programs_in_buffers, programs_in_buffer_sizes, num_programs_in] {
-        CleanUpCallerDefinedCBuffers(programs_in_buffers,
-                                     programs_in_buffer_sizes, num_programs_in);
+        CleanUpCallerDefinedCBuffers(
+            absl::MakeConstSpan(programs_in_buffers, num_programs_in));
+        delete[] programs_in_buffer_sizes;
+        delete[] programs_in_buffers;
       };
 
   TF_ASSIGN_OR_RETURN(const xla::CompileOptionsProto options_proto,
                       options.ToProto());
   std::string options_str = options_proto.SerializeAsString();
 
-  const size_t* phases_to_run_buffer_sizes = nullptr;
+  const size_t* phases_to_run_buffer_sizes;
   size_t num_phases_to_run = phases_to_run.size();
-  const char** phases_to_run_buffers =
-      ConvertCppStringsToCharBuffers(phases_to_run, phases_to_run_buffer_sizes);
-  absl::Cleanup cleanup_phases_to_run_buffers = [phases_to_run_buffers,
-                                                 phases_to_run_buffer_sizes,
-                                                 num_phases_to_run]() {
-    CleanUpCallerDefinedCBuffers(phases_to_run_buffers,
-                                 phases_to_run_buffer_sizes, num_phases_to_run);
-  };
+  const char** phases_to_run_buffers = xla::ConvertCppStringsToCharBuffers(
+      phases_to_run, phases_to_run_buffer_sizes);
+  absl::Cleanup cleanup_phases_to_run_buffers =
+      [phases_to_run_buffers, phases_to_run_buffer_sizes, num_phases_to_run]() {
+        CleanUpCallerDefinedCBuffers(
+            absl::MakeConstSpan(phases_to_run_buffers, num_phases_to_run));
+        delete[] phases_to_run_buffer_sizes;
+        delete[] phases_to_run_buffers;
+      };
 
   PJRT_PhaseCompile_Run_Phase_Args run_args;
   run_args.struct_size = PJRT_PhaseCompile_Run_Phase_Args_STRUCT_SIZE;
@@ -204,11 +190,12 @@ CApiPjrtPhaseCompiler::RunPhases(
   RETURN_STATUS_IF_PJRT_ERROR(
       phase_compile_extension_->phase_compile_run_phases(&run_args), api_);
 
-  TF_ASSIGN_OR_RETURN(
-      std::vector<xla::PjRtPartialProgramProto> output_programs,
-      ConvertCharBuffersToPjRtPartialProgramProtos(
-          run_args.output_programs, run_args.output_programs_sizes,
-          run_args.num_output_programs));
+  TF_ASSIGN_OR_RETURN(std::vector<xla::PjRtPartialProgramProto> output_programs,
+                      xla::ConvertCharBuffersToPjRtPartialProgramProtos(
+                          absl::MakeSpan(run_args.output_programs,
+                                         run_args.num_output_programs),
+                          absl::MakeConstSpan(run_args.output_programs_sizes,
+                                              run_args.num_output_programs)));
   CleanUpPluginDefinedCBuffers(
       run_args.output_programs, run_args.output_programs_sizes,
       run_args.num_output_programs, phase_compile_extension_);
@@ -216,4 +203,4 @@ CApiPjrtPhaseCompiler::RunPhases(
   return output_programs;
 }
 
-}  // namespace pjrt
+}  // namespace xla
