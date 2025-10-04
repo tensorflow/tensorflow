@@ -346,6 +346,52 @@ TEST_F(AutotunerPassTest, DevicelessUsesDefaultConfigIfNoCache) {
       gpu_backend_config.gemm_backend_config().has_selected_algorithm());
 }
 
+TEST_F(AutotunerPassTest, CublasGemmInNonDefaultStreamIsAutotuned) {
+  const char kCublasCustomNonDefaultStreamCallHlo[] = R"""(
+HloModule module, entry_computation_layout={(f32[100,100]{1,0}, f32[100,100]{1,0})->f32[100,100]{1,0}}
+ENTRY %main (arg0: f32[100,100], arg1: f32[100,100]) -> f32[100,100] {
+  %arg0 = f32[100,100]{1,0} parameter(0)
+  %arg1 = f32[100,100]{1,0} parameter(1)
+  %custom-call.1 = (f32[100,100]{1,0}, s8[80000]{0}) custom-call(%arg0, %arg1),
+  custom_call_target="__cublas$gemm",
+  backend_config={
+    "operation_queue_id":"109",
+    "gemm_backend_config":{
+      "dot_dimension_numbers":
+        {
+          "lhs_contracting_dimensions":["1"],
+          "rhs_contracting_dimensions":["0"],
+          "lhs_batch_dimensions":[],
+          "rhs_batch_dimensions":[]
+      }
+    }
+  }
+  ROOT %get-tuple-element = f32[100,100]{1,0} get-tuple-element(%custom-call.1), index=0
+}
+)""";
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> module,
+      ParseAndReturnVerifiedModule(kCublasCustomNonDefaultStreamCallHlo));
+
+  tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "autotuning",
+                                      /*num_threads=*/4);
+  std::vector<std::unique_ptr<CodegenBackend>> backends;
+  GpuCompiler::TargetConfig target_config(stream_executor_);
+
+  backends.push_back(std::make_unique<CublasBackend>(
+      stream_executor_, &module->config().debug_options(), &compiler_,
+      &target_config));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<AutotunerPass> pass,
+      AutotunerPass::Create(std::move(backends),
+                            module->config().debug_options(), stream_executor_,
+                            &thread_pool, IsCublasGemmInstruction,
+                            &target_config, allocator_.get()));
+  EXPECT_THAT(pass->Run(module.get(), /*execution_threads=*/{}),
+              absl_testing::IsOkAndHolds(true));
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla

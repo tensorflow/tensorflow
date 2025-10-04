@@ -363,16 +363,25 @@ absl::Status ExecuteThunksImpl(
   Thunk::ExecutionStreamIdMap additional_execution_streams;
   std::vector<StreamPool::Ptr> additional_streams;
   if (!execution_stream_ids.empty()) {
-    TF_ASSIGN_OR_RETURN(additional_streams, run_options->BorrowStreams(
-                                                executor->device_ordinal(),
-                                                execution_stream_ids.size()));
-    int64_t i = 0;
-    for (ExecutionStreamId stream_id : execution_stream_ids) {
-      additional_execution_streams[stream_id] = additional_streams.at(i).get();
-      i++;
+    if (run_options->HasStreamBorrower()) {
+      TF_ASSIGN_OR_RETURN(additional_streams, run_options->BorrowStreams(
+                                                  executor->device_ordinal(),
+                                                  execution_stream_ids.size()));
+      int64_t i = 0;
+      for (ExecutionStreamId stream_id : execution_stream_ids) {
+        additional_execution_streams[stream_id] =
+            additional_streams.at(i).get();
+        i++;
+      }
+      VLOG(2) << "Using " << additional_execution_streams.size()
+              << " additional compute streams.";
+    } else {
+      VLOG(2) << "No stream borrower created. "
+              << "Assigning the default stream to all parallel computes.";
+      for (ExecutionStreamId stream_id : execution_stream_ids) {
+        additional_execution_streams[stream_id] = main_stream;
+      }
     }
-    VLOG(2) << "Using " << additional_execution_streams.size()
-            << " additional compute streams.";
   }
 
   tsl::profiler::TraceMe hlo_module_activity(
