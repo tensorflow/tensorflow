@@ -38,6 +38,7 @@
 #include "xla/python/ifrt_proxy/common/ifrt_service.pb.h"
 #include "xla/python/ifrt_proxy/server/host_buffer.h"
 #include "xla/python/ifrt_proxy/server/host_callback.h"
+#include "xla/python/ifrt_proxy/server/ifrt_backend_user_context.h"
 #include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/platform/threadpool.h"
 
@@ -284,6 +285,9 @@ class IfrtBackend final : public BackendInterface {
 
   class InOrderRequestsProcessor;
   std::unique_ptr<InOrderRequestsProcessor> in_order_requests_processor_;
+
+  std::shared_ptr<IfrtBackendDestroyedUserContextIds>
+      destroyed_user_context_ids_;
 };
 
 }  // namespace proxy

@@ -14,6 +14,7 @@
 
 #include "xla/python/ifrt_proxy/client/grpc_client_session.h"
 
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -38,11 +39,15 @@
 #include "grpcpp/security/credentials.h"
 #include "grpcpp/support/channel_arguments.h"
 #include "xla/pjrt/distributed/util.h"
+#include "xla/python/ifrt/user_context.h"
+#include "xla/python/ifrt/user_context_registry.h"
+#include "xla/python/ifrt/user_context_status_util.h"
 #include "xla/python/ifrt_proxy/common/grpc_credentials_possibly_insecure_wrapper.h"
 #include "xla/python/ifrt_proxy/common/grpc_ifrt_service.grpc.pb.h"
 #include "xla/python/ifrt_proxy/common/grpc_ifrt_service.pb.h"
 #include "xla/python/ifrt_proxy/common/ifrt_service.pb.h"
 #include "xla/tsl/concurrency/future.h"
+#include "xla/tsl/platform/errors.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
@@ -156,10 +161,48 @@ absl::Status GrpcClientSession::Enqueue(std::unique_ptr<IfrtRequest> req,
         "GrpcClientSession: writes no longer allowed.");
   }
 
-  TF_RETURN_IF_ERROR(response_callbacks_->Add(op_id, std::move(callback)));
-
   CHECK_EQ(req->mutable_request_metadata()->op_id(), 0);
   req->mutable_request_metadata()->set_op_id(op_id);
+
+  UserContextRef user_context = UserContextScope::current();
+  TrackedUserContextRef tracked_user_context =
+      UserContextRegistry::Get().Register(std::move(user_context));
+  if (tracked_user_context != nullptr) {
+    req->mutable_request_metadata()->set_user_context_id(
+        tracked_user_context->user_context()->Id().value());
+  }
+  auto wrapped_callback =
+      [this, tracked_user_context = std::move(tracked_user_context),
+       callback = std::move(callback)](
+          absl::StatusOr<std::shared_ptr<IfrtResponse>> response) {
+        if (!response.ok()) {
+          callback(ReattachUserContextRefs(response.status()));
+          return;
+        }
+
+        if (tracked_user_context != nullptr) {
+          absl::MutexLock l(live_user_contexts_mu_);
+          UserContextId user_context_id =
+              tracked_user_context->user_context()->Id();
+          live_user_contexts_.insert(
+              {user_context_id, std::move(tracked_user_context)});
+        }
+        auto destroyed_user_context_ids =
+            response->get()->response_metadata().destroyed_user_context_ids();
+
+        callback(std::move(response));
+
+        if (!destroyed_user_context_ids.empty()) {
+          absl::MutexLock l(live_user_contexts_mu_);
+          for (uint64_t destroyed_user_context_id :
+               destroyed_user_context_ids) {
+            live_user_contexts_.erase(UserContextId(destroyed_user_context_id));
+          }
+        }
+      };
+
+  TF_RETURN_IF_ERROR(
+      response_callbacks_->Add(op_id, std::move(wrapped_callback)));
 
   tsl::profiler::TraceMe t("grpc_stream_write");
   if (!stream_->Write(*req)) {

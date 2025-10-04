@@ -23,6 +23,7 @@
 
 #include "absl/base/call_once.h"
 #include "absl/base/thread_annotations.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -31,6 +32,8 @@
 #include "grpcpp/client_context.h"
 #include "grpcpp/support/client_callback.h"
 #include "grpcpp/support/sync_stream.h"
+#include "xla/python/ifrt/user_context.h"
+#include "xla/python/ifrt/user_context_registry.h"
 #include "xla/python/ifrt_proxy/client/client_session.h"
 #include "xla/python/ifrt_proxy/common/grpc_ifrt_service.grpc.pb.h"
 #include "xla/python/ifrt_proxy/common/grpc_ifrt_service.pb.h"
@@ -138,6 +141,10 @@ class GrpcClientSession : public ClientSession {
   // do this because `Set()` may block on arbitrary `OnReady` callbacks set by
   // those callers.
   std::unique_ptr<tsl::UnboundedWorkQueue> user_futures_work_queue_;
+
+  absl::Mutex live_user_contexts_mu_;
+  absl::flat_hash_map<UserContextId, TrackedUserContextRef> live_user_contexts_
+      ABSL_GUARDED_BY(live_user_contexts_mu_);
 };
 
 // Creates a gRPC stub that connects to `server_address`. It can be used for

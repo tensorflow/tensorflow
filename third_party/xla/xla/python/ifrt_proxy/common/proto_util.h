@@ -19,11 +19,13 @@
 
 #include <cstdint>
 #include <memory>
-#include <string>
 
+#include "absl/base/attributes.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
+#include "xla/python/ifrt/user_context.h"
 #include "xla/python/ifrt_proxy/common/ifrt_service.pb.h"
 
 namespace xla {
@@ -32,7 +34,8 @@ namespace proxy {
 
 // Makes an IfrtResponse proto with the given metadata.
 std::unique_ptr<IfrtResponse> NewIfrtResponse(
-    uint64_t op_id, absl::Status status = absl::OkStatus());
+    uint64_t op_id, absl::Status status = absl::OkStatus(),
+    absl::Span<const UserContextId> destroyed_user_contexts = {});
 
 // Converts an `absl::string_view` into a type that is appropriate for doing
 // `proto->set_string_field(...)`. This type can be absl::string_view in the

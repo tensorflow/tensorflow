@@ -75,6 +75,7 @@
 #include "xla/python/ifrt_proxy/common/versions.h"
 #include "xla/python/ifrt_proxy/server/host_buffer.h"
 #include "xla/python/ifrt_proxy/server/host_callback.h"
+#include "xla/python/ifrt_proxy/server/ifrt_backend_user_context.h"
 #include "xla/python/ifrt_proxy/server/version.h"
 #include "xla/python/pjrt_ifrt/xla_compiler.h"
 #include "xla/status_macros.h"
@@ -177,11 +178,17 @@ ParseMakeArraysFromHostBufferShardsSpecHostBufferProto(
 // Returns a string_view that is guaranteed to be valid and constant until this
 // process dies.
 absl::string_view GetRequestName(const IfrtRequest* req) {
-  if (IfrtRequest::descriptor() == nullptr) return "unknown";
-  if (req == nullptr) return "unknown";
+  if (IfrtRequest::descriptor() == nullptr) {
+    return "unknown";
+  }
+  if (req == nullptr) {
+    return "unknown";
+  }
   auto* field =
       IfrtRequest::descriptor()->FindFieldByNumber(req->request_case());
-  if (field == nullptr) return "unknown";
+  if (field == nullptr) {
+    return "unknown";
+  }
   return field->name();
 }
 
@@ -385,7 +392,9 @@ class IfrtBackend::InOrderRequestsProcessor {
       return shutdown_msg_.has_value() || !entries_.empty();
     };
     mu_.Await(absl::Condition(&cond));
-    if (shutdown_msg_.has_value()) return std::nullopt;
+    if (shutdown_msg_.has_value()) {
+      return std::nullopt;
+    }
     auto result = std::move(entries_.front());
     entries_.pop_front();
     return result;
@@ -449,7 +458,9 @@ IfrtBackend::IfrtBackend(IfrtProxyVersion version, uint64_t session_id,
           // TODO(b/282757875): Consider making this configurable.
           /*num_threads=*/32),
       in_order_requests_processor_(
-          std::make_unique<InOrderRequestsProcessor>(this)) {}
+          std::make_unique<InOrderRequestsProcessor>(this)),
+      destroyed_user_context_ids_(
+          std::make_shared<IfrtBackendDestroyedUserContextIds>()) {}
 
 absl::StatusOr<std::unique_ptr<IfrtBackend>> IfrtBackend::Create(
     IfrtProxyVersion version, uint64_t session_id,
@@ -524,6 +535,9 @@ tsl::Future<BackendInterface::Response> IfrtBackend::Process(
 
 tsl::Future<BackendInterface::Response> IfrtBackend::ProcessInternal(
     std::unique_ptr<IfrtRequest> request) {
+  UserContextScope user_context_scope(IfrtBackendUserContext::Create(
+      destroyed_user_context_ids_,
+      UserContextId(request->request_metadata().user_context_id())));
   std::optional<ArrayStore::Reservation> asr;
   switch (request->request_case()) {
     case IfrtRequest::RequestCase::kInitRequest:
@@ -697,7 +711,8 @@ tsl::Future<BackendInterface::Response> IfrtBackend::AsyncExecute(
 absl::StatusOr<BackendInterface::Response> IfrtBackend::HandleInit(
     std::unique_ptr<IfrtRequest> request) {
   std::unique_ptr<IfrtResponse> response =
-      NewIfrtResponse(request->request_metadata().op_id());
+      NewIfrtResponse(request->request_metadata().op_id(), absl::OkStatus(),
+                      /*destroyed_user_contexts=*/{});
   auto* init_resp = response->mutable_init_response();
   init_resp->set_session_id(session_id_);
   init_resp->set_platform_name(AsProtoStringData(client_->platform_name()));
@@ -796,13 +811,16 @@ tsl::Future<BackendInterface::Response> IfrtBackend::HandleCheckFutureRequest(
   // `OnReady()`'s lambda gets executed. So, capture a copy of `future` in the
   // lambda, making the lambda itself an owner of `future`.
   future.OnReady([op_id = request->request_metadata().op_id(),
-                  promise = std::move(promise),
-                  hold = future](absl::Status status) mutable {
+                  promise = std::move(promise), hold = future,
+                  destroyed_user_context_ids = destroyed_user_context_ids_](
+                     absl::Status status) mutable {
     if (!status.ok()) {
       promise.Set(std::move(status));
       return;
     }
-    auto ifrt_resp = NewIfrtResponse(op_id);
+    auto ifrt_resp = NewIfrtResponse(op_id, absl::OkStatus(),
+                                     destroyed_user_context_ids->Consume());
+
     ifrt_resp->mutable_check_future_response();
     promise.Set(std::move(ifrt_resp));
   });
@@ -831,13 +849,15 @@ IfrtBackend::HandleCheckValueReadyRequest(
 
   client_->GetReadyFuture(values).OnReady(
       [op_id = request->request_metadata().op_id(),
-       promise = std::move(ifrt_response_promise)](
-          absl::Status status) mutable -> void {
+       promise = std::move(ifrt_response_promise),
+       destroyed_user_context_ids =
+           destroyed_user_context_ids_](absl::Status status) mutable -> void {
         if (!status.ok()) {
           promise.Set(std::move(status));
           return;
         }
-        auto ifrt_response = NewIfrtResponse(op_id);
+        auto ifrt_response = NewIfrtResponse(
+            op_id, absl::OkStatus(), destroyed_user_context_ids->Consume());
         ifrt_response->mutable_check_value_ready_response();
         promise.Set(std::move(ifrt_response));
       });
@@ -856,7 +876,9 @@ IfrtBackend::HandleMakeArrayFromHostBufferRequest(
       Sharding::FromProto(client_.get(), make_array_request->sharding()));
 
   const auto byte_strides = [&]() -> std::optional<std::vector<int64_t>> {
-    if (!make_array_request->has_byte_strides()) return std::nullopt;
+    if (!make_array_request->has_byte_strides()) {
+      return std::nullopt;
+    }
     return FromByteStridesProto(make_array_request->byte_strides());
   }();
   TF_ASSIGN_OR_RETURN(const auto shape,
@@ -895,7 +917,8 @@ IfrtBackend::HandleMakeArrayFromHostBufferRequest(
   }
 
   std::unique_ptr<IfrtResponse> response =
-      NewIfrtResponse(request->request_metadata().op_id());
+      NewIfrtResponse(request->request_metadata().op_id(), absl::OkStatus(),
+                      destroyed_user_context_ids_->Consume());
   auto* make_array_resp =
       response->mutable_make_array_from_host_buffer_response();
   make_array_resp->set_array_handle(asr.Fill(std::move(array)));
@@ -968,7 +991,8 @@ IfrtBackend::HandleMakeArraysFromHostBufferShardsRequest(
   }
 
   std::unique_ptr<IfrtResponse> response =
-      NewIfrtResponse(request->request_metadata().op_id());
+      NewIfrtResponse(request->request_metadata().op_id(), absl::OkStatus(),
+                      destroyed_user_context_ids_->Consume());
   auto* make_arrays_resp =
       response->mutable_make_arrays_from_host_buffer_shards_response();
   make_arrays_resp->mutable_array_handles()->Reserve(arrays.size());
@@ -1000,7 +1024,8 @@ IfrtBackend::HandleMakeErrorArraysRequest(
                       client_->MakeErrorArrays(error, array_specs));
 
   std::unique_ptr<IfrtResponse> response =
-      NewIfrtResponse(request->request_metadata().op_id());
+      NewIfrtResponse(request->request_metadata().op_id(), absl::OkStatus(),
+                      destroyed_user_context_ids_->Consume());
   auto* make_array_resp = response->mutable_make_error_arrays_response();
   for (uint64_t handle : asr.Fill(arrays)) {
     make_array_resp->add_array_handles(handle);
@@ -1054,7 +1079,9 @@ IfrtBackend::HandleAssembleArrayFromSingleDeviceArraysRequest(
                                    single_device_shard_semantics));
   }
 
-  auto ifrt_resp = NewIfrtResponse(request->request_metadata().op_id());
+  auto ifrt_resp =
+      NewIfrtResponse(request->request_metadata().op_id(), absl::OkStatus(),
+                      destroyed_user_context_ids_->Consume());
 
   ifrt_resp->mutable_assemble_array_from_single_device_arrays_response()
       ->set_array_handle(asr.Fill(std::move(array)));
@@ -1079,7 +1106,9 @@ IfrtBackend::HandleRemapArraysRequest(ArrayStore::Reservation& asr,
 
   std::vector<uint64_t> response_handles = asr.Fill(out_arrays);
 
-  auto response = NewIfrtResponse(request->request_metadata().op_id());
+  auto response =
+      NewIfrtResponse(request->request_metadata().op_id(), absl::OkStatus(),
+                      destroyed_user_context_ids_->Consume());
   response->mutable_remap_arrays_response()->mutable_array_handles()->Assign(
       response_handles.begin(), response_handles.end());
 
@@ -1117,8 +1146,9 @@ IfrtBackend::HandleCopyToStringHostBufferRequest(
   auto response_maker =
       [this, op_id = request->request_metadata().op_id(),
        host_buffer = std::move(host_buffer),
-       host_buffer_handle =
-           copy_to_host.host_buffer_handle()](absl::Status status) mutable
+       host_buffer_handle = copy_to_host.host_buffer_handle(),
+       destroyed_user_context_ids =
+           destroyed_user_context_ids_](absl::Status status) mutable
       -> absl::StatusOr<std::unique_ptr<IfrtResponse>> {
     TF_RETURN_IF_ERROR(status);
 
@@ -1127,7 +1157,8 @@ IfrtBackend::HandleCopyToStringHostBufferRequest(
     TF_RETURN_IF_ERROR(host_buffer_store_->Store(
         host_buffer_handle, std::move(*serialized_string_host_buffer)));
 
-    std::unique_ptr<IfrtResponse> response = NewIfrtResponse(op_id);
+    std::unique_ptr<IfrtResponse> response = NewIfrtResponse(
+        op_id, absl::OkStatus(), destroyed_user_context_ids->Consume());
     response->mutable_copy_to_host_buffer_response();
     return response;
   };
@@ -1192,15 +1223,17 @@ IfrtBackend::HandleCopyToHostBufferRequest(
       tsl::Future<BackendInterface::Response>::MakePromise();
   auto on_ready = [this, op_id = request->request_metadata().op_id(),
                    host_buffer = std::move(host_buffer),
-                   host_buffer_handle = copy_to_host.host_buffer_handle()](
-                      absl::Status status) mutable
+                   host_buffer_handle = copy_to_host.host_buffer_handle(),
+                   destroyed_user_context_ids =
+                       destroyed_user_context_ids_](absl::Status status) mutable
       -> absl::StatusOr<std::unique_ptr<IfrtResponse>> {
     TF_RETURN_IF_ERROR(status);
 
     TF_RETURN_IF_ERROR(
         host_buffer_store_->Store(host_buffer_handle, *std::move(host_buffer)));
 
-    std::unique_ptr<IfrtResponse> response = NewIfrtResponse(op_id);
+    std::unique_ptr<IfrtResponse> response = NewIfrtResponse(
+        op_id, absl::OkStatus(), destroyed_user_context_ids->Consume());
     response->mutable_copy_to_host_buffer_response();
     return response;
   };
@@ -1237,7 +1270,9 @@ IfrtBackend::HandleDisassembleIntoSingleDeviceArraysRequest(
   std::vector<uint64_t> response_handles =
       asr.Fill(std::move(single_device_arrays));
 
-  auto response = NewIfrtResponse(request->request_metadata().op_id());
+  auto response =
+      NewIfrtResponse(request->request_metadata().op_id(), absl::OkStatus(),
+                      destroyed_user_context_ids_->Consume());
   response->mutable_disassemble_into_single_device_arrays_response()
       ->mutable_array_handles()
       ->Assign(response_handles.begin(), response_handles.end());
@@ -1281,7 +1316,8 @@ absl::StatusOr<BackendInterface::Response> IfrtBackend::HandleCopyArraysRequest(
   std::vector<uint64_t> response_handles = asr.Fill(std::move(new_arrays));
 
   std::unique_ptr<IfrtResponse> ifrt_resp =
-      NewIfrtResponse(request->request_metadata().op_id());
+      NewIfrtResponse(request->request_metadata().op_id(), absl::OkStatus(),
+                      destroyed_user_context_ids_->Consume());
   ifrt_resp->mutable_copy_arrays_response()->mutable_array_handles()->Assign(
       response_handles.begin(), response_handles.end());
   return ifrt_resp;
@@ -1308,7 +1344,9 @@ IfrtBackend::HandleFullyReplicatedShardRequest(
   // an Array to be made out of a specific single shard.
   TF_ASSIGN_OR_RETURN(auto new_array, array->FullyReplicatedShard(semantics));
 
-  auto ifrt_resp = NewIfrtResponse(request->request_metadata().op_id());
+  auto ifrt_resp =
+      NewIfrtResponse(request->request_metadata().op_id(), absl::OkStatus(),
+                      destroyed_user_context_ids_->Consume());
   ifrt_resp->mutable_fully_replicated_shard_response()->set_array_handle(
       asr.Fill(std::move(new_array)));
   return ifrt_resp;
@@ -1344,7 +1382,9 @@ IfrtBackend::HandleDeleteArrayRequest(std::unique_ptr<IfrtRequest> request) {
     futures_.insert({future_handle, JoinFutures(deletion_futures)});
   }
 
-  auto ifrt_resp = NewIfrtResponse(request->request_metadata().op_id());
+  auto ifrt_resp =
+      NewIfrtResponse(request->request_metadata().op_id(), absl::OkStatus(),
+                      destroyed_user_context_ids_->Consume());
   ifrt_resp->mutable_delete_array_response()->set_deletion_future_handle(
       future_handle);
   return ifrt_resp;
@@ -1356,7 +1396,9 @@ IfrtBackend::HandleIsArrayDeletedRequest(std::unique_ptr<IfrtRequest> request) {
       IfrtArrayRef array,
       array_store_.Find(request->is_array_deleted_request().array_handle()));
 
-  auto ifrt_resp = NewIfrtResponse(request->request_metadata().op_id());
+  auto ifrt_resp =
+      NewIfrtResponse(request->request_metadata().op_id(), absl::OkStatus(),
+                      destroyed_user_context_ids_->Consume());
   ifrt_resp->mutable_is_array_deleted_response()->set_deleted(
       array->IsDeleted());
   return ifrt_resp;
@@ -1381,7 +1423,9 @@ IfrtBackend::HandleDestructArrayRequest(std::unique_ptr<IfrtRequest> request) {
         "Unknown array handle(s): ", absl::StrJoin(missing_handles, ",")));
   }
 
-  auto ifrt_resp = NewIfrtResponse(request->request_metadata().op_id());
+  auto ifrt_resp =
+      NewIfrtResponse(request->request_metadata().op_id(), absl::OkStatus(),
+                      destroyed_user_context_ids_->Consume());
 
   // Currently DestructArrayResponse is an empty message, but proxy clients may
   // rely on its presence for correct demuxing.
@@ -1454,7 +1498,8 @@ tsl::Future<BackendInterface::Response> IfrtBackend::HandleCompileRequest(
                             std::move(program), std::move(options)));
 
     std::unique_ptr<IfrtResponse> ifrt_resp =
-        NewIfrtResponse(request->request_metadata().op_id());
+        NewIfrtResponse(request->request_metadata().op_id(), absl::OkStatus(),
+                        destroyed_user_context_ids_->Consume());
     auto* compile_resp = ifrt_resp->mutable_compile_response();
 
     uint64_t handle = handle_generator_.GenerateAtServer();
@@ -1532,12 +1577,16 @@ IfrtBackend::HandleLoadedExecutableMetadataRequest(
   }
 
   return AsyncExecute([executable_info = *std::move(executable_info),
-                       request = std::shared_ptr<IfrtRequest>(
-                           std::move(request))]() -> absl::StatusOr<Response> {
+                       request =
+                           std::shared_ptr<IfrtRequest>(std::move(request)),
+                       destroyed_user_context_ids =
+                           destroyed_user_context_ids_]()
+                          -> absl::StatusOr<Response> {
     LoadedExecutable* executable = executable_info->executable.get();
 
     std::unique_ptr<IfrtResponse> ifrt_resp =
-        NewIfrtResponse(request->request_metadata().op_id());
+        NewIfrtResponse(request->request_metadata().op_id(), absl::OkStatus(),
+                        destroyed_user_context_ids->Consume());
     auto* metadata_resp =
         ifrt_resp->mutable_loaded_executable_metadata_response();
 
@@ -1640,7 +1689,8 @@ IfrtBackend::HandleLoadedExecutableCostAnalysisRequest(
   auto cost_analysis = executable_info->get()->executable->GetCostAnalysis();
 
   std::unique_ptr<IfrtResponse> ifrt_resp =
-      NewIfrtResponse(request->request_metadata().op_id());
+      NewIfrtResponse(request->request_metadata().op_id(),
+                      destroyed_user_context_ids_->Consume());
 
   if (cost_analysis.ok()) {
     *ifrt_resp->mutable_loaded_executable_cost_analysis_response()
@@ -1759,7 +1809,9 @@ IfrtBackend::HandleLoadedExecutableExecuteRequest(
     }
   }
 
-  auto ifrt_resp = NewIfrtResponse(request->request_metadata().op_id());
+  auto ifrt_resp =
+      NewIfrtResponse(request->request_metadata().op_id(), absl::OkStatus(),
+                      destroyed_user_context_ids_->Consume());
   LoadedExecutableExecuteResponse* execute_response =
       ifrt_resp->mutable_loaded_executable_execute_response();
 
@@ -1808,7 +1860,9 @@ IfrtBackend::HandleLoadedExecutableDeleteRequest(
   tsl::Future<> future(absl::UnimplementedError(
       "LoadedExecutable::Delete is no longer supported"));
 
-  auto ifrt_resp = NewIfrtResponse(request->request_metadata().op_id());
+  auto ifrt_resp =
+      NewIfrtResponse(request->request_metadata().op_id(), absl::OkStatus(),
+                      destroyed_user_context_ids_->Consume());
   auto* del_response = ifrt_resp->mutable_loaded_executable_delete_response();
 
   {
@@ -1825,7 +1879,9 @@ IfrtBackend::HandleLoadedExecutableDeleteRequest(
 absl::StatusOr<BackendInterface::Response>
 IfrtBackend::HandleLoadedExecutableIsDeletedRequest(
     std::unique_ptr<IfrtRequest> request) {
-  auto ifrt_resp = NewIfrtResponse(request->request_metadata().op_id());
+  auto ifrt_resp =
+      NewIfrtResponse(request->request_metadata().op_id(), absl::OkStatus(),
+                      destroyed_user_context_ids_->Consume());
   auto* is_deleted_response =
       ifrt_resp->mutable_loaded_executable_is_deleted_response();
   is_deleted_response->set_is_deleted(false);
@@ -1856,7 +1912,9 @@ IfrtBackend::HandleLoadedExecutableDestructRequest(
   // objects are destroyed by the underlying IFRT implementation when there are
   // no more host callback executions to be done.
 
-  auto ifrt_resp = NewIfrtResponse(request->request_metadata().op_id());
+  auto ifrt_resp =
+      NewIfrtResponse(request->request_metadata().op_id(), absl::OkStatus(),
+                      destroyed_user_context_ids_->Consume());
   ifrt_resp->mutable_loaded_executable_destruct_response();
   return ifrt_resp;
 }
@@ -1890,7 +1948,9 @@ IfrtBackend::HandleLoadedHostCallbackPollRequest(
         absl::MutexLock lock(host_callback_queues_mutex_);
         host_callback_queues_.erase(handle);
       }
-      auto ifrt_resp = NewIfrtResponse(request->request_metadata().op_id());
+      auto ifrt_resp =
+          NewIfrtResponse(request->request_metadata().op_id(), absl::OkStatus(),
+                          destroyed_user_context_ids_->Consume());
       ifrt_resp->mutable_loaded_host_callback_poll_response();
       return ifrt_resp;
     }
@@ -1923,7 +1983,9 @@ IfrtBackend::HandleLoadedHostCallbackPollRequest(
     }
     std::move(cleanup).Cancel();
 
-    auto ifrt_resp = NewIfrtResponse(request->request_metadata().op_id());
+    auto ifrt_resp =
+        NewIfrtResponse(request->request_metadata().op_id(), absl::OkStatus(),
+                        destroyed_user_context_ids_->Consume());
     auto* poll_response =
         ifrt_resp->mutable_loaded_host_callback_poll_response();
     poll_response->set_host_callback_execution_handle(execution_handle);
@@ -1996,7 +2058,9 @@ IfrtBackend::HandleLoadedHostCallbackReturnRequest(
   std::move(execution_request).status.Set(std::move(status));
   std::move(cleanup).Cancel();
 
-  auto ifrt_resp = NewIfrtResponse(request->request_metadata().op_id());
+  auto ifrt_resp =
+      NewIfrtResponse(request->request_metadata().op_id(), absl::OkStatus(),
+                      destroyed_user_context_ids_->Consume());
   ifrt_resp->mutable_loaded_host_callback_return_response();
   return ifrt_resp;
 }
@@ -2012,7 +2076,9 @@ IfrtBackend::HandleGetDefaultDeviceAssignmentRequest(
           get_default_device_assignment_request.num_replicas(),
           get_default_device_assignment_request.num_partitions()));
 
-  auto ifrt_resp = NewIfrtResponse(request->request_metadata().op_id());
+  auto ifrt_resp =
+      NewIfrtResponse(request->request_metadata().op_id(), absl::OkStatus(),
+                      destroyed_user_context_ids_->Consume());
 
   // Currently, the xla::DeviceAssignment::Serialize does not fail. If test
   // coverage for this error is needed, consider using testing::test_value to
@@ -2043,7 +2109,9 @@ IfrtBackend::HandleGetDefaultLayoutRequest(
       client_->GetDefaultPjRtLayout(dtype, get_default_layout_request.dims(),
                                     device, memory_kind));
 
-  auto ifrt_resp = NewIfrtResponse(request->request_metadata().op_id());
+  auto ifrt_resp =
+      NewIfrtResponse(request->request_metadata().op_id(), absl::OkStatus(),
+                      destroyed_user_context_ids_->Consume());
 
   *ifrt_resp->mutable_get_default_layout_response()
        ->mutable_serialized_pjrt_layout() = layout->Serialize();
