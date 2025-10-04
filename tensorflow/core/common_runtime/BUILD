@@ -2733,6 +2733,7 @@ tf_cc_test_mkl(
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
         "//tensorflow/core/util:onednn_env_vars",
+        "@com_google_absl//absl/status",
     ],
 )
 
