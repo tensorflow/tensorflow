@@ -91,7 +91,7 @@ class RandomDatasetOp::Dataset : public DatasetBase {
   std::unique_ptr<IteratorBase> MakeIteratorInternal(
       const string& prefix) const override {
     return std::make_unique<Iterator>(
-        Iterator::Params{this, strings::StrCat(prefix, "::Random")},
+        Iterator::Params{this, absl::StrCat(prefix, "::Random")},
         manager_->get().get());
   }
 
