@@ -124,12 +124,12 @@ TFE_Context* GetContextHandle(PyObject* py_context) {
   auto* ctx = reinterpret_cast<TFE_Context*>(
       PyCapsule_GetPointer(py_context_handle.get(), nullptr));
   if (ctx == nullptr) {
-    PyErr_SetString(PyExc_TypeError,
-                    tensorflow::strings::StrCat(
-                        "Expected context._handle to contain a PyCapsule "
-                        "encoded pointer to TFE_Context. Got ",
-                        Py_TYPE(py_context_handle.get())->tp_name)
-                        .c_str());
+    PyErr_SetString(
+        PyExc_TypeError,
+        absl::StrCat("Expected context._handle to contain a PyCapsule "
+                     "encoded pointer to TFE_Context. Got ",
+                     Py_TYPE(py_context_handle.get())->tp_name)
+            .c_str());
   }
   return ctx;
 }
@@ -168,11 +168,10 @@ int ConvertDataType(PyObject* obj, tensorflow::DataType* dst) {
   if (obj == Py_None) {
     *dst = tensorflow::DataType::DT_INVALID;
   } else if (!PyIntToDataType(obj, dst)) {
-    PyErr_SetString(
-        PyExc_TypeError,
-        tensorflow::strings::StrCat(
-            "Expecting a DataType value for dtype. Got ", Py_TYPE(obj)->tp_name)
-            .c_str());
+    PyErr_SetString(PyExc_TypeError,
+                    absl::StrCat("Expecting a DataType value for dtype. Got ",
+                                 Py_TYPE(obj)->tp_name)
+                        .c_str());
     return 0;
   }
 
@@ -1094,9 +1093,8 @@ PyObject* TFE_Py_InitEagerTensor(PyObject* base_class) {
   if (!PyType_Check(base_class)) {
     PyErr_SetString(
         PyExc_TypeError,
-        tensorflow::strings::StrCat(
-            "Expecting a class definition for `base_class` passed to ",
-            "TFE_InitEagerTensor. Got ", Py_TYPE(base_class)->tp_name)
+        absl::StrCat("Expecting a class definition for `base_class` passed to ",
+                     "TFE_InitEagerTensor. Got ", Py_TYPE(base_class)->tp_name)
             .c_str());
     return nullptr;
   }
@@ -1106,20 +1104,18 @@ PyObject* TFE_Py_InitEagerTensor(PyObject* base_class) {
   if (base_class_type->tp_basicsize > kMaxEagerTensorParentSize) {
     PyErr_SetString(
         PyExc_TypeError,
-        tensorflow::strings::StrCat(
-            "Unable to create subclass EagerTensor from base class ",
-            Py_TYPE(base_class)->tp_name,
-            ". Need its size to be <= ", kMaxEagerTensorParentSize)
+        absl::StrCat("Unable to create subclass EagerTensor from base class ",
+                     Py_TYPE(base_class)->tp_name,
+                     ". Need its size to be <= ", kMaxEagerTensorParentSize)
             .c_str());
     return nullptr;
   }
   if (base_class_type->tp_itemsize != 0) {
     PyErr_SetString(
         PyExc_TypeError,
-        tensorflow::strings::StrCat(
-            "Unable to create subclass EagerTensor from base class ",
-            Py_TYPE(base_class)->tp_name,
-            " which supports variable length instances.")
+        absl::StrCat("Unable to create subclass EagerTensor from base class ",
+                     Py_TYPE(base_class)->tp_name,
+                     " which supports variable length instances.")
             .c_str());
     return nullptr;
   }
@@ -1149,7 +1145,7 @@ PyObject* TFE_Py_InitEagerTensor(PyObject* base_class) {
   // NOTE: The c_str from this string needs to outlast the function, hence is
   // static.
   static tensorflow::string fully_qualified_name =
-      tensorflow::strings::StrCat(module, ".EagerTensor");
+      absl::StrCat(module, ".EagerTensor");
 
   static PyType_Spec EagerTensor_Type_spec = {
       fully_qualified_name.c_str(), sizeof(EagerTensor), 0,
@@ -1200,29 +1196,28 @@ PyObject* TFE_Py_SetEagerTensorProfiler(PyObject* profiler) {
 
 PyObject* TFE_Py_TensorShapeSlice(PyObject* tensors, int slice_dim) {
   if (!PyList_Check(tensors) && !PyTuple_Check(tensors)) {
-    PyErr_SetString(PyExc_TypeError,
-                    tensorflow::strings::StrCat(
-                        "tensors argument must be a list or a tuple. Got \"",
-                        Py_TYPE(tensors)->tp_name, "\"")
-                        .c_str());
+    PyErr_SetString(
+        PyExc_TypeError,
+        absl::StrCat("tensors argument must be a list or a tuple. Got \"",
+                     Py_TYPE(tensors)->tp_name, "\"")
+            .c_str());
     return nullptr;
   }
   if (slice_dim < 0) {
-    PyErr_SetString(
-        PyExc_ValueError,
-        tensorflow::strings::StrCat("Slice dimension must be non-negative. "
-                                    "Got ",
-                                    slice_dim)
-            .c_str());
+    PyErr_SetString(PyExc_ValueError,
+                    absl::StrCat("Slice dimension must be non-negative. "
+                                 "Got ",
+                                 slice_dim)
+                        .c_str());
     return nullptr;
   }
 
   PyObject* py_context = GetPyEagerContext();
   if (py_context == nullptr) {
-    PyErr_SetString(PyExc_RuntimeError, tensorflow::strings::StrCat(
-                                            "Cannot create EagerTensor when "
-                                            "EagerContext is not valid")
-                                            .c_str());
+    PyErr_SetString(PyExc_RuntimeError,
+                    absl::StrCat("Cannot create EagerTensor when "
+                                 "EagerContext is not valid")
+                        .c_str());
     return nullptr;
   }
 
@@ -1285,11 +1280,10 @@ PyObject* TFE_Py_TensorShapeSlice(PyObject* tensors, int slice_dim) {
       tensorflow::wrap(tensorflow::unwrap(ctx)->CreateLocalHandle(tensor));
 
   if (!status->status.ok()) {
-    PyErr_SetString(
-        PyExc_RuntimeError,
-        tensorflow::strings::StrCat("Failed to construct new tensor handle: ",
-                                    TF_Message(status.get()))
-            .c_str());
+    PyErr_SetString(PyExc_RuntimeError,
+                    absl::StrCat("Failed to construct new tensor handle: ",
+                                 TF_Message(status.get()))
+                        .c_str());
     return nullptr;
   }
 
@@ -1298,11 +1292,10 @@ PyObject* TFE_Py_TensorShapeSlice(PyObject* tensors, int slice_dim) {
 
 PyObject* TFE_Py_TensorShapeOnDevice(PyObject* tensor) {
   if (!EagerTensor_CheckExact(tensor)) {
-    PyErr_SetString(
-        PyExc_TypeError,
-        tensorflow::strings::StrCat("Expected an EagerTensors but got type \"",
-                                    Py_TYPE(tensor)->tp_name, "\"")
-            .c_str());
+    PyErr_SetString(PyExc_TypeError,
+                    absl::StrCat("Expected an EagerTensors but got type \"",
+                                 Py_TYPE(tensor)->tp_name, "\"")
+                        .c_str());
     return nullptr;
   }
   TFE_TensorHandle* handle = EagerTensor_Handle(tensor);
@@ -1311,11 +1304,10 @@ PyObject* TFE_Py_TensorShapeOnDevice(PyObject* tensor) {
   TFE_TensorDebugInfo* debug_info =
       TFE_TensorHandleTensorDebugInfo(handle, status.get());
   if (!status->status.ok()) {
-    PyErr_SetString(
-        PyExc_RuntimeError,
-        tensorflow::strings::StrCat("Error retrieving tensor's device shape: ",
-                                    TF_Message(status.get()))
-            .c_str());
+    PyErr_SetString(PyExc_RuntimeError,
+                    absl::StrCat("Error retrieving tensor's device shape: ",
+                                 TF_Message(status.get()))
+                        .c_str());
     return nullptr;
   }
 
