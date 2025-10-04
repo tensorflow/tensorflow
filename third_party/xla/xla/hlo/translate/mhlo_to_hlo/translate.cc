@@ -42,6 +42,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/translate/mhlo_to_hlo/attribute_exporter.h"
 #include "xla/hlo/translate/mhlo_to_hlo/mlir_hlo_to_hlo.h"
 #include "xla/hlo/translate/mhlo_to_hlo/type_to_shape.h"
 #include "xla/hlo/translate/register.h"
@@ -139,6 +140,18 @@ absl::Status ConvertMlirHloToHloViaBuilder(
       }
     }
   }
+
+  for (int i = 0; i < main.getNumArguments(); ++i) {
+    if (auto original_value_attr = main.getArgAttrOfType<mlir::StringAttr>(
+            i, xla::kMhloOriginalValueAttr)) {
+      *computation.mutable_proto()
+           ->mutable_computations(0)
+           ->mutable_instructions(i)
+           ->mutable_original_value() =
+          *ConvertOriginalValue(original_value_attr);
+    }
+  }
+
   auto hlo_module = computation.proto();
   mlir::StringRef module_name = module.getName() ? *module.getName() : "main";
   hlo_module.set_name(module_name.str());

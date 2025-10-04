@@ -291,6 +291,7 @@ cc_library(
     srcs = ["translate.cc"],
     hdrs = ["translate.h"],
     deps = [
+        ":attribute_exporter",
         ":mlir_hlo_to_hlo",
         ":type_to_shape",
         "//xla:debug_options_flags",
