@@ -51,6 +51,7 @@ xla_cc_test(
     srcs = ["attribute_exporter_test.cc"],
     deps = [
         ":attribute_exporter",
+        "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo_sharding",
         "//xla/hlo/parser:hlo_parser",
         "//xla/mlir/utils:error_util",
@@ -281,6 +282,7 @@ xla_cc_test(
         "//xla/tsl/platform:status_matchers",
         "//xla/tsl/platform:test",
         "//xla/tsl/platform:test_main",
+        "@com_google_absl//absl/status:status_matchers",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
     ],
