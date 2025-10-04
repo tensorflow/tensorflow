@@ -58,8 +58,7 @@ absl::Status OptimizationPassRegistry::RunGrouping(
   };
 
   dump_graph(options.debug_filename_prefix, kDebugGroupMain,
-             strings::StrCat("before_opt_group_", grouping_name),
-             VLOG_IS_ON(3));
+             absl::StrCat("before_opt_group_", grouping_name), VLOG_IS_ON(3));
 
   auto group = groups_.find(grouping);
   if (group != groups_.end()) {
@@ -99,7 +98,7 @@ absl::Status OptimizationPassRegistry::RunGrouping(
   }
 
   dump_graph(options.debug_filename_prefix, kDebugGroupMain,
-             strings::StrCat("after_opt_group_", grouping_name),
+             absl::StrCat("after_opt_group_", grouping_name),
              VLOG_IS_ON(3) || (VLOG_IS_ON(2) &&
                                grouping == Grouping::POST_REWRITE_FOR_EXEC));
 
