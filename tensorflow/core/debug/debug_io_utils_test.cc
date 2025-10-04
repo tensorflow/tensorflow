@@ -108,7 +108,7 @@ TEST_F(DebugIOUtilsTest, DumpFloatTensorToFileSunnyDay) {
   Initialize();
 
   const string test_dir =
-      strings::StrCat(testing::TmpDir(), "/DumpFloatTensorToFileSunnyDay");
+      absl::StrCat(testing::TmpDir(), "/DumpFloatTensorToFileSunnyDay");
   if (!env_->FileExists(test_dir).ok()) {
     ASSERT_TRUE(env_->RecursivelyCreateDir(test_dir).ok());
   }
@@ -155,7 +155,7 @@ TEST_F(DebugIOUtilsTest, DumpStringTensorToFileSunnyDay) {
   Initialize();
 
   const string test_dir =
-      strings::StrCat(testing::TmpDir(), "/DumpStringTensorToFileSunnyDay");
+      absl::StrCat(testing::TmpDir(), "/DumpStringTensorToFileSunnyDay");
   if (!env_->FileExists(test_dir).ok()) {
     ASSERT_TRUE(env_->RecursivelyCreateDir(test_dir).ok());
   }
@@ -209,8 +209,8 @@ TEST_F(DebugIOUtilsTest, DumpTensorToFileCannotCreateDirectory) {
   Initialize();
 
   // First, create the file at the path.
-  const string test_dir = strings::StrCat(
-      testing::TmpDir(), "/DumpTensorToFileCannotCreateDirectory");
+  const string test_dir =
+      absl::StrCat(testing::TmpDir(), "/DumpTensorToFileCannotCreateDirectory");
   if (!env_->FileExists(test_dir).ok()) {
     ASSERT_TRUE(env_->RecursivelyCreateDir(test_dir).ok());
   }
@@ -267,13 +267,13 @@ TEST_F(DebugIOUtilsTest, PublishTensorToMultipleFileURLs) {
   std::vector<string> dump_file_paths;
   std::vector<string> urls;
   for (int i = 0; i < kNumDumpRoots; ++i) {
-    string dump_root = strings::StrCat(testing::TmpDir(),
-                                       "/PublicTensorToMultipleFileUrls_", i);
+    string dump_root =
+        absl::StrCat(testing::TmpDir(), "/PublicTensorToMultipleFileUrls_", i);
 
     dump_roots.push_back(dump_root);
     dump_file_paths.push_back(
         DebugFileIO::GetDumpFilePath(dump_root, kDebugNodeKey, wall_time));
-    urls.push_back(strings::StrCat("file://", dump_root));
+    urls.push_back(absl::StrCat("file://", dump_root));
   }
 
   for (int i = 1; i < kNumDumpRoots; ++i) {
@@ -369,8 +369,8 @@ TEST_F(DebugIOUtilsTest, PublishTensorConcurrentlyToPartiallyOverlappingPaths) {
       new thread::ThreadPool(Env::Default(), "test", kConcurrentPubs);
   const uint64 wall_time = env_->NowMicros();
   const string dump_root_base =
-      strings::StrCat(testing::TmpDir(),
-                      "/PublishTensorConcurrentlyToPartiallyOverlappingPaths");
+      absl::StrCat(testing::TmpDir(),
+                   "/PublishTensorConcurrentlyToPartiallyOverlappingPaths");
   if (!env_->FileExists(dump_root_base).ok()) {
     ASSERT_TRUE(env_->RecursivelyCreateDir(dump_root_base).ok());
   }
@@ -392,13 +392,13 @@ TEST_F(DebugIOUtilsTest, PublishTensorConcurrentlyToPartiallyOverlappingPaths) {
     {
       mutex_lock l(mu);
       dump_root =
-          strings::StrCat(dump_root_base, "grumpy/", "dump_", dump_count++);
+          absl::StrCat(dump_root_base, "grumpy/", "dump_", dump_count++);
 
       dump_roots.push_back(dump_root);
       dump_file_paths.push_back(
           DebugFileIO::GetDumpFilePath(dump_root, kDebugNodeKey, wall_time));
 
-      debug_url = strings::StrCat("file://", dump_root);
+      debug_url = absl::StrCat("file://", dump_root);
     }
 
     std::vector<string> urls;
