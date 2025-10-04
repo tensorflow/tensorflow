@@ -400,7 +400,7 @@ class Executable {
     // Since both `hlo_proto()` and `buffer_assignment_proto()` return a
     // pointer to hlo_proto_, having the mutex is not enough to make this
     // function thread-safe.
-    absl::MutexLock lock(&hlo_proto_mutex_);
+    absl::MutexLock lock(hlo_proto_mutex_);
     hlo_proto_ = std::move(hlo_proto);
   }
   bool dumping_snapshot() const {
@@ -410,7 +410,7 @@ class Executable {
   }
 
   HloProto const* hlo_proto() const {
-    absl::MutexLock lock(&hlo_proto_mutex_);
+    absl::MutexLock lock(hlo_proto_mutex_);
     if (hlo_proto_ != nullptr && !hlo_proto_->has_hlo_module()) {
       *hlo_proto_->mutable_hlo_module() = module().ToProto();
     }
@@ -418,7 +418,7 @@ class Executable {
   }
 
   const BufferAssignmentProto* buffer_assignment_proto() const {
-    absl::MutexLock lock(&hlo_proto_mutex_);
+    absl::MutexLock lock(hlo_proto_mutex_);
     return hlo_proto_ != nullptr && hlo_proto_->has_buffer_assignment()
                ? &hlo_proto_->buffer_assignment()
                : nullptr;
