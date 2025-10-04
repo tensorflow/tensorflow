@@ -13,12 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <memory>
 #include <string>
-#include <utility>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
 #include "mlir-c/IR.h"
 #include "mlir/Bindings/Python/PybindAdaptors.h"  // IWYU pragma: keep; Needed to allow MlirModule -> ModuleOp.
 #include "mlir/CAPI/IR.h"

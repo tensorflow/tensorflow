@@ -113,6 +113,7 @@ tsl_pybind_extension(
         ":lower_to_ifrt",
         "//xla/pjrt:status_casters",
         "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
         "@llvm-project//mlir:CAPIIRHeaders",
