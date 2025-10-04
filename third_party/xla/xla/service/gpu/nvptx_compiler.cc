@@ -412,8 +412,7 @@ absl::Status NVPTXCompiler::AddFusionAutotuningPass(
   }
   const DebugOptions& debug_options = hlo_module->config().debug_options();
   if (debug_options.xla_gpu_autotune_level() == 0 ||
-      debug_options.xla_gpu_exclude_nondeterministic_ops() ||
-      !debug_options.xla_gpu_experimental_enable_fusion_autotuner()) {
+      debug_options.xla_gpu_exclude_nondeterministic_ops()) {
     return absl::OkStatus();
   }
 
@@ -432,7 +431,8 @@ absl::Status NVPTXCompiler::AddFusionAutotuningPass(
       std::unique_ptr<AutotunerPass> autotuner_pass,
       AutotunerPass::Create(std::move(backends), debug_options, stream_executor,
                             thread_pool, ShouldAutotuneBetweenFusionEmitters,
-                            target_config, options.device_allocator));
+                            target_config, options.device_allocator,
+                            /*optimize_scratch_bytes=*/false));
   pipeline->AddPass(std::move(autotuner_pass));
   return absl::OkStatus();
 }
