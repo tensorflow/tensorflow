@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/hlo/analysis/indexing_map.h"
 
-#include <limits>
 #include <memory>
 #include <optional>
 #include <sstream>
