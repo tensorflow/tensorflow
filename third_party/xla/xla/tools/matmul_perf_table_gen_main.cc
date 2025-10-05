@@ -29,6 +29,7 @@ limitations under the License.
 #include "xla/tools/matmul_perf_table_gen.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/util/command_line_flags.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/init_main.h"
 
 constexpr absl::string_view kUsageText = R"(
