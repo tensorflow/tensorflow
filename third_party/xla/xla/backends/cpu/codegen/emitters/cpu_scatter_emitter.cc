@@ -16,7 +16,6 @@ limitations under the License.
 #include "xla/backends/cpu/codegen/emitters/cpu_scatter_emitter.h"
 
 #include <cstdint>
-#include <memory>
 #include <numeric>
 #include <optional>
 #include <string>
