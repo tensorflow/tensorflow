@@ -184,7 +184,7 @@ string MaybeAppendSlash(const string& name) {
     return "/";
   }
   if (name.back() != '/') {
-    return strings::StrCat(name, "/");
+    return absl::StrCat(name, "/");
   }
   return name;
 }
@@ -193,7 +193,7 @@ string MaybeAppendSlash(const string& name) {
 // to result in an appended slash in order for directory markers
 // to be processed correctly: "gs://a/b" + "" should give "gs://a/b/".
 string JoinGcsPath(const string& path, const string& subpath) {
-  return strings::StrCat(MaybeAppendSlash(path), subpath);
+  return absl::StrCat(MaybeAppendSlash(path), subpath);
 }
 
 /// \brief Returns the given paths appending all their subfolders.
@@ -773,7 +773,7 @@ class GcsWritableFile : public WritableFile {
   }
 
   string GetGcsPathWithObject(string object) const {
-    return strings::StrCat("gs://", bucket_, "/", object);
+    return absl::StrCat("gs://", bucket_, "/", object);
   }
   string GetGcsPath() const { return GetGcsPathWithObject(object_); }
 
@@ -1234,7 +1234,7 @@ absl::Status GcsFileSystem::RequestUploadSessionStatus(
   TF_RETURN_IF_ERROR(CreateHttpRequest(&request));
   request->SetUri(session_uri);
   request->SetTimeouts(timeouts_.connect, timeouts_.idle, timeouts_.metadata);
-  request->AddHeader("Content-Range", strings::StrCat("bytes */", file_size));
+  request->AddHeader("Content-Range", absl::StrCat("bytes */", file_size));
   request->SetPutEmptyBody();
   absl::Status status = request->Send();
   if (status.ok()) {
@@ -1655,7 +1655,7 @@ absl::Status GcsFileSystem::GetBucketMetadata(
     const string& bucket, std::vector<char>* result_buffer) {
   std::unique_ptr<HttpRequest> request;
   TF_RETURN_IF_ERROR(CreateHttpRequest(&request));
-  request->SetUri(strings::StrCat(kGcsUriBase, "b/", bucket));
+  request->SetUri(absl::StrCat(kGcsUriBase, "b/", bucket));
 
   if (result_buffer != nullptr) {
     request->SetResultBuffer(result_buffer);
@@ -1786,7 +1786,7 @@ absl::Status GcsFileSystem::GetMatchingPaths(const string& pattern,
           // removing duplicate slashes. We know that `dir_no_slash` does not
           // end in `/`, so we are safe inserting the new `/` here as the path
           // separator.
-          const string full_path = strings::StrCat(dir_no_slash, "/", path);
+          const string full_path = absl::StrCat(dir_no_slash, "/", path);
           if (this->Match(full_path, pattern)) {
             results->push_back(full_path);
           }
@@ -1814,27 +1814,25 @@ absl::Status GcsFileSystem::GetChildrenBounded(
     std::vector<char> output_buffer;
     std::unique_ptr<HttpRequest> request;
     TF_RETURN_IF_ERROR(CreateHttpRequest(&request));
-    auto uri = strings::StrCat(kGcsUriBase, "b/", bucket, "/o");
+    auto uri = absl::StrCat(kGcsUriBase, "b/", bucket, "/o");
     if (recursive) {
-      uri = strings::StrCat(uri, "?fields=items%2Fname%2CnextPageToken");
+      uri = absl::StrCat(uri, "?fields=items%2Fname%2CnextPageToken");
     } else {
       // Set "/" as a delimiter to ask GCS to treat subfolders as children
       // and return them in "prefixes".
-      uri = strings::StrCat(uri,
-                            "?fields=items%2Fname%2Cprefixes%2CnextPageToken");
-      uri = strings::StrCat(uri, "&delimiter=%2F");
+      uri =
+          absl::StrCat(uri, "?fields=items%2Fname%2Cprefixes%2CnextPageToken");
+      uri = absl::StrCat(uri, "&delimiter=%2F");
     }
     if (!object_prefix.empty()) {
-      uri = strings::StrCat(uri,
-                            "&prefix=", request->EscapeString(object_prefix));
+      uri = absl::StrCat(uri, "&prefix=", request->EscapeString(object_prefix));
     }
     if (!nextPageToken.empty()) {
-      uri = strings::StrCat(
-          uri, "&pageToken=", request->EscapeString(nextPageToken));
+      uri = absl::StrCat(uri,
+                         "&pageToken=", request->EscapeString(nextPageToken));
     }
     if (max_results - retrieved_results < kGetChildrenDefaultPageSize) {
-      uri =
-          strings::StrCat(uri, "&maxResults=", max_results - retrieved_results);
+      uri = absl::StrCat(uri, "&maxResults=", max_results - retrieved_results);
     }
     request->SetUri(uri);
     request->SetResultBuffer(&output_buffer);
@@ -1862,9 +1860,9 @@ absl::Status GcsFileSystem::GetChildrenBounded(
         // the beginning of 'name'.
         absl::string_view relative_path(name);
         if (!absl::ConsumePrefix(&relative_path, object_prefix)) {
-          return errors::Internal(strings::StrCat(
-              "Unexpected response: the returned file name ", name,
-              " doesn't match the prefix ", object_prefix));
+          return errors::Internal(
+              absl::StrCat("Unexpected response: the returned file name ", name,
+                           " doesn't match the prefix ", object_prefix));
         }
         if (!relative_path.empty() || include_self_directory_marker) {
           result->emplace_back(relative_path);
@@ -2180,7 +2178,7 @@ absl::Status GcsFileSystem::DeleteRecursively(const string& dirname,
     *undeleted_dirs = 1;
     return absl::Status(
         absl::StatusCode::kNotFound,
-        strings::StrCat(dirname, " doesn't exist or not a directory."));
+        absl::StrCat(dirname, " doesn't exist or not a directory."));
   }
   std::vector<string> all_objects;
   // Get all children in the directory recursively.
