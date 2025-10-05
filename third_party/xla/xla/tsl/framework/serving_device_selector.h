@@ -37,8 +37,8 @@ class DeviceReservation {
   DeviceReservation(const DeviceReservation&) = delete;
   DeviceReservation& operator=(const DeviceReservation&) = delete;
 
-  DeviceReservation(DeviceReservation&& r);
-  DeviceReservation& operator=(DeviceReservation&& r);
+  DeviceReservation(DeviceReservation&& r) noexcept;
+  DeviceReservation& operator=(DeviceReservation&& r) noexcept;
 
   int device_index() const { return device_index_; }
 
