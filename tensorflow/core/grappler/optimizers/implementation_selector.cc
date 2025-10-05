@@ -212,7 +212,7 @@ absl::Status UpdateNodeDef(utils::MutableNodeView* node_view,
             name_index[1]);
       }
       for (int i = 1; i <= -diff; ++i)
-        node_def->add_input(strings::StrCat(node_name, ":", i + last_index));
+        node_def->add_input(absl::StrCat(node_name, ":", i + last_index));
     }
 
     // Add control dependencies back.
