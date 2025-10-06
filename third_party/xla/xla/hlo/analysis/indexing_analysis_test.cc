@@ -2463,7 +2463,7 @@ TEST_F(IndexingAnalysisTest, ScaledDotOp) {
       b = f32[10,2] parameter(1)
       a_scale = f32[2,2] parameter(2)
       b_scale = f32[2,2] parameter(3)
-      ROOT dot = f32[2,2] scaled-dot(a, a_scale, b, b_scale),
+      ROOT dot = f32[2,2] scaled-dot(a, b, a_scale, b_scale),
         lhs_contracting_dims={1},
         rhs_contracting_dims={0}
     }
@@ -2476,13 +2476,13 @@ TEST_F(IndexingAnalysisTest, ScaledDotOp) {
       d1 in [0, 1],
       s0 in [0, 9]
     operand id = 1
-      (d0, d1)[s0] -> (d0, s0 floordiv 5),
+      (d0, d1)[s0] -> (s0, d1),
       domain:
       d0 in [0, 1],
       d1 in [0, 1],
       s0 in [0, 9]
     operand id = 2
-      (d0, d1)[s0] -> (s0, d1),
+      (d0, d1)[s0] -> (d0, s0 floordiv 5),
       domain:
       d0 in [0, 1],
       d1 in [0, 1],

@@ -2116,7 +2116,7 @@ XlaOp XlaBuilder::DotGeneral(
 }
 
 XlaOp XlaBuilder::ScaledDot(
-    XlaOp lhs, XlaOp lhs_scale, XlaOp rhs, XlaOp rhs_scale,
+    XlaOp lhs, XlaOp rhs, XlaOp lhs_scale, XlaOp rhs_scale,
     const DotDimensionNumbers& dimension_numbers,
     const PrecisionConfig* precision_config,
     std::optional<PrimitiveType> preferred_element_type) {
@@ -2135,7 +2135,7 @@ XlaOp XlaBuilder::ScaledDot(
       *instr.mutable_precision_config() = *precision_config;
     }
     return AddInstruction(std::move(instr), HloOpcode::kScaledDot,
-                          {lhs, lhs_scale, rhs, rhs_scale});
+                          {lhs, rhs, lhs_scale, rhs_scale});
   });
 }
 
@@ -2152,12 +2152,12 @@ absl::StatusOr<XlaOp> XlaBuilder::DotGeneralInternal(
   return AddInstruction(std::move(instr), HloOpcode::kDot, {lhs, rhs});
 }
 
-XlaOp ScaledDot(const XlaOp lhs, const XlaOp lhs_scale, const XlaOp rhs,
+XlaOp ScaledDot(const XlaOp lhs, const XlaOp rhs, const XlaOp lhs_scale,
                 const XlaOp rhs_scale,
                 const DotDimensionNumbers& dimension_numbers,
                 const PrecisionConfig* precision_config,
                 std::optional<PrimitiveType> preferred_element_type) {
-  return lhs.builder()->ScaledDot(lhs, lhs_scale, rhs, rhs_scale,
+  return lhs.builder()->ScaledDot(lhs, rhs, lhs_scale, rhs_scale,
                                   dimension_numbers, precision_config,
                                   preferred_element_type);
 }

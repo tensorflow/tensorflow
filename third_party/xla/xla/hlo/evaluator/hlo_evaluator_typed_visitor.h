@@ -1737,8 +1737,8 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
 
   absl::Status HandleScaledDot(const HloInstruction* dot) override {
     auto lhs = dot->operand(0);
-    auto lhs_scale = dot->operand(1);
-    auto rhs = dot->operand(2);
+    auto rhs = dot->operand(1);
+    auto lhs_scale = dot->operand(2);
     auto rhs_scale = dot->operand(3);
     CHECK(dot->shape().IsArray());
     CHECK(lhs->shape().IsArray());
@@ -1781,7 +1781,7 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
     TF_ASSIGN_OR_RETURN(Literal rhs_scale_literal,
                         evaluate_scale(rhs, rhs_scale));
     return HandleScaledDotSlowPathWithLiterals(
-        dot, lhs_literal, lhs_scale_literal, rhs_literal, rhs_scale_literal);
+        dot, lhs_literal, rhs_literal, lhs_scale_literal, rhs_scale_literal);
   }
 
  private:
@@ -1837,7 +1837,7 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
 
   absl::Status HandleScaledDotSlowPathWithLiterals(
       const HloInstruction* dot, const Literal& lhs_literal,
-      const Literal& lhs_scale_literal, const Literal& rhs_literal,
+      const Literal& rhs_literal, const Literal& lhs_scale_literal,
       const Literal& rhs_scale_literal) {
     const auto& dnums = dot->dot_dimension_numbers();
     CHECK(ShapeUtil::SameElementType(lhs_literal.shape(), rhs_literal.shape()));

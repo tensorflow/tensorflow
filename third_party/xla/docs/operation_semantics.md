@@ -2460,8 +2460,8 @@ precision_config,preferred_element_type)`**
 | Arguments                | Type                      | Semantics             |
 | ------------------------ | ------------------------- | --------------------- |
 | `lhs`                    | `XlaOp`                   | array of type T       |
-| `lhs_scale`              | `XlaOp`                   | array of type T       |
 | `rhs`                    | `XlaOp`                   | array of type T       |
+| `lhs_scale`              | `XlaOp`                   | array of type T       |
 | `rhs_scale`              | `XlaOp`                   | array of type T       |
 | `dimension_number`       | `ScatterDimensionNumbers` | Dimension numbers for |
 :                          :                           : scatter operation     :
@@ -2473,7 +2473,7 @@ precision_config,preferred_element_type)`**
 Similar to [DotGeneral](#dotgeneral).
 
 Creates a scaled dot op with operands 'lhs', 'lhs_scale', 'rhs', and
-'rhs_scale', with contracting, batch, ragged, and group dimensions specified in
+'rhs_scale', with contracting and batch dimensions specified in
 'dimension_numbers'.
 
 > **Note:** `ScaledDot` is only found in HLO. It is not found in StableHLO.

@@ -868,8 +868,8 @@ class GemmFusionVisitor : public DfsHloRewriteVisitor {
     };
     std::vector<HloInstruction*> new_operands{
         create_parameter(0, "lhs"),
-        create_parameter(1, "lhs_scale"),
-        create_parameter(2, "rhs"),
+        create_parameter(1, "rhs"),
+        create_parameter(2, "lhs_scale"),
         create_parameter(3, "rhs_scale"),
     };
     builder.AddInstruction(

@@ -598,20 +598,20 @@ absl::StatusOr<std::optional<se::gpu::CudnnGraph>> HloFusionToCuDnnGraph(
       const auto& dimension_numbers = hlo->dot_dimension_numbers();
       std::array<std::shared_ptr<graph::Tensor_attributes>, 2> dot_operands;
       for (int i = 0; i < 2; ++i) {
-        const Shape& input_shape = hlo->operand(i * 2)->shape();
-        const Shape& scale_shape = hlo->operand(i * 2 + 1)->shape();
+        const Shape& input_shape = hlo->operand(i)->shape();
+        const Shape& scale_shape = hlo->operand(i + 2)->shape();
         int dim = i == 0 ? dimension_numbers.lhs_contracting_dimensions(0)
                          : dimension_numbers.rhs_contracting_dimensions(0);
         int block_size =
             input_shape.dimensions(dim) / scale_shape.dimensions(dim);
 
-        auto scale = operand(i * 2 + 1);
+        auto scale = operand(i + 2);
         scale->set_reordering_type(fe::TensorReordering_t::F8_128x4);
         auto dq_attrs = graph::Block_scale_dequantize_attributes()
                             .set_block_size(block_size)
                             .set_compute_data_type(fe::DataType_t::FLOAT);
         dot_operands[i] =
-            graph.block_scale_dequantize(operand(i * 2), scale, dq_attrs);
+            graph.block_scale_dequantize(operand(i), scale, dq_attrs);
         dot_operands[i]->set_name(
             absl::StrCat(hlo->name(), i == 0 ? "_lhs" : "_rhs", "_dq"));
       }

@@ -824,19 +824,19 @@ TEST_F(SplitKTest, ScaledDot_SameBlockSize) {
   const std::string hlo_text = R"(
 triton_gemm_dot {
   lhs = f8e4m3fn[16,128] parameter(0)
-  lhs_scale = f8e8m0fnu[16,4] parameter(1)
-  rhs = f8e5m2[32,128] parameter(2)
+  rhs = f8e5m2[32,128] parameter(1)
+  lhs_scale = f8e8m0fnu[16,4] parameter(2)
   rhs_scale = f8e8m0fnu[32,4] parameter(3)
-  ROOT dot = f32[16,32] scaled-dot(lhs, lhs_scale, rhs, rhs_scale),
+  ROOT dot = f32[16,32] scaled-dot(lhs, rhs, lhs_scale, rhs_scale),
     lhs_contracting_dims={1}, rhs_contracting_dims={1}
 }
 
 ENTRY %entry_computation {
   lhs = f8e4m3fn[16,128] parameter(0)
-  lhs_scale = f8e8m0fnu[16,4] parameter(1)
-  rhs = f8e5m2[32,128] parameter(2)
+  rhs = f8e5m2[32,128] parameter(1)
+  lhs_scale = f8e8m0fnu[16,4] parameter(2)
   rhs_scale = f8e8m0fnu[32,4] parameter(3)
-  ROOT fusion = f32[16,32] fusion(lhs, lhs_scale, rhs, rhs_scale),
+  ROOT fusion = f32[16,32] fusion(lhs, rhs, lhs_scale, rhs_scale),
       kind=kCustom, calls=triton_gemm_dot
 })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
@@ -852,8 +852,8 @@ ENTRY %entry_computation {
   EXPECT_THAT(
       dot_fusion->called_computations()[0]->root_instruction(),
       GmockMatch(m::ScaledDot(m::Op().WithShape(F8E4M3FN, {16, 3, 64}),
-                              m::Op().WithShape(F8E8M0FNU, {16, 3, 2}),
                               m::Op().WithShape(F8E5M2, {32, 3, 64}),
+                              m::Op().WithShape(F8E8M0FNU, {16, 3, 2}),
                               m::Op().WithShape(F8E8M0FNU, {32, 3, 2}))));
 }
 
@@ -861,19 +861,19 @@ TEST_F(SplitKTest, ScaledDot_DifferentBlockSize) {
   const std::string hlo_text = R"(
 triton_gemm_dot {
   lhs = f8e4m3fn[16,128] parameter(0)
-  lhs_scale = f8e8m0fnu[16,4] parameter(1)
-  rhs = f8e5m2[32,128] parameter(2)
+  rhs = f8e5m2[32,128] parameter(1)
+  lhs_scale = f8e8m0fnu[16,4] parameter(2)
   rhs_scale = f8e8m0fnu[32,8] parameter(3)
-  ROOT dot = f32[16,32] scaled-dot(lhs, lhs_scale, rhs, rhs_scale),
+  ROOT dot = f32[16,32] scaled-dot(lhs, rhs, lhs_scale, rhs_scale),
     lhs_contracting_dims={1}, rhs_contracting_dims={1}
 }
 
 ENTRY %entry_computation {
   lhs = f8e4m3fn[16,128] parameter(0)
-  lhs_scale = f8e8m0fnu[16,4] parameter(1)
-  rhs = f8e5m2[32,128] parameter(2)
+  rhs = f8e5m2[32,128] parameter(1)
+  lhs_scale = f8e8m0fnu[16,4] parameter(2)
   rhs_scale = f8e8m0fnu[32,8] parameter(3)
-  ROOT fusion = f32[16,32] fusion(lhs, lhs_scale, rhs, rhs_scale),
+  ROOT fusion = f32[16,32] fusion(lhs, rhs, lhs_scale, rhs_scale),
       kind=kCustom, calls=triton_gemm_dot
 })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
@@ -889,8 +889,8 @@ ENTRY %entry_computation {
   EXPECT_THAT(
       dot_fusion->called_computations()[0]->root_instruction(),
       GmockMatch(m::ScaledDot(m::Op().WithShape(F8E4M3FN, {16, 3, 64}),
-                              m::Op().WithShape(F8E8M0FNU, {16, 3, 2}),
                               m::Op().WithShape(F8E5M2, {32, 3, 64}),
+                              m::Op().WithShape(F8E8M0FNU, {16, 3, 2}),
                               m::Op().WithShape(F8E8M0FNU, {32, 3, 4}))));
 }
 
@@ -898,18 +898,18 @@ TEST_F(SplitKTest, ScaledDot_LhsOnly) {
   const std::string hlo_text = R"(
 triton_gemm_dot {
   lhs = f8e4m3fn[16,128] parameter(0)
-  lhs_scale = f8e8m0fnu[16,4] parameter(1)
-  rhs = f8e5m2[32,128] parameter(2)
+  rhs = f8e5m2[32,128] parameter(1)
+  lhs_scale = f8e8m0fnu[16,4] parameter(2)
   rhs_scale = f8e5m2[] constant(1.0)
-  ROOT dot = f32[16,32] scaled-dot(lhs, lhs_scale, rhs, rhs_scale),
+  ROOT dot = f32[16,32] scaled-dot(lhs, rhs, lhs_scale, rhs_scale),
     lhs_contracting_dims={1}, rhs_contracting_dims={1}
 }
 
 ENTRY %entry_computation {
   lhs = f8e4m3fn[16,128] parameter(0)
-  lhs_scale = f8e8m0fnu[16,4] parameter(1)
-  rhs = f8e5m2[32,128] parameter(2)
-  ROOT fusion = f32[16,32] fusion(lhs, lhs_scale, rhs),
+  rhs = f8e5m2[32,128] parameter(1)
+  lhs_scale = f8e8m0fnu[16,4] parameter(2)
+  ROOT fusion = f32[16,32] fusion(lhs, rhs, lhs_scale),
       kind=kCustom, calls=triton_gemm_dot
 })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
@@ -924,8 +924,8 @@ ENTRY %entry_computation {
       GmockMatch(m::Reduce(m::Fusion(&dot_fusion), m::ConstantScalar())));
   EXPECT_THAT(dot_fusion->called_computations()[0]->root_instruction(),
               GmockMatch(m::ScaledDot(m::Op().WithShape(F8E4M3FN, {16, 3, 64}),
-                                      m::Op().WithShape(F8E8M0FNU, {16, 3, 2}),
                                       m::Op().WithShape(F8E5M2, {32, 3, 64}),
+                                      m::Op().WithShape(F8E8M0FNU, {16, 3, 2}),
                                       m::Op().WithShape(F8E5M2, {}))));
 }
 
@@ -933,10 +933,10 @@ TEST_F(SplitKTest, ScaledDot_RhsOnly) {
   const std::string hlo_text = R"(
 triton_gemm_dot {
   lhs = f8e4m3fn[16,128] parameter(0)
-  lhs_scale = f8e4m3fn[] constant(1.0)
   rhs = f8e5m2[32,128] parameter(1)
+  lhs_scale = f8e4m3fn[] constant(1.0)
   rhs_scale = f8e8m0fnu[32,4] parameter(2)
-  ROOT dot = f32[16,32] scaled-dot(lhs, lhs_scale, rhs, rhs_scale),
+  ROOT dot = f32[16,32] scaled-dot(lhs, rhs, lhs_scale, rhs_scale),
     lhs_contracting_dims={1}, rhs_contracting_dims={1}
 }
 
@@ -960,8 +960,8 @@ ENTRY %entry_computation {
   EXPECT_THAT(
       dot_fusion->called_computations()[0]->root_instruction(),
       GmockMatch(m::ScaledDot(m::Op().WithShape(F8E4M3FN, {16, 3, 64}),
-                              m::Op().WithShape(F8E4M3FN, {}),
                               m::Op().WithShape(F8E5M2, {32, 3, 64}),
+                              m::Op().WithShape(F8E4M3FN, {}),
                               m::Op().WithShape(F8E8M0FNU, {32, 3, 2}))));
 }
 
@@ -969,19 +969,19 @@ TEST_F(SplitKTest, ScaledDot_IncompatibleBlockSize) {
   const std::string hlo_text = R"(
 triton_gemm_dot {
   lhs = f8e4m3fn[16,35] parameter(0)
-  lhs_scale = f8e8m0fnu[16,7] parameter(1)
-  rhs = f8e5m2[32,35] parameter(2)
+  rhs = f8e5m2[32,35] parameter(1)
+  lhs_scale = f8e8m0fnu[16,7] parameter(2)
   rhs_scale = f8e8m0fnu[32,5] parameter(3)
-  ROOT dot = f32[16,32] scaled-dot(lhs, lhs_scale, rhs, rhs_scale),
+  ROOT dot = f32[16,32] scaled-dot(lhs, rhs, lhs_scale, rhs_scale),
     lhs_contracting_dims={1}, rhs_contracting_dims={1}
 }
 
 ENTRY %entry_computation {
   lhs = f8e4m3fn[16,35] parameter(0)
-  lhs_scale = f8e8m0fnu[16,7] parameter(1)
-  rhs = f8e5m2[32,35] parameter(2)
+  rhs = f8e5m2[32,35] parameter(1)
+  lhs_scale = f8e8m0fnu[16,7] parameter(2)
   rhs_scale = f8e8m0fnu[32,5] parameter(3)
-  ROOT fusion = f32[16,32] fusion(lhs, lhs_scale, rhs, rhs_scale),
+  ROOT fusion = f32[16,32] fusion(lhs, rhs, lhs_scale, rhs_scale),
       kind=kCustom, calls=triton_gemm_dot
 })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
@@ -997,19 +997,19 @@ TEST_F(SplitKTest, ScaledDot_SmallDimension) {
   const std::string hlo_text = R"(
     triton_gemm_dot {
       lhs = f8e4m3fn[16,128] parameter(0)
-      lhs_scale = f8e8m0fnu[16,4] parameter(1)
-      rhs = f8e5m2[32,128] parameter(2)
+      rhs = f8e5m2[32,128] parameter(1)
+      lhs_scale = f8e8m0fnu[16,4] parameter(2)
       rhs_scale = f8e8m0fnu[32,4] parameter(3)
-      ROOT dot = f32[16,32] scaled-dot(lhs, lhs_scale, rhs, rhs_scale),
+      ROOT dot = f32[16,32] scaled-dot(lhs, rhs, lhs_scale, rhs_scale),
         lhs_contracting_dims={1}, rhs_contracting_dims={1}
     }
 
     ENTRY %entry_computation {
       lhs = f8e4m3fn[16,128] parameter(0)
-      lhs_scale = f8e8m0fnu[16,4] parameter(1)
-      rhs = f8e5m2[32,128] parameter(2)
+      rhs = f8e5m2[32,128] parameter(1)
+      lhs_scale = f8e8m0fnu[16,4] parameter(2)
       rhs_scale = f8e8m0fnu[32,4] parameter(3)
-      ROOT fusion = f32[16,32] fusion(lhs, lhs_scale, rhs, rhs_scale),
+      ROOT fusion = f32[16,32] fusion(lhs, rhs, lhs_scale, rhs_scale),
           kind=kCustom, calls=triton_gemm_dot
     })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,

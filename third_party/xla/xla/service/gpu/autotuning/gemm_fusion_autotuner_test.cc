@@ -1747,10 +1747,10 @@ TEST_F(GemmFusionAutotunerTest, ScaledDotConfigsAreGenerated) {
   std::unique_ptr<VerifiedHloModule> module = ParseAndReturnVerifiedModule(R"(
     ENTRY e {
       p0 = f32[1024,1024] parameter(0)
-      p0_scale = f32[1024,8] parameter(1)
-      p1 = f32[1024,1024] parameter(2)
+      p1 = f32[1024,1024] parameter(1)
+      p0_scale = f32[1024,8] parameter(2)
       p1_scale = f32[8,1024] parameter(3)
-      ROOT r = f32[1024,1024] scaled-dot(p0, p0_scale, p1, p1_scale),
+      ROOT r = f32[1024,1024] scaled-dot(p0, p1, p0_scale, p1_scale),
         lhs_contracting_dims={1}, rhs_contracting_dims={0}
     })")
                                                   .value();
@@ -1777,19 +1777,19 @@ TEST_F(GemmFusionAutotunerTest, ScaledDotConfigsHaveCuBlasFallback) {
 
     fusion_computation {
       p0 = f32[1024,1024] parameter(0)
-      p0_scale = f32[1024,8] parameter(1)
-      p1 = f32[1024,1024] parameter(2)
+      p1 = f32[1024,1024] parameter(1)
+      p0_scale = f32[1024,8] parameter(2)
       p1_scale = f32[8,1024] parameter(3)
-      ROOT r = f32[1024,1024] scaled-dot(p0, p0_scale, p1, p1_scale),
+      ROOT r = f32[1024,1024] scaled-dot(p0, p1, p0_scale, p1_scale),
         lhs_contracting_dims={1}, rhs_contracting_dims={0}
     }
 
     ENTRY e {
       p0 = f32[1024,1024] parameter(0)
-      p0_scale = f32[1024,8] parameter(1)
-      p1 = f32[1024,1024] parameter(2)
+      p1 = f32[1024,1024] parameter(1)
+      p0_scale = f32[1024,8] parameter(2)
       p1_scale = f32[8,1024] parameter(3)
-      ROOT r = f32[1024,1024] fusion(p0, p0_scale, p1, p1_scale),
+      ROOT r = f32[1024,1024] fusion(p0, p1, p0_scale, p1_scale),
         kind=kCustom, calls=fusion_computation
     })")
                                                   .value();

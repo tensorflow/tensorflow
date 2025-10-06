@@ -476,8 +476,8 @@ class alignas(kInstructionTypeMask + 1) HloInstruction {
   // 'rhs_scale', with contracting, batch, ragged, and group dimensions
   // specified in 'dimension_numbers'.
   static std::unique_ptr<HloInstruction> CreateScaledDot(
-      const Shape& shape, HloInstruction* lhs, HloInstruction* lhs_scale,
-      HloInstruction* rhs, HloInstruction* rhs_scale,
+      const Shape& shape, HloInstruction* lhs, HloInstruction* rhs,
+      HloInstruction* lhs_scale, HloInstruction* rhs_scale,
       const DotDimensionNumbers& dimension_numbers,
       const PrecisionConfig& precision_config);
 

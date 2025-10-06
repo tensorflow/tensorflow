@@ -4927,7 +4927,7 @@ TEST_F(HloVerifierTest, ScaledDotWithNoScalesFails) {
       b = f32[10,2] parameter(1)
       a_scale = f32[] constant(1)
       b_scale = f32[] constant(1)
-      ROOT dot = f32[2,2] scaled-dot(a, a_scale, b, b_scale),
+      ROOT dot = f32[2,2] scaled-dot(a, b, a_scale, b_scale),
         lhs_contracting_dims={1},
         rhs_contracting_dims={0}
     }
@@ -4951,7 +4951,7 @@ TEST_F(HloVerifierTest, ScaledDotWithBothScalesSucceeds) {
       b = f8e8m0fnu[10,2] parameter(1)
       a_scale = f8e5m2[2,2] parameter(2)
       b_scale = f8e8m0fnu[2,2] parameter(3)
-      ROOT dot = f32[2,2] scaled-dot(a, a_scale, b, b_scale),
+      ROOT dot = f32[2,2] scaled-dot(a, b, a_scale, b_scale),
         lhs_contracting_dims={1},
         rhs_contracting_dims={0}
     }
@@ -4969,7 +4969,7 @@ TEST_F(HloVerifierTest, ScaledDotInvalidScaleShapeFails) {
       b = f32[10,2] parameter(1)
       a_scale = f32[2,2,2] parameter(2)
       b_scale = f32[2,2,2] parameter(3)
-      ROOT dot = f32[2,2] scaled-dot(a, a_scale, b, b_scale),
+      ROOT dot = f32[2,2] scaled-dot(a, b, a_scale, b_scale),
         lhs_contracting_dims={1},
         rhs_contracting_dims={0}
     }
@@ -4993,7 +4993,7 @@ TEST_F(HloVerifierTest, ScaledDotWithInvalidScaleContractingDimSizeFails) {
       b = f32[10,2] parameter(1)
       a_scale = f32[2,6] parameter(2)
       b_scale = f32[6,2] parameter(3)
-      ROOT dot = f32[2,2] scaled-dot(a, a_scale, b, b_scale),
+      ROOT dot = f32[2,2] scaled-dot(a, b, a_scale, b_scale),
         lhs_contracting_dims={1},
         rhs_contracting_dims={0}
     }
@@ -5016,7 +5016,7 @@ TEST_F(HloVerifierTest, ScaledDotWithScaleNonContractingDimSucceeds) {
       b = f32[10,2] parameter(1)
       a_scale = f32[1,5] parameter(2)
       b_scale = f32[5,1] parameter(3)
-      ROOT dot = f32[2,2] scaled-dot(a, a_scale, b, b_scale),
+      ROOT dot = f32[2,2] scaled-dot(a, b, a_scale, b_scale),
         lhs_contracting_dims={1},
         rhs_contracting_dims={0}
     }

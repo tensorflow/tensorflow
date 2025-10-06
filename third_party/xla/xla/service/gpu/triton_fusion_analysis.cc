@@ -191,9 +191,9 @@ absl::StatusOr<std::optional<int64_t>> GetBlockSize(
   CHECK(dot.opcode() == HloOpcode::kScaledDot);
   CHECK(scope == TritonFusionAnalysis::Scope::LHS ||
         scope == TritonFusionAnalysis::Scope::RHS);
-  int operand_number = scope == TritonFusionAnalysis::Scope::LHS ? 0 : 2;
+  int operand_number = scope == TritonFusionAnalysis::Scope::LHS ? 0 : 1;
   const Shape& input = dot.operand(operand_number)->shape();
-  const Shape& scale = dot.operand(operand_number + 1)->shape();
+  const Shape& scale = dot.operand(operand_number + 2)->shape();
 
   if (!ShapeUtil::IsScalar(scale)) {
     TF_ASSIGN_OR_RETURN(int dim_idx,
@@ -211,9 +211,9 @@ int ScopeToScaledDotOperandIdx(TritonFusionAnalysis::Scope scope) {
   switch (scope) {
     case TritonFusionAnalysis::Scope::LHS:
       return 0;
-    case TritonFusionAnalysis::Scope::LHS_SCALE:
-      return 1;
     case TritonFusionAnalysis::Scope::RHS:
+      return 1;
+    case TritonFusionAnalysis::Scope::LHS_SCALE:
       return 2;
     case TritonFusionAnalysis::Scope::RHS_SCALE:
       return 3;
@@ -289,7 +289,7 @@ absl::Status TritonFusionAnalysis::ExecuteForDotFusion(
       continue;  // Scale operands are optional.
     }
     if (is_scaled_dot_) {
-      // Operands for scaled dot: (lhs, lhs_scale, rhs, rhs_scale)
+      // Operands for scaled dot: (lhs, rhs, lhs_scale, rhs_scale)
       operand_number = ScopeToScaledDotOperandIdx(scope);
       // Scalar scales are skipped.
       if ((scope == Scope::LHS_SCALE || scope == Scope::RHS_SCALE) &&

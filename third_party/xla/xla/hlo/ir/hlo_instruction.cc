@@ -1673,11 +1673,11 @@ HloInstruction::CreateTriangularSolve(const Shape& shape, HloInstruction* a,
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateScaledDot(
-    const Shape& shape, HloInstruction* lhs, HloInstruction* lhs_scale,
-    HloInstruction* rhs, HloInstruction* rhs_scale,
+    const Shape& shape, HloInstruction* lhs, HloInstruction* rhs,
+    HloInstruction* lhs_scale, HloInstruction* rhs_scale,
     const DotDimensionNumbers& dimension_numbers,
     const PrecisionConfig& precision_config) {
-  return std::make_unique<HloScaledDotInstruction>(shape, lhs, lhs_scale, rhs,
+  return std::make_unique<HloScaledDotInstruction>(shape, lhs, rhs, lhs_scale,
                                                    rhs_scale, dimension_numbers,
                                                    precision_config);
 }

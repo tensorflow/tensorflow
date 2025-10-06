@@ -1485,10 +1485,10 @@ TEST_F(GemmFusionTest, ScaledDotIsFused) {
 
     ENTRY entry {
      lhs = bf16[4,4] parameter(0)
-     lhs_scale = bf16[1,1] parameter(1)
-     rhs = bf16[4,4] parameter(2)
+     rhs = bf16[4,4] parameter(1)
+     lhs_scale = bf16[1,1] parameter(2)
      rhs_scale = bf16[1,1] parameter(3)
-     ROOT dot = bf16[4,4] scaled-dot(lhs, lhs_scale, rhs, rhs_scale),
+     ROOT dot = bf16[4,4] scaled-dot(lhs, rhs, lhs_scale, rhs_scale),
          lhs_contracting_dims={1},
          rhs_contracting_dims={1},
          metadata={op_name="foo"}
@@ -1503,11 +1503,11 @@ TEST_F(GemmFusionTest, ScaledDotIsFused) {
   constexpr absl::string_view kExpectedHloText = R"(
     CHECK: %[[FUSION_DOT:.*]] (
     CHECK:   %[[LHS:.*]] = bf16[4,4]{1,0} parameter(0)
-    CHECK:   %[[LHS_SCALE:.*]] = bf16[1,1]{1,0} parameter(1)
-    CHECK:   %[[RHS:.*]] = bf16[4,4]{1,0} parameter(2)
+    CHECK:   %[[RHS:.*]] = bf16[4,4]{1,0} parameter(1)
+    CHECK:   %[[LHS_SCALE:.*]] = bf16[1,1]{1,0} parameter(2)
     CHECK:   %[[RHS_SCALE:.*]] = bf16[1,1]{1,0} parameter(3)
     CHECK:   ROOT %dot.1 = bf16[4,4]{1,0} scaled-dot(
-    CHECK:       %[[LHS]], %[[LHS_SCALE]], %[[RHS]], %[[RHS_SCALE]]),
+    CHECK:       %[[LHS]], %[[RHS]], %[[LHS_SCALE]], %[[RHS_SCALE]]),
     CHECK:     lhs_contracting_dims={1},
     CHECK:     rhs_contracting_dims={1},
     CHECK:     metadata={op_name="foo"}

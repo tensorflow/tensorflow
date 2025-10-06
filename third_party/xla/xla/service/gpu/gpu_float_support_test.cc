@@ -437,10 +437,10 @@ TEST_F(FloatSupportTest, ScaledDotIsIgnored) {
 
     ENTRY main {
       lhs = bf16[1024, 1024] parameter(0)
-      lhs_scale = bf16[1, 1] parameter(1)
-      rhs = bf16[1024, 1024] parameter(2)
+      rhs = bf16[1024, 1024] parameter(1)
+      lhs_scale = bf16[1, 1] parameter(2)
       rhs_scale = bf16[1, 1] parameter(3)
-      ROOT r = bf16[1024, 1024] scaled-dot(lhs, lhs_scale, rhs, rhs_scale),
+      ROOT r = bf16[1024, 1024] scaled-dot(lhs, rhs, lhs_scale, rhs_scale),
          lhs_contracting_dims={1},
          rhs_contracting_dims={1}
     }

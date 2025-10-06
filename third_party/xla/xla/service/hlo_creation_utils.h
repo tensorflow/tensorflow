@@ -196,7 +196,7 @@ absl::StatusOr<HloInstruction*> MakeRaggedDotHlo(
 // computation). An optional preferred_element_type can be specified to override
 // the element type.
 absl::StatusOr<HloInstruction*> MakeScaledDotHlo(
-    HloInstruction* lhs, HloInstruction* lhs_scale, HloInstruction* rhs,
+    HloInstruction* lhs, HloInstruction* rhs, HloInstruction* lhs_scale,
     HloInstruction* rhs_scale, const DotDimensionNumbers& dim_numbers,
     const PrecisionConfig& precision_config,
     std::optional<PrimitiveType> preferred_element_type);

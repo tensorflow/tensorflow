@@ -39,8 +39,8 @@ struct DotOperands {
 // an accumulator and their respective scaling factors.
 struct ScaledDotOperands {
   ::mlir::Value lhs;
-  ::mlir::Value lhs_scale;
   ::mlir::Value rhs;
+  ::mlir::Value lhs_scale;
   ::mlir::Value rhs_scale;
   ::mlir::Value accumulator;
 };

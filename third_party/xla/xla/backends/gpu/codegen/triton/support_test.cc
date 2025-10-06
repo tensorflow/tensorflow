@@ -2343,7 +2343,7 @@ ENTRY triton_computation {
   lhs_scale = f8e8m0fnu[16, 1] parameter(1)
   rhs = $0[32, 16] parameter(2)
   rhs_scale = f8e8m0fnu[1, 16] parameter(3)
-  ROOT dot = f32[16, 16] scaled-dot(lhs, lhs_scale, rhs, rhs_scale),
+  ROOT dot = f32[16, 16] scaled-dot(lhs, rhs, lhs_scale, rhs_scale),
       lhs_contracting_dims={1},
       rhs_contracting_dims={0}
 }

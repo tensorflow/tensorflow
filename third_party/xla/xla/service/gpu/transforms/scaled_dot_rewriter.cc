@@ -171,8 +171,8 @@ absl::StatusOr<bool> ScaledDotRewriter::RewriteComputation(
     }
     changed = true;
     HloScaledDotInstruction* dot = Cast<HloScaledDotInstruction>(instruction);
-    TF_ASSIGN_OR_RETURN(HloInstruction * lhs, Dequantize(dot, 0, 1, "LHS"));
-    TF_ASSIGN_OR_RETURN(HloInstruction * rhs, Dequantize(dot, 2, 3, "RHS"));
+    TF_ASSIGN_OR_RETURN(HloInstruction * lhs, Dequantize(dot, 0, 2, "LHS"));
+    TF_ASSIGN_OR_RETURN(HloInstruction * rhs, Dequantize(dot, 1, 3, "RHS"));
 
     TF_RETURN_IF_ERROR(dot->ReplaceAllUsesWith(
         computation->AddInstruction(HloInstruction::CreateDot(

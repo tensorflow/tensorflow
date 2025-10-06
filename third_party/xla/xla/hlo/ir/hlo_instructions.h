@@ -2716,8 +2716,8 @@ class HloScaledDotInstruction : public HloInstruction {
   // 'rhs_scale' as the scale factors. Dimensions of the scale factors should
   // have the same order as the dimensions of the dot operation.
   explicit HloScaledDotInstruction(const Shape& shape, HloInstruction* lhs,
-                                   HloInstruction* lhs_scale,
                                    HloInstruction* rhs,
+                                   HloInstruction* lhs_scale,
                                    HloInstruction* rhs_scale,
                                    const DotDimensionNumbers& dimension_numbers,
                                    const PrecisionConfig& precision_config);

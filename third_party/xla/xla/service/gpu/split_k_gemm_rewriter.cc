@@ -327,12 +327,12 @@ absl::Status MakeDotComputationSplitKBatch(HloComputation* computation,
                           block_size * config.split_k;
           return scale;
         };
-        HloInstruction* lhs_scale = dot->mutable_operand(1);
+        HloInstruction* lhs_scale = dot->mutable_operand(2);
         if (analysis.lhs_scale_block_size().has_value()) {
           TF_ASSIGN_OR_RETURN(
               lhs_scale,
               assign_scale_operand(TritonFusionAnalysis::Scope::LHS_SCALE,
-                                   lhs_contracting_idx, 1,
+                                   lhs_contracting_idx, 2,
                                    *analysis.lhs_scale_block_size()));
         }
         HloInstruction* rhs_scale = dot->mutable_operand(3);
@@ -365,11 +365,11 @@ absl::Status MakeDotComputationSplitKBatch(HloComputation* computation,
         TF_ASSIGN_OR_RETURN(
             HloInstruction * rhs,
             MakeSplitKOperand(*dot, analysis, config, rhs_contracting_idx,
-                              TritonFusionAnalysis::Scope::RHS, 2,
+                              TritonFusionAnalysis::Scope::RHS, 1,
                               padded_k_size));
         TF_ASSIGN_OR_RETURN(
             expanded,
-            MakeScaledDotHlo(lhs, lhs_scale, rhs, rhs_scale, new_dim_numbers,
+            MakeScaledDotHlo(lhs, rhs, lhs_scale, rhs_scale, new_dim_numbers,
                              dot->precision_config(), accumulator_dtype));
       }
       // Make the added batch dimension the major-most, keep the order of the

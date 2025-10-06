@@ -196,7 +196,7 @@ class HloEvaluator : public ConstDfsHloVisitorWithDefault,
   absl::StatusOr<Literal> EvaluateScaledDotOp(
       const DotDimensionNumbers& dim_numbers,
       const PrecisionConfig& precision_config, const Literal& lhs,
-      const Literal& lhs_scale, const Literal& rhs, const Literal& rhs_scale);
+      const Literal& rhs, const Literal& lhs_scale, const Literal& rhs_scale);
 
   void set_dynamic_dimension_inference(
       DynamicDimensionInference* dynamic_dimension_inference) override {

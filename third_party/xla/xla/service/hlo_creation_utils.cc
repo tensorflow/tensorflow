@@ -407,7 +407,7 @@ absl::StatusOr<HloInstruction*> MakeRaggedDotHlo(
 }
 
 absl::StatusOr<HloInstruction*> MakeScaledDotHlo(
-    HloInstruction* lhs, HloInstruction* lhs_scale, HloInstruction* rhs,
+    HloInstruction* lhs, HloInstruction* rhs, HloInstruction* lhs_scale,
     HloInstruction* rhs_scale, const DotDimensionNumbers& dim_numbers,
     const PrecisionConfig& precision_config,
     std::optional<PrimitiveType> preferred_element_type) {
@@ -420,7 +420,7 @@ absl::StatusOr<HloInstruction*> MakeScaledDotHlo(
       ShapeInference::InferDotOpShape(lhs->shape(), rhs->shape(), dim_numbers,
                                       preferred_element_type));
   return computation->AddInstruction(
-      HloInstruction::CreateScaledDot(dot_shape, lhs, lhs_scale, rhs, rhs_scale,
+      HloInstruction::CreateScaledDot(dot_shape, lhs, rhs, lhs_scale, rhs_scale,
                                       dim_numbers, precision_config));
 }
 

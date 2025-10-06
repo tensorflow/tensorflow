@@ -441,8 +441,8 @@ HloInstructionIndexing ComputeOutputToInputDotOpIndexing(
 HloInstructionIndexing ComputeOutputToInputScaledDotOpIndexing(
     const HloScaledDotInstruction* scaled_dot, MLIRContext* mlir_context) {
   const Shape& lhs_shape = scaled_dot->operand(0)->shape();
-  const Shape& lhs_scale_shape = scaled_dot->operand(1)->shape();
-  const Shape& rhs_shape = scaled_dot->operand(2)->shape();
+  const Shape& rhs_shape = scaled_dot->operand(1)->shape();
+  const Shape& lhs_scale_shape = scaled_dot->operand(2)->shape();
   const Shape& rhs_scale_shape = scaled_dot->operand(3)->shape();
 
   auto [lhs_map, rhs_map] = ComputeDotOperandsIndexingImpl(
@@ -455,7 +455,7 @@ HloInstructionIndexing ComputeOutputToInputScaledDotOpIndexing(
       RescaleIndexingMap(rhs_map, rhs_shape, rhs_scale_shape);
 
   return HloInstructionIndexing::FromIndexingMaps(
-      {lhs_map, lhs_scale_map, rhs_map, rhs_scale_map});
+      {lhs_map, rhs_map, lhs_scale_map, rhs_scale_map});
 }
 
 HloInstructionIndexing ComputeOutputToInputDynamicSliceOpIndexing(

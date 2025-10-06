@@ -1986,7 +1986,7 @@ TEST_F(HloEvaluatorTest, ScaledDot) {
   dot_dnums.add_lhs_contracting_dimensions(1);
   dot_dnums.add_rhs_contracting_dimensions(0);
   b.AddInstruction(HloInstruction::CreateScaledDot(
-      shape, lhs_instr, lhs_scale_instr, rhs_instr, rhs_scale_instr, dot_dnums,
+      shape, lhs_instr, rhs_instr, lhs_scale_instr, rhs_scale_instr, dot_dnums,
       DefaultPrecisionConfig(4)));
   m_->AddEntryComputation(b.Build());
 
@@ -2031,7 +2031,7 @@ TEST_F(HloEvaluatorTest, ScaledDotWithOneMissingScale) {
   dot_dnums.add_lhs_contracting_dimensions(1);
   dot_dnums.add_rhs_contracting_dimensions(0);
   b.AddInstruction(HloInstruction::CreateScaledDot(
-      shape, lhs_instr, lhs_scale_instr, rhs_instr, rhs_scale_instr, dot_dnums,
+      shape, lhs_instr, rhs_instr, lhs_scale_instr, rhs_scale_instr, dot_dnums,
       DefaultPrecisionConfig(4)));
   m_->AddEntryComputation(b.Build());
 
@@ -2079,7 +2079,7 @@ TEST_F(HloEvaluatorTest, ScaledDotWithBatchDim) {
   dot_dnums.add_lhs_contracting_dimensions(2);
   dot_dnums.add_rhs_contracting_dimensions(1);
   b.AddInstruction(HloInstruction::CreateScaledDot(
-      shape, lhs_instr, lhs_scale_instr, rhs_instr, rhs_scale_instr, dot_dnums,
+      shape, lhs_instr, rhs_instr, lhs_scale_instr, rhs_scale_instr, dot_dnums,
       DefaultPrecisionConfig(4)));
   m_->AddEntryComputation(b.Build());
 

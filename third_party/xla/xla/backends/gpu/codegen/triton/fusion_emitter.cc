@@ -1187,13 +1187,13 @@ absl::StatusOr<ScalarOrTensor> EmitScaledDot(
         Value lhs, MaskDotOperand(b, *tiled_hlo_dot.operand(0), dot_args[0],
                                   ki_i32, lhs_contracting_dim_idx));
     TF_ASSIGN_OR_RETURN(
-        Value lhs_scale,
-        MaskDotOperand(b, *tiled_hlo_dot.operand(1), dot_args[1], ki_i32,
-                       lhs_contracting_dim_idx));
+        Value rhs, MaskDotOperand(b, *tiled_hlo_dot.operand(1), dot_args[1],
+                                  ki_i32, rhs_contracting_dim_idx));
 
     TF_ASSIGN_OR_RETURN(
-        Value rhs, MaskDotOperand(b, *tiled_hlo_dot.operand(2), dot_args[2],
-                                  ki_i32, rhs_contracting_dim_idx));
+        Value lhs_scale,
+        MaskDotOperand(b, *tiled_hlo_dot.operand(2), dot_args[2], ki_i32,
+                       lhs_contracting_dim_idx));
 
     TF_ASSIGN_OR_RETURN(
         Value rhs_scale,
@@ -1205,12 +1205,12 @@ absl::StatusOr<ScalarOrTensor> EmitScaledDot(
     TF_ASSIGN_OR_RETURN(lhs,
                         CanonicalizeDotOperand(b, lhs, lhs_contracting_dim_idx,
                                                DotOperandSide::kLhs));
-    TF_ASSIGN_OR_RETURN(
-        lhs_scale, CanonicalizeDotOperand(b, lhs_scale, lhs_contracting_dim_idx,
-                                          DotOperandSide::kLhs));
     TF_ASSIGN_OR_RETURN(rhs,
                         CanonicalizeDotOperand(b, rhs, rhs_contracting_dim_idx,
                                                DotOperandSide::kRhs));
+    TF_ASSIGN_OR_RETURN(
+        lhs_scale, CanonicalizeDotOperand(b, lhs_scale, lhs_contracting_dim_idx,
+                                          DotOperandSide::kLhs));
     TF_ASSIGN_OR_RETURN(
         rhs_scale, CanonicalizeDotOperand(b, rhs_scale, rhs_contracting_dim_idx,
                                           DotOperandSide::kRhs));
@@ -1219,7 +1219,7 @@ absl::StatusOr<ScalarOrTensor> EmitScaledDot(
         Value acc_next,
         triton::EmitSingleTileScaledDot(
             b, scaled_dot,
-            triton::ScaledDotOperands{lhs, lhs_scale, rhs, rhs_scale, acc}));
+            triton::ScaledDotOperands{lhs, rhs, lhs_scale, rhs_scale, acc}));
     b.create<mlir::scf::YieldOp>(acc_next);
   }
 

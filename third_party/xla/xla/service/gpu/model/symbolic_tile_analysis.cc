@@ -1054,7 +1054,7 @@ IndexingMap InsertTilingParameterForContractingDimensions(
     if (consumer->opcode() == HloOpcode::kScaledDot) {
       CHECK(operand_index >= 0 && operand_index <= 3);
       contracting_dimensions =
-          operand_index <= 1
+          (operand_index == 0 || operand_index == 2)
               ? consumer->dot_dimension_numbers().lhs_contracting_dimensions()
               : consumer->dot_dimension_numbers().rhs_contracting_dimensions();
     }

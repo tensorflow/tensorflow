@@ -858,19 +858,20 @@ TEST_F(SymbolicTileAnalysisTest, ScaledDotOffsetIndexingIsCorrect) {
                           ParseAndReturnVerifiedModule(R"(
 fusion {
   lhs = f8e4m3fn[128,64] parameter(0)
-  lhs_scale = f8e8m0fnu[128,2] parameter(1)
-  rhs = f8e4m3fn[64,128] parameter(2)
+  rhs = f8e4m3fn[64,128] parameter(1)
+  lhs_scale = f8e8m0fnu[128,2] parameter(2)
   rhs_scale = f8e8m0fnu[2,128] parameter(3)
-  ROOT dot = f32[128,128] scaled-dot(lhs, lhs_scale, rhs, rhs_scale),
+  ROOT dot = f32[128,128] scaled-dot(lhs, rhs, lhs_scale, rhs_scale),
     lhs_contracting_dims={1}, rhs_contracting_dims={0}
 }
 
 ENTRY main {
-  p0 = f8e4m3fn[128,64] parameter(0)
-  p1 = f8e8m0fnu[128,2] parameter(1)
-  p2 = f8e4m3fn[64,128] parameter(2)
-  p3 = f8e8m0fnu[2,128] parameter(3)
-  ROOT fusion = f32[128,128] fusion(p0, p1, p2, p3), kind=kLoop, calls=fusion
+  lhs = f8e4m3fn[128,64] parameter(0)
+  rhs = f8e4m3fn[64,128] parameter(1)
+  lhs_scale = f8e8m0fnu[128,2] parameter(2)
+  rhs_scale = f8e8m0fnu[2,128] parameter(3)
+  ROOT fusion = f32[128,128] fusion(lhs, rhs, lhs_scale, rhs_scale),
+    kind=kLoop, calls=fusion
 })"));
   std::optional<SymbolicTileAnalysis> analysis = TryAnalyzeModule(module.get());
   ASSERT_TRUE(analysis.has_value());
@@ -905,7 +906,7 @@ ENTRY main {
     pid_0 in [0, 63]
   )"));
 
-  const TiledHloInstruction* rhs = dot->operand(2);
+  const TiledHloInstruction* rhs = dot->operand(1);
   EXPECT_THAT(*rhs, MatchTiledHloInstruction(
                         /*tile_sizes=*/{32, 16}, /*tile_strides=*/{1, 1},
                         /*tile_offsets_indexing=*/R"(

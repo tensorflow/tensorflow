@@ -270,8 +270,8 @@ absl::Status MakeNestedFusionFromGemmFusion(
     const se::DeviceDescription& device_description) {
   TF_RETURN_IF_ERROR(IsDot(*dot));
   const bool is_scaled_dot = dot->opcode() == HloOpcode::kScaledDot;
-  const int lhs = 0;
-  const int rhs = is_scaled_dot ? 2 : 1;
+  constexpr int lhs = 0;
+  constexpr int rhs = 1;
   TF_ASSIGN_OR_RETURN(TritonGemmConfig config, GetTritonGemmConfig(*fusion));
   HloComputation* computation = fusion->called_computation();
 
@@ -294,7 +294,7 @@ absl::Status MakeNestedFusionFromGemmFusion(
       config));
 
   if (is_scaled_dot) {
-    constexpr int kLhsScale = 1;
+    constexpr int kLhsScale = 2;
     constexpr int kRhsScale = 3;
     constexpr int kContractingScaleFactor = 32;
     auto scale_config = config;

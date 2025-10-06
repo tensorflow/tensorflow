@@ -4316,9 +4316,9 @@ absl::Status SpmdPartitioningVisitor::HandleDotHelper(
         Cast<HloCustomCallInstruction>(hlo);
     PartitionedHlo& lhs_operand =
         GetPartitionedHlo(block_scaled_dot->operand(0));
-    PartitionedHlo& lhs_scale = GetPartitionedHlo(block_scaled_dot->operand(2));
     PartitionedHlo& raw_rhs_operand =
         GetPartitionedHlo(block_scaled_dot->operand(1));
+    PartitionedHlo& lhs_scale = GetPartitionedHlo(block_scaled_dot->operand(2));
     PartitionedHlo& raw_rhs_scale =
         GetPartitionedHlo(block_scaled_dot->operand(3));
     // If lhs and rhs are the same instruction, make a copy for rhs.
