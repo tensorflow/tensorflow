@@ -89,7 +89,7 @@ class CPUAllocator : public Allocator {
     void* p = port::AlignedMalloc(num_bytes, alignment);
     if (cpu_allocator_collect_stats) {
       const std::size_t alloc_size = port::MallocExtension_GetAllocatedSize(p);
-      absl::MutexLock l(&mu_);
+      absl::MutexLock l(mu_);
       ++stats_.num_allocs;
       stats_.bytes_in_use += alloc_size;
       stats_.peak_bytes_in_use =
@@ -115,7 +115,7 @@ class CPUAllocator : public Allocator {
     if (cpu_allocator_collect_stats) {
       const std::size_t alloc_size =
           port::MallocExtension_GetAllocatedSize(ptr);
-      absl::MutexLock l(&mu_);
+      absl::MutexLock l(mu_);
       stats_.bytes_in_use -= alloc_size;
       AddTraceMe("MemoryDeallocation", ptr, 0, alloc_size);
     }
@@ -126,7 +126,7 @@ class CPUAllocator : public Allocator {
     if (cpu_allocator_collect_stats) {
       const std::size_t alloc_size =
           port::MallocExtension_GetAllocatedSize(ptr);
-      absl::MutexLock l(&mu_);
+      absl::MutexLock l(mu_);
       stats_.bytes_in_use -= alloc_size;
       AddTraceMe("MemoryDeallocation", ptr, 0, alloc_size);
     }
@@ -161,13 +161,13 @@ class CPUAllocator : public Allocator {
     if (!cpu_allocator_collect_stats) {
       return std::nullopt;
     }
-    absl::MutexLock l(&mu_);
+    absl::MutexLock l(mu_);
     return stats_;
   }
 
   bool ClearStats() override {
     if (!cpu_allocator_collect_stats) return false;
-    absl::MutexLock l(&mu_);
+    absl::MutexLock l(mu_);
     stats_.num_allocs = 0;
     stats_.peak_bytes_in_use = stats_.bytes_in_use;
     stats_.largest_alloc_size = 0;

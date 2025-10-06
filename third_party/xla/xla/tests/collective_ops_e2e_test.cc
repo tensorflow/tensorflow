@@ -57,6 +57,7 @@ limitations under the License.
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_runner.h"
 #include "xla/service/hlo_runner_interface.h"
+#include "xla/service/pattern_matcher.h"
 #include "xla/service/platform_util.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
@@ -4422,28 +4423,31 @@ TEST_P(AllReduceTest, AsyncAllReduce_8GPUs_2ReplicasPerGroup) {
 
 TEST_F(CollectiveOpsTestE2E, OptimizedSubByteAllGatherOutputIsCorrect) {
   constexpr int kNumReplicas = 2;
-  if (test_runner().device_count() < kNumReplicas) {
-    GTEST_SKIP() << "The test requires at least " << kNumReplicas
-                 << " devices.";
-  }
+  ASSERT_GE(hlo_runner_->device_count(), kNumReplicas)
+      << "Test requires at least " << kNumReplicas << " devices ("
+      << hlo_runner_->device_count() << " available)";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, GetOptimizedModule(
-                                           R"(
-HloModule m, replica_count=2
+  TF_ASSERT_OK_AND_ASSIGN(auto unoptimized_module,
+                          ParseAndReturnVerifiedModule(R"(
+    HloModule m, replica_count=2
 
-e {
-  a = s4[2,4]{1,0:E(4)} constant({{0,1,2,3},{4,5,5,4}})
-  b = s4[4,4]{1,0:E(4)} all-gather(a), dimensions={0}
-})"));
+    e {
+      a = s4[2,4]{1,0:E(4)} constant({{0,1,2,3},{4,5,5,4}})
+      b = s4[4,4]{1,0:E(4)} all-gather(a), dimensions={0}
+    })"));
+
+  TF_ASSERT_OK_AND_ASSIGN(auto executable, hlo_runner_->CreateExecutable(
+                                               std::move(unoptimized_module),
+                                               /*run_hlo_passes=*/true));
+
+  TF_ASSERT_OK_AND_ASSIGN(const HloModule* const module,
+                          hlo_runner_->HloModuleFromWrapped(executable.get()));
 
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               GmockMatch(m::Bitcast(m::AllGatherDone().WithShape(S8, {4, 2}))));
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::vector<Literal> result,
-      HloTestBase::ExecuteReplicated(std::move(module),
-                                     absl::Span<const Literal* const>{},
-                                     kNumReplicas, /*use_threads=*/true));
+  TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> result,
+                          ExecuteReplicated(executable.get(), kNumReplicas));
 
   const Literal expected_result =
       LiteralUtil::CreateR2<s4>({{s4(0), s4(1), s4(2), s4(3)},
