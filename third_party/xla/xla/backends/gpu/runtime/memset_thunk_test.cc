@@ -20,22 +20,21 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "absl/log/check.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/util/proto/parse_text_proto.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
-#include "tsl/platform/protobuf.h"
 
 namespace xla::gpu {
 namespace {
 
 using ::tsl::proto_testing::EqualsProto;
+using ::tsl::proto_testing::ParseTextProtoOrDie;
 
 TEST(MemzeroThunkTest, ProtoRoundTrip) {
-  ThunkProto proto;
-  CHECK(tsl::protobuf::TextFormat::ParseFromString(
+  ThunkProto proto = ParseTextProtoOrDie<ThunkProto>(
       R"pb(
         thunk_info {
           profile_annotation: "partition_id_profile_annotation"
@@ -44,8 +43,7 @@ TEST(MemzeroThunkTest, ProtoRoundTrip) {
         memzero_thunk {
           dest_buffer { offset: 0 size: 4 buffer_allocation_index: 0 }
         }
-      )pb",
-      &proto));
+      )pb");
   std::vector<BufferAllocation> buffer_allocations = {
       BufferAllocation(/*index=*/0, /*size=*/4, /*color=*/0)};
 

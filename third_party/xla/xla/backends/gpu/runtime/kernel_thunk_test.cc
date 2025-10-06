@@ -56,6 +56,7 @@ limitations under the License.
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
+#include "xla/tsl/util/proto/parse_text_proto.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
 #include "xla/xla_data.pb.h"
 
@@ -63,6 +64,7 @@ namespace xla::gpu {
 namespace {
 
 using ::tsl::proto_testing::EqualsProto;
+using ::tsl::proto_testing::ParseTextProtoOrDie;
 using Kind = Thunk::Kind;
 
 TEST(KernelThunkTest, CreateWithDefaultValues) {
@@ -421,9 +423,8 @@ class KernelThunkTmaPTXTest : public ::testing::TestWithParam<bool> {
       }
     )pb";
 
-    ThunkProto tma_kernel_thunk_proto;
-    tsl::protobuf::TextFormat::ParseFromString(tma_kernel_thunk,
-                                               &tma_kernel_thunk_proto);
+    ThunkProto tma_kernel_thunk_proto =
+        ParseTextProtoOrDie<ThunkProto>(tma_kernel_thunk);
 
     const size_t total_byte_size =
         tma_kernel_thunk_proto.kernel_thunk().args(0).size() +

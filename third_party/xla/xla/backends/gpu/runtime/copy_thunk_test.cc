@@ -20,18 +20,18 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "absl/log/check.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/util/proto/parse_text_proto.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
-#include "tsl/platform/protobuf.h"
 
 namespace xla::gpu {
 namespace {
 
 using ::tsl::proto_testing::EqualsProto;
+using ::tsl::proto_testing::ParseTextProtoOrDie;
 
 TEST(CopyThunkTest, ToProto) {
   Thunk::ThunkInfo thunk_info;
@@ -60,8 +60,7 @@ TEST(CopyThunkTest, ToProto) {
 }
 
 TEST(CopyThunkTest, FromProto) {
-  ThunkProto proto;
-  CHECK(tsl::protobuf::TextFormat::ParseFromString(
+  ThunkProto proto = ParseTextProtoOrDie<ThunkProto>(
       R"pb(
         thunk_info {
           profile_annotation: "profile_annotation"
@@ -72,8 +71,7 @@ TEST(CopyThunkTest, FromProto) {
           destination_buffer { offset: 0 size: 256 buffer_allocation_index: 1 }
           mem_size: 256
         }
-      )pb",
-      &proto));
+      )pb");
 
   Thunk::ThunkInfo thunk_info;
   thunk_info.profile_annotation = "profile_annotation";
@@ -128,8 +126,7 @@ TEST(DeviceToHostCopyThunkProtoTest, ToProto) {
 }
 
 TEST(DeviceToHostCopyThunkProtoTest, FromProto) {
-  ThunkProto proto;
-  CHECK(tsl::protobuf::TextFormat::ParseFromString(
+  ThunkProto proto = ParseTextProtoOrDie<ThunkProto>(
       R"pb(
         thunk_info {
           profile_annotation: "profile_annotation"
@@ -146,8 +143,7 @@ TEST(DeviceToHostCopyThunkProtoTest, FromProto) {
             mem_size: 256
           }
         }
-      )pb",
-      &proto));
+      )pb");
 
   Thunk::ThunkInfo thunk_info;
   thunk_info.profile_annotation = "profile_annotation";
@@ -205,8 +201,7 @@ TEST(HostToDeviceCopyThunkProtoTest, ToProto) {
 }
 
 TEST(HostToDeviceCopyThunkProtoTest, FromProto) {
-  ThunkProto proto;
-  CHECK(tsl::protobuf::TextFormat::ParseFromString(
+  ThunkProto proto = ParseTextProtoOrDie<ThunkProto>(
       R"pb(
         thunk_info {
           profile_annotation: "profile_annotation"
@@ -223,8 +218,7 @@ TEST(HostToDeviceCopyThunkProtoTest, FromProto) {
             mem_size: 256
           }
         }
-      )pb",
-      &proto));
+      )pb");
 
   Thunk::ThunkInfo thunk_info;
   thunk_info.profile_annotation = "profile_annotation";
@@ -280,8 +274,7 @@ TEST(DeviceToDeviceCopyThunkProtoTest, ToProto) {
 }
 
 TEST(DeviceToDeviceCopyThunkProtoTest, FromProto) {
-  ThunkProto proto;
-  CHECK(tsl::protobuf::TextFormat::ParseFromString(
+  ThunkProto proto = ParseTextProtoOrDie<ThunkProto>(
       R"pb(
         thunk_info {
           profile_annotation: "profile_annotation"
@@ -298,8 +291,7 @@ TEST(DeviceToDeviceCopyThunkProtoTest, FromProto) {
             mem_size: 256
           }
         }
-      )pb",
-      &proto));
+      )pb");
 
   Thunk::ThunkInfo thunk_info;
   thunk_info.profile_annotation = "profile_annotation";

@@ -21,7 +21,6 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "xla/backends/gpu/runtime/conditional_thunk.h"
@@ -33,8 +32,8 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/util/proto/parse_text_proto.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
-#include "tsl/platform/protobuf.h"
 
 namespace xla::gpu {
 namespace {
@@ -44,6 +43,7 @@ using ::testing::Pointer;
 using ::testing::Property;
 using ::testing::WhenDynamicCastTo;
 using ::tsl::proto_testing::EqualsProto;
+using ::tsl::proto_testing::ParseTextProtoOrDie;
 using Kind = Thunk::Kind;
 
 TEST(ThunkProtoDeserializationTest, SequentialThunkChain) {
@@ -74,8 +74,7 @@ TEST(ThunkProtoDeserializationTest, SequentialThunkChain) {
 }
 
 TEST(ThunkProtoDeserializationTest, CopyThunk) {
-  ThunkProto proto;
-  CHECK(tsl::protobuf::TextFormat::ParseFromString(
+  ThunkProto proto = ParseTextProtoOrDie<ThunkProto>(
       R"pb(
         thunk_info {
           profile_annotation: "profile_annotation"
@@ -86,8 +85,7 @@ TEST(ThunkProtoDeserializationTest, CopyThunk) {
           destination_buffer { offset: 0 size: 256 buffer_allocation_index: 1 }
           mem_size: 256
         }
-      )pb",
-      &proto));
+      )pb");
 
   std::vector<BufferAllocation> buffer_allocations = {
       BufferAllocation(/*index=*/0, /*size=*/1024, /*color=*/0),
@@ -102,8 +100,7 @@ TEST(ThunkProtoDeserializationTest, CopyThunk) {
 }
 
 TEST(ThunkProtoDeserializationTest, DeviceToHostCopyThunk) {
-  ThunkProto proto;
-  CHECK(tsl::protobuf::TextFormat::ParseFromString(
+  ThunkProto proto = ParseTextProtoOrDie<ThunkProto>(
       R"pb(
         thunk_info {
           profile_annotation: "profile_annotation"
@@ -120,8 +117,7 @@ TEST(ThunkProtoDeserializationTest, DeviceToHostCopyThunk) {
             mem_size: 256
           }
         }
-      )pb",
-      &proto));
+      )pb");
 
   std::vector<BufferAllocation> buffer_allocations = {
       BufferAllocation(/*index=*/0, /*size=*/1024, /*color=*/0),
@@ -136,8 +132,7 @@ TEST(ThunkProtoDeserializationTest, DeviceToHostCopyThunk) {
 }
 
 TEST(ThunkProtoDeserializationTest, HostToDeviceCopyThunk) {
-  ThunkProto proto;
-  CHECK(tsl::protobuf::TextFormat::ParseFromString(
+  ThunkProto proto = ParseTextProtoOrDie<ThunkProto>(
       R"pb(
         thunk_info {
           profile_annotation: "profile_annotation"
@@ -154,8 +149,7 @@ TEST(ThunkProtoDeserializationTest, HostToDeviceCopyThunk) {
             mem_size: 256
           }
         }
-      )pb",
-      &proto));
+      )pb");
 
   std::vector<BufferAllocation> buffer_allocations = {
       BufferAllocation(/*index=*/0, /*size=*/1024, /*color=*/0),
@@ -170,8 +164,7 @@ TEST(ThunkProtoDeserializationTest, HostToDeviceCopyThunk) {
 }
 
 TEST(ThunkProtoDeserializationTest, DeviceToDeviceCopyThunk) {
-  ThunkProto proto;
-  CHECK(tsl::protobuf::TextFormat::ParseFromString(
+  ThunkProto proto = ParseTextProtoOrDie<ThunkProto>(
       R"pb(
         thunk_info {
           profile_annotation: "profile_annotation"
@@ -188,8 +181,7 @@ TEST(ThunkProtoDeserializationTest, DeviceToDeviceCopyThunk) {
             mem_size: 256
           }
         }
-      )pb",
-      &proto));
+      )pb");
 
   std::vector<BufferAllocation> buffer_allocations = {
       BufferAllocation(/*index=*/0, /*size=*/1024, /*color=*/0),
@@ -204,8 +196,7 @@ TEST(ThunkProtoDeserializationTest, DeviceToDeviceCopyThunk) {
 }
 
 TEST(ThunkProtoDeserializationTest, WhileThunk) {
-  ThunkProto proto;
-  CHECK(tsl::protobuf::TextFormat::ParseFromString(
+  ThunkProto proto = ParseTextProtoOrDie<ThunkProto>(
       R"pb(
         thunk_info {
           profile_annotation: "profile_annotation"
@@ -263,8 +254,7 @@ TEST(ThunkProtoDeserializationTest, WhileThunk) {
           }
           trip_count: 10
         }
-      )pb",
-      &proto));
+      )pb");
 
   std::vector<BufferAllocation> buffer_allocations = {
       BufferAllocation(/*index=*/0, /*size=*/1024, /*color=*/0),
@@ -283,8 +273,7 @@ TEST(ThunkProtoDeserializationTest, WhileThunk) {
 }
 
 TEST(ThunkProtoDeserializationTest, ConditionalThunk) {
-  ThunkProto proto;
-  CHECK(tsl::protobuf::TextFormat::ParseFromString(
+  ThunkProto proto = ParseTextProtoOrDie<ThunkProto>(
       R"pb(
         thunk_info {
           profile_annotation: "profile_annotation"
@@ -354,8 +343,7 @@ TEST(ThunkProtoDeserializationTest, ConditionalThunk) {
           }
           branch_index_is_bool: true
         }
-      )pb",
-      &proto));
+      )pb");
 
   std::vector<BufferAllocation> buffer_allocations = {
       BufferAllocation(/*index=*/0, /*size=*/1024, /*color=*/0),
@@ -374,13 +362,11 @@ TEST(ThunkProtoDeserializationTest, ConditionalThunk) {
 }
 
 TEST(ThunkProtoDeserializationTest, WaitForStreamsThunk) {
-  ThunkProto proto;
-  CHECK(tsl::protobuf::TextFormat::ParseFromString(
+  ThunkProto proto = ParseTextProtoOrDie<ThunkProto>(
       R"pb(
         thunk_info { execution_stream_id: 7 }
         wait_for_streams_thunk { stream_id: 1 wait_for_stream_id: 2 }
-      )pb",
-      &proto));
+      )pb");
 
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<Thunk> thunk,
@@ -391,8 +377,7 @@ TEST(ThunkProtoDeserializationTest, WaitForStreamsThunk) {
 }
 
 TEST(ThunkProtoDeserializationTest, CudnnThunk) {
-  ThunkProto proto;
-  CHECK(tsl::protobuf::TextFormat::ParseFromString(
+  ThunkProto proto = ParseTextProtoOrDie<ThunkProto>(
       R"pb(
         thunk_info { execution_stream_id: 7 }
         cudnn_thunk {
@@ -400,8 +385,7 @@ TEST(ThunkProtoDeserializationTest, CudnnThunk) {
           args { buffer_allocation_index: 0 }
           args { buffer_allocation_index: 1 }
         }
-      )pb",
-      &proto));
+      )pb");
   std::vector<BufferAllocation> buffer_allocations = {
       BufferAllocation(/*index=*/0, /*size=*/1024, /*color=*/0),
       BufferAllocation(/*index=*/1, /*size=*/1024, /*color=*/0),
@@ -415,8 +399,7 @@ TEST(ThunkProtoDeserializationTest, CudnnThunk) {
 }
 
 TEST(ThunkProtoDeserializationTest, CublasLtMatmulThunk) {
-  ThunkProto proto;
-  ASSERT_TRUE(tsl::protobuf::TextFormat::ParseFromString(
+  ThunkProto proto = ParseTextProtoOrDie<ThunkProto>(
       R"pb(
         thunk_info { profile_annotation: "custom-call.4" }
         cublas_lt_matmul_thunk {
@@ -463,8 +446,7 @@ TEST(ThunkProtoDeserializationTest, CublasLtMatmulThunk) {
           c { size: 161600 buffer_allocation_index: 5 }
           d { size: 161600 buffer_allocation_index: 5 }
         }
-      )pb",
-      &proto));
+      )pb");
 
   std::vector<BufferAllocation> allocations = {
       BufferAllocation(/*index=*/0, /*size=*/4, /*color=*/0),  // UNUSED
@@ -482,12 +464,10 @@ TEST(ThunkProtoDeserializationTest, CublasLtMatmulThunk) {
 }
 
 TEST(ThunkProtoDeserializationTest, EmptyThunkImplReturnsAnError) {
-  ThunkProto proto;
-  CHECK(tsl::protobuf::TextFormat::ParseFromString(
+  ThunkProto proto = ParseTextProtoOrDie<ThunkProto>(
       R"pb(
         thunk_info { execution_stream_id: 7 }
-      )pb",
-      &proto));
+      )pb");
 
   EXPECT_THAT(DeserializeThunkProto(proto, /*buffer_allocations=*/{}),
               absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
