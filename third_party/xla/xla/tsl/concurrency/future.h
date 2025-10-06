@@ -316,7 +316,7 @@ class FutureBase : public FutureMoveControl<is_move_only> {
   // completes with an error, the returned future will also be an error.
   //
   // This function defined out of line as it requires Future<> definition.
-  Future<> GetReadyFuture() const;
+  [[nodiscard]] Future<> GetReadyFuture() const;
 
   // Registers callback to be called once the promise is ready, with the final
   // value.
