@@ -57,7 +57,6 @@ limitations under the License.
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/stream_executor/stream_executor_memory_allocator.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
@@ -94,7 +93,8 @@ class HloRunnerExecutable : public OpaqueExecutable {
 };
 }  // namespace
 
-HloRunner::HloRunner(se::Platform* platform, int intra_op_parallelism_threads) {
+HloRunner::HloRunner(se::Platform* platform, int intra_op_parallelism_threads,
+                     std::unique_ptr<se::DeviceMemoryAllocator> allocator) {
   BackendOptions backend_options;
   backend_options.set_platform(platform);
   backend_options.set_intra_op_parallelism_threads(
@@ -103,16 +103,15 @@ HloRunner::HloRunner(se::Platform* platform, int intra_op_parallelism_threads) {
   device_shape_representation_fn_ = [this](const Shape& shape) {
     return backend_->compiler()->DefaultDeviceShapeRepresentation(shape);
   };
+  allocator_ = std::move(allocator);
   VLOG(1) << "Created HloRunner for platform: " << platform->Name();
 }
 
 HloRunner::~HloRunner() {}
 
 se::DeviceMemoryAllocator* HloRunner::GetAllocator() {
-  absl::MutexLock lock(mu_);
   if (allocator_ == nullptr) {
-    allocator_ = std::make_unique<se::StreamExecutorMemoryAllocator>(
-        backend().default_stream_executor());
+    return backend_->memory_allocator();
   }
   return allocator_.get();
 }
@@ -793,7 +792,7 @@ ServiceExecutableRunOptions HloRunner::GetServiceRunOptionsForDevice(
   run_options.set_local_device_count(local_device_count);
 
   run_options.set_stream(stream);
-  run_options.set_allocator(backend().memory_allocator());
+  run_options.set_allocator(GetAllocator());
   run_options.set_intra_op_thread_pool(
       backend().eigen_intra_op_thread_pool_device());
   if (device_assignment != nullptr) {
