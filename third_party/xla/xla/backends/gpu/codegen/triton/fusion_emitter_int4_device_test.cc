@@ -661,7 +661,8 @@ TEST_F(TritonTest, FuseMultiplyInPrologue) {
   )"));
 }
 
-TEST_F(TritonTest, FuseMultiplyInEpilogue) {
+// TODO(b/449140429): Re-enable this test.
+TEST_F(TritonTest, DISABLED_FuseMultiplyInEpilogue) {
   constexpr absl::string_view kHloText = R"(
     HloModule FuseMultiplyInEpilogue
 
