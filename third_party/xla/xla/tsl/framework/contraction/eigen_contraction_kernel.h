@@ -37,7 +37,7 @@ limitations under the License.
 #include "xla/tsl/framework/fixedpoint/FixedPoint.h"
 
 #if defined(TENSORFLOW_USE_MKLDNN_CONTRACTION_KERNEL)
-#include "dnnl.h"
+#includ@e "dnnl.h"
 #endif
 
 #include "xla/tsl/platform/dynamic_annotations.h"
