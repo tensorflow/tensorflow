@@ -829,7 +829,7 @@ ENTRY main {
   EXPECT_THAT(*dot, MatchTiledHloInstruction(
                         /*tile_sizes=*/{2, 2}, /*tile_strides=*/{1, 1},
                         /*tile_offsets_indexing=*/R"(
-    (pid_0) -> ((pid_0 floordiv 8) * 2, (pid_0 mod 8) * 2),
+    (pid_0) -> ((pid_0 mod 2) * 2, (pid_0 floordiv 2) * 2),
     domain:
     pid_0 in [0, 15]
   )"));
@@ -838,7 +838,7 @@ ENTRY main {
   EXPECT_THAT(*lhs, MatchTiledHloInstruction(
                         /*tile_sizes=*/{2, 8}, /*tile_strides=*/{1, 1},
                         /*tile_offsets_indexing=*/R"(
-    (pid_0) -> ((pid_0 floordiv 8) * 2, 0),
+    (pid_0) -> ((pid_0 mod 2) * 2, 0),
     domain:
     pid_0 in [0, 15]
   )"));
@@ -847,9 +847,63 @@ ENTRY main {
   EXPECT_THAT(*rhs, MatchTiledHloInstruction(
                         /*tile_sizes=*/{8, 2}, /*tile_strides=*/{1, 1},
                         /*tile_offsets_indexing=*/R"(
-    (pid_0) -> (0, (pid_0 mod 8) * 2),
+    (pid_0) -> (0, (pid_0 floordiv 2) * 2),
     domain:
     pid_0 in [0, 15]
+  )"));
+}
+
+TEST_F(SymbolicTileAnalysisTest, DotOffsetIndexingIsCorrectWithOperandSwap) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+fusion {
+  p0 = f16[64,128] parameter(0)
+  p1 = f16[128,256] parameter(1)
+  ROOT dot = f16[64,256] dot(p0, p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+
+ENTRY main {
+  p0 = f16[64,128] parameter(0)
+  p1 = f16[128,256] parameter(1)
+  ROOT fusion = f16[64,256] fusion(p0, p1), kind=kLoop, calls=fusion
+})"));
+  std::optional<SymbolicTileAnalysis> analysis = TryAnalyzeModule(module.get());
+  ASSERT_TRUE(analysis.has_value());
+  const HloInstruction* dot_hlo =
+      module->entry_computation()->root_instruction()->fused_expression_root();
+  Tiling tiling(Tiling::TileMapping{{dot_hlo, {32, 16, 8}}});
+  TF_ASSERT_OK_AND_ASSIGN(TiledHloComputation tiled_hlo_computation,
+                          analysis->ComputeTiledHloInstructions(
+                              tiling,
+                              /*constraints_are_known_satisfied=*/false,
+                              /*compute_all_tile_offset_indexing_maps=*/true));
+
+  const TiledHloInstruction* dot = tiled_hlo_computation.GetRoots()[0];
+  EXPECT_THAT(*dot, MatchTiledHloInstruction(
+                        /*tile_sizes=*/{16, 8}, /*tile_strides=*/{1, 1},
+                        /*tile_offsets_indexing=*/R"(
+    (pid_0) -> ((pid_0 mod 4) * 16, (pid_0 floordiv 4) * 8),
+    domain:
+    pid_0 in [0, 127]
+  )"));
+
+  const TiledHloInstruction* lhs = dot->operand(0);
+  EXPECT_THAT(*lhs, MatchTiledHloInstruction(
+                        /*tile_sizes=*/{16, 32}, /*tile_strides=*/{1, 1},
+                        /*tile_offsets_indexing=*/R"(
+    (pid_0) -> ((pid_0 mod 4) * 16, 0),
+    domain:
+    pid_0 in [0, 127]
+  )"));
+
+  const TiledHloInstruction* rhs = dot->operand(1);
+  EXPECT_THAT(*rhs, MatchTiledHloInstruction(
+                        /*tile_sizes=*/{32, 8}, /*tile_strides=*/{1, 1},
+                        /*tile_offsets_indexing=*/R"(
+    (pid_0) -> (0, (pid_0 floordiv 4) * 8),
+    domain:
+    pid_0 in [0, 127]
   )"));
 }
 
