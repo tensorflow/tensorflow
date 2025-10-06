@@ -100,8 +100,6 @@ static absl::StatusOr<std::string> CompileGpuExecutable(
 
   TF_ASSIGN_OR_RETURN(auto gpu_compiler, Compiler::GetForPlatform(platform));
 
-  auto module_group = std::make_unique<HloModuleGroup>(std::move(hlo_module));
-
   if (aot) {
     AotCompilationOptions aot_options(platform->id());
     aot_options.set_target_config(*target_config);
@@ -110,7 +108,7 @@ static absl::StatusOr<std::string> CompileGpuExecutable(
 
     TF_ASSIGN_OR_RETURN(
         std::vector<std::unique_ptr<AotCompilationResult>> aot_results,
-        gpu_compiler->CompileAheadOfTime(std::move(module_group), aot_options));
+        gpu_compiler->CompileAheadOfTime(std::move(hlo_module), aot_options));
     TF_ASSIGN_OR_RETURN(std::string compile_result,
                         aot_results[0]->SerializeAsString());
     *result.mutable_hlo_module() =
@@ -118,6 +116,7 @@ static absl::StatusOr<std::string> CompileGpuExecutable(
     return compile_result;
   }
 
+  auto module_group = std::make_unique<HloModuleGroup>(std::move(hlo_module));
   Compiler::CompileOptions compile_options;
   TF_ASSIGN_OR_RETURN(stream_executor::StreamExecutor * stream_executor,
                       platform->ExecutorForDevice(0));

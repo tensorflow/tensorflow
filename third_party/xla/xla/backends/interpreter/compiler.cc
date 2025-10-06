@@ -173,7 +173,7 @@ InterpreterCompiler::Compile(
 
 absl::StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
 InterpreterCompiler::CompileAheadOfTime(
-    std::unique_ptr<HloModuleGroup> module_group,
+    std::unique_ptr<HloModule> hlo_module,
     const AotCompilationOptions& aot_options) {
   return tsl::errors::InvalidArgument(
       "AOT compilation not supported on Interpreter");

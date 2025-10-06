@@ -306,8 +306,8 @@ class Service {
   // AotCompilationResult(s), which can be persisted to later load Executable
   // objects.
   absl::StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
-  BuildAotResults(const std::vector<const HloModuleProto*>& module_protos,
-                  std::vector<std::unique_ptr<HloModuleConfig>> module_configs,
+  BuildAotResults(const HloModuleProto* module_proto,
+                  std::unique_ptr<HloModuleConfig> module_config,
                   Backend* backend,
                   std::vector<std::vector<se::StreamExecutor*>> executors,
                   const Compiler::CompileOptions& options,

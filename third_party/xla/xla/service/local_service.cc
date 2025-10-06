@@ -138,16 +138,14 @@ LocalService::CompileAotResults(
       se::StreamExecutor * executor,
       execute_backend_->stream_executor(build_options.device_ordinal()));
 
-  std::vector<std::unique_ptr<HloModuleConfig>> module_configs;
-  module_configs.push_back(std::move(module_config));
   // BuildAotResults uses the executors length to determine the number of
   // cores per module, but otherwise only uses the first executor.
   std::vector<se::StreamExecutor*> executors(build_options.num_partitions(),
                                              executor);
 
   return BuildAotResults(
-      /*module_protos=*/{&computation.proto()}, std::move(module_configs),
-      execute_backend_.get(), {executors},
+      &computation.proto(), std::move(module_config), execute_backend_.get(),
+      {executors},
       Compiler::CompileOptions{build_options.device_allocator(),
                                build_options.compile_thread_pool()},
       build_options.run_backend_only());

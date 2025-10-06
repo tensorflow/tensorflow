@@ -75,7 +75,7 @@ class CpuCompiler : public LLVMCompiler {
       const CompileOptions& options) override;
 
   absl::StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
-  CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
+  CompileAheadOfTime(std::unique_ptr<HloModule> hlo_module,
                      const AotCompilationOptions& options) override;
 
   se::Platform::Id PlatformId() const override;

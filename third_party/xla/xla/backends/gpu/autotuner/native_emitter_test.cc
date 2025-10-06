@@ -205,7 +205,7 @@ class MockCompiler : public Compiler {
   MOCK_METHOD(
       absl::StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>,
       CompileAheadOfTime,
-      (std::unique_ptr<HloModuleGroup> module_group,
+      (std::unique_ptr<HloModule> hlo_module,
        const AotCompilationOptions& options),
       (override));
   MOCK_METHOD(HloCostAnalysis::ShapeSizeFunction, ShapeSizeBytesFunction, (),

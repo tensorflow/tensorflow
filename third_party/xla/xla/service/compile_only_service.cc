@@ -132,9 +132,8 @@ CompileOnlyService::CompileAheadOfTime(
       HloModule::CreateFromProto(computation.computation, *module_config));
   DumpHloModuleIfEnabled(*hlo_module, "before_optimizations");
 
-  return compiler_->CompileAheadOfTime(
-      std::make_unique<HloModuleGroup>(std::move(hlo_module)), options,
-      metadata);
+  return compiler_->CompileAheadOfTime(std::move(hlo_module), options,
+                                       metadata);
 }
 
 }  // namespace xla

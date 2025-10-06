@@ -188,7 +188,7 @@ class TpuCompiler : public Compiler {
   // Compiles the HLO module group for ahead-of-time execution.  This is
   // intended for use in static compilation.
   absl::StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
-  CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
+  CompileAheadOfTime(std::unique_ptr<HloModule> hlo_module,
                      const AotCompilationOptions& options) override {
     return Unimplemented("This compiler does not support CompileAheadOfTime.");
   }

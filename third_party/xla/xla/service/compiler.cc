@@ -102,15 +102,14 @@ std::unique_ptr<tsl::protobuf::Message> Compiler::ComputeDefaultBackendConfig(
 // Define a default version where metadata is not used.
 absl::StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
 Compiler::CompileAheadOfTime(
-    std::unique_ptr<HloModuleGroup> module_group,
-    const AotCompilationOptions& options,
+    std::unique_ptr<HloModule> hlo_module, const AotCompilationOptions& options,
     std::unique_ptr<AotCompilationMetadata>* metadata) {
   if (metadata != nullptr) {
     return Unimplemented(
         "Populating AotCompilationMetadata is not implemented on this "
         "compiler.");
   }
-  return CompileAheadOfTime(std::move(module_group), options);
+  return CompileAheadOfTime(std::move(hlo_module), options);
 }
 
 /* static */ absl::flat_hash_map<se::Platform::Id, Compiler::CompilerFactory>*

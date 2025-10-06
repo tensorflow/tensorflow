@@ -1041,10 +1041,9 @@ ENTRY e {
                                               int expected_result) {
     TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                             ParseAndReturnVerifiedModule(hlo));
-    auto module_group = std::make_unique<HloModuleGroup>(std::move(module));
     TF_ASSERT_OK_AND_ASSIGN(
         std::vector<std::unique_ptr<AotCompilationResult>> aot_results,
-        compiler->CompileAheadOfTime(std::move(module_group), aot_options));
+        compiler->CompileAheadOfTime(std::move(module), aot_options));
 
     TF_ASSERT_OK_AND_ASSIGN(std::string serialized_aot_result,
                             aot_results[0]->SerializeAsString());
