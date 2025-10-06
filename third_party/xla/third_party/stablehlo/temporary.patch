@@ -1863,7 +1863,7 @@ diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveFold
 +                FoldCosineOpPattern,                  //
 +                FoldErfOpPattern,                     //
 +                FoldExpOpPattern,                     //
-+                FoldIotaOpPattern,                    //
++                FoldIotaOpPattern,                 //
 +                FoldLogOpPattern,                     //
 +                FoldLogisticOpPattern,                //
 +                FoldNegOpPattern,                     //
