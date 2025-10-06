@@ -62,8 +62,8 @@ absl::StatusOr<bool> CompositeRewriter::RewriteComputation(
 
     auto* scaled_dot =
         computation->AddInstruction(HloInstruction::CreateScaledDot(
-            call->shape(), call->mutable_operand(0), call->mutable_operand(2),
-            call->mutable_operand(1), call->mutable_operand(3),
+            call->shape(), call->mutable_operand(0), call->mutable_operand(1),
+            call->mutable_operand(2), call->mutable_operand(3),
             dot_dimension_numbers, PrecisionConfig{}));
     TF_RETURN_IF_ERROR(call->ReplaceAllUsesWith(scaled_dot));
     TF_RETURN_IF_ERROR(computation->RemoveInstruction(call));
