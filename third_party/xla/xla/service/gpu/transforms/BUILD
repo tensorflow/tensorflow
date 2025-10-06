@@ -2415,6 +2415,37 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "composite_rewriter",
+    srcs = ["composite_rewriter.cc"],
+    hdrs = ["composite_rewriter.h"],
+    deps = [
+        "//xla:util",
+        "//xla:xla_data_proto_cc",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/pass:hlo_pass",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+xla_cc_test(
+    name = "composite_rewriter_test",
+    srcs = ["composite_rewriter_test.cc"],
+    deps = [
+        ":composite_rewriter",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/parser:hlo_parser",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 xla_cc_test(
     name = "scalar_constant_sinker_test",
     srcs = ["scalar_constant_sinker_test.cc"],
