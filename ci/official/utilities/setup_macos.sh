@@ -69,7 +69,7 @@ if [[ "${TFCI_MACOS_UPGRADE_PYENV_ENABLE}" == 1 ]]; then
   if command -v brew &> /dev/null && brew list pyenv &> /dev/null; then
     # On "ventura-slcn" VMs, pyenv is managed via Homebrew.
     echo "pyenv is installed and managed by homebrew."
-    brew update && brew upgrade pyenv
+    (brew update && brew upgrade pyenv) || true
   else
     echo "pyenv is not managed by homebrew. Installing it via github..."
     # On "ventura" VMs, pyenv is not managed by Homebrew. Install the latest
