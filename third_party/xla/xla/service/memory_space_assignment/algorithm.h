@@ -1109,6 +1109,11 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
   bool IsIntervalPinnedToAlternateMemory(
       const MsaBufferInterval& interval) const;
 
+  // Returns a negative number if lhs is pinned and rhs is not, a positive
+  // number if lhs is not pinned and rhs is, and 0 otherwise.
+  int ComparePinnedStatus(const MsaBufferInterval& lhs,
+                          const MsaBufferInterval& rhs) const;
+
   // A convenience debugging method that returns true if the prefetch context
   // matches the described producer and consumer.
   bool MatchesPrefetchContext(const PrefetchContext& context,

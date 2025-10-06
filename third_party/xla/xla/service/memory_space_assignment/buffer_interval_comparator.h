@@ -16,11 +16,16 @@ limitations under the License.
 #ifndef XLA_SERVICE_MEMORY_SPACE_ASSIGNMENT_BUFFER_INTERVAL_COMPARATOR_H_
 #define XLA_SERVICE_MEMORY_SPACE_ASSIGNMENT_BUFFER_INTERVAL_COMPARATOR_H_
 
+#include <cstddef>
 #include <cstdint>
 #include <string>
 #include <tuple>
+#include <utility>
+#include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/functional/any_invocable.h"
 #include "xla/hlo/utils/hlo_live_range.h"
 #include "xla/service/buffer_value.h"
 #include "xla/service/heap_simulator/heap_simulator.h"
@@ -62,6 +67,28 @@ class BufferIntervalComparator {
     };
   }
 
+  // Sorts the buffer intervals prioritizing results from the
+  // most_significant_compare functor first.
+  //
+  // The most_significant_compare functor should return a negative number if
+  // lhs should be sorted before rhs, a positive number if rhs should be sorted
+  // before lhs, and 0 otherwise.
+  virtual void Sort(absl::AnyInvocable<int(const MsaBufferInterval&,
+                                           const MsaBufferInterval&)>
+                        most_significant_compare,
+                    std::vector<MsaBufferInterval>& buffer_intervals) {
+    auto less_than = GetComparisonFunctor();
+    absl::c_sort(buffer_intervals, [&less_than, &most_significant_compare](
+                                       const MsaBufferInterval& a,
+                                       const MsaBufferInterval& b) {
+      int most_significant_compare_result = most_significant_compare(a, b);
+      if (most_significant_compare_result != 0) {
+        return most_significant_compare_result < 0;
+      }
+      return less_than(a, b);
+    });
+  }
+
  protected:
   BufferIntervalComparator() = default;
 };
@@ -89,6 +116,42 @@ class MemoryBoundednessBufferIntervalComparator
       const MsaBufferInterval& buffer_interval) override;
   bool LessThan(const MsaBufferInterval& lhs,
                 const MsaBufferInterval& rhs) override;
+
+  // This is an optimized implementation, equivalent to the base class's Sort()
+  // method.
+  void Sort(absl::AnyInvocable<int(const MsaBufferInterval&,
+                                   const MsaBufferInterval&)>
+                most_significant_compare,
+            std::vector<MsaBufferInterval>& buffer_intervals) override {
+    const size_t num_buffer_intervals = buffer_intervals.size();
+    std::vector<std::pair<ComparisonTuple, MsaBufferInterval*>>
+        sorted_comparison_tuples_and_buffer_intervals;
+    sorted_comparison_tuples_and_buffer_intervals.reserve(num_buffer_intervals);
+    for (MsaBufferInterval& buffer_interval : buffer_intervals) {
+      auto& comparison_tuple_and_buffer_interval =
+          sorted_comparison_tuples_and_buffer_intervals.emplace_back();
+      comparison_tuple_and_buffer_interval.first = GetTuple(buffer_interval);
+      comparison_tuple_and_buffer_interval.second = &buffer_interval;
+    }
+    absl::c_sort(
+        sorted_comparison_tuples_and_buffer_intervals,
+        [&most_significant_compare](
+            const std::pair<ComparisonTuple, const MsaBufferInterval*>& a,
+            const std::pair<ComparisonTuple, const MsaBufferInterval*>& b) {
+          int most_significant_compare_result =
+              most_significant_compare(*a.second, *b.second);
+          if (most_significant_compare_result != 0) {
+            return most_significant_compare_result < 0;
+          }
+          return a.first < b.first;
+        });
+    std::vector<MsaBufferInterval> sorted_buffer_intervals;
+    sorted_buffer_intervals.reserve(num_buffer_intervals);
+    for (const auto& entry : sorted_comparison_tuples_and_buffer_intervals) {
+      sorted_buffer_intervals.push_back(std::move(*entry.second));
+    }
+    buffer_intervals = std::move(sorted_buffer_intervals);
+  }
 
  private:
   // See the value returned by DescribeComparisonCriteria() for the meaning of
