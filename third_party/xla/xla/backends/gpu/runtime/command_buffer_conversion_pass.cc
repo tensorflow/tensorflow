@@ -68,14 +68,7 @@ CommandBufferConfig GetCommandBufferConfig(
     commands.insert(static_cast<DebugOptions::CommandBufferCmdType>(cmd_type));
   }
 
-  absl::flat_hash_set<std::string> legacy_custom_call_targets;
-  for (const auto& target :
-       debug_options.legacy_command_buffer_custom_call_targets()) {
-    legacy_custom_call_targets.insert(target);
-  }
-
-  CommandBufferConfig config{
-      std::move(commands), std::move(legacy_custom_call_targets), device_info};
+  CommandBufferConfig config{std::move(commands), device_info};
 
   // Erase command buffer cmd types that are not supported by the gpu runtime.
   static constexpr auto kRequireConditionals = {DebugOptions::CONDITIONAL,
@@ -203,11 +196,6 @@ bool IsConvertible(const ConditionalThunk& conditional_thunk,
 bool IsConvertible(const CustomCallThunk& custom_call_thunk,
                    const CommandBufferConfig& config) {
   const std::string& target_name = custom_call_thunk.target_name();
-  if (config.enabled_legacy_custom_call_targets.contains(target_name)) {
-    VLOG(3) << "Recording legacy custom call target " << target_name
-            << " into command buffer.";
-    return true;
-  }
 
   // Check if FFI handler is compatible with command buffers.
   absl::StatusOr<ffi::HandlerRegistration> registration =

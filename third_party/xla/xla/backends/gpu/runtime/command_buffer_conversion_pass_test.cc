@@ -778,38 +778,6 @@ TEST(CommandBufferConversionPassTest, ConvertWhileThunkWithAsyncPair) {
                             Thunk::kAllGatherDone));
 }
 
-TEST(CommandBufferConversionPassTest,
-     ConvertsLegacyCustomCallToCommandBufferThunk) {
-  std::vector<std::unique_ptr<Thunk>> thunks;
-  thunks.push_back(CreateCustomCallThunk("test_legacy_custom_call"));
-
-  auto root_thunk =
-      std::make_unique<SequentialThunk>(Thunk::ThunkInfo(), std::move(thunks));
-  DebugOptions debug_options;
-  debug_options.clear_xla_gpu_enable_command_buffer();
-  debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::CUSTOM_CALL);
-  debug_options.add_legacy_command_buffer_custom_call_targets(
-      "test_legacy_custom_call");
-
-  se::DeviceDescription device_info = TestGpuDeviceInfo::CudaOrRocmDeviceInfo();
-  FakeErrorAllocator allocator;
-
-  ASSERT_EQ(root_thunk->thunks().size(), 1);
-
-  CommandBufferConversionPass pass;
-
-  ASSERT_THAT(pass.Run(root_thunk.get(), debug_options, device_info, allocator),
-              IsOkAndHolds(true));
-  EXPECT_THAT(root_thunk->thunks(), ThunkKindsAre(Thunk::kCommandBuffer));
-
-  const auto* command_buffer_thunk =
-      static_cast<const CommandBufferThunk*>(root_thunk->thunks()[0].get());
-
-  const auto& thunks_in_command_buffer =
-      command_buffer_thunk->thunks()->thunks();
-  EXPECT_THAT(thunks_in_command_buffer, ThunkKindsAre(Thunk::kCustomCall));
-}
-
 TEST(CommandBufferConversionPassTest, ConvertsCuDnnThunkToCommandBufferThunk) {
   std::vector<std::unique_ptr<Thunk>> thunks;
 

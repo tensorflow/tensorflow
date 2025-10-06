@@ -1280,12 +1280,7 @@ message DebugOptions {
   // updating command buffer instance.
   optional int64 xla_cmd_buffer_trace_cache_size = 311;
 
-  // Custom call targets with legacy registry API (non FFI API),
-  // that support recording to command buffer custom command,
-  // i.e., custom call target supports cuda-graph capturing for CUDA devices.
-  // This flag is read if CUSTOM_CALL command type is recorded into
-  // command buffer.
-  repeated string legacy_command_buffer_custom_call_targets = 314;
+  reserved 314;  // was legacy_command_buffer_custom_call_targets
 
   // This flag is used for controlling HLO dumping and NVTX marker. If turned
   // on, both HLO dumping and NVTX marker will use syntactic sugar wrappers

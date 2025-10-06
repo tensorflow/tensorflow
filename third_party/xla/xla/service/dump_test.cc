@@ -483,13 +483,12 @@ TEST(DumpTest, GetNonDefaultDebugOptions) {
 
 TEST(DumpTest, DumpRepeatedStringTest) {
   DebugOptions options = DefaultDebugOptionsIgnoringFlags();
-  options.add_legacy_command_buffer_custom_call_targets("__gpu.gpu.triton");
+  options.add_xla_disable_hlo_passes("layout-assignment");
 
   std::string non_default_options = GetNonDefaultDebugOptions(options);
   EXPECT_THAT(
       non_default_options,
-      testing::HasSubstr(
-          "legacy_command_buffer_custom_call_targets: \"__gpu.gpu.triton\""));
+      testing::HasSubstr("xla_disable_hlo_passes: \"layout-assignment\"\n"));
 }
 
 }  // namespace
