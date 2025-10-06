@@ -39,7 +39,7 @@ namespace gpu {
 //
 // This backend enables autotuning of Triton-based fusion computations at the
 // block level. It generates tiling configurations, applies them to
-// instructions,and prepares them for compilation using the Triton emitter.
+// instructions, and prepares them for compilation using the Triton emitter.
 class BlockLevelEmitterBackend : public GpuCodegenBackend {
  public:
   explicit BlockLevelEmitterBackend(
@@ -68,6 +68,10 @@ class BlockLevelEmitterBackend : public GpuCodegenBackend {
 
   // Determines whether the given HLO instruction is supported by this backend.
   bool IsSupported(const HloInstruction& instr);
+
+  // We don't want to use the Triton emitter as a reference because it can
+  // produce wrong results.
+  bool CanProduceWrongResults() const override { return true; }
 
  private:
   absl::StatusOr<BlockLevelFusionConfig> GetCostModelConfig(
