@@ -73,7 +73,7 @@ before initializing the TensorFlow Lite runtime.
 Add the GPU delegate gradle dependencies to your application:
 
 ```
-implementation 'com.google.android.gms:play-services-tflite-gpu:16.2.0'
+implementation 'com.google.android.gms:play-services-tflite-gpu:16.4.0'
 ```
 
 Then, check the GPU availability and initialize TfLiteNative if the check is
