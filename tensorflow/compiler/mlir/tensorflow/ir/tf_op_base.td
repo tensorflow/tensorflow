@@ -366,7 +366,7 @@ def TF_VariantRef : TF_TensorFlowType<"VariantRef", "variantref">;
 
 def TF_Bool : AnyTypeOf<[I<1>, TF_BoolRef], "bool">;
 
-def TF_Int4 : AnyTypeOf<[SI<4>, TF_Int4Ref], "4-bit integer">;
+def TF_Int4 : AnyTypeOf<[I<4>, TF_Int4Ref], "4-bit integer">;
 def TF_Int8 : AnyTypeOf<[I8, TF_Int8Ref], "8-bit integer">;
 def TF_Int16 : AnyTypeOf<[I16, TF_Int16Ref], "16-bit integer">;
 def TF_Int32 : AnyTypeOf<[I32, TF_Int32Ref], "32-bit integer">;
