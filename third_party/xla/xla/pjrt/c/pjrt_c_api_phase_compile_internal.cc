@@ -18,22 +18,22 @@ limitations under the License.
 #include <cstddef>
 #include <cstring>
 #include <string>
-#include <utility>
 #include <vector>
 
-#include "absl/cleanup/cleanup.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/c/pjrt_c_api_helpers.h"
 #include "xla/pjrt/c/pjrt_c_api_phase_compile_extension.h"
 #include "xla/pjrt/c/pjrt_c_api_wrapper_impl.h"
+#include "xla/pjrt/partial_program_utils.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/proto/compile_options.pb.h"
 #include "xla/pjrt/proto/pjrt_partial_program.pb.h"
+#include "xla/pjrt/string_utils.h"
 
 namespace pjrt {
 
@@ -51,114 +51,22 @@ absl::StatusOr<xla::CompileOptions> ParseCompileOptions(
 
 }  // namespace
 
-std::vector<std::string> ConvertCharBuffersToCppStrings(
-    const char** char_buffers, const size_t* char_buffer_sizes,
-    size_t num_strings) {
-  if (char_buffers == nullptr || char_buffer_sizes == nullptr) {
-    return {};
-  }
-
-  std::vector<std::string> cpp_strings;
-  cpp_strings.reserve(num_strings);
-  for (size_t i = 0; i < num_strings; ++i) {
-    if (char_buffers[i] == nullptr) {
-      cpp_strings.push_back("");
-    } else {
-      cpp_strings.push_back(std::string(char_buffers[i], char_buffer_sizes[i]));
-    }
-  }
-
-  return cpp_strings;
-}
-
-const char** ConvertCppStringsToCharBuffers(
-    const std::vector<std::string>& strings, const size_t*& char_buffer_sizes) {
-  auto char_buffers = new const char*[strings.size()];
-  size_t* buffer_sizes = new size_t[strings.size()];
-
-  for (size_t i = 0; i < strings.size(); ++i) {
-    const std::string& current_string = strings[i];
-    char* buffer = new char[current_string.length() + 1];
-    absl::SNPrintF(buffer, current_string.length() + 1, "%s", current_string);
-    char_buffers[i] = buffer;
-    buffer_sizes[i] = strlen(buffer);
-  }
-  char_buffer_sizes = buffer_sizes;
-  return char_buffers;
-}
-
-absl::StatusOr<std::vector<xla::PjRtPartialProgramProto>>
-ConvertCharBuffersToPjRtPartialProgramProtos(const char** char_buffers,
-                                             const size_t* char_buffer_sizes,
-                                             size_t num_programs) {
-  if (char_buffers == nullptr || char_buffer_sizes == nullptr) {
-    return std::vector<xla::PjRtPartialProgramProto>();
-  }
-
-  std::vector<xla::PjRtPartialProgramProto> partial_programs;
-  partial_programs.reserve(num_programs);
-  for (size_t i = 0; i < num_programs; ++i) {
-    xla::PjRtPartialProgramProto partial_program;
-    bool success =
-        partial_program.ParseFromArray(char_buffers[i], char_buffer_sizes[i]);
-    if (!success) {
-      return absl::InvalidArgumentError(
-          "Failed to deserialize PjRtPartialProgramProto");
-    }
-    partial_programs.push_back(partial_program);
-  }
-
-  return partial_programs;
-}
-
-absl::StatusOr<const char**> ConvertPjRtPartialProgramProtosToCharBuffers(
-    const std::vector<xla::PjRtPartialProgramProto>& partial_programs,
-    const size_t*& char_buffer_sizes) {
-  const char** char_buffers = new const char*[partial_programs.size()]();
-  size_t* buffer_sizes = new size_t[partial_programs.size()];
-  absl::Cleanup cleanup_buffers = [char_buffers, buffer_sizes,
-                                   partial_programs_size =
-                                       partial_programs.size()] {
-    for (size_t i = 0; i < partial_programs_size; ++i) {
-      delete[] char_buffers[i];
-    }
-    delete[] char_buffers;
-    delete[] buffer_sizes;
-  };
-
-  for (size_t i = 0; i < partial_programs.size(); ++i) {
-    const xla::PjRtPartialProgramProto& partial_program = partial_programs[i];
-    size_t buffer_size = partial_program.ByteSizeLong();
-    char* buffer = new char[buffer_size];
-    bool success = partial_program.SerializeToArray(
-        buffer, partial_program.ByteSizeLong());
-    if (!success) {
-      return absl::InvalidArgumentError(
-          "Failed to serialize PjRtPartialProgramProto");
-    }
-    char_buffers[i] = buffer;
-    buffer_sizes[i] = buffer_size;
-  }
-  char_buffer_sizes = buffer_sizes;
-
-  std::move(cleanup_buffers).Cancel();
-  return char_buffers;
-}
-
 static PJRT_Error* PJRT_PhaseCompile_Run_Phase(
     PJRT_PhaseCompile_Run_Phase_Args* args) {
   PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
       "PJRT_PhaseCompile_Run_Phase_Args",
       PJRT_PhaseCompile_Run_Phase_Args_STRUCT_SIZE, args->struct_size));
 
-  std::vector<std::string> phases_to_run = ConvertCharBuffersToCppStrings(
-      args->phases_to_run, args->phases_to_run_sizes, args->num_phases_to_run);
+  std::vector<std::string> phases_to_run = xla::ConvertCharBuffersToCppStrings(
+      absl::MakeSpan(args->phases_to_run, args->num_phases_to_run),
+      absl::MakeConstSpan(args->phases_to_run_sizes, args->num_phases_to_run));
 
   PJRT_ASSIGN_OR_RETURN(
       std::vector<xla::PjRtPartialProgramProto> programs_in_protos,
-      ConvertCharBuffersToPjRtPartialProgramProtos(args->input_programs,
-                                                   args->input_programs_sizes,
-                                                   args->num_input_programs));
+      xla::ConvertCharBuffersToPjRtPartialProgramProtos(
+          absl::MakeSpan(args->input_programs, args->num_input_programs),
+          absl::MakeConstSpan(args->input_programs_sizes,
+                              args->num_input_programs)));
 
   PJRT_ASSIGN_OR_RETURN(
       xla::CompileOptions options,
@@ -175,7 +83,7 @@ static PJRT_Error* PJRT_PhaseCompile_Run_Phase(
                             *args->topology->topology, phases_to_run));
 
   PJRT_ASSIGN_OR_RETURN(args->output_programs,
-                        ConvertPjRtPartialProgramProtosToCharBuffers(
+                        xla::ConvertPjRtPartialProgramProtosToCharBuffers(
                             programs_out, args->output_programs_sizes));
   args->num_output_programs = programs_out.size();
 
@@ -196,7 +104,7 @@ static PJRT_Error* PJRT_PhaseCompile_Get_Phase_Names(
                         args->phase_compiler->compiler->GetPhaseNames());
 
   args->phase_names =
-      ConvertCppStringsToCharBuffers(phase_names, args->phase_names_sizes);
+      xla::ConvertCppStringsToCharBuffers(phase_names, args->phase_names_sizes);
   args->num_phase_names = phase_names.size();
 
   return nullptr;

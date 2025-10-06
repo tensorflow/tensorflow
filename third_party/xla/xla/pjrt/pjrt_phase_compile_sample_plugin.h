@@ -26,6 +26,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
 #include "xla/hlo/builder/xla_computation.h"
+#include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/c/pjrt_c_api_phase_compile_extension.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
@@ -82,6 +83,8 @@ class SamplePhaseCompiler : public xla::PjRtPhaseCompiler {
 
 // Creates a phase compile extension for the sample plugin.
 PJRT_PhaseCompile_Extension CreateSamplePhaseCompileExtension();
+
+const PJRT_Api* GetSamplePhaseCompilePjrtApi();
 
 }  // namespace phase_compile_sample_plugin
 }  // namespace pjrt

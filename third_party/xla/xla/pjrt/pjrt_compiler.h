@@ -248,7 +248,7 @@ class PjRtPhaseCompiler : public PjRtCompiler {
 
   // Returns a vector of strings containing the names of all registered phases
   // in the order they were registered.
-  absl::StatusOr<std::vector<std::string>> GetPhaseNames();
+  virtual absl::StatusOr<std::vector<std::string>> GetPhaseNames();
 
   // Compiles a set of input programs by running them through a specified
   // sequence of compilation phases. This function internally calls
@@ -257,7 +257,7 @@ class PjRtPhaseCompiler : public PjRtCompiler {
   // of one phase is passed as input to the next. Returns the vector of
   // `PjRtPartialProgramProto` objects resulting from the last executed phase,
   // or an error status if any validation or compilation step fails.
-  absl::StatusOr<std::vector<PjRtPartialProgramProto>> RunPhases(
+  virtual absl::StatusOr<std::vector<PjRtPartialProgramProto>> RunPhases(
       CompileOptions options,
       const std::vector<PjRtPartialProgramProto>& input_programs,
       const PjRtTopologyDescription& topology,
