@@ -25,6 +25,7 @@ limitations under the License.
 
 #include "absl/log/check.h"
 #include "nanobind/nanobind.h"
+#include "google/protobuf/repeated_ptr_field.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/protobuf.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
