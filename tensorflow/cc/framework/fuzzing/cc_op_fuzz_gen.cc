@@ -119,7 +119,7 @@ string WriteClassFuzzDef(const OpInfo& op_info) {
                   out, "    Input ", arg.name(),
                   "_1 = ", "tensorflow::ops::Placeholder(scope.WithOpName(\"",
                   arg.name(), "\"), ", type, ");\n");
-              strings::StrAppend(
+              absl::StrAppend(
                   out, absl::Substitute("    InputList $0({$0_0, $0_1});\n",
                                         arg.name()));
             } else {
@@ -158,7 +158,7 @@ string WriteClassFuzzDef(const OpInfo& op_info) {
                           if (op_info.inferred_input_attrs.count(attr.name()) ==
                                   0 &&
                               !attr.has_default_value()) {
-                            strings::StrAppend(out, ", ", attr.name());
+                            absl::StrAppend(out, ", ", attr.name());
                           }
                         })));
 
