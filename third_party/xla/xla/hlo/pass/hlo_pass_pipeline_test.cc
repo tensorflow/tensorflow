@@ -27,7 +27,6 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -50,15 +49,10 @@ using ::testing::StrEq;
 
 class HloPassPipelineTest : public HloHardwareIndependentTestBase {
  protected:
-  absl::StatusOr<HloModuleGroup> ParseModuleGroup(
-      absl::Span<const std::string> hlo_strings) {
-    HloModuleGroup group(TestName());
-    for (const std::string& hlo_string : hlo_strings) {
-      TF_ASSIGN_OR_RETURN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-      group.push_back(std::move(module));
-    }
-    return group;
+  absl::StatusOr<HloModuleGroup> ParseModuleGroup(std::string hlo_string) {
+    TF_ASSIGN_OR_RETURN(std::unique_ptr<VerifiedHloModule> module,
+                        ParseAndReturnVerifiedModule(hlo_string));
+    return HloModuleGroup(std::move(module));
   }
 };
 
@@ -276,18 +270,8 @@ ENTRY main {
   ROOT baz = f32[] multiply(a, b)
 }
 )";
-  const std::string module_1_str = R"(
-HloModule MixedPipeline.0
-
-ENTRY main {
-  a = f32[] parameter(0)
-  b = f32[] parameter(1)
-  ROOT foo = f32[] multiply(a, b)
-}
-)";
-
   TF_ASSERT_OK_AND_ASSIGN(HloModuleGroup module_group,
-                          ParseModuleGroup({module_0_str, module_1_str}));
+                          ParseModuleGroup(module_0_str));
 
   HloPassPipeline pipeline(TestName());
   pipeline.AddPass<BazToQuxModuleGroupPass>();
@@ -295,17 +279,13 @@ ENTRY main {
 
   HloInstruction* root0 =
       module_group.module(0).entry_computation()->root_instruction();
-  HloInstruction* root1 =
-      module_group.module(1).entry_computation()->root_instruction();
   EXPECT_EQ(root0->name(), "baz");
-  EXPECT_EQ(root1->name(), "foo");
 
   TF_ASSERT_OK_AND_ASSIGN(bool changed,
                           pipeline.RunOnModuleGroup(&module_group));
   EXPECT_TRUE(changed);
 
   EXPECT_EQ(root0->name(), "qux");
-  EXPECT_EQ(root1->name(), "bar");
 }
 
 TEST_F(HloPassPipelineTest, InvariantChecker) {
@@ -383,15 +363,13 @@ ENTRY main {
 
 // Test that metadata is set when a module group goes through a pass pipeline.
 TEST_F(HloPassPipelineTest, SetHloModuleMetadata) {
-  HloModuleGroup module_group(TestName());
-  module_group.push_back(CreateNewVerifiedModule());
-  module_group.push_back(CreateNewVerifiedModule());
+  HloModuleGroup module_group(CreateNewVerifiedModule());
 
   HloPassPipeline pipeline(TestName());
   pipeline.AddPass<BazToQuxModuleGroupPass>();
   pipeline.AddPass<FooToBarModulePass>();
   TF_ASSERT_OK(pipeline.RunOnModuleGroup(&module_group).status());
-  ASSERT_THAT(module_group.modules(), SizeIs(2));
+  ASSERT_THAT(module_group.modules(), SizeIs(1));
 
   std::vector<std::string> pass_names = {"pipeline-start", "baz2qux",
                                          "foo2bar"};
@@ -410,8 +388,7 @@ TEST_F(HloPassPipelineTest, SetHloModuleMetadata) {
       EXPECT_FALSE(pass_metadata.module_changed());
       EXPECT_EQ(pass_metadata.module_id(), module->unique_id());
       EXPECT_THAT(pass_metadata.module_group_module_ids(),
-                  ElementsAre(module_group.module(0).unique_id(),
-                              module_group.module(1).unique_id()));
+                  ElementsAre(module_group.module(0).unique_id()));
       EXPECT_GT(pass_metadata.start_timestamp_usec(), 0);
       EXPECT_LE(pass_metadata.start_timestamp_usec(),
                 pass_metadata.end_timestamp_usec());

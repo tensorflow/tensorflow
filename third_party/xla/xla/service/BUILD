@@ -1837,10 +1837,7 @@ xla_cc_test(
 xla_cc_test(
     name = "hlo_module_group_test",
     srcs = ["hlo_module_group_test.cc"],
-    # TODO(b/148211710) Test fails in OSS.
-    tags = ["no_oss"],
     deps = [
-        ":hlo_module_group_metadata",
         ":hlo_proto_cc",
         "//xla/hlo/ir:hlo_module_group",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",

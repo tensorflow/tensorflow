@@ -34,17 +34,8 @@ namespace xla {
 // concurrently across different devices.
 class HloModuleGroup {
  public:
-  // Construct an empty module group.
-  explicit HloModuleGroup(absl::string_view name) : name_(name) {}
-
   // Construct a module group containing a single module.
   explicit HloModuleGroup(std::unique_ptr<HloModule> module);
-
-  // Construct a module group containing any number of modules.
-  HloModuleGroup(absl::string_view name,
-                 absl::Span<std::unique_ptr<HloModule>> modules);
-  HloModuleGroup(absl::string_view name,
-                 std::vector<std::unique_ptr<HloModule>>&& modules);
 
   HloModuleGroup(const HloModuleGroup& other) = delete;
   HloModuleGroup(HloModuleGroup&& other) = default;
@@ -56,9 +47,6 @@ class HloModuleGroup {
 
   // Returns a module at a particular index.
   HloModule& module(int index) const { return *module_ptrs_.at(index); }
-
-  // Add a module to the back of vector of modules in the group.
-  void push_back(std::unique_ptr<HloModule> module);
 
   // Replaces the existing module at the given index with the given module. The
   // existing module is discarded.
@@ -105,6 +93,19 @@ class HloModuleGroup {
   }
 
  private:
+  // Construct an empty module group.
+  explicit HloModuleGroup(absl::string_view name) : name_(name) {}
+
+  // Construct a module group containing any number of modules.
+  HloModuleGroup(absl::string_view name,
+                 absl::Span<std::unique_ptr<HloModule>> modules);
+  HloModuleGroup(absl::string_view name,
+                 std::vector<std::unique_ptr<HloModule>>&& modules);
+
+  // Add a module to the back of vector of modules in the group. Private
+  // because we no longer want to support > 1 module per group.
+  void push_back(std::unique_ptr<HloModule> module);
+
   std::string name_;
 
   // Vector of modules as std::unique_ptrs.

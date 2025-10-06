@@ -270,21 +270,20 @@ Service::BuildExecutables(
   }
 
   CHECK_EQ(module_protos.size(), module_configs.size());
-  auto module_group =
-      std::make_unique<HloModuleGroup>(module_protos[0]->name());
-  for (int64_t i = 0, end = module_protos.size(); i < end; ++i) {
-    const HloModuleProto* proto = module_protos[i];
-    const HloModuleConfig& config = *module_configs[i];
-    TF_ASSIGN_OR_RETURN(
-        auto module, CreateModuleFromProto(*proto, config, run_backend_only));
-    module->set_layout_canonicalization_callback(
-        options.layout_canonicalization_callback);
-    UpdateEntryComputationLayout(
-        module.get(), std::bind(&Compiler::DefaultDeviceShapeRepresentation,
-                                backend->compiler(), std::placeholders::_1));
-    DumpHloModuleIfEnabled(*module, kBeforeOptimizationsDumpName);
-    module_group->push_back(std::move(module));
+  if (module_protos.size() != 1) {
+    return InvalidArgument("BuildExecutables only supports a single module.");
   }
+  const HloModuleProto* proto = module_protos[0];
+  const HloModuleConfig& config = *module_configs[0];
+  TF_ASSIGN_OR_RETURN(auto module,
+                      CreateModuleFromProto(*proto, config, run_backend_only));
+  module->set_layout_canonicalization_callback(
+      options.layout_canonicalization_callback);
+  UpdateEntryComputationLayout(
+      module.get(), std::bind(&Compiler::DefaultDeviceShapeRepresentation,
+                              backend->compiler(), std::placeholders::_1));
+  DumpHloModuleIfEnabled(*module, kBeforeOptimizationsDumpName);
+  auto module_group = std::make_unique<HloModuleGroup>(std::move(module));
 
   std::vector<std::unique_ptr<Executable>> executables;
   if (!run_backend_only) {
