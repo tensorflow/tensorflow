@@ -1550,10 +1550,29 @@ cc_library(
         "//xla/service/gpu:gpu_transfer_manager",
         "//xla/service/gpu:io_feed_manager",
         "//xla/stream_executor:device_memory",
-        "//xla/stream_executor:stream_executor_h",
+        "//xla/stream_executor:stream",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
-        "@local_tsl//tsl/platform:errors",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+xla_cc_test(
+    name = "outfeed_thunk_test",
+    srcs = ["outfeed_thunk_test.cc"],
+    deps = [
+        ":outfeed_thunk",
+        ":thunk",
+        ":thunk_proto_cc",
+        "//xla/service:buffer_assignment",
+        "//xla/tsl/platform:statusor",
+        "//xla/tsl/util/proto:parse_text_proto",
+        "//xla/tsl/util/proto:proto_matchers",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 

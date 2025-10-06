@@ -143,6 +143,10 @@ message InfeedThunkProto {
   repeated ShapedSliceProto dest_slices = 1;
 }
 
+message OutfeedThunkProto {
+  repeated ShapedSliceProto source_slices = 1;
+}
+
 message SelectKThunkProto {
   // TODO(upwind): Add fields for SelectKThunkProto.
 }
@@ -191,6 +195,7 @@ message ThunkProto {
     SelectKThunkProto select_k_thunk = 20;
     InfeedThunkProto infeed_thunk = 21;
     CublasLtMatmulThunkProto cublas_lt_matmul_thunk = 22;
+    OutfeedThunkProto outfeed_thunk = 23;
   }
 }
 
