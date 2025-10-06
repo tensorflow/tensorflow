@@ -3441,6 +3441,19 @@ std::string RaggedAllToAllImplTypeName(
   }
 }
 
+INSTANTIATE_TEST_SUITE_P(
+    RaggedAllToAllTest, RaggedAllToAllTest,
+    ::testing::Combine(::testing::Bool(),
+                       ::testing::Values(RaggedAllToAllImplType::kNccl,
+                                         RaggedAllToAllImplType::kMemcpy,
+                                         RaggedAllToAllImplType::kDecomposer,
+                                         RaggedAllToAllImplType::kOneShot)),
+    [](const ::testing::TestParamInfo<std::tuple<bool, RaggedAllToAllImplType>>&
+           info) {
+      return absl::StrCat(GetAsyncTestName(std::get<0>(info.param)), "_",
+                          RaggedAllToAllImplTypeName(std::get<1>(info.param)));
+    });
+
 class RaggedAllToAllMultiHostDecomposerTest : public RaggedAllToAllTestBase {
  public:
   RaggedAllToAllMultiHostDecomposerTest()
