@@ -864,7 +864,8 @@ void EmitTransferElements(llvm::Value* target, llvm::Value* source,
                           llvm::Module* module, llvm::IRBuilderBase& b);
 
 // Decoupled implementation of IrEmitter::EmitFastConcatenate.
-absl::Status EmitFastConcatenate(
+// Returns true if the concatenate was parallelized.
+absl::StatusOr<bool> EmitFastConcatenate(
     const HloInstruction* instr,
     absl::Span<const llvm_ir::IrArray> source_arrays,
     const llvm_ir::IrArray& target_array, llvm::Module* module,

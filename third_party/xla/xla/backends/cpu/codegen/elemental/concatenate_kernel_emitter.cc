@@ -106,13 +106,19 @@ ConcatenateKernelEmitter::EmitKernelDefinition() {
       kernel_prototype.function->getEntryBlock().getTerminator());
 
   llvm_ir::IrArray output_array = kernel_prototype.results[0];
-  TF_RETURN_IF_ERROR(EmitFastConcatenate(
-      instr_, kernel_prototype.arguments, output_array, llvm_module.get(),
-      ir_builder, kernel_prototype.workgroup_id.x, total_workgroups));
+  TF_ASSIGN_OR_RETURN(
+      bool is_parallel,
+      EmitFastConcatenate(instr_, kernel_prototype.arguments, output_array,
+                          llvm_module.get(), ir_builder,
+                          kernel_prototype.workgroup_id.x, total_workgroups));
 
   LlvmIrKernelSource source(std::move(ctx), std::move(llvm_module));
-  KernelSpec spec(kernel_prototype.function->getName(),
-                  NumWorkGroups{static_cast<uint64_t>(total_workgroups)},
+  NumWorkGroups num_workgroups;
+  if (is_parallel) {
+    num_workgroups.x = total_workgroups;
+  }
+
+  KernelSpec spec(kernel_prototype.function->getName(), num_workgroups,
                   std::move(kernel_prototype.argument_buffers),
                   std::move(kernel_prototype.result_buffers),
                   std::move(kernel_prototype.invariant_arguments));
