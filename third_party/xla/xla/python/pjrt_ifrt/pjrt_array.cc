@@ -155,6 +155,10 @@ absl::StatusOr<tsl::RCReference<PjRtArray>> PjRtArray::Create(
     PjRtCompatibleClient* client, DType dtype, Shape shape,
     ShardingRef sharding, PjRtBuffers pjrt_buffers,
     std::shared_ptr<const xla::PjRtLayout> layout) {
+  if (client->RequireUserContextScope() && !UserContextScope::HasAnyScope()) {
+    return FailedPrecondition(
+        "User context scope is required for PjRtArray::Create() but not set");
+  }
   TF_RETURN_IF_ERROR(
       ValidateArrayCreationInput(client, sharding, pjrt_buffers));
   return tsl::MakeRef<PjRtArray>(client, dtype, std::move(shape),
@@ -166,6 +170,10 @@ absl::StatusOr<tsl::RCReference<PjRtArray>> PjRtArray::Create(
     PjRtCompatibleClient* client, DType dtype, DynamicShape dynamic_shape,
     ShardingRef sharding, PjRtBuffers pjrt_buffers,
     std::shared_ptr<const xla::PjRtLayout> layout) {
+  if (client->RequireUserContextScope() && !UserContextScope::HasAnyScope()) {
+    return FailedPrecondition(
+        "User context scope is required for PjRtArray::Create() but not set");
+  }
   TF_RETURN_IF_ERROR(
       ValidateArrayCreationInput(client, sharding, pjrt_buffers));
   return tsl::MakeRef<PjRtArray>(client, dtype, std::move(dynamic_shape),
@@ -175,6 +183,10 @@ absl::StatusOr<tsl::RCReference<PjRtArray>> PjRtArray::Create(
 
 absl::StatusOr<tsl::RCReference<PjRtArray>> PjRtArray::Create(
     PjRtCompatibleClient* client, std::shared_ptr<PjRtBuffer> pjrt_buffer) {
+  if (client->RequireUserContextScope() && !UserContextScope::HasAnyScope()) {
+    return FailedPrecondition(
+        "User context scope is required for PjRtArray::Create() but not set");
+  }
   TF_ASSIGN_OR_RETURN(auto dtype, ToDType(pjrt_buffer->element_type()));
   Shape shape(pjrt_buffer->dimensions());
   TF_ASSIGN_OR_RETURN(auto device,
@@ -216,6 +228,10 @@ std::shared_ptr<PjRtBuffer> PjRtArray::GetPjRtBuffer(
 
 absl::StatusOr<tsl::RCReference<PjRtArray>> PjRtArray::Create(
     PjRtCompatibleClient* client, Shape shape, PjRtBuffers pjrt_buffers) {
+  if (client->RequireUserContextScope() && !UserContextScope::HasAnyScope()) {
+    return FailedPrecondition(
+        "User context scope is required for PjRtArray::Create() but not set");
+  }
   if (pjrt_buffers.empty()) {
     return InvalidArgument("PjRtBuffers must be non-empty.");
   }
@@ -247,6 +263,10 @@ absl::StatusOr<tsl::RCReference<PjRtArray>> PjRtArray::Create(
 absl::StatusOr<tsl::RCReference<PjRtArray>> PjRtArray::Create(
     PjRtCompatibleClient* client, DynamicShape dynamic_shape,
     PjRtBuffers pjrt_buffers) {
+  if (client->RequireUserContextScope() && !UserContextScope::HasAnyScope()) {
+    return FailedPrecondition(
+        "User context scope is required for PjRtArray::Create() but not set");
+  }
   if (pjrt_buffers.empty()) {
     return InvalidArgument("PjRtBuffers must be non-empty.");
   }

@@ -876,6 +876,8 @@ absl::StatusOr<std::unique_ptr<PjRtClient>> PjRtClient::Create(
   client->work_queue_ = std::make_unique<tsl::UnboundedWorkQueue>(
       tsl::Env::Default(), "ifrt_pjrt_client_work_queue");
 
+  client->require_user_context_scope_ = options.require_user_context_scope;
+
   LogDeviceSummary(client.get());
   return client;
 }
