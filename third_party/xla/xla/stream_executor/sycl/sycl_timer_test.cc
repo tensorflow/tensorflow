@@ -22,7 +22,7 @@ limitations under the License.
 #include "xla/stream_executor/typed_kernel_factory.h"
 #include "xla/tsl/platform/status_matchers.h"
 
-namespace stream_executor::gpu {
+namespace stream_executor::sycl {
 namespace {
 
 const int kDefaultDeviceOrdinal = 0;
@@ -209,9 +209,9 @@ class SyclTimerTest : public ::testing::Test {
 
  protected:
   void SetUp() override {
-    TF_ASSERT_OK_AND_ASSIGN(Platform * platform,
-                            stream_executor::PlatformManager::PlatformWithId(
-                                stream_executor::sycl::kSyclPlatformId));
+    TF_ASSERT_OK_AND_ASSIGN(
+        Platform * platform,
+        stream_executor::PlatformManager::PlatformWithId(kSyclPlatformId));
     TF_ASSERT_OK_AND_ASSIGN(executor_,
                             platform->ExecutorForDevice(kDefaultDeviceOrdinal));
     TF_ASSERT_OK_AND_ASSIGN(stream_,
@@ -239,4 +239,4 @@ TEST_F(SyclTimerTest, Create) {
 }
 
 }  // namespace
-}  // namespace stream_executor::gpu
+}  // namespace stream_executor::sycl

@@ -21,20 +21,20 @@ limitations under the License.
 
 constexpr int kMsecInSec = 1000;
 
-namespace stream_executor::gpu {
+namespace stream_executor::sycl {
 
 namespace {
 
 absl::StatusOr<float> GetEventElapsedTime(StreamExecutor* executor,
-                                          const sycl::event& start,
-                                          const sycl::event& stop) {
+                                          const ::sycl::event& start,
+                                          const ::sycl::event& stop) {
   std::unique_ptr<ActivateContext> activation = executor->Activate();
 
   // Get the native Level Zero event handles.
   ze_event_handle_t start_event =
-      ::sycl::get_native<sycl::backend::ext_oneapi_level_zero>(start);
+      ::sycl::get_native<::sycl::backend::ext_oneapi_level_zero>(start);
   ze_event_handle_t end_event =
-      ::sycl::get_native<sycl::backend::ext_oneapi_level_zero>(stop);
+      ::sycl::get_native<::sycl::backend::ext_oneapi_level_zero>(stop);
 
   // Synchronize the events to ensure they are complete.
   ze_result_t sync_result = zeEventHostSynchronize(end_event, UINT64_MAX);
@@ -107,4 +107,4 @@ absl::StatusOr<SyclTimer> SyclTimer::Create(StreamExecutor* executor,
                    stream);
 }
 
-}  // namespace stream_executor::gpu
+}  // namespace stream_executor::sycl

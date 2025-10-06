@@ -25,16 +25,14 @@ limitations under the License.
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream_executor.h"
 
-namespace stream_executor {
-namespace sycl {
+namespace stream_executor::sycl {
+
 // Opaque and unique identifier for the SYCL platform plugin.
 // This is needed so that plugins can refer to/identify this platform without
 // instantiating a SyclPlatform object.
 extern const Platform::Id kSyclPlatformId;
-}  // namespace sycl
 
-namespace gpu {
-// Sycl-specific platform plugin, registered as a singleton value via module
+// SYCL-specific platform plugin, registered as a singleton value via module
 // initializer.
 class SyclPlatform : public Platform {
  public:
@@ -72,13 +70,6 @@ class SyclPlatform : public Platform {
   void operator=(const SyclPlatform&) = delete;
 };
 
-}  // namespace gpu
-
-namespace sycl {
-
-using SyclPlatform = gpu::SyclPlatform;
-
-}  // namespace sycl
-}  // namespace stream_executor
+}  // namespace stream_executor::sycl
 
 #endif  // XLA_STREAM_EXECUTOR_SYCL_SYCL_PLATFORM_H_

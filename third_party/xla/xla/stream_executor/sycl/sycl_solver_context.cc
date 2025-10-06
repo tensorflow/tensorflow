@@ -22,7 +22,7 @@ limitations under the License.
 #include "xla/stream_executor/sycl/sycl_platform_id.h"
 #include "xla/tsl/platform/logging.h"
 
-namespace stream_executor {
+namespace stream_executor::sycl {
 
 // A stub for SyclSolverContext to enable sycl build. Proper functionality
 // will be implemented soon.
@@ -41,7 +41,7 @@ SyclSolverContext::~SyclSolverContext() {
 
 STREAM_EXECUTOR_REGISTER_OBJECT_STATICALLY(SyclSolverContextFactory,
                                            GpuSolverContextFactory,
-                                           sycl::kSyclPlatformId,
+                                           kSyclPlatformId,
                                            SyclSolverContext::Create);
 
-}  // namespace stream_executor
+}  // namespace stream_executor::sycl

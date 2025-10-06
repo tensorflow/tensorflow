@@ -23,7 +23,7 @@ limitations under the License.
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/sycl/sycl_event.h"
 
-namespace stream_executor::gpu {
+namespace stream_executor::sycl {
 
 // This class implements a timer for SYCL streams by measuring the elapsed
 // time between two SYCL events using Level-Zero backend timestamps.
@@ -65,6 +65,6 @@ class SyclTimer : public EventBasedTimer {
   SyclEvent start_event_;
   SyclEvent stop_event_;
 };
-}  // namespace stream_executor::gpu
+}  // namespace stream_executor::sycl
 
 #endif  // XLA_STREAM_EXECUTOR_SYCL_SYCL_TIMER_H_

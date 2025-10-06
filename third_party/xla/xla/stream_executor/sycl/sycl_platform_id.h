@@ -18,8 +18,7 @@ limitations under the License.
 
 #include "xla/stream_executor/platform.h"
 
-namespace stream_executor {
-namespace sycl {
+namespace stream_executor::sycl {
 
 // Opaque and unique identifier for the sycl platform.
 // This is needed so that plugins can refer to/identify this platform without
@@ -28,7 +27,6 @@ namespace sycl {
 // and SyclExecutor.
 extern const Platform::Id kSyclPlatformId;
 
-}  // namespace sycl
-}  // namespace stream_executor
+}  // namespace stream_executor::sycl
 
 #endif  // XLA_STREAM_EXECUTOR_SYCL_SYCL_PLATFORM_ID_H_
