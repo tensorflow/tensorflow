@@ -48,7 +48,8 @@ namespace gpu {
 namespace {
 
 AutotuneConfig GetAutotuneConfig(const DebugOptions& debug_options,
-                                 bool is_deviceless) {
+                                 bool is_deviceless,
+                                 bool optimize_scratch_bytes) {
   AutotuneConfig autotune_config;
   autotune_config.check_buffers = debug_options.xla_gpu_autotune_level() >= 4;
   autotune_config.relative_tolerance =
@@ -66,6 +67,7 @@ AutotuneConfig GetAutotuneConfig(const DebugOptions& debug_options,
     // If we are running on a deviceless target, we want to use default configs.
     autotune_config.use_default_config = true;
   }
+  autotune_config.optimize_scratch_bytes = optimize_scratch_bytes;
 
   autotune_config.expect_all_instructions_in_cache =
       debug_options.xla_gpu_require_complete_aot_autotune_results();
@@ -88,11 +90,11 @@ absl::StatusOr<std::unique_ptr<AutotunerPass>> AutotunerPass::Create(
     stream_executor::StreamExecutor* stream_executor,
     tsl::thread::ThreadPool* thread_pool, InstructionFilterFn should_autotune,
     const Compiler::TargetConfig* target_config,
-    se::DeviceMemoryAllocator* allocator) {
+    se::DeviceMemoryAllocator* allocator, bool optimize_scratch_bytes) {
   std::unique_ptr<Profiler> profiler = nullptr;
   bool is_deviceless = stream_executor == nullptr;
   AutotuneConfig autotune_config =
-      GetAutotuneConfig(debug_options, is_deviceless);
+      GetAutotuneConfig(debug_options, is_deviceless, optimize_scratch_bytes);
 
   if (!is_deviceless) {
     profiler = GpuProfiler::Create(stream_executor,

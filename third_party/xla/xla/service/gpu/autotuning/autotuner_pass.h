@@ -44,7 +44,8 @@ class AutotunerPass : public HloModulePass {
       const DebugOptions& debug_options, se::StreamExecutor* stream_executor,
       tsl::thread::ThreadPool* thread_pool, InstructionFilterFn should_autotune,
       const Compiler::TargetConfig* target_config,
-      se::DeviceMemoryAllocator* allocator = nullptr);
+      se::DeviceMemoryAllocator* allocator = nullptr,
+      bool optimize_scratch_bytes = true);
 
   absl::string_view name() const override { return "autotuner"; }
 
