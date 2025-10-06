@@ -257,6 +257,7 @@ defvar CustomHloConverterOps = [
   MHLO_SendOp,
   MHLO_SetDimensionSizeOp,
   MHLO_SineOp,
+  MHLO_SinhOp,
   MHLO_SortOp,
   MHLO_StochasticConvertOp,
   MHLO_SubtractOp,

@@ -52,12 +52,14 @@ namespace {
 ChloLegalizeToHighLevelMhloPassOptions FromPassOptions(bool enableAcosh,
                                                        bool enableAcos,
                                                        bool enableAtanh,
-                                                       bool enableCosh) {
+                                                       bool enableCosh,
+                                                       bool enableSinh) {
   ChloLegalizeToHighLevelMhloPassOptions options;
   options.enable_acosh_ = enableAcosh;
   options.enable_acos_ = enableAcos;
   options.enable_atanh_ = enableAtanh;
   options.enable_cosh_ = enableCosh;
+  options.enable_sinh_ = enableSinh;
   return options;
 }
 
@@ -74,6 +76,10 @@ static bool qualifiesForDirectMhloLoweringAtanh(chlo::AtanhOp op) {
 }
 
 static bool qualifiesForDirectMhloLoweringCosh(chlo::CoshOp op) {
+  return llvm::isa<FloatType>(getElementTypeOrSelf(op.getType()));
+}
+
+static bool qualifiesForDirectMhloLoweringSinh(chlo::SinhOp op) {
   return llvm::isa<FloatType>(getElementTypeOrSelf(op.getType()));
 }
 
@@ -94,7 +100,7 @@ struct ChloLegalizeToHighLevelMhloPass
     chlo::populateChloToHighLevelMhloOpPatterns(
         &context, &conversionPatterns,
         FromPassOptions(enable_acosh_, enable_acos_, enable_atanh_,
-                        enable_cosh_));
+                        enable_cosh_, enable_sinh_));
 
     // Consider the mhlo dialect legal for tests. Also add helper dialects
     // that are needed by the patterns.
@@ -119,6 +125,11 @@ struct ChloLegalizeToHighLevelMhloPass
     if (enable_cosh_) {
       conversionTarget.addDynamicallyLegalOp<chlo::CoshOp>([](chlo::CoshOp op) {
         return !qualifiesForDirectMhloLoweringCosh(op);
+      });
+    }
+    if (enable_sinh_) {
+      conversionTarget.addDynamicallyLegalOp<chlo::SinhOp>([](chlo::SinhOp op) {
+        return !qualifiesForDirectMhloLoweringSinh(op);
       });
     }
     conversionTarget
@@ -254,6 +265,15 @@ LogicalResult convertCoshChloToMhlo(chlo::CoshOp op,
   return success();
 }
 
+LogicalResult convertSinhChloToMhlo(chlo::SinhOp op,
+                                    PatternRewriter& rewriter) {
+  if (!mhlo::qualifiesForDirectMhloLoweringSinh(op)) {
+    return failure();
+  }
+  rewriter.replaceOpWithNewOp<mhlo::SinhOp>(op, op->getOperands());
+  return success();
+}
+
 }  // namespace
 
 ChloLegalizeToHighLevelMhloPassOptions getDefaultChloToHighLevelMhloOptions() {
@@ -266,6 +286,7 @@ ChloLegalizeToHighLevelMhloPassOptions getGpuChloToHighLevelMhloOptions() {
   opts.enable_acos_ = true;
   opts.enable_atanh_ = true;
   opts.enable_cosh_ = true;
+  opts.enable_sinh_ = true;
   return opts;
 }
 
@@ -291,6 +312,9 @@ void populateChloToHighLevelMhloOpPatterns(
   }
   if (options.enable_cosh_) {
     patterns->add(mhlo::convertCoshChloToMhlo, kBenefit);
+  }
+  if (options.enable_sinh_) {
+    patterns->add(mhlo::convertSinhChloToMhlo, kBenefit);
   }
   patterns->add(mhlo::convertRaggedDotChloToMhlo, kBenefit);
   populateWithGenerated(*patterns);

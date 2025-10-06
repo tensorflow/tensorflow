@@ -1,5 +1,5 @@
 // RUN: mlir-hlo-opt --chlo-legalize-to-hlo --split-input-file -verify-diagnostics %s | FileCheck %s --dump-input-context=20
-// RUN: mlir-hlo-opt --chlo-legalize-to-high-level-mhlo="enable-acosh enable-acos enable-atanh enable-cosh" --split-input-file -verify-diagnostics %s | FileCheck %s --check-prefix=CHECK-HIGH-LEVEL
+// RUN: mlir-hlo-opt --chlo-legalize-to-high-level-mhlo="enable-acosh enable-acos enable-atanh enable-cosh enable-sinh" --split-input-file -verify-diagnostics %s | FileCheck %s --check-prefix=CHECK-HIGH-LEVEL
 
 // CHECK-LABEL: func.func @asin_bf16(
 // CHECK-SAME:    %[[TMP_arg0:.*]]: tensor<bf16>
@@ -2640,6 +2640,7 @@ func.func @sinh_f32(%x : tensor<f32>) -> tensor<f32> {
   %1 = chlo.sinh %x : tensor<f32> -> tensor<f32>
   func.return %1 : tensor<f32>
 }
+// CHECK-HIGH-LEVEL: mhlo.sinh
 
 // -----
 
@@ -2652,6 +2653,7 @@ func.func @sinh_f16(%x : tensor<f16>) -> tensor<f16> {
   %1 = chlo.sinh %x : tensor<f16> -> tensor<f16>
   func.return %1 : tensor<f16>
 }
+// CHECK-HIGH-LEVEL: mhlo.sinh
 
 // -----
 
@@ -2669,6 +2671,7 @@ func.func @sinh_complex(%x : tensor<2xcomplex<f32>>) -> tensor<2xcomplex<f32>> {
   %1 = chlo.sinh %x : tensor<2xcomplex<f32>> -> tensor<2xcomplex<f32>>
   func.return %1 : tensor<2xcomplex<f32>>
 }
+// CHECK-HIGH-LEVEL-NOT: mhlo.sinh
 
 // -----
 

@@ -5246,6 +5246,17 @@ LogicalResult ExportXlaOp(CoshOp op, OpLoweringContext ctx) {
   return success();
 }
 
+LogicalResult ExportXlaOp(SinhOp op, OpLoweringContext ctx) {
+  auto& value_map = *ctx.values;
+  xla::XlaOp operand;
+  if (failed(GetXlaOp(op.getOperand(), value_map, &operand, op))) {
+    return failure();
+  }
+  value_map[op] =
+      xla::Sinh(operand, /*result_accuracy=*/std::nullopt, /*expand=*/false);
+  return success();
+}
+
 LogicalResult ExportXlaOp(AcoshOp op, OpLoweringContext ctx) {
   return ExportElementwiseXlaOp<AcoshOp, xla::Acosh>(op, ctx);
 }
