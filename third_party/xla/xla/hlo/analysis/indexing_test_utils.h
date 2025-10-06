@@ -32,9 +32,9 @@ limitations under the License.
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/analysis/indexing_map_serialization.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/service/gpu/model/experimental/symbolic_expr.h"
-#include "xla/tests/hlo_test_base.h"
 
 namespace xla {
 
@@ -66,7 +66,7 @@ MATCHER_P(MatchIndexingString, indexing_string, "") {
                             result_listener);
 }
 
-class IndexingTestBase : public HloTestBase {
+class IndexingTestBase : public HloHardwareIndependentTestBase {
  public:
   IndexingTestBase() : symbolic_expr_context_(&mlir_context_) {}
 
@@ -84,16 +84,6 @@ class IndexingTestBase : public HloTestBase {
   gpu::SymbolicExprContext symbolic_expr_context_;
   std::unique_ptr<VerifiedHloModule> module_;
 };
-
-HloInstructionIndexing ComputeOutputToInputIndexingForEntryComputation(
-    HloTestBase* test_base, gpu::SymbolicExprContext* symbolic_expr_context,
-    absl::string_view hlo_string, int output_id = 0,
-    bool use_physical_layout = false);
-
-HloInstructionIndexing ComputeInputToOutputIndexingForEntryComputation(
-    HloTestBase* test_base, gpu::SymbolicExprContext* symbolic_expr_context,
-    absl::string_view hlo_string, int input_id = 0,
-    bool use_physical_layout = false);
 
 mlir::AffineMap ParseAffineMap(absl::string_view serialized_affine_map,
                                gpu::SymbolicExprContext* symbolic_expr_context);
