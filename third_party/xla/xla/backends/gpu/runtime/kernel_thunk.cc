@@ -34,10 +34,10 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
-#include "xla/backends/gpu/runtime/thunk_buffer.h"
 #include "xla/backends/gpu/runtime/thunk_id.h"
 #include "xla/codegen/emitters/kernel_arguments.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/kernels/custom_kernel.h"
 #include "xla/service/gpu/launch_dimensions.h"
@@ -54,19 +54,19 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-std::vector<ThunkBuffer> ThunkBuffersFromKernelArguments(
+Thunk::BufferUses BufferUseFromKernelArguments(
     absl::Span<const BufferAllocation::Slice> args,
     const std::vector<bool>& written) {
-  std::vector<ThunkBuffer> buffers;
+  Thunk::BufferUses buffers;
   buffers.reserve(args.size());
   for (int i = 0; i < args.size(); ++i) {
-    buffers.push_back(ThunkBuffer{
-        /*slice=*/args[i],
-        // We assume that any buffer is either an input or an output of the
-        // kernel, and inout buffers are represented as 2 separate arguments.
-        /*is_content_defined_on_input=*/!written[i],
-        /*is_content_defined_on_output=*/written[i],
-    });
+    // We assume that any buffer is either an input or an output of the
+    // kernel, and inout buffers are represented as 2 separate arguments.
+    if (written[i]) {
+      buffers.push_back(BufferUse::Write(args[i]));
+    } else {
+      buffers.push_back(BufferUse::Read(args[i]));
+    }
   }
   return buffers;
 }
@@ -273,8 +273,8 @@ absl::Status KernelThunk::ExecuteOnStream(const ExecuteParams& params) {
       launch_dimensions_, cluster_dim_, stream);
 }
 
-std::vector<ThunkBuffer> KernelThunk::GetBuffers() const {
-  return ThunkBuffersFromKernelArguments(absl::MakeConstSpan(args_), written_);
+Thunk::BufferUses KernelThunk::buffer_uses() const {
+  return BufferUseFromKernelArguments(absl::MakeConstSpan(args_), written_);
 }
 
 //===----------------------------------------------------------------------===//
@@ -345,8 +345,8 @@ absl::Status CustomKernelThunk::ExecuteOnStream(const ExecuteParams& params) {
                         custom_kernel_.cluster_dims(), params.stream, args);
 }
 
-std::vector<ThunkBuffer> CustomKernelThunk::GetBuffers() const {
-  return ThunkBuffersFromKernelArguments(absl::MakeConstSpan(args_), written_);
+Thunk::BufferUses CustomKernelThunk::buffer_uses() const {
+  return BufferUseFromKernelArguments(absl::MakeConstSpan(args_), written_);
 }
 
 }  // namespace gpu

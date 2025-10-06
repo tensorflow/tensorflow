@@ -31,7 +31,6 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
-#include "xla/backends/gpu/runtime/thunk_buffer.h"
 #include "xla/backends/gpu/runtime/thunk_id.h"
 #include "xla/codegen/emitters/kernel_arguments.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -112,7 +111,7 @@ class KernelThunk : public Thunk {
     return tma_metadata_;
   }
 
-  std::vector<ThunkBuffer> GetBuffers() const override;
+  BufferUses buffer_uses() const override;
 
  private:
   // Buffer slices passed to the kernel as arguments.
@@ -177,7 +176,7 @@ class CustomKernelThunk : public Thunk {
 
   int64_t shmem_bytes() const { return custom_kernel_.shared_memory_bytes(); }
 
-  std::vector<ThunkBuffer> GetBuffers() const override;
+  BufferUses buffer_uses() const override;
 
  private:
   // Buffer slices passed to the kernel as arguments.
