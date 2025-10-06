@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/primitive_util.h"
@@ -66,6 +67,22 @@ void AddOrUpdateVectorOfPairsAsAttribute(HloInstruction* instr,
   attributes = instr->frontend_attributes();
   (*attributes.mutable_map())[attr_name] = intervals_str;
   instr->set_frontend_attributes(attributes);
+}
+
+int32_t NestingDepth(const HloInstruction* hlo) {
+  int level = 0;
+  const HloComputation* c = hlo->parent();
+  while (c != nullptr) {
+    auto callers = c->caller_instructions();
+    if (callers.empty()) {
+      break;
+    }
+    // TODO(b/260601110): it's not clear what we should do if there are
+    // multiple callers. For now, we just pick the first one.
+    c = callers.front()->parent();
+    ++level;
+  }
+  return level;
 }
 
 }  // namespace hlo_instruction_utils
