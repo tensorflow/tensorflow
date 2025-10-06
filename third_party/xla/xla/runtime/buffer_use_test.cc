@@ -16,8 +16,8 @@ limitations under the License.
 #include "xla/runtime/buffer_use.h"
 
 #include <gtest/gtest.h>
+#include "absl/strings/str_cat.h"
 #include "xla/service/buffer_assignment.h"
-#include "tsl/platform/test.h"
 
 namespace xla {
 namespace {
@@ -49,6 +49,18 @@ TEST(BufferUseTest, HasReadWriteAccess) {
   BufferUse read_write = BufferUse::ReadWrite(slice);
   EXPECT_TRUE(read_write.HasReadAccess());
   EXPECT_TRUE(read_write.HasWriteAccess());
+}
+
+TEST(BufferUseTest, AbslStringify) {
+  BufferAllocation alloc(/*index=*/0, /*size=*/1024, /*color=*/0);
+  BufferAllocation::Slice slice(&alloc, 0, 10);
+
+  EXPECT_EQ(absl::StrCat(BufferUse::Read(slice)),
+            "slice: {index:0, offset:0, size:10}, access: R");
+  EXPECT_EQ(absl::StrCat(BufferUse::Write(slice)),
+            "slice: {index:0, offset:0, size:10}, access: W");
+  EXPECT_EQ(absl::StrCat(BufferUse::ReadWrite(slice)),
+            "slice: {index:0, offset:0, size:10}, access: RW");
 }
 
 TEST(BufferUseTest, ReadWriteSet) {

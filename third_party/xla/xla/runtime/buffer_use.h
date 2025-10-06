@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_RUNTIME_BUFFER_USE_H_
 
 #include <cstdint>
+#include <string>
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/types/span.h"
@@ -98,6 +99,13 @@ class BufferUse {
   template <typename H>
   friend H AbslHashValue(H h, const BufferUse& use) {
     return H::combine(std::move(h), use.slice_, use.access_);
+  }
+
+  template <typename Sink>
+  friend void AbslStringify(Sink& sink, const BufferUse& use) {
+    absl::Format(&sink, "slice: %v, access: %s%s", use.slice_,
+                 use.HasReadAccess() ? "R" : "",
+                 use.HasWriteAccess() ? "W" : "");
   }
 
  private:
