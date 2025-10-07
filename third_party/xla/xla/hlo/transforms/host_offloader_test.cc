@@ -4536,6 +4536,54 @@ ENTRY main.39_spmd (param.2: f32[16,16,16]) -> (f32[16,16,16], f32[16,16,16]) {
   EXPECT_EQ(default_memory_space_count, 1);
 }
 
+TEST_F(HostOffloaderTest, PreExistingAllocateBufferMultipleUsersDuplicated) {
+  const absl::string_view hlo_string = R"(
+HloModule module, entry_computation_layout={(f32[1,10], s32[])->(f32[1,10], f32[2,10])}
+
+ENTRY main {
+  p0 = f32[1,10] parameter(0)
+  p1 = s32[] parameter(1)
+  c0 = s32[] constant(0)
+  alloc = f32[2,10] custom-call(), custom_call_target="AllocateBuffer"
+  mth = f32[1,10] custom-call(p0), custom_call_target="MoveToHost"
+  tuple = (f32[2,10], f32[2,10]) tuple(alloc, alloc)
+  gte0 = f32[2,10] get-tuple-element(tuple), index=0
+  dus = f32[2,10] dynamic-update-slice(gte0, mth, p1, c0)
+  ds = f32[1,10] dynamic-slice(dus, p1, c0), dynamic_slice_sizes={1,10}
+  mtd = f32[1,10] custom-call(ds), custom_call_target="MoveToDevice"
+  gte1 = f32[2,10] get-tuple-element(tuple), index=1
+  add = f32[2,10] add(gte1, gte1)
+  ROOT root_tuple = (f32[1,10], f32[2,10]) tuple(mtd, add)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
+  EXPECT_TRUE(changed);
+  VLOG(1) << module->ToString();
+
+  // We expect there to be two AllocateBuffer instructions, one in host memory
+  // and one in default memory.
+  int host_memory_space_count = 0;
+  int default_memory_space_count = 0;
+  for (HloComputation* computation : module->computations()) {
+    for (HloInstruction* instruction : computation->instructions()) {
+      if (instruction->IsCustomCall("AllocateBuffer")) {
+        if (instruction->shape().layout().memory_space() ==
+            Layout::kHostMemorySpace) {
+          host_memory_space_count++;
+        } else if (instruction->shape().layout().memory_space() ==
+                   Layout::kDefaultMemorySpace) {
+          default_memory_space_count++;
+        }
+      }
+    }
+  }
+  EXPECT_EQ(host_memory_space_count, 1);
+  EXPECT_EQ(default_memory_space_count, 1);
+}
+
 TEST_F(HostOffloaderTest, AutomaticHostComputeOffloadDisabled) {
   const absl::string_view hlo_string = R"(
     HloModule module, entry_computation_layout={(f32[1024]{0})->f32[1024]{0}}
