@@ -22,7 +22,7 @@ syntax = "proto3";
 package xla.gpu;
 
 import "xla/service/buffer_assignment.proto";
-import "xla/service/hlo.proto";
+import "xla/xla.proto";
 import "xla/xla_data.proto";
 
 message OptionalBufferAllocationSliceProto {
@@ -37,12 +37,15 @@ message OptionalInt64Proto {
   optional int64 value = 1;
 }
 
+// Reflects std::optional<std::vector<Offset>>
 message OptionalDynamicSliceOffsetsProto {
   message DynamicSliceOffsetProto {
     oneof offset {
       int64 const_offset = 1;
       xla.buffer_assignment.BufferAllocationSliceProto slice_offset = 2;
-      int64 hlo_module_offset_id = 3;
+      // Index of the HLO module in the list of extracted_offset_modules in
+      // the OffsetAsFunctionOfIndvarModulesMetadataProto.
+      int64 hlo_module_offset_idx = 3;
     }
   }
 
@@ -53,7 +56,7 @@ message OptionalDynamicSliceOffsetsProto {
 }
 
 message OffsetAsFunctionOfIndvarModulesMetadataProto {
-  optional xla.HloModuleProto indvar_init = 1;
-  optional xla.HloModuleProto indvar_update = 2;
-  repeated xla.HloModuleProto extracted_offset_modules = 3;
+  xla.HloModuleProtoWithConfig indvar_init = 1;
+  xla.HloModuleProtoWithConfig indvar_update = 2;
+  repeated xla.HloModuleProtoWithConfig extracted_offset_modules = 3;
 }

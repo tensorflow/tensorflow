@@ -23,6 +23,7 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/function_ref.h"
@@ -30,10 +31,15 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/str_format.h"
 #include "absl/synchronization/mutex.h"
+#include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
+#include "xla/backends/gpu/runtime/dynamic_slice_thunk.pb.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/backends/gpu/runtime/thunk.pb.h"
+#include "xla/backends/gpu/runtime/thunk_proto_deserialization.h"
 #include "xla/hlo/evaluator/hlo_evaluator.h"
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/literal_util.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/buffer_allocations.h"
@@ -44,6 +50,7 @@ limitations under the License.
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/stream.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
@@ -68,7 +75,41 @@ Literal& Indvar(DynamicSliceThunk* thunk) {
   return indvar_map[thunk];
 }
 
+using DynamicSliceOffsetProto =
+    OptionalDynamicSliceOffsetsProto::DynamicSliceOffsetProto;
+
 }  // namespace
+
+absl::StatusOr<OffsetAsFunctionOfIndvarModulesMetadataProto>
+DynamicSliceThunk::OffsetAsFunctionOfIndvarModulesMetadata::ToProto() const {
+  OffsetAsFunctionOfIndvarModulesMetadataProto proto;
+  *proto.mutable_indvar_init() = indvar_init->ToProtoWithConfig();
+  *proto.mutable_indvar_update() = indvar_update->ToProtoWithConfig();
+  for (const auto& module : extracted_offset_modules) {
+    *proto.add_extracted_offset_modules() = module->ToProtoWithConfig();
+  }
+  return proto;
+}
+
+absl::StatusOr<DynamicSliceThunk::OffsetAsFunctionOfIndvarModulesMetadata>
+DynamicSliceThunk::OffsetAsFunctionOfIndvarModulesMetadata::FromProto(
+    const OffsetAsFunctionOfIndvarModulesMetadataProto& proto) {
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<HloModule> indvar_init,
+      HloModule::CreateFromProtoWithConfig(proto.indvar_init()));
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<HloModule> indvar_update,
+      HloModule::CreateFromProtoWithConfig(proto.indvar_update()));
+  std::vector<std::unique_ptr<HloModule>> extracted_offset_modules;
+  for (const auto& module_proto : proto.extracted_offset_modules()) {
+    TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
+                        HloModule::CreateFromProtoWithConfig(module_proto));
+    extracted_offset_modules.push_back(std::move(module));
+  }
+  return OffsetAsFunctionOfIndvarModulesMetadata(
+      std::move(indvar_init), std::move(indvar_update),
+      std::move(extracted_offset_modules));
+}
 
 DynamicSliceThunk::DynamicSliceThunk(
     ThunkInfo thunk_info, std::unique_ptr<ThunkSequence> embedded_thunk,
@@ -329,5 +370,253 @@ void DynamicSliceThunk::ForAllThunksMutable(
   fn(this);
   embedded_thunk_->ForAllThunksMutable(fn);
 }
+
+absl::StatusOr<OptionalDynamicSliceOffsetsProto>
+SerializeOptionalDynamicSliceOffsetsToProto(
+    const std::optional<std::vector<DynamicSliceThunk::Offset>>& offsets_item,
+    const std::optional<
+        DynamicSliceThunk::OffsetAsFunctionOfIndvarModulesMetadata>&
+        offset_as_function_of_indvar_metadata) {
+  OptionalDynamicSliceOffsetsProto offsets_proto;
+  if (offsets_item.has_value()) {
+    auto& offsets_inner = *offsets_proto.mutable_offsets();
+    for (const auto& offset : *offsets_item) {
+      auto& offset_proto = *offsets_inner.add_offsets();
+      if (const int64_t* const_offset = std::get_if<int64_t>(&offset)) {
+        offset_proto.set_const_offset(*const_offset);
+      } else if (const BufferAllocation::Slice* slice_offset =
+                     std::get_if<BufferAllocation::Slice>(&offset)) {
+        TF_ASSIGN_OR_RETURN(*offset_proto.mutable_slice_offset(),
+                            slice_offset->ToProto());
+      } else if (const HloModule* const* module_offset =
+                     std::get_if<HloModule*>(&offset)) {
+        TF_RET_CHECK(offset_as_function_of_indvar_metadata.has_value());
+        const std::vector<std::unique_ptr<HloModule>>& modules =
+            offset_as_function_of_indvar_metadata->extracted_offset_modules;
+        auto it = absl::c_find_if(modules, [&](const auto& module) {
+          return module.get() == *module_offset;
+        });
+        TF_RET_CHECK(it != modules.end());
+        offset_proto.set_hlo_module_offset_idx(it - modules.begin());
+      } else {
+        return absl::InternalError(
+            "Unhandled offset type in DynamicSliceThunk::ToProto");
+      }
+    }
+  }
+  return offsets_proto;
+}
+
+absl::Status SerializeOffsetsToProto(
+    const std::vector<std::optional<std::vector<DynamicSliceThunk::Offset>>>&
+        offsets,
+    const std::optional<
+        DynamicSliceThunk::OffsetAsFunctionOfIndvarModulesMetadata>&
+        offset_as_function_of_indvar_metadata,
+    DynamicSliceThunkProto* proto) {
+  for (const auto& offsets_item : offsets) {
+    TF_ASSIGN_OR_RETURN(
+        *proto->add_offsets(),
+        SerializeOptionalDynamicSliceOffsetsToProto(
+            offsets_item, offset_as_function_of_indvar_metadata));
+  }
+  return absl::OkStatus();
+}
+
+absl::StatusOr<std::optional<std::vector<DynamicSliceThunk::Offset>>>
+DeserializeOptionalDynamicSliceOffsetsFromProto(
+    const OptionalDynamicSliceOffsetsProto& proto,
+    absl::Span<const BufferAllocation> buffer_allocations,
+    const std::optional<
+        DynamicSliceThunk::OffsetAsFunctionOfIndvarModulesMetadata>&
+        offset_as_function_of_indvar_metadata) {
+  if (!proto.has_offsets()) {
+    return std::nullopt;
+  }
+  std::vector<DynamicSliceThunk::Offset> offsets;
+
+  for (const auto& offset_proto : proto.offsets().offsets()) {
+    switch (offset_proto.offset_case()) {
+      case DynamicSliceOffsetProto::kConstOffset:
+        offsets.push_back(offset_proto.const_offset());
+        break;
+      case DynamicSliceOffsetProto::kSliceOffset: {
+        TF_ASSIGN_OR_RETURN(
+            auto slice, BufferAllocation::Slice::FromProto(
+                            offset_proto.slice_offset(), buffer_allocations));
+        offsets.push_back(slice);
+        break;
+      }
+      case DynamicSliceOffsetProto::kHloModuleOffsetIdx: {
+        TF_RET_CHECK(offset_as_function_of_indvar_metadata.has_value());
+        const std::vector<std::unique_ptr<HloModule>>& modules =
+            offset_as_function_of_indvar_metadata->extracted_offset_modules;
+        TF_RET_CHECK(modules.size() > offset_proto.hlo_module_offset_idx());
+        offsets.push_back(modules[offset_proto.hlo_module_offset_idx()].get());
+        break;
+      }
+      default:
+        return absl::InternalError(
+            "Offset not set in OptionalDynamicSliceOffsetsProto");
+    }
+  }
+  return offsets;
+}
+
+absl::StatusOr<
+    std::vector<std::optional<std::vector<DynamicSliceThunk::Offset>>>>
+DeserializeOffsetsFromProto(
+    const DynamicSliceThunkProto& proto,
+    absl::Span<const BufferAllocation> buffer_allocations,
+    const std::optional<
+        DynamicSliceThunk::OffsetAsFunctionOfIndvarModulesMetadata>&
+        offset_as_function_of_indvar_metadata) {
+  std::vector<std::optional<std::vector<DynamicSliceThunk::Offset>>> offsets;
+  for (const auto& offsets_proto : proto.offsets()) {
+    TF_ASSIGN_OR_RETURN(offsets.emplace_back(),
+                        DeserializeOptionalDynamicSliceOffsetsFromProto(
+                            offsets_proto, buffer_allocations,
+                            offset_as_function_of_indvar_metadata));
+  }
+  return offsets;
+}
+
+absl::StatusOr<ThunkProto> DynamicSliceThunk::ToProto() const {
+  ThunkProto proto;
+  *proto.mutable_thunk_info() = thunk_info().ToProto();
+
+  DynamicSliceThunkProto* dynamic_slice_proto =
+      proto.mutable_dynamic_slice_thunk();
+
+  TF_ASSIGN_OR_RETURN(ThunkProto embedded_thunk_proto,
+                      embedded_thunk_->ToProto());
+  TF_RET_CHECK(embedded_thunk_proto.has_sequential_thunk());
+  *dynamic_slice_proto->mutable_embedded_thunk() =
+      std::move(embedded_thunk_proto.sequential_thunk());
+
+  // arguments
+  for (const auto& arg : arguments_) {
+    auto& proto_arg = *dynamic_slice_proto->add_arguments();
+    if (arg.has_value()) {
+      TF_ASSIGN_OR_RETURN(*proto_arg.mutable_slice(), arg->ToProto());
+    }
+  }
+
+  TF_RETURN_IF_ERROR(SerializeOffsetsToProto(
+      offsets_, offset_as_function_of_indvar_metadata_, dynamic_slice_proto));
+
+  // orig_shapes
+  for (const auto& shape : orig_shapes_) {
+    auto& proto_shape = *dynamic_slice_proto->add_orig_shapes();
+    if (shape.has_value()) {
+      *proto_shape.mutable_shape() = shape->ToProto();
+    }
+  }
+
+  // sliced_shapes
+  for (const auto& shape : sliced_shapes_) {
+    auto& proto_shape = *dynamic_slice_proto->add_sliced_shapes();
+    if (shape.has_value()) {
+      *proto_shape.mutable_shape() = shape->ToProto();
+    }
+  }
+
+  // offset_byte_sizes
+  for (const auto& size : offset_byte_sizes_) {
+    auto& proto_size = *dynamic_slice_proto->add_offset_byte_sizes();
+    if (size.has_value()) {
+      proto_size.set_value(size.value());
+    }
+  }
+
+  // offset_as_function_of_indvar_metadata
+  if (offset_as_function_of_indvar_metadata_.has_value()) {
+    TF_ASSIGN_OR_RETURN(
+        *dynamic_slice_proto
+             ->mutable_offset_as_function_of_indvar_modules_metadata(),
+        offset_as_function_of_indvar_metadata_->ToProto());
+  }
+  return proto;
+}
+
+absl::StatusOr<std::unique_ptr<DynamicSliceThunk>> DynamicSliceThunk::FromProto(
+    ThunkInfo thunk_info, const DynamicSliceThunkProto& proto,
+    absl::Span<const BufferAllocation> buffer_allocations,
+    absl::Span<const BufferAllocation> fake_allocations) {
+  // offset_as_function_of_indvar_metadata
+  std::optional<OffsetAsFunctionOfIndvarModulesMetadata>
+      offset_as_function_of_indvar_metadata;
+  if (proto.has_offset_as_function_of_indvar_modules_metadata()) {
+    TF_ASSIGN_OR_RETURN(
+        offset_as_function_of_indvar_metadata,
+        OffsetAsFunctionOfIndvarModulesMetadata::FromProto(
+            proto.offset_as_function_of_indvar_modules_metadata()));
+  }
+
+  // arguments
+  std::vector<std::optional<BufferAllocation::Slice>> arguments;
+  for (auto& arg_proto : proto.arguments()) {
+    arguments.push_back(std::nullopt);
+    if (arg_proto.has_slice()) {
+      TF_ASSIGN_OR_RETURN(arguments.back(),
+                          BufferAllocation::Slice::FromProto(
+                              arg_proto.slice(), buffer_allocations));
+    }
+  }
+
+  // offsets
+  TF_ASSIGN_OR_RETURN(
+      std::vector<std::optional<std::vector<Offset>>> offsets,
+      DeserializeOffsetsFromProto(proto, buffer_allocations,
+                                  offset_as_function_of_indvar_metadata));
+
+  // orig_shapes
+  std::vector<std::optional<Shape>> orig_shapes;
+  for (auto& shape_proto : proto.orig_shapes()) {
+    orig_shapes.push_back(std::nullopt);
+    if (shape_proto.has_shape()) {
+      TF_ASSIGN_OR_RETURN(orig_shapes.back(),
+                          Shape::FromProto(shape_proto.shape()));
+    }
+  }
+
+  // sliced_shapes
+  std::vector<std::optional<Shape>> sliced_shapes;
+  for (auto& shape_proto : proto.sliced_shapes()) {
+    sliced_shapes.push_back(std::nullopt);
+    if (shape_proto.has_shape()) {
+      TF_ASSIGN_OR_RETURN(sliced_shapes.back(),
+                          Shape::FromProto(shape_proto.shape()));
+    }
+  }
+
+  // offset_byte_sizes
+  std::vector<std::optional<uint64_t>> offset_byte_sizes;
+  for (auto& size_proto : proto.offset_byte_sizes()) {
+    offset_byte_sizes.push_back(std::nullopt);
+    if (size_proto.has_value()) {
+      offset_byte_sizes.back() = size_proto.value();
+    }
+  }
+
+  // embedded_thunk
+  std::vector<std::unique_ptr<Thunk>> embedded_thunks;
+  for (const auto& thunk_proto : proto.embedded_thunk().thunks()) {
+    TF_ASSIGN_OR_RETURN(auto thunk,
+                        DeserializeThunkProto(thunk_proto, fake_allocations));
+    embedded_thunks.push_back(std::move(thunk));
+  }
+
+  // leave fake_allocations empty, because we manage their lifetime outside
+  // of this function.
+  return std::make_unique<DynamicSliceThunk>(
+      thunk_info, std::make_unique<ThunkSequence>(std::move(embedded_thunks)),
+      std::move(arguments),
+      /*fake_allocations=*/std::vector<std::unique_ptr<BufferAllocation>>(),
+      std::move(offsets), std::move(orig_shapes), std::move(sliced_shapes),
+      std::move(offset_byte_sizes),
+      std::move(offset_as_function_of_indvar_metadata));
+}
+
 }  // namespace gpu
 }  // namespace xla
