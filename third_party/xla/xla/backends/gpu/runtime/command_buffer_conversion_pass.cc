@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_join.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/command_buffer_cmd.h"
 #include "xla/backends/gpu/runtime/command_buffer_cmd_emitter.h"
@@ -57,6 +58,17 @@ namespace xla {
 namespace gpu {
 
 using CommandBufferConfig = CommandBufferConversionPass::CommandBufferConfig;
+
+std::string CommandBufferConversionPass::CommandBufferConfig::ToString() const {
+  std::vector<std::string> cmd_names;
+  cmd_names.reserve(enabled_commands.size());
+  for (auto cmd : enabled_commands) {
+    cmd_names.push_back(DebugOptions::CommandBufferCmdType_Name(cmd));
+  }
+  std::string out;
+  out += "enabled_commands: [" + absl::StrJoin(cmd_names, ", ") + "]";
+  return out;
+}
 
 namespace {
 
@@ -127,6 +139,7 @@ std::optional<DebugOptions::CommandBufferCmdType> GetCommandBufferCmdType(
         return DebugOptions::FUSION;
       } else {
         // Only copy within the same device can be converted to command buffers.
+        VLOG(2) << "Unsupported thunk kind: " << Thunk::KindToString(kind);
         return std::nullopt;
       }
     case Thunk::kKernel:
@@ -155,7 +168,10 @@ std::optional<DebugOptions::CommandBufferCmdType> GetCommandBufferCmdType(
       return DebugOptions::CUSTOM_CALL;
     case Thunk::kCublasLtMatmul:
       return DebugOptions::CUBLASLT;
+    case Thunk::kDynamicSlice:
+      return DebugOptions::DYNAMIC_SLICE_FUSION;
     default:
+      VLOG(2) << "Unsupported thunk kind: " << Thunk::KindToString(kind);
       return std::nullopt;
   }
 }
@@ -214,7 +230,14 @@ bool IsConvertible(const Thunk& thunk, const CommandBufferConfig& config) {
   }
 
   auto cmd_type = GetCommandBufferCmdType(thunk);
-  if (!cmd_type.has_value() || !config.enabled_commands.contains(*cmd_type)) {
+  if (!cmd_type.has_value()) {
+    return false;  // Thunk kind is not supported for command buffer conversion.
+  }
+
+  if (!config.enabled_commands.contains(*cmd_type)) {
+    VLOG(2) << "Thunk kind " << Thunk::KindToString(thunk.kind())
+            << " lowering is not enabled by the user for type "
+            << DebugOptions::CommandBufferCmdType_Name(*cmd_type);
     return false;  // Thunk kind is not supported for command buffer conversion.
   }
 
@@ -360,6 +383,13 @@ absl::Status FlushCommandBuffer(
   // them to the new thunks sequence as is.
   if (current_command_buffer_thunks.size() <
       std::max(1, debug_options.xla_gpu_graph_min_graph_size())) {
+    if (VLOG_IS_ON(2)) {
+      for (const auto& thunk : current_command_buffer_thunks) {
+        VLOG(2) << "Thunk kind " << Thunk::KindToString(thunk->kind())
+                << " is not lowered to command buffer because command size is "
+                   "less than the min graph size";
+      }
+    }
     new_thunks.insert(
         new_thunks.end(),
         std::make_move_iterator(current_command_buffer_thunks.begin()),
@@ -392,7 +422,8 @@ absl::StatusOr<bool> CommandBufferConversionPass::Run(
 
   CommandBufferConfig config =
       GetCommandBufferConfig(debug_options, device_info);
-
+  VLOG(1) << "Module " << module_name_
+          << " CommandBufferConfig: " << config.ToString();
   TF_ASSIGN_OR_RETURN(
       CommandBufferCmdExecutor::SynchronizationMode synchronization_mode,
       GetSynchronizationMode(
