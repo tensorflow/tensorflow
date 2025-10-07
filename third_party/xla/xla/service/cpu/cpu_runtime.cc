@@ -171,8 +171,6 @@ extern const char* const kOneDnnMatMulSymbolName =
     "__xla_cpu_runtime_OneDnnMatMul";
 extern const char* const kOneDnnSoftmaxSymbolName =
     "__xla_cpu_runtime_OneDnnSoftmax";
-extern const char* const kOneDnnLayerNormSymbolName =
-    "__xla_cpu_runtime_OneDnnLayerNorm";
 extern const char* const kOneDnnMatMulReorderSymbolName =
     "__xla_cpu_runtime_OneDnnMatMulReorder";
 extern const char* const kHandleFfiCallSymbolName =

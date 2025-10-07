@@ -684,14 +684,12 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
 
   // Rewrite to custom calls with target as oneDNN library calls.
 #ifdef XLA_ONEDNN
-  // This pass is not supported in the thunk runtime yet.
-  bool is_thunk_runtime = true;
   bool use_onednn_custom_call =
       module->config()
           .debug_options()
           .xla_cpu_experimental_onednn_custom_call() &&
       is_onednn_compatible;
-  if (use_onednn_custom_call && !is_thunk_runtime) {
+  if (use_onednn_custom_call) {
     // Placing OneDnnOpsRewriter here to match the flax patterns
     // TODO: Decide where would be the appropriate place for this pass to make
     // it more generic

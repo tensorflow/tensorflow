@@ -611,7 +611,6 @@ cc_library(
         "@local_tsl//tsl/platform:logging",
     ] + if_onednn([
         ":onednn_convolution",
-        ":onednn_layer_norm",
         ":onednn_matmul",
         ":onednn_softmax",
     ]),
@@ -1801,7 +1800,6 @@ onednn_cc_library(
     srcs = ["onednn_layer_norm.cc"],
     hdrs = [
         "onednn_layer_norm.h",
-        "//xla/tsl/util:onednn_util_hdrs",
     ],
     copts = runtime_copts() + tsl_copts(),
     visibility = ["//visibility:public"],

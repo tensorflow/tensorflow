@@ -129,6 +129,7 @@ cc_library(
         "//xla/service:buffer_assignment",
         "//xla/service/cpu:onednn_config_proto_cc",
         "//xla/service/cpu:onednn_convolution",
+        "//xla/service/cpu:onednn_layer_norm",
         "//xla/service/cpu:onednn_matmul",
         "//xla/service/cpu:onednn_memory_util",
         "//xla/stream_executor:device_memory",

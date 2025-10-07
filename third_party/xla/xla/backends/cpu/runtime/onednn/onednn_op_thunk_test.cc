@@ -241,5 +241,87 @@ TEST(OneDnnOpThunkTest, SimpleOneDnnConvolutionThunk) {
   EXPECT_EQ(output_literal, expected_literal);
 }
 
+TEST(OneDnnOpThunkTest, SimpleOneDnnLayerNormThunk) {
+  // Set up a thread pool for parallel execution
+  tsl::thread::ThreadPool threads(tsl::Env::Default(), "test", 8);
+  Eigen::ThreadPoolDevice device(threads.AsEigenThreadPool(),
+                                 threads.NumThreads());
+
+  // Shapes: input [2,3], gamma [3], beta [3], output [2,3]
+  Shape input_shape = ShapeUtil::MakeShape(F32, {2, 3});
+  Shape gamma_shape = ShapeUtil::MakeShape(F32, {3});
+  Shape beta_shape = ShapeUtil::MakeShape(F32, {3});
+  Shape out_shape = ShapeUtil::MakeShape(F32, {2, 3});
+
+  // Input:
+  // [[1,2,3],
+  //  [4,5,6]]
+  // gamma = [1,1,1]
+  // beta  = [0,0,0]
+  // Expected (per-row LN): [[-1.2247449, 0, 1.2247449],
+  //                         [-1.2247449, 0, 1.2247449]]
+  Literal input_literal = LiteralUtil::CreateR2FromArray2D<float>(
+      Array2D<float>({{1.f, 2.f, 3.f}, {4.f, 5.f, 6.f}}));
+  Literal gamma_literal = LiteralUtil::CreateR1<float>({1.f, 1.f, 1.f});
+  Literal beta_literal = LiteralUtil::CreateR1<float>({0.f, 0.f, 0.f});
+  Literal out_literal = LiteralUtil::CreateR2FromArray2D<float>(
+      Array2D<float>({{0.f, 0.f, 0.f}, {0.f, 0.f, 0.f}}));
+
+  // Buffer allocations
+  auto [input_alloc, gamma_alloc, beta_alloc, out_alloc] =
+      CreateBufferAllocation(input_literal, gamma_literal, beta_literal,
+                             out_literal);
+
+  auto [input_slice, gamma_slice, beta_slice, out_slice] =
+      CreateBufferAllocationSlice(input_alloc, gamma_alloc, beta_alloc,
+                                  out_alloc);
+
+  BufferAllocations allocations = CreateBufferAllocations(
+      input_literal, gamma_literal, beta_literal, out_literal);
+
+  // Op buffers
+  OneDnnOpThunk::OpBuffers op_buffers;
+  op_buffers.arguments_buffers = {input_slice, gamma_slice, beta_slice};
+  op_buffers.arguments_shapes = {input_shape, gamma_shape, beta_shape};
+  op_buffers.results_buffers = {out_slice};
+  op_buffers.results_shapes = {out_shape};
+
+  // oneDNN LayerNorm config
+  OneDnnNormConfig ln_cfg;
+  ln_cfg.set_rescale(OneDnnNormConfig::SCALE_AND_SHIFT);
+  float epsilon = 1e-5f;
+  int32_t epsilon_bits = *reinterpret_cast<int32_t*>(&epsilon);
+  ln_cfg.set_epsilon_typecast(epsilon_bits);
+
+  OneDnnOpThunk::OneDnnOpConfig config = ln_cfg;
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto thunk, OneDnnOpThunk::Create("__onednn$layernorm", Thunk::Info(),
+                                        op_buffers, config));
+
+  // Execute
+  Thunk::ExecuteParams params;
+  params.buffer_allocations = &allocations;
+  params.intra_op_threadpool = &device;
+
+  tsl::AsyncValueRef<Thunk::ExecuteEvent> exec_event = thunk->Execute(params);
+  tsl::BlockUntilReady(exec_event);
+  ASSERT_FALSE(exec_event.IsError()) << "oneDNN LayerNorm thunk failed";
+
+  // Expected output
+  const float ref = 1.2247449f;  // sqrt(3/2)
+  Literal expected = LiteralUtil::CreateR2FromArray2D<float>(
+      Array2D<float>({{-ref, 0.f, ref}, {-ref, 0.f, ref}}));
+
+  // Compare with tolerance
+  const float* exp_view = expected.data<float>().data();
+  float* out_view = out_literal.data<float>().data();
+  for (int i = 0; i < 6; ++i) {
+    EXPECT_NEAR(out_view[i], exp_view[i], 1e-4)
+        << "Mismatch at index " << i << ": got " << out_view[i] << " expected "
+        << exp_view[i];
+  }
+}
+
 }  // namespace
 }  // namespace xla::cpu

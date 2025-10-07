@@ -2563,76 +2563,6 @@ absl::Status IrEmitter::HandleOneDnnMatMulCalls(
   return absl::OkStatus();
 }
 
-absl::Status IrEmitter::HandleOneDnnLayerNorm(HloInstruction* custom_call) {
-  //      args[0]: ptr to nargs
-  //      args[1]: ptr to ExecutableRunOptions
-  //      args[2]: ptr to OneDnnNormConfig
-  //      args[3...]: ptrs to operands
-
-  // First three arguments: nargs, ExecutableRunOptions, and
-  // OneDnnNormConfig.
-  const int nargs_offset = 3;
-  const int num_operands = custom_call->operand_count();
-  const int nargs = nargs_offset + num_operands;
-  int arg_indx = 0;
-
-  llvm::Type* i64_type = b()->getInt64Ty();
-  llvm::Type* ptr_type = b()->getPtrTy();
-  llvm::ArrayType* ptr_array_type = llvm::ArrayType::get(ptr_type, nargs);
-  llvm::Value* args_val = llvm::UndefValue::get(ptr_array_type);
-
-  // Insert nargs.
-  llvm::Value* nargs_val = b()->getInt64(nargs);
-  llvm::Value* nargs_ptr =
-      llvm_ir::EmitAllocaAtFunctionEntry(i64_type, "nargs", b());
-  b()->CreateLifetimeStart(nargs_ptr);
-  b()->CreateStore(nargs_val, nargs_ptr);
-  args_val = b()->CreateInsertValue(args_val, nargs_ptr, arg_indx++);
-
-  // Insert ExecutableRunOptions.
-  llvm::Value* run_opts_val = GetExecutableRunOptionsArgument();
-  args_val = b()->CreateInsertValue(args_val, run_opts_val, arg_indx++);
-
-  // Insert OneDnnNormConfig.
-  auto typed_custom_call = Cast<HloCustomCallInstruction>(custom_call);
-  auto backend_config = typed_custom_call->backend_config<BackendConfig>();
-  OneDnnNormConfig ln_config;
-  ln_config.CopyFrom(backend_config->onednn_layer_norm_config());
-  std::string str_config;
-  ln_config.SerializeToString(&str_config);
-  llvm::Value* ln_config_val =
-      b()->CreateGlobalStringPtr(llvm_ir::AsStringRef(str_config));
-  args_val = b()->CreateInsertValue(args_val, ln_config_val, arg_indx++);
-
-  // Insert operands.
-  auto operands_stack_alloca =
-      EmitOneDnnOperandsAlloca(custom_call, args_val, arg_indx);
-  TF_RET_CHECK(nargs == arg_indx)
-      << "Number of arguments don't equal the last argument index.";
-
-  llvm::Value* args_ptr =
-      llvm_ir::EmitAllocaAtFunctionEntry(ptr_array_type, "layernorm.args", b());
-  b()->CreateLifetimeStart(args_ptr);
-  b()->CreateStore(args_val, args_ptr);
-
-  TF_RETURN_IF_ERROR(EmitTargetAddressForOp(custom_call));
-  llvm_ir::IrArray result_array = GetIrArrayFor(custom_call);
-  auto result_stack_alloca = GetAllocaAndEmitMemrefInfo(*b(), result_array);
-
-  EmitCallToFunc(runtime::kOneDnnLayerNormSymbolName,
-                 {result_stack_alloca.value, args_ptr}, b()->getVoidTy());
-
-  // Lifetime ends for all stack allocations.
-  b()->CreateLifetimeEnd(nargs_ptr);
-  for (int i = 0; i < num_operands; ++i) {
-    operands_stack_alloca[i].EmitLifetimeEnd();
-  }
-  b()->CreateLifetimeEnd(args_ptr);
-  result_stack_alloca.EmitLifetimeEnd();
-
-  return absl::OkStatus();
-}
-
 absl::Status IrEmitter::HandleOneDnnSoftmax(HloInstruction* custom_call) {
   // Serialize and emit OneDnnSoftmaxConfig.
   auto typed_custom_call = Cast<HloCustomCallInstruction>(custom_call);
@@ -2681,9 +2611,6 @@ absl::Status IrEmitter::HandleCustomCall(HloInstruction* custom_call) {
   }
   if (custom_call->custom_call_target() == "__onednn$softmax") {
     return HandleOneDnnSoftmax(custom_call);
-  }
-  if (custom_call->custom_call_target() == "__onednn$layernorm") {
-    return HandleOneDnnLayerNorm(custom_call);
   }
   if (custom_call->custom_call_target() == "__onednn$matmul_reorder") {
     return HandleOneDnnMatMulCalls(custom_call,
