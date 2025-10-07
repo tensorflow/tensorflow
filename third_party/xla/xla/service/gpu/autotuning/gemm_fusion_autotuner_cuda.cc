@@ -52,7 +52,8 @@ bool GemmFusionAutotunerImpl::AddLibConfigs(
     const HloFusionInstruction& fusion, const HloDotInstruction* dot,
     std::vector<BackendConfig>& configs) {
   // Add cuDNN plans, if available.
-  auto cc = std::get<se::CudaComputeCapability>(GetComputeCapability());
+  stream_executor::CudaComputeCapability cc =
+      *GetComputeCapability().cuda_compute_capability();
   bool is_cudnn_enabled =
       !config_.IsDeviceless() &&
       GetDnnVersionInfoOrDefault(config_.GetExecutor()).major_version() >= 9 &&
@@ -81,8 +82,8 @@ bool GemmFusionAutotunerImpl::AddLibConfigs(
 
 std::vector<TritonGemmConfig> GemmFusionAutotunerImpl::GetDefaultTritonConfigs()
     const {
-  auto compute_capability =
-      std::get<se::CudaComputeCapability>(GetComputeCapability());
+  stream_executor::CudaComputeCapability compute_capability =
+      *GetComputeCapability().cuda_compute_capability();
   std::vector<TritonGemmConfig> configs;
 
   if (compute_capability.IsAtLeastBlackwell()) {

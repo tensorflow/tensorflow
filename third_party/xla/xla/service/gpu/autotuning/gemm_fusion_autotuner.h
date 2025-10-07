@@ -201,11 +201,6 @@ class GemmFusionAutotunerImpl {
     return config_.GetGpuComputeCapability();
   }
 
-  bool isRocm() const {
-    return std::holds_alternative<se::RocmComputeCapability>(
-        GetComputeCapability());
-  }
-
   bool AddLibConfigs(const HloFusionInstruction& fusion,
                      const HloDotInstruction* dot,
                      std::vector<BackendConfig>& configs);
