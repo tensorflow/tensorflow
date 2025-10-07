@@ -591,9 +591,15 @@ bool OneDnnContractionRewriter::ShouldRewriteConv(
 
 class OneDnnContractionRewriteVisitor : public DfsHloRewriteVisitor {
  public:
+  OneDnnContractionRewriteVisitor(bool graph_enabled)
+      : graph_enabled_(graph_enabled) {}
+
   // Matches patterns for possible MatMul fusions that are supported by oneDNN
   // library. Matched HLO instruction(s) are replaced by custom call.
   absl::Status HandleDot(HloInstruction* instr) override {
+    // When oneDNN graph is enabled, dot will be handled via DotLibraryRewriter
+    if (graph_enabled_) return absl::OkStatus();
+
     HloInstruction* dot_instr;
     auto pattern = m::Op(&dot_instr).WithOpcode(HloOpcode::kDot);
     if (!Match(instr, pattern)) {
@@ -1269,6 +1275,9 @@ class OneDnnContractionRewriteVisitor : public DfsHloRewriteVisitor {
     TF_RETURN_IF_ERROR(ReplaceInstruction(dot_instr, replacement_instr));
     return absl::OkStatus();
   }
+
+ private:
+  bool graph_enabled_;
 };
 
 class OneDnnPostRewriteVisitor : public DfsHloRewriteVisitor {
@@ -1522,7 +1531,7 @@ absl::StatusOr<bool> OneDnnContractionRewriter::Run(
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   XLA_VLOG_LINES(
       3, "OneDnnContractionRewriter::Run(), before:\n" + module->ToString());
-  OneDnnContractionRewriteVisitor visitor;
+  OneDnnContractionRewriteVisitor visitor(graph_enabled_);
   TF_ASSIGN_OR_RETURN(auto result,
                       visitor.RunOnModule(module, execution_threads));
 

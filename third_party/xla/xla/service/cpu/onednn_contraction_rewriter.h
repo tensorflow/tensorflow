@@ -38,9 +38,11 @@ namespace cpu {
 class OneDnnContractionRewriter : public HloModulePass {
  public:
   OneDnnContractionRewriter(int intra_op_parallelism,
-                            const tsl::thread::ThreadPool* compile_threadpool)
+                            const tsl::thread::ThreadPool* compile_threadpool,
+                            bool graph_enabled)
       : intra_op_parallelism_(intra_op_parallelism),
-        compile_threadpool_(compile_threadpool) {}
+        compile_threadpool_(compile_threadpool),
+        graph_enabled_(graph_enabled) {}
   OneDnnContractionRewriter() = default;
   absl::string_view name() const override {
     return "onednn-contraction-rewriter";
@@ -63,6 +65,7 @@ class OneDnnContractionRewriter : public HloModulePass {
  private:
   int intra_op_parallelism_;
   const tsl::thread::ThreadPool* compile_threadpool_;
+  bool graph_enabled_;
 };
 
 using OneDnnContractionVariant =

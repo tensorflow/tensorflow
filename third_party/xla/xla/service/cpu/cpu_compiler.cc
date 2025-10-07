@@ -910,6 +910,9 @@ absl::Status CpuCompiler::RunHloPassesAfterLayoutAssn(
   bool use_onednn_custom_call =
       debug_options.xla_cpu_experimental_onednn_custom_call() &&
       is_onednn_compatible;
+  bool use_onednn_graph =
+      debug_options.xla_cpu_use_onednn() &&
+      (!debug_options.xla_cpu_experimental_onednn_fusion_type().empty());
   if (use_onednn_custom_call) {
     // Run SimplifyFPConversions pass to simplify the BF16 pattern and make it
     // easier to match.
@@ -917,8 +920,8 @@ absl::Status CpuCompiler::RunHloPassesAfterLayoutAssn(
     if (debug_options.xla_allow_excess_precision()) {
       pipeline.AddPass<SimplifyFPConversions>();
     }
-    pipeline.AddPass<OneDnnContractionRewriter>(max_parallelism,
-                                                compile_options.thread_pool);
+    pipeline.AddPass<OneDnnContractionRewriter>(
+        max_parallelism, compile_options.thread_pool, use_onednn_graph);
     // Run SimplifyFPConversions pass again to remove redundant Convert ops
     // that may exist as a result of running OneDnnContractionRewriter pass.
     if (debug_options.xla_allow_excess_precision()) {
