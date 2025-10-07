@@ -17,7 +17,7 @@ limitations under the License.
 #define XLA_RUNTIME_BUFFER_USE_H_
 
 #include <cstdint>
-#include <string>
+#include <tuple>
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/types/span.h"
@@ -33,37 +33,73 @@ namespace xla {
 //   thunk. This is used to detect non-deterministic behavior via checksumming.
 class BufferUse {
  public:
-  enum class MemoryAccess : uint32_t {
-    kRead = 1 << 0,
-    kWrite = 1 << 1,
-    kReadWrite = kRead | kWrite,
+  enum class MemoryAccess {
+    // The buffer is only read.
+    kRead,
+    // The buffer is read and written to.
+    kWrite,
   };
 
   static constexpr MemoryAccess kRead = MemoryAccess::kRead;
   static constexpr MemoryAccess kWrite = MemoryAccess::kWrite;
-  static constexpr MemoryAccess kReadWrite = MemoryAccess::kReadWrite;
+
+  // Flags that indicate whether the contents of a buffer are defined before and
+  // after execution of a thunk.
+  enum class ContentValidity : uint32_t {
+    // The thunk uses the buffer as a scratch space. There are no guarantees
+    // about the buffer's contents outside of the thunk's execution.
+    kUndefined = 0,
+    // The buffer is initialized when thunk starts execution. This is the case
+    // for parameters.
+    kDefinedOnInput = 1 << 0,
+    // The buffer is initialized when thunk finishes execution. This is the case
+    // for outputs and parameters the thunk does not modify.
+    kDefinedOnOutput = 1 << 1,
+
+    kDefinedOnInputAndOutput = kDefinedOnInput | kDefinedOnOutput,
+  };
 
   BufferUse(BufferAllocation::Slice slice, MemoryAccess access)
-      : slice_(slice), access_(access) {}
+      : BufferUse(slice, access,
+                  access == MemoryAccess::kRead
+                      ? ContentValidity::kDefinedOnInputAndOutput
+                      : ContentValidity::kDefinedOnOutput) {}
+
+  BufferUse(BufferAllocation::Slice slice, MemoryAccess access,
+            ContentValidity content_validity)
+      : slice_(slice), access_(access), content_validity_(content_validity) {}
 
   static BufferUse Read(BufferAllocation::Slice slice) {
-    return BufferUse(slice, MemoryAccess::kRead);
+    return BufferUse(slice, MemoryAccess::kRead,
+                     ContentValidity::kDefinedOnInputAndOutput);
   }
 
   static BufferUse Write(BufferAllocation::Slice slice) {
-    return BufferUse(slice, MemoryAccess::kWrite);
+    return BufferUse(slice, MemoryAccess::kWrite,
+                     ContentValidity::kDefinedOnOutput);
   }
 
-  static BufferUse ReadWrite(BufferAllocation::Slice slice) {
-    return BufferUse(slice, MemoryAccess::kReadWrite);
+  static BufferUse Scratch(BufferAllocation::Slice slice) {
+    return BufferUse(slice, MemoryAccess::kWrite, ContentValidity::kUndefined);
   }
 
-  bool HasReadAccess() const {
-    return static_cast<uint32_t>(access_) & static_cast<uint32_t>(kRead);
+  static BufferUse Consume(BufferAllocation::Slice slice) {
+    return BufferUse(slice, MemoryAccess::kWrite,
+                     ContentValidity::kDefinedOnInput);
   }
 
-  bool HasWriteAccess() const {
-    return static_cast<uint32_t>(access_) & static_cast<uint32_t>(kWrite);
+  // Returns true if the buffer contains initialized data when thunk starts
+  // execution.
+  bool HasDefinedContentsOnInput() const {
+    return static_cast<uint32_t>(content_validity_) &
+           static_cast<uint32_t>(ContentValidity::kDefinedOnInput);
+  }
+
+  // Returns true if the buffer contains initialized data when thunk finishes
+  // execution.
+  bool HasDefinedContentsOnOutput() const {
+    return static_cast<uint32_t>(content_validity_) &
+           static_cast<uint32_t>(ContentValidity::kDefinedOnOutput);
   }
 
   // ReadWriteSet tracks a set of read and write buffer slices.
@@ -88,13 +124,15 @@ class BufferUse {
   };
 
   bool operator==(const BufferUse& other) const {
-    return slice_ == other.slice_ && access_ == other.access_;
+    return std::tie(slice_, access_, content_validity_) ==
+           std::tie(other.slice_, other.access_, other.content_validity_);
   }
 
   bool operator!=(const BufferUse& other) const { return !(*this == other); }
 
   const BufferAllocation::Slice& slice() const { return slice_; }
   MemoryAccess access() const { return access_; }
+  ContentValidity content_validity() const { return content_validity_; }
 
   template <typename H>
   friend H AbslHashValue(H h, const BufferUse& use) {
@@ -103,14 +141,16 @@ class BufferUse {
 
   template <typename Sink>
   friend void AbslStringify(Sink& sink, const BufferUse& use) {
-    absl::Format(&sink, "slice: %v, access: %s%s", use.slice_,
-                 use.HasReadAccess() ? "R" : "",
-                 use.HasWriteAccess() ? "W" : "");
+    absl::Format(&sink, "{slice: %v, access: %s, content_validity: %s%s}",
+                 use.slice_, use.access() == MemoryAccess::kRead ? "R" : "W",
+                 use.HasDefinedContentsOnInput() ? "I" : "",
+                 use.HasDefinedContentsOnOutput() ? "O" : "");
   }
 
  private:
   BufferAllocation::Slice slice_;
   MemoryAccess access_;
+  ContentValidity content_validity_;
 };
 
 }  // namespace xla
