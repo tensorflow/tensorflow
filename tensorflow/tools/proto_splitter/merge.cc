@@ -27,6 +27,8 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "third_party/protobuf/descriptor.h"
+#include "third_party/protobuf/message.h"
 #include "riegeli/base/object.h"  // from @riegeli
 #include "riegeli/bytes/fd_reader.h"  // from @riegeli
 #include "riegeli/records/record_reader.h"  // from @riegeli
