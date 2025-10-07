@@ -2037,7 +2037,7 @@ Future<> CApiCopyToDeviceStream::AddChunk(PjRtChunk chunk) {
   current_bytes_args.stream = c_stream_;
 
   {
-    absl::MutexLock lock(&mu_);
+    absl::MutexLock lock(mu_);
     RETURN_FUTURE_IF_ERROR(
         c_api_->PJRT_CopyToDeviceStream_AddChunk(&add_chunk_args), c_api_);
     RETURN_FUTURE_IF_ERROR(
@@ -2537,7 +2537,7 @@ absl::Span<const int64_t> PjRtCApiBuffer::dimensions() const {
 
 std::shared_ptr<const PjRtLayout> PjRtCApiBuffer::layout() const {
   {
-    absl::MutexLock lock(&mu_);
+    absl::MutexLock lock(mu_);
     if (layout_ == nullptr) {
       const PJRT_Api* c_api = pjrt_c_api();
       PJRT_Layouts_Extension* extension =
@@ -2584,7 +2584,7 @@ const Shape& PjRtCApiBuffer::on_device_shape() const {
   if (!on_device_shape_.has_value()) {
     Shape shape(element_type(), dimensions(), is_dynamic_dimension());
     *shape.mutable_layout() = layout()->xla_layout();
-    absl::MutexLock lock(&mu_);
+    absl::MutexLock lock(mu_);
     on_device_shape_ = shape;
   }
   return *on_device_shape_;
@@ -2620,7 +2620,7 @@ bool PjRtCApiBuffer::has_dynamic_dimensions() const {
 
 absl::Span<const bool> PjRtCApiBuffer::is_dynamic_dimension() const {
   {
-    absl::MutexLock lock(&mu_);
+    absl::MutexLock lock(mu_);
     if (!is_dynamic_dimension_.has_value()) {
       absl::InlinedVector<bool, InlineRank()>& is_dynamic_dimension_value =
           is_dynamic_dimension_.emplace();
