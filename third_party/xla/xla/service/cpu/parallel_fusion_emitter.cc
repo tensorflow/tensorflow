@@ -149,7 +149,12 @@ ParallelFusionEmitter::ParallelFusionEmitter(
       buffer_assignment_(buffer_assignment),
       use_unique_c_name_(use_unique_c_name) {}
 
-ParallelFusionEmitter::~ParallelFusionEmitter() = default;
+ParallelFusionEmitter::~ParallelFusionEmitter() {
+  absl::MutexLock lock(kernels_mutex_);
+  kernels_mutex_.Await(absl::Condition(
+      +[](int64_t* outstanding_kernels) { return *outstanding_kernels == 0; },
+      &outstanding_kernels_));
+}
 
 absl::StatusOr<KernelSpec> ParallelFusionEmitter::AddFusion(
     const HloFusionInstruction* fusion) {
