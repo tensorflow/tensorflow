@@ -466,8 +466,9 @@ class Future : public internal::FutureBase<absl::StatusOr<T>> {
     // create a future is to call `MakePromise`.
     template <typename U = void,
               std::enable_if_t<!is_move_only && std::is_void_v<U>>* = nullptr>
-    Future<T> future(FutureHelpers::OnBlockStart on_block_start = nullptr,
-                     FutureHelpers::OnBlockEnd on_block_end = nullptr) const {
+    [[nodiscard]] Future<T> future(
+        FutureHelpers::OnBlockStart on_block_start = nullptr,
+        FutureHelpers::OnBlockEnd on_block_end = nullptr) const {
       return Future<T>(*this, std::move(on_block_start),
                        std::move(on_block_end));
     }
@@ -496,7 +497,7 @@ class Future : public internal::FutureBase<absl::StatusOr<T>> {
   template <typename F, typename R = std::invoke_result_t<F>,
             std::enable_if_t<std::is_constructible_v<absl::StatusOr<T>, R>>* =
                 nullptr>
-  static Future<T> MakeOn(Executor& executor, F&& f) {
+  [[nodiscard]] static Future<T> MakeOn(Executor& executor, F&& f) {
     auto [promise, future] = MakePromise();
     executor.Execute(
         [promise = std::move(promise), f = std::forward<F>(f)]() mutable {
@@ -534,7 +535,7 @@ class Future : public internal::FutureBase<absl::StatusOr<T>> {
   template <typename R, typename F,
             typename U = std::invoke_result_t<F, const T&>,
             internal::Mappable<R, U>* = nullptr>
-  Future<R> Map(F&& f) const& {
+  [[nodiscard]] Future<R> Map(F&& f) const& {
     auto [promise, future] = Future<R>::MakePromise();
 
     using Value = const absl::StatusOr<T>&;
@@ -600,7 +601,7 @@ class Future : public internal::FutureBase<absl::StatusOr<T>> {
             typename U = std::invoke_result_t<
                 F, std::conditional_t<is_move_only, T, const T&>>,
             internal::Mappable<R, U>* = nullptr>
-  Future<R> Map(F&& f) && {
+  [[nodiscard]] Future<R> Map(F&& f) && {
     auto [promise, future] = Future<R>::MakePromise();
 
     using Value = std::conditional_t<is_move_only, absl::StatusOr<T>,
@@ -646,7 +647,7 @@ class Future : public internal::FutureBase<absl::StatusOr<T>> {
   // - `R` is any other type      -> Future<R>
   //
   template <typename F, typename R = std::invoke_result_t<F, const T&>>
-  auto Map(F&& f) const& {
+  [[nodiscard]] auto Map(F&& f) const& {
     if constexpr (std::is_void_v<R>) {
       return Map<void>(std::forward<F>(f));
     } else if constexpr (internal::is_status_v<R>) {
@@ -666,7 +667,7 @@ class Future : public internal::FutureBase<absl::StatusOr<T>> {
   //
   template <typename F, typename R = std::invoke_result_t<
                             F, std::conditional_t<is_move_only, T, const T&>>>
-  auto Map(F&& f) && {
+  [[nodiscard]] auto Map(F&& f) && {
     if constexpr (std::is_void_v<R>) {
       return std::move(*this).template Map<void>(std::forward<F>(f));
     } else if constexpr (internal::is_status_v<R>) {
@@ -745,8 +746,9 @@ class Future<void> : public internal::FutureBase<absl::Status> {
     }
 
     // Returns a future associated with the promise.
-    Future<> future(FutureHelpers::OnBlockStart on_block_start = nullptr,
-                    FutureHelpers::OnBlockEnd on_block_end = nullptr) const {
+    [[nodiscard]] Future<> future(
+        FutureHelpers::OnBlockStart on_block_start = nullptr,
+        FutureHelpers::OnBlockEnd on_block_end = nullptr) const {
       return Future<>(*this, std::move(on_block_start),
                       std::move(on_block_end));
     }
@@ -770,7 +772,7 @@ class Future<void> : public internal::FutureBase<absl::Status> {
   // `f` on the given `executor`.
   template <typename F, typename R = std::invoke_result_t<F>,
             std::enable_if_t<internal::is_status_v<R>>* = nullptr>
-  static Future<> MakeOn(Executor& executor, F&& f) {
+  [[nodiscard]] static Future<> MakeOn(Executor& executor, F&& f) {
     auto [promise, future] = MakePromise();
     executor.Execute(
         [promise = std::move(promise), f = std::forward<F>(f)]() mutable {
@@ -807,7 +809,7 @@ class Future<void> : public internal::FutureBase<absl::Status> {
   // See `Map` functor type inference defined below for more details.
   template <typename R, typename F, typename U = std::invoke_result_t<F>,
             internal::Mappable<R, U>* = nullptr>
-  Future<R> Map(F&& f) {
+  [[nodiscard]] Future<R> Map(F&& f) {
     auto [promise, future] = Future<R>::MakePromise();
 
     OnReady([promise = std::move(promise),
@@ -851,7 +853,7 @@ class Future<void> : public internal::FutureBase<absl::Status> {
   // - `R` is any other type      -> Future<R>
   //
   template <typename F, typename R = std::invoke_result_t<F>>
-  auto Map(F&& f) {
+  [[nodiscard]] auto Map(F&& f) {
     if constexpr (std::is_void_v<R>) {
       return Map<void>(std::forward<F>(f));
     } else if constexpr (internal::is_status_v<R>) {
