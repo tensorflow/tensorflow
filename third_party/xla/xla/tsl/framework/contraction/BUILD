@@ -1,4 +1,5 @@
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
+load("@bazel_skylib//lib:selects.bzl", "selects")
 load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
 load("//xla/tsl:tsl.default.bzl", "get_compatible_with_portable")
 load(
@@ -50,8 +51,17 @@ bool_flag(
 )
 
 config_setting(
-    name = "disable_onednn_contraction_kernel_config",
+    name = "disable_onednn_contraction_kernel_flag_set",
     flag_values = {":disable_onednn_contraction_kernel": "True"},
+)
+
+selects.config_setting_group(
+    name = "disable_onednn_contraction_kernel_config",
+    match_any = [
+        ":disable_onednn_contraction_kernel_flag_set",
+        # copybara:uncomment "//xla/tsl/onednn:no_onednn",
+    ],
+    visibility = ["//visibility:public"],
 )
 
 # Depending on a build configuration this target provides custom kernel for Eigen
