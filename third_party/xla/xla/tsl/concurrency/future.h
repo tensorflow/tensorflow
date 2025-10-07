@@ -441,7 +441,7 @@ class Future : public internal::FutureBase<absl::StatusOr<T>> {
             std::enable_if_t<std::is_constructible_v<T, U>>* = nullptr>
   explicit Future(U value) : Base(std::forward<U>(value)) {}
 
-  class Promise : public Base::Promise {
+  class [[nodiscard]] Promise : public Base::Promise {
    public:
     using Base::Promise::Promise;
 
@@ -725,7 +725,7 @@ class Future<void> : public internal::FutureBase<absl::Status> {
   Future(Status&& status)  // NOLINT
       : Future(absl::Status(std::forward<Status>(status))) {}
 
-  class Promise : public Base::Promise {
+  class [[nodiscard]] Promise : public Base::Promise {
    public:
     using Base::Promise::Promise;
 
