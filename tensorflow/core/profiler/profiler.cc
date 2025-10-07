@@ -210,7 +210,7 @@ int Run(int argc, char** argv) {
     absl::PrintF(
         "Try to use a single --profile_path instead of "
         "graph_path,op_log_path,run_meta_path\n");
-    std::unique_ptr<GraphDef> graph(new GraphDef());
+    std::unique_ptr<GraphDef> graph = std::make_unique<GraphDef>();
     if (!FLAGS_graph_path.empty()) {
       s = ReadProtoFile(Env::Default(), FLAGS_graph_path, graph.get(), false);
       if (!s.ok()) {
@@ -219,7 +219,7 @@ int Run(int argc, char** argv) {
       }
     }
 
-    std::unique_ptr<OpLogProto> op_log(new OpLogProto());
+    std::unique_ptr<OpLogProto> op_log = std::make_unique<OpLogProto>();
     if (!FLAGS_op_log_path.empty()) {
       string op_log_str;
       s = ReadFileToString(Env::Default(), FLAGS_op_log_path, &op_log_str);
@@ -238,7 +238,7 @@ int Run(int argc, char** argv) {
     std::vector<string> run_meta_files =
         absl::StrSplit(FLAGS_run_meta_path, ',', absl::SkipEmpty());
     for (int i = 0; i < run_meta_files.size(); ++i) {
-      std::unique_ptr<RunMetadata> run_meta(new RunMetadata());
+      std::unique_ptr<RunMetadata> run_meta = std::make_unique<RunMetadata>();
       s = ReadProtoFile(Env::Default(), run_meta_files[i], run_meta.get(),
                         true);
       if (!s.ok()) {
