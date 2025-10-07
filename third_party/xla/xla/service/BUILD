@@ -1849,25 +1849,6 @@ xla_cc_test(
 )
 
 cc_library(
-    name = "hlo_module_group_metadata",
-    srcs = ["hlo_module_group_metadata.cc"],
-    hdrs = ["hlo_module_group_metadata.h"],
-    deps = [
-        "//xla:shape_util",
-        "//xla:status_macros",
-        "//xla:util",
-        "//xla/hlo/ir:hlo",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:logging",
-        "@local_tsl//tsl/platform:status",
-    ],
-)
-
-cc_library(
     name = "hlo_module_util",
     srcs = ["hlo_module_util.cc"],
     hdrs = ["hlo_module_util.h"],
