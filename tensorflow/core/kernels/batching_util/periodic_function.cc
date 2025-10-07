@@ -31,9 +31,9 @@ PeriodicFunction::PeriodicFunction(absl::AnyInvocable<void()> function,
     : function_(std::move(function)),
       interval_micros_([interval_micros]() -> int64 {
         if (interval_micros < 0) {
-          const string error = strings::StrCat(
-              " The value of 'interval_micros' should be >= 0: ",
-              interval_micros, ". ");
+          const string error =
+              absl::StrCat(" The value of 'interval_micros' should be >= 0: ",
+                           interval_micros, ". ");
           DCHECK(false) << error;
           LOG(WARNING) << error << "Resetting it to 0.";
           return 0;
