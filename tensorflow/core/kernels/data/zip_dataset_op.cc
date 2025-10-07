@@ -14,9 +14,9 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/zip_dataset_op.h"
 
-#include <functional>
+#include <cstddef>
+#include <cstdint>
 #include <memory>
-#include <string>
 #include <utility>
 #include <vector>
 
