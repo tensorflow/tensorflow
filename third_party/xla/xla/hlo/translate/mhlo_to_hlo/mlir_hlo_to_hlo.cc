@@ -5807,6 +5807,9 @@ LogicalResult ConvertToHloModule::Lower(
     return failure();
   }
 
+  xla::XlaScopedOriginalValueAssignment original_value(
+      builder, CreateOriginalValueFromOp(inst));
+
   *return_value = xla::XlaOp();
 
   if (succeeded(ExportXlaOperator(inst, {value_lowering, this, builder,

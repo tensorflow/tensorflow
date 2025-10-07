@@ -215,11 +215,6 @@ static bool OperatorWritersMain(raw_ostream& os, const RecordKeeper& records) {
         "mlir::mhlo::CreateOpMetadataFromLocation("
         "op, lowering_context.frame_index_builder));\n\n";
 
-  // Create a scoped object to assign original values to generated XLA ops.
-  os << "  xla::XlaScopedOriginalValueAssignment "
-        "original_value(lowering_context.builder, "
-        "CreateOriginalValueFromOp(op));\n\n";
-
   // Retrieve all the definitions derived from MHLO_Op and sort by record name.
   for (auto dialect_def : dialect_defs) {
     for (const auto* def : records.getAllDerivedDefinitions(dialect_def)) {
