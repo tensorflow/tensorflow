@@ -1630,75 +1630,37 @@ absl::StatusOr<HloGraphNode*>
 DefaultSchedulerCore::FindAndExtractBestNodeAvailable(
     DefaultSchedulerCore::SchedulingState& sched_state,
     DefaultSchedulerCore::ShouldSkipNodeFunction should_skip_node) {
-  // Schedule a nop instruction if available.
-  if (!sched_state.nop_set.empty()) {
-    HloGraphNode* node = sched_state.nop_set.back();
-    sched_state.nop_set.pop_back();
-    return node;
-  }
-  absl::InlinedVector<std::pair<HloGraphNode*, SkipNodeReason>, 2>
-      skipped_nodes_and_reasons;
-  VLOG(2) << "Current time: " << sched_state.current_time;
-  ReadySetLt ready_lt{&sched_state, target_scheduling_rule_,
-                      early_target_scheduling_rule_};
-  // Construct a schedule candidate for caching.
-  ScheduleCandidate ready_chosen;
-  ScheduleCandidate ready_chosen_orig;
-  bool ready_chosen_valid = false;
-  ScheduleCandidate ready_candidate_orig;
-  auto chosen_it = sched_state.ready_set.end();
+  while (true) {
+    // Schedule a nop instruction if available.
+    if (!sched_state.nop_set.empty()) {
+      HloGraphNode* node = sched_state.nop_set.back();
+      sched_state.nop_set.pop_back();
+      return node;
+    }
+    absl::InlinedVector<std::pair<HloGraphNode*, SkipNodeReason>, 2>
+        skipped_nodes_and_reasons;
+    VLOG(2) << "Current time: " << sched_state.current_time;
+    ReadySetLt ready_lt{&sched_state, target_scheduling_rule_,
+                        early_target_scheduling_rule_};
+    // Construct a schedule candidate for caching.
+    ScheduleCandidate ready_chosen;
+    ScheduleCandidate ready_chosen_orig;
+    bool ready_chosen_valid = false;
+    ScheduleCandidate ready_candidate_orig;
+    auto chosen_it = sched_state.ready_set.end();
 
-  // Try to pick nodes from the ready set first that are the ones that cause the
-  // most latency hiding.
-  const bool vlog_2 = VLOG_IS_ON(2);
-  const bool has_should_skip_node = (should_skip_node != nullptr);
-  for (auto ready_node_it = sched_state.ready_set.begin(),
-            e = sched_state.ready_set.end();
-       ready_node_it != e; ++ready_node_it) {
-    HloGraphNode* ready_node = *ready_node_it;
-    if (has_should_skip_node && should_skip_node(ready_node)) {
-      if (!ready_chosen_valid) {
-        skipped_nodes_and_reasons.push_back(
-            {ready_node, SkipNodeReason::kShouldSkipNodeFunction});
-        if (ABSL_PREDICT_FALSE(vlog_2)) {
-          VLOG(2) << SkipNodeReasonString(
-                         skipped_nodes_and_reasons.back().second)
-                  << " node: " << ready_node->GetInstr().name();
-        }
-      }
-      continue;
-    }
-    // These ifs will be true when the iterator points to an annotated node,
-    // but the chosen node is nullptr because the annotation group is not
-    // ready to be scheduled yet (because of the annotation roots' successors
-    // not being scheduled yet). So we skip this node and continue to the next
-    // one.
-    if (ABSL_PREDICT_FALSE(ready_node->GetAnnotation() != -1)) {
-      if (!ready_chosen_valid) {
-        skipped_nodes_and_reasons.push_back(
-            {ready_node, SkipNodeReason::kAnnotationGroupNotReady});
-        if (ABSL_PREDICT_FALSE(vlog_2)) {
-          VLOG(2) << SkipNodeReasonString(
-                         skipped_nodes_and_reasons.back().second)
-                  << " node: " << ready_node->GetInstr().name();
-        }
-      }
-      continue;
-    }
-    // If this node would cause the max_concurrent_resource count to go beyond
-    // the limit do not schedule it and pass to the next node.
-    if (is_default_scheduling_instruction_crosses_overlap_limit_ &&
-        !ready_node->HasRecursiveResources()) {
-      // Default scheduling_instruction_crosses_overlap_limit_ is a noop in
-      // this case
-    } else {
-      // Either scheduling_instruction_crosses_overlap_limit_ is not the
-      // default, or the node actually has recursive resoures
-      if (scheduling_instruction_crosses_overlap_limit_(sched_state,
-                                                        ready_node)) {
-        if (ready_chosen.node == nullptr) {
+    // Try to pick nodes from the ready set first that are the ones that cause
+    // the most latency hiding.
+    const bool vlog_2 = VLOG_IS_ON(2);
+    const bool has_should_skip_node = (should_skip_node != nullptr);
+    for (auto ready_node_it = sched_state.ready_set.begin(),
+              e = sched_state.ready_set.end();
+         ready_node_it != e; ++ready_node_it) {
+      HloGraphNode* ready_node = *ready_node_it;
+      if (has_should_skip_node && should_skip_node(ready_node)) {
+        if (!ready_chosen_valid) {
           skipped_nodes_and_reasons.push_back(
-              {ready_node, SkipNodeReason::kExceedsOverlapLimit});
+              {ready_node, SkipNodeReason::kShouldSkipNodeFunction});
           if (ABSL_PREDICT_FALSE(vlog_2)) {
             VLOG(2) << SkipNodeReasonString(
                            skipped_nodes_and_reasons.back().second)
@@ -1707,61 +1669,154 @@ DefaultSchedulerCore::FindAndExtractBestNodeAvailable(
         }
         continue;
       }
-    }
-    ScheduleCandidate ready_candidate =
-        InitializeCandidate(ready_node, sched_state);
-    if (!ready_chosen_valid) {
-      ready_chosen = ready_candidate;
-      chosen_it = ready_node_it;
-      ready_chosen_valid = true;
-      if (ABSL_PREDICT_FALSE(vlog_2)) {
-        VLOG(2) << "Choosing from ready ("
-                << ready_chosen.node->GetInstr().name()
-                << ") Reason: First Candidate";
+      // These ifs will be true when the iterator points to an annotated node,
+      // but the chosen node is nullptr because the annotation group is not
+      // ready to be scheduled yet (because of the annotation roots' successors
+      // not being scheduled yet). So we skip this node and continue to the next
+      // one.
+      if (ABSL_PREDICT_FALSE(ready_node->GetAnnotation() != -1)) {
+        if (!ready_chosen_valid) {
+          skipped_nodes_and_reasons.push_back(
+              {ready_node, SkipNodeReason::kAnnotationGroupNotReady});
+          if (ABSL_PREDICT_FALSE(vlog_2)) {
+            VLOG(2) << SkipNodeReasonString(
+                           skipped_nodes_and_reasons.back().second)
+                    << " node: " << ready_node->GetInstr().name();
+          }
+        }
+        continue;
       }
-      continue;
-    }
-
-    if (ABSL_PREDICT_FALSE(vlog_2)) {
-      ready_chosen_orig = ready_chosen;
-      ready_candidate_orig = ready_candidate;
-    }
-    const char* reason;
-    bool new_candidate_selected =
-        ready_lt.MaybeUpdate(ready_candidate, ready_chosen, &reason);
-    if (ABSL_PREDICT_FALSE(vlog_2)) {
-      auto print_pressure_change =
-          [](const DefaultSchedulerCore::ScheduleCandidate& p) {
-            if (p.has_pressure_change) {
-              return std::to_string(p.pressure_change_first);
+      // If this node would cause the max_concurrent_resource count to go beyond
+      // the limit do not schedule it and pass to the next node.
+      if (is_default_scheduling_instruction_crosses_overlap_limit_ &&
+          !ready_node->HasRecursiveResources()) {
+        // Default scheduling_instruction_crosses_overlap_limit_ is a noop in
+        // this case
+      } else {
+        // Either scheduling_instruction_crosses_overlap_limit_ is not the
+        // default, or the node actually has recursive resources.
+        if (scheduling_instruction_crosses_overlap_limit_(sched_state,
+                                                          ready_node)) {
+          if (ready_chosen.node == nullptr) {
+            skipped_nodes_and_reasons.push_back(
+                {ready_node, SkipNodeReason::kExceedsOverlapLimit});
+            if (ABSL_PREDICT_FALSE(vlog_2)) {
+              VLOG(2) << SkipNodeReasonString(
+                             skipped_nodes_and_reasons.back().second)
+                      << " node: " << ready_node->GetInstr().name();
             }
-            return std::string("N/A");
-          };
-      VLOG(2) << "Choosing from ready ("
-              << (new_candidate_selected
-                      ? ready_candidate_orig.node->GetInstr().name()
-                      : ready_chosen_orig.node->GetInstr().name())
-              << ") vs ("
-              << (new_candidate_selected
-                      ? ready_chosen_orig.node->GetInstr().name()
-                      : ready_candidate_orig.node->GetInstr().name())
-              << ") Reason: " << reason << " mem pressure chosen "
-              << print_pressure_change(new_candidate_selected
-                                           ? ready_candidate_orig
-                                           : ready_chosen_orig)
-              << " mem pressure other "
-              << print_pressure_change(new_candidate_selected
-                                           ? ready_chosen_orig
-                                           : ready_candidate_orig);
+          }
+          continue;
+        }
+      }
+      ScheduleCandidate ready_candidate =
+          InitializeCandidate(ready_node, sched_state);
+      if (!ready_chosen_valid) {
+        ready_chosen = ready_candidate;
+        chosen_it = ready_node_it;
+        ready_chosen_valid = true;
+        if (ABSL_PREDICT_FALSE(vlog_2)) {
+          VLOG(2) << "Choosing from ready ("
+                  << ready_chosen.node->GetInstr().name()
+                  << ") Reason: First Candidate";
+        }
+        continue;
+      }
+
+      if (ABSL_PREDICT_FALSE(vlog_2)) {
+        ready_chosen_orig = ready_chosen;
+        ready_candidate_orig = ready_candidate;
+      }
+      const char* reason;
+      bool new_candidate_selected =
+          ready_lt.MaybeUpdate(ready_candidate, ready_chosen, &reason);
+      if (ABSL_PREDICT_FALSE(vlog_2)) {
+        auto print_pressure_change =
+            [](const DefaultSchedulerCore::ScheduleCandidate& p) {
+              if (p.has_pressure_change) {
+                return std::to_string(p.pressure_change_first);
+              }
+              return std::string("N/A");
+            };
+        VLOG(2) << "Choosing from ready ("
+                << (new_candidate_selected
+                        ? ready_candidate_orig.node->GetInstr().name()
+                        : ready_chosen_orig.node->GetInstr().name())
+                << ") vs ("
+                << (new_candidate_selected
+                        ? ready_chosen_orig.node->GetInstr().name()
+                        : ready_candidate_orig.node->GetInstr().name())
+                << ") Reason: " << reason << " mem pressure chosen "
+                << print_pressure_change(new_candidate_selected
+                                             ? ready_candidate_orig
+                                             : ready_chosen_orig)
+                << " mem pressure other "
+                << print_pressure_change(new_candidate_selected
+                                             ? ready_chosen_orig
+                                             : ready_candidate_orig);
+      }
+
+      if (new_candidate_selected) {
+        chosen_it = ready_node_it;
+        DCHECK_EQ(ready_chosen.node, *chosen_it);
+      }
     }
 
-    if (new_candidate_selected) {
-      chosen_it = ready_node_it;
-      DCHECK_EQ(ready_chosen.node, *chosen_it);
+    if (ready_chosen_valid) {
+      CHECK(chosen_it != sched_state.ready_set.end());
+      std::swap(*chosen_it, sched_state.ready_set.back());
+      sched_state.ready_set.pop_back();
+      return ready_chosen.node;
     }
-  }
 
-  if (!ready_chosen_valid) {
+    if (sched_state.config.deannotate_group_if_blocked) {
+      // If no node was chosen, check if any were skipped due to
+      // kAnnotationGroupNotReady. Among those groups, pick the one which has
+      // the smallest number of nodes in it.
+      HloGraphNode* node_to_deannotate = nullptr;
+      int64_t min_annotation_size = std::numeric_limits<int64_t>::max();
+      const HloComputation* comp =
+          sched_state.sched_graph.GetOriginalInstrList()[0]->parent();
+
+      for (const auto& pair : skipped_nodes_and_reasons) {
+        if (pair.second == SkipNodeReason::kAnnotationGroupNotReady) {
+          int64_t annotation = pair.first->GetAnnotation();
+          int64_t current_annotation_size =
+              annotation_tracker_->GetNumInstructions(comp, annotation);
+          if (current_annotation_size < min_annotation_size) {
+            min_annotation_size = current_annotation_size;
+            node_to_deannotate = pair.first;
+          }
+        }
+      }
+
+      if (node_to_deannotate != nullptr) {
+        int64_t annotation = node_to_deannotate->GetAnnotation();
+        VLOG(2) << "FindAndExtractBestNodeAvailable failed, deannotating group "
+                << annotation << " and retrying.";
+        const HloComputation* comp =
+            sched_state.sched_graph.GetOriginalInstrList()[0]->parent();
+        auto instrs = annotation_tracker_->GetInstructions(comp, annotation);
+        for (const HloInstruction* instr : instrs) {
+          HloGraphNode& node = sched_state.sched_graph.GetNode(instr);
+          node.ClearAnnotation();
+        }
+        // Clear the ongoing annotation state as well.
+        if (sched_state.ongoing_annotation == annotation) {
+          sched_state.ongoing_annotation = -1;
+        }
+        // Remove this annotation from ready_annotations if it's there.
+        auto it = std::find(sched_state.ready_annotations.begin(),
+                            sched_state.ready_annotations.end(), annotation);
+        if (it != sched_state.ready_annotations.end()) {
+          sched_state.ready_annotations.erase(it);
+        }
+        continue;  // Retry the while loop.
+      }
+    }
+
+    // If we reach here, no node was scheduled and no annotation group could be
+    // deannotated.
     if (!sched_state.ready_annotations.empty()) {
       std::string error_message = absl::StrCat(
           "There is a scheduling group which exceeds the overlap limits. "
@@ -1790,10 +1845,6 @@ DefaultSchedulerCore::FindAndExtractBestNodeAvailable(
                                         SkipNodeReasonString(pair.second));
                       })));
   }
-  CHECK(chosen_it != sched_state.ready_set.end());
-  std::swap(*chosen_it, sched_state.ready_set.back());
-  sched_state.ready_set.pop_back();
-  return ready_chosen.node;
 }
 
 void DefaultSchedulerCore::LogInstruction(const HloInstruction* instr) const {
