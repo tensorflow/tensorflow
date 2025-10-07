@@ -494,6 +494,7 @@ cc_library(
         ":xplane_builder",
         ":xplane_schema",
         ":xplane_utils",
+        ":xplane_visitor",
         "@com_google_absl//absl/log",
         "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc",
     ],
@@ -504,8 +505,6 @@ tsl_cc_test(
     srcs = ["timestamp_utils_test.cc"],
     deps = [
         ":timestamp_utils",
-        ":xplane_schema",
-        ":xplane_utils",
         ":xplane_visitor",
         "//xla/tsl/platform:test",
         "@com_google_googletest//:gtest_main",
