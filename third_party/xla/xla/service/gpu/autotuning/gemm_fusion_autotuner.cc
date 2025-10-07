@@ -120,7 +120,7 @@ limitations under the License.
 // VLOG(2): Autotuning progress
 // VLOG(3): Autotuning progress - more frequent
 // VLOG(4): Print all fusions
-// VLOG(5): Profiling information for every tiling
+// VLOG(5): Profiling information for every configuration
 // VLOG(10): Print fusion computations and each configuration
 
 namespace xla {
@@ -1023,6 +1023,7 @@ absl::StatusOr<absl::flat_hash_map<
     std::vector<GemmFusionAutotunerImpl::ExecutableCandidate>>>
 GemmFusionAutotunerImpl::CompileAll(AutotunerCompileUtil& compile_util,
                                     const BackendConfigs& task) {
+  XLA_SCOPED_LOGGING_TIMER_LEVEL("CompileAll", 5);
   tsl::profiler::TraceMe traceme("CompileAll");
   tsl::profiler::ScopedAnnotation annotation("XlaAutotunerCompilation");
 
@@ -1055,6 +1056,8 @@ GemmFusionAutotunerImpl::CompileAll(AutotunerCompileUtil& compile_util,
                      const BackendConfig& config,
                      bool allow_filtering_kernels_spilling_registers)
       -> absl::StatusOr<std::unique_ptr<Executable>> {
+    XLA_SCOPED_LOGGING_TIMER_LEVEL(
+        absl::StrCat("compile config ", ConfigToString(config)), 5);
     tsl::profiler::TraceMe traceme("Compile");
     if (std::holds_alternative<TritonGemmConfig>(config)) {
       auto executable_or = compile_util.Compile([&](const DebugOptions& opts) {
@@ -1137,15 +1140,15 @@ GemmFusionAutotunerImpl::CompileAll(AutotunerCompileUtil& compile_util,
       VLOG(10) << "Compiling fusion: " << fusion->name();
       VLOG(10) << "Dumping fusion computation: "
                << fusion->called_computation()->ToString();
+      VLOG(5) << "WARNING: you are running in multithreaded-mode, the last "
+                 "configuration printed out might not be the one causing "
+                 "issues! Use --xla_gpu_force_compilation_parallelism=1 to run "
+                 "sequentially.";
       for (const BackendConfig& config : gemm_config_set) {
         thread_pool_->Schedule([&, fusion] {
-          VLOG(10) << "Trying configuration forceable through: "
-                      "--xla_gpu_override_gemm_autotuner='"
-                   << Serialize(config) << "'";
-          VLOG(10) << "WARNING: you are running in multithreaded-mode, the "
-                      "last configuration printed out might not be the one "
-                      "causing issues! Use "
-                      "--xla_gpu_force_compilation_parallelism=1 to fix.";
+          VLOG(5) << "Trying configuration forceable through: "
+                     "--xla_gpu_override_gemm_autotuner='"
+                  << Serialize(config) << "'";
           absl::StatusOr<std::unique_ptr<Executable>> executable =
               compile(fusion, config, gemm_config_set.size() > 1);
           TF_CHECK_OK(executable.status())
@@ -1180,9 +1183,9 @@ GemmFusionAutotunerImpl::CompileAll(AutotunerCompileUtil& compile_util,
       VLOG(10) << "Dumping fusion computation: "
                << fusion->called_computation()->ToString();
       for (const BackendConfig& config : gemm_config_set) {
-        VLOG(10) << "Trying configuration forceable through: "
-                    "--xla_gpu_override_gemm_autotuner='"
-                 << Serialize(config) << "'";
+        VLOG(5) << "Trying configuration forceable through: "
+                   "--xla_gpu_override_gemm_autotuner='"
+                << Serialize(config) << "'";
         TF_ASSIGN_OR_RETURN(
             std::unique_ptr<Executable> executable,
             compile(fusion, config, gemm_config_set.size() > 1));
@@ -1254,7 +1257,6 @@ absl::StatusOr<AutotuneResult> GemmFusionAutotunerImpl::MeasurePerformance(
     }
   }
 
-  VLOG(5) << "Trying : " << ConfigToString(candidate.config);
   AutotuneResult res = FromConfig(candidate.config);
 
   const HloComputation* fusion_computation = fusion.called_computation();
@@ -1280,7 +1282,9 @@ absl::StatusOr<AutotuneResult> GemmFusionAutotunerImpl::MeasurePerformance(
                                      rz_buffers.input_buffers(),
                                      rz_buffers.input_shapes()));
 
-  VLOG(5) << "Running the kernel took: " << profiling_output.duration;
+  VLOG(5) << "Config " << ConfigToString(candidate.config) << " took "
+          << profiling_output.duration / absl::Nanoseconds(1) << " ns";
+
   LOG_IF(WARNING, profiling_output.duration >= absl::Seconds(1))
       << "Slow kernel for " << fusion.called_computation()->ToString()
       << " took: " << profiling_output.duration << ". "
@@ -1407,8 +1411,12 @@ absl::Status GemmFusionAutotunerImpl::Autotune(
     TF_ASSIGN_OR_RETURN(AutotuneResult best,
                         PickBestResult(results, fusion->ToString(),
                                        root->GetModule()->config()));
-    VLOG(2) << "Best time: "
-            << tsl::proto_utils::FromDurationProto(best.run_time());
+    if (VLOG_IS_ON(2)) {
+      absl::Duration best_time =
+          tsl::proto_utils::FromDurationProto(best.run_time());
+      VLOG(2) << "Best time: " << best_time << " ("
+              << (best_time / absl::Nanoseconds(1)) << " ns)";
+    }
 
     std::unique_ptr<HloModule> module;
     if (debug_options_.xla_gpu_dump_autotuned_gemm_fusions() ||
