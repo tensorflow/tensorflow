@@ -823,14 +823,17 @@ cc_library(
 cc_library(
     name = "resource_loader",
     testonly = 1,
-    srcs = ["resource_loader.cc"],
+    srcs = if_oss(
+        ["//xla/tsl/platform/default:resource_loader.cc"],
+        google_value = ["//xla/tsl/platform/google:resource_loader.cc"],
+    ),
     textual_hdrs = ["resource_loader.h"],
     deps = [
         ":logging",
         ":test",
         "@local_tsl//tsl/platform",
         "@local_tsl//tsl/platform:path",
-    ],
+    ] + if_oss(["@bazel_tools//tools/cpp/runfiles"]),
 )
 
 cc_library(
