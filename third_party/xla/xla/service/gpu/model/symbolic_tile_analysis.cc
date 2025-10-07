@@ -1626,6 +1626,39 @@ absl::StatusOr<TiledHloComputation> ComputeTiledHloInstructionsImpl(
       }
     }
   }
+
+  // If the root of the fusion is a dot and RHS is larger than LHS, swap tiling
+  // parameters for better cache locality.
+  const HloInstruction* real_root =
+      analysis.GetRoot(analysis.real_root_index());
+  if (IsSomeDot(real_root) &&
+      ShapeUtil::ByteSizeOf(real_root->operand(0)->shape()) <
+          ShapeUtil::ByteSizeOf(real_root->operand(1)->shape())) {
+    const DotDimensionNumbers& dim_nums = real_root->dot_dimension_numbers();
+    // This relies on the order of the dot parameters being K, B, M, N.
+    int64_t m_param_idx = dim_nums.lhs_contracting_dimensions_size() +
+                          dim_nums.lhs_batch_dimensions().size();
+    for (const auto& [instruction, num_parameters] :
+         analysis.GetTilingSpecification().parameter_mapping()) {
+      if (instruction != real_root) {
+        m_param_idx += num_parameters;
+        continue;
+      }
+      auto m_it =
+          absl::c_find(major_to_minor_active_tiling_parameters, m_param_idx);
+      auto n_it = m_it + real_root->operand(0)->shape().dimensions().size() -
+                  dim_nums.lhs_batch_dimensions_size() -
+                  dim_nums.lhs_contracting_dimensions_size();
+      auto last = n_it + real_root->operand(1)->shape().dimensions().size() -
+                  dim_nums.rhs_batch_dimensions_size() -
+                  dim_nums.rhs_contracting_dimensions_size();
+      if (last <= major_to_minor_active_tiling_parameters.end()) {  // safety
+        std::rotate(m_it, n_it, last);
+      }
+      break;
+    }
+  }
+
   // Check that all strides are >= 0. Our codegen doesn't support negative
   // strides at the moment if padding is required. Also, for the Reverse op it
   // might make sense to emit code for it, and normalizing strides to >= 0.
