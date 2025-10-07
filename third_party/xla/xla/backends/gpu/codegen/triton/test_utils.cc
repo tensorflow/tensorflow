@@ -135,6 +135,65 @@ absl::Status CreateTritonIrAndFileCheck(
   return absl::OkStatus();
 }
 
+absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>>
+CreateSharedDialectIrAndFileCheck(mlir::MLIRContext& context,
+                                  absl::string_view hlo_text,
+                                  absl::string_view triton_fusion_name,
+                                  absl::string_view filecheck_pattern) {
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> hlo_module,
+                      ParseAndReturnUnverifiedModule(hlo_text));
+  auto* comp = hlo_module->GetComputationWithName(triton_fusion_name);
+  TF_RET_CHECK(comp != nullptr) << absl::StrCat(
+      "Computation '", triton_fusion_name, "' is not found in the module");
+  auto fusion_backend_config = comp->FusionInstruction()
+                                   ->backend_config<GpuBackendConfig>()
+                                   ->fusion_backend_config();
+  BlockLevelParameters block_level_parameters =
+      BlockLevelParameters::FromBlockLevelFusionConfig(
+          fusion_backend_config.block_level_fusion_config());
+  return CreateSharedDialectIrAndFileCheck(
+      context, *comp, block_level_parameters, filecheck_pattern);
+}
+
+absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>>
+CreateSharedDialectIrAndFileCheck(
+    mlir::MLIRContext& context, const HloComputation& computation,
+    const BlockLevelParameters& block_level_parameters,
+    absl::string_view filecheck_pattern) {
+  auto* fusion = Cast<HloFusionInstruction>(computation.FusionInstruction());
+
+  TF_ASSIGN_OR_RETURN(
+      mlir::OwningOpRef<mlir::ModuleOp> shared_dialect_module,
+      EmitSharedDialectModule("shared_dialect_fn", fusion,
+                              TestGpuDeviceInfo::RTXA6000DeviceInfo(),
+                              block_level_parameters, context));
+
+  std::string out;
+  llvm::raw_string_ostream os(out);
+  shared_dialect_module->print(os);
+  TF_ASSIGN_OR_RETURN(bool succeeded, RunFileCheck(out, filecheck_pattern));
+  if (!succeeded) {
+    return absl::InternalError("FileCheck failed.");
+  }
+  return shared_dialect_module;
+}
+
+absl::Status LowerSharedDialectIrToTritonAndFileCheck(
+    mlir::MLIRContext& context, mlir::ModuleOp shared_dialect_module,
+    absl::string_view filecheck_pattern, const DebugOptions& debug_options) {
+  TF_RETURN_IF_ERROR(
+      LowerToTriton(shared_dialect_module, context, debug_options));
+
+  std::string out;
+  llvm::raw_string_ostream os(out);
+  shared_dialect_module->print(os);
+  TF_ASSIGN_OR_RETURN(bool succeeded, RunFileCheck(out, filecheck_pattern));
+  if (!succeeded) {
+    return absl::InternalError("FileCheck failed.");
+  }
+  return absl::OkStatus();
+}
+
 absl::Status CreateTritonIrAndFileCheckForDot(
     HloTestBase* test, absl::string_view hlo_text,
     absl::string_view triton_fusion_name, absl::string_view filecheck_pattern) {

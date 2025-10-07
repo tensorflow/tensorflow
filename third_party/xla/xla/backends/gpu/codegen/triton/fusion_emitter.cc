@@ -88,6 +88,7 @@ limitations under the License.
 #include "mlir/Target/LLVMIR/Dialect/ROCDL/ROCDLToLLVMIRTranslation.h"
 #include "mlir/Target/LLVMIR/Export.h"
 #include "mlir/Transforms/Passes.h"
+#include "stablehlo/dialect/StablehloOps.h"
 #include "xla/backends/gpu/codegen/emitters/ir/xla_gpu_ops.h"
 #include "xla/backends/gpu/codegen/triton/compilation_pipeline.h"
 #include "xla/backends/gpu/codegen/triton/dot_algorithms.h"
@@ -99,6 +100,7 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/triton/transforms/passes.h"
 #include "xla/codegen/emitter_loc_op_builder.h"
 #include "xla/codegen/emitters/elemental_hlo_to_mlir.h"
+#include "xla/codegen/emitters/ir/xla_dialect.h"
 #include "xla/codegen/emitters/ir/xla_ops.h"
 #include "xla/codegen/emitters/transforms/passes.h"
 #include "xla/codegen/tiling/tiled_hlo_computation.h"
@@ -155,6 +157,7 @@ namespace gpu {
 namespace arith = ::mlir::arith;
 namespace ttir = ::mlir::triton;
 namespace mtx = ::mlir::triton::xla;
+namespace stablehlo = ::mlir::stablehlo;
 
 using ::llvm::SmallVector;
 using ::mlir::AffineMap;
@@ -333,7 +336,8 @@ ScalarOrTensor BroadcastInDims(EmitterLocOpBuilder b, ScalarOrTensor value,
 
 ScalarOrTensor Range(EmitterLocOpBuilder b, int32_t limit) {
   auto type = mlir::RankedTensorType::get(limit, b.getI32Type());
-  return ScalarOrTensor(b.create<ttir::MakeRangeOp>(type, 0, limit));
+  return ScalarOrTensor(
+      b.create<stablehlo::IotaOp>(type, /*iota_dimension=*/0));
 }
 
 ScalarOrTensor EmitParameterExtract(EmitterLocOpBuilder b,
@@ -661,9 +665,9 @@ Value EmitTiledTranspose(EmitterLocOpBuilder b, ArrayRef<int64_t> tile_sizes,
   Type output_tensor_type =
       mlir::RankedTensorType::get(padded_tile_sizes, input_element_type);
 
-  SmallVector<int32_t> order = llvm::to_vector_of<int32_t>(dimensions);
+  mlir::DenseI64ArrayAttr order = b.getDenseI64ArrayAttr(dimensions);
 
-  return b.create<ttir::TransOp>(output_tensor_type, input, order);
+  return b.create<stablehlo::TransposeOp>(output_tensor_type, input, order);
 }
 
 absl::StatusOr<ScalarOrTensor> EmitTiledBitcast(
@@ -688,7 +692,7 @@ absl::StatusOr<ScalarOrTensor> EmitTiledBitcast(
                   GetPaddedTileSizes(tiled_bitcast.operand(0)->tile_sizes()),
                   output_element_type)
             : output_element_type;
-    input = b.create<ttir::BitcastOp>(output_type, input);
+    input = b.create<stablehlo::BitcastConvertOp>(output_type, input);
     input_shape.set_element_type(output_shape.element_type());
   }
 
@@ -1840,12 +1844,12 @@ absl::Status EmitGeneric(mlir::OpBuilder builder,
 }  // namespace
 
 void LoadMlirDialectsForTriton(mlir::MLIRContext& mlir_context) {
-  mlir_context
-      .loadDialect<ttir::TritonDialect, ttir::gpu::TritonGPUDialect,
-                   mlir::arith::ArithDialect, mlir::affine::AffineDialect,
-                   mlir::LLVM::LLVMDialect, xla::XlaDialect,
-                   xla::gpu::XlaGpuDialect, ttir::xla::XlaTritonDialect,
-                   mlir::func::FuncDialect, mlir::tensor::TensorDialect>();
+  mlir_context.loadDialect<
+      ttir::TritonDialect, ttir::gpu::TritonGPUDialect,
+      mlir::arith::ArithDialect, mlir::affine::AffineDialect,
+      mlir::LLVM::LLVMDialect, xla::XlaDialect, xla::gpu::XlaGpuDialect,
+      ttir::xla::XlaTritonDialect, mlir::func::FuncDialect,
+      mlir::tensor::TensorDialect, stablehlo::StablehloDialect>();
   mlir::DialectRegistry registry;
   mlir::func::registerInlinerExtension(registry);
   mlir::LLVM::registerInlinerInterface(registry);
@@ -1957,7 +1961,7 @@ absl::StatusOr<stream_executor::gpu::TmaMetadata> ExtractTmaMetadata(
   return tma_metadata;
 }
 
-absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateTritonModule(
+absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> EmitSharedDialectModule(
     absl::string_view fn_name, const HloFusionInstruction* fusion,
     const se::DeviceDescription& device_info,
     const BlockLevelParameters& block_level_parameters,
@@ -2035,6 +2039,61 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateTritonModule(
 
   EmitReturnOp(b, fusion_kind);
 
+  return triton_module;
+}
+
+absl::Status LowerToTriton(mlir::ModuleOp shared_dialect_module,
+                           mlir::MLIRContext& mlir_context,
+                           const DebugOptions& debug_options) {
+  {  // Convert xTile ops to Triton ops.
+    mlir::PassManager pm(&mlir_context);
+    // Disable verifier because the Triton code may be invalid due to the
+    // unsupported types.
+    pm.enableVerifier(/*enabled=*/false);
+    pm.addPass(mlir::triton::xla::CreateStableHLOLowerToTritonPass());
+    if (mlir::failed(pm.run(shared_dialect_module))) {
+      return absl::InternalError("Failed to lower to Triton.");
+    }
+  }
+
+  if (debug_options.xla_gpu_experimental_scaled_dot_with_triton()) {
+    // Convert unsupported types before verification.
+    mlir::PassManager pm(&mlir_context);
+    pm.addPass(mlir::triton::xla::CreateTritonXLAConvertUnsupportedTypesPass());
+    if (mlir::failed(pm.run(shared_dialect_module))) {
+      return absl::InternalError("Failed to convert unsupported types.");
+    }
+  }
+
+  if (mlir::failed(mlir::verify(shared_dialect_module))) {
+    return absl::InternalError("Failed to verify triton module.");
+  }
+  mlir::PassManager pm(&mlir_context);
+
+  pm.addPass(mlir::createCanonicalizerPass());
+  pm.addPass(mlir::createCSEPass());
+  if (mlir::failed(pm.run(shared_dialect_module))) {
+    return absl::InternalError("Failed to lower to Triton.");
+  }
+
+  return absl::OkStatus();
+}
+
+absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateTritonModule(
+    absl::string_view fn_name, const HloFusionInstruction* fusion,
+    const se::DeviceDescription& device_info,
+    const BlockLevelParameters& block_level_parameters,
+    mlir::MLIRContext& mlir_context) {
+  TF_ASSIGN_OR_RETURN(
+      auto triton_module,
+      EmitSharedDialectModule(fn_name, fusion, device_info,
+                              block_level_parameters, mlir_context));
+
+  const HloComputation* hlo_computation =
+      fusion->fused_instructions_computation();
+
+  const auto debug_options = fusion->GetModule()->config().debug_options();
+
   if (DumpingEnabledForHloModule(*hlo_computation->parent())) {
     auto suffix = absl::StrCat(fusion->name(), ".before_validation.ttir.txt");
     DumpToFileInDirOrStdout(
@@ -2050,29 +2109,9 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateTritonModule(
         ExtractInstructionIntoNewModule(*fusion)->ToString());
   }
 
-  if (debug_options.xla_gpu_experimental_scaled_dot_with_triton()) {
-    // Convert unsupported types before verification.
-    mlir::PassManager pm(&mlir_context);
-    pm.addPass(mlir::triton::xla::CreateTritonXLAConvertUnsupportedTypesPass());
-    if (mlir::failed(pm.run(triton_module.get()))) {
-      return CreateInternalError(
-          "Failed to fix unsupported types in Triton module for fusion:",
-          fusion, *triton_module);
-    }
-  }
-
-  if (mlir::failed(mlir::verify(*triton_module))) {
-    return CreateInternalError(
-        "Failed to verify Triton module for fusion:", fusion, *triton_module);
-  }
-
-  mlir::PassManager pm(&mlir_context);
-
-  pm.addPass(mlir::createCanonicalizerPass());
-  pm.addPass(mlir::createCSEPass());
-  if (mlir::failed(pm.run(triton_module.get()))) {
-    return CreateInternalError(
-        "Failed to create Triton module for fusion:", fusion, *triton_module);
+  if (!LowerToTriton(triton_module.get(), mlir_context, debug_options).ok()) {
+    return CreateInternalError("Failed to lower to Triton for fusion:", fusion,
+                               *triton_module);
   }
 
   VLOG(6) << DumpTritonIR(triton_module.get(),
