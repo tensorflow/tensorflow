@@ -530,6 +530,12 @@ absl::StatusOr<std::string> LoadedExecutable::Serialize() const {
       "underlying serialization format is not stable");
 }
 
+absl::StatusOr<std::string> LoadedExecutable::GetHumanReadableProgramText()
+    const {
+  return absl::UnimplementedError(
+      "GetHumanReadableProgramText() is unimplemented.");
+}
+
 tsl::Future<> LoadedExecutable::GetReadyFuture() const { return ready_future_; }
 
 int LoadedExecutable::num_devices() const { return num_devices_; }

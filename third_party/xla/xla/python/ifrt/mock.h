@@ -331,6 +331,8 @@ class MockLoadedExecutable
   MOCK_METHOD(absl::StatusOr<std::unique_ptr<xla::ifrt::ExecutableVersion>>,
               executable_version, (), (const, final));
   MOCK_METHOD(absl::StatusOr<std::string>, Serialize, (), (const, final));
+  MOCK_METHOD(absl::StatusOr<std::string>, GetHumanReadableProgramText, (),
+              (const, final));
   MOCK_METHOD(UserContextRef, user_context, (), (const, final));
   MOCK_METHOD(tsl::Future<>, GetReadyFuture, (), (const, override));
   MOCK_METHOD(int, num_devices, (), (const, final));

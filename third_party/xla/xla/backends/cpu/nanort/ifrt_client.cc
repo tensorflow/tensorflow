@@ -916,6 +916,13 @@ class NanoExecutable final
     return absl::UnimplementedError("Serialize is not implemented.");
   }
 
+  absl::StatusOr<std::string> GetHumanReadableProgramText() const override {
+    TF_ASSIGN_OR_RETURN(
+        auto hlo_module,
+        HloModule::CreateFromProto(program_.proto(), HloModuleConfig()));
+    return hlo_module->ToString();
+  }
+
   ifrt::UserContextRef user_context() const override { return user_context_; }
 
   tsl::Future<> GetReadyFuture() const override { return Ready(); }

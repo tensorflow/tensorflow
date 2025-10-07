@@ -77,6 +77,7 @@ class LoadedExecutable final
     return absl::UnimplementedError("Not implemented");
   }
   absl::StatusOr<std::string> Serialize() const override;
+  absl::StatusOr<std::string> GetHumanReadableProgramText() const override;
   xla::ifrt::UserContextRef user_context() const override {
     return user_context_;
   }

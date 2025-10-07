@@ -177,6 +177,11 @@ class LoadedExecutable
   // serialized executable is implementation-specific.
   virtual absl::StatusOr<std::string> Serialize() const = 0;
 
+  // Returns the program text in a format that can be used for easy debugging.
+  // The return value is meant to be consumed only by humans (not automated
+  // parsing), since there are no guarantees on how the value is formatted.
+  virtual absl::StatusOr<std::string> GetHumanReadableProgramText() const = 0;
+
   // Returns the user context associated with the creation of this executable.
   // May be `nullptr` if the user context is unset or the runtime does not
   // support it.

@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/Support/ExtensibleRTTI.h"
@@ -267,6 +268,15 @@ class PjRtLoadedExecutable final
   }
 
   absl::StatusOr<std::string> Serialize() const override;
+
+  absl::StatusOr<std::string> GetHumanReadableProgramText() const override {
+    TF_ASSIGN_OR_RETURN(auto hlo_modules,
+                        pjrt_loaded_executable_->GetHloModules());
+    return absl::StrJoin(hlo_modules, "\n\n",
+                         [](std::string* out, const auto& hlo_module) {
+                           absl::StrAppend(out, hlo_module->ToString());
+                         });
+  }
 
   int num_devices() const override {
     DCHECK(this);
