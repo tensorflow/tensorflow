@@ -21,7 +21,6 @@ package_group(
 cc_library(
     name = "hlo",
     srcs = [
-        "collective_device_list.cc",
         "dfs_hlo_visitor.cc",
         "dynamic_parameter_binding.cc",
         "hlo_computation.cc",
@@ -34,9 +33,9 @@ cc_library(
         "hlo_original_value.cc",
         "hlo_schedule.cc",
         "hlo_sharding_metadata.cc",
+        "replica_group.cc",
     ],
     hdrs = [
-        "collective_device_list.h",
         "dfs_hlo_visitor.h",
         "dfs_hlo_visitor_with_default.h",
         "dynamic_parameter_binding.h",
@@ -56,6 +55,7 @@ cc_library(
         "hlo_schedule.h",
         "hlo_sharding.h",
         "hlo_sharding_metadata.h",
+        "replica_group.h",
     ],
     deps = [
         ":backend_config",
@@ -359,8 +359,8 @@ cc_library(
 )
 
 xla_cc_test(
-    name = "collective_device_list_test",
-    srcs = ["collective_device_list_test.cc"],
+    name = "replica_group_test",
+    srcs = ["replica_group_test.cc"],
     deps = [
         ":hlo",
         "//xla:xla_data_proto_cc",

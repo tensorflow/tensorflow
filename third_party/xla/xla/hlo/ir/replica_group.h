@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_HLO_IR_COLLECTIVE_DEVICE_LIST_H_
-#define XLA_HLO_IR_COLLECTIVE_DEVICE_LIST_H_
+#ifndef XLA_HLO_IR_REPLICA_GROUP_H_
+#define XLA_HLO_IR_REPLICA_GROUP_H_
 
 #include <cstddef>
 #include <cstdint>
@@ -212,4 +212,4 @@ class CollectiveDeviceList {
 
 }  // namespace xla
 
-#endif  // XLA_HLO_IR_COLLECTIVE_DEVICE_LIST_H_
+#endif  // XLA_HLO_IR_REPLICA_GROUP_H_
