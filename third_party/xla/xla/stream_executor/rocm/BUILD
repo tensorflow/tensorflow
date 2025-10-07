@@ -31,6 +31,15 @@ package_group(
 )
 
 cc_library(
+    name = "rocm_compute_capability",
+    hdrs = ["rocm_compute_capability.h"],
+    deps = [
+        "//xla/stream_executor:device_description_proto_cc",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
     name = "rocm_diagnostics",
     srcs = ["rocm_diagnostics.cc"],
     hdrs = ["rocm_diagnostics.h"],
