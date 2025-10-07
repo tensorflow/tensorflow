@@ -2463,7 +2463,7 @@ TEST(StreamExecutorGpuClientTest, MultipleDeviceShareDmaMapping) {
   TF_EXPECT_OK(client->DmaUnmap(host_dma_ptr.get()));
 }
 
-TEST(TpuLocalClientTest, RawBuffer) {
+TEST(StreamExecutorGpuClientTest, RawBuffer) {
   TF_ASSERT_OK_AND_ASSIGN(auto client,
                           GetStreamExecutorGpuClient(DefaultOptions()));
 
@@ -2499,6 +2499,114 @@ TEST(TpuLocalClientTest, RawBuffer) {
 
   tsl::port::AlignedFree(dst1);
   tsl::port::AlignedFree(dst2);
+}
+
+TEST(StreamExecutorGpuClientTest, ComputeSynchronizedAllocatorRace) {
+  TF_ASSERT_OK_AND_ASSIGN(auto client,
+                          GetStreamExecutorGpuClient(DefaultOptions()));
+  PjRtDevice* const device = client->addressable_devices()[0];
+
+  std::unique_ptr<xla::PjRtBuffer> w;
+  {
+    static constexpr char const* kInitMatrixProgram =
+        R"(
+HloModule jit_init_matrix, input_output_alias={}, entry_computation_layout={()->f32[4096,4096]{1,0}}
+
+ENTRY main.5 {
+  %a = f32[] constant(0)
+  ROOT %b = f32[4096,4096]{1,0} broadcast(%a), dimensions={}
+}
+)";
+    TF_ASSERT_OK_AND_ASSIGN(auto executable,
+                            CompileExecutable(kInitMatrixProgram, *client));
+    std::vector<std::vector<PjRtBuffer*>> input_ptrs = {{}};
+    TF_ASSERT_OK_AND_ASSIGN(
+        auto results,
+        executable->Execute(absl::MakeSpan(input_ptrs), ExecuteOptions()));
+    w = std::move(results[0][0]);
+  }
+
+  static constexpr char const* kSlowCheckProgram =
+      R"(
+HloModule jit_slow_verify, input_output_alias={}, entry_computation_layout={(f32[4096,4096]{1,0}, s32[4194304]{0})->(f32[4096,4096]{1,0}, s32[])}
+
+ENTRY main.5 {
+  %w.0 = f32[4096,4096]{1,0} parameter(0), sharding={replicated}
+  %w.1 = f32[4096,4096]{1,0} dot(%w.0, %w.0), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  %w.2 = f32[4096,4096]{1,0} dot(%w.1, %w.1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  %checks.1 = s32[4194304]{0} parameter(1), sharding={replicated}
+  %optimization_barrier.4 = (f32[4096,4096]{1,0}, s32[4194304]{0}) tuple(%w.2, %checks.1)
+  %optimization_barrier.5 = (f32[4096,4096]{1,0}, s32[4194304]{0}) opt-barrier(%optimization_barrier.4)
+  %optimization_barrier.6 = f32[4096,4096]{1,0} get-tuple-element(%optimization_barrier.5), index=0
+  %optimization_barrier.7 = s32[4194304]{0} get-tuple-element(%optimization_barrier.5), index=1
+  %slice.1 = s32[1]{0} slice(%optimization_barrier.7), slice={[0:1]}
+  %squeeze.1 = s32[] reshape(%slice.1)
+  ROOT %tuple.1 = (f32[4096,4096]{1,0}, s32[]) tuple(%optimization_barrier.6, %squeeze.1)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto executable,
+                          CompileExecutable(kSlowCheckProgram, *client));
+
+  size_t dma_size = 4 * 1024;
+  size_t alignment = 1024;
+  auto host_dma_ptr = xla::AlignedAlloc(alignment, dma_size);
+  TF_EXPECT_OK(client->DmaMap(host_dma_ptr.get(), dma_size));
+  memset(host_dma_ptr.get(), 0, dma_size);
+  Shape shape =
+      ShapeUtil::MakeShape(S32, {static_cast<int64_t>(dma_size * 1024)});
+
+  void* last_opaque_ptr = nullptr;
+  bool clobbered = false;
+  std::vector<std::unique_ptr<xla::PjRtBuffer>> res_lst;
+  for (int32_t i = 0; i < 10; ++i) {
+    TF_ASSERT_OK_AND_ASSIGN(auto transfer_manager,
+                            client->CreateBuffersForAsyncHostToDevice(
+                                {shape}, device->memory_spaces()[0]));
+    auto buffer = transfer_manager->RetrieveBuffer(0);
+    TF_ASSERT_OK_AND_ASSIGN(
+        auto raw_buffer,
+        xla::PjRtRawBuffer::CreateRawAliasOfBuffer(buffer.get()));
+
+    auto* opaque_ptr =
+        tensorflow::down_cast<xla::CommonPjRtRawBuffer*>(raw_buffer.get())
+            ->OpaqueDeviceMemoryDataPointer();
+    if (opaque_ptr == last_opaque_ptr) {
+      clobbered = true;
+    }
+    last_opaque_ptr = opaque_ptr;
+
+    memcpy(host_dma_ptr.get(), &i, sizeof(int32_t));
+    absl::Notification done;
+    TF_EXPECT_OK(transfer_manager->TransferRawDataToSubBuffer(
+        0, host_dma_ptr.get(), 0, dma_size, true,
+        [&done]() { done.Notify(); }));
+    done.WaitForNotification();
+
+    std::vector<std::vector<xla::PjRtBuffer*>> input_ptrs = {
+        {w.get(), buffer.get()}};
+    TF_ASSERT_OK_AND_ASSIGN(
+        auto results,
+        executable->Execute(absl::MakeSpan(input_ptrs), ExecuteOptions()));
+    w = std::move(results[0][0]);
+    res_lst.push_back(std::move(results[0][1]));
+    if (i - 1 > 0) {
+      TF_EXPECT_OK(res_lst[i - 1]->GetReadyFuture().Await());
+    }
+  }
+
+  std::vector<int32_t> expected;
+  std::vector<int32_t> actual;
+  for (int32_t i = 0; i < static_cast<int32_t>(res_lst.size()); ++i) {
+    TF_ASSERT_OK_AND_ASSIGN(auto lit, res_lst[i]->ToLiteralSync());
+    expected.push_back(i);
+    actual.push_back(lit->data<int32_t>()[0]);
+  }
+
+  EXPECT_EQ(expected, actual);
+
+  EXPECT_TRUE(clobbered);
+
+  TF_EXPECT_OK(client->DmaUnmap(host_dma_ptr.get()));
 }
 
 struct ShardedAutotuningTestInfo {
