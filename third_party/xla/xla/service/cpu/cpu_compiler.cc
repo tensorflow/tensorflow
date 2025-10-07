@@ -634,10 +634,14 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
     if (!call_library_for_dot(*instr)) {
       return true;
     }
+    bool use_cost_model = module->config()
+                              .debug_options()
+                              .xla_cpu_experimental_xnn_graph_fusion_mode() !=
+                          DebugOptions::XNN_GRAPH_FUSION_MODE_BYPASS_COST_MODEL;
     return !IsDotSupportedByXnn(instr->dot_dimension_numbers(),
                                 instr->operand(0)->shape(),
                                 instr->operand(1)->shape(), instr->shape(),
-                                target_machine_features)
+                                target_machine_features, use_cost_model)
                 .value_or(false);
   };
 
