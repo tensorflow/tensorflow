@@ -323,6 +323,25 @@ void PullTable::Handle(tsl::RCReference<ConnectionState> state,
   }
 }
 
+void PullTable::Reset() {
+  mu_.lock();
+  auto entries = std::move(entries_);
+  auto paused_fetches_by_uuid = std::move(paused_fetches_);
+  mu_.unlock();
+  // Drop entries without the lock held.
+  for (const auto& paused_fetches : paused_fetches_by_uuid) {
+    for (const auto& paused_fetch : paused_fetches.second) {
+      size_t req_id = paused_fetch.base_req_id;
+      for (uint64_t bid : paused_fetch.req.buffer_ids()) {
+        (void)bid;
+        paused_fetch.state->SendError(req_id, 0, 0, true,
+                                      absl::InternalError("PullTable::Reset"));
+        ++req_id;
+      }
+    }
+  }
+}
+
 class StringVectorPullTableEntry : public PullTable::Entry {
  public:
   explicit StringVectorPullTableEntry(std::vector<std::string> buffers)

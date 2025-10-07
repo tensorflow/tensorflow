@@ -213,6 +213,9 @@ class PullTable {
   static tsl::RCReference<PullTable::Entry> MakeStringEntry(
       std::vector<std::string> buffers);
 
+  // Clears all entries.
+  void Reset();
+
  private:
   absl::Mutex mu_;
   absl::flat_hash_map<uint64_t, tsl::RCReference<Entry>> entries_;

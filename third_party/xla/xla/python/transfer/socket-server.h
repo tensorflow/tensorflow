@@ -45,6 +45,9 @@ class SocketServer {
     pull_table_->AwaitPull(uuid, std::move(handler));
   }
 
+  // Clears outstanding buffers and buffer requests.
+  void Reset() { pull_table_->Reset(); }
+
   class SocketNetworkState;
 
   // Connection state.
