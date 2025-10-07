@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_SERVICE_GPU_MODEL_SYMBOLIC_TILE_ANALYSIS_H_
-#define XLA_SERVICE_GPU_MODEL_SYMBOLIC_TILE_ANALYSIS_H_
+#ifndef XLA_CODEGEN_TILING_SYMBOLIC_TILE_ANALYSIS_H_
+#define XLA_CODEGEN_TILING_SYMBOLIC_TILE_ANALYSIS_H_
 
 #include <cstdint>
 #include <functional>
@@ -41,7 +41,6 @@ limitations under the License.
 #include "xla/service/instruction_fusion.h"
 
 namespace xla {
-namespace gpu {
 
 // "Real root"
 
@@ -313,8 +312,7 @@ class SymbolicTileAnalysis {
   //   case we need tile offset indexing map to decide if we can deduplicate
   //   those instruction.
   absl::StatusOr<TiledHloComputation> ComputeTiledHloInstructions(
-      const ::xla::gpu::Tiling& tiling,
-      bool constraints_are_known_satisfied = false,
+      const ::xla::Tiling& tiling, bool constraints_are_known_satisfied = false,
       bool compute_all_tile_offset_indexing_maps = false) const;
 
   // Returns the roots of the computation in increasing order of their output
@@ -358,7 +356,7 @@ class SymbolicTileAnalysis {
   // Returns `false` if the tiling does not conform to the tiling
   // specification.
   absl::StatusOr<bool> ParametersSatisfyConstraints(
-      const ::xla::gpu::Tiling& tiling) const;
+      const ::xla::Tiling& tiling) const;
 
   // Return the underlying MLIRContext.
   mlir::MLIRContext* GetMLIRContext() const { return context_; };
@@ -434,7 +432,6 @@ absl::StatusOr<std::vector<FlatTiling>> GetFlatTilingsForInputSpace(
     absl::Span<const int64_t> input_space);
 
 }  // namespace detail
-}  // namespace gpu
 }  // namespace xla
 
-#endif  // XLA_SERVICE_GPU_MODEL_SYMBOLIC_TILE_ANALYSIS_H_
+#endif  // XLA_CODEGEN_TILING_SYMBOLIC_TILE_ANALYSIS_H_

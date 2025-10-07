@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/model/symbolic_tile_analysis.h"
+#include "xla/codegen/tiling/symbolic_tile_analysis.h"
 
 #include <algorithm>
 #include <cstddef>
@@ -74,7 +74,6 @@ limitations under the License.
 #include "xla/util.h"
 
 namespace xla {
-namespace gpu {
 
 namespace {
 
@@ -424,11 +423,12 @@ class OrderedUniquePtrValueHashSet {
 bool IsWithinNestedGemmFusion(const HloInstruction* hlo) {
   const HloComputation* computation = hlo->parent();
   if (computation->IsFusionComputation()) {
-    const GpuBackendConfig backend_config =
-        *computation->FusionInstruction()->backend_config<GpuBackendConfig>();
+    const gpu::GpuBackendConfig backend_config =
+        *computation->FusionInstruction()
+             ->backend_config<gpu::GpuBackendConfig>();
     absl::string_view fusion_kind =
         backend_config.fusion_backend_config().kind();
-    return fusion_kind == kTritonNestedGemmFusionKind;
+    return fusion_kind == gpu::kTritonNestedGemmFusionKind;
   }
 
   return false;
@@ -1925,5 +1925,4 @@ absl::StatusOr<std::vector<Tiling>> SymbolicTileAnalysis::GetValidTilings()
   return tilings;
 }
 
-}  // namespace gpu
 }  // namespace xla

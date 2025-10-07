@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/model/symbolic_tile_analysis.h"
+#include "xla/codegen/tiling/symbolic_tile_analysis.h"
 
 #include <cstdint>
 #include <iterator>
@@ -54,7 +54,6 @@ limitations under the License.
 #include "xla/util.h"
 
 namespace xla {
-namespace gpu {
 namespace {
 
 using absl_testing::IsOkAndHolds;
@@ -2676,5 +2675,4 @@ ENTRY main {
 }
 
 }  // namespace
-}  // namespace gpu
 }  // namespace xla
