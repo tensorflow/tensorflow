@@ -399,6 +399,12 @@ TEST_F(GpuKernelTilingTest, ReductionInputTooLarge) {
   }
   )";
   auto hlo_module = ParseAndReturnVerifiedModule(kHloString).value();
+  // Disable autotuning because this is checking for an error returned by the
+  // Native Emitter. With autotuning enabled, the error is that autotuning
+  // itself fails to find a config because all the backends return failure.
+  hlo_module->mutable_config()
+      .mutable_debug_options()
+      .set_xla_gpu_autotune_level(0);
   absl::Status status = CompileToExecutable(std::move(hlo_module)).status();
 
   if (xla::PlatformUtil::CanonicalPlatformName("gpu").value() == "rocm") {
