@@ -2171,6 +2171,11 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "(minimum combined number of elements of both matrices "
       "in non-batch dimensions to be considered for a rewrite)."));
   flag_list->push_back(tsl::Flag(
+      "xla_gpu_use_embeded_device_lib",
+      bool_setter_for(&DebugOptions::set_xla_gpu_use_embeded_device_lib),
+      debug_options->xla_gpu_use_embeded_device_lib(),
+      "Whether to use embeded bitcode library in codegen."));
+  flag_list->push_back(tsl::Flag(
       "xla_gpu_use_memcpy_local_p2p",
       bool_setter_for(&DebugOptions::set_xla_gpu_use_memcpy_local_p2p),
       debug_options->xla_gpu_use_memcpy_local_p2p(),
