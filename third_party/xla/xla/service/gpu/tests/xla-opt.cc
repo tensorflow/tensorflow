@@ -27,6 +27,7 @@ limitations under the License.
 #include "mlir/Target/LLVMIR/Dialect/Builtin/BuiltinToLLVMIRTranslation.h"
 #include "mlir/Target/LLVMIR/Dialect/LLVMIR/LLVMToLLVMIRTranslation.h"
 #include "mlir/Tools/mlir-opt/MlirOptMain.h"
+#include "stablehlo/dialect/StablehloOps.h"
 #include "xla/backends/gpu/codegen/emitters/transforms/passes.h"
 #include "xla/backends/gpu/codegen/triton/compilation_pipeline.h"
 #include "xla/backends/gpu/codegen/triton/ir/triton_xla_ops.h"
@@ -77,7 +78,7 @@ mlir::PassPipelineRegistration<TritonPipelineOptions>
 
 }  // namespace
 
-int main(int argc, char **argv) {
+int main(int argc, char** argv) {
   mlir::DialectRegistry registry;
   mlir::registerAllExtensions(registry);
   registerBuiltinDialectTranslation(registry);
@@ -86,7 +87,8 @@ int main(int argc, char **argv) {
   mlir::func::registerInlinerExtension(registry);
   registerTritonDialects(registry);  // This registers all passes as well.
   registry.insert<mlir::func::FuncDialect, mlir::tensor::TensorDialect,
-                  mlir::triton::xla::XlaTritonDialect, xla::XlaDialect>();
+                  mlir::triton::xla::XlaTritonDialect, xla::XlaDialect,
+                  mlir::stablehlo::StablehloDialect>();
   mlir::triton::xla::registerTritonXlaTransformsPasses();
   xla::emitters::registerTransformsPasses();
   xla::gpu::registerGpuFusionTransformsPasses();

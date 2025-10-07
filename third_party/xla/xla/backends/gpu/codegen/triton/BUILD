@@ -223,6 +223,7 @@ cc_library(
         "@llvm-project//llvm:ir_headers",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
+        "@stablehlo//:stablehlo_ops",
         "@triton//:TritonDialects",
     ] + if_cuda_or_rocm_is_configured([
         ":compilation_pipeline",
@@ -983,6 +984,23 @@ xla_test(
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest",
+    ],
+)
+
+xla_cc_test(
+    name = "fusion_emitter_shared_dialect_test",
+    srcs = if_gpu_is_configured(["fusion_emitter_shared_dialect_test.cc"]),
+    tags = ["no_mac"],
+    deps = [
+        ":test_utils",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/parser:hlo_parser",
+        "//xla/service/gpu/model:block_level_parameters",
+        "//xla/tests:xla_internal_test_main",  # fixdeps: keep
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest",
+        "@llvm-project//mlir:IR",
     ],
 )
 

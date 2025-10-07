@@ -35,6 +35,7 @@ cc_library(
         "generalize_kernel_signature.cc",
         "int4_passes.cc",
         "round_f32_to_tf32_for_tf32_dot_pass.cc",
+        "stablehlo_lower_to_triton.cc",
         "triton_xla_convert_unsupported_types.cc",
         "triton_xla_extract_insert_to_triton_pass.cc",
         "triton_xla_fold_transpose_pass.cc",
@@ -78,6 +79,7 @@ cc_library(
         "@llvm-project//mlir:SCFTransforms",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
+        "@stablehlo//:stablehlo_ops",
         "@triton//:TritonDialects",
     ],
 )

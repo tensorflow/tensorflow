@@ -2048,14 +2048,25 @@ ENTRY entry_computation {
         "num_ctas":"1",
         "num_stages":"1"}}}
 })";
-  TF_EXPECT_OK(
-      CreateTritonIrAndFileCheck(this, kHloText, "triton_computation", R"(
+  mlir::MLIRContext context;
+  TF_ASSERT_OK_AND_ASSIGN(auto shared_dialect_module,
+                          CreateSharedDialectIrAndFileCheck(
+                              context, kHloText, "triton_computation", R"(
+CHECK:     triton_xla.extract
+CHECK-NOT: stablehlo.transpose
+CHECK:     tt.reshape
+CHECK-NOT: stablehlo.transpose
+CHECK:     triton_xla.insert
+          )"));
+
+  TF_ASSERT_OK(LowerSharedDialectIrToTritonAndFileCheck(
+      context, shared_dialect_module.get(), R"(
 CHECK:     triton_xla.extract
 CHECK-NOT: tt.trans
 CHECK:     tt.reshape
 CHECK-NOT: tt.trans
 CHECK:     triton_xla.insert
-)"));
+  )"));
 
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, kExactMatch));
 }
@@ -2079,8 +2090,20 @@ ENTRY entry_computation {
         "num_ctas":"1",
         "num_stages":"1"}}}
 })";
-  TF_EXPECT_OK(
-      CreateTritonIrAndFileCheck(this, kHloText, "triton_computation", R"(
+
+  mlir::MLIRContext context;
+  TF_ASSERT_OK_AND_ASSIGN(auto shared_dialect_module,
+                          CreateSharedDialectIrAndFileCheck(
+                              context, kHloText, "triton_computation", R"(
+CHECK:     triton_xla.extract
+CHECK:     stablehlo.transpose
+CHECK:     tt.reshape
+CHECK-NOT: stablehlo.transpose
+CHECK:     triton_xla.insert
+          )"));
+
+  TF_ASSERT_OK(LowerSharedDialectIrToTritonAndFileCheck(
+      context, shared_dialect_module.get(), R"(
 CHECK:     triton_xla.extract
 CHECK:     tt.trans
 CHECK:     tt.reshape
@@ -2110,14 +2133,25 @@ ENTRY entry_computation {
         "num_ctas":"1",
         "num_stages":"1"}}}
 })";
-  TF_EXPECT_OK(
-      CreateTritonIrAndFileCheck(this, kHloText, "triton_computation", R"(
+  mlir::MLIRContext context;
+  TF_ASSERT_OK_AND_ASSIGN(auto shared_dialect_module,
+                          CreateSharedDialectIrAndFileCheck(
+                              context, kHloText, "triton_computation", R"(
+CHECK:     triton_xla.extract
+CHECK-NOT: stablehlo.transpose
+CHECK:     tt.reshape
+CHECK:     stablehlo.transpose
+CHECK:     triton_xla.insert
+          )"));
+
+  TF_ASSERT_OK(LowerSharedDialectIrToTritonAndFileCheck(
+      context, shared_dialect_module.get(), R"(
 CHECK:     triton_xla.extract
 CHECK-NOT: tt.trans
 CHECK:     tt.reshape
 CHECK:     tt.trans
 CHECK:     triton_xla.insert
-)"));
+  )"));
 
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, kExactMatch));
 }
@@ -2142,14 +2176,25 @@ ENTRY entry_computation {
         "num_ctas":"1",
         "num_stages":"1"}}}
 })";
-  TF_EXPECT_OK(
-      CreateTritonIrAndFileCheck(this, kHloText, "triton_computation", R"(
+  mlir::MLIRContext context;
+  TF_ASSERT_OK_AND_ASSIGN(auto shared_dialect_module,
+                          CreateSharedDialectIrAndFileCheck(
+                              context, kHloText, "triton_computation", R"(
+CHECK:     triton_xla.extract
+CHECK:     stablehlo.transpose
+CHECK:     tt.reshape
+CHECK:     stablehlo.transpose
+CHECK:     triton_xla.insert
+          )"));
+
+  TF_ASSERT_OK(LowerSharedDialectIrToTritonAndFileCheck(
+      context, shared_dialect_module.get(), R"(
 CHECK:     triton_xla.extract
 CHECK:     tt.trans
 CHECK:     tt.reshape
 CHECK:     tt.trans
 CHECK:     triton_xla.insert
-)"));
+  )"));
 
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, kExactMatch));
 }
@@ -2173,14 +2218,25 @@ ENTRY entry_computation {
         "num_ctas":"1",
         "num_stages":"1"}}}
 })";
-  TF_EXPECT_OK(
-      CreateTritonIrAndFileCheck(this, kHloText, "triton_computation", R"(
+  mlir::MLIRContext context;
+  TF_ASSERT_OK_AND_ASSIGN(auto shared_dialect_module,
+                          CreateSharedDialectIrAndFileCheck(
+                              context, kHloText, "triton_computation", R"(
+CHECK:     triton_xla.extract
+CHECK:     stablehlo.transpose
+CHECK-NOT: tt.reshape
+CHECK-NOT: stablehlo.transpose
+CHECK:     triton_xla.insert
+          )"));
+
+  TF_ASSERT_OK(LowerSharedDialectIrToTritonAndFileCheck(
+      context, shared_dialect_module.get(), R"(
 CHECK:     triton_xla.extract
 CHECK:     tt.trans
 CHECK-NOT: tt.reshape
 CHECK-NOT: tt.trans
 CHECK:     triton_xla.insert
-)"));
+  )"));
 
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, kExactMatch));
 }
@@ -2351,11 +2407,20 @@ ENTRY main {
           "num_ctas":"1",
           "num_stages":"1"}}}
 })";
-  TF_EXPECT_OK(
-      CreateTritonIrAndFileCheck(this, kHloText, "triton_computation", R"(
+
+  mlir::MLIRContext context;
+  TF_ASSERT_OK_AND_ASSIGN(auto shared_dialect_module,
+                          CreateSharedDialectIrAndFileCheck(
+                              context, kHloText, "triton_computation", R"(
+CHECK:      %[[TILE:.*]] = triton_xla.extract {{.*}} : tensor<8x4x1xf32>
+CHECK:      stablehlo.transpose %[[TILE]], dims = [2, 0, 1] : (tensor<8x4x1xf32>) -> tensor<1x8x4xf32>
+          )"));
+
+  TF_ASSERT_OK(LowerSharedDialectIrToTritonAndFileCheck(
+      context, shared_dialect_module.get(), R"(
 CHECK:      %[[TILE:.*]] = triton_xla.extract {{.*}} : tensor<8x4x1xf32>
 CHECK:      tt.trans %[[TILE]] {order = array<i32: 2, 0, 1>} : tensor<8x4x1xf32> -> tensor<1x8x4xf32>
-)"));
+  )"));
 
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, kExactMatch));
 }
@@ -2386,14 +2451,25 @@ ENTRY entry_computation {
           "num_ctas":"1",
           "num_stages":"1"}}}
 })";
-  TF_EXPECT_OK(
-      CreateTritonIrAndFileCheck(this, kHloText, "fused_computation", R"(
+  mlir::MLIRContext context;
+  TF_ASSERT_OK_AND_ASSIGN(auto shared_dialect_module,
+                          CreateSharedDialectIrAndFileCheck(
+                              context, kHloText, "fused_computation", R"(
+CHECK:         %[[TILE:.*]] = triton_xla.extract {{.*}} : tensor<15x7x3xf32> to tensor<8x4x1xf32>
+CHECK-NOT:     triton_xla.extract
+CHECK:         %[[ABS:.*]] = math.absf %[[TILE]]
+CHECK:         stablehlo.transpose %[[ABS]], dims = [2, 0, 1] : (tensor<8x4x1xf32>) -> tensor<1x8x4xf32>
+CHECK-COUNT-2: triton_xla.insert
+          )"));
+
+  TF_ASSERT_OK(LowerSharedDialectIrToTritonAndFileCheck(
+      context, shared_dialect_module.get(), R"(
 CHECK:         %[[TILE:.*]] = triton_xla.extract {{.*}} : tensor<15x7x3xf32> to tensor<8x4x1xf32>
 CHECK-NOT:     triton_xla.extract
 CHECK:         %[[ABS:.*]] = math.absf %[[TILE]]
 CHECK:         tt.trans %[[ABS]] {order = array<i32: 2, 0, 1>} : tensor<8x4x1xf32> -> tensor<1x8x4xf32>
 CHECK-COUNT-2: triton_xla.insert
-)"));
+  )"));
 
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, kExactMatch));
 }

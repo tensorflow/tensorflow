@@ -29,7 +29,9 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
+#include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/OwningOpRef.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -59,6 +61,22 @@ absl::Status CreateTritonIrAndFileCheck(HloTestBase* test,
 absl::Status CreateTritonIrAndFileCheck(
     const HloComputation& computation,
     const BlockLevelParameters& block_level_parameters,
+    absl::string_view filecheck_pattern);
+
+absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>>
+CreateSharedDialectIrAndFileCheck(mlir::MLIRContext& context,
+                                  absl::string_view hlo_text,
+                                  absl::string_view triton_fusion_name,
+                                  absl::string_view filecheck_pattern);
+
+absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>>
+CreateSharedDialectIrAndFileCheck(
+    mlir::MLIRContext& context, const HloComputation& computation,
+    const BlockLevelParameters& block_level_parameters,
+    absl::string_view filecheck_pattern);
+
+absl::Status LowerSharedDialectIrToTritonAndFileCheck(
+    mlir::MLIRContext& context, mlir::ModuleOp shared_dialect_module,
     absl::string_view filecheck_pattern);
 
 absl::Status CreateTritonIrAndFileCheckForDot(
