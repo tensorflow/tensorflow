@@ -3727,6 +3727,39 @@ absl::Status SpmdPartitioningVisitor::HandleDynamicSlice(HloInstruction* hlo) {
   return absl::OkStatus();
 }
 
+HloInstruction* PadHelper(SpmdPartitioningVisitor& visitor,
+                          PartitionedHlo operand,
+                          HloInstruction* replicated_padding_value,
+                          const PaddingConfig& padding_config,
+                          const Shape& shape, const HloSharding& sharding) {
+  if (sharding.IsTileMaximal()) {
+    return nullptr;
+  }
+
+  auto reshard_operand =
+      ReshardDataForPad(replicated_padding_value, padding_config, operand,
+                        sharding, visitor.builder());
+
+  if (!reshard_operand.has_value()) {
+    return nullptr;
+  }
+
+  auto* sharded_pad = PadDataFromWindowReshard(
+      *reshard_operand, replicated_padding_value, visitor.builder());
+
+  if (!reshard_operand->dynamic_slice_index_on_output) {
+    return sharded_pad;
+  }
+  auto shard_shape = MakePartitionedShape(shape, sharding);
+
+  auto result =
+      visitor.builder()->AddInstruction(HloInstruction::CreateDynamicSlice(
+          shard_shape, sharded_pad,
+          *reshard_operand->dynamic_slice_index_on_output,
+          shard_shape.dimensions()));
+  return result;
+}
+
 absl::Status SpmdPartitioningVisitor::HandleDynamicUpdateSlice(
     HloInstruction* hlo) {
   if (hlo->sharding().IsTileMaximal()) {
@@ -3748,11 +3781,7 @@ absl::Status SpmdPartitioningVisitor::HandleDynamicUpdateSlice(
   DynamicUpdateSliceAnalysis analysis = AnalyzeDynamicUpdateSlice(hlo);
 
   // Method 1. Replicate the slice dimensions for all involved tensors.
-  // TODO(b/407610806). Add support if all partitioned slice dimensions have
-  // constant indices.
-  if (analysis.method == DynamicUpdateSliceMethod::kDefault ||
-      analysis.method == DynamicUpdateSliceMethod::
-                             kAllPartitionedSliceDimsHaveConstantIndices) {
+  if (analysis.method == DynamicUpdateSliceMethod::kDefault) {
     const HloSharding& input_sharding = hlo->operand(0)->sharding();
     const HloSharding& output_sharding = hlo->sharding();
     const HloSharding& better_sharding =
@@ -3776,105 +3805,176 @@ absl::Status SpmdPartitioningVisitor::HandleDynamicUpdateSlice(
 
   // Method 2. Keep the sharding for input and output since the update is fully
   // contained in a single partition.
-  CHECK(analysis.method == DynamicUpdateSliceMethod::kUpdateOnASinglePartition);
+  if (analysis.method == DynamicUpdateSliceMethod::kUpdateOnASinglePartition) {
+    auto add_hlo = [&](std::unique_ptr<HloInstruction> to_add) {
+      return b_.AddInstruction(std::move(to_add));
+    };
 
-  auto add_hlo = [&](std::unique_ptr<HloInstruction> to_add) {
-    return b_.AddInstruction(std::move(to_add));
-  };
+    // Get partitioned input.
+    const auto& dus_sharding = hlo->sharding();
+    const auto& partitioned_input =
+        GetPartitionedHlo(hlo->operand(0)).Reshard(dus_sharding).hlo();
 
-  // Get partitioned input.
-  const auto& dus_sharding = hlo->sharding();
-  const auto& partitioned_input =
-      GetPartitionedHlo(hlo->operand(0)).Reshard(dus_sharding).hlo();
+    auto update_sharding =
+        hlo_sharding_util::PartiallyReplicateTiledShardingOnDims(
+            dus_sharding, analysis.slice_dims);
 
-  auto update_sharding =
-      hlo_sharding_util::PartiallyReplicateTiledShardingOnDims(
-          dus_sharding, analysis.slice_dims);
+    HloInstruction* replicate_update =
+        GetPartitionedHlo(hlo->operand(1)).Reshard(update_sharding).hlo();
 
-  // TODO(wangtao): use collective permute for sharded update.
-  HloInstruction* replicate_update =
-      GetPartitionedHlo(hlo->operand(1)).Reshard(update_sharding).hlo();
+    const auto& partitioned_shape = partitioned_input->shape();
+    auto partition_ordinals = MakeTiledPartitionOrdinals(
+        hlo->sharding(), MakePartitioningState().partition_id, &b_);
+    HloInstruction* all_dims_within_partition = add_hlo(
+        HloInstruction::CreateConstant(LiteralUtil::CreateR0<bool>(true)));
 
-  const auto& partitioned_shape = partitioned_input->shape();
-  auto partition_ordinals = MakeTiledPartitionOrdinals(
-      hlo->sharding(), MakePartitioningState().partition_id, &b_);
-  HloInstruction* all_dims_within_partition = add_hlo(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<bool>(true)));
+    for (int64_t dim : analysis.partitioned_slice_dims) {
+      // Calculate per partition size.
+      const int64_t per_partition_size = partitioned_shape.dimensions(dim);
 
-  for (int64_t dim : analysis.partitioned_slice_dims) {
-    // Calculate per partition size.
-    const int64_t per_partition_size = partitioned_shape.dimensions(dim);
+      // within_partition = (offset >= partition_id * per_partition_size) &&
+      //                    (offset < (partition_id + 1) * per_partition_size)
+      const Shape& compare_shape =
+          ShapeUtil::ChangeElementType(partition_id_->shape(), PRED);
+      auto per_partition_size_hlo = add_hlo(HloInstruction::CreateConstant(
+          LiteralUtil::CreateR0<int>(per_partition_size)));
+      const Shape& offset_shape = per_partition_size_hlo->shape();
+      const Shape& index_shape = new_indices[dim]->shape();
+      if (offset_shape.element_type() != index_shape.element_type()) {
+        new_indices[dim] = add_hlo(HloInstruction::CreateConvert(
+            ShapeUtil::ChangeElementType(index_shape,
+                                         offset_shape.element_type()),
+            new_indices[dim]));
+      }
+      auto partition_offset = add_hlo(HloInstruction::CreateBinary(
+          offset_shape, HloOpcode::kMultiply, partition_ordinals[dim],
+          per_partition_size_hlo));
+      // offset >= partition_id * per_partition_size
+      auto offset_ge = add_hlo(HloInstruction::CreateCompare(
+          compare_shape, new_indices[dim], partition_offset,
+          ComparisonDirection::kGe));
+      // offset < (partition_id + 1) * per_partition_size
+      auto offset_lt = add_hlo(HloInstruction::CreateCompare(
+          compare_shape, new_indices[dim],
+          add_hlo(HloInstruction::CreateBinary(
+              offset_shape, HloOpcode::kMultiply,
+              add_hlo(HloInstruction::CreateBinary(
+                  offset_shape, HloOpcode::kAdd, partition_ordinals[dim],
+                  add_hlo(HloInstruction::CreateConstant(
+                      LiteralUtil::CreateR0<int>(1))))),
+              per_partition_size_hlo)),
+          ComparisonDirection::kLt));
+      auto update_within_partition = add_hlo(HloInstruction::CreateBinary(
+          compare_shape, HloOpcode::kAnd, offset_ge, offset_lt));
 
-    // within_partition = (offset >= partition_id * per_partition_size) &&
-    //                    (offset < (partition_id + 1) * per_partition_size)
-    const Shape& compare_shape =
-        ShapeUtil::ChangeElementType(partition_id_->shape(), PRED);
-    auto per_partition_size_hlo = add_hlo(HloInstruction::CreateConstant(
-        LiteralUtil::CreateR0<int>(per_partition_size)));
-    const Shape& offset_shape = per_partition_size_hlo->shape();
-    const Shape& index_shape = new_indices[dim]->shape();
-    if (offset_shape.element_type() != index_shape.element_type()) {
-      new_indices[dim] = add_hlo(HloInstruction::CreateConvert(
-          ShapeUtil::ChangeElementType(index_shape,
-                                       offset_shape.element_type()),
-          new_indices[dim]));
+      all_dims_within_partition = add_hlo(HloInstruction::CreateBinary(
+          compare_shape, HloOpcode::kAnd, all_dims_within_partition,
+          update_within_partition));
+
+      // Calculate offset.
+      // slice dim offset = within_partition ?
+      //                    offset - partition_id * per_partition_size : 0
+      new_indices[dim] = add_hlo(HloInstruction::CreateTernary(
+          new_indices[dim]->shape(), HloOpcode::kSelect,
+          update_within_partition,
+          add_hlo(HloInstruction::CreateBinary(
+              new_indices[dim]->shape(), HloOpcode::kSubtract, new_indices[dim],
+              partition_offset)),
+          add_hlo(
+              HloInstruction::CreateConstant(LiteralUtil::CreateR0<int>(0)))));
+      if (new_indices[dim]->shape().element_type() !=
+          index_shape.element_type()) {
+        new_indices[dim] = add_hlo(HloInstruction::CreateConvert(
+            ShapeUtil::ChangeElementType(new_indices[dim]->shape(),
+                                         index_shape.element_type()),
+            new_indices[dim]));
+      }
     }
-    auto partition_offset = add_hlo(HloInstruction::CreateBinary(
-        offset_shape, HloOpcode::kMultiply, partition_ordinals[dim],
-        per_partition_size_hlo));
-    // offset >= partition_id * per_partition_size
-    auto offset_ge = add_hlo(HloInstruction::CreateCompare(
-        compare_shape, new_indices[dim], partition_offset,
-        ComparisonDirection::kGe));
-    // offset < (partition_id + 1) * per_partition_size
-    auto offset_lt = add_hlo(HloInstruction::CreateCompare(
-        compare_shape, new_indices[dim],
-        add_hlo(HloInstruction::CreateBinary(
-            offset_shape, HloOpcode::kMultiply,
-            add_hlo(HloInstruction::CreateBinary(
-                offset_shape, HloOpcode::kAdd, partition_ordinals[dim],
-                add_hlo(HloInstruction::CreateConstant(
-                    LiteralUtil::CreateR0<int>(1))))),
-            per_partition_size_hlo)),
-        ComparisonDirection::kLt));
-    auto update_within_partition = add_hlo(HloInstruction::CreateBinary(
-        compare_shape, HloOpcode::kAnd, offset_ge, offset_lt));
 
-    all_dims_within_partition = add_hlo(HloInstruction::CreateBinary(
-        compare_shape, HloOpcode::kAnd, all_dims_within_partition,
-        update_within_partition));
-
-    // Calculate offset.
-    // slice dim offset = within_partition ?
-    //                    offset - partition_id * per_partition_size : 0
-    new_indices[dim] = add_hlo(HloInstruction::CreateTernary(
-        new_indices[dim]->shape(), HloOpcode::kSelect, update_within_partition,
-        add_hlo(HloInstruction::CreateBinary(
-            new_indices[dim]->shape(), HloOpcode::kSubtract, new_indices[dim],
-            partition_offset)),
-        add_hlo(
-            HloInstruction::CreateConstant(LiteralUtil::CreateR0<int>(0)))));
-    if (new_indices[dim]->shape().element_type() !=
-        index_shape.element_type()) {
-      new_indices[dim] = add_hlo(HloInstruction::CreateConvert(
-          ShapeUtil::ChangeElementType(new_indices[dim]->shape(),
-                                       index_shape.element_type()),
-          new_indices[dim]));
-    }
+    // Create dynamic update slice.
+    auto dus = add_hlo(HloInstruction::CreateDynamicUpdateSlice(
+        partitioned_shape, partitioned_input, replicate_update, new_indices));
+    SetPartitionedHlo(hlo, [&]() {
+      // Select if update is needed.
+      return add_hlo(HloInstruction::CreateTernary(
+          dus->shape(), HloOpcode::kSelect,
+          add_hlo(HloInstruction::CreateBroadcast(
+              ShapeUtil::ChangeElementType(dus->shape(), PRED),
+              all_dims_within_partition, {})),
+          dus, partitioned_input));
+    });
+    return absl::OkStatus();
   }
+  // Method 3: All partitioned slice dimensions have compile-time constant
+  // indices.
+  if (analysis.method ==
+      DynamicUpdateSliceMethod::kAllPartitionedSliceDimsHaveConstantIndices) {
+    auto add_hlo = [&](std::unique_ptr<HloInstruction> to_add) {
+      return b_.AddInstruction(std::move(to_add));
+    };
+    PaddingConfig padding_config;
+    for (int64_t i = 0; i < hlo->shape().dimensions().size(); ++i) {
+      auto dim = padding_config.add_dimensions();
+      dim->set_interior_padding(0);
 
-  // Create dynamic update slice.
-  auto dus = add_hlo(HloInstruction::CreateDynamicUpdateSlice(
-      partitioned_shape, partitioned_input, replicate_update, new_indices));
-  SetPartitionedHlo(hlo, [&]() {
-    // Select if update is needed.
-    return add_hlo(HloInstruction::CreateTernary(
-        dus->shape(), HloOpcode::kSelect,
-        add_hlo(HloInstruction::CreateBroadcast(
-            ShapeUtil::ChangeElementType(dus->shape(), PRED),
-            all_dims_within_partition, {})),
-        dus, partitioned_input));
-  });
+      CHECK(hlo->operand(i + 2)->IsConstant());
+
+      int64_t slice_size = hlo->operand(1)->shape().dimensions(i);
+
+      const PrimitiveType elemType =
+          hlo->operand(i + 2)->shape().element_type();
+      int64_t start_index =
+          elemType == S64 ? hlo->operand(i + 2)->literal().Get<int64_t>({})
+                          : hlo->operand(i + 2)->literal().Get<int>({});
+      int64_t end_index = start_index + slice_size;
+      int64_t padding_high = hlo->shape().dimensions(i) - end_index;
+      dim->set_edge_padding_low(start_index);
+      dim->set_edge_padding_high(padding_high);
+    }
+
+    const Shape operand_pred_shape =
+        ShapeUtil::ChangeElementType(hlo->shape(), PRED);
+    const Shape update_pred_shape =
+        ShapeUtil::ChangeElementType(hlo->operand(1)->shape(), PRED);
+    const Shape sharded_update_pred_shape =
+        MakePartitionedShape(update_pred_shape, hlo->sharding());
+
+    auto zeroOperand = CreateZero(sharded_update_pred_shape, &b_);
+    zeroOperand->set_sharding(hlo->sharding());
+
+    auto paddingValue = add_hlo(
+        HloInstruction::CreateConstant(LiteralUtil::CreateR0<bool>(true)));
+    HloInstruction* maskOp = PadHelper(
+        *this,
+        PartitionedHlo(zeroOperand, update_pred_shape, MakePartitioningState()),
+        paddingValue, padding_config, operand_pred_shape, hlo->sharding());
+    if (!maskOp) {
+      maskOp = add_hlo(HloInstruction::CreatePad(
+          operand_pred_shape, zeroOperand, paddingValue, padding_config));
+      maskOp->set_sharding(hlo->sharding());
+    }
+
+    auto zeroElemOp = add_hlo(HloInstruction::CreateConstant(
+        LiteralUtil::Zero(hlo->shape().element_type())));
+    HloInstruction* newOperand =
+        PadHelper(*this, GetPartitionedHlo(hlo->operand(1)), zeroElemOp,
+                  padding_config, hlo->shape(), hlo->sharding());
+    if (!newOperand) {
+      newOperand = add_hlo(HloInstruction::CreatePad(
+          hlo->shape(), GetPartitionedHlo(hlo->operand(1)).hlo(), zeroElemOp,
+          padding_config));
+      newOperand->set_sharding(hlo->sharding());
+    }
+
+    auto shard_result_shape =
+        MakePartitionedShape(hlo->shape(), hlo->sharding());
+    auto result = add_hlo(HloInstruction::CreateTernary(
+        shard_result_shape, HloOpcode::kSelect, maskOp,
+        GetPartitionedHlo(hlo->operand(0)).hlo(), newOperand));
+    result->set_sharding(hlo->sharding());
+    SetPartitionedHlo(hlo, [&]() -> HloInstruction* { return result; });
+    return absl::OkStatus();
+  }
   return absl::OkStatus();
 }
 
@@ -4032,29 +4132,13 @@ absl::Status SpmdPartitioningVisitor::HandleInfeed(HloInstruction* hlo) {
 }
 
 absl::Status SpmdPartitioningVisitor::HandlePad(HloInstruction* hlo) {
-  if (hlo->sharding().IsTileMaximal()) {
+  auto result = PadHelper(*this, GetPartitionedHlo(hlo->operand(0)),
+                          GetPartitionedHlo(hlo->operand(1)).Replicate().hlo(),
+                          hlo->padding_config(), hlo->shape(), hlo->sharding());
+  if (!result) {
     return DefaultAction(hlo);
   }
-  auto lhs = GetPartitionedHlo(hlo->operand(0));
-  auto replicated_rhs = GetPartitionedHlo(hlo->operand(1)).Replicate().hlo();
-  auto reshard_operand = ReshardDataForPad(
-      replicated_rhs, hlo->padding_config(), lhs, hlo->sharding(), &b_);
-  if (!reshard_operand.has_value()) {
-    return DefaultAction(hlo);
-  }
-  auto* sharded_pad =
-      PadDataFromWindowReshard(*reshard_operand, replicated_rhs, &b_);
-
-  SetPartitionedHlo(hlo, [&]() {
-    if (!reshard_operand->dynamic_slice_index_on_output) {
-      return sharded_pad;
-    }
-    auto shard_shape = MakePartitionedShape(hlo->shape(), hlo->sharding());
-    return b_.AddInstruction(HloInstruction::CreateDynamicSlice(
-        shard_shape, sharded_pad,
-        *reshard_operand->dynamic_slice_index_on_output,
-        shard_shape.dimensions()));
-  });
+  SetPartitionedHlo(hlo, [&]() { return result; });
   return absl::OkStatus();
 }
 

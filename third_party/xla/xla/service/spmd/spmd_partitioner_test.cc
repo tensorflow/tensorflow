@@ -8085,6 +8085,89 @@ ENTRY entry {
                     op::Shape("s32[128,32]")));
 }
 
+TEST_P(SpmdPartitioningTest, DynamicUpdateSliceOfConstantInRange) {
+  absl::string_view hlo_string = R"(
+  HloModule module
+
+  ENTRY entry {
+    %input = s32[128,64] parameter(0), sharding={devices=[1,2]0,1}
+    %update = s32[10,10] parameter(1), sharding={devices=[1,2]0,1}
+    %c59 = s32[] constant(59)
+    %c27 = s32[] constant(27)
+    ROOT %dynamic-update-slice = s32[128,64]
+      dynamic-update-slice(%input, %update, %c59, %c27),
+      sharding={devices=[1,2]0,1}
+  })";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/2));
+
+  const auto root = module->entry_computation()->root_instruction();
+  auto input = AllOf(op::Parameter(0), op::Shape("s32[128,32]"));
+  EXPECT_THAT(
+      root,
+      AllOf(op::Select(op::Pad(op::Select(_, op::DynamicSlice(_, _, _), _),
+                               op::Constant()),
+                       input,
+                       op::Pad(op::DynamicSlice(op::Pad(_, _), op::Constant(),
+                                                op::Multiply(_, _)),
+                               op::Constant())),
+            op::Shape("s32[128,32]")));
+}
+
+TEST_P(SpmdPartitioningTest, DynamicUpdateSliceOfConstantOutOfRange) {
+  absl::string_view hlo_string = R"(
+  HloModule module
+
+  ENTRY entry {
+    %input = s32[128,64] parameter(0), sharding={devices=[1,2]0,1}
+    %update = s32[128,20] parameter(1), sharding={devices=[1,2]0,1}
+    %c20 = s32[] constant(20)
+    %c60 = s32[] constant(60)
+    ROOT %dynamic-update-slice = s32[128,64]
+      dynamic-update-slice(%input, %update, %c20, %c60),
+      sharding={devices=[1,2]0,1}
+  })";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/2));
+
+  const auto root = module->entry_computation()->root_instruction();
+  auto input = AllOf(op::Parameter(0), op::Shape("s32[128,32]"));
+  EXPECT_THAT(
+      root,
+      AllOf(op::Select(op::Pad(op::Select(_, op::DynamicSlice(_, _, _), _),
+                               op::Constant()),
+                       input,
+                       op::Pad(op::DynamicSlice(op::Pad(_, _), op::Constant(),
+                                                op::Multiply(_, _)),
+                               op::Constant())),
+            op::Shape("s32[128,32]")));
+}
+
+TEST_P(SpmdPartitioningTest, DynamicUpdateSliceSingleDimension) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %input = s32[16] parameter(0), sharding={devices=[4]0,1,2,3}
+  %update = s32[8] parameter(1), sharding={devices=[4]0,1,2,3}
+  %c3 = s32[] constant(3)
+  ROOT %dynamic-update-slice = s32[16]
+    dynamic-update-slice(%input, %update, %c3),
+    sharding={devices=[4]0,1,2,3}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/4));
+
+  const auto root = module->entry_computation()->root_instruction();
+  auto input = AllOf(op::Parameter(0), op::Shape("s32[16]"));
+  EXPECT_THAT(root, AllOf(op::Select(op::Select(_, _, _), input,
+                                     op::DynamicSlice(_, _)),
+                          op::Shape("s32[4]")));
+}
+
 TEST_P(SpmdPartitioningTest, DynamicUpdateSliceAlongPartitionedDimension2) {
   absl::string_view hlo_string = R"(
 HloModule module
@@ -14932,11 +15015,11 @@ ENTRY entry {
                           PartitionComputation(hlo_string, /*num_devices=*/8));
 
   XLA_VLOG_LINES(1, module->ToString());
-  EXPECT_THAT(
-      module->entry_computation()->root_instruction(),
-      op::Copy(op::DynamicSlice(
-          AllOf(op::DynamicUpdateSlice(), op::Shape("bf16[8,224, 224,384]")), _,
-          _, _, _)));
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              AllOf(op::Copy(op::Select(op::Select(_, _, _),
+                                        op::DynamicSlice(_, _, _, _, _),
+                                        op::DynamicSlice(_, _, _, _, _))),
+                    op::Shape("bf16[8,112,112,384]")));
 }
 
 TEST_P(SpmdPartitioningTest, CustomCallManualSharding) {
