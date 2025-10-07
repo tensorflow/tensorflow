@@ -355,11 +355,18 @@ absl::StatusOr<Autotuner::ConfigResult> Autotuner::PickBestConfig(
     absl::Duration duration_limit =
         min_duration +
         absl::Microseconds(autotune_config_.scratch_bytes_window_size_us);
+    absl::Duration min_duration_with_optimzed_scratch_bytes =
+        absl::InfiniteDuration();
     for (ConfigResult& result : results) {
-      if (!result.failure.has_value() && result.duration <= duration_limit &&
-          result.scratch_bytes < min_scratch_bytes) {
-        best_result = &result;
-        min_scratch_bytes = result.scratch_bytes;
+      if (!result.failure.has_value() && result.duration <= duration_limit) {
+        if (result.scratch_bytes < min_scratch_bytes) {
+          min_scratch_bytes = result.scratch_bytes;
+          min_duration_with_optimzed_scratch_bytes = result.duration;
+          best_result = &result;
+        } else if (result.scratch_bytes == min_scratch_bytes &&
+                   result.duration < min_duration_with_optimzed_scratch_bytes) {
+          best_result = &result;
+        }
       }
     }
   }

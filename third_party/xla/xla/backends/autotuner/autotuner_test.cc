@@ -469,16 +469,18 @@ TEST_F(AutotunerTest, AutotuneWithBufferCheck) {
 TEST_F(AutotunerTest, AutotuneWithScratchBytesOptimization) {
   std::vector<std::unique_ptr<BackendConfig>> configs;
   configs.push_back(GetTestConfig("config_more_time_less_scratch"));
-  configs.push_back(GetTestConfig("config_less_time_more_scratch"));
+  configs.push_back(GetTestConfig("config_less_time_less_scratch"));
+  configs.push_back(GetTestConfig("config_least_time_most_scratch"));
   auto backend_1 = std::make_unique<MockCodegenBackend>();
   EXPECT_CALL(*backend_1, GetSupportedConfigs)
       .WillOnce(Return(std::move(configs)));
   EXPECT_CALL(*backend_1, Compile(_, _))
       .WillOnce(Return(std::unique_ptr<Executable>()))
+      .WillOnce(Return(std::unique_ptr<Executable>()))
       .WillOnce(Return(std::unique_ptr<Executable>()));
 
   EXPECT_CALL(*backend_1,
-              ApplyConfig(_, ConfigMatcher("config_more_time_less_scratch")))
+              ApplyConfig(_, ConfigMatcher("config_less_time_less_scratch")))
       .Times(1)
       .WillRepeatedly(Return(absl::OkStatus()));
 
@@ -487,12 +489,17 @@ TEST_F(AutotunerTest, AutotuneWithScratchBytesOptimization) {
       .WillOnce(Return(std::make_unique<InputBuffers>()));
   EXPECT_CALL(*profiler, Profile(_, _))
       .WillOnce(Return(ProfileResult({
-          /*duration=*/absl::Microseconds(2),
+          /*duration=*/absl::Microseconds(5),
           /*output_buffer=*/std::nullopt,
           /*scratch_bytes=*/100,
       })))
       .WillOnce(Return(ProfileResult({
-          /*duration=*/absl::Microseconds(1),
+          /*duration=*/absl::Microseconds(3),
+          /*output_buffer=*/std::nullopt,
+          /*scratch_bytes=*/100,
+      })))
+      .WillOnce(Return(ProfileResult({
+          /*duration=*/absl::Microseconds(2),
           /*output_buffer=*/std::nullopt,
           /*scratch_bytes=*/200,
       })));
