@@ -596,6 +596,10 @@ tsl::Future<BackendInterface::Response> IfrtBackend::ProcessInternal(
       return HandleLoadedExecutableMetadataRequest(std::move(request));
     case IfrtRequest::RequestCase::kLoadedExecutableCostAnalysisRequest:
       return HandleLoadedExecutableCostAnalysisRequest(std::move(request));
+    case IfrtRequest::RequestCase::
+        kLoadedExecutableHumanReadableProgramTextRequest:
+      return HandleLoadedExecutableHumanReadableProgramTextRequest(
+          std::move(request));
     case IfrtRequest::RequestCase::kLoadedExecutableExecuteRequest: {
       asr.emplace(
           request->loaded_executable_execute_request().result_array_handle(),
@@ -1648,6 +1652,34 @@ IfrtBackend::HandleLoadedExecutableCostAnalysisRequest(
   } else {
     *ifrt_resp->mutable_loaded_executable_cost_analysis_response()
          ->mutable_status() = tsl::StatusToProto(cost_analysis.status());
+  }
+  return tsl::Future<BackendInterface::Response>(std::move(ifrt_resp));
+}
+
+tsl::Future<BackendInterface::Response>
+IfrtBackend::HandleLoadedExecutableHumanReadableProgramTextRequest(
+    std::unique_ptr<IfrtRequest> request) {
+  absl::StatusOr<std::shared_ptr<LoadedExecutableWithInfo>> executable_info =
+      GetLoadedExecutable(
+          request->loaded_executable_human_readable_program_text_request()
+              .loaded_executable_handle());
+
+  if (!executable_info.ok()) {
+    return tsl::Future<BackendInterface::Response>(executable_info.status());
+  }
+
+  auto result =
+      executable_info->get()->executable->GetHumanReadableProgramText();
+
+  std::unique_ptr<IfrtResponse> ifrt_resp =
+      NewIfrtResponse(request->request_metadata().op_id());
+
+  if (result.ok()) {
+    *ifrt_resp->mutable_loaded_executable_human_readable_program_text_response()
+         ->mutable_human_readable_program_text() = *std::move(result);
+  } else {
+    *ifrt_resp->mutable_loaded_executable_human_readable_program_text_response()
+         ->mutable_status() = tsl::StatusToProto(result.status());
   }
   return tsl::Future<BackendInterface::Response>(std::move(ifrt_resp));
 }

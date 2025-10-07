@@ -69,6 +69,7 @@ using ::absl_testing::StatusIs;
 using ::testing::AnyOf;
 using ::testing::ElementsAre;
 using ::testing::ElementsAreArray;
+using ::testing::HasSubstr;
 using ::testing::IsEmpty;
 using ::testing::Not;
 using ::testing::Optional;
@@ -233,14 +234,8 @@ module @add_sub attributes {
                     StatusIs(absl::StatusCode::kUnimplemented)));
 }
 
-TEST_P(LoadedExecutableImplTest, GetHloModules) {
-  bool serialize = GetParam();
-
-  if (serialize) {
-    GTEST_SKIP()
-        << "GetHloModules is not supported for serialized executables.";
-  }
-
+absl::StatusOr<const LoadedExecutableRef> SimpleAddExecutable(Client* client,
+                                                              bool serialize) {
   static constexpr absl::string_view kModule = R"(
 module @add attributes {
   mhlo.num_replicas = 1 : i32,
@@ -253,14 +248,17 @@ module @add attributes {
     return %0 : tensor<2x3xi32>
   }
 })";
-  TF_ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
   Compiler* compiler = client->GetDefaultCompiler();
+  return CompileOnDevices(client, compiler, kModule,
+                          {client->addressable_devices().front()},
+                          /*replicated=*/false, serialize);
+}
 
+TEST_P(LoadedExecutableImplTest, GetHloModules) {
+  TF_ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
   TF_ASSERT_OK_AND_ASSIGN(
       const LoadedExecutableRef executable,
-      CompileOnDevices(client.get(), compiler, kModule,
-                       {client->addressable_devices().front()},
-                       /*replicated=*/false, serialize));
+      SimpleAddExecutable(client.get(), /*serialize=*/GetParam()));
 
   TF_ASSERT_OK_AND_ASSIGN(
       const std::vector<std::shared_ptr<xla::HloModule>> hlo_modules,
@@ -269,33 +267,26 @@ module @add attributes {
   EXPECT_EQ(hlo_modules.front()->name(), "add");
 }
 
-TEST_P(LoadedExecutableImplTest, Analysis) {
-  bool serialize = GetParam();
+TEST_P(LoadedExecutableImplTest, ProgramText) {
+  TF_ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
+  TF_ASSERT_OK_AND_ASSIGN(
+      const LoadedExecutableRef executable,
+      SimpleAddExecutable(client.get(), /*serialize=*/GetParam()));
 
-  if (serialize) {
+  TF_ASSERT_OK_AND_ASSIGN(const auto program_text,
+                          executable->GetHumanReadableProgramText());
+  EXPECT_THAT(program_text, HasSubstr("add."));
+}
+
+TEST_P(LoadedExecutableImplTest, Analysis) {
+  if (const bool serialize = GetParam(); serialize) {
     GTEST_SKIP() << "Analysis is not supported for serialized executables.";
   }
 
-  static constexpr absl::string_view kModule = R"(
-module @add attributes {
-  mhlo.num_replicas = 1 : i32,
-  mhlo.num_partitions = 2 : i32
-} {
-  func.func @main(
-    %arg0: tensor<2x3xi32> {mhlo.sharding = "{devices=[2,1]<=[2]}"}
-  ) -> (tensor<2x3xi32> {mhlo.sharding = "{devices=[2,1]<=[2]}"}) {
-    %0 = stablehlo.add %arg0, %arg0 : tensor<2x3xi32>
-    return %0 : tensor<2x3xi32>
-  }
-})";
   TF_ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
-  Compiler* compiler = client->GetDefaultCompiler();
-
   TF_ASSERT_OK_AND_ASSIGN(
       const LoadedExecutableRef executable,
-      CompileOnDevices(client.get(), compiler, kModule,
-                       {client->addressable_devices().front()},
-                       /*replicated=*/false, serialize));
+      SimpleAddExecutable(client.get(), /*serialize=*/false));
 
   TF_ASSERT_OK_AND_ASSIGN(const xla::CompiledMemoryStats compiled_memory_stats,
                           executable->GetCompiledMemoryStats());

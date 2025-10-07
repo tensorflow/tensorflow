@@ -110,3 +110,9 @@
 *   Added date: 2025-10-01
 *   Changes:
     *   Added support for `LoadedExecutable::GetCostAnalysis()`.
+
+## Version kLoadedExecutableGetHumanReadableProgramText
+
+*   Added date: 2025-10-01
+*   Changes:
+    *   Added support for `LoadedExecutable::GetHumanReadableProgramText()`.

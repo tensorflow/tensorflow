@@ -37,7 +37,7 @@ message IfrtProxyVersion {
   int32 ifrt_serdes_version_number = 2;
 }
 
-// Next ID: 29.
+// Next ID: 30.
 message IfrtRequest {
   RequestMetadata request_metadata = 1;
 
@@ -75,6 +75,8 @@ message IfrtRequest {
     LoadedExecutableExecuteRequest loaded_executable_execute_request = 15;
     LoadedExecutableCostAnalysisRequest
         loaded_executable_cost_analysis_request = 28;
+    LoadedExecutableHumanReadableProgramTextRequest
+        loaded_executable_human_readable_program_text_request = 29;
     LoadedExecutableDeleteRequest loaded_executable_delete_request = 16
         [deprecated = true];
     LoadedExecutableIsDeletedRequest loaded_executable_is_deleted_request = 17
@@ -94,7 +96,7 @@ message IfrtRequest {
   reserved 10;
 }
 
-// Next ID: 29.
+// Next ID: 30.
 message IfrtResponse {
   ResponseMetadata response_metadata = 1;
 
@@ -132,6 +134,8 @@ message IfrtResponse {
     LoadedExecutableExecuteResponse loaded_executable_execute_response = 15;
     LoadedExecutableCostAnalysisResponse
         loaded_executable_cost_analysis_response = 28;
+    LoadedExecutableHumanReadableProgramTextResponse
+        loaded_executable_human_readable_program_text_response = 29;
     LoadedExecutableDeleteResponse loaded_executable_delete_response = 16;
     LoadedExecutableIsDeletedResponse loaded_executable_is_deleted_response =
         17;
@@ -517,6 +521,19 @@ message LoadedExecutableCostAnalysisResponse {
   oneof result {
     tensorflow.StatusProto status = 1;
     AttributeMapProto attributes = 2;
+  }
+}
+
+// Queries the value of `LoadedExecutable::GetHumanReadableProgramText()`.
+// Separate from LoadedExecutableMetadataRequest since it has non-trivial cost.
+message LoadedExecutableHumanReadableProgramTextRequest {
+  fixed64 loaded_executable_handle = 1;
+}
+
+message LoadedExecutableHumanReadableProgramTextResponse {
+  oneof result {
+    tensorflow.StatusProto status = 1;
+    string human_readable_program_text = 2;
   }
 }
 
