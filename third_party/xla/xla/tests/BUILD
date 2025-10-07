@@ -2798,6 +2798,7 @@ xla_test(
         "//xla/service:hlo_module_config",
         "//xla/service:hlo_runner",
         "//xla/service:hlo_runner_interface",
+        "//xla/service:pattern_matcher",
         "//xla/service:platform_util",
         "//xla/service/gpu:backend_configs_cc",
         "//xla/service/gpu:gpu_memory_space_assignment",
