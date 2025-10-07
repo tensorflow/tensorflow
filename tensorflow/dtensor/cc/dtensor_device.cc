@@ -152,9 +152,10 @@ class DTensorDevice {
 
     // DTensor uses multi-client setup which doesn't use remote eager, so we can
     // enable eager async execution in ParallelDevice.
-    std::unique_ptr<tensorflow::parallel_device::ParallelDevice> parallel(
-        new tensorflow::parallel_device::ParallelDevice(
-            underlying_devices, is_async_, in_flight_nodes_limit_));
+    std::unique_ptr<tensorflow::parallel_device::ParallelDevice> parallel =
+        std::make_unique<tensorflow::parallel_device::ParallelDevice>(
+
+            underlying_devices, is_async_, in_flight_nodes_limit_);
 
     if (is_host_mesh) {
       std::string& tpu_host_mesh = Mesh::tpu_host_mesh();
