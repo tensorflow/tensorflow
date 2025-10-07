@@ -298,7 +298,9 @@ TEST(FutureTest, MapUnusedResult) {
   auto [promise, future] = Future<int>::MakePromise();
 
   bool called = false;
-  future.Map([&](int) {
+  // We intentionally drop returned future to test that promise will not
+  // execute map functor.
+  (void)future.Map([&](int) {
     called = true;
     return 2;
   });
@@ -310,7 +312,9 @@ TEST(FutureTest, MapStatusUnusedResult) {
   auto [promise, future] = Future<>::MakePromise();
 
   bool called = false;
-  future.Map([&]() {
+  // We intentionally drop returned future to test that promise will not
+  // execute map functor.
+  (void)future.Map([&]() {
     called = true;
     return 2;
   });
@@ -456,7 +460,9 @@ TEST(FutureTest, TryMapUnusedResult) {
   auto [promise, future] = Future<int>::MakePromise();
 
   bool called = false;
-  future.Map([&](int) -> absl::StatusOr<int> {
+  // We intentionally drop returned future to test that promise will not
+  // execute map functor.
+  (void)future.Map([&](int) -> absl::StatusOr<int> {
     called = true;
     return 2;
   });

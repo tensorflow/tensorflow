@@ -55,7 +55,7 @@ namespace tsl {
 // 4. Future<> is a stateless type that can be used to represent a Future that
 //    doesn't have a value type, and is used to signal an event completion.
 template <class T = void>
-class Future;
+class [[nodiscard]] Future;
 
 // Returns a `Future` that will be successful if all `futures` complete
 // successfully, or return a first encountered error.
@@ -316,7 +316,7 @@ class FutureBase : public FutureMoveControl<is_move_only> {
   // completes with an error, the returned future will also be an error.
   //
   // This function defined out of line as it requires Future<> definition.
-  [[nodiscard]] Future<> GetReadyFuture() const;
+  Future<> GetReadyFuture() const;
 
   // Registers callback to be called once the promise is ready, with the final
   // value.
@@ -441,7 +441,7 @@ class Future : public internal::FutureBase<absl::StatusOr<T>> {
             std::enable_if_t<std::is_constructible_v<T, U>>* = nullptr>
   explicit Future(U value) : Base(std::forward<U>(value)) {}
 
-  class Promise : public Base::Promise {
+  class [[nodiscard]] Promise : public Base::Promise {
    public:
     using Base::Promise::Promise;
 
@@ -725,7 +725,7 @@ class Future<void> : public internal::FutureBase<absl::Status> {
   Future(Status&& status)  // NOLINT
       : Future(absl::Status(std::forward<Status>(status))) {}
 
-  class Promise : public Base::Promise {
+  class [[nodiscard]] Promise : public Base::Promise {
    public:
     using Base::Promise::Promise;
 
