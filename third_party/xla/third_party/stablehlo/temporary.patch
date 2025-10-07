@@ -1,14 +1,3 @@
-diff --ruN a/stablehlo/BUILD.bazel b/stablehlo/BUILD.bazel
---- stablehlo/BUILD.bazel
-+++ stablehlo/BUILD.bazel
-@@ -1231,6 +1231,7 @@
-     strip_include_prefix = ".",
-     deps = [
-         ":base",
-+        ":chlo_ops",
-         ":stablehlo_aggressive_simplification_inc_gen",
-         ":stablehlo_ops",
-         ":stablehlo_pass_inc_gen",
 diff --ruN a/stablehlo/stablehlo/conversions/linalg/tests/pointwise.mlir b/stablehlo/stablehlo/conversions/linalg/tests/pointwise.mlir
 --- stablehlo/stablehlo/conversions/linalg/tests/pointwise.mlir
 +++ stablehlo/stablehlo/conversions/linalg/tests/pointwise.mlir
@@ -320,171 +309,234 @@ diff --ruN a/stablehlo/stablehlo/conversions/linalg/transforms/StablehloToLinalg
  }
  }  // namespace detail
  }  // namespace mlir::stablehlo
-diff --ruN a/stablehlo/stablehlo/conversions/tosa/tests/legalize_quant_ops_to_tosa_rescale.mlir b/stablehlo/stablehlo/conversions/tosa/tests/legalize_quant_ops_to_tosa_rescale.mlir
---- stablehlo/stablehlo/conversions/tosa/tests/legalize_quant_ops_to_tosa_rescale.mlir
-+++ stablehlo/stablehlo/conversions/tosa/tests/legalize_quant_ops_to_tosa_rescale.mlir
-@@ -11,10 +11,10 @@
-   // CHECK-DAG: %[[MULTIPLIER_2:.+]] = "tosa.const"() <{values = dense<1431655765> : tensor<1xi32>}>
-   // CHECK-DAG: %[[ZP_MINUS_1:.+]] = "tosa.const"() <{values = dense<-1> : tensor<1xi8>}>
-   // CHECK-DAG: %[[ZP_0:.+]] = "tosa.const"() <{values = dense<0> : tensor<1xi32>}>
--  // CHECK-DAG: %[[V0:.+]] = tosa.rescale %arg0, %[[MULTIPLIER_2]], %[[SHIFT13]], %[[ZP_MINUS_1]], %[[ZP_0]] {input_unsigned = false, output_unsigned = false, per_channel = false, rounding_mode = "SINGLE_ROUND", scale32 = true}
--  // CHECK-DAG: %[[V1:.+]] = tosa.rescale %arg1, %[[MULTIPLIER_1]], %[[SHIFT11]], %[[ZP_MINUS_1]], %[[ZP_0]] {input_unsigned = false, output_unsigned = false, per_channel = false, rounding_mode = "SINGLE_ROUND", scale32 = true}
-+  // CHECK-DAG: %[[V0:.+]] = tosa.rescale %arg0, %[[MULTIPLIER_2]], %[[SHIFT13]], %[[ZP_MINUS_1]], %[[ZP_0]] {input_unsigned = false, output_unsigned = false, per_channel = false, rounding_mode = SINGLE_ROUND, scale32 = true}
-+  // CHECK-DAG: %[[V1:.+]] = tosa.rescale %arg1, %[[MULTIPLIER_1]], %[[SHIFT11]], %[[ZP_MINUS_1]], %[[ZP_0]] {input_unsigned = false, output_unsigned = false, per_channel = false, rounding_mode = SINGLE_ROUND, scale32 = true}
-   // CHECK: %[[V2:.+]] = stablehlo.add %[[V0]], %[[V1]] : tensor<2x2xi32>
--  // CHECK: %[[V3:.+]] = tosa.rescale %[[V2]], %[[MULTIPLIER_1]], %[[SHIFT50]], %[[ZP_0]], %[[ZP_MINUS_1]] {input_unsigned = false, output_unsigned = false, per_channel = false, rounding_mode = "SINGLE_ROUND", scale32 = true}
-+  // CHECK: %[[V3:.+]] = tosa.rescale %[[V2]], %[[MULTIPLIER_1]], %[[SHIFT50]], %[[ZP_0]], %[[ZP_MINUS_1]] {input_unsigned = false, output_unsigned = false, per_channel = false, rounding_mode = SINGLE_ROUND, scale32 = true}
-   // CHECK: return %[[V3]] : tensor<2x2x!quant.uniform<i8:f32, 1.500000e-01:-1>>
-   %0 = "stablehlo.add"(%arg0, %arg1) : (tensor<2x2x!quant.uniform<i8:f32, 0.025:-1>>, tensor<2x2x!quant.uniform<i8:f32, 0.075:-1>>)
-             -> tensor<2x2x!quant.uniform<i8:f32, 1.5e-01:-1>>
-@@ -32,10 +32,10 @@
-   // CHECK-DAG: %[[MULTIPLIER_2:.+]] = "tosa.const"() <{values = dense<1431655765> : tensor<1xi32>}>
-   // CHECK-DAG: %[[ZP_MINUS_1:.+]] = "tosa.const"() <{values = dense<-1> : tensor<1xi8>}>
-   // CHECK-DAG: %[[ZP_0:.+]] = "tosa.const"() <{values = dense<0> : tensor<1xi32>}>
--  // CHECK-DAG: %[[V0:.+]] = tosa.rescale %arg0, %[[MULTIPLIER_2]], %[[SHIFT13]], %[[ZP_MINUS_1]], %[[ZP_0]] {input_unsigned = false, output_unsigned = false, per_channel = false, rounding_mode = "SINGLE_ROUND", scale32 = true}
--  // CHECK-DAG: %[[V1:.+]] = tosa.rescale %arg1, %[[MULTIPLIER_1]], %[[SHIFT11]], %[[ZP_MINUS_1]], %[[ZP_0]] {input_unsigned = false, output_unsigned = false, per_channel = false, rounding_mode = "SINGLE_ROUND", scale32 = true}
-+  // CHECK-DAG: %[[V0:.+]] = tosa.rescale %arg0, %[[MULTIPLIER_2]], %[[SHIFT13]], %[[ZP_MINUS_1]], %[[ZP_0]] {input_unsigned = false, output_unsigned = false, per_channel = false, rounding_mode = SINGLE_ROUND, scale32 = true}
-+  // CHECK-DAG: %[[V1:.+]] = tosa.rescale %arg1, %[[MULTIPLIER_1]], %[[SHIFT11]], %[[ZP_MINUS_1]], %[[ZP_0]] {input_unsigned = false, output_unsigned = false, per_channel = false, rounding_mode = SINGLE_ROUND, scale32 = true}
-   // CHECK: %[[V2:.+]] = stablehlo.subtract %[[V0]], %[[V1]] : tensor<2x2xi32>
--  // CHECK: %[[V3:.+]] = tosa.rescale %[[V2]], %[[MULTIPLIER_1]], %[[SHIFT50]], %[[ZP_0]], %[[ZP_MINUS_1]] {input_unsigned = false, output_unsigned = false, per_channel = false, rounding_mode = "SINGLE_ROUND", scale32 = true}
-+  // CHECK: %[[V3:.+]] = tosa.rescale %[[V2]], %[[MULTIPLIER_1]], %[[SHIFT50]], %[[ZP_0]], %[[ZP_MINUS_1]] {input_unsigned = false, output_unsigned = false, per_channel = false, rounding_mode = SINGLE_ROUND, scale32 = true}
-   // CHECK: return %[[V3]] : tensor<2x2x!quant.uniform<i8:f32, 1.500000e-01:-1>>
-   %0 = "stablehlo.subtract"(%arg0, %arg1) : (tensor<2x2x!quant.uniform<i8:f32, 0.025:-1>>, tensor<2x2x!quant.uniform<i8:f32, 0.075:-1>>)
-             -> tensor<2x2x!quant.uniform<i8:f32, 1.5e-01:-1>>
-@@ -52,10 +52,10 @@
-   // CHECK-DAG: %[[MULTIPLIER_2:.+]] = "tosa.const"() <{values = dense<1717986918> : tensor<1xi32>}>
-   // CHECK-DAG: %[[ZP_MINUS_1:.+]] = "tosa.const"() <{values = dense<-1> : tensor<1xi8>}>
-   // CHECK-DAG: %[[ZP_0:.+]] = "tosa.const"() <{values = dense<0> : tensor<1xi32>}>
--  // CHECK-DAG: %[[V0:.+]] = tosa.rescale %arg0, %[[MULTIPLIER_1]], %[[SHIFT30]], %[[ZP_MINUS_1]], %[[ZP_0]] {input_unsigned = false, output_unsigned = false, per_channel = false, rounding_mode = "SINGLE_ROUND", scale32 = true}
--  // CHECK-DAG: %[[V1:.+]] = tosa.rescale %arg1, %[[MULTIPLIER_1]], %[[SHIFT30]], %[[ZP_MINUS_1]], %[[ZP_0]] {input_unsigned = false, output_unsigned = false, per_channel = false, rounding_mode = "SINGLE_ROUND", scale32 = true}
-+  // CHECK-DAG: %[[V0:.+]] = tosa.rescale %arg0, %[[MULTIPLIER_1]], %[[SHIFT30]], %[[ZP_MINUS_1]], %[[ZP_0]] {input_unsigned = false, output_unsigned = false, per_channel = false, rounding_mode = SINGLE_ROUND, scale32 = true}
-+  // CHECK-DAG: %[[V1:.+]] = tosa.rescale %arg1, %[[MULTIPLIER_1]], %[[SHIFT30]], %[[ZP_MINUS_1]], %[[ZP_0]] {input_unsigned = false, output_unsigned = false, per_channel = false, rounding_mode = SINGLE_ROUND, scale32 = true}
-   // CHECK: %[[V2:.+]] = stablehlo.multiply %[[V0]], %[[V1]] : tensor<2x2xi32>
--  // CHECK: %[[V3:.+]] = tosa.rescale %[[V2]], %[[MULTIPLIER_2]], %[[SHIFT37]], %[[ZP_0]], %[[ZP_MINUS_1]] {input_unsigned = false, output_unsigned = false, per_channel = false, rounding_mode = "SINGLE_ROUND", scale32 = true}
-+  // CHECK: %[[V3:.+]] = tosa.rescale %[[V2]], %[[MULTIPLIER_2]], %[[SHIFT37]], %[[ZP_0]], %[[ZP_MINUS_1]] {input_unsigned = false, output_unsigned = false, per_channel = false, rounding_mode = SINGLE_ROUND, scale32 = true}
-   // CHECK: return %[[V3]] : tensor<2x2x!quant.uniform<i8:f32, 1.500000e-01:-1>>
-   %0 = "stablehlo.multiply"(%arg0, %arg1) : (tensor<2x2x!quant.uniform<i8:f32, 0.025:-1>>, tensor<2x2x!quant.uniform<i8:f32, 0.075:-1>>)
-             -> tensor<2x2x!quant.uniform<i8:f32, 1.5e-01:-1>>
-@@ -74,10 +74,10 @@
-   // CHECK-DAG: %[[ZP_MINUS_2:.+]] = "tosa.const"() <{values = dense<-2> : tensor<1xi8>}>
-   // CHECK-DAG: %[[ZP_MINUS_1:.+]] = "tosa.const"() <{values = dense<-1> : tensor<1xi8>}>
-   // CHECK-DAG: %[[ZP_0:.+]] = "tosa.const"() <{values = dense<0> : tensor<1xi32>}>
--  // CHECK-DAG: %[[V0:.+]] = tosa.rescale %arg0, %[[MULTIPLIER_1]], %[[SHIFT30]], %[[ZP_MINUS_1]], %[[ZP_0]] {input_unsigned = false, output_unsigned = false, per_channel = false, rounding_mode = "SINGLE_ROUND", scale32 = true}
--  // CHECK-DAG: %[[V1:.+]] = tosa.rescale %arg1, %[[MULTIPLIER_1]], %[[SHIFT30]], %[[ZP_MINUS_2]], %[[ZP_0]] {input_unsigned = false, output_unsigned = false, per_channel = false, rounding_mode = "SINGLE_ROUND", scale32 = true}
-+  // CHECK-DAG: %[[V0:.+]] = tosa.rescale %arg0, %[[MULTIPLIER_1]], %[[SHIFT30]], %[[ZP_MINUS_1]], %[[ZP_0]] {input_unsigned = false, output_unsigned = false, per_channel = false, rounding_mode = SINGLE_ROUND, scale32 = true}
-+  // CHECK-DAG: %[[V1:.+]] = tosa.rescale %arg1, %[[MULTIPLIER_1]], %[[SHIFT30]], %[[ZP_MINUS_2]], %[[ZP_0]] {input_unsigned = false, output_unsigned = false, per_channel = false, rounding_mode = SINGLE_ROUND, scale32 = true}
-   // CHECK: %[[V2:.+]] = stablehlo.divide %[[V0]], %[[V1]] : tensor<2x2xi32>
--  // CHECK: %[[V3:.+]] = tosa.rescale %[[V2]], %[[MULTIPLIER_2]], %[[SHIFT37]], %[[ZP_0]], %[[ZP_MINUS_3]] {input_unsigned = false, output_unsigned = false, per_channel = false, rounding_mode = "SINGLE_ROUND", scale32 = true}
-+  // CHECK: %[[V3:.+]] = tosa.rescale %[[V2]], %[[MULTIPLIER_2]], %[[SHIFT37]], %[[ZP_0]], %[[ZP_MINUS_3]] {input_unsigned = false, output_unsigned = false, per_channel = false, rounding_mode = SINGLE_ROUND, scale32 = true}
-   // CHECK: return %[[V3]] : tensor<2x2x!quant.uniform<i8:f32, 1.500000e-01:-3>>
-   %0 = "stablehlo.divide"(%arg0, %arg1) : (tensor<2x2x!quant.uniform<i8:f32, 0.025:-1>>, tensor<2x2x!quant.uniform<i8:f32, 0.075:-2>>)
-             -> tensor<2x2x!quant.uniform<i8:f32, 1.5e-01:-3>>
-@@ -97,10 +97,10 @@
-   // CHECK-DAG: %[[SHIFT12:.+]] = "tosa.const"() <{values = dense<12> : tensor<1xi8>}>
-   // CHECK-DAG: %[[ZP_MINUS_1:.+]] = "tosa.const"() <{values = dense<-1> : tensor<1xi8>}>
-   // CHECK-DAG: %[[ZP_0:.+]] = "tosa.const"() <{values = dense<0> : tensor<1xi32>}>
--  // CHECK-DAG: %[[V0:.+]] = tosa.rescale %arg0, %[[MULTIPLIER_2]], %[[SHIFT12]], %[[ZP_MINUS_1]], %[[ZP_0]] {input_unsigned = false, output_unsigned = false, per_channel = false, rounding_mode = "SINGLE_ROUND", scale32 = true}
--  // CHECK-DAG: %[[V1:.+]] = tosa.rescale %arg1, %[[MULTIPLIER_1]], %[[SHIFT10]], %[[ZP_MINUS_2]], %[[ZP_0]] {input_unsigned = false, output_unsigned = false, per_channel = false, rounding_mode = "SINGLE_ROUND", scale32 = true}
-+  // CHECK-DAG: %[[V0:.+]] = tosa.rescale %arg0, %[[MULTIPLIER_2]], %[[SHIFT12]], %[[ZP_MINUS_1]], %[[ZP_0]] {input_unsigned = false, output_unsigned = false, per_channel = false, rounding_mode = SINGLE_ROUND, scale32 = true}
-+  // CHECK-DAG: %[[V1:.+]] = tosa.rescale %arg1, %[[MULTIPLIER_1]], %[[SHIFT10]], %[[ZP_MINUS_2]], %[[ZP_0]] {input_unsigned = false, output_unsigned = false, per_channel = false, rounding_mode = SINGLE_ROUND, scale32 = true}
-   // CHECK: %[[V2:.+]] = stablehlo.maximum %[[V0]], %[[V1]] : tensor<2x2xi32>
--  // CHECK: %[[V3:.+]] = tosa.rescale %[[V2]], %[[MULTIPLIER_1]], %[[SHIFT51]], %[[ZP_0]], %[[ZP_MINUS_3]] {input_unsigned = false, output_unsigned = false, per_channel = false, rounding_mode = "SINGLE_ROUND", scale32 = true}
-+  // CHECK: %[[V3:.+]] = tosa.rescale %[[V2]], %[[MULTIPLIER_1]], %[[SHIFT51]], %[[ZP_0]], %[[ZP_MINUS_3]] {input_unsigned = false, output_unsigned = false, per_channel = false, rounding_mode = SINGLE_ROUND, scale32 = true}
-   // CHECK: return %[[V3]] : tensor<2x2x!quant.uniform<i8:f32, 1.500000e-01:-3>>
-   %0 = "stablehlo.maximum"(%arg0, %arg1) : (tensor<2x2x!quant.uniform<i8:f32, 0.025:-1>>, tensor<2x2x!quant.uniform<i8:f32, 0.075:-2>>)
-             -> tensor<2x2x!quant.uniform<i8:f32, 1.5e-01:-3>>
-@@ -120,10 +120,10 @@
-   // CHECK-DAG: %[[SHIFT12:.+]] = "tosa.const"() <{values = dense<12> : tensor<1xi8>}>
-   // CHECK-DAG: %[[ZP_MINUS_1:.+]] = "tosa.const"() <{values = dense<-1> : tensor<1xi8>}>
-   // CHECK-DAG: %[[ZP_0:.+]] = "tosa.const"() <{values = dense<0> : tensor<1xi32>}>
--  // CHECK-DAG: %[[V0:.+]] = tosa.rescale %arg0, %[[MULTIPLIER_2]], %[[SHIFT12]], %[[ZP_MINUS_1]], %[[ZP_0]] {input_unsigned = false, output_unsigned = false, per_channel = false, rounding_mode = "SINGLE_ROUND", scale32 = true}
--  // CHECK-DAG: %[[V1:.+]] = tosa.rescale %arg1, %[[MULTIPLIER_1]], %[[SHIFT10]], %[[ZP_MINUS_2]], %[[ZP_0]] {input_unsigned = false, output_unsigned = false, per_channel = false, rounding_mode = "SINGLE_ROUND", scale32 = true}
-+  // CHECK-DAG: %[[V0:.+]] = tosa.rescale %arg0, %[[MULTIPLIER_2]], %[[SHIFT12]], %[[ZP_MINUS_1]], %[[ZP_0]] {input_unsigned = false, output_unsigned = false, per_channel = false, rounding_mode = SINGLE_ROUND, scale32 = true}
-+  // CHECK-DAG: %[[V1:.+]] = tosa.rescale %arg1, %[[MULTIPLIER_1]], %[[SHIFT10]], %[[ZP_MINUS_2]], %[[ZP_0]] {input_unsigned = false, output_unsigned = false, per_channel = false, rounding_mode = SINGLE_ROUND, scale32 = true}
-   // CHECK: %[[V2:.+]] = stablehlo.minimum %[[V0]], %[[V1]] : tensor<2x2xi32>
--  // CHECK: %[[V3:.+]] = tosa.rescale %[[V2]], %[[MULTIPLIER_1]], %[[SHIFT51]], %[[ZP_0]], %[[ZP_MINUS_3]] {input_unsigned = false, output_unsigned = false, per_channel = false, rounding_mode = "SINGLE_ROUND", scale32 = true}
-+  // CHECK: %[[V3:.+]] = tosa.rescale %[[V2]], %[[MULTIPLIER_1]], %[[SHIFT51]], %[[ZP_0]], %[[ZP_MINUS_3]] {input_unsigned = false, output_unsigned = false, per_channel = false, rounding_mode = SINGLE_ROUND, scale32 = true}
-   // CHECK: return %[[V3]] : tensor<2x2x!quant.uniform<i8:f32, 1.500000e-01:-3>>
-   %0 = "stablehlo.minimum"(%arg0, %arg1) : (tensor<2x2x!quant.uniform<i8:f32, 0.025:-1>>, tensor<2x2x!quant.uniform<i8:f32, 0.075:-2>>)
-             -> tensor<2x2x!quant.uniform<i8:f32, 1.5e-01:-3>>
-@@ -140,9 +140,9 @@
-   // CHECK-DAG: %[[SHIFT30:.+]] = "tosa.const"() <{values = dense<30> : tensor<1xi8>}>
-   // CHECK-DAG: %[[ZP_MINUS_1:.+]] = "tosa.const"() <{values = dense<-1> : tensor<1xi8>}>
-   // CHECK-DAG: %[[ZP_0:.+]] = "tosa.const"() <{values = dense<0> : tensor<1xi32>}>
--  // CHECK: %[[V0:.+]] = tosa.rescale %arg0, %[[MULTIPLIER_2]], %[[SHIFT30]], %[[ZP_MINUS_1]], %[[ZP_0]] {input_unsigned = false, output_unsigned = false, per_channel = false, rounding_mode = "SINGLE_ROUND", scale32 = true}
-+  // CHECK: %[[V0:.+]] = tosa.rescale %arg0, %[[MULTIPLIER_2]], %[[SHIFT30]], %[[ZP_MINUS_1]], %[[ZP_0]] {input_unsigned = false, output_unsigned = false, per_channel = false, rounding_mode = SINGLE_ROUND, scale32 = true}
-   // CHECK: %[[V1:.+]] = stablehlo.abs %[[V0]] : tensor<20x20xi32>
--  // CHECK: %[[V3:.+]] = tosa.rescale %[[V1]], %[[MULTIPLIER_1]], %[[SHIFT33]], %[[ZP_0]], %[[ZP_MINUS_128]] {input_unsigned = false, output_unsigned = false, per_channel = false, rounding_mode = "SINGLE_ROUND", scale32 = true}
-+  // CHECK: %[[V3:.+]] = tosa.rescale %[[V1]], %[[MULTIPLIER_1]], %[[SHIFT33]], %[[ZP_0]], %[[ZP_MINUS_128]] {input_unsigned = false, output_unsigned = false, per_channel = false, rounding_mode = SINGLE_ROUND, scale32 = true}
-   // CHECK: return %[[V3]] : tensor<20x20x!quant.uniform<i8:f32, 1.500000e-01:-128>>
-   %0 = "stablehlo.abs"(%arg0) : (tensor<20x20x!quant.uniform<i8:f32, 0.025:-1>>) -> tensor<20x20x!quant.uniform<i8:f32, 1.5e-01:-128>>
-   return %0 : tensor<20x20x!quant.uniform<i8:f32, 1.5e-01:-128>>
-@@ -159,8 +159,8 @@
-   // CHECK-DAG: %[[SHIFT12:.+]] = "tosa.const"() <{values = dense<12> : tensor<1xi8>}>
-   // CHECK-DAG: %[[ZP_MINUS_1:.+]] = "tosa.const"() <{values = dense<-1> : tensor<1xi8>}>
-   // CHECK-DAG: %[[ZP_0:.+]] = "tosa.const"() <{values = dense<0> : tensor<1xi32>}>
--  // CHECK: %[[V0:.+]] = tosa.rescale %arg0, %[[MULTIPLIER_2]], %[[SHIFT12]], %[[ZP_MINUS_1]], %[[ZP_0]] {input_unsigned = false, output_unsigned = false, per_channel = false, rounding_mode = "SINGLE_ROUND", scale32 = true}
--  // CHECK: %[[V1:.+]] = tosa.rescale %arg1, %[[MULTIPLIER_1]], %[[SHIFT10]], %[[ZP_MINUS_2]], %[[ZP_0]] {input_unsigned = false, output_unsigned = false, per_channel = false, rounding_mode = "SINGLE_ROUND", scale32 = true}
-+  // CHECK: %[[V0:.+]] = tosa.rescale %arg0, %[[MULTIPLIER_2]], %[[SHIFT12]], %[[ZP_MINUS_1]], %[[ZP_0]] {input_unsigned = false, output_unsigned = false, per_channel = false, rounding_mode = SINGLE_ROUND, scale32 = true}
-+  // CHECK: %[[V1:.+]] = tosa.rescale %arg1, %[[MULTIPLIER_1]], %[[SHIFT10]], %[[ZP_MINUS_2]], %[[ZP_0]] {input_unsigned = false, output_unsigned = false, per_channel = false, rounding_mode = SINGLE_ROUND, scale32 = true}
-   // CHECK: %[[V2:.+]] = stablehlo.compare GE, %[[V0]], %[[V1]], TOTALORDER :
-   // CHECK: return %[[V2]]
-   %0 = stablehlo.compare GE, %arg0, %arg1, TOTALORDER : (tensor<20x20x!quant.uniform<i8:f32, 0.025:-1>>, tensor<20x20x!quant.uniform<i8:f32, 0.075:-2>>) -> tensor<20x20xi1>
-@@ -177,8 +177,8 @@
-   // CHECK-DAG: %[[SHIFT15:.+]] = "tosa.const"() <{values = dense<15> : tensor<1xi8>}>
-   // CHECK-DAG: %[[ZP16_0:.+]] = "tosa.const"() <{values = dense<0> : tensor<1xi16>}>
-   // CHECK-DAG: %[[ZP32_0:.+]] = "tosa.const"() <{values = dense<0> : tensor<1xi32>}>
--  // CHECK: %[[V0:.+]] = tosa.rescale %arg0, %[[MULTIPLIER_2]], %[[SHIFT17]], %[[ZP16_0]], %[[ZP32_0]] {input_unsigned = false, output_unsigned = false, per_channel = false, rounding_mode = "SINGLE_ROUND", scale32 = true}
--  // CHECK: %[[V1:.+]] = tosa.rescale %arg1, %[[MULTIPLIER_1]], %[[SHIFT15]], %[[ZP16_0]], %[[ZP32_0]] {input_unsigned = false, output_unsigned = false, per_channel = false, rounding_mode = "SINGLE_ROUND", scale32 = true}
-+  // CHECK: %[[V0:.+]] = tosa.rescale %arg0, %[[MULTIPLIER_2]], %[[SHIFT17]], %[[ZP16_0]], %[[ZP32_0]] {input_unsigned = false, output_unsigned = false, per_channel = false, rounding_mode = SINGLE_ROUND, scale32 = true}
-+  // CHECK: %[[V1:.+]] = tosa.rescale %arg1, %[[MULTIPLIER_1]], %[[SHIFT15]], %[[ZP16_0]], %[[ZP32_0]] {input_unsigned = false, output_unsigned = false, per_channel = false, rounding_mode = SINGLE_ROUND, scale32 = true}
-   // CHECK: %[[V2:.+]] = stablehlo.compare LT, %[[V0]], %[[V1]], TOTALORDER :
-   // CHECK: return %[[V2]]
-   %0 = stablehlo.compare LT, %arg0, %arg1, TOTALORDER : (tensor<20x20x!quant.uniform<i16:f32, 0.025:0>>, tensor<20x20x!quant.uniform<i16:f32, 0.075:0>>) -> tensor<20x20xi1>
-diff --ruN a/stablehlo/stablehlo/conversions/tosa/tests/legalize_tosa_rescale_to_stablehlo.mlir b/stablehlo/stablehlo/conversions/tosa/tests/legalize_tosa_rescale_to_stablehlo.mlir
---- stablehlo/stablehlo/conversions/tosa/tests/legalize_tosa_rescale_to_stablehlo.mlir
-+++ stablehlo/stablehlo/conversions/tosa/tests/legalize_tosa_rescale_to_stablehlo.mlir
-@@ -7,7 +7,7 @@
-   %shift = "tosa.const"() {values = dense<13> : tensor<1xi8>} : () -> tensor<1xi8>
-   %input_zp = "tosa.const"() {values = dense<-1> : tensor<1xi8>} : () -> tensor<1xi8>
-   %output_zp = "tosa.const"() {values = dense<0> : tensor<1xi32>} : () -> tensor<1xi32>
--  %0 = tosa.rescale %arg0, %multiplier, %shift, %input_zp, %output_zp {input_unsigned = false, output_unsigned = false, per_channel = false, rounding_mode = "SINGLE_ROUND", scale32 = true} :
-+  %0 = tosa.rescale %arg0, %multiplier, %shift, %input_zp, %output_zp {input_unsigned = false, output_unsigned = false, per_channel = false, rounding_mode = SINGLE_ROUND, scale32 = true} :
-             (tensor<2x2x!quant.uniform<i8:f32, 0.025:-1>>, tensor<1xi32>, tensor<1xi8>, tensor<1xi8>, tensor<1xi32>) -> tensor<2x2xi32>
- 
-   // convert input quantized type to storage type
 diff --ruN a/stablehlo/stablehlo/conversions/tosa/transforms/StablehloQuantLegalizeToTosaRescale.cpp b/stablehlo/stablehlo/conversions/tosa/transforms/StablehloQuantLegalizeToTosaRescale.cpp
 --- stablehlo/stablehlo/conversions/tosa/transforms/StablehloQuantLegalizeToTosaRescale.cpp
 +++ stablehlo/stablehlo/conversions/tosa/transforms/StablehloQuantLegalizeToTosaRescale.cpp
-@@ -70,12 +70,14 @@
-       outputZpVal.has_value() &&
-       "buildRescale: Failed to create output zero-point tensor for RescaleOp.");
+@@ -40,7 +40,7 @@
  
--  std::string roundingMode = doubleRound ? "DOUBLE_ROUND" : "SINGLE_ROUND";
-+  auto roundingMode =
-+      doubleRound ? RoundingMode::DOUBLE_ROUND : RoundingMode::SINGLE_ROUND;
+ namespace {
  
-   auto rescale_op = rewriter.create<RescaleOp>(
-       loc, outputType, inputVal, multiplierVal, shiftVal, inputZpVal.value(),
-       outputZpVal.value(), rewriter.getBoolAttr(scale32),
--      rewriter.getStringAttr(roundingMode), rewriter.getBoolAttr(perChannel),
-+      RoundingModeAttr::get(rewriter.getContext(), roundingMode),
-+      rewriter.getBoolAttr(perChannel),
-       /*input_unsigned=*/rewriter.getBoolAttr(false),
-       /*output_unsigned=*/rewriter.getBoolAttr(false));
+-Value buildRescaleMultiplier(bool scale32, OpBuilder& builder, Location loc,
++Value buildRescaleMultiplier(bool scale32, OpBuilder &builder, Location loc,
+                              ArrayRef<int32_t> multipliers) {
+   if (scale32) {
+     return tosa::getConstTensorInt<int32_t>(builder, loc, multipliers);
+@@ -51,7 +51,7 @@
+ }
  
-diff --ruN a/stablehlo/stablehlo/conversions/tosa/transforms/TosaRescaleLegalizeToStablehlo.cpp b/stablehlo/stablehlo/conversions/tosa/transforms/TosaRescaleLegalizeToStablehlo.cpp
---- stablehlo/stablehlo/conversions/tosa/transforms/TosaRescaleLegalizeToStablehlo.cpp
-+++ stablehlo/stablehlo/conversions/tosa/transforms/TosaRescaleLegalizeToStablehlo.cpp
-@@ -68,7 +68,7 @@
-   auto roundingMode = op.getRoundingMode();
-   bool perChannel = op.getPerChannel();
+ // create a tosa rescale op and return its result value
+-Value buildRescale(PatternRewriter& rewriter, Location loc,
++Value buildRescale(PatternRewriter &rewriter, Location loc,
+                    ShapedType outputType, Value inputVal, int32_t multiplier,
+                    int32_t shift, int64_t inputZp, int64_t outputZp,
+                    bool doubleRound, bool scale32, bool perChannel) {
+@@ -85,7 +85,7 @@
+ }
  
--  if (perChannel || roundingMode != "SINGLE_ROUND" || !scale32) {
-+  if (perChannel || roundingMode != RoundingMode::SINGLE_ROUND || !scale32) {
-     return rewriter.notifyMatchFailure(
-         op,
-         "per_channel, double_round, or scale32=false are not yet supported");
+ // Creates TOSA rescale op with int32 output
+-Value buildRescaleToInt32(PatternRewriter& rewriter, Location loc,
++Value buildRescaleToInt32(PatternRewriter &rewriter, Location loc,
+                           Value inputVal, double inputScale, int64_t inputZp) {
+   auto inputType = cast<ShapedType>(inputVal.getType());
+   auto outputType = inputType.clone(rewriter.getI32Type());
+@@ -103,7 +103,7 @@
+ }
+ 
+ // Creates TOSA rescale op with int32 input
+-Value buildRescaleFromInt32(PatternRewriter& rewriter, Location loc,
++Value buildRescaleFromInt32(PatternRewriter &rewriter, Location loc,
+                             ShapedType outputType, Value inputVal,
+                             double outputScale, int64_t outputZp) {
+   // Input should be int32 type
+@@ -124,14 +124,14 @@
+ }
+ 
+ using UnaryRescaleScalesFn =
+-    void (*)(const quant::UniformQuantizedType& operandQType,
+-             const quant::UniformQuantizedType& resultQType,
+-             double& operandRescaleScale, double& resultRescaleScale);
+-
+-void GetUnaryRescaleScales(const quant::UniformQuantizedType& operandQType,
+-                           const quant::UniformQuantizedType& resultQType,
+-                           double& operandRescaleScale,
+-                           double& resultRescaleScale) {
++    void (*)(const quant::UniformQuantizedType &operandQType,
++             const quant::UniformQuantizedType &resultQType,
++             double &operandRescaleScale, double &resultRescaleScale);
++
++void GetUnaryRescaleScales(const quant::UniformQuantizedType &operandQType,
++                           const quant::UniformQuantizedType &resultQType,
++                           double &operandRescaleScale,
++                           double &resultRescaleScale) {
+   double operandScale = operandQType.getScale();
+   double resultScale = resultQType.getScale();
+ 
+@@ -145,7 +145,7 @@
+ 
+ template <typename StablehloOp>
+ LogicalResult matchAndRewriteUnaryOp(
+-    StablehloOp op, PatternRewriter& rewriter,
++    StablehloOp op, PatternRewriter &rewriter,
+     UnaryRescaleScalesFn rescaleScalesFn = GetUnaryRescaleScales) {
+   Value operand = op.getOperand();
+   Value result = op.getResult();
+@@ -190,21 +190,21 @@
+ }
+ 
+ LogicalResult matchAndRewriteOp(stablehlo::AbsOp op,
+-                                PatternRewriter& rewriter) {
++                                PatternRewriter &rewriter) {
+   return matchAndRewriteUnaryOp(op, rewriter);
+ }
+ 
+ using BinaryRescaleScalesFn = void (*)(
+-    const quant::UniformQuantizedType& lhsQType,
+-    const quant::UniformQuantizedType& rhsQType,
+-    const quant::UniformQuantizedType& resultQType, double& lhsRescaleScale,
+-    double& rhsRescaleScale, double& resultRescaleScale);
+-
+-void GetAddSubRescaleScales(const quant::UniformQuantizedType& lhsQType,
+-                            const quant::UniformQuantizedType& rhsQType,
+-                            const quant::UniformQuantizedType& resultQType,
+-                            double& lhsRescaleScale, double& rhsRescaleScale,
+-                            double& resultRescaleScale) {
++    const quant::UniformQuantizedType &lhsQType,
++    const quant::UniformQuantizedType &rhsQType,
++    const quant::UniformQuantizedType &resultQType, double &lhsRescaleScale,
++    double &rhsRescaleScale, double &resultRescaleScale);
++
++void GetAddSubRescaleScales(const quant::UniformQuantizedType &lhsQType,
++                            const quant::UniformQuantizedType &rhsQType,
++                            const quant::UniformQuantizedType &resultQType,
++                            double &lhsRescaleScale, double &rhsRescaleScale,
++                            double &resultRescaleScale) {
+   // 1. Rescale inputs to scale = 2.0 x max(lhs.scale, rhs.scale)
+   // 2. Extra left shift to input to increase precision
+   // Where input_shift = 20 if input is 8-bit
+@@ -230,11 +230,11 @@
+       maxScale2x / (resultScale * static_cast<double>(1 << inputShift));
+ }
+ 
+-void GetMulDivRescaleScales(const quant::UniformQuantizedType& lhsQType,
+-                            const quant::UniformQuantizedType& rhsQType,
+-                            const quant::UniformQuantizedType& resultQType,
+-                            double& lhsRescaleScale, double& rhsRescaleScale,
+-                            double& resultRescaleScale) {
++void GetMulDivRescaleScales(const quant::UniformQuantizedType &lhsQType,
++                            const quant::UniformQuantizedType &rhsQType,
++                            const quant::UniformQuantizedType &resultQType,
++                            double &lhsRescaleScale, double &rhsRescaleScale,
++                            double &resultRescaleScale) {
+   double lhsScale = lhsQType.getScale();
+   double rhsScale = rhsQType.getScale();
+   double resultScale = resultQType.getScale();
+@@ -248,11 +248,11 @@
+   resultRescaleScale = lhsScale * rhsScale / resultScale;
+ }
+ 
+-void GetMinMaxRescaleScales(const quant::UniformQuantizedType& lhsQType,
+-                            const quant::UniformQuantizedType& rhsQType,
+-                            const quant::UniformQuantizedType& resultQType,
+-                            double& lhsRescaleScale, double& rhsRescaleScale,
+-                            double& resultRescaleScale) {
++void GetMinMaxRescaleScales(const quant::UniformQuantizedType &lhsQType,
++                            const quant::UniformQuantizedType &rhsQType,
++                            const quant::UniformQuantizedType &resultQType,
++                            double &lhsRescaleScale, double &rhsRescaleScale,
++                            double &resultRescaleScale) {
+   // 1. Rescale inputs to scale = max(lhs.scale, rhs.scale)
+   // 2. Extra left shift to input to increase precision
+   // Where input_shift = 20 if input is 8-bit
+@@ -280,7 +280,7 @@
+ }
+ 
+ template <typename StablehloOp>
+-LogicalResult matchAndRewriteBinaryOp(StablehloOp op, PatternRewriter& rewriter,
++LogicalResult matchAndRewriteBinaryOp(StablehloOp op, PatternRewriter &rewriter,
+                                       BinaryRescaleScalesFn rescaleScalesFn) {
+   Value lhs = op.getLhs();
+   Value rhs = op.getRhs();
+@@ -339,37 +339,37 @@
+ }
+ 
+ LogicalResult matchAndRewriteOp(stablehlo::AddOp op,
+-                                PatternRewriter& rewriter) {
++                                PatternRewriter &rewriter) {
+   return matchAndRewriteBinaryOp(op, rewriter, GetAddSubRescaleScales);
+ }
+ 
+ LogicalResult matchAndRewriteOp(stablehlo::SubtractOp op,
+-                                PatternRewriter& rewriter) {
++                                PatternRewriter &rewriter) {
+   return matchAndRewriteBinaryOp(op, rewriter, GetAddSubRescaleScales);
+ }
+ 
+ LogicalResult matchAndRewriteOp(stablehlo::MulOp op,
+-                                PatternRewriter& rewriter) {
++                                PatternRewriter &rewriter) {
+   return matchAndRewriteBinaryOp(op, rewriter, GetMulDivRescaleScales);
+ }
+ 
+ LogicalResult matchAndRewriteOp(stablehlo::DivOp op,
+-                                PatternRewriter& rewriter) {
++                                PatternRewriter &rewriter) {
+   return matchAndRewriteBinaryOp(op, rewriter, GetMulDivRescaleScales);
+ }
+ 
+ LogicalResult matchAndRewriteOp(stablehlo::MinOp op,
+-                                PatternRewriter& rewriter) {
++                                PatternRewriter &rewriter) {
+   return matchAndRewriteBinaryOp(op, rewriter, GetMinMaxRescaleScales);
+ }
+ 
+ LogicalResult matchAndRewriteOp(stablehlo::MaxOp op,
+-                                PatternRewriter& rewriter) {
++                                PatternRewriter &rewriter) {
+   return matchAndRewriteBinaryOp(op, rewriter, GetMinMaxRescaleScales);
+ }
+ 
+ LogicalResult matchAndRewriteCompareOp(stablehlo::CompareOp op,
+-                                       PatternRewriter& rewriter) {
++                                       PatternRewriter &rewriter) {
+   Value lhs = op.getLhs();
+   Value rhs = op.getRhs();
+   Value result = op.getResult();
+@@ -429,7 +429,7 @@
+ }
+ 
+ LogicalResult matchAndRewriteOp(stablehlo::CompareOp op,
+-                                PatternRewriter& rewriter) {
++                                PatternRewriter &rewriter) {
+   return matchAndRewriteCompareOp(op, rewriter);
+ }
+ 
+@@ -438,7 +438,7 @@
+     : public OpRewritePattern<StablehloOpType> {
+   using OpRewritePattern<StablehloOpType>::OpRewritePattern;
+   LogicalResult matchAndRewrite(StablehloOpType op,
+-                                PatternRewriter& rewriter) const override {
++                                PatternRewriter &rewriter) const override {
+     return matchAndRewriteOp(op, rewriter);
+   }
+ };
+@@ -446,7 +446,7 @@
+ struct StablehloQuantLegalizeToTosaRescalePass
+     : impl::StablehloQuantLegalizeToTosaRescalePassBase<
+           StablehloQuantLegalizeToTosaRescalePass> {
+-  LogicalResult initialize(MLIRContext* ctx) override {
++  LogicalResult initialize(MLIRContext *ctx) override {
+     RewritePatternSet patternList(ctx);
+     populateStablehloQuantLegalizeToTosaRescalePatterns(&patternList, ctx);
+     patterns = std::move(patternList);
+@@ -468,7 +468,7 @@
+ }  // namespace
+ 
+ void populateStablehloQuantLegalizeToTosaRescalePatterns(
+-    RewritePatternSet* patterns, MLIRContext* context) {
++    RewritePatternSet *patterns, MLIRContext *context) {
+   // unary ops
+   patterns->addWithLabel<QuantizedStablehloOpConversion<stablehlo::AbsOp>>(
+       {"StablehloQuantAbsOp"}, context);
 diff --ruN a/stablehlo/stablehlo/integrations/cpp/builder/AttrTypeBuilderUtilTest.cpp b/stablehlo/stablehlo/integrations/cpp/builder/AttrTypeBuilderUtilTest.cpp
 --- stablehlo/stablehlo/integrations/cpp/builder/AttrTypeBuilderUtilTest.cpp
 +++ stablehlo/stablehlo/integrations/cpp/builder/AttrTypeBuilderUtilTest.cpp
@@ -497,17 +549,6 @@ diff --ruN a/stablehlo/stablehlo/integrations/cpp/builder/AttrTypeBuilderUtilTes
  #include "llvm/ADT/DenseMap.h"
  #include "mlir/IR/BuiltinTypeInterfaces.h"
  #include "mlir/IR/BuiltinTypes.h"
-diff --ruN a/stablehlo/stablehlo/integrations/cpp/builder/MlirBuilderTblgen.cpp b/stablehlo/stablehlo/integrations/cpp/builder/MlirBuilderTblgen.cpp
---- stablehlo/stablehlo/integrations/cpp/builder/MlirBuilderTblgen.cpp
-+++ stablehlo/stablehlo/integrations/cpp/builder/MlirBuilderTblgen.cpp
-@@ -50,7 +50,6 @@
- using mlir::tblgen::MethodBody;
- using mlir::tblgen::MethodParameter;
- using mlir::tblgen::NamedAttribute;
--using mlir::tblgen::NamedRegion;
- using mlir::tblgen::Operator;
- 
- namespace mlir {
 diff --ruN a/stablehlo/stablehlo/integrations/cpp/builder/MlirBuilderTest.cpp b/stablehlo/stablehlo/integrations/cpp/builder/MlirBuilderTest.cpp
 --- stablehlo/stablehlo/integrations/cpp/builder/MlirBuilderTest.cpp
 +++ stablehlo/stablehlo/integrations/cpp/builder/MlirBuilderTest.cpp
@@ -532,40 +573,6 @@ diff --ruN a/stablehlo/stablehlo/integrations/cpp/builder/StablehloBuilderTest.c
  #include "mlir/IR/BuiltinAttributes.h"
  #include "mlir/IR/BuiltinOps.h"
  #include "mlir/IR/DialectRegistry.h"
-diff --ruN a/stablehlo/stablehlo/tests/chlo/chlo_legalize_to_stablehlo_broadcast.mlir b/stablehlo/stablehlo/tests/chlo/chlo_legalize_to_stablehlo_broadcast.mlir
---- stablehlo/stablehlo/tests/chlo/chlo_legalize_to_stablehlo_broadcast.mlir
-+++ stablehlo/stablehlo/tests/chlo/chlo_legalize_to_stablehlo_broadcast.mlir
-@@ -11,6 +11,30 @@
- }
- 
- // -----
-+
-+// CHECK-LABEL: @addStaticBroadcastExpanding
-+func.func @addStaticBroadcastExpanding(%arg0: tensor<4xf32>, %arg1: tensor<f32>) -> tensor<4xf32> {
-+  // CHECK:      %[[BROADCAST:.+]] = stablehlo.broadcast_in_dim %arg1, dims = [] : (tensor<f32>) -> tensor<4xf32>
-+  // CHECK-NEXT: stablehlo.add %arg0, %[[BROADCAST]]
-+  // CHECK-NOT: shape
-+  %0 = chlo.broadcast_add %arg0, %arg1 : (tensor<4xf32>, tensor<f32>) -> tensor<4xf32>
-+  func.return %0 : tensor<4xf32>
-+}
-+
-+// -----
-+
-+// CHECK-LABEL: @addStaticBroadcastSameRank
-+func.func @addStaticBroadcastSameRank(%arg0: tensor<1x4xf32>, %arg1: tensor<4x1xf32>) -> tensor<4x4xf32> {
-+  // CHECK:      %[[ARG0_B:.+]] = stablehlo.broadcast_in_dim %arg0, dims = [0, 1] : (tensor<1x4xf32>) -> tensor<4x4xf32>
-+  // CHECK-NEXT: %[[ARG1_B:.+]] = stablehlo.broadcast_in_dim %arg1, dims = [0, 1] : (tensor<4x1xf32>) -> tensor<4x4xf32>
-+  // CHECK-NEXT: stablehlo.add %[[ARG0_B]], %[[ARG1_B]] : tensor<4x4xf32>
-+  // CHECK-NOT: shape
-+  %0 = chlo.broadcast_add %arg0, %arg1 : (tensor<1x4xf32>, tensor<4x1xf32>) -> tensor<4x4xf32>
-+  func.return %0 : tensor<4x4xf32>
-+}
-+
-+// -----
-+
- 
- // CHECK-LABEL: @dynamicBroadcast
- // CHECK-SAME: %[[ARG0:.+]]: tensor<?xf32>
 diff --ruN a/stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_folder.mlir b/stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_folder.mlir
 --- stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_folder.mlir
 +++ stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_folder.mlir
@@ -642,610 +649,533 @@ diff --ruN a/stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_folder.ml
  }
  
  // -----
-@@ -712,18 +730,412 @@
- // -----
- 
- ////////
-+// AbsOp
-+
-+// CHECK-LABEL: func @fold_abs
-+func.func @fold_abs() -> (tensor<i32>, tensor<i32>, tensor<i32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>) {
-+  // CHECK-DAG: [[INT_ZERO:%.*]] = stablehlo.constant dense<0> : tensor<i32>
-+  // CHECK-DAG: [[INT_TEN:%.*]] = stablehlo.constant dense<10> : tensor<i32>
-+  // CHECK-DAG: [[FLOAT_ZERO:%.*]] = stablehlo.constant dense<0.0{{.*}}> : tensor<f32>
-+  // CHECK-DAG: [[FLOAT_HALF:%.*]] = stablehlo.constant dense<5.0{{.*}}e-01> : tensor<f32>
-+  // CHECK-DAG: [[FLOAT_INF:%.*]] = stablehlo.constant dense<0x7F800000> : tensor<f32>
-+  // CHECK:     return [[INT_ZERO]], [[INT_TEN]], [[INT_TEN]], [[FLOAT_ZERO]], [[FLOAT_HALF]], [[FLOAT_HALF]], [[FLOAT_INF]], [[FLOAT_INF]]
-+
-+  %int_zero = stablehlo.constant dense<0> : tensor<i32>
-+  %int_neg_ten = stablehlo.constant dense<-10> : tensor<i32>
-+  %int_pos_ten = stablehlo.constant dense<10> : tensor<i32>
-+
-+  %float_zero = stablehlo.constant dense<0.0> : tensor<f32>
-+  %float_neg_half = stablehlo.constant dense<-0.5> : tensor<f32>
-+  %float_pos_half = stablehlo.constant dense<0.5> : tensor<f32>
-+  %float_neg_inf = stablehlo.constant dense<0xFF800000> : tensor<f32> // -inf
-+  %float_pos_inf = stablehlo.constant dense<0x7F800000> : tensor<f32> // +inf
-+
-+  %0 = stablehlo.abs %int_zero : tensor<i32>
-+  %1 = stablehlo.abs %int_neg_ten : tensor<i32>
-+  %2 = stablehlo.abs %int_pos_ten : tensor<i32>
-+
-+  %3 = stablehlo.abs %float_zero : tensor<f32>
-+  %4 = stablehlo.abs %float_neg_half : tensor<f32>
-+  %5 = stablehlo.abs %float_pos_half : tensor<f32>
-+  %6 = stablehlo.abs %float_neg_inf : tensor<f32>
-+  %7 = stablehlo.abs %float_pos_inf : tensor<f32>
-+
-+  func.return %0, %1, %2, %3, %4, %5, %6, %7 : tensor<i32>, tensor<i32>, tensor<i32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>
-+}
-+
-+// -----
-+
-+////////
-+// CosineOp
-+
-+// CHECK-LABEL: func @fold_cosine
-+func.func @fold_cosine() -> (tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>) {
-+  // CHECK-DAG: [[ONE:%.*]] = stablehlo.constant dense<{{1\.0000.*}}> : tensor<f32>
-+  // CHECK-DAG: [[SQRT_THREE_OVER_TWO:%.*]] = stablehlo.constant dense<{{0\.8660.*|8\.660.*[Ee]-01}}> : tensor<f32>
-+  // CHECK-DAG: [[SQRT_TWO_OVER_TWO:%.*]] = stablehlo.constant dense<{{0\.7071.*|7\.071.*[Ee]-01}}> : tensor<f32>
-+  // CHECK-DAG: [[HALF:%.*]] = stablehlo.constant dense<{{0\.5000.*|5\.000.*[Ee]-01|0.4999.*|4\.999.*[Ee]-01}}> : tensor<f32>
-+  // CHECK-DAG: [[ZERO:%.*]] = stablehlo.constant dense<{{-?(0\.0000.*|[0-9]\.[0-9]*[Ee]-(0?[5-9]|[1-9][0-9]))}}> : tensor<f32>
-+  // CHECK:     return [[ONE]], [[SQRT_THREE_OVER_TWO]], [[SQRT_TWO_OVER_TWO]], [[HALF]], [[ZERO]]
-+
-+  %0 = stablehlo.constant dense<0.0> : tensor<f32>
-+  %1 = stablehlo.constant dense<0.5235987755982989> : tensor<f32> // pi/6
-+  %2 = stablehlo.constant dense<0.7853981633974483> : tensor<f32> // pi/4
-+  %3 = stablehlo.constant dense<1.0471975511965977> : tensor<f32> // pi/3
-+  %4 = stablehlo.constant dense<1.5707963267948966> : tensor<f32> // pi/2
-+
-+  %5 = stablehlo.cosine %0 : tensor<f32>
-+  %6 = stablehlo.cosine %1 : tensor<f32>
-+  %7 = stablehlo.cosine %2 : tensor<f32>
-+  %8 = stablehlo.cosine %3 : tensor<f32>
-+  %9 = stablehlo.cosine %4 : tensor<f32>
-+
-+  func.return %5, %6, %7, %8, %9 : tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>
-+}
-+
-+// -----
-+
-+////////
-+// ErfOp
-+
-+// CHECK-LABEL: func @fold_erf
-+func.func @fold_erf() -> (tensor<f32>, tensor<f32>, tensor<f32>) {
-+  // CHECK-DAG: [[RESULT0:%.*]] = stablehlo.constant dense<-0.52049{{.*}}> : tensor<f32>
-+  // CHECK-DAG: [[RESULT1:%.*]] = stablehlo.constant dense<0.0{{.*}}> : tensor<f32>
-+  // CHECK-DAG: [[RESULT2:%.*]] = stablehlo.constant dense<0.90000{{.*}}> : tensor<f32>
-+  // CHECK:     return [[RESULT0]], [[RESULT1]], [[RESULT2]]
-+
-+  %0 = stablehlo.constant dense<-0.5> : tensor<f32>
-+  %1 = stablehlo.constant dense<0.0> : tensor<f32>
-+  %2 = stablehlo.constant dense<1.1631> : tensor<f32>
-+
-+  %3 = chlo.erf %0 : tensor<f32> -> tensor<f32>
-+  %4 = chlo.erf %1 : tensor<f32> -> tensor<f32>
-+  %5 = chlo.erf %2 : tensor<f32> -> tensor<f32>
-+
-+  func.return %3, %4, %5 : tensor<f32>, tensor<f32>, tensor<f32>
-+}
-+
-+// -----
-+
-+////////
-+// ExpOp
-+
-+// CHECK-LABEL: func @fold_exponential
-+func.func @fold_exponential() -> (tensor<f32>, tensor<f32>) {
-+  // CHECK-DAG: [[ONE:%.*]] = stablehlo.constant dense<1.0{{.*}}> : tensor<f32>
-+  // CHECK-DAG: [[E:%.*]] = stablehlo.constant dense<2.718{{.*}}> : tensor<f32>
-+  // CHECK:     return [[ONE]], [[E]]
-+
-+  %0 = stablehlo.constant dense<0.0> : tensor<f32>
-+  %1 = stablehlo.constant dense<1.0> : tensor<f32>
-+
-+  %2 = stablehlo.exponential %0 : tensor<f32>
-+  %3 = stablehlo.exponential %1 : tensor<f32>
-+
-+  func.return %2, %3 : tensor<f32>, tensor<f32>
-+}
-+
-+// -----
-+
-+////////
-+// LogOp
-+
-+// CHECK-LABEL: func @fold_log
-+func.func @fold_log() -> (tensor<f32>, tensor<f32>, tensor<f32>) {
-+  // CHECK-DAG: [[ZERO:%.*]] = stablehlo.constant dense<0.0{{.*}}> : tensor<f32>
-+  // CHECK-DAG: [[ONE:%.*]] = stablehlo.constant dense<{{1\.0.*|0\.999.*}}> : tensor<f32>
-+  // CHECK-DAG: [[DO_NOT_FOLD_LOG_ZERO:%.*]] = stablehlo.log [[ZERO]] : tensor<f32>
-+  // CHECK:     return [[ZERO]], [[ONE]], [[DO_NOT_FOLD_LOG_ZERO]]
-+
-+  %0 = stablehlo.constant dense<1.0> : tensor<f32>
-+  %1 = stablehlo.constant dense<2.718281828459045> : tensor<f32>
-+  %2 = stablehlo.constant dense<0.0> : tensor<f32>
-+
-+  %3 = stablehlo.log %0 : tensor<f32>
-+  %4 = stablehlo.log %1 : tensor<f32>
-+  %5 = stablehlo.log %2 : tensor<f32>
-+
-+  func.return %3, %4, %5 : tensor<f32>, tensor<f32>, tensor<f32>
-+}
-+
-+// -----
-+
-+////////
-+// LogisticOp
-+
-+// CHECK-LABEL: func @fold_logistic
-+func.func @fold_logistic() -> (tensor<f32>, tensor<f32>, tensor<f32>) {
-+  // CHECK-DAG: [[ZERO:%.*]] = stablehlo.constant dense<0.0{{.*}}> : tensor<f32>
-+  // CHECK-DAG: [[HALF:%.*]] = stablehlo.constant dense<5.0{{.*}}e-01> : tensor<f32>
-+  // CHECK-DAG: [[ONE:%.*]] = stablehlo.constant dense<1.0{{.*}}> : tensor<f32>
-+  // CHECK:     return [[ZERO]], [[HALF]], [[ONE]]
-+
-+  %neg_inf = stablehlo.constant dense<0xFF800000> : tensor<f32>
-+  %zero = stablehlo.constant dense<0.0> : tensor<f32>
-+  %pos_inf = stablehlo.constant dense<0x7F800000> : tensor<f32>
-+
-+  %0 = stablehlo.logistic %neg_inf : tensor<f32>
-+  %1 = stablehlo.logistic %zero : tensor<f32>
-+  %2 = stablehlo.logistic %pos_inf : tensor<f32>
-+
-+  func.return %0, %1, %2 : tensor<f32>, tensor<f32>, tensor<f32>
-+}
-+
-+// -----
-+
-+////////
-+// NegOp
-+
-+// CHECK-LABEL: func @fold_negate
-+func.func @fold_negate() -> (tensor<i32>, tensor<i32>, tensor<f32>) {
-+  // CHECK-DAG: [[RESULT0:%.*]] = stablehlo.constant dense<-4> : tensor<i32>
-+  // CHECK-DAG: [[RESULT1:%.*]] = stablehlo.constant dense<0> : tensor<i32>
-+  // CHECK-DAG: [[RESULT2:%.*]] = stablehlo.constant dense<9.999{{.*}}e+02> : tensor<f32>
-+  // CHECK:     return [[RESULT0]], [[RESULT1]], [[RESULT2]]
-+
-+  %0 = stablehlo.constant dense<4> : tensor<i32>
-+  %1 = stablehlo.constant dense<0> : tensor<i32>
-+  %2 = stablehlo.constant dense<-999.9> : tensor<f32>
-+
-+  %3 = stablehlo.negate %0 : tensor<i32>
-+  %4 = stablehlo.negate %1 : tensor<i32>
-+  %5 = stablehlo.negate %2 : tensor<f32>
-+
-+  func.return %3, %4, %5 : tensor<i32>, tensor<i32>, tensor<f32>
-+}
-+
-+// -----
-+
-+////////
-+// NotOp
-+
-+// CHECK-LABEL: func @fold_not
-+func.func @fold_not() -> (tensor<i32>, tensor<i32>) {
-+  // CHECK-DAG: [[RESULT0:%.*]] = stablehlo.constant dense<42> : tensor<i32>
-+  // CHECK-DAG: [[RESULT1:%.*]] = stablehlo.constant dense<-1> : tensor<i32>
-+  // CHECK:     return [[RESULT0]], [[RESULT1]]
-+
-+  %0 = stablehlo.constant dense<-43> : tensor<i32>
-+  %1 = stablehlo.constant dense<0> : tensor<i32>
-+
-+  %2 = stablehlo.not %0 : tensor<i32>
-+  %3 = stablehlo.not %1 : tensor<i32>
-+
-+  func.return %2, %3 : tensor<i32>, tensor<i32>
-+}
-+
-+// -----
-+
-+////////
-+// RoundOp
-+
-+// CHECK-LABEL: func @fold_round_nearest_afz
-+func.func @fold_round_nearest_afz() -> (tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>) {
-+  // CHECK-DAG: [[NEG_THREE:%.*]] = stablehlo.constant dense<-3.0{{.*}}> : tensor<f32>
-+  // CHECK-DAG: [[NEG_TWO:%.*]] = stablehlo.constant dense<-2.0{{.*}}> : tensor<f32>
-+  // CHECK-DAG: [[ZERO:%.*]] = stablehlo.constant dense<0.0{{.*}}> : tensor<f32>
-+  // CHECK-DAG: [[ONE:%.*]] = stablehlo.constant dense<1.0{{.*}}> : tensor<f32>
-+  // CHECK-DAG: [[TWO:%.*]] = stablehlo.constant dense<2.0{{.*}}> : tensor<f32>
-+  // CHECK-DAG: [[THREE:%.*]] = stablehlo.constant dense<3.0{{.*}}> : tensor<f32>
-+  // CHECK:     return [[NEG_THREE]], [[NEG_TWO]], [[ZERO]], [[ONE]], [[ONE]], [[TWO]], [[THREE]]
-+
-+  %0 = stablehlo.constant dense<-2.5> : tensor<f32>
-+  %1 = stablehlo.constant dense<-1.5> : tensor<f32>
-+  %2 = stablehlo.constant dense<0.4> : tensor<f32>
-+  %3 = stablehlo.constant dense<0.5> : tensor<f32>
-+  %4 = stablehlo.constant dense<0.6> : tensor<f32>
-+  %5 = stablehlo.constant dense<1.5> : tensor<f32>
-+  %6 = stablehlo.constant dense<2.5> : tensor<f32>
-+
-+  %7 = stablehlo.round_nearest_afz %0 : tensor<f32>
-+  %8 = stablehlo.round_nearest_afz %1 : tensor<f32>
-+  %9 = stablehlo.round_nearest_afz %2 : tensor<f32>
-+  %10 = stablehlo.round_nearest_afz %3 : tensor<f32>
-+  %11 = stablehlo.round_nearest_afz %4 : tensor<f32>
-+  %12 = stablehlo.round_nearest_afz %5 : tensor<f32>
-+  %13 = stablehlo.round_nearest_afz %6 : tensor<f32>
-+
-+  func.return %7, %8, %9, %10, %11, %12, %13 : tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>
-+}
-+
-+// -----
-+
-+////////
-+// RoundNearestEvenOp
-+
-+// CHECK-LABEL: func @fold_round_nearest_even
-+func.func @fold_round_nearest_even() -> (tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>) {
-+  // CHECK-DAG: [[NEG_TWO:%.*]] = stablehlo.constant dense<-2.0{{.*}}> : tensor<f32>
-+  // CHECK-DAG: [[ZERO:%.*]] = stablehlo.constant dense<0.0{{.*}}> : tensor<f32>
-+  // CHECK-DAG: [[ONE:%.*]] = stablehlo.constant dense<1.0{{.*}}> : tensor<f32>
-+  // CHECK-DAG: [[TWO:%.*]] = stablehlo.constant dense<2.0{{.*}}> : tensor<f32>
-+  // CHECK:     return [[NEG_TWO]], [[NEG_TWO]], [[ZERO]], [[ZERO]], [[ONE]], [[TWO]], [[TWO]]
-+
-+  %0 = stablehlo.constant dense<-2.5> : tensor<f32>
-+  %1 = stablehlo.constant dense<-1.5> : tensor<f32>
-+  %2 = stablehlo.constant dense<0.4> : tensor<f32>
-+  %3 = stablehlo.constant dense<0.5> : tensor<f32>
-+  %4 = stablehlo.constant dense<0.6> : tensor<f32>
-+  %5 = stablehlo.constant dense<1.5> : tensor<f32>
-+  %6 = stablehlo.constant dense<2.5> : tensor<f32>
-+
-+  %7 = stablehlo.round_nearest_even %0 : tensor<f32>
-+  %8 = stablehlo.round_nearest_even %1 : tensor<f32>
-+  %9 = stablehlo.round_nearest_even %2 : tensor<f32>
-+  %10 = stablehlo.round_nearest_even %3 : tensor<f32>
-+  %11 = stablehlo.round_nearest_even %4 : tensor<f32>
-+  %12 = stablehlo.round_nearest_even %5 : tensor<f32>
-+  %13 = stablehlo.round_nearest_even %6 : tensor<f32>
-+
-+  func.return %7, %8, %9, %10, %11, %12, %13 : tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>
-+}
-+
-+// -----
-+
-+////////
-+// RsqrtOp
-+
-+// CHECK-LABEL: func @fold_rsqrt
-+func.func @fold_rsqrt() -> (tensor<f32>, tensor<f32>) {
-+  // CHECK-DAG: [[HALF:%.*]] = stablehlo.constant dense<5.0{{.*}}e-01> : tensor<f32>
-+  // CHECK-DAG: [[ZERO:%.*]] = stablehlo.constant dense<0.0{{.*}}> : tensor<f32>
-+  // CHECK-DAG: [[DO_NOT_FOLD_RSQRT_ZERO:%.*]] = stablehlo.rsqrt [[ZERO]] : tensor<f32>
-+  // CHECK:     return [[HALF]], [[DO_NOT_FOLD_RSQRT_ZERO]]
-+
-+  %0 = stablehlo.constant dense<4.0> : tensor<f32>
-+  %1 = stablehlo.constant dense<0.0> : tensor<f32>
-+
-+  %2 = stablehlo.rsqrt %0 : tensor<f32>
-+  %3 = stablehlo.rsqrt %1 : tensor<f32>
-+
-+  func.return %2, %3 : tensor<f32>, tensor<f32>
-+}
-+
-+// -----
-+
-+////////
-+// SignOp
-+
-+// CHECK-LABEL: func @fold_sign
-+func.func @fold_sign() -> (tensor<i32>, tensor<i32>, tensor<i32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>) {
-+  // CHECK-DAG: [[INT_NEG_ONE:%.*]] = stablehlo.constant dense<-1> : tensor<i32>
-+  // CHECK-DAG: [[INT_ZERO:%.*]] = stablehlo.constant dense<0> : tensor<i32>
-+  // CHECK-DAG: [[INT_POS_ONE:%.*]] = stablehlo.constant dense<1> : tensor<i32>
-+  // CHECK-DAG: [[FLOAT_NEG_ONE:%.*]] = stablehlo.constant dense<-1.0{{.*}}> : tensor<f32>
-+  // CHECK-DAG: [[FLOAT_ZERO:%.*]] = stablehlo.constant dense<0.0{{.*}}> : tensor<f32>
-+  // CHECK-DAG: [[FLOAT_POS_ONE:%.*]] = stablehlo.constant dense<1.0{{.*}}> : tensor<f32>
-+  // CHECK-DAG: [[FLOAT_NAN:%.*]] = stablehlo.constant dense<0x7FC00000> : tensor<f32>
-+  // CHECK-DAG: [[DO_NOT_FOLD_SIGN_NAN:%.*]] = stablehlo.sign [[FLOAT_NAN]] : tensor<f32>
-+  // CHECK:     return [[INT_NEG_ONE]], [[INT_ZERO]], [[INT_POS_ONE]], [[FLOAT_NEG_ONE]], [[FLOAT_ZERO]], [[FLOAT_POS_ONE]], [[DO_NOT_FOLD_SIGN_NAN]]
-+
-+  %0 = stablehlo.constant dense<-7> : tensor<i32>
-+  %1 = stablehlo.constant dense<0> : tensor<i32>
-+  %2 = stablehlo.constant dense<25> : tensor<i32>
-+  %3 = stablehlo.constant dense<-2.5> : tensor<f32>
-+  %4 = stablehlo.constant dense<0.0> : tensor<f32>
-+  %5 = stablehlo.constant dense<0.1> : tensor<f32>
-+  %6 = stablehlo.constant dense<0x7FC00000> : tensor<f32> // NaN
-+
-+  %7 = stablehlo.sign %0 : tensor<i32>
-+  %8 = stablehlo.sign %1 : tensor<i32>
-+  %9 = stablehlo.sign %2 : tensor<i32>
-+  %10 = stablehlo.sign %3 : tensor<f32>
-+  %11 = stablehlo.sign %4 : tensor<f32>
-+  %12 = stablehlo.sign %5 : tensor<f32>
-+  %13 = stablehlo.sign %6 : tensor<f32>
-+
-+  func.return %7, %8, %9, %10, %11, %12, %13 : tensor<i32>, tensor<i32>, tensor<i32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>
-+}
-+
-+// -----
-+
-+////////
-+// SineOp
-+
-+// CHECK-LABEL: func @fold_sine
-+func.func @fold_sine() -> (tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>) {
-+  // CHECK-DAG: [[ZERO:%.*]] = stablehlo.constant dense<{{0\.0000.*}}> : tensor<f32>
-+  // CHECK-DAG: [[HALF:%.*]] = stablehlo.constant dense<{{0\.5000.*|5\.000.*[Ee]-01|0.4999.*|4\.999.*[Ee]-01}}> : tensor<f32>
-+  // CHECK-DAG: [[SQRT_TWO_OVER_TWO:%.*]] = stablehlo.constant dense<{{0\.7071.*|7\.071.*[Ee]-01}}> : tensor<f32>
-+  // CHECK-DAG: [[SQRT_THREE_OVER_TWO:%.*]] = stablehlo.constant dense<{{0\.8660.*|8\.660.*[Ee]-01}}> : tensor<f32>
-+  // CHECK-DAG: [[ONE:%.*]] = stablehlo.constant dense<{{1\.0000.*|0\.9999.*|9\.999.*[Ee]-01}}> : tensor<f32>
-+  // CHECK:     return [[ZERO]], [[HALF]], [[SQRT_TWO_OVER_TWO]], [[SQRT_THREE_OVER_TWO]], [[ONE]]
-+
-+  %0 = stablehlo.constant dense<0.0> : tensor<f32>
-+  %1 = stablehlo.constant dense<0.5235987755982989> : tensor<f32> // pi/6
-+  %2 = stablehlo.constant dense<0.7853981633974483> : tensor<f32> // pi/4
-+  %3 = stablehlo.constant dense<1.0471975511965977> : tensor<f32> // pi/3
-+  %4 = stablehlo.constant dense<1.5707963267948966> : tensor<f32> // pi/2
-+
-+  %5 = stablehlo.sine %0 : tensor<f32>
-+  %6 = stablehlo.sine %1 : tensor<f32>
-+  %7 = stablehlo.sine %2 : tensor<f32>
-+  %8 = stablehlo.sine %3 : tensor<f32>
-+  %9 = stablehlo.sine %4 : tensor<f32>
-+
-+  func.return %5, %6, %7, %8, %9 : tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>
-+}
-+
-+// -----
-+
-+////////
- // SqrtOp
- 
- // CHECK-LABEL: func @fold_sqrt
--func.func @fold_sqrt() -> (tensor<f32>) {
--  // CHECK: [[RESULT0:%.*]] = stablehlo.constant dense<2.0{{.*}}> : tensor<f32>
--  // CHECK: return [[RESULT0]]
-+func.func @fold_sqrt() -> (tensor<f32>, tensor<f32>) {
-+  // CHECK-DAG: [[TWO:%.*]] = stablehlo.constant dense<2.0{{.*}}> : tensor<f32>
-+  // CHECK-DAG: [[NEG_ONE:%.*]] = stablehlo.constant dense<-1.0{{.*}}> : tensor<f32>
-+  // CHECK-DAG: [[DO_NOT_FOLD_FLOAT_SQRT_NEG_ONE:%.*]] = stablehlo.sqrt [[NEG_ONE]] : tensor<f32>
-+  // CHECK:     return [[TWO]], [[DO_NOT_FOLD_FLOAT_SQRT_NEG_ONE]]
-+
-   %0 = stablehlo.constant dense<4.0> : tensor<f32>
--  %1 = stablehlo.sqrt %0 : tensor<f32>
--  func.return %1 : tensor<f32>
--}
--
--//
-+  %1 = stablehlo.constant dense<-1.0> : tensor<f32>
-+
-+  %2 = stablehlo.sqrt %0 : tensor<f32>
-+  %3 = stablehlo.sqrt %1 : tensor<f32>
-+
-+  func.return %2, %3 : tensor<f32>, tensor<f32>
-+}
-+
-+// -----
-+
-+////////
-+// TanOp
-+
-+// CHECK-LABEL: func @fold_tan
-+func.func @fold_tan() -> (tensor<f32>) {
-+  // CHECK: [[ONE:%.*]] = stablehlo.constant dense<{{1\.0.*|0\.999.*}}> : tensor<f32>
-+  // CHECK: return [[ONE]]
-+  %pi_over_4 = stablehlo.constant dense<0.7853981633974483> : tensor<f32>
-+  %result = stablehlo.tan %pi_over_4 : tensor<f32>
-+  func.return %result : tensor<f32>
-+}
-+
-+// -----
-+
-+////////
-+// TanhOp
-+
-+// CHECK-LABEL: func @fold_tanh
-+func.func @fold_tanh() -> (tensor<f32>, tensor<f32>, tensor<f32>) {
-+  // CHECK-DAG: [[NEG_SQRT_ONE_FIFTH:%.*]] = stablehlo.constant dense<-0.44721{{.*}}> : tensor<f32>
-+  // CHECK-DAG: [[ZERO:%.*]] = stablehlo.constant dense<0.0{{.*}}> : tensor<f32>
-+  // CHECK-DAG: [[SQRT_ONE_FIFTH:%.*]] = stablehlo.constant dense<0.44721{{.*}}> : tensor<f32>
-+  // CHECK:     return [[NEG_SQRT_ONE_FIFTH]], [[ZERO]], [[SQRT_ONE_FIFTH]]
-+
-+  %neg_log_phi = stablehlo.constant dense<-0.4812118250596034> : tensor<f32>
-+  %zero = stablehlo.constant dense<0.0> : tensor<f32>
-+  %log_phi = stablehlo.constant dense<0.4812118250596034> : tensor<f32>
-+
-+  %tanh_neg_log_phi = stablehlo.tanh %neg_log_phi : tensor<f32>
-+  %tanh_zero = stablehlo.tanh %zero : tensor<f32>
-+  %tanh_log_phi = stablehlo.tanh %log_phi : tensor<f32>
-+
-+  func.return %tanh_neg_log_phi, %tanh_zero, %tanh_log_phi : tensor<f32>, tensor<f32>, tensor<f32>
-+}
-+
-+// -----
- 
- ////////
- // SetDimensionSizeOp
-@@ -748,6 +1160,19 @@
-   // CHECK-NEXT: return [[RESULT0]]
-   %0 = stablehlo.set_dimension_size %arg0, %c, dim = 0 : (tensor<10xf32>, tensor<i32>) -> tensor<?xf32, #stablehlo.bounds<10>>
-   return %0 : tensor<?xf32, #stablehlo.bounds<10>>
-+}
-+
-+// -----
-+
-+// Don't fold when washing away a bounded dimension, not safe to replace with
-+// operand when types mismatch.
-+// CHECK-LABEL: func.func @no_fold_set_dimension_size_bounded_input
-+func.func @no_fold_set_dimension_size_bounded_input(%arg0: tensor<?x4xf32, #stablehlo.bounds<8, ?>>) -> tensor<8x4xf32> {
-+  %c = stablehlo.constant dense<8> : tensor<i32>
-+  // CHECK: [[RESULT0:%.+]] = stablehlo.set_dimension_size
-+  // CHECK-NEXT: return [[RESULT0]]
-+  %0 = stablehlo.set_dimension_size %arg0, %c, dim = 0 : (tensor<?x4xf32, #stablehlo.bounds<8, ?>>, tensor<i32>) -> tensor<8x4xf32>
-+  return %0 : tensor<8x4xf32>
- }
- 
- // -----
-diff --ruN a/stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_simplification.mlir b/stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_simplification.mlir
---- stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_simplification.mlir
-+++ stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_simplification.mlir
-@@ -98,6 +98,14 @@
- 
-   // CHECK-NEXT: return [[ARG0]], [[R4]]
-   return %3, %4 : tensor<3x3xi32>, tensor<3x3xi32>
-+}
-+
-+// CHECK-LABEL: func.func @broadcast_in_dim_transpose_invert
-+// CHECK-SAME:   ([[ARG0:%.+]]: tensor<1x2x3x4xf32>)
-+func.func @broadcast_in_dim_transpose_invert(%arg0 : tensor<1x2x3x4xf32>) -> tensor<3x1x4x2xf32> {
-+  // stablehlo.transpose %arg0, dims = [2, 0, 3, 1] : (tensor<1x2x3x4xf32>) -> tensor<3x1x4x2xf32>
-+  %0 = stablehlo.broadcast_in_dim %arg0, dims = [1,3,0,2] : (tensor<1x2x3x4xf32>) -> tensor<3x1x4x2xf32>
-+  return %0 : tensor<3x1x4x2xf32>
- }
- 
- // CHECK-LABEL: func.func @broadcast_in_dim_nested
 diff --ruN a/stablehlo/stablehlo/transforms/ChloLegalizeToStablehlo.cpp b/stablehlo/stablehlo/transforms/ChloLegalizeToStablehlo.cpp
 --- stablehlo/stablehlo/transforms/ChloLegalizeToStablehlo.cpp
 +++ stablehlo/stablehlo/transforms/ChloLegalizeToStablehlo.cpp
-@@ -24,6 +24,7 @@
- #include "llvm/ADT/STLExtras.h"
- #include "llvm/ADT/Sequence.h"
- #include "llvm/ADT/SmallVector.h"
-+#include "llvm/Support/Debug.h"
- #include "mlir/Dialect/Arith/IR/Arith.h"
- #include "mlir/Dialect/Complex/IR/Complex.h"
- #include "mlir/Dialect/Func/IR/FuncOps.h"
-@@ -55,6 +56,8 @@
- // compilation, M_PI will not be defined.
- #define _USE_MATH_DEFINES
- 
-+#define DEBUG_TYPE "chlo-legalize-to-stablehlo"
-+
- namespace mlir {
- namespace stablehlo {
- 
-@@ -198,6 +201,31 @@
-       val);
+@@ -73,7 +73,7 @@
+ template <typename FromOpTy, typename ToOpTy>
+ struct HloNaryElementwiseAdaptor {
+   static ToOpTy createOp(FromOpTy fromOp, Type resultType,
+-                         ValueRange broadcastedOperands, OpBuilder& builder) {
++                         ValueRange broadcastedOperands, OpBuilder &builder) {
+     return builder.create<ToOpTy>(fromOp.getLoc(), resultType,
+                                   broadcastedOperands);
+   }
+@@ -118,7 +118,7 @@
+ struct HloCompareAdaptor {
+   static mlir::stablehlo::CompareOp createOp(
+       mlir::chlo::BroadcastCompareOp fromOp, Type resultType,
+-      ValueRange broadcastedOperands, OpBuilder& builder) {
++      ValueRange broadcastedOperands, OpBuilder &builder) {
+     auto chloDirection = fromOp.getComparisonDirection();
+     auto hloDirection = toStableHloComparisonDirection(chloDirection);
+     if (!hloDirection) return nullptr;
+@@ -140,9 +140,9 @@
+ // to take a ChloOpTy, NonBroadcastingOpTy, and an Adaptor as templated values.
+ template <template <typename, typename, typename> typename Pattern,
+           typename... ConstructorArgs>
+-static void populateForBroadcastingBinaryOp(MLIRContext* context,
+-                                            RewritePatternSet* patterns,
+-                                            ConstructorArgs&&... args) {
++static void populateForBroadcastingBinaryOp(MLIRContext *context,
++                                            RewritePatternSet *patterns,
++                                            ConstructorArgs &&...args) {
+ #define POPULATE_BCAST(ChloOp, HloOp)                                          \
+   patterns                                                                     \
+       ->add<Pattern<ChloOp, HloOp, HloNaryElementwiseAdaptor<ChloOp, HloOp>>>( \
+@@ -179,21 +179,21 @@
+       context, args...);
  }
  
-+// Broadcast using numpy-style broadcasting semantics.
-+// This is only valid if the CHLO op has static shaped operands, and no
-+// explicitly specified broadcast_dimensions.
-+//
-+// Asserts that input is ranked tensor type.
-+Value numpyBroadcastIfNeeded(Value op, RankedTensorType opResultType,
-+                             PatternRewriter& rewriter) {
-+  RankedTensorType inputType = cast<RankedTensorType>(op.getType());
-+  RankedTensorType broadcastedResultType =
-+      opResultType.clone(inputType.getElementType());
-+
-+  // No broadcasting needed if input type matches broadcasted result type.
-+  if (inputType == broadcastedResultType) return op;
-+
-+  // broadcast dims are the last dims for numpy style broadcasting.
-+  int64_t inputRank = inputType.getRank();
-+  int64_t resultRank = opResultType.getRank();
-+  auto broadcastDimensions =
-+      llvm::to_vector(llvm::seq<int64_t>(resultRank - inputRank, resultRank));
-+  return stablehlo::BroadcastInDimOp::create(rewriter, op.getLoc(),
-+                                             broadcastedResultType, op,
-+                                             broadcastDimensions)
-+      .getResult();
-+}
-+
- //===----------------------------------------------------------------------===//
- // Broadcasting Patterns.
- //===----------------------------------------------------------------------===//
-@@ -215,24 +243,69 @@
+-static Value getConstantLikeMaxFiniteValue(OpBuilder& b, Location loc,
++static Value getConstantLikeMaxFiniteValue(OpBuilder &b, Location loc,
+                                            Value val) {
+   auto ty = cast<FloatType>(getElementTypeOrSelf(val.getType()));
+   return getConstantLike(
+       b, loc, llvm::APFloat::getLargest(ty.getFloatSemantics()), val);
+ }
+ 
+-static Value getConstantLikeInfValue(OpBuilder& b, Location loc, Value val,
++static Value getConstantLikeInfValue(OpBuilder &b, Location loc, Value val,
+                                      bool negative) {
+   auto ty = cast<FloatType>(getElementTypeOrSelf(val.getType()));
+   return getConstantLike(
+       b, loc, llvm::APFloat::getInf(ty.getFloatSemantics(), negative), val);
+ }
+ 
+-static Value getConstantLikeSmallestNormalizedValue(OpBuilder& b, Location loc,
++static Value getConstantLikeSmallestNormalizedValue(OpBuilder &b, Location loc,
+                                                     Value val) {
+   auto ty = cast<FloatType>(getElementTypeOrSelf(val.getType()));
+   return getConstantLike(
+@@ -239,7 +239,7 @@
+ 
+   LogicalResult matchAndRewrite(
+       ChloOpTy op, typename ChloOpTy::Adaptor adaptor,
+-      ConversionPatternRewriter& rewriter) const override {
++      ConversionPatternRewriter &rewriter) const override {
      // Only rewrite for statically determinable non-broadcasting cases.
      auto lhsType = dyn_cast<RankedTensorType>(adaptor.getLhs().getType());
      auto rhsType = dyn_cast<RankedTensorType>(adaptor.getRhs().getType());
--    if (!lhsType || !rhsType) return failure();
--
--    // Requires rank broadcast.
--    if (lhsType.getRank() != rhsType.getRank()) return failure();
--
--    // Any dynamic dimension may require broadcasting and requires more
--    // analysis.
--    if (!lhsType.hasStaticShape() || !rhsType.hasStaticShape()) {
--      return failure();
--    }
--
--    if (!llvm::equal(lhsType.getShape(), rhsType.getShape())) {
--      return failure();
--    }
-+    if (!lhsType || !rhsType || lhsType.getShape() != rhsType.getShape() ||
-+        !lhsType.hasStaticShape() || !rhsType.hasStaticShape())
-+      return rewriter.notifyMatchFailure(
-+          op,
-+          "expected LHS and RHS to be ranked tensors with matching shapes that "
-+          "are all static");
+@@ -329,7 +329,7 @@
  
-     rewriter.replaceOp(
-         op, ValueRange{Adaptor::createOp(op, op.getType(),
-                                          adaptor.getOperands(), rewriter)});
-+    return success();
-+  }
-+};
-+
-+// Converts binary ops that statically determined to use default numpy
-+// broadcasting to simple StableHLO broadcasting ops without shape dialect.
-+template <typename ChloOpTy, typename HloOpTy, typename Adaptor>
-+struct ConvertTrivialNumpyBroadcastBinaryOp final
-+    : OpConversionPattern<ChloOpTy> {
-+  using OpConversionPattern<ChloOpTy>::OpConversionPattern;
-+
-+  LogicalResult matchAndRewrite(
-+      ChloOpTy op, typename ChloOpTy::Adaptor adaptor,
-+      ConversionPatternRewriter& rewriter) const override {
-+    // Only rewrite for statically determinable non-broadcasting cases.
-+    auto lhsType = dyn_cast<RankedTensorType>(adaptor.getLhs().getType());
-+    auto rhsType = dyn_cast<RankedTensorType>(adaptor.getRhs().getType());
-+    if (!lhsType || !rhsType || !lhsType.hasStaticShape() ||
-+        !rhsType.hasStaticShape())
-+      return rewriter.notifyMatchFailure(
-+          op,
-+          "expected LHS and RHS to be ranked tensor types with static "
-+          "shape");
-+
-+    // Rely on CHLO type inference to figure out the proper broadcasted shape.
-+    auto resultType = dyn_cast<RankedTensorType>(op.getResult().getType());
-+    if (!resultType || !resultType.hasStaticShape())
-+      return rewriter.notifyMatchFailure(
-+          op, "expected result to be a ranked tensor type with static shape");
-+
-+    auto lhs = adaptor.getLhs();
-+    auto rhs = adaptor.getRhs();
-+    auto broadcastDimensions = adaptor.getBroadcastDimensions();
-+    if (broadcastDimensions &&
-+        !hlo::isLegalNumpyRankedBroadcast(lhs, rhs, *broadcastDimensions))
-+      return rewriter.notifyMatchFailure(
-+          op,
-+          "expected implicit broadcast_dimensions or numpy-style broadcasting");
-+
-+    LLVM_DEBUG(llvm::dbgs()
-+               << "CHLO Decomposing " << op->getName() << " with broadcast "
-+               << lhsType << " x " << rhsType << " -> " << resultType << "\n");
-+
-+    // If operands are static directly create stablehlo broadcasting ops.
-+    // Use numpy-style broadcasting with using StableHLO broadcast ops,
-+    // when user didn't specify broadcast_dimensions.
-+    auto lhsBroadcast =
-+        numpyBroadcastIfNeeded(adaptor.getLhs(), resultType, rewriter);
-+    auto rhsBroadcast =
-+        numpyBroadcastIfNeeded(adaptor.getRhs(), resultType, rewriter);
-+    auto result = Adaptor::createOp(op, resultType,
-+                                    {lhsBroadcast, rhsBroadcast}, rewriter);
-+    rewriter.replaceOp(op, {result.getResult()});
+   LogicalResult matchAndRewrite(
+       ChloOpTy op, typename ChloOpTy::Adaptor adaptor,
+-      ConversionPatternRewriter& rewriter) const override {
++      ConversionPatternRewriter &rewriter) const override {
+     // Only support ranked operands.
+     Value lhs = adaptor.getLhs();
+     Value rhs = adaptor.getRhs();
+@@ -413,7 +413,7 @@
+ 
+   LogicalResult matchAndRewrite(
+       mlir::chlo::ConstantLikeOp op, OpAdaptor adaptor,
+-      ConversionPatternRewriter& rewriter) const override {
++      ConversionPatternRewriter &rewriter) const override {
+     auto resultTy = cast<ShapedType>(op.getType());
+ 
+     // Unranked uses are not supported.
+@@ -445,7 +445,7 @@
+ 
+   LogicalResult matchAndRewrite(
+       mlir::chlo::BroadcastSelectOp op, OpAdaptor adaptor,
+-      ConversionPatternRewriter& rewriter) const override {
++      ConversionPatternRewriter &rewriter) const override {
+     // Only support ranked operands.
+     Value pred = adaptor.getPred();
+     Value onTrue = adaptor.getOnTrue();
+@@ -533,7 +533,7 @@
+ 
+   LogicalResult matchAndRewrite(
+       mlir::chlo::ConstantOp op, OpAdaptor adaptor,
+-      ConversionPatternRewriter& rewriter) const override {
++      ConversionPatternRewriter &rewriter) const override {
+     rewriter.replaceOpWithNewOp<mlir::stablehlo::ConstantOp>(op, op.getValue());
      return success();
    }
+@@ -541,7 +541,7 @@
+ 
+ template <typename FTy>
+ static Value materializeChebyshevPolynomialApproximation(
+-    OpBuilder& rewriter, Location loc, Value x, ArrayRef<FTy> coefficients) {
++    OpBuilder &rewriter, Location loc, Value x, ArrayRef<FTy> coefficients) {
+   Value b0 = getConstantLike(rewriter, loc, 0.0, x);
+   Value b1 = getConstantLike(rewriter, loc, 0.0, x);
+   Value b2 = getConstantLike(rewriter, loc, 0.0, x);
+@@ -561,7 +561,7 @@
+ }
+ 
+ template <typename FTy>
+-static Value materializeBesselI1eApproximation(OpBuilder& rewriter,
++static Value materializeBesselI1eApproximation(OpBuilder &rewriter,
+                                                Location loc, Value x,
+                                                ArrayRef<FTy> kI1eCoeffsA,
+                                                ArrayRef<FTy> kI1eCoeffsB) {
+@@ -594,7 +594,7 @@
+       loc, rewriter.create<mlir::stablehlo::SignOp>(loc, x), select);
+ }
+ 
+-Value materializeBesselI1eApproximationF32(OpBuilder& rewriter, Location loc,
++Value materializeBesselI1eApproximationF32(OpBuilder &rewriter, Location loc,
+                                            ValueRange args) {
+   Value x = args.front();
+   assert(cast<ShapedType>(x.getType()).getElementType().isF32() &&
+@@ -620,7 +620,7 @@
+                                                   kI1eCoeffsB);
+ }
+ 
+-static Value materializeBesselI1eApproximationF64(OpBuilder& rewriter,
++static Value materializeBesselI1eApproximationF64(OpBuilder &rewriter,
+                                                   Location loc,
+                                                   ValueRange args) {
+   Value x = args.front();
+@@ -663,10 +663,10 @@
+                                                    kI1eCoeffsA, kI1eCoeffsB);
+ }
+ 
+-static Value materializeWithUpcast(ConversionPatternRewriter& rewriter,
++static Value materializeWithUpcast(ConversionPatternRewriter &rewriter,
+                                    Location loc, ValueRange args,
+                                    FloatType minPrecisionTy,
+-                                   Value callback(OpBuilder&, Location,
++                                   Value callback(OpBuilder &, Location,
+                                                   ValueRange)) {
+   Type originalTy = getElementTypeOrSelf(args.front().getType());
+   auto floatOriginalTy = dyn_cast<FloatType>(originalTy);
+@@ -699,7 +699,7 @@
+ 
+   LogicalResult matchAndRewrite(
+       mlir::chlo::BesselI1eOp op, OpAdaptor adaptor,
+-      ConversionPatternRewriter& rewriter) const override {
++      ConversionPatternRewriter &rewriter) const override {
+     Location loc = op.getLoc();
+     Value x = adaptor.getOperand();
+     Type ty = cast<ShapedType>(x.getType()).getElementType();
+@@ -725,7 +725,7 @@
  };
-@@ -2416,6 +2489,8 @@
+ 
+ template <typename FTy>
+-static Value materializePolynomialApproximation(OpBuilder& rewriter,
++static Value materializePolynomialApproximation(OpBuilder &rewriter,
+                                                 Location loc, Value x,
+                                                 ArrayRef<FTy> coefficients) {
+   if (coefficients.empty()) return getConstantLike(rewriter, loc, 0.0, x);
+@@ -746,7 +746,7 @@
+ // argument and derive the final approximation for all |x| >= 1.
+ // This implementation is based on Cephes.
+ static Value materializeErfcApproximationF64ForMagnituteGeOne(
+-    ConversionPatternRewriter& rewriter, Location loc, ValueRange args) {
++    ConversionPatternRewriter &rewriter, Location loc, ValueRange args) {
+   Value x = args.front();
+   assert(cast<ShapedType>(x.getType()).getElementType().isF64() &&
+          "expect f64 element type");
+@@ -831,7 +831,7 @@
+ // Precondition is |x| <= 1. Use erfc approximation, otherwise.
+ // This implementation is based on Cephes.
+ static Value materializeErfApproximationF64ForMagnituteLeOne(
+-    ConversionPatternRewriter& rewriter, Location loc, ValueRange args) {
++    ConversionPatternRewriter &rewriter, Location loc, ValueRange args) {
+   Value x = args.front();
+   assert(cast<ShapedType>(x.getType()).getElementType().isF64() &&
+          "expect f64 element type");
+@@ -856,7 +856,7 @@
+ }
+ 
+ // This implementation is based on Cephes.
+-static Value materializeErfApproximationF64(ConversionPatternRewriter& rewriter,
++static Value materializeErfApproximationF64(ConversionPatternRewriter &rewriter,
+                                             Location loc, ValueRange args) {
+   Value x = args.front();
+   assert(cast<ShapedType>(x.getType()).getElementType().isF64() &&
+@@ -884,7 +884,7 @@
+ }
+ 
+ static Value materializeErfcApproximationF64(
+-    ConversionPatternRewriter& rewriter, Location loc, ValueRange args) {
++    ConversionPatternRewriter &rewriter, Location loc, ValueRange args) {
+   Value x = args.front();
+   assert(cast<ShapedType>(x.getType()).getElementType().isF64() &&
+          "expect f64 element type");
+@@ -916,7 +916,7 @@
+ // argument and derive the final approximation for all |x| >= 1.
+ // This implementation is based on Cephes.
+ static Value materializeErfcApproximationF32ForMagnitudeGeOne(
+-    OpBuilder& rewriter, Location loc, ValueRange args) {
++    OpBuilder &rewriter, Location loc, ValueRange args) {
+   Value x = args.front();
+   assert(cast<ShapedType>(x.getType()).getElementType().isF32() &&
+          "expect f32 element type");
+@@ -982,7 +982,7 @@
+ // Precondition is |x| <= 1. Use erfc approximation, otherwise.
+ // This implementation is based on Cephes.
+ static Value materializeErfApproximationF32ForMagnitudeLeOne(
+-    OpBuilder& rewriter, Location loc, ValueRange args) {
++    OpBuilder &rewriter, Location loc, ValueRange args) {
+   Value x = args.front();
+   assert(cast<ShapedType>(x.getType()).getElementType().isF32() &&
+          "expect f32 element type");
+@@ -1001,7 +1001,7 @@
+ }
+ 
+ // This is the same approximation as used in Eigen.
+-static Value materializeErfApproximationF32(OpBuilder& rewriter, Location loc,
++static Value materializeErfApproximationF32(OpBuilder &rewriter, Location loc,
+                                             ValueRange args) {
+   Value x = args.front();
+   assert(cast<ShapedType>(x.getType()).getElementType().isF32() &&
+@@ -1038,7 +1038,7 @@
+                                                    erf, ubErf);
+ }
+ 
+-static Value materializeErfcApproximationF32(OpBuilder& rewriter, Location loc,
++static Value materializeErfcApproximationF32(OpBuilder &rewriter, Location loc,
+                                              ValueRange args) {
+   Value x = args.front();
+   assert(cast<ShapedType>(x.getType()).getElementType().isF32() &&
+@@ -1070,7 +1070,7 @@
+ 
+   LogicalResult matchAndRewrite(
+       mlir::chlo::ErfOp op, OpAdaptor adaptor,
+-      ConversionPatternRewriter& rewriter) const override {
++      ConversionPatternRewriter &rewriter) const override {
+     Location loc = op.getLoc();
+     Value x = adaptor.getOperand();
+     Type ty = cast<ShapedType>(x.getType()).getElementType();
+@@ -1098,7 +1098,7 @@
+ 
+   LogicalResult matchAndRewrite(
+       mlir::chlo::ErfcOp op, OpAdaptor adaptor,
+-      ConversionPatternRewriter& rewriter) const override {
++      ConversionPatternRewriter &rewriter) const override {
+     Location loc = op.getLoc();
+     Value x = adaptor.getOperand();
+     Type ty = cast<ShapedType>(x.getType()).getElementType();
+@@ -1121,7 +1121,7 @@
+   }
+ };
+ 
+-static Value erfInv32(OpBuilder& b, Location loc, ValueRange args) {
++static Value erfInv32(OpBuilder &b, Location loc, ValueRange args) {
+   constexpr int kDegree = 9;
+   constexpr std::array<float, 9> wLessThan5Constants = {
+       2.81022636e-08f,  3.43273939e-07f, -3.5233877e-06f,
+@@ -1178,7 +1178,7 @@
+       result);
+ }
+ 
+-static Value erfInv64(ConversionPatternRewriter& b, Location loc,
++static Value erfInv64(ConversionPatternRewriter &b, Location loc,
+                       ValueRange args) {
+   constexpr std::array<double, 23> wLessThan625Constants = {
+       -3.6444120640178196996e-21, -1.685059138182016589e-19,
+@@ -1298,7 +1298,7 @@
+ 
+   LogicalResult matchAndRewrite(
+       mlir::chlo::ErfInvOp op, OpAdaptor adaptor,
+-      ConversionPatternRewriter& rewriter) const override {
++      ConversionPatternRewriter &rewriter) const override {
+     Location loc = op.getLoc();
+     if (op.getType().getElementType().isF64()) {
+       rewriter.replaceOp(op, erfInv64(rewriter, loc, adaptor.getOperands()));
+@@ -1338,7 +1338,7 @@
+ //   with   t(z) = z + kLanczosGamma + 1/2
+ //          a(z) = kBaseLanczosCoeff
+ //                   + sum(k = 1, n, kLanczosCoefficients[i] / (z + k))
+-Value materializeLgamma(OpBuilder& rewriter, Location loc, ValueRange args) {
++Value materializeLgamma(OpBuilder &rewriter, Location loc, ValueRange args) {
+   // If the input is less than 0.5 use Euler's reflection formula.
+   //   gamma(x) = pi / (sin(pi * x) * gamma(1 - x))
+   // Let z be
+@@ -1485,7 +1485,7 @@
+ // +/-89.4159851, due to rounding error when computing x +/- log(1/2).  The
+ // correct answer of 3.40281961e+38 (0x7f7fffec) is very close to max-float, so
+ // we deem this acceptable.
+-static Value materializeCoshApproximation(OpBuilder& rewriter, Location loc,
++static Value materializeCoshApproximation(OpBuilder &rewriter, Location loc,
+                                           ValueRange operands) {
+   mlir::chlo::CoshOp::Adaptor transformed(operands);
+   Value x = transformed.getOperand();
+@@ -1504,7 +1504,7 @@
+ 
+   LogicalResult matchAndRewrite(
+       mlir::chlo::CoshOp op, OpAdaptor adaptor,
+-      ConversionPatternRewriter& rewriter) const override {
++      ConversionPatternRewriter &rewriter) const override {
+     rewriter.replaceOp(
+         op, materializeWithUpcast(rewriter, op.getLoc(), adaptor.getOperands(),
+                                   rewriter.getF32Type(),
+@@ -1523,7 +1523,7 @@
+ //          a(z) = kBaseLanczosCoeff
+ //                   + sum(k = 1, n, kLanczosCoefficients[i] / (z + k))
+ //          a'(z) = - sum(k = 1, n, kLanczosCoefficients[i] / (z + k) / (z + k))
+-Value materializeDigamma(OpBuilder& rewriter, Location loc, ValueRange args) {
++Value materializeDigamma(OpBuilder &rewriter, Location loc, ValueRange args) {
+   // If the input is less than 0.5 use Euler's reflection formula.
+   //   digamma(x) = digamma(1 - x) - pi * cot(pi * x)
+   // Let z be
+@@ -1630,14 +1630,14 @@
+ 
+ namespace {
+ 
+-static Value getConstantLikeSmallestFiniteValue(OpBuilder& b, Location loc,
++static Value getConstantLikeSmallestFiniteValue(OpBuilder &b, Location loc,
+                                                 Value val) {
+   auto ty = cast<FloatType>(getElementTypeOrSelf(val.getType()));
+   return getConstantLike(
+       b, loc, llvm::APFloat::getSmallest(ty.getFloatSemantics()), val);
+ }
+ 
+-static Value materializeZeta(OpBuilder& rewriter, Location loc,
++static Value materializeZeta(OpBuilder &rewriter, Location loc,
+                              ValueRange args) {
+   // Implementation ported from:
+   // https://github.com/openxla/xla/blob/7a067a7b88d2ffb15b1dc5e3c06f701a15f0391d/xla/client/lib/math.cc#L1912-L1917
+@@ -1790,7 +1790,7 @@
+ 
+ }  // namespace
+ 
+-Value materializePolygamma(OpBuilder& rewriter, Location loc, ValueRange args) {
++Value materializePolygamma(OpBuilder &rewriter, Location loc, ValueRange args) {
+   mlir::chlo::PolygammaOp::Adaptor transformed(args);
+   Value n = transformed.getN();
+   Value x = transformed.getX();
+@@ -1840,7 +1840,7 @@
+ 
+   LogicalResult matchAndRewrite(
+       mlir::chlo::LgammaOp op, OpAdaptor adaptor,
+-      ConversionPatternRewriter& rewriter) const override {
++      ConversionPatternRewriter &rewriter) const override {
+     FloatType minPrecisionTy = rewriter.getF32Type();
+     rewriter.replaceOp(
+         op, materializeWithUpcast(rewriter, op.getLoc(), adaptor.getOperands(),
+@@ -1854,7 +1854,7 @@
+ 
+   LogicalResult matchAndRewrite(
+       mlir::chlo::DigammaOp op, OpAdaptor adaptor,
+-      ConversionPatternRewriter& rewriter) const override {
++      ConversionPatternRewriter &rewriter) const override {
+     FloatType minPrecisionTy = rewriter.getF32Type();
+     rewriter.replaceOp(
+         op, materializeWithUpcast(rewriter, op.getLoc(), adaptor.getOperands(),
+@@ -1863,7 +1863,7 @@
+   }
+ };
+ 
+-static Value materializeNextAfter(ConversionPatternRewriter& rewriter,
++static Value materializeNextAfter(ConversionPatternRewriter &rewriter,
+                                   Location loc, ValueRange operands) {
+   mlir::chlo::NextAfterOp::Adaptor transformed(operands);
+   Value x = transformed.getX();
+@@ -1957,7 +1957,7 @@
+ 
+   LogicalResult matchAndRewrite(
+       mlir::chlo::NextAfterOp op, OpAdaptor adaptor,
+-      ConversionPatternRewriter& rewriter) const override {
++      ConversionPatternRewriter &rewriter) const override {
+     rewriter.replaceOp(
+         op, materializeNextAfter(rewriter, op.getLoc(), adaptor.getOperands()));
+     return success();
+@@ -1969,7 +1969,7 @@
+ 
+   LogicalResult matchAndRewrite(
+       mlir::chlo::PolygammaOp op, OpAdaptor adaptor,
+-      ConversionPatternRewriter& rewriter) const override {
++      ConversionPatternRewriter &rewriter) const override {
+     Location loc = op.getLoc();
+     FloatType minPrecisionTy = rewriter.getF32Type();
+     rewriter.replaceOp(
+@@ -1989,7 +1989,7 @@
+ // +/-89.4159851, due to rounding error when computing x +/- log(1/2).  The
+ // correct answer of 3.40281961e+38 (0x7f7fffec) is very close to max-float, so
+ // we deem this acceptable.
+-static Value materializeSinhApproximationForLargeX(OpBuilder& rewriter,
++static Value materializeSinhApproximationForLargeX(OpBuilder &rewriter,
+                                                    Location loc,
+                                                    ValueRange operands) {
+   mlir::chlo::SinhOp::Adaptor transformed(operands);
+@@ -2007,7 +2007,7 @@
+ // Express `sinh` as
+ //   sinh(x) = (e^x - e^-x) / 2                     if |x| < 1
+ //           = e^(x + log(1/2)) - e^(-x + log(1/2)) otherwise.
+-static Value materializeSinhApproximation(OpBuilder& rewriter, Location loc,
++static Value materializeSinhApproximation(OpBuilder &rewriter, Location loc,
+                                           ValueRange operands) {
+   Value largeSinhResult =
+       materializeSinhApproximationForLargeX(rewriter, loc, operands);
+@@ -2043,7 +2043,7 @@
+ namespace {
+ 
+ ArrayAttr convertPrecisionConfig(mlir::ArrayAttr precisionConfig,
+-                                 ConversionPatternRewriter& rewriter) {
++                                 ConversionPatternRewriter &rewriter) {
+   std::vector<Attribute> precisions;
+   for (Attribute precision : precisionConfig.getValue()) {
+     switch (dyn_cast<mlir::chlo::PrecisionAttr>(precision).getValue()) {
+@@ -2077,7 +2077,7 @@
+ // In this implementation, the IR size increases by a factor of g. If this
+ // becomes a problem, we can try adding stablehlo.while to reduce the IR size.
+ LogicalResult handleRaggedDotMode1(mlir::chlo::RaggedDotOp op,
+-                                   ConversionPatternRewriter& rewriter) {
++                                   ConversionPatternRewriter &rewriter) {
+   Value lhs = op.getLhs();
+   Value rhs = op.getRhs();
+   chlo::RaggedDotDimensionNumbersAttr raggedDotDimensionNumbers =
+@@ -2231,7 +2231,7 @@
+ //   group_sizes : [g]
+ //   result : [g, b, m, n]
+ LogicalResult handleRaggedDotMode2(mlir::chlo::RaggedDotOp op,
+-                                   ConversionPatternRewriter& rewriter) {
++                                   ConversionPatternRewriter &rewriter) {
+   return failure();
+ }
+ 
+@@ -2241,7 +2241,7 @@
+ //   group_sizes : [g]
+ //   result : [b, m, n]
+ LogicalResult handleRaggedDotMode3(mlir::chlo::RaggedDotOp op,
+-                                   ConversionPatternRewriter& rewriter) {
++                                   ConversionPatternRewriter &rewriter) {
+   return failure();
+ }
+ 
+@@ -2254,7 +2254,7 @@
+   // dimension.
+   LogicalResult matchAndRewrite(
+       mlir::chlo::RaggedDotOp op, OpAdaptor,
+-      ConversionPatternRewriter& rewriter) const override {
++      ConversionPatternRewriter &rewriter) const override {
+     if (op.getLhs().getType().getRank() < op.getRhs().getType().getRank()) {
+       return handleRaggedDotMode1(op, rewriter);
+     } else if (op.getLhs().getType().getRank() <
+@@ -2271,7 +2271,7 @@
+ 
+   LogicalResult matchAndRewrite(
+       mlir::chlo::SinhOp op, OpAdaptor adaptor,
+-      ConversionPatternRewriter& rewriter) const override {
++      ConversionPatternRewriter &rewriter) const override {
+     Value x = adaptor.getOperand();
+     if (isa<ComplexType>(cast<ShapedType>(x.getType()).getElementType())) {
+       rewriter.replaceOp(op, materializeSinhApproximationForLargeX(
+@@ -2321,7 +2321,7 @@
+ 
+   LogicalResult matchAndRewrite(
+       mlir::chlo::TopKOp op, OpAdaptor /*adaptor*/,
+-      ConversionPatternRewriter& rewriter) const override {
++      ConversionPatternRewriter &rewriter) const override {
+     auto operandType = dyn_cast<RankedTensorType>(op.getOperand().getType());
+     if (!operandType) return failure();
+     int64_t operandRank = operandType.getRank();
+@@ -2436,7 +2436,7 @@
+ 
+   LogicalResult matchAndRewrite(
+       mlir::chlo::ZetaOp op, OpAdaptor adaptor,
+-      ConversionPatternRewriter& rewriter) const override {
++      ConversionPatternRewriter &rewriter) const override {
+     Location loc = op.getLoc();
+     FloatType minPrecisionTy = rewriter.getF32Type();
+     rewriter.replaceOp(
+@@ -2452,7 +2452,7 @@
+ 
+ struct ChloLegalizeToStablehloPass final
+     : impl::ChloLegalizeToStablehloPassBase<ChloLegalizeToStablehloPass> {
+-  LogicalResult initialize(MLIRContext* context) override {
++  LogicalResult initialize(MLIRContext *context) override {
+     target = std::make_shared<ConversionTarget>(*context);
+     target->addIllegalDialect<chlo::ChloDialect>();
+     target->addLegalDialect<mlir::stablehlo::StablehloDialect,
+@@ -2482,8 +2482,8 @@
+ }  // namespace
+ 
+ namespace {
+-static void populateChloBroadcastingPatterns(MLIRContext* context,
+-                                             RewritePatternSet* patterns) {
++static void populateChloBroadcastingPatterns(MLIRContext *context,
++                                             RewritePatternSet *patterns) {
+   // Instantiate conversion templates for conforming binary elementwise ops
+   // that do not have different dtypes between operands and results and do
    // not have special attributes that need to be preserved.
-   populateForBroadcastingBinaryOp<ConvertTrivialNonBroadcastBinaryOp>(
-       context, patterns, 10);
-+  populateForBroadcastingBinaryOp<ConvertTrivialNumpyBroadcastBinaryOp>(
-+      context, patterns, 10);
-   populateForBroadcastingBinaryOp<ConvertRankedDynamicBroadcastBinaryOp>(
-       context, patterns, 5);
+@@ -2496,8 +2496,8 @@
    patterns->add<ConvertConstantLikeOp, ConvertSelectOp>(context);
+ }
+ 
+-static void populateChloDecompositionPatterns(MLIRContext* context,
+-                                              RewritePatternSet* patterns) {
++static void populateChloDecompositionPatterns(MLIRContext *context,
++                                              RewritePatternSet *patterns) {
+   populateWithGenerated(*patterns);
+   patterns
+       ->add<ConvertConstantOp, ConvertBesselI1eOp, ConvertCoshOp,
+@@ -2508,8 +2508,8 @@
+ }
+ }  // namespace
+ 
+-void populateChloToStablehloPatterns(MLIRContext* context,
+-                                     RewritePatternSet* patterns) {
++void populateChloToStablehloPatterns(MLIRContext *context,
++                                     RewritePatternSet *patterns) {
+   populateChloBroadcastingPatterns(context, patterns);
+   populateChloDecompositionPatterns(context, patterns);
+ }
 diff --ruN a/stablehlo/stablehlo/transforms/optimization/Passes.td b/stablehlo/stablehlo/transforms/optimization/Passes.td
 --- stablehlo/stablehlo/transforms/optimization/Passes.td
 +++ stablehlo/stablehlo/transforms/optimization/Passes.td
@@ -1270,303 +1200,47 @@ diff --ruN a/stablehlo/stablehlo/transforms/optimization/Passes.td b/stablehlo/s
 diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveFolder.cpp b/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveFolder.cpp
 --- stablehlo/stablehlo/transforms/optimization/StablehloAggressiveFolder.cpp
 +++ stablehlo/stablehlo/transforms/optimization/StablehloAggressiveFolder.cpp
-@@ -21,6 +21,7 @@
- #include <numeric>
- #include <optional>
- #include <string>
-+#include <type_traits>
- #include <utility>
+@@ -74,12 +74,39 @@
  
- #include "llvm/ADT/APFloat.h"
-@@ -58,6 +59,7 @@
- #include "mlir/Support/LogicalResult.h"
- #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
- #include "stablehlo/dialect/Base.h"
-+#include "stablehlo/dialect/ChloOps.h"
- #include "stablehlo/dialect/StablehloOps.h"
- #include "stablehlo/transforms/optimization/Passes.h"
+ static constexpr StablehloAggressiveFolderPassOptions kDefaultOptions;
  
-@@ -87,6 +89,14 @@
-       /*isUnsigned=*/isUnsigned);
- }
- 
-+template <typename T>
-+APSInt getAPSInt(unsigned bitWidth, T value, bool isSigned) {
-+  return APSInt({/*numBits=*/bitWidth, static_cast<uint64_t>(value),
-+                 /*isSigned=*/isSigned,
-+                 /*implicitTrunc=*/true},
-+                /*isUnsigned=*/!isSigned);
++APSInt getAPSInt(Type type, uint64_t value) {
++  unsigned numBits;
++  bool isUnsigned;
++  if (auto integerType = dyn_cast<IntegerType>(type)) {
++    numBits = integerType.getWidth();
++    // Signless types are treated as signed, per StableHLO convention.
++    isUnsigned = integerType.isUnsignedInteger();
++  } else {
++    llvm::report_fatal_error("expected integer type");
++  }
++  return APSInt(
++      {/*numBits=*/numBits, value, /*isSigned=*/false, /*implicitTrunc=*/true},
++      /*isUnsigned=*/isUnsigned);
 +}
 +
- APFloat getAPFloat(
-     Type type, double value,
-     llvm::RoundingMode roundingMode = llvm::RoundingMode::NearestTiesToEven) {
-@@ -94,8 +104,8 @@
-   if (!floatType) llvm::report_fatal_error("expected float type");
- 
-   APFloat result(value);
--  bool losesInfo = false;
--  result.convert(floatType.getFloatSemantics(), roundingMode, &losesInfo);
+ template <typename T>
+ APSInt getAPSInt(unsigned bitWidth, T value, bool isSigned) {
+   return APSInt({/*numBits=*/bitWidth, static_cast<uint64_t>(value),
+                  /*isSigned=*/isSigned,
+                  /*implicitTrunc=*/true},
+                 /*isUnsigned=*/!isSigned);
++}
++
++APFloat getAPFloat(
++    Type type, double value,
++    llvm::RoundingMode roundingMode = llvm::RoundingMode::NearestTiesToEven) {
++  auto floatType = dyn_cast<FloatType>(type);
++  if (!floatType) llvm::report_fatal_error("expected float type");
++
++  APFloat result(value);
 +  bool unusedLosesInfo = false;
 +  result.convert(floatType.getFloatSemantics(), roundingMode, &unusedLosesInfo);
-   return result;
++  return result;
  }
  
-@@ -351,6 +361,190 @@
-           "too many elements, fold "
-           "limit is " +
-               std::to_string(options.foldOpElementLimit));
-+    return success();
-+  }
-+};
-+
-+namespace fold_unary {
-+
-+template <typename Impl, typename = void, typename... ArgTypes>
-+struct FolderExistsHelper : std::false_type {};
-+
-+template <typename Impl, typename... ArgTypes>
-+struct FolderExistsHelper<
-+    Impl,
-+    std::enable_if_t<sizeof(Impl::EvaluateOp(std::declval<ArgTypes>()...)) != 0,
-+                     void>,
-+    ArgTypes...> : std::true_type {};
-+
-+template <typename Impl, typename... ArgTypes>
-+struct FolderExists : FolderExistsHelper<Impl, void, ArgTypes...> {};
-+
-+template <typename Impl, typename CanonicalType, typename = void>
-+struct DirectFolderExists : std::false_type {};
-+
-+template <typename Impl, typename CanonicalType>
-+struct DirectFolderExists<
-+    Impl, CanonicalType,
-+    std::enable_if_t<std::is_convertible_v<decltype(Impl::EvaluateOp(
-+                                               std::declval<CanonicalType>())),
-+                                           std::optional<CanonicalType>>,
-+                     void>> : std::true_type {
-+  static_assert(FolderExists<Impl, CanonicalType>::value);
-+};
-+
-+template <typename Impl, typename CanonicalType, typename ComputeType,
-+          typename ConversionFn, typename = void>
-+struct ConvertingFolderExists : std::false_type {};
-+
-+template <typename Impl, typename CanonicalType, typename ComputeType,
-+          typename ConversionFn>
-+struct ConvertingFolderExists<
-+    Impl, CanonicalType, ComputeType, ConversionFn,
-+    std::enable_if_t<std::is_convertible_v<
-+                         decltype(std::declval<ConversionFn>()(
-+                             Impl::EvaluateOp(std::declval<ComputeType>()))),
-+                         std::optional<CanonicalType>> &&
-+                         !std::is_same_v<std::decay_t<CanonicalType>,
-+                                         std::decay_t<ComputeType>>,
-+                     void>> : std::true_type {
-+  static_assert(FolderExists<Impl, ComputeType>::value);
-+  static_assert(!DirectFolderExists<Impl, CanonicalType>::value);
-+};
-+
-+}  // namespace fold_unary
-+
-+template <typename Impl, typename OpType>
-+struct FoldUnaryOpPattern : public FoldOpRewritePattern<OpType> {
-+  using FoldOpRewritePattern<OpType>::FoldOpRewritePattern;
-+
-+  template <
-+      typename CanonicalType,
-+      std::enable_if_t<
-+          fold_unary::DirectFolderExists<Impl, CanonicalType>::value, int> = 0>
-+  static std::optional<CanonicalType> FoldIfImplemented(CanonicalType operand) {
-+    return Impl::EvaluateOp(operand);
-+  }
-+
-+  template <typename CanonicalType, typename ComputeType,
-+            typename ConversionFn =
-+                std::optional<CanonicalType> (*)(std::optional<ComputeType>),
-+            std::enable_if_t<
-+                fold_unary::ConvertingFolderExists<
-+                    Impl, CanonicalType, ComputeType, ConversionFn>::value,
-+                int> = 0>
-+  static std::optional<CanonicalType> FoldIfImplemented(
-+      ComputeType operand,
-+      ConversionFn&& convertResult = [](std::optional<ComputeType> result)
-+          -> std::optional<CanonicalType> {
-+        if (result == std::nullopt) return std::nullopt;
-+        return CanonicalType(*result);
-+      }) {
-+    return convertResult(Impl::EvaluateOp(operand));
-+  }
-+
-+  template <typename CanonicalType, typename ComputeType,
-+            typename ConversionFn = std::nullptr_t,
-+            std::enable_if_t<
-+                !fold_unary::FolderExists<Impl, ComputeType>::value, int> = 0>
-+  static std::nullopt_t FoldIfImplemented(
-+      ComputeType operand, ConversionFn&& convertResult = nullptr) {
-+    return std::nullopt;
-+  }
-+
-+  struct FoldDispatch {
-+    bool isSignedInt = false;
-+
-+    std::optional<APInt> operator()(APInt operand) const {
-+      if constexpr (fold_unary::DirectFolderExists<Impl, APInt>::value) {
-+        // Fold as a signedness-agnostic `APInt`.
-+        return FoldIfImplemented<APInt>(operand);
-+      } else if constexpr (fold_unary::DirectFolderExists<Impl,
-+                                                          APSInt>::value) {
-+        // Fold as a signedness-aware `APSInt`.
-+        return FoldIfImplemented<APSInt>(
-+            APSInt(std::move(operand), /*isUnsigned=*/!isSignedInt));
-+      } else {
-+        // Fold as a C++ primitive of type `int64_t` or `uint64_t`.
-+        return isSignedInt ? FoldAsIntType<int64_t>(operand)
-+                           : FoldAsIntType<uint64_t>(operand);
-+      }
-+    }
-+
-+    std::optional<APFloat> operator()(APFloat operand) const {
-+      if constexpr (fold_unary::DirectFolderExists<Impl, APFloat>::value) {
-+        // Fold as an `APFloat`.
-+        return FoldIfImplemented<APFloat>(operand);
-+      } else {
-+        // Fold as a `double`.
-+        return FoldAsDouble(operand);
-+      }
-+    }
-+
-+    template <typename ComputationDataType>
-+    std::optional<APInt> FoldAsIntType(APInt operand) const {
-+      const size_t bitWidth = operand.getBitWidth();
-+
-+      auto convertResult = [&](std::optional<ComputationDataType> result)
-+          -> std::optional<APInt> {
-+        if (result == std::nullopt) return std::nullopt;
-+        return APInt(bitWidth, *result, isSignedInt);
-+      };
-+
-+      ComputationDataType operandValue;
-+      if constexpr (std::is_signed_v<ComputationDataType>) {
-+        operandValue = static_cast<ComputationDataType>(operand.getSExtValue());
-+      } else {
-+        operandValue = static_cast<ComputationDataType>(operand.getZExtValue());
-+      }
-+
-+      return FoldIfImplemented<APInt, ComputationDataType>(operandValue,
-+                                                           convertResult);
-+    }
-+
-+    std::optional<APFloat> FoldAsDouble(APFloat operand) const {
-+      auto convertResult =
-+          [&](std::optional<double> result) -> std::optional<APFloat> {
-+        if (result == std::nullopt) return std::nullopt;
-+        APFloat resultAsAPFloat(*result);
-+        bool unusedLosesInfo;
-+        resultAsAPFloat.convert(operand.getSemantics(),
-+                                APFloat::rmNearestTiesToEven, &unusedLosesInfo);
-+        return resultAsAPFloat;
-+      };
-+
-+      APFloat operandCopy = operand;
-+      bool unusedLosesInfo;
-+      operandCopy.convert(APFloat::IEEEdouble(), APFloat::rmNearestTiesToEven,
-+                          &unusedLosesInfo);
-+      double operandValue = operandCopy.convertToDouble();
-+
-+      return FoldIfImplemented<APFloat, double>(operandValue, convertResult);
-+    }
-+  };
-+
-+  LogicalResult matchAndRewrite(OpType op,
-+                                PatternRewriter& rewriter) const override {
-+    auto elementType = op.getType().getElementType();
-+
-+    FailureOr<TypedAttr> result;
-+    if (elementType.isUnsignedInteger()) {
-+      result = foldUnaryOpIntOrFloat(rewriter, op,
-+                                     FoldDispatch{/*isSignedInt=*/false});
-+    } else if (elementType.isInteger()) {
-+      // Types with unspecified signedness are treated as signed per StableHLO
-+      // convention.
-+      result = foldUnaryOpIntOrFloat(rewriter, op,
-+                                     FoldDispatch{/*isSignedInt=*/true});
-+    } else if (elementType.isFloat()) {
-+      result = foldUnaryOpIntOrFloat(rewriter, op,
-+                                     FoldDispatch{/*isSignedInt=*/false});
-+    } else {
-+      return failure();
-+    }
-+    if (failed(result)) return failure();
-+
-+    rewriter.replaceOpWithNewOp<ConstantOp>(op, result.value());
-     return success();
-   }
- };
-@@ -1014,6 +1208,11 @@
-     // No need to verify static shape or dtype here since we aren't evaluating
-     // dtype, just folding set_dim_size ops with no semantic meaning.
- 
-+    // Don't fold if the input is dynamic and we're washing away the bound.
-+    if (op.getOperand().getType() != op.getType())
-+      return rewriter.notifyMatchFailure(
-+          op, "operand and result type must be the same");
-+
-     SplatElementsAttr cstSplatAttr;
-     matchPattern(op.getSize(), m_Constant(&cstSplatAttr));
-     if (!cstSplatAttr)
-@@ -1031,50 +1230,6 @@
-     rewriter.replaceAllOpUsesWith(op, op.getOperand());
-     return success();
-   }
--};
--
--struct FoldSignOpPattern : public ShapeOpRewritePattern<SignOp> {
--  using ShapeOpRewritePattern::ShapeOpRewritePattern;
--
--  LogicalResult matchAndRewrite(SignOp op,
--                                PatternRewriter& rewriter) const override {
--    if (failed(validateShapeFoldDtype(rewriter, op, op.getType())))
--      return failure();
--
--    auto elementType = op.getType().getElementType();
--    auto res = foldUnaryOpIntOrFloat(rewriter, op, FoldSign(elementType));
--    if (failed(res)) return failure();
--    rewriter.replaceOpWithNewOp<mlir::stablehlo::ConstantOp>(op, res.value());
--    return success();
--  }
--
--  struct FoldSign {
--    FoldSign(Type elementType) : elementType(elementType) {}
--    Type elementType;
--    double result;
--    APFloat operator()(APFloat operand) {
--      if (operand.isNegative())
--        result = -1.0;
--      else if (operand.isZero())
--        result = 0.0;
--      else
--        result = 1.0;
--      return getAPFloat(elementType, result);
--    }
--
--    APInt operator()(APInt operand) {
--      // SignOp only supports signed integers.
--      APSInt signedInt = getAPSInt(elementType, operand.getSExtValue());
--      int64_t result;
--      if (signedInt.isNegative())
--        result = -1;
--      else if (signedInt.isZero())
--        result = 0;
--      else
--        result = 1;
--      return getAPSInt(elementType, result);
--    }
--  };
- };
- 
- template <typename RangeType>
-@@ -1128,15 +1283,21 @@
+ LogicalResult validateStaticShapeResult(PatternRewriter& rewriter,
+@@ -1256,21 +1283,48 @@
        return rewriter.notifyMatchFailure(
            op, "expected operand with static ranked tensor type");
  
@@ -1591,10 +1265,13 @@ diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveFold
        resAttr = sliceType(op, *data);
      else
        return rewriter.notifyMatchFailure(op.getLoc(),
-@@ -1147,6 +1308,27 @@
-   }
- };
+                                          "unsupported element type");
  
+     rewriter.replaceOpWithNewOp<ConstantOp>(op, resAttr);
++    return success();
++  }
++};
++
 +// Pattern: dynamic_slice(splat_cst, start, end) -> resized_splat_cst
 +struct FoldDynamicSliceOpPattern : public FoldOpRewritePattern<DynamicSliceOp> {
 +  using FoldOpRewritePattern::FoldOpRewritePattern;
@@ -1612,208 +1289,10 @@ diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveFold
 +
 +    rewriter.replaceOpWithNewOp<ConstantOp>(
 +        op, inputSplatAttr.resizeSplat(resultType));
-+    return success();
-+  }
-+};
-+
- struct FoldSubtractOpPattern final
-     : ShapeOpRewritePattern<mlir::stablehlo::SubtractOp> {
-   using ShapeOpRewritePattern::ShapeOpRewritePattern;
-@@ -1163,31 +1345,169 @@
+     return success();
    }
  };
- 
-+struct FoldAbsOpPattern : public FoldUnaryOpPattern<FoldAbsOpPattern, AbsOp> {
-+  using FoldUnaryOpPattern::FoldUnaryOpPattern;
-+
-+  static std::optional<APInt> EvaluateOp(APInt operand) {
-+    return operand.abs();
-+  }
-+  static std::optional<APFloat> EvaluateOp(APFloat operand) {
-+    return llvm::abs(operand);
-+  }
-+};
-+
-+struct FoldCosineOpPattern
-+    : public FoldUnaryOpPattern<FoldCosineOpPattern, CosineOp> {
-+  using FoldUnaryOpPattern::FoldUnaryOpPattern;
-+
-+  static std::optional<double> EvaluateOp(double operand) {
-+    return std::cos(operand);
-+  }
-+};
-+
-+struct FoldErfOpPattern
-+    : public FoldUnaryOpPattern<FoldErfOpPattern, chlo::ErfOp> {
-+  using FoldUnaryOpPattern::FoldUnaryOpPattern;
-+
-+  static std::optional<double> EvaluateOp(double operand) {
-+    return std::erf(operand);
-+  }
-+};
-+
-+struct FoldExpOpPattern : public FoldUnaryOpPattern<FoldExpOpPattern, ExpOp> {
-+  using FoldUnaryOpPattern::FoldUnaryOpPattern;
-+
-+  static std::optional<double> EvaluateOp(double operand) {
-+    return std::exp(operand);
-+  }
-+};
-+
-+struct FoldLogOpPattern : public FoldUnaryOpPattern<FoldLogOpPattern, LogOp> {
-+  using FoldUnaryOpPattern::FoldUnaryOpPattern;
-+
-+  static std::optional<double> EvaluateOp(double operand) {
-+    if (operand <= 0.0) return std::nullopt;
-+    return std::log(operand);
-+  }
-+};
-+
-+struct FoldLogisticOpPattern
-+    : public FoldUnaryOpPattern<FoldLogisticOpPattern, LogisticOp> {
-+  using FoldUnaryOpPattern::FoldUnaryOpPattern;
-+
-+  static std::optional<double> EvaluateOp(double operand) {
-+    return 1.0 / (1.0 + std::exp(-operand));
-+  }
-+};
-+
-+struct FoldNegOpPattern : public FoldUnaryOpPattern<FoldNegOpPattern, NegOp> {
-+  using FoldUnaryOpPattern::FoldUnaryOpPattern;
-+
-+  static std::optional<APInt> EvaluateOp(APInt operand) { return -operand; }
-+  static std::optional<APFloat> EvaluateOp(APFloat operand) { return -operand; }
-+};
-+
-+struct FoldNotOpPattern : public FoldUnaryOpPattern<FoldNotOpPattern, NotOp> {
-+  using FoldUnaryOpPattern::FoldUnaryOpPattern;
-+
-+  static std::optional<APInt> EvaluateOp(APInt operand) {
-+    operand.flipAllBits();
-+    return operand;
-+  }
-+};
-+
-+struct FoldRoundOpPattern
-+    : public FoldUnaryOpPattern<FoldRoundOpPattern, RoundOp> {
-+  using FoldUnaryOpPattern::FoldUnaryOpPattern;
-+
-+  static std::optional<APFloat> EvaluateOp(APFloat operand) {
-+    operand.roundToIntegral(APFloat::rmNearestTiesToAway);
-+    return operand;
-+  }
-+};
-+
-+struct FoldRoundNearestEvenOpPattern
-+    : public FoldUnaryOpPattern<FoldRoundNearestEvenOpPattern,
-+                                RoundNearestEvenOp> {
-+  using FoldUnaryOpPattern::FoldUnaryOpPattern;
-+
-+  static std::optional<APFloat> EvaluateOp(APFloat operand) {
-+    operand.roundToIntegral(APFloat::rmNearestTiesToEven);
-+    return operand;
-+  }
-+};
-+
-+struct FoldRsqrtOpPattern
-+    : public FoldUnaryOpPattern<FoldRsqrtOpPattern, RsqrtOp> {
-+  using FoldUnaryOpPattern::FoldUnaryOpPattern;
-+
-+  static std::optional<double> EvaluateOp(double operand) {
-+    if (operand <= 0.0) return std::nullopt;
-+    return 1.0 / std::sqrt(operand);
-+  }
-+};
-+
-+struct FoldSignOpPattern
-+    : public FoldUnaryOpPattern<FoldSignOpPattern, SignOp> {
-+  using FoldUnaryOpPattern::FoldUnaryOpPattern;
-+
-+  static std::optional<APFloat> EvaluateOp(APFloat operand) {
-+    if (operand.isNaN()) return std::nullopt;
-+    if (operand.isZero()) return APFloat::getZero(operand.getSemantics());
-+    return APFloat::getOne(operand.getSemantics(),
-+                           /*Negative=*/operand.isNegative());
-+  }
-+
-+  static std::optional<APSInt> EvaluateOp(APSInt operand) {
-+    // SignOp only supports signed integers.
-+    if (operand.isUnsigned()) return std::nullopt;
-+
-+    int sign;
-+    if (operand.isNegative()) {
-+      sign = -1;
-+    } else if (operand.isZero()) {
-+      sign = 0;
-+    } else {
-+      sign = +1;
-+    }
-+    return getAPSInt(operand.getBitWidth(), sign, /*isSigned=*/true);
-+  }
-+};
-+
-+struct FoldSineOpPattern
-+    : public FoldUnaryOpPattern<FoldSineOpPattern, SineOp> {
-+  using FoldUnaryOpPattern::FoldUnaryOpPattern;
-+
-+  static std::optional<double> EvaluateOp(double operand) {
-+    return std::sin(operand);
-+  }
-+};
-+
- struct FoldSqrtOpPattern
--    : public FoldOpRewritePattern<mlir::stablehlo::SqrtOp> {
--  using FoldOpRewritePattern<mlir::stablehlo::SqrtOp>::FoldOpRewritePattern;
--
--  LogicalResult matchAndRewrite(mlir::stablehlo::SqrtOp op,
--                                PatternRewriter& rewriter) const final {
--    auto res = foldUnaryOpIntOrFloat(rewriter, op, FoldSqrt());
--    if (failed(res)) return failure();
--    rewriter.replaceOpWithNewOp<mlir::stablehlo::ConstantOp>(op, res.value());
--    return success();
--  }
--
--  struct FoldSqrt {
--    std::optional<APFloat> operator()(APFloat operand) {
--      if (operand.getSizeInBits(operand.getSemantics()) == 64)
--        return APFloat(std::sqrt(operand.convertToDouble()));
--
--      if (operand.getSizeInBits(operand.getSemantics()) == 32)
--        return APFloat(sqrtf(operand.convertToFloat()));
--      return std::nullopt;
--    }
--
--    // TODO: Enable int folding.
--    std::optional<APInt> operator()(APInt operand) { return std::nullopt; }
--  };
-+    : public FoldUnaryOpPattern<FoldSqrtOpPattern, SqrtOp> {
-+  using FoldUnaryOpPattern::FoldUnaryOpPattern;
-+
-+  static std::optional<double> EvaluateOp(double operand) {
-+    if (operand < 0.0) return std::nullopt;
-+    return std::sqrt(operand);
-+  }
-+};
-+
-+struct FoldTanOpPattern : public FoldUnaryOpPattern<FoldTanOpPattern, TanOp> {
-+  using FoldUnaryOpPattern::FoldUnaryOpPattern;
-+
-+  static std::optional<double> EvaluateOp(double operand) {
-+    return std::tan(operand);
-+  }
-+};
-+
-+struct FoldTanhOpPattern
-+    : public FoldUnaryOpPattern<FoldTanhOpPattern, TanhOp> {
-+  using FoldUnaryOpPattern::FoldUnaryOpPattern;
-+
-+  static std::optional<double> EvaluateOp(double operand) {
-+    return std::tanh(operand);
-+  }
- };
- 
- struct FoldIotaOpPattern : public FoldOpRewritePattern<IotaOp> {
-@@ -1216,6 +1536,14 @@
+@@ -1482,6 +1536,14 @@
        rewriter.replaceOpWithNewOp<ConstantOp>(
            op, DenseIntElementsAttr::get(resultType, values));
        return success();
@@ -1828,60 +1307,7 @@ diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveFold
      }
  
      int64_t sequences = 1;
-@@ -1316,13 +1644,9 @@
- 
-     for (auto [inputValue, bodyArg] :
-          llvm::zip_equal(op.getOperands(), body.getArguments())) {
--      auto inputConstantOp = inputValue.getDefiningOp<ConstantOp>();
--      if (!inputConstantOp)
--        return rewriter.notifyMatchFailure(op, "Input must be a constant.");
--
--      auto inputConstantAttr =
--          dyn_cast_or_null<DenseElementsAttr>(inputConstantOp.getValue());
--      if (!inputConstantAttr)
-+      SplatElementsAttr constantSplatAttr;
-+      if (!matchPattern(inputValue, m_Constant(&constantSplatAttr)) ||
-+          !constantSplatAttr)
-         return rewriter.notifyMatchFailure(op,
-                                            "Input must be a splat constant.");
- 
-@@ -1332,7 +1656,7 @@
-             op, "Could not get the shape of the body argument.");
- 
-       bodyArgConstantAttrs.push_back(DenseElementsAttr::get(
--          bodyArgShapedType, inputConstantAttr.getSplatValue<Attribute>()));
-+          bodyArgShapedType, constantSplatAttr.getSplatValue<Attribute>()));
-     }
- 
-     for (BlockArgument bodyArg : body.getArguments()) {
-@@ -1570,11 +1894,25 @@
-     PatternBenefit benefit) {
-   populateStablehloShapeFolderPatterns(context, patterns, options, benefit);
- 
--  patterns->add<FoldIotaOpPattern,                    //
-+  patterns->add<FoldAbsOpPattern,                     //
-+                FoldCosineOpPattern,                  //
-+                FoldErfOpPattern,                     //
-+                FoldExpOpPattern,                     //
-+                FoldIotaOpPattern,                    //
-+                FoldLogOpPattern,                     //
-+                FoldLogisticOpPattern,                //
-+                FoldNegOpPattern,                     //
-+                FoldNotOpPattern,                     //
-                 FoldReduceOpReducingZeroDims,         //
-                 FoldReduceOpToConstantInitializer,    //
-                 FoldReduceOpWithRedundantResults,     //
-+                FoldRoundOpPattern,                   //
-+                FoldRoundNearestEvenOpPattern,        //
-+                FoldRsqrtOpPattern,                   //
-+                FoldSineOpPattern,                    //
-                 FoldSqrtOpPattern,                    //
-+                FoldTanOpPattern,                     //
-+                FoldTanhOpPattern,                    //
-                 FoldTransposeOpPattern,               //
-                 FoldWhileOpIfDeadAndPresumedPure,     //
-                 FoldWhileOpPattern,                   //
-@@ -1605,6 +1943,7 @@
+@@ -1881,6 +1943,7 @@
    patterns->add<FoldConcatenateOpPattern>(context, options, benefit);
    patterns->add<FoldConvertOpPattern>(context, options, benefit);
    patterns->add<FoldDivOpPattern>(context, options, benefit);
@@ -1892,45 +1318,13 @@ diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveFold
 diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplification.cpp b/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplification.cpp
 --- stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplification.cpp
 +++ stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplification.cpp
-@@ -325,8 +325,18 @@
- //////////////////////////////////
- // BroadcastInDimOp
- /////////////////////////////////
--
- // Used in DRR file.
-+
-+// Convert broadcast dimensions into permutation for transpose.
-+DenseI64ArrayAttr getInvertedBroadcastDimensions(OpBuilder& b,
-+                                                 ArrayRef<int64_t> dims) {
-+  SmallVector<int64_t> permutation(dims.size());
+@@ -331,7 +331,7 @@
+ DenseI64ArrayAttr getInvertedBroadcastDimensions(OpBuilder& b,
+                                                  ArrayRef<int64_t> dims) {
+   SmallVector<int64_t> permutation(dims.size());
+-  for (size_t i = 0; i < dims.size(); ++i) {
 +  for (auto i = 0; i < dims.size(); ++i) {
-+    permutation[dims[i]] = i;
-+  }
-+  return b.getDenseI64ArrayAttr(permutation);
-+}
-+
- DenseI64ArrayAttr getMergedBroadcastDimensions(OpBuilder& b,
-                                                ArrayRef<int64_t> dims,
-                                                ArrayRef<int64_t> dimsParent) {
-diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplificationPatterns.td b/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplificationPatterns.td
---- stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplificationPatterns.td
-+++ stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplificationPatterns.td
-@@ -116,6 +116,8 @@
- 
- def GetEmptyI64Array : NativeCodeCall<"$_builder.getDenseI64ArrayAttr({})">;
- 
-+def InvertBroadcastDims : NativeCodeCall<"getInvertedBroadcastDimensions($_builder, $0)">;
-+
- def MergeBroadcastDims : NativeCodeCall<"getMergedBroadcastDimensions($_builder, $0, $1)">;
- 
- def StableHLO_ConvertOpWithShape : NativeCodeCall<
-@@ -193,7 +195,7 @@
- //          [if same numel & rank]
- def BroadcastInDimOp_ReplaceWithTranspose
-   : Pat<(StableHLO_BroadcastInDimOp:$op $operand, $dims),
--        (StableHLO_TransposeOp $operand, $dims),
-+        (StableHLO_TransposeOp $operand, (InvertBroadcastDims $dims)),
-         [(NumberOfElementsEqual $op, $operand), (RankEqual $op, $operand)]>;
- 
- ////////
+     permutation[dims[i]] = i;
+   }
+   return b.getDenseI64ArrayAttr(permutation);
 
