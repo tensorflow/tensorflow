@@ -107,6 +107,7 @@ tf_cc_test(
     deps = [
         ":graph_def",
         "//tensorflow/core:protos_all_cc",
+        "//third_party/protobuf",
         "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:protobuf",
     ],
@@ -198,6 +199,7 @@ tf_cc_test(
         "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:ops",  # buildcleaner: keep Required to export to GraphDef
         "//tensorflow/core:protos_all_cc",
+        "//third_party/protobuf",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/status:statusor",
@@ -332,6 +334,7 @@ cc_library(
         "//tensorflow/compiler/mlir/quantization/common:lift_as_function_call",
         "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto_cc",
         "//tensorflow/compiler/mlir/tensorflow",
+        "//third_party/protobuf",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
@@ -351,6 +354,7 @@ tf_cc_test(
         ":report",
         "//tensorflow/compiler/mlir/quantization/common:test_base",
         "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto_cc",
+        "//third_party/protobuf",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/status:statusor",

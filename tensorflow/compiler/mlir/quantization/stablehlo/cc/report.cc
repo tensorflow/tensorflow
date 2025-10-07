@@ -27,6 +27,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "third_party/protobuf/text_format.h"
 #include "tensorflow/compiler/mlir/quantization/common/lift_as_function_call.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/io.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
