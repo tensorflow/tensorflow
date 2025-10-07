@@ -350,7 +350,7 @@ class DynamicShardingTest(data_service_test_base.TestBase,
 
     ds1 = dataset_ops.Dataset.range(100, 1000, output_type=dtypes.int32)
     ds2 = dataset_ops.Dataset.from_tensor_slices(range(0, 5))
-    ds2 = dataset_ops._apply_rewrite(ds2, "replicate_on_split")
+    ds2 = dataset_ops.apply_rewrite(ds2, "replicate_on_split")
 
     ds = dataset_ops.Dataset.zip(ds1, ds2)
     ds = ds.apply(

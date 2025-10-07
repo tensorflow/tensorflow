@@ -1413,7 +1413,7 @@ class DatasetV2(
     # Replicate the range component so that each split is enumerated
     # independently. This avoids the need for prohibitively expensive
     # cross-split coordination.
-    range_dataset = _apply_rewrite(range_dataset, "replicate_on_split")
+    range_dataset = apply_rewrite(range_dataset, "replicate_on_split")
     return Dataset.zip((range_dataset, self), name=name)
 
   def shuffle(
@@ -5181,7 +5181,19 @@ def _calculate_acceptance_probs_with_mixing(initial_probs, target_probs):
   return a_i, m
 
 
-def _apply_rewrite(dataset, rewrite):
+def apply_rewrite(dataset, rewrite):
+  """Applies a rewrite to a dataset.
+
+  Args:
+    dataset: A dataset object.
+    rewrite: Name of the rewrite. Currently supports "replicate_on_split" that
+      distributes small datasets across workers when using the tf.data service
+      dynamic sharding mode and combining multiple datasets (for instance,
+      with `zip`, `choose_from_datasets`, etc).
+
+  Returns:
+    The rewritten dataset.
+  """
   # pylint: disable=protected-access
   return _VariantDataset(
       gen_dataset_ops.rewrite_dataset(dataset._variant_tensor, rewrite,
