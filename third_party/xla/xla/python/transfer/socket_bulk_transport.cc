@@ -530,6 +530,11 @@ absl::Status RecvThreadState::HandleRecvItem(recv_work_item& work,
       ssize_t recv_count =
           recv(work.fd, reinterpret_cast<char*>(alloc.data) + offset,
                work.recv_size - offset, 0);
+      if (recv_count == 0) {
+        std::move(alloc.on_done)();
+        return absl::InternalError(
+            "RecvThreadState::HandleRecvItem -> recv_count == 0");
+      }
       if (recv_count < 0) {
         std::move(alloc.on_done)();
         return absl::ErrnoToStatus(errno, "recv-fallback");

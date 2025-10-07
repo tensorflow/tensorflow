@@ -22,6 +22,7 @@ limitations under the License.
 #include <cstring>
 #include <deque>
 #include <memory>
+#include <optional>
 #include <string>
 #include <tuple>
 #include <utility>
@@ -152,6 +153,32 @@ TEST(SendQueue, SendAndRecvQueuesArtificialLimit) {
     absl::MutexLock l(mu);
     auto cond = [&]() { return send_count == 0; };
     mu.Await(absl::Condition(&cond));
+  }
+}
+
+TEST(SendQueue, SendAndRecvQueuesEarlyClose) {
+  size_t packet_size = 1024 * 8;
+  SlabAllocator uallocator(AllocateAlignedMemory(packet_size * 4).value(),
+                           packet_size);
+  auto recv_thread = RecvThreadState::Create(std::nullopt, uallocator);
+
+  int send_fd, recv_fd;
+  auto status = SetupSocketPairUsingEventLoop(send_fd, recv_fd);
+  ASSERT_TRUE(status.ok()) << status;
+
+  close(send_fd);
+
+  for (size_t i = 0; i < 2; ++i) {
+    absl::Notification recv_notify;
+    absl::StatusOr<aux::BulkTransportInterface::Message> recv_msg;
+    recv_thread->ScheduleRecvWork(
+        packet_size, recv_fd,
+        [&](absl::StatusOr<aux::BulkTransportInterface::Message> msg) {
+          recv_msg = std::move(msg);
+          recv_notify.Notify();
+        });
+    recv_notify.WaitForNotification();
+    ASSERT_FALSE(recv_msg.ok());
   }
 }
 
