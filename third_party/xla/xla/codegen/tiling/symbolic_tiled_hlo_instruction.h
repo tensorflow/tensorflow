@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_SERVICE_GPU_MODEL_SYMBOLIC_TILED_HLO_INSTRUCTION_H_
-#define XLA_SERVICE_GPU_MODEL_SYMBOLIC_TILED_HLO_INSTRUCTION_H_
+#ifndef XLA_CODEGEN_TILING_SYMBOLIC_TILED_HLO_INSTRUCTION_H_
+#define XLA_CODEGEN_TILING_SYMBOLIC_TILED_HLO_INSTRUCTION_H_
 
 #include <cstdint>
 #include <optional>
@@ -29,7 +29,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 
 namespace xla {
-namespace gpu {
 
 // A node in the symbolic tiled representation of an HLO computation. During
 // tiling and codegen an HLO instruction may need to be emitted multiple times
@@ -126,7 +125,6 @@ H AbslHashValue(H h, const SymbolicTiledHloInstruction& tiled_hlo_instruction) {
   return h;
 }
 
-}  // namespace gpu
 }  // namespace xla
 
-#endif  // XLA_SERVICE_GPU_MODEL_SYMBOLIC_TILED_HLO_INSTRUCTION_H_
+#endif  // XLA_CODEGEN_TILING_SYMBOLIC_TILED_HLO_INSTRUCTION_H_

@@ -222,3 +222,32 @@ xla_cc_test(
         "@com_google_googletest//:gtest",
     ],
 )
+
+cc_library(
+    name = "symbolic_tiled_hlo_instruction",
+    srcs = ["symbolic_tiled_hlo_instruction.cc"],
+    hdrs = ["symbolic_tiled_hlo_instruction.h"],
+    deps = [
+        ":symbolic_tile",
+        "//xla/hlo/analysis:indexing_analysis",
+        "//xla/hlo/ir:hlo",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+xla_cc_test(
+    name = "symbolic_tiled_hlo_instruction_test",
+    srcs = ["symbolic_tiled_hlo_instruction_test.cc"],
+    deps = [
+        ":symbolic_tile",
+        ":symbolic_tiled_hlo_instruction",
+        "//xla/hlo/analysis:indexing_analysis",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/hlo/utils:hlo_traversal",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//mlir:IR",
+        "@local_tsl//tsl/platform:statusor",
+    ],
+)

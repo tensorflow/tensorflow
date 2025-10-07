@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/model/symbolic_tiled_hlo_instruction.h"
+#include "xla/codegen/tiling/symbolic_tiled_hlo_instruction.h"
 
 #include <sstream>
 #include <string>
@@ -22,7 +22,6 @@ limitations under the License.
 #include "xla/codegen/tiling/symbolic_tile.h"
 
 namespace xla {
-namespace gpu {
 
 std::string SymbolicTiledHloInstruction::ToString(
     absl::string_view field_separator) const {
@@ -46,5 +45,4 @@ std::string SymbolicTiledHloInstruction::ToString(
   return ss.str();
 }
 
-}  // namespace gpu
 }  // namespace xla

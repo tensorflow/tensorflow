@@ -585,35 +585,6 @@ xla_cc_test(
 )
 
 cc_library(
-    name = "symbolic_tiled_hlo_instruction",
-    srcs = ["symbolic_tiled_hlo_instruction.cc"],
-    hdrs = ["symbolic_tiled_hlo_instruction.h"],
-    deps = [
-        "//xla/codegen/tiling:symbolic_tile",
-        "//xla/hlo/analysis:indexing_analysis",
-        "//xla/hlo/ir:hlo",
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/strings:string_view",
-    ],
-)
-
-xla_cc_test(
-    name = "symbolic_tiled_hlo_instruction_test",
-    srcs = ["symbolic_tiled_hlo_instruction_test.cc"],
-    deps = [
-        ":symbolic_tiled_hlo_instruction",
-        "//xla/codegen/tiling:symbolic_tile",
-        "//xla/hlo/analysis:indexing_analysis",
-        "//xla/hlo/ir:hlo",
-        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
-        "//xla/hlo/utils:hlo_traversal",
-        "@com_google_googletest//:gtest_main",
-        "@llvm-project//mlir:IR",
-        "@local_tsl//tsl/platform:statusor",
-    ],
-)
-
-cc_library(
     name = "block_level_parameters",
     hdrs = [
         "block_level_parameters.h",
@@ -636,11 +607,11 @@ cc_library(
     srcs = ["symbolic_tile_analysis.cc"],
     hdrs = ["symbolic_tile_analysis.h"],
     deps = [
-        ":symbolic_tiled_hlo_instruction",
         "//xla:shape_util",
         "//xla:util",
         "//xla/codegen/tiling:constraint_expression",
         "//xla/codegen/tiling:symbolic_tile",
+        "//xla/codegen/tiling:symbolic_tiled_hlo_instruction",
         "//xla/codegen/tiling:tiled_hlo_computation",
         "//xla/codegen/tiling:tiled_hlo_fusion_instruction",
         "//xla/codegen/tiling:tiled_hlo_instruction",
@@ -676,9 +647,9 @@ xla_cc_test(
     srcs = ["symbolic_tile_analysis_test.cc"],
     deps = [
         ":symbolic_tile_analysis",
-        ":symbolic_tiled_hlo_instruction",
         "//xla:util",
         "//xla/codegen/tiling:constraint_expression",
+        "//xla/codegen/tiling:symbolic_tiled_hlo_instruction",
         "//xla/codegen/tiling:tiled_hlo_computation",
         "//xla/codegen/tiling:tiled_hlo_fusion_instruction",
         "//xla/hlo/analysis:indexing_test_utils",
@@ -709,12 +680,12 @@ cc_library(
     hdrs = ["triton_emitter_constraints.h"],
     deps = [
         ":symbolic_tile_analysis",
-        ":symbolic_tiled_hlo_instruction",
         "//xla:shape_util",
         "//xla:util",
         "//xla/codegen/tiling:affine_map_evaluator",
         "//xla/codegen/tiling:constraint_expression",
         "//xla/codegen/tiling:symbolic_tile",
+        "//xla/codegen/tiling:symbolic_tiled_hlo_instruction",
         "//xla/hlo/analysis:indexing_analysis",
         "//xla/hlo/analysis:interval",
         "//xla/hlo/ir:hlo",

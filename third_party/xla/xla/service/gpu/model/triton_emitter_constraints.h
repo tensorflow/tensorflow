@@ -23,9 +23,9 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/AffineMap.h"
 #include "xla/codegen/tiling/constraint_expression.h"
+#include "xla/codegen/tiling/symbolic_tiled_hlo_instruction.h"
 #include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/service/gpu/model/symbolic_tile_analysis.h"
-#include "xla/service/gpu/model/symbolic_tiled_hlo_instruction.h"
 #include "xla/shape.h"
 #include "xla/stream_executor/device_description.h"
 

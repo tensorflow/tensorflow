@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/model/symbolic_tiled_hlo_instruction.h"
+#include "xla/codegen/tiling/symbolic_tiled_hlo_instruction.h"
 
 #include <cstdint>
 #include <optional>
@@ -31,7 +31,6 @@ limitations under the License.
 #include "tsl/platform/statusor.h"
 
 namespace xla {
-namespace gpu {
 namespace {
 
 using ::testing::ElementsAre;
@@ -95,5 +94,4 @@ ENTRY main {
 
 }  // namespace
 
-}  // namespace gpu
 }  // namespace xla
