@@ -630,6 +630,7 @@ lit_test_suite(
             "single_instruction.hlo",
             "slice_to_dynamic.hlo",
             "sorting.hlo",
+            "sub_byte_collectives.hlo",
             "triton_naming.hlo",
             "zero_clamp_abs_index.hlo",
         ],

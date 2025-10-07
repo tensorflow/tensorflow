@@ -88,32 +88,6 @@ absl::Status CheckOperandCount(const HloInstruction* hlo, int expected) {
   return absl::OkStatus();
 }
 
-int64_t GetSubgroupSize(HloCollectiveInstruction* hlo,
-                        CollectiveOpGroupMode group_mode) {
-  const HloModuleConfig& config = hlo->GetModule()->config();
-  switch (group_mode) {
-    case CollectiveOpGroupMode::kCrossReplica:
-    case CollectiveOpGroupMode::kCrossReplicaAndPartition: {
-      int64_t replica_subgroup_size =
-          hlo->replica_groups().empty()
-              ? config.replica_count()
-              : hlo->replica_groups()[0].replica_ids_size();
-      if (group_mode == CollectiveOpGroupMode::kCrossReplicaAndPartition) {
-        // Replicas from all partitions participate.
-        replica_subgroup_size *= config.num_partitions();
-      }
-      return replica_subgroup_size;
-    }
-    case CollectiveOpGroupMode::kFlattenedID:
-      // Empty replica groups not allowed in this mode.
-      return hlo->replica_groups()[0].replica_ids_size();
-    case CollectiveOpGroupMode::kCrossPartition:
-      return hlo->replica_groups().empty()
-                 ? config.num_partitions()
-                 : hlo->replica_groups()[0].replica_ids_size();
-  }
-}
-
 absl::Status CheckUnaryOpWithResultAccuracy(HloInstruction* unary) {
   HloOpcode opcode = unary->opcode();
   if (unary->has_result_accuracy()) {

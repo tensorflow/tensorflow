@@ -135,6 +135,7 @@ limitations under the License.
 #include "xla/hlo/transforms/simplifiers/simplify_fp_conversions.h"
 #include "xla/hlo/transforms/simplifiers/slice_sinker.h"
 #include "xla/hlo/transforms/simplifiers/sort_simplifier.h"
+#include "xla/hlo/transforms/simplifiers/sub_byte_collective_normalization.h"
 #include "xla/hlo/transforms/simplifiers/sub_byte_normalization.h"
 #include "xla/hlo/transforms/simplifiers/tuple_simplifier.h"
 #include "xla/hlo/transforms/simplifiers/zero_sized_hlo_elimination.h"
@@ -1853,6 +1854,8 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
                      .VerifyBroadcastDimensionsOrder()
                      .VerifyReshapeIsBitcast(),
                  /*debug_only=*/true);
+
+  pipeline.AddPass<SubByteCollectiveNormalization>();
 
   // Triton compilation needs normalized operations on bf16 (i.e. converted to
   // f32).

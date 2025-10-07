@@ -46,6 +46,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
+#include "xla/hlo/testlib/pattern_matcher_gmock.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/literal.h"
@@ -80,6 +81,7 @@ namespace xla {
 namespace {
 
 namespace op = ::xla::testing::opcode_matchers;
+namespace m = ::xla::match;
 using ::testing::NotNull;
 
 // Makes a DeviceAssignment device#i to replica_id #i.
@@ -4451,6 +4453,44 @@ TEST_P(AllReduceTest, AsyncAllReduce_8GPUs_2ReplicasPerGroup) {
   for (int i = 0; i < kNumReplicas; ++i) {
     ASSERT_TRUE(LiteralTestUtil::Equal(test_io.expected_outputs[i], results[i]))
         << "ExpectedOutput != Result at index " << i;
+  }
+}
+
+TEST_F(CollectiveOpsTestE2E, OptimizedSubByteAllGatherOutputIsCorrect) {
+  constexpr int kNumReplicas = 2;
+  if (test_runner().device_count() < kNumReplicas) {
+    GTEST_SKIP() << "The test requires at least " << kNumReplicas
+                 << " devices.";
+  }
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, GetOptimizedModule(
+                                           R"(
+HloModule m, replica_count=2
+
+e {
+  a = s4[2,4]{1,0:E(4)} constant({{0,1,2,3},{4,5,5,4}})
+  b = s4[4,4]{1,0:E(4)} all-gather(a), dimensions={0}
+})"));
+
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Bitcast(m::AllGatherDone().WithShape(S8, {4, 2}))));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::vector<Literal> result,
+      HloTestBase::ExecuteReplicated(std::move(module),
+                                     absl::Span<const Literal* const>{},
+                                     kNumReplicas, /*use_threads=*/true));
+
+  const Literal expected_result =
+      LiteralUtil::CreateR2<s4>({{s4(0), s4(1), s4(2), s4(3)},
+                                 {s4(4), s4(5), s4(5), s4(4)},
+                                 {s4(0), s4(1), s4(2), s4(3)},
+                                 {s4(4), s4(5), s4(5), s4(4)}});
+
+  ASSERT_EQ(result.size(), kNumReplicas);
+  for (int i = 0; i < kNumReplicas; ++i) {
+    EXPECT_TRUE(LiteralTestUtil::Equal(expected_result, result[i]))
+        << "Results differ at replica " << i;
   }
 }
 

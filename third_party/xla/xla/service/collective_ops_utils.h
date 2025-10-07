@@ -225,7 +225,6 @@ absl::StatusOr<bool> IsAsyncCollective(const HloInstruction* instruction);
 // collective fusion) with channel_id.
 HloInstruction* IsOrHasCollectiveWithChannelId(HloInstruction* instruction);
 
-
 // Key that identifies a particular Rendezvous object in our global hashtable.
 // This determines which calls to ExecuteOnStream communicate with each other.
 // The rules are as follows.
@@ -343,6 +342,9 @@ constexpr char kSendRecvValidationAttr[] = "_xla_send_recv_validation";
 inline constexpr absl::string_view kCollectiveStreamAttrName =
     "_xla_gpu_collective_stream";
 inline constexpr absl::string_view kCollectiveStreamP2P = "p2p";
+
+int64_t GetSubgroupSize(const HloCollectiveInstruction* hlo,
+                        CollectiveOpGroupMode group_mode);
 
 }  // end namespace xla
 
