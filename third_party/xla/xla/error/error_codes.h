@@ -20,6 +20,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/status/status.h"
+#include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
@@ -146,10 +147,10 @@ inline std::string GetErrorCodeAndName(ErrorCode code) {
 }
 
 // Generates a URL for the error's documentation page.
-// A string like "https://openxla.org/xla/errors/E0000".
+// A string like "https://openxla.org/xla/errors#e0000".
 inline std::string GetErrorUrl(ErrorCode code) {
-  return absl::StrCat("https://openxla.org/xla/errors/",
-                      ErrorCodeToStringIdentifier(code));
+  return absl::StrCat("https://openxla.org/xla/errors#",
+                      absl::AsciiStrToLower(ErrorCodeToStringIdentifier(code)));
 }
 
 // The following three macros implement a factory pattern for creating

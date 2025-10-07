@@ -49,7 +49,7 @@ TEST(ErrorCodesTest, GetErrorCodeAndName) {
 
 TEST(ErrorCodesTest, GetErrorUrl) {
   // Should produce the documentation URL using the string_id.
-  EXPECT_EQ(GetErrorUrl(kTestCode), "https://openxla.org/xla/errors/E0002");
+  EXPECT_EQ(GetErrorUrl(kTestCode), "https://openxla.org/xla/errors#e0002");
 }
 
 TEST(ErrorCodesTest, FactoryFunctionWithNoArgs) {
@@ -61,7 +61,7 @@ TEST(ErrorCodesTest, FactoryFunctionWithNoArgs) {
   // Check the full formatted error message.
   EXPECT_EQ(status.message(),
             "E0002: InvalidArgument: My Test "
-            "error\nhttps://openxla.org/xla/errors/E0002");
+            "error\nhttps://openxla.org/xla/errors#e0002");
 #if defined(PLATFORM_GOOGLE)
   auto location = status.GetSourceLocations().front();
   EXPECT_THAT(location.file_name(), testing::EndsWith("error_codes_test.cc"));
@@ -78,7 +78,7 @@ TEST(ErrorCodesTest, FactoryFunctionWithArgs) {
   // Check the full formatted error message.
   EXPECT_EQ(status.message(),
             "E0002: InvalidArgument: Test error: Something was "
-            "wrong\nhttps://openxla.org/xla/errors/E0002");
+            "wrong\nhttps://openxla.org/xla/errors#e0002");
 
 #if defined(PLATFORM_GOOGLE)
   auto location = status.GetSourceLocations().front();
