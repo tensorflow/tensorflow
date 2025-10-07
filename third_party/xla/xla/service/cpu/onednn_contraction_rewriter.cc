@@ -34,6 +34,8 @@ limitations under the License.
 #include "Eigen/Core"
 #include "oneapi/dnnl/dnnl.hpp"
 #include "oneapi/dnnl/dnnl_common.hpp"
+#include "oneapi/dnnl/dnnl_threadpool.hpp"
+#include "xla/backends/cpu/runtime/onednn/onednn_threadpool.h"
 #include "xla/executable_run_options.h"
 #include "xla/hlo/evaluator/hlo_evaluator.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
@@ -58,7 +60,6 @@ limitations under the License.
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/threadpool.h"
-#include "xla/tsl/util/onednn_threadpool.h"
 #include "xla/types.h"
 #include "xla/util.h"
 #include "tsl/platform/cpu_info.h"
@@ -1302,7 +1303,7 @@ class OneDnnPostRewriteVisitor : public DfsHloRewriteVisitor {
 
 #ifndef ENABLE_ONEDNN_OPENMP
     // Set oneDNN concurrency settings (which is thread-local)
-    tsl::OneDnnThreadPool::set_onednn_max_threads(intra_op_parallelism_);
+    OneDnnThreadPool::set_onednn_max_threads(intra_op_parallelism_);
 #endif
   }
 
@@ -1462,13 +1463,16 @@ class OneDnnPostRewriteVisitor : public DfsHloRewriteVisitor {
 
   void ReorderWeight(const dnnl::memory::desc& src_md, void* src_buf,
                      const dnnl::memory::desc& dst_md, void* dst_buf) {
-    auto onednn_threadpool = CreateOneDnnThreadPool(threadpool_device_.get());
+    auto onednn_threadpool = std::make_unique<OneDnnThreadPool>(
+        threadpool_device_->getPool(), /*is_async=*/true);
     dnnl::engine cpu_engine(dnnl::engine::kind::cpu, 0);
-    auto onednn_stream = MakeOneDnnStream(cpu_engine, onednn_threadpool.get());
+    auto onednn_stream = dnnl::threadpool_interop::make_stream(
+        cpu_engine, onednn_threadpool.get());
     auto src_mem = dnnl::memory(src_md, cpu_engine, src_buf);
     auto dst_mem = dnnl::memory(dst_md, cpu_engine, dst_buf);
     dnnl::reorder reorder_prim{src_mem, dst_mem};
     reorder_prim.execute(onednn_stream, src_mem, dst_mem);
+    // Wait for the reorder to finish before destroying the threadpool.
     onednn_stream.wait();
   }
 

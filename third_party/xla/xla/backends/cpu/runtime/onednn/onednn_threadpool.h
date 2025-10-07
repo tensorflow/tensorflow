@@ -49,7 +49,7 @@ class OneDnnThreadPool final
       : thread_pool_(thread_pool), is_async_(is_async) {
     if (is_async_) {
       done_event_ = OkDoneEventSingleton();
-      dnnl_threadpool_interop_set_max_concurrency(thread_pool_->NumThreads());
+      set_onednn_max_threads(thread_pool_->NumThreads());
     }
   }
 
@@ -108,6 +108,10 @@ class OneDnnThreadPool final
   }
 
   tsl::AsyncValueRef<tsl::Chain> done_event() const { return done_event_; }
+
+  static void set_onednn_max_threads(int num_threads) {
+    dnnl_threadpool_interop_set_max_concurrency(num_threads);
+  }
 
  private:
   Eigen::ThreadPoolInterface* thread_pool_;
