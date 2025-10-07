@@ -17,6 +17,9 @@ limitations under the License.
 #include <cstdint>
 #include <utility>
 
+#include "absl/status/status.h"
+#include "absl/strings/str_join.h"
+#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/grappler/clusters/cluster.h"
 #include "tensorflow/core/grappler/grappler_item.h"
