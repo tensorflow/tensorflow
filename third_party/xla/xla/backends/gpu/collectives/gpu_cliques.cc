@@ -791,7 +791,7 @@ static absl::Status AbortOnFailure(
 absl::Status UpdateGlobalProcessInfo(
     absl::Span<tensorflow::CoordinatedTaskStateInfo> infos) {
   ProcessGpuCliques& cliques = GetProcessGpuCliques();
-  absl::MutexLock lock(&cliques.mu);
+  absl::MutexLock lock(cliques.mu);
   absl::Status s = AbortOnFailure(cliques.map, cliques.task_state_infos, infos);
   if (!s.ok()) {
     LOG(WARNING) << s;
