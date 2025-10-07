@@ -20,7 +20,14 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/synchronization/mutex.h"
-#include "xla/stream_executor/stream_executor.h"
+#include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/service/buffer_assignment.h"
+#include "xla/service/gpu/gpu_norm_runner.h"
+#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/lazy_op_runner.h"
+#include "xla/stream_executor/stream.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 
 namespace xla {
