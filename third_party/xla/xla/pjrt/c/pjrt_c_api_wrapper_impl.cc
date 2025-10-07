@@ -211,7 +211,7 @@ static absl::Status PopulateExecutableOutputDimensions(
 
 static absl::Status EnsureExecutableOutputDimensionsPopulated(
     PJRT_Executable* executable) {
-  absl::MutexLock lock(&executable->mutex);
+  absl::MutexLock lock(executable->mutex);
   if (!executable->out_dimension_ran) {
     TF_RETURN_IF_ERROR(PopulateExecutableOutputDimensions(executable));
     executable->out_dimension_ran = true;
