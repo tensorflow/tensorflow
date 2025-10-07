@@ -342,11 +342,15 @@ InitializeGpuClique(GpuCollectives* collectives, se::StreamExecutor* device,
 
     ProcessGpuCliques& cliques = GetProcessGpuCliques();
     {
+      VLOG(5) << "Locking cliques.mu";
       absl::MutexLock lock(cliques.mu);
+      VLOG(5) << "Checking clique key " << clique_key.ToString()
+              << " for staleness";
       TF_RETURN_IF_ERROR(
           CheckCliqueKeyIsntStale(cliques.task_state_infos, clique_key));
     }
 
+    VLOG(5) << "Creating communicators";
     TF_ASSIGN_OR_RETURN(
         std::vector<std::unique_ptr<Communicator>> created_comms,
         collectives->CreateCommunicators(clique_key, clique_ids, ranks,
@@ -363,6 +367,7 @@ InitializeGpuClique(GpuCollectives* collectives, se::StreamExecutor* device,
         clique_key.ToString(), DeviceRanksToString(ranks), nroots,
         clique_ids.fingerprint(), peer_access_enabled);
 
+    VLOG(5) << "Locking cliques.mu";
     absl::MutexLock lock(cliques.mu);
     if (absl::Status s =
             CheckCliqueKeyIsntStale(cliques.task_state_infos, clique_key);
@@ -531,11 +536,15 @@ InitializeGpuClique(GpuCollectives* collectives, se::StreamExecutor* device,
 
     ProcessGpuCliques& cliques = GetProcessGpuCliques();
     {
+      VLOG(5) << "Locking cliques.mu";
       absl::MutexLock lock(cliques.mu);
+      VLOG(5) << "Checking clique key " << clique_key.ToString()
+              << " for staleness";
       TF_RETURN_IF_ERROR(
           CheckCliqueKeyIsntStale(cliques.task_state_infos, clique_key));
     }
 
+    VLOG(5) << "Splitting communicators";
     TF_ASSIGN_OR_RETURN(
         auto splitted_comms,
         collectives->SplitCommunicators(parent_comms, color, keys, config));
@@ -553,6 +562,7 @@ InitializeGpuClique(GpuCollectives* collectives, se::StreamExecutor* device,
         peer_access_enabled,
         absl::StrJoin(rank_mapping, ",", rank_mapping_formatter));
 
+    VLOG(5) << "Locking cliques.mu";
     absl::MutexLock lock(cliques.mu);
     if (absl::Status s =
             CheckCliqueKeyIsntStale(cliques.task_state_infos, clique_key);
