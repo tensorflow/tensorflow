@@ -199,7 +199,7 @@ absl::StatusOr<std::unique_ptr<DynamicSliceThunk>> CreateSlicedGemmThunk(
       Thunk::ThunkInfo(), config, slice_lhs_fake, slice_rhs, slice_out,
       slice_workspace, /*deterministic=*/true));
 
-  // Wrapping address computation thunk around the GEMM thunk.
+  // Wrapping dynamic slice thunk around the GEMM thunk.
   std::vector<DynamicSliceThunk::Offset> lhs_offsets{slice_lhs_offset_0,
                                                      slice_lhs_offset_1};
   return std::make_unique<DynamicSliceThunk>(
@@ -239,7 +239,7 @@ TEST_F(DynamicSliceThunkTest, SlicedGemm) {
   int64_t out_length = sizeof(float) * 1 * 1;
   int64_t offset_length = sizeof(int64_t);
 
-  // Execute address computation thunk.
+  // Execute dynamic slice thunk.
   //
   // Given a `lhs` tensor of shape f32[2,4]{1,0}
   // The `lhs` slice that we want to use will be equivalent to this static
@@ -288,7 +288,7 @@ TEST_F(DynamicSliceThunkTest, SlicedGemm) {
   TF_ASSERT_OK(thunk->Initialize(
       {executor, source, &allocations, stream.get(), stream.get()}));
 
-  // Executing address computation thunk.
+  // Executing dynamic slice thunk.
   TF_ASSERT_OK(thunk->ExecuteOnStream(params));
   TF_ASSERT_OK(stream->BlockHostUntilDone());
 
@@ -372,7 +372,7 @@ CreateMultipleSlicedOperandsGemmThunk(
       Thunk::ThunkInfo(), config, slice_lhs_fake, slice_rhs_fake, slice_out,
       slice_workspace, /*deterministic=*/true));
 
-  // Wrapping address computation thunk around the GEMM thunk.
+  // Wrapping dynamic slice thunk around the GEMM thunk.
   std::vector<DynamicSliceThunk::Offset> lhs_offsets{slice_lhs_offset_0,
                                                      slice_lhs_offset_1};
   std::vector<DynamicSliceThunk::Offset> rhs_offsets{slice_rhs_offset_0,
@@ -479,7 +479,7 @@ TEST_F(DynamicSliceThunkTest, MultipleSlicedOperandsGemm) {
   TF_ASSERT_OK(thunk->Initialize(
       {executor, source, &allocations, stream.get(), stream.get()}));
 
-  // Execute address computation thunk and verify that it executed a GEMM on the
+  // Execute dynamic slice thunk and verify that it executed a GEMM on the
   // right slices.
   TF_ASSERT_OK(thunk->ExecuteOnStream(params));
   TF_ASSERT_OK(stream->BlockHostUntilDone());
@@ -522,7 +522,7 @@ TEST_F(DynamicSliceThunkTest, SlicedMemcpy) {
   int64_t slice_length = sizeof(int32_t) * dst_count;
 
   // Step 1:
-  // Prepare embedded and address computation thunks.
+  // Prepare embedded and dynamic slice thunks.
 
   // Preparing buffer allocation slices for thunk creations.
   std::vector<std::unique_ptr<BufferAllocation>> fake_allocations(2);
@@ -575,7 +575,7 @@ TEST_F(DynamicSliceThunkTest, SlicedMemcpy) {
                               /*attributes=*/CustomCallThunk::AttributesMap(),
                               /*called_computation=*/nullptr));
 
-  // Wrapping address computation thunk around the custom call thunk.
+  // Wrapping dynamic slice thunk around the custom call thunk.
   std::vector<DynamicSliceThunk::Offset> slice_offsets{
       slice_offset_0, slice_offset_1, slice_offset_2, slice_offset_3};
   DynamicSliceThunk thunk(
@@ -589,7 +589,7 @@ TEST_F(DynamicSliceThunkTest, SlicedMemcpy) {
       {sizeof(int64_t), std::nullopt});
 
   // Step 2:
-  // Execute address computation thunk.
+  // Execute dynamic slice thunk.
   //
   // Given a `src` tensor of shape s32[8,8,10,8]{3,2,1,0}
   // The `src` slice that we want to copy from will be equivalent to this static
@@ -630,7 +630,7 @@ TEST_F(DynamicSliceThunkTest, SlicedMemcpy) {
   TF_ASSERT_OK(thunk.Initialize(
       {executor, source, &allocations, stream.get(), stream.get()}));
 
-  // Executing address computation thunk.
+  // Executing dynamic slice thunk.
   TF_ASSERT_OK(thunk.ExecuteOnStream(params));
   TF_ASSERT_OK(stream->BlockHostUntilDone());
 
@@ -662,7 +662,7 @@ TEST_F(DynamicSliceThunkTest, SlicedOutputMemcpy) {
   int64_t slice_length = sizeof(int32_t) * slice_count;
 
   // Step 1:
-  // Prepare embedded and address computation thunks.
+  // Prepare embedded and dynamic slice thunks.
 
   // Preparing buffer allocation slices for thunk creations.
   std::vector<std::unique_ptr<BufferAllocation>> fake_allocations(2);
@@ -738,7 +738,7 @@ TEST_F(DynamicSliceThunkTest, SlicedOutputMemcpy) {
                               /*attributes=*/CustomCallThunk::AttributesMap(),
                               /*called_computation=*/nullptr));
 
-  // Wrapping address computation thunk around the custom call thunk.
+  // Wrapping dynamic slice thunk around the custom call thunk.
   std::vector<DynamicSliceThunk::Offset> slice_src_offsets{
       slice_src_offset_0, slice_src_offset_1, slice_src_offset_2,
       slice_src_offset_3};
@@ -758,7 +758,7 @@ TEST_F(DynamicSliceThunkTest, SlicedOutputMemcpy) {
       {sizeof(int64_t), sizeof(int64_t)});
 
   // Step 2:
-  // Execute address computation thunk.
+  // Execute dynamic slice thunk.
   //
   // Given a `src` tensor of shape s32[8,8,10,2]{3,2,1,0}
   // The `src` slice that we want to copy from will be equivalent to this static
@@ -824,7 +824,7 @@ TEST_F(DynamicSliceThunkTest, SlicedOutputMemcpy) {
   TF_ASSERT_OK(thunk.Initialize(
       {executor, source, &allocations, stream.get(), stream.get()}));
 
-  // Executing address computation thunk.
+  // Executing dynamic slice thunk.
   TF_ASSERT_OK(thunk.ExecuteOnStream(params));
   TF_ASSERT_OK(stream->BlockHostUntilDone());
 
@@ -920,7 +920,7 @@ CreateSlicedGemmArbitraryArgumentOrderThunk(
       Thunk::ThunkInfo(), config, slice_lhs_fake, slice_rhs_fake,
       slice_out_fake, slice_workspace_fake, /*deterministic=*/true));
 
-  // Wrapping address computation thunk around the GEMM thunk.
+  // Wrapping dynamic slice thunk around the GEMM thunk.
   std::vector<DynamicSliceThunk::Offset> lhs_offsets{slice_lhs_offset_0,
                                                      slice_lhs_offset_1};
   return std::make_unique<DynamicSliceThunk>(
@@ -962,7 +962,7 @@ TEST_F(DynamicSliceThunkTest, SlicedGemmArbitraryArgumentOrder) {
   int64_t out_length = sizeof(float) * 1 * 1;
   int64_t offset_length = sizeof(int64_t);
 
-  // Execute address computation thunk.
+  // Execute dynamic slice thunk.
   //
   // Given a `lhs` tensor of shape f32[2,4]{1,0}
   // The `lhs` slice that we want to use will be equivalent to this static
@@ -1011,7 +1011,7 @@ TEST_F(DynamicSliceThunkTest, SlicedGemmArbitraryArgumentOrder) {
   TF_ASSERT_OK(thunk->Initialize(
       {executor, source, &allocations, stream.get(), stream.get()}));
 
-  // Executing address computation thunk.
+  // Executing dynamic slice thunk.
   TF_ASSERT_OK(thunk->ExecuteOnStream(params));
   TF_ASSERT_OK(stream->BlockHostUntilDone());
 
@@ -1096,7 +1096,7 @@ CreateSlicedGemmArbitraryNumberOfArgumentsThunk(
       Thunk::ThunkInfo(), config, slice_lhs_fake, slice_rhs_fake,
       slice_out_fake, slice_workspace_fake, /*deterministic=*/true));
 
-  // Wrapping address computation thunk around the GEMM thunk.
+  // Wrapping dynamic slice thunk around the GEMM thunk.
   std::vector<DynamicSliceThunk::Offset> lhs_offsets{slice_lhs_offset_0,
                                                      slice_lhs_offset_1};
   return std::make_unique<DynamicSliceThunk>(
@@ -1188,7 +1188,7 @@ TEST_F(DynamicSliceThunkTest, SlicedGemmArbitraryNumberOfArguments) {
   TF_ASSERT_OK(thunk->Initialize(
       {executor, source, &allocations, stream.get(), stream.get()}));
 
-  // Executing address computation thunk.
+  // Executing dynamic slice thunk.
   TF_ASSERT_OK(thunk->ExecuteOnStream(params));
   TF_ASSERT_OK(stream->BlockHostUntilDone());
 
@@ -1265,7 +1265,7 @@ CreateSlicedTupledOperandGemmThunk(
       Thunk::ThunkInfo(), config, slice_lhs_fake, slice_rhs, slice_out,
       slice_workspace, /*deterministic=*/true));
 
-  // Wrapping address computation thunk around the GEMM thunk.
+  // Wrapping dynamic slice thunk around the GEMM thunk.
   std::vector<DynamicSliceThunk::Offset> lhs_offsets{slice_lhs_offset_0,
                                                      slice_lhs_offset_1};
   return std::make_unique<DynamicSliceThunk>(
@@ -1359,7 +1359,7 @@ TEST_F(DynamicSliceThunkTest, SlicedTupledOperandGemm) {
   TF_ASSERT_OK(thunk->Initialize(
       {executor, source, &allocations, stream.get(), stream.get()}));
 
-  // Executing address computation thunk.
+  // Executing dynamic slice thunk.
   TF_ASSERT_OK(thunk->ExecuteOnStream(params));
   TF_ASSERT_OK(stream->BlockHostUntilDone());
 
@@ -1384,7 +1384,7 @@ TEST_F(DynamicSliceThunkTest, SlicedMemcpyOOB) {
   int64_t slice_length = sizeof(int32_t) * slice_count;
 
   // Step 1:
-  // Prepare embedded and address computation thunks.
+  // Prepare embedded and dynamic slice thunks.
 
   // Preparing buffer allocation slices for thunk creations.
   std::vector<std::unique_ptr<BufferAllocation>> fake_allocations(2);
@@ -1460,7 +1460,7 @@ TEST_F(DynamicSliceThunkTest, SlicedMemcpyOOB) {
                               /*attributes=*/CustomCallThunk::AttributesMap(),
                               /*called_computation=*/nullptr));
 
-  // Wrapping address computation thunk around the custom call thunk.
+  // Wrapping dynamic slice thunk around the custom call thunk.
   std::vector<DynamicSliceThunk::Offset> slice_src_offsets{
       slice_src_offset_0, slice_src_offset_1, slice_src_offset_2,
       slice_src_offset_3};
@@ -1480,7 +1480,7 @@ TEST_F(DynamicSliceThunkTest, SlicedMemcpyOOB) {
       {sizeof(int64_t), sizeof(int64_t)});
 
   // Step 2:
-  // Execute address computation thunk.
+  // Execute dynamic slice thunk.
   //
   // Given a `src` tensor of shape s32[8,8,10,2]{3,2,1,0}
   // The `src` slice that we want to copy from will be equivalent to this static
@@ -1548,7 +1548,7 @@ TEST_F(DynamicSliceThunkTest, SlicedMemcpyOOB) {
   TF_ASSERT_OK(thunk.Initialize(
       {executor, source, &allocations, stream.get(), stream.get()}));
 
-  // Executing address computation thunk.
+  // Executing dynamic slice thunk.
   TF_ASSERT_OK(thunk.ExecuteOnStream(params));
   TF_ASSERT_OK(stream->BlockHostUntilDone());
 
@@ -1647,7 +1647,7 @@ CreateSlicedOperandsSameBufferGemmThunk(
       Thunk::ThunkInfo(), config, slice_lhs_fake, slice_rhs_fake,
       slice_out_fake, slice_workspace_fake, /*deterministic=*/true));
 
-  // Wrapping address computation thunk around the GEMM thunk.
+  // Wrapping dynamic slice thunk around the GEMM thunk.
   std::vector<DynamicSliceThunk::Offset> lhs_offsets{slice_lhs_offset_0,
                                                      slice_lhs_offset_1};
   return std::make_unique<DynamicSliceThunk>(
@@ -1740,7 +1740,7 @@ TEST_F(DynamicSliceThunkTest, SlicedOperandsSameBufferGemm) {
   TF_ASSERT_OK(thunk->Initialize(
       {executor, source, &allocations, stream.get(), stream.get()}));
 
-  // Executing address computation thunk.
+  // Executing dynamic slice thunk.
   TF_ASSERT_OK(thunk->ExecuteOnStream(params));
   TF_ASSERT_OK(stream->BlockHostUntilDone());
 
@@ -1964,7 +1964,7 @@ TEST_F(DynamicSliceThunkTest,
   TF_ASSERT_OK(thunk->Initialize(
       {executor, source, &allocations, stream.get(), stream.get()}));
 
-  // Executing address computation thunk.
+  // Executing dynamic slice thunk.
   ResourceRequests resource_requests;
   TF_ASSERT_OK(thunk->Prepare(prepare_params, resource_requests));
   TF_ASSERT_OK(thunk->ExecuteOnStream(params));

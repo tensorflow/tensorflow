@@ -1655,6 +1655,7 @@ cc_library(
         "//xla/hlo/transforms/simplifiers:simplify_fp_conversions",
         "//xla/hlo/transforms/simplifiers:slice_sinker",
         "//xla/hlo/transforms/simplifiers:sort_simplifier",
+        "//xla/hlo/transforms/simplifiers:sub_byte_collective_normalization",
         "//xla/hlo/transforms/simplifiers:sub_byte_normalization",
         "//xla/hlo/transforms/simplifiers:tuple_simplifier",
         "//xla/hlo/transforms/simplifiers:zero_sized_hlo_elimination",

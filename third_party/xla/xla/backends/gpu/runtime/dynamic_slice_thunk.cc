@@ -223,7 +223,7 @@ absl::Status DynamicSliceThunk::ExecuteOnStream(const ExecuteParams& params) {
     return offsets_alloc[offsets_allocs_base_.at(arg_idx) + offset_idx];
   };
 
-  VLOG(2) << "Execute address computation thunk: slices=" << slices_.size();
+  VLOG(2) << "Execute dynamic slice thunk: slices=" << slices_.size();
   for (auto [argument_idx, slice] : llvm::enumerate(slices_)) {
     // Skip arguments that do not have buffer slices (tokens).
     if (!slice.embedded_thunk_argument.has_value()) {

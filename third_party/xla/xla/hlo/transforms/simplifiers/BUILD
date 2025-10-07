@@ -1603,6 +1603,40 @@ cc_library(
 )
 
 cc_library(
+    name = "sub_byte_collective_normalization",
+    srcs = ["sub_byte_collective_normalization.cc"],
+    hdrs = ["sub_byte_collective_normalization.h"],
+    deps = [
+        ":hlo_dce",
+        "//xla:shape_util",
+        "//xla:util",
+        "//xla:xla_data_proto_cc",
+        "//xla/hlo/ir:collective_op_group_mode",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/pass:hlo_pass",
+        "//xla/service:collective_ops_utils",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+xla_cc_test(
+    name = "sub_byte_collective_normalization_test",
+    srcs = ["sub_byte_collective_normalization_test.cc"],
+    deps = [
+        ":sub_byte_collective_normalization",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/tsl/lib/core:status_test_util",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "all_gather_permuted_ds_simplifier",
     srcs = ["all_gather_permuted_ds_simplifier.cc"],
     hdrs = ["all_gather_permuted_ds_simplifier.h"],
