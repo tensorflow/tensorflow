@@ -144,13 +144,6 @@ class HloHardwareIndependentTestBase : public ::testing::Test {
     return RunHloPass(&hlo_pass, module);
   }
 
-  // Runs the hlo_pass with the provided module group and returns the result.
-  // This method runs the input HLO module group pass for a `HloModuleGroup` and
-  // it also verifies the module group remains unchanged when hlo_pass returns
-  // false as the absl::StatusOr value.
-  static absl::StatusOr<bool> RunHloPass(HloPassInterface&& hlo_pass,
-                                         HloModuleGroup* module_group);
-
   // Sets most fath math options to be enabled to model the fast math flags
   // generally used for CPU:AOT compilation.
   static void SetAotFastMathDebugOptions(DebugOptions* options);

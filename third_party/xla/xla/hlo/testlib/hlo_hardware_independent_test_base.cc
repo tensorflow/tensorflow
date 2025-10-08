@@ -191,27 +191,6 @@ absl::StatusOr<bool> HloHardwareIndependentTestBase::RunHloPass(
 }
 
 /* static */
-absl::StatusOr<bool> HloHardwareIndependentTestBase::RunHloPass(
-    HloPassInterface&& hlo_pass, HloModuleGroup* module_group) {
-  const std::string module_group_str_before_run =
-      module_group->ToProto().ShortDebugString();
-  const auto status_or = hlo_pass.RunOnModuleGroup(module_group);
-  if (status_or.status().ok()) {
-    const std::string module_group_str_after_run =
-        module_group->ToProto().ShortDebugString();
-    const bool passChangedHlo = status_or.value();
-    if (passChangedHlo) {
-      // Check that the proto actually changed.
-      EXPECT_NE(module_group_str_after_run, module_group_str_before_run);
-    } else {
-      // Check that the proto remains same.
-      EXPECT_EQ(module_group_str_after_run, module_group_str_before_run);
-    }
-  }
-  return status_or;
-}
-
-/* static */
 PrecisionConfig HloHardwareIndependentTestBase::DefaultPrecisionConfig(
     int operands) {
   PrecisionConfig precision_config;
