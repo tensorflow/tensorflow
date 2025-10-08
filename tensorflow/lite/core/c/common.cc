@@ -208,15 +208,48 @@ int TfLiteFloatArrayGetSizeInBytes(int size) {
 
 #ifndef TF_LITE_STATIC_MEMORY
 
-TfLiteFloatArray* TfLiteFloatArrayCreate(int size) {
-  return TfLiteVarArrayCreate<TfLiteFloatArray>(size);
-}
-
 TfLiteFloatArray* TfLiteFloatArrayCopy(const TfLiteFloatArray* src) {
-  return TfLiteVarArrayCopy(src);
+  if (!src) {
+    return nullptr;
+  }
+  TfLiteFloatArray* const ret = TfLiteFloatArrayCreate(src->size);
+  if (ret) {
+    memcpy(ret->data, src->data, src->size * sizeof(src->data[0]));
+  }
+  return ret;
 }
 
-void TfLiteFloatArrayFree(TfLiteFloatArray* a) { TfLiteVarArrayFree(a); }
+TfLiteFloatArray* TfLiteFloatArrayCreateInternal(int size, float* data) {
+  TfLiteFloatArray* ret =
+      (TfLiteFloatArray*)calloc(1, sizeof(TfLiteFloatArray));
+  if (size > 0) {
+    if (!data) {
+      const size_t data_size = sizeof(float) * size;
+      ret->data = (float*)malloc(data_size);
+      ret->owning = true;
+    } else {
+      ret->owning = false;
+      ret->data = data;
+    }
+  }
+  ret->size = size;
+  return ret;
+}
+
+TfLiteFloatArray* TfLiteFloatArrayCreateView(int size, float* data) {
+  return TfLiteFloatArrayCreateInternal(size, data);
+}
+
+TfLiteFloatArray* TfLiteFloatArrayCreate(int size) {
+  return TfLiteFloatArrayCreateInternal(size, /*data=*/nullptr);
+}
+
+void TfLiteFloatArrayFree(TfLiteFloatArray* a) {
+  if (a->owning) {
+    free(a->data);
+  }
+  free(a);
+}
 
 void TfLiteTensorDataFree(TfLiteTensor* t) {
   if (t->allocation_type == kTfLiteVariantObject && t->data.data) {
