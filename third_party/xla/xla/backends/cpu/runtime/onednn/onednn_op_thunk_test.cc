@@ -323,5 +323,77 @@ TEST(OneDnnOpThunkTest, SimpleOneDnnLayerNormThunk) {
   }
 }
 
+TEST(OneDnnOpThunkTest, SimpleOneDnnSoftmaxThunk) {
+  // Set up a thread pool for parallel execution
+  tsl::thread::ThreadPool threads(tsl::Env::Default(), "test", 8);
+  Eigen::ThreadPoolDevice device(threads.AsEigenThreadPool(),
+                                 threads.NumThreads());
+
+  // Input shape (2x3), softmax over axis=1 (last dim)
+  Shape in_shape = ShapeUtil::MakeShape(F32, {2, 3});
+  Shape out_shape = in_shape;
+
+  // Input:
+  // [[1,2,3],
+  //  [4,5,6]]
+  Literal in_literal = LiteralUtil::CreateR2FromArray2D<float>(
+      Array2D<float>({{1.f, 2.f, 3.f}, {4.f, 5.f, 6.f}}));
+  Literal out_literal = LiteralUtil::CreateR2FromArray2D<float>(
+      Array2D<float>({{0.f, 0.f, 0.f}, {0.f, 0.f, 0.f}}));
+
+  // Buffer allocations
+  auto [in_alloc, out_alloc] = CreateBufferAllocation(in_literal, out_literal);
+
+  auto [in_slice, out_slice] = CreateBufferAllocationSlice(in_alloc, out_alloc);
+
+  BufferAllocations allocations =
+      CreateBufferAllocations(in_literal, out_literal);
+
+  // Set up op_buffers
+  OneDnnOpThunk::OpBuffers op_buffers;
+  op_buffers.arguments_buffers = {in_slice};
+  op_buffers.arguments_shapes = {in_shape};
+  op_buffers.results_buffers = {out_slice};
+  op_buffers.results_shapes = {out_shape};
+
+  // Softmax config (axis = 1)
+  OneDnnSoftmaxConfig softmax_cfg;
+  softmax_cfg.set_softmax_axis(1);
+  OneDnnOpThunk::OneDnnOpConfig variant_cfg = softmax_cfg;
+
+  // Create thunk for Softmax
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto thunk, OneDnnOpThunk::Create("__onednn$softmax", Thunk::Info(),
+                                        op_buffers, variant_cfg));
+
+  // Execute params
+  Thunk::ExecuteParams params;
+  params.buffer_allocations = &allocations;
+  params.intra_op_threadpool = &device;
+
+  tsl::AsyncValueRef<Thunk::ExecuteEvent> exec_event = thunk->Execute(params);
+  tsl::BlockUntilReady(exec_event);
+  ASSERT_FALSE(exec_event.IsError())
+      << "OneDnnOpThunk softmax execution failed";
+
+  // Compute expected softmax row-wise
+  auto softmax_row = [](float a, float b, float c) {
+    float ea = std::exp(a), eb = std::exp(b), ec = std::exp(c);
+    float s = ea + eb + ec;
+    return std::array<float, 3>{ea / s, eb / s, ec / s};
+  };
+  std::array<float, 3> r0 = softmax_row(1.f, 2.f, 3.f);
+  std::array<float, 3> r1 = softmax_row(4.f, 5.f, 6.f);
+
+  const float kTol = 1e-5f;
+  // Validate results
+  for (int i = 0; i < 3; ++i) {
+    float got0 = out_literal.Get<float>({0, i});
+    float got1 = out_literal.Get<float>({1, i});
+    EXPECT_NEAR(got0, r0[i], kTol);
+    EXPECT_NEAR(got1, r1[i], kTol);
+  }
+}
+
 }  // namespace
 }  // namespace xla::cpu

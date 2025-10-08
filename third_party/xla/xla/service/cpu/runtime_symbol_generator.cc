@@ -57,7 +57,6 @@ limitations under the License.
 #ifdef XLA_ONEDNN
 #include "xla/service/cpu/onednn_convolution.h"
 #include "xla/service/cpu/onednn_matmul.h"
-#include "xla/service/cpu/onednn_softmax.h"
 #endif  // XLA_ONEDNN
 
 namespace xla::cpu {
@@ -188,7 +187,6 @@ static bool RegisterKnownJITSymbols() {
   REGISTER_CPU_RUNTIME_SYMBOL(TopKF32);
 #ifdef XLA_ONEDNN
   REGISTER_CPU_RUNTIME_SYMBOL(OneDnnMatMul);
-  REGISTER_CPU_RUNTIME_SYMBOL(OneDnnSoftmax);
   REGISTER_CPU_RUNTIME_SYMBOL(OneDnnMatMulReorder);
 #endif  // XLA_ONEDNN
 

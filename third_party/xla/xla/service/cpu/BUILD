@@ -612,7 +612,6 @@ cc_library(
     ] + if_onednn([
         ":onednn_convolution",
         ":onednn_matmul",
-        ":onednn_softmax",
     ]),
 )
 
@@ -1823,7 +1822,6 @@ onednn_cc_library(
     srcs = ["onednn_softmax.cc"],
     hdrs = [
         "onednn_softmax.h",
-        "//xla/tsl/util:onednn_util_hdrs",
     ],
     copts = runtime_copts() + tsl_copts(),
     visibility = ["//visibility:public"],

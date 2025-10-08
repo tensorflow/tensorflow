@@ -25,6 +25,12 @@ namespace {
 
 class LayerNormTest : public HloTestBase {
  protected:
+  DebugOptions GetDebugOptionsForTest() const override {
+    DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
+    debug_options.set_xla_cpu_experimental_onednn_custom_call(true);
+    return debug_options;
+  }
+
   const char* onednn_layer_norm_ =
       R"(
   ; CHECK:     custom_call_target="__onednn$layernorm",
