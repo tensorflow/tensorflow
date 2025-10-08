@@ -15,7 +15,6 @@ limitations under the License.
 #include "tensorflow/core/data/service/byte_size.h"
 
 #include <cstddef>
-#include <string>
 #include <vector>
 
 #include "absl/algorithm/container.h"

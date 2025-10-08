@@ -1190,6 +1190,7 @@ tf_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core/lib/monitoring:cell_reader",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest_main",
         "@local_xla//xla/tsl/platform:status_matchers",
