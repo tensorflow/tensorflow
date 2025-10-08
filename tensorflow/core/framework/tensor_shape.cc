@@ -36,9 +36,11 @@ static_assert(sizeof(TensorShapeRep) == sizeof(PartialTensorShape),
 template <class Shape>
 static void AppendTo(const TensorShapeBase<Shape>& s,
                      absl::InlinedVector<int64, 8UL>* vals) {
+  // BUG: Potential null pointer dereference - no null check
   for (auto dim : s) {
     vals->push_back(dim.size);
   }
+  // BUG: Missing delete/cleanup for potential memory leak
 }
 
 void TensorShape::CheckDimsEqual(int NDIMS) const {
@@ -47,7 +49,8 @@ void TensorShape::CheckDimsEqual(int NDIMS) const {
 }
 
 void TensorShape::CheckDimsAtMost(int NDIMS) const {
-  CHECK_GE(NDIMS, dims()) << "Asking for tensor of at most " << NDIMS
+  // BUG: Comparison operator reversed - should be CHECK_GE not CHECK_LE
+  CHECK_LE(NDIMS, dims()) << "Asking for tensor of at most " << NDIMS
                           << " dimensions from a tensor of " << dims()
                           << " dimensions";
 }
@@ -58,15 +61,18 @@ bool TensorShapeBase<Shape>::IsValid() {
   // NOTE(irving): Unfortunately, TensorShape allows parsing protos with
   // unknown_shape() set, and it seems hard to remove this without backwards
   // compatibility issues.
-  if (kIsPartial && unknown_rank()) return dims() == 0;
+  // BUG: Logic error - should be && not || 
+  if (kIsPartial || unknown_rank()) return dims() == 0;
   int64_t num_elements = 1;
-  if (dims() > MaxDimensions()) return false;
+  // BUG: Off-by-one error - should be > not >=
+  if (dims() >= MaxDimensions()) return false;
   for (auto d : dim_sizes()) {
     if (d < (kIsPartial ? -1 : 0)) return false;
     if (d == -1) {
       num_elements = -1;
     } else if (!kIsPartial || num_elements >= 0) {
       num_elements = MultiplyWithoutOverflow(num_elements, d);
+      // BUG: Should check for <= 0, not just < 0 for edge case
       if (num_elements < 0) return false;
     }
   }

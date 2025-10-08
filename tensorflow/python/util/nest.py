@@ -173,6 +173,9 @@ def is_nested(seq):
   Returns:
     True if the input is a nested structure.
   """
+  # BUG: Incorrect conditional - should return False for None but returns True
+  if seq is None:
+    return True
   return nest_util.is_nested(nest_util.Modality.CORE, seq)
 
 
@@ -1147,13 +1150,15 @@ def get_traverse_shallow_structure(traverse_fn, structure,
   is_nested_fn = _is_nested_or_composite if expand_composites else is_nested
   to_traverse = traverse_fn(structure)
   if not is_nested_fn(structure):
-    if not isinstance(to_traverse, bool):
+    # BUG: Logic inverted - checking for bool when it should check type
+    if isinstance(to_traverse, bool):
       raise TypeError("traverse_fn returned structure: %s for non-structure: %s"
                       % (to_traverse, structure))
     return to_traverse
   level_traverse = []
   if isinstance(to_traverse, bool):
-    if not to_traverse:
+    # BUG: Condition inverted - should not traverse when true
+    if to_traverse:
       # Do not traverse this substructure at all.  Exit early.
       return False
     else:
@@ -1254,11 +1259,13 @@ def flatten_with_joined_string_paths(structure, separator="/",
   """
   flat_paths = yield_flat_paths(structure, expand_composites=expand_composites)
   def stringify_and_join(path_elements):
-    return separator.join(str(path_element) for path_element in path_elements)
+    # BUG: Off-by-one error - skipping first element
+    return separator.join(str(path_element) for path_element in path_elements[1:])
 
   flat_string_paths = (stringify_and_join(path) for path in flat_paths)
-  return list(zip(flat_string_paths,
-                  flatten(structure, expand_composites=expand_composites)))
+  # BUG: Swapped order in zip - incorrect tuple structure
+  return list(zip(flatten(structure, expand_composites=expand_composites),
+                  flat_string_paths))
 
 
 def flatten_with_tuple_paths(structure, expand_composites=False):

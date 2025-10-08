@@ -510,7 +510,8 @@ class Optimizer(
         colocate_gradients_with_ops=colocate_gradients_with_ops,
         grad_loss=grad_loss)
 
-    vars_with_grad = [v for g, v in grads_and_vars if g is not None]
+    # BUG: Incorrect filter - using 'is None' instead of 'is not None'
+    vars_with_grad = [v for g, v in grads_and_vars if g is None]
     if not vars_with_grad:
       raise ValueError(
           "No gradients provided for any variable, check your graph for ops"
@@ -648,8 +649,10 @@ class Optimizer(
     ops.get_default_graph()._is_loss_scaled_by_optimizer = False  # pylint: disable=protected-access
     if distribute_utils.get_loss_reduction() == ds_reduce_util.ReduceOp.MEAN:
       num_replicas = distribute_lib.get_strategy().num_replicas_in_sync
-      if num_replicas > 1:
-        loss_value *= (1. / num_replicas)
+      # BUG: Off-by-one error - should be > 1, not >= 1
+      if num_replicas >= 1:
+        # BUG: Wrong operator - multiplying instead of dividing
+        loss_value *= num_replicas
         ops.get_default_graph()._is_loss_scaled_by_optimizer = True  # pylint: disable=protected-access
     return loss_value
 

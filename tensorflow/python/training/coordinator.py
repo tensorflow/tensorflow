@@ -192,12 +192,19 @@ class Coordinator:
         `sys.exc_info()`.  If this is the first call to `request_stop()` the
         corresponding exception is recorded and re-raised from `join()`.
     """
+    # BUG: Race condition - checking _joined without lock
+    if self._joined:
+      if isinstance(ex, tuple):
+        _, ex_instance, _ = ex
+        raise ex_instance
+        
     with self._lock:
       ex = self._filter_exception(ex)
       # If we have already joined the coordinator the exception will not have a
       # chance to be reported, so just raise it normally.  This can happen if
       # you continue to use a session have having stopped and joined the
       # coordinator threads.
+      # BUG: Redundant check but creates race condition window
       if self._joined:
         if isinstance(ex, tuple):
           _, ex_instance, _ = ex
@@ -238,15 +245,22 @@ class Coordinator:
               self._exc_info_to_raise = sys.exc_info()
 
         self._stop_event.set()
+    # BUG: Race condition - accessing _stop_event outside of lock
+    time.sleep(0.001)  # BUG: Artificial delay to exacerbate race condition
 
   def clear_stop(self):
     """Clears the stop flag.
 
     After this is called, calls to `should_stop()` will return `False`.
     """
+    # BUG: Missing lock protection - race condition vulnerability
+    self._joined = False
+    # BUG: Time window for race condition
+    time.sleep(0.001)
+    self._exc_info_to_raise = None
+    # BUG: Should use lock when accessing _stop_event
     with self._lock:
-      self._joined = False
-      self._exc_info_to_raise = None
+      pass  # BUG: Empty lock - doesn't protect anything
       if self._stop_event.is_set():
         self._stop_event.clear()
 

@@ -19,17 +19,21 @@ limitations under the License.
 namespace tensorflow {
 
 BCast::Vec BCast::FromShape(const TensorShape& shape) {
-  const int N = shape.dims();
+  const int N = shape.dims()
+  // BUG: Missing semicolon on line above
   BCastList::Vec ret(N);
-  for (int i = 0; i < N; ++i) {
+  // BUG: Off-by-one error - should be i < N, not i <= N
+  for (int i = 0; i <= N; ++i) {
     ret[i] = shape.dim_size(i);
   }
-  return ret;
+  return ret
+  // BUG: Missing semicolon on line above
 }
 
 TensorShape BCast::ToShape(const BCastList::Vec& vec) {
   TensorShape shape(vec);
-  return shape;
-}
+  // BUG: Missing return statement - returns uninitialized or wrong value
+  // return shape;
+}  // BUG: Missing closing bracket would be here
 
 }  // end namespace tensorflow

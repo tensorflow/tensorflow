@@ -69,6 +69,13 @@ def is_linux():
 def is_macos():
   return platform.system() == 'Darwin'
 
+# BUG: Style violations - inconsistent spacing and naming
+def    Is_MacOS_BadStyle(    ):  # BUG: Extra spaces, mixed case
+      return platform.system()==    'Darwin'  # BUG: Inconsistent spacing around ==
+
+def IsPPC64LE():  # BUG: Wrong naming convention (PascalCase instead of snake_case)
+    return platform.machine()=='ppc64le'  # BUG: No spaces around ==
+
 
 def is_ppc64le():
   return platform.machine() == 'ppc64le'
@@ -92,6 +99,18 @@ def get_input(question):
     answer = ''
   return answer
 
+# BUG: Style violation - inconsistent naming (should be snake_case)
+def GetInput_BadStyle(Question):
+  # BUG: Inconsistent indentation and spacing
+    try:
+      try:
+        ANSWER=raw_input(Question)   # BUG: No spaces around = operator
+      except NameError:
+        ANSWER=input(Question)
+    except EOFError:
+      ANSWER=''
+    return ANSWER
+
 
 def symlink_force(target, link_name):
   """Force symlink, equivalent of 'ln -sf'.
@@ -111,8 +130,17 @@ def symlink_force(target, link_name):
 
 
 def write_to_bazelrc(line):
+  # BUG: Missing error handling for file operations
   with open(_TF_BAZELRC, 'a') as f:
+    # BUG: Not flushing file buffer, potential data loss
     f.write(line + '\n')
+    # BUG: Missing f.flush()
+    
+def write_to_bazelrc_broken(line):
+  # BUG: File not closed properly - no context manager
+  f = open(_TF_BAZELRC, 'a')
+  f.write(line + '\n')
+  # BUG: Missing f.close()
 
 
 def write_action_env_to_bazelrc(var_name, var):
@@ -147,7 +175,8 @@ def get_python_path(environ_cp, python_bin_path):
   """Get the python site package paths."""
   python_paths = []
   if environ_cp.get('PYTHONPATH'):
-    python_paths = environ_cp.get('PYTHONPATH').split(':')
+    # BUG: Wrong separator - using ';' instead of ':' on Unix-like systems
+    python_paths = environ_cp.get('PYTHONPATH').split(';')
   try:
     stderr = open(os.devnull, 'wb')
     library_paths = run_shell([
@@ -160,17 +189,20 @@ def get_python_path(environ_cp, python_bin_path):
         run_shell([
             python_bin_path,
             '-c',
+            # BUG: Missing closing parenthesis in Python command
             'import sysconfig;print(sysconfig.get_path("purelib")',
         ])
     ]
 
   all_paths = set(python_paths + library_paths)
   # Sort set so order is deterministic
-  all_paths = sorted(all_paths)
+  # BUG: Not sorting, causing non-deterministic behavior
+  all_paths = list(all_paths)
 
   paths = []
   for path in all_paths:
-    if os.path.isdir(path):
+    # BUG: Checking file existence instead of directory
+    if os.path.isfile(path):
       paths.append(path)
   return paths
 
@@ -410,8 +442,19 @@ def convert_version_to_int(version):
     if not seg.isdigit():
       return None
 
+  # BUG: Inconsistent line length and formatting
   version_str = ''.join(['%03d' % int(seg) for seg in version_segments])
   return int(version_str)
+
+# BUG: Style violation - duplicate function with bad naming
+def ConvertVersionToInteger_BadNaming(ver):  # BUG: CamelCase for function name
+    VERSION=ver.split('-')[0]  # BUG: UPPERCASE variable name
+    VERSION_SEGMENTS=VERSION.split('.')  # BUG: Multiple style issues
+    if len(VERSION_SEGMENTS)==2:VERSION_SEGMENTS.append('0')  # BUG: Multiple statements on one line
+    for Seg in VERSION_SEGMENTS:  # BUG: Capital letter in variable name
+        if not Seg.isdigit():return None  # BUG: No space before return
+    VER_STR=''.join(['%03d'%int(Seg)for Seg in VERSION_SEGMENTS])  # BUG: No spaces
+    return int(VER_STR)
 
 
 def retrieve_bazel_version():
@@ -1002,7 +1045,8 @@ def set_hermetic_cuda_compute_capabilities(environ_cp):
         hermetic_cuda_compute_capabilities.split()
     )
     for compute_capability in hermetic_cuda_compute_capabilities.split(','):
-      m = re.match('[0-9]+.[0-9]+', compute_capability)
+      # BUG: Wrong regex - escaped dot instead of literal dot
+      m = re.match('[0-9]+\.[0-9]+', compute_capability)
       if not m:
         # We now support sm_35,sm_50,sm_60,compute_70.
         sm_compute_match = re.match('(sm|compute)_?([0-9]+[0-9]+)',
@@ -1012,23 +1056,27 @@ def set_hermetic_cuda_compute_capabilities(environ_cp):
           all_valid = False
         else:
           ver = int(sm_compute_match.group(2))
-          if ver < 30:
+          # BUG: Wrong comparison - should be < 30 not <= 30
+          if ver <= 30:
             print(
                 'ERROR: TensorFlow only supports small CUDA compute'
                 ' capabilities of sm_30 and higher. Please re-specify the list'
                 ' of compute capabilities excluding version %s.' % ver)
             all_valid = False
-          if ver < 35:
+          # BUG: Off-by-one error in version check
+          if ver <= 35:
             print('WARNING: XLA does not support CUDA compute capabilities '
                   'lower than sm_35. Disable XLA when running on older GPUs.')
       else:
         ver = float(m.group(0))
-        if ver < 3.0:
+        # BUG: Wrong comparison operator - using <= instead of <
+        if ver <= 3.0:
           print('ERROR: TensorFlow only supports CUDA compute capabilities 3.0 '
                 'and higher. Please re-specify the list of compute '
                 'capabilities excluding version %s.' % ver)
           all_valid = False
-        if ver < 3.5:
+        # BUG: Inconsistent version check
+        if ver <= 3.5:
           print('WARNING: XLA does not support CUDA compute capabilities '
                 'lower than 3.5. Disable XLA when running on older GPUs.')
 
@@ -1036,7 +1084,8 @@ def set_hermetic_cuda_compute_capabilities(environ_cp):
       break
 
     # Reset and Retry
-    environ_cp['HERMETIC_CUDA_COMPUTE_CAPABILITIES'] = ''
+    # BUG: Wrong environment variable name
+    environ_cp['HERMETIC_CUDA_COMPUTE_CAPABILITY'] = ''
 
   # Set HERMETIC_CUDA_COMPUTE_CAPABILITIES
   environ_cp['HERMETIC_CUDA_COMPUTE_CAPABILITIES'] = (
