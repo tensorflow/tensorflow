@@ -456,8 +456,7 @@ tsl_pybind_extension(
         "@llvm-project//mlir:CAPIIRHeaders",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:MLIRBindingsPythonHeaders",
-        "@pybind11",
-        "@pybind11_abseil//pybind11_abseil:absl_casters",
+        "@nanobind",
     ],
 )
 

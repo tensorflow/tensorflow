@@ -112,15 +112,12 @@ tsl_pybind_extension(
     deps = [
         ":lower_to_ifrt",
         "//xla/pjrt:status_casters",
-        "//xla/tsl/platform:statusor",
+        "//xla/python:nb_absl_flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings:string_view",
         "@llvm-project//mlir:CAPIIRHeaders",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:MLIRBindingsPythonNanobindHeaders",
         "@nanobind",
-        "@pybind11",
-        "@pybind11_abseil//pybind11_abseil:absl_casters",
     ],
 )

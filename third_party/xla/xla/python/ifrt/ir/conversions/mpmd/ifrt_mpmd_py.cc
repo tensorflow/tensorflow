@@ -18,42 +18,43 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/statusor.h"
 #include "mlir-c/IR.h"
-#include "mlir/Bindings/Python/PybindAdaptors.h"  // IWYU pragma: keep; Needed to allow MlirModule -> ModuleOp.
+#include "mlir/Bindings/Python/NanobindAdaptors.h"  // IWYU pragma: keep; Needed to allow MlirModule -> ModuleOp.
 #include "mlir/CAPI/IR.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OperationSupport.h"
 #include "nanobind/nanobind.h"
-#include "pybind11/detail/common.h"
-#include "pybind11/pybind11.h"
-#include "pybind11/pytypes.h"
-#include "pybind11_abseil/absl_casters.h"
+#include "nanobind/stl/pair.h"  // IWYU pragma: keep
+#include "nanobind/stl/string.h"  // IWYU pragma: keep
+#include "nanobind/stl/variant.h"  // IWYU pragma: keep
+#include "nanobind/stl/vector.h"  // IWYU pragma: keep
 #include "xla/pjrt/status_casters.h"  // IWYU pragma: keep; Needed for ValueOrThrow
 #include "xla/python/ifrt/ir/conversions/mpmd/lower_to_ifrt.h"
-#include "xla/tsl/platform/statusor.h"
+#include "xla/python/nb_absl_flat_hash_map.h"  // IWYU pragma: keep
+
+namespace nb = nanobind;
 
 namespace xla::ifrt::mpmd {
 
-PYBIND11_MODULE(ifrt_mpmd_py, m) {
+NB_MODULE(ifrt_mpmd_py, m) {
   m.def(
       "lower_to_ifrt",
       [](MlirModule module) -> void {
         return xla::ThrowIfError(LowerToIfrt(unwrap(module)));
       },
-      py::arg("module"));
+      nb::arg("module"));
 
   m.def("get_compile_options",
         [](MlirModule c_module,
            const absl::flat_hash_map<std::string, const EnvOptionsOverride>&
-               compile_options_overrides) -> absl::StatusOr<py::dict> {
+               compile_options_overrides) -> absl::StatusOr<nb::dict> {
           auto module = unwrap(c_module);
-          TF_ASSIGN_OR_RETURN(
-              auto compile_options_map,
+          auto compile_options_map = ValueOrThrow(
               GetCompileOptions(module, compile_options_overrides));
-          py::dict out;
+          nb::dict out;
           for (const auto& [name, options] : compile_options_map) {
-            out[py::cast(name)] = py::reinterpret_steal<py::object>(
-                nanobind::cast(options).release().ptr());
+            out[nb::cast(name)] =
+                nb::steal<nb::object>(nanobind::cast(options).release().ptr());
           }
           return out;
         });
