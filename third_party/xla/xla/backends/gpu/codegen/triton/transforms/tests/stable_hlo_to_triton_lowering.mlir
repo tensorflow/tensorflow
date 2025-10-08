@@ -1,0 +1,38 @@
+// RUN: xla-opt %s -split-input-file \
+// RUN: -stablehlo-lower-to-triton \
+// RUN: | FileCheck %s
+
+// CHECK: func @lower_transpose(%[[ARG:.*]]: tensor<2x4x8xf32>) -> tensor<8x2x4xf32>
+func.func @lower_transpose(%arg0: tensor<2x4x8xf32>) -> tensor<8x2x4xf32> {
+  // CHECK: %[[RES:.*]] = tt.trans %[[ARG]] {order = array<i32: 2, 0, 1>} : tensor<2x4x8xf32> -> tensor<8x2x4xf32>
+  %0 = stablehlo.transpose %arg0, dims = [2, 0, 1] : (tensor<2x4x8xf32>) -> tensor<8x2x4xf32>
+  // CHECK: return %[[RES]] : tensor<8x2x4xf32>
+  return %0 : tensor<8x2x4xf32>
+}
+
+
+// CHECK: func @lower_bitcast(%[[ARG:.*]]: tensor<2x4x8xf32>) -> tensor<2x4x8xi32>
+func.func @lower_bitcast(%arg0: tensor<2x4x8xf32>) -> tensor<2x4x8xi32> {
+  // CHECK: %[[RES:.*]] = tt.bitcast %[[ARG]] : tensor<2x4x8xf32> -> tensor<2x4x8xi32>
+  %0 = stablehlo.bitcast_convert %arg0 : (tensor<2x4x8xf32>) -> tensor<2x4x8xi32>
+  // CHECK: return %[[RES]] : tensor<2x4x8xi32>
+  return %0 : tensor<2x4x8xi32>
+}
+
+// CHECK: func @lower_iota_to_make_range() -> tensor<16xi32>
+func.func @lower_iota_to_make_range() -> tensor<16xi32> {
+  // CHECK: %[[RES:.*]] = tt.make_range {end = 16 : i32, start = 0 : i32} : tensor<16xi32>
+  %0 = stablehlo.iota dim = 0 : tensor<16xi32>
+  // CHECK: return %[[RES]] : tensor<16xi32>
+  return %0 : tensor<16xi32>
+}
+
+// CHECK: func @lower_broadcast_in_dim(%[[ARG0:.*]]: tensor<2x4xf32>) -> tensor<8x2x4x16xf32>
+func.func @lower_broadcast_in_dim(%arg0: tensor<2x4xf32>) -> tensor<8x2x4x16xf32> {
+  // CHECK: %[[RES_EXPAND_DIMS_0:.*]] = tt.expand_dims %[[ARG0]] {axis = 0 : i32} : tensor<2x4xf32> -> tensor<1x2x4xf32>
+  // CHECK: %[[RES_EXPAND_DIMS_1:.*]] = tt.expand_dims %[[RES_EXPAND_DIMS_0]] {axis = 3 : i32} : tensor<1x2x4xf32> -> tensor<1x2x4x1xf32>
+  // CHECK: %[[RES:.*]] = tt.broadcast %[[RES_EXPAND_DIMS_1]] : tensor<1x2x4x1xf32> -> tensor<8x2x4x16xf32>
+  %0 = stablehlo.broadcast_in_dim %arg0, dims = [1, 2] : (tensor<2x4xf32>) -> tensor<8x2x4x16xf32>
+  // CHECK: return %[[RES]] : tensor<8x2x4x16xf32>
+  return %0 : tensor<8x2x4x16xf32>
+}

@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdint>
 #include <optional>
 
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -75,6 +76,23 @@ absl::StatusOr<TritonWrapperResult> TritonWrapper(
     const se::DeviceDescription& device_info,
     const BlockLevelParameters& block_level_parameters,
     llvm::Module* llvm_module, mlir::MLIRContext& mlir_context);
+
+// This function (or it's future equivalent) should emit the MLIR module in the
+// shared dialect between XLA:CPU and XLA:GPU. At the moment it is still
+// emitting GPU specific modules. It is currently exposed only for testing
+// purposes and will only be used to make sure we are properly emitting the
+// shared dialect.
+absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> EmitSharedDialectModule(
+    absl::string_view fn_name, const HloFusionInstruction* fusion,
+    const se::DeviceDescription& device_info,
+    const BlockLevelParameters& block_level_parameters,
+    mlir::MLIRContext& mlir_context);
+
+// This function lowers the shared dialect module to Triton. It is exposed for
+// testing with the same motivation as EmitSharedDialectModule.
+absl::Status LowerToTriton(mlir::ModuleOp shared_dialect_module,
+                           mlir::MLIRContext& mlir_context,
+                           const DebugOptions& debug_options);
 
 // Creates the initial Triton module for the given fusion. Visible for testing,
 // use TritonWrapper instead.
