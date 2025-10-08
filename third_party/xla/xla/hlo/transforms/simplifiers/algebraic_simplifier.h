@@ -600,6 +600,11 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
   }
 
  protected:
+  // Allow backend targets to amend user-guided fusion attributes based on
+  // various criteria.
+  virtual void AmendUserGuidedFusionAttr(HloInstruction* inst) {}
+
+ protected:
   // The backend-specific options selected for the algebraic simplifier.
   const AlgebraicSimplifierOptions& options_;
 
