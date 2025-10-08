@@ -537,6 +537,86 @@ diff --ruN a/stablehlo/stablehlo/conversions/tosa/transforms/StablehloQuantLegal
    // unary ops
    patterns->addWithLabel<QuantizedStablehloOpConversion<stablehlo::AbsOp>>(
        {"StablehloQuantAbsOp"}, context);
+diff --ruN a/stablehlo/stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.cpp b/stablehlo/stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.cpp
+--- stablehlo/stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.cpp
++++ stablehlo/stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.cpp
+@@ -110,6 +110,44 @@
+   }
+ }
+ 
++bool IsBoolean(ElementType elementType) {
++  MLIRContext ctx;
++  return getElementType(ctx, elementType).isInteger(1);
++}
++
++bool IsComplex(ElementType elementType) {
++  MLIRContext ctx;
++  auto type = dyn_cast<ComplexType>(getElementType(ctx, elementType));
++  return !!type;
++}
++
++bool IsFloat(ElementType elementType) {
++  MLIRContext ctx;
++  return getElementType(ctx, elementType).isFloat();
++}
++
++bool IsInteger(ElementType elementType, bool includeBool = false) {
++  MLIRContext ctx;
++  Type type = getElementType(ctx, elementType);
++  return type.isInteger() && includeBool ? IsBoolean(elementType)
++                                         : !IsBoolean(elementType);
++}
++
++bool IsSignedInteger(ElementType elementType) {
++  MLIRContext ctx;
++  Type type = getElementType(ctx, elementType);
++
++  // Note that this is not the same as `type.isSignedInteger()`. Signed integers
++  // are not used in StableHLO.
++  return type.isSignlessInteger() && !IsBoolean(elementType);
++}
++
++bool IsUnsignedInteger(ElementType elementType) {
++  MLIRContext ctx;
++  return getElementType(ctx, elementType).isUnsignedInteger() &&
++         !IsBoolean(elementType);
++}
++
+ RankedTensorType makeTensorType(MLIRContext& ctx, ArrayRef<int64_t> shape,
+                                 ElementType elementType) {
+   return makeTensorType(ctx, shape, getElementType(ctx, elementType));
+diff --ruN a/stablehlo/stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h b/stablehlo/stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h
+--- stablehlo/stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h
++++ stablehlo/stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h
+@@ -18,7 +18,6 @@
+ 
+ #include <complex>
+ #include <cstdint>
+-#include <source_location>
+ #include <type_traits>
+ #include <vector>
+ 
+@@ -68,6 +67,20 @@
+   // clang-format on
+ };
+ 
++bool IsBoolean(ElementType elementType);
++
++bool IsComplex(ElementType elementType);
++
++bool IsFloat(ElementType elementType);
++
++bool IsInteger(ElementType elementType, bool includeBool);
++
++// In StableHLO, we refer to signed integer as the MLIR's equvalent signless
++// integer. StableHLO does not have a notion of signless integers like MLIR.
++bool IsSignedInteger(ElementType elementType);
++
++bool IsUnsignedInteger(ElementType elementType);
++
+ Type getElementType(MLIRContext& ctx, ElementType elementType);
+ 
+ // Build a ranked tensor type with an element type of ElementType.
 diff --ruN a/stablehlo/stablehlo/integrations/cpp/builder/AttrTypeBuilderUtilTest.cpp b/stablehlo/stablehlo/integrations/cpp/builder/AttrTypeBuilderUtilTest.cpp
 --- stablehlo/stablehlo/integrations/cpp/builder/AttrTypeBuilderUtilTest.cpp
 +++ stablehlo/stablehlo/integrations/cpp/builder/AttrTypeBuilderUtilTest.cpp
