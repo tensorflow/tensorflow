@@ -93,6 +93,11 @@ cc_library(
 )
 
 cc_library(
+    name = "pjrt_c_api_tpu_constants",
+    hdrs = ["pjrt_c_api_tpu_constants.h"],
+)
+
+cc_library(
     name = "pjrt_c_api_phase_compile_extension_hdrs",
     hdrs = ["pjrt_c_api_phase_compile_extension.h"],
     visibility = ["//visibility:public"],
