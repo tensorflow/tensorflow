@@ -99,7 +99,7 @@ tsl::AsyncValueRef<Thunk::ExecuteEvent> InfeedThunk::Execute(
 InfeedThunk::BufferUses InfeedThunk::buffer_uses() const {
   BufferUses buffer_uses;
   for (const InfeedBuffer& infeed_buffer : infeed_buffers_) {
-    buffer_uses.emplace_back(infeed_buffer.slice, BufferUse::kWrite);
+    buffer_uses.emplace_back(BufferUse::Write(infeed_buffer.slice));
   }
   return buffer_uses;
 }

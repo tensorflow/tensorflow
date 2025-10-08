@@ -102,10 +102,10 @@ static Thunk::BufferUses KernelBufferUses(
     absl::Span<const BufferAllocation::Slice> results_buffers) {
   Thunk::BufferUses buffer_uses;
   for (const BufferAllocation::Slice& buffer : arguments_buffers) {
-    buffer_uses.emplace_back(buffer, BufferUse::kRead);
+    buffer_uses.emplace_back(BufferUse::Read(buffer));
   }
   for (const BufferAllocation::Slice& buffer : results_buffers) {
-    buffer_uses.emplace_back(buffer, BufferUse::kWrite);
+    buffer_uses.emplace_back(BufferUse::Write(buffer));
   }
   return buffer_uses;
 }

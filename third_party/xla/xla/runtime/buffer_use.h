@@ -40,9 +40,6 @@ class BufferUse {
     kWrite,
   };
 
-  static constexpr MemoryAccess kRead = MemoryAccess::kRead;
-  static constexpr MemoryAccess kWrite = MemoryAccess::kWrite;
-
   // Flags that indicate whether the contents of a buffer are defined before and
   // after execution of a thunk.
   enum class ContentValidity : uint32_t {

@@ -164,8 +164,8 @@ TEST(CommandBufferCmdTest, SerializeExecution) {
   auto slice1 = BufferAllocation::Slice(&alloc0, 50, 100);
 
   // Reads from overlapping slices do not require barriers by default.
-  auto use0 = BufferUse(slice0, BufferUse::kRead);
-  auto use1 = BufferUse(slice1, BufferUse::kRead);
+  auto use0 = BufferUse::Read(slice0);
+  auto use1 = BufferUse::Read(slice1);
 
   CommandBufferCmdSequence commands;
   commands.Emplace<TestOnlyCommandBufferCmd>(BufferUseVector{use0});
@@ -184,8 +184,8 @@ TEST(CommandBufferCmdTest, NoReadBarrier) {
   auto slice1 = BufferAllocation::Slice(&alloc0, 50, 100);
 
   // Reads from overlapping slices do not require barriers.
-  auto use0 = BufferUse(slice0, BufferUse::kRead);
-  auto use1 = BufferUse(slice1, BufferUse::kRead);
+  auto use0 = BufferUse::Read(slice0);
+  auto use1 = BufferUse::Read(slice1);
 
   CommandBufferCmdSequence commands;
   commands.Emplace<TestOnlyCommandBufferCmd>(BufferUseVector{use0});
@@ -204,8 +204,8 @@ TEST(CommandBufferCmdTest, NoWriteBarrier) {
   auto slice0 = BufferAllocation::Slice(&alloc0, 0, 100);
   auto slice1 = BufferAllocation::Slice(&alloc0, 200, 100);
 
-  auto use0 = BufferUse(slice0, BufferUse::kWrite);
-  auto use1 = BufferUse(slice1, BufferUse::kWrite);
+  auto use0 = BufferUse::Write(slice0);
+  auto use1 = BufferUse::Write(slice1);
 
   CommandBufferCmdSequence commands;
   commands.Emplace<TestOnlyCommandBufferCmd>(BufferUseVector{use0});
@@ -225,9 +225,9 @@ TEST(CommandBufferCmdTest, WriteConflictBarrier) {
 
   // Reads from overlapping slices can be done in parallel, and before a write
   // into overlapping slice we need to insert a barrier.
-  auto use0 = BufferUse(slice0, BufferUse::kRead);
-  auto use1 = BufferUse(slice0, BufferUse::kRead);
-  auto use2 = BufferUse(slice1, BufferUse::kWrite);
+  auto use0 = BufferUse::Read(slice0);
+  auto use1 = BufferUse::Read(slice0);
+  auto use2 = BufferUse::Write(slice1);
 
   CommandBufferCmdSequence commands;
   commands.Emplace<TestOnlyCommandBufferCmd>(BufferUseVector{use0});
@@ -322,7 +322,8 @@ TEST(CommandBufferCmdTest, LaunchCmd) {
   BufferAllocation::Slice slice_b(&alloc_b, 0, byte_length);
 
   auto args = {slice_a, slice_a, slice_b};  // b = a + a
-  auto args_access = {BufferUse::kRead, MemoryAccess::kRead, BufferUse::kWrite};
+  auto args_access = {MemoryAccess::kRead, MemoryAccess::kRead,
+                      MemoryAccess::kWrite};
 
   // Prepare commands sequence for constructing command buffer.
   CommandBufferCmdSequence commands;
@@ -393,7 +394,8 @@ TEST(CommandBufferCmdTest, LaunchCmdWithPriority) {
   BufferAllocation::Slice slice_b(&alloc_b, 0, byte_length);
 
   auto args = {slice_a, slice_a, slice_b};  // b = a + a
-  auto args_access = {BufferUse::kRead, MemoryAccess::kRead, BufferUse::kWrite};
+  auto args_access = {MemoryAccess::kRead, MemoryAccess::kRead,
+                      MemoryAccess::kWrite};
 
   // Prepare commands sequence for constructing command buffer.
   CommandBufferCmdSequence commands;
@@ -513,8 +515,8 @@ TEST(TracedCommandBuffer, GetOrUpdateCommandBuffer) {
     BufferAllocation alloc1(/*index=*/1, /*size=*/1024, /*color=*/0);
 
     CommandBufferCmd::BufferUseVector buffers = {
-        {BufferAllocation::Slice(&alloc0, 0, 1024), BufferUse::kRead},
-        {BufferAllocation::Slice(&alloc1, 0, 1024), BufferUse::kWrite}};
+        BufferUse::Read(BufferAllocation::Slice(&alloc0, 0, 1024)),
+        BufferUse::Write(BufferAllocation::Slice(&alloc1, 0, 1024))};
 
     TracedCommandBuffer traced_cmd_buffer(&traced_cmd, buffers,
                                           /*capacity=*/trace_cache_size);
@@ -635,8 +637,8 @@ TEST(CommandBufferCmdTest, RecordExecutorsWithDependencies) {
   CommandBufferCmdSequence seq_b;
   {
     auto args = {slice_a, slice_a, slice_b};
-    auto args_access = {BufferUse::kRead, MemoryAccess::kRead,
-                        BufferUse::kWrite};
+    auto args_access = {MemoryAccess::kRead, MemoryAccess::kRead,
+                        MemoryAccess::kWrite};
     seq_b.Emplace<LaunchCmd>("AddI32", args, args_access,
                              LaunchDimensions(1, 4), /*shmem_bytes=*/0);
   }
@@ -853,8 +855,8 @@ static void BM_GetOrTraceCommandBuffer(benchmark::State& state) {
   BufferAllocation alloc1(/*index=*/1, /*size=*/1024, /*color=*/0);
 
   CommandBufferCmd::BufferUseVector buffers = {
-      {BufferAllocation::Slice(&alloc0, 0, 1024), BufferUse::kRead},
-      {BufferAllocation::Slice(&alloc1, 0, 1024), BufferUse::kWrite}};
+      BufferUse::Read(BufferAllocation::Slice(&alloc0, 0, 1024)),
+      BufferUse::Write(BufferAllocation::Slice(&alloc1, 0, 1024))};
 
   se::DeviceMemoryBase mem0(reinterpret_cast<void*>(0x01234567));
   se::DeviceMemoryBase mem1(reinterpret_cast<void*>(0x12345670));
