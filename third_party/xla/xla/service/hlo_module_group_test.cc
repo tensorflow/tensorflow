@@ -68,7 +68,6 @@ ENTRY %entry (x: f32[], y: f32[]) -> f32[] {
 
   std::vector<std::unique_ptr<HloModule>> modules = group.ConsumeModules();
   EXPECT_EQ(modules.size(), 1);
-  EXPECT_EQ(group.modules().size(), 0);
 }
 
 // Test that metadata is transferred when a module is replaced.

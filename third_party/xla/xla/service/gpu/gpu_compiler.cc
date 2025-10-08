@@ -2047,7 +2047,7 @@ absl::StatusOr<std::unique_ptr<HloModule>> GpuCompiler::RunHloPasses(
   // out we have no way of telling how far through the process we got).
   RecordHloPassesDuration(end_usecs - start_usecs);
 
-  DumpHloModuleMetadataIfEnabled({module.get()});
+  DumpHloModuleMetadataIfEnabled(module.get());
 
   AutotuneResults autotune_results;
   DeviceOrDevicelessConfig device_config =

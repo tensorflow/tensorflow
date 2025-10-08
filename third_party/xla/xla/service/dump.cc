@@ -1169,20 +1169,17 @@ void DumpHloUnoptimizedSnapshotIfEnabled(
   }
 }
 
-void DumpHloModuleMetadataIfEnabled(const std::vector<HloModule*>& modules) {
+void DumpHloModuleMetadataIfEnabled(HloModule* module) {
   absl::flat_hash_set<int64_t> dumped_module_ids;
-  for (const HloModule* module : modules) {
-    CanonicalDebugOptions opts(module->config().debug_options());
-    if (!module->config().debug_options().xla_dump_module_metadata()) {
-      continue;
-    }
-    DumpHloModuleMetadata(module->metadata().proto(), opts, &dumped_module_ids);
-    const std::optional<HloModuleMetadataProto>& prepartitioning_metadata =
-        module->metadata().prepartitioning_metadata();
-    if (prepartitioning_metadata.has_value()) {
-      DumpHloModuleMetadata(*prepartitioning_metadata, opts,
-                            &dumped_module_ids);
-    }
+  CanonicalDebugOptions opts(module->config().debug_options());
+  if (!module->config().debug_options().xla_dump_module_metadata()) {
+    return;
+  }
+  DumpHloModuleMetadata(module->metadata()->proto(), opts, &dumped_module_ids);
+  const std::optional<HloModuleMetadataProto>& prepartitioning_metadata =
+      module->metadata()->prepartitioning_metadata();
+  if (prepartitioning_metadata.has_value()) {
+    DumpHloModuleMetadata(*prepartitioning_metadata, opts, &dumped_module_ids);
   }
 }
 

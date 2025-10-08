@@ -167,7 +167,7 @@ void DumpHloSnapshotIfEnabled(const HloSnapshot& snapshot,
 void DumpHloUnoptimizedSnapshotIfEnabled(
     const HloUnoptimizedSnapshot& hlo_snapshot, const DebugOptions& opts);
 
-void DumpHloModuleMetadataIfEnabled(const std::vector<HloModule*>& modules);
+void DumpHloModuleMetadataIfEnabled(HloModule* module);
 
 // Returns true if we should dump data for an HloModule.  This is useful if you
 // want to check if DumpToFileInDir{,OrStdout} will do anything before
