@@ -87,6 +87,8 @@ class CustomCallThunk : public Thunk {
   absl::Status Initialize(const InitializeParams& params) override;
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
 
+  std::string ToString(int /*indent*/) const override { return target_name_; }
+
   const std::string& target_name() const { return target_name_; }
   CustomCallTarget call_target() const { return call_target_; }
   std::optional<XLA_FFI_Handler_Bundle> bundle() const { return bundle_; }
