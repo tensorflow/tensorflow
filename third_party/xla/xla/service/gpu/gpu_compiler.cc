@@ -365,8 +365,15 @@ DeviceOrDevicelessConfig GetDeviceConfig(
     return DeviceOrDevicelessConfig{
         DeviceConfig{stream_exec, options.device_allocator}};
   }
-  return DeviceOrDevicelessConfig{
-      DevicelessConfig{gpu_target_config.device_description}};
+  se::DeviceDescription device_description =
+      gpu_target_config.device_description;
+  device_description.set_dnn_version(
+      {static_cast<unsigned>(
+           gpu_target_config.dnn_version_info.major_version()),
+       static_cast<unsigned>(
+           gpu_target_config.dnn_version_info.minor_version()),
+       static_cast<unsigned>(gpu_target_config.dnn_version_info.patch())});
+  return DeviceOrDevicelessConfig{DevicelessConfig{device_description}};
 }
 
 se::GpuComputeCapability GetGpuVersion(const se::StreamExecutor* stream_exec) {
