@@ -2029,6 +2029,15 @@ class alignas(kInstructionTypeMask + 1) HloInstruction {
     return proto;
   }
 
+  // Returns a mutable pointer to the backend-specific configuration proto
+  // of the specified type. This allows in-place modification.
+  //
+  // ConfigProto should be a protobuf Message type.
+  template <typename ConfigProto, EnableIfProto<ConfigProto>* = nullptr>
+  absl::StatusOr<ConfigProto*> mutable_backend_config() {
+    return backend_config_.GetMutableProto<ConfigProto>();
+  }
+
   absl::Status set_backend_config(const tsl::protobuf::Message& proto) {
     backend_config_ = BackendConfigWrapper(proto);
     return absl::OkStatus();
