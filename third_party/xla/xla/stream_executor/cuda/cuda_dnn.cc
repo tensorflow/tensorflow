@@ -3040,12 +3040,12 @@ struct OpDescriptor {
   int64_t uid;                        // The UID of the op.
   std::vector<int64_t> operand_uids;  // The UIDs of the operands of the op that
                                       // are part of the graph.
-  OpMode mode;                    // The mode describing the op.
-  TensorKind operand_kind;        // The kind of a second operand.
-  TensorKind result_kind;         // The kind of the output.
-  dnn::DataType result_type;      // The type of the output.
-  bool is_virtual;                // A virtual op has a user within the graph.
-  int sequence_index;             // The index of the op in the sequence.
+  OpMode mode;                        // The mode describing the op.
+  TensorKind operand_kind;            // The kind of a second operand.
+  TensorKind result_kind;             // The kind of the output.
+  dnn::DataType result_type;          // The type of the output.
+  bool is_virtual;     // A virtual op has a user within the graph.
+  int sequence_index;  // The index of the op in the sequence.
 };
 
 // Class describing the graph of ops to be fused into the cuDNN convolution
@@ -4597,10 +4597,11 @@ absl::StatusOr<CudnnGraph> GetCudnnBlockScaledDotOperationGraph(
     const dnn::TensorDescriptor& lhs_scale,
     const dnn::TensorDescriptor& rhs_data,
     const dnn::TensorDescriptor& rhs_scale, dnn::DataType result_type,
-    int block_size) {
+    int block_size, bool has_global_scale) {
 #if CUDNN_VERSION >= 90700
   using cudnn_frontend::graph::Block_scale_dequantize_attributes;
   using cudnn_frontend::graph::Matmul_attributes;
+  using cudnn_frontend::graph::Pointwise_attributes;
   using cudnn_frontend::graph::Tensor_attributes;
 
   VLOG(4) << "\n lhs_data: " << lhs_data.ToString()
@@ -4608,7 +4609,8 @@ absl::StatusOr<CudnnGraph> GetCudnnBlockScaledDotOperationGraph(
           << "\n rhs_data: " << rhs_data.ToString()
           << "\n rhs_scale: " << rhs_scale.ToString()
           << "\n result_type: " << dnn::DataType_Name(result_type)
-          << "\n block_size: " << block_size;
+          << "\n block_size: " << block_size
+          << "\n global_scale: " << has_global_scale;
 
   cudnn_frontend::graph::Graph graph;
   auto compute_type = cudnn_frontend::DataType_t::FLOAT;
@@ -4657,9 +4659,27 @@ absl::StatusOr<CudnnGraph> GetCudnnBlockScaledDotOperationGraph(
 
   auto matmul_attr = Matmul_attributes().set_compute_data_type(compute_type);
   auto d_tensor = graph.matmul(a_dq, b_dq, matmul_attr);
-  d_tensor->set_uid(next_uid());
   d_tensor->set_data_type(ToCudnnFrontendDataType(result_type));
-  d_tensor->set_is_virtual(false);
+  if (!has_global_scale) {
+    d_tensor->set_uid(next_uid());
+    d_tensor->set_is_virtual(false);
+  } else {
+    std::vector<int64_t> scalar(lhs_data.ndims(), 1);
+    auto scale_attr = Tensor_attributes()
+                          .set_uid(next_uid())
+                          .set_dim(scalar)
+                          .set_stride(scalar)
+                          .set_data_type(d_tensor->get_data_type());
+    auto global_scale = graph.tensor(scale_attr.set_name("global_scale"));
+
+    auto mul_attr = Pointwise_attributes()
+                        .set_mode(cudnn_frontend::PointwiseMode_t::MUL)
+                        .set_compute_data_type(compute_type);
+    auto result = graph.pointwise(d_tensor, global_scale, mul_attr);
+    result->set_data_type(d_tensor->get_data_type());
+    result->set_uid(next_uid());
+    result->set_is_virtual(false);
+  }
 
   CudnnGraph cudnnGraph(std::move(graph));
   TF_RETURN_IF_ERROR(cudnnGraph.Prepare(

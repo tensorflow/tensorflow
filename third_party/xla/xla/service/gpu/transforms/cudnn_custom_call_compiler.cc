@@ -447,7 +447,8 @@ absl::StatusOr<se::gpu::CudnnGraph> BuildGraphForCustomCallToBackwardFMHAF8(
 
 absl::StatusOr<se::gpu::CudnnGraph> BuildGraphForCustomCallToBlockScaledDot(
     se::dnn::DnnSupport &dnn_support, HloCustomCallInstruction *custom_call) {
-  TF_RET_CHECK(custom_call->operand_count() == 4);
+  const bool has_global_scale = custom_call->operand_count() == 5;
+  TF_RET_CHECK(custom_call->operand_count() == 4 || has_global_scale);
   TF_RET_CHECK(custom_call->shape().tuple_shapes().size() == 2);
 
   TF_ASSIGN_OR_RETURN(TensorDescriptor lhs_data,
@@ -486,7 +487,7 @@ absl::StatusOr<se::gpu::CudnnGraph> BuildGraphForCustomCallToBlockScaledDot(
   TF_ASSIGN_OR_RETURN(se::gpu::CudnnGraph graph,
                       se::gpu::GetCudnnBlockScaledDotOperationGraph(
                           dnn_support, lhs_data, lhs_scale, rhs_data, rhs_scale,
-                          result_type, block_size));
+                          result_type, block_size, has_global_scale));
   return graph;
 }
 

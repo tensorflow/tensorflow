@@ -116,6 +116,45 @@ ENTRY main {
 })");
 }
 
+TEST_F(BlockScalingRewriterTest, ExpandBlockScaledDotGlobalScale) {
+  constexpr absl::string_view hlo_string = R"(
+HloModule test
+
+ENTRY main {
+  %lhs = f8e4m3fn[4,16,256] parameter(0)
+  %rhs = f8e4m3fn[4,32,256] parameter(1)
+  %lhs_scale = f8e5m2[4,16,8] parameter(2)
+  %rhs_scale = f8e5m2[4,32,8] parameter(3)
+  %global_scale = f32[] parameter(4)
+  ROOT %result = f32[4,16,32] custom-call(%lhs, %rhs, %lhs_scale, %rhs_scale, %global_scale),
+      custom_call_target="__op$block_scaled_dot"
+})";
+
+  BlockScalingRewriter pass(/*allow_cudnn=*/false);
+  RunAndFilecheckHloRewrite(hlo_string, std::move(pass), R"(
+  CHECK: [[lhs_quant:%.+]] = f8e4m3fn[4,16,256]{2,1,0} parameter(0)
+  CHECK: [[lhs_quant_cvt:%.+]] = f32[4,16,256]{2,1,0} convert([[lhs_quant]])
+  CHECK: [[lhs_scale:%.+]] = f8e5m2[4,16,8]{2,1,0} parameter(2)
+  CHECK: [[lhs_scale_cvt:%.+]] = f32[4,16,8]{2,1,0} convert([[lhs_scale]])
+  CHECK: [[lhs_scale_bc:%.+]] = f32[4,16,8,32]{3,2,1,0} broadcast([[lhs_scale_cvt]])
+  CHECK: [[lhs_scale_rs:%.+]] = f32[4,16,256]{2,1,0} reshape([[lhs_scale_bc]])
+  CHECK: [[lhs:%.+]] = f32[4,16,256]{2,1,0} multiply([[lhs_quant_cvt]], [[lhs_scale_rs]])
+  CHECK: [[rhs_quant:%.+]] = f8e4m3fn[4,32,256]{2,1,0} parameter(1)
+  CHECK: [[rhs_quant_cvt:%.+]] = f32[4,32,256]{2,1,0} convert([[rhs_quant]])
+  CHECK: [[rhs_scale:%.+]] = f8e5m2[4,32,8]{2,1,0} parameter(3)
+  CHECK: [[rhs_scale_cvt:%.+]] = f32[4,32,8]{2,1,0} convert([[rhs_scale]])
+  CHECK: [[rhs_scale_bc:%.+]] = f32[4,32,8,32]{3,2,1,0} broadcast([[rhs_scale_cvt]])
+  CHECK: [[rhs_scale_rs:%.+]] = f32[4,32,256]{2,1,0} reshape([[rhs_scale_bc]])
+  CHECK: [[rhs:%.+]] = f32[4,32,256]{2,1,0} multiply([[rhs_quant_cvt]], [[rhs_scale_rs]])
+  CHECK: [[dot:%.+]] = f32[4,16,32]{2,1,0} dot([[lhs]], [[rhs]])
+  CHECK-SAME: lhs_batch_dims={0}, lhs_contracting_dims={2}
+  CHECK-SAME: rhs_batch_dims={0}, rhs_contracting_dims={2}
+  CHECK: [[global_scale:%.+]] = f32[] parameter(4)
+  CHECK: [[global_scale_bc:%.+]] = f32[4,16,32]{2,1,0} broadcast([[global_scale]]), dimensions={}
+  CHECK: ROOT {{.+}} = f32[4,16,32]{2,1,0} multiply([[dot]], [[global_scale_bc]])
+})");
+}
+
 TEST_F(BlockScalingRewriterTest, ExpandBlockScaledDotNonDefaultLayout) {
   constexpr absl::string_view hlo_string = R"(
 HloModule test
