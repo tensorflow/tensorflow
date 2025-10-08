@@ -33,7 +33,7 @@ TFLITE_ATTRIBUTE_WEAK void OnTfLiteOpPrepare(const char* op_name,
 
 // No-op for the weak symbol. Overridden by a strong symbol in
 // tensorflow_profiler_logger.cc.
-TFLITE_ATTRIBUTE_WEAK tensorflow::profiler::TraceMe* OnTfLiteSubgraphInvoke(
+TFLITE_ATTRIBUTE_WEAK tsl::profiler::TraceMe* OnTfLiteSubgraphInvoke(
     const char* subgraph_name, int subgraph_index) {
   return nullptr;
 }
@@ -41,11 +41,11 @@ TFLITE_ATTRIBUTE_WEAK tensorflow::profiler::TraceMe* OnTfLiteSubgraphInvoke(
 // No-op for the weak symbol. Overridden by a strong symbol in
 // tensorflow_profiler_logger.cc.
 TFLITE_ATTRIBUTE_WEAK void OnTfLiteSubgraphInvokeEnd(
-    tensorflow::profiler::TraceMe* trace_me) {}
+    tsl::profiler::TraceMe* trace_me) {}
 
 // No-op for the weak symbol. Overridden by a strong symbol in
 // tensorflow_profiler_logger.cc.
-TFLITE_ATTRIBUTE_WEAK tensorflow::profiler::TraceMe* OnTfLiteOpInvoke(
+TFLITE_ATTRIBUTE_WEAK tsl::profiler::TraceMe* OnTfLiteOpInvoke(
     const char* op_name, int subgraph_index, int node_index) {
   return nullptr;
 }
@@ -53,7 +53,7 @@ TFLITE_ATTRIBUTE_WEAK tensorflow::profiler::TraceMe* OnTfLiteOpInvoke(
 // No-op for the weak symbol. Overridden by a strong symbol in
 // tensorflow_profiler_logger.cc.
 TFLITE_ATTRIBUTE_WEAK void OnTfLiteOpInvokeEnd(
-    tensorflow::profiler::TraceMe* trace_me) {}
+    tsl::profiler::TraceMe* trace_me) {}
 
 // No-op for the weak symbol. Overridden by a strong symbol in
 // tensorflow_profiler_logger.cc.
