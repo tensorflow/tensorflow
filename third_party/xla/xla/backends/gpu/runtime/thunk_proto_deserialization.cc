@@ -33,6 +33,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/infeed_thunk.h"
 #include "xla/backends/gpu/runtime/kernel_thunk.h"
 #include "xla/backends/gpu/runtime/memset_thunk.h"
+#include "xla/backends/gpu/runtime/norm_thunk.h"
 #include "xla/backends/gpu/runtime/replica_id_thunk.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
@@ -156,6 +157,10 @@ absl::StatusOr<std::unique_ptr<Thunk>> DeserializeThunkProto(
     return CublasLtMatmulThunk::FromProto(std::move(thunk_info),
                                           thunk_proto.cublas_lt_matmul_thunk(),
                                           buffer_allocations);
+  }
+  if (thunk_proto.has_norm_thunk()) {
+    return NormThunk::FromProto(std::move(thunk_info), thunk_proto.norm_thunk(),
+                                buffer_allocations);
   }
 
   std::optional<absl::string_view> unsupported_thunk_type =

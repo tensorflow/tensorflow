@@ -19,6 +19,8 @@ package xla.gpu;
 
 import "xla/backends/gpu/runtime/dynamic_slice_thunk.proto";
 import "xla/service/buffer_assignment.proto";
+import "xla/service/gpu/backend_configs.proto";
+import "xla/service/gpu/gpu_norm_runner.proto";
 import "xla/service/gpu/launch_dimensions.proto";
 import "xla/stream_executor/gpu/gpu_blas_lt.proto";
 import "xla/stream_executor/gpu/tma_metadata.proto";
@@ -170,6 +172,20 @@ message CublasLtMatmulThunkProto {
   optional xla.buffer_assignment.BufferAllocationSliceProto workspace = 16;
 }
 
+message NormThunkProto {
+  GpuNormDescriptorProto norm_descriptor = 1;
+  xla.buffer_assignment.BufferAllocationSliceProto x = 2;
+  xla.buffer_assignment.BufferAllocationSliceProto scale = 3;
+  xla.buffer_assignment.BufferAllocationSliceProto y_or_dx = 4;
+  optional xla.buffer_assignment.BufferAllocationSliceProto bias = 5;
+  optional xla.buffer_assignment.BufferAllocationSliceProto expectation = 6;
+  optional xla.buffer_assignment.BufferAllocationSliceProto norm_factor = 7;
+  optional xla.buffer_assignment.BufferAllocationSliceProto dy = 8;
+  optional xla.buffer_assignment.BufferAllocationSliceProto dscale = 9;
+  optional xla.buffer_assignment.BufferAllocationSliceProto dbias = 10;
+  xla.buffer_assignment.BufferAllocationSliceProto scratch = 11;
+}
+
 message ThunkProto {
   ThunkInfoProto thunk_info = 1;
 
@@ -196,6 +212,7 @@ message ThunkProto {
     InfeedThunkProto infeed_thunk = 21;
     CublasLtMatmulThunkProto cublas_lt_matmul_thunk = 22;
     OutfeedThunkProto outfeed_thunk = 23;
+    NormThunkProto norm_thunk = 24;
   }
 }
 

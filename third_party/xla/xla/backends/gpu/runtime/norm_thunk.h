@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
+#include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/gpu_norm_runner.h"
@@ -53,6 +54,12 @@ class NormThunk : public Thunk {
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
   absl::Status Initialize(const InitializeParams& params) override;
 
+  static absl::StatusOr<std::unique_ptr<NormThunk>> FromProto(
+      ThunkInfo thunk_info, const NormThunkProto& proto,
+      absl::Span<const BufferAllocation> buffer_allocations);
+
+  absl::StatusOr<ThunkProto> ToProto() const override;
+
  private:
   NormThunk(ThunkInfo thunk_info, GpuNormConfig config,
             GpuNormDescriptor descriptor, BufferAllocation::Slice x,
@@ -77,6 +84,9 @@ class NormThunk : public Thunk {
   BufferAllocation::Slice scratch_buffer_;
   NormRunner& GetOrCreateRunner(const stream_executor::Stream*);
 
+  // Technically this is only needed during initialization to create the
+  // GpuNormConfig, but the actual GpuNormConfig is hard to serialize. So we
+  // keep the descriptor around for serialization purposes.
   GpuNormDescriptor descriptor_;
   GpuNormConfig config_;
   absl::Mutex mu_;
