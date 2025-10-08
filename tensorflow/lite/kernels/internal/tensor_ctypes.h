@@ -15,21 +15,24 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_INTERNAL_TENSOR_CTYPES_H_
 #define TENSORFLOW_LITE_KERNELS_INTERNAL_TENSOR_CTYPES_H_
 
+#include <cstdint>
 #include <vector>
 
+#include "absl/base/attributes.h"
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/core/macros.h"
-#include "tensorflow/lite/kernels/internal/types.h"
+#include "tensorflow/lite/kernels/internal/runtime_shape.h"
 
 namespace tflite {
 
 template <typename T>
-inline T* GetTensorData(TfLiteTensor* tensor) {
+inline T* GetTensorData(TfLiteTensor* tensor ABSL_ATTRIBUTE_LIFETIME_BOUND) {
   return tensor != nullptr ? reinterpret_cast<T*>(tensor->data.raw) : nullptr;
 }
 
 template <typename T>
-inline const T* GetTensorData(const TfLiteTensor* tensor) {
+inline const T* GetTensorData(
+    const TfLiteTensor* tensor ABSL_ATTRIBUTE_LIFETIME_BOUND) {
   return tensor != nullptr ? reinterpret_cast<const T*>(tensor->data.raw)
                            : nullptr;
 }
