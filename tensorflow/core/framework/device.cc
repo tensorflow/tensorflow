@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/framework/device.h"
 
+#include "absl/log/check.h"
+#include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/framework/device_factory.h"
 #include "tensorflow/core/framework/op_segment.h"
 #include "tensorflow/core/platform/errors.h"
