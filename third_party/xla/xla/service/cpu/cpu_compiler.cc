@@ -337,7 +337,7 @@ ModuleComputationsTransitivelyContainCustomCall(const HloModule& module) {
 namespace cpu {
 
 inline bool IsOneDnnCompatible(bool is_aot_compile) {
-#ifdef ENABLE_ONEDNN_ASYNC
+#if defined(XLA_ONEDNN) && defined(ENABLE_ONEDNN_ASYNC)
   return !is_aot_compile;
 #endif
   return false;
@@ -471,7 +471,7 @@ void AddHloVerifier(HloPassPipeline* pipeline, HloVerifierOpts&& opts = {},
 
 std::unique_ptr<HloPassFix<HloPassPipeline>> CreateSimplificationPipeline(
     absl::string_view name, HloModule* module, bool is_fusion_emitters,
-    bool is_onednn_compatible) {
+    bool use_onednn_custom_call) {
   // Run the following passes to a fixed point.
   auto pipeline =
       std::make_unique<HloPassFix<HloPassPipeline>>(std::string(name));
@@ -485,7 +485,7 @@ std::unique_ptr<HloPassFix<HloPassPipeline>> CreateSimplificationPipeline(
       !module->config().debug_options().xla_cpu_enable_fast_min_max());
   options.set_supports_non_canonical_dots(false);
   options.set_executing_on_cpu(true);
-  options.set_enable_onednn_support(is_onednn_compatible);
+  options.set_enable_onednn_support(use_onednn_custom_call);
   options.set_rewrite_no_op_bitcast_convert_to_bitcast(true);
   pipeline->AddPass<AlgebraicSimplifier>(options);
   pipeline->AddPass<SortSimplifier>();
@@ -540,7 +540,6 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   const bool is_fusion_emitters =
       module->config().debug_options().xla_cpu_use_fusion_emitters();
   bool use_shardy_partitioner = module->config().use_shardy_partitioner();
-  bool is_onednn_compatible = IsOneDnnCompatible(is_aot_compile);
   bool flatten_before_fusion = !options::FlattenAfterFusion(module->config());
 
   if (num_partitions > 1) {
@@ -680,12 +679,12 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   pipeline.AddPass<DotDecomposer>();
 
   // Rewrite to custom calls with target as oneDNN library calls.
-#ifdef XLA_ONEDNN
   bool use_onednn_custom_call =
       module->config()
           .debug_options()
           .xla_cpu_experimental_onednn_custom_call() &&
-      is_onednn_compatible;
+      IsOneDnnCompatible(is_aot_compile);
+#ifdef XLA_ONEDNN
   if (use_onednn_custom_call) {
     // Placing OneDnnOpsRewriter here to match the flax patterns
     // TODO: Decide where would be the appropriate place for this pass to make
@@ -707,7 +706,7 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
                                target_machine_features);
 #ifdef XLA_ONEDNN
   OneDnnFloatSupport onednn_bf16_support(BF16);
-  if (is_onednn_compatible) {
+  if (use_onednn_custom_call) {
     pipeline.AddPass<FloatNormalization>(&onednn_bf16_support);
   } else {
     pipeline.AddPass<FloatNormalization>(&bf16_support);
@@ -804,7 +803,7 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   }
 
   pipeline.AddPass(CreateSimplificationPipeline(
-      "simplification", module, is_fusion_emitters, is_onednn_compatible));
+      "simplification", module, is_fusion_emitters, use_onednn_custom_call));
 
   // Scatter expander is sandwiched between two simplification pipelines to
   // enable constant folding with the original scatter instructions (which is
@@ -822,7 +821,7 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
 
   pipeline.AddPass(CreateSimplificationPipeline(
       "post_scatter_expansion_simplification", module, is_fusion_emitters,
-      is_onednn_compatible));
+      use_onednn_custom_call));
 
   pipeline.AddPass<BitcastDtypesExpander>();
 
@@ -878,7 +877,6 @@ absl::Status CpuCompiler::RunHloPassesAfterLayoutAssn(
     const CompileOptions& compile_options) {
   const auto& debug_options = module->config().debug_options();
   const bool is_fusion_emitters = debug_options.xla_cpu_use_fusion_emitters();
-  bool is_onednn_compatible = IsOneDnnCompatible(is_aot_compile);
   bool flatten_after_fusion = options::FlattenAfterFusion(module->config());
   HloPassPipeline pipeline("HLO passes after layout assignment");
 
@@ -902,14 +900,11 @@ absl::Status CpuCompiler::RunHloPassesAfterLayoutAssn(
           ? module->config().intra_op_parallelism_threads()
           : tsl::port::NumSchedulableCPUs();
 
-#ifdef XLA_ONEDNN
-  // AOT compiled code runs in single thread.
   bool use_onednn_custom_call =
       debug_options.xla_cpu_experimental_onednn_custom_call() &&
-      is_onednn_compatible;
-  bool use_onednn_graph =
-      debug_options.xla_cpu_use_onednn() &&
-      (!debug_options.xla_cpu_experimental_onednn_fusion_type().empty());
+      IsOneDnnCompatible(is_aot_compile);
+
+#ifdef XLA_ONEDNN
   if (use_onednn_custom_call) {
     // Run SimplifyFPConversions pass to simplify the BF16 pattern and make it
     // easier to match.
@@ -917,6 +912,9 @@ absl::Status CpuCompiler::RunHloPassesAfterLayoutAssn(
     if (debug_options.xla_allow_excess_precision()) {
       pipeline.AddPass<SimplifyFPConversions>();
     }
+    bool use_onednn_graph =
+        debug_options.xla_cpu_use_onednn() &&
+        (!debug_options.xla_cpu_experimental_onednn_fusion_type().empty());
     pipeline.AddPass<OneDnnContractionRewriter>(
         max_parallelism, compile_options.thread_pool, use_onednn_graph);
     // Run SimplifyFPConversions pass again to remove redundant Convert ops
@@ -986,7 +984,7 @@ absl::Status CpuCompiler::RunHloPassesAfterLayoutAssn(
   // Run this to a fixed point.
   [&pipeline = pipeline.AddPass<HloPassFix<HloPassPipeline>>(
        "simplification after layout assignment"),
-   &module, is_onednn_compatible] {
+   &module, use_onednn_custom_call] {
     AddHloVerifier(
         &pipeline,
         HloVerifierOpts{}.MakeLayoutSensitive().WithInstructionCanChangeLayout(
@@ -1001,7 +999,7 @@ absl::Status CpuCompiler::RunHloPassesAfterLayoutAssn(
         !module->config().debug_options().xla_cpu_enable_fast_min_max());
     options.set_executing_on_cpu(true);
     // oneDNN support is currently enabled only when thunk runtime is turned off
-    options.set_enable_onednn_support(is_onednn_compatible);
+    options.set_enable_onednn_support(use_onednn_custom_call);
     options.set_rewrite_no_op_bitcast_convert_to_bitcast(true);
     pipeline.AddPass<AlgebraicSimplifier>(options);
     pipeline.AddPass<HloDCE>();

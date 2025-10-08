@@ -5632,6 +5632,7 @@ cc_library(
     copts = tsl_copts(),
     deps = [
         ":hlo_creation_utils",
+        "//xla:xla_proto_cc",
         "//xla/hlo/pass:hlo_pass",
     ] + if_onednn([
         "//xla/service/cpu:onednn_contraction_rewriter",
