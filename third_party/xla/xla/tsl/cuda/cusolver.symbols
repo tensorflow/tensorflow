@@ -455,6 +455,8 @@ cusolverDnSyevdx
 cusolverDnSyevdx_bufferSize
 cusolverDnXfillRandNormalOnDevice
 cusolverDnXfillRandNormalOnHost
+cusolverDnXgeev
+cusolverDnXgeev_bufferSize
 cusolverDnXgeqrf
 cusolverDnXgeqrf_bufferSize
 cusolverDnXgesvd

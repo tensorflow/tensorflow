@@ -1498,6 +1498,14 @@ CudaExecutor::CreateDeviceDescription(int device_ordinal) {
 absl::StatusOr<MemoryType> CudaExecutor::GetPointerMemorySpace(
     const void* ptr) {
   CUdeviceptr pointer = reinterpret_cast<CUdeviceptr>(const_cast<void*>(ptr));
+  unsigned int is_managed;
+  TF_RETURN_IF_ERROR(cuda::ToStatus(cuPointerGetAttribute(
+      &is_managed, CU_POINTER_ATTRIBUTE_IS_MANAGED, pointer)));
+
+  if (is_managed) {
+    return MemoryType::kUnified;
+  }
+
   unsigned int value;
   TF_RETURN_IF_ERROR(cuda::ToStatus(cuPointerGetAttribute(
       &value, CU_POINTER_ATTRIBUTE_MEMORY_TYPE, pointer)));

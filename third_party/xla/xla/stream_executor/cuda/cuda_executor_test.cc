@@ -25,6 +25,7 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cuda_platform.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/gpu/gpu_test_kernels.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/kernel_spec.h"
@@ -169,5 +170,46 @@ TEST(CudaExecutorTest, CreateUnsupportedMemoryAllocatorsFail) {
   EXPECT_THAT(executor->CreateMemoryAllocator(MemoryType::kDevice),
               Not(absl_testing::IsOk()));
 }
+
+TEST(CudaExecutorTest, GetPointerMemorySpaceWorksWithUnifiedMemory) {
+  TF_ASSERT_OK_AND_ASSIGN(Platform * platform,
+                          PlatformManager::PlatformWithName("CUDA"));
+  TF_ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
+                          platform->ExecutorForDevice(0));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto unified_memory_allocator,
+      executor->CreateMemoryAllocator(MemoryType::kUnified));
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<MemoryAllocation> allocation,
+                          unified_memory_allocator->Allocate(256));
+  EXPECT_THAT(executor->GetPointerMemorySpace(allocation->opaque()),
+              IsOkAndHolds(MemoryType::kUnified));
+}
+
+TEST(CudaExecutorTest, GetPointerMemorySpaceWorksWithHostMemory) {
+  TF_ASSERT_OK_AND_ASSIGN(Platform * platform,
+                          PlatformManager::PlatformWithName("CUDA"));
+  TF_ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
+                          platform->ExecutorForDevice(0));
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<MemoryAllocation> allocation,
+                          executor->HostMemoryAllocate(256));
+  EXPECT_THAT(executor->GetPointerMemorySpace(allocation->opaque()),
+              IsOkAndHolds(MemoryType::kHost));
+}
+
+TEST(CudaExecutorTest, GetPointerMemorySpaceWorksWithDeviceMemory) {
+  TF_ASSERT_OK_AND_ASSIGN(Platform * platform,
+                          PlatformManager::PlatformWithName("CUDA"));
+  TF_ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
+                          platform->ExecutorForDevice(0));
+
+  DeviceMemoryBase allocation = executor->Allocate(256);
+  EXPECT_NE(allocation.opaque(), nullptr);
+  EXPECT_THAT(executor->GetPointerMemorySpace(allocation.opaque()),
+              IsOkAndHolds(MemoryType::kDevice));
+}
+
 }  // namespace
 }  // namespace stream_executor::gpu
