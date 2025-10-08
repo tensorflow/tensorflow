@@ -35,10 +35,10 @@ int main(int argc, char** argv) {
   auto profiler_server = std::make_unique<tsl::profiler::ProfilerServer>();
   profiler_server->StartProfilerServer(port);
 
-  uint64_t iteration = 0;
   while (true) {
     tsl::profiler::TraceMe trace_me([&] {
-      return absl::StrCat("subprocess_test_", port, "_", iteration++);
+      return absl::StrCat("subprocess_test_", port, "_",
+                          absl::ToUnixMillis(absl::Now()));
     });
     absl::SleepFor(absl::Milliseconds(10));
   }

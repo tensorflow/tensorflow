@@ -21,6 +21,8 @@ limitations under the License.
 #include <sys/wait.h>
 #include <unistd.h>
 
+#include <algorithm>
+#include <cstdint>
 #include <cstdlib>
 #include <memory>
 #include <string>
@@ -30,8 +32,10 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/strings/match.h"
+#include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_split.h"
@@ -41,6 +45,8 @@ limitations under the License.
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/subprocess.h"
 #include "xla/tsl/platform/test.h"
+#include "xla/tsl/profiler/utils/math_utils.h"
+#include "xla/tsl/profiler/utils/timespan.h"
 #include "tsl/platform/path.h"
 #include "tsl/profiler/lib/profiler_session.h"
 #include "tsl/profiler/lib/traceme.h"
@@ -55,6 +61,19 @@ namespace {
 using ::absl_testing::IsOk;
 using ::testing::IsEmpty;
 using ::testing::Not;
+
+absl::Status SaveXSpaceToUndeclaredOutputs(
+    const tensorflow::profiler::XSpace& space) {
+  // Emit the collected XSpace as an undeclared output file.
+  const char* outputs_dir = std::getenv("TEST_UNDECLARED_OUTPUTS_DIR");
+  LOG_IF(WARNING, outputs_dir == nullptr)
+      << "TEST_UNDECLARED_OUTPUTS_DIR not set, skipping writing xspace.pb";
+  if (outputs_dir != nullptr) {
+    std::string output_path = tsl::io::JoinPath(outputs_dir, "xspace.pb");
+    return tsl::WriteBinaryProto(tsl::Env::Default(), output_path, space);
+  }
+  return absl::OkStatus();
+}
 
 std::unique_ptr<tsl::SubProcess> CreateSubProcess(
     const std::vector<std::string>& args) {
@@ -91,8 +110,6 @@ class SubprocessProfilingSessionTest : public ::testing::Test {
           RegisterSubprocess(subprocess_runtime.port, subprocess_runtime.port),
           IsOk());
     }
-    // Wait for connections to be established.
-    absl::SleepFor(absl::Seconds(num_subprocesses + 1));
   }
 
   void TearDown() override {
@@ -115,13 +132,17 @@ TEST_F(SubprocessProfilingSessionTest, MultipleSubprocessesIntegrationTest) {
 
   auto session =
       tsl::ProfilerSession::Create(tsl::ProfilerSession::DefaultOptions());
-  auto deadline = absl::Now() + absl::Seconds(1);
+  auto deadline = absl::Now() + absl::Seconds(4);
   while (absl::Now() < deadline) {
-    tsl::profiler::TraceMe trace_me("main_process");
+    tsl::profiler::TraceMe trace_me([&] {
+      return absl::StrCat("main_process_", absl::ToUnixMillis(absl::Now()));
+    });
     absl::SleepFor(absl::Milliseconds(10));
   }
   tensorflow::profiler::XSpace space;
   ASSERT_THAT(session->CollectData(&space), IsOk());
+  // For debugging purposes.
+  EXPECT_THAT(SaveXSpaceToUndeclaredOutputs(space), IsOk());
 
   ASSERT_THAT(space.planes(), Not(IsEmpty()));
 
@@ -139,6 +160,12 @@ TEST_F(SubprocessProfilingSessionTest, MultipleSubprocessesIntegrationTest) {
           ASSERT_EQ(parts.size(), 4)
               << "Invalid trace me name: " << trace_me_name;
           trace_me_name = absl::StrJoin(parts.begin(), parts.end() - 1, "_");
+        } else if (absl::StartsWith(trace_me_name, "main_process_")) {
+          std::vector<std::string> parts = absl::StrSplit(
+              event_metadata.at(event.metadata_id()).name(), '_');
+          ASSERT_EQ(parts.size(), 3)
+              << "Invalid trace me name: " << trace_me_name;
+          trace_me_name = absl::StrJoin(parts.begin(), parts.end() - 1, "_");
         }
         trace_me_names.insert(trace_me_name);
       }
@@ -154,16 +181,43 @@ TEST_F(SubprocessProfilingSessionTest, MultipleSubprocessesIntegrationTest) {
   }
   EXPECT_EQ(trace_me_names, expected_trace_me_names);
 
-  // Emit the collected XSpace as an undeclared output file.
-  const char* outputs_dir = std::getenv("TEST_UNDECLARED_OUTPUTS_DIR");
-  if (outputs_dir != nullptr) {
-    std::string output_path = tsl::io::JoinPath(outputs_dir, "xspace.pb");
-    ASSERT_THAT(tsl::WriteBinaryProto(tsl::Env::Default(), output_path, space),
-                IsOk());
-    LOG(INFO) << "Wrote XSpace proto to: " << output_path;
-  } else {
-    LOG(WARNING)
-        << "TEST_UNDECLARED_OUTPUTS_DIR not set, skipping writing xspace.pb";
+  struct EventInfo {
+    std::string name;
+    tsl::profiler::Timespan timespan;
+    uint64_t timestamp_ms;
+  };
+  std::vector<EventInfo> events;
+  for (const auto& plane : space.planes()) {
+    for (const auto& line : plane.lines()) {
+      for (const auto& event : line.events()) {
+        std::vector<std::string> parts = absl::StrSplit(
+            plane.event_metadata().at(event.metadata_id()).name(), '_');
+        uint64_t timestamp_ms;
+        ASSERT_TRUE(absl::SimpleAtoi(parts.back(), &timestamp_ms))
+            << "Failed to parse timestamp from: " << parts.back();
+        events.push_back({
+            plane.event_metadata().at(event.metadata_id()).name(),
+            tsl::profiler::Timespan(
+                line.timestamp_ns() * 1000 + event.offset_ps(),
+                event.duration_ps()),
+            timestamp_ms,
+        });
+      }
+    }
+  }
+
+  std::sort(events.begin(), events.end(),
+            [](const EventInfo& a, const EventInfo& b) {
+              return a.timespan < b.timespan;
+            });
+  EventInfo first_event = events[0];
+  for (const auto& event : events) {
+    SCOPED_TRACE(absl::StrCat("Event: ", event.name));
+    // Give some tolerance to the offsets to reduce flakiness.
+    EXPECT_NEAR(event.timestamp_ms - first_event.timestamp_ms,
+                tsl::profiler::PicoToMilli(event.timespan.begin_ps() -
+                                           first_event.timespan.begin_ps()),
+                50);
   }
 }
 
