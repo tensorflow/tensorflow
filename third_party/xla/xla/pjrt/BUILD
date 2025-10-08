@@ -1267,6 +1267,7 @@ cc_library(
     name = "errors",
     srcs = ["errors.cc"],
     hdrs = ["errors.h"],
+    visibility = internal_visibility([":friends"]),
     deps = [
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings:cord",
