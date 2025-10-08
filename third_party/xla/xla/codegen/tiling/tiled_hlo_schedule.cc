@@ -45,36 +45,28 @@ bool IsDotLike(const HloInstruction* hlo) {
 // for each parameter, the length of the dimension it abstracts over.
 std::vector<int64_t> InputSpaceForParameterMapping(
     const TilingSpecification::ParameterMapping& parameter_mapping) {
-  int64_t num_parameters = absl::c_accumulate(
-      parameter_mapping, 0,
-      [](int64_t sum,
-         const TilingSpecification::InstructionAndNumTilingParameters&
-             mapping) { return sum + mapping.num_tiling_parameters; });
+  int64_t sum_num_parameters = 0;
+  for (const auto& mapping : parameter_mapping) {
+    sum_num_parameters += mapping.num_tiling_parameters;
+  }
   std::vector<int64_t> input_space;
-  input_space.reserve(num_parameters);
+  input_space.reserve(sum_num_parameters);
 
-  for (const auto& [hlo, num_parameters] : parameter_mapping) {
+  for (auto [hlo, num_parameters] : parameter_mapping) {
     // TODO(b/419026602): handle reductions.
     if (IsDotLike(hlo)) {
-      auto contracting_dimensions =
+      auto contracting_dims =
           hlo->dot_dimension_numbers().lhs_contracting_dimensions();
-      // First, we need to add the contracting dimensions of the `dot`
-      // instruction to the input space.
-      for (int64_t contracting_dimension : contracting_dimensions) {
-        input_space.push_back(
-            hlo->operand(0)->shape().dimensions(contracting_dimension));
+      // Add the contracting dimensions of the `dot` to the input space.
+      for (int64_t dim : contracting_dims) {
+        input_space.push_back(hlo->operand(0)->shape().dimensions(dim));
       }
-      int64_t num_contracting_dimensions = contracting_dimensions.size();
-      // Optionally, we also add the output dimensions of the `dot` instruction,
-      // if they are actual parameters.
-      if (num_parameters != num_contracting_dimensions) {
-        CHECK_EQ(num_parameters,
-                 num_contracting_dimensions + hlo->shape().dimensions().size());
-        for (int64_t output_dimension : hlo->shape().dimensions()) {
-          input_space.push_back(output_dimension);
-        }
+      if (contracting_dims.size() == num_parameters) {
+        // Optionally, we also add the output dimensions of the `dot`
+        // instruction, if they are actual parameters.
+        continue;
       }
-      continue;
+      num_parameters -= contracting_dims.size();
     }
 
     CHECK_EQ(hlo->shape().dimensions().size(), num_parameters);
@@ -82,7 +74,6 @@ std::vector<int64_t> InputSpaceForParameterMapping(
       input_space.push_back(dimension);
     }
   }
-
   return input_space;
 }
 }  // namespace
@@ -91,32 +82,28 @@ absl::StatusOr<IndexingMap> MajorToMinorTiledHloSchedule::RootSchedule(
     const HloInstruction* root,
     const TilingSpecification::ParameterMapping& parameter_mapping,
     mlir::MLIRContext* ctx) const {
-  std::vector<int64_t> input_space =
-      InputSpaceForParameterMapping(parameter_mapping);
-  int64_t num_output_parameters = root->shape().dimensions().size();
-
-  std::vector<mlir::AffineExpr> result_exprs;
-  result_exprs.reserve(num_output_parameters);
-
-  int64_t dim_offset = 0;
-  for (const auto& [hlo, num_tiling_parameters] : parameter_mapping) {
+  int64_t sum_num_parameters = 0;
+  for (const auto& [hlo, num_parameters] : parameter_mapping) {
+    sum_num_parameters += num_parameters;
     if (hlo != root) {
-      dim_offset += num_tiling_parameters;
       continue;
     }
-    int64_t num_hidden_parameters =
-        num_tiling_parameters - num_output_parameters;
-    for (int64_t parameter_index = num_hidden_parameters;
-         parameter_index < num_tiling_parameters; ++parameter_index) {
-      result_exprs.push_back(
-          mlir::getAffineDimExpr(dim_offset + parameter_index, ctx));
-    }
-    CHECK_EQ(result_exprs.size(), num_output_parameters);
 
+    int64_t output_rank = root->shape().dimensions().size();
+    std::vector<mlir::AffineExpr> result_exprs;
+    result_exprs.reserve(output_rank);
+    for (int64_t index = sum_num_parameters - output_rank;
+         index < sum_num_parameters; ++index) {
+      result_exprs.push_back(mlir::getAffineDimExpr(index, ctx));
+    }
+
+    std::vector<int64_t> input_space =
+        InputSpaceForParameterMapping(parameter_mapping);
     mlir::AffineMap affine_map = mlir::AffineMap::get(
         input_space.size(), /*symbolCount=*/0, result_exprs, ctx);
 
-    return IndexingMap::FromTensorSizes(affine_map, std::move(input_space),
+    return IndexingMap::FromTensorSizes(std::move(affine_map),
+                                        std::move(input_space),
                                         /*symbol_upper_bounds=*/{});
   }
   return absl::NotFoundError(absl::StrCat(
