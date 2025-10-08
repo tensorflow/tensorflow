@@ -114,48 +114,5 @@ TEST_F(ClientTest, ExecuteWithTupleLayout) {
                                           /*minor_to_major=*/{1, 0})));
 }
 
-// Disabled for interpreter since ExecuteAsyncOnStream is not implemented on
-// interpreter backend.
-TEST_F(ClientTest, ExecuteParallel) {
-  if (test::DeviceTypeIsOneOf({test::kCpu, test::kGpu})) {
-    GTEST_SKIP();
-  }
-  XlaComputation add_with_one_arg, mul_with_two_args, dot_with_one_arg;
-  Shape shape = ShapeUtil::MakeShape(S32, {2, 2});
-
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<GlobalData> const_arg,
-      client_->TransferToServer(
-          LiteralUtil::CreateR2<int32_t>({{5, 6}, {7, 8}})));
-
-  XlaBuilder b(TestName() + ".add");
-  Add(Parameter(&b, 0, shape, "param_0"),
-      ConstantR2<int32_t>(&b, {{1, 2}, {3, 4}}));
-  TF_ASSERT_OK_AND_ASSIGN(add_with_one_arg, b.Build());
-
-  // We can't really test parallel execution on CPU since all of the cores in a
-  // CPU are presented as a single device.  So for now we test "parallel"
-  // execution on a single device.
-  std::vector<XlaComputationInstance> computation_instances;
-  TF_ASSERT_OK_AND_ASSIGN(std::vector<xla::DeviceHandle> devices,
-                          client_->GetDeviceHandles(1));
-  ASSERT_EQ(devices.size(), 1);
-
-  ExecutionOptions options = execution_options_;
-  *options.add_device_handles() = devices[0];
-  computation_instances.push_back(XlaComputationInstance(
-      add_with_one_arg, {const_arg.get()}, options, nullptr));
-
-  TF_ASSERT_OK_AND_ASSIGN(auto results,
-                          client_->ExecuteParallel(computation_instances));
-  auto expected_result = LiteralUtil::CreateR2<int32_t>({{6, 8}, {10, 12}});
-
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto result_literal,
-      client_->Transfer(*results[0], &expected_result.shape()));
-
-  EXPECT_TRUE(LiteralTestUtil::Equal(expected_result, result_literal));
-}
-
 }  // namespace
 }  // namespace xla

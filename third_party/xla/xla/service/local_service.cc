@@ -110,15 +110,12 @@ LocalService::CompileExecutables(
     executables.push_back(std::move(executable));
     return executables;
   } else {
-    std::vector<std::unique_ptr<HloModuleConfig>> module_configs;
-    module_configs.push_back(std::move(module_config));
     // BuildExecutables uses the executors length to determine the number of
     // cores per module, but otherwise only uses the first executor.
     std::vector<se::StreamExecutor*> executors(build_options.num_partitions(),
                                                executor);
-
     return BuildExecutables(
-        /*module_protos=*/{&computation.proto()}, std::move(module_configs),
+        /*module_proto=*/&computation.proto(), std::move(module_config),
         execute_backend_.get(), {executors}, compile_options,
         build_options.run_backend_only());
   }

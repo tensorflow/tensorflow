@@ -257,47 +257,35 @@ absl::StatusOr<std::unique_ptr<HloModuleConfig>> Service::CreateModuleConfig(
 }
 
 absl::StatusOr<std::vector<std::unique_ptr<Executable>>>
-Service::BuildExecutables(
-    const std::vector<const HloModuleProto*>& module_protos,
-    std::vector<std::unique_ptr<HloModuleConfig>> module_configs,
-    Backend* backend, std::vector<std::vector<se::StreamExecutor*>> executors,
-    const Compiler::CompileOptions& options, bool run_backend_only) {
+Service::BuildExecutables(const HloModuleProto* module_proto,
+                          std::unique_ptr<HloModuleConfig> module_config,
+                          Backend* backend,
+                          std::vector<se::StreamExecutor*> executors,
+                          const Compiler::CompileOptions& options,
+                          bool run_backend_only) {
   VLOG(1) << StrFormat("BuildExecutable on service %p", this);
+  VLOG(1) << "Computation :" << module_proto->name();
 
-  VLOG(1) << "Computations:";
-  for (const HloModuleProto* proto : module_protos) {
-    VLOG(1) << proto->name();
-  }
-
-  CHECK_EQ(module_protos.size(), module_configs.size());
-  if (module_protos.size() != 1) {
-    return InvalidArgument("BuildExecutables only supports a single module.");
-  }
-  const HloModuleProto* proto = module_protos[0];
-  const HloModuleConfig& config = *module_configs[0];
-  TF_ASSIGN_OR_RETURN(auto module,
-                      CreateModuleFromProto(*proto, config, run_backend_only));
+  TF_ASSIGN_OR_RETURN(
+      auto module,
+      CreateModuleFromProto(*module_proto, *module_config, run_backend_only));
   module->set_layout_canonicalization_callback(
       options.layout_canonicalization_callback);
   UpdateEntryComputationLayout(
       module.get(), std::bind(&Compiler::DefaultDeviceShapeRepresentation,
                               backend->compiler(), std::placeholders::_1));
   DumpHloModuleIfEnabled(*module, kBeforeOptimizationsDumpName);
-  auto module_group = std::make_unique<HloModuleGroup>(std::move(module));
 
   std::vector<std::unique_ptr<Executable>> executables;
   if (!run_backend_only) {
-    TF_ASSIGN_OR_RETURN(executables, backend->compiler()->Compile(
-                                         std::move(module_group),
-                                         std::move(executors), options));
+    TF_ASSIGN_OR_RETURN(executables,
+                        backend->compiler()->Compile(
+                            std::move(module), std::move(executors), options));
   } else {
-    auto modules = module_group->ConsumeModules();
-    for (std::unique_ptr<HloModule>& module : modules) {
-      TF_ASSIGN_OR_RETURN(std::unique_ptr<Executable> executable,
-                          backend->compiler()->RunBackend(
-                              std::move(module), executors[0][0], options));
-      executables.push_back(std::move(executable));
-    }
+    TF_ASSIGN_OR_RETURN(std::unique_ptr<Executable> executable,
+                        backend->compiler()->RunBackend(std::move(module),
+                                                        executors[0], options));
+    executables.push_back(std::move(executable));
   }
 
   return std::move(executables);
@@ -327,97 +315,6 @@ Service::BuildAotResults(
       std::vector<std::unique_ptr<AotCompilationResult>> aot_results,
       backend->compiler()->CompileAheadOfTime(std::move(module), aot_options));
   return std::move(aot_results);
-}
-
-absl::StatusOr<std::vector<GlobalDataHandle>>
-Service::ExecuteParallelAndRegisterResult(
-    absl::Span<Executable* const> executables,
-    absl::Span<const std::vector<std::vector<const ShapedBuffer*>>> arguments,
-    Backend* backend, absl::Span<const DeviceHandle> device_handles,
-    absl::Span<const std::string> result_tags, ExecutionProfile* profile) {
-  // Streams where the computation are launched, so we can wait on the streams
-  // to complete.
-  std::vector<StreamPool::Ptr> streams;
-
-  // Global data handles for the computation results, one for each computation.
-  std::vector<GlobalDataHandle> result_handles;
-
-  // Device ID to stream executor, populated only with devices that are being
-  // profiled.
-  std::map<int64_t, se::Stream*> index_to_profiled_streams;
-
-  // Build DeviceAssignment for all cores based on the provided device handles.
-  DeviceAssignment device_assignment(options_.number_of_replicas(),
-                                     executables.size());
-  for (int64_t i = 0; i < executables.size(); i++) {
-    TF_ASSIGN_OR_RETURN(auto replicas, Replicas(*backend, device_handles[i]));
-    CHECK_EQ(replicas.size(), arguments[i].size());
-    for (int64_t replica = 0, end = replicas.size(); replica < end; ++replica) {
-      device_assignment(replica, i) = replicas[replica]->device_ordinal();
-    }
-  }
-
-  for (int64_t i = 0, end = executables.size(); i < end; i++) {
-    // Stream executors for the replicas of the current computation.
-    TF_ASSIGN_OR_RETURN(auto replicas, Replicas(*backend, device_handles[i]));
-    CHECK_EQ(replicas.size(), arguments[i].size());
-    std::vector<ScopedShapedBuffer> result_buffers;
-    const int64_t n = replicas.size();
-    result_buffers.reserve(n);
-    for (int64_t replica = 0; replica < n; ++replica) {
-      TF_ASSIGN_OR_RETURN(StreamPool::Ptr stream,
-                          backend->BorrowStream(replicas[replica]));
-      streams.push_back(std::move(stream));
-
-      if (replica == 0 &&
-          executables[i]->module_config().debug_options().xla_hlo_profile() &&
-          executables[i]->hlo_profiling_enabled()) {
-        index_to_profiled_streams[i] = streams.back().get();
-      }
-
-      // Set up run options.
-      ExecutableRunOptions options;
-      options.set_stream(streams.back().get());
-      options.set_allocator(backend->memory_allocator());
-      options.set_intra_op_thread_pool(
-          backend->eigen_intra_op_thread_pool_device());
-      const DeviceAssignment* device_assignment_ptr = &device_assignment;
-      if (executables[i]->module_config().has_static_device_assignment()) {
-        device_assignment_ptr =
-            &executables[i]->module_config().static_device_assignment();
-      }
-      options.set_device_assignment(device_assignment_ptr);
-      // Use run-time profile information from execution_profile on the 0th
-      // device.
-      if (i == 0) {
-        options.set_execution_profile(profile);
-      }
-      ServiceExecutableRunOptions run_options(
-          options, backend->StreamBorrowerWithPriority());
-
-      // Asynchronously launch the computation.
-      TF_ASSIGN_OR_RETURN(ScopedShapedBuffer result,
-                          executables[i]->ExecuteAsyncOnStream(
-                              &run_options, arguments[i][replica]));
-
-      result_buffers.push_back(std::move(result));
-    }
-    TF_ASSIGN_OR_RETURN(GlobalDataHandle handle,
-                        allocation_tracker_.RegisterReplicatedBuffers(
-                            std::move(result_buffers), result_tags[i]));
-    result_handles.push_back(handle);
-  }
-
-  // Wait for all executions to complete.
-  for (int64_t i = 0, end = streams.size(); i < end; ++i) {
-    absl::Status block_status = streams[i]->BlockHostUntilDone();
-    if (!block_status.ok()) {
-      return Internal("failed to complete execution for stream %d: %s", i,
-                      block_status.message());
-    }
-  }
-
-  return result_handles;
 }
 
 absl::StatusOr<GlobalDataHandle> Service::ExecuteAndRegisterResult(
@@ -523,23 +420,12 @@ Service::GetArguments(const ExecutionOptions& execution_options,
   return replicated_arguments;
 }
 
-absl::StatusOr<std::vector<std::unique_ptr<GlobalData>>>
-Service::ExecuteGraphParallel(
-    absl::Span<const XlaComputationInstance> computations) {
-  VLOG(1) << "running execute-graph-parallel request";
-
-  std::vector<std::vector<std::vector<const ShapedBuffer*>>> all_arguments;
-  std::vector<std::vector<se::StreamExecutor*>> all_executors;
-  std::vector<const HloModuleProto*> module_protos;
-  std::vector<std::unique_ptr<HloModuleConfig>> module_configs;
-  std::vector<std::string> computation_names;
-  std::vector<DeviceHandle> device_handles;
+absl::StatusOr<std::vector<std::unique_ptr<GlobalData>>> Service::ExecuteGraph(
+    const XlaComputationInstance& computation) {
+  VLOG(1) << "running execute-graph request";
 
   int num_requested_devices =
-      std::accumulate(computations.begin(), computations.end(), 0,
-                      [](int a, const XlaComputationInstance& r) -> int {
-                        return a + r.execution_options.device_handles_size();
-                      });
+      computation.execution_options.device_handles_size();
 
   if (num_requested_devices * options_.number_of_replicas() >
       execute_backend_->device_count()) {
@@ -548,171 +434,126 @@ Service::ExecuteGraphParallel(
         num_requested_devices);
   }
 
-  for (int64_t i = 0; i < computations.size(); ++i) {
-    const XlaComputationInstance& computation = computations[i];
+  // Get the stream executor for the i'th computation. This stream executor
+  // is one of the executors to run the replicated computation.
+  const ExecutionOptions& execution_options = computation.execution_options;
+  TF_RET_CHECK(computation.computation.proto().has_host_program_shape())
+      << "program shape may not be empty";
 
-    // Get the stream executor for the i'th computation. This stream executor
-    // is one of the executors to run the replicated computation.
-    const ExecutionOptions& execution_options = computation.execution_options;
-    TF_RET_CHECK(computation.computation.proto().has_host_program_shape())
-        << "program shape may not be empty";
+  // Get the executors.
+  TF_ASSIGN_OR_RETURN(std::vector<se::StreamExecutor*> executors,
+                      GetExecutors(execution_options, /*requests_size=*/1,
+                                   /*request_index=*/0));
 
-    // Get the executors.
-    TF_ASSIGN_OR_RETURN(
-        std::vector<se::StreamExecutor*> executors,
-        GetExecutors(execution_options, computations.size(), i));
+  // Get the replicated arguments.
+  TF_ASSIGN_OR_RETURN(
+      std::vector<std::vector<const ShapedBuffer*>> replicated_arguments,
+      GetArguments(execution_options, computation.arguments));
 
-    // Get the replicated arguments.
-    TF_ASSIGN_OR_RETURN(
-        std::vector<std::vector<const ShapedBuffer*>> replicated_arguments,
-        GetArguments(execution_options, computation.arguments));
-
-    for (auto& args : replicated_arguments) {
-      for (auto& arg : args) {
-        auto update_shape_with_empty_tiles = [this](
-                                                 Shape* subshape,
-                                                 const xla::ShapeIndex& index) {
-          if (subshape->IsArray() && subshape->layout().tiles().empty()) {
-            *subshape =
-                execute_backend_->transfer_manager()->HostShapeToDeviceShape(
-                    *subshape);
-          }
-        };
-        ShapeUtil::ForEachMutableSubshape(
-            const_cast<Shape*>(&arg->on_device_shape()),
-            update_shape_with_empty_tiles);
-      }
+  for (auto& args : replicated_arguments) {
+    for (auto& arg : args) {
+      auto update_shape_with_empty_tiles =
+          [this](Shape* subshape, const xla::ShapeIndex& index) {
+            if (subshape->IsArray() && subshape->layout().tiles().empty()) {
+              *subshape =
+                  execute_backend_->transfer_manager()->HostShapeToDeviceShape(
+                      *subshape);
+            }
+          };
+      ShapeUtil::ForEachMutableSubshape(
+          const_cast<Shape*>(&arg->on_device_shape()),
+          update_shape_with_empty_tiles);
     }
+  }
 
-    // Create an HloModuleConfig object for the computation, given the shape of
-    // the program and the argument allocations. Here, we care only about the
-    // shapes of the arguments, so, it is sufficient to use the arguments of
-    // replica 0.
-    TF_ASSIGN_OR_RETURN(
-        ProgramShape program_shape,
-        ProgramShape::FromProto(
-            computation.computation.proto().host_program_shape()));
-    TF_ASSIGN_OR_RETURN(
-        std::unique_ptr<HloModuleConfig> module_config,
-        CreateModuleConfig(program_shape, replicated_arguments.front(),
-                           computation.execution_options));
-    VLOG(3)
-        << "ExecuteGraphParallel created HloModuleConfig computation layout: "
-        << module_config->entry_computation_layout().ToString();
+  // Create an HloModuleConfig object for the computation, given the shape of
+  // the program and the argument allocations. Here, we care only about the
+  // shapes of the arguments, so, it is sufficient to use the arguments of
+  // replica 0.
+  TF_ASSIGN_OR_RETURN(
+      ProgramShape program_shape,
+      ProgramShape::FromProto(
+          computation.computation.proto().host_program_shape()));
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<HloModuleConfig> module_config,
+      CreateModuleConfig(program_shape, replicated_arguments.front(),
+                         computation.execution_options));
+  VLOG(3) << "ExecuteGraph created HloModuleConfig computation layout: "
+          << module_config->entry_computation_layout().ToString();
 
-    // Adds to the vectors to build and execute the computations after the loop.
-    all_arguments.push_back(replicated_arguments);
-    all_arguments.insert(all_arguments.end(), executors.size() - 1, {{}});
-    module_protos.push_back(&computation.computation.proto());
-    module_configs.push_back(std::move(module_config));
-    computation_names.insert(computation_names.end(), executors.size(),
-                             computation.computation.name());
-    all_executors.push_back(executors);
-    device_handles.insert(device_handles.end(),
-                          execution_options.device_handles().begin(),
-                          execution_options.device_handles().end());
+  if (execution_options.device_handles_size() > 1) {
+    return InvalidArgument(
+        "The compile request does not support multiple device handles.");
   }
 
   // Build the HloModules and compile to generate the executables.
   //
   // TODO(jlebar): There's currently no way to pass a device allocator to
-  // ExecuteGraphParallel, so we have to pass a null device_allocator below.
-  TF_ASSIGN_OR_RETURN(std::vector<std::unique_ptr<Executable>> executables,
-                      BuildExecutables(module_protos, std::move(module_configs),
-                                       execute_backend_.get(), all_executors,
-                                       {/*device_allocator=*/nullptr}));
-  std::vector<Executable*> executable_ptrs;
-  executable_ptrs.reserve(executables.size());
-  for (const auto& executable : executables) {
-    executable_ptrs.push_back(executable.get());
+  // ExecuteGraph, so we have to pass a null device_allocator below.
+  TF_ASSIGN_OR_RETURN(
+      std::vector<std::unique_ptr<Executable>> executables,
+      BuildExecutables(&computation.computation.proto(),
+                       std::move(module_config), execute_backend_.get(),
+                       executors, {/*device_allocator=*/nullptr}));
+
+  if (executables.size() > 1) {
+    return absl::InternalError("Got more than one executable");
   }
 
-  std::vector<HloSnapshot> snapshots;
-  snapshots.resize(executable_ptrs.size());
-  for (int i = 0, end = executable_ptrs.size(); i < end; i++) {
-    if (executable_ptrs[i]->dumping_snapshot()) {
-      *snapshots[i].mutable_hlo() = *executable_ptrs[i]->hlo_proto();
-      TF_ASSIGN_OR_RETURN(auto stream,
-                          execute_backend_->BorrowStream(
-                              all_executors[i][0]->device_ordinal()));
-      TF_RETURN_IF_ERROR(RecordArguments(all_arguments[i].front(), stream.get(),
-                                         execute_backend_->transfer_manager(),
-                                         &snapshots[i]));
-    }
+  Executable* executable_ptr = executables[0].get();
+
+  HloSnapshot snapshot;
+
+  if (executable_ptr->dumping_snapshot()) {
+    *snapshot.mutable_hlo() = *executable_ptr->hlo_proto();
+    TF_ASSIGN_OR_RETURN(auto stream, execute_backend_->BorrowStream(
+                                         executors[0]->device_ordinal()));
+    TF_RETURN_IF_ERROR(
+        RecordArguments(replicated_arguments.front(), stream.get(),
+                        execute_backend_->transfer_manager(), &snapshot));
   }
 
-  // If we have multiple executables to run, execute them all in parallel.  But
-  // if we only have one executable, execute it using the vanilla, non-parallel
-  // call.
-  //
-  // We do this because the Client API uses ExecuteGraphParallel when it wants
-  // to compile and run one computation without caching the executable, but not
-  // all backends support the async StreamExecutor API required by
-  // ExecuteParallelAndRegisterResult.
-  //
-  // TODO(b/122731460): Consolidate Execute{,Parallel}AndRegisterResult; they do
-  // basically the same thing.
   ExecutionProfile profile;
+  // TODO: Doesn't need to be a vector.
   std::vector<GlobalDataHandle> outputs;
   absl::Status execution_status = absl::OkStatus();
 
-  if (executable_ptrs.size() == 1) {
-    absl::StatusOr<GlobalDataHandle> output_or_status =
-        ExecuteAndRegisterResult(executable_ptrs[0], all_arguments[0],
-                                 execute_backend_.get(), device_handles[0],
-                                 computation_names[0], &profile);
-    if (output_or_status.ok()) {
-      outputs.push_back(std::move(output_or_status).value());
-    } else {
-      execution_status = output_or_status.status();
-    }
+  absl::StatusOr<GlobalDataHandle> output_or_status = ExecuteAndRegisterResult(
+      executable_ptr, replicated_arguments, execute_backend_.get(),
+      execution_options.device_handles(0), computation.computation.name(),
+      &profile);
+  if (output_or_status.ok()) {
+    outputs.push_back(std::move(output_or_status).value());
   } else {
-    absl::StatusOr<std::vector<GlobalDataHandle>> outputs_or_status =
-        ExecuteParallelAndRegisterResult(executable_ptrs, all_arguments,
-                                         execute_backend_.get(), device_handles,
-                                         computation_names, &profile);
-    if (outputs_or_status.ok()) {
-      outputs = std::move(outputs_or_status).value();
-    } else {
-      execution_status = outputs_or_status.status();
-    }
+    execution_status = output_or_status.status();
   }
 
-  for (int64_t i = 0; i < computations.size(); ++i) {
-    if (computations[i].execution_profile != nullptr) {
-      *computations[i].execution_profile = profile;
-    }
+  if (computation.execution_profile != nullptr) {
+    *computation.execution_profile = profile;
   }
 
   if (!execution_status.ok()) {
     // Execution failed so we don't have the results.  Dump the HLO snapshot
     // with just the program arguments.
-    for (int i = 0, end = executable_ptrs.size(); i < end; i++) {
-      DumpHloSnapshotIfEnabled(executable_ptrs[i]->module(), snapshots[i]);
-    }
+    DumpHloSnapshotIfEnabled(executable_ptr->module(), snapshot);
   }
 
   TF_RETURN_IF_ERROR(execution_status);
 
   std::vector<std::unique_ptr<GlobalData>> out;
-
-  out.reserve(out.size());
   for (GlobalDataHandle& output : outputs) {
     out.push_back(std::make_unique<GlobalData>(this, output));
   }
 
-  for (int i = 0, end = executable_ptrs.size(); i < end; i++) {
-    Executable* executable = executable_ptrs[i];
-    if (executable->dumping_snapshot()) {
-      TF_ASSIGN_OR_RETURN(const ShapedBuffer* result_buffer,
-                          allocation_tracker_.ResolveForReplica(outputs[i], 0));
-      TF_ASSIGN_OR_RETURN(auto stream,
-                          execute_backend_->BorrowStream(all_executors[i][0]));
-      TF_RETURN_IF_ERROR(RecordResult(*result_buffer, stream.get(),
-                                      execute_backend_->transfer_manager(),
-                                      &snapshots[i]));
-      DumpHloSnapshotIfEnabled(executable->module(), snapshots[i]);
-    }
+  if (executable_ptr->dumping_snapshot()) {
+    TF_ASSIGN_OR_RETURN(const ShapedBuffer* result_buffer,
+                        allocation_tracker_.ResolveForReplica(outputs[0], 0));
+    TF_ASSIGN_OR_RETURN(auto stream,
+                        execute_backend_->BorrowStream(executors[0]));
+    TF_RETURN_IF_ERROR(RecordResult(*result_buffer, stream.get(),
+                                    execute_backend_->transfer_manager(),
+                                    &snapshot));
+    DumpHloSnapshotIfEnabled(executable_ptr->module(), snapshot);
   }
 
   VLOG(1) << "successfully completed 'execute-graph-parallel' request";

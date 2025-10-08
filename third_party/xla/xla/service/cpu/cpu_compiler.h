@@ -28,7 +28,6 @@ limitations under the License.
 #include "xla/backends/cpu/codegen/ir_compiler.h"
 #include "xla/backends/cpu/codegen/target_machine_features.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/hlo/ir/hlo_module_group.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/compiler.h"
@@ -62,8 +61,8 @@ class CpuCompiler : public LLVMCompiler {
   ~CpuCompiler() override = default;
 
   absl::StatusOr<std::vector<std::unique_ptr<Executable>>> Compile(
-      std::unique_ptr<HloModuleGroup> module_group,
-      std::vector<std::vector<se::StreamExecutor*>> stream_execs,
+      std::unique_ptr<HloModule> hlo_module,
+      std::vector<se::StreamExecutor*> stream_execs,
       const CompileOptions& options) override;
 
   absl::StatusOr<std::unique_ptr<HloModule>> RunHloPasses(

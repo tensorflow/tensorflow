@@ -25,7 +25,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_module_group.h"
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/compiler.h"
 #include "xla/service/executable.h"
@@ -198,8 +198,8 @@ class MockCompiler : public Compiler {
                const CompileOptions& options),
               (override));
   MOCK_METHOD(absl::StatusOr<std::vector<std::unique_ptr<Executable>>>, Compile,
-              (std::unique_ptr<HloModuleGroup> module_group,
-               std::vector<std::vector<se::StreamExecutor*>> stream_execs,
+              (std::unique_ptr<HloModule> hlo_module,
+               std::vector<se::StreamExecutor*> stream_execs,
                const CompileOptions& options),
               (override));
   MOCK_METHOD(
