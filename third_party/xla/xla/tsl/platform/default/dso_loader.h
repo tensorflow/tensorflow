@@ -19,6 +19,8 @@ limitations under the License.
 #ifndef XLA_TSL_PLATFORM_DEFAULT_DSO_LOADER_H_
 #define XLA_TSL_PLATFORM_DEFAULT_DSO_LOADER_H_
 
+#include <string>
+
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 
@@ -77,6 +79,7 @@ absl::StatusOr<void*> GetCusolverDsoHandle();
 absl::StatusOr<void*> GetCusparseDsoHandle();
 absl::StatusOr<void*> GetCuptiDsoHandle();
 absl::StatusOr<void*> GetCudnnDsoHandle();
+absl::StatusOr<void*> GetCudnnDsoHandle(const std::string& file_path);
 
 absl::StatusOr<void*> GetRocblasDsoHandle();
 absl::StatusOr<void*> GetMiopenDsoHandle();
