@@ -110,6 +110,19 @@ cc_library(
 )
 
 xla_cc_test(
+    name = "cpu_topology_description_test",
+    srcs = ["cpu_topology_description_test.cc"],
+    deps = [
+        ":cpu_topology",
+        ":cpu_topology_description",
+        "//xla/pjrt:pjrt_compiler",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+xla_cc_test(
     name = "cpu_topology_test",
     srcs = ["cpu_topology_test.cc"],
     deps = [
