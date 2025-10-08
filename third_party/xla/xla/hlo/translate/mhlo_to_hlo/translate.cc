@@ -15,6 +15,7 @@ limitations under the License.
 #include "xla/hlo/translate/mhlo_to_hlo/translate.h"
 
 #include <memory>
+#include <optional>
 #include <utility>
 #include <vector>
 
@@ -103,6 +104,15 @@ absl::Status ConvertMlirHloToHloViaBuilder(
   for (mlir::BlockArgument& arg : block.getArguments()) {
     auto num = arg.getArgNumber();
     xla::Shape shape = xla::TypeToShape(arg.getType());
+
+    std::optional<OriginalValueProto> original_value_proto;
+    if (auto original_value_attr = main.getArgAttrOfType<mlir::StringAttr>(
+            num, xla::kMhloOriginalValueAttr)) {
+      original_value_proto =
+          xla::ConvertOriginalValue(original_value_attr.getValue());
+    }
+    xla::XlaScopedOriginalValueAssignment original_value_assignment(
+        &builder, original_value_proto);
     XlaOp argop =
         xla::Parameter(&builder, num, shape, absl::StrCat("Arg_", num));
     xla_params.push_back(argop);
@@ -138,17 +148,6 @@ absl::Status ConvertMlirHloToHloViaBuilder(
             ->add_replicated_at_leaf_buffers(
                 mlir::cast<mlir::BoolAttr>(b).getValue());
       }
-    }
-  }
-
-  for (int i = 0; i < main.getNumArguments(); ++i) {
-    if (auto original_value_attr = main.getArgAttrOfType<mlir::StringAttr>(
-            i, xla::kMhloOriginalValueAttr)) {
-      *computation.mutable_proto()
-           ->mutable_computations(0)
-           ->mutable_instructions(i)
-           ->mutable_original_value() =
-          *ConvertOriginalValue(original_value_attr);
     }
   }
 
