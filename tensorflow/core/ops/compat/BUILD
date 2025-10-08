@@ -26,6 +26,9 @@ cc_library(
         "//tensorflow/core:ops",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/ops:debug_ops_op_lib",
+        "//third_party/protobuf",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -52,6 +55,7 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/public:release_version",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -64,5 +68,6 @@ tf_cc_binary(
         "//tensorflow/core:lib",
         "//tensorflow/core/platform:path",
         "//tensorflow/core/public:release_version",
+        "@com_google_absl//absl/status",
     ],
 )
