@@ -192,6 +192,8 @@ class Thunk {
     kReduceScatterDone,
     kReduceScatterStart,
     kReplicaId,
+    kSdc,
+    kSdcDumpLog,
     kSelectK,
     kSend,
     kSendDone,
