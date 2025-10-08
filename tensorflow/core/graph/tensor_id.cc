@@ -15,8 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/graph/tensor_id.h"
 
-#include <string>
-
+#include "absl/strings/match.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 

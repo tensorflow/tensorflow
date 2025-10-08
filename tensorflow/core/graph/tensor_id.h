@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/hash/hash.h"
