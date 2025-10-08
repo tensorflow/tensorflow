@@ -55,11 +55,14 @@ limitations under the License.
 #include "xla/codegen/tiling/constraint_expression.h"
 #include "xla/codegen/tiling/symbolic_tile.h"
 #include "xla/codegen/tiling/symbolic_tiled_hlo_instruction.h"
+#include "xla/codegen/tiling/tiled_hlo_computation.h"
 #include "xla/codegen/tiling/tiled_hlo_fusion_instruction.h"
 #include "xla/codegen/tiling/tiled_hlo_instruction.h"
+#include "xla/codegen/tiling/tiling_specification.h"
 #include "xla/hlo/analysis/indexing_analysis.h"
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/analysis/indexing_map_serialization.h"
+#include "xla/hlo/analysis/interval.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -719,27 +722,6 @@ ParameterMappingFromFusionAdaptor(const HloFusionAdaptor& fusion_adaptor,
   return parameter_mapping;
 }
 
-// Helper to implement `TilingSpecification::DimensionIndexForParameter`.
-absl::StatusOr<int64_t> ParameterIndexImpl(
-    const TilingSpecification::ParameterMapping& parameter_mapping,
-    const HloInstruction* hlo, int64_t index) {
-  int64_t offset = 0;
-  for (const auto& [instruction, num_parameters] : parameter_mapping) {
-    if (instruction == hlo) {
-      if (index >= num_parameters) {
-        return absl::FailedPreconditionError(absl::StrCat(
-            "Index ", index, " is out of bounds for instruction ",
-            hlo->ToString(), " with num parameters ", num_parameters));
-      }
-      return offset + index;
-    }
-
-    offset += num_parameters;
-  }
-  return absl::NotFoundError(
-      absl::StrCat("No tile sizes found for instruction: ", hlo->ToString()));
-}
-
 // Drop instructions from a vector for which the corresponding bit in `to_drop`
 // is set. `to_drop` might be smaller than `elements` in which case the
 // remaining elements are assumed to be `false`.
@@ -772,83 +754,6 @@ llvm::SmallVector<const TiledHloInstruction*> MapToTiledInstructions(
 
 }  // anonymous namespace
 
-absl::StatusOr<absl::Span<const int64_t>> Tiling::TileSizesForInstruction(
-    const HloInstruction* hlo) const {
-  if (auto it = tile_sizes_.find(hlo); it != tile_sizes_.end()) {
-    return it->second;
-  }
-
-  return absl::NotFoundError(
-      absl::StrCat("No tile sizes found for instruction: ", hlo->ToString()));
-}
-
-absl::StatusOr<FlatTiling> Tiling::Flatten(
-    const TilingSpecification& tiling_specification) const {
-  FlatTiling flat_tile_sizes;
-  flat_tile_sizes.reserve(tiling_specification.num_parameters());
-  for (const auto& mapping : tiling_specification.parameter_mapping()) {
-    TF_ASSIGN_OR_RETURN(absl::Span<const int64_t> tile_sizes,
-                        TileSizesForInstruction(mapping.instruction));
-    if (tile_sizes.size() != mapping.num_tiling_parameters) {
-      return absl::FailedPreconditionError(
-          absl::StrCat("Instruction ", mapping.instruction->ToString(),
-                       " was expected to have ", mapping.num_tiling_parameters,
-                       " tile sizes but had ", tile_sizes.size(), "."));
-    }
-    flat_tile_sizes.insert(flat_tile_sizes.end(), tile_sizes.begin(),
-                           tile_sizes.end());
-  }
-
-  return flat_tile_sizes;
-}
-
-/*static*/ absl::StatusOr<Tiling> Tiling::Unflatten(
-    absl::Span<const int64_t> flat_tile_sizes,
-    const TilingSpecification& tiling_specification) {
-  if (flat_tile_sizes.size() != tiling_specification.num_parameters()) {
-    return absl::FailedPreconditionError(
-        absl::StrCat("Expected ", tiling_specification.num_parameters(),
-                     " tile sizes but got ", flat_tile_sizes.size(), "."));
-  }
-
-  TileMapping tile_mapping;
-  int64_t offset = 0;
-  for (const auto& [hlo, num_parameters] :
-       tiling_specification.parameter_mapping()) {
-    auto start_it = flat_tile_sizes.begin() + offset;
-    auto end_it = start_it + num_parameters;
-    tile_mapping[hlo] = {start_it, end_it};
-    offset += num_parameters;
-  }
-  return Tiling(std::move(tile_mapping));
-}
-
-absl::StatusOr<int64_t> TilingSpecification::ParameterIndex(
-    const HloInstruction* hlo, int64_t index) const {
-  return ParameterIndexImpl(parameter_mapping_, hlo, index);
-}
-
-bool Tiling::ConformsTo(const TilingSpecification& tiling_specification) const {
-  int64_t num_instructions = tile_sizes_.size();
-  int64_t expected_num_instructions =
-      tiling_specification.parameter_mapping().size();
-  if (num_instructions != expected_num_instructions) {
-    VLOG(1) << "Tiling tiles " << num_instructions << " instructions, but "
-            << expected_num_instructions
-            << " instructions were expected to be "
-               "tiled.";
-    return false;
-  }
-
-  // Linearization takes care of checking that we have the right number of
-  // tile sizes specified for each instruction.
-  absl::StatusOr<FlatTiling> flat_tile_sizes_or = Flatten(tiling_specification);
-  if (!flat_tile_sizes_or.ok()) {
-    return false;
-  }
-
-  return tiling_specification.constraints().IsSatisfiedBy(*flat_tile_sizes_or);
-}
 
 // Extracts `HloInstruction`s from a span of `HloInstructionAdaptor`s.
 absl::InlinedVector<const HloInstruction*, 2> ToInstructions(
@@ -1084,8 +989,8 @@ IndexingMap InsertTilingParameterForContractingDimensions(
       CHECK(symbol);  // Crash OK
       // Replace range variable at index contracting_dimension in the indexing
       // map with the parameter at (hlo, parameter_index).
-      absl::StatusOr<int64_t> dim_index =
-          ParameterIndexImpl(parameter_mapping, consumer, parameter_index);
+      absl::StatusOr<int64_t> dim_index = TilingSpecification::ParameterIndex(
+          parameter_mapping, consumer, parameter_index);
       // This also can only fail if our traversal logic is broken.
       CHECK_OK(dim_index);  // Crash OK
       parameter_index_by_symbol_position.insert(

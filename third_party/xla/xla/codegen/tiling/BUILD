@@ -117,7 +117,7 @@ cc_library(
     srcs = ["tiled_hlo_schedule.cc"],
     hdrs = ["tiled_hlo_schedule.h"],
     deps = [
-        ":symbolic_tile_analysis",
+        ":tiling_specification",
         "//xla/hlo/analysis:indexing_analysis",
         "//xla/hlo/ir:hlo",
         "@com_google_absl//absl/algorithm:container",
@@ -133,8 +133,8 @@ xla_cc_test(
     name = "tiled_hlo_schedule_test",
     srcs = ["tiled_hlo_schedule_test.cc"],
     deps = [
-        ":symbolic_tile_analysis",
         ":tiled_hlo_schedule",
+        ":tiling_specification",
         "//xla/hlo/analysis:indexing_analysis",
         "//xla/hlo/analysis:indexing_test_utils",
         "//xla/hlo/analysis:interval",
@@ -290,6 +290,47 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "tiling_specification",
+    srcs = ["tiling_specification.cc"],
+    hdrs = ["tiling_specification.h"],
+    deps = [
+        ":constraint_expression",
+        ":symbolic_tiled_hlo_instruction",
+        ":tiled_hlo_computation",
+        "//xla/hlo/analysis:indexing_analysis",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/utils:hlo_traversal",
+        "//xla/service:instruction_fusion",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+        "@llvm-project//mlir:IR",
+    ],
+)
+
+xla_cc_test(
+    name = "tiling_specification_test",
+    srcs = ["tiling_specification_test.cc"],
+    deps = [
+        ":symbolic_tile_analysis",
+        ":tiling_specification",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/hlo/testlib:verified_hlo_module",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/log:check",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//mlir:IR",
+    ],
+)
+
+cc_library(
     name = "symbolic_tile_analysis",
     srcs = ["symbolic_tile_analysis.cc"],
     hdrs = ["symbolic_tile_analysis.h"],
@@ -300,9 +341,11 @@ cc_library(
         ":tiled_hlo_computation",
         ":tiled_hlo_fusion_instruction",
         ":tiled_hlo_instruction",
+        ":tiling_specification",
         "//xla:shape_util",
         "//xla:util",
         "//xla/hlo/analysis:indexing_analysis",
+        "//xla/hlo/analysis:interval",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/utils:hlo_traversal",
         "//xla/service:instruction_fusion",
@@ -338,6 +381,8 @@ xla_cc_test(
         ":symbolic_tiled_hlo_instruction",
         ":tiled_hlo_computation",
         ":tiled_hlo_fusion_instruction",
+        ":tiled_hlo_instruction",
+        ":tiling_specification",
         "//xla:util",
         "//xla/hlo/analysis:indexing_test_utils",
         "//xla/hlo/ir:hlo",
@@ -354,6 +399,7 @@ xla_cc_test(
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",

@@ -23,7 +23,7 @@ limitations under the License.
 #include "absl/strings/substitute.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/MLIRContext.h"
-#include "xla/codegen/tiling/symbolic_tile_analysis.h"
+#include "xla/codegen/tiling/tiling_specification.h"
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/analysis/indexing_test_utils.h"
 #include "xla/hlo/analysis/interval.h"

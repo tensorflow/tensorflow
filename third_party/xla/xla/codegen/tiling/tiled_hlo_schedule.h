@@ -18,7 +18,7 @@ limitations under the License.
 
 #include "absl/status/statusor.h"
 #include "mlir/IR/MLIRContext.h"
-#include "xla/codegen/tiling/symbolic_tile_analysis.h"
+#include "xla/codegen/tiling/tiling_specification.h"
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 
