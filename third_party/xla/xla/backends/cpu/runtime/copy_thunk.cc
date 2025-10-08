@@ -84,6 +84,7 @@ CopyThunk::CopyThunk(Info info, BufferAllocation::Slice src_buffer,
     absl::c_reverse_copy(dst_shape_.layout().minor_to_major(),
                          permutation.begin());
     options.permutation = permutation;
+    options.num_threads = parallel_block_params_.block_count;
 
     transpose_plan_ = TransposePlan::Create(options).value();
   }
@@ -167,8 +168,14 @@ tsl::AsyncValueRef<Thunk::ExecuteEvent> CopyThunk::Execute(
 
   // Use prepared transpose plan to copy data if copy requires changing layout.
   if (ABSL_PREDICT_FALSE(transpose_plan_)) {
-    transpose_plan_->Execute(src_data.opaque(), dst_data.opaque(),
-                             [](std::function<void()> fn) { fn(); });
+    if (params.intra_op_threadpool != nullptr) {
+      transpose_plan_->Execute(
+          src_data.opaque(), dst_data.opaque(),
+          [pool = params.intra_op_threadpool->getPool()](
+              std::function<void()> fn) { pool->Schedule(std::move(fn)); });
+    } else {
+      transpose_plan_->Execute(src_data.opaque(), dst_data.opaque());
+    }
     return OkExecuteEvent();
   }
 
