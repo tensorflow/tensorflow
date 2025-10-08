@@ -45,6 +45,7 @@ std::unique_ptr<mlir::Pass> CreateTritonXLALowerAtomicsPass();
 std::unique_ptr<mlir::Pass> CreateTritonXLALowerBlockBarrierPass();
 std::unique_ptr<mlir::Pass> CreateTritonXLAConvertUnsupportedTypesPass();
 std::unique_ptr<mlir::Pass> CreateTritonXLALowerRemoteAccessPass();
+std::unique_ptr<mlir::Pass> CreateStableHLOLowerToTritonPass();
 
 // Returns true if the `op` contains an operation in it's regions that satisfies
 // the `fn`.
