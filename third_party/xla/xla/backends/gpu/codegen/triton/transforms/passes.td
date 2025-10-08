@@ -190,4 +190,14 @@ def TritonXLAUnswitchLoopsPass :
   let constructor = "CreateTritonXLAUnswitchLoopsPass()";
 }
 
+def StableHLOLowerToTritonPass
+    : Pass<"stablehlo-lower-to-triton", "mlir::ModuleOp"> {
+  let summary = "Lowers StableHLO operations to their Triton equivalent.";
+  let dependentDialects = [
+    "stablehlo::StablehloDialect",
+    "triton::TritonDialect"
+  ];
+  let constructor = "CreateStableHLOLowerToTritonPass()";
+}
+
 #endif  // XLA_BACKENDS_GPU_CODEGEN_TRITON_PASSES_TD_

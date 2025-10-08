@@ -759,11 +759,10 @@ HloRunner::CreateExecutableWithBufferAssignment(
       module->mutable_config().set_intra_op_parallelism_threads(
           backend().eigen_intra_op_thread_pool()->NumThreads());
     }
-    auto module_group = std::make_unique<HloModuleGroup>(std::move(module));
     TF_ASSIGN_OR_RETURN(
         std::vector<std::unique_ptr<Executable>> executables,
-        backend().compiler()->Compile(std::move(module_group),
-                                      {{backend().default_stream_executor()}},
+        backend().compiler()->Compile(std::move(module),
+                                      {backend().default_stream_executor()},
                                       backend().memory_allocator()));
     return std::make_unique<HloRunnerExecutable>(this,
                                                  std::move(executables[0]));

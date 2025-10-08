@@ -77,10 +77,9 @@ namespace xla {
 static absl::StatusOr<std::string> AotCompileCpuExecutable(
     std::unique_ptr<HloModule> hlo_module) {
   cpu::CpuCompiler cpu_compiler;
-  auto module_group = std::make_unique<HloModuleGroup>(std::move(hlo_module));
   TF_ASSIGN_OR_RETURN(
       std::vector<std::unique_ptr<Executable>> executables,
-      cpu_compiler.Compile(std::move(module_group), {{nullptr}}, {nullptr}));
+      cpu_compiler.Compile(std::move(hlo_module), {nullptr}, {nullptr}));
   TF_ASSIGN_OR_RETURN(std::unique_ptr<AotCompilationResult> aot_result,
                       cpu_compiler.Export(executables[0].get()));
   return aot_result->SerializeAsString();
@@ -116,7 +115,6 @@ static absl::StatusOr<std::string> CompileGpuExecutable(
     return compile_result;
   }
 
-  auto module_group = std::make_unique<HloModuleGroup>(std::move(hlo_module));
   Compiler::CompileOptions compile_options;
   TF_ASSIGN_OR_RETURN(stream_executor::StreamExecutor * stream_executor,
                       platform->ExecutorForDevice(0));
@@ -127,7 +125,7 @@ static absl::StatusOr<std::string> CompileGpuExecutable(
 
   TF_ASSIGN_OR_RETURN(
       std::vector<std::unique_ptr<Executable>> executables,
-      gpu_compiler->Compile(std::move(module_group), {{stream_executor}},
+      gpu_compiler->Compile(std::move(hlo_module), {stream_executor},
                             compile_options));
   *result.mutable_hlo_module() = executables[0]->module().ToProto();
   return executables[0]->module().ToString();

@@ -695,9 +695,10 @@ lit_test_suite(
 #         "@llvm-project//mlir:LLVMToLLVMIRTranslation",
 #         "@llvm-project//mlir:MlirOptLib",
 #         "@llvm-project//mlir:Pass",
-#         "@llvm-project//mlir:RegisterAllExtensions",
+#         "@llvm-project//mlir:RegisterAllExtensions",  # buildcleaner: keep
 #         "@llvm-project//mlir:Support",
 #         "@llvm-project//mlir:TensorDialect",
+#         "@stablehlo//:stablehlo_ops",
 #         "//xla/backends/gpu/codegen/emitters/transforms:passes",
 #         "//xla/backends/gpu/codegen/triton:compilation_pipeline",
 #         "//xla/backends/gpu/codegen/triton/ir:triton_xla",
@@ -708,7 +709,7 @@ lit_test_suite(
 #         "//xla/stream_executor/cuda:cuda_compute_capability",
 #         "@triton//:AllPassesAndDialects",
 #         "@triton//:TritonNvidiaGPUTransforms",
-#         "@triton//third_party/amd:TestAMDAnalysis",
+#         "@triton//third_party/amd:TestAMDAnalysis",  # buildcleaner: keep
 #     ],
 # )
 # copybara:uncomment_end

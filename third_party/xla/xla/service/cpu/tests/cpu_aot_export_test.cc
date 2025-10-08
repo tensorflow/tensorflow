@@ -49,10 +49,9 @@ class CpuAotCompilationTest : public HloTestBase {
                             platform->ExecutorForDevice(0));
 
     // JIT compile executable
-    auto module_group = std::make_unique<HloModuleGroup>(std::move(module));
     TF_ASSERT_OK_AND_ASSIGN(
         std::vector<std::unique_ptr<Executable>> executables,
-        compiler->Compile(std::move(module_group), {{stream_exec}}, nullptr));
+        compiler->Compile(std::move(module), {stream_exec}, nullptr));
 
     TF_ASSERT_OK_AND_ASSIGN(
         std::unique_ptr<AotCompilationResult> exported_aot_result,

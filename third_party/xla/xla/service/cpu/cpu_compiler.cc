@@ -113,7 +113,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/hlo/ir/hlo_module_group.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/pass/hlo_pass_fix.h"
@@ -354,16 +353,14 @@ CpuCompiler::CpuCompiler() {
 }
 
 absl::StatusOr<std::vector<std::unique_ptr<Executable>>> CpuCompiler::Compile(
-    std::unique_ptr<HloModuleGroup> module_group,
-    std::vector<std::vector<se::StreamExecutor*>> stream_execs,
+    std::unique_ptr<HloModule> hlo_module,
+    std::vector<se::StreamExecutor*> stream_execs,
     const CompileOptions& options) {
-  for (const std::vector<se::StreamExecutor*>& se_vector : stream_execs) {
-    if (se_vector.size() != 1) {
-      return Unimplemented(
-          "Model partitioning not implemented for the CPU compiler");
-    }
+  if (stream_execs.size() != 1) {
+    return Unimplemented(
+        "Model partitioning not implemented for the CPU compiler");
   }
-  return LLVMCompiler::Compile(std::move(module_group), stream_execs, options);
+  return LLVMCompiler::Compile(std::move(hlo_module), stream_execs, options);
 }
 
 /* static */ void CpuCompiler::InitializeLLVMTarget() {
