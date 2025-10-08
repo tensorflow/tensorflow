@@ -198,7 +198,7 @@ inline std::string GetErrorUrl(ErrorCode code) {
           auto s = absl::Status(                                              \
               status_code,                                                    \
               absl::StrCat(                                                   \
-                  GetErrorCodeAndName(ErrorCode::k##enum_name), ": ",         \
+                  GetErrorCodeAndName(ErrorCode::k##enum_name), ":\n",        \
                   absl::StrFormat(format, std::forward<Args>(args)...), "\n", \
                   GetErrorUrl(ErrorCode::k##enum_name)),                      \
               location);                                                      \
@@ -217,7 +217,7 @@ inline std::string GetErrorUrl(ErrorCode code) {
           auto s = absl::Status(                                              \
               status_code,                                                    \
               absl::StrCat(                                                   \
-                  GetErrorCodeAndName(ErrorCode::k##enum_name), ": ",         \
+                  GetErrorCodeAndName(ErrorCode::k##enum_name), ":\n",        \
                   absl::StrFormat(format, std::forward<Args>(args)...), "\n", \
                   GetErrorUrl(ErrorCode::k##enum_name)));                     \
           error::AttachDebugMeContextPayload(s);                              \

@@ -60,7 +60,7 @@ TEST(ErrorCodesTest, FactoryFunctionWithNoArgs) {
   EXPECT_EQ(status.code(), absl::StatusCode::kInvalidArgument);
   // Check the full formatted error message.
   EXPECT_EQ(status.message(),
-            "E0002: InvalidArgument: My Test "
+            "E0002: InvalidArgument:\nMy Test "
             "error\nhttps://openxla.org/xla/errors#e0002");
 #if defined(PLATFORM_GOOGLE)
   auto location = status.GetSourceLocations().front();
@@ -77,7 +77,7 @@ TEST(ErrorCodesTest, FactoryFunctionWithArgs) {
   EXPECT_EQ(status.code(), absl::StatusCode::kInvalidArgument);
   // Check the full formatted error message.
   EXPECT_EQ(status.message(),
-            "E0002: InvalidArgument: Test error: Something was "
+            "E0002: InvalidArgument:\nTest error: Something was "
             "wrong\nhttps://openxla.org/xla/errors#e0002");
 
 #if defined(PLATFORM_GOOGLE)
