@@ -12,8 +12,6 @@ Defines the foundational classes for HLO passes:
 
 * `HloPassInterface`: Abstract base class for all HLO passes.
 * `HloModulePass`: Subclass for passes that operate on individual HloModules.
-* `HloModuleGroupPass`: Subclass for passes that operate on HloModuleGroups
-(collections of modules).
 
 Provides core methods like `Run`, `RunOnModuleGroup`, and
 `RunOnChangedComputations` that passes must implement to perform their
@@ -50,8 +48,7 @@ auto status = pipeline.Run(&module);
 
 ## Important Considerations
 
-When creating custom HLO passes, inherit from either `HloModulePass` or
-`HloModuleGroupPass` depending on the scope of your transformation.  Implement
+When creating custom HLO passes, inherit from `HloModulePass`. Implement
 the required virtual methods (e.g., `Run`) to define the pass's behavior.
 Utilize `HloPassFix` when your pass's transformations may trigger further
 optimizations upon repeated application. Construct `HloPassPipelines` to

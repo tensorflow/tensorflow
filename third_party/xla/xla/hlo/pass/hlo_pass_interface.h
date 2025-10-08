@@ -38,7 +38,7 @@ namespace xla {
 
 // Base class for HLO passes. These are used with the HloPassPipeline to
 // organize a sequence of passes. An HLO pass should not extend this class
-// directly; it should extend HloModulePass or HloModuleGroupPass.
+// directly; it should extend HloModulePass.
 class HloPassInterface {
  public:
   // Struct that holds states of pass runs across multiple iterations.
@@ -164,17 +164,6 @@ class HloModulePass : public HloPassInterface {
   virtual void UpdateLayout(Shape* shape) {
     // CPU/GPU backends require shapes of subbyte types to be packed.
     ShapeUtil::UpdateElementSizeInBits(shape, /*pack_subbyte_types=*/true);
-  }
-};
-
-// Base class for passes which are module-group scoped. These passes cannot run
-// on an HLO module.
-class HloModuleGroupPass : public HloPassInterface {
- public:
-  absl::StatusOr<bool> Run(HloModule* module,
-                           const absl::flat_hash_set<absl::string_view>&
-                               execution_threads) override {
-    return Internal("Module group pass cannot be run on a module");
   }
 };
 

@@ -30,9 +30,7 @@ For example:
 The base class for HLO passes can be found in
 [`xla/hlo/pass/hlo_pass_interface.h`](https://github.com/openxla/xla/blob/main/xla/hlo/pass/hlo_pass_interface.h).
 HLO pass should not extend this class directly but instead should extend
-[`HloModulePass`](https://github.com/openxla/xla/blob/main/xla/hlo/pass/hlo_pass_interface.h#L142)
-or
-[`HloModuleGroupPass`](https://github.com/openxla/xla/blob/main/xla/hlo/pass/hlo_pass_interface.h#L172).
+[`HloModulePass`](https://github.com/openxla/xla/blob/main/xla/hlo/pass/hlo_pass_interface.h#L142).
 
 See also
 [XLA HLO Pass Framework](https://github.com/openxla/xla/tree/main/xla/hlo/pass#readme).
@@ -198,8 +196,7 @@ Partitions HLOs into tasks to run on separate threads.
 ## Analysis passes
 
 Analysis passes are not considered "HLO passes" since they do not transform HLO
-and may not extend `HloModulePass` or `HloModuleGroupPass`. Shared analyses are
-found in
+and may not extend `HloModulePass`. Shared analyses are found in
 [`xla/hlo/analysis`](https://github.com/openxla/xla/tree/main/xla/hlo/analysis).
 
 ### Analysis Pass Examples

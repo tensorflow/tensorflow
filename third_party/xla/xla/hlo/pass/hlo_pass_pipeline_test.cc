@@ -100,24 +100,20 @@ class ReverseStringModulePass : public HloModulePass {
   }
 };
 
-// A module group pass which renames instructions named 'baz' to 'qux'.
-class BazToQuxModuleGroupPass : public HloModuleGroupPass {
+// A module pass which renames instructions named 'baz' to 'qux'.
+class BazToQuxModulePass : public HloModulePass {
   absl::string_view name() const override { return "baz2qux"; }
 
-  using HloPassInterface::RunOnModuleGroup;
-  absl::StatusOr<bool> RunOnModuleGroup(
-      HloModuleGroup* module_group,
-      const absl::flat_hash_set<absl::string_view>& execution_threads)
-      override {
+  absl::StatusOr<bool> Run(HloModule* module,
+                           const absl::flat_hash_set<absl::string_view>&
+                               execution_threads) override {
     bool changed = false;
-    for (HloModule* module : module_group->modules()) {
-      for (HloComputation* computation :
-           module->computations(execution_threads)) {
-        for (HloInstruction* instruction : computation->instructions()) {
-          if (instruction->name() == "baz") {
-            instruction->SetAndSanitizeName("qux");
-            changed = true;
-          }
+    for (HloComputation* computation :
+         module->computations(execution_threads)) {
+      for (HloInstruction* instruction : computation->instructions()) {
+        if (instruction->name() == "baz") {
+          instruction->SetAndSanitizeName("qux");
+          changed = true;
         }
       }
     }
@@ -260,7 +256,6 @@ ENTRY %Entry (p0: f32[10], p1: f32[10]) -> f32[10] {
 }
 
 TEST_F(HloPassPipelineTest, MixedPipeline) {
-  // Test a pipeline with both a module pass and a module group pass.
   const std::string module_0_str = R"(
 HloModule MixedPipeline.1
 
@@ -274,7 +269,7 @@ ENTRY main {
                           ParseModuleGroup(module_0_str));
 
   HloPassPipeline pipeline(TestName());
-  pipeline.AddPass<BazToQuxModuleGroupPass>();
+  pipeline.AddPass<BazToQuxModulePass>();
   pipeline.AddPass<FooToBarModulePass>();
 
   HloInstruction* root0 =
@@ -338,35 +333,12 @@ ENTRY main {
   }
 }
 
-TEST_F(HloPassPipelineTest, ModuleGroupPassOnModule) {
-  // Running a module group pass on a module should produce an error.
-  const std::string module_str = R"(
-HloModule ModuleGroupPassOnModule
-
-ENTRY main {
-  a = f32[] parameter(0)
-  b = f32[] parameter(1)
-  ROOT foo = f32[] multiply(a, b)
-}
-)";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(module_str));
-  HloPassPipeline pipeline(TestName());
-  pipeline.AddPass<BazToQuxModuleGroupPass>();
-
-  absl::Status status = pipeline.Run(module.get()).status();
-  ASSERT_IS_NOT_OK(status);
-  EXPECT_THAT(
-      status.message(),
-      ::testing::HasSubstr("Module group pass cannot be run on a module"));
-}
-
 // Test that metadata is set when a module group goes through a pass pipeline.
 TEST_F(HloPassPipelineTest, SetHloModuleMetadata) {
   HloModuleGroup module_group(CreateNewVerifiedModule());
 
   HloPassPipeline pipeline(TestName());
-  pipeline.AddPass<BazToQuxModuleGroupPass>();
+  pipeline.AddPass<BazToQuxModulePass>();
   pipeline.AddPass<FooToBarModulePass>();
   TF_ASSERT_OK(pipeline.RunOnModuleGroup(&module_group).status());
   ASSERT_THAT(module_group.modules(), SizeIs(1));
