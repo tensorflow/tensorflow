@@ -1,5 +1,5 @@
 // RUN: sdy_opt %s -sdy-populate-op-sharding-rules -sdy-insert-explicit-reshards -verify-diagnostics 2>&1 | FileCheck %s
-// TODO(enver): Seperate into a sharding rule and explicit reshard tests.
+// TODO(enver): Separate into a sharding rule and explicit reshard tests.
 
 sdy.mesh @mesh_abcd = <["a"=2, "b"=2, "c"=2, "d"=2]>
 
