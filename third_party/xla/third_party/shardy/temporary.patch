@@ -1,441 +1,65 @@
-diff --git a/shardy/dialect/mpmd/ir/utils.cc b/shardy/dialect/mpmd/ir/utils.cc
-index 67724a9..2d4a5de 100644
---- a/shardy/dialect/mpmd/ir/utils.cc
-+++ b/shardy/dialect/mpmd/ir/utils.cc
-@@ -58,6 +58,7 @@ namespace {
- 
- using ::mlir::func::FuncOp;
- 
-+
- SpmdTensorPartitionSpec ExtractTensorPartitionSpec(MeshTensorType type) {
-   if (!type.getSharding()) {
-     return {};
-@@ -486,60 +487,13 @@ bool IsExecutedImmediatelyAfter(FragmentOp fragment1, FragmentOp fragment2) {
-   return false;
- }
- 
--namespace {
--
--// Returns true if two meshes are equal, ignoring axes of size 1.
--bool IsEquivalentMesh(sdy::MeshAttr mesh1, sdy::MeshAttr mesh2) {
--  if (mesh1.getDeviceIds() != mesh2.getDeviceIds()) {
--    return false;
--  }
--
--  const auto* it1 = mesh1.getAxes().begin();
--  const auto* end1 = mesh1.getAxes().end();
--  const auto* it2 = mesh2.getAxes().begin();
--  const auto* end2 = mesh2.getAxes().end();
--
--  while (it1 != end1 && it2 != end2) {
--    if (it1->getSize() == 1) {
--      ++it1;
--      continue;
--    }
--    if (it2->getSize() == 1) {
--      ++it2;
--      continue;
--    }
--    if (*it1 != *it2) {
--      return false;
--    }
--    ++it1;
--    ++it2;
--  }
--
--  while (it1 != end1) {
--    if (it1->getSize() != 1) {
--      return false;
--    }
--    ++it1;
--  }
--
--  while (it2 != end2) {
--    if (it2->getSize() != 1) {
--      return false;
--    }
--    ++it2;
--  }
--
--  return true;
--}
--
--}  // namespace
--
- bool HasHomogeneousTopology(FuncOp func) {
-   ArrayRef<NamedMeshAttr> named_meshes = GetTopologyMeshes(func);
--  return llvm::all_of(named_meshes, [&](NamedMeshAttr named_mesh) {
--    return IsEquivalentMesh(named_mesh.getMesh(),
--                            named_meshes.front().getMesh());
--  });
-+  DenseSet<sdy::MeshAttr> meshes;
-+  for (NamedMeshAttr named_mesh : named_meshes) {
-+    meshes.insert(named_mesh.getMesh());
-+  }
-+  return meshes.size() == 1;
- }
- 
- ArrayAttr GetFragmentOriginUnion(FragmentOp fragment1, FragmentOp fragment2,
-@@ -720,3 +674,4 @@ std::optional<ReductionType> ComputeReductionType(Block& block) {
- }
- 
- }  // namespace mlir::mpmd
-+
-diff --git a/shardy/dialect/mpmd/transforms/import/test/call_op_set_topology.mlir b/shardy/dialect/mpmd/transforms/import/test/call_op_set_topology.mlir
-index 9122ee7..2a83989 100644
---- a/shardy/dialect/mpmd/transforms/import/test/call_op_set_topology.mlir
-+++ b/shardy/dialect/mpmd/transforms/import/test/call_op_set_topology.mlir
-@@ -1,4 +1,4 @@
--// RUN: mpmd_opt %s -mpmd-copy-topology-from-main -split-input-file 2>&1 | FileCheck %s
-+// RUN: mpmd_opt %s -mpmd-copy-topology-from-main 2>&1 | FileCheck %s
- 
- // CHECK-LABEL: sdy.mesh @mesh = <["a"=4, "b"=2]>
- #topology = #mpmd.topology<<"mesh1": <["a"=4, "b"=2]>>, <"mesh2": <["a"=4, "b"=2]>>>
-@@ -38,18 +38,3 @@ func.func @shardy_mpmd_i(%arg0: tensor<5xf32>, %arg1: tensor<5xf32>) -> tensor<5
-   %0 = stablehlo.add %arg0, %arg1 : tensor<5xf32>
-   return %0 : tensor<5xf32>
- }
--
--// -----
--
--// Verify that the homogeneous topology check ignores axes of size 1.
--// CHECK-LABEL: func.func public @main(%arg0: tensor<8xf32>) -> tensor<8xf32>
--func.func public @main(%arg0: tensor<8xf32>) -> tensor<8xf32> attributes {
--  topology=#mpmd.topology<
--    <"mesh1": <["a"=4, "b"=2]>>,
--    <"mesh2": <["x"=1, "a"=4, "b"=2]>>,
--    <"mesh3": <["a"=4, "b"=2, "y"=1]>>,
--    <"mesh4": <["a"=4, "z"=1, "b"=2]>>
--  >
--}{
--  return %arg0 : tensor<8xf32>
--}
-diff --git a/shardy/dialect/mpmd/transforms/optimize/utils.cc b/shardy/dialect/mpmd/transforms/optimize/utils.cc
-index 39e05f0..d3fd142 100644
---- a/shardy/dialect/mpmd/transforms/optimize/utils.cc
-+++ b/shardy/dialect/mpmd/transforms/optimize/utils.cc
-@@ -76,9 +76,9 @@ SmallVector<mpmd::NamedMeshAttr> GetSchedulableMeshes(func::FuncOp func) {
-   auto all_meshes = mpmd::GetTopologyMeshes(func);
-   SmallVector<mpmd::NamedMeshAttr> hbm_meshes;
-   llvm::copy_if(all_meshes, std::back_inserter(hbm_meshes),
--                [](const mpmd::NamedMeshAttr& mesh) {
--                  return !mesh.getName().ends_with(mpmd::kCpuMeshSuffix);
--                });
-+                  [](const mpmd::NamedMeshAttr& mesh) {
-+                    return !mesh.getName().ends_with("#cpu");
-+                  });
-   return hbm_meshes;
- }
- 
-diff --git a/shardy/dialect/sdy/ir/dialect.cc b/shardy/dialect/sdy/ir/dialect.cc
-index 5113b47..008bb20 100644
---- a/shardy/dialect/sdy/ir/dialect.cc
-+++ b/shardy/dialect/sdy/ir/dialect.cc
-@@ -972,11 +972,11 @@ bool TensorShardingAttr::isEquivalent(TensorShardingAttr otherSharding) const {
-   if (!otherSharding) {
-     return false;
-   }
-+  ArrayRef<DimensionShardingAttr> left = getDimShardings();
-+  ArrayRef<DimensionShardingAttr> right = otherSharding.getDimShardings();
-   if (getMeshOrRef() != otherSharding.getMeshOrRef()) {
-     return false;
-   }
--  ArrayRef<DimensionShardingAttr> left = getDimShardings();
--  ArrayRef<DimensionShardingAttr> right = otherSharding.getDimShardings();
-   return left.size() == right.size() &&
-          llvm::all_of(llvm::zip_equal(left, right), [](auto&& pair) {
-            return std::get<0>(pair).getAxes() == std::get<1>(pair).getAxes();
-diff --git a/shardy/dialect/sdy/transforms/export/insert_explicit_reshards.cc b/shardy/dialect/sdy/transforms/export/insert_explicit_reshards.cc
-index 2f21374..a109df3 100644
---- a/shardy/dialect/sdy/transforms/export/insert_explicit_reshards.cc
-+++ b/shardy/dialect/sdy/transforms/export/insert_explicit_reshards.cc
-@@ -158,7 +158,7 @@ void insertExplicitReshardsOnDataFlowOp(ShardableDataFlowOpInterface& op,
- // return %reshard  : tensor<4x8xf32>
- // ```
- template <class OpTy>
--void processDot(OpTy op, ShardingProjection& shardingProjection,
-+void processDot(OpTy op, ArrayRef<TensorShardingAttr> inShardings,
-                 ArrayRef<TensorShardingAttr> outShardings, IRRewriter& rewriter,
-                 const SymbolTable& symbolTable, OpShardingRuleAttr shardingRule,
-                 const Mesh& mesh) {
-@@ -166,6 +166,10 @@ void processDot(OpTy op, ShardingProjection& shardingProjection,
-     // Result doesn't have a sharding.
-     return;
-   }
-+  ShardingProjection shardingProjection =
-+      ShardingProjection::build(inShardings, outShardings, shardingRule,
-+                                mesh.attr(), /*closedIfMissing=*/true);
-+
-   const TensorFactorShardings& lhsSharding = shardingProjection.getOperand(0);
-   const TensorFactorShardings& rhsSharding = shardingProjection.getOperand(1);
-   TensorFactorShardings& resultSharding =
-@@ -445,11 +449,11 @@ SmallVector<AxisRefAttr> processOp(Operation* op,
- 
-   TypeSwitch<Operation*>(op)
-       .Case<stablehlo::DotOp>([&](stablehlo::DotOp dotOp) {
--        processDot(dotOp, shardingProjection, outShardings, rewriter,
--                   symbolTable, shardingRule, mesh);
-+        processDot(dotOp, inShardings, outShardings, rewriter, symbolTable,
-+                   shardingRule, mesh);
-       })
-       .Case<stablehlo::DotGeneralOp>([&](stablehlo::DotGeneralOp dotGeneralOp) {
--        processDot(dotGeneralOp, shardingProjection, outShardings, rewriter,
-+        processDot(dotGeneralOp, inShardings, outShardings, rewriter,
-                    symbolTable, shardingRule, mesh);
-       });
- 
-diff --git a/shardy/dialect/sdy/transforms/export/reshard_to_collectives.cc b/shardy/dialect/sdy/transforms/export/reshard_to_collectives.cc
-index 845eeab..4e6c593 100644
---- a/shardy/dialect/sdy/transforms/export/reshard_to_collectives.cc
-+++ b/shardy/dialect/sdy/transforms/export/reshard_to_collectives.cc
-@@ -469,8 +469,8 @@ class CollectiveInserter {
-       collectiveAxes = AxisRefListAttr::get(getContext(), gatheringAxes);
-     }
-     if (hasGatheringAxes) {
--      result = AllGatherOp::create(rewriter, loc, result, collectiveAxesPerDim,
--                                   getCurrentSharding());
-+      result = rewriter.create<AllGatherOp>(loc, result, collectiveAxesPerDim,
-+                                            getCurrentSharding());
-     }
-   }
- 
-@@ -484,7 +484,7 @@ class CollectiveInserter {
-   // - Splits A into two sub-axes A1 and A2, such that
-   //   `size(A1) == capacityPerDim[d]`, adds A1 to `inAxesPerDim[d]`, and adds
-   //   A2 back to the front of `getAvailableAxes(d)`.
--  // - Skips A if it isn't divisible by `capacityPerDim[d]` or vice versa, and
-+  // - Skips A if it isn't divisible by `capacityPerDim[d]` or visa versa, and
-   //   adds it back to the front of `getAvailableAxes(d)`.
-   //
-   // For each axis A that is added to `inAxesPerDim[d]`, calls
-@@ -861,8 +861,8 @@ class CollectiveInserter {
-            llvm::zip_equal(collectiveAxesPerDim, *slicingAxesPerDim)) {
-         collectiveAxes = AxisRefListAttr::get(getContext(), slicingAxes);
-       }
--      result = AllSliceOp::create(rewriter, loc, result, collectiveAxesPerDim,
--                                  getCurrentSharding());
-+      result = rewriter.create<AllSliceOp>(loc, result, collectiveAxesPerDim,
-+                                           getCurrentSharding());
-     }
-   }
- 
-@@ -1148,8 +1148,8 @@ class CollectiveInserter {
-     // TODO(b/392797233): if the order of device ids changes, but the input or
-     // output sharding is fully replicated, we can skip the collective permute.
- 
--    result = CollectivePermuteOp::create(rewriter, loc, result,
--                                         getCurrentSharding());
-+    result =
-+        rewriter.create<CollectivePermuteOp>(loc, result, getCurrentSharding());
-   }
- 
-   // TODO(b/392952931): currently we are greedily all-to-all-ing axes even if
-@@ -1291,8 +1291,8 @@ class CollectiveInserter {
-   void tryAllToAlls(bool allowOutOfOrderTarget) {
-     for (int64_t srcDim = 0; srcDim < getRank(); ++srcDim) {
-       while (auto info = getAllToAllInfo(srcDim, allowOutOfOrderTarget)) {
--        result = AllToAllOp::create(
--            rewriter, loc, result,
-+        result = rewriter.create<AllToAllOp>(
-+            loc, result,
-             AllToAllParamAttr::get(rewriter.getContext(), info->axes, srcDim,
-                                    info->tgtDim),
-             getCurrentSharding());
-diff --git a/shardy/dialect/sdy/transforms/propagation/aggressive_propagation.cc b/shardy/dialect/sdy/transforms/propagation/aggressive_propagation.cc
-index 30a4324..a800444 100644
---- a/shardy/dialect/sdy/transforms/propagation/aggressive_propagation.cc
-+++ b/shardy/dialect/sdy/transforms/propagation/aggressive_propagation.cc
-@@ -25,9 +25,9 @@ limitations under the License.
- #include "mlir/Pass/PassRegistry.h"
- #include "mlir/Support/LLVM.h"
- #include "mlir/Support/LogicalResult.h"
--#include "shardy/dialect/sdy/transforms/common/propagation_options.h"
- #include "shardy/dialect/sdy/transforms/propagation/basic_propagation.h"
- #include "shardy/dialect/sdy/transforms/propagation/factor_propagation.h"
-+#include "shardy/dialect/sdy/transforms/propagation/passes.h"
- #include "shardy/dialect/sdy/transforms/propagation/sharding_group_map.h"
- 
- namespace mlir {
-diff --git a/shardy/dialect/sdy/transforms/propagation/aggressive_propagation.h b/shardy/dialect/sdy/transforms/propagation/aggressive_propagation.h
-index 7b3835e..941cd0e 100644
---- a/shardy/dialect/sdy/transforms/propagation/aggressive_propagation.h
-+++ b/shardy/dialect/sdy/transforms/propagation/aggressive_propagation.h
-@@ -24,9 +24,9 @@ limitations under the License.
- #include "mlir/Pass/Pass.h"
- #include "mlir/Support/LLVM.h"
- #include "mlir/Support/LogicalResult.h"
--#include "shardy/dialect/sdy/transforms/common/propagation_options.h"
- #include "shardy/dialect/sdy/transforms/propagation/aggressive_factor_propagation.h"
- #include "shardy/dialect/sdy/transforms/propagation/basic_propagation.h"
-+#include "shardy/dialect/sdy/transforms/propagation/passes.h"
- #include "shardy/dialect/sdy/transforms/propagation/sharding_group_map.h"
- 
- namespace mlir {
-diff --git a/shardy/dialect/sdy/transforms/propagation/basic_propagation.cc b/shardy/dialect/sdy/transforms/propagation/basic_propagation.cc
-index 336748e..1c5a9ca 100644
---- a/shardy/dialect/sdy/transforms/propagation/basic_propagation.cc
-+++ b/shardy/dialect/sdy/transforms/propagation/basic_propagation.cc
-@@ -23,6 +23,7 @@ limitations under the License.
- #include <utility>
- 
- #include "llvm/ADT/STLExtras.h"
-+#include "llvm/Support/Threading.h"
- #include "mlir/Dialect/Func/IR/FuncOps.h"
- #include "mlir/IR/BuiltinAttributes.h"
- #include "mlir/IR/BuiltinOps.h"
-@@ -41,8 +42,8 @@ limitations under the License.
- #include "mlir/Pass/PassRegistry.h"
- #include "mlir/Support/LLVM.h"
- #include "mlir/Support/LogicalResult.h"
--#include "mlir/Support/WalkResult.h"
- #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
-+#include "shardy/common/file_utils.h"
- #include "shardy/dialect/sdy/ir/dialect.h"
- #include "shardy/dialect/sdy/ir/enums.h"
- #include "shardy/dialect/sdy/ir/utils.h"
-@@ -51,6 +52,7 @@ limitations under the License.
- #include "shardy/dialect/sdy/transforms/propagation/factor_propagation.h"
- #include "shardy/dialect/sdy/transforms/propagation/op_sharding_rule_builder.h"
- #include "shardy/dialect/sdy/transforms/propagation/op_sharding_rule_registry.h"
-+#include "shardy/dialect/sdy/transforms/propagation/passes.h"
- #include "shardy/dialect/sdy/transforms/propagation/sharding_group_map.h"
- #include "shardy/dialect/sdy/transforms/propagation/sharding_projection.h"
- 
-diff --git a/shardy/dialect/sdy/transforms/propagation/basic_propagation.h b/shardy/dialect/sdy/transforms/propagation/basic_propagation.h
-index de1527e..bfda43c 100644
---- a/shardy/dialect/sdy/transforms/propagation/basic_propagation.h
-+++ b/shardy/dialect/sdy/transforms/propagation/basic_propagation.h
-@@ -34,6 +34,7 @@ limitations under the License.
- #include "shardy/dialect/sdy/transforms/common/propagation_options.h"
- #include "shardy/dialect/sdy/transforms/propagation/basic_factor_propagation.h"
- #include "shardy/dialect/sdy/transforms/propagation/factor_propagation.h"
-+#include "shardy/dialect/sdy/transforms/propagation/passes.h"
- #include "shardy/dialect/sdy/transforms/propagation/sharding_group_map.h"
- 
- namespace mlir {
-diff --git a/shardy/dialect/sdy/transforms/propagation/op_priority_propagation.cc b/shardy/dialect/sdy/transforms/propagation/op_priority_propagation.cc
-index 81d9858..ff05e4f 100644
---- a/shardy/dialect/sdy/transforms/propagation/op_priority_propagation.cc
-+++ b/shardy/dialect/sdy/transforms/propagation/op_priority_propagation.cc
-@@ -34,9 +34,9 @@ limitations under the License.
- #include "shardy/dialect/sdy/ir/dialect.h"
- #include "shardy/dialect/sdy/ir/utils.h"
- #include "shardy/dialect/sdy/transforms/common/op_properties.h"
--#include "shardy/dialect/sdy/transforms/common/propagation_options.h"
- #include "shardy/dialect/sdy/transforms/propagation/aggressive_propagation.h"
- #include "shardy/dialect/sdy/transforms/propagation/basic_propagation.h"
-+#include "shardy/dialect/sdy/transforms/propagation/passes.h"
- #include "shardy/dialect/sdy/transforms/propagation/sharding_group_map.h"
- #include "shardy/dialect/sdy/transforms/propagation/utils.h"
- #include "stablehlo/dialect/StablehloOps.h"
-diff --git a/shardy/dialect/sdy/transforms/propagation/op_priority_propagation.h b/shardy/dialect/sdy/transforms/propagation/op_priority_propagation.h
-index b0eecb6..ebd91d8 100644
---- a/shardy/dialect/sdy/transforms/propagation/op_priority_propagation.h
-+++ b/shardy/dialect/sdy/transforms/propagation/op_priority_propagation.h
-@@ -24,9 +24,9 @@ limitations under the License.
- #include "mlir/Pass/Pass.h"
- #include "mlir/Support/LLVM.h"
- #include "mlir/Support/LogicalResult.h"
--#include "shardy/dialect/sdy/transforms/common/propagation_options.h"
- #include "shardy/dialect/sdy/transforms/propagation/aggressive_propagation.h"
- #include "shardy/dialect/sdy/transforms/propagation/basic_propagation.h"
-+#include "shardy/dialect/sdy/transforms/propagation/passes.h"
- #include "shardy/dialect/sdy/transforms/propagation/sharding_group_map.h"
- 
- namespace mlir {
-diff --git a/shardy/dialect/sdy/transforms/propagation/user_priority_propagation.cc b/shardy/dialect/sdy/transforms/propagation/user_priority_propagation.cc
-index f7571a6..7c3f9fa 100644
---- a/shardy/dialect/sdy/transforms/propagation/user_priority_propagation.cc
-+++ b/shardy/dialect/sdy/transforms/propagation/user_priority_propagation.cc
-@@ -37,10 +37,10 @@ limitations under the License.
- #include "mlir/Support/LogicalResult.h"
- #include "shardy/common/file_utils.h"
- #include "shardy/dialect/sdy/ir/dialect.h"
--#include "shardy/dialect/sdy/transforms/common/propagation_options.h"
- #include "shardy/dialect/sdy/transforms/common/sharding_walker.h"
- #include "shardy/dialect/sdy/transforms/propagation/basic_propagation.h"
- #include "shardy/dialect/sdy/transforms/propagation/op_priority_propagation.h"
-+#include "shardy/dialect/sdy/transforms/propagation/passes.h"
- #include "shardy/dialect/sdy/transforms/propagation/sharding_group_map.h"
- 
- namespace mlir {
-diff --git a/shardy/dialect/sdy/transforms/propagation/user_priority_propagation.h b/shardy/dialect/sdy/transforms/propagation/user_priority_propagation.h
-index 061d7ad..c59c923 100644
---- a/shardy/dialect/sdy/transforms/propagation/user_priority_propagation.h
-+++ b/shardy/dialect/sdy/transforms/propagation/user_priority_propagation.h
-@@ -23,9 +23,9 @@ limitations under the License.
- #include "mlir/Pass/Pass.h"
- #include "mlir/Support/LLVM.h"
- #include "mlir/Support/LogicalResult.h"
--#include "shardy/dialect/sdy/transforms/common/propagation_options.h"
- #include "shardy/dialect/sdy/transforms/propagation/basic_propagation.h"
- #include "shardy/dialect/sdy/transforms/propagation/op_priority_propagation.h"
-+#include "shardy/dialect/sdy/transforms/propagation/passes.h"
- #include "shardy/dialect/sdy/transforms/propagation/sharding_group_map.h"
- 
- namespace mlir {
 diff --git a/third_party/llvm/generated.patch b/third_party/llvm/generated.patch
-index 509398d..7731e08 100644
+index 7731e08..509398d 100644
 --- a/third_party/llvm/generated.patch
 +++ b/third_party/llvm/generated.patch
-@@ -1 +1,45 @@
+@@ -1,45 +1 @@
  Auto generated patch. Do not edit or delete it, even if empty.
-+diff -ruN --strip-trailing-cr a/llvm/unittests/Analysis/FunctionPropertiesAnalysisTest.cpp b/llvm/unittests/Analysis/FunctionPropertiesAnalysisTest.cpp
-+--- a/llvm/unittests/Analysis/FunctionPropertiesAnalysisTest.cpp
-++++ b/llvm/unittests/Analysis/FunctionPropertiesAnalysisTest.cpp
-+@@ -46,8 +46,8 @@
-+     MAM.registerPass([VocabVector = std::move(VocabVector)]() mutable {
-+       return IR2VecVocabAnalysis(std::move(VocabVector));
-+     });
-+-    IR2VecVocab =
-+-        new ir2vec::Vocabulary(ir2vec::Vocabulary::createDummyVocabForTest(1));
-++    IR2VecVocab = std::make_unique<ir2vec::Vocabulary>(
-++        ir2vec::Vocabulary::createDummyVocabForTest(1));
-+     MAM.registerPass([&] { return PassInstrumentationAnalysis(); });
-+     FAM.registerPass([&] { return ModuleAnalysisManagerFunctionProxy(MAM); });
-+     FAM.registerPass([&] { return DominatorTreeAnalysis(); });
-+@@ -69,7 +69,7 @@
-+   std::unique_ptr<LoopInfo> LI;
-+   FunctionAnalysisManager FAM;
-+   ModuleAnalysisManager MAM;
-+-  ir2vec::Vocabulary *IR2VecVocab;
-++  std::unique_ptr<ir2vec::Vocabulary> IR2VecVocab;
-+ 
-+   void TearDown() override {
-+     // Restore original IR2Vec weights
-+diff -ruN --strip-trailing-cr a/llvm/unittests/Analysis/IR2VecTest.cpp b/llvm/unittests/Analysis/IR2VecTest.cpp
-+--- a/llvm/unittests/Analysis/IR2VecTest.cpp
-++++ b/llvm/unittests/Analysis/IR2VecTest.cpp
-+@@ -295,7 +295,7 @@
-+ // Fixture for IR2Vec tests requiring IR setup.
-+ class IR2VecTestFixture : public ::testing::Test {
-+ protected:
-+-  Vocabulary *V;
-++  std::unique_ptr<Vocabulary> V;
-+   LLVMContext Ctx;
-+   std::unique_ptr<Module> M;
-+   Function *F = nullptr;
-+@@ -304,7 +304,7 @@
-+   Instruction *RetInst = nullptr;
-+ 
-+   void SetUp() override {
-+-    V = new Vocabulary(Vocabulary::createDummyVocabForTest(2));
-++    V = std::make_unique<Vocabulary>(Vocabulary::createDummyVocabForTest(2));
-+ 
-+     // Setup IR
-+     M = std::make_unique<Module>("TestM", Ctx);
+-diff -ruN --strip-trailing-cr a/llvm/unittests/Analysis/FunctionPropertiesAnalysisTest.cpp b/llvm/unittests/Analysis/FunctionPropertiesAnalysisTest.cpp
+---- a/llvm/unittests/Analysis/FunctionPropertiesAnalysisTest.cpp
+-+++ b/llvm/unittests/Analysis/FunctionPropertiesAnalysisTest.cpp
+-@@ -46,8 +46,8 @@
+-     MAM.registerPass([VocabVector = std::move(VocabVector)]() mutable {
+-       return IR2VecVocabAnalysis(std::move(VocabVector));
+-     });
+--    IR2VecVocab =
+--        new ir2vec::Vocabulary(ir2vec::Vocabulary::createDummyVocabForTest(1));
+-+    IR2VecVocab = std::make_unique<ir2vec::Vocabulary>(
+-+        ir2vec::Vocabulary::createDummyVocabForTest(1));
+-     MAM.registerPass([&] { return PassInstrumentationAnalysis(); });
+-     FAM.registerPass([&] { return ModuleAnalysisManagerFunctionProxy(MAM); });
+-     FAM.registerPass([&] { return DominatorTreeAnalysis(); });
+-@@ -69,7 +69,7 @@
+-   std::unique_ptr<LoopInfo> LI;
+-   FunctionAnalysisManager FAM;
+-   ModuleAnalysisManager MAM;
+--  ir2vec::Vocabulary *IR2VecVocab;
+-+  std::unique_ptr<ir2vec::Vocabulary> IR2VecVocab;
+- 
+-   void TearDown() override {
+-     // Restore original IR2Vec weights
+-diff -ruN --strip-trailing-cr a/llvm/unittests/Analysis/IR2VecTest.cpp b/llvm/unittests/Analysis/IR2VecTest.cpp
+---- a/llvm/unittests/Analysis/IR2VecTest.cpp
+-+++ b/llvm/unittests/Analysis/IR2VecTest.cpp
+-@@ -295,7 +295,7 @@
+- // Fixture for IR2Vec tests requiring IR setup.
+- class IR2VecTestFixture : public ::testing::Test {
+- protected:
+--  Vocabulary *V;
+-+  std::unique_ptr<Vocabulary> V;
+-   LLVMContext Ctx;
+-   std::unique_ptr<Module> M;
+-   Function *F = nullptr;
+-@@ -304,7 +304,7 @@
+-   Instruction *RetInst = nullptr;
+- 
+-   void SetUp() override {
+--    V = new Vocabulary(Vocabulary::createDummyVocabForTest(2));
+-+    V = std::make_unique<Vocabulary>(Vocabulary::createDummyVocabForTest(2));
+- 
+-     // Setup IR
+-     M = std::make_unique<Module>("TestM", Ctx);
 diff --git a/third_party/llvm/workspace.bzl b/third_party/llvm/workspace.bzl
-index 996e2ec..c407321 100644
+index c407321..38f7112 100644
 --- a/third_party/llvm/workspace.bzl
 +++ b/third_party/llvm/workspace.bzl
 @@ -4,8 +4,8 @@ load("//third_party:repo.bzl", "tf_http_archive")
  
  def repo(name):
      """Imports LLVM."""
--    LLVM_COMMIT = "ca84f2aa3be6e46a4dccb1bec56b93f2bb3d8ef0"
--    LLVM_SHA256 = "5cea44df2e0c3dcb6119c2ca5d7a900001e93ec43369ed1b58eb4ed4d4c9f9f0"
-+    LLVM_COMMIT = "fd9a1dcc01766c71932898e9643ce28bf2801bad"
-+    LLVM_SHA256 = "85b7a4524078549ef1b3271569241a14deec1b7f4c42048877601166f3d1fee9"
+-    LLVM_COMMIT = "fd9a1dcc01766c71932898e9643ce28bf2801bad"
+-    LLVM_SHA256 = "85b7a4524078549ef1b3271569241a14deec1b7f4c42048877601166f3d1fee9"
++    LLVM_COMMIT = "783c1a7617052cf4c520a487c03813ff38f65667"
++    LLVM_SHA256 = "b0904f98cd792f32f2dfd9a13fd90021bc9728a0256f32d4c7682ee0097e1bd3"
  
      tf_http_archive(
          name = name,
