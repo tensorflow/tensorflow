@@ -27,6 +27,8 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/layout.h"
 #include "xla/layout_util.h"
+#include "xla/pjrt/gpu/gpu_topology.h"
+#include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_device_description.h"
 #include "xla/pjrt/pjrt_stream_executor_device_description.h"
 #include "xla/primitive_util.h"
@@ -150,6 +152,40 @@ absl::StatusOr<Layout> StreamExecutorGpuTopologyDescription::GetDefaultLayout(
     layout.set_element_size_in_bits(primitive_util::BitWidth(element_type));
   }
   return layout;
+}
+
+absl::StatusOr<xla::PjRtTopologyDescriptionProto>
+StreamExecutorGpuTopologyDescription::ToProto() const {
+  PjRtTopologyDescriptionProto proto;
+  proto.set_platform_id(platform_id());
+  proto.set_platform_name(platform_name());
+  proto.set_platform_version(platform_version());
+  proto.set_is_subslice_topology(is_subslice_topology());
+
+  GpuTopologyProto gpu_topology_proto = gpu_topology_->ToProto();
+  proto.mutable_platform_specific_topology()->PackFrom(gpu_topology_proto);
+  return proto;
+}
+
+absl::StatusOr<std::unique_ptr<StreamExecutorGpuTopologyDescription>>
+StreamExecutorGpuTopologyDescription::FromProto(
+    const xla::PjRtTopologyDescriptionProto& proto) {
+  if (proto.platform_id() != xla::CudaId() &&
+      proto.platform_id() != xla::RocmId()) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("The platform_id is not a GPU platform. platform_id: ",
+                     proto.platform_id()));
+  }
+  if (!proto.platform_specific_topology().Is<GpuTopologyProto>()) {
+    return absl::InvalidArgumentError(
+        "The platform_specific_topology is not a GpuTopologyProto.");
+  }
+  GpuTopologyProto gpu_topology_proto;
+  proto.platform_specific_topology().UnpackTo(&gpu_topology_proto);
+  auto gpu_topology = std::shared_ptr<const GpuTopology>(
+      GpuTopology::FromProto(gpu_topology_proto));
+  return std::make_unique<StreamExecutorGpuTopologyDescription>(
+      proto.platform_id(), proto.platform_name(), std::move(gpu_topology));
 }
 
 }  // namespace xla

@@ -107,6 +107,11 @@ class CpuTopologyDescription : public PjRtTopologyDescription {
       PrimitiveType element_type,
       absl::Span<const int64_t> dims) const override;
 
+  absl::StatusOr<xla::PjRtTopologyDescriptionProto> ToProto() const override;
+
+  static absl::StatusOr<std::unique_ptr<CpuTopologyDescription>> FromProto(
+      const xla::PjRtTopologyDescriptionProto& proto);
+
  private:
   const PjRtPlatformId platform_id_;
   const std::string platform_name_;
