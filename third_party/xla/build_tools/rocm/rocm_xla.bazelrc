@@ -1,0 +1,27 @@
+# Test-related settings.
+
+build:rocm_dev --remote_upload_local_results=false
+build:rocm_dev --remote_cache="https://wardite.cluster.engflow.com"
+
+build:rocm_rbe --bes_backend="grpcs://wardite.cluster.engflow.com"
+build:rocm_rbe --bes_results_url="https://wardite.cluster.engflow.com/invocation/"
+build:rocm_rbe --host_platform="//build_tools/rocm/platform/linux_x64"
+build:rocm_rbe --extra_execution_platforms="//build_tools/rocm/platform/linux_x64"
+build:rocm_rbe --platforms="//build_tools/rocm/platform/linux_x64"
+build:rocm_rbe --bes_timeout=600s
+build:rocm_rbe --tls_client_certificate="/tf/certificates/ci-cert.crt"
+build:rocm_rbe --tls_client_key="/tf/certificates/ci-cert.key"
+build:rocm_rbe --spawn_strategy=remote,local
+
+test:rocm_rbe --jobs=200
+test:rocm_rbe --remote_executor=grpcs://wardite.cluster.engflow.com
+test:rocm_rbe --remote_timeout=3600
+test:rocm_rbe --strategy=TestRunner=remote
+
+build:tsan --strip=never
+build:tsan --copt -fsanitize=thread
+build:tsan --copt -g
+build:tsan --copt -fno-omit-frame-pointer
+build:tsan --linkopt -fsanitize=thread
+build:tsan --linkopt -g
+build:tsan --//build_tools/rocm:sanitizer=tsan
