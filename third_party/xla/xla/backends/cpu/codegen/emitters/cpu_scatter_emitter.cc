@@ -447,7 +447,8 @@ absl::Status CpuScatterFusion::EmitEntryFunction(
                     })
                 .getResults();
         return predicated_updates;
-      });
+      },
+      /*vectorize*/ false, /*disable_unrolling*/ true);
   b.create<mlir::func::ReturnOp>(results);
 
   if (VLOG_IS_ON(5)) {
