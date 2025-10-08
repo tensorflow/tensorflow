@@ -79,6 +79,9 @@ ifrt_proxy_cc_test(
     },
     # TODO(b/396205547): Remove `linkstatic = False`.
     linkstatic = False,
+    tags = [
+        "no_oss",  # TODO(b/450109296): flaky in OSS
+    ],
     deps = [
         ":register_pjrt_cpu_for_ifrt_api_tests",
         "//xla/python/ifrt:array_impl_test_lib",
