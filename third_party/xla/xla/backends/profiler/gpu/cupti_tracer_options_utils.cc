@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/backends/profiler/gpu/cupti_tracer_options_utils.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <functional>
 #include <string>
@@ -37,6 +38,9 @@ limitations under the License.
 namespace xla {
 namespace profiler {
 using tsl::profiler::SetValue;
+
+constexpr int64_t kMinBufferSize = 64;    // 64MB
+constexpr int64_t kMaxBufferSize = 4096;  // 4GB
 
 absl::Status UpdateCuptiTracerOptionsFromProfilerOptions(
     const tensorflow::ProfileOptions& profile_options,
@@ -98,6 +102,14 @@ absl::Status UpdateCuptiTracerOptionsFromProfilerOptions(
       profile_options, "gpu_pm_sample_interval_us", input_keys,
       [&](int64_t value) {
         tracer_options.pm_sampler_options.sample_interval_ns = value * 1000;
+      }));
+
+  TF_RETURN_IF_ERROR(SetValue<int64_t>(
+      profile_options, "gpu_pm_sample_buffer_size_per_gpu_mb", input_keys,
+      [&](int64_t value) {
+        tracer_options.pm_sampler_options.hw_buf_size =
+            std::clamp(value, kMinBufferSize, kMaxBufferSize) * 1024ULL *
+            1024ULL;
       }));
 
   if (!input_keys.empty()) {
