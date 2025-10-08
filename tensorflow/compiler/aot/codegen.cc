@@ -41,6 +41,7 @@ limitations under the License.
 #include "tensorflow/compiler/aot/embedded_constant_buffers.h"
 #include "tensorflow/compiler/aot/embedded_protocol_buffers.h"
 #include "tensorflow/compiler/aot/thunk_proto_execution_deserializer.h"
+#include "tensorflow/compiler/tf2xla/allocator.h"
 #include "tensorflow/compiler/tf2xla/tf2xla.pb.h"
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
 #include "xla/backends/cpu/runtime/thunk.pb.h"
@@ -778,7 +779,7 @@ absl::Status ExtendRewrites(
         void** buffer_table, xla::ExecutableRunOptions*,
         std::vector<std::unique_ptr<xla::cpu::RngState>>&)>
   ThunkRunImplFunction() {
-    return [](void** buffer_table, xla::ExecutableRunOptions* run_options, 
+    return [](void** buffer_table, xla::ExecutableRunOptions* run_options,
     std::vector<std::unique_ptr<xla::cpu::RngState>>& rng_states) {
       {{THUNK_RUN_IMPL}}
       return true;
@@ -867,15 +868,13 @@ absl::Status GenerateHeader(
       CheckEqual(ps.result().tuple_shapes_size(), result_index_table.size(),
                  "Result number mismatch, proto vs. result_index_table"));
   TF_ASSIGN_OR_RETURN(auto program_shape, xla::ProgramShape::FromProto(ps));
-  const size_t arg_bytes_aligned =
-      xla::cpu_function_runtime::AlignedBufferBytes(
-          buffer_infos_for_args.data(), buffer_infos_for_args.size(),
-          /*allocate_entry_params=*/true);
+  const size_t arg_bytes_aligned = tensorflow::AlignedBufferBytes(
+      buffer_infos_for_args.data(), buffer_infos_for_args.size(),
+      /*allocate_entry_params=*/true);
   const size_t arg_bytes_total = TotalBufferBytes(buffer_infos_for_args);
-  const size_t temp_bytes_aligned =
-      xla::cpu_function_runtime::AlignedBufferBytes(
-          buffer_infos_for_temps.data(), buffer_infos_for_temps.size(),
-          /*allocate_entry_params=*/true);
+  const size_t temp_bytes_aligned = tensorflow::AlignedBufferBytes(
+      buffer_infos_for_temps.data(), buffer_infos_for_temps.size(),
+      /*allocate_entry_params=*/true);
   const size_t temp_bytes_total = TotalBufferBytes(buffer_infos_for_temps);
 
   // Create rewrite strings for namespace start and end.

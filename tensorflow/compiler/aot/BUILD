@@ -95,6 +95,7 @@ cc_library(
         ":llvm_targets",  # fixdeps: keep
         ":thunk_proto_execution_deserializer",
         "//tensorflow/compiler/tf2xla",
+        "//tensorflow/compiler/tf2xla:allocator",
         "//tensorflow/compiler/tf2xla:mlir_tf2xla",  # fixdeps: keep
         "//tensorflow/compiler/tf2xla:tf2xla_proto_cc",
         "//tensorflow/compiler/tf2xla:tf2xla_util",

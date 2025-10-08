@@ -217,6 +217,7 @@ cc_library(
 filegroup(
     name = "xla_compiled_cpu_runtime_hdrs",
     srcs = [
+        "allocator.h",
         "xla_compiled_cpu_function.h",
         "//tensorflow/core/kernels:xla_cpu_runtime_hdrs",
         "//tensorflow/core/platform:xla_cpu_runtime_srcs",
@@ -240,6 +241,7 @@ filegroup(
 filegroup(
     name = "xla_compiled_cpu_runtime_srcs",
     srcs = [
+        "allocator.cc",
         "xla_compiled_cpu_function.cc",
         "//tensorflow/core/kernels:xla_cpu_runtime_srcs",
         "//tensorflow/core/platform:xla_cpu_runtime_srcs",
@@ -397,12 +399,26 @@ cc_library(
 # copybara:uncomment_end
 
 cc_library(
+    name = "allocator",
+    srcs = ["allocator.cc"],
+    hdrs = ["allocator.h"],
+    compatible_with = get_compatible_with_portable(),
+    visibility = ["//visibility:public"],
+    deps = [
+        "@com_google_absl//absl/base:dynamic_annotations",
+        "@local_xla//xla:cpu_function_runtime",
+        "@local_xla//xla/backends/cpu:alignment",
+    ],
+)
+
+cc_library(
     name = "xla_compiled_cpu_function",
     srcs = ["xla_compiled_cpu_function.cc"],
     hdrs = ["xla_compiled_cpu_function.h"],
     compatible_with = get_compatible_with_portable(),
     visibility = ["//visibility:public"],
     deps = [
+        ":allocator",
         "@com_google_absl//absl/log:check",
         "@local_xla//xla/service:custom_call_status_internal",
         # Keep dependencies to a minimum here; this library is used in every AOT
@@ -469,6 +485,7 @@ tf_cc_test(
     name = "cpu_function_runtime_test",
     srcs = ["cpu_function_runtime_test.cc"],
     deps = [
+        ":allocator",
         "//tensorflow/core:framework",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
