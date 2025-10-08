@@ -53,7 +53,6 @@ class BufferComparatorTest : public testing::Test {
     stream_exec_ = platform_->ExecutorForDevice(0).value();
   }
 
-  // Take floats only for convenience. Still uses ElementType internally.
   template <typename ElementType>
   bool CompareEqualBuffers(absl::Span<const ElementType> current,
                            absl::Span<const ElementType> expected,
@@ -100,6 +99,32 @@ class BufferComparatorTest : public testing::Test {
                                                           kDefaultTolerance);
   }
 
+  template <typename ElementType>
+  bool CompareEqualScalar(const ElementType& current,
+                          const ElementType& expected,
+                          double tolerance = kDefaultTolerance) {
+    auto stream = stream_exec_->CreateStream().value();
+    se::DeviceMemoryHandle current_buffer(
+        stream_exec_, stream_exec_->AllocateScalar<ElementType>());
+    se::DeviceMemoryHandle expected_buffer(
+        stream_exec_, stream_exec_->AllocateScalar<ElementType>());
+
+    TF_CHECK_OK(stream->Memcpy(current_buffer.memory_ptr(), &current,
+                               current_buffer.memory().size()));
+    TF_CHECK_OK(stream->Memcpy(expected_buffer.memory_ptr(), &expected,
+                               expected_buffer.memory().size()));
+    TF_CHECK_OK(stream->BlockHostUntilDone());
+
+    BufferComparator comparator(
+        ShapeUtil::MakeShape(
+            primitive_util::NativeToPrimitiveType<ElementType>(), {}),
+        kDefaultTolerance);
+    return comparator
+        .CompareEqual(stream.get(), current_buffer.memory(),
+                      expected_buffer.memory())
+        .value();
+  }
+
   se::Platform* platform_;
   se::StreamExecutor* stream_exec_;
 };
@@ -124,6 +149,26 @@ TEST_F(BufferComparatorTest, TestComplex) {
                                           {{0.1, 0.2}, {2.2, 3.3}}));
   EXPECT_FALSE(
       CompareEqualComplex<double>({{0.1, 0.2}, {2, 3}}, {{0.1, 0.2}, {2, 7}}));
+}
+
+TEST_F(BufferComparatorTest, TestScalar) {
+  EXPECT_TRUE(CompareEqualScalar<std::complex<double>>({1, 1}, {1, 1}));
+  EXPECT_FALSE(CompareEqualScalar<std::complex<double>>({1, 1}, {1, 2}));
+  EXPECT_FALSE(CompareEqualScalar<std::complex<double>>({1, 1}, {2, 1}));
+  EXPECT_TRUE(CompareEqualScalar<std::complex<float>>({1, 1}, {1, 1}));
+  EXPECT_FALSE(CompareEqualScalar<std::complex<float>>({1, 1}, {1, 2}));
+  EXPECT_FALSE(CompareEqualScalar<std::complex<float>>({1, 1}, {2, 1}));
+  EXPECT_TRUE(CompareEqualScalar<float>(1, 1));
+  EXPECT_FALSE(CompareEqualScalar<float>(1, 2));
+  EXPECT_TRUE(CompareEqualScalar<double>(1, 1));
+  EXPECT_FALSE(CompareEqualScalar<double>(1, 2));
+  EXPECT_TRUE(CompareEqualScalar<bool>(true, true));
+  EXPECT_TRUE(CompareEqualScalar<bool>(false, false));
+  EXPECT_FALSE(CompareEqualScalar<bool>(true, false));
+  EXPECT_TRUE(CompareEqualScalar<int8_t>(1, 1));
+  EXPECT_FALSE(CompareEqualScalar<int8_t>(1, 2));
+  EXPECT_TRUE(CompareEqualScalar<int32_t>(1, 1));
+  EXPECT_FALSE(CompareEqualScalar<int32_t>(1, 2));
 }
 
 TEST_F(BufferComparatorTest, TestPred) {
