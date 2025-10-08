@@ -1001,14 +1001,14 @@ absl::Status IrEmitterUnnested::EmitNormThunk(
     descriptor.dbias_shape = ShapeUtil::GetSubshape(instr->shape(), {2});
   }
 
-  TF_ASSIGN_OR_RETURN(GpuNormConfig config, GpuNormConfig::For(descriptor));
-
-  auto thunk = std::make_unique<NormThunk>(
-      Thunk::ThunkInfo::WithProfileAnnotation(
-          instr, ir_emitter_context_->GetNextThunkId()),
-      std::move(config), x_slice, scale_slice, y_or_dx_slice, bias_slice,
-      expectation_slice, norm_factor_slice, dy_slice, dscale_slice, dbias_slice,
-      scratch_slice);
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<NormThunk> thunk,
+      NormThunk::Create(Thunk::ThunkInfo::WithProfileAnnotation(
+                            instr, ir_emitter_context_->GetNextThunkId()),
+                        std::move(descriptor), x_slice, scale_slice,
+                        y_or_dx_slice, bias_slice, expectation_slice,
+                        norm_factor_slice, dy_slice, dscale_slice, dbias_slice,
+                        scratch_slice));
   AddThunkToThunkSequence(std::move(thunk));
   return absl::OkStatus();
 }

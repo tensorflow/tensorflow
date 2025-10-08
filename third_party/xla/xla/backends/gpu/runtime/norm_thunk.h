@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/service/buffer_assignment.h"
@@ -34,16 +35,17 @@ namespace gpu {
 
 class NormThunk : public Thunk {
  public:
-  NormThunk(ThunkInfo thunk_info, GpuNormConfig config,
-            BufferAllocation::Slice x, BufferAllocation::Slice scale,
-            BufferAllocation::Slice y_or_dx,
-            std::optional<BufferAllocation::Slice> bias,
-            std::optional<BufferAllocation::Slice> expectation,
-            std::optional<BufferAllocation::Slice> norm_factor,
-            std::optional<BufferAllocation::Slice> dy,
-            std::optional<BufferAllocation::Slice> dscale,
-            std::optional<BufferAllocation::Slice> dbias,
-            BufferAllocation::Slice scratch);
+  static absl::StatusOr<std::unique_ptr<NormThunk>> Create(
+      ThunkInfo thunk_info, GpuNormDescriptor descriptor,
+      BufferAllocation::Slice x, BufferAllocation::Slice scale,
+      BufferAllocation::Slice y_or_dx,
+      std::optional<BufferAllocation::Slice> bias,
+      std::optional<BufferAllocation::Slice> expectation,
+      std::optional<BufferAllocation::Slice> norm_factor,
+      std::optional<BufferAllocation::Slice> dy,
+      std::optional<BufferAllocation::Slice> dscale,
+      std::optional<BufferAllocation::Slice> dbias,
+      BufferAllocation::Slice scratch);
 
   NormThunk(const NormThunk&) = delete;
   NormThunk& operator=(const NormThunk&) = delete;
@@ -52,6 +54,17 @@ class NormThunk : public Thunk {
   absl::Status Initialize(const InitializeParams& params) override;
 
  private:
+  NormThunk(ThunkInfo thunk_info, GpuNormConfig config,
+            GpuNormDescriptor descriptor, BufferAllocation::Slice x,
+            BufferAllocation::Slice scale, BufferAllocation::Slice y_or_dx,
+            std::optional<BufferAllocation::Slice> bias,
+            std::optional<BufferAllocation::Slice> expectation,
+            std::optional<BufferAllocation::Slice> norm_factor,
+            std::optional<BufferAllocation::Slice> dy,
+            std::optional<BufferAllocation::Slice> dscale,
+            std::optional<BufferAllocation::Slice> dbias,
+            BufferAllocation::Slice scratch);
+
   BufferAllocation::Slice x_buffer_;
   BufferAllocation::Slice scale_buffer_;
   BufferAllocation::Slice y_or_dx_buffer_;
@@ -64,6 +77,7 @@ class NormThunk : public Thunk {
   BufferAllocation::Slice scratch_buffer_;
   NormRunner& GetOrCreateRunner(const stream_executor::Stream*);
 
+  GpuNormDescriptor descriptor_;
   GpuNormConfig config_;
   absl::Mutex mu_;
   absl::flat_hash_map<const stream_executor::Stream*,
