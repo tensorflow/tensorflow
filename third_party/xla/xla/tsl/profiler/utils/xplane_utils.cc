@@ -330,6 +330,20 @@ void NormalizeTimestamps(XSpace* space, uint64 start_time_ns) {
   }
 }
 
+void DenormalizeTimestamps(XPlane* plane, uint64 start_time_ns) {
+  for (XLine& line : *plane->mutable_lines()) {
+    if (line.timestamp_ns() < static_cast<int64_t>(start_time_ns)) {
+      line.set_timestamp_ns(line.timestamp_ns() + start_time_ns);
+    }
+  }
+}
+
+void DenormalizeTimestamps(XSpace* space, uint64 start_time_ns) {
+  for (XPlane& plane : *space->mutable_planes()) {
+    DenormalizeTimestamps(&plane, start_time_ns);
+  }
+}
+
 void MergePlanes(const XPlane& src_plane, XPlane* dst_plane) {
   RemoveEmptyLines(dst_plane);
   XPlaneVisitor src(&src_plane);
