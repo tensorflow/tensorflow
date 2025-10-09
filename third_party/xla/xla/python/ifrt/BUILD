@@ -1195,6 +1195,22 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "mpmd_executable",
+    srcs = ["mpmd_executable.cc"],
+    hdrs = ["mpmd_executable.h"],
+    deps = [
+        ":attribute_map",
+        ":ifrt",
+        "//xla/hlo/ir:hlo",
+        "//xla/pjrt:pjrt_executable",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/types:span",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
 xla_cc_test(
     name = "user_context_status_util_test",
     srcs = ["user_context_status_util_test.cc"],
