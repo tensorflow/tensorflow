@@ -424,6 +424,8 @@ cuda_library(
     ],
 )
 
+_USE_OBSOLETE_CUDNN_ENABLED = "//third_party/gpus/cudnn:_use_obsolete_cudnn_enabled"
+
 cc_library(
     name = "sdc_log",
     srcs = ["sdc_log.cc"],
@@ -525,7 +527,6 @@ cc_library(
         ":cuda_compute_capability",
         ":cuda_diagnostics",
         ":cuda_platform_id",
-        ":cudnn_api_wrappers",
         ":cudnn_frontend_helpers",
         ":cudnn_sdpa_score_mod",
         "//xla/stream_executor:activate_context",
@@ -567,7 +568,15 @@ cc_library(
         "@local_config_cuda//cuda:cudnn_header",  # build_cleaner: keep
         "@local_tsl//tsl/platform:tensor_float_32_hdr_lib",
         "@local_tsl//tsl/platform:tensor_float_32_utils",
-    ],
+    ] + if_google(
+        select({
+            _USE_OBSOLETE_CUDNN_ENABLED: [],
+            "//conditions:default": [
+                ":cudnn_api_wrappers",
+            ],
+        }),
+        [":cudnn_api_wrappers"],
+    ),
     alwayslink = True,
 )
 
@@ -1139,7 +1148,6 @@ cc_library(
         ":cuda_stream",
         ":cuda_timer",
         ":cuda_version_parser",
-        ":cudnn_api_wrappers",
         ":tma_util",
         "//xla/backends/gpu/collectives:gpu_collectives",
         "//xla/core/collectives",
@@ -1193,11 +1201,20 @@ cc_library(
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
         "@local_config_cuda//cuda:cuda_headers",
+        "@local_config_cuda//cuda:cudnn_header",  # build_cleaner: keep
         "@local_tsl//tsl/platform:casts",
         "@local_tsl//tsl/platform:fingerprint",
         "@local_tsl//tsl/platform:numbers",
         "@local_tsl//tsl/platform:platform_port",
-    ],
+    ] + if_google(
+        select({
+            _USE_OBSOLETE_CUDNN_ENABLED: [],
+            "//conditions:default": [
+                ":cudnn_api_wrappers",
+            ],
+        }),
+        [":cudnn_api_wrappers"],
+    ),
     alwayslink = True,
 )
 
