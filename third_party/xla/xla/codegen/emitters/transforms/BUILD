@@ -95,6 +95,7 @@ cc_library(
         "@com_google_absl//absl/numeric:bits",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
+        "@com_google_protobuf//:protobuf",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:AMDGPUUtils",
         "@llvm-project//mlir:AffineToStandard",
