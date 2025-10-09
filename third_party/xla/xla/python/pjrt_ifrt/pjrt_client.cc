@@ -1623,19 +1623,41 @@ absl::StatusOr<std::shared_ptr<Topology>> PjRtClient::GetTopologyForDevices(
 absl::StatusOr<std::shared_ptr<const xla::PjRtLayout>>
 PjRtClient::GetDefaultPjRtLayout(DType dtype, absl::Span<const int64_t> dims,
                                  Device* device, MemoryKind memory_kind) const {
-  static MemoryKind kUnpinnedHostMemoryKind(UnpinnedHostMemorySpace::kKind);
-  if (memory_kind == kUnpinnedHostMemoryKind) {
-    return std::make_shared<xla::PjRtLayout>(
-        LayoutUtil::MakeDescendingLayout(dims.size()));
+  // PjRt-IFRT devices are currently homogeneous. The cache key omits device
+  // information.
+  // TODO(hyeontaek): Add device-specific information (e.g., `device->Kind()`)
+  // once PjRt-IFRT supports heterogeneous devices.
+  auto key = std::make_tuple(
+      dtype, std::vector<int64_t>(dims.begin(), dims.end()), memory_kind);
+  {
+    absl::MutexLock lock(default_layout_cache_mu_);
+    if (auto it = default_layout_cache_.find(key);
+        it != default_layout_cache_.end()) {
+      return it->second;
+    }
   }
-  TF_ASSIGN_OR_RETURN(PrimitiveType element_type, ToPrimitiveType(dtype));
-  if (element_type == PrimitiveType::TOKEN) {
-    return std::make_shared<PjRtLayout>(
-        LayoutUtil::MakeDescendingLayout(dims.size()));
+
+  auto layout =
+      [&]() -> absl::StatusOr<std::shared_ptr<const xla::PjRtLayout>> {
+    static MemoryKind kUnpinnedHostMemoryKind(UnpinnedHostMemorySpace::kKind);
+    if (memory_kind == kUnpinnedHostMemoryKind) {
+      return std::make_shared<xla::PjRtLayout>(
+          LayoutUtil::MakeDescendingLayout(dims.size()));
+    }
+    TF_ASSIGN_OR_RETURN(PrimitiveType element_type, ToPrimitiveType(dtype));
+    if (element_type == PrimitiveType::TOKEN) {
+      return std::make_shared<PjRtLayout>(
+          LayoutUtil::MakeDescendingLayout(dims.size()));
+    }
+    TF_ASSIGN_OR_RETURN(xla::Layout layout,
+                        pjrt_client_->GetDefaultLayout(element_type, dims));
+    return std::make_shared<xla::PjRtLayout>(std::move(layout));
+  }();
+  {
+    absl::MutexLock lock(default_layout_cache_mu_);
+    default_layout_cache_.insert({std::move(key), layout});
   }
-  TF_ASSIGN_OR_RETURN(xla::Layout layout,
-                      pjrt_client_->GetDefaultLayout(element_type, dims));
-  return std::make_shared<xla::PjRtLayout>(std::move(layout));
+  return layout;
 }
 
 absl::Status PjRtClient::TransferToInfeed(PjRtDevice* device,
