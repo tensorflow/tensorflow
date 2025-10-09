@@ -15,18 +15,25 @@ limitations under the License.
 
 #include "tensorflow/core/framework/resource_mgr.h"
 
+#include <atomic>
 #include <memory>
 #include <string>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include "absl/base/nullability.h"
+#include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
+#include "absl/strings/match.h"
+#include "absl/strings/str_cat.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/protobuf/error_codes.pb.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/resource_handle.pb.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
@@ -37,6 +44,7 @@ limitations under the License.
 #include "tensorflow/core/platform/regexp.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
+#include "util/regexp/re2/re2.h"
 
 namespace tensorflow {
 
