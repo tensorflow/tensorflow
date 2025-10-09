@@ -236,7 +236,9 @@ float GetMaxLowLatencyBandwidth(const BandwidthSettings& bandwidth_settings) {
   auto max_sys_bw = bandwidth_settings.GetMaxSysBwFromGpu(
       bandwidth_settings.kLowLatencyMaxBandwidths.data());
   auto it = std::lower_bound(std::begin(speeds), std::end(speeds), max_sys_bw);
-  CHECK(it != std::cend(speeds));
+  if (it == speeds.end()) {
+    return speeds.back();
+  }
   return *it;
 }
 
@@ -379,7 +381,7 @@ RocmBandwidthSettings CreateSettings(
 }  // namespace
 
 /*static*/ bool GpuPerformanceWithCollectiveModel::InitNvml() {
-#if GOOGLE_CUDA && defined(PLATFORM_POSIX) && !defined(PLATFORM_GOOGLE)
+#if GOOGLE_CUDA && (defined(PLATFORM_POSIX) || defined(PLATFORM_GOOGLE))
   void* libhandle = dlopen("libnvidia-ml.so.1", RTLD_NOW);
   CHECK(libhandle != nullptr) << "Failed to open libnvidia-ml.so.1";
 
@@ -396,7 +398,9 @@ RocmBandwidthSettings CreateSettings(
        "nvmlDeviceGetNvLinkCapability"},
       {(void**)&xla_nvmlSystemGetNVMLVersion, "nvmlSystemGetNVMLVersion"},
   };
-#if GOOGLE_CUDA && CUDA_VERSION >= 12040
+
+#if GOOGLE_CUDA && CUDA_VERSION >= 12040 && !defined(PLATFORM_GOOGLE)
+  // Some hosts might still have older driver version(b/414617899).
   symbols.push_back({(void**)&xla_nvmlDeviceGetHandleByPciBusId_v2,
                      "nvmlDeviceGetHandleByPciBusId_v2"});
   symbols.push_back({(void**)&xla_nvmlDeviceGetGpuFabricInfoV,
