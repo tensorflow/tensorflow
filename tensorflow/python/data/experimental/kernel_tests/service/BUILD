@@ -131,7 +131,9 @@ tf_py_strict_test(
     shard_count = 16,
     deps = [
         ":test_base",
+        "//tensorflow/core/protobuf:for_core_protos_py_proto",
         "//tensorflow/python/data/experimental/ops:data_service_ops",
+        "//tensorflow/python/data/experimental/service:server_lib",
         "//tensorflow/python/data/kernel_tests:test_base",
         "//tensorflow/python/data/kernel_tests:tf_record_test_base",
         "//tensorflow/python/data/ops:dataset_ops",

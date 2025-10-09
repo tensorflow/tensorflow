@@ -14,12 +14,15 @@
 # ==============================================================================
 """Tests for dynamic sharding."""
 import collections
+import time
 
 from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.core.protobuf import service_config_pb2
 from tensorflow.python.data.experimental.kernel_tests.service import test_base as data_service_test_base
 from tensorflow.python.data.experimental.ops import data_service_ops
+from tensorflow.python.data.experimental.service import server_lib
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.kernel_tests import tf_record_test_base
 from tensorflow.python.data.ops import dataset_ops
@@ -502,6 +505,46 @@ class DynamicShardingTest(data_service_test_base.TestBase,
     # Produces 2 copies of the dataset because `from_dataset_id` prepends the
     # dataset ID to the job name.
     self.assertCountEqual(output, list(range(100)) * 2)
+
+  @combinations.generate(test_base.eager_only_combinations())
+  def testGcDynamicShardingJobIfRequested(self):
+    dispatcher = server_lib.DispatchServer(
+        service_config_pb2.DispatcherConfig(
+            protocol="grpc",
+            job_gc_check_interval_ms=50,
+            job_gc_timeout_ms=20,
+            gc_dynamic_sharding_jobs=True,
+        )
+    )
+    dispatcher_address = dispatcher.target.split("://")[1]
+    worker = server_lib.WorkerServer(
+        server_lib.WorkerConfig(
+            dispatcher_address=dispatcher_address, heartbeat_interval_ms=100
+        )
+    )
+
+    num_elements = 1000
+    dataset = dataset_ops.Dataset.range(num_elements)
+    dataset = dataset.apply(
+        data_service_ops._distribute(
+            processing_mode=data_service_ops.ShardingPolicy.DYNAMIC,
+            service=dispatcher.target,
+        )
+    )
+    it = iter(dataset)
+    self.assertEqual(self.evaluate(next(it)), 0)
+    self.assertEqual(worker._num_tasks(), 1)
+    del it
+    while worker._num_tasks() > 0:
+      time.sleep(0.1)
+
+    # If re-creating the iterator with the same job, the elements are revisited.
+    it = iter(dataset)
+    self.assertEqual(self.evaluate(next(it)), 0)
+    del it
+    while worker._num_tasks() > 0:
+      time.sleep(0.1)
+    del worker
 
 
 class DynamicShardingFilesTest(data_service_test_base.TestBase,
