@@ -235,6 +235,7 @@ xla_test(
         "//xla/stream_executor:stream",
         "//xla/stream_executor/cuda:cuda_compute_capability",
         "//xla/tests:literal_test_util",
+        "//xla/tsl/concurrency:async_value",
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:errors",

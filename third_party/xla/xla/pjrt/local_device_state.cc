@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/pjrt/local_device_state.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <limits>
 #include <memory>
@@ -31,12 +32,14 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/client/local_client.h"
+#include "xla/pjrt/buffer_sequencing_event.h"
 #include "xla/pjrt/worker_thread.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/threadpool.h"
 #include "xla/tsl/protobuf/error_codes.pb.h"
 #include "xla/tsl/util/env_var.h"
 #include "xla/util.h"
@@ -302,6 +305,60 @@ int LocalDeviceState::GetNewPrngSeed() {
     x = prng_seed_distribution_(prng_seed_generator_);
   } while (x == 0);
   return x;
+}
+
+absl::Status LocalDeviceState::AllocateAndRecordEvent(
+    BufferSequencingEventRef event, se::Stream* stream) {
+  auto status = [&]() {
+    TF_ASSIGN_OR_RETURN(EventPool::Handle device_event,
+                        event_pool().AllocateEvent(stream->parent()));
+    event_pool().ThenRecordEvent(stream, device_event);
+    event->SetSequencingEvent(std::move(device_event), stream);
+    return ThenExecuteCallback(stream, [event]() { event.SetStateConcrete(); });
+  }();
+  if (!status.ok()) {
+    event.SetError(status);
+  }
+  return status;
+}
+
+absl::StatusOr<BufferSequencingEventRef>
+LocalDeviceState::GetEventForComputeStreamSyncPoint(
+    size_t sync_point, tsl::thread::ThreadPool* thread_pool) {
+  mu_.lock();
+  size_t cur_sync_point = next_compute_stream_sync_point_.load();
+  if (sync_point < base_compute_event_sequence_id_ + compute_events_.size()) {
+    BufferSequencingEventRef event;
+    if (sync_point < base_compute_event_sequence_id_) {
+      DCHECK_GT(compute_events_.size(), 0);
+      event = compute_events_.front();
+    } else {
+      event = compute_events_[sync_point - base_compute_event_sequence_id_];
+    }
+    mu_.unlock();
+    return event;
+  }
+  next_compute_stream_sync_point_.store(cur_sync_point + 1);
+  auto event = BufferSequencingEvent::Create(thread_pool);
+  auto status = AllocateAndRecordEvent(event, compute_stream());
+  if (!status.ok()) {
+    mu_.unlock();
+    return status;
+  }
+  while (!(cur_sync_point - base_compute_event_sequence_id_ <
+           compute_events_.size())) {
+    // Pad for any failed event allocations.
+    compute_events_.push_back(event);
+  }
+  mu_.unlock();
+  event.AndThen([this, cur_sync_point]() {
+    absl::MutexLock l(&mu_);
+    while (base_compute_event_sequence_id_ < cur_sync_point) {
+      compute_events_.pop_front();
+      ++base_compute_event_sequence_id_;
+    }
+  });
+  return event;
 }
 
 }  // namespace xla
