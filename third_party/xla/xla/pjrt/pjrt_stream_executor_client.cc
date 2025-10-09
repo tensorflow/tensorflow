@@ -190,19 +190,7 @@ void PjRtStreamExecutorClient::ThenRecordEvent(BufferSequencingEventRef event,
 absl::Status PjRtStreamExecutorClient::AllocateAndRecordEvent(
     BufferSequencingEventRef event, LocalDeviceState* local_device,
     se::Stream* stream) {
-  auto status = [&]() {
-    TF_ASSIGN_OR_RETURN(
-        EventPool::Handle device_event,
-        local_device->event_pool().AllocateEvent(stream->parent()));
-    local_device->event_pool().ThenRecordEvent(stream, device_event);
-    event->SetSequencingEvent(std::move(device_event), stream);
-    return local_device->ThenExecuteCallback(
-        stream, [event]() { event.SetStateConcrete(); });
-  }();
-  if (!status.ok()) {
-    event.SetError(status);
-  }
-  return status;
+  return local_device->AllocateAndRecordEvent(event, stream);
 }
 
 void PjRtStreamExecutorClient::SetEventAsError(BufferSequencingEventRef event,
@@ -2976,10 +2964,9 @@ PjRtStreamExecutorLoadedExecutable::ExecuteHelper(
   LocalDeviceState* device_state = &(client_->device_state(device_ordinal));
   se::Stream* stream = device_state->compute_stream();
 
-  auto definition_event = BufferSequencingEvent::Create(client_->thread_pool());
-  auto status =
-      client_->AllocateAndRecordEvent(definition_event, device_state, stream);
-  if (!status.ok()) {
+  auto definition_event = device_state->GetEventForComputeStreamSyncPoint(
+      device_state->GetNextComputeStreamSyncPoint(), client_->thread_pool());
+  if (!definition_event.ok()) {
     StallStreamOnError(device_state, stream);
     for (PjRtStreamExecutorBuffer::ScopedHold& b : device_buffers) {
       if (b.type() == PjRtStreamExecutorBuffer::ScopedHold::kDonation) {
@@ -2989,18 +2976,18 @@ PjRtStreamExecutorLoadedExecutable::ExecuteHelper(
         b.ConfirmDonation();
       }
     }
-    return status;
+    return definition_event.status();
   }
   std::vector<tsl::RCReference<RawSEDeviceMemory>> buffers_to_release;
   TF_ASSIGN_OR_RETURN(
       std::vector<std::unique_ptr<PjRtBuffer>> outputs,
       MakeOutputBuffers(device_ordinal, options, std::move(result_buffer),
-                        definition_event, device, compute_callbacks,
+                        *definition_event, device, compute_callbacks,
                         buffers_to_release));
 
   for (PjRtStreamExecutorBuffer::ScopedHold& b : device_buffers) {
     if (b.type() == PjRtStreamExecutorBuffer::ScopedHold::kUsage) {
-      RecordUsage(std::move(b), device_state, device_state, definition_event,
+      RecordUsage(std::move(b), device_state, device_state, *definition_event,
                   stream, &buffers_to_release);
     } else {
       CHECK(b.type() == PjRtStreamExecutorBuffer::ScopedHold::kDonation);
@@ -3015,7 +3002,7 @@ PjRtStreamExecutorLoadedExecutable::ExecuteHelper(
     compute_callbacks.push_back(
         [promise = std::move(promise)]() mutable { promise.Set(); });
   }
-  definition_event.AndThen(
+  definition_event->AndThen(
       [callbacks{std::move(compute_callbacks)},
        buffers_to_release{std::move(buffers_to_release)}]() mutable {
         for (auto& fn : callbacks) {
