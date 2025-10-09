@@ -3,7 +3,7 @@ rocm_redist_ubuntu_24_04 = {
         "archives": [
             struct(
                 url = "https://repo.radeon.com/rocm/apt/6.4.1/pool/main/c/comgr/comgr_3.0.0.60401-83~24.04_amd64.deb",
-                sha256 = "ba02bdf830458668a39300ad082419f4bac3644bf5727c496846697e9fddf429",
+                sha256 = "667163f00488475b2a902b6fed1d05c9c9202b361693b2d97cdb97e7d9e997ba",
             ),
             struct(
                 url = "https://repo.radeon.com/rocm/apt/6.4.1/pool/main/h/hip-runtime-amd/hip-runtime-amd_6.4.43483.60401-83~24.04_amd64.deb",
@@ -140,6 +140,10 @@ rocm_redist_ubuntu_24_04 = {
             struct(
                 url = "https://repo.radeon.com/rocm/apt/6.4.1/pool/main/r/rocprofiler-register/rocprofiler-register_0.4.0.60401-83~24.04_amd64.deb",
                 sha256 = "b0d459cf9deaab61c199c629c9298d50a7f50f538c6f08fc9a99c420290c6e04",
+            ),
+            struct(
+                url = "https://repo.radeon.com/rocm/apt/6.4.1/pool/main/r/rocrand6.4.1/rocrand6.4.1_3.3.0.60401-83~24.04_amd64.deb",
+                sha256 = "d572e64ca54d29482829a694badc65d09893d18ae3352c8d8d37abae23e7fd58",
             ),
             struct(
                 url = "https://repo.radeon.com/rocm/apt/6.4.1/pool/main/r/rocrand-dev/rocrand-dev_3.3.0.60401-83~24.04_amd64.deb",
