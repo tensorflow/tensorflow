@@ -18,7 +18,6 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
-#include <utility>
 #include <vector>
 
 #include "absl/status/statusor.h"
@@ -59,15 +58,24 @@ static_assert(offsetof(SdcLogHeader, capacity) == sizeof(uint32_t));
 // SdcLogEntry structs.
 class SdcLog {
  public:
-  // Uses `allocator` to allocate an empty `SdcLog` on the device with enough
-  // capacity to hold `max_entries` of `SdcLogEntry` structs.
+  // Returns the number of bytes required to store a log with `entries`
+  // entries.
+  static constexpr size_t RequiredSizeForEntries(size_t entries) {
+    return sizeof(SdcLogHeader) + sizeof(SdcLogEntry) * entries;
+  }
+
+  // Initializes an empty `SdcLog` using a `log_buffer` allocated in device
+  // memory.
   //
-  // `allocator` must be associated with the same device as `stream`, and must
-  // outlive the returned `SdcLog`.
+  // `log_buffer` must be allocated in memory of the same device `stream` is
+  // associated with. `log_buffer` must outlive the returned `SdcLog`.
   //
   // Contents of the log can be retrieved with `SdcLog::ReadFromDevice`.
+  //
+  // Fails with `absl::StatusCode::kInvalidArgument` if `log_buffer` is too
+  // small to hold any entries.
   static absl::StatusOr<SdcLog> CreateOnDevice(
-      uint32_t max_entries, Stream& stream, DeviceMemoryAllocator& allocator);
+      Stream& stream, DeviceMemory<uint8_t> log_buffer);
 
   // Reads the header from the device log.
   //
@@ -90,7 +98,7 @@ class SdcLog {
   // destroyed.
   DeviceMemory<SdcLogHeader> GetDeviceHeader() const {
     return DeviceMemory<SdcLogHeader>(
-        memory_->GetByteSlice(0, sizeof(SdcLogHeader)));
+        memory_.GetByteSlice(0, sizeof(SdcLogHeader)));
   }
 
   // Returns a view of the `SdcLogEntry` array.
@@ -98,14 +106,14 @@ class SdcLog {
   // The returned `DeviceMemory` gets invalidated when the `SdcLog` is
   // destroyed.
   DeviceMemory<SdcLogEntry> GetDeviceEntries() const {
-    return DeviceMemory<SdcLogEntry>(memory_->GetByteSlice(
-        sizeof(SdcLogHeader), memory_->size() - sizeof(SdcLogHeader)));
+    return DeviceMemory<SdcLogEntry>(memory_.GetByteSlice(
+        sizeof(SdcLogHeader), memory_.size() - sizeof(SdcLogHeader)));
   }
 
  private:
-  explicit SdcLog(OwningDeviceMemory&& memory) : memory_(std::move(memory)) {}
+  explicit SdcLog(DeviceMemory<uint8_t> memory) : memory_(memory) {}
 
-  OwningDeviceMemory memory_;
+  DeviceMemory<uint8_t> memory_;
 };
 
 }  // namespace stream_executor::cuda

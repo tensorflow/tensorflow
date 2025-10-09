@@ -20,7 +20,11 @@ limitations under the License.
 #include <memory>
 #include <optional>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
+#include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream.h"
@@ -49,39 +53,61 @@ class SdcLogTest : public ::testing::Test {
   std::unique_ptr<se::StreamExecutorMemoryAllocator> allocator_;
 };
 
-TEST_F(SdcLogTest, CreateSdcLogOnDevice_AllocatesEmptyLog) {
-  TF_ASSERT_OK_AND_ASSIGN(se::cuda::SdcLog device_log,
-                          se::cuda::SdcLog::CreateOnDevice(
-                              /*max_entries=*/10, *stream_, *allocator_));
+TEST_F(SdcLogTest, CreateSdcLogOnDevice_InitializesEmptyLog) {
+  se::DeviceMemory<uint8_t> log_buffer =
+      executor_->AllocateArray<uint8_t>(1024);
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      se::cuda::SdcLog device_log,
+      se::cuda::SdcLog::CreateOnDevice(*stream_, log_buffer));
   TF_ASSERT_OK_AND_ASSIGN(auto host_log, device_log.ReadFromDevice(*stream_));
 
   EXPECT_EQ(host_log.size(), 0);
 }
 
-TEST_F(SdcLogTest, CreateSdcLogOnDevice_AllocatesEnoughSpace) {
-  constexpr uint32_t kMaxEntries = 10;
+TEST_F(SdcLogTest, CreateSdcLogOnDevice_InitializesLogWithCorrectCapacity) {
+  constexpr size_t kMaxEntries = 10;
   constexpr size_t kExpectedHeaderSize = sizeof(se::cuda::SdcLogHeader);
   constexpr size_t kExpectedEntriesSize =
       sizeof(se::cuda::SdcLogEntry) * kMaxEntries;
+  se::DeviceMemory<uint8_t> log_buffer = executor_->AllocateArray<uint8_t>(
+      kExpectedHeaderSize + kExpectedEntriesSize);
 
   TF_ASSERT_OK_AND_ASSIGN(
       se::cuda::SdcLog device_log,
-      se::cuda::SdcLog::CreateOnDevice(kMaxEntries, *stream_, *allocator_));
+      se::cuda::SdcLog::CreateOnDevice(*stream_, log_buffer));
+
   EXPECT_EQ(device_log.GetDeviceHeader().size(), kExpectedHeaderSize);
   EXPECT_EQ(device_log.GetDeviceEntries().size(), kExpectedEntriesSize);
 }
 
 TEST_F(SdcLogTest, CreateSdcLogOnDevice_InitializesHeader) {
-  constexpr uint32_t kMaxEntries = 10;
+  constexpr size_t kMaxEntries = 123;
+  se::DeviceMemory<uint8_t> log_buffer = executor_->AllocateArray<uint8_t>(
+      se::cuda::SdcLog::RequiredSizeForEntries(kMaxEntries));
 
   TF_ASSERT_OK_AND_ASSIGN(
       se::cuda::SdcLog device_log,
-      se::cuda::SdcLog::CreateOnDevice(kMaxEntries, *stream_, *allocator_));
-
+      se::cuda::SdcLog::CreateOnDevice(*stream_, log_buffer));
   TF_ASSERT_OK_AND_ASSIGN(se::cuda::SdcLogHeader header,
                           device_log.ReadHeaderFromDevice(*stream_));
+
   EXPECT_EQ(header.write_idx, 0);
   EXPECT_EQ(header.capacity, kMaxEntries);
+}
+
+TEST_F(SdcLogTest, CreateSdcLogOnDevice_FailsForNullBuffer) {
+  EXPECT_THAT(
+      se::cuda::SdcLog::CreateOnDevice(*stream_, se::DeviceMemory<uint8_t>()),
+      absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
+TEST_F(SdcLogTest, CreateSdcLogOnDevice_FailsForTooSmallBuffer) {
+  se::DeviceMemory<uint8_t> log_buffer = executor_->AllocateArray<uint8_t>(
+      se::cuda::SdcLog::RequiredSizeForEntries(1) - 1);
+
+  EXPECT_THAT(se::cuda::SdcLog::CreateOnDevice(*stream_, log_buffer),
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 }  // namespace

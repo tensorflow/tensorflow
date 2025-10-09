@@ -44,6 +44,7 @@ limitations under the License.
 
 namespace se = stream_executor;
 
+namespace stream_executor::cuda {
 namespace {
 
 class ChecksumKernelTest : public ::testing::Test {
@@ -107,6 +108,7 @@ class ChecksumKernelTest : public ::testing::Test {
 };
 
 TEST_F(ChecksumKernelTest, ComputesCorrectChecksumForMultipleOf32Bit) {
+  se::DeviceMemory<uint8_t> mem = executor_->AllocateArray<uint8_t>(1024);
   std::vector<uint8_t> input = std::vector<uint8_t>(1024, 0x55);
   // Xor with the expected checksum value.
   // Assumes the device uses little-endian byte order.
@@ -117,8 +119,7 @@ TEST_F(ChecksumKernelTest, ComputesCorrectChecksumForMultipleOf32Bit) {
   constexpr uint32_t kExpectedChecksum = 0x12345678;
 
   TF_ASSERT_OK_AND_ASSIGN(se::cuda::SdcLog device_log,
-                          se::cuda::SdcLog::CreateOnDevice(
-                              /*max_entries=*/10, *stream_, *allocator_));
+                          se::cuda::SdcLog::CreateOnDevice(*stream_, mem));
 
   TF_EXPECT_OK(AppendChecksumOnDevice(/*entry_id=*/0, input, device_log));
 
@@ -129,10 +130,10 @@ TEST_F(ChecksumKernelTest, ComputesCorrectChecksumForMultipleOf32Bit) {
 
 TEST_F(ChecksumKernelTest,
        PadsMostSignifantBitsOfIncomplete32BitInputWordWithZeros) {
+  se::DeviceMemory<uint8_t> mem = executor_->AllocateArray<uint8_t>(1024);
   const std::vector<uint8_t> kInput = std::vector<uint8_t>(1023, 0x55);
   TF_ASSERT_OK_AND_ASSIGN(se::cuda::SdcLog device_log,
-                          se::cuda::SdcLog::CreateOnDevice(
-                              /*max_entries=*/10, *stream_, *allocator_));
+                          se::cuda::SdcLog::CreateOnDevice(*stream_, mem));
 
   TF_EXPECT_OK(AppendChecksumOnDevice(/*entry_id=*/0, kInput, device_log));
 
@@ -143,14 +144,14 @@ TEST_F(ChecksumKernelTest,
 }
 
 TEST_F(ChecksumKernelTest, ComputesCorrectChecksumInParallel) {
+  se::DeviceMemory<uint8_t> mem = executor_->AllocateArray<uint8_t>(1024);
   std::vector<uint32_t> input =
       std::vector<uint32_t>(64 * 1024 / sizeof(uint32_t), 0x55aa55aa);
   // Xor with the expected checksum value.
   input[1000] ^= 0x12345678;
   constexpr uint32_t kExpectedChecksum = 0x12345678;
   TF_ASSERT_OK_AND_ASSIGN(se::cuda::SdcLog device_log,
-                          se::cuda::SdcLog::CreateOnDevice(
-                              /*max_entries=*/10, *stream_, *allocator_));
+                          se::cuda::SdcLog::CreateOnDevice(*stream_, mem));
 
   TF_EXPECT_OK(AppendChecksumOnDevice(/*entry_id=*/0, input, device_log,
                                       se::ThreadDim(2, 4, 8)));
@@ -161,14 +162,14 @@ TEST_F(ChecksumKernelTest, ComputesCorrectChecksumInParallel) {
 }
 
 TEST_F(ChecksumKernelTest, ComputesCorrectChecksumInParallelWithMaxThreads) {
+  se::DeviceMemory<uint8_t> mem = executor_->AllocateArray<uint8_t>(1024);
   std::vector<uint32_t> input =
       std::vector<uint32_t>(64 * 1024 / sizeof(uint32_t), 0x55aa55aa);
   // Xor with the expected checksum value.
   input[1000] ^= 0x12345678;
   constexpr uint32_t kExpectedChecksum = 0x12345678;
   TF_ASSERT_OK_AND_ASSIGN(se::cuda::SdcLog device_log,
-                          se::cuda::SdcLog::CreateOnDevice(
-                              /*max_entries=*/10, *stream_, *allocator_));
+                          se::cuda::SdcLog::CreateOnDevice(*stream_, mem));
 
   TF_EXPECT_OK(AppendChecksumOnDevice(/*entry_id=*/0, input, device_log,
                                       se::ThreadDim(128, 4, 2)));
@@ -179,12 +180,12 @@ TEST_F(ChecksumKernelTest, ComputesCorrectChecksumInParallelWithMaxThreads) {
 }
 
 TEST_F(ChecksumKernelTest, AppendsChecksumsToLog) {
+  se::DeviceMemory<uint8_t> mem = executor_->AllocateArray<uint8_t>(1024);
   constexpr std::array<uint32_t, 1> kInput123 = {0x01230123};
   constexpr std::array<uint32_t, 1> kInput456 = {0x04560456};
   constexpr std::array<uint32_t, 1> kInput789 = {0x07890789};
   TF_ASSERT_OK_AND_ASSIGN(se::cuda::SdcLog device_log,
-                          se::cuda::SdcLog::CreateOnDevice(
-                              /*max_entries=*/10, *stream_, *allocator_));
+                          se::cuda::SdcLog::CreateOnDevice(*stream_, mem));
 
   TF_EXPECT_OK(AppendChecksumOnDevice(/*entry_id=*/123, kInput123, device_log));
   TF_EXPECT_OK(AppendChecksumOnDevice(/*entry_id=*/456, kInput456, device_log));
@@ -201,12 +202,13 @@ TEST_F(ChecksumKernelTest, AppendsChecksumsToLog) {
 }
 
 TEST_F(ChecksumKernelTest, DiscardsOverflowingChecksums) {
+  se::DeviceMemory<uint8_t> mem = executor_->AllocateArray<uint8_t>(
+      sizeof(SdcLogHeader) + sizeof(SdcLogEntry) * 2);
   constexpr std::array<uint32_t, 1> kInput123 = {0x01230123};
   constexpr std::array<uint32_t, 1> kInput456 = {0x04560456};
   constexpr std::array<uint32_t, 1> kInput789 = {0x07890789};
   TF_ASSERT_OK_AND_ASSIGN(se::cuda::SdcLog device_log,
-                          se::cuda::SdcLog::CreateOnDevice(
-                              /*max_entries=*/2, *stream_, *allocator_));
+                          se::cuda::SdcLog::CreateOnDevice(*stream_, mem));
 
   TF_EXPECT_OK(AppendChecksumOnDevice(/*entry_id=*/123, kInput123, device_log));
   TF_EXPECT_OK(AppendChecksumOnDevice(/*entry_id=*/456, kInput456, device_log));
@@ -222,3 +224,4 @@ TEST_F(ChecksumKernelTest, DiscardsOverflowingChecksums) {
 }
 
 }  // namespace
+}  // namespace stream_executor::cuda
