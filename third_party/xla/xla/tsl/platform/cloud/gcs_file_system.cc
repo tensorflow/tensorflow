@@ -184,7 +184,7 @@ string MaybeAppendSlash(const string& name) {
     return "/";
   }
   if (name.back() != '/') {
-    return strings::StrCat(name, "/");
+    return absl::StrCat(name, "/");
   }
   return name;
 }
