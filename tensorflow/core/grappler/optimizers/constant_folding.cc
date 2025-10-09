@@ -242,7 +242,7 @@ string ConstantFolding::AddControlDependency(const string& input_name,
     // dependency: add a new identity node.
     int port = 0;
     string ctrl_dep_name = ParseNodeName(input_name, &port);
-    strings::StrAppend(&ctrl_dep_name, "_", port);
+    absl::StrAppend(&ctrl_dep_name, "_", port);
     ctrl_dep_name = AddPrefixToNodeName(ctrl_dep_name, kConstantFoldingCtrl);
     const DataType output_type = node->attr().at("T").type();
 
@@ -375,7 +375,7 @@ bool ConstantFolding::OptimizedNodeExists(const NodeDef& node,
 
 string ConstantFolding::OptimizedNodeName(const NodeDef& node,
                                           absl::string_view suffix) const {
-  return AddPrefixToNodeName(strings::StrCat(node.name(), suffix),
+  return AddPrefixToNodeName(absl::StrCat(node.name(), suffix),
                              kConstantFoldingConst);
 }
 
@@ -534,7 +534,7 @@ absl::Status ConstantFolding::MaterializeShapes(
           if (node_name == shape_n_node->name() && port == port_idx) {
             // Create a const node as ShapeN's output if not already.
             const string const_name = OptimizedNodeName(
-                *shape_n_node, strings::StrCat("-matshapes-", port_idx));
+                *shape_n_node, absl::StrCat("-matshapes-", port_idx));
             if (node_map_->GetNode(const_name) == nullptr) {
               NodeDef* added_node = graph_->add_node();
               added_node->set_name(const_name);
@@ -702,8 +702,7 @@ absl::Status ConstantFolding::MaterializeBroadcastGradientArgs(
         value.vec<int64_t>()(i) = reduce_dims[j][i];
       }
     }
-    string const_name =
-        OptimizedNodeName(node, strings::StrCat("-bcastargs-", j));
+    string const_name = OptimizedNodeName(node, absl::StrCat("-bcastargs-", j));
     out[j] = node_map_->GetNode(const_name);
     if (out[j] == nullptr) {
       out[j] = graph_->add_node();
@@ -954,7 +953,7 @@ absl::Status ConstantFolding::MaterializeConstants(
 
 bool ConstantFolding::IsFoldable(const NodeDef& node,
                                  const GraphProperties* properties) {
-  string key = strings::StrCat(node.name(), "/", node.op());
+  string key = absl::StrCat(node.name(), "/", node.op());
   auto it = maybe_foldable_nodes_.find(key);
   if (it == maybe_foldable_nodes_.end()) {
     it = maybe_foldable_nodes_
@@ -1380,9 +1379,8 @@ absl::Status ConstantFolding::EvaluateOneFoldable(const NodeDef& node,
     if (raw_val.dtype() == DT_INVALID) {
       return absl::Status(
           absl::StatusCode::kInvalidArgument,
-          strings::StrCat("A tensor in the input node, with TensorId of ",
-                          input_tensor.ToString(),
-                          " has a dtype of DT_INVALID."));
+          absl::StrCat("A tensor in the input node, with TensorId of ",
+                       input_tensor.ToString(), " has a dtype of DT_INVALID."));
     }
     if (IsRefType(raw_val.dtype())) {
       return absl::InvalidArgumentError(absl::StrCat(
@@ -1410,7 +1408,7 @@ absl::Status ConstantFolding::EvaluateOneFoldable(const NodeDef& node,
   for (size_t i = 0; i < output_tensors.size(); i++) {
     string node_name = OptimizedNodeName(node, "-folded");
     if (output_tensors.size() > 1) {
-      node_name = strings::StrCat(node_name, "-", i);
+      node_name = absl::StrCat(node_name, "-", i);
     }
     if (output_tensors[i].tensor) {
       absl::Status s = CreateNodeDef(node_name, output_tensors[i],
@@ -1471,8 +1469,8 @@ absl::Status ConstantFolding::FoldMergeNode(NodeDef* node,
         node_map_->GetNode(const_index_name)) {
       // Intended name already exists.
       return absl::AlreadyExistsError(
-          strings::StrCat(const_out_name, " or ", const_index_name,
-                          " already present in the graph"));
+          absl::StrCat(const_out_name, " or ", const_index_name,
+                       " already present in the graph"));
     }
 
     NodeDef* const_out = output_graph->add_node();
@@ -1589,8 +1587,8 @@ absl::Status ConstantFolding::FoldNode(NodeDef* node, GraphDef* output_graph,
     } else {
       if (node_map_->GetNode(const_node->name())) {
         // Intended name already exists.
-        return absl::AlreadyExistsError(strings::StrCat(
-            const_node->name(), " already present in the graph"));
+        return absl::AlreadyExistsError(
+            absl::StrCat(const_node->name(), " already present in the graph"));
       }
       NodeDef* added_node = output_graph->add_node();
       *added_node = *const_node;
@@ -1894,7 +1892,7 @@ bool ConstantFolding::ReplaceOperationWithBroadcastTo(
   }
   // Create constant node with shape.
   const string const_name = OptimizedNodeName(
-      *node, strings::StrCat("-broadcastto_shape-", input_to_broadcast));
+      *node, absl::StrCat("-broadcastto_shape-", input_to_broadcast));
   if (node_map_->GetNode(const_name) != nullptr) {
     return false;
   }
@@ -2763,7 +2761,7 @@ bool ConstantFolding::SimplifySwitch(GraphDef* optimized_graph, NodeDef* node) {
       // Add controls from the switch ports to the constants, and connect the
       // constants to the original switch outputs.
       const string false_port = node->name();
-      const string true_port = strings::StrCat(node->name(), ":1");
+      const string true_port = absl::StrCat(node->name(), ":1");
       const string false_ctrl_dep =
           AddControlDependency(false_port, optimized_graph, node_map_.get());
       false_node->add_input(false_ctrl_dep);
@@ -3720,7 +3718,7 @@ bool ConstantFolding::PartialAssocOpConstFolding(GraphDef* optimized_graph,
     return true;
   }
   const string new_node_name = OptimizedNodeName(
-      *node, strings::StrCat("_partial_split_", const_inputs_size));
+      *node, absl::StrCat("_partial_split_", const_inputs_size));
   if (const_inputs_size > 1 && const_inputs_size < num_non_control_inputs &&
       !node_map_->NodeExists(new_node_name)) {
     NodeDef* added_node = optimized_graph->add_node();
@@ -3822,7 +3820,7 @@ bool ConstantFolding::PartialConcatConstFolding(GraphDef* optimized_graph,
     // constant folded.
     string new_node_name = OptimizedNodeName(*node, "_partial_split");
     do {
-      new_node_name += strings::StrCat("_", interval.first);
+      new_node_name += absl::StrCat("_", interval.first);
     } while (node_map_->NodeExists(new_node_name));
 
     NodeDef* added_node = optimized_graph->add_node();
