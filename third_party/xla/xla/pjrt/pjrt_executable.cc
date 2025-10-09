@@ -82,6 +82,7 @@ absl::StatusOr<CompileOptionsProto> CompileOptions::ToProto() const {
       *output.add_argument_layouts() = layout.ToProto();
     }
   }
+  output.set_allow_in_place_mlir_modification(allow_in_place_mlir_modification);
   output.set_parameter_is_tupled_arguments(parameter_is_tupled_arguments);
   TF_ASSIGN_OR_RETURN(*output.mutable_executable_build_options(),
                       executable_build_options.ToProto());
@@ -123,6 +124,8 @@ absl::StatusOr<CompileOptions> CompileOptions::FromProto(
     }
     output.argument_layouts = std::move(output_argument_layouts);
   }
+  output.allow_in_place_mlir_modification =
+      proto.allow_in_place_mlir_modification();
   output.parameter_is_tupled_arguments = proto.parameter_is_tupled_arguments();
   TF_ASSIGN_OR_RETURN(
       ExecutableBuildOptions executable_build_options,

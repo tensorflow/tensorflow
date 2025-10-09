@@ -41,6 +41,7 @@ TEST(CompileOptionsTest, Serialization) {
   src.parameter_is_tupled_arguments = true;
   src.profile_version = 1;
   src.argument_layouts = {ShapeUtil::MakeShape(S32, {1})};
+  src.allow_in_place_mlir_modification = true;
   ExecutableBuildOptions build_option;
   build_option.set_device_assignment(DeviceAssignment(1, 1));
   src.executable_build_options = build_option;
@@ -63,6 +64,13 @@ TEST(CompileOptionsTest, DeserializeSerializedMultiSliceConfig) {
 
   EXPECT_EQ(option.multi_slice_config, nullptr);
   EXPECT_EQ(option.serialized_multi_slice_config, serialized_config);
+}
+
+TEST(CompileOptionsTest, Defaults) {
+  CompileOptions src;
+  EXPECT_EQ(src.compile_portable_executable, false);
+  EXPECT_EQ(src.parameter_is_tupled_arguments, false);
+  EXPECT_EQ(src.allow_in_place_mlir_modification, false);
 }
 
 TEST(ExecuteOptionsTest, Serialization) {
