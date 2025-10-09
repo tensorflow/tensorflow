@@ -738,10 +738,9 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
     deps = [
-        ":runtime_shape",
+        ":types",
         "//tensorflow/lite/core:macros",
         "//tensorflow/lite/core/c:common",
-        "@com_google_absl//absl/base:core_headers",
     ],
 )
 
@@ -774,13 +773,11 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
     deps = [
-        ":runtime_shape",
         ":tensor_ctypes",
         ":types",
         "//tensorflow/lite:macros",
         "//tensorflow/lite:string_util",
         "//tensorflow/lite/core/c:common",
-        "@com_google_absl//absl/base:core_headers",
     ],
 )
 
@@ -798,13 +795,11 @@ cc_library(
     }),
     copts = tflite_copts(),
     deps = [
-        ":runtime_shape",
         ":tensor_ctypes",
         ":types",
         "//tensorflow/lite:macros",
         "//tensorflow/lite:string_util",
         "//tensorflow/lite/core/c:common",
-        "@com_google_absl//absl/base:core_headers",
     ],
 )
 
