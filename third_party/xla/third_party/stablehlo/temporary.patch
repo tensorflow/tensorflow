@@ -1372,22 +1372,36 @@ diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveFold
      return success();
    }
  };
-@@ -1482,6 +1536,14 @@
-       rewriter.replaceOpWithNewOp<ConstantOp>(
-           op, DenseIntElementsAttr::get(resultType, values));
+@@ -1484,6 +1538,14 @@
        return success();
-+    }
-+
+     }
+ 
 +    // TODO: Support more iota folding, but doing so currently causes OOMs,
 +    // so this pattern needs to be enabled more carefully.
 +    if (outputSize != 1) {
 +      return rewriter.notifyMatchFailure(
 +          op, "expected output size to be 1, but got: " +
 +                  std::to_string(outputSize));
-     }
- 
++    }
++
      int64_t sequences = 1;
-@@ -1881,6 +1943,7 @@
+     int64_t sequenceMax = resultType.getDimSize(dimension);
+     int64_t elementRepetitions = 1;
+@@ -1549,9 +1611,11 @@
+       return rewriter.notifyMatchFailure(
+           op, "expected constant integer or float operand");
+ 
+-    // TODO: Does this expand splat values? Should we special case splats?
+     DenseElementsAttr resAttr;
+-    if (auto data = els.tryGetValues<APInt>())
++    if (auto splat = dyn_cast<SplatElementsAttr>(els))
++      resAttr =
++          DenseElementsAttr::get(resultType, splat.getSplatValue<Attribute>());
++    else if (auto data = els.tryGetValues<APInt>())
+       resAttr = transposeType(op, *data);
+     else if (auto data = els.tryGetValues<APFloat>())
+       resAttr = transposeType(op, *data);
+@@ -1881,6 +1945,7 @@
    patterns->add<FoldConcatenateOpPattern>(context, options, benefit);
    patterns->add<FoldConvertOpPattern>(context, options, benefit);
    patterns->add<FoldDivOpPattern>(context, options, benefit);
