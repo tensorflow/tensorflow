@@ -502,13 +502,8 @@ void AddLoweringPasses(mlir::OpPassManager& pm,
     se::SemanticVersion ptx_version =
         nvptx::DetermineHighestSupportedPtxVersionFromCudaVersion(
             device.runtime_version());
-
-    // FP8 conversion intrinsics are available on sm89 since ptx 8.1
-    // Older ptx versions only support FP8 conversion for sm90
-    if ((ptx_version >= se::SemanticVersion(8, 1, 0) && cc->IsAtLeast(8, 9)) ||
-        (ptx_version >= se::SemanticVersion(7, 8, 0) && cc->IsAtLeast(9, 0))) {
-      pm.addPass(CreateConvertFloatNvidiaPass());
-    }
+    pm.addPass(CreateConvertFloatNvidiaPass(
+        cc->major, cc->minor, ptx_version.major(), ptx_version.minor()));
   } else if (auto* cc = std::get_if<se::RocmComputeCapability>(
                  &device.gpu_compute_capability())) {
     if (cc->has_fp8_support()) {

@@ -1,4 +1,4 @@
-// RUN: emitters_opt %s -split-input-file -xla-gpu-convert-float-nvidia -canonicalize | FileCheck %s
+// RUN: emitters_opt %s -split-input-file -xla-gpu-convert-float-nvidia='compute_capability_major=10 compute_capability_minor=0 ptx_version_major=8 ptx_version_minor=6' -canonicalize | FileCheck %s
 
 module {
   func.func @intr_f16_to_f8(%arg0: f16) -> (f8E4M3FN, f8E5M2) {
@@ -152,3 +152,50 @@ module {
 // CHECK: %[[UPPER:.*]] = arith.cmpi ule, %[[VAL]], %c2139095040_i32
 // CHECK: %[[ISINF:.*]] = arith.andi %[[LOWER]], %[[UPPER]]
 // CHECK: arith.select %[[ISINF]], {{.*}}, %[[RES]]
+
+
+// -----
+
+module {
+  func.func @intr_f16_to_f4(%arg0: f16) -> f4E2M1FN {
+    %a = arith.truncf %arg0 : f16 to f4E2M1FN
+    return %a : f4E2M1FN
+  }
+}
+
+// CHECK-LABEL: @intr_f16_to_f4
+// CHECK: arith.extf %{{.+}} : f16 to f32
+// CHECK: llvm.call_intrinsic "llvm.nvvm.ff.to.e2m1x2.rn.satfinite"
+// CHECK: llvm.trunc %{{.+}} : i16 to i4
+// CHECK: arith.bitcast %{{.+}} : i4 to f4E2M1FN
+
+// -----
+
+module {
+  func.func @intr_f4_to_f32(%arg0: f4E2M1FN) -> f32 {
+    %a = arith.extf %arg0 : f4E2M1FN to f32
+    return %a : f32
+  }
+}
+
+// CHECK-LABEL: @intr_f4_to_f32
+// CHECK: arith.bitcast %{{.+}} : f4E2M1FN to i4
+// CHECK: llvm.zext %{{.+}} : i4 to i16
+// CHECK: llvm.call_intrinsic "llvm.nvvm.e2m1x2.to.f16x2.rn"
+// CHECK: llvm.extractelement
+// CHECK: arith.extf %{{.+}} : f16 to f32
+
+// -----
+
+// RUN: emitters_opt %s -split-input-file -xla-gpu-convert-float-nvidia='compute_capability_major=9 compute_capability_minor=0 ptx_version_major=8 ptx_version_minor=6' -canonicalize | FileCheck %s --check-prefix=CHECK-NO-F4
+
+module {
+  func.func @no_intr_f32_to_f4(%arg0: f32) -> f4E2M1FN {
+    %a = arith.truncf %arg0 : f32 to f4E2M1FN
+    return %a : f4E2M1FN
+  }
+}
+
+// CHECK-NO-F4-LABEL: @no_intr_f32_to_f4
+// CHECK-NO-F4-NOT: llvm.nvvm.ff.to.e2m1x2.rn
+// CHECK-NO-F4: arith.truncf %{{.+}} : f32 to f4E2M1FN
