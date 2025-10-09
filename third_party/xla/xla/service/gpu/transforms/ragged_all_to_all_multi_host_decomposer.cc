@@ -32,6 +32,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/replica_group.h"
+#include "xla/hlo/utils/hlo_query.h"
 #include "xla/literal_util.h"
 #include "xla/shape.h"
 #include "xla/tsl/platform/errors.h"
@@ -41,6 +42,7 @@ limitations under the License.
 
 namespace xla {
 namespace gpu {
+using hlo_query::NextChannelId;
 
 // Exchanges the metadata between the hosts and computes the intra-host
 // metadata.
@@ -71,7 +73,7 @@ HloInstruction* GetIntraHostMetadata(
           /*operands=*/{new_input_offsets},
           /*device_list=*/CollectiveDeviceList(replica_groups),
           /*constrain_layout=*/false,
-          /*channel_id=*/ragged_all_to_all->channel_id(),
+          /*channel_id=*/NextChannelId(*computation->parent()),
           /*split_dimension=*/0));
 
   if (correct_offsets) {
@@ -199,8 +201,8 @@ absl::StatusOr<bool> DecomposeRaggedAllToAll(
           /*all_gather_dimension=*/0,
           /*device_list=*/CollectiveDeviceList(inter_host_replica_groups),
           /*constrain_layout=*/false,
-          /*channel_id=*/ragged_all_to_all->channel_id(),
-          /*use_global_device_ids=*/false));
+          /*channel_id=*/NextChannelId(*computation->parent()),
+          /*use_global_device_ids=*/true));
 
   for (int i = 2; i < 6; ++i) {
     intra_host_metadata.push_back(GetIntraHostMetadata(
