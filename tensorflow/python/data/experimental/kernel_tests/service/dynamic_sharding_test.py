@@ -465,6 +465,44 @@ class DynamicShardingTest(data_service_test_base.TestBase,
     output.extend(self.getIteratorOutput(iter2))
     self.assertEqual(sorted(output), list(range(100)))
 
+  @combinations.generate(test_base.default_test_combinations())
+  def testDifferentDatasetIdsForSameJob(self):
+    cluster = data_service_test_base.TestCluster(num_workers=2)
+    dataset = dataset_ops.Dataset.range(100)
+    dataset_id1 = data_service_ops.register_dataset(
+        cluster.dispatcher_address(), dataset, dataset_id="dataset_id1"
+    )
+    dataset1 = data_service_ops.from_dataset_id(
+        data_service_ops.ShardingPolicy.DYNAMIC,
+        cluster.dispatcher_address(),
+        dataset_id1,
+        element_spec=dataset.element_spec,
+        job_name="shared_job",
+    )
+
+    dataset_id2 = data_service_ops.register_dataset(
+        cluster.dispatcher_address(), dataset, dataset_id="dataset_id2"
+    )
+    dataset2 = data_service_ops.from_dataset_id(
+        data_service_ops.ShardingPolicy.DYNAMIC,
+        cluster.dispatcher_address(),
+        dataset_id2,
+        element_spec=dataset.element_spec,
+        job_name="shared_job",
+    )
+
+    output = []
+    iter1 = self.getNext(dataset1)
+    iter2 = self.getNext(dataset2)
+    for _ in range(5):
+      output.append(self.evaluate(iter1()))
+      output.append(self.evaluate(iter2()))
+    output.extend(self.getIteratorOutput(iter1))
+    output.extend(self.getIteratorOutput(iter2))
+    # Produces 2 copies of the dataset because `from_dataset_id` prepends the
+    # dataset ID to the job name.
+    self.assertCountEqual(output, list(range(100)) * 2)
+
 
 class DynamicShardingFilesTest(data_service_test_base.TestBase,
                                tf_record_test_base.TFRecordTestBase,
