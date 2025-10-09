@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "tensorflow/core/public/session.h"
 
+#include "absl/status/status.h"
+#include "absl/strings/match.h"
+#include "xla/tsl/protobuf/error_codes.pb.h"
 #include "tensorflow/core/common_runtime/session_factory.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/test.h"
