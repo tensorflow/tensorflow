@@ -31,6 +31,7 @@ cc_library(
         "//xla:xla_data_proto_cc",
         "//xla/codegen/tiling:constraint_expression",
         "//xla/hlo/analysis:indexing_analysis",
+        "//xla/hlo/analysis:interval",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/utils:hlo_traversal",
         "@com_google_absl//absl/container:flat_hash_map",

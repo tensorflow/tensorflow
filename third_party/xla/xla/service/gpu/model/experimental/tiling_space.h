@@ -26,7 +26,7 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/codegen/tiling/constraint_expression.h"
-#include "xla/hlo/analysis/indexing_map.h"
+#include "xla/hlo/analysis/interval.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/service/gpu/model/experimental/symbolic_tile.h"
@@ -34,14 +34,18 @@ limitations under the License.
 
 namespace xla::gpu::experimental {
 
-// TilingSpace contains information about all parallel and sequential dimensions
-// and runtime variables in a fusion.
-// The parallel dimensions correspond to the dimensions of the outputs of the
-// fusion.
-// The sequential dimensions correspond to the contraction/reduction dimensions
-// of the dots/reduces in the fusion.
-// The runtime variables correspond to the offsets of the dynamic slices in the
-// fusion.
+// TilingSpace holds information about all tiling parameters of a fusion.
+//
+// It defines symbolic tiles for the fusion roots as symbolic expressions and
+// constraints of possible tile "variables":
+// * parallel dimensions - output dimensions of the fusion;
+// * sequential dimensions - contraction/reduction dimensions of operations in
+//   the fusion;
+// * runtime variables - for example, offsets of the dynamic slices.
+//
+// This information allows us later to explore the space of all possible tilings
+// and assign concrete tilings for every instruction of the fusion with
+// SymbolicTilePropagation.
 class TilingSpace {
  public:
   TilingSpace() : constraints_(ConstraintExpression::GetAlwaysSatisfied()) {}
@@ -51,29 +55,46 @@ class TilingSpace {
 
   enum class DimensionSemantics { kParallel, kSequential };
   struct DimensionInfo {
-    // Unique ID for the dimension.
+    // Unique ID for the dimension within the tiling space.
     ID id;
     // Size of the dimension.
     int64_t dimension_size;
     // Type of the dimension.
     DimensionSemantics type;
-    // HLO instruction that defines the dimension.
+    // HLO instruction that defines (introduces) the dimension. For example
+    // fusion root instruction defines the parallel dimensions. Dot/reduce
+    // defines the sequential (contraction) dimensions.
     const HloInstruction* hlo;
-    // Index into the ordered list of dimensions of the HLO instruction.
-    // All dimensions in the HLO instruction are described as
+    // Index into the ordered list of dimensions of the HLO instruction `hlo`
+    // that defines the dimension.
+    // All dimensions in the HLO instruction are ordered as
     // [all parallel dims of the output, all reduction/contraction dims].
     //
-    // Example:
-    // [output_dims] dot(lhs, rhs, lhs_contracting_dims, rhs_contracting_dims)
-    // The dimensions are ordered as [output_dims, LHS[lhs_contracting_dims]].
+    // Example, for `[a,b,c] = dot(lhs, rhs, lhs_contracting_dims={d,e}, ...)`.
+    // The ordered list of dimensions is [a,b,c,d,e].
     int64_t dim_position;
   };
 
+  // Information about a runtime variable.
+  // For example:
+  //
+  // off = s32[] parameter(0)
+  // ds = dynamic-slice(tensor, off), ...
+  //
+  // `off = s32[] parameter(0)` instruction (`hlo`) defines the runtime
+  // variable.
+  // User's (dynamic-slice) semantics sets the `bounds` of possible values.
+  //
+  // If the same hlo is used as runtime variable multiple times, there will be
+  // multiple entries in the `rt_vars_` with different IDs.
+  //
+  // RTVarInfo are accessed by (user_hlo, operand_id), in this case it is
+  // (dynamic-slice, 1).
   struct RTVarInfo {
-    // Unique ID for the runtime variable.
+    // Unique ID for the runtime variable within the tiling space.
     ID id;
-    // Feasible bounds of the runtime variable. The values outside of the bounds
-    // will be clamped.
+    // Feasible bounds of the runtime variable.
+    // The values outside of the bounds will be clamped.
     Interval bounds;
     // HLO instruction that defines the runtime variable.
     const HloInstruction* hlo;
@@ -90,9 +111,15 @@ class TilingSpace {
     sink.Append(space.ToString());
   }
 
+  // Returns the dimension info for the given `hlo` and `dim_position`.
+  // `dim_position` is the index into the ordered list of dimensions of the HLO
+  // instruction `hlo` that defines the dimension. The dimension info must
+  // exist.
   const DimensionInfo& GetDimensionInfo(const HloInstruction& hlo,
                                         int64_t dim_position) const;
 
+  // Returns the runtime variable info for `hlo` that uses it and its
+  // `operand_id`. This runtime variable info must exist.
   const RTVarInfo& GetRTVarInfo(const HloInstruction& hlo,
                                 int64_t operand_id) const;
 
@@ -115,6 +142,7 @@ class TilingSpace {
   void ProcessDot(const HloInstruction& hlo);
   void ProcessReduce(const HloInstruction& hlo);
   void ProcessDynamicSlice(const HloInstruction& hlo);
+  void ProcessInstruction(const HloInstruction& hlo);
 
   // Maps from (hlo, dim_position) to the dimension info.
   absl::flat_hash_map<std::pair<const HloInstruction*, int64_t>,
@@ -130,7 +158,9 @@ class TilingSpace {
   // The deque is used to guarantee the pointer stability.
   std::deque<RTVarInfo> rt_vars_;
 
-  // Root instruction of the fusion.
+  // Symbolic tiles for the fusion roots.
+  // For tuple roots, there will be one tile per tuple element. Otherwise,
+  // there will be only one symbolic tile.
   llvm::SmallVector<SymbolicTile, 2> tiled_roots_;
 
   // Constraint expression for the tiling space.
