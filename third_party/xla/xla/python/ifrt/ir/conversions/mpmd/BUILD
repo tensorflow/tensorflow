@@ -44,7 +44,7 @@ cc_library(
     name = "lower_to_ifrt",
     srcs = ["lower_to_ifrt.cc"],
     hdrs = ["lower_to_ifrt.h"],
-    visibility = ["//xla/python/ifrt:users"],
+    visibility = internal_visibility(["//xla/python/ifrt:users"]),
     deps = [
         ":utils",
         "//xla/client:executable_build_options",
@@ -108,7 +108,7 @@ tsl_pybind_extension(
         "-fno-strict-aliasing",
     ],
     features = ["-use_header_modules"],
-    visibility = ["//xla/python/ifrt:users"],
+    visibility = internal_visibility(["//xla/python/ifrt:users"]),
     deps = [
         ":lower_to_ifrt",
         "//xla/pjrt:status_casters",
