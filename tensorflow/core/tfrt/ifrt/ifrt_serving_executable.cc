@@ -268,17 +268,20 @@ IfrtServingExecutable::Create(
   return executable;
 }
 
-absl::StatusOr<xla::ifrt::ArrayRef> IfrtServingExecutable::ConvertTensorToArray(
+absl::StatusOr<tsl::Future<xla::ifrt::ArrayRef>>
+IfrtServingExecutable::ConvertTensorToArray(
     const tensorflow::Tensor& tensor,
     const xla::ifrt::DeviceListRef& device_list,
-    const xla::OpSharding& sharding) {
+    const xla::OpSharding& sharding,
+    H2DTransferExecutor& h2d_transfer_executor) {
   xla::ifrt::Shape input_shape = ToIfrtShape(tensor.shape());
   VLOG(2) << "Converting tensor of shape " << input_shape;
 
   TF_ASSIGN_OR_RETURN(auto hlo_sharding, xla::HloSharding::FromProto(sharding));
 
   return MakeArrayFromTensor(*ifrt_client_, tensor, device_list,
-                             std::move(hlo_sharding), thread_pool_);
+                             std::move(hlo_sharding), thread_pool_,
+                             h2d_transfer_executor);
 }
 
 absl::StatusOr<std::vector<tensorflow::FunctionDef>> BuildFunctionDef(
@@ -719,8 +722,11 @@ absl::StatusOr<std::vector<tensorflow::Tensor>> IfrtServingExecutable::Execute(
     device_ids.push_back(device->Id().value());
   }
   std::vector<xla::ifrt::ArrayRef> args;
+  std::vector<std::pair<int64_t, tsl::Future<xla::ifrt::ArrayRef>>> user_inputs;
+  user_inputs.reserve(inputs.size() - variable_arg_indices.size());
   args.reserve(inputs.size());
   int variable_arg_index = 0;
+  H2DTransferExecutor user_inputs_h2d_transfer_executor(*ifrt_client_);
   for (int i = 0; i < inputs.size(); i++) {
     if (variable_arg_index < variable_arg_indices.size() &&
         i == variable_arg_indices[variable_arg_index]) {
@@ -755,14 +761,25 @@ absl::StatusOr<std::vector<tensorflow::Tensor>> IfrtServingExecutable::Execute(
       }
 
       TF_ASSIGN_OR_RETURN(
-          auto single_array,
+          auto user_input_future,
           ConvertTensorToArray(
               reshaped, device_list,
-              executable_bundle->compile_metadata.args()[i].sharding()));
-      args.push_back(single_array);
+              executable_bundle->compile_metadata.args()[i].sharding(),
+              user_inputs_h2d_transfer_executor));
+      user_inputs.push_back({args.size(), std::move(user_input_future)});
+      // Put a placeholder for now. The actual array will be filled in when the
+      // future is ready.
+      args.push_back(xla::ifrt::ArrayRef());
     }
   }
   DCHECK_EQ(args.size(), executable_bundle->compile_metadata.args().size());
+
+  TF_RETURN_IF_ERROR(
+      user_inputs_h2d_transfer_executor.FlushSmallTensorsTransfer());
+  for (auto& [original_index, user_input_future] : user_inputs) {
+    TF_ASSIGN_OR_RETURN(auto user_input, user_input_future.Await());
+    args[original_index] = std::move(user_input);
+  }
 
   VLOG(2) << "Start Execution";
 
@@ -823,6 +840,7 @@ absl::Status IfrtServingExecutable::AsyncLoadIfrtArray(
     absl::Span<const int> variable_arg_indices,
     const CachedExecutableBundle& executable_bundle,
     const xla::ifrt::DeviceListRef& devices) {
+  H2DTransferExecutor h2d_transfer_executor(*ifrt_client_);
   for (const int i : variable_arg_indices) {
     if (inputs[i].dtype() != tensorflow::DT_STRING ||
         !tensorflow::TensorShapeUtils::IsScalar(inputs[i].shape())) {
@@ -849,7 +867,7 @@ absl::Status IfrtServingExecutable::AsyncLoadIfrtArray(
         ifrt_serving::AsyncLoadRestoredTensorAsIfrtLoadedVariable(
             tensor_name, ifrt_client_, thread_pool_,
             ifrt_restore_tensor_registry_, ifrt_loaded_variable_registry_,
-            checkpoint_loader_queue_, sharding_config));
+            checkpoint_loader_queue_, sharding_config, h2d_transfer_executor));
   }
   return absl::OkStatus();
 }

@@ -27,10 +27,15 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/ifrt_types.h"
+#include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/client.h"
+#include "xla/python/ifrt/device.h"
+#include "xla/python/ifrt/device_list.h"
+#include "xla/python/ifrt/memory.h"
+#include "xla/python/ifrt/shape.h"
+#include "xla/python/pjrt_ifrt/xla_sharding.h"
 #include "xla/tsl/concurrency/future.h"
-#include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/threadpool.h"
@@ -52,10 +57,16 @@ absl::StatusOr<xla::ifrt::ArrayRef> LoadIfrtVariable(
     std::shared_ptr<xla::ifrt::Client> ifrt_client,
     const tsl::thread::ThreadPool& thread_pool,
     const tensorflow::Tensor& variable,
-    const VariableDeviceShardingConfig& sharding_config) {
-  return tensorflow::ifrt_serving::MakeArrayFromTensor(
-      *ifrt_client, variable, sharding_config.device_ids,
-      sharding_config.hlo_sharding, thread_pool);
+    const VariableDeviceShardingConfig& sharding_config,
+    H2DTransferExecutor& h2d_transfer_executor) {
+  TF_ASSIGN_OR_RETURN(
+      auto array_ref_future,
+      tensorflow::ifrt_serving::MakeArrayFromTensor(
+          *ifrt_client, variable, sharding_config.device_ids,
+          sharding_config.hlo_sharding, thread_pool, h2d_transfer_executor));
+  // Await here is not blocking because all the variables' future are expected
+  // to be immediate ready.
+  return array_ref_future.Await();
 }
 
 }  // namespace
@@ -92,7 +103,12 @@ absl::Status AsyncLoadRestoredTensorAsIfrtLoadedVariable(
     const ifrt_serving::IfrtRestoreTensorRegistry& restore_tensor_registry,
     ifrt_serving::IfrtLoadedVariableRegistry& loaded_variable_registry,
     tfrt::ConcurrentWorkQueue* checkpoint_loader_queue,
-    const VariableDeviceShardingConfig& sharding_config) {
+    const VariableDeviceShardingConfig& sharding_config,
+    H2DTransferExecutor& h2d_transfer_executor) {
+  if (h2d_transfer_executor.GetSmallTensorThresholdBytes() > 0) {
+    return absl::InvalidArgumentError(
+        "Small tensor transfer should not be enabled for loading variables.");
+  }
   IfrtLoadedVariableRegistry::Key key{
       .device_ids = sharding_config.device_ids,
       .input_name = std::string(tensor_name),
@@ -129,7 +145,8 @@ absl::Status AsyncLoadRestoredTensorAsIfrtLoadedVariable(
        checkpoint_loader_queue = checkpoint_loader_queue,
        sharding_config = sharding_config,
        loaded_variable_promise = std::move(loaded_variable_promise),
-       bg_context = std::move(bg_context)](
+       bg_context = std::move(bg_context),
+       h2d_transfer_executor = h2d_transfer_executor](
           absl::StatusOr<tensorflow::Tensor> restored_tensor) mutable {
         if (!restored_tensor.ok()) {
           loaded_variable_promise.Set(restored_tensor.status());
@@ -142,11 +159,12 @@ absl::Status AsyncLoadRestoredTensorAsIfrtLoadedVariable(
              sharding_config = std::move(sharding_config),
              restored_tensor = std::move(*restored_tensor),
              loaded_variable_promise = std::move(loaded_variable_promise),
-             bg_context = std::move(bg_context)]() mutable {
+             bg_context = std::move(bg_context),
+             h2d_transfer_executor = h2d_transfer_executor]() mutable {
               tensorflow::WithContext wc(bg_context);
               absl::StatusOr<xla::ifrt::ArrayRef> variable_array =
                   LoadIfrtVariable(ifrt_client, thread_pool, restored_tensor,
-                                   sharding_config);
+                                   sharding_config, h2d_transfer_executor);
               loaded_variable_promise.Set(std::move(variable_array));
             });
       });
