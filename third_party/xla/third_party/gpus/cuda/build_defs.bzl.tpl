@@ -162,7 +162,10 @@ def cuda_library(copts = [], tags = [], deps = [], **kwargs):
     local_defines = kwargs.pop("local_defines", []) + ["register="]
     native.cc_library(
         copts = cuda_default_copts() + copts,
-        tags = tags + ["gpu"],
+        tags = tags + [
+            "gpu",
+            "cuda-only",
+        ],
         deps = deps + if_cuda_is_configured([
             "@local_config_cuda//cuda:implicit_cuda_headers_dependency",
         ]),
