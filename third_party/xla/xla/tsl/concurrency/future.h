@@ -290,7 +290,7 @@ class FutureBase : public FutureMoveControl<is_move_only> {
 
   // Blocks the calling thread until the future is ready, then returns the
   // final value.
-  const T& Await() const& {
+  [[nodiscard]] const T& Await() const& {
     BlockUntilReady(
         static_cast<void (*)(tsl::AsyncValue*)>(tsl::BlockUntilReady));
     return *promise_;
@@ -298,7 +298,7 @@ class FutureBase : public FutureMoveControl<is_move_only> {
 
   // Blocks the calling thread until the future is ready, then returns the
   // final value.
-  std::conditional_t<is_move_only, T, const T&> Await() && {
+  [[nodiscard]] std::conditional_t<is_move_only, T, const T&> Await() && {
     BlockUntilReady(
         static_cast<void (*)(tsl::AsyncValue*)>(tsl::BlockUntilReady));
 

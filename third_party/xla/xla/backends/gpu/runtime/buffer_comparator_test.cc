@@ -448,6 +448,41 @@ TEST_F(BufferComparatorTest, BF16) {
                    .value());
 }
 
+TEST_F(BufferComparatorTest, VeryLargeArray) {
+  constexpr PrimitiveType number_type = U16;
+  using NT = primitive_util::PrimitiveTypeToNative<number_type>::type;
+
+  // Set non-power-of-two element count on purpose
+  int64_t element_count = (1LL << 34) - 11;
+  auto stream = stream_exec_->CreateStream().value();
+
+  // Use host memory here since there is a limitation of 4GB per test on
+  // device memory alloc
+  TF_ASSERT_OK_AND_ASSIGN(auto base, stream_exec_->HostMemoryAllocate(
+                                         (element_count + 1) * sizeof(NT)));
+
+  // We use overlapping lhs and rhs arrays to reduce memory usage, also this
+  // serves as an extra test for possible pointer aliasing problems
+  se::DeviceMemoryBase lhs(base->opaque(), base->size() - sizeof(NT)),
+      rhs(static_cast<NT*>(base->opaque()) + 1, lhs.size());
+
+  TF_CHECK_OK(stream->Memset32(&lhs, 0xABCDABCD, base->size()));
+
+  // Disable host comparison here since it could take a while for ~8GB array
+  BufferComparator comparator(
+      ShapeUtil::MakeShape(number_type, {element_count}),
+      /*tolerance*/ 0.1, /* verbose */ false, /*run_host_compare*/ false);
+  EXPECT_TRUE(comparator.CompareEqual(stream.get(), lhs, rhs).value());
+
+  auto slice = rhs.GetByteSlice(element_count * sizeof(NT) - sizeof(uint32_t),
+                                sizeof(uint32_t));
+  // Change only the very last entry of rhs to verify that the whole arrays are
+  // compared (if the grid dimensions are not computed correctly, this might
+  // not be the case). Account for little-endian: [CD AB 77 17].
+  TF_CHECK_OK(stream->Memset32(&slice, 0x1777ABCD, slice.size()));
+  EXPECT_FALSE(comparator.CompareEqual(stream.get(), lhs, rhs).value());
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla

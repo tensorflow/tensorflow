@@ -47,6 +47,9 @@ class RedzoneAllocator : public ScratchAllocator {
   static constexpr int64_t kDefaultRedzoneSize =
       1LL << 23;  // 8MiB per side, 16MiB total.
   static constexpr uint8_t kDefaultRedzonePattern = -1;  // NOLINT
+  // Maximum number of thread blocks to be used for redzone checker kernel
+  static constexpr int64_t kMaxNumThreadBlocksForKernel = 32768;
+
   RedzoneAllocator(Stream* stream, DeviceMemoryAllocator* memory_allocator,
                    int64_t memory_limit = (1LL << 32),  // 4GB
                    int64_t redzone_size = kDefaultRedzoneSize,

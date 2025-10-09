@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/numeric/bits.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
@@ -182,7 +183,7 @@ PerThreadOutputs ReductionFusion::EmitterState::EmitPerThreadElements(
       owner.ComputeReductionInputIndexing(builder.getContext());
   tile_indexing
       .GetMutableDimensionBound(
-          KernelFusionInterface::kIndexingMapBlockIdxDims[1])
+          KernelFusionInterface::kIndexingMapBlockIdxDims[2])
       .upper = owner.reduction_heroes_.size();
   tile_indexing.Simplify();
   bool vectorize = owner.vector_size_ > 1;
@@ -394,6 +395,7 @@ ReductionFusion::ReductionFusion(const HloFusionAnalysis& analysis)
 
   const auto& groups = GetGroups();
   int num_groups = groups.grouped_roots.size();
+
   side_output_roots_.resize(num_groups);
   reduction_heroes_.resize(num_groups);
   reduction_roots_.resize(num_groups);
@@ -404,6 +406,7 @@ ReductionFusion::ReductionFusion(const HloFusionAnalysis& analysis)
                  groups.is_reduction_root, groups.group_id_per_root)) {
     const HloInstruction* root = &root_adaptor.instruction();
     const HloInstruction* hero = &hero_adaptor.instruction();
+
     if (is_reduction) {
       if (seen_heroes.insert(hero).second) {
         reduction_heroes_[group_id].push_back(hero);
@@ -420,11 +423,13 @@ IndexingMap ReductionFusion::GetIndexingMap(
     absl::Span<int64_t const> symbol_sizes) const {
   auto* ctx = results.front().getContext();
   auto num_groups = static_cast<int64_t>(reduction_heroes_.size());
-  return IndexingMap{AffineMap::get(6, symbol_sizes.size(), results, ctx),
-                     DimVarsFromGPUGrid({Product(num_threads_), 1, 1,
-                                         Product(num_blocks_), num_groups, 1}),
-                     RangeVarsFromTensorSizes(symbol_sizes),
-                     /*rt_vars=*/{}};
+  return IndexingMap{
+      AffineMap::get(6, symbol_sizes.size(), results, ctx),
+      DimVarsFromGPUGrid({Product(num_threads_), 1, 1,
+                          static_cast<int64_t>(gpu_blocks_[0]),
+                          static_cast<int64_t>(gpu_blocks_[1]), num_groups}),
+      RangeVarsFromTensorSizes(symbol_sizes),
+      /*rt_vars=*/{}};
 }
 
 IndexingMap ReductionFusion::GetThreadIndexingMap(
@@ -443,9 +448,10 @@ IndexingMap ReductionFusion::GetThreadIndexingMap(
 }
 
 LaunchDimensions ReductionFusion::launch_dimensions() const {
-  size_t blocks_y = groups_.grouped_roots.size();
-  return {se::BlockDim(/*x=*/Product(num_blocks_),
-                       /*y=*/static_cast<int64_t>(blocks_y), /*z=*/1),
+  uint64_t blocks_z = groups_.grouped_roots.size();
+  return {se::BlockDim(/*x=*/gpu_blocks_[0],
+                       /*y=*/gpu_blocks_[1],
+                       /*z=*/blocks_z),
           se::ThreadDim(/*x=*/Product(num_threads_),
                         /*y=*/1, /*z=*/1)};
 }
@@ -486,7 +492,7 @@ absl::Status ReductionFusion::EmitEntryFunction(
   SmallVector<int64_t> cases(reduction_heroes_.size() - 1);
   absl::c_iota(cases, 1);  // `default` is region 0.
   auto switch_op = b.create<mlir::scf::IndexSwitchOp>(
-      entry_function.getResultTypes(), EmitBlockId(b, 1), cases, cases.size());
+      entry_function.getResultTypes(), EmitBlockId(b, 2), cases, cases.size());
   b.create<mlir::func::ReturnOp>(switch_op.getResults());
   for (auto [id, region] : llvm::enumerate(switch_op->getRegions())) {
     b.setInsertionPointToStart(&region.emplaceBlock());
@@ -511,38 +517,27 @@ std::optional<std::vector<IndexingMap>>
 ReductionFusion::ComputeThreadIdToInputIndexing(int64_t root_index,
                                                 MLIRContext* ctx) const {
   const auto& hero = analysis_.fusion_hero(root_index).instruction();
-  std::vector<IndexingMap> result(hero.operand_count(),
-                                  IndexingMap::GetUndefined());
+  if (groups_.is_reduction_root[root_index] &&
+      hero_operand_index >= hero.operand_count() / 2) {
+    // We don't have indexing for the init values.
+    return std::nullopt;
+  }
   if (!groups_.is_reduction_root[root_index]) {
-    auto thread_id_to_output_indexing =
-        ComputeThreadIdToOutputIndexing(root_index, ctx);
-    if (!thread_id_to_output_indexing.has_value()) {
-      return std::nullopt;
-    }
-    for (int64_t operand_index = 0; operand_index < hero.operand_count();
-         ++operand_index) {
-      result[operand_index] = ComposeIndexingMaps(
-          *thread_id_to_output_indexing,
-          ComputeOutputToInputIndexing(
-              &analysis_.fusion_root(root_index).instruction(), 0, ctx)
-              .indexing_maps[operand_index]
-              .begin()
-              ->map());
-      result[operand_index].Simplify();
-    }
-    return result;
+    return ComposeIndexingMaps(
+        *ComputeThreadIdToOutputIndexing(root_index, ctx),
+        ComputeOutputToInputIndexing(
+            &analysis_.fusion_root(root_index).instruction(), 0, ctx)
+            .indexing_maps[hero_operand_index]
+            .begin()
+            ->map());
   }
-  // We don't have indexing for the init values.
-  for (int64_t operand_index = 0; operand_index < hero.operand_count() / 2;
-       ++operand_index) {
-    auto projected_map = ComputeReductionInputIndexing(ctx);
-    AddGroupIdConstraint(projected_map, root_index, groups_);
-    result[operand_index] =
-        projected_map *
-        GetBitcastMap(input_shape_, hero.operand(operand_index)->shape(), ctx);
-    result[operand_index].Simplify();
-  }
-  return result;
+  auto projected_map = ComputeReductionInputIndexing(ctx);
+  AddGroupIdConstraint(projected_map, root_index, groups_);
+  auto map = projected_map *
+             GetBitcastMap(input_shape_,
+                           hero.operand(hero_operand_index)->shape(), ctx);
+  map.Simplify();
+  return map;
 }
 
 std::optional<IndexingMap> ReductionFusion::ComputeThreadIdToOutputIndexing(
@@ -631,14 +626,27 @@ ColumnReductionFusion::ColumnReductionFusion(const HloFusionAnalysis& analysis)
   int64_t num_blocks_per_row =
       CeilOfRatio(minor_kept_dim, kTileSize * vector_size_);
   num_blocks_ = {major_kept_dim, num_blocks_per_row};
+  gpu_blocks_ = MaybeSplitGridDimensionX(
+      Product(num_threads_), Product(num_blocks_), analysis_.device_info());
+
+  VLOG(3) << absl::StrFormat(
+      "ColumnReductionFusion selected parameters: num_threads "
+      "= [%s], tile_sizes_per_thread = [%s], "
+      "num_blocks = [%s] real_blocks_ = [%d, %d] ",
+      absl::StrJoin(num_threads_, ","),
+      absl::StrJoin(tile_sizes_per_thread_, ","),
+      absl::StrJoin(num_blocks_, ","), gpu_blocks_[0], gpu_blocks_[1]);
 }
 
 IndexingMap ColumnReductionFusion::ComputeReductionOutputIndexing(
     MLIRContext* ctx) const {
   auto thread_id =
       DelinearizeInBoundsIndex(getAffineDimExpr(0, ctx), num_threads_);
+
+  auto bx = mlir::getAffineDimExpr(3, ctx), by = mlir::getAffineDimExpr(4, ctx);
   auto block_id =
-      DelinearizeInBoundsIndex(getAffineDimExpr(3, ctx), num_blocks_);
+      DelinearizeInBoundsIndex(bx + gpu_blocks_[0] * by, num_blocks_);
+
   auto vector_index = getAffineSymbolExpr(0, ctx);
   SmallVector<AffineExpr, 2> results{
       block_id[0],
@@ -653,8 +661,10 @@ IndexingMap ColumnReductionFusion::ComputeReductionInputIndexing(
     mlir::MLIRContext* ctx) const {
   auto thread_id =
       DelinearizeInBoundsIndex(getAffineDimExpr(0, ctx), num_threads_);
+  auto bx = mlir::getAffineDimExpr(3, ctx), by = mlir::getAffineDimExpr(4, ctx);
   auto block_id =
-      DelinearizeInBoundsIndex(getAffineDimExpr(3, ctx), num_blocks_);
+      DelinearizeInBoundsIndex(bx + gpu_blocks_[0] * by, num_blocks_);
+
   AffineExpr element_index = getAffineSymbolExpr(0, ctx);
   AffineExpr vector_index = getAffineSymbolExpr(1, ctx);
 
@@ -728,6 +738,16 @@ SmallColumnReductionFusion::SmallColumnReductionFusion(
   num_blocks_ = {input_shape_[kColMajorKept]};
   loop_size_ = CeilOfRatio(input_shape_[1] * input_shape_[2],
                            vector_size_ * num_threads_[0]);
+  gpu_blocks_ = MaybeSplitGridDimensionX(
+      Product(num_threads_), Product(num_blocks_), analysis_.device_info());
+
+  VLOG(3) << absl::StrFormat(
+      "SmallColumnReductionFusion selected parameters: num_threads "
+      "= [%s], tile_sizes_per_thread = [%s], "
+      "num_blocks = [%s] real_blocks_ = [%d, %d] ",
+      absl::StrJoin(num_threads_, ","),
+      absl::StrJoin(tile_sizes_per_thread_, ","),
+      absl::StrJoin(num_blocks_, ","), gpu_blocks_[0], gpu_blocks_[1]);
 }
 
 IndexingMap SmallColumnReductionFusion::ComputeReductionOutputIndexing(
@@ -805,7 +825,7 @@ RowReductionFusion::RowReductionFusion(const HloFusionAnalysis& analysis)
     : ReductionFusion(analysis) {
   CHECK(reduction_dimensions_.is_row_reduction);
   Vector3 shape = reduction_dimensions_.dimensions;
-  int64_t kMinorReducedElementsPerThread = 8;
+  int64_t kMinorReducedElementsPerThread = 16;
 
   do {
     kMinorReducedElementsPerThread *= 2;
@@ -865,22 +885,28 @@ RowReductionFusion::RowReductionFusion(const HloFusionAnalysis& analysis)
            ((Product(num_blocks_) * Product(num_threads_)) >
             std::numeric_limits<uint32_t>::max()));
 
+  gpu_blocks_ = MaybeSplitGridDimensionX(
+      Product(num_threads_), Product(num_blocks_), analysis_.device_info());
+
   VLOG(3) << absl::StrFormat(
-      "RowReductionFusion::RowReductionFusion selected parameters: num_threads "
+      "RowReductionFusion selected parameters: num_threads "
       "= [%s], tile_sizes_per_thread = [%s], tile_sizes_per_block = [%s], "
-      "num_blocks = [%s]",
+      "num_blocks = [%s] real_blocks_ = [%d, %d]",
       absl::StrJoin(num_threads_, ","),
       absl::StrJoin(tile_sizes_per_thread_, ","),
       absl::StrJoin(tile_sizes_per_block_, ","),
-      absl::StrJoin(num_blocks_, ","));
+      absl::StrJoin(num_blocks_, ","), gpu_blocks_[0], gpu_blocks_[1]);
 }
 
 IndexingMap RowReductionFusion::ComputeReductionInputIndexing(
     mlir::MLIRContext* ctx) const {
   auto thread_id =
       DelinearizeInBoundsIndex(mlir::getAffineDimExpr(0, ctx), num_threads_);
+
+  auto bx = mlir::getAffineDimExpr(3, ctx), by = mlir::getAffineDimExpr(4, ctx);
   auto block_id =
-      DelinearizeInBoundsIndex(mlir::getAffineDimExpr(3, ctx), num_blocks_);
+      DelinearizeInBoundsIndex(bx + gpu_blocks_[0] * by, num_blocks_);
+
   auto major_reduced = getAffineSymbolExpr(0, ctx);
   auto minor_reduced = getAffineSymbolExpr(1, ctx);
   auto vector_index = getAffineSymbolExpr(2, ctx);
@@ -892,7 +918,6 @@ IndexingMap RowReductionFusion::ComputeReductionInputIndexing(
           (minor_reduced * num_threads_[1]) + thread_id[1],
       vector_index,
   };
-
   auto map = GetIndexingMap(indices, tile_sizes_per_thread_);
   for (auto [result, input_dim] : llvm::zip(indices, input_shape_)) {
     map.AddConstraint(result, {0, input_dim - 1});
@@ -904,8 +929,10 @@ IndexingMap RowReductionFusion::ComputeReductionOutputIndexing(
     MLIRContext* ctx) const {
   auto thread_id =
       DelinearizeInBoundsIndex(mlir::getAffineDimExpr(0, ctx), num_threads_);
+
+  auto bx = mlir::getAffineDimExpr(3, ctx), by = mlir::getAffineDimExpr(4, ctx);
   auto block_id =
-      DelinearizeInBoundsIndex(mlir::getAffineDimExpr(3, ctx), num_blocks_);
+      DelinearizeInBoundsIndex(bx + gpu_blocks_[0] * by, num_blocks_);
   IndexingMap projected_index =
       GetIndexingMap(block_id[0] * tile_sizes_per_block_[0] + thread_id[0]);
   projected_index.AddConstraint(thread_id[1], {0, 0});
@@ -966,6 +993,16 @@ MultiRowReductionFusion::MultiRowReductionFusion(
   num_threads_ = GetNumThreads(reduction_dimensions_, vector_size);
   num_blocks_ = {GetNumBlocks(reduction_dimensions_, num_threads_)};
   tile_sizes_per_thread_ = {shape[0], vector_size};
+  gpu_blocks_ = MaybeSplitGridDimensionX(
+      Product(num_threads_), Product(num_blocks_), analysis_.device_info());
+
+  VLOG(3) << absl::StrFormat(
+      "MultiRowReductionFusion selected parameters: num_threads "
+      "= [%s], tile_sizes_per_thread = [%s], "
+      "num_blocks = [%s] real_blocks_ = [%d, %d]",
+      absl::StrJoin(num_threads_, ","),
+      absl::StrJoin(tile_sizes_per_thread_, ","),
+      absl::StrJoin(num_blocks_, ","), gpu_blocks_[0], gpu_blocks_[1]);
 }
 
 std::unique_ptr<ReductionFusion> MultiRowReductionFusion::TryCreate(
@@ -1037,7 +1074,6 @@ std::unique_ptr<ReductionFusion> MultiRowReductionFusion::TryCreate(
              min_desired_blocks) {
     vector_size /= 2;
   }
-
   // Check again that the reduced dimension fits after potentially reducing the
   // vector size.
   if (shape[kRowMinorReduced] > warp_size * vector_size) {
@@ -1083,8 +1119,16 @@ IndexingMap MultiRowReductionFusion::ComputeReductionInputIndexing(
     mlir::MLIRContext* ctx) const {
   auto thread_id =
       DelinearizeInBoundsIndex(mlir::getAffineDimExpr(0, ctx), num_threads_);
-  auto block_id = num_blocks_.front() == 1 ? mlir::getAffineConstantExpr(0, ctx)
-                                           : mlir::getAffineDimExpr(3, ctx);
+
+  auto block_id = mlir::getAffineConstantExpr(0, ctx);
+  if (num_blocks_.front() != 1) {
+    auto bx = mlir::getAffineDimExpr(3, ctx),
+         by = mlir::getAffineDimExpr(4, ctx);
+    block_id =
+        DelinearizeInBoundsIndex(bx + gpu_blocks_[0] * by, num_blocks_)[0];
+    // VLOG(0) << "ComputeReductionInputIndexing blockid: " <<
+    // dumpMLIR(block_id);
+  }
   auto major_reduced = getAffineSymbolExpr(0, ctx);
   auto vector_index = getAffineSymbolExpr(1, ctx);
 
@@ -1103,8 +1147,19 @@ IndexingMap MultiRowReductionFusion::ComputeReductionOutputIndexing(
     MLIRContext* ctx) const {
   auto thread_id =
       DelinearizeInBoundsIndex(mlir::getAffineDimExpr(0, ctx), num_threads_);
-  auto block_id = num_blocks_.front() == 1 ? mlir::getAffineConstantExpr(0, ctx)
-                                           : mlir::getAffineDimExpr(3, ctx);
+  // auto block_id = num_blocks_.front() == 1 ? mlir::getAffineConstantExpr(0,
+  // ctx)
+  //                                          : mlir::getAffineDimExpr(3, ctx);
+  auto block_id = mlir::getAffineConstantExpr(0, ctx);
+  if (num_blocks_.front() != 1) {
+    auto bx = mlir::getAffineDimExpr(3, ctx),
+         by = mlir::getAffineDimExpr(4, ctx);
+    block_id =
+        DelinearizeInBoundsIndex(bx + gpu_blocks_[0] * by, num_blocks_)[0];
+    // VLOG(0) << "ComputeReductionOutputIndexing blockid: " <<
+    // dumpMLIR(block_id);
+  }
+
   IndexingMap projected_index =
       GetIndexingMap(block_id * num_threads_[0] + thread_id[0]);
   projected_index.AddConstraint(thread_id[1] % num_threads_[1], {0, 0});
