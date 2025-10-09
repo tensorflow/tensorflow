@@ -34,7 +34,6 @@ namespace tensorflow {
 namespace data {
 namespace {
 
-using ::tensorflow::testing::StatusIs;
 using ::testing::HasSubstr;
 
 DataServiceParams GetDefaultParams() {

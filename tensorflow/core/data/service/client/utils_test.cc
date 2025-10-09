@@ -35,8 +35,6 @@ namespace {
 
 using ::tensorflow::data::testing::EqualsProto;
 using ::tensorflow::data::testing::RangeDataset;
-using ::tsl::testing::IsOkAndHolds;
-using ::tsl::testing::StatusIs;
 
 TEST(UtilsTest, GetDataServiceMetadata) {
   TestCluster test_cluster(/*num_workers=*/1);
