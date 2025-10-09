@@ -361,6 +361,12 @@ absl::StatusOr<bool> HloPassPipeline::RunOnModuleGroup(
     return false;
   }
 
+  if (module_group->modules().size() > 1) {
+    return absl::UnimplementedError(
+        "HloPassPipeline::RunOnModuleGroup only supports module groups with a "
+        "single module.");
+  }
+
   // Copy debug options by value as passes may modify module config.
   DebugOptions debug_options = module_group->module(0).config().debug_options();
   return RunPassesInternal(module_group, debug_options, execution_threads);
