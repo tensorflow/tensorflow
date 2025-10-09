@@ -2249,6 +2249,12 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "the cache), update (loads if the cache exists, runs autotuning "
       "and dumps the result otherwise). Default: update."));
   flag_list->push_back(tsl::Flag(
+      "xla_gpu_experimental_autotuner_cache_dir",
+      string_setter_for(
+          &DebugOptions::set_xla_gpu_experimental_autotuner_cache_dir),
+      debug_options->xla_gpu_experimental_autotuner_cache_dir(),
+      "Experimental: Specify the directory to read/write autotuner cache to."));
+  flag_list->push_back(tsl::Flag(
       "xla_enable_command_buffers_during_profiling",
       bool_setter_for(
           &DebugOptions::set_xla_enable_command_buffers_during_profiling),
