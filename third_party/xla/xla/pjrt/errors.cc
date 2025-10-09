@@ -20,6 +20,15 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 
 namespace xla {
+// The payload attached to the absl::Status returned by the compilation
+// service when the compilation fails due to compilation errors.
+inline constexpr absl::string_view kCompilationErrorPayload =
+    "compilation_error";
+
+bool HasCompilationErrorPayload(const absl::Status& status) {
+  return status.GetPayload(kCompilationErrorPayload).has_value();
+}
+
 absl::Status SetCompilationErrorWithPayload(absl::Status status) {
   status.SetPayload(kCompilationErrorPayload, absl::Cord(""));
   return status;

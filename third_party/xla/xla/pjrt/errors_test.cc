@@ -30,8 +30,7 @@ TEST(ErrorsTest, SetCompilationErrorWithPayload) {
   absl::Status status_with_payload = SetCompilationErrorWithPayload(status);
   EXPECT_THAT(status_with_payload, StatusIs(absl::StatusCode::kInvalidArgument,
                                             HasSubstr("test error")));
-  EXPECT_TRUE(
-      status_with_payload.GetPayload(kCompilationErrorPayload).has_value());
+  EXPECT_TRUE(HasCompilationErrorPayload(status_with_payload));
 }
 
 }  // namespace xla

@@ -17,13 +17,11 @@ limitations under the License.
 #define XLA_PJRT_ERRORS_H_
 
 #include "absl/status/status.h"
-#include "absl/strings/string_view.h"
 
 namespace xla {
-// The payload attached to the absl::Status returned by the compilation
-// service when the compilation fails due to compilation errors.
-inline constexpr absl::string_view kCompilationErrorPayload =
-    "compilation_error";
+
+// Returns true if the status has the compilation error payload.
+bool HasCompilationErrorPayload(const absl::Status& status);
 
 // Sets the payload of the compilation error status to the compilation error
 // payload. Useful to denote compilation errors separately from other errors.
