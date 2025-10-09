@@ -34,6 +34,18 @@ message ThunkInfoProto {
   int64 thunk_id = 3;
 }
 
+// A lightweight version of ThunkProto which only stores the thunk kind and
+// the thunk info.
+message ThunkMetadataProto {
+  ThunkInfoProto thunk_info = 1;
+  string thunk_kind = 2;
+}
+
+// The metadata of a list of thunks - usually an entire thunk graph.
+message ThunkMetadataListProto {
+  repeated ThunkMetadataProto thunk_metadata = 1;
+}
+
 message CopyThunkProto {
   xla.buffer_assignment.BufferAllocationSliceProto source_buffer = 1;
   xla.buffer_assignment.BufferAllocationSliceProto destination_buffer = 2;

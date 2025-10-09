@@ -192,6 +192,14 @@ static absl::Status RunThunkPasses(const DebugOptions& debug_options,
           root_thunk->ToString(/*indent=*/0));
     }
   }
+
+  if (hlo_module && DumpingEnabledForHloModule(*hlo_module)) {
+    ThunkMetadataListProto metadata_list_proto =
+        GetMetadataListProtoFromThunkGraph(*root_thunk);
+    DumpPerModuleProtobufToFile(*hlo_module, metadata_list_proto, debug_options,
+                                "thunk_metadata");
+  }
+
   return absl::OkStatus();
 }
 

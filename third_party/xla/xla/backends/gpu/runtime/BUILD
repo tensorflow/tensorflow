@@ -1762,6 +1762,18 @@ cc_library(
 )
 
 xla_cc_test(
+    name = "thunk_test",
+    srcs = ["thunk_test.cc"],
+    deps = [
+        ":sequential_thunk",
+        ":thunk",
+        "//xla/tsl/util/proto:proto_matchers",
+        "@com_google_absl//absl/status",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+xla_cc_test(
     name = "for_all_thunks_test",
     srcs = ["for_all_thunks_test.cc"],
     tags = ["gpu"],

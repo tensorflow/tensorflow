@@ -555,6 +555,9 @@ class Thunk {
   // Serializes the thunk into a `ThunkProto`.
   virtual absl::StatusOr<ThunkProto> ToProto() const;
 
+  // Serializes the metadata of the thunk into a `ThunkMetadataProto`.
+  ThunkMetadataProto ToMetadataProto() const;
+
   // This declares a deserializer callback that `FromProto` Thunk factory
   // functions can use to deserialize sub messages.
   using Deserializer =
@@ -609,6 +612,10 @@ struct ShapedSlice {
 // Returns if the thunk implements a reduction collective (all-reduce or
 // reduce-scatter).
 bool IsReductionCollective(Thunk::Kind kind);
+
+// Returns the metadata from all thunks in the given thunk graph.
+ThunkMetadataListProto GetMetadataListProtoFromThunkGraph(
+    const Thunk& root_thunk);
 
 }  // namespace gpu
 }  // namespace xla
