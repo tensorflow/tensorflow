@@ -122,13 +122,9 @@ static absl::StatusOr<Command> Convert(
 }
 
 static absl::StatusOr<Command> Convert(const GemmThunk& thunk) {
-  if (!thunk.workspace().has_value()) {
-    return absl::InternalError(
-        "Gemm thunk does not contain a workspace buffer");
-  }
-  return std::make_unique<GemmCmd>(
-      thunk.config(), thunk.lhs_buffer(), thunk.rhs_buffer(),
-      thunk.output_buffer(), thunk.workspace().value(), thunk.deterministic());
+  return std::make_unique<GemmCmd>(thunk.config(), thunk.lhs_buffer(),
+                                   thunk.rhs_buffer(), thunk.output_buffer(),
+                                   thunk.workspace(), thunk.deterministic());
 }
 
 static absl::StatusOr<Command> Convert(const CublasLtMatmulThunk& thunk) {
@@ -202,7 +198,8 @@ static absl::StatusOr<Command> Convert(
   return std::make_unique<DynamicSliceFusionCmd>(
       std::move(embedded_cmds), thunk.get_arguments(),
       std::move(fake_allocations), thunk.get_offsets(), thunk.get_orig_shapes(),
-      thunk.get_sliced_shapes(), thunk.get_offset_byte_sizes());
+      thunk.get_sliced_shapes(), thunk.get_offset_byte_sizes(),
+      thunk.get_offset_function());
 }
 
 static absl::StatusOr<Command> Convert(const PartitionIdThunk& thunk) {

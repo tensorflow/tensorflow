@@ -902,7 +902,7 @@ class GemmCmd : public TracedCommandBufferCmd {
   GemmCmd(GemmConfig config, const BufferAllocation::Slice& lhs_buffer,
           const BufferAllocation::Slice& rhs_buffer,
           const BufferAllocation::Slice& output_buffer,
-          const BufferAllocation::Slice& workspace, bool deterministic);
+          std::optional<BufferAllocation::Slice> workspace, bool deterministic);
 
   absl::Status Initialize(const Thunk::InitializeParams& params,
                           StateManager& state) override;
@@ -921,7 +921,7 @@ class GemmCmd : public TracedCommandBufferCmd {
   const BufferAllocation::Slice lhs_buffer_;
   const BufferAllocation::Slice rhs_buffer_;
   const BufferAllocation::Slice output_buffer_;
-  const BufferAllocation::Slice workspace_;
+  std::optional<BufferAllocation::Slice> workspace_;
   // Whether to run deterministically.
   const bool deterministic_;
 };
@@ -1218,7 +1218,10 @@ class DynamicSliceFusionCmd : public CommandBufferCmd {
           offsets,
       std::vector<std::optional<Shape>> orig_shapes,
       std::vector<std::optional<Shape>> sliced_shapes,
-      std::vector<std::optional<uint64_t>> offset_byte_sizes);
+      std::vector<std::optional<uint64_t>> offset_byte_sizes,
+      std::optional<
+          const DynamicSliceThunk::OffsetAsFunctionOfIndvarModulesMetadata*>
+          offset_as_function_of_indvar_metadata = std::nullopt);
 
   absl::Status Initialize(const Thunk::InitializeParams& params,
                           StateManager& state) override;
@@ -1233,6 +1236,8 @@ class DynamicSliceFusionCmd : public CommandBufferCmd {
       se::CommandBuffer* command_buffer) override;
 
   BufferUseVector buffers() const override;
+
+  bool force_update() override { return true; }
 
   bool requires_initialization() override;
 
@@ -1261,6 +1266,13 @@ class DynamicSliceFusionCmd : public CommandBufferCmd {
   // command sequences.
   absl::flat_hash_map<int64_t, std::optional<BufferAllocation::Slice>>
       embeded_to_origin_slice_map_;
+
+  // This structure holds the metadata for offset computations on host. It
+  // stores a single induction variable initialization module, its update module
+  // and the offsets that are a function of the induction variable.
+  std::optional<
+      const DynamicSliceThunk::OffsetAsFunctionOfIndvarModulesMetadata*>
+      offset_as_function_of_indvar_metadata_;
 };
 
 //===----------------------------------------------------------------------===//

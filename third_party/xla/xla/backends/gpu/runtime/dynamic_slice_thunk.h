@@ -136,6 +136,7 @@ class DynamicSliceThunk : public Thunk {
     std::optional<Shape> orig_shape;
     std::optional<Shape> sliced_shape;
     std::optional<uint64_t> offset_byte_size;
+    std::string ToString() const;
   };
 
   const SequentialThunk* get_embedded_thunk() const {
@@ -184,6 +185,15 @@ class DynamicSliceThunk : public Thunk {
       ThunkInfo thunk_info, const DynamicSliceThunkProto& proto,
       absl::Span<const BufferAllocation> buffer_allocations,
       absl::Span<const BufferAllocation> fake_allocations);
+
+  std::optional<const OffsetAsFunctionOfIndvarModulesMetadata*>
+  get_offset_function() const {
+    if (offset_as_function_of_indvar_metadata_.has_value()) {
+      return &offset_as_function_of_indvar_metadata_.value();
+    } else {
+      return std::nullopt;
+    }
+  }
 
  private:
   std::unique_ptr<SequentialThunk> embedded_thunk_;
