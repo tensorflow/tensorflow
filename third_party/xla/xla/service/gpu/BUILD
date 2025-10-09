@@ -944,12 +944,30 @@ cc_library(
     hdrs = ["cublas_cudnn.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
+        ":cublas_cudnn_proto_cc",
         "//xla:util",
         "//xla/hlo/ir:hlo",
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+tf_proto_library(
+    name = "cublas_cudnn_proto",
+    srcs = ["cublas_cudnn.proto"],
+)
+
+xla_cc_test(
+    name = "cublas_cudnn_test",
+    srcs = ["cublas_cudnn_test.cc"],
+    deps = [
+        ":cublas_cudnn",
+        ":cublas_cudnn_proto_cc",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -1182,6 +1200,7 @@ cc_library(
     deps = [
         ":backend_configs_cc",
         ":cublas_cudnn",
+        ":cublas_cudnn_proto_cc",
         ":stream_executor_util",
         "//xla:shape_util",
         "//xla:util",

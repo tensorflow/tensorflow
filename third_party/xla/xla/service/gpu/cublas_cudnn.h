@@ -24,6 +24,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/service/gpu/cublas_cudnn.pb.h"
 
 namespace xla {
 namespace gpu {
@@ -84,6 +85,12 @@ absl::StatusOr<CudnnConvKind> GetCudnnConvKind(
 
 // Converts a CudnnConvKind value to a string.
 std::string CudnnConvKindToString(CudnnConvKind kind);
+
+// Converts CudnnConvKindProto to CudnnConvKind.
+absl::StatusOr<CudnnConvKind> CudnnConvKindFromProto(CudnnConvKindProto proto);
+
+// Converts CudnnConvKind to CudnnConvKindProto.
+CudnnConvKindProto CudnnConvKindToProto(CudnnConvKind kind);
 
 // Matrix multiplication rewritten into a GEMM custom call.
 // All matrix multiplications should be rewritten as such custom calls
