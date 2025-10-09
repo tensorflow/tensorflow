@@ -22,6 +22,8 @@ limitations under the License.
 
 #include "absl/base/casts.h"
 #include "third_party/gpus/cuda/include/cuda/atomic"
+#include "xla/backends/gpu/runtime/sdc_buffer_id.h"
+#include "xla/backends/gpu/runtime/sdc_log_structs.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
 #include "xla/stream_executor/gpu/gpu_kernel_registry.h"
 #include "xla/stream_executor/kernel_spec.h"
@@ -117,10 +119,10 @@ __device__ void ReduceXor(const uint32_t* input, uint64_t input_size,
 // LIMITATIONS:
 // - Only a single thread block is supported.
 // - Block dimensions must be a power of 2.
-__global__ void AppendChecksum(uint32_t entry_id, const uint8_t* input,
-                               uint64_t input_size,
-                               se::cuda::SdcLogHeader* log_header,
-                               se::cuda::SdcLogEntry* log_entries) {
+__global__ void AppendChecksum(xla::gpu::SdcBufferId entry_id,
+                               const uint8_t* input, uint64_t input_size,
+                               xla::gpu::SdcLogHeader* log_header,
+                               xla::gpu::SdcLogEntry* log_entries) {
   const uint32_t block_size = blockDim.x * blockDim.y * blockDim.z;
   const uint32_t* input_u32 = reinterpret_cast<const uint32_t*>(input);
   const uint64_t input_u32_size = input_size / sizeof(uint32_t);

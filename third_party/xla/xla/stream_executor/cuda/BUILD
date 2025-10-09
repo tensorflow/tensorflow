@@ -430,6 +430,7 @@ cc_library(
     hdrs = ["sdc_log.h"],
     tags = ["gpu"],
     deps = [
+        "//xla/backends/gpu/runtime:sdc_log_structs",
         "//xla/stream_executor:device_memory",
         "//xla/stream_executor:device_memory_allocator",
         "//xla/stream_executor:stream",
@@ -446,6 +447,7 @@ xla_test(
     backends = ["gpu"],
     deps = [
         ":sdc_log",
+        "//xla/backends/gpu/runtime:sdc_log_structs",
         "//xla/stream_executor:device_memory",
         "//xla/stream_executor:platform",
         "//xla/stream_executor:platform_manager",
@@ -469,7 +471,8 @@ cuda_library(
     ],
     deps = [
         ":cuda_platform_id",
-        ":sdc_log",
+        "//xla/backends/gpu/runtime:sdc_buffer_id",
+        "//xla/backends/gpu/runtime:sdc_log_structs",
         "//xla/stream_executor:device_memory",
         "//xla/stream_executor:kernel",
         "//xla/stream_executor:kernel_spec",
@@ -489,6 +492,9 @@ xla_test(
     deps = [
         ":sdc_log",
         ":sdc_xor_checksum_kernel_cuda",
+        "//xla/backends/gpu/runtime:sdc_buffer_id",
+        "//xla/backends/gpu/runtime:sdc_log_structs",
+        "//xla/backends/gpu/runtime:thunk_id",
         "//xla/stream_executor:device_memory",
         "//xla/stream_executor:kernel_spec",
         "//xla/stream_executor:launch_dim",

@@ -21,38 +21,11 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/statusor.h"
+#include "xla/backends/gpu/runtime/sdc_log_structs.h"
 #include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/stream.h"
 
 namespace stream_executor::cuda {
-
-struct SdcLogEntry {
-  // An ID that uniquely identifies a thunk and its specific input or output
-  // buffer.
-  uint32_t entry_id;
-  uint32_t checksum;
-};
-
-// The struct layout must match on both host and device.
-static_assert(_Alignof(SdcLogEntry) == _Alignof(uint32_t));
-static_assert(sizeof(SdcLogEntry) == sizeof(uint32_t) * 2);
-static_assert(offsetof(SdcLogEntry, entry_id) == 0);
-static_assert(offsetof(SdcLogEntry, checksum) == sizeof(uint32_t));
-
-struct SdcLogHeader {
-  // The first entry in `SdcLogEntry` following the header that has not
-  // been written to. May be bigger than `capacity` if the log was truncated.
-  uint32_t write_idx;
-  // The number of `SdcLogEntry` structs the log can hold.
-  uint32_t capacity;
-};
-
-// The struct layout must match on both host and device.
-static_assert(_Alignof(SdcLogHeader) == _Alignof(uint32_t));
-static_assert(sizeof(SdcLogHeader) == sizeof(uint32_t) * 2);
-static_assert(offsetof(SdcLogHeader, write_idx) == 0);
-static_assert(offsetof(SdcLogHeader, capacity) == sizeof(uint32_t));
 
 // A device memory buffer that holds a SdcLogHeader and a variable number of
 // SdcLogEntry structs.
@@ -61,7 +34,8 @@ class SdcLog {
   // Returns the number of bytes required to store a log with `entries`
   // entries.
   static constexpr size_t RequiredSizeForEntries(size_t entries) {
-    return sizeof(SdcLogHeader) + sizeof(SdcLogEntry) * entries;
+    return sizeof(xla::gpu::SdcLogHeader) +
+           sizeof(xla::gpu::SdcLogEntry) * entries;
   }
 
   // Initializes an empty `SdcLog` using a `log_buffer` allocated in device
@@ -81,7 +55,8 @@ class SdcLog {
   //
   // `stream` must be associated with the same device as the one used to create
   // the log.
-  absl::StatusOr<SdcLogHeader> ReadHeaderFromDevice(Stream& stream) const;
+  absl::StatusOr<xla::gpu::SdcLogHeader> ReadHeaderFromDevice(
+      Stream& stream) const;
 
   // Reads all entries from the device log into host memory.
   //
@@ -90,24 +65,26 @@ class SdcLog {
   //
   // `stream` must be associated with the same device as the one used to create
   // the log.
-  absl::StatusOr<std::vector<SdcLogEntry>> ReadFromDevice(Stream& stream) const;
+  absl::StatusOr<std::vector<xla::gpu::SdcLogEntry>> ReadFromDevice(
+      Stream& stream) const;
 
   // Returns a view of the `SdcLogHeader`.
   //
   // The returned `DeviceMemory` gets invalidated when the `SdcLog` is
   // destroyed.
-  DeviceMemory<SdcLogHeader> GetDeviceHeader() const {
-    return DeviceMemory<SdcLogHeader>(
-        memory_.GetByteSlice(0, sizeof(SdcLogHeader)));
+  DeviceMemory<xla::gpu::SdcLogHeader> GetDeviceHeader() const {
+    return DeviceMemory<xla::gpu::SdcLogHeader>(
+        memory_.GetByteSlice(0, sizeof(xla::gpu::SdcLogHeader)));
   }
 
   // Returns a view of the `SdcLogEntry` array.
   //
   // The returned `DeviceMemory` gets invalidated when the `SdcLog` is
   // destroyed.
-  DeviceMemory<SdcLogEntry> GetDeviceEntries() const {
-    return DeviceMemory<SdcLogEntry>(memory_.GetByteSlice(
-        sizeof(SdcLogHeader), memory_.size() - sizeof(SdcLogHeader)));
+  DeviceMemory<xla::gpu::SdcLogEntry> GetDeviceEntries() const {
+    return DeviceMemory<xla::gpu::SdcLogEntry>(
+        memory_.GetByteSlice(sizeof(xla::gpu::SdcLogHeader),
+                             memory_.size() - sizeof(xla::gpu::SdcLogHeader)));
   }
 
  private:

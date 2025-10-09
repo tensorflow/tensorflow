@@ -28,6 +28,9 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
+#include "xla/backends/gpu/runtime/sdc_buffer_id.h"
+#include "xla/backends/gpu/runtime/sdc_log_structs.h"
+#include "xla/backends/gpu/runtime/thunk_id.h"
 #include "xla/stream_executor/cuda/sdc_log.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/kernel_spec.h"
@@ -46,6 +49,11 @@ namespace se = stream_executor;
 
 namespace stream_executor::cuda {
 namespace {
+
+using xla::gpu::SdcBufferId;
+using xla::gpu::SdcLogEntry;
+using xla::gpu::SdcLogHeader;
+using xla::gpu::ThunkId;
 
 class ChecksumKernelTest : public ::testing::Test {
  protected:
@@ -70,7 +78,7 @@ class ChecksumKernelTest : public ::testing::Test {
 
   template <typename T>
   absl::Status AppendChecksumOnDevice(
-      uint32_t entry_id, const T& input, se::cuda::SdcLog& sdc_log,
+      SdcBufferId entry_id, const T& input, se::cuda::SdcLog& sdc_log,
       stream_executor::ThreadDim dim = stream_executor::ThreadDim(1, 1, 1)) {
     // Load kernel
     TF_ASSIGN_OR_RETURN(se::KernelLoaderSpec spec,
@@ -121,7 +129,7 @@ TEST_F(ChecksumKernelTest, ComputesCorrectChecksumForMultipleOf32Bit) {
   TF_ASSERT_OK_AND_ASSIGN(se::cuda::SdcLog device_log,
                           se::cuda::SdcLog::CreateOnDevice(*stream_, mem));
 
-  TF_EXPECT_OK(AppendChecksumOnDevice(/*entry_id=*/0, input, device_log));
+  TF_EXPECT_OK(AppendChecksumOnDevice(SdcBufferId(), input, device_log));
 
   TF_ASSERT_OK_AND_ASSIGN(auto host_log, device_log.ReadFromDevice(*stream_));
   ASSERT_GE(host_log.size(), 1);
@@ -135,7 +143,7 @@ TEST_F(ChecksumKernelTest,
   TF_ASSERT_OK_AND_ASSIGN(se::cuda::SdcLog device_log,
                           se::cuda::SdcLog::CreateOnDevice(*stream_, mem));
 
-  TF_EXPECT_OK(AppendChecksumOnDevice(/*entry_id=*/0, kInput, device_log));
+  TF_EXPECT_OK(AppendChecksumOnDevice(SdcBufferId(), kInput, device_log));
 
   TF_ASSERT_OK_AND_ASSIGN(auto host_log, device_log.ReadFromDevice(*stream_));
   ASSERT_GE(host_log.size(), 1);
@@ -153,7 +161,7 @@ TEST_F(ChecksumKernelTest, ComputesCorrectChecksumInParallel) {
   TF_ASSERT_OK_AND_ASSIGN(se::cuda::SdcLog device_log,
                           se::cuda::SdcLog::CreateOnDevice(*stream_, mem));
 
-  TF_EXPECT_OK(AppendChecksumOnDevice(/*entry_id=*/0, input, device_log,
+  TF_EXPECT_OK(AppendChecksumOnDevice(SdcBufferId(), input, device_log,
                                       se::ThreadDim(2, 4, 8)));
 
   TF_ASSERT_OK_AND_ASSIGN(auto host_log, device_log.ReadFromDevice(*stream_));
@@ -171,7 +179,7 @@ TEST_F(ChecksumKernelTest, ComputesCorrectChecksumInParallelWithMaxThreads) {
   TF_ASSERT_OK_AND_ASSIGN(se::cuda::SdcLog device_log,
                           se::cuda::SdcLog::CreateOnDevice(*stream_, mem));
 
-  TF_EXPECT_OK(AppendChecksumOnDevice(/*entry_id=*/0, input, device_log,
+  TF_EXPECT_OK(AppendChecksumOnDevice(SdcBufferId(), input, device_log,
                                       se::ThreadDim(128, 4, 2)));
 
   TF_ASSERT_OK_AND_ASSIGN(auto host_log, device_log.ReadFromDevice(*stream_));
@@ -181,45 +189,51 @@ TEST_F(ChecksumKernelTest, ComputesCorrectChecksumInParallelWithMaxThreads) {
 
 TEST_F(ChecksumKernelTest, AppendsChecksumsToLog) {
   se::DeviceMemory<uint8_t> mem = executor_->AllocateArray<uint8_t>(1024);
+  SdcBufferId kId123 = SdcBufferId::Create(ThunkId(123), 0).value();
+  SdcBufferId kId456 = SdcBufferId::Create(ThunkId(456), 0).value();
+  SdcBufferId kId789 = SdcBufferId::Create(ThunkId(789), 0).value();
   constexpr std::array<uint32_t, 1> kInput123 = {0x01230123};
   constexpr std::array<uint32_t, 1> kInput456 = {0x04560456};
   constexpr std::array<uint32_t, 1> kInput789 = {0x07890789};
   TF_ASSERT_OK_AND_ASSIGN(se::cuda::SdcLog device_log,
                           se::cuda::SdcLog::CreateOnDevice(*stream_, mem));
 
-  TF_EXPECT_OK(AppendChecksumOnDevice(/*entry_id=*/123, kInput123, device_log));
-  TF_EXPECT_OK(AppendChecksumOnDevice(/*entry_id=*/456, kInput456, device_log));
-  TF_EXPECT_OK(AppendChecksumOnDevice(/*entry_id=*/789, kInput789, device_log));
+  TF_EXPECT_OK(AppendChecksumOnDevice(kId123, kInput123, device_log));
+  TF_EXPECT_OK(AppendChecksumOnDevice(kId456, kInput456, device_log));
+  TF_EXPECT_OK(AppendChecksumOnDevice(kId789, kInput789, device_log));
 
   TF_ASSERT_OK_AND_ASSIGN(auto host_log, device_log.ReadFromDevice(*stream_));
   ASSERT_GE(host_log.size(), 3);
-  EXPECT_EQ(host_log[0].entry_id, 123);
+  EXPECT_EQ(host_log[0].entry_id, kId123);
   EXPECT_EQ(host_log[0].checksum, 0x01230123);
-  EXPECT_EQ(host_log[1].entry_id, 456);
+  EXPECT_EQ(host_log[1].entry_id, kId456);
   EXPECT_EQ(host_log[1].checksum, 0x04560456);
-  EXPECT_EQ(host_log[2].entry_id, 789);
+  EXPECT_EQ(host_log[2].entry_id, kId789);
   EXPECT_EQ(host_log[2].checksum, 0x07890789);
 }
 
 TEST_F(ChecksumKernelTest, DiscardsOverflowingChecksums) {
   se::DeviceMemory<uint8_t> mem = executor_->AllocateArray<uint8_t>(
       sizeof(SdcLogHeader) + sizeof(SdcLogEntry) * 2);
+  SdcBufferId kId123 = SdcBufferId::Create(ThunkId(123), 0).value();
+  SdcBufferId kId456 = SdcBufferId::Create(ThunkId(456), 0).value();
+  SdcBufferId kId789 = SdcBufferId::Create(ThunkId(789), 0).value();
   constexpr std::array<uint32_t, 1> kInput123 = {0x01230123};
   constexpr std::array<uint32_t, 1> kInput456 = {0x04560456};
   constexpr std::array<uint32_t, 1> kInput789 = {0x07890789};
   TF_ASSERT_OK_AND_ASSIGN(se::cuda::SdcLog device_log,
                           se::cuda::SdcLog::CreateOnDevice(*stream_, mem));
 
-  TF_EXPECT_OK(AppendChecksumOnDevice(/*entry_id=*/123, kInput123, device_log));
-  TF_EXPECT_OK(AppendChecksumOnDevice(/*entry_id=*/456, kInput456, device_log));
+  TF_EXPECT_OK(AppendChecksumOnDevice(kId123, kInput123, device_log));
+  TF_EXPECT_OK(AppendChecksumOnDevice(kId456, kInput456, device_log));
   // This entry will be discarded.
-  TF_EXPECT_OK(AppendChecksumOnDevice(/*entry_id=*/789, kInput789, device_log));
+  TF_EXPECT_OK(AppendChecksumOnDevice(kId789, kInput789, device_log));
 
   TF_ASSERT_OK_AND_ASSIGN(auto host_log, device_log.ReadFromDevice(*stream_));
   ASSERT_GE(host_log.size(), 2);
-  EXPECT_EQ(host_log[0].entry_id, 123);
+  EXPECT_EQ(host_log[0].entry_id, kId123);
   EXPECT_EQ(host_log[0].checksum, 0x01230123);
-  EXPECT_EQ(host_log[1].entry_id, 456);
+  EXPECT_EQ(host_log[1].entry_id, kId456);
   EXPECT_EQ(host_log[1].checksum, 0x04560456);
 }
 

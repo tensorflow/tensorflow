@@ -19,7 +19,8 @@ limitations under the License.
 #include <cstdint>
 
 #include "absl/status/statusor.h"
-#include "xla/stream_executor/cuda/sdc_log.h"
+#include "xla/backends/gpu/runtime/sdc_buffer_id.h"
+#include "xla/backends/gpu/runtime/sdc_log_structs.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/kernel_spec.h"
@@ -31,9 +32,9 @@ namespace stream_executor::cuda {
 //
 // This kernel MUST execute on a single thread block.
 struct SdcXorChecksumKernel {
-  using KernelType =
-      TypedKernel<uint32_t, DeviceMemory<uint8_t>, uint64_t,
-                  DeviceMemory<SdcLogHeader>, DeviceMemory<SdcLogEntry>>;
+  using KernelType = TypedKernel<xla::gpu::SdcBufferId, DeviceMemory<uint8_t>,
+                                 uint64_t, DeviceMemory<xla::gpu::SdcLogHeader>,
+                                 DeviceMemory<xla::gpu::SdcLogEntry>>;
 };
 
 absl::StatusOr<KernelLoaderSpec> GetSdcXorChecksumKernelSpec();

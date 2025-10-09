@@ -24,12 +24,16 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
+#include "xla/backends/gpu/runtime/sdc_log_structs.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/tsl/platform/errors.h"
 
 namespace stream_executor::cuda {
+
+using ::xla::gpu::SdcLogEntry;
+using ::xla::gpu::SdcLogHeader;
 
 absl::StatusOr<SdcLog> SdcLog::CreateOnDevice(
     Stream& stream, DeviceMemory<uint8_t> log_buffer) {
