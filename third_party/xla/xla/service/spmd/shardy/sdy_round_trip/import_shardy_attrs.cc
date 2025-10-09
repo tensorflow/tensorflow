@@ -19,12 +19,11 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <optional>
-#include <string_view>
 
 #include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
-#include "absl/log/log.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/LogicalResult.h"
 #include "mlir/AsmParser/AsmParser.h"
@@ -107,6 +106,21 @@ CustomCallOp getX64CombineOnFuncResultSharding(
   return dynCastX64CombineCustomCall(lhsUser);
 }
 
+// TODO(kostiantynl): b/448858211 when API is fixed, use
+// sharding.openShardingDims() instead.
+TensorShardingAttr openShardingDims(TensorShardingAttr sharding) {
+  llvm::SmallVector<mlir::sdy::DimensionShardingAttr> dimShardings(
+      sharding.getDimShardings().begin(), sharding.getDimShardings().end());
+  for (auto& dimSharding : dimShardings) {
+    dimSharding = mlir::sdy::DimensionShardingAttr::get(
+        sharding.getContext(), dimSharding.getAxes(), /*isClosed=*/false,
+        /*priority=*/dimSharding.getPriority());
+  }
+  return TensorShardingAttr::get(sharding.getContext(), sharding.getMeshOrRef(),
+                                 dimShardings, sharding.getReplicatedAxes(),
+                                 sharding.getUnreducedAxes());
+}
+
 void handleFuncResultSharding(CustomCallOp funcResultSharding, FuncOp funcOp,
                               DictionaryAttr dictAttr, IRRewriter& rewriter) {
   // This is a temporary CustomCallOp that holds the sharding from a
@@ -147,11 +161,13 @@ void handleFuncResultSharding(CustomCallOp funcResultSharding, FuncOp funcOp,
     // If there are users that are not the func return op, which might happen
     // due to inlined func ops that originally had result shardings, we replace
     // the `xla.sdy.FuncResultSharding` with a `ShardingConstraintOp` to
-    // preserve the original func result sharding.
+    // preserve the original func result sharding, but open all sharding
+    // dimensions.
     rewriter.setInsertionPoint(funcResultSharding);
     CHECK_EQ(funcResultSharding.getNumOperands(), 1);
     rewriter.replaceOpWithNewOp<mlir::sdy::ShardingConstraintOp>(
-        funcResultSharding, funcResultSharding.getOperand(0), sharding);
+        funcResultSharding, funcResultSharding.getOperand(0),
+        openShardingDims(sharding));
   } else {
     rewriter.replaceOp(funcResultSharding, funcResultSharding.getOperands());
   }
