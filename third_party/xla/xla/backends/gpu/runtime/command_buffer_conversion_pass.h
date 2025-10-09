@@ -32,7 +32,8 @@ namespace gpu {
 // Converts compatible sequences of Thunks into CommandBufferThunks.
 class CommandBufferConversionPass : public ThunkPassInterface {
  public:
-  CommandBufferConversionPass() = default;
+  CommandBufferConversionPass(absl::string_view module_name = "")
+      : module_name_(module_name) {}
 
   absl::string_view name() const override {
     return "command-buffer-conversion";
@@ -47,7 +48,11 @@ class CommandBufferConversionPass : public ThunkPassInterface {
     // remove that flag and enable all supported commands by default.
     absl::flat_hash_set<DebugOptions::CommandBufferCmdType> enabled_commands;
     const se::DeviceDescription& device_description;
+    std::string ToString() const;
   };
+
+ private:
+  std::string module_name_;
 };
 
 }  // namespace gpu
