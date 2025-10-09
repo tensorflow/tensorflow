@@ -218,36 +218,6 @@ bool EstimateCoalescingViaMemoryTransactionsCount(
          memory_transactions * kIsCoalescedThreshold;
 }
 
-// Replaces RTVars with the midpoints of the feasible intervals.
-void AssignValuesToRTVars(IndexingMap* indexing_map) {
-  // If RTVars are present, replace them with constants.
-  if (indexing_map->GetRTVarsCount() == 0) {
-    return;
-  }
-  MLIRContext* mlir_context = indexing_map->GetMLIRContext();
-  llvm::SmallVector<AffineExpr, 2> symbol_replacements;
-  for (int64_t symbol_id = 0; symbol_id < indexing_map->GetRangeVarsCount();
-       ++symbol_id) {
-    symbol_replacements.push_back(
-        mlir::getAffineSymbolExpr(symbol_id, mlir_context));
-  }
-  for (const IndexingMap::Variable& rt_var : indexing_map->GetRTVars()) {
-    // Take midpoint of the feasible interval for the RT variable.
-    symbol_replacements.push_back(getAffineConstantExpr(
-        (rt_var.bounds.lower + rt_var.bounds.upper) / 2, mlir_context));
-  }
-  AffineMap thread_x_to_input_no_dim_symbols =
-      indexing_map->GetAffineMap().replaceDimsAndSymbols(
-          {}, symbol_replacements, indexing_map->GetDimVarsCount(),
-          indexing_map->GetRangeVarsCount());
-  *indexing_map = IndexingMap{thread_x_to_input_no_dim_symbols,
-                              indexing_map->GetDimVars(),
-                              indexing_map->GetRangeVars(),
-                              {}};
-  indexing_map->Simplify();
-  indexing_map->RemoveUnusedSymbols();
-}
-
 // Replaces all but one RangeVars with the first elements in the range.
 // At the moment, we assume that the last RangeVar symbol corresponds to the
 // innermost loop induction variable.

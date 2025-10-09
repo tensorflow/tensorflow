@@ -226,6 +226,9 @@ void GetThreadIdToInputMemoryLayoutsMaps(
     absl::Span<const IndexingMap> operand_logical_to_linearized_physical_maps,
     mlir::MLIRContext* mlir_context, GroupedByOpIndexingMap& result);
 
+// Replaces RTVars with the midpoints of the feasible intervals.
+void AssignValuesToRTVars(IndexingMap* indexing_map);
+
 // Groups indexing maps by instructions.
 GroupedByOpIndexing GroupIndexingMapsByProducers(
     const HloInstructionIndexing& indexing, const HloInstruction* instr);

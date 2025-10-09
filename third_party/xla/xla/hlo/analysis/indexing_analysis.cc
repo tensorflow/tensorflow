@@ -1605,7 +1605,7 @@ void GetThreadIdToInputMemoryLayoutsMaps(
                                             mlir_context);
     // For every operand compute thread ID -> physical layout of operand
     // indexing map.
-    for (auto&& [operand, operand_linarized_physical_map] :
+    for (auto&& [operand, operand_linearized_physical_map] :
          llvm::zip(operands, operand_logical_to_linearized_physical_maps)) {
       auto operand_indexing_maps_it =
           instr_indexing_keyed_by_operands.find(operand);
@@ -1623,7 +1623,7 @@ void GetThreadIdToInputMemoryLayoutsMaps(
           break;
         }
         IndexingMap logical_output_to_linearized_physical_input_map =
-            operand_indexing_map * operand_linarized_physical_map;
+            operand_indexing_map * operand_linearized_physical_map;
         IndexingMap thread_id_to_linearized_physical_input_map =
             thread_id_to_hero_operand_map *
             logical_output_to_linearized_physical_input_map;
@@ -1632,6 +1632,36 @@ void GetThreadIdToInputMemoryLayoutsMaps(
       }
     }
   }
+}
+
+// Replaces RTVars with the midpoints of the feasible intervals.
+void AssignValuesToRTVars(IndexingMap* indexing_map) {
+  // If RTVars are present, replace them with constants.
+  if (indexing_map->GetRTVarsCount() == 0) {
+    return;
+  }
+  MLIRContext* mlir_context = indexing_map->GetMLIRContext();
+  llvm::SmallVector<AffineExpr, 2> symbol_replacements;
+  for (int64_t symbol_id = 0; symbol_id < indexing_map->GetRangeVarsCount();
+       ++symbol_id) {
+    symbol_replacements.push_back(
+        mlir::getAffineSymbolExpr(symbol_id, mlir_context));
+  }
+  for (const IndexingMap::Variable& rt_var : indexing_map->GetRTVars()) {
+    // Take midpoint of the feasible interval for the RT variable.
+    symbol_replacements.push_back(getAffineConstantExpr(
+        (rt_var.bounds.lower + rt_var.bounds.upper) / 2, mlir_context));
+  }
+  AffineMap thread_x_to_input_no_dim_symbols =
+      indexing_map->GetAffineMap().replaceDimsAndSymbols(
+          {}, symbol_replacements, indexing_map->GetDimVarsCount(),
+          indexing_map->GetRangeVarsCount());
+  *indexing_map = IndexingMap{thread_x_to_input_no_dim_symbols,
+                              indexing_map->GetDimVars(),
+                              indexing_map->GetRangeVars(),
+                              {}};
+  indexing_map->Simplify();
+  indexing_map->RemoveUnusedSymbols();
 }
 
 HloInstructionIndexing ComputeOutputToInputAllGatherOpIndexing(
