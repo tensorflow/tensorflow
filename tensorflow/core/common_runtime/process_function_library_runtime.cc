@@ -156,7 +156,7 @@ absl::Status ProcessFunctionLibraryRuntime::SendTensors(
     RendezvousInterface* rendezvous) {
   std::vector<string> keys;
   for (int i = 0; i < tensors_to_send.size(); ++i) {
-    string name = strings::StrCat(key_prefix, i);
+    string name = absl::StrCat(key_prefix, i);
     string key = Rendezvous::CreateKey(source_device, src_incarnation,
                                        target_device, name, FrameAndIter(0, 0));
     keys.push_back(key);
@@ -176,7 +176,7 @@ void ProcessFunctionLibraryRuntime::ReceiveTensorsAsync(
     StatusCallback done) {
   std::vector<string> keys;
   for (int64_t i = 0; i < num_tensors; ++i) {
-    string name = strings::StrCat(key_prefix, i);
+    string name = absl::StrCat(key_prefix, i);
     string key = Rendezvous::CreateKey(source_device, src_incarnation,
                                        target_device, name, FrameAndIter(0, 0));
     keys.push_back(key);
@@ -1003,9 +1003,9 @@ absl::Status ProcessFunctionLibraryRuntime::RunMultiDeviceSync(
                        &comp_tensor_rets);
       if (!run_status.ok()) {
         VLOG(2) << "Component function execution failed: " << run_status;
-        const string function_and_msg = strings::StrCat(
-            errors::FormatFunctionForError(data->function_name_), " ",
-            run_status.message());
+        const string function_and_msg =
+            absl::StrCat(errors::FormatFunctionForError(data->function_name_),
+                         " ", run_status.message());
         if (opts.rendezvous != nullptr) opts.rendezvous->StartAbort(run_status);
         return errors::CreateWithUpdatedMessage(run_status, function_and_msg);
       } else {
@@ -1094,9 +1094,9 @@ void ProcessFunctionLibraryRuntime::RunMultiDeviceAsync(
         VLOG(2) << "Component function execution on target " << target
                 << " from " << data->function_name_ << " with handle "
                 << comp_handle << " failed: " << status;
-        const string function_and_msg = strings::StrCat(
-            errors::FormatFunctionForError(data->function_name_), " ",
-            status.message());
+        const string function_and_msg =
+            absl::StrCat(errors::FormatFunctionForError(data->function_name_),
+                         " ", status.message());
         refcounted_done->UpdateStatus(
             errors::CreateWithUpdatedMessage(status, function_and_msg));
         // Cancel the execution of other component functions.

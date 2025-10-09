@@ -106,7 +106,7 @@ CaseBuilder::CaseBuilder(Node* case_op,
       debug_info_(*case_op_) {
   branch_call_builders_.reserve(num_branches_);
   for (int b = 0; b < num_branches_; b++) {
-    branch_call_builders_.emplace_back(NewName(strings::StrCat("branch", b)),
+    branch_call_builders_.emplace_back(NewName(absl::StrCat("branch", b)),
                                        branch_fn_names[b], graph->op_registry(),
                                        &debug_info_);
     branch_call_builders_[b].Device(case_op_->requested_device());
@@ -129,7 +129,7 @@ absl::Status CaseBuilder::CreatePivotNodes() {
   control_predecessor_ = branch_index;
   pivots_.resize(num_branches_, nullptr);
   for (int b = 0; b < num_branches_; b++) {
-    TF_RETURN_IF_ERROR(NodeBuilder(NewName(strings::StrCat("pivot_", b)),
+    TF_RETURN_IF_ERROR(NodeBuilder(NewName(absl::StrCat("pivot_", b)),
                                    "Identity", graph_->op_registry(),
                                    &debug_info_)
                            .Input(branch_index, b)
@@ -140,7 +140,7 @@ absl::Status CaseBuilder::CreatePivotNodes() {
 }
 
 string CaseBuilder::NewName(const string& infix) {
-  return graph_->NewName(strings::StrCat(name_, "/", infix));
+  return graph_->NewName(absl::StrCat(name_, "/", infix));
 }
 
 absl::Status CaseBuilder::AddInput(Node* src, int src_output) {
