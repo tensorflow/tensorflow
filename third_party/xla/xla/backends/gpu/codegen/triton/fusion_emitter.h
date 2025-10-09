@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdint>
 #include <optional>
 
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -34,6 +35,7 @@ limitations under the License.
 #include "xla/autotuning.pb.h"
 #include "xla/codegen/emitter_loc_op_builder.h"
 #include "xla/codegen/tiling/symbolic_tile_analysis.h"
+#include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/gpu/model/block_level_parameters.h"
@@ -140,6 +142,26 @@ absl::StatusOr<Tiling> TilingFromAnnotatedFusion(
     const HloFusionInstruction* fusion,
     const SymbolicTileAnalysis& symbolic_tile_analysis,
     const BlockLevelParameters& block_level_parameters);
+
+// This function (or its future equivalent) should emit the MLIR module in the
+// shared dialect between XLA:CPU and XLA:GPU. At the moment it is still
+// emitting GPU specific modules. It is currently exposed only for testing
+// purposes and will only be used to make sure we are properly emitting the
+// shared dialect.
+absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> EmitXTileModule(
+    absl::string_view fn_name, const HloFusionInstruction* fusion,
+    const se::DeviceDescription& device_info,
+    const BlockLevelParameters& block_level_parameters,
+    mlir::MLIRContext& mlir_context);
+
+// This function lowers the shared dialect module to Triton. It is exposed for
+// testing with the same motivation as EmitXTileModule.
+//
+// The `fusion` instruction should be the one that was used to create the shared
+// dialect module.
+absl::Status LowerXTileToTriton(mlir::ModuleOp xtile_dialect_module,
+                                mlir::MLIRContext& mlir_context,
+                                const HloFusionInstruction& fusion);
 
 }  // namespace ir_emitter_triton_internal
 }  // namespace gpu

@@ -29,6 +29,7 @@ limitations under the License.
 #include "llvm/TargetParser/Triple.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Math/IR/Math.h"
+#include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinTypeInterfaces.h"
 #include "mlir/IR/BuiltinTypes.h"
@@ -349,7 +350,8 @@ ScalarOrTensor Splat(EmitterLocOpBuilder& b, ScalarOrTensor value,
                      ArrayRef<int64_t> shape) {
   CHECK(!shape.empty());
   auto type = mlir::RankedTensorType::get(shape, value.getType());
-  return ScalarOrTensor(b.create<mt::SplatOp>(type, value.UnwrapUnsafe()));
+  return ScalarOrTensor(
+      b.create<mlir::tensor::SplatOp>(type, value.UnwrapUnsafe()));
 }
 
 bool IsSupportedElementwiseLibdeviceFunction(const HloInstruction& hlo) {
