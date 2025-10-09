@@ -179,7 +179,8 @@ static absl::Status RunThunkPasses(const DebugOptions& debug_options,
     pipeline.AddPass(std::make_unique<ThunkChecksumTracingPass>());
   }
   if (debug_options.xla_gpu_experimental_enable_command_buffer_on_thunks()) {
-    pipeline.AddPass(std::make_unique<CommandBufferConversionPass>());
+    pipeline.AddPass(std::make_unique<CommandBufferConversionPass>(
+        hlo_module ? hlo_module->name() : "Anonymous"));
   }
   TF_ASSIGN_OR_RETURN(bool changed, pipeline.Run(root_thunk, debug_options,
                                                  device_info, allocator));
