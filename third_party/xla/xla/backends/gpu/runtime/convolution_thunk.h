@@ -30,7 +30,7 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/gpu_conv_runner.h"
 #include "xla/stream_executor/dnn.h"
-#include "xla/stream_executor/stream_executor.h"
+#include "xla/stream_executor/stream.h"
 
 namespace xla {
 namespace gpu {

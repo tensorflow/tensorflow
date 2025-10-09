@@ -38,9 +38,10 @@ limitations under the License.
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/lazy_op_runner.h"
+#include "xla/stream_executor/stream.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "tsl/platform/ml_dtypes.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {

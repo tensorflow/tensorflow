@@ -512,8 +512,13 @@ cc_library(
         "//xla/stream_executor:device_description",
         "//xla/stream_executor:device_memory",
         "//xla/stream_executor:dnn",
+        "//xla/stream_executor:lazy_op_runner",
         "//xla/stream_executor:scratch_allocator",
+        "//xla/stream_executor:stream",
         "//xla/stream_executor:stream_executor_h",
+        "//xla/stream_executor/rocm:rocm_compute_capability",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:statusor",
         "//xla/tsl/protobuf:dnn_proto_cc",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -522,7 +527,6 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/platform:errors",
     ],
 )
 
