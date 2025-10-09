@@ -266,9 +266,14 @@ absl::StatusOr<LoadedExecutableRef> PjRtLoadedExecutable::Create(
       (build_options.use_auto_spmd_partitioning() ||
        build_options.any_allow_spmd_sharding_propagation_to_parameters() ||
        build_options.any_allow_spmd_sharding_propagation_to_output());
+
+  // We have to do process the MLIR before the compile call, since the latter
+  // will use the MLIR as scratch space, or possibly even deallocate it.
+  TF_ASSIGN_OR_RETURN(auto result_shapes, ResultShapesOfModule(module));
+
   TF_ASSIGN_OR_RETURN(auto pjrt_loaded_executable,
                       client->pjrt_client()->CompileAndLoad(
-                          module, std::move(compile_options)));
+                          std::move(module), std::move(compile_options)));
 
   if (auto_spmd_partitioning) {
     // TODO(hyeontaek): Use a full shape and a sharding rather than a per-shard
@@ -292,7 +297,6 @@ absl::StatusOr<LoadedExecutableRef> PjRtLoadedExecutable::Create(
     VLOG(3) << "Using full shape";
     // TODO(yueshengys): Consider getting element types and dimensions directly
     // from module.
-    TF_ASSIGN_OR_RETURN(auto result_shapes, ResultShapesOfModule(module));
     bool tuple_output = result_shapes.size() != 1;
     xla::Shape result_shape;
     std::vector<xla::Shape> output_shapes;
