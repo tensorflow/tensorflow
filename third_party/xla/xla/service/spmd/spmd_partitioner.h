@@ -813,9 +813,8 @@ class SpmdPartitioningVisitor : public DfsHloVisitorWithDefault {
 
   SpmdBuilder* builder() { return &b_; }
 
-  virtual absl::StatusOr<bool> DoPartition(
-      HloComputation* computation, const HloSharding& root_sharding,
-      const SpmdPartitionerOptions& options);
+  virtual absl::StatusOr<bool> DoPartition(HloComputation* computation,
+                                           const HloSharding& root_sharding);
 
   virtual double GetComputationTimeInMilliSec(HloInstruction* hlo) {
     return 0.0;
@@ -875,8 +874,7 @@ class SpmdPartitioningVisitor : public DfsHloVisitorWithDefault {
   // Performs code motion for windowed dot-general loops in
   // windowed_dot_general_loops_. Invoked after the visitor finishes traversing
   // the graph.
-  absl::Status DoCodeMotionForWindowedDotGeneralLoops(
-      HloComputation* computation, const SpmdPartitionerOptions& options);
+  absl::Status DoCodeMotionForWindowedDotGeneralLoops();
 
   bool changed_;
   HloModule* module_;
