@@ -312,12 +312,17 @@ absl::StatusOr<nb_dtype> IfrtDtypeToNbDtype(ifrt::DType dtype) {
     case ifrt::DType::kF8E8M0FNU:
       return custom_dtypes.float8_e8m0fnu;
     case ifrt::DType::kString:
-      // PEP 3118 code for "pointer to Python Object". We use Python objects
-      // instead of 'U' (Unicode string) or 'V' (raw data) because the latter
-      // two are fixed length, and thus, require encoding the maximum length as
-      // part of dtype. Using 'O' allows us to represent variable-length bytes
-      // and is also consistent with TensorFlow's tensor -> ndarray conversion
-      // logic (see `TF_DataType_to_PyArray_TYPE`).
+#ifdef NPY_2_0_API_VERSION
+      if (PyArray_RUNTIME_VERSION >= NPY_2_0_API_VERSION) {
+        return to_nb_dtype(NPY_VSTRING);
+      }
+#endif
+      // We use `NPY_OBJECT` instead of `NPY_STRING` or `NPY_VOID`
+      // because the latter two are fixed length, and thus, require
+      // encoding the maximum length as part of dtype. Using
+      // `NPY_OBJECT` allows us to represent variable-length strings and
+      // is also consistent with TensorFlow's tensor -> ndarray
+      // conversion logic (see `TF_DataType_to_PyArray_TYPE`).
       return to_nb_dtype(NPY_OBJECT);
     default:
       break;
