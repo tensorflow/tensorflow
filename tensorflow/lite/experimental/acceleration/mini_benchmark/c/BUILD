@@ -26,7 +26,7 @@ package(
     licenses = ["notice"],
 )
 
-# This target runs MiniBenchmark in a separate processon Android, while it runs MiniBenchmark
+# This target runs MiniBenchmark in a separate process on Android, while it runs MiniBenchmark
 # in-process on all other platforms.
 cc_library_with_tflite_with_c_headers_test(
     name = "c_api",
