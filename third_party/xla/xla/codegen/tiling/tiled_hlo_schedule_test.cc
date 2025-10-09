@@ -16,93 +16,99 @@ limitations under the License.
 #include "xla/codegen/tiling/tiled_hlo_schedule.h"
 
 #include <cstdint>
-#include <memory>
+#include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "absl/strings/substitute.h"
+#include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/MLIRContext.h"
-#include "xla/codegen/tiling/tiling_specification.h"
 #include "xla/hlo/analysis/indexing_map.h"
-#include "xla/hlo/analysis/indexing_test_utils.h"
+#include "xla/hlo/analysis/indexing_map_serialization.h"
 #include "xla/hlo/analysis/interval.h"
-#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
-#include "xla/hlo/testlib/verified_hlo_module.h"
-#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
 
-using ::testing::ElementsAre;
+using ::absl_testing::StatusIs;
+using ::testing::HasSubstr;
 
 class TiledHloScheduleTest : public HloHardwareIndependentTestBase {
  protected:
   mlir::MLIRContext ctx_;
 };
 
-TEST_F(TiledHloScheduleTest,
-       MajorToMinorTiledHloScheduleSatisfiesRootScheduleProperties) {
-  constexpr int64_t batch_size = 5;
-  constexpr int64_t lhs_non_contracting_size = 2;
-  constexpr int64_t rhs_non_contracting_size = 4;
-  constexpr int64_t contracting_size = 97;
+using MajorToMinorTiledHloScheduleTest = TiledHloScheduleTest;
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(absl::Substitute(
-                              R"(
-ENTRY main {
-  p0 = f32[$0,$1,$3] parameter(0)
-  p1 = f32[$0,$3,$2] parameter(1)
-  ROOT dot = f32[$0,$1,$2] dot(p0, p1),
-    lhs_contracting_dims={2}, rhs_contracting_dims={1},
-    lhs_batch_dims={0}, rhs_batch_dims={0}
-})",
-                              batch_size, lhs_non_contracting_size,
-                              rhs_non_contracting_size, contracting_size)));
-  const HloInstruction* root = module->entry_computation()->root_instruction();
+TEST_F(MajorToMinorTiledHloScheduleTest,
+       MajorToMinorTiledHloScheduleSatisfiesScheduleProperties) {
+  IndexingMap offsets_indexing = *ParseIndexingMap(R"(
+      (d0, d1, d2, d3) -> (d2, d3),
+      domain: d0 in [0, 1], d1 in [0, 2], d2 in [0, 4], d3 in [0, 6])",
+                                                   &ctx_);
+  auto bound = [&offsets_indexing](int64_t dim) {
+    return offsets_indexing.GetDimensionBound(dim).upper + 1;
+  };
+  std::vector<DimensionInfo> iteration_space = {
+      {/*dimension_id=*/2, /*dimension_size=*/bound(2)},
+      {/*dimension_id=*/0, /*dimension_size=*/bound(0)},
+      {/*dimension_id=*/1, /*dimension_size=*/bound(1)},
+      {/*dimension_id=*/3, /*dimension_size=*/bound(3)},
+  };
 
-  // The dot instruction has 4 tiling parameters (1 batch, 2 non-contracting
-  // dimensions, and 1 contracting dimension).
-  constexpr int64_t kNumDotTilingParameters = 4;
-  TilingSpecification::ParameterMapping parameter_mapping{
-      {root, kNumDotTilingParameters}};
-
-  MajorToMinorTiledHloSchedule schedule;
+  MajorToMinorTiledHloSchedule scheduler;
   TF_ASSERT_OK_AND_ASSIGN(
-      IndexingMap indexing_map,
-      schedule.RootSchedule(root, parameter_mapping, &ctx_));
+      IndexingMap scheduled_indexing,
+      scheduler.Schedule(offsets_indexing, iteration_space, &ctx_));
 
-  // (1) the map must have exactly as many parameters as there are tiling
-  //     parameters in `parameter_mapping`.
-  EXPECT_EQ(indexing_map.GetDimVarsCount(), kNumDotTilingParameters);
+  // (1) the map must have a single input whose range of values is the size of
+  //     the iteration space (i.e. the product of `iteration_space`'s
+  //     `dimension_size`s);
+  EXPECT_EQ(scheduled_indexing.GetDimVarsCount(), 1);
+  int64_t iteration_space_size = bound(0) * bound(1) * bound(2) * bound(3);
+  Interval expected_parameter_interval{0, iteration_space_size - 1};
+  EXPECT_EQ(scheduled_indexing.GetDimensionBound(0),
+            expected_parameter_interval);
 
-  // (2) the parameters in the resulting map must appear in the same order as
-  //     they appear in `parameter_mapping`.
-  Interval contracting_interval{0, contracting_size - 1};
-  Interval batch_interval{0, batch_size - 1};
-  Interval lhs_non_contracting_interval{0, lhs_non_contracting_size - 1};
-  Interval rhs_non_contracting_interval{0, rhs_non_contracting_size - 1};
+  // (2) the set of results generatable with the map must be equal to the set
+  //     of results of `tile_offsets_indexing` (i.e. the map may only reorder
+  //     how the results are generated, but may not change the results
+  //     themselves);
+  EXPECT_EQ(scheduled_indexing, *ParseIndexingMap(R"(
+    (pid_0) -> (pid_0 floordiv 42, pid_0 mod 7), domain: pid_0 in [0, 209]
+  )",
+                                                  &ctx_));
 
-  auto bounds = indexing_map.GetDimensionBounds();
+  // `pid_0 floordiv 42` has the same upper bound as `d2`.
+  EXPECT_EQ(iteration_space_size / 42, bound(2));
+  // `pid_0 mod 7` has the same upper bound as `d3`.
+  EXPECT_EQ(7, bound(3));
+}
 
-  EXPECT_THAT(bounds, ElementsAre(contracting_interval, batch_interval,
-                                  lhs_non_contracting_interval,
-                                  rhs_non_contracting_interval));
-  // (3) the map must have as many results as there are output dimensions in
-  //     the instruction---although the results are allowed to be outside the
-  //     range of the instruction's output space.
-  EXPECT_EQ(indexing_map.GetNumResults(), root->shape().dimensions().size());
+TEST_F(MajorToMinorTiledHloScheduleTest,
+       MajorToMinorTiledHloScheduleFailsForInvalidIterationSpace) {
+  IndexingMap offsets_indexing = *ParseIndexingMap(
+      "(d0, d1) -> (d1), domain: d0 in [0, 1], d1 in [0, 2]", &ctx_);
+  MajorToMinorTiledHloSchedule scheduler;
 
-  // (4) iterating over the entire input space of the map must yield the
-  //     entire output space of the instruction.
-  // TODO(b/449934916): fix the layering violation.
-  gpu::SymbolicExprContext symbolic_expr_context(&ctx_);
-  EXPECT_EQ(indexing_map.GetAffineMap(),
-            ParseAffineMap("(d0, d1, d2, d3) -> (d1, d2, d3)",
-                           &symbolic_expr_context));
+  // The iteration space has the wrong number of dimensions.
+  EXPECT_THAT(
+      scheduler.Schedule(offsets_indexing, /*iteration_space=*/{}, &ctx_),
+      StatusIs(
+          absl::StatusCode::kInvalidArgument,
+          HasSubstr(
+              "Expected iteration space to have exactly as many dimensions")));
+
+  // The iteration space has an out-of-bounds dimension ID.
+  EXPECT_THAT(scheduler.Schedule(offsets_indexing, /*iteration_space=*/
+                                 {{/*dimension_id=*/0, /*dimension_size=*/1},
+                                  {/*dimension_id=*/2, /*dimension_size=*/0}},
+                                 &ctx_),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("Dimension id 2 is out of bounds")));
 }
 
 }  // namespace
