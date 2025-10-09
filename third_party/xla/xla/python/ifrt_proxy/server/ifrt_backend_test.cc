@@ -318,7 +318,7 @@ class IfrtBackendHandlerTest : public IfrtBackendTest {
   }
 
   uint64_t NewOpId() {
-    absl::MutexLock lock(&mu_);
+    absl::MutexLock lock(mu_);
     return current_op_id_++;
   }
 
