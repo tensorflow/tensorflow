@@ -1,22 +1,6 @@
 # All required ROCM packages
-libdrm-amdgpu-dev
-rocm-libs
-rocm-dev
 rocm-ml-sdk
-miopen-hip 
-miopen-hip-dev
-rocblas
-rocblas-dev
-rocsolver-dev
-rocrand-dev
-rocfft-dev
-hipfft-dev
-hipblas-dev
-rocprim-dev
-hipcub-dev
-rccl-dev
-hipsparse-dev
-hipsolver-dev
+rocm-dev
 
 # Other build-related tools
 apt-transport-https

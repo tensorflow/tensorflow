@@ -48,20 +48,7 @@ wget
 kernel-devel-uname-r
 
 # rocm packagaes
-libdrm-amdgpu
-rocm-dev
+#libdrm-amdgpu - Not mandatory needed from amdgpu repo. Upstream package is fine too
 rocm-ml-sdk
-miopen-hip 
-miopen-hip-devel 
-rocblas 
-rocblas-devel 
-rocsolver-devel 
-rocrand-devel 
-rocfft-devel 
-hipfft-devel 
-hipblas-devel 
-rocprim-devel 
-hipcub-devel 
-rccl-devel 
-hipsparse-devel 
-hipsolver-devel
+rocm-dev
+
