@@ -25,6 +25,10 @@ def bitcode_library(
     llvm_link_tool = "@llvm-project//llvm:llvm-link"
     opt_tool = "@llvm-project//llvm:opt"
     prepare_builtins_tool = ":prepare_builtins"
+    clang_includes = "@llvm-project//clang:builtin_headers_gen"
+
+    # Just for calculating the include path.
+    clang_header = "@llvm-project//clang:staging/include/opencl-c.h"
 
     include_paths = dict([(paths.dirname(h), None) for h in hdrs]).keys()
 
@@ -51,12 +55,11 @@ def bitcode_library(
         extra_flags = " ".join(file_specific_flags.get(filename, []))
         native.genrule(
             name = "compile_" + basename,
-            srcs = [src] + hdrs + include_paths,
+            srcs = [src] + hdrs + include_paths + [clang_includes, clang_header],
             outs = [out],
-            #TODO(rocm): Ugly hack to access bultin clang includes.
-            cmd = "$(location {}) -I$(execpath {}).runfiles/llvm-project/clang/staging/include/  {} {} {} -emit-llvm -c $(location {}) -o $@".format(
+            cmd = "$(location {}) -I$$(dirname $(location {}))  {} {} {} -emit-llvm -c $(location {}) -o $@".format(
                 clang_tool,
-                clang_tool,
+                clang_header,
                 includes,
                 flags,
                 extra_flags,
