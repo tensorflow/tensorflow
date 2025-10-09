@@ -759,7 +759,7 @@ HloModule m
 region {
   param_0.1 = f32[] parameter(0)
   param_1 = f32[] parameter(1)
-  ROOT add = f32[] add(param_0.1, param_1)
+  ROOT add = f32[] maximum(param_0.1, param_1)
 }
 
 fused_computation {
