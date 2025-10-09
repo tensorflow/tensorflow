@@ -32,6 +32,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/functional/any_invocable.h"
+#include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -774,6 +775,25 @@ void DumpPerModuleProtobufToFile(const HloModule& module,
                                      tsl::Env*, const tsl::protobuf::Message&)>
                                      text_formatter) {
   const std::string filename = FilenameFor(module, TimestampFor(module), name);
+  DumpProtobufToFile(proto, debug_options, filename, std::move(text_formatter));
+}
+
+void DumpPerExecutionProtobufToFile(
+    const HloModule& module, const tsl::protobuf::Message& proto,
+    const DebugOptions& debug_options, absl::string_view name,
+    absl::AnyInvocable<
+        absl::StatusOr<std::string>(tsl::Env*, const tsl::protobuf::Message&)>
+        text_formatter) {
+  int64_t execution_count = 0;
+  {
+    static auto& module_id_to_execution_count ABSL_GUARDED_BY(mu) =
+        *new absl::flat_hash_map<int64_t, int64_t>();
+    absl::MutexLock lock(mu);
+    execution_count = module_id_to_execution_count[module.unique_id()]++;
+  }
+
+  const std::string filename = FilenameFor(
+      module, name, absl::StrFormat("execution_%04d", execution_count));
   DumpProtobufToFile(proto, debug_options, filename, std::move(text_formatter));
 }
 
