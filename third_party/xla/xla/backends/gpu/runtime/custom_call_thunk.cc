@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/backends/gpu/runtime/custom_call_thunk.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -25,11 +26,15 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/backends/gpu/runtime/custom_call_target.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/executable_run_options.h"
 #include "xla/ffi/api/c_api.h"
@@ -41,12 +46,15 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/custom_call_status.h"
 #include "xla/service/custom_call_status_internal.h"
+#include "xla/service/custom_call_target_registry.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
+#include "tsl/platform/platform.h"
 
 namespace xla {
 namespace gpu {
@@ -112,13 +120,98 @@ static absl::StatusOr<ffi::CallFrame> BuildCallFramePrototype(
   return builder.Build();
 }
 
+static absl::StatusOr<CustomCallThunk::CustomCallTarget>
+ResolveLegacyCustomCall(const CustomCallTargetRegistry& registry,
+                        absl::string_view target_name,
+                        absl::string_view platform_name,
+                        CustomCallApiVersion api_version) {
+  void* call_target = CustomCallTargetRegistry::Global()->Lookup(
+      std::string(target_name), std::string(platform_name));
+
+  // For information about this calling convention, see
+  // xla/g3doc/custom_call.md.
+  switch (api_version) {
+    case CustomCallApiVersion::API_VERSION_ORIGINAL: {
+      constexpr absl::string_view kErrorMessage =
+          "Custom call API version `API_VERSION_ORIGINAL` is not supported by "
+          "XLA:GPU. Prefer https://docs.jax.dev/en/latest/ffi.html. It will be "
+          "fully removed in November 2025.";
+      if constexpr (tsl::kIsOpenSource) {
+        LOG(ERROR) << kErrorMessage;
+      } else {
+        LOG(FATAL) << kErrorMessage;
+      }
+
+      return [call_target](stream_executor::Stream* stream, void** buffers,
+                           const char* opaque, size_t opaque_len,
+                           XlaCustomCallStatus*) {
+        reinterpret_cast<CustomCallWithOpaqueStreamHandle>(call_target)(
+            stream->platform_specific_handle().stream, buffers, opaque,
+            opaque_len);
+      };
+      break;
+    }
+    case CustomCallApiVersion::API_VERSION_STATUS_RETURNING:
+    case CustomCallApiVersion::API_VERSION_STATUS_RETURNING_UNIFIED:
+      return [call_target](stream_executor::Stream* stream, void** buffers,
+                           const char* opaque, size_t opaque_len,
+                           XlaCustomCallStatus* status) {
+        reinterpret_cast<CustomCallWithStatusAndOpaqueStreamHandle>(
+            call_target)(stream->platform_specific_handle().stream, buffers,
+                         opaque, opaque_len, status);
+      };
+      break;
+    case CustomCallApiVersion::API_VERSION_TYPED_FFI:
+      return absl::InvalidArgumentError(
+          "Called ResolveLegacyCustomCall with API_VERSION_TYPED_FFI");
+    default:
+      return Internal("Unknown custom-call API version enum value: %d",
+                      api_version);
+  }
+}
+
 absl::StatusOr<std::unique_ptr<CustomCallThunk>> CustomCallThunk::Create(
     ThunkInfo thunk_info, std::string target_name, CustomCallTarget call_target,
     std::vector<std::optional<Slice>> operands,
-    std::vector<std::optional<Slice>> results, const std::string& opaque) {
+    std::vector<std::optional<Slice>> results, std::string opaque) {
   return absl::WrapUnique(new CustomCallThunk(
-      thunk_info, std::move(target_name), std::move(call_target),
-      std::move(operands), std::move(results), opaque));
+      thunk_info, std::move(target_name), std::move(operands),
+      std::move(results), std::move(opaque), std::move(call_target),
+      /*api_version=*/std::nullopt));
+}
+
+absl::StatusOr<std::unique_ptr<CustomCallThunk>> CustomCallThunk::Create(
+    ThunkInfo thunk_info, std::string target_name,
+    std::vector<std::optional<Slice>> operands,
+    std::vector<std::optional<Slice>> results, std::string opaque,
+    CustomCallApiVersion api_version, absl::string_view platform_name) {
+  if (api_version == CustomCallApiVersion::API_VERSION_TYPED_FFI) {
+    return absl::InvalidArgumentError(
+        "Called overload of CustomCallThunk::Create that is intended for "
+        "legacy custom calls with api_version=API_VERSION_TYPED_FFI");
+  }
+
+  TF_ASSIGN_OR_RETURN(
+      CustomCallTarget call_target,
+      ResolveLegacyCustomCall(*CustomCallTargetRegistry::Global(), target_name,
+                              platform_name, api_version));
+
+  return absl::WrapUnique(new CustomCallThunk(
+      thunk_info, std::move(target_name), std::move(operands),
+      std::move(results), std::move(opaque), call_target, api_version));
+}
+
+absl::StatusOr<std::unique_ptr<CustomCallThunk>> CustomCallThunk::Create(
+    ThunkInfo thunk_info, std::string target_name,
+    std::vector<std::optional<Slice>> operands,
+    std::vector<std::optional<Slice>> results, AttributesMap attributes,
+    const HloComputation* called_computation, absl::string_view platform_name) {
+  TF_ASSIGN_OR_RETURN(ffi::HandlerRegistration registration,
+                      ffi::FindHandler(target_name, platform_name));
+
+  return Create(thunk_info, std::move(target_name),
+                std::move(registration.bundle), std::move(operands),
+                std::move(results), std::move(attributes), called_computation);
 }
 
 absl::StatusOr<std::unique_ptr<CustomCallThunk>> CustomCallThunk::Create(
@@ -146,39 +239,42 @@ absl::StatusOr<std::unique_ptr<CustomCallThunk>> CustomCallThunk::Create(
                             XLA_FFI_ExecutionStage_INSTANTIATE));
   }
 
-  TF_ASSIGN_OR_RETURN(
-      CallFrame call_frame,
-      BuildCallFramePrototype(operands, results, std::move(attributes)));
-
+  TF_ASSIGN_OR_RETURN(CallFrame call_frame,
+                      BuildCallFramePrototype(operands, results, attributes));
   return absl::WrapUnique(new CustomCallThunk(
-      thunk_info, std::move(target_name), bundle, std::move(operands),
-      std::move(results), std::move(call_frame), std::move(execution_state),
-      called_computation));
+      thunk_info, std::move(target_name), std::move(bundle),
+      std::move(operands), std::move(results), std::move(call_frame),
+      std::move(attributes), std::move(execution_state), called_computation));
 }
 
-CustomCallThunk::CustomCallThunk(ThunkInfo thunk_info, std::string target_name,
-                                 CustomCallTarget call_target,
-                                 std::vector<std::optional<Slice>> operands,
-                                 std::vector<std::optional<Slice>> results,
-                                 const std::string& opaque)
+CustomCallThunk::CustomCallThunk(
+    ThunkInfo thunk_info, std::string target_name,
+    std::vector<std::optional<Slice>> operands,
+    std::vector<std::optional<Slice>> results, std::string opaque,
+    CustomCallTarget call_target,
+    const std::optional<CustomCallApiVersion>& api_version)
     : Thunk(Thunk::kCustomCall, thunk_info),
+      api_version_(api_version),
       target_name_(std::move(target_name)),
       operands_(std::move(operands)),
       results_(std::move(results)),
       call_target_(std::move(call_target)),
-      opaque_(opaque) {}
+      opaque_(std::move(opaque)) {}
 
 CustomCallThunk::CustomCallThunk(
     ThunkInfo thunk_info, std::string target_name,
     XLA_FFI_Handler_Bundle bundle, std::vector<std::optional<Slice>> operands,
     std::vector<std::optional<Slice>> results, CallFrame call_frame,
+    AttributesMap attributes,
     std::unique_ptr<ffi::ExecutionState> execution_state,
     const HloComputation* called_computation)
     : Thunk(Thunk::kCustomCall, thunk_info),
+      api_version_(CustomCallApiVersion::API_VERSION_TYPED_FFI),
       target_name_(std::move(target_name)),
       operands_(std::move(operands)),
       results_(std::move(results)),
-      bundle_(bundle),
+      bundle_(std::move(bundle)),
+      attributes_(std::move(attributes)),
       call_frame_(std::move(call_frame)),
       call_frames_([this] { return call_frame_->Copy(); }),
       execution_state_(std::move(execution_state)),
@@ -213,9 +309,8 @@ absl::Status CustomCallThunk::ExecuteCustomCall(const ExecuteParams& params) {
   auto message = CustomCallStatusGetMessage(&custom_call_status);
   if (message) {
     return Internal("CustomCall failed: %s", *message);
-  } else {
-    return absl::OkStatus();
   }
+  return absl::OkStatus();
 }
 
 absl::Status CustomCallThunk::ExecuteFfiHandler(
