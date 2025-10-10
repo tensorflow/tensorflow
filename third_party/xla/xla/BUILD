@@ -43,7 +43,6 @@ filegroup(
 filegroup(
     name = "cpu_runtime_srcs",
     srcs = [
-        "cpu_function_runtime.cc",
         "executable_run_options.cc",
     ],
     visibility = internal_visibility([":friends"]),
@@ -1259,7 +1258,6 @@ xla_cc_test(
 
 cc_library(
     name = "cpu_function_runtime",
-    srcs = ["cpu_function_runtime.cc"],
     hdrs = ["cpu_function_runtime.h"],
     compatible_with = get_compatible_with_portable(),
     visibility = internal_visibility([":friends"]),
