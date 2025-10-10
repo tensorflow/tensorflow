@@ -286,8 +286,9 @@ absl::Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(
   }
 
   pre_pipeline.AddPass<BlockScalingRewriter>(
-      /*allow_cudnn=*/cuda_compute_capability.IsAtLeastBlackwell() &&
-      gpu_target_config.dnn_version_info >= se::dnn::VersionInfo(9, 7));
+      cuda_compute_capability.IsAtLeastBlackwell()
+          ? gpu_target_config.dnn_version_info
+          : se::dnn::VersionInfo{});
   pre_pipeline.AddPass<DotDimensionMerger>();
 
   if (!hlo_module->config()
