@@ -1309,9 +1309,7 @@ absl::StatusOr<FusionEmissionResult> EmitCollective(
           /*source_buffer=*/src.value(),
           /*destination_buffer=*/dst.value(),
           /*source_memory_space=*/src_shape.layout().memory_space(),
-          /*destination_memory_space=*/dst_shape.layout().memory_space(),
-          /*source_value=*/nullptr,
-          /*destination_value=*/nullptr});
+          /*destination_memory_space=*/dst_shape.layout().memory_space()});
     }
     auto collective_start_thunk =
         std::make_unique<NcclThunkType>(thunk_info, instr, buffers);
