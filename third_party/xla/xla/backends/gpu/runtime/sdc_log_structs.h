@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
+#include <tuple>
 
 #include "xla/backends/gpu/runtime/sdc_buffer_id.h"
 
@@ -34,6 +35,13 @@ struct SdcLogEntry {
     absl::Format(&sink, "{entry_id: %v, checksum: %u}", entry.entry_id,
                  entry.checksum);
   }
+
+  bool operator==(const SdcLogEntry& other) const {
+    return std::tie(entry_id, checksum) ==
+           std::tie(other.entry_id, other.checksum);
+  }
+
+  bool operator!=(const SdcLogEntry& other) const { return !(*this == other); }
 };
 
 // The struct layout must match on both host and device.
