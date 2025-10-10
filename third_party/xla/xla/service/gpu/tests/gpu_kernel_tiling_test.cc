@@ -382,8 +382,112 @@ ENTRY %primitive_computation_svd.38 (constant_5: f32[841,3], fusion.3: pred[3]) 
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{0.001}));
 }
 
+TEST_F(GpuKernelTilingTest, LargeReductions) {
+  static const struct {
+    absl::string_view name;
+    absl::string_view hlo;
+    bool compile_only;
+  } kReductions[] = {
+      {"RowReduction",
+       R"(
+HloModule Test
+reduceOp {
+  X = s32[] parameter(1)
+  Y = s32[] parameter(0)
+  ROOT Z = s32[] maximum(X, Y)
+}
+ENTRY RowLargeReduce {
+  A = s32[262144]{0} parameter(0)
+  B = s32[262144,262144]{1,0} broadcast(A), dimensions={0}
+  I = s32[262144,262144]{1,0} iota(), iota_dimension=1
+  Z = s32[262144,262144]{1,0} add(B, I)
+  BB = s32[262144,512,512]{2,1,0} reshape(Z)
+  CC = s32[] constant(0)
+  ROOT R = s32[262144,512]{1,0} reduce(BB, CC), dimensions={2}, to_apply=reduceOp
+}
+)",
+       /*compile_only*/ false},
+      {"RowReductionNonMultipleOf2",
+       R"(
+HloModule Test
+reduceOp {
+  X = s32[] parameter(1)
+  Y = s32[] parameter(0)
+  ROOT Z = s32[] maximum(X, Y)
+}
+ENTRY RowLargeReduce {
+  A = s32[762145]{0} parameter(0)
+  B = s32[762145,776223]{1,0} broadcast(A), dimensions={0}
+  I = s32[762145,776223]{1,0} iota(), iota_dimension=1
+  Z = s32[762145,776223]{1,0} add(B, I)
+  BB = s32[762145,999,777]{2,1,0} reshape(B)
+  CC = s32[] constant(0)
+  ROOT R = s32[762145,999]{1,0} reduce(BB, CC), dimensions={2}, to_apply=reduceOp
+}
+)",
+       /*compile_only*/ false},
+      {"MultiRowLargeReduce",
+       R"(
+HloModule Test
+reduceOp {
+  X = s32[] parameter(1)
+  Y = s32[] parameter(0)
+  ROOT Z = s32[] maximum(X, Y)
+}
+ENTRY MultiRowLargeReduce {
+  A = s32[262144]{0} parameter(0)
+  B = s32[262144,262144]{1,0} broadcast(A), dimensions={0}
+  I = s32[262144,262144]{1,0} iota(), iota_dimension=1
+  Z = s32[262144,262144]{1,0} add(B, I)
+  BB = s32[262144,4096,64]{2,1,0} reshape(Z)
+  CC = s32[] constant(0)
+  ROOT R = s32[262144,4096]{1,0} reduce(BB, CC), dimensions={2}, to_apply=reduceOp
+}
+)",
+       /*compile_only*/ false},
+      {"MultiRowLargeReduceNonMultipleOf2",
+       R"(
+HloModule Test
+reduceOp {
+  X = s32[] parameter(1)
+  Y = s32[] parameter(0)
+  ROOT Z = s32[] maximum(X, Y)
+}
+ENTRY MultiRowLargeReduce {
+  A = s32[762145]{0} parameter(0)
+  B = s32[762145,639936]{1,0} broadcast(A), dimensions={0}
+  I = s32[762145,639936]{1,0} iota(), iota_dimension=1
+  Z = s32[762145,639936]{1,0} add(B, I)
+  BB = s32[762145,9999,64]{2,1,0} reshape(B)
+  CC = s32[] constant(0)
+  ROOT R = s32[762145,9999]{1,0} reduce(BB, CC), dimensions={2}, to_apply=reduceOp
+}
+)",
+       /*compile_only*/ true},
+      {"LargeLoopFusion",
+       R"(
+HloModule Test
+ENTRY LargeLoop {
+  C = bf16[] constant(0)
+  ROOT B = bf16[80,7,8192,8192]{3,2,1,0} broadcast(C), dimensions={}
+}
+)",
+       /*compile_only*/ true},
+  };
+
+  for (const auto [name, hlo, compile_only] : kReductions) {
+    VLOG(0) << "========================== Testing " << name;
+    if (compile_only) {
+      auto hlo_module = ParseAndReturnVerifiedModule(hlo).value();
+      EXPECT_TRUE(CompileToExecutable(std::move(hlo_module)).status().ok());
+    } else {
+      EXPECT_TRUE(Run(hlo, /*run_hlo_passes*/ true));
+    }
+  }
+}
+
 TEST_F(GpuKernelTilingTest, ReductionInputTooLarge) {
-  const char *const kHloString = R"(
+  const char* const kHloString = R"(
   HloModule RowReduce
 
   Sum {
@@ -393,9 +497,9 @@ TEST_F(GpuKernelTilingTest, ReductionInputTooLarge) {
   }
 
   ENTRY reduce.1 {
-    parameter = f32[16,1048576,1024,1024] parameter(0)
+    parameter = f32[1048576,1048576,1024,1024] parameter(0)
     init_value = f32[] constant(0)
-    ROOT reduce = f32[16,1048576,1024] reduce(parameter, init_value), dimensions={3}, to_apply=Sum
+    ROOT reduce = f32[1048576,1048576,1024] reduce(parameter, init_value), dimensions={3}, to_apply=Sum
   }
   )";
   auto hlo_module = ParseAndReturnVerifiedModule(kHloString).value();
@@ -408,15 +512,17 @@ TEST_F(GpuKernelTilingTest, ReductionInputTooLarge) {
   absl::Status status = CompileToExecutable(std::move(hlo_module)).status();
 
   if (xla::PlatformUtil::CanonicalPlatformName("gpu").value() == "rocm") {
-    EXPECT_THAT(status.message(),
-                ::testing::ContainsRegex(
-                    "Kernel '.*' launch needs more blocks [(]2147483648, 1[)] "
-                    "than allowed by hardware [(]2147483647, 65536[)]"));
+    EXPECT_THAT(
+        status.message(),
+        ::testing::ContainsRegex(
+            "Kernel '.*' launch needs more blocks [(]4294967296, 65536[)] "
+            "than allowed by hardware [(]2147483647, 65536[)]"));
   } else {
-    EXPECT_THAT(status.message(),
-                ::testing::ContainsRegex(
-                    "Kernel '.*' launch needs more blocks [(]4294967296, 1[)] "
-                    "than allowed by hardware [(]2147483647, 65535[)]"));
+    EXPECT_THAT(
+        status.message(),
+        ::testing::ContainsRegex(
+            "Kernel '.*' launch needs more blocks [(]4295032834, 65535[)] "
+            "than allowed by hardware [(]2147483647, 65535[)]"));
   }
 }
 
