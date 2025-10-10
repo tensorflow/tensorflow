@@ -14,7 +14,11 @@ load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:LICENSE"],
-    default_visibility = ["//visibility:public"],
+    default_visibility = [
+        "//third_party/odml/litert:__subpackages__",
+        "//third_party/odml/litert/litert:__subpackages__",
+        "//visibility:public",
+    ],
     licenses = ["notice"],
 )
 
@@ -31,6 +35,7 @@ package_group(
         "//third_party/iree/...",
         "//third_party/odml/infra/...",
         "//third_party/odml/litert/...",
+        "//third_party/odml/litert/litert/...",
         "//waymo/accelerator/alpine/tools/...",
         "//waymo/ml/compiler/mlir/...",
     ],

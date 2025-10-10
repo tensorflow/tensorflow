@@ -114,8 +114,9 @@ class LowerBroadcastInDim
       auto broadcast_dim_input_element_type =
           broadcast_dim_input.getType().getElementType();
 
-      auto extracted = rewriter.create<mlir::tensor::ExtractOp>(
-          op.getLoc(), broadcast_dim_input_element_type, broadcast_dim_input);
+      auto extracted = mlir::tensor::ExtractOp::create(
+          rewriter, op.getLoc(), broadcast_dim_input_element_type,
+          broadcast_dim_input);
 
       rewriter.replaceOpWithNewOp<ttir::SplatOp>(op, op.getResult().getType(),
                                                  extracted);
@@ -142,14 +143,184 @@ class LowerBroadcastInDim
   }
 };
 
+class LowerReduce : public mlir::OpRewritePattern<stablehlo::ReduceOp> {
+ public:
+  using OpRewritePattern::OpRewritePattern;
+
+ private:
+  mlir::LogicalResult matchAndRewrite(
+      stablehlo::ReduceOp op, mlir::PatternRewriter& rewriter) const override {
+    if (mlir::failed(VerifyOpIsCompatibleWithTritonReduce(op, rewriter))) {
+      return mlir::failure();
+    }
+
+    int32_t axis = op.getDimensions()[0];
+
+    // In case shlo returns a 0 rank tensor triton needs to return a scalar as
+    // triton doesn't support 0 rank tensors.
+    SmallVector<Type> adjusted_result_types;
+    adjusted_result_types.reserve(op.getNumResults());
+    for (auto result : op.getResults()) {
+      auto shaped_type = cast<mlir::ShapedType>(result.getType());
+      if (shaped_type.getRank() == 0) {
+        adjusted_result_types.push_back(shaped_type.getElementType());
+      } else {
+        adjusted_result_types.push_back(shaped_type);
+      }
+    }
+
+    auto triton_reduce_op = ttir::ReduceOp::create(
+        rewriter, op.getLoc(), adjusted_result_types, op.getInputs(), axis);
+
+    Region& triton_reduce_region = triton_reduce_op.getCombineOp();
+    rewriter.cloneRegionBefore(op.getBody(), triton_reduce_region,
+                               triton_reduce_region.end());
+    Block& triton_reduce_region_block = triton_reduce_region.front();
+    for (mlir::BlockArgument& argument :
+         triton_reduce_region_block.getArguments()) {
+      auto extract_op = cast<mlir::tensor::ExtractOp>(*argument.user_begin());
+
+      auto scalar_type =
+          cast<mlir::RankedTensorType>(argument.getType()).getElementType();
+      argument.setType(scalar_type);
+      rewriter.replaceOp(extract_op, argument);
+    }
+
+    Operation* terminator = triton_reduce_region_block.getTerminator();
+    rewriter.setInsertionPointToEnd(&triton_reduce_region_block);
+    SmallVector<Value> return_operands;
+    for (Value operand : terminator->getOperands()) {
+      auto defining_op = operand.getDefiningOp();
+      return_operands.push_back(mlir::tensor::ExtractOp::create(
+          rewriter, defining_op->getLoc(),
+          cast<mlir::RankedTensorType>(operand.getType()).getElementType(),
+          defining_op->getResult(0)));
+    }
+    rewriter.replaceOpWithNewOp<ttir::ReduceReturnOp>(terminator,
+                                                      return_operands);
+
+    rewriter.replaceOp(op, triton_reduce_op);
+
+    // Replace usages of the original op results. If the original result was a
+    // 0-rank tensor, we need to wrap the scalar result of tt.reduce in a
+    // tensor.from_elements op.
+    rewriter.setInsertionPointAfter(triton_reduce_op);
+    for (const auto& triton_result : triton_reduce_op.getResults()) {
+      if (mlir::isa<mlir::ShapedType>(triton_result.getType())) {
+        continue;
+      }
+      auto extract_op =
+          cast<mlir::tensor::ExtractOp>(*triton_result.user_begin());
+
+      rewriter.replaceOp(extract_op, triton_result);
+    }
+    return mlir::success();
+  }
+
+  // Verifies that the stablehlo reduce op can be lowered to a triton reduce
+  // op.
+  // This checks that proper emitting of `tensor.from_elements` and
+  // `tensor.extract` on reducer inputs and outputs has happened. It also checks
+  // that `tensor.extract` was emitted on the result of the reduce operation if
+  // the result is a zero rank tensor.
+  mlir::LogicalResult VerifyOpIsCompatibleWithTritonReduce(
+      stablehlo::ReduceOp op, mlir::PatternRewriter& rewriter) const {
+    if (mlir::failed(VerifyReducerArgs(op, rewriter))) {
+      return mlir::failure();
+    }
+
+    if (mlir::failed(VerifyReducerResults(op, rewriter))) {
+      return mlir::failure();
+    }
+
+    if (mlir::failed(VerifyResults(op, rewriter))) {
+      return mlir::failure();
+    }
+
+    // Check that the reduction is along a single dimension.
+    auto dimensions = op.getDimensions();
+    if (dimensions.size() != 1) {
+      return rewriter.notifyMatchFailure(
+          op->getLoc(), "tt.reduce only supports single dimension reductions.");
+    }
+
+    return mlir::success();
+  }
+
+  mlir::LogicalResult VerifyReducerArgs(stablehlo::ReduceOp op,
+                                        mlir::PatternRewriter& rewriter) const {
+    // Check that all arguments get extracted into a scalar.
+    for (mlir::BlockArgument& argument : op.getBody().front().getArguments()) {
+      if (!argument.hasOneUse()) {
+        return rewriter.notifyMatchFailure(
+            op, "Expected a single user for an argument to a reduce combiner.");
+      }
+      if (!dyn_cast<mlir::tensor::ExtractOp>(*argument.user_begin())) {
+        return rewriter.notifyMatchFailure(op,
+                                           "Expected a tensor extract op as "
+                                           "user of reduce combiner argument.");
+      }
+    }
+
+    return mlir::success();
+  }
+
+  mlir::LogicalResult VerifyReducerResults(
+      stablehlo::ReduceOp op, mlir::PatternRewriter& rewriter) const {
+    // Check that all outputs get created by a from_elements op.
+    for (Value operand : op.getBody().front().getTerminator()->getOperands()) {
+      if (!operand.hasOneUse()) {
+        return rewriter.notifyMatchFailure(
+            op->getLoc(),
+            "Expected a single user for an output of a reduce combiner.");
+      }
+      auto from_elements =
+          operand.getDefiningOp<mlir::tensor::FromElementsOp>();
+      if (!from_elements) {
+        return rewriter.notifyMatchFailure(op->getLoc(),
+                                           "Expected a from_elements op as "
+                                           "user of reduce combiner output.");
+      }
+    }
+    return mlir::success();
+  }
+
+  mlir::LogicalResult VerifyResults(stablehlo::ReduceOp op,
+                                    mlir::PatternRewriter& rewriter) const {
+    // Check that all results get created by a from_elements op.
+    for (Value result : op.getResults()) {
+      auto shaped_type = cast<mlir::ShapedType>(result.getType());
+      // If the result is a shaped type, then we don't need to do anything.
+      if (shaped_type.getRank() != 0) {
+        continue;
+      }
+
+      if (!result.hasOneUse()) {
+        return rewriter.notifyMatchFailure(
+            op->getLoc(), "Expected a single user for reduce result.");
+      }
+
+      auto extract_op = dyn_cast<mlir::tensor::ExtractOp>(*result.user_begin());
+
+      if (!extract_op) {
+        return rewriter.notifyMatchFailure(
+            op->getLoc(),
+            "Expected a tensor extract op as "
+            "the only user of 0 rank reduce result.");
+      }
+    }
+    return mlir::success();
+  }
+};
+
 class StableHLOLowerToTritonPass
     : public impl::StableHLOLowerToTritonPassBase<StableHLOLowerToTritonPass> {
  public:
   void runOnOperation() override {
     mlir::MLIRContext* mlir_context = &getContext();
     mlir::RewritePatternSet patterns(mlir_context);
-    patterns.add<LowerTranspose, LowerIotaToMakeRange, LowerBroadcastInDim>(
-        mlir_context);
+    patterns.add<LowerTranspose, LowerIotaToMakeRange, LowerBroadcastInDim,
+                 LowerReduce>(mlir_context);
 
     if (mlir::failed(
             mlir::applyPatternsGreedily(getOperation(), std::move(patterns)))) {
