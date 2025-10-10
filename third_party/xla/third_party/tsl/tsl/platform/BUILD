@@ -158,7 +158,6 @@ cc_library(
     srcs = ["numbers.cc"],
     hdrs = ["numbers.h"],
     deps = [
-        ":str_util",
         ":stringpiece",
         ":stringprintf",
         "@com_google_absl//absl/base:core_headers",

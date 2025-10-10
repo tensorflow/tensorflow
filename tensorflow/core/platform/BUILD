@@ -940,6 +940,7 @@ cc_library(
         ":bfloat16",
         ":platform",
         ":tstring",
+        "@com_google_absl//absl/base:core_headers",
         "@local_tsl//tsl/platform:bfloat16",
         "@local_tsl//tsl/platform:ml_dtypes",
         "@local_tsl//tsl/platform:tstring",
