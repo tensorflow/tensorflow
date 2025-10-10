@@ -499,6 +499,48 @@ xla_cc_test(
     ],
 )
 
+cc_library(
+    name = "pjrt_layout_migration_util",
+    srcs = ["pjrt_layout_migration_util.cc"],
+    hdrs = ["pjrt_layout_migration_util.h"],
+    compatible_with = get_compatible_with_portable(),
+    visibility = internal_visibility([
+        ":friends",
+        ":internal",
+    ]),
+    deps = [
+        ":pjrt_layout",
+        "//xla:shape_util",
+        "//xla/pjrt:pjrt_layout",
+        "//xla/python/ifrt",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+    ],
+)
+
+xla_cc_test(
+    name = "pjrt_layout_migration_util_test",
+    srcs = ["pjrt_layout_migration_util_test.cc"],
+    deps = [
+        ":pjrt_layout",
+        ":pjrt_layout_migration_util",
+        "//xla:shape_util",
+        "//xla/pjrt:pjrt_layout",
+        "//xla/python/ifrt",
+        "//xla/python/ifrt:basic_device_list",
+        "//xla/python/ifrt:mock",
+        "//xla/tsl/concurrency:ref_count",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
 tf_proto_library(
     name = "pjrt_layout_serdes_proto",
     srcs = ["pjrt_layout_serdes.proto"],
