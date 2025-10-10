@@ -53,8 +53,8 @@ const string RegisteredFactoriesErrorMessageLocked()
   for (const auto& executor_factory : *executor_factories()) {
     factory_types.push_back(executor_factory.first);
   }
-  return strings::StrCat("Registered factories are {",
-                         absl::StrJoin(factory_types, ", "), "}.");
+  return absl::StrCat("Registered factories are {",
+                      absl::StrJoin(factory_types, ", "), "}.");
 }
 }  // namespace
 
