@@ -31,6 +31,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/all_gather_thunk.h"
 #include "xla/backends/gpu/runtime/all_reduce_thunk.h"
 #include "xla/backends/gpu/runtime/all_to_all_thunk.h"
+#include "xla/backends/gpu/runtime/collective_broadcast_thunk.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/command_buffer_cmd.h"
 #include "xla/backends/gpu/runtime/conditional_thunk.h"
@@ -184,6 +185,12 @@ static absl::StatusOr<Command> Convert(const AllGatherStartThunk& thunk) {
 }
 
 static absl::StatusOr<Command> Convert(
+    const CollectiveBroadcastStartThunk& thunk) {
+  return std::make_unique<CollectiveBroadcastCmd>(
+      thunk.config(), thunk.buffers(), thunk.async_events());
+}
+
+static absl::StatusOr<Command> Convert(
     const DynamicSliceThunk& thunk, const ConvertToCommandsOptions& options) {
   TF_ASSIGN_OR_RETURN(
       CommandBufferCmdExecutor embedded_cmds,
@@ -218,11 +225,10 @@ static absl::StatusOr<Command> Convert(const CustomCallThunk& thunk) {
         thunk.target_name(), bundle->execute, thunk.operands(), thunk.results(),
         *thunk.call_frame(),
         /*called_computation=*/nullptr);  // TODO(b/342285364)
-  } else {
-    return std::make_unique<CustomCallCmd>(
-        thunk.target_name(), thunk.call_target(), thunk.operands(),
-        thunk.results(), thunk.opaque());
   }
+  return std::make_unique<CustomCallCmd>(thunk.target_name(),
+                                         thunk.call_target(), thunk.operands(),
+                                         thunk.results(), thunk.opaque());
 }
 
 static absl::StatusOr<Command> Convert(const CuDnnThunk& thunk) {
@@ -288,6 +294,8 @@ static absl::Status AppendCommands(CommandBufferCmdSequence& cmd_sequence,
       return append(Convert<ReduceScatterStartThunk>(thunk));
     case Thunk::Kind::kAllToAllStart:
       return append(Convert<AllToAllStartThunk>(thunk));
+    case Thunk::Kind::kCollectiveBroadcastStart:
+      return append(Convert<CollectiveBroadcastStartThunk>(thunk));
     case Thunk::Kind::kPartitionId:
       return append(Convert<PartitionIdThunk>(thunk));
     case Thunk::Kind::kReplicaId:
@@ -308,8 +316,9 @@ static absl::Status AppendCommands(CommandBufferCmdSequence& cmd_sequence,
 
     case Thunk::Kind::kAllGatherDone:
     case Thunk::Kind::kAllReduceDone:
-    case Thunk::Kind::kReduceScatterDone:
     case Thunk::Kind::kAllToAllDone:
+    case Thunk::Kind::kCollectiveBroadcastDone:
+    case Thunk::Kind::kReduceScatterDone:
       if (options.synchronization_mode ==
           CommandBufferCmdExecutor::SynchronizationMode::kLHS) {
         return append(absl::StatusOr<Command>(std::make_unique<AsyncDoneCmd>(
