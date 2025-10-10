@@ -35,6 +35,10 @@ namespace memory_space_assignment {
 using MsaBufferInterval =
     GlobalDecreasingSizeBestFitHeap<HloValue>::BufferInterval;
 
+using MsaInstructionToOperands =
+    absl::flat_hash_map<const HloInstruction*,
+                        absl::flat_hash_set<std::pair<int, ShapeIndex>>>;
+
 // Encapsulates common utility methods for memory space assignment.
 class MemorySpaceAssignmentUtils {
  public:
