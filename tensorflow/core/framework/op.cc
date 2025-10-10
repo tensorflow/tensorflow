@@ -20,7 +20,12 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/strings/match.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/full_type.pb.h"
+#include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/op_def_builder.h"
 #include "tensorflow/core/framework/op_def_util.h"
 #include "tensorflow/core/lib/core/errors.h"
