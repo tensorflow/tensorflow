@@ -356,10 +356,10 @@ TEST_F(HierarchicalTreeBroadcasterInitParamsTest,
   cp->instance.impl_details.collective_name = "HierarchicalTreeBroadcast";
   std::vector<int> dev_per_task = {4, 4, 6, 8};
   for (int ti = 0; ti < cp->group.num_tasks; ti++) {
-    string task_name = strings::StrCat("/job:worker/replica:0/task:", ti);
+    string task_name = absl::StrCat("/job:worker/replica:0/task:", ti);
     for (int di = 0; di < dev_per_task[ti]; di++) {
       CollGroupMember member;
-      member.device.set_name(strings::StrCat(task_name, "/device:GPU:", di));
+      member.device.set_name(absl::StrCat(task_name, "/device:GPU:", di));
       member.task = task_name;
       cp->group.members.push_back(member);
       cp->group.group_size++;
