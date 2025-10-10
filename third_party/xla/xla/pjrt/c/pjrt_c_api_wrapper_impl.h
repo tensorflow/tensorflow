@@ -206,6 +206,10 @@ struct PJRT_Event {
   xla::Future<> future;
 };
 
+struct PJRT_Promise {
+  xla::Future<>::Promise promise;
+};
+
 struct PJRT_SerializedExecutable {
   std::string serialized;
 };
@@ -270,6 +274,9 @@ PJRT_Error* PJRT_Event_IsReady(PJRT_Event_IsReady_Args* args);
 PJRT_Error* PJRT_Event_Error(PJRT_Event_Error_Args* args);
 PJRT_Error* PJRT_Event_Await(PJRT_Event_Await_Args* args);
 PJRT_Error* PJRT_Event_OnReady(PJRT_Event_OnReady_Args* args);
+PJRT_Error* PJRT_Event_Promise_Get(PJRT_Event_Promise_Get_Args* args);
+PJRT_Error* PJRT_Promise_Set(PJRT_Promise_Set_Args* args);
+PJRT_Error* PJRT_Promise_Destroy(PJRT_Promise_Destroy_Args* args);
 
 PJRT_Error* PJRT_Client_Destroy(PJRT_Client_Destroy_Args* args);
 PJRT_Error* PJRT_Client_PlatformName(PJRT_Client_PlatformName_Args* args);

@@ -103,7 +103,7 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_Extension_Base, next);
 // Changes include:
 // * Adding a new field to the PJRT_Api or argument structs
 // * Renaming a method or argument (doesn't affect ABI)
-#define PJRT_API_MINOR 80
+#define PJRT_API_MINOR 81
 
 // The plugin should set the major_version and minor_version of
 // PJRT_Api.pjrt_api_version to be the `PJRT_API_MAJOR` and `PJRT_API_MINOR` in
@@ -244,15 +244,21 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_Plugin_Attributes_Args, num_attributes);
 // `stablehlo_minimum_version`.
 typedef PJRT_Error* PJRT_Plugin_Attributes(PJRT_Plugin_Attributes_Args* args);
 
-// ---------------------------------- Events -----------------------------------
+// ---------------------------- Events and Promises ----------------------------
 
-// Represents a notifying event that is returned by PJRT APIs that enqueue
-// asynchronous work, informing callers when the work is complete and reporting
-// a value of type `PJRT_Error*` or `nullptr` as error status.
+// An event represents a notification that reports a value of type `PJRT_Error*`
+// or `nullptr` as error status. Events may be returned by PJRT APIs that
+// enqueue asynchronous work, informing callers when the work is complete. When
+// passed to PJRT APIs that wait for asynchronous work, setting the event's
+// paired promise indicates that the work is complete.
 //
 // Callers are always responsible for freeing `PJRT_Event`s by calling
 // `PJRT_Event_Destroy`.
 typedef struct PJRT_Event PJRT_Event;
+
+// Callers are always responsible for freeing `PJRT_Promise`s by calling
+// `PJRT_Promise_Destroy`.
+typedef struct PJRT_Promise PJRT_Promise;
 
 struct PJRT_Event_Destroy_Args {
   size_t struct_size;
@@ -326,6 +332,40 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_Event_OnReady_Args, user_arg);
 // Registers `callback` to be called once `event` is ready, with `event`'s
 // error status and a pointer to an object of the caller's choice as arguments.
 typedef PJRT_Error* PJRT_Event_OnReady(PJRT_Event_OnReady_Args* args);
+
+struct PJRT_Event_Promise_Get_Args {
+  size_t struct_size;
+  PJRT_Extension_Base* extension_start;
+  PJRT_Event* event;      // out
+  PJRT_Promise* promise;  // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Event_Promise_Get_Args, promise);
+
+// Gets a paired PJRT_Event and PJRT_Promise.
+typedef PJRT_Error* PJRT_Event_Promise_Get(PJRT_Event_Promise_Get_Args* args);
+
+struct PJRT_Promise_Set_Args {
+  size_t struct_size;
+  PJRT_Extension_Base* extension_start;
+  PJRT_Promise* promise;
+  PJRT_Error_Code error_code;
+  const char* error_message;
+  size_t error_message_size;
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Promise_Set_Args, error_message_size);
+
+// Sets the PJRT_Promise as completed.
+typedef PJRT_Error* PJRT_Promise_Set(PJRT_Promise_Set_Args* args);
+
+struct PJRT_Promise_Destroy_Args {
+  size_t struct_size;
+  PJRT_Extension_Base* extension_start;
+  PJRT_Promise* promise;
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Promise_Destroy_Args, promise);
+
+// Frees `promise`. `promise` can be `nullptr`.
+typedef PJRT_Error* PJRT_Promise_Destroy(PJRT_Promise_Destroy_Args* args);
 
 // ---------------------------------- Client -----------------------------------
 
@@ -2678,11 +2718,14 @@ typedef struct PJRT_Api {
   _PJRT_API_STRUCT_FIELD(PJRT_Client_CreateAliasBuffer);
   _PJRT_API_STRUCT_FIELD(PJRT_Client_FulfillAliasBuffer);
   _PJRT_API_STRUCT_FIELD(PJRT_LoadedExecutable_GetDeviceAssignment);
+
+  _PJRT_API_STRUCT_FIELD(PJRT_Event_Promise_Get);
+  _PJRT_API_STRUCT_FIELD(PJRT_Promise_Set);
+  _PJRT_API_STRUCT_FIELD(PJRT_Promise_Destroy);
 } PJRT_Api;
 
 enum {
-  PJRT_Api_STRUCT_SIZE =
-      PJRT_STRUCT_SIZE(PJRT_Api, PJRT_LoadedExecutable_GetDeviceAssignment)
+  PJRT_Api_STRUCT_SIZE = PJRT_STRUCT_SIZE(PJRT_Api, PJRT_Promise_Destroy)
 };
 
 #undef _PJRT_API_STRUCT_FIELD
