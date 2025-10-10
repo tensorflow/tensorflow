@@ -26,6 +26,7 @@ limitations under the License.
 #include <utility>
 #include <variant>
 
+#include "absl/base/call_once.h"
 #include "absl/base/casts.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
@@ -36,6 +37,7 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "xla/stream_executor/activate_context.h"
+#include "xla/stream_executor/cuda/cuda_blas.h"
 #include "xla/stream_executor/cuda/cuda_context.h"
 #include "xla/stream_executor/cuda/cuda_event.h"
 #include "xla/stream_executor/cuda/cuda_status.h"
@@ -195,8 +197,15 @@ absl::StatusOr<std::unique_ptr<CudaStream>> CudaStream::Create(
                       CudaEvent::Create(executor,
                                         /*allow_timing=*/false));
 
-  return std::unique_ptr<CudaStream>(new CudaStream(
+  auto stream = std::unique_ptr<CudaStream>(new CudaStream(
       executor, std::move(completed_event), priority, stream_handle));
+  // We initialize BLAS interfaces early here since otherwise it might create
+  // us problems during cublas_lt initialization under graph capture.
+  stream->blas_ = std::make_unique<cuda::CUDABlas>(stream.get());
+  if (!stream->blas_->Init()) {
+    return absl::InternalError("Failed to initialize BLAS support");
+  }
+  return stream;
 }
 
 absl::Status CudaStream::WaitFor(Stream* other) {

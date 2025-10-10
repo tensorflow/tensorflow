@@ -4275,7 +4275,7 @@ absl::Status ROCmFusedMatmulRunner::gemm(Stream* stream,
   blas::Transpose tb =
       _trans_b ? blas::Transpose::kTranspose : blas::Transpose::kNoTranspose;
 
-  auto* blas = stream->parent()->AsBlas();
+  auto* blas = stream->AsBlas();
   if (blas == nullptr) {
     return absl::InternalError("No Blas support for stream");
   }
