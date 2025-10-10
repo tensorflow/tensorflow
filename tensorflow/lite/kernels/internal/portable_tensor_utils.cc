@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/portable_tensor_utils.h"
 
 #include <algorithm>
+#include <cassert>
 #include <cmath>
 #include <cstdint>
 
@@ -89,6 +90,56 @@ void UnpackDenseInt4IntoInt8(const int8_t* src_buffer, int num_elements,
   if (num_elements % 2 != 0) {
     dst_buffer[num_elements - 1] =
         static_cast<int8_t>(src_buffer[num_elements / 2] << 4) >> 4;
+  }
+}
+
+void UnpackPackedIntToInt8(const int8_t* src_buffer, int num_elements,
+                           int bit_width, int8_t* dst_buffer) {
+  assert(bit_width == 2 || bit_width == 4);
+  if (bit_width == 4) {
+    // num_elements means the number of elements regardless of packed or
+    // unpacked. For example, 3 elements means both
+    //   1) Packed: 3 int4's = 12 bit -> 16 bits (padded) = 2 bytes.
+    //      stored in src_buffer[0] and src_buffer[1] (i = 0..1)
+    //   2) Unpacked: 3 int8's = 3 bytes.
+    //.     stored in dst_buffer[0], dst_buffer[1] and dst_buffer[2] (j = 0..2)
+    for (int i = 0; i < num_elements / 2; i++) {
+      int8_t byte = src_buffer[i];
+      // Shift left first so that sign is properly extended when shifted right
+      int8_t lower = static_cast<int8_t>(byte << 4) >> 4;
+      int8_t higher = byte >> 4;
+      dst_buffer[2 * i] = lower;
+      dst_buffer[2 * i + 1] = higher;
+    }
+
+    // If the buffer size is odd, extract the final lower nibble.
+    if (num_elements % 2 != 0) {
+      dst_buffer[num_elements - 1] =
+          static_cast<int8_t>(src_buffer[num_elements / 2] << 4) >> 4;
+    }
+  } else if (bit_width == 2) {
+    for (int i = 0; i < num_elements / 4; i++) {
+      int8_t byte = src_buffer[i];
+      // Shift left first so that sign is properly extended when shifted right
+      int8_t val1 = static_cast<int8_t>(byte << 6) >> 6;
+      int8_t val2 = static_cast<int8_t>((byte << 4) & 0xFF) >> 6;
+      int8_t val3 = static_cast<int8_t>((byte << 2) & 0xFF) >> 6;
+      int8_t val4 = byte >> 6;
+      dst_buffer[4 * i] = val1;
+      dst_buffer[4 * i + 1] = val2;
+      dst_buffer[4 * i + 2] = val3;
+      dst_buffer[4 * i + 3] = val4;
+    }
+
+    // Handle the remaining elements.
+    int remaining_elements = num_elements % 4;
+    if (remaining_elements > 0) {
+      int8_t byte = src_buffer[num_elements / 4];
+      for (int i = 0; i < remaining_elements; i++) {
+        dst_buffer[num_elements - remaining_elements + i] =
+            static_cast<int8_t>((byte << (6 - 2 * i)) & 0xFF) >> 6;
+      }
+    }
   }
 }
 

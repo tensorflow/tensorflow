@@ -1199,6 +1199,11 @@ cc_library(
     name = "mpmd_executable",
     srcs = ["mpmd_executable.cc"],
     hdrs = ["mpmd_executable.h"],
+    visibility = internal_visibility([
+        ":friends",
+        ":internal",
+        ":users",
+    ]),
     deps = [
         ":attribute_map",
         ":ifrt",

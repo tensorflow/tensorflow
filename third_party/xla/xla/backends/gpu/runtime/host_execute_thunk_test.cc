@@ -321,6 +321,81 @@ TEST(HostExecuteStartThunkTest, ArgAndResultPinnedOnHost) {
   EXPECT_EQ(*static_cast<int32_t*>(result_memory_allocation->opaque()), 10);
 }
 
+TEST(HostExecuteStartThunkTest, ArgAndResultInSharedMemory) {
+  se::StreamExecutor* stream_executor = GpuExecutor();
+  TF_ASSERT_OK_AND_ASSIGN(auto stream, stream_executor->CreateStream());
+
+  static constexpr char const* kHloModule = R"(
+    HloModule module
+    ENTRY add_inplace {
+      p0 = s32[] parameter(0)
+      ROOT add = s32[] add(p0, p0)
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module,
+                          ParseAndReturnUnverifiedModule(kHloModule, {}));
+
+  TF_ASSERT_OK_AND_ASSIGN(auto unified_memory_allocator,
+                          stream_executor->CreateMemoryAllocator(
+                              stream_executor::MemoryType::kUnified));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto arg_memory_allocation,
+      unified_memory_allocator->Allocate(1 * sizeof(int32_t)));
+
+  constexpr int32_t kArgValue = 5;
+  std::memcpy(arg_memory_allocation->opaque(), &kArgValue, sizeof(kArgValue));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto result_memory_allocation,
+      unified_memory_allocator->Allocate(1 * sizeof(int32_t)));
+
+  se::DeviceMemoryBase arg(arg_memory_allocation->opaque(),
+                           arg_memory_allocation->size());
+  se::DeviceMemoryBase result(result_memory_allocation->opaque(),
+                              result_memory_allocation->size());
+
+  // Prepare buffer allocations for recording command buffer.
+  BufferAllocation alloc_arg(/*index=*/0, 4, /*color=*/0);
+  BufferAllocation alloc_result(/*index=*/1, 4, /*color=*/0);
+
+  BufferAllocation::Slice slice_arg(&alloc_arg, 0, 4);
+  BufferAllocation::Slice slice_result(&alloc_result, 0, 4);
+
+  TF_ASSERT_OK_AND_ASSIGN(auto thunk,
+                          CreateHostExecuteStartThunk(
+                              Thunk::ThunkInfo(), *hlo_module,
+                              {{slice_arg, ShapeUtil::MakeShape(S32, {})}},
+                              {{slice_result, ShapeUtil::MakeShape(S32, {})}}));
+
+  se::StreamExecutorMemoryAllocator allocator(stream_executor);
+  ExecutableRunOptions executable_run_options;
+  executable_run_options.set_device_to_host_stream(stream.get());
+  executable_run_options.set_host_to_device_stream(stream.get());
+  ServiceExecutableRunOptions service_executable_run_options(
+      executable_run_options);
+  BufferAllocations allocations({arg, result}, 0, &allocator);
+
+  Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
+      service_executable_run_options, allocations, stream.get(), stream.get(),
+      nullptr, nullptr);
+
+  TF_ASSERT_OK(
+      thunk->Initialize(Thunk::InitializeParams{/*executor=*/stream_executor}));
+  TF_ASSERT_OK(thunk->ExecuteOnStream(params));
+
+  TF_ASSERT_OK_AND_ASSIGN(auto execute_event,
+                          thunk->async_events()->ExtractEvent(
+                              stream_executor, RunId(params.execution_id)));
+  tsl::BlockUntilReady(execute_event);
+  EXPECT_FALSE(execute_event.IsError());
+  TF_ASSERT_OK(stream->WaitFor(execute_event.get().get()));
+  TF_ASSERT_OK(stream->BlockHostUntilDone());
+
+  EXPECT_EQ(*static_cast<int32_t*>(result_memory_allocation->opaque()), 10);
+}
+
 TEST(HostExecuteStartThunkTest, ArgAndResultNonRegisteredHostMemory) {
   se::StreamExecutor* stream_executor = GpuExecutor();
   TF_ASSERT_OK_AND_ASSIGN(auto stream, stream_executor->CreateStream());

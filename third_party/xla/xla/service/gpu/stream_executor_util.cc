@@ -541,8 +541,7 @@ void InitializeBuffer(se::Stream* stream, PrimitiveType buffer_type,
       buffer_type);
 }
 
-absl::StatusOr<se::dnn::ConvolutionKind> GetDNNConvKindFromCudnnConvKind(
-    CudnnConvKind kind) {
+se::dnn::ConvolutionKind CudnnConvKindToProto(CudnnConvKind kind) {
   switch (kind) {
     case CudnnConvKind::kBackwardFilter:
       return se::dnn::BACKWARD_FILTER;
@@ -554,6 +553,23 @@ absl::StatusOr<se::dnn::ConvolutionKind> GetDNNConvKindFromCudnnConvKind(
       return se::dnn::FORWARD_BIAS_ACTIVATION;
     case CudnnConvKind::kForwardGraph:
       return se::dnn::FORWARD_GRAPH;
+      // No default case to ensure that all cases are handled at compile time.
+  }
+}
+
+absl::StatusOr<CudnnConvKind> CudnnConvKindFromProto(
+    se::dnn::ConvolutionKind kind) {
+  switch (kind) {
+    case se::dnn::BACKWARD_FILTER:
+      return CudnnConvKind::kBackwardFilter;
+    case se::dnn::BACKWARD_DATA:
+      return CudnnConvKind::kBackwardInput;
+    case se::dnn::FORWARD:
+      return CudnnConvKind::kForward;
+    case se::dnn::FORWARD_BIAS_ACTIVATION:
+      return CudnnConvKind::kForwardActivation;
+    case se::dnn::FORWARD_GRAPH:
+      return CudnnConvKind::kForwardGraph;
     default:
       break;
   }

@@ -25,6 +25,7 @@ limitations under the License.
 #include <fcntl.h>
 #include <sys/stat.h>
 
+#include <algorithm>
 #include <cerrno>
 #include <cstddef>
 #include <cstdint>
@@ -103,28 +104,23 @@ bool MMapHandle::Map(const FileDescriptorView& fd, const size_t offset,
 #elif defined(_MSC_VER)
   HANDLE osf_handle = reinterpret_cast<HANDLE>(_get_osfhandle(fd.Value()));
   XNNPACK_RETURN_CHECK(osf_handle != INVALID_HANDLE_VALUE,
-                       "could not convert file descriptor to file handle.");
+                       "could not convert file descriptor to file handle: %s.",
+                       strerror(errno));
 
   // Create the handle name, which is either NULL or the path with backslashes
   // replaced by `_`.
   std::string name;
   const char* handle_name = nullptr;
-  if (!path || path[0] == '\0') {
-    name.clear();
-  } else {
+  if (path && path[0] != '\0') {
     name = path;
-    for (int i = 0; i < name.size(); ++i) {
-      if (name[i] == '\\') {
-        name[i] = '_';
-      }
-    }
+    std::replace(name.begin(), name.end(), '\\', '_');
     handle_name = name.c_str();
   }
   file_mapping_ =
       CreateFileMappingA(osf_handle, /*lpFileMappingAttributes=*/nullptr,
                          /*flProtect=*/PAGE_READONLY, /*dwMaximumSizeHigh=*/0,
                          /*dwMaximumSizeLow=*/0, /*lpName=*/handle_name);
-  XNNPACK_RETURN_CHECK(file_mapping_ != INVALID_HANDLE_VALUE,
+  XNNPACK_RETURN_CHECK(file_mapping_ != NULL,
                        "could not create a file mapping: %s.",
                        GetLastErrorString().c_str());
 

@@ -63,6 +63,7 @@ limitations under the License.
 #include "xla/python/pjrt_ifrt/pjrt_host_callback.h"
 #include "xla/python/pjrt_ifrt/pjrt_memory.h"
 #include "xla/python/pjrt_ifrt/xla_compiler.h"
+#include "xla/python/pjrt_ifrt/xla_sharding.h"
 #include "xla/service/global_device_id.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/shape.h"
@@ -123,20 +124,21 @@ GetFirstModuleOutputDimensions(
 
 // Returns the output shardings of the first module in a
 // `PjRtLoadedExecutable`.
-absl::StatusOr<std::optional<HloSharding>> GetFirstModuleOutputSharding(
+absl::StatusOr<std::optional<xla::HloSharding>> GetFirstModuleOutputSharding(
     xla::PjRtLoadedExecutable* pjrt_loaded_executable,
     const xla::Shape& shape) {
   auto output_shardings = pjrt_loaded_executable->GetOutputShardings();
   std::optional<xla::HloSharding> result_hlo_sharding;
   if (output_shardings.has_value()) {
-    std::vector<HloSharding> hlo_shardings;
+    std::vector<xla::HloSharding> hlo_shardings;
     hlo_shardings.reserve(output_shardings->size());
     for (const auto& sharding : *output_shardings) {
-      TF_ASSIGN_OR_RETURN(auto hlo_sharding, HloSharding::FromProto(sharding));
+      TF_ASSIGN_OR_RETURN(auto hlo_sharding,
+                          xla::HloSharding::FromProto(sharding));
       hlo_shardings.push_back(hlo_sharding);
     }
     if (shape.IsTuple()) {
-      return HloSharding::Tuple(shape, hlo_shardings);
+      return xla::HloSharding::Tuple(shape, hlo_shardings);
     } else {
       return hlo_shardings.front();
     }
@@ -266,9 +268,14 @@ absl::StatusOr<LoadedExecutableRef> PjRtLoadedExecutable::Create(
       (build_options.use_auto_spmd_partitioning() ||
        build_options.any_allow_spmd_sharding_propagation_to_parameters() ||
        build_options.any_allow_spmd_sharding_propagation_to_output());
+
+  // We have to do process the MLIR before the compile call, since the latter
+  // will use the MLIR as scratch space, or possibly even deallocate it.
+  TF_ASSIGN_OR_RETURN(auto result_shapes, ResultShapesOfModule(module));
+
   TF_ASSIGN_OR_RETURN(auto pjrt_loaded_executable,
                       client->pjrt_client()->CompileAndLoad(
-                          module, std::move(compile_options)));
+                          std::move(module), std::move(compile_options)));
 
   if (auto_spmd_partitioning) {
     // TODO(hyeontaek): Use a full shape and a sharding rather than a per-shard
@@ -292,7 +299,6 @@ absl::StatusOr<LoadedExecutableRef> PjRtLoadedExecutable::Create(
     VLOG(3) << "Using full shape";
     // TODO(yueshengys): Consider getting element types and dimensions directly
     // from module.
-    TF_ASSIGN_OR_RETURN(auto result_shapes, ResultShapesOfModule(module));
     bool tuple_output = result_shapes.size() != 1;
     xla::Shape result_shape;
     std::vector<xla::Shape> output_shapes;
@@ -377,19 +383,18 @@ absl::StatusOr<LoadedExecutableRef> PjRtLoadedExecutable::CreateInternal(
 
     CHECK(xla::primitive_util::IsArrayType(element_type));
 
-    xla::DimensionVector tile_shape_dimensions = dimensions;
     if (sharding != nullptr) {
-      CHECK(!sharding->IsTuple());
-      // TODO(yueshengys): Consider overloading `HloSharding::TileShape` to
-      // directly take `xla::DimensionVector` as inputs.
-      tile_shape_dimensions =
-          xla::ShapeUtil::CreateDimensionVectorFromShape(sharding->TileShape(
-              xla::ShapeUtil::MakeShape(element_type, dimensions)));
+      output_shardings.push_back(ifrt::HloSharding::Create(
+          executable_devices, memory_kind, *sharding));
+    } else {
+      // Assume a traditional replication computation where tile shapes are
+      // the same as global shapes.
+      const xla::DimensionVector& tile_shape_dimensions = dimensions;
+      output_shardings.push_back(ifrt::ConcreteEvenSharding::Create(
+          executable_devices, memory_kind,
+          /*shape=*/ifrt::Shape(dimensions),
+          /*shard_shape=*/ifrt::Shape(tile_shape_dimensions)));
     }
-    output_shardings.push_back(ifrt::ConcreteEvenSharding::Create(
-        executable_devices, memory_kind,
-        /*shape=*/ifrt::Shape(dimensions),
-        /*shard_shape=*/ifrt::Shape(tile_shape_dimensions)));
     return absl::OkStatus();
   };
   auto append_token = [&](MemoryKind memory_kind) {

@@ -59,6 +59,9 @@ struct IfrtIRProgram : llvm::RTTIExtends<IfrtIRProgram, Program> {
 
   mlir::ModuleOp mlir_module;
 
+  // Returns true if the program exclusively owns the MLIR context.
+  bool OwnsMlirContext() const { return mlir_context != nullptr; }
+
   static char ID;  // NOLINT
 
  private:

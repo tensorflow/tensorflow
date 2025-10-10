@@ -70,7 +70,7 @@ struct CudaComputeCapability {
     kAmpere = 8,
     kHopper = 9,
     kBlackwell = 10,
-    kBlackwellPro = 12
+    kBlackwell_12 = 12
   };
 
   constexpr CudaComputeCapability() = default;
@@ -138,20 +138,6 @@ struct CudaComputeCapability {
                                  FeatureExtension::kForwardCompatibleFeatures};
   }
 
-  // Includes all GPUs with compute capability 12.x. When comparing with
-  // `IsAtLeast` this will true for all compute capabilities of 12.0 or higher.
-  constexpr static CudaComputeCapability BlackwellPro() {
-    return CudaComputeCapability{kBlackwellPro, 0, FeatureExtension::kNone};
-  }
-
-  // Includes all GPUs with compute capability 12.x. When comparing with
-  // `IsAtLeast` this will true for all 12.x compute capabilities but not for
-  // compute capabilities with a higher major version.
-  constexpr static CudaComputeCapability BlackwellProGenerationOnly() {
-    return CudaComputeCapability{kBlackwellPro, 0,
-                                 FeatureExtension::kForwardCompatibleFeatures};
-  }
-
   // Returns true if the compute capability is at least
   // `other_major.other_minor`. It is equivalent to
   // this->SupportsAllFeaturesOf(CudaComputeCapability{other_major,
@@ -183,10 +169,6 @@ struct CudaComputeCapability {
     return major >= CudaComputeCapabilities::kBlackwell;
   }
 
-  bool IsAtLeastBlackwellPro() const {
-    return major >= CudaComputeCapabilities::kBlackwellPro;
-  }
-
   bool IsPascal() const { return major == CudaComputeCapabilities::kPascal; }
 
   bool IsVolta() const { return major == CudaComputeCapabilities::kVolta; }
@@ -202,10 +184,6 @@ struct CudaComputeCapability {
 
   bool IsBlackwell() const {
     return major == CudaComputeCapabilities::kBlackwell;
-  }
-
-  bool IsBlackwellPro() const {
-    return major == CudaComputeCapabilities::kBlackwellPro;
   }
 
   // Returns true if a kernel compiled for compute capability `other` can be run

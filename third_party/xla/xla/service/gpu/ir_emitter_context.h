@@ -35,6 +35,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/call_inliner.h"
 #include "xla/service/gpu/execution_stream_assignment.h"
 #include "xla/service/gpu/gpu_executable.h"
 #include "xla/service/gpu/ir_emission_utils.h"
@@ -117,6 +118,16 @@ class IrEmitterContext {
   }
   NameUniquer* name_uniquer() { return &name_uniquer_; }
 
+  absl::StatusOr<InlinedModule*> get_inlined_module() {
+    if (inlined_module_ == nullptr) {
+      TF_ASSIGN_OR_RETURN(InlinedModule inlined_module,
+                          GetInlinedModule(hlo_module_));
+      inlined_module_ =
+          std::make_unique<InlinedModule>(std::move(inlined_module));
+    }
+    return inlined_module_.get();
+  }
+
   std::vector<GpuExecutable::ConstantInfo>& constants() { return constants_; }
 
   // Emit a constant with a given number of element, given byte size of the
@@ -155,6 +166,7 @@ class IrEmitterContext {
   NameUniquer name_uniquer_;
   std::vector<GpuExecutable::ConstantInfo> constants_;
   KernelReuseCache kernel_cache_;
+  std::unique_ptr<InlinedModule> inlined_module_;
 
   CollectivesAsyncEvents collectives_async_events_;
   InstructionToHostExecuteAsyncEvents instruction_to_host_execute_async_events_;

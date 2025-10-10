@@ -29,6 +29,7 @@ limitations under the License.
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace stream_executor::cuda {
 
@@ -87,6 +88,21 @@ absl::StatusOr<std::vector<SdcLogEntry>> SdcLog::ReadFromDevice(
          initialized_entries * sizeof(SdcLogEntry));
 
   return entries;
+}
+
+absl::StatusOr<xla::gpu::SdcLogProto> SdcLog::ReadProto(Stream& stream) const {
+  TF_ASSIGN_OR_RETURN(std::vector<SdcLogEntry> entries, ReadFromDevice(stream));
+
+  xla::gpu::SdcLogProto sdc_log_proto;
+  sdc_log_proto.mutable_entries()->Reserve(entries.size());
+  for (const auto& entry : entries) {
+    xla::gpu::SdcLogEntryProto* entry_proto = sdc_log_proto.add_entries();
+    entry_proto->set_thunk_id(entry.entry_id.thunk_id().value());
+    entry_proto->set_buffer_idx(entry.entry_id.buffer_idx());
+    entry_proto->set_checksum(entry.checksum);
+  }
+
+  return sdc_log_proto;
 }
 
 }  // namespace stream_executor::cuda

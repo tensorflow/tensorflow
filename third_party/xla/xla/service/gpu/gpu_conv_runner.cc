@@ -68,9 +68,6 @@ absl::Status RunGpuConvUnfused(const GpuConvParams& params, se::Stream* stream,
                     params.config->conv_result_scale);
   }
 
-  TF_ASSIGN_OR_RETURN(se::dnn::ConvolutionKind kind,
-                      GetDNNConvKindFromCudnnConvKind(params.config->kind));
-
   TF_ASSIGN_OR_RETURN(
       se::dnn::DataType input_type,
       GetDNNDataTypeFromPrimitiveType(params.config->input_type));
@@ -87,7 +84,7 @@ absl::Status RunGpuConvUnfused(const GpuConvParams& params, se::Stream* stream,
     lazy_runner = &*local_runner;
   }
 
-  se::dnn::ConvOp::Config config{kind,
+  se::dnn::ConvOp::Config config{CudnnConvKindToProto(params.config->kind),
                                  input_type,
                                  output_type,
                                  params.config->input_descriptor,
@@ -113,9 +110,6 @@ absl::Status RunGpuConvGraph(const GpuConvParams& params, se::Stream* stream,
                     params.config->conv_result_scale);
   }
 
-  TF_ASSIGN_OR_RETURN(se::dnn::ConvolutionKind kind,
-                      GetDNNConvKindFromCudnnConvKind(params.config->kind));
-
   TF_ASSIGN_OR_RETURN(
       se::dnn::DataType input_type,
       GetDNNDataTypeFromPrimitiveType(params.config->input_type));
@@ -132,7 +126,7 @@ absl::Status RunGpuConvGraph(const GpuConvParams& params, se::Stream* stream,
     lazy_runner = &*local_runner;
   }
 
-  se::dnn::GraphConvOp::Config config{kind,
+  se::dnn::GraphConvOp::Config config{CudnnConvKindToProto(params.config->kind),
                                       input_type,
                                       output_type,
                                       params.config->input_descriptor,

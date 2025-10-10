@@ -22,6 +22,7 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include "absl/cleanup/cleanup.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -311,7 +312,9 @@ absl::StatusOr<CompiledIfrtIrProgram> CompiledIfrtIrProgram::Create(
   }
 
   mlir::ModuleOp mlir_module = ifrt_ir_program->mlir_module;
+  // Load the dialects necessary to compile the IFRT IR module.
   mlir::MLIRContext* context = mlir_module.getContext();
+  xla::ifrt::support::RegisterMlirDialects(*context);
 
   // Add the bounded executables to the atom program executable map so that
   // they can be used by the interpreter
@@ -330,11 +333,32 @@ absl::StatusOr<CompiledIfrtIrProgram> CompiledIfrtIrProgram::Create(
 
   // Run lowering passes.
   {
+    // We need to ensure that Multithreading is enabled in order to be able
+    // to dispatch compilations from multiple threads. Otherwise, we would
+    // trigger data races while printing the ModuleOps for creating the
+    // compilation cache keys
+    // (see llvm/llvm-project/mlir/lib/Support/StorageUniquer.cpp).
+    // JAX currently disables Multithreading for all contexts, but temporarily
+    // enabling multithreading here is safe as long as the IfrtIRProgram
+    // exclusively owns the context because the context is not shared across JAX
+    // ModuleOps.
+    std::optional<bool> was_multithreading_enabled;
+    if (ifrt_ir_program->OwnsMlirContext()) {
+      was_multithreading_enabled = context->isMultithreadingEnabled();
+      context->enableMultithreading(true);
+    }
+    absl::Cleanup reset_multithreading = [&]() {
+      if (was_multithreading_enabled.has_value()) {
+        context->enableMultithreading(*was_multithreading_enabled);
+      }
+    };
+
     mlir::PassManager pm(context);
     InitPassManager(pm, "ifrt.compile", compile_options->mlir_dump_to,
                     compile_options->mlir_dump_pass_re,
                     compile_options->mlir_dump_func_re,
                     compile_options->mlir_enable_timing);
+
     xla::ifrt::IfrtToOutlinedAtomProgramsPipelineOptions
         outline_pipeline_options;
     outline_pipeline_options.propagate_shardings =

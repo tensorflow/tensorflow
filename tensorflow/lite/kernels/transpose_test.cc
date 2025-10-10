@@ -72,8 +72,9 @@ class TransposeOpInt4Model : public SingleOpModel {
       num_elements *= shape[i];
     }
     std::vector<int8_t> inflated_output(num_elements);
-    tensor_utils::UnpackDenseInt4IntoInt8(data_int8.data(), num_elements,
-                                          inflated_output.data());
+    tensor_utils::UnpackPackedIntToInt8(data_int8.data(), num_elements,
+                                        /*bit_width=*/4,
+                                        inflated_output.data());
     return inflated_output;
   }
 

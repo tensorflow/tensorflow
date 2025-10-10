@@ -267,8 +267,8 @@ absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>>
 GetConvolutionCustomCallConfigs(const HloCustomCallInstruction* instr,
                                 se::StreamExecutor* stream_executor) {
   TF_ASSIGN_OR_RETURN(GpuConvConfig gpu_conv_config, GetGpuConvConfig(instr));
-  TF_ASSIGN_OR_RETURN(se::dnn::ConvolutionKind conv_kind,
-                      GetDNNConvKindFromCudnnConvKind(gpu_conv_config.kind));
+  se::dnn::ConvolutionKind conv_kind =
+      CudnnConvKindToProto(gpu_conv_config.kind);
   TF_ASSIGN_OR_RETURN(
       se::dnn::DataType input_type,
       GetDNNDataTypeFromPrimitiveType(gpu_conv_config.input_type));

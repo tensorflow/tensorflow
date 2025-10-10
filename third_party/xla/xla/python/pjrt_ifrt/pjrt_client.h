@@ -21,6 +21,7 @@ limitations under the License.
 #include <functional>
 #include <memory>
 #include <optional>
+#include <tuple>
 #include <vector>
 
 #include "absl/base/thread_annotations.h"
@@ -353,6 +354,13 @@ class PjRtClient final
   absl::flat_hash_map<xla::PjRtDevice*, PjRtDevice*> device_map_;
   absl::flat_hash_map<xla::PjRtMemorySpace*, PjRtMemory*> memory_map_;
   absl::flat_hash_map<DeviceId, PjRtDevice*> device_id_map_;
+
+  // Cached concrete default layouts.
+  mutable absl::Mutex default_layout_cache_mu_;
+  mutable absl::flat_hash_map<
+      std::tuple<DType, std::vector<int64_t>, MemoryKind>,
+      absl::StatusOr<std::shared_ptr<const xla::PjRtLayout>>>
+      default_layout_cache_ ABSL_GUARDED_BY(default_layout_cache_mu_);
 
   // Copies arrays from source to destination devices when at least one of the
   // (source, destination) pairs is cross-host.

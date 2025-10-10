@@ -1,5 +1,6 @@
 # Disable Bzlmod for now
 common --noenable_bzlmod
+common:bzlmod --enable_bzlmod --noenable_workspace
 
 common --incompatible_enable_cc_toolchain_resolution
 common --repo_env USE_HERMETIC_CC_TOOLCHAIN=1

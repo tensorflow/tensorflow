@@ -1971,11 +1971,13 @@ absl::StatusOr<HloInstruction*> PartitionBaseCase(
     }
     if (e_config) {
       int64_t loop_partitions = 1;
-      for (int64_t dim : e_config->windowing_dims) {
-        loop_partitions *= lhs_sharding.tile_assignment().dim(dim);
-      }
       if (e_config->windowing_dims.empty()) {
         loop_partitions = num_partitions;
+      } else {
+        CHECK_EQ(e_config->windowed_op, WindowedEinsumOperand::LHS);
+        for (int64_t dim : e_config->windowing_dims) {
+          loop_partitions *= lhs_sharding.tile_assignment().dim(dim);
+        }
       }
 
       return EmitWindowedDotGeneral(
@@ -4090,7 +4092,7 @@ absl::StatusOr<HloInstruction*> PartitionDotRemovingOutputPartialReplication(
     const SpmdPartitionerOptions& options, SpmdBuilder* b,
     std::vector<SpmdPartitioningVisitor::WindowedDotGeneralLoop>*
         windowed_dot_general_loops,
-    bool require_matching_devices_to_group, SpmdPartitioningVisitor* visitor) {
+    SpmdPartitioningVisitor* visitor) {
   if (lhs.sharding().IsReplicated() && rhs.sharding().IsReplicated() &&
       output_sharding.ReplicateOnLastTileDim()) {
     auto grouped_output = hlo_sharding_util::GroupShardingOnDims(
@@ -4204,8 +4206,7 @@ absl::StatusOr<HloInstruction*> PartitionDot(
       PartitionDotRemovingOutputPartialReplication(
           lhs, rhs, output_base_shape, output_sharding, dims_mapping,
           num_partitions, create_sharded_dot, conv_window, module, original_hlo,
-          options, b, windowed_dot_general_loops,
-          require_matching_devices_to_group, visitor));
+          options, b, windowed_dot_general_loops, visitor));
   if (partitioned_dot) {
     return partitioned_dot;
   }
@@ -4572,7 +4573,7 @@ bool CheckOperandsRecursive(
 // Later optimization passes (TpuPadSliceMover) will merge the dynamic slice
 // with the input nodes (broadcast).
 absl::Status MoveUsersIntoWindowedDotGeneralLoopOnNonContractingDimensions(
-    HloInstruction* loop, const SpmdPartitionerOptions& options) {
+    HloInstruction* loop) {
   CHECK_EQ(loop->user_count(), 1);
   // There should be a single direct user of the while loop, which is the
   // gte for element 2, i.e., the dot output.
@@ -5030,8 +5031,7 @@ absl::Status MoveUsersIntoWindowedDotGeneralLoopOnNonContractingDimensions(
 
 }  // namespace
 
-absl::Status SpmdPartitioningVisitor::DoCodeMotionForWindowedDotGeneralLoops(
-    HloComputation* computation, const SpmdPartitionerOptions& options) {
+absl::Status SpmdPartitioningVisitor::DoCodeMotionForWindowedDotGeneralLoops() {
   for (auto& loop : windowed_dot_general_loops_) {
     if (loop.windowed_in_contracting_dims || loop.windowed_in_batch_dims ||
         loop.operands_sharded_at_contracting_dims) {
@@ -5051,7 +5051,7 @@ absl::Status SpmdPartitioningVisitor::DoCodeMotionForWindowedDotGeneralLoops(
       // into the loop could help reduce memory.
       TF_RETURN_IF_ERROR(
           MoveUsersIntoWindowedDotGeneralLoopOnNonContractingDimensions(
-              loop.while_loop, options));
+              loop.while_loop));
     }
   }
   return absl::OkStatus();

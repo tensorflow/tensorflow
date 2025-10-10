@@ -121,6 +121,12 @@ TEST_F(AnalyticalLatencyHidingSchedulerTest, TestAnalyticalLatencyEstimator) {
       if (!c.IsAtLeast(se::CudaComputeCapability::kPascal)) {
         GTEST_SKIP() << "This test is for Pascal+ GPUs.";
       }
+      if (c.major == 12 && c.minor == 1) {
+        // Skip this test for Spark. Because of the AllReduce, the test uses
+        // gpu_collective_performance_model, which only makes sense in a
+        // datacenter network setting.
+        GTEST_SKIP() << "This test is for datacenter GPUs.";
+      }
     } else if (!std::is_same_v<stream_executor::RocmComputeCapability, cc>) {
       GTEST_SKIP() << "This test is for Pascal+ GPUs.";
     }

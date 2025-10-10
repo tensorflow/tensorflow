@@ -134,10 +134,10 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       auto unpacked_input_data = std::make_unique<int8_t[]>(bytes_unpacked);
       auto unpacked_output_data = std::make_unique<int8_t[]>(bytes_unpacked);
 
-      tflite::tensor_utils::UnpackDenseInt4IntoInt8(
+      tflite::tensor_utils::UnpackPackedIntToInt8(
           GetTensorData<int8_t>(op_context.input),
           GetTensorShape(op_context.input).FlatSize(),
-          unpacked_input_data.get());
+          /*bit_width=*/4, unpacked_input_data.get());
       reference_ops::Transpose(
           params, GetTensorShape(op_context.input), unpacked_input_data.get(),
           GetTensorShape(op_context.output), unpacked_output_data.get());

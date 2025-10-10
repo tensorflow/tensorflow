@@ -210,6 +210,8 @@ xla_test(
 xla_test(
     name = "gpu_spmd_e2e_compile_test",
     size = "small",
+    #TODO(b/450135639): Remove timeout override once the test is fixed.
+    timeout = "moderate",
     srcs = ["gpu_spmd_e2e_compile_test.cc"],
     backends = ["gpu"],
     deps = [

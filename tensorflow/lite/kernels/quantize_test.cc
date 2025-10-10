@@ -19,6 +19,7 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
+#include "tensorflow/lite/kernels/internal/portable_tensor_utils.h"
 #include "tensorflow/lite/kernels/internal/tensor_utils.h"
 #include "tensorflow/lite/kernels/internal/types.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
@@ -61,8 +62,9 @@ class QuantizeOpModel : public SingleOpModel {
     TfLiteTensor* t = interpreter_->tensor(output_);
     int num_elements = NumElements(t);
     std::vector<int8_t> unpacked_output(num_elements);
-    tensor_utils::UnpackDenseInt4IntoInt8(t->data.int8, num_elements,
-                                          unpacked_output.data());
+    tensor_utils::UnpackPackedIntToInt8(t->data.int8, num_elements,
+                                        /*bit_width=*/4,
+                                        unpacked_output.data());
     return unpacked_output;
   }
 

@@ -24,6 +24,7 @@ limitations under the License.
 
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
+#include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
@@ -46,6 +47,22 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
+absl::StatusOr<std::unique_ptr<ConvolutionThunk>> ConvolutionThunk::Create(
+    ThunkInfo thunk_info, GpuConvDescriptor descriptor,
+    std::vector<BufferAllocation::Slice> operand_slices,
+    std::vector<BufferAllocation::Slice> result_slices,
+    BufferAllocation::Slice scratch_slice) {
+  TF_ASSIGN_OR_RETURN(GpuConvConfig config,
+                      GetGpuConvConfig(descriptor, /*inst_as_string=*/""));
+
+  // Can't use std::make_unique because the constructor is private.
+  return absl::WrapUnique(new ConvolutionThunk(
+      thunk_info, std::move(config), std::move(operand_slices),
+      std::move(result_slices), scratch_slice));
+}
+
+// TODO: b/431980836 - Store the descriptor once when adding the
+// (de)serialization methods.
 ConvolutionThunk::ConvolutionThunk(
     ThunkInfo thunk_info, GpuConvConfig config,
     std::vector<BufferAllocation::Slice> operand_slices,
@@ -99,9 +116,6 @@ absl::Status ConvolutionThunk::ExecuteOnStream(const ExecuteParams& params) {
         GpuConvParams conv_params,
         GetGpuConvParams(config_, operand_se_buffers, result_se_buffers));
 
-    TF_ASSIGN_OR_RETURN(se::dnn::ConvolutionKind kind,
-                        GetDNNConvKindFromCudnnConvKind(config_.kind));
-
     TF_ASSIGN_OR_RETURN(se::dnn::DataType input_type,
                         GetDNNDataTypeFromPrimitiveType(config_.input_type));
 
@@ -116,11 +130,11 @@ absl::Status ConvolutionThunk::ExecuteOnStream(const ExecuteParams& params) {
 
     std::vector<se::dnn::ProfileResult> profile_results;
     dnn->GetMIOpenConvolveAlgorithms(
-        kind, input_type, output_type, params.stream, config_.input_descriptor,
-        conv_params.input_buf, config_.filter_descriptor,
-        conv_params.filter_buf, config_.output_descriptor,
-        conv_params.output_buf, config_.conv_desc, &scratch_allocator,
-        &profile_results);
+        CudnnConvKindToProto(config_.kind), input_type, output_type,
+        params.stream, config_.input_descriptor, conv_params.input_buf,
+        config_.filter_descriptor, conv_params.filter_buf,
+        config_.output_descriptor, conv_params.output_buf, config_.conv_desc,
+        &scratch_allocator, &profile_results);
   }
 
   TF_RETURN_IF_ERROR(RunGpuConv(config_, absl::MakeSpan(operand_se_buffers),

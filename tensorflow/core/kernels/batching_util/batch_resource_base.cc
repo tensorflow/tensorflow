@@ -1053,7 +1053,8 @@ void BatchResourceBase::ProcessFuncBatch(
   std::vector<Tensor> concatenated_tensors;
   status = ConcatInputTensors(*batch, unbatched_tasks, last_task_context,
                               &concatenated_tensors);
-  processed_size = RoundToLowestAllowedBatchSize(batch->size());
+  processed_size =
+      RoundToLowestAllowedBatchSize(batch->size(), IsLowPriorityBatch(*batch));
   if (!status.ok()) {
     return;
   }
@@ -1136,7 +1137,8 @@ void BatchResourceBase::ProcessBatch(std::unique_ptr<BatchT> batch) const {
   std::vector<Tensor> concatenated_tensors;
   const absl::Status concat_status =
       ConcatInputTensors(*batch, {}, last_task_context, &concatenated_tensors);
-  processed_size = RoundToLowestAllowedBatchSize(batch->size());
+  processed_size =
+      RoundToLowestAllowedBatchSize(batch->size(), IsLowPriorityBatch(*batch));
   OP_REQUIRES_OK_ASYNC(last_task_context, concat_status, last_task_callback);
 
   // Process each input edge one at a time (the typical case has just one).

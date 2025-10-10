@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/optimized/fully_connected_4bit.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/kernels/internal/optimized/sparse_ops/fully_connected.h"
+#include "tensorflow/lite/kernels/internal/portable_tensor_utils.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
 #include "tensorflow/lite/kernels/internal/reference/fully_connected.h"
 #include "tensorflow/lite/kernels/internal/reference/integer_ops/fully_connected.h"
@@ -754,9 +755,9 @@ TfLiteStatus EvalHybridDense(
   if (filter->type == kTfLiteInt4) {
     const size_t bytes_unpacked = filter->bytes * 2;
     unpacked_filter_data = std::make_unique<int8_t[]>(bytes_unpacked);
-    tflite::tensor_utils::UnpackDenseInt4IntoInt8(
+    tflite::tensor_utils::UnpackPackedIntToInt8(
         GetTensorData<int8_t>(filter), GetTensorShape(filter).FlatSize(),
-        unpacked_filter_data.get());
+        /*bit_width=*/4, unpacked_filter_data.get());
     filter_data = unpacked_filter_data.get();
   } else {
     filter_data = GetTensorData<int8_t>(filter);
@@ -1479,9 +1480,10 @@ TfLiteStatus EvalQuantized(TfLiteContext* context, TfLiteNode* node,
           if (filter->type == kTfLiteInt4) {
             const size_t bytes_unpacked = filter->bytes * 2;
             unpacked_filter_data = std::make_unique<int8_t[]>(bytes_unpacked);
-            tflite::tensor_utils::UnpackDenseInt4IntoInt8(
+            tflite::tensor_utils::UnpackPackedIntToInt8(
                 GetTensorData<int8_t>(filter),
-                GetTensorShape(filter).FlatSize(), unpacked_filter_data.get());
+                GetTensorShape(filter).FlatSize(), /*bit_width=*/4,
+                unpacked_filter_data.get());
             filter_data = unpacked_filter_data.get();
           } else {
             filter_data = GetTensorData<int8_t>(filter);
@@ -1507,9 +1509,10 @@ TfLiteStatus EvalQuantized(TfLiteContext* context, TfLiteNode* node,
           if (filter->type == kTfLiteInt4) {
             const size_t bytes_unpacked = filter->bytes * 2;
             unpacked_filter_data = std::make_unique<int8_t[]>(bytes_unpacked);
-            tflite::tensor_utils::UnpackDenseInt4IntoInt8(
+            tflite::tensor_utils::UnpackPackedIntToInt8(
                 GetTensorData<int8_t>(filter),
-                GetTensorShape(filter).FlatSize(), unpacked_filter_data.get());
+                GetTensorShape(filter).FlatSize(), /*bit_width=*/4,
+                unpacked_filter_data.get());
             filter_data = unpacked_filter_data.get();
           } else {
             filter_data = GetTensorData<int8_t>(filter);

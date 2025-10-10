@@ -316,6 +316,7 @@ TEST(ArrayImplTest, MakeArrayFromHostBufferDefaultLayout) {
     TF_ASSERT_OK(array->GetReadyFuture().Await());
 
     TF_ASSERT_OK_AND_ASSIGN(auto layout, array->pjrt_layout());
+    ASSERT_NE(layout, nullptr);
     EXPECT_EQ(*layout, *default_layout);
   }
 }
@@ -711,6 +712,7 @@ TEST(ArrayImplTest, MakeArraysFromHostBufferShardsWithLayout) {
 
   TF_ASSERT_OK(array->GetReadyFuture().Await());
   TF_ASSERT_OK_AND_ASSIGN(auto result_layout, array->pjrt_layout());
+  ASSERT_NE(result_layout, nullptr);
   EXPECT_EQ(*result_layout, *layout);
 }
 
@@ -1449,6 +1451,7 @@ TEST(ArrayImplTest, CopyPreservesDefaultLayouts) {
       TF_ASSERT_OK(array->GetReadyFuture().Await());
 
       TF_ASSERT_OK_AND_ASSIGN(auto src_layout, array->pjrt_layout());
+      ASSERT_NE(src_layout, nullptr);
       TF_ASSERT_OK_AND_ASSIGN(
           auto src_default_layout,
           client->GetDefaultPjRtLayout(dtype, shape.dims(), device,
@@ -1461,6 +1464,7 @@ TEST(ArrayImplTest, CopyPreservesDefaultLayouts) {
                                               ArrayCopySemantics::kAlwaysCopy));
       ASSERT_THAT(new_arrays, SizeIs(1));
       TF_ASSERT_OK_AND_ASSIGN(auto dst_layout, new_arrays[0]->pjrt_layout());
+      ASSERT_NE(dst_layout, nullptr);
       TF_ASSERT_OK_AND_ASSIGN(
           auto dst_default_layout,
           client->GetDefaultPjRtLayout(dtype, shape.dims(), device,
