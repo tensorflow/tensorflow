@@ -229,7 +229,7 @@ void ScopedAllocatorInstance::DeallocateRaw(void* p) {
 }
 
 string ScopedAllocatorInstance::Name() {
-  return strings::StrCat(scoped_allocator_->name(), "_field_", field_index_);
+  return absl::StrCat(scoped_allocator_->name(), "_field_", field_index_);
 }
 
 }  // namespace tensorflow

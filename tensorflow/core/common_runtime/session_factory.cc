@@ -56,12 +56,12 @@ const string RegisteredFactoriesErrorMessageLocked() {
   for (const auto& session_factory : *session_factories()) {
     factory_types.push_back(session_factory.first);
   }
-  return strings::StrCat("Registered factories are {",
-                         absl::StrJoin(factory_types, ", "), "}.");
+  return absl::StrCat("Registered factories are {",
+                      absl::StrJoin(factory_types, ", "), "}.");
 }
 string SessionOptionsToString(const SessionOptions& options) {
-  return strings::StrCat("target: \"", options.target,
-                         "\" config: ", options.config.ShortDebugString());
+  return absl::StrCat("target: \"", options.target,
+                      "\" config: ", options.config.ShortDebugString());
 }
 }  // namespace
 

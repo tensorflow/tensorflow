@@ -166,7 +166,7 @@ absl::Status GenerateSubdivsInCollectiveParams(CollectiveParams* col_params) {
     string subdiv_buf;
     for (const int subdiv_offset :
          col_params->instance.impl_details.subdiv_offsets) {
-      strings::StrAppend(&subdiv_buf, " ", subdiv_offset);
+      absl::StrAppend(&subdiv_buf, " ", subdiv_offset);
     }
     VLOG(2) << "Dynamically generated " << num_subdivs
             << " subdiv_offsets:" << subdiv_buf << " tensor_size "
@@ -387,7 +387,7 @@ string RingAlg::RingField::DebugString() const {
   string rv = strings::StrCat("RingField rank=", rank, " chunk_idx=", chunk_idx,
                               " subdiv=", subdiv_idx, " sc_idx=", sc_idx,
                               " action=", action);
-  strings::StrAppend(&rv, " pass=", second_pass);
+  absl::StrAppend(&rv, " pass=", second_pass);
   strings::StrAppend(&rv, " do_send=", do_send, " do_recv=", do_recv,
                      " is_final=", is_final, " recv_is_remote=", recv_is_remote,
                      " recv_dev_idx=", recv_dev_idx, " sc_idx=", sc_idx);
