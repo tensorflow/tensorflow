@@ -68,10 +68,12 @@ class FusionCompiler {
   Options options_;
   CompilationHooks hooks_;
   // Pass manager that holds the optimization & loop transformation passes.
-  mlir::PassManager optimization_pass_manager_;
+  mlir::PassManager scalar_optimization_pass_manager_;
+  mlir::PassManager tiled_optimization_pass_manager_;
   // Pass manager that holds the passes responsible for lowering the module from
   // MLIR to LLVM.
-  mlir::PassManager lowering_pass_manager_;
+  mlir::PassManager scalar_lowering_pass_manager_;
+  mlir::PassManager tiled_lowering_pass_manager_;
 };
 
 }  // namespace xla::cpu
