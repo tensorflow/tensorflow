@@ -144,8 +144,24 @@ bool HostOffloader::InstructionIsAllowedBetweenDsAndMoveToDevice(
     return ShapeUtil::ReshapeIsBitcast(instruction->operand(0)->shape(),
                                        instruction->shape());
   }
-  return instruction->opcode() == HloOpcode::kBitcast ||
-         instruction->opcode() == HloOpcode::kCopy;
+  if (instruction->opcode() == HloOpcode::kBitcast ||
+      instruction->opcode() == HloOpcode::kCopy) {
+    return true;
+  }
+
+  // Allow an annotation to sit inside a loop.
+  if (instruction->opcode() == HloOpcode::kTuple ||
+      instruction->opcode() == HloOpcode::kOptimizationBarrier ||
+      instruction->opcode() == HloOpcode::kGetTupleElement ||
+      instruction->opcode() == HloOpcode::kParameter ||
+      instruction->opcode() == HloOpcode::kWhile) {
+    return true;
+  }
+
+  LOG(WARNING) << "Unexpected instruction between DynamicSlice and "
+                  "MoveToDevice: "
+               << instruction->ToString();
+  return false;
 }
 
 absl::StatusOr<bool> HostOffloader::WalkDownHostMemoryOffloadPaths(

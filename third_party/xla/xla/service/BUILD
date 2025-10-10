@@ -4800,6 +4800,7 @@ cc_library(
         "while_loop_invariant_code_motion.h",
     ],
     deps = [
+        ":memory_annotations_hdr",
         ":while_util",
         "//xla:shape_util",
         "//xla:util",

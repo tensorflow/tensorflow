@@ -37,6 +37,7 @@ limitations under the License.
 #include "xla/hlo/transforms/simplifiers/tuple_simplifier.h"
 #include "xla/map_util.h"
 #include "xla/service/compile_time_cap.h"
+#include "xla/service/memory_annotations.h"
 #include "xla/service/while_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -145,11 +146,18 @@ WhileLoopInvariantCodeMotion::TryHoistingInvariantInstructionsFromWhileBody(
     return false;
   }
 
-  // LICM in the presence of domain instructions is complex, bail.
   for (auto* instruction : while_body->MakeInstructionPostOrder()) {
+    // LICM in the presence of domain instructions is complex, bail.
     if (instruction->opcode() == HloOpcode::kDomain ||
         instruction->IsCustomCall("SPMDFullToShardShape") ||
         instruction->IsCustomCall("SPMDShardShapeToFull")) {
+      return false;
+    }
+
+    // Host offloading annotation should stay in its original position.
+    if (instruction->IsCustomCall(std::vector<absl::string_view>{
+            memory_annotations::kMoveToDeviceCustomCallTarget,
+            memory_annotations::kMoveToHostCustomCallTarget})) {
       return false;
     }
   }
