@@ -401,6 +401,7 @@ cc_library(
         "//xla/backends/gpu/runtime:thunk_id",
         "//xla/hlo/ir:hlo",
         "//xla/service:buffer_assignment",
+        "//xla/service:call_inliner",
         "//xla/service:name_uniquer",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor/cuda:cuda_compute_capability",

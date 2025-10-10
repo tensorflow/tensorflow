@@ -527,7 +527,7 @@ const HloInstruction* InlinedModule::get_inlined_inst(
   return nullptr;
 }
 
-absl::StatusOr<InlinedModule> GetInlinedModule(HloModule* module) {
+absl::StatusOr<InlinedModule> GetInlinedModule(const HloModule* module) {
   auto [cloned_module, clone_context] =
       module->CloneWithContext("inline", module->config());
   CallInliner::InlinedInstructionMap clone_inlined_map;

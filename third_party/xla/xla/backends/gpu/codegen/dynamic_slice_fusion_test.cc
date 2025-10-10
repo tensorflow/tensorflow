@@ -83,6 +83,28 @@ class DynamicSliceFusionTest : public HloTestBase {
     return config;
   }
 
+  HloModuleConfig GetModuleConfigWithCommandBuffer() {
+    DebugOptions debug_options = GetDebugOptionsForTest();
+    debug_options.set_xla_gpu_enable_cublaslt(false);
+    debug_options.set_xla_gpu_gemm_rewrite_size_threshold(0);
+    debug_options.set_xla_gpu_enable_dynamic_slice_fusion(true);
+    debug_options.set_xla_gpu_triton_gemm_any(false);
+    debug_options.set_xla_gpu_enable_cublaslt(false);
+    debug_options.set_xla_gpu_cublas_fallback(true);
+    debug_options.set_xla_gpu_graph_min_graph_size(1);
+    debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::FUSION);
+    debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::CUBLAS);
+    debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::CUBLASLT);
+    debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::CUSTOM_CALL);
+    debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::CUDNN);
+    debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::COLLECTIVES);
+    debug_options.add_xla_gpu_enable_command_buffer(
+        DebugOptions::DYNAMIC_SLICE_FUSION);
+    HloModuleConfig config;
+    config.set_debug_options(debug_options);
+    return config;
+  }
+
   HloModuleConfig GetModuleConfigWithDeterministicOps() {
     DebugOptions debug_options = GetDebugOptionsForTest();
     debug_options.set_xla_gpu_exclude_nondeterministic_ops(true);
@@ -3387,6 +3409,66 @@ TEST_F(DynamicSliceFusionTest,
   EXPECT_TRUE(RunAndCompareTwoModulesReplicated(
       std::move(fused_module), std::move(unfused_module),
       /*run_hlo_passes=*/false, /*use_threads=*/true, std::nullopt));
+}
+
+TEST_F(DynamicSliceFusionTest,
+       OffsetAsFunctionOfInductionVariableShouldUseOffsetModulesWithCmdBuffer) {
+  const char* hlo = R"(
+  HloModule test
+
+  %Body {
+    param = (f32[1,8,8]{2,1,0}, f32[1,8,8]{2,1,0}, f32[4,8,8]{2,1,0}, u32[]) parameter(0)
+    p0 = get-tuple-element(param), index=0
+    p1 = get-tuple-element(param), index=1
+    p2 = get-tuple-element(param), index=2
+    loop_iter = get-tuple-element(param), index=3
+
+    bitcast.41 = f32[8,8]{1,0} reshape(p0)
+    bitcast.42 = f32[8,8]{1,0} reshape(p1)
+    dot.1 = f32[8,8]{1,0} dot(bitcast.41, bitcast.42), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+    bitcast.43 = f32[1,8,8]{2,1,0} reshape(dot.1)
+    c0 = u32[] constant(0)
+    c_trip_count = u32[] constant(11)
+    compare = pred[] compare(loop_iter, c0), direction=LT
+    add = u32[] add(loop_iter, c_trip_count)
+    offset = u32[] select(compare, add, loop_iter)
+    dus = f32[4,8,8]{2,1,0} dynamic-update-slice(p2, bitcast.43, offset, c0, c0)
+    c1 = u32[] constant(1)
+    add2 = u32[] add(loop_iter, c1)
+    ROOT tuple = tuple(p0, p1, dus, u32[] add2)
+  }
+
+  %Cond {
+    %param.1 = (f32[1,8,8]{2,1,0}, f32[1,8,8]{2,1,0}, f32[4,8,8]{2,1,0}, u32[]) parameter(0)
+    %i.1 = u32[] get-tuple-element(%param.1), index=3
+    %trip_count = u32[] constant(11)
+    ROOT %done = pred[] compare(u32[] %i.1, u32[] %trip_count), direction=LT
+  }
+
+  ENTRY %test {
+    %p0.1 = f32[1,8,8]{2,1,0} parameter(0)
+    %p1.1 = f32[1,8,8]{2,1,0} parameter(1)
+    %p2.1 = f32[4,8,8]{2,1,0} parameter(2)
+    %c0.1 = u32[] constant(0)
+    %initial_tuple = tuple(%p0.1, %p1.1, %p2.1, u32[] %c0.1)
+    ROOT %while = while(%initial_tuple), condition=%Cond, body=%Body, backend_config={"known_trip_count":{"n":"11"}}
+  })";
+
+  // Run the same HLO with and without command buffer and compare results.
+  HloModuleConfig with_cmd_buffer = GetModuleConfigWithCommandBuffer();
+  HloModuleConfig without_cmd_buffer = GetModuleConfigWithoutCommandBuffer();
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> cmd_buffer_module,
+                          ParseAndReturnVerifiedModule(hlo));
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> no_cmd_buffer_module,
+                          ParseAndReturnVerifiedModule(hlo));
+
+  ErrorSpec error_spec(1e-5, 1e-5);
+  EXPECT_TRUE(
+      RunAndCompareTwoModules(hlo, hlo, GetModuleConfigWithCommandBuffer(),
+                              GetModuleConfigWithoutCommandBuffer(), error_spec,
+                              /*run_hlo_passes=*/true));
 }
 
 TEST_F(DynamicSliceFusionTest, MultipleOffsetsAsFunctionOfInductionVariable) {

@@ -29,7 +29,9 @@ limitations under the License.
 #include "absl/functional/function_ref.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/str_join.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
@@ -111,6 +113,65 @@ DynamicSliceThunk::OffsetAsFunctionOfIndvarModulesMetadata::FromProto(
       std::move(extracted_offset_modules));
 }
 
+std::string DynamicSliceThunk::SliceDef::ToString() const {
+  std::string result = "SliceDef{";
+
+  // embedded_thunk_argument
+  if (embedded_thunk_argument.has_value()) {
+    result += "embedded_thunk_argument:" + embedded_thunk_argument->ToString();
+  } else {
+    result += "embedded_thunk_argument:null";
+  }
+
+  // offsets
+  if (offsets.has_value()) {
+    result += ", offsets:[";
+    result +=
+        absl::StrJoin(*offsets, ", ", [](std::string* out, const auto& offset) {
+          std::visit(
+              [out](const auto& value) {
+                using T = std::decay_t<decltype(value)>;
+                if constexpr (std::is_same_v<T, int64_t>) {
+                  absl::StrAppend(out, value);
+                } else if constexpr (std::is_same_v<T,
+                                                    BufferAllocation::Slice>) {
+                  absl::StrAppend(out, value.ToString());
+                } else if constexpr (std::is_same_v<T, HloModule*>) {
+                  absl::StrAppend(out, "HloModule*:", value->ToString());
+                }
+              },
+              offset);
+        });
+    result += "]";
+  } else {
+    result += ", offsets:null";
+  }
+
+  // orig_shape
+  if (orig_shape.has_value()) {
+    result += ", orig_shape:" + orig_shape->ToString();
+  } else {
+    result += ", orig_shape:null";
+  }
+
+  // sliced_shape
+  if (sliced_shape.has_value()) {
+    result += ", sliced_shape:" + sliced_shape->ToString();
+  } else {
+    result += ", sliced_shape:null";
+  }
+
+  // offset_byte_size
+  if (offset_byte_size.has_value()) {
+    result += ", offset_byte_size:" + absl::StrCat(*offset_byte_size);
+  } else {
+    result += ", offset_byte_size:null";
+  }
+
+  result += "}";
+  return result;
+}
+
 DynamicSliceThunk::DynamicSliceThunk(
     ThunkInfo thunk_info, std::unique_ptr<ThunkSequence> embedded_thunk,
     std::vector<std::optional<BufferAllocation::Slice>> arguments,
@@ -159,6 +220,7 @@ DynamicSliceThunk::DynamicSliceThunk(
 absl::Status DynamicSliceThunk::Prepare(
     const PrepareParams& params, ResourceRequestsInterface& resource_requests) {
   for (SliceDef& slice : slices_) {
+    VLOG(2) << "DynamicSliceThunk: slice: " << slice.ToString();
     if (slice.offsets.has_value()) {
       TF_RET_CHECK(slice.embedded_thunk_argument.has_value());
       TF_RET_CHECK(slice.orig_shape.has_value());
@@ -184,7 +246,12 @@ absl::Status DynamicSliceThunk::Prepare(
                 /*module=*/*offset_as_function_of_indvar_metadata_->indvar_init,
                 /*arg_literals=*/{})
             .value();
-    VLOG(2) << "Indvar = " << Indvar(this).ToString();
+    VLOG(2) << "Indvar init module: "
+            << offset_as_function_of_indvar_metadata_->indvar_init->ToString();
+    VLOG(2)
+        << "Indvar update module: "
+        << offset_as_function_of_indvar_metadata_->indvar_update->ToString();
+    VLOG(2) << "Indvar initialized to " << Indvar(this).ToString();
   }
   return absl::OkStatus();
 }
@@ -276,7 +343,6 @@ absl::Status DynamicSliceThunk::ExecuteOnStream(const ExecuteParams& params) {
                               offset.shape().ToString()));
         }
         VLOG(2) << "Offset value = " << offset_value(argument_idx, offset_idx);
-
       } else {
         // Transfer slice offset value from device to host.
         auto alloc_slice = std::get<BufferAllocation::Slice>(offset);
@@ -341,6 +407,9 @@ absl::Status DynamicSliceThunk::ExecuteOnStream(const ExecuteParams& params) {
                                       orig_allocations.device_ordinal(),
                                       orig_allocations.memory_allocator());
 
+  VLOG(2) << "DynamicSliceThunk: slice_allocations: "
+          << slice_allocations.ToString();
+
   Thunk::ExecuteParams new_params =
       Thunk::ExecuteParams::CloneWithNewAllocations(params, slice_allocations);
 
@@ -353,7 +422,7 @@ absl::Status DynamicSliceThunk::ExecuteOnStream(const ExecuteParams& params) {
             .Evaluate(*offset_as_function_of_indvar_metadata_->indvar_update,
                       {&Indvar(this)})
             .value();
-    VLOG(2) << "Indvar = " << Indvar(this).ToString();
+    VLOG(2) << "Update Indvar = " << Indvar(this).ToString();
   }
 
   return absl::OkStatus();
