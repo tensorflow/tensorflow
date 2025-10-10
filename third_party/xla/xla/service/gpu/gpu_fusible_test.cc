@@ -24,6 +24,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
+#include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/service/instruction_fusion.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tsl/platform/statusor.h"
@@ -1622,6 +1623,49 @@ e {
       *module->entry_computation()->parameter_instruction(0);
   const HloInstruction& n = *p.users().front();
   EXPECT_TRUE(IsConsumerTheOnlyNonRootUser(p, n));
+}
+
+TEST_F(GpuFusibleTest, MayCausePerformanceDropIfUnrolledSmallReduceWindowIsOk) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+add {
+  lhs = f16[] parameter(0)
+  rhs = f16[] parameter(1)
+  ROOT result = f16[] add(lhs, rhs)
+}
+
+ENTRY main {
+  p0 = f16[2048,5,40,2048]{3,2,1,0} parameter(0)
+  constant_0 = f16[] constant(0)
+  ROOT reduce_window_sum = f16[2048,5,5,2048]{3,2,1,0} reduce-window(p0, constant_0), window={size=1x1x8x1 stride=1x1x8x1}, to_apply=add
+}
+)"));
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(root);
+  EXPECT_FALSE(MayCausePerformanceDropIfUnrolled(*fusion_adaptor));
+}
+
+TEST_F(GpuFusibleTest,
+       MayCausePerformanceDropIfUnrolledLargerReduceWindowIsNotOk) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+add {
+  lhs = f16[] parameter(0)
+  rhs = f16[] parameter(1)
+  ROOT result = f16[] add(lhs, rhs)
+}
+
+ENTRY main {
+  p0 = f16[2048,10,40,2048]{3,2,1,0} parameter(0)
+  constant_0 = f16[] constant(0)
+  ROOT reduce_window_sum = f16[2048,5,5,2048]{3,2,1,0} reduce-window(p0, constant_0), window={size=1x2x8x1 stride=1x2x8x1}, to_apply=add
+}
+)"));
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(root);
+  EXPECT_TRUE(MayCausePerformanceDropIfUnrolled(*fusion_adaptor));
 }
 
 }  // namespace

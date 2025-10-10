@@ -31,9 +31,11 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/hlo/analysis/hlo_dataflow_analysis.h"
+#include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instruction_utils.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/permutation_util.h"
@@ -850,13 +852,27 @@ bool IsGenericTritonFusion(const HloInstruction& instr) {
                  .kind() == kTritonFusionKind;
 }
 
-bool MayPreventVectorization(const HloFusionAdaptor& fusion) {
+bool MayCausePerformanceDropIfUnrolled(const HloFusionAdaptor& fusion) {
   // An empirically chosen constant: unrolling concat with a large amount of
   // arguments causes excessive register spilling.
   static constexpr int kMaxConcatArgumentsForUnrolling = 10;
+  // An empirically chosen constant: One thread handles a full window of
+  // ReduceWindow, so if we unroll it might make parallelism even worse. For
+  // small window sizes this is still ok.
+  static constexpr int kMaxReduceWindowSize = 8;
   return HloAnyOf(fusion, [&](auto node) {
     switch (node.opcode()) {
-      case HloOpcode::kReduceWindow:
+      case HloOpcode::kReduceWindow: {
+        auto window_dims = Cast<HloReduceWindowInstruction>(&node.instruction())
+                               ->window()
+                               .dimensions();
+        std::vector<int64_t> window_sizes;
+        window_sizes.reserve(window_dims.size());
+        for (const auto& window_dim : window_dims) {
+          window_sizes.push_back(window_dim.size());
+        }
+        return Product(window_sizes) > kMaxReduceWindowSize;
+      }
       case HloOpcode::kSort:
       case HloOpcode::kDot:
         return true;
@@ -927,7 +943,7 @@ LaunchDimensionsConfig ComputeLoopFusionConfig(
   int64_t n_threads_max = analysis.device_info().threads_per_core_limit() *
                           analysis.device_info().core_count();
   if (num_elements >= n_threads_max &&
-      !MayPreventVectorization(analysis.fusion())) {
+      !MayCausePerformanceDropIfUnrolled(analysis.fusion())) {
     unroll_factor = ComputeMaxUnrollFactor(num_elements);
   }
   // CHECK that unroll_factor is a power-of-2, as needed by the logic below.
@@ -937,9 +953,9 @@ LaunchDimensionsConfig ComputeLoopFusionConfig(
   // safe even if the new unroll_factor doesn't divide the number of elements,
   // as the parallel loop emitter will insert a bounds check in this case to
   // ensure the out-of-bounds element is not computed and written. Setting
-  // unroll_factor is safe even if MayPreventVectorization returns false, as
-  // the MayPreventVectorization check is an optimization, not a correctness
-  // requirement.
+  // unroll_factor is safe even if MayCausePerformanceDropIfUnrolled returns
+  // true, as the MayCausePerformanceDropIfUnrolled check is an optimization,
+  // not a correctness requirement.
   unroll_factor = std::max(
       unroll_factor,
       CeilOfRatio(8, analysis.input_output_info().smallest_output_dtype_bits));
