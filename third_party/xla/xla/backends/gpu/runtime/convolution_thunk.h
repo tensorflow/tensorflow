@@ -56,8 +56,15 @@ class ConvolutionThunk : public Thunk {
 
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
 
+  static absl::StatusOr<std::unique_ptr<ConvolutionThunk>> FromProto(
+      ThunkInfo thunk_info, const ConvolutionThunkProto& proto,
+      absl::Span<const BufferAllocation> buffer_allocations);
+
+  absl::StatusOr<ThunkProto> ToProto() const override;
+
  private:
-  ConvolutionThunk(ThunkInfo thunk_info, GpuConvConfig config,
+  ConvolutionThunk(ThunkInfo thunk_info, GpuConvDescriptor descriptor,
+                   GpuConvConfig config,
                    std::vector<BufferAllocation::Slice> operand_slices,
                    std::vector<BufferAllocation::Slice> result_slices,
                    BufferAllocation::Slice scratch_slice);
@@ -68,6 +75,10 @@ class ConvolutionThunk : public Thunk {
   GenericConvRunner& GetOrCreateRunner(const stream_executor::Stream* stream,
                                        bool* runner_created);
 
+  // Technically this is only needed during initialization to create the
+  // GpuConvConfig, but the actual GpuConvConfig is hard to serialize. So we
+  // keep the descriptor around for serialization purposes.
+  const GpuConvDescriptor descriptor_;
   // Convolution config
   const GpuConvConfig config_;
   absl::Mutex mu_;

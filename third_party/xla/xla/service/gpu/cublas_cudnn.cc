@@ -18,12 +18,14 @@ limitations under the License.
 #include <string>
 
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -219,6 +221,44 @@ std::string CudnnConvKindToString(CudnnConvKind kind) {
       return "forward with activation";
     case CudnnConvKind::kForwardGraph:
       return "forward with pointwise operations";
+  }
+}
+
+absl::StatusOr<CudnnConvKind> CudnnConvKindFromProto(CudnnConvKindProto proto) {
+  switch (proto) {
+    case CUDNN_CONV_KIND_FORWARD:
+      return CudnnConvKind::kForward;
+    case CUDNN_CONV_KIND_BACKWARD_FILTER:
+      return CudnnConvKind::kBackwardFilter;
+    case CUDNN_CONV_KIND_BACKWARD_INPUT:
+      return CudnnConvKind::kBackwardInput;
+    case CUDNN_CONV_KIND_FORWARD_ACTIVATION:
+      return CudnnConvKind::kForwardActivation;
+    case CUDNN_CONV_KIND_FORWARD_GRAPH:
+      return CudnnConvKind::kForwardGraph;
+    default:
+      absl::string_view name = CudnnConvKindProto_Name(proto);
+      if (name.empty()) {
+        name = "<UNKNOWN>";
+      }
+      return absl::InvalidArgumentError(
+          absl::StrCat("CudnnConvKindProto: %s is not supported", name));
+  }
+}
+
+CudnnConvKindProto CudnnConvKindToProto(CudnnConvKind kind) {
+  switch (kind) {
+    case CudnnConvKind::kForward:
+      return CUDNN_CONV_KIND_FORWARD;
+    case CudnnConvKind::kBackwardFilter:
+      return CUDNN_CONV_KIND_BACKWARD_FILTER;
+    case CudnnConvKind::kBackwardInput:
+      return CUDNN_CONV_KIND_BACKWARD_INPUT;
+    case CudnnConvKind::kForwardActivation:
+      return CUDNN_CONV_KIND_FORWARD_ACTIVATION;
+    case CudnnConvKind::kForwardGraph:
+      return CUDNN_CONV_KIND_FORWARD_GRAPH;
+      // No default case to ensure that all cases are handled at compile time.
   }
 }
 
