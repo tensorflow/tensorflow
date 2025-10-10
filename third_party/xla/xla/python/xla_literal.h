@@ -1,4 +1,4 @@
-/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2025 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,18 +13,18 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// We define the PY_ARRAY_UNIQUE_SYMBOL in this .cc file and provide an
-// ImportNumpy function to populate it.
-#define XLA_IMPORT_NUMPY
+#ifndef XLA_PYTHON_XLA_LITERAL_H_
+#define XLA_PYTHON_XLA_LITERAL_H_
 
-#include "xla/tsl/python/lib/core/numpy.h"
+#include <Python.h>
 
-namespace tsl {
+#include "nanobind/nanobind.h"
 
-void ImportNumpy() {
-#ifndef LIBTPU_ON_GCE
-  import_array1();
-#endif
-}
+namespace xla {
 
-}  // namespace tsl
+// Builds the nanobind bindings for the xla::Literal class.
+void BuildLiteral(nanobind::module_& m);
+
+}  // namespace xla
+
+#endif  // XLA_PYTHON_XLA_LITERAL_H_

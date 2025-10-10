@@ -16,6 +16,14 @@ limitations under the License.
 #ifndef XLA_TSL_PYTHON_LIB_CORE_NUMPY_H_
 #define XLA_TSL_PYTHON_LIB_CORE_NUMPY_H_
 
+#ifdef LIBTPU_ON_GCE
+#define PY_ARRAY_UNIQUE_SYMBOL _tpu_sdk_numpy_api
+#define NO_IMPORT_ARRAY
+#include "numpy/arrayobject.h"
+#include "numpy/ndarraytypes.h"
+#include "numpy/npy_2_compat.h"
+#else
+
 #ifdef PyArray_Type
 #error "Numpy cannot be included before numpy.h."
 #endif
@@ -58,5 +66,7 @@ namespace tsl {
 void ImportNumpy();
 
 }  // namespace tsl
+
+#endif  // LIBTPU_ON_GCE
 
 #endif  // XLA_TSL_PYTHON_LIB_CORE_NUMPY_H_
