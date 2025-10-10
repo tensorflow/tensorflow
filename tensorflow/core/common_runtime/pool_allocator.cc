@@ -17,6 +17,12 @@ limitations under the License.
 
 #include <errno.h>
 
+#include <cstddef>
+#include <cstdint>
+
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+
 #ifndef _MSC_VER
 #include <strings.h>
 #include <sys/mman.h>  // for munmap
