@@ -29,6 +29,9 @@ namespace ifrt {
 // Returns the total device memory in bytes for the given device kind.
 absl::StatusOr<int64_t> GetDeviceMemoryInBytes(absl::string_view device_kind);
 
+// Returns true if the device kind is a GPU device.
+bool IsGpuDevice(absl::string_view device_kind);
+
 }  // namespace ifrt
 }  // namespace xla
 

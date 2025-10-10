@@ -59,5 +59,9 @@ absl::StatusOr<int64_t> GetDeviceMemoryInBytes(absl::string_view device_kind) {
       device_kind));
 }
 
+bool IsGpuDevice(absl::string_view device_kind) {
+  return device_kind == "NVIDIA H100 80GB HBM3" || device_kind == "NVIDIA B200";
+}
+
 }  // namespace ifrt
 }  // namespace xla
