@@ -1152,7 +1152,7 @@ GemmFusionAutotunerImpl::CompileAll(AutotunerCompileUtil& compile_util,
           absl::StatusOr<std::unique_ptr<Executable>> executable =
               compile(fusion, config, gemm_config_set.size() > 1);
           TF_CHECK_OK(executable.status())
-              << " - Failure occured when compiling fusion " << fusion->name()
+              << " - Failure occurred when compiling fusion " << fusion->name()
               << " with config '" << ConfigToString(config)
               << "'\nFused HLO computation:\n"
               << fusion->fused_instructions_computation()->ToString();
