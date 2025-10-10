@@ -24,6 +24,7 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/cuda/cuda_platform.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
+#include "xla/stream_executor/cuda/cuda_status.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/gpu/gpu_test_kernels.h"
@@ -209,6 +210,25 @@ TEST(CudaExecutorTest, GetPointerMemorySpaceWorksWithDeviceMemory) {
   EXPECT_NE(allocation.opaque(), nullptr);
   EXPECT_THAT(executor->GetPointerMemorySpace(allocation.opaque()),
               IsOkAndHolds(MemoryType::kDevice));
+}
+
+TEST(CudaExecutorTest, AllocateMemoryWithVmmApi) {
+  TF_ASSERT_OK_AND_ASSIGN(Platform * platform,
+                          PlatformManager::PlatformWithName("CUDA"));
+  TF_ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
+                          platform->ExecutorForDevice(0));
+
+  auto cuda_executor = dynamic_cast<CudaExecutor*>(executor);
+  ASSERT_NE(cuda_executor, nullptr);
+  DeviceMemoryBase ptr = cuda_executor->Allocate(1024, (int)MemoryType::kP2P);
+
+  EXPECT_NE(ptr.opaque(), nullptr);
+  EXPECT_EQ(ptr.size(), 1024);
+
+  CUmemGenericAllocationHandle handle;
+  EXPECT_OK(cuda::ToStatus(cuMemRetainAllocationHandle(&handle, ptr.opaque())));
+  EXPECT_NE(handle, 0);
+  EXPECT_OK(cuda::ToStatus(cuMemRelease(handle)));
 }
 
 }  // namespace

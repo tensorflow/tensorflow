@@ -55,6 +55,17 @@ limitations under the License.
 
 namespace stream_executor::gpu {
 
+// RAII wrapper for a CUDA allocation handle.
+struct AllocationHandle {
+  uint64_t handle;
+  ~AllocationHandle();
+  explicit AllocationHandle(uint64_t handle) : handle(handle) {}
+  AllocationHandle(const AllocationHandle&) = delete;
+  AllocationHandle& operator=(const AllocationHandle&) = delete;
+  AllocationHandle(AllocationHandle&&) = default;
+  AllocationHandle& operator=(AllocationHandle&&) = default;
+};
+
 // This class implements GpuExecutor for NVIDIA GPUs that use CUDA libraries.
 class CudaExecutor : public GpuExecutor {
  public:
@@ -137,7 +148,14 @@ class CudaExecutor : public GpuExecutor {
   absl::StatusOr<std::unique_ptr<MemoryAllocator>> CreateMemoryAllocator(
       MemoryType type) override;
 
+  // Get the handler to an allocation if it was allocated with VMMAPI.
+  absl::StatusOr<AllocationHandle> RetainAllocationHandle(void* ptr);
+
  private:
+  absl::Status VmmDeallocateMemory(void* ptr);
+
+  absl::StatusOr<void*> VmmAllocateMemory(uint64_t bytes);
+
   // Loads a module in cubin format.
   absl::StatusOr<ModuleHandle> LoadModuleFromCuBin(const char* cubin)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(in_memory_modules_mu_);
@@ -151,6 +169,10 @@ class CudaExecutor : public GpuExecutor {
 
   // Returns true if a delay kernel is supported.
   absl::StatusOr<bool> DelayKernelIsSupported();
+
+  bool is_vmm_supported_ = false;
+
+  bool is_rdma_supported_ = false;
 
   // Guards the in-memory-module mapping.
   absl::Mutex in_memory_modules_mu_;
