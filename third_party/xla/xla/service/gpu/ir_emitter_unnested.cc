@@ -2169,9 +2169,7 @@ absl::Status IrEmitterUnnested::EmitCollectiveThunk(
                                 /*source_buffer=*/src,
                                 /*destination_buffer=*/dst,
                                 /*source_memory_space=*/src_memory_space,
-                                /*destination_memory_space=*/dst_memory_space,
-                                /*source_value=*/nullptr,
-                                /*destination_value=*/nullptr});
+                                /*destination_memory_space=*/dst_memory_space});
   };
 
   if (kind == Thunk::Kind::kAllGatherStart) {
@@ -2559,9 +2557,7 @@ absl::Status IrEmitterUnnested::EmitNvshmemThunk(
                                 /*source_buffer=*/src,
                                 /*destination_buffer=*/dst,
                                 /*source_memory_space=*/src_memory_space,
-                                /*destination_memory_space=*/dst_memory_space,
-                                /*source_value=*/nullptr,
-                                /*destination_value=*/nullptr});
+                                /*destination_memory_space=*/dst_memory_space});
   };
 
   // For other operations simply zip operands with results.

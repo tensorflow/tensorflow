@@ -29,16 +29,13 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
-#include "mlir/IR/BuiltinAttributes.h"
-#include "mlir/IR/BuiltinOps.h"
-#include "mlir/IR/Value.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/core/collectives/communicator.h"
+#include "xla/hlo/ir/collective_op_group_mode.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
-#include "xla/hlo/translate/mhlo_to_hlo/attribute_exporter.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/gpu/buffer_allocations.h"
@@ -61,47 +58,13 @@ struct CollectiveConfig {
   CollectiveOpGroupMode group_mode;
   bool use_symmetric_buffer;
 
-  template <typename OpT>
-  void SetCollectiveOpKindAndID(OpT op);
   void SetCollectiveOpKindAndID(const HloCollectivePermuteInstruction* instr);
   void SetCollectiveOpKindAndID(const HloSendRecvInstruction* instr);
   bool IsDegenerate(int64_t replica_count, int64_t partition_count) const;
 };
 
-template <typename OpT>
-void CollectiveConfig::SetCollectiveOpKindAndID(OpT op) {
-  if (op.getChannelId()) {
-    collective_op_kind = RendezvousKey::kCrossModule;
-    op_id = static_cast<int64_t>(op.getChannelId()->getHandle());
-  } else {
-    collective_op_kind = RendezvousKey::kCrossReplica;
-    mlir::ModuleOp parent = op->template getParentOfType<mlir::ModuleOp>();
-    mlir::IntegerAttr unique_id =
-        parent->getAttrOfType<mlir::IntegerAttr>("hlo.unique_id");
-    op_id = static_cast<int64_t>(unique_id.getInt());
-  }
-}
-
 CollectiveConfig GetCollectiveConfig(const HloInstruction* hlo,
                                      std::optional<bool> use_global_device_ids);
-
-template <typename OpT>
-CollectiveConfig GetCollectiveConfigForMlir(
-    OpT op, std::optional<bool> use_global_device_ids) {
-  CollectiveConfig config;
-  config.operand_count = op.getInputs().size();
-  config.operand_element_type.reserve(config.operand_count);
-  for (int i = 0; i < config.operand_count; i++) {
-    const Shape shape = GetShape(op.getInputs()[i]);
-    config.operand_element_type.push_back(shape.element_type());
-  }
-  config.replica_groups = ConvertReplicaGroups(op.getReplicaGroups()).value();
-  config.SetCollectiveOpKindAndID(op);
-  config.group_mode = GetCollectiveOpGroupMode(op.getChannelId().has_value(),
-                                               use_global_device_ids)
-                          .value();
-  return config;
-}
 
 // Handle to a communicator object with corresponding clique key.
 struct CommunicatorHandle {
@@ -146,8 +109,6 @@ class CollectiveThunk : public Thunk {
     BufferAllocation::Slice destination_buffer;
     int64_t source_memory_space;
     int64_t destination_memory_space;
-    mlir::Value source_value;
-    mlir::Value destination_value;
   };
 
   // Completion events for asynchronous collective operations (operations
@@ -278,8 +239,6 @@ class CollectiveDoneThunk : public Thunk {
 };
 
 //===----------------------------------------------------------------------===//
-
-absl::Status IsValidOperand(mlir::Value operand, Thunk::Kind reduction_op);
 
 absl::Status IsValidOperand(Shape shape, Thunk::Kind reduction_op);
 
