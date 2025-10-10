@@ -74,7 +74,8 @@ struct IndexDomainLexicographicalComparator {
   }
 };
 
-// Shard the given `input_tensor` into equal shapes of slices.
+// Shard the given `input_tensor` into equal shapes of slices and transfer to
+// devices.
 //
 // `num_paritions_per_axis` specifies the number of partitions along
 // each axis (dimension).
@@ -85,12 +86,14 @@ struct IndexDomainLexicographicalComparator {
 // `devices` contains a list of devices flattend into the following
 // order: [slice0][replicate0], [slice0][replicate1], ..., [slice1][replicate0],
 // [slice1][replicate1], ...
-absl::StatusOr<std::vector<xla::ifrt::ArrayRef>>
-SplitAndCreateArraysFromHostBuffer(
+absl::StatusOr<tsl::Future<xla::ifrt::ArrayRef>>
+MakeAssembledArrayFromHostBufferHelper(
     xla::ifrt::Client& ifrt_client, const tensorflow::Tensor& input_tensor,
     const std::vector<int32_t>& num_partitions_per_axis, int num_replicas,
     const std::vector<xla::ifrt::Device*>& devices,
-    const tsl::thread::ThreadPool& thread_pool) {
+    const tsl::thread::ThreadPool& thread_pool,
+    H2DTransferExecutor& h2d_transfer_executor, xla::ifrt::ShardingRef sharding,
+    std::vector<int> original_device_indices) {
   Eigen::ThreadPoolDevice thread_pool_device(thread_pool.AsEigenThreadPool(),
                                              thread_pool.NumThreads());
 
@@ -161,10 +164,25 @@ SplitAndCreateArraysFromHostBuffer(
                      split_tensors.size(), " x ", num_replicas));
   }
 
-  std::vector<xla::ifrt::ArrayRef> arrays;
-  arrays.reserve(devices.size());
-  TF_ASSIGN_OR_RETURN(xla::ifrt::DType dtype, ToIfrtDType(tensor_data_type));
   auto device_iter = devices.begin();
+  xla::ifrt::Shape original_input_shape(input_tensor.shape().dim_sizes());
+  H2DTransferExecutor::H2DTransferInput h2d_transfer_input{
+      .dtype = input_tensor.dtype(),
+      .assemble_fn =
+          [ifrt_client = &ifrt_client, sharding = std::move(sharding),
+           original_device_indices = std::move(original_device_indices),
+           original_input_shape = std::move(original_input_shape)](
+              std::vector<xla::ifrt::ArrayRef> arrays)
+          -> absl::StatusOr<xla::ifrt::ArrayRef> {
+        std::vector<xla::ifrt::ArrayRef> rearranged_arrays;
+        rearranged_arrays.resize(arrays.size());
+        for (int i = 0; i < arrays.size(); ++i) {
+          rearranged_arrays[original_device_indices[i]] = std::move(arrays[i]);
+        }
+        return ifrt_client->AssembleArrayFromSingleDeviceArrays(
+            original_input_shape, sharding, absl::MakeSpan(rearranged_arrays),
+            xla::ifrt::ArrayCopySemantics::kDonateInput);
+      }};
   for (int slice_idx = 0; slice_idx < split_tensors.size(); ++slice_idx) {
     auto& tensor = split_tensors[slice_idx];
 
@@ -175,27 +193,14 @@ SplitAndCreateArraysFromHostBuffer(
         return absl::InternalError(
             absl::StrCat("Missing Device ", i, " for slice ", slice_idx));
       }
-      auto single_device_sharding = xla::ifrt::SingleDeviceSharding::Create(
-          *device_iter, xla::ifrt::MemoryKind());
-
-      TF_ASSIGN_OR_RETURN(auto array,
-                          ifrt_client.MakeArrayFromHostBuffer(
-                              tensor.data(), dtype,
-                              xla::ifrt::Shape(tensor.shape().dim_sizes()),
-                              GetByteStrides(tensor_data_type, tensor.shape()),
-                              std::move(single_device_sharding),
-                              xla::ifrt::Client::HostBufferSemantics::
-                                  kImmutableUntilTransferCompletes,
-                              [tensor, slice_idx]() {
-                                // Keep tensor alive
-                                VLOG(2) << "Done with host buffer for slice "
-                                        << slice_idx << " at " << tensor.data();
-                              }));
-      arrays.push_back(std::move(array));
+      H2DTransferExecutor::H2DTransferSubTensorBundle sub_tensor_bundle{
+          .input_tensor = std::move(tensor), .device = *device_iter};
+      h2d_transfer_input.sub_tensor_bundles.push_back(
+          std::move(sub_tensor_bundle));
       device_iter++;
     }
   }
-  return arrays;
+  return h2d_transfer_executor.H2DTransfer(std::move(h2d_transfer_input));
 }
 
 // Reassembles split tensors back into one tensor.
@@ -355,11 +360,13 @@ absl::StatusOr<xla::ifrt::ArrayRef> CreateArrayFromHostTensorForSingleDevice(
       });
 }
 
-absl::StatusOr<xla::ifrt::ArrayRef> MakeAssembledArrayFromHostBuffer(
-    xla::ifrt::Client& ifrt_client, const tensorflow::Tensor& input_tensor,
-    const xla::HloSharding& hlo_sharding,
-    const xla::ifrt::DeviceListRef& device_list,
-    const tsl::thread::ThreadPool& thread_pool) {
+absl::StatusOr<tsl::Future<xla::ifrt::ArrayRef>>
+MakeAssembledArrayFromHostBuffer(xla::ifrt::Client& ifrt_client,
+                                 const tensorflow::Tensor& input_tensor,
+                                 const xla::HloSharding& hlo_sharding,
+                                 const xla::ifrt::DeviceListRef& device_list,
+                                 const tsl::thread::ThreadPool& thread_pool,
+                                 H2DTransferExecutor& h2d_transfer_executor) {
   // TODO(b/316959894): use xla::HloSharding to identifying sharding axis.
   auto sharding = xla::ifrt::HloSharding::Create(
       device_list, xla::ifrt::MemoryKind(), hlo_sharding);
@@ -446,22 +453,10 @@ absl::StatusOr<xla::ifrt::ArrayRef> MakeAssembledArrayFromHostBuffer(
     VLOG(3) << "Device " << device->ToString();
   }
 
-  TF_ASSIGN_OR_RETURN(auto arrays,
-                      SplitAndCreateArraysFromHostBuffer(
-                          ifrt_client, input_tensor, num_partitions_per_axis,
-                          num_replicas, devices, thread_pool));
-
-  // Re-arranged arrays back to original device order
-  std::vector<xla::ifrt::ArrayRef> rearranged_arrays;
-  rearranged_arrays.resize(arrays.size());
-  for (int i = 0; i < arrays.size(); ++i) {
-    rearranged_arrays[original_device_indices[i]] = std::move(arrays[i]);
-  }
-
-  return ifrt_client.AssembleArrayFromSingleDeviceArrays(
-      xla::ifrt::Shape(input_tensor.shape().dim_sizes()), std::move(sharding),
-      absl::MakeSpan(rearranged_arrays),
-      xla::ifrt::ArrayCopySemantics::kDonateInput);
+  return MakeAssembledArrayFromHostBufferHelper(
+      ifrt_client, input_tensor, num_partitions_per_axis, num_replicas, devices,
+      thread_pool, h2d_transfer_executor, std::move(sharding),
+      std::move(original_device_indices));
 }
 
 absl::StatusOr<tsl::Future<tensorflow::Tensor>> MakeTensorFromArrayHelper(
@@ -645,6 +640,51 @@ absl::StatusOr<tsl::Future<tensorflow::Tensor>> MakeTensorFromArrayHelper(
 
 }  // namespace
 
+H2DTransferExecutor::H2DTransferExecutor(xla::ifrt::Client& ifrt_client)
+    : ifrt_client_(ifrt_client) {}
+
+absl::StatusOr<tsl::Future<xla::ifrt::ArrayRef>>
+H2DTransferExecutor::H2DTransfer(H2DTransferInput h2d_transfer_input) {
+  TF_ASSIGN_OR_RETURN(xla::ifrt::DType ifrt_dtype,
+                      ToIfrtDType(h2d_transfer_input.dtype));
+
+  auto [promise, future] = tsl::Future<xla::ifrt::ArrayRef>::MakePromise();
+  std::vector<xla::ifrt::ArrayRef> arrays;
+  arrays.reserve(h2d_transfer_input.sub_tensor_bundles.size());
+  for (auto& bundle : h2d_transfer_input.sub_tensor_bundles) {
+    TF_ASSIGN_OR_RETURN(
+        xla::ifrt::ArrayRef array,
+        ifrt_client_.MakeArrayFromHostBuffer(
+            bundle.input_tensor.data(), ifrt_dtype,
+            ToIfrtShape(bundle.input_tensor.shape()),
+            GetByteStrides(h2d_transfer_input.dtype,
+                           bundle.input_tensor.shape()),
+            xla::ifrt::SingleDeviceSharding::Create(bundle.device,
+                                                    xla::ifrt::MemoryKind()),
+            xla::ifrt::Client::HostBufferSemantics::
+                kImmutableUntilTransferCompletes,
+            [tensor = std::move(bundle.input_tensor)]() {  // keep tensor alive
+            }));
+    arrays.push_back(std::move(array));
+  }
+  if (arrays.size() == 1) {
+    std::move(promise).Set(std::move(arrays[0]));
+  }
+  if (!h2d_transfer_input.assemble_fn) {
+    return absl::InvalidArgumentError(
+        "assemble_fn is not set while the original tensor is sharded.");
+  }
+  // For now, the future will be immediately ready.
+  // TODO(b/445201291): Make small tensor future ready when small tensor
+  // transfer is done.
+  std::move(promise).Set(h2d_transfer_input.assemble_fn(std::move(arrays)));
+  return future;
+}
+
+absl::Status H2DTransferExecutor::FlushSmallTensorsTransfer() {
+  return absl::OkStatus();
+}
+
 tsl::Future<tensorflow::Tensor> MakeTensorFromArray(
     xla::ifrt::Client& ifrt_client, xla::ifrt::Array& input_array,
     const xla::HloSharding& hlo_sharding,
@@ -660,11 +700,12 @@ tsl::Future<tensorflow::Tensor> MakeTensorFromArray(
   return *std::move(output_tensor_future);
 }
 
-absl::StatusOr<xla::ifrt::ArrayRef> MakeArrayFromTensor(
+absl::StatusOr<tsl::Future<xla::ifrt::ArrayRef>> MakeArrayFromTensor(
     xla::ifrt::Client& ifrt_client, const tensorflow::Tensor& input_tensor,
     const xla::ifrt::DeviceListRef& device_list,
     const xla::HloSharding& hlo_sharding,
-    const tsl::thread::ThreadPool& thread_pool) {
+    const tsl::thread::ThreadPool& thread_pool,
+    H2DTransferExecutor& h2d_transfer_executor) {
   VLOG(1) << "Hlo sharding: " << hlo_sharding.ToString();
   VLOG(1) << "Device list size: " << device_list->size();
 
@@ -675,50 +716,72 @@ absl::StatusOr<xla::ifrt::ArrayRef> MakeArrayFromTensor(
         hlo_sharding.ToString()));
   }
 
-  if (device_list->size() == 1) {
-    return CreateArrayFromHostTensorForSingleDevice(ifrt_client, input_tensor,
-                                                    device_list->devices()[0]);
+  if (device_list->size() == 1 &&
+      input_tensor.TotalBytes() >
+          h2d_transfer_executor.GetSmallTensorThresholdBytes()) {
+    TF_ASSIGN_OR_RETURN(
+        xla::ifrt::ArrayRef array,
+        CreateArrayFromHostTensorForSingleDevice(ifrt_client, input_tensor,
+                                                 device_list->devices()[0]));
+    return tsl::Future<xla::ifrt::ArrayRef>(std::move(array));
   }
 
   // IsTileMaximal() also returns true for a replicate sharding created by
   // xla::HloSharding::Replicate().
-  if (!hlo_sharding.IsReplicated() && hlo_sharding.IsTileMaximal()) {
+  if (!hlo_sharding.IsReplicated() && hlo_sharding.IsTileMaximal() &&
+      input_tensor.TotalBytes() >
+          h2d_transfer_executor.GetSmallTensorThresholdBytes()) {
     VLOG(1) << "Single device fast path for Maximal tiled tensor";
     xla::ifrt::Device* device;
     int unique_device_id = hlo_sharding.GetUniqueDevice();
     TF_ASSIGN_OR_RETURN(device, ifrt_client.LookupDevice(
                                     xla::ifrt::DeviceId(unique_device_id)));
-    return CreateArrayFromHostTensorForSingleDevice(ifrt_client, input_tensor,
-                                                    device);
+    TF_ASSIGN_OR_RETURN(xla::ifrt::ArrayRef array,
+                        CreateArrayFromHostTensorForSingleDevice(
+                            ifrt_client, input_tensor, device));
+    return tsl::Future<xla::ifrt::ArrayRef>(std::move(array));
   }
 
   // Fast path for replicated sharding.
-  if (hlo_sharding.IsReplicated()) {
-    VLOG(1) << "Fast path for replicated tensor";
+  if (hlo_sharding.IsReplicated() &&
+      input_tensor.TotalBytes() >
+          h2d_transfer_executor.GetSmallTensorThresholdBytes()) {
+    LOG(INFO) << "Fast path for replicated tensor";
     auto ifrt_sharding = xla::ifrt::HloSharding::Create(
         device_list, xla::ifrt::MemoryKind(), hlo_sharding);
 
     TF_ASSIGN_OR_RETURN(xla::ifrt::DType ifrt_dtype,
                         ToIfrtDType(input_tensor.dtype()));
-    return ifrt_client.MakeArrayFromHostBuffer(
-        input_tensor.data(), ifrt_dtype, ToIfrtShape(input_tensor.shape()),
-        GetByteStrides(input_tensor.dtype(), input_tensor.shape()),
-        std::move(ifrt_sharding),
-        xla::ifrt::Client::HostBufferSemantics::
-            kImmutableUntilTransferCompletes,
-        [input_tensor]() {  // keep tensor alive
-        });
+    TF_ASSIGN_OR_RETURN(
+        xla::ifrt::ArrayRef array,
+        ifrt_client.MakeArrayFromHostBuffer(
+            input_tensor.data(), ifrt_dtype, ToIfrtShape(input_tensor.shape()),
+            GetByteStrides(input_tensor.dtype(), input_tensor.shape()),
+            std::move(ifrt_sharding),
+            xla::ifrt::Client::HostBufferSemantics::
+                kImmutableUntilTransferCompletes,
+            [input_tensor]() {  // keep tensor alive
+            }));
+    return tsl::Future<xla::ifrt::ArrayRef>(std::move(array));
   }
+
+  // non-replicated sharding case.
+  // TODO(b/445201291): Small tensors will be transferred by
+  // `H2DTransferExecutor`. For tensors using replicated sharding, since the
+  // tensor is not sharded, if the size of the original `input_tensor` is
+  // treated as small tensors, it will be transferred with other small tensors
+  // in one single buffer.
 
   return MakeAssembledArrayFromHostBuffer(ifrt_client, input_tensor,
                                           std::move(hlo_sharding), device_list,
-                                          thread_pool);
+                                          thread_pool, h2d_transfer_executor);
 }
 
-absl::StatusOr<xla::ifrt::ArrayRef> MakeArrayFromTensor(
+absl::StatusOr<tsl::Future<xla::ifrt::ArrayRef>> MakeArrayFromTensor(
     xla::ifrt::Client& ifrt_client, const tensorflow::Tensor& input_tensor,
     absl::Span<const int> device_ids, const xla::HloSharding& hlo_sharding,
-    const tsl::thread::ThreadPool& thread_pool) {
+    const tsl::thread::ThreadPool& thread_pool,
+    H2DTransferExecutor& h2d_transfer_executor) {
   if (device_ids.empty()) {
     return absl::InvalidArgumentError("device_ids cannot be empty");
   }
@@ -734,7 +797,7 @@ absl::StatusOr<xla::ifrt::ArrayRef> MakeArrayFromTensor(
                       ifrt_client.MakeDeviceList(devices));
 
   return MakeArrayFromTensor(ifrt_client, input_tensor, device_list,
-                             hlo_sharding, thread_pool);
+                             hlo_sharding, thread_pool, h2d_transfer_executor);
 }
 
 std::optional<absl::InlinedVector<int64_t, 4>> GetByteStrides(

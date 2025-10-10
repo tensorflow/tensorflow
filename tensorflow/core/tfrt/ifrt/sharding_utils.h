@@ -18,8 +18,11 @@ limitations under the License.
 
 #include <cstdint>
 #include <optional>
+#include <vector>
 
 #include "absl/container/inlined_vector.h"
+#include "absl/functional/any_invocable.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_sharding.h"
@@ -27,6 +30,10 @@ limitations under the License.
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
+#include "xla/python/ifrt/dtype.h"
+#include "xla/python/ifrt/shape.h"
+#include "xla/python/ifrt/sharding.h"
+#include "xla/python/pjrt_ifrt/xla_sharding.h"
 #include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/platform/threadpool.h"
@@ -37,20 +44,73 @@ limitations under the License.
 namespace tensorflow {
 namespace ifrt_serving {
 
+class H2DTransferExecutor {
+ public:
+  struct Options {
+    // Tensors with total size less than this threshold will be transferred
+    // in a single host buffer. If this is set to 0, this feature will be
+    // disabled.
+    // TODO(b/445201291): Implement small tensor transfer.
+    int64_t small_tensor_threshold_bytes = 0;
+  };
+
+  // This saves one slice of a tensor to be transferred to a device.
+  struct H2DTransferSubTensorBundle {
+    tensorflow::Tensor input_tensor;
+    xla::ifrt::Device* device;
+  };
+
+  struct H2DTransferInput {
+    // Slices of the tensor to be transferred to devices after sharding the
+    // original tensor by `hlo_sharding`.
+    std::vector<H2DTransferSubTensorBundle> sub_tensor_bundles;
+    tensorflow::DataType dtype;
+    // This function is used to assemble the slices of the tensor back to one
+    // tensor.
+    absl::AnyInvocable<absl::StatusOr<xla::ifrt::ArrayRef>(
+        std::vector<xla::ifrt::ArrayRef>)>
+        assemble_fn;
+  };
+
+  explicit H2DTransferExecutor(xla::ifrt::Client& ifrt_client);
+  ~H2DTransferExecutor() = default;
+
+  // Transfers a tensor to a device. `xla::ifrt::ArrayRef` is already an async
+  // value. We return future here for cases when the transfer is not immediately
+  // done when small tensor transfer is triggered.
+  absl::StatusOr<tsl::Future<xla::ifrt::ArrayRef>> H2DTransfer(
+      H2DTransferInput h2d_transfer_input);
+
+  // Transfers small tensors to devices. This is a no-op if small tensor
+  // transfer is not enabled or there is no small tensors to transfer. This
+  // must be called before execution to ensure complete transfer.
+  absl::Status FlushSmallTensorsTransfer();
+
+  int64_t GetSmallTensorThresholdBytes() const {
+    return options_.small_tensor_threshold_bytes;
+  }
+
+ private:
+  xla::ifrt::Client& ifrt_client_;
+  Options options_;
+};
+
 // Create a tensor from the given host tensor based on given device ids and
 // sharding information.
-absl::StatusOr<xla::ifrt::ArrayRef> MakeArrayFromTensor(
+absl::StatusOr<tsl::Future<xla::ifrt::ArrayRef>> MakeArrayFromTensor(
     xla::ifrt::Client& ifrt_client, const tensorflow::Tensor& input_tensor,
     absl::Span<const int> device_ids, const xla::HloSharding& hlo_sharding,
-    const tsl::thread::ThreadPool& thread_pool);
+    const tsl::thread::ThreadPool& thread_pool,
+    H2DTransferExecutor& h2d_transfer_executor);
 
 // A variant of the above api. The difference is that the user passes in
 // device_list directly instead of a list of device_ids.
-absl::StatusOr<xla::ifrt::ArrayRef> MakeArrayFromTensor(
+absl::StatusOr<tsl::Future<xla::ifrt::ArrayRef>> MakeArrayFromTensor(
     xla::ifrt::Client& ifrt_client, const tensorflow::Tensor& input_tensor,
     const xla::ifrt::DeviceListRef& device_list,
     const xla::HloSharding& hlo_sharding,
-    const tsl::thread::ThreadPool& thread_pool);
+    const tsl::thread::ThreadPool& thread_pool,
+    H2DTransferExecutor& h2d_transfer_executor);
 
 // Reshard an disassembled array list back to one single tensor
 // based on given sharding spec.

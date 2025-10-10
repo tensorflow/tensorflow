@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/tfrt/ifrt/ifrt_config.pb.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_loaded_variable_registry.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_restore_tensor_registry.h"
+#include "tensorflow/core/tfrt/ifrt/sharding_utils.h"
 #include "tfrt/host_context/concurrent_work_queue.h"  // from @tf_runtime
 
 namespace tensorflow {
@@ -65,7 +66,8 @@ absl::Status AsyncLoadRestoredTensorAsIfrtLoadedVariable(
     const ifrt_serving::IfrtRestoreTensorRegistry& ifrt_restore_tensor_registry,
     ifrt_serving::IfrtLoadedVariableRegistry& ifrt_loaded_variable_registry,
     tfrt::ConcurrentWorkQueue* checkpoint_loader_queue,
-    const VariableDeviceShardingConfig& sharding_config);
+    const VariableDeviceShardingConfig& sharding_config,
+    H2DTransferExecutor& h2d_transfer_executor);
 
 }  // namespace ifrt_serving
 }  // namespace tensorflow

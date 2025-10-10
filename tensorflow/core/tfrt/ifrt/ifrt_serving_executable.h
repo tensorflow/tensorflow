@@ -57,6 +57,7 @@ limitations under the License.
 #include "tensorflow/core/tfrt/ifrt/ifrt_persistent_compilation_cache.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_restore_tensor_registry.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_serving_core_selector.h"
+#include "tensorflow/core/tfrt/ifrt/sharding_utils.h"
 #include "tensorflow/core/tfrt/ifrt/tf_host_callback.h"
 #include "tfrt/host_context/concurrent_work_queue.h"  // from @tf_runtime
 
@@ -227,10 +228,11 @@ class IfrtServingExecutable {
       const CachedExecutableBundle& executable_bundle,
       const xla::ifrt::DeviceListRef& devices);
 
-  absl::StatusOr<xla::ifrt::ArrayRef> ConvertTensorToArray(
+  absl::StatusOr<tsl::Future<xla::ifrt::ArrayRef>> ConvertTensorToArray(
       const tensorflow::Tensor& tensor,
       const xla::ifrt::DeviceListRef& device_list,
-      const xla::OpSharding& sharding);
+      const xla::OpSharding& sharding,
+      H2DTransferExecutor& h2d_transfer_executor);
 
   tsl::Future<SharedCachedExecutableBundle> LookUpOrCreateExecutable(
       const tensorflow::tpu::TPUCompileMetadataProto& compile_metadata,
