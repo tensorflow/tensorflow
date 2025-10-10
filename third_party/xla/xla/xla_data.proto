@@ -902,6 +902,122 @@ message StatisticsViz {
   repeated Statistic statistics = 2;
 }
 
+// A mesh is a list of axes and an optional list of device IDs specifying
+// the device ordering.
+//
+// If the list of axes is empty, the mesh has an implicit unnamed axis of
+// size 1. In this case, if a device ID list is not provided, the implicit
+// device ID list is [0]; if a device ID list is provided, it must
+// contains a single integer of any non-negative value. We call this
+// maximal-sharding case.
+//
+// For all non-maximal-sharding cases, if a device ID list is specified,
+// the product of the axis sizes should match the number of devices. If a
+// device ID list is not specified, the implicit device ID list is
+// iota(product(axes)). For simplicity, we also disallow specifying a
+// device ID list that is the same as iota(product(axes)); in this case, a
+// device ID list shouldn't be specified.
+//
+// Here are some examples of meshes:
+// - An empty mesh represents a placeholder mesh that can be replaced during
+// propagation: <[]>
+// - A mesh with an unnamed axis and an explicit device ID, which is
+// typically used to represent maximal sharding: <[], device_ids=[3]>
+// - A mesh with two axes and implicit device IDs iota(6): <["a"=2, "b"=3]>
+// - A mesh with two axes and explicit device IDs specifying the device
+// ordering: <["a"=3, "b"=2], device_ids=[0, 2, 4, 1, 3, 5]>
+//
+// Constraints:
+// - Elements in `axes` must not have duplicate names.
+// - If `device_ids` is specified:
+//   * The product of axis sizes must match the number of devices.
+//   * All of its elements must be non-negative.
+//   * `device_ids` should not be equal to `iota(product(axis_sizes))`.
+//   * Sorted `device_ids` must be `iota(product(axis_sizes))`.
+message Mesh {
+  message MeshAxis {
+    string name = 1;
+    int64 size = 2;
+  }
+
+  repeated MeshAxis axes = 1;
+  repeated int64 device_ids = 2;
+}
+
+// Reference to either a full axis via index into Mesh axes or a split
+// sub-axis. Axis index is used to reference the axis in the mesh instead of
+// axis name to reduce proto size.
+//
+// Constraints:
+// - `axis_index` is a valid index into `mesh.axes`.
+message AxisRef {
+  // When splitting a full axis into n sub-axes, the axis is reshaped into
+  // [k_1,...,k_n], and the ith sub-axis can be expressed by the product of
+  // all axis sizes to its left `m=prod(k_1,...,k_(i-1))` (aka pre-size) and
+  // size k_i. Therefore, the sub-axis-info attribute holds those two numbers
+  // and is denoted as follows: `(m)k` for pre-size m and size k.
+  //
+  // Constraints:
+  // - `pre-size` is at least 1.
+  // - `size` is greater than 1.
+  // - `pre-size` must divide the size of the full axis, i.e., both `pre-size`
+  //    and `size` divide the size of the full axis, and the sub-axis doesn't
+  //    go beyond the full axis.
+  // - The size of the sub-axis isn't equal to the size of the corresponding
+  //   full axis, in which case the full axis should be used instead.
+  message SubAxis {
+    int64 pre_size = 1;
+    int64 size = 2;
+  }
+
+  int64 axis_index = 1;
+  optional SubAxis sub_axis_info = 2;
+}
+
+// A NamedSharding is bound to a specific mesh, and can only reference axis
+// names from that mesh. The dimension shardings tell us for each dimension of
+// the tensor, along which axes it is sharded from major to minor. All other
+// axes that don’t shard a dimension are either implicitly or explicitly (if
+// they appear in the list of replicated axes) replicated. A sharding can have
+// unreduced axes (specified by `unreduced_axes`), meaning the tensor is
+// unreduced along these axes. Note that no sharding attribute on a tensor is
+// equivalent to a fully open sharding.
+// This is corresponding to mlir sharding representation `Sdy_TensorSharding`
+// (https://github.com/openxla/shardy/blob/main/shardy/dialect/sdy/ir/attrs.td)
+// used in Shardy.
+message NamedSharding {
+  // Describes how a tensor dimension is sharded using indices into
+  // mesh.axes, from major to minor, and a boolean indicating whether
+  // the dimension can be further sharded.
+  message DimensionSharding {
+    // List of axes to shard a tensor dimension on from major to minor. The
+    // dimension should have at least one axis if it is closed.
+    repeated AxisRef axes = 1;
+    // If true, this dimension is "closed" and can't be further sharded.
+    bool is_closed = 2;
+  }
+
+  // If this is non-empty, then all the other fields are ignored and this
+  // represents a tuple sharding.
+  repeated NamedSharding tuple_shardings = 1;
+
+  Mesh mesh = 2;
+  // The dimension shardings tell us for each dimension of the tensor, along
+  // which axes it is sharded from major to minor.
+  repeated DimensionSharding dim_shardings = 3;
+  // All axes in this list are explicitly replicated.
+  repeated AxisRef replicated_axes = 4;
+  // A sharding can have unreduced axes, meaning the tensor is unreduced
+  // along these axes.
+  repeated AxisRef unreduced_axes = 5;
+
+  // This field is used to track the source of this sharding, usually derived
+  // from instructions. Multple metadata may be populated if sharding is
+  // combined with other shardings. Metadata should be set on individual tuple
+  // elements and not tuple_sharding.
+  repeated OpMetadata metadata = 6;
+}
+
 // LINT.IfChange
 message OpSharding {
   enum Type {
@@ -989,6 +1105,16 @@ message OpSharding {
   }
 
   ShardGroupType shard_group_type = 13;
+
+  // Optional field to migrate OpSharding to new NamedSharding representation.
+  // If this field is populated, all other fields in OpSharding should be empty
+  // or else are ignored. This is to facilitate migration from the old sharding
+  // format.
+  //
+  // Note that instead of reusing OpSharding's fields like metadata, we have
+  // separate fields in NamedSharding to treat it as a standalone message which
+  // is more clear and will help in future cleanup.
+  optional NamedSharding named_sharding = 14;
 }
 // LINT.ThenChange()
 

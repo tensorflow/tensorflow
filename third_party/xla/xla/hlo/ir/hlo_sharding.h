@@ -53,6 +53,52 @@ class HloSharding {
   static inline constexpr absl::string_view kShardingFrontendAttrName =
       "xla.sdy.sharding";
 
+  // C++ representation for corresponding proto types in `xla_data.proto` so
+  // same documentation applies, except AxisRef elements are pointers to
+  // `MeshAxis` elements instead of indices.
+  //
+  // TODO(b/449783607): Move mesh, axis to mesh_and_axis.h and move
+  // NamedSharding out of HloSharding to match proto after change to using
+  // mesh_and_axis.h. Currently simply moving this out will cause name
+  // clashes with proto as they both use same xla namespace.
+  struct MeshAxis {
+    std::string name;
+    int64_t size;
+  };
+
+  struct Mesh {
+    std::vector<MeshAxis> axes;
+    std::vector<int64_t> device_ids;
+  };
+
+  struct AxisRef {
+    struct SubAxis {
+      int64_t pre_size;
+      int64_t size;
+    };
+
+    const MeshAxis* axis;
+    std::optional<SubAxis> sub_axis_info;
+  };
+
+  // C++ representation for corresponding `OpSharding::NamedSharding` proto.
+  //
+  // TODO(b/450770542): Add corresponding IFTTT in attrs.td
+  class NamedSharding {
+    struct DimensionSharding {
+      std::vector<AxisRef> axes;
+      bool is_closed;
+    };
+
+    std::vector<NamedSharding> tuple_shardings_;
+
+    Mesh mesh_;
+    std::vector<DimensionSharding> dim_shardings_;
+    std::vector<AxisRef> replicated_axes_;
+    std::vector<AxisRef> unreduced_axes_;
+    std::vector<OpMetadata> metadata_;
+  };
+
   // Creates a trivial sharding that replicates a maximal tile across all
   // devices.
   static HloSharding Replicate(absl::Span<const OpMetadata> metadata = {}) {
@@ -767,6 +813,16 @@ class HloSharding {
   // within the same shard group (i.e. under the same shard_group_id) will be
   // sharded alike or exactly the same as each other.
   ShardGroup shard_group_ = NotShardGroup();
+
+  // Optional field to migrate HloSharding to new NamedSharding representation.
+  // If this field is populated, all other fields in HloSharding should be empty
+  // or else are ignored. This is to facilitate migration from the old sharding
+  // format.
+  //
+  // Note that instead of reusing HloSharding's fields like metadata, we have
+  // separate fields in NamedSharding to treat it as a standalone message which
+  // is more clear and will help in future cleanup.
+  std::optional<NamedSharding> named_sharding_;
 };
 
 std::ostream& operator<<(std::ostream& out, const HloSharding& sharding);

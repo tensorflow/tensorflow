@@ -262,7 +262,7 @@ HloSharding getHloShardingForOp(
     return convertToHloSharding(shardings.front(), getMeshAttr, manualAxes);
   }
 
-  SmallVector<HloSharding> newShardings;
+  std::vector<HloSharding> newShardings;
   llvm::transform(shardings, std::back_inserter(newShardings),
                   [&](TensorShardingAttr sdySharding) {
                     return convertToHloSharding(sdySharding, getMeshAttr,
