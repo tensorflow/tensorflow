@@ -1408,3 +1408,4 @@ diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimp
    }
    return b.getDenseI64ArrayAttr(permutation);
 
+
