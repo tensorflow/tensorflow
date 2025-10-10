@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstddef>
 #include <string>
 
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/stringpiece.h"
 #include "tensorflow/python/lib/core/safe_pyobject_ptr.h"
