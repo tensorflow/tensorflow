@@ -23,6 +23,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/algorithm/container.h"
 #include "absl/strings/match.h"
 #include "absl/strings/numbers.h"
 #include "google/protobuf/text_format.h"
@@ -48,9 +49,9 @@ limitations under the License.
 namespace xla {
 namespace {
 
+using ::testing::ElementsAre;
 using ::testing::HasSubstr;
 using ::testing::IsEmpty;
-using ::testing::SizeIs;
 using ::tsl::proto_testing::EqualsProto;
 
 TEST(DumpHloIfEnabled, LargeConstantElided) {
@@ -521,9 +522,10 @@ TEST(DumpTest, DumpPerExecutionProtoToFile) {
   TF_ASSERT_OK(tsl::Env::Default()->GetMatchingPaths(
       tsl::io::JoinPath(dump_folder.path(), "*test_name*execution_*"),
       &matches));
-  ASSERT_THAT(matches, SizeIs(2));
-  EXPECT_THAT(matches[0], HasSubstr("execution_0000"));
-  EXPECT_THAT(matches[1], HasSubstr("execution_0001"));
+  // The output of GetMatchingPaths is not stable, therefore we sort the vector.
+  absl::c_sort(matches);
+  ASSERT_THAT(matches, ElementsAre(HasSubstr("execution_0000"),
+                                   HasSubstr("execution_0001")));
 
   HloModuleProto loaded_proto1;
   HloModuleProto loaded_proto2;
