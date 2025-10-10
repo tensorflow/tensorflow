@@ -1,0 +1,68 @@
+# This patch adds a workaround to support wgmma with block_n: 8. Currently the
+# WGMMA lowering implementation causes incorrect results when the RHS (aka
+# B) has a small non-contracting dimension (N <= 8) that is contiguous.
+# The lowering expects to use no-swizzling there but the code does not handle
+# that case.
+#
+# The patch forces non-transposed layout for RHS in this case but this is not a
+# proper way to support this and may disable pipelined loads costing performance.
+#
+# Additionally, the patch adds extra checks to prevent incorrect lowering with
+# no-swizzling case.
+#
+# See b/413317969
+
+diff --git a/lib/Dialect/TritonGPU/Transforms/AccelerateMatmul.cpp b/lib/Dialect/TritonGPU/Transforms/AccelerateMatmul.cpp
+--- a/lib/Dialect/TritonGPU/Transforms/AccelerateMatmul.cpp
++++ b/lib/Dialect/TritonGPU/Transforms/AccelerateMatmul.cpp
+@@ -413,7 +413,15 @@ public:
+                                       /*isMMAv5Fp4Padded=*/false,
+                                       /*forceTranspose=*/false, dotOp);
+       }
+-      b = getSharedMemoryMMAOperand(b, rewriter, 1, allowTranspose,
++      // b/413317969: This condition avoids unsupported no-swizzling case when
++      // the RHS (aka B) has small non-contracting dimension (N <= 8) that is
++      // contiguous.
++      // Forces non-transposed layout, potentially disabling pipelined loads.
++      // Remove when Triton's WGMMA lowering implementation supports
++      // non-swizzled layouts.
++      // Does not affect F32 and contracting-contiguous layouts.
++      bool allowTransposeForB = allowTranspose && instrShape[1] > 8;
++      b = getSharedMemoryMMAOperand(b, rewriter, 1, allowTransposeForB,
+                                     /*isMMAv5Fp4Padded=*/false,
+                                     /*forceTranspose=*/false, dotOp);
+ 
+diff --git a/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/DotOpToLLVM/WGMMA.cpp b/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/DotOpToLLVM/WGMMA.cpp
+--- a/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/DotOpToLLVM/WGMMA.cpp
++++ b/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/DotOpToLLVM/WGMMA.cpp
+@@ -103,6 +103,16 @@ static Value createDescriptor(Conversion
+   }
+   desc.strideDimensionBaseOffset = swizzling >> 1;
+   desc.leadDimensionBaseOffset = (swizzling * stride) >> 4;
++
++  // b/413317969: This is an extra check to prevent incorrect lowering with
++  // no-swizzling case (swizzlingMode == 0).
++  // If zero swizzling is supported tihs can be removed.
++  if (desc.strideDimensionBaseOffset == 0 &&
++      desc.leadDimensionBaseOffset == 0) {
++    llvm::report_fatal_error(
++        "SBO and LBO are 0 in the descriptor. Swizzling is " +
++        Twine(swizzling) + ", this may be related.");
++  }
+   return b.int_val(64, desc.descriptor);
+ }
+ 
+@@ -122,6 +132,13 @@ mlir::triton::NVIDIA::DotOpMmaV3SmemLoad
+   elemsPerSwizzlingRow = (swizzlingByteWidth * 8) / elemBits;
+   elemsPerSwizzlingRowVal = b.i32_val(elemsPerSwizzlingRow);
+ 
++  // b/413317969: This is an extra check to prevent incorrect lowering with
++  // zero swizzling case (swizzlingByteWidth == 0).
++  // If zero swizzling is supported this can be removed.
++  if (elemsPerSwizzlingRow == 0) {
++    llvm::report_fatal_error("elemsPerSwizzlingRow should not be zero.");
++  }
++
+   uint32_t widthInByte = allocSwizzleShape[fastMovingDim] * elemBits / 8;
+   int64_t swizzling = getSwizzlingFromLayout(sharedLayout, widthInByte);
+ 
