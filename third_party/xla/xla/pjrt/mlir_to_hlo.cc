@@ -98,6 +98,9 @@ absl::Status MlirToXlaComputation(
     bool return_tuple, ExecutableBuildOptions* exec_build_options,
     const ChloLegalizeToHighLevelMhloPassOptions& chlo_opts) {
   mlir::MLIRContext* context = module->getContext();
+  // Avoid mutating the input module.
+  mlir::OwningOpRef<mlir::ModuleOp> clone(module.clone());
+  module = *clone;
   mlir::BaseScopedDiagnosticHandler diagnostic_handler(context);
   {
     mlir::PassManager pm(context);
