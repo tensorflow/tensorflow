@@ -2270,6 +2270,199 @@ absl::Status TransformLoopForward(
   return absl::OkStatus();
 }
 
+absl::Status TransformFormattingOp(
+    HloInstruction* formatting_op, const WhileMoveInfo& to_move,
+    HloComputation* loop_computation, InstructionMap& pipelined_map,
+    const absl::flat_hash_set<HloInstruction*>& to_add_batch_set,
+    int64_t& next_channel_id) {
+  auto collect_operands = [&pipelined_map, &to_add_batch_set, loop_computation,
+                           &to_move](HloInstruction* instr) {
+    std::vector<HloInstruction*> operands;
+    for (auto* operand : instr->mutable_operands()) {
+      if (operand->opcode() == HloOpcode::kConstant) {
+        if (instr->opcode() == HloOpcode::kPad &&
+            instr->operand_index(operand) == 1) {
+          // No need to broadcast the padding value.
+          operands.push_back(loop_computation->AddInstruction(
+              operand->CloneWithNewOperands(operand->shape(), {})));
+          continue;
+        }
+
+        // Broadcast constant into full shape.
+        HloInstruction* cloned_constant = loop_computation->AddInstruction(
+            operand->CloneWithNewOperands(operand->shape(), {}));
+        if (!to_add_batch_set.contains(instr)) {
+          operands.push_back(cloned_constant);
+          continue;
+        }
+        Shape full_shape =
+            ComputeFullOutputShape(to_move, cloned_constant->shape());
+        absl::InlinedVector<int64_t, 4> operand_dims;
+        operand_dims.resize(cloned_constant->shape().dimensions().size());
+        absl::c_iota(operand_dims, 1);
+        HloInstruction* broadcasted =
+            loop_computation->AddInstruction(HloInstruction::CreateBroadcast(
+                full_shape, cloned_constant, operand_dims));
+        operands.push_back(broadcasted);
+        continue;
+      }
+      auto it = pipelined_map.find(operand);
+      CHECK(it != pipelined_map.end());
+      operands.push_back(it->second);
+    }
+    return operands;
+  };
+  const int64_t new_dim_limit =
+      to_move.dynamic_update_slices[0]->shape().dimensions(0);
+  if (pipelined_map.contains(formatting_op)) {
+    return absl::OkStatus();
+  }
+  if (!to_add_batch_set.contains(formatting_op) &&
+      formatting_op->opcode() != HloOpcode::kBroadcast) {
+    HloInstruction* cloned_not_to_batch =
+        loop_computation->AddInstruction(formatting_op->CloneWithNewOperands(
+            formatting_op->shape(), collect_operands(formatting_op)));
+    UpdateInstructionChannelId(cloned_not_to_batch, next_channel_id);
+    pipelined_map[formatting_op] = cloned_not_to_batch;
+    return absl::OkStatus();
+  }
+  if (formatting_op->IsElementwise() ||
+      formatting_op->opcode() == HloOpcode::kReshape ||
+      formatting_op->opcode() == HloOpcode::kAllReduce ||
+      formatting_op->opcode() == HloOpcode::kConvert ||
+      formatting_op->opcode() == HloOpcode::kCollectivePermute) {
+    HloInstruction* cloned_elementwise =
+        loop_computation->AddInstruction(formatting_op->CloneWithNewOperands(
+            ComputeFullOutputShape(to_move, formatting_op->shape()),
+            collect_operands(formatting_op)));
+    pipelined_map[formatting_op] = cloned_elementwise;
+    return absl::OkStatus();
+  }
+  if (formatting_op->opcode() == HloOpcode::kAllGather) {
+    auto* all_gather_instruction = Cast<HloAllGatherInstruction>(formatting_op);
+    auto operands = collect_operands(formatting_op);
+    HloInstruction* expanded_all_gather =
+        loop_computation->AddInstruction(HloInstruction::CreateAllGather(
+            ComputeFullOutputShape(to_move, formatting_op->shape()), operands,
+            all_gather_instruction->all_gather_dimension() + 1,
+            all_gather_instruction->replica_groups(),
+            all_gather_instruction->constrain_layout(),
+            all_gather_instruction->channel_id(),
+            all_gather_instruction->use_global_device_ids()));
+    pipelined_map[formatting_op] = expanded_all_gather;
+    return absl::OkStatus();
+  }
+  if (formatting_op->opcode() == HloOpcode::kReduce) {
+    auto operands = collect_operands(formatting_op);
+    std::vector<int64_t> dimensions(formatting_op->dimensions().begin(),
+                                    formatting_op->dimensions().end());
+    for (auto& dim : dimensions) {
+      ++dim;
+    }
+    // Look through broadcast for reduce init value.
+    if (operands[1]->opcode() == HloOpcode::kBroadcast) {
+      CHECK(operands[1]->operand(0)->opcode() == HloOpcode::kConstant);
+      operands[1] = operands[1]->mutable_operand(0);
+    }
+    HloInstruction* expanded_reduce =
+        loop_computation->AddInstruction(HloInstruction::CreateReduce(
+            ComputeFullOutputShape(to_move, formatting_op->shape()),
+            operands[0], operands[1], dimensions, formatting_op->to_apply()));
+    pipelined_map[formatting_op] = expanded_reduce;
+    return absl::OkStatus();
+  }
+  if (formatting_op->opcode() == HloOpcode::kBroadcast) {
+    auto operands = collect_operands(formatting_op);
+    std::vector<int64_t> dimensions(1, 0);
+    for (const int64_t dim : formatting_op->dimensions()) {
+      dimensions.push_back(dim + 1);
+    }
+    // Constant scalars don't get expanded ahead of time and are kept
+    // scalar.
+    if (operands[0]->shape().dimensions().empty()) {
+      dimensions.clear();
+    }
+    HloInstruction* expanded_broadcast =
+        loop_computation->AddInstruction(HloInstruction::CreateBroadcast(
+            ComputeFullOutputShape(to_move, formatting_op->shape()),
+            operands[0], dimensions));
+    pipelined_map[formatting_op] = expanded_broadcast;
+    return absl::OkStatus();
+  }
+  if (formatting_op->opcode() == HloOpcode::kSlice) {
+    std::vector<int64_t> slice_start = formatting_op->slice_starts();
+    std::vector<int64_t> slice_limits = formatting_op->slice_limits();
+    std::vector<int64_t> slice_strides = formatting_op->slice_strides();
+    slice_start.insert(slice_start.begin(), 0);
+    slice_limits.insert(slice_limits.begin(), new_dim_limit);
+    slice_strides.insert(slice_strides.begin(), 1);
+    HloInstruction* expanded_slice =
+        loop_computation->AddInstruction(HloInstruction::CreateSlice(
+            ComputeFullOutputShape(to_move, formatting_op->shape()),
+            collect_operands(formatting_op)[0], slice_start, slice_limits,
+            slice_strides));
+    pipelined_map[formatting_op] = expanded_slice;
+    return absl::OkStatus();
+  }
+  if (formatting_op->opcode() == HloOpcode::kDynamicSlice) {
+    std::vector<int64_t> dynamic_slice_sizes =
+        formatting_op->dynamic_slice_sizes();
+    dynamic_slice_sizes.insert(dynamic_slice_sizes.begin(), new_dim_limit);
+    HloDynamicSliceInstruction* dynslice =
+        Cast<HloDynamicSliceInstruction>(formatting_op);
+    HloInstruction* zero = loop_computation->AddInstruction(
+        HloInstruction::CreateConstant(LiteralUtil::Zero(
+            formatting_op->operand(dynslice->first_index_operand_number())
+                ->shape()
+                .element_type())));
+    std::vector<HloInstruction*> indices(1, zero);
+    auto collected_operands = collect_operands(formatting_op);
+    indices.insert(indices.end(), std::next(collected_operands.begin()),
+                   collected_operands.end());
+    HloInstruction* expanded_dynslice =
+        loop_computation->AddInstruction(HloInstruction::CreateDynamicSlice(
+            ComputeFullOutputShape(to_move, formatting_op->shape()),
+            collected_operands[0], indices, dynamic_slice_sizes));
+    pipelined_map[formatting_op] = expanded_dynslice;
+    return absl::OkStatus();
+  }
+  if (formatting_op->opcode() == HloOpcode::kPad) {
+    HloPadInstruction* pad_instruction = Cast<HloPadInstruction>(formatting_op);
+    PaddingConfig p_config = pad_instruction->padding_config();
+    PaddingConfig new_p_config;
+    new_p_config.add_dimensions();
+    for (auto& dim : p_config.dimensions()) {
+      auto* new_dim = new_p_config.add_dimensions();
+      *new_dim = dim;
+    }
+    auto new_operands = collect_operands(formatting_op);
+    HloInstruction* expanded_pad =
+        loop_computation->AddInstruction(HloInstruction::CreatePad(
+            ComputeFullOutputShape(to_move, formatting_op->shape()),
+            new_operands[0], new_operands[1], new_p_config));
+    pipelined_map[formatting_op] = expanded_pad;
+    return absl::OkStatus();
+  }
+  if (formatting_op->opcode() == HloOpcode::kTranspose) {
+    HloTransposeInstruction* transpose_instruction =
+        Cast<HloTransposeInstruction>(formatting_op);
+    std::vector<int64_t> new_dims(transpose_instruction->dimensions().begin(),
+                                  transpose_instruction->dimensions().end());
+    new_dims.insert(new_dims.begin(), 0);
+    for (int64_t i = 1; i < new_dims.size(); ++i) {
+      ++new_dims[i];
+    }
+    HloInstruction* expanded_transpose =
+        loop_computation->AddInstruction(HloInstruction::CreateTranspose(
+            ComputeFullOutputShape(to_move, formatting_op->shape()),
+            collect_operands(formatting_op)[0], new_dims));
+    pipelined_map[formatting_op] = expanded_transpose;
+    return absl::OkStatus();
+  }
+  return absl::InvalidArgumentError(
+      absl::StrCat("Unsupported instruction ", formatting_op->ToString()));
+}
+
 // Function that does the work of sinking all-reduces the output of which are
 // concatenated after the loop. Rough transformation: while (i < LAYERS) {
 //   p0 = param(0)
@@ -2569,8 +2762,6 @@ absl::Status TransformLoopForwardSink(const WhileLoopAnalysis& loop_analysis,
           HloInstruction::CreateGetTupleElement(new_while, gte_index));
       pipelined_map[collective->mutable_operand(0)] = to_sink;
     }
-    const int64_t new_dim_limit =
-        to_move.dynamic_update_slices[0]->shape().dimensions(0);
     auto pipelined_instrs = CollectDependenciesToPipeline(
         absl::MakeSpan(to_move.collectives_to_move),
         absl::MakeSpan(to_move.formatting_ops));
@@ -2608,44 +2799,6 @@ absl::Status TransformLoopForwardSink(const WhileLoopAnalysis& loop_analysis,
       pipelined_map[collective] = pipelined_instr_cloned;
     }
     absl::flat_hash_set<HloInstruction*> to_add_batch_set;
-    auto collect_operands = [&pipelined_map, &to_add_batch_set,
-                             loop_computation,
-                             &to_move](HloInstruction* instr) {
-      std::vector<HloInstruction*> operands;
-      for (auto* operand : instr->mutable_operands()) {
-        if (operand->opcode() == HloOpcode::kConstant) {
-          if (instr->opcode() == HloOpcode::kPad &&
-              instr->operand_index(operand) == 1) {
-            // No need to broadcast the padding value.
-            operands.push_back(loop_computation->AddInstruction(
-                operand->CloneWithNewOperands(operand->shape(), {})));
-            continue;
-          }
-
-          // Broadcast constant into full shape.
-          HloInstruction* cloned_constant = loop_computation->AddInstruction(
-              operand->CloneWithNewOperands(operand->shape(), {}));
-          if (!to_add_batch_set.contains(instr)) {
-            operands.push_back(cloned_constant);
-            continue;
-          }
-          Shape full_shape =
-              ComputeFullOutputShape(to_move, cloned_constant->shape());
-          absl::InlinedVector<int64_t, 4> operand_dims;
-          operand_dims.resize(cloned_constant->shape().dimensions().size());
-          absl::c_iota(operand_dims, 1);
-          HloInstruction* broadcasted =
-              loop_computation->AddInstruction(HloInstruction::CreateBroadcast(
-                  full_shape, cloned_constant, operand_dims));
-          operands.push_back(broadcasted);
-          continue;
-        }
-        auto it = pipelined_map.find(operand);
-        CHECK(it != pipelined_map.end());
-        operands.push_back(it->second);
-      }
-      return operands;
-    };
     for (auto* current : to_move.formatting_ops) {
       if (IsLoopInvariant(current, invariant_cache)) {
         continue;
@@ -2657,141 +2810,9 @@ absl::Status TransformLoopForwardSink(const WhileLoopAnalysis& loop_analysis,
     //  an effect on the instruction itself (like say broadcast, slices ...
     //  etc).
     for (HloInstruction* formatting_op : to_move.formatting_ops) {
-      if (pipelined_map.contains(formatting_op)) {
-        continue;
-      }
-      if (!to_add_batch_set.contains(formatting_op) &&
-          formatting_op->opcode() != HloOpcode::kBroadcast) {
-        HloInstruction* cloned_not_to_batch = loop_computation->AddInstruction(
-            formatting_op->CloneWithNewOperands(
-                formatting_op->shape(), collect_operands(formatting_op)));
-        UpdateInstructionChannelId(cloned_not_to_batch, next_channel_id);
-        pipelined_map[formatting_op] = cloned_not_to_batch;
-        continue;
-      }
-      if (formatting_op->IsElementwise() ||
-          formatting_op->opcode() == HloOpcode::kReshape ||
-          formatting_op->opcode() == HloOpcode::kAllReduce ||
-          formatting_op->opcode() == HloOpcode::kConvert ||
-          formatting_op->opcode() == HloOpcode::kCollectivePermute) {
-        HloInstruction* cloned_elementwise = loop_computation->AddInstruction(
-            formatting_op->CloneWithNewOperands(
-                ComputeFullOutputShape(to_move, formatting_op->shape()),
-                collect_operands(formatting_op)));
-        pipelined_map[formatting_op] = cloned_elementwise;
-        continue;
-      }
-      if (formatting_op->opcode() == HloOpcode::kReduce) {
-        auto operands = collect_operands(formatting_op);
-        std::vector<int64_t> dimensions(formatting_op->dimensions().begin(),
-                                        formatting_op->dimensions().end());
-        for (auto& dim : dimensions) {
-          ++dim;
-        }
-        // Look through broadcast for reduce init value.
-        if (operands[1]->opcode() == HloOpcode::kBroadcast) {
-          CHECK(operands[1]->operand(0)->opcode() == HloOpcode::kConstant);
-          operands[1] = operands[1]->mutable_operand(0);
-        }
-        HloInstruction* expanded_reduce =
-            loop_computation->AddInstruction(HloInstruction::CreateReduce(
-                ComputeFullOutputShape(to_move, formatting_op->shape()),
-                operands[0], operands[1], dimensions,
-                formatting_op->to_apply()));
-        pipelined_map[formatting_op] = expanded_reduce;
-        continue;
-      }
-      if (formatting_op->opcode() == HloOpcode::kBroadcast) {
-        auto operands = collect_operands(formatting_op);
-        std::vector<int64_t> dimensions(1, 0);
-        for (const int64_t dim : formatting_op->dimensions()) {
-          dimensions.push_back(dim + 1);
-        }
-        // Constant scalars don't get expanded ahead of time and are kept
-        // scalar.
-        if (operands[0]->shape().dimensions().empty()) {
-          dimensions.clear();
-        }
-        HloInstruction* expanded_broadcast =
-            loop_computation->AddInstruction(HloInstruction::CreateBroadcast(
-                ComputeFullOutputShape(to_move, formatting_op->shape()),
-                operands[0], dimensions));
-        pipelined_map[formatting_op] = expanded_broadcast;
-        continue;
-      }
-      if (formatting_op->opcode() == HloOpcode::kSlice) {
-        std::vector<int64_t> slice_start = formatting_op->slice_starts();
-        std::vector<int64_t> slice_limits = formatting_op->slice_limits();
-        std::vector<int64_t> slice_strides = formatting_op->slice_strides();
-        slice_start.insert(slice_start.begin(), 0);
-        slice_limits.insert(slice_limits.begin(), new_dim_limit);
-        slice_strides.insert(slice_strides.begin(), 1);
-        HloInstruction* expanded_slice =
-            loop_computation->AddInstruction(HloInstruction::CreateSlice(
-                ComputeFullOutputShape(to_move, formatting_op->shape()),
-                collect_operands(formatting_op)[0], slice_start, slice_limits,
-                slice_strides));
-        pipelined_map[formatting_op] = expanded_slice;
-        continue;
-      }
-      if (formatting_op->opcode() == HloOpcode::kDynamicSlice) {
-        std::vector<int64_t> dynamic_slice_sizes =
-            formatting_op->dynamic_slice_sizes();
-        dynamic_slice_sizes.insert(dynamic_slice_sizes.begin(), new_dim_limit);
-        HloDynamicSliceInstruction* dynslice =
-            Cast<HloDynamicSliceInstruction>(formatting_op);
-        HloInstruction* zero = loop_computation->AddInstruction(
-            HloInstruction::CreateConstant(LiteralUtil::Zero(
-                formatting_op->operand(dynslice->first_index_operand_number())
-                    ->shape()
-                    .element_type())));
-        std::vector<HloInstruction*> indices(1, zero);
-        auto collected_operands = collect_operands(formatting_op);
-        indices.insert(indices.end(), std::next(collected_operands.begin()),
-                       collected_operands.end());
-        HloInstruction* expanded_dynslice =
-            loop_computation->AddInstruction(HloInstruction::CreateDynamicSlice(
-                ComputeFullOutputShape(to_move, formatting_op->shape()),
-                collected_operands[0], indices, dynamic_slice_sizes));
-        pipelined_map[formatting_op] = expanded_dynslice;
-        continue;
-      }
-      if (formatting_op->opcode() == HloOpcode::kPad) {
-        HloPadInstruction* pad_instruction =
-            Cast<HloPadInstruction>(formatting_op);
-        PaddingConfig p_config = pad_instruction->padding_config();
-        PaddingConfig new_p_config;
-        new_p_config.add_dimensions();
-        for (auto& dim : p_config.dimensions()) {
-          auto* new_dim = new_p_config.add_dimensions();
-          *new_dim = dim;
-        }
-        auto new_operands = collect_operands(formatting_op);
-        HloInstruction* expanded_pad =
-            loop_computation->AddInstruction(HloInstruction::CreatePad(
-                ComputeFullOutputShape(to_move, formatting_op->shape()),
-                new_operands[0], new_operands[1], new_p_config));
-        pipelined_map[formatting_op] = expanded_pad;
-        continue;
-      }
-      if (formatting_op->opcode() == HloOpcode::kTranspose) {
-        HloTransposeInstruction* transpose_instruction =
-            Cast<HloTransposeInstruction>(formatting_op);
-        std::vector<int64_t> new_dims(
-            transpose_instruction->dimensions().begin(),
-            transpose_instruction->dimensions().end());
-        new_dims.insert(new_dims.begin(), 0);
-        for (int64_t i = 1; i < new_dims.size(); ++i) {
-          ++new_dims[i];
-        }
-        HloInstruction* expanded_transpose =
-            loop_computation->AddInstruction(HloInstruction::CreateTranspose(
-                ComputeFullOutputShape(to_move, formatting_op->shape()),
-                collect_operands(formatting_op)[0], new_dims));
-        pipelined_map[formatting_op] = expanded_transpose;
-        continue;
-      }
-      CHECK(false) << "Unsupported instruction " << formatting_op->ToString();
+      TF_RETURN_IF_ERROR(TransformFormattingOp(
+          formatting_op, to_move, loop_computation, pipelined_map,
+          to_add_batch_set, next_channel_id));
     }
     for (int64_t i = 0; i < to_move.output_indices.size(); ++i) {
       HloDynamicUpdateSliceInstruction* d_update =
