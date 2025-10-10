@@ -314,6 +314,8 @@ Thunk::ExecuteParams::ExecuteParams(
     CASE(kReduceScatterDone);
     CASE(kReduceScatterStart);
     CASE(kReplicaId);
+    CASE(kSdc);
+    CASE(kSdcDumpLog);
     CASE(kSelectK);
     CASE(kSend);
     CASE(kSendDone);
