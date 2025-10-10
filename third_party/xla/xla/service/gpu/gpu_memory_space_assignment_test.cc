@@ -210,8 +210,13 @@ TEST_P(GpuMosaicMemorySpaceAssignmentTest, TestMosaicMemorySpaceAssignment) {
       EXPECT_EQ(alias_analysis->buffers()[i].values()[0]->has_color(), true);
       EXPECT_EQ(alias_analysis->buffers()[i].values()[0]->color(),
                 (int)(MosaicContainsNvshmem()
-                          ? (UseNvshmem() ? MemorySpaceColor::kCollective
-                                          : MemorySpaceColor::kDefault)
+                          ? ((UseNvshmem() && !alias_analysis->buffers()[i]
+                                                   .values()[0]
+                                                   ->defining_position()
+                                                   .shape()
+                                                   .IsTuple())
+                                 ? MemorySpaceColor::kCollective
+                                 : MemorySpaceColor::kDefault)
                           : MemorySpaceColor::kDefault));
     }
   }
