@@ -70,7 +70,8 @@ llvm::SmallVector<mlir::Value, 2> ProvideParameterRange(
 absl::Status SubgraphToMlirFunction(
     const PartitionedComputation& computation,
     const PartitionedComputation::Subgraph& subgraph, mlir::func::FuncOp& func,
-    const CallTargetProvider& call_target_provider);
+    const CallTargetProvider& call_target_provider,
+    gpu::SymbolicExprContext* symbolic_expr_context);
 
 // Creates an `apply_indexing` op for the given map.
 llvm::SmallVector<mlir::Value, 3> ApplyIndexing(IndexingMap map,

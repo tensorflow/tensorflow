@@ -126,6 +126,7 @@ limitations under the License.
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/llvm_gpu_backend/nvptx_libdevice_path.h"
 #include "xla/service/gpu/model/block_level_parameters.h"
+#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/service/gpu/model/triton_emitter_constraints.h"
 #include "xla/service/gpu/triton_fusion_analysis.h"
 #include "xla/service/hlo_module_config.h"
@@ -1736,7 +1737,8 @@ absl::Status EmitGeneric(mlir::OpBuilder builder,
                          const se::DeviceDescription& device_info,
                          const HloFusionInstruction* fusion,
                          mlir::FunctionOpInterface fn,
-                         const BlockLevelParameters& block_level_parameters) {
+                         const BlockLevelParameters& block_level_parameters,
+                         SymbolicExprContext* symbolic_expr_context) {
   if (VLOG_IS_ON(6)) {
     VLOG(6) << "Emitting Triton IR for fusion\n"
             << ExtractInstructionIntoNewModule(*fusion)->ToString();
@@ -1744,7 +1746,7 @@ absl::Status EmitGeneric(mlir::OpBuilder builder,
   const HloComputation* computation = fusion->fused_instructions_computation();
   SymbolicTileAnalysisOrError symbolic_tile_analysis_or =
       SymbolicTileAnalysis::AnalyzeComputation(
-          *computation, builder.getContext(),
+          *computation, symbolic_expr_context,
           TritonEmitterConstraints::GetBuilder(device_info));
   if (std::holds_alternative<FusionDecision>(symbolic_tile_analysis_or)) {
     return Internal(
@@ -1962,7 +1964,8 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateTritonModule(
     absl::string_view fn_name, const HloFusionInstruction* fusion,
     const se::DeviceDescription& device_info,
     const BlockLevelParameters& block_level_parameters,
-    mlir::MLIRContext& mlir_context) {
+    SymbolicExprContext& symbolic_expr_context) {
+  mlir::MLIRContext& mlir_context = *symbolic_expr_context.GetMLIRContext();
   LoadMlirDialectsForTriton(mlir_context);
   const auto debug_options = fusion->GetModule()->config().debug_options();
 
@@ -2029,7 +2032,8 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateTritonModule(
              fusion_kind == kTritonNestedGemmFusionKind ||
              fusion_kind == kTritonScaledDotFusionKind) {
     TF_RETURN_IF_ERROR(EmitGeneric(b, libdevice_path, device_info, fusion, fn,
-                                   block_level_parameters));
+                                   block_level_parameters,
+                                   &symbolic_expr_context));
   } else {
     return Internal("Unsupported fusion kind: %s", fusion_kind);
   }
@@ -2124,12 +2128,14 @@ absl::StatusOr<TritonWrapperResult> TritonWrapper(
     const se::GpuComputeCapability& gpu_cc,
     const se::DeviceDescription& device_info,
     const BlockLevelParameters& block_level_parameters,
-    llvm::Module* llvm_module, mlir::MLIRContext& mlir_context) {
+    llvm::Module* llvm_module, SymbolicExprContext& symbolic_expr_context) {
+  mlir::MLIRContext& mlir_context = *symbolic_expr_context.GetMLIRContext();
   TF_RETURN_IF_ERROR(CheckAtLeastAmpere(gpu_cc));
 
-  TF_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> triton_module,
-                      CreateTritonModule(fn_name, fusion, device_info,
-                                         block_level_parameters, mlir_context));
+  TF_ASSIGN_OR_RETURN(
+      mlir::OwningOpRef<mlir::ModuleOp> triton_module,
+      CreateTritonModule(fn_name, fusion, device_info, block_level_parameters,
+                         symbolic_expr_context));
 
   VLOG(3) << fusion->ToString(HloPrintOptions::ShortParsable());
   VLOG(3) << fusion->fused_instructions_computation()->ToString(

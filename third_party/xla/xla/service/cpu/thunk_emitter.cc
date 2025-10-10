@@ -34,7 +34,6 @@ limitations under the License.
 #include "llvm/ADT/StringRef.h"
 #include "llvm/IR/Module.h"
 #include "mlir/IR/BuiltinOps.h"
-#include "mlir/IR/MLIRContext.h"
 #include "mlir/Support/DebugStringHelper.h"
 #include "xla/backends/cpu/alignment.h"
 #include "xla/backends/cpu/codegen/computation_kernel_emitter.h"
@@ -101,6 +100,7 @@ limitations under the License.
 #include "xla/service/cpu/ir_emission_utils.h"
 #include "xla/service/cpu/ir_emitter2.h"
 #include "xla/service/dump.h"
+#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/llvm_ir/llvm_util.h"
@@ -182,11 +182,11 @@ static FusionCompiler::Options FusionCompilerOptions(
       llvm_ir::GetCpuFastMathFlags(config)};
 }
 
-static FusionCompiler FusionCompilerFactory(mlir::MLIRContext* context,
+static FusionCompiler FusionCompilerFactory(gpu::SymbolicExprContext* context,
                                             const HloModule& hlo_module) {
   FusionCompiler::Options options = FusionCompilerOptions(hlo_module.config());
 
-  return FusionCompiler(context, std::move(options),
+  return FusionCompiler(context->GetMLIRContext(), std::move(options),
                         FusionCompilerHooks(hlo_module));
 }
 
@@ -203,7 +203,8 @@ ThunkEmitter::ThunkEmitter(IrEmitter2& ir_emitter,
       communicator_resource_(
           Resource::Create(Resource::kCollectiveCommunicator)),
       mlir_context_(FusionCompiler::CreateContext()),
-      fusion_compiler_(FusionCompilerFactory(mlir_context_.get(), hlo_module)),
+      fusion_compiler_(
+          FusionCompilerFactory(&symbolic_expr_context_, hlo_module)),
       parallel_fusion_emitter_(
           thread_pool, FusionCompilerOptions(hlo_module_config_),
           FusionCompilerHooks(hlo_module), &buffer_assignment,
@@ -834,7 +835,7 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitFusionKernelThunk(
   if (ir_emitter_.IsSupportedByFusionEmitter(fusion) &&
       fusion->fused_expression_root()->opcode() == HloOpcode::kScatter) {
     auto kernel_emitter = std::make_unique<CpuScatterFusion>(
-        buffer_assignment_, fusion, mlir_context_.get());
+        buffer_assignment_, fusion, &symbolic_expr_context_);
 
     TF_ASSIGN_OR_RETURN(MlirKernelDefinition kernel_definition,
                         kernel_emitter->EmitKernelDefinition());

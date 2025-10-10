@@ -21,12 +21,12 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "mlir/IR/MLIRContext.h"
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/backends/gpu/autotuner/gpu_codegen_backend.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/compiler.h"
+#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/xla.pb.h"
 
@@ -38,9 +38,9 @@ class TritonBackend : public GpuCodegenBackend {
  public:
   explicit TritonBackend(const DebugOptions* debug_options, Compiler* compiler,
                          const Compiler::TargetConfig* target_config,
-                         mlir::MLIRContext* mlir_context)
+                         SymbolicExprContext* symbolic_expr_context)
       : GpuCodegenBackend("Triton", debug_options, compiler, target_config),
-        mlir_context_(mlir_context) {}
+        symbolic_expr_context_(symbolic_expr_context) {}
 
   absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>>
   GetSupportedConfigs(const HloInstruction& instr) override;
@@ -58,7 +58,7 @@ class TritonBackend : public GpuCodegenBackend {
       const Compiler::CompileOptions& options) override;
 
   bool IsSupported(const HloInstruction& instr);
-  mlir::MLIRContext* mlir_context_;
+  SymbolicExprContext* symbolic_expr_context_;
 };
 
 }  // namespace gpu

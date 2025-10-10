@@ -42,6 +42,7 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/buffer_value.h"
 #include "xla/service/cpu/cpu_executable.h"
+#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/service/logical_buffer.h"
 #include "xla/tsl/platform/statusor.h"
 #include "tsl/platform/casts.h"
@@ -129,8 +130,11 @@ TEST_F(CpuFusionEmitterTest, ScatterMlir) {
                           RunBufferAssignment(*hlo_module));
   auto fusion = Cast<HloFusionInstruction>(
       hlo_module->entry_computation()->root_instruction());
-  auto context = FusionCompiler::CreateContext();
-  CpuScatterFusion emitter(*buffer_assignment, fusion, context.get());
+  auto mlir_context = FusionCompiler::CreateContext();
+  auto symbolic_expr_context =
+      std::make_unique<gpu::SymbolicExprContext>(mlir_context.get());
+  CpuScatterFusion emitter(*buffer_assignment, fusion,
+                           symbolic_expr_context.get());
   TF_ASSERT_OK_AND_ASSIGN(KernelDefinition kernel_definition,
                           emitter.EmitKernelDefinition());
   const auto& mlir_source = kernel_definition.source();
@@ -157,12 +161,16 @@ TEST_F(CpuFusionEmitterTest, ScatterLlvm) {
                           RunBufferAssignment(*hlo_module));
   auto fusion = Cast<HloFusionInstruction>(
       hlo_module->entry_computation()->root_instruction());
-  auto context = FusionCompiler::CreateContext();
-  CpuScatterFusion emitter(*buffer_assignment, fusion, context.get());
+  auto mlir_context = FusionCompiler::CreateContext();
+  auto symbolic_expr_context =
+      std::make_unique<gpu::SymbolicExprContext>(mlir_context.get());
+  CpuScatterFusion emitter(*buffer_assignment, fusion,
+                           symbolic_expr_context.get());
   TF_ASSERT_OK_AND_ASSIGN(KernelDefinition kernel_definition,
                           emitter.EmitKernelDefinition());
   auto [spec, source] = std::move(kernel_definition).ReleaseStorage();
-  FusionCompiler compiler(context.get(), FusionCompiler::Options{512, 1, true});
+  FusionCompiler compiler(mlir_context.get(),
+                          FusionCompiler::Options{512, 1, true});
   TF_ASSERT_OK_AND_ASSIGN(LlvmIrKernelSource llvm_source,
                           compiler.Compile(std::move(source)));
   auto llvm_dump = llvm_source.ToString();

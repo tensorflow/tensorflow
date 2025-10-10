@@ -106,6 +106,7 @@ limitations under the License.
 #include "xla/service/gpu/kernel_reuse_cache.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/llvm_gpu_backend/ptx_version_util.h"
+#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/service/gpu/target_util.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/status_macros.h"
@@ -278,7 +279,7 @@ absl::StatusOr<FusionEmissionResult> EmitterBase::Emit(
               TF_ASSIGN_OR_RETURN(
                   auto module,
                   CreateLLVMModule(
-                      *ir_emitter_context.mlir_context(),
+                      *ir_emitter_context.symbolic_expr_context(),
                       ir_emitter_context.llvm_module()->getContext(),
                       ir_emitter_context.gpu_device_info(), fusion, kernel_name,
                       &ir_emitter_context.buffer_assignment()));
@@ -325,15 +326,16 @@ absl::StatusOr<FusionEmissionResult> EmitterBase::Emit(
 }
 
 absl::StatusOr<std::unique_ptr<llvm::Module>> EmitterBase::CreateLLVMModule(
-    mlir::MLIRContext& mlir_context, llvm::LLVMContext& llvm_context,
+    SymbolicExprContext& symbolic_expr_context, llvm::LLVMContext& llvm_context,
     const se::DeviceDescription& device, const HloFusionInstruction& fusion,
     const std::string& entry_function_name,
     const BufferAssignment* buffer_assignment) const {
+  mlir::MLIRContext& mlir_context = *symbolic_expr_context.GetMLIRContext();
   mlir_context.appendDialectRegistry(GetDialectRegistry());
   mlir_context.loadAllAvailableDialects();
-  TF_ASSIGN_OR_RETURN(
-      auto module, CreateMLIRModule(mlir_context, fusion, entry_function_name,
-                                    buffer_assignment));
+  TF_ASSIGN_OR_RETURN(auto module,
+                      CreateMLIRModule(symbolic_expr_context, fusion,
+                                       entry_function_name, buffer_assignment));
 
   mlir::PassManager pm(&mlir_context);
   emitters::RegisterOptimizationPasses(pm);
@@ -351,10 +353,11 @@ absl::StatusOr<std::unique_ptr<llvm::Module>> EmitterBase::CreateLLVMModule(
 }
 
 absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> EmitterBase::CreateMLIRModule(
-    mlir::MLIRContext& context, const HloFusionInstruction& fusion,
-    const std::string& entry_function_name,
+    SymbolicExprContext& symbolic_expr_context,
+    const HloFusionInstruction& fusion, const std::string& entry_function_name,
     const BufferAssignment* buffer_assignment) const {
-  mlir::OpBuilder builder(&context);
+  mlir::MLIRContext& mlir_context = *symbolic_expr_context.GetMLIRContext();
+  mlir::OpBuilder builder(&mlir_context);
   auto loc = mlir::NameLoc::get(builder.getStringAttr(fusion.name()));
   mlir::OwningOpRef<mlir::ModuleOp> module = llvm_ir::CreateMlirModuleOp(loc);
 
@@ -362,9 +365,10 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> EmitterBase::CreateMLIRModule(
                       emitters::EmitKernelApi(
                           *module, fusion, buffer_assignment,
                           GetDefaultBufferAlignment(), entry_function_name));
-  SetBackendKind(&context, entry_func, BackendKind::kGpu);
+  SetBackendKind(&mlir_context, entry_func, BackendKind::kGpu);
 
-  TF_RETURN_IF_ERROR(EmitMlir(module.get(), entry_func, fusion));
+  TF_RETURN_IF_ERROR(
+      EmitMlir(module.get(), entry_func, fusion, symbolic_expr_context));
   return module;
 }
 
@@ -372,7 +376,7 @@ emitters::EpilogueSpecification EmitterBase::GetEpilogueForOutputIndexing(
     const HloFusionAnalysis& analysis,
     const std::vector<const HloInstruction*>& heroes,
     const std::vector<const HloInstruction*>& roots,
-    mlir::MLIRContext* mlir_context) const {
+    SymbolicExprContext* symbolic_expr_context) const {
   emitters::EpilogueSpecification result;
 
   absl::flat_hash_map<const HloInstruction*, const HloInstruction*>
@@ -388,8 +392,8 @@ emitters::EpilogueSpecification EmitterBase::GetEpilogueForOutputIndexing(
 
   result.root_indexing.reserve(roots.size());
   for (auto* root : roots) {
-    auto indexing =
-        ComputeThreadIdToOutputIndexing(root_to_index[root], mlir_context);
+    auto indexing = ComputeThreadIdToOutputIndexing(root_to_index[root],
+                                                    symbolic_expr_context);
     if (result.index_ranges.empty()) {
       result.index_ranges.reserve(indexing->GetDimensionCount() +
                                   indexing->GetSymbolCount());
@@ -402,7 +406,8 @@ emitters::EpilogueSpecification EmitterBase::GetEpilogueForOutputIndexing(
     }
     auto* hero = root_to_hero[root];
     auto epilogue_indexing = ComputeEpilogueInputToOutputIndexing(
-        {*hero, &analysis.fusion()}, {*root, &analysis.fusion()}, mlir_context);
+        {*hero, &analysis.fusion()}, {*root, &analysis.fusion()},
+        symbolic_expr_context);
     result.root_indexing.push_back(
         ComposeIndexingMaps(*indexing, epilogue_indexing));
   }
@@ -429,12 +434,15 @@ mlir::DialectRegistry EmitterBase::GetDialectRegistry() {
   return registry;
 }
 
-absl::Status EmitterBase::EmitMlir(mlir::ModuleOp module, FuncOp entry_function,
-                                   const HloFusionInstruction& fusion) const {
+absl::Status EmitterBase::EmitMlir(
+    mlir::ModuleOp module, FuncOp entry_function,
+    const HloFusionInstruction& fusion,
+    SymbolicExprContext& symbolic_expr_context) const {
   std::vector<emitters::EpilogueSpecification> epilogues =
-      GetEpilogues(fusion, module->getContext());
+      GetEpilogues(fusion, &symbolic_expr_context);
   emitters::PartitionedComputations computations(
-      fusion.fused_instructions_computation(), module->getContext(), epilogues);
+      fusion.fused_instructions_computation(), &symbolic_expr_context,
+      epilogues);
 
   TF_ASSIGN_OR_RETURN(auto call_targets, emitters::EmitPartitionedComputations(
                                              module, computations));

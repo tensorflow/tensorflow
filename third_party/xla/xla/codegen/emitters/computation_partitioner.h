@@ -30,6 +30,7 @@ limitations under the License.
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/util.h"
 
 namespace xla {
@@ -39,7 +40,7 @@ struct EpilogueSpecification {
   // Creates an epilogue with output indices matching the given root's shape.
   static EpilogueSpecification FromIdentityIndexing(
       const HloInstruction* hero, const HloInstruction* root,
-      mlir::MLIRContext* mlir_context);
+      gpu::SymbolicExprContext* symbolic_expr_context);
 
   std::vector<const HloInstruction*> heroes;
   std::vector<const HloInstruction*> roots;
@@ -80,10 +81,11 @@ struct EpilogueSpecification {
 // than its users.
 class PartitionedComputation {
  public:
-  explicit PartitionedComputation(const HloComputation* computation,
-                                  mlir::MLIRContext* mlir_context,
-                                  std::function<bool(const HloInstruction*)>
-                                      is_subgraph_root = HloPredicateFalse);
+  explicit PartitionedComputation(
+      const HloComputation* computation,
+      gpu::SymbolicExprContext* symbolic_expr_context,
+      std::function<bool(const HloInstruction*)> is_subgraph_root =
+          HloPredicateFalse);
 
   struct Subgraph {
     // A unique name of the subgraph. Used for function names.
@@ -153,7 +155,8 @@ class PartitionedComputations {
   // Partition the given fusion computation and optionally generate an epilogue
   // for the given heroes.
   explicit PartitionedComputations(
-      const HloComputation* fusion, mlir::MLIRContext* mlir_context,
+      const HloComputation* fusion,
+      gpu::SymbolicExprContext* symbolic_expr_context,
       std::vector<EpilogueSpecification> epilogues = {});
 
   const PartitionedComputation& FindPartitionedComputation(
@@ -176,6 +179,10 @@ class PartitionedComputations {
 
   const HloComputation* fusion() const { return fusion_; }
 
+  gpu::SymbolicExprContext* symbolic_expr_context() const {
+    return symbolic_expr_context_;
+  }
+
   // Creates a call target lookup function for use with SubgraphToMlir.
   CallTargetProvider CreateCallTargetProvider(
       const absl::flat_hash_map<const PartitionedComputation::Subgraph*,
@@ -193,6 +200,7 @@ class PartitionedComputations {
       computation_to_partitioning_;
   const HloComputation* fusion_;
   std::vector<PartitionedComputation::Subgraph> epilogues_;
+  gpu::SymbolicExprContext* symbolic_expr_context_;
 };
 
 // Returns an MLIR function declaration for the given subgraph. For subgraphs of

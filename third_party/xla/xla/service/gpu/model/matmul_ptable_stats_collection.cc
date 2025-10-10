@@ -39,6 +39,7 @@ limitations under the License.
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/gpu/model/block_level_parameters.h"
+#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/service/gpu/model/gpu_dot_fusion_cost_model.h"
 #include "xla/service/gpu/model/hlo_op_profile.pb.h"
 #include "xla/service/gpu/model/hlo_op_profiles.h"
@@ -93,8 +94,9 @@ HloDotInstruction* GetTritonGemmInstruction(const HloInstruction& dot_fusion) {
 absl::StatusOr<BlockLevelParameters> GetBlockLevelParams(
     HloDotInstruction& dot, TritonGemmConfig& config) {
   mlir::MLIRContext ctx;
-  return ::xla::gpu::detail::FindBlockLevelParameters(&dot, config, &ctx,
-                                                      se::DeviceDescription());
+  SymbolicExprContext symbolic_expr_context(&ctx);
+  return ::xla::gpu::detail::FindBlockLevelParameters(
+      &dot, config, &symbolic_expr_context, se::DeviceDescription());
 }
 
 absl::Status SetReificationCost(HloInstruction& instr, absl::Duration exec_time,

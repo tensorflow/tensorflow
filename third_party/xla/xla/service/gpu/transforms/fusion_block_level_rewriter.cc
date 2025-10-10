@@ -28,7 +28,6 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/Support/MathExtras.h"
-#include "mlir/IR/MLIRContext.h"
 #include "xla/backends/gpu/codegen/triton/support.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -40,6 +39,7 @@ limitations under the License.
 #include "xla/layout_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/ir_emission_utils.h"
+#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/service/gpu/model/fusion_analysis_cache.h"
 #include "xla/service/gpu/model/gpu_indexing_performance_model.h"
 #include "xla/service/hlo_cost_analysis.h"
@@ -56,7 +56,6 @@ namespace gpu {
 
 namespace {
 
-using ::mlir::MLIRContext;
 namespace m = ::xla::match;
 
 // Pattern-matches slow loop fusions that can likely be handled better by
@@ -164,7 +163,8 @@ absl::StatusOr<bool> ShouldTryRewriteFusion(
 absl::StatusOr<bool> ProcessFusionInstruction(
     HloFusionInstruction* fusion_instruction,
     const se::DeviceDescription& device_info,
-    HloCostAnalysis::ShapeSizeFunction shape_size, MLIRContext* ctx) {
+    HloCostAnalysis::ShapeSizeFunction shape_size,
+    SymbolicExprContext* symbolic_expr_context) {
   TF_ASSIGN_OR_RETURN(bool should_try_rewrite,
                       ShouldTryRewriteFusion(fusion_instruction, device_info));
   if (!should_try_rewrite) {
@@ -195,7 +195,7 @@ absl::StatusOr<bool> ProcessFusionInstruction(
 
   HloFusionAnalysisCache fusion_analysis_cache(device_info);
   GpuPerformanceModelWithIndexingAnalysis indexing_performance_model(
-      &device_info, &fusion_analysis_cache, shape_size, ctx);
+      &device_info, &fusion_analysis_cache, shape_size, symbolic_expr_context);
 
   auto fusion_adaptor = HloFusionAdaptor::ForInstruction(
       Cast<HloFusionInstruction>(fusion_instruction));
@@ -252,9 +252,9 @@ absl::StatusOr<bool> FusionBlockLevelRewriter::Run(
     }
     HloFusionInstruction* fusion_instruction =
         ::xla::Cast<HloFusionInstruction>(computation->FusionInstruction());
-    TF_ASSIGN_OR_RETURN(
-        bool changed, ProcessFusionInstruction(fusion_instruction, device_info_,
-                                               shape_size_, mlir_context_));
+    TF_ASSIGN_OR_RETURN(bool changed, ProcessFusionInstruction(
+                                          fusion_instruction, device_info_,
+                                          shape_size_, symbolic_expr_context_));
 
     has_changed |= changed;
   }

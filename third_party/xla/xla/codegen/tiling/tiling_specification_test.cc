@@ -30,6 +30,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
+#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla {
@@ -53,13 +54,15 @@ class TilingSpecificationTest : public HloHardwareIndependentTestBase {
             *module->entry_computation()
                  ->root_instruction()
                  ->fused_instructions_computation(),
-            &mlir_context_, /*emitter_specific_constraints_builder=*/nullptr);
+            &symbolic_expr_context_,
+            /*emitter_specific_constraints_builder=*/nullptr);
 
     CHECK(std::holds_alternative<SymbolicTileAnalysis>(analysis_or_error));
     return std::get<SymbolicTileAnalysis>(std::move(analysis_or_error));
   }
 
   mlir::MLIRContext mlir_context_;
+  gpu::SymbolicExprContext symbolic_expr_context_{&mlir_context_};
 };
 
 TEST_F(TilingSpecificationTest, TilingSpecificationDerivesOutputParameters) {

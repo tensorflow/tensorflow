@@ -28,6 +28,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/utils/hlo_traversal.h"
+#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
@@ -53,11 +54,12 @@ ENTRY main {
 )"));
 
   mlir::MLIRContext mlir_ctx;
+  gpu::SymbolicExprContext symbolic_expr_context(&mlir_ctx);
   auto fusion = module->entry_computation()->root_instruction();
   auto fusion_adaptor = HloFusionAdaptor::ForInstruction(fusion);
 
   auto output_to_input_indexing = ComputeGroupedOutputToInputIndexing(
-      *fusion_adaptor, fusion_adaptor->GetRoots()[0], &mlir_ctx);
+      *fusion_adaptor, fusion_adaptor->GetRoots()[0], &symbolic_expr_context);
 
   HloInstruction* subtract = fusion->fused_expression_root();
   HloInstruction* p0 = subtract->mutable_operand(0)->mutable_operand(0);

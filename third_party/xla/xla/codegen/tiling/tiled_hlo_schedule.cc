@@ -28,13 +28,15 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "xla/hlo/analysis/indexing_analysis.h"
 #include "xla/hlo/analysis/indexing_map.h"
+#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/util.h"
 
 namespace xla {
 
 absl::StatusOr<IndexingMap> MajorToMinorTiledHloSchedule::Schedule(
     const IndexingMap& tile_offsets_indexing, IterationSpace iteration_space,
-    mlir::MLIRContext* ctx) const {
+    gpu::SymbolicExprContext* symbolic_expr_context) const {
+  mlir::MLIRContext* mlir_context = symbolic_expr_context->GetMLIRContext();
   if (iteration_space.size() != tile_offsets_indexing.GetDimVarsCount()) {
     return absl::InvalidArgumentError(absl::StrFormat(
         "Expected iteration space to have exactly as many dimensions as there "
@@ -43,7 +45,7 @@ absl::StatusOr<IndexingMap> MajorToMinorTiledHloSchedule::Schedule(
         iteration_space.size(), tile_offsets_indexing.GetDimVarsCount()));
   }
 
-  mlir::AffineExpr program_id = mlir::getAffineDimExpr(0, ctx);
+  mlir::AffineExpr program_id = mlir::getAffineDimExpr(0, mlir_context);
 
   std::vector<int64_t> iteration_space_sizes;
   iteration_space_sizes.reserve(iteration_space.size());
@@ -53,11 +55,11 @@ absl::StatusOr<IndexingMap> MajorToMinorTiledHloSchedule::Schedule(
 
   std::vector<mlir::AffineExpr> tile_exprs(
       tile_offsets_indexing.GetDimVarsCount(),
-      mlir::getAffineConstantExpr(0, ctx));
+      mlir::getAffineConstantExpr(0, mlir_context));
 
-  for (auto [dim_info, tile_expr] :
-       llvm::zip(iteration_space,
-                 DelinearizeIndex(iteration_space_sizes, program_id, ctx))) {
+  for (auto [dim_info, tile_expr] : llvm::zip(
+           iteration_space, DelinearizeIndex(iteration_space_sizes, program_id,
+                                             symbolic_expr_context))) {
     if (dim_info.dimension_id >= tile_exprs.size()) {
       return absl::InvalidArgumentError(absl::StrFormat(
           "Dimension id %d is out of bounds for tile offsets indexing map with "
@@ -70,7 +72,7 @@ absl::StatusOr<IndexingMap> MajorToMinorTiledHloSchedule::Schedule(
       {0, Product(iteration_space_sizes) - 1, "pid_0"}};
   IndexingMap program_id_to_output_dims{
       mlir::AffineMap::get(
-          /*dimCount=*/1, /*symbolCount=*/0, tile_exprs, ctx),
+          /*dimCount=*/1, /*symbolCount=*/0, tile_exprs, mlir_context),
       dim_vars, /*range_vars=*/{}, /*rt_vars=*/{}};
   auto scheduled_indexing =
       ComposeIndexingMaps(program_id_to_output_dims, tile_offsets_indexing);

@@ -30,10 +30,10 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
-#include "mlir/IR/MLIRContext.h"
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/utils/hlo_traversal.h"
+#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/shape.h"
 
 namespace xla {
@@ -71,15 +71,15 @@ std::ostream& operator<<(std::ostream& out,
 
 // Computes indexing maps for all input operands necessary to compute an element
 // of the `output_id` instruction output.
-HloInstructionIndexing ComputeOutputToInputIndexing(const HloInstruction* instr,
-                                                    int output_id,
-                                                    mlir::MLIRContext* ctx);
+HloInstructionIndexing ComputeOutputToInputIndexing(
+    const HloInstruction* instr, int output_id,
+    gpu::SymbolicExprContext* symbolic_expr_context);
 
 // Computes indexing maps for all output operands that the element of the
 // `input_id` instruction input will participate in.
-HloInstructionIndexing ComputeInputToOutputIndexing(const HloInstruction* instr,
-                                                    int input_id,
-                                                    mlir::MLIRContext* ctx);
+HloInstructionIndexing ComputeInputToOutputIndexing(
+    const HloInstruction* instr, int input_id,
+    gpu::SymbolicExprContext* symbolic_expr_context);
 
 // Computes the indexing for `epilogue_parent`'s epilogue. For example, if
 // `epilogue_parent` is a transpose, computes the input to output indexing for
@@ -107,7 +107,7 @@ HloInstructionIndexing ComputeInputToOutputIndexing(const HloInstruction* instr,
 // fusion does not make much sense, but they are created sometimes.
 IndexingMap ComputeEpilogueInputToOutputIndexing(
     HloInstructionAdaptor epilogue_parent, HloInstructionAdaptor epilogue_root,
-    mlir::MLIRContext* mlir_context);
+    gpu::SymbolicExprContext* symbolic_expr_context);
 
 // Indexing of the runtime variable of the HLO instruction.
 struct RuntimeVarIndexing {
@@ -206,13 +206,13 @@ using GroupedByOpIndexing =
 // cluster starting with `target_instr` and going from def to use.
 GroupedByOpIndexing ComputeGroupedOutputToInputIndexing(
     const HloFusionAdaptor& fusion_adaptor, HloInstructionAdaptor target_instr,
-    mlir::MLIRContext* ctx);
+    gpu::SymbolicExprContext* symbolic_expr_context);
 
 // Returns the indexing map from logical to linearized physical shape for each
 // operand.
 llvm::SmallVector<IndexingMap, 4> MapLogicalToLinearizedPhysicalShape(
     absl::Span<const HloInstruction* const> operands,
-    mlir::MLIRContext* mlir_context);
+    gpu::SymbolicExprContext* symbolic_expr_context);
 
 // Computes the indexing map from logical to linearized physical shape for each
 // operand and adds them to `result`. `result` may be non-empty when this
@@ -224,7 +224,8 @@ void GetThreadIdToInputMemoryLayoutsMaps(
     const HloInstructionAdaptor& hero,
     absl::Span<const HloInstruction* const> operands,
     absl::Span<const IndexingMap> operand_logical_to_linearized_physical_maps,
-    mlir::MLIRContext* mlir_context, GroupedByOpIndexingMap& result);
+    gpu::SymbolicExprContext* symbolic_expr_context,
+    GroupedByOpIndexingMap& result);
 
 // Replaces RTVars with the midpoints of the feasible intervals.
 void AssignValuesToRTVars(IndexingMap* indexing_map);
@@ -237,23 +238,23 @@ GroupedByOpIndexing GroupIndexingMapsByProducers(
 // Equivalent to linearizing the input_shape index and then delinearizing it
 // to output_shape.
 IndexingMap GetBitcastMap(const Shape& input_shape, const Shape& output_shape,
-                          mlir::MLIRContext* mlir_context);
+                          gpu::SymbolicExprContext* symbolic_expr_context);
 IndexingMap GetBitcastMap(absl::Span<const int64_t> input_shape,
                           const Shape& output_shape,
-                          mlir::MLIRContext* mlir_context);
+                          gpu::SymbolicExprContext* symbolic_expr_context);
 IndexingMap GetBitcastMap(absl::Span<const int64_t> input_shape,
                           absl::Span<const int64_t> output_shape,
-                          mlir::MLIRContext* mlir_context);
+                          gpu::SymbolicExprContext* symbolic_expr_context);
 
 // Creates an indexing map from the physical layout of the tensor to its logical
 // layout.
 IndexingMap GetIndexingMapFromPhysicalLayoutToLogical(
-    const Shape& shape, mlir::MLIRContext* mlir_context);
+    const Shape& shape, gpu::SymbolicExprContext* symbolic_expr_context);
 
 // Creates an indexing map from the logical layout of the tensor to its physical
 // layout.
 IndexingMap GetIndexingMapFromLogicalToPhysicalLayout(
-    const Shape& shape, mlir::MLIRContext* mlir_context);
+    const Shape& shape, gpu::SymbolicExprContext* symbolic_expr_context);
 
 // Returns the shape of the output of the instruction.
 const Shape& GetOutputShape(const HloInstruction* instr, int64_t output_id);
@@ -262,18 +263,18 @@ const Shape& GetOutputShape(const HloInstruction* instr, int64_t output_id);
 mlir::AffineExpr LinearizeShape(
     absl::Span<const int64_t> dims,
     absl::Span<const mlir::AffineExpr> dimension_exprs,
-    mlir::MLIRContext* mlir_context);
+    gpu::SymbolicExprContext* symbolic_expr_context);
 
 // Computes N-d indexing expressions given a linear index and a shape.
-std::vector<mlir::AffineExpr> DelinearizeIndex(absl::Span<const int64_t> dims,
-                                               mlir::AffineExpr linear_index,
-                                               mlir::MLIRContext* mlir_context);
+std::vector<mlir::AffineExpr> DelinearizeIndex(
+    absl::Span<const int64_t> dims, mlir::AffineExpr linear_index,
+    gpu::SymbolicExprContext* symbolic_expr_context);
 
 // Creates an identity indexing map corresponding to the parameter shape.
 IndexingMap CreateIdentityMap(const Shape& shape,
-                              mlir::MLIRContext* mlir_context);
+                              gpu::SymbolicExprContext* symbolic_expr_context);
 IndexingMap CreateIdentityMap(absl::Span<const int64_t> dimensions,
-                              mlir::MLIRContext* mlir_context);
+                              gpu::SymbolicExprContext* symbolic_expr_context);
 
 llvm::SmallVector<mlir::AffineExpr, 4> DelinearizeInBoundsIndex(
     mlir::AffineExpr linear, absl::Span<const int64_t> sizes);
