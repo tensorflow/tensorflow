@@ -844,9 +844,6 @@ class MklFusedBatchNormOp : public OpKernel {
     OP_REQUIRES(context, FormatFromString(tensor_format, &tensor_format_),
                 absl::InvalidArgumentError("Invalid data format"));
     OP_REQUIRES_OK(context, context->GetAttr("is_training", &is_training_));
-    depth_ = 0;
-    mean_values_ = nullptr;
-    variance_values_ = nullptr;
 
     if (!is_batch_norm_ex) {
       activation_mode_ = FusedBNActivationMode::kIdentity;
@@ -868,6 +865,9 @@ class MklFusedBatchNormOp : public OpKernel {
 
   void Compute(OpKernelContext* context) override {
     try {
+      U* mean_values = nullptr;
+      U* variance_values = nullptr;
+      size_t depth = 0;
       const size_t kSrcIndex = 0;       // index of src input tensor
       const size_t kScaleIndex = 1;     // index of scale tensor
       const size_t kShiftIndex = 2;     // index of shift tensor
@@ -963,9 +963,9 @@ class MklFusedBatchNormOp : public OpKernel {
       }
 
       if (dnn_shape_src.IsMklTensor())
-        depth_ = dnn_shape_src.DimSize(MklDnnDims::Dim_C);
+        depth = dnn_shape_src.DimSize(MklDnnDims::Dim_C);
       else
-        ExtractParams(context);
+        ExtractParams(context, depth);
 
       // Index of output tensor(diff_src).
       const size_t kDstIndex = 0;
@@ -1014,7 +1014,7 @@ class MklFusedBatchNormOp : public OpKernel {
       auto dst_md = memory::desc(src_dims, MklDnnType<T>(), dnn_fmt);
 #endif  // ENABLE_ONEDNN_V3
 
-      MklBatchNormFwdParams fwdParams(src_dims, depth_, epsilon_, is_training_,
+      MklBatchNormFwdParams fwdParams(src_dims, depth, epsilon_, is_training_,
 #ifndef ENABLE_ONEDNN_V3
                                       tensor_format_, src_md, activation_mode_);
 #else
@@ -1059,43 +1059,44 @@ class MklFusedBatchNormOp : public OpKernel {
       }
 
       if (is_training_)
-        SetMeanVariance(*batch_mean_tensor, *batch_variance_tensor);
+        SetMeanVariance(*batch_mean_tensor, *batch_variance_tensor,
+                        &mean_values, &variance_values);
       else
-        SetMeanVariance(est_mean_tensor, est_variance_tensor);
+        SetMeanVariance(est_mean_tensor, est_variance_tensor, &mean_values,
+                        &variance_values);
 
 #ifndef ENABLE_ONEDNN_V3
       // oneDNN packs scale & shift as a combined array in float32 type
       // <scale>...<scale><shift>...<shift>
-      scale_shift.AllocateBuffer(2 * depth_ * sizeof(U));
+      scale_shift.AllocateBuffer(2 * depth * sizeof(U));
       U* scale_shift_data =
           reinterpret_cast<U*>(scale_shift.GetAllocatedBuffer());
       const U* scale_tf = scale_tensor.flat<U>().data();
       const U* shift_tf = shift_tensor.flat<U>().data();
 
-      std::memcpy(scale_shift_data, scale_tf, depth_ * sizeof(U));
-      std::memcpy(scale_shift_data + depth_, shift_tf, depth_ * sizeof(U));
+      std::memcpy(scale_shift_data, scale_tf, depth * sizeof(U));
+      std::memcpy(scale_shift_data + depth, shift_tf, depth * sizeof(U));
 #else
       // oneDNN v3.x requires scale and shift as separate float32 arrays
-      scale.AllocateBuffer(depth_ * sizeof(U));
+      scale.AllocateBuffer(depth * sizeof(U));
       U* scale_data = reinterpret_cast<U*>(scale.GetAllocatedBuffer());
-      shift.AllocateBuffer(depth_ * sizeof(U));
+      shift.AllocateBuffer(depth * sizeof(U));
       U* shift_data = reinterpret_cast<U*>(shift.GetAllocatedBuffer());
       const U* scale_tf = scale_tensor.flat<U>().data();
       const U* shift_tf = shift_tensor.flat<U>().data();
-      std::memcpy(scale_data, scale_tf, depth_ * sizeof(U));
-      std::memcpy(shift_data, shift_tf, depth_ * sizeof(U));
+      std::memcpy(scale_data, scale_tf, depth * sizeof(U));
+      std::memcpy(shift_data, shift_tf, depth * sizeof(U));
 #endif  // !ENABLE_ONEDNN_V3
 
       char* saved_mean_data_tf =
           reinterpret_cast<char*>(saved_mean_tensor->flat<U>().data());
-      std::memcpy(saved_mean_data_tf, reinterpret_cast<char*>(mean_values_),
-                  depth_ * sizeof(U));
+      std::memcpy(saved_mean_data_tf, reinterpret_cast<char*>(mean_values),
+                  depth * sizeof(U));
 
       char* saved_variance_data_tf =
           reinterpret_cast<char*>(saved_variance_tensor->flat<U>().data());
       std::memcpy(saved_variance_data_tf,
-                  reinterpret_cast<char*>(variance_values_),
-                  depth_ * sizeof(U));
+                  reinterpret_cast<char*>(variance_values), depth * sizeof(U));
 
       // Check if reorder is needed for src.
       const T* src_data = nullptr;
@@ -1161,14 +1162,14 @@ class MklFusedBatchNormOp : public OpKernel {
       auto est_variance_data = est_variance_tensor.flat<U>().data();
       if (is_training_) {
         if (exponential_avg_factor_ == U(1.0)) {
-          for (int k = 0; k < depth_; k++) {
+          for (int k = 0; k < depth; k++) {
             batch_mean_data[k] = mean_data[k];
             batch_variance_data[k] =
                 static_cast<U>(adjust_factor) * variance_data[k];
           }
         } else {
           U one_minus_factor = U(1.0) - exponential_avg_factor_;
-          for (int k = 0; k < depth_; k++) {
+          for (int k = 0; k < depth; k++) {
             batch_mean_data[k] = one_minus_factor * est_mean_data[k] +
                                  exponential_avg_factor_ * mean_data[k];
             batch_variance_data[k] = one_minus_factor * est_variance_data[k] +
@@ -1178,8 +1179,8 @@ class MklFusedBatchNormOp : public OpKernel {
           }
         }
       } else {
-        std::memcpy(batch_mean_data, mean_data, depth_ * sizeof(U));
-        std::memcpy(batch_variance_data, variance_data, depth_ * sizeof(U));
+        std::memcpy(batch_mean_data, mean_data, depth * sizeof(U));
+        std::memcpy(batch_variance_data, variance_data, depth * sizeof(U));
       }
     } catch (dnnl::error& e) {
       string error_msg = "Status: " + std::to_string(e.status) +
@@ -1196,20 +1197,18 @@ class MklFusedBatchNormOp : public OpKernel {
   U exponential_avg_factor_;
   TensorFormat tensor_format_;
   bool is_training_;
-  U* mean_values_;
-  U* variance_values_;
-  size_t depth_;  // Batch normalization is performed for per channel.
   FusedBNActivationMode activation_mode_;
   engine cpu_engine_ = engine(engine::kind::cpu, 0);
 
-  void ExtractParams(OpKernelContext* context) {
+  void ExtractParams(OpKernelContext* context, size_t& depth) {
     const Tensor& input = MklGetInput(context, 0);
-    depth_ = static_cast<int>(GetTensorDim(input, tensor_format_, 'C'));
+    depth = static_cast<int>(GetTensorDim(input, tensor_format_, 'C'));
   }
 
-  void SetMeanVariance(const Tensor& mean, const Tensor& variance) {
-    mean_values_ = reinterpret_cast<U*>(const_cast<U*>(mean.flat<U>().data()));
-    variance_values_ =
+  void SetMeanVariance(const Tensor& mean, const Tensor& variance,
+                       U** mean_values, U** variance_values) {
+    *mean_values = reinterpret_cast<U*>(const_cast<U*>(mean.flat<U>().data()));
+    *variance_values =
         reinterpret_cast<U*>(const_cast<U*>(variance.flat<U>().data()));
   }
 
