@@ -13,6 +13,13 @@ The maximum scalar value possibly produced for the input.
 END
   }
   attr {
+    name: "axis"
+    description: <<END
+Both `min_range` and `max_range` must have as many elements
+as input on the dequantization axis.
+END
+  }
+  attr {
     name: "dtype"
     description: <<END
 Type of the output tensor. Currently Dequantize supports float and bfloat16.
