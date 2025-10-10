@@ -1515,6 +1515,14 @@ tf_native_cc_binary(
         "converter_gen.cc",
     ],
     compatible_with = get_compatible_with_portable(),
+    copts = select({
+        "//tensorflow:asan": ["-fsanitize=address"],
+        "//conditions:default": [],
+    }),
+    linkopts = select({
+        "//tensorflow:asan": ["-fsanitize=address"],
+        "//conditions:default": [],
+    }),
     deps = [
         "@llvm-project//llvm:Support",
         "@llvm-project//llvm:TableGen",
