@@ -126,8 +126,13 @@ absl::Status ExecuteKernelOnStream(
 void InitializeBuffer(se::Stream* stream, PrimitiveType buffer_type,
                       int64_t* rng_state, se::DeviceMemoryBase buffer);
 
-absl::StatusOr<se::dnn::ConvolutionKind> GetDNNConvKindFromCudnnConvKind(
-    CudnnConvKind kind);
+// Converts the C++ enum `CudnnConvKind`, to the proto enum version
+// `ConvolutionKind`.
+se::dnn::ConvolutionKind CudnnConvKindToProto(CudnnConvKind kind);
+
+// Converts the proto enum `ConvolutionKind`, to the C++ enum `CudnnConvKind`.
+absl::StatusOr<CudnnConvKind> CudnnConvKindFromProto(
+    se::dnn::ConvolutionKind kind);
 
 absl::StatusOr<se::dnn::NormKind> GetDNNNormKindFromCudnnNormKind(
     CudnnNormKind kind);

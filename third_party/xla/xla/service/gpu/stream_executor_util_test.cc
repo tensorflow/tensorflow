@@ -18,15 +18,22 @@ limitations under the License.
 #include <cstdint>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/time/time.h"
 #include "xla/autotuning.pb.h"
+#include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/tsl/util/proto/proto_utils.h"
 
 namespace xla::gpu {
 namespace {
+using ::absl_testing::IsOkAndHolds;
+using ::absl_testing::StatusIs;
+using ::stream_executor::dnn::ConvolutionKind;
 
 struct Result {
   int64_t run_time_ns;
@@ -72,6 +79,35 @@ TEST(StreamExecutorTest, PickBestResult) {
 
   atr = PickBestResult(Results({{5000, 1}, {6000, 0}, {7500, 0}}), "", {});
   EXPECT_EQ(ATRToResult(atr.value()), Result({6000, 0}));
+}
+
+TEST(StreamExecutorUtilTest, CudnnConvKindToProto) {
+  EXPECT_EQ(CudnnConvKindToProto(CudnnConvKind::kBackwardFilter),
+            ConvolutionKind::BACKWARD_FILTER);
+  EXPECT_EQ(CudnnConvKindToProto(CudnnConvKind::kBackwardInput),
+            ConvolutionKind::BACKWARD_DATA);
+  EXPECT_EQ(CudnnConvKindToProto(CudnnConvKind::kForward),
+            ConvolutionKind::FORWARD);
+  EXPECT_EQ(CudnnConvKindToProto(CudnnConvKind::kForwardActivation),
+            ConvolutionKind::FORWARD_BIAS_ACTIVATION);
+  EXPECT_EQ(CudnnConvKindToProto(CudnnConvKind::kForwardGraph),
+            ConvolutionKind::FORWARD_GRAPH);
+}
+
+TEST(StreamExecutorUtilTest, CudnnConvKindFromProto) {
+  EXPECT_THAT(CudnnConvKindFromProto(ConvolutionKind::BACKWARD_FILTER),
+              IsOkAndHolds(CudnnConvKind::kBackwardFilter));
+  EXPECT_THAT(CudnnConvKindFromProto(ConvolutionKind::BACKWARD_DATA),
+              IsOkAndHolds(CudnnConvKind::kBackwardInput));
+  EXPECT_THAT(CudnnConvKindFromProto(ConvolutionKind::FORWARD),
+              IsOkAndHolds(CudnnConvKind::kForward));
+  EXPECT_THAT(CudnnConvKindFromProto(ConvolutionKind::FORWARD_BIAS_ACTIVATION),
+              IsOkAndHolds(CudnnConvKind::kForwardActivation));
+  EXPECT_THAT(CudnnConvKindFromProto(ConvolutionKind::FORWARD_GRAPH),
+              IsOkAndHolds(CudnnConvKind::kForwardGraph));
+
+  EXPECT_THAT(CudnnConvKindFromProto(ConvolutionKind::INVALID),
+              StatusIs(absl::StatusCode::kInternal));
 }
 
 }  // namespace
