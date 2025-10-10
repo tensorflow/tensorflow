@@ -60,10 +60,10 @@ class HloPassPipelineTest : public HloHardwareIndependentTestBase {
 class FooToBarModulePass : public HloModulePass {
   absl::string_view name() const override { return "foo2bar"; }
 
-  using HloPassInterface::Run;
-  absl::StatusOr<bool> Run(HloModule* module,
-                           const absl::flat_hash_set<absl::string_view>&
-                               execution_threads) override {
+ protected:
+  absl::StatusOr<bool> RunImpl(HloModule* module,
+                               const absl::flat_hash_set<absl::string_view>&
+                                   execution_threads) override {
     bool changed = false;
     for (HloComputation* computation :
          module->computations(execution_threads)) {
@@ -83,10 +83,10 @@ class FooToBarModulePass : public HloModulePass {
 class ReverseStringModulePass : public HloModulePass {
   absl::string_view name() const override { return "reverse"; }
 
-  using HloPassInterface::Run;
-  absl::StatusOr<bool> Run(HloModule* module,
-                           const absl::flat_hash_set<absl::string_view>&
-                               execution_threads) override {
+ protected:
+  absl::StatusOr<bool> RunImpl(HloModule* module,
+                               const absl::flat_hash_set<absl::string_view>&
+                                   execution_threads) override {
     bool changed = false;
     for (HloComputation* computation :
          module->computations(execution_threads)) {
@@ -104,9 +104,9 @@ class ReverseStringModulePass : public HloModulePass {
 class BazToQuxModulePass : public HloModulePass {
   absl::string_view name() const override { return "baz2qux"; }
 
-  absl::StatusOr<bool> Run(HloModule* module,
-                           const absl::flat_hash_set<absl::string_view>&
-                               execution_threads) override {
+  absl::StatusOr<bool> RunImpl(HloModule* module,
+                               const absl::flat_hash_set<absl::string_view>&
+                                   execution_threads) override {
     bool changed = false;
     for (HloComputation* computation :
          module->computations(execution_threads)) {
@@ -126,10 +126,10 @@ class BazToQuxModulePass : public HloModulePass {
 class BarBlowerUpper : public HloModulePass {
   absl::string_view name() const override { return "bar-blower-upper"; }
 
-  using HloPassInterface::Run;
-  absl::StatusOr<bool> Run(HloModule* module,
-                           const absl::flat_hash_set<absl::string_view>&
-                               execution_threads) override {
+ protected:
+  absl::StatusOr<bool> RunImpl(HloModule* module,
+                               const absl::flat_hash_set<absl::string_view>&
+                                   execution_threads) override {
     for (HloComputation* computation :
          module->computations(execution_threads)) {
       for (HloInstruction* instruction : computation->instructions()) {
@@ -371,10 +371,10 @@ TEST_F(HloPassPipelineTest, SetHloModuleMetadata) {
 class NoOpModulePass : public HloModulePass {
   absl::string_view name() const override { return "noop"; }
 
-  using HloPassInterface::Run;
-  absl::StatusOr<bool> Run(HloModule* module,
-                           const absl::flat_hash_set<absl::string_view>&
-                               execution_threads) override {
+ protected:
+  absl::StatusOr<bool> RunImpl(HloModule* module,
+                               const absl::flat_hash_set<absl::string_view>&
+                                   execution_threads) override {
     return false;
   }
 };

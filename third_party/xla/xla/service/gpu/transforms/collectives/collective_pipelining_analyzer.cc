@@ -218,7 +218,7 @@ bool IsTriviallyPipelineable(const HloInstruction& instr) {
   return instr.frontend_attributes().map().contains(kTriviallyPipelineable);
 }
 
-absl::StatusOr<bool> CollectivePipeliningAnalyzer::Run(
+absl::StatusOr<bool> CollectivePipeliningAnalyzer::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   const HloModuleConfig& config = module->config();

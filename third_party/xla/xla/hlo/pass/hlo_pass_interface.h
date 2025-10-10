@@ -77,16 +77,9 @@ class HloPassInterface {
   // Run the pass on the given HLO module with specified execution_threads.
   // Empty execution_threads list means all execution_threads are included.
   // Returns whether it modified the module.
-  //
-  // Note: C++ hides non-explicitly declared overloaded functions.
-  // You can make all overloaded variants available in the child class  by
-  // adding `using HloPassInterface::Run;` to the child class declaration.
-  absl::StatusOr<bool> Run(HloModule* module) {
-    return Run(module, /*execution_threads=*/{});
-  }
-  virtual absl::StatusOr<bool> Run(
+  absl::StatusOr<bool> Run(
       HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) = 0;
+      const absl::flat_hash_set<absl::string_view>& execution_threads = {});
 
   // Run the pass on computation on changed computations from last iteration in
   // given HLO module for specified execution_threads, with caller provided
@@ -112,15 +105,10 @@ class HloPassInterface {
   // threads are included. Returns whether it modified the module group.
   // Ideally, the module group variant would be named "Run" as well, but C++
   // does not handle overloaded virtual methods well.
-  //
-  // See the caveat about C++ hiding overloaded functions in the Run function
-  // above.
-  absl::StatusOr<bool> RunOnModuleGroup(HloModuleGroup* module_group) {
-    return RunOnModuleGroup(module_group, /*execution_threads=*/{});
-  }
-  virtual absl::StatusOr<bool> RunOnModuleGroup(
+  // TODO(victorstone): Rename to Run.
+  absl::StatusOr<bool> RunOnModuleGroup(
       HloModuleGroup* module_group,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) = 0;
+      const absl::flat_hash_set<absl::string_view>& execution_threads = {});
 
   virtual bool IsPassPipeline() const { return false; }
 
@@ -136,25 +124,19 @@ class HloPassInterface {
       LOG(WARNING) << "Failed to set stat: " << status;
     }
   }
+
+ protected:
+  virtual absl::StatusOr<bool> RunImpl(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) = 0;
+  virtual absl::StatusOr<bool> RunOnModuleGroupImpl(
+      HloModuleGroup* module_group,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) = 0;
 };
 
 // Base class for passes which are module-scoped.
 class HloModulePass : public HloPassInterface {
  public:
-  // Runs the pass on a module group by iterating through each module in the
-  // group.
-  absl::StatusOr<bool> RunOnModuleGroup(
-      HloModuleGroup* module_group,
-      const absl::flat_hash_set<absl::string_view>& execution_threads)
-      override {
-    bool changed = false;
-    for (HloModule* module : module_group->modules()) {
-      TF_ASSIGN_OR_RETURN(bool module_changed, Run(module, execution_threads));
-      changed |= module_changed;
-    }
-    return changed;
-  };
-
   // Update the layout of a Shape to one that is supported by a given backend.
   // One can call this function after modifying the Shape in case that modifying
   // the Shape requires changes to the layout for the given Backend.
@@ -165,6 +147,21 @@ class HloModulePass : public HloPassInterface {
     // CPU/GPU backends require shapes of subbyte types to be packed.
     ShapeUtil::UpdateElementSizeInBits(shape, /*pack_subbyte_types=*/true);
   }
+
+ protected:
+  // Runs the pass on a module group by iterating through each module in the
+  // group.
+  absl::StatusOr<bool> RunOnModuleGroupImpl(
+      HloModuleGroup* module_group,
+      const absl::flat_hash_set<absl::string_view>& execution_threads)
+      override {
+    bool changed = false;
+    for (HloModule* module : module_group->modules()) {
+      TF_ASSIGN_OR_RETURN(bool module_changed, Run(module, execution_threads));
+      changed |= module_changed;
+    }
+    return changed;
+  };
 };
 
 }  // namespace xla

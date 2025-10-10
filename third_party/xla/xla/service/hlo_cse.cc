@@ -264,19 +264,6 @@ bool HloCSE::ShouldEliminateInstruction(const HloInstruction* instruction) {
   return true;
 }
 
-absl::StatusOr<bool> HloCSE::Run(
-    HloModule* module,
-    const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  bool changed = false;
-
-  for (auto* computation : module->computations(execution_threads)) {
-    TF_ASSIGN_OR_RETURN(bool computation_changed,
-                        RunOnComputation(computation));
-    changed |= computation_changed;
-  }
-  return changed;
-}
-
 absl::StatusOr<bool> HloCSE::RunOnComputation(HloComputation* computation) {
   if (should_eliminate_computation_ &&
       !should_eliminate_computation_(computation)) {
@@ -389,6 +376,19 @@ absl::StatusOr<bool> HloCSE::RunOnComputation(HloComputation* computation) {
         }
       }
     }
+  }
+  return changed;
+}
+
+absl::StatusOr<bool> HloCSE::RunImpl(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
+  bool changed = false;
+
+  for (auto* computation : module->computations(execution_threads)) {
+    TF_ASSIGN_OR_RETURN(bool computation_changed,
+                        RunOnComputation(computation));
+    changed |= computation_changed;
   }
   return changed;
 }

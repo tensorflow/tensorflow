@@ -47,7 +47,7 @@ bool ShouldSkipForSideEffect(HloInstruction* instruction) {
 
 }  // namespace
 
-absl::StatusOr<bool> ZeroSizedHloElimination::Run(
+absl::StatusOr<bool> ZeroSizedHloElimination::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;

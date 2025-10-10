@@ -33,13 +33,14 @@ namespace xla {
 // accumulation type is a floating point type smaller than f32.
 class UnstableReductionDetector : public HloModulePass {
  public:
-  absl::StatusOr<bool> Run(
-      HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
-
   absl::string_view name() const override {
     return "unstable-reduction-detector";
   }
+
+ protected:
+  absl::StatusOr<bool> RunImpl(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 };
 
 }  // namespace xla

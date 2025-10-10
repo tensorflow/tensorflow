@@ -484,7 +484,7 @@ absl::Status HloControlFlowFlattening::RemoveEntryComputationLayoutDynamism(
   return absl::OkStatus();
 }
 
-absl::StatusOr<bool> HloControlFlowFlattening::Run(
+absl::StatusOr<bool> HloControlFlowFlattening::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   auto call_graph = CallGraph::Build(module);
