@@ -1,99 +1,15 @@
-diff --git a/shardy/dialect/sdy/ir/attrs.td b/shardy/dialect/sdy/ir/attrs.td
-index 363ddb0..d0647ba 100644
---- a/shardy/dialect/sdy/ir/attrs.td
-+++ b/shardy/dialect/sdy/ir/attrs.td
-@@ -567,9 +567,6 @@ def Sdy_DimensionSharding : AttrDef<Sdy_Dialect, "DimensionSharding"> {
- 
-     // Builds a closed `DimensionShardingAttr` matching `dimSharding` in axes and priority.
-     static DimensionShardingAttr getClosedLike(DimensionShardingAttr sharding);
--
--    // Builds an open `DimensionShardingAttr` matching `dimSharding` in axes and priority.
--    static DimensionShardingAttr getOpenLike(DimensionShardingAttr sharding);
-   }];
- }
- 
-@@ -820,10 +817,6 @@ def Sdy_TensorSharding : AttrDef<Sdy_Dialect, "TensorSharding"> {
-     // and matching `sharding` in dim sharding axes, `mesh_or_ref` and rank.
-     static TensorShardingAttr getClosedLike(TensorShardingAttr sharding);
- 
--    // Builds a `TensorShardingAttr` with all dim shardings being marked open
--    // and matching `sharding` in dim sharding axes, `mesh_or_ref` and rank.
--    static TensorShardingAttr getOpenLike(TensorShardingAttr sharding);
--
-     // Builds a `TensorShardingAttr` with a closed dim sharding for each axis
-     // list in `axesPerDim`.
-     static TensorShardingAttr getClosed(
-diff --git a/shardy/dialect/sdy/ir/dialect.cc b/shardy/dialect/sdy/ir/dialect.cc
-index 60abf9f..5113b47 100644
---- a/shardy/dialect/sdy/ir/dialect.cc
-+++ b/shardy/dialect/sdy/ir/dialect.cc
-@@ -694,13 +694,6 @@ DimensionShardingAttr DimensionShardingAttr::getClosedLike(
-                                     /*priority=*/dimSharding.getPriority());
- }
- 
--DimensionShardingAttr DimensionShardingAttr::getOpenLike(
--    DimensionShardingAttr dimSharding) {
--  return DimensionShardingAttr::get(dimSharding.getContext(),
--                                    dimSharding.getAxes(), /*isClosed=*/false,
--                                    /*priority=*/dimSharding.getPriority());
--}
--
- //===----------------------------------------------------------------------===//
- // TensorShardingAttr
- //===----------------------------------------------------------------------===//
-@@ -787,7 +780,8 @@ TensorShardingAttr TensorShardingAttr::closeShardingDims(
-   SmallVector<DimensionShardingAttr> dimShardings(getDimShardings().begin(),
-                                                   getDimShardings().end());
-   for (int64_t dim : dimIndices) {
--    dimShardings[dim] = DimensionShardingAttr::getClosedLike(dimShardings[dim]);
-+    dimShardings[dim] = DimensionShardingAttr::get(
-+        getContext(), dimShardings[dim].getAxes(), /*isClosed=*/true);
-   }
-   return TensorShardingAttr::get(getContext(), getMeshOrRef(), dimShardings,
-                                  getReplicatedAxes(), getUnreducedAxes());
-@@ -798,7 +792,8 @@ TensorShardingAttr TensorShardingAttr::openShardingDims(
-   SmallVector<DimensionShardingAttr> dimShardings(getDimShardings().begin(),
-                                                   getDimShardings().end());
-   for (int64_t dim : dimIndices) {
--    dimShardings[dim] = DimensionShardingAttr::getOpenLike(dimShardings[dim]);
-+    dimShardings[dim] = DimensionShardingAttr::get(
-+        getContext(), dimShardings[dim].getAxes(), /*isClosed=*/false);
-   }
-   return TensorShardingAttr::get(getContext(), getMeshOrRef(), dimShardings,
-                                  getReplicatedAxes(), getUnreducedAxes());
-@@ -880,20 +875,6 @@ TensorShardingAttr TensorShardingAttr::getClosedLike(
-                                  sharding.getUnreducedAxes());
- }
- 
--TensorShardingAttr TensorShardingAttr::getOpenLike(
--    TensorShardingAttr sharding) {
--  SmallVector<DimensionShardingAttr> openDimShardings(sharding.getRank());
--  for (int index = 0; index < sharding.getRank(); index++) {
--    openDimShardings[index] =
--        DimensionShardingAttr::getOpenLike(sharding.getDimSharding(index));
--  }
--  return TensorShardingAttr::get(
--      sharding.getContext(), sharding.getMeshOrRef(),
--      /*dimShardings=*/openDimShardings,
--      /*replicatedAxes=*/sharding.getReplicatedAxes(),
--      sharding.getUnreducedAxes());
--}
--
- TensorShardingAttr TensorShardingAttr::getClosed(
-     MLIRContext* context, Attribute meshOrRef,
-     ArrayRef<SmallVector<AxisRefAttr>> axesPerDim,
 diff --git a/third_party/llvm/workspace.bzl b/third_party/llvm/workspace.bzl
-index 0afb70d..b28a9da 100644
+index b28a9da..81b4a54 100644
 --- a/third_party/llvm/workspace.bzl
 +++ b/third_party/llvm/workspace.bzl
 @@ -4,8 +4,8 @@ load("//third_party:repo.bzl", "tf_http_archive")
  
  def repo(name):
      """Imports LLVM."""
--    LLVM_COMMIT = "4d45718b478940cd11ac80dd64db8408bb21dbca"
--    LLVM_SHA256 = "ce14b25873232ca904c3d2bba2ca71a358b9124c3107cde52ed1483a3e2603c8"
-+    LLVM_COMMIT = "891f002026df122b36813b9e1819769c94327503"
-+    LLVM_SHA256 = "0576a3a0b6baf63308c1432ef2c4c4f082fc5a9ca4b298f0a741dab044d598b5"
+-    LLVM_COMMIT = "891f002026df122b36813b9e1819769c94327503"
+-    LLVM_SHA256 = "0576a3a0b6baf63308c1432ef2c4c4f082fc5a9ca4b298f0a741dab044d598b5"
++    LLVM_COMMIT = "3a6b818132e3133c7d33f8f577e62503f12869b4"
++    LLVM_SHA256 = "a0b3de698393e0f49d0aca3f869cc03bf0c59eba0c65f608e565278943c31958"
  
      tf_http_archive(
          name = name,
