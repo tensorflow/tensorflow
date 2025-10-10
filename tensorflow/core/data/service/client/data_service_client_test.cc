@@ -45,8 +45,6 @@ namespace data {
 namespace {
 
 using ::tensorflow::data::testing::RangeDataset;
-using ::tensorflow::testing::IsOkAndHolds;
-using ::tensorflow::testing::StatusIs;
 using ::testing::_;
 using ::testing::AtLeast;
 using ::testing::ElementsAreArray;
