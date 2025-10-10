@@ -37,6 +37,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
 #include "mlir/Parser/Parser.h"
+#include "google/protobuf/text_format.h"
 #include "stablehlo/dialect/Register.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/builder/xla_computation.h"
