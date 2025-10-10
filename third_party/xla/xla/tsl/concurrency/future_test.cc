@@ -267,7 +267,7 @@ TEST(FutureTest, MapMoveOnlyFutureError) {
 
 TEST(FutureTest, MapCopyableWithInplaceConstructor) {
   struct Struct {
-    explicit Struct(int32_t v) : v(v) {}
+    Struct(int32_t v) : v(v) {}  // NOLINT
     int32_t v;
   };
 
@@ -281,7 +281,7 @@ TEST(FutureTest, MapCopyableWithInplaceConstructor) {
 
 TEST(FutureTest, MapMoveOnlyWithInplaceConstructor) {
   struct Struct {
-    explicit Struct(int32_t v) : v(v) {}
+    Struct(int32_t v) : v(v) {}  // NOLINT
     int32_t v;
   };
 

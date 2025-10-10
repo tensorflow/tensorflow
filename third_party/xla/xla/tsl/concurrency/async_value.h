@@ -432,7 +432,11 @@ class AsyncValue {
     DestructorFn destructor;
     GetErrorFn get_error;
     SetErrorFn set_error;
+#ifndef NDEBUG
+    // This function is only used in debug builds, so it can be omitted from the
+    // type info in optimized builds for better data locality of other members.
     HasDataFn has_data;
+#endif
   };
 
   template <typename Derived>
@@ -448,9 +452,11 @@ class AsyncValue {
         [](AsyncValue* v, absl::Status status) {
           static_cast<Derived*>(v)->SetError(std::move(status));
         },
+#ifndef NDEBUG
         [](const AsyncValue* v) {
           return static_cast<const Derived*>(v)->HasData();
         },
+#endif
     };
   }
 
