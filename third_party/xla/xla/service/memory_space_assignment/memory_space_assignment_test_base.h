@@ -29,6 +29,7 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/hlo/analysis/alias_info.h"
@@ -372,6 +373,36 @@ class MemorySpaceAssignmentTestBase : public HloTestBase {
         module->entry_computation()->root_instruction();
     if (root->shape().IsArray()) {
       EXPECT_EQ(root->shape().layout().memory_space(), kDefaultMemorySpace);
+    }
+  }
+
+  // Returns a set of HloPositions for the given instruction names and
+  // shape_index.
+  absl::flat_hash_set<HloPosition> GetHloPositions(
+      const HloModule* module, std::vector<std::string> instruction_names,
+      ShapeIndex shape_index = {}) {
+    absl::flat_hash_set<HloPosition> block_prefetched_positions;
+    for (const auto& instruction_name : instruction_names) {
+      HloInstruction* param = FindInstruction(module, instruction_name);
+      EXPECT_NE(param, nullptr);
+      HloPosition param_position{param, shape_index};
+      block_prefetched_positions.insert(param_position);
+    }
+    return block_prefetched_positions;
+  }
+
+  // Checks for every instruction in instruction_names that the operand at
+  // operand_index has the given opcode and memory space.
+  void CheckOperandOpcodeAndMemorySpaceForInstructionNames(
+      HloModule* module, std::vector<std::string>& instruction_names,
+      int64_t operand_index, HloOpcode operand_opcode,
+      int64_t operand_memory_space) {
+    for (const std::string& name : instruction_names) {
+      HloInstruction* use_inst = FindInstruction(module, name);
+      EXPECT_NE(use_inst, nullptr);
+      const HloInstruction* operand = use_inst->operand(operand_index);
+      EXPECT_EQ(operand->opcode(), operand_opcode);
+      EXPECT_EQ(operand->shape().layout().memory_space(), operand_memory_space);
     }
   }
 
