@@ -96,6 +96,7 @@ cc_library(
 cc_library(
     name = "op_utils",
     hdrs = ["op_utils.h"],
+    compatible_with = ["//buildenv/target:libtpu"],
     copts = tf_profiler_copts(),
     visibility = ["//perftools/gputools/profiler/collector:__pkg__"],
     deps = [
@@ -180,6 +181,7 @@ cc_library(
 cc_library(
     name = "derived_timeline",
     hdrs = ["derived_timeline.h"],
+    compatible_with = ["//buildenv/target:libtpu"],
     copts = tf_profiler_copts(),
     visibility = [
         "//perftools/accelerators/xprof/convert:__pkg__",
@@ -276,6 +278,7 @@ cc_library(
 cc_library(
     name = "hlo_module_map",
     hdrs = ["hlo_module_map.h"],
+    compatible_with = ["//buildenv/target:libtpu"],
     visibility = ["//perftools/accelerators/xprof/convert:__pkg__"],
     deps = [
         "@org_xprof//xprof/utils:hlo_module_map",
