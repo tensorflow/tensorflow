@@ -228,6 +228,40 @@ def _to_string(dataset_id) -> str:
           if isinstance(dataset_id, bytes) else str(dataset_id))
 
 
+class HashableElementSpec:
+  """Wrapper for element_spec to make it hashable."""
+
+  def __init__(self, element_spec):
+    self.element_spec = element_spec
+    self._repr = repr(element_spec)
+    self._hash = hash(self._repr)
+
+  def __hash__(self):
+    return self._hash
+
+  def __eq__(self, other):
+    if not isinstance(other, HashableElementSpec):
+      return False
+    return self._repr == other._repr
+
+
+@functools.lru_cache(maxsize=128)
+def _get_uncompress_func(
+    arg: HashableElementSpec,
+) -> structured_function.StructuredFunctionWrapper:
+  """Returns a cached StructuredFunctionWrapper for uncompression.
+
+  Args:
+    arg: A HashableElementSpec wrapping a nested structure of `tf.TypeSpec`s
+      representing the type of elements produced by the dataset.
+  """
+  return structured_function.StructuredFunctionWrapper(
+      lambda x: compression_ops.uncompress(x, output_spec=arg.element_spec),
+      transformation_name="DataServiceDataset.uncompress()",
+      input_structure=tensor.TensorSpec(shape=(), dtype=dtypes.variant),
+  )
+
+
 class _DataServiceDatasetV2(dataset_ops.DatasetSource):
   """A `Dataset` that reads elements from the tf.data service."""
 
@@ -340,10 +374,7 @@ class _DataServiceDatasetV2(dataset_ops.DatasetSource):
         dtype=dtypes.int64,
         name="max_outstanding_requests")
     self._element_spec = element_spec
-    uncompress_func = structured_function.StructuredFunctionWrapper(
-        lambda x: compression_ops.uncompress(x, output_spec=element_spec),
-        transformation_name="DataServiceDataset.uncompress()",
-        input_structure=tensor.TensorSpec(shape=(), dtype=dtypes.variant))
+    uncompress_func = _get_uncompress_func(HashableElementSpec(element_spec))
     cross_trainer_cache_options = (
         cross_trainer_cache._to_proto().SerializeToString()
         if cross_trainer_cache else None)
