@@ -402,6 +402,59 @@ TEST_F(PjrtCApiGpuTest, DmaMapAndUnmap) {
   MakeErrorDeleter(api_)(unmap_error);
 }
 
+TEST_F(PjrtCApiGpuTest, PairedEventPromise) {
+  // Create a paired event and promise.
+  PJRT_Event_Promise_Get_Args event_promise_get_args;
+  event_promise_get_args.struct_size = PJRT_Event_Promise_Get_Args_STRUCT_SIZE;
+  event_promise_get_args.extension_start = nullptr;
+  PJRT_Error* error = api_->PJRT_Event_Promise_Get(&event_promise_get_args);
+  ASSERT_EQ(error, nullptr);
+
+  // Check that the event is not ready prior to setting the promise.
+  PJRT_Event_IsReady_Args event_is_ready_args;
+  event_is_ready_args.struct_size = PJRT_Event_IsReady_Args_STRUCT_SIZE;
+  event_is_ready_args.extension_start = nullptr;
+  event_is_ready_args.event = event_promise_get_args.event;
+  PJRT_Error* event_is_ready_error =
+      api_->PJRT_Event_IsReady(&event_is_ready_args);
+  ASSERT_EQ(event_is_ready_error, nullptr);
+  ASSERT_EQ(event_is_ready_args.is_ready, 0);
+
+  // Set the promise.
+  PJRT_Promise_Set_Args promise_set_args;
+  promise_set_args.struct_size = PJRT_Promise_Set_Args_STRUCT_SIZE;
+  promise_set_args.extension_start = nullptr;
+  promise_set_args.promise = event_promise_get_args.promise;
+  promise_set_args.error_code = PJRT_Error_Code_OK;
+  promise_set_args.error_message = nullptr;
+  promise_set_args.error_message_size = 0;
+  PJRT_Error* promise_set_error = api_->PJRT_Promise_Set(&promise_set_args);
+  ASSERT_EQ(promise_set_error, nullptr);
+
+  // Check that the event is ready after setting the promise.
+  event_is_ready_error = api_->PJRT_Event_IsReady(&event_is_ready_args);
+  ASSERT_EQ(event_is_ready_error, nullptr);
+  ASSERT_EQ(event_is_ready_args.is_ready, 1);
+
+  // Destroy the event.
+  PJRT_Event_Destroy_Args event_destroy_args;
+  event_destroy_args.struct_size = PJRT_Event_Destroy_Args_STRUCT_SIZE;
+  event_destroy_args.extension_start = nullptr;
+  event_destroy_args.event = event_promise_get_args.event;
+  PJRT_Error* event_destroy_error =
+      api_->PJRT_Event_Destroy(&event_destroy_args);
+  ASSERT_EQ(event_destroy_error, nullptr);
+
+  // Destroy the promise.
+  PJRT_Promise_Destroy_Args promise_destroy_args;
+  promise_destroy_args.struct_size = PJRT_Promise_Destroy_Args_STRUCT_SIZE;
+  promise_destroy_args.extension_start = nullptr;
+  promise_destroy_args.promise = event_promise_get_args.promise;
+  PJRT_Error* promise_destroy_error =
+      api_->PJRT_Promise_Destroy(&promise_destroy_args);
+  ASSERT_EQ(promise_destroy_error, nullptr);
+}
+
 TEST_F(PjrtCApiGpuTransferManagerTest, SetBufferError) {
   xla::Shape host_shape =
       xla::ShapeUtil::MakeShape(xla::F32, /*dimensions=*/{8});

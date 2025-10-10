@@ -2944,12 +2944,49 @@ void PjRtCApiBuffer::CopyToRemoteDevice(
       PJRT_Transfers_PJRT_Buffer_CopyToRemoteDevice_Args_STRUCT_SIZE;
   args.extension_start = nullptr;
   args.buffer = c_buffer();
-  // TODO(emilyaf): Support async instead of awaiting here.
-  absl::StatusOr<std::string> descriptor = serialized_descriptor.Await();
-  CHECK_OK(descriptor) << "Failed to copy buffer to remote device: "
-                       << descriptor.status();
-  args.serialized_descriptor = descriptor->c_str();
-  args.serialized_descriptor_size = descriptor->size();
+
+  // Get a PJRT_Event/PJRT_Promise pair to track `serialized_descriptor`.
+  PJRT_Event_Promise_Get_Args event_promise_args;
+  event_promise_args.struct_size = PJRT_Event_Promise_Get_Args_STRUCT_SIZE;
+  event_promise_args.extension_start = nullptr;
+  const PJRT_Api* c_api = pjrt_c_api();
+  pjrt::LogFatalIfPjrtError(c_api->PJRT_Event_Promise_Get(&event_promise_args),
+                            c_api);
+
+  // When `serialized_descriptor` is ready, `descriptor_data` and
+  // `descriptor_size` will be populated with the string data.
+  size_t* descriptor_size = new size_t;
+  char** descriptor_data = new char*;
+
+  serialized_descriptor.OnReady(
+      [c_api, promise = std::move(event_promise_args.promise), descriptor_data,
+       descriptor_size](absl::StatusOr<std::string> descriptor) {
+        *descriptor_data = descriptor->data();
+        *descriptor_size = descriptor->size();
+
+        PJRT_Promise_Set_Args promise_set_args;
+        promise_set_args.struct_size = PJRT_Promise_Set_Args_STRUCT_SIZE;
+        promise_set_args.extension_start = nullptr;
+        promise_set_args.promise = promise;
+        promise_set_args.error_code =
+            pjrt::StatusCodeToPjrtErrorCode(descriptor.status().code());
+        promise_set_args.error_message = descriptor.status().message().data();
+        promise_set_args.error_message_size =
+            descriptor.status().message().size();
+        c_api->PJRT_Promise_Set(&promise_set_args);
+
+        PJRT_Promise_Destroy_Args promise_destroy_args;
+        promise_destroy_args.struct_size =
+            PJRT_Promise_Destroy_Args_STRUCT_SIZE;
+        promise_destroy_args.extension_start = nullptr;
+        promise_destroy_args.promise = promise;
+        c_api->PJRT_Promise_Destroy(&promise_destroy_args);
+      });
+
+  args.event = event_promise_args.event;
+  args.serialized_descriptor = descriptor_data;
+  args.serialized_descriptor_size = descriptor_size;
+
   extension->PJRT_Transfers_PJRT_Buffer_CopyToRemoteDevice(&args);
 }
 

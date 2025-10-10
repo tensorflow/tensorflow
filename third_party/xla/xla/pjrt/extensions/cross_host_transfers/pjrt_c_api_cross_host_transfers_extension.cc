@@ -89,14 +89,33 @@ PJRT_Error* PJRT_Transfers_PJRT_Client_MakeCrossHostReceiveBuffers(
 
 void PJRT_Transfers_PJRT_Buffer_CopyToRemoteDevice(
     PJRT_Transfers_PJRT_Buffer_CopyToRemoteDevice_Args* args) {
-  std::string serialized_descriptor = std::string(
-      args->serialized_descriptor, args->serialized_descriptor_size);
-  xla::Future<std::string> descriptor_future(std::move(serialized_descriptor));
+  auto [promise, future] = xla::Future<std::string>::MakePromise();
+  args->event->future.OnReady(
+      [promise = std::move(promise), descriptor = args->serialized_descriptor,
+       size = args->serialized_descriptor_size](absl::Status status) mutable {
+        if (status.ok()) {
+          promise.Set(std::string(*descriptor, *size));
+        } else {
+          promise.Set(status);
+        }
+        delete descriptor;
+        delete size;
+      });
+
+  future.GetReadyFuture().OnReady([event = args->event](absl::Status status) {
+    CHECK_OK(status);
+    PJRT_Event_Destroy_Args destroy_args;
+    destroy_args.struct_size = PJRT_Event_Destroy_Args_STRUCT_SIZE;
+    destroy_args.extension_start = nullptr;
+    destroy_args.event = event;
+    PJRT_Error* error = PJRT_Event_Destroy(&destroy_args);
+    CHECK_EQ(error, nullptr);
+  });
 
   // TODO(emilyaf): Support on_done callback.
   xla::PjRtBuffer::RemoteSendCallback on_done =
       [](absl::Status status, bool sends_were_enqueued) { CHECK_OK(status); };
-  args->buffer->buffer->CopyToRemoteDevice(descriptor_future, on_done);
+  args->buffer->buffer->CopyToRemoteDevice(future, on_done);
 }
 
 PJRT_CrossHostTransfers_Extension CreateCrossHostTransfersExtension(
