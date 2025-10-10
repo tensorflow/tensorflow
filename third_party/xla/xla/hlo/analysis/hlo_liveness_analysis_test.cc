@@ -35,7 +35,7 @@ namespace {
 
 class HloLivenessAnalysisTest : public HloHardwareIndependentTestBase {
  protected:
-  HloLivenessAnalysisTest() {}
+  HloLivenessAnalysisTest() = default;
 
   // Run liveness analysis on the member module. For convenience returns a
   // reference to the generated analysis stored in analysis_.
