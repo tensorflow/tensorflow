@@ -34,6 +34,25 @@ cc_library(
     deps = ["@eigen_archive//:eigen3"],
 )
 
+cc_library(
+    name = "buffer_allocation_info",
+    hdrs = ["buffer_allocation_info.h"],
+    visibility = internal_visibility([":friends"]),
+    deps = [
+        "//xla:xla_data_proto_cc",
+        "@com_google_absl//absl/log:check",
+    ],
+)
+
+xla_cc_test(
+    name = "buffer_allocation_info_test",
+    srcs = ["buffer_allocation_info_test.cc"],
+    deps = [
+        ":buffer_allocation_info",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 onednn_graph_cc_library(
     name = "onednn_emitter",
     srcs = ["onednn_emitter.cc"],
