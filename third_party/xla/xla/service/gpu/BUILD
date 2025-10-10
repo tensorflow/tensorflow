@@ -1167,6 +1167,7 @@ xla_cc_test(
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/hlo/testlib:test",
         "//xla/tests:xla_internal_test_main",  # build_cleaner: keep
+        "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest",
         "@local_tsl//tsl/platform:status_matchers",
