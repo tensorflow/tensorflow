@@ -525,12 +525,43 @@ cc_library(
         "//xla/tsl/protobuf:dnn_proto_cc",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+xla_cc_test(
+    name = "convolution_thunk_test",
+    srcs = ["convolution_thunk_test.cc"],
+    deps = [
+        ":convolution_thunk",
+        ":thunk",
+        ":thunk_proto_cc",
+        "//xla/service:buffer_assignment",
+        "//xla/tsl/platform:statusor",
+        "//xla/tsl/util/proto:parse_text_proto",
+        "//xla/tsl/util/proto:proto_matchers",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "convolution_reorder_thunk",
+    srcs = ["convolution_reorder_thunk.cc"],
+    hdrs = ["convolution_reorder_thunk.h"],
+    deps = [
+        ":thunk",
+        "//xla/service:buffer_assignment",
+        "//xla/stream_executor:device_memory",
+        "//xla/stream_executor:dnn",
+        "//xla/stream_executor:stream_executor_h",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/types:span",
     ],
 )
@@ -2296,6 +2327,7 @@ tf_proto_library(
         "//xla:xla_data_proto",
         "//xla/service:buffer_assignment_proto",
         "//xla/service/gpu:backend_configs",
+        "//xla/service/gpu:gpu_conv_runner_proto",
         "//xla/service/gpu:gpu_norm_runner_proto",
         "//xla/service/gpu:launch_dimensions_proto",
         "//xla/stream_executor:launch_dim_proto",
@@ -2323,6 +2355,7 @@ cc_library(
     hdrs = ["thunk_proto_deserialization.h"],
     deps = [
         ":conditional_thunk",
+        ":convolution_thunk",
         ":copy_thunk",
         ":cudnn_thunk",
         ":gemm_thunk",

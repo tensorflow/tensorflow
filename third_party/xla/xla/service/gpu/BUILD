@@ -462,6 +462,7 @@ cc_library(
         "//xla/backends/gpu/runtime:command_buffer_cmd_emitter",
         "//xla/backends/gpu/runtime:command_buffer_thunk",
         "//xla/backends/gpu/runtime:conditional_thunk",
+        "//xla/backends/gpu/runtime:convolution_reorder_thunk",
         "//xla/backends/gpu/runtime:convolution_thunk",
         "//xla/backends/gpu/runtime:copy_thunk",
         "//xla/backends/gpu/runtime:cub_sort_thunk",
@@ -945,12 +946,30 @@ cc_library(
     hdrs = ["cublas_cudnn.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
+        ":cublas_cudnn_proto_cc",
         "//xla:util",
         "//xla/hlo/ir:hlo",
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+tf_proto_library(
+    name = "cublas_cudnn_proto",
+    srcs = ["cublas_cudnn.proto"],
+)
+
+xla_cc_test(
+    name = "cublas_cudnn_test",
+    srcs = ["cublas_cudnn_test.cc"],
+    deps = [
+        ":cublas_cudnn",
+        ":cublas_cudnn_proto_cc",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -1183,6 +1202,8 @@ cc_library(
     deps = [
         ":backend_configs_cc",
         ":cublas_cudnn",
+        ":cublas_cudnn_proto_cc",
+        ":gpu_conv_runner_proto_cc",
         ":stream_executor_util",
         "//xla:shape_util",
         "//xla:util",
@@ -1201,6 +1222,29 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "@eigen_archive//:eigen3",
         "@local_tsl//tsl/platform:ml_dtypes",
+    ],
+)
+
+tf_proto_library(
+    name = "gpu_conv_runner_proto",
+    srcs = ["gpu_conv_runner.proto"],
+    deps = [
+        ":backend_configs",
+        ":cublas_cudnn_proto",
+        "//xla:xla_data_proto",
+    ],
+)
+
+xla_cc_test(
+    name = "gpu_conv_runner_test",
+    srcs = ["gpu_conv_runner_test.cc"],
+    deps = [
+        ":backend_configs_cc",
+        ":gpu_conv_runner",
+        ":gpu_conv_runner_proto_cc",
+        "//xla/tsl/util/proto:parse_text_proto",
+        "//xla/tsl/util/proto:proto_matchers",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
