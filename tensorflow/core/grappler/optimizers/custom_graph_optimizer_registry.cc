@@ -167,11 +167,11 @@ void PluginGraphOptimizerRegistry::PrintPluginConfigsIfConflict(
     // remapping                1
     // ...
     string logs = "";
-    strings::StrAppend(&logs, "disable_model_pruning\t\t",
-                       cur_plugin_configs.disable_model_pruning, "\n");
+    absl::StrAppend(&logs, "disable_model_pruning\t\t",
+                    cur_plugin_configs.disable_model_pruning, "\n");
     for (auto const& pair : cur_plugin_configs.toggle_config) {
-      strings::StrAppend(&logs, pair.first, string(32 - pair.first.size(), ' '),
-                         (pair.second != RewriterConfig::OFF), "\n");
+      absl::StrAppend(&logs, pair.first, string(32 - pair.first.size(), ' '),
+                      pair.second != RewriterConfig::OFF, "\n");
     }
     LOG(WARNING) << "Plugin's configs for device_type " << device_type << ":\n"
                  << logs;
