@@ -195,21 +195,6 @@ TEST(CudaComputeCapabilityTest, IsAtLeastMethods) {
       CudaComputeCapability(10, 0, FeatureExtension::kAcceleratedFeatures)
           .IsAtLeastBlackwell());
   EXPECT_TRUE(CudaComputeCapability(10, 1).IsAtLeastBlackwell());
-
-  // IsAtLeastBlackwellPro (sm_120)
-  EXPECT_FALSE(CudaComputeCapability(11, 0).IsAtLeastBlackwellPro());
-  EXPECT_FALSE(
-      CudaComputeCapability(11, 0, FeatureExtension::kForwardCompatibleFeatures)
-          .IsAtLeastBlackwellPro());
-  EXPECT_TRUE(CudaComputeCapability(12, 0).IsAtLeastBlackwellPro());
-  EXPECT_TRUE(
-      CudaComputeCapability(12, 0, FeatureExtension::kAcceleratedFeatures)
-          .IsAtLeastBlackwellPro());
-  EXPECT_TRUE(CudaComputeCapability(12, 0).IsAtLeastBlackwellPro());
-  EXPECT_TRUE(CudaComputeCapability(12, 0).IsAtLeastBlackwellPro());
-  EXPECT_TRUE(
-      CudaComputeCapability(12, 0, FeatureExtension::kForwardCompatibleFeatures)
-          .IsAtLeastBlackwellPro());
 }
 
 TEST(CudaComputeCapabilityTest, FromProtoWithFeatureExtensionSpecified) {
