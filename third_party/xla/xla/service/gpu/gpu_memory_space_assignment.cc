@@ -18,13 +18,13 @@ limitations under the License.
 #include "absl/base/no_destructor.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
-#include "absl/strings/match.h"
 #include "xla/hlo/analysis/hlo_alias_analysis.h"
 #include "xla/hlo/analysis/hlo_ordering.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/buffer_value.h"
+#include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/hlo_value.h"
 
 namespace xla::gpu {
@@ -61,13 +61,6 @@ bool IsNvshmemInstruction(const HloInstruction* inst) {
   return is_nvshmem_collective;
 }
 
-bool IsCollectiveMosaicGpuInstruction(const HloInstruction* inst) {
-  return inst->opcode() == HloOpcode::kCustomCall &&
-         (inst->custom_call_target() == "mosaic_gpu" ||
-          inst->custom_call_target() == "mosaic_gpu_v2") &&
-         absl::StrContains(inst->raw_backend_config_string(), "nvshmem");
-}
-
 bool IsCollectiveMemoryInstruction(const HloInstruction* inst) {
   return kSupportedCollectiveOpcodes->contains(inst->opcode()) ||
          // opcode or async wrapped opcode is in kSupportedCollectiveOpcodes.
@@ -92,11 +85,11 @@ bool HasCollectiveMemoryInstruction(const HloValue* input_alias,
 
 bool HasCollectiveMosaicInstruction(const HloValue* input_alias) {
   for (auto& use : input_alias->GetUses()) {
-    if (IsCollectiveMosaicGpuInstruction(use.instruction)) {
+    if (IsCollectiveMosaicGpuInstruction(*use.instruction)) {
       return true;
     }
   }
-  return IsCollectiveMosaicGpuInstruction(input_alias->instruction());
+  return IsCollectiveMosaicGpuInstruction(*input_alias->instruction());
 }
 
 // Set memory space to MemorySpaceColor::kCollective for all allocations used by

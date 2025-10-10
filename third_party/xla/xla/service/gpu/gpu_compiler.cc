@@ -2107,7 +2107,8 @@ bool ShouldAddCopyForCollectiveMemorySpace(const HloValue* value) {
           module->entry_computation()->parameter_instructions(), inst) ||
       (inst->opcode() == HloOpcode::kConstant)) {
     for (auto& use : value->GetUses()) {
-      if (IsCollective(use.instruction)) {
+      if (IsCollective(use.instruction) ||
+          IsCollectiveMosaicGpuInstruction(*use.instruction)) {
         return true;
       }
     }

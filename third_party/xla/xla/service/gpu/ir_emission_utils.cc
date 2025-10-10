@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/escaping.h"
+#include "absl/strings/match.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
@@ -149,6 +150,13 @@ bool IsCustomCallToTopK(const HloInstruction& hlo) {
 bool IsCustomCallToPtxKernel(const HloInstruction& hlo) {
   return hlo.opcode() == HloOpcode::kCustomCall &&
          hlo.custom_call_target() == "__gpu$xla.gpu.ptx";
+}
+
+bool IsCollectiveMosaicGpuInstruction(const HloInstruction& hlo) {
+  return hlo.opcode() == HloOpcode::kCustomCall &&
+         (hlo.custom_call_target() == "mosaic_gpu" ||
+          hlo.custom_call_target() == "mosaic_gpu_v2") &&
+         absl::StrContains(hlo.raw_backend_config_string(), "nvshmem");
 }
 
 static bool IsContiguousSlice(

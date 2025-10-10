@@ -159,6 +159,9 @@ bool IsCustomCallToTopK(const HloInstruction& hlo);
 // implementation.
 bool IsCustomCallToPtxKernel(const HloInstruction& hlo);
 
+// Returns true if instruction is a Mosaic GPU collective instruction.
+bool IsCollectiveMosaicGpuInstruction(const HloInstruction& hlo);
+
 // Cholesky decomposition. Takes a (batched) matrix as input, and returns a
 // tuple of (result, workspace, info), where result is the result of the
 // Cholesky decomposition, workspace is scratch space for cuSolver, and info

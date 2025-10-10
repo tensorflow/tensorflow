@@ -108,6 +108,7 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     deps = [
         ":backend_configs_cc",
+        ":ir_emission_utils",
         "//xla:xla_proto_cc",
         "//xla/hlo/analysis:hlo_alias_analysis",
         "//xla/hlo/analysis:hlo_ordering",
