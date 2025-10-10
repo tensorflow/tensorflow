@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/stream_executor/device_description.h"
 
@@ -49,6 +50,7 @@ class ThunkPassInterface {
 
   virtual absl::StatusOr<bool> Run(SequentialThunk* root_thunk,
                                    const DebugOptions& debug_options,
+                                   const HloModule* absl_nullable hlo_module,
                                    const se::DeviceDescription& device_info,
                                    ThunkPassBufferAllocator& allocator) = 0;
 
@@ -69,6 +71,7 @@ class ThunkPassPipeline : public ThunkPassInterface {
   // Returns true if any pass changed the thunk tree.
   absl::StatusOr<bool> Run(SequentialThunk* root_thunk,
                            const DebugOptions& debug_options,
+                           const HloModule* absl_nullable hlo_module,
                            const se::DeviceDescription& device_info,
                            ThunkPassBufferAllocator& allocator) override;
 
