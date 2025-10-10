@@ -29,7 +29,9 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
+#include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/OwningOpRef.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -39,6 +41,7 @@ limitations under the License.
 #include "xla/service/gpu/model/block_level_parameters.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tests/hlo_test_base.h"
+#include "xla/tests/hlo_test_base_with_mlir_context.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 
@@ -60,6 +63,34 @@ absl::Status CreateTritonIrAndFileCheck(
     const HloComputation& computation,
     const BlockLevelParameters& block_level_parameters,
     absl::string_view filecheck_pattern);
+
+// Creates a shared dialect IR for the fusion `triton_fusion_name` inside the
+// computation defined by `hlo_text`.
+// The function returns the shared dialect IR and the HLO module. The HLO module
+// is returned so that the user can work with the computation that generated the
+// fusion if needed.
+// This function also checks the generated shared dialect IR against the
+// `filecheck_pattern`.
+absl::StatusOr<
+    std::pair<mlir::OwningOpRef<mlir::ModuleOp>, std::unique_ptr<HloModule>>>
+CreateXTileIrAndFileCheck(HloTestBaseWithMlirContext* test,
+                          absl::string_view hlo_text,
+                          absl::string_view triton_fusion_name,
+                          absl::string_view filecheck_pattern);
+
+// Creates a shared dialect IR from the given HLO computation and returns it.
+// This function also checks the generated shared dialect IR against the
+// `filecheck_pattern`.
+absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateXTileIrAndFileCheck(
+    HloTestBaseWithMlirContext* test, const HloComputation& computation,
+    const BlockLevelParameters& block_level_parameters,
+    absl::string_view filecheck_pattern);
+
+// Lowers the given shared dialect IR to Triton IR and checks the result against
+// the `filecheck_pattern`.
+absl::Status LowerXTileIrToTritonAndFileCheck(
+    HloTestBaseWithMlirContext* test, mlir::ModuleOp xtile_dialect_module,
+    absl::string_view filecheck_pattern, const HloFusionInstruction& fusion);
 
 absl::Status CreateTritonIrAndFileCheckForDot(
     HloTestBase* test, absl::string_view hlo_text,
