@@ -2805,6 +2805,11 @@ xla_test(
     ],
 )
 
+tf_proto_library(
+    name = "sdc_proto",
+    srcs = ["sdc.proto"],
+)
+
 cc_library(
     name = "sdc_buffer_id",
     hdrs = ["sdc_buffer_id.h"],

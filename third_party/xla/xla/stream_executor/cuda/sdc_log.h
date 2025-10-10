@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/statusor.h"
+#include "xla/backends/gpu/runtime/sdc.pb.h"
 #include "xla/backends/gpu/runtime/sdc_log_structs.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/stream.h"
@@ -51,6 +52,13 @@ class SdcLog {
   static absl::StatusOr<SdcLog> CreateOnDevice(
       Stream& stream, DeviceMemory<uint8_t> log_buffer);
 
+  // Creates a `SdcLog` from an already initialized device memory buffer.
+  //
+  // `log_buffer` must contain an initialized `SdcLogHeader`.
+  static SdcLog FromDeviceMemoryUnchecked(DeviceMemory<uint8_t> log_buffer) {
+    return SdcLog(log_buffer);
+  }
+
   // Reads the header from the device log.
   //
   // `stream` must be associated with the same device as the one used to create
@@ -67,6 +75,12 @@ class SdcLog {
   // the log.
   absl::StatusOr<std::vector<xla::gpu::SdcLogEntry>> ReadFromDevice(
       Stream& stream) const;
+
+  // Reads all entries from the device log into a proto dump.
+  //
+  // `stream` must be associated with the same device as the one used to create
+  // the log.
+  absl::StatusOr<xla::gpu::SdcLogProto> ReadProto(Stream& stream) const;
 
   // Returns a view of the `SdcLogHeader`.
   //
