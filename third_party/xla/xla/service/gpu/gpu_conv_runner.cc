@@ -32,6 +32,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/cublas_cudnn.h"
+#include "xla/service/gpu/gpu_conv_runner.pb.h"
 #include "xla/service/gpu/stream_executor_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -650,6 +651,38 @@ absl::Status RunGpuConv(const gpu::GpuConvConfig& config,
     default:
       return Unimplemented("Unimplemented convolution");
   }
+}
+
+absl::StatusOr<GpuConvDescriptor> GpuConvDescriptor::FromProto(
+    const GpuConvDescriptorProto& proto) {
+  GpuConvDescriptor descriptor;
+  TF_ASSIGN_OR_RETURN(descriptor.kind, CudnnConvKindFromProto(proto.kind()));
+  descriptor.backend_config = proto.backend_config();
+  TF_ASSIGN_OR_RETURN(descriptor.operand0_shape,
+                      Shape::FromProto(proto.operand0_shape()));
+  TF_ASSIGN_OR_RETURN(descriptor.operand1_shape,
+                      Shape::FromProto(proto.operand1_shape()));
+  TF_ASSIGN_OR_RETURN(descriptor.result_shape,
+                      Shape::FromProto(proto.result_shape()));
+  descriptor.scratch_size = proto.scratch_size();
+  descriptor.window = proto.window();
+  descriptor.dnums = proto.dnums();
+  descriptor.feature_group_count = proto.feature_group_count();
+  return descriptor;
+}
+
+GpuConvDescriptorProto GpuConvDescriptor::ToProto() const {
+  GpuConvDescriptorProto proto;
+  proto.set_kind(CudnnConvKindToProto(kind));
+  *proto.mutable_backend_config() = backend_config;
+  *proto.mutable_operand0_shape() = operand0_shape.ToProto();
+  *proto.mutable_operand1_shape() = operand1_shape.ToProto();
+  *proto.mutable_result_shape() = result_shape.ToProto();
+  proto.set_scratch_size(scratch_size);
+  *proto.mutable_window() = window;
+  *proto.mutable_dnums() = dnums;
+  proto.set_feature_group_count(feature_group_count);
+  return proto;
 }
 
 }  // namespace gpu

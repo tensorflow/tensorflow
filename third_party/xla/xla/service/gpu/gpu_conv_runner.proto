@@ -1,0 +1,20 @@
+syntax = "proto3";
+
+package xla.gpu;
+
+import "xla/service/gpu/backend_configs.proto";
+import "xla/tsl/protobuf/dnn.proto";
+import "xla/xla_data.proto";
+
+// Serialization of xla::gpu::GpuConvDescriptor struct.
+message GpuConvDescriptorProto {
+  stream_executor.dnn.ConvolutionKind kind = 1;
+  CudnnConvBackendConfig backend_config = 2;
+  xla.ShapeProto operand0_shape = 3;
+  xla.ShapeProto operand1_shape = 4;
+  xla.ShapeProto result_shape = 5;
+  int64 scratch_size = 6;
+  xla.Window window = 7;
+  xla.ConvolutionDimensionNumbers dnums = 8;
+  int64 feature_group_count = 9;
+}
