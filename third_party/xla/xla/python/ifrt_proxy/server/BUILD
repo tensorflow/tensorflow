@@ -129,6 +129,7 @@ cc_library(
     deps = [
         ":host_buffer",
         ":host_callback",
+        ":ifrt_backend_user_context",
         ":version",
         "//xla:shape_util",
         "//xla:status_macros",
@@ -246,6 +247,30 @@ cc_library(
         "//xla/tsl/concurrency:future",
         "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest_for_library",
+    ],
+)
+
+cc_library(
+    name = "ifrt_backend_user_context",
+    srcs = ["ifrt_backend_user_context.cc"],
+    hdrs = ["ifrt_backend_user_context.h"],
+    deps = [
+        "//xla/python/ifrt:user_context",
+        "//xla/tsl/concurrency:ref_count",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+ifrt_proxy_cc_test(
+    name = "ifrt_backend_user_context_test",
+    srcs = ["ifrt_backend_user_context_test.cc"],
+    deps = [
+        ":ifrt_backend_user_context",
+        "//xla/python/ifrt:user_context",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
