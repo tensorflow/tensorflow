@@ -437,8 +437,6 @@ class XLAConfigOptions:
       if compiler_pair == (SyclCompiler.ICPX, HostCompiler.CLANG):
         rc.append("build --config sycl")
         rc.append("build --config icpx_clang")
-      elif compiler_pair == (SyclCompiler.ICPX, HostCompiler.GCC):
-        rc.append("build --config sycl")
       else:
         raise NotImplementedError(" Sycl with host compiler not supported")
 
@@ -630,7 +628,6 @@ def main():
 def is_hermetic_build(backend: Backend, os_host: OS):
   return (
       backend != Backend.ROCM
-      and backend != Backend.SYCL
       and os_host == OS.LINUX
   )
 
