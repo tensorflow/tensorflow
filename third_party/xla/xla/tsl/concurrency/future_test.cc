@@ -835,6 +835,24 @@ TEST(FutureTest, OnReadyOnExecutor) {
       [](absl::StatusOr<std::unique_ptr<int32_t>> x) { ASSERT_EQ(**x, 42); });
 }
 
+TEST(FutureTest, MapOnExecutor) {
+  Future<> future0(absl::OkStatus());
+  Future<int32_t> mapped0 =
+      future0.Map(InlineExecutor::Instance(), [] { return 42; });
+  EXPECT_EQ(*mapped0.Await(), 42);
+
+  Future<int32_t> future1(42);
+  Future<int32_t> mapped1 =
+      future1.Map(InlineExecutor::Instance(), [](int32_t x) { return x + 1; });
+  EXPECT_EQ(*mapped1.Await(), 43);
+
+  Future<std::unique_ptr<int32_t>> future2(std::make_unique<int32_t>(42));
+  Future<int32_t> mapped2 =
+      std::move(future2).Map(InlineExecutor::Instance(),
+                             [](std::unique_ptr<int32_t> x) { return *x + 1; });
+  EXPECT_EQ(*mapped2.Await(), 43);
+}
+
 //===----------------------------------------------------------------------===//
 // Performance benchmarks.
 //===----------------------------------------------------------------------===//
