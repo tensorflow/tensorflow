@@ -29,7 +29,6 @@ namespace monitoring {
 namespace testing {
 namespace {
 
-using ::tensorflow::testing::StatusIs;
 using ::testing::HasSubstr;
 
 template <typename MessageType>
