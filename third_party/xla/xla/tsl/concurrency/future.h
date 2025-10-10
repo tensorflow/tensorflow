@@ -23,6 +23,7 @@ limitations under the License.
 #include <type_traits>
 #include <utility>
 
+#include "absl/base/attributes.h"
 #include "absl/base/no_destructor.h"
 #include "absl/base/optimization.h"
 #include "absl/meta/type_traits.h"
@@ -328,7 +329,7 @@ class FutureBase : public FutureMoveControl<is_move_only> {
   template <typename F,
             std::enable_if_t<!is_move_only &&
                              std::is_invocable_v<F, const T&>>* = nullptr>
-  void OnReady(F&& f) const& {
+  ABSL_ATTRIBUTE_ALWAYS_INLINE void OnReady(F&& f) const& {
     CHECK(IsValid());
     promise_.AndThen(
         [promise = promise_.AsPtr(), f = std::forward<F>(f)]() mutable {
@@ -347,7 +348,7 @@ class FutureBase : public FutureMoveControl<is_move_only> {
   template <typename F,
             std::enable_if_t<std::is_invocable_v<
                 F, std::conditional_t<is_move_only, T, const T&>>>* = nullptr>
-  void OnReady(F&& f) && {
+  ABSL_ATTRIBUTE_ALWAYS_INLINE void OnReady(F&& f) && {
     CHECK(IsValid());
     promise_.AndThen(
         [promise = promise_.AsPtr(), f = std::forward<F>(f)]() mutable {
@@ -483,7 +484,7 @@ class Future : public internal::FutureBase<absl::StatusOr<T>> {
   //
   // - on_block_start is called before Await starts to block.
   // - on_block_end is called after Await finishes blocking.
-  static std::pair<Promise, Future<T>> MakePromise(
+  static ABSL_ATTRIBUTE_ALWAYS_INLINE std::pair<Promise, Future<T>> MakePromise(
       FutureHelpers::OnBlockStart on_block_start = nullptr,
       FutureHelpers::OnBlockEnd on_block_end = nullptr) {
     Promise promise(tsl::MakeUnconstructedAsyncValueRef<absl::StatusOr<T>>());
@@ -535,7 +536,7 @@ class Future : public internal::FutureBase<absl::StatusOr<T>> {
   template <typename R, typename F,
             typename U = std::invoke_result_t<F, const T&>,
             internal::Mappable<R, U>* = nullptr>
-  [[nodiscard]] Future<R> Map(F&& f) const& {
+  [[nodiscard]] ABSL_ATTRIBUTE_ALWAYS_INLINE Future<R> Map(F&& f) const& {
     auto [promise, future] = Future<R>::MakePromise();
 
     using Value = const absl::StatusOr<T>&;
@@ -601,7 +602,7 @@ class Future : public internal::FutureBase<absl::StatusOr<T>> {
             typename U = std::invoke_result_t<
                 F, std::conditional_t<is_move_only, T, const T&>>,
             internal::Mappable<R, U>* = nullptr>
-  [[nodiscard]] Future<R> Map(F&& f) && {
+  [[nodiscard]] ABSL_ATTRIBUTE_ALWAYS_INLINE Future<R> Map(F&& f) && {
     auto [promise, future] = Future<R>::MakePromise();
 
     using Value = std::conditional_t<is_move_only, absl::StatusOr<T>,
@@ -647,7 +648,7 @@ class Future : public internal::FutureBase<absl::StatusOr<T>> {
   // - `R` is any other type      -> Future<R>
   //
   template <typename F, typename R = std::invoke_result_t<F, const T&>>
-  [[nodiscard]] auto Map(F&& f) const& {
+  [[nodiscard]] ABSL_ATTRIBUTE_ALWAYS_INLINE auto Map(F&& f) const& {
     if constexpr (std::is_void_v<R>) {
       return Map<void>(std::forward<F>(f));
     } else if constexpr (internal::is_status_v<R>) {
@@ -667,7 +668,7 @@ class Future : public internal::FutureBase<absl::StatusOr<T>> {
   //
   template <typename F, typename R = std::invoke_result_t<
                             F, std::conditional_t<is_move_only, T, const T&>>>
-  [[nodiscard]] auto Map(F&& f) && {
+  [[nodiscard]] ABSL_ATTRIBUTE_ALWAYS_INLINE auto Map(F&& f) && {
     if constexpr (std::is_void_v<R>) {
       return std::move(*this).template Map<void>(std::forward<F>(f));
     } else if constexpr (internal::is_status_v<R>) {
@@ -759,7 +760,7 @@ class Future<void> : public internal::FutureBase<absl::Status> {
 
   // Returns a pair of connected Promise and Future<>. Setting the returned
   // promise will fulfill the connected future.
-  static std::pair<Promise, Future<>> MakePromise(
+  static ABSL_ATTRIBUTE_ALWAYS_INLINE std::pair<Promise, Future<>> MakePromise(
       FutureHelpers::OnBlockStart on_block_start = nullptr,
       FutureHelpers::OnBlockEnd on_block_end = nullptr) {
     Promise promise(tsl::MakeUnconstructedAsyncValueRef<absl::Status>());
@@ -809,7 +810,7 @@ class Future<void> : public internal::FutureBase<absl::Status> {
   // See `Map` functor type inference defined below for more details.
   template <typename R, typename F, typename U = std::invoke_result_t<F>,
             internal::Mappable<R, U>* = nullptr>
-  [[nodiscard]] Future<R> Map(F&& f) {
+  [[nodiscard]] ABSL_ATTRIBUTE_ALWAYS_INLINE Future<R> Map(F&& f) {
     auto [promise, future] = Future<R>::MakePromise();
 
     OnReady([promise = std::move(promise),
@@ -853,7 +854,7 @@ class Future<void> : public internal::FutureBase<absl::Status> {
   // - `R` is any other type      -> Future<R>
   //
   template <typename F, typename R = std::invoke_result_t<F>>
-  [[nodiscard]] auto Map(F&& f) {
+  [[nodiscard]] ABSL_ATTRIBUTE_ALWAYS_INLINE auto Map(F&& f) {
     if constexpr (std::is_void_v<R>) {
       return Map<void>(std::forward<F>(f));
     } else if constexpr (internal::is_status_v<R>) {
@@ -868,16 +869,14 @@ class Future<void> : public internal::FutureBase<absl::Status> {
   // Returns an Future<R> that is constructed from the given value. If *this
   // completes with an error, returned future will also be an error.
   //
-  // Note: The implementation may choose to not run `f` if it can infer that the
-  // returned future will never be used. Do not use this method if `f` has a
-  // side effect that must always be executed when the future becomes ready.
+  // Sample usage: make buffer available when copy is complete
   //
-  // Sample usage: make buffer available when future is ready
+  //   std::unique_ptr<Buffer> buffer = AllocateDestinationBuffer();
+  //   Future<> future = CopyToBuffer(buffer, ...);
+  //   future.MapTo(std::move(buffer));
   //
-  // std::unique_ptr<Buffer> buffer = ...;
-  // future.MapTo<R>(std::move(buffer));
   template <typename R>
-  Future<absl::remove_cvref_t<R>> MapTo(R&& value) {
+  [[nodiscard]] ABSL_ATTRIBUTE_ALWAYS_INLINE auto MapTo(R&& value) {
     return Map<absl::remove_cvref_t<R>>(
         [value = std::forward<R>(value)]() mutable {
           return std::move(value);
