@@ -1060,7 +1060,7 @@ void AsyncValue::AndThen(Executor& executor, Waiter&& waiter) {
   }
 
   EnqueueWaiter(
-      [&executor, waiter = std::forward<Waiter>(waiter)] {
+      [&executor, waiter = std::forward<Waiter>(waiter)]() mutable {
         executor.Execute(std::move(waiter));
       },
       waiters_and_state);

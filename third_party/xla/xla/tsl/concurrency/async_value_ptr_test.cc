@@ -622,10 +622,6 @@ TEST(AsyncValuePtrTest, Cast) {
 // Performance benchmarks below
 //===----------------------------------------------------------------------===//
 
-struct InlineExecutor : public Executor {
-  void Execute(Task task) final { std::move(task)(); }
-};
-
 static void BM_MapIntToFloat(benchmark::State& state) {
   auto ref = MakeAvailableAsyncValueRef<int32_t>(42);
   auto ptr = ref.AsPtr();

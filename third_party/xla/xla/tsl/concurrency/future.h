@@ -316,50 +316,44 @@ class FutureBase : public FutureMoveControl<is_move_only> {
   // This function defined out of line as it requires Future<> definition.
   [[nodiscard]] Future<> GetReadyFuture() const;
 
+  // A type predicate to check if `F` is a valid `OnReady` callback.
+  template <typename F, bool rvalue = false>
+  using OnReadyFunctor = std::enable_if_t<std::is_invocable_v<
+      F, std::conditional_t<rvalue && is_move_only, T, const T&>>>;
+
   // Registers callback to be called once the promise is ready, with the final
-  // value.
-  //
-  // callback may be called on an internal system thread or the calling thread.
-  // The client should avoid any potentially re-entrant API calls within the
-  // callback, for example by using the callback to enqueue work on a
-  // client-owned threadpool.
-  template <typename F,
-            std::enable_if_t<!is_move_only &&
-                             std::is_invocable_v<F, const T&>>* = nullptr>
+  // value. Callback will be invoked on a thread that sets the promise value,
+  // or in the caller thread if the future is already available.
+  template <typename F, OnReadyFunctor<F>* = nullptr>
   ABSL_ATTRIBUTE_ALWAYS_INLINE void OnReady(F&& f) const& {
     CHECK(IsValid());
-    promise_.AndThen(
-        [promise = promise_.AsPtr(), f = std::forward<F>(f)]() mutable {
-          DCHECK(promise.IsAvailable());
-          f(*promise);
-        });
+    promise_.AndThen(Wrap(std::forward<F>(f)));
   }
 
   // Registers callback to be called once the promise is ready, with the final
-  // value.
-  //
-  // callback may be called on an internal system thread or the calling thread.
-  // The client should avoid any potentially re-entrant API calls within the
-  // callback, for example by using the callback to enqueue work on a
-  // client-owned threadpool.
-  template <typename F,
-            std::enable_if_t<std::is_invocable_v<
-                F, std::conditional_t<is_move_only, T, const T&>>>* = nullptr>
+  // value. Callback will be invoked on a user-specified executor.
+  template <typename F, OnReadyFunctor<F>* = nullptr>
+  ABSL_ATTRIBUTE_ALWAYS_INLINE void OnReady(Executor& executor, F&& f) const& {
+    CHECK(IsValid());
+    promise_.AndThen(executor, Wrap(std::forward<F>(f)));
+  }
+
+  // Registers callback to be called once the promise is ready, with the final
+  // value. Callback will be invoked on a thread that sets the promise value,
+  // or in the caller thread if the future is already available.
+  template <typename F, OnReadyFunctor<F, true>* = nullptr>
   ABSL_ATTRIBUTE_ALWAYS_INLINE void OnReady(F&& f) && {
     CHECK(IsValid());
-    promise_.AndThen(
-        [promise = promise_.AsPtr(), f = std::forward<F>(f)]() mutable {
-          DCHECK(promise.IsAvailable());
-          if constexpr (is_move_only) {
-            f(std::move(*promise));
-          } else {
-            // We can't move from the promise to the caller because for copyable
-            // futures we can have multiple copies of the Future sharing the
-            // same underlying promise object.
-            f(*promise);
-          }
-        });
-    // Reset the promise to make the moved-from future "empty".
+    promise_.AndThen(std::move(*this).Wrap(std::forward<F>(f)));
+    promise_.reset();
+  }
+
+  // Registers callback to be called once the promise is ready, with the final
+  // value. Callback will be invoked on a user-specified executor.
+  template <typename F, OnReadyFunctor<F, true>* = nullptr>
+  ABSL_ATTRIBUTE_ALWAYS_INLINE void OnReady(Executor& executor, F&& f) && {
+    CHECK(IsValid());
+    promise_.AndThen(executor, std::move(*this).Wrap(std::forward<F>(f)));
     promise_.reset();
   }
 
@@ -377,6 +371,29 @@ class FutureBase : public FutureMoveControl<is_move_only> {
 
  private:
   friend class tsl::FutureHelpers;
+
+  // Wraps a callback into a functor compatible with AsyncValue::AndThen.
+  template <typename F>
+  auto Wrap(F&& f) const& {
+    return [promise = promise_.AsPtr(), f = std::forward<F>(f)]() mutable {
+      f(*promise);
+    };
+  }
+
+  // Wraps a callback into a functor compatible with AsyncValue::AndThen.
+  template <typename F>
+  auto Wrap(F&& f) && {
+    return [promise = promise_.AsPtr(), f = std::forward<F>(f)]() mutable {
+      if constexpr (is_move_only) {
+        f(std::move(*promise));
+      } else {
+        // We can't move from the promise to the caller because for copyable
+        // futures we can have multiple copies of the Future sharing the
+        // same underlying promise object.
+        f(*promise);
+      }
+    };
+  }
 
   tsl::AsyncValueRef<T> promise_;
 
