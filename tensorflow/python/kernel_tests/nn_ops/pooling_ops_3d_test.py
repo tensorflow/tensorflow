@@ -202,7 +202,8 @@ class PoolingTest(test.TestCase):
       padding="VALID",
       data_format="NDHWC",
     )
-    self.evaluate(t)
+    values = self.evaluate(t)
+    self.assertEqual(values.shape, (1, 10, 7, 1, 9))
 
   def testMaxPool3dValidPadding(self):
     expected_output = [40.0, 41.0, 42.0]
