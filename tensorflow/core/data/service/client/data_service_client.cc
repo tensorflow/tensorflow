@@ -813,7 +813,7 @@ void DataServiceClient::ProcessGetElementResponse(
 
 absl::Status DataServiceClient::GetElementTraced(
     Task* task, int64_t deadline_micros, bool enqueue_result, bool allow_skip,
-    std::shared_ptr<Result> result) TF_LOCKS_EXCLUDED(mu_) {
+    std::shared_ptr<Result> result) {
   VLOG(3) << "Getting an element for task id " << task->info.task_id();
   tsl::profiler::TraceMe activity("GetDataServiceElement",
                                   tsl::profiler::TraceMeLevel::kInfo);
@@ -832,7 +832,6 @@ absl::Status DataServiceClient::GetElementTraced(
   }
   absl::Status s =
       GetElement(task, deadline_micros, enqueue_result, allow_skip, result);
-  mutex_lock l(mu_);
   VLOG(3) << "Got an element for task id " << task->info.task_id();
   return s;
 }
