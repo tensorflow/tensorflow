@@ -125,6 +125,7 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:MathDialect",
         "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TensorDialect",
         "@local_tsl//tsl/platform:statusor",
         "@triton//:TritonDialects",
     ],
@@ -880,6 +881,7 @@ cc_library(
         "//xla/stream_executor:device_description",
         "//xla/stream_executor/cuda:cuda_compute_capability",
         "//xla/tests:hlo_test_base",
+        "//xla/tests:hlo_test_base_with_mlir_context",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
@@ -984,6 +986,24 @@ xla_test(
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest",
+    ],
+)
+
+xla_cc_test(
+    name = "fusion_emitter_shared_dialect_test",
+    srcs = if_gpu_is_configured(["fusion_emitter_shared_dialect_test.cc"]),
+    tags = ["no_mac"],
+    deps = [
+        ":test_utils",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/parser:hlo_parser",
+        "//xla/service/gpu/model:block_level_parameters",
+        "//xla/tests:hlo_test_base_with_mlir_context",
+        "//xla/tests:xla_internal_test_main",  # fixdeps: keep
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest",
+        "@llvm-project//mlir:IR",
     ],
 )
 

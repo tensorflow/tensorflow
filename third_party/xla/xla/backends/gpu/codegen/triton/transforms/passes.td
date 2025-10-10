@@ -200,4 +200,14 @@ def StableHLOLowerToTritonPass
   let constructor = "CreateStableHLOLowerToTritonPass()";
 }
 
+def TensorLowerToTritonPass
+    : Pass<"tensor-lower-to-triton", "mlir::ModuleOp"> {
+  let summary = "Lowers tensor operations to their Triton equivalent.";
+  let dependentDialects = [
+    "tensor::TensorDialect",
+    "triton::TritonDialect"
+  ];
+  let constructor = "CreateTensorLowerToTritonPass()";
+}
+
 #endif  // XLA_BACKENDS_GPU_CODEGEN_TRITON_PASSES_TD_
