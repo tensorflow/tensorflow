@@ -583,7 +583,6 @@ cc_library(
         "//xla:xla_data_proto_cc",
         "//xla/backends/autotuner:profiler",
         "//xla/backends/gpu/runtime:buffer_comparator",
-        "//xla/hlo/ir:hlo",
         "//xla/service:executable",
         "//xla/service:maybe_owning_device_memory",
         "//xla/service:shaped_buffer",
