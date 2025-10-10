@@ -24,6 +24,14 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#ifdef LIBTPU_ON_GCE
+#define PY_ARRAY_UNIQUE_SYMBOL _tpu_sdk_numpy_api
+#define NO_IMPORT_ARRAY
+#include "numpy/arrayobject.h"
+#else
+#include "xla/tsl/python/lib/core/numpy.h"
+#endif
+
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/status/statusor.h"
@@ -47,7 +55,6 @@ limitations under the License.
 #include "xla/status_macros.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/statusor.h"
-#include "xla/tsl/python/lib/core/numpy.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 

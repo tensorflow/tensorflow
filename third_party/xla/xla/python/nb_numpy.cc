@@ -23,7 +23,10 @@ limitations under the License.
 
 #include "absl/types/span.h"
 #include "nanobind/nanobind.h"
+
+#ifndef LIBTPU_ON_GCE
 #include "xla/tsl/python/lib/core/numpy.h"
+#endif
 
 namespace nb = nanobind;
 

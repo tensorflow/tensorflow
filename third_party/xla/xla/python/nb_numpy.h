@@ -27,10 +27,19 @@ limitations under the License.
 #include <cstdint>
 #include <optional>
 
+#ifdef LIBTPU_ON_GCE
+#define PY_ARRAY_UNIQUE_SYMBOL _tpu_sdk_numpy_api
+#define NO_IMPORT_ARRAY
+#include "numpy/arrayobject.h"
+#include "numpy/ndarraytypes.h"
+#include "numpy/npy_2_compat.h"
+#else
+#include "xla/tsl/python/lib/core/numpy.h"
+#endif
+
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "nanobind/nanobind.h"
-#include "xla/tsl/python/lib/core/numpy.h"
 
 #if NPY_ABI_VERSION < 0x02000000
 #define PyDataType_ELSIZE(descr) ((descr)->elsize)
