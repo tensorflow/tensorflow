@@ -20,6 +20,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/executable_run_options.h"
@@ -31,9 +32,7 @@ limitations under the License.
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor_memory_allocator.h"
-#include "tsl/platform/status_matchers.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla::gpu {
 namespace {
@@ -101,6 +100,14 @@ TEST(CustomCallThunkTest, CustomCallOnCustomStream) {
   thunk->set_execution_stream_id(ExecutionStreamId(1));
   EXPECT_THAT(thunk->ExecuteOnStream(Thunk::ExecuteParams(params)),
               absl_testing::IsOk());
+}
+
+TEST(CustomCallThunkTest, ToStringIncludesCustomCallTarget) {
+  TF_ASSERT_OK_AND_ASSIGN(auto thunk, CustomCallThunk::Create(
+                                          Thunk::ThunkInfo(), "target_name",
+                                          [](auto...) {}, {}, {}, ""));
+  EXPECT_THAT(thunk->ToString(/*indent=*/0),
+              ::testing::HasSubstr("target_name"));
 }
 
 }  // namespace
