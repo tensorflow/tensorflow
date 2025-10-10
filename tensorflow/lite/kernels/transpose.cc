@@ -126,9 +126,19 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       }
       [[fallthrough]];
     case kTfLiteUInt8:
-    case kTfLiteInt8:
       TF_LITE_TRANSPOSE(reference_ops, int8_t);
       break;
+    case kTfLiteInt8: {
+      // Quantization check for int8
+      const TfLiteTensor* input = op_context.input;
+      const TfLiteTensor* output = op_context.output;
+      if (input->params.scale != output->params.scale || input->params.zero_point != output->params.zero_point) {
+        TF_LITE_KERNEL_LOG(context, "Input and output tensors must have the same scale and zero_point for int8 quantized Transpose.");
+        return kTfLiteError;
+      }
+      TF_LITE_TRANSPOSE(reference_ops, int8_t);
+      break;
+    }
     case kTfLiteInt4: {
       const size_t bytes_unpacked = op_context.input->bytes * 2;
       auto unpacked_input_data = std::make_unique<int8_t[]>(bytes_unpacked);

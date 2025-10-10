@@ -1,3 +1,4 @@
+
 /* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -369,6 +370,30 @@ TEST(TransposeTest, Test4DFlattenTwo) {
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 2, 2, 2}));
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({0, 4, 1, 5, 2, 6, 3, 7, 8, 12, 9,
                                                13, 10, 14, 11, 15}));
+}
+
+TEST(TransposeTest, Int8MismatchedQuantizationFails) {
+  // Input and output have different scale/zero_point.
+  class M : public SingleOpModel {
+   public:
+    M() {
+      input_ = AddInput({TensorType_INT8, {2, 2}, 0.0f, 0.0f, 0.5f, 1});
+      perm_ = AddConstInput(TensorType_INT32, {1, 0}, {2});
+      output_ = AddOutput({TensorType_INT8, {2, 2}, 0.0f, 0.0f, 0.25f, 2});
+      SetBuiltinOp(BuiltinOperator_TRANSPOSE, BuiltinOptions_TransposeOptions,
+                   CreateTransposeOptions(builder_).Union());
+      BuildInterpreter({GetShape(input_), GetShape(perm_)});
+    }
+    int input_;
+    int perm_;
+    int output_;
+  };
+
+  M m;
+  m.PopulateTensor<int8_t>(m.input_, {1, 2, 3, 4});
+  m.PopulateTensor<int>(m.perm_, {1, 0});
+  // Should fail due to quantization mismatch.
+  EXPECT_EQ(m.Invoke(), kTfLiteError);
 }
 
 TEST(TransposeTest, 3DDividedIntoTwo2DsOne) {
