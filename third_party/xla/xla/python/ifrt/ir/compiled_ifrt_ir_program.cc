@@ -333,24 +333,31 @@ absl::StatusOr<CompiledIfrtIrProgram> CompiledIfrtIrProgram::Create(
 
   // Run lowering passes.
   {
-    mlir::PassManager pm(context);
-    InitPassManager(pm, "ifrt.compile", compile_options->mlir_dump_to,
-                    compile_options->mlir_dump_pass_re,
-                    compile_options->mlir_dump_func_re,
-                    compile_options->mlir_enable_timing);
     // We need to ensure that Multithreading is enabled in order to be able
     // to dispatch compilations from multiple threads. Otherwise, we would
     // trigger data races while printing the ModuleOps for creating the
     // compilation cache keys
     // (see llvm/llvm-project/mlir/lib/Support/StorageUniquer.cpp).
     // JAX currently disables Multithreading for all contexts, but temporarily
-    // enabling multithreading here is safe because the context is not shared
-    // across JAX ModuleOps.
-    bool wasMultithreaded = context->isMultithreadingEnabled();
-    context->enableMultithreading(true);
+    // enabling multithreading here is safe as long as the IfrtIRProgram
+    // exclusively owns the context because the context is not shared across JAX
+    // ModuleOps.
+    std::optional<bool> was_multithreading_enabled;
+    if (ifrt_ir_program->OwnsMlirContext()) {
+      was_multithreading_enabled = context->isMultithreadingEnabled();
+      context->enableMultithreading(true);
+    }
     absl::Cleanup reset_multithreading = [&]() {
-      context->enableMultithreading(wasMultithreaded);
+      if (was_multithreading_enabled.has_value()) {
+        context->enableMultithreading(*was_multithreading_enabled);
+      }
     };
+
+    mlir::PassManager pm(context);
+    InitPassManager(pm, "ifrt.compile", compile_options->mlir_dump_to,
+                    compile_options->mlir_dump_pass_re,
+                    compile_options->mlir_dump_func_re,
+                    compile_options->mlir_enable_timing);
 
     xla::ifrt::IfrtToOutlinedAtomProgramsPipelineOptions
         outline_pipeline_options;
