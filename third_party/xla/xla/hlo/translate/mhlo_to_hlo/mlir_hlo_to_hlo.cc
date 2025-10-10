@@ -136,6 +136,7 @@ using ::tsl::uint8;
 constexpr char kAggregateToTopk[] = "aggregate_to_topk";
 constexpr char kApiVersion[] = "api_version";
 constexpr char kApproxTopK[] = "ApproxTopK";
+constexpr char kSparseActivationsUnstack[] = "SparseActivationsUnstack";
 constexpr char kBackendConfig[] = "backend_config";
 constexpr char kCallTargetName[] = "call_target_name";
 constexpr char kCalledComputations[] = "called_computations";
@@ -2658,6 +2659,12 @@ LogicalResult ExportXlaOp(CustomCallOp op, OpLoweringContext ctx) {
     }
     result_shape = xla::ShapeUtil::MakeTupleShape(subshapes);
   }
+  bool need_make_tuple = false;
+  if (!result_shape.IsTuple() &&
+      call_target_name == kSparseActivationsUnstack) {
+    need_make_tuple = true;
+    result_shape = xla::ShapeUtil::MakeTupleShape({result_shape});
+  }
 
   xla::XlaOp custom_call;
   if (op.getCalledComputations().size() == 1 && op.getOperandLayouts() &&
@@ -2705,7 +2712,7 @@ LogicalResult ExportXlaOp(CustomCallOp op, OpLoweringContext ctx) {
         custom_call_schedule, *xla_api_version);
   }
 
-  if (op->getNumResults() == 1) {
+  if (op->getNumResults() == 1 && !need_make_tuple) {
     value_map[op.getResult(0)] = custom_call;
   } else {
     BuildGetTupleElementsForTupleResults(op, custom_call, ctx);
@@ -4364,6 +4371,12 @@ LogicalResult ExportXlaOp(CustomCallOp op, OpLoweringContext ctx) {
     }
     result_shape = xla::ShapeUtil::MakeTupleShape(subshapes);
   }
+  bool need_make_tuple = false;
+  if (!result_shape.IsTuple() &&
+      call_target_name == kSparseActivationsUnstack) {
+    need_make_tuple = true;
+    result_shape = xla::ShapeUtil::MakeTupleShape({result_shape});
+  }
 
   xla::XlaOp custom_call;
   if (op.getCalledComputations().size() == 1 && op.getOperandLayouts() &&
@@ -4409,7 +4422,7 @@ LogicalResult ExportXlaOp(CustomCallOp op, OpLoweringContext ctx) {
         *custom_call_schedule, *xla_api_version);
   }
 
-  if (op->getNumResults() == 1) {
+  if (op->getNumResults() == 1 && !need_make_tuple) {
     value_map[op.getResult(0)] = custom_call;
   } else {
     BuildGetTupleElementsForTupleResults(op, custom_call, ctx);

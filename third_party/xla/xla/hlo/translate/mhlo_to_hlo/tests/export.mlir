@@ -3342,3 +3342,12 @@ func.func @main(%arg0: tensor<i1>, %arg1: memref<2xf32>) -> memref<2xf32> {
     }
   func.return %0#1: memref<2xf32>
 }
+
+// -----
+
+// CHECK: HloModule
+// CHECK: ENTRY
+func.func @main(%arg0: tensor<8x8xf32>) -> tensor<8x6xf32> {
+  %0 = "mhlo.custom_call"(%arg0) {call_target_name = "SparseActivationsUnstack", backend_config = "", operand_layouts = [dense<[1, 0]> : tensor<2xindex>], result_layout = [dense<[0, 1]> : tensor<2xindex>], result_layouts = [dense<[0, 1]> : tensor<2xindex>], xla_shape = "(f32[8,6]{0,1})"} : (tensor<8x8xf32>) -> tensor<8x6xf32>
+  func.return %0: tensor<8x6xf32>
+}
