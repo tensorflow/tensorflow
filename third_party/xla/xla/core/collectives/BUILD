@@ -14,6 +14,16 @@ package_group(
     ],
 )
 
+filegroup(
+    name = "xla_cpu_runtime_hdrs",
+    srcs = ["clique_key.h"],
+)
+
+filegroup(
+    name = "xla_cpu_runtime_srcs",
+    srcs = ["clique_key.cc"],
+)
+
 cc_library(
     name = "clique",
     srcs = ["clique.cc"],
