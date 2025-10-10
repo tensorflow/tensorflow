@@ -576,7 +576,7 @@ absl::StatusOr<AutotuneResult> GpuConvAlgorithmPicker::AutotuneOneConvRunner(
   VLOG(5) << "If you want to disable this algorithm, copy-paste the following "
              "to the denylist:";
   std::string blas_version;
-  if (auto* blas = stream_exec->AsBlas()) {
+  if (auto* blas = stream->AsBlas()) {
     (void)blas->GetVersion(&blas_version);
   }
   VLOG(5) << GenerateDenyListEntry(instr, alg,
@@ -696,7 +696,7 @@ absl::StatusOr<AutotuneResult> GpuConvAlgorithmPicker::AutotuneOneConvRunner(
     if (runtime_arguments.canonical_hlo.has_value()) {
       std::string canonical_hlo = runtime_arguments.canonical_hlo.value();
       std::string blas_version;
-      if (auto* blas = stream_exec->AsBlas()) {
+      if (auto* blas = stream->AsBlas()) {
         (void)blas->GetVersion(&blas_version);
       }
 
@@ -799,14 +799,6 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
 
   std::string blas_version;
   se::StreamExecutor* stream_exec = config_.GetExecutor();
-  if (auto* blas = stream_exec->AsBlas()) {
-    (void)blas->GetVersion(&blas_version);
-  }
-
-  std::vector<AlgorithmDesc> disabled_algos;
-  disabled_algos = GetDisabledConvAlgorithms(GetComputeCapability(stream_exec),
-                                             GetCudnnVersion(stream_exec),
-                                             blas_version, *instr);
 
   bool allow_tf32 = true;
   // TODO(b/284371623): Properly set allow_tf32 even if instr==nullptr, which is
@@ -828,6 +820,14 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
       AutotuneRuntimeArguments runtime_arguments,
       AutotuneRuntimeArguments::FromInstruction(instr, config_, debug_options));
   TF_ASSIGN_OR_RETURN(se::Stream* const stream, config_.GetStream());
+  if (auto* blas = stream->AsBlas()) {
+    (void)blas->GetVersion(&blas_version);
+  }
+
+  std::vector<AlgorithmDesc> disabled_algos;
+  disabled_algos = GetDisabledConvAlgorithms(GetComputeCapability(stream_exec),
+                                             GetCudnnVersion(stream_exec),
+                                             blas_version, *instr);
   TF_ASSIGN_OR_RETURN(
       std::vector<GenericConvRunner> runners,
       GetAlgorithms(runtime_arguments.gpu_conv_config, stream,

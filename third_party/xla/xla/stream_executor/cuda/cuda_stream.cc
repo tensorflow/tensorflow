@@ -26,6 +26,7 @@ limitations under the License.
 #include <utility>
 #include <variant>
 
+#include "absl/base/call_once.h"
 #include "absl/base/casts.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
@@ -36,6 +37,7 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "xla/stream_executor/activate_context.h"
+#include "xla/stream_executor/cuda/cuda_blas.h"
 #include "xla/stream_executor/cuda/cuda_context.h"
 #include "xla/stream_executor/cuda/cuda_event.h"
 #include "xla/stream_executor/cuda/cuda_status.h"
@@ -197,6 +199,16 @@ absl::StatusOr<std::unique_ptr<CudaStream>> CudaStream::Create(
 
   return std::unique_ptr<CudaStream>(new CudaStream(
       executor, std::move(completed_event), priority, stream_handle));
+}
+
+cuda::CUDABlas* CudaStream::AsBlas() const {
+  absl::call_once(blas_once_, [this] {
+    blas_ = std::make_unique<cuda::CUDABlas>(this);
+    if (!blas_->Init()) {
+      LOG(ERROR) << "Failed to initialize BLAS support";
+    }
+  });
+  return blas_.get();
 }
 
 absl::Status CudaStream::WaitFor(Stream* other) {
