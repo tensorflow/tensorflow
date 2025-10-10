@@ -666,12 +666,13 @@ absl::Status IrEmitterUnnested::EmitConvolutionThunk(
                                   instr->convolution_dimension_numbers(),
                                   instr->feature_group_count()};
 
-  TF_ASSIGN_OR_RETURN(GpuConvConfig config, GetGpuConvConfig(descriptor, ""));
-  AddThunkToThunkSequence(std::make_unique<ConvolutionThunk>(
-      Thunk::ThunkInfo::WithProfileAnnotation(
-          instr, ir_emitter_context_->GetNextThunkId()),
-      std::move(config), std::move(operand_slices), std::move(result_slices),
-      scratch_slice));
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<ConvolutionThunk> thunk,
+                      ConvolutionThunk::Create(
+                          Thunk::ThunkInfo::WithProfileAnnotation(
+                              instr, ir_emitter_context_->GetNextThunkId()),
+                          std::move(descriptor), std::move(operand_slices),
+                          std::move(result_slices), scratch_slice));
+  AddThunkToThunkSequence(std::move(thunk));
   return absl::OkStatus();
 }
 
