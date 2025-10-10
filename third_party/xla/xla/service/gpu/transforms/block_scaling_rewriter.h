@@ -20,8 +20,12 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/transforms/expanders/op_expander_pass.h"
+#include "xla/stream_executor/dnn.h"
 
 namespace xla::gpu {
+
+const se::dnn::VersionInfo kCudnnSupportsBlockScaledDot(9, 7);
+const se::dnn::VersionInfo kCudnnSupportsBlockScaledDotWithGlobalScale(9, 13);
 
 // This pass converts the block quantize/dequantize operations (represented as
 // custom calls) to XLA graphs or library calls, if available (e.g. cuDNN).
@@ -68,8 +72,8 @@ namespace xla::gpu {
 //    config if the block scaled dimension is padded.
 class BlockScalingRewriter : public OpExpanderPass {
  public:
-  explicit BlockScalingRewriter(bool allow_cudnn)
-      : allow_cudnn_(allow_cudnn) {};
+  explicit BlockScalingRewriter(se::dnn::VersionInfo cudnn_version)
+      : cudnn_version_(cudnn_version) {};
 
   absl::string_view name() const override { return "block-scaling-rewriter"; }
 
@@ -91,7 +95,7 @@ class BlockScalingRewriter : public OpExpanderPass {
   static constexpr int kBlockSizeNVFP4 = 16;
 
  private:
-  bool allow_cudnn_;
+  se::dnn::VersionInfo cudnn_version_;
 };
 
 }  // namespace xla::gpu

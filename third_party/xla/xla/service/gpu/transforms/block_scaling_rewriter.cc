@@ -395,7 +395,11 @@ absl::StatusOr<XlaOp> BuildCudnnScaledDot(XlaOp lhs_input, XlaOp rhs_input,
                                           XlaOp global_scale,
                                           const DotDimensionNumbers& dnums,
                                           PrimitiveType result_type,
-                                          std::optional<int64_t> block_size) {
+                                          std::optional<int64_t> block_size,
+                                          se::dnn::VersionInfo cudnn_version) {
+  bool cudnn_supports_global_scale =
+      cudnn_version >= kCudnnSupportsBlockScaledDotWithGlobalScale;
+
   // Get inputs from parameters.
   TF_ASSIGN_OR_RETURN(
       auto lhs_ops_and_size,
@@ -421,12 +425,18 @@ absl::StatusOr<XlaOp> BuildCudnnScaledDot(XlaOp lhs_input, XlaOp rhs_input,
   std::string custom_call_target{kCudnnBlockScaledDotCallTarget};
   std::vector<XlaOp> custom_call_operands{lhs_input_op, rhs_input_op,
                                           lhs_scale_op, rhs_scale_op};
-  if (global_scale.valid()) {
+  if (global_scale.valid() && cudnn_supports_global_scale) {
     custom_call_operands.push_back(global_scale);
   }
   XlaOp custom_call = CustomCall(&builder, custom_call_target,
                                  custom_call_operands, output_shape);
   XlaOp result = GetTupleElement(custom_call, 0);
+
+  // Apply global scale outside the graph for older cuDNN versions.
+  if (global_scale.valid() && !cudnn_supports_global_scale) {
+    result = Mul(result, global_scale,
+                 /*broadcast_dimensions=*/{});
+  }
 
   // Slice the result, if necessary.
   if (lhs_size != lhs_shape.dimensions(1) ||
@@ -496,7 +506,7 @@ absl::StatusOr<XlaOp> BuildBlockScaledDot(
     const HloInstruction* rhs_input, const HloInstruction* lhs_scale,
     const HloInstruction* rhs_scale, const HloInstruction* global_scale,
     const DotDimensionNumbers& dnums, PrimitiveType result_type,
-    std::optional<int64_t> block_size, bool allow_cudnn) {
+    std::optional<int64_t> block_size, se::dnn::VersionInfo cudnn_version) {
   // Get dot LHS parameter(s).
   XlaOp lhs_op = Parameter(&builder, 0, lhs_input->shape(), "lhs");
   XlaOp lhs_scale_op = Parameter(&builder, 2, lhs_scale->shape(), "lhs_scale");
@@ -516,12 +526,13 @@ absl::StatusOr<XlaOp> BuildBlockScaledDot(
   }
 
   // Use cuDNN kernel, if possible.
-  if (allow_cudnn && rhs_scale_op.valid() &&
+  if (cudnn_version >= kCudnnSupportsBlockScaledDot && rhs_scale_op.valid() &&
       IsSupportedByCudnn(
           GetCudnnMxType(lhs_input->shape(), lhs_scale->shape(), block_size),
           GetCudnnMxType(rhs_input->shape(), rhs_scale->shape(), block_size))) {
     return BuildCudnnScaledDot(lhs_op, rhs_op, lhs_scale_op, rhs_scale_op,
-                               global_scale_op, dnums, result_type, block_size);
+                               global_scale_op, dnums, result_type, block_size,
+                               std::move(cudnn_version));
   }
 
   // Build general dot op.
@@ -546,7 +557,7 @@ absl::StatusOr<XlaOp> BuildBlockScaledDot(
 
 // Convert scaled dot custom call to HLO computation.
 absl::StatusOr<HloInstruction*> ExpandBlockScaledDotCustomCall(
-    HloInstruction* instruction, bool allow_cudnn) {
+    HloInstruction* instruction, se::dnn::VersionInfo cudnn_version) {
   PrimitiveType result_type = instruction->shape().element_type();
 
   // Check operand count.
@@ -602,7 +613,7 @@ absl::StatusOr<HloInstruction*> ExpandBlockScaledDotCustomCall(
       BuildBlockScaledDot(builder, operands[0], operands[1], operands[2],
                           operands.size() >= 4 ? operands[3] : nullptr,
                           operands.size() == 5 ? operands[4] : nullptr, dnums,
-                          result_type, block_size, allow_cudnn));
+                          result_type, block_size, std::move(cudnn_version)));
 
   // Reshape to the expected output shape.
   // This should only happen when a unit-sized dimension is added by the pass.
@@ -634,7 +645,7 @@ absl::StatusOr<HloInstruction*> BlockScalingRewriter::ExpandInstruction(
     return ExpandDequantizeCustomCall(instruction);
   }
   if (instruction->custom_call_target() == kBlockScaledDotCustomCallTarget) {
-    return ExpandBlockScaledDotCustomCall(instruction, allow_cudnn_);
+    return ExpandBlockScaledDotCustomCall(instruction, cudnn_version_);
   }
   LOG(FATAL) << "Unexpected custom call target: "
              << instruction->custom_call_target();
