@@ -103,26 +103,64 @@ class NcclAllReduceOpKernel : public NcclReduceOpBase {
   void ComputeAsync(OpKernelContext* c, DoneCallback done) override {
     const Tensor* input = &c->input(0);
     Tensor* output;
-    OP_REQUIRES_OK_ASYNC(
-        c, c->forward_input_or_allocate_output({0}, 0, input->shape(), &output),
-        done);
-    auto actual_done = [c, done](Status s) {
-      OP_REQUIRES_OK_ASYNC(c, s, done);
-      done();
-    };
-
-    auto* compute_stream = c->op_device_context()->stream();
-    auto* gpu_info = c->device()->tensorflow_accelerator_device_info();
-    auto participant = std::make_unique<NcclManager::Participant>(
-        compute_stream->parent(), compute_stream, gpu_info, input, output,
-        /*global_rank=*/-1, std::move(actual_done));
-    NcclManager::instance()->AddToAllReduce(
-        std::move(participant),
-        {GetCollectiveKey(c),
-         /*num_local_devices=*/num_devices(),
-         /*num_global_devices=*/num_devices(),
-         /*communicator_key=*/"", /*source_rank=*/-1},
-        reduction_op());
+    DataType input_dtype = input->dtype();
+    if (input_dtype == DT_HALF) {
+      // Upcast to float32 for accumulation
+      Tensor temp_fp32;
+      OP_REQUIRES_OK_ASYNC(c, c->allocate_temp(DT_FLOAT, input->shape(), &temp_fp32), done);
+      // Cast input to float32
+      auto in_flat = input->flat<Eigen::half>();
+      auto temp_flat = temp_fp32.flat<float>();
+      for (int i = 0; i < in_flat.size(); ++i) {
+        temp_flat(i) = static_cast<float>(in_flat(i));
+      }
+      // Allocate output as float16
+      OP_REQUIRES_OK_ASYNC(c, c->forward_input_or_allocate_output({0}, 0, input->shape(), &output), done);
+      // Prepare participant with float32 buffer for reduction
+      auto actual_done = [c, done, output, temp_fp32](Status s) mutable {
+        // Downcast result to float16
+        auto temp_flat = temp_fp32.flat<float>();
+        auto out_flat = output->flat<Eigen::half>();
+        for (int i = 0; i < out_flat.size(); ++i) {
+          out_flat(i) = static_cast<Eigen::half>(temp_flat(i));
+        }
+        OP_REQUIRES_OK_ASYNC(c, s, done);
+        done();
+      };
+      auto* compute_stream = c->op_device_context()->stream();
+      auto* gpu_info = c->device()->tensorflow_accelerator_device_info();
+      auto participant = std::make_unique<NcclManager::Participant>(
+          compute_stream->parent(), compute_stream, gpu_info, &temp_fp32, &temp_fp32,
+          /*global_rank=*/-1, std::move(actual_done));
+      NcclManager::instance()->AddToAllReduce(
+          std::move(participant),
+          {GetCollectiveKey(c),
+           /*num_local_devices=*/num_devices(),
+           /*num_global_devices=*/num_devices(),
+           /*communicator_key=*/"", /*source_rank=*/-1},
+          reduction_op());
+    } else {
+      // Default path for other types
+      OP_REQUIRES_OK_ASYNC(
+          c, c->forward_input_or_allocate_output({0}, 0, input->shape(), &output),
+          done);
+      auto actual_done = [c, done](Status s) {
+        OP_REQUIRES_OK_ASYNC(c, s, done);
+        done();
+      };
+      auto* compute_stream = c->op_device_context()->stream();
+      auto* gpu_info = c->device()->tensorflow_accelerator_device_info();
+      auto participant = std::make_unique<NcclManager::Participant>(
+          compute_stream->parent(), compute_stream, gpu_info, input, output,
+          /*global_rank=*/-1, std::move(actual_done));
+      NcclManager::instance()->AddToAllReduce(
+          std::move(participant),
+          {GetCollectiveKey(c),
+           /*num_local_devices=*/num_devices(),
+           /*num_global_devices=*/num_devices(),
+           /*communicator_key=*/"", /*source_rank=*/-1},
+          reduction_op());
+    }
   }
 };
 REGISTER_KERNEL_BUILDER(Name("NcclAllReduce").Device(DEVICE_GPU),
