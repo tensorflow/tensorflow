@@ -25,7 +25,10 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include <gtest/gtest.h>
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/random/random.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/test.h"
