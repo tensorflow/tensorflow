@@ -540,7 +540,7 @@ diff --ruN a/stablehlo/stablehlo/conversions/tosa/transforms/StablehloQuantLegal
 diff --ruN a/stablehlo/stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.cpp b/stablehlo/stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.cpp
 --- stablehlo/stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.cpp
 +++ stablehlo/stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.cpp
-@@ -110,6 +110,44 @@
+@@ -110,6 +110,43 @@
    }
  }
  
@@ -563,8 +563,7 @@ diff --ruN a/stablehlo/stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.cp
 +bool IsInteger(ElementType elementType, bool includeBool = false) {
 +  MLIRContext ctx;
 +  Type type = getElementType(ctx, elementType);
-+  return type.isInteger() && includeBool ? IsBoolean(elementType)
-+                                         : !IsBoolean(elementType);
++  return type.isInteger() && (includeBool || !IsBoolean(elementType));
 +}
 +
 +bool IsSignedInteger(ElementType elementType) {
