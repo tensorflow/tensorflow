@@ -26,10 +26,18 @@ using ::testing::ContainsRegex;
 namespace {
 
 TEST(TanhTest, FloatTanhVectorized) {
-  std::string ir = tanh_ir_string;
+#ifdef __x86_64__
+  std::string ir = llvm_ir::kTanhLlAvx2Ir;
   EXPECT_THAT(ir, ContainsRegex("fmul <4 x float>"));
   EXPECT_THAT(
       ir, ContainsRegex("fcmp olt <4 x float>.*float 0x3F3A36E2E0000000.*"));
+#endif
+#ifdef __aarch64__
+  std::string ir = llvm_ir::kTanhLlNeonIr;
+  EXPECT_THAT(ir, ContainsRegex("fmul <4 x float>"));
+  EXPECT_THAT(
+      ir, ContainsRegex("fcmp olt <4 x float>.*float 0x3F3A36E2E0000000.*"));
+#endif
 }
 }  // namespace
 }  // namespace codegen

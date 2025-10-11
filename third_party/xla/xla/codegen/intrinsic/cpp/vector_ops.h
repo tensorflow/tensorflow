@@ -27,12 +27,14 @@ typedef float Vec4f __attribute__((vector_size(16)));
 typedef float Vec8f __attribute__((vector_size(32)));
 typedef double Vec2d __attribute__((vector_size(16)));
 typedef double Vec4d __attribute__((vector_size(32)));
+typedef double Vec8d __attribute__((vector_size(64)));
 
 // Corresponding integer types
 typedef uint32_t Vec4i __attribute__((vector_size(16)));
 typedef uint32_t Vec8i __attribute__((vector_size(32)));
 typedef uint64_t Vec2q __attribute__((vector_size(16)));
 typedef uint64_t Vec4q __attribute__((vector_size(32)));
+typedef uint64_t Vec8q __attribute__((vector_size(64)));
 
 namespace internal {
 // Helper type to select the corresponding integer vector type.
@@ -54,6 +56,10 @@ struct MakeIntVec<uint64_t, 2> {
 template <>
 struct MakeIntVec<uint64_t, 4> {
   using type = Vec4q;
+};
+template <>
+struct MakeIntVec<uint64_t, 8> {
+  using type = Vec8q;
 };
 
 // This trait takes a float vector and provides its integer vector partner.

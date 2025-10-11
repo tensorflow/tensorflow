@@ -12,6 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+
 #include <string>
 
 #include <gmock/gmock.h>
@@ -21,11 +22,31 @@ limitations under the License.
 namespace xla::codegen {
 namespace {
 using ::testing::ContainsRegex;
+using ::testing::Not;
 
 TEST(EigenUnaryTest, FastTanhfIsVectorized) {
-  std::string ir = eigen_unary_ir_string;
-  EXPECT_THAT(ir, ContainsRegex("fmul <4 x float>"));
-  EXPECT_THAT(ir, ContainsRegex("<4 x float>.*0x3E4DF2A3C0000000"));
+#ifdef __x86_64__
+  const std::string avx2 = llvm_ir::kEigenUnaryLlAvx2Ir;
+  EXPECT_THAT(avx2, ContainsRegex("fmul <4 x float>"));
+  EXPECT_THAT(avx2, ContainsRegex("<4 x float>.*0x3E4DF2A3C0000000"));
+  EXPECT_THAT(avx2, ContainsRegex("llvm.x86"));
+  EXPECT_THAT(avx2, Not(ContainsRegex("llvm.aarch64")));
+  EXPECT_THAT(avx2, Not(ContainsRegex("llvm.fma.v4f32")));
+
+  const std::string avx512 = llvm_ir::kEigenUnaryLlAvx512Ir;
+  EXPECT_THAT(avx512, ContainsRegex("fmul <4 x float>"));
+  EXPECT_THAT(avx512, ContainsRegex("<4 x float>.*0x3E4DF2A3C0000000"));
+  EXPECT_THAT(avx512, ContainsRegex("llvm.x86"));
+  EXPECT_THAT(avx512, ContainsRegex("llvm.fma.v4f32"));
+#endif
+
+#ifdef __aarch64__
+  const std::string neon = llvm_ir::kEigenUnaryLlNeonIr;
+  EXPECT_THAT(neon, ContainsRegex("fmul <4 x float>"));
+  EXPECT_THAT(neon, ContainsRegex("<4 x float>.*0x3E4DF2A3C0000000"));
+  EXPECT_THAT(neon, ContainsRegex("llvm.aarch64.neon"));
+  EXPECT_THAT(neon, Not(ContainsRegex("llvm.x86")));
+#endif
 }
 
 }  // namespace

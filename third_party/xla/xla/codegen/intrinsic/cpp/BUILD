@@ -1,6 +1,6 @@
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("//xla:xla.default.bzl", "xla_cc_test")
-load(":cc_to_llvm_ir.bzl", "cc_to_llvm_ir")
+load(":cc_to_llvm_ir.bzl", "cc_ir_header")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -35,10 +35,27 @@ cc_library(
     hdrs = ["vector_ops.h"],
 )
 
-cc_to_llvm_ir(
-    name = "tanh_ir_file",
+cpu_features = select({
+    ":is_x86_64": {
+        "avx2": [
+            "-mavx2",
+            "-mno-avx512f",
+        ],
+        "avx512": [
+            "-mavx2",
+            "-mavx512f",
+        ],
+    },
+    ":is_aarch64": {
+        "neon": [],
+    },
+    "//conditions:default": {},
+})
+
+cc_ir_header(
+    name = "tanh_ll",
     src = "tanh.cc",
-    out = "tanh.ll",
+    cpu_features = cpu_features,
     deps = [
         ":cpp_context_provider",
         ":tanh",
@@ -46,38 +63,17 @@ cc_to_llvm_ir(
     ],
 )
 
-genrule(
-    name = "tanh_ll_header",
-    srcs = [":tanh_ir_file"],
-    outs = ["tanh_ll.h"],
-    # This command wraps the IR text in a C++ raw string literal.
-    cmd = """
-        echo 'constexpr const char* tanh_ir_string = R"gen_ir(' > $@ && \\
-        cat $(location :tanh_ir_file) >> $@ && \\
-        echo ')gen_ir";' >> $@
-    """,
-)
-
-cc_library(
-    name = "tanh_ll_header_lib",
-    hdrs = [":tanh_ll_header"],
-)
-
 xla_cc_test(
     name = "tanh_test",
     srcs = ["tanh_test.cc"],
     deps = [
-        ":tanh",
-        ":tanh_ll_header_lib",
-        ":vector_ops",
+        ":tanh_ll",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:status_matchers",
-        "@local_tsl//tsl/platform:test",
     ],
 )
 
 cc_library(
-    name = "eigen_unary",
+    name = "eigen_unary_lib",
     srcs = ["eigen_unary.cc"],
     hdrs = ["eigen_unary.h"],
     deps = [
@@ -86,39 +82,36 @@ cc_library(
     ],
 )
 
-cc_to_llvm_ir(
-    name = "eigen_unary_ir_file",
+cc_ir_header(
+    name = "eigen_unary_ll",
     src = "eigen_unary.cc",
-    out = "eigen_unary.ll",
+    cpu_features = cpu_features,
     deps = [
         ":cpp_context_provider",
-        ":eigen_unary",
+        ":eigen_unary_lib",
+        ":vector_ops",
     ],
-)
-
-cc_library(
-    name = "eigen_unary_ll_header_lib",
-    hdrs = [":eigen_unary_ll_header"],
-)
-
-genrule(
-    name = "eigen_unary_ll_header",
-    srcs = [":eigen_unary_ir_file"],
-    outs = ["eigen_unary_ll.h"],
-    cmd = """
-        echo 'constexpr const char* eigen_unary_ir_string = R"gen_ir(' > $@ && \\
-        cat $(location :eigen_unary_ir_file) >> $@ && \\
-        echo ')gen_ir";' >> $@
-    """,
 )
 
 xla_cc_test(
     name = "eigen_unary_test",
     srcs = ["eigen_unary_test.cc"],
     deps = [
-        ":eigen_unary",
-        ":eigen_unary_ll_header_lib",
+        ":eigen_unary_ll",
         "@com_google_googletest//:gtest_main",
-        "@eigen_archive//:eigen3",
+    ],
+)
+
+config_setting(
+    name = "is_x86_64",
+    constraint_values = [
+        "@platforms//cpu:x86_64",
+    ],
+)
+
+config_setting(
+    name = "is_aarch64",
+    constraint_values = [
+        "@platforms//cpu:aarch64",
     ],
 )

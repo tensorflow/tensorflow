@@ -20,11 +20,19 @@ limitations under the License.
 
 namespace xla::codegen {
 
+// Using Packet over a Map'd Array yields better llvm IR on ARM.
+using Packet4f = Eigen::internal::Packet4f;
+
 Vec4f FastTanhf(const Vec4f x) {
-  Eigen::Map<const Eigen::Array4f> eigen_view(
-      reinterpret_cast<const float*>(&x));
-  Eigen::Array4f result_array = eigen_view.tanh();
-  return *reinterpret_cast<Vec4f*>(&result_array);
+  Packet4f packet = static_cast<Eigen::internal::Packet4f>(x);
+  Packet4f res = Eigen::internal::ptanh_float(packet);
+  return *static_cast<Vec4f*>(&res);
+}
+
+Vec8d FastRqsqrtf(const Vec8d x) {
+  const Eigen::Map<const Eigen::Array<double, 8, 1>> x_arr((const double*)&x);
+  const Eigen::Array<double, 8, 1> res = x_arr.rsqrt();
+  return *(Vec8d*)res.data();
 }
 
 }  // namespace xla::codegen
