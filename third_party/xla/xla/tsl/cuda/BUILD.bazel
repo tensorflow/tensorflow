@@ -411,3 +411,29 @@ alias(
     actual = if_cuda_libs("@nvidia_nvshmem//:nvshmem", ":nvshmem"),
     visibility = ["//visibility:public"],
 )
+
+cuda_stub(
+    name = "nvml",
+    srcs = ["nvml.symbols"],
+)
+
+cc_library(
+    name = "nvml_stub",  # buildifier: disable=duplicated-name
+    srcs = if_cuda_is_configured([
+        "nvml_stub.cc",
+        "nvml.tramp.S",
+    ]),
+    textual_hdrs = ["nvml.inc"],
+    visibility = ["//visibility:public"],
+    deps = if_cuda_is_configured([
+        "@local_tsl//tsl/platform:dso_loader",
+        "@local_tsl//tsl/platform:logging",
+        "@local_tsl//tsl/platform:load_library",
+    ]),
+)
+
+alias(
+    name = "nvml",  # buildifier: disable=duplicated-name
+    actual = if_cuda_libs("@cuda_nvml//:nvidia-ml_stub", ":nvml_stub"),
+    visibility = ["//visibility:public"],
+)

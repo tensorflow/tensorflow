@@ -13,9 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "xla/service/gpu/model/gpu_collective_performance_model.h"
+
 #include <gtest/gtest.h>
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/gpu/backend_configs.pb.h"
+
+#if GOOGLE_CUDA
+#include "third_party/gpus/cuda/nvml/include/nvml.h"
+#endif  // GOOGLE_CUDA
 
 namespace xla {
 namespace gpu {
@@ -29,8 +35,7 @@ TEST_F(GpuPerformanceWithCollectiveModelTest, TestNvmlLibraryLoading) {
   // After successful init, we try to use one of the
   // nvml functions to see if the result is good.
   nvmlDevice_t nvml_device;
-  nvmlReturn_t get_device_result =
-      xla_nvmlDeviceGetHandleByIndex(0, &nvml_device);
+  nvmlReturn_t get_device_result = nvmlDeviceGetHandleByIndex(0, &nvml_device);
   EXPECT_TRUE(get_device_result == NVML_SUCCESS);
 
   EXPECT_TRUE(GpuPerformanceWithCollectiveModel::InitNvml());
