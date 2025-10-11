@@ -157,7 +157,17 @@ LogicalResult EncapsulateFuncAndSerialize(const std::string& module_name,
     }
     symbol_table.insert(clone);
   }
-
+  auto compressed_bytecode =
+      tensorflow::SerializeMlirModuleToCompressedBytecode(
+          module_for_func.get());
+  if (compressed_bytecode.ok()) {
+    LOG(INFO) << "[debugsa] SerializeMlirModuleZlibBytecode: "
+              << compressed_bytecode.status();
+    *serialized_func_module = compressed_bytecode.value();
+    return success();
+  }
+  LOG(ERROR) << "Failed to serialize MLIR module to compressed bytecode: "
+             << compressed_bytecode.status();
   *serialized_func_module =
       tensorflow::SerializeMlirModule(module_for_func.get());
   return success();

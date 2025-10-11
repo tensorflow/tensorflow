@@ -23,6 +23,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "tensorflow/compiler/jit/flags.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/deserialize_mlir_module_utils.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
@@ -40,6 +41,17 @@ TEST(SerializeMlirModuleUtilsTest, DebugInfoSerialization) {
   GetMlirCommonFlags()->tf_mlir_enable_debug_info_serialization = false;
   serialized_module = SerializeMlirModule(*mlir_module);
   EXPECT_FALSE(absl::StrContains(serialized_module, "loc("));
+}
+
+TEST(SerializeMlirModuleUtilsTest, CompressedBytecodeSerializationRoundTrip) {
+  mlir::MLIRContext context;
+  mlir::OwningOpRef<mlir::ModuleOp> module_ref =
+      mlir::ModuleOp::create(mlir::UnknownLoc::get(&context));
+  std::string mlir_module_str =
+      tensorflow::SerializeMlirModuleToCompressedBytecode(*module_ref).value();
+  mlir::OwningOpRef<mlir::ModuleOp> deserialized_module;
+  EXPECT_OK(tensorflow::DeserializeMlirModule(mlir_module_str, &context,
+                                              &deserialized_module));
 }
 
 }  // namespace
