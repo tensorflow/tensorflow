@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/cc/experimental/libexport/load.h"
 
+#include "absl/status/statusor.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/test.h"
