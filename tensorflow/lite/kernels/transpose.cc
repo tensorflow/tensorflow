@@ -142,10 +142,10 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
           params, GetTensorShape(op_context.input), unpacked_input_data.get(),
           GetTensorShape(op_context.output), unpacked_output_data.get());
       // Pack the output back to int4.
-      tflite::tensor_utils::PackInt8IntoDenseInt4(
+      tflite::tensor_utils::PackInt8IntoDenseInt(
           unpacked_output_data.get(),
           GetTensorShape(op_context.input).FlatSize(),
-          GetTensorData<int8_t>(op_context.output));
+          /*bit_width=*/4, GetTensorData<int8_t>(op_context.output));
       break;
     }
     case kTfLiteInt16:

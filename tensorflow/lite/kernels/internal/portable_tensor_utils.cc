@@ -143,23 +143,40 @@ void UnpackPackedIntToInt8(const int8_t* src_buffer, int num_elements,
   }
 }
 
-void PackInt8IntoDenseInt4(const int8_t* src_buffer, int num_elements,
-                           int8_t* dst_buffer) {
-  // num_elements means the number of elements regardless of packed or unpacked.
-  // For example, 3 elements means both
-  //   1) Packed: 3 int4's = 12 bit -> 16 bits (padded) = 2 bytes.
-  //      stored in src_buffer[0] and src_buffer[1] (i = 0..1)
-  //   2) Unpacked: 3 int8's = 3 bytes.
-  //      stored in dst_buffer[0], dst_buffer[1] and dst_buffer[2] (j = 0..2)
-  for (int i = 0; i < num_elements - 1; i += 2) {
-    dst_buffer[i / 2] = src_buffer[i] & 0x0F;
-    dst_buffer[i / 2] |= src_buffer[i + 1] << 4;
-  }
-  auto packed_size = (num_elements + 1) / 2;
-
-  // Copy the final nibble if the buffer is odd-lengthed
-  if (num_elements % 2 != 0) {
-    dst_buffer[packed_size - 1] = src_buffer[num_elements - 1] & 0x0F;
+void PackInt8IntoDenseInt(const int8_t* src_buffer, int num_elements,
+                          int bit_width, int8_t* dst_buffer) {
+  assert(bit_width == 2 || bit_width == 4);
+  if (bit_width == 4) {
+    // num_elements means the number of elements regardless of packed or
+    // unpacked. For example, 3 elements means both
+    //   1) Unpacked: 3 int8's = 3 bytes.
+    //      stored in src_buffer[0], src_buffer[1] and src_buffer[2] (j = 0..2)
+    //   2) Packed: 3 int4's = 12 bit -> 16 bits (padded) = 2 bytes.
+    //      stored in dst_buffer[0] and dst_buffer[1] (i = 0..1)
+    for (int i = 0; i < num_elements / 2; ++i) {
+      dst_buffer[i] = (src_buffer[2 * i] & 0x0F) | (src_buffer[2 * i + 1] << 4);
+    }
+    // If the buffer size is odd, pack the final nibble.
+    if (num_elements % 2 != 0) {
+      dst_buffer[num_elements / 2] = src_buffer[num_elements - 1] & 0x0F;
+    }
+  } else if (bit_width == 2) {
+    for (int i = 0; i < num_elements / 4; ++i) {
+      dst_buffer[i] = (src_buffer[4 * i] & 0x03) |
+                      ((src_buffer[4 * i + 1] & 0x03) << 2) |
+                      ((src_buffer[4 * i + 2] & 0x03) << 4) |
+                      ((src_buffer[4 * i + 3] & 0x03) << 6);
+    }
+    // Handle the remaining elements.
+    int remaining_elements = num_elements % 4;
+    if (remaining_elements > 0) {
+      int8_t packed_val = 0;
+      for (int i = 0; i < remaining_elements; ++i) {
+        packed_val |= (src_buffer[num_elements - remaining_elements + i] & 0x03)
+                      << (i * 2);
+      }
+      dst_buffer[num_elements / 4] = packed_val;
+    }
   }
 }
 
