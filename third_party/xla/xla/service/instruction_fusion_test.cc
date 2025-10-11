@@ -137,8 +137,12 @@ TEST_F(InstructionFusionTest, FuseInstructionsWithOriginalValue) {
   EXPECT_THAT(fusion->fused_expression_root(),
               op::Subtract(op::Add(), op::Parameter()))
       << module->ToString();
+  absl::string_view expected_origin = "{\"sub\"}";
   ASSERT_NE(fusion->original_value(), nullptr);
-  EXPECT_EQ(fusion->original_value()->ToString(), "{\"sub\"}");
+  EXPECT_EQ(fusion->original_value()->ToString(), expected_origin);
+  ASSERT_NE(fusion->fused_expression_root()->original_value(), nullptr);
+  ASSERT_EQ(fusion->fused_expression_root()->original_value()->ToString(),
+            expected_origin);
 }
 
 TEST_F(InstructionFusionTest,
@@ -158,11 +162,15 @@ TEST_F(InstructionFusionTest,
   HloInstruction* fusion = InstructionFusionForTesting().FuseIntoMultiOutput(
       abs, tanh, module->entry_computation());
 
+  absl::string_view expected_original_value = "({\"tanh\"}, {\"abs\"})";
   ASSERT_THAT(fusion, op::Fusion()) << module->ToString();
   EXPECT_THAT(fusion->fused_expression_root(), op::Tuple(op::Tanh(), op::Abs()))
       << module->ToString();
+  ASSERT_NE(fusion->fused_expression_root()->original_value(), nullptr);
+  ASSERT_EQ(fusion->fused_expression_root()->original_value()->ToString(),
+            expected_original_value);
   ASSERT_NE(fusion->original_value(), nullptr);
-  EXPECT_EQ(fusion->original_value()->ToString(), "({\"tanh\"}, {\"abs\"})");
+  EXPECT_EQ(fusion->original_value()->ToString(), expected_original_value);
 }
 
 TEST_F(InstructionFusionTest, AvoidDuplicationIfNotAllFusible) {

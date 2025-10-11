@@ -219,12 +219,14 @@ std::shared_ptr<OriginalValue> OriginalValue::CreateFromInstruction(
   if (instruction->opcode() == HloOpcode::kTuple) {
     auto original_value = std::make_shared<OriginalValue>(
         TupleTree<std::optional<OriginalArray>>(instruction->shape()));
+    bool has_original_value = false;
     for (int64_t i = 0; i < instruction->operand_count(); ++i) {
       const HloInstruction* operand = instruction->operand(i);
       auto op_original_value = operand->original_value();
       if (!op_original_value || op_original_value->is_synthetic_call()) {
-        return nullptr;
+        continue;
       }
+      has_original_value = true;
       const auto& op_tree = op_original_value->tree();
       op_tree.ForEachElement([&](const ShapeIndex& index,
                                  const std::optional<OriginalArray>& value) {
@@ -233,7 +235,7 @@ std::shared_ptr<OriginalValue> OriginalValue::CreateFromInstruction(
         *original_value->mutable_tree()->mutable_element(dest_index) = value;
       });
     }
-    return original_value;
+    return has_original_value ? original_value : nullptr;
   }
 
   // Default case: create a new tree with leaves pointing to this instruction.

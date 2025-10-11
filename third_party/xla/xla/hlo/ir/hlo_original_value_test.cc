@@ -291,7 +291,7 @@ ENTRY main {
   EXPECT_EQ(p0->original_value()->ToString(), "({\"p0\" {0}}, {\"p0\" {1}})");
 }
 
-TEST_F(OriginalValueHloTest, CreateFromInstructionTupleWithSynthetic) {
+TEST_F(OriginalValueHloTest, CreateFromInstructionTupleWithSyntheticElement) {
   const char* hlo_string = R"(
 HloModule test
 
@@ -312,7 +312,8 @@ ENTRY main {
       std::make_shared<OriginalValue>(OriginalValue::SyntheticCall()));
   tuple->set_original_value(OriginalValue::CreateFromInstruction(tuple));
 
-  EXPECT_EQ(tuple->original_value(), nullptr);
+  ASSERT_NE(tuple->original_value(), nullptr);
+  EXPECT_EQ(tuple->original_value()->ToString(), "({\"p0\"}, {})");
 }
 
 TEST_F(OriginalValueHloTest, CopyOriginalValue) {
