@@ -94,6 +94,7 @@ cc_library_with_tflite(
     linkopts = [
         "-lm",
         "-ldl",
+        "-Wl,-z,max-page-size=16384",
     ],
     tflite_deps = [
         ":jni_utils",
