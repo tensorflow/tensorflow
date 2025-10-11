@@ -76,6 +76,9 @@ set(CMAKE_PREFIX_PATH
 )
 include(GNUInstallDirs)
 include(CMakeDependentOption)
+include(tools/cmake/modules/xnnpack/install_xnnpack.cmake)
+include(tools/cmake/modules/pthreadpool/install_pthreadpool.cmake)
+
 option(TFLITE_ENABLE_INSTALL "Enable install rule" OFF)
 option(TFLITE_ENABLE_LABEL_IMAGE "Enable label_image example" OFF)
 option(TFLITE_ENABLE_BENCHMARK_MODEL "Enable the benchmark_model tool" OFF)

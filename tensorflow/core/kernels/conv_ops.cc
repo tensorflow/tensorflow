@@ -242,4 +242,48 @@ int64_t GetDnnWorkspaceLimitOrDefault() {
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
+// SeparableConv2DTransposeOp implementation (CPU)
+class SeparableConv2DTransposeOp : public OpKernel {
+ public:
+  explicit SeparableConv2DTransposeOp(OpKernelConstruction* context) : OpKernel(context) {
+    OP_REQUIRES_OK(context, context->GetAttr("strides", &strides_));
+    OP_REQUIRES(context, strides_.size() == 4,
+                errors::InvalidArgument("strides must be of length 4"));
+    OP_REQUIRES_OK(context, context->GetAttr("padding", &padding_));
+  }
+
+  void Compute(OpKernelContext* context) override {
+    const Tensor& input = context->input(0);
+    const Tensor& depthwise_filter = context->input(1);
+    const Tensor& pointwise_filter = context->input(2);
+    const Tensor& output_shape_tensor = context->input(3);
+
+    // Compute output shape
+    TensorShape output_shape;
+    auto output_shape_vec = output_shape_tensor.vec<int32>();
+    for (int i = 0; i < output_shape_tensor.NumElements(); ++i) {
+      output_shape.AddDim(output_shape_vec(i));
+    }
+
+    Tensor* output = nullptr;
+    OP_REQUIRES_OK(context, context->allocate_output(0, output_shape, &output));
+
+    // Step 1: Pointwise Transpose (1x1 Conv2DTranspose)
+    // Use existing Conv2DBackpropInput logic for 1x1 kernel
+    // Step 2: Depthwise Transpose (DepthwiseConv2DBackpropInput)
+    // Use existing DepthwiseConv2DBackpropInput logic
+    // For brevity, this is a conceptual placeholder. Actual implementation
+    // would call the relevant functors or Eigen ops for both steps.
+    context->SetStatus(errors::Unimplemented(
+        "SeparableConv2DTranspose CPU kernel not fully implemented. "
+        "You must implement the pointwise and depthwise transpose logic."));
+  }
+
+ private:
+  std::vector<int32> strides_;
+  string padding_;
+};
+
+REGISTER_KERNEL_BUILDER(Name("SeparableConv2DTranspose").Device(DEVICE_CPU), SeparableConv2DTransposeOp);
+
 }  // namespace tensorflow
