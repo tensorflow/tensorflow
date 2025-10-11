@@ -1073,6 +1073,7 @@ cc_library(
 #         "@com_google_absl//absl/status:statusor",
 #         "@com_google_absl//absl/strings",
 #         "@com_google_absl//absl/types:optional",
+#         "@local_xla//xla/tsl/concurrency:executor",
 #         "@local_xla//xla/tsl/framework/fixedpoint",
 #         "@local_xla//xla/tsl/util:safe_reinterpret_cast",
 #         "//tensorflow/core/platform:resource",

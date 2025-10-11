@@ -692,23 +692,14 @@ cc_library(
     alwayslink = 1,
 )
 
-cc_library(
-    name = "threadpool_executor",
-    hdrs = ["threadpool_executor.h"],
-    deps = [
-        ":env",
-        "//xla/tsl/concurrency:executor",
-    ],
-)
-
 tsl_cc_test(
-    name = "threadpool_executor_test",
-    srcs = ["threadpool_executor_test.cc"],
+    name = "threadpool_test",
+    srcs = ["threadpool_test.cc"],
     deps = [
         ":env",
         ":env_impl",
         ":test",
-        ":threadpool_executor",
+        "//xla/tsl/concurrency:executor",
         "@com_google_absl//absl/synchronization",
         "@com_google_googletest//:gtest_main",
     ],

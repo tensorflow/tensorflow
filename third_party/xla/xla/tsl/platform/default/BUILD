@@ -152,6 +152,7 @@ cc_library(
         "nobuilder",
     ],
     deps = [
+        "//xla/tsl/concurrency:executor",
         "//xla/tsl/platform:env_time",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:file_statistics",
@@ -163,6 +164,7 @@ cc_library(
         "//xla/tsl/platform:types",
         "//xla/tsl/protobuf:error_codes_proto_impl_cc",
         "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/base:nullability",
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",

@@ -553,7 +553,6 @@ cc_library(
     deps = [
         "//xla/tsl/concurrency:executor",
         "//xla/tsl/platform:env",
-        "//xla/tsl/platform:threadpool_executor",
     ],
 )
 
