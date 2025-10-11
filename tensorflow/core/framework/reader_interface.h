@@ -59,7 +59,7 @@ class ReaderInterface : public ResourceBase {
   // The std::vector keys/value pointers are assumed to point to empty
   // structures (that have most likely been reserve(num_records)).
   // Returns how many records were actually read.
-  virtual int64_t ReadUpTo(const int64_t num_records, QueueInterface* queue,
+  virtual int64_t ReadUpTo(int64_t num_records, QueueInterface* queue,
                            std::vector<tstring>* keys,
                            std::vector<tstring>* value,
                            OpKernelContext* context) = 0;
