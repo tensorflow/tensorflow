@@ -794,24 +794,12 @@ tsl::Future<BackendInterface::Response> IfrtBackend::HandleCheckFutureRequest(
     futures_.erase(it);
   }
 
-  auto [promise, resp_future] =
-      tsl::Future<BackendInterface::Response>::MakePromise();
-  // With Future, the `future` needs to be owned by one or more owners until
-  // `OnReady()`'s lambda gets executed. So, capture a copy of `future` in the
-  // lambda, making the lambda itself an owner of `future`.
-  future.OnReady([op_id = request->request_metadata().op_id(),
-                  promise = std::move(promise),
-                  hold = future](absl::Status status) mutable {
-    if (!status.ok()) {
-      promise.Set(std::move(status));
-      return;
-    }
-    auto ifrt_resp = NewIfrtResponse(op_id);
-    ifrt_resp->mutable_check_future_response();
-    promise.Set(std::move(ifrt_resp));
-  });
-
-  return std::move(resp_future);
+  return future.Map<BackendInterface::Response>(
+      [op_id = request->request_metadata().op_id()] {
+        auto ifrt_resp = NewIfrtResponse(op_id);
+        ifrt_resp->mutable_check_future_response();
+        return ifrt_resp;
+      });
 }
 
 tsl::Future<BackendInterface::Response>
@@ -830,22 +818,12 @@ IfrtBackend::HandleCheckValueReadyRequest(
     values.push_back(*std::move(array));
   }
 
-  auto [ifrt_response_promise, ifrt_response_future] =
-      tsl::Future<BackendInterface::Response>::MakePromise();
-
-  client_->GetReadyFuture(values).OnReady(
-      [op_id = request->request_metadata().op_id(),
-       promise = std::move(ifrt_response_promise)](
-          absl::Status status) mutable -> void {
-        if (!status.ok()) {
-          promise.Set(std::move(status));
-          return;
-        }
+  return client_->GetReadyFuture(values).Map<BackendInterface::Response>(
+      [op_id = request->request_metadata().op_id()] {
         auto ifrt_response = NewIfrtResponse(op_id);
         ifrt_response->mutable_check_value_ready_response();
-        promise.Set(std::move(ifrt_response));
+        return ifrt_response;
       });
-  return std::move(ifrt_response_future);
 }
 
 absl::StatusOr<BackendInterface::Response>
@@ -1110,38 +1088,25 @@ IfrtBackend::HandleCopyToStringHostBufferRequest(
   // Allocate the host buffer and start the copy.
   auto host_buffer = std::make_unique<std::vector<absl::Cord>>(
       (*array)->shape().num_elements());
-  tsl::Future<> copy_status = (*array)->CopyToHostBuffer(
+  tsl::Future<> copy_done = (*array)->CopyToHostBuffer(
       host_buffer->data(), /*byte_strides=*/std::nullopt,
       ArrayCopySemantics::kAlwaysCopy);
 
-  auto [resp_promise, resp_future] =
-      tsl::Future<BackendInterface::Response>::MakePromise();
-
   // Make the response proto when the copy is done.
-  auto response_maker =
+  return copy_done.Map(
       [this, op_id = request->request_metadata().op_id(),
        host_buffer = std::move(host_buffer),
-       host_buffer_handle =
-           copy_to_host.host_buffer_handle()](absl::Status status) mutable
-      -> absl::StatusOr<std::unique_ptr<IfrtResponse>> {
-    TF_RETURN_IF_ERROR(status);
+       host_buffer_handle = copy_to_host.host_buffer_handle()]()
+          -> absl::StatusOr<BackendInterface::Response> {
+        TF_ASSIGN_OR_RETURN(auto serialized_string_host_buffer,
+                            SerializeStringHostBuffer(*host_buffer));
+        TF_RETURN_IF_ERROR(host_buffer_store_->Store(
+            host_buffer_handle, std::move(*serialized_string_host_buffer)));
 
-    TF_ASSIGN_OR_RETURN(auto serialized_string_host_buffer,
-                        SerializeStringHostBuffer(*host_buffer));
-    TF_RETURN_IF_ERROR(host_buffer_store_->Store(
-        host_buffer_handle, std::move(*serialized_string_host_buffer)));
-
-    std::unique_ptr<IfrtResponse> response = NewIfrtResponse(op_id);
-    response->mutable_copy_to_host_buffer_response();
-    return response;
-  };
-  copy_status.OnReady([promise = std::move(resp_promise),
-                       response_maker = std::move(response_maker)](
-                          absl::Status status) mutable {
-    promise.Set(response_maker(status));
-  });
-
-  return std::move(resp_future);
+        std::unique_ptr<IfrtResponse> response = NewIfrtResponse(op_id);
+        response->mutable_copy_to_host_buffer_response();
+        return response;
+      });
 }
 
 tsl::Future<BackendInterface::Response>
@@ -1188,31 +1153,22 @@ IfrtBackend::HandleCopyToHostBufferRequest(
   }
 
   // TODO(b/282757875): Consider other ArrayCopySemantics.
-  tsl::Future<> copy_status =
+  tsl::Future<> copy_done =
       (*array)->CopyToHostBuffer(mem_region->zeroth_element(), byte_strides,
                                  ArrayCopySemantics::kAlwaysCopy);
 
-  auto [resp_promise, resp_future] =
-      tsl::Future<BackendInterface::Response>::MakePromise();
-  auto on_ready = [this, op_id = request->request_metadata().op_id(),
-                   host_buffer = std::move(host_buffer),
-                   host_buffer_handle = copy_to_host.host_buffer_handle()](
-                      absl::Status status) mutable
-      -> absl::StatusOr<std::unique_ptr<IfrtResponse>> {
-    TF_RETURN_IF_ERROR(status);
+  return copy_done.Map(
+      [this, op_id = request->request_metadata().op_id(),
+       host_buffer = std::move(host_buffer),
+       host_buffer_handle = copy_to_host.host_buffer_handle()]()
+          -> absl::StatusOr<BackendInterface::Response> {
+        TF_RETURN_IF_ERROR(host_buffer_store_->Store(host_buffer_handle,
+                                                     *std::move(host_buffer)));
 
-    TF_RETURN_IF_ERROR(
-        host_buffer_store_->Store(host_buffer_handle, *std::move(host_buffer)));
-
-    std::unique_ptr<IfrtResponse> response = NewIfrtResponse(op_id);
-    response->mutable_copy_to_host_buffer_response();
-    return response;
-  };
-  copy_status.OnReady(
-      [promise = std::move(resp_promise), on_ready = std::move(on_ready)](
-          absl::Status status) mutable { promise.Set(on_ready(status)); });
-
-  return std::move(resp_future);
+        std::unique_ptr<IfrtResponse> response = NewIfrtResponse(op_id);
+        response->mutable_copy_to_host_buffer_response();
+        return response;
+      });
 }
 
 absl::StatusOr<BackendInterface::Response>
