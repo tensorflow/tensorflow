@@ -1381,9 +1381,11 @@ def weighted_moments(x, axes, frequency_weights, name=None, keep_dims=None,
     weighted_variance = math_ops.div_no_nan(weighted_distsq, sum_of_weights)
 
     if not keep_dims:
-      weighted_mean = array_ops.squeeze(weighted_mean, axis=axes)
-      weighted_variance = array_ops.squeeze(
-          weighted_variance, axis=axes)
+      squeeze_axes = axes
+      if not isinstance(axes, (list, tuple)):
+        squeeze_axes = axes.numpy().tolist()
+      weighted_mean = array_ops.squeeze(weighted_mean, axis=squeeze_axes)
+      weighted_variance = array_ops.squeeze(weighted_variance, axis=squeeze_axes)
 
     if needs_cast:
       weighted_mean = math_ops.cast(weighted_mean, dtypes.float16)
