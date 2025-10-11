@@ -157,6 +157,63 @@ enum PrimitiveType {
 //   https://www.tensorflow.org/code/tensorflow/compiler/xla/tools/driver.cc
 // )
 
+// In XLA:GPU we use different streams for different kinds of collective
+// operations, and include the async stream kind into the GPU clique key.
+//
+// We carefully isolate different kinds of collectives using separate
+// communicators and guarantee that all collective operations have a total order
+// that will not create a deadlock.
+enum AsyncStreamKind {
+  // Stream for asynchronous collective ops.
+  ASYNC_STREAM_KIND_COLLECTIVE = 0;
+  // One Stream for P2P Send and Recv ops.
+  ASYNC_STREAM_KIND_P2P0 = 1;
+  // Another Stream for P2P Send and Recv ops.
+  ASYNC_STREAM_KIND_P2P1 = 2;
+  // Stream for MemCpyP2P
+  ASYNC_STREAM_KIND_MEMCPYP2P = 3;
+}
+
+// There are broadly 4 modes that collective communication ops use to describe
+// which sets of devices are participating with a given device in the operation.
+// These modes are determined by the values of channel_id (optional) and
+// use_global_device_ids (optional). The modes are as follows:
+//
+// kCrossReplica:
+//    implied by: no channel id, use_global_device_ids = false, or
+//                no channel_id, no use_global_device_ids:
+//    replica_groups contain replica_id, group contains all replicas for the
+//    current partition
+//
+// kCrossPartition:
+//    implied by: channel_id is set, no use_global_device_ids:
+//    replica_groups contain partition_id, group contains all partitions for the
+//    current replica.
+//
+// kCrossReplicaAndPartition:
+//    implied by: channel_id is set, use_global_device_ids = false:
+//    replica_groups contain replica_id, group contains all replicas for all
+//    partitions (as opposed to just current partition).
+//
+// kFlattenedID:
+//    implied by: channel_id is set, use_global_device_ids = true:
+//    replica_groups contain flattened-ids, group contains devices that are
+//    listed in the flattened-id list.
+//
+// Rest of the combinations are invalid.
+//
+// Since the actual value of channel_id does not matter, we use a bool argument
+// `has_channel_id`, and optional<bool> for use_global_device_ids.
+// Note that use_global_device_ids true requires channel_id to be set as well.
+// Additionally, if use_global_device_ids = true, replica groups cannot be
+// empty (verified in the HLO verifier).
+enum CollectiveOpGroupMode {
+  COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA = 0;
+  COLLECTIVE_OP_GROUP_MODE_CROSS_PARTITION = 1;
+  COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA_AND_PARTITION = 2;
+  COLLECTIVE_OP_GROUP_MODE_FLATTENED_ID = 3;
+}
+
 // Describes the padding configuration for Pad operation. The padding amount on
 // both edges as well as between the elements are specified for each dimension.
 message PaddingConfig {

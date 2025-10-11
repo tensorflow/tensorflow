@@ -75,7 +75,8 @@ struct DecomposedReplicaGroups {
 static std::optional<GlobalDeviceId> TryConvertingReplicaIdToDeviceId(
     int64_t replica_id, const DeviceAssignment& device_assignment,
     CollectiveOpGroupMode collective_group_mode) {
-  if (collective_group_mode == CollectiveOpGroupMode::kCrossReplica) {
+  if (collective_group_mode ==
+      CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_FLATTENED_ID) {
     if (device_assignment.computation_count() != 1) {
       // If there are multiple partitions, the replica_id may refer to multiple
       // devices on different partitions.
@@ -89,7 +90,8 @@ static std::optional<GlobalDeviceId> TryConvertingReplicaIdToDeviceId(
     return GlobalDeviceId{device_assignment(actual_replica_id, partition_id)};
   }
 
-  // kCrossPartition and kCrossReplicaAndPartition are unsupported.
+  // kCrossPartition and COLLECTIVE_OP_GROUP_MODE_FLATTENED_IDAndPartition are
+  // unsupported.
   VLOG(1) << "Skip AllReduceBlueConnect because of unsupported "
              "CollectiveOpGroupMode "
           << CollectiveOpGroupModeToString(collective_group_mode);

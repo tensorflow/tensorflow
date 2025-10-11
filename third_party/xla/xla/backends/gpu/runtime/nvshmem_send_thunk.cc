@@ -91,7 +91,8 @@ absl::Status NvshmemSendThunk::RunNvshmemCollective(const ExecuteParams& params,
                       params.collective_params->device_assn->LogicalIdForDevice(
                           global_device_id));
   const int64_t current_id =
-      config_.config.group_mode == CollectiveOpGroupMode::kCrossReplica
+      config_.config.group_mode ==
+              CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA
           ? current_logical_id.replica_id
           : current_logical_id.computation_id;
   std::string device_string =

@@ -190,13 +190,14 @@ absl::StatusOr<HloInstruction*> CreatePartitionOrReplicaId(
     HloComputation* computation, CollectiveOpGroupMode mode,
     absl::string_view cp_name) {
   switch (mode) {
-    case CollectiveOpGroupMode::kCrossReplica:
+    case CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_FLATTENED_ID:
       return computation->AddInstruction(HloInstruction::CreateReplicaId(),
                                          absl::StrCat(cp_name, "-rep-id"));
     case CollectiveOpGroupMode::kCrossPartition:
       return computation->AddInstruction(HloInstruction::CreatePartitionId(),
                                          absl::StrCat(cp_name, "-part-id"));
-    case CollectiveOpGroupMode::kCrossReplicaAndPartition:
+    case CollectiveOpGroupMode::
+        COLLECTIVE_OP_GROUP_MODE_FLATTENED_IDAndPartition:
     case CollectiveOpGroupMode::kFlattenedID:
       return absl::InternalError(
           absl::StrFormat("Unexpected collective group mode for %s", cp_name));

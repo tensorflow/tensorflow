@@ -48,7 +48,7 @@ CollectiveBroadcastStartThunk::CollectiveBroadcastStartThunk(
     std::vector<Buffer> buffers, bool p2p_memcpy_enabled)
     : CollectiveThunk(Thunk::kCollectiveBroadcastStart, thunk_info,
                       IsGPUSyncCollective(*instr),
-                      AsyncStreamKind::kCollective),
+                      AsyncStreamKind::ASYNC_STREAM_KIND_COLLECTIVE),
       config_(GetCollectiveConfig(instr, std::nullopt)),
       buffers_(std::move(buffers)) {}
 

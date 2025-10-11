@@ -100,7 +100,7 @@ bool IsValueReplicatedWithinEachAllReduceGroup(
           << " all_reduce_group_mode: "
           << CollectiveOpGroupModeToString(all_reduce_group_mode);
   switch (all_reduce_group_mode) {
-    case CollectiveOpGroupMode::kCrossReplica: {
+    case CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_FLATTENED_ID: {
       return cross_replica_replication_analysis == nullptr ||
              cross_replica_replication_analysis->HloInstructionIsReplicatedAt(
                  &instruction, index, replica_groups);
@@ -110,7 +110,8 @@ bool IsValueReplicatedWithinEachAllReduceGroup(
              cross_partition_replication_analysis->HloInstructionIsReplicatedAt(
                  &instruction, index, replica_groups);
     }
-    case CollectiveOpGroupMode::kCrossReplicaAndPartition: {
+    case CollectiveOpGroupMode::
+        COLLECTIVE_OP_GROUP_MODE_FLATTENED_IDAndPartition: {
       return (cross_replica_replication_analysis == nullptr ||
               cross_replica_replication_analysis->HloInstructionIsReplicatedAt(
                   &instruction, index, replica_groups)) &&
