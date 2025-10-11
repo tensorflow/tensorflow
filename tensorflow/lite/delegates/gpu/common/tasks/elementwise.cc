@@ -9,9 +9,10 @@ std::string GetTwoInputCode(const OperationType& op_type,
   std::string result;
   switch (op_type) {
     // Patch by kshiteej-mali for GPU numerical accuracy
-    // Explicitly use TO_FLOAT4 to ensure F32 precision and avoid F16 accumulation errors
+    // Use explicit convert_float4() to ensure F32 precision for Add operations
+    // This prevents numerical errors from F16 precision in F32_F16 mode (Issue #66740)
     case OperationType::ADD:
-      result += "$0 = TO_FLOAT4($1) + TO_FLOAT4($2);";
+      result += "$0 = convert_float4($1) + convert_float4($2);";
       break;
     case OperationType::DIV:
       result += "$0 = $1 / $2;";
@@ -29,9 +30,10 @@ std::string GetTwoInputCode(const OperationType& op_type,
       result += "$0 = min($1, $2);";
       break;
     // Patch by kshiteej-mali for GPU numerical accuracy
-    // Explicitly use TO_FLOAT4 to ensure F32 precision and avoid F16 accumulation errors
+    // Use explicit convert_float4() to ensure F32 precision for Mul operations
+    // This prevents numerical errors from F16 precision in F32_F16 mode (Issue #66740)
     case OperationType::MUL:
-      result += "$0 = TO_FLOAT4($1) * TO_FLOAT4($2);";
+      result += "$0 = convert_float4($1) * convert_float4($2);";
       break;
     case OperationType::POW:
       result += "$0 = pow($1, $2);";
