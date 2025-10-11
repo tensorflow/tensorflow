@@ -379,11 +379,18 @@ LatencyEstimator::TimeCost SolLatencyEstimator::GetLatencyBetween(
   const HloOpcode from_op = from.GetInstr().opcode();
   if (!config_.schedule_send_recvs &&
       (from_op == HloOpcode::kSend || from_op == HloOpcode::kRecv)) {
+    VLOG(10) << "GetLatencyBetween: Returning kLowLatency for Send/Recv op "
+             << from.GetInstr().name();
     return kLowLatency;
   }
 
-  if (!IsAsyncPair(from, target) || !IsSupportedCollectiveOp(from.GetInstr())) {
-    return latency_estimator_->GetLatencyBetween(from, target);
+  if (!IsAsyncPair(from, target) && !IsSupportedCollectiveOp(from.GetInstr())) {
+    TimeCost latency = latency_estimator_->GetLatencyBetween(from, target);
+    VLOG(10)
+        << "GetLatencyBetween: Not an async pair or unsupported collective "
+        << from.GetInstr().name() << ", returning latency from wrapped "
+        << "estimator: " << latency;
+    return latency;
   }
 
   absl::StatusOr<absl::Duration> coll_time = ComputeCollectiveTime(
@@ -392,22 +399,34 @@ LatencyEstimator::TimeCost SolLatencyEstimator::GetLatencyBetween(
   if (!coll_time.ok()) {
     VLOG(1) << "Failed to compute collective time: " << coll_time.status()
             << " for " << from.GetInstr().name();
-    return latency_estimator_->GetLatencyBetween(from, target);
+    TimeCost latency = latency_estimator_->GetLatencyBetween(from, target);
+    VLOG(10) << "GetLatencyBetween: Fallback to wrapped estimator due to "
+                "ComputeCollectiveTime failure for "
+             << from.GetInstr().name() << ", returning latency: " << latency;
+    return latency;
   }
-  return absl::ToDoubleMicroseconds(*coll_time);
+  TimeCost latency = absl::ToDoubleMicroseconds(*coll_time);
+  VLOG(10) << "GetLatencyBetween: Computed collective time for "
+           << from.GetInstr().name() << ": " << latency << " us";
+  return latency;
 }
 
 LatencyEstimator::TimeCost SolLatencyEstimator::NodeCost(
     const HloInstruction* instr) const {
   if (hlo_query::IsAsyncCollectiveStartOp(instr, /*include_send_recv=*/true) ||
       hlo_query::IsAsyncCollectiveDoneOp(instr, /*include_send_recv=*/true)) {
+    VLOG(10) << "NodeCost: Returning kLowCost for async start/done op "
+             << instr->name();
     return kLowCost;
   }
 
   if (std::optional<absl::Duration> matmul_duration =
           matmul_interpolator_->EstimatedRuntime(*instr);
       matmul_duration.has_value()) {
-    return absl::ToDoubleMicroseconds(*matmul_duration);
+    TimeCost cost = absl::ToDoubleMicroseconds(*matmul_duration);
+    VLOG(10) << "NodeCost: Matmul cost from matmul_interpolator for "
+             << instr->name() << ": " << cost << " us";
+    return cost;
   }
 
   LatencyEstimator::TimeCost cost_in_us;
@@ -420,8 +439,12 @@ LatencyEstimator::TimeCost SolLatencyEstimator::NodeCost(
             .EstimateRunTimeForInstruction(instr, &*cost_analysis_)
             .exec_time;
     cost_in_us = absl::ToDoubleMicroseconds(total_estimated_time);
+    VLOG(10) << "NodeCost: Fusion cost from gpu_performance_model for "
+             << instr->name() << ": " << cost_in_us << " us";
   } else {
     cost_in_us = 0.01 * latency_estimator_->NodeCost(instr);
+    VLOG(10) << "NodeCost: Fallback cost for " << instr->name() << ": "
+             << cost_in_us << " us";
   }
   VLOG(10) << "Analytical estimator calculated cost for: " << instr->name()
            << ". Cost: " << cost_in_us;
