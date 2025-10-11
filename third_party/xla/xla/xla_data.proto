@@ -934,7 +934,7 @@ message StatisticsViz {
 //   * All of its elements must be non-negative.
 //   * `device_ids` should not be equal to `iota(product(axis_sizes))`.
 //   * Sorted `device_ids` must be `iota(product(axis_sizes))`.
-message Mesh {
+message MeshProto {
   message MeshAxis {
     string name = 1;
     int64 size = 2;
@@ -950,7 +950,7 @@ message Mesh {
 //
 // Constraints:
 // - `axis_index` is a valid index into `mesh.axes`.
-message AxisRef {
+message AxisRefProto {
   // When splitting a full axis into n sub-axes, the axis is reshaped into
   // [k_1,...,k_n], and the ith sub-axis can be expressed by the product of
   // all axis sizes to its left `m=prod(k_1,...,k_(i-1))` (aka pre-size) and
@@ -985,31 +985,31 @@ message AxisRef {
 // This is corresponding to mlir sharding representation `Sdy_TensorSharding`
 // (https://github.com/openxla/shardy/blob/main/shardy/dialect/sdy/ir/attrs.td)
 // used in Shardy.
-message NamedSharding {
+message NamedShardingProto {
   // Describes how a tensor dimension is sharded using indices into
   // mesh.axes, from major to minor, and a boolean indicating whether
   // the dimension can be further sharded.
   message DimensionSharding {
     // List of axes to shard a tensor dimension on from major to minor. The
     // dimension should have at least one axis if it is closed.
-    repeated AxisRef axes = 1;
+    repeated AxisRefProto axes = 1;
     // If true, this dimension is "closed" and can't be further sharded.
     bool is_closed = 2;
   }
 
   // If this is non-empty, then all the other fields are ignored and this
   // represents a tuple sharding.
-  repeated NamedSharding tuple_shardings = 1;
+  repeated NamedShardingProto tuple_shardings = 1;
 
-  Mesh mesh = 2;
+  MeshProto mesh = 2;
   // The dimension shardings tell us for each dimension of the tensor, along
   // which axes it is sharded from major to minor.
   repeated DimensionSharding dim_shardings = 3;
   // All axes in this list are explicitly replicated.
-  repeated AxisRef replicated_axes = 4;
+  repeated AxisRefProto replicated_axes = 4;
   // A sharding can have unreduced axes, meaning the tensor is unreduced
   // along these axes.
-  repeated AxisRef unreduced_axes = 5;
+  repeated AxisRefProto unreduced_axes = 5;
 
   // This field is used to track the source of this sharding, usually derived
   // from instructions. Multple metadata may be populated if sharding is
@@ -1114,7 +1114,7 @@ message OpSharding {
   // Note that instead of reusing OpSharding's fields like metadata, we have
   // separate fields in NamedSharding to treat it as a standalone message which
   // is more clear and will help in future cleanup.
-  optional NamedSharding named_sharding = 14;
+  optional NamedShardingProto named_sharding = 14;
 }
 // LINT.ThenChange()
 
