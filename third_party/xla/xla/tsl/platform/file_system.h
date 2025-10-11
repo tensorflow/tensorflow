@@ -799,7 +799,7 @@ class RandomAccessFile {
     // This implementation is provided only for backward compatibility.
     // If a subclass implements the deprecated Read() above instead of this, it
     // will still work.
-    return Read(offset, scratch.size(), &result, scratch.data());
+    return Read(offset, result, absl::MakeSpan(scratch.data(), scratch.size()));
   }
 
 #if defined(TF_CORD_SUPPORT)
