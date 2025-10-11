@@ -5,6 +5,7 @@ load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//visibility:public"],
+    licenses = ["notice"],
 )
 
 cc_library(
@@ -88,6 +89,23 @@ xla_cc_test(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/log:log_sink_registry",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "check",
+    hdrs = ["check.h"],
+    deps = ["//xla/error/internal:check_impl"],
+)
+
+xla_cc_test(
+    name = "check_test",
+    srcs = ["check_test.cc"],
+    deps = [
+        ":check",
+        ":debug_me_context_util",
+        "//xla/tsl/platform:debug_me_context",
         "@com_google_googletest//:gtest_main",
     ],
 )
