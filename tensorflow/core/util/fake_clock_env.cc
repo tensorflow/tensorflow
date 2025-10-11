@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/util/fake_clock_env.h"
 
-#include <string>
+#include <cstdint>
 
 namespace tensorflow {
 
