@@ -5208,6 +5208,17 @@ LogicalResult ExportElementwiseXlaOp(Op op, OpLoweringContext ctx) {
   return success();
 }
 
+LogicalResult ExportXlaOp(AsinOp op, OpLoweringContext ctx) {
+  auto& value_map = *ctx.values;
+  xla::XlaOp operand;
+  if (failed(GetXlaOp(op.getOperand(), value_map, &operand, op))) {
+    return failure();
+  }
+  value_map[op] =
+      xla::Asin(operand, /*result_accuracy=*/std::nullopt, /*expand=*/false);
+  return success();
+}
+
 LogicalResult ExportXlaOp(AcosOp op, OpLoweringContext ctx) {
   return ExportElementwiseXlaOp<AcosOp, xla::Acos>(op, ctx);
 }

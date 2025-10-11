@@ -89,7 +89,9 @@ XlaOp Acos(XlaOp x,
            bool expand = true);
 
 // Computes the arc sine of 'x'.
-XlaOp Asin(XlaOp x);
+XlaOp Asin(XlaOp x,
+           const std::optional<ResultAccuracy>& result_accuracy = std::nullopt,
+           bool expand = true);
 
 // Computes the arc tangent of 'x'.
 XlaOp Atan(XlaOp x);

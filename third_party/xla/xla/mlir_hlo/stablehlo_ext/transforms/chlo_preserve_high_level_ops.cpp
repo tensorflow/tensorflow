@@ -275,6 +275,15 @@ struct SinhOpToCustomCallPattern : public OpRewritePattern<chlo::SinhOp> {
   }
 };
 
+struct AsinOpToCustomCallPattern : public OpRewritePattern<chlo::AsinOp> {
+  using OpRewritePattern::OpRewritePattern;
+  LogicalResult matchAndRewrite(chlo::AsinOp op,
+                                PatternRewriter& rewriter) const override {
+    return wrapChloOperationInCustomCall(rewriter, op, "mhlo.asin",
+                                         /*version=*/1);
+  }
+};
+
 ///////
 // CHLO to CompositeOp Patterns
 ///////
@@ -358,6 +367,14 @@ struct SinhOpToCompositePattern : public OpRewritePattern<chlo::SinhOp> {
   }
 };
 
+struct AsinOpToCompositePattern : public OpRewritePattern<chlo::AsinOp> {
+  using OpRewritePattern::OpRewritePattern;
+  LogicalResult matchAndRewrite(chlo::AsinOp op,
+                                PatternRewriter& rewriter) const override {
+    return wrapChloOpInComposite(op, /*version=*/1, rewriter);
+  }
+};
+
 }  // namespace
 
 struct ChloPreserveHighLevelOpsPass
@@ -382,6 +399,7 @@ struct ChloPreserveHighLevelOpsPass
       // Deprecated CustomCall encoding.
       patterns.add<
         AcosOpToCustomCallPattern,
+        AsinOpToCustomCallPattern,
         AcoshOpToCustomCallPattern,
         AtanhOpToCustomCallPattern,
         CoshOpToCustomCallPattern,
@@ -392,6 +410,7 @@ struct ChloPreserveHighLevelOpsPass
     } else {
       patterns.add<
         AcosOpToCompositePattern,
+        AsinOpToCompositePattern,
         AcoshOpToCompositePattern,
         AtanhOpToCompositePattern,
         CoshOpToCompositePattern,
