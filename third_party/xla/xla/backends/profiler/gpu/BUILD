@@ -216,7 +216,6 @@ cc_library(
         ":cupti_interface",
         ":cupti_pm_sampler_factory",
         ":cupti_utils",
-        ":nvtx_utils",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",
@@ -433,23 +432,6 @@ cc_library(
         "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/platform:thread_annotations",
         "@local_tsl//tsl/platform:types",
-    ],
-)
-
-cc_library(
-    name = "nvtx_utils",
-    srcs = ["nvtx_utils.cc"],
-    hdrs = ["nvtx_utils.h"],
-    # copybara:uncomment compatible_with = ["//buildenv/target:non_prod"],
-    tags = [
-        "cuda-only",
-        "gpu",
-    ],
-    deps = [
-        "@com_google_absl//absl/strings",
-        "@local_config_cuda//cuda:cuda_headers",
-        "@local_tsl//tsl/platform",
-        "@local_tsl//tsl/platform:macros",
     ],
 )
 
