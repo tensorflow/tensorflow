@@ -55,7 +55,7 @@ namespace tsl {
 // 4. Future<> is a stateless type that can be used to represent a Future that
 //    doesn't have a value type, and is used to signal an event completion.
 template <class T = void>
-class Future;
+class [[nodiscard]] Future;
 
 // Returns a `Future` that will be successful if all `futures` complete
 // successfully, or return a first encountered error.
@@ -314,7 +314,7 @@ class FutureBase : public FutureMoveControl<is_move_only> {
   // completes with an error, the returned future will also be an error.
   //
   // This function defined out of line as it requires Future<> definition.
-  [[nodiscard]] Future<> GetReadyFuture() const;
+  Future<> GetReadyFuture() const;
 
   // A type predicate to check if `F` is a valid `OnReady` callback.
   template <typename F, bool rvalue = false>
