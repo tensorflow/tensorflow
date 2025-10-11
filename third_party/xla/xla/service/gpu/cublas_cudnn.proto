@@ -1,0 +1,13 @@
+syntax = "proto3";
+
+package xla.gpu;
+
+// Proto version of xla::gpu::CudnnConvKind.
+enum CudnnConvKindProto {
+  CUDNN_CONV_KIND_UNSPECIFIED = 0;
+  CUDNN_CONV_KIND_FORWARD = 1;
+  CUDNN_CONV_KIND_BACKWARD_INPUT = 2;
+  CUDNN_CONV_KIND_BACKWARD_FILTER = 3;
+  CUDNN_CONV_KIND_FORWARD_ACTIVATION = 4;
+  CUDNN_CONV_KIND_FORWARD_GRAPH = 5;
+}
