@@ -412,6 +412,11 @@ class PjRtStreamExecutorClient : public CommonPjRtClient {
       const xla::Shape& device_shape,
       tsl::RCReference<CommonPjRtRawBuffer> raw_buffer) override;
 
+  absl::StatusOr<std::pair<tsl::RCReference<PjRtDeviceEventPromise>,
+                           tsl::RCReference<PjRtDeviceEvent>>>
+  CreateLinkedEventPromise(PjRtMemorySpace* memory_space,
+                           absl::string_view debug_info) override;
+
   void WaitForAllocation(se::Stream* stream,
                          const CommonPjRtRawBuffer& raw_buffer);
 

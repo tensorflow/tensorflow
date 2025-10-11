@@ -61,9 +61,23 @@ namespace xla {
 // same stream causes no additional waiting.
 class BufferSequencingEvent : tsl::AsyncPayload::KeepOnError {
  public:
+  struct EventState {
+    // An event that is triggered when the content of one or more buffers has
+    // been read or written. If this event is used as a definition event and is
+    // nullptr, it is assumed that the buffer's content is always defined for
+    // example because it uses storage borrowed from elsewhere.
+    EventPool::Handle event;
+
+    se::Stream* definition_stream;
+  };
+
   explicit BufferSequencingEvent(tsl::thread::ThreadPool* thread_pool)
       : thread_pool_(thread_pool),
         event_(tsl::MakeUnconstructedAsyncValueRef<EventState>()) {}
+
+  explicit BufferSequencingEvent(tsl::thread::ThreadPool* thread_pool,
+                                 tsl::AsyncValueRef<EventState> event)
+      : thread_pool_(thread_pool), event_(event) {}
 
   static tsl::AsyncValueRef<BufferSequencingEvent> Create(
       tsl::thread::ThreadPool* thread_pool) {
@@ -138,17 +152,9 @@ class BufferSequencingEvent : tsl::AsyncPayload::KeepOnError {
   // blocks the calling thread until either of those 2 happens.
   bool IsPredeterminedErrorOrDefinedOn(se::Stream* stream);
 
-  struct EventState {
-    // An event that is triggered when the content of one or more buffers has
-    // been read or written. If this event is used as a definition event and is
-    // nullptr, it is assumed that the buffer's content is always defined for
-    // example because it uses storage borrowed from elsewhere.
-    EventPool::Handle event;
-
-    se::Stream* definition_stream;
-  };
-
   se::Stream* definition_stream() const { return event_->definition_stream; }
+
+  const tsl::AsyncValueRef<EventState>& event() { return event_; }
 
  private:
   uint64_t sequence_number() const;

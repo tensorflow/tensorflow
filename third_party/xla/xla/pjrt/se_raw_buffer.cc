@@ -23,6 +23,9 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "xla/future.h"
+#include "xla/pjrt/buffer_sequencing_event.h"
+#include "xla/pjrt/device_event.h"
+#include "xla/pjrt/local_device_state.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_future.h"
 #include "xla/pjrt/pjrt_stream_executor_client.h"
@@ -30,8 +33,10 @@ limitations under the License.
 #include "xla/pjrt/tracked_device_buffer.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/stream.h"
+#include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/threadpool.h"
 #include "tsl/platform/casts.h"
 #include "tsl/profiler/lib/connected_traceme.h"
 
@@ -62,6 +67,49 @@ Future<> PjRtStreamExecutorDeviceEvent::GetReadyFuture() {
             [&] { return absl::StrCat(callee_type, "::", callee_method); },
             keys.traceme_context_id);
       });
+}
+
+PjRtStreamExecutorDeviceEventPromise::PjRtStreamExecutorDeviceEventPromise(
+    PjRtMemorySpace* memory_space, LocalDeviceState* local_device,
+    tsl::thread::ThreadPool* thread_pool)
+    : memory_space_(memory_space),
+      local_device_(local_device),
+      av_(tsl::MakeIndirectAsyncValue()),
+      event_(tsl::MakeConstructedAsyncValueRef<BufferSequencingEvent>(
+          thread_pool,
+          tsl::AsyncValueRef<BufferSequencingEvent::EventState>(av_))) {}
+
+void PjRtStreamExecutorDeviceEventPromise::Set(
+    tsl::RCReference<PjRtDeviceEvent> event) {
+  SetFromSEEvent(
+      tensorflow::down_cast<PjRtStreamExecutorDeviceEvent*>(event.get())
+          ->event());
+}
+
+void PjRtStreamExecutorDeviceEventPromise::SetFromSEEvent(
+    BufferSequencingEventRef event) {
+  av_->ForwardTo(event->event().CopyRCRef());
+  event.AndThen([event = event_, original_event = event]() {
+    if (auto* error = original_event.GetErrorIfPresent()) {
+      event.SetError(*error);
+    }
+    event.SetStateConcrete();
+  });
+}
+
+void PjRtStreamExecutorDeviceEventPromise::SetReady() {
+  auto* client =
+      tensorflow::down_cast<PjRtStreamExecutorClient*>(memory_space_->client());
+  auto result = BufferSequencingEvent::Create(client->thread_pool());
+  auto stream = local_device_->BorrowStreamFromPool();
+  auto status =
+      client->AllocateAndRecordEvent(result, local_device_, stream.get());
+  local_device_->ReturnStreamToPool(std::move(stream));
+  if (!status.ok()) {
+    SetError(status);
+  } else {
+    SetFromSEEvent(result);
+  }
 }
 
 absl::StatusOr<tsl::RCReference<PjRtDeviceEvent>>
