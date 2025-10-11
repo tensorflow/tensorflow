@@ -1387,6 +1387,16 @@ PjRtClient::CopyArraysForCrossHost(absl::Span<ArrayRef> arrays,
                         arrays[i]->shared_ptr_sharding()->WithDeviceAssignment(
                             dst_devices, memory_kind));
     TF_ASSIGN_OR_RETURN(auto new_layout, arrays[i]->pjrt_layout());
+    if (new_layout == nullptr) {
+      TF_ASSIGN_OR_RETURN(
+          xla::ifrt::Shape shard_shape,
+          arrays[i]->sharding().GetShardShape(arrays[i]->shape()));
+      TF_ASSIGN_OR_RETURN(
+          new_layout, GetDefaultPjRtLayout(
+                          arrays[i]->dtype(), shard_shape.dims(),
+                          arrays[i]->sharding().devices()->devices().front(),
+                          arrays[i]->sharding().memory_kind()));
+    }
     TF_ASSIGN_OR_RETURN(
         new_arrays.emplace_back(),
         PjRtArray::Create(this, arrays[i]->dtype(), arrays[i]->shape(),

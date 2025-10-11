@@ -580,6 +580,19 @@ std::string PjRtArray::DebugString() const {
   DCHECK(this);
   absl::StatusOr<std::shared_ptr<const xla::PjRtLayout>> layout_ptr =
       pjrt_layout();
+  if (layout_ptr.ok() && *layout_ptr == nullptr) {
+    layout_ptr =
+        [&]() -> absl::StatusOr<std::shared_ptr<const xla::PjRtLayout>> {
+      TF_ASSIGN_OR_RETURN(xla::ifrt::Shape shard_shape,
+                          sharding_->GetShardShape(std::get<Shape>(shape_)));
+      TF_ASSIGN_OR_RETURN(
+          std::shared_ptr<const xla::PjRtLayout> layout,
+          client_->GetDefaultPjRtLayout(dtype_, shard_shape.dims(),
+                                        sharding_->devices()->devices().front(),
+                                        sharding_->memory_kind()));
+      return layout;
+    }();
+  }
   std::string layout_str =
       layout_ptr.ok() ? (*layout_ptr)->ToString() : "<unknown>";
 
