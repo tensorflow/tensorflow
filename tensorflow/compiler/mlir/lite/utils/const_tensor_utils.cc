@@ -301,9 +301,17 @@ StatusOr<mlir::ElementsAttr> ConvertIntBuffer(
       return mlir::ElementsAttr(
           DenseElementsAttr::get(shaped_type, ArrayRef<bool>(boolValues)));
     }
+    case 2: {
+      auto i2Values = tflite::UnpackDenseLowBitIntoInt8(
+          buffer, shaped_type.getNumElements(), /*bit_width=*/2);
+      // Use `getFromRawBuffer()` instead of `get()` to bypass a templated size
+      // check which doesn't work with int2 because int2_t doesn't exist.
+      return mlir::ElementsAttr(DenseElementsAttr::getFromRawBuffer(
+          shaped_type, ArrayRef<char>(i2Values)));
+    }
     case 4: {
-      auto i4Values =
-          tflite::UnpackDenseInt4IntoInt8(buffer, shaped_type.getNumElements());
+      auto i4Values = tflite::UnpackDenseLowBitIntoInt8(
+          buffer, shaped_type.getNumElements(), /*bit_width=*/4);
       // Use `getFromRawBuffer()` instead of `get()` to bypass a templated size
       // check which doesn't work with int4 because int4_t doesn't exist.
       return mlir::ElementsAttr(DenseElementsAttr::getFromRawBuffer(

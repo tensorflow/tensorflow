@@ -1088,6 +1088,9 @@ TfLiteStatus ConvertTensorType(TensorType tensor_type, TfLiteType* type,
     case TensorType_INT4:
       *type = kTfLiteInt4;
       return kTfLiteOk;
+    case TensorType_INT2:
+      *type = kTfLiteInt2;
+      return kTfLiteOk;
     default:
       *type = kTfLiteNoType;
       TF_LITE_REPORT_ERROR(error_reporter,

@@ -55,6 +55,9 @@ int TfLiteTypeToPyArrayType(TfLiteType tf_lite_type) {
     case kTfLiteInt4:
       // TODO(b/246806634): NPY_INT4 currently doesn't exist
       return NPY_BYTE;
+    case kTfLiteInt2:
+      // TODO(b/246806634): NPY_INT2 currently doesn't exist
+      return NPY_BYTE;
     case kTfLiteUInt8:
       return NPY_UINT8;
     case kTfLiteInt8:
