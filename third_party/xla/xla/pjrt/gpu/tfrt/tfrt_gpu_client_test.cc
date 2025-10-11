@@ -238,12 +238,14 @@ ENTRY %Add.6 (a.1: f32[], b.2: f32[]) -> (f32[], f32[]) {
   TF_ASSERT_OK_AND_ASSIGN(auto executable,
                           CompileExecutable(kAddProgram, *client));
 
+  ExecuteOptions options;
+  options.untuple_result = true;
   TF_ASSERT_OK_AND_ASSIGN(
       auto result,
-      executable->Execute({{buffer.get(), buffer.get()}}, /*options=*/{}));
+      executable->Execute({{buffer.get(), buffer.get()}}, /*options=*/options));
 
   ASSERT_EQ(result.size(), 1);
-  ASSERT_EQ(result[0].size(), 1);
+  ASSERT_EQ(result[0].size(), 2);
   EXPECT_EQ(result[0][0]->GetReadyFuture().Await(), input_error);
 }
 

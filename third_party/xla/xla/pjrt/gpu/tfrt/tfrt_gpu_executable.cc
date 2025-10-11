@@ -394,6 +394,13 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
   // SPMD sharding produces a single executable for multiple partitions.
   int executable_idx = executables_.size() > 1 ? partition : 0;
 
+  TF_ASSIGN_OR_RETURN(std::vector<Shape> output_shapes, GetOutputShapes());
+  const Shape& result_shape = output_shapes[executable_idx];
+  if (!options.untuple_result && result_shape.IsTuple()) {
+    return InvalidArgument(
+        "Tuple results must be untupled using ExecuteOptions::untuple_result.");
+  }
+
   // `scheduled_event` indicates whether gpu computation is dispatched to the
   // stream and whether there was an error.
   auto scheduled_event = tsl::MakeConstructedAsyncValueRef<GpuEvent>();
@@ -523,8 +530,6 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
   std::vector<tsl::AsyncValueRef<GpuDeviceMemory>> output_buffers;
   std::vector<std::unique_ptr<PjRtBuffer>> outputs;
   auto gpu_executable = executables_[executable_idx];
-  TF_ASSIGN_OR_RETURN(std::vector<Shape> output_shapes, GetOutputShapes());
-  const Shape& result_shape = output_shapes[executable_idx];
   bool untuple_result = options.untuple_result;
   bool result_is_tuple = result_shape.IsTuple();
   if (options.untuple_result && result_shape.IsTuple()) {
