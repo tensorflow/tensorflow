@@ -30,31 +30,33 @@ struct RGBToHSV {
                   typename TTypes<T, 2>::ConstTensor input_data,
                   typename TTypes<T, 1>::Tensor range,
                   typename TTypes<T, 2>::Tensor output_data) {
-    auto H = output_data.template chip<1>(0);
-    auto S = output_data.template chip<1>(1);
-    auto V = output_data.template chip<1>(2);
-
-    auto R = input_data.template chip<1>(0);
-    auto G = input_data.template chip<1>(1);
-    auto B = input_data.template chip<1>(2);
-
-    Eigen::IndexList<Eigen::type2index<1> > channel_axis;
-
-    V.device(d) = input_data.maximum(channel_axis);
-
-    range.device(d) = V - input_data.minimum(channel_axis);
-
-    S.device(d) = (V > T(0)).select(range / V, V.constant(T(0)));
-
-    auto norm = range.inverse() * (T(1) / T(6));
-    // TODO(wicke): all these assignments are only necessary because a combined
-    // expression is larger than kernel parameter space. A custom kernel is
-    // probably in order.
-    H.device(d) = (R == V).select(
-        norm * (G - B), (G == V).select(norm * (B - R) + T(2) / T(6),
-                                        norm * (R - G) + T(4) / T(6)));
-    H.device(d) = (range > T(0)).select(H, H.constant(T(0)));
-    H.device(d) = (H < T(0)).select(H + T(1), H);
+    // Upcast to double for all calculations, then cast back to T at the end.
+    const auto n = input_data.dimension(0);
+    for (Eigen::Index i = 0; i < n; ++i) {
+      double r = static_cast<double>(input_data(i, 0));
+      double g = static_cast<double>(input_data(i, 1));
+      double b = static_cast<double>(input_data(i, 2));
+      double v = std::max({r, g, b});
+      double minc = std::min({r, g, b});
+      double rc = v - minc;
+      double s = (v > 0.0) ? rc / v : 0.0;
+      double h = 0.0;
+      if (rc > 0.0) {
+        if (v == r) {
+          h = (g - b) / rc;
+        } else if (v == g) {
+          h = 2.0 + (b - r) / rc;
+        } else {
+          h = 4.0 + (r - g) / rc;
+        }
+        h /= 6.0;
+        if (h < 0.0) h += 1.0;
+      }
+      output_data(i, 0) = static_cast<T>(h);
+      output_data(i, 1) = static_cast<T>(s);
+      output_data(i, 2) = static_cast<T>(v);
+      range(i) = static_cast<T>(rc);
+    }
   }
 };
 
