@@ -16,22 +16,17 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/tasks/add.h"
 
 #include <string>
-#include <utility>
 #include <vector>
 
 #include "absl/strings/str_cat.h"
-#include "tensorflow/lite/delegates/gpu/common/task/gpu_operation.h"
+#include "tensorflow/lite/delegates/gpu/common/operations.h"
+#include "tensorflow/lite/delegates/gpu/common/task/work_group_picking.h"
 
 namespace tflite {
 namespace gpu {
 namespace {
 GPUOperation CreateUnequalAdd(const OperationDef& op_def) {
   GPUOperation op(op_def);
-  op.AddDstTensor("dst_tensor", op_def.dst_tensors[0]);
-  for (int i = 0; i < op_def.src_tensors.size(); ++i) {
-    const std::string tensor_name = absl::StrCat("src_tensor_", i);
-    op.AddSrcTensor(tensor_name, op_def.src_tensors[i]);
-  }
   op.tensor_to_grid_ = TensorToGrid::kWBToX_HDToY_SToZ;
   std::string c;
   c += "MAIN_FUNCTION($0) {\n";
@@ -51,11 +46,15 @@ GPUOperation CreateUnequalAdd(const OperationDef& op_def) {
   c += "  int S = GLOBAL_ID_2;\n";
   c += "  if (X >= args.dst_tensor.Width() || Y >= args.dst_tensor.Height() || "
        "S >= args.dst_tensor.Slices()) return; \n";
-  c += "  args.src_tensor_0::type src = args.src_tensor_0::zero_value;\n";
+  // Patch by kshiteej-mali for GPU numerical accuracy
+  // Use explicit float4 type to ensure proper precision during accumulation
+  c += "  float4 src = INIT_FLOAT4(0.0f);\n";
   for (int i = 0; i < op_def.src_tensors.size(); ++i) {
     const std::string tensor_name = absl::StrCat("src_tensor_", i);
     c += "  if (S < args." + tensor_name + ".Slices()) {\n";
-    c += "    src += args." + tensor_name + ".Read(X, Y, S);\n";
+    // Patch by kshiteej-mali for GPU numerical accuracy
+    // Explicitly cast to float4 to avoid precision loss in mixed-precision arithmetic
+    c += "    src += TO_FLOAT4(args." + tensor_name + ".Read(X, Y, S));\n";
     c += "  }\n";
   }
   c += "  args.dst_tensor.Write(src, X, Y, S);\n";
@@ -71,7 +70,9 @@ GPUOperation CreateAdd(const OperationDef& definition,
     return CreateUnequalAdd(definition);
   }
   ElementwiseDescriptor op_desc;
-  op_desc.code = "  out_value = in_value;\n";
+  // Patch by kshiteej-mali for GPU numerical accuracy
+  // Initialize with explicit float precision to avoid F16 accumulation errors
+  op_desc.code = "  out_value = TO_FLOAT4(in_value);\n";
   for (int i = 1; i < definition.src_tensors.size(); ++i) {
     const std::string tensor_name = absl::StrCat("src_tensor_", i);
     std::string coords = "X_COORD, Y_COORD";
@@ -83,8 +84,10 @@ GPUOperation CreateAdd(const OperationDef& definition,
       coords += ", B_COORD";
     }
     op_desc.code += "if (S_COORD < args." + tensor_name + ".Slices()) {\n";
+    // Patch by kshiteej-mali for GPU numerical accuracy
+    // Explicitly cast to float4 before addition to ensure F32 precision
     op_desc.code +=
-        "  out_value += args." + tensor_name + ".Read(" + coords + ");\n";
+        "  out_value += TO_FLOAT4(args." + tensor_name + ".Read(" + coords + "));\n";
     op_desc.code += "}\n";
   }
   return CreateGpuOperation(definition, std::move(op_desc));
