@@ -944,7 +944,9 @@ def _from_dataset_id(processing_mode,
       protocol to use. If it's a tuple, it should be (protocol, address).
     dataset_id: The id of the dataset to read from. This id is returned by
       `register_dataset` when the dataset is registered with the tf.data
-      service.
+      service. Note: If two clients register different datasets and use the same
+      `job_name`, both will share the same job regardless of the value of
+      `dataset_id`.
     element_spec: A nested structure of `tf.TypeSpec`s representing the type of
       elements produced by the dataset. This argument is only required inside a
       tf.function. Use `tf.data.Dataset.element_spec` to get the element spec
@@ -952,7 +954,9 @@ def _from_dataset_id(processing_mode,
     job_name: (Optional.) The name of the job. If provided, it must be a
       non-empty string or tensor. This argument makes it possible for multiple
       datasets to share the same job. The default behavior is that the dataset
-      creates anonymous, exclusively owned jobs.
+      creates anonymous, exclusively owned jobs. Note: for the case when
+      `job_name` and `dataset_id` are both present, see `dataset_id` comment for
+      more details.
     consumer_index: (Optional.) The index of the consumer in the range from `0`
       to `num_consumers`. Must be specified alongside `num_consumers`. When
       specified, consumers will read from the job in a strict round-robin order,
