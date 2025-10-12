@@ -34,6 +34,7 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/SHA256.h"
+#include "google/protobuf/text_format.h"
 #include "xla/backends/autotuner/autotuner_cache.pb.h"
 #include "xla/backends/autotuner/autotuner_cache_interface.h"
 #include "xla/hlo/ir/hlo_instruction.h"
