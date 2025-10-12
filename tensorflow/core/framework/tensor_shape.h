@@ -523,8 +523,7 @@ class TensorShapeUtils {
   static absl::Status MakeShape(absl::Span<const int64_t> shape,
                                 PartialTensorShape* out);
 
-  static std::string ShapeListString(
-      const absl::Span<const TensorShape>& shapes);
+  static std::string ShapeListString(absl::Span<const TensorShape> shapes);
 
   /// \brief Returns true iff `shape` starts with `prefix`.
   static bool StartsWith(const TensorShape& shape, const TensorShape& prefix);
@@ -632,14 +631,13 @@ inline bool operator==(const PartialTensorShape& a,
 class PartialTensorShapeUtils {
  public:
   static std::string PartialShapeListString(
-      const absl::Span<const PartialTensorShape>& shapes);
+      absl::Span<const PartialTensorShape> shapes);
 
-  static bool AreIdentical(const absl::Span<const PartialTensorShape>& shapes0,
-                           const absl::Span<const PartialTensorShape>& shapes1);
+  static bool AreIdentical(absl::Span<const PartialTensorShape> shapes0,
+                           absl::Span<const PartialTensorShape> shapes1);
 
-  static bool AreCompatible(
-      const absl::Span<const PartialTensorShape>& shapes0,
-      const absl::Span<const PartialTensorShape>& shapes1);
+  static bool AreCompatible(absl::Span<const PartialTensorShape> shapes0,
+                            absl::Span<const PartialTensorShape> shapes1);
 };
 
 // ----------------------------------------------------------------------------

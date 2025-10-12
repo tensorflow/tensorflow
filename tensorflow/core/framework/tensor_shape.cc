@@ -865,7 +865,7 @@ MAKE_SHAPE(int64_t, PartialTensorShape)
 #undef MAKE_SHAPE
 
 string TensorShapeUtils::ShapeListString(
-    const absl::Span<const TensorShape>& shapes) {
+    const absl::Span<const TensorShape> shapes) {
   string result = "[";
   bool first = true;
   for (const TensorShape& shape : shapes) {
@@ -986,7 +986,7 @@ bool PartialTensorShape::IsCompatibleWith(
 }
 
 string PartialTensorShapeUtils::PartialShapeListString(
-    const absl::Span<const PartialTensorShape>& shapes) {
+    const absl::Span<const PartialTensorShape> shapes) {
   string result = "[";
   bool first = true;
   for (const PartialTensorShape& shape : shapes) {
@@ -998,8 +998,8 @@ string PartialTensorShapeUtils::PartialShapeListString(
 }
 
 bool PartialTensorShapeUtils::AreCompatible(
-    const absl::Span<const PartialTensorShape>& shapes0,
-    const absl::Span<const PartialTensorShape>& shapes1) {
+    const absl::Span<const PartialTensorShape> shapes0,
+    const absl::Span<const PartialTensorShape> shapes1) {
   if (shapes0.size() == shapes1.size()) {
     for (size_t i = 0; i < shapes0.size(); ++i) {
       if (!shapes0[i].IsCompatibleWith(shapes1[i])) {
@@ -1013,8 +1013,8 @@ bool PartialTensorShapeUtils::AreCompatible(
 }
 
 bool PartialTensorShapeUtils::AreIdentical(
-    const absl::Span<const PartialTensorShape>& shapes0,
-    const absl::Span<const PartialTensorShape>& shapes1) {
+    const absl::Span<const PartialTensorShape> shapes0,
+    const absl::Span<const PartialTensorShape> shapes1) {
   if (shapes0.size() == shapes1.size()) {
     for (size_t i = 0; i < shapes0.size(); ++i) {
       if (!shapes0[i].IsIdenticalTo(shapes1[i])) {
