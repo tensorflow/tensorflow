@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/service/gpu/transforms/ragged_all_to_all_multi_host_decomposer.h"
 
 #include <cstdint>
+#include <optional>
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
@@ -73,7 +74,9 @@ HloInstruction* GetIntraHostMetadata(
           /*operands=*/{new_input_offsets},
           /*device_list=*/CollectiveDeviceList(replica_groups),
           /*constrain_layout=*/false,
-          /*channel_id=*/NextChannelId(*computation->parent()),
+          /*channel_id=*/ragged_all_to_all->channel_id().has_value()
+              ? std::make_optional(NextChannelId(*computation->parent()))
+              : std::nullopt,
           /*split_dimension=*/0));
 
   if (correct_offsets) {
@@ -194,6 +197,13 @@ absl::StatusOr<bool> DecomposeRaggedAllToAll(
   new_input_shape.set_dimensions(
       0, num_hosts * input_operand->shape().dimensions(0));
 
+  // The collective can run in two modes: cross-replica and cross-partition. If
+  // the original `ragged-all-to-all` has a channel id set, then it's a
+  // cross-partition collective. In that case `all-gather` needs a channel_id
+  // and `use_global_device_ids=true`.
+  // Otherwise, when `ragged-all-to-all` has no channel id, it's a cross-replica
+  // collective. In that case `all-gather` doesn't need a `channel_id` and
+  // `use_global_device_ids` should be set to false.
   HloInstruction* all_gather_input =
       computation->AddInstruction(HloInstruction::CreateAllGather(
           /*shape=*/new_input_shape,
@@ -201,8 +211,11 @@ absl::StatusOr<bool> DecomposeRaggedAllToAll(
           /*all_gather_dimension=*/0,
           /*device_list=*/CollectiveDeviceList(inter_host_replica_groups),
           /*constrain_layout=*/false,
-          /*channel_id=*/NextChannelId(*computation->parent()),
-          /*use_global_device_ids=*/true));
+          /*channel_id=*/ragged_all_to_all->channel_id().has_value()
+              ? std::make_optional(NextChannelId(*computation->parent()))
+              : std::nullopt,
+          /*use_global_device_ids=*/
+          ragged_all_to_all->channel_id().has_value()));
 
   for (int i = 2; i < 6; ++i) {
     intra_host_metadata.push_back(GetIntraHostMetadata(

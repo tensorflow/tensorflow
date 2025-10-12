@@ -485,7 +485,8 @@ absl::Status CollectiveThunk::ExecuteOnStream(const ExecuteParams& params) {
 
     auto rendezvous_key = FirstCallRendezvousKey{std::move(clique_key)};
     auto rendezvous_name = absl::StrFormat(
-        "first call to collective operation %d; run_id=%ld", config().op_id,
+        "first call to collective operation %d; kind=%s; run_id=%ld",
+        config().op_id, Thunk::KindToString(kind()),
         params.collective_params->run_id.ToInt());
 
     const xla::DebugOptions debug_options = xla::GetDebugOptionsFromFlags();

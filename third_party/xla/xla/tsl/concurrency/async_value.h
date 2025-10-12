@@ -1048,6 +1048,34 @@ void AsyncValue::AndThen(Waiter&& waiter) {
 
 template <typename Waiter>
 void AsyncValue::AndThen(Executor& executor, Waiter&& waiter) {
+  // We don't know when the `executor` will run the `waiter`, so we need to add
+  // a reference to the AsyncValue to keep they underlying value alive for as
+  // long as the waiter is waiting to be executed.
+  struct SafeWaiter {
+    SafeWaiter(AsyncValue* value, Waiter waiter)
+        : value(value), waiter(std::move(waiter)) {
+      value->AddRef();
+    }
+
+    SafeWaiter(SafeWaiter&& other) noexcept
+        : value(other.value), waiter(std::move(other.waiter)) {
+      other.value = nullptr;
+    }
+
+    SafeWaiter& operator=(SafeWaiter&& other) = delete;
+
+    ~SafeWaiter() {
+      if (value) {
+        value->DropRef();
+      }
+    }
+
+    void operator()() { std::move(waiter)(); }
+
+    AsyncValue* value;
+    Waiter waiter;
+  };
+
   // Clients generally want to use AndThen without them each having to check
   // to see if the value is present. Check for them, and immediately run the
   // waiter if it is already here.
@@ -1055,12 +1083,13 @@ void AsyncValue::AndThen(Executor& executor, Waiter&& waiter) {
   if (waiters_and_state.state() == State::kConcrete ||
       waiters_and_state.state() == State::kError) {
     DCHECK_EQ(waiters_and_state.waiter(), nullptr);
-    executor.Execute(std::forward<Waiter>(waiter));
+    executor.Execute(SafeWaiter(this, std::forward<Waiter>(waiter)));
     return;
   }
 
   EnqueueWaiter(
-      [&executor, waiter = std::forward<Waiter>(waiter)]() mutable {
+      [&executor,
+       waiter = SafeWaiter(this, std::forward<Waiter>(waiter))]() mutable {
         executor.Execute(std::move(waiter));
       },
       waiters_and_state);

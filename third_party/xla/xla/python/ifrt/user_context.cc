@@ -50,21 +50,30 @@ ABSL_CONST_INIT thread_local
 absl_nonnull UserContextRef
 AnnotatedUserContext::Create(UserContextRef user_context, std::string msg) {
   return tsl::MakeRef<AnnotatedUserContext>(std::move(user_context),
-                                            std::move(msg));
+                                            std::move(msg), kAfter);
+}
+
+absl_nonnull UserContextRef
+AnnotatedUserContext::Create(std::string msg, UserContextRef user_context) {
+  return tsl::MakeRef<AnnotatedUserContext>(std::move(user_context),
+                                            std::move(msg), kBefore);
 }
 
 AnnotatedUserContext::AnnotatedUserContext(UserContextRef user_context,
-                                           std::string msg)
+                                           std::string msg,
+                                           MessagePosition msg_position)
     : id_(tsl::random::ThreadLocalNew64()),
       user_context_(std::move(user_context)),
-      msg_(std::move(msg)) {}
+      msg_(std::move(msg)),
+      msg_position_(msg_position) {}
 
 UserContextId AnnotatedUserContext::Id() const { return id_; }
 
 std::string AnnotatedUserContext::DebugString() const {
-  return absl::StrCat(
-      (user_context_ ? user_context_->DebugString() : "(nullptr user context)"),
-      "; ", msg_);
+  const std::string context_str =
+      user_context_ ? user_context_->DebugString() : "(nullptr user context)";
+  return msg_position_ == kBefore ? absl::StrCat(msg_, context_str)
+                                  : absl::StrCat(context_str, msg_);
 }
 
 absl_nonnull UserContextRef
