@@ -91,23 +91,22 @@ absl::Status DebugNodeInserter::InsertNodes(
       } else {
         return absl::Status(
             absl::StatusCode::kFailedPrecondition,
-            strings::StrCat("output_slot is expected to be -1 for wildcard ",
-                            "node name (\"*\"), but got ",
-                            watch.output_slot()));
+            absl::StrCat("output_slot is expected to be -1 for wildcard ",
+                         "node name (\"*\"), but got ", watch.output_slot()));
       }
       continue;
     } else {
       if (watch.output_slot() < 0) {
         return absl::Status(
             absl::StatusCode::kFailedPrecondition,
-            strings::StrCat("A negative output_slot in DebugTensorWatch is ",
-                            "valid only for the wildcard node name (\"*\"), ",
-                            "but got node name ", watch.node_name()));
+            absl::StrCat("A negative output_slot in DebugTensorWatch is ",
+                         "valid only for the wildcard node name (\"*\"), ",
+                         "but got node name ", watch.node_name()));
       }
     }
 
     string tensor_name =
-        strings::StrCat(watch.node_name(), ":", watch.output_slot());
+        absl::StrCat(watch.node_name(), ":", watch.output_slot());
 
     std::vector<string> debug_ops;
     for (const string& debug_op : watch.debug_ops()) {
@@ -150,7 +149,7 @@ absl::Status DebugNodeInserter::InsertNodes(
     for (int src_output_slot = 0; src_output_slot < src_node->num_outputs();
          ++src_output_slot) {
       const string tensor_name =
-          strings::StrCat(src_node->name(), ":", src_output_slot);
+          absl::StrCat(src_node->name(), ":", src_output_slot);
       const bool explicit_tensor_match =
           tensor_watches.find(tensor_name) != tensor_watches.end();
       if (!explicit_tensor_match && default_debug_ops.empty()) {
@@ -191,8 +190,8 @@ absl::Status DebugNodeInserter::InsertNodes(
       if (!copy_s.ok()) {
         return absl::Status(
             absl::StatusCode::kFailedPrecondition,
-            strings::StrCat("Failed to create Copy/CopyHost node for tensor ",
-                            tensor_name, ", due to: ", copy_s.message()));
+            absl::StrCat("Failed to create Copy/CopyHost node for tensor ",
+                         tensor_name, ", due to: ", copy_s.message()));
       }
 
       // Add edge from watched tensor to the copy node.
@@ -285,7 +284,7 @@ const string DebugNodeInserter::GetCopyNodeName(const string& node_name,
                                                 const int output_slot) {
   // For example, if the watched node is named "node1" and the output slot
   // is 0, the debug node will be called: __copy_node1_0
-  return strings::StrCat("__copy_", node_name, "_", output_slot);
+  return absl::StrCat("__copy_", node_name, "_", output_slot);
 }
 
 // static
@@ -355,8 +354,8 @@ absl::Status DebugNodeInserter::CreateCopyNode(
   if (!NodeBuilder(builder).Finalize(graph, copy_node).ok()) {
     return absl::Status(
         absl::StatusCode::kFailedPrecondition,
-        strings::StrCat("Failed to create copy node ", copy_node_name,
-                        " on watched tensor ", tensor_name));
+        absl::StrCat("Failed to create copy node ", copy_node_name,
+                     " on watched tensor ", tensor_name));
   }
 
   return absl::OkStatus();
