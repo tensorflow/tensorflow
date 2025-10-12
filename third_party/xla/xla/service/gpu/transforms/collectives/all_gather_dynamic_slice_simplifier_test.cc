@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
-#include <utility>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
