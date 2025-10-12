@@ -114,6 +114,10 @@ absl::Status AssignColors(bool use_collective_memory, bool use_nvshmem,
         value->set_color(BufferValue::Color(memory_space));
         continue;
       }
+    } else if (defining_position.shape().IsTuple()) {
+      // Making sure tuples live in default memory space.
+      value->set_color((int)MemorySpaceColor::kDefault);
+      continue;
     }
 
     for (const auto& alias :

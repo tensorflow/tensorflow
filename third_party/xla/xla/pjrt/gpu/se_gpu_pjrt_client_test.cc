@@ -1799,6 +1799,190 @@ TEST(StreamExecutorGpuClientTest, ExecutablePinnedHostOutputMemoryKindTest) {
   EXPECT_EQ(memory_kinds[0][0], "pinned_host");
 }
 
+TEST(StreamExecutorGpuClientTest,
+     GetCompiledMemoryStatsWithTupleAndNcclUserBuffers) {
+  TF_ASSERT_OK_AND_ASSIGN(auto client,
+                          GetStreamExecutorGpuClient(DefaultOptions()));
+
+  xla::CompileOptions options;
+  options.executable_build_options.mutable_debug_options()
+      ->set_xla_gpu_enable_nccl_user_buffers(true);
+
+  constexpr char const* kProgramWithCollectiveAndTuple = R"(
+ HloModule test
+
+ region_0 {
+   Arg_0 = f32[] parameter(0)
+   Arg_1 = f32[] parameter(1)
+   ROOT add = f32[] add(Arg_0, Arg_1)
+ }
+
+ ENTRY main {
+   p0 = f32[512,128]{1,0} parameter(0)
+   p1 = f32[512,32,128]{2,1,0} parameter(1)
+   p2 = f32[512,8,128]{2,1,0} parameter(2)
+   p3 = f32[512,14336]{1,0} parameter(3)
+   p4 = f32[1024]{0} parameter(4)
+   p5 = f32[1]{0} parameter(5)
+
+   // All-gather operations that will use memory space 1 with NCCL user buffers
+   ag0 = f32[4096,128]{1,0} all-gather(p0), channel_id=1, replica_groups=[1,8]<=[8], dimensions={0}, use_global_device_ids=true
+   ag1 = f32[4096,32,128]{2,1,0} all-gather(p1), channel_id=2, replica_groups=[1,8]<=[8], dimensions={0}, use_global_device_ids=true
+   ag2 = f32[4096,8,128]{2,1,0} all-gather(p2), channel_id=3, replica_groups=[1,8]<=[8], dimensions={0}, use_global_device_ids=true
+   ag3 = f32[4096,14336]{1,0} all-gather(p3), channel_id=4, replica_groups=[1,8]<=[8], dimensions={0}, use_global_device_ids=true
+
+   ar0 = f32[1024]{0} all-reduce(p4), channel_id=5, to_apply=region_0
+   ar1 = f32[1]{0} all-reduce(p5), channel_id=6, to_apply=region_0
+
+   // Regular operations with default memory space
+   add0 = f32[512,128]{1,0} add(p0, p0)
+   add1 = f32[512,32,128]{2,1,0} add(p1, p1)
+   add2 = f32[512,8,128]{2,1,0} add(p2, p2)
+
+   // Mix of all-gather results (memory space 1) and regular tensors (memory space 0)
+   ROOT tuple = (f32[4096,128]{1,0}, f32[4096,32,128]{2,1,0}, f32[4096,8,128]{2,1,0}, f32[4096,14336]{1,0},
+                 f32[1024]{0}, f32[1]{0}, f32[1024]{0}, f32[1]{0},
+                 f32[512,128]{1,0}, f32[512,32,128]{2,1,0}, f32[512,8,128]{2,1,0}, f32[512,14336]{1,0},
+                 f32[4096,128]{1,0}, f32[4096,32,128]{2,1,0}, f32[4096,8,128]{2,1,0}, f32[4096,14336]{1,0},
+                 f32[1024]{0}, f32[1]{0}, f32[1024]{0}, f32[1]{0},
+                 f32[512,128]{1,0}, f32[512,32,128]{2,1,0}, f32[512,8,128]{2,1,0}, f32[512,14336]{1,0},
+                 f32[4096,128]{1,0}, f32[4096,32,128]{2,1,0}, f32[4096,8,128]{2,1,0}, f32[4096,14336]{1,0},
+                 f32[1024]{0}, f32[1]{0}, f32[1024]{0}, f32[1]{0},
+                 f32[512,128]{1,0}, f32[512,32,128]{2,1,0}, f32[512,8,128]{2,1,0}, f32[512,14336]{1,0},
+                 f32[4096,128]{1,0}, f32[4096,32,128]{2,1,0}, f32[4096,8,128]{2,1,0}, f32[4096,14336]{1,0},
+                 f32[1024]{0}, f32[1]{0}, f32[1024]{0}, f32[1]{0},
+                 f32[512,128]{1,0}, f32[512,32,128]{2,1,0}, f32[512,8,128]{2,1,0}, f32[512,14336]{1,0},
+                 f32[4096,128]{1,0}, f32[4096,32,128]{2,1,0}, f32[4096,8,128]{2,1,0}, f32[4096,14336]{1,0})
+                tuple(ag0, ag1, ag2, ag3, ar0, ar1, ar0, ar1,
+                      p0, p1, p2, p3, ag0, ag1, ag2, ag3,
+                      ar0, ar1, ar0, ar1, add0, add1, add2, p3,
+                      ag0, ag1, ag2, ag3, ar0, ar1, ar0, ar1,
+                      p0, p1, p2, p3, ag0, ag1, ag2, ag3,
+                      ar0, ar1, ar0, ar1, add0, add1, add2, p3,
+                      ag0, ag1, ag2, ag3)
+ }
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto executable,
+      CompileExecutable(kProgramWithCollectiveAndTuple, *client, options));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto memory_stats, executable->GetExecutable()->GetCompiledMemoryStats());
+  EXPECT_EQ(memory_stats.output_size_in_bytes, 1764786624);
+  EXPECT_EQ(memory_stats.host_output_size_in_bytes, 0);
+  EXPECT_EQ(memory_stats.peak_memory_in_bytes, 1845010888);
+}
+
+TEST(StreamExecutorGpuClientTest, GetCompiledMemoryStatsMixedTuple) {
+  TF_ASSERT_OK_AND_ASSIGN(auto client,
+                          GetStreamExecutorGpuClient(DefaultOptions()));
+
+  xla::CompileOptions options;
+  options.executable_build_options.mutable_debug_options()
+      ->set_xla_gpu_enable_nccl_user_buffers(true);
+
+  constexpr char const* kSimpleMixedTupleHlo = R"(
+HloModule test
+
+region_0 {
+Arg_0 = f32[] parameter(0)
+Arg_1 = f32[] parameter(1)
+ROOT add = f32[] add(Arg_0, Arg_1)
+}
+
+ENTRY main {
+p0 = f32[2]{0} parameter(0)
+// All-gather across 8 replicas to enlarge dim0.
+ag = f32[16]{0} all-gather(p0), channel_id=1, replica_groups=[1,8]<=[8], dimensions={0}, use_global_device_ids=true
+add0 = f32[2]{0} add(p0, p0)
+ROOT tuple = (f32[16]{0}, f32[2]{0}, f32[2]{0}) tuple(ag, p0, add0)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto executable,
+      CompileExecutable(kSimpleMixedTupleHlo, *client, options));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto memory_stats, executable->GetExecutable()->GetCompiledMemoryStats());
+
+  EXPECT_EQ(memory_stats.output_size_in_bytes, 104);
+  EXPECT_EQ(memory_stats.host_output_size_in_bytes, 0);
+  EXPECT_EQ(memory_stats.peak_memory_in_bytes, 120);
+}
+
+TEST(StreamExecutorGpuClientTest, GetCompiledMemoryStatsMixedTupleNotRoot) {
+  TF_ASSERT_OK_AND_ASSIGN(auto client,
+                          GetStreamExecutorGpuClient(DefaultOptions()));
+
+  xla::CompileOptions options;
+  options.executable_build_options.mutable_debug_options()
+      ->set_xla_gpu_enable_nccl_user_buffers(true);
+
+  constexpr char const* kMixedTupleNotRootHlo = R"(
+HloModule test
+
+ENTRY main {
+p0 = f32[2]{0} parameter(0)
+ag = f32[16]{0} all-gather(p0), channel_id=1, replica_groups=[1,8]<=[8], dimensions={0}, use_global_device_ids=true
+add0 = f32[2]{0} add(p0, p0)
+t = (f32[16]{0}, f32[2]{0}, f32[2]{0}) tuple(ag, p0, add0)
+ROOT gte0 = f32[16]{0} get-tuple-element(t), index=0
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto executable,
+      CompileExecutable(kMixedTupleNotRootHlo, *client, options));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto memory_stats, executable->GetExecutable()->GetCompiledMemoryStats());
+
+  EXPECT_EQ(memory_stats.output_size_in_bytes, 64);
+  EXPECT_EQ(memory_stats.host_output_size_in_bytes, 0);
+  EXPECT_EQ(memory_stats.peak_memory_in_bytes, 80);
+}
+
+TEST(StreamExecutorGpuClientTest, GetCompiledMemoryStatsCountTupleTable) {
+  TF_ASSERT_OK_AND_ASSIGN(auto client,
+                          GetStreamExecutorGpuClient(DefaultOptions()));
+
+  constexpr char const* kManyTuplesHlo = R"(
+HloModule test
+
+ENTRY main {
+p0 = f32[1]{0} parameter(0)
+add0 = f32[1]{0} add(p0, p0)
+ROOT t = (f32[1]{0}, f32[1]{0}, f32[1]{0}, f32[1]{0},
+         f32[1]{0}, f32[1]{0}, f32[1]{0}, f32[1]{0},
+         f32[1]{0}, f32[1]{0}, f32[1]{0}, f32[1]{0},
+         f32[1]{0}, f32[1]{0}, f32[1]{0}, f32[1]{0},
+         f32[1]{0}, f32[1]{0}, f32[1]{0}, f32[1]{0},
+         f32[1]{0}, f32[1]{0}, f32[1]{0}, f32[1]{0},
+         f32[1]{0}, f32[1]{0}, f32[1]{0}, f32[1]{0},
+         f32[1]{0}, f32[1]{0}, f32[1]{0}, f32[1]{0})
+ tuple(p0, add0, p0, add0,
+       p0, add0, p0, add0,
+       p0, add0, p0, add0,
+       p0, add0, p0, add0,
+       p0, add0, p0, add0,
+       p0, add0, p0, add0,
+       p0, add0, p0, add0,
+       p0, add0, p0, add0)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto executable,
+                          CompileExecutable(kManyTuplesHlo, *client));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto memory_stats, executable->GetExecutable()->GetCompiledMemoryStats());
+
+  EXPECT_EQ(memory_stats.output_size_in_bytes, 384);
+  EXPECT_EQ(memory_stats.host_output_size_in_bytes, 0);
+  EXPECT_EQ(memory_stats.peak_memory_in_bytes, 388);
+}
+
 // Verify the output device memory kind with collective memory space shape
 // when NCCL user buffer is enabled.
 TEST(StreamExecutorGpuClientTest,
