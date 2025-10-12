@@ -168,6 +168,7 @@ tsl_cc_test(
     deps = [
         ":executor",
         ":future",
+        "//xla/tsl/platform:env",
         "//xla/tsl/platform:test",
         "//xla/tsl/platform:test_benchmark",
         "//xla/tsl/platform:test_main",

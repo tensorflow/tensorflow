@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "xla/tsl/concurrency/future.h"
 
+#include <atomic>
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <tuple>
@@ -25,8 +27,10 @@ limitations under the License.
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "xla/tsl/concurrency/executor.h"
+#include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/platform/test_benchmark.h"
+#include "xla/tsl/platform/threadpool.h"
 
 namespace tsl {
 
@@ -851,6 +855,46 @@ TEST(FutureTest, MapOnExecutor) {
       std::move(future2).Map(InlineExecutor::Instance(),
                              [](std::unique_ptr<int32_t> x) { return *x + 1; });
   EXPECT_EQ(*mapped2.Await(), 43);
+}
+
+TEST(FutureTest, MapStatelessOnThreadPoolExecutor) {
+  tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "test", 4);
+
+  std::vector<Future<>> mapped;
+  std::atomic<int32_t> counter = 0;
+
+  {  // Create mapped future in a nested scope to make sure that `promise` and
+    // `future` are destroyed before the end of the test.
+    auto [promise, future] = Future<>::MakePromise();
+    for (size_t i = 0; i < 100; ++i) {
+      mapped.push_back(
+          future.Map(*thread_pool.AsExecutor(), [&] { ++counter; }));
+    }
+    promise.Set();
+  }
+
+  EXPECT_EQ(tsl::JoinFutures(mapped).Await(), absl::OkStatus());
+  EXPECT_EQ(counter, 100);
+}
+
+TEST(FutureTest, MapStatefullOnThreadPoolExecutor) {
+  tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "test", 4);
+
+  std::vector<Future<>> mapped;
+  std::atomic<int32_t> counter = 0;
+
+  {  // Create mapped future in a nested scope to make sure that `promise` and
+    // `future` are destroyed before the end of the test.
+    auto [promise, future] = Future<int32_t>::MakePromise();
+    for (size_t i = 0; i < 100; ++i) {
+      mapped.push_back(future.Map(*thread_pool.AsExecutor(),
+                                  [&](int32_t value) { counter += value; }));
+    }
+    promise.Set(1);
+  }
+
+  EXPECT_EQ(tsl::JoinFutures(mapped).Await(), absl::OkStatus());
+  EXPECT_EQ(counter, 100);
 }
 
 //===----------------------------------------------------------------------===//
