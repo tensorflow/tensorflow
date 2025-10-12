@@ -177,6 +177,7 @@ bool IsAlwaysDuplicable(const HloInstruction& instruction) {
     case HloOpcode::kAcos:
     case HloOpcode::kAcosh:
     case HloOpcode::kAsin:
+    case HloOpcode::kAsinh:
     case HloOpcode::kAddDependency:
     case HloOpcode::kAfterAll:
     case HloOpcode::kAtan2:

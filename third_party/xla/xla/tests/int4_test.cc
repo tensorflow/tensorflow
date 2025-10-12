@@ -338,6 +338,7 @@ class ElementwiseTest : public HloTestBase,
   static bool IsFloatingPointOnly(HloOpcode opcode) {
     switch (opcode) {
       case HloOpcode::kAsin:
+      case HloOpcode::kAsinh:
       case HloOpcode::kAcos:
       case HloOpcode::kAcosh:
       case HloOpcode::kAtan2:
