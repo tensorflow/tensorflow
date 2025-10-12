@@ -97,8 +97,8 @@ static absl::StatusOr<string> CodegenModule(
 static absl::StatusOr<std::unique_ptr<llvm::TargetMachine>>
 GetTargetMachineFromTriple(absl::string_view target_triple) {
   std::string error;
-  std::string normalized_triple =
-      llvm::Triple::normalize(AsStringRef(absl::string_view(target_triple)));
+  llvm::Triple normalized_triple(
+      llvm::Triple::normalize(AsStringRef(absl::string_view(target_triple))));
   const llvm::Target* target =
       llvm::TargetRegistry::lookupTarget(normalized_triple, error);
   if (target == nullptr) {
@@ -107,7 +107,7 @@ GetTargetMachineFromTriple(absl::string_view target_triple) {
   }
 
   return absl::WrapUnique(target->createTargetMachine(
-      llvm::Triple(normalized_triple), /*CPU=*/"",
+      normalized_triple, /*CPU=*/"",
       /*Features=*/"", llvm::TargetOptions(), std::nullopt));
 }
 
