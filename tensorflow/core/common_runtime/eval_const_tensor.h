@@ -19,6 +19,7 @@ limitations under the License.
 #include <optional>
 
 #include "absl/functional/function_ref.h"
+#include "absl/status/statusor.h"
 #include "tensorflow/core/platform/statusor.h"
 
 namespace tensorflow {
