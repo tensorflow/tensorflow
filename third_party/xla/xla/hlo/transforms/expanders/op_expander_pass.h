@@ -32,11 +32,6 @@ namespace xla {
 // does not support into other HLO instructions.
 class OpExpanderPass : public HloModulePass {
  public:
-  using HloPassInterface::Run;
-  absl::StatusOr<bool> Run(
-      HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
-
   // extra_filter: Optional extra filtering criteria for matching instructions,
   // used in conjunction with InstructionMatchesPattern.
   // preserve_sharding and relay_control_dependency: If we preserve sharding and
@@ -49,6 +44,10 @@ class OpExpanderPass : public HloModulePass {
         relay_control_dependency_(relay_control_dependency) {}
 
  protected:
+  absl::StatusOr<bool> RunImpl(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
+
   // Returns `true` if `instruction` should be expanded by this pass.
   virtual bool InstructionMatchesPattern(HloInstruction* instruction) = 0;
 

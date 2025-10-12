@@ -73,7 +73,7 @@ absl::StatusOr<bool> CanonicalizeRaggedAllToAll(
   return true;
 }
 
-absl::StatusOr<bool> RaggedAllToAllCanonicalizer::Run(
+absl::StatusOr<bool> RaggedAllToAllCanonicalizer::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;

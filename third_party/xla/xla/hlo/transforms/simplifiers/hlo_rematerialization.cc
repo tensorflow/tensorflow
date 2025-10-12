@@ -3016,7 +3016,7 @@ HloRematerialization::GetRematAlgorithmFunction(
   }
 }
 
-absl::StatusOr<bool> HloRematerialization::Run(
+absl::StatusOr<bool> HloRematerialization::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   if (options_.remat_mode_config.host_offload) {

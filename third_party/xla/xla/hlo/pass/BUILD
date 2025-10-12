@@ -24,6 +24,7 @@ package_group(
 
 cc_library(
     name = "hlo_pass",
+    srcs = ["hlo_pass_interface.cc"],
     hdrs = [
         "hlo_pass_fix.h",
         "hlo_pass_interface.h",
@@ -105,6 +106,26 @@ cc_library(
         "@com_google_absl//absl/strings:str_format",
         "@local_tsl//tsl/profiler/lib:scoped_annotation",
         "@local_tsl//tsl/profiler/lib:traceme",
+    ],
+)
+
+cc_library(
+    name = "hlo_pass_interface",
+    srcs = ["hlo_pass_interface.cc"],
+    hdrs = ["hlo_pass_interface.h"],
+    deps = [
+        "//xla:shape_util",
+        "//xla:status_macros",
+        "//xla:types",
+        "//xla:util",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/ir:hlo_module_group",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
     ],
 )
 

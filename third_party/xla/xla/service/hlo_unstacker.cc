@@ -1408,7 +1408,7 @@ absl::Status UnstackReduceFusionPattern(HloInstruction* mutable_reduce_fusion,
 // it attempts unstacking each index of the loops in the entry computation of
 // the module. Finally, it removes the unused computations and unrolls the
 // module.
-absl::StatusOr<bool> HloUnstacker::Run(
+absl::StatusOr<bool> HloUnstacker::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   TF_ASSIGN_OR_RETURN(auto metadata,

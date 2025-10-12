@@ -1952,7 +1952,7 @@ ConditionalCodeMotion::Decision ConditionalCodeMotion::ConsiderCodeMotion(
   return Decision(Decision::Direction::kNoChange, 0);
 }
 
-absl::StatusOr<bool> ConditionalCodeMotion::Run(
+absl::StatusOr<bool> ConditionalCodeMotion::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   VLOG(2) << "Begin a new pass of conditional code motion optimization.\n";

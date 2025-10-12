@@ -297,10 +297,10 @@ TritonFusionNumericsVerifier::FusionCacheKey CacheKeyForFusion(
 
 }  // namespace
 
-absl::StatusOr<bool> TritonFusionNumericsVerifier::Run(
+absl::StatusOr<bool> TritonFusionNumericsVerifier::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  VLOG(3) << "TritonFusionNumericsVerifier::Run";
+  VLOG(3) << "TritonFusionNumericsVerifier::RunImpl";
   if (config_.IsDeviceless()) {
     return absl::InternalError(
         "Cannot run TritonFusionNumericsVerifier on a deviceless compilation.");

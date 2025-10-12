@@ -99,4 +99,21 @@ GpuAlgebraicSimplifierVisitor::MakeMultiplyForPrecisionAlgorithm(
       lhs, rhs, dot->precision_config().algorithm());
 }
 
+absl::StatusOr<bool> GpuAlgebraicSimplifier::RunImpl(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
+  XLA_VLOG_LINES(
+      2, "GpuAlgebraicSimplifier::RunImpl(), before:\n" + module->ToString());
+  bool changed = false;
+  GpuAlgebraicSimplifierVisitor visitor(options_, compute_capability_, this);
+  for (auto* comp : module->MakeNonfusionComputations(execution_threads)) {
+    if (visitor.Run(comp, options_, this)) {
+      changed = true;
+    }
+  }
+  XLA_VLOG_LINES(
+      2, "GpuAlgebraicSimplifier::RunImpl(), after:\n" + module->ToString());
+  return changed;
+}
+
 }  // namespace xla::gpu
