@@ -313,7 +313,7 @@ TEST_F(ShapeRefinerTest, ExtractConstantSubgraphMultiOutput) {
     // The add adds 1 and 2 together, and its output has kMaxTensorSize*2
     // elements.
     shape_inference::InferenceContext* ctx = m.GetContext(shape_v2);
-    EXPECT_EQ(strings::StrCat("[", kMaxTensorSize * 2 * 3, "]"),
+    EXPECT_EQ(absl::StrCat("[", kMaxTensorSize * 2 * 3, "]"),
               ctx->DebugString(ctx->output(0)));
   }
 }

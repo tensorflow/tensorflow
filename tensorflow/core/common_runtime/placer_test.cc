@@ -240,10 +240,10 @@ class PlacerTest : public ::testing::Test {
     // objects.
     for (int i = 0; i < num_devices; ++i) {
       local_devices_.emplace_back(FakeDevice::MakeCPU(
-          strings::StrCat("/job:a/replica:0/task:0/device:FakeCPU:", i)));
+          absl::StrCat("/job:a/replica:0/task:0/device:FakeCPU:", i)));
       devices_.AddDevice(local_devices_.back().get());
       // Insert the GPUs in reverse order.
-      local_devices_.emplace_back(FakeDevice::MakeGPU(strings::StrCat(
+      local_devices_.emplace_back(FakeDevice::MakeGPU(absl::StrCat(
           "/job:a/replica:0/task:0/device:FakeGPU:", num_devices - 1 - i)));
       devices_.AddDevice(local_devices_.back().get());
     }
@@ -950,9 +950,9 @@ absl::Status PlacerTest::ReferenceTestHelper(
     // Build ten variable-and-assignment pairs.
     for (int i = 0; i < 10; ++i) {
       Node* var = ops::SourceOp(variable_op_type,
-                                b.opts().WithName(strings::StrCat("var_", i)));
+                                b.opts().WithName(absl::StrCat("var_", i)));
       ops::BinaryOp(assign_op_type, var, input,
-                    b.opts().WithName(strings::StrCat("assign_", i)));
+                    b.opts().WithName(absl::StrCat("assign_", i)));
     }
     TF_EXPECT_OK(BuildGraph(b, &g));
   }
@@ -960,10 +960,9 @@ absl::Status PlacerTest::ReferenceTestHelper(
   TF_RETURN_IF_ERROR(Place(&g));
 
   for (int i = 0; i < 10; ++i) {
-    EXPECT_COLOCATED(g, strings::StrCat("var_", i),
-                     strings::StrCat("assign_", i));
-    EXPECT_DEVICE_TYPE(g, strings::StrCat("var_", i), expected_device_type);
-    EXPECT_DEVICE_TYPE(g, strings::StrCat("assign_", i), expected_device_type);
+    EXPECT_COLOCATED(g, absl::StrCat("var_", i), absl::StrCat("assign_", i));
+    EXPECT_DEVICE_TYPE(g, absl::StrCat("var_", i), expected_device_type);
+    EXPECT_DEVICE_TYPE(g, absl::StrCat("assign_", i), expected_device_type);
   }
 
   return absl::OkStatus();
@@ -1421,9 +1420,9 @@ TEST_F(PlacerTest, TestColocationAndReferenceConnections) {
     for (int i = 0; i < 10; ++i) {
       // Declare ten variable and assignment pairs.
       Node* var = ops::SourceOp("TestVariable",
-                                b.opts().WithName(strings::StrCat("var_", i)));
+                                b.opts().WithName(absl::StrCat("var_", i)));
       ops::BinaryOp("TestAssign", var, input,
-                    b.opts().WithName(strings::StrCat("assign_", i)));
+                    b.opts().WithName(absl::StrCat("assign_", i)));
     }
     for (int i = 10; i < 100; ++i) {
       // Create a variable colocated with some existing variable, and
@@ -1431,29 +1430,26 @@ TEST_F(PlacerTest, TestColocationAndReferenceConnections) {
       Node* var = ops::SourceOp(
           "TestVariable",
           b.opts()
-              .WithName(strings::StrCat("var_", i))
-              .WithAttr("_class", {strings::StrCat("loc:@var_", i % 6)}));
+              .WithName(absl::StrCat("var_", i))
+              .WithAttr("_class", {absl::StrCat("loc:@var_", i % 6)}));
       ops::BinaryOp(
           "TestAssign", var, input,
           b.opts()
-              .WithName(strings::StrCat("assign_", i))
-              .WithAttr("_class", {strings::StrCat("loc:@assign_", i % 3)}));
+              .WithName(absl::StrCat("assign_", i))
+              .WithAttr("_class", {absl::StrCat("loc:@assign_", i % 3)}));
     }
     TF_EXPECT_OK(BuildGraph(b, &g));
   }
 
   TF_EXPECT_OK(Place(&g));
   for (int i = 0; i < 10; ++i) {
-    EXPECT_COLOCATED(g, strings::StrCat("var_", i),
-                     strings::StrCat("assign_", i));
+    EXPECT_COLOCATED(g, absl::StrCat("var_", i), absl::StrCat("assign_", i));
   }
   for (int i = 10; i < 100; ++i) {
-    EXPECT_COLOCATED(g, strings::StrCat("var_", i),
-                     strings::StrCat("assign_", i));
-    EXPECT_COLOCATED(g, strings::StrCat("var_", i),
-                     strings::StrCat("var_", i % 6));
-    EXPECT_COLOCATED(g, strings::StrCat("assign_", i),
-                     strings::StrCat("assign_", i % 3));
+    EXPECT_COLOCATED(g, absl::StrCat("var_", i), absl::StrCat("assign_", i));
+    EXPECT_COLOCATED(g, absl::StrCat("var_", i), absl::StrCat("var_", i % 6));
+    EXPECT_COLOCATED(g, absl::StrCat("assign_", i),
+                     absl::StrCat("assign_", i % 3));
   }
 }
 

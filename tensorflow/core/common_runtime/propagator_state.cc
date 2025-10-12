@@ -159,7 +159,7 @@ void PropagatorState::PropagateOutputs(const TaggedNode& tagged_node,
         if (need_create_iter) {
           tsl::profiler::TraceMe activit1y(
               [&]() {
-                return strings::StrCat(
+                return absl::StrCat(
                     "PropagateOutputs::NextIteration::CreateIterationState");
               },
               tsl::profiler::GetTFTraceMeLevel(/*is_expensive=*/false));

@@ -646,7 +646,7 @@ absl::Status GraphConstructor::EnsureNoNameCollisions() {
                                      "' would lead to invalid node names");
     }
     if (NameExistsInGraph(prefix_no_slash) && opts_.uniquify_prefix) {
-      prefix_ = strings::StrCat(FindUniqueName(prefix_no_slash), "/");
+      prefix_ = absl::StrCat(FindUniqueName(prefix_no_slash), "/");
     }
   }
   return absl::OkStatus();
@@ -984,7 +984,7 @@ void GraphConstructor::AddControlDependencies(
 void GraphConstructor::AddPrefixToNodeDef(
     const std::vector<bool>& input_already_exists, NodeDef* node_def) {
   if (prefix_.empty()) return;
-  node_def->set_name(strings::StrCat(prefix_, node_def->name()));
+  node_def->set_name(absl::StrCat(prefix_, node_def->name()));
   // Update names of input nodes
   for (int i = 0; i < node_def->input_size(); ++i) {
     // Skip remapped inputs (which already exist in g_ and are not being
@@ -992,9 +992,9 @@ void GraphConstructor::AddPrefixToNodeDef(
     if (input_already_exists[i]) continue;
     absl::string_view input(node_def->input(i));
     if (absl::ConsumePrefix(&input, "^")) {
-      node_def->set_input(i, strings::StrCat("^", prefix_, input));
+      node_def->set_input(i, absl::StrCat("^", prefix_, input));
     } else {
-      node_def->set_input(i, strings::StrCat(prefix_, input));
+      node_def->set_input(i, absl::StrCat(prefix_, input));
     }
   }
   // Update names of colocation groups
@@ -1004,7 +1004,7 @@ void GraphConstructor::AddPrefixToNodeDef(
     for (int i = 0; i < list->s_size(); ++i) {
       absl::string_view v(list->s(i));
       if (absl::ConsumePrefix(&v, kColocationGroupPrefix)) {
-        list->set_s(i, strings::StrCat(kColocationGroupPrefix, prefix_, v));
+        list->set_s(i, absl::StrCat(kColocationGroupPrefix, prefix_, v));
       }
     }
   }
@@ -1050,7 +1050,7 @@ void GraphConstructor::UpdateUniquifiedColocationNames() {
         if (name_pair == uniquified_names_.end()) continue;
         updated = true;
         coloc_values[i] =
-            strings::StrCat(kColocationGroupPrefix, name_pair->second);
+            absl::StrCat(kColocationGroupPrefix, name_pair->second);
       }
     }
     if (updated) {
@@ -1077,7 +1077,7 @@ string GraphConstructor::FindUniqueName(absl::string_view original_name) {
   // Check that any generated names don't collide with imported NodeDefs (as
   // well as nodes in g_).
   while (NameExistsInGraph(name) || (count > 0 && NameExistsInGraphDef(name))) {
-    name = strings::StrCat(original_name, "_", ++count);
+    name = absl::StrCat(original_name, "_", ++count);
   }
   return name;
 }

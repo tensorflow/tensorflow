@@ -38,11 +38,11 @@ limitations under the License.
 namespace tensorflow {
 
 string NodeItem::DebugString() const {
-  string ret = strings::StrCat("{name:'", kernel->name(), "' id:", node_id);
+  string ret = absl::StrCat("{name:'", kernel->name(), "' id:", node_id);
   if (is_source) {
-    strings::StrAppend(&ret, " source}");
+    absl::StrAppend(&ret, " source}");
   } else {
-    strings::StrAppend(&ret, " def:{", SummarizeNodeDef(kernel->def()), "}}");
+    absl::StrAppend(&ret, " def:{", SummarizeNodeDef(kernel->def()), "}}");
   }
   return ret;
 }

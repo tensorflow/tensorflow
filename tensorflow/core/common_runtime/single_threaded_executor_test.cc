@@ -392,7 +392,7 @@ void BM_executor(::testing::benchmark::State& state) {
   test::Benchmark("cpu", g, nullptr, nullptr, nullptr,
                   "SINGLE_THREADED_EXECUTOR", /*old_benchmark_api=*/false)
       .Run(state);
-  state.SetLabel(strings::StrCat("Nodes = ", cur));
+  state.SetLabel(absl::StrCat("Nodes = ", cur));
   state.SetItemsProcessed(cur * static_cast<int64_t>(state.iterations()));
 }
 
@@ -424,7 +424,7 @@ void BM_const_identity(::testing::benchmark::State& state) {
                   "SINGLE_THREADED_EXECUTOR",
                   /*old_benchmark_api=*/false)
       .Run(state);
-  state.SetLabel(strings::StrCat("Nodes = ", (1 + outputs_per_const) * width));
+  state.SetLabel(absl::StrCat("Nodes = ", (1 + outputs_per_const) * width));
   state.SetItemsProcessed((1 + outputs_per_const) * width *
                           static_cast<int64_t>(state.iterations()));
 }
