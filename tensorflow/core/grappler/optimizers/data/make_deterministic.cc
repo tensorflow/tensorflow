@@ -294,7 +294,7 @@ absl::Status SplitMap(
   {
     NodeDef first_map_node;
     graph_utils::SetUniqueGraphNodeName(
-        strings::StrCat("make_deterministic_sequential_map/", map_node->name()),
+        absl::StrCat("make_deterministic_sequential_map/", map_node->name()),
         graph->graph(), &first_map_node);
     first_map_node.set_op(kMapOp);
     int num_control_deps = NumControlInputs(*map_node);
@@ -347,8 +347,8 @@ absl::Status SplitMap(
     string node_name =
         map_node->op() == kMapAndBatchOp ? "map_and_batch" : "parallel_map";
     graph_utils::SetUniqueGraphNodeName(
-        strings::StrCat("make_deterministic_parallel_", node_name, "/",
-                        map_node->name()),
+        absl::StrCat("make_deterministic_parallel_", node_name, "/",
+                     map_node->name()),
         graph->graph(), &second_map_node);
     second_map_node.set_op(map_node->op());
     second_map_node.add_input(first_map_node_ptr->name());

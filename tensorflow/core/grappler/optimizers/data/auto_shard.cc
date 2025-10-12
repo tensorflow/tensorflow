@@ -818,7 +818,7 @@ absl::Status OptimizeGraph(const GrapplerItem& item, int64_t num_workers,
 
   // id for telemetry purpose. item.id is always the same so we use the address
   // of the output as id.
-  string id = strings::StrCat(reinterpret_cast<uint64>(output));
+  string id = absl::StrCat(reinterpret_cast<uint64>(output));
   // Only record metrics on the first shard to avoid duplication.
   if (index == 0) {
     std::vector<std::string> ineligible_reason;
@@ -906,7 +906,7 @@ bool IsEligibleRewriteBatchSize(const NodeDef& sink_node,
     // know whether this node is sensitive to the batch size or not and we err
     // on the safe side.
     ineligible_reason->push_back(
-        strings::StrCat("OP_NOT_SUPPORTED_", input_node->op()));
+        absl::StrCat("OP_NOT_SUPPORTED_", input_node->op()));
     input_node = graph_utils::GetInputNode(*input_node, graph);
   }
   // If we don't find a batch node, only records BATCH_NOT_FOUND as the reason.
