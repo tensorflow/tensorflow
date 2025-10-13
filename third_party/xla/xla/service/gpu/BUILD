@@ -2439,6 +2439,7 @@ cc_library(
         "//xla/service:legalize_scheduling_annotations",
         "//xla/service:p2p_schedule_preparation",
         "//xla/service:profile_guided_latency_estimator",
+        "//xla/service/gpu:hlo_fusion_analysis",
         "//xla/service/gpu/model:analytical_latency_estimator",
         "//xla/service/gpu/model:gpu_hlo_cost_analysis",
         "//xla/service/gpu/model:sol_latency_estimator",

@@ -437,6 +437,7 @@ cc_library(
         "//xla/service:hlo_proto_cc",
         "//xla/service/gpu:backend_configs_cc",
         "//xla/service/gpu:cublas_cudnn",
+        "//xla/service/gpu:hlo_fusion_analysis",
         "//xla/service/gpu:ir_emission_utils",
         "//xla/service/gpu/model/experimental:symbolic_expr",
         "//xla/service/gpu/transforms:custom_kernel_fusion_rewriter",

@@ -68,6 +68,7 @@ limitations under the License.
 #include "xla/service/gpu/autotuning/redzone_buffers.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gpu_float_support.h"
+#include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/kernels/custom_kernel.h"
 #include "xla/service/gpu/kernels/custom_kernel_fusion.h"
@@ -563,14 +564,7 @@ bool IsScaledDotFusion(const HloInstruction* fusion_instr) {
   if (fusion_instr->fusion_kind() != HloInstruction::FusionKind::kCustom) {
     return false;
   }
-  auto config = fusion_instr->backend_config<GpuBackendConfig>();
-  if (!config.ok()) {
-    return false;
-  }
-  if (config->fusion_backend_config().kind() != kTritonScaledDotFusionKind) {
-    return false;
-  }
-  return true;
+  return IsGpuFusionKind(*fusion_instr, kTritonScaledDotFusionKind);
 }
 
 absl::Status RewriteGemmFusionToCall(HloInstruction* fusion_instr) {
@@ -765,15 +759,6 @@ absl::Status GemmFusionAutotunerRewriterVisitor::HandleFusion(
   return absl::OkStatus();
 }
 
-bool GemmFusionAutotunerImpl::IsFusionKind(const HloInstruction& hlo,
-                                           absl::string_view kind) {
-  auto gpu_config = hlo.backend_config<GpuBackendConfig>();
-  if (!gpu_config.ok()) {
-    return false;
-  }
-  return gpu_config->fusion_backend_config().kind() == kind;
-}
-
 // Methods required for sorting the configs.
 bool GemmFusionAutotunerImpl::CuBlasConfig::operator<(
     const CuBlasConfig& other) const {
@@ -909,8 +894,8 @@ GemmFusionAutotunerImpl::GenerateDotConfigs(const HloFusionInstruction& fusion,
   // Add CustomKernelFusion (Cutlass) configs, if available.
   // Go through all the instructions in the fusion body try to match them to
   // a custom kernel fusion pattern.
-  if ((IsFusionKind(fusion, kCustomFusionKind) ||
-       IsFusionKind(fusion, kTritonGemmFusionKind)) &&
+  if ((IsGpuFusionKind(fusion, kCustomFusionKind) ||
+       IsGpuFusionKind(fusion, kTritonGemmFusionKind)) &&
       IsAutotuningEnabled() && !config_.IsDeviceless()) {
     std::vector<BackendConfig> custom_kernel_fusion_configs =
         GenerateCustomKernelFusionConfigs(fusion,

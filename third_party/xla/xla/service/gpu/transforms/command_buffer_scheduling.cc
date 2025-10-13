@@ -116,7 +116,8 @@ static bool AsyncStartOrDoneCommandIsSupported(
 
   if (hlo->async_wrapped_opcode() == HloOpcode::kFusion) {
     // We don't currently support dynamic memcpy fusions in command buffers.
-    if (IsDynamicMemcpyFusion(hlo->async_wrapped_instruction())) {
+    if (IsGpuFusionKind(*hlo->async_wrapped_instruction(),
+                        kDynamicMemcpyFusionKind)) {
       return config.enabled_commands.contains(
           DebugOptions::DYNAMIC_SLICE_COPY_FUSION);
     }
@@ -269,7 +270,7 @@ static bool IsCommand(const HloInstruction* hlo,
     if (backend_config.kind() == kCuDnnFusionKind) {
       return config.enabled_commands.contains(DebugOptions::CUDNN);
     }
-    if (IsDynamicMemcpyFusion(fusion)) {
+    if (IsGpuFusionKind(*fusion, kDynamicMemcpyFusionKind)) {
       return config.enabled_commands.contains(
           DebugOptions::DYNAMIC_SLICE_COPY_FUSION);
     }
@@ -811,8 +812,7 @@ absl::StatusOr<bool> CommandBufferScheduling::Run(
     commands.insert(static_cast<DebugOptions::CommandBufferCmdType>(cmd_type));
   }
 
-  CommandBufferConfig config{std::move(commands),
-                             device_description_};
+  CommandBufferConfig config{std::move(commands), device_description_};
 
   // Erase command buffer cmd types that are not supported by the gpu runtime.
   static constexpr auto kRequireConditionals = {DebugOptions::CONDITIONAL,

@@ -206,8 +206,6 @@ class GemmFusionAutotunerImpl {
         GetComputeCapability());
   }
 
-  bool IsFusionKind(const HloInstruction& hlo, absl::string_view kind);
-
   bool AddLibConfigs(const HloFusionInstruction& fusion,
                      const HloDotInstruction* dot,
                      std::vector<BackendConfig>& configs);
