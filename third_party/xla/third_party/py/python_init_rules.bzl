@@ -13,13 +13,9 @@ def python_init_rules(extra_patches = []):
 
     http_archive(
         name = "rules_cc",
-        urls = ["https://github.com/bazelbuild/rules_cc/archive/refs/tags/0.1.0.tar.gz"],
-        strip_prefix = "rules_cc-0.1.0",
-        sha256 = "4b12149a041ddfb8306a8fd0e904e39d673552ce82e4296e96fac9cbf0780e59",
-        patches = [
-            Label("//third_party/py:rules_cc_protobuf.patch"),
-        ],
-        patch_args = ["-p1"],
+        url = "https://github.com/bazelbuild/rules_cc/releases/download/0.2.9/rules_cc-0.2.9.tar.gz",
+        strip_prefix = "rules_cc-0.2.9",
+        sha256 = "69ceb454b9b29e0aba7da81c72e96ecafd81d2044be883b46398b1c77ca7fff9",
     )
 
     tf_http_archive(
