@@ -37,6 +37,16 @@ namespace tsl {
 using ::absl_testing::IsOk;
 using ::testing::Not;
 
+// Inline executor that counts the number of tasks executed.
+struct CountingExecutor : public Executor {
+  void Execute(Task task) final {
+    ++num_tasks;
+    std::move(task)();
+  }
+
+  int32_t num_tasks = 0;
+};
+
 TEST(FutureTest, StatusConstructedFuture) {
   Future<> future = Future<>(absl::OkStatus());
   EXPECT_TRUE(future.IsReady());
@@ -298,32 +308,65 @@ TEST(FutureTest, MapMoveOnlyWithInplaceConstructor) {
   EXPECT_EQ(mapped.Await()->v, 42);
 }
 
-TEST(FutureTest, MapUnusedResult) {
-  auto [promise, future] = Future<int>::MakePromise();
-
-  bool called = false;
-  // We intentionally drop returned future to test that promise will not
-  // execute map functor.
-  (void)future.Map([&](int) {
-    called = true;
-    return 2;
-  });
-  promise.Set(1);
-  EXPECT_FALSE(called);
-}
-
-TEST(FutureTest, MapStatusUnusedResult) {
+TEST(FutureTest, MapStatelessUnusedResult) {
   auto [promise, future] = Future<>::MakePromise();
 
   bool called = false;
   // We intentionally drop returned future to test that promise will not
   // execute map functor.
-  (void)future.Map([&]() {
-    called = true;
-    return 2;
-  });
-  promise.Set();
+  (void)future.Map([&]() { called = true; });
+  promise.Set(absl::OkStatus());
   EXPECT_FALSE(called);
+}
+
+TEST(FutureTest, MapStatelessOnExecutorUnusedResult) {
+  auto [promise, future] = Future<>::MakePromise();
+
+  CountingExecutor executor;
+  bool called = false;
+  // We intentionally drop returned future to test that promise will not
+  // execute map functor.
+  (void)future.Map(executor, [&]() { called = true; });
+  promise.Set(absl::OkStatus());
+  EXPECT_FALSE(called);
+  EXPECT_EQ(executor.num_tasks, 0);
+}
+
+TEST(FutureTest, MapStatefulUnusedResult) {
+  auto [promise, future] = Future<int32_t>::MakePromise();
+
+  bool called = false;
+  // We intentionally drop returned future to test that promise will not
+  // execute map functor.
+  (void)future.Map([&](int) { called = true; });
+  promise.Set(1);
+  EXPECT_FALSE(called);
+}
+
+TEST(FutureTest, MapStatefulOnExecutorUnusedResult) {
+  auto [promise, future] = Future<int32_t>::MakePromise();
+
+  CountingExecutor executor;
+  bool called = false;
+  // We intentionally drop returned future to test that promise will not
+  // execute map functor.
+  (void)future.Map(executor, [&](int32_t) { called = true; });
+  promise.Set(1);
+  EXPECT_FALSE(called);
+  EXPECT_EQ(executor.num_tasks, 0);
+}
+
+TEST(FutureTest, MapStatefulRvalueOnExecutorUnusedResult) {
+  auto [promise, future] = Future<std::unique_ptr<int32_t>>::MakePromise();
+
+  CountingExecutor executor;
+  bool called = false;
+  // We intentionally drop returned future to test that promise will not
+  // execute map functor.
+  (void)std::move(future).Map(executor, [&](auto) { called = true; });
+  promise.Set(std::make_unique<int32_t>(1));
+  EXPECT_FALSE(called);
+  EXPECT_EQ(executor.num_tasks, 0);
 }
 
 TEST(FutureTest, TryMapCopyableFutureToStateless) {
@@ -460,20 +503,6 @@ TEST(FutureTest, TryMapMoveOnlyFutureCreateError) {
   EXPECT_EQ(mapped.Await().status(), absl::InternalError("test"));
 }
 
-TEST(FutureTest, TryMapUnusedResult) {
-  auto [promise, future] = Future<int>::MakePromise();
-
-  bool called = false;
-  // We intentionally drop returned future to test that promise will not
-  // execute map functor.
-  (void)future.Map([&](int) -> absl::StatusOr<int> {
-    called = true;
-    return 2;
-  });
-  promise.Set(1);
-  EXPECT_FALSE(called);
-}
-
 TEST(FutureTest, MapWithVoidFunctor) {
   {
     auto [promise, future] = Future<>::MakePromise();
@@ -500,6 +529,67 @@ TEST(FutureTest, MapWithVoidFunctor) {
     EXPECT_EQ(mapped.Await(), absl::OkStatus());
   }
 }
+
+TEST(FutureTest, MapDoesNotCopy) {
+  static int32_t counter = 0;
+
+  // A trivial class that counts how many times the copy constructor is called.
+  struct Data {
+    Data() = default;
+
+    Data(const Data& other) { ++counter; }
+    Data(Data&& other) {}
+
+    Data& operator=(Data& other) = delete;
+    Data& operator=(Data&& other) = delete;
+  };
+
+  auto [promise, future] = Future<Data>::MakePromise();
+
+  Future<> m0 = future.Map([](const Data& data) {});
+  Future<> m1 = future.Map([](Data data) {});
+  Future<> m2 = std::move(future).Map([](const Data& data) {});
+
+  promise.Set(Data{});
+
+  EXPECT_EQ(m0.Await(), absl::OkStatus());
+  EXPECT_EQ(m1.Await(), absl::OkStatus());
+  EXPECT_EQ(m2.Await(), absl::OkStatus());
+
+  EXPECT_EQ(counter, 1);
+};
+
+TEST(FutureTest, MapOnExecutorDoesNotCopy) {
+  tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "test", 4);
+  tsl::Executor* executor = thread_pool.AsExecutor();
+
+  static int32_t counter = 0;
+
+  // A trivial class that counts how many times the copy constructor is called.
+  struct Data {
+    Data() = default;
+
+    Data(const Data& other) { ++counter; }
+    Data(Data&& other) {}
+
+    Data& operator=(Data& other) = delete;
+    Data& operator=(Data&& other) = delete;
+  };
+
+  auto [promise, future] = Future<Data>::MakePromise();
+
+  Future<> m0 = future.Map(*executor, [](const Data& data) {});
+  Future<> m1 = future.Map(*executor, [](Data data) {});
+  Future<> m2 = std::move(future).Map(*executor, [](const Data& data) {});
+
+  promise.Set(Data{});
+
+  EXPECT_EQ(m0.Await(), absl::OkStatus());
+  EXPECT_EQ(m1.Await(), absl::OkStatus());
+  EXPECT_EQ(m2.Await(), absl::OkStatus());
+
+  EXPECT_EQ(counter, 1);
+};
 
 TEST(FutureTest, StatelessError) {
   auto [promise, future] = Future<>::MakePromise();
@@ -877,7 +967,7 @@ TEST(FutureTest, MapStatelessOnThreadPoolExecutor) {
   EXPECT_EQ(counter, 100);
 }
 
-TEST(FutureTest, MapStatefullOnThreadPoolExecutor) {
+TEST(FutureTest, MapStatefulOnThreadPoolExecutor) {
   tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "test", 4);
 
   std::vector<Future<>> mapped;
@@ -891,6 +981,48 @@ TEST(FutureTest, MapStatefullOnThreadPoolExecutor) {
                                   [&](int32_t value) { counter += value; }));
     }
     promise.Set(1);
+  }
+
+  EXPECT_EQ(tsl::JoinFutures(mapped).Await(), absl::OkStatus());
+  EXPECT_EQ(counter, 100);
+}
+
+TEST(FutureTest, MapMoveOnlyOnThreadPoolExecutor) {
+  tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "test", 4);
+
+  std::vector<Future<>> mapped;
+  std::atomic<int32_t> counter = 0;
+
+  {  // Create mapped future in a nested scope to make sure that `promise` and
+    // `future` are destroyed before the end of the test.
+    auto [promise, future] = Future<std::unique_ptr<int32_t>>::MakePromise();
+    for (size_t i = 0; i < 100; ++i) {
+      mapped.push_back(future.Map(
+          *thread_pool.AsExecutor(),
+          [&](const std::unique_ptr<int32_t>& value) { counter += *value; }));
+    }
+    promise.Set(std::make_unique<int32_t>(1));
+  }
+
+  EXPECT_EQ(tsl::JoinFutures(mapped).Await(), absl::OkStatus());
+  EXPECT_EQ(counter, 100);
+}
+
+TEST(FutureTest, MapMoveOnlyRvalueOnThreadPoolExecutor) {
+  tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "test", 4);
+
+  std::vector<Future<>> mapped;
+  std::atomic<int32_t> counter = 0;
+
+  {  // Create mapped future in a nested scope to make sure that `promise` and
+    // `future` are destroyed before the end of the test.
+    for (size_t i = 0; i < 100; ++i) {
+      auto [promise, future] = Future<std::unique_ptr<int32_t>>::MakePromise();
+      mapped.push_back(std::move(future).Map(
+          *thread_pool.AsExecutor(),
+          [&](std::unique_ptr<int32_t> value) { counter += *value; }));
+      promise.Set(std::make_unique<int32_t>(1));
+    }
   }
 
   EXPECT_EQ(tsl::JoinFutures(mapped).Await(), absl::OkStatus());
