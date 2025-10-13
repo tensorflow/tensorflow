@@ -36,7 +36,7 @@ static inline absl::string_view StringRefToView(llvm::StringRef ref) {
 static inline llvm::StringRef StringViewToRef(absl::string_view view) {
   return llvm::StringRef(view.data(), view.size());
 }
-
+// TODO(b/451534795): Refactor this file for correctness and readability.
 namespace tensorflow {
 
 OpOrArgNameMapper::~OpOrArgNameMapper() = default;
@@ -97,11 +97,7 @@ std::optional<absl::string_view> OpOrArgNameMapper::GetMappedNameView(
 
 llvm::StringRef OpOrArgNameMapper::GetUniqueName(OpOrVal op_or_val,
                                                  int hash_value) {
-  auto& name = op_or_val_to_name_[op_or_val];
-  if (!name.empty()) return StringViewToRef(name);
-  // Update the value in the map with unique name.
   llvm::StringRef ref = GetUniqueName(GetName(op_or_val), hash_value);
-  name = StringRefToView(ref);
   return ref;
 }
 
