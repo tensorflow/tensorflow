@@ -13,9 +13,8 @@ Defines the foundational classes for HLO passes:
 * `HloPassInterface`: Abstract base class for all HLO passes.
 * `HloModulePass`: Subclass for passes that operate on individual HloModules.
 
-Provides core methods like `Run`, `RunOnModuleGroup`, and
-`RunOnChangedComputations` that passes must implement to perform their
-transformations.
+Provides core methods like `Run`, and`RunOnChangedComputations` that passes must
+implement to perform their transformations.
 
 ### `hlo_pass_fix.h`
 

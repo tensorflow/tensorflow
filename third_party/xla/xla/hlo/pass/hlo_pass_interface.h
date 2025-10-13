@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_HLO_PASS_HLO_PASS_INTERFACE_H_
 
 #include <cstdint>
+#include <memory>
 #include <string>
 
 #include "absl/container/flat_hash_set.h"
@@ -88,6 +89,17 @@ class HloPassInterface {
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) = 0;
 
+  // Same as above, except that this API allows the pass to return a *different*
+  // module, rather than modifying the module in-place.
+  absl::StatusOr<bool> Run(std::unique_ptr<HloModule>& module_ptr) {
+    return Run(module_ptr, /*execution_threads=*/{});
+  }
+  virtual absl::StatusOr<bool> Run(
+      std::unique_ptr<HloModule>& module_ptr,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) {
+    return Run(module_ptr.get(), execution_threads);
+  }
+
   // Run the pass on computation on changed computations from last iteration in
   // given HLO module for specified execution_threads, with caller provided
   // RunState which holds the state information across multiple iterations.
@@ -106,21 +118,6 @@ class HloPassInterface {
     }
     return absl::OkStatus();
   }
-
-  // Run the pass on the given HLO module group for specified
-  // `execution_threads`. Empty `execution_threads` list means all execution
-  // threads are included. Returns whether it modified the module group.
-  // Ideally, the module group variant would be named "Run" as well, but C++
-  // does not handle overloaded virtual methods well.
-  //
-  // See the caveat about C++ hiding overloaded functions in the Run function
-  // above.
-  absl::StatusOr<bool> RunOnModuleGroup(HloModuleGroup* module_group) {
-    return RunOnModuleGroup(module_group, /*execution_threads=*/{});
-  }
-  virtual absl::StatusOr<bool> RunOnModuleGroup(
-      HloModuleGroup* module_group,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) = 0;
 
   virtual bool IsPassPipeline() const { return false; }
 
@@ -141,20 +138,6 @@ class HloPassInterface {
 // Base class for passes which are module-scoped.
 class HloModulePass : public HloPassInterface {
  public:
-  // Runs the pass on a module group by iterating through each module in the
-  // group.
-  absl::StatusOr<bool> RunOnModuleGroup(
-      HloModuleGroup* module_group,
-      const absl::flat_hash_set<absl::string_view>& execution_threads)
-      override {
-    bool changed = false;
-    for (HloModule* module : module_group->modules()) {
-      TF_ASSIGN_OR_RETURN(bool module_changed, Run(module, execution_threads));
-      changed |= module_changed;
-    }
-    return changed;
-  };
-
   // Update the layout of a Shape to one that is supported by a given backend.
   // One can call this function after modifying the Shape in case that modifying
   // the Shape requires changes to the layout for the given Backend.

@@ -37,7 +37,6 @@ class TupleSimplifier : public HloModulePass {
   // Runs tuple simplification on the given module. Returns whether the module
   // was changed.
   using HloPassInterface::Run;
-  using HloPassInterface::RunOnModuleGroup;
   absl::StatusOr<bool> Run(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;

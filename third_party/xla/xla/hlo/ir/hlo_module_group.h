@@ -54,9 +54,8 @@ class HloModuleGroup {
     return *module_;
   }
 
-  // Replaces the existing module at the given index with the given module. The
-  // existing module is discarded.
-  void ReplaceModule(int index, std::unique_ptr<HloModule> module);
+  // Adds a module to the group, taking ownership of it.
+  void AddModule(std::unique_ptr<HloModule> module);
 
   // Moves all modules from the group into the returned vector. After this
   // method runs, the module group will be empty.

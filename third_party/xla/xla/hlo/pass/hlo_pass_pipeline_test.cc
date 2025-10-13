@@ -265,19 +265,17 @@ ENTRY main {
   ROOT baz = f32[] multiply(a, b)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(HloModuleGroup module_group,
-                          ParseModuleGroup(module_0_str));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(module_0_str));
 
   HloPassPipeline pipeline(TestName());
   pipeline.AddPass<BazToQuxModulePass>();
   pipeline.AddPass<FooToBarModulePass>();
 
-  HloInstruction* root0 =
-      module_group.module(0).entry_computation()->root_instruction();
+  HloInstruction* root0 = module->entry_computation()->root_instruction();
   EXPECT_EQ(root0->name(), "baz");
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          pipeline.RunOnModuleGroup(&module_group));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, pipeline.Run(module.get()));
   EXPECT_TRUE(changed);
 
   EXPECT_EQ(root0->name(), "qux");
@@ -333,38 +331,32 @@ ENTRY main {
   }
 }
 
-// Test that metadata is set when a module group goes through a pass pipeline.
+// Test that metadata is set when a module goes through a pass pipeline.
 TEST_F(HloPassPipelineTest, SetHloModuleMetadata) {
-  HloModuleGroup module_group(CreateNewVerifiedModule());
+  std::unique_ptr<VerifiedHloModule> module = CreateNewVerifiedModule();
 
   HloPassPipeline pipeline(TestName());
   pipeline.AddPass<BazToQuxModulePass>();
   pipeline.AddPass<FooToBarModulePass>();
-  TF_ASSERT_OK(pipeline.RunOnModuleGroup(&module_group).status());
-  ASSERT_THAT(module_group.modules(), SizeIs(1));
+  TF_ASSERT_OK(pipeline.Run(module.get()).status());
 
   std::vector<std::string> pass_names = {"pipeline-start", "baz2qux",
                                          "foo2bar"};
   std::string pipeline_name = std::string(pipeline.name());
-  for (const HloModule* module : module_group.modules()) {
-    const HloModuleMetadataProto& metadata = module->metadata().proto();
-    EXPECT_EQ(metadata.canonical_module_id(), module->unique_id());
-    EXPECT_EQ(metadata.module_group_name(), module_group.name());
+  const HloModuleMetadataProto& metadata = module->metadata()->proto();
+  EXPECT_EQ(metadata.canonical_module_id(), module->unique_id());
 
-    ASSERT_THAT(metadata.pass_metadata(), SizeIs(3));
-    for (int pass = 0; pass < metadata.pass_metadata().size(); pass++) {
-      const HloPassMetadata& pass_metadata = metadata.pass_metadata(pass);
-      EXPECT_NE(pass_metadata.pass_id(), 0);
-      EXPECT_THAT(pass_metadata.pass_name(), StrEq(pass_names[pass]));
-      EXPECT_THAT(pass_metadata.pipeline_name(), StrEq(pipeline_name));
-      EXPECT_FALSE(pass_metadata.module_changed());
-      EXPECT_EQ(pass_metadata.module_id(), module->unique_id());
-      EXPECT_THAT(pass_metadata.module_group_module_ids(),
-                  ElementsAre(module_group.module(0).unique_id()));
-      EXPECT_GT(pass_metadata.start_timestamp_usec(), 0);
-      EXPECT_LE(pass_metadata.start_timestamp_usec(),
-                pass_metadata.end_timestamp_usec());
-    }
+  ASSERT_THAT(metadata.pass_metadata(), SizeIs(3));
+  for (int pass = 0; pass < metadata.pass_metadata().size(); pass++) {
+    const HloPassMetadata& pass_metadata = metadata.pass_metadata(pass);
+    EXPECT_NE(pass_metadata.pass_id(), 0);
+    EXPECT_THAT(pass_metadata.pass_name(), StrEq(pass_names[pass]));
+    EXPECT_THAT(pass_metadata.pipeline_name(), StrEq(pipeline_name));
+    EXPECT_FALSE(pass_metadata.module_changed());
+    EXPECT_EQ(pass_metadata.module_id(), module->unique_id());
+    EXPECT_GT(pass_metadata.start_timestamp_usec(), 0);
+    EXPECT_LE(pass_metadata.start_timestamp_usec(),
+              pass_metadata.end_timestamp_usec());
   }
 }
 
@@ -400,6 +392,8 @@ ENTRY main {
   absl::Status status = pipeline.Run(module.get()).status();
   TF_EXPECT_OK(status);
 }
+
+// TODO: Add test.
 
 }  // namespace
 }  // namespace xla

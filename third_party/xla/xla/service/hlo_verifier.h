@@ -491,7 +491,6 @@ class HloVerifier : public HloModulePass {
 
   // Never returns true; no instructions are ever modified by this pass.
   using HloPassInterface::Run;
-  using HloPassInterface::RunOnModuleGroup;
   absl::StatusOr<bool> Run(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
