@@ -1397,8 +1397,8 @@ cc_library(
         "//xla/backends/gpu/collectives:gpu_collectives",
         "//xla/core/collectives:communicator",
         "//xla/core/collectives:rank_id",
+        "//xla/hlo/ir:collective_op_group_mode",
         "//xla/hlo/ir:hlo",
-        "//xla/hlo/translate/mhlo_to_hlo:attribute_exporter",
         "//xla/service:buffer_assignment",
         "//xla/service:collective_ops_utils",
         "//xla/service:computation_placer",
@@ -1425,7 +1425,6 @@ cc_library(
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:span",
-        "@llvm-project//mlir:IR",
     ],
 )
 
