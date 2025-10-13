@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <stdint.h>
 
+#include "absl/log/check.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/test.h"
 
