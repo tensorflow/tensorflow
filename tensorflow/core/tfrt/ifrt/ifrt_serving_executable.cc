@@ -590,11 +590,14 @@ IfrtServingExecutable::LookUpOrCreateExecutable(
       return it->second;
     }
 
-    if (is_frozen_) {
+    if (is_frozen_ || tf_to_hlo_compiler_->IsXlaCompilationDisabled()) {
       tsl::Future<SharedCachedExecutableBundle> frozen_future(
-          absl::FailedPreconditionError(
-              "Cannot compile for new input shapes after the executable is "
-              "already frozen."));
+          absl::FailedPreconditionError(absl::StrCat(
+              "Cannot compile for new input shapes. Either the executable is "
+              "already frozen: ",
+              is_frozen_,
+              " or XLA compilation disabled by ScopedTpuCompileDisabler: ",
+              tf_to_hlo_compiler_->IsXlaCompilationDisabled())));
       return frozen_future;
     }
 
