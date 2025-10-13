@@ -283,6 +283,16 @@ absl::Status PopulateLayouts(mlir::ModuleOp mlir_module,
         return absl::FailedPreconditionError(absl::StrFormat(
             "Could not find SPMD executable %s", atom_program_name));
       }
+    } else if (llvm::isa<ifrt::CopyArraysOp>(op_result.getOwner())) {
+      // The output is produced by a CopyArraysOp. Must be device
+      // default layout.
+      TF_ASSIGN_OR_RETURN(auto shard_shape,
+                          out_spec.sharding->GetShardShape(out_spec.shape));
+      TF_ASSIGN_OR_RETURN(out_spec.layout,
+                          client->GetDefaultPjRtLayout(
+                              out_spec.dtype, shard_shape.dims(),
+                              out_spec.sharding->devices()->devices().front(),
+                              out_spec.sharding->memory_kind()));
     } else {
       return absl::FailedPreconditionError(absl::StrFormat(
           "Layouts are supported only for programs that have outputs produced "
