@@ -32,7 +32,7 @@ namespace gpu {
 // Converts compatible sequences of Thunks into CommandBufferThunks.
 class CommandBufferConversionPass : public ThunkPassInterface {
  public:
-  CommandBufferConversionPass(absl::string_view module_name = "")
+  explicit CommandBufferConversionPass(absl::string_view module_name = "")
       : module_name_(module_name) {}
 
   absl::string_view name() const override {
