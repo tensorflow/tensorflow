@@ -769,16 +769,10 @@ absl::StatusOr<int64_t> GetDotLoopIterationCount(
         absl::StrCat("Only one contracting dimension is supported, got ",
                      dims.lhs_contracting_dimensions_size()));
   }
-  auto contracting_dim_idx = dims.lhs_contracting_dimensions(0);
-  int64_t k = dot.operand(0)->shape().dimensions(contracting_dim_idx);
-
-  const TiledHloFusionInstruction* tiled_hlo_fusion =
-      static_cast<const TiledHloFusionInstruction*>(tiled_dot.operand(0));
-  auto fusion_tile_sizes =
-      tiled_hlo_fusion->called_computation()->GetRoots()[0]->tile_sizes();
-  int64_t tile_k = fusion_tile_sizes[contracting_dim_idx];
-
-  return CeilOfRatio(k, tile_k);
+  auto dim_idx = dims.lhs_contracting_dimensions(0);
+  int64_t k_size = tiled_dot.hlo()->operand(0)->shape().dimensions(dim_idx);
+  int64_t k_tile = tiled_dot.operand(0)->tile_size(dim_idx);
+  return CeilOfRatio(k_size, k_tile);
 }
 
 // TODO(b/393299275): unify with the logic in `EmitReduce`.
@@ -998,30 +992,28 @@ absl::StatusOr<ScalarOrTensor> EmitDot(
 
   TF_ASSIGN_OR_RETURN(int64_t loop_iteration_count,
                       GetDotLoopIterationCount(tiled_hlo_dot));
+  auto pid_dim = b.getAffineDimExpr(0);
+  auto ki_symbol = b.getAffineSymbolExpr(0);
+  // Nested fusions are tiled with indexing map 'pid * loop_iter_count + ki'
+  IndexingMap computation_index_map{
+      AffineMap::get(1, 1, pid_dim * loop_iteration_count + ki_symbol),
+      {IndexingMap::Variable{
+          tiled_hlo_dot.tile_offsets_indexing()->GetDimensionBound(0), "pid"}},
+      {IndexingMap::Variable{{0, loop_iteration_count - 1}, "k"}},
+      /*rt_vars=*/{}};
+
   auto for_op = b.create<mlir::scf::ForOp>(
       /*lowerBound=*/MakeIndex(b, 0),
       /*upperBound=*/MakeIndex(b, loop_iteration_count),
-      /*step=*/MakeIndex(b, 1), ValueRange{accumulator});
+      /*step=*/MakeIndex(b, 1), accumulator);
   {  // Loop body.
     mlir::OpBuilder::InsertionGuard g(b);
     b.setInsertionPointToStart(for_op.getBody());
-    SmallVector<TensorValue> dot_args;
     Value ki = for_op.getInductionVar();
-    // Nested fusions are tiled with indexing map
-    // (pid * loop_iteration_count_value + loop index) -> ....
-    auto pid_dim = b.getAffineDimExpr(0);
-    auto ki_symbol = b.getAffineSymbolExpr(0);
-    IndexingMap computation_index_map{
-        AffineMap::get(1, 1, {pid_dim * loop_iteration_count + ki_symbol}),
-        {IndexingMap::Variable{
-            tiled_hlo_dot.tile_offsets_indexing()->GetDimensionBound(0),
-            "pid"}},
-        {IndexingMap::Variable{{0, loop_iteration_count - 1}, "k"}},
-        /*rt_vars=*/{}};
-
     Value computation_index = b.create<xla::ApplyIndexingOp>(
                                    ValueRange{pid, ki}, computation_index_map)
                                   .getResult(0);
+    SmallVector<TensorValue> dot_args;
     for (const TiledHloInstruction* operand : tiled_hlo_dot.operands()) {
       VLOG(3) << "Emitting dot operand: " << operand->ToString();
       const TiledHloFusionInstruction* tiled_fusion_operand =
@@ -1131,30 +1123,28 @@ absl::StatusOr<ScalarOrTensor> EmitScaledDot(
 
   TF_ASSIGN_OR_RETURN(int64_t loop_iteration_count,
                       GetDotLoopIterationCount(tiled_hlo_dot));
+  auto pid_dim = b.getAffineDimExpr(0);
+  auto ki_symbol = b.getAffineSymbolExpr(0);
+  // Nested fusions are tiled with indexing map 'pid * loop_iter_count + ki'
+  IndexingMap computation_index_map{
+      AffineMap::get(1, 1, pid_dim * loop_iteration_count + ki_symbol),
+      {IndexingMap::Variable{
+          tiled_hlo_dot.tile_offsets_indexing()->GetDimensionBound(0), "pid"}},
+      {IndexingMap::Variable{{0, loop_iteration_count - 1}, "k"}},
+      /*rt_vars=*/{}};
+
   auto for_op = b.create<mlir::scf::ForOp>(
       /*lowerBound=*/MakeIndex(b, 0),
       /*upperBound=*/MakeIndex(b, loop_iteration_count),
-      /*step=*/MakeIndex(b, 1), SmallVector<Value>{accumulator});
+      /*step=*/MakeIndex(b, 1), accumulator);
   {  // Loop body.
     mlir::OpBuilder::InsertionGuard g(b);
     b.setInsertionPointToStart(for_op.getBody());
-    SmallVector<TensorValue> dot_args;
     Value ki = for_op.getInductionVar();
-    // Nested fusions are tiled with indexing map
-    // (pid * loop_iteration_count_value + loop index) -> ....
-    auto pid_dim = b.getAffineDimExpr(0);
-    auto ki_symbol = b.getAffineSymbolExpr(0);
-    IndexingMap computation_index_map{
-        AffineMap::get(1, 1, {pid_dim * loop_iteration_count + ki_symbol}),
-        {IndexingMap::Variable{
-            tiled_hlo_dot.tile_offsets_indexing()->GetDimensionBound(0),
-            "pid"}},
-        {IndexingMap::Variable{{0, loop_iteration_count - 1}, "k"}},
-        /*rt_vars=*/{}};
-
     Value computation_index = b.create<xla::ApplyIndexingOp>(
                                    ValueRange{pid, ki}, computation_index_map)
                                   .getResult(0);
+    SmallVector<TensorValue> dot_args;
     for (const TiledHloInstruction* operand : tiled_hlo_dot.operands()) {
       VLOG(3) << "Emitting scaled dot operand: " << operand->ToString();
       const TiledHloFusionInstruction* tiled_fusion_operand =
