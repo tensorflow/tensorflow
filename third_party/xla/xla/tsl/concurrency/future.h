@@ -458,7 +458,7 @@ class Future : public internal::FutureBase<absl::StatusOr<T>> {
 
   static constexpr bool is_move_only = Base::IsMoveOnly();  // NOLINT
 
-  static_assert(!std::is_same_v<T, absl::Status>,
+  static_assert(!internal::is_status_v<T>,
                 "Use Future<> specialization for stateless futures");
 
   static_assert(
@@ -601,7 +601,23 @@ class Future : public internal::FutureBase<absl::StatusOr<T>> {
             internal::Mappable<R, U>* = nullptr>
   [[nodiscard]] Future<R> Map(Executor& executor, F&& f) const& {
     auto [promise, future] = Future<R>::MakePromise();
-    OnReady(executor, SetPromise<R, U>(std::move(promise), std::forward<F>(f)));
+
+    OnReady([&executor, f = std::forward<F>(f), promise = std::move(promise),
+             ptr = Base::promise()](const absl::StatusOr<T>& value) mutable {
+      // Do not submit a task to the executor if the result is unused.
+      if (ABSL_PREDICT_FALSE(promise.IsUniqueReference())) {
+        promise.Set(Base::AbortedError());
+        return;
+      }
+
+      // Extend the lifetime of the underlying async value storage by copying
+      // the reference to it, to avoid use-after-free inside the `f` functor.
+      executor.Execute([&value, ref = ptr.CopyRef(), f = std::move(f),
+                        promise = std::move(promise)]() mutable {
+        SetPromise<R, U>(std::move(promise), std::move(f))(value);
+      });
+    });
+
     return std::move(future);
   }
 
@@ -670,9 +686,38 @@ class Future : public internal::FutureBase<absl::StatusOr<T>> {
             internal::Mappable<R, U>* = nullptr>
   [[nodiscard]] Future<R> Map(Executor& executor, F&& f) && {
     auto [promise, future] = Future<R>::MakePromise();
-    std::move(*this).OnReady(
-        executor, SetPromise<R, U, /*rvalue=*/true>(std::move(promise),
-                                                    std::forward<F>(f)));
+
+    using Value = std::conditional_t<is_move_only, absl::StatusOr<T>,
+                                     const absl::StatusOr<T>&>;
+    std::move(*this).OnReady([&executor, f = std::forward<F>(f),
+                              promise = std::move(promise),
+                              ptr = Base::promise()](Value value) mutable {
+      // Do not submit a task to the executor if the result is unused.
+      if (ABSL_PREDICT_FALSE(promise.IsUniqueReference())) {
+        promise.Set(Base::AbortedError());
+        return;
+      }
+
+      // For move-only types pass by value to the executor callback, and for
+      // copyable types pass by const reference to avoid accidental copies. For
+      // values passed by reference extend the lifetime of the underlying async
+      // value storage by copying the reference to it, to avoid use-after-free
+      // inside the `f` functor.
+      if constexpr (is_move_only) {
+        executor.Execute([value = std::move(value), f = std::move(f),
+                          promise = std::move(promise)]() mutable {
+          SetPromise<R, U, /*rvalue=*/true>(std::move(promise),
+                                            std::move(f))(std::move(value));
+        });
+      } else {
+        executor.Execute([&value, ref = ptr.CopyRef(), f = std::move(f),
+                          promise = std::move(promise)]() mutable {
+          SetPromise<R, U, /*rvalue=*/true>(std::move(promise),
+                                            std::move(f))(value);
+        });
+      }
+    });
+
     return std::move(future);
   }
 
@@ -901,7 +946,21 @@ class Future<void> : public internal::FutureBase<absl::Status> {
             internal::Mappable<R, U>* = nullptr>
   [[nodiscard]] Future<R> Map(Executor& executor, F&& f) const {
     auto [promise, future] = Future<R>::MakePromise();
-    OnReady(executor, SetPromise<R, U>(std::move(promise), std::forward<F>(f)));
+
+    OnReady([&executor, f = std::forward<F>(f),
+             promise = std::move(promise)](const absl::Status& status) mutable {
+      // Do not submit a task to the executor if the result is unused.
+      if (ABSL_PREDICT_FALSE(promise.IsUniqueReference())) {
+        promise.Set(Base::AbortedError());
+        return;
+      }
+
+      // Pass `status` by value because it's cheap to copy, instead of extending
+      // the lifetime of the underlying async value storage.
+      executor.Execute(std::bind(
+          SetPromise<R, U>(std::move(promise), std::move(f)), status));
+    });
+
     return std::move(future);
   }
 
@@ -948,7 +1007,7 @@ class Future<void> : public internal::FutureBase<absl::Status> {
   template <typename R, typename U, typename F>
   static auto SetPromise(typename Future<R>::Promise promise, F&& f) {
     return [promise = std::move(promise),
-            f = std::forward<F>(f)](absl::Status status) mutable {
+            f = std::forward<F>(f)](const absl::Status& status) mutable {
       // Do not compute `f` if the result is unused.
       if (ABSL_PREDICT_FALSE(promise.IsUniqueReference())) {
         promise.Set(Base::AbortedError());
@@ -1003,11 +1062,11 @@ template <typename T, bool is_move_only>
 Future<> FutureBase<T, is_move_only>::GetReadyFuture() const {
   auto [promise, future] = Future<>::MakePromise();
   promise_.AndThen(
-      [self = promise_.AsPtr(), promise = std::move(promise)]() mutable {
-        if constexpr (std::is_same_v<T, absl::Status>) {
-          promise.Set(*self);
+      [ptr = promise_.AsPtr(), promise = std::move(promise)]() mutable {
+        if constexpr (internal::is_status_v<T>) {
+          promise.Set(*ptr);
         } else {
-          promise.Set(self->status());
+          promise.Set(ptr->status());
         }
       });
   return std::move(future);
