@@ -91,7 +91,6 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/copy_thunk.h"
 #include "xla/backends/gpu/runtime/cub_sort_thunk.h"
 #include "xla/backends/gpu/runtime/cudnn_thunk.h"
-#include "xla/backends/gpu/runtime/custom_call_target.h"
 #include "xla/backends/gpu/runtime/custom_call_thunk.h"
 #include "xla/backends/gpu/runtime/fft_thunk.h"
 #include "xla/backends/gpu/runtime/gemm_thunk.h"
@@ -120,9 +119,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/wait_for_streams_thunk.h"
 #include "xla/backends/gpu/runtime/while_thunk.h"
 #include "xla/codegen/emitters/kernel_arguments.h"
-#include "xla/ffi/api/c_api.h"
 #include "xla/ffi/attribute_map.h"
-#include "xla/ffi/ffi_api.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -140,8 +137,6 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/call_graph.h"
 #include "xla/service/collective_ops_utils.h"
-#include "xla/service/custom_call_status.h"
-#include "xla/service/custom_call_target_registry.h"
 #include "xla/service/global_device_id.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/cublas_cudnn.h"
@@ -182,7 +177,6 @@ limitations under the License.
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform/platform_object_registry.h"
-#include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tools/hlo_decomposer.h"
 #include "xla/tsl/platform/errors.h"
@@ -192,7 +186,6 @@ limitations under the License.
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/casts.h"
 #include "tsl/platform/human_readable_json.h"
-#include "tsl/platform/platform.h"
 #include "triton/Dialect/Triton/IR/Dialect.h"
 
 namespace xla {
@@ -898,9 +891,11 @@ absl::Status IrEmitterUnnested::EmitConvolutionReorderThunk(
     return Internal("Unexpected shape for convolution reorder: %s",
                     instr->ToString());
   }
-  absl::InlinedVector<int64_t, 4> filter_dims = {
-      shape.dimensions(0), shape.dimensions(1) * 32, shape.dimensions(2),
-      shape.dimensions(3)};
+  ConvolutionFilterDimensions filter_dimensions;
+  filter_dimensions.set_output_feature_map_count(shape.dimensions(0));
+  filter_dimensions.set_input_feature_map_count(shape.dimensions(1) * 32);
+  filter_dimensions.set_input_filter_height(shape.dimensions(2));
+  filter_dimensions.set_input_filter_width(shape.dimensions(3));
 
   absl::InlinedVector<BufferAllocation::Slice, 2> operand_slices;
   TF_ASSIGN_OR_RETURN(BufferAllocation::Slice filter_input,
@@ -929,7 +924,7 @@ absl::Status IrEmitterUnnested::EmitConvolutionReorderThunk(
   auto thunk = std::make_unique<ConvolutionReorderThunk>(
       Thunk::ThunkInfo::WithProfileAnnotation(
           instr, ir_emitter_context_->GetNextThunkId()),
-      absl::MakeSpan(filter_dims), operand_slices, result_slices);
+      std::move(filter_dimensions), operand_slices, result_slices);
   AddThunkToThunkSequence(std::move(thunk));
   return absl::OkStatus();
 }

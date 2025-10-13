@@ -1,0 +1,16 @@
+syntax = "proto3";
+
+package xla.gpu;
+
+// Dimensions of the convolution filter.
+// See stream_executor::dnn::FilterDescriptor for more details.
+message ConvolutionFilterDimensions {
+  // Number of output features (a.k.a. channels).
+  int64 output_feature_map_count = 1;
+  // Number of input features (a.k.a. channels).
+  int64 input_feature_map_count = 2;
+  // Height of the filter.
+  int64 input_filter_height = 3;
+  // Width of the filter.
+  int64 input_filter_width = 4;
+}

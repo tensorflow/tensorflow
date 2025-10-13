@@ -22,7 +22,7 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
-#include "absl/types/span.h"
+#include "xla/backends/gpu/runtime/convolution_filter_thunk.pb.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/stream_executor/device_memory.h"
@@ -32,12 +32,25 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
+static se::dnn::FilterDescriptor CreateFilterDescriptor(
+    const ConvolutionFilterDimensions& filter_dimensions) {
+  se::dnn::FilterDescriptor filter_desc(/*ndims=*/2);
+  filter_desc.set_layout(se::dnn::FilterLayout::kOutputInputYX32);
+  filter_desc.set_output_feature_map_count(
+      filter_dimensions.output_feature_map_count());
+  filter_desc.set_input_feature_map_count(
+      filter_dimensions.input_feature_map_count());
+  filter_desc.set_input_filter_height(filter_dimensions.input_filter_height());
+  filter_desc.set_input_filter_width(filter_dimensions.input_filter_width());
+  return filter_desc;
+}
+
 ConvolutionReorderThunk::ConvolutionReorderThunk(
-    ThunkInfo thunk_info, absl::Span<int64_t> filter_nchw,
+    ThunkInfo thunk_info, ConvolutionFilterDimensions filter_dimensions,
     absl::InlinedVector<BufferAllocation::Slice, 2> operand_slices,
     absl::InlinedVector<BufferAllocation::Slice, 2> result_slices)
     : Thunk(Kind::kConvolutionReorder, thunk_info),
-      filter_descriptor_(CreateFilterDescriptor(filter_nchw)),
+      filter_descriptor_(CreateFilterDescriptor(filter_dimensions)),
       operand_buffers_(operand_slices),
       result_buffers_(result_slices) {}
 
@@ -68,18 +81,6 @@ absl::Status ConvolutionReorderThunk::ExecuteOnStream(
   return dnn->CudnnReorderConvolutionFilterAndBias(
       params.stream, filter_descriptor_, filter_input, &filter_output,
       std::move(bias_input), std::move(bias_output));
-}
-
-se::dnn::FilterDescriptor ConvolutionReorderThunk::CreateFilterDescriptor(
-    absl::Span<int64_t> filter_nchw) {
-  CHECK_EQ(filter_nchw.size(), 4);
-  se::dnn::FilterDescriptor filter_desc(2);
-  filter_desc.set_layout(se::dnn::FilterLayout::kOutputInputYX32);
-  filter_desc.set_output_feature_map_count(filter_nchw[0]);
-  filter_desc.set_input_feature_map_count(filter_nchw[1]);
-  filter_desc.set_input_filter_height(filter_nchw[2]);
-  filter_desc.set_input_filter_width(filter_nchw[3]);
-  return filter_desc;
 }
 
 }  // namespace gpu

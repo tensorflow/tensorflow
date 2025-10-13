@@ -535,6 +535,7 @@ cc_library(
         "//xla/stream_executor/platform:platform_object_registry",
         "//xla/tools:hlo_decomposer_lib",
         "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:status",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/protobuf:dnn_proto_cc",
         "@com_google_absl//absl/container:flat_hash_map",

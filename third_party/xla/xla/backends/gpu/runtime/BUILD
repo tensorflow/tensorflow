@@ -554,6 +554,7 @@ cc_library(
     srcs = ["convolution_reorder_thunk.cc"],
     hdrs = ["convolution_reorder_thunk.h"],
     deps = [
+        ":convolution_filter_thunk_proto_cc",
         ":thunk",
         "//xla/service:buffer_assignment",
         "//xla/stream_executor:device_memory",
@@ -562,8 +563,12 @@ cc_library(
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
-        "@com_google_absl//absl/types:span",
     ],
+)
+
+tf_proto_library(
+    name = "convolution_filter_thunk_proto",
+    srcs = ["convolution_filter_thunk.proto"],
 )
 
 cc_library(
