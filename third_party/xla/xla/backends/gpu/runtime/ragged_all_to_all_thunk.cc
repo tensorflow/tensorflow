@@ -503,7 +503,7 @@ absl::Status RaggedAllToAllStartThunk::Initialize(
   }
 
   {
-    absl::MutexLock lock(&mutex_);
+    absl::MutexLock lock(mutex_);
     per_stream_states_.emplace(executor, std::move(state));
   }
 
