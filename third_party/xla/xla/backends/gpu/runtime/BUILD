@@ -511,6 +511,7 @@ cc_library(
         "//xla:util",
         "//xla/service:buffer_assignment",
         "//xla/service/gpu:gpu_conv_runner",
+        "//xla/service/gpu:gpu_conv_runner_proto_cc",
         "//xla/service/gpu:stream_executor_util",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor:device_memory",
@@ -532,6 +533,21 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
+    ],
+)
+
+xla_cc_test(
+    name = "convolution_thunk_test",
+    srcs = ["convolution_thunk_test.cc"],
+    deps = [
+        ":convolution_thunk",
+        ":thunk",
+        ":thunk_proto_cc",
+        "//xla/service:buffer_assignment",
+        "//xla/tsl/platform:statusor",
+        "//xla/tsl/util/proto:parse_text_proto",
+        "//xla/tsl/util/proto:proto_matchers",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -2295,6 +2311,7 @@ tf_proto_library(
         "//xla:xla_data_proto",
         "//xla/service:buffer_assignment_proto",
         "//xla/service/gpu:backend_configs",
+        "//xla/service/gpu:gpu_conv_runner_proto",
         "//xla/service/gpu:gpu_norm_runner_proto",
         "//xla/service/gpu:launch_dimensions_proto",
         "//xla/stream_executor:launch_dim_proto",
@@ -2322,6 +2339,7 @@ cc_library(
     hdrs = ["thunk_proto_deserialization.h"],
     deps = [
         ":conditional_thunk",
+        ":convolution_thunk",
         ":copy_thunk",
         ":cudnn_thunk",
         ":gemm_thunk",

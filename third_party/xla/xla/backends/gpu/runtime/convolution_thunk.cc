@@ -46,6 +46,7 @@ limitations under the License.
 
 namespace xla {
 namespace gpu {
+using buffer_assignment::BufferAllocationSliceProto;
 
 absl::StatusOr<std::unique_ptr<ConvolutionThunk>> ConvolutionThunk::Create(
     ThunkInfo thunk_info, GpuConvDescriptor descriptor,
@@ -57,14 +58,12 @@ absl::StatusOr<std::unique_ptr<ConvolutionThunk>> ConvolutionThunk::Create(
 
   // Can't use std::make_unique because the constructor is private.
   return absl::WrapUnique(new ConvolutionThunk(
-      thunk_info, std::move(config), std::move(operand_slices),
-      std::move(result_slices), scratch_slice));
+      thunk_info, std::move(descriptor), std::move(config),
+      std::move(operand_slices), std::move(result_slices), scratch_slice));
 }
 
-// TODO: b/431980836 - Store the descriptor once when adding the
-// (de)serialization methods.
 ConvolutionThunk::ConvolutionThunk(
-    ThunkInfo thunk_info, GpuConvConfig config,
+    ThunkInfo thunk_info, GpuConvDescriptor descriptor, GpuConvConfig config,
     std::vector<BufferAllocation::Slice> operand_slices,
     std::vector<BufferAllocation::Slice> result_slices,
     BufferAllocation::Slice scratch_slice)
@@ -72,6 +71,7 @@ ConvolutionThunk::ConvolutionThunk(
       operand_buffers_(std::move(operand_slices)),
       result_buffers_(std::move(result_slices)),
       scratch_buffer_(scratch_slice),
+      descriptor_(std::move(descriptor)),
       config_(std::move(config)) {}
 
 GenericConvRunner& ConvolutionThunk::GetOrCreateRunner(
@@ -147,6 +147,57 @@ absl::Status ConvolutionThunk::ExecuteOnStream(const ExecuteParams& params) {
     return Internal("ConvolutionThunk::ExecuteOnStream failed.");
   }
   return absl::OkStatus();
+}
+
+absl::StatusOr<std::unique_ptr<ConvolutionThunk>> ConvolutionThunk::FromProto(
+    ThunkInfo thunk_info, const ConvolutionThunkProto& proto,
+    absl::Span<const BufferAllocation> buffer_allocations) {
+  TF_ASSIGN_OR_RETURN(GpuConvDescriptor descriptor,
+                      GpuConvDescriptor::FromProto(proto.conv_descriptor()));
+
+  std::vector<BufferAllocation::Slice> operand_slices;
+  operand_slices.reserve(proto.operand_buffers_size());
+  for (const BufferAllocationSliceProto& slice_proto :
+       proto.operand_buffers()) {
+    TF_ASSIGN_OR_RETURN(
+        operand_slices.emplace_back(),
+        BufferAllocation::Slice::FromProto(slice_proto, buffer_allocations));
+  }
+
+  std::vector<BufferAllocation::Slice> result_slices;
+  result_slices.reserve(proto.result_buffers_size());
+  for (const BufferAllocationSliceProto& slice_proto : proto.result_buffers()) {
+    TF_ASSIGN_OR_RETURN(
+        result_slices.emplace_back(),
+        BufferAllocation::Slice::FromProto(slice_proto, buffer_allocations));
+  }
+
+  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice scratch_slice,
+                      BufferAllocation::Slice::FromProto(proto.scratch_buffer(),
+                                                         buffer_allocations));
+
+  return Create(std::move(thunk_info), std::move(descriptor),
+                std::move(operand_slices), std::move(result_slices),
+                scratch_slice);
+}
+
+absl::StatusOr<ThunkProto> ConvolutionThunk::ToProto() const {
+  ThunkProto proto;
+  *proto.mutable_thunk_info() = thunk_info().ToProto();
+
+  ConvolutionThunkProto* conv_proto = proto.mutable_convolution_thunk();
+  *conv_proto->mutable_conv_descriptor() = descriptor_.ToProto();
+
+  for (const BufferAllocation::Slice& slice : operand_buffers_) {
+    TF_ASSIGN_OR_RETURN(*conv_proto->add_operand_buffers(), slice.ToProto());
+  }
+  for (const BufferAllocation::Slice& slice : result_buffers_) {
+    TF_ASSIGN_OR_RETURN(*conv_proto->add_result_buffers(), slice.ToProto());
+  }
+  TF_ASSIGN_OR_RETURN(*conv_proto->mutable_scratch_buffer(),
+                      scratch_buffer_.ToProto());
+
+  return proto;
 }
 
 ConvolutionReorderThunk::ConvolutionReorderThunk(

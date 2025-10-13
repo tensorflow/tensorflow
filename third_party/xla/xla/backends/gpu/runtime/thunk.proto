@@ -20,6 +20,7 @@ package xla.gpu;
 import "xla/backends/gpu/runtime/dynamic_slice_thunk.proto";
 import "xla/service/buffer_assignment.proto";
 import "xla/service/gpu/backend_configs.proto";
+import "xla/service/gpu/gpu_conv_runner.proto";
 import "xla/service/gpu/gpu_norm_runner.proto";
 import "xla/service/gpu/launch_dimensions.proto";
 import "xla/stream_executor/gpu/gpu_blas_lt.proto";
@@ -198,6 +199,13 @@ message NormThunkProto {
   xla.buffer_assignment.BufferAllocationSliceProto scratch = 11;
 }
 
+message ConvolutionThunkProto {
+  GpuConvDescriptorProto conv_descriptor = 1;
+  repeated xla.buffer_assignment.BufferAllocationSliceProto operand_buffers = 2;
+  repeated xla.buffer_assignment.BufferAllocationSliceProto result_buffers = 3;
+  xla.buffer_assignment.BufferAllocationSliceProto scratch_buffer = 4;
+}
+
 message ThunkProto {
   ThunkInfoProto thunk_info = 1;
 
@@ -225,6 +233,7 @@ message ThunkProto {
     CublasLtMatmulThunkProto cublas_lt_matmul_thunk = 22;
     OutfeedThunkProto outfeed_thunk = 23;
     NormThunkProto norm_thunk = 24;
+    ConvolutionThunkProto convolution_thunk = 25;
   }
 }
 
