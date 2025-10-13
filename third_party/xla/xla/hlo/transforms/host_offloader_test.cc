@@ -44,6 +44,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "tsl/platform/statusor.h"
 
@@ -1074,6 +1075,50 @@ ENTRY main {
   TestShapeHasMemorySpace(while_body_param->shape(), Layout::kHostMemorySpace);
 
   EXPECT_FALSE(HaveRemainingOffloadAnnotations(module.get()));
+}
+
+TEST_F(HostOffloaderTest, DsWithMoveToDeviceInWhileBody) {
+  const std::string& hlo_string = R"(
+HloModule my_module, entry_computation_layout={(f32[1024,2048]{1,0:T(8,128)S(5)})->f32[8,2048]{1,0:T(8,128)}}
+while_body {
+  param = (s32[], f32[8,2048]) parameter(0)
+  current_iteration_index.0 = s32[] get-tuple-element(param), index=0
+  gte.1 = f32[8,2048] get-tuple-element(param), index=1
+  offload_custom_call = f32[8,2048] custom-call(gte.1), custom_call_target="MoveToDevice"
+  double = f32[8,2048] add(offload_custom_call, offload_custom_call)
+  constant_1 = s32[] constant(1)
+  incremented_index.0 = s32[] add(current_iteration_index.0, constant_1)
+  ROOT tuple = (s32[], f32[8,2048]) tuple(incremented_index.0, double)
+}
+while_condition {
+  param = (s32[], f32[8,2048]) parameter(0)
+  current_iteration_index.0 = get-tuple-element(param), index=0
+  constant_2 = s32[] constant(2)
+  ROOT pred_result = pred[] compare(current_iteration_index.0, constant_2), direction=LT
+}
+ENTRY main {
+  data_param = f32[1024,2048] parameter(0)
+  constant = s32[] constant(0)
+  ds = f32[8,2048] slice(data_param), slice={[0:8], [0:2048]}
+  tuple = (s32[], f32[8,2048]) tuple(constant, ds)
+  while = (s32[], f32[8,2048]) while(tuple), condition=while_condition, body=while_body
+  ROOT gte = f32[8,2048] get-tuple-element(while), index=1
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
+  VLOG(1) << "module after: " << module->ToString();
+
+  EXPECT_TRUE(changed);
+  // ds should be rewritten into a dynamic-slice.
+  HloInstruction* ds = FindInstruction(module.get(), "dynamic-slice");
+  EXPECT_NE(ds, nullptr);
+  EXPECT_TRUE(ds->shape().layout().memory_space() ==
+              Layout::kDefaultMemorySpace);
+  EXPECT_FALSE(ds->has_frontend_attributes());
 }
 
 TEST_F(HostOffloaderTest, NoCopyWithOptBarrier) {

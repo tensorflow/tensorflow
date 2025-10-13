@@ -144,8 +144,19 @@ bool HostOffloader::InstructionIsAllowedBetweenDsAndMoveToDevice(
     return ShapeUtil::ReshapeIsBitcast(instruction->operand(0)->shape(),
                                        instruction->shape());
   }
-  return instruction->opcode() == HloOpcode::kBitcast ||
-         instruction->opcode() == HloOpcode::kCopy;
+  if (instruction->opcode() == HloOpcode::kBitcast ||
+      instruction->opcode() == HloOpcode::kCopy) {
+    return true;
+  }
+  // Allow an annotation to sit inside a loop.
+  if (instruction->opcode() == HloOpcode::kTuple ||
+      instruction->opcode() == HloOpcode::kOptimizationBarrier ||
+      instruction->opcode() == HloOpcode::kGetTupleElement ||
+      instruction->opcode() == HloOpcode::kParameter ||
+      instruction->opcode() == HloOpcode::kWhile) {
+    return true;
+  }
+  return false;
 }
 
 absl::StatusOr<bool> HostOffloader::WalkDownHostMemoryOffloadPaths(
@@ -1268,10 +1279,24 @@ absl::StatusOr<bool> HostOffloader::HandleDynamicUpdateSlices() {
         operand_memory_space == Layout::kDefaultMemorySpace;
     if (host_to_device) {
       // This is only supported via host compute.
+      if (dus->GetModule()
+              ->config()
+              .debug_options()
+              .xla_disable_automatic_host_compute_offload()) {
+        return absl::InvalidArgumentError(
+            "Automatic host compute offloading is disabled.");
+      }
       host_offload_utils::SetHostComputeFrontendAttribute(*dus);
       changed = true;
     } else if (host_to_host) {
       // Host to host. Execute as host compute. Also set as host memory space.
+      if (dus->GetModule()
+              ->config()
+              .debug_options()
+              .xla_disable_automatic_host_compute_offload()) {
+        return absl::InvalidArgumentError(
+            "Automatic host compute offloading is disabled.");
+      }
       host_offload_utils::SetHostComputeFrontendAttribute(*dus);
       SetMemorySpace(dus->mutable_shape(), Layout::kHostMemorySpace);
       changed = true;
