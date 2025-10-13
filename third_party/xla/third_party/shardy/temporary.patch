@@ -1,99 +1,181 @@
-diff --git a/shardy/dialect/sdy/ir/attrs.td b/shardy/dialect/sdy/ir/attrs.td
-index 363ddb0..d0647ba 100644
---- a/shardy/dialect/sdy/ir/attrs.td
-+++ b/shardy/dialect/sdy/ir/attrs.td
-@@ -567,9 +567,6 @@ def Sdy_DimensionSharding : AttrDef<Sdy_Dialect, "DimensionSharding"> {
- 
-     // Builds a closed `DimensionShardingAttr` matching `dimSharding` in axes and priority.
-     static DimensionShardingAttr getClosedLike(DimensionShardingAttr sharding);
--
--    // Builds an open `DimensionShardingAttr` matching `dimSharding` in axes and priority.
--    static DimensionShardingAttr getOpenLike(DimensionShardingAttr sharding);
-   }];
- }
- 
-@@ -820,10 +817,6 @@ def Sdy_TensorSharding : AttrDef<Sdy_Dialect, "TensorSharding"> {
-     // and matching `sharding` in dim sharding axes, `mesh_or_ref` and rank.
-     static TensorShardingAttr getClosedLike(TensorShardingAttr sharding);
- 
--    // Builds a `TensorShardingAttr` with all dim shardings being marked open
--    // and matching `sharding` in dim sharding axes, `mesh_or_ref` and rank.
--    static TensorShardingAttr getOpenLike(TensorShardingAttr sharding);
--
-     // Builds a `TensorShardingAttr` with a closed dim sharding for each axis
-     // list in `axesPerDim`.
-     static TensorShardingAttr getClosed(
-diff --git a/shardy/dialect/sdy/ir/dialect.cc b/shardy/dialect/sdy/ir/dialect.cc
-index 60abf9f..5113b47 100644
---- a/shardy/dialect/sdy/ir/dialect.cc
-+++ b/shardy/dialect/sdy/ir/dialect.cc
-@@ -694,13 +694,6 @@ DimensionShardingAttr DimensionShardingAttr::getClosedLike(
-                                     /*priority=*/dimSharding.getPriority());
- }
- 
--DimensionShardingAttr DimensionShardingAttr::getOpenLike(
--    DimensionShardingAttr dimSharding) {
--  return DimensionShardingAttr::get(dimSharding.getContext(),
--                                    dimSharding.getAxes(), /*isClosed=*/false,
--                                    /*priority=*/dimSharding.getPriority());
--}
--
- //===----------------------------------------------------------------------===//
- // TensorShardingAttr
- //===----------------------------------------------------------------------===//
-@@ -787,7 +780,8 @@ TensorShardingAttr TensorShardingAttr::closeShardingDims(
-   SmallVector<DimensionShardingAttr> dimShardings(getDimShardings().begin(),
-                                                   getDimShardings().end());
-   for (int64_t dim : dimIndices) {
--    dimShardings[dim] = DimensionShardingAttr::getClosedLike(dimShardings[dim]);
-+    dimShardings[dim] = DimensionShardingAttr::get(
-+        getContext(), dimShardings[dim].getAxes(), /*isClosed=*/true);
-   }
-   return TensorShardingAttr::get(getContext(), getMeshOrRef(), dimShardings,
-                                  getReplicatedAxes(), getUnreducedAxes());
-@@ -798,7 +792,8 @@ TensorShardingAttr TensorShardingAttr::openShardingDims(
-   SmallVector<DimensionShardingAttr> dimShardings(getDimShardings().begin(),
-                                                   getDimShardings().end());
-   for (int64_t dim : dimIndices) {
--    dimShardings[dim] = DimensionShardingAttr::getOpenLike(dimShardings[dim]);
-+    dimShardings[dim] = DimensionShardingAttr::get(
-+        getContext(), dimShardings[dim].getAxes(), /*isClosed=*/false);
-   }
-   return TensorShardingAttr::get(getContext(), getMeshOrRef(), dimShardings,
-                                  getReplicatedAxes(), getUnreducedAxes());
-@@ -880,20 +875,6 @@ TensorShardingAttr TensorShardingAttr::getClosedLike(
-                                  sharding.getUnreducedAxes());
- }
- 
--TensorShardingAttr TensorShardingAttr::getOpenLike(
--    TensorShardingAttr sharding) {
--  SmallVector<DimensionShardingAttr> openDimShardings(sharding.getRank());
--  for (int index = 0; index < sharding.getRank(); index++) {
--    openDimShardings[index] =
--        DimensionShardingAttr::getOpenLike(sharding.getDimSharding(index));
--  }
--  return TensorShardingAttr::get(
--      sharding.getContext(), sharding.getMeshOrRef(),
--      /*dimShardings=*/openDimShardings,
--      /*replicatedAxes=*/sharding.getReplicatedAxes(),
--      sharding.getUnreducedAxes());
--}
--
- TensorShardingAttr TensorShardingAttr::getClosed(
-     MLIRContext* context, Attribute meshOrRef,
-     ArrayRef<SmallVector<AxisRefAttr>> axesPerDim,
+diff --git a/third_party/llvm/generated.patch b/third_party/llvm/generated.patch
+index 509398d..69e643a 100644
+--- a/third_party/llvm/generated.patch
++++ b/third_party/llvm/generated.patch
+@@ -1 +1,161 @@
+ Auto generated patch. Do not edit or delete it, even if empty.
++diff -ruN --strip-trailing-cr a/clang/include/clang/Driver/Options.td b/clang/include/clang/Driver/Options.td
++--- a/clang/include/clang/Driver/Options.td
+++++ b/clang/include/clang/Driver/Options.td
++@@ -545,15 +545,16 @@
++               Group<f_Group>;
++ }
++ 
++-// Creates a BoolOption where both of the flags are prefixed with "g" and have
++-// the Group<g_Group>.
+++// Creates a BoolOption where both of the flags are prefixed with "g".
+++// Does *not* map to g_Group, because that is reserved for flags that are
+++// intended to enable (or disable) debug info, which is not appropriate for a
+++// negative boolean flag (-gno-${feature}).
++ // Used for -cc1 frontend options. Driver-only options do not map to
++ // CompilerInvocation.
++ multiclass BoolGOption<string flag_base, KeyPathAndMacro kpm,
++                        Default default, FlagDef flag1, FlagDef flag2,
++                        BothFlags both = BothFlags<[]>> {
++-  defm NAME : BoolOption<"g", flag_base, kpm, default, flag1, flag2, both>,
++-              Group<g_Group>;
+++  defm NAME : BoolOption<"g", flag_base, kpm, default, flag1, flag2, both>;
++ }
++ 
++ multiclass BoolMOption<string flag_base, KeyPathAndMacro kpm,
++@@ -4845,8 +4846,7 @@
++                   NegFlag<SetFalse>,
++                   PosFlag<SetTrue, [], [],
++                           "Attach linkage names to C++ constructor/destructor "
++-                          "declarations in DWARF."
++-                          "Implies -g.">,
+++                          "declarations in DWARF.">,
++                   BothFlags<[], [ClangOption, CLOption, CC1Option]>>,
++                   DocBrief<[{On some ABIs (e.g., Itanium), constructors and destructors may have multiple variants. Historically, when generating DWARF, Clang did not attach ``DW_AT_linkage_name`` to structor DIEs because there were multiple possible manglings (depending on the structor variant) that could be used. With ``-gstructor-decl-linkage-names``, for ABIs with structor variants, we attach a "unified" mangled name to structor declarations DIEs which debuggers can use to look up all the definitions for a structor declaration. E.g., a "unified" mangled name ``_ZN3FooC4Ev`` may have multiple definitions associated with it such as ``_ZN3FooC1Ev`` and ``_ZN3FooC2Ev``.
++ 
++@@ -4855,7 +4855,7 @@
++     CodeGenOpts<"DebugKeyInstructions">, DefaultFalse,
++     NegFlag<SetFalse>, PosFlag<SetTrue, [], [],
++         "Enable Key Instructions, which reduces the jumpiness of debug stepping in optimized C/C++ code"
++-        " in some debuggers. DWARF only. Implies -g.">,
+++        " in some debuggers. DWARF only.">,
++     BothFlags<[], [ClangOption, CLOption, CC1Option]>>;
++ def headerpad__max__install__names : Joined<["-"], "headerpad_max_install_names">;
++ def help : Flag<["-", "--"], "help">,
++diff -ruN --strip-trailing-cr a/clang/lib/AST/DeclTemplate.cpp b/clang/lib/AST/DeclTemplate.cpp
++--- a/clang/lib/AST/DeclTemplate.cpp
+++++ b/clang/lib/AST/DeclTemplate.cpp
++@@ -1670,20 +1670,25 @@
++     auto P = CTSD->getSpecializedTemplateOrPartial();
++     TemplateParameterList *TPL;
++     if (const auto *CTPSD =
++-            dyn_cast<ClassTemplatePartialSpecializationDecl *>(P))
+++            dyn_cast<ClassTemplatePartialSpecializationDecl *>(P)) {
++       TPL = CTPSD->getTemplateParameters();
++-    else
++-      TPL = cast<ClassTemplateDecl *>(P)->getTemplateParameters();
+++      // FIXME: Obtain Args deduced for the partial specialization.
+++      return {TPL->getParam(Index), {}};
+++    }
+++    TPL = cast<ClassTemplateDecl *>(P)->getTemplateParameters();
++     return {TPL->getParam(Index), CTSD->getTemplateArgs()[Index]};
++   }
++   case Decl::Kind::VarTemplateSpecialization: {
++     const auto *VTSD = cast<VarTemplateSpecializationDecl>(D);
++     auto P = VTSD->getSpecializedTemplateOrPartial();
++     TemplateParameterList *TPL;
++-    if (const auto *VTPSD = dyn_cast<VarTemplatePartialSpecializationDecl *>(P))
+++    if (const auto *VTPSD =
+++            dyn_cast<VarTemplatePartialSpecializationDecl *>(P)) {
++       TPL = VTPSD->getTemplateParameters();
++-    else
++-      TPL = cast<VarTemplateDecl *>(P)->getTemplateParameters();
+++      // FIXME: Obtain Args deduced for the partial specialization.
+++      return {TPL->getParam(Index), {}};
+++    }
+++    TPL = cast<VarTemplateDecl *>(P)->getTemplateParameters();
++     return {TPL->getParam(Index), VTSD->getTemplateArgs()[Index]};
++   }
++   case Decl::Kind::ClassTemplatePartialSpecialization:
++diff -ruN --strip-trailing-cr a/clang/test/DebugInfo/KeyInstructions/flag.cpp b/clang/test/DebugInfo/KeyInstructions/flag.cpp
++--- a/clang/test/DebugInfo/KeyInstructions/flag.cpp
+++++ b/clang/test/DebugInfo/KeyInstructions/flag.cpp
++@@ -1,12 +1,15 @@
++ // RUN: %clang -### -target x86_64 -c -gdwarf -gkey-instructions %s 2>&1 | FileCheck %s --check-prefixes=KEY-INSTRUCTIONS
++ // RUN: %clang -### -target x86_64 -c -gdwarf -gno-key-instructions %s 2>&1 | FileCheck %s --check-prefixes=NO-KEY-INSTRUCTIONS
+++// RUN: %clang -### -target x86_64 -c -gno-key-instructions %s 2>&1 | FileCheck %s --check-prefixes=NO-DEBUG
++ 
++ //// Help.
++ // RUN %clang --help | FileCheck %s --check-prefix=HELP
++-// HELP: -gkey-instructions  Enable Key Instructions, which reduces the jumpiness of debug stepping in optimized C/C++ code in some debuggers. DWARF only. Implies -g.
+++// HELP: -gkey-instructions  Enable Key Instructions, which reduces the jumpiness of debug stepping in optimized C/C++ code in some debuggers. DWARF only.
++ 
++ // KEY-INSTRUCTIONS: "-gkey-instructions"
++ // NO-KEY-INSTRUCTIONS-NOT: key-instructions
+++// NO-DEBUG-NOT: debug-info-kind
+++// NO-DEBUG-NOT: dwarf
++ 
++ //// Help hidden: flag should not be visible.
++ // RUN: %clang --help | FileCheck %s --check-prefix=HELP
++diff -ruN --strip-trailing-cr a/clang/test/Driver/debug-options.c b/clang/test/Driver/debug-options.c
++--- a/clang/test/Driver/debug-options.c
+++++ b/clang/test/Driver/debug-options.c
++@@ -268,11 +268,11 @@
++ // RUN: %clang -### -c %s 2>&1 | FileCheck -check-prefix=NORNGBSE %s
++ // RUN: %clang -### -c -fdebug-ranges-base-address -fno-debug-ranges-base-address %s 2>&1 | FileCheck -check-prefix=NORNGBSE %s
++ //
++-// RUN: %clang -### -c -gomit-unreferenced-methods -fno-standalone-debug %s 2>&1 | FileCheck -check-prefix=INCTYPES %s
+++// RUN: %clang -### -c -g -gomit-unreferenced-methods -fno-standalone-debug %s 2>&1 | FileCheck -check-prefix=INCTYPES %s
++ // RUN: %clang -### -c %s 2>&1 | FileCheck -check-prefix=NOINCTYPES %s
++-// RUN: %clang -### -c -gomit-unreferenced-methods -fdebug-types-section -target x86_64-unknown-linux %s 2>&1 \
+++// RUN: %clang -### -c -g -gomit-unreferenced-methods -fdebug-types-section -target x86_64-unknown-linux %s 2>&1 \
++ // RUN:        | FileCheck -check-prefix=NOINCTYPES %s
++-// RUN: %clang -### -c -gomit-unreferenced-methods -fstandalone-debug %s 2>&1 | FileCheck -check-prefix=NOINCTYPES %s
+++// RUN: %clang -### -c -g -gomit-unreferenced-methods -fstandalone-debug %s 2>&1 | FileCheck -check-prefix=NOINCTYPES %s
++ //
++ // RUN: %clang -### -c -glldb %s 2>&1 | FileCheck -check-prefix=NOPUB %s
++ // RUN: %clang -### -c -glldb -gno-pubnames %s 2>&1 | FileCheck -check-prefix=NOPUB %s
++diff -ruN --strip-trailing-cr a/clang/test/SemaTemplate/concepts.cpp b/clang/test/SemaTemplate/concepts.cpp
++--- a/clang/test/SemaTemplate/concepts.cpp
+++++ b/clang/test/SemaTemplate/concepts.cpp
++@@ -1476,3 +1476,20 @@
++ // expected-error@-1 {{static assertion failed due to requirement 'requires { { &f() } -> C; }'}}
++ 
++ }
+++
+++namespace GH162770 {
+++  enum e {};
+++  template<e> struct s {};
+++
+++  template<typename> struct specialized;
+++  template<e x> struct specialized<s<x>> {
+++    static auto make(auto) -> s<x>;
+++  };
+++
+++  template<e x> struct check {
+++    static constexpr auto m = requires { specialized<s<x>>::make(0); };
+++  };
+++
+++  template<typename... Ts> auto comma = (..., Ts());
+++  auto b = comma<check<e{}>>;
+++} // namespace GH162770
++diff -ruN --strip-trailing-cr a/clang/test/SemaTemplate/partial-spec-instantiate.cpp b/clang/test/SemaTemplate/partial-spec-instantiate.cpp
++--- a/clang/test/SemaTemplate/partial-spec-instantiate.cpp
+++++ b/clang/test/SemaTemplate/partial-spec-instantiate.cpp
++@@ -152,3 +152,16 @@
++     ClassTemplate<>::Nested<int> instantiation;
++   }
++ }
+++#if __cplusplus >= 201103L
+++namespace GH162855 {
+++  template <class...> using A = int;
+++  template <class, int> struct B;
+++  template <class...> struct C;
+++  template <template <class, int...> class TT, long... X>
+++  struct C<TT<int, X...>> {
+++    template <class... Y> using l = A<B<Y, X>...>;
+++  };
+++  template <class> struct D;
+++  template struct C<D<int>>;
+++} // namespace GH162855
+++#endif
 diff --git a/third_party/llvm/workspace.bzl b/third_party/llvm/workspace.bzl
-index 0afb70d..b28a9da 100644
+index b28a9da..81b4a54 100644
 --- a/third_party/llvm/workspace.bzl
 +++ b/third_party/llvm/workspace.bzl
 @@ -4,8 +4,8 @@ load("//third_party:repo.bzl", "tf_http_archive")
  
  def repo(name):
      """Imports LLVM."""
--    LLVM_COMMIT = "4d45718b478940cd11ac80dd64db8408bb21dbca"
--    LLVM_SHA256 = "ce14b25873232ca904c3d2bba2ca71a358b9124c3107cde52ed1483a3e2603c8"
-+    LLVM_COMMIT = "891f002026df122b36813b9e1819769c94327503"
-+    LLVM_SHA256 = "0576a3a0b6baf63308c1432ef2c4c4f082fc5a9ca4b298f0a741dab044d598b5"
+-    LLVM_COMMIT = "891f002026df122b36813b9e1819769c94327503"
+-    LLVM_SHA256 = "0576a3a0b6baf63308c1432ef2c4c4f082fc5a9ca4b298f0a741dab044d598b5"
++    LLVM_COMMIT = "3a6b818132e3133c7d33f8f577e62503f12869b4"
++    LLVM_SHA256 = "a0b3de698393e0f49d0aca3f869cc03bf0c59eba0c65f608e565278943c31958"
  
      tf_http_archive(
          name = name,
