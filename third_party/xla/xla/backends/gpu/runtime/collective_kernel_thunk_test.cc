@@ -204,9 +204,7 @@ TEST(CollectiveKernelThunkTest, ExecutesPtxKernel) {
        /*source_buffer=*/input_slice,
        /*destination_buffer=*/output_slice,
        /*source_memory_space=*/0,
-       /*destination_memory_space=*/0,
-       /*source_value=*/nullptr,
-       /*destination_value=*/nullptr}};
+       /*destination_memory_space=*/0}};
 
   // ## Setup device mapping.
   DeviceAssignment device_assignment(/*replica_count=*/1,

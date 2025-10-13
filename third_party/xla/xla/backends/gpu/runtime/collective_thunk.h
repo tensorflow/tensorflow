@@ -146,8 +146,6 @@ class CollectiveThunk : public Thunk {
     BufferAllocation::Slice destination_buffer;
     int64_t source_memory_space;
     int64_t destination_memory_space;
-    mlir::Value source_value;
-    mlir::Value destination_value;
   };
 
   // Completion events for asynchronous collective operations (operations
