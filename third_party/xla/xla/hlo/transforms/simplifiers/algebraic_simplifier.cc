@@ -6142,6 +6142,112 @@ absl::Status AlgebraicSimplifierVisitor::HandleRemainder(
   return absl::OkStatus();
 }
 
+absl::StatusOr<bool>
+AlgebraicSimplifierVisitor::TryRemovingReshapeTransposeChain(
+    HloInstruction* reshape) {
+  // Detect a chain of transposes and reshapes that can be replaced with a
+  // nop. All reshapes only add, remove or shuffle degenerate dimensions, such
+  // as [x,y,z]->[x,y,1,z] or its reverse, [x,y,1,z]->[x,1,y,z], etc. And all
+  // the shapes in the chain have at most one degenerate dimension. Then all
+  // the transposes in the chain effectively permute x,y,z, while the
+  // degenerate dimension is ignored. As long as all transposes compose to
+  // identity permutation, the chain can be replaced with a nop if the
+  // starting shape and ending shape match. This is done before layout
+  // assignment so layout is completely ignored.
+
+  auto get_num_of_degenerate_dimensions = [](const Shape& shape) {
+    return std::accumulate(shape.dimensions().begin(), shape.dimensions().end(),
+                           0, [](int64_t count, int64_t element) {
+                             return count + (element == 1 ? 1 : 0);
+                           });
+  };
+
+  auto is_valid_reshape = [&](const HloInstruction* reshape) {
+    CHECK(reshape->opcode() == HloOpcode::kReshape);
+    return get_num_of_degenerate_dimensions(reshape->shape()) <= 1 &&
+           get_num_of_degenerate_dimensions(reshape->operand(0)->shape()) <=
+               1 &&
+           reshape->ReshapeMerelyInsertsOrDeletes1SizedDimensions();
+  };
+
+  auto get_degenerate_dimension = [](const Shape& shape) {
+    for (int64_t i = 0; i < shape.dimensions().size(); ++i) {
+      if (shape.dimensions(i) == 1) {
+        return i;
+      }
+    }
+    return int64_t{-1};
+  };
+
+  // Returns the effective permutation of the transpose. The degenerate
+  // dimension is ignored.
+  auto get_effective_permutation =
+      [&](absl::Span<const int64_t> permutation, const Shape& from_shape,
+          const Shape& to_shape) -> DimensionVector {
+    CHECK_EQ(from_shape.dimensions().size(), permutation.size());
+    CHECK_EQ(to_shape.dimensions().size(), permutation.size());
+    if (get_num_of_degenerate_dimensions(from_shape) == 1) {
+      int64_t degenerate_dimension = get_degenerate_dimension(from_shape);
+      DimensionVector new_permutation;
+      new_permutation.reserve(permutation.size() - 1);
+      for (int64_t i = 0; i < permutation.size(); ++i) {
+        if (permutation[i] == degenerate_dimension) {
+          CHECK_EQ(to_shape.dimensions(i), 1);
+          // Skip degenerate dimension.
+          continue;
+        }
+        if (permutation[i] > degenerate_dimension) {
+          new_permutation.push_back(permutation[i] - 1);
+        } else {
+          new_permutation.push_back(permutation[i]);
+        }
+      }
+      return new_permutation;
+    }
+
+    // The shapes should have no degenerate dimension.
+    return DimensionVector(permutation.begin(), permutation.end());
+  };
+
+  if (!options_.is_layout_sensitive() && is_valid_reshape(reshape)) {
+    int64_t effective_size = ShapeUtil::TrueNumDimensions(reshape->shape());
+    std::vector<int64_t> permutation(effective_size);
+    // Init with identity permutation.
+    std::iota(permutation.begin(), permutation.end(), 0);
+
+    bool is_nop = true;
+    HloInstruction* starting_instruction = nullptr;
+    HloInstruction* current = reshape->mutable_operand(0);
+    while (current->opcode() == HloOpcode::kReshape ||
+           current->opcode() == HloOpcode::kTranspose) {
+      if (current->opcode() == HloOpcode::kReshape &&
+          !is_valid_reshape(current)) {
+        is_nop = false;
+        break;
+      }
+      if (current->opcode() == HloOpcode::kTranspose) {
+        permutation = ComposePermutations(
+            get_effective_permutation(current->dimensions(),
+                                      current->operand(0)->shape(),
+                                      current->shape()),
+            permutation);
+      }
+      starting_instruction = current;
+      current = current->mutable_operand(0);
+    }
+    if (is_nop && starting_instruction != nullptr &&
+        Shape::Equal().IgnoreLayout()(
+            reshape->shape(), starting_instruction->operand(0)->shape()) &&
+        IsIdentityPermutation(permutation)) {
+      VLOG(2) << "Deleting reshape-transpose chain: " << reshape->ToString();
+      TF_RETURN_IF_ERROR(ReplaceInstruction(
+          reshape, starting_instruction->mutable_operand(0)));
+      return true;
+    }
+  }
+  return false;
+}
+
 absl::Status AlgebraicSimplifierVisitor::HandleReshape(
     HloInstruction* reshape) {
   auto operand = reshape->mutable_operand(0);
@@ -6177,6 +6283,12 @@ absl::Status AlgebraicSimplifierVisitor::HandleReshape(
   if (operand->opcode() == HloOpcode::kRng && operand->user_count() == 1) {
     *operand->mutable_shape() = reshape->shape();
     return ReplaceInstruction(reshape, operand);
+  }
+
+  TF_ASSIGN_OR_RETURN(bool reshape_transpose_chain_removed,
+                      TryRemovingReshapeTransposeChain(reshape));
+  if (reshape_transpose_chain_removed) {
+    return absl::OkStatus();
   }
 
   if (options_.is_layout_sensitive()) {

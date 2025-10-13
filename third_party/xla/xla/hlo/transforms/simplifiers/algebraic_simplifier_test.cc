@@ -327,6 +327,43 @@ TEST_F(AlgebraicSimplifierTest, FactorFpAddition) {
                   m::ConstantScalar(0.125))));
 }
 
+// Reshape-transpose chain is eliminated since effective transposes
+// compose to identity permutation.
+TEST_F(AlgebraicSimplifierTest, EliminateReshapeTransposeChain) {
+  constexpr absl::string_view kModuleStr = R"(
+    HloModule m
+    test {
+       %param = f32[224,4,1,4096] parameter(0)
+  %transpose.7800 = f32[224,4096,4,1] transpose(%param), dimensions={0,3,1,2}
+  %reshape.96335 = f32[224,4096,4] reshape(%transpose.7800)
+  %transpose.8665 = f32[224,4,4096] transpose(%reshape.96335), dimensions={0,2,1}
+  ROOT %reshape.96336 = f32[224,4,1,4096] reshape(%transpose.8665)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  AlgebraicSimplifier(default_options_).Run(m.get()).value();
+  VLOG(2) << "Module after: " << m->ToString();
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Parameter(0)));
+}
+
+// Reshape-transpose chain is not eliminated since effective transposes
+// do not compose to identity permutation.
+TEST_F(AlgebraicSimplifierTest, NotEliminateReshapeTransposeChain) {
+  constexpr absl::string_view kModuleStr = R"(
+    HloModule m
+    test {
+      %param = f32[4,4,1,4] parameter(0)
+      %transpose.7800 = f32[4,4,4,1] transpose(%param), dimensions={1,0,3,2}
+      %reshape.96335 = f32[4,4,4] reshape(%transpose.7800)
+      %transpose.8665 = f32[4,4,4] transpose(%reshape.96335), dimensions={0,2,1}
+      ROOT %reshape.96336 = f32[4,4,1,4] reshape(%transpose.8665)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  EXPECT_FALSE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
+}
+
 // (Abs(A)) * (Abs(A)) => (A*A)
 TEST_F(AlgebraicSimplifierTest, SquareOfAbs) {
   constexpr absl::string_view kModuleStr = R"(
