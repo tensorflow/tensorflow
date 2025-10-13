@@ -35,9 +35,9 @@ bazel_dep(name = "grpc-java", version = "1.75.0", repo_name = "DO_NOT_USE_grpc_j
 bazel_dep(name = "rules_ml_toolchain")
 archive_override(
   module_name = "rules_ml_toolchain",
-  integrity = "sha256-encZg3XP383NX+yN/kBdBePSalTpY843Iehh3rtLmIs=",
-  urls = ["https://github.com/google-ml-infra/rules_ml_toolchain/archive/5b47bb36d6b6942ec399d4ffa29059cb148c2286.tar.gz"],
-  strip_prefix = "rules_ml_toolchain-5b47bb36d6b6942ec399d4ffa29059cb148c2286",
+  integrity = "sha256-PqEEHetGz0+SfdmU4yrNjENveZexKpVY6F3ualqJ41w=",
+  urls = ["https://github.com/google-ml-infra/rules_ml_toolchain/archive/0fccc2447ef3bec3d75046a60a1895f053424727.tar.gz"],
+  strip_prefix = "rules_ml_toolchain-0fccc2447ef3bec3d75046a60a1895f053424727",
 )
 
 # TODO: Upstream the patch?
