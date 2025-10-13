@@ -224,9 +224,8 @@ struct ExecuteOptions {
   // passed in its own PjRtBuffer. May only be true if the executable was
   // compiled with parameter_is_tupled_arguments==true.
   bool arguments_are_tupled = false;
-  // If true, the computation must return a tuple, which will be destructured
-  // into its elements.
-  bool untuple_result = false;
+  // TODO(b/430587318): Remove this deprecated field.
+  bool untuple_result = true;
   // If non-zero, identifies this execution as part of a potentially
   // multi-device launch. This can be used to detect scheduling errors, e.g. if
   // multi-host programs are launched in different orders on different hosts,
