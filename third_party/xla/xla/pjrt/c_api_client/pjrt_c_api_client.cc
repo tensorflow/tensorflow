@@ -38,6 +38,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "mlir/IR/OwningOpRef.h"
 #include "mlir/Pass/PassManager.h"
@@ -516,8 +517,16 @@ PjRtCApiClient::CompileAndLoad(mlir::ModuleOp module, CompileOptions options) {
   if (!pjrt_c_api()) llvm::report_fatal_error("pjrt_c_api is null");
 
   std::string version_string = GetPluginStablehloVersionOrDefault(this);
-  TF_ASSIGN_OR_RETURN(std::string serialized,
-                      xla::Serialize(module, version_string));
+
+  TF_ASSIGN_OR_RETURN(
+      std::string serialized,
+      xla::Serialize(module, version_string,
+                     /*inplace=*/options.allow_in_place_mlir_modification));
+  if (options.allow_in_place_mlir_modification) {
+    // If we're allowed to modify the computation, free the functions in the
+    // MLIR. We don't use them anymore, and this reduces peak memory.
+    module.getBody()->clear();
+  }
   std::string format(pjrt::kMlirFormat);
   return InitializeArgsAndCompile(this, c_api_, c_client_.get(), options,
                                   serialized, format);

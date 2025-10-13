@@ -331,6 +331,21 @@ TEST(PjRtClientTest, CompileUsesStableHloVersion) {
   const_cast<PJRT_Api*>(c_api)->PJRT_Client_Compile = PJRT_Client_Compile_Orig;
 }
 
+TEST(PjRtClientTest, CompileWorksInplace) {
+  SetUpCpuPjRtApi();
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                          GetCApiClient("cpu"));
+  constexpr char kProgram[] = "func.func @main() {return}";
+  mlir::MLIRContext context;
+  TF_ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> module,
+                          ParseMlirModuleString(kProgram, context));
+  CompileOptions options;
+  options.allow_in_place_mlir_modification = true;
+  std::unique_ptr<PjRtLoadedExecutable> executable =
+      client->CompileAndLoad(*module, options).value();
+  EXPECT_NE(executable.get(), nullptr);
+}
+
 TEST(PjRtClientTest, CanQueryMemoryDescriptions) {
   SetUpCpuPjRtApi();
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
