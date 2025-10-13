@@ -15,14 +15,11 @@ limitations under the License.
 
 #include "xla/backends/gpu/runtime/convolution_thunk.h"
 
-#include <cstdint>
 #include <memory>
-#include <optional>
 #include <utility>
 #include <variant>
 #include <vector>
 
-#include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
@@ -198,56 +195,6 @@ absl::StatusOr<ThunkProto> ConvolutionThunk::ToProto() const {
                       scratch_buffer_.ToProto());
 
   return proto;
-}
-
-ConvolutionReorderThunk::ConvolutionReorderThunk(
-    ThunkInfo thunk_info, absl::Span<int64_t> filter_nchw,
-    absl::InlinedVector<BufferAllocation::Slice, 2> operand_slices,
-    absl::InlinedVector<BufferAllocation::Slice, 2> result_slices)
-    : Thunk(Kind::kConvolutionReorder, thunk_info),
-      filter_descriptor_(CreateFilterDescriptor(filter_nchw)),
-      operand_buffers_(operand_slices),
-      result_buffers_(result_slices) {}
-
-absl::Status ConvolutionReorderThunk::ExecuteOnStream(
-    const ExecuteParams& params) {
-  bool has_bias = operand_buffers_.size() > 1;
-  CHECK_EQ(operand_buffers_.size(), result_buffers_.size());
-
-  const auto& buffer_allocations = *params.buffer_allocations;
-
-  auto filter_input = se::DeviceMemory<int8_t>(
-      buffer_allocations.GetDeviceAddress(operand_buffers_[0]));
-  auto filter_output = se::DeviceMemory<int8_t>(
-      buffer_allocations.GetDeviceAddress(result_buffers_[0]));
-  auto bias_input =
-      has_bias ? std::make_optional(se::DeviceMemory<float>(
-                     buffer_allocations.GetDeviceAddress(operand_buffers_[1])))
-               : std::nullopt;
-  auto bias_output =
-      has_bias ? std::make_optional(se::DeviceMemory<float>(
-                     buffer_allocations.GetDeviceAddress(result_buffers_[1])))
-               : std::nullopt;
-
-  auto dnn = params.stream->parent()->AsDnn();
-  if (dnn == nullptr) {
-    return absl::InternalError("No DNN for stream.");
-  }
-  return dnn->CudnnReorderConvolutionFilterAndBias(
-      params.stream, filter_descriptor_, filter_input, &filter_output,
-      std::move(bias_input), std::move(bias_output));
-}
-
-se::dnn::FilterDescriptor ConvolutionReorderThunk::CreateFilterDescriptor(
-    absl::Span<int64_t> filter_nchw) {
-  CHECK_EQ(filter_nchw.size(), 4);
-  se::dnn::FilterDescriptor filter_desc(2);
-  filter_desc.set_layout(se::dnn::FilterLayout::kOutputInputYX32);
-  filter_desc.set_output_feature_map_count(filter_nchw[0]);
-  filter_desc.set_input_feature_map_count(filter_nchw[1]);
-  filter_desc.set_input_filter_height(filter_nchw[2]);
-  filter_desc.set_input_filter_width(filter_nchw[3]);
-  return filter_desc;
 }
 
 }  // namespace gpu

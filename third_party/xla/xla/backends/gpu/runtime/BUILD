@@ -511,7 +511,6 @@ cc_library(
         "//xla:util",
         "//xla/service:buffer_assignment",
         "//xla/service/gpu:gpu_conv_runner",
-        "//xla/service/gpu:gpu_conv_runner_proto_cc",
         "//xla/service/gpu:stream_executor_util",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor:device_memory",
@@ -526,7 +525,6 @@ cc_library(
         "//xla/tsl/protobuf:dnn_proto_cc",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",
@@ -548,6 +546,23 @@ xla_cc_test(
         "//xla/tsl/util/proto:parse_text_proto",
         "//xla/tsl/util/proto:proto_matchers",
         "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "convolution_reorder_thunk",
+    srcs = ["convolution_reorder_thunk.cc"],
+    hdrs = ["convolution_reorder_thunk.h"],
+    deps = [
+        ":thunk",
+        "//xla/service:buffer_assignment",
+        "//xla/stream_executor:device_memory",
+        "//xla/stream_executor:dnn",
+        "//xla/stream_executor:stream_executor_h",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/types:span",
     ],
 )
 

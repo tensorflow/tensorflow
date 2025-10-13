@@ -16,13 +16,11 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_RUNTIME_CONVOLUTION_THUNK_H_
 #define XLA_BACKENDS_GPU_RUNTIME_CONVOLUTION_THUNK_H_
 
-#include <cstdint>
 #include <memory>
 #include <vector>
 
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
-#include "absl/container/inlined_vector.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
@@ -30,7 +28,6 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/gpu_conv_runner.h"
-#include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/stream.h"
 
 namespace xla {
@@ -85,28 +82,6 @@ class ConvolutionThunk : public Thunk {
   absl::flat_hash_map<const stream_executor::Stream*,
                       std::unique_ptr<GenericConvRunner>>
       runner_cache_ ABSL_GUARDED_BY(mu_);
-};
-
-// Launches the kernel that reorders input data for int8x32 convolutions.
-class ConvolutionReorderThunk : public Thunk {
- public:
-  ConvolutionReorderThunk(
-      ThunkInfo thunk_info, absl::Span<int64_t> filter_nchw,
-      absl::InlinedVector<BufferAllocation::Slice, 2> operand_slices,
-      absl::InlinedVector<BufferAllocation::Slice, 2> result_slices);
-
-  ConvolutionReorderThunk(const ConvolutionReorderThunk&) = delete;
-  ConvolutionReorderThunk& operator=(const ConvolutionReorderThunk&) = delete;
-
-  absl::Status ExecuteOnStream(const ExecuteParams& params) override;
-
- private:
-  static se::dnn::FilterDescriptor CreateFilterDescriptor(
-      absl::Span<int64_t> filter_nchw);
-
-  const se::dnn::FilterDescriptor filter_descriptor_;
-  absl::InlinedVector<BufferAllocation::Slice, 2> operand_buffers_;
-  absl::InlinedVector<BufferAllocation::Slice, 2> result_buffers_;
 };
 
 }  // namespace gpu
