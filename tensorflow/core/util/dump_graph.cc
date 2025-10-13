@@ -231,7 +231,8 @@ string DumpToFile(const string& name, const string& dirname,
   absl::Status status = CreateWritableFile(Env::Default(), dirname, name,
                                            suffix, &filepath, &file);
   if (!status.ok()) {
-    return StrCat("(failed to create writable file: ", status.ToString(), ")");
+    return absl::StrCat("(failed to create writable file: ", status.ToString(),
+                        ")");
   }
 
   status = dumper(file.get());

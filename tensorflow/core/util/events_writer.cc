@@ -90,7 +90,7 @@ absl::Status EventsWriter::InitIfNeeded() {
 
     Event event;
     event.set_wall_time(time_in_seconds);
-    event.set_file_version(strings::StrCat(kVersionPrefix, kCurrentVersion));
+    event.set_file_version(absl::StrCat(kVersionPrefix, kCurrentVersion));
     SourceMetadata* source_metadata = event.mutable_source_metadata();
     source_metadata->set_writer(kWriterSourceMetadata);
     WriteEvent(event);
