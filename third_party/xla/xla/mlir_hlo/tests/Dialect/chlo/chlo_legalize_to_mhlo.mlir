@@ -467,6 +467,7 @@ func.func @asinh_f64(%arg : tensor<f64>) -> tensor<f64> {
 // -----
 
 // CHECK-LABEL: func.func @acosh_complex_f32(
+// CHECK-HIGH-LEVEL-LABEL: func.func @acosh_complex_f32(
 // CHECK-SAME:   %[[TEMP_arg0:.*]]: tensor<complex<f32>>) -> tensor<complex<f32>> {
 // CHECK: %[[TEMP_0:.*]] = mhlo.real %[[TEMP_arg0:.*]] : (tensor<complex<f32>>) -> tensor<f32>
 // CHECK: %[[TEMP_1:.*]] = mhlo.abs %[[TEMP_0]] : tensor<f32>
@@ -618,7 +619,8 @@ func.func @acosh_complex_f32(%arg : tensor<complex<f32>>) -> tensor<complex<f32>
 // -----
 
 // Lower statically shaped `constant_like` to constant.
-// CHECK-LABEL: @constant_like_static_shape
+// CHECK-LABEL: func.func @constant_like_static_shape
+// CHECK-HIGH-LEVEL-LABEL: func.func @constant_like_static_shape
 func.func @constant_like_static_shape(%arg : tensor<1x2xi64>) -> tensor<1x2xf32> {
   // CHECK: %[[RESULT:.*]] = mhlo.constant dense<3.200000e+00> : tensor<1x2xf32>
   // CHECK: return %[[RESULT]]
@@ -657,7 +659,8 @@ func.func @conj(%arg0: tensor<3xcomplex<f32>>) -> tensor<3xcomplex<f32>> {
 
 // -----
 
-// CHECK-LABEL: @erf_f64
+// CHECK-LABEL: func.func @erf_f64
+// CHECK-HIGH-LEVEL-LABEL: func.func @erf_f64
 // CHECK-SAME: %[[ARG:.*]]: tensor<f64>
 func.func @erf_f64(%arg : tensor<f64>) -> tensor<f64> {
   // CHECK-HIGH-LEVEL: mhlo.erf
@@ -669,7 +672,8 @@ func.func @erf_f64(%arg : tensor<f64>) -> tensor<f64> {
 
 // -----
 
-// CHECK-LABEL: @erf_f32
+// CHECK-LABEL: func.func @erf_f32
+// CHECK-HIGH-LEVEL-LABEL: func.func @erf_f32
 // CHECK-SAME: %[[ARG:.*]]: tensor<f32>
 func.func @erf_f32(%arg : tensor<f32>) -> tensor<f32> {
   // CHECK-HIGH-LEVEL: mhlo.erf
@@ -681,7 +685,8 @@ func.func @erf_f32(%arg : tensor<f32>) -> tensor<f32> {
 
 // -----
 
-// CHECK-LABEL: @erf_f16
+// CHECK-LABEL: func.func @erf_f16
+// CHECK-HIGH-LEVEL-LABEL: func.func @erf_f16
 // CHECK-SAME: %[[ARG:.*]]: tensor<f16>
 func.func @erf_f16(%arg : tensor<f16>) -> tensor<f16> {
   // CHECK-HIGH-LEVEL: mhlo.erf
@@ -693,7 +698,8 @@ func.func @erf_f16(%arg : tensor<f16>) -> tensor<f16> {
 
 // -----
 
-// CHECK-LABEL: @erf_bf16
+// CHECK-LABEL: func.func @erf_bf16
+// CHECK-HIGH-LEVEL-LABEL: func.func @erf_bf16
 // CHECK-SAME: %[[ARG:.*]]: tensor<bf16>
 func.func @erf_bf16(%arg : tensor<bf16>) -> tensor<bf16> {
   // CHECK-HIGH-LEVEL: mhlo.erf
@@ -705,7 +711,8 @@ func.func @erf_bf16(%arg : tensor<bf16>) -> tensor<bf16> {
 
 // -----
 
-// CHECK-LABEL: @acos
+// CHECK-LABEL: func.func @acos
+// CHECK-HIGH-LEVEL-LABEL: func.func @acos
 func.func @acos(%arg : tensor<f64>) -> tensor<f64> {
   // CHECK-HIGH-LEVEL: mhlo.acos
   %1 = "chlo.acos"(%arg) : (tensor<f64>) -> tensor<f64>
@@ -714,7 +721,8 @@ func.func @acos(%arg : tensor<f64>) -> tensor<f64> {
 
 // -----
 
-// CHECK-LABEL: @acosh
+// CHECK-LABEL: func.func @acosh
+// CHECK-HIGH-LEVEL-LABEL: func.func @acosh
 // CHECK-SAME:  %[[VAL_0:.*]]: tensor<f16>) -> tensor<f16> {
 func.func @acosh(%arg: tensor<f16>) -> tensor<f16> {
   // CHECK-DAG:   %[[VAL_1:.*]] = mhlo.constant dense<6.550400e+04> : tensor<f16>
@@ -742,7 +750,8 @@ func.func @acosh(%arg: tensor<f16>) -> tensor<f16> {
 
 // -----
 
-// CHECK-LABEL: @erfc_f64
+// CHECK-LABEL: func.func @erfc_f64
+// CHECK-HIGH-LEVEL-LABEL: func.func @erfc_f64
 // CHECK-SAME: %[[ARG:.*]]: tensor<f64>
 func.func @erfc_f64(%arg : tensor<f64>) -> tensor<f64> {
   // CHECK-NEXT: %[[TMP_0:.*]] = mhlo.multiply %[[ARG]], %[[ARG]]
@@ -2465,7 +2474,8 @@ func.func @polygamma_f16(%lhs : tensor<f16>, %rhs : tensor<f16>) -> tensor<f16> 
 // -----
 
 
-// CHECK-LABEL: @sinh_f32
+// CHECK-LABEL: func.func @sinh_f32
+// CHECK-HIGH-LEVEL-LABEL: func.func @sinh_f32
 // CHECK-SAME: (%[[X:.*]]: tensor<f32>)
 func.func @sinh_f32(%x : tensor<f32>) -> tensor<f32> {
   // CHECK: %[[HALF:.*]] = mhlo.constant dense<5.000000e-01> : tensor<f32>
@@ -2493,7 +2503,8 @@ func.func @sinh_f32(%x : tensor<f32>) -> tensor<f32> {
 
 // -----
 
-// CHECK-LABEL: @sinh_f16
+// CHECK-LABEL: func.func @sinh_f16
+// CHECK-HIGH-LEVEL-LABEL: func.func @sinh_f16
 // CHECK-SAME: (%[[ARG0:.*]]: tensor<f16>)
 func.func @sinh_f16(%x : tensor<f16>) -> tensor<f16> {
   // CHECK: mhlo.convert %[[ARG0]] : (tensor<f16>) -> tensor<f32>
@@ -2506,7 +2517,8 @@ func.func @sinh_f16(%x : tensor<f16>) -> tensor<f16> {
 
 // -----
 
-// CHECK-LABEL: @sinh_complex
+// CHECK-LABEL: func.func @sinh_complex
+// CHECK-HIGH-LEVEL-LABEL: func.func @sinh_complex
 // CHECK-SAME: (%[[X:.*]]: tensor<2xcomplex<f32>>)
 func.func @sinh_complex(%x : tensor<2xcomplex<f32>>) -> tensor<2xcomplex<f32>> {
   // CHECK: %[[HALF:.*]] = mhlo.constant dense<(5.000000e-01,0.000000e+00)> : tensor<2xcomplex<f32>>
@@ -2524,7 +2536,8 @@ func.func @sinh_complex(%x : tensor<2xcomplex<f32>>) -> tensor<2xcomplex<f32>> {
 
 // -----
 
-// CHECK-LABEL: @cosh_f32
+// CHECK-LABEL: func.func @cosh_f32
+// CHECK-HIGH-LEVEL-LABEL: func.func @cosh_f32
 // CHECK-SAME: (%[[X:.*]]: tensor<f32>)
 func.func @cosh_f32(%x : tensor<f32>) -> tensor<f32> {
   // CHECK-HIGH-LEVEL: mhlo.cosh
@@ -2542,7 +2555,8 @@ func.func @cosh_f32(%x : tensor<f32>) -> tensor<f32> {
 
 // -----
 
-// CHECK-LABEL: @cosh_f16
+// CHECK-LABEL: func.func @cosh_f16
+// CHECK-HIGH-LEVEL-LABEL: func.func @cosh_f16
 // CHECK-SAME: (%[[ARG0:.*]]: tensor<f16>)
 func.func @cosh_f16(%x : tensor<f16>) -> tensor<f16> {
   // CHECK: mhlo.convert %[[ARG0]] : (tensor<f16>) -> tensor<f32>
@@ -2571,7 +2585,8 @@ func.func @cosh_complex_f32(%x : tensor<complex<f32>>) -> tensor<complex<f32>> {
 
 // -----
 
-// CHECK-LABEL: @atanh_f32
+// CHECK-LABEL: func.func @atanh_f32
+// CHECK-HIGH-LEVEL-LABEL: func.func @atanh_f32
 // CHECK-SAME: %[[ARG:.*]]: tensor<f32>
 func.func @atanh_f32(%arg : tensor<f32>) -> tensor<f32> {
   // CHECK-NEXT: %[[TMP_0:.*]] = mhlo.abs %[[ARG]]
@@ -2593,7 +2608,8 @@ func.func @atanh_f32(%arg : tensor<f32>) -> tensor<f32> {
 
 // -----
 
-// CHECK-LABEL: @atanh_complex_f32
+// CHECK-LABEL: func.func @atanh_complex_f32
+// CHECK-HIGH-LEVEL-LABEL: func.func @atanh_complex_f32
 // CHECK-SAME: %[[ARG:.*]]: tensor<complex<f32>>
 func.func @atanh_complex_f32(%arg : tensor<complex<f32>>) -> tensor<complex<f32>> {
   // CHECK-NEXT: %[[REAL:.*]] = mhlo.real %[[ARG]]
@@ -2672,7 +2688,8 @@ func.func @atanh_complex_f32(%arg : tensor<complex<f32>>) -> tensor<complex<f32>
 
 // -----
 
-// CHECK-LABEL: @next_after_f32
+// CHECK-LABEL: func.func @next_after_f32
+// CHECK-HIGH-LEVEL-LABEL: func.func @next_after_f32
 // CHECK-SAME: (%[[ARG0:.*]]: tensor<2xf32>, %[[ARG1:.*]]: tensor<2xf32>)
 func.func @next_after_f32(%x: tensor<2xf32>, %y: tensor<2xf32>) -> tensor<2xf32> {
   // CHECK: %[[X_AS_INT:.*]] = mhlo.bitcast_convert %[[ARG0]] : (tensor<2xf32>) -> tensor<2xi32>
@@ -2712,7 +2729,8 @@ func.func @next_after_f32(%x: tensor<2xf32>, %y: tensor<2xf32>) -> tensor<2xf32>
 
 // -----
 
-// CHECK-LABEL: @top_k
+// CHECK-LABEL: func.func @top_k
+// CHECK-HIGH-LEVEL-LABEL: func.func @top_k
 // CHECK-SAME: (%[[ARG:.*]]: tensor<16x16xf32>)
 func.func @top_k(%arg : tensor<16x16xf32>) -> (tensor<16x8xf32>, tensor<16x8xi32>) {
   // CHECK-HIGH-LEVEL: mhlo.topk
@@ -2723,7 +2741,8 @@ func.func @top_k(%arg : tensor<16x16xf32>) -> (tensor<16x8xf32>, tensor<16x8xi32
 
 // -----
 
-// CHECK-LABEL: @dyn_top_k
+// CHECK-LABEL: func.func @dyn_top_k
+// CHECK-HIGH-LEVEL-LABEL: func.func @dyn_top_k
 // CHECK-SAME: ([[ARG:%.*]]: tensor<?x5x?xi1>
 // CHECK-SAME: -> (tensor<?x5x2xi1>, tensor<?x5x2xi32>)
 func.func @dyn_top_k(%arg0: tensor<?x5x?xi1>) -> (tensor<?x5x2xi1>, tensor<?x5x2xi32>) {
@@ -2734,7 +2753,6 @@ func.func @dyn_top_k(%arg0: tensor<?x5x?xi1>) -> (tensor<?x5x2xi1>, tensor<?x5x2
 }
 
 // -----
-
 func.func @unranked_top_k(%arg : tensor<*xf32>) -> (tensor<*xf32>, tensor<*xi32>) {
   // expected-error@+1 {{failed to legalize operation 'chlo.top_k' that was explicitly marked illegal}}
   %1:2 = chlo.top_k(%arg, k=8) : tensor<*xf32> -> (tensor<*xf32>, tensor<*xi32>)
@@ -3511,7 +3529,8 @@ func.func @erf_inv_wide(%arg0 : tensor<16x16xf64>) {
 }
 
 // -----
-
+// CHECK-LABEL: func.func @ragged_dot_non_contracting
+// CHECK-HIGH-LEVEL-LABEL: func.func @ragged_dot_non_contracting
 func.func @ragged_dot_non_contracting(%lhs : tensor<2x11x5xf32>, %rhs : tensor<3x2x5x7xf32>, %group_sizes : tensor<3xi64>) -> tensor<2x11x7xf32> {
   // CHECK-HIGH-LEVEL: mhlo.ragged_dot
   %0 = "chlo.ragged_dot"(%lhs, %rhs, %group_sizes) {
@@ -3529,7 +3548,8 @@ func.func @ragged_dot_non_contracting(%lhs : tensor<2x11x5xf32>, %rhs : tensor<3
 }
 
 // -----
-
+// CHECK-LABEL: func.func @ragged_dot_contracting
+// CHECK-HIGH-LEVEL-LABEL: func.func @ragged_dot_contracting
 func.func @ragged_dot_contracting(%lhs : tensor<2x11x5xf32>, %rhs : tensor<2x5x7xf32>, %group_sizes : tensor<2x3xi64>) -> tensor<3x2x11x7xf32> {
   // CHECK-HIGH-LEVEL: mhlo.ragged_dot
   %0 = "chlo.ragged_dot"(%lhs, %rhs, %group_sizes) {
@@ -3547,7 +3567,8 @@ func.func @ragged_dot_contracting(%lhs : tensor<2x11x5xf32>, %rhs : tensor<2x5x7
 }
 
 // -----
-
+// CHECK-LABEL: func.func @ragged_dot_batch
+// CHECK-HIGH-LEVEL-LABEL: func.func @ragged_dot_batch
 func.func @ragged_dot_batch(%lhs : tensor<19x17x11x5xf32>, %rhs : tensor<19x17x5x7xf32>, %group_sizes : tensor<19x3xi64>) -> tensor<19x17x11x7xf32> {
   // CHECK-HIGH-LEVEL: mhlo.ragged_dot
   %0 = "chlo.ragged_dot"(%lhs, %rhs, %group_sizes) {
@@ -3565,7 +3586,8 @@ func.func @ragged_dot_batch(%lhs : tensor<19x17x11x5xf32>, %rhs : tensor<19x17x5
 }
 
 // -----
-
+// CHECK-LABEL: func.func @ragged_dot_frontend_attributes
+// CHECK-HIGH-LEVEL-LABEL: func.func @ragged_dot_frontend_attributes
 func.func @ragged_dot_frontend_attributes(%lhs : tensor<2x11x5xf32>, %rhs : tensor<3x2x5x7xf32>, %group_sizes : tensor<3xi64>) -> tensor<2x11x7xf32> {
   // CHECK-HIGH-LEVEL: mhlo.ragged_dot
   // CHECK-HIGH-LEVEL: mhlo.frontend_attributes = {foo = "bar"}
