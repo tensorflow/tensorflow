@@ -56,7 +56,6 @@ limitations under the License.
 #include "xla/stream_executor/numeric_options.h"
 #include "xla/stream_executor/platform/initialize.h"
 #include "xla/stream_executor/plugin_registry.h"
-#include "xla/stream_executor/rocm/rocm_diagnostics.h"
 #include "xla/stream_executor/rocm/rocm_platform_id.h"
 #include "xla/stream_executor/scratch_allocator.h"
 #include "xla/stream_executor/stream.h"
@@ -819,18 +818,6 @@ absl::Status MIOpenSupport::Init() {
 
   CHECK_EQ(miopen_handle, nullptr);
   LOG(ERROR) << "could not create miopen handle: " << ToString(status);
-  if (status == miopenStatusNotInitialized) {
-    auto result = rocm::Diagnostician::FindKernelDriverVersion();
-    if (!result.ok()) {
-      LOG(ERROR) << "error retrieving driver version: "
-                 << rocm::DriverVersionStatusToString(result);
-    } else {
-      const auto& version = result.value();
-      LOG(INFO) << "possibly insufficient driver version: "
-                << rocm::DriverVersionToString(version);
-    }
-  }
-
   return absl::Status{absl::StatusCode::kInternal,
                       absl::StrCat("miopen library could not create a handle: ",
                                    ToString(status))};

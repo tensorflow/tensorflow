@@ -40,24 +40,6 @@ cc_library(
 )
 
 cc_library(
-    name = "rocm_diagnostics",
-    srcs = ["rocm_diagnostics.cc"],
-    hdrs = ["rocm_diagnostics.h"],
-    tags = [
-        "gpu",
-        "rocm-only",
-    ],
-    deps = [
-        "//xla/tsl/platform:logging",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:str_format",
-        "@local_tsl//tsl/platform:platform_port",
-    ],
-)
-
-cc_library(
     name = "rocm_context",
     srcs = ["rocm_context.cc"],
     hdrs = ["rocm_context.h"],
@@ -307,7 +289,6 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
-        ":rocm_diagnostics",
         ":rocm_driver_wrapper",
         ":rocm_executor",
         ":rocm_platform_id",
@@ -518,7 +499,6 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":miopen_if_static",  # build_cleaner: keep
-        ":rocm_diagnostics",
         ":rocm_executor",
         ":rocm_helpers",
         ":rocm_platform_id",
