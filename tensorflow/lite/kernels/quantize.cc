@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
+#include "tensorflow/lite/kernels/internal/portable_tensor_utils.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/lite/kernels/internal/reference/requantize.h"
@@ -109,8 +110,8 @@ void AffineQuantizeToInt4(const tflite::QuantizationParams& op_params,
     int32_t clamped = std::min(std::max(unclamped, min_val), max_val);
     quantized_buffer[i] = clamped;
   }
-  tensor_utils::PackInt8IntoDenseInt4(quantized_buffer.data(), flat_size,
-                                      output_data);
+  tensor_utils::PackInt8IntoDenseInt(quantized_buffer.data(), flat_size,
+                                     /*bit_width=*/4, output_data);
 }
 
 void ReportError(TfLiteContext* context, TfLiteType input_type,
