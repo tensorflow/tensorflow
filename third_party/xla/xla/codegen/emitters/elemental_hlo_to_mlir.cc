@@ -1553,7 +1553,7 @@ ValueRange EmitLoopNestImpl(
     for (auto& init : vector_inits) {
       if (!mlir::isa<mlir::ShapedType>(init.getType())) {
         auto vector_ty = mlir::VectorType::get({vector_size}, init.getType());
-        init = b.create<mlir::vector::SplatOp>(vector_ty, init);
+        init = b.create<mlir::vector::BroadcastOp>(vector_ty, init);
       }
     }
     iter_args_inits = vector_inits;
@@ -1632,7 +1632,7 @@ ValueRange EmitXlaLoopOp(
     for (auto& init : vector_inits) {
       if (!mlir::isa<mlir::ShapedType>(init.getType())) {
         auto vector_ty = mlir::VectorType::get({vector_size}, init.getType());
-        init = b.create<mlir::vector::SplatOp>(vector_ty, init);
+        init = b.create<mlir::vector::BroadcastOp>(vector_ty, init);
       }
     }
     iter_args_inits = vector_inits;
