@@ -44,8 +44,8 @@ export TF_NEED_ROCM=1
 export ROCM_PATH=$ROCM_INSTALL_DIR
 
 if [ ! -d /tf ];then
-    # The bazelrc files in /usertools expect /tf to exist
-        mkdir /tf
+    # The bazelrc files expect /tf to exist
+    mkdir /tf
 fi
 
 bazel --bazelrc=tensorflow/tools/tf_sig_build_dockerfiles/devel.usertools/rocm.bazelrc test \
