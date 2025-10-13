@@ -1,4 +1,5 @@
 # Test-related settings.
+try-import /usertools/rocm.bazelrc
 
 build:rocm_dev --remote_upload_local_results=false
 build:rocm_dev --remote_cache="https://wardite.cluster.engflow.com"
@@ -25,3 +26,7 @@ build:tsan --copt -fno-omit-frame-pointer
 build:tsan --linkopt -fsanitize=thread
 build:tsan --linkopt -g
 build:tsan --//build_tools/rocm:sanitizer=tsan
+
+build:asan --test_env=ASAN_OPTIONS=suppressions=build_tools/rocm/asan_ignore_list.txt
+build:asan --test_env=LSAN_OPTIONS=suppressions=build_tools/rocm/lsan_ignore_list.txt
+build:asan --//build_tools/rocm:sanitizer=asan
