@@ -87,8 +87,10 @@ HloModuleGroupProto HloModuleGroup::ToProto() const {
   return HloModuleGroup(std::move(module));
 }
 
-void HloModuleGroup::AddModule(std::unique_ptr<HloModule> module) {
-  CHECK_EQ(module_, nullptr);
+void HloModuleGroup::ReplaceModule(int index,
+                                   std::unique_ptr<HloModule> module) {
+  CHECK_EQ(index, 0);
+  module_->MoveMetadataToModule(module.get());
   module_ = std::move(module);
 }
 
