@@ -195,6 +195,7 @@ xla_test(
     tags = ["no-oneapi"],  # TODO(intel-tf): Remove it when macro substitutions for SYCL are available in xla/stream_executor/sycl/*.
     deps = [
         "//xla:debug_options_flags",
+        "//xla:literal",
         "//xla:shape_util",
         "//xla:status_macros",
         "//xla:xla_data_proto_cc",
@@ -223,6 +224,7 @@ xla_test(
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",

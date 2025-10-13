@@ -29,7 +29,7 @@ TEST_F(UnknownCustomCallFails, UnknownCustomCallFails) {
 
     ENTRY Test1 {
       a = f32[128] parameter(0)
-      ROOT r1 = f32[128] custom-call(a), custom_call_target="my_custom_call"
+      ROOT r1 = f32[128] custom-call(a), custom_call_target="my_custom_call", api_version=API_VERSION_TYPED_FFI
     }
   )";
 
@@ -50,7 +50,7 @@ TEST_F(MockedCustomCall, CustomCallIgnored) {
 
     ENTRY Test1 {
       a = f32[128] parameter(0)
-      ROOT r1 = f32[128] custom-call(a), custom_call_target="my_custom_call"
+      ROOT r1 = f32[128] custom-call(a), custom_call_target="my_custom_call", api_version=API_VERSION_TYPED_FFI
     }
   )";
 

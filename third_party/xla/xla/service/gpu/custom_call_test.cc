@@ -21,8 +21,6 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "xla/shape.h"
-
 #if GOOGLE_CUDA
 #include "third_party/gpus/cuda/include/cuda.h"  // IWYU pragma: keep
 #include "third_party/gpus/cuda/include/cuda_runtime_api.h"
@@ -34,6 +32,7 @@ limitations under the License.
 #endif
 
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
@@ -48,9 +47,11 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/parser/hlo_parser.h"
+#include "xla/literal.h"
 #include "xla/service/custom_call_status.h"
 #include "xla/service/custom_call_target_registry.h"
 #include "xla/service/hlo_module_config.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/gpu/gpu_types.h"
@@ -95,6 +96,8 @@ XLA_FFI_REGISTER_STRUCT_ATTR_DECODING(::xla::Range, StructMember<int64_t>("lo"),
 
 namespace xla {
 namespace {
+using ::absl_testing::StatusIs;
+using ::testing::HasSubstr;
 
 using CustomCallTest = ClientLibraryTestRunnerMixin<HloTestBase>;
 
@@ -364,9 +367,12 @@ TEST_F(CustomCallTest, ExportedFfiUnknownTarget) {
              /*schedule=*/CustomCallSchedule::SCHEDULE_NONE,
              /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI);
   auto status = ExecuteAndTransfer(&b, {}).status();
-  EXPECT_EQ(status.code(), absl::StatusCode::kUnimplemented);
-  EXPECT_THAT(status.message(),
-              ::testing::HasSubstr("No registered implementation"));
+  EXPECT_THAT(
+      status,
+      StatusIs(
+          absl::StatusCode::kNotFound,
+          HasSubstr(
+              "No FFI handler registered for __xla_test$$unknown_target")));
 }
 
 // Memcpy and SubBuffers tests are already ported in
