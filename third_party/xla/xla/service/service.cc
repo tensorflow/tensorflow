@@ -541,6 +541,7 @@ absl::StatusOr<std::vector<std::unique_ptr<GlobalData>>> Service::ExecuteGraph(
   TF_RETURN_IF_ERROR(execution_status);
 
   std::vector<std::unique_ptr<GlobalData>> out;
+  out.reserve(outputs.size());
   for (GlobalDataHandle& output : outputs) {
     out.push_back(std::make_unique<GlobalData>(this, output));
   }
