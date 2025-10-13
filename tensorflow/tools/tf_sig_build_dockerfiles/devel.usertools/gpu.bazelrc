@@ -86,8 +86,8 @@ build:build_event_export --build_event_json_file=/tf/pkg/bep.json
 build:rbe --config=rbe_linux_cuda
 
 # For continuous builds
-test:pycpp_filters --test_tag_filters=gpu,-no_oss,-oss_excluded,-oss_serial,-benchmark-test,-v1only,-no_gpu,-requires-gpu:2,-multi-gpu,-no_gpu_presubmit,-tpu,-cuda-only,-oneapi-only
-test:pycpp_filters --build_tag_filters=gpu,-no_oss,-oss_excluded,-oss_serial,-benchmark-test,-v1only,-no_gpu,-requires-gpu:2,-multi-gpu,-no_gpu_presubmit,-tpu,-cuda-only,-oneapi-only
+test:pycpp_filters --test_tag_filters=gpu,-no_oss,-oss_excluded,-oss_serial,-benchmark-test,-v1only,-no_gpu,-requires-gpu:2,-multi_gpu,-no_gpu_presubmit,-tpu,-cuda-only,-oneapi-only
+test:pycpp_filters --build_tag_filters=gpu,-no_oss,-oss_excluded,-oss_serial,-benchmark-test,-v1only,-no_gpu,-requires-gpu:2,-multi_gpu,-no_gpu_presubmit,-tpu,-cuda-only,-oneapi-only
 test:pycpp_filters --test_lang_filters=cc,py --test_size_filters=small,medium
 test:pycpp --config=pycpp_filters -- //tensorflow/... -//tensorflow/compiler/tf2tensorrt/... -//tensorflow/core/tpu/... -//tensorflow/lite/... -//tensorflow/tools/toolchains/...
 
