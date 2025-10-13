@@ -53,7 +53,7 @@ using ::testing::ValuesIn;
 using ::testing::WithParamInterface;
 
 // Define CostType to distinguish between collective and node costs
-enum class CostType { kCollectiveTime, kNodeCost };
+enum class CostType { kCollectiveTime, kNodeCost, kEdgeCost };
 
 struct EstimatorTestCase {
   std::string test_name;
@@ -110,6 +110,18 @@ class SolLatencyEstimatorTest : public HloHardwareIndependentTestBase,
     return absl::Microseconds(static_cast<int64_t>(cost_val));
   }
 
+  absl::Duration GetLatencyBetween(const HloGraphNode& from,
+                                   const HloGraphNode& target,
+                                   const HloComputation* computation) {
+    std::unique_ptr<SolLatencyEstimator> estimator =
+        *SolLatencyEstimator::Create(
+            scheduler_config_, std::make_unique<DummyLatencyEstimator>(),
+            gpu_device_info_, shape_size_fn_, computation, &mlir_context_);
+    LatencyEstimator::TimeCost cost_val =
+        estimator->GetLatencyBetween(from, target);
+    return absl::Microseconds(static_cast<int64_t>(cost_val));
+  }
+
   HloCostAnalysis::ShapeSizeFunction shape_size_fn_;
   const se::DeviceDescription gpu_device_info_;
   const SolGPUCostModel::Config sol_flags_;
@@ -133,6 +145,11 @@ TEST_P(SolLatencyEstimatorTest, TestLatencyEstimation) {
     actual_time_us = absl::Trunc(time_us, absl::Microseconds(1));
   } else if (test_case.cost_type == CostType::kNodeCost) {
     actual_time_us = ComputeNodeCost(*instr, module->entry_computation());
+  } else if (test_case.cost_type == CostType::kEdgeCost) {
+    actual_time_us = GetLatencyBetween(
+        HloGraphNode(instr, /*original_position=*/-1),
+        HloGraphNode(instr->users().front(), /*original_position=*/-1),
+        module->entry_computation());
   } else {
     LOG(FATAL) << "Unreachable.";
   }
@@ -227,6 +244,37 @@ ENTRY main {
       /*opcode_to_find=*/HloOpcode::kAsyncStart,
       /*cost_type=*/CostType::kCollectiveTime,
       /*expected_latency=*/absl::Microseconds(18895),
+  };
+
+  EstimatorTestCase reduce_scatter_intra_host = {
+      /*test_name=*/"reduce_scatter_intra_host",
+      /*module_string=*/R"(
+HloModule m, num_partitions=8
+
+add {
+  param_0 = bf16[] parameter(0)
+  param_1 = bf16[] parameter(1)
+  ROOT t = bf16[] add(param_0, param_1)
+}
+
+async_comp {
+  param_3 = bf16[8192,128256] parameter(0)
+  ROOT r = bf16[1024,128256] reduce-scatter(param_3),
+    dimensions={0},
+    to_apply=add,
+    replica_groups=[1,8]<=[8],
+    channel_id=1,
+    use_global_device_ids=true
+}
+
+ENTRY main {
+  p = bf16[8192,128256] parameter(0)
+  rs-start = ((bf16[8192,128256]), bf16[1024,128256]) async-start(p), calls=async_comp
+  ROOT rs-done = bf16[1024,128256] async-done(rs-start)
+})",
+      /*opcode_to_find=*/HloOpcode::kAsyncStart,
+      /*cost_type=*/CostType::kEdgeCost,
+      /*expected_latency=*/absl::Microseconds(5716),
   };
 
   EstimatorTestCase matmul_bf16_1024_4096_512 = {
@@ -363,6 +411,7 @@ ENTRY e {
           all_gather_inter_host_pairwise,
           all_gather_all_ranks,
           reduce_scatter_all_ranks,
+          reduce_scatter_intra_host,
           matmul_bf16_1024_4096_512,
           matmul_f32_batch4_256_1024_256,
           triton_matmul_bf16_batch1_1024_1024_1024,
