@@ -1,0 +1,38 @@
+# TensorFlow RISC-V Build Configuration
+# Add this to your .bazelrc file in the TensorFlow root directory
+
+# Basic RISC-V configuration
+build:riscv64 --platforms=@platforms//os:linux
+build:riscv64 --cpu=riscv64
+build:riscv64 --host_cpu=riscv64
+
+# Compiler optimizations for RISC-V
+build:riscv64 --copt=-march=rv64gc
+build:riscv64 --copt=-mabi=lp64d
+
+# Standard optimization flags
+build:riscv64 --copt=-O3
+build:riscv64 --copt=-ffunction-sections
+build:riscv64 --copt=-fdata-sections
+
+# Disable features that may not be available on RISC-V
+build:riscv64 --define=no_aws_support=true
+build:riscv64 --define=no_gcp_support=true
+build:riscv64 --define=no_hdfs_support=true
+build:riscv64 --define=no_kafka_support=true
+build:riscv64 --define=no_ignite_support=true
+
+# Python configuration
+build:riscv64 --action_env=PYTHON_BIN_PATH=/AI/zjg/python/venv11/bin/python
+build:riscv64 --python_path=/AI/zjg/python/venv11/bin/python
+
+# Memory and performance settings
+build:riscv64 --local_ram_resources=HOST_RAM*.5
+build:riscv64 --jobs=4
+
+# Disable unsupported features
+build:riscv64 --define=framework_shared_object=false
+
+# Usage:
+# bazel build --config=riscv64 //tensorflow/tools/pip_package:wheel
+# bazel build --config=opt --config=riscv64 //tensorflow:tensorflow
