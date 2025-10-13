@@ -19,6 +19,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/SmallVector.h"
@@ -32,6 +33,7 @@ limitations under the License.
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "third_party/protobuf/util/message_differencer.h"
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/quantization/common/attrs_and_constraints.h"
 #include "tensorflow/compiler/mlir/quantization/common/func.h"
