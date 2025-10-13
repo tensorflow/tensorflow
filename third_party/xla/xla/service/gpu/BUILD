@@ -1184,6 +1184,7 @@ cc_library(
     deps = [
         ":backend_configs_cc",
         ":cublas_cudnn",
+        ":gpu_conv_runner_proto_cc",
         ":stream_executor_util",
         "//xla:shape_util",
         "//xla:util",
@@ -1202,6 +1203,30 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "@eigen_archive//:eigen3",
         "@local_tsl//tsl/platform:ml_dtypes",
+    ],
+)
+
+tf_proto_library(
+    name = "gpu_conv_runner_proto",
+    srcs = ["gpu_conv_runner.proto"],
+    deps = [
+        ":backend_configs",
+        "//xla:xla_data_proto",
+        "//xla/tsl/protobuf:dnn_proto",
+    ],
+)
+
+xla_cc_test(
+    name = "gpu_conv_runner_test",
+    srcs = ["gpu_conv_runner_test.cc"],
+    deps = [
+        ":backend_configs_cc",
+        ":gpu_conv_runner",
+        ":gpu_conv_runner_proto_cc",
+        "//xla/tsl/platform:statusor",
+        "//xla/tsl/util/proto:parse_text_proto",
+        "//xla/tsl/util/proto:proto_matchers",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 

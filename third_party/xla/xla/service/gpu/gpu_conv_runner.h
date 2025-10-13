@@ -33,6 +33,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/cublas_cudnn.h"
+#include "xla/service/gpu/gpu_conv_runner.pb.h"
 #include "xla/shape.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/dnn.h"
@@ -239,6 +240,11 @@ struct GpuConvDescriptor {
   Window window;
   ConvolutionDimensionNumbers dnums;
   int64_t feature_group_count;
+
+  static absl::StatusOr<GpuConvDescriptor> FromProto(
+      const GpuConvDescriptorProto& proto);
+
+  GpuConvDescriptorProto ToProto() const;
 };
 
 // Returns the convolution configuration given a XLA HLO instruction.
