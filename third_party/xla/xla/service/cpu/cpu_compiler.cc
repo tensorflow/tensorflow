@@ -2048,7 +2048,7 @@ CpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModule> hlo_module,
   llvm::Triple triple(llvm::Triple::normalize(options.triple()));
   std::string error;
   const llvm::Target* target =
-      llvm::TargetRegistry::lookupTarget(triple.getTriple(), error);
+      llvm::TargetRegistry::lookupTarget(triple, error);
   if (target == nullptr) {
     return Internal("TargetRegistry::lookupTarget failed: %s", error);
   }

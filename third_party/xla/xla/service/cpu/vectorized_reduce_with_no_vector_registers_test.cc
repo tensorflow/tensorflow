@@ -50,9 +50,10 @@ absl::StatusOr<unsigned int> GetTargetVectorRegisterByteSize(
   // Unfortunately we need a lot of boilerplate to get to an
   // llvm::TargetMachine.
 
+  llvm::Triple target_triple(triple);
   std::string error;
   const llvm::Target* target =
-      llvm::TargetRegistry::lookupTarget(triple, error);
+      llvm::TargetRegistry::lookupTarget(target_triple, error);
   if (target == nullptr) {
     return Internal("TargetRegistry::lookupTarget failed: %s", error);
   }
@@ -65,7 +66,7 @@ absl::StatusOr<unsigned int> GetTargetVectorRegisterByteSize(
 
   std::unique_ptr<llvm::TargetMachine> target_machine =
       absl::WrapUnique(target->createTargetMachine(
-          /*TT=*/llvm::Triple(triple), /*CPU=*/"", /*Features=*/"",
+          /*TT=*/target_triple, /*CPU=*/"", /*Features=*/"",
           llvm::TargetOptions{},
           /*RM=*/std::nullopt));
   cpu::TargetMachineFeatures target_machine_features(target_machine.get());
