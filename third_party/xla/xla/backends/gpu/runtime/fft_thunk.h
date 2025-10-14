@@ -31,7 +31,6 @@ limitations under the License.
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/fft.h"
-#include "xla/stream_executor/stream_executor.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -47,11 +46,13 @@ struct FftPlan {
 
 class FftPlanCache {
  public:
-  // Returnes Fft plan cached for the given device ordinal or creates a new one.
+  // Returns Fft plan cached for the given device ordinal or creates a new one.
   FftPlan* GetOrCreate(int device_ordinal) {
     absl::MutexLock lock(mu_);
     std::unique_ptr<FftPlan>& plan = fft_plans_[device_ordinal];
-    if (!plan) plan = std::make_unique<FftPlan>();
+    if (!plan) {
+      plan = std::make_unique<FftPlan>();
+    }
     return plan.get();
   }
 
