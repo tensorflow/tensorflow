@@ -53,7 +53,7 @@ absl::StatusOr<mlir::DenseElementsAttr> CreateDenseElementsAttrFromLiteral(
 // Creates an DenseIntElementsAttr using the elements of the vector and the
 // optional shape.
 mlir::DenseIntElementsAttr CreateDenseIntElementsAttrFromVector(
-    const llvm::ArrayRef<int64_t> vector, mlir::Builder builder,
+    llvm::ArrayRef<int64_t> vector, mlir::Builder builder,
     llvm::ArrayRef<int64_t> shape = {});
 
 // Converts the given XLA shape for tensors to the template MLIR type.
@@ -62,7 +62,9 @@ static absl::StatusOr<TypeT> ConvertTensorShapeToType(const Shape& xla_ty,
                                                       mlir::Builder builder) {
   auto element_type_or =
       ConvertPrimitiveTypeToMlirType(xla_ty.element_type(), builder);
-  if (!element_type_or.ok()) return element_type_or.status();
+  if (!element_type_or.ok()) {
+    return element_type_or.status();
+  }
 
   bool is_bounded_dynamic = false;
   int64_t rank = xla_ty.dimensions().size();
