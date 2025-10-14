@@ -361,6 +361,20 @@ cc_library(
 )
 
 xla_cc_test(
+    name = "tile_assignment_test",
+    srcs = ["tile_assignment_test.cc"],
+    deps = [
+        ":tile_assignment",
+        "//xla:array",
+        "//xla:array2d",
+        "//xla/tsl/platform:test_main",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+xla_cc_test(
     name = "replica_group_test",
     srcs = ["replica_group_test.cc"],
     deps = [
