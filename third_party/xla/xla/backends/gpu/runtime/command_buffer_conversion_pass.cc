@@ -100,19 +100,16 @@ CommandBufferConfig GetCommandBufferConfig(
   };
 
   // Check if CUDA/ROCM driver supports required features.
-  auto erase_cuda = [&](const se::CudaComputeCapability& cuda_comp) {
+  if (device_info.gpu_compute_capability().IsCuda()) {
     if (std::min(device_info.runtime_version(), device_info.driver_version()) <
         se::SemanticVersion{12, 3, 0}) {
       erase(kRequireTracing);       // cuStreamBeginCaptureToGraph
       erase(kRequireConditionals);  // on-device control flow
     }
-  };
-  auto erase_rocm = [&](const se::RocmComputeCapability& rocm_comp) {
+  }
+  if (device_info.gpu_compute_capability().IsRocm()) {
     erase(kRequireConditionals);  // on-device control flow
-  };
-
-  std::visit(absl::Overload(erase_cuda, erase_rocm),
-             device_info.gpu_compute_capability());
+  }
 
   return config;
 }

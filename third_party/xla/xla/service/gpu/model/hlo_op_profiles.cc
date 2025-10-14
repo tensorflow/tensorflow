@@ -44,8 +44,8 @@ namespace gpu {
 
 /*static*/ std::string HloOpProfiles::GetProfileName(
     const se::DeviceDescription& device_info) {
-  if (auto* ptr = std::get_if<stream_executor::CudaComputeCapability>(
-          &device_info.gpu_compute_capability())) {
+  if (auto* ptr =
+          device_info.gpu_compute_capability().cuda_compute_capability()) {
     return absl::StrCat("sm_", ptr->major, ptr->minor);
   }
   return "<unknown>";

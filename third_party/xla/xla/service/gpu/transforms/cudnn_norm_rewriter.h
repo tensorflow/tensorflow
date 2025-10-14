@@ -30,7 +30,8 @@ namespace gpu {
 // forward and backward passes of layer norm patterns are implemented.
 class CudnnNormRewriter : public HloModulePass {
  public:
-  explicit CudnnNormRewriter(se::CudaComputeCapability cuda_compute_capability);
+  explicit CudnnNormRewriter(
+      const se::CudaComputeCapability& cuda_compute_capability);
   absl::string_view name() const override { return "norm-rewriter"; }
 
   using HloPassInterface::Run;

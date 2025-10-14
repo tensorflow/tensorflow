@@ -398,8 +398,8 @@ bool ShouldRewriteCompatibleSort(se::DeviceDescription device_description,
   }
 
   if (SortRewriter::SortMode() == SortRewriter::Mode::kAuto) {
-    if (auto cuda_cc = std::get_if<se::CudaComputeCapability>(
-            &device_description.gpu_compute_capability())) {
+    if (auto* cuda_cc = device_description.gpu_compute_capability()
+                            .cuda_compute_capability()) {
       int bitwidth = primitive_util::BitWidth(operand_shape.element_type());
       int batch_size = Product(operand_shape.dimensions()) / num_elements;
 

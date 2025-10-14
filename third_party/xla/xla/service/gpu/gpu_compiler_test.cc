@@ -821,8 +821,7 @@ ENTRY main {
                     .default_stream_executor()
                     ->GetDeviceDescription()
                     .gpu_compute_capability();
-  bool is_cuda =
-      std::holds_alternative<stream_executor::CudaComputeCapability>(gpu_cc);
+  bool is_cuda = gpu_cc.IsCuda();
   auto cuda_cc = backend()
                      .default_stream_executor()
                      ->GetDeviceDescription()
@@ -1400,11 +1399,11 @@ TEST_F(GpuCompilerPassTest,
                 ->GetDeviceDescription()
                 .cuda_compute_capability();
 
-  bool is_rocm = std::holds_alternative<stream_executor::RocmComputeCapability>(
-      backend()
-          .default_stream_executor()
-          ->GetDeviceDescription()
-          .gpu_compute_capability());
+  bool is_rocm = backend()
+                     .default_stream_executor()
+                     ->GetDeviceDescription()
+                     .gpu_compute_capability()
+                     .IsRocm();
 
   bool expect_triton_gemm_rewriter_has_run = cc.IsAtLeastAmpere() || is_rocm;
 
@@ -2182,11 +2181,11 @@ class GpuCompilerSelectKTest
 TEST_P(GpuCompilerSelectKTest, SelectKOrCustomKernelThunk) {
   auto [n, k, expected_impl] = GetParam();
 
-  bool is_rocm = std::holds_alternative<stream_executor::RocmComputeCapability>(
-      backend()
-          .default_stream_executor()
-          ->GetDeviceDescription()
-          .gpu_compute_capability());
+  bool is_rocm = backend()
+                     .default_stream_executor()
+                     ->GetDeviceDescription()
+                     .gpu_compute_capability()
+                     .IsRocm();
 
   if (is_rocm && expected_impl == TopKImpl::kSelectK) {
     GTEST_SKIP() << "raft::select_k is not supported in ROCm.";

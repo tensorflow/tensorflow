@@ -62,8 +62,7 @@ class MixedTypeTest : public GpuCodegenTest,
   }
 
   void SetUp() override {
-    if (std::holds_alternative<se::RocmComputeCapability>(
-            GetGpuComputeCapability())) {
+    if (GetGpuComputeCapability().IsRocm()) {
       GTEST_SKIP()
           << "Related fusions are not performed on ROCm without Triton.";
     }

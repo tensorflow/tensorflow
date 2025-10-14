@@ -158,11 +158,10 @@ TEST_P(DotAlgorithmSupportTest, AlgorithmIsSupportedFromCudaCapability) {
   bool is_algorithm_supported = false;
   auto gpu_cc = GetGpuComputeCapability();
 
-  if (const auto* ccc = std::get_if<se::CudaComputeCapability>(&gpu_cc)) {
+  if (const auto* ccc = gpu_cc.cuda_compute_capability()) {
     is_algorithm_supported =
         ccc->SupportsAllFeaturesOf(params.min_cuda_capability);
-  } else if (const auto* rcc =
-                 std::get_if<se::RocmComputeCapability>(&gpu_cc)) {
+  } else if (const auto* rcc = gpu_cc.rocm_compute_capability()) {
     is_algorithm_supported = rcc->gfx9_mi100_or_later();
     if (GetDeviceDescription().runtime_version() < params.min_rocm_version &&
         (params.lhs_storage_type == F8E5M2 ||

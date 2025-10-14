@@ -191,7 +191,7 @@ class RocmComputeCapability {
   template <typename... ArrayOfStrings>
   bool IsThisGfxInAnyList(ArrayOfStrings&&... arr) const {
     static_assert(sizeof...(arr) >= 1);
-    const auto gfx = gfx_version();
+    const std::string gfx = gfx_version();
     return (implIsThisGfxInAnyList(std::begin(arr), std::end(arr), gfx) || ...);
   }
 
@@ -199,10 +199,9 @@ class RocmComputeCapability {
   /// \warning Don't use directly!
   bool implIsThisGfxInAnyList(const absl::string_view* beg,
                               const absl::string_view* end,
-                              const std::string& gfx) const {
-    return std::any_of(beg, end, [&gfx = gfx](const absl::string_view& s) {
-      return gfx == s;
-    });
+                              const absl::string_view gfx) const {
+    return std::any_of(
+        beg, end, [&gfx = gfx](const absl::string_view s) { return gfx == s; });
   }
 
   std::string gcn_arch_name_{kInvalidGfx};  // default to invalid arch.
