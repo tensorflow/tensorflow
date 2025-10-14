@@ -15,15 +15,23 @@ limitations under the License.
 #include "tensorflow/core/runtime_fallback/util/attr_util.h"
 
 #include <algorithm>
+#include <cassert>
+#include <cstdint>
 #include <cstdlib>
 #include <cstring>
 #include <string>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
+#include "absl/container/inlined_vector.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/strings/match.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
+#include "third_party/protobuf/text_format.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/tensor.h"
