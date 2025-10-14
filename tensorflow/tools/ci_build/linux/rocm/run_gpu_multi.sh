@@ -57,7 +57,8 @@ bazel --bazelrc=tensorflow/tools/tf_sig_build_dockerfiles/devel.usertools/rocm.b
         --config=rocm \
         --config=nonpip_multi_gpu \
         --config=sigbuild_local_cache \
-        --action_env=TF_PYTHON_VERSION=$PYTHON_VERSION
+        --action_env=TF_PYTHON_VERSION=$PYTHON_VERSION \
+        --repo_env="ROCM_PATH=$ROCM_PATH" \
 
 
 #  Started failing with 210906 sync

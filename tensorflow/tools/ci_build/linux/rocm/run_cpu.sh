@@ -28,55 +28,17 @@ export PYTHON_BIN_PATH=`which python3`
 PYTHON_VERSION=`python3 -c "import sys;print(f'{sys.version_info.major}.{sys.version_info.minor}')"`
 export TF_PYTHON_VERSION=$PYTHON_VERSION
 
-export TF_NEED_ROCM=0
+# Use the bazelrc files in /usertools if available
+if [ ! -d /tf ];then
+    # The bazelrc files in /usertools expect /tf to exist
+    mkdir /tf
+fi
 
-if [ -f /usertools/cpu.bazelrc ]; then
-        # Use the bazelrc files in /usertools if available
-	if [ ! -d /tf ];then
-           # The bazelrc files in /usertools expect /tf to exist
-           mkdir /tf
-        fi
-        bazel \
-          --bazelrc=/usertools/cpu.bazelrc \
-          test \
+bazel --bazelrc=tensorflow/tools/tf_sig_build_dockerfiles/devel.usertools/cpu.bazelrc test \
           --config=sigbuild_local_cache \
           --verbose_failures \
           --config=pycpp \
-          --test_env=HIP_VISIBLE_DEVICES=\"\"  \
-          --repo_env=USE_PYWRAP_RULES=${usePywrapRules} \
           --action_env=TF_NEED_ROCM=0 \
           --action_env=TF_PYTHON_VERSION=$PYTHON_VERSION \
           --local_test_jobs=${N_BUILD_JOBS} \
-          --test_timeout 920,2400,7200,9600 \
           --jobs=${N_BUILD_JOBS}
-else
-         yes "" | $PYTHON_BIN_PATH configure.py
-
-
-        # Run bazel test command. Double test timeouts to avoid flakes.
-        # xla/mlir_hlo/tests/Dialect/gml_st tests disabled in 09/08/22 sync
-        bazel test \
-              -k \
-              --verbose_failures \
-              --test_tag_filters=-no_oss,-oss_excluded,-oss_serial,-gpu,-multi_gpu,-multi_and_single_gpu,-tpu,-cuda-only,-benchmark-test,-v1only \
-              --test_lang_filters=cc,py \
-	      --jobs=30 \
-              --local_ram_resources=60000 \
-              --local_cpu_resources=15 \
-              --local_test_jobs=${N_BUILD_JOBS} \
-              --test_timeout 920,2400,7200,9600 \
-              --build_tests_only \
-              --test_output=errors \
-              --test_sharding_strategy=disabled \
-              --test_size_filters=small,medium \
-              --test_env=TF_PYTHON_VERSION=$PYTHON_VERSION \
-              --test_env=HIP_VISIBLE_DEVICES=\"\"  \
-              --repo_env=USE_PYWRAP_RULES=${usePywrapRules} \
-              --action_env=TF_NEED_ROCM=0 \
-              -- \
-              //tensorflow/... \
-              -//tensorflow/compiler/tf2tensorrt/... \
-              -//tensorflow/core/tpu/... \
-              -//tensorflow/lite/... \
-              -//tensorflow/tools/toolchains/...
-fi 
