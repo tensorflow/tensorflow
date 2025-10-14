@@ -28,9 +28,8 @@ export PYTHON_BIN_PATH=`which python3`
 PYTHON_VERSION=`python3 -c "import sys;print(f'{sys.version_info.major}.{sys.version_info.minor}')"`
 export TF_PYTHON_VERSION=$PYTHON_VERSION
 
-# Use the bazelrc files in /usertools if available
 if [ ! -d /tf ];then
-    # The bazelrc files in /usertools expect /tf to exist
+    # The bazelrc files expect /tf to exist
     mkdir /tf
 fi
 

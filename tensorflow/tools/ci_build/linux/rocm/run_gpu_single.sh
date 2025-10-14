@@ -60,7 +60,7 @@ if [ -z "$TARGET_ARCHS" ]; then
 fi
 
 if [ ! -d /tf ];then
-    # The bazelrc files in /usertools expect /tf to exist
+    # The bazelrc files expect /tf to exist
         mkdir /tf
 fi
 

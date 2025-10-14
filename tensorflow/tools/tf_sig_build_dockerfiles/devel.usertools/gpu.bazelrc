@@ -46,6 +46,7 @@ test:nonpip_multi_gpu --config=nonpip_filters_multi_gpu -- \
 //tensorflow/python/distribute/integration_test:mwms_peer_failure_test_2gpu \
 //tensorflow/python/distribute:checkpoint_utils_test_2gpu \
 //tensorflow/python/distribute:checkpointing_test_2gpu \
+//tensorflow/python/distribute:collective_all_reduce_strategy_test_2gpu \
 //tensorflow/python/distribute:collective_all_reduce_strategy_test_xla_2gpu \
 //tensorflow/python/distribute:custom_training_loop_gradient_test_2gpu \
 //tensorflow/python/distribute:custom_training_loop_input_test_2gpu \
@@ -55,6 +56,7 @@ test:nonpip_multi_gpu --config=nonpip_filters_multi_gpu -- \
 //tensorflow/python/distribute:metrics_v1_test_2gpu \
 //tensorflow/python/distribute:mirrored_variable_test_2gpu \
 //tensorflow/python/distribute:parameter_server_strategy_test_2gpu \
+//tensorflow/python/distribute:values_test_2gpu \
 //tensorflow/python/distribute:ps_values_test_2gpu \
 //tensorflow/python/distribute:random_generator_test_2gpu \
 //tensorflow/python/distribute:test_util_test_2gpu \
@@ -72,7 +74,10 @@ test:nonpip_multi_gpu --config=nonpip_filters_multi_gpu -- \
 //tensorflow/dtensor/python/tests:multi_client_test_nccl_2gpus \
 //tensorflow/dtensor/python/tests:multi_client_test_nccl_local_2gpus \
 //tensorflow/python/distribute/experimental:multi_worker_mirrored_strategy_test_2gpus \
-
+//tensorflow/python/distribute:strategy_common_test_2gpu \
+//tensorflow/python/distribute:strategy_common_test_xla_2gpu \
+//tensorflow/python/distribute:strategy_gather_test_2gpu \
+//tensorflow/python/distribute:strategy_gather_test_xla_2gpu \
 
 # For building libtensorflow archives
 test:libtensorflow_test -- //tensorflow/tools/lib_package:libtensorflow_test //tensorflow/tools/lib_package:libtensorflow_java_test
@@ -86,8 +91,8 @@ build:build_event_export --build_event_json_file=/tf/pkg/bep.json
 build:rbe --config=rbe_linux_cuda
 
 # For continuous builds
-test:pycpp_filters --test_tag_filters=gpu,-no_oss,-oss_excluded,-oss_serial,-benchmark-test,-v1only,-no_gpu,-requires-gpu:2,-multi-gpu,-no_gpu_presubmit,-tpu,-cuda-only,-oneapi-only
-test:pycpp_filters --build_tag_filters=gpu,-no_oss,-oss_excluded,-oss_serial,-benchmark-test,-v1only,-no_gpu,-requires-gpu:2,-multi-gpu,-no_gpu_presubmit,-tpu,-cuda-only,-oneapi-only
+test:pycpp_filters --test_tag_filters=gpu,-no_oss,-oss_excluded,-oss_serial,-benchmark-test,-v1only,-no_gpu,-requires-gpu:2,-multi_gpu,-no_gpu_presubmit,-tpu,-cuda-only,-oneapi-only
+test:pycpp_filters --build_tag_filters=gpu,-no_oss,-oss_excluded,-oss_serial,-benchmark-test,-v1only,-no_gpu,-requires-gpu:2,-multi_gpu,-no_gpu_presubmit,-tpu,-cuda-only,-oneapi-only
 test:pycpp_filters --test_lang_filters=cc,py --test_size_filters=small,medium
 test:pycpp --config=pycpp_filters -- //tensorflow/... -//tensorflow/compiler/tf2tensorrt/... -//tensorflow/core/tpu/... -//tensorflow/lite/... -//tensorflow/tools/toolchains/...
 
