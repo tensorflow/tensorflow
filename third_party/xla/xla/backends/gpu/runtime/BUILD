@@ -560,7 +560,6 @@ cc_library(
         "//xla/stream_executor:device_memory",
         "//xla/stream_executor:dnn",
         "//xla/stream_executor:stream_executor_h",
-        "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
     ],

@@ -19,7 +19,6 @@ limitations under the License.
 #include <optional>
 #include <utility>
 
-#include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "xla/backends/gpu/runtime/convolution_filter_thunk.pb.h"
@@ -47,32 +46,31 @@ static se::dnn::FilterDescriptor CreateFilterDescriptor(
 
 ConvolutionReorderThunk::ConvolutionReorderThunk(
     ThunkInfo thunk_info, ConvolutionFilterDimensions filter_dimensions,
-    absl::InlinedVector<BufferAllocation::Slice, 2> operand_slices,
-    absl::InlinedVector<BufferAllocation::Slice, 2> result_slices)
+    BufferAllocation::Slice filter_input, BufferAllocation::Slice filter_output,
+    std::optional<BiasBuffers> biases)
     : Thunk(Kind::kConvolutionReorder, thunk_info),
       filter_descriptor_(CreateFilterDescriptor(filter_dimensions)),
-      operand_buffers_(operand_slices),
-      result_buffers_(result_slices) {}
+      filter_input_(filter_input),
+      filter_output_(filter_output),
+      biases_(biases) {}
 
 absl::Status ConvolutionReorderThunk::ExecuteOnStream(
     const ExecuteParams& params) {
-  bool has_bias = operand_buffers_.size() > 1;
-  CHECK_EQ(operand_buffers_.size(), result_buffers_.size());
-
   const auto& buffer_allocations = *params.buffer_allocations;
 
   auto filter_input = se::DeviceMemory<int8_t>(
-      buffer_allocations.GetDeviceAddress(operand_buffers_[0]));
+      buffer_allocations.GetDeviceAddress(filter_input_));
   auto filter_output = se::DeviceMemory<int8_t>(
-      buffer_allocations.GetDeviceAddress(result_buffers_[0]));
-  auto bias_input =
-      has_bias ? std::make_optional(se::DeviceMemory<float>(
-                     buffer_allocations.GetDeviceAddress(operand_buffers_[1])))
-               : std::nullopt;
-  auto bias_output =
-      has_bias ? std::make_optional(se::DeviceMemory<float>(
-                     buffer_allocations.GetDeviceAddress(result_buffers_[1])))
-               : std::nullopt;
+      buffer_allocations.GetDeviceAddress(filter_output_));
+
+  std::optional<se::DeviceMemory<float>> bias_input;
+  std::optional<se::DeviceMemory<float>> bias_output;
+  if (biases_.has_value()) {
+    bias_input = se::DeviceMemory<float>(
+        buffer_allocations.GetDeviceAddress(biases_->bias_input));
+    bias_output = se::DeviceMemory<float>(
+        buffer_allocations.GetDeviceAddress(biases_->bias_output));
+  }
 
   auto dnn = params.stream->parent()->AsDnn();
   if (dnn == nullptr) {

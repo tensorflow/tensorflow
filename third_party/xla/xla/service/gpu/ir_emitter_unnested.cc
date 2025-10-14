@@ -897,34 +897,27 @@ absl::Status IrEmitterUnnested::EmitConvolutionReorderThunk(
   filter_dimensions.set_input_filter_height(shape.dimensions(2));
   filter_dimensions.set_input_filter_width(shape.dimensions(3));
 
-  absl::InlinedVector<BufferAllocation::Slice, 2> operand_slices;
   TF_ASSIGN_OR_RETURN(BufferAllocation::Slice filter_input,
                       GetAllocationSliceForHlo(instr->operand(0)));
-  operand_slices.push_back(filter_input);
+
+  BufferAllocation::Slice filter_output;
+  std::optional<ConvolutionReorderThunk::BiasBuffers> biases;
   if (has_bias) {
+    TF_ASSIGN_OR_RETURN(filter_output, GetAllocationSliceForHlo(instr, {0}));
+
     TF_ASSIGN_OR_RETURN(BufferAllocation::Slice bias_input,
                         GetAllocationSliceForHlo(instr->operand(1)));
-    operand_slices.push_back(bias_input);
-  }
-
-  absl::InlinedVector<BufferAllocation::Slice, 2> result_slices;
-  if (has_bias) {
-    TF_ASSIGN_OR_RETURN(BufferAllocation::Slice filter_output,
-                        GetAllocationSliceForHlo(instr, {0}));
-    result_slices.push_back(filter_output);
     TF_ASSIGN_OR_RETURN(BufferAllocation::Slice bias_output,
                         GetAllocationSliceForHlo(instr, {1}));
-    result_slices.push_back(bias_output);
+    biases = {{bias_input, bias_output}};
   } else {
-    TF_ASSIGN_OR_RETURN(BufferAllocation::Slice filter_output,
-                        GetAllocationSliceForHlo(instr));
-    result_slices.push_back(filter_output);
+    TF_ASSIGN_OR_RETURN(filter_output, GetAllocationSliceForHlo(instr));
   }
 
   auto thunk = std::make_unique<ConvolutionReorderThunk>(
       Thunk::ThunkInfo::WithProfileAnnotation(
           instr, ir_emitter_context_->GetNextThunkId()),
-      std::move(filter_dimensions), operand_slices, result_slices);
+      std::move(filter_dimensions), filter_input, filter_output, biases);
   AddThunkToThunkSequence(std::move(thunk));
   return absl::OkStatus();
 }

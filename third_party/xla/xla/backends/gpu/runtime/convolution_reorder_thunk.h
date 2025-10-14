@@ -16,8 +16,8 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_RUNTIME_CONVOLUTION_REORDER_THUNK_H_
 #define XLA_BACKENDS_GPU_RUNTIME_CONVOLUTION_REORDER_THUNK_H_
 
+#include <optional>
 
-#include "absl/container/inlined_vector.h"
 #include "absl/status/status.h"
 #include "xla/backends/gpu/runtime/convolution_filter_thunk.pb.h"
 #include "xla/backends/gpu/runtime/thunk.h"
@@ -30,10 +30,16 @@ namespace gpu {
 // Launches the kernel that reorders input data for int8x32 convolutions.
 class ConvolutionReorderThunk : public Thunk {
  public:
-  ConvolutionReorderThunk(
-      ThunkInfo thunk_info, ConvolutionFilterDimensions filter_dimensions,
-      absl::InlinedVector<BufferAllocation::Slice, 2> operand_slices,
-      absl::InlinedVector<BufferAllocation::Slice, 2> result_slices);
+  struct BiasBuffers {
+    BufferAllocation::Slice bias_input;
+    BufferAllocation::Slice bias_output;
+  };
+
+  ConvolutionReorderThunk(ThunkInfo thunk_info,
+                          ConvolutionFilterDimensions filter_dimensions,
+                          BufferAllocation::Slice filter_input,
+                          BufferAllocation::Slice filter_output,
+                          std::optional<BiasBuffers> biases);
 
   ConvolutionReorderThunk(const ConvolutionReorderThunk&) = delete;
   ConvolutionReorderThunk& operator=(const ConvolutionReorderThunk&) = delete;
@@ -43,8 +49,9 @@ class ConvolutionReorderThunk : public Thunk {
  private:
   // TODO: b/431980836 - Store the filter dimensions to use for serialization.
   const se::dnn::FilterDescriptor filter_descriptor_;
-  absl::InlinedVector<BufferAllocation::Slice, 2> operand_buffers_;
-  absl::InlinedVector<BufferAllocation::Slice, 2> result_buffers_;
+  BufferAllocation::Slice filter_input_;
+  BufferAllocation::Slice filter_output_;
+  std::optional<BiasBuffers> biases_;
 };
 
 }  // namespace gpu
