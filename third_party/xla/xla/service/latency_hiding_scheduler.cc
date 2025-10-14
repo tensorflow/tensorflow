@@ -3611,7 +3611,7 @@ absl::StatusOr<bool> LatencyHidingScheduler::Run(
     return false;
   }
   TF_RETURN_IF_ERROR(scheduler_core_->InitializeScheduler(module));
-  const auto& debug_options = xla::GetDebugOptionsFromFlags();
+  const auto& debug_options = module->config().debug_options();
   if (debug_options.xla_dump_latency_hiding_schedule()) {
     TF_RETURN_IF_ERROR(scheduler_core_->CaptureScheduleProto());
   }
