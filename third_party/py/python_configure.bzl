@@ -19,7 +19,7 @@ def _get_python_interpreter():
     )
     if _is_bzlmod_enabled():
         return str(INTERPRETER_LABELS[python_toolchain_name])
-    return "@{}_host//:python".format(python_toolchain_name)
+    return "@{}//:python".format(python_toolchain_name)
 
 def _create_local_python_repository(repository_ctx):
     """Creates the repository containing files set up to build with Python."""
