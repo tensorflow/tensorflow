@@ -34,38 +34,38 @@ bazel_dep(name = "grpc-java", version = "1.75.0", repo_name = "DO_NOT_USE_grpc_j
 # TODO: publish an official version of rules_ml_toolchain to BCR
 bazel_dep(name = "rules_ml_toolchain")
 archive_override(
-  module_name = "rules_ml_toolchain",
-  integrity = "sha256-PqEEHetGz0+SfdmU4yrNjENveZexKpVY6F3ualqJ41w=",
-  urls = ["https://github.com/google-ml-infra/rules_ml_toolchain/archive/0fccc2447ef3bec3d75046a60a1895f053424727.tar.gz"],
-  strip_prefix = "rules_ml_toolchain-0fccc2447ef3bec3d75046a60a1895f053424727",
+    module_name = "rules_ml_toolchain",
+    integrity = "sha256-PqEEHetGz0+SfdmU4yrNjENveZexKpVY6F3ualqJ41w=",
+    strip_prefix = "rules_ml_toolchain-0fccc2447ef3bec3d75046a60a1895f053424727",
+    urls = ["https://github.com/google-ml-infra/rules_ml_toolchain/archive/0fccc2447ef3bec3d75046a60a1895f053424727.tar.gz"],
 )
 
 # TODO: Upstream the patch?
 single_version_override(
-  module_name = "grpc",
-  patches = ["//third_party/grpc:grpc.patch"],
-  patch_strip = 1,
+    module_name = "grpc",
+    patch_strip = 1,
+    patches = ["//third_party/grpc:grpc.patch"],
 )
 
 # TODO: Upstream those patch?
 single_version_override(
-  module_name = "abseil-cpp",
-  patches = [
-      "//third_party/absl:btree.patch",
-      "//third_party/absl:build_dll.patch",
-      "//third_party/absl:endian.patch",
-      "//third_party/absl:rules_cc.patch",
-      "//third_party/absl:check_op.patch",
-      "//third_party/absl:check_op_2.patch",
-  ],
-  patch_strip = 1,
+    module_name = "abseil-cpp",
+    patch_strip = 1,
+    patches = [
+        "//third_party/absl:btree.patch",
+        "//third_party/absl:build_dll.patch",
+        "//third_party/absl:endian.patch",
+        "//third_party/absl:rules_cc.patch",
+        "//third_party/absl:check_op.patch",
+        "//third_party/absl:check_op_2.patch",
+    ],
 )
 
 # Use an unreleased version of googletest
 archive_override(
-  module_name = "googletest",
-  urls = ["https://github.com/google/googletest/archive/28e9d1f26771c6517c3b4be10254887673c94018.zip"],
-  strip_prefix = "googletest-28e9d1f26771c6517c3b4be10254887673c94018",
+    module_name = "googletest",
+    strip_prefix = "googletest-28e9d1f26771c6517c3b4be10254887673c94018",
+    urls = ["https://github.com/google/googletest/archive/28e9d1f26771c6517c3b4be10254887673c94018.zip"],
 )
 
 ##############################################################
@@ -73,20 +73,22 @@ archive_override(
 
 # TODO: most of them can be Bazel modules, but we need a release strategy for them
 third_party = use_extension("//third_party/extensions:third_party.bzl", "third_party_ext")
-use_repo(third_party,
+use_repo(
+    third_party,
+    "FXdiv",
+    "XNNPACK",
     "cpuinfo",
     "cudnn_frontend_archive",
     "ducc",
     "eigen_archive",
     "farmhash_archive",
     "farmhash_gpu_archive",
-    "FXdiv",
     "gloo",
     "highwayhash",
     "hwloc",
     "implib_so",
-    "llvm_openmp",
     "llvm-raw",
+    "llvm_openmp",
     "ml_dtypes_py",
     "mpitrampoline",
     "nanobind",
@@ -97,7 +99,6 @@ use_repo(third_party,
     "shardy",
     "stablehlo",
     "triton",
-    "XNNPACK",
 )
 
 ##############################################################
@@ -109,10 +110,7 @@ python.toolchain(python_version = "3.11")
 use_repo(python, "pythons_hub")
 
 pip = use_extension("@rules_python//python/extensions:pip.bzl", "pip")
-
 pip.whl_mods(
-    hub_name = "pypi_mods",
-    whl_name = "numpy",
     additive_build_content = """
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 cc_library(
@@ -130,21 +128,21 @@ cc_library(
     deps = [":numpy_headers_2", ":numpy_headers_1"],
 )
 """,
+    hub_name = "pypi_mods",
+    whl_name = "numpy",
 )
-
 pip.parse(
+    extra_hub_aliases = {
+        "numpy": ["numpy_headers"],
+    },
     hub_name = "xla_pypi",
     python_version = "3.11",
     requirements_lock = "//:requirements_lock_3_11.txt",
     whl_modifications = {
         "@pypi_mods//:numpy.json": "numpy",
     },
-    extra_hub_aliases = {
-        "numpy": ["numpy_headers"],
-    }
 )
-
-use_repo(pip, "pypi_mods", "xla_pypi_311_numpy", pypi = "xla_pypi")
+use_repo(pip, "pypi_mods", pypi = "xla_pypi")
 
 python_version_ext = use_extension("//third_party/extensions:python_version.bzl", "python_version_ext")
 use_repo(python_version_ext, "python_version_repo")
