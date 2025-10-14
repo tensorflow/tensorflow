@@ -55,7 +55,7 @@ class AllocatorRetry {
 
 // Implementation details below
 inline void AllocatorRetry::NotifyDealloc() {
-  absl::MutexLock l(&mu_);
+  absl::MutexLock l(mu_);
   memory_returned_.SignalAll();
 }
 
