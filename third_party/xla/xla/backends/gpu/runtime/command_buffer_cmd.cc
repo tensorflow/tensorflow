@@ -2203,7 +2203,7 @@ absl::StatusOr<const se::CommandBuffer::Command*> AllToAllCmd::Record(
 
   if (!execute_params.collective_params || !execute_params.collective_cliques) {
     return absl::InvalidArgumentError(
-        "ReduceScatterCmd requires collective parameters and cliques");
+        "AllToAllCmd requires collective parameters and cliques");
   }
 
   TF_ASSIGN_OR_RETURN(GpuCollectives * collectives,
