@@ -527,6 +527,14 @@ CoordinationService::ConnectAfterBarrierPasses(absl::string_view task_name,
                                   int64_t unused_counter) mutable {
     state_mu_.AssertHeld();
     const std::unique_ptr<TaskState>& task_state = cluster_state_[task];
+    if (!s.ok()) {
+      LOG(WARNING) << "ConnectAfterBarrierPasses: " << s;
+    }
+    if (incarnation != task_state->GetTaskIncarnation()) {
+      LOG(WARNING) << "ConnectAfterBarrierPasses: incarnation=" << incarnation
+                   << ", task_state->GetTaskIncarnation()="
+                   << task_state->GetTaskIncarnation();
+    }
     if (s.ok() && incarnation == task_state->GetTaskIncarnation()) {
       // Connect task to service.
       task_state->Connect();
