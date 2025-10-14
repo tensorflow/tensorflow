@@ -334,6 +334,9 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
 
   absl::StatusOr<HeapSimulator::Result<HloValue>> Finish() override;
 
+  // Processes existing/explicit block prefetched copy start-done instructions.
+  absl::Status ProcessCustomCallBlockPrefetches();
+
   // Processes all block prefetches.
   absl::Status ProcessBlockPrefetches();
 
@@ -974,7 +977,11 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
   // allocations. We pass sync_mem_op to the CopyAllocation constructor. When
   // sync_mem_op is set, instead of an async copy, CopyAllocation::Process()
   // will replace sync_mem_op with the async version of sync_mem_op's opcode
-  // (e.g., slice) and shape.
+  // (e.g., slice) and shape. Generally, MSA inserts and schedules new async
+  // copy instructions. If async copy instructions are already present in the
+  // original schedule, MSA will just schedule them in correct positions. If not
+  // null, `async_mem_op_start` and `async_mem_op_done` are async copy start and
+  // done instructions that are already present in the original schedule.
   void AddAsyncCopyOrOtherMemOp(
       Allocation& prev_allocation, MemorySpace memory_space,
       std::optional<Chunk> chunk, int64_t exclusive_start_time,
@@ -982,7 +989,9 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
       AllocationSequence* allocations, AliasedOffset* aliased_offset,
       float resource,
       std::optional<int> cross_program_prefetch_index = std::nullopt,
-      HloInstruction* sync_mem_op = nullptr);
+      HloInstruction* sync_mem_op = nullptr,
+      HloInstruction* async_mem_op_start = nullptr,
+      HloInstruction* async_mem_op_done = nullptr);
 
   // For prefetching, adds a SlicedCopyAllocation to allocations. Also updates
   // asynchronous copy data structures, prefetch_interval_tree_, and aliasing
