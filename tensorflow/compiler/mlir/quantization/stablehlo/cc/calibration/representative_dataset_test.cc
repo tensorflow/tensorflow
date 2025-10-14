@@ -52,7 +52,7 @@ TEST(CreateRepresentativeDatasetFileMapTest,
       representative_dataset_file_map =
           CreateRepresentativeDatasetFileMap(representative_dataset_configs);
 
-  ASSERT_THAT(representative_dataset_file_map, IsOk());
+  ASSERT_THAT(representative_dataset_file_map, absl_testing::IsOk());
   ASSERT_THAT(*representative_dataset_file_map, SizeIs(1));
   EXPECT_THAT(*representative_dataset_file_map,
               Contains(Key("serving_default")));
@@ -74,7 +74,7 @@ TEST(CreateRepresentativeDatasetFileMapTest, ConfigWithExplicitSignatureKey) {
       representative_dataset_file_map =
           CreateRepresentativeDatasetFileMap(representative_dataset_configs);
 
-  ASSERT_THAT(representative_dataset_file_map, IsOk());
+  ASSERT_THAT(representative_dataset_file_map, absl_testing::IsOk());
   ASSERT_THAT(*representative_dataset_file_map, SizeIs(1));
   EXPECT_THAT(*representative_dataset_file_map,
               Contains(Key(StrEq("test_signature_key"))));
@@ -103,8 +103,9 @@ TEST(CreateRepresentativeDatasetFileMapTest,
           CreateRepresentativeDatasetFileMap(representative_dataset_configs);
 
   EXPECT_THAT(representative_dataset_file_map,
-              StatusIs(absl::StatusCode::kInvalidArgument,
-                       HasSubstr("duplicate signature key: serving_default")));
+              absl_testing::StatusIs(
+                  absl::StatusCode::kInvalidArgument,
+                  HasSubstr("duplicate signature key: serving_default")));
 }
 
 }  // namespace
