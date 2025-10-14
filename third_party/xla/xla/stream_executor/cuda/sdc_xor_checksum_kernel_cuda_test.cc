@@ -13,8 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/stream_executor/cuda/sdc_xor_checksum_kernel_cuda.h"
-
 #include <array>
 #include <cstdint>
 #include <memory>
@@ -33,7 +31,8 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/thunk_id.h"
 #include "xla/stream_executor/cuda/sdc_log.h"
 #include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/kernel_spec.h"
+#include "xla/stream_executor/gpu/gpu_kernel_registry.h"
+#include "xla/stream_executor/gpu/sdc_xor_checksum_kernel.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
@@ -64,6 +63,13 @@ class ChecksumKernelTest : public ::testing::Test {
     TF_ASSERT_OK_AND_ASSIGN(stream_, executor_->CreateStream(std::nullopt));
     allocator_ =
         std::make_unique<se::StreamExecutorMemoryAllocator>(stream_->parent());
+
+    if (!executor_->GetDeviceDescription()
+             .cuda_compute_capability()
+             .IsAtLeastPascal()) {
+      GTEST_SKIP() << "SDC checksumming is not supported on CUDA architectures "
+                      "older than Pascal due to missing atomic fetch_add";
+    }
   }
 
   template <typename T>
@@ -81,12 +87,10 @@ class ChecksumKernelTest : public ::testing::Test {
       SdcBufferId entry_id, const T& input, se::cuda::SdcLog& sdc_log,
       stream_executor::ThreadDim dim = stream_executor::ThreadDim(1, 1, 1)) {
     // Load kernel
-    TF_ASSIGN_OR_RETURN(se::KernelLoaderSpec spec,
-                        se::cuda::GetSdcXorChecksumKernelSpec());
+    gpu::GpuKernelRegistry registry =
+        gpu::GpuKernelRegistry::GetGlobalRegistry();
     TF_ASSIGN_OR_RETURN(
-        auto kernel,
-        se::cuda::SdcXorChecksumKernel::KernelType::FactoryType::Create(
-            executor_, spec));
+        auto kernel, registry.LoadKernel<gpu::SdcXorChecksumKernel>(executor_));
 
     // Setup device buffers
     TF_ASSIGN_OR_RETURN(se::DeviceMemory<uint8_t> device_input,

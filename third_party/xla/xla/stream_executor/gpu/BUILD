@@ -940,3 +940,14 @@ xla_cc_test(
         "@com_google_googletest//:gtest_main",
     ],
 )
+
+cc_library(
+    name = "sdc_xor_checksum_kernel",
+    hdrs = ["sdc_xor_checksum_kernel.h"],
+    deps = [
+        "//xla/backends/gpu/runtime:sdc_buffer_id",
+        "//xla/backends/gpu/runtime:sdc_log_structs",
+        "//xla/stream_executor:device_memory",
+        "//xla/stream_executor:kernel",
+    ],
+)

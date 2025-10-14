@@ -13,9 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/stream_executor/cuda/sdc_xor_checksum_kernel_cuda.h"
-
-#include <algorithm>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
@@ -24,8 +21,9 @@ limitations under the License.
 #include "third_party/gpus/cuda/include/cuda/atomic"
 #include "xla/backends/gpu/runtime/sdc_buffer_id.h"
 #include "xla/backends/gpu/runtime/sdc_log_structs.h"
-#include "xla/stream_executor/cuda/cuda_platform_id.h"
+#include "xla/stream_executor/cuda/cuda_platform.h"
 #include "xla/stream_executor/gpu/gpu_kernel_registry.h"
+#include "xla/stream_executor/gpu/sdc_xor_checksum_kernel.h"
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/tsl/platform/logging.h"
 
@@ -185,22 +183,18 @@ __global__ void AppendChecksum(xla::gpu::SdcBufferId entry_id,
 
     cuda::atomic_ref<uint32_t, cuda::thread_scope_system>
         checksum_log_write_idx(log_header->write_idx);
+#if __CUDA_ARCH__ >= 600
     const uint32_t write_idx = checksum_log_write_idx.fetch_add(1);
     if (write_idx < log_header->capacity) {
       log_entries[write_idx] = {entry_id, checksum};
     }
+#else
+    // Our toolchains generate a fetch_add PTX instructions with system scope,
+    // which is not supported on pre-Pascal architectures.
+    assert(false);
+#endif
   }
 }
-
-}  // namespace
-
-GPU_KERNEL_REGISTRY_REGISTER_KERNEL_STATICALLY(
-    SdcXorChecksumKernel, se::cuda::SdcXorChecksumKernel,
-    se::cuda::kCudaPlatformId, ([](size_t _arity) {
-      return se::cuda::GetSdcXorChecksumKernelSpec().value();
-    }));
-
-namespace stream_executor::cuda {
 
 absl::StatusOr<se::KernelLoaderSpec> GetSdcXorChecksumKernelSpec() {
   return se::KernelLoaderSpec::CreateInProcessSymbolSpec(
@@ -208,4 +202,9 @@ absl::StatusOr<se::KernelLoaderSpec> GetSdcXorChecksumKernelSpec() {
       /*arity=*/5);
 }
 
-}  // namespace stream_executor::cuda
+}  // namespace
+
+GPU_KERNEL_REGISTRY_REGISTER_KERNEL_STATICALLY(
+    SdcXorChecksumKernel, se::gpu::SdcXorChecksumKernel,
+    se::cuda::kCudaPlatformId,
+    ([](size_t _arity) { return GetSdcXorChecksumKernelSpec().value(); }));

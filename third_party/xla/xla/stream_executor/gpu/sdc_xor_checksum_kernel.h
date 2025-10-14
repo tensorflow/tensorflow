@@ -13,19 +13,17 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_STREAM_EXECUTOR_CUDA_SDC_XOR_CHECKSUM_KERNEL_CUDA_H_
-#define XLA_STREAM_EXECUTOR_CUDA_SDC_XOR_CHECKSUM_KERNEL_CUDA_H_
+#ifndef XLA_STREAM_EXECUTOR_GPU_SDC_XOR_CHECKSUM_KERNEL_H_
+#define XLA_STREAM_EXECUTOR_GPU_SDC_XOR_CHECKSUM_KERNEL_H_
 
 #include <cstdint>
 
-#include "absl/status/statusor.h"
 #include "xla/backends/gpu/runtime/sdc_buffer_id.h"
 #include "xla/backends/gpu/runtime/sdc_log_structs.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/kernel.h"
-#include "xla/stream_executor/kernel_spec.h"
 
-namespace stream_executor::cuda {
+namespace stream_executor::gpu {
 
 // Trait for a kernel that computes the checksum of given input buffer and
 // appends it to the SDC log.
@@ -37,8 +35,6 @@ struct SdcXorChecksumKernel {
                                  DeviceMemory<xla::gpu::SdcLogEntry>>;
 };
 
-absl::StatusOr<KernelLoaderSpec> GetSdcXorChecksumKernelSpec();
+}  // namespace stream_executor::gpu
 
-}  // namespace stream_executor::cuda
-
-#endif  // XLA_STREAM_EXECUTOR_CUDA_SDC_XOR_CHECKSUM_KERNEL_CUDA_H_
+#endif  // XLA_STREAM_EXECUTOR_GPU_SDC_XOR_CHECKSUM_KERNEL_H_
