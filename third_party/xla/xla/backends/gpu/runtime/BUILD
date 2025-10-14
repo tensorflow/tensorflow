@@ -2900,6 +2900,62 @@ xla_test(
     ],
 )
 
+cc_library(
+    name = "sdc_thunk",
+    srcs = ["sdc_thunk.cc"],
+    hdrs = ["sdc_thunk.h"],
+    deps = [
+        ":sdc_buffer_id",
+        ":thunk",
+        "//xla/service:buffer_assignment",
+        "//xla/stream_executor:device_memory",
+        "//xla/stream_executor:launch_dim",
+        "//xla/stream_executor:stream_executor_h",
+        "//xla/stream_executor/cuda:cuda_compute_capability",
+        "//xla/stream_executor/cuda:cuda_platform_id",
+        "//xla/stream_executor/cuda:sdc_log",
+        "//xla/stream_executor/gpu:gpu_kernel_registry",
+        "//xla/stream_executor/gpu:sdc_xor_checksum_kernel",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+xla_test(
+    name = "sdc_thunk_test",
+    srcs = ["sdc_thunk_test.cc"],
+    backends = ["gpu"],
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
+    deps = [
+        ":sdc_buffer_id",
+        ":sdc_log_structs",
+        ":sdc_thunk",
+        ":thunk",
+        ":thunk_id",
+        "//xla/service:buffer_assignment",
+        "//xla/service:executable",
+        "//xla/service/gpu:buffer_allocations",
+        "//xla/service/gpu:resource_requests",
+        "//xla/stream_executor:device_memory",
+        "//xla/stream_executor:platform",
+        "//xla/stream_executor:platform_manager",
+        "//xla/stream_executor:stream",
+        "//xla/stream_executor:stream_executor_memory_allocator",
+        "//xla/stream_executor/cuda:sdc_log",
+        "//xla/tsl/lib/core:status_test_util",
+        "//xla/tsl/platform:statusor",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 tf_proto_library(
     name = "sdc_proto",
     srcs = ["sdc.proto"],

@@ -426,7 +426,6 @@ cc_library(
     name = "sdc_log",
     srcs = ["sdc_log.cc"],
     hdrs = ["sdc_log.h"],
-    tags = ["gpu"],
     deps = [
         "//xla/backends/gpu/runtime:sdc_log_structs",
         "//xla/backends/gpu/runtime:sdc_proto_cc",
