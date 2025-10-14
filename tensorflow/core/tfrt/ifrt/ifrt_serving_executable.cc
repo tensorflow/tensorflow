@@ -268,19 +268,6 @@ IfrtServingExecutable::Create(
   return executable;
 }
 
-absl::StatusOr<xla::ifrt::ArrayRef> IfrtServingExecutable::ConvertTensorToArray(
-    const tensorflow::Tensor& tensor,
-    const xla::ifrt::DeviceListRef& device_list,
-    const xla::OpSharding& sharding) {
-  xla::ifrt::Shape input_shape = ToIfrtShape(tensor.shape());
-  VLOG(2) << "Converting tensor of shape " << input_shape;
-
-  TF_ASSIGN_OR_RETURN(auto hlo_sharding, xla::HloSharding::FromProto(sharding));
-
-  return MakeArrayFromTensor(*ifrt_client_, tensor, device_list,
-                             std::move(hlo_sharding), thread_pool_);
-}
-
 absl::StatusOr<std::vector<tensorflow::FunctionDef>> BuildFunctionDef(
     mlir::ModuleOp module) {
   std::vector<tensorflow::FunctionDef> function_defs;
@@ -721,9 +708,19 @@ absl::StatusOr<std::vector<tensorflow::Tensor>> IfrtServingExecutable::Execute(
   for (xla::ifrt::Device* device : device_list->devices()) {
     device_ids.push_back(device->Id().value());
   }
-  std::vector<xla::ifrt::ArrayRef> args;
+  std::vector<tsl::Future<xla::ifrt::ArrayRef>> args;
   args.reserve(inputs.size());
   int variable_arg_index = 0;
+  // TODO(b/445201291): Plumb the H2DTransferExecutorFactory from the
+  // IfrtServingExecutable constructor.
+  absl::StatusOr<std::unique_ptr<H2DTransferExecutor>>
+      user_inputs_h2d_transfer_executor =
+          h2d_transfer_executor_factory_ != nullptr
+              ? h2d_transfer_executor_factory_->CreateH2DTransferExecutor(
+                    *ifrt_client_)
+              : std::make_unique<H2DTransferExecutor>(*ifrt_client_);
+  TF_RETURN_IF_ERROR(user_inputs_h2d_transfer_executor.status());
+
   for (int i = 0; i < inputs.size(); i++) {
     if (variable_arg_index < variable_arg_indices.size() &&
         i == variable_arg_indices[variable_arg_index]) {
@@ -739,9 +736,7 @@ absl::StatusOr<std::vector<tensorflow::Tensor>> IfrtServingExecutable::Execute(
       TF_ASSIGN_OR_RETURN(
           auto loaded_variable,
           ifrt_loaded_variable_registry_.GetLoadedVariable(key));
-      TF_ASSIGN_OR_RETURN(xla::ifrt::ArrayRef single_array,
-                          loaded_variable.array.Await());
-      args.push_back(std::move(single_array));
+      args.push_back(std::move(loaded_variable.array));
       variable_arg_index++;
     } else {
       // If the input shape is not the same as the shape after Tf2Hlo
@@ -756,16 +751,26 @@ absl::StatusOr<std::vector<tensorflow::Tensor>> IfrtServingExecutable::Execute(
           !reshaped.CopyFrom(inputs[i], reshaped_shape)) {
         return absl::InternalError("Failed to reshape tensor");
       }
-
       TF_ASSIGN_OR_RETURN(
-          auto single_array,
-          ConvertTensorToArray(
-              reshaped, device_list,
-              executable_bundle->compile_metadata.args()[i].sharding()));
-      args.push_back(single_array);
+          tsl::Future<xla::ifrt::ArrayRef> array_ref,
+          (*user_inputs_h2d_transfer_executor)
+              ->ScheduledH2DTransfer(
+                  reshaped, device_list,
+                  executable_bundle->compile_metadata.args()[i].sharding(),
+                  thread_pool_));
+      args.push_back(std::move(array_ref));
     }
   }
   DCHECK_EQ(args.size(), executable_bundle->compile_metadata.args().size());
+
+  TF_RETURN_IF_ERROR((*user_inputs_h2d_transfer_executor)->RunH2DTransfers());
+
+  std::vector<xla::ifrt::ArrayRef> transfer_result;
+  transfer_result.reserve(args.size());
+  for (auto& arg : args) {
+    TF_ASSIGN_OR_RETURN(auto array_ref, arg.Await());
+    transfer_result.push_back(std::move(array_ref));
+  }
 
   VLOG(2) << "Start Execution";
 
@@ -778,7 +783,7 @@ absl::StatusOr<std::vector<tensorflow::Tensor>> IfrtServingExecutable::Execute(
   {
     tsl::profiler::TraceMe traceme("Execute");
     execution_result = executable_bundle->ifrt_executable->Execute(
-        absl::MakeSpan(args), /*options=*/{.fill_status = true},
+        absl::MakeSpan(transfer_result), /*options=*/{.fill_status = true},
         std::move(execution_device_list));
     TF_RETURN_IF_ERROR(execution_result.status());
   }

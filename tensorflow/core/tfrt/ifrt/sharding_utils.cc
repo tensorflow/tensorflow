@@ -645,6 +645,29 @@ absl::StatusOr<tsl::Future<tensorflow::Tensor>> MakeTensorFromArrayHelper(
 
 }  // namespace
 
+absl::StatusOr<std::unique_ptr<H2DTransferExecutor>>
+H2DTransferExecutorFactory::CreateH2DTransferExecutor(
+    xla::ifrt::Client& ifrt_client) {
+  return std::make_unique<H2DTransferExecutor>(ifrt_client);
+}
+
+H2DTransferExecutor::H2DTransferExecutor(xla::ifrt::Client& ifrt_client)
+    : ifrt_client_(ifrt_client) {}
+
+absl::StatusOr<tsl::Future<xla::ifrt::ArrayRef>>
+H2DTransferExecutor::ScheduledH2DTransfer(
+    const tensorflow::Tensor& tensor,
+    const xla::ifrt::DeviceListRef& device_list,
+    const xla::OpSharding& sharding, tsl::thread::ThreadPool& thread_pool) {
+  TF_ASSIGN_OR_RETURN(auto hlo_sharding, xla::HloSharding::FromProto(sharding));
+  TF_ASSIGN_OR_RETURN(xla::ifrt::ArrayRef array_ref,
+                      MakeArrayFromTensor(ifrt_client_, tensor, device_list,
+                                          hlo_sharding, thread_pool));
+  return tsl::Future<xla::ifrt::ArrayRef>(std::move(array_ref));
+}
+
+absl::Status H2DTransferExecutor::RunH2DTransfers() { return absl::OkStatus(); }
+
 tsl::Future<tensorflow::Tensor> MakeTensorFromArray(
     xla::ifrt::Client& ifrt_client, xla::ifrt::Array& input_array,
     const xla::HloSharding& hlo_sharding,

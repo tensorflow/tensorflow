@@ -346,6 +346,7 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "@eigen_archive//:eigen3",
         "@local_xla//xla:shape_util",
+        "@local_xla//xla:xla_data_proto_cc",
         "@local_xla//xla/hlo/ir:hlo",
         "@local_xla//xla/python/ifrt",
         "@local_xla//xla/python/pjrt_ifrt:xla_ifrt",
