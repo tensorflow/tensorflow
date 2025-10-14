@@ -514,8 +514,7 @@ std::optional<std::vector<HloInstruction*>> CollectIndependentOperandChain(
     HloPredicate should_allow_loop_variant_parameter_in_chain,
     const absl::flat_hash_set<const HloInstruction*>&
         loop_invariant_instructions,
-    bool should_add_loop_invariant_op_in_chain,
-    HloPredicate acceptable_formatting) {
+    bool should_add_loop_invariant_op_in_chain) {
   std::vector<HloInstruction*> chain;
   absl::flat_hash_set<const HloInstruction*> visited_set({instr});
   std::vector<std::pair<HloInstruction*, int>> stack(1, {instr, 0});
@@ -550,9 +549,6 @@ std::optional<std::vector<HloInstruction*>> CollectIndependentOperandChain(
     }
   }
   for (auto* chain_instr : chain) {
-    if (!acceptable_formatting(chain_instr)) {
-      return std::nullopt;
-    }
     // Allow tokens in the chain.
     if (chain_instr->opcode() == HloOpcode::kAfterAll) {
       continue;
@@ -604,15 +600,14 @@ std::optional<std::vector<HloInstruction*>> CollectChainsToPushBackwards(
     bool should_allow_control_dependencies,
     const absl::flat_hash_set<const HloInstruction*>&
         loop_invariant_instructions,
-    bool should_add_loop_invariant_op_in_chain,
-    HloPredicate acceptable_formatting) {
+    bool should_add_loop_invariant_op_in_chain) {
   if (instr->HasControlDependencies() && !should_allow_control_dependencies) {
     return std::nullopt;
   }
   return CollectIndependentOperandChain(
       instr, loop_iter, loop_invariant_params,
       should_allow_loop_variant_parameter_in_chain, loop_invariant_instructions,
-      should_add_loop_invariant_op_in_chain, acceptable_formatting);
+      should_add_loop_invariant_op_in_chain);
 }
 
 // Given a dynamic-update-slice find the output index of the loop we feed into.
@@ -1483,7 +1478,7 @@ void WhileLoopAnalysis::CollectCollectivesToMove(
           invariant_loop_parameters_,
           should_allow_loop_variant_parameter_in_chain,
           should_allow_control_dependencies, invariant_loop_instructions_,
-          should_add_loop_invariant_op_in_chain, acceptable_formatting);
+          should_add_loop_invariant_op_in_chain);
       if (!chain_collected.has_value()) {
         VLOG(5) << "Skipping " << instr->name()
                 << " because didn't find compatible slice of parameter";
