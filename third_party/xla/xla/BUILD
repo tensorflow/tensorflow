@@ -1252,6 +1252,7 @@ xla_cc_test(
         "//xla/tsl/platform:test_main",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_googletest//:gtest",
+        "@com_google_protobuf//:protobuf",
         "@local_tsl//tsl/platform:protobuf",
     ],
 )

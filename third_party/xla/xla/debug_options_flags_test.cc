@@ -18,6 +18,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/container/flat_hash_set.h"
+#include "google/protobuf/descriptor.h"
 #include "xla/xla.pb.h"
 #include "tsl/platform/protobuf.h"
 
