@@ -18,6 +18,8 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <utility>
+#include <vector>
 
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -27,6 +29,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/buffer_assignment.pb.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
@@ -78,6 +81,25 @@ std::string FftTypeToString(se::fft::Type type) {
       return "RFFT";
     default:
       LOG(FATAL) << "unknown fft type";
+  }
+}
+
+absl::StatusOr<FftType> SeTypeToFftType(se::fft::Type type) {
+  switch (type) {
+    case se::fft::Type::kC2CForward:
+    case se::fft::Type::kZ2ZForward:
+      return FftType::FFT;
+    case se::fft::Type::kC2CInverse:
+    case se::fft::Type::kZ2ZInverse:
+      return FftType::IFFT;
+    case se::fft::Type::kC2R:
+    case se::fft::Type::kZ2D:
+      return FftType::IRFFT;
+    case se::fft::Type::kR2C:
+    case se::fft::Type::kD2Z:
+      return FftType::RFFT;
+    case se::fft::Type::kInvalid:
+      return Internal("Invalid fft type");
   }
 }
 
@@ -266,6 +288,48 @@ absl::Status RunFft(se::DeviceMemoryBase input, const Shape& input_shape,
   }
   return Internal("Unable to launch fft with type %s",
                   FftTypeToString(fft_type));
+}
+
+absl::StatusOr<std::unique_ptr<FftThunk>> FftThunk::FromProto(
+    ThunkInfo thunk_info, const FftThunkProto& proto,
+    absl::Span<const BufferAllocation> buffer_allocations) {
+  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice input_buffer,
+                      BufferAllocation::Slice::FromProto(proto.input_buffer(),
+                                                         buffer_allocations));
+  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice output_buffer,
+                      BufferAllocation::Slice::FromProto(proto.output_buffer(),
+                                                         buffer_allocations));
+
+  TF_ASSIGN_OR_RETURN(Shape input_shape, Shape::FromProto(proto.input_shape()));
+  TF_ASSIGN_OR_RETURN(Shape output_shape,
+                      Shape::FromProto(proto.output_shape()));
+
+  std::vector<int64_t> fft_length{proto.fft_length().begin(),
+                                  proto.fft_length().end()};
+
+  return std::make_unique<FftThunk>(thunk_info, proto.fft_type(),
+                                    std::move(fft_length), input_buffer,
+                                    output_buffer, input_shape, output_shape);
+}
+
+absl::StatusOr<ThunkProto> FftThunk::ToProto() const {
+  ThunkProto thunk_proto;
+  *thunk_proto.mutable_thunk_info() = thunk_info().ToProto();
+
+  FftThunkProto* proto = thunk_proto.mutable_fft_thunk();
+  TF_ASSIGN_OR_RETURN(FftType fft_type, SeTypeToFftType(fft_type_));
+  proto->set_fft_type(fft_type);
+
+  *proto->mutable_fft_length() = {fft_length_.begin(), fft_length_.end()};
+
+  TF_ASSIGN_OR_RETURN(*proto->mutable_input_buffer(), input_buffer_.ToProto());
+  TF_ASSIGN_OR_RETURN(*proto->mutable_output_buffer(),
+                      output_buffer_.ToProto());
+
+  *proto->mutable_input_shape() = input_shape_.ToProto();
+  *proto->mutable_output_shape() = output_shape_.ToProto();
+
+  return thunk_proto;
 }
 
 }  // namespace gpu

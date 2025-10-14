@@ -23,9 +23,11 @@ limitations under the License.
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/shape.h"
 #include "xla/stream_executor/device_memory.h"
@@ -81,6 +83,12 @@ class FftThunk : public Thunk {
 
   // Does the FFT for the thunk on "stream".
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
+
+  static absl::StatusOr<std::unique_ptr<FftThunk>> FromProto(
+      ThunkInfo thunk_info, const FftThunkProto& proto,
+      absl::Span<const BufferAllocation> buffer_allocations);
+
+  absl::StatusOr<ThunkProto> ToProto() const override;
 
  private:
   const se::fft::Type fft_type_;

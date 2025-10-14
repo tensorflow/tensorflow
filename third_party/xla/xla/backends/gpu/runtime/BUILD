@@ -744,12 +744,14 @@ cc_library(
     hdrs = ["fft_thunk.h"],
     deps = [
         ":thunk",
+        ":thunk_proto_cc",
         "//xla:shape_util",
         "//xla:status_macros",
         "//xla:types",
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla/service:buffer_assignment",
+        "//xla/service:buffer_assignment_proto_cc",
         "//xla/stream_executor:blas",
         "//xla/stream_executor:device_memory",
         "//xla/stream_executor:device_memory_allocator",
@@ -765,6 +767,22 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
+    ],
+)
+
+xla_cc_test(
+    name = "fft_thunk_test",
+    srcs = ["fft_thunk_test.cc"],
+    deps = [
+        ":fft_thunk",
+        ":thunk",
+        ":thunk_proto_cc",
+        "//xla/service:buffer_assignment",
+        "//xla/tsl/platform:statusor",
+        "//xla/tsl/util/proto:parse_text_proto",
+        "//xla/tsl/util/proto:proto_matchers",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -2397,6 +2415,7 @@ cc_library(
         ":convolution_thunk",
         ":copy_thunk",
         ":cudnn_thunk",
+        ":fft_thunk",
         ":gemm_thunk",
         ":gpublas_lt_matmul_thunk",
         ":infeed_thunk",
