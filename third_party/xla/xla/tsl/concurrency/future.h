@@ -32,6 +32,7 @@ limitations under the License.
 #include "xla/tsl/concurrency/async_value.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/concurrency/executor.h"
+#include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/platform/logging.h"
 
 namespace tsl {
@@ -128,12 +129,28 @@ class FutureMoveControl</*is_move_only=*/false> {
   FutureMoveControl& operator=(FutureMoveControl&&) = default;
 };
 
+// A template helper to deduce the `Future` type from the `FutureBase` type.
+// clang-format off
+template <typename T>
+struct FutureType;
+template <>
+struct FutureType<absl::Status>      { using type = void; };
+template <typename T>
+struct FutureType<absl::StatusOr<T>> { using type = T; };
+// clang-format on
+
+template <typename T>
+using future_type_t = typename FutureType<T>::type;  // NOLINT
+
 // A base class for a stateful future Future<T> and a stateless future Future<>.
 // If `is_move_only` is true, Future derived from this class acts as a move-only
 // type and the value can be passed to the caller only using move assignment
 // (applied to Await and OnReady APIs).
 template <typename T, bool is_move_only = !std::is_copy_constructible_v<T>>
 class FutureBase : public FutureMoveControl<is_move_only> {
+  static_assert(internal::is_status_v<T> || internal::is_status_or_v<T>,
+                "Future value type must be absl::Status or absl::StatusOr");
+
  protected:
   FutureBase() = default;
 
@@ -309,6 +326,30 @@ class FutureBase : public FutureMoveControl<is_move_only> {
       return *promise_;
     }
   }
+
+  // Returns a detached `Future<T>` that by default will execute all `OnReady`
+  // callbacks (and `Map` functors) on the given `executor`.
+  //
+  // When future value is set via the connected promise, all callbacks attached
+  // to the future will be executed on a thread that sets the promise value.
+  // This might lead to unexpectedly running expensive callbacks on a thread
+  // that is not intended for that, i.e. if a promise is set by a non-blocking
+  // thread that handles IO events, running expensive computation might lead to
+  // overall performance degradation.
+  //
+  // Detached future guarantees that all pending callbacks will be executed on
+  // the specified executor. If the future is ready when `OnReady` or `Map` is
+  // called, then the callback will be executed immediately in the caller
+  // thread. Users can explicitly override executor by using `OnReady` and `Map`
+  // overloads that accept another executor instance.
+  //
+  // We use a trick we an extra template parameter to disable const& overload
+  // when T is move-only, as we don't want to allow to create multiple futures
+  // sharing the same async value promise.
+  template <typename U = void,
+            std::enable_if_t<!is_move_only && std::is_void_v<U>>* = nullptr>
+  [[nodiscard]] Future<future_type_t<T>> Detach(Executor& executor) const&;
+  [[nodiscard]] Future<future_type_t<T>> Detach(Executor& executor) &&;
 
   // Returns a Future<> that becomes ready when *this is ready. If *this
   // completes with an error, the returned future will also be an error.
@@ -513,8 +554,9 @@ class Future : public internal::FutureBase<absl::StatusOr<T>> {
     friend class Future;
   };
 
-  // Returns a pair of connected Promise and Future<T>. Setting the returned
-  // promise will fulfill the connected future.
+  // Returns a pair of connected Promise and Future<>. Setting the returned
+  // promise will fulfill the connected future and will run pending callbacks in
+  // the caller thread.
   //
   // - on_block_start is called before Await starts to block.
   // - on_block_end is called after Await finishes blocking.
@@ -525,6 +567,24 @@ class Future : public internal::FutureBase<absl::StatusOr<T>> {
     Future<T> future(promise, std::move(on_block_start),
                      std::move(on_block_end));
     return std::make_pair(std::move(promise), std::move(future));
+  }
+
+  // Returns a pair of connected Promise and Future<T>. Setting the returned
+  // promise will fulfill the connected future and will run all pending
+  // callbacks on the given `executor`. If the future is ready when `OnReady` or
+  // `Map` is called, then the callback will be executed immediately in the
+  // caller thread. Users can explicitly override executor by using `OnReady`
+  // and `Map` overloads that accept another executor instance.
+  //
+  // - on_block_start is called before Await starts to block.
+  // - on_block_end is called after Await finishes blocking.
+  static ABSL_ATTRIBUTE_ALWAYS_INLINE std::pair<Promise, Future<T>> MakePromise(
+      Executor& executor, FutureHelpers::OnBlockStart on_block_start = nullptr,
+      FutureHelpers::OnBlockEnd on_block_end = nullptr) {
+    auto [promise, future] =
+        MakePromise(std::move(on_block_start), std::move(on_block_end));
+    return std::make_pair(std::move(promise),
+                          std::move(future).Detach(executor));
   }
 
   // Returns a future that is constructed from the result of invoking functor
@@ -542,6 +602,7 @@ class Future : public internal::FutureBase<absl::StatusOr<T>> {
   }
 
   using Base::Await;
+  using Base::Detach;
   using Base::GetReadyFuture;
   using Base::OnReady;
 
@@ -867,7 +928,11 @@ class Future<void> : public internal::FutureBase<absl::Status> {
   };
 
   // Returns a pair of connected Promise and Future<>. Setting the returned
-  // promise will fulfill the connected future.
+  // promise will fulfill the connected future and will run all pending
+  // callbacks in the caller thread.
+  //
+  // - on_block_start is called before Await starts to block.
+  // - on_block_end is called after Await finishes blocking.
   static ABSL_ATTRIBUTE_ALWAYS_INLINE std::pair<Promise, Future<>> MakePromise(
       FutureHelpers::OnBlockStart on_block_start = nullptr,
       FutureHelpers::OnBlockEnd on_block_end = nullptr) {
@@ -877,8 +942,26 @@ class Future<void> : public internal::FutureBase<absl::Status> {
     return std::make_pair(std::move(promise), std::move(future));
   }
 
-  // Returns a future that is constructed from the result of invoking functor
-  // `f` on the given `executor`.
+  // Returns a pair of connected Promise and Future<>. Setting the returned
+  // promise will fulfill the connected future and will run all pending
+  // callbacks on the given `executor`. If the future is ready when `OnReady` or
+  // `Map` is called, then the callback will be executed immediately in the
+  // caller thread. Users can explicitly override executor by using `OnReady`
+  // and `Map` overloads that accept another executor instance.
+  //
+  // - on_block_start is called before Await starts to block.
+  // - on_block_end is called after Await finishes blocking.
+  static ABSL_ATTRIBUTE_ALWAYS_INLINE std::pair<Promise, Future<>> MakePromise(
+      Executor& executor, FutureHelpers::OnBlockStart on_block_start = nullptr,
+      FutureHelpers::OnBlockEnd on_block_end = nullptr) {
+    auto [promise, future] =
+        MakePromise(std::move(on_block_start), std::move(on_block_end));
+    return std::make_pair(std::move(promise),
+                          std::move(future).Detach(executor));
+  }
+
+  // Returns a future that is constructed from the result of invoking
+  // functor `f` on the given `executor`.
   template <typename F, typename R = std::invoke_result_t<F>,
             std::enable_if_t<internal::is_status_v<R>>* = nullptr>
   [[nodiscard]] static Future<> MakeOn(Executor& executor, F&& f) {
@@ -892,6 +975,7 @@ class Future<void> : public internal::FutureBase<absl::Status> {
 
   using Base::Await;
   using Base::BlockUntilReady;
+  using Base::Detach;
   using Base::OnReady;
 
   // Returns an Future<R> that is constructed from the result of invoking
@@ -1057,6 +1141,41 @@ using Promise = typename Future<T>::Promise;  // NOLINT
 //===----------------------------------------------------------------------===//
 
 namespace internal {
+
+template <typename T, bool is_move_only>
+template <typename U, std::enable_if_t<!is_move_only && std::is_void_v<U>>*>
+Future<future_type_t<T>> FutureBase<T, is_move_only>::Detach(
+    Executor& executor) const& {
+  if (ABSL_PREDICT_FALSE(IsReady())) {
+    return Future<future_type_t<T>>(promise_, on_block_start_, on_block_end_);
+  }
+
+  RCReference<IndirectAsyncValue> detached = MakeIndirectAsyncValue<T>();
+  promise_.AndThen(executor, [detached, ptr = promise_.AsPtr()] {
+    detached->ForwardTo(ptr.CopyRCRef());
+  });
+  return Future<future_type_t<T>>(AsyncValueRef<T>(std::move(detached)),
+                                  on_block_start_, on_block_end_);
+}
+
+template <typename T, bool is_move_only>
+Future<future_type_t<T>> FutureBase<T, is_move_only>::Detach(
+    Executor& executor) && {
+  if (ABSL_PREDICT_FALSE(IsReady())) {
+    return Future<future_type_t<T>>(std::move(promise_),
+                                    std::move(on_block_start_),
+                                    std::move(on_block_end_));
+  }
+
+  AsyncValuePtr<T> ptr = promise_.AsPtr();
+  RCReference<IndirectAsyncValue> detached = MakeIndirectAsyncValue<T>();
+  ptr.AndThen(executor, [detached, ref = std::move(promise_)]() mutable {
+    detached->ForwardTo(ref.ReleaseRCRef());
+  });
+  return Future<future_type_t<T>>(AsyncValueRef<T>(std::move(detached)),
+                                  std::move(on_block_start_),
+                                  std::move(on_block_end_));
+}
 
 template <typename T, bool is_move_only>
 Future<> FutureBase<T, is_move_only>::GetReadyFuture() const {
