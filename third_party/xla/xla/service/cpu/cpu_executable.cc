@@ -86,34 +86,6 @@ namespace cpu {
 absl::StatusOr<std::unique_ptr<CpuExecutable>> CpuExecutable::Create(
     std::unique_ptr<FunctionLibrary> function_library,
     std::unique_ptr<BufferAssignment> assignment,
-    std::unique_ptr<HloModule> hlo_module,
-    const std::string& entry_function_name,
-    std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data,
-    std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map) {
-  VLOG(2) << "Create CpuExecutable from a jit compiled function: "
-          << entry_function_name << ", module=" << hlo_module->name();
-
-  std::unique_ptr<CpuExecutable> executable(new CpuExecutable(
-      std::move(hlo_module), std::move(hlo_profile_printer_data),
-      std::move(hlo_profile_index_map), std::move(assignment)));
-  executable->function_library_ = std::move(function_library);
-  executable->module_name_ = entry_function_name;
-
-  TF_ASSIGN_OR_RETURN(
-      executable->compute_function_,
-      executable->function_library_
-          ->ResolveFunction<std::remove_pointer_t<ComputeFunctionType>>(
-              entry_function_name));
-
-  VLOG(1) << "compute_function_ at address "
-          << reinterpret_cast<void*>(executable->compute_function_);
-
-  return executable;
-}
-
-absl::StatusOr<std::unique_ptr<CpuExecutable>> CpuExecutable::Create(
-    std::unique_ptr<FunctionLibrary> function_library,
-    std::unique_ptr<BufferAssignment> assignment,
     std::unique_ptr<HloModule> hlo_module, ThunkSequence thunks,
     std::vector<ConstantAllocation> constants,
     std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data,
@@ -244,60 +216,6 @@ CpuExecutable::CreateBufferTable(se::DeviceMemoryAllocator* memory_allocator,
     VLOG(3) << "result index: " << result_slice.index();
   }
   return std::move(buffers);
-}
-
-absl::Status CpuExecutable::ExecuteComputeFunction(
-    const ExecutableRunOptions* run_options,
-    absl::Span<MaybeOwningDeviceMemory const> buffers) {
-  uint64_t start_micros = tsl::Env::Default()->NowMicros();
-
-  size_t profile_counters_size = 0;
-  int64_t* profile_counters = nullptr;
-
-  // Call the computation function following the calling convention. See the
-  // definition of 'ComputeFunctionType' for the details of the calling
-  // convention of JITed functions.
-  std::vector<void*> buffer_pointers;
-  for (auto& buffer : buffers) {
-    buffer_pointers.push_back(
-        const_cast<void*>(buffer.AsDeviceMemoryBase().opaque()));
-  }
-
-  VLOG(3) << "Executing compute function:";
-  VLOG(3) << absl::StrFormat("  Number of buffer table entries: %u",
-                             buffer_pointers.size());
-  auto ptr_printer = [](std::string* out, const void* p) {
-    absl::StrAppend(out, absl::StrFormat("%p", p));
-  };
-  VLOG(3) << absl::StrFormat("  Buffer table: [%s]",
-                             absl::StrJoin(buffer_pointers, ", ", ptr_printer));
-  VLOG(3) << absl::StrFormat("  Number of profile counters: %u",
-                             profile_counters_size);
-  VLOG(3) << absl::StrFormat("  Profile counters: %p", profile_counters);
-
-  auto record_profile = [&]() {
-    uint64_t end_micros = tsl::Env::Default()->NowMicros();
-    if (run_options->execution_profile()) {
-      const double nanoseconds = (end_micros - start_micros) * 1000.0;
-      run_options->execution_profile()->set_compute_time_ns(
-          std::max(nanoseconds, 1.0));
-    }
-  };
-
-  XlaCustomCallStatus status;
-  // For the entry computation (like all global computations), all inputs and
-  // outputs are in the buffer table, and both the result pointer and args
-  // array pointers are unused (so we set them to 'nullptr').
-  compute_function_(nullptr, run_options, nullptr, buffer_pointers.data(),
-                    &status, profile_counters);
-  record_profile();
-  std::optional<absl::string_view> error_message =
-      CustomCallStatusGetMessage(&status);
-  if (error_message) {
-    return Internal("CustomCall failed: %s", *error_message);
-  }
-
-  return absl::OkStatus();
 }
 
 absl::Status CpuExecutable::ExecuteThunks(
@@ -532,14 +450,8 @@ absl::StatusOr<ExecutionOutput> CpuExecutable::ExecuteAsyncOnStream(
   tsl::port::ScopedFlushDenormal flush;
   tsl::port::ScopedSetRound round(FE_TONEAREST);
 
-  if (has_compute_function()) {
-    TF_RETURN_IF_ERROR(
-        ExecuteComputeFunction(&run_options->run_options(), buffers));
-  } else if (has_thunks()) {
-    TF_RETURN_IF_ERROR(ExecuteThunks(&run_options->run_options(), buffers));
-  } else {
-    return Internal("No compute function or thunks found.");
-  }
+  DCHECK(has_thunks());
+  TF_RETURN_IF_ERROR(ExecuteThunks(&run_options->run_options(), buffers));
 
   MarkToBeReleasedArguments(absl::MakeSpan(arguments), result);
   return std::move(result);

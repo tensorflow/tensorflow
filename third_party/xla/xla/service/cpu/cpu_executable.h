@@ -55,16 +55,6 @@ namespace cpu {
 // architecture, so JIT-ed code and host code share the same ABI.
 class CpuExecutable : public Executable {
  public:
-  // Creates a CpuExecutable from JIT compiled cpu function by resolving
-  // `entry_function_name` in the `jit`.
-  static absl::StatusOr<std::unique_ptr<CpuExecutable>> Create(
-      std::unique_ptr<FunctionLibrary> function_library,
-      std::unique_ptr<BufferAssignment> assignment,
-      std::unique_ptr<HloModule> hlo_module,
-      const std::string& entry_function_name,
-      std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data,
-      std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map);
-
   // Creates a CpuExecutable from a thunk sequence.
   static absl::StatusOr<std::unique_ptr<CpuExecutable>> Create(
       std::unique_ptr<FunctionLibrary> function_library,
@@ -79,12 +69,6 @@ class CpuExecutable : public Executable {
   absl::StatusOr<ExecutionOutput> ExecuteAsyncOnStream(
       const ServiceExecutableRunOptions* run_options,
       std::vector<ExecutionInput> arguments) override;
-
-  // Calls the generated function performing the computation with the given
-  // arguments using the supplied buffers.
-  absl::Status ExecuteComputeFunction(
-      const ExecutableRunOptions* run_options,
-      absl::Span<MaybeOwningDeviceMemory const> buffers);
 
   // Calls emitted thunk sequence with the given arguments using the supplied
   // buffers.
@@ -139,15 +123,6 @@ class CpuExecutable : public Executable {
   const std::string& module_name() const { return module_name_; }
 
   static int64_t ShapeSizeBytes(const Shape& shape);
-
-  // Type of the computation function we expect in the JIT.
-  using ComputeFunctionType =
-      void (*)(void* /*result*/, const ExecutableRunOptions* /*run_options*/,
-               const void** /*args*/, void** /*buffer_table*/,
-               XlaCustomCallStatus* /*status*/, int64_t* /*profile_counters*/);
-
-  bool has_compute_function() const { return compute_function_ != nullptr; }
-  ComputeFunctionType compute_function() const { return compute_function_; }
 
   bool has_thunks() const { return thunks_.has_value(); }
   ThunkExecutor& thunks() { return *thunks_; }
@@ -246,9 +221,6 @@ class CpuExecutable : public Executable {
   //
   // We are currently transitioning from (1) to (2) with a long term plan to
   // unify thunk-based runtime with all XLA backends.
-
-  // A function pointer to the jit-compiled entry function.
-  ComputeFunctionType compute_function_ = nullptr;
 
   // A thunk executor created from the compiled thunk sequence.
   std::optional<ThunkExecutor> thunks_;
