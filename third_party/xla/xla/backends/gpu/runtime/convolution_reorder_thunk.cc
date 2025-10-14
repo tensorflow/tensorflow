@@ -16,17 +16,21 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/convolution_reorder_thunk.h"
 
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <utility>
 
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/convolution_filter_thunk.pb.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/buffer_assignment.pb.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -49,7 +53,8 @@ ConvolutionReorderThunk::ConvolutionReorderThunk(
     BufferAllocation::Slice filter_input, BufferAllocation::Slice filter_output,
     std::optional<BiasBuffers> biases)
     : Thunk(Kind::kConvolutionReorder, thunk_info),
-      filter_descriptor_(CreateFilterDescriptor(filter_dimensions)),
+      filter_dimensions_(std::move(filter_dimensions)),
+      filter_descriptor_(CreateFilterDescriptor(filter_dimensions_)),
       filter_input_(filter_input),
       filter_output_(filter_output),
       biases_(biases) {}
@@ -79,6 +84,58 @@ absl::Status ConvolutionReorderThunk::ExecuteOnStream(
   return dnn->CudnnReorderConvolutionFilterAndBias(
       params.stream, filter_descriptor_, filter_input, &filter_output,
       std::move(bias_input), std::move(bias_output));
+}
+
+absl::StatusOr<std::unique_ptr<ConvolutionReorderThunk>>
+ConvolutionReorderThunk::FromProto(
+    ThunkInfo thunk_info, const ConvolutionReorderThunkProto& proto,
+    absl::Span<const BufferAllocation> buffer_allocations) {
+  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice filter_input,
+                      BufferAllocation::Slice::FromProto(proto.filter_input(),
+                                                         buffer_allocations));
+  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice filter_output,
+                      BufferAllocation::Slice::FromProto(proto.filter_output(),
+                                                         buffer_allocations));
+
+  std::optional<BiasBuffers> biases;
+  if (proto.has_biases()) {
+    TF_ASSIGN_OR_RETURN(BufferAllocation::Slice bias_input,
+                        BufferAllocation::Slice::FromProto(
+                            proto.biases().bias_input(), buffer_allocations));
+    TF_ASSIGN_OR_RETURN(BufferAllocation::Slice bias_output,
+                        BufferAllocation::Slice::FromProto(
+                            proto.biases().bias_output(), buffer_allocations));
+    biases = {{bias_input, bias_output}};
+  }
+
+  return std::make_unique<ConvolutionReorderThunk>(
+      std::move(thunk_info), proto.filter_dimensions(), filter_input,
+      filter_output, biases);
+}
+
+absl::StatusOr<ThunkProto> ConvolutionReorderThunk::ToProto() const {
+  ThunkProto thunk_proto;
+  *thunk_proto.mutable_thunk_info() = thunk_info().ToProto();
+
+  ConvolutionReorderThunkProto* reorder_proto =
+      thunk_proto.mutable_convolution_reorder_thunk();
+  *reorder_proto->mutable_filter_dimensions() = filter_dimensions_;
+
+  TF_ASSIGN_OR_RETURN(*reorder_proto->mutable_filter_input(),
+                      filter_input_.ToProto());
+  TF_ASSIGN_OR_RETURN(*reorder_proto->mutable_filter_output(),
+                      filter_output_.ToProto());
+
+  if (biases_.has_value()) {
+    ConvolutionReorderBiasBuffers* biases_proto =
+        reorder_proto->mutable_biases();
+    TF_ASSIGN_OR_RETURN(*biases_proto->mutable_bias_input(),
+                        biases_->bias_input.ToProto());
+    TF_ASSIGN_OR_RETURN(*biases_proto->mutable_bias_output(),
+                        biases_->bias_output.ToProto());
+  }
+
+  return thunk_proto;
 }
 
 }  // namespace gpu

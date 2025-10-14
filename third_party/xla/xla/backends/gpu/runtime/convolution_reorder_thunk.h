@@ -16,11 +16,15 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_RUNTIME_CONVOLUTION_REORDER_THUNK_H_
 #define XLA_BACKENDS_GPU_RUNTIME_CONVOLUTION_REORDER_THUNK_H_
 
+#include <memory>
 #include <optional>
 
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/convolution_filter_thunk.pb.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/stream_executor/dnn.h"
 
@@ -46,8 +50,14 @@ class ConvolutionReorderThunk : public Thunk {
 
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
 
+  static absl::StatusOr<std::unique_ptr<ConvolutionReorderThunk>> FromProto(
+      ThunkInfo thunk_info, const ConvolutionReorderThunkProto& proto,
+      absl::Span<const BufferAllocation> buffer_allocations);
+
+  absl::StatusOr<ThunkProto> ToProto() const override;
+
  private:
-  // TODO: b/431980836 - Store the filter dimensions to use for serialization.
+  const ConvolutionFilterDimensions filter_dimensions_;
   const se::dnn::FilterDescriptor filter_descriptor_;
   BufferAllocation::Slice filter_input_;
   BufferAllocation::Slice filter_output_;

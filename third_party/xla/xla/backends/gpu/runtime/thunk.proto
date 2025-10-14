@@ -17,9 +17,9 @@ syntax = "proto3";
 
 package xla.gpu;
 
+import "xla/backends/gpu/runtime/convolution_filter_thunk.proto";
 import "xla/backends/gpu/runtime/dynamic_slice_thunk.proto";
 import "xla/service/buffer_assignment.proto";
-import "xla/service/gpu/backend_configs.proto";
 import "xla/service/gpu/gpu_conv_runner.proto";
 import "xla/service/gpu/gpu_norm_runner.proto";
 import "xla/service/gpu/launch_dimensions.proto";
@@ -206,6 +206,13 @@ message ConvolutionThunkProto {
   xla.buffer_assignment.BufferAllocationSliceProto scratch_buffer = 4;
 }
 
+message ConvolutionReorderThunkProto {
+  ConvolutionFilterDimensions filter_dimensions = 1;
+  xla.buffer_assignment.BufferAllocationSliceProto filter_input = 2;
+  xla.buffer_assignment.BufferAllocationSliceProto filter_output = 3;
+  optional ConvolutionReorderBiasBuffers biases = 4;
+}
+
 message ThunkProto {
   ThunkInfoProto thunk_info = 1;
 
@@ -234,6 +241,7 @@ message ThunkProto {
     OutfeedThunkProto outfeed_thunk = 23;
     NormThunkProto norm_thunk = 24;
     ConvolutionThunkProto convolution_thunk = 25;
+    ConvolutionReorderThunkProto convolution_reorder_thunk = 26;
   }
 }
 

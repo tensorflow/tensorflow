@@ -28,6 +28,7 @@ limitations under the License.
 #include "google/protobuf/descriptor.h"
 #include "google/protobuf/message.h"
 #include "xla/backends/gpu/runtime/conditional_thunk.h"
+#include "xla/backends/gpu/runtime/convolution_reorder_thunk.h"
 #include "xla/backends/gpu/runtime/convolution_thunk.h"
 #include "xla/backends/gpu/runtime/copy_thunk.h"
 #include "xla/backends/gpu/runtime/cudnn_thunk.h"
@@ -153,6 +154,11 @@ absl::StatusOr<std::unique_ptr<Thunk>> DeserializeThunkProto(
       return ConvolutionThunk::FromProto(std::move(thunk_info),
                                          thunk_proto.convolution_thunk(),
                                          buffer_allocations);
+    case ThunkProto::kConvolutionReorderThunk: {
+      return ConvolutionReorderThunk::FromProto(
+          std::move(thunk_info), thunk_proto.convolution_reorder_thunk(),
+          buffer_allocations);
+    }
     default:
       std::optional<absl::string_view> unsupported_thunk_type =
           GetStoredThunkTypeName(thunk_proto);
