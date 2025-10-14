@@ -1941,7 +1941,10 @@ StreamExecutorGpuClient::RunAsync(
     buffers_in_result.insert(result_buffer);
 
     p.second = RawSEDeviceMemory::Create(
-        result_buffer, device->local_device_id(), memory_allocator);
+        result_buffer,
+        tensorflow::down_cast<PjRtStreamExecutorDevice*>(device)
+            ->local_device_state(),
+        memory_allocator);
   }
 
   TF_RETURN_IF_ERROR(gpu_exec->ExecuteThunks(buffer_allocations, run_options));

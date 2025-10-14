@@ -35,6 +35,7 @@ limitations under the License.
 #include "xla/pjrt/abstract_tracked_device_buffer.h"
 #include "xla/pjrt/buffer_sequencing_event.h"
 #include "xla/pjrt/event_pool.h"
+#include "xla/pjrt/local_device_state.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/service/executable.h"
@@ -70,11 +71,18 @@ class RawSEDeviceMemory : public tsl::ReferenceCounted<RawSEDeviceMemory> {
                               const Shape& on_device_shape) const;
 
   static tsl::RCReference<RawSEDeviceMemory> Create(
-      se::DeviceMemoryBase value, PjRtLocalDeviceId device_id,
+      se::DeviceMemoryBase value, LocalDeviceState* local_device,
       se::DeviceMemoryAllocator* allocator);
   static tsl::RCReference<RawSEDeviceMemory> CreateForeign(
       se::DeviceMemoryBase value,
       absl::AnyInvocable<void() &&> on_delete_callback);
+
+  // Returns a definition event (or nullptr if the definition is known to be in
+  // the past).
+  virtual absl::StatusOr<BufferSequencingEventRef> GetDefinitionEvent(
+      tsl::thread::ThreadPool* thread_pool, bool nullptr_if_past) const {
+    return BufferSequencingEventRef();
+  }
 
  private:
   se::DeviceMemoryBase value_;

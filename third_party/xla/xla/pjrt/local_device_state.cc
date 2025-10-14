@@ -324,14 +324,17 @@ absl::Status LocalDeviceState::AllocateAndRecordEvent(
 
 absl::StatusOr<BufferSequencingEventRef>
 LocalDeviceState::GetEventForComputeStreamSyncPoint(
-    size_t sync_point, tsl::thread::ThreadPool* thread_pool) {
+    size_t sync_point, tsl::thread::ThreadPool* thread_pool,
+    bool nullptr_if_past) {
   mu_.lock();
   size_t cur_sync_point = next_compute_stream_sync_point_.load();
   if (sync_point < base_compute_event_sequence_id_ + compute_events_.size()) {
     BufferSequencingEventRef event;
     if (sync_point < base_compute_event_sequence_id_) {
-      DCHECK_GT(compute_events_.size(), 0);
-      event = compute_events_.front();
+      if (!nullptr_if_past) {
+        DCHECK_GT(compute_events_.size(), 0);
+        event = compute_events_.front();
+      }
     } else {
       event = compute_events_[sync_point - base_compute_event_sequence_id_];
     }

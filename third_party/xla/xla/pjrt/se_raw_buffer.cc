@@ -36,6 +36,7 @@ limitations under the License.
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/threadpool.h"
 #include "tsl/platform/casts.h"
 #include "tsl/profiler/lib/connected_traceme.h"
@@ -119,11 +120,12 @@ PjRtStreamExecutorRawBuffer::CopyRawHostToDeviceAndReturnEvent(
   auto device_event = BufferSequencingEvent::Create(client_->thread_pool());
   client_->thread_pool()->Schedule(
       [client = client_, device_event, local_device = local_device_, stream,
-       buffer = device_buffer_, src, offset, transfer_size]() mutable {
-        se::DeviceMemoryBase sub_buffer = buffer->mem();
+       src, offset, transfer_size, buf = tsl::FormRef(this)]() mutable {
+        se::DeviceMemoryBase sub_buffer = buf->device_buffer_->mem();
         if (transfer_size < sub_buffer.size()) {
           sub_buffer = sub_buffer.GetByteSlice(offset, transfer_size);
         }
+        client->WaitForAllocation(stream, *buf);
         auto status = stream->Memcpy(&sub_buffer, src, transfer_size);
         if (status.ok()) {
           status = client->AllocateAndRecordEvent(device_event, local_device,
@@ -145,11 +147,12 @@ PjRtStreamExecutorRawBuffer::CopyRawDeviceToHostAndReturnEvent(
   auto device_event = BufferSequencingEvent::Create(client_->thread_pool());
   client_->thread_pool()->Schedule(
       [client = client_, device_event, local_device = local_device_, stream,
-       buffer = device_buffer_, dst, offset, transfer_size]() mutable {
-        se::DeviceMemoryBase sub_buffer = buffer->mem();
+       dst, offset, transfer_size, buf = tsl::FormRef(this)]() mutable {
+        se::DeviceMemoryBase sub_buffer = buf->device_buffer_->mem();
         if (transfer_size < sub_buffer.size()) {
           sub_buffer = sub_buffer.GetByteSlice(offset, transfer_size);
         }
+        client->WaitForAllocation(stream, *buf);
         auto status = stream->Memcpy(dst, sub_buffer, transfer_size);
         if (status.ok()) {
           status = client->AllocateAndRecordEvent(device_event, local_device,
@@ -207,12 +210,11 @@ absl::StatusOr<tsl::RCReference<PjRtDeviceEvent>>
 PjRtStreamExecutorRawBuffer::MakeAllocationReadyEvent() {
   auto* client =
       tensorflow::down_cast<PjRtStreamExecutorClient*>(memory_space_->client());
-  auto result = BufferSequencingEvent::Create(client->thread_pool());
-  if (local_device_->allocation_model() ==
-      LocalDeviceState::kComputeSynchronized) {
-    TF_RETURN_IF_ERROR(client->AllocateAndRecordEvent(
-        result, local_device_, local_device_->compute_stream()));
-  } else {
+  TF_ASSIGN_OR_RETURN(auto result,
+                      device_buffer_->GetDefinitionEvent(
+                          client->thread_pool(), /*nullptr_if_past=*/false));
+  if (!result) {
+    result = BufferSequencingEvent::Create(client->thread_pool());
     auto stream = local_device_->BorrowStreamFromPool();
     auto status =
         client->AllocateAndRecordEvent(result, local_device_, stream.get());

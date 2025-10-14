@@ -17,9 +17,11 @@ limitations under the License.
 
 #include <algorithm>
 #include <atomic>
+#include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <iterator>
+#include <limits>
 #include <memory>
 #include <string>
 #include <utility>
@@ -32,8 +34,10 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "xla/pjrt/buffer_sequencing_event.h"
 #include "xla/pjrt/device_event.h"
 #include "xla/pjrt/event_pool.h"
+#include "xla/pjrt/local_device_state.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/se_raw_buffer.h"
@@ -46,6 +50,7 @@ limitations under the License.
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/platform/logging.h"
+#include "xla/tsl/platform/threadpool.h"
 #include "tsl/profiler/lib/connected_traceme.h"
 #include "tsl/profiler/lib/context_types.h"
 
@@ -66,15 +71,22 @@ ShapedBuffer RawSEDeviceMemory::AsShapedBuffer(
 
 class AllocatedRawSEDeviceMemory : public RawSEDeviceMemory {
  public:
-  AllocatedRawSEDeviceMemory(se::DeviceMemoryBase value, int device_ordinal,
+  AllocatedRawSEDeviceMemory(se::DeviceMemoryBase value,
+                             LocalDeviceState* local_device,
                              se::DeviceMemoryAllocator* allocator)
       : RawSEDeviceMemory(value),
         allocator_(allocator),
-        device_ordinal_(device_ordinal) {}
+        local_device_(local_device) {
+    if (local_device_->allocation_model() ==
+        LocalDeviceState::kComputeSynchronized) {
+      sync_point_ = local_device_->GetNextComputeStreamSyncPoint();
+    }
+  }
 
   ~AllocatedRawSEDeviceMemory() override {
     if (allocator_) {
-      absl::Status status = allocator_->Deallocate(device_ordinal_, mem());
+      absl::Status status = allocator_->Deallocate(
+          local_device_->local_device_id().value(), mem());
       if (!status.ok()) {
         LOG(ERROR) << "Buffer deallocation failed: " << status;
       }
@@ -83,15 +95,26 @@ class AllocatedRawSEDeviceMemory : public RawSEDeviceMemory {
 
   void UnsafeReleaseMemory() override { allocator_ = nullptr; }
 
+  absl::StatusOr<BufferSequencingEventRef> GetDefinitionEvent(
+      tsl::thread::ThreadPool* thread_pool,
+      bool nullptr_if_past) const override {
+    if (sync_point_ != std::numeric_limits<size_t>::max()) {
+      return local_device_->GetEventForComputeStreamSyncPoint(
+          sync_point_, thread_pool, nullptr_if_past);
+    }
+    return BufferSequencingEventRef();
+  }
+
  private:
   se::DeviceMemoryAllocator* allocator_;
-  int device_ordinal_;
+  LocalDeviceState* local_device_;
+  size_t sync_point_ = std::numeric_limits<size_t>::max();
 };
 
 tsl::RCReference<RawSEDeviceMemory> RawSEDeviceMemory::Create(
-    se::DeviceMemoryBase value, PjRtLocalDeviceId device_id,
+    se::DeviceMemoryBase value, LocalDeviceState* local_device,
     se::DeviceMemoryAllocator* allocator) {
-  return tsl::MakeRef<AllocatedRawSEDeviceMemory>(value, device_id.value(),
+  return tsl::MakeRef<AllocatedRawSEDeviceMemory>(value, local_device,
                                                   allocator);
 }
 

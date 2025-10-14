@@ -533,8 +533,8 @@ PjRtStreamExecutorClient::AllocateRawBuffer(
       auto buffer,
       allocator()->Allocate(local_device->local_device_id().value(),
                             on_device_bytes_count, true, layout_memory_space));
-  auto mem = RawSEDeviceMemory::Create(buffer.Release(),
-                                       device->local_device_id(), allocator());
+  auto mem =
+      RawSEDeviceMemory::Create(buffer.Release(), local_device, allocator());
   if (local_device->allocation_model() !=
       LocalDeviceState::kComputeSynchronized) {
     DCHECK(client()->backend().transfer_manager()->CanBufferBeAccessedNow(
@@ -576,13 +576,13 @@ PjRtStreamExecutorClient::DefineBuffer(
 
 void PjRtStreamExecutorClient::WaitForAllocation(
     se::Stream* stream, const CommonPjRtRawBuffer& raw_buffer) {
-  auto* local_device =
+  auto event =
       tensorflow::down_cast<const PjRtStreamExecutorRawBuffer*>(&raw_buffer)
-          ->local_device();
-  if (local_device->allocation_model() ==
-      LocalDeviceState::kComputeSynchronized) {
-    CHECK(stream);
-    CHECK_OK(stream->WaitFor(local_device->compute_stream()));
+          ->device_buffer()
+          ->GetDefinitionEvent(thread_pool(), /*nullptr_if_past=*/true);
+  CHECK_OK(event.status());
+  if (*event) {
+    (*event)->WaitForEventOnStream(stream);
   }
 }
 
@@ -647,8 +647,7 @@ AllocateDestinationBuffer(const Shape& on_host_shape, PjRtDevice* device,
         << on_device_shape.ToString(true) << " vs "
         << old_on_device_shape.ToString(true);
     DCHECK_EQ(on_device_bytes_count, dst_buffer.buffer({}).size());
-    mem = RawSEDeviceMemory::Create(dst_buffer.buffer({}),
-                                    device->local_device_id(),
+    mem = RawSEDeviceMemory::Create(dst_buffer.buffer({}), local_device,
                                     dst_buffer.memory_allocator());
     dst_buffer.clear();
     if (local_device->allocation_model() !=
@@ -2045,9 +2044,8 @@ MakeTupleHelper(
   auto iterator_end = execution_input.end();
   // First set the root tuple table which is the first buffer in the ShapeTree.
   input_iterator->second = {
-      true,
-      RawSEDeviceMemory::Create(owned_root_table_memory.Release(),
-                                local_device->local_device_id(), allocator)};
+      true, RawSEDeviceMemory::Create(owned_root_table_memory.Release(),
+                                      local_device, allocator)};
   ++input_iterator;
   // Then set each sub-tuple in turn from the parameters.
   for (const PjRtStreamExecutorBuffer::ScopedHold& device_buffer :
@@ -2566,7 +2564,10 @@ PjRtStreamExecutorClient::RunAsync(
   for (auto& buf : released_ssb.buffers()) {
     CHECK(it != results.end());
     it->second = RawSEDeviceMemory::Create(
-        buf.second, device->local_device_id(), allocator);
+        buf.second,
+        tensorflow::down_cast<PjRtStreamExecutorDevice*>(device)
+            ->local_device_state(),
+        allocator);
     ++it;
   }
   CHECK(it == results.end());

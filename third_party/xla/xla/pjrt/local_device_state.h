@@ -220,7 +220,8 @@ class LocalDeviceState {
   // which only incur the expense of constructing a cuda event if they're really
   // needed. This allows constructing a definition event per buffer.
   absl::StatusOr<BufferSequencingEventRef> GetEventForComputeStreamSyncPoint(
-      size_t sync_point, tsl::thread::ThreadPool* thread_pool);
+      size_t sync_point, tsl::thread::ThreadPool* thread_pool,
+      bool nullptr_if_past = false);
 
  private:
   absl::Status SynchronizeAllActivity();

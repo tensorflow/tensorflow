@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/pjrt/tracked_device_buffer.h"
 
 #include <memory>
+#include <utility>
 #include <vector>
 
 #include "absl/log/log.h"
@@ -93,9 +94,9 @@ absl::StatusOr<std::shared_ptr<TrackedDeviceBuffer>> MakeArray(
                 /*device_ordinal=*/0,
                 client->backend().transfer_manager()->GetByteSizeRequirement(
                     subshape)));
-        device_buffers.push_back(RawSEDeviceMemory::Create(
-            device_memory.Release(), device->local_device_id(),
-            client->backend().memory_allocator()));
+        auto se_mem = *device_memory;
+        device_buffers.push_back(RawSEDeviceMemory::CreateForeign(
+            se_mem, [device_memory = std::move(device_memory)]() {}));
         return absl::OkStatus();
       }));
   return std::make_shared<TrackedDeviceBuffer>(
