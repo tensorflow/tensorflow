@@ -416,10 +416,10 @@ cc_library(
     srcs = ["codegen_test_base.cc"],
     hdrs = ["codegen_test_base.h"],
     deps = [
+        ":hlo_test_base_with_symbolic_expr_context",
         "//xla/hlo/ir:hlo",
         "//xla/service:compiler",
         "//xla/service:executable",
-        "//xla/tests:hlo_test_base_with_mlir_context",
     ],
 )
 
@@ -1208,8 +1208,8 @@ xla_test(
         "test_migrated_to_hlo_runner_pjrt",
     ],
     deps = [
+        ":hlo_pjrt_test_base",
         "//xla/service:platform_util",
-        "//xla/tests:hlo_pjrt_test_base",
         "//xla/tsl/platform:status_matchers",
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/status",
@@ -3800,11 +3800,12 @@ cc_library(
 )
 
 cc_library(
-    name = "hlo_test_base_with_mlir_context",
+    name = "hlo_test_base_with_symbolic_expr_context",
     testonly = True,
-    hdrs = ["hlo_test_base_with_mlir_context.h"],
+    hdrs = ["hlo_test_base_with_symbolic_expr_context.h"],
     deps = [
-        "//xla/tests:hlo_test_base",
+        ":hlo_test_base",
+        "//xla/service/gpu/model/experimental:symbolic_expr",
         "@llvm-project//mlir:IR",
     ],
 )

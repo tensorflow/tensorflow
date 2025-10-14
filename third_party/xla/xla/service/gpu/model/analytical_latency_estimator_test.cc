@@ -33,6 +33,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/service/gpu/alias_info.h"
 #include "xla/service/gpu/gpu_compiler.h"
+#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/service/gpu/tests/gpu_codegen_test.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/latency_hiding_scheduler.h"
@@ -171,11 +172,13 @@ ENTRY entry {
   EXPECT_TRUE(hlo_module->has_entry_computation());
 
   auto mlir_context = std::make_unique<mlir::MLIRContext>();
+  auto symbolic_expr_context =
+      std::make_unique<SymbolicExprContext>(mlir_context.get());
   auto scheduler_config = GetDefaultSchedulerConfig();
   auto latency_estimator = std::make_unique<AnalyticalLatencyEstimator>(
       scheduler_config, std::make_unique<ApproximateLatencyEstimator>(),
       dev_info, HloCostAnalysis::DefaultShapeSize,
-      hlo_module->entry_computation(), mlir_context.get());
+      hlo_module->entry_computation(), symbolic_expr_context.get());
   auto alias_info = GetAliasInfo();
   EXPECT_TRUE(RunScheduler(hlo_module.get(), scheduler_config, alias_info.get(),
                            std::move(latency_estimator))

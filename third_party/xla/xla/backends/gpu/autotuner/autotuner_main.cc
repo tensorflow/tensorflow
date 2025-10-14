@@ -41,6 +41,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/service/compiler.h"
+#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/service/platform_util.h"
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/platform.h"
@@ -84,7 +85,7 @@ absl::StatusOr<std::unique_ptr<HloModule>> GetModule(
 
 absl::Status Autotune(HloModule& module, const std::string& cache_dir,
                       const std::string& autotune_cache_mode_str,
-                      mlir::MLIRContext* mlir_context) {
+                      SymbolicExprContext* symbolic_expr_context) {
   TF_ASSIGN_OR_RETURN(std::string platform_name,
                       PlatformUtil::CanonicalPlatformName("gpu"));
 
@@ -106,7 +107,7 @@ absl::Status Autotune(HloModule& module, const std::string& cache_dir,
                       registry.FindObject<GetCodegenBackends>(platform->id()));
   std::vector<std::unique_ptr<CodegenBackend>> backends =
       get_codegen_backends(stream_executor, &debug_options, compiler.get(),
-                           &target_config, mlir_context);
+                           &target_config, symbolic_expr_context);
 
   std::unique_ptr<se::DeviceMemoryAllocator> allocator =
       std::make_unique<stream_executor::StreamExecutorMemoryAllocator>(
@@ -181,8 +182,9 @@ int main(int argc, char* argv[]) {
   auto module = xla::gpu::GetModule(hlo_file);
   CHECK_OK(module.status());
   mlir::MLIRContext mlir_context;
+  xla::gpu::SymbolicExprContext symbolic_expr_context(&mlir_context);
   CHECK_OK(xla::gpu::Autotune(*module.value(), cache_dir, autotune_cache_mode,
-                              &mlir_context));
+                              &symbolic_expr_context));
   std::cout << module.value()->ToString() << std::endl;
   return 0;
 }

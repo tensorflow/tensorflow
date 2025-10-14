@@ -33,6 +33,7 @@ limitations under the License.
 #include "xla/service/compiler.h"
 #include "xla/service/executable.h"
 #include "xla/service/gpu/matmul_utils.h"
+#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/service/gpu/nvptx_compiler.h"
 #include "xla/service/platform_util.h"
 #include "xla/stream_executor/device_description.pb.h"
@@ -78,7 +79,8 @@ class TritonBackendTest : public HloHardwareIndependentTestBase {
                              ->ExecutorForDevice(0)
                              .value()),
         target_config_(stream_executor_),
-        backend_(&debug_options_, &compiler_, &target_config_, &mlir_context_) {
+        backend_(&debug_options_, &compiler_, &target_config_,
+                 &symbolic_expr_context_) {
     // TODO(b/315957220): Remove the experimental flags once TMA is enabled by
     // default.
     debug_options_.set_xla_gpu_experimental_enable_triton_tma(true);
@@ -90,6 +92,7 @@ class TritonBackendTest : public HloHardwareIndependentTestBase {
   Compiler::TargetConfig target_config_;
   TritonBackend backend_;
   mlir::MLIRContext mlir_context_;
+  SymbolicExprContext symbolic_expr_context_{&mlir_context_};
 };
 
 TEST_F(TritonBackendTest, GetSupportedConfigs) {

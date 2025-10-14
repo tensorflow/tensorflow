@@ -26,19 +26,24 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
+#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/service/hlo_module_config.h"
 
 namespace xla::gpu {
 namespace {
 
 TEST(TritonStub, CallStubApi) {
-  mlir::MLIRContext context;
+  mlir::MLIRContext mlir_context;
+  SymbolicExprContext symbolic_expr_context(&mlir_context);
 
-  LoadMlirDialectsForTriton(context);
-  EXPECT_FALSE(TritonWrapper({}, nullptr, {}, {}, {}, nullptr, context).ok());
-  EXPECT_FALSE(CreateTritonModule({}, nullptr, {}, {}, context).ok());
+  LoadMlirDialectsForTriton(mlir_context);
+  EXPECT_FALSE(
+      TritonWrapper({}, nullptr, {}, {}, {}, nullptr, symbolic_expr_context)
+          .ok());
+  EXPECT_FALSE(
+      CreateTritonModule({}, nullptr, {}, {}, symbolic_expr_context).ok());
   EXPECT_FALSE(CompileTritonToLLVM("", HloModule("test", HloModuleConfig()), {},
-                                   {}, {}, nullptr, context,
+                                   {}, {}, nullptr, mlir_context,
                                    /*is_xla_fusion=*/true, {})
                    .ok());
 

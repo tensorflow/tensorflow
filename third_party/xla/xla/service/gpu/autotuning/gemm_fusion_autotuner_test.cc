@@ -56,6 +56,7 @@ limitations under the License.
 #include "xla/service/gpu/autotuning/autotuner_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/matmul_utils.h"
+#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/service/gpu/transforms/gemm_fusion.h"
 #include "xla/service/gpu/transforms/gemm_rewriter.h"
 #include "xla/service/hlo_module_config.h"
@@ -192,7 +193,8 @@ class StatelessAutotunerTest : public HloTestBase {
       const HloModule& module,
       const se::GpuComputeCapability& compute_capability,
       const se::SemanticVersion& toolkit_version,
-      const DebugOptions& debug_options, mlir::MLIRContext* mlir_context) {
+      const DebugOptions& debug_options,
+      SymbolicExprContext* symbolic_expr_context) {
     const HloFusionInstruction& fusion = *Cast<HloFusionInstruction>(
         module.entry_computation()->root_instruction());
     if (!isRocm()) {
@@ -209,7 +211,8 @@ class StatelessAutotunerTest : public HloTestBase {
     AutotuneConfig autotune_config = AutotuneConfig::FromDebugOptions(
         DeviceOrDevicelessConfig{test_config}, debug_options);
     GemmFusionAutotunerImpl autotuner(autotune_config, toolkit_version,
-                                      debug_options, nullptr, mlir_context);
+                                      debug_options, nullptr,
+                                      symbolic_expr_context);
     return autotuner.GenerateConfigs(fusion);
   }
 
@@ -247,7 +250,7 @@ class StatelessAutotunerTest : public HloTestBase {
         DeviceOrDevicelessConfig{device_config}, GetDebugOptionsForTest());
     GemmFusionAutotunerImpl autotuner(autotune_config, GetToolkitVersion(),
                                       GetDebugOptionsForTest(), nullptr,
-                                      &mlir_context_);
+                                      &symbolic_expr_context_);
     const HloFusionInstruction& fusion = *Cast<HloFusionInstruction>(
         module.entry_computation()->root_instruction());
     return autotuner.GenerateConfigs(fusion);
@@ -265,6 +268,7 @@ class StatelessAutotunerTest : public HloTestBase {
 
  protected:
   mlir::MLIRContext mlir_context_;
+  SymbolicExprContext symbolic_expr_context_{&mlir_context_};
 };
 
 constexpr absl::string_view kHloDotFusionWithAlgorithm = R"(
@@ -383,7 +387,8 @@ class GemmFusionAutotunerTest : public StatelessAutotunerTest {
                 DeviceConfig{backend().default_stream_executor(),
                              backend().memory_allocator()}},
             opts),
-        GetToolkitVersion(), &thread_pool, key_value_store, &mlir_context_);
+        GetToolkitVersion(), &thread_pool, key_value_store,
+        &symbolic_expr_context_);
 
     RunAndFilecheckHloRewrite(
         hlo, std::move(pipeline), expected, [](const HloModule* m) {
@@ -417,7 +422,8 @@ absl::StatusOr<std::vector<TritonGemmConfig>>
 GetPossibleMatmulAutotuneTritonConfigs(
     const D& dot, const se::CudaComputeCapability& compute_capability,
     const se::SemanticVersion& toolkit_version,
-    const DebugOptions& debug_options, mlir::MLIRContext* mlir_context) {
+    const DebugOptions& debug_options,
+    SymbolicExprContext* symbolic_expr_context) {
   TF_ASSIGN_OR_RETURN(se::DeviceDescription device_description,
                       se::DeviceDescription::FromProto(
                           se::GpuDeviceInfoProto::default_instance()));
@@ -434,7 +440,8 @@ GetPossibleMatmulAutotuneTritonConfigs(
   AutotuneConfig autotune_config = AutotuneConfig::FromDebugOptions(
       DeviceOrDevicelessConfig{test_config}, debug_options);
   GemmFusionAutotunerImpl autotuner(autotune_config, toolkit_version,
-                                    debug_options, nullptr, mlir_context);
+                                    debug_options, nullptr,
+                                    symbolic_expr_context);
   return autotuner.GenerateTritonConfigs(dot);
 }
 
@@ -458,7 +465,7 @@ ENTRY e {
           *Cast<HloDotInstruction>(
               module->entry_computation()->root_instruction()),
           compute_capability, GetToolkitVersion(), GetDebugOptionsForTest(),
-          &mlir_context_));
+          &symbolic_expr_context_));
   EXPECT_TRUE(std::any_of(
       configs.begin(), configs.end(),
       [](const TritonGemmConfig& config) { return config.num_stages > 2; }));
@@ -481,7 +488,7 @@ ENTRY e {
           *Cast<HloDotInstruction>(
               module->entry_computation()->root_instruction()),
           compute_capability, GetToolkitVersion(), GetDebugOptionsForTest(),
-          &mlir_context_));
+          &symbolic_expr_context_));
   EXPECT_TRUE(std::any_of(
       configs.begin(), configs.end(),
       [](const TritonGemmConfig& config) { return config.split_k >= 4; }));
@@ -504,7 +511,7 @@ ENTRY e {
           *Cast<HloDotInstruction>(
               module->entry_computation()->root_instruction()),
           compute_capability, GetToolkitVersion(), GetDebugOptionsForTest(),
-          &mlir_context_));
+          &symbolic_expr_context_));
   EXPECT_FALSE(std::any_of(
       configs.begin(), configs.end(),
       [](const TritonGemmConfig& config) { return config.split_k > 1; }));
@@ -789,7 +796,7 @@ ENTRY main {
   MultiProcessKeyValueStore key_value_store;
   pipeline.AddPass<GemmFusionAutotuner>(autotune_config, GetToolkitVersion(),
                                         &thread_pool, key_value_store,
-                                        &mlir_context_);
+                                        &symbolic_expr_context_);
   pipeline.AddPass<CallInliner>();
   for (GemmRewriterOptions::DType dtype :
        {GemmRewriterOptions::DType::kFp8Only,
@@ -1018,7 +1025,8 @@ ENTRY e {
           DeviceOrDevicelessConfig{DevicelessConfig{
               backend().default_stream_executor()->GetDeviceDescription()}},
           opts),
-      GetToolkitVersion(), &thread_pool, key_value_store, &mlir_context_);
+      GetToolkitVersion(), &thread_pool, key_value_store,
+      &symbolic_expr_context_);
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hlo));
@@ -1067,7 +1075,7 @@ ENTRY e {
           *Cast<HloDotInstruction>(
               module->entry_computation()->root_instruction()),
           compute_capability, GetToolkitVersion(), GetDebugOptionsForTest(),
-          &mlir_context_));
+          &symbolic_expr_context_));
 
   if (GetDebugOptionsForTest().xla_gpu_autotune_level() == 0) {
     EXPECT_EQ(configs.size(), 1);
@@ -1134,7 +1142,7 @@ ENTRY e {
           *Cast<HloDotInstruction>(
               module->entry_computation()->root_instruction()),
           compute_capability, GetToolkitVersion(), GetDebugOptionsForTest(),
-          &mlir_context_));
+          &symbolic_expr_context_));
   EXPECT_TRUE(std::all_of(
       configs.begin(), configs.end(),
       [](const TritonGemmConfig& config) { return config.split_k == 1; }));
@@ -1156,7 +1164,7 @@ TEST_F(GemmFusionAutotunerTest, SplitKFLoatNormalization) {
       DeviceOrDevicelessConfig{test_config}, GetDebugOptionsForTest());
   GemmFusionAutotunerImpl autotuner(autotune_config, GetToolkitVersion(),
                                     GetDebugOptionsForTest(), nullptr,
-                                    &mlir_context_);
+                                    &symbolic_expr_context_);
   TF_ASSERT_OK_AND_ASSIGN(
       AutotunerCompileUtil compile_util,
       AutotunerCompileUtil::Create(autotune_config.DeviceConfig(),
@@ -1223,7 +1231,7 @@ TEST_F(GemmFusionAutotunerTest, CreatesCustomKernelFusionConfigs) {
       const std::vector<GemmFusionAutotunerImpl::BackendConfig> configs,
       GetPossibleMatmulAutotuneConfigs(
           *module, compute_capability, GetToolkitVersion(),
-          GetDebugOptionsForTest(), &mlir_context_));
+          GetDebugOptionsForTest(), &symbolic_expr_context_));
   EXPECT_TRUE(std::any_of(
       configs.begin(), configs.end(),
       [](const GemmFusionAutotunerImpl::BackendConfig& config) {
@@ -1266,7 +1274,7 @@ TEST_F(GemmFusionAutotunerTest, GeneratesTwoConfigsForUpcastGemmWithPrologue) {
       const std::vector<GemmFusionAutotunerImpl::BackendConfig> configs,
       GetPossibleMatmulAutotuneConfigs(
           *module, compute_capability, GetToolkitVersion(),
-          GetDebugOptionsForTest(), &mlir_context_));
+          GetDebugOptionsForTest(), &symbolic_expr_context_));
   EXPECT_EQ(
       2, std::count_if(
              configs.begin(), configs.end(),
@@ -1312,7 +1320,7 @@ TEST_F(GemmFusionAutotunerTest, GeneratesOneConfigForUpcastGemmWithPrologue) {
       const std::vector<GemmFusionAutotunerImpl::BackendConfig> configs,
       GetPossibleMatmulAutotuneConfigs(
           *module, compute_capability, GetToolkitVersion(),
-          GetDebugOptionsForTest(), &mlir_context_));
+          GetDebugOptionsForTest(), &symbolic_expr_context_));
   EXPECT_EQ(
       1, std::count_if(
              configs.begin(), configs.end(),
@@ -1361,7 +1369,7 @@ TEST_F(GemmFusionAutotunerTest,
       const std::vector<GemmFusionAutotunerImpl::BackendConfig> configs,
       GetPossibleMatmulAutotuneConfigs(
           *module, compute_capability, GetToolkitVersion(),
-          GetDebugOptionsForTest(), &mlir_context_));
+          GetDebugOptionsForTest(), &symbolic_expr_context_));
   EXPECT_EQ(
       2, std::count_if(
              configs.begin(), configs.end(),
@@ -1470,7 +1478,8 @@ class GemmFusionShardedAutotunerTest : public GemmFusionAutotunerTest {
       MultiProcessKeyValueStore& multi_process_key_value_store) {
     return GemmFusionAutotuner(GetAutotuneConfigForTest(), GetToolkitVersion(),
                                /*thread_pool=*/{},
-                               multi_process_key_value_store, &mlir_context_);
+                               multi_process_key_value_store,
+                               &symbolic_expr_context_);
   }
 };
 
@@ -1721,14 +1730,16 @@ TEST_F(GemmFusionAutotunerTest, VerifyHopperConfigsAreDifferentFromBlackwell) {
           *Cast<HloDotInstruction>(
               module->entry_computation()->root_instruction()),
           se::CudaComputeCapability(se::CudaComputeCapability::kBlackwell, 0),
-          GetToolkitVersion(), GetDebugOptionsForTest(), &mlir_context_));
+          GetToolkitVersion(), GetDebugOptionsForTest(),
+          &symbolic_expr_context_));
   TF_ASSERT_OK_AND_ASSIGN(
       const std::vector<TritonGemmConfig> hopper_configs,
       GetPossibleMatmulAutotuneTritonConfigs(
           *Cast<HloDotInstruction>(
               module->entry_computation()->root_instruction()),
           se::CudaComputeCapability(se::CudaComputeCapability::kHopper, 0),
-          GetToolkitVersion(), GetDebugOptionsForTest(), &mlir_context_));
+          GetToolkitVersion(), GetDebugOptionsForTest(),
+          &symbolic_expr_context_));
 
   std::set<TritonGemmConfig> blackwell_configs_set(blackwell_configs.begin(),
                                                    blackwell_configs.end());
@@ -1762,7 +1773,8 @@ TEST_F(GemmFusionAutotunerTest, ScaledDotConfigsAreGenerated) {
           *Cast<HloScaledDotInstruction>(
               module->entry_computation()->root_instruction()),
           se::CudaComputeCapability(se::CudaComputeCapability::kBlackwell, 0),
-          GetToolkitVersion(), GetDebugOptionsForTest(), &mlir_context_));
+          GetToolkitVersion(), GetDebugOptionsForTest(),
+          &symbolic_expr_context_));
   std::set<TritonGemmConfig> blackwell_configs_set(blackwell_configs.begin(),
                                                    blackwell_configs.end());
   EXPECT_GT(blackwell_configs_set.size(), 0);
@@ -1836,7 +1848,8 @@ TEST_F(GemmFusionAutotunerEnableTma,
           *Cast<HloDotInstruction>(
               module->entry_computation()->root_instruction()),
           se::CudaComputeCapability(se::CudaComputeCapability::kAmpere, 0),
-          GetToolkitVersion(), GetDebugOptionsForTest(), &mlir_context_));
+          GetToolkitVersion(), GetDebugOptionsForTest(),
+          &symbolic_expr_context_));
 
   TF_ASSERT_OK_AND_ASSIGN(
       const std::vector<TritonGemmConfig> hopper_configs,
@@ -1844,7 +1857,8 @@ TEST_F(GemmFusionAutotunerEnableTma,
           *Cast<HloDotInstruction>(
               module->entry_computation()->root_instruction()),
           se::CudaComputeCapability(se::CudaComputeCapability::kHopper, 0),
-          GetToolkitVersion(), GetDebugOptionsForTest(), &mlir_context_));
+          GetToolkitVersion(), GetDebugOptionsForTest(),
+          &symbolic_expr_context_));
 
   std::set<TritonGemmConfig> ampere_configs_set(ampere_configs.begin(),
                                                 ampere_configs.end());
@@ -1891,7 +1905,8 @@ TEST_F(GemmFusionAutotunerEnableTma,
           *Cast<HloDotInstruction>(
               module->entry_computation()->root_instruction()),
           se::CudaComputeCapability(se::CudaComputeCapability::kHopper, 0),
-          GetToolkitVersion(), GetDebugOptionsForTest(), &mlir_context_));
+          GetToolkitVersion(), GetDebugOptionsForTest(),
+          &symbolic_expr_context_));
 
   auto is_disallowed_tma_config = [](const TritonGemmConfig& c) {
     return c.num_stages > 2 && c.is_tma_allowed;

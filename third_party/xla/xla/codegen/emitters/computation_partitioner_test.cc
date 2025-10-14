@@ -28,6 +28,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
+#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 
 namespace xla {
 namespace emitters {
@@ -39,11 +40,12 @@ using ::testing::UnorderedElementsAre;
 
 class ComputationPartitionerTest : public HloHardwareIndependentTestBase {
  protected:
-  ComputationPartitionerTest() {
+  ComputationPartitionerTest() : symbolic_expr_context_(&mlir_context_) {
     mlir_context_.loadDialect<mlir::func::FuncDialect>();
   }
 
   mlir::MLIRContext mlir_context_;
+  gpu::SymbolicExprContext symbolic_expr_context_;
 };
 
 std::string PrintAndErase(mlir::func::FuncOp func) {
@@ -77,7 +79,7 @@ TEST_F(ComputationPartitionerTest, PartitionDiamonds) {
 
   auto* fusion = module->GetComputationWithName("fused_computation");
   ASSERT_NE(fusion, nullptr);
-  PartitionedComputation computation(fusion, &mlir_context_);
+  PartitionedComputation computation(fusion, &symbolic_expr_context_);
 
   constexpr auto kExpected = R"(PartitionedComputation fused_computation:
       SUBGRAPH fused_computation_add3 {
@@ -120,7 +122,7 @@ TEST_F(ComputationPartitionerTest, SimpleConcatenate) {
 
   auto* fusion = module->GetComputationWithName("fused_computation");
   ASSERT_NE(fusion, nullptr);
-  PartitionedComputation computation(fusion, &mlir_context_);
+  PartitionedComputation computation(fusion, &symbolic_expr_context_);
 
   EXPECT_THAT(computation.subgraphs(), SizeIs(1));
 }
@@ -141,7 +143,7 @@ TEST_F(ComputationPartitionerTest, DiamondConcatenate) {
 
   auto* fusion = module->GetComputationWithName("fused_computation");
   ASSERT_NE(fusion, nullptr);
-  PartitionedComputation computation(fusion, &mlir_context_);
+  PartitionedComputation computation(fusion, &symbolic_expr_context_);
 
   constexpr auto kExpected = R"(PartitionedComputation fused_computation:
       SUBGRAPH fused_computation_concat {
@@ -172,7 +174,7 @@ TEST_F(ComputationPartitionerTest, TupleRoot) {
 
   auto* fusion = module->GetComputationWithName("fused_computation");
   ASSERT_NE(fusion, nullptr);
-  PartitionedComputation computation(fusion, &mlir_context_);
+  PartitionedComputation computation(fusion, &symbolic_expr_context_);
   constexpr auto kExpected = R"(PartitionedComputation fused_computation:
       SUBGRAPH fused_computation_root {
         %p0 = f32[6]{0} parameter(0)
@@ -215,8 +217,9 @@ TEST_F(ComputationPartitionerTest, Epilogue) {
       /*index_ranges=*/{1, 42},
       {CreateIdentityMap(
           fused_computation->root_instruction()->shape().tuple_shapes(0),
-          &mlir_context_)}};
-  PartitionedComputations fusion(fused_computation, &mlir_context_, {epilogue});
+          &symbolic_expr_context_)}};
+  PartitionedComputations fusion(fused_computation, &symbolic_expr_context_,
+                                 {epilogue});
 
   mlir::ImplicitLocOpBuilder builder(mlir::UnknownLoc::get(&mlir_context_),
                                      &mlir_context_);
@@ -245,7 +248,7 @@ TEST_F(ComputationPartitionerTest, TransposeAsRoot) {
   auto* fusion = module->GetComputationWithName("fused_computation");
   ASSERT_NE(fusion, nullptr);
   PartitionedComputation computation(
-      fusion, &mlir_context_, [](const HloInstruction* instr) {
+      fusion, &symbolic_expr_context_, [](const HloInstruction* instr) {
         return instr->opcode() == HloOpcode::kTranspose;
       });
   ASSERT_THAT(computation.subgraphs(), SizeIs(2));
@@ -267,7 +270,7 @@ TEST_F(ComputationPartitionerTest, TransposeReverse) {
   auto* fusion = module->GetComputationWithName("fused_computation");
   ASSERT_NE(fusion, nullptr);
   PartitionedComputation computation(
-      fusion, &mlir_context_, [](const HloInstruction* instr) {
+      fusion, &symbolic_expr_context_, [](const HloInstruction* instr) {
         return instr->opcode() == HloOpcode::kTranspose;
       });
   constexpr auto kExpected = R"(PartitionedComputation fused_computation:
@@ -296,7 +299,7 @@ TEST_F(ComputationPartitionerTest, PartiallyMergable) {
 
   auto* fusion = module->GetComputationWithName("fused_computation");
   ASSERT_NE(fusion, nullptr);
-  PartitionedComputation computation(fusion, &mlir_context_);
+  PartitionedComputation computation(fusion, &symbolic_expr_context_);
 
   auto transpose = fusion->GetInstructionWithName("transpose");
   auto sub = fusion->GetInstructionWithName("sub");
@@ -337,7 +340,7 @@ TEST_F(ComputationPartitionerTest, SubgraphSignatures) {
   mlir::ImplicitLocOpBuilder builder(mlir::UnknownLoc::get(&context), &context);
 
   PartitionedComputation fusion(module->GetComputationWithName("fusion"),
-                                &mlir_context_);
+                                &symbolic_expr_context_);
   EXPECT_EQ(
       PrintAndErase(
           CreateSubgraphMlirFunction(fusion.GetRootSubgraph(), builder)),
@@ -346,7 +349,7 @@ TEST_F(ComputationPartitionerTest, SubgraphSignatures) {
       "index]}) -> f32");
 
   PartitionedComputation add(module->GetComputationWithName("add"),
-                             &mlir_context_);
+                             &symbolic_expr_context_);
   EXPECT_EQ(
       PrintAndErase(CreateSubgraphMlirFunction(add.GetRootSubgraph(), builder)),
       "func.func private @add_add(f32, f32) -> f32");
@@ -376,7 +379,7 @@ TEST_F(ComputationPartitionerTest, ConcatWithTuple) {
   mlir::ImplicitLocOpBuilder builder(mlir::UnknownLoc::get(&context), &context);
 
   PartitionedComputation fusion(module->GetComputationWithName("fusion"),
-                                &mlir_context_);
+                                &symbolic_expr_context_);
   EXPECT_THAT(fusion.subgraphs(), SizeIs(2));
   PrintAndErase(CreateSubgraphMlirFunction(fusion.GetRootSubgraph(), builder));
 }
@@ -399,7 +402,7 @@ TEST_F(ComputationPartitionerTest, DUS) {
   mlir::ImplicitLocOpBuilder builder(mlir::UnknownLoc::get(&context), &context);
 
   PartitionedComputation fusion(module->GetComputationWithName("fusion"),
-                                &mlir_context_);
+                                &symbolic_expr_context_);
   EXPECT_THAT(fusion.subgraphs(), SizeIs(1));
   PrintAndErase(CreateSubgraphMlirFunction(fusion.GetRootSubgraph(), builder));
 }
@@ -437,7 +440,7 @@ TEST_F(ComputationPartitionerTest, ScatterFusion) {
   mlir::ImplicitLocOpBuilder builder(mlir::UnknownLoc::get(&context), &context);
 
   PartitionedComputation fusion(module->GetComputationWithName("fusion"),
-                                &mlir_context_);
+                                &symbolic_expr_context_);
   EXPECT_THAT(fusion.subgraphs(), SizeIs(1));
   PrintAndErase(CreateSubgraphMlirFunction(fusion.GetRootSubgraph(), builder));
 }
@@ -480,7 +483,7 @@ TEST_F(ComputationPartitionerTest, PartitioningIsDeterministic) {
 
   auto* fusion = module->GetComputationWithName("fused_computation");
   ASSERT_NE(fusion, nullptr);
-  PartitionedComputation computation(fusion, &mlir_context_);
+  PartitionedComputation computation(fusion, &symbolic_expr_context_);
   EXPECT_EQ(computation.subgraphs().size(), 1);
 }
 

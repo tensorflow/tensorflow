@@ -29,6 +29,7 @@ limitations under the License.
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
+#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/stream_executor/device_description.h"
 #include "tsl/platform/status_matchers.h"
 #include "tsl/platform/statusor.h"
@@ -67,8 +68,9 @@ ENTRY entry_computation {
   HloFusionAnalysis analysis = HloFusionAnalysis::Create(*root, device_info);
 
   mlir::MLIRContext mlir_context;
-  std::unique_ptr<FusionInterface> emitter =
-      GetFusionEmitter(PreBufferAssignmentFusionInfo{analysis}, &mlir_context);
+  SymbolicExprContext symbolic_expr_context(&mlir_context);
+  std::unique_ptr<FusionInterface> emitter = GetFusionEmitter(
+      PreBufferAssignmentFusionInfo{analysis}, &symbolic_expr_context);
   auto triton_fusion = dynamic_cast<TritonFusion*>(emitter.get());
   ASSERT_NE(triton_fusion, nullptr);
   std::optional<TritonFusion::LaunchConfig> launch_config =
@@ -105,8 +107,9 @@ ENTRY entry_computation {
   HloFusionAnalysis analysis = HloFusionAnalysis::Create(*root, device_info);
 
   mlir::MLIRContext mlir_context;
-  std::unique_ptr<FusionInterface> emitter =
-      GetFusionEmitter(PreBufferAssignmentFusionInfo{analysis}, &mlir_context);
+  SymbolicExprContext symbolic_expr_context(&mlir_context);
+  std::unique_ptr<FusionInterface> emitter = GetFusionEmitter(
+      PreBufferAssignmentFusionInfo{analysis}, &symbolic_expr_context);
   auto triton_fusion_emitter = dynamic_cast<TritonFusion*>(emitter.get());
   ASSERT_NE(triton_fusion_emitter, nullptr);
   EXPECT_EQ(triton_fusion_emitter->launch_config(), std::nullopt);
@@ -114,7 +117,7 @@ ENTRY entry_computation {
   // Ensure that the emitter fails gracefully when the launch config is not set.
   EXPECT_THAT(triton_fusion_emitter->GenerateTritonKernelAndWrapper(
                   *::xla::Cast<HloFusionInstruction>(root), "random_name",
-                  device_info, /*llvm_module=*/nullptr, &mlir_context),
+                  device_info, /*llvm_module=*/nullptr, &symbolic_expr_context),
               absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
 }
 

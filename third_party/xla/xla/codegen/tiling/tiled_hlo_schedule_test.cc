@@ -28,6 +28,7 @@ limitations under the License.
 #include "xla/hlo/analysis/indexing_map_serialization.h"
 #include "xla/hlo/analysis/interval.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
+#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla {
@@ -38,7 +39,8 @@ using ::testing::HasSubstr;
 
 class TiledHloScheduleTest : public HloHardwareIndependentTestBase {
  protected:
-  mlir::MLIRContext ctx_;
+  mlir::MLIRContext mlir_context_;
+  gpu::SymbolicExprContext symbolic_expr_context_{&mlir_context_};
 };
 
 using MajorToMinorTiledHloScheduleTest = TiledHloScheduleTest;
@@ -48,7 +50,7 @@ TEST_F(MajorToMinorTiledHloScheduleTest,
   IndexingMap offsets_indexing = *ParseIndexingMap(R"(
       (d0, d1, d2, d3) -> (d2, d3),
       domain: d0 in [0, 1], d1 in [0, 2], d2 in [0, 4], d3 in [0, 6])",
-                                                   &ctx_);
+                                                   &symbolic_expr_context_);
   auto bound = [&offsets_indexing](int64_t dim) {
     return offsets_indexing.GetDimensionBound(dim).upper + 1;
   };
@@ -60,9 +62,9 @@ TEST_F(MajorToMinorTiledHloScheduleTest,
   };
 
   MajorToMinorTiledHloSchedule scheduler;
-  TF_ASSERT_OK_AND_ASSIGN(
-      IndexingMap scheduled_indexing,
-      scheduler.Schedule(offsets_indexing, iteration_space, &ctx_));
+  TF_ASSERT_OK_AND_ASSIGN(IndexingMap scheduled_indexing,
+                          scheduler.Schedule(offsets_indexing, iteration_space,
+                                             &symbolic_expr_context_));
 
   // (1) the map must have a single input whose range of values is the size of
   //     the iteration space (i.e. the product of `iteration_space`'s
@@ -80,7 +82,7 @@ TEST_F(MajorToMinorTiledHloScheduleTest,
   EXPECT_EQ(scheduled_indexing, *ParseIndexingMap(R"(
     (pid_0) -> (pid_0 floordiv 42, pid_0 mod 7), domain: pid_0 in [0, 209]
   )",
-                                                  &ctx_));
+                                                  &symbolic_expr_context_));
 
   // `pid_0 floordiv 42` has the same upper bound as `d2`.
   EXPECT_EQ(iteration_space_size / 42, bound(2));
@@ -90,13 +92,15 @@ TEST_F(MajorToMinorTiledHloScheduleTest,
 
 TEST_F(MajorToMinorTiledHloScheduleTest,
        MajorToMinorTiledHloScheduleFailsForInvalidIterationSpace) {
-  IndexingMap offsets_indexing = *ParseIndexingMap(
-      "(d0, d1) -> (d1), domain: d0 in [0, 1], d1 in [0, 2]", &ctx_);
+  IndexingMap offsets_indexing =
+      *ParseIndexingMap("(d0, d1) -> (d1), domain: d0 in [0, 1], d1 in [0, 2]",
+                        &symbolic_expr_context_);
   MajorToMinorTiledHloSchedule scheduler;
 
   // The iteration space has the wrong number of dimensions.
   EXPECT_THAT(
-      scheduler.Schedule(offsets_indexing, /*iteration_space=*/{}, &ctx_),
+      scheduler.Schedule(offsets_indexing, /*iteration_space=*/{},
+                         &symbolic_expr_context_),
       StatusIs(
           absl::StatusCode::kInvalidArgument,
           HasSubstr(
@@ -106,7 +110,7 @@ TEST_F(MajorToMinorTiledHloScheduleTest,
   EXPECT_THAT(scheduler.Schedule(offsets_indexing, /*iteration_space=*/
                                  {{/*dimension_id=*/0, /*dimension_size=*/1},
                                   {/*dimension_id=*/2, /*dimension_size=*/0}},
-                                 &ctx_),
+                                 &symbolic_expr_context_),
               StatusIs(absl::StatusCode::kInvalidArgument,
                        HasSubstr("Dimension id 2 is out of bounds")));
 }

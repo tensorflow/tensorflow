@@ -94,7 +94,7 @@ absl::StatusOr<TritonWrapperResult>
 TritonFusion::GenerateTritonKernelAndWrapper(
     const HloFusionInstruction& fusion, absl::string_view impl_fn_name,
     const se::DeviceDescription& device_info, llvm::Module* llvm_module,
-    mlir::MLIRContext* mlir_context) const {
+    SymbolicExprContext* symbolic_expr_context) const {
   const se::GpuComputeCapability& cc = device_info.gpu_compute_capability();
   auto backend_config =
       fusion.backend_config<GpuBackendConfig>()->fusion_backend_config();
@@ -113,7 +113,7 @@ TritonFusion::GenerateTritonKernelAndWrapper(
     TF_ASSIGN_OR_RETURN(triton_wrapper_result,
                         TritonWrapper(impl_fn_name, &fusion, cc, device_info,
                                       launch_config->block_level_parameters,
-                                      llvm_module, *mlir_context));
+                                      llvm_module, *symbolic_expr_context));
   } else {  // Must be a MatMul
     CHECK_EQ(fusion_kind, kTritonGemmFusionKind);
     // TODO(bchetioui): port matmul emitter to fully use the new
@@ -130,10 +130,10 @@ TritonFusion::GenerateTritonKernelAndWrapper(
       block_level_parameters.num_warps = triton_config.num_warps();
     }
 
-    TF_ASSIGN_OR_RETURN(
-        triton_wrapper_result,
-        TritonWrapper(impl_fn_name, &fusion, cc, device_info,
-                      block_level_parameters, llvm_module, *mlir_context));
+    TF_ASSIGN_OR_RETURN(triton_wrapper_result,
+                        TritonWrapper(impl_fn_name, &fusion, cc, device_info,
+                                      block_level_parameters, llvm_module,
+                                      *symbolic_expr_context));
   }
 
   return triton_wrapper_result;
@@ -164,10 +164,10 @@ absl::StatusOr<FusionEmissionResult> TritonFusion::Emit(
 
     TF_ASSIGN_OR_RETURN(
         TritonWrapperResult triton_wrapper_result,
-        GenerateTritonKernelAndWrapper(fusion, impl_fn_name,
-                                       ir_emitter_context.gpu_device_info(),
-                                       ir_emitter_context.llvm_module(),
-                                       ir_emitter_context.mlir_context()));
+        GenerateTritonKernelAndWrapper(
+            fusion, impl_fn_name, ir_emitter_context.gpu_device_info(),
+            ir_emitter_context.llvm_module(),
+            ir_emitter_context.symbolic_expr_context()));
 
     auto backend_config =
         fusion.backend_config<GpuBackendConfig>()->fusion_backend_config();

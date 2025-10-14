@@ -21,11 +21,11 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/SmallVector.h"
-#include "mlir/IR/MLIRContext.h"
 #include "xla/codegen/tiling/tiled_hlo_instruction.h"
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
+#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/stream_executor/device_description.h"
 
 namespace xla::gpu {
@@ -43,14 +43,16 @@ class CoalescingAnalysis {
       const HloInstruction* instr,
       absl::Span<const HloInstruction* const> operands,
       const HloFusionAnalysis& fusion_analysis,
-      mlir::MLIRContext* mlir_context = nullptr, bool use_heuristic = true);
+      SymbolicExprContext* symbolic_expr_context = nullptr,
+      bool use_heuristic = true);
 
   // Computes read coalescing for operands of fused `producer` and `consumer`.
   static CoalescingAnalysis Create(
       const HloInstruction* producer, const HloInstruction* consumer,
       absl::Span<const HloInstruction* const> operands,
       const HloFusionAnalysis& fusion_analysis,
-      mlir::MLIRContext* mlir_context = nullptr, bool use_heuristic = true);
+      SymbolicExprContext* symbolic_expr_context = nullptr,
+      bool use_heuristic = true);
 
   // Returns true if the operand is read coalesced.
   bool IsReadCoalesced(const HloInstruction* operand) const;

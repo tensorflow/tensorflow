@@ -56,7 +56,7 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tests/hlo_test_base.h"
-#include "xla/tests/hlo_test_base_with_mlir_context.h"
+#include "xla/tests/hlo_test_base_with_symbolic_expr_context.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
@@ -119,12 +119,13 @@ absl::Status CreateTritonIrAndFileCheck(
     absl::string_view filecheck_pattern) {
   auto* fusion = Cast<HloFusionInstruction>(computation.FusionInstruction());
 
-  mlir::MLIRContext context;
+  mlir::MLIRContext mlir_context;
+  SymbolicExprContext symbolic_expr_context(&mlir_context);
   TF_ASSIGN_OR_RETURN(
       mlir::OwningOpRef<mlir::ModuleOp> triton_module,
       CreateTritonModule("triton_fn", fusion,
                          TestGpuDeviceInfo::RTXA6000DeviceInfo(),
-                         block_level_parameters, context));
+                         block_level_parameters, symbolic_expr_context));
 
   std::string out;
   llvm::raw_string_ostream os(out);
@@ -138,7 +139,7 @@ absl::Status CreateTritonIrAndFileCheck(
 
 absl::StatusOr<
     std::pair<mlir::OwningOpRef<mlir::ModuleOp>, std::unique_ptr<HloModule>>>
-CreateXTileIrAndFileCheck(HloTestBaseWithMlirContext* test,
+CreateXTileIrAndFileCheck(HloTestBaseWithSymbolicExprContext* test,
                           absl::string_view hlo_text,
                           absl::string_view triton_fusion_name,
                           absl::string_view filecheck_pattern) {
@@ -161,7 +162,7 @@ CreateXTileIrAndFileCheck(HloTestBaseWithMlirContext* test,
 }
 
 absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateXTileIrAndFileCheck(
-    HloTestBaseWithMlirContext* test, const HloComputation& computation,
+    HloTestBaseWithSymbolicExprContext* test, const HloComputation& computation,
     const BlockLevelParameters& block_level_parameters,
     absl::string_view filecheck_pattern) {
   auto* fusion = Cast<HloFusionInstruction>(computation.FusionInstruction());
@@ -170,7 +171,7 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateXTileIrAndFileCheck(
       mlir::OwningOpRef<mlir::ModuleOp> xtile_dialect_module,
       ir_emitter_triton_internal::EmitXTileModule(
           "xtile_dialect_fn", fusion, TestGpuDeviceInfo::RTXA6000DeviceInfo(),
-          block_level_parameters, *test->mlir_context()));
+          block_level_parameters, *test->symbolic_expr_context()));
 
   std::string out;
   llvm::raw_string_ostream os(out);
@@ -183,10 +184,12 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateXTileIrAndFileCheck(
 }
 
 absl::Status LowerXTileIrToTritonAndFileCheck(
-    HloTestBaseWithMlirContext* test, mlir::ModuleOp xtile_dialect_module,
-    absl::string_view filecheck_pattern, const HloFusionInstruction& fusion) {
+    HloTestBaseWithSymbolicExprContext* test,
+    mlir::ModuleOp xtile_dialect_module, absl::string_view filecheck_pattern,
+    const HloFusionInstruction& fusion) {
   TF_RETURN_IF_ERROR(ir_emitter_triton_internal::LowerXTileToTriton(
-      xtile_dialect_module, *test->mlir_context(), fusion));
+      xtile_dialect_module, *test->symbolic_expr_context()->GetMLIRContext(),
+      fusion));
 
   std::string out;
   llvm::raw_string_ostream os(out);

@@ -37,6 +37,7 @@ limitations under the License.
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/launch_dimensions.h"
+#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/service/gpu/model/fusion_analysis_cache.h"
 #include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
 #include "xla/service/gpu/model/gpu_performance_model_base.h"
@@ -58,13 +59,14 @@ using ::tsl::testing::StatusIs;
 class GpuIndexingPerformanceModelTest : public HloHardwareIndependentTestBase {
  public:
   mlir::MLIRContext mlir_context_;
+  SymbolicExprContext symbolic_expr_context_{&mlir_context_};
   // The reference times in the test cases below are measured
   // on A6000 by profiling the execution of the HLOs.
   se::DeviceDescription device_info_{TestGpuDeviceInfo::RTXA6000DeviceInfo()};
   HloFusionAnalysisCache fusion_analysis_cache_{device_info_};
   GpuPerformanceModelWithIndexingAnalysis indexing_cost_model_{
       &device_info_, &fusion_analysis_cache_, HloCostAnalysis::DefaultShapeSize,
-      &mlir_context_};
+      &symbolic_expr_context_};
 
   size_t WarpSize() const { return ::xla::gpu::WarpSize(device_info_); }
 };
@@ -847,7 +849,7 @@ ENTRY main {
 
   SymbolicTileAnalysisOrError analysis_or_error =
       SymbolicTileAnalysis::AnalyzeFusion(
-          *fusion_adaptor, &mlir_context_,
+          *fusion_adaptor, &symbolic_expr_context_,
           /*emitter_specific_constraints_builder=*/nullptr);
   ASSERT_TRUE(std::holds_alternative<SymbolicTileAnalysis>(analysis_or_error));
 
@@ -897,7 +899,7 @@ ENTRY main {
 
   SymbolicTileAnalysisOrError analysis_or_error =
       SymbolicTileAnalysis::AnalyzeFusion(
-          *fusion_adaptor, &mlir_context_,
+          *fusion_adaptor, &symbolic_expr_context_,
           /*emitter_specific_constraints_builder=*/nullptr);
   ASSERT_TRUE(std::holds_alternative<SymbolicTileAnalysis>(analysis_or_error));
 

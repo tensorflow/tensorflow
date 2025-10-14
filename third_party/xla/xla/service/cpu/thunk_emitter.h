@@ -41,6 +41,7 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/cpu/ir_emitter2.h"
 #include "xla/service/cpu/parallel_fusion_emitter.h"
+#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/platform/threadpool.h"
@@ -265,6 +266,9 @@ class ThunkEmitter {
   std::vector<EmittedKernel> kernels_;
 
   std::unique_ptr<mlir::MLIRContext> mlir_context_;
+  // TODO (b/449934916): SymbolicExprContext should be moved to a more generic
+  // (not GPU specific) place.
+  gpu::SymbolicExprContext symbolic_expr_context_{mlir_context_.get()};
   FusionCompiler fusion_compiler_;
 
   absl::flat_hash_map<std::string, KernelSpec> kernel_spec_cache_;

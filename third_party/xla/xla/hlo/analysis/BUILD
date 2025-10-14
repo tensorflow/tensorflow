@@ -668,6 +668,7 @@ cc_library(
         "//xla/hlo/transforms/simplifiers:gather_simplifier",
         "//xla/hlo/utils:hlo_traversal",
         "//xla/service:matmul_indexing_utils",
+        "//xla/service/gpu/model/experimental:symbolic_expr",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -713,8 +714,8 @@ xla_cc_test(
     deps = [
         ":indexing_analysis",
         ":indexing_test_utils",
-        ":interval",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/service/gpu/model/experimental:symbolic_expr",
         "//xla/tests:xla_internal_test_main",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest",

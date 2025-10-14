@@ -47,6 +47,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_traversal.h"
+#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/shape.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/util.h"
@@ -118,8 +119,12 @@ TritonEmitterConstraints::DeriveCustomConstraints(
         hlo->opcode() == HloOpcode::kBitcast) {
       MLIRContext* ctx = instruction->symbolic_tile().size_map().getContext();
 
+      // TODO(b/446856820): Remove this once we use SymbolicMap here and
+      // therefore we can get the context directly.
+      SymbolicExprContext symbolic_expr_context{ctx};
       IndexingMap reshape_indexing_map =
-          ComputeOutputToInputIndexing(hlo, /*output_id=*/0, ctx)
+          ComputeOutputToInputIndexing(hlo, /*output_id=*/0,
+                                       &symbolic_expr_context)
               .indexing_maps[0]
               .begin()
               ->map();

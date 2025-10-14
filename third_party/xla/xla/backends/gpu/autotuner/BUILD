@@ -66,6 +66,7 @@ cc_library(
         "//xla/service/gpu:ir_emission_utils",
         "//xla/service/gpu/model:fusion_analysis_cache",
         "//xla/service/gpu/model:gpu_indexing_performance_model",
+        "//xla/service/gpu/model/experimental:symbolic_expr",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor:stream_executor_h",
         "//xla/stream_executor/gpu:tma_metadata",
@@ -437,6 +438,7 @@ cc_library(
         "//xla/service/gpu:backend_configs_cc",
         "//xla/service/gpu:cublas_cudnn",
         "//xla/service/gpu:ir_emission_utils",
+        "//xla/service/gpu/model/experimental:symbolic_expr",
         "//xla/service/gpu/transforms:custom_kernel_fusion_rewriter",
         "//xla/service/gpu/transforms:dot_algorithm_rewriter",
         "//xla/service/gpu/transforms:gemm_rewriter",
@@ -451,7 +453,6 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
-        "@llvm-project//mlir:IR",
     ],
 )
 
@@ -516,6 +517,7 @@ cc_library(
         "//xla/service/gpu:split_k_gemm_rewriter",
         "//xla/service/gpu/autotuning:dot_search_space",
         "//xla/service/gpu/autotuning:triton_configs",
+        "//xla/service/gpu/model/experimental:symbolic_expr",
         "//xla/service/gpu/transforms:fusion_wrapper",
         "//xla/service/gpu/transforms:nest_gemm_fusion",
         "//xla/service/gpu/transforms:priority_fusion",
@@ -529,7 +531,6 @@ cc_library(
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
-        "@llvm-project//mlir:IR",
     ],
 )
 
@@ -561,6 +562,7 @@ xla_test(
         "//xla/service:platform_util",
         "//xla/service/gpu:matmul_utils",
         "//xla/service/gpu:nvptx_compiler_impl",
+        "//xla/service/gpu/model/experimental:symbolic_expr",
         "//xla/stream_executor:device_description_proto_cc",
         "//xla/stream_executor:stream_executor_h",
         "//xla/tsl/platform:statusor",
@@ -683,10 +685,10 @@ cc_library(
         ":triton",
         "//xla/backends/autotuner:codegen_backend",
         "//xla/service:compiler",
+        "//xla/service/gpu/model/experimental:symbolic_expr",
         "//xla/stream_executor:stream_executor_h",
         "//xla/stream_executor/cuda:cuda_platform_id",
         "//xla/stream_executor/platform:platform_object_registry",
-        "@llvm-project//mlir:IR",
     ],
     alwayslink = True,
 )
@@ -704,10 +706,10 @@ cc_library(
         ":triton",
         "//xla/backends/autotuner:codegen_backend",
         "//xla/service:compiler",
+        "//xla/service/gpu/model/experimental:symbolic_expr",
         "//xla/stream_executor:stream_executor_h",
         "//xla/stream_executor/platform:platform_object_registry",
         "//xla/stream_executor/rocm:rocm_platform_id",
-        "@llvm-project//mlir:IR",
     ],
     alwayslink = True,
 )
@@ -718,8 +720,8 @@ cc_library(
     deps = [
         "//xla/backends/autotuner:codegen_backend",
         "//xla/service:compiler",
+        "//xla/service/gpu/model/experimental:symbolic_expr",
         "//xla/stream_executor:stream_executor_h",
-        "@llvm-project//mlir:IR",
     ],
 )
 
@@ -824,6 +826,7 @@ xla_cc_binary(
         "//xla/service:compiler",
         "//xla/service:gpu_plugin",
         "//xla/service:platform_util",
+        "//xla/service/gpu/model/experimental:symbolic_expr",
         "//xla/stream_executor:device_memory_allocator",
         "//xla/stream_executor:platform",
         "//xla/stream_executor:platform_manager",

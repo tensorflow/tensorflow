@@ -44,6 +44,7 @@ limitations under the License.
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/launch_dimensions.h"
+#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tsl/platform/statusor.h"
 
@@ -56,12 +57,12 @@ class DummyCopyEmitter : public EmitterBase {
   LaunchDimensions launch_dimensions() const final { return {1, 100}; }
 
   std::optional<IndexingMap> ComputeThreadIdToOutputIndexing(
-      int64_t, mlir::MLIRContext*) const final {
+      int64_t, SymbolicExprContext*) const final {
     return std::nullopt;
   }
 
   std::optional<std::vector<IndexingMap>> ComputeThreadIdToInputIndexing(
-      int64_t, mlir::MLIRContext*) const final {
+      int64_t, SymbolicExprContext*) const final {
     return std::nullopt;
   }
 
@@ -86,11 +87,12 @@ class DummyCopyEmitter : public EmitterBase {
 class EmitterBaseTest : public HloHardwareIndependentTestBase {
  protected:
   EmitterBaseTest() {
-    context_.appendDialectRegistry(EmitterBase::GetDialectRegistry());
-    context_.loadAllAvailableDialects();
+    mlir_context_.appendDialectRegistry(EmitterBase::GetDialectRegistry());
+    mlir_context_.loadAllAvailableDialects();
   }
 
-  mlir::MLIRContext context_;
+  mlir::MLIRContext mlir_context_;
+  SymbolicExprContext symbolic_expr_context_{&mlir_context_};
   stream_executor::DeviceDescription device_info_ =
       TestGpuDeviceInfo::CudaOrRocmDeviceInfo();
 };
@@ -111,7 +113,7 @@ TEST_F(EmitterBaseTest, CreateMlirModule) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto mlir_module,
       emitter.CreateMLIRModule(
-          context_,
+          symbolic_expr_context_,
           *Cast<HloFusionInstruction>(
               module->entry_computation()->root_instruction()),
           "fusion",
@@ -142,7 +144,7 @@ TEST_F(EmitterBaseTest, CreateLLVMModule) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto llvm_module,
       emitter.CreateLLVMModule(
-          context_, llvm_context, device_info_,
+          symbolic_expr_context_, llvm_context, device_info_,
           *Cast<HloFusionInstruction>(
               module->entry_computation()->root_instruction()),
           "fusion",

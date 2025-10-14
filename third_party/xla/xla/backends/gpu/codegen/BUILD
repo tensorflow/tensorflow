@@ -250,6 +250,7 @@ cc_library(
         "//xla/service/gpu:ir_emitter_context",
         "//xla/service/gpu:launch_dimensions",
         "//xla/service/gpu:target_util",
+        "//xla/service/gpu/model/experimental:symbolic_expr",
         "//xla/service/llvm_ir:ir_array",
         "//xla/service/llvm_ir:llvm_util",
         "//xla/stream_executor:device_description",
@@ -296,8 +297,8 @@ cc_library(
         "//xla/service/gpu:backend_configs_cc",
         "//xla/service/gpu:hlo_fusion_analysis",
         "//xla/service/gpu:ir_emission_utils",
+        "//xla/service/gpu/model/experimental:symbolic_expr",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
-        "@llvm-project//mlir:IR",
     ],
 )

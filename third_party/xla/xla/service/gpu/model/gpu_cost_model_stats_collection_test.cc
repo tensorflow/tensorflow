@@ -25,6 +25,7 @@ limitations under the License.
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
+#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "tsl/platform/statusor.h"
@@ -37,10 +38,11 @@ class GpuCostModelStatsCollectionTest : public HloHardwareIndependentTestBase {
   GpuCostModelStatsCollection cost_model_stats_{
       TestGpuDeviceInfo::RTXA6000DeviceInfo(),
       GpuHloCostAnalysis::Options{.count_multiple_input_accesses = true},
-      &mlir_context_};
+      &symbolic_expr_context_};
 
  protected:
   mlir::MLIRContext mlir_context_;
+  SymbolicExprContext symbolic_expr_context_{&mlir_context_};
 };
 
 TEST_F(GpuCostModelStatsCollectionTest, FusinInEntryComputation) {

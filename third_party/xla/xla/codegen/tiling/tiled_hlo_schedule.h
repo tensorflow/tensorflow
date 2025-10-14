@@ -20,8 +20,8 @@ limitations under the License.
 
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "mlir/IR/MLIRContext.h"
 #include "xla/hlo/analysis/indexing_map.h"
+#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 
 namespace xla {
 
@@ -68,7 +68,7 @@ class TiledHloSchedule {
   //     themselves);
   virtual absl::StatusOr<IndexingMap> Schedule(
       const IndexingMap& tile_offsets_indexing, IterationSpace iteration_space,
-      mlir::MLIRContext* ctx) const = 0;
+      gpu::SymbolicExprContext* symbolic_expr_context) const = 0;
 };
 
 // The indexing map returned by this schedule iterates over the iteration space
@@ -77,9 +77,9 @@ class TiledHloSchedule {
 // dimension).
 class MajorToMinorTiledHloSchedule : public TiledHloSchedule {
  public:
-  absl::StatusOr<IndexingMap> Schedule(const IndexingMap& tile_offsets_indexing,
-                                       IterationSpace iteration_space,
-                                       mlir::MLIRContext* ctx) const override;
+  absl::StatusOr<IndexingMap> Schedule(
+      const IndexingMap& tile_offsets_indexing, IterationSpace iteration_space,
+      gpu::SymbolicExprContext* symbolic_expr_context) const override;
 };
 
 // TODO(b/417977182): implement the `PlanarSnakeTiledHloSchedule` schedule.

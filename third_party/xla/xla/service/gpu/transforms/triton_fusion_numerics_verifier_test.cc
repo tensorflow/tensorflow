@@ -30,6 +30,7 @@ limitations under the License.
 #include "xla/primitive_util.h"
 #include "xla/service/gpu/autotuning/autotuner_compile_util.h"
 #include "xla/service/gpu/autotuning/autotuner_util.h"
+#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/service/platform_util.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/tests/hlo_pjrt_test_base.h"
@@ -89,6 +90,7 @@ class TritonFusionNumericsVerifierTest
   }
 
   mlir::MLIRContext mlir_context_;
+  SymbolicExprContext symbolic_expr_context_{&mlir_context_};
 };
 
 constexpr absl::string_view kSoftmaxHlo = R"(
@@ -134,7 +136,7 @@ TEST_P(TritonFusionNumericsVerifierTest, VerifyExactSoftmaxFusionNumerics) {
 
   EXPECT_NE(TritonFusion(*module), nullptr);
   auto verifier = TritonFusionNumericsVerifier(CreateDeviceOrDevicelessConfig(),
-                                               &mlir_context_);
+                                               &symbolic_expr_context_);
   TF_EXPECT_OK(verifier.Run(module.get(), /*execution_threads=*/{}));
 }
 
@@ -189,7 +191,7 @@ ENTRY entry {
 
   EXPECT_NE(TritonFusion(*module), nullptr);
   auto verifier = TritonFusionNumericsVerifier(CreateDeviceOrDevicelessConfig(),
-                                               &mlir_context_);
+                                               &symbolic_expr_context_);
   TF_EXPECT_OK(verifier.Run(module.get(), /*execution_threads=*/{}));
 }
 
@@ -220,7 +222,7 @@ ENTRY main{
 
   EXPECT_NE(TritonFusion(*module), nullptr);
   auto verifier = TritonFusionNumericsVerifier(CreateDeviceOrDevicelessConfig(),
-                                               &mlir_context_);
+                                               &symbolic_expr_context_);
   TF_EXPECT_OK(verifier.Run(module.get(), /*execution_threads=*/{}));
 }
 
@@ -310,7 +312,7 @@ ENTRY main (p0: bf16[128,512], p1: bf16[256,512], p2: bf16[512,512]) -> bf16[384
 
   EXPECT_NE(TritonFusion(*module), nullptr);
   auto verifier = TritonFusionNumericsVerifier(CreateDeviceOrDevicelessConfig(),
-                                               &mlir_context_);
+                                               &symbolic_expr_context_);
   TF_EXPECT_OK(verifier.Run(module.get(), /*execution_threads=*/{}));
 }
 
@@ -342,12 +344,12 @@ TEST_F(TritonFusionNumericsVerifierTest, CheckMismatch) {
 
   auto f64_result = triton_fusion_numerics_pass_internal::CompileAndRunFusion(
       compile_util, *fusion_f64, autotune_config, debug_options,
-      /*disable_triton=*/false, &mlir_context_);
+      /*disable_triton=*/false, &symbolic_expr_context_);
   TF_EXPECT_OK(f64_result);
 
   auto f32_result = triton_fusion_numerics_pass_internal::CompileAndRunFusion(
       compile_util, *fusion_f32, autotune_config, debug_options,
-      /*disable_triton=*/false, &mlir_context_);
+      /*disable_triton=*/false, &symbolic_expr_context_);
   TF_EXPECT_OK(f32_result);
 
   auto stream = autotune_config.GetStream();
@@ -397,7 +399,7 @@ ENTRY main {
                        "");
 
   auto verifier = TritonFusionNumericsVerifier(CreateDeviceOrDevicelessConfig(),
-                                               &mlir_context_);
+                                               &symbolic_expr_context_);
   TF_EXPECT_OK(verifier.Run(module.get(), /*execution_threads=*/{}));
   auto fusion = TritonFusion(*module);
   EXPECT_NE(fusion, nullptr);
@@ -408,7 +410,7 @@ ENTRY main {
   auto compilation_result =
       triton_fusion_numerics_pass_internal::CompileAndRunFusion(
           compile_util, *fusion, autotune_config, GetDebugOptionsForTest(),
-          /*disable_triton=*/false, &mlir_context_);
+          /*disable_triton=*/false, &symbolic_expr_context_);
 
   // Verify that the compilation with default flags fails. The compilation
   // fails, because the kernel will spill registers, but the error is
@@ -467,7 +469,7 @@ ENTRY main {
 
   std::unique_ptr<HloModule> module = Module(hlo_text, "");
   auto verifier = TritonFusionNumericsVerifier(CreateDeviceOrDevicelessConfig(),
-                                               &mlir_context_);
+                                               &symbolic_expr_context_);
   TF_EXPECT_OK(verifier.Run(module.get(), /*execution_threads=*/{}));
   EXPECT_EQ(verifier.CacheHitsForTestingOnly(), 1);
 }
@@ -522,7 +524,7 @@ ENTRY main {
   auto module = Module(hlo_text, "");
   EXPECT_NE(TritonFusion(*module), nullptr);
   auto verifier = TritonFusionNumericsVerifier(CreateDeviceOrDevicelessConfig(),
-                                               &mlir_context_);
+                                               &symbolic_expr_context_);
   TF_EXPECT_OK(verifier.Run(module.get(), /*execution_threads=*/{}));
 }
 

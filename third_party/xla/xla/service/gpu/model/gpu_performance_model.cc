@@ -24,7 +24,6 @@ limitations under the License.
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
-#include "mlir/IR/MLIRContext.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -33,6 +32,7 @@ limitations under the License.
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/model/coalescing_analysis.h"
+#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/service/gpu/model/fusion_analysis_cache.h"
 #include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
 #include "xla/service/gpu/model/gpu_performance_model_base.h"
@@ -48,11 +48,11 @@ GpuPerformanceModel::GpuPerformanceModel(
     const se::DeviceDescription& device_info,
     HloFusionAnalysisCache& fusion_analysis_cache,
     GpuPerformanceModelCache& gpu_performance_model_cache,
-    mlir::MLIRContext* mlir_context)
+    SymbolicExprContext* symbolic_expr_context)
     : device_info_(device_info),
       fusion_analysis_cache_(fusion_analysis_cache),
       gpu_performance_model_cache_(gpu_performance_model_cache),
-      mlir_context_(mlir_context) {};
+      symbolic_expr_context_(symbolic_expr_context) {};
 
 EstimateRunTimeData GpuPerformanceModel::EstimateRunTimeForInstructionImpl(
     const HloInstruction* instr, const GpuHloCostAnalysis* cost_analysis) {
@@ -63,7 +63,7 @@ EstimateRunTimeData GpuPerformanceModel::EstimateRunTimeForInstructionImpl(
 
   const auto& fusion_analysis = fusion_analysis_cache_.Get(*instr);
   LaunchDimensions launch_dimensions =
-      EstimateFusionLaunchDimensions(fusion_analysis, mlir_context_);
+      EstimateFusionLaunchDimensions(fusion_analysis, symbolic_expr_context_);
   int64_t num_blocks = launch_dimensions.num_blocks();
 
   absl::Duration compute_time =
@@ -145,7 +145,7 @@ absl::Duration GpuPerformanceModel::EstimateRunTimeForFusionImpl(
       fusion_analysis_cache_.Get(*producer, *consumer);
 
   LaunchDimensions launch_dimensions =
-      EstimateFusionLaunchDimensions(fusion_analysis, mlir_context_);
+      EstimateFusionLaunchDimensions(fusion_analysis, symbolic_expr_context_);
 
   int64_t flops = producer_runtime.flops * utilization_by_this_consumer +
                   consumer_runtime.flops;

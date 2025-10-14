@@ -26,6 +26,7 @@ limitations under the License.
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
+#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
@@ -64,6 +65,7 @@ class SolGpuCostModelStatsCollectionTest
   ShapeSizeFn shape_size_fn_;
   int pointer_size_ = 8;
   mlir::MLIRContext mlir_context_;
+  SymbolicExprContext symbolic_expr_context_{&mlir_context_};
 };
 
 TEST_F(SolGpuCostModelStatsCollectionTest,
@@ -87,10 +89,11 @@ TEST_F(SolGpuCostModelStatsCollectionTest,
 
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, SolGpuCostModelStatsCollection(
-                                            device_info_, shape_size_fn_,
-                                            pointer_size_, &mlir_context_)
-                                            .Run(module.get()));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      SolGpuCostModelStatsCollection(device_info_, shape_size_fn_,
+                                     pointer_size_, &symbolic_expr_context_)
+          .Run(module.get()));
 
   VLOG(1) << module->ToString();
 

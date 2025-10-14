@@ -33,6 +33,7 @@ limitations under the License.
 #include "xla/literal_util.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/model/collective_interpolator.h"
+#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/service/gpu/model/sol_gpu_cost_model.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/hlo_module_config.h"
@@ -96,16 +97,17 @@ class SolLatencyEstimatorTest : public HloHardwareIndependentTestBase,
   absl::StatusOr<absl::Duration> ComputeCollectiveTime(
       const HloInstruction& instr) {
     return SolLatencyEstimator::ComputeCollectiveTime(
-        instr, gpu_device_info_, shape_size_fn_, sol_flags_, &mlir_context_,
-        collective_interpolator_.get());
+        instr, gpu_device_info_, shape_size_fn_, sol_flags_,
+        &symbolic_expr_context_, collective_interpolator_.get());
   }
 
   absl::Duration ComputeNodeCost(const HloInstruction& instr,
                                  const HloComputation* computation) {
     std::unique_ptr<SolLatencyEstimator> estimator =
-        *SolLatencyEstimator::Create(
-            scheduler_config_, std::make_unique<DummyLatencyEstimator>(),
-            gpu_device_info_, shape_size_fn_, computation, &mlir_context_);
+        *SolLatencyEstimator::Create(scheduler_config_,
+                                     std::make_unique<DummyLatencyEstimator>(),
+                                     gpu_device_info_, shape_size_fn_,
+                                     computation, &symbolic_expr_context_);
     LatencyEstimator::TimeCost cost_val = estimator->NodeCost(&instr);
     return absl::Microseconds(static_cast<int64_t>(cost_val));
   }
@@ -114,9 +116,10 @@ class SolLatencyEstimatorTest : public HloHardwareIndependentTestBase,
                                    const HloGraphNode& target,
                                    const HloComputation* computation) {
     std::unique_ptr<SolLatencyEstimator> estimator =
-        *SolLatencyEstimator::Create(
-            scheduler_config_, std::make_unique<DummyLatencyEstimator>(),
-            gpu_device_info_, shape_size_fn_, computation, &mlir_context_);
+        *SolLatencyEstimator::Create(scheduler_config_,
+                                     std::make_unique<DummyLatencyEstimator>(),
+                                     gpu_device_info_, shape_size_fn_,
+                                     computation, &symbolic_expr_context_);
     LatencyEstimator::TimeCost cost_val =
         estimator->GetLatencyBetween(from, target);
     return absl::Microseconds(static_cast<int64_t>(cost_val));
@@ -128,6 +131,7 @@ class SolLatencyEstimatorTest : public HloHardwareIndependentTestBase,
   SchedulerConfig scheduler_config_;
   std::unique_ptr<CollectiveInterpolator> collective_interpolator_;
   mlir::MLIRContext mlir_context_;
+  SymbolicExprContext symbolic_expr_context_{&mlir_context_};
 };
 
 TEST_P(SolLatencyEstimatorTest, TestLatencyEstimation) {

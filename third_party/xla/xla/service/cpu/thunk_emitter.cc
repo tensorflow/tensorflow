@@ -834,7 +834,7 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitFusionKernelThunk(
   if (ir_emitter_.IsSupportedByFusionEmitter(fusion) &&
       fusion->fused_expression_root()->opcode() == HloOpcode::kScatter) {
     auto kernel_emitter = std::make_unique<CpuScatterFusion>(
-        buffer_assignment_, fusion, mlir_context_.get());
+        buffer_assignment_, fusion, &symbolic_expr_context_);
 
     TF_ASSIGN_OR_RETURN(MlirKernelDefinition kernel_definition,
                         kernel_emitter->EmitKernelDefinition());

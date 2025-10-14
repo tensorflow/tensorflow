@@ -54,6 +54,7 @@ limitations under the License.
 #include "xla/service/algorithm_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
+#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/service/gpu/tests/gpu_codegen_test.h"
 #include "xla/shape.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
@@ -1363,13 +1364,14 @@ ENTRY entry {
   llvm::LLVMContext llvm_ctx;
   llvm::Module llvm_module("module", llvm_ctx);
   mlir::MLIRContext mlir_context;
+  SymbolicExprContext symbolic_expr_context(&mlir_context);
 
   EXPECT_THAT(
       TritonWrapper("test_fn", triton_fusion,
                     se::CudaComputeCapability{se::CudaComputeCapability::kVolta,
                                               /*minor=*/0},
                     dev_info, BlockLevelParameters(), &llvm_module,
-                    mlir_context),
+                    symbolic_expr_context),
       absl_testing::StatusIs(
           absl::StatusCode::kFailedPrecondition,
           ::testing::HasSubstr("Triton support is only enabled for Ampere GPUs "
@@ -1421,6 +1423,7 @@ ENTRY entry_computation {
   llvm::LLVMContext llvm_ctx;
   llvm::Module llvm_module("module", llvm_ctx);
   mlir::MLIRContext mlir_context;
+  SymbolicExprContext symbolic_expr_context(&mlir_context);
 
   BlockLevelParameters block_level_parameters;
   block_level_parameters.output_tile_sizes = {{1024, 1}};
@@ -1431,7 +1434,8 @@ ENTRY entry_computation {
   // 1048576.
   EXPECT_THAT(
       TritonWrapper("test_fn", triton_fusion, compute_capability, dev_info,
-                    block_level_parameters, &llvm_module, mlir_context),
+                    block_level_parameters, &llvm_module,
+                    symbolic_expr_context),
       absl_testing::StatusIs(
           absl::StatusCode::kInvalidArgument,
           ::testing::HasSubstr("Tiling does not satisfy constraints.")));
@@ -3931,6 +3935,7 @@ TEST_F(TritonEmitterTest, RocmWarpSizeIsSetCorrectly) {
   llvm::LLVMContext llvm_ctx;
   llvm::Module llvm_module("module", llvm_ctx);
   mlir::MLIRContext mlir_context;
+  SymbolicExprContext symbolic_expr_context(&mlir_context);
   std::vector<std::string> paths;
   std::string triton_passes_log;
 
@@ -3939,7 +3944,7 @@ TEST_F(TritonEmitterTest, RocmWarpSizeIsSetCorrectly) {
       TestGpuDeviceInfo::AMDMI210DeviceInfo();
   TF_ASSERT_OK(TritonWrapper(
       "test_fn", triton_fusion, se::RocmComputeCapability("gfx942"), dev_info,
-      BlockLevelParameters(), &llvm_module, mlir_context));
+      BlockLevelParameters(), &llvm_module, symbolic_expr_context));
   TF_EXPECT_OK(tsl::Env::Default()->GetMatchingPaths(
       tsl::io::JoinPath(output_directory, "*.triton-passes.log"), &paths));
   EXPECT_EQ(paths.size(), 1);
@@ -3955,7 +3960,7 @@ TEST_F(TritonEmitterTest, RocmWarpSizeIsSetCorrectly) {
       TestGpuDeviceInfo::AMDRX7900DeviceInfo();
   TF_ASSERT_OK(TritonWrapper(
       "test_fn", triton_fusion, se::RocmComputeCapability("gfx1100"),
-      dev_info_n, BlockLevelParameters(), &llvm_module, mlir_context));
+      dev_info_n, BlockLevelParameters(), &llvm_module, symbolic_expr_context));
   TF_EXPECT_OK(tsl::Env::Default()->GetMatchingPaths(
       tsl::io::JoinPath(output_directory, "*.triton-passes.log"), &paths));
   EXPECT_EQ(paths.size(), 1);

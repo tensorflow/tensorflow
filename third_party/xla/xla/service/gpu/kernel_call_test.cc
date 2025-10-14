@@ -21,6 +21,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
 #include "mlir/IR/MLIRContext.h"
+#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla::gpu {
@@ -33,9 +34,12 @@ class KernelCallTest : public ::testing::Test {
  protected:
   void SetUp() override {
     mlir_context_ = std::make_unique<mlir::MLIRContext>();
+    symbolic_expr_context_ =
+        std::make_unique<SymbolicExprContext>(mlir_context_.get());
   }
 
   std::unique_ptr<mlir::MLIRContext> mlir_context_;
+  std::unique_ptr<SymbolicExprContext> symbolic_expr_context_;
 };
 
 TEST_F(KernelCallTest, ParseBasicConfiguration) {
@@ -54,7 +58,7 @@ TEST_F(KernelCallTest, ParseBasicConfiguration) {
 
   TF_ASSERT_OK_AND_ASSIGN(
       KernelCall kernel_call,
-      KernelCall::Parse(backend_config, mlir_context_.get()));
+      KernelCall::Parse(backend_config, symbolic_expr_context_.get()));
 
   EXPECT_EQ(kernel_call.name, "test_kernel");
   EXPECT_EQ(kernel_call.kernel_data,
@@ -86,7 +90,7 @@ TEST_F(KernelCallTest, ParseWithOutputIndices) {
 
   TF_ASSERT_OK_AND_ASSIGN(
       KernelCall kernel_call,
-      KernelCall::Parse(backend_config, mlir_context_.get()));
+      KernelCall::Parse(backend_config, symbolic_expr_context_.get()));
 
   EXPECT_EQ(kernel_call.name, "kernel_with_outputs");
   EXPECT_EQ(kernel_call.block_dim.x, 10);
@@ -119,7 +123,7 @@ TEST_F(KernelCallTest, ParseMinimalConfiguration) {
 
   TF_ASSERT_OK_AND_ASSIGN(
       KernelCall kernel_call,
-      KernelCall::Parse(backend_config, mlir_context_.get()));
+      KernelCall::Parse(backend_config, symbolic_expr_context_.get()));
 
   EXPECT_EQ(kernel_call.name, "minimal_kernel");
   EXPECT_EQ(kernel_call.kernel_data, ".entry minimal_kernel() { ret; }");
@@ -149,7 +153,7 @@ TEST_F(KernelCallTest, ParseLargeDimensions) {
 
   TF_ASSERT_OK_AND_ASSIGN(
       KernelCall kernel_call,
-      KernelCall::Parse(backend_config, mlir_context_.get()));
+      KernelCall::Parse(backend_config, symbolic_expr_context_.get()));
 
   EXPECT_EQ(kernel_call.name, "large_kernel");
   EXPECT_EQ(kernel_call.block_dim.x, 65535);
@@ -178,7 +182,7 @@ TEST_F(KernelCallTest, ParseEmptyOutputIndices) {
 
   TF_ASSERT_OK_AND_ASSIGN(
       KernelCall kernel_call,
-      KernelCall::Parse(backend_config, mlir_context_.get()));
+      KernelCall::Parse(backend_config, symbolic_expr_context_.get()));
 
   EXPECT_EQ(kernel_call.name, "no_outputs");
   EXPECT_EQ(kernel_call.shared_mem, 512);
@@ -202,7 +206,7 @@ TEST_F(KernelCallTest, ParseSingleOutputIndex) {
 
   TF_ASSERT_OK_AND_ASSIGN(
       KernelCall kernel_call,
-      KernelCall::Parse(backend_config, mlir_context_.get()));
+      KernelCall::Parse(backend_config, symbolic_expr_context_.get()));
 
   EXPECT_EQ(kernel_call.name, "single_output");
   EXPECT_EQ(kernel_call.shared_mem, 256);
@@ -227,7 +231,7 @@ TEST_F(KernelCallTest, ParseComplexkernel_data) {
 
   TF_ASSERT_OK_AND_ASSIGN(
       KernelCall kernel_call,
-      KernelCall::Parse(backend_config, mlir_context_.get()));
+      KernelCall::Parse(backend_config, symbolic_expr_context_.get()));
 
   EXPECT_EQ(kernel_call.name, "complex_kernel");
   EXPECT_THAT(kernel_call.kernel_data, HasSubstr(".version 7.5"));

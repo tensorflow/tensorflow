@@ -34,6 +34,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/service/gpu/tests/gpu_codegen_test.h"
 #include "xla/service/gpu/transforms/nest_gemm_fusion.h"
 #include "xla/stream_executor/device_description.h"
@@ -111,7 +112,8 @@ class TritonTest : public GpuCodegenTest {
     emitter_opts->Add(
         DebugOptions::GENERIC_TRITON_EMITTER_ALLOW_ALL_GEMM_SHAPES);
     absl::StatusOr<bool> nested_or =
-        NestGemmFusion(device_desc(), &mlir_context_).Run(module.get());
+        NestGemmFusion(device_desc(), &symbolic_expr_context_)
+            .Run(module.get());
     if (!nested_or.ok()) {
       return ::testing::AssertionFailure() << nested_or.status().message();
     }
@@ -152,6 +154,7 @@ class TritonTest : public GpuCodegenTest {
     return backend().default_stream_executor()->GetDeviceDescription();
   }
   mlir::MLIRContext mlir_context_;
+  SymbolicExprContext symbolic_expr_context_{&mlir_context_};
 };
 
 // The following tests are for the channel and subchannel dequantization

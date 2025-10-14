@@ -30,7 +30,6 @@ limitations under the License.
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/ImplicitLocOpBuilder.h"
-#include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
 #include "mlir/IR/Value.h"
 #include "mlir/IR/ValueRange.h"
@@ -45,6 +44,7 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/ir_emitter_context.h"
+#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/stream_executor/device_description.h"
 
 namespace xla {
@@ -59,15 +59,17 @@ class EmitterBase : public KernelFusionInterface {
   // Visible for testing. `buffer_assignment` is optional for testing (assigns
   // a different buffer to each tensor).
   absl::StatusOr<std::unique_ptr<llvm::Module>> CreateLLVMModule(
-      mlir::MLIRContext& mlir_context, llvm::LLVMContext& llvm_context,
-      const se::DeviceDescription& device, const HloFusionInstruction& fusion,
+      SymbolicExprContext& symbolic_expr_context,
+      llvm::LLVMContext& llvm_context, const se::DeviceDescription& device,
+      const HloFusionInstruction& fusion,
       const std::string& entry_function_name,
       const BufferAssignment* buffer_assignment) const;
 
   // Visible for testing. `buffer_assignment` is optional for testing (assigns
   // a different buffer to each tensor).
   virtual absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateMLIRModule(
-      mlir::MLIRContext& context, const HloFusionInstruction& fusion,
+      SymbolicExprContext& symbolic_expr_context,
+      const HloFusionInstruction& fusion,
       const std::string& entry_function_name,
       const BufferAssignment* buffer_assignment) const;
 
@@ -79,7 +81,7 @@ class EmitterBase : public KernelFusionInterface {
   // functions for these instructions.
   virtual std::vector<emitters::EpilogueSpecification> GetEpilogues(
       const HloFusionInstruction& fusion,
-      mlir::MLIRContext* mlir_context) const {
+      SymbolicExprContext* symbolic_expr_context) const {
     return {};
   }
 
@@ -89,7 +91,7 @@ class EmitterBase : public KernelFusionInterface {
       const HloFusionAnalysis& analysis,
       const std::vector<const HloInstruction*>& heroes,
       const std::vector<const HloInstruction*>& roots,
-      mlir::MLIRContext* mlir_context) const;
+      SymbolicExprContext* symbolic_expr_context) const;
 
   virtual absl::Status EmitEntryFunction(
       const emitters::PartitionedComputations& computations,
@@ -110,7 +112,8 @@ class EmitterBase : public KernelFusionInterface {
   // The fuson outputs may only be used with `tensor.insert` ops.a
   absl::Status EmitMlir(mlir::ModuleOp module,
                         mlir::func::FuncOp entry_function,
-                        const HloFusionInstruction& fusion) const;
+                        const HloFusionInstruction& fusion,
+                        SymbolicExprContext& symbolic_expr_context) const;
 };
 
 // Adds passes that transform XLA_GPU and SCF loops, e.g. peel, pipeline,

@@ -81,7 +81,7 @@ class GpuHloScheduleTest : public HloTestBase {
         gpu_compiler->GetAliasInfo(gpu_device_info);
     int64_t pointer_size = gpu_compiler->GetPointerSize();
     return xla::gpu::ScheduleGpuModule(module, pointer_size, gpu_device_info,
-                                       gpu_compiler->mlir_context(),
+                                       gpu_compiler->symbolic_expr_context(),
                                        alias_info.get());
   }
 

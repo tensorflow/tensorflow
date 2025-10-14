@@ -61,6 +61,7 @@ limitations under the License.
 #include "xla/service/gpu/ir_emitter_context.h"
 #include "xla/service/gpu/ir_emitter_unnested.h"
 #include "xla/service/gpu/metrics.h"
+#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/service/logical_buffer.h"
 #include "xla/shape.h"
 #include "xla/status_macros.h"
@@ -309,10 +310,12 @@ absl::StatusOr<CompileModuleResults> CompileModuleToLlvmIr(
           << ": " << hlo_module->GetFingerprint128();
 
   std::unique_ptr<mlir::MLIRContext> mlir_context = CreateMlirContext();
+  auto symbolic_expr_context =
+      std::make_unique<SymbolicExprContext>(mlir_context.get());
   IrEmitterContext ir_emitter_context(
       hlo_module, results.buffer_assignment.get(),
       results.execution_stream_assignment.get(), platform->Name(), device_desc,
-      mlir_context.get(), results.llvm_module.get(),
+      symbolic_expr_context.get(), results.llvm_module.get(),
       results.llvm_module_constants.get(),
       /*emit_kernels=*/true);
 

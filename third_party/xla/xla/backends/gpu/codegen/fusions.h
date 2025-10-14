@@ -19,12 +19,12 @@ limitations under the License.
 #include <optional>
 
 #include "absl/status/statusor.h"
-#include "mlir/IR/MLIRContext.h"
 #include "xla/backends/gpu/codegen/fusion_emitter.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/ir_emission_utils.h"
+#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 
 namespace xla {
 namespace gpu {
@@ -95,8 +95,9 @@ class PreBufferAssignmentFusionInfo : public FusionInfo {
 };
 
 // Returns the emitter for the given fusion.
-std::unique_ptr<FusionInterface> GetFusionEmitter(const FusionInfo& fusion_info,
-                                                  mlir::MLIRContext* ctx);
+std::unique_ptr<FusionInterface> GetFusionEmitter(
+    const FusionInfo& fusion_info,
+    gpu::SymbolicExprContext* symbolic_expr_context);
 
 }  // namespace gpu
 }  // namespace xla

@@ -49,6 +49,7 @@ limitations under the License.
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
+#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/lib/core/status_test_util.h"
@@ -64,12 +65,12 @@ using ::testing::HasSubstr;
 class ElementalHloToMlirTest : public HloHardwareIndependentTestBase {
  public:
   ElementalHloToMlirTest() {
-    context_.loadDialect<mlir::tensor::TensorDialect, mlir::func::FuncDialect,
-                         mlir::affine::AffineDialect, mlir::arith::ArithDialect,
-                         mlir::math::MathDialect, mlir::scf::SCFDialect,
-                         mlir::mhlo::MhloDialect, mlir::LLVM::LLVMDialect,
-                         mlir::DLTIDialect, xla::XlaDialect,
-                         xla::gpu::XlaGpuDialect>();
+    mlir_context_.loadDialect<
+        mlir::tensor::TensorDialect, mlir::func::FuncDialect,
+        mlir::affine::AffineDialect, mlir::arith::ArithDialect,
+        mlir::math::MathDialect, mlir::scf::SCFDialect, mlir::mhlo::MhloDialect,
+        mlir::LLVM::LLVMDialect, mlir::DLTIDialect, xla::XlaDialect,
+        xla::gpu::XlaGpuDialect>();
   }
 
   // Converts the root subgraph of the entry function of the given hlo module to
@@ -82,8 +83,8 @@ class ElementalHloToMlirTest : public HloHardwareIndependentTestBase {
                    std::optional<xla::BackendKind> xla_backend = std::nullopt) {
     auto hlo_module = ParseAndReturnVerifiedModule(hlo).value();
 
-    mlir::ImplicitLocOpBuilder builder(mlir::UnknownLoc::get(&context_),
-                                       &context_);
+    mlir::ImplicitLocOpBuilder builder(mlir::UnknownLoc::get(&mlir_context_),
+                                       &mlir_context_);
     auto module = llvm_ir::CreateMlirModuleOp(builder.getLoc());
     (*module)->setAttr(
         mlir::DLTIDialect::kDataLayoutAttrName,
@@ -95,32 +96,34 @@ class ElementalHloToMlirTest : public HloHardwareIndependentTestBase {
     if (epilogue_spec_fn) {
       epilogue_spec.push_back(epilogue_spec_fn(entry_computation));
     }
-    PartitionedComputations partitioned_computations(entry_computation,
-                                                     &context_, epilogue_spec);
+    PartitionedComputations partitioned_computations(
+        entry_computation, &symbolic_expr_context_, epilogue_spec);
     auto fns = partitioned_computations.DeclareFunctions(module.get());
     auto entry_func = fns[&partitioned_computations
                                .FindPartitionedComputation(entry_computation)
                                .GetRootSubgraph()];
     if (set_xla_entry) {
-      entry_func->setAttr("xla.entry", mlir::UnitAttr::get(&context_));
+      entry_func->setAttr("xla.entry", mlir::UnitAttr::get(&mlir_context_));
     }
     if (xla_backend) {
-      SetBackendKind(&context_, entry_func, *xla_backend);
+      SetBackendKind(&mlir_context_, entry_func, *xla_backend);
     }
     auto& entry_pc =
         partitioned_computations.FindPartitionedComputation(entry_computation);
     auto call_targets = partitioned_computations.CreateCallTargetProvider(fns);
-    TF_RETURN_IF_ERROR(SubgraphToMlirFunction(
-        entry_pc, entry_pc.GetRootSubgraph(), entry_func, call_targets));
+    TF_RETURN_IF_ERROR(
+        SubgraphToMlirFunction(entry_pc, entry_pc.GetRootSubgraph(), entry_func,
+                               call_targets, &symbolic_expr_context_));
 
     if (!partitioned_computations.epilogues().empty()) {
       const auto& epilogue = partitioned_computations.epilogues().front();
       TF_RETURN_IF_ERROR(SubgraphToMlirFunction(entry_pc, epilogue,
-                                                fns[&epilogue], call_targets));
+                                                fns[&epilogue], call_targets,
+                                                &symbolic_expr_context_));
     }
 
     // Canonicalize and CSE for better readability of check tests.
-    mlir::PassManager pm(&context_);
+    mlir::PassManager pm(&mlir_context_);
     pm.addPass(mlir::createCanonicalizerPass());
     pm.addPass(mlir::createCSEPass());
     TF_RET_CHECK(pm.run(module.get()).succeeded());
@@ -135,7 +138,8 @@ class ElementalHloToMlirTest : public HloHardwareIndependentTestBase {
     return absl::OkStatus();
   }
 
-  mlir::MLIRContext context_;
+  mlir::MLIRContext mlir_context_;
+  xla::gpu::SymbolicExprContext symbolic_expr_context_{&mlir_context_};
 };
 
 TEST_F(ElementalHloToMlirTest, Reduce) {
@@ -1384,7 +1388,7 @@ class ElementalHloToMlirEpilogueTest : public ElementalHloToMlirTest {
       epilogue.roots.push_back(entry->GetInstructionWithName("add"));
       epilogue.index_ranges = {2, 16, 17};
       epilogue.root_indexing.push_back(
-          IndexingMap{mlir::AffineMap::getMultiDimIdentityMap(3, &context_)
+          IndexingMap{mlir::AffineMap::getMultiDimIdentityMap(3, &mlir_context_)
                           .getSubMap({0, 2, 1}),
                       DimVarsFromTensorSizes({2, 17, 17}),
                       {},

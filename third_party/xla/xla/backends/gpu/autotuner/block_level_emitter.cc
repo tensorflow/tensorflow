@@ -39,6 +39,7 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/ir_emission_utils.h"
+#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/service/gpu/model/fusion_analysis_cache.h"
 #include "xla/service/gpu/model/gpu_indexing_performance_model.h"
 #include "xla/service/instruction_fusion.h"
@@ -305,8 +306,10 @@ BlockLevelEmitterBackend::GetCostModelConfig(
   auto device_info = target_config().device_description;
   HloFusionAnalysisCache fusion_analysis_cache(device_info);
   mlir::MLIRContext ctx;
+  SymbolicExprContext symbolic_expr_context(&ctx);
   GpuPerformanceModelWithIndexingAnalysis indexing_performance_model(
-      &device_info, &fusion_analysis_cache, shape_size_fn_, &ctx);
+      &device_info, &fusion_analysis_cache, shape_size_fn_,
+      &symbolic_expr_context);
 
   auto fusion_adaptor =
       HloFusionAdaptor::ForInstruction(Cast<HloFusionInstruction>(&instr));

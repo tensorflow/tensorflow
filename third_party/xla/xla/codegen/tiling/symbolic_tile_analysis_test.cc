@@ -50,6 +50,7 @@ limitations under the License.
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/hlo/utils/hlo_traversal.h"
+#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/service/instruction_fusion.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/errors.h"
@@ -147,7 +148,7 @@ class SymbolicTileAnalysisTest : public HloHardwareIndependentTestBase {
             *module->entry_computation()
                  ->root_instruction()
                  ->fused_instructions_computation(),
-            &mlir_context_, emitter_specific_constraints_builder);
+            &symbolic_expr_context_, emitter_specific_constraints_builder);
 
     if (std::holds_alternative<SymbolicTileAnalysis>(analysis_or_error)) {
       SymbolicTileAnalysis analysis =
@@ -188,6 +189,7 @@ class SymbolicTileAnalysisTest : public HloHardwareIndependentTestBase {
   }
 
   mlir::MLIRContext mlir_context_;
+  gpu::SymbolicExprContext symbolic_expr_context_{&mlir_context_};
 };
 
 TEST_F(SymbolicTileAnalysisTest, SimpleNormalizationDiamondIsSupported) {
@@ -357,7 +359,7 @@ ENTRY main {
   auto fusion = HloFusionAdaptor::ForProducerConsumer(producer, consumer);
 
   SymbolicTileAnalysisOrError analysis_or_error =
-      SymbolicTileAnalysis::AnalyzeFusion(*fusion, &mlir_context_);
+      SymbolicTileAnalysis::AnalyzeFusion(*fusion, &symbolic_expr_context_);
   ASSERT_TRUE(std::holds_alternative<SymbolicTileAnalysis>(analysis_or_error));
   SymbolicTileAnalysis analysis =
       std::get<SymbolicTileAnalysis>(std::move(analysis_or_error));
@@ -424,7 +426,7 @@ ENTRY entry_computation {
       producer, consumer, /*with_extra_outputs=*/true);
 
   SymbolicTileAnalysisOrError analysis_or_error =
-      SymbolicTileAnalysis::AnalyzeFusion(*fusion, &mlir_context_);
+      SymbolicTileAnalysis::AnalyzeFusion(*fusion, &symbolic_expr_context_);
   ASSERT_TRUE(std::holds_alternative<SymbolicTileAnalysis>(analysis_or_error));
   SymbolicTileAnalysis analysis =
       std::get<SymbolicTileAnalysis>(std::move(analysis_or_error));
@@ -1810,7 +1812,8 @@ ENTRY main {
           *module->entry_computation()
                ->root_instruction()
                ->fused_instructions_computation(),
-          &mlir_context_, /*emitter_specific_constraints_builder=*/nullptr);
+          &symbolic_expr_context_,
+          /*emitter_specific_constraints_builder=*/nullptr);
 
   ASSERT_TRUE(std::holds_alternative<FusionDecision>(analysis_or_error));
   EXPECT_THAT(std::get<FusionDecision>(analysis_or_error).Explain(),

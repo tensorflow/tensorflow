@@ -57,6 +57,7 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/cpu/cpu_compiler.h"
 #include "xla/service/cpu/fusion_wrapper.h"
+#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/service/hlo_module_config.h"
 
 namespace xla::cpu {
@@ -156,6 +157,10 @@ NB_MODULE(_extension, kernel_runner_module) {
   nb::class_<mlir::MLIRContext>(kernel_runner_module, "MLIRContext")
       .def(nb::new_([] { return FusionCompiler::CreateContext(); }));
 
+  nb::class_<gpu::SymbolicExprContext>(kernel_runner_module,
+                                       "SymbolicExprContext")
+      .def(nb::init<mlir::MLIRContext*>(), nb::keep_alive<1, 2>());
+
   nb::class_<TargetMachineFeatures>(kernel_runner_module,
                                     "TargetMachineFeatures")
       .def("__str__", &TargetMachineFeatures::get_target_feature_string);
@@ -193,20 +198,22 @@ NB_MODULE(_extension, kernel_runner_module) {
       .def(
           "__init__",
           [](CpuScatterFusion* self, const HloFusionInstruction* instruction,
-             const BufferAssignment* bufffer_assignment,
-             mlir::MLIRContext* context) {
-            new (self)
-                CpuScatterFusion(*bufffer_assignment, instruction, context);
+             const BufferAssignment* buffer_assignment,
+             gpu::SymbolicExprContext* symbolic_expr_context) {
+            new (self) CpuScatterFusion(*buffer_assignment, instruction,
+                                        symbolic_expr_context);
           },
           nb::keep_alive<1, 2>(), nb::keep_alive<1, 3>(),
-          nb::keep_alive<1, 3>());
+          nb::keep_alive<1, 4>());
 
   kernel_runner_module.def(
       "emit_fusion_kernel",
-      [](mlir::MLIRContext& context, const HloFusionInstruction& fusion,
+      [](gpu::SymbolicExprContext& symbolic_expr_context,
+         const HloFusionInstruction& fusion,
          const BufferAssignment* buffer_assignment) {
         absl::StatusOr<MlirKernelDefinition> kernel_definition =
-            EmitFusionKernel(context, fusion, buffer_assignment, false);
+            EmitFusionKernel(symbolic_expr_context, fusion, buffer_assignment,
+                             false);
         if (!kernel_definition.ok()) {
           throw std::runtime_error(kernel_definition.status().ToString());
         }

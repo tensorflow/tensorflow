@@ -27,6 +27,7 @@ limitations under the License.
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
+#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tsl/platform/statusor.h"
@@ -44,6 +45,7 @@ class GpuPerformanceModelBaseTest : public HloHardwareIndependentTestBase {
   se::DeviceDescription device_info_{TestGpuDeviceInfo::RTXA6000DeviceInfo()};
   std::unique_ptr<GpuHloCostAnalysis> analysis_;
   mlir::MLIRContext mlir_context_;
+  SymbolicExprContext symbolic_expr_context_{&mlir_context_};
 
   GpuPerformanceModelBaseTest() {
     options_.count_multiple_input_accesses = true;
@@ -240,8 +242,8 @@ ENTRY entry_computation {
   auto fusion_analysis = HloFusionAnalysis::Create(
       *module->entry_computation()->root_instruction(), device_info_);
   auto launch_dimensions =
-      GpuPerformanceModelBase::EstimateFusionLaunchDimensions(fusion_analysis,
-                                                              &mlir_context_);
+      GpuPerformanceModelBase::EstimateFusionLaunchDimensions(
+          fusion_analysis, &symbolic_expr_context_);
 
   EXPECT_EQ(launch_dimensions.num_blocks(), 128);
   EXPECT_EQ(launch_dimensions.num_threads_per_block(), 128);
@@ -277,8 +279,8 @@ ENTRY e {
   auto fusion_analysis = HloFusionAnalysis::Create(
       *module->entry_computation()->root_instruction(), device_info_);
   auto launch_dimensions =
-      GpuPerformanceModelBase::EstimateFusionLaunchDimensions(fusion_analysis,
-                                                              &mlir_context_);
+      GpuPerformanceModelBase::EstimateFusionLaunchDimensions(
+          fusion_analysis, &symbolic_expr_context_);
 
   EXPECT_EQ(launch_dimensions.num_blocks(), 16);
   EXPECT_EQ(launch_dimensions.num_threads_per_block(), 64);
@@ -307,8 +309,8 @@ ENTRY e {
   auto fusion_analysis = HloFusionAnalysis::Create(
       *module->entry_computation()->root_instruction(), device_info_);
   auto launch_dimensions =
-      GpuPerformanceModelBase::EstimateFusionLaunchDimensions(fusion_analysis,
-                                                              &mlir_context_);
+      GpuPerformanceModelBase::EstimateFusionLaunchDimensions(
+          fusion_analysis, &symbolic_expr_context_);
 
   // CuNnnFusion doesn't implement KernelLaunchInsterface, so
   // EstimateFusionLaunchDimensions returns a default estimate.
