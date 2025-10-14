@@ -699,6 +699,8 @@ cc_library(
         "@com_google_absl//absl/strings:str_format",
         "@local_config_cuda//cuda:cuda_headers",
         "@local_tsl//tsl/platform:logging",
+        "@local_tsl//tsl/profiler/lib:traceme",
+        "@local_tsl//tsl/profiler/lib:traceme_encode",
     ],
 )
 
@@ -1380,6 +1382,8 @@ cc_library(
         "@com_google_absl//absl/synchronization",
         "@local_config_cuda//cuda:cuda_headers",
         "@local_tsl//tsl/profiler/lib:nvtx_utils",
+        "@local_tsl//tsl/profiler/lib:traceme",
+        "@local_tsl//tsl/profiler/lib:traceme_encode",
     ],
 )
 

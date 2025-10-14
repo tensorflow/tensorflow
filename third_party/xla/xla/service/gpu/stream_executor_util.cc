@@ -67,6 +67,12 @@ limitations under the License.
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/ml_dtypes.h"
+#include "tsl/profiler/lib/traceme.h"
+#include "tsl/profiler/lib/traceme_encode.h"
+
+using tsl::profiler::TraceMe;
+using tsl::profiler::TraceMeEncode;
+using tsl::profiler::TraceMeLevel;
 
 namespace xla {
 namespace gpu {
@@ -405,9 +411,19 @@ absl::Status ExecuteKernelOnStream(
     se::Kernel& kernel, absl::Span<const se::KernelArgument> args,
     const LaunchDimensions& dims,
     const std::optional<se::ClusterDim>& cluster_dim, se::Stream* stream) {
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<se::KernelArgsPackedArrayBase> kernel_args,
-      se::PackKernelArgs(args, kernel.metadata()));
+  TraceMe trace([] { return TraceMeEncode("ExecuteKernelOnStream", {}); },
+                /*level=*/TraceMeLevel::kVerbose);
+
+  std::unique_ptr<se::KernelArgsPackedArrayBase> kernel_args;
+  {
+    TraceMe trace(
+        [] {
+          return TraceMeEncode("ExecuteKernelOnStream/PackKernelArgs", {});
+        },
+        /*level=*/TraceMeLevel::kVerbose);
+    TF_ASSIGN_OR_RETURN(kernel_args,
+                        se::PackKernelArgs(args, kernel.metadata()));
+  }
 
   return kernel.Launch(dims.thread_counts_per_block(), dims.block_counts(),
                        cluster_dim, stream, *kernel_args);

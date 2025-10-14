@@ -48,6 +48,12 @@ limitations under the License.
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "tsl/profiler/lib/nvtx_utils.h"
+#include "tsl/profiler/lib/traceme.h"
+#include "tsl/profiler/lib/traceme_encode.h"
+
+using tsl::profiler::TraceMe;
+using tsl::profiler::TraceMeEncode;
+using tsl::profiler::TraceMeLevel;
 
 namespace stream_executor {
 namespace gpu {
@@ -363,6 +369,9 @@ absl::Status LaunchCudaKernel(
     unsigned int grid_dim_z, unsigned int block_dim_x, unsigned int block_dim_y,
     unsigned int block_dim_z, unsigned int shared_mem_bytes, CUstream stream,
     void** kernel_params, void** extra) {
+  TraceMe trace([] { return TraceMeEncode("LaunchCudaKernel", {}); },
+                /*level=*/TraceMeLevel::kVerbose);
+
   std::unique_ptr<ActivateContext> activation = executor->Activate();
   VLOG(2) << "launching kernel: " << kernel_name << "; gdx: " << grid_dim_x
           << " gdy: " << grid_dim_y << " gdz: " << grid_dim_z
@@ -383,15 +392,20 @@ absl::Status LaunchCudaKernel(
         cuFuncSetCacheConfig(function, CU_FUNC_CACHE_PREFER_SHARED)));
   }
 
-  return cuda::ToStatus(
-      cuLaunchKernel(function, grid_dim_x, grid_dim_y, grid_dim_z, block_dim_x,
-                     block_dim_y, block_dim_z, shared_mem_bytes, stream,
-                     kernel_params, extra),
-      absl::StrCat("Failed to launch CUDA kernel: ", kernel_name,
-                   "; block dims: ", block_dim_x, "x", block_dim_y, "x",
-                   block_dim_z, "; grid dims: ", grid_dim_x, "x", grid_dim_y,
-                   "x", grid_dim_z,
-                   "; shared memory size: ", shared_mem_bytes));
+  {
+    TraceMe trace(
+        [&] { return TraceMeEncode("LaunchCudaKernel/cuLaunchKernel", {}); },
+        /*level=*/TraceMeLevel::kVerbose);
+    return cuda::ToStatus(
+        cuLaunchKernel(function, grid_dim_x, grid_dim_y, grid_dim_z,
+                       block_dim_x, block_dim_y, block_dim_z, shared_mem_bytes,
+                       stream, kernel_params, extra),
+        absl::StrCat("Failed to launch CUDA kernel: ", kernel_name,
+                     "; block dims: ", block_dim_x, "x", block_dim_y, "x",
+                     block_dim_z, "; grid dims: ", grid_dim_x, "x", grid_dim_y,
+                     "x", grid_dim_z,
+                     "; shared memory size: ", shared_mem_bytes));
+  }
 }
 
 absl::Status LaunchCudaKernel(
@@ -402,6 +416,8 @@ absl::Status LaunchCudaKernel(
     unsigned int block_dim_y, unsigned int block_dim_z,
     unsigned int shared_mem_bytes, CUstream stream, void** kernel_params,
     void** extra) {
+  TraceMe trace([] { return TraceMeEncode("LaunchCudaKernel", {}); },
+                /*level=*/TraceMeLevel::kVerbose);
   std::unique_ptr<ActivateContext> activation = executor->Activate();
   VLOG(2) << "launching kernel: " << kernel_name << "; cdx: " << cluster_dim_x
           << " cdy: " << cluster_dim_y << " cdz: " << cluster_dim_z
@@ -444,14 +460,19 @@ absl::Status LaunchCudaKernel(
   launch_config.attrs = &cluster_dims;
   launch_config.numAttrs = 1;
 
-  return cuda::ToStatus(
-      cuLaunchKernelEx(&launch_config, function, kernel_params, extra),
-      absl::StrCat("Failed to launch CUDA kernel: ", kernel_name,
-                   "; cluster dims: ", cluster_dim_x, "x", cluster_dim_y, "x",
-                   cluster_dim_z, "; block dims: ", block_dim_x, "x",
-                   block_dim_y, "x", block_dim_z, "; grid dims: ", grid_dim_x,
-                   "x", grid_dim_y, "x", grid_dim_z,
-                   "; shared memory size: ", shared_mem_bytes));
+  {
+    TraceMe trace(
+        [] { return TraceMeEncode("LaunchCudaKernel/cuLaunchKernelEx", {}); },
+        /*level=*/TraceMeLevel::kVerbose);
+    return cuda::ToStatus(
+        cuLaunchKernelEx(&launch_config, function, kernel_params, extra),
+        absl::StrCat("Failed to launch CUDA kernel: ", kernel_name,
+                     "; cluster dims: ", cluster_dim_x, "x", cluster_dim_y, "x",
+                     cluster_dim_z, "; block dims: ", block_dim_x, "x",
+                     block_dim_y, "x", block_dim_z, "; grid dims: ", grid_dim_x,
+                     "x", grid_dim_y, "x", grid_dim_z,
+                     "; shared memory size: ", shared_mem_bytes));
+  }
 }
 
 }  // namespace
@@ -460,6 +481,9 @@ absl::Status CudaStream::LaunchKernel(
     const ThreadDim& thread_dims, const BlockDim& block_dims,
     const std::optional<ClusterDim>& cluster_dims, void* function,
     absl::string_view name, void** args, int64_t shmem_bytes) {
+  TraceMe trace([] { return TraceMeEncode("CudaStream::LaunchKernel", {}); },
+                /*level=*/TraceMeLevel::kVerbose);
+
   if (cluster_dims.has_value()) {
     return LaunchCudaKernel(executor_, name, static_cast<CUfunction>(function),
                             cluster_dims->x, cluster_dims->y, cluster_dims->z,
