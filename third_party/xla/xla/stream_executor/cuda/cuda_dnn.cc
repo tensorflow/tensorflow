@@ -57,7 +57,6 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/cuda/cuda_diagnostics.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
-#include "xla/stream_executor/cuda/cudnn_api_wrappers.h"
 #include "xla/stream_executor/cuda/cudnn_frontend_helpers.h"
 #include "xla/stream_executor/cuda/cudnn_sdpa_score_mod.h"
 #include "xla/stream_executor/data_type.h"
@@ -87,6 +86,7 @@ limitations under the License.
 #include "third_party/gpus/cudnn/cudnn_cnn.h"
 #include "third_party/gpus/cudnn/cudnn_ops.h"
 #include "third_party/gpus/cudnn/cudnn_graph.h"
+#include "xla/stream_executor/cuda/cudnn_api_wrappers.h"
 #else
 #include "third_party/gpus/cudnn/cudnn_adv_infer.h"
 #include "third_party/gpus/cudnn/cudnn_adv_train.h"
@@ -236,11 +236,19 @@ class CudnnHandle {
 //
 // Patch releases are always forward and backward compatible and therefore
 // need not match.
+#if CUDNN_VERSION >= 90000
 bool IsSourceCompatibleWithCudnnLibrary(const SemanticVersion& source_version,
                                         const SemanticVersion& loaded_version) {
   return loaded_version.major() == source_version.major() &&
          loaded_version.minor() >= source_version.minor();
 }
+#else
+bool IsSourceCompatibleWithCudnnLibrary(dnn::VersionInfo source_version,
+                                        dnn::VersionInfo loaded_version) {
+  return loaded_version.major_version() == source_version.major_version() &&
+         loaded_version.minor_version() >= source_version.minor_version();
+}
+#endif
 
 }  // namespace
 
@@ -339,6 +347,14 @@ namespace {
 // RNNs in cudnn.
 cudnnDataType_t GetRnnComputeType(dnn::DataType data_type);
 
+#if CUDNN_VERSION < 90000
+absl::StatusOr<int> GetCudnnProperty(libraryPropertyType type) {
+  int value;
+  RETURN_IF_CUDNN_ERROR(cudnnGetProperty(type, &value));
+  return value;
+}
+#endif
+
 cudnnRNNAlgo_t ToCudnnRNNAlgo(std::optional<dnn::AlgorithmDesc> algorithm) {
   if (!algorithm.has_value()) {
     return CUDNN_RNN_ALGO_STANDARD;
@@ -353,6 +369,15 @@ cudnnRNNAlgo_t ToCudnnRNNAlgo(std::optional<dnn::AlgorithmDesc> algorithm) {
       LOG(FATAL) << "Unsupported Cudnn RNN algorithm: " << algorithm->algo_id();
   }
 }
+
+#if CUDNN_VERSION < 90000
+absl::StatusOr<dnn::VersionInfo> GetLoadedCudnnVersion() {
+  TF_ASSIGN_OR_RETURN(int major, GetCudnnProperty(MAJOR_VERSION));
+  TF_ASSIGN_OR_RETURN(int minor, GetCudnnProperty(MINOR_VERSION));
+  TF_ASSIGN_OR_RETURN(int patch_level, GetCudnnProperty(PATCH_LEVEL));
+  return dnn::VersionInfo(major, minor, patch_level);
+}
+#endif
 
 enum class PreloadCudnnType { ConvFwd, ConvBwdFilter, ConvBwdData, Rnn };
 
@@ -439,6 +464,7 @@ absl::Status CudnnSupport::Init() {
   cudnnHandle_t cudnn_handle = nullptr;
   const auto status = cudnnCreate(&cudnn_handle);
   if (status == CUDNN_STATUS_SUCCESS) {
+#if CUDNN_VERSION >= 90000
     constexpr SemanticVersion kSourceVersion(CUDNN_MAJOR, CUDNN_MINOR,
                                              CUDNN_PATCHLEVEL);
 
@@ -457,6 +483,25 @@ absl::Status CudnnSupport::Init() {
       cudnnDestroy(cudnn_handle);
       return absl::InternalError(error);
     }
+#else
+    dnn::VersionInfo source_version(CUDNN_MAJOR, CUDNN_MINOR, CUDNN_PATCHLEVEL);
+
+    TF_ASSIGN_OR_RETURN(dnn::VersionInfo loaded_version,
+                        GetLoadedCudnnVersion());
+    if (!IsSourceCompatibleWithCudnnLibrary(source_version, loaded_version)) {
+      const std::string error = absl::StrCat(
+          "Loaded runtime CuDNN library: ", loaded_version.ToString(),
+          " but source was compiled with: ", source_version.ToString(),
+          ".  CuDNN library needs to have matching major version and equal or "
+          "higher minor version. If using a binary install, upgrade your CuDNN "
+          "library.  If building from sources, make sure the library loaded at "
+          "runtime is compatible with the version specified during compile "
+          "configuration.");
+      LOG(ERROR) << error;
+      cudnnDestroy(cudnn_handle);
+      return absl::InternalError(error);
+    }
+#endif
 
     cudnn_ = std::make_unique<CudnnAccess>(cudnn_handle);
     TF_RETURN_IF_ERROR(cudnn_->InitializeCompilationHandle());
@@ -494,10 +539,14 @@ void CudnnSupport::NotifyStreamDestroyed(Stream* stream) /* override */ {
 }
 
 absl::StatusOr<stream_executor::dnn::VersionInfo> CudnnSupport::GetVersion() {
+#if CUDNN_VERSION >= 90000
   TF_ASSIGN_OR_RETURN(SemanticVersion version,
                       stream_executor::cuda::GetLoadedCudnnVersion());
   return stream_executor::dnn::VersionInfo(version.major(), version.minor(),
                                            version.patch());
+#else
+  return GetLoadedCudnnVersion();
+#endif
 }
 
 namespace {
