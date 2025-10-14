@@ -1823,10 +1823,9 @@ absl::StatusOr<const se::CommandBuffer::Command*> CustomCallCmd::Record(
 namespace {
 // Records each buffer associated with each slice into the provided vector.
 // Returns an error if any of the slices is missing a buffer allocation.
-absl::Status GetBuffers(
-    const Thunk::ExecuteParams& execute_params,
-    absl::Span<const std::optional<CustomCallCmd::Slice>> slices,
-    std::vector<void*>& buffers, absl::string_view label) {
+absl::Status GetBuffers(const Thunk::ExecuteParams& execute_params,
+                        absl::Span<const std::optional<ShapedSlice>> slices,
+                        std::vector<void*>& buffers, absl::string_view label) {
   for (int i = 0; i < slices.size(); ++i) {
     if (!slices[i].has_value()) {
       buffers.push_back(nullptr);
@@ -1908,7 +1907,7 @@ CustomCallCmd::RecordXlaFfiCall(const Thunk::ExecuteParams& execute_params,
   arguments.reserve(operands_.size());
 
   for (int i = 0; i < operands_.size(); ++i) {
-    const std::optional<Slice>& slice = operands_[i];
+    const std::optional<ShapedSlice>& slice = operands_[i];
     if (!slice.has_value()) {
       arguments.push_back(se::DeviceMemoryBase{});
       continue;
@@ -1925,7 +1924,7 @@ CustomCallCmd::RecordXlaFfiCall(const Thunk::ExecuteParams& execute_params,
   results.reserve(results_.size());
 
   for (int i = 0; i < results_.size(); ++i) {
-    const std::optional<Slice>& slice = results_[i];
+    const std::optional<ShapedSlice>& slice = results_[i];
     if (!slice.has_value()) {
       results.push_back(se::DeviceMemoryBase{});
       continue;
@@ -1976,7 +1975,7 @@ CustomCallCmd::RecordXlaFfiCall(const Thunk::ExecuteParams& execute_params,
 CommandBufferCmd::BufferUseVector CustomCallCmd::buffers() const {
   CommandBufferCmd::BufferUseVector buffer_usage;
   for (auto& slices : {operands_, results_}) {
-    for (const std::optional<Slice>& slice : slices) {
+    for (const std::optional<ShapedSlice>& slice : slices) {
       if (slice.has_value()) {
         buffer_usage.push_back(BufferUse::Write(slice->slice));
       }

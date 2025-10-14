@@ -984,15 +984,14 @@ class CuDnnCmd : public TracedCommandBufferCmd {
 
 class CustomCallCmd : public CommandBufferCmd {
  public:
-  using Slice = CustomCallThunk::Slice;
   using CustomCallTarget = CustomCallThunk::CustomCallTarget;
   using AttributesMap = CustomCallThunk::AttributesMap;
 
   // This is a legacy custom call API that is discouraged, and will be
   // deprecated once XLA:FFI mechanism is ready.
   CustomCallCmd(std::string target_name, CustomCallTarget call_target,
-                std::vector<std::optional<Slice>> operands,
-                std::vector<std::optional<Slice>> results,
+                std::vector<std::optional<ShapedSlice>> operands,
+                std::vector<std::optional<ShapedSlice>> results,
                 absl::string_view opaque)
       : CommandBufferCmd(CommandBufferCmdType::kCustomCallCmd),
         target_name_(std::move(target_name)),
@@ -1002,8 +1001,8 @@ class CustomCallCmd : public CommandBufferCmd {
         results_(std::move(results)) {}
 
   CustomCallCmd(std::string target_name, XLA_FFI_Handler* handler,
-                std::vector<std::optional<Slice>> operands,
-                std::vector<std::optional<Slice>> results,
+                std::vector<std::optional<ShapedSlice>> operands,
+                std::vector<std::optional<ShapedSlice>> results,
                 ffi::CallFrame call_frame,
                 const HloComputation* called_computation)
       : CommandBufferCmd(CommandBufferCmdType::kCustomCallCmd),
@@ -1055,8 +1054,8 @@ class CustomCallCmd : public CommandBufferCmd {
 
   const HloComputation* called_computation_;
 
-  std::vector<std::optional<Slice>> operands_;
-  std::vector<std::optional<Slice>> results_;
+  std::vector<std::optional<ShapedSlice>> operands_;
+  std::vector<std::optional<ShapedSlice>> results_;
 };
 
 //===----------------------------------------------------------------------===//

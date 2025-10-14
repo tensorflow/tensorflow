@@ -559,12 +559,10 @@ TEST_F(DynamicSliceThunkTest, SlicedMemcpy) {
       auto registration,
       xla::ffi::FindHandler("__xla_test$$memcpy", GetPlatformName()));
 
-  std::vector<std::optional<CustomCallThunk::Slice>> operands{
-      CustomCallThunk::Slice{slice_src_fake,
-                             ShapeUtil::MakeShape(PrimitiveType::S32, {8, 8})}};
-  std::vector<std::optional<CustomCallThunk::Slice>> results{
-      CustomCallThunk::Slice{slice_dst,
-                             ShapeUtil::MakeShape(PrimitiveType::S32, {8, 8})}};
+  std::vector<std::optional<ShapedSlice>> operands{ShapedSlice{
+      slice_src_fake, ShapeUtil::MakeShape(PrimitiveType::S32, {8, 8})}};
+  std::vector<std::optional<ShapedSlice>> results{
+      ShapedSlice{slice_dst, ShapeUtil::MakeShape(PrimitiveType::S32, {8, 8})}};
 
   // Creating embedded custom call thunk.
   ThunkSequence seq;
@@ -722,12 +720,10 @@ TEST_F(DynamicSliceThunkTest, SlicedOutputMemcpy) {
       auto registration,
       xla::ffi::FindHandler("__xla_test$$memcpy", GetPlatformName()));
 
-  std::vector<std::optional<CustomCallThunk::Slice>> operands{
-      CustomCallThunk::Slice{slice_src_fake,
-                             ShapeUtil::MakeShape(PrimitiveType::S32, {2, 2})}};
-  std::vector<std::optional<CustomCallThunk::Slice>> results{
-      CustomCallThunk::Slice{slice_dst_fake,
-                             ShapeUtil::MakeShape(PrimitiveType::S32, {2, 2})}};
+  std::vector<std::optional<ShapedSlice>> operands{ShapedSlice{
+      slice_src_fake, ShapeUtil::MakeShape(PrimitiveType::S32, {2, 2})}};
+  std::vector<std::optional<ShapedSlice>> results{ShapedSlice{
+      slice_dst_fake, ShapeUtil::MakeShape(PrimitiveType::S32, {2, 2})}};
 
   // Creating embedded custom call thunk.
   ThunkSequence seq;
@@ -1444,12 +1440,10 @@ TEST_F(DynamicSliceThunkTest, SlicedMemcpyOOB) {
       auto registration,
       xla::ffi::FindHandler("__xla_test$$memcpy", GetPlatformName()));
 
-  std::vector<std::optional<CustomCallThunk::Slice>> operands{
-      CustomCallThunk::Slice{slice_src_fake,
-                             ShapeUtil::MakeShape(PrimitiveType::S32, {2, 2})}};
-  std::vector<std::optional<CustomCallThunk::Slice>> results{
-      CustomCallThunk::Slice{slice_dst_fake,
-                             ShapeUtil::MakeShape(PrimitiveType::S32, {2, 2})}};
+  std::vector<std::optional<ShapedSlice>> operands{ShapedSlice{
+      slice_src_fake, ShapeUtil::MakeShape(PrimitiveType::S32, {2, 2})}};
+  std::vector<std::optional<ShapedSlice>> results{ShapedSlice{
+      slice_dst_fake, ShapeUtil::MakeShape(PrimitiveType::S32, {2, 2})}};
 
   // Creating embedded custom call thunk.
   ThunkSequence seq;

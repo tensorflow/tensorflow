@@ -1168,7 +1168,7 @@ absl::Status IrEmitterUnnested::EmitCustomCallThunk(
   bool is_ffi_custom_call =
       instr->api_version() == CustomCallApiVersion::API_VERSION_TYPED_FFI;
 
-  using Slices = std::vector<std::optional<CustomCallThunk::Slice>>;
+  using Slices = std::vector<std::optional<ShapedSlice>>;
 
   Slices operands;
   for (auto* operand : instr->operands()) {
@@ -1183,7 +1183,7 @@ absl::Status IrEmitterUnnested::EmitCustomCallThunk(
           }
           TF_ASSIGN_OR_RETURN(auto slice,
                               GetAllocationSliceForHlo(operand, index));
-          operands.push_back(CustomCallThunk::Slice{slice, subshape});
+          operands.push_back(ShapedSlice{slice, subshape});
           return absl::OkStatus();
         }));
   }
@@ -1199,7 +1199,7 @@ absl::Status IrEmitterUnnested::EmitCustomCallThunk(
           return absl::OkStatus();
         }
         TF_ASSIGN_OR_RETURN(auto slice, GetAllocationSliceForHlo(instr, index));
-        results.push_back(CustomCallThunk::Slice{slice, subshape});
+        results.push_back(ShapedSlice{slice, subshape});
         return absl::OkStatus();
       }));
 
