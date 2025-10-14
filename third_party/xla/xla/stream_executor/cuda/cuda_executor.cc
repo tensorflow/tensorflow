@@ -92,8 +92,10 @@ limitations under the License.
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/macros.h"
+#include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/threadpool.h"
+#include "xla/util.h"
 #include "tsl/platform/casts.h"
 #include "tsl/platform/fingerprint.h"
 #include "tsl/platform/numa.h"
@@ -623,6 +625,42 @@ absl::StatusOr<std::unique_ptr<MemoryAllocation>> AllocateHostMemory(
       });
 }
 
+absl::StatusOr<bool> IsVmmSupported(CUdevice device) {
+  int deviceSupportsVmm = 0;
+  TF_RETURN_IF_ERROR(cuda::ToStatus(cuDeviceGetAttribute(
+      &deviceSupportsVmm,
+      CU_DEVICE_ATTRIBUTE_VIRTUAL_MEMORY_MANAGEMENT_SUPPORTED, device)));
+  return deviceSupportsVmm;
+}
+
+absl::StatusOr<bool> IsRdmaSupported(CUdevice device) {
+  int rdma_supported = 0;
+  TF_RETURN_IF_ERROR(cuda::ToStatus(cuDeviceGetAttribute(
+      &rdma_supported,
+      CU_DEVICE_ATTRIBUTE_GPU_DIRECT_RDMA_WITH_CUDA_VMM_SUPPORTED, device)));
+  return rdma_supported;
+}
+
+CUmemAllocationProp GetVmmAllocationProperties(CUdevice device,
+                                               bool is_rdma_supported) {
+  CUmemAllocationProp properties = {};
+  properties.type = CU_MEM_ALLOCATION_TYPE_PINNED;
+  properties.location.type = CU_MEM_LOCATION_TYPE_DEVICE;
+  properties.requestedHandleTypes =
+      static_cast<CUmemAllocationHandleType>(CU_MEM_HANDLE_TYPE_NONE);
+  properties.location.id = device;
+  properties.allocFlags.gpuDirectRDMACapable = is_rdma_supported ? 1 : 0;
+  return properties;
+}
+
+CUmemAccessDesc GetVmmAccessDescriptor(int device) {
+  CUmemAccessDesc descriptor = {};
+  descriptor.location.type = CU_MEM_LOCATION_TYPE_DEVICE;
+  descriptor.location.id = device;
+  descriptor.flags = CU_MEM_ACCESS_FLAGS_PROT_READWRITE;
+  return descriptor;
+}
+
 }  // namespace
 
 // Given const GPU memory, returns a libcuda device pointer datatype, suitable
@@ -664,6 +702,107 @@ absl::StatusOr<xla::gpu::GpuCollectives*> GetGpuCollectives(
   TF_ASSIGN_OR_RETURN(xla::Collectives * collectives,
                       xla::CollectivesRegistry::Default("gpu"));
   return tsl::down_cast<xla::gpu::GpuCollectives*>(collectives);
+}
+
+CudaExecutor::VmmMemoryHandle::~VmmMemoryHandle() { TF_CHECK_OK(Release()); }
+
+absl::Status CudaExecutor::VmmMemoryHandle::Release() {
+  if (handle_ != 0) {
+    TF_RETURN_IF_ERROR(cuda::ToStatus(
+        cuMemRelease(static_cast<CUmemGenericAllocationHandle>(handle_))));
+    handle_ = 0;
+  }
+
+  return absl::OkStatus();
+}
+
+CudaExecutor::VmmMemoryHandle::VmmMemoryHandle(VmmMemoryHandle&& other) {
+  handle_ = other.handle_;
+  other.handle_ = 0;
+}
+
+CudaExecutor::VmmMemoryHandle& CudaExecutor::VmmMemoryHandle::operator=(
+    VmmMemoryHandle&& other) {
+  if (this != &other) {
+    TF_CHECK_OK(Release());
+    handle_ = other.handle_;
+    other.handle_ = 0;
+  }
+  return *this;
+}
+
+absl::StatusOr<CudaExecutor::VmmMemoryHandle>
+CudaExecutor::RetainVmmMemoryHandle(void* ptr) {
+  if (!is_vmm_supported_) {
+    return absl::InternalError("VMM is not supported on this device.");
+  }
+
+  CUmemGenericAllocationHandle handle;
+  TF_RETURN_IF_ERROR(cuda::ToStatus(cuMemRetainAllocationHandle(&handle, ptr)));
+
+  return CudaExecutor::VmmMemoryHandle(static_cast<uint64_t>(handle));
+}
+
+absl::StatusOr<void*> CudaExecutor::VmmAllocateMemory(uint64_t bytes) {
+  if (!is_vmm_supported_) {
+    return absl::InternalError("VMM is not supported on this device.");
+  }
+
+  std::unique_ptr<ActivateContext> activation = Activate();
+
+  CUmemAllocationProp properties =
+      GetVmmAllocationProperties(device_, is_rdma_supported_);
+  size_t granularity = 0;
+  TF_RETURN_IF_ERROR(cuda::ToStatus(cuMemGetAllocationGranularity(
+      &granularity, &properties, CU_MEM_ALLOC_GRANULARITY_RECOMMENDED)));
+
+  uint64_t padded_size = xla::RoundUpTo<uint64_t>(bytes, granularity);
+  CUmemGenericAllocationHandle handle;
+
+  // Create physical memory allocation.
+  TF_RETURN_IF_ERROR(
+      cuda::ToStatus(cuMemCreate(&handle, padded_size, &properties, 0)));
+
+  // Reserve and map virtual address space.
+  CUdeviceptr ptr;
+  TF_RETURN_IF_ERROR(cuda::ToStatus(
+      cuMemAddressReserve(&ptr, padded_size, granularity, 0, 0)));
+  TF_RETURN_IF_ERROR(cuda::ToStatus(cuMemMap(ptr, padded_size, 0, handle, 0)));
+
+  int device_count = 0;
+  TF_RETURN_IF_ERROR(cuda::ToStatus(cudaGetDeviceCount(&device_count)));
+  for (int peer = 0; peer < device_count; peer++) {
+    if (peer == device_ordinal() || CanEnablePeerAccess(peer, device_)) {
+      CUmemAccessDesc accessDesc = GetVmmAccessDescriptor(peer);
+      TF_RETURN_IF_ERROR(
+          cuda::ToStatus(cuMemSetAccess(ptr, padded_size, &accessDesc, 1)));
+    }
+  }
+
+  return reinterpret_cast<void*>(ptr);
+}
+
+absl::Status CudaExecutor::VmmDeallocateMemory(void* ptr) {
+  if (!is_vmm_supported_) {
+    return absl::InternalError("VMM is not supported on this device.");
+  }
+
+  std::unique_ptr<ActivateContext> activation = Activate();
+
+  CUmemGenericAllocationHandle handle = 0;
+  {
+    TF_ASSIGN_OR_RETURN(VmmMemoryHandle scoped_handle,
+                        RetainVmmMemoryHandle(ptr));
+    handle = static_cast<CUmemGenericAllocationHandle>(scoped_handle.handle());
+  }
+  size_t size = 0;
+  CUdeviceptr device_ptr = reinterpret_cast<CUdeviceptr>(ptr);
+  TF_RETURN_IF_ERROR(
+      cuda::ToStatus(cuMemGetAddressRange(nullptr, &size, device_ptr)));
+  TF_RETURN_IF_ERROR(cuda::ToStatus(cuMemUnmap(device_ptr, size)));
+  TF_RETURN_IF_ERROR(cuda::ToStatus(cuMemRelease(handle)));
+  TF_RETURN_IF_ERROR(cuda::ToStatus(cuMemAddressFree(device_ptr, size)));
+  return absl::OkStatus();
 }
 
 absl::StatusOr<void*> CollectiveMemoryAllocate(StreamExecutor* executor,
@@ -755,6 +894,8 @@ CudaExecutor::CreateMemoryAllocator(MemoryType type) {
 
 absl::Status CudaExecutor::Init() {
   TF_ASSIGN_OR_RETURN(device_, GetDevice(device_ordinal()));
+  TF_ASSIGN_OR_RETURN(is_vmm_supported_, IsVmmSupported(device_));
+  TF_ASSIGN_OR_RETURN(is_rdma_supported_, IsRdmaSupported(device_));
   TF_ASSIGN_OR_RETURN(CudaContext * context,
                       CudaContext::Create(device_ordinal(), device_));
   cuda_context_ = context;
@@ -1078,6 +1219,20 @@ DeviceMemoryBase CudaExecutor::Allocate(uint64_t size, int64_t memory_space) {
     return DeviceMemoryBase(result.value(), size);
   }
 
+  if (memory_space == static_cast<int64_t>(MemoryType::kP2P) &&
+      is_vmm_supported_) {
+    auto device_buf_base = VmmAllocateMemory(size);
+
+    if (device_buf_base.ok()) {
+      return DeviceMemoryBase(device_buf_base.value(), size);
+    }
+
+    LOG(ERROR) << "Failed to allocate memory with VMM: "
+               << device_buf_base.status();
+
+    return DeviceMemoryBase(nullptr, 0);
+  }
+
   CHECK(memory_space == static_cast<int64_t>(MemoryType::kDevice) ||
         memory_space == static_cast<int64_t>(MemoryType::kP2P));
 
@@ -1105,7 +1260,12 @@ void CudaExecutor::Deallocate(DeviceMemoryBase* mem) {
   if (memory_space == MemoryType::kHost) {
     HostDeallocate(cuda_context_, numa_node_, mem->opaque(), mem->size());
   } else {
-    DeviceDeallocate(cuda_context_, mem->opaque());
+    // Memory space is always kDevice here, so the only way to check if the
+    // memory was allocated with VMM API is to try to retain the handle with VMM
+    // API (which VmmDeallocateMemory does).
+    if (!VmmDeallocateMemory(mem->opaque()).ok()) {
+      DeviceDeallocate(cuda_context_, mem->opaque());
+    }
   }
 }
 
