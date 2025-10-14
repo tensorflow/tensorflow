@@ -22,11 +22,13 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/hlo/ir/dfs_hlo_visitor.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -56,7 +58,7 @@ using hlo_query::NextChannelId;
 HloInstruction* GetIntraHostMetadata(
     HloRaggedAllToAllInstruction* ragged_all_to_all,
     HloInstruction* metadata_operand, HloComputation* computation,
-    const std::vector<ReplicaGroup>& replica_groups, int64_t num_hosts,
+    absl::Span<ReplicaGroup const> replica_groups, int64_t num_hosts,
     int64_t num_devices_in_replica, bool correct_offsets) {
   int64_t num_devices_in_replica_per_host = num_devices_in_replica / num_hosts;
 
@@ -172,15 +174,25 @@ absl::StatusOr<bool> DecomposeRaggedAllToAll(
   //   {{0, 8}, {2, 10}, {4, 12}, {6, 14}, {1, 9}, {3, 11}, {5, 13}, {7, 15}}}
   // And the intra-host replica groups would be:
   //   {{0, 2, 4, 6}, {8, 10, 12, 14}, {1, 3, 5, 7}, {9, 11, 13, 15}}
-  std::vector<ReplicaGroup> intra_host_replica_groups;
-  std::vector<ReplicaGroup> inter_host_replica_groups;
+  absl::InlinedVector<ReplicaGroup, 8> intra_host_replica_groups;
+  absl::InlinedVector<ReplicaGroup, 8> inter_host_replica_groups;
 
   for (const auto& replica_group : replica_groups) {
-    std::vector<ReplicaGroup> intra_host_replica_group_split(num_hosts);
+    absl::InlinedVector<int64_t, 8> replicas_per_host(num_hosts);
+
+    absl::InlinedVector<ReplicaGroup, 8> intra_host_replica_group_split(
+        num_hosts);
     for (int64_t replica_id : replica_group.replica_ids()) {
       int64_t host_id = replica_id / fast_interconnect_slice_size;
 
       intra_host_replica_group_split[host_id].add_replica_ids(replica_id);
+      replicas_per_host[host_id]++;
+    }
+
+    // Check that each group has the same number of replicas per host.
+    if (!absl::c_all_of(replicas_per_host,
+                        [&](int64_t v) { return v == replicas_per_host[0]; })) {
+      return false;
     }
 
     absl::c_copy(intra_host_replica_group_split,

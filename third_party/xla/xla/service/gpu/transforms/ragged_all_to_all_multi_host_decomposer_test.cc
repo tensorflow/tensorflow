@@ -203,6 +203,30 @@ ENTRY main {
   EXPECT_FALSE(changed);
 }
 
+TEST_F(RaggedAllToAllDecomposerTest,
+       RaggedAllToAllWithinSingleHostIsNotDecomposed) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule module
+
+ENTRY main {
+    input = bf16[128] parameter(0)
+    output = bf16[256] parameter(1)
+    input_offsets = s64[8] parameter(2)
+    send_sizes = s64[8] parameter(3)
+    output_offsets = s64[8] parameter(4)
+    recv_sizes = s64[8] parameter(5)
+    ROOT ra2a = bf16[256] ragged-all-to-all(input, output, input_offsets,
+      send_sizes, output_offsets, recv_sizes),
+      replica_groups={{0,1,2,3,4,5,6,7},{8,9,10,11,12,13,14,15}}
+}
+)"));
+
+  RaggedAllToAllMultiHostDecomposer decomposer(
+      /*fast_interconnect_slice_size=*/8);
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, decomposer.Run(module.get(), {}));
+  EXPECT_FALSE(changed);
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla
