@@ -41,6 +41,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
+#include "absl/synchronization/notification.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "unsupported/Eigen/CXX11/Tensor"
@@ -955,6 +956,21 @@ GetLatestIncarnations(
     device_incarnations[device_id] = it->second;
   }
   return device_incarnations;
+}
+
+absl::Status BlockHostUntilDoneWithHostCallback(se::Stream* stream) {
+  absl::Notification event;
+
+  tsl::profiler::TraceMe traceme("BlockHostUntilDoneWithHostCallback");
+  auto status = stream->DoHostCallback([&event]() {
+    tsl::profiler::TraceMe traceme(
+        "BlockHostUntilDoneWithHostCallback::Callback");
+    event.Notify();
+  });
+
+  event.WaitForNotification();
+
+  return status;
 }
 
 }  // namespace xla

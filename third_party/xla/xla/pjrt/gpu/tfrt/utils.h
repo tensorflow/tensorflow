@@ -184,6 +184,8 @@ GetLatestIncarnations(
     absl::Span<PjRtDevice* const> devices,
     const absl::flat_hash_map<int, IncarnationId>& incarnations);
 
+absl::Status BlockHostUntilDoneWithHostCallback(se::Stream* stream);
+
 }  // namespace xla
 
 #endif  // XLA_PJRT_GPU_TFRT_UTILS_H_
