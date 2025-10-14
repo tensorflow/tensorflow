@@ -694,10 +694,18 @@ typedef XLA_FFI_Error* XLA_FFI_DeviceOrdinal_Get(
 // Metadata extension
 //===----------------------------------------------------------------------===//
 
+// XLA FFI handler metadata allows the XLA runtime to query handler properties
+// during XLA compilation and execution. We use a metadata extension to verify
+// that XLA is compatible with the FFI version used to compile the handler.
 struct XLA_FFI_Metadata {
   size_t struct_size;
+
   XLA_FFI_Api_Version api_version;
   XLA_FFI_Handler_Traits traits;
+
+  // For stateful handlers, the type id of the state type. Otherwise, the type
+  // id is `XLA_FFI_UNKNOWN_TYPE_ID`.
+  XLA_FFI_TypeId state_type_id;
 };
 
 XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_Metadata, traits);

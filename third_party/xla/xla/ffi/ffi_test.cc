@@ -39,18 +39,17 @@ limitations under the License.
 #include "xla/ffi/execution_context.h"
 #include "xla/ffi/execution_state.h"
 #include "xla/ffi/ffi_api.h"
+#include "xla/ffi/type_id_registry.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/concurrency/chain.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/test_benchmark.h"
+#include "xla/tsl/platform/threadpool.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/status_matchers.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
-#include "tsl/platform/test_benchmark.h"
-#include "tsl/platform/threadpool.h"
 
 #define EIGEN_USE_THREADS
 #include "unsupported/Eigen/CXX11/Tensor"
@@ -86,7 +85,6 @@ using ::testing::_;
 using ::testing::HasSubstr;
 using ::testing::Pair;
 using ::testing::UnorderedElementsAre;
-using ::tsl::testing::StatusIs;
 
 TEST(FfiTest, StaticHandlerRegistration) {
   static constexpr auto* noop = +[] { return absl::OkStatus(); };
@@ -385,9 +383,15 @@ TEST(FfiTest, AttrsAsDictionary) {
     EXPECT_TRUE(f32.ok());
     EXPECT_TRUE(str.ok());
 
-    if (i32.ok()) EXPECT_EQ(*i32, 42);
-    if (f32.ok()) EXPECT_EQ(*f32, 42.0f);
-    if (str.ok()) EXPECT_EQ(*str, "foo");
+    if (i32.ok()) {
+      EXPECT_EQ(*i32, 42);
+    }
+    if (f32.ok()) {
+      EXPECT_EQ(*f32, 42.0f);
+    }
+    if (str.ok()) {
+      EXPECT_EQ(*str, "foo");
+    }
 
     EXPECT_FALSE(dict.contains("i64"));
     EXPECT_FALSE(dict.get<int64_t>("i32").ok());
@@ -430,8 +434,12 @@ TEST(FfiTest, DictionaryAttr) {
     EXPECT_TRUE(i32.ok());
     EXPECT_TRUE(f32.ok());
 
-    if (i32.ok()) EXPECT_EQ(*i32, 42);
-    if (f32.ok()) EXPECT_EQ(*f32, 42.0f);
+    if (i32.ok()) {
+      EXPECT_EQ(*i32, 42);
+    }
+    if (f32.ok()) {
+      EXPECT_EQ(*f32, 42.0f);
+    }
 
     return absl::OkStatus();
   };
@@ -1080,26 +1088,37 @@ TEST(FfiTest, AsyncHandler) {
 }
 
 TEST(FfiTest, Metadata) {
-  static constexpr auto* noop = +[] { return absl::OkStatus(); };
-  XLA_FFI_DEFINE_HANDLER(handler, noop, Ffi::Bind());
-  auto maybe_metadata = GetMetadata(handler);
+  static constexpr auto* instantiate =
+      +[]() -> absl::StatusOr<std::unique_ptr<StrState>> {
+    return std::make_unique<StrState>("");
+  };
+  XLA_FFI_DEFINE_HANDLER(handler, instantiate, Ffi::BindInstantiate());
+
+  absl::StatusOr<XLA_FFI_Metadata> maybe_metadata = GetMetadata(handler);
   EXPECT_TRUE(maybe_metadata.ok());
-  auto metadata = maybe_metadata.value();
+
+  XLA_FFI_Metadata metadata = maybe_metadata.value();
   EXPECT_EQ(metadata.traits, 0);
   EXPECT_EQ(metadata.api_version.major_version, XLA_FFI_API_MAJOR);
   EXPECT_EQ(metadata.api_version.minor_version, XLA_FFI_API_MINOR);
+
+  TypeIdRegistry::TypeId type_id = TypeIdRegistry::GetTypeId<StrState>();
+  EXPECT_EQ(metadata.state_type_id.type_id, type_id);
 }
 
 TEST(FfiTest, MetadataTraits) {
   static constexpr auto* noop = +[] { return absl::OkStatus(); };
   XLA_FFI_DEFINE_HANDLER(handler, noop, Ffi::Bind(),
                          {Traits::kCmdBufferCompatible});
-  auto maybe_metadata = GetMetadata(handler);
+
+  absl::StatusOr<XLA_FFI_Metadata> maybe_metadata = GetMetadata(handler);
   EXPECT_TRUE(maybe_metadata.ok());
-  auto metadata = maybe_metadata.value();
+
+  XLA_FFI_Metadata metadata = maybe_metadata.value();
   EXPECT_EQ(metadata.traits, XLA_FFI_HANDLER_TRAITS_COMMAND_BUFFER_COMPATIBLE);
   EXPECT_EQ(metadata.api_version.major_version, XLA_FFI_API_MAJOR);
   EXPECT_EQ(metadata.api_version.minor_version, XLA_FFI_API_MINOR);
+  EXPECT_EQ(metadata.state_type_id.type_id, XLA_FFI_UNKNOWN_TYPE_ID.type_id);
 }
 
 // Use opaque struct to define a platform stream type just like platform

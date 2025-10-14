@@ -136,7 +136,9 @@ static XLA_FFI_ExecutionContext CreateExecutionContext(
 //===----------------------------------------------------------------------===//
 
 absl::Status TakeStatus(XLA_FFI_Error* error) {
-  if (ABSL_PREDICT_TRUE(error == nullptr)) return absl::OkStatus();
+  if (ABSL_PREDICT_TRUE(error == nullptr)) {
+    return absl::OkStatus();
+  }
   absl::Status status = std::move(error->status);
   delete error;
   return status;
@@ -150,7 +152,9 @@ tsl::AsyncValueRef<tsl::Chain> TakeFuture(XLA_FFI_Future* future) {
         tsl::MakeAvailableAsyncValueRef<tsl::Chain>(*storage));
   }();
 
-  if (ABSL_PREDICT_TRUE(future == nullptr)) return chain->AsRef();
+  if (ABSL_PREDICT_TRUE(future == nullptr)) {
+    return chain->AsRef();
+  }
 
   // If the future is already completed, immediately return the underlying async
   // value and delete the XLA_FFI_Future.
@@ -204,7 +208,9 @@ static absl::StatusOr<XLA_FFI_Future*> Call(Handler& handler,
 }
 
 static absl::Status BlockUntilReady(XLA_FFI_Future* future) {
-  if (ABSL_PREDICT_TRUE(future == nullptr)) return absl::OkStatus();
+  if (ABSL_PREDICT_TRUE(future == nullptr)) {
+    return absl::OkStatus();
+  }
 
   tsl::AsyncValueRef<tsl::Chain> av = TakeFuture(future);
   tsl::BlockUntilReady(av);
@@ -246,12 +252,12 @@ tsl::AsyncValueRef<tsl::Chain> CallAsync(XLA_FFI_Handler* handler,
   return TakeFuture(future);
 }
 
-static XLA_FFI_Metadata BuildMetadata() {
+static XLA_FFI_Metadata PrepareMetadata() {
   return XLA_FFI_Metadata{XLA_FFI_Metadata_STRUCT_SIZE,
                           XLA_FFI_Api_Version{XLA_FFI_Api_Version_STRUCT_SIZE}};
 }
 
-static XLA_FFI_Metadata_Extension BuildMetadataExtension(
+static XLA_FFI_Metadata_Extension PrepareMetadataExtension(
     XLA_FFI_Metadata* metadata) {
   return XLA_FFI_Metadata_Extension{
       XLA_FFI_Extension_Base{XLA_FFI_Metadata_Extension_STRUCT_SIZE,
@@ -259,7 +265,7 @@ static XLA_FFI_Metadata_Extension BuildMetadataExtension(
       metadata};
 }
 
-static XLA_FFI_CallFrame BuildMetadataCallFrame(
+static XLA_FFI_CallFrame PrepareMetadataCallFrame(
     XLA_FFI_Metadata_Extension* extension) {
   return XLA_FFI_CallFrame{
       XLA_FFI_CallFrame_STRUCT_SIZE,
@@ -274,9 +280,9 @@ static XLA_FFI_CallFrame BuildMetadataCallFrame(
 }
 
 absl::StatusOr<XLA_FFI_Metadata> GetMetadata(Ffi& handler) {
-  XLA_FFI_Metadata metadata = BuildMetadata();
-  XLA_FFI_Metadata_Extension extension = BuildMetadataExtension(&metadata);
-  XLA_FFI_CallFrame call_frame = BuildMetadataCallFrame(&extension);
+  XLA_FFI_Metadata metadata = PrepareMetadata();
+  XLA_FFI_Metadata_Extension extension = PrepareMetadataExtension(&metadata);
+  XLA_FFI_CallFrame call_frame = PrepareMetadataCallFrame(&extension);
   XLA_FFI_Error* error = nullptr;
   try {
     error = handler.Call(&call_frame);
@@ -290,9 +296,9 @@ absl::StatusOr<XLA_FFI_Metadata> GetMetadata(Ffi& handler) {
 }
 
 absl::StatusOr<XLA_FFI_Metadata> GetMetadata(XLA_FFI_Handler* handler) {
-  XLA_FFI_Metadata metadata = BuildMetadata();
-  XLA_FFI_Metadata_Extension extension = BuildMetadataExtension(&metadata);
-  XLA_FFI_CallFrame call_frame = BuildMetadataCallFrame(&extension);
+  XLA_FFI_Metadata metadata = PrepareMetadata();
+  XLA_FFI_Metadata_Extension extension = PrepareMetadataExtension(&metadata);
+  XLA_FFI_CallFrame call_frame = PrepareMetadataCallFrame(&extension);
   XLA_FFI_Error* error = nullptr;
   try {
     error = (*handler)(&call_frame);
@@ -346,10 +352,18 @@ static HandlerRegistry& GetHandlerRegistry() {
 static std::vector<std::string> GetHandlerStages(
     const XLA_FFI_Handler_Bundle& bundle) {
   std::vector<std::string> stages;
-  if (bundle.instantiate != nullptr) stages.push_back("instantiate");
-  if (bundle.prepare != nullptr) stages.push_back("prepare");
-  if (bundle.initialize != nullptr) stages.push_back("initialize");
-  if (bundle.execute != nullptr) stages.push_back("execute");
+  if (bundle.instantiate != nullptr) {
+    stages.push_back("instantiate");
+  }
+  if (bundle.prepare != nullptr) {
+    stages.push_back("prepare");
+  }
+  if (bundle.initialize != nullptr) {
+    stages.push_back("initialize");
+  }
+  if (bundle.execute != nullptr) {
+    stages.push_back("execute");
+  }
   return stages;
 }
 
@@ -368,7 +382,7 @@ static absl::Status RegisterHandler(absl::string_view name,
   }
 
   // Check the API versions.
-  TF_ASSIGN_OR_RETURN(auto metadata, GetMetadata(bundle.execute));
+  TF_ASSIGN_OR_RETURN(XLA_FFI_Metadata metadata, GetMetadata(bundle.execute));
   const XLA_FFI_Api_Version& api_version = metadata.api_version;
   if (api_version.major_version != XLA_FFI_API_MAJOR ||
       api_version.minor_version != XLA_FFI_API_MINOR) {

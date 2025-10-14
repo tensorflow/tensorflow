@@ -1411,6 +1411,24 @@ struct NumArgs<T, Ts...> {
   static constexpr int64_t value = !IsTagged<T>::value + NumArgs<Ts...>::value;
 };
 
+// A template to detect result encodings that are state constructors. We use
+// this to report back the TypeId of the state as a part of the metadata.
+template <typename ResultEnconding, typename = void>
+struct IsStateConstructor : std::false_type {};
+
+// Check if the ResultEncoding has a static `state_type_id()` method returning
+// the XLA_FFI_TypeId.
+template <typename ResultEncoding>
+struct IsStateConstructor<
+    ResultEncoding,
+    std::enable_if_t<std::is_same_v<XLA_FFI_TypeId,
+                                    decltype(ResultEncoding::state_type_id())>>>
+    : std::true_type {};
+
+template <typename ResultEncoding>
+static constexpr bool is_state_constructor_v =  // NOLINT
+    IsStateConstructor<ResultEncoding>::value;
+
 }  // namespace internal
 
 //===----------------------------------------------------------------------===//
@@ -1587,16 +1605,23 @@ class Handler : public Ffi {
 
     extension->metadata->api_version = XLA_FFI_Api_Version{
         XLA_FFI_Api_Version_STRUCT_SIZE,
-        /*extension_start=*/nullptr,
-        XLA_FFI_API_MAJOR,
-        XLA_FFI_API_MINOR,
-    };
+        /*extension_start=*/nullptr, XLA_FFI_API_MAJOR, XLA_FFI_API_MINOR};
 
+    // Collect all traits and store them in the metadata.
     XLA_FFI_Handler_Traits traits = 0;
     for (const auto& trait : traits_) {
       traits |= static_cast<XLA_FFI_Handler_Traits>(trait);
     }
     extension->metadata->traits = traits;
+
+    // Check if the handler creates a new state object and if so, record its
+    // type id in the metadata.
+    using ResultEncoding = ResultEncoding<stage, ResultType>;
+    if constexpr (internal::is_state_constructor_v<ResultEncoding>) {
+      extension->metadata->state_type_id = ResultEncoding::state_type_id();
+    } else {
+      extension->metadata->state_type_id = XLA_FFI_UNKNOWN_TYPE_ID;
+    }
 
     return Sucess();
   }

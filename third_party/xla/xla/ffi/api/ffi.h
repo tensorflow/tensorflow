@@ -1139,6 +1139,8 @@ struct ResultEncoding<ExecutionStage::kInstantiate,
   static_assert(std::is_same_v<decltype(T::id), TypeId>,
                 "State type must have a static `TypeId id` field");
 
+  static XLA_FFI_TypeId state_type_id() { return T::id; }
+
   XLA_FFI_ATTRIBUTE_ALWAYS_INLINE
   static XLA_FFI_Error* Encode(const XLA_FFI_Api* api,
                                XLA_FFI_ExecutionContext* ctx,

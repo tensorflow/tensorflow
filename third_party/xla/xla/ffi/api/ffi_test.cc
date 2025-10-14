@@ -1434,25 +1434,33 @@ TEST(FfiTest, AsyncHandler) {
 }
 
 TEST(FfiTest, Metadata) {
-  auto api = GetXlaFfiApi();
-  auto handler = Ffi::BindTo([]() { return Error::Success(); });
-  auto maybe_metadata = GetMetadata(*handler);
+  auto handler =
+      Ffi::BindInstantiate().To([]() -> ErrorOr<std::unique_ptr<MyState>> {
+        return std::make_unique<MyState>(42);
+      });
+
+  absl::StatusOr<XLA_FFI_Metadata> maybe_metadata = GetMetadata(*handler);
   EXPECT_TRUE(maybe_metadata.ok());
-  auto metadata = maybe_metadata.value();
-  EXPECT_EQ(metadata.api_version.major_version, api->api_version.major_version);
-  EXPECT_EQ(metadata.api_version.minor_version, api->api_version.minor_version);
+
+  XLA_FFI_Metadata metadata = maybe_metadata.value();
+  EXPECT_EQ(metadata.api_version.major_version, XLA_FFI_API_MAJOR);
+  EXPECT_EQ(metadata.api_version.minor_version, XLA_FFI_API_MINOR);
   EXPECT_EQ(metadata.traits, 0);
+  EXPECT_EQ(metadata.state_type_id.type_id, MyState::id.type_id);
 }
 
 TEST(FfiTest, MetadataTraits) {
   auto handler = Ffi::BindTo([]() { return Error::Success(); },
                              {Traits::kCmdBufferCompatible});
-  auto maybe_metadata = GetMetadata(*handler);
+
+  absl::StatusOr<XLA_FFI_Metadata> maybe_metadata = GetMetadata(*handler);
   EXPECT_TRUE(maybe_metadata.ok());
-  auto metadata = maybe_metadata.value();
+
+  XLA_FFI_Metadata metadata = maybe_metadata.value();
   EXPECT_EQ(metadata.api_version.major_version, XLA_FFI_API_MAJOR);
   EXPECT_EQ(metadata.api_version.minor_version, XLA_FFI_API_MINOR);
   EXPECT_EQ(metadata.traits, XLA_FFI_HANDLER_TRAITS_COMMAND_BUFFER_COMPATIBLE);
+  EXPECT_EQ(metadata.state_type_id.type_id, XLA_FFI_UNKNOWN_TYPE_ID.type_id);
 }
 
 //===----------------------------------------------------------------------===//
