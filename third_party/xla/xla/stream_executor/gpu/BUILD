@@ -711,6 +711,7 @@ xla_test(
         "//xla/tools/hlo_opt:gpu_specs/a100_sxm_40.txtpb",
         "//xla/tools/hlo_opt:gpu_specs/a100_sxm_80.txtpb",
         "//xla/tools/hlo_opt:gpu_specs/a6000.txtpb",
+        "//xla/tools/hlo_opt:gpu_specs/b200.txtpb",
         "//xla/tools/hlo_opt:gpu_specs/h100_pcie.txtpb",
         "//xla/tools/hlo_opt:gpu_specs/h100_sxm.txtpb",
         "//xla/tools/hlo_opt:gpu_specs/mi200.txtpb",
