@@ -161,6 +161,10 @@ absl::StatusOr<void*> GetCudaDriverDsoHandle() {
   return GetDsoHandle("cuda", "1");
 }
 
+absl::StatusOr<void*> GetNvmlDsoHandle() {
+  return GetDsoHandle("nvidia-ml", "1");
+}
+
 absl::StatusOr<void*> GetCudaRuntimeDsoHandle() {
   return GetDsoHandle("cudart", GetCudaRtVersion());
 }
