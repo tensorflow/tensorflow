@@ -52,6 +52,7 @@ xla_cc_test(
         "//xla/service/gpu/model/experimental:symbolic_expr",
         "//xla/tsl/platform:status_matchers",
         "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/status:status_matchers",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//mlir:IR",
     ],
@@ -152,6 +153,7 @@ cc_library(
     hdrs = ["affine_map_evaluator.h"],
     deps = [
         "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
