@@ -290,7 +290,13 @@ class ReservedAllocation final : public Allocation {
 // This class represents an allocation as a result of an asynchronous copy.
 // Note: CopyStart instructions are inserted after
 // `copy_start_schedule_after`, while CopyDone instructions are inserted
-// before `copy_done_schedule_before_time`.
+// before `copy_done_schedule_before_time`. `sync_mem_op` is the sync data
+// movement instruction that will be converted to an async copy instruction with
+// the data movement semantics. Generally, MSA inserts new async copy
+// instructions, in cases where async copy instructions are already present in
+// the original schedule, MSA will just schedule them in correct positions.
+// `async_mem_op_start` and `async_mem_op_done` are async copy start and done
+// instructions that are already present in the original schedule.
 class CopyAllocation final : public Allocation {
  public:
   CopyAllocation(
@@ -299,7 +305,9 @@ class CopyAllocation final : public Allocation {
       int64_t copy_start_schedule_after_time,
       int64_t copy_done_schedule_before_time, int64_t end_time,
       std::optional<int64_t> cross_program_prefetch_index = std::nullopt,
-      HloInstruction* sync_mem_op = nullptr);
+      HloInstruction* sync_mem_op = nullptr,
+      HloInstruction* async_mem_op_start = nullptr,
+      HloInstruction* async_mem_op_done = nullptr);
 
   // Overridden methods
   //
