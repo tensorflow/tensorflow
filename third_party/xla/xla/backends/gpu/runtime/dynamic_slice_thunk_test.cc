@@ -570,7 +570,7 @@ TEST_F(DynamicSliceThunkTest, SlicedMemcpy) {
       seq.emplace_back(),
       CustomCallThunk::Create(Thunk::ThunkInfo(), "__xla_test$$memcpy",
                               registration.bundle, operands, results,
-                              /*attributes=*/CustomCallThunk::AttributesMap(),
+                              /*attributes=*/ffi::AttributesMap(),
                               /*called_computation=*/nullptr));
 
   // Wrapping dynamic slice thunk around the custom call thunk.
@@ -731,7 +731,7 @@ TEST_F(DynamicSliceThunkTest, SlicedOutputMemcpy) {
       seq.emplace_back(),
       CustomCallThunk::Create(Thunk::ThunkInfo(), "__xla_test$$memcpy",
                               registration.bundle, operands, results,
-                              /*attributes=*/CustomCallThunk::AttributesMap(),
+                              /*attributes=*/ffi::AttributesMap(),
                               /*called_computation=*/nullptr));
 
   // Wrapping dynamic slice thunk around the custom call thunk.
@@ -1451,7 +1451,7 @@ TEST_F(DynamicSliceThunkTest, SlicedMemcpyOOB) {
       seq.emplace_back(),
       CustomCallThunk::Create(Thunk::ThunkInfo(), "__xla_test$$memcpy",
                               registration.bundle, operands, results,
-                              /*attributes=*/CustomCallThunk::AttributesMap(),
+                              /*attributes=*/ffi::AttributesMap(),
                               /*called_computation=*/nullptr));
 
   // Wrapping dynamic slice thunk around the custom call thunk.

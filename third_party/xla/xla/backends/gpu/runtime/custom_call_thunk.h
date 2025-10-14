@@ -29,6 +29,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/executable_run_options.h"
 #include "xla/ffi/api/c_api.h"
+#include "xla/ffi/attribute_map.h"
 #include "xla/ffi/call_frame.h"
 #include "xla/ffi/execution_context.h"
 #include "xla/ffi/execution_state.h"
@@ -59,9 +60,6 @@ class CustomCallThunk : public Thunk {
       std::function<void(stream_executor::Stream*, void**, const char*, size_t,
                          XlaCustomCallStatus*)>;
 
-  using Attribute = ffi::CallFrameBuilder::Attribute;
-  using AttributesMap = ffi::CallFrameBuilder::AttributesMap;
-
   // Creates a serializable custom call thunk. The callback is resolved using
   // the legacy CustomCall registry. For new code please use XLA FFI instead.
   static absl::StatusOr<std::unique_ptr<CustomCallThunk>> Create(
@@ -84,7 +82,8 @@ class CustomCallThunk : public Thunk {
   static absl::StatusOr<std::unique_ptr<CustomCallThunk>> Create(
       ThunkInfo thunk_info, std::string target_name,
       std::vector<std::optional<ShapedSlice>> operands,
-      std::vector<std::optional<ShapedSlice>> results, AttributesMap attributes,
+      std::vector<std::optional<ShapedSlice>> results,
+      xla::ffi::AttributesMap attributes,
       const HloComputation* called_computation,
       absl::string_view platform_name);
 
@@ -95,7 +94,8 @@ class CustomCallThunk : public Thunk {
       ThunkInfo thunk_info, std::string target_name,
       XLA_FFI_Handler_Bundle bundle,
       std::vector<std::optional<ShapedSlice>> operands,
-      std::vector<std::optional<ShapedSlice>> results, AttributesMap attributes,
+      std::vector<std::optional<ShapedSlice>> results,
+      xla::ffi::AttributesMap attributes,
       const HloComputation* called_computation);
 
   absl::Status Prepare(const PrepareParams& params,
@@ -130,7 +130,7 @@ class CustomCallThunk : public Thunk {
                   XLA_FFI_Handler_Bundle bundle,
                   std::vector<std::optional<ShapedSlice>> operands,
                   std::vector<std::optional<ShapedSlice>> results,
-                  ffi::CallFrame call_frame, AttributesMap attributes,
+                  ffi::CallFrame call_frame, xla::ffi::AttributesMap attributes,
                   std::unique_ptr<ffi::ExecutionState> execution_state,
                   const HloComputation* called_computation);
 
@@ -160,7 +160,7 @@ class CustomCallThunk : public Thunk {
   // functions with XLA runtime. It's under construction, and still misses
   // a lot of features. Long term it will replace legacy custom calls.
   std::optional<XLA_FFI_Handler_Bundle> bundle_;
-  std::optional<AttributesMap> attributes_;
+  std::optional<xla::ffi::AttributesMap> attributes_;
 
   // Reference call frame pre-initialized at construction time.
   std::optional<ffi::CallFrame> call_frame_;
