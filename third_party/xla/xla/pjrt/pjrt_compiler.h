@@ -119,6 +119,11 @@ class PjRtTopologyDescription {
     return absl::UnimplementedError("ProcessCount is unsupported.");
   }
 
+  // Returns the number of chips.
+  virtual absl::StatusOr<int> ChipCount() const {
+    return absl::UnimplementedError("ChipCount is unsupported.");
+  }
+
   // Returns the total number of cores of the default type.
   virtual absl::StatusOr<int> CoreCountOfDefaultType() const {
     return absl::UnimplementedError("CoreCountOfDefaultType is unsupported.");
@@ -128,6 +133,12 @@ class PjRtTopologyDescription {
   virtual absl::StatusOr<int> LogicalDeviceCountOfDefaultType() const {
     return absl::UnimplementedError(
         "LogicalDeviceCountOfDefaultType is unsupported.");
+  }
+
+  // Returns the number of logical devices of the default type per chip.
+  virtual absl::StatusOr<int> LogicalDeviceCountOfDefaultTypePerChip() const {
+    return absl::UnimplementedError(
+        "LogicalDeviceCountOfDefaultTypePerChip is unsupported.");
   }
 
   // Returns the number of cores of the default type per process.

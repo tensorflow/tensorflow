@@ -25,6 +25,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "xla/autotuning.pb.h"
 #include "xla/backends/autotuner/autotuner_cache.pb.h"
 #include "xla/backends/autotuner/autotuner_cache_interface.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -34,6 +35,7 @@ limitations under the License.
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/protobuf/dnn.pb.h"
+#include "xla/xla.pb.h"
 
 namespace xla {
 namespace gpu {
