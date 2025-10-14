@@ -62,6 +62,11 @@ void MemoryUsageMonitor::Start() {
       if (current_in_use_bytes > peak_in_use_mem_bytes_) {
         peak_in_use_mem_bytes_ = current_in_use_bytes;
       }
+      int64_t current_private_footprint_bytes =
+          mem_info.private_footprint_bytes;
+      if (current_private_footprint_bytes > peak_private_footprint_bytes_) {
+        peak_private_footprint_bytes_ = current_private_footprint_bytes;
+      }
       if (stop_signal_->HasBeenNotified()) break;
       sampler_->SleepFor(sampling_interval_);
     }

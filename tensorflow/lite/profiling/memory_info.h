@@ -35,7 +35,8 @@ struct MemoryUsage {
   MemoryUsage()
       : mem_footprint_kb(kValueNotSet),
         total_allocated_bytes(kValueNotSet),
-        in_use_allocated_bytes(kValueNotSet) {}
+        in_use_allocated_bytes(kValueNotSet),
+        private_footprint_bytes(kValueNotSet) {}
 
   // The memory footprint (in kilobytes).
   //
@@ -55,11 +56,19 @@ struct MemoryUsage {
   //    + purgeable_nonvolatile
   //    + purgeable_nonvolatile_compressed
   //    + page_table
+  //
+  // For Windows:
+  // This is the current memory size (in kilobytes) occupied by the OS process
+  // that is held in main memory (RAM). This is generally referred to as the
+  // working set size. This is an alias to
+  // PROCESS_MEMORY_COUNTERS::WorkingSetSize.
   int64_t mem_footprint_kb;
 
   // Total non-mmapped heap space allocated from system in bytes.
   // For Linux, this is an alias to mallinfo::arena.
   // For Mac, this is an alias to mstats::bytes_total
+  // For Windows, this is an alias to HEAP_SUMMARY::cbCommitted
+  // for the default process heap.
   //
   // This does not count mmapped heap space, nor does it count non-heap
   // uses of memory such as other mmapped space, thread stacks, globals,
@@ -70,10 +79,19 @@ struct MemoryUsage {
   // (i.e. excluding those have been freed).
   // For Linux, this is an alias to mallinfo::uordblks.
   // For Mac, this is an alias to mstats::bytes_used
+  // For Windows, this is an alias to HEAP_SUMMARY::cbAllocated
+  // for the default process heap.
   //
   // This does not count non-heap uses of mmap, nor does it count other
   // non-heap uses of memory such as thread stacks, globals, code, etc.
   size_t in_use_allocated_bytes;
+
+  // Private footprint (in kilobytes).
+  //
+  // For Linux this is the rusage::ru_maxrss + VmSwap.
+  // For Mac this is the task_vm_info::phys_footprint.
+  // For Windows this is the PrivateUsage.
+  size_t private_footprint_bytes;
 
   MemoryUsage operator+(MemoryUsage const& obj) const {
     MemoryUsage res;
@@ -82,6 +100,8 @@ struct MemoryUsage {
         total_allocated_bytes + obj.total_allocated_bytes;
     res.in_use_allocated_bytes =
         in_use_allocated_bytes + obj.in_use_allocated_bytes;
+    res.private_footprint_bytes =
+        private_footprint_bytes + obj.private_footprint_bytes;
     return res;
   }
 
@@ -92,6 +112,8 @@ struct MemoryUsage {
         total_allocated_bytes - obj.total_allocated_bytes;
     res.in_use_allocated_bytes =
         in_use_allocated_bytes - obj.in_use_allocated_bytes;
+    res.private_footprint_bytes =
+        private_footprint_bytes - obj.private_footprint_bytes;
     return res;
   }
 

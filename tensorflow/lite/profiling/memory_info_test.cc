@@ -30,20 +30,24 @@ TEST(MemoryUsage, AddAndSub) {
   mem1.mem_footprint_kb = 5;
   mem1.total_allocated_bytes = 7000;
   mem1.in_use_allocated_bytes = 2000;
+  mem1.private_footprint_bytes = 1000;
 
   mem2.mem_footprint_kb = 3;
   mem2.total_allocated_bytes = 7000;
   mem2.in_use_allocated_bytes = 4000;
+  mem2.private_footprint_bytes = 500;
 
   const auto add_mem = mem1 + mem2;
   EXPECT_EQ(8, add_mem.mem_footprint_kb);
   EXPECT_EQ(14000, add_mem.total_allocated_bytes);
   EXPECT_EQ(6000, add_mem.in_use_allocated_bytes);
+  EXPECT_EQ(1500, add_mem.private_footprint_bytes);
 
   const auto sub_mem = mem1 - mem2;
   EXPECT_EQ(2, sub_mem.mem_footprint_kb);
   EXPECT_EQ(0, sub_mem.total_allocated_bytes);
   EXPECT_EQ(-2000, sub_mem.in_use_allocated_bytes);
+  EXPECT_EQ(500, sub_mem.private_footprint_bytes);
 }
 
 TEST(MemoryUsage, GetMemoryUsage) {
@@ -51,8 +55,9 @@ TEST(MemoryUsage, GetMemoryUsage) {
   EXPECT_EQ(MemoryUsage::kValueNotSet, result.mem_footprint_kb);
   EXPECT_EQ(MemoryUsage::kValueNotSet, result.total_allocated_bytes);
   EXPECT_EQ(MemoryUsage::kValueNotSet, result.in_use_allocated_bytes);
+  EXPECT_EQ(MemoryUsage::kValueNotSet, result.private_footprint_bytes);
 
-#if defined(__linux__) || defined(__APPLE__)
+#if defined(__linux__) || defined(__APPLE__) || defined(_WIN32)
   // Just allocate some space in heap so that we have some meaningful
   // memory usage to report.
   constexpr int size = 10 * 1024 * 1024;
@@ -72,6 +77,7 @@ TEST(MemoryUsage, GetMemoryUsage) {
   EXPECT_GE(result.mem_footprint_kb, size / 1024);
   EXPECT_GE(result.total_allocated_bytes, size);
   EXPECT_GE(result.in_use_allocated_bytes, size);
+  EXPECT_GE(result.private_footprint_bytes, size);
 #endif
 }
 
@@ -89,7 +95,7 @@ TEST(MemoryUsage, OutputMemoryUsageToStream) {
 }
 
 TEST(MemoryUsage, IsSupported) {
-#if defined(__linux__) || defined(__APPLE__)
+#if defined(__linux__) || defined(__APPLE__) || defined(_WIN32)
   EXPECT_TRUE(MemoryUsage::IsSupported());
 #else
   EXPECT_FALSE(MemoryUsage::IsSupported());
