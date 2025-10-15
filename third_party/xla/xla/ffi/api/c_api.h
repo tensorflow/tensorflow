@@ -267,6 +267,13 @@ typedef struct XLA_FFI_TypeId {
   int64_t type_id;
 } XLA_FFI_TypeId;
 
+// TypeInfo contains function pointers required by XLA runtime to manipulate
+// user-defined types. For example stateful handlers must tell XLA runtime how
+// to destroy their state when executable is being destroyed.
+typedef struct XLA_FFI_TypeInfo {
+  void (*deleter)(void* object);
+} XLA_FFI_TypeInfo;
+
 // We use byte spans to pass strings to handlers because strings might not be
 // null terminated, and even if they are, looking for a null terminator can
 // become very expensive in tight loops.

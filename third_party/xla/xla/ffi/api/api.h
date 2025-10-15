@@ -279,7 +279,8 @@ class Ffi {
   // `type_id`.
   static XLA_FFI_Error* RegisterTypeId(const XLA_FFI_Api* api,
                                        std::string_view name,
-                                       XLA_FFI_TypeId* type_id);
+                                       XLA_FFI_TypeId* type_id,
+                                       XLA_FFI_TypeInfo type_info = {nullptr});
 
   // This is a helper template that allows to convert function pointers from
   // the run time values to compile time values (template arguments) with
@@ -345,7 +346,8 @@ inline XLA_FFI_Error* Ffi::RegisterStaticHandler(
 
 inline XLA_FFI_Error* Ffi::RegisterTypeId(const XLA_FFI_Api* api,
                                           std::string_view name,
-                                          XLA_FFI_TypeId* type_id) {
+                                          XLA_FFI_TypeId* type_id,
+                                          XLA_FFI_TypeInfo type_info) {
   XLA_FFI_TypeId_Register_Args args;
   args.struct_size = XLA_FFI_TypeId_Register_Args_STRUCT_SIZE;
   args.extension_start = nullptr;
