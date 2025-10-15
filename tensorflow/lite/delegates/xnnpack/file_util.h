@@ -23,12 +23,18 @@ limitations under the License.
 namespace tflite {
 namespace xnnpack {
 
-#if defined(_MSC_VER)
+#if defined(_WIN32)
 using mode_t = int;
 #endif
 
 class FileDescriptorView {
  public:
+#if defined(_WIN32)
+  using Offset = __int64;
+#else
+  using Offset = off_t;
+#endif
+
   explicit FileDescriptorView(int fd) : fd_(fd) {}
   FileDescriptorView() = default;
 
@@ -45,28 +51,28 @@ class FileDescriptorView {
   // Equivalent to MovePos(0).
   //
   // WARNING: the file descriptor must be valid and the file must be opened.
-  off_t GetPos() const;
+  Offset GetPos() const;
 
   // Sets the absolute cursor position in the current file.
   //
   // Returns the cursor position in the file or -1 on error.
   //
   // WARNING: the file descriptor must be valid and the file must be opened.
-  off_t SetPos(off_t position) const;
+  Offset SetPos(Offset position) const;
 
   // Sets the cursor position relative to the file end.
   //
   // Returns the cursor position in the file or -1 on error.
   //
   // WARNING: the file descriptor must be valid and the file must be opened.
-  off_t SetPosFromEnd(off_t offset) const;
+  Offset SetPosFromEnd(Offset offset) const;
 
   // Moves the cursor position by the given offset in the current file.
   //
   // Returns the cursor position in the file or -1 on error.
   //
   // WARNING: the file descriptor must be valid and the file must be opened.
-  off_t MovePos(off_t offset) const;
+  Offset MovePos(Offset offset) const;
 
   // Reads `count` bytes from the file at the current position to `dst`.
   //

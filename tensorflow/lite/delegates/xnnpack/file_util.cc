@@ -16,13 +16,15 @@ limitations under the License.
 
 #include <fcntl.h>
 
-#if defined(_MSC_VER)
+#if defined(_WIN32)
 #include <io.h>
 #define F_OK 0
 #define ftruncate _chsize_s
+#define XNN_LSEEK _lseeki64
 #else
 #include <unistd.h>
-#endif  // defined(_MSC_VER)
+#define XNN_LSEEK lseek
+#endif  // defined(_WIN32)
 
 // We currently use the memfd_create system call to create in-memory files which
 // is only supported on Linux and Android.
@@ -68,22 +70,27 @@ void FileDescriptor::Reset(int new_fd) {
   fd_ = new_fd;
 }
 
-off_t FileDescriptorView::GetPos() const { return lseek(fd_, 0, SEEK_CUR); }
-
-off_t FileDescriptorView::SetPos(off_t position) const {
-  return lseek(fd_, position, SEEK_SET);
+FileDescriptor::Offset FileDescriptorView::GetPos() const {
+  return XNN_LSEEK(fd_, 0, SEEK_CUR);
 }
 
-off_t FileDescriptorView::SetPosFromEnd(off_t offset) const {
-  return lseek(fd_, offset, SEEK_END);
+FileDescriptor::Offset FileDescriptorView::SetPos(
+    FileDescriptor::Offset position) const {
+  return XNN_LSEEK(fd_, position, SEEK_SET);
 }
 
-off_t FileDescriptorView::MovePos(off_t offset) const {
-  return lseek(fd_, offset, SEEK_CUR);
+FileDescriptor::Offset FileDescriptorView::SetPosFromEnd(
+    FileDescriptor::Offset offset) const {
+  return XNN_LSEEK(fd_, offset, SEEK_END);
+}
+
+FileDescriptor::Offset FileDescriptorView::MovePos(
+    FileDescriptor::Offset offset) const {
+  return XNN_LSEEK(fd_, offset, SEEK_CUR);
 }
 
 FileDescriptor FileDescriptor::Open(const char* path, int flags, mode_t mode) {
-#if defined(_MSC_VER)
+#if defined(_WIN32)
   if (!(flags & O_TEXT)) {
     flags |= O_BINARY;
   }

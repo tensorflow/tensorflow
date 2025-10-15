@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/delegates/xnnpack/mmap_handle.h"
 
-#if defined(_MSC_VER)
+#if defined(_WIN32)
 #include <io.h>
 #include <windows.h>
 #else
@@ -79,7 +79,7 @@ bool MMapHandle::Map(const FileDescriptorView& fd, const size_t offset,
                        "cannot mmap invalid file descriptor %d ('%s').",
                        fd.Value(), path);
 
-#if defined(_MSC_VER)
+#if defined(_WIN32)
   struct _stat64 file_stats;
   XNNPACK_RETURN_CHECK(_fstat64(fd.Value(), &file_stats) == 0,
                        "could not access file stats to get size ('%s'): %s.",
@@ -101,7 +101,7 @@ bool MMapHandle::Map(const FileDescriptorView& fd, const size_t offset,
   fd.SetPos(offset);
   XNNPACK_RETURN_CHECK(fd.Read(data_, size_), "could not read file ('%s'): %s.",
                        safe_path, strerror(errno));
-#elif defined(_MSC_VER)
+#elif defined(_WIN32)
   HANDLE osf_handle = reinterpret_cast<HANDLE>(_get_osfhandle(fd.Value()));
   XNNPACK_RETURN_CHECK(osf_handle != INVALID_HANDLE_VALUE,
                        "could not convert file descriptor to file handle: %s.",
@@ -178,7 +178,7 @@ void MMapHandle::UnMap() {
   if (data_) {
 #if defined(XNNPACK_CACHE_NO_MMAP_FOR_TEST)
     delete[] data_;
-#elif defined(_MSC_VER)
+#elif defined(_WIN32)
     UnmapViewOfFile(data_);
     CloseHandle(file_mapping_);
 #else
