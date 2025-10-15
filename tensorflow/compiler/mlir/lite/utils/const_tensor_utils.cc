@@ -67,10 +67,10 @@ template <typename T>
 llvm::SmallVector<mlir::APInt> ReadAsHostEndian(ArrayRef<uint8_t> bytes) {
   llvm::SmallVector<mlir::APInt> ret;
   size_t read_size = sizeof(T);
-  int bytes_len = bytes.size();
+  size_t bytes_len = bytes.size();
   assert(bytes_len % read_size == 0);
 
-  int elem_count = bytes_len / read_size;
+  size_t elem_count = bytes_len / read_size;
   ret.reserve(elem_count);
 
   const char* data_ptr = reinterpret_cast<const char*>(bytes.data());
