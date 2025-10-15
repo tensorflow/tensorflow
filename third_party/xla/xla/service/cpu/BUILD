@@ -432,6 +432,8 @@ cc_library(
         ":executable_proto_cc",
         "//xla:cpu_function_runtime",
         "//xla:util",
+        "//xla/backends/cpu:buffer_allocation_info",
+        "//xla/backends/cpu:buffer_allocation_info_util",
         "//xla/backends/cpu:constant_allocation",
         "//xla/backends/cpu/runtime:function_library",
         "//xla/backends/cpu/runtime:thunk",

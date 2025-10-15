@@ -26,6 +26,8 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/tf2xla.h"
 #include "tensorflow/compiler/tf2xla/tf2xla.pb.h"
 #include "tensorflow/compiler/tf2xla/xla_compiled_cpu_function.h"
+#include "xla/backends/cpu/buffer_allocation_info.h"
+#include "xla/backends/cpu/buffer_allocation_info_util.h"
 #include "xla/backends/cpu/codegen/compiled_function_library.h"
 #include "xla/client/client_library.h"
 #include "xla/client/executable_build_options.h"
@@ -153,6 +155,11 @@ XlaJitCompiledCpuFunction::Compile(
   std::vector<xla::cpu_function_runtime::BufferInfo> buffer_infos =
       xla::cpu::CreateBufferInfosFromBufferAssignment(cpu_executable->module(),
                                                       buffer_assignment);
+
+  std::vector<xla::cpu::BufferAllocationInfo> buffer_allocation_infos =
+      xla::cpu::CreateBufferAllocationInfos(cpu_executable->module(),
+                                            buffer_assignment);
+
   std::vector<int32> arg_index_table =
       xla::cpu::CreateArgIndexTableFromBufferInfos(buffer_infos);
   std::vector<int32> result_index_table =

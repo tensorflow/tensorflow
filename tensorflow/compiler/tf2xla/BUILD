@@ -516,6 +516,8 @@ cc_library(
         "@local_xla//xla:cpu_function_runtime",
         "@local_xla//xla:shape_util",
         "@local_xla//xla:xla_data_proto_cc",
+        "@local_xla//xla/backends/cpu:buffer_allocation_info",
+        "@local_xla//xla/backends/cpu:buffer_allocation_info_util",
         "@local_xla//xla/backends/cpu/codegen:compiled_function_library",
         "@local_xla//xla/client:client_library",
         "@local_xla//xla/client:executable_build_options",
