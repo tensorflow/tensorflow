@@ -19,6 +19,10 @@ limitations under the License.
 
 #include <limits>
 
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/type_traits.h"
@@ -103,9 +107,10 @@ class DequantizeOp : public OpKernel {
 
     OP_REQUIRES(
         ctx, axis_ >= -input.dims(),
-        errors::InvalidArgument("Axis must be at least the negative "
-                                "number of input dimension(-",
-                                input.dims(), "), got ", axis_));
+        absl::InvalidArgumentError(absl::StrCat(
+            "Axis must be at least the negative "
+            "number of input dimension(-",
+            input.dims(), "), got ", axis_)));
 
     int num_slices = 1;
     if (axis_ <= -1) {
