@@ -89,7 +89,9 @@ def enable_start_service(service_name):
 
 
 def run():
-  service_file_path = Path.home() / ".config" / "systemd" / "user" / SERVICE_NAME
+  service_file_path = (
+      Path.home() / ".config" / "systemd" / "user" / SERVICE_NAME
+  )
   if service_file_path.exists():
     print(f"Service file ~/.config/systemd/user/{SERVICE_NAME} already exists")
     sys.exit(1)
