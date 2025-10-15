@@ -19,7 +19,8 @@ limitations under the License.
 
 namespace xla::codegen {
 
-Vec4f FastTanhf(Vec4f x);
+Vec4f FastTanhf(Vec4f x) asm("xla.tanh.v4f32");
+Vec8d FastRqsqrtf(Vec8d x) asm("xla.rsqrt.v8f64");
 
 }  // namespace xla::codegen
 
