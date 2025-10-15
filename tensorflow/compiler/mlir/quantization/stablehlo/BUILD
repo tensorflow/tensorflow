@@ -125,6 +125,7 @@ cc_library(
         "@local_tsl//tsl/platform:regexp",
         "@local_xla//xla/mlir_hlo",
         "@local_xla//xla/mlir_hlo:mhlo_passes",
+        "@shardy//shardy/dialect/sdy/ir:register",
         "@stablehlo//:chlo_ops",
         "@stablehlo//:stablehlo_ops",
         "@stablehlo//:stablehlo_passes",
