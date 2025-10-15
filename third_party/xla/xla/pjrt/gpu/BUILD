@@ -192,6 +192,11 @@ xla_test(
             "noasan",
             "nomsan",
         ],
+        "b200": [
+            # TODO(b/452317320): Re-enable once fixed.
+            "broken",
+            "no_oss",
+        ],
         "nvgpu_any": [
             "broken",
             "no_oss",
