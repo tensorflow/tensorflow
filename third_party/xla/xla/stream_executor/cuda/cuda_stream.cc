@@ -250,6 +250,9 @@ void DestroyStream(StreamExecutor* executor, CUstream stream) {
 }
 
 absl::Status SynchronizeStream(StreamExecutor* executor, CUstream stream) {
+  TraceMe trace(
+      [] { return TraceMeEncode("CudaStream::SynchronizeStream", {}); },
+      /*level=*/TraceMeLevel::kVerbose);
   std::unique_ptr<ActivateContext> activation = executor->Activate();
   CHECK(stream != nullptr);
   return cuda::ToStatus(cuStreamSynchronize(stream),
@@ -265,6 +268,9 @@ CudaStream::~CudaStream() {
 }
 
 absl::Status CudaStream::BlockHostUntilDone() {
+  TraceMe trace(
+      [] { return TraceMeEncode("CudaStream::BlockHostUntilDone", {}); },
+      /*level=*/TraceMeLevel::kVerbose);
   TF_RETURN_IF_ERROR(SynchronizeStream(executor_, stream_handle_));
   absl::MutexLock lock(mutex_);
   mutex_.Await(absl::Condition(&no_pending_host_callbacks_));
