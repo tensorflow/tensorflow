@@ -50,20 +50,10 @@ TEST(IntrinsicLibTest, ExpVectorizations) {
     }
   }
 
-  EXPECT_THAT(
-      vec_descs_str,
-      UnorderedElementsAre("xla.exp.f64:xla.exp.v2f64:2:_ZGV_LLVM_N2v",
-                           "xla.exp.f64:xla.exp.v4f64:4:_ZGV_LLVM_N4v",
-                           "xla.exp.f64:xla.exp.v8f64:8:_ZGV_LLVM_N8v",
-                           "xla.exp.v2f64:xla.exp.f64:1:_ZGV_LLVM_N1s",
-                           "xla.exp.v2f64:xla.exp.v4f64:4:_ZGV_LLVM_N4v",
-                           "xla.exp.v2f64:xla.exp.v8f64:8:_ZGV_LLVM_N8v",
-                           "xla.exp.v4f64:xla.exp.f64:1:_ZGV_LLVM_N1s",
-                           "xla.exp.v4f64:xla.exp.v2f64:2:_ZGV_LLVM_N2v",
-                           "xla.exp.v4f64:xla.exp.v8f64:8:_ZGV_LLVM_N8v",
-                           "xla.exp.v8f64:xla.exp.f64:1:_ZGV_LLVM_N1s",
-                           "xla.exp.v8f64:xla.exp.v2f64:2:_ZGV_LLVM_N2v",
-                           "xla.exp.v8f64:xla.exp.v4f64:4:_ZGV_LLVM_N4v"));
+  EXPECT_THAT(vec_descs_str, UnorderedElementsAre(
+                                 "xla.exp.f64:xla.exp.v2f64:2:_ZGV_LLVM_N2v",
+                                 "xla.exp.f64:xla.exp.v4f64:4:_ZGV_LLVM_N4v",
+                                 "xla.exp.f64:xla.exp.v8f64:8:_ZGV_LLVM_N8v"));
 }
 
 }  // namespace

@@ -251,7 +251,8 @@ std::vector<llvm::VecDesc> IntrinsicFunctionLib::Vectorizations() {
          math_func->SupportedVectorTypes(options_.features)) {
       for (const auto& vector_types :
            math_func->SupportedVectorTypes(options_.features)) {
-        if (!ElementTypesMatch(target_types, vector_types)) {
+        if (!ElementTypesMatch(target_types, vector_types) ||
+            target_types.front().is_vector()) {
           continue;
         }
         absl::string_view target_name = intrinsic::StringInterner::Get().Intern(
