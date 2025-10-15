@@ -1061,6 +1061,12 @@ TEST(StreamExecutorGpuClientTest, CopyRawToHostOutOfRange) {
               absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
                                      HasSubstr("invalid offset 1")));
   tsl::port::AlignedSizedFree(dst, tsl::Allocator::kAllocatorAlignment, size);
+
+  // The future returned by buffer->CopyRawToHost() may be resolve to an error
+  // before the prior buffer->BufferFromHostLiteral() is done. Make sure
+  // `literal` is alive long enough to avoid use-after-free. See the comment in
+  // PjRtStreamExecutorBuffer::CopyRawToHost() for details.
+  TF_EXPECT_OK(buffer->GetReadyFuture().Await());
 }
 
 TEST(StreamExecutorGpuClientTest, CopyRawToHostFuture) {
