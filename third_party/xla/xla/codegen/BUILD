@@ -241,6 +241,18 @@ cc_library(
     ],
 )
 
+xla_cc_test(
+    name = "intrinsic_lib_test",
+    srcs = ["intrinsic_lib_test.cc"],
+    deps = [
+        ":intrinsic_lib",
+        "//xla/codegen/intrinsic",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//llvm:Analysis",
+    ],
+)
+
 cc_library(
     name = "hlo_fusion_spec",
     hdrs = ["hlo_fusion_spec.h"],
