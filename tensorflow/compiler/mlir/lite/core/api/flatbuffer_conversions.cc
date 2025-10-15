@@ -341,6 +341,7 @@ using tflite::TensorType_FLOAT16;
 using tflite::TensorType_FLOAT32;
 using tflite::TensorType_FLOAT64;
 using tflite::TensorType_INT16;
+using tflite::TensorType_INT2;
 using tflite::TensorType_INT32;
 using tflite::TensorType_INT4;
 using tflite::TensorType_INT64;
@@ -1399,6 +1400,9 @@ absl::Status ConvertTensorType(TensorType tensor_type, TfLiteType* type) {
       return OkStatus();
     case TensorType_INT4:
       *type = kTfLiteInt4;
+      return OkStatus();
+    case TensorType_INT2:
+      *type = kTfLiteInt2;
       return OkStatus();
     default:
       *type = kTfLiteNoType;
