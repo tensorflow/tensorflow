@@ -343,7 +343,7 @@ BuiltinRefOpResolver::BuiltinRefOpResolver() {
              /* max_version = */ 6);
   AddBuiltin(BuiltinOperator_TRANSPOSE, Register_TRANSPOSE_REF(),
              /* min_version = */ 1,
-             /* max_version = */ 5);
+             /* max_version = */ 7);
   AddBuiltin(BuiltinOperator_MEAN, Register_MEAN_REF(),
              /* min_version = */ 1,
              /* max_version = */ 3);
