@@ -2771,7 +2771,7 @@ xla_test(
     srcs = ["collective_ops_e2e_test.cc"],
     backend_tags = {
         "gpu": [
-            "multi_gpu_h100",
+            "multi_gpu",
             "no_oss",
         ],
     },
