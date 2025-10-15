@@ -59,7 +59,8 @@ namespace gpu {
 struct TritonWrapperResult {
   int64_t shmem_bytes = 0;
   std::optional<se::ClusterDim> cluster_dim;
-  stream_executor::gpu::TmaMetadata tma_metadata;
+  se::gpu::TmaMetadata tma_metadata;
+  se::ThreadDim thread_dims;
 
   // The captured nvvm.annotations from the lowest level LLVM IR coming from
   // Triton. We need to propagate them because we later create the kernel and

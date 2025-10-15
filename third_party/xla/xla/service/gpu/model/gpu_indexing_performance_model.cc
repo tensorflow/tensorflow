@@ -601,7 +601,7 @@ GpuPerformanceModelWithIndexingAnalysis::EstimateRunTimeForTriton(
   const auto& fusion_analysis =
       (consumer == nullptr) ? fusion_analysis_cache_->Get(*producer)
                             : fusion_analysis_cache_->Get(*producer, *consumer);
-  auto launch_config = TritonFusion(fusion_analysis).launch_config();
+  auto launch_config = TritonFusion(fusion_analysis).GetLaunchConfig();
 
   if (!launch_config.has_value()) {
     return absl::InvalidArgumentError(

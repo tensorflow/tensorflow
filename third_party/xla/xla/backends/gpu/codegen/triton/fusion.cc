@@ -18,7 +18,6 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
-#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -55,12 +54,13 @@ limitations under the License.
 #include "xla/service/gpu/kernel_reuse_cache.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/matmul_utils.h"
+#include "xla/service/gpu/model/block_level_parameters.h"
 #include "xla/service/gpu/triton_fusion_analysis.h"
-#include "xla/service/llvm_ir/ir_array.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/shape.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/launch_dim.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla {
@@ -104,16 +104,18 @@ TritonFusion::GenerateTritonKernelAndWrapper(
   if (fusion_kind == kTritonFusionKind ||
       fusion_kind == kTritonNestedGemmFusionKind ||
       fusion_kind == kTritonScaledDotFusionKind) {
-    std::optional<LaunchConfig> launch_config = this->launch_config();
-    if (!launch_config.has_value()) {
+    if (!analysis_.fusion_backend_config().has_block_level_fusion_config()) {
       return absl::InvalidArgumentError(absl::StrCat(
           "Block level fusion config is required for Triton fusions: ",
           fusion.ToString()));
     }
-    TF_ASSIGN_OR_RETURN(triton_wrapper_result,
-                        TritonWrapper(impl_fn_name, &fusion, cc, device_info,
-                                      launch_config->block_level_parameters,
-                                      llvm_module, *symbolic_expr_context));
+    TF_ASSIGN_OR_RETURN(
+        triton_wrapper_result,
+        TritonWrapper(
+            impl_fn_name, &fusion, cc, device_info,
+            BlockLevelParameters::FromBlockLevelFusionConfig(
+                analysis_.fusion_backend_config().block_level_fusion_config()),
+            llvm_module, *symbolic_expr_context));
   } else {  // Must be a MatMul
     CHECK_EQ(fusion_kind, kTritonGemmFusionKind);
     // TODO(bchetioui): port matmul emitter to fully use the new
@@ -177,7 +179,21 @@ absl::StatusOr<FusionEmissionResult> TritonFusion::Emit(
     if (fusion_kind == kTritonFusionKind ||
         fusion_kind == kTritonNestedGemmFusionKind ||
         fusion_kind == kTritonScaledDotFusionKind) {
-      std::optional<LaunchConfig> launch_config = this->launch_config();
+      std::optional<LaunchConfig> launch_config;
+      // Currently GetLaunchConfig will compute the same value as the extracted
+      // one. They are different only when warp specialization is enabled.
+      // Ideally we should always pass the thread_dims value extracted from
+      // the Triton compilation. However, we are keeping the old code path
+      // to maintain the current behavior and be safe.
+      if (fusion.GetModule()
+              ->config()
+              .debug_options()
+              .xla_gpu_experimental_enable_triton_warp_specialization()) {
+        launch_config =
+            this->GetLaunchConfig(triton_wrapper_result.thread_dims);
+      } else {
+        launch_config = this->GetLaunchConfig();
+      }
       // This check should be enforced by `GenerateTritonKernelWrapper`.
       CHECK(launch_config.has_value());
       launch_dimensions = std::move(launch_config->launch_dimensions);
@@ -283,7 +299,8 @@ int64_t GetNumberOfBlocks(absl::Span<const int64_t> dimensions,
 }
 }  // namespace
 
-std::optional<TritonFusion::LaunchConfig> TritonFusion::launch_config() const {
+std::optional<TritonFusion::LaunchConfig> TritonFusion::GetLaunchConfig(
+    std::optional<se::ThreadDim> thread_dims_override) const {
   if (analysis_.fusion_backend_config().has_block_level_fusion_config()) {
     BlockLevelParameters block_level_parameters =
         BlockLevelParameters::FromBlockLevelFusionConfig(
@@ -301,10 +318,20 @@ std::optional<TritonFusion::LaunchConfig> TritonFusion::launch_config() const {
     }
 
     LaunchConfig launch_config;
-    launch_config.launch_dimensions = LaunchDimensions{
-        static_cast<uint64_t>(num_blocks),
-        static_cast<uint64_t>(block_level_parameters.num_warps *
-                              WarpSize(analysis_.device_info()))};
+    // TODO(b/451901200): We eventually also want to be able to predict this
+    // value without compiling so the cost model can rely on it. Currently, we
+    // need the override for auto warp specialization.
+    if (thread_dims_override) {
+      launch_config.launch_dimensions = LaunchDimensions{
+          se::BlockDim(num_blocks), thread_dims_override.value()};
+    } else {
+      int64_t estimated_threads_per_block =
+          block_level_parameters.num_warps * WarpSize(analysis_.device_info());
+      launch_config.launch_dimensions =
+          LaunchDimensions{static_cast<uint64_t>(num_blocks),
+                           static_cast<uint64_t>(estimated_threads_per_block)};
+    }
+
     launch_config.block_level_parameters = std::move(block_level_parameters);
     return launch_config;
   }

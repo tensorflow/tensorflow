@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <variant>
+#include <vector>
 
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -26,12 +27,16 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/IR/Metadata.h"
+#include "llvm/IR/Module.h"
+#include "llvm/Support/Casting.h"
 #include "llvm/Support/MathExtras.h"
 #include "llvm/TargetParser/Triple.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/Math/IR/Math.h"
 #include "mlir/IR/Builders.h"
+#include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypeInterfaces.h"
 #include "mlir/IR/BuiltinTypes.h"
@@ -43,6 +48,7 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/triton/ir/triton_xla_ops.h"
 #include "xla/backends/gpu/codegen/triton/tma_utils.h"
 #include "xla/codegen/emitter_loc_op_builder.h"
+#include "xla/comparison_util.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
@@ -53,9 +59,12 @@ limitations under the License.
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/gpu/tma_metadata.h"
+#include "xla/stream_executor/launch_dim.h"
+#include "xla/stream_executor/rocm/rocm_compute_capability.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/statusor.h"
 #include "triton/Dialect/Triton/IR/Dialect.h"
 
 namespace xla::gpu::triton {
@@ -526,23 +535,81 @@ Value Bitcast(EmitterLocOpBuilder& b, Value value, Type type) {
   return b.create<mlir::arith::BitcastOp>(value_type, value);
 }
 
-absl::StatusOr<stream_executor::gpu::TmaMetadata> ExtractTmaMetadata(
-    mlir::ModuleOp triton_module, absl::string_view kernel_name) {
-  stream_executor::gpu::TmaMetadata tma_metadata;
-  SmallVector<mlir::LLVM::LLVMFuncOp> func_ops;
-  for (auto func : triton_module.getOps<mlir::LLVM::LLVMFuncOp>()) {
-    // Custom calls will also match to LLVMFuncOp, so we are only interested in
-    // the entry function.
-    if (func.getName().str() == kernel_name) {
-      func_ops.push_back(func);
+std::vector<llvm::Metadata*> ExtractNvvmAnnotations(
+    llvm::Module* ll_triton_module) {
+  std::vector<llvm::Metadata*> captured_nvvm_annotations;
+  llvm::NamedMDNode* nvvm_annotations =
+      ll_triton_module->getNamedMetadata("nvvm.annotations");
+  if (nvvm_annotations) {
+    for (llvm::MDNode* operand : nvvm_annotations->operands()) {
+      captured_nvvm_annotations.push_back(operand);
     }
+    ll_triton_module->eraseNamedMetadata(nvvm_annotations);
   }
-  CHECK_EQ(func_ops.size(), 1)
-      << "Expected a single LLVMFuncOp in the module for the entry function.";
+  return captured_nvvm_annotations;
+}
 
-  for (auto [idx, arg] : llvm::enumerate(func_ops[0].getArguments())) {
+absl::StatusOr<stream_executor::ThreadDim> ExtractThreadDims(
+    mlir::ModuleOp triton_module, mlir::LLVM::LLVMFuncOp func_op) {
+  // Extract the launch information from the Triton module.
+  auto threads_per_warp_attr =
+      triton_module->getAttrOfType<mlir::IntegerAttr>("ttg.threads-per-warp");
+  if (!threads_per_warp_attr) {
+    return absl::InternalError("ttg.threads-per-warp attribute not found.");
+  }
+  auto num_warps_attr =
+      triton_module->getAttrOfType<mlir::IntegerAttr>("ttg.num-warps");
+  if (!num_warps_attr) {
+    return absl::InternalError("ttg.num-warps attribute not found.");
+  }
+  auto total_num_warps_attr =
+      triton_module->getAttrOfType<mlir::IntegerAttr>("ttg.total-num-warps");
+  if (!total_num_warps_attr) {
+    return absl::InternalError("ttg.total-num-warps attribute not found.");
+  }
+  auto reqntid_attr =
+      func_op->getAttrOfType<mlir::DenseI32ArrayAttr>("nvvm.reqntid");
+  if (!reqntid_attr) {
+    return absl::InternalError("nvvm.reqntid attribute not found.");
+  }
+  auto reqntids = reqntid_attr.asArrayRef();
+  if (reqntids.empty()) {
+    return absl::InternalError("nvvm.reqntid attribute is empty.");
+  }
+  if (reqntids.size() > 3) {
+    return absl::InternalError(
+        "nvvm.reqntid attribute has more than 3 dimensions.");
+  }
+
+  // Validate the launch information.
+  if (num_warps_attr.getInt() != total_num_warps_attr.getInt()) {
+    VLOG(6)
+        << "num_warps and total_num_warps are different! This can happen if "
+           "Triton compilation decides to use a different number of warps than "
+           "configured. e.g. auto warp specialization can do that.";
+  }
+  int64_t expected_total_threads = xla::Product<int32_t>(reqntids);
+  int64_t actual_total_threads =
+      total_num_warps_attr.getInt() * threads_per_warp_attr.getInt();
+  if (actual_total_threads != expected_total_threads) {
+    return absl::InternalError(absl::StrCat(
+        "Expected total threads as per reqntid attribute to be ",
+        expected_total_threads, " but got ", actual_total_threads,
+        " as per ttg.total-num-warps and tt.threads-per-warp attributes."));
+  }
+
+  stream_executor::ThreadDim thread_dims(reqntids[0],
+                                         reqntids.size() > 1 ? reqntids[1] : 1,
+                                         reqntids.size() > 2 ? reqntids[2] : 1);
+  return thread_dims;
+}
+
+absl::StatusOr<stream_executor::gpu::TmaMetadata> ExtractTmaMetadata(
+    mlir::LLVM::LLVMFuncOp func_op) {
+  stream_executor::gpu::TmaMetadata tma_metadata;
+  for (auto [idx, arg] : llvm::enumerate(func_op.getArguments())) {
     if (auto attr =
-            func_ops[0].getArgAttrOfType<mlir::triton::xla::TmaDescriptorAttr>(
+            func_op.getArgAttrOfType<mlir::triton::xla::TmaDescriptorAttr>(
                 idx, "tt.tma_descriptor")) {
       TF_ASSIGN_OR_RETURN(
           auto tma_desc,

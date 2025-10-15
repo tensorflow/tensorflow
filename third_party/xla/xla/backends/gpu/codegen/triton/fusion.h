@@ -28,6 +28,7 @@ limitations under the License.
 #include "xla/service/gpu/ir_emitter_context.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/launch_dim.h"
 
 namespace xla {
 namespace gpu {
@@ -49,7 +50,15 @@ class TritonFusion : public FusionInterface {
   // Returns the launch config for Triton fusions that have a block level fusion
   // config.
   // Not supported for MatMul fusions yet.
-  std::optional<LaunchConfig> launch_config() const;
+  //
+  // If `thread_dims_override` is provided, it is used instead of the thread
+  // dimensions calculated in the function.
+  // Ideally, we should pass the values extracted from the Triton module after
+  // compilation, but there are use-cases where we want to call the function
+  // without compiling, e.g. during cost modelling. In that case, the function
+  // calculates the values.
+  std::optional<LaunchConfig> GetLaunchConfig(
+      std::optional<se::ThreadDim> thread_dims_override = std::nullopt) const;
 
   // Generates a Triton kernel for the given fusion into the provided LLVM
   // module, and returns the `TritonWrapperResult` corresponding to the

@@ -26,6 +26,7 @@ limitations under the License.
 #include "mlir/Parser/Parser.h"
 #include "xla/backends/gpu/codegen/triton/ir/triton_xla_ops.h"
 #include "xla/stream_executor/gpu/tma_metadata.h"
+#include "xla/stream_executor/launch_dim.h"
 #include "xla/tsl/platform/statusor.h"
 #include "triton/Dialect/Triton/IR/Dialect.h"
 #include "triton/Dialect/TritonGPU/IR/Dialect.h"
@@ -36,7 +37,26 @@ namespace xgt = ::xla::gpu::triton;
 namespace xla::gpu {
 namespace {
 
-TEST(EmitterHelpersTest, ExtractTmaMetadataWorksCorrectlyWhenTmaIsUsed) {
+class EmitterHelpersTest : public ::testing::Test {
+ protected:
+  void SetUp() override {
+    context_.loadDialect<
+        mlir::triton::TritonDialect, mlir::triton::gpu::TritonGPUDialect,
+        mlir::triton::xla::XlaTritonDialect, mlir::LLVM::LLVMDialect>();
+  }
+
+  mlir::OwningOpRef<mlir::ModuleOp> ParseModule(
+      const std::string& mlir_module) {
+    mlir::OwningOpRef<mlir::ModuleOp> module =
+        mlir::parseSourceString<mlir::ModuleOp>(mlir_module, &context_);
+    CHECK(module);
+    return module;
+  }
+
+  mlir::MLIRContext context_;
+};
+
+TEST_F(EmitterHelpersTest, ExtractTmaMetadataWorksCorrectlyWhenTmaIsUsed) {
   const std::string kMlirModule = R"(
 module {
   llvm.func @fusion_impl(%arg0: !llvm.ptr<1> {tt.divisibility = 16 : i32},
@@ -48,16 +68,11 @@ module {
   }
 })";
 
-  mlir::MLIRContext context;
-  context.loadDialect<
-      mlir::triton::TritonDialect, mlir::triton::gpu::TritonGPUDialect,
-      mlir::triton::xla::XlaTritonDialect, mlir::LLVM::LLVMDialect>();
-  mlir::OwningOpRef<mlir::ModuleOp> module =
-      mlir::parseSourceString<mlir::ModuleOp>(kMlirModule, &context);
-  CHECK(module);
-
+  mlir::OwningOpRef<mlir::ModuleOp> module = ParseModule(kMlirModule);
+  mlir::LLVM::LLVMFuncOp func_op =
+      *module->getOps<mlir::LLVM::LLVMFuncOp>().begin();
   TF_ASSERT_OK_AND_ASSIGN(stream_executor::gpu::TmaMetadata tma_metadata,
-                          xgt::ExtractTmaMetadata(module.get(), "fusion_impl"));
+                          xgt::ExtractTmaMetadata(func_op));
 
   EXPECT_EQ(tma_metadata.arg_index_to_tma_info.size(), 2);
   EXPECT_TRUE(tma_metadata.arg_index_to_tma_info.contains(1));
@@ -79,6 +94,22 @@ module {
   EXPECT_THAT(tma_arg_2.element_size(), 4);
   EXPECT_EQ(tma_arg_2.swizzle(),
             stream_executor::gpu::TmaDescriptor::TmaSwizzle::k128B);
+}
+
+TEST_F(EmitterHelpersTest, ExtractThreadDimsWorksCorrectlyWithValidInput) {
+  const std::string kMlirModule = R"(
+module attributes {ttg.global_scratch_memory_alignment = 1 : i32, ttg.global_scratch_memory_size = 0 : i32, "ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 1 : i32, ttg.shared = 10240 : i32, ttg.target = "cuda:100", ttg.tensor_memory_size = 0 : i32, "ttg.threads-per-warp" = 32 : i32, "ttg.total-num-warps" = 1 : i32} {
+  llvm.func @fusion_impl() attributes {nvvm.kernel = 1 : ui1, nvvm.reqntid = array<i32: 32>, ttg.global_scratch_memory_alignment = 1 : i32, ttg.global_scratch_memory_size = 0 : i32} {
+   llvm.return
+  }
+})";
+
+  mlir::OwningOpRef<mlir::ModuleOp> module = ParseModule(kMlirModule);
+  mlir::LLVM::LLVMFuncOp func_op =
+      *module->getOps<mlir::LLVM::LLVMFuncOp>().begin();
+  TF_ASSERT_OK_AND_ASSIGN(stream_executor::ThreadDim thread_dims,
+                          xgt::ExtractThreadDims(module.get(), func_op));
+  EXPECT_EQ(thread_dims, stream_executor::ThreadDim(32, 1, 1));
 }
 }  // namespace
 }  // namespace xla::gpu

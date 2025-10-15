@@ -334,11 +334,6 @@ void LogLines(absl::LogSeverity sev, absl::string_view text, const char* fname,
   }
 }
 
-int64_t Product(absl::Span<const int64_t> xs) {
-  return absl::c_accumulate(xs, static_cast<int64_t>(1),
-                            std::multiplies<int64_t>());
-}
-
 std::vector<int64_t> ElemwiseProduct(absl::Span<const int64_t> a,
                                      absl::Span<const int64_t> b) {
   CHECK_EQ(a.size(), b.size());
@@ -564,4 +559,5 @@ std::unique_ptr<void, FreeDeleter> AlignedAlloc(std::size_t alignment,
   return std::unique_ptr<void, FreeDeleter>(raw_ptr, FreeDeleter());
 }
 
+int64_t Product(absl::Span<const int64_t> xs) { return Product<int64_t>(xs); }
 }  // namespace xla

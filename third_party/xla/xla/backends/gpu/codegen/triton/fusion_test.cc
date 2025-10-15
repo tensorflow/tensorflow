@@ -31,6 +31,7 @@ limitations under the License.
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/launch_dim.h"
 #include "tsl/platform/status_matchers.h"
 #include "tsl/platform/statusor.h"
 
@@ -74,7 +75,7 @@ ENTRY entry_computation {
   auto triton_fusion = dynamic_cast<TritonFusion*>(emitter.get());
   ASSERT_NE(triton_fusion, nullptr);
   std::optional<TritonFusion::LaunchConfig> launch_config =
-      triton_fusion->launch_config();
+      triton_fusion->GetLaunchConfig();
   ASSERT_NE(launch_config, std::nullopt);
   EXPECT_EQ(launch_config->launch_dimensions.num_blocks(),
             /*ceil(125 / 4)=*/32);
@@ -112,13 +113,54 @@ ENTRY entry_computation {
       PreBufferAssignmentFusionInfo{analysis}, &symbolic_expr_context);
   auto triton_fusion_emitter = dynamic_cast<TritonFusion*>(emitter.get());
   ASSERT_NE(triton_fusion_emitter, nullptr);
-  EXPECT_EQ(triton_fusion_emitter->launch_config(), std::nullopt);
+  EXPECT_EQ(triton_fusion_emitter->GetLaunchConfig(), std::nullopt);
 
   // Ensure that the emitter fails gracefully when the launch config is not set.
   EXPECT_THAT(triton_fusion_emitter->GenerateTritonKernelAndWrapper(
                   *::xla::Cast<HloFusionInstruction>(root), "random_name",
                   device_info, /*llvm_module=*/nullptr, &symbolic_expr_context),
               absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
+TEST_F(
+    TritonFusionTest,
+    TritonFusionWithBlockLevelFusionConfig_LaunchConfigOverrideWorksCorrectly) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+triton_computation {
+  param_0 = f32[125,127] parameter(0)
+  ROOT abs = f32[125,127] abs(param_0)
+}
+
+ENTRY entry_computation {
+  param_0 = f32[125,127] parameter(0)
+  ROOT fusion.1 = f32[125,127] fusion(param_0), kind=kCustom,
+    calls=triton_computation,
+    backend_config={"fusion_backend_config":{
+      "kind":"__triton",
+      "block_level_fusion_config":{"output_tiles":[{"sizes":["4","127"]}],
+                                   "num_warps":"4"}}}
+})"));
+
+  stream_executor::DeviceDescription device_info =
+      TestGpuDeviceInfo::RTXA6000DeviceInfo();
+
+  auto* root = module->entry_computation()->root_instruction();
+  HloFusionAnalysis analysis = HloFusionAnalysis::Create(*root, device_info);
+
+  mlir::MLIRContext mlir_context;
+  SymbolicExprContext symbolic_expr_context(&mlir_context);
+  std::unique_ptr<FusionInterface> emitter = GetFusionEmitter(
+      PreBufferAssignmentFusionInfo{analysis}, &symbolic_expr_context);
+  auto triton_fusion = dynamic_cast<TritonFusion*>(emitter.get());
+
+  ASSERT_NE(triton_fusion, nullptr);
+  std::optional<TritonFusion::LaunchConfig> launch_config =
+      triton_fusion->GetLaunchConfig(se::ThreadDim(32, 2, 1));
+  ASSERT_NE(launch_config, std::nullopt);
+  EXPECT_EQ(launch_config->launch_dimensions.num_blocks(),
+            /*ceil(125 / 4)=*/32);
+  EXPECT_EQ(launch_config->launch_dimensions.num_threads_per_block(),
+            /*32 * 2 * 1=*/64);
 }
 
 }  // namespace

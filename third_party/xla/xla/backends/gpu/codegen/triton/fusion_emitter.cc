@@ -2151,14 +2151,8 @@ absl::StatusOr<TritonWrapperResult> CompileTritonToLLVM(
     }
 
     // Integrate LLVM matmul kernel into XLA's LLVM module.
-    auto* nvvm_annotations =
-        ll_triton_module->getNamedMetadata("nvvm.annotations");
-    if (nvvm_annotations) {
-      for (auto operand : nvvm_annotations->operands()) {
-        captured_nvvm_annotations.push_back(operand);
-      }
-      ll_triton_module->eraseNamedMetadata(nvvm_annotations);
-    }
+    captured_nvvm_annotations =
+        xgt::ExtractNvvmAnnotations(ll_triton_module.get());
     ll_triton_module->setDataLayout(llvm_module->getDataLayout());
     ll_triton_module->setTargetTriple(llvm_module->getTargetTriple());
     // Use override flag because libdevice functions can be present in both.
@@ -2190,13 +2184,32 @@ absl::StatusOr<TritonWrapperResult> CompileTritonToLLVM(
                  cluster_info.clusterDimZ == 1);
   }
 
-  // It's okay for tma_metadata to be empty; it's only populated when used
-  // explicitly.
-  TF_ASSIGN_OR_RETURN(stream_executor::gpu::TmaMetadata tma_metadata,
-                      xgt::ExtractTmaMetadata(triton_module, kernel_name));
+  SmallVector<mlir::LLVM::LLVMFuncOp> func_ops;
+  for (auto func : triton_module.getOps<mlir::LLVM::LLVMFuncOp>()) {
+    // Custom calls will also match to LLVMFuncOp, so we are only interested in
+    // the entry function.
+    if (func.getName().str() == kernel_name) {
+      func_ops.push_back(func);
+    }
+  }
+  CHECK_EQ(func_ops.size(), 1)
+      << "Expected a single LLVMFuncOp in the module for the entry function.";
+  mlir::LLVM::LLVMFuncOp func_op = func_ops[0];
 
-  return {
-      {shared_mem_bytes, cluster_dim, tma_metadata, captured_nvvm_annotations}};
+  TF_ASSIGN_OR_RETURN(se::ThreadDim thread_dims,
+                      xgt::ExtractThreadDims(triton_module, func_op));
+  TF_ASSIGN_OR_RETURN(stream_executor::gpu::TmaMetadata tma_metadata,
+                      xgt::ExtractTmaMetadata(func_op));
+
+  // Propagate the following extracted information from the Triton module:
+  // - TMA metadata.
+  // - Total threads per block. Computed from module attributes.
+  // - Captured NVVM annotations.
+  TritonWrapperResult result = {
+      shared_mem_bytes,          cluster_dim, tma_metadata, thread_dims,
+      captured_nvvm_annotations,
+  };
+  return result;
 }
 
 std::string GetLibdevicePath(const HloModuleConfig& hlo_config,
