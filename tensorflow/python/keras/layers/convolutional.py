@@ -460,8 +460,8 @@ class Conv1D(Conv):
       the `kernel` weights matrix (see `keras.regularizers`).
     bias_regularizer: Regularizer function applied to the bias vector (
       see `keras.regularizers`).
-    activity_regularizer: Regularizer function applied to
-      the output of the layer (its "activation") (
+    activity_regularizer: Regularizer function applied to the output of the
+      layer (its "activation") (
       see `keras.regularizers`).
     kernel_constraint: Constraint function applied to the kernel matrix (
       see `keras.constraints`).
@@ -879,8 +879,9 @@ class Conv1DTranspose(Conv1D):
       the `kernel` weights matrix (see `keras.regularizers`).
     bias_regularizer: Regularizer function applied to the bias vector (
       see `keras.regularizers`).
-    activity_regularizer: Regularizer function applied to
-      the output of the layer (its "activation") (see `keras.regularizers`).
+    activity_regularizer: Regularizer function applied to the output of the
+      layer (its "activation") (
+      see `keras.regularizers`).
     kernel_constraint: Constraint function applied to the kernel matrix (
       see `keras.constraints`).
     bias_constraint: Constraint function applied to the bias vector (
@@ -2235,15 +2236,104 @@ class SeparableConv2D(SeparableConv):
         rate=self.dilation_rate,
         data_format=conv_utils.convert_data_format(self.data_format, ndim=4))
 
-    if self.use_bias:
-      outputs = nn.bias_add(
-          outputs,
-          self.bias,
-          data_format=conv_utils.convert_data_format(self.data_format, ndim=4))
+  # Add this entire class to the file
+  class SeparableConv2DTranspose(SeparableConv):
+    """Transposed depthwise separable 2D convolution.
 
-    if self.activation is not None:
-      return self.activation(outputs)
-    return outputs
+    This layer performs the reverse of a `SeparableConv2D` operation, which
+    is a pointwise transpose convolution followed by a depthwise transpose
+    convolution. This is useful for building efficient generative models.
+
+    Args:
+      filters: Integer, the dimensionality of the output space
+        (i.e. the number of output filters in the convolution).
+      kernel_size: An integer or tuple/list of 2 integers, specifying the
+        height and width of the 2D convolution window.
+      strides: An integer or tuple/list of 2 integers, specifying the strides of
+        the convolution.
+      padding: one of `"valid"` or `"same"` (case-insensitive).
+      data_format: A string, one of `channels_last` or `channels_first`.
+      depth_multiplier: The number of depthwise convolution output channels for
+        each input channel.
+      activation: Activation function to use.
+      use_bias: Boolean, whether the layer uses a bias vector.
+      depthwise_initializer: Initializer for the depthwise kernel.
+      pointwise_initializer: Initializer for the pointwise kernel.
+      bias_initializer: Initializer for the bias vector.
+      // ... other arguments are inherited ...
+    """
+
+    def __init__(self,
+                 filters,
+                 kernel_size,
+                 strides=(1, 1),
+                 padding='valid',
+                 data_format=None,
+                 depth_multiplier=1,
+                 activation=None,
+                 use_bias=True,
+                 depthwise_initializer='glorot_uniform',
+                 pointwise_initializer='glorot_uniform',
+                 bias_initializer='zeros',
+                 **kwargs):
+      super(SeparableConv2DTranspose, self).__init__(
+          rank=2,
+          filters=filters,
+          kernel_size=kernel_size,
+          strides=strides,
+          padding=padding,
+          data_format=data_format,
+          depth_multiplier=depth_multiplier,
+          activation=activations.get(activation),
+          use_bias=use_bias,
+          depthwise_initializer=initializers.get(depthwise_initializer),
+          pointwise_initializer=initializers.get(pointwise_initializer),
+          bias_initializer=initializers.get(bias_initializer),
+          **kwargs)
+
+    def call(self, inputs):
+      input_shape = array_ops.shape(inputs)
+      batch_size = input_shape[0]
+      if self.data_format == 'channels_first':
+        h_axis, w_axis = 2, 3
+      else:
+        h_axis, w_axis = 1, 2
+
+      height, width = input_shape[h_axis], input_shape[w_axis]
+      kernel_h, kernel_w = self.kernel_size
+      stride_h, stride_w = self.strides
+
+      # Infer the dynamic output shape:
+      out_height = conv_utils.deconv_output_length(
+          height, kernel_h, padding=self.padding, stride=stride_h)
+      out_width = conv_utils.deconv_output_length(
+          width, kernel_w, padding=self.padding, stride=stride_w)
+
+      if self.data_format == 'channels_first':
+        output_shape = (batch_size, self.filters, out_height, out_width)
+      else:
+        output_shape = (batch_size, out_height, out_width, self.filters)
+
+      output_shape_tensor = array_ops_stack.stack(output_shape)
+
+      outputs = nn.separable_conv2d_transpose(
+          inputs,
+          self.depthwise_kernel,
+          self.pointwise_kernel,
+          output_shape_tensor,
+          strides=self.strides,
+          padding=self.padding.upper(),
+          data_format=self.data_format)
+
+      if self.use_bias:
+        outputs = nn.bias_add(
+            outputs,
+            self.bias,
+            data_format=conv_utils.convert_data_format(self.data_format, ndim=4))
+
+      if self.activation is not None:
+        return self.activation(outputs)
+      return outputs
 
 
 class DepthwiseConv2D(Conv2D):
