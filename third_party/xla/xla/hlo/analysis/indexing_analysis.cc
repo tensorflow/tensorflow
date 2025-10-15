@@ -995,12 +995,18 @@ HloInstructionIndexing ComputeOutputToInputConvolutionOpIndexing(
       AffineMap::get(rank, input_symbols.size(), input_exprs, mlir_context),
       DimVarsFromTensorSizes(output_shape.dimensions()), input_symbols,
       /*rt_vars=*/{}, input_constraints);
+  // We may need to simplify and remove unused symbols again, as the input
+  // feature dimension size may be trivial.
+  inputs_indexing.Simplify();
+  inputs_indexing.RemoveUnusedSymbols();
 
   // Indexing map for the kernel value.
   IndexingMap kernel_indexing(
       AffineMap::get(rank, kernel_symbols.size(), kernel_exprs, mlir_context),
       DimVarsFromTensorSizes(output_shape.dimensions()), kernel_symbols,
       /*rt_vars=*/{});
+  kernel_indexing.Simplify();
+  kernel_indexing.RemoveUnusedSymbols();
 
   return HloInstructionIndexing::FromIndexingMaps(
       {inputs_indexing, kernel_indexing});

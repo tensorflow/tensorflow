@@ -1889,6 +1889,41 @@ TEST_F(IndexingAnalysisTest, ReduceWindowOp_NoPadding) {
                           )"));
 }
 
+TEST_F(IndexingAnalysisTest, ReduceWindowOp_4DWithTrivalDims_NoPadding) {
+  auto root = ParseAndGetRoot(R"(
+    HloModule m
+    max {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+      ROOT max = f32[] maximum(p0, p1)
+    }
+    ENTRY e {
+      c_inf = f32[] constant(-inf)
+      p0 = f32[1024, 514, 1, 1]parameter(0)
+      ROOT reduce-window = f32[1024, 3, 1, 1] reduce-window(p0, c_inf),
+        window={size=1x512x1x1 pad=0_0x0_0x0_0x0_0}, to_apply=max
+    }
+  )");
+  auto input_indexing = GetOutputToInputIndexing(root);
+  EXPECT_THAT(input_indexing.ToString(), MatchIndexingString(R"(
+                          operand id = 0
+                            (d0, d1, d2, d3)[s0] -> (d0, d1 + s0, 0, 0),
+                            domain:
+                            d0 in [0, 1023],
+                            d1 in [0, 2],
+                            d2 in [0, 0],
+                            d3 in [0, 0],
+                            s0 in [0, 511]
+                          operand id = 1
+                            (d0, d1, d2, d3) -> (),
+                            domain:
+                            d0 in [0, 1023],
+                            d1 in [0, 2],
+                            d2 in [0, 0],
+                            d3 in [0, 0]
+                          )"));
+}
+
 TEST_F(IndexingAnalysisTest, ReduceWindowOp_PaddingAndWindowStride) {
   auto root = ParseAndGetRoot(R"(
     HloModule m
@@ -2077,7 +2112,7 @@ TEST_F(IndexingAnalysisTest, ConvolutionOp_NoPadding) {
   auto input_indexing = GetOutputToInputIndexing(root);
   EXPECT_THAT(input_indexing.ToString(), MatchIndexingString(R"(
                           operand id = 0
-                            (d0, d1, d2, d3)[s0, s1, s2] -> (d0, d1 + s0, d2 + s1, s2),
+                            (d0, d1, d2, d3)[s0, s1, s2] -> (0, d1 + s0, d2 + s1, s2),
                             domain:
                             d0 in [0, 0],
                             d1 in [0, 9],
@@ -2099,6 +2134,43 @@ TEST_F(IndexingAnalysisTest, ConvolutionOp_NoPadding) {
                           )"));
 }
 
+TEST_F(IndexingAnalysisTest, ConvolutionOp_4DWithTrivialDims_NoPadding) {
+  auto root = ParseAndGetRoot(R"(
+    HloModule m
+    ENTRY e {
+      p0 = f64[1,1,16,16,2,2]{5,4,3,2,1,0} parameter(0)
+      p1 = f64[1,1,3,3,1,1]{5,4,3,2,1,0} parameter(1)
+      ROOT conv = f64[1,1,14,14,2,2]{5,4,3,2,1,0} convolution(p0, p1),
+        window={size=3x3x1x1}, dim_labels=bf0123_oi0123->bf0123
+    }
+  )");
+  auto input_indexing = GetOutputToInputIndexing(root);
+  EXPECT_THAT(input_indexing.ToString(), MatchIndexingString(R"(
+                          operand id = 0
+                            (d0, d1, d2, d3, d4, d5)[s0, s1] -> (0, 0, d2 + s0, d3 + s1, d4, d5),
+                            domain:
+                            d0 in [0, 0],
+                            d1 in [0, 0],
+                            d2 in [0, 13],
+                            d3 in [0, 13],
+                            d4 in [0, 1],
+                            d5 in [0, 1],
+                            s0 in [0, 2],
+                            s1 in [0, 2]
+                          operand id = 1
+                            (d0, d1, d2, d3, d4, d5)[s0, s1] -> (0, 0, s0, s1, 0, 0),
+                            domain:
+                            d0 in [0, 0],
+                            d1 in [0, 0],
+                            d2 in [0, 13],
+                            d3 in [0, 13],
+                            d4 in [0, 1],
+                            d5 in [0, 1],
+                            s0 in [0, 2],
+                            s1 in [0, 2]
+                          )"));
+}
+
 TEST_F(IndexingAnalysisTest, ConvolutionOp_PaddingAndWindowStride) {
   auto root = ParseAndGetRoot(R"(
     HloModule m
@@ -2112,7 +2184,7 @@ TEST_F(IndexingAnalysisTest, ConvolutionOp_PaddingAndWindowStride) {
   auto input_indexing = GetOutputToInputIndexing(root);
   EXPECT_THAT(input_indexing.ToString(), MatchIndexingString(R"(
                           operand id = 0
-                            (d0, d1, d2, d3)[s0, s1, s2] -> (d0, d1 * 2 + s0 - 1, d2 * 2 + s1 - 2, s2),
+                            (d0, d1, d2, d3)[s0, s1, s2] -> (0, d1 * 2 + s0 - 1, d2 * 2 + s1 - 2, s2),
                             domain:
                             d0 in [0, 0],
                             d1 in [0, 5],
@@ -2149,7 +2221,7 @@ TEST_F(IndexingAnalysisTest, ConvolutionOp_LhsDilation) {
   auto input_indexing = GetOutputToInputIndexing(root);
   EXPECT_THAT(input_indexing.ToString(), MatchIndexingString(R"(
                           operand id = 0
-                            (d0, d1, d2, d3)[s0, s1, s2] -> (d0, (d1 + s0) floordiv 2, (d2 + s1) floordiv 2, s2),
+                            (d0, d1, d2, d3)[s0, s1, s2] -> (0, (d1 + s0) floordiv 2, (d2 + s1) floordiv 2, s2),
                             domain:
                             d0 in [0, 0],
                             d1 in [0, 20],
@@ -2186,7 +2258,7 @@ TEST_F(IndexingAnalysisTest, ConvolutionOp_RhsDilation) {
   auto input_indexing = GetOutputToInputIndexing(root);
   EXPECT_THAT(input_indexing.ToString(), MatchIndexingString(R"(
                           operand id = 0
-                            (d0, d1, d2, d3)[s0, s1, s2] -> (d0, d1 + s0 * 2, d2 + s1 * 2, s2),
+                            (d0, d1, d2, d3)[s0, s1, s2] -> (0, d1 + s0 * 2, d2 + s1 * 2, s2),
                             domain:
                             d0 in [0, 0],
                             d1 in [0, 7],
@@ -2221,7 +2293,7 @@ TEST_F(IndexingAnalysisTest, ConvolutionOp_FeatureGroups) {
   auto input_indexing = GetOutputToInputIndexing(root);
   EXPECT_THAT(input_indexing.ToString(), MatchIndexingString(R"(
                           operand id = 0
-                            (d0, d1, d2, d3)[s0, s1, s2] -> (d0, d1 + s0, d2 + s1, (d3 floordiv 8) * 4 + s2),
+                            (d0, d1, d2, d3)[s0, s1, s2] -> (0, d1 + s0, d2 + s1, (d3 floordiv 8) * 4 + s2),
                             domain:
                             d0 in [0, 0],
                             d1 in [0, 9],
