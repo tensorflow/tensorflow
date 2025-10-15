@@ -15,7 +15,12 @@ limitations under the License.
 
 #include "tensorflow/core/framework/kernel_def_builder.h"
 
+#include <cstdint>
+
+#include "absl/types/span.h"
+#include "third_party/protobuf/text_format.h"
 #include "tensorflow/core/framework/kernel_def.pb.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/test.h"
