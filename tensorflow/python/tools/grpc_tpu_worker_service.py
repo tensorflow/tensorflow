@@ -68,12 +68,12 @@ def move_file_to_systemd(service_name):
   user_systemd_dir = Path.home() / ".config" / "systemd" / "user"
   if not user_systemd_dir.exists():
     user_systemd_dir.mkdir(parents=True, exist_ok=True)
-    print("Created directory ~/.config/systemd/user/")
+    print(f"Created directory {user_systemd_dir}")
 
   source_file = Path(service_name)
   dest_file = user_systemd_dir / service_name
   shutil.move(str(source_file), str(dest_file))
-  print(f"Service file moved to ~/.config/systemd/user/{service_name}")
+  print(f"Service file moved to {dest_file}")
 
 
 def enable_start_service(service_name):
@@ -93,7 +93,7 @@ def run():
       Path.home() / ".config" / "systemd" / "user" / SERVICE_NAME
   )
   if service_file_path.exists():
-    print(f"Service file ~/.config/systemd/user/{SERVICE_NAME} already exists")
+    print(f"Service file {service_file_path} already exists")
     sys.exit(1)
   else:
     create_systemd_service_file(SERVICE_FILE_CONTENT, SERVICE_NAME)
