@@ -97,6 +97,33 @@ CHECK: %[[RES:.*]] = tensor.bitcast %[[ARG:.*]] : tensor<16x32xf32> to tensor<16
 )"));
 }
 
+TEST_F(XTileDialectTest, TestEmittingStableHloIota) {
+  constexpr absl::string_view kHloText = R"(
+HloModule t, is_scheduled=true
+
+iota_fusion {
+  ROOT iota = s32[256] iota(), iota_dimension=0
+}
+
+ENTRY e {
+  ROOT custom-call = s32[256] fusion(), kind=kCustom,
+    calls=iota_fusion,
+    backend_config={"fusion_backend_config": {kind: "__triton"}}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(kHloText));
+
+  BlockLevelParameters block_level_parameters;
+  block_level_parameters.output_tile_sizes = {{16}};
+
+  TF_EXPECT_OK(CreateXTileIrAndFileCheck(
+      this, *module->GetComputationWithName("iota_fusion"),
+      block_level_parameters,
+      R"(
+CHECK: %[[RES:.*]] = stablehlo.iota dim = 0 : tensor<16xi32>
+)"));
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla

@@ -20,6 +20,7 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/BuiltinTypeInterfaces.h"
+#include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/Value.h"
@@ -56,6 +57,40 @@ class LowerTranspose : public mlir::OpRewritePattern<stablehlo::TransposeOp> {
   }
 };
 
+class LowerIotaToMakeRange : public mlir::OpRewritePattern<stablehlo::IotaOp> {
+ public:
+  using OpRewritePattern::OpRewritePattern;
+
+ private:
+  mlir::LogicalResult matchAndRewrite(
+      stablehlo::IotaOp op, mlir::PatternRewriter& rewriter) const override {
+    auto result_type = op.getResult().getType();
+
+    if (result_type.getRank() != 1) {
+      return rewriter.notifyMatchFailure(
+          op->getLoc(), "tt.make_range is only supported for 1D outputs.");
+    }
+
+    if (!result_type.getElementType().isInteger(32)) {
+      return rewriter.notifyMatchFailure(
+          op->getLoc(), "tt.make_range is only supported for integer types.");
+    }
+
+    if (result_type.getElementType().isUnsignedInteger(32)) {
+      return rewriter.notifyMatchFailure(
+          op->getLoc(),
+          "lowering to tt.make_range is only supported for 32 bit signed "
+          "integers.");
+    }
+
+    auto iota_end = result_type.getDimSize(0);
+
+    rewriter.replaceOpWithNewOp<ttir::MakeRangeOp>(op, result_type,
+                                                   /*start=*/0, iota_end);
+    return mlir::success();
+  }
+};
+
 class StableHLOLowerToTritonPass
     : public impl::StableHLOLowerToTritonPassBase<StableHLOLowerToTritonPass> {
  public:
@@ -63,6 +98,7 @@ class StableHLOLowerToTritonPass
     mlir::MLIRContext* mlir_context = &getContext();
     mlir::RewritePatternSet patterns(mlir_context);
     patterns.add<LowerTranspose>(mlir_context);
+    patterns.add<LowerTranspose, LowerIotaToMakeRange>(mlir_context);
 
     if (mlir::failed(
             mlir::applyPatternsGreedily(getOperation(), std::move(patterns)))) {

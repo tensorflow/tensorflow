@@ -334,9 +334,10 @@ ScalarOrTensor BroadcastInDims(EmitterLocOpBuilder b, ScalarOrTensor value,
   return Broadcast(b, input_tensor, output_shape);
 }
 
-ScalarOrTensor Range(EmitterLocOpBuilder b, int32_t limit) {
+ScalarOrTensor Iota(EmitterLocOpBuilder b, int32_t limit) {
   auto type = mlir::RankedTensorType::get(limit, b.getI32Type());
-  return ScalarOrTensor(b.create<ttir::MakeRangeOp>(type, 0, limit));
+  return ScalarOrTensor(
+      b.create<stablehlo::IotaOp>(type, /*iota_dimension=*/0));
 }
 
 ScalarOrTensor EmitParameterExtract(EmitterLocOpBuilder b,
@@ -398,7 +399,7 @@ absl::StatusOr<ScalarOrTensor> EmitReduce(
   int64_t input_reduction_dimension_size = input_shape[reduction_dimension];
   if (input_reduction_dimension_size !=
       source_tensor_reduction_dimension_size) {
-    ScalarOrTensor range = Range(b, input_reduction_dimension_size);
+    ScalarOrTensor range = Iota(b, input_reduction_dimension_size);
     ScalarOrTensor bcast =
         BroadcastInDims(b, range, input_shape, {reduction_dimension});
     ScalarOrTensor constant = CreateConst(
@@ -538,7 +539,7 @@ absl::StatusOr<ScalarOrTensor> EmitTiledIota(
 
   // First, stride as needed between the iota components.
   Value range = b.create<arith::MulIOp>(
-      Range(b, padded_tile_sizes[iota_dim]).UnwrapTensor(),
+      Iota(b, padded_tile_sizes[iota_dim]).UnwrapTensor(),
       Splat(b,
             CreateConst(b, b.getI32Type(), tiled_iota.tile_strides()[iota_dim]),
             padded_tile_sizes[iota_dim])
@@ -826,7 +827,7 @@ absl::StatusOr<Value> MaskDotOperand(EmitterLocOpBuilder b,
       // operand = select(broadcast(mask, operand.shape), operand, 0)
       Value tile_offset = b.create<arith::MulIOp>(
           contracting_dimension_tile_index, tile_size_value);
-      Value range = Range(b, tile_size).UnwrapTensor();
+      Value range = Iota(b, tile_size).UnwrapTensor();
       Value broadcasted_tile_offset =
           Splat(b, ScalarOrTensor(tile_offset), {tile_size}).UnwrapTensor();
       Value indices = b.create<arith::AddIOp>(range, broadcasted_tile_offset);
@@ -1389,7 +1390,7 @@ absl::StatusOr<ScalarOrTensor> EmitPad(
     }
 
     // LHS for the compare is an iota broadcasted to the output shape.
-    ScalarOrTensor range = Range(b, pad_output_dim_size);
+    ScalarOrTensor range = Iota(b, pad_output_dim_size);
     ScalarOrTensor bcast = BroadcastInDims(b, range, padded_tile_sizes,
                                            {static_cast<int64_t>(dim_index)});
 
