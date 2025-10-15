@@ -43,13 +43,11 @@ namespace xla::gpu {
 // SelectKThunk
 //===----------------------------------------------------------------------===//
 
-SelectKThunk::SelectKThunk(const HloInstruction* inst, std::uint32_t batch_size,
+SelectKThunk::SelectKThunk(ThunkInfo thunk_info, std::uint32_t batch_size,
                            std::uint32_t num_elements, std::uint32_t k,
                            xla::PrimitiveType dtype,
-                           const emitters::KernelArguments& kernel_arguments,
-                           ThunkId thunk_id)
-    : Thunk(Kind::kSelectK,
-            Thunk::ThunkInfo::WithProfileAnnotation(inst, thunk_id)),
+                           const emitters::KernelArguments& kernel_arguments)
+    : Thunk(Kind::kSelectK, thunk_info),
       batch_size_(batch_size),
       num_elements_(num_elements),
       k_(k),

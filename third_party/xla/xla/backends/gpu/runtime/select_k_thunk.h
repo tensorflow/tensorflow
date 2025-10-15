@@ -40,18 +40,17 @@ class SelectKThunk : public Thunk {
  public:
   // Constructor.
   // Parameters:
-  //   inst             - The HLO instruction that generated this thunk.
+  //   thunk_info       - ThunkInfo contains profile annotation & thunk id.
   //   batch_size       - Number of batches in the input tensor.
   //   num_elements     - Number of elements in each batch.
   //   k                - Number of top elements to select.
   //   dtype            - Data type of elements (e.g., F32, BF16).
   //   kernel_arguments - Kernel arguments holding buffer slices for
   //                      inputs/outputs.
-  SelectKThunk(const HloInstruction* inst, std::uint32_t batch_size,
+  SelectKThunk(ThunkInfo thunk_info, std::uint32_t batch_size,
                std::uint32_t num_elements, std::uint32_t k,
                xla::PrimitiveType dtype,
-               const emitters::KernelArguments& kernel_arguments,
-               ThunkId thunk_id);
+               const emitters::KernelArguments& kernel_arguments);
 
   std::string ToString(int indent) const override;
 

@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/select_k_thunk.h"
 
 #include <memory>
+#include <utility>
 #include <vector>
 
 #include <gmock/gmock.h>
@@ -37,10 +38,13 @@ namespace {
 using ::tsl::proto_testing::EqualsProto;
 
 TEST(SelectKThunkTest, ToProto) {
-  Thunk::ThunkInfo thunk_info;
-  thunk_info.profile_annotation = "profile_annotation";
-  thunk_info.execution_stream_id = 123;
-  thunk_info.thunk_id = 456;
+  auto c1 = HloInstruction::CreateConstant(
+      LiteralUtil::CreateR2<float>({{.125f, 0.875f, .5f, .25f, 0.75f}}));
+  auto topKInst = HloInstruction::CreateCustomCall(
+      ShapeUtil::MakeShape(F32, {1, 5}), {c1.get()}, "__gpu$TopK");
+
+  Thunk::ThunkInfo thunk_info =
+      Thunk::ThunkInfo::WithProfileAnnotation(topKInst.get(), ThunkId{456});
 
   BufferAllocation alloc0(/*index=*/0, /*size=*/20, /*color=*/0);
   BufferAllocation::Slice slice0(&alloc0, /*offset=*/0, /*size=*/20);
@@ -60,13 +64,7 @@ TEST(SelectKThunkTest, ToProto) {
 
   emitters::KernelArguments kernel_arguments({arg0, arg1, arg2});
 
-  auto c1 = HloInstruction::CreateConstant(
-      LiteralUtil::CreateR2<float>({{.125f, 0.875f, .5f, .25f, 0.75f}}));
-  auto topKInst = HloInstruction::CreateCustomCall(
-      ShapeUtil::MakeShape(F32, {1, 5}), {c1.get()}, "__gpu$TopK");
-
-  SelectKThunk thunk(topKInst.get(), 1, 5, 3, F32, kernel_arguments,
-                     ThunkId(456));
+  SelectKThunk thunk(std::move(thunk_info), 1, 5, 3, F32, kernel_arguments);
   TF_ASSERT_OK_AND_ASSIGN(ThunkProto proto, thunk.ToProto());
   EXPECT_THAT(proto, EqualsProto(R"pb(
                 thunk_info { profile_annotation: "custom-call" thunk_id: 456 }

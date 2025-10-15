@@ -1423,10 +1423,11 @@ absl::Status IrEmitterUnnested::EmitTopKCustomCall(
     VLOG(3) << "EmitTopKCustomCall: dtype=" << dtype << ", n=" << n
             << ", k=" << k << ", use_raft_select_k=" << use_raft_select_k;
 
+    Thunk::ThunkInfo thunk_info = Thunk::ThunkInfo::WithProfileAnnotation(
+        instr, ir_emitter_context_->GetNextThunkId());
     if (use_raft_select_k) {
       AddThunkToThunkSequence(std::make_unique<SelectKThunk>(
-          instr, batch_size, n, k, dtype, kernel_arguments,
-          ir_emitter_context_->GetNextThunkId()));
+          std::move(thunk_info), batch_size, n, k, dtype, kernel_arguments));
       return absl::OkStatus();
     }
   }
