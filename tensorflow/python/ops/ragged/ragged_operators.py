@@ -14,7 +14,6 @@
 # ==============================================================================
 """Operator overloads for `RaggedTensor`."""
 
-
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor
 from tensorflow.python.ops import math_ops
