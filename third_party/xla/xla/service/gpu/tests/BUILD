@@ -462,9 +462,8 @@ xla_test(
     name = "gpu_kernel_tiling_test",
     srcs = ["gpu_kernel_tiling_test.cc"],
     backends = [
-        "p100",
-        "amdgpu_any",
-    ] + if_oss(["nvgpu_any"]),
+        "gpu",
+    ],
     deps = [
         ":gpu_codegen_test",
         "//xla:error_spec",
