@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_CWISE_OPS_H_
 #define TENSORFLOW_CORE_KERNELS_CWISE_OPS_H_
 
+#include "tensorflow/core/kernels/cwise_ops_msvc_patch.h"
+
 #define _USE_MATH_DEFINES
 #include <cmath>
 #include <functional>
