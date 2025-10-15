@@ -1,5 +1,5 @@
 // RUN: mlir-hlo-opt --chlo-legalize-to-hlo --split-input-file -verify-diagnostics %s | FileCheck %s --dump-input-context=20
-// RUN: mlir-hlo-opt --chlo-legalize-to-high-level-mhlo="enable-acosh enable-acos enable-atanh enable-cosh enable-sinh" --split-input-file -verify-diagnostics %s | FileCheck %s --check-prefix=CHECK-HIGH-LEVEL
+// RUN: mlir-hlo-opt --chlo-legalize-to-high-level-mhlo="enable-acosh enable-acos enable-atanh enable-cosh enable-sinh enable-asin" --split-input-file -verify-diagnostics %s | FileCheck %s --check-prefix=CHECK-HIGH-LEVEL
 
 // CHECK-LABEL: func.func @asin_bf16(
 // CHECK-SAME:    %[[TMP_arg0:.*]]: tensor<bf16>
@@ -20,6 +20,7 @@ func.func @asin_bf16(%arg : tensor<bf16>) -> tensor<bf16> {
 // -----
 
 // CHECK-LABEL: func.func @asin_f16(
+// CHECK-HIGH-LEVEL-LABEL: func.func @asin_f16(
 // CHECK-SAME:    %[[TMP_arg0:.*]]: tensor<f16>
 // CHECK-NEXT:    %[[TMP_1:.*]] = mhlo.constant dense<1.000000e+00> : tensor<f16>
 // CHECK-NEXT:    %[[TMP_2:.*]] = mhlo.subtract %[[TMP_1]], %[[TMP_arg0]] : tensor<f16>
@@ -31,6 +32,7 @@ func.func @asin_bf16(%arg : tensor<bf16>) -> tensor<bf16> {
 // CHECK-NEXT:    %[[TMP_8:.*]] = mhlo.add %[[TMP_7]], %[[TMP_7]] : tensor<f16>
 // CHECK-NEXT:    return %[[TMP_8]] : tensor<f16>
 func.func @asin_f16(%arg : tensor<f16>) -> tensor<f16> {
+  // CHECK-HIGH-LEVEL: mhlo.asin
   %result = "chlo.asin"(%arg) : (tensor<f16>) -> tensor<f16>
   func.return %result : tensor<f16>
 }
@@ -38,6 +40,7 @@ func.func @asin_f16(%arg : tensor<f16>) -> tensor<f16> {
 // -----
 
 // CHECK-LABEL: func.func @asin_f32(
+// CHECK-HIGH-LEVEL-LABEL: func.func @asin_f32(
 // CHECK-SAME:    %[[TMP_arg0:.*]]: tensor<f32>) -> tensor<f32>
 // CHECK-NEXT:    %[[TMP_1:.*]] = mhlo.constant dense<1.000000e+00> : tensor<f32>
 // CHECK-NEXT:    %[[TMP_2:.*]] = mhlo.subtract %[[TMP_1]], %[[TMP_arg0]] : tensor<f32>
@@ -49,13 +52,14 @@ func.func @asin_f16(%arg : tensor<f16>) -> tensor<f16> {
 // CHECK-NEXT:    %[[TMP_8:.*]] = mhlo.add %[[TMP_7]], %[[TMP_7]] : tensor<f32>
 // CHECK-NEXT:    return %[[TMP_8]] : tensor<f32>
 func.func @asin_f32(%arg : tensor<f32>) -> tensor<f32> {
+  // CHECK-HIGH-LEVEL: mhlo.asin
   %result = "chlo.asin"(%arg) : (tensor<f32>) -> tensor<f32>
   func.return %result : tensor<f32>
 }
 
 // -----
-
 // CHECK-LABEL:  func.func @asin_f64(
+// CHECK-HIGH-LEVEL-LABEL: func.func @asin_f64(
 // CHECK-SAME:    %[[TMP_arg0:.*]]: tensor<f64>) -> tensor<f64>
 // CHECK-NEXT:    %[[TMP_1:.*]] = mhlo.constant dense<1.000000e+00> : tensor<f64>
 // CHECK-NEXT:    %[[TMP_2:.*]] = mhlo.subtract %[[TMP_1]], %[[TMP_arg0]] : tensor<f64>
@@ -67,6 +71,7 @@ func.func @asin_f32(%arg : tensor<f32>) -> tensor<f32> {
 // CHECK-NEXT:    %[[TMP_8:.*]] = mhlo.add %[[TMP_7]], %[[TMP_7]] : tensor<f64>
 // CHECK-NEXT:    return %[[TMP_8]] : tensor<f64>
 func.func @asin_f64(%arg : tensor<f64>) -> tensor<f64> {
+  // CHECK-HIGH-LEVEL: mhlo.asin
   %result = "chlo.asin"(%arg) : (tensor<f64>) -> tensor<f64>
   func.return %result : tensor<f64>
 }
@@ -74,6 +79,7 @@ func.func @asin_f64(%arg : tensor<f64>) -> tensor<f64> {
 // -----
 
 // CHECK-LABEL: func.func @asin_complex_f32(
+// CHECK-HIGH-LEVEL-LABEL: func.func @asin_complex_f32(
 // CHECK-SAME:   %[[TEMP_arg0:.*]]: tensor<complex<f32>>) -> tensor<complex<f32>>
 // CHECK: %[[TEMP_0:.*]] = mhlo.real %[[TEMP_arg0:.*]] : (tensor<complex<f32>>) -> tensor<f32>
 // CHECK: %[[TEMP_1:.*]] = mhlo.real %[[TEMP_arg0:.*]] : (tensor<complex<f32>>) -> tensor<f32>
@@ -220,6 +226,7 @@ func.func @asin_complex_f32(%arg : tensor<complex<f32>>) -> tensor<complex<f32>>
   %result = "chlo.asin"(%arg) : (tensor<complex<f32>>) -> tensor<complex<f32>>
   func.return %result : tensor<complex<f32>>
 }
+// CHECK-HIGH-LEVEL-NOT: mhlo.asin
 
 // -----
 
