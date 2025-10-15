@@ -32,6 +32,7 @@ load("@local_xla//third_party/rmm:workspace.bzl", rmm = "repo")
 load("@local_xla//third_party/robin_map:workspace.bzl", robin_map = "repo")
 load("@local_xla//third_party/rocm_device_libs:workspace.bzl", rocm_device_libs = "repo")
 load("@local_xla//third_party/shardy:workspace.bzl", shardy = "repo")
+load("@local_xla//third_party/slinky:workspace.bzl", slinky = "repo")
 load("@local_xla//third_party/spdlog:workspace.bzl", spdlog = "repo")
 load("@local_xla//third_party/stablehlo:workspace.bzl", stablehlo = "repo")
 load("@local_xla//third_party/tensorrt:tensorrt_configure.bzl", "tensorrt_configure")
@@ -99,6 +100,7 @@ def _initialize_third_party():
     rocm_device_libs()
     ruy()
     shardy()
+    slinky()
     spdlog()
     sobol_data()
     stablehlo()
@@ -166,9 +168,9 @@ def _tf_repositories():
     # LINT.IfChange(xnnpack)
     tf_http_archive(
         name = "XNNPACK",
-        sha256 = "d36a005c707c0cf26696acfb5ef27d55a37551a49ed2eeb5979815a61138f07d",
-        strip_prefix = "XNNPACK-ea1906f8df2faf8172da1b341c563bf9115581dd",
-        urls = tf_mirror_urls("https://github.com/google/XNNPACK/archive/ea1906f8df2faf8172da1b341c563bf9115581dd.zip"),
+        sha256 = "a0632be61cfbe44b8dbba4502d489e4721b25c66be04a1a75f1912d1e4836020",
+        strip_prefix = "XNNPACK-5adfd1d0ea071a7e1ca33d15ffdbbe183005b3f0",
+        urls = tf_mirror_urls("https://github.com/google/XNNPACK/archive/5adfd1d0ea071a7e1ca33d15ffdbbe183005b3f0.zip"),
     )
     # LINT.ThenChange(//tensorflow/lite/tools/cmake/modules/xnnpack.cmake)
 
@@ -190,9 +192,9 @@ def _tf_repositories():
     # LINT.IfChange(pthreadpool)
     tf_http_archive(
         name = "pthreadpool",
-        sha256 = "8b1d13195842c9b7e8ef5aa7d9b44ca4168a41b8ae97b4e50db4fcc562211f5b",
-        strip_prefix = "pthreadpool-d561aae9dfeab38ff595a0ae3e6bbd90b862c5f8",
-        urls = tf_mirror_urls("https://github.com/google/pthreadpool/archive/d561aae9dfeab38ff595a0ae3e6bbd90b862c5f8.zip"),
+        sha256 = "bb468cf1c14951f48c802de905631993fd9bcf395f997187e1e0165ffb88668d",
+        strip_prefix = "pthreadpool-75b23a57b4e5ad206e8f69b698b5f1df04cf3d32",
+        urls = tf_mirror_urls("https://github.com/google/pthreadpool/archive/75b23a57b4e5ad206e8f69b698b5f1df04cf3d32.zip"),
     )
     # LINT.ThenChange(//tensorflow/lite/cmake/DownloadPThreadPool.cmake)
 
