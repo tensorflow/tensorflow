@@ -94,15 +94,6 @@ class CommandBufferScheduling : public HloModulePass {
       HloInstructionSequence schedule, const CommandBufferConfig& config,
       int32_t min_num_commands = 1);
 
-  // Moves kParameter and kConstant instructions in a computation to
-  // the beginning of the computation. This simplifies the construction of
-  // command buffer computations because we don't need to deal with parameters
-  // and constants that have users outside of a command buffer.
-  // Returns true if there is a change in the order of instructions, false
-  // otherwise.
-  static absl::StatusOr<bool> MoveParametersAndConstantsToFront(
-      HloComputation* computation);
-
   struct CommandBuffer {
     // Command buffer arguments (call instruction arguments).
     std::vector<HloInstruction*> arguments;

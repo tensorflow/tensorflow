@@ -368,6 +368,7 @@ cc_library(
         "//xla/ffi:ffi_api",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
+        "//xla/hlo/transforms/simplifiers:computation_canonicalizers",
         "//xla/hlo/utils:hlo_longest_prefix",
         "//xla/hlo/utils:hlo_traversal",
         "//xla/service/gpu:backend_configs_cc",

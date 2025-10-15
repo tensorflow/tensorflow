@@ -113,6 +113,33 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "computation_canonicalizers",
+    srcs = ["computation_canonicalizers.cc"],
+    hdrs = ["computation_canonicalizers.h"],
+    deps = [
+        "//xla/hlo/ir:hlo",
+        "//xla/tsl/platform:errors",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/status:statusor",
+    ],
+)
+
+xla_cc_test(
+    name = "computation_canonicalizers_test",
+    srcs = ["computation_canonicalizers_test.cc"],
+    deps = [
+        ":computation_canonicalizers",
+        "//xla/hlo/parser:hlo_parser",
+        "//xla/hlo/testlib:filecheck",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/hlo/testlib:verified_hlo_module",
+        "//xla/tsl/lib/core:status_test_util",
+        "//xla/tsl/platform:statusor",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 xla_cc_test(
     name = "broadcast_canonicalizer_test",
     srcs = ["broadcast_canonicalizer_test.cc"],
