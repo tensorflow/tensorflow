@@ -775,15 +775,12 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
         // has completed, so that the next execute_fn can start.
         scheduled_event.SetStateConcrete();
 
-        absl::Status status;
-        {
-          tsl::profiler::TraceMe traceme("BlockHostUntilDone");
-          status = stream->BlockHostUntilDone();
-        }
+        absl::Status status = BlockHostUntilDoneWithHostCallback(stream);
         if (!status.ok()) {
-          LOG(ERROR) << "BlockHostUntilDone failed for executable "
-                     << executable_name << " on device "
-                     << device->DebugString() << ", status = " << status;
+          LOG(ERROR)
+              << "BlockHostUntilDoneWithHostCallback failed for executable "
+              << executable_name << " on device " << device->DebugString()
+              << ", status = " << status;
           complete_event.SetError(status);
         } else {
           complete_event.SetStateConcrete();

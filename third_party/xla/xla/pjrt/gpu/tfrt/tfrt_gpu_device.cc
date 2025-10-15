@@ -109,13 +109,13 @@ TfrtGpuDevice::~TfrtGpuDevice() {
   // Block the host until all pending work on the stream is done. This is to
   // avoid user-after-free errors in host callbacks.
   if (stream_ != nullptr) {
-    absl::Status status = stream_->BlockHostUntilDone();
+    absl::Status status = BlockHostUntilDoneWithHostCallback(stream_.get());
     if (!status.ok()) {
       LOG(ERROR) << "Failed to wait for stream to finish: " << status;
     }
   }
   if (d2h_stream_ != nullptr) {
-    absl::Status status = d2h_stream_->BlockHostUntilDone();
+    absl::Status status = BlockHostUntilDoneWithHostCallback(d2h_stream_.get());
     if (!status.ok()) {
       LOG(ERROR) << "Failed to wait for d2h stream to finish: " << status;
     }

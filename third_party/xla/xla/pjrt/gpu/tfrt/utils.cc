@@ -459,10 +459,7 @@ SendDeviceMemoryFunction ConvertSendCallbacksToSendFunction(
       }
 
       // Wait for the data to be available on the host.
-      {
-        tsl::profiler::TraceMe traceme("BlockHostUntilDone");
-        status = stream->BlockHostUntilDone();
-      }
+      status = BlockHostUntilDoneWithHostCallback(stream);
       VLOG(3) << "D2H copy done. " << status;
       if (!status.ok()) {
         done_event.SetError(absl::InternalError(absl::StrFormat(

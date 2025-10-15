@@ -978,10 +978,7 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfrtGpuClient::BufferFromHostBuffer(
       return;
     }
 
-    {
-      tsl::profiler::TraceMe traceme("BlockHostUntilDone");
-      status = stream->BlockHostUntilDone();
-    }
+    status = BlockHostUntilDoneWithHostCallback(stream);
     VLOG(3) << "H2D copy done. " << status;
 
     if (status.ok()) {
@@ -1114,11 +1111,7 @@ TfrtGpuClient::BufferFromHostLiteral(const LiteralSlice& literal,
         TF_CHECK_OK(transfer_manager->TransferLiteralToDeviceAsync(
             stream, literal, shaped_buffer));
 
-        absl::Status status;
-        {
-          tsl::profiler::TraceMe traceme("BlockHostUntilDone");
-          status = stream->BlockHostUntilDone();
-        }
+        absl::Status status = BlockHostUntilDoneWithHostCallback(stream);
         CHECK_OK(status) << "Failed to block host until done";
         VLOG(3) << "BufferFromHostLiteral done for device_buffer: "
                 << device_buffer;

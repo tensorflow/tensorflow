@@ -148,10 +148,7 @@ absl::StatusOr<Shape> TfrtGpuBuffer::logical_on_device_shape() {
     auto stream = device_->stream();
     TF_RETURN_IF_ERROR(transfer_manager->ReadDynamicShapes(
         stream, &shaped_buffer, &ret_shape));
-    {
-      tsl::profiler::TraceMe traceme("BlockHostUntilDone");
-      TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
-    }
+    TF_RETURN_IF_ERROR(BlockHostUntilDoneWithHostCallback(stream));
     return ret_shape;
   };
 
@@ -479,14 +476,12 @@ Future<> TfrtGpuBuffer::ToLiteralHelper(Future<MutableLiteralBase*> literal) {
                 buffer_ptr, device_buffer->buffer()->buffer(), byte_size))
                 << "stream->Memcpy failed copying from GPU to host";
 
-            absl::Status status;
-            {
-              tsl::profiler::TraceMe traceme("BlockHostUntilDone");
-              status = d2h_stream->BlockHostUntilDone();
-            }
+            absl::Status status =
+                BlockHostUntilDoneWithHostCallback(d2h_stream);
             VLOG(3) << "D2H copy done. " << status;
             if (!status.ok()) {
-              VLOG(3) << "stream->BlockHostUntilDone failed: " << status;
+              VLOG(3) << "stream BlockHostUntilDoneWithHostCallback failed: "
+                      << status;
               promise.Set(status);
               return;
             }
@@ -624,10 +619,11 @@ Future<> TfrtGpuBuffer::CopyRawToHostFuture(Future<void*> dst_future,
       return;
     }
 
-    status = d2h_stream->BlockHostUntilDone();
+    status = BlockHostUntilDoneWithHostCallback(d2h_stream);
 
     if (!status.ok()) {
-      LOG(ERROR) << "d2h_stream->BlockHostUntilDone() failed: " << status;
+      LOG(ERROR) << "d2h_stream BlockHostUntilDoneWithHostCallback failed: "
+                 << status;
       promise.Set(status);
       return;
     }
@@ -830,10 +826,8 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfrtGpuBuffer::CopyToMemorySpace(
           dst_definition_event.SetError(status);
           return;
         }
-        {
-          tsl::profiler::TraceMe traceme("BlockHostUntilDone");
-          status = stream->BlockHostUntilDone();
-        }
+
+        status = BlockHostUntilDoneWithHostCallback(stream);
         if (status.ok()) {
           VLOG(3) << "D2D copy done. dst: " << dst.opaque();
           dst_definition_event.SetStateConcrete();
