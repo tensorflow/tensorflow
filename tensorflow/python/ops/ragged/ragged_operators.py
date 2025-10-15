@@ -23,7 +23,6 @@ from tensorflow.python.util import tf_decorator
 import numpy as np
 
 
-
 # =============================================================================
 # Equality and NotEqual with correct type promotion
 # =============================================================================
