@@ -1008,6 +1008,14 @@ absl::StatusOr<ScalarOrTensor> EmitDot(
       /*lowerBound=*/MakeIndex(b, 0),
       /*upperBound=*/MakeIndex(b, loop_iteration_count),
       /*step=*/MakeIndex(b, 1), accumulator);
+
+  if (fusion->GetModule()
+          ->config()
+          .debug_options()
+          .xla_gpu_experimental_enable_triton_warp_specialization()) {
+    for_op->setAttr("tt.warp_specialize", b.getBoolAttr(true));
+  }
+
   {  // Loop body.
     mlir::OpBuilder::InsertionGuard g(b);
     b.setInsertionPointToStart(for_op.getBody());

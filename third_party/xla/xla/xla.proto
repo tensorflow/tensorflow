@@ -657,8 +657,11 @@ message DebugOptions {
   optional bool xla_gpu_experimental_enable_triton_heroless_priority_fusion =
       340;
 
-  // When possible, XLA will use Triton's experimental TMA feature.
+  // When possible, XLA will use Triton's TMA loads/stores.
   optional bool xla_gpu_experimental_enable_triton_tma = 355;
+
+  // When possible, XLA will use Triton's auto warp specialization feature.
+  optional bool xla_gpu_experimental_enable_triton_warp_specialization = 421;
 
   // For sub-byte dot operands, layout them along contracting dimensions.
   optional bool xla_gpu_experimental_pack_dot_operands_along_k_dimension = 362;
@@ -1358,7 +1361,7 @@ message DebugOptions {
   // Note: when adding a new flag, please add it to one of the hardware-specific
   // or hardware-agnostic sections at the top of this proto message.
 
-  // Next id: 421
+  // Next id: 422
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
