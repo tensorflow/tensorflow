@@ -80,7 +80,7 @@ static void MakeTTGIR(mlir::OpPassManager* pm,
   pm->addPass(mlir::createLoopInvariantCodeMotionPass());
   pm->addPass(mlir::createCanonicalizerPass());
 
-  if (rocm_cc.has_amd_matrix_core()) {
+  if (rocm_cc.has_amd_matrix_instr()) {
     pm->addPass(mlir::createTritonAMDGPUStreamPipeline(
         {num_stages, /*global_prefetch=*/0, /*local_prefetch=*/0,
          /*use_async_copy=*/false, /*use_block_pingpong=*/false}));
@@ -100,7 +100,7 @@ static void MakeTTGIR(mlir::OpPassManager* pm,
     pm->addPass(mlir::createTritonAMDGPUInThreadTranspose());
     pm->addPass(mt::gpu::createTritonGPURemoveLayoutConversions());
   }
-  if (rocm_cc.has_amd_matrix_core()) {
+  if (rocm_cc.has_amd_matrix_instr()) {
     pm->addPass(mt::gpu::createTritonGPUReorderInstructions());
   }
   if (/*use_block_pingpong=*/false) {

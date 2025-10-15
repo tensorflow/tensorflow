@@ -156,7 +156,7 @@ class RocmComputeCapability {
 
   bool has_mfma_instr_support() const { return gfx9_mi100_or_later(); }
 
-  bool has_amd_matrix_core() const {
+  bool has_amd_matrix_instr() const {
     return gfx9_mi100_or_later() || gfx12() || gfx11();
   }
 
