@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/hlo/ir/backend_config.h"
 
+#include <functional>
 #include <memory>
 #include <string>
 #include <utility>
@@ -22,6 +23,8 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
+#include "google/protobuf/message.h"
+#include "google/protobuf/util/message_differencer.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/util.h"
 #include "tsl/platform/human_readable_json.h"
