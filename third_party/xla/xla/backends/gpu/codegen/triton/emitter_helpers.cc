@@ -24,12 +24,15 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/MathExtras.h"
 #include "llvm/TargetParser/Triple.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
+#include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/Math/IR/Math.h"
 #include "mlir/IR/Builders.h"
+#include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypeInterfaces.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/TypeUtilities.h"
@@ -37,6 +40,8 @@ limitations under the License.
 #include "mlir/IR/Value.h"
 #include "mlir/IR/ValueRange.h"
 #include "mlir/Support/LLVM.h"
+#include "xla/backends/gpu/codegen/triton/ir/triton_xla_ops.h"
+#include "xla/backends/gpu/codegen/triton/tma_utils.h"
 #include "xla/codegen/emitter_loc_op_builder.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -47,6 +52,7 @@ limitations under the License.
 #include "xla/service/gpu/target_util.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/gpu/tma_metadata.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/statusor.h"
@@ -518,6 +524,36 @@ Value Bitcast(EmitterLocOpBuilder& b, Value value, Type type) {
   auto value_type = value.getType();
   value_type = mlir::dyn_cast<ShapedType>(value_type).clone(type);
   return b.create<mlir::arith::BitcastOp>(value_type, value);
+}
+
+absl::StatusOr<stream_executor::gpu::TmaMetadata> ExtractTmaMetadata(
+    mlir::ModuleOp triton_module, absl::string_view kernel_name) {
+  stream_executor::gpu::TmaMetadata tma_metadata;
+  SmallVector<mlir::LLVM::LLVMFuncOp> func_ops;
+  for (auto func : triton_module.getOps<mlir::LLVM::LLVMFuncOp>()) {
+    // Custom calls will also match to LLVMFuncOp, so we are only interested in
+    // the entry function.
+    if (func.getName().str() == kernel_name) {
+      func_ops.push_back(func);
+    }
+  }
+  CHECK_EQ(func_ops.size(), 1)
+      << "Expected a single LLVMFuncOp in the module for the entry function.";
+
+  for (auto [idx, arg] : llvm::enumerate(func_ops[0].getArguments())) {
+    if (auto attr =
+            func_ops[0].getArgAttrOfType<mlir::triton::xla::TmaDescriptorAttr>(
+                idx, "tt.tma_descriptor")) {
+      TF_ASSIGN_OR_RETURN(
+          auto tma_desc,
+          CreateTmaDescriptor(attr.getGlobalShape(), attr.getTileShape(),
+                              attr.getTileStrides(), attr.getLayout(),
+                              attr.getElementByteSize(),
+                              attr.getSwizzleMode().getValue()));
+      tma_metadata.arg_index_to_tma_info.insert({idx, tma_desc});
+    }
+  }
+  return tma_metadata;
 }
 
 }  // namespace xla::gpu::triton

@@ -102,10 +102,12 @@ cc_library(
         "emitter_helpers.h",
     ],
     deps = [
+        ":tma_utils",
         "//xla:literal",
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
         "//xla:xla_proto_cc",
+        "//xla/backends/gpu/codegen/triton/ir:triton_xla",
         "//xla/codegen:emitter_loc_op_builder",
         "//xla/hlo/ir:hlo",
         "//xla/mlir_hlo",
@@ -114,6 +116,7 @@ cc_library(
         "//xla/service/gpu:target_util",
         "//xla/service/llvm_ir:llvm_util",
         "//xla/stream_executor:device_description",
+        "//xla/stream_executor/gpu:tma_metadata",
         "//xla/tsl/platform:status",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
@@ -124,9 +127,27 @@ cc_library(
         "@llvm-project//llvm:TargetParser",
         "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:LLVMDialect",
         "@llvm-project//mlir:MathDialect",
         "@llvm-project//mlir:Support",
         "@local_tsl//tsl/platform:statusor",
+        "@triton//:TritonDialects",
+    ],
+)
+
+xla_cc_test(
+    name = "emitter_helpers_test",
+    srcs = ["emitter_helpers_test.cc"],
+    deps = [
+        ":emitter_helpers",
+        "//xla/backends/gpu/codegen/triton/ir:triton_xla",
+        "//xla/stream_executor/gpu:tma_metadata",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/log:check",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:LLVMDialect",
+        "@llvm-project//mlir:Parser",
         "@triton//:TritonDialects",
     ],
 )
