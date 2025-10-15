@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tsl/platform/statusor.h"
@@ -40,6 +41,7 @@ class TestPass : public ThunkPassInterface {
   absl::string_view name() const override { return "test-pass"; }
   absl::StatusOr<bool> Run(SequentialThunk* root_thunk,
                            const DebugOptions& debug_options,
+                           const HloModule* hlo_module,
                            const se::DeviceDescription& device_info,
                            ThunkPassBufferAllocator& /*allocator*/) override {
     root_thunk->thunks().push_back(std::make_unique<SequentialThunk>(
@@ -69,7 +71,8 @@ TEST(ThunkPassPipelineTest, PipelineRunsPass) {
 
   TF_ASSERT_OK_AND_ASSIGN(
       bool changed,
-      pipeline.Run(root_thunk.get(), debug_options, device_info, allocator));
+      pipeline.Run(root_thunk.get(), debug_options, /*hlo_module=*/nullptr,
+                   device_info, allocator));
   EXPECT_TRUE(changed);
   EXPECT_EQ(root_thunk->thunks().size(), 1);
 }

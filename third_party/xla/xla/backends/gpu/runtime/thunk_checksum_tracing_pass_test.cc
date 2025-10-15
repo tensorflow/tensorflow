@@ -58,8 +58,8 @@ TEST(ThunkChecksumTracingPassTest, CreatesLogAlloc) {
   FakeThunkPassBufferAllocator allocator;
 
   TF_ASSERT_OK_AND_ASSIGN(
-      bool changed,
-      pass.Run(root_thunk.get(), debug_options, device_info, allocator));
+      bool changed, pass.Run(root_thunk.get(), debug_options,
+                             /*hlo_module=*/nullptr, device_info, allocator));
   EXPECT_FALSE(changed);
   EXPECT_TRUE(allocator.CreatedAlloc());
 }

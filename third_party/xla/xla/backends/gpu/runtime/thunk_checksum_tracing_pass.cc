@@ -15,9 +15,11 @@ limitations under the License.
 
 #include "xla/backends/gpu/runtime/thunk_checksum_tracing_pass.h"
 
+#include "absl/base/nullability.h"
 #include "absl/status/statusor.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk_pass_pipeline.h"
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tsl/platform/statusor.h"
@@ -27,6 +29,7 @@ namespace gpu {
 
 absl::StatusOr<bool> ThunkChecksumTracingPass::Run(
     SequentialThunk* root_thunk, const DebugOptions& debug_options,
+    const HloModule* absl_nullable hlo_module,
     const se::DeviceDescription& device_info,
     ThunkPassBufferAllocator& allocator) {
   TF_ASSIGN_OR_RETURN(BufferAllocation * log_alloc,

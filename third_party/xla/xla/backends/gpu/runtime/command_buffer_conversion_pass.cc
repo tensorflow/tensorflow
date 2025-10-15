@@ -27,6 +27,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/base/nullability.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/functional/overload.h"
 #include "absl/log/log.h"
@@ -46,6 +47,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/thunk_pass_pipeline.h"
 #include "xla/backends/gpu/runtime/while_thunk.h"
 #include "xla/ffi/ffi_api.h"
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/semantic_version.h"
@@ -415,6 +417,7 @@ std::string CommandBufferConversionPass::CommandBufferConfig::ToString() const {
 
 absl::StatusOr<bool> CommandBufferConversionPass::Run(
     SequentialThunk* root_thunk, const DebugOptions& debug_options,
+    const HloModule* absl_nullable hlo_module,
     const se::DeviceDescription& device_info,
     ThunkPassBufferAllocator& allocator) {
   tsl::profiler::TraceMe traceme("CommandBufferConversionPass");
@@ -471,16 +474,16 @@ absl::StatusOr<bool> CommandBufferConversionPass::Run(
       auto while_thunk = static_cast<WhileThunk*>(thunk.get());
       TF_ASSIGN_OR_RETURN(bool changed_in_body,
                           Run(while_thunk->body_thunk_sequence(), debug_options,
-                              device_info, allocator));
+                              hlo_module, device_info, allocator));
       changed |= changed_in_body;
     } else if (thunk->kind() == Thunk::kConditional) {
       // If a `ConditionalThunk` itself is not eligible for conversion into a
       // command buffer, we attempt to convert thunks within its branches.
       auto conditional_thunk = static_cast<ConditionalThunk*>(thunk.get());
       for (auto& branch_thunk : conditional_thunk->branch_thunks()) {
-        TF_ASSIGN_OR_RETURN(
-            bool changed_in_branch,
-            Run(branch_thunk.get(), debug_options, device_info, allocator));
+        TF_ASSIGN_OR_RETURN(bool changed_in_branch,
+                            Run(branch_thunk.get(), debug_options, hlo_module,
+                                device_info, allocator));
         changed |= changed_in_branch;
       }
     }

@@ -182,8 +182,9 @@ static absl::Status RunThunkPasses(const DebugOptions& debug_options,
     pipeline.AddPass(std::make_unique<CommandBufferConversionPass>(
         hlo_module ? hlo_module->name() : "Anonymous"));
   }
-  TF_ASSIGN_OR_RETURN(bool changed, pipeline.Run(root_thunk, debug_options,
-                                                 device_info, allocator));
+  TF_ASSIGN_OR_RETURN(bool changed,
+                      pipeline.Run(root_thunk, debug_options, hlo_module,
+                                   device_info, allocator));
   if (changed) {
     VLOG(3) << "Thunk passes changed the thunk tree.";
     if (hlo_module && DumpingEnabledForHloModule(*hlo_module)) {
