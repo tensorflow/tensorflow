@@ -126,7 +126,8 @@ REQUIRED_PACKAGES = [
     'tb-nightly ~= 2.20.0.a',
     'keras-nightly >= 3.10.0.dev',
     'numpy >= 1.26.0',
-    'h5py >= 3.11.0',
+    # Starting with 3.15, only MacOS 14 and 15 are supported.
+    'h5py >= 3.11.0, < 3.15.0',
     'ml_dtypes >= 0.5.1, < 1.0.0',
 ]
 

@@ -1,7 +1,7 @@
 # Note that numpy 2.1.0 does not support python 3.9
 numpy >= 2.0.0, < 2.2.0
 wheel ~= 0.41.2
-h5py >= 3.11.0
+h5py >= 3.11.0, < 3.15.0
 lit ~= 17.0.2
 opt_einsum == 3.3.0
 astunparse == 1.6.3
