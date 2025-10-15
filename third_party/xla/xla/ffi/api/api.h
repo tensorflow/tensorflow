@@ -1948,20 +1948,21 @@ auto DictionaryDecoder(Members... m) {
 #define XLA_FFI_ATTRIBUTE_UNUSED
 #endif
 
-// Use captureless lambda to function pointer conversion to create a static
-// XLA_FFI_Handler function pointer variable.
+// In all macros below we use captureless lambda to function pointer conversion
+// to create a static XLA_FFI_Handler function pointer variable.
+
+// Use explicit binding specification and traits to create a handler.
+#define XLA_FFI_DEFINE_HANDLER_EXPLICIT_WITH_TRAITS(fn, impl, binding, traits) \
+  static constexpr XLA_FFI_Handler* fn = +[](XLA_FFI_CallFrame* call_frame) {  \
+    static auto* handler = binding.To(impl, traits).release();                 \
+    return handler->Call(call_frame);                                          \
+  }
 
 // Use explicit binding specification to create a handler.
 #define XLA_FFI_DEFINE_HANDLER_EXPLICIT(fn, impl, binding)                    \
   static constexpr XLA_FFI_Handler* fn = +[](XLA_FFI_CallFrame* call_frame) { \
     static auto* handler = binding.To(impl).release();                        \
     return handler->Call(call_frame);                                         \
-  }
-
-#define XLA_FFI_DEFINE_HANDLER_EXPLICIT_WITH_TRAITS(fn, impl, binding, traits) \
-  static constexpr XLA_FFI_Handler* fn = +[](XLA_FFI_CallFrame* call_frame) {  \
-    static auto* handler = binding.To(impl, traits).release();                 \
-    return handler->Call(call_frame);                                          \
   }
 
 // Automatically infer binding specification from the implementation.
@@ -1978,11 +1979,11 @@ auto DictionaryDecoder(Members... m) {
 //
 // This is a trick to define macro with optional parameters.
 // Source: https://stackoverflow.com/a/8814003
-#define XLA_FFI_DEFINE_HANDLER(fn, impl, ...)                             \
-  XLA_FFI_DEFINE_HANDLER_X(                                               \
-      , fn, impl, ##__VA_ARGS__,                                          \
-      XLA_FFI_DEFINE_HANDLER_EXPLICIT_WITH_TRAITS(fn, impl, __VA_ARGS__), \
-      XLA_FFI_DEFINE_HANDLER_EXPLICIT(fn, impl, __VA_ARGS__),             \
+#define XLA_FFI_DEFINE_HANDLER(fn, impl, ...)                               \
+  XLA_FFI_DEFINE_HANDLER_X(                                                 \
+      , fn, impl, ##__VA_ARGS__,                                            \
+      XLA_FFI_DEFINE_HANDLER_EXPLICIT_WITH_TRAITS(fn, impl, ##__VA_ARGS__), \
+      XLA_FFI_DEFINE_HANDLER_EXPLICIT(fn, impl, ##__VA_ARGS__),             \
       XLA_FFI_DEFINE_HANDLER_AUTO(fn, impl))
 
 // TODO(ezhulenev): Add a callback so that end users can log registration error

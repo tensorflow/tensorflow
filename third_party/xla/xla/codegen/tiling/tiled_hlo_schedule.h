@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "xla/codegen/tiling/tiling_specification.h"
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/service/gpu/model/experimental/symbolic_expr.h"
 
@@ -68,7 +69,7 @@ class TiledHloSchedule {
   //     themselves);
   virtual absl::StatusOr<IndexingMap> Schedule(
       const IndexingMap& tile_offsets_indexing, IterationSpace iteration_space,
-      gpu::SymbolicExprContext* symbolic_expr_context) const = 0;
+      gpu::SymbolicExprContext* ctx) const = 0;
 };
 
 // The indexing map returned by this schedule iterates over the iteration space
@@ -79,7 +80,45 @@ class MajorToMinorTiledHloSchedule : public TiledHloSchedule {
  public:
   absl::StatusOr<IndexingMap> Schedule(
       const IndexingMap& tile_offsets_indexing, IterationSpace iteration_space,
-      gpu::SymbolicExprContext* symbolic_expr_context) const override;
+      gpu::SymbolicExprContext* ctx) const override;
+};
+
+// Given a `TilingSpecification` where some of the output tile sizes are
+// provided by a `dot` operation with one left-hand-side and one
+// right-hand-side non-contracting dimensions, this schedule transposes the
+// iteration pattern over these output dimensions.
+//
+// This schedule is only constructible when the underlying `TilingSpecification`
+// contains a single `dot` node.
+//
+// TODO(b/417977182): this is implemented as a very bespoke pattern to unblock
+// the launch of the generic emitter. We probably will want to subsume this with
+// a more flexible approach for user-specified transposed schedules (that don't
+// rely on the "dot" instruction being at the root).
+class TransposedDotTiledHloSchedule : public TiledHloSchedule {
+ public:
+  absl::StatusOr<IndexingMap> Schedule(
+      const IndexingMap& tile_offsets_indexing, IterationSpace iteration_space,
+      gpu::SymbolicExprContext* ctx) const override;
+
+  static absl::StatusOr<TransposedDotTiledHloSchedule> Create(
+      const TilingSpecification& tiling_specification);
+
+ private:
+  TransposedDotTiledHloSchedule(const TilingSpecification& tiling_specification,
+                                int64_t m_dim_id, int64_t n_dim_id)
+      : tiling_specification_(tiling_specification),
+        m_dim_id_(m_dim_id),
+        n_dim_id_(n_dim_id) {}
+
+  // The `TilingSpecification` used to construct this schedule.
+  TilingSpecification tiling_specification_;
+  // The index of the `m` dimension within the parameter mapping of the
+  // `TilingSpecification`.
+  int64_t m_dim_id_;
+  // The index of the `n` dimension within the parameter mapping of the
+  // `TilingSpecification`.
+  int64_t n_dim_id_;
 };
 
 // TODO(b/417977182): implement the `PlanarSnakeTiledHloSchedule` schedule.
