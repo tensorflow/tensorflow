@@ -58,6 +58,7 @@ cc_library(
         "//xla/codegen:emitter_loc_op_builder",
         "//xla/codegen/emitters/ir:xla",
         "//xla/codegen/xtile/ir:xtile",
+        "//xla/service/gpu/model/experimental:symbolic_expr",
         "//xla/service/llvm_ir:llvm_util",
         "//xla/stream_executor/gpu:collective_kernel_metadata",
         "//xla/stream_executor/gpu:tma_metadata",

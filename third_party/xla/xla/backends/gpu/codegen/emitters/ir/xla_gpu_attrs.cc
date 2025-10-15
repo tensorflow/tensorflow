@@ -29,6 +29,7 @@ limitations under the License.
 #include "xla/codegen/emitters/ir/xla_ops.h"
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/analysis/indexing_map_serialization.h"
+#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 
 namespace xla {
 namespace gpu {
@@ -58,8 +59,11 @@ mlir::Attribute LayoutAttr::parse(mlir::AsmParser& parser, mlir::Type) {
 }
 
 void LayoutAttr::print(mlir::AsmPrinter& printer) const {
+  gpu::SymbolicExprContext symbolic_expr_context(getContext());
   printer << "<\"" << stringifyMemorySpace(getMemorySpace().getValue())
-          << "\", \"" << ToString(getThreadMap().getIndexingMap()) << "\">";
+          << "\", \""
+          << ToString(getThreadMap().getIndexingMap(&symbolic_expr_context))
+          << "\">";
 }
 
 }  // namespace gpu

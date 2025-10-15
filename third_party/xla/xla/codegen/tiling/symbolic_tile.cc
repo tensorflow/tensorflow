@@ -90,6 +90,7 @@ AffineExpr SimplifyAffineExpr(const AffineExpr& expr,
                      /*context=*/reference.GetMLIRContext());
   IndexingMap tmp_indexing_map(
       /*affine_map=*/std::move(tmp_affine_map),
+      /*symbolic_expr_context=*/reference.GetSymbolicExprContext(),
       /*dimensions=*/reference.GetDimVars(),
       /*range_vars=*/reference.GetRangeVars(),
       /*rt_vars=*/reference.GetRTVars(),
@@ -242,6 +243,7 @@ bool IndexingMapConstraintsCanBeIgnored(const IndexingMap& indexing_map) {
   // the original indexing map?
   IndexingMap tile_map(
       /*affine_map=*/std::move(tile_affine_map),
+      /*symbolic_expr_context=*/indexing_map.GetSymbolicExprContext(),
       /*dimensions=*/std::move(tile_sizes),
       /*range_vars=*/indexing_map.GetRangeVars(),
       /*rt_vars=*/indexing_map.GetRTVars());

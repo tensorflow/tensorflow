@@ -49,6 +49,7 @@ limitations under the License.
 #include "xla/codegen/emitters/ir/xla_ops.h"
 #include "xla/codegen/emitters/transforms/passes.h"
 #include "xla/hlo/analysis/indexing_map.h"
+#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 
 namespace xla {
 namespace emitters {
@@ -232,6 +233,7 @@ struct RewriteAffineApply : OpRewritePattern<mlir::affine::AffineApplyOp> {
   LogicalResult matchAndRewrite(mlir::affine::AffineApplyOp op,
                                 PatternRewriter& rewriter) const override {
     AffineMap affine_map = op.getAffineMap();
+    gpu::SymbolicExprContext symbolic_expr_context(op.getContext());
     std::vector<IndexingMap::Variable> dim_ranges(affine_map.getNumDims());
     std::vector<IndexingMap::Variable> symbol_ranges(
         affine_map.getNumSymbols());
@@ -247,9 +249,8 @@ struct RewriteAffineApply : OpRewritePattern<mlir::affine::AffineApplyOp> {
         return rewriter.notifyMatchFailure(op, "failed to deduce range");
       }
     }
-
-    IndexingMap indexing_map(affine_map, std::move(dim_ranges),
-                             std::move(symbol_ranges),
+    IndexingMap indexing_map(affine_map, &symbolic_expr_context,
+                             std::move(dim_ranges), std::move(symbol_ranges),
                              /*rt_vars=*/{});
     indexing_map.Simplify();
     auto result_expr = indexing_map.GetAffineMap().getResult(0);
@@ -274,7 +275,8 @@ struct RewriteApplyIndexingOp : OpRewritePattern<ApplyIndexingOp> {
 
   LogicalResult matchAndRewrite(ApplyIndexingOp op,
                                 PatternRewriter& rewriter) const override {
-    auto indexing_map = op.getIndexingMap();
+    gpu::SymbolicExprContext symbolic_expr_context(op.getContext());
+    auto indexing_map = op.getIndexingMap(&symbolic_expr_context);
     indexing_map.Simplify();
     auto affine_map = indexing_map.GetAffineMap();
     int64_t dim_count = indexing_map.GetDimensionCount();

@@ -697,7 +697,8 @@ Value CheckConstraints(const IndexingMap& map, ValueRange dims,
   IndexingMap constraints_map{
       mlir::AffineMap::get(input_map.getNumDims(), input_map.getNumSymbols(),
                            expressions, input_map.getContext()),
-      map.GetDimVars(), map.GetRangeVars(), map.GetRTVars()};
+      map.GetSymbolicExprContext(), map.GetDimVars(), map.GetRangeVars(),
+      map.GetRTVars()};
   SmallVector<Value, 1> constraints_values =
       ApplyIndexing(constraints_map, dims, symbols, b);
 

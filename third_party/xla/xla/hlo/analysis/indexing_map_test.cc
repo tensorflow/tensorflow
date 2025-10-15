@@ -96,6 +96,7 @@ TEST_F(IndexingMapTest, VariableKind) {
 TEST_F(IndexingMapTest, VerifyDimensions) {
   auto indexing_map = IndexingMap::FromTensorSizes(
       ParseAffineMap("(d0) -> (d0)", &symbolic_expr_context_),
+      &symbolic_expr_context_,
       /*dim_upper_bounds=*/{10, 10}, /*symbol_upper_bounds=*/{});
 
   std::stringstream ss;
@@ -108,6 +109,7 @@ TEST_F(IndexingMapTest, VerifyDimensions) {
 TEST_F(IndexingMapTest, VerifySymbols) {
   auto indexing_map = IndexingMap::FromTensorSizes(
       ParseAffineMap("(d0) -> (d0)", &symbolic_expr_context_),
+      &symbolic_expr_context_,
       /*dim_upper_bounds=*/{10}, /*symbol_upper_bounds=*/{10});
 
   std::stringstream ss;
@@ -121,6 +123,7 @@ TEST_F(IndexingMapTest, RTVar) {
   IndexingMap indexing_map(
       ParseAffineMap("(d0, d1)[range, rt0, rt1] -> (d1, d0, range + rt0, rt1)",
                      &symbolic_expr_context_),
+      &symbolic_expr_context_,
       {IndexingMap::Variable{0, 99, "d0"}, IndexingMap::Variable{0, 43, "d1"}},
       {IndexingMap::Variable{-99, 99, "range"}},
       {IndexingMap::Variable{Interval{0, 2}},
@@ -295,12 +298,14 @@ TEST_F(IndexingMapTest, Composition_RTVar) {
       ParseAffineMap(
           "(d0, d1, d2)[rt0, rt1, rt2] -> (d0 + rt0, d1 + rt1, d2 + rt2)",
           &symbolic_expr_context_),
+      &symbolic_expr_context_,
       {IndexingMap::Variable{{0, 0}}, IndexingMap::Variable{{0, 1}},
        IndexingMap::Variable{{0, 226}}},
       {}, std::move(rt_vars));
 
   IndexingMap consumer(
       ParseAffineMap("(d0, d1)[s] -> (0, d1, s)", &symbolic_expr_context_),
+      &symbolic_expr_context_,
       {IndexingMap::Variable{0, 0}, IndexingMap::Variable{0, 1}},
       {IndexingMap::Variable{0, 31, "s"}}, {});
 
@@ -321,6 +326,7 @@ TEST_F(IndexingMapTest, Composition_OnlyRTVars) {
   IndexingMap producer(
       ParseAffineMap("(d0, d1)[s0, s1] -> (d0 + s0, d1 + 4 * s1)",
                      &symbolic_expr_context_),
+      &symbolic_expr_context_,
       {IndexingMap::Variable{0, 24}, IndexingMap::Variable{0, 15}}, {},
       {IndexingMap::Variable{Interval{0, 2}, "ps_0"},
        IndexingMap::Variable{Interval{0, 1}, "ps_1"}});
@@ -329,6 +335,7 @@ TEST_F(IndexingMapTest, Composition_OnlyRTVars) {
   IndexingMap consumer(
       ParseAffineMap("(d0, d1)[s0, s1] -> (d0 + 2 * s0, d1 + 3 * s1)",
                      &symbolic_expr_context_),
+      &symbolic_expr_context_,
       {IndexingMap::Variable{0, 24}, IndexingMap::Variable{0, 15}}, {},
       {IndexingMap::Variable{Interval{0, 25}, "cs_0"},
        IndexingMap::Variable{Interval{0, 16}, "cs_1"}});
@@ -489,7 +496,7 @@ TEST_F(IndexingMapTest, RemoveUnusedSymbols_ConstraintsWithRTVars) {
   IndexingMap indexing_map(
       ParseAffineMap("(d0)[s0, s1, s2, s3, s4] -> (d0 * 4 + s1 + s3 - 42)",
                      &symbolic_expr_context_),
-      {IndexingMap::Variable{{0, 31}}},
+      &symbolic_expr_context_, {IndexingMap::Variable{{0, 31}}},
       {IndexingMap::Variable{{0, 0}}, IndexingMap::Variable{{0, 1}},
        IndexingMap::Variable{{0, 2}}},
       {IndexingMap::Variable{Interval{0, 3}},
@@ -585,7 +592,7 @@ TEST_F(IndexingMapTest, ConvertSymbolsToDimensions) {
       ParseAffineMap(
           "(d0)[s0, s1, s2, s3] -> (d0 * 4 + s0 + s1 + 2 * s2 + 3 * s3 - 42)",
           &symbolic_expr_context_),
-      {IndexingMap::Variable{{0, 31}}},
+      &symbolic_expr_context_, {IndexingMap::Variable{{0, 31}}},
       {IndexingMap::Variable{{0, 0}}, IndexingMap::Variable{{0, 1}}},
       {IndexingMap::Variable{Interval{0, 3}},
        IndexingMap::Variable{Interval{0, 4}}});
@@ -1374,8 +1381,7 @@ TEST_F(IndexingMapTest, RangeEvaluatorTest) {
     d2 in [-1, 2],
     d3 in [0, 0]
   )");
-  RangeEvaluator range_evaluator(indexing_map,
-                                 symbolic_expr_context_.GetMLIRContext());
+  RangeEvaluator range_evaluator(indexing_map, &symbolic_expr_context_);
   mlir::AffineExpr d0, d1, d2, d3;
   bindDims(symbolic_expr_context_.GetMLIRContext(), d0, d1, d2, d3);
 
@@ -1522,7 +1528,7 @@ TEST_F(IndexingMapTest, IndexingMapSupportsAbslHashAndEqAndNe) {
        IndexingMap(
            ParseAffineMap("(d0)[s0, s1, s2, s3, s4] -> (d0 * 4 + s1 + s3 - 42)",
                           &symbolic_expr_context_),
-           {IndexingMap::Variable{{0, 31}}},
+           &symbolic_expr_context_, {IndexingMap::Variable{{0, 31}}},
            {IndexingMap::Variable{{0, 0}}, IndexingMap::Variable{{0, 1}},
             IndexingMap::Variable{{0, 2}}},
            {IndexingMap::Variable{Interval{0, 3}},
@@ -1530,7 +1536,7 @@ TEST_F(IndexingMapTest, IndexingMapSupportsAbslHashAndEqAndNe) {
        IndexingMap(
            ParseAffineMap("(d0)[s0, s1, s2, s3, s4] -> (d0 * 4 + s1 + s3 - 42)",
                           &symbolic_expr_context_),
-           {IndexingMap::Variable{{0, 31}}},
+           &symbolic_expr_context_, {IndexingMap::Variable{{0, 31}}},
            {IndexingMap::Variable{{0, 0}}, IndexingMap::Variable{{0, 1}},
             IndexingMap::Variable{{0, 2}}},
            {IndexingMap::Variable{Interval{0, 3}},

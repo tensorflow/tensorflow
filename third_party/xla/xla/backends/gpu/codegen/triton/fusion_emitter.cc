@@ -752,7 +752,8 @@ absl::StatusOr<std::vector<ScalarOrTensor>> EmitTiledComputation(
     const HloFusionInstruction* fusion,
     const TiledHloComputation& tiled_computation, mlir::FunctionOpInterface fn,
     Value pid,
-    absl::flat_hash_map<const TiledHloInstruction*, ScalarOrTensor>& values);
+    absl::flat_hash_map<const TiledHloInstruction*, ScalarOrTensor>& values,
+    SymbolicExprContext& symbolic_expr_context);
 
 // Returns the number of iterations of the loop over the contracting
 // dimension of matrix multiplication.
@@ -940,7 +941,8 @@ absl::StatusOr<ScalarOrTensor> EmitDot(
     const HloFusionInstruction* fusion,
     const TiledHloInstruction& tiled_hlo_dot, mlir::FunctionOpInterface fn,
     Value pid,
-    absl::flat_hash_map<const TiledHloInstruction*, ScalarOrTensor>& values) {
+    absl::flat_hash_map<const TiledHloInstruction*, ScalarOrTensor>& values,
+    SymbolicExprContext& symbolic_expr_context) {
   // We expect to get a tiled HLO in form:
   //
   // left { ... }
@@ -1011,6 +1013,7 @@ absl::StatusOr<ScalarOrTensor> EmitDot(
   // Nested fusions are tiled with indexing map 'pid * loop_iter_count + ki'
   IndexingMap computation_index_map{
       AffineMap::get(1, 1, pid_dim * loop_iteration_count + ki_symbol),
+      &symbolic_expr_context,
       {IndexingMap::Variable{
           tiled_hlo_dot.tile_offsets_indexing()->GetDimensionBound(0), "pid"}},
       {IndexingMap::Variable{{0, loop_iteration_count - 1}, "k"}},
@@ -1046,7 +1049,7 @@ absl::StatusOr<ScalarOrTensor> EmitDot(
               b, libdevice_path, device_info,
               ::xla::Cast<HloFusionInstruction>(tiled_fusion_operand->hlo()),
               *tiled_fusion_operand->called_computation(), fn,
-              computation_index, values));
+              computation_index, values, symbolic_expr_context));
       if (result.size() != 1) {
         return absl::InternalError(absl::StrCat(
             "Expected nested fusion computation to emit a single value, got ",
@@ -1111,7 +1114,8 @@ absl::StatusOr<ScalarOrTensor> EmitScaledDot(
     const HloFusionInstruction* fusion,
     const TiledHloInstruction& tiled_hlo_dot, mlir::FunctionOpInterface fn,
     Value pid,
-    absl::flat_hash_map<const TiledHloInstruction*, ScalarOrTensor>& values) {
+    absl::flat_hash_map<const TiledHloInstruction*, ScalarOrTensor>& values,
+    SymbolicExprContext& symbolic_expr_context) {
   VLOG(2) << "EmitScaledDot: " << tiled_hlo_dot.ToString();
   const HloScaledDotInstruction& scaled_dot =
       *::xla::Cast<HloScaledDotInstruction>(tiled_hlo_dot.hlo());
@@ -1150,6 +1154,7 @@ absl::StatusOr<ScalarOrTensor> EmitScaledDot(
   // Nested fusions are tiled with indexing map 'pid * loop_iter_count + ki'
   IndexingMap computation_index_map{
       AffineMap::get(1, 1, pid_dim * loop_iteration_count + ki_symbol),
+      &symbolic_expr_context,
       {IndexingMap::Variable{
           tiled_hlo_dot.tile_offsets_indexing()->GetDimensionBound(0), "pid"}},
       {IndexingMap::Variable{{0, loop_iteration_count - 1}, "k"}},
@@ -1177,7 +1182,7 @@ absl::StatusOr<ScalarOrTensor> EmitScaledDot(
               b, libdevice_path, device_info,
               ::xla::Cast<HloFusionInstruction>(tiled_fusion_operand->hlo()),
               *tiled_fusion_operand->called_computation(), fn,
-              computation_index, values));
+              computation_index, values, symbolic_expr_context));
       if (result.size() != 1) {
         return absl::InternalError(absl::StrCat(
             "Expected nested fusion computation to emit a single value, got ",
@@ -1263,7 +1268,8 @@ absl::StatusOr<ScalarOrTensor> EmitConcatenate(
     const HloFusionInstruction* fusion,
     const TiledHloInstruction& tiled_concatenate, mlir::FunctionOpInterface fn,
     Value pid,
-    absl::flat_hash_map<const TiledHloInstruction*, ScalarOrTensor>& values) {
+    absl::flat_hash_map<const TiledHloInstruction*, ScalarOrTensor>& values,
+    SymbolicExprContext& symbolic_expr_context) {
   const int64_t concatenate_dimension =
       tiled_concatenate.hlo()->concatenate_dimension();
 
@@ -1355,7 +1361,8 @@ absl::StatusOr<ScalarOrTensor> EmitConcatenate(
         EmitTiledComputation(
             b, libdevice_path, device_info,
             ::xla::Cast<HloFusionInstruction>(tiled_fusion_operand->hlo()),
-            *tiled_fusion_operand->called_computation(), fn, pid, values));
+            *tiled_fusion_operand->called_computation(), fn, pid, values,
+            symbolic_expr_context));
     CHECK_EQ(result.size(), 1);
     b.create<mlir::scf::YieldOp>(result.front().UnwrapTensor());
   }
@@ -1436,7 +1443,8 @@ absl::StatusOr<ScalarOrTensor> EmitTiledHloInstruction(
     const se::DeviceDescription& device_info,
     const HloFusionInstruction* fusion, const TiledHloInstruction& tiled_hlo,
     mlir::FunctionOpInterface fn, Value pid,
-    absl::flat_hash_map<const TiledHloInstruction*, ScalarOrTensor>& values) {
+    absl::flat_hash_map<const TiledHloInstruction*, ScalarOrTensor>& values,
+    SymbolicExprContext& symbolic_expr_context) {
   const HloInstruction* hlo = tiled_hlo.hlo();
   VLOG(4) << "EmitTiledHloInstruction: " << hlo->ToString();
 
@@ -1484,7 +1492,7 @@ absl::StatusOr<ScalarOrTensor> EmitTiledHloInstruction(
 
   if (hlo->opcode() == HloOpcode::kConcatenate) {
     return EmitConcatenate(b, libdevice_path, device_info, fusion, tiled_hlo,
-                           fn, pid, values);
+                           fn, pid, values, symbolic_expr_context);
   }
 
   if (hlo->opcode() == HloOpcode::kPad) {
@@ -1493,12 +1501,12 @@ absl::StatusOr<ScalarOrTensor> EmitTiledHloInstruction(
 
   if (hlo->opcode() == HloOpcode::kDot) {
     return EmitDot(b, libdevice_path, device_info, fusion, tiled_hlo, fn, pid,
-                   values);
+                   values, symbolic_expr_context);
   }
 
   if (hlo->opcode() == HloOpcode::kScaledDot) {
     return EmitScaledDot(b, libdevice_path, device_info, fusion, tiled_hlo, fn,
-                         pid, values);
+                         pid, values, symbolic_expr_context);
   }
 
   if (hlo->opcode() == HloOpcode::kConstant) {
@@ -1577,7 +1585,8 @@ absl::StatusOr<std::vector<ScalarOrTensor>> EmitTiledComputation(
     const HloFusionInstruction* fusion,
     const TiledHloComputation& tiled_computation, mlir::FunctionOpInterface fn,
     Value pid,
-    absl::flat_hash_map<const TiledHloInstruction*, ScalarOrTensor>& values) {
+    absl::flat_hash_map<const TiledHloInstruction*, ScalarOrTensor>& values,
+    SymbolicExprContext& symbolic_expr_context) {
   VLOG(2) << "EmitTiledComputation: " << tiled_computation.ToString();
   for (const TiledHloInstruction* tiled_hlo :
        tiled_computation.instructions()) {
@@ -1601,10 +1610,10 @@ absl::StatusOr<std::vector<ScalarOrTensor>> EmitTiledComputation(
       VLOG(1) << "Skipping nested fusion: " << hlo->ToString();
       continue;
     }
-    TF_ASSIGN_OR_RETURN(
-        ScalarOrTensor result,
-        EmitTiledHloInstruction(b, libdevice_path, device_info, fusion,
-                                *tiled_hlo, fn, pid, values));
+    TF_ASSIGN_OR_RETURN(ScalarOrTensor result,
+                        EmitTiledHloInstruction(b, libdevice_path, device_info,
+                                                fusion, *tiled_hlo, fn, pid,
+                                                values, symbolic_expr_context));
     TF_RET_CHECK(values.insert({tiled_hlo, result}).second) << hlo->ToString();
     VLOG(8) << "Emitted " << hlo->ToString(HloPrintOptions::ShortParsable());
   }
@@ -1838,9 +1847,9 @@ absl::Status EmitGeneric(mlir::OpBuilder builder,
   Value tile_id = fn.getTileId();
   absl::flat_hash_map<const TiledHloInstruction*, ScalarOrTensor> values;
   TF_ASSIGN_OR_RETURN(
-      auto results,
-      EmitTiledComputation(b, libdevice_path, device_info, fusion,
-                           tiled_hlo_computation, fn, tile_id, values));
+      auto results, EmitTiledComputation(b, libdevice_path, device_info, fusion,
+                                         tiled_hlo_computation, fn, tile_id,
+                                         values, *symbolic_expr_context));
 
   for (auto [root, result, arg] :
        llvm::zip(tiled_hlo_computation.GetRoots(), results,

@@ -36,6 +36,7 @@ limitations under the License.
 #include "xla/codegen/emitters/ir/xla_ops.h"
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/analysis/indexing_map_serialization.h"
+#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 
 namespace xla {
 namespace gpu {
@@ -61,7 +62,9 @@ struct PeelLoop : public OpRewritePattern<LoopOp> {
 
     // Compute the list of indexing maps. The last element is the "peeled" or
     // "main" loop. Everything else is a "tail" loop.
-    auto indexing_map = loop_op.getIndexingMap();
+    mlir::MLIRContext* ctx = loop_op.getContext();
+    SymbolicExprContext symbolic_expr_context(ctx);
+    auto indexing_map = loop_op.getIndexingMap(&symbolic_expr_context);
 
     SmallVector<IndexingMap> indexing_maps{indexing_map};
     for (int sym_index = indexing_map.GetSymbolCount() - 1;

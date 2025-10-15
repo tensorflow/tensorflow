@@ -58,6 +58,7 @@ limitations under the License.
 #include "xla/codegen/emitter_loc_op_builder.h"
 #include "xla/codegen/emitters/ir/xla_ops.h"
 #include "xla/permutation_util.h"
+#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/stream_executor/gpu/tma_metadata.h"
 
 namespace mlir::triton::xla {
@@ -127,7 +128,10 @@ bool IsOffsetDivisibilityGuaranteed(mlir::Value offset_val,
 
   if (auto apply_indexing =
           offset_val.getDefiningOp<::xla::ApplyIndexingOp>()) {
-    mlir::AffineMap affine_map = apply_indexing.getIndexingMap().GetAffineMap();
+    ::xla::gpu::SymbolicExprContext symbolic_expr_context(
+        apply_indexing.getContext());
+    mlir::AffineMap affine_map =
+        apply_indexing.getIndexingMap(&symbolic_expr_context).GetAffineMap();
 
     // We expect a single result.
     if (affine_map.getNumResults() != 1) {

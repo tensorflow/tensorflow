@@ -239,6 +239,7 @@ void AssignValuesToOuterLoopIVs(IndexingMap* indexing_map) {
       indexing_map->GetAffineMap().replaceDimsAndSymbols(
           {}, symbol_replacements, indexing_map->GetDimVarsCount(), 1);
   *indexing_map = IndexingMap{thread_x_to_input_no_dim_symbols,
+                              indexing_map->GetSymbolicExprContext(),
                               indexing_map->GetDimVars(),
                               {indexing_map->GetRangeVars().back()},
                               {}};
@@ -466,6 +467,7 @@ bool IsIndexingCoalesced(IndexingMap& thread_x_to_linearized_input,
   AffineExpr c0 = getAffineConstantExpr(0, mlir_context);
   IndexingMap thread_x_first_32_elements{
       AffineMap::get(1, 0, {thread_x_dim, c0, c0, c0, c0, c0}, mlir_context),
+      thread_x_to_linearized_input.GetSymbolicExprContext(),
       {IndexingMap::Variable{{0, 31}}},
       /*range_vars=*/{},
       /*rt_vars=*/{}};

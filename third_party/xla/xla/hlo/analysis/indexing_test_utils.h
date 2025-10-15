@@ -121,6 +121,7 @@ absl::Status VerifyBijection(const IndexingMap& indexing_map,
 // a failure.
 absl::Status VerifyExprsAreIdentical(
     mlir::AffineExpr reference, mlir::AffineExpr other,
+    gpu::SymbolicExprContext* symbolic_expr_context,
     absl::Span<Interval const> dimension_ranges,
     absl::Span<Interval const> symbol_ranges);
 

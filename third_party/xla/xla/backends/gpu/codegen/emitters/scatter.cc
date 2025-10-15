@@ -438,6 +438,7 @@ void ScatterWithDistributedUpdates::ComputeIndexing(
             {scatter_update_map.GetAffineMap().getResult(0),
              getAffineSymbolExpr(0, symbolic_expr_context->GetMLIRContext())},
             symbolic_expr_context->GetMLIRContext()),
+        symbolic_expr_context,
         DimVarsFromGPUGrid({num_warps_ * warp_size_, 1, 1, num_blocks_, 1, 1}),
         RangeVarsFromTensorSizes({description_.index_vector_length}),
         /*rt_vars=*/{}};
@@ -483,7 +484,7 @@ void EmitNaiveImplementation(ImplicitLocOpBuilder& b,
   auto thread_id_to_update_id_map = IndexingMap(
       AffineMap::get(6, 0, {updates_map.GetAffineMap().getResult(0)},
                      mlir_context),
-      updates_map.GetDimVars(),
+      updates_map.GetSymbolicExprContext(), updates_map.GetDimVars(),
       /*range_vars = */ {}, /*rt vars = */ {});
   Value thread_id_to_index_id_value =
       emitters::ApplyIndexing(thread_id_to_update_id_map, thread_and_block_ids,
@@ -591,6 +592,7 @@ void ScatterWithDistributedIndices::ComputeIndexing(
     *indices_map = IndexingMap{
         AffineMap::get(6, 3, {vectorized_index_id_expr, index_dim_loop},
                        mlir_context),
+        symbolic_expr_context,
         grid_vars,
         {IndexingMap::Variable{
              {0, num_indices_per_warp_ / indices_vector_size_ - 1},
@@ -624,6 +626,7 @@ void ScatterWithDistributedIndices::ComputeIndexing(
 
     *updates_map = IndexingMap{
         AffineMap::get(6, 3, updates_indexing, mlir_context),
+        symbolic_expr_context,
         grid_vars,
         {IndexingMap::Variable{{0, num_indices_per_warp_ - 1}, "index_id_loop"},
          IndexingMap::Variable{
@@ -678,7 +681,7 @@ absl::Status ScatterWithDistributedIndices::EmitEntryFunctionImpl(
   auto thread_id_to_update_id_map = IndexingMap(
       AffineMap::get(6, 2, {indices_map.GetAffineMap().getResult(0)},
                      mlir_context),
-      indices_map.GetDimVars(),
+      symbolic_expr_context_, indices_map.GetDimVars(),
       /*range_vars = */
       {indices_map.GetRangeVars().begin(),
        indices_map.GetRangeVars().begin() + 2},

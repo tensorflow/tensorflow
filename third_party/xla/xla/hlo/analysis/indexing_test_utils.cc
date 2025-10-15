@@ -347,6 +347,7 @@ std::vector<int64_t> GetLoopTripCounts(const IndexingMap& indexing_map) {
 
 absl::Status VerifyExprsAreIdentical(
     mlir::AffineExpr reference, mlir::AffineExpr other,
+    gpu::SymbolicExprContext* symbolic_expr_context,
     absl::Span<Interval const> dimension_ranges,
     absl::Span<Interval const> symbol_ranges) {
   std::vector<IndexingMap::Variable> dims;
@@ -363,7 +364,7 @@ absl::Status VerifyExprsAreIdentical(
 
   IndexingMap map(mlir::AffineMap::get(dimension_ranges.size(),
                                        symbol_ranges.size(), reference),
-                  dims, symbols, {});
+                  symbolic_expr_context, dims, symbols, {});
   return EnumerateDomain(
       map,
       [&](absl::Span<int64_t const> dims,

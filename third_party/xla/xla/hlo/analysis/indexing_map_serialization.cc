@@ -634,7 +634,10 @@ std::optional<IndexingMap> ParseIndexingMap(
       return std::nullopt;
     }
     return IndexingMap{AffineMap::get(symbolic_expr_context->GetMLIRContext()),
-                       /*dimensions=*/{}, /*range_vars=*/{}, /*rt_vars=*/{}};
+                       symbolic_expr_context,
+                       /*dimensions=*/{},
+                       /*range_vars=*/{},
+                       /*rt_vars=*/{}};
   }
 
   if (!parser.ConsumeToken(Token::Kind::kComma) ||
@@ -755,8 +758,12 @@ std::optional<IndexingMap> ParseIndexingMap(
   auto map = AffineMap::get(dim_vars.size(), range_vars.size() + rt_vars.size(),
                             affine_map_results,
                             symbolic_expr_context->GetMLIRContext());
-  return IndexingMap{map, std::move(dim_vars), std::move(range_vars),
-                     std::move(rt_vars), constraints};
+  return IndexingMap{map,
+                     symbolic_expr_context,
+                     std::move(dim_vars),
+                     std::move(range_vars),
+                     std::move(rt_vars),
+                     constraints};
 }
 
 std::string ToString(AffineExpr affine_expr,

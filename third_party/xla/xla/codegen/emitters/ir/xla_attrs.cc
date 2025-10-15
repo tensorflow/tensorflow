@@ -31,6 +31,7 @@ limitations under the License.
 #include "xla/codegen/emitters/ir/xla_ops.h"
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/analysis/indexing_map_serialization.h"
+#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 
 namespace xla {
 
@@ -55,7 +56,8 @@ mlir::Attribute IndexingMapAttr::parse(mlir::AsmParser& parser, mlir::Type) {
 }
 
 void IndexingMapAttr::print(mlir::AsmPrinter& printer) const {
-  printer << "<\"" << ToString(getIndexingMap()) << "\">";
+  gpu::SymbolicExprContext symbolic_expr_context(getContext());
+  printer << "<\"" << ToString(getIndexingMap(&symbolic_expr_context)) << "\">";
 }
 
 IndexingMapAttr IndexingMapAttr::get(mlir::MLIRContext* context,
@@ -73,18 +75,23 @@ mlir::LogicalResult IndexingMapAttr::verify(
     mlir::AffineMap map, ArrayRef<IndexingMap::Variable> dim_vars,
     ArrayRef<IndexingMap::Variable> range_vars,
     ArrayRef<std::pair<AffineExpr, Interval>> constraints) {
+  // Create the context locally from the AffineMap's context.
+  gpu::SymbolicExprContext symbolic_expr_context(map.getContext());
   auto indexing_map =
-      IndexingMap(map, dim_vars, range_vars, /*rt_vars=*/{}, constraints);
+      IndexingMap(map, &symbolic_expr_context, dim_vars, range_vars,
+                  /*rt_vars=*/{}, constraints);
   std::stringstream ss;
   if (!indexing_map.Verify(ss)) {
     return emitError() << ss.str();
   }
+
   return success();
 }
 
-IndexingMap IndexingMapAttr::getIndexingMap() const {
-  return IndexingMap(getMap(), getDimVars(), getRangeVars(), /*rt_vars=*/{},
-                     getConstraints());
+IndexingMap IndexingMapAttr::getIndexingMap(
+    gpu::SymbolicExprContext* symbolic_expr_context) const {
+  return IndexingMap(getMap(), symbolic_expr_context, getDimVars(),
+                     getRangeVars(), /*rt_vars=*/{}, getConstraints());
 }
 
 int64_t IndexingMapAttr::getNumResults() const {

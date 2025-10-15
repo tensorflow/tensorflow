@@ -40,6 +40,7 @@ limitations under the License.
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "xla/codegen/emitters/ir/xla_ops.h"
 #include "xla/hlo/analysis/indexing_map.h"
+#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 
 namespace xla::cpu {
 
@@ -61,7 +62,9 @@ struct PeelWorkgroupLoopPattern : public mlir::OpRewritePattern<xla::LoopOp> {
   mlir::LogicalResult matchAndRewrite(
       xla::LoopOp loop_op, mlir::PatternRewriter& rewriter) const override {
     mlir::MLIRContext* ctx = loop_op.getContext();
-    xla::IndexingMap indexing_map = loop_op.getIndexingMap();
+    xla::gpu::SymbolicExprContext symbolic_expr_context(ctx);
+    xla::IndexingMap indexing_map =
+        loop_op.getIndexingMap(&symbolic_expr_context);
     indexing_map.Simplify();
 
     if (indexing_map.GetConstraintsCount() == 0) {
@@ -211,7 +214,8 @@ struct PeelWorkgroupLoopPattern : public mlir::OpRewritePattern<xla::LoopOp> {
 
   static absl::InlinedVector<WorkGroupInfo, 3> GatherWorkGroupDims(
       xla::LoopOp& loop_op) {
-    IndexingMap indexing_map = loop_op.getIndexingMap();
+    xla::gpu::SymbolicExprContext symbolic_expr_context(loop_op.getContext());
+    IndexingMap indexing_map = loop_op.getIndexingMap(&symbolic_expr_context);
     absl::InlinedVector<WorkGroupInfo, 3> work_group_dims;
     for (auto [dim_id, dim_operand] : llvm::enumerate(loop_op.getDims())) {
       if (!mlir::isa_and_present<WorkGroupIdOp>(dim_operand.getDefiningOp())) {
