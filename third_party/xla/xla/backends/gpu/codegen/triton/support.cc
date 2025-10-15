@@ -36,6 +36,7 @@ limitations under the License.
 #include "xla/primitive_util.h"
 #include "xla/service/algorithm_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
@@ -290,18 +291,11 @@ CodegenDecision CanTritonHandleReduce(
 }
 
 bool IsInTritonNestedGemmFusion(const HloInstruction& hlo) {
-  const HloComputation* computation = hlo.parent();
-  if (!computation->IsFusionComputation()) {
+  if (!hlo.parent()->IsFusionComputation()) {
     return false;
   }
-  absl::StatusOr<GpuBackendConfig> backend_config =
-      computation->FusionInstruction()->backend_config<GpuBackendConfig>();
-  if (!backend_config.ok()) {
-    return false;
-  }
-  absl::string_view fusion_kind =
-      backend_config.value().fusion_backend_config().kind();
-  return fusion_kind == kTritonNestedGemmFusionKind;
+  return IsGpuFusionKind(*hlo.parent()->FusionInstruction(),
+                         kTritonNestedGemmFusionKind);
 }
 
 absl::Status CheckSupportedCheckDotDimensions(const HloDotInstruction& dot) {

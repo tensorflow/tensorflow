@@ -68,6 +68,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/service/instruction_fusion.h"
@@ -430,12 +431,8 @@ class OrderedUniquePtrValueHashSet {
 bool IsWithinNestedGemmFusion(const HloInstruction* hlo) {
   const HloComputation* computation = hlo->parent();
   if (computation->IsFusionComputation()) {
-    const gpu::GpuBackendConfig backend_config =
-        *computation->FusionInstruction()
-             ->backend_config<gpu::GpuBackendConfig>();
-    absl::string_view fusion_kind =
-        backend_config.fusion_backend_config().kind();
-    return fusion_kind == gpu::kTritonNestedGemmFusionKind;
+    return gpu::IsGpuFusionKind(*computation->FusionInstruction(),
+                                gpu::kTritonNestedGemmFusionKind);
   }
 
   return false;
@@ -759,7 +756,6 @@ llvm::SmallVector<const TiledHloInstruction*> MapToTiledInstructions(
 }
 
 }  // anonymous namespace
-
 
 // Extracts `HloInstruction`s from a span of `HloInstructionAdaptor`s.
 absl::InlinedVector<const HloInstruction*, 2> ToInstructions(

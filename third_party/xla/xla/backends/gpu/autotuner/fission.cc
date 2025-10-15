@@ -39,6 +39,7 @@ limitations under the License.
 #include "xla/service/call_inliner.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/cublas_cudnn.h"
+#include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/service/gpu/transforms/custom_kernel_fusion_rewriter.h"
@@ -199,12 +200,7 @@ bool IsCustomKernel(const HloComputation* computation) {
     return false;
   }
 
-  if (!gpu_backend_config->has_fusion_backend_config()) {
-    return false;
-  }
-
-  return gpu_backend_config->fusion_backend_config().kind() ==
-         kCustomFusionKind;
+  return IsGpuFusionKind(*instruction, kCustomFusionKind);
 }
 
 absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>>
