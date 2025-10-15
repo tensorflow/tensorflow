@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2025 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/cpu_function_runtime.h"
+#include "tensorflow/compiler/tf2xla/allocator.h"
 
 #include <algorithm>
 #include <cstddef>
@@ -21,8 +21,8 @@ limitations under the License.
 #include <iterator>
 #include <vector>
 
-#include "tensorflow/compiler/tf2xla/allocator.h"
 #include "xla/backends/cpu/alignment.h"
+#include "xla/cpu_function_runtime.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/platform/test.h"
 
@@ -31,7 +31,7 @@ namespace {
 
 using ::xla::cpu_function_runtime::BufferInfo;
 
-TEST(XlaCompiledCpuFunctionTest, AlignmentValue) {
+TEST(AllocatorTest, AlignmentValue) {
   // We've chosen 64 byte alignment for the tfcompile runtime to mimic the
   // regular tensorflow allocator, which was chosen to play nicely with Eigen.
   // The tfcompile runtime also has a requirement that comes from the xla
@@ -72,7 +72,7 @@ void* MallocContiguousBuffersFromSizes(const intptr_t* sizes, size_t n,
                                              bufs, annotate_initialized);
 }
 
-TEST(XlaCompiledCpuFunctionTest, AlignedBufferBytes) {
+TEST(AllocatorTest, AlignedBufferBytes) {
   EXPECT_EQ(AlignedBufferBytesFromSizes(nullptr, 0), 0);
 
   static constexpr intptr_t sizesA[1] = {-1};
@@ -96,7 +96,7 @@ void* add_ptr(void* base, uintptr_t delta) {
 // expected nullptrs, and write to each byte of allocated memory.  We rely on
 // the leak checker to tell us if there's an inconsistency between malloc and
 // free.  We also check the contiguous property.
-TEST(XlaCompiledCpuFunctionTest, MallocFreeContiguousBuffers) {
+TEST(AllocatorTest, MallocFreeContiguousBuffers) {
   // Test empty sizes.
   void* base = MallocContiguousBuffersFromSizes(nullptr, 0, nullptr, false);
   EXPECT_EQ(base, nullptr);
@@ -156,24 +156,6 @@ TEST(XlaCompiledCpuFunctionTest, MallocFreeContiguousBuffers) {
     }
   }
   FreeContiguous(base);
-}
-
-void CheckRoundTripIsOk(const BufferInfo& buffer_info) {
-  BufferInfo round_trip(buffer_info.Encode());
-  ASSERT_EQ(round_trip, buffer_info);
-}
-
-TEST(XlaCompiledCpuFunctionTest, BufferInfoTest) {
-  CheckRoundTripIsOk(BufferInfo::MakeTempBuffer(0));
-  CheckRoundTripIsOk(BufferInfo::MakeTempBuffer(4));
-  CheckRoundTripIsOk(BufferInfo::MakeOnStackBuffer(0));
-  CheckRoundTripIsOk(BufferInfo::MakeOnStackBuffer(4));
-  CheckRoundTripIsOk(BufferInfo::MakeConstant(0));
-  CheckRoundTripIsOk(BufferInfo::MakeConstant(4));
-  CheckRoundTripIsOk(
-      BufferInfo::MakeEntryParameter(/*size=*/0, /*param_number=*/4));
-  CheckRoundTripIsOk(
-      BufferInfo::MakeEntryParameter(/*size=*/4, /*param_number=*/0));
 }
 
 }  // namespace

@@ -411,6 +411,19 @@ cc_library(
     ],
 )
 
+tf_cc_test(
+    name = "allocator_test",
+    srcs = ["allocator_test.cc"],
+    deps = [
+        ":allocator",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "@local_xla//xla:cpu_function_runtime",
+        "@local_xla//xla/backends/cpu:alignment",
+    ],
+)
+
 cc_library(
     name = "xla_compiled_cpu_function",
     srcs = ["xla_compiled_cpu_function.cc"],
@@ -479,19 +492,6 @@ cc_library(
         "//tensorflow/compiler/tf2xla:xla_compiled_cpu_function_thunks",
     ],
     alwayslink = 1,
-)
-
-tf_cc_test(
-    name = "cpu_function_runtime_test",
-    srcs = ["cpu_function_runtime_test.cc"],
-    deps = [
-        ":allocator",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "@local_xla//xla:cpu_function_runtime",
-        "@local_xla//xla/backends/cpu:alignment",
-    ],
 )
 
 cc_library(
