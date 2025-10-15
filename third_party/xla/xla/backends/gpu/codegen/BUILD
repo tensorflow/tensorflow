@@ -192,6 +192,10 @@ xla_test(
             "multi_gpu",
             "no_oss",
         ],
+        "b200": [
+            "broken",
+            "no_oss",
+        ],
     },
     backends = ["gpu"],
     deps = [
