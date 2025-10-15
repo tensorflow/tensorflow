@@ -30,4 +30,4 @@ bazel --bazelrc="$SCRIPT_DIR/rocm_xla.bazelrc" test \
 	--action_env=XLA_FLAGS=--xla_gpu_enable_llvm_module_compilation_parallelism=true \
 	--test_output=errors \
 	--local_test_jobs=2 \
-	--run_under=//tools/ci_build/gpu_build:parallel_gpu_execute
+	--run_under=//build_tools/rocm:parallel_gpu_execute
