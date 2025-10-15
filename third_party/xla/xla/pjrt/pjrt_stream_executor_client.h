@@ -637,9 +637,6 @@ class PjRtStreamExecutorBuffer : public CommonPjRtBufferImpl {
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> CopyToMemorySpace(
       PjRtMemorySpace* dst_memory_space) override;
 
-  void CopyToRemoteDevice(Future<std::string> serialized_descriptor,
-                          RemoteSendCallback on_done) override;
-
   Future<> GetReadyFuture() override;
 
   bool IsOnCpu() const override;

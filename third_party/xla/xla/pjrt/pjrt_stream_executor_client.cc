@@ -1834,19 +1834,6 @@ PjRtStreamExecutorBuffer::CopyToMemorySpace(PjRtMemorySpace* dst_memory_space) {
   return Unimplemented("CopyToMemorySpace is not supported");
 }
 
-void PjRtStreamExecutorBuffer::CopyToRemoteDevice(
-    Future<std::string> serialized_descriptor, RemoteSendCallback on_done) {
-  VLOG(3) << "PjRtStreamExecutorBuffer::CopyToRemoteDevice";
-  auto desc = serialized_descriptor.Await();
-  if (desc.ok()) {
-    auto* se_client =
-        tensorflow::down_cast<PjRtStreamExecutorClient*>(client());
-    se_client->CopyToRemoteDevice(this, *desc, std::move(on_done));
-  } else {
-    on_done(desc.status(), /*sends_enqueued=*/false);
-  }
-}
-
 Future<> PjRtStreamExecutorBuffer::GetReadyFuture() {
   absl::InlinedVector<BufferSequencingEventRef, 2> definition_events;
   Promise<> definition_promise;

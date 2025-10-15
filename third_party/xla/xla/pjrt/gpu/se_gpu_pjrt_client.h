@@ -144,9 +144,13 @@ class StreamExecutorGpuClient : public xla::PjRtStreamExecutorClient {
                                   int64_t offset,
                                   int64_t transfer_size) override;
 
-  void CopyToRemoteDevice(PjRtBuffer* buffer,
-                          absl::string_view serialized_descriptor,
-                          PjRtBuffer::RemoteSendCallback on_done) override;
+  void ScheduleRemoteSend(
+      PjRtMemorySpace* memory_space,
+      tsl::RCReference<CommonPjRtRawBuffer> raw_buffer,
+      std::vector<tsl::RCReference<tsl::AsyncValue>> definition_events,
+      tsl::RCReference<PjRtDeviceEventPromise> usage_event_promise,
+      Future<std::string> serialized_descriptor,
+      PjRtBuffer::RemoteSendCallback on_done) override;
 
   absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
   MakeCrossHostReceiveBuffers(absl::Span<const Shape> shapes,

@@ -90,6 +90,7 @@ cc_library(
         "//xla/pjrt:pjrt_device_description",
         "//xla/pjrt:pjrt_executable",
         "//xla/pjrt:pjrt_stream_executor_client",
+        "//xla/pjrt:raw_buffer",
         "//xla/pjrt:stream_executor_executable",
         "//xla/pjrt:stream_executor_executable_proto_cc",
         "//xla/pjrt:utils",
