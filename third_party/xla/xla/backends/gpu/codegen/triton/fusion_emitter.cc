@@ -691,7 +691,7 @@ absl::StatusOr<ScalarOrTensor> EmitTiledBitcast(
                   GetPaddedTileSizes(tiled_bitcast.operand(0)->tile_sizes()),
                   output_element_type)
             : output_element_type;
-    input = b.create<ttir::BitcastOp>(output_type, input);
+    input = b.create<mlir::tensor::BitcastOp>(output_type, input);
     input_shape.set_element_type(output_shape.element_type());
   }
 
@@ -2305,6 +2305,7 @@ absl::Status LowerXTileToTriton(mlir::ModuleOp xtile_dialect_module,
     // Disable verifier because the Triton code may be invalid due to the
     // unsupported types.
     pm.enableVerifier(/*enabled=*/false);
+    pm.addPass(mlir::triton::xla::CreateTensorLowerToTritonPass());
     pm.addPass(mlir::triton::xla::CreateStableHLOLowerToTritonPass());
     if (mlir::failed(pm.run(xtile_dialect_module))) {
       return CreateInternalError(

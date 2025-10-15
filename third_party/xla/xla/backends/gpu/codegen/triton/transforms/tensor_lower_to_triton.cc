@@ -17,52 +17,48 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
-#include "llvm/ADT/SmallVector.h"
-#include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/BuiltinTypeInterfaces.h"
 #include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/PatternMatch.h"
-#include "mlir/IR/Value.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
-#include "stablehlo/dialect/StablehloOps.h"
 #include "triton/Dialect/Triton/IR/Dialect.h"
 
 namespace mlir::triton::xla {
 
 namespace ttir = ::mlir::triton;
 
-#define GEN_PASS_DEF_STABLEHLOLOWERTOTRITONPASS
+#define GEN_PASS_DEF_TENSORLOWERTOTRITONPASS
 #include "xla/backends/gpu/codegen/triton/transforms/passes.h.inc"
 
 namespace {
 
-class LowerTranspose : public mlir::OpRewritePattern<stablehlo::TransposeOp> {
+class LowerBitcast : public mlir::OpRewritePattern<tensor::BitcastOp> {
  public:
   using OpRewritePattern::OpRewritePattern;
 
  private:
   mlir::LogicalResult matchAndRewrite(
-      stablehlo::TransposeOp op,
-      mlir::PatternRewriter& rewriter) const override {
-    SmallVector<int32_t> permutation =
-        llvm::to_vector_of<int32_t>(op.getPermutation());
-    rewriter.replaceOpWithNewOp<ttir::TransOp>(op, op.getResult().getType(),
-                                               op.getOperand(), permutation);
+      tensor::BitcastOp op, mlir::PatternRewriter& rewriter) const override {
+    rewriter.replaceOpWithNewOp<ttir::BitcastOp>(op, op.getResult().getType(),
+                                                 op.getOperand());
     return mlir::success();
   }
 };
 
-class StableHLOLowerToTritonPass
-    : public impl::StableHLOLowerToTritonPassBase<StableHLOLowerToTritonPass> {
+// TODO(basioli): Consider fusing this with the stablehlo lowering pass into a
+// single xtile to triton lowering pass.
+class TensorLowerToTritonPass
+    : public impl::TensorLowerToTritonPassBase<TensorLowerToTritonPass> {
  public:
   void runOnOperation() override {
     mlir::MLIRContext* mlir_context = &getContext();
     mlir::RewritePatternSet patterns(mlir_context);
-    patterns.add<LowerTranspose>(mlir_context);
+    patterns.add<LowerBitcast>(mlir_context);
 
     if (mlir::failed(
             mlir::applyPatternsGreedily(getOperation(), std::move(patterns)))) {
@@ -73,8 +69,8 @@ class StableHLOLowerToTritonPass
 
 }  // namespace
 
-std::unique_ptr<Pass> CreateStableHLOLowerToTritonPass() {
-  return std::make_unique<StableHLOLowerToTritonPass>();
+std::unique_ptr<Pass> CreateTensorLowerToTritonPass() {
+  return std::make_unique<TensorLowerToTritonPass>();
 }
 
 }  // namespace mlir::triton::xla

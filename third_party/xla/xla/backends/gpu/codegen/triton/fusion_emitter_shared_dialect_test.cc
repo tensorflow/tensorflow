@@ -68,6 +68,35 @@ CHECK: %[[RES:.*]] = stablehlo.transpose %[[ARG:.*]], dims = [1, 0] : (tensor<32
 )"));
 }
 
+TEST_F(XTileDialectTest, TestEmittingTensorBitcast) {
+  constexpr absl::string_view kHloText = R"(
+HloModule t, is_scheduled=true
+
+bitcast_fusion {
+  p0 = f32[150,160] parameter(0)
+  ROOT bitcast_convert = s32[150,160] bitcast(p0)
+}
+
+ENTRY e {
+  p0 = f32[150,160] parameter(0)
+  ROOT custom-call = s32[150,160] fusion(p0), kind=kCustom,
+    calls=bitcast_fusion,
+    backend_config={"fusion_backend_config": {kind: "__triton"}}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(kHloText));
+
+  BlockLevelParameters block_level_parameters;
+  block_level_parameters.output_tile_sizes = {{16, 32}};
+
+  TF_EXPECT_OK(CreateXTileIrAndFileCheck(
+      this, *module->GetComputationWithName("bitcast_fusion"),
+      block_level_parameters,
+      R"(
+CHECK: %[[RES:.*]] = tensor.bitcast %[[ARG:.*]] : tensor<16x32xf32> to tensor<16x32xi32>
+)"));
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla
