@@ -372,10 +372,8 @@ absl::StatusOr<PerDeviceLiteralVecType> FetchAndLogOutput(
         TF_RET_CHECK(buffer->device() == output_buffers[i][0]->device())
             << "All outputs from a given vector of outputs should be for the "
                "same device";
-        TF_ASSIGN_OR_RETURN(auto logical_shape,
-                            buffer->logical_on_device_shape());
         output_slice.emplace_back(
-            ShapeUtil::DeviceShapeToHostShape(logical_shape));
+            ShapeUtil::DeviceShapeToHostShape(buffer->on_device_shape()));
         buffer->ToLiteral(&output_slice.back()).OnReady([&](absl::Status s) {
           absl::MutexLock lock(mu);
           --num_pending_transfers;
