@@ -36,7 +36,7 @@ limitations under the License.
 namespace xla::gpu {
 
 bool IsP2PStreamKind(AsyncStreamKind stream_kind) {
-  return stream_kind != AsyncStreamKind::kCollective;
+  return stream_kind != AsyncStreamKind::ASYNC_STREAM_KIND_COLLECTIVE;
 }
 
 CollectiveStreamId GetCollectiveStreamId(bool is_async,

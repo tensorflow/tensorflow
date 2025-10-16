@@ -655,10 +655,12 @@ MatchPermutedSliceAndPartitionOffset(const HloAllGatherInstruction* ag,
     return std::nullopt;
   }
 
-  // Only matches for kFlattenedID collective mode.
+  // Only matches for COLLECTIVE_OP_GROUP_MODE_FLATTENED_ID collective mode.
   absl::StatusOr<CollectiveOpGroupMode> mode = GetCollectiveOpGroupMode(ag);
 
-  if (!mode.ok() || mode.value() != CollectiveOpGroupMode::kFlattenedID) {
+  if (!mode.ok() ||
+      mode.value() !=
+          CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_FLATTENED_ID) {
     VLOG(2) << "AG does not use global device ids or channel id "
             << ag->ToString();
     return std::nullopt;

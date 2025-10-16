@@ -41,7 +41,8 @@ class NvshmemCollectivePermuteStartThunk : public NvshmemCollectiveThunk {
       int64_t replica_count, int64_t partition_count,
       const std::vector<CollectiveThunk::Buffer>& buffers,
       bool p2p_memcpy_enabled = false,
-      AsyncStreamKind stream_kind = AsyncStreamKind::kCollective);
+      AsyncStreamKind stream_kind =
+          AsyncStreamKind::ASYNC_STREAM_KIND_COLLECTIVE);
 
   static const char* GetHloOpName() { return "collective-permute-start"; }
 

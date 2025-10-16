@@ -168,7 +168,8 @@ TEST(CollectiveKernelThunkTest, ExecutesPtxKernel) {
       /* replica_groups=*/{replica_group},
       /* collective_op_kind=*/RendezvousKey::CollectiveOpKind::kCrossReplica,
       /* op_id=*/0,
-      /* group_mode=*/CollectiveOpGroupMode::kCrossReplica,
+      /* group_mode=*/
+      CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA,
       /* use_symmetric_buffer=*/false};
   const int64_t aligned_input_size_bytes =
       xla::RoundUpTo<uint64_t>(kInputSizeBytes, kXlaAllocatedBufferAlignBytes);

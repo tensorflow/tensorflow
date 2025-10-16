@@ -71,9 +71,10 @@ std::vector<ReplicaGroup> CreateReplicaGroups(
 
 TEST(CollectiveOpsUtilsTest, GetParticipatingIDs_NoReplicaGroups) {
   std::vector<int> actual =
-      GetParticipatingIDs(CollectiveOpGroupMode::kFlattenedID,
-                          /*current_id=*/0, /*total_participant_count=*/3,
-                          /*groups=*/{})
+      GetParticipatingIDs(
+          CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_FLATTENED_ID,
+          /*current_id=*/0, /*total_participant_count=*/3,
+          /*groups=*/{})
           .value();
   std::vector<int> expected = {0, 1, 2};
   EXPECT_EQ(actual, expected);
@@ -89,10 +90,10 @@ TEST(CollectiveOpsUtilsTest, GetParticipatingIDs_ReplicaGroups) {
   replica_groups[2].add_replica_ids(3);
 
   std::vector<int> actual =
-      GetParticipatingIDs(CollectiveOpGroupMode::kFlattenedID,
-                          /*current_id=*/1,
-                          /*total_participant_count=*/std::nullopt,
-                          replica_groups)
+      GetParticipatingIDs(
+          CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_FLATTENED_ID,
+          /*current_id=*/1,
+          /*total_participant_count=*/std::nullopt, replica_groups)
           .value();
   std::vector<int> expected = {1, 5};
   EXPECT_EQ(actual, expected);
@@ -556,12 +557,19 @@ std::vector<TestCase> GetTestCases() {
   const std::vector<TestCase> test_cases = {
       // clang-format off
       // has_channel_id, use_global_device_ids, expected mode
-      {false, std::nullopt, CollectiveOpGroupMode::kCrossReplica},
-      {false, false,         CollectiveOpGroupMode::kCrossReplica},
-      {false, true,          std::nullopt},
-      {true,  std::nullopt, CollectiveOpGroupMode::kCrossPartition},
-      {true,  false,         CollectiveOpGroupMode::kCrossReplicaAndPartition},
-      {true,  true,          CollectiveOpGroupMode::kFlattenedID},
+      // No channel id, no global device ids.
+      {false, std::nullopt,
+       CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA},
+      {false, false,
+       CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA},
+      {false, true, std::nullopt},
+      {true, std::nullopt,
+       CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_PARTITION},
+      {true, false,
+       CollectiveOpGroupMode::
+           COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA_AND_PARTITION},
+      {true, true,
+       CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_FLATTENED_ID},
       // clang-format on
   };
   return test_cases;
@@ -595,32 +603,36 @@ struct TestCaseForInstruction {
 std::vector<TestCaseForInstruction> GetTestCasesForInstruction() {
   return std::vector<TestCaseForInstruction>{
       //  opcode, has_channel_id, use_global_device_ids, expected_group_mode
-      {HloOpcode::kAllGather, true, true, CollectiveOpGroupMode::kFlattenedID},
+      {HloOpcode::kAllGather, true, true,
+       CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_FLATTENED_ID},
       {HloOpcode::kAllGather, true, false,
-       CollectiveOpGroupMode::kCrossReplicaAndPartition},
+       CollectiveOpGroupMode::
+           COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA_AND_PARTITION},
       {HloOpcode::kAllGather, false, false,
-       CollectiveOpGroupMode::kCrossReplica},
-      {HloOpcode::kAllReduce, true, true, CollectiveOpGroupMode::kFlattenedID},
+       CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA},
+      {HloOpcode::kAllReduce, true, true,
+       CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_FLATTENED_ID},
       {HloOpcode::kAllReduce, true, false,
-       CollectiveOpGroupMode::kCrossReplicaAndPartition},
+       CollectiveOpGroupMode::
+           COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA_AND_PARTITION},
       {HloOpcode::kAllReduce, false, false,
-       CollectiveOpGroupMode::kCrossReplica},
+       CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA},
       {HloOpcode::kAllToAll, true, std::nullopt,
-       CollectiveOpGroupMode::kCrossPartition},
+       CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_PARTITION},
       {HloOpcode::kAllToAll, false, std::nullopt,
-       CollectiveOpGroupMode::kCrossReplica},
+       CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA},
       {HloOpcode::kCollectiveBroadcast, true, std::nullopt,
-       CollectiveOpGroupMode::kCrossPartition},
+       CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_PARTITION},
       {HloOpcode::kCollectiveBroadcast, false, std::nullopt,
-       CollectiveOpGroupMode::kCrossReplica},
+       CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA},
       {HloOpcode::kCollectivePermute, true, std::nullopt,
-       CollectiveOpGroupMode::kCrossPartition},
+       CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_PARTITION},
       {HloOpcode::kCollectivePermute, false, std::nullopt,
-       CollectiveOpGroupMode::kCrossReplica},
+       CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA},
       {HloOpcode::kRaggedAllToAll, true, std::nullopt,
-       CollectiveOpGroupMode::kCrossPartition},
+       CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_PARTITION},
       {HloOpcode::kRaggedAllToAll, false, std::nullopt,
-       CollectiveOpGroupMode::kCrossReplica}};
+       CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA}};
 }
 
 class GetCollectOpGroupModeTestForInstruction
@@ -1211,7 +1223,7 @@ std::vector<TestCase> GetTestCases() {
       {
           "CrossReplicaEmptyGroup",
           {},
-          CollectiveOpGroupMode::kCrossReplica,
+          CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA,
           8,
           1,
           {8},
@@ -1219,7 +1231,7 @@ std::vector<TestCase> GetTestCases() {
       {
           "CrossReplicaWithPartitions",
           {{0, 1}, {2, 3}},
-          CollectiveOpGroupMode::kCrossReplica,
+          CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA,
           4,
           2,
           {2, 2, 2, 2},
@@ -1227,7 +1239,8 @@ std::vector<TestCase> GetTestCases() {
       {
           "CrossReplicaAndPartition",
           {{0, 1}, {2, 3}},
-          CollectiveOpGroupMode::kCrossReplicaAndPartition,
+          CollectiveOpGroupMode::
+              COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA_AND_PARTITION,
           4,
           2,
           {4, 4},
@@ -1235,7 +1248,7 @@ std::vector<TestCase> GetTestCases() {
       {
           "FlattenedID",
           {{0}, {1}, {2}, {3}, {4}, {5}, {6}, {7}},
-          CollectiveOpGroupMode::kFlattenedID,
+          CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_FLATTENED_ID,
           4,
           2,
           {1, 1, 1, 1, 1, 1, 1, 1},

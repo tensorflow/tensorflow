@@ -66,7 +66,8 @@ absl::StatusOr<const int64_t> GetCurrentId(
       const DeviceAssignment::LogicalID current_logical_id,
       collective_params->device_assn->LogicalIdForDevice(global_device_id));
   const int64_t current_id =
-      config.config.group_mode == CollectiveOpGroupMode::kCrossReplica
+      config.config.group_mode ==
+              CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA
           ? current_logical_id.replica_id
           : current_logical_id.computation_id;
   return current_id;
@@ -101,7 +102,8 @@ NvshmemCollectivePermuteStartThunk::NvshmemCollectivePermuteStartThunk(
   // With a collective permute, all execution instances together form one
   // replica group.
   const int64_t num_participants =
-      config.group_mode == CollectiveOpGroupMode::kCrossReplica
+      config.group_mode ==
+              CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA
           ? replica_count
           : partition_count;
   config.replica_groups.emplace_back();

@@ -431,28 +431,33 @@ static absl::Status CheckReplicaGroups(HloInstruction* hlo,
     int64_t replica_count = hlo->GetModule()->config().replica_count();
     int64_t num_partitions = hlo->GetModule()->config().num_partitions();
     switch (group_mode) {
-      case CollectiveOpGroupMode::kCrossReplica:
-      case CollectiveOpGroupMode::kCrossReplicaAndPartition: {
+      case CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA:
+      case CollectiveOpGroupMode::
+          COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA_AND_PARTITION: {
         TF_RET_CHECK(replica_count == 1 || n == replica_count)
             << "In " << CollectiveOpGroupModeToString(group_mode)
             << " mode, replica groups should contain " << replica_count
             << " replicas, but found " << n << ": " << hlo->ToString();
         break;
       }
-      case CollectiveOpGroupMode::kCrossPartition: {
+      case CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_PARTITION: {
         TF_RET_CHECK(num_partitions == 1 || n == num_partitions)
             << "In " << CollectiveOpGroupModeToString(group_mode)
             << " mode, replica groups should contain " << num_partitions
             << " partitions, but found " << n << ": " << hlo->ToString();
         break;
       }
-      case CollectiveOpGroupMode::kFlattenedID: {
+      case CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_FLATTENED_ID: {
         const int64_t num_flattened_ids = replica_count * num_partitions;
         TF_RET_CHECK(num_flattened_ids == 1 || n == num_flattened_ids)
             << "In " << CollectiveOpGroupModeToString(group_mode)
             << " mode, replica groups should contain " << num_flattened_ids
             << " flattened IDs, but found " << n << ": " << hlo->ToString();
         break;
+      }
+      default: {
+        return InvalidArgument("Invalid collective op group mode: %d",
+                               static_cast<int>(group_mode));
       }
     }
 
@@ -464,7 +469,8 @@ static absl::Status CheckReplicaGroups(HloInstruction* hlo,
       }
     }
   } else {
-    TF_RET_CHECK(group_mode != CollectiveOpGroupMode::kFlattenedID)
+    TF_RET_CHECK(group_mode !=
+                 CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_FLATTENED_ID)
         << "Replica groups must be specified in flattened-id mode";
   }
 
@@ -814,12 +820,14 @@ absl::Status CheckDuplicatedSourceOrTarget(
   // source-target pairs. Also, based on the group formation mode, check if the
   // source and target IDs are within expected range.
 
-  // Note: for collective-permute, only kCrossReplica and kCrossPartition modes
-  // are valid.
+  // Note: for collective-permute, only COLLECTIVE_OP_GROUP_MODE_FLATTENED_ID
+  // and kCrossPartition modes are valid.
   const HloModuleConfig& config = collective_permute->GetModule()->config();
-  const int64_t limit = group_mode == CollectiveOpGroupMode::kCrossReplica
-                            ? config.replica_count()
-                            : config.num_partitions();
+  const int64_t limit =
+      group_mode ==
+              CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA
+          ? config.replica_count()
+          : config.num_partitions();
   absl::flat_hash_map<int64_t, std::vector<int64_t>> seen_source_to_targets;
   absl::flat_hash_map<int64_t, std::vector<int64_t>> seen_target_to_sources;
   int allowed_seen_count = 1;

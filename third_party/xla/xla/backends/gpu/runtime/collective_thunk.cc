@@ -163,14 +163,15 @@ bool CollectiveConfig::IsDegenerate(int64_t replica_count,
       });
 
   switch (group_mode) {
-    case CollectiveOpGroupMode::kCrossReplica:
+    case CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA:
       return all_groups_singleton || (groups_empty && replica_count == 1);
-    case CollectiveOpGroupMode::kCrossPartition:
+    case CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_PARTITION:
       return all_groups_singleton || (groups_empty && partition_count == 1);
-    case CollectiveOpGroupMode::kCrossReplicaAndPartition:
+    case CollectiveOpGroupMode::
+        COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA_AND_PARTITION:
       return (all_groups_singleton && partition_count == 1) ||
              (groups_empty && replica_count == 1 && partition_count == 1);
-    case CollectiveOpGroupMode::kFlattenedID:
+    case CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_FLATTENED_ID:
       CHECK(!groups_empty)
           << "replica groups cannot be empty if use_global_device_ids = true";
       return all_groups_singleton;
@@ -305,7 +306,8 @@ absl::StatusOr<GpuCliqueKey> GetCollectiveGpuCliqueKey(
                       CollectiveThunk::GetGpuCollectives(params));
   return GetGpuCliqueKey(collectives, params, collective_config.replica_groups,
                          collective_config.group_mode,
-                         AsyncStreamKind::kCollective, use_nccl);
+                         AsyncStreamKind::ASYNC_STREAM_KIND_COLLECTIVE,
+                         use_nccl);
 }
 
 absl::StatusOr<CommunicatorHandle> GetComm(

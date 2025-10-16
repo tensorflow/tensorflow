@@ -25,26 +25,14 @@ limitations under the License.
 #include "xla/core/collectives/clique_key.h"
 #include "xla/service/global_device_id.h"
 #include "xla/tsl/lib/gtl/int_type.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla::gpu {
-
-// In XLA:GPU we use different streams for different kinds of collective
-// operations, and include the async stream kind into the GPU clique key.
-//
-// We carefully isolate different kinds of collectives using separate
-// communicators and guarantee that all collective operations have a total order
-// that will not create a deadlock.
-enum class AsyncStreamKind : int64_t {
-  kCollective = 0,  // Stream for asynchronous collective ops.
-  kP2P0 = 1,        // One Stream for P2P Send and Recv ops.
-  kP2P1 = 2,        // Another Stream for P2P Send and Recv ops.
-  kMemCpyP2P = 3,   // Stream for MemCpyP2P
-};
 
 bool IsP2PStreamKind(AsyncStreamKind stream_kind);
 
 inline constexpr int64_t kAsyncStreamTotal =
-    static_cast<int64_t>(AsyncStreamKind::kMemCpyP2P) + 1;
+    static_cast<int64_t>(AsyncStreamKind::ASYNC_STREAM_KIND_MEMCPYP2P) + 1;
 
 // Strongly-typed wrapper to represent collective stream ID.
 TSL_LIB_GTL_DEFINE_INT_TYPE(CollectiveStreamId, uint64_t);
@@ -53,7 +41,8 @@ TSL_LIB_GTL_DEFINE_INT_TYPE(CollectiveStreamId, uint64_t);
 // These IDs can be used, for example, to look up the NCCL communicator.
 CollectiveStreamId GetCollectiveStreamId(
     bool is_async, CollectiveStreamId stream_id = CollectiveStreamId(1),
-    AsyncStreamKind stream_kind = AsyncStreamKind::kCollective);
+    AsyncStreamKind stream_kind =
+        AsyncStreamKind::ASYNC_STREAM_KIND_COLLECTIVE);
 
 // Clique key for identifying a particular collectives clique on a GPU backend.
 class GpuCliqueKey : public CliqueKey {

@@ -68,7 +68,7 @@ class NvshmemCollectiveThunk : public Thunk {
                                             se::Stream& stream) = 0;
   virtual const CollectiveConfig& config() const = 0;
   virtual AsyncStreamKind GetAsyncStreamKind() const {
-    return AsyncStreamKind::kCollective;
+    return AsyncStreamKind::ASYNC_STREAM_KIND_COLLECTIVE;
   }
 
  private:
@@ -95,7 +95,8 @@ class NvshmemCollectiveDoneThunk : public Thunk {
 
  private:
   std::shared_ptr<CollectiveThunk::AsyncEvents> async_events_;
-  AsyncStreamKind async_stream_kind_ = AsyncStreamKind::kCollective;
+  AsyncStreamKind async_stream_kind_ =
+      AsyncStreamKind::ASYNC_STREAM_KIND_COLLECTIVE;
 };
 
 //===----------------------------------------------------------------------===//

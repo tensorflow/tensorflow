@@ -98,7 +98,8 @@ P2PConfig GetP2PConfigForSendRecv(const HloSendRecvInstruction* instr,
 
   // All execution instances of a Send/Recv together form a replica group.
   const int64_t num_participants =
-      config.group_mode == CollectiveOpGroupMode::kCrossReplica
+      config.group_mode ==
+              CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA
           ? replica_count
           : partition_count;
   config.replica_groups.emplace_back();
@@ -176,15 +177,15 @@ AsyncStreamKind GetStreamKindForP2P(const HloInstruction* instr) {
     const auto it = fe_map.find(kCollectiveStreamAttrName);
     if (it != fe_map.end() && it->second == kCollectiveStreamP2P) {
       // Use any of the two p2p streams.
-      return AsyncStreamKind::kP2P0;
+      return AsyncStreamKind::ASYNC_STREAM_KIND_P2P0;
     }
   }
 
   const auto it = fe_map.find(kSendRecvPipelineAttr);
   if (it != fe_map.end() && it->second == "1") {
-    return AsyncStreamKind::kP2P1;
+    return AsyncStreamKind::ASYNC_STREAM_KIND_P2P1;
   }
-  return AsyncStreamKind::kP2P0;
+  return AsyncStreamKind::ASYNC_STREAM_KIND_P2P0;
 }
 
 }  // namespace gpu

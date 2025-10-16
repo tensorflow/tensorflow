@@ -100,17 +100,18 @@ bool IsValueReplicatedWithinEachAllReduceGroup(
           << " all_reduce_group_mode: "
           << CollectiveOpGroupModeToString(all_reduce_group_mode);
   switch (all_reduce_group_mode) {
-    case CollectiveOpGroupMode::kCrossReplica: {
+    case CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA: {
       return cross_replica_replication_analysis == nullptr ||
              cross_replica_replication_analysis->HloInstructionIsReplicatedAt(
                  &instruction, index, replica_groups);
     }
-    case CollectiveOpGroupMode::kCrossPartition: {
+    case CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_PARTITION: {
       return cross_partition_replication_analysis == nullptr ||
              cross_partition_replication_analysis->HloInstructionIsReplicatedAt(
                  &instruction, index, replica_groups);
     }
-    case CollectiveOpGroupMode::kCrossReplicaAndPartition: {
+    case CollectiveOpGroupMode::
+        COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA_AND_PARTITION: {
       return (cross_replica_replication_analysis == nullptr ||
               cross_replica_replication_analysis->HloInstructionIsReplicatedAt(
                   &instruction, index, replica_groups)) &&
@@ -118,7 +119,7 @@ bool IsValueReplicatedWithinEachAllReduceGroup(
               cross_partition_replication_analysis
                   ->HloInstructionIsReplicatedAt(&instruction, index));
     }
-    case CollectiveOpGroupMode::kFlattenedID: {
+    case CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_FLATTENED_ID: {
       if (num_replicas == 1) {
         return cross_partition_replication_analysis == nullptr ||
                cross_partition_replication_analysis
@@ -136,6 +137,10 @@ bool IsValueReplicatedWithinEachAllReduceGroup(
              (cross_partition_replication_analysis == nullptr ||
               cross_partition_replication_analysis
                   ->HloInstructionIsReplicatedAt(&instruction, index));
+    }
+    default: {
+      LOG(FATAL) << "Unsupported all-reduce group mode: "
+                 << CollectiveOpGroupModeToString(all_reduce_group_mode);
     }
   }
 }

@@ -1,3 +1,4 @@
+#include "xla/backends/gpu/runtime/thunk.pb.h"
 /* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -233,7 +234,7 @@ class CollectiveDoneThunk : public Thunk {
 
  private:
   std::shared_ptr<CollectiveThunk::AsyncEvents> async_events_;
-  AsyncStreamKind stream_kind_ = AsyncStreamKind::kCollective;
+  AsyncStreamKind stream_kind_ = AsyncStreamKind::ASYNC_STREAM_KIND_COLLECTIVE;
   // NCCL stream id assigned by execution stream assignment.
   CollectiveStreamId stream_id_ = CollectiveStreamId(1);
 };
