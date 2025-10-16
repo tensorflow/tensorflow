@@ -25,8 +25,6 @@ namespace xla {
 
 // C++ representation for corresponding `OpSharding::NamedSharding` proto so
 // same documentation applies.
-//
-// TODO(b/450770542): Add corresponding IFTTT in attrs.td
 class NamedSharding {
   struct DimensionSharding {
     std::vector<AxisRef> axes;
