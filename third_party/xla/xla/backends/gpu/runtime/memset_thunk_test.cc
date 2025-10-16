@@ -61,5 +61,34 @@ TEST(MemzeroThunkTest, ProtoRoundTrip) {
   EXPECT_THAT(round_trip_proto, EqualsProto(proto));
 }
 
+TEST(Memset32BitValueThunkTest, ProtoRoundTrip) {
+  ThunkProto proto = ParseTextProtoOrDie<ThunkProto>(
+      R"pb(
+        thunk_info {
+          profile_annotation: "partition_id_profile_annotation"
+          execution_stream_id: 2
+        }
+        memset32bit_value_thunk {
+          dest_buffer { offset: 0 size: 4 buffer_allocation_index: 0 }
+          value: 123
+        }
+      )pb");
+  std::vector<BufferAllocation> buffer_allocations = {
+      BufferAllocation(/*index=*/0, /*size=*/4, /*color=*/0)};
+
+  Thunk::ThunkInfo thunk_info;
+  thunk_info.profile_annotation = proto.thunk_info().profile_annotation();
+  thunk_info.execution_stream_id = xla::gpu::ExecutionStreamId{
+      static_cast<xla::gpu::ExecutionStreamId::ValueType>(
+          proto.thunk_info().execution_stream_id())};
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<Memset32BitValueThunk> thunk,
+      Memset32BitValueThunk::FromProto(
+          thunk_info, proto.memset32bit_value_thunk(), buffer_allocations));
+
+  TF_ASSERT_OK_AND_ASSIGN(ThunkProto round_trip_proto, thunk->ToProto());
+  EXPECT_THAT(round_trip_proto, EqualsProto(proto));
+}
+
 }  // namespace
 }  // namespace xla::gpu

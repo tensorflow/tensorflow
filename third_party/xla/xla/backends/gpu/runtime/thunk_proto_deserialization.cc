@@ -163,6 +163,10 @@ absl::StatusOr<std::unique_ptr<Thunk>> DeserializeThunkProto(
     case ThunkProto::kFftThunk:
       return FftThunk::FromProto(std::move(thunk_info), thunk_proto.fft_thunk(),
                                  buffer_allocations);
+    case ThunkProto::kMemset32BitValueThunk:
+      return Memset32BitValueThunk::FromProto(
+          std::move(thunk_info), thunk_proto.memset32bit_value_thunk(),
+          buffer_allocations);
     default:
       std::optional<absl::string_view> unsupported_thunk_type =
           GetStoredThunkTypeName(thunk_proto);

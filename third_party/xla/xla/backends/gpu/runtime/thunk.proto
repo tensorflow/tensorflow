@@ -159,6 +159,11 @@ message MemzeroThunkProto {
   xla.buffer_assignment.BufferAllocationSliceProto dest_buffer = 1;
 }
 
+message Memset32BitValueThunkProto {
+  xla.buffer_assignment.BufferAllocationSliceProto dest_buffer = 1;
+  uint32 value = 2;
+}
+
 message ShapedSliceProto {
   xla.buffer_assignment.BufferAllocationSliceProto slice = 1;
   xla.ShapeProto shape = 2;
@@ -263,6 +268,7 @@ message ThunkProto {
     ConvolutionReorderThunkProto convolution_reorder_thunk = 26;
     FftThunkProto fft_thunk = 27;
     CholeskyThunkProto cholesky_thunk = 28;
+    Memset32BitValueThunkProto memset32bit_value_thunk = 29;
   }
 }
 
