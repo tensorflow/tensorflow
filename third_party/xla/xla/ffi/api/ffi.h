@@ -1480,8 +1480,7 @@ XLA_FFI_TypeInfo TypeInfo() {
         return ::xla::ffi::Ffi::RegisterTypeId(API, NAME, TYPE_ID, TYPE_INFO); \
       }()
 
-#define XLA_FFI_REGISTER_TYPE_X(x, API, NAME, TYPE_ID, TYPE_INFO, FUNC, ...) \
-  FUNC
+#define XLA_FFI_REGISTER_TYPE_X(x, API, NAME, TYPE_ID, TYPE_INFO, FUNC) FUNC
 
 // Registers external type with XLA runtime and assigns it a unique type id.
 //
