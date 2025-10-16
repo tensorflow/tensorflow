@@ -137,7 +137,6 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       TF_LITE_RESIZE_BILINEAR(optimized_ops, ResizeBilinear, uint8_t);
     }
   } else if (output->type == kTfLiteInt8) {
-    // Quantization check for int8
     if (input->params.scale != output->params.scale || input->params.zero_point != output->params.zero_point) {
       TF_LITE_KERNEL_LOG(context, "Input and output tensors must have the same scale and zero_point for int8 quantized ResizeBilinear.");
       return kTfLiteError;
