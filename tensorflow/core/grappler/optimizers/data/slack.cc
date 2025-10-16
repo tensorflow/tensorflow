@@ -15,8 +15,14 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/optimizers/data/slack.h"
 
+#include <array>
+#include <cstddef>
+
+#include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
+#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/grappler/clusters/cluster.h"
