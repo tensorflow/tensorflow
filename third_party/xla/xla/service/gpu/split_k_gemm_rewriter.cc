@@ -132,8 +132,7 @@ absl::StatusOr<HloInstruction*> MakeSplitKOperand(
   const int64_t k = operand->shape().dimensions(contracting_dim_idx);
   padded_k_size =
       std::max(GetPaddedK(dot, k, config.split_k), padded_k_size.value_or(0));
-  const bool need_padding =
-      padded_k_size.has_value() ? k < *padded_k_size : k % config.split_k != 0;
+  const bool need_padding = k < *padded_k_size;
 
   auto check_if_supported = [&](const HloInstruction& hlo,
                                 bool check_divisibility) {
@@ -186,9 +185,7 @@ absl::StatusOr<HloInstruction*> MakeSplitKOperand(
         dot.parent()->AddInstruction(HloInstruction::CreateConstant(
             LiteralUtil::Zero(operand->shape().element_type())));
 
-    int64_t padding = padded_k_size.has_value()
-                          ? *padded_k_size - k
-                          : config.split_k - k % config.split_k;
+    int64_t padding = *padded_k_size - k;
     PaddingConfig padding_config =
         MakeNoPaddingConfig(operand->shape().dimensions().size());
     padding_config.mutable_dimensions(contracting_dim_idx)
