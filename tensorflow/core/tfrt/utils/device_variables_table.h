@@ -36,7 +36,7 @@ class DeviceVariablesTable {
   void AddOrUpdateDeviceVariable(
       const HostTensorType& host_tensor, int copy_index,
       AsyncValueRef<DeviceTensorType> device_tensor) {
-    absl::MutexLock lock(&device_variables_mu_);
+    absl::MutexLock lock(device_variables_mu_);
     device_variables_table_.insert_or_assign(
         std::make_pair(GetHostTensorDataPtr(host_tensor), copy_index),
         std::move(device_tensor));
@@ -44,7 +44,7 @@ class DeviceVariablesTable {
 
   AsyncValueRef<DeviceTensorType> GetDeviceVariable(
       const HostTensorType& host_tensor, int copy_index) {
-    absl::ReaderMutexLock lock(&device_variables_mu_);
+    absl::ReaderMutexLock lock(device_variables_mu_);
     auto it = device_variables_table_.find(
         std::make_pair(GetHostTensorDataPtr(host_tensor), copy_index));
     return it != device_variables_table_.end()
@@ -55,7 +55,7 @@ class DeviceVariablesTable {
   AsyncValueRef<DeviceTensorType> GetOrAddDeviceVariable(
       const HostTensorType& host_tensor, int copy_index,
       llvm::unique_function<void(AsyncValueRef<DeviceTensorType>)> creator) {
-    absl::ReleasableMutexLock lock(&device_variables_mu_);
+    absl::ReleasableMutexLock lock(device_variables_mu_);
     auto it = device_variables_table_.find(
         std::make_pair(GetHostTensorDataPtr(host_tensor), copy_index));
     if (it != device_variables_table_.end()) return it->second.CopyRef();
@@ -70,12 +70,12 @@ class DeviceVariablesTable {
   }
 
   void ClearDeviceVariablesTable() {
-    absl::MutexLock lock(&device_variables_mu_);
+    absl::MutexLock lock(device_variables_mu_);
     device_variables_table_.clear();
   }
 
   int size() {
-    absl::ReaderMutexLock lock(&device_variables_mu_);
+    absl::ReaderMutexLock lock(device_variables_mu_);
     return device_variables_table_.size();
   }
 
