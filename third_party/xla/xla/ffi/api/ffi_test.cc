@@ -1463,6 +1463,28 @@ TEST(FfiTest, MetadataTraits) {
   EXPECT_EQ(metadata.state_type_id.type_id, XLA_FFI_UNKNOWN_TYPE_ID.type_id);
 }
 
+// Test that we can automatically generate FFI handler type signature from a C++
+// function declaration.
+static Error BufferR2F32Function(BufferR2<F32> buffer) {
+  EXPECT_EQ(buffer.dimensions().size(), 2);
+  return Error::Success();
+}
+
+XLA_FFI_DEFINE_HANDLER_SYMBOL(BufferR2F32Handler, BufferR2F32Function);
+
+TEST(FfiTest, DefineAutoSymbol) {
+  std::vector<float> storage(4, 0.0f);
+  se::DeviceMemoryBase memory(storage.data(), 4 * sizeof(float));
+
+  CallFrameBuilder builder(/*num_args=*/1, /*num_rets=*/0);
+  builder.AddBufferArg(memory, PrimitiveType::F32, /*dims=*/{2, 2});
+  auto call_frame = builder.Build();
+
+  auto status = Call(BufferR2F32Handler, call_frame);
+
+  TF_ASSERT_OK(status);
+}
+
 //===----------------------------------------------------------------------===//
 // Performance benchmarks are below.
 //===----------------------------------------------------------------------===//
