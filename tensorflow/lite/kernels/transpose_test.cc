@@ -85,7 +85,6 @@ class TransposeOpInt4Model : public SingleOpModel {
   int output_;
 };
 
-// Helper model for int8 transpose tests.
 class TransposeOpInt8Model : public SingleOpModel {
  public:
   TransposeOpInt8Model(std::initializer_list<int> input_shape,
@@ -103,10 +102,8 @@ class TransposeOpInt8Model : public SingleOpModel {
     PopulateTensor<int8_t>(input_, data);
   }
 
-  // Return a pointer to the output tensor so tests can inspect or modify it.
   TfLiteTensor* GetOutputTensor() { return interpreter_->tensor(output_); }
 
-  // Helper to set output quantization parameters.
   void SetOutputQuantParams(float scale, int zero_point) {
     TfLiteTensor* t = GetOutputTensor();
     t->params.scale = scale;

@@ -129,7 +129,6 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       TF_LITE_TRANSPOSE(reference_ops, int8_t);
       break;
     case kTfLiteInt8: {
-      // Quantization check for int8
       const TfLiteTensor* input = op_context.input;
       const TfLiteTensor* output = op_context.output;
       if (input->params.scale != output->params.scale || input->params.zero_point != output->params.zero_point) {
