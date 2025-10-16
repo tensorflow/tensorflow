@@ -165,7 +165,7 @@ class ProfileData {
 
   ProfileData() = delete;
 
-  ProfileData(const char* serialized_xspace_ptr, size_t serialized_xspace_size);
+  ProfileData(const void* serialized_xspace_ptr, size_t serialized_xspace_size);
 
   explicit ProfileData(std::shared_ptr<XSpace> xspace_ptr);
 

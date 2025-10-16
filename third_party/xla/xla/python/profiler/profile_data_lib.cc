@@ -18,15 +18,16 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <stdexcept>
 #include <string>
 
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "nanobind/nanobind.h"
 #include "nanobind/stl/string.h"  // IWYU pragma: keep
-#include "tsl/platform/env.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/status.h"
+#include "xla/pjrt/status_casters.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/logging.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
 
 namespace tensorflow::profiler::python {
@@ -186,8 +187,8 @@ VisitorIterator<nb::tuple, XStat> ProfilePlane::stats_end() {
 /*static*/ ProfileData ProfileData::from_file(
     const std::string& proto_file_path) {
   std::string serialized_xspace;
-  TF_CHECK_OK(tsl::ReadFileToString(tsl::Env::Default(), proto_file_path,
-                                    &serialized_xspace));
+  xla::ThrowIfError(tsl::ReadFileToString(tsl::Env::Default(), proto_file_path,
+                                          &serialized_xspace));
   return ProfileData(serialized_xspace.c_str(), serialized_xspace.size());
 }
 
@@ -198,14 +199,16 @@ VisitorIterator<nb::tuple, XStat> ProfilePlane::stats_end() {
   return ProfileData(proto_ptr);
 }
 
-ProfileData::ProfileData(const char* serialized_xspace_ptr,
+ProfileData::ProfileData(const void* serialized_xspace_ptr,
                          size_t serialized_xspace_size) {
   CHECK_NOTNULL(serialized_xspace_ptr);
 
   if (!xspace_) {
     xspace_ = std::make_shared<XSpace>();
   }
-  CHECK(xspace_->ParseFromArray(serialized_xspace_ptr, serialized_xspace_size));
+  if (!xspace_->ParseFromArray(serialized_xspace_ptr, serialized_xspace_size)) {
+    throw std::runtime_error("Failed to parse XSpace from array");
+  }
 }
 
 /*explicit*/ ProfileData::ProfileData(std::shared_ptr<XSpace> xspace_ptr) {
@@ -216,8 +219,10 @@ ProfileData::ProfileData(const char* serialized_xspace_ptr,
   if (!xspace_) {
     xspace_ = std::make_shared<XSpace>();
   }
-  CHECK(xspace_->ParseFromArray(serialized_xspace.data(),
-                                serialized_xspace.size()));
+  if (!xspace_->ParseFromArray(serialized_xspace.data(),
+                               serialized_xspace.size())) {
+    throw std::runtime_error("Failed to parse XSpace from array");
+  }
 }
 
 VisitorIterator<ProfilePlane, XPlane> ProfileData::planes_begin() {
