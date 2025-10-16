@@ -30,6 +30,9 @@ namespace profiler {
 // Support up to 500 accelerator devices.
 constexpr uint32 kFirstDeviceId = 1;
 constexpr uint32 kLastDeviceId = 500;
+
+// Max. devices per host. Power of 10 for ease of debugging.
+static constexpr uint32 kMaxDevicesPerHost = 1000;
 // Support Upto 200 custom planes as fake devices (i.e., planes with a
 // "/custom:" prefix). See `<project_name>::kCustomPlanePrefix` for more
 // information
