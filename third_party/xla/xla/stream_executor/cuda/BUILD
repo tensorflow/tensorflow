@@ -1197,12 +1197,28 @@ xla_test(
     ],
 )
 
+cuda_library(
+    name = "cuda_executor_multigpu_test_kernels",
+    srcs = ["cuda_executor_multigpu_test_kernels.cu.cc"],
+    hdrs = ["cuda_executor_multigpu_test_kernels.h"],
+    deps = [
+        ":cuda_status",
+        "//xla/tsl/platform:errors",
+        "@com_google_absl//absl/status",
+        "@local_config_cuda//cuda:cuda_headers",
+        "@local_config_cuda//cuda:cuda_runtime",
+        "@local_tsl//tsl/platform:logging",
+    ],
+)
+
 xla_test(
     name = "cuda_executor_multigpu_test",
     srcs = ["cuda_executor_multigpu_test.cc"],
     backend_tags = {
         "gpu": [
+            # TODO(452609869): Enable for B200 GPU.
             "multi_gpu",
+            "requires-gpu-sm90",
             "no_oss",
         ],
     },
@@ -1210,15 +1226,18 @@ xla_test(
     tags = ["cuda-only"],
     deps = [
         ":cuda_executor",
+        ":cuda_executor_multigpu_test_kernels",
         ":cuda_platform",
         "//xla/stream_executor:device_memory",
         "//xla/stream_executor:platform",
         "//xla/stream_executor:platform_manager",
         "//xla/stream_executor:stream_executor_h",
         "//xla/stream_executor/gpu:gpu_init",
+        "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -1255,7 +1274,7 @@ cc_library(
 # OSX framework for device driver access
 cc_library(
     name = "IOKit",
-    linkopts = ["-framework IOKit"],
+    linkopts = ["-frameworFk IOKit"],
 )
 
 cc_library(
