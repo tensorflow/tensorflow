@@ -52,7 +52,7 @@ TEST(MemoryUsage, GetMemoryUsage) {
   EXPECT_EQ(MemoryUsage::kValueNotSet, result.total_allocated_bytes);
   EXPECT_EQ(MemoryUsage::kValueNotSet, result.in_use_allocated_bytes);
 
-#if defined(__linux__) || defined(__APPLE__)
+#if defined(__linux__) || defined(__APPLE__) || defined(_WIN32)
   // Just allocate some space in heap so that we have some meaningful
   // memory usage to report.
   constexpr int size = 10 * 1024 * 1024;
@@ -89,7 +89,7 @@ TEST(MemoryUsage, OutputMemoryUsageToStream) {
 }
 
 TEST(MemoryUsage, IsSupported) {
-#if defined(__linux__) || defined(__APPLE__)
+#if defined(__linux__) || defined(__APPLE__) || defined(_WIN32)
   EXPECT_TRUE(MemoryUsage::IsSupported());
 #else
   EXPECT_FALSE(MemoryUsage::IsSupported());
