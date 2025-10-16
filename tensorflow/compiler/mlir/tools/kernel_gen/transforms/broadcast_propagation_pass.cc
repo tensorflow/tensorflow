@@ -17,7 +17,6 @@ limitations under the License.
 #include <algorithm>
 #include <cassert>
 #include <cstdint>
-#include <memory>
 #include <utility>
 
 #include "llvm/ADT/DenseMapInfo.h"
