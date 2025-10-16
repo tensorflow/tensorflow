@@ -15,14 +15,13 @@ limitations under the License.
 
 #include "xla/service/scatter_simplifier.h"
 
-#include <algorithm>
 #include <cstdint>
 #include <iterator>
-#include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
