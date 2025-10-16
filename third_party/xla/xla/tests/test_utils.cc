@@ -163,7 +163,9 @@ std::vector<HloInstruction*> FindConstrainedUses(
         constrained_uses.insert(constrained_uses.end(), converted_uses.begin(),
                                 converted_uses.end());
       } else if (opcode == HloOpcode::kSort &&
-                 instruction->operand_count() >= 2 && op_num == 0) {
+                 (instruction->operand_count() >= 2 ||
+                  Cast<const HloSortInstruction>(instruction)->is_stable()) &&
+                 op_num == 0) {
         // Operand 0 of sort is the array of keys used for key/value
         // (two-operand) kSort instructions. Since sort stability is not
         // guaranteed, constrain keys of key-value sort not to have
