@@ -22,6 +22,7 @@ limitations under the License.
 #include "mlir/IR/Operation.h"
 #include "mlir/Pass/Pass.h"
 #include "xla/backends/gpu/codegen/triton/ir/triton_xla_ops.h"  // IWYU pragma: keep
+#include "xla/codegen/xtile/ir/xtile_dialect.h"  // IWYU pragma: keep
 
 namespace mlir::triton::xla {
 
@@ -45,6 +46,7 @@ std::unique_ptr<mlir::Pass> CreateTritonXLALowerAtomicsPass();
 std::unique_ptr<mlir::Pass> CreateTritonXLALowerBlockBarrierPass();
 std::unique_ptr<mlir::Pass> CreateTritonXLAConvertUnsupportedTypesPass();
 std::unique_ptr<mlir::Pass> CreateTritonXLALowerRemoteAccessPass();
+std::unique_ptr<mlir::Pass> CreateTritonXLALowerXTilePass();
 std::unique_ptr<mlir::Pass> CreateStableHLOLowerToTritonPass();
 std::unique_ptr<mlir::Pass> CreateTensorLowerToTritonPass();
 
