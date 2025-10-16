@@ -12617,7 +12617,9 @@ type DenseBincountAttr func(optionalAttr)
 
 // DenseBincountBinaryOutput sets the optional binary_output attribute to value.
 //
-// value: bool; Whether the kernel should count the appearance or number of occurrences.
+// value: Whether the kernel should count the appearance or number of occurrences.
+// Will raise `UnimplementedError` when `binary_output` is specified to `True`
+// and the size of `weights` is not 0.
 // If not specified, defaults to false
 func DenseBincountBinaryOutput(value bool) DenseBincountAttr {
 	return func(m optionalAttr) {
@@ -12639,10 +12641,10 @@ func DenseBincountBinaryOutput(value bool) DenseBincountAttr {
 //
 //	input: 1D or 2D int `Tensor`.
 //	size: non-negative int scalar `Tensor`.
-//	weights: is an int32, int64, float32, or float64 `Tensor` with the same
+//	weights: `Tensor` with the same shape as `arr`, or a length-0 `Tensor`,
 //
-// shape as `arr`, or a length-0 `Tensor`, in which case it acts as all weights
-// equal to 1.
+// in which case it acts as all weights equal to 1.
+// Not supported by the GPU implementation of Bincount.
 //
 // Returns 1D `Tensor` with length equal to `size` or 2D `Tensor` with [batch_size, `size`].
 // The counts or summed weights for each value in the range [0, size).
