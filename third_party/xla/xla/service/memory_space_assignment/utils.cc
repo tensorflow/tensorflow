@@ -18,16 +18,23 @@ limitations under the License.
 #include <cstdint>
 #include <limits>
 #include <optional>
+#include <random>
+#include <string>
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/strings/str_cat.h"
+#include "highwayhash/arch_specific.h"
+#include "highwayhash/hh_types.h"
+#include "highwayhash/highwayhash.h"
 #include "re2/re2.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/utils/hlo_live_range.h"
 #include "xla/service/heap_simulator/heap_simulator.h"
 #include "xla/service/hlo_value.h"
@@ -38,6 +45,12 @@ limitations under the License.
 
 namespace xla {
 namespace memory_space_assignment {
+namespace {
+
+// The default seed used by HloRandomFilter when no seed is given.
+const int64_t kRandomFilterDefaultSeed = 1234;
+
+}  // namespace
 
 bool MemorySpaceAssignmentUtils::IsValueAllowedInAlternateMemory(
     const HloValue* value, int64_t alternate_memory_space) {
@@ -147,6 +160,78 @@ bool MemorySpaceAssignmentUtils::DoesUseMatchFilter(
   return true;
 }
 
+double GetInstructionUniformRandom(const HloInstruction& instruction,
+                                   int64_t seed) {
+  // We use the instruction Fingerprint because it's robust across different
+  // runs and compilations, as well as because it depends only on the
+  // isomorphic computation graph of the instruction rather than the variable
+  // names. We would like to make identical decisions for identical
+  // instructions.
+  //
+  // See HloPrintOptions::Fingerprint() for details.
+  //
+  // If in the future that turns out to not be good enough, we can also pass an
+  // option in the proto to choose different string representations of the
+  // instructions - for example, the name or "instruction.ToString()" if we want
+  // a finer grained perturbation, or alternatively the
+  // "instruction.SignatureString()" if we want a coarser perturbation.
+  const std::string& instruction_identifier =
+      instruction.ToString(HloPrintOptions::Fingerprint());
+  std::string instruction_seed_str = absl::StrCat(
+      instruction_identifier.size(), ":", instruction_identifier, ":", seed);
+
+  // We use highwayhash as our hashing function, because it is "Strong",
+  // relatively fast, and "all (64/128/256 bit) variants of HighwayHash frozen,
+  // i.e. unchanging forever" which is good for test stability and repeatability
+  // of experiments.
+
+  // PI in hex
+  static constexpr highwayhash::HHKey hash_key = {
+      0x3243F6A8885A308Dull,
+      0x313198A2E0370734ull,
+      0x4A4093822299F31Dull,
+      0x0082EFA98EC4E6C8ull,
+  };
+
+  highwayhash::HHStateT<HH_TARGET> state(hash_key);
+  highwayhash::HHResult64 seed_result;
+  highwayhash::HighwayHashT(&state, instruction_seed_str.data(),
+                            instruction_seed_str.size(), &seed_result);
+
+  // Assuming highwayhash is a "good" hash and uniformly distributed across all
+  // 64 bits, we could probably skip the step of going through the random
+  // library to generate our uniform [0...1) random.
+  //
+  // We add this anyway to make it clear we're looking for a uniform random
+  // number.
+  std::mt19937_64 gen(seed_result);
+  return std::uniform_real_distribution<double>()(gen);
+}
+
+bool MemorySpaceAssignmentUtils::DoesInstructionMatchRandomFilter(
+    const HloPositionMatcher& filter, const HloInstruction& instruction) {
+  if (!filter.has_hlo_random_filter()) {
+    // This HloPositionMatcher doesn't have a random filter. We return that we
+    // aren't blocking this instruction.
+    return true;
+  }
+  const auto& hlo_random_filter = filter.hlo_random_filter();
+  double selection_range_begin = 0.;
+  if (hlo_random_filter.has_selection_range_begin()) {
+    selection_range_begin = hlo_random_filter.selection_range_begin();
+  }
+  double selection_range_end = 1.;
+  if (hlo_random_filter.has_selection_range_end()) {
+    selection_range_end = hlo_random_filter.selection_range_end();
+  }
+  int64_t seed = kRandomFilterDefaultSeed;
+  if (hlo_random_filter.has_seed()) {
+    seed = hlo_random_filter.seed();
+  }
+  double rnd = GetInstructionUniformRandom(instruction, seed);
+  return rnd >= selection_range_begin && rnd < selection_range_end;
+}
+
 bool MemorySpaceAssignmentUtils::DoesPositionMatchFilter(
     const HloPositionMatcher& filter,
     const MsaBufferInterval& buffer_interval) {
@@ -165,7 +250,8 @@ bool MemorySpaceAssignmentUtils::DoesPositionMatchFilter(
     return false;
   }
   return DoesInstructionMatchFilter(filter, *instruction) &&
-         DoesBufferIntervalMatchHloUseFilter(filter, buffer_interval);
+         DoesBufferIntervalMatchHloUseFilter(filter, buffer_interval) &&
+         DoesInstructionMatchRandomFilter(filter, *instruction);
 }
 
 bool MemorySpaceAssignmentUtils::DoesInstructionMatchFilter(
@@ -301,21 +387,9 @@ MemorySpaceAssignmentUtils::GetOverriddenPreferredPrefetchTime(
 bool MemorySpaceAssignmentUtils::DoesCrossProgramPrefetchBufferMatchAnyFilter(
     const MsaSortOrderOverrides& sort_order_overrides,
     const MsaBufferInterval& buffer_interval) {
-  for (const MsaSortOrderOverride& override :
-       sort_order_overrides.overrides()) {
-    if (override.has_apply_to_cross_program_prefetches() &&
-        override.apply_to_cross_program_prefetches() &&
-        MemorySpaceAssignmentUtils::DoesPositionMatchFilter(
-            override.hlo_position_matcher(), buffer_interval) &&
-        override.override_options().has_assign_first() &&
-        override.override_options().assign_first()) {
-      VLOG(3) << "Cross program prefetch buffer "
-              << buffer_interval.buffer->ToString()
-              << " matches sort order override " << override.DebugString();
-      return true;
-    }
-  }
-  return false;
+  return GetBufferIntervalOverridePriority(
+             sort_order_overrides, buffer_interval,
+             /*is_cross_program_prefetch=*/true) < 0;
 }
 
 int64_t MemorySpaceAssignmentUtils::GetBufferIntervalOverridePriority(
@@ -342,6 +416,8 @@ int64_t MemorySpaceAssignmentUtils::GetBufferIntervalOverridePriority(
         return std::numeric_limits<int64_t>::lowest() + i;
       case MsaSortOrderOverrideOptions::kAssignLast:
         return std::numeric_limits<int64_t>::max() - i;
+      case MsaSortOrderOverrideOptions::kAssignValue:
+        return override.override_options().assign_value();
       case MsaSortOrderOverrideOptions::OPTIONS_NOT_SET:
         continue;
     }
