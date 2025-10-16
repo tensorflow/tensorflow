@@ -25,16 +25,14 @@ limitations under the License.
 // allocated by the buffer assignment and allows kernel to address input and
 // output buffers. The second one is used for buffers allocated within the
 // collective kernel thunk.
-// TODO(patrios): Unify two root pointers once symmetric memory allocator will
-// be implemented.
 struct CollectiveKernelMetadata {
   constexpr static int kMaxNumDevices = 8;
   int64_t rank;
-  // Root pointer for buffers allocated by the buffer assignment.
+  // Root pointer for buffers.
   int64_t buffer_root_ptrs[kMaxNumDevices];
 
-  // Root pointer for buffers allocated by the collective kernel thunk.
-  int64_t local_buffer_root_ptrs[kMaxNumDevices];
+  // Root pointer for multicast buffer for current device.
+  int64_t multicast_buffer_ptr;
 };
 
 #endif  // XLA_STREAM_EXECUTOR_GPU_COLLECTIVE_KERNEL_METADATA_H_
