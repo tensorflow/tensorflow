@@ -406,15 +406,9 @@ TEST(TransposeTest, Test4DFlattenTwo) {
 }
 
 TEST(TransposeTest, Int8MismatchedQuantizationFails) {
-  // Input and output have different scale/zero_point.
-  // Construct model with INT8 input/output and then override the output
-  // quantization params to create a mismatch.
   TransposeOpInt8Model m({2, 2}, {2}, {1, 0});
-  // Override output quantization params to a different scale/zero_point.
   m.SetOutputQuantParams(0.25f, 2);
-
   m.SetInput({1, 2, 3, 4});
-  // Should fail due to quantization mismatch.
   EXPECT_EQ(m.Invoke(), kTfLiteError);
 }
 
