@@ -565,6 +565,8 @@ xla_test(
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/strings:string_view",
+        "@llvm-project//llvm:TargetParser",
+        "@local_tsl//tsl/platform:casts",
     ],
 )
 

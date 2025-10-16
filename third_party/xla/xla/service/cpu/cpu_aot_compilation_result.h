@@ -107,7 +107,8 @@ class CpuAotCompilationResult : public AotCompilationResult {
       absl::string_view function_name, std::vector<ObjFileProto> obj_files,
       std::vector<SymbolProto> symbols, const ThunkSequence& thunks,
       std::unique_ptr<FunctionLibrary> function_library,
-      std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data);
+      std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data,
+      TargetMachineOptionsProto target_machine_options);
 
   ~CpuAotCompilationResult() override = default;
 
@@ -191,7 +192,8 @@ class CpuAotCompilationResult : public AotCompilationResult {
       std::vector<cpu_function_runtime::BufferInfo> buffer_infos,
       std::vector<BufferAllocationInfo> buffer_allocation_infos,
       std::unique_ptr<FunctionLibrary> function_library,
-      std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data);
+      std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data,
+      TargetMachineOptionsProto target_machine_options);
 
   explicit CpuAotCompilationResult(
       CompilationResultProto proto, std::unique_ptr<HloModule> module,
