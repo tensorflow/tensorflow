@@ -28,10 +28,19 @@ limitations under the License.
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph_def_util.h"
+#include "tensorflow/core/lib/monitoring/sampler.h"
 
 namespace tensorflow {
 namespace eager {
 namespace {
+
+auto* enqueue_request_size_metric = ::tensorflow::monitoring::Sampler<1>::New(
+    {"/tensorflow/distributed_runtime/eager/enqueue_request_size",
+     "The size of EnqueueRequest protos sent by "
+     "EagerClusterFunctionLibraryRuntime in bytes.",
+     "phase"},
+    ::tensorflow::monitoring::Buckets::Exponential(1, 1.12, 250));
+
 void StripDefaultAttributesInRegisterFunctionOp(
     RegisterFunctionOp* register_function) {
   StripDefaultAttributes(
@@ -112,6 +121,8 @@ void EagerClusterFunctionLibraryRuntime::Instantiate(
   }
 
   const absl::optional<std::vector<int>>& ret_indices = options.ret_indices;
+  enqueue_request_size_metric->GetCell("instantiate")
+      ->Add(request->ByteSizeLong());
   eager_client->EnqueueAsync(
       /*call_opts=*/nullptr, request.get(), response.get(),
       [this, request, response, handle, released_op = released_op.release(),
@@ -294,6 +305,7 @@ void EagerClusterFunctionLibraryRuntime::CleanUp(
   // StreamingEnqueueAsync could be blocking when streaming RPC is disabled.
   // CleanUp() needs to be non-blocking since it would be invoked inside the
   // enqueue done callback of Run(). So we don't use StreamingEnqueueAsync here.
+  enqueue_request_size_metric->GetCell("cleanup")->Add(request->ByteSizeLong());
   eager_client->EnqueueAsync(
       /*call_opts=*/nullptr, request.get(), response.get(),
       [request, response, done](const absl::Status& status) { done(status); });
