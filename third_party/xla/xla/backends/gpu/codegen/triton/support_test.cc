@@ -300,6 +300,20 @@ class TritonSupportTest : public TritonSupportTestBase {
   }
 };
 
+TEST_F(TritonSupportTest, IsTritonSupportedComputationSkipsRootTuple) {
+  const std::string kHlo = R"(
+  HloModule m
+  ENTRY main {
+    parameter_0 = f32[10] parameter(0)
+    abs = f32[10] abs(parameter_0)
+    negate = f32[10] negate(abs)
+    ROOT res = (f32[10], f32[10]) tuple(abs, negate)
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  EXPECT_TRUE(IsTritonSupportedComputation(
+      *module->entry_computation(), se::CudaComputeCapability::Hopper()));
+}
+
 class TritonSupportTestWithTypeAndOpcodeAndDeviceParam
     : public TritonSupportTest,
       public ::testing::WithParamInterface<
