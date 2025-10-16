@@ -34,8 +34,10 @@ limitations under the License.
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/pattern_matcher_gmock.h"
 #include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/service/gpu/transforms/algebraic_simplifier.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/pattern_matcher.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 
@@ -68,11 +70,27 @@ class GpuReduceScatterCreatorTest : public HloHardwareIndependentTestBase {
   }
 
   size_t ReduceScatterCount(std::unique_ptr<HloModule> &module) {
-    return CollectiveCount(module, HloOpcode::kAllReduce);
+    return CollectiveCount(module, HloOpcode::kReduceScatter);
+  }
+
+  template <typename T>
+  size_t AllReduceCount(std::unique_ptr<T>& module) {
+    return CollectiveCount(module.get(), HloOpcode::kAllReduce);
+  }
+
+  template <typename T>
+  size_t ReduceScatterCount(std::unique_ptr<T>& module) {
+    return CollectiveCount(module.get(), HloOpcode::kReduceScatter);
   }
 
  private:
   size_t CollectiveCount(std::unique_ptr<HloModule> &module, HloOpcode opcode) {
+    return absl::c_count_if(
+        module->entry_computation()->instructions(),
+        [&opcode](HloInstruction* instr) { return instr->opcode() == opcode; });
+  }
+
+  size_t CollectiveCount(HloModule* module, HloOpcode opcode) {
     return absl::c_count_if(
         module->entry_computation()->instructions(),
         [&opcode](HloInstruction *instr) { return instr->opcode() == opcode; });
@@ -697,6 +715,64 @@ ENTRY %SubtractionPattern {
       module->entry_computation()->root_instruction());
   EXPECT_EQ(rs->scatter_dimension(), 1) << rs->ToString();
   EXPECT_EQ(AllReduceCount(module), 0);
+}
+
+TEST_F(GpuReduceScatterCreatorTest, AllReduceThroughTuple) {
+  absl::string_view hlo_string = R"(
+HloModule AllReduceThroughTuple
+
+%sum {
+  %a = f32[] parameter(0)
+  %b = f32[] parameter(1)
+  ROOT %add = f32[] add(%a, %b)
+}
+
+ENTRY %AllReduce {
+  %param0 = f32[4096,4096]{1,0} parameter(0)
+  %param1 = f32[1024,4096]{1,0} parameter(1)
+  %all-reduce = f32[4096,4096]{1,0} all-reduce(%param0),
+    replica_groups={{0,1,2,3,4,5,6,7}}, channel_id=5, use_global_device_ids=true, to_apply=%sum
+  %tuple = (f32[4096,4096]{1,0}, f32[1024,4096]{1,0}) tuple(%all-reduce, %param1)
+  %get-tuple-element = f32[4096,4096]{1,0} get-tuple-element(%tuple), index=0
+  %pid = u32[] partition-id()
+  %pid_s32 = s32[] convert(%pid)
+  %slice_size = s32[] constant(512)
+  %offset = s32[] multiply(%pid_s32, %slice_size)
+  %zero = s32[] constant(0)
+  ROOT %dynamic-slice = f32[512,4096]{1,0} dynamic-slice(%get-tuple-element, %offset, %zero),
+    dynamic_slice_sizes={512,4096}
+}
+)";
+
+  HloModuleConfig config = GetModuleConfigForTest(
+      /*replica_count=*/1, /*num_partitions=*/8);
+  config.set_use_spmd_partitioning(true);
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module_without_algsimp,
+                          ParseAndReturnVerifiedModule(hlo_string, config));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed_without,
+      ReduceScatterCreator().Run(module_without_algsimp.get()));
+  EXPECT_FALSE(changed_without) << "ReduceScatterCreator should not transform "
+                                   "without AlgebraicSimplifier";
+  EXPECT_EQ(AllReduceCount(module_without_algsimp), 1);
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module_with_algsimp,
+                          ParseAndReturnVerifiedModule(hlo_string, config));
+
+  AlgebraicSimplifierOptions options;
+  se::GpuComputeCapability compute_capability{se::CudaComputeCapability{8, 0}};
+  GpuAlgebraicSimplifier algsimp(options, compute_capability);
+  TF_ASSERT_OK_AND_ASSIGN(bool algsimp_changed,
+                          algsimp.Run(module_with_algsimp.get(), {}));
+  EXPECT_TRUE(algsimp_changed);
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed_with, ReduceScatterCreator().Run(module_with_algsimp.get()));
+  EXPECT_TRUE(changed_with)
+      << "ReduceScatterCreator should transform after AlgebraicSimplifier";
+  EXPECT_GE(ReduceScatterCount(module_with_algsimp), 1)
+      << "Expected at least one ReduceScatter after transformation";
 }
 
 }  // namespace

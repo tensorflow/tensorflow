@@ -1105,8 +1105,6 @@ absl::Status RunCollectiveOptimizationPasses(
     collectives_pipeline.AddPass<CollectivePipeliner>(config);
   }
 
-  collectives_pipeline.AddPass<ReduceScatterCreator>();
-
   DebugOptions::PipelineParallelismOptLevel pipeline_parallelism_opt_level =
       debug_options.xla_gpu_experimental_pipeline_parallelism_opt_level();
   if (debug_options.xla_gpu_enable_pipelined_p2p()) {
@@ -1127,6 +1125,8 @@ absl::Status RunCollectiveOptimizationPasses(
   // AllGatherBroadcastReorder pass.
   collectives_pipeline.AddPass<GpuAlgebraicSimplifier>(
       layout_insensitive_algsimp_opts, gpu_version);
+
+  collectives_pipeline.AddPass<ReduceScatterCreator>();
 
   collectives_pipeline.AddPass<AllGatherBroadcastReorder>();
   collectives_pipeline.AddPass<AllGatherRemoveDegenerateDims>();
