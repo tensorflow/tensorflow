@@ -291,6 +291,7 @@ void AllocateAndParseFlags() {
   // Dump graphs in TFG dialect.
   bool use_tfg_graph_dumper = false;
   bool enable_tpu_variable_runtime_reformatting_pass = true;
+  bool enable_serialize_mlir_to_compressed_bytecode = false;
 
   flag_list = new std::vector<Flag>(
       {Flag("tf_xla_enable_lazy_compilation",
@@ -405,7 +406,10 @@ void AllocateAndParseFlags() {
             &enable_tpu_variable_runtime_reformatting_pass,
             "Enables TPUVariableRuntimeReformatting pass for MLIR-Based "
             "TensorFlow Compiler Bridge. This enables weight update sharding "
-            "and creates TPUReshardVariables ops.")});
+            "and creates TPUReshardVariables ops.")}),
+  Flag("tf_serialize_mlir_to_compressed_bytecode",
+       &enable_serialize_mlir_to_compressed_bytecode,
+       "If true, serialize MLIR to compressed bytecode.");
 
   AppendMarkForCompilationPassFlagsInternal(flag_list);
   xla::ParseFlagsFromEnvAndDieIfUnknown("TF_XLA_FLAGS", *flag_list);
@@ -434,6 +438,8 @@ void AllocateAndParseFlags() {
       enable_mlir_multiple_local_cpu_devices;
   mlir_flags->tf_mlir_enable_debug_info_serialization =
       enable_mlir_debug_info_serialization;
+  mlir_flags->tf_serialize_mlir_to_compressed_bytecode =
+      enable_serialize_mlir_to_compressed_bytecode;
 
   if (use_tfg_graph_dumper) {
     UseMlirForGraphDump(MlirDumpConfig{}.elide_large_attributes().emit_dialect(
