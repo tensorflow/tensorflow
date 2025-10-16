@@ -86,6 +86,40 @@ class TransposeOpInt4Model : public SingleOpModel {
   int output_;
 };
 
+// Helper model for int8 transpose tests.
+class TransposeOpInt8Model : public SingleOpModel {
+ public:
+  TransposeOpInt8Model(std::initializer_list<int> input_shape,
+                       std::initializer_list<int> perm_shape,
+                       std::initializer_list<int> perm) {
+    input_ = AddInput({TensorType_INT8, input_shape, 0.0f, 0.0f, 0.5f, 1});
+    perm_ = AddConstInput(TensorType_INT32, perm, perm_shape);
+    output_ = AddOutput(TensorType_INT8);
+    SetBuiltinOp(BuiltinOperator_TRANSPOSE, BuiltinOptions_TransposeOptions,
+                 CreateTransposeOptions(builder_).Union());
+    BuildInterpreter({input_shape});
+  }
+
+  void SetInput(std::initializer_list<int8_t> data) {
+    PopulateTensor<int8_t>(input_, data);
+  }
+
+  // Return a pointer to the output tensor so tests can inspect or modify it.
+  TfLiteTensor* GetOutputTensor() { return interpreter_->tensor(output_); }
+
+  // Helper to set output quantization parameters.
+  void SetOutputQuantParams(float scale, int zero_point) {
+    TfLiteTensor* t = GetOutputTensor();
+    t->params.scale = scale;
+    t->params.zero_point = zero_point;
+  }
+
+ protected:
+  int input_;
+  int perm_;
+  int output_;
+};
+
 class TransposeOpModel : public SingleOpModel {
  public:
   void SetInput(std::initializer_list<float> data) {
@@ -374,24 +408,13 @@ TEST(TransposeTest, Test4DFlattenTwo) {
 
 TEST(TransposeTest, Int8MismatchedQuantizationFails) {
   // Input and output have different scale/zero_point.
-  class M : public SingleOpModel {
-   public:
-    M() {
-      input_ = AddInput({TensorType_INT8, {2, 2}, 0.0f, 0.0f, 0.5f, 1});
-      perm_ = AddConstInput(TensorType_INT32, {1, 0}, {2});
-      output_ = AddOutput({TensorType_INT8, {2, 2}, 0.0f, 0.0f, 0.25f, 2});
-      SetBuiltinOp(BuiltinOperator_TRANSPOSE, BuiltinOptions_TransposeOptions,
-                   CreateTransposeOptions(builder_).Union());
-      BuildInterpreter({GetShape(input_), GetShape(perm_)});
-    }
-    int input_;
-    int perm_;
-    int output_;
-  };
+  // Construct model with INT8 input/output and then override the output
+  // quantization params to create a mismatch.
+  TransposeOpInt8Model m({2, 2}, {2}, {1, 0});
+  // Override output quantization params to a different scale/zero_point.
+  m.SetOutputQuantParams(0.25f, 2);
 
-  M m;
-  m.PopulateTensor<int8_t>(m.input_, {1, 2, 3, 4});
-  m.PopulateTensor<int>(m.perm_, {1, 0});
+  m.SetInput({1, 2, 3, 4});
   // Should fail due to quantization mismatch.
   EXPECT_EQ(m.Invoke(), kTfLiteError);
 }

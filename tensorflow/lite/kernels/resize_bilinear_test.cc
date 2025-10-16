@@ -468,11 +468,10 @@ INSTANTIATE_TEST_SUITE_P(ResizeBilinearOpTest, ResizeBilinearOpTest,
 
 // Additional negative test: mismatched quantization should fail for int8.
 TEST(ResizeBilinearOpTest_Negative, Int8MismatchedQuantizationFails) {
-  class M : public ResizeBilinearOpModel {
-   public:
-    M() : ResizeBilinearOpModel({TensorType_INT8, {1, 2, 2, 1}, 0.0f, 0.0f, 0.5f, 1}, {3, 3}, TestType::kConst) {}
-  };
-  M m;
+  // Construct an INT8 resize bilinear model and then override the output
+  // quantization params to create a mismatch.
+  ResizeBilinearOpModel m({TensorType_INT8, {1, 2, 2, 1}, 0.0f, 0.0f, 0.5f, 1},
+                          {3, 3}, TestType::kConst);
   // Manually override output quantization params after construction.
   TfLiteTensor* output_tensor = m.GetOutputTensor(0);
   output_tensor->params.scale = 0.25f;
