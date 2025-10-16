@@ -81,10 +81,10 @@ class IfrtBackendCompilerTest : public ::testing::Test {
   }
 
   void verifyModules() {
-    absl::MutexLock l(&ServingExecutableRegistry::mu_);
+    absl::MutexLock l(ServingExecutableRegistry::mu_);
     for (const auto& [_, executable] :
          *ServingExecutableRegistry::executables_) {
-      absl::MutexLock l(&executable->mutex_);
+      absl::MutexLock l(executable->mutex_);
       executable->module_->walk([](mlir::func::FuncOp func) {
         ASSERT_FALSE(func->hasAttr("tfrt_ifrt_serving.program_id"));
       });
