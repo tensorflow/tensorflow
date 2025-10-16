@@ -33,6 +33,7 @@ def compare_kernel(
     output_shape: tuple[int, ...],
     dtype,
     expected_output: Callable[[np.ndarray, ...], np.ndarray],
+    exact: bool = True,
 ) -> None:
   mlir_emitter = cpu_testlib.MlirTestKernelEmitter(
       ir, kernel_name, (num_workgroups, 1, 1)
@@ -49,9 +50,14 @@ def compare_kernel(
   output_tensor = create_literal(np.zeros(output_shape, dtype=dtype))
   runner.call(input_tensors + [output_tensor])
 
-  np.testing.assert_array_equal(
-      np.asarray(output_tensor), expected_output(*inputs)
-  )
+  if exact:
+    np.testing.assert_array_equal(
+        np.asarray(output_tensor), expected_output(*inputs)
+    )
+  else:
+    np.testing.assert_array_almost_equal(
+        np.asarray(output_tensor), expected_output(*inputs)
+    )
 
 
 class XtileLoweringTest(absltest.TestCase):
@@ -137,6 +143,68 @@ class XtileLoweringTest(absltest.TestCase):
         (4096, 4096),
         np.float32,
         lambda arg: arg + arg.transpose(),
+    )
+
+  def test_dot_single_tile(self):
+    ir = """
+      module @dot_single_tile {
+        xtile.entry_func @dot_single_tile(
+            %lhs: memref<8x16xf32>,
+            %rhs: memref<16x8xf32>,
+            %output: memref<8x8xf32>,
+            %tile_id: index) attributes {xtile.tiling_info = #xtile.tiling_info<tile_count:1, tiles_per_workgroup:1>} {
+          %offset = arith.constant 0 : index
+          %lhs_tile = xtile.extract %lhs[%offset, %offset][8, 16][1, 1] : memref<8x16xf32> -> tensor<8x16xf32>
+          %rhs_tile = xtile.extract %rhs[%offset, %offset][16, 8][1, 1] : memref<16x8xf32> -> tensor<16x8xf32>
+          %result = stablehlo.dot_general %lhs_tile, %rhs_tile, contracting_dims = [1] x [0] : (tensor<8x16xf32>, tensor<16x8xf32>) -> tensor<8x8xf32>
+          xtile.insert %result into %output[%offset, %offset][8, 8][1, 1] : tensor<8x8xf32> -> memref<8x8xf32>
+          xtile.return
+        }
+      }
+    """
+
+    compare_kernel(
+        ir,
+        "dot_single_tile",
+        1,
+        [(8, 16), (16, 8)],
+        (8, 8),
+        np.float32,
+        lambda lhs, rhs: lhs @ rhs,
+        False,
+    )
+
+  def test_dot_fusion_single_tile(self):
+    ir = """
+      module @dot_fusion_single_tile {
+        xtile.entry_func @dot_fusion_single_tile(
+            %lhs_0: memref<8x16xf32>,
+            %lhs_1: memref<8x16xf32>,
+            %rhs: memref<16x1xf32>,
+            %output: memref<8x1xf32>,
+            %tile_id: index) attributes {xtile.tiling_info = #xtile.tiling_info<tile_count:1, tiles_per_workgroup:1>} {
+          %offset = arith.constant 0 : index
+          %lhs_0_tile = xtile.extract %lhs_0[%offset, %offset][8, 16][1, 1] : memref<8x16xf32> -> tensor<8x16xf32>
+          %lhs_1_tile = xtile.extract %lhs_1[%offset, %offset][8, 16][1, 1] : memref<8x16xf32> -> tensor<8x16xf32>
+          %add_lhs = arith.addf %lhs_0_tile, %lhs_1_tile : tensor<8x16xf32>
+          %rhs_tile = xtile.extract %rhs[%offset, %offset][16, 1][1, 1] : memref<16x1xf32> -> tensor<16xf32>
+          %result = stablehlo.dot_general %add_lhs, %rhs_tile, contracting_dims = [1] x [0] : (tensor<8x16xf32>, tensor<16xf32>) -> tensor<8xf32>
+          %tanh_result = math.tanh %result : tensor<8xf32>
+          xtile.insert %tanh_result into %output[%offset, %offset][8, 1][1, 1] : tensor<8xf32> -> memref<8x1xf32>
+          xtile.return
+        }
+      }
+    """
+
+    compare_kernel(
+        ir,
+        "dot_fusion_single_tile",
+        1,
+        [(8, 16), (8, 16), (16, 1)],
+        (8, 1),
+        np.float32,
+        lambda lhs_0, lhs_1, rhs: np.tanh((lhs_0 + lhs_1) @ rhs),
+        False,
     )
 
 
