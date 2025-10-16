@@ -53,14 +53,6 @@ void RecordPassStartMetadata(HloModule& module, const std::string& pass_name,
   TF_CHECK_OK(module.metadata()->set_current_pass_pipeline_name(pipeline_name));
 }
 
-void RecordPassStartMetadata(HloModuleGroup& module_group,
-                             const std::string& pass_name,
-                             const std::string& pipeline_name) {
-  for (HloModule* module : module_group.modules()) {
-    RecordPassStartMetadata(*module, pass_name, pipeline_name);
-  }
-}
-
 absl::Status AttemptRecordPassEndMetadata(HloModule& module,
                                           const std::string& pass_name,
                                           bool module_changed) {
