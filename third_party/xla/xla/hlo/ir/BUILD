@@ -60,6 +60,7 @@ cc_library(
     deps = [
         ":backend_config",
         ":hlo_sharding",
+        ":named_sharding",
         ":ptrvec",
         ":tile_assignment",
         "//xla:array",
@@ -178,11 +179,30 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "mesh_and_axis",
+    hdrs = ["mesh_and_axis.h"],
+    deps = [
+        ":tile_assignment",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "named_sharding",
+    hdrs = ["named_sharding.h"],
+    deps = [
+        ":mesh_and_axis",
+        "//xla:xla_data_proto_cc",
+    ],
+)
+
+cc_library(
     name = "hlo_sharding",
     srcs = ["hlo_sharding.cc"],
     hdrs = ["hlo_sharding.h"],
     deps = [
         ":hlo_op_metadata",
+        ":named_sharding",
         ":tile_assignment",
         "//xla:array",
         "//xla:printer",
