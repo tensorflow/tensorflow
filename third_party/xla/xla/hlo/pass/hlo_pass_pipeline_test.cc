@@ -47,14 +47,7 @@ using ::testing::ElementsAre;
 using ::testing::SizeIs;
 using ::testing::StrEq;
 
-class HloPassPipelineTest : public HloHardwareIndependentTestBase {
- protected:
-  absl::StatusOr<HloModuleGroup> ParseModuleGroup(std::string hlo_string) {
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<VerifiedHloModule> module,
-                        ParseAndReturnVerifiedModule(hlo_string));
-    return HloModuleGroup(std::move(module));
-  }
-};
+using HloPassPipelineTest = HloHardwareIndependentTestBase;
 
 // A module pass which renames instructions named 'foo' to 'bar'.
 class FooToBarModulePass : public HloModulePass {
