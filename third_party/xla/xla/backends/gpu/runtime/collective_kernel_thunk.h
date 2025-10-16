@@ -36,6 +36,7 @@ limitations under the License.*/
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_handle.h"
 #include "xla/stream_executor/gpu/all_reduce_kernel.h"
+#include "xla/stream_executor/gpu/gpu_executor.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/stream.h"
 
@@ -118,6 +119,8 @@ class CollectiveKernelThunk : public Thunk {
     std::unique_ptr<se::Kernel> kernel;
     uint32_t invocation_count = 0;
 
+    void* multicast_device_ptr = nullptr;
+
     // Constructor to make OSS builds happy.
     StreamState() = default;
     StreamState(int device_ordinal_arg, RankId rank_arg,
@@ -137,6 +140,8 @@ class CollectiveKernelThunk : public Thunk {
   absl::Status ExchangeStateMetadata(const GpuCliqueKey& clique_key,
                                      StreamState& state,
                                      const InitializeParams& params);
+  absl::Status SetupMultimem(const GpuCliqueKey& clique_key, StreamState& state,
+                             const InitializeParams& params);
 
   // Whether the one-shot kernel is enabled.
   const bool collective_kernel_enabled_;
@@ -152,6 +157,8 @@ class CollectiveKernelThunk : public Thunk {
   // Reference to the buffer related information required for the collective.
   absl::Span<const CollectiveThunk::Buffer> buffers_;
 
+  std::unique_ptr<stream_executor::gpu::GpuExecutor::MulticastMemory>
+      multicast_memory_;
   // Guard access to the stream state across different threads (which control
   // different streams).
   absl::Mutex mutex_;

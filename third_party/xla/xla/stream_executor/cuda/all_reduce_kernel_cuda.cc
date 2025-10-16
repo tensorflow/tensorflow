@@ -85,6 +85,8 @@ __device__ __forceinline__ void WaitSignalFlag<PlatformType::CUDA>(
   REGISTER_ALL_REDUCE_KERNEL_IMPL(SUFFIX, XLA_TYPE, NV_TYPE, REDUCTION_KIND,  \
                                   kOneShot)                                   \
   REGISTER_ALL_REDUCE_KERNEL_IMPL(SUFFIX, XLA_TYPE, NV_TYPE, REDUCTION_KIND,  \
+                                  kMultimem)                                  \
+  REGISTER_ALL_REDUCE_KERNEL_IMPL(SUFFIX, XLA_TYPE, NV_TYPE, REDUCTION_KIND,  \
                                   kTwoShot)
 
 // Register the kernel for different types using the macro

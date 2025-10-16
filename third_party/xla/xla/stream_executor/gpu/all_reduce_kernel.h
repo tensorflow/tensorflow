@@ -28,6 +28,7 @@ namespace stream_executor::gpu {
 enum class AllReduceStrategy : uint32_t {
   kOneShot,
   kTwoShot,
+  kMultimem,
 };
 
 template <typename Sink>
@@ -38,6 +39,9 @@ void AbslStringify(Sink& sink, AllReduceStrategy strategy) {
       break;
     case AllReduceStrategy::kTwoShot:
       sink.Append("kTwoShot");
+      break;
+    case AllReduceStrategy::kMultimem:
+      sink.Append("kMultimem");
       break;
   }
 }

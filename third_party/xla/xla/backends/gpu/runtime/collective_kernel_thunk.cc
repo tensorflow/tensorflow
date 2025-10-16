@@ -15,6 +15,7 @@ limitations under the License.*/
 #include "xla/backends/gpu/runtime/collective_kernel_thunk.h"
 
 #include <cstdint>
+#include <cstring>
 #include <memory>
 #include <optional>
 #include <string>
@@ -45,6 +46,7 @@ limitations under the License.*/
 #include "xla/stream_executor/device_memory_handle.h"
 #include "xla/stream_executor/gpu/all_reduce_kernel.h"
 #include "xla/stream_executor/gpu/collective_kernel_metadata.h"
+#include "xla/stream_executor/gpu/gpu_executor.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -96,6 +98,8 @@ int64_t GetMaxSupportedAllReduceSizeBytes(AllReduceStrategy strategy) {
     case AllReduceStrategy::kOneShot:
       return kMaxOneShotAllReduceSizeBytes;
     case AllReduceStrategy::kTwoShot:
+      return kMaxTwoShotAllReduceSizeBytes;
+    case AllReduceStrategy::kMultimem:
       return kMaxTwoShotAllReduceSizeBytes;
   }
 }
@@ -152,7 +156,6 @@ int64_t CollectiveKernelThunk::GetInputSizeBytes() const {
 
 struct BaseRangePtrRendezvousValue {
   RankId rank;
-  se::DeviceMemoryBase locally_allocated_buffer_ptr;
   se::DeviceMemoryBase buffer_ptr;
 
   bool operator<(const BaseRangePtrRendezvousValue& other) const {
@@ -170,11 +173,7 @@ absl::Status CollectiveKernelThunk::ExchangeStateMetadata(
       << "Device " << params.collective_params->global_device_id
       << "is not in the clique.";
   rendezvous_value.rank = rank.value();
-  rendezvous_value.locally_allocated_buffer_ptr = state.local_buffer.memory();
-  TF_ASSIGN_OR_RETURN(rendezvous_value.buffer_ptr,
-                      params.executor->GetMemoryRange(
-                          params.buffer_allocations->GetDeviceAddress(
-                              buffers_[0].source_buffer)));
+  rendezvous_value.buffer_ptr = state.local_buffer.memory();
 
   auto rendezvous_fn =
       [](absl::Span<const BaseRangePtrRendezvousValue* const> values) {
@@ -207,12 +206,11 @@ absl::Status CollectiveKernelThunk::ExchangeStateMetadata(
   CollectiveKernelMetadata metadata;
   metadata.rank = rank.value().value();
   for (int i = 0; i < rendezvous_values->size(); ++i) {
-    metadata.local_buffer_root_ptrs[i] =
-        (uint64_t)rendezvous_values->at(i)
-            .locally_allocated_buffer_ptr.opaque();
-    metadata.buffer_root_ptrs[i] =
-        (uint64_t)rendezvous_values->at(i).buffer_ptr.opaque();
+    metadata.buffer_root_ptrs[i] = reinterpret_cast<uint64_t>(
+        rendezvous_values->at(i).buffer_ptr.opaque());
   }
+  metadata.multicast_buffer_ptr =
+      reinterpret_cast<uint64_t>(state.multicast_device_ptr);
 
   se::DeviceMemoryBase metadata_ptr =
       params.executor->Allocate(sizeof(CollectiveKernelMetadata), 0);
@@ -221,6 +219,52 @@ absl::Status CollectiveKernelThunk::ExchangeStateMetadata(
   TF_RETURN_IF_ERROR(params.stream->BlockHostUntilDone());
 
   state.metadata = metadata_ptr;
+  return absl::OkStatus();
+}
+
+absl::Status Barrier(int device_number, const GpuCliqueKey& clique_key) {
+  std::string start_rendezvous_key = absl::StrFormat(
+      "Barrier for device %d, "
+      "clique %s",
+      device_number, clique_key.ToString());
+  return Rendezvous(
+      /*name=*/
+      start_rendezvous_key, /*key=*/clique_key,
+      /*num_threads=*/clique_key.num_local_participants());
+}
+
+absl::Status CollectiveKernelThunk::SetupMultimem(
+    const GpuCliqueKey& clique_key, StreamState& state,
+    const InitializeParams& params) {
+  stream_executor::gpu::GpuExecutor* gpu_executor =
+      dynamic_cast<stream_executor::gpu::GpuExecutor*>(params.executor);
+  if (gpu_executor == nullptr) {
+    return absl::UnimplementedError("Multicast is not supported on device.");
+  }
+
+  size_t data_size = buffers_[0].source_buffer.size();
+  int device_number = params.stream->parent()->device_ordinal();
+
+  if (device_number == 0) {
+    TF_ASSIGN_OR_RETURN(multicast_memory_,
+                        gpu_executor->CreateMulticastMemory(
+                            data_size, clique_key.num_local_participants()));
+  }
+
+  // Wait for all devices to register the multicast object.
+  TF_RETURN_IF_ERROR(Barrier(device_number, clique_key));
+
+  // Add current devices to the multicast object.
+  TF_RETURN_IF_ERROR(multicast_memory_->SubscribeDevice(device_number));
+
+  // Wait for all devices to register the multicast object.
+  TF_RETURN_IF_ERROR(Barrier(device_number, clique_key));
+
+  TF_ASSIGN_OR_RETURN(
+      state.multicast_device_ptr,
+      multicast_memory_->MapMemory(state.local_buffer.memory_ptr()->opaque(),
+                                   gpu_executor));
+
   return absl::OkStatus();
 }
 
@@ -234,9 +278,9 @@ absl::Status CollectiveKernelThunk::Initialize(const InitializeParams& params) {
   TF_RET_CHECK(rank.has_value())
       << "Device " << params.collective_params->global_device_id
       << "is not in the clique.";
+  const AllReduceStrategy strategy = GetAllReduceStrategy(GetInputSizeBytes());
   const LaunchDimensions launch_dimensions = AllReduceLaunchDimensions(
-      buffers_[0].element_count, clique_key.num_local_participants(),
-      GetAllReduceStrategy(GetInputSizeBytes()));
+      buffers_[0].element_count, clique_key.num_local_participants(), strategy);
 
   StreamState* state = nullptr;
   {
@@ -300,6 +344,9 @@ absl::Status CollectiveKernelThunk::Initialize(const InitializeParams& params) {
   }
 
   if (state != nullptr) {
+    if (strategy == AllReduceStrategy::kMultimem) {
+      TF_RETURN_IF_ERROR(SetupMultimem(clique_key, *state, params));
+    }
     TF_RETURN_IF_ERROR(ExchangeStateMetadata(clique_key, *state, params));
   }
 

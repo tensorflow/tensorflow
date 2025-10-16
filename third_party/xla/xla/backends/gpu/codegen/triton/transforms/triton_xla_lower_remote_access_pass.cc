@@ -94,9 +94,9 @@ LogicalResult LowerGetPeerPtrOp(GetPeerPtrOp get_peer_ptr,
   // 1. Load metadata->rank.
   Value current_rank_load_op = builder.create<GetRankOp>(metadata);
 
-  // 2. Load metadata->local_buffer_root_ptrs[metadata->rank].
+  // 2. Load metadata->buffer_root_ptrs[metadata->rank].
   Value local_buffers_ptrs_offset = builder.create<arith::ConstantIntOp>(
-      type_i64, offsetof(CollectiveKernelMetadata, local_buffer_root_ptrs));
+      type_i64, offsetof(CollectiveKernelMetadata, buffer_root_ptrs));
 
   Value rank_offset =
       builder.create<arith::ExtUIOp>(type_i64, current_rank_load_op);
@@ -116,13 +116,13 @@ LogicalResult LowerGetPeerPtrOp(GetPeerPtrOp get_peer_ptr,
       /*isVolatile=*/rewriter.getBoolAttr(false));
 
   // 3. Calculate offset =
-  //      address - metadata->local_buffer_root_ptrs[metadata->rank].
+  //      address - metadata->buffer_root_ptrs[metadata->rank].
   Value current_range_address_int =
       builder.create<PtrToIntOp>(type_i64, address);
   Value offsetInt = builder.create<arith::SubIOp>(current_range_address_int,
                                                   current_range_address_value);
 
-  // 4. Load metadata->local_buffer_root_ptrs[peer_id].
+  // 4. Load metadata->buffer_root_ptrs[peer_id].
   Value peer_index = builder.create<arith::ExtUIOp>(type_i64, peer_id);
   Value peer_index_offset_bytes =
       builder.create<arith::MulIOp>(peer_index, pointer_size_bytes_const);
