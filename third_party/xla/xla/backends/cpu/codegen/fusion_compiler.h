@@ -67,11 +67,19 @@ class FusionCompiler {
  private:
   Options options_;
   CompilationHooks hooks_;
+  // The reason we have 4 distinct pass managers is because:
+  //   - We have 2 stages: optimization and lowering, this is to enable dumping
+  //     of the intermediate optimized MLIR.
+  //   - We have 2 distinct pipelines for scalar and tiled kernels, this is
+  //     because they differ slightly in their semantics, ideally these would be
+  //     unified but this is a larger change.
   // Pass manager that holds the optimization & loop transformation passes.
-  mlir::PassManager optimization_pass_manager_;
+  mlir::PassManager scalar_optimization_pass_manager_;
+  mlir::PassManager tiled_optimization_pass_manager_;
   // Pass manager that holds the passes responsible for lowering the module from
   // MLIR to LLVM.
-  mlir::PassManager lowering_pass_manager_;
+  mlir::PassManager scalar_lowering_pass_manager_;
+  mlir::PassManager tiled_lowering_pass_manager_;
 };
 
 }  // namespace xla::cpu

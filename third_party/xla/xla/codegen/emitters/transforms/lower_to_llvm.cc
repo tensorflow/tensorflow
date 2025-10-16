@@ -29,7 +29,9 @@ limitations under the License.
 #include "mlir/Conversion/LLVMCommon/ConversionTarget.h"
 #include "mlir/Conversion/LLVMCommon/TypeConverter.h"
 #include "mlir/Conversion/MathToLLVM/MathToLLVM.h"
+#include "mlir/Conversion/MemRefToLLVM/MemRefToLLVM.h"
 #include "mlir/Conversion/SCFToControlFlow/SCFToControlFlow.h"
+#include "mlir/Conversion/UBToLLVM/UBToLLVM.h"
 #include "mlir/Conversion/VectorToLLVM/ConvertVectorToLLVM.h"
 #include "mlir/Dialect/AMDGPU/Utils/Chipset.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
@@ -129,6 +131,9 @@ class LowerToLLVMPass : public impl::LowerToLLVMPassBase<LowerToLLVMPass> {
       }
     }
     mlir::populateFuncToLLVMConversionPatterns(type_converter, patterns);
+    mlir::populateFinalizeMemRefToLLVMConversionPatterns(type_converter,
+                                                         patterns);
+    mlir::ub::populateUBToLLVMConversionPatterns(type_converter, patterns);
     mlir::populateVectorToLLVMConversionPatterns(type_converter, patterns);
     mlir::cf::populateControlFlowToLLVMConversionPatterns(type_converter,
                                                           patterns);

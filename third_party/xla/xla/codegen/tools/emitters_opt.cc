@@ -36,8 +36,10 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Tools/mlir-opt/MlirOptMain.h"
 #include "mlir/Transforms/Passes.h"
+#include "stablehlo/dialect/StablehloOps.h"
 #include "xla/backends/cpu/codegen/emitters/ir/xla_cpu_dialect.h"
 #include "xla/backends/cpu/codegen/emitters/transforms/passes.h"
+#include "xla/backends/cpu/codegen/tiled/transforms/passes.h"
 #include "xla/backends/gpu/codegen/emitters/emitter_base.h"
 #include "xla/backends/gpu/codegen/emitters/ir/xla_gpu_ops.h"
 #include "xla/backends/gpu/codegen/emitters/transforms/passes.h"
@@ -50,15 +52,15 @@ limitations under the License.
 
 int main(int argc, char** argv) {
   mlir::DialectRegistry registry;
-  registry.insert<mlir::DLTIDialect, mlir::LLVM::LLVMDialect,
-                  mlir::NVVM::NVVMDialect, mlir::affine::AffineDialect,
-                  mlir::arith::ArithDialect, mlir::complex::ComplexDialect,
-                  mlir::func::FuncDialect, mlir::gpu::GPUDialect,
-                  mlir::math::MathDialect, mlir::mhlo::MhloDialect,
-                  mlir::mhlo::MhloDialect, mlir::scf::SCFDialect,
-                  mlir::tensor::TensorDialect, mlir::vector::VectorDialect,
-                  xla::XlaDialect, xla::cpu::XlaCpuDialect,
-                  xla::gpu::XlaGpuDialect, xla::xtile::XTileDialect>();
+  registry.insert<
+      mlir::DLTIDialect, mlir::LLVM::LLVMDialect, mlir::NVVM::NVVMDialect,
+      mlir::affine::AffineDialect, mlir::arith::ArithDialect,
+      mlir::complex::ComplexDialect, mlir::func::FuncDialect,
+      mlir::gpu::GPUDialect, mlir::math::MathDialect, mlir::mhlo::MhloDialect,
+      mlir::mhlo::MhloDialect, mlir::scf::SCFDialect,
+      mlir::tensor::TensorDialect, mlir::vector::VectorDialect, xla::XlaDialect,
+      xla::cpu::XlaCpuDialect, xla::gpu::XlaGpuDialect,
+      xla::xtile::XTileDialect, mlir::stablehlo::StablehloDialect>();
   mlir::func::registerAllExtensions(registry);
   mlir::LLVM::registerInlinerInterface(registry);
   mlir::registerCanonicalizerPass();
@@ -67,6 +69,7 @@ int main(int argc, char** argv) {
   xla::emitters::registerTransformsPasses();
   xla::gpu::registerGpuFusionTransformsPasses();
   xla::cpu::registerXlaCpuTransformsPasses();
+  xla::cpu::registerXTileCpuTransformsPasses();
   mlir::registerPassPipeline(
       "xla-test-optimize",
       "Test pipeline of passes up to inlining. No vectorization, also does not "
