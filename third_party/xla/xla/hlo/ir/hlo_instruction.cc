@@ -2957,10 +2957,17 @@ HloInstruction* HloInstruction::mutable_operand(int64_t i) {
 }
 
 int64_t HloInstruction::operand_index(const HloInstruction* target) const {
+  std::optional<int64_t> index;
   for (int64_t i = 0; i < operand_count(); ++i) {
     if (target == operand(i)) {
-      return i;
+      CHECK(!index.has_value())
+          << "target was an operand multiple times: " << target->ToString()
+          << ". Consider using HloInstruction::operand_indices() instead.";
+      index = i;
     }
+  }
+  if (index.has_value()) {
+    return index.value();
   }
   LOG(FATAL) << "target was not an operand: " << target->ToString();
 }

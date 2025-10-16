@@ -239,5 +239,21 @@ TEST_F(HloInstructionTest, CanonicalPrintingSupportsInt64) {
             "type=TOTALORDER");
 }
 
+TEST_F(HloInstructionTest, OperandIndexDeathTest) {
+  const Shape scalar_shape = ShapeUtil::MakeShape(F32, {});
+  auto module = CreateNewVerifiedModule();
+  HloComputation::Builder builder(TestName());
+
+  HloInstruction* param = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, scalar_shape, "param"));
+  HloInstruction* add = builder.AddInstruction(HloInstruction::CreateBinary(
+      scalar_shape, HloOpcode::kAdd, param, param));
+
+  module->AddEntryComputation(builder.Build(add));
+
+  EXPECT_DEATH(add->operand_index(param),
+               "target was an operand multiple times");
+}
+
 }  // namespace
 }  // namespace xla

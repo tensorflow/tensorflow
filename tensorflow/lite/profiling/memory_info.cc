@@ -25,6 +25,10 @@ limitations under the License.
 #elif defined(__APPLE__)
 #include <mach/mach.h>
 #include <malloc/malloc.h>
+#elif defined(_WIN32)
+#include <windows.h>
+// psapi must be included after windows.h.
+#include <psapi.h>
 #endif
 
 namespace tflite {
@@ -34,7 +38,7 @@ namespace memory {
 const size_t MemoryUsage::kValueNotSet = 0;
 
 bool MemoryUsage::IsSupported() {
-#if defined(__linux__) || defined(__APPLE__)
+#if defined(__linux__) || defined(__APPLE__) || defined(_WIN32)
   return true;
 #endif
   return false;
@@ -71,6 +75,30 @@ MemoryUsage GetMemoryUsage() {
   struct mstats stats = mstats();
   result.total_allocated_bytes = stats.bytes_total;
   result.in_use_allocated_bytes = stats.bytes_used;
+#elif defined(_WIN32)
+  PROCESS_MEMORY_COUNTERS process_memory_counters;
+  HANDLE process_handle = GetCurrentProcess();
+  if (process_handle != nullptr &&
+      GetProcessMemoryInfo(process_handle, &process_memory_counters,
+                           sizeof(process_memory_counters))) {
+    result.mem_footprint_kb = process_memory_counters.WorkingSetSize / 1024;
+  } else {
+    result.mem_footprint_kb = -1;
+  }
+  CloseHandle(process_handle);
+  HANDLE process_heap = GetProcessHeap();
+  if (process_heap != nullptr && HeapLock(process_heap)) {
+    HEAP_SUMMARY heap_summary;
+    heap_summary.cb = sizeof(heap_summary);
+    if (HeapSummary(process_heap, 0, &heap_summary)) {
+      result.total_allocated_bytes = heap_summary.cbCommitted;
+      result.in_use_allocated_bytes = heap_summary.cbAllocated;
+    } else {
+      result.total_allocated_bytes = -1;
+      result.in_use_allocated_bytes = -1;
+    }
+    HeapUnlock(process_heap);
+  }
 #endif  // __linux__
   return result;
 }
