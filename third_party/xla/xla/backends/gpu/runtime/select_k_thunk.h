@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_BACKENDS_GPU_RUNTIME_SELECT_K_THUNK_H_
 
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -62,6 +63,10 @@ class SelectKThunk : public Thunk {
   }
 
   absl::StatusOr<ThunkProto> ToProto() const override;
+
+  static absl::StatusOr<std::unique_ptr<SelectKThunk>> FromProto(
+      ThunkInfo thunk_info, const SelectKThunkProto& proto,
+      absl::Span<const BufferAllocation> buffer_allocations);
 
  private:
   std::uint32_t batch_size_;

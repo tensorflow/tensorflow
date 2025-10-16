@@ -178,7 +178,11 @@ message OutfeedThunkProto {
 }
 
 message SelectKThunkProto {
-  // TODO(upwind): Add fields for SelectKThunkProto.
+  repeated xla.buffer_assignment.BufferAllocationSliceProto args = 1;
+  uint32 batch_size = 3;
+  uint32 num_elements = 4;
+  uint32 k = 5;
+  xla.PrimitiveType dtype = 6;
 }
 
 message CublasLtMatmulThunkProto {
