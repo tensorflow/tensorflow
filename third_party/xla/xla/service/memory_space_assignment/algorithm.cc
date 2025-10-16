@@ -2338,6 +2338,20 @@ absl::Status MsaAlgorithm::ProcessBlockPrefetches() {
     repack_allocation_blocks_.back().next_colocated =
         &(repack_allocation_blocks_.back());
   }
+
+  // Finalize the original values of the sliced values that are not finalized
+  // yet to avoid being allocated twice.
+  for (auto [_, original_value] : sliced_value_to_original_value) {
+    if (finalized_values_.contains(original_value)) {
+      continue;
+    }
+    Allocation* allocation = value_to_pinned_allocation[original_value];
+    for (const HloUse& use : original_value->GetUses()) {
+      allocation->AddUse(use);
+    }
+    finalized_values_.insert(original_value);
+  }
+
   // Clear the pending chunks.
   ClearPendingChunks();
   return absl::OkStatus();

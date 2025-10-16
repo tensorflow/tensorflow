@@ -15381,6 +15381,62 @@ ENTRY entry {
   EXPECT_EQ(num_prefetches, 6);
 }
 
+TEST_F(SlicedPrefetchTest, TestMultiplePinnedAllocationsBug) {
+  // When block prefetching, finalize the original value if a sliced value is
+  // prefetched successfully and the original value is not, if not finalized it
+  // can cause re-allocation causing multiple pinned allocations for the same
+  // buffer.
+  absl::string_view hlo_string = R"(
+HloModule module, is_scheduled=true
+
+ENTRY entry {
+  p0 = f32[4,3]{1,0} parameter(0)
+  slice0 = f32[2,3]{1,0} slice(p0), slice={[0:2], [0:3]}
+  negate0 = f32[2,3]{1,0} negate(slice0)
+  negate1 = f32[2,3]{1,0} negate(negate0)
+  negate2 = f32[2,3]{1,0} negate(negate1)
+  add2 = f32[2,3]{1,0} add(slice0, negate2)
+  negate3 = f32[2,3]{1,0} negate(add2)
+  negate4 = f32[2,3]{1,0} negate(negate3)
+  negate5 = f32[2,3]{1,0} negate(negate4)
+  negate6 = f32[4,3]{1,0} negate(p0)
+  negate7 = f32[4,3]{1,0} negate(negate6)
+  negate8 = f32[4,3]{1,0} negate(negate7)
+  negate9 = f32[4,3]{1,0} negate(negate8)
+  add10 = f32[4,3]{1,0} add(p0, negate9)
+  ROOT tuple = (f32[2,3]{1,0}, f32[4,3]{1,0}) tuple(negate5, add10)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  Options memory_space_options = DefaultMemorySpaceOptions();
+  memory_space_options.max_size_in_bytes = 256;
+  memory_space_options.reserved_bytes_for_block_prefetches = 24;
+  memory_space_options.max_outstanding_block_prefetches = 10;
+  memory_space_options.max_outstanding_prefetches = 0;
+  memory_space_options.block_prefetched_positions =
+      GetHloPositions(module.get(), {"p0"});
+  const std::string text_proto = R"pb(
+    overrides {
+      hlo_position_matcher { instruction_name_regex: "p0" }
+      override_options { assign_first: true }
+    })pb";
+  TF_ASSERT_OK_AND_ASSIGN(auto msa_sort_order_overrides,
+                          ParseTextProto<MsaSortOrderOverrides>(text_proto));
+  memory_space_options.msa_sort_order_overrides =
+      std::move(msa_sort_order_overrides);
+
+  XLA_VLOG_LINES(1, "Before MSA: \n" + module->ToString());
+  AssignMemorySpaceUsingCostAnalysis(module.get(),
+                                     std::move(memory_space_options));
+  XLA_VLOG_LINES(1, "After MSA: \n" + module->ToString());
+  std::vector<std::string> sliced_prefetch_uses = {"negate0", "add2"};
+  CheckOperandOpcodeAndMemorySpaceForInstructionNames(
+      /*module=*/module.get(), /*instruction_names=*/sliced_prefetch_uses,
+      /*operand_index=*/0,
+      /*operand_opcode=*/HloOpcode::kAsyncDone,
+      /*operand_memory_space=*/kAlternateMemorySpace);
+}
+
 TEST_F(MemorySpaceAssignmentTest, NoPrefetchWithBandwidthLimitingAsyncStart) {
   // The negate chain is long enough for asynchronous copy to be inserted
   // between p1 and add. The prefetch will not happen because the bandwidth
