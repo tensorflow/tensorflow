@@ -17,21 +17,41 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "xla/backends/gpu/runtime/custom_call_thunk.h"
+#include "xla/backends/gpu/runtime/sdc_buffer_id.h"
+#include "xla/backends/gpu/runtime/sdc_thunk.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/backends/gpu/runtime/thunk_id.h"
 #include "xla/backends/gpu/runtime/thunk_pass_pipeline.h"
+#include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_module.h"
+#include "xla/literal_util.h"
+#include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
 namespace {
+
+using testing::ElementsAre;
+using testing::Pair;
+using testing::Pointer;
+using testing::SizeIs;
+using testing::UnorderedElementsAre;
+
+MATCHER_P(IsUniquePointerTo, ptr, "") { return arg.get() == ptr; }
 
 class FakeThunkPassBufferAllocator : public ThunkPassBufferAllocator {
  public:
@@ -49,19 +69,138 @@ class FakeThunkPassBufferAllocator : public ThunkPassBufferAllocator {
   std::unique_ptr<BufferAllocation> alloc_;
 };
 
-TEST(ThunkChecksumTracingPassTest, CreatesLogAlloc) {
-  ThunkChecksumTracingPass pass;
-  auto root_thunk = std::make_unique<SequentialThunk>(
-      Thunk::ThunkInfo(), std::vector<std::unique_ptr<Thunk>>());
+class FakeThunk : public Thunk {
+ public:
+  explicit FakeThunk(ThunkInfo info, BufferUses buffer_uses)
+      : Thunk(Thunk::Kind::kGemm, std::move(info)),
+        buffer_uses_(std::move(buffer_uses)) {}
+
+  absl::Status ExecuteOnStream(const ExecuteParams& params) override {
+    return absl::OkStatus();
+  }
+
+  BufferUses buffer_uses() const override { return buffer_uses_; }
+
+ private:
+  BufferUses buffer_uses_;
+};
+
+TEST(ThunkChecksumTracingPassTest, IsNoOpWhenHloModuleIsNull) {
   DebugOptions debug_options;
+  debug_options.set_xla_gpu_experimental_enable_checksum_tracing_on_thunks(
+      true);
   se::DeviceDescription device_info;
   FakeThunkPassBufferAllocator allocator;
+  BufferAllocation alloc(0, 1024, 0);
+  BufferAllocation::Slice slice(&alloc, 0, 1);
+  auto fake_thunk = std::make_unique<FakeThunk>(
+      Thunk::ThunkInfo(), Thunk::BufferUses{BufferUse::Read(slice)});
+  Thunk* fake_thunk_ptr = fake_thunk.get();
+  std::vector<std::unique_ptr<Thunk>> thunks;
+  thunks.push_back(std::move(fake_thunk));
+  auto root_thunk =
+      std::make_unique<SequentialThunk>(Thunk::ThunkInfo(), std::move(thunks));
 
+  ThunkChecksumTracingPass pass;
   TF_ASSERT_OK_AND_ASSIGN(
       bool changed, pass.Run(root_thunk.get(), debug_options,
                              /*hlo_module=*/nullptr, device_info, allocator));
   EXPECT_FALSE(changed);
-  EXPECT_TRUE(allocator.CreatedAlloc());
+  EXPECT_THAT(root_thunk->thunks(), ElementsAre(Pointer(fake_thunk_ptr)));
+}
+
+TEST(ThunkChecksumTracingPassTest, InsertsSdcThunks) {
+  static constexpr ThunkId kTestThunkId = ThunkId(123);
+  DebugOptions debug_options;
+  debug_options.set_xla_gpu_experimental_enable_checksum_tracing_on_thunks(
+      true);
+  se::DeviceDescription device_info;
+  FakeThunkPassBufferAllocator allocator;
+  // The callbacks created by ThunkChecksumTracingPass require a HloModule with
+  // a non-null entry computation.
+  auto builder = HloComputation::Builder("entry");
+  HloInstruction* root = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0(1)));
+  std::unique_ptr<HloComputation> entry_computation = builder.Build(root);
+  HloModule hlo_module("test_module", HloModuleConfig());
+  hlo_module.AddEntryComputation(std::move(entry_computation));
+  // Create a fake thunk with a few different buffer uses.
+  BufferAllocation alloc(0, 1024, 0);
+  BufferAllocation::Slice slice_i(&alloc, 0, 1);
+  BufferAllocation::Slice slice_o(&alloc, 1, 1);
+  BufferAllocation::Slice slice_io(&alloc, 2, 1);
+  BufferAllocation::Slice slice_scratch(&alloc, 3, 1);
+  Thunk::ThunkInfo fake_thunk_info;
+  fake_thunk_info.thunk_id = ThunkId(kTestThunkId);
+  auto fake_thunk = std::make_unique<FakeThunk>(
+      fake_thunk_info,
+      Thunk::BufferUses{
+          // Consume means the thunk can reuse the buffer for scratch space, so
+          // only check it on input.
+          BufferUse::Consume(slice_i),
+          // Write is undefined on input, but defined on output.
+          BufferUse::Write(slice_o),
+          // Unlike Consume, Read is supposed to preserve the contents of the
+          // buffer, so we check it on input *and* output.
+          BufferUse::Read(slice_io),
+          // Scratch buffers are not checked at all.
+          BufferUse::Scratch(slice_scratch),
+      });
+  Thunk* fake_thunk_ptr = fake_thunk.get();
+  std::vector<std::unique_ptr<Thunk>> thunks;
+  thunks.push_back(std::move(fake_thunk));
+  auto root_thunk =
+      std::make_unique<SequentialThunk>(Thunk::ThunkInfo(), std::move(thunks));
+
+  ThunkChecksumTracingPass pass;
+  TF_ASSERT_OK_AND_ASSIGN(bool changed,
+                          pass.Run(root_thunk.get(), debug_options, &hlo_module,
+                                   device_info, allocator));
+  EXPECT_TRUE(changed);
+
+  // Expected thunk structure after the pass:
+  // 1. CustomCallThunk (SDC init)
+  // 2. SequentialThunk
+  //    1. SdcThunk (SDC checks on input buffers)
+  //    2. FakeThunk
+  //    3. SdcThunk (SDC checks on output buffers)
+  // 3. CustomCallThunk (SDC dump)
+  const std::vector<std::unique_ptr<Thunk>>& new_thunks = root_thunk->thunks();
+  EXPECT_THAT(new_thunks, SizeIs(3));
+  EXPECT_EQ(new_thunks[0]->kind(), Thunk::Kind::kCustomCall);
+  EXPECT_EQ(new_thunks[1]->kind(), Thunk::Kind::kSequential);
+  EXPECT_EQ(new_thunks[2]->kind(), Thunk::Kind::kCustomCall);
+
+  const CustomCallThunk& sdc_init_thunk =
+      static_cast<const CustomCallThunk&>(*new_thunks[0]);
+  EXPECT_EQ(sdc_init_thunk.target_name(), "xla_gpu_sdc_log_init");
+
+  const CustomCallThunk& sdc_dump_thunk =
+      static_cast<const CustomCallThunk&>(*new_thunks[2]);
+  EXPECT_EQ(sdc_dump_thunk.target_name(), "xla_gpu_sdc_log_dump");
+
+  const std::vector<std::unique_ptr<Thunk>>& sub_thunks =
+      static_cast<const SequentialThunk&>(*new_thunks[1]).thunks();
+  EXPECT_THAT(sub_thunks, SizeIs(3));
+  EXPECT_EQ(sub_thunks[0]->kind(), Thunk::Kind::kSdc);
+  EXPECT_THAT(sub_thunks[1], Pointer(fake_thunk_ptr));
+  EXPECT_EQ(sub_thunks[2]->kind(), Thunk::Kind::kSdc);
+
+  const SdcThunk& sdc_before_fake_thunk =
+      static_cast<const SdcThunk&>(*sub_thunks[0]);
+  EXPECT_THAT(
+      sdc_before_fake_thunk.buffer_slices(),
+      UnorderedElementsAre(
+          Pair(SdcBufferId::Create(kTestThunkId, 0).value(), slice_i),
+          Pair(SdcBufferId::Create(kTestThunkId, 2).value(), slice_io)));
+
+  const SdcThunk& sdc_after_fake_thunk =
+      static_cast<const SdcThunk&>(*sub_thunks[2]);
+  EXPECT_THAT(
+      sdc_after_fake_thunk.buffer_slices(),
+      UnorderedElementsAre(
+          Pair(SdcBufferId::Create(kTestThunkId, 1).value(), slice_o),
+          Pair(SdcBufferId::Create(kTestThunkId, 2).value(), slice_io)));
 }
 
 }  // namespace

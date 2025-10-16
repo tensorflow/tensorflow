@@ -810,6 +810,7 @@ xla_cc_test(
         ":gpu_executable",
         ":launch_dimensions",
         "//xla:debug_options_flags",
+        "//xla:literal_util",
         "//xla:shape_layout",
         "//xla:shape_util",
         "//xla/backends/gpu/runtime:copy_thunk",

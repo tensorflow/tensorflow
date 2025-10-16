@@ -49,6 +49,11 @@ class SdcThunk : public Thunk {
     return {};
   }
 
+  const absl::flat_hash_map<SdcBufferId, BufferAllocation::Slice>&
+  buffer_slices() const {
+    return buffers_;
+  }
+
  private:
   // Loaded in Initialize.
   std::optional<stream_executor::gpu::SdcXorChecksumKernel::KernelType> kernel_;
