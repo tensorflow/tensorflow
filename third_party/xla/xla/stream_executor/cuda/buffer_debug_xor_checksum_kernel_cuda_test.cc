@@ -26,13 +26,13 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
-#include "xla/backends/gpu/runtime/sdc_buffer_id.h"
-#include "xla/backends/gpu/runtime/sdc_log_structs.h"
+#include "xla/backends/gpu/runtime/buffer_debug_log_structs.h"
+#include "xla/backends/gpu/runtime/thunk_buffer_id.h"
 #include "xla/backends/gpu/runtime/thunk_id.h"
-#include "xla/stream_executor/cuda/sdc_log.h"
 #include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/gpu/buffer_debug_log.h"
+#include "xla/stream_executor/gpu/buffer_debug_xor_checksum_kernel.h"
 #include "xla/stream_executor/gpu/gpu_kernel_registry.h"
-#include "xla/stream_executor/gpu/sdc_xor_checksum_kernel.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
@@ -49,9 +49,9 @@ namespace se = stream_executor;
 namespace stream_executor::cuda {
 namespace {
 
-using xla::gpu::SdcBufferId;
-using xla::gpu::SdcLogEntry;
-using xla::gpu::SdcLogHeader;
+using xla::gpu::BufferDebugLogEntry;
+using xla::gpu::BufferDebugLogHeader;
+using xla::gpu::ThunkBufferId;
 using xla::gpu::ThunkId;
 
 class ChecksumKernelTest : public ::testing::Test {
@@ -67,8 +67,9 @@ class ChecksumKernelTest : public ::testing::Test {
     if (!executor_->GetDeviceDescription()
              .cuda_compute_capability()
              .IsAtLeastPascal()) {
-      GTEST_SKIP() << "SDC checksumming is not supported on CUDA architectures "
-                      "older than Pascal due to missing atomic fetch_add";
+      GTEST_SKIP()
+          << "Buffer checksumming is not supported on CUDA architectures older "
+             "than Pascal due to missing atomic fetch_add with system scope";
     }
   }
 
@@ -84,13 +85,15 @@ class ChecksumKernelTest : public ::testing::Test {
 
   template <typename T>
   absl::Status AppendChecksumOnDevice(
-      SdcBufferId entry_id, const T& input, se::cuda::SdcLog& sdc_log,
+      ThunkBufferId entry_id, const T& input,
+      se::cuda::BufferDebugLog& buffer_debug_log,
       stream_executor::ThreadDim dim = stream_executor::ThreadDim(1, 1, 1)) {
     // Load kernel
     gpu::GpuKernelRegistry registry =
         gpu::GpuKernelRegistry::GetGlobalRegistry();
     TF_ASSIGN_OR_RETURN(
-        auto kernel, registry.LoadKernel<gpu::SdcXorChecksumKernel>(executor_));
+        auto kernel,
+        registry.LoadKernel<gpu::BufferDebugXorChecksumKernel>(executor_));
 
     // Setup device buffers
     TF_ASSIGN_OR_RETURN(se::DeviceMemory<uint8_t> device_input,
@@ -103,13 +106,14 @@ class ChecksumKernelTest : public ::testing::Test {
     // Call kernel
     TF_RETURN_IF_ERROR(stream_->Memcpy(&device_input, input.data(),
                                        input.size() * sizeof(input[0])));
-    TF_RETURN_IF_ERROR(
-        kernel.Launch(dim, stream_executor::BlockDim(1, 1, 1), stream_.get(),
-                      entry_id, device_input, device_input.ElementCount(),
-                      sdc_log.GetDeviceHeader(), sdc_log.GetDeviceEntries()));
+    TF_RETURN_IF_ERROR(kernel.Launch(dim, stream_executor::BlockDim(1, 1, 1),
+                                     stream_.get(), entry_id, device_input,
+                                     device_input.ElementCount(),
+                                     buffer_debug_log.GetDeviceHeader(),
+                                     buffer_debug_log.GetDeviceEntries()));
     TF_RETURN_IF_ERROR(stream_->BlockHostUntilDone());
 
-    // The result gets stored in `sdc_log`.
+    // The result gets stored in `buffer_debug_log`.
     return absl::OkStatus();
   }
 
@@ -130,10 +134,11 @@ TEST_F(ChecksumKernelTest, ComputesCorrectChecksumForMultipleOf32Bit) {
   input[1003] ^= 0x12;
   constexpr uint32_t kExpectedChecksum = 0x12345678;
 
-  TF_ASSERT_OK_AND_ASSIGN(se::cuda::SdcLog device_log,
-                          se::cuda::SdcLog::CreateOnDevice(*stream_, mem));
+  TF_ASSERT_OK_AND_ASSIGN(
+      se::cuda::BufferDebugLog device_log,
+      se::cuda::BufferDebugLog::CreateOnDevice(*stream_, mem));
 
-  TF_EXPECT_OK(AppendChecksumOnDevice(SdcBufferId(), input, device_log));
+  TF_EXPECT_OK(AppendChecksumOnDevice(ThunkBufferId(), input, device_log));
 
   TF_ASSERT_OK_AND_ASSIGN(auto host_log, device_log.ReadFromDevice(*stream_));
   ASSERT_GE(host_log.size(), 1);
@@ -144,10 +149,11 @@ TEST_F(ChecksumKernelTest,
        PadsMostSignifantBitsOfIncomplete32BitInputWordWithZeros) {
   se::DeviceMemory<uint8_t> mem = executor_->AllocateArray<uint8_t>(1024);
   const std::vector<uint8_t> kInput = std::vector<uint8_t>(1023, 0x55);
-  TF_ASSERT_OK_AND_ASSIGN(se::cuda::SdcLog device_log,
-                          se::cuda::SdcLog::CreateOnDevice(*stream_, mem));
+  TF_ASSERT_OK_AND_ASSIGN(
+      se::cuda::BufferDebugLog device_log,
+      se::cuda::BufferDebugLog::CreateOnDevice(*stream_, mem));
 
-  TF_EXPECT_OK(AppendChecksumOnDevice(SdcBufferId(), kInput, device_log));
+  TF_EXPECT_OK(AppendChecksumOnDevice(ThunkBufferId(), kInput, device_log));
 
   TF_ASSERT_OK_AND_ASSIGN(auto host_log, device_log.ReadFromDevice(*stream_));
   ASSERT_GE(host_log.size(), 1);
@@ -162,10 +168,11 @@ TEST_F(ChecksumKernelTest, ComputesCorrectChecksumInParallel) {
   // Xor with the expected checksum value.
   input[1000] ^= 0x12345678;
   constexpr uint32_t kExpectedChecksum = 0x12345678;
-  TF_ASSERT_OK_AND_ASSIGN(se::cuda::SdcLog device_log,
-                          se::cuda::SdcLog::CreateOnDevice(*stream_, mem));
+  TF_ASSERT_OK_AND_ASSIGN(
+      se::cuda::BufferDebugLog device_log,
+      se::cuda::BufferDebugLog::CreateOnDevice(*stream_, mem));
 
-  TF_EXPECT_OK(AppendChecksumOnDevice(SdcBufferId(), input, device_log,
+  TF_EXPECT_OK(AppendChecksumOnDevice(ThunkBufferId(), input, device_log,
                                       se::ThreadDim(2, 4, 8)));
 
   TF_ASSERT_OK_AND_ASSIGN(auto host_log, device_log.ReadFromDevice(*stream_));
@@ -180,10 +187,11 @@ TEST_F(ChecksumKernelTest, ComputesCorrectChecksumInParallelWithMaxThreads) {
   // Xor with the expected checksum value.
   input[1000] ^= 0x12345678;
   constexpr uint32_t kExpectedChecksum = 0x12345678;
-  TF_ASSERT_OK_AND_ASSIGN(se::cuda::SdcLog device_log,
-                          se::cuda::SdcLog::CreateOnDevice(*stream_, mem));
+  TF_ASSERT_OK_AND_ASSIGN(
+      se::cuda::BufferDebugLog device_log,
+      se::cuda::BufferDebugLog::CreateOnDevice(*stream_, mem));
 
-  TF_EXPECT_OK(AppendChecksumOnDevice(SdcBufferId(), input, device_log,
+  TF_EXPECT_OK(AppendChecksumOnDevice(ThunkBufferId(), input, device_log,
                                       se::ThreadDim(128, 4, 2)));
 
   TF_ASSERT_OK_AND_ASSIGN(auto host_log, device_log.ReadFromDevice(*stream_));
@@ -193,14 +201,15 @@ TEST_F(ChecksumKernelTest, ComputesCorrectChecksumInParallelWithMaxThreads) {
 
 TEST_F(ChecksumKernelTest, AppendsChecksumsToLog) {
   se::DeviceMemory<uint8_t> mem = executor_->AllocateArray<uint8_t>(1024);
-  SdcBufferId kId123 = SdcBufferId::Create(ThunkId(123), 0).value();
-  SdcBufferId kId456 = SdcBufferId::Create(ThunkId(456), 0).value();
-  SdcBufferId kId789 = SdcBufferId::Create(ThunkId(789), 0).value();
+  ThunkBufferId kId123 = ThunkBufferId::Create(ThunkId(123), 0).value();
+  ThunkBufferId kId456 = ThunkBufferId::Create(ThunkId(456), 0).value();
+  ThunkBufferId kId789 = ThunkBufferId::Create(ThunkId(789), 0).value();
   constexpr std::array<uint32_t, 1> kInput123 = {0x01230123};
   constexpr std::array<uint32_t, 1> kInput456 = {0x04560456};
   constexpr std::array<uint32_t, 1> kInput789 = {0x07890789};
-  TF_ASSERT_OK_AND_ASSIGN(se::cuda::SdcLog device_log,
-                          se::cuda::SdcLog::CreateOnDevice(*stream_, mem));
+  TF_ASSERT_OK_AND_ASSIGN(
+      se::cuda::BufferDebugLog device_log,
+      se::cuda::BufferDebugLog::CreateOnDevice(*stream_, mem));
 
   TF_EXPECT_OK(AppendChecksumOnDevice(kId123, kInput123, device_log));
   TF_EXPECT_OK(AppendChecksumOnDevice(kId456, kInput456, device_log));
@@ -218,15 +227,16 @@ TEST_F(ChecksumKernelTest, AppendsChecksumsToLog) {
 
 TEST_F(ChecksumKernelTest, DiscardsOverflowingChecksums) {
   se::DeviceMemory<uint8_t> mem = executor_->AllocateArray<uint8_t>(
-      sizeof(SdcLogHeader) + sizeof(SdcLogEntry) * 2);
-  SdcBufferId kId123 = SdcBufferId::Create(ThunkId(123), 0).value();
-  SdcBufferId kId456 = SdcBufferId::Create(ThunkId(456), 0).value();
-  SdcBufferId kId789 = SdcBufferId::Create(ThunkId(789), 0).value();
+      sizeof(BufferDebugLogHeader) + sizeof(BufferDebugLogEntry) * 2);
+  ThunkBufferId kId123 = ThunkBufferId::Create(ThunkId(123), 0).value();
+  ThunkBufferId kId456 = ThunkBufferId::Create(ThunkId(456), 0).value();
+  ThunkBufferId kId789 = ThunkBufferId::Create(ThunkId(789), 0).value();
   constexpr std::array<uint32_t, 1> kInput123 = {0x01230123};
   constexpr std::array<uint32_t, 1> kInput456 = {0x04560456};
   constexpr std::array<uint32_t, 1> kInput789 = {0x07890789};
-  TF_ASSERT_OK_AND_ASSIGN(se::cuda::SdcLog device_log,
-                          se::cuda::SdcLog::CreateOnDevice(*stream_, mem));
+  TF_ASSERT_OK_AND_ASSIGN(
+      se::cuda::BufferDebugLog device_log,
+      se::cuda::BufferDebugLog::CreateOnDevice(*stream_, mem));
 
   TF_EXPECT_OK(AppendChecksumOnDevice(kId123, kInput123, device_log));
   TF_EXPECT_OK(AppendChecksumOnDevice(kId456, kInput456, device_log));

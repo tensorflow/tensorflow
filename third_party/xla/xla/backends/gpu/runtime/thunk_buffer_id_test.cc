@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/backends/gpu/runtime/sdc_buffer_id.h"
+#include "xla/backends/gpu/runtime/thunk_buffer_id.h"
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -24,22 +24,23 @@ limitations under the License.
 
 namespace {
 
-TEST(SdcBufferIdTest, CreateFailsForLargeBufferIndex) {
-  EXPECT_THAT(xla::gpu::SdcBufferId::Create(xla::gpu::ThunkId(123),
-                                            /*buffer_idx=*/256),
+TEST(ThunkBufferIdTest, CreateFailsForLargeBufferIndex) {
+  EXPECT_THAT(xla::gpu::ThunkBufferId::Create(xla::gpu::ThunkId(123),
+                                              /*buffer_idx=*/256),
               absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
-TEST(SdcBufferIdTest, CreateSucceedsForSmallBufferIndex) {
-  EXPECT_THAT(xla::gpu::SdcBufferId::Create(xla::gpu::ThunkId(123),
-                                            /*buffer_idx=*/255),
+TEST(ThunkBufferIdTest, CreateSucceedsForSmallBufferIndex) {
+  EXPECT_THAT(xla::gpu::ThunkBufferId::Create(xla::gpu::ThunkId(123),
+                                              /*buffer_idx=*/255),
               absl_testing::IsOk());
 }
 
-TEST(SdcBufferIdTest, CorrectlyStoresAndExtractsThunkIdAndBufferIndex) {
-  TF_ASSERT_OK_AND_ASSIGN(xla::gpu::SdcBufferId buffer_id,
-                          xla::gpu::SdcBufferId::Create(xla::gpu::ThunkId(123),
-                                                        /*buffer_idx=*/45));
+TEST(ThunkBufferIdTest, CorrectlyStoresAndExtractsThunkIdAndBufferIndex) {
+  TF_ASSERT_OK_AND_ASSIGN(
+      xla::gpu::ThunkBufferId buffer_id,
+      xla::gpu::ThunkBufferId::Create(xla::gpu::ThunkId(123),
+                                      /*buffer_idx=*/45));
 
   EXPECT_THAT(buffer_id.thunk_id(), xla::gpu::ThunkId(123));
   EXPECT_THAT(buffer_id.buffer_idx(), 45);

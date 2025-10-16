@@ -13,57 +13,59 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_BACKENDS_GPU_RUNTIME_SDC_LOG_STRUCTS_H_
-#define XLA_BACKENDS_GPU_RUNTIME_SDC_LOG_STRUCTS_H_
+#ifndef XLA_BACKENDS_GPU_RUNTIME_BUFFER_DEBUG_LOG_STRUCTS_H_
+#define XLA_BACKENDS_GPU_RUNTIME_BUFFER_DEBUG_LOG_STRUCTS_H_
 
 #include <cstddef>
 #include <cstdint>
 #include <tuple>
 
-#include "xla/backends/gpu/runtime/sdc_buffer_id.h"
+#include "xla/backends/gpu/runtime/thunk_buffer_id.h"
 
 namespace xla::gpu {
 
-struct SdcLogEntry {
+struct BufferDebugLogEntry {
   // An ID that uniquely identifies a thunk and its specific input or output
   // buffer.
-  SdcBufferId entry_id;
+  ThunkBufferId entry_id;
   uint32_t checksum;
 
   template <typename Sink>
-  friend void AbslStringify(Sink& sink, const SdcLogEntry& entry) {
+  friend void AbslStringify(Sink& sink, const BufferDebugLogEntry& entry) {
     absl::Format(&sink, "{entry_id: %v, checksum: %u}", entry.entry_id,
                  entry.checksum);
   }
 
-  bool operator==(const SdcLogEntry& other) const {
+  bool operator==(const BufferDebugLogEntry& other) const {
     return std::tie(entry_id, checksum) ==
            std::tie(other.entry_id, other.checksum);
   }
 
-  bool operator!=(const SdcLogEntry& other) const { return !(*this == other); }
+  bool operator!=(const BufferDebugLogEntry& other) const {
+    return !(*this == other);
+  }
 };
 
 // The struct layout must match on both host and device.
-static_assert(_Alignof(SdcLogEntry) == _Alignof(uint32_t));
-static_assert(sizeof(SdcLogEntry) == sizeof(uint32_t) * 2);
-static_assert(offsetof(SdcLogEntry, entry_id) == 0);
-static_assert(offsetof(SdcLogEntry, checksum) == sizeof(uint32_t));
+static_assert(_Alignof(BufferDebugLogEntry) == _Alignof(uint32_t));
+static_assert(sizeof(BufferDebugLogEntry) == sizeof(uint32_t) * 2);
+static_assert(offsetof(BufferDebugLogEntry, entry_id) == 0);
+static_assert(offsetof(BufferDebugLogEntry, checksum) == sizeof(uint32_t));
 
-struct SdcLogHeader {
-  // The first entry in `SdcLogEntry` following the header that has not
+struct BufferDebugLogHeader {
+  // The first entry in `BufferDebugLogEntry` following the header that has not
   // been written to. May be bigger than `capacity` if the log was truncated.
   uint32_t write_idx;
-  // The number of `SdcLogEntry` structs the log can hold.
+  // The number of `BufferDebugLogEntry` structs the log can hold.
   uint32_t capacity;
 };
 
 // The struct layout must match on both host and device.
-static_assert(_Alignof(SdcLogHeader) == _Alignof(uint32_t));
-static_assert(sizeof(SdcLogHeader) == sizeof(uint32_t) * 2);
-static_assert(offsetof(SdcLogHeader, write_idx) == 0);
-static_assert(offsetof(SdcLogHeader, capacity) == sizeof(uint32_t));
+static_assert(_Alignof(BufferDebugLogHeader) == _Alignof(uint32_t));
+static_assert(sizeof(BufferDebugLogHeader) == sizeof(uint32_t) * 2);
+static_assert(offsetof(BufferDebugLogHeader, write_idx) == 0);
+static_assert(offsetof(BufferDebugLogHeader, capacity) == sizeof(uint32_t));
 
 }  // namespace xla::gpu
 
-#endif  // XLA_BACKENDS_GPU_RUNTIME_SDC_LOG_STRUCTS_H_
+#endif  // XLA_BACKENDS_GPU_RUNTIME_BUFFER_DEBUG_LOG_STRUCTS_H_

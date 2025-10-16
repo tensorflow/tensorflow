@@ -422,52 +422,9 @@ cuda_library(
     ],
 )
 
-cc_library(
-    name = "sdc_log",
-    srcs = ["sdc_log.cc"],
-    hdrs = ["sdc_log.h"],
-    deps = [
-        "//xla/backends/gpu/runtime:sdc_log_structs",
-        "//xla/backends/gpu/runtime:sdc_proto_cc",
-        "//xla/stream_executor:device_memory",
-        "//xla/stream_executor:device_memory_allocator",
-        "//xla/stream_executor:stream",
-        "//xla/tsl/platform:errors",
-        "//xla/tsl/platform:statusor",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings:str_format",
-    ],
-)
-
-xla_test(
-    name = "sdc_log_test",
-    srcs = ["sdc_log_test.cc"],
-    backends = ["gpu"],
-    deps = [
-        ":sdc_log",
-        "//xla/backends/gpu/runtime:sdc_buffer_id",
-        "//xla/backends/gpu/runtime:sdc_log_structs",
-        "//xla/backends/gpu/runtime:thunk_id",
-        "//xla/stream_executor:device_memory",
-        "//xla/stream_executor:platform",
-        "//xla/stream_executor:platform_manager",
-        "//xla/stream_executor:stream",
-        "//xla/stream_executor:stream_executor_h",
-        "//xla/stream_executor:stream_executor_memory_allocator",
-        "//xla/tsl/lib/core:status_test_util",
-        "//xla/tsl/platform:statusor",
-        "//xla/tsl/util/proto:proto_matchers",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:status_matchers",
-        "@com_google_absl//absl/types:span",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
 cuda_library(
-    name = "sdc_xor_checksum_kernel_cuda",
-    srcs = ["sdc_xor_checksum_kernel_cuda.cu.cc"],
+    name = "buffer_debug_xor_checksum_kernel_cuda",
+    srcs = ["buffer_debug_xor_checksum_kernel_cuda.cu.cc"],
     # copybara:uncomment compatible_with = ["//buildenv/target:non_prod"],
     tags = [
         "cuda-only",
@@ -475,11 +432,11 @@ cuda_library(
     ],
     deps = [
         ":cuda_platform",
-        "//xla/backends/gpu/runtime:sdc_buffer_id",
-        "//xla/backends/gpu/runtime:sdc_log_structs",
+        "//xla/backends/gpu/runtime:buffer_debug_log_structs",
+        "//xla/backends/gpu/runtime:thunk_buffer_id",
         "//xla/stream_executor:kernel_spec",
+        "//xla/stream_executor/gpu:buffer_debug_xor_checksum_kernel",
         "//xla/stream_executor/gpu:gpu_kernel_registry",
-        "//xla/stream_executor/gpu:sdc_xor_checksum_kernel",
         "//xla/tsl/platform:logging",
         "@com_google_absl//absl/base",
         "@local_config_cuda//cuda:cuda_headers",
@@ -488,15 +445,14 @@ cuda_library(
 )
 
 xla_test(
-    name = "sdc_xor_checksum_kernel_cuda_test",
-    srcs = ["sdc_xor_checksum_kernel_cuda_test.cc"],
+    name = "buffer_debug_xor_checksum_kernel_cuda_test",
+    srcs = ["buffer_debug_xor_checksum_kernel_cuda_test.cc"],
     backends = ["gpu"],
     tags = ["cuda-only"],
     deps = [
-        ":sdc_log",
-        ":sdc_xor_checksum_kernel_cuda",
-        "//xla/backends/gpu/runtime:sdc_buffer_id",
-        "//xla/backends/gpu/runtime:sdc_log_structs",
+        ":buffer_debug_xor_checksum_kernel_cuda",
+        "//xla/backends/gpu/runtime:buffer_debug_log_structs",
+        "//xla/backends/gpu/runtime:thunk_buffer_id",
         "//xla/backends/gpu/runtime:thunk_id",
         "//xla/stream_executor:device_memory",
         "//xla/stream_executor:launch_dim",
@@ -506,8 +462,9 @@ xla_test(
         "//xla/stream_executor:stream_executor_h",
         "//xla/stream_executor:stream_executor_memory_allocator",
         "//xla/stream_executor:typed_kernel_factory",
+        "//xla/stream_executor/gpu:buffer_debug_log",
+        "//xla/stream_executor/gpu:buffer_debug_xor_checksum_kernel",
         "//xla/stream_executor/gpu:gpu_kernel_registry",
-        "//xla/stream_executor/gpu:sdc_xor_checksum_kernel",
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",
@@ -1277,6 +1234,7 @@ cc_library(
     deps = [
         ":all_reduce_kernel_cuda",
         ":buffer_comparator_kernel_cuda",
+        ":buffer_debug_xor_checksum_kernel_cuda",
         ":cublas_plugin",
         ":cuda_platform",
         ":cuda_solver_context",
@@ -1286,7 +1244,6 @@ cc_library(
         ":ragged_all_to_all_kernel_cuda",
         ":redzone_allocator_kernel_cuda",
         ":repeat_buffer_kernel_cuda",
-        ":sdc_xor_checksum_kernel_cuda",
         ":topk_kernel_cuda",
         "//xla/tsl/cuda:cusolver",
         "//xla/tsl/cuda:cusparse",

@@ -27,11 +27,11 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "xla/backends/gpu/runtime/buffers_checksum_thunk.h"
 #include "xla/backends/gpu/runtime/custom_call_thunk.h"
-#include "xla/backends/gpu/runtime/sdc_buffer_id.h"
-#include "xla/backends/gpu/runtime/sdc_thunk.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/backends/gpu/runtime/thunk_buffer_id.h"
 #include "xla/backends/gpu/runtime/thunk_pass_pipeline.h"
 #include "xla/ffi/api/c_api.h"
 #include "xla/ffi/ffi.h"
@@ -41,8 +41,8 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/dump.h"
 #include "xla/shape.h"
-#include "xla/stream_executor/cuda/sdc_log.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/gpu/buffer_debug_log.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
@@ -51,16 +51,16 @@ namespace xla::gpu {
 
 namespace se = stream_executor;
 
-// With SdcLogEntry size of 8 bytes, this is enough to hold ~8K entries.
+// With BufferDebugLogEntry size of 8 bytes, this is enough to hold ~8K entries.
 constexpr size_t kLogSizeBytes = 64 * 1024;
 
 namespace {
 
 // If the thunk has any interesting buffers to check, turns it into a sequence
 // of:
-// - SdcThunk checking the buffers before execution
+// - BuffersDebugChecksumThunk checking the buffers before execution
 // - The original thunk
-// - SdcThunk checking the buffers after execution
+// - BuffersDebugChecksumThunk checking the buffers after execution
 //
 // If the thunk got wrapped, the data dependencies between the thunks will be
 // configured to ensure `predecessor_thunk` executes before the wrapped thunk
@@ -73,14 +73,14 @@ absl::StatusOr<std::unique_ptr<Thunk>> WrapThunk(
     return thunk;
   }
 
-  absl::flat_hash_map<SdcBufferId, BufferAllocation::Slice>
+  absl::flat_hash_map<ThunkBufferId, BufferAllocation::Slice>
       buffers_to_check_before;
-  absl::flat_hash_map<SdcBufferId, BufferAllocation::Slice>
+  absl::flat_hash_map<ThunkBufferId, BufferAllocation::Slice>
       buffers_to_check_after;
 
   for (size_t buffer_idx = 0; buffer_idx < thunk_buffers.size(); ++buffer_idx) {
-    absl::StatusOr<SdcBufferId> buffer_id =
-        SdcBufferId::Create(thunk->thunk_info().thunk_id, buffer_idx);
+    absl::StatusOr<ThunkBufferId> buffer_id =
+        ThunkBufferId::Create(thunk->thunk_info().thunk_id, buffer_idx);
     if (!buffer_id.ok()) {
       LOG(WARNING) << "Skipping buffer " << buffer_idx << " in thunk "
                    << thunk->thunk_info().thunk_id << ": "
@@ -103,20 +103,21 @@ absl::StatusOr<std::unique_ptr<Thunk>> WrapThunk(
 
   std::vector<std::unique_ptr<Thunk>> thunk_and_checks;
   if (!buffers_to_check_before.empty()) {
-    auto sdc_before_thunk = std::make_unique<SdcThunk>(
-        Thunk::ThunkInfo(), log_slice, std::move(buffers_to_check_before));
-    thunk->add_control_predecessor(sdc_before_thunk.get());
-    thunk_and_checks.push_back(std::move(sdc_before_thunk));
+    auto buffer_debug_before_thunk =
+        std::make_unique<BuffersDebugChecksumThunk>(
+            Thunk::ThunkInfo(), log_slice, std::move(buffers_to_check_before));
+    thunk->add_control_predecessor(buffer_debug_before_thunk.get());
+    thunk_and_checks.push_back(std::move(buffer_debug_before_thunk));
   }
 
   Thunk* thunk_ptr = thunk.get();
   thunk_and_checks.push_back(std::move(thunk));
 
   if (!buffers_to_check_after.empty()) {
-    auto sdc_after_thunk = std::make_unique<SdcThunk>(
+    auto buffer_debug_after_thunk = std::make_unique<BuffersDebugChecksumThunk>(
         Thunk::ThunkInfo(), log_slice, std::move(buffers_to_check_after));
-    sdc_after_thunk->add_control_predecessor(thunk_ptr);
-    thunk_and_checks.push_back(std::move(sdc_after_thunk));
+    buffer_debug_after_thunk->add_control_predecessor(thunk_ptr);
+    thunk_and_checks.push_back(std::move(buffer_debug_after_thunk));
   }
 
   auto wrapped_thunk = std::make_unique<SequentialThunk>(
@@ -129,8 +130,8 @@ absl::StatusOr<std::unique_ptr<Thunk>> WrapThunk(
 XLA_FFI_DEFINE_HANDLER_SYMBOL(
     kDebugLogInitHandler,
     [](se::Stream* absl_nonnull stream, xla::ffi::Buffer<U8> log_buffer) {
-      return se::cuda::SdcLog::CreateOnDevice(*stream,
-                                              log_buffer.device_memory())
+      return se::cuda::BufferDebugLog::CreateOnDevice(
+                 *stream, log_buffer.device_memory())
           .status();
     },
     xla::ffi::Ffi::Bind().Ctx<xla::ffi::Stream>().Arg<xla::ffi::Buffer<U8>>());
@@ -139,21 +140,22 @@ XLA_FFI_DEFINE_HANDLER_SYMBOL(
     kDebugLogDumpHandler,
     [](se::Stream* stream, const HloComputation* absl_nonnull hlo_computation,
        xla::ffi::Buffer<U8> log_buffer) {
-      VLOG(1) << "[SDC LOG] HLO computation ptr: " << hlo_computation;
+      VLOG(1) << "HLO computation ptr: " << hlo_computation;
       const HloModule* hlo_module = hlo_computation->parent();
-      VLOG(1) << "[SDC LOG] HLO module ptr: " << hlo_module;
-      VLOG(1) << "[SDC LOG] HLO module name: " << hlo_module->name();
+      VLOG(1) << "HLO module ptr: " << hlo_module;
+      VLOG(1) << "HLO module name: " << hlo_module->name();
       CHECK(hlo_module != nullptr);
       const DebugOptions& debug_options = hlo_module->config().debug_options();
 
-      se::cuda::SdcLog sdc_log = se::cuda::SdcLog::FromDeviceMemoryUnchecked(
-          log_buffer.device_memory());
-      TF_ASSIGN_OR_RETURN(xla::gpu::SdcLogProto sdc_log_proto,
-                          sdc_log.ReadProto(*stream));
-      VLOG(1) << "[SDC LOG] read " << sdc_log_proto.entries_size()
-              << " entries";
-      DumpPerExecutionProtobufToFile(*hlo_module, sdc_log_proto, debug_options,
-                                     "sdc_log", nullptr);
+      se::cuda::BufferDebugLog buffer_debug_log =
+          se::cuda::BufferDebugLog::FromDeviceMemoryUnchecked(
+              log_buffer.device_memory());
+      TF_ASSIGN_OR_RETURN(xla::gpu::BufferDebugLogProto buffer_debug_log_proto,
+                          buffer_debug_log.ReadProto(*stream));
+      VLOG(1) << "read " << buffer_debug_log_proto.entries_size() << " entries";
+      DumpPerExecutionProtobufToFile(*hlo_module, buffer_debug_log_proto,
+                                     debug_options, "buffer_debug_log",
+                                     nullptr);
       return absl::OkStatus();
     },
     xla::ffi::Ffi::Bind()
@@ -168,11 +170,11 @@ absl::StatusOr<bool> ThunkChecksumTracingPass::Run(
     const HloModule* absl_nullable hlo_module,
     const se::DeviceDescription& device_info,
     ThunkPassBufferAllocator& allocator) {
-  VLOG(1) << "[SDC LOG] ThunkChecksumTracingPass running";
+  VLOG(1) << "ThunkChecksumTracingPass running";
   if (hlo_module == nullptr) {
-    // We need the HLO module to dump the SDC log proto to a file. If it's not
-    // available, there's no point in doing extra work.
-    VLOG(1) << "[SDC LOG] HLO module is null, skipping";
+    // We need the HLO module to dump the buffer debug log proto to a file. If
+    // it's not available, there's no point in doing extra work.
+    VLOG(1) << "HLO module is null, skip buffer checksumming";
     return false;
   }
 
@@ -184,35 +186,36 @@ absl::StatusOr<bool> ThunkChecksumTracingPass::Run(
       /*shape=*/Shape(PrimitiveType::U8, /*dimensions=*/{log_alloc->size()}),
   };
 
-  XLA_FFI_Handler_Bundle sdc_init_bundle{};
-  sdc_init_bundle.execute = kDebugLogInitHandler;
+  XLA_FFI_Handler_Bundle buffer_debug_init_bundle{};
+  buffer_debug_init_bundle.execute = kDebugLogInitHandler;
   TF_ASSIGN_OR_RETURN(
-      auto sdc_init_thunk,
-      CustomCallThunk::Create(Thunk::ThunkInfo(), "xla_gpu_sdc_log_init",
-                              sdc_init_bundle, /*operands=*/{shaped_log_slice},
-                              /*results=*/{}, /*attributes=*/{},
-                              hlo_module->entry_computation()));
-
-  XLA_FFI_Handler_Bundle sdc_dump_bundle{};
-  sdc_dump_bundle.execute = kDebugLogDumpHandler;
-  TF_ASSIGN_OR_RETURN(
-      auto sdc_dump_thunk,
+      auto buffer_debug_init_thunk,
       CustomCallThunk::Create(
-          Thunk::ThunkInfo(), "xla_gpu_sdc_log_dump", sdc_dump_bundle,
-          /*operands=*/{shaped_log_slice},
+          Thunk::ThunkInfo(), "xla_gpu_buffer_debug_log_init",
+          buffer_debug_init_bundle, /*operands=*/{shaped_log_slice},
           /*results=*/{}, /*attributes=*/{}, hlo_module->entry_computation()));
+
+  XLA_FFI_Handler_Bundle buffer_debug_dump_bundle{};
+  buffer_debug_dump_bundle.execute = kDebugLogDumpHandler;
+  TF_ASSIGN_OR_RETURN(auto buffer_debug_dump_thunk,
+                      CustomCallThunk::Create(Thunk::ThunkInfo(),
+                                              "xla_gpu_buffer_debug_log_dump",
+                                              buffer_debug_dump_bundle,
+                                              /*operands=*/{shaped_log_slice},
+                                              /*results=*/{}, /*attributes=*/{},
+                                              hlo_module->entry_computation()));
 
   ThunkSequence& thunks = root_thunk->thunks();
   for (auto& thunk : thunks) {
-    TF_ASSIGN_OR_RETURN(thunk,
-                        WrapThunk(std::move(thunk), log_slice,
-                                  /*predecessor_thunk=*/*sdc_init_thunk.get(),
-                                  /*successor_thunk=*/*sdc_dump_thunk.get()));
+    TF_ASSIGN_OR_RETURN(
+        thunk, WrapThunk(std::move(thunk), log_slice,
+                         /*predecessor_thunk=*/*buffer_debug_init_thunk.get(),
+                         /*successor_thunk=*/*buffer_debug_dump_thunk.get()));
   }
 
   thunks.reserve(thunks.size() + 2);
-  thunks.insert(thunks.begin(), std::move(sdc_init_thunk));
-  thunks.push_back(std::move(sdc_dump_thunk));
+  thunks.insert(thunks.begin(), std::move(buffer_debug_init_thunk));
+  thunks.push_back(std::move(buffer_debug_dump_thunk));
 
   return true;
 }

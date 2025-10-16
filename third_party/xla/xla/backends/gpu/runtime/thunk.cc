@@ -259,6 +259,7 @@ Thunk::ExecuteParams::ExecuteParams(
     CASE(kAllToAll);
     CASE(kAllToAllDone);
     CASE(kAllToAllStart);
+    CASE(kBuffersDebugChecksum);
     CASE(kCholesky);
     CASE(kCollectiveBroadcast);
     CASE(kCollectiveBroadcastDone);
@@ -314,7 +315,6 @@ Thunk::ExecuteParams::ExecuteParams(
     CASE(kReduceScatterDone);
     CASE(kReduceScatterStart);
     CASE(kReplicaId);
-    CASE(kSdc);
     CASE(kSelectK);
     CASE(kSend);
     CASE(kSendDone);

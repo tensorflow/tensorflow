@@ -19,11 +19,11 @@ limitations under the License.
 
 #include "absl/base/casts.h"
 #include "third_party/gpus/cuda/include/cuda/atomic"
-#include "xla/backends/gpu/runtime/sdc_buffer_id.h"
-#include "xla/backends/gpu/runtime/sdc_log_structs.h"
+#include "xla/backends/gpu/runtime/buffer_debug_log_structs.h"
+#include "xla/backends/gpu/runtime/thunk_buffer_id.h"
 #include "xla/stream_executor/cuda/cuda_platform.h"
+#include "xla/stream_executor/gpu/buffer_debug_xor_checksum_kernel.h"
 #include "xla/stream_executor/gpu/gpu_kernel_registry.h"
-#include "xla/stream_executor/gpu/sdc_xor_checksum_kernel.h"
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/tsl/platform/logging.h"
 
@@ -117,10 +117,10 @@ __device__ void ReduceXor(const uint32_t* input, uint64_t input_size,
 // LIMITATIONS:
 // - Only a single thread block is supported.
 // - Block dimensions must be a power of 2.
-__global__ void AppendChecksum(xla::gpu::SdcBufferId entry_id,
+__global__ void AppendChecksum(xla::gpu::ThunkBufferId entry_id,
                                const uint8_t* input, uint64_t input_size,
-                               xla::gpu::SdcLogHeader* log_header,
-                               xla::gpu::SdcLogEntry* log_entries) {
+                               xla::gpu::BufferDebugLogHeader* log_header,
+                               xla::gpu::BufferDebugLogEntry* log_entries) {
   const uint32_t block_size = blockDim.x * blockDim.y * blockDim.z;
   const uint32_t* input_u32 = reinterpret_cast<const uint32_t*>(input);
   const uint64_t input_u32_size = input_size / sizeof(uint32_t);
@@ -196,15 +196,15 @@ __global__ void AppendChecksum(xla::gpu::SdcBufferId entry_id,
   }
 }
 
-absl::StatusOr<se::KernelLoaderSpec> GetSdcXorChecksumKernelSpec() {
+absl::StatusOr<se::KernelLoaderSpec> GetChecksumKernelSpec() {
   return se::KernelLoaderSpec::CreateInProcessSymbolSpec(
-      absl::bit_cast<void*>(&AppendChecksum), "SdcXorChecksumKernel",
+      absl::bit_cast<void*>(&AppendChecksum), "BufferDebugXorChecksumKernel",
       /*arity=*/5);
 }
 
 }  // namespace
 
 GPU_KERNEL_REGISTRY_REGISTER_KERNEL_STATICALLY(
-    SdcXorChecksumKernel, se::gpu::SdcXorChecksumKernel,
+    BufferDebugXorChecksumKernel, se::gpu::BufferDebugXorChecksumKernel,
     se::cuda::kCudaPlatformId,
-    ([](size_t _arity) { return GetSdcXorChecksumKernelSpec().value(); }));
+    ([](size_t _arity) { return GetChecksumKernelSpec().value(); }));

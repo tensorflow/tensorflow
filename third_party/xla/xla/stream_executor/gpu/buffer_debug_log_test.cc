@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/stream_executor/cuda/sdc_log.h"
+#include "xla/stream_executor/gpu/buffer_debug_log.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -27,8 +27,8 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/types/span.h"
-#include "xla/backends/gpu/runtime/sdc_buffer_id.h"
-#include "xla/backends/gpu/runtime/sdc_log_structs.h"
+#include "xla/backends/gpu/runtime/buffer_debug_log_structs.h"
+#include "xla/backends/gpu/runtime/thunk_buffer_id.h"
 #include "xla/backends/gpu/runtime/thunk_id.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/platform.h"
@@ -44,13 +44,13 @@ namespace stream_executor::cuda {
 namespace {
 
 using ::tsl::proto_testing::EqualsProto;
-using ::xla::gpu::SdcBufferId;
-using ::xla::gpu::SdcLogEntry;
-using ::xla::gpu::SdcLogHeader;
-using ::xla::gpu::SdcLogProto;
+using ::xla::gpu::BufferDebugLogEntry;
+using ::xla::gpu::BufferDebugLogHeader;
+using ::xla::gpu::BufferDebugLogProto;
+using ::xla::gpu::ThunkBufferId;
 using ::xla::gpu::ThunkId;
 
-class SdcLogTest : public ::testing::Test {
+class BufferDebugLogTest : public ::testing::Test {
  protected:
   void SetUp() override {
     TF_ASSERT_OK_AND_ASSIGN(platform_,
@@ -67,66 +67,69 @@ class SdcLogTest : public ::testing::Test {
   std::unique_ptr<StreamExecutorMemoryAllocator> allocator_;
 };
 
-TEST_F(SdcLogTest, CreateSdcLogOnDevice_InitializesEmptyLog) {
+TEST_F(BufferDebugLogTest, CreateBufferDebugLogOnDevice_InitializesEmptyLog) {
   DeviceMemory<uint8_t> log_buffer = executor_->AllocateArray<uint8_t>(1024);
 
-  TF_ASSERT_OK_AND_ASSIGN(SdcLog device_log,
-                          SdcLog::CreateOnDevice(*stream_, log_buffer));
+  TF_ASSERT_OK_AND_ASSIGN(BufferDebugLog device_log,
+                          BufferDebugLog::CreateOnDevice(*stream_, log_buffer));
   TF_ASSERT_OK_AND_ASSIGN(auto host_log, device_log.ReadFromDevice(*stream_));
 
   EXPECT_EQ(host_log.size(), 0);
 }
 
-TEST_F(SdcLogTest, CreateSdcLogOnDevice_InitializesLogWithCorrectCapacity) {
+TEST_F(BufferDebugLogTest,
+       CreateBufferDebugLogOnDevice_InitializesLogWithCorrectCapacity) {
   constexpr size_t kMaxEntries = 10;
-  constexpr size_t kExpectedHeaderSize = sizeof(SdcLogHeader);
-  constexpr size_t kExpectedEntriesSize = sizeof(SdcLogEntry) * kMaxEntries;
+  constexpr size_t kExpectedHeaderSize = sizeof(BufferDebugLogHeader);
+  constexpr size_t kExpectedEntriesSize =
+      sizeof(BufferDebugLogEntry) * kMaxEntries;
   DeviceMemory<uint8_t> log_buffer = executor_->AllocateArray<uint8_t>(
       kExpectedHeaderSize + kExpectedEntriesSize);
 
-  TF_ASSERT_OK_AND_ASSIGN(SdcLog device_log,
-                          SdcLog::CreateOnDevice(*stream_, log_buffer));
+  TF_ASSERT_OK_AND_ASSIGN(BufferDebugLog device_log,
+                          BufferDebugLog::CreateOnDevice(*stream_, log_buffer));
 
   EXPECT_EQ(device_log.GetDeviceHeader().size(), kExpectedHeaderSize);
   EXPECT_EQ(device_log.GetDeviceEntries().size(), kExpectedEntriesSize);
 }
 
-TEST_F(SdcLogTest, CreateSdcLogOnDevice_InitializesHeader) {
+TEST_F(BufferDebugLogTest, CreateBufferDebugLogOnDevice_InitializesHeader) {
   constexpr size_t kMaxEntries = 123;
   DeviceMemory<uint8_t> log_buffer = executor_->AllocateArray<uint8_t>(
-      SdcLog::RequiredSizeForEntries(kMaxEntries));
+      BufferDebugLog::RequiredSizeForEntries(kMaxEntries));
 
-  TF_ASSERT_OK_AND_ASSIGN(SdcLog device_log,
-                          SdcLog::CreateOnDevice(*stream_, log_buffer));
-  TF_ASSERT_OK_AND_ASSIGN(SdcLogHeader header,
+  TF_ASSERT_OK_AND_ASSIGN(BufferDebugLog device_log,
+                          BufferDebugLog::CreateOnDevice(*stream_, log_buffer));
+  TF_ASSERT_OK_AND_ASSIGN(BufferDebugLogHeader header,
                           device_log.ReadHeaderFromDevice(*stream_));
 
   EXPECT_EQ(header.write_idx, 0);
   EXPECT_EQ(header.capacity, kMaxEntries);
 }
 
-TEST_F(SdcLogTest, CreateSdcLogOnDevice_FailsForNullBuffer) {
-  EXPECT_THAT(SdcLog::CreateOnDevice(*stream_, DeviceMemory<uint8_t>()),
+TEST_F(BufferDebugLogTest, CreateBufferDebugLogOnDevice_FailsForNullBuffer) {
+  EXPECT_THAT(BufferDebugLog::CreateOnDevice(*stream_, DeviceMemory<uint8_t>()),
               absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
-TEST_F(SdcLogTest, CreateSdcLogOnDevice_FailsForTooSmallBuffer) {
-  DeviceMemory<uint8_t> log_buffer =
-      executor_->AllocateArray<uint8_t>(SdcLog::RequiredSizeForEntries(1) - 1);
+TEST_F(BufferDebugLogTest,
+       CreateBufferDebugLogOnDevice_FailsForTooSmallBuffer) {
+  DeviceMemory<uint8_t> log_buffer = executor_->AllocateArray<uint8_t>(
+      BufferDebugLog::RequiredSizeForEntries(1) - 1);
 
-  EXPECT_THAT(SdcLog::CreateOnDevice(*stream_, log_buffer),
+  EXPECT_THAT(BufferDebugLog::CreateOnDevice(*stream_, log_buffer),
               absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
-TEST_F(SdcLogTest, ReadAsProto) {
-  DeviceMemory<uint8_t> log_buffer =
-      executor_->AllocateArray<uint8_t>(SdcLog::RequiredSizeForEntries(10));
-  const SdcLogHeader header = {/*write_idx=*/2,
-                               /*capacity=*/10};
-  const SdcLogEntry entries[] = {
-      {/*entry_id=*/SdcBufferId::Create(ThunkId(123), 4).value(),
+TEST_F(BufferDebugLogTest, ReadAsProto) {
+  DeviceMemory<uint8_t> log_buffer = executor_->AllocateArray<uint8_t>(
+      BufferDebugLog::RequiredSizeForEntries(10));
+  const BufferDebugLogHeader header = {/*write_idx=*/2,
+                                       /*capacity=*/10};
+  const BufferDebugLogEntry entries[] = {
+      {/*entry_id=*/ThunkBufferId::Create(ThunkId(123), 4).value(),
        /*checksum=*/12341234},
-      {/*entry_id=*/SdcBufferId::Create(ThunkId(567), 8).value(),
+      {/*entry_id=*/ThunkBufferId::Create(ThunkId(567), 8).value(),
        /*checksum=*/56785678},
   };
   std::vector<uint8_t> log_data(sizeof(header) + sizeof(entries));
@@ -135,8 +138,9 @@ TEST_F(SdcLogTest, ReadAsProto) {
   TF_ASSERT_OK(stream_->MemcpyH2D(absl::MakeConstSpan(log_data), &log_buffer));
   TF_ASSERT_OK(stream_->BlockHostUntilDone());
 
-  SdcLog device_log = SdcLog::FromDeviceMemoryUnchecked(log_buffer);
-  TF_ASSERT_OK_AND_ASSIGN(SdcLogProto log_proto,
+  BufferDebugLog device_log =
+      BufferDebugLog::FromDeviceMemoryUnchecked(log_buffer);
+  TF_ASSERT_OK_AND_ASSIGN(BufferDebugLogProto log_proto,
                           device_log.ReadProto(*stream_));
 
   EXPECT_THAT(log_proto, EqualsProto(R"pb(

@@ -17,7 +17,7 @@ syntax = "proto3";
 
 package xla.gpu;
 
-message SdcLogEntryProto {
+message BufferDebugLogEntryProto {
   // The ID of the thunk that produced this entry, as returned by
   // ThunkInfo::thunk_id().
   uint64 thunk_id = 1;
@@ -30,7 +30,8 @@ message SdcLogEntryProto {
   uint32 checksum = 3;
 }
 
-message SdcLogProto {
-  // The list of entries in the SDC log.
-  repeated SdcLogEntryProto entries = 1;
+// A dump of a `BufferDebugLog` contents.
+message BufferDebugLogProto {
+  // The list of entries in the log.
+  repeated BufferDebugLogEntryProto entries = 1;
 }

@@ -13,28 +13,29 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_STREAM_EXECUTOR_GPU_SDC_XOR_CHECKSUM_KERNEL_H_
-#define XLA_STREAM_EXECUTOR_GPU_SDC_XOR_CHECKSUM_KERNEL_H_
+#ifndef XLA_STREAM_EXECUTOR_GPU_BUFFER_DEBUG_XOR_CHECKSUM_KERNEL_H_
+#define XLA_STREAM_EXECUTOR_GPU_BUFFER_DEBUG_XOR_CHECKSUM_KERNEL_H_
 
 #include <cstdint>
 
-#include "xla/backends/gpu/runtime/sdc_buffer_id.h"
-#include "xla/backends/gpu/runtime/sdc_log_structs.h"
+#include "xla/backends/gpu/runtime/buffer_debug_log_structs.h"
+#include "xla/backends/gpu/runtime/thunk_buffer_id.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/kernel.h"
 
 namespace stream_executor::gpu {
 
 // Trait for a kernel that computes the checksum of given input buffer and
-// appends it to the SDC log.
+// appends it to the buffer debug log.
 //
 // This kernel MUST execute on a single thread block.
-struct SdcXorChecksumKernel {
-  using KernelType = TypedKernel<xla::gpu::SdcBufferId, DeviceMemory<uint8_t>,
-                                 uint64_t, DeviceMemory<xla::gpu::SdcLogHeader>,
-                                 DeviceMemory<xla::gpu::SdcLogEntry>>;
+struct BufferDebugXorChecksumKernel {
+  using KernelType =
+      TypedKernel<xla::gpu::ThunkBufferId, DeviceMemory<uint8_t>, uint64_t,
+                  DeviceMemory<xla::gpu::BufferDebugLogHeader>,
+                  DeviceMemory<xla::gpu::BufferDebugLogEntry>>;
 };
 
 }  // namespace stream_executor::gpu
 
-#endif  // XLA_STREAM_EXECUTOR_GPU_SDC_XOR_CHECKSUM_KERNEL_H_
+#endif  // XLA_STREAM_EXECUTOR_GPU_BUFFER_DEBUG_XOR_CHECKSUM_KERNEL_H_

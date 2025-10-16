@@ -2895,11 +2895,11 @@ cc_library(
     srcs = ["thunk_checksum_tracing_pass.cc"],
     hdrs = ["thunk_checksum_tracing_pass.h"],
     deps = [
+        ":buffers_checksum_thunk",
         ":custom_call_thunk",
-        ":sdc_buffer_id",
-        ":sdc_thunk",
         ":sequential_thunk",
         ":thunk",
+        ":thunk_buffer_id",
         ":thunk_pass_pipeline",
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
@@ -2911,7 +2911,7 @@ cc_library(
         "//xla/service:dump",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor:stream",
-        "//xla/stream_executor/cuda:sdc_log",
+        "//xla/stream_executor/gpu:buffer_debug_log",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/base:nullability",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -2927,11 +2927,11 @@ xla_cc_test(
     name = "thunk_checksum_tracing_pass_test",
     srcs = ["thunk_checksum_tracing_pass_test.cc"],
     deps = [
+        ":buffers_checksum_thunk",
         ":custom_call_thunk",
-        ":sdc_buffer_id",
-        ":sdc_thunk",
         ":sequential_thunk",
         ":thunk",
+        ":thunk_buffer_id",
         ":thunk_checksum_tracing_pass",
         ":thunk_id",
         ":thunk_pass_pipeline",
@@ -2994,21 +2994,21 @@ xla_test(
 )
 
 cc_library(
-    name = "sdc_thunk",
-    srcs = ["sdc_thunk.cc"],
-    hdrs = ["sdc_thunk.h"],
+    name = "buffers_checksum_thunk",
+    srcs = ["buffers_checksum_thunk.cc"],
+    hdrs = ["buffers_checksum_thunk.h"],
     deps = [
-        ":sdc_buffer_id",
         ":thunk",
+        ":thunk_buffer_id",
         "//xla/service:buffer_assignment",
         "//xla/stream_executor:device_memory",
         "//xla/stream_executor:launch_dim",
         "//xla/stream_executor:stream_executor_h",
         "//xla/stream_executor/cuda:cuda_compute_capability",
         "//xla/stream_executor/cuda:cuda_platform_id",
-        "//xla/stream_executor/cuda:sdc_log",
+        "//xla/stream_executor/gpu:buffer_debug_log",
+        "//xla/stream_executor/gpu:buffer_debug_xor_checksum_kernel",
         "//xla/stream_executor/gpu:gpu_kernel_registry",
-        "//xla/stream_executor/gpu:sdc_xor_checksum_kernel",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -3020,18 +3020,18 @@ cc_library(
 )
 
 xla_test(
-    name = "sdc_thunk_test",
-    srcs = ["sdc_thunk_test.cc"],
+    name = "buffers_checksum_thunk_test",
+    srcs = ["buffers_checksum_thunk_test.cc"],
     backends = ["gpu"],
     tags = [
         "cuda-only",
         "gpu",
     ],
     deps = [
-        ":sdc_buffer_id",
-        ":sdc_log_structs",
-        ":sdc_thunk",
+        ":buffer_debug_log_structs",
+        ":buffers_checksum_thunk",
         ":thunk",
+        ":thunk_buffer_id",
         ":thunk_id",
         "//xla/service:buffer_assignment",
         "//xla/service:executable",
@@ -3042,7 +3042,7 @@ xla_test(
         "//xla/stream_executor:platform_manager",
         "//xla/stream_executor:stream",
         "//xla/stream_executor:stream_executor_memory_allocator",
-        "//xla/stream_executor/cuda:sdc_log",
+        "//xla/stream_executor/gpu:buffer_debug_log",
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:statusor",
         "@com_google_googletest//:gtest_main",
@@ -3050,13 +3050,13 @@ xla_test(
 )
 
 tf_proto_library(
-    name = "sdc_proto",
-    srcs = ["sdc.proto"],
+    name = "buffer_debug_log_proto",
+    srcs = ["buffer_debug_log.proto"],
 )
 
 cc_library(
-    name = "sdc_buffer_id",
-    hdrs = ["sdc_buffer_id.h"],
+    name = "thunk_buffer_id",
+    hdrs = ["thunk_buffer_id.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
         ":thunk_id",
@@ -3067,10 +3067,10 @@ cc_library(
 )
 
 xla_cc_test(
-    name = "sdc_buffer_id_test",
-    srcs = ["sdc_buffer_id_test.cc"],
+    name = "thunk_buffer_id_test",
+    srcs = ["thunk_buffer_id_test.cc"],
     deps = [
-        ":sdc_buffer_id",
+        ":thunk_buffer_id",
         ":thunk_id",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status",
@@ -3080,10 +3080,10 @@ xla_cc_test(
 )
 
 cc_library(
-    name = "sdc_log_structs",
-    hdrs = ["sdc_log_structs.h"],
+    name = "buffer_debug_log_structs",
+    hdrs = ["buffer_debug_log_structs.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
-        ":sdc_buffer_id",
+        ":thunk_buffer_id",
     ],
 )

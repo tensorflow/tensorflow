@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_BACKENDS_GPU_RUNTIME_SDC_THUNK_H_
-#define XLA_BACKENDS_GPU_RUNTIME_SDC_THUNK_H_
+#ifndef XLA_BACKENDS_GPU_RUNTIME_BUFFERS_CHECKSUM_THUNK_H_
+#define XLA_BACKENDS_GPU_RUNTIME_BUFFERS_CHECKSUM_THUNK_H_
 
 #include <optional>
 #include <string>
@@ -23,19 +23,19 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "xla/backends/gpu/runtime/sdc_buffer_id.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/backends/gpu/runtime/thunk_buffer_id.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/stream_executor/gpu/sdc_xor_checksum_kernel.h"
+#include "xla/stream_executor/gpu/buffer_debug_xor_checksum_kernel.h"
 
 namespace xla::gpu {
 
-class SdcThunk : public Thunk {
+class BuffersDebugChecksumThunk : public Thunk {
  public:
-  explicit SdcThunk(
+  explicit BuffersDebugChecksumThunk(
       ThunkInfo info, BufferAllocation::Slice log_slice,
-      absl::flat_hash_map<SdcBufferId, BufferAllocation::Slice> buffers)
-      : Thunk(Thunk::Kind::kSdc, std::move(info)),
+      absl::flat_hash_map<ThunkBufferId, BufferAllocation::Slice> buffers)
+      : Thunk(Thunk::Kind::kBuffersDebugChecksum, std::move(info)),
         log_slice_(log_slice),
         buffers_(std::move(buffers)) {}
 
@@ -49,18 +49,19 @@ class SdcThunk : public Thunk {
     return {};
   }
 
-  const absl::flat_hash_map<SdcBufferId, BufferAllocation::Slice>&
+  const absl::flat_hash_map<ThunkBufferId, BufferAllocation::Slice>&
   buffer_slices() const {
     return buffers_;
   }
 
  private:
   // Loaded in Initialize.
-  std::optional<stream_executor::gpu::SdcXorChecksumKernel::KernelType> kernel_;
+  std::optional<stream_executor::gpu::BufferDebugXorChecksumKernel::KernelType>
+      kernel_;
   BufferAllocation::Slice log_slice_;
-  absl::flat_hash_map<SdcBufferId, BufferAllocation::Slice> buffers_;
+  absl::flat_hash_map<ThunkBufferId, BufferAllocation::Slice> buffers_;
 };
 
 }  // namespace xla::gpu
 
-#endif  // XLA_BACKENDS_GPU_RUNTIME_SDC_THUNK_H_
+#endif  // XLA_BACKENDS_GPU_RUNTIME_BUFFERS_CHECKSUM_THUNK_H_

@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/backends/gpu/runtime/sdc_thunk.h"
+#include "xla/backends/gpu/runtime/buffers_checksum_thunk.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -23,16 +23,16 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "xla/backends/gpu/runtime/sdc_buffer_id.h"
-#include "xla/backends/gpu/runtime/sdc_log_structs.h"
+#include "xla/backends/gpu/runtime/buffer_debug_log_structs.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/backends/gpu/runtime/thunk_buffer_id.h"
 #include "xla/backends/gpu/runtime/thunk_id.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/resource_requests.h"
 #include "xla/service/service_executable_run_options.h"
-#include "xla/stream_executor/cuda/sdc_log.h"
 #include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/gpu/buffer_debug_log.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream.h"
@@ -45,10 +45,10 @@ namespace {
 
 namespace se = stream_executor;
 
-using ::stream_executor::cuda::SdcLog;
+using ::stream_executor::cuda::BufferDebugLog;
 using ::testing::UnorderedElementsAre;
 
-class SdcThunkTest : public ::testing::Test {
+class BuffersDebugChecksumThunkTest : public ::testing::Test {
  protected:
   void SetUp() override {
     TF_ASSERT_OK_AND_ASSIGN(platform_,
@@ -61,8 +61,10 @@ class SdcThunkTest : public ::testing::Test {
     if (!executor_->GetDeviceDescription()
              .cuda_compute_capability()
              .IsAtLeastPascal()) {
-      GTEST_SKIP() << "SDC checksumming is not supported on CUDA architectures "
-                      "older than Pascal due to missing atomic fetch_add";
+      GTEST_SKIP()
+          << "buffer checksumming is not supported on CUDA architectures "
+             "older than Pascal due to missing atomic fetch_add with "
+             "system scope";
     }
   }
 
@@ -72,8 +74,8 @@ class SdcThunkTest : public ::testing::Test {
   std::unique_ptr<se::StreamExecutorMemoryAllocator> allocator_;
 };
 
-TEST_F(SdcThunkTest, CalculatesChecksums) {
-  static constexpr size_t kLogSize = SdcLog::RequiredSizeForEntries(10);
+TEST_F(BuffersDebugChecksumThunkTest, CalculatesChecksums) {
+  static constexpr size_t kLogSize = BufferDebugLog::RequiredSizeForEntries(10);
   static constexpr size_t kInputSize = 1024;
   static constexpr size_t kInputCount = 2;
   static constexpr size_t kTotalDeviceMemoryBytes =
@@ -95,9 +97,9 @@ TEST_F(SdcThunkTest, CalculatesChecksums) {
   se::DeviceMemoryBase inputs0_mem = allocations.GetDeviceAddress(inputs[0]);
   se::DeviceMemoryBase inputs1_mem = allocations.GetDeviceAddress(inputs[1]);
   // Initialize the log in device memory
-  TF_ASSERT_OK_AND_ASSIGN(
-      SdcLog device_log,
-      SdcLog::CreateOnDevice(*stream_, se::DeviceMemory<uint8_t>(log_mem)));
+  TF_ASSERT_OK_AND_ASSIGN(BufferDebugLog device_log,
+                          BufferDebugLog::CreateOnDevice(
+                              *stream_, se::DeviceMemory<uint8_t>(log_mem)));
   // Fill inputs with some data
   std::vector<uint32_t> zeros(1024, 0);
   zeros[123] = 12341234;  // expected checksum for inputs_mem[0]
@@ -114,27 +116,29 @@ TEST_F(SdcThunkTest, CalculatesChecksums) {
       /*command_buffer_trace_stream=*/stream_.get(),
       /*collective_params=*/nullptr, /*collective_cliques=*/nullptr);
 
-  SdcThunk thunk(Thunk::ThunkInfo(), log_slice,
-                 {{SdcBufferId::Create(ThunkId(123), 4).value(), inputs[0]},
-                  {SdcBufferId::Create(ThunkId(456), 8).value(), inputs[1]}});
+  BuffersDebugChecksumThunk thunk(
+      Thunk::ThunkInfo(), log_slice,
+      {{ThunkBufferId::Create(ThunkId(123), 4).value(), inputs[0]},
+       {ThunkBufferId::Create(ThunkId(456), 8).value(), inputs[1]}});
   TF_ASSERT_OK(thunk.Initialize(init_params));
   TF_ASSERT_OK(thunk.Prepare(Thunk::PrepareParams{}, resource_requests));
   TF_ASSERT_OK(thunk.ExecuteOnStream(execute_params));
-  TF_ASSERT_OK_AND_ASSIGN(std::vector<SdcLogEntry> entries,
+  TF_ASSERT_OK_AND_ASSIGN(std::vector<BufferDebugLogEntry> entries,
                           device_log.ReadFromDevice(*stream_));
 
-  // SdcThunk launches a kernel for each input buffer, they may complete in any
-  // order.
-  EXPECT_THAT(entries,
-              UnorderedElementsAre(
-                  SdcLogEntry{
-                      /*entry_id=*/SdcBufferId::Create(ThunkId(123), 4).value(),
-                      /*checksum=*/12341234,
-                  },
-                  SdcLogEntry{
-                      /*entry_id=*/SdcBufferId::Create(ThunkId(456), 8).value(),
-                      /*checksum=*/56785678,
-                  }));
+  // BuffersDebugChecksumThunk launches a kernel for each input buffer, they may
+  // complete in any order.
+  EXPECT_THAT(
+      entries,
+      UnorderedElementsAre(
+          BufferDebugLogEntry{
+              /*entry_id=*/ThunkBufferId::Create(ThunkId(123), 4).value(),
+              /*checksum=*/12341234,
+          },
+          BufferDebugLogEntry{
+              /*entry_id=*/ThunkBufferId::Create(ThunkId(456), 8).value(),
+              /*checksum=*/56785678,
+          }));
 }
 
 }  // namespace
