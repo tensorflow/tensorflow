@@ -401,8 +401,18 @@ TEST_F(ReshardTest, DifferentDestinationLayout) {
 
   // Make sure that the destination layout is actually different from the source
   // layout in order to ensure the test coverage.
-  TF_ASSERT_OK_AND_ASSIGN(const auto src_layout, src_array->pjrt_layout());
-  ASSERT_NE(src_layout, nullptr);
+  TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<const xla::PjRtLayout> src_layout,
+                          src_array->pjrt_layout());
+  if (src_layout == nullptr) {
+    TF_ASSERT_OK_AND_ASSIGN(
+        Shape shard_shape,
+        src_array->sharding().GetShardShape(src_array->shape()));
+    TF_ASSERT_OK_AND_ASSIGN(
+        src_layout, client_->GetDefaultPjRtLayout(
+                        src_array->dtype(), shard_shape.dims(),
+                        src_array->sharding().devices()->devices().front(),
+                        src_array->sharding().memory_kind()));
+  }
   ASSERT_NE(src_layout->xla_layout(), dst_array_spec.layout->xla_layout());
 
   TF_ASSERT_OK_AND_ASSIGN(

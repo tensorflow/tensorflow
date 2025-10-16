@@ -249,18 +249,18 @@ absl::Status PjRtTransferServer::CrossHostPull(
         xla::DimensionVector(shape.dims().begin(), shape.dims().end())};
     shape_specs.push_back(shape_spec);
 
-    auto pjrt_layout = arrays[i]->pjrt_layout();
+    absl::StatusOr<std::shared_ptr<const xla::PjRtLayout>> pjrt_layout =
+        arrays[i]->pjrt_layout();
     std::optional<xla::Layout> layout;
     if (pjrt_layout.ok() && *pjrt_layout == nullptr) {
       TF_ASSIGN_OR_RETURN(
           xla::ifrt::Shape shard_shape,
           arrays[i]->sharding().GetShardShape(arrays[i]->shape()));
       TF_ASSIGN_OR_RETURN(
-          std::shared_ptr<const xla::PjRtLayout> layout,
-          arrays[i]->client()->GetDefaultPjRtLayout(
-              arrays[i]->dtype(), shard_shape.dims(),
-              arrays[i]->sharding().devices()->devices().front(),
-              arrays[i]->sharding().memory_kind()));
+          pjrt_layout, arrays[i]->client()->GetDefaultPjRtLayout(
+                           arrays[i]->dtype(), shard_shape.dims(),
+                           arrays[i]->sharding().devices()->devices().front(),
+                           arrays[i]->sharding().memory_kind()));
     }
     if (pjrt_layout.ok()) {
       layout = (*pjrt_layout)->xla_layout();

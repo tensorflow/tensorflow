@@ -89,8 +89,10 @@ absl::StatusOr<SingleBufferCopyPlan> SetupTransferDestList(
   size_t copy_size = xla::ShapeUtil::ByteSizeOf(shape);
 
   results.dests.push_back(MakeDmaDestination(atm, 0, copy_size));
-  TF_ASSIGN_OR_RETURN(auto arr,
-                      ifrt_client->CreatePjRtArray(atm->RetrieveBuffer(0)));
+  // `CreateBuffersForAsyncHostToDevice` uses a default layout.
+  TF_ASSIGN_OR_RETURN(
+      auto arr, ifrt_client->CreatePjRtArray(atm->RetrieveBuffer(0),
+                                             /*has_custom_layout=*/false));
   results.arrays.push_back(std::move(arr));
   return results;
 }

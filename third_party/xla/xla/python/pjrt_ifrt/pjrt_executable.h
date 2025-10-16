@@ -34,6 +34,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_executable.h"
+#include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/attribute_map.h"
 #include "xla/python/ifrt/device.h"
@@ -127,6 +128,9 @@ class PjRtExecutable final
 
   absl::StatusOr<std::vector<std::shared_ptr<const xla::PjRtLayout>>>
   GetOutputLayouts() const override {
+    // TODO(hyeontaek): Return `output_layouts_` instead, which can distinguish
+    // between default and custom layouts, once the users of
+    // `GetOutputLayouts()` understand `nullptr` elements.
     DCHECK(this);
     return pjrt_executable_->GetOutputLayouts();
   }
@@ -335,6 +339,7 @@ class PjRtLoadedExecutable final
       absl::Span<const xla::DimensionVector> result_dimensions,
       const std::optional<xla::HloSharding>& result_hlo_sharding,
       const std::optional<std::vector<absl::string_view>>& result_memory_kinds,
+      const std::vector<std::shared_ptr<const xla::PjRtLayout>>& output_layouts,
       std::vector<tsl::RCReference<LoadedHostCallback>> loaded_host_callbacks,
       DeviceListRef executable_devices);
 
@@ -347,7 +352,8 @@ class PjRtLoadedExecutable final
       std::vector<PjRtHostSendAndRecvLoadedHostCallback*>
           host_send_recv_callbacks,
       std::vector<DType> output_dtypes, std::vector<Shape> output_shapes,
-      std::vector<ShardingRef> output_shardings);
+      std::vector<ShardingRef> output_shardings,
+      std::vector<std::shared_ptr<const xla::PjRtLayout>> output_layouts);
 
   PjRtClient* client_;
   std::shared_ptr<xla::PjRtLoadedExecutable> pjrt_loaded_executable_;
@@ -366,6 +372,7 @@ class PjRtLoadedExecutable final
   std::vector<DType> output_dtypes_;
   std::vector<Shape> output_shapes_;
   std::vector<ShardingRef> output_shardings_;
+  std::vector<std::shared_ptr<const xla::PjRtLayout>> output_layouts_;
   const xla::ifrt::UserContextRef user_context_;
 };
 

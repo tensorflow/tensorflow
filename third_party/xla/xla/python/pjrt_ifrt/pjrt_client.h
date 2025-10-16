@@ -22,6 +22,7 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <tuple>
+#include <utility>
 #include <vector>
 
 #include "absl/base/thread_annotations.h"
@@ -91,10 +92,32 @@ class PjRtCompatibleClient
   // operations.
   virtual xla::PjRtClient* pjrt_client() = 0;
   virtual std::shared_ptr<xla::PjRtClient> shared_ptr_pjrt_client() = 0;
+
+  // Creates an IFRT `PjRtCompatibleArray` from `PjRtBuffer`(s).
+  //
+  // Most array properties will be inferred from the input `PjRtBuffer`(s),
+  // except for the layout's defaultness that is absent information at the PjRt
+  // level.
+  //
+  // `has_custom_layout` indicates that the layout of the input `PjRtBuffer`(s)
+  // is intended to be a user-chosen custom layout, and
+  // `PjRtCompatibleArray::pjrt_layout()` should return a non-null value.
+  // Treating a default layout as a custom layout is typically allowed in PjRt
+  // if their concrete layouts match, but it may not pass a strict check that
+  // unconditionally says a default layout != any non-default layout designed
+  // for portability. Thus, it is useful for the caller to provide as accurate
+  // information as possible.
   virtual absl::StatusOr<tsl::RCReference<PjRtCompatibleArray>> CreatePjRtArray(
-      std::shared_ptr<PjRtBuffer> pjrt_buffer) = 0;
+      std::shared_ptr<PjRtBuffer> pjrt_buffer, bool has_custom_layout) = 0;
   virtual absl::StatusOr<tsl::RCReference<PjRtCompatibleArray>> CreatePjRtArray(
-      Shape shape, PjRtBuffers pjrt_buffers) = 0;
+      Shape shape, PjRtBuffers pjrt_buffers, bool has_custom_layout) = 0;
+
+  // Temporary overloads for API transition.
+  absl::StatusOr<tsl::RCReference<PjRtCompatibleArray>> CreatePjRtArray(
+      std::shared_ptr<PjRtBuffer> pjrt_buffer);
+  absl::StatusOr<tsl::RCReference<PjRtCompatibleArray>> CreatePjRtArray(
+      Shape shape, PjRtBuffers pjrt_buffers);
+
   virtual absl::StatusOr<PjRtCompatibleDevice*> LookupPjRtDevice(
       xla::PjRtDevice* pjrt_device) const = 0;
   virtual absl::StatusOr<PjRtCompatibleMemory*> LookupPjRtMemory(
@@ -178,9 +201,9 @@ class PjRtClient final
     return pjrt_client_;
   }
   absl::StatusOr<tsl::RCReference<PjRtCompatibleArray>> CreatePjRtArray(
-      std::shared_ptr<PjRtBuffer> pjrt_buffer) override;
+      std::shared_ptr<PjRtBuffer> pjrt_buffer, bool has_custom_layout) override;
   absl::StatusOr<tsl::RCReference<PjRtCompatibleArray>> CreatePjRtArray(
-      Shape shape, PjRtBuffers pjrt_buffers) override;
+      Shape shape, PjRtBuffers pjrt_buffers, bool has_custom_layout) override;
 
   // Client implementation.
 

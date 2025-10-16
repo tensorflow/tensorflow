@@ -725,6 +725,17 @@ const char kKeyPrefix[] = "ifrt_cross_host_transfer_";
 char PjRtCompatibleClient::ID = 0;
 char PjRtClient::ID = 0;
 
+absl::StatusOr<tsl::RCReference<PjRtCompatibleArray>>
+PjRtCompatibleClient::CreatePjRtArray(std::shared_ptr<PjRtBuffer> pjrt_buffer) {
+  return CreatePjRtArray(std::move(pjrt_buffer), /*has_custom_layout=*/true);
+}
+
+absl::StatusOr<tsl::RCReference<PjRtCompatibleArray>>
+PjRtCompatibleClient::CreatePjRtArray(Shape shape, PjRtBuffers pjrt_buffers) {
+  return CreatePjRtArray(std::move(shape), std::move(pjrt_buffers),
+                         /*has_custom_layout=*/true);
+}
+
 absl::StatusOr<std::unique_ptr<PjRtClient>> PjRtClient::Create(
     PjRtClient::CreateOptions options) {
   auto client =
@@ -955,16 +966,21 @@ absl::StatusOr<DeviceListRef> PjRtClient::MakeDeviceList(
 const AttributeMap& PjRtClient::Attributes() const { return attributes_; }
 
 absl::StatusOr<tsl::RCReference<PjRtCompatibleArray>>
-PjRtClient::CreatePjRtArray(std::shared_ptr<PjRtBuffer> pjrt_buffer) {
-  TF_ASSIGN_OR_RETURN(auto array,
-                      PjRtArray::Create(this, std::move(pjrt_buffer)));
+PjRtClient::CreatePjRtArray(std::shared_ptr<PjRtBuffer> pjrt_buffer,
+                            bool has_custom_layout) {
+  TF_ASSIGN_OR_RETURN(
+      auto array,
+      PjRtArray::Create(this, std::move(pjrt_buffer), has_custom_layout));
   return tsl::RCReference<PjRtCompatibleArray>(std::move(array));
 }
 
 absl::StatusOr<tsl::RCReference<PjRtCompatibleArray>>
-PjRtClient::CreatePjRtArray(Shape shape, PjRtBuffers pjrt_buffers) {
+PjRtClient::CreatePjRtArray(Shape shape, PjRtBuffers pjrt_buffers,
+                            bool has_custom_layout) {
+  std::shared_ptr<const xla::PjRtLayout> layout;
   TF_ASSIGN_OR_RETURN(auto array, PjRtArray::Create(this, std::move(shape),
-                                                    std::move(pjrt_buffers)));
+                                                    std::move(pjrt_buffers),
+                                                    has_custom_layout));
   return tsl::RCReference<PjRtCompatibleArray>(std::move(array));
 }
 
@@ -1055,7 +1071,8 @@ absl::StatusOr<ArrayRef> PjRtClient::MakeArrayFromHostBuffer(
     }
     buffers.push_back(std::move(buffer));
   }
-  auto layout = buffers.front()->layout();
+  // `MakeArrayFromHostBuffer` only creates buffers with a default layout.
+  std::shared_ptr<const xla::PjRtLayout> layout = nullptr;
   return PjRtArray::Create(this, dtype, std::move(shape), std::move(sharding),
                            std::move(buffers), std::move(layout));
 }
@@ -1121,12 +1138,11 @@ absl::StatusOr<std::vector<ArrayRef>> PjRtClient::MakeErrorArrays(
               error, xla_shape,
               tensorflow::down_cast<PjRtMemory*>(memory)->pjrt_memory()));
     }
-    auto layout = buffers.front()->layout();
     TF_ASSIGN_OR_RETURN(
         arrays.emplace_back(),
         PjRtArray::Create(this, array_spec.dtype, std::move(shard_shape),
                           array_spec.sharding, std::move(buffers),
-                          std::move(layout)));
+                          array_spec.layout));
   }
   return arrays;
 }
@@ -1211,16 +1227,8 @@ absl::StatusOr<ArrayRef> PjRtClient::AssembleArrayFromSingleDeviceArrays(
   }
   // TODO(emilyaf): Remove the following logic once layout is plumbed through.
   std::shared_ptr<const xla::PjRtLayout> layout;
-  if (dtype.kind() == DType::kToken) {
-    layout = std::make_shared<xla::PjRtLayout>(xla::Layout());
-  } else if (buffers.empty()) {
-    TF_ASSIGN_OR_RETURN(auto shard_shape, sharding->GetShardShape(shape));
-    TF_ASSIGN_OR_RETURN(
-        layout, GetDefaultPjRtLayout(dtype, shard_shape.dims(),
-                                     sharding->devices()->devices().front(),
-                                     sharding->memory_kind()));
-  } else {
-    layout = buffers.front()->layout();
+  if (!arrays.empty()) {
+    TF_ASSIGN_OR_RETURN(layout, arrays.front()->pjrt_layout());
   }
   return PjRtArray::Create(this, dtype, std::move(shape), std::move(sharding),
                            std::move(buffers), std::move(layout));
@@ -1387,16 +1395,6 @@ PjRtClient::CopyArraysForCrossHost(absl::Span<ArrayRef> arrays,
                         arrays[i]->shared_ptr_sharding()->WithDeviceAssignment(
                             dst_devices, memory_kind));
     TF_ASSIGN_OR_RETURN(auto new_layout, arrays[i]->pjrt_layout());
-    if (new_layout == nullptr) {
-      TF_ASSIGN_OR_RETURN(
-          xla::ifrt::Shape shard_shape,
-          arrays[i]->sharding().GetShardShape(arrays[i]->shape()));
-      TF_ASSIGN_OR_RETURN(
-          new_layout, GetDefaultPjRtLayout(
-                          arrays[i]->dtype(), shard_shape.dims(),
-                          arrays[i]->sharding().devices()->devices().front(),
-                          arrays[i]->sharding().memory_kind()));
-    }
     TF_ASSIGN_OR_RETURN(
         new_arrays.emplace_back(),
         PjRtArray::Create(this, arrays[i]->dtype(), arrays[i]->shape(),
