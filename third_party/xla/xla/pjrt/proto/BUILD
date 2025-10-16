@@ -42,6 +42,13 @@ tf_proto_library(
 )
 
 tf_proto_library(
+    name = "pjrt_device_dimensions_proto",
+    srcs = ["pjrt_device_dimensions.proto"],
+    compatible_with = (get_compatible_with_libtpu_portable() + get_compatible_with_portable()),
+    visibility = ["//visibility:public"],
+)
+
+tf_proto_library(
     name = "pjrt_value_type_proto",
     srcs = ["pjrt_value_type.proto"],
     visibility = ["//visibility:public"],
