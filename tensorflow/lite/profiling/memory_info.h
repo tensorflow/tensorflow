@@ -35,7 +35,8 @@ struct MemoryUsage {
   MemoryUsage()
       : mem_footprint_kb(kValueNotSet),
         total_allocated_bytes(kValueNotSet),
-        in_use_allocated_bytes(kValueNotSet) {}
+        in_use_allocated_bytes(kValueNotSet),
+        private_footprint_bytes(kValueNotSet) {}
 
   // The memory footprint (in kilobytes).
   //
@@ -85,6 +86,13 @@ struct MemoryUsage {
   // non-heap uses of memory such as thread stacks, globals, code, etc.
   size_t in_use_allocated_bytes;
 
+  // Private footprint (in kilobytes).
+  //
+  // For Linux this is the rusage::ru_maxrss + VmSwap.
+  // For Mac this is the task_vm_info::phys_footprint.
+  // For Windows this is the PrivateUsage.
+  size_t private_footprint_bytes;
+
   MemoryUsage operator+(MemoryUsage const& obj) const {
     MemoryUsage res;
     res.mem_footprint_kb = mem_footprint_kb + obj.mem_footprint_kb;
@@ -92,6 +100,8 @@ struct MemoryUsage {
         total_allocated_bytes + obj.total_allocated_bytes;
     res.in_use_allocated_bytes =
         in_use_allocated_bytes + obj.in_use_allocated_bytes;
+    res.private_footprint_bytes =
+        private_footprint_bytes + obj.private_footprint_bytes;
     return res;
   }
 
@@ -102,6 +112,8 @@ struct MemoryUsage {
         total_allocated_bytes - obj.total_allocated_bytes;
     res.in_use_allocated_bytes =
         in_use_allocated_bytes - obj.in_use_allocated_bytes;
+    res.private_footprint_bytes =
+        private_footprint_bytes - obj.private_footprint_bytes;
     return res;
   }
 
