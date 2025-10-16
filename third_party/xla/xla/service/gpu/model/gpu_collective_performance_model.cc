@@ -382,42 +382,10 @@ RocmBandwidthSettings CreateSettings(
 
 /*static*/ bool GpuPerformanceWithCollectiveModel::InitNvml() {
 #if GOOGLE_CUDA && (defined(PLATFORM_POSIX) || defined(PLATFORM_GOOGLE))
-  void* libhandle = dlopen("libnvidia-ml.so.1", RTLD_NOW);
-  CHECK(libhandle != nullptr) << "Failed to open libnvidia-ml.so.1";
-
-  struct SymbolEntry {
-    void** functor;
-    char const* name;
-  };
-
-  std::vector<SymbolEntry> symbols = {
-      {(void**)&xla_nvmlInit, "nvmlInit_v2"},
-      {(void**)&xla_nvmlShutdown, "nvmlShutdown"},
-      {(void**)&xla_nvmlDeviceGetHandleByIndex, "nvmlDeviceGetHandleByIndex"},
-      {(void**)&xla_nvmlDeviceGetNvLinkCapability,
-       "nvmlDeviceGetNvLinkCapability"},
-      {(void**)&xla_nvmlSystemGetNVMLVersion, "nvmlSystemGetNVMLVersion"},
-  };
-
-#if GOOGLE_CUDA && CUDA_VERSION >= 12040 && !defined(PLATFORM_GOOGLE)
-  // Some hosts might still have older driver version(b/414617899).
-  symbols.push_back({(void**)&xla_nvmlDeviceGetHandleByPciBusId_v2,
-                     "nvmlDeviceGetHandleByPciBusId_v2"});
-  symbols.push_back({(void**)&xla_nvmlDeviceGetGpuFabricInfoV,
-                     "nvmlDeviceGetGpuFabricInfoV"});
-#endif  // CUDA_VERSION >= 12040
-  for (SymbolEntry se : symbols) {
-    *se.functor = dlsym(libhandle, se.name);
-    if (*se.functor == nullptr) {
-      const char* dlsym_error = dlerror();
-      if (dlsym_error) {
-        VLOG(0) << "Failed to load symbol " << se.name << ": " << dlsym_error;
-        VLOG(0) << "This is likely caused by insufficient CUDA driver version. "
-                   "Please upgrade CUDA driver to 550 or higher.";
-      }
-    }
+  nvmlReturn_t init_result = nvmlInit();
+  if (init_result != NVML_SUCCESS) {
+    LOG(ERROR) << "NVML init failed with " << init_result;
   }
-  nvmlReturn_t init_result = xla_nvmlInit();
   return init_result == NVML_SUCCESS;
 #elif TENSORFLOW_USE_ROCM
   return true;
@@ -428,7 +396,7 @@ RocmBandwidthSettings CreateSettings(
 
 /*static*/ bool GpuPerformanceWithCollectiveModel::ShutdownNvml() {
 #if GOOGLE_CUDA
-  nvmlReturn_t shutdown_result = xla_nvmlShutdown();
+  nvmlReturn_t shutdown_result = nvmlShutdown();
   return shutdown_result == NVML_SUCCESS;
 #elif TENSORFLOW_USE_ROCM
   return true;
@@ -449,13 +417,12 @@ GpuPerformanceWithCollectiveModel::CheckIfNvlinkSupportsP2P() {
   // to have the same capability.
   CHECK(InitNvml()) << "NVML init failed.";
   nvmlDevice_t nvml_device;
-  nvmlReturn_t get_device_result =
-      xla_nvmlDeviceGetHandleByIndex(0, &nvml_device);
+  nvmlReturn_t get_device_result = nvmlDeviceGetHandleByIndex(0, &nvml_device);
   CHECK(get_device_result == NVML_SUCCESS);
 
   uint32_t supported_p2p = 0;
 
-  nvmlReturn_t nvlink_cap_result = xla_nvmlDeviceGetNvLinkCapability(
+  nvmlReturn_t nvlink_cap_result = nvmlDeviceGetNvLinkCapability(
       nvml_device, /*nvlink link number*/ 0, NVML_NVLINK_CAP_P2P_SUPPORTED,
       &supported_p2p);
   CHECK(nvlink_cap_result == NVML_SUCCESS ||

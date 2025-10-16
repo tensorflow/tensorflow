@@ -133,6 +133,7 @@ limitations under the License.
 #if GOOGLE_CUDA
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "third_party/gpus/cuda/include/cuda_runtime_api.h"
+#include "third_party/gpus/cuda/nvml/include/nvml.h"
 #include "xla/service/gpu/model/gpu_collective_performance_model.h"
 #include "xla/stream_executor/gpu/gpu_cudamallocasync_allocator.h"
 #elif TENSORFLOW_USE_ROCM
@@ -1705,26 +1706,29 @@ absl::StatusOr<std::string> GetDeviceFabricInfo(const int device_ordinal) {
     return absl::InternalError("Failed to initialize NVML library.");
   }
 
-  // NVML library is not a part of the CUDA toolkit, so there might be a
-  // situation when user is using CUDA 12.4 an higher, but the host NVML
-  // version doen't have the required functions.
-  if (xla_nvmlDeviceGetHandleByPciBusId_v2 == nullptr ||
-      xla_nvmlDeviceGetGpuFabricInfoV == nullptr) {
-    return absl::InternalError("NVML library doesn't have required functions.");
-  }
-
   char pciBusId[] = "00000000:00:00.0";
   cudaDeviceGetPCIBusId(pciBusId, sizeof(pciBusId), device_ordinal);
   nvmlDevice_t device;
-  auto get_bus_id_status =
-      xla_nvmlDeviceGetHandleByPciBusId_v2(pciBusId, &device);
+
+  nvmlReturn_t get_bus_id_status =
+      nvmlDeviceGetHandleByPciBusId_v2(pciBusId, &device);
+  // NVML library is not a part of the CUDA toolkit, so there might be a
+  // situation when user is using CUDA 12.4 an higher, but the host NVML
+  // version doen't have the required functions.
+  if (get_bus_id_status == NVML_ERROR_FUNCTION_NOT_FOUND) {
+    return absl::InternalError("NVML library doesn't have required functions.");
+  }
   CHECK_EQ(get_bus_id_status, NVML_SUCCESS);
 
   nvmlGpuFabricInfoV_t fabricInfo = {
       .version = nvmlGpuFabricInfo_v2,
       .state = NVML_GPU_FABRIC_STATE_NOT_SUPPORTED};
-  auto get_fabric_info_status =
-      xla_nvmlDeviceGetGpuFabricInfoV(device, &fabricInfo);
+
+  nvmlReturn_t get_fabric_info_status =
+      nvmlDeviceGetGpuFabricInfoV(device, &fabricInfo);
+  if (get_fabric_info_status == NVML_ERROR_FUNCTION_NOT_FOUND) {
+    return absl::InternalError("NVML library doesn't have required functions.");
+  }
   CHECK_EQ(get_fabric_info_status, NVML_SUCCESS);
 
   if (fabricInfo.state == NVML_GPU_FABRIC_STATE_NOT_SUPPORTED) {

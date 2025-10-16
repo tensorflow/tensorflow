@@ -5,7 +5,7 @@ load("//xla:xla.default.bzl", "xla_cc_test")
 
 # Libraries for performance modeling of HLO.
 load("//xla/tests:build_defs.bzl", "xla_test")
-load("//xla/tsl:tsl.bzl", "if_google", "if_oss", "internal_visibility")
+load("//xla/tsl:tsl.bzl", "if_google", "internal_visibility")
 load("//xla/tsl:tsl.default.bzl", "get_compatible_with_portable")
 load("//xla/tsl/platform:build_config.bzl", "tf_proto_library")
 load("//xla/tsl/platform/default:cuda_build_defs.bzl", "if_cuda_is_configured")
@@ -158,11 +158,6 @@ xla_test(
         "b200",
         "amdgpu_any",
     ],
-    tags =
-        if_oss(
-            # TODO(b/435404154): Reenable once this is fixed.
-            ["no_oss"],
-        ),
     deps = [
         ":analytical_latency_estimator",
         "//xla:shape_util",
@@ -499,18 +494,29 @@ cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@local_tsl//tsl/platform:status",
-    ] + if_cuda_is_configured(["@local_config_cuda//cuda:cuda_headers"]),
+    ] + if_cuda_is_configured([
+        "//xla/tsl/cuda:nvml",
+        "@local_config_cuda//cuda:cuda_headers",
+    ]),
 )
 
-xla_cc_test(
+xla_test(
     name = "gpu_collective_performance_model_test",
     srcs = ["gpu_collective_performance_model_test.cc"],
+    backends = ["nvgpu_any"],
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
     deps = [
+        ":gpu_collective_performance_model",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/service/gpu:backend_configs_cc",
         "//xla/tests:xla_internal_test_main",
         "@com_google_googletest//:gtest",
-    ],
+    ] + if_cuda_is_configured([
+        "@local_config_cuda//cuda:cuda_headers",
+    ]),
 )
 
 cc_library(
