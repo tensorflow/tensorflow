@@ -8,7 +8,7 @@ load(
 
 # copybara:uncomment load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
-load("//xla:lit.bzl", "enforce_glob", "lit_test_suite")
+load("//xla:lit.bzl", "enforce_glob", "lit_test_suite_for_gpus")
 load(
     "//xla:xla.default.bzl",
     "xla_cc_test",
@@ -616,7 +616,7 @@ xla_test(
     ],
 )
 
-lit_test_suite(
+lit_test_suite_for_gpus(
     name = "hlo_lit_tests",
     srcs = enforce_glob(
         [
@@ -639,32 +639,36 @@ lit_test_suite(
             "*.hlo",
         ],
     ),
-    args = if_cuda_is_configured([
-        "--param=PTX=PTX",
-        "--param=GPU=a6000",
-    ]) + if_rocm_is_configured([
-        "--param=PTX=GCN",
-        "--param=GPU=mi200",
-    ]),
     cfg = "//xla:lit.cfg.py",
-    data = [
-        "//xla/tools/hlo_opt:gpu_specs/a100_pcie_80.txtpb",
-        "//xla/tools/hlo_opt:gpu_specs/a6000.txtpb",
-        "//xla/tools/hlo_opt:gpu_specs/h100_sxm.txtpb",
-        "//xla/tools/hlo_opt:gpu_specs/mi200.txtpb",
-        "//xla/tools/hlo_opt:gpu_specs/p100.txtpb",
-        "//xla/tools/hlo_opt:gpu_specs/v100.txtpb",
-    ],
     default_tags = tf_gpu_tests_tags(),
+    disabled_on_gpus = {
+        "v100": [
+            "kernel_reuse.hlo",
+            "triton_naming.hlo",
+        ],
+        "p100": [
+            "kernel_reuse.hlo",
+            "triton_naming.hlo",
+        ],
+        "mi200": [
+            "element_wise_row_vectorization.hlo",
+            "scatter_bf16.hlo",
+            "single_instruction.hlo",
+            "reduce_unnested.hlo",
+            "reduction_vectorization_sm_all.hlo",
+        ],
+    },
+    gpus = [
+        "a100_pcie_80",
+        "a6000",
+        "b200",
+        "h100_sxm",
+        "mi200",
+        "p100",
+        "v100",
+    ],
     hermetic_cuda_data_dir = "%S/../../../../../cuda_nvcc",
     tags = ["no-oneapi"],
-    tags_override = {
-        "element_wise_row_vectorization.hlo": ["cuda-only"],
-        "scatter_bf16.hlo": ["cuda-only"],
-        "single_instruction.hlo": ["cuda-only"],
-        "reduce_unnested.hlo": ["cuda-only"],
-        "reduction_vectorization_sm_all.hlo": ["cuda-only"],
-    },
     tools = [
         "//xla/tools:hlo-opt",
         "@llvm-project//llvm:FileCheck",
@@ -672,17 +676,6 @@ lit_test_suite(
 )
 
 # copybara:uncomment_begin(triton-opt tool doesn't build in OSS)
-# lit_test_suite(
-#     name = "mlir_lit_tests",
-#     srcs = glob(["*.mlir"]),
-#     cfg = "//xla:lit.cfg.py",
-#     tools = [
-#         ":xla-opt",
-#         "@llvm-project//llvm:FileCheck",
-#         "@triton//:triton-opt",
-#     ],
-# )
-#
 # cc_binary(
 #     name = "xla-opt",
 #     srcs = ["xla-opt.cc"],
