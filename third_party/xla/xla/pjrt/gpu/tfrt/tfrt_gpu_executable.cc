@@ -35,8 +35,11 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "unsupported/Eigen/CXX11/Tensor"
+#include "xla/backends/gpu/collectives/gpu_clique_key.h"
+#include "xla/backends/gpu/collectives/gpu_cliques.h"
 #include "xla/client/executable_build_options.h"
 #include "xla/client/local_client.h"
+#include "xla/core/collectives/clique_key.h"
 #include "xla/executable_run_options.h"
 #include "xla/future.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -679,6 +682,8 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
         run_options.set_send_device_memory_function(&send_device_memory);
         run_options.set_recv_device_memory_function(&recv_device_memory);
         run_options.set_execution_profile(execution_profile);
+        std::vector<std::unique_ptr<CliqueKey>> clique_keys;
+        run_options.set_clique_keys(&clique_keys);
 
         // TODO(phawkins): *technically* this should probably happen after
         // calling RunAsync(). But that causes a large performance problem: it
@@ -776,21 +781,37 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
         scheduled_event.SetStateConcrete();
 
         absl::Status status = BlockHostUntilDoneWithHostCallback(stream);
+        VLOG(1) << "execute_fn for " << executable_name
+                << ", launch_id: " << launch_id << ", replica=" << replica
+                << ", partition=" << partition
+                << ", device: " << device->DebugString()
+                << " is done with status " << status;
+
         if (!status.ok()) {
           LOG(ERROR)
               << "BlockHostUntilDoneWithHostCallback failed for executable "
               << executable_name << " on device " << device->DebugString()
               << ", status = " << status;
           complete_event.SetError(status);
-        } else {
-          complete_event.SetStateConcrete();
+          return;
         }
 
-        VLOG(1) << "execute_fn for " << executable_name
-                << ", launch_id: " << launch_id << ", replica=" << replica
-                << ", partition=" << partition
-                << ", device: " << device->DebugString()
-                << " is done with status " << status;
+        // If any collective is stale, then the collective may have aborted.
+        // Note that NCCL doesn't provide a way to *know* if the collective was
+        // aborted, but we conservatively assume it was.
+        for (const std::unique_ptr<CliqueKey>& clique_key : clique_keys) {
+          gpu::GpuCliqueKey* gpu_clique_key = CHECK_NOTNULL(
+              tensorflow::down_cast<gpu::GpuCliqueKey*>(clique_key.get()));
+          if (absl::Status s = CheckCliqueKeyIsntStale(*gpu_clique_key);
+              !s.ok()) {
+            VLOG(1) << "GPU clique key " << gpu_clique_key->ToString()
+                    << " is stale";
+            complete_event.SetError(s);
+            return;
+          }
+        }
+
+        complete_event.SetStateConcrete();
       };
 
   auto prepare_inputs =
