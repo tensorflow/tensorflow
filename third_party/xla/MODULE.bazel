@@ -33,11 +33,15 @@ bazel_dep(name = "grpc-java", version = "1.75.0", repo_name = "DO_NOT_USE_grpc_j
 
 # TODO: publish an official version of rules_ml_toolchain to BCR
 bazel_dep(name = "rules_ml_toolchain")
+# To calculate integrity:
+# wget -O temp_module_archive.tar.gz <archive URL>
+# HASH=$(openssl dgst -sha256 -binary temp_module_archive.tar.gz | openssl base64 -A)
+# echo "sha256-${HASH}"
 archive_override(
     module_name = "rules_ml_toolchain",
-    integrity = "sha256-PqEEHetGz0+SfdmU4yrNjENveZexKpVY6F3ualqJ41w=",
-    strip_prefix = "rules_ml_toolchain-0fccc2447ef3bec3d75046a60a1895f053424727",
-    urls = ["https://github.com/google-ml-infra/rules_ml_toolchain/archive/0fccc2447ef3bec3d75046a60a1895f053424727.tar.gz"],
+    integrity = "sha256-QTPGwgRd5dehM/b8AI7mvWE693jxIUPQkAPpCN1UHYw=",
+    strip_prefix = "rules_ml_toolchain-d8d8f49297a1e74fcceffc9ef6c7f8da9b0a0c53",
+    urls = ["https://github.com/google-ml-infra/rules_ml_toolchain/archive/d8d8f49297a1e74fcceffc9ef6c7f8da9b0a0c53.tar.gz"],
 )
 
 # TODO: Upstream the patch?
