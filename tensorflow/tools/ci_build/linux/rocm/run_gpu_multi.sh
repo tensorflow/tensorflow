@@ -18,6 +18,17 @@ set -e
 set -x
 
 N_BUILD_JOBS=$(grep -c ^processor /proc/cpuinfo)
+# If rocm-smi exists locally (it should) use it to find
+# out how many GPUs we have to test with.
+rocm-smi -i
+STATUS=$?
+if [ $STATUS -ne 0 ]; then TF_GPU_COUNT=1; else
+    TF_GPU_COUNT=$(rocm-smi -i|grep 'Device ID' |grep 'GPU' |wc -l)
+fi
+if [[ $TF_GPU_COUNT -lt 4 ]]; then
+    echo "Found only ${TF_GPU_COUNT} gpus, multi-gpu tests need atleast 4 gpus."
+    exit
+fi
 N_TEST_JOBS=1 # run tests serially
 
 echo ""
