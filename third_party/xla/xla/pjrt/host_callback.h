@@ -47,9 +47,17 @@ namespace xla {
 
 bool ThisThreadIsInsideHostCallback();
 
-void EnterHostCallback();
+ABSL_DEPRECATED("Use HostCallbackScope") void EnterHostCallback();
 
-void LeaveHostCallback();
+ABSL_DEPRECATED("Use HostCallbackScope") void LeaveHostCallback();
+
+class HostCallbackScope {
+ public:
+  HostCallbackScope();
+  ~HostCallbackScope();
+  HostCallbackScope(const HostCallbackScope& o) = delete;
+  HostCallbackScope& operator=(const HostCallbackScope& o) = delete;
+};
 
 // A thread-safe queue for passing PjRtChunk objects for e.g. from Send ops to
 // Recv ops.
