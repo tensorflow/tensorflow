@@ -266,6 +266,22 @@ def MHLO_AsinOp : MHLO_UnaryElementwiseOp<"asin",
   let hasFolder = 1;
 }
 
+def MHLO_AsinhOp : MHLO_UnaryElementwiseOp<"asinh",
+    [HLO_CompatibleOperandsAndResultType], HLO_AnyFpOrComplexTensor> {
+  let summary = "Asinh operation";
+
+  let description = [{
+     Performs element-wise asinh operation on `operand` tensor and produces a
+    `result` tensor.
+
+    Example:
+    ```mlir
+    %result = mhlo.asinh %operand : tensor<2x2xf32>
+    ```
+  }];
+  let hasFolder = 1;
+}
+
 def MHLO_CbrtOp: MHLO_UnaryElementwiseOp<"cbrt",
     [Pure, HLO_CompatibleOperandsAndResultType], MHLO_FpComplexOrQuantizedIntTensor> {
   let summary = "Cbrt operation";

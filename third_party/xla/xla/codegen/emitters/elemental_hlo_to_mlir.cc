@@ -1045,6 +1045,8 @@ absl::StatusOr<SmallVector<Value, 1>> HloToMlir(
       return MapElementwiseOp<mhlo::AcoshOp>(arg_types, operands, builder);
     case HloOpcode::kAsin:
       return MapElementwiseOp<mhlo::AsinOp>(arg_types, operands, builder);
+    case HloOpcode::kAsinh:
+      return MapElementwiseOp<mhlo::AsinhOp>(arg_types, operands, builder);
     case HloOpcode::kAdd:
       if (element_type == PRED) {
         return MapElementwiseOp<mhlo::OrOp>(arg_types, operands, builder);

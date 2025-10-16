@@ -713,6 +713,8 @@ absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitFloatUnaryOp(
       return EmitAcos(op->shape().element_type(), operand_value);
     case HloOpcode::kAsin:
       return EmitAsin(op->shape().element_type(), operand_value);
+    case HloOpcode::kAsinh:
+      return EmitAsinh(op->shape().element_type(), operand_value);
     case HloOpcode::kAcosh:
       return EmitAcosh(op->shape().element_type(), operand_value);
     case HloOpcode::kAtanh:
@@ -2215,6 +2217,11 @@ absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitAtanh(
   return Unimplemented("atanh");
 }
 
+absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitAsinh(
+    PrimitiveType prim_type, llvm::Value* value) {
+  return Unimplemented("asinh");
+}
+
 absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitTanh(
     PrimitiveType prim_type, llvm::Value* value) {
   return Unimplemented("tanh");
@@ -3196,6 +3203,7 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
   switch (hlo->opcode()) {
     case HloOpcode::kAbs:
     case HloOpcode::kAsin:
+    case HloOpcode::kAsinh:
     case HloOpcode::kAcos:
     case HloOpcode::kAcosh:
     case HloOpcode::kAtanh:

@@ -2861,6 +2861,7 @@ bool LayoutAssignment::InstructionCanChangeLayout(
     case HloOpcode::kAcos:
     case HloOpcode::kAcosh:
     case HloOpcode::kAsin:
+    case HloOpcode::kAsinh:
     case HloOpcode::kAdd:
     case HloOpcode::kAddDependency:
     case HloOpcode::kAnd:

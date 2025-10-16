@@ -56,7 +56,7 @@ REGISTER_XLA_OP(Name("Abs"), MlirXlaOpKernel);
 REGISTER_XLA_OP(Name("Acos"), MlirXlaOpKernel);
 REGISTER_XLA_OP(Name("Acosh"), MlirXlaOpKernel);
 REGISTER_XLA_OP(Name("Asin"), MlirXlaOpKernel);
-XLAJIT_MAKE_UNARY(Asinh, xla::Asinh(x));
+REGISTER_XLA_OP(Name("Asinh"), MlirXlaOpKernel);
 REGISTER_XLA_OP(Name("Atan"), MlirXlaOpKernel);
 REGISTER_XLA_OP(Name("Atanh"), MlirXlaOpKernel);
 REGISTER_XLA_OP(Name("Ceil"), MlirXlaOpKernel);
