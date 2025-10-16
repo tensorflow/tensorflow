@@ -219,24 +219,33 @@ HloInstruction* PadInstruction(HloInstruction* instr, int64_t dimension_idx,
   PaddingConfig padding_config =
       MakeNoPaddingConfig(instr->shape().dimensions().size());
   padding_config.mutable_dimensions(dimension_idx)
-      ->set_edge_padding_low(new_dimension_size -
-                             instr->shape().dimensions(dimension_idx));
+      ->set_edge_padding_high(new_dimension_size -
+                              instr->shape().dimensions(dimension_idx));
   Shape new_shape = instr->shape();
   new_shape.set_dimensions(dimension_idx, new_dimension_size);
   return computation->AddInstruction(
       HloInstruction::CreatePad(new_shape, instr, zero, padding_config));
 }
 
+// Returns the padded K dimension so that it is a multiple of split_k and 16B.
+int64_t GetPaddedK(HloInstruction& dot, int64_t k, int64_t split_k) {
+  const int64_t alignment_in_bits = 16 * 8;
+  int64_t min_element_size_in_bits = alignment_in_bits;
+  for (const HloInstruction* p : dot.parent()->parameter_instructions()) {
+    min_element_size_in_bits = std::min(
+        min_element_size_in_bits, ShapeUtil::ElementSizeInBits(p->shape()));
+  }
+  return RoundUpTo(k, split_k * alignment_in_bits / min_element_size_in_bits);
+}
+
 // The contracting dimension index becomes new batch (split) dimension, and all
 // dimensions after it are shifted by 1.
 HloInstruction* SplitKOperand(HloInstruction* operand,
                               int64_t contracting_dimension_idx,
-                              int64_t split_k) {
+                              int64_t split_k, int64_t padded_k) {
   // if the K dimension is not divisible by split_k, we need to pad it.
   const int64_t src_k = operand->shape().dimensions(contracting_dimension_idx);
-  const bool needs_padding = src_k % split_k != 0;
-  if (needs_padding) {
-    const int64_t padded_k = RoundUpTo(src_k, split_k);
+  if (padded_k != src_k) {
     operand = PadInstruction(operand, contracting_dimension_idx, padded_k);
   }
   const Shape& old_shape = operand->shape();
@@ -296,12 +305,14 @@ absl::StatusOr<HloInstruction*> SplitKDimensionOfDot(HloDotInstruction* src_dot,
       src_dot->dot_dimension_numbers().lhs_contracting_dimensions(0);
   const int64_t rhs_k_idx =
       src_dot->dot_dimension_numbers().rhs_contracting_dimensions(0);
+  const int64_t padded_k = GetPaddedK(
+      *src_dot, src_dot->operand(0)->shape().dimensions(lhs_k_idx), split_k);
   // The operands' K dimension are split into [split_k, K/split_k] (shifting
   // right all the dimensions after it).
   HloInstruction* lhs =
-      SplitKOperand(src_dot->mutable_operand(0), lhs_k_idx, split_k);
+      SplitKOperand(src_dot->mutable_operand(0), lhs_k_idx, split_k, padded_k);
   HloInstruction* rhs =
-      SplitKOperand(src_dot->mutable_operand(1), rhs_k_idx, split_k);
+      SplitKOperand(src_dot->mutable_operand(1), rhs_k_idx, split_k, padded_k);
 
   // Update the dot's dimension numbers accordingly (shifting right all the
   // dimensions starting from the K dimension and inserting new batch dims).

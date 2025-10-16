@@ -851,10 +851,10 @@ ENTRY %entry_computation {
       GmockMatch(m::Reduce(m::Fusion(&dot_fusion), m::ConstantScalar())));
   EXPECT_THAT(
       dot_fusion->called_computations()[0]->root_instruction(),
-      GmockMatch(m::ScaledDot(m::Op().WithShape(F8E4M3FN, {16, 3, 64}),
-                              m::Op().WithShape(F8E5M2, {32, 3, 64}),
-                              m::Op().WithShape(F8E8M0FNU, {16, 3, 2}),
-                              m::Op().WithShape(F8E8M0FNU, {32, 3, 2}))));
+      GmockMatch(m::ScaledDot(m::Op().WithShape(F8E4M3FN, {16, 3, 512}),
+                              m::Op().WithShape(F8E5M2, {32, 3, 512}),
+                              m::Op().WithShape(F8E8M0FNU, {16, 3, 16}),
+                              m::Op().WithShape(F8E8M0FNU, {32, 3, 16}))));
 }
 
 TEST_F(SplitKTest, ScaledDot_DifferentBlockSize) {
@@ -888,10 +888,10 @@ ENTRY %entry_computation {
       GmockMatch(m::Reduce(m::Fusion(&dot_fusion), m::ConstantScalar())));
   EXPECT_THAT(
       dot_fusion->called_computations()[0]->root_instruction(),
-      GmockMatch(m::ScaledDot(m::Op().WithShape(F8E4M3FN, {16, 3, 64}),
-                              m::Op().WithShape(F8E5M2, {32, 3, 64}),
-                              m::Op().WithShape(F8E8M0FNU, {16, 3, 2}),
-                              m::Op().WithShape(F8E8M0FNU, {32, 3, 4}))));
+      GmockMatch(m::ScaledDot(m::Op().WithShape(F8E4M3FN, {16, 3, 512}),
+                              m::Op().WithShape(F8E5M2, {32, 3, 512}),
+                              m::Op().WithShape(F8E8M0FNU, {16, 3, 16}),
+                              m::Op().WithShape(F8E8M0FNU, {32, 3, 32}))));
 }
 
 TEST_F(SplitKTest, ScaledDot_LhsOnly) {
@@ -923,9 +923,9 @@ ENTRY %entry_computation {
       module->entry_computation()->root_instruction(),
       GmockMatch(m::Reduce(m::Fusion(&dot_fusion), m::ConstantScalar())));
   EXPECT_THAT(dot_fusion->called_computations()[0]->root_instruction(),
-              GmockMatch(m::ScaledDot(m::Op().WithShape(F8E4M3FN, {16, 3, 64}),
-                                      m::Op().WithShape(F8E5M2, {32, 3, 64}),
-                                      m::Op().WithShape(F8E8M0FNU, {16, 3, 2}),
+              GmockMatch(m::ScaledDot(m::Op().WithShape(F8E4M3FN, {16, 3, 512}),
+                                      m::Op().WithShape(F8E5M2, {32, 3, 512}),
+                                      m::Op().WithShape(F8E8M0FNU, {16, 3, 16}),
                                       m::Op().WithShape(F8E5M2, {}))));
 }
 
@@ -959,10 +959,10 @@ ENTRY %entry_computation {
       GmockMatch(m::Reduce(m::Fusion(&dot_fusion), m::ConstantScalar())));
   EXPECT_THAT(
       dot_fusion->called_computations()[0]->root_instruction(),
-      GmockMatch(m::ScaledDot(m::Op().WithShape(F8E4M3FN, {16, 3, 64}),
-                              m::Op().WithShape(F8E5M2, {32, 3, 64}),
+      GmockMatch(m::ScaledDot(m::Op().WithShape(F8E4M3FN, {16, 3, 512}),
+                              m::Op().WithShape(F8E5M2, {32, 3, 512}),
                               m::Op().WithShape(F8E4M3FN, {}),
-                              m::Op().WithShape(F8E8M0FNU, {32, 3, 2}))));
+                              m::Op().WithShape(F8E8M0FNU, {32, 3, 16}))));
 }
 
 TEST_F(SplitKTest, ScaledDot_IncompatibleBlockSize) {
