@@ -155,25 +155,25 @@ class CudaExecutor : public GpuExecutor {
     uint64_t handle_;
   };
 
-  class MulticastMemory {
+  class CudaMulticastMemory : public MulticastMemory {
    public:
-    MulticastMemory()
+    CudaMulticastMemory()
         : handle_(0),
           padded_size_(0),
           granularity_(0),
           num_devices_(0),
-          subscribed_devices_(0) {};
-    ~MulticastMemory();
+          subscribed_devices_(0) {}
+    ~CudaMulticastMemory() override;
 
-    absl::Status Initialize(uint64_t size, int num_devices,
-                            CudaExecutor& cuda_executor);
-
-    absl::Status SubscribeDevice(int device_number);
+    absl::Status SubscribeDevice(int device_number) override;
 
     absl::StatusOr<void*> MapMemory(void* device_ptr,
-                                    CudaExecutor& cuda_executor);
+                                    GpuExecutor* gpu_executor) override;
 
    private:
+    friend class CudaExecutor;
+    absl::Status Initialize(uint64_t size, int num_devices,
+                            GpuExecutor* gpu_executor);
     CUmemGenericAllocationHandle handle_;
     uint64_t padded_size_;
     uint64_t granularity_;
@@ -183,6 +183,9 @@ class CudaExecutor : public GpuExecutor {
         ABSL_GUARDED_BY(mapped_devices_mu_);
     absl::Mutex mapped_devices_mu_;
   };
+
+  absl::StatusOr<std::unique_ptr<MulticastMemory>> CreateMulticastMemory(
+      uint64_t size, int num_devices) override;
 
   // Returns a handle to the given memory if it was allocated with VMM API.
   absl::StatusOr<VmmMemoryHandle> RetainVmmMemoryHandle(void* ptr);

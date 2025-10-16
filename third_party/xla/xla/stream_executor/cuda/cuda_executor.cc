@@ -74,6 +74,7 @@ limitations under the License.
 #include "xla/stream_executor/generic_memory_allocation.h"
 #include "xla/stream_executor/generic_memory_allocator.h"
 #include "xla/stream_executor/gpu/context.h"
+#include "xla/stream_executor/gpu/gpu_executor.h"
 #include "xla/stream_executor/gpu/read_numa_node.h"
 #include "xla/stream_executor/gpu/scoped_activate_context.h"
 #include "xla/stream_executor/gpu/tma_metadata.h"
@@ -1747,7 +1748,25 @@ absl::StatusOr<TensorMap> CudaExecutor::CreateTensorMap(
   return absl::bit_cast<TensorMap>(tensor_map);
 }
 
-CudaExecutor::MulticastMemory::~MulticastMemory() {
+absl::StatusOr<std::unique_ptr<GpuExecutor::MulticastMemory>>
+CudaExecutor::CreateMulticastMemory(uint64_t size, int num_devices) {
+  if (!is_multicast_supported_) {
+    return absl::FailedPreconditionError(
+        "Multicast memory is not supported on this platform.");
+  }
+  if (size == 0 || num_devices <= 1) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Multicast memory size must be > 0 and number of devices "
+                     "must be greater than 1, but got size: ",
+                     size, " and num_devices: ", num_devices, "."));
+  }
+
+  auto multicast_memory = std::make_unique<CudaMulticastMemory>();
+  TF_RETURN_IF_ERROR(multicast_memory->Initialize(size, num_devices, this));
+  return multicast_memory;
+}
+
+CudaExecutor::CudaMulticastMemory::~CudaMulticastMemory() {
   if (handle_ != 0) {
     for (auto const& [device_ordinal, mapped_memory_ptr] : mapped_devices_) {
       VLOG(3) << "[" << device_ordinal << "] Unbind multicast: " << handle_;
@@ -1767,8 +1786,13 @@ CudaExecutor::MulticastMemory::~MulticastMemory() {
   }
 }
 
-absl::Status CudaExecutor::MulticastMemory::Initialize(
-    uint64_t size, int num_devices, CudaExecutor& cuda_executor) {
+absl::Status CudaExecutor::CudaMulticastMemory::Initialize(
+    uint64_t size, int num_devices, GpuExecutor* gpu_executor) {
+  CudaExecutor* cuda_executor = dynamic_cast<CudaExecutor*>(gpu_executor);
+  if (cuda_executor == nullptr) {
+    return absl::InvalidArgumentError("GpuExecutor is not a CudaExecutor.");
+  }
+
   if (handle_ != 0) {
     return absl::FailedPreconditionError(
         "Multicast memory is already initialized.");
@@ -1781,7 +1805,7 @@ absl::Status CudaExecutor::MulticastMemory::Initialize(
   }
 
   CUmemAllocationProp properties = GetVmmAllocationProperties(
-      cuda_executor.device_, cuda_executor.is_rdma_supported_);
+      cuda_executor->device_, cuda_executor->is_rdma_supported_);
   TF_RETURN_IF_ERROR(
       stream_executor::cuda::ToStatus(cuMemGetAllocationGranularity(
           &granularity_, &properties, CU_MEM_ALLOC_GRANULARITY_RECOMMENDED)));
@@ -1791,7 +1815,7 @@ absl::Status CudaExecutor::MulticastMemory::Initialize(
   TF_ASSIGN_OR_RETURN(CUmulticastObjectProp multicast_properties,
                       CreateMulticastObjectProperties(num_devices_, size));
 
-  VLOG(3) << "[" << static_cast<int>(cuda_executor.device_)
+  VLOG(3) << "[" << static_cast<int>(cuda_executor->device_)
           << "] Create multicast memory: " << static_cast<uint64_t>(handle_)
           << " size: " << padded_size_ << " with granularity: " << granularity_
           << " for " << num_devices_ << " devices.";
@@ -1799,7 +1823,8 @@ absl::Status CudaExecutor::MulticastMemory::Initialize(
       cuMulticastCreate(&handle_, &multicast_properties));
 }
 
-absl::Status CudaExecutor::MulticastMemory::SubscribeDevice(int device_number) {
+absl::Status CudaExecutor::CudaMulticastMemory::SubscribeDevice(
+    int device_number) {
   if (handle_ == 0) {
     return absl::FailedPreconditionError(
         "Multicast memory is not initialized.");
@@ -1816,8 +1841,13 @@ absl::Status CudaExecutor::MulticastMemory::SubscribeDevice(int device_number) {
   return absl::OkStatus();
 }
 
-absl::StatusOr<void*> CudaExecutor::MulticastMemory::MapMemory(
-    void* device_ptr, CudaExecutor& cuda_executor) {
+absl::StatusOr<void*> CudaExecutor::CudaMulticastMemory::MapMemory(
+    void* device_ptr, GpuExecutor* gpu_executor) {
+  CudaExecutor* cuda_executor = dynamic_cast<CudaExecutor*>(gpu_executor);
+  if (cuda_executor == nullptr) {
+    return absl::InvalidArgumentError("GpuExecutor is not a CudaExecutor.");
+  }
+
   if (device_ptr == nullptr) {
     return absl::InvalidArgumentError("Device pointer is null.");
   }
@@ -1833,7 +1863,7 @@ absl::StatusOr<void*> CudaExecutor::MulticastMemory::MapMemory(
 
   TF_ASSIGN_OR_RETURN(
       stream_executor::gpu::CudaExecutor::VmmMemoryHandle memory_handle,
-      cuda_executor.RetainVmmMemoryHandle(device_ptr));
+      cuda_executor->RetainVmmMemoryHandle(device_ptr));
 
   CUmemGenericAllocationHandle retained_memory_handle =
       static_cast<CUmemGenericAllocationHandle>(memory_handle.handle());
@@ -1843,7 +1873,7 @@ absl::StatusOr<void*> CudaExecutor::MulticastMemory::MapMemory(
       cuMulticastBindMem(handle_, /*mcOffset=*/0, retained_memory_handle,
                          /*memOffset=*/0, padded_size_, /*flags=*/0)));
 
-  VLOG(3) << "[" << static_cast<int>(cuda_executor.device_)
+  VLOG(3) << "[" << static_cast<int>(cuda_executor->device_)
           << "] Mapped multicast memory: " << static_cast<uint64_t>(handle_)
           << " size: " << padded_size_ << " with granularity: " << granularity_
           << " to address: " << device_ptr;
@@ -1857,12 +1887,12 @@ absl::StatusOr<void*> CudaExecutor::MulticastMemory::MapMemory(
   TF_RETURN_IF_ERROR(stream_executor::cuda::ToStatus(
       cuMemMap(multicast_device_ptr, padded_size_, 0, handle_, 0)));
 
-  CUmemAccessDesc accessDesc = GetVmmAccessDescriptor(cuda_executor.device_);
+  CUmemAccessDesc accessDesc = GetVmmAccessDescriptor(cuda_executor->device_);
   TF_RETURN_IF_ERROR(stream_executor::cuda::ToStatus(
       cuMemSetAccess(multicast_device_ptr, padded_size_, &accessDesc, 1)));
 
   absl::MutexLock subscription_lock(mapped_devices_mu_);
-  mapped_devices_.emplace(cuda_executor.device_, multicast_device_ptr);
+  mapped_devices_.emplace(cuda_executor->device_, multicast_device_ptr);
   return reinterpret_cast<void*>(multicast_device_ptr);
 }
 
