@@ -248,10 +248,12 @@ absl::StatusOr<std::vector<Autotuner::Config>> Autotuner::GetSupportedConfigs(
     HloInstruction* instr) {
   std::vector<Config> configs;
   for (auto& codegen_backend : codegen_backends_) {
-    std::vector<std::unique_ptr<BackendConfig>> per_backend_configs;
-    TF_ASSIGN_OR_RETURN(per_backend_configs,
-                        codegen_backend->GetSupportedConfigs(*instr));
-    for (auto& config : per_backend_configs) {
+    absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>>
+        per_backend_configs = codegen_backend->GetSupportedConfigs(*instr);
+    if (!per_backend_configs.ok()) {
+      continue;
+    }
+    for (auto& config : *per_backend_configs) {
       configs.push_back({codegen_backend.get(), std::move(config)});
     }
   }
