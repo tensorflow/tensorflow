@@ -65,3 +65,14 @@ def ElementalTensorToVectorPass : Pass<"xtile-cpu-elemental-tensor-to-vector",
     "mlir::vector::VectorDialect",
   ];
 }
+
+def TensorOpsToVectorPass : Pass<"xtile-cpu-tensor-ops-to-vector",
+                                 "mlir::ModuleOp"> {
+  let summary = "Lowering tensor dialect ops to vector ops";
+
+  let constructor = "CreateTensorOpsToVectorPass()";
+
+  let dependentDialects = [
+    "mlir::vector::VectorDialect",
+  ];
+}

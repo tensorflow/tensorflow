@@ -29,15 +29,32 @@ gentbl_cc_library(
 )
 
 cc_library(
+    name = "lowering_utils",
+    srcs = [
+        "lowering_utils.cc",
+    ],
+    hdrs = ["lowering_utils.h"],
+    visibility = ["//visibility:private"],
+    deps = [
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TensorDialect",
+        "@llvm-project//mlir:VectorDialect",
+    ],
+)
+
+cc_library(
     name = "passes",
     srcs = [
         "elemental_tensor_to_vector.cc",
         "lower_xtile_entry.cc",
         "shlo_to_vector.cc",
+        "tensor_ops_to_vector.cc",
         "xtile_to_vector.cc",
     ],
     hdrs = ["passes.h"],
     deps = [
+        ":lowering_utils",
         ":passes_inc_gen",
         "//xla/backends/cpu/codegen/emitters/ir:xla_cpu",
         "//xla/codegen/emitters/ir:xla",

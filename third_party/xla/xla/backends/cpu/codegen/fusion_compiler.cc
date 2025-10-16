@@ -233,6 +233,7 @@ static void AddTiledLoweringPasses(mlir::OpPassManager& pm) {
   pm.addPass(CreateElementalTensorToVectorPass());
   pm.addPass(CreateShloToVectorPass());
   pm.addPass(CreateLowerXTileEntryPass());
+  pm.addPass(CreateTensorOpsToVectorPass());
   pm.addPass(cpu::createLowerToLLVMPass());
   pm.addPass(mlir::createConvertVectorToSCFPass(
       mlir::VectorTransferToSCFOptions().enableFullUnroll(false)));

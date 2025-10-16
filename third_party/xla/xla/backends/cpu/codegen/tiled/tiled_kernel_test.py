@@ -55,8 +55,8 @@ def compare_kernel(
         np.asarray(output_tensor), expected_output(*inputs)
     )
   else:
-    np.testing.assert_array_almost_equal(
-        np.asarray(output_tensor), expected_output(*inputs)
+    np.testing.assert_array_almost_equal_nulp(
+        np.asarray(output_tensor), expected_output(*inputs), nulp=3
     )
 
 
@@ -171,6 +171,35 @@ class XtileLoweringTest(absltest.TestCase):
         (8, 8),
         np.float32,
         lambda lhs, rhs: lhs @ rhs,
+        False,
+    )
+
+  def test_dot_scalar_output(self):
+    ir = """
+      module @test_dot_scalar_output {
+        xtile.entry_func @test_dot_scalar_output(
+            %lhs: memref<8x16xf32>,
+            %rhs: memref<16x8xf32>,
+            %output: memref<f32>,
+            %tile_id: index) attributes {xtile.tiling_info = #xtile.tiling_info<tile_count:1, tiles_per_workgroup:1>} {
+          %offset = arith.constant 0 : index
+          %lhs_tile = xtile.extract %lhs[%offset, %offset][8, 16][1, 1] : memref<8x16xf32> -> tensor<8x16xf32>
+          %rhs_tile = xtile.extract %rhs[%offset, %offset][16, 8][1, 1] : memref<16x8xf32> -> tensor<16x8xf32>
+          %result = stablehlo.dot_general %lhs_tile, %rhs_tile, contracting_dims = [1, 0] x [0, 1] : (tensor<8x16xf32>, tensor<16x8xf32>) -> tensor<f32>
+          xtile.insert %result into %output[][][] : tensor<f32> -> memref<f32>
+          xtile.return
+        }
+      }
+    """
+
+    compare_kernel(
+        ir,
+        "test_dot_scalar_output",
+        1,
+        [(8, 16), (16, 8)],
+        (1,),
+        np.float32,
+        lambda lhs, rhs: np.tensordot(lhs, rhs, axes=([1, 0], [0, 1])),
         False,
     )
 

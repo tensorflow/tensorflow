@@ -29,6 +29,8 @@ limitations under the License.
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypes.h"
+#include "mlir/IR/Dialect.h"
+#include "mlir/IR/Location.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/Value.h"
@@ -37,6 +39,7 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "stablehlo/dialect/StablehloOps.h"
+#include "xla/backends/cpu/codegen/tiled/transforms/lowering_utils.h"
 #include "xla/backends/cpu/codegen/tiled/transforms/passes.h"
 
 namespace xla::cpu {
@@ -46,20 +49,6 @@ namespace xla::cpu {
 #include "xla/backends/cpu/codegen/tiled/transforms/passes.h.inc"
 
 namespace {
-
-mlir::VectorType GetVectorType(mlir::RankedTensorType tensor_type) {
-  return mlir::VectorType::get(tensor_type.getShape(),
-                               tensor_type.getElementType());
-}
-
-mlir::TypedValue<mlir::VectorType> CastToVector(
-    mlir::PatternRewriter& rewriter,
-    mlir::TypedValue<mlir::RankedTensorType> tensor_value) {
-  auto vector_type = GetVectorType(tensor_value.getType());
-  auto cast_op = rewriter.create<mlir::UnrealizedConversionCastOp>(
-      tensor_value.getLoc(), vector_type, tensor_value);
-  return mlir::cast<mlir::TypedValue<mlir::VectorType>>(cast_op.getResult(0));
-}
 
 mlir::AffineMapAttr GetOperandIndexingMap(
     mlir::OpBuilder& builder, int64_t iterator_count, int64_t rank,
@@ -146,14 +135,10 @@ struct LowerDotGeneral : mlir::OpRewritePattern<mlir::stablehlo::DotGeneralOp> {
     auto rhs_vector = CastToVector(rewriter, op.getRhs());
     auto rhs_rank = rhs_vector.getType().getRank();
 
-    auto result_vector_type = GetVectorType(op.getResult().getType());
-    auto zero_const = rewriter.create<mlir::arith::ConstantOp>(
-        op->getLoc(), result_vector_type.getElementType(),
-        rewriter.getZeroAttr(result_vector_type.getElementType()));
-    // TODO(willfroom): Ensure this is being folded into the accumilator in the
+    // TODO(willfroom): Ensure this is being folded into the accumulator in the
     // dot loop.
-    mlir::Value accumulator = rewriter.create<mlir::vector::BroadcastOp>(
-        op->getLoc(), result_vector_type, zero_const);
+    mlir::Value accumulator =
+        GetAccumulator(rewriter, op->getLoc(), op.getType());
 
     mlir::stablehlo::DotDimensionNumbersAttr dimension_numbers =
         op.getDotDimensionNumbers();
@@ -188,14 +173,29 @@ struct LowerDotGeneral : mlir::OpRewritePattern<mlir::stablehlo::DotGeneralOp> {
     mlir::ArrayAttr iterator_types = GetIteratorTypes(
         rewriter, iterator_count, lhs_batch.size(), lhs_contracting.size());
 
-    mlir::Value result_vector = rewriter.create<mlir::vector::ContractionOp>(
+    mlir::Value result = rewriter.create<mlir::vector::ContractionOp>(
         op->getLoc(), lhs_vector, rhs_vector, accumulator, indexing_maps,
         iterator_types);
 
-    rewriter.replaceOpWithNewOp<mlir::UnrealizedConversionCastOp>(
-        op, op.getResult().getType(), result_vector);
+    rewriter.replaceOp(op, CastToTensor(rewriter, result));
 
     return mlir::success();
+  }
+
+ private:
+  mlir::Value GetAccumulator(mlir::OpBuilder& builder, mlir::Location loc,
+                             mlir::RankedTensorType result_type) const {
+    mlir::Type element_type = result_type.getElementType();
+    auto zero_const = builder.create<mlir::arith::ConstantOp>(
+        loc, element_type, builder.getZeroAttr(element_type));
+
+    if (result_type.getRank() == 0) {
+      return zero_const;
+    }
+
+    auto result_vector_type = GetVectorType(result_type);
+    return builder.create<mlir::vector::BroadcastOp>(loc, result_vector_type,
+                                                     zero_const);
   }
 };
 
@@ -205,24 +205,13 @@ struct LowerTranspose : mlir::OpRewritePattern<mlir::stablehlo::TransposeOp> {
   mlir::LogicalResult matchAndRewrite(
       mlir::stablehlo::TransposeOp op,
       mlir::PatternRewriter& rewriter) const override {
-    mlir::RankedTensorType source_tensor_type = op.getOperand().getType();
-    auto source_vector_type = mlir::VectorType::get(
-        source_tensor_type.getShape(), source_tensor_type.getElementType());
-    mlir::Value source_vector =
-        rewriter
-            .create<mlir::UnrealizedConversionCastOp>(
-                op->getLoc(), source_vector_type, op.getOperand())
-            .getResult(0);
+    mlir::Value source_vector = CastToVector(rewriter, op.getOperand());
 
-    mlir::Value dest_vector = rewriter.create<mlir::vector::TransposeOp>(
-        op->getLoc(), source_vector, op.getPermutation());
+    mlir::TypedValue<mlir::VectorType> dest_vector =
+        rewriter.create<mlir::vector::TransposeOp>(op->getLoc(), source_vector,
+                                                   op.getPermutation());
 
-    mlir::RankedTensorType dest_tensor_type = op.getResult().getType();
-    mlir::Value dest_tensor =
-        rewriter
-            .create<mlir::UnrealizedConversionCastOp>(
-                op->getLoc(), dest_tensor_type, dest_vector)
-            .getResult(0);
+    mlir::Value dest_tensor = CastToTensor(rewriter, dest_vector);
 
     rewriter.replaceAllUsesWith(op, dest_tensor);
     return mlir::success();
