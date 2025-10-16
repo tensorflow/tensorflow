@@ -1902,35 +1902,6 @@ void AppendFuncArgType(absl::Span<const int64_t> dims, Type ir_type,
       static_cast<unsigned>(mlir::NVVM::NVVMMemorySpace::Global)));
 }
 
-// Legacy emitter works with tt.func. New emitter works with func.func.
-// TODO(b/393299275): Remove legacy optionality once migration is complete.
-mlir::FunctionOpInterface CreateFuncOp(EmitterLocOpBuilder b,
-                                       absl::string_view fn_name,
-                                       absl::string_view fusion_kind,
-                                       SmallVector<Type>& fn_arg_types) {
-  if (fusion_kind != kTritonGemmFusionKind) {
-    return b.create<mlir::func::FuncOp>(fn_name,
-                                        b.getFunctionType(fn_arg_types, {}));
-  }
-  auto func = b.create<ttir::FuncOp>(
-      fn_name, b.getFunctionType(fn_arg_types, mlir::TypeRange()));
-  auto divisibility_attr = b.getI32IntegerAttr(16);
-  for (int i = 0; i < func.getNumArguments(); ++i) {
-    func.setArgAttr(i, "tt.divisibility", divisibility_attr);
-  }
-  return func;
-}
-
-// Legacy emitter works with tt.return. New emitter works with func.return.
-// TODO(b/393299275): Remove legacy optionality once migration is complete.
-void EmitReturnOp(EmitterLocOpBuilder b, absl::string_view fusion_kind) {
-  if (fusion_kind == kTritonGemmFusionKind) {
-    b.create<ttir::ReturnOp>();
-  } else {
-    b.create<mlir::func::ReturnOp>();
-  }
-}
-
 absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateTritonModule(
     absl::string_view fn_name, const HloFusionInstruction* fusion,
     const se::DeviceDescription& device_info,
@@ -2276,8 +2247,8 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> EmitXTileModule(
     AppendFuncArgType(s.shape.dimensions(), triton_ty, fn_arg_types);
   }
 
-  mlir::FunctionOpInterface fn =
-      CreateFuncOp(b, fn_name, fusion_kind, fn_arg_types);
+  mlir::FunctionOpInterface fn = b.create<mlir::func::FuncOp>(
+      fn_name, b.getFunctionType(fn_arg_types, {}));
 
   fn.addEntryBlock();
   b.setInsertionPointToStart(&fn.front());
@@ -2306,7 +2277,7 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> EmitXTileModule(
     return Internal("Unsupported fusion kind: %s", fusion_kind);
   }
 
-  EmitReturnOp(b, fusion_kind);
+  b.create<mlir::func::ReturnOp>();
 
   return triton_module;
 }
