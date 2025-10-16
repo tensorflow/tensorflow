@@ -1141,6 +1141,7 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
   switch (instr->opcode()) {
     case HloOpcode::kAbs:
     case HloOpcode::kAsin:
+    case HloOpcode::kAsinh:
     case HloOpcode::kAcos:
     case HloOpcode::kAcosh:
     case HloOpcode::kAdd:

@@ -239,7 +239,7 @@ struct TargetDeviceFunction GetDeviceFunctionRoot(
       return {"__nv_acos", "__ocml_acos", "_Z16__spirv_ocl_acos"};
     }
     case TargetDeviceFunctionID::kAcosh: {
-      return {"__nv_acosh", "__ocml_acosh", "_Z15__spirv_ocl_acosh"};
+      return {"__nv_acosh", "__ocml_acosh", "_Z17__spirv_ocl_acosh"};
     }
     case TargetDeviceFunctionID::kAtan2: {
       return {"__nv_atan2", "__ocml_atan2", "_Z17__spirv_ocl_atan2"};
@@ -247,8 +247,11 @@ struct TargetDeviceFunction GetDeviceFunctionRoot(
     case TargetDeviceFunctionID::kAsin: {
       return {"__nv_asin", "__ocml_asin", "_Z16__spirv_ocl_asin"};
     }
+    case TargetDeviceFunctionID::kAsinh: {
+      return {"__nv_asinh", "__ocml_asinh", "_Z17__spirv_ocl_asinh"};
+    }
     case TargetDeviceFunctionID::kAtanh: {
-      return {"__nv_atanh", "__ocml_atanh", "_Z15__spirv_ocl_atanh"};
+      return {"__nv_atanh", "__ocml_atanh", "_Z17__spirv_ocl_atanh"};
     }
     case TargetDeviceFunctionID::kCos: {
       return {"__nv_cos", "__ocml_cos", "_Z15__spirv_ocl_cos"};
@@ -287,7 +290,7 @@ struct TargetDeviceFunction GetDeviceFunctionRoot(
       return {"__nv_sin", "__ocml_sin", "_Z15__spirv_ocl_sin"};
     }
     case TargetDeviceFunctionID::kSinh: {
-      return {"__nv_sinh", "__ocml_sinh", "_Z15__spirv_ocl_sinh"};
+      return {"__nv_sinh", "__ocml_sinh", "_Z16__spirv_ocl_sinh"};
     }
     case TargetDeviceFunctionID::kSqrt: {
       return {"__nv_sqrt", "__ocml_sqrt", "_Z16__spirv_ocl_sqrt"};
@@ -313,6 +316,8 @@ std::optional<TargetDeviceFunctionID> GetTargetDeviceFunctionID(HloOpcode op) {
       return TargetDeviceFunctionID::kAcosh;
     case HloOpcode::kAsin:
       return TargetDeviceFunctionID::kAsin;
+    case HloOpcode::kAsinh:
+      return TargetDeviceFunctionID::kAsinh;
     case HloOpcode::kAtan2:
       return TargetDeviceFunctionID::kAtan2;
     case HloOpcode::kAtanh:

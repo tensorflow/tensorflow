@@ -111,6 +111,7 @@ absl::flat_hash_set<HloOpcode> TritonSupportedUnaryElementwiseOps(
         HloOpcode::kAcos,
         HloOpcode::kAcosh,
         HloOpcode::kAsin,
+        HloOpcode::kAsinh,
         HloOpcode::kAtanh,
         HloOpcode::kCbrt,
         HloOpcode::kCeil,

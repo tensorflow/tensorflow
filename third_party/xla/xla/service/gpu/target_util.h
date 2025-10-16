@@ -72,6 +72,7 @@ enum class TargetDeviceFunctionID {
   kAcos,
   kSinh,
   kAsin,
+  kAsinh,
   kCosh,
   kAtanh,
 };
