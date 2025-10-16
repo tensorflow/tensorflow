@@ -103,6 +103,7 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:xla_call_module_attrs",
         "//tensorflow/core:portable_gif_internal",
         "//tensorflow/core/ir/types:Dialect",
+        "//third_party/protobuf",
         "@com_google_absl//absl/base:nullability",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
