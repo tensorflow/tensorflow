@@ -40,6 +40,7 @@ limitations under the License.
 #include "shardy/dialect/sdy/ir/dialect.h"
 #include "shardy/dialect/sdy/ir/utils.h"
 #include "xla/service/spmd/shardy/constants.h"
+#include "xla/service/spmd/shardy/utils.h"
 
 namespace xla {
 namespace sdy {
@@ -180,9 +181,14 @@ class ExportNamedComputationsPass
           namedComputationOp.getOperands());
       callOp->setAttrs(callOpAttrs);
 
-      // Copy the output shardings to the call op.
-      if (outShardings.has_value()) {
-        mlir::sdy::setShardings(callOp, *outShardings);
+      // Copy the func output shardings to the call op.
+      // TODO(enver): Add explicit reshard if callOp and funcOp result shardings
+      // mismatch.
+      FuncOp funcOp = symbolTable.lookup<FuncOp>(funcSymName);
+      if (TensorShardingPerValueAttr funcResultShardings =
+              getFuncResultShardings(callOp, funcOp, symbolTable);
+          funcResultShardings) {
+        mlir::sdy::setShardings(callOp, funcResultShardings);
         if (manualAxesAttr) {
           callOp->setAttr(kManualAxes, manualAxesAttr);
         }

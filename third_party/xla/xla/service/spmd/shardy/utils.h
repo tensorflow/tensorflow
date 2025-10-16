@@ -166,6 +166,12 @@ bool hasGspmdAttrsOrOps(mlir::ModuleOp module);
 // TODO(b/420837831): delete this once we don't fall back to GSPMD.
 bool hasShardyMesh(mlir::ModuleOp module);
 
+// Returns the func result shardings of `funcOp`, with fully-replicated
+// shardings for empty shardings on `funcOp`, by using the ranks from `callOp`.
+mlir::sdy::TensorShardingPerValueAttr getFuncResultShardings(
+    mlir::func::CallOp callOp, mlir::func::FuncOp funcOp,
+    const mlir::SymbolTable& symbolTable);
+
 }  // namespace sdy
 }  // namespace xla
 
