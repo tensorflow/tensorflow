@@ -600,11 +600,6 @@ class PjRtStreamExecutorBuffer : public CommonPjRtBufferImpl {
   PjRtStreamExecutorBuffer& operator=(const PjRtStreamExecutorBuffer&) = delete;
   PjRtStreamExecutorBuffer& operator=(PjRtStreamExecutorBuffer&&) = delete;
 
-  using PjRtBuffer::ToLiteralSync;
-  Future<> ToLiteral(MutableLiteralBase* literal) override;
-  Future<> LazyToLiteral(
-      absl::AnyInvocable<Future<MutableLiteralBase*>() &&> generator) override;
-
   absl::StatusOr<size_t> GetOnDeviceSizeInBytes() const override;
 
   Future<> CopyRawToHost(void* dst, int64_t offset,
@@ -686,8 +681,6 @@ class PjRtStreamExecutorBuffer : public CommonPjRtBufferImpl {
                      const TrackedDeviceBuffer& src_device_buffer);
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> CopyToDeviceMemorySpace(
       PjRtDevice* dst_device, PjRtMemorySpace* dst_memory_space = nullptr);
-
-  Future<> ToLiteralHelper(Future<MutableLiteralBase*> literal);
 };
 
 // Allocates the device buffers for a buffer that will be used as the
