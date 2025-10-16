@@ -18,6 +18,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/log/log.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/c/eager/c_api.h"
 #include "tensorflow/c/eager/parallel_device/parallel_device_lib.h"
 #include "tensorflow/c/eager/parallel_device/parallel_device_testlib.h"

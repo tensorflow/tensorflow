@@ -177,5 +177,6 @@ tf_cc_test(
         "//tensorflow/core/distributed_runtime/rpc:grpc_server_lib",
         "//tensorflow/core/platform:strcat",
         "@com_google_absl//absl/log",
+        "@com_google_absl//absl/strings",
     ],
 )
