@@ -33,7 +33,7 @@ class SampleTextTest
     : public HloPjRtInterpreterReferenceMixin<HloPjRtTestBase> {};
 
 TEST_F(SampleTextTest, Axpy) {
-  const std::string& hlo_string = R"(
+  const std::string& hlo_string = R"hlo(
 HloModule axpy_module:
 ENTRY %axpy.v5 (alpha: f32[], x: f32[2,4], y: f32[2,4]) -> f32[2,4] {
   %alpha = f32[] parameter(0)
@@ -43,12 +43,12 @@ ENTRY %axpy.v5 (alpha: f32[], x: f32[2,4], y: f32[2,4]) -> f32[2,4] {
   %y = f32[2,4]{1,0} parameter(2)
   ROOT %add = f32[2,4]{1,0} add(f32[2,4]{1,0} %multiply, f32[2,4]{1,0} %y)
 }
-)";
+)hlo";
   EXPECT_TRUE(RunAndCompareNoHloPasses(hlo_string, ErrorSpec{0.0001}));
 }
 
 TEST_F(SampleTextTest, Tuple) {
-  const std::string& hlo_string = R"(
+  const std::string& hlo_string = R"hlo(
 HloModule TupleCreate_module:
 ENTRY %TupleCreate.v4 (v1: f32[], v2: f32[3], v3: f32[2,3]) -> (f32[], f32[3], f32[2,3]) {
   %v1 = f32[] parameter(0)
@@ -56,7 +56,7 @@ ENTRY %TupleCreate.v4 (v1: f32[], v2: f32[3], v3: f32[2,3]) -> (f32[], f32[3], f
   %v3 = f32[2,3]{1,0} parameter(2)
   ROOT %tuple = (f32[], f32[3]{0}, f32[2,3]{1,0}) tuple(f32[] %v1, f32[3]{0} %v2, f32[2,3]{1,0} %v3)
 }
-)";
+)hlo";
   EXPECT_TRUE(RunAndCompare(hlo_string, nullopt));
 }
 
