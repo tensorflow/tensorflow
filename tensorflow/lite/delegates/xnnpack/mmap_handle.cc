@@ -49,6 +49,23 @@ limitations under the License.
 
 namespace tflite::xnnpack {
 
+#ifdef _WIN32
+// Helper to split a value in high/low parts to pass to Windows APIs.
+struct HighLow {
+  DWORD high;
+  DWORD low;
+  template <class T>
+  static HighLow From(T val) {
+    static_assert(sizeof(T) <= 2 * sizeof(DWORD),
+                  "Value type doesn't fit in two DWORDs.");
+    return {sizeof(DWORD) < sizeof(val)
+                ? static_cast<DWORD>(val >> CHAR_BIT * sizeof(DWORD))
+                : 0,
+            static_cast<DWORD>(val)};
+  }
+};
+#endif
+
 void swap(MMapHandle& a, MMapHandle& b) {
   using std::swap;
   swap(a.size_, b.size_);
@@ -116,31 +133,50 @@ bool MMapHandle::Map(const FileDescriptorView& fd, const size_t offset,
     std::replace(name.begin(), name.end(), '\\', '_');
     handle_name = name.c_str();
   }
-  file_mapping_ =
-      CreateFileMappingA(osf_handle, /*lpFileMappingAttributes=*/nullptr,
-                         /*flProtect=*/PAGE_READONLY, /*dwMaximumSizeHigh=*/0,
-                         /*dwMaximumSizeLow=*/0, /*lpName=*/handle_name);
+
+  const size_t mapping_size = static_cast<size_t>(5) * 1024 * 1024 * 1024;
+  HighLow file_size = HighLow::From(mapping_size);
+
+  file_mapping_ = CreateFileMappingA(
+      osf_handle, /*lpFileMappingAttributes=*/nullptr,
+      /*flProtect=*/PAGE_READONLY,
+      /*dwMaximumSizeHigh=*/file_size.high,
+      /*dwMaximumSizeLow=*/file_size.low, /*lpName=*/handle_name);
   XNNPACK_RETURN_CHECK(file_mapping_ != NULL,
-                       "could not create a file mapping: %s.",
+                       "could not create a file mapping: %s",
                        GetLastErrorString().c_str());
+
+  if (GetLastError() == ERROR_ALREADY_EXISTS) {
+    void* dummy = MapViewOfFile(file_mapping_, FILE_MAP_READ, 0, 0, 1);
+    XNNPACK_RETURN_CHECK(
+        dummy != nullptr,
+        "could not create mapping view to check map object size (%s): %s",
+        safe_path, GetLastErrorString().c_str());
+    ScopeGuard unmap_dummy([dummy]() { UnmapViewOfFile(dummy); });
+    MEMORY_BASIC_INFORMATION meminfo;
+    XNNPACK_RETURN_CHECK(VirtualQuery(dummy, &meminfo, sizeof(meminfo)) != 0,
+                         "could not get mapping view size");
+    XNNPACK_RETURN_CHECK(
+        meminfo.RegionSize >= offset_ + size_,
+        "file mapping already exists for %s and is smaller than the "
+        "requested region size, this may lead to an error",
+        name.c_str());
+  }
 
   SYSTEM_INFO sys_info;
   GetSystemInfo(&sys_info);
 
   offset_page_adjustment_ = offset_ % sys_info.dwAllocationGranularity;
 
-  const size_t adjusted_offset = offset - offset_page_adjustment_;
-  const DWORD file_offset_high =
-      sizeof(DWORD) < sizeof(adjusted_offset)
-          ? (adjusted_offset >> CHAR_BIT * sizeof(DWORD))
-          : 0;
-  const DWORD file_offset_low = static_cast<DWORD>(adjusted_offset);
+  const size_t adjusted_offset = offset_ - offset_page_adjustment_;
+  const size_t adjusted_size = size_ + offset_page_adjustment_;
+  HighLow file_offset = HighLow::From(adjusted_offset);
 
-  data_ = static_cast<uint8_t*>(MapViewOfFile(file_mapping_, FILE_MAP_READ,
-                                              file_offset_high, file_offset_low,
-                                              /*dwNumberOfBytesToMap=*/0));
+  data_ = static_cast<uint8_t*>(MapViewOfFile(
+      file_mapping_, FILE_MAP_READ, file_offset.high, file_offset.low,
+      /*dwNumberOfBytesToMap=*/adjusted_size));
 
-  XNNPACK_RETURN_CHECK(data_ != nullptr, "could not map file (%s): %s.",
+  XNNPACK_RETURN_CHECK(data_ != nullptr, "could not map file (%s): %s",
                        safe_path, GetLastErrorString().c_str());
 #else
   offset_page_adjustment_ = offset_ % getpagesize();

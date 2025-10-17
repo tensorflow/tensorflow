@@ -684,7 +684,7 @@ bool IsCompatibleCacheFile(const char* path) {
                        "Couldn't read file header.");
   XNNPACK_RETURN_CHECK(
       header.version == XNNPackCacheHeader::kVersion,
-      "Cache header version is incompatible. Expected %d, got %d.",
+      "Cache header version is incompatible. Expected %llu, got %llu.",
       XNNPackCacheHeader::kVersion, header.version);
   XNNPACK_RETURN_CHECK(xnn_experimental_check_build_identifier(
                            header.xnnpack_build_identifier,
