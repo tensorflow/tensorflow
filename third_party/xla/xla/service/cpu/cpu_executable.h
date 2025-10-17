@@ -62,7 +62,8 @@ class CpuExecutable : public Executable {
       std::unique_ptr<HloModule> hlo_module, ThunkSequence thunks,
       std::vector<ConstantAllocation> constants,
       std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data,
-      std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map);
+      std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map,
+      TargetMachineOptionsProto target_machine_options);
 
   ~CpuExecutable() override;
 
@@ -149,6 +150,10 @@ class CpuExecutable : public Executable {
   // structures that might have been used at compile time.
   void Finalize();
 
+  const TargetMachineOptionsProto& target_machine_options() const {
+    return target_machine_options_;
+  }
+
  private:
   // Creates an array suitable for passing as the "buffer_table" argument to the
   // JIT compiled function pointer.
@@ -230,13 +235,16 @@ class CpuExecutable : public Executable {
   // Whether the thunk executor contains any XNN fusion thunks.
   bool has_xnn_fusions_ = false;
 
+  TargetMachineOptionsProto target_machine_options_;
+
   // Entry function name for the computation.
   std::string entry_function_name_;
 
   CpuExecutable(std::unique_ptr<HloModule> hlo_module,
                 std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data,
                 std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map,
-                std::unique_ptr<BufferAssignment> assignment);
+                std::unique_ptr<BufferAssignment> assignment,
+                TargetMachineOptionsProto target_machine_options);
   CpuExecutable(const CpuExecutable&) = delete;
   CpuExecutable& operator=(const CpuExecutable&) = delete;
 };

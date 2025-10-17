@@ -1944,13 +1944,32 @@ CpuCompiler::CompileCpuExecutable(
   TF_ASSIGN_OR_RETURN(std::vector<ConstantAllocation> constants,
                       CreateConstantAllocations(*assignment));
 
+  TargetMachineOptionsProto target_machine_options_proto;
+  target_machine_options_proto.set_triple(
+      target_machine->getTargetTriple().getTriple());
+  target_machine_options_proto.set_cpu(target_machine->getTargetCPU());
+
+  // TODO(basioli): Target machine features are returning an empty string at the
+  // moment so for now we are using the host CPU features. This should be
+  // updated to use the target machine features of the target we are actually
+  // compiling for as we might want to support cross-compilation.
+  std::string host_cpu_features;
+
+  for (const auto& feature : llvm::sys::getHostCPUFeatures()) {
+    if (feature.getValue()) {
+      host_cpu_features += feature.getKey().str() + ",";
+    }
+  }
+  host_cpu_features.pop_back();  // Remove trailing comma.
+  target_machine_options_proto.set_features(host_cpu_features);
+
   TF_ASSIGN_OR_RETURN(
       auto cpu_executable,
-      CpuExecutable::Create(std::move(function_library), std::move(assignment),
-                            std::move(module), std::move(thunks),
-                            std::move(constants),
-                            std::move(hlo_profile_printer_data),
-                            std::move(hlo_profile_index_map)));
+      CpuExecutable::Create(
+          std::move(function_library), std::move(assignment), std::move(module),
+          std::move(thunks), std::move(constants),
+          std::move(hlo_profile_printer_data), std::move(hlo_profile_index_map),
+          std::move(target_machine_options_proto)));
 
   // Save object files to be able to export them to AOT compilation
   // result.
@@ -2187,7 +2206,8 @@ CpuCompiler::CompileAheadOfTimeThunks(
       cpu_executable->module_name(), std::move(obj_files),
       cpu_executable->get_compiled_symbols_proto(), thunk_sequence,
       std::move(*cpu_executable).consume_function_library(),
-      std::move(executable_hlo_profile_printer_data));
+      std::move(executable_hlo_profile_printer_data),
+      cpu_executable->target_machine_options());
 }
 
 se::Platform::Id CpuCompiler::PlatformId() const {
@@ -2237,7 +2257,8 @@ absl::StatusOr<std::unique_ptr<AotCompilationResult>> CpuCompiler::Export(
       cpu_executable->module_name(), std::move(obj_files),
       std::move(compiled_symbols_proto), *thunk_sequence,
       std::move(function_library),
-      std::move(executable_hlo_profile_printer_data));
+      std::move(executable_hlo_profile_printer_data),
+      cpu_executable->target_machine_options());
 }
 
 absl::StatusOr<std::unique_ptr<AotCompilationResult>>

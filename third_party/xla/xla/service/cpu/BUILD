@@ -565,6 +565,8 @@ xla_test(
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/strings:string_view",
+        "@llvm-project//llvm:TargetParser",
+        "@local_tsl//tsl/platform:casts",
     ],
 )
 
@@ -2185,9 +2187,11 @@ cc_library(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
         "@llvm-project//llvm:Target",
+        "@llvm-project//llvm:TargetParser",
         "@llvm-project//llvm:ir_headers",
     ] + if_llvm_aarch64_available([
         "@llvm-project//llvm:AArch64CodeGen",  # fixdeps: keep

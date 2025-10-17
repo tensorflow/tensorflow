@@ -22,13 +22,14 @@ limitations under the License.
 #include <vector>
 
 #include "absl/log/log.h"
-#include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_split.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/IR/DataLayout.h"
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Target/TargetOptions.h"
+#include "llvm/TargetParser/Host.h"
 #include "xla/backends/cpu/codegen/cpu_features.h"
 #include "xla/backends/cpu/codegen/execution_engine.h"
 #include "xla/backends/cpu/codegen/ir_compiler.h"
@@ -158,6 +159,37 @@ CpuAotLoader::LoadAotCompilationResult(
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<HloModule> hlo_module,
       HloModule::CreateFromProtoWithConfig(aot_result_proto.hlo_module()));
+
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<llvm::TargetMachine> target_machine,
+      IrCompiler::InferTargetMachine(
+          std::move(CompilerTargetOptions(hlo_module->config())),
+          IrCompiler::GetCodeGenOptLevel(hlo_module->config()),
+          CpuFeatureFromString(
+              hlo_module->config().debug_options().xla_cpu_max_isa())));
+
+  llvm::Triple triple(aot_result_proto.target_machine_options().triple());
+  llvm::Triple expected_triple(target_machine->getTargetTriple());
+  if (triple.getArchName() != expected_triple.getArchName()) {
+    return Internal("Target arch mismatch expected %s got %s.",
+                    expected_triple.getArchName(), triple.getArchName());
+  }
+
+  auto compile_machine_features =
+      absl::StrSplit(aot_result_proto.target_machine_options().features(), ',');
+
+  auto host_machine_features = llvm::sys::getHostCPUFeatures();
+
+  for (const auto& feature : compile_machine_features) {
+    if (!host_machine_features.contains(feature) ||
+        !host_machine_features[feature]) {
+      return Internal(
+          "Cannot load AOT result. Target machine feature %s is not supported "
+          "on the host machine.",
+          feature);
+    }
+  }
+
   std::vector<SymbolProto> compiled_symbols_proto;
   for (const auto& symbol_proto : aot_result_proto.compiled_symbols()) {
     compiled_symbols_proto.push_back(symbol_proto);
