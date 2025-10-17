@@ -32,9 +32,7 @@ limitations under the License.
 #include "xla/client/client_library.h"
 #include "xla/client/executable_build_options.h"
 #include "xla/client/local_client.h"
-#include "xla/cpu_function_runtime.h"
 #include "xla/hlo/builder/xla_computation.h"
-#include "xla/service/cpu/buffer_info_util.h"
 #include "xla/service/cpu/cpu_aot_compilation_result.h"
 #include "xla/service/cpu/cpu_executable.h"
 #include "xla/service/platform_util.h"
@@ -64,10 +62,10 @@ absl::StatusOr<size_t> ComputeResultIndex(
 
 // Returns the number of results.
 int CountResults(
-    absl::Span<const xla::cpu_function_runtime::BufferInfo> buffer_infos) {
+    absl::Span<const xla::cpu::BufferAllocationInfo> buffer_infos) {
   int num_results = 0;
   for (const auto& info : buffer_infos) {
-    if (info.is_result_parameter()) {
+    if (info.is_result()) {
       ++num_results;
     }
   }
@@ -152,18 +150,18 @@ XlaJitCompiledCpuFunction::Compile(
       cpu_executable->buffer_assignment();
 
   // Compute buffer infos and the result index, needed to run the raw function.
-  std::vector<xla::cpu_function_runtime::BufferInfo> buffer_infos =
-      xla::cpu::CreateBufferInfosFromBufferAssignment(cpu_executable->module(),
-                                                      buffer_assignment);
+  std::vector<xla::cpu::BufferAllocationInfo> buffer_infos =
+      xla::cpu::CreateBufferAllocationInfos(cpu_executable->module(),
+                                            buffer_assignment);
 
   std::vector<xla::cpu::BufferAllocationInfo> buffer_allocation_infos =
       xla::cpu::CreateBufferAllocationInfos(cpu_executable->module(),
                                             buffer_assignment);
 
   std::vector<int32> arg_index_table =
-      xla::cpu::CreateArgIndexTableFromBufferInfos(buffer_infos);
+      xla::cpu::CreateArgIndexTable(buffer_infos);
   std::vector<int32> result_index_table =
-      xla::cpu::CreateResultIndexTableFromBufferInfos(buffer_infos);
+      xla::cpu::CreateResultIndexTable(buffer_infos);
   TF_ASSIGN_OR_RETURN(size_t result_index,
                       ComputeResultIndex(buffer_assignment));
   const int num_results = CountResults(buffer_infos);

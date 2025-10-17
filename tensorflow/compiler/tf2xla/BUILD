@@ -406,8 +406,9 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "@com_google_absl//absl/base:dynamic_annotations",
-        "@local_xla//xla:cpu_function_runtime",
+        "@com_google_absl//absl/types:span",
         "@local_xla//xla/backends/cpu:alignment",
+        "@local_xla//xla/backends/cpu:buffer_allocation_info",
     ],
 )
 
@@ -419,8 +420,8 @@ tf_cc_test(
         "//tensorflow/core:framework",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
-        "@local_xla//xla:cpu_function_runtime",
         "@local_xla//xla/backends/cpu:alignment",
+        "@local_xla//xla/backends/cpu:buffer_allocation_info",
     ],
 )
 
@@ -431,14 +432,15 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     visibility = ["//visibility:public"],
     deps = [
-        ":allocator",
-        "@com_google_absl//absl/log:check",
-        "@local_xla//xla/service:custom_call_status_internal",
         # Keep dependencies to a minimum here; this library is used in every AOT
         # binary produced by tfcompile.
+        ":allocator",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/types:span",
+        "@local_xla//xla/service:custom_call_status_internal",
         "@local_xla//xla/backends/cpu/runtime:rng_state_lib",
         "@local_xla//xla/backends/cpu:alignment",
-        "@local_xla//xla:cpu_function_runtime",
+        "@local_xla//xla/backends/cpu:buffer_allocation_info",
         "@local_xla//xla:executable_run_options",
         "//tensorflow/core/platform:types",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -513,7 +515,6 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/platform:casts",
-        "@local_xla//xla:cpu_function_runtime",
         "@local_xla//xla:shape_util",
         "@local_xla//xla:xla_data_proto_cc",
         "@local_xla//xla/backends/cpu:buffer_allocation_info",
@@ -530,7 +531,6 @@ cc_library(
     ] + if_libtpu(
         if_false = [
             "@local_xla//xla/service:cpu_plugin",
-            "@local_xla//xla/service/cpu:buffer_info_util",
             "@local_xla//xla/service/cpu:cpu_executable",
         ],
         if_true = [],

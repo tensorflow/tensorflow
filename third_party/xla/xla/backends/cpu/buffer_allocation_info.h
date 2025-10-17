@@ -22,7 +22,8 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 
-namespace xla::cpu {
+namespace xla {
+namespace cpu {
 
 // `BufferAllocationInfo` stores information about buffer allocations required
 // by an XLA:CPU executable at run time. It corresponds to a `BufferAllocation`
@@ -118,7 +119,7 @@ class BufferAllocationInfo {
   }
 
   static BufferAllocationInfo Result(uint64_t size, int32_t result_number) {
-    return BufferAllocationInfo(Kind::kResult, size, -1, result_number);
+    return BufferAllocationInfo(Kind::kParameter, size, -1, result_number);
   }
 
   static BufferAllocationInfo ThreadLocal(uint64_t size) {
@@ -144,13 +145,7 @@ class BufferAllocationInfo {
 
   // If buffer allocation is an in-out parameter, we use `kParameter` kind and
   // set both entry parameter and result numbers.
-  enum class Kind : uint64_t {
-    kConstant,
-    kTemp,
-    kParameter,
-    kResult,
-    kThreadLocal
-  };
+  enum class Kind : uint64_t { kConstant, kTemp, kParameter, kThreadLocal };
 
   BufferAllocationInfo(Kind kind, uint64_t size,
                        int32_t entry_param_number = -1,
@@ -161,15 +156,15 @@ class BufferAllocationInfo {
         result_number_(result_number) {}
 
   static uint64_t Pack(Kind kind, uint64_t size) {
-    return (static_cast<uint64_t>(size) << 4) | static_cast<uint64_t>(kind);
+    return (static_cast<uint64_t>(size) << 2) | static_cast<uint64_t>(kind);
   }
 
   static inline constexpr Kind UnpackKind(uint64_t packed) {
-    return static_cast<Kind>((packed << 60) >> 60);
+    return static_cast<Kind>((packed << 62) >> 62);
   }
 
   static inline constexpr uint64_t UnpackSize(uint64_t packed) {
-    return packed >> 4;
+    return packed >> 2;
   }
 
   static absl::string_view ToString(Kind kind) {
@@ -180,19 +175,25 @@ class BufferAllocationInfo {
         return "temp";
       case Kind::kParameter:
         return "parameter";
-      case Kind::kResult:
-        return "result";
       case Kind::kThreadLocal:
         return "thread-local";
     }
   }
 
-  Kind kind_ : 4;
-  uint64_t size_ : 60;
+  Kind kind_ : 2;
+  uint64_t size_ : 62;
   int32_t entry_param_number_ = -1;
   int32_t result_number_ = -1;
 };
 
-}  // namespace xla::cpu
+}  // namespace cpu
+
+// TODO(ezhulenev): This is a temporary hack to keep `tfcompile` code working.
+namespace cpu_function_runtime {
+using BufferInfo = ::xla::cpu::BufferAllocationInfo;
+using EncodedBufferInfo = ::xla::cpu::BufferAllocationInfo::Encoded;
+}  // namespace cpu_function_runtime
+
+}  // namespace xla
 
 #endif  // XLA_BACKENDS_CPU_BUFFER_ALLOCATION_INFO_H_
