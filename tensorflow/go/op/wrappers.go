@@ -33165,6 +33165,16 @@ func QuantizeAndDequantizeV4GradAxis(value int64) QuantizeAndDequantizeV4GradAtt
 //
 // Returns a gradient of 1 for inputs that are within the quantization range,
 // or 0 otherwise.
+//
+// Arguments:
+//
+//	input_min: If `axis` is specified, the shape of the minimum input tensor
+//
+// must be rank 1.
+//
+//	input_max: If `axis` is specified, the shape of the maximum input tensor
+//
+// must be rank 1.
 func QuantizeAndDequantizeV4Grad(scope *Scope, gradients tf.Output, input tf.Output, input_min tf.Output, input_max tf.Output, optional ...QuantizeAndDequantizeV4GradAttr) (input_backprop tf.Output, input_min_backprop tf.Output, input_max_backprop tf.Output) {
 	if scope.Err() != nil {
 		return
@@ -54967,6 +54977,9 @@ func ThreadPoolHandleMaxIntraOpParallelism(value int64) ThreadPoolHandleAttr {
 }
 
 // ThreadPoolHandleContainer sets the optional container attribute to value.
+//
+// value: The name of `container` should start with `'.'` or `letter` or `digit`,
+// with ['-', '.', '/'] or `letter` or `digit` follows several times.
 // If not specified, defaults to ""
 func ThreadPoolHandleContainer(value string) ThreadPoolHandleAttr {
 	return func(m optionalAttr) {
@@ -54990,10 +55003,6 @@ func ThreadPoolHandleSharedName(value string) ThreadPoolHandleAttr {
 //	display_name: A human-readable name for the threads that may be visible in some
 //
 // visualizations.
-// threadpool.
-//
-// Returns A resource that can be consumed by one or more ExperimentalThreadPoolDataset
-// ops.
 func ThreadPoolHandle(scope *Scope, num_threads int64, display_name string, optional ...ThreadPoolHandleAttr) (handle tf.Output) {
 	if scope.Err() != nil {
 		return
