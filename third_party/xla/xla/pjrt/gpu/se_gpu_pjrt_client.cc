@@ -1137,6 +1137,8 @@ absl::StatusOr<Layout> StreamExecutorGpuClient::GetDefaultLayout(
 absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
 StreamExecutorGpuClient::CompileAndLoad(mlir::ModuleOp module,
                                         CompileOptions options) {
+  options.executable_build_options.mutable_debug_options()->set_xla_dump_to(
+      "sponge");
   auto executable = PjRtStreamExecutorClient::CompileAndLoad(module, options);
 
 #if defined(GOOGLE_CUDA) || defined(TENSORFLOW_USE_ROCM)
