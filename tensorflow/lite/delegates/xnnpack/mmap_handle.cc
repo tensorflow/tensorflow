@@ -138,6 +138,27 @@ bool MMapHandle::Map(const FileDescriptorView& fd, const size_t offset,
                        "could not create a file mapping: %s",
                        GetLastErrorString().c_str());
 
+  if (GetLastError() == ERROR_ALREADY_EXISTS) {
+    // Map a 1 byte view and check if the requested mapping fits the base memory
+    // region of the mapping object.
+    void* dummy =
+        MapViewOfFile(file_mapping_, FILE_MAP_READ, /*dwFileOffsetHigh=*/0,
+                      /*dwFileOffsetLow=*/0, /*dwNumberOfBytesToMap=*/1);
+    XNNPACK_RETURN_CHECK(
+        dummy != nullptr,
+        "could not create mapping view to check map object size (%s): %s",
+        safe_path, GetLastErrorString().c_str());
+    ScopeGuard unmap_dummy([dummy]() { UnmapViewOfFile(dummy); });
+    MEMORY_BASIC_INFORMATION meminfo;
+    XNNPACK_RETURN_CHECK(VirtualQuery(dummy, &meminfo, sizeof(meminfo)) != 0,
+                         "could not get mapping view size");
+    XNNPACK_RETURN_CHECK(
+        meminfo.RegionSize >= offset_ + size_,
+        "file mapping already exists for %s and is smaller than the "
+        "requested region size, this may lead to an error",
+        name.c_str());
+  }
+
   SYSTEM_INFO sys_info;
   GetSystemInfo(&sys_info);
 
