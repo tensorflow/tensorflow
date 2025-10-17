@@ -238,19 +238,60 @@ absl::StatusOr<HloModuleAndArguments> ReadModuleFromSnapshotBinaryProtoFile(
   return hlo_module_and_arguments;
 }
 
-absl::StatusOr<HloModuleAndArguments>
-ReadModuleFromUnoptimizedSnapshotBinaryProtoFile(absl::string_view hlo_file) {
-  HloModuleAndArguments hlo_module_and_arguments;
-  tsl::Env* env = tsl::Env::Default();
+namespace {
 
+// This function reads an HloUnoptimizedSnapshot from the file at the given
+// path.
+// It first tries to deserialize the snapshot using custom serialization.
+// If that fails, it falls back to standard deserialization.
+absl::StatusOr<HloUnoptimizedSnapshot> ReadHloUnoptimizedSnapshot(
+    absl::string_view hlo_file) {
+  tsl::Env* env = tsl::Env::Default();
   std::unique_ptr<tsl::RandomAccessFile> file;
   TF_RETURN_IF_ERROR(env->NewRandomAccessFile(std::string(hlo_file), &file));
 
-  tsl::RandomAccessFileCopyingInputStream input_stream(file.get());
-  tsl::protobuf::io::CopyingInputStreamAdaptor adaptor(&input_stream);
+  tsl::RandomAccessFileCopyingInputStream custom_deserialization_input_stream(
+      file.get());
+  tsl::protobuf::io::CopyingInputStreamAdaptor custom_deserialization_adaptor(
+      &custom_deserialization_input_stream);
+
+  // Try to deserialize snapshot with custom deserialization.
+  auto proto_or_status =
+      DeserializeHloUnoptimizedSnapshot(&custom_deserialization_adaptor);
+
+  if (proto_or_status.ok()) {
+    return proto_or_status.value();
+  }
+
+  // Fallback to standard deserialization.
+
+  HloUnoptimizedSnapshot proto;
+  // Fallback to standard deserialization. This requires creating a new input
+  // stream because we need to read from the beginning of the file.
+  tsl::RandomAccessFileCopyingInputStream fallback_input_stream(file.get());
+  tsl::protobuf::io::CopyingInputStreamAdaptor fallback_adaptor(
+      &fallback_input_stream);
+  tsl::protobuf::io::CodedInputStream coded_stream(&fallback_adaptor);
+
+  if (!proto.ParseFromCodedStream(&coded_stream)) {
+    return Internal(
+        "Failed to parse HloUnoptimizedSnapshot from the input stream with "
+        "standard deserialization. Custom deserialization also failed with "
+        "error: "
+        "%s",
+        proto_or_status.status().message());
+  }
+  return proto;
+}
+
+}  // namespace
+
+absl::StatusOr<HloModuleAndArguments>
+ReadModuleFromUnoptimizedSnapshotBinaryProtoFile(absl::string_view hlo_file) {
+  HloModuleAndArguments hlo_module_and_arguments;
 
   TF_ASSIGN_OR_RETURN(HloUnoptimizedSnapshot proto,
-                      DeserializeHloUnoptimizedSnapshot(&adaptor));
+                      ReadHloUnoptimizedSnapshot(hlo_file));
 
   TF_ASSIGN_OR_RETURN(hlo_module_and_arguments.hlo_module,
                       CreateModuleFromProto(proto.hlo_module()));

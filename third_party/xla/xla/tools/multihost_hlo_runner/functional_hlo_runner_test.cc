@@ -685,6 +685,51 @@ TEST_F(FunctionalHloRunnerTest, Sharded2DevicesHloUnoptimizedSnapshot) {
   }
 }
 
+TEST_F(FunctionalHloRunnerTest, ReadHloUnoptimizedSnapshotCustomSerialization) {
+  std::string path_to_text_hlo =
+      GetHloPath("sharded_unoptimized_hlo_snapshot.pbtxt");
+  std::string path_to_binary_hlo = tsl::io::JoinPath(
+      std::getenv("TEST_UNDECLARED_OUTPUTS_DIR"),
+      "sharded_unoptimized_hlo_snapshot_custom_serialization.pb");
+  tsl::Env* env = tsl::Env::Default();
+
+  // Read the text proto
+  HloUnoptimizedSnapshot message;
+  TF_ASSERT_OK(tsl::ReadTextProto(env, path_to_text_hlo, &message));
+
+  // Dump message in the custom binary format
+  std::unique_ptr<tsl::WritableFile> file;
+  TF_ASSERT_OK(env->NewWritableFile(path_to_binary_hlo, &file));
+
+  tsl::WritableFileCopyingOutputStream output(file.get());
+
+  tsl::protobuf::io::CopyingOutputStreamAdaptor adaptor(&output);
+  TF_ASSERT_OK(SerializeHloUnoptimizedSnapshot(message, &adaptor));
+  adaptor.Flush();
+
+  TF_ASSERT_OK(file->Close());
+
+  // Read HloModuleAndArguments from text dump.
+  TF_ASSERT_OK_AND_ASSIGN(
+      HloModuleAndArguments hlo_module_and_arguments_from_text,
+      FunctionalHloRunner::LoadHloModuleAndArguments(
+          path_to_text_hlo, InputFormat::kUnoptimizedSnapshotProtoText));
+  // Read HloModuleAndArguments from binary dump.
+  TF_ASSERT_OK_AND_ASSIGN(
+      HloModuleAndArguments hlo_module_and_arguments_from_binary,
+      FunctionalHloRunner::LoadHloModuleAndArguments(
+          path_to_binary_hlo, InputFormat::kUnoptimizedSnapshotProtoBinary));
+
+  // Compare
+  CHECK_EQ(hlo_module_and_arguments_from_binary.arguments.size(), 2);
+
+  CHECK_EQ(hlo_module_and_arguments_from_text.hlo_module->ToString(),
+           hlo_module_and_arguments_from_binary.hlo_module->ToString());
+
+  CHECK_EQ(hlo_module_and_arguments_from_text.arguments.size(),
+           hlo_module_and_arguments_from_binary.arguments.size());
+}
+
 TEST_F(FunctionalHloRunnerTest, ReadHloUnoptimizedSnapshot) {
   std::string path_to_text_hlo =
       GetHloPath("sharded_unoptimized_hlo_snapshot.pbtxt");
@@ -704,7 +749,7 @@ TEST_F(FunctionalHloRunnerTest, ReadHloUnoptimizedSnapshot) {
   tsl::WritableFileCopyingOutputStream output(file.get());
 
   tsl::protobuf::io::CopyingOutputStreamAdaptor adaptor(&output);
-  TF_ASSERT_OK(SerializeHloUnoptimizedSnapshot(message, &adaptor));
+  EXPECT_TRUE(message.SerializeToZeroCopyStream(&adaptor));
   adaptor.Flush();
 
   TF_ASSERT_OK(file->Close());
