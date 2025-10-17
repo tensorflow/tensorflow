@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/codegen/tiling/tiled_hlo_schedule.h"
 
 #include <cstdint>
+#include <optional>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -49,9 +50,9 @@ namespace {
 // indexing map.
 absl::Status ValidateIterationSpace(const IterationSpace& iteration_space,
                                     const IndexingMap& tile_offsets_indexing) {
-  if (iteration_space.size() != tile_offsets_indexing.GetDimVarsCount()) {
+  if (tile_offsets_indexing.GetDimVarsCount() < iteration_space.size()) {
     return absl::InvalidArgumentError(absl::StrFormat(
-        "Expected iteration space to have exactly as many dimensions as there "
+        "Expected iteration space to have at most as many dimensions as there "
         "are parameters in the tile offsets indexing map, but iteration space "
         "has %d dimensions, and tile offsets indexing map has %d dimensions.",
         iteration_space.size(), tile_offsets_indexing.GetDimVarsCount()));
@@ -197,28 +198,33 @@ TransposedDotTiledHloSchedule::Create(
 absl::StatusOr<IndexingMap> TransposedDotTiledHloSchedule::Schedule(
     const IndexingMap& tile_offsets_indexing, IterationSpace iteration_space,
     gpu::SymbolicExprContext* ctx) const {
-  CHECK_EQ(iteration_space.size(), tiling_specification_.num_parameters());
   TF_RETURN_IF_ERROR(
       ValidateIterationSpace(iteration_space, tile_offsets_indexing));
 
-  DimensionInfo m_dim_info = iteration_space[m_dim_id_];
-  DimensionInfo n_dim_info = iteration_space[n_dim_id_];
+  std::optional<int64_t> local_m_dim_index;
+  std::optional<int64_t> local_n_dim_index;
+  for (int64_t i = 0; i < iteration_space.size(); ++i) {
+    if (iteration_space[i].dimension_id == m_dim_id_) {
+      local_m_dim_index = i;
+    } else if (iteration_space[i].dimension_id == n_dim_id_) {
+      local_n_dim_index = i;
+    }
+  }
 
-  if (m_dim_info.dimension_id != m_dim_id_) {
-    return absl::InvalidArgumentError(absl::StrFormat(
-        "Expected dimension at offset %d to have id %d but got %d.", m_dim_id_,
-        m_dim_id_, m_dim_info.dimension_id));
+  // Nothing to transpose if any of the dimensions is inactive. Just return the
+  // major-to-minor schedule.
+  if (!local_m_dim_index.has_value() || !local_n_dim_index.has_value()) {
+    return MajorToMinorScheduleImpl(tile_offsets_indexing, iteration_space,
+                                    ctx);
   }
-  if (n_dim_info.dimension_id != n_dim_id_) {
-    return absl::InvalidArgumentError(absl::StrFormat(
-        "Expected dimension at offset %d to have id %d but got %d.", n_dim_id_,
-        n_dim_id_, n_dim_info.dimension_id));
-  }
+
+  DimensionInfo m_dim_info = iteration_space[*local_m_dim_index];
+  DimensionInfo n_dim_info = iteration_space[*local_n_dim_index];
 
   std::vector<DimensionInfo> transposed_iteration_space(iteration_space.begin(),
                                                         iteration_space.end());
-  transposed_iteration_space[m_dim_id_] = n_dim_info;
-  transposed_iteration_space[n_dim_id_] = m_dim_info;
+  transposed_iteration_space[*local_m_dim_index] = n_dim_info;
+  transposed_iteration_space[*local_n_dim_index] = m_dim_info;
   return MajorToMinorScheduleImpl(tile_offsets_indexing,
                                   transposed_iteration_space, ctx);
 }

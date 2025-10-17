@@ -69,7 +69,6 @@ TEST_F(MajorToMinorTiledHloScheduleTest,
   };
   std::vector<DimensionInfo> iteration_space = {
       {/*dimension_id=*/2, /*dimension_size=*/bound(2)},
-      {/*dimension_id=*/0, /*dimension_size=*/bound(0)},
       {/*dimension_id=*/1, /*dimension_size=*/bound(1)},
       {/*dimension_id=*/3, /*dimension_size=*/bound(3)},
   };
@@ -83,22 +82,22 @@ TEST_F(MajorToMinorTiledHloScheduleTest,
   //     the iteration space (i.e. the product of `iteration_space`'s
   //     `dimension_size`s);
   EXPECT_EQ(scheduled_indexing.GetDimVarsCount(), 1);
-  int64_t iteration_space_size = bound(0) * bound(1) * bound(2) * bound(3);
+  int64_t iteration_space_size = bound(1) * bound(2) * bound(3);
   Interval expected_parameter_interval{0, iteration_space_size - 1};
   EXPECT_EQ(scheduled_indexing.GetDimensionBound(0),
             expected_parameter_interval);
 
   // (2) the set of results generatable with the map must be equal to the set
-  //     of results of `tile_offsets_indexing` (i.e. the map may only reorder
-  //     how the results are generated, but may not change the results
-  //     themselves);
+  //     of results of `tile_offsets_indexing` on the subspace defined by the
+  //     parameter iteration space (i.e. the map may only reorder how the
+  //     results are generated, but may not change the results themselves);
   EXPECT_EQ(scheduled_indexing, *ParseIndexingMap(R"(
-    (pid_0) -> (pid_0 floordiv 42, pid_0 mod 7), domain: pid_0 in [0, 209]
+    (pid_0) -> (pid_0 floordiv 21, pid_0 mod 7), domain: pid_0 in [0, 104]
   )",
                                                   &symbolic_expr_context_));
 
-  // `pid_0 floordiv 42` has the same upper bound as `d2`.
-  EXPECT_EQ(iteration_space_size / 42, bound(2));
+  // `pid_0 floordiv 21` has the same upper bound as `d2`.
+  EXPECT_EQ(iteration_space_size / 21, bound(2));
   // `pid_0 mod 7` has the same upper bound as `d3`.
   EXPECT_EQ(7, bound(3));
 }
@@ -110,14 +109,17 @@ TEST_F(MajorToMinorTiledHloScheduleTest,
                         &symbolic_expr_context_);
   MajorToMinorTiledHloSchedule scheduler;
 
-  // The iteration space has the wrong number of dimensions.
+  // The iteration space has too many dimensions.
   EXPECT_THAT(
-      scheduler.Schedule(offsets_indexing, /*iteration_space=*/{},
+      scheduler.Schedule(offsets_indexing, /*iteration_space=*/
+                         {{/*dimension_id=*/0, /*dimension_size=*/1},
+                          {/*dimension_id=*/1, /*dimension_size=*/3},
+                          {/*dimension_id=*/2, /*dimension_size=*/0}},
                          &symbolic_expr_context_),
       StatusIs(
           absl::StatusCode::kInvalidArgument,
           HasSubstr(
-              "Expected iteration space to have exactly as many dimensions")));
+              "Expected iteration space to have at most as many dimensions")));
 
   // The iteration space has an out-of-bounds dimension ID.
   EXPECT_THAT(scheduler.Schedule(offsets_indexing, /*iteration_space=*/

@@ -49,10 +49,8 @@ class TiledHloSchedule {
 
   // Returns a schedule for the given root instruction as an indexing map.
   //
-  // `iteration_space` must contain one entry for each dimension id in the
-  // discrete range {0, ..., iteration_space.size() - 1}, and the number of
-  // dimensions in `iteration_space` must match the number of dimension
-  // parameters in `tile_offsets_indexing`.
+  // `iteration_space` must contain at most one entry for each dimension id in
+  // the discrete range {0, ..., tile_offsets_indexing.GetDimVarsCount() - 1}.
   //
   // We unfortunately can't pass a `TilingSpecification` here directly in order
   // to handle assumption-breaking calls in the case of multi-output fusions.
@@ -64,9 +62,9 @@ class TiledHloSchedule {
   //     the iteration space (i.e. the product of `iteration_space`'s
   //     `dimension_size`s);
   // (2) the set of results generatable with the map must be equal to the set
-  //     of results of `tile_offsets_indexing` (i.e. the map may only reorder
-  //     how the results are generated, but may not change the results
-  //     themselves);
+  //     of results of `tile_offsets_indexing` on the subspace defined by the
+  //     parameter iteration space (i.e. the map may only reorder how the
+  //     results are generated, but may not change the results themselves);
   virtual absl::StatusOr<IndexingMap> Schedule(
       const IndexingMap& tile_offsets_indexing, IterationSpace iteration_space,
       gpu::SymbolicExprContext* ctx) const = 0;
