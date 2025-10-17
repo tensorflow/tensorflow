@@ -1,71 +1,131 @@
-diff --git a/docs/mpmd/mpmd_sharding_propagation_passes.md b/docs/mpmd/mpmd_sharding_propagation_passes.md
-index a3b51cc..3b40773 100644
---- a/docs/mpmd/mpmd_sharding_propagation_passes.md
-+++ b/docs/mpmd/mpmd_sharding_propagation_passes.md
-@@ -57,10 +57,3 @@ This pass is only applied to MPMD functions in global view and with a
- homogeneous topology.
+diff --git a/shardy/dialect/sdy/transforms/export/test/insert_explicit_reshards/elementwise_ops.mlir b/shardy/dialect/sdy/transforms/export/test/insert_explicit_reshards/elementwise_ops.mlir
+index 2e878af..e0ca5f5 100644
+--- a/shardy/dialect/sdy/transforms/export/test/insert_explicit_reshards/elementwise_ops.mlir
++++ b/shardy/dialect/sdy/transforms/export/test/insert_explicit_reshards/elementwise_ops.mlir
+@@ -1,6 +1,6 @@
+ // RUN: sdy_opt %s -sdy-insert-explicit-reshards='enable-full-version=true' | FileCheck %s
  
- Precondition: all shardings are specified as op attributes and not in types.
+-sdy.mesh @mesh = <["x"=4, "y"=2, "z"=4]>
++sdy.mesh @mesh = <["x"=4, "y"=2]>
+ 
+ // CHECK-LABEL: func @negate
+ func.func @negate(%arg0: tensor<4x32xf32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {}]>}) -> (tensor<4x32xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {}]>}) {
+@@ -84,12 +84,3 @@ func.func @add_inputs_are_sharded_the_same_way_output_is_unsharded(%arg0: tensor
+   %0 = stablehlo.add %arg0, %arg1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {}]>]>} : tensor<4x32xf32>
+   return %0 : tensor<4x32xf32>
+ }
 -
--### `-mpmd-simplify-program`
--
--_Removes redundant arg/results from fragments._
--
--Simplifies a fragment or loop, its operands and results, and their
--corresponding block arguments and return values.
-diff --git a/shardy/dialect/sdy/transforms/export/explicit_reshards_util.cc b/shardy/dialect/sdy/transforms/export/explicit_reshards_util.cc
-index 862a2da..be8f02c 100644
---- a/shardy/dialect/sdy/transforms/export/explicit_reshards_util.cc
-+++ b/shardy/dialect/sdy/transforms/export/explicit_reshards_util.cc
-@@ -433,9 +433,11 @@ class FactorAxesCandidateBag {
-         for (int64_t index = 1; index < factorIndices.size(); index++) {
-           int64_t factorIndex = factorIndices[index];
-           int64_t dependsOn = factorIndices[index - 1];
--          factorDependenciesMap
--              .try_emplace(factorIndex, shardingRule.getNumFactors())
--              .first->second.set(dependsOn);
-+          if (!factorDependenciesMap.contains(factorIndex)) {
-+            factorDependenciesMap.try_emplace(factorIndex,
-+                                              shardingRule.getNumFactors());
-+          }
-+          factorDependenciesMap[factorIndex].set(dependsOn);
-         }
-       }
-     }
-diff --git a/shardy/dialect/sdy/transforms/export/insert_explicit_reshards.cc b/shardy/dialect/sdy/transforms/export/insert_explicit_reshards.cc
-index dcec262..b1d7585 100644
---- a/shardy/dialect/sdy/transforms/export/insert_explicit_reshards.cc
-+++ b/shardy/dialect/sdy/transforms/export/insert_explicit_reshards.cc
-@@ -77,7 +77,7 @@ void insertExplicitReshardsToTargetSharding(OpOperand& opOperand,
-         rewriter, operand.getLoc(), operand,
-         targetSharding
-             ? targetSharding
--            // Since operand and target shardings are not equivalent and
-+            // Since opearand and target shardings are not equivalent and
-             // `targetSharding` is empty, `operandSharding` is guaranteed to be
-             // nonempty.
-             : TensorShardingAttr::getFullyClosedLike(operandSharding));
-@@ -327,7 +327,7 @@ void insertAllReduceOnOpIfUnreducedToReplicated(
-       return sharding && !sharding.getUnreducedAxes().empty();
-     };
-     SDY_CHECK(!llvm::any_of(op->getOpOperands(), operandHasUnreducedAxes))
--        << "Some operands have unreduced axes but the operation has no "
-+        << "Some operands has unreduced axes but the operation has no "
-           "results. ";
-     return;
-   }
+-// CHECK-LABEL: func @transpose
+-func.func @transpose(%arg0: tensor<256x32x64x100xf32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {"x"}, {"y"}, {}]>}) -> (tensor<100x32x256x64xf32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {"y"}, {"z"}, {}]>}) {
+-  // CHECK: %[[TRANSPOSE:.*]] = stablehlo.transpose %arg0, dims = [3, 1, 0, 2] {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {"x"}, {}, {"y"}]>]>} : (tensor<256x32x64x100xf32>) -> tensor<100x32x256x64xf32>
+-  // CHECK-NEXT: %[[RESHARD:.*]] = sdy.reshard %[[TRANSPOSE]] <@mesh, [{}, {"y"}, {"z"}, {}]> : tensor<100x32x256x64xf32>
+-  // CHECK-NEXT: return %[[RESHARD]] : tensor<100x32x256x64xf32>
+-  %0 = stablehlo.transpose %arg0, dims = [3, 1, 0, 2] {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {"y"}, {"z"}, {}]>]>} : (tensor<256x32x64x100xf32>) -> tensor<100x32x256x64xf32>
+-  return %0 : tensor<100x32x256x64xf32>
+-}
+diff --git a/shardy/dialect/sdy/transforms/export/test/insert_explicit_reshards/sort.mlir b/shardy/dialect/sdy/transforms/export/test/insert_explicit_reshards/sort.mlir
+index a69114e..75bfa4d 100644
+--- a/shardy/dialect/sdy/transforms/export/test/insert_explicit_reshards/sort.mlir
++++ b/shardy/dialect/sdy/transforms/export/test/insert_explicit_reshards/sort.mlir
+@@ -79,7 +79,7 @@ func.func @sort_input_and_output_shardings_are_different_on_sorting_dimension(%a
+ }
+ 
+ // CHECK-LABEL: func @sort_sorting_dim_shardings_has_common_prefix
+-func.func @sort_sorting_dim_shardings_has_common_prefix(%arg0: tensor<4x32x8xi32> {sdy.sharding = #sdy.sharding<@mesh_xyzt, [{"y", "z"}, {"x"}, {}]>}) -> (tensor<4x32x8xi32> {sdy.sharding = #sdy.sharding<@mesh_xyzt, [{"y", "t"}, {"z"}, {}]>}) {
++func.func @sort_sorting_dim_shardings_has_common_prefix(%arg0: tensor<4x32x8xi32> {sdy.sharding = #sdy.sharding<@mesh_xyzt, [{"y","z"}, {"x"}, {}]>}) -> (tensor<4x32x8xi32> {sdy.sharding = #sdy.sharding<@mesh_xyzt, [{"y","t"}, {"z"}, {}]>}) {
+   // CHECK: %[[RESHARD1:.*]] = sdy.reshard %arg0 <@mesh_xyzt, [{}, {"z", "y"}, {}]> : tensor<4x32x8xi32>
+   // CHECK-NEXT: %[[SORT:.*]] = "stablehlo.sort"(%[[RESHARD1]])
+   // CHECK: %[[RESHARD2:.*]] = sdy.reshard %[[SORT]] <@mesh_xyzt, [{"y", "t"}, {"z"}, {}]> : tensor<4x32x8xi32>
+@@ -87,12 +87,13 @@ func.func @sort_sorting_dim_shardings_has_common_prefix(%arg0: tensor<4x32x8xi32
+     ^bb0(%arg2: tensor<i32>, %arg3: tensor<i32>):
+       %1 = stablehlo.compare GT, %arg2, %arg3 : (tensor<i32>, tensor<i32>) -> tensor<i1>
+       stablehlo.return %1 : tensor<i1>
+-  }) {sdy.sharding = #sdy.sharding_per_value<[<@mesh_xyzt, [{"y", "t"}, {"z"}, {}]>]>} : (tensor<4x32x8xi32>) -> (tensor<4x32x8xi32>)
++  }) {sdy.sharding = #sdy.sharding_per_value<[<@mesh_xyzt, [{"y","t"}, {"z"}, {}]>]>} : (tensor<4x32x8xi32>) -> (tensor<4x32x8xi32>)
+   return %0 : tensor<4x32x8xi32>
+ }
+ 
++
+ // CHECK-LABEL: func @sort_sorting_dim_shardings_has_common_prefix_and_large
+-func.func @sort_sorting_dim_shardings_has_common_prefix_and_large(%arg0: tensor<64x32x8xi32> {sdy.sharding = #sdy.sharding<@mesh_xyzt, [{"y", "t", "z"}, {"x"}, {}]>}) -> (tensor<64x32x8xi32> {sdy.sharding = #sdy.sharding<@mesh_xyzt, [{"y", "t"}, {"z"}, {}]>}) {
++func.func @sort_sorting_dim_shardings_has_common_prefix_and_large(%arg0: tensor<64x32x8xi32> {sdy.sharding = #sdy.sharding<@mesh_xyzt, [{"y","t","z"}, {"x"}, {}]>}) -> (tensor<64x32x8xi32> {sdy.sharding = #sdy.sharding<@mesh_xyzt, [{"y","t"}, {"z"}, {}]>}) {
+   // CHECK: %[[RESHARD1:.*]] = sdy.reshard %arg0 <@mesh_xyzt, [{}, {"z", "y"}, {"t"}]> : tensor<64x32x8xi32>
+   // CHECK-NEXT: %[[SORT:.*]] = "stablehlo.sort"(%[[RESHARD1]])
+   // CHECK: %[[RESHARD2:.*]] = sdy.reshard %[[SORT]] <@mesh_xyzt, [{"y", "t"}, {"z"}, {}]> : tensor<64x32x8xi32>
+@@ -100,7 +101,7 @@ func.func @sort_sorting_dim_shardings_has_common_prefix_and_large(%arg0: tensor<
+     ^bb0(%arg2: tensor<i32>, %arg3: tensor<i32>):
+       %1 = stablehlo.compare GT, %arg2, %arg3 : (tensor<i32>, tensor<i32>) -> tensor<i1>
+       stablehlo.return %1 : tensor<i1>
+-  }) {sdy.sharding = #sdy.sharding_per_value<[<@mesh_xyzt, [{"y", "t"}, {"z"}, {}]>]>} : (tensor<64x32x8xi32>) -> (tensor<64x32x8xi32>)
++  }) {sdy.sharding = #sdy.sharding_per_value<[<@mesh_xyzt, [{"y","t"}, {"z"}, {}]>]>} : (tensor<64x32x8xi32>) -> (tensor<64x32x8xi32>)
+   return %0 : tensor<64x32x8xi32>
+ }
+ 
+@@ -126,3 +127,12 @@ func.func @sort_compatible_on_nonsort_dimension(%arg0: tensor<4x32x8xi32> {sdy.s
+   }) {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {"y"}, {}]>]>} : (tensor<4x32x8xi32>) -> (tensor<4x32x8xi32>)
+   return %0 : tensor<4x32x8xi32>
+ }
++
++// CHECK-LABEL: func @transpose
++func.func @transpose(%arg0: tensor<256x32x64x100xf32> {sdy.sharding = #sdy.sharding<@mesh_xyz, [{}, {"x"}, {"y"}, {}]>}) -> (tensor<100x32x256x64xf32> {sdy.sharding = #sdy.sharding<@mesh_xyz, [{}, {"y"}, {"z"}, {}]>}) {
++  // CHECK: %[[TRANSPOSE:.*]] = stablehlo.transpose %arg0, dims = [3, 1, 0, 2] {sdy.sharding = #sdy.sharding_per_value<[<@mesh_xyz, [{}, {"x"}, {}, {"y"}]>]>} : (tensor<256x32x64x100xf32>) -> tensor<100x32x256x64xf32>
++  // CHECK-NEXT: %[[RESHARD:.*]] = sdy.reshard %[[TRANSPOSE]] <@mesh_xyz, [{}, {"y"}, {"z"}, {}]> : tensor<100x32x256x64xf32>
++  // CHECK-NEXT: return %[[RESHARD]] : tensor<100x32x256x64xf32>
++  %0 = stablehlo.transpose %arg0, dims = [3, 1, 0, 2] {sdy.sharding = #sdy.sharding_per_value<[<@mesh_xyz, [{}, {"y"}, {"z"}, {}]>]>} : (tensor<256x32x64x100xf32>) -> tensor<100x32x256x64xf32>
++  return %0 : tensor<100x32x256x64xf32>
++}
 diff --git a/third_party/llvm/workspace.bzl b/third_party/llvm/workspace.bzl
-index ed562d4..ba4c1a2 100644
+index ba4c1a2..0962e35 100644
 --- a/third_party/llvm/workspace.bzl
 +++ b/third_party/llvm/workspace.bzl
 @@ -4,8 +4,8 @@ load("//third_party:repo.bzl", "tf_http_archive")
  
  def repo(name):
      """Imports LLVM."""
--    LLVM_COMMIT = "267fa8dd1efce0b79ebcaa804d54542c99918df2"
--    LLVM_SHA256 = "a72180219b02c46a11fa11d7ca3e5c4f57ecaa348162e010e73a59bd26623950"
-+    LLVM_COMMIT = "bfee9db7857757e63b64fb4d411a264690ff711a"
-+    LLVM_SHA256 = "b14cb659a35562d1fccee470d0bba41cf96363e1b576e113a3a795db9ad78e3e"
+-    LLVM_COMMIT = "bfee9db7857757e63b64fb4d411a264690ff711a"
+-    LLVM_SHA256 = "b14cb659a35562d1fccee470d0bba41cf96363e1b576e113a3a795db9ad78e3e"
++    LLVM_COMMIT = "8e054f81f502a11765e59f356acf6453d72879cc"
++    LLVM_SHA256 = "0add3773905be3536267293dcd31d86b366216c06a5d90f8f5c7a480f6db7b61"
  
      tf_http_archive(
          name = name,
+diff --git a/third_party/stablehlo/temporary.patch b/third_party/stablehlo/temporary.patch
+index 8949936..473baf0 100755
+--- a/third_party/stablehlo/temporary.patch
++++ b/third_party/stablehlo/temporary.patch
+@@ -537,6 +537,17 @@ diff --ruN a/stablehlo/stablehlo/conversions/tosa/transforms/StablehloQuantLegal
+    // unary ops
+    patterns->addWithLabel<QuantizedStablehloOpConversion<stablehlo::AbsOp>>(
+        {"StablehloQuantAbsOp"}, context);
++diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.cpp b/stablehlo/stablehlo/dialect/StablehloOps.cpp
++--- stablehlo/stablehlo/dialect/StablehloOps.cpp
+++++ stablehlo/stablehlo/dialect/StablehloOps.cpp
++@@ -3164,6 +3164,7 @@
++ using mlir::hlo::printVariadicOperandWithAttribute;
++ using mlir::hlo::printVariadicSameOperandsAndResultType;
++ 
+++using mlir::stablehlo::TokenType;
++ #define GET_OP_CLASSES
++ #include "stablehlo/dialect/StablehloOps.cpp.inc"
++ 
+ diff --ruN a/stablehlo/stablehlo/integrations/c/VhloDialect.h b/stablehlo/stablehlo/integrations/c/VhloDialect.h
+ --- stablehlo/stablehlo/integrations/c/VhloDialect.h
+ +++ stablehlo/stablehlo/integrations/c/VhloDialect.h
+@@ -787,6 +798,17 @@ diff --ruN a/stablehlo/stablehlo/integrations/cpp/builder/StablehloBuilderTest.c
+ +
+  }  // namespace stablehlo
+  }  // namespace mlir
++diff --ruN a/stablehlo/stablehlo/reference/InterpreterOps.cpp b/stablehlo/stablehlo/reference/InterpreterOps.cpp
++--- stablehlo/stablehlo/reference/InterpreterOps.cpp
+++++ stablehlo/stablehlo/reference/InterpreterOps.cpp
++@@ -46,6 +46,7 @@
++ #include "stablehlo/reference/ProcessGrid.h"
++ #include "stablehlo/reference/Value.h"
++ 
+++using mlir::stablehlo::TokenType;
++ #define GET_OP_CLASSES
++ #include "stablehlo/reference/InterpreterOps.cpp.inc"
++ 
+ diff --ruN a/stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_folder.mlir b/stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_folder.mlir
+ --- stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_folder.mlir
+ +++ stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_folder.mlir
