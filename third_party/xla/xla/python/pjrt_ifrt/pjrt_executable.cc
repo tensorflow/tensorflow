@@ -35,7 +35,7 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "xla/ffi/execution_context.h"
-#include "xla/ffi/type_id_registry.h"
+#include "xla/ffi/type_registry.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/translate/mhlo_to_hlo/type_to_shape.h"
 #include "xla/layout.h"
@@ -719,8 +719,7 @@ PjRtLoadedExecutable::Execute(absl::Span<ArrayRef> args,
     }
     ffi_callbacks->callbacks = callbacks->data();
     ffi_callbacks->num_callbacks = callbacks->size();
-    auto type_id = xla::ffi::TypeIdRegistry::TypeId(
-        xla::FfiLoadedHostCallbacks::id.type_id);
+    ffi::TypeRegistry::TypeId type_id(FfiLoadedHostCallbacks::id.type_id);
     CHECK_OK(context->ffi_context().Insert(type_id, ffi_callbacks.get()));
     opts.context = context.get();
   }

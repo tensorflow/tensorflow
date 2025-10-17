@@ -67,7 +67,7 @@ XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_Extension_Base, next);
 // * Deleting a method or argument
 // * Changing the type of an argument
 // * Rearranging fields in the XLA_FFI_Api or argument structs
-#define XLA_FFI_API_MAJOR 0
+#define XLA_FFI_API_MAJOR 1
 
 // Incremented when the interface is updated in a way that is potentially
 // ABI-compatible with older versions, if supported by the caller and/or
@@ -82,7 +82,7 @@ XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_Extension_Base, next);
 // Minor changes include:
 // * Adding a new field to the XLA_FFI_Api or argument structs
 // * Renaming a method or argument (doesn't affect ABI)
-#define XLA_FFI_API_MINOR 1
+#define XLA_FFI_API_MINOR 0
 
 struct XLA_FFI_Api_Version {
   size_t struct_size;
@@ -491,6 +491,7 @@ struct XLA_FFI_TypeId_Register_Args {
 
   XLA_FFI_ByteSpan name;
   XLA_FFI_TypeId* type_id;  // in-out
+  XLA_FFI_TypeInfo* type_info;
 };
 
 XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_TypeId_Register_Args, type_id);
@@ -532,10 +533,9 @@ struct XLA_FFI_State_Set_Args {
   XLA_FFI_ExecutionContext* ctx;
   XLA_FFI_TypeId* type_id;
   void* state;
-  void (*deleter)(void* state);
 };
 
-XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_State_Set_Args, deleter);
+XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_State_Set_Args, state);
 
 // Sets execution state to the `state` of type `type_id`. Returns an error if
 // state already set.

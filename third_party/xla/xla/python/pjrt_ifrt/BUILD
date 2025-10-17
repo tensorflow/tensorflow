@@ -324,7 +324,7 @@ cc_library(
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla/ffi:execution_context",
-        "//xla/ffi:type_id_registry",
+        "//xla/ffi:type_registry",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/translate/mhlo_to_hlo:type_to_shape",
         "//xla/pjrt:host_callback",

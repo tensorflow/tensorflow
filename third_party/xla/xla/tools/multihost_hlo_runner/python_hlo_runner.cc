@@ -351,7 +351,7 @@ NB_MODULE(py_hlo_multihost_runner, m) {
   m.def("custom_call_targets", GetRegisteredCustomCallTargets,
         nb::arg("platform"));
   m.def(
-      "register_custom_type_id",
+      "register_custom_type",
       [](absl::string_view type_name, nb::object type_id) {
         xla::ThrowIfError(RegisterCustomTypeId(type_name, type_id));
       },

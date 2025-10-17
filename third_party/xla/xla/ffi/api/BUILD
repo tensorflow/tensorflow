@@ -89,7 +89,7 @@ xla_cc_test(
         "//xla/ffi:execution_context",
         "//xla/ffi:execution_state",
         "//xla/ffi:ffi_api",
-        "//xla/ffi:type_id_registry",
+        "//xla/ffi:type_registry",
         "//xla/stream_executor:device_memory",
         "//xla/stream_executor:device_memory_allocator",
         "//xla/tsl/concurrency:async_value",
