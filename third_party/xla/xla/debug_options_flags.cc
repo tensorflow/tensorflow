@@ -210,7 +210,11 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_cpu_use_acl(true);
 #endif
   opts.set_xla_cpu_use_fusion_emitters(true);
+#ifdef PLATFORM_GOOGLE
   opts.set_xla_cpu_use_xnnpack(true);
+#else
+  opts.set_xla_cpu_use_xnnpack(false);
+#endif  // PLATFORM_GOOGLE
   opts.set_xla_cpu_experimental_xnn_graph_fusion_mode(
       DebugOptions::XNN_GRAPH_FUSION_MODE_DISABLED);
   opts.set_xla_cpu_parallel_codegen_split_count(32);
