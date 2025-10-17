@@ -33,6 +33,7 @@ bazel_dep(name = "grpc-java", version = "1.75.0", repo_name = "DO_NOT_USE_grpc_j
 
 # TODO: publish an official version of rules_ml_toolchain to BCR
 bazel_dep(name = "rules_ml_toolchain")
+
 # To calculate integrity:
 # wget -O temp_module_archive.tar.gz <archive URL>
 # HASH=$(openssl dgst -sha256 -binary temp_module_archive.tar.gz | openssl base64 -A)
@@ -101,6 +102,7 @@ use_repo(
     "pthreadpool",
     "rocm_device_libs",
     "shardy",
+    "slinky",
     "stablehlo",
     "triton",
 )
