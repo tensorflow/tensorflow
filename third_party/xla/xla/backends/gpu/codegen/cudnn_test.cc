@@ -868,6 +868,79 @@ ENTRY r {
                             ErrorSpec{/*aabs=*/1, /*arel=*/1e-3}));
 }
 
+TEST_F(CuDnnFusionExecutionTest, ConvFpropWithNHWCLayoutExecutesCorrectly) {
+  EXPECT_TRUE(RunAndCompare(R"(
+fusion {
+  zero = f32[] constant(0)
+  zeros = f32[2,9,9,32] broadcast(zero), dimensions={}
+  input = f32[2,9,9,17] parameter(0)
+  filter = f32[32,3,3,17] parameter(1)
+  conv = f32[2,9,9,32] convolution(input, filter), window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_o01i->b01f, feature_group_count=1
+  ROOT relu = f32[2,9,9,32] maximum(zeros, conv)
+}
+
+
+ENTRY Test {
+  input = f32[2,9,9,17] parameter(0)
+  filter = f32[32,3,3,17] parameter(1)
+  ROOT conv = f32[2,9,9,32] fusion(input, filter), kind=kCustom, calls=fusion, backend_config={"fusion_backend_config": {kind: "__cudnn$fusion", cudnn_fusion_config: {"kind":"CONV_FPROP"}}}
+})",
+                            ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-5}));
+}
+
+TEST_F(CuDnnFusionExecutionTest, ConvWgradWithNHWCLayoutExecutesCorrectly) {
+  EXPECT_TRUE(RunAndCompare(R"(
+fusion {
+  zero = f32[] constant(0)
+  zeros = f32[32,3,3,17] broadcast(zero), dimensions={}
+  input = f32[2,9,9,17] parameter(0)
+  dout = f32[2,9,9,32] parameter(1)
+  conv = f32[32,3,3,17] convolution(input, dout), window={size=9x9 pad=1_1x1_1}, dim_labels=f01b_i01o->f01b, feature_group_count=1
+  ROOT relu = f32[32,3,3,17] maximum(zeros, conv)
+}
+
+
+ENTRY Test {
+  input = f32[2,9,9,17] parameter(0)
+  dout = f32[2,9,9,32] parameter(1)
+  ROOT conv = f32[32,3,3,17] fusion(input, dout), kind=kCustom, calls=fusion, backend_config={"fusion_backend_config": {kind: "__cudnn$fusion", cudnn_fusion_config: {"kind":"CONV_WGRAD"}}}
+})",
+                            ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-5}));
+}
+
+TEST_F(CuDnnFusionExecutionTest, ConvDgradWithNHWCLayoutExecutesCorrectly) {
+  const std::string kHloReference = R"(
+ENTRY main {
+  zero = f32[] constant(0)
+  zeros = f32[2,9,9,17] broadcast(zero), dimensions={}
+  dout = f32[2,9,9,32] parameter(0)
+  filter = f32[32,3,3,17] parameter(1)
+  reverse = f32[32,3,3,17] reverse(filter), dimensions={1,2}
+  conv = f32[2,9,9,17] convolution(dout, reverse), window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_i01o->b01f, feature_group_count=1
+  ROOT relu = f32[2,9,9,17] maximum(zeros, conv)
+})";
+
+  const std::string kHlo = R"(
+fusion {
+  zero = f32[] constant(0)
+  zeros = f32[2,9,9,17] broadcast(zero), dimensions={}
+  dout = f32[2,9,9,32] parameter(0)
+  filter = f32[32,3,3,17] parameter(1)
+  conv = f32[2,9,9,17] convolution(dout, filter), window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_i01o->b01f, feature_group_count=1
+  ROOT relu = f32[2,9,9,17] maximum(zeros, conv)
+}
+
+
+ENTRY Test {
+  dout = f32[2,9,9,32] parameter(0)
+  filter = f32[32,3,3,17] parameter(1)
+  ROOT conv = f32[2,9,9,17] fusion(dout, filter), kind=kCustom, calls=fusion, backend_config={"fusion_backend_config": {kind: "__cudnn$fusion", cudnn_fusion_config: {"kind":"CONV_DGRAD"}}}
+})";
+
+  EXPECT_TRUE(RunAndCompareTwoModules(kHlo, kHloReference,
+                                      ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-5}));
+}
+
 class ElementwiseTest : public CuDnnFusionExecutionTest,
                         public ::testing::WithParamInterface<
                             std::tuple<PrimitiveType, HloOpcode, float>> {};
@@ -1190,6 +1263,63 @@ CHECK: "stride": [{{[[:space:]]*1,[[:space:]]*1,[[:space:]]*4[[:space:]]*}}]
 )"));
 }
 
+TEST_F(CuDnnFusionFileCheckTest, ConvFpropGraphConvertedCorrectly) {
+  const std::string kHloText = R"(
+fusion {
+  input = f32[2,9,9,17] parameter(0)
+  filter = f32[32,3,3,17] parameter(1)
+  ROOT conv = f32[2,9,9,32] convolution(input, filter), window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_o01i->b01f, feature_group_count=1
+}
+
+
+ENTRY Test {
+  input = f32[2,9,9,17] parameter(0)
+  filter = f32[32,3,3,17] parameter(1)
+  ROOT conv = f32[2,9,9,32] fusion(input, filter), kind=kCustom, calls=fusion, backend_config={"fusion_backend_config": {kind: "__cudnn$fusion", cudnn_fusion_config: {"kind":"CONV_FPROP"}}}
+})";
+
+  EXPECT_TRUE(*RunCuDnnFileCheck(kHloText, R"(
+CHECK: "nodes": [
+CHECK:  {
+CHECK:   "compute_data_type": "FLOAT",
+CHECK:   "dilation": [{{[[:space:]]*1,[[:space:]]*1[[:space:]]*}}],
+CHECK:   "inputs": {
+CHECK:    "W": "filter",
+CHECK:    "X": "input"
+CHECK:   },
+CHECK:   "math_mode": "CROSS_CORRELATION",
+CHECK:   "name": "0",
+CHECK:   "outputs": {
+CHECK:    "Y": "conv"
+CHECK:   },
+CHECK:   "post_padding": [{{[[:space:]]*1,[[:space:]]*1[[:space:]]*}}],
+CHECK:   "pre_padding": [{{[[:space:]]*1,[[:space:]]*1[[:space:]]*}}],
+CHECK:   "stride": [{{[[:space:]]*1,[[:space:]]*1[[:space:]]*}}],
+CHECK:   "tag": "CONV_FPROP"
+CHECK:  }
+CHECK: ],
+CHECK:"tensors": {
+CHECK:  "conv": {
+CHECK:   "data_type": "FLOAT",
+CHECK:   "dim": [{{[[:space:]]*2,[[:space:]]*32,[[:space:]]*9,[[:space:]]*9[[:space:]]*}}],
+CHECK:   "name": "conv",
+CHECK:   "stride": [{{[[:space:]]*2592,[[:space:]]*1,[[:space:]]*288,[[:space:]]*32[[:space:]]*}}],
+CHECK:  },
+CHECK:  "filter": {
+CHECK:   "data_type": "FLOAT",
+CHECK:   "dim": [{{[[:space:]]*32,[[:space:]]*17,[[:space:]]*3,[[:space:]]*3[[:space:]]*}}],
+CHECK:   "name": "filter",
+CHECK:   "stride": [{{[[:space:]]*153,[[:space:]]*1,[[:space:]]*51,[[:space:]]*17[[:space:]]*}}],
+CHECK:  },
+CHECK:  "input": {
+CHECK:   "data_type": "FLOAT",
+CHECK:   "dim": [{{[[:space:]]*2,[[:space:]]*17,[[:space:]]*9,[[:space:]]*9[[:space:]]*}}],
+CHECK:   "name": "input",
+CHECK:   "stride": [{{[[:space:]]*1377,[[:space:]]*1,[[:space:]]*153,[[:space:]]*17[[:space:]]*}}],
+CHECK:  }
+CHECK: }
+)"));
+}
 }  // namespace
 }  // namespace gpu
 }  // namespace xla
