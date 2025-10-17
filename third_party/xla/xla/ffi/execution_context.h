@@ -25,7 +25,7 @@ limitations under the License.
 #include "absl/functional/function_ref.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "xla/ffi/type_id_registry.h"
+#include "xla/ffi/type_registry.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/statusor.h"
 
@@ -45,7 +45,7 @@ namespace xla::ffi {
 // unique between separate calls to XLA execute.
 class ExecutionContext {
  public:
-  using TypeId = TypeIdRegistry::TypeId;
+  using TypeId = TypeRegistry::TypeId;
 
   template <typename T>
   using Deleter = std::function<void(T*)>;
@@ -67,7 +67,7 @@ class ExecutionContext {
   template <typename T>
   absl::StatusOr<T*> Lookup() const {
     TF_ASSIGN_OR_RETURN(auto user_data,
-                        LookupUserData(TypeIdRegistry::GetTypeId<T>()));
+                        LookupUserData(TypeRegistry::GetTypeId<T>()));
     return static_cast<T*>(user_data->data());
   }
 
@@ -110,7 +110,7 @@ class ExecutionContext {
 
 template <typename T>
 absl::Status ExecutionContext::Insert(T* data, Deleter<T> deleter) {
-  return InsertUserData(TypeIdRegistry::GetTypeId<T>(),
+  return InsertUserData(TypeRegistry::GetTypeId<T>(),
                         std::make_unique<UserData>(
                             data, [deleter = std::move(deleter)](void* data) {
                               if (deleter) deleter(static_cast<T*>(data));
@@ -119,7 +119,7 @@ absl::Status ExecutionContext::Insert(T* data, Deleter<T> deleter) {
 
 template <typename T, typename... Args>
 absl::Status ExecutionContext::Emplace(Args&&... args) {
-  return InsertUserData(TypeIdRegistry::GetTypeId<T>(),
+  return InsertUserData(TypeRegistry::GetTypeId<T>(),
                         std::make_unique<UserData>(
                             new T(std::forward<Args>(args)...),
                             [](void* data) { delete static_cast<T*>(data); }));

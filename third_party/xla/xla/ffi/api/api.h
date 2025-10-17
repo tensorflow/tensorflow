@@ -348,11 +348,13 @@ inline XLA_FFI_Error* Ffi::RegisterTypeId(const XLA_FFI_Api* api,
                                           std::string_view name,
                                           XLA_FFI_TypeId* type_id,
                                           XLA_FFI_TypeInfo type_info) {
+  assert(type_id && "type_id must not be null");
   XLA_FFI_TypeId_Register_Args args;
   args.struct_size = XLA_FFI_TypeId_Register_Args_STRUCT_SIZE;
   args.extension_start = nullptr;
   args.name = XLA_FFI_ByteSpan{name.data(), name.size()};
   args.type_id = type_id;
+  args.type_info = &type_info;
   return api->XLA_FFI_TypeId_Register(&args);
 }
 

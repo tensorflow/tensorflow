@@ -44,7 +44,7 @@ limitations under the License.
 #include "xla/ffi/api/ffi.h"
 #include "xla/ffi/execution_context.h"
 #include "xla/ffi/ffi_api.h"
-#include "xla/ffi/type_id_registry.h"
+#include "xla/ffi/type_registry.h"
 #include "xla/future.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
@@ -366,7 +366,7 @@ TEST_F(PjrtCApiGpuTest, CreateAndDestroyExecuteContext) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto lookup_user_data,
       create_arg.context->execute_context->ffi_context().Lookup(
-          xla::ffi::TypeIdRegistry::TypeId(42)));
+          xla::ffi::TypeRegistry::TypeId(42)));
   EXPECT_EQ(lookup_user_data, &string_data);
 
   PJRT_ExecuteContext_Destroy_Args destroy_args;
