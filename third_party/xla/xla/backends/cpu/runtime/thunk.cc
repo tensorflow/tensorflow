@@ -31,6 +31,8 @@ limitations under the License.
 #include "xla/backends/cpu/collectives/in_process_collectives.h"
 #include "xla/backends/cpu/runtime/xnnpack/xnn_interop.h"
 #include "xla/backends/cpu/runtime/xnnpack/xnn_threadpool.h"
+#include "xla/backends/cpu/runtime/ynnpack/ynn_interop.h"
+#include "xla/backends/cpu/runtime/ynnpack/ynn_threadpool.h"
 #include "xla/executable_run_options.h"
 #include "xla/service/cpu/cpu_executable_run_options.h"
 #include "xla/service/global_device_id.h"
@@ -88,6 +90,8 @@ absl::string_view Thunk::KindToString(Kind kind) {
       return "while";
     case Kind::kXnnFusion:
       return "xnn-fusion";
+    case Kind::kYnnFusion:
+      return "ynn-fusion";
     case Kind::kOneDnnFusion:
       return "onednn-fusion";
   }
@@ -166,6 +170,16 @@ absl::StatusOr<Thunk::XnnParams> Thunk::XnnParams::Create(
 }
 
 Thunk::XnnParams::XnnParams(XnnThreadpool threadpool)
+    : threadpool(std::move(threadpool)) {}
+
+absl::StatusOr<Thunk::YnnParams> Thunk::YnnParams::Create(
+    const ExecutableRunOptions* run_options) {
+  TF_ASSIGN_OR_RETURN(YnnThreadpool threadpool,
+                      CreateYnnThreadpool(run_options->intra_op_thread_pool()));
+  return YnnParams(std::move(threadpool));
+}
+
+Thunk::YnnParams::YnnParams(YnnThreadpool threadpool)
     : threadpool(std::move(threadpool)) {}
 
 Thunk::ExecuteSession::ExecuteSession(int64_t max_workers,

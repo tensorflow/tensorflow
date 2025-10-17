@@ -128,6 +128,7 @@ class CpuExecutable : public Executable {
   ThunkExecutor& thunks() { return *thunks_; }
 
   bool has_xnn_fusions() const { return has_xnn_fusions_; }
+  bool has_ynn_fusions() const { return has_ynn_fusions_; }
 
   const BufferAssignment& buffer_assignment() const { return *assignment_; }
   absl::Span<const ConstantAllocation> constants() const { return constants_; }
@@ -229,6 +230,9 @@ class CpuExecutable : public Executable {
 
   // Whether the thunk executor contains any XNN fusion thunks.
   bool has_xnn_fusions_ = false;
+
+  // Whether the thunk executor contains any YNN fusion thunks.
+  bool has_ynn_fusions_ = false;
 
   // Entry function name for the computation.
   std::string entry_function_name_;

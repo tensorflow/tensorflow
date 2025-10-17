@@ -217,6 +217,9 @@ class ThunkEmitter {
   absl::StatusOr<ThunkSequence> EmitXnnFusionThunk(
       const HloInstruction* instruction);
 
+  absl::StatusOr<ThunkSequence> EmitYnnFusionThunk(
+      const HloInstruction* instruction);
+
   absl::StatusOr<ThunkSequence> EmitOneDnnFusionThunk(
       const HloInstruction* instruction);
 

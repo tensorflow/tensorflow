@@ -37,6 +37,8 @@ limitations under the License.
 #include "xla/backends/cpu/runtime/xfeed_manager.h"
 #include "xla/backends/cpu/runtime/xnnpack/xnn_interop.h"
 #include "xla/backends/cpu/runtime/xnnpack/xnn_threadpool.h"
+#include "xla/backends/cpu/runtime/ynnpack/ynn_interop.h"
+#include "xla/backends/cpu/runtime/ynnpack/ynn_threadpool.h"
 #include "xla/executable_run_options.h"
 #include "xla/ffi/execution_context.h"
 #include "xla/runtime/buffer_use.h"
@@ -87,6 +89,7 @@ class Thunk {
     kTopK,
     kWhile,
     kXnnFusion,
+    kYnnFusion,
     kOneDnnFusion,
   };
 
@@ -263,6 +266,20 @@ class Thunk {
   };
 
   //===--------------------------------------------------------------------===//
+  // YnnParams
+  //===--------------------------------------------------------------------===//
+
+  // Parameters capturing all the details required for running XNNPACK fusions.
+  struct YnnParams {
+    static absl::StatusOr<YnnParams> Create(
+        const ExecutableRunOptions* run_options);
+
+    YnnThreadpool threadpool = nullptr;
+
+    explicit YnnParams(YnnThreadpool threadpool);
+  };
+
+  //===--------------------------------------------------------------------===//
   // ExecuteParams
   //===--------------------------------------------------------------------===//
 
@@ -277,6 +294,7 @@ class Thunk {
     CollectiveExecuteParams* collective_params = nullptr;
     CustomCallExecuteParams* custom_call_params = nullptr;
     XnnParams* xnn_params = nullptr;
+    YnnParams* ynn_params = nullptr;
     int64_t run_id = -1;          // -1 means no run id is set.
     int64_t device_ordinal = -1;  // -1 means no device ordinal is set.
     ExecuteSession session = ExecuteSession(ExecuteSession::kMaxWorkers,
