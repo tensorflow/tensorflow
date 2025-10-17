@@ -182,9 +182,7 @@ ENTRY e {
   if (cc.IsAtLeastAmpere()) {
     MatchOptimizedHlo(hlo_string, R"(
 ; CHECK: ENTRY
-; CHECK-NEXT: parameter
-; CHECK-NEXT: parameter
-; CHECK-NEXT: __triton_gemm
+; CHECK: __triton_nested_gemm_fusion
     )");
   } else {
     MatchOptimizedHlo(hlo_string, R"(

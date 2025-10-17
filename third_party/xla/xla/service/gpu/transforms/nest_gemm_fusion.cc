@@ -1122,41 +1122,22 @@ class NestGemmFusionVisitor : public DfsHloRewriteVisitor {
  private:
   absl::Status AcceptDotOperand(const HloInstruction* operand,
                                 absl::Span<const int64_t> batch_dims,
-                                absl::Span<const int64_t> contracting_dims,
-                                bool is_lhs) {
+                                absl::Span<const int64_t> contracting_dims) {
     if (contracting_dims.size() != 1) {
-      return absl::InternalError(
-          absl::StrCat("Expected ", is_lhs ? "LHS" : "RHS",
-                       " operand with exactly one contracting dimension, got ",
-                       contracting_dims.size()));
+      return absl::InternalError(absl::StrCat(
+          "Expected operand with exactly one contracting dimension, got ",
+          contracting_dims.size()));
     }
 
     TF_ASSIGN_OR_RETURN(
         std::vector<int64_t> non_contracting_dimensions,
         GetNonContractingDims(operand->shape(), batch_dims, contracting_dims));
-
     if (non_contracting_dimensions.size() != 1) {
       return absl::InternalError(absl::StrCat(
-          "Expected ", is_lhs ? "LHS" : "RHS",
-          " operand with exactly one non-contracting dimension, got ",
+          "Expected operand with exactly one non-contracting dimension, got ",
           non_contracting_dimensions.size()));
     }
 
-    if (is_lhs) {
-      if (non_contracting_dimensions[0] >= contracting_dims[0]) {
-        return absl::InternalError(absl::StrCat(
-            "Expected LHS non-contracting dimension to be before contracting "
-            "dimension, got ",
-            non_contracting_dimensions[0], " >= ", contracting_dims[0]));
-      }
-    } else {
-      if (non_contracting_dimensions[0] <= contracting_dims[0]) {
-        return absl::InternalError(absl::StrCat(
-            "Expected RHS non-contracting dimension to be after contracting "
-            "dimension, got ",
-            non_contracting_dimensions[0], " <= ", contracting_dims[0]));
-      }
-    }
     return absl::OkStatus();
   }
 
@@ -1170,11 +1151,9 @@ class NestGemmFusionVisitor : public DfsHloRewriteVisitor {
     const HloInstruction* rhs = dot->operand(1);
     auto dims = dot->dot_dimension_numbers();
     TF_RETURN_IF_ERROR(AcceptDotOperand(lhs, dims.lhs_batch_dimensions(),
-                                        dims.lhs_contracting_dimensions(),
-                                        /*is_lhs=*/true));
+                                        dims.lhs_contracting_dimensions()));
     TF_RETURN_IF_ERROR(AcceptDotOperand(rhs, dims.rhs_batch_dimensions(),
-                                        dims.rhs_contracting_dimensions(),
-                                        /*is_lhs=*/false));
+                                        dims.rhs_contracting_dimensions()));
     return absl::OkStatus();
   }
 
@@ -1183,10 +1162,9 @@ class NestGemmFusionVisitor : public DfsHloRewriteVisitor {
       return absl::OkStatus();
     }
     switch (instruction->opcode()) {
-      case HloOpcode::kParameter:
-      case HloOpcode::kConstant:
-        return absl::OkStatus();
       case HloOpcode::kBroadcast:
+      case HloOpcode::kConstant:
+      case HloOpcode::kParameter:
         return absl::OkStatus();
       case HloOpcode::kFusion:
         return AcceptResultingFusion(Cast<HloFusionInstruction>(instruction));
