@@ -59,15 +59,15 @@ namespace gpu {
 namespace {
 std::vector<TritonGemmConfig> GetDefaultTritonConfigs(
     se::GpuComputeCapability compute_capability, bool autotune_tma) {
-  if (std::holds_alternative<se::CudaComputeCapability>(compute_capability)) {
-    auto cuda_compute_capability =
-        std::get<se::CudaComputeCapability>(compute_capability);
+  if (compute_capability.IsCuda()) {
+    auto* cuda_compute_capability =
+        compute_capability.cuda_compute_capability();
     std::vector<TritonGemmConfig> configs;
 
-    if (cuda_compute_capability.IsAtLeastBlackwell()) {
+    if (cuda_compute_capability->IsAtLeastBlackwell()) {
       configs = *kBlackwellConfigs;
-    } else if (cuda_compute_capability.IsHopper() ||
-               cuda_compute_capability.IsAmpere()) {
+    } else if (cuda_compute_capability->IsHopper() ||
+               cuda_compute_capability->IsAmpere()) {
       configs = *kHopperAmpereConfigs;
     } else {
       configs = *kDefaultCudaConfigs;
@@ -88,7 +88,7 @@ std::vector<TritonGemmConfig> GetDefaultTritonConfigs(
     }
     return tma_parameterized_configs;
   }
-  if (std::holds_alternative<se::RocmComputeCapability>(compute_capability)) {
+  if (compute_capability.IsRocm()) {
     return *kDefaultRocmConfigs;
   }
   return {};

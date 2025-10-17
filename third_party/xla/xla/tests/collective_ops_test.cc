@@ -2672,9 +2672,7 @@ class Fp8CollectiveOpsTest : public CollectiveOpsTest {
   }
 
  protected:
-  bool IsCuda() {
-    return std::holds_alternative<se::CudaComputeCapability>(Capability());
-  }
+  bool IsCuda() { return Capability().IsCuda(); }
 
   const se::GpuComputeCapability& Capability() {
     return backend()

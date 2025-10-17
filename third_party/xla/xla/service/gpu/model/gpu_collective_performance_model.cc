@@ -440,11 +440,15 @@ GpuPerformanceWithCollectiveModel::ComputeAllreduceTime(
     const se::DeviceDescription& gpu_device_info) {
   // We use nccl group call to launch multiple allreduces so launch overhead
   // only occurs once.
-  const auto visitor = [&](const auto& cc) {
+  if (auto ptr =
+          gpu_device_info.gpu_compute_capability().cuda_compute_capability()) {
     return ComputeAllreduceTimeImpl(instr, cost_analysis, gpu_device_info,
-                                    CreateSettings(cc));
-  };
-  return std::visit(visitor, gpu_device_info.gpu_compute_capability());
+                                    CreateSettings(*ptr));
+  }
+  return ComputeAllreduceTimeImpl(
+      instr, cost_analysis, gpu_device_info,
+      CreateSettings(
+          *gpu_device_info.gpu_compute_capability().rocm_compute_capability()));
 }
 
 /*static*/ absl::Duration

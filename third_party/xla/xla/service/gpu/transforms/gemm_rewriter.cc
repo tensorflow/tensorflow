@@ -806,8 +806,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       }
     }
 
-    const auto is_rocm =
-        std::holds_alternative<se::RocmComputeCapability>(gpu_version_);
+    const auto is_rocm = gpu_version_.IsRocm();
     if (is_rocm &&
         toolkit_version_ >= stream_executor::SemanticVersion{7, 0, 0}) {
       // Attempt to match approximate Swish activation
@@ -1050,12 +1049,12 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
   }
 
   static bool IsCuda(const se::GpuComputeCapability& gpu_version) {
-    return std::holds_alternative<se::CudaComputeCapability>(gpu_version);
+    return gpu_version.IsCuda();
   }
 
   static absl::StatusOr<se::CudaComputeCapability> GetCudaComputeCapability(
       const se::GpuComputeCapability& gpu_version) {
-    auto* cuda_cc = std::get_if<se::CudaComputeCapability>(&gpu_version);
+    auto* cuda_cc = gpu_version.cuda_compute_capability();
     if (cuda_cc == nullptr) {
       return absl::InvalidArgumentError("Compute Capability is not CUDA.");
     }
@@ -1063,12 +1062,12 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
   }
 
   static bool IsRocm(const se::GpuComputeCapability& gpu_version) {
-    return std::holds_alternative<se::RocmComputeCapability>(gpu_version);
+    return gpu_version.IsRocm();
   }
 
   static absl::StatusOr<se::RocmComputeCapability> GetRocmComputeCapability(
       const se::GpuComputeCapability& gpu_version) {
-    auto rocm_cc = std::get_if<se::RocmComputeCapability>(&gpu_version);
+    auto rocm_cc = gpu_version.rocm_compute_capability();
     if (rocm_cc == nullptr) {
       return absl::InvalidArgumentError("Compute Capability is not ROCm.");
     }
@@ -2416,8 +2415,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       return false;
     }
 
-    if (auto isrocm = std::get_if<se::RocmComputeCapability>(&gpu_version_);
-        isrocm) {
+    if (auto isrocm = gpu_version_.rocm_compute_capability(); isrocm) {
       if (!isrocm->has_hipblaslt()) {
         return false;
       }
@@ -2431,8 +2429,8 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       return true;
     }
 
-    if (std::holds_alternative<se::CudaComputeCapability>(gpu_version_)) {
-      if (std::get<se::CudaComputeCapability>(gpu_version_).IsAtLeastAmpere()) {
+    if (auto* ptr = gpu_version_.cuda_compute_capability()) {
+      if (ptr->IsAtLeastAmpere()) {
         // cuBlasLt has an implementation for complex data with compute type
         // 32F_FAST_32TF that uses tensor cores and that is free from the
         // restriction. This implementation only works on Ampere
@@ -2535,11 +2533,11 @@ class GemmWorkspaceRewriteVisitor : public DfsHloRewriteVisitor {
     // otherwise cuBLAS will use its own internal pool which will be competing
     // with XLA allocator for device memory.
     int64_t workspace = GemmConfig::kDefaultWorkspace;
-    auto* cuda_cc = std::get_if<se::CudaComputeCapability>(&gpu_version_);
+    auto* cuda_cc = gpu_version_.cuda_compute_capability();
     if (cuda_cc != nullptr && cuda_cc->IsAtLeastHopper()) {
       workspace = GemmConfig::kHopperWorkspace;
     }
-    auto* rocm_cc = std::get_if<se::RocmComputeCapability>(&gpu_version_);
+    auto* rocm_cc = gpu_version_.rocm_compute_capability();
     if (rocm_cc != nullptr) {
       if (rocm_cc->gfx_version() == "gfx942") {
         workspace = GemmConfig::kGFX942Workspace;

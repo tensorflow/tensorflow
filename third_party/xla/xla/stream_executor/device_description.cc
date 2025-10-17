@@ -68,12 +68,10 @@ absl::StatusOr<DeviceDescription> DeviceDescription::FromProto(
 
 GpuDeviceInfoProto DeviceDescription::ToGpuProto() const {
   stream_executor::GpuDeviceInfoProto proto;
-  if (auto* ptr = std::get_if<stream_executor::CudaComputeCapability>(
-          &gpu_compute_capability_)) {
+  if (auto* ptr = gpu_compute_capability_.cuda_compute_capability()) {
     *proto.mutable_cuda_compute_capability() = ptr->ToProto();
   }
-  if (auto* ptr = std::get_if<stream_executor::RocmComputeCapability>(
-          &gpu_compute_capability_)) {
+  if (auto* ptr = gpu_compute_capability_.rocm_compute_capability()) {
     *proto.mutable_rocm_compute_capability() = ptr->ToProto();
   }
 
@@ -106,8 +104,7 @@ const GpuComputeCapability &DeviceDescription::gpu_compute_capability() const {
 }
 
 CudaComputeCapability DeviceDescription::cuda_compute_capability() const {
-  if (auto *ptr =
-          std::get_if<CudaComputeCapability>(&gpu_compute_capability_)) {
+  if (auto* ptr = gpu_compute_capability_.cuda_compute_capability()) {
     return *ptr;
   }
   // Fallback for backwards compatibility.
@@ -115,8 +112,7 @@ CudaComputeCapability DeviceDescription::cuda_compute_capability() const {
 }
 
 RocmComputeCapability DeviceDescription::rocm_compute_capability() const {
-  if (auto *ptr =
-          std::get_if<RocmComputeCapability>(&gpu_compute_capability_)) {
+  if (auto* ptr = gpu_compute_capability_.rocm_compute_capability()) {
     return *ptr;
   }
   return RocmComputeCapability{};

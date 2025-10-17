@@ -52,13 +52,13 @@ bool GemmFusionAutotunerImpl::AddLibConfigs(
     const HloFusionInstruction& fusion, const HloDotInstruction* dot,
     std::vector<BackendConfig>& configs) {
   // Add cuDNN plans, if available.
-  auto cc = std::get<se::CudaComputeCapability>(GetComputeCapability());
+  auto cc = GetComputeCapability().cuda_compute_capability();
   bool is_cudnn_enabled =
       !config_.IsDeviceless() &&
       GetDnnVersionInfoOrDefault(config_.GetExecutor()).major_version() >= 9 &&
-      ((cc.IsAtLeastAmpere() &&
+      ((cc->IsAtLeastAmpere() &&
         debug_options_.xla_gpu_cudnn_gemm_fusion_level() > 1) ||
-       (cc.IsAtLeastBlackwell() &&
+       (cc->IsAtLeastBlackwell() &&
         debug_options_.xla_gpu_cudnn_gemm_fusion_level() > 0));
   if ((IsGpuFusionKind(fusion, kCuDnnFusionKind) && IsAutotuningEnabled()) ||
       (IsGpuFusionKind(fusion, kTritonGemmFusionKind) && is_cudnn_enabled &&
@@ -81,20 +81,19 @@ bool GemmFusionAutotunerImpl::AddLibConfigs(
 
 std::vector<TritonGemmConfig> GemmFusionAutotunerImpl::GetDefaultTritonConfigs()
     const {
-  auto compute_capability =
-      std::get<se::CudaComputeCapability>(GetComputeCapability());
+  auto* compute_capability = GetComputeCapability().cuda_compute_capability();
   std::vector<TritonGemmConfig> configs;
 
-  if (compute_capability.IsAtLeastBlackwell()) {
+  if (compute_capability->IsAtLeastBlackwell()) {
     configs = *kBlackwellConfigs;
-  } else if (compute_capability.IsHopper() || compute_capability.IsAmpere()) {
+  } else if (compute_capability->IsHopper() || compute_capability->IsAmpere()) {
     configs = *kHopperAmpereConfigs;
   } else {
     configs = *kDefaultCudaConfigs;
   }
 
   if (!debug_options_.xla_gpu_experimental_enable_triton_tma() ||
-      !compute_capability.IsAtLeastHopper()) {
+      !compute_capability->IsAtLeastHopper()) {
     return configs;
   }
 

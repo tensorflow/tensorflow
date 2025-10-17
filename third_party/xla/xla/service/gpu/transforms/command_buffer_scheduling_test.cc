@@ -782,7 +782,7 @@ TEST_F(CommandBufferSchedulingTest, WhileNotCommand) {
 
 TEST_F(CommandBufferSchedulingTest, While) {
   const auto& gpu_desc = GetGpuComputeCapability();
-  if (std::holds_alternative<se::RocmComputeCapability>(gpu_desc)) {
+  if (gpu_desc.IsRocm()) {
     GTEST_SKIP() << "Not supported for ROCm!";
   }
   const char* hlo = R"(
@@ -847,7 +847,7 @@ TEST_F(CommandBufferSchedulingTest, While) {
 
 TEST_F(CommandBufferSchedulingTest, Conditional) {
   const auto& gpu_desc = GetGpuComputeCapability();
-  if (std::holds_alternative<se::RocmComputeCapability>(gpu_desc)) {
+  if (gpu_desc.IsRocm()) {
     GTEST_SKIP() << "Not supported for ROCm!";
   }
   const char* hlo = R"(

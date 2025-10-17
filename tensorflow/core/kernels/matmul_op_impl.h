@@ -604,7 +604,7 @@ struct LaunchBatchMatMul<GPUDevice, Scalar> {
 
     const auto& cc =
         stream->parent()->GetDeviceDescription().gpu_compute_capability();
-    if (auto* procm = std::get_if<se::RocmComputeCapability>(&cc)) {
+    if (auto* procm = cc.rocm_compute_capability()) {
       bCublasLtSupport = procm->gfx9_mi200_or_later();
     }
 

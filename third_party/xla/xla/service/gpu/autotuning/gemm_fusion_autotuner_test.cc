@@ -197,13 +197,13 @@ class StatelessAutotunerTest : public HloTestBase {
       SymbolicExprContext* symbolic_expr_context) {
     const HloFusionInstruction& fusion = *Cast<HloFusionInstruction>(
         module.entry_computation()->root_instruction());
-    if (!isRocm()) {
-      auto cu_compute_capability =
-          std::get<se::CudaComputeCapability>(compute_capability);
+    if (GpuComputeComp().IsCuda()) {
+      auto* cu_compute_capability =
+          compute_capability.cuda_compute_capability();
       se::GpuDeviceInfoProto deviceless_proto;
       auto ccc = deviceless_proto.mutable_cuda_compute_capability();
-      ccc->set_major(cu_compute_capability.major);
-      ccc->set_minor(cu_compute_capability.minor);
+      ccc->set_major(cu_compute_capability->major);
+      ccc->set_minor(cu_compute_capability->minor);
     }
 
     DeviceConfig test_config{backend().default_stream_executor(),
@@ -235,10 +235,6 @@ class StatelessAutotunerTest : public HloTestBase {
         .default_stream_executor()
         ->GetDeviceDescription()
         .gpu_compute_capability();
-  }
-
-  bool isRocm() {
-    return std::holds_alternative<se::RocmComputeCapability>(GpuComputeComp());
   }
 
   // Returns the config for the current device.
@@ -321,7 +317,7 @@ TEST_F(StatelessAutotunerTest, CublasFallbackForBf16Bf16F32Algorithm) {
 
   TF_ASSERT_OK_AND_ASSIGN(auto configs,
                           GetPossibleMatmulAutotuneConfigs(*module));
-  if (!isRocm()) {
+  if (!GpuComputeComp().IsRocm()) {
     switch (GetCudaComputeCapability().major) {
       case se::CudaComputeCapability::kAmpere:
         EXPECT_TRUE(hasCublasConfig(configs))
@@ -361,8 +357,8 @@ class GemmFusionAutotunerTest : public StatelessAutotunerTest {
   }
 
   stream_executor::GpuComputeCapability CudaAmpereOrRocm() {
-    if (isRocm()) {
-      return GetRocmComputeCapability();
+    if (GpuComputeComp().IsRocm()) {
+      return GpuComputeComp();
     } else {
       return stream_executor::GpuComputeCapability{
           stream_executor::CudaComputeCapability{
@@ -427,7 +423,8 @@ GetPossibleMatmulAutotuneTritonConfigs(
   TF_ASSIGN_OR_RETURN(se::DeviceDescription device_description,
                       se::DeviceDescription::FromProto(
                           se::GpuDeviceInfoProto::default_instance()));
-  device_description.set_gpu_compute_capability(compute_capability);
+  device_description.set_gpu_compute_capability(
+      se::GpuComputeCapability{compute_capability});
   // Using H100 numbers as the most relevant example here.
   // https://docs.nvidia.com/cuda/cuda-c-programming-guide/#features-and-technical-specifications-technical-specifications-per-compute-capability
   // https://developer.nvidia.com/blog/nvidia-hopper-architecture-in-depth/#nvidia_h100_gpu_architecture_in-depth
@@ -446,7 +443,7 @@ GetPossibleMatmulAutotuneTritonConfigs(
 }
 
 TEST_F(GemmFusionAutotunerTest, AmpereUsesMoreThanTwoStages) {
-  if (isRocm()) {
+  if (GpuComputeComp().IsRocm()) {
     GTEST_SKIP() << "Not supported on ROCm.";
   }
   std::unique_ptr<VerifiedHloModule> module = ParseAndReturnVerifiedModule(R"(
@@ -625,7 +622,7 @@ ENTRY e {
 
 // TODO(b/344770374): Make this test not fragile.
 TEST_F(GemmFusionAutotunerTest, DoNotRunAutotuningKernelSpillingRegisters) {
-  if (isRocm()) {
+  if (GpuComputeComp().IsRocm()) {
     GTEST_SKIP() << "Not supported on ROCm.";
   }
   const std::string kHloText = R"(
@@ -808,11 +805,10 @@ ENTRY main {
 
   TF_EXPECT_OK(HloTestBase::RunHloPass(&pipeline, module.get()));
   const bool is_at_least_hopper =
-      std::holds_alternative<se::CudaComputeCapability>(
-          autotune_config.GetGpuComputeCapability()) &&
-      std::get<se::CudaComputeCapability>(
-          autotune_config.GetGpuComputeCapability())
-          .IsAtLeastHopper();
+      autotune_config.GetGpuComputeCapability().IsCuda() &&
+      autotune_config.GetGpuComputeCapability()
+          .cuda_compute_capability()
+          ->IsAtLeastHopper();
   TF_ASSERT_OK_AND_ASSIGN(
       bool filecheck_matches,
       RunFileCheck(module->ToString(), is_at_least_hopper
@@ -822,8 +818,9 @@ ENTRY main {
 }
 
 TEST_F(GemmFusionAutotunerDumpTest, DumpingWorks) {
-  if (isRocm() || GetDebugOptionsForTest()
-                      .xla_gpu_experimental_disable_binary_libraries()) {
+  if (GpuComputeComp().IsRocm() ||
+      GetDebugOptionsForTest()
+          .xla_gpu_experimental_disable_binary_libraries()) {
     GTEST_SKIP() << "Not supported on ROCm or with binary libraries disabled.";
   }
   HloModuleConfig config;
@@ -891,8 +888,9 @@ CHECK: cublas
 }
 
 TEST_F(GemmFusionAutotunerTest, AutotuneCuDnnFusion) {
-  if (isRocm() || GetDebugOptionsForTest()
-                      .xla_gpu_experimental_disable_binary_libraries()) {
+  if (GpuComputeComp().IsRocm() ||
+      GetDebugOptionsForTest()
+          .xla_gpu_experimental_disable_binary_libraries()) {
     GTEST_SKIP() << "Not supported on ROCm or with binary libraries disabled.";
   }
   const std::string kHlo = R"(
@@ -1202,7 +1200,7 @@ ENTRY entry {
 }
 
 TEST_F(GemmFusionAutotunerTest, CreatesCustomKernelFusionConfigs) {
-  if (isRocm()) {
+  if (GpuComputeComp().IsRocm()) {
     GTEST_SKIP() << "Not supported on ROCm.";
   }
   const std::string kHlo = R"(
@@ -1241,7 +1239,7 @@ TEST_F(GemmFusionAutotunerTest, CreatesCustomKernelFusionConfigs) {
 }
 
 TEST_F(GemmFusionAutotunerTest, GeneratesTwoConfigsForUpcastGemmWithPrologue) {
-  if (isRocm()) {
+  if (GpuComputeComp().IsRocm()) {
     GTEST_SKIP() << "Not supported on ROCm.";
   }
   const std::string kHlo = R"(
@@ -1273,8 +1271,9 @@ TEST_F(GemmFusionAutotunerTest, GeneratesTwoConfigsForUpcastGemmWithPrologue) {
   TF_ASSERT_OK_AND_ASSIGN(
       const std::vector<GemmFusionAutotunerImpl::BackendConfig> configs,
       GetPossibleMatmulAutotuneConfigs(
-          *module, compute_capability, GetToolkitVersion(),
-          GetDebugOptionsForTest(), &symbolic_expr_context_));
+          *module, se::GpuComputeCapability{compute_capability},
+          GetToolkitVersion(), GetDebugOptionsForTest(),
+          &symbolic_expr_context_));
   EXPECT_EQ(
       2, std::count_if(
              configs.begin(), configs.end(),
@@ -1287,7 +1286,7 @@ TEST_F(GemmFusionAutotunerTest, GeneratesTwoConfigsForUpcastGemmWithPrologue) {
 TEST_F(GemmFusionAutotunerTest, GeneratesOneConfigForUpcastGemmWithPrologue) {
   // Same as GeneratesTwoConfigsForUpcastGemmWithPrologue, but with contracting
   // dimension size = 128 which is not supported by the SplitK kernel.
-  if (isRocm()) {
+  if (GpuComputeComp().IsRocm()) {
     GTEST_SKIP() << "Not supported on ROCm.";
   }
   const std::string kHlo = R"(
@@ -1319,8 +1318,9 @@ TEST_F(GemmFusionAutotunerTest, GeneratesOneConfigForUpcastGemmWithPrologue) {
   TF_ASSERT_OK_AND_ASSIGN(
       const std::vector<GemmFusionAutotunerImpl::BackendConfig> configs,
       GetPossibleMatmulAutotuneConfigs(
-          *module, compute_capability, GetToolkitVersion(),
-          GetDebugOptionsForTest(), &symbolic_expr_context_));
+          *module, se::GpuComputeCapability{compute_capability},
+          GetToolkitVersion(), GetDebugOptionsForTest(),
+          &symbolic_expr_context_));
   EXPECT_EQ(
       1, std::count_if(
              configs.begin(), configs.end(),
@@ -1332,7 +1332,7 @@ TEST_F(GemmFusionAutotunerTest, GeneratesOneConfigForUpcastGemmWithPrologue) {
 
 TEST_F(GemmFusionAutotunerTest,
        GeneratesConfigForUpcastGemmWithPrologueAndEpilogue) {
-  if (isRocm()) {
+  if (GpuComputeComp().IsRocm()) {
     GTEST_SKIP() << "Not supported on ROCm.";
   }
   const std::string kHlo = R"(
@@ -1368,8 +1368,9 @@ TEST_F(GemmFusionAutotunerTest,
   TF_ASSERT_OK_AND_ASSIGN(
       const std::vector<GemmFusionAutotunerImpl::BackendConfig> configs,
       GetPossibleMatmulAutotuneConfigs(
-          *module, compute_capability, GetToolkitVersion(),
-          GetDebugOptionsForTest(), &symbolic_expr_context_));
+          *module, se::GpuComputeCapability{compute_capability},
+          GetToolkitVersion(), GetDebugOptionsForTest(),
+          &symbolic_expr_context_));
   EXPECT_EQ(
       2, std::count_if(
              configs.begin(), configs.end(),
@@ -1486,7 +1487,7 @@ class GemmFusionShardedAutotunerTest : public GemmFusionAutotunerTest {
 TEST_F(
     GemmFusionShardedAutotunerTest,
     AutotuningSucceedsWhenKeyValueStoreAlreadyContainsAutotuningResultsForTheInputModule) {  // NOLINT(whitespace/line_length)
-  if (isRocm()) {
+  if (GpuComputeComp().IsRocm()) {
     GTEST_SKIP() << "Not supported on ROCm.";
   }
   const std::string kHlo = R"(
@@ -1545,7 +1546,7 @@ TEST_F(
 TEST_F(
     GemmFusionShardedAutotunerTest,
     AutotuningStoresDifferentResultsForTheSameFusionInDifferentModules) {  // NOLINT(whitespace/line_length)
-  if (isRocm()) {
+  if (GpuComputeComp().IsRocm()) {
     GTEST_SKIP() << "Not supported on ROCm.";
   }
   const std::string kHlo1 = R"(
@@ -1626,7 +1627,7 @@ TEST_F(
 }
 
 TEST_F(GemmFusionAutotunerTest, RewritesGemmFusionToCustomKernelFusion) {
-  if (isRocm()) {
+  if (GpuComputeComp().IsRocm()) {
     GTEST_SKIP() << "Not supported on ROCm.";
   }
   const std::string kHlo = R"(
@@ -1711,7 +1712,7 @@ ENTRY e {
 }
 
 TEST_F(GemmFusionAutotunerTest, VerifyHopperConfigsAreDifferentFromBlackwell) {
-  if (isRocm()) {
+  if (GpuComputeComp().IsRocm()) {
     GTEST_SKIP() << "Not supported on ROCm.";
   }
 
@@ -1752,7 +1753,7 @@ TEST_F(GemmFusionAutotunerTest, VerifyHopperConfigsAreDifferentFromBlackwell) {
 }
 
 TEST_F(GemmFusionAutotunerTest, ScaledDotConfigsAreGenerated) {
-  if (isRocm()) {
+  if (GpuComputeComp().IsRocm()) {
     GTEST_SKIP() << "Not supported on ROCm.";
   }
 
@@ -1781,7 +1782,7 @@ TEST_F(GemmFusionAutotunerTest, ScaledDotConfigsAreGenerated) {
 }
 
 TEST_F(GemmFusionAutotunerTest, ScaledDotConfigsHaveCuBlasFallback) {
-  if (isRocm()) {
+  if (GpuComputeComp().IsRocm()) {
     GTEST_SKIP() << "Not supported on ROCm.";
   }
 
@@ -1829,7 +1830,7 @@ class GemmFusionAutotunerEnableTma : public GemmFusionAutotunerTest {
 
 TEST_F(GemmFusionAutotunerEnableTma,
        TmaConfigsAreGeneratedOnlyForHopperAndWorkCorrectly) {
-  if (isRocm()) {
+  if (GpuComputeComp().IsRocm()) {
     GTEST_SKIP() << "Not supported on ROCm.";
   }
 
@@ -1885,7 +1886,7 @@ TEST_F(GemmFusionAutotunerEnableTma,
 
 TEST_F(GemmFusionAutotunerEnableTma,
        TmaConfigsGeneratedAndRunCorrectlyForDotsOfBroadcasts) {
-  if (isRocm()) {
+  if (GpuComputeComp().IsRocm()) {
     GTEST_SKIP() << "Not supported on ROCm.";
   }
 

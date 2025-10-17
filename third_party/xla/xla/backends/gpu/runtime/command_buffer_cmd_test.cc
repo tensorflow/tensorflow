@@ -63,8 +63,8 @@ static se::StreamExecutor* GpuExecutor() {
 // Some of the tests rely on CUDA 12.9+ features.
 bool IsAtLeastCuda12900(const se::StreamExecutor* stream_executor) {
   const auto& device_description = stream_executor->GetDeviceDescription();
-  const auto* cuda_cc = std::get_if<se::CudaComputeCapability>(
-      &device_description.gpu_compute_capability());
+  const auto* cuda_cc =
+      device_description.gpu_compute_capability().cuda_compute_capability();
   if (cuda_cc != nullptr) {
     // We need a recent driver to support the feature at runtime and we need a
     // recent version of the toolkit at compile time, so that we have access to

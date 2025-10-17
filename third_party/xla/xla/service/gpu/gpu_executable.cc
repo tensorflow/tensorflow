@@ -249,8 +249,7 @@ GpuExecutable::GpuExecutable(
       constants_(std::move(params.constants)),
       output_info_(std::move(params.output_info)),
       enable_debug_info_manager_(params.enable_debug_info_manager) {
-  if (std::holds_alternative<stream_executor::RocmComputeCapability>(
-          gpu_version_)) {
+  if (gpu_version_.IsRocm()) {
     // ROCm uses hsaco hashes to distinguish between modules.
     // Bad things happen if multiple modules with identical code are loaded.
     binary_.resize(binary_.size() + 16);
@@ -279,18 +278,15 @@ absl::Status GpuExecutable::CheckCompatibilityWithServiceExecutableRunOptions(
     auto cc = main_stream->GetRocmComputeCapability();
     std::string stream_arch = cc.gcn_arch_name();
     std::string gpu_exec_arch =
-        std::get<se::RocmComputeCapability>(gpu_version_).gcn_arch_name();
+        gpu_version_.rocm_compute_capability()->gcn_arch_name();
     TF_RET_CHECK(stream_arch == gpu_exec_arch)
         << "AMDGPU GCN ISA version mismatch; expected {" << gpu_exec_arch
         << ", but was " << stream_arch;
   } else if (platform_id == stream_executor::cuda::kCudaPlatformId) {
-    se::GpuComputeCapability cc = main_stream->GetCudaComputeCapability();
-    TF_RET_CHECK(std::get<se::CudaComputeCapability>(cc) ==
-                 std::get<se::CudaComputeCapability>(gpu_version_))
-        << "Compute capability mismatch; expected {"
-        << std::get<se::CudaComputeCapability>(gpu_version_).ToString()
-        << "}, but was {" << std::get<se::CudaComputeCapability>(cc).ToString()
-        << "}";
+    se::CudaComputeCapability cc = main_stream->GetCudaComputeCapability();
+    TF_RET_CHECK(cc == *gpu_version_.cuda_compute_capability())
+        << "Compute capability mismatch; expected {" << gpu_version_.ToString()
+        << "}, but was {" << cc.ToString() << "}";
   } else if (platform_id == stream_executor::sycl::kSyclPlatformId) {
     // TODO: Add check.
   } else {

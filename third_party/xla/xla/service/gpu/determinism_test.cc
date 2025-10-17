@@ -154,11 +154,11 @@ class DeterminismTest : public GpuCodegenTest {
   }
 
   bool IsRocm() const {
-    return std::holds_alternative<stream_executor::RocmComputeCapability>(
-        backend()
-            .default_stream_executor()
-            ->GetDeviceDescription()
-            .gpu_compute_capability());
+    return backend()
+        .default_stream_executor()
+        ->GetDeviceDescription()
+        .gpu_compute_capability()
+        .IsRocm();
   }
 
   bool HasHipblasLt() const {
