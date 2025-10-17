@@ -33,7 +33,6 @@ limitations under the License.
 #include <ostream>
 #include <string>
 #include <tuple>
-#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -41,14 +40,15 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "fp16/fp16.h"  // from @FP16
 #include "absl/algorithm/container.h"
+#include "absl/log/absl_check.h"
+#include "absl/log/absl_log.h"
 #include "absl/types/span.h"
 #include "Eigen/Core"  // from @eigen_archive
-#include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/core/api/op_resolver.h"
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/core/interpreter.h"
+#include "tensorflow/lite/kernels/internal/portable_tensor_utils.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
-#include "tensorflow/lite/kernels/internal/tensor_utils.h"
 #include "tensorflow/lite/kernels/internal/utils/sparsity_format_converter.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/portable_type_to_tflitetype.h"
@@ -57,7 +57,6 @@ limitations under the License.
 #include "tensorflow/lite/string_util.h"
 #include "tensorflow/lite/testing/util.h"  // IWYU pragma: keep
 #include "tensorflow/lite/tools/optimize/quantization_utils.h"
-#include "tensorflow/lite/type_to_tflitetype.h"
 #include "tensorflow/lite/util.h"
 #include "tsl/platform/logging.h"
 
@@ -489,14 +488,14 @@ class SingleOpModel {
             reinterpret_cast<const uint8_t*>(q.data()), q.size());
         buffers_.push_back(CreateBuffer(builder_, data_buffer));
       } else if (is_quantized) {
-        CHECK_EQ(t.type, TensorType_INT8)
+        ABSL_CHECK_EQ(t.type, TensorType_INT8)
             << "The INT8 quantization is only supported for sparsified tensor";
         std::vector<int8_t> quantized_output(sparse_data.size());
         std::vector<float> scales;
         std::vector<int64_t> zero_points;
         if (t.per_channel_quantization) {
-          CHECK_EQ(t.per_channel_quantization_scales.size(),  // NOLINT
-                   t.per_channel_quantization_offsets.size())
+          ABSL_CHECK_EQ(t.per_channel_quantization_scales.size(),  // NOLINT
+                        t.per_channel_quantization_offsets.size())
               << "Per channel quantization scales and offsets should have the "
                  "same size";
           std::vector<int8_t> temp_data(dense_data.size());
@@ -703,7 +702,7 @@ class SingleOpModel {
     TfLiteTensor* t = interpreter_->tensor(index);
     auto* params =
         reinterpret_cast<TfLiteAffineQuantization*>(t->quantization.params);
-    CHECK(t->type == kTfLiteInt32 || t->type == kTfLiteInt64);
+    ABSL_CHECK(t->type == kTfLiteInt32 || t->type == kTfLiteInt64);
     if (t->type == kTfLiteInt32) {
       PerChannelQuantizeBiasPopulateTensor<int32_t>(index, input_data, params);
     } else {
@@ -783,7 +782,7 @@ class SingleOpModel {
   std::vector<T> ExtractVector(int index) const {
     const T* v = interpreter_->typed_tensor<T>(index);
     const auto* tensor = interpreter_->tensor(index);
-    CHECK(v) << "Could not extract vector at index: " << index;
+    ABSL_CHECK(v) << "Could not extract vector at index: " << index;
     int tensor_size;
     if (tensor->sparsity) {
       // Getting the size of the sparse buffer this way is based on the
@@ -815,7 +814,7 @@ class SingleOpModel {
   // Sets the number of threads available to the interpreter.
   // Reconstruct the interpreter if reset_interpreter is true.
   void SetNumThreads(int num_threads, bool reset_interpreter = false) {
-    CHECK(interpreter_ != nullptr);
+    ABSL_CHECK(interpreter_ != nullptr);
     if (reset_interpreter) {
       // Reconstruct interpreter as number of threads may affect internal
       // state, e.g. stratch buffer allocation.
@@ -890,7 +889,7 @@ class SingleOpModel {
           std::tie(t.scale, t.zero_point) =
               QuantizationParams<int8_t>(t.min, t.max, kTfLiteInt4);
         } else {
-          LOG(FATAL) << "No support for the requested quantized type";
+          ABSL_LOG(FATAL) << "No support for the requested quantized type";
         }
         t.min = 0;
         t.max = 0;
@@ -949,12 +948,12 @@ class SingleOpModel {
     const float qmax_double = qmax;
     // 0 should always be a representable value. Let's assume that the initial
     // min,max range contains 0.
-    CHECK_LE(f_min, 0);
-    CHECK_GE(f_max, 0);
+    ABSL_CHECK_LE(f_min, 0);
+    ABSL_CHECK_GE(f_max, 0);
     if (f_min == f_max) {
       // Special case where the min,max range is a point. Should be {0}.
-      CHECK_EQ(f_min, 0);
-      CHECK_EQ(f_max, 0);
+      ABSL_CHECK_EQ(f_min, 0);
+      ABSL_CHECK_EQ(f_max, 0);
       return {scale, zero_point};
     }
 
@@ -1003,8 +1002,8 @@ class SingleOpModel {
 
     // The zero point should always be in the range of quantized value,
     // // [qmin, qmax].
-    CHECK_GE(nudged_zero_point, qmin);
-    CHECK_LE(nudged_zero_point, qmax);
+    ABSL_CHECK_GE(nudged_zero_point, qmin);
+    ABSL_CHECK_LE(nudged_zero_point, qmax);
 
     zero_point = nudged_zero_point;
     // finally, return the values
@@ -1028,13 +1027,40 @@ class SingleOpModel {
 
     if (!v) {
       auto* t = interpreter_->tensor(index);
-      CHECK(t) << "No tensor with index " << index << ".";
-      CHECK(t->data.raw) << "Empty data for tensor with index " << index << ".";
-      LOG(FATAL) << "Unknown tensor error.";
+      ABSL_CHECK(t) << "No tensor with index " << index << ".";
+      ABSL_CHECK(t->data.raw)
+          << "Empty data for tensor with index " << index << ".";
+      ABSL_LOG(FATAL) << "Unknown tensor error.";
     }
     absl::c_copy(data, v + offset);
     PackInt4ValuesDenselyInPlace(v, ElementCount(*tensor_ptr->dims));
     tensor_ptr->bytes = ((ElementCount(*tensor_ptr->dims) + 1) / 2);
+  }
+
+  // Partially populates the tensor, starting at the given offset.
+  void PopulateTensor2bit(int index, int offset, const int8_t* begin,
+                          const int8_t* end) {
+    auto data = absl::Span<const int8_t>(begin, end - begin);
+    TfLiteTensor* tensor_ptr = interpreter_->tensor(index);
+    uint8_t* v = nullptr;
+    if (tensor_ptr) {
+      v = reinterpret_cast<uint8_t*>(tensor_ptr->data.data);
+    }
+
+    if (!v) {
+      auto* t = interpreter_->tensor(index);
+      ABSL_CHECK(t) << "No tensor with index " << index << ".";
+      ABSL_CHECK(t->data.raw)
+          << "Empty data for tensor with index " << index << ".";
+      ABSL_LOG(FATAL) << "Unknown tensor error.";
+    }
+    int num_elements = data.size();
+    int num_bytes = (num_elements + 3) / 4;
+    std::vector<int8_t> packed(num_bytes);
+    tensor_utils::PackInt8IntoDenseInt(data.data(), num_elements,
+                                       /*bit_width=*/2, packed.data());
+    memcpy(v + offset, packed.data(), packed.size());
+    tensor_ptr->bytes = num_bytes;
   }
 
  private:
@@ -1044,13 +1070,14 @@ class SingleOpModel {
     T* v = interpreter_->typed_tensor<T>(index);
     if (!v) {
       auto* t = interpreter_->tensor(index);
-      CHECK(t) << "No tensor with index " << index << ".";
-      CHECK(t->data.raw) << "Empty data for tensor with index " << index << ".";
-      CHECK_EQ(t->type, typeToTfLiteType<T>())
+      ABSL_CHECK(t) << "No tensor with index " << index << ".";
+      ABSL_CHECK(t->data.raw)
+          << "Empty data for tensor with index " << index << ".";
+      ABSL_CHECK_EQ(t->type, typeToTfLiteType<T>())
           << "Type mismatch for tensor with index " << index << ". Requested "
           << TfLiteTypeGetName(typeToTfLiteType<T>()) << ", got "
           << TfLiteTypeGetName(t->type) << ".";
-      LOG(FATAL) << "Unknown tensor error.";
+      ABSL_LOG(FATAL) << "Unknown tensor error.";
     }
     absl::c_copy(data, v + offset);
   }
