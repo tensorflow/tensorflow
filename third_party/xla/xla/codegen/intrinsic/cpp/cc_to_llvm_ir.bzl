@@ -31,6 +31,8 @@ def _cc_ir_header_impl(ctx):
         "-S",
         "-emit-llvm",
         "-O3",
+        "-DNDEBUG",
+        "-mprefer-vector-width=512",
         "-DEIGEN_VECTORIZE_GENERIC",
     ]
     compilation_outputs = cc_common.compile(

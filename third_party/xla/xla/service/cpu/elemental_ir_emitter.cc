@@ -26,10 +26,9 @@ limitations under the License.
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/Intrinsics.h"
 #include "llvm/IR/Value.h"
+#include "xla/codegen/intrinsic/cpp/intrinsic_declarations.h"
 #include "xla/codegen/intrinsic/exp.h"
-#include "xla/codegen/intrinsic/intrinsic.h"
 #include "xla/codegen/intrinsic/rsqrt.h"
-#include "xla/codegen/intrinsic/tanh.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/service/cpu/elemental_math_emitter.h"
 #include "xla/service/llvm_ir/llvm_util.h"
@@ -58,7 +57,7 @@ absl::StatusOr<llvm::Value*> CpuElementalIrEmitter::EmitTanh(
     PrimitiveType prim_type, llvm::Value* value) {
   if (prim_type == F32 || prim_type == F64 || prim_type == F16) {
     llvm::Function* tanh =
-        xla::codegen::intrinsics::Tanh::GetOrInsertDeclaration(
+        xla::codegen::intrinsics::EigenTanh::GetOrInsertDeclaration(
             module(), Type::S(prim_type));
     return b()->CreateCall(tanh, value);
   }
