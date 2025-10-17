@@ -116,33 +116,33 @@ absl::Status Autotuner::Autotune(HloModule* module,
     VLOG(1) << "No instructions to autotune.";
     return absl::OkStatus();
   }
-  VLOG(1) << "Autotuning " << instrunctions_by_fingerprint.size()
+  VLOG(1) << "Finding configs for " << instrunctions_by_fingerprint.size()
           << " unique instructions.";
   for (auto& [_, instructions] : instrunctions_by_fingerprint) {
     CHECK(!instructions.empty());
-    VLOG(1) << "Autotuning instruction:" << instructions[0]->ToString();
-    TF_ASSIGN_OR_RETURN(Config best_config, GetConfig(instructions[0]));
-    CodegenBackend* best_codegen_backend = best_config.codegen_backend;
+    TF_ASSIGN_OR_RETURN(Config config, GetConfig(instructions[0]));
+    CodegenBackend* codegen_backend = config.codegen_backend;
     for (auto* instr : instructions) {
-      TF_RETURN_IF_ERROR(best_codegen_backend->ApplyConfig(
-          *instr, *best_config.backend_config));
+      TF_RETURN_IF_ERROR(
+          codegen_backend->ApplyConfig(*instr, *config.backend_config));
     }
   }
   return DumpLogsToFile();
 }
 
 absl::Status Autotuner::Autotune(HloInstruction* instr) {
-  VLOG(1) << "Autotuning HLO: " << instr->ToString();
-  TF_ASSIGN_OR_RETURN(Config best_config, GetConfig(instr));
-  CodegenBackend* best_codegen_backend = best_config.codegen_backend;
+  TF_ASSIGN_OR_RETURN(Config config, GetConfig(instr));
+  CodegenBackend* codegen_backend = config.codegen_backend;
   TF_RETURN_IF_ERROR(
-      best_codegen_backend->ApplyConfig(*instr, *best_config.backend_config));
+      codegen_backend->ApplyConfig(*instr, *config.backend_config));
   return DumpLogsToFile();
 }
 
 absl::StatusOr<Autotuner::Config> Autotuner::GetConfig(HloInstruction* instr) {
+  VLOG(1) << "Getting config for HLO: " << instr->ToString();
   std::optional<Config> cached_config = LookUp(instr);
   if (cached_config.has_value()) {
+    VLOG(1) << "Using cached config: " << cached_config->ToString();
     return std::move(cached_config.value());
   }
 
@@ -152,11 +152,13 @@ absl::StatusOr<Autotuner::Config> Autotuner::GetConfig(HloInstruction* instr) {
   }
 
   if (autotune_config_.use_default_config) {
-    return GetDefaultConfig(*instr);
+    TF_ASSIGN_OR_RETURN(Config default_config, GetDefaultConfig(*instr));
+    VLOG(1) << "Using default config: " << default_config.ToString();
+    return default_config;
   }
 
-  Config best_config;
-  TF_ASSIGN_OR_RETURN(best_config, TuneBestConfig(instr));
+  VLOG(1) << "Autotuning the HLO instruction to find best config.";
+  TF_ASSIGN_OR_RETURN(Config best_config, TuneBestConfig(instr));
   Insert(instr, best_config);
   return best_config;
 }
@@ -166,7 +168,9 @@ absl::StatusOr<Autotuner::Config> Autotuner::TuneBestConfig(
   TF_ASSIGN_OR_RETURN(std::vector<Config> supported_configs,
                       GetSupportedConfigs(instr));
   if (supported_configs.empty()) {
-    return absl::InternalError("No supported configs found!");
+    return absl::InternalError(
+        absl::StrCat("Autotuner could not find any supported configs for HLO: ",
+                     instr->ToString()));
   }
   VLOG(1) << "Found " << supported_configs.size() << " supported configs.";
 
@@ -180,15 +184,15 @@ absl::StatusOr<Autotuner::Config> Autotuner::TuneBestConfig(
           {std::move(supported_configs[i]), std::move(executables[i].value())});
     } else {
       VLOG(4) << "Compilation failed for config "
-              << supported_configs[i].codegen_backend->name() << " : "
-              << UnpackedAnyShortDebugString(
-                     *supported_configs[i].backend_config)
+              << supported_configs[i].ToString()
               << " with status: " << executables[i].status();
     }
   }
 
   if (executable_candidates.empty()) {
-    return absl::InternalError("No executable candidates to profile!");
+    return absl::InternalError(
+        absl::StrCat("Autotuner could not compile any configs for HLO: ",
+                     instr->ToString()));
   }
   VLOG(1) << "Successfully compiled " << executable_candidates.size()
           << " configs out of " << supported_configs.size() << " configs.";
@@ -196,9 +200,14 @@ absl::StatusOr<Autotuner::Config> Autotuner::TuneBestConfig(
   TF_ASSIGN_OR_RETURN(std::vector<ConfigResult> results,
                       ProfileAll(executable_candidates));
   LogConfigResults(*instr, results);
-  TF_ASSIGN_OR_RETURN(auto best_result, PickBestConfig(results));
-  VLOG(1) << "Picked best config: " << best_result.ToString();
-  return std::move(best_result.config);
+  absl::StatusOr<ConfigResult> best_result = PickBestConfig(results);
+  if (!best_result.ok()) {
+    return absl::InternalError(
+        absl::StrCat("Autotuning failed for HLO: ", instr->ToString(),
+                     " with error: ", best_result.status().ToString()));
+  }
+  VLOG(1) << "Picked best config: " << best_result.value().ToString();
+  return std::move(best_result.value().config);
 }
 
 Autotuner::InstructionsByFingerprint Autotuner::GetAutotuningCandidates(
@@ -375,7 +384,7 @@ absl::StatusOr<Autotuner::ConfigResult> Autotuner::PickBestConfig(
   }
 
   if (best_result == nullptr) {
-    return absl::InternalError("No valid config found!");
+    return absl::NotFoundError("No valid config found!");
   }
   if (autotune_config_.select_first_config) {
     return std::move(results[0]);
@@ -400,7 +409,8 @@ absl::StatusOr<ScopedShapedBuffer> Autotuner::GetReferenceOutput(
       return std::move(profile_result.value().output_buffer.value());
     }
   }
-  return absl::InternalError("No reference output found!");
+  return absl::NotFoundError(
+      "No reference output found but correctness checking is enabled!");
 }
 
 std::optional<Autotuner::Failure> Autotuner::CheckBuffers(
@@ -517,6 +527,11 @@ AutotuneResult Autotuner::ConfigResult::ToProto() const {
   *result.mutable_run_time() = tsl::proto_utils::ToDurationProto(duration);
   result.set_scratch_bytes(scratch_bytes);
   return result;
+}
+
+std::string Autotuner::Config::ToString() const {
+  return absl::StrFormat("%s : %s", codegen_backend->name(),
+                         UnpackedAnyShortDebugString(*backend_config));
 }
 
 }  // namespace xla

@@ -111,6 +111,8 @@ class Autotuner {
   struct Config {
     CodegenBackend* codegen_backend;
     std::unique_ptr<BackendConfig> backend_config;
+
+    std::string ToString() const;
   };
   struct ExecutableCandidate {
     Config config;
