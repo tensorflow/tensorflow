@@ -475,6 +475,7 @@ cc_library(
     visibility = internal_visibility([":friends"]),
     deps = [
         ":pjrt_device_description",
+        ":pjrt_device_dimensions",
         ":pjrt_executable",
         "//xla/hlo/builder:xla_computation",
         "//xla/pjrt/proto:pjrt_partial_program_proto_cc",

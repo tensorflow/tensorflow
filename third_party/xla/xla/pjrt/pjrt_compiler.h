@@ -32,6 +32,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/pjrt/pjrt_device_description.h"
+#include "xla/pjrt/pjrt_device_dimensions.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/proto/pjrt_partial_program.pb.h"
 #include "xla/pjrt/proto/topology_description.pb.h"
@@ -153,6 +154,37 @@ class PjRtTopologyDescription {
         "CoreCountOfDefaultTypePerChip is unsupported.");
   }
 
+  // Returns a unique integer ID for the logical device of the default type on
+  // the chip at the given coordinates and with the given core index.
+  virtual absl::StatusOr<int32_t> IdForLogicalDeviceOfDefaultType(
+      const PjRtDeviceDimensions& chip, int core_index) const {
+    return absl::UnimplementedError(
+        "IdForLogicalDeviceOfDefaultType is unsupported.");
+  }
+
+  // Returns the chip coordinates and core index of the logical device of the
+  // default type for the given unique device ID.
+  virtual absl::StatusOr<std::pair<PjRtDeviceDimensions, int32_t>>
+  LogicalDeviceOfDefaultTypeForId(int device_id) const {
+    return absl::UnimplementedError(
+        "LogicalDeviceCoordsOfDefaultTypeForId is unsupported.");
+  }
+
+  // Returns the bounds of the chips within a single host.
+  virtual absl::StatusOr<PjRtDeviceDimensions> ChipsPerHostBounds() const {
+    return absl::UnimplementedError("GetChipsPerHostBounds is unsupported.");
+  }
+
+  // Returns the total bounds of all chips in the topology.
+  virtual absl::StatusOr<PjRtDeviceDimensions> ChipBounds() const {
+    return absl::UnimplementedError("ChipBounds is unsupported.");
+  }
+
+  // Returns the total bounds of all hosts in the topology.
+  virtual absl::StatusOr<PjRtDeviceDimensions> HostBounds() const {
+    return absl::UnimplementedError("HostBounds is unsupported.");
+  }
+
   // Serializes the topology for use in cache keys. (No guarantees on
   // stability).
   virtual absl::StatusOr<std::string> Serialize() const = 0;
@@ -172,6 +204,14 @@ class PjRtTopologyDescription {
 
   virtual absl::StatusOr<PjRtTopologyDescriptionProto> ToProto() const {
     return absl::UnimplementedError("ToProto is unsupported.");
+  }
+
+  // Returns a new `PjRtTopologyDescription` representing a subslice of the
+  // current topology, defined by `chips_per_host_bounds` and `host_bounds`.
+  virtual absl::StatusOr<std::unique_ptr<PjRtTopologyDescription>> Subslice(
+      const PjRtDeviceDimensions& chips_per_host_bounds,
+      const PjRtDeviceDimensions& host_bounds) const {
+    return absl::UnimplementedError("Subslice is not supported.");
   }
 };
 
