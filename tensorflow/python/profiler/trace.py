@@ -122,6 +122,10 @@ class Trace(object):
     if self._traceme:
       self._traceme.Stop()
 
+  @classmethod
+  def is_enabled(cls):
+    return enabled
+
 
 def trace_wrapper(trace_name, **trace_kwargs):
   """Decorator alternative to `with Trace(): ...`.  It's faster.
