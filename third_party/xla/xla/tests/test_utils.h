@@ -16,21 +16,23 @@ limitations under the License.
 #ifndef XLA_TESTS_TEST_UTILS_H_
 #define XLA_TESTS_TEST_UTILS_H_
 
-#include <initializer_list>
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <random>
 #include <string>
+#include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
-#include "absl/types/span.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/layout_util.h"
 #include "xla/literal.h"
+#include "xla/shape.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/protobuf.h"
 
 namespace xla {
 
@@ -88,6 +90,9 @@ class PseudorandomGenerator {
 // distribution of most possible floats, with a small chance to instead be
 // sampled from a list of special floating point values (such as 0, inf, etc.).
 //
+// If integer_range is set, generated integers will be sampled from that range.
+// Note that these ranges don't apply to constrained arguments such as values
+// used as buffer indexes etc.
 // TODO(b/79942829): Make interesting argument generation fast enough that using
 // pseudo_random does not save any noticeable amount of time so that the
 // parameter can be removed.
@@ -95,6 +100,7 @@ absl::StatusOr<std::vector<Literal>> MakeFakeArguments(
     const HloModule* module, bool pseudo_random = true,
     bool use_large_range = false, bool treat_gte_as_data_formatting = false,
     std::optional<int64_t> max_bits_of_precision = std::nullopt,
+    std::optional<std::pair<int64_t, int64_t>> integer_range = std::nullopt,
     std::minstd_rand0* engine = nullptr);
 
 // Overload which accepts a random number generator. This enables generation of
@@ -103,11 +109,12 @@ absl::StatusOr<std::vector<Literal>> MakeFakeArguments(
 absl::StatusOr<std::vector<Literal>> MakeFakeArguments(
     const HloModule* module, std::minstd_rand0* engine,
     bool use_large_range = false, bool treat_gte_as_data_formatting = false,
-    std::optional<int64_t> max_bits_of_precision = std::nullopt);
+    std::optional<int64_t> max_bits_of_precision = std::nullopt,
+    std::optional<std::pair<int64_t, int64_t>> integer_range = std::nullopt);
 
 // Check that a given module satisfies various constraints before trying to
 // execute it.
-absl::Status VerifyHloModule(HloModule* const module, bool layout_sensitive,
+absl::Status VerifyHloModule(HloModule* module, bool layout_sensitive,
                              bool allow_mixed_precision);
 
 // Creates a dot op with operands 'lhs' and 'rhs' that contracts dimension 1 of
