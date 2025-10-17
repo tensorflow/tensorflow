@@ -640,6 +640,71 @@ diff --ruN a/stablehlo/stablehlo/integrations/cpp/builder/MlirBuilderTest.cpp b/
  #include "llvm/Support/raw_ostream.h"
  #include "mlir/Dialect/Func/IR/FuncOps.h"
  #include "mlir/IR/BuiltinOps.h"
+diff --ruN a/stablehlo/stablehlo/integrations/cpp/builder/StablehloBuilder.cpp b/stablehlo/stablehlo/integrations/cpp/builder/StablehloBuilder.cpp
+--- stablehlo/stablehlo/integrations/cpp/builder/StablehloBuilder.cpp
++++ stablehlo/stablehlo/integrations/cpp/builder/StablehloBuilder.cpp
+@@ -29,9 +29,35 @@
+ #include "stablehlo/dialect/TypeInference.h"
+ #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
+ #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
++#include "third_party/llvm/llvm-project/mlir/include/mlir/IR/Attributes.h"
+ 
+ namespace mlir {
+ namespace stablehlo {
++
++///////////////
++// Dialect Helpers
++///////////////
++
++MlirOp AttachFrontendAttribute(MlirBuilder& builder, MlirOp op, StringRef name,
++                               Attribute value) {
++  constexpr char kFrontendAttrName[] = "mhlo.frontend_attributes";
++  Operation* mlirOp = unwrap(op).getDefiningOp();
++  SmallVector<NamedAttribute> attrs;
++  DictionaryAttr frontendAttr =
++      mlirOp->getAttrOfType<DictionaryAttr>(kFrontendAttrName);
++  if (frontendAttr) {
++    for (NamedAttribute attr : frontendAttr.getValue()) {
++      // Populate all non-conflicting names.
++      if (attr.getName() != name) {
++        attrs.push_back(attr);
++      }
++    }
++  }
++  attrs.emplace_back(name, value);
++  mlirOp->setAttr(kFrontendAttrName,
++                  DictionaryAttr::get(&builder.getContext(), attrs));
++  return op;
++}
+ 
+ /////////////////
+ // MANUAL APIs
+diff --ruN a/stablehlo/stablehlo/integrations/cpp/builder/StablehloBuilder.h b/stablehlo/stablehlo/integrations/cpp/builder/StablehloBuilder.h
+--- stablehlo/stablehlo/integrations/cpp/builder/StablehloBuilder.h
++++ stablehlo/stablehlo/integrations/cpp/builder/StablehloBuilder.h
+@@ -27,9 +27,22 @@
+ #include "stablehlo/dialect/StablehloOps.h"
+ #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
+ #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
++#include "third_party/llvm/llvm-project/mlir/include/mlir/IR/Attributes.h"
+ 
+ namespace mlir {
+ namespace stablehlo {
++
++///////////////
++// Dialect Helpers
++///////////////
++
++// Appends or overwrites an entry in the `mhlo.frontend_attributes` attribute
++//
++// of the given op.
++// Ex:
++//   stablehlo.abs %0 { mhlo.frontend_attributes = { "foo" = 123 } }
++MlirOp AttachFrontendAttribute(MlirBuilder& builder, MlirOp op, StringRef name,
++                               Attribute value);
+ 
+ /////////////////
+ // MANUAL APIs
 diff --ruN a/stablehlo/stablehlo/integrations/cpp/builder/StablehloBuilderTest.cpp b/stablehlo/stablehlo/integrations/cpp/builder/StablehloBuilderTest.cpp
 --- stablehlo/stablehlo/integrations/cpp/builder/StablehloBuilderTest.cpp
 +++ stablehlo/stablehlo/integrations/cpp/builder/StablehloBuilderTest.cpp
@@ -652,6 +717,64 @@ diff --ruN a/stablehlo/stablehlo/integrations/cpp/builder/StablehloBuilderTest.c
  #include "mlir/IR/BuiltinAttributes.h"
  #include "mlir/IR/BuiltinOps.h"
  #include "mlir/IR/DialectRegistry.h"
+@@ -1592,5 +1592,57 @@
+   EXPECT_EQ(expected, debugString(*module));
+ }
+ 
++TEST(MlirBuilderTest, FrontendAttributesAppend) {
++  std::string expected = R"mlir(module {
++  func.func @main(%arg0: tensor<2xf32>) -> tensor<2xf32> {
++    %0 = stablehlo.exponential %arg0 {mhlo.frontend_attributes = {bar = "hello", foo = 123 : i32}} : tensor<2xf32>
++    return %0 : tensor<2xf32>
++  }
++})mlir";
++
++  StablehloModuleBuilder mb;
++  {
++    Location funcLoc = fileLineColLoc(mb->getContext(), "main.mlir", 1, 1);
++    func::FunctionBuilder fb(mb.get(), "main", funcLoc);
++    auto type = makeTensorType(fb.getContext(), {2}, ElementType::F32);
++    auto arg0 = func::Argument(fb, type);
++    auto exp = Exp(arg0);
++    stablehlo::AttachFrontendAttribute(
++        fb, exp, "foo", fb.getOpBuilder().getI32IntegerAttr(123));
++    stablehlo::AttachFrontendAttribute(
++        fb, exp, "bar", fb.getOpBuilder().getStringAttr("hello"));
++    func::Return(fb, {exp});
++  }
++
++  OwningOpRef<ModuleOp> module = mb->build();
++  EXPECT_EQ(expected, debugString(*module));
++}
++
++TEST(MlirBuilderTest, FrontendAttributesOverwrite) {
++  std::string expected = R"mlir(module {
++  func.func @main(%arg0: tensor<2xf32>) -> tensor<2xf32> {
++    %0 = stablehlo.exponential %arg0 {mhlo.frontend_attributes = {foo = 456 : i32}} : tensor<2xf32>
++    return %0 : tensor<2xf32>
++  }
++})mlir";
++
++  StablehloModuleBuilder mb;
++  {
++    Location funcLoc = fileLineColLoc(mb->getContext(), "main.mlir", 1, 1);
++    func::FunctionBuilder fb(mb.get(), "main", funcLoc);
++    auto type = makeTensorType(fb.getContext(), {2}, ElementType::F32);
++    auto arg0 = func::Argument(fb, type);
++    auto exp = Exp(arg0);
++    stablehlo::AttachFrontendAttribute(
++        fb, exp, "foo", fb.getOpBuilder().getI32IntegerAttr(123));
++    stablehlo::AttachFrontendAttribute(
++        fb, exp, "foo", fb.getOpBuilder().getI32IntegerAttr(456));
++    func::Return(fb, {exp});
++  }
++
++  OwningOpRef<ModuleOp> module = mb->build();
++  EXPECT_EQ(expected, debugString(*module));
++}
++
+ }  // namespace stablehlo
+ }  // namespace mlir
 diff --ruN a/stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_folder.mlir b/stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_folder.mlir
 --- stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_folder.mlir
 +++ stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_folder.mlir
