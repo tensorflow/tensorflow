@@ -1202,13 +1202,14 @@ struct MyDataWithExplicitTypeId {
 
 // Rely on XLA to assign unique type id for the type.
 TypeId MyDataWithAutoTypeId::id = XLA_FFI_UNKNOWN_TYPE_ID;
-XLA_FFI_REGISTER_TYPE(GetXlaFfiApi(), "my_data_auto",
-                      &MyDataWithAutoTypeId::id);
+XLA_FFI_REGISTER_TYPE(GetXlaFfiApi(), "my_data_auto", &MyDataWithAutoTypeId::id,
+                      TypeInfo<MyDataWithAutoTypeId>());
 
 // Provide explicit type id and rely on XLA to check that it's unique.
 TypeId MyDataWithExplicitTypeId::id = {42};
 XLA_FFI_REGISTER_TYPE(GetXlaFfiApi(), "my_data_explicit",
-                      &MyDataWithExplicitTypeId::id);
+                      &MyDataWithExplicitTypeId::id,
+                      TypeInfo<MyDataWithExplicitTypeId>());
 
 TEST(FfiTest, UserData) {
   MyDataWithAutoTypeId data0{"foo"};
@@ -1253,7 +1254,8 @@ struct MyState {
 };
 
 TypeId MyState::id = {};  // zero-initialize type id
-XLA_FFI_REGISTER_TYPE(GetXlaFfiApi(), "state", &MyState::id);
+XLA_FFI_REGISTER_TYPE(GetXlaFfiApi(), "state", &MyState::id,
+                      TypeInfo<MyState>());
 
 TEST(FfiTest, StatefulHandler) {
   ExecutionState execution_state;

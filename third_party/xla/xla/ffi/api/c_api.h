@@ -272,6 +272,8 @@ typedef struct XLA_FFI_TypeId {
 // to destroy their state when executable is being destroyed.
 typedef struct XLA_FFI_TypeInfo {
   void (*deleter)(void* object);
+  void (*serialize)();    // placeholder for future use
+  void (*deserialize)();  // placeholder for future use
 } XLA_FFI_TypeInfo;
 
 // We use byte spans to pass strings to handlers because strings might not be

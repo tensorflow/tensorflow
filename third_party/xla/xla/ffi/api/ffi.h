@@ -1466,32 +1466,19 @@ struct CtxDecoding<FfiExecutionContext> {
 //===----------------------------------------------------------------------===//
 
 template <typename T>
-XLA_FFI_TypeInfo TypeInfo() {
+constexpr XLA_FFI_TypeInfo TypeInfo() {
   return XLA_FFI_TypeInfo{[](void* ptr) { delete static_cast<T*>(ptr); }};
 }
 
-#define XLA_FFI_REGISTER_TYPE_WITH_INFO(API, NAME, TYPE_ID, TYPE_INFO) \
-  XLA_FFI_REGISTER_TYPE_WITH_INFO_(API, NAME, TYPE_ID, TYPE_INFO, __COUNTER__)
-#define XLA_FFI_REGISTER_TYPE_WITH_INFO_(API, NAME, TYPE_ID, TYPE_INFO, N) \
-  XLA_FFI_REGISTER_TYPE_WITH_INFO__(API, NAME, TYPE_ID, TYPE_INFO, N)
-#define XLA_FFI_REGISTER_TYPE_WITH_INFO__(API, NAME, TYPE_ID, TYPE_INFO, N)    \
+#define XLA_FFI_REGISTER_TYPE(API, NAME, TYPE_ID, TYPE_INFO) \
+  XLA_FFI_REGISTER_TYPE_(API, NAME, TYPE_ID, TYPE_INFO, __COUNTER__)
+#define XLA_FFI_REGISTER_TYPE_(API, NAME, TYPE_ID, TYPE_INFO, N) \
+  XLA_FFI_REGISTER_TYPE__(API, NAME, TYPE_ID, TYPE_INFO, N)
+#define XLA_FFI_REGISTER_TYPE__(API, NAME, TYPE_ID, TYPE_INFO, N)              \
   XLA_FFI_ATTRIBUTE_UNUSED static const XLA_FFI_Error*                         \
       xla_ffi_type_##N##_registered_ = [] {                                    \
         return ::xla::ffi::Ffi::RegisterTypeId(API, NAME, TYPE_ID, TYPE_INFO); \
       }()
-
-#define XLA_FFI_REGISTER_TYPE_X(x, API, NAME, TYPE_ID, TYPE_INFO, FUNC, ...) \
-  FUNC
-
-// Registers external type with XLA runtime and assigns it a unique type id.
-//
-// This is a trick to define macro with optional parameters.
-// Source: https://stackoverflow.com/a/8814003
-#define XLA_FFI_REGISTER_TYPE(API, NAME, TYPE_ID, ...)                  \
-  XLA_FFI_REGISTER_TYPE_X(                                              \
-      , API, NAME, TYPE_ID, ##__VA_ARGS__,                              \
-      XLA_FFI_REGISTER_TYPE_WITH_INFO(API, NAME, TYPE_ID, __VA_ARGS__), \
-      XLA_FFI_REGISTER_TYPE_WITH_INFO(API, NAME, TYPE_ID, {nullptr}))
 
 //===----------------------------------------------------------------------===//
 // UserData
