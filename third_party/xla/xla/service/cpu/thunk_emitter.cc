@@ -70,8 +70,11 @@ limitations under the License.
 #include "xla/backends/cpu/runtime/while_thunk.h"
 #include "xla/backends/cpu/runtime/xnnpack/xnn_dot_thunk.h"
 #include "xla/backends/cpu/runtime/xnnpack/xnn_fusion_thunk.h"
+#include "xla/backends/cpu/runtime/ynnpack/ynn_fusion_thunk.h"
 #include "xla/backends/cpu/xnn_emitter.h"
 #include "xla/backends/cpu/xnn_support.h"
+#include "xla/backends/cpu/ynn_emitter.h"
+#include "xla/backends/cpu/ynn_support.h"
 #include "xla/codegen/emitters/computation_fingerprint.h"
 #include "xla/codegen/emitters/kernel_api_builder.h"
 #include "xla/codegen/emitters/kernel_arguments.h"
@@ -438,6 +441,10 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitHloInstruction(
 
         if (backend_config.fusion_config().kind() == kXnnFusionKind) {
           return EmitXnnFusionThunk(instruction);
+        }
+
+        if (backend_config.fusion_config().kind() == kYnnFusionKind) {
+          return EmitYnnFusionThunk(instruction);
         }
 
         return Internal("Unsupported custom fusion kind: %s",
@@ -1490,6 +1497,41 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitXnnFusionThunk(
 
   return ThunkSequence::Of<XnnFusionThunk>(
       XnnFusionThunk::Options{}, ThunkInfo(instruction), std::move(arguments),
+      std::move(results),
+      [b = std::move(builder)](auto, auto) mutable { return b(); });
+}
+
+absl::StatusOr<ThunkSequence> ThunkEmitter::EmitYnnFusionThunk(
+    const HloInstruction* instruction) {
+  auto* fusion = Cast<HloFusionInstruction>(instruction);
+
+  // Collect YNNPACK fusion arguments.
+  std::vector<YnnFusionThunk::Argument> arguments;
+  for (HloInstruction* operand : instruction->operands()) {
+    for (auto& indexed : ShapeUtil::GetLeafShapes(operand->shape())) {
+      TF_ASSIGN_OR_RETURN(
+          BufferAllocation::Slice slice,
+          buffer_assignment_.GetUniqueSlice(operand, indexed.index));
+      arguments.push_back(YnnFusionThunk::Argument{slice, indexed.shape});
+    }
+  }
+
+  // Collect YNNPACK fusion results.
+  std::vector<YnnFusionThunk::Result> results;
+  for (auto& indexed : ShapeUtil::GetLeafShapes(instruction->shape())) {
+    TF_ASSIGN_OR_RETURN(
+        BufferAllocation::Slice slice,
+        buffer_assignment_.GetUniqueSlice(instruction, indexed.index));
+    results.push_back(YnnFusionThunk::Result{slice, indexed.shape});
+  }
+
+  const HloComputation* computation = fusion->fused_instructions_computation();
+
+  // Construct YNNPACK subgraph builder from the fusion computation.
+  TF_ASSIGN_OR_RETURN(auto builder, EmitYnnFusionBuilder(computation));
+
+  return ThunkSequence::Of<YnnFusionThunk>(
+      YnnFusionThunk::Options{}, ThunkInfo(instruction), std::move(arguments),
       std::move(results),
       [b = std::move(builder)](auto, auto) mutable { return b(); });
 }
