@@ -80,6 +80,10 @@ limitations under the License.
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/casts.h"
 
+#ifdef XLA_YNNPACK
+#include "xla/backends/cpu/runtime/ynnpack/ynn_fusion_thunk.h"
+#endif  // XLA_YNNPACK
+
 namespace xla::cpu {
 namespace {
 
@@ -1103,6 +1107,15 @@ class ThunkSequenceSerdesTest : public ::testing::Test {
     return false;
   }
 
+#ifdef XLA_YNNPACK
+  bool VerifyYnnFusionThunkEquality(const YnnFusionThunk& thunk_1,
+                                    const YnnFusionThunk& thunk_2) {
+    // TODO(ashaposhnikov) assume this is always false until we implement
+    // serialization of YnnFusionThunk.
+    return false;
+  }
+#endif  // XLA_YNNPACK
+
   bool VerifyXnnDotThunkEquality(const XnnDotThunk& thunk_1,
                                  const XnnDotThunk& thunk_2) {
     const bool are_dot_dimensions_equal =
@@ -1411,6 +1424,24 @@ class ThunkSequenceSerdesTest : public ::testing::Test {
                 tsl::down_cast<const XnnConvolutionThunk&>(thunk_1),
                 tsl::down_cast<const XnnConvolutionThunk&>(thunk_2));
         }
+      }
+      case Thunk::Kind::kYnnFusion: {
+#ifdef XLA_YNNPACK
+        const YnnFusionThunk& ynn_fusion_thunk_1 =
+            tsl::down_cast<const YnnFusionThunk&>(thunk_1);
+        const YnnFusionThunk& ynn_fusion_thunk_2 =
+            tsl::down_cast<const YnnFusionThunk&>(thunk_2);
+        if (ynn_fusion_thunk_1.ynn_fusion_kind() !=
+            ynn_fusion_thunk_2.ynn_fusion_kind()) {
+          return false;
+        }
+        return VerifyYnnFusionThunkEquality(
+            tsl::down_cast<const YnnFusionThunk&>(thunk_1),
+            tsl::down_cast<const YnnFusionThunk&>(thunk_2));
+#else
+        CHECK(false) << "Unsupported YNN fusion thunk type";
+        return false;
+#endif  // XLA_YNNPACK
       }
       case Thunk::Kind::kKernel:
         return VerifyKernelThunkEquality(

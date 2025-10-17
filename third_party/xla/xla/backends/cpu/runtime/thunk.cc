@@ -43,6 +43,11 @@ limitations under the License.
 #include "tsl/profiler/lib/traceme.h"
 #include "tsl/profiler/lib/traceme_encode.h"
 
+#ifdef XLA_YNNPACK
+#include "xla/backends/cpu/runtime/ynnpack/ynn_interop.h"
+#include "xla/backends/cpu/runtime/ynnpack/ynn_threadpool.h"
+#endif  // XLA_YNNPACK
+
 namespace xla::cpu {
 
 // Ok execute event allocated with the static storage duration.
@@ -88,6 +93,8 @@ absl::string_view Thunk::KindToString(Kind kind) {
       return "while";
     case Kind::kXnnFusion:
       return "xnn-fusion";
+    case Kind::kYnnFusion:
+      return "ynn-fusion";
     case Kind::kOneDnnFusion:
       return "onednn-fusion";
   }
@@ -167,6 +174,18 @@ absl::StatusOr<Thunk::XnnParams> Thunk::XnnParams::Create(
 
 Thunk::XnnParams::XnnParams(XnnThreadpool threadpool)
     : threadpool(std::move(threadpool)) {}
+
+#ifdef XLA_YNNPACK
+absl::StatusOr<Thunk::YnnParams> Thunk::YnnParams::Create(
+    const ExecutableRunOptions* run_options) {
+  TF_ASSIGN_OR_RETURN(YnnThreadpool threadpool,
+                      CreateYnnThreadpool(run_options->intra_op_thread_pool()));
+  return YnnParams(std::move(threadpool));
+}
+
+Thunk::YnnParams::YnnParams(YnnThreadpool threadpool)
+    : threadpool(std::move(threadpool)) {}
+#endif  // XLA_YNNPACK
 
 Thunk::ExecuteSession::ExecuteSession(int64_t max_workers,
                                       int64_t split_threshold)
