@@ -23,7 +23,10 @@ package_group(
 
 filegroup(
     name = "xla_cpu_runtime_hdrs",
-    srcs = ["alignment.h"],
+    srcs = [
+        "alignment.h",
+        "buffer_allocation_info.h",
+    ],
     visibility = internal_visibility([":friends"]),
 )
 
