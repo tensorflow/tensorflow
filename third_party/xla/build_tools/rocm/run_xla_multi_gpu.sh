@@ -90,6 +90,7 @@ bazel \
     --action_env=XLA_FLAGS=--xla_gpu_force_compilation_parallelism=16 \
     --action_env=XLA_FLAGS=--xla_gpu_enable_llvm_module_compilation_parallelism=true \
     --action_env=NCCL_MAX_NCHANNELS=1 \
+    --repo_env="ROCM_PATH=$ROCM_PATH" \
     -- //xla/tests:collective_ops_e2e_test \
        //xla/tests:collective_ops_test \
        //xla/tests:collective_pipeline_parallelism_test \

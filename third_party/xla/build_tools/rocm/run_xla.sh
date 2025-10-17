@@ -72,5 +72,6 @@ bazel \
     --action_env=TF_ROCM_AMDGPU_TARGETS=${AMD_GPU_GFX_ID} \
     --action_env=XLA_FLAGS=--xla_gpu_force_compilation_parallelism=16 \
     --action_env=XLA_FLAGS=--xla_gpu_enable_llvm_module_compilation_parallelism=true \
+    --repo_env="ROCM_PATH=$ROCM_PATH" \
     --run_under=//build_tools/ci:parallel_gpu_execute \
     -- //xla/...
