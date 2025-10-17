@@ -85,7 +85,7 @@ TEST(SendQueue, TestZeroCopyQueueCleanRemoteShutdown) {
   BulkTransportInterface::SendMessage msg;
   msg.data = txt_msg.data();
   msg.size = txt_msg.size();
-  msg.on_send = [](int id, size_t size) {};
+  msg.on_send = [](absl::StatusOr<int> id, size_t size) {};
   msg.on_done = [&notify]() { notify.Notify(); };
   msg_queue->ScheduleSendWork(std::move(msg));
   notify.WaitForNotification();
@@ -124,7 +124,7 @@ TEST(SendQueue, SendAndRecvQueuesArtificialLimit) {
     BulkTransportInterface::SendMessage msg;
     msg.data = txt_msg.data();
     msg.size = txt_msg.size();
-    msg.on_send = [](int id, size_t size) {};
+    msg.on_send = [](absl::StatusOr<int> id, size_t size) {};
     msg.on_done = [&mu, &send_count]() {
       absl::MutexLock l(mu);
       --send_count;
@@ -230,9 +230,9 @@ TEST(SocketBulkTransportFactoryTest, SendAndRecvWithFactory) {
     BulkTransportInterface::SendMessage msg;
     msg.data = txt_msgs[i].data();
     msg.size = txt_msgs[i].size();
-    msg.on_send = [&, i](int id, size_t size) {
+    msg.on_send = [&, i](absl::StatusOr<int> id, size_t size) {
       absl::MutexLock l(mu);
-      send_queue.push_back({i, id});
+      send_queue.push_back({i, id.value()});
     };
     msg.on_done = [&mu, &send_count]() {
       absl::MutexLock l(mu);

@@ -129,6 +129,8 @@ class SharedSendMsgQueue {
       std::shared_ptr<SharedSendWorkQueue> work_queue,
       size_t artificial_send_limiti = std::numeric_limits<size_t>::max());
 
+  void Poison(absl::Status s);
+
  private:
   friend class SendConnectionHandler;
 
@@ -136,6 +138,7 @@ class SharedSendMsgQueue {
 
   absl::Mutex mu_;
   bool shutdown_ = false;
+  absl::Status poison_status_;
   std::deque<SendConnectionHandler*> handlers_;
   std::deque<aux::BulkTransportInterface::SendMessage> work_items_;
 };

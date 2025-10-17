@@ -117,6 +117,7 @@ class PremappedCopierState
   size_t num_parallel_copies_ = 0;
   std::deque<WorkQueueItem> work_queue_ ABSL_GUARDED_BY(mu_);
   std::shared_ptr<absl::Span<uint8_t>> scratch_;
+  bool currently_flushing_ ABSL_GUARDED_BY(mu_) = false;
   size_t max_num_parallel_copies_;
   size_t xfer_size_;
   size_t max_copies_;

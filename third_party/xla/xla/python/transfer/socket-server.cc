@@ -299,10 +299,14 @@ class SocketServer::SocketNetworkState : public PollEventLoop::Handler {
         msg.data = const_cast<void*>(data);
         msg.size = size;
         msg.on_send = [val = tsl::FormRef(this), offset, req_id, is_largest](
-                          int bond_id, size_t size) {
+                          absl::StatusOr<int> bond_id, size_t size) {
+          if (!bond_id.ok()) {
+            val->SendError(req_id, offset, size, is_largest, bond_id.status());
+            return;
+          }
           SocketTransferRequest response;
           auto* packet = response.mutable_packet();
-          packet->set_bulk_transport_id(bond_id);
+          packet->set_bulk_transport_id(*bond_id);
           packet->set_offset(offset);
           packet->set_size(size);
           packet->set_req_id(req_id);

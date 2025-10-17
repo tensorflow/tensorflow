@@ -180,6 +180,7 @@ class SendConnectionHandler : public PollEventLoop::Handler {
         artificial_send_limit_(artificial_send_limit) {}
 
   ~SendConnectionHandler() override {
+    msg_queue_->Poison(absl::InternalError("A send connection has failed."));
 #ifdef MSG_ZEROCOPY
     table_.ClearAll();
 #endif
@@ -356,6 +357,19 @@ std::shared_ptr<SharedSendWorkQueue> SharedSendWorkQueue::Start() {
   return result;
 }
 
+void SharedSendMsgQueue::Poison(absl::Status s) {
+  mu_.lock();
+  poison_status_ = s;
+  auto work_items = std::move(work_items_);
+  mu_.unlock();
+  while (!work_items.empty()) {
+    auto work = std::move(work_items.front());
+    work_items.pop_front();
+    std::move(work.on_send)(s, work.size);
+    std::move(work.on_done)();
+  }
+}
+
 void SharedSendMsgQueue::ReportReadyToSend(SendConnectionHandler* handler) {
   mu_.lock();
   if (!work_items_.empty()) {
@@ -375,6 +389,13 @@ void SharedSendMsgQueue::ReportReadyToSend(SendConnectionHandler* handler) {
 void SharedSendMsgQueue::ScheduleSendWork(
     aux::BulkTransportInterface::SendMessage msg) {
   mu_.lock();
+  if (!poison_status_.ok()) {
+    auto s = poison_status_;
+    mu_.unlock();
+    std::move(msg.on_send)(std::move(s), msg.size);
+    std::move(msg.on_done)();
+    return;
+  }
   DCHECK(!shutdown_);
   if (work_items_.empty() && !handlers_.empty()) {
     auto* handler = handlers_.front();
