@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
+#include "google/protobuf/text_format.h"
 #include "xla/hlo/ir/hlo_clone_context.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/stream_executor/device_description.h"

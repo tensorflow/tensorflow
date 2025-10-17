@@ -36,6 +36,7 @@ limitations under the License.
 #include "absl/time/clock.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/SHA256.h"
+#include "google/protobuf/text_format.h"
 #include "xla/autotune_results.pb.h"
 #include "xla/autotuning.pb.h"
 #include "xla/hlo/ir/hlo_clone_context.h"
