@@ -13,6 +13,21 @@ e {
 // -----
 
 e {
+  a = s4[4,2]{1,0:E(4)} parameter(0)
+  b = s4[4,4]{1,0:E(4)} all-gather(a), dimensions={1}
+}
+
+// CHECK-NOT: convert
+// CHECK:      s4[4,2]{1,0:E(4)} parameter
+// CHECK-NEXT: s4[2,4]{1,0:E(4)} transpose
+// CHECK-NEXT: s8[2,2]{0,1} bitcast
+// CHECK:      s8[2,4]{0,1} all-gather-done
+// CHECK-NEXT: s4[4,4]{1,0:E(4)} bitcast
+// CHECK-NEXT: s4[4,4]{1,0:E(4)} transpose
+
+// -----
+
+e {
   a = f4e2m1fn[80,20]{1,0:E(4)} parameter(0)
   b = f4e2m1fn[80,20]{1,0:E(4)} all-to-all(a), dimensions={0}
 }

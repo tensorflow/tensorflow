@@ -47,7 +47,7 @@ HloInstruction* ReshapeAndCastToWiderType(HloInstruction* input,
 
   std::vector<int64_t> bitcast_dimensions(input_shape.dimensions().begin(),
                                           input_shape.dimensions().end());
-  bitcast_dimensions.back() /= ratio;
+  bitcast_dimensions[input_shape.layout().minor_to_major(0)] /= ratio;
   bitcast_dimensions.push_back(ratio);
   Shape bitcast_shape =
       ShapeUtil::MakeShape(input_shape.element_type(), bitcast_dimensions);
@@ -97,10 +97,9 @@ bool CanBeRepresentedAs(const Shape& shape, const PrimitiveType casted_type) {
   const int64_t ratio = primitive_util::BitWidth(casted_type) /
                         primitive_util::BitWidth(shape.element_type());
   return primitive_util::IsSubByteNonPredType(shape.element_type()) &&
-         ShapeUtil::LastDimIsMinorMost(shape) &&
          shape.layout().element_size_in_bits() ==
              primitive_util::BitWidth(shape.element_type()) &&
-         shape.dimensions().back() % ratio == 0;
+         shape.dimensions(shape.layout().minor_to_major(0)) % ratio == 0;
 }
 
 class SubByteCollectiveNormalizationVisitor : public DfsHloRewriteVisitor {
@@ -173,7 +172,7 @@ SubByteCollectiveNormalizationVisitor::ProcessCollectiveInstruction(
 
   std::vector<int64_t> new_collective_dimensions(
       hlo.shape().dimensions().begin(), hlo.shape().dimensions().end());
-  new_collective_dimensions.back() /= ratio;
+  new_collective_dimensions[hlo.shape().layout().minor_to_major(0)] /= ratio;
   Shape new_collective_shape =
       ShapeUtil::MakeShape(casted_type_, new_collective_dimensions);
   if (hlo.shape().has_layout()) {
