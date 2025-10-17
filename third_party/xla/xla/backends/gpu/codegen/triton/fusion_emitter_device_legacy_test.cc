@@ -1889,6 +1889,39 @@ ENTRY e  {
                    .status());
 }
 
+class RhsLayoutParameterizedTritonGemmTest
+    : public TritonGemmTest,
+      public ::testing::WithParamInterface<absl::string_view> {};
+
+TEST_P(RhsLayoutParameterizedTritonGemmTest,
+       BF16WithSmallRHSOuterDimDoesNotCrash) {
+  std::string hlo_text = absl::Substitute(R"(
+  triton_dot {
+    p0 = bf16[64,32] parameter(0)
+    p1 = bf16[32,8]$0 parameter(1)
+    ROOT dot = f32[64,8] dot(p0, p1),
+      lhs_contracting_dims={1},
+      rhs_contracting_dims={0}
+  }
+
+  ENTRY e {
+    p0 = bf16[64,32] parameter(0)
+    p1 = bf16[32,8]$0 parameter(1)
+    ROOT _ = f32[64,8] fusion(p0, p1), kind=kCustom, calls=triton_dot,
+      backend_config={"fusion_backend_config": {kind: "__triton_gemm", triton_gemm_config:
+        {"block_m":64,"block_n":8,"block_k":32,
+        "split_k":1,"num_stages":1,"num_warps":4,
+        "num_ctas":1}}}
+  })",
+                                          GetParam());
+
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{/*aabs=*/1e-1, /*arel=*/1e-2}));
+}
+
+INSTANTIATE_TEST_SUITE_P(RhsLayoutParameterizedTritonGemmTestSuite,
+                         RhsLayoutParameterizedTritonGemmTest,
+                         ::testing::Values("", "{0, 1}", "{1, 0}"));
+
 TEST_F(TritonGemmTest, BinaryOperationWithSmallInputsIsFused) {
   constexpr absl::string_view kHloText = R"(
 HloModule m

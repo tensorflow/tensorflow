@@ -4148,6 +4148,55 @@ ENTRY entry {
       kHloText, ErrorSpec{/*aabs=*/1e-4, /*arel=*/1e-6}));
 }
 
+TEST_F(TritonEmitterTest, BF16WithSmallRHSOuterDimDoesNotCrash) {
+  const std::string kHloText = R"(
+flhs {
+  ROOT flhs.p0 = bf16[64,32] parameter(0)
+}
+
+frhs {
+  ROOT frhs.p0 = bf16[32,8] parameter(0)
+}
+
+fdot {
+  fdot.p0 = bf16[64,32] parameter(0)
+  fdot.p1 = bf16[32,8] parameter(1)
+  fdot.lhs = bf16[64,32] fusion(fdot.p0), kind=kCustom, calls=flhs, backend_config={
+    "fusion_backend_config":{
+      "kind":"__triton_nested_gemm_fusion", "block_level_fusion_config":{
+        "output_tiles":[{"sizes":["64", "32"]}]
+      }
+    }
+  }
+  fdot.rhs = bf16[32,8]{1,0} fusion(fdot.p1), kind=kCustom, calls=frhs, backend_config={
+    "fusion_backend_config":{
+      "kind":"__triton_nested_gemm_fusion", "block_level_fusion_config":{
+        "output_tiles":[{"sizes":["32", "8"]}]
+      }
+    }
+  }
+  ROOT fdot.root = bf16[64,8]{1,0} dot(fdot.lhs, fdot.rhs),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+
+ENTRY entry {
+  entry.p0 = bf16[64,32] parameter(0)
+  entry.p1 = bf16[32,8] parameter(1)
+  ROOT fusion = bf16[64,8] fusion(entry.p0, entry.p1),
+    kind=kCustom, calls=fdot, backend_config={
+      "fusion_backend_config":{
+        "kind":"__triton_nested_gemm_fusion",
+        "block_level_fusion_config":{
+          "output_tiles":[{"sizes":["64","8"]}],
+          "num_warps":"4",
+          "num_ctas":"1",
+          "num_stages":"1"}}}
+})";
+
+  EXPECT_TRUE(RunAndCompareNoHloPasses(
+      kHloText, ErrorSpec{/*aabs=*/1e-1, /*arel=*/1e-2}));
+}
+
 struct ScaleDotTestParams {
   std::string lhs_type;
   std::string rhs_type;

@@ -329,12 +329,11 @@ bool TritonDotFusionSearchSpace::ShouldOptimizeForOccupancy() const {
 
 TritonDotFusionSearchSpace::OutputTile
 TritonDotFusionSearchSpace::GetMinOutputTile() const {
-  // Triton currently doesn't support tiles smaller than 16x16.
-  // TODO: b/395572776 - Lift this restriction, and calculate a smaller tile
-  // based on the requested algorithm (e.g., if we want to use wgmma vs mma
-  // vs fma, the minimal reasonable tile size is different).
-  constexpr OutputTile kMinSupportedTile = {16, 16};
-  constexpr OutputTile kMinWgmmaTile = {64, 16};
+  // TODO: b/395572776 - Calculate tile sizes based on the requested algorithm
+  // (e.g., if we want to use wgmma vs mma vs fma, the minimal reasonable tile
+  // size is different).
+  constexpr OutputTile kMinSupportedTile = {16, 8};
+  constexpr OutputTile kMinWgmmaTile = {64, 8};
   if (device_description_.cuda_compute_capability().IsAtLeastHopper() &&
       !should_optimize_for_occupancy_) {
     VLOG(5) << "Computing output_tile: Want to use wgmma, so output_tile >= "
@@ -656,6 +655,14 @@ void TritonDotFusionSearchSpace::EliminateLowOccupancyConfigs(
 
   ConfigWithNotes last_config = configs.back();  // Largest split.
   auto has_too_few_tiles = [](const ConfigWithNotes& config) {
+    // Small dots frequently lead to large split_k values that are not
+    // compatible with codegen. We skip occupancy optimization for them to be
+    // able to consider smaller splits in non-exhaustive mode.
+    // The value of 4 was found by running exhaustive autotuning and noting that
+    // the majority of optimal configs with block_n == 8 had split_k <= 4.
+    if (config.config.block_n == 8 && config.config.split_k <= 4) {
+      return false;
+    }
     if (config.not_enough_tiles) {
       VLOG(10) << "Skipping due to fewer tiles than cores, config = "
                << config.ToString();

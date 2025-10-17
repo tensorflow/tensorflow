@@ -582,7 +582,7 @@ ENTRY e {
   MatchOptimizedHlo(kHloText, R"(
 ; CHECK: reduce
 ; CHECK: ENTRY
-; CHECK: f32[16,7,18]{2,1,0} fusion({{.*}})
+; CHECK: f32[{{.*}},7,18]{2,1,0} fusion({{.*}})
 ; CHECK: ROOT {{.*}} f16[7,18]{1,0} fusion({{.*}})
 )");
 

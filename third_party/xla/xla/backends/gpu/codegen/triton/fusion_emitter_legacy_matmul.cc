@@ -812,7 +812,7 @@ absl::Status ValidateMatMulConfig(const TritonGemmConfig& config,
   TF_RET_CHECK(config.split_k >= 1);
   TF_RET_CHECK(config.block_m >= 16);
   TF_RET_CHECK(config.block_k >= 16);
-  TF_RET_CHECK(config.block_n >= 16);
+  TF_RET_CHECK(config.block_n >= 8);
 
   const auto& dims = dot.dot_dimension_numbers();
   int num_batch_dims =
