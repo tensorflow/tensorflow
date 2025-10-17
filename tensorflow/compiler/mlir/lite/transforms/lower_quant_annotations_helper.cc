@@ -71,11 +71,14 @@ LogicalResult FillCompositeParams(stablehlo::CompositeOp op,
     return failure();
   }
   std::string dtype = dtype_attr.getValue().str();
-  if (dtype == "i8") {
-    num_bits = 8;
+  if (dtype == "i2") {
+    num_bits = 2;
     is_signed = true;
   } else if (dtype == "i4") {
     num_bits = 4;
+    is_signed = true;
+  } else if (dtype == "i8") {
+    num_bits = 8;
     is_signed = true;
   } else {
     return failure();
@@ -110,7 +113,16 @@ LogicalResult GetStorageParams(unsigned num_bits, bool narrow_range,
                                bool is_signed, MLIRContext* ctx,
                                Type& storage_type, int64_t& qmin,
                                int64_t& qmax) {
-  if (num_bits <= 4) {
+  if (num_bits == 2) {
+    storage_type = IntegerType::get(ctx, 2);
+    if (is_signed) {
+      qmin = -2;
+      qmax = 1;
+    } else {
+      qmin = 0;
+      qmax = 3;
+    }
+  } else if (num_bits <= 4) {
     storage_type = IntegerType::get(ctx, 4);
     if (is_signed) {
       qmin = -8;
