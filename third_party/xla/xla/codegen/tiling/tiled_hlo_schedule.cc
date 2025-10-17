@@ -191,8 +191,7 @@ TransposedDotTiledHloSchedule::Create(
   TF_ASSIGN_OR_RETURN(int64_t n_dim_id, tiling_specification.ParameterIndex(
                                             dot, n_local_parameter_index));
 
-  return TransposedDotTiledHloSchedule(tiling_specification, m_dim_id,
-                                       n_dim_id);
+  return TransposedDotTiledHloSchedule(m_dim_id, n_dim_id);
 }
 
 absl::StatusOr<IndexingMap> TransposedDotTiledHloSchedule::Schedule(

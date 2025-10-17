@@ -103,14 +103,9 @@ class TransposedDotTiledHloSchedule : public TiledHloSchedule {
       const TilingSpecification& tiling_specification);
 
  private:
-  TransposedDotTiledHloSchedule(const TilingSpecification& tiling_specification,
-                                int64_t m_dim_id, int64_t n_dim_id)
-      : tiling_specification_(tiling_specification),
-        m_dim_id_(m_dim_id),
-        n_dim_id_(n_dim_id) {}
+  TransposedDotTiledHloSchedule(int64_t m_dim_id, int64_t n_dim_id)
+      : m_dim_id_(m_dim_id), n_dim_id_(n_dim_id) {}
 
-  // The `TilingSpecification` used to construct this schedule.
-  TilingSpecification tiling_specification_;
   // The index of the `m` dimension within the parameter mapping of the
   // `TilingSpecification`.
   int64_t m_dim_id_;
