@@ -39,7 +39,7 @@ namespace {
 
 using XTileDialectTest = HloTestBaseWithSymbolicExprContext;
 
-TEST_F(XTileDialectTest, TestEmittingStableHloTranspose) {
+TEST_F(XTileDialectTest, HloTransposeIsLoweredToStableHloTranspose) {
   constexpr absl::string_view kHloText = R"(
 HloModule t
 
@@ -68,7 +68,7 @@ CHECK: %[[RES:.*]] = stablehlo.transpose %[[ARG:.*]], dims = [1, 0] : (tensor<32
 )"));
 }
 
-TEST_F(XTileDialectTest, TestEmittingTensorBitcast) {
+TEST_F(XTileDialectTest, HloBitcastIsLoweredToTensorBitcast) {
   constexpr absl::string_view kHloText = R"(
 HloModule t, is_scheduled=true
 
@@ -97,7 +97,7 @@ CHECK: %[[RES:.*]] = tensor.bitcast %[[ARG:.*]] : tensor<16x32xf32> to tensor<16
 )"));
 }
 
-TEST_F(XTileDialectTest, TestEmittingStableHloIota) {
+TEST_F(XTileDialectTest, HloIotaIsLoweredToStableHloIota) {
   constexpr absl::string_view kHloText = R"(
 HloModule t, is_scheduled=true
 
@@ -121,6 +121,66 @@ ENTRY e {
       block_level_parameters,
       R"(
 CHECK: %[[RES:.*]] = stablehlo.iota dim = 0 : tensor<16xi32>
+)"));
+}
+
+TEST_F(XTileDialectTest, HloBroadcastInDimIsLoweredToStableHloBroadcastInDim) {
+  constexpr absl::string_view kHloText = R"(
+HloModule t
+
+broadcast_in_dim_fusion {
+  p0 = f32[150,160] parameter(0)
+  ROOT broadcast = f32[150,160,31] broadcast(p0), dimensions={0,1}
+}
+
+ENTRY e {
+  p0 = f32[150,160] parameter(0)
+  ROOT custom-call = f32[150,160,31] fusion(p0), kind=kCustom,
+    calls=broadcast_in_dim_fusion,
+    backend_config={"fusion_backend_config": {kind: "__triton"}}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(kHloText));
+
+  BlockLevelParameters block_level_parameters;
+  block_level_parameters.output_tile_sizes = {{16, 32, 8}};
+
+  TF_EXPECT_OK(CreateXTileIrAndFileCheck(
+      this, *module->GetComputationWithName("broadcast_in_dim_fusion"),
+      block_level_parameters,
+      R"(
+CHECK: %[[RES:.*]] = stablehlo.broadcast_in_dim %[[ARG:.*]], dims = [0, 1] : (tensor<16x32xf32>) -> tensor<16x32x8xf32>
+)"));
+}
+
+TEST_F(XTileDialectTest,
+       HloZeroDimensionalBroadcastIsLoweredToStableHloBroadcastInDim) {
+  constexpr absl::string_view kHloText = R"(
+HloModule t
+
+broadcast_in_dim_fusion {
+  p0 = f32[] parameter(0)
+  ROOT broadcast = f32[150,160,31] broadcast(p0), dimensions={}
+}
+
+ENTRY e {
+  p0 = f32[] parameter(0)
+  ROOT custom-call = f32[150,160,31] fusion(p0), kind=kCustom,
+    calls=broadcast_in_dim_fusion,
+    backend_config={"fusion_backend_config": {kind: "__triton"}}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(kHloText));
+
+  BlockLevelParameters block_level_parameters;
+  block_level_parameters.output_tile_sizes = {{16, 32, 8}};
+
+  TF_EXPECT_OK(CreateXTileIrAndFileCheck(
+      this, *module->GetComputationWithName("broadcast_in_dim_fusion"),
+      block_level_parameters,
+      R"(
+CHECK: %[[RES_FROM_ELEMENTS:.*]] = tensor.from_elements %[[ARG:.*]] : tensor<f32>
+CHECK: %[[RES:.*]] = stablehlo.broadcast_in_dim %[[RES_FROM_ELEMENTS]], dims = [] : (tensor<f32>) -> tensor<16x32x8xf32>
 )"));
 }
 

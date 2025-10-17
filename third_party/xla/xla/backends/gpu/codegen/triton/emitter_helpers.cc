@@ -360,13 +360,6 @@ Value Minimum(EmitterLocOpBuilder& b, const se::DeviceDescription& device_info,
       values[0], values[1]);
 }
 
-ScalarOrTensor Splat(EmitterLocOpBuilder& b, ScalarOrTensor value,
-                     ArrayRef<int64_t> shape) {
-  CHECK(!shape.empty());
-  auto type = mlir::RankedTensorType::get(shape, value.getType());
-  return ScalarOrTensor(b.create<mt::SplatOp>(type, value.UnwrapUnsafe()));
-}
-
 bool IsSupportedElementwiseLibdeviceFunction(const HloInstruction& hlo) {
   auto dev_fn_id = GetTargetDeviceFunctionID(hlo.opcode());
   if (!dev_fn_id.has_value()) {

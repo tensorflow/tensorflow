@@ -300,12 +300,6 @@ absl::StatusOr<TileInfo> TileInfo::Construct(
 
 using TensorValue = mlir::TypedValue<mlir::RankedTensorType>;
 
-ScalarOrTensor Broadcast(EmitterLocOpBuilder b, TensorValue value,
-                         ArrayRef<int64_t> shape) {
-  return ScalarOrTensor(
-      b.create<ttir::BroadcastOp>(value.getType().clone(shape), value));
-}
-
 // Same as HLO BroadcastInDims. The sorted indices in `dims` specify the mapping
 // of the input dimensions to the output dimensions.
 ScalarOrTensor BroadcastInDims(EmitterLocOpBuilder b, ScalarOrTensor value,
@@ -313,25 +307,30 @@ ScalarOrTensor BroadcastInDims(EmitterLocOpBuilder b, ScalarOrTensor value,
                                ArrayRef<int64_t> dims) {
   CHECK(llvm::is_sorted(dims)) << "broadcast dims must be sorted";
 
+  mlir::TypedValue<mlir::RankedTensorType> broadcast_in_dim_input;
+
   if (value.IsScalar()) {
-    return Splat(b, value, output_shape);
+    CHECK(dims.empty()) << "scalar broadcast must have empty dims";
+    auto scalar_tensor_type =
+        mlir::RankedTensorType::get(/*shape=*/{}, value.getType());
+
+    broadcast_in_dim_input = b.create<mlir::tensor::FromElementsOp>(
+                                  scalar_tensor_type, value.UnwrapScalar())
+                                 .getResult();
+  } else {
+    broadcast_in_dim_input = value.UnwrapTensor();
   }
-  TensorValue input_tensor = value.UnwrapTensor();
-  auto input_shape = input_tensor.getType().getShape();
-  int64_t axis = 0;
-  int64_t input_dim_id = 0;
-  for (int output_dim_id = 0; output_dim_id < output_shape.size();
-       output_dim_id++) {
-    if (input_dim_id < dims.size() && output_dim_id == dims[input_dim_id]) {
-      // The dim is not broadcasted. Validate matching dim sizes.
-      CHECK_EQ(input_shape[input_dim_id], output_shape[output_dim_id]);
-      ++input_dim_id;
-      axis = output_dim_id + 1;
-      continue;
-    }
-    input_tensor = b.create<ttir::ExpandDimsOp>(input_tensor, axis);
-  }
-  return Broadcast(b, input_tensor, output_shape);
+
+  auto result_type = mlir::RankedTensorType::get(
+      output_shape, broadcast_in_dim_input.getType().getElementType());
+
+  return ScalarOrTensor(b.create<stablehlo::BroadcastInDimOp>(
+      result_type, broadcast_in_dim_input, dims));
+}
+
+ScalarOrTensor Splat(EmitterLocOpBuilder b, ScalarOrTensor value,
+                     ArrayRef<int64_t> output_shape) {
+  return BroadcastInDims(b, value, output_shape, /*dims=*/{});
 }
 
 ScalarOrTensor Iota(EmitterLocOpBuilder b, int32_t limit) {

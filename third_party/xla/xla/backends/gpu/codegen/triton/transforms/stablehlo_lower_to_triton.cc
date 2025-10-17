@@ -17,8 +17,10 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "absl/log/check.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/BuiltinTypeInterfaces.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Diagnostics.h"
@@ -30,6 +32,7 @@ limitations under the License.
 #include "mlir/Transforms/DialectConversion.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "stablehlo/dialect/StablehloOps.h"
+#include "xla/codegen/emitter_loc_op_builder.h"
 #include "triton/Dialect/Triton/IR/Dialect.h"
 
 namespace mlir::triton::xla {
@@ -91,14 +94,62 @@ class LowerIotaToMakeRange : public mlir::OpRewritePattern<stablehlo::IotaOp> {
   }
 };
 
+class LowerBroadcastInDim
+    : public mlir::OpRewritePattern<stablehlo::BroadcastInDimOp> {
+ public:
+  using OpRewritePattern::OpRewritePattern;
+
+ private:
+  mlir::LogicalResult matchAndRewrite(
+      stablehlo::BroadcastInDimOp op,
+      mlir::PatternRewriter& rewriter) const override {
+    ::xla::EmitterLocOpBuilder builder(op.getLoc(), rewriter);
+    auto input_tensor = op.getOperand();
+    auto input_shape = input_tensor.getType().getShape();
+    auto output_shape = op.getResult().getType().getShape();
+    auto broadcast_dims = op.getBroadcastDimensions();
+
+    if (input_shape.empty()) {
+      auto broadcast_dim_input = op.getOperand();
+      auto broadcast_dim_input_element_type =
+          broadcast_dim_input.getType().getElementType();
+
+      auto extracted = rewriter.create<mlir::tensor::ExtractOp>(
+          op.getLoc(), broadcast_dim_input_element_type, broadcast_dim_input);
+
+      rewriter.replaceOpWithNewOp<ttir::SplatOp>(op, op.getResult().getType(),
+                                                 extracted);
+      return mlir::success();
+    }
+    int64_t axis = 0;
+    int64_t input_dim_id = 0;
+    for (int output_dim_id = 0; output_dim_id < output_shape.size();
+         output_dim_id++) {
+      if (input_dim_id < broadcast_dims.size() &&
+          output_dim_id == broadcast_dims[input_dim_id]) {
+        // The dim is not broadcasted. Validate matching dim sizes.
+        CHECK_EQ(input_shape[input_dim_id], output_shape[output_dim_id]);
+        ++input_dim_id;
+        axis = output_dim_id + 1;
+        continue;
+      }
+      input_tensor = builder.create<ttir::ExpandDimsOp>(input_tensor, axis);
+    }
+    rewriter.replaceOpWithNewOp<ttir::BroadcastOp>(op, op.getResult().getType(),
+                                                   input_tensor);
+
+    return mlir::success();
+  }
+};
+
 class StableHLOLowerToTritonPass
     : public impl::StableHLOLowerToTritonPassBase<StableHLOLowerToTritonPass> {
  public:
   void runOnOperation() override {
     mlir::MLIRContext* mlir_context = &getContext();
     mlir::RewritePatternSet patterns(mlir_context);
-    patterns.add<LowerTranspose>(mlir_context);
-    patterns.add<LowerTranspose, LowerIotaToMakeRange>(mlir_context);
+    patterns.add<LowerTranspose, LowerIotaToMakeRange, LowerBroadcastInDim>(
+        mlir_context);
 
     if (mlir::failed(
             mlir::applyPatternsGreedily(getOperation(), std::move(patterns)))) {

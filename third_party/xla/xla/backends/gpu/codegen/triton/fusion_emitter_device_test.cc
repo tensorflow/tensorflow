@@ -876,7 +876,7 @@ ENTRY main {
       CreateXTileIrAndFileCheck(this, kHloText, "triton_reduction_computation",
                                 R"(
 CHECK:  stablehlo.iota
-CHECK-COUNT-4:  tt.expand_dims
+CHECK:  stablehlo.broadcast_in_dim
 CHECK:  "tt.reduce"(%[[SELECT:.*]]) <{axis = 2 : i32}>
           )"));
 
@@ -928,8 +928,7 @@ ENTRY main {
 ; Make sure input reduction tile is padded with a neutral value.
 CHECK:  %[[LOAD:.*]] = triton_xla.extract
 CHECK:  %[[RANGE:.*]] = stablehlo.iota
-CHECK:  %[[EXPAND:.*]] = tt.expand_dims %[[RANGE]]
-CHECK:  %[[BROADCAST:.*]] = tt.broadcast %[[EXPAND]]
+CHECK:  %[[BROADCAST:.*]] = stablehlo.broadcast_in_dim %[[RANGE]]
 CHECK:  %[[CMPI:.*]] = arith.cmpi slt, %[[BROADCAST]]
 CHECK:  %[[SELECT:.*]] = arith.select %[[CMPI]], %[[LOAD]]
 CHECK:  "tt.reduce"(%[[SELECT]]) <{axis = 0 : i32}>
@@ -1842,13 +1841,15 @@ ENTRY main {
 // CHECK: %[[PAD_VALUE:.*]] = arith.constant 1.000000e+00 : f32
 // CHECK: %[[TILE_OFFSET:.*]] = xla.apply_indexing
 // CHECK: %[[IOTA_VAL:.*]] = stablehlo.iota dim = 0 : tensor<32xi32>
-// CHECK: %[[IOTA:.*]] = tt.broadcast %[[IOTA_VAL]] : tensor<32xi32> -> tensor<32xi32>
+// CHECK: %[[IOTA:.*]] = stablehlo.broadcast_in_dim %[[IOTA_VAL]], dims = [0] : (tensor<32xi32>) -> tensor<32xi32>
 // CHECK: %[[TILE_OFFSET_I32:.*]] = arith.index_cast %[[TILE_OFFSET]]
 // CHECK: %[[C17:.*]] = arith.constant 17 : i32
 // CHECK: %[[THRESHOLD:.*]] = arith.subi %[[C17]], %[[TILE_OFFSET_I32]]
-// CHECK: %[[THRESHOLD_SPLAT:.*]] = tt.splat %[[THRESHOLD]]
+// CHECK: %[[FROM_ELEMENTS_THRESHOLD:.*]] = tensor.from_elements %[[THRESHOLD]]
+// CHECK: %[[THRESHOLD_SPLAT:.*]] = stablehlo.broadcast_in_dim %[[FROM_ELEMENTS_THRESHOLD]], dims = []
 // CHECK: %[[MASK:.*]] = arith.cmpi slt, %[[IOTA]], %[[THRESHOLD_SPLAT]]
-// CHECK: %[[PAD_SPLAT:.*]] = tt.splat %[[PAD_VALUE]] : f32 -> tensor<32xf32>
+// CHECK: %[[FROM_ELEMENTS_PAD_VALUE:.*]] = tensor.from_elements %[[PAD_VALUE]]
+// CHECK: %[[PAD_SPLAT:.*]] = stablehlo.broadcast_in_dim %[[FROM_ELEMENTS_PAD_VALUE]], dims = []
 // CHECK: %[[SELECT:.*]] = arith.select %[[MASK]], %[[EXTRACT]], %[[PAD_SPLAT]]
 
 // CHECK:   triton_xla.insert %[[SELECT]] into %[[OUT]]
@@ -1908,12 +1909,10 @@ ENTRY main {
       CreateXTileIrAndFileCheck(this, kHloText, "triton_computation", R"(
 // CHECK: triton_xla.extract {{.*}} : tensor<32x16xf32>
 // CHECK: stablehlo.iota dim = 0 : tensor<32xi32>
-// CHECK: tt.expand_dims
-// CHECK: tt.broadcast
+// CHECK: stablehlo.broadcast_in_dim
 // CHECK: arith.cmpi
 // CHECK: stablehlo.iota dim = 0 : tensor<16xi32>
-// CHECK: tt.expand_dims
-// CHECK: tt.broadcast
+// CHECK: stablehlo.broadcast_in_dim
 // CHECK: arith.cmpi slt
 // CHECK: arith.andi
 // CHECK: arith.select
@@ -2401,10 +2400,20 @@ ENTRY main {
           "num_ctas":"1",
           "num_stages":"1"}}}
 })";
-  TF_EXPECT_OK(
-      CreateTritonIrAndFileCheck(this, kHloText, "triton_computation", R"(
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto xtile_module_and_hlo_module,
+      CreateXTileIrAndFileCheck(this, kHloText, "triton_computation", R"(
+CHECK:       %[[RES_FROM_ELEMENTS:.*]] = tensor.from_elements %[[ARG:.*]] : tensor<f32>
+CHECK:       stablehlo.broadcast_in_dim %[[RES_FROM_ELEMENTS]], dims = []
+          )"));
+
+  TF_EXPECT_OK(LowerXTileIrToTritonAndFileCheck(
+      this, xtile_module_and_hlo_module.first.get(), R"(
 CHECK:       tt.splat {{.*}} f32 -> tensor<8x4xf32>
-)"));
+)",
+      GetFusionInstruction(*xtile_module_and_hlo_module.second,
+                           "triton_computation")));
 }
 
 TEST_F(TritonEmitterTest, PredOutputIsStoredCorrectly) {
@@ -2669,7 +2678,7 @@ CHECK:      %[[MUL:.*]] = arith.muli %[[RANGE]], {{.*}} : tensor<64xi32>
 CHECK:      arith.addi{{.*}} %[[MUL]]
             // Omit the data type below, since it depends on a test parameter
             // and is not abbreviated the same as in HLO.
-CHECK:      tt.broadcast {{.*}} -> tensor<1x2x64x8x
+CHECK:      stablehlo.broadcast_in_dim {{.*}}, dims = [2] : {{.*}}
           )"));
 
   TF_ASSERT_OK(LowerXTileIrToTritonAndFileCheck(

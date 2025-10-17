@@ -193,9 +193,6 @@ inline mlir::Value OnesLike(EmitterLocOpBuilder& b, mlir::Value x) {
 
 bool IsFp8Type(mlir::Type t);
 
-ScalarOrTensor Splat(EmitterLocOpBuilder& b, ScalarOrTensor value,
-                     llvm::ArrayRef<int64_t> shape);
-
 // Triton type conversions.
 mlir::Value Cast(EmitterLocOpBuilder& b, mlir::Value value,
                  mlir::Type dst_element_ty);
