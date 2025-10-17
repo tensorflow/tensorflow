@@ -493,7 +493,6 @@ cc_library(
         "@local_tsl//tsl/platform:framework_lite_hdrs",
         "@local_xla//xla/tsl/framework:numeric_types.h",
         "@local_xla//xla/tsl/framework:type_traits.h",
-        "@local_xla//xla/tsl/platform/default:integral_types.h",
     ],
     visibility = ["//visibility:public"],
     deps = [
@@ -1537,7 +1536,6 @@ cc_library(
     hdrs = [
         "//tensorflow/core/platform:tflite_portable_logging_hdrs",
         "@local_tsl//tsl/platform:tflite_portable_logging_hdrs",
-        "@local_xla//xla/tsl/platform/default:integral_types.h",
     ],
     compatible_with = get_compatible_with_portable(),
     copts = tf_copts(),

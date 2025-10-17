@@ -298,7 +298,6 @@ filegroup(
     name = "xla_cpu_runtime_srcs",
     srcs = [
         "context.h",
-        "integral_types.h",
     ] + if_not_windows(["env_time.cc"]),
 )
 
@@ -477,7 +476,6 @@ cc_library(
         "no_oss",
         "nobuilder",
     ],
-    textual_hdrs = ["integral_types.h"],
 )
 
 cc_library(
@@ -638,7 +636,6 @@ exports_files(
     srcs = glob(
         ["*"],
         exclude = [
-            "integral_types.h",
             "test.cc",
         ],
     ),
@@ -647,7 +644,6 @@ exports_files(
 
 exports_files(
     srcs = [
-        "integral_types.h",
         "test.cc",
     ],
     visibility = internal_visibility([

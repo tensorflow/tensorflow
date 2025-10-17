@@ -61,7 +61,6 @@ cc_library(
         "//tensorflow/core/lib/core:legacy_lib_core_stringpiece_header",
         "//tensorflow/core/platform:jpeg_internal_hdrs",
         "@local_tsl//tsl/platform:jpeg_internal_hdrs",
-        "@local_xla//xla/tsl/platform/default:integral_types.h",
     ],
     copts = tf_copts(),
     linkopts = if_android(["-ldl"]),

@@ -54,3 +54,33 @@ diff --git a/xprof/convert/xplane_to_tools_data.cc b/xprof/convert/xplane_to_too
  
    auto encode_status =
        tsl::protobuf::util::MessageToJsonString(profile, &json_output, opts);
+diff --git a/xprof/convert/trace_viewer/trace_events.cc b/xprof/convert/trace_viewer/trace_events.cc
+--- a/xprof/convert/trace_viewer/trace_events.cc
++++ b/xprof/convert/trace_viewer/trace_events.cc
+@@ -38,9 +38,7 @@ limitations under the License.
+ #include "xla/tsl/platform/env.h"
+ #include "xla/tsl/platform/errors.h"
+ #include "xla/tsl/platform/file_system.h"
+-#include "xla/tsl/platform/macros.h"
+ #include "xla/tsl/profiler/utils/timespan.h"
+-#include "xla/tsl/platform/types.h"
+ #include "xprof/convert/trace_viewer/trace_events_filter_interface.h"
+ #include "xprof/convert/trace_viewer/trace_events_util.h"
+ #include "xprof/convert/trace_viewer/trace_viewer_visibility.h"
+@@ -49,7 +47,6 @@ limitations under the License.
+
+ namespace tensorflow {
+ namespace profiler {
+-using tsl::kint64max;
+
+ namespace {
+
+@@ -137,7 +134,7 @@ std::pair<uint64_t, uint64_t> GetLevelBoundsForDuration(uint64_t duration_ps) {
+   for (; i < NumLevels(); ++i) {
+     if (duration_ps > kLayerResolutions[i]) {
+       if (i == 0) {
+-        return std::make_pair(kLayerResolutions[i], kint64max);
++        return std::make_pair(kLayerResolutions[i], std::numeric_limits<int64_t>::max());
+       } else {
+         return std::make_pair(kLayerResolutions[i], kLayerResolutions[i - 1]);
+       }

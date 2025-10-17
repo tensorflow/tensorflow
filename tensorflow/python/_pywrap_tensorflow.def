@@ -123,6 +123,7 @@ EXPORTS
   ??0Tensor@tensorflow@@QEAA@XZ
   ??0TensorFlowDialect@TF@mlir@@QEAA@PEAVMLIRContext@2@@Z
   ??0VirtualCluster@grappler@tensorflow@@QEAA@AEBV?$unordered_map@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@VDeviceProperties@tensorflow@@U?$hash@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@2@U?$equal_to@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@2@V?$allocator@U?$pair@$$CBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@VDeviceProperties@tensorflow@@@std@@@2@@std@@@Z
+  ??0VirtualPlacer@grappler@tensorflow@@QEAA@AEBV?$unordered_map@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@VDeviceProperties@tensorflow@@U?$hash@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@2@U?$equal_to@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@2@V?$allocator@U?$pair@$$CBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@VDeviceProperties@tensorflow@@@std@@@2@@std@@@Z
   ??0WorkerConfig@experimental@data@tensorflow@@IEAA@PEAVArena@protobuf@google@@@Z
   ??1ApiDefMap@tensorflow@@QEAA@XZ
   ??1AttrValue@tensorflow@@UEAA@XZ
@@ -799,6 +800,8 @@ EXPORTS
   ?getMemBuffer@MemoryBuffer@llvm@@SA?AV?$unique_ptr@VMemoryBuffer@llvm@@U?$default_delete@VMemoryBuffer@llvm@@@std@@@std@@VStringRef@2@0_N@Z
   ?getOrLoadDialect@MLIRContext@mlir@@QEAAPEAVDialect@2@VStringRef@llvm@@VTypeID@2@V?$function_ref@$$A6A?AV?$unique_ptr@VDialect@mlir@@U?$default_delete@VDialect@mlir@@@std@@@std@@XZ@5@@Z
   ?getValuePtr@?$SpecificNodeAccess@U?$node_options@VOperation@mlir@@$0A@$0A@X$0A@X@ilist_detail@llvm@@@ilist_detail@llvm@@KAPEAVOperation@mlir@@PEAV?$ilist_node_impl@U?$node_options@VOperation@mlir@@$0A@$0A@X$0A@X@ilist_detail@llvm@@@3@@Z
+  ?get_canonical_device_name@VirtualPlacer@grappler@tensorflow@@QEBA?AV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@AEBVNodeDef@3@@Z
+  ?get_device@VirtualPlacer@grappler@tensorflow@@QEBAAEBVDeviceProperties@3@AEBVNodeDef@3@@Z
   ?id@?$TypeIDResolver@VArithDialect@arith@mlir@@X@detail@mlir@@0VSelfOwningTypeID@3@A
   ?id@?$TypeIDResolver@VFuncDialect@func@mlir@@X@detail@mlir@@0VSelfOwningTypeID@3@A
   ?id@?$TypeIDResolver@VModuleOp@mlir@@X@detail@mlir@@0VSelfOwningTypeID@3@A

@@ -729,6 +729,7 @@ cc_library(
     hdrs = ["types.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
+        "@com_google_absl//absl/base:core_headers",
         "@local_tsl//tsl/platform",
         "@local_tsl//tsl/platform:bfloat16",
         "@local_tsl//tsl/platform:ml_dtypes",
