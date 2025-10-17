@@ -5719,6 +5719,10 @@ static FailureOr<SmallVector<int32_t>> parseI32Array(AsmParser& parser) {
 }  // namespace TFL
 }  // namespace mlir
 
+using namespace mlir;  // NOLINT
+using mlir::TFL::ControlType;
+using mlir::TFL::LSTMKernelTypeAttr;
+
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops_dialect.cc.inc"
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops_enums.cc.inc"
 #define GET_ATTRDEF_CLASSES

@@ -6614,6 +6614,10 @@ using mlir::hlo::printSelectOpType;
 using mlir::hlo::printTupleOpType;
 using mlir::hlo::printVariadicSameOperandsAndResultType;
 
+using namespace mlir;  // NOLINT
+using mlir::mhlo::AsyncBundleType;
+using mlir::mhlo::TokenType;
+
 #define GET_OP_CLASSES
 #include "mhlo/IR/hlo_ops.cc.inc"
 

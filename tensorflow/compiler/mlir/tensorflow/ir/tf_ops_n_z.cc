@@ -4538,5 +4538,7 @@ MutableOperandRange YieldOp::getMutableSuccessorOperands(
 // TableGen'd op method definitions
 //===----------------------------------------------------------------------===//
 
+using namespace mlir;  // NOLINT
+
 #define GET_OP_CLASSES
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_n_z.cc.inc"

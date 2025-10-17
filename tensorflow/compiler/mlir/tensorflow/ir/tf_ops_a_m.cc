@@ -3727,5 +3727,7 @@ LogicalResult BitcastOp::verify() {
 // TableGen'd op method definitions
 //===----------------------------------------------------------------------===//
 
+using namespace mlir;  // NOLINT
+
 #define GET_OP_CLASSES
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_a_m.cc.inc"
