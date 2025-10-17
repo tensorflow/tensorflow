@@ -1290,7 +1290,7 @@ xla_test(
         # TODO(b/445172709): Re-enable once fixed.
         "b200": ["broken"],
     },
-    shard_count = 20,
+    shard_count = 50,
     tags = [
         "optonly",
     ],
@@ -1829,7 +1829,7 @@ xla_test(
     name = "slice_test",
     timeout = "long",
     srcs = ["slice_test.cc"],
-    shard_count = 40,
+    shard_count = 50,
     deps = [
         ":client_library_test_runner_mixin",
         ":hlo_test_base",
@@ -3556,7 +3556,7 @@ xla_test(
 xla_test(
     name = "cholesky_test",
     srcs = ["cholesky_test.cc"],
-    shard_count = 10,
+    shard_count = 20,
     tags = [
         "optonly",
     ],
