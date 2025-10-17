@@ -537,6 +537,18 @@ diff --ruN a/stablehlo/stablehlo/conversions/tosa/transforms/StablehloQuantLegal
    // unary ops
    patterns->addWithLabel<QuantizedStablehloOpConversion<stablehlo::AbsOp>>(
        {"StablehloQuantAbsOp"}, context);
+diff --ruN a/stablehlo/stablehlo/integrations/c/VhloDialect.h b/stablehlo/stablehlo/integrations/c/VhloDialect.h
+--- stablehlo/stablehlo/integrations/c/VhloDialect.h
++++ stablehlo/stablehlo/integrations/c/VhloDialect.h
+@@ -13,7 +13,7 @@
+ #ifndef STABLEHLO_INTEGRATIONS_C_VHLO_DIALECT_H
+ #define STABLEHLO_INTEGRATIONS_C_VHLO_DIALECT_H
+ 
+-#include "mlir-c/RegisterEverything.h"
++#include "mlir-c/IR.h"
+ 
+ #ifdef __cplusplus
+ extern "C" {
 diff --ruN a/stablehlo/stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.cpp b/stablehlo/stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.cpp
 --- stablehlo/stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.cpp
 +++ stablehlo/stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.cpp
