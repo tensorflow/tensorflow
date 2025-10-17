@@ -13,33 +13,57 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// This demonstrates how to use hlo_test_base to create a file based testcase
-// and compare results on gpu and cpu.
+// This demonstrates how to create a file-based test case and compare results
+// between gpu and cpu.
 
+#include <memory>
 #include <string>
-#include <vector>
+#include <utility>
 
+#include "absl/log/log.h"
+#include "absl/status/statusor.h"
+#include "xla/error_spec.h"
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/testlib/test.h"
-#include "xla/service/platform_util.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/plugin/xla_cpu/xla_cpu_pjrt_client.h"
+#include "xla/service/hlo_module_util.h"
+#include "xla/service/hlo_runner_interface.h"
+#include "xla/service/hlo_runner_pjrt.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
+#include "xla/tests/hlo_runner_agnostic_reference_mixin.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/test.h"
 #include "tsl/platform/path.h"
-#include "tsl/platform/test.h"
 
 namespace xla {
 namespace {
 
-class SampleFileTest : public HloTestBase {
+std::unique_ptr<HloRunnerInterface> GetReferenceRunner() {
+  absl::StatusOr<std::unique_ptr<PjRtClient>> client = GetXlaPjrtCpuClient({});
+  if (!client.ok()) {
+    LOG(FATAL) << "Failed to create XLA:CPU PjRtClient: " << client.status();
+  }
+  return std::make_unique<HloRunnerPjRt>(*std::move(client));
+}
+
+class SampleFileTest : public HloRunnerAgnosticReferenceMixin<HloPjRtTestBase> {
  protected:
   SampleFileTest()
-      : HloTestBase(
-            /*test_platform=*/PlatformUtil::GetPlatform("gpu").value(),
-            /*reference_platform=*/PlatformUtil::GetPlatform("cpu").value()) {}
+      : HloRunnerAgnosticReferenceMixin<HloPjRtTestBase>(
+            /*reference_runner=*/GetReferenceRunner()) {}
 };
 
 TEST_F(SampleFileTest, Convolution) {
-  const std::string& filename = tsl::io::JoinPath(
+  const std::string filename = tsl::io::JoinPath(
       tsl::testing::XlaSrcRoot(), "tests", "isolated_convolution.hlo");
-  EXPECT_TRUE(RunAndCompareFromFile(filename, ErrorSpec{0.01}));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ReadModuleFromHloTextFile(filename));
+  module->mutable_config()
+      .mutable_debug_options()
+      .set_xla_cpu_parallel_codegen_split_count(1);
+
+  EXPECT_TRUE(RunAndCompare(std::move(module), ErrorSpec{0.01}));
 }
 
 }  // namespace
