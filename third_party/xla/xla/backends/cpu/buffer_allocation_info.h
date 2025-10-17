@@ -22,8 +22,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 
-namespace xla {
-namespace cpu {
+namespace xla::cpu {
 
 // `BufferAllocationInfo` stores information about buffer allocations required
 // by an XLA:CPU executable at run time. It corresponds to a `BufferAllocation`
@@ -194,14 +193,6 @@ class BufferAllocationInfo {
   int32_t result_number_ = -1;
 };
 
-}  // namespace cpu
-
-// TODO(ezhulenev): This is a temporary hack to keep `tfcompile` code working.
-namespace cpu_function_runtime {
-using BufferInfo = ::xla::cpu::BufferAllocationInfo;
-using EncodedBufferInfo = ::xla::cpu::BufferAllocationInfo::Encoded;
-}  // namespace cpu_function_runtime
-
-}  // namespace xla
+}  // namespace xla::cpu
 
 #endif  // XLA_BACKENDS_CPU_BUFFER_ALLOCATION_INFO_H_
