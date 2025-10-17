@@ -19,7 +19,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "shardy/dialect/sdy/transforms/propagation/passes.h"
+#include "shardy/dialect/sdy/transforms/common/propagation_options.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
 
@@ -44,10 +44,6 @@ class ShardyXLA : public xla::HloModulePass {
   absl::StatusOr<bool> Run(
       xla::HloModule* hloModule,
       const absl::flat_hash_set<absl::string_view>& executionThreads) override;
-
-  void setRunSdyShardingPropagation(bool runSdyShardingPropagation) {
-    this->runSdyShardingPropagation = runSdyShardingPropagation;
-  }
 
  private:
   bool runSdyShardingPropagation;

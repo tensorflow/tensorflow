@@ -42,6 +42,7 @@ limitations under the License.
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Support/LLVM.h"
 #include "shardy/common/file_utils.h"
+#include "shardy/dialect/sdy/transforms/common/propagation_options.h"
 #include "shardy/dialect/sdy/transforms/propagation/passes.h"
 #include "re2/re2.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -367,10 +368,8 @@ absl::Status runShardingPropagation(HloModule* hloModule,
 
     addStablehloImportPipeline(
         pm,
-        /* allowPropagationToArgs=*/
         spanToArrayRef(hloModule->config()
                            .allow_spmd_sharding_propagation_to_parameters()),
-        /*allowPropagationToResults=*/
         spanToArrayRef(
             hloModule->config().allow_spmd_sharding_propagation_to_output()),
         /*importFuncCalls=*/true);

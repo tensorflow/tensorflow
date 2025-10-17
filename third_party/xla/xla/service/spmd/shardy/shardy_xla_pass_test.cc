@@ -20,7 +20,6 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "absl/log/log.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -53,12 +52,7 @@ void runShardy(VerifiedHloModule* module, bool stablehloImport,
   }
   TF_ASSERT_OK_AND_ASSIGN(bool changed,
                           ShardyXLA(runSdyShardingPropagation).Run(module));
-  VLOG(1) << module->ToString();
-  if (expectChanged) {
-    EXPECT_TRUE(changed);
-  } else {
-    EXPECT_FALSE(changed);
-  }
+  EXPECT_EQ(changed, expectChanged);
 }
 
 void runShardyWithStablehloImport(VerifiedHloModule* module,
@@ -924,8 +918,6 @@ TEST_F(ShardyXLATest, TestRunShardingPropagationFalseUseTuplesTrue) {
                           ParseAndReturnVerifiedModule(hloString));
   runShardyWithStablehloImport(module.get(),
                                /*runSdyShardingPropagation=*/false);
-  LOG(INFO) << module->ToString(
-      HloPrintOptions{}.set_include_layout_in_shapes(false));
   EXPECT_TRUE(*RunFileCheck(
       module->ToString(HloPrintOptions{}.set_include_layout_in_shapes(false)),
       expected));
@@ -955,8 +947,6 @@ ENTRY %main.0 (Arg_0.0: s64[2]) -> s64[2] {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hloString));
   runShardyWithSdyImport(module.get());
-  LOG(INFO) << module->ToString(
-      HloPrintOptions{}.set_include_layout_in_shapes(false));
   EXPECT_TRUE(*RunFileCheck(
       module->ToString(HloPrintOptions{}.set_include_layout_in_shapes(false)),
       expected));
