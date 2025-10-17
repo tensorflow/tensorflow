@@ -863,6 +863,25 @@ diff --ruN a/stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_folder.ml
  }
  
  // -----
+diff --ruN a/stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_simplification.mlir b/stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_simplification.mlir
+--- stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_simplification.mlir
++++ stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_simplification.mlir
+@@ -1810,6 +1810,15 @@
+   return %0 : tensor<2x4x1x5xf32>
+ }
+ 
++// CHECK-LABEL: @transpose_of_transpose
++func.func @transpose_of_transpose(%arg0 : tensor<1x2x3x4xf32>) -> tensor<1x2x3x4xf32> {
++  %0 = stablehlo.transpose %arg0, dims = [3,2,1,0] : (tensor<1x2x3x4xf32>) -> tensor<4x3x2x1xf32>
++  %1 = stablehlo.transpose %0, dims = [3,2,1,0] : (tensor<4x3x2x1xf32>) -> tensor<1x2x3x4xf32>
++  // CHECK-NOT: stablehlo.transpose
++  // CHECK: return %arg0
++  return %1 : tensor<1x2x3x4xf32>
++}
++
+ // -----
+ 
+ ////////
 diff --ruN a/stablehlo/stablehlo/transforms/ChloLegalizeToStablehlo.cpp b/stablehlo/stablehlo/transforms/ChloLegalizeToStablehlo.cpp
 --- stablehlo/stablehlo/transforms/ChloLegalizeToStablehlo.cpp
 +++ stablehlo/stablehlo/transforms/ChloLegalizeToStablehlo.cpp
@@ -1541,4 +1560,47 @@ diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimp
      permutation[dims[i]] = i;
    }
    return b.getDenseI64ArrayAttr(permutation);
+@@ -1308,6 +1308,17 @@
+ //////////////////////////////////
+ // TransposeOp
+ /////////////////////////////////
++
++DenseI64ArrayAttr getMergedTransposePermutation(OpBuilder& b,
++                                                ArrayRef<int64_t> childPerm,
++                                                ArrayRef<int64_t> parentPerm) {
++  SmallVector<int64_t> mergedPerm;
++  mergedPerm.reserve(parentPerm.size());
++  for (int64_t parentIdx : parentPerm) {
++    mergedPerm.push_back(childPerm[parentIdx]);
++  }
++  return b.getDenseI64ArrayAttr(mergedPerm);
++}
+ 
+ // Pattern: transpose(X, [no_mem_layout_change...]) -> reshape(X)
+ struct TransposeIsReshape final : SimplifyOpRewritePattern<TransposeOp> {
+diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplificationPatterns.td b/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplificationPatterns.td
+--- stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplificationPatterns.td
++++ stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplificationPatterns.td
+@@ -119,6 +119,8 @@
+ def InvertBroadcastDims : NativeCodeCall<"getInvertedBroadcastDimensions($_builder, $0)">;
+ 
+ def MergeBroadcastDims : NativeCodeCall<"getMergedBroadcastDimensions($_builder, $0, $1)">;
++
++def MergePermutations : NativeCodeCall<"getMergedTransposePermutation($_builder, $0, $1)">;
+ 
+ def StableHLO_ConvertOpWithShape : NativeCodeCall<
+     "$_builder.create<stablehlo::ConvertOp>($_loc, $0.getType(), $1)">;
+@@ -539,6 +541,12 @@
+   : Pat<(StableHLO_TransposeOp $lhs, IotaDims:$dims),
+         (replaceWithValue $lhs)>;
+ 
++// Pattern: transpose(transpose(X)) -> transpose(X)
++def TransposeOp_TransposeOfTranspose
++  : Pat<(StableHLO_TransposeOp
++          (StableHLO_TransposeOp $child, $child_dims), $dims),
++        (StableHLO_TransposeOp $child, (MergePermutations $child_dims, $dims))>;
++
+ ////////
+ // GetTupleElementOp
+ 
 
