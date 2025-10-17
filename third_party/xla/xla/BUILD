@@ -51,7 +51,6 @@ filegroup(
 filegroup(
     name = "cpu_runtime_hdrs",
     srcs = [
-        "cpu_function_runtime.h",
         "executable_run_options.h",
         "types.h",
     ],
@@ -1254,18 +1253,6 @@ xla_cc_test(
         "@com_google_googletest//:gtest",
         "@com_google_protobuf//:protobuf",
         "@local_tsl//tsl/platform:protobuf",
-    ],
-)
-
-cc_library(
-    name = "cpu_function_runtime",
-    hdrs = ["cpu_function_runtime.h"],
-    compatible_with = get_compatible_with_portable(),
-    visibility = internal_visibility([":friends"]),
-    deps = [
-        "//xla/backends/cpu:alignment",
-        "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/base:dynamic_annotations",
     ],
 )
 
