@@ -15,13 +15,10 @@ limitations under the License.
 
 #include <array>
 #include <cstdint>
-#include <memory>
 #include <ostream>
 #include <string>
-#include <tuple>
 #include <utility>
 #include <variant>
-#include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -47,13 +44,13 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/filecheck.h"
-#include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/primitive_util.h"
 #include "xla/service/algorithm_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
+#include "xla/service/gpu/model/block_level_parameters.h"
 #include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/service/gpu/tests/gpu_codegen_test.h"
 #include "xla/shape.h"
@@ -115,6 +112,17 @@ INSTANTIATE_TEST_SUITE_P(TmaParameterizedTritonEmitterTestSuite,
                          [](const ::testing::TestParamInfo<bool>& info) {
                            return info.param ? "tma_allowed" : "tma_disabled";
                          });
+
+class WarpSpecializationTritonEmitterTest : public TritonEmitterTest {
+ public:
+  DebugOptions GetDebugOptionsForTest() const override {
+    DebugOptions debug_options = TritonEmitterTest::GetDebugOptionsForTest();
+    debug_options.set_xla_gpu_experimental_enable_triton_tma(true);
+    debug_options.set_xla_gpu_experimental_enable_triton_warp_specialization(
+        true);
+    return debug_options;
+  }
+};
 
 struct TmaAndDotLayoutTestParams {
   std::vector<int64_t> lhs_layout;
@@ -3242,6 +3250,72 @@ CHECK-COUNT-1: triton_xla.insert
 )"));
   EXPECT_TRUE(RunAndCompareNoHloPasses(
       hlo_text, ErrorSpec{/*aabs=*/1e-4, /*arel=*/1e-6}));
+}
+
+TEST_F(WarpSpecializationTritonEmitterTest,
+       DotAccumulationLoopUsesWarpSpecialization) {
+  if (!GetCudaComputeCapability().IsAtLeastBlackwell()) {
+    GTEST_SKIP() << "Currently only supported on Blackwell and newer.";
+  }
+
+  const std::string hlo_text = R"(
+flhs {
+  ROOT flhs.p0 = f16[256,256] parameter(0)
+}
+
+frhs {
+  ROOT frhs.p0 = f16[256,256] parameter(0)
+}
+
+fdot {
+  fdot.p0 = f16[256,256] parameter(0)
+  fdot.p1 = f16[256,256] parameter(1)
+  fdot.lhs = f16[256,256] fusion(fdot.p0), kind=kCustom, calls=flhs, backend_config={
+    "fusion_backend_config":{
+      "kind":"__triton_nested_gemm_fusion", "block_level_fusion_config":{
+        "output_tiles":[{"sizes":["128", "64"]}],
+        "is_tma_allowed":"1"
+      }
+    }
+  }
+  fdot.rhs = f16[256,256]{1,0} fusion(fdot.p1), kind=kCustom, calls=frhs, backend_config={
+    "fusion_backend_config":{
+      "kind":"__triton_nested_gemm_fusion", "block_level_fusion_config":{
+        "output_tiles":[{"sizes":["64", "128"]}],
+        "is_tma_allowed":"1"
+      }
+    }
+  }
+  ROOT fdot.root = f16[256,256]{1,0} dot(fdot.lhs, fdot.rhs),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0},
+    algorithm=dot_f16_f16_f32
+}
+
+ENTRY entry {
+  entry.p0 = f16[256,256] parameter(0)
+  entry.p1 = f16[256,256] parameter(1)
+  ROOT fusion = f16[256,256] fusion(entry.p0, entry.p1),
+    kind=kCustom, calls=fdot, backend_config={
+      "fusion_backend_config":{
+        "kind":"__triton_nested_gemm_fusion",
+        "block_level_fusion_config":{
+          "output_tiles":[{"sizes":["128", "128"]}],
+          "num_warps":"8",
+          "num_ctas":"1",
+          "num_stages":"1",
+          "is_tma_allowed":"1"}}}
+})";
+
+  // Check that the IR attribute is set correctly.
+  TF_EXPECT_OK(CreateTritonIrAndFileCheck(this, hlo_text, "fdot", R"(
+  // CHECK:       scf.for
+  // CHECK:       scf.yield
+  // CHECK-NEXT:  tt.warp_specialize
+  // )"));
+
+  // Make sure it runs correctly.
+  EXPECT_TRUE(RunAndCompareNoHloPasses(
+      hlo_text, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
 TEST_F(TritonEmitterTest, MaskedDotIsEmittedCorrectly) {
