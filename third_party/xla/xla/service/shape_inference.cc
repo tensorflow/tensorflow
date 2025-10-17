@@ -3860,9 +3860,6 @@ ShapeInference::InferCollectivePermuteDoneShape(const Shape& operand_shape) {
         StrJoin(dimensions, ","), ShapeUtil::HumanString(operand));
   }
 
-  // Permute(dimensions,input) computes output[dimensions[i]]=input[i]. However,
-  // we need output[i]=input[dimensions[i]] which is
-  // Permute(Inverse(dimensions),input).
   return ShapeUtil::PermuteDimensions(dimensions, operand);
 }
 
