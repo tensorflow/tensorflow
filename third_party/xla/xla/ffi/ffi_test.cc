@@ -39,7 +39,7 @@ limitations under the License.
 #include "xla/ffi/execution_context.h"
 #include "xla/ffi/execution_state.h"
 #include "xla/ffi/ffi_api.h"
-#include "xla/ffi/type_id_registry.h"
+#include "xla/ffi/type_registry.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
@@ -1102,7 +1102,7 @@ TEST(FfiTest, Metadata) {
   EXPECT_EQ(metadata.api_version.major_version, XLA_FFI_API_MAJOR);
   EXPECT_EQ(metadata.api_version.minor_version, XLA_FFI_API_MINOR);
 
-  TypeIdRegistry::TypeId type_id = TypeIdRegistry::GetTypeId<StrState>();
+  TypeRegistry::TypeId type_id = TypeRegistry::GetTypeId<StrState>();
   EXPECT_EQ(metadata.state_type_id.type_id, type_id);
 }
 

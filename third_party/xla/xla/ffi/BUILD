@@ -62,7 +62,7 @@ cc_library(
     srcs = ["execution_context.cc"],
     hdrs = ["execution_context.h"],
     deps = [
-        ":type_id_registry",
+        ":type_registry",
         "//xla:util",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:logging",
@@ -79,7 +79,7 @@ xla_cc_test(
     srcs = ["execution_context_test.cc"],
     deps = [
         ":execution_context",
-        ":type_id_registry",
+        ":type_registry",
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
@@ -94,13 +94,14 @@ cc_library(
     srcs = ["execution_state.cc"],
     hdrs = ["execution_state.h"],
     deps = [
-        ":type_id_registry",
+        ":type_registry",
         "//xla:util",
+        "//xla/tsl/platform:statusor",
+        "//xla/tsl/util:safe_reinterpret_cast",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
-        "@local_tsl//tsl/platform:logging",
-        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
@@ -109,11 +110,12 @@ xla_cc_test(
     srcs = ["execution_state_test.cc"],
     deps = [
         ":execution_state",
+        ":type_registry",
         "//xla/tsl/lib/core:status_test_util",
+        "//xla/tsl/platform:statusor",
+        "//xla/tsl/platform:test",
         "@com_google_googletest//:gtest",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:statusor",
-        "@local_tsl//tsl/platform:test",
     ],
 )
 
@@ -124,7 +126,7 @@ cc_library(
         ":api",
         ":execution_context",
         ":execution_state",
-        ":type_id_registry",
+        ":type_registry",
         "//xla:executable_run_options",
         "//xla:shape_util",
         "//xla:types",
@@ -141,6 +143,7 @@ cc_library(
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/base:nullability",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
@@ -160,7 +163,7 @@ cc_library(
         ":call_frame",
         ":execution_context",
         ":execution_state",
-        ":type_id_registry",
+        ":type_registry",
         "//xla:executable_run_options",
         "//xla:util",
         "//xla/ffi/api:c_api",
@@ -218,7 +221,7 @@ xla_cc_test(
         ":execution_state",
         ":ffi",
         ":ffi_api",
-        ":type_id_registry",
+        ":type_registry",
         "//xla:executable_run_options",
         "//xla:xla_data_proto_cc",
         "//xla/ffi/api:c_api",
@@ -243,27 +246,31 @@ xla_cc_test(
 )
 
 cc_library(
-    name = "type_id_registry",
-    srcs = ["type_id_registry.cc"],
-    hdrs = ["type_id_registry.h"],
+    name = "type_registry",
+    srcs = ["type_registry.cc"],
+    hdrs = ["type_registry.h"],
     deps = [
         "//xla:util",
         "//xla/tsl/lib/gtl:int_type",
+        "//xla/tsl/util:safe_reinterpret_cast",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/base:no_destructor",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/synchronization",
     ],
 )
 
 xla_cc_test(
-    name = "type_id_registry_test",
-    srcs = ["type_id_registry_test.cc"],
+    name = "type_registry_test",
+    srcs = ["type_registry_test.cc"],
     deps = [
-        ":type_id_registry",
+        ":type_registry",
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",

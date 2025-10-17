@@ -43,7 +43,7 @@ limitations under the License.
 #include "xla/ffi/call_frame.h"
 #include "xla/ffi/execution_context.h"
 #include "xla/ffi/execution_state.h"
-#include "xla/ffi/type_id_registry.h"
+#include "xla/ffi/type_registry.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/service/platform_util.h"
 #include "xla/stream_executor/device_memory.h"
@@ -659,12 +659,14 @@ static XLA_FFI_Error* XLA_FFI_TypeId_Register(
       XLA_FFI_ExecutionContext_Get_Args_STRUCT_SIZE, args->struct_size));
 
   absl::string_view type_name(args->name.ptr, args->name.len);
-  TypeIdRegistry::TypeId type_id(args->type_id->type_id);
+  TypeRegistry::TypeId type_id(args->type_id->type_id);
+  TypeRegistry::TypeInfo type_info = {args->type_info->deleter};
 
   // If type_id is unknown, we are registering a new type and XLA will assign a
   // unique type id to it.
-  if (type_id == TypeIdRegistry::kUnknownTypeId) {
-    auto assigned_type_id = TypeIdRegistry::AssignExternalTypeId(type_name);
+  if (type_id == TypeRegistry::kUnknownTypeId) {
+    auto assigned_type_id =
+        TypeRegistry::AssignExternalTypeId(type_name, type_info);
     if (!assigned_type_id.ok()) {
       return new XLA_FFI_Error{std::move(assigned_type_id).status()};
     }
@@ -674,9 +676,10 @@ static XLA_FFI_Error* XLA_FFI_TypeId_Register(
   }
 
   // If type_id is set, we are relying on the caller-provided unique type id.
-  if (auto status = TypeIdRegistry::RegisterExternalTypeId(type_name, type_id);
-      !status.ok()) {
-    return new XLA_FFI_Error{std::move(status)};
+  auto registered_type_id =
+      TypeRegistry::RegisterExternalTypeId(type_name, type_id, type_info);
+  if (!registered_type_id.ok()) {
+    return new XLA_FFI_Error{std::move(registered_type_id)};
   }
 
   return nullptr;
@@ -690,7 +693,7 @@ static XLA_FFI_Error* XLA_FFI_ExecutionContext_Get(
 
   DCHECK(args->ctx->execution_context) << "ExecutionContext must be set";
   auto user_data = args->ctx->execution_context->Lookup(
-      TypeIdRegistry::TypeId(args->type_id->type_id));
+      TypeRegistry::TypeId(args->type_id->type_id));
   if (!user_data.ok()) {
     return new XLA_FFI_Error{std::move(user_data).status()};
   }
@@ -705,9 +708,16 @@ static XLA_FFI_Error* XLA_FFI_State_Set(XLA_FFI_State_Set_Args* args) {
       args->struct_size));
 
   DCHECK(args->ctx->execution_state) << "ExecutionState must be set";
-  absl::Status status = args->ctx->execution_state->Set(
-      TypeIdRegistry::TypeId(args->type_id->type_id), args->state,
-      [deleter = args->deleter](void* state) { deleter(state); });
+
+  absl::Status status;
+  if (args->deleter == nullptr) {
+    status = args->ctx->execution_state->Set(
+        TypeRegistry::TypeId(args->type_id->type_id), args->state);
+  } else {
+    status = args->ctx->execution_state->Set(
+        TypeRegistry::TypeId(args->type_id->type_id), args->state,
+        args->deleter);
+  }
 
   if (!status.ok()) {
     return new XLA_FFI_Error{std::move(status)};
@@ -723,7 +733,7 @@ static XLA_FFI_Error* XLA_FFI_State_Get(XLA_FFI_State_Get_Args* args) {
 
   DCHECK(args->ctx->execution_state) << "ExecutionState must be set";
   absl::StatusOr<void*> state = args->ctx->execution_state->Get(
-      TypeIdRegistry::TypeId(args->type_id->type_id));
+      TypeRegistry::TypeId(args->type_id->type_id));
   if (!state.ok()) {
     return new XLA_FFI_Error{std::move(state).status()};
   }

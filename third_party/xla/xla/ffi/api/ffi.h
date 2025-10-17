@@ -437,7 +437,7 @@ class CountDownPromise {
     assert(state_->count.load() >= count && "Invalid count down value");
 
     if (XLA_FFI_PREDICT_FALSE(!error.success())) {
-      const std::lock_guard<std::mutex> lock(state_->mutex);
+      std::lock_guard<std::mutex> lock(state_->mutex);  // NOLINT
       state_->is_error.store(true, std::memory_order_release);
       state_->error = error;
     }
@@ -448,7 +448,7 @@ class CountDownPromise {
       bool is_error = state_->is_error.load(std::memory_order_acquire);
       if (XLA_FFI_PREDICT_FALSE(is_error)) {
         auto take_error = [&] {
-          const std::lock_guard<std::mutex> lock(state_->mutex);
+          std::lock_guard<std::mutex> lock(state_->mutex);  // NOLINT
           return state_->error;
         };
         state_->promise.SetError(take_error());
@@ -476,7 +476,7 @@ class CountDownPromise {
     std::atomic<int64_t> count;
     std::atomic<bool> is_error;
 
-    std::mutex mutex;
+    std::mutex mutex;  // NOLINT
     Error error;
   };
 
