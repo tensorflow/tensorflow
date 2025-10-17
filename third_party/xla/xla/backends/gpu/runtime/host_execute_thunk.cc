@@ -19,11 +19,13 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/base/call_once.h"
+#include "absl/base/casts.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
@@ -425,24 +427,84 @@ HostExecuteStartThunk::HostExecuteStartThunk(
     Thunk::ThunkInfo thunk_info,
     const HostOffloadingExecutableProto& host_offloading_executable_proto,
     absl::InlinedVector<HostExecuteStartThunk::SliceAndShape, 4> args,
-    absl::InlinedVector<HostExecuteStartThunk::SliceAndShape, 4> results)
+    absl::InlinedVector<HostExecuteStartThunk::SliceAndShape, 4> results,
+    std::shared_ptr<HostExecuteAsyncEvents> async_events)
     : Thunk(Thunk::Kind::kHostExecuteStart, std::move(thunk_info)),
       args_(std::move(args)),
       results_(std::move(results)),
-      executable_proto_(host_offloading_executable_proto),
-      async_events_(std::make_shared<HostExecuteAsyncEvents>()) {}
+      executable_proto_(host_offloading_executable_proto) {
+  async_events_ =
+      async_events ? async_events : std::make_shared<HostExecuteAsyncEvents>();
+}
 
 std::string HostExecuteStartThunk::ToString(int indent) const { return ""; }
 
 absl::StatusOr<ThunkProto> HostExecuteStartThunk::ToProto() const {
-  return Unimplemented("Not implemented yet.");
+  ThunkProto proto;
+  *proto.mutable_thunk_info() = thunk_info().ToProto();
+  HostExecuteStartThunkProto* host_execute_start_thunk_proto =
+      proto.mutable_host_execute_start_thunk();
+
+  *host_execute_start_thunk_proto->mutable_executable_proto() =
+      executable_proto_;
+
+  for (const auto& [slice, shape] : args_) {
+    ShapedSliceProto* arg_proto = host_execute_start_thunk_proto->add_args();
+    TF_ASSIGN_OR_RETURN(*arg_proto->mutable_slice(), slice.ToProto());
+    *arg_proto->mutable_shape() = shape.ToProto();
+  }
+
+  for (const auto& [slice, shape] : results_) {
+    ShapedSliceProto* result_proto =
+        host_execute_start_thunk_proto->add_results();
+    TF_ASSIGN_OR_RETURN(*result_proto->mutable_slice(), slice.ToProto());
+    *result_proto->mutable_shape() = shape.ToProto();
+  }
+
+  auto async_events_unique_id = GetAsyncEventsUniqueId();
+  // By design, async_events_unique_id should always be present for
+  // HostExecuteStartThunk.
+  CHECK_NE(async_events_unique_id, std::nullopt);
+
+  host_execute_start_thunk_proto->set_async_events_unique_id(
+      async_events_unique_id.value().value());
+
+  return proto;
 }
 
 absl::StatusOr<std::unique_ptr<HostExecuteStartThunk>>
 HostExecuteStartThunk::FromProto(
     ThunkInfo thunk_info, const HostExecuteStartThunkProto& proto,
-    absl::Span<const BufferAllocation> buffer_allocations) {
-  return Unimplemented("Not implemented yet.");
+    absl::Span<const BufferAllocation> buffer_allocations,
+    HostExecuteAsyncEventsMap& async_events_map) {
+  absl::InlinedVector<HostExecuteStartThunk::SliceAndShape, 4> args, results;
+  auto shaped_slice_from_proto =
+      [&](const auto& shaped_slice_protos,
+          absl::InlinedVector<HostExecuteStartThunk::SliceAndShape, 4>&
+              slices_and_shapes) -> absl::Status {
+    for (const auto& shaped_slice_proto : shaped_slice_protos) {
+      TF_ASSIGN_OR_RETURN(auto slice,
+                          BufferAllocation::Slice::FromProto(
+                              shaped_slice_proto.slice(), buffer_allocations));
+      TF_ASSIGN_OR_RETURN(auto shape,
+                          Shape::FromProto(shaped_slice_proto.shape()));
+      slices_and_shapes.push_back({slice, shape});
+    }
+    return absl::OkStatus();
+  };
+
+  TF_RETURN_IF_ERROR(shaped_slice_from_proto(proto.args(), args));
+  TF_RETURN_IF_ERROR(shaped_slice_from_proto(proto.results(), results));
+
+  // If async_events_map already contains an entry for the given unique id,
+  // that means that the pairing done thunk is already serialized and we reuse
+  // the id to connect them. Otherwise, create a new entry.
+  auto [async_event_it, _] = async_events_map.try_emplace(
+      AsyncEventsUniqueId(proto.async_events_unique_id()),
+      std::make_shared<HostExecuteAsyncEvents>());
+  return std::make_unique<HostExecuteStartThunk>(
+      thunk_info, proto.executable_proto(), std::move(args), std::move(results),
+      async_event_it->second);
 }
 
 static HostOffloadingAllocator* GetHostOffloadingAllocator(
@@ -554,6 +616,14 @@ absl::Status HostExecuteStartThunk::ExecuteOnStream(
       }));
 
   return absl::OkStatus();
+}
+
+std::optional<AsyncEventsUniqueId>
+HostExecuteStartThunk::GetAsyncEventsUniqueId() const {
+  CHECK(async_events_)
+      << "async_events_ must not be null in HostExecuteStartThunk";
+  // We rely on the fact that the pointer to async_events_ is unique.
+  return absl::bit_cast<AsyncEventsUniqueId>(async_events_.get());
 }
 
 // HostExecuteDoneThunk

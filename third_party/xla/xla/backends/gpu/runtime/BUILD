@@ -2449,6 +2449,7 @@ tf_proto_library(
         ":convolution_filter_thunk_proto",
         ":dynamic_slice_thunk_proto",
         "//xla:xla_data_proto",
+        "//xla/core/host_offloading:host_offloading_executable_proto",
         "//xla/service:buffer_assignment_proto",
         "//xla/service/gpu:backend_configs",
         "//xla/service/gpu:gpu_conv_runner_proto",
@@ -2744,6 +2745,7 @@ xla_test(
     deps = [
         ":host_execute_thunk",
         ":thunk",
+        ":thunk_proto_cc",
         "//xla:executable_run_options",
         "//xla:literal",
         "//xla:literal_util",
@@ -2770,12 +2772,14 @@ xla_test(
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:status_matchers",
         "//xla/tsl/platform:statusor",
+        "//xla/tsl/util/proto:proto_matchers",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:casts",
+        "@local_tsl//tsl/platform:protobuf",
     ],
 )
 

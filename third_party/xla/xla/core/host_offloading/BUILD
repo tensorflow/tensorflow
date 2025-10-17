@@ -118,7 +118,9 @@ strict_cc_test(
 tf_proto_library(
     name = "host_offloading_executable_proto",
     srcs = ["host_offloading_executable.proto"],
-    compatible_with = get_compatible_with_libtpu_portable(),
+    compatible_with = get_compatible_with_libtpu_portable() + [
+        # copybara:uncomment "//buildenv/target:non_prod",
+    ],
     deps = [
         "//xla/service:hlo_proto",
         "//xla/service/cpu:executable_proto",

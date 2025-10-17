@@ -19,6 +19,7 @@ package xla.gpu;
 
 import "xla/backends/gpu/runtime/convolution_filter_thunk.proto";
 import "xla/backends/gpu/runtime/dynamic_slice_thunk.proto";
+import "xla/core/host_offloading/host_offloading_executable.proto";
 import "xla/service/buffer_assignment.proto";
 import "xla/service/gpu/gpu_conv_runner.proto";
 import "xla/service/gpu/gpu_norm_runner.proto";
@@ -141,8 +142,21 @@ message CudnnThunkProto {
   optional int64 sdpa_dropout_seed = 3;
 }
 
-message HostExecuteStartThunkProto {}
-message HostExecuteDoneThunkProto {}
+message ShapedSliceProto {
+  xla.buffer_assignment.BufferAllocationSliceProto slice = 1;
+  xla.ShapeProto shape = 2;
+}
+
+message HostExecuteStartThunkProto {
+  HostOffloadingExecutableProto executable_proto = 1;
+  repeated ShapedSliceProto args = 2;
+  repeated ShapedSliceProto results = 3;
+  uint64 async_events_unique_id = 4;
+}
+
+message HostExecuteDoneThunkProto {
+  uint64 async_events_unique_id = 1;
+}
 
 message DynamicSliceThunkProto {
   SequentialThunkProto embedded_thunk = 1;
@@ -162,11 +176,6 @@ message MemzeroThunkProto {
 message Memset32BitValueThunkProto {
   xla.buffer_assignment.BufferAllocationSliceProto dest_buffer = 1;
   uint32 value = 2;
-}
-
-message ShapedSliceProto {
-  xla.buffer_assignment.BufferAllocationSliceProto slice = 1;
-  xla.ShapeProto shape = 2;
 }
 
 message InfeedThunkProto {
