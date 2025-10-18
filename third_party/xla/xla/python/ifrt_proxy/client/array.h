@@ -108,7 +108,7 @@ class Array final : public llvm::RTTIExtends<Array, xla::ifrt::Array> {
         dtype_(dtype),
         shape_(std::move(shape)),
         sharding_(std::move(sharding)),
-        custom_layout_(std::move(layout)),
+        layout_(std::move(layout)),
         user_context_(UserContextScope::current()),
         handle_(arr_handle) {}
 
@@ -138,10 +138,6 @@ class Array final : public llvm::RTTIExtends<Array, xla::ifrt::Array> {
     }
     deleted_ = DeletionState::kUnknown;
     return handle_;
-  }
-
-  std::shared_ptr<const xla::PjRtLayout> custom_layout() const {
-    return custom_layout_;
   }
 
   xla::ifrt::Client* client() const override;
@@ -191,11 +187,7 @@ class Array final : public llvm::RTTIExtends<Array, xla::ifrt::Array> {
   const DType dtype_;
   const Shape shape_;
   const ShardingRef sharding_;
-
-  // This is layout explicitly supplied at creation time. we explicitly
-  // distinguish it from default layouts since some functions
-  // behaves differently depending on where the layout came from.
-  const std::shared_ptr<const xla::PjRtLayout> custom_layout_;
+  const std::shared_ptr<const xla::PjRtLayout> layout_;
 
   const UserContextRef user_context_;
 
