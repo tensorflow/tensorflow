@@ -2438,6 +2438,35 @@ PJRT_Error* PJRT_Event_OnReady(PJRT_Event_OnReady_Args* args) {
   return nullptr;
 }
 
+PJRT_Error* PJRT_Event_Promise_Get(PJRT_Event_Promise_Get_Args* args) {
+  PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+      "PJRT_Event_Promise_Get", PJRT_Event_Promise_Get_Args_STRUCT_SIZE,
+      args->struct_size));
+  auto [promise, future] = xla::Future<>::MakePromise();
+  args->event = new PJRT_Event{std::move(future)};
+  args->promise = new PJRT_Promise{std::move(promise)};
+  return nullptr;
+}
+
+PJRT_Error* PJRT_Promise_Set(PJRT_Promise_Set_Args* args) {
+  PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+      "PJRT_Promise_Set", PJRT_Promise_Set_Args_STRUCT_SIZE,
+      args->struct_size));
+  absl::Status status(
+      PjrtErrorCodeToStatusCode(args->error_code),
+      absl::string_view(args->error_message, args->error_message_size));
+  args->promise->promise.Set(status);
+  return nullptr;
+}
+
+PJRT_Error* PJRT_Promise_Destroy(PJRT_Promise_Destroy_Args* args) {
+  PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+      "PJRT_Promise_Destroy", PJRT_Promise_Destroy_Args_STRUCT_SIZE,
+      args->struct_size));
+  delete args->promise;
+  return nullptr;
+}
+
 // ------------------------------ Device Topology ------------------------------
 
 PJRT_Error* PJRT_TopologyDescription_Destroy(
@@ -3086,6 +3115,10 @@ PJRT_Api CreatePjrtApi(PJRT_Client_Create* create_fn,
       pjrt::PJRT_Client_FulfillAliasBuffer,
       /*PJRT_LoadedExecutable_GetDeviceAssignment=*/
       pjrt::PJRT_LoadedExecutable_GetDeviceAssignment,
+
+      /*PJRT_Event_Promise_Get=*/pjrt::PJRT_Event_Promise_Get,
+      /*PJRT_Promise_Set=*/pjrt::PJRT_Promise_Set,
+      /*PJRT_Promise_Destroy=*/pjrt::PJRT_Promise_Destroy,
   };
 }
 
