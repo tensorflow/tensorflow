@@ -36,6 +36,7 @@ def nanobind_pywrap_extension(
         pytype_deps = [],  # @unused
         copts = [],
         linkopts = [],
+        compatible_with = [],
         visibility = None):
     # buildifier: disable=function-docstring-args
     "Python extension rule using nanobind and the pywrap rules."
@@ -80,6 +81,7 @@ def nanobind_pywrap_extension(
         linkopts = linkopts,
         visibility = visibility,
         default_deps = [],
+        compatible_with = compatible_with,
         common_lib_packages = [
             "jaxlib",
         ],

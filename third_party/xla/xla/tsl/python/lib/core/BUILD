@@ -2,6 +2,7 @@
 #   Implementation of custom numpy floats.
 
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
+load("//xla/tsl:tsl.default.bzl", "get_compatible_with_libtpu_portable")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -49,6 +50,7 @@ cc_library(
     name = "numpy",
     srcs = ["numpy.cc"],
     hdrs = ["numpy.h"],
+    compatible_with = get_compatible_with_libtpu_portable(),
     deps = [
         "//third_party/py/numpy:headers",
         "@rules_python//python/cc:current_py_cc_headers",

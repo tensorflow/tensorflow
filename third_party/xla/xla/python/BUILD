@@ -10,14 +10,17 @@ load("//xla/python:pywrap.bzl", "nanobind_pywrap_extension")
 load(
     "//xla/tsl:tsl.bzl",
     "if_google",
+    "if_libtpu_sdk",
     "internal_visibility",
 )
-load("//xla/tsl:tsl.default.bzl", "get_compatible_with_portable", "tsl_pybind_extension")
+load("//xla/tsl:tsl.default.bzl", "get_compatible_with_libtpu_portable", "get_compatible_with_portable", "tsl_pybind_extension")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
-    default_visibility = internal_visibility([":jax"]),
+    default_visibility = internal_visibility([
+        ":jax",
+    ]),
     licenses = ["notice"],
 )
 
@@ -61,7 +64,9 @@ pytype_strict_library(
     name = "xla_extension",
     srcs = ["xla_extension.py"],
     visibility = internal_visibility(XLA_PYTHON_XLA_EXTENSION_USERS),
-    deps = if_google(["//third_party/py/jax/jaxlib:_jax"]),
+    deps = if_google([
+        "//third_party/py/jax/jaxlib:_jax",
+    ]),
 )
 
 tsl_pybind_extension(
@@ -89,13 +94,92 @@ py_strict_test(
 )
 
 cc_library(
+    name = "xla_literal",
+    srcs = ["xla_literal.cc"],
+    hdrs = ["xla_literal.h"],
+    compatible_with = get_compatible_with_libtpu_portable(),
+    copts = [
+        "-fexceptions",
+        "-fno-strict-aliasing",
+    ],
+    features = ["-use_header_modules"],
+    visibility = internal_visibility([":friends"] +
+                                     XLA_PYTHON_XLA_EXTENSION_USERS),
+    deps = [
+        ":dlpack_types",
+        ":nb_numpy",
+        ":types",
+        "//xla:literal",
+        "//xla:shape_util",
+        "//xla/hlo/parser:hlo_parser",
+        "//xla/pjrt:exceptions",
+        "//xla/pjrt:status_casters",
+        "//xla/tsl/lib/strings:proto_serialization",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/hash",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+        "@nanobind",
+        "@rules_python//python/cc:current_py_cc_headers",
+    ],
+)
+
+nanobind_pywrap_extension(
+    name = "_xla",
+    srcs = ["xla.cc"],
+    compatible_with = get_compatible_with_libtpu_portable(),
+    visibility = internal_visibility([":friends"] +
+                                     XLA_PYTHON_XLA_EXTENSION_USERS),
+    deps = [
+        ":xla_literal",
+        "@nanobind",
+        "@rules_python//python/cc:current_py_cc_headers",
+    ] + if_libtpu_sdk(
+        if_false = ["//xla/tsl/python/lib/core:numpy"],
+        if_true = ["//third_party/py/numpy:headers"],
+    ),
+)
+
+cc_library(
+    name = "dlpack_types",
+    srcs = ["dlpack_types.cc"],
+    hdrs = ["dlpack_types.h"],
+    compatible_with = get_compatible_with_libtpu_portable(),
+    copts = [
+        "-fexceptions",
+        "-fno-strict-aliasing",
+    ],
+    features = ["-use_header_modules"],
+    visibility = internal_visibility([":friends"]),
+    deps = [
+        ":types",
+        "//xla:literal",
+        "//xla:shape_util",
+        "//xla:util",
+        "//xla:xla_data_proto_cc",
+        "//xla/pjrt:exceptions",
+        "//xla/python/ifrt",
+        "//xla/python/pjrt_ifrt",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:logging",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/status:statusor",
+        "@dlpack",
+        "@nanobind",
+        "@rules_python//python/cc:current_py_cc_headers",
+    ],
+)
+
+cc_library(
     name = "types",
     srcs = ["types.cc"],
     hdrs = [
         "types.h",
         "version.h",
     ],
-    compatible_with = [],
+    compatible_with = get_compatible_with_libtpu_portable(),
     copts = [
         "-fexceptions",
         "-fno-strict-aliasing",
@@ -123,7 +207,9 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "@nanobind",
         "@rules_python//python/cc:current_py_cc_headers",  # buildcleaner: keep
-    ],
+    ] + if_libtpu_sdk([
+        "//third_party/py/numpy:headers",
+    ]),
 )
 
 cc_library(
@@ -507,20 +593,24 @@ cc_library(
     name = "nb_numpy",
     srcs = ["nb_numpy.cc"],
     hdrs = ["nb_numpy.h"],
-    compatible_with = [],
+    compatible_with = get_compatible_with_libtpu_portable(),
     copts = ["-fexceptions"],
     features = ["-use_header_modules"],
     visibility = internal_visibility([":friends"]),
     deps = [
+        "//xla/tsl/python/lib/core:numpy",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
         "@nanobind",
-        # copybara:uncomment_begin
-        # "//third_party/py/numpy:multiarray",  # build_cleaner: keep
-        # copybara:uncomment_end
         "@rules_python//python/cc:current_py_cc_headers",
-        "//xla/tsl/python/lib/core:numpy",
-    ],
+    ] + if_libtpu_sdk(
+        if_false = [
+            # copybara:uncomment_begin
+            # "//third_party/py/numpy:multiarray",  # buildcleaner: keep
+            # copybara:uncomment_end
+        ],
+        if_true = ["//third_party/py/numpy:headers"],
+    ),
 )
 
 cc_library(

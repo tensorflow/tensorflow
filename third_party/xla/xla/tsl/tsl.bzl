@@ -153,6 +153,17 @@ def if_libtpu(if_true, if_false = []):
         "//conditions:default": if_false,
     })
 
+def if_libtpu_sdk(if_true, if_false = []):
+    """Shorthand for select()ing whether to build backend support for TPUs when building sdk.so"""
+    return select({
+        # copybara:uncomment_begin(different config setting in OSS)
+        # "@local_tsl//tsl/platform:libtpu_on_gce": if_true,
+        # copybara:uncomment_end_and_comment_begin
+        clean_dep("//xla/tsl:with_tpu_support"): if_true,
+        # copybara:comment_end
+        "//conditions:default": if_false,
+    })
+
 def if_macos(a, otherwise = []):
     return select({
         clean_dep("//xla/tsl:macos"): a,
