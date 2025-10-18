@@ -245,6 +245,9 @@ class AsyncTracker {
   virtual ResourcesVector GetResourcesFromInstructionImpl(
       const HloInstruction& hlo) const;
 
+  // Gets the resource type associated with the given op.
+  static ResourceType GetResourceTypeForOp(HloOpcode op);
+
   // Returns resources used (i.e., occupied or released) by this instruction
   absl::Span<const ResourcePair> GetResourcesFromInstruction(
       const HloInstruction& hlo) const;
