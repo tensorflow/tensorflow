@@ -645,7 +645,7 @@ cc_library(
         "gpu",
         "rocm-only",
     ],
-    deps = if_rocm_hipblaslt([
+    deps = if_static([
         "@local_config_rocm//rocm:hipblaslt",
     ]),
 )
@@ -696,9 +696,9 @@ cc_library(
         "@local_config_rocm//rocm:rocm_headers",
         "@local_tsl//tsl/platform:dso_loader",
         "@local_tsl//tsl/platform:ml_dtypes",
-    ] + if_static([
+    ] + [
         ":hipblaslt_if_static",
-    ]),
+    ],
     alwayslink = True,
 )
 
