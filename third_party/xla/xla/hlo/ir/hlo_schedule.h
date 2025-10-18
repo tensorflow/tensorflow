@@ -157,9 +157,16 @@ class HloSchedule {
  public:
   explicit HloSchedule(const HloModule* module) : module_(module) {}
 
-  // (De)Serialize an HloSchedule to/from a HloScheduleProto.
+  // (De)Serialize an HloSchedule to/from a HloScheduleProto. If
+  // proto_id_to_instruction_id_map is provided, it will be used to map the
+  // instruction ids in the proto to the instruction ids in the HloModule. This
+  // is necessary if the HloModuleProto was created with
+  // preserve_instruction_ids=false. The map must use full instruction unique
+  // ids as keys.
   static absl::StatusOr<HloSchedule> CreateFromProto(
-      const HloModule* module, const HloScheduleProto& proto);
+      const HloModule* module, const HloScheduleProto& proto,
+      const absl::flat_hash_map<int64_t, absl::flat_hash_map<int64_t, int64_t>>*
+          computation_id_to_instruction_id_remap = nullptr);
   absl::StatusOr<HloScheduleProto> ToProto() const;
 
   // Returns a reference to the sequence for the given computation.
