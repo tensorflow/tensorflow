@@ -183,7 +183,8 @@ cc_library(
     hdrs = ["mesh_and_axis.h"],
     deps = [
         ":tile_assignment",
-        "@com_google_absl//absl/strings",
+        "//xla:xla_data_proto_cc",
+        "@llvm-project//llvm:Support",
     ],
 )
 
