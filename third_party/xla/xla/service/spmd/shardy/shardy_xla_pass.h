@@ -34,9 +34,11 @@ class ShardyXLA : public xla::HloModulePass {
  public:
   explicit ShardyXLA(bool runSdyShardingPropagation = true,
                      mlir::sdy::PropagationOptions defaultOptions =
-                         mlir::sdy::PropagationOptions{})
+                         mlir::sdy::PropagationOptions{},
+                     bool dedupFunctionsFully = false)
       : runSdyShardingPropagation(runSdyShardingPropagation),
-        defaultOptions(defaultOptions) {}
+        defaultOptions(defaultOptions),
+        dedupFunctionsFully(dedupFunctionsFully) {}
 
   absl::string_view name() const override { return "shardy-xla"; }
 
@@ -48,6 +50,11 @@ class ShardyXLA : public xla::HloModulePass {
  private:
   bool runSdyShardingPropagation;
   mlir::sdy::PropagationOptions defaultOptions;
+  // Whether to deduplicate functions fully, regardless of the input and output
+  // shardings of functions, and it keeps one callee function for each caller
+  // function. The default is false, meaning it will deduplicate only if the
+  // input and output shardings are the same.
+  bool dedupFunctionsFully;
   // TODO. Run other SDY passes with flags.
 };
 

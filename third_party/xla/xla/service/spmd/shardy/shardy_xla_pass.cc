@@ -313,6 +313,7 @@ absl::Status runShardingPropagation(HloModule* hloModule,
                                     mlir::ModuleOp mlirModule,
                                     bool importMhloShardings,
                                     mlir::sdy::PropagationOptions options,
+                                    bool dedupFunctionsFully,
                                     absl::string_view passName) {
   LOG(INFO) << "Using Shardy for XLA SPMD propagation.";
 
@@ -386,7 +387,10 @@ absl::Status runShardingPropagation(HloModule* hloModule,
   options.conservativePropagation = hloModule->use_auto_spmd_partitioning();
   options.enableAutoPartitioning = hloModule->use_auto_spmd_partitioning();
   mlir::sdy::addPropagationPipeline(pm, dumpIndex, options);
-  addStablehloExportPipeline(pm);
+
+  xla::sdy::StablehloExportPipelineOptions stablehloExportPipelineOptions;
+  stablehloExportPipelineOptions.dedupFunctionsFully = dedupFunctionsFully;
+  addStablehloExportPipeline(pm, stablehloExportPipelineOptions);
   pm.addPass(mlir::sdy::createSaveModuleOpPass(shardyDir, "output_module",
                                                dumpIndex++));
   tsl::StatusScopedDiagnosticHandler diagnosticHandler(
@@ -470,9 +474,9 @@ absl::StatusOr<bool> ShardyXLA::Run(
                                      useTupleArgs);
 
   if (runSdyShardingPropagation) {
-    TF_RETURN_IF_ERROR(runShardingPropagation(hloModule, mlirModule.get(),
-                                              importMhloShardings,
-                                              defaultOptions, name()));
+    TF_RETURN_IF_ERROR(
+        runShardingPropagation(hloModule, mlirModule.get(), importMhloShardings,
+                               defaultOptions, dedupFunctionsFully, name()));
   }
 
   // TODO(b/431836696): Remove once issue is fixed.
