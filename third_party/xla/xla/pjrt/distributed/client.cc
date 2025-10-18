@@ -22,6 +22,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -31,6 +32,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "grpcpp/channel.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
+#include "xla/service/global_device_id.h"
 #include "xla/tsl/distributed_runtime/coordination/coordination_client.h"
 #include "xla/tsl/distributed_runtime/coordination/coordination_service_agent.h"
 #include "xla/tsl/distributed_runtime/rpc/coordination/grpc_coordination_client.h"
@@ -67,6 +69,8 @@ class DistributedRuntimeCoordinationServiceClient
   absl::Status WaitAtBarrier(
       std::string barrier_id, absl::Duration timeout,
       std::optional<absl::Span<const int32_t>> process_ids) override;
+  absl::StatusOr<absl::flat_hash_map<int32_t, IncarnationId>>
+  GetLiveNodesWithIncarnations(absl::Span<const int32_t> nodes) override;
   absl::StatusOr<std::vector<int32_t>> GetLiveNodes(
       absl::Span<const int32_t> nodes) override;
   absl::StatusOr<tsl::CoordinationServiceAgent*> GetCoordinationServiceAgent()
@@ -208,8 +212,8 @@ absl::Status DistributedRuntimeCoordinationServiceClient::WaitAtBarrier(
   return coord_agent_->WaitAtBarrier(barrier_id, timeout, tasks);
 }
 
-absl::StatusOr<std::vector<int32_t>>
-DistributedRuntimeCoordinationServiceClient::GetLiveNodes(
+absl::StatusOr<absl::flat_hash_map<int32_t, IncarnationId>>
+DistributedRuntimeCoordinationServiceClient::GetLiveNodesWithIncarnations(
     absl::Span<const int32_t> nodes) {
   // Note that jax.distributed uses terms "process" and "node", and the
   // coordination service uses the term "task". These all refer to the same
@@ -227,13 +231,29 @@ DistributedRuntimeCoordinationServiceClient::GetLiveNodes(
   }
 
   // Get the set of live tasks.
-  TF_ASSIGN_OR_RETURN(const std::vector<tensorflow::CoordinatedTask> live_tasks,
-                      coord_agent_->GetAliveTasks(tasks));
+  TF_ASSIGN_OR_RETURN(
+      const std::vector<tsl::CoordinationServiceAgent::AliveTask> live_tasks,
+      coord_agent_->GetAliveTasks(tasks));
 
   // Extract the node ids from the live tasks.
-  std::vector<int32_t> live_nodes(live_tasks.size());
-  for (int i = 0; i < live_tasks.size(); ++i) {
-    live_nodes[i] = live_tasks[i].task_id();
+  absl::flat_hash_map<int32_t, IncarnationId> live_nodes;
+  for (const tsl::CoordinationServiceAgent::AliveTask& task : live_tasks) {
+    live_nodes[task.task_id] = task.incarnation_id;
+  }
+  return live_nodes;
+}
+
+absl::StatusOr<std::vector<int32_t>>
+DistributedRuntimeCoordinationServiceClient::GetLiveNodes(
+    absl::Span<const int32_t> nodes) {
+  absl::StatusOr<absl::flat_hash_map<int32_t, IncarnationId>>
+      live_nodes_with_incarnations = GetLiveNodesWithIncarnations(nodes);
+  if (!live_nodes_with_incarnations.ok()) {
+    return live_nodes_with_incarnations.status();
+  }
+  std::vector<int32_t> live_nodes;
+  for (const auto& [task_id, unused] : *live_nodes_with_incarnations) {
+    live_nodes.push_back(task_id);
   }
   return live_nodes;
 }
