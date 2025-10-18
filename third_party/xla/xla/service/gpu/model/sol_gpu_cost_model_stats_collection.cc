@@ -60,8 +60,18 @@ bool SetReificationCost(HloInstruction* instr, double cost_us) {
     return false;
   }
   auto reification_cost = gpu_config->add_reification_cost();
+  VLOG(3) << "Setting exec_time_us=" << cost_us << " for " << instr->name()
+          << " in SolGpuCostModelStatsCollection";
   reification_cost->set_exec_time_us(cost_us);
   reification_cost->set_name("sol");
+  if (instr->opcode() == HloOpcode::kAsyncStart &&
+      instr->async_wrapped_instruction() != nullptr) {
+    VLOG(9) << "AsyncStart: Setting reification cost for async start "
+            << instr->ToString() << " computation:"
+            << instr->async_wrapped_computation()->ToString();
+    return SetReificationCost(
+        instr->async_wrapped_computation()->root_instruction(), cost_us);
+  }
   return instr->set_backend_config(*gpu_config).ok();
 }
 
@@ -72,9 +82,13 @@ bool RecordReificationCost(HloInstruction& instr,
     HloGraphNode from(&instr, /*original_position=*/-1);
     HloGraphNode to(instr.users()[0], /*original_position=*/-1);
     if (estimator.IsAsyncPair(from, to)) {
+      VLOG(10) << "Recording reification cost for async pair from: "
+               << instr.ToString() << " to: " << instr.users()[0]->ToString();
       return SetReificationCost(&instr, estimator.GetLatencyBetween(from, to));
     }
   }
+  VLOG(10) << "Recording reification cost for single node: "
+           << instr.ToString();
   return SetReificationCost(&instr, estimator.NodeCost(&instr));
 }
 
