@@ -36,7 +36,6 @@ class StreamExecutor;
 
 // Enumeration to list the supported types of plugins / support libraries.
 enum class PluginKind {
-  kBlas,
   kDnn,
   kFft,
 };
@@ -56,7 +55,6 @@ enum class PluginKind {
 // late-loading from distorting performance/benchmarks as much as possible.
 class PluginRegistry {
  public:
-  typedef blas::BlasSupport* (*BlasFactory)(StreamExecutor*);
   typedef dnn::DnnSupport* (*DnnFactory)(StreamExecutor*);
   typedef fft::FftSupport* (*FftFactory)(StreamExecutor*);
 
@@ -80,7 +78,7 @@ class PluginRegistry {
   absl::StatusOr<FactoryT> GetFactory(Platform::Id platform_id) const;
 
  private:
-  using AnyFactory = std::variant<BlasFactory, DnnFactory, FftFactory>;
+  using AnyFactory = std::variant<DnnFactory, FftFactory>;
 
   PluginRegistry() = default;
   PluginRegistry(const PluginRegistry&) = delete;
