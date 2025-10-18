@@ -161,10 +161,13 @@ class HostExecuteDoneThunk : public Thunk {
   absl::StatusOr<ThunkProto> ToProto() const override;
   static absl::StatusOr<std::unique_ptr<HostExecuteDoneThunk>> FromProto(
       ThunkInfo thunk_info, const HostExecuteDoneThunkProto& proto,
-      absl::Span<const BufferAllocation> buffer_allocations);
+      absl::Span<const BufferAllocation> buffer_allocations,
+      HostExecuteAsyncEventsMap& async_events_map);
 
   absl::Status Initialize(const InitializeParams& params) override;
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
+
+  std::optional<AsyncEventsUniqueId> GetAsyncEventsUniqueId() const override;
 
  private:
   std::shared_ptr<HostExecuteAsyncEvents> async_events_;

@@ -639,14 +639,35 @@ HostExecuteDoneThunk::HostExecuteDoneThunk(
 std::string HostExecuteDoneThunk::ToString(int indent) const { return ""; }
 
 absl::StatusOr<ThunkProto> HostExecuteDoneThunk::ToProto() const {
-  return Unimplemented("Not implemented yet.");
+  ThunkProto proto;
+  *proto.mutable_thunk_info() = thunk_info().ToProto();
+  HostExecuteDoneThunkProto* host_execute_done_thunk_proto =
+      proto.mutable_host_execute_done_thunk();
+
+  auto async_events_unique_id = GetAsyncEventsUniqueId();
+  // By design, async_events_unique_id should always be present for
+  // HostExecuteDoneThunk.
+  CHECK_NE(async_events_unique_id, std::nullopt);
+
+  host_execute_done_thunk_proto->set_async_events_unique_id(
+      async_events_unique_id.value().value());
+
+  return proto;
 }
 
 absl::StatusOr<std::unique_ptr<HostExecuteDoneThunk>>
 HostExecuteDoneThunk::FromProto(
     ThunkInfo thunk_info, const HostExecuteDoneThunkProto& proto,
-    absl::Span<const BufferAllocation> buffer_allocations) {
-  return Unimplemented("Not implemented yet.");
+    absl::Span<const BufferAllocation> buffer_allocations,
+    HostExecuteAsyncEventsMap& async_events_map) {
+  // If async_events_map already contains an entry for the given unique id,
+  // that means that the pairing start thunk is already serialized and we reuse
+  // the id to connect them. Otherwise, create a new entry.
+  auto [async_event_it, _] = async_events_map.try_emplace(
+      AsyncEventsUniqueId(proto.async_events_unique_id()),
+      std::make_shared<HostExecuteAsyncEvents>());
+  return std::make_unique<HostExecuteDoneThunk>(thunk_info,
+                                                async_event_it->second);
 }
 
 absl::Status HostExecuteDoneThunk::Initialize(const InitializeParams& params) {
@@ -672,6 +693,14 @@ absl::Status HostExecuteDoneThunk::ExecuteOnStream(
   TF_RETURN_IF_ERROR(stream->WaitFor(event.get().get()));
 
   return absl::OkStatus();
+}
+
+std::optional<AsyncEventsUniqueId>
+HostExecuteDoneThunk::GetAsyncEventsUniqueId() const {
+  CHECK(async_events_)
+      << "async_events_ must not be null in HostExecuteDoneThunk";
+  // We rely on the fact that the pointer to async_events_ is unique.
+  return absl::bit_cast<AsyncEventsUniqueId>(async_events_.get());
 }
 
 }  // namespace gpu
