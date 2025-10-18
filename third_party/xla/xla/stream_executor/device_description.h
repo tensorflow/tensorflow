@@ -36,8 +36,35 @@ limitations under the License.
 
 namespace stream_executor {
 
-using GpuComputeCapability =
-    std::variant<CudaComputeCapability, RocmComputeCapability>;
+class GpuComputeCapability
+    : public std::variant<CudaComputeCapability, RocmComputeCapability> {
+ public:
+  using std::variant<CudaComputeCapability, RocmComputeCapability>::variant;
+  using std::variant<CudaComputeCapability, RocmComputeCapability>::operator=;
+
+  bool IsCuda() const {
+    return std::holds_alternative<CudaComputeCapability>(*this);
+  }
+
+  bool IsRocm() const {
+    return std::holds_alternative<RocmComputeCapability>(*this);
+  }
+
+  const CudaComputeCapability* cuda_compute_capability() const {
+    return std::get_if<CudaComputeCapability>(this);
+  }
+
+  const RocmComputeCapability* rocm_compute_capability() const {
+    return std::get_if<RocmComputeCapability>(this);
+  }
+
+  std::string ToString() const {
+    if (auto ptr = cuda_compute_capability()) {
+      return ptr->ToString();
+    }
+    return rocm_compute_capability()->ToString();
+  }
+};
 
 // Data that describes the execution target of the StreamExecutor, in terms of
 // important logical parameters. These include dimensionality limits and
@@ -193,60 +220,45 @@ class DeviceDescription {
   // also we do not count what occupies cache, but rather claim that what is
   // much smaller than the cache size will likely stay in it.
   constexpr int64_t l1_cache_size_per_SM() const {
-    return std::visit(
-        [](const auto& capability) -> int64_t {
-          if constexpr (std::is_same_v<std::decay_t<decltype(capability)>,
-                                       RocmComputeCapability>) {
-            // MI100 and MI200 has 16KB L1 cache per CU.
-            if (capability.gfx9_mi100() || capability.gfx9_mi200()) {
-              return 16 * 1024;
-            }
-            // MI300 has 32KB L1 cache per CU.
-            if (capability.gfx9_mi300_series()) {
-              return 32 * 1024;
-            }
-          }
-          // Default return for other GPUs (e.g., RTX A6000).
-          return 2 * 1024;
-        },
-        gpu_compute_capability_);
+    if (auto* capability = gpu_compute_capability_.rocm_compute_capability()) {
+      // MI100 and MI200 has 16KB L1 cache per CU.
+      if (capability->gfx9_mi100() || capability->gfx9_mi200()) {
+        return 16 * 1024;
+      }
+      // MI300 has 32KB L1 cache per CU.
+      if (capability->gfx9_mi300_series()) {
+        return 32 * 1024;
+      }
+    }
+    // Default return for other GPUs (e.g., RTX A6000).
+    return 2 * 1024;
   }
 
   constexpr int64_t dram_to_l2_transaction_size_bytes() const {
-    return std::visit(
-        [](const auto& capability) -> int {
-          if constexpr (std::is_same_v<std::decay_t<decltype(capability)>,
-                                       RocmComputeCapability>) {
-            // DRAM->L2 bus is 128 Byte width for MI300.
-            if (capability.gfx9_mi300_series()) {
-              return 128;
-            }
-          }
-          // Cache line is 128B that is split into 4 sectors of 32B. Default
-          // transaction size from DRAM -> L2 = 64 Bytes = 2 sectors, since
-          // V100, but it can be also configured.
-          // https://developer.download.nvidia.com/video/gputechconf/gtc/2020/presentations/s21819-optimizing-applications-for-nvidia-ampere-gpu-architecture.pdf
-          // (page 10).
-          // return 64 Bytes by default.
-          return 64;
-        },
-        gpu_compute_capability_);
+    if (auto* capability = gpu_compute_capability_.rocm_compute_capability()) {
+      // DRAM->L2 bus is 128 Byte width for MI300.
+      if (capability->gfx9_mi300_series()) {
+        return 128;
+      }
+    }
+    // Cache line is 128B that is split into 4 sectors of 32B. Default
+    // transaction size from DRAM -> L2 = 64 Bytes = 2 sectors, since
+    // V100, but it can be also configured.
+    // https://developer.download.nvidia.com/video/gputechconf/gtc/2020/presentations/s21819-optimizing-applications-for-nvidia-ampere-gpu-architecture.pdf
+    // (page 10).
+    // return 64 Bytes by default.
+    return 64;
   }
 
   constexpr int64_t memory_transactions_per_clock() const {
-    return std::visit(
-        [](const auto& capability) -> int {
-          if constexpr (std::is_same_v<std::decay_t<decltype(capability)>,
-                                       RocmComputeCapability>) {
-            // 16 works well on MI300.
-            if (capability.gfx9_mi300_series()) {
-              return 16;
-            }
-          }
-          // Default return for other GPUs.
-          return 32;
-        },
-        gpu_compute_capability_);
+    if (auto* capability = gpu_compute_capability_.rocm_compute_capability()) {
+      // 16 works well on MI300.
+      if (capability->gfx9_mi300_series()) {
+        return 16;
+      }
+    }
+    // Default return for other GPUs.
+    return 32;
   }
 
   GpuDeviceInfoProto ToGpuProto() const;

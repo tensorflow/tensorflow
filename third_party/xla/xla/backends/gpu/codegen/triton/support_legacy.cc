@@ -68,38 +68,25 @@ bool IsTritonSupportedDotOutputType(
     case F32:
       return true;
     case F8E5M2:
-      return std::visit(
-          absl::Overload(
-              [](const se::CudaComputeCapability& cc) {
-                return cc.IsAtLeastAmpere();
-              },
-              [](const se::RocmComputeCapability& cc) { return false; }),
-          gpu_version);
-
+      if (auto ptr = gpu_version.cuda_compute_capability()) {
+        return ptr->IsAtLeastAmpere();
+      }
+      return false;
     case F8E4M3FN:
-      return std::visit(
-          absl::Overload(
-              [](const se::CudaComputeCapability& cc) {
-                return cc.IsAtLeastHopper();
-              },
-              [](const se::RocmComputeCapability& cc) { return false; }),
-          gpu_version);
+      if (auto ptr = gpu_version.cuda_compute_capability()) {
+        return ptr->IsAtLeastHopper();
+      }
+      return false;
     case BF16:
-      return std::visit(
-          absl::Overload(
-              [](const se::CudaComputeCapability& cc) { return true; },
-              [](const se::RocmComputeCapability& cc) {
-                return cc.has_bf16_dtype_support();
-              }),
-          gpu_version);
+      if (auto ptr = gpu_version.rocm_compute_capability()) {
+        return ptr->has_bf16_dtype_support();
+      }
+      return true;
     case S32:
-      return std::visit(
-          absl::Overload(
-              [](const se::CudaComputeCapability& cc) {
-                return cc.IsAtLeastAmpere();
-              },
-              [](const se::RocmComputeCapability& cc) { return false; }),
-          gpu_version);
+      if (auto ptr = gpu_version.cuda_compute_capability()) {
+        return ptr->IsAtLeastAmpere();
+      }
+      return false;
     default:
       return false;
   }

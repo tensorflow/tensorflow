@@ -116,24 +116,21 @@ class AnalyticalLatencyHidingSchedulerTest : public GpuCodegenTest {
 
 TEST_F(AnalyticalLatencyHidingSchedulerTest, TestAnalyticalLatencyEstimator) {
   auto gpu_compute_capability = GetGpuComputeCapability();
-  auto visitor = [](const auto& c) {
-    using cc = std::remove_const_t<std::remove_reference_t<decltype(c)>>;
-    if constexpr (std::is_same_v<stream_executor::CudaComputeCapability, cc>) {
-      if (!c.IsAtLeast(se::CudaComputeCapability::kPascal)) {
-        GTEST_SKIP() << "This test is for Pascal+ GPUs.";
-      }
-      if (c.major == 12 && c.minor == 1) {
-        // Skip this test for Spark. Because of the AllReduce, the test uses
-        // gpu_collective_performance_model, which only makes sense in a
-        // datacenter network setting.
-        GTEST_SKIP() << "This test is for datacenter GPUs.";
-      }
-    } else if (!std::is_same_v<stream_executor::RocmComputeCapability, cc>) {
-      GTEST_SKIP() << "This test is for Pascal+ GPUs.";
-    }
-  };
+  if (gpu_compute_capability.IsRocm()) {
+    GTEST_SKIP() << "This test is for Pascal+ GPUs.";
+  }
 
-  std::visit(visitor, gpu_compute_capability);
+  auto* c = gpu_compute_capability.cuda_compute_capability();
+  if (!c->IsAtLeast(se::CudaComputeCapability::kPascal)) {
+    GTEST_SKIP() << "This test is for Pascal+ GPUs.";
+  }
+  if (c->major == 12 && c->minor == 1) {
+    // Skip this test for Spark. Because of the AllReduce, the test uses
+    // gpu_collective_performance_model, which only makes sense in a
+    // datacenter network setting.
+    GTEST_SKIP() << "This test is for datacenter GPUs.";
+  }
+
   const se::DeviceDescription dev_info =
       backend().default_stream_executor()->GetDeviceDescription();
 

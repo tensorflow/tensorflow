@@ -56,6 +56,7 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/rocm/rocm_compute_capability.h"
 #include "xla/stream_executor/semantic_version.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
@@ -843,20 +844,19 @@ absl::StatusOr<bool> CommandBufferScheduling::Run(
   };
 
   // Check if CUDA/ROCM driver supports required features.
-  auto erase_cuda = [&](const se::CudaComputeCapability& cuda_comp) {
+  if (auto* cuda_comp = device_description_.gpu_compute_capability()
+                            .cuda_compute_capability()) {
     if (std::min(device_description_.runtime_version(),
                  device_description_.driver_version()) <
         se::SemanticVersion{12, 3, 0}) {
       erase(kRequireTracing);       // cuStreamBeginCaptureToGraph
       erase(kRequireConditionals);  // on-device control flow
     }
-  };
-  auto erase_rocm = [&](const se::RocmComputeCapability& rocm_comp) {
+  } else if (const se::RocmComputeCapability* rocm_comp =
+                 device_description_.gpu_compute_capability()
+                     .rocm_compute_capability()) {
     erase(kRequireConditionals);  // on-device control flow
-  };
-
-  std::visit(absl::Overload(erase_cuda, erase_rocm),
-             device_description_.gpu_compute_capability());
+  }
 
   auto order = module->MakeComputationPostOrder();
   std::reverse(order.begin(), order.end());

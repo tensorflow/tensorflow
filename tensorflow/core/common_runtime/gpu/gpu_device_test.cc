@@ -68,12 +68,12 @@ se::CudaComputeCapability GetComputeCapability() {
 }
 
 bool IsRocm() {
-  return std::holds_alternative<se::RocmComputeCapability>(
-      se::GPUMachineManager()
-          ->ExecutorForDevice(0)
-          .value()
-          ->GetDeviceDescription()
-          .gpu_compute_capability());
+  return se::GPUMachineManager()
+      ->ExecutorForDevice(0)
+      .value()
+      ->GetDeviceDescription()
+      .gpu_compute_capability()
+      .IsRocm();
 }
 
 void ExpectErrorMessageSubstr(const Status& s, StringPiece substr) {
