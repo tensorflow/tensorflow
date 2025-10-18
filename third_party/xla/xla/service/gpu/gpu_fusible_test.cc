@@ -25,6 +25,7 @@ limitations under the License.
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/utils/hlo_traversal.h"
+#include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/instruction_fusion.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tsl/platform/statusor.h"
@@ -1666,6 +1667,105 @@ ENTRY main {
   const HloInstruction* root = module->entry_computation()->root_instruction();
   auto fusion_adaptor = HloFusionAdaptor::ForInstruction(root);
   EXPECT_TRUE(MayCausePerformanceDropIfUnrolled(*fusion_adaptor));
+}
+
+TEST_F(GpuFusibleTest, ComputeLoopFusionConfig) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+ENTRY main {
+  p0 = f16[2048,1024]{1,0} parameter(0)
+  ROOT res = f16[2048,1024]{1,0} negate(p0)
+}
+)"));
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  se::DeviceDescription device_info_h100{
+      TestGpuDeviceInfo::RTXH100SXMDeviceInfo()};
+  auto analysis = HloFusionAnalysis::Create(*root, device_info_h100);
+  auto config = ComputeLoopFusionConfig(analysis, root->shape());
+  EXPECT_EQ(config.unroll_factor, 4);
+
+  se::DeviceDescription device_info_b200{
+      TestGpuDeviceInfo::RTXB200SXMDeviceInfo()};
+  analysis = HloFusionAnalysis::Create(*root, device_info_b200);
+  config = ComputeLoopFusionConfig(analysis, root->shape());
+  EXPECT_EQ(config.unroll_factor, 8);
+}
+
+TEST_F(GpuFusibleTest, ComputeLoopFusionConfigForLoopReduce) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+sum {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT add = f32[] add(p0, p1)
+}
+
+ENTRY main {
+  p0 = f32[270336,8]{1,0} parameter(0)
+  zero = f32[] constant(0)
+  ROOT res = f32[270336]{0} reduce(p0, zero), dimensions={1}, to_apply=sum
+}
+)"));
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  se::DeviceDescription device_info_h100{
+      TestGpuDeviceInfo::RTXH100SXMDeviceInfo()};
+  auto analysis = HloFusionAnalysis::Create(*root, device_info_h100);
+  auto config = ComputeLoopFusionConfig(analysis, root->shape());
+  EXPECT_EQ(config.unroll_factor, 4);
+
+  se::DeviceDescription device_info_b200{
+      TestGpuDeviceInfo::RTXB200SXMDeviceInfo()};
+  analysis = HloFusionAnalysis::Create(*root, device_info_b200);
+  config = ComputeLoopFusionConfig(analysis, root->shape());
+  EXPECT_EQ(config.unroll_factor, 4);
+}
+
+TEST_F(GpuFusibleTest, ComputeLoopFusionConfigForLoopTransposeSmallMinorDim) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+ENTRY main {
+  p0 = f16[256,2048,4]{2,1,0} parameter(0)
+  ROOT res = f16[2048,256,4]{2,1,0} transpose(p0), dimensions={1,0,2}
+}
+)"));
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  se::DeviceDescription device_info_h100{
+      TestGpuDeviceInfo::RTXH100SXMDeviceInfo()};
+  auto analysis = HloFusionAnalysis::Create(*root, device_info_h100);
+  auto config = ComputeLoopFusionConfig(analysis, root->shape());
+  EXPECT_EQ(config.unroll_factor, 4);
+
+  se::DeviceDescription device_info_b200{
+      TestGpuDeviceInfo::RTXB200SXMDeviceInfo()};
+  analysis = HloFusionAnalysis::Create(*root, device_info_b200);
+  config = ComputeLoopFusionConfig(analysis, root->shape());
+  EXPECT_EQ(config.unroll_factor, 4);
+}
+
+TEST_F(GpuFusibleTest, ComputeLoopFusionConfigForLoopTransposeLargerMinorDim) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+ENTRY main {
+  p0 = f16[256,2048,8]{2,1,0} parameter(0)
+  ROOT res = f16[2048,256,8]{2,1,0} transpose(p0), dimensions={1,0,2}
+}
+)"));
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  se::DeviceDescription device_info_h100{
+      TestGpuDeviceInfo::RTXH100SXMDeviceInfo()};
+  auto analysis = HloFusionAnalysis::Create(*root, device_info_h100);
+  auto config = ComputeLoopFusionConfig(analysis, root->shape());
+  EXPECT_EQ(config.unroll_factor, 4);
+
+  se::DeviceDescription device_info_b200{
+      TestGpuDeviceInfo::RTXB200SXMDeviceInfo()};
+  analysis = HloFusionAnalysis::Create(*root, device_info_b200);
+  config = ComputeLoopFusionConfig(analysis, root->shape());
+  EXPECT_EQ(config.unroll_factor, 8);
 }
 
 }  // namespace
