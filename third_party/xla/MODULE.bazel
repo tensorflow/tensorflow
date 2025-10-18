@@ -84,6 +84,7 @@ use_repo(
     "XNNPACK",
     "cpuinfo",
     "cudnn_frontend_archive",
+    "dlpack",
     "ducc",
     "eigen_archive",
     "farmhash_archive",
