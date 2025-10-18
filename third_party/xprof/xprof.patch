@@ -4,16 +4,16 @@ diff --git a/plugin/xprof/protobuf/BUILD b/plugin/xprof/protobuf/BUILD
 @@ -1,7 +1,6 @@
  # Description:
  #  Protobufs used by TensorBoard profile plugin.
- 
+
 -load("@com_google_protobuf//:protobuf.bzl", "py_proto_library")
  load("@xla//xla/tsl/platform:build_config.bzl", xprof_proto_library = "tf_proto_library")
- 
+
  package(
 diff --git a/xprof/convert/hlo_to_tools_data.cc b/xprof/convert/hlo_to_tools_data.cc
 --- a/xprof/convert/hlo_to_tools_data.cc
 +++ b/xprof/convert/hlo_to_tools_data.cc
 @@ -62,7 +62,7 @@ absl::StatusOr<std::string> ConvertHloProtoToMemoryViewer(
- 
+
    std::string json_output;
    tsl::protobuf::util::JsonPrintOptions options;
 -  options.always_print_primitive_fields = true;
@@ -37,7 +37,7 @@ diff --git a/xprof/convert/xplane_to_tools_data.cc b/xprof/convert/xplane_to_too
 --- a/xprof/convert/xplane_to_tools_data.cc
 +++ b/xprof/convert/xplane_to_tools_data.cc
 @@ -248,7 +248,7 @@ absl::StatusOr<std::string> ConvertMultiXSpacesToPodViewer(
- 
+
    std::string json_output;
    tsl::protobuf::util::JsonPrintOptions opts;
 -  opts.always_print_primitive_fields = true;
@@ -51,7 +51,7 @@ diff --git a/xprof/convert/xplane_to_tools_data.cc b/xprof/convert/xplane_to_too
    tsl::protobuf::util::JsonPrintOptions opts;
 -  opts.always_print_primitive_fields = true;
 +  opts.always_print_fields_with_no_presence = true;
- 
+
    auto encode_status =
        tsl::protobuf::util::MessageToJsonString(profile, &json_output, opts);
 diff --git a/xprof/convert/trace_viewer/trace_events.cc b/xprof/convert/trace_viewer/trace_events.cc
@@ -80,7 +80,7 @@ diff --git a/xprof/convert/trace_viewer/trace_events.cc b/xprof/convert/trace_vi
      if (duration_ps > kLayerResolutions[i]) {
        if (i == 0) {
 -        return std::make_pair(kLayerResolutions[i], kint64max);
-+        return std::make_pair(kLayerResolutions[i], std::numeric_limits<int64_t>::max());
++        return std::make_pair(kLayerResolutions[i], static_cast<uint64_t>(std::numeric_limits<int64_t>::max()));
        } else {
          return std::make_pair(kLayerResolutions[i], kLayerResolutions[i - 1]);
        }
