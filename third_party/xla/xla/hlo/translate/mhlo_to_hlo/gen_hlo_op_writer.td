@@ -204,6 +204,7 @@ defvar CustomHloConverterOps = [
   MHLO_AllReduceOp,
   MHLO_AllToAllOp,
   MHLO_AsinOp,
+  MHLO_AsinhOp,
   MHLO_AsyncDoneOp,
   MHLO_AsyncStartOp,
   MHLO_AsyncUpdateOp,

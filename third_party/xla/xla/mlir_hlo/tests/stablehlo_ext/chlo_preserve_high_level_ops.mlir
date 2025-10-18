@@ -133,6 +133,16 @@ func.func @asin_preserve(%arg0: tensor<3x20x20xbf16>) -> tensor<?x20x20xbf16> {
 
 // -----
 
+// CHECK-LABEL: func @asinh_preserve
+func.func @asinh_preserve(%arg0: tensor<3x20x20xbf16>) -> tensor<?x20x20xbf16> {
+  // CHECK-CC: stablehlo.custom_call @mhlo.asinh(%arg0) {mhlo.attributes = {}, mhlo.version = 1 : i64} : (tensor<3x20x20xbf16>) -> tensor<?x20x20xbf16>
+  // CHECK: stablehlo.composite "chlo.asinh" %arg0 {decomposition = @chlo.asinh.impl, version = 1 : i32}
+  %0 = chlo.asinh %arg0 : tensor<3x20x20xbf16> -> tensor<?x20x20xbf16>
+  return %0 : tensor<?x20x20xbf16>
+}
+
+// -----
+
 // CHECK-LABEL: func @tan_no_preserve
 func.func @tan_no_preserve(%arg0: tensor<16xf32>) -> tensor<?xf32> {
   // CHECK: chlo.tan

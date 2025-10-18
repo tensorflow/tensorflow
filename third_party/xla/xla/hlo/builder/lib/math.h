@@ -104,7 +104,9 @@ XlaOp Acosh(XlaOp x,
             bool expand = true);
 
 // Computes the inverse hyperbolic sine of 'x'.
-XlaOp Asinh(XlaOp x);
+XlaOp Asinh(XlaOp x,
+            const std::optional<ResultAccuracy>& result_accuracy = std::nullopt,
+            bool expand = true);
 
 // Computes the inverse hyperbolic tangent of 'x'.
 XlaOp Atanh(XlaOp x,

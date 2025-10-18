@@ -1,5 +1,5 @@
 // RUN: mlir-hlo-opt --chlo-legalize-to-hlo --split-input-file -verify-diagnostics %s | FileCheck %s --dump-input-context=20
-// RUN: mlir-hlo-opt --chlo-legalize-to-high-level-mhlo="enable-acosh enable-acos enable-atanh enable-cosh enable-sinh enable-asin" --split-input-file -verify-diagnostics %s | FileCheck %s --check-prefix=CHECK-HIGH-LEVEL
+// RUN: mlir-hlo-opt --chlo-legalize-to-high-level-mhlo="enable-acosh enable-acos enable-atanh enable-cosh enable-sinh enable-asin enable-asinh" --split-input-file -verify-diagnostics %s | FileCheck %s --check-prefix=CHECK-HIGH-LEVEL
 
 // CHECK-LABEL: func.func @asin_bf16(
 // CHECK-SAME:    %[[TMP_arg0:.*]]: tensor<bf16>
@@ -411,8 +411,10 @@ func.func @asin_complex_f64_dynamic(%arg : tensor<?xcomplex<f64>>) -> tensor<?xc
 // -----
 
 // CHECK-LABEL: @asinh_bf16
+// CHECK-HIGH-LEVEL-LABEL: @asinh_bf16
 // CHECK-SAME: %[[ARG:.*]]: tensor<bf16>
 func.func @asinh_bf16(%arg : tensor<bf16>) -> tensor<bf16> {
+  // CHECK-HIGH-LEVEL: mhlo.asinh
   // Check for the bf16-specific max value.
   // CHECK: mhlo.constant dense<3.389{{.*}}e+38>
   %result = "chlo.asinh"(%arg) : (tensor<bf16>) -> tensor<bf16>
@@ -422,8 +424,10 @@ func.func @asinh_bf16(%arg : tensor<bf16>) -> tensor<bf16> {
 // -----
 
 // CHECK-LABEL: @asinh_f16
+// CHECK-HIGH-LEVEL-LABEL: @asinh_f16
 // CHECK-SAME: %[[ARG:.*]]: tensor<f16>
 func.func @asinh_f16(%arg : tensor<f16>) -> tensor<f16> {
+  // CHECK-HIGH-LEVEL: mhlo.asinh
   // Check for the f16-specific max value.
   // CHECK: mhlo.constant dense<6.550{{.*}}e+04>
   %result = "chlo.asinh"(%arg) : (tensor<f16>) -> tensor<f16>
@@ -433,8 +437,10 @@ func.func @asinh_f16(%arg : tensor<f16>) -> tensor<f16> {
 // -----
 
 // CHECK-LABEL: @asinh_f32
+// CHECK-HIGH-LEVEL-LABEL: @asinh_f32
 // CHECK-SAME: %[[ARG:.*]]: tensor<f32>
 func.func @asinh_f32(%arg : tensor<f32>) -> tensor<f32> {
+  // CHECK-HIGH-LEVEL: mhlo.asinh
   // Check for the f32-specific max value.
   // CHECK: mhlo.constant dense<3.402{{.*}}E+38>
   %result = "chlo.asinh"(%arg) : (tensor<f32>) -> tensor<f32>
@@ -444,8 +450,10 @@ func.func @asinh_f32(%arg : tensor<f32>) -> tensor<f32> {
 // -----
 
 // CHECK-LABEL:  @asinh_f64
+// CHECK-HIGH-LEVEL-LABEL: @asinh_f64
 // CHECK-SAME:   %[[VAL_0:.*]]: tensor<f64>) -> tensor<f64> {
 func.func @asinh_f64(%arg : tensor<f64>) -> tensor<f64> {
+  // CHECK-HIGH-LEVEL: mhlo.asinh
   // CHECK:   %[[VAL_1:.*]] = mhlo.sign %[[VAL_0]] : tensor<f64>
   // CHECK:   %[[VAL_2:.*]] = mhlo.abs %[[VAL_0]] : tensor<f64>
   // CHECK:   %[[VAL_3:.*]] = mhlo.constant dense<1.7976931348623157E+308> : tensor<f64>

@@ -199,7 +199,9 @@ DEFINE_UNARY_TEST_OP(
 DEFINE_UNARY_TEST_OP(
     AcoshOp, { return [](XlaOp x) { return Acosh(x); }; },
     { return std::acosh; });
-DEFINE_UNARY_TEST_OP(AsinhOp, { return Asinh; }, { return std::asinh; });
+DEFINE_UNARY_TEST_OP(
+    AsinhOp, { return [](XlaOp x) { return Asinh(x); }; },
+    { return std::asinh; });
 DEFINE_UNARY_TEST_OP(
     AtanhOp, { return [](XlaOp x) { return Atanh(x); }; },
     { return std::atanh; });

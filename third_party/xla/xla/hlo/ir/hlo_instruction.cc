@@ -2729,6 +2729,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     // Unary ops.
     case HloOpcode::kAbs:
     case HloOpcode::kAsin:
+    case HloOpcode::kAsinh:
     case HloOpcode::kAcos:
     case HloOpcode::kAcosh:
     case HloOpcode::kAtanh:
