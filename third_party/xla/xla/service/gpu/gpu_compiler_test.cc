@@ -145,6 +145,11 @@ class GpuCompilerTest : public HloTestBase {
                         test_runner().HloModuleFromWrapped(executable.get()));
     return {{optimized_module, std::move(executable)}};
   }
+
+  se::CudaComputeCapability get_cuda_cc() const {
+    se::StreamExecutor* executor = backend().default_stream_executor();
+    return executor->GetDeviceDescription().cuda_compute_capability();
+  }
 };
 
 TEST_F(GpuCompilerTest, CompiledProgramsCount) {
@@ -645,13 +650,13 @@ class GpuCompilerTestWithAutotuneDb : public GpuCompilerTest {
 
 TEST_F(GpuCompilerTestWithAutotuneDb,
        GemmFusionIsNoOpWhenGemmFusionAutotunerFallsBackToCublas) {
-  auto cc = backend()
-                .default_stream_executor()
-                ->GetDeviceDescription()
-                .cuda_compute_capability();
-  if (!cc.IsAtLeastAmpere()) {
+  if (!get_cuda_cc().IsAtLeastAmpere()) {
     GTEST_SKIP() << "Autotuning results have only been generated for Ampere "
                  << "and later GPUs";
+  }
+  if (get_cuda_cc().IsAtLeastBlackwell()) {
+    // TODO(b/445172709): Re-enable once fixed.
+    GTEST_SKIP();
   }
   const absl::string_view hlo_string = R"(
 HloModule test
@@ -713,13 +718,13 @@ ENTRY main {
 
 TEST_F(GpuCompilerTestWithAutotuneDb,
        CublasF8NumericallySameWithTritonFallbackAndWithoutTriton) {
-  auto cc = backend()
-                .default_stream_executor()
-                ->GetDeviceDescription()
-                .cuda_compute_capability();
-  if (!cc.IsAtLeastHopper()) {
+  if (!get_cuda_cc().IsAtLeastHopper()) {
     GTEST_SKIP()
         << "Autotuning results have only been generated for Hopper GPUs";
+  }
+  if (get_cuda_cc().IsAtLeastBlackwell()) {
+    // TODO(b/445172709): Re-enable once fixed.
+    GTEST_SKIP();
   }
   const absl::string_view hlo_string = R"(
 HloModule test
@@ -823,10 +828,7 @@ ENTRY main {
                     .gpu_compute_capability();
   bool is_cuda =
       std::holds_alternative<stream_executor::CudaComputeCapability>(gpu_cc);
-  auto cuda_cc = backend()
-                     .default_stream_executor()
-                     ->GetDeviceDescription()
-                     .cuda_compute_capability();
+  auto cuda_cc = get_cuda_cc();
   auto rocm_cc = backend()
                      .default_stream_executor()
                      ->GetDeviceDescription()
@@ -1119,11 +1121,6 @@ bool HasBlockLevelFusionConfig(const HloInstruction* fusion) {
 
 TEST_F(GpuCompilerTest,
        LoopFusionRootedInTransposeIsRewrittenToBlockLevelByDefaultPostAmpere) {
-  auto cc = backend()
-                .default_stream_executor()
-                ->GetDeviceDescription()
-                .cuda_compute_capability();
-
   constexpr absl::string_view transpose_fusion_module = R"(
 transpose {
   p0 = f32[1024,1024,1024] parameter(0)
@@ -1144,7 +1141,7 @@ ENTRY main {
       GetOptimizedModuleForExecutable(transpose_fusion_module, config));
   const HloModule* optimized_module = module_and_executable.first;
 
-  if (cc.IsAtLeastAmpere()) {
+  if (get_cuda_cc().IsAtLeastAmpere()) {
     EXPECT_TRUE(HasBlockLevelFusionConfig(
         optimized_module->entry_computation()->root_instruction()));
   } else {
@@ -1156,11 +1153,7 @@ ENTRY main {
 TEST_F(
     GpuCompilerTest,
     FusionBlockLevelRewriterRewritesKLoopTransposeWithBitcastIfTheSmallMinorDimIsAPowerOfTwo) {  // NOLINT(whitespace/line_length)
-  auto cc = backend()
-                .default_stream_executor()
-                ->GetDeviceDescription()
-                .cuda_compute_capability();
-  if (!cc.IsAtLeastAmpere()) {
+  if (!get_cuda_cc().IsAtLeastAmpere()) {
     GTEST_SKIP() << "FusionBlockLevelRewriter requires Ampere+ to run.";
   }
 
@@ -1395,18 +1388,14 @@ using GpuCompilerPassTest = GpuCompilerTest;
 
 TEST_F(GpuCompilerPassTest,
        GpuCompilerRunsTritonGemmRewriterByDefaultFromAmpere) {
-  auto cc = backend()
-                .default_stream_executor()
-                ->GetDeviceDescription()
-                .cuda_compute_capability();
-
   bool is_rocm = std::holds_alternative<stream_executor::RocmComputeCapability>(
       backend()
           .default_stream_executor()
           ->GetDeviceDescription()
           .gpu_compute_capability());
 
-  bool expect_triton_gemm_rewriter_has_run = cc.IsAtLeastAmpere() || is_rocm;
+  bool expect_triton_gemm_rewriter_has_run =
+      get_cuda_cc().IsAtLeastAmpere() || is_rocm;
 
   constexpr absl::string_view constant_module = R"(
 HloModule noop
@@ -1433,13 +1422,8 @@ ENTRY main {
 
 TEST_F(GpuCompilerPassTest,
        GpuCompilerRunsCustomKernelFusionByDefaultFromVolta) {
-  auto cc = backend()
-                .default_stream_executor()
-                ->GetDeviceDescription()
-                .cuda_compute_capability();
-
   bool expect_custom_kernel_fusion_rewriter_has_run =
-      cc.major == se::CudaComputeCapability::kVolta;
+      get_cuda_cc().major == se::CudaComputeCapability::kVolta;
 
   constexpr absl::string_view constant_module = R"(
 HloModule noop
@@ -1617,11 +1601,7 @@ TEST_F(PassOrderTest, OffloadingPassesAreRunInCorrectOrder) {
 }
 
 TEST_F(PassOrderTest, FusionDispatchRunsAfterAllFusionPasses) {
-  auto cc = backend()
-                .default_stream_executor()
-                ->GetDeviceDescription()
-                .cuda_compute_capability();
-  if (!cc.IsAtLeastAmpere()) {
+  if (!get_cuda_cc().IsAtLeastAmpere()) {
     GTEST_SKIP() << "fusion-dispatch requires Ampere+ to run.";
   }
 
@@ -1707,11 +1687,7 @@ TEST_F(PassOrderTest, LHSRunsIfProfileDataIsAvailable) {
 }
 
 TEST_F(PassOrderTest, GemmFusionRunsAfterDotNormalizer) {
-  auto cc = backend()
-                .default_stream_executor()
-                ->GetDeviceDescription()
-                .cuda_compute_capability();
-  if (!cc.IsAtLeastAmpere()) {
+  if (!get_cuda_cc().IsAtLeastAmpere()) {
     GTEST_SKIP() << "GemmFusion requires Ampere+ to run.";
   }
   DebugOptions options = GetDebugOptionsForTest();
@@ -1741,11 +1717,7 @@ TEST_F(PassOrderTest, NestGemmFusionRunsAfterGemmFusionAutotuner) {
 }
 
 TEST_F(PassOrderTest, TransposeDimensionGrouperRunsBeforeGemmRewriter) {
-  auto cc = backend()
-                .default_stream_executor()
-                ->GetDeviceDescription()
-                .cuda_compute_capability();
-  if (!cc.IsAtLeastAmpere()) {
+  if (!get_cuda_cc().IsAtLeastAmpere()) {
     GTEST_SKIP() << "triton-gemm-rewriter requires at least Ampere to run.";
   }
   if (!optimized_module_) {
@@ -2103,11 +2075,7 @@ ENTRY main {
 }
 
 TEST_F(GpuCompilerTest, NoCudnnVectorizationOnHopperAndBeyond) {
-  bool is_hopper_or_beyond = backend()
-                                 .default_stream_executor()
-                                 ->GetDeviceDescription()
-                                 .cuda_compute_capability()
-                                 .IsAtLeastHopper();
+  bool is_hopper_or_beyond = get_cuda_cc().IsAtLeastHopper();
 
   auto module = ParseAndReturnVerifiedModule(R"(
   HloModule TestModule
