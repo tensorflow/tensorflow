@@ -29,6 +29,25 @@ test_suite(
 )
 
 cuda_py_strict_test(
+    name = "separable_conv2d_patch_test",
+    size = "small",
+    srcs = ["separable_conv2d_patch_test.py"],
+    deps = [
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:errors",
+        "//tensorflow/python/framework:for_generated_wrappers",
+        "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/ops:gradient_checker_v2",
+        "//tensorflow/python/ops:nn_impl",
+        "//tensorflow/python/ops:nn_ops",
+        "//tensorflow/python/platform:client_testlib",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+cuda_py_strict_test(
     name = "atrous_conv2d_test",
     size = "medium",
     srcs = ["atrous_conv2d_test.py"],
