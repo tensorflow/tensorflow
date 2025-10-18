@@ -43,20 +43,20 @@ using ShapeSizeFn = std::function<int64_t(const Shape&)>;
 
 class SolGpuCostModelStatsCollectionTest
     : public HloHardwareIndependentTestBase {
+  int64_t ShapeSize(const Shape& shape) {
+    if (shape.IsTuple()) {
+      int64_t size = 0;
+      for (const auto& sub_shape : shape.tuple_shapes()) {
+        size += ShapeSize(sub_shape);
+      }
+      return size;
+    }
+    return ShapeUtil::ByteSizeOfElements(shape);
+  }
+
  public:
   explicit SolGpuCostModelStatsCollectionTest() {
-    ShapeSizeFn shape_size_bytes =
-        [&shape_size_bytes](const Shape& shape) -> int64_t {
-      int64_t shape_size = 0;
-      if (shape.IsTuple()) {
-        for (auto& sub_shape : shape.tuple_shapes()) {
-          shape_size += shape_size_bytes(sub_shape);
-        }
-        return shape_size;
-      }
-      return ShapeUtil::ByteSizeOfElements(shape);
-    };
-    shape_size_fn_ = shape_size_bytes;
+    shape_size_fn_ = [this](const Shape& shape) { return ShapeSize(shape); };
   }
 
  protected:
@@ -104,6 +104,47 @@ TEST_F(SolGpuCostModelStatsCollectionTest,
                   ->backend_config<GpuBackendConfig>()
                   ->reification_cost(),
               ElementsAre(Property(&ReificationCost::exec_time_us, Gt(0))));
+}
+
+TEST_F(SolGpuCostModelStatsCollectionTest,
+       RecordsRuntimeInfoForAsyncStartReduceScatter) {
+  constexpr absl::string_view kHloText = R"(
+HloModule async_rs_test
+
+%add.f32 (x: f32[], y: f32[]) -> f32[] {
+  %x = f32[] parameter(0)
+  %y = f32[] parameter(1)
+  ROOT %add = f32[] add(%x, %y)
+}
+
+%async_rs {
+  %p0 = f32[4096,128256] parameter(0)
+  ROOT %rs = f32[512,128256] reduce-scatter(%p0), channel_id=1, replica_groups={{0,1,2,3,4,5,6,7}}, dimensions={0}, to_apply=%add.f32
+}
+
+ENTRY main {
+  %param = f32[4096,128256] parameter(0)
+  %rs_start = ((f32[4096,128256]), f32[512,128256], u32[]) async-start(%param), calls=%async_rs
+  ROOT %rs_done = f32[512,128256] async-done(%rs_start)
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
+
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, SolGpuCostModelStatsCollection(
+                                            device_info_, shape_size_fn_,
+                                            pointer_size_, &mlir_context_)
+                                            .Run(module.get()));
+
+  VLOG(1) << module->ToString();
+
+  EXPECT_FALSE(changed);
+  EXPECT_THAT(
+      module->entry_computation()
+          ->root_instruction()
+          ->operand(0)
+          ->backend_config<GpuBackendConfig>()
+          ->reification_cost(),
+      ElementsAre(Property(&ReificationCost::async_compute_instr_name, "rs")));
 }
 
 }  // namespace

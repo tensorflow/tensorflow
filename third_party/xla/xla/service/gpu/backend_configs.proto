@@ -155,6 +155,10 @@ message ReificationCost {
 
   // Name of the internal cost modeling approach.
   string name = 5;
+
+  // Name of the async-start instruction's calling
+  // computation instruction name.
+  string async_compute_instr_name = 6;
 }
 
 // Backend config for a custom fusion (pre-compiled device kernel implementing a
