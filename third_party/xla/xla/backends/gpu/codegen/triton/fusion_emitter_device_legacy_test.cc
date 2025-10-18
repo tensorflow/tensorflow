@@ -76,8 +76,7 @@ class TritonTest : public GpuCodegenTest {
     return device_desc().gpu_compute_capability();
   }
   stream_executor::GpuComputeCapability CudaAmpereOrRocm() {
-    if (std::holds_alternative<stream_executor::RocmComputeCapability>(
-            GpuComputeComp())) {
+    if (GpuComputeComp().IsRocm()) {
       return stream_executor::GpuComputeCapability{
           device_desc().rocm_compute_capability()};
     } else {
@@ -668,7 +667,7 @@ CHECK: mma
 }
 
 TEST_F(TritonGemmTest, FailIfTooMuchShmem) {
-  if (std::holds_alternative<se::RocmComputeCapability>(GpuComputeComp())) {
+  if (GpuComputeComp().IsRocm()) {
     GTEST_SKIP() << "GEMM padding requirements for ROCM not included yet.";
   }
   constexpr absl::string_view kHloText = R"(
@@ -1186,7 +1185,7 @@ ENTRY e {
 }
 
 TEST_F(TritonGemmTestWithoutTritonGemmAny, SkipU8) {
-  if (std::holds_alternative<se::RocmComputeCapability>(GpuComputeComp())) {
+  if (GpuComputeComp().IsRocm()) {
     GTEST_SKIP() << "GEMM padding requirements for ROCM not included yet.";
   }
   const std::string hlo_text = R"(
@@ -1247,7 +1246,7 @@ CHECK:          %[[RES3:.*]] = arith.select %[[CMP3]], %[[ZERO]], %[[RES2]]
 }
 
 TEST_F(TritonGemmTestWithoutTritonGemmAny, SkipF32F32) {
-  if (std::holds_alternative<se::RocmComputeCapability>(GpuComputeComp())) {
+  if (GpuComputeComp().IsRocm()) {
     GTEST_SKIP() << "GEMM padding requirements for ROCM not included yet.";
   }
   const std::string hlo_text = R"(
@@ -1396,7 +1395,7 @@ ENTRY e {
 }
 
 TEST_F(TritonGemmTest, SingleElementTileIsHandled) {
-  if (std::holds_alternative<se::RocmComputeCapability>(GpuComputeComp())) {
+  if (GpuComputeComp().IsRocm()) {
     GTEST_SKIP() << "Not using autotuner on ROCM yet.";
   }
   MatchOptimizedHlo(R"(
@@ -1497,7 +1496,7 @@ ENTRY e {
 }
 
 TEST_F(TritonGemmTest, DoAddConstantToScalarAndBroadcastThat) {
-  if (std::holds_alternative<se::RocmComputeCapability>(GpuComputeComp())) {
+  if (GpuComputeComp().IsRocm()) {
     GTEST_SKIP() << "Not using autotuner on ROCM yet.";
   }
   const std::string hlo_text = R"(
@@ -1807,7 +1806,7 @@ ENTRY e {
 }
 
 TEST_F(TritonGemmTest, DoNotFuseConcatenationOfSplitNonContractingDimension) {
-  if (std::holds_alternative<se::RocmComputeCapability>(GpuComputeComp())) {
+  if (GpuComputeComp().IsRocm()) {
     GTEST_SKIP() << "Not using autotuner on ROCM yet.";
   }
   if (!SupportsBF16(GpuComputeComp())) {
@@ -2698,7 +2697,7 @@ TEST_F(TritonGemmTest, SplitLHSInputOutputIsFused) {
   if (!SupportsBF16(GpuComputeComp())) {
     GTEST_SKIP() << "BF16 not supported.";
   }
-  if (std::holds_alternative<se::RocmComputeCapability>(GpuComputeComp())) {
+  if (GpuComputeComp().IsRocm()) {
     GTEST_SKIP() << "Skipped until corresponding issue on ROCm is fixed.";
   }
 
@@ -3029,7 +3028,7 @@ ENTRY e {
 }
 
 TEST_F(CompareTest, UsingOptinSharedMemoryOnAmpereProducesSameResult) {
-  if (std::holds_alternative<se::RocmComputeCapability>(GpuComputeComp())) {
+  if (GpuComputeComp().IsRocm()) {
     GTEST_SKIP() << "No Optin Shared Memory on AMD.";
   }
   const se::DeviceDescription dev_info =
@@ -4245,7 +4244,7 @@ CHECK: wgmma.mma_async.sync.aligned.m64n16k16.f32.bf16.bf16
 // when gemm autotuner is not present in pipeline,
 // (which is currently the case on rocm).
 TEST_F(TritonGemmTest, TestNoAutotuner) {
-  if (std::holds_alternative<se::CudaComputeCapability>(GpuComputeComp())) {
+  if (GpuComputeComp().IsCuda()) {
     GTEST_SKIP() << "Autotuner is always in pipeline on Cuda.";
   }
   constexpr absl::string_view kHloText = R"(

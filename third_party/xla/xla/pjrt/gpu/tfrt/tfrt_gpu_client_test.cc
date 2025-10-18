@@ -1708,9 +1708,9 @@ TEST(TfrtGpuClientTest, DeviceAttributes) {
     TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::se::DeviceDescription> desc,
                             platform->DescriptionForDevice(0));
     stream_executor::GpuComputeCapability cc = desc->gpu_compute_capability();
-    auto nvcc = std::get<stream_executor::CudaComputeCapability>(cc);
+    auto* nvcc = cc.cuda_compute_capability();
     std::string expected_compute_capability =
-        absl::StrCat(nvcc.major, ".", nvcc.minor);
+        absl::StrCat(nvcc->major, ".", nvcc->minor);
     EXPECT_EQ(compute_capability, expected_compute_capability);
 
     // Attribute `coords`.

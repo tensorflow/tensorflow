@@ -64,12 +64,11 @@ bool IsTritonSupportedDataType(PrimitiveType type,
       return true;
     case F8E5M2:
     case F8E4M3FN:
-      return std::holds_alternative<se::CudaComputeCapability>(gpu_version);
+      return gpu_version.IsCuda();
     case BF16:
-      return std::holds_alternative<se::CudaComputeCapability>(gpu_version) ||
-             (std::holds_alternative<se::RocmComputeCapability>(gpu_version) &&
-              std::get<se::RocmComputeCapability>(gpu_version)
-                  .has_bf16_dtype_support());
+      return gpu_version.IsCuda() ||
+             (gpu_version.IsRocm() &&
+              gpu_version.rocm_compute_capability()->has_bf16_dtype_support());
     default:
       return false;
   }
@@ -157,8 +156,8 @@ CodegenDecision IsTritonSupportedConversion(
   };
 
   if (input != output && any_is(PrimitiveType::F8E4M3FN) &&
-      std::holds_alternative<se::CudaComputeCapability>(gpu_version) &&
-      !std::get<se::CudaComputeCapability>(gpu_version).IsAtLeastHopper()) {
+      gpu_version.IsCuda() &&
+      !gpu_version.cuda_compute_capability()->IsAtLeastHopper()) {
     return error_message();
   }
 
@@ -344,7 +343,7 @@ CodegenDecision AreTypesSupportedByAlgUnsetDot(
   }
 
   if (input_type == F8E4M3FN || result_type == F8E4M3FN) {
-    if (auto* cuda_cc = std::get_if<se::CudaComputeCapability>(&gpu_version);
+    if (auto* cuda_cc = gpu_version.cuda_compute_capability();
         cuda_cc && !cuda_cc->IsAtLeastHopper()) {
       return CodegenDecision::Forbid(
           "Dot operation for F8E4M3FN is not supported before Hopper.");
@@ -416,7 +415,7 @@ CodegenDecision AreDotAlgorithmInputAndOutputConversionsSupported(
 
   if (algorithm == PrecisionConfig::ALG_DOT_F64_F64_F64 &&
       primitive_util::BitWidth(lhs_type) < 32 &&
-      !std::get<se::CudaComputeCapability>(gpu_version).IsAtLeastBlackwell()) {
+      !gpu_version.cuda_compute_capability()->IsAtLeastBlackwell()) {
     return forbid("Unsupported BF16 on GPUs before Blackwell");
   }
 
@@ -724,9 +723,9 @@ bool IsTritonUnsupportedOpcode(HloOpcode opcode) {
 absl::Status EnsureTritonSupportsComputeCapability(
     const se::GpuComputeCapability& gpu_compute_capability) {
   auto cuda_compute_capability =
-      std::get_if<se::CudaComputeCapability>(&gpu_compute_capability);
+      gpu_compute_capability.cuda_compute_capability();
   auto rocm_compute_capability =
-      std::get_if<se::RocmComputeCapability>(&gpu_compute_capability);
+      gpu_compute_capability.rocm_compute_capability();
   if (!cuda_compute_capability && !rocm_compute_capability) {
     return absl::FailedPreconditionError(
         "Triton support is only enabled for CUDA and ROCm GPUs.");

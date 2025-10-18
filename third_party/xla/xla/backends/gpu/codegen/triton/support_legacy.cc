@@ -216,10 +216,8 @@ CodegenDecision CanTritonHandleElementwise(
 bool IsDotAlgorithmSupportedByTriton(
     PrecisionConfig::Algorithm algorithm,
     const se::GpuComputeCapability& gpu_version) {
-  auto cuda_compute_capability =
-      std::get_if<se::CudaComputeCapability>(&gpu_version);
-  auto rocm_compute_capability =
-      std::get_if<se::RocmComputeCapability>(&gpu_version);
+  auto cuda_compute_capability = gpu_version.cuda_compute_capability();
+  auto rocm_compute_capability = gpu_version.rocm_compute_capability();
   switch (algorithm) {
     case PrecisionConfig::ALG_DOT_TF32_TF32_F32:
     case PrecisionConfig::ALG_DOT_TF32_TF32_F32_X3:
@@ -276,10 +274,8 @@ CodegenDecision AreDotInputAndOutputTypesSupportedAndCompatible(
 // Filters GEMMs which can be handled using Triton.
 CodegenDecision CanTritonHandleGEMM(
     const HloDotInstruction& dot, const se::GpuComputeCapability& gpu_version) {
-  auto cuda_compute_capability =
-      std::get_if<se::CudaComputeCapability>(&gpu_version);
-  auto rocm_compute_capability =
-      std::get_if<se::RocmComputeCapability>(&gpu_version);
+  auto cuda_compute_capability = gpu_version.cuda_compute_capability();
+  auto rocm_compute_capability = gpu_version.rocm_compute_capability();
 
   CHECK(cuda_compute_capability || rocm_compute_capability);
 

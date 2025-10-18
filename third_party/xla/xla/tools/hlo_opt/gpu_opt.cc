@@ -136,8 +136,7 @@ class GpuOptProvider : public CompiledOptProvider {
     se::GpuComputeCapability gpu_compute_capability;
     if (device_description.ok()) {
       gpu_compute_capability = device_description->gpu_compute_capability();
-      if (std::holds_alternative<se::CudaComputeCapability>(
-              gpu_compute_capability)) {
+      if (gpu_compute_capability.IsCuda()) {
         alias_info_ =
             std::make_unique<gpu::NVPTXAliasInfo>(*device_description);
       } else {

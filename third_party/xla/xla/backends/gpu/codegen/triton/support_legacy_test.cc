@@ -55,11 +55,10 @@ se::GpuComputeCapability GetComputeCapability() {
 bool CombinationCrashesTriton(PrimitiveType lhs_type, PrimitiveType rhs_type,
                               PrimitiveType output_type,
                               se::GpuComputeCapability gpu_compute_capability) {
-  if (std::holds_alternative<se::CudaComputeCapability>(
-          gpu_compute_capability)) {
-    auto cuda_compute_capability =
-        std::get<se::CudaComputeCapability>(gpu_compute_capability);
-    if (!cuda_compute_capability.IsAtLeastHopper() &&
+  if (gpu_compute_capability.IsCuda()) {
+    auto* cuda_compute_capability =
+        gpu_compute_capability.cuda_compute_capability();
+    if (!cuda_compute_capability->IsAtLeastHopper() &&
         (lhs_type == F8E4M3FN || rhs_type == F8E4M3FN ||
          output_type == F8E4M3FN)) {
       return true;

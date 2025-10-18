@@ -105,10 +105,10 @@ absl::Status ConvolutionThunk::ExecuteOnStream(const ExecuteParams& params) {
   RunConvOptions opts;
   opts.runner_cache = &GetOrCreateRunner(params.stream, &runner_created);
 
-  if (runner_created && std::holds_alternative<se::RocmComputeCapability>(
-                            params.stream->parent()
-                                ->GetDeviceDescription()
-                                .gpu_compute_capability())) {
+  if (runner_created && params.stream->parent()
+                            ->GetDeviceDescription()
+                            .gpu_compute_capability()
+                            .IsRocm()) {
     TF_ASSIGN_OR_RETURN(
         GpuConvParams conv_params,
         GetGpuConvParams(config_, operand_se_buffers, result_se_buffers));

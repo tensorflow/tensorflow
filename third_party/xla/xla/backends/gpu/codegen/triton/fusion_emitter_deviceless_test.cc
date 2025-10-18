@@ -158,10 +158,11 @@ ENTRY entry {
   block_level_parameters.output_tile_sizes = {{1, 1}};
   block_level_parameters.num_warps = 0;
 
-  EXPECT_THAT(TritonWrapper("test_fn", triton_fusion,
-                            se::CudaComputeCapability::Hopper(), dev_info,
-                            block_level_parameters, &llvm_module,
-                            symbolic_expr_context),
+  EXPECT_THAT(TritonWrapper(
+                  "test_fn", triton_fusion,
+                  se::GpuComputeCapability{se::CudaComputeCapability::Hopper()},
+                  dev_info, block_level_parameters, &llvm_module,
+                  symbolic_expr_context),
               absl_testing::StatusIs(
                   absl::StatusCode::kFailedPrecondition,
                   ::testing::HasSubstr(
