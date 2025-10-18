@@ -3,9 +3,10 @@
 
 load("@rules_shell//shell:sh_test.bzl", "sh_test")
 load("//tensorflow:strict.default.bzl", "py_strict_binary", "py_strict_library", "py_strict_test")
-load("//tensorflow:tensorflow.bzl", "if_google", "if_xla_available", "tf_cc_test", "tf_py_test")
+load("//tensorflow:tensorflow.bzl", "if_google", "if_xla_available", "tf_cc_test")
 load("//tensorflow/core/platform:build_config_root.bzl", "if_pywrap")
 load("//tensorflow/python/tools:tools.bzl", "saved_model_compile_aot")
+load("//tensorflow:tensorflow.bzl", "tf_py_test")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -40,6 +41,21 @@ py_strict_library(
     ],
 )
 
+<<<<<<< HEAD
+=======
+py_strict_test(
+    name = "saved_model_cli_empty_feature_test",
+    size = "small",
+    srcs = ["saved_model_cli_empty_feature_test.py"],
+    python_version = "PY3",
+    data = [
+        "saved_model_cli.py",
+        "saved_model_utils.py",
+    ],
+    deps = [":saved_model_cli_lib"],
+)
+
+>>>>>>> 65b16be0de4 (tools/BUILD: minimize deps for saved_model_cli_sanitize_list_test (use :saved_model_cli_lib, drop client_testlib))
 py_strict_library(
     name = "saved_model_utils",
     srcs = ["saved_model_utils.py"],
@@ -590,15 +606,20 @@ tf_cc_test(
     ]),
 )
 
-tf_py_test(
+py_test(
     name = "saved_model_cli_sanitize_list_test",
     size = "small",
     srcs = ["saved_model_cli_sanitize_list_test.py"],
     python_version = "PY3",
+    data = [
+        "saved_model_cli.py",
+    ],
     deps = [
-        ":saved_model_cli",
-        "//tensorflow/python/platform:client_testlib",
-        "@absl_py//absl/testing:parameterized",  # testte kullanılmıyorsa kaldırabilirsin
+<<<<<<< HEAD
+=======
+        ":saved_model_cli_lib",
+>>>>>>> 65b16be0de4 (tools/BUILD: minimize deps for saved_model_cli_sanitize_list_test (use :saved_model_cli_lib, drop client_testlib))
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
