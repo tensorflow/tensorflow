@@ -49,6 +49,7 @@ cc_library(
     name = "numpy",
     srcs = ["numpy.cc"],
     hdrs = ["numpy.h"],
+    compatible_with = ["//buildenv/target:libtpu"],
     deps = [
         "//third_party/py/numpy:headers",
         "@rules_python//python/cc:current_py_cc_headers",
