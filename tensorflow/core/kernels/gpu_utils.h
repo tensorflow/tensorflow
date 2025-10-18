@@ -271,7 +271,7 @@ void LogConvAutotuneResults(se::dnn::ConvolutionKind kind,
                             const se::dnn::FilterDescriptor& filter_desc,
                             const se::dnn::BatchDescriptor& output_desc,
                             const se::dnn::ConvolutionDescriptor& conv_desc,
-                            se::StreamExecutor* stream_exec,
+                            se::Stream* stream,
                             absl::Span<const AutotuneResult> results);
 
 // Logs fused convolution results to customized back-storage.
@@ -284,7 +284,7 @@ void LogFusedConvForwardAutotuneResults(
     const se::dnn::BatchDescriptor& output_desc,
     const se::dnn::ConvolutionDescriptor& conv_desc, double conv_scale,
     double side_value_scale, se::dnn::ActivationMode activation_mode,
-    se::StreamExecutor* stream_exec, absl::Span<const AutotuneResult> results);
+    se::Stream* stream, absl::Span<const AutotuneResult> results);
 
 // Logs fused matmul results to customized back-storage.
 void LogFusedMatmulAutotuneResults(
@@ -293,7 +293,7 @@ void LogFusedMatmulAutotuneResults(
     se::DeviceMemoryBase c_buffer, se::DeviceMemoryBase bias_buffer,
     bool trans_a, bool trans_b, uint32_t m, uint32_t n, uint32_t k, int32_t lda,
     int32_t ldb, int32_t ldc, se::dnn::ActivationMode activation_mode,
-    se::StreamExecutor* stream_exec, absl::Span<const AutotuneResult> results);
+    se::Stream* stream, absl::Span<const AutotuneResult> results);
 
 // Autotuning map entry for cuDNN-frontend-capable APIs.
 //

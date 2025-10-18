@@ -32,7 +32,6 @@ limitations under the License.
 #include "xla/stream_executor/numeric_options.h"
 #include "xla/stream_executor/scratch_allocator.h"
 #include "xla/stream_executor/stream.h"
-#include "xla/stream_executor/stream_executor.h"
 
 namespace stream_executor {
 namespace cuda {
@@ -49,7 +48,7 @@ namespace cuda {
 // Thread-safe post-initialization.
 class CUDABlas : public blas::BlasSupport {
  public:
-  explicit CUDABlas(StreamExecutor *parent);
+  explicit CUDABlas(const Stream* stream);
 
   // Allocates a cuBLAS handle.
   bool Init();
@@ -59,7 +58,7 @@ class CUDABlas : public blas::BlasSupport {
 
   TENSORFLOW_STREAM_EXECUTOR_GPU_BLAS_SUPPORT_OVERRIDES
 
-  BlasLt *GetBlasLt() override { return &blas_lt_; }
+  BlasLt* GetBlasLt() override { return &blas_lt_; }
 
  private:
   // Tells cuBLAS to enqueue the BLAS operation onto a particular Stream.
@@ -67,7 +66,7 @@ class CUDABlas : public blas::BlasSupport {
   // cuBLAS is stateful, and only be associated with one stream (in order to
   // enqueue dispatch) at a given time. As a result, this generally must be
   // invoked before calling into cuBLAS.
-  bool SetStream(Stream *stream) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  bool SetStream(Stream* stream) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   // A helper function that calls the real cuBLAS function together with error
   // handling.
@@ -79,14 +78,14 @@ class CUDABlas : public blas::BlasSupport {
   //                     (true) or device (false).
   // args:               Arguments of cuBLAS function.
   template <typename FuncT, typename... Args>
-  absl::Status DoBlasInternalImpl(FuncT cublas_func, Stream *stream,
+  absl::Status DoBlasInternalImpl(FuncT cublas_func, Stream* stream,
                                   bool pointer_mode_host,
                                   cublasMath_t math_type, Args... args);
 
   // Convenience functions that call DoBlasInternalImpl with err_on_failure=true
   // and math_type=CUBLAS_DEFAULT_MATH.
   template <typename FuncT, typename... Args>
-  bool DoBlasInternal(FuncT cublas_func, Stream *stream, bool pointer_mode_host,
+  bool DoBlasInternal(FuncT cublas_func, Stream* stream, bool pointer_mode_host,
                       Args... args) {
     return DoBlasInternalImpl(cublas_func, stream, pointer_mode_host,
                               CUBLAS_DEFAULT_MATH, args...)
@@ -97,28 +96,28 @@ class CUDABlas : public blas::BlasSupport {
   // types.
   template <typename T, typename Scalar, typename FuncT>
   absl::Status DoBlasGemmBatchedInternal(
-      FuncT cublas_func, Stream *stream, blas::Transpose transa,
+      FuncT cublas_func, Stream* stream, blas::Transpose transa,
       blas::Transpose transb, uint64_t m, uint64_t n, uint64_t k, Scalar alpha,
-      const DeviceMemorySlice<T> &a_array, int lda,
-      const DeviceMemorySlice<T> &b_array, int ldb, Scalar beta,
-      const DeviceMemorySlice<T> &c_array, int ldc, int batch_count,
-      const NumericOptions &numeric_options,
-      ScratchAllocator *scratch_allocator);
+      const DeviceMemorySlice<T>& a_array, int lda,
+      const DeviceMemorySlice<T>& b_array, int ldb, Scalar beta,
+      const DeviceMemorySlice<T>& c_array, int ldc, int batch_count,
+      const NumericOptions& numeric_options,
+      ScratchAllocator* scratch_allocator);
 
   // Guards the cuBLAS handle for this device.
   mutable absl::Mutex mu_;
 
-  // StreamExecutor which instantiated this CUDABlas.
+  // Stream which instantiated this CUDABlas.
   // Immutable post-initialization.
-  StreamExecutor *parent_;
+  const Stream* stream_;
 
   // cuBLAS library handle on the device.
   cublasHandle_t blas_ ABSL_GUARDED_BY(mu_);
 
   cuda::BlasLt blas_lt_;
 
-  CUDABlas(const CUDABlas &) = delete;
-  void operator=(const CUDABlas &) = delete;
+  CUDABlas(const CUDABlas&) = delete;
+  void operator=(const CUDABlas&) = delete;
 };
 
 }  // namespace cuda
