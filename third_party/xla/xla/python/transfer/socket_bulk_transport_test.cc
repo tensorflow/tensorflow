@@ -69,6 +69,13 @@ absl::Status SetupSocketPairUsingEventLoop(int& send_fd, int& recv_fd) {
   return absl::OkStatus();
 }
 
+std::shared_ptr<int> WrapSocket(int fd) {
+  return std::shared_ptr<int>(new int{fd}, [](int* fd_ptr) {
+    close(*fd_ptr);
+    delete fd_ptr;
+  });
+};
+
 TEST(SendQueue, TestZeroCopyQueueCleanRemoteShutdown) {
   int send_fd, recv_fd;
   auto status = SetupSocketPairUsingEventLoop(send_fd, recv_fd);
@@ -77,8 +84,8 @@ TEST(SendQueue, TestZeroCopyQueueCleanRemoteShutdown) {
   auto work_queue = SharedSendWorkQueue::Start();
   auto msg_queue = std::make_shared<SharedSendMsgQueue>();
 
-  SharedSendMsgQueue::StartSubConnectionSender(send_fd, 0, msg_queue,
-                                               work_queue);
+  SharedSendMsgQueue::StartSubConnectionSender(WrapSocket(send_fd), 0,
+                                               msg_queue, work_queue);
 
   std::string txt_msg("hello world");
   absl::Notification notify;
@@ -101,15 +108,16 @@ TEST(SendQueue, SendAndRecvQueuesArtificialLimit) {
                            packet_size);
   auto recv_thread = RecvThreadState::Create(allocator, uallocator);
 
-  int send_fd, recv_fd;
-  auto status = SetupSocketPairUsingEventLoop(send_fd, recv_fd);
+  int send_fd, raw_recv_fd;
+  auto status = SetupSocketPairUsingEventLoop(send_fd, raw_recv_fd);
   ASSERT_TRUE(status.ok()) << status;
+  auto recv_fd = WrapSocket(raw_recv_fd);
 
   auto work_queue = SharedSendWorkQueue::Start();
   auto msg_queue = std::make_shared<SharedSendMsgQueue>();
 
-  SharedSendMsgQueue::StartSubConnectionSender(send_fd, 0, msg_queue,
-                                               work_queue, 64);
+  SharedSendMsgQueue::StartSubConnectionSender(WrapSocket(send_fd), 0,
+                                               msg_queue, work_queue, 64);
 
   std::string txt_msg;
 
@@ -162,9 +170,10 @@ TEST(SendQueue, SendAndRecvQueuesEarlyClose) {
                            packet_size);
   auto recv_thread = RecvThreadState::Create(std::nullopt, uallocator);
 
-  int send_fd, recv_fd;
-  auto status = SetupSocketPairUsingEventLoop(send_fd, recv_fd);
+  int send_fd, raw_recv_fd;
+  auto status = SetupSocketPairUsingEventLoop(send_fd, raw_recv_fd);
   ASSERT_TRUE(status.ok()) << status;
+  auto recv_fd = WrapSocket(raw_recv_fd);
 
   close(send_fd);
 

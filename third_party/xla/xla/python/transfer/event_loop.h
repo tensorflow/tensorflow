@@ -18,11 +18,13 @@ limitations under the License.
 #include <netinet/in.h>
 #include <poll.h>
 
+#include <deque>
 #include <memory>
 
 #include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "absl/time/time.h"
 
 // socket.h in conda sysroot include directory does not define
@@ -129,6 +131,52 @@ class SocketListener {
   SocketAddress addr_;
   bool started_ = false;
   Handler* handler_ = nullptr;
+};
+
+class SocketFdPacketState : public PollEventLoop::Handler {
+ public:
+  // Must be closed and cleared properly before destruction.
+  ~SocketFdPacketState() override;
+
+  // Subclasses must handle the incoming packet entirely during this call
+  // (or else copy).
+  virtual void HandlePacket(absl::string_view packet) = 0;
+
+  // All of these may destroy the handler if both directions are closed.
+  virtual void ConnectFailed() = 0;
+  // Clean half close.
+  virtual void RecvClosed(absl::Status error) = 0;
+  // Clean half close
+  virtual void SendClosed(absl::Status error) = 0;
+
+  // Schedules the frame (returns false if send is closed).
+  bool SendRawFrame(std::string opacket);
+
+  // Starts listening for fd.
+  // ConnectFailed() only called if start_connected=false.
+  void RegisterFd(int fd, bool start_connected);
+
+  // Calls shutdown on the fd.
+  void Shutdown(int how);
+
+ private:
+  void PopulatePollInfo(pollfd& events) override;
+
+  bool HandleEvents(const pollfd& events) override;
+
+  bool CloseIfNeeded() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+
+  absl::Mutex mu_;
+  int fd_ = -1;
+  bool can_send_ = false;
+  bool is_connected_ = false;
+  bool read_closed_ = false;
+  bool write_closed_ = false;
+  size_t write_offset_ = 0;
+  size_t recv_count_ = 0;
+  std::unique_ptr<char[]> network_buffer_ =
+      std::unique_ptr<char[]>(new char[4096]);
+  std::deque<std::string> frames_ ABSL_GUARDED_BY(mu_);
 };
 
 }  // namespace aux

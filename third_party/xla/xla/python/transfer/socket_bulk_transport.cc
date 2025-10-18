@@ -169,7 +169,7 @@ void ZeroCopySendAckTable::ClearAll() {
 
 class SendConnectionHandler : public PollEventLoop::Handler {
  public:
-  SendConnectionHandler(int fd, int bond_id,
+  SendConnectionHandler(std::shared_ptr<int> fd, int bond_id,
                         std::shared_ptr<SharedSendMsgQueue> msg_queue,
                         std::shared_ptr<SharedSendWorkQueue> work_queue,
                         size_t artificial_send_limit)
@@ -184,7 +184,6 @@ class SendConnectionHandler : public PollEventLoop::Handler {
 #ifdef MSG_ZEROCOPY
     table_.ClearAll();
 #endif
-    close(fd_);
   }
 
   void ScheduleSendWork(aux::BulkTransportInterface::SendMessage msg) {
@@ -198,7 +197,7 @@ class SendConnectionHandler : public PollEventLoop::Handler {
     size_t offset = 0;
     while (offset < msg.size) {
       ssize_t send_count =
-          send(fd_, reinterpret_cast<char*>(msg.data) + offset,
+          send(*fd_, reinterpret_cast<char*>(msg.data) + offset,
                std::min(msg.size - offset, artificial_send_limit_), 0);
       if (send_count <= 0) {
         break;
@@ -215,7 +214,7 @@ class SendConnectionHandler : public PollEventLoop::Handler {
     size_t offset = 0;
     while (offset < msg.size) {
       ssize_t send_count = send(
-          fd_, reinterpret_cast<char*>(msg.data) + offset,
+          *fd_, reinterpret_cast<char*>(msg.data) + offset,
           std::min(msg.size - offset, artificial_send_limit_), MSG_ZEROCOPY);
       if (send_count <= 0) {
         break;
@@ -254,7 +253,7 @@ class SendConnectionHandler : public PollEventLoop::Handler {
   }
 
   void PopulatePollInfo(pollfd& events) override {
-    events.fd = fd_;
+    events.fd = *fd_;
     events.events = POLLERR | POLLRDHUP;
     if (state_.load() == SocketState::kNotReady) {
       events.events |= POLLOUT;
@@ -267,7 +266,7 @@ class SendConnectionHandler : public PollEventLoop::Handler {
       return false;
     } else if (events.revents & POLLERR) {
 #ifdef MSG_ZEROCOPY
-      CHECK_OK(table_.HandleSocketErrors(fd_));
+      CHECK_OK(table_.HandleSocketErrors(*fd_));
 #endif
     } else if (events.revents & POLLOUT) {
       if (no_more_messages_.load() == true) {
@@ -313,7 +312,7 @@ class SendConnectionHandler : public PollEventLoop::Handler {
 #ifdef MSG_ZEROCOPY
   ZeroCopySendAckTable table_;
 #endif
-  int fd_;
+  std::shared_ptr<int> fd_;
   int bond_id_;
   std::shared_ptr<SharedSendMsgQueue> msg_queue_;
   std::shared_ptr<SharedSendWorkQueue> work_queue_;
@@ -423,7 +422,8 @@ void SharedSendMsgQueue::NoMoreMessages() {
 }
 
 void SharedSendMsgQueue::StartSubConnectionSender(
-    int fd, int bond_id, std::shared_ptr<SharedSendMsgQueue> msg_queue,
+    std::shared_ptr<int> fd, int bond_id,
+    std::shared_ptr<SharedSendMsgQueue> msg_queue,
     std::shared_ptr<SharedSendWorkQueue> work_queue,
     size_t artificial_send_limit) {
   auto* handler =
@@ -464,7 +464,7 @@ void RecvThreadState::DoRecvWork() {
 }
 
 void RecvThreadState::ScheduleRecvWork(
-    size_t recv_size, int fd,
+    size_t recv_size, std::shared_ptr<int> fd,
     absl::AnyInvocable<
         void(absl::StatusOr<aux::BulkTransportInterface::Message> msg) &&>
         on_recv) {
@@ -517,11 +517,11 @@ absl::Status RecvThreadState::HandleRecvItem(recv_work_item& work,
       zc.length = work.recv_size - offset;
 
       struct pollfd fds[1];
-      fds[0] = {.fd = work.fd, .events = POLLIN, .revents = 0};
+      fds[0] = {.fd = *work.fd, .events = POLLIN, .revents = 0};
       poll(&fds[0], 1, -1);
 
       res =
-          getsockopt(work.fd, IPPROTO_TCP, TCP_ZEROCOPY_RECEIVE, &zc, &zc_len);
+          getsockopt(*work.fd, IPPROTO_TCP, TCP_ZEROCOPY_RECEIVE, &zc, &zc_len);
       if (res == -1) {
         std::move(alloc.on_done)();
         return absl::ErrnoToStatus(errno, "zero-copy-recv");
@@ -549,7 +549,7 @@ absl::Status RecvThreadState::HandleRecvItem(recv_work_item& work,
     }
     while (offset != work.recv_size) {
       ssize_t recv_count =
-          recv(work.fd, reinterpret_cast<char*>(alloc.data) + offset,
+          recv(*work.fd, reinterpret_cast<char*>(alloc.data) + offset,
                work.recv_size - offset, 0);
       if (recv_count == 0) {
         std::move(alloc.on_done)();
@@ -599,7 +599,7 @@ class SocketBulkTransport : public BulkTransportInterface {
       override {
     auto& conn = connections_[bond_id];
     absl::MutexLock l(conn->mu);
-    if (conn->fd == -1) {
+    if (!conn->fd) {
       conn->pending_recvs.push_back({size, std::move(on_recv)});
     } else {
       conn->thread_state->ScheduleRecvWork(size, conn->fd, std::move(on_recv));
@@ -617,16 +617,21 @@ class SocketBulkTransport : public BulkTransportInterface {
     std::shared_ptr<SharedSendMsgQueue> send_msg_queue;
     std::shared_ptr<SharedSendWorkQueue> send_work_queue;
     std::vector<PendingRecv> pending_recvs;
-    int fd = -1;
+    std::shared_ptr<int> fd;
 
     void AcceptSock(int accept_fd) {
+      auto shared_fd =
+          std::shared_ptr<int>(new int{accept_fd}, [](int* fd_ptr) {
+            close(*fd_ptr);
+            delete fd_ptr;
+          });
       SharedSendMsgQueue::StartSubConnectionSender(
-          accept_fd, connection_id, send_msg_queue, send_work_queue);
+          shared_fd, connection_id, send_msg_queue, send_work_queue);
       {
         absl::MutexLock l(mu);
-        fd = accept_fd;
+        fd = shared_fd;
         for (auto& pending_recv : pending_recvs) {
-          thread_state->ScheduleRecvWork(pending_recv.size, accept_fd,
+          thread_state->ScheduleRecvWork(pending_recv.size, fd,
                                          std::move(pending_recv.on_recv));
         }
       }
