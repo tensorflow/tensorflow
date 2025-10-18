@@ -13,15 +13,18 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_PJRT_PLUGIN_EXAMPLE_PLUGIN_MYPLUGIN_C_PJRT_INTERNAL_H_
-#define XLA_PJRT_PLUGIN_EXAMPLE_PLUGIN_MYPLUGIN_C_PJRT_INTERNAL_H_
+#ifndef XLA_PJRT_PLUGIN_TESTING_TESTING_CPP_PJRT_H_
+#define XLA_PJRT_PLUGIN_TESTING_TESTING_CPP_PJRT_H_
 
-#include "xla/pjrt/c/pjrt_c_api.h"
+#include <memory>
 
-namespace myplugin_pjrt {
-// Does not pass ownership of returned PJRT_Api* to caller.
-const PJRT_Api* GetMyPluginPjrtApi();
+#include "xla/pjrt/pjrt_client.h"
 
-}  // namespace myplugin_pjrt
+namespace testing {
 
-#endif  // XLA_PJRT_PLUGIN_EXAMPLE_PLUGIN_MYPLUGIN_C_PJRT_INTERNAL_H_
+// Wrapper to create the C++ PjRtClient. Class definition inside the .cc file.
+std::unique_ptr<xla::PjRtClient> CreateTestingPjrtClient();
+
+}  // namespace testing
+
+#endif  // XLA_PJRT_PLUGIN_TESTING_TESTING_CPP_PJRT_H_

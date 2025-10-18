@@ -13,18 +13,25 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_PJRT_PLUGIN_EXAMPLE_PLUGIN_MYPLUGIN_CPP_PJRT_H_
-#define XLA_PJRT_PLUGIN_EXAMPLE_PLUGIN_MYPLUGIN_CPP_PJRT_H_
+#include "xla/pjrt/plugin/testing/testing_cpp_pjrt.h"
 
-#include <memory>
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
+#include "absl/status/status_matchers.h"
 
-#include "xla/pjrt/pjrt_client.h"
+namespace {
 
-namespace myplugin_pjrt {
+using ::testing::CreateTestingPjrtClient;
 
-// Wrapper to create the C++ PjRtClient. Class definition inside the .cc file.
-std::unique_ptr<xla::PjRtClient> CreateMyPluginPjrtClient();
+TEST(TestingCPPTest, HasDeviceCount) {
+  auto client = CreateTestingPjrtClient();
+  EXPECT_EQ(client->device_count(), 0);
+}
 
-}  // namespace myplugin_pjrt
+TEST(TestingCPPTest, GetHloCostAnalysis) {
+  auto client = CreateTestingPjrtClient();
 
-#endif  // XLA_PJRT_PLUGIN_EXAMPLE_PLUGIN_MYPLUGIN_CPP_PJRT_H_
+  EXPECT_THAT(client->GetHloCostAnalysis(), testing::Not(absl_testing::IsOk()));
+}
+
+}  // namespace

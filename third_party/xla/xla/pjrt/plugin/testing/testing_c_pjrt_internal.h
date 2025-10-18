@@ -13,26 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/pjrt/plugin/example_plugin/myplugin_cpp_pjrt.h"
+#ifndef XLA_PJRT_PLUGIN_TESTING_TESTING_C_PJRT_INTERNAL_H_
+#define XLA_PJRT_PLUGIN_TESTING_TESTING_C_PJRT_INTERNAL_H_
 
-#include <gmock/gmock.h>
-#include <gtest/gtest.h>
-#include "absl/status/status_matchers.h"
-#include "xla/tsl/platform/status_matchers.h"
+#include "xla/pjrt/c/pjrt_c_api.h"
 
-namespace {
+namespace testing {
+// Does not pass ownership of returned PJRT_Api* to caller.
+const PJRT_Api* GetTestingPjrtApi(PJRT_Extension_Base* extension_base);
 
-using ::myplugin_pjrt::CreateMyPluginPjrtClient;
+}  // namespace testing
 
-TEST(MyPluginCPPTest, HasDeviceCount) {
-  auto client = CreateMyPluginPjrtClient();
-  EXPECT_EQ(client->device_count(), 0);
-}
-
-TEST(MyPluginCPPTest, GetHloCostAnalysis) {
-  auto client = CreateMyPluginPjrtClient();
-
-  EXPECT_THAT(client->GetHloCostAnalysis(), testing::Not(absl_testing::IsOk()));
-}
-
-}  // namespace
+#endif  // XLA_PJRT_PLUGIN_TESTING_TESTING_C_PJRT_INTERNAL_H_

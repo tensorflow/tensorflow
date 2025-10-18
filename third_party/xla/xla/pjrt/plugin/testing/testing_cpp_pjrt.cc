@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/pjrt/plugin/example_plugin/myplugin_cpp_pjrt.h"
+#include "xla/pjrt/plugin/testing/testing_cpp_pjrt.h"
 
 #include <cstdint>
 #include <memory>
@@ -25,12 +25,12 @@ limitations under the License.
 #include "xla/pjrt/pjrt_compiler.h"
 #include "tsl/platform/fingerprint.h"
 
-namespace myplugin_pjrt {
+namespace testing {
 
-class MypluginPjrtClient : public xla::PjRtClient {
+class TestingPjrtClient : public xla::PjRtClient {
  public:
-  MypluginPjrtClient() = default;
-  ~MypluginPjrtClient() override = default;
+  TestingPjrtClient() = default;
+  ~TestingPjrtClient() override = default;
   absl::string_view platform_name() const override;
   int process_index() const override;
   int device_count() const override;
@@ -46,42 +46,42 @@ class MypluginPjrtClient : public xla::PjRtClient {
   std::vector<xla::PjRtMemorySpace*> memory_spaces_;
 };  // end class
 
-absl::string_view MypluginPjrtClient::platform_name() const {
+absl::string_view TestingPjrtClient::platform_name() const {
   return "myplugin_pjrt_client";
 }
 
-int MypluginPjrtClient::process_index() const { return 0; }
+int TestingPjrtClient::process_index() const { return 0; }
 
-xla::PjRtPlatformId MypluginPjrtClient::platform_id() const {
+xla::PjRtPlatformId TestingPjrtClient::platform_id() const {
   constexpr char kMyBackendName[] = "my_plugin_backend";
   static const uint64_t kMyBackendId = tsl::Fingerprint64(kMyBackendName);
   return kMyBackendId;
 }
 
-int MypluginPjrtClient::device_count() const { return 0; }
+int TestingPjrtClient::device_count() const { return 0; }
 
-int MypluginPjrtClient::addressable_device_count() const { return 0; }
+int TestingPjrtClient::addressable_device_count() const { return 0; }
 
-absl::Span<xla::PjRtDevice* const> MypluginPjrtClient::addressable_devices()
+absl::Span<xla::PjRtDevice* const> TestingPjrtClient::addressable_devices()
     const {
   return devices_;
 }
 
-absl::Span<xla::PjRtDevice* const> MypluginPjrtClient::devices() const {
+absl::Span<xla::PjRtDevice* const> TestingPjrtClient::devices() const {
   return devices_;
 }
 
-absl::Span<xla::PjRtMemorySpace* const> MypluginPjrtClient::memory_spaces()
+absl::Span<xla::PjRtMemorySpace* const> TestingPjrtClient::memory_spaces()
     const {
   return memory_spaces_;
 }
 
-absl::string_view MypluginPjrtClient::platform_version() const {
+absl::string_view TestingPjrtClient::platform_version() const {
   return "myplugin platform version";
 }
 
-std::unique_ptr<xla::PjRtClient> CreateMyPluginPjrtClient() {
-  return std::make_unique<myplugin_pjrt::MypluginPjrtClient>();
+std::unique_ptr<xla::PjRtClient> CreateTestingPjrtClient() {
+  return std::make_unique<testing::TestingPjrtClient>();
 }
 
-}  // namespace myplugin_pjrt
+}  // namespace testing
