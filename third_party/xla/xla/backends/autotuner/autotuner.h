@@ -68,7 +68,7 @@ struct AutotuneConfig {
   // deprecated.
   // If true, autotuner will not select cublas configs. We still try cublas
   // configs as they can be used to check numerical issues with triton but they
-  // are not considered for selection.
+  // are not considered for selection, unless there are no other options.
   bool exclude_cublas_config = false;
   // TODO b/446870267- Remove this option and use default configs rather than
   // the first config.

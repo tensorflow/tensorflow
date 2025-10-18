@@ -414,11 +414,6 @@ TEST_F(AutotunerTest, AutotuneButOneBackendFails) {
       .WillOnce(Return(absl::InternalError("test error")));
 
   auto profiler = std::make_unique<MockProfiler>();
-  auto device_description = CreateDummyDeviceDescription();
-  EXPECT_CALL(*profiler, CreateInputBuffers(_))
-      .WillOnce(Return(std::make_unique<InputBuffers>()));
-  EXPECT_CALL(*profiler, Profile(_, _))
-      .WillOnce(Return(ProfileResult({absl::Seconds(1)})));
   std::vector<std::unique_ptr<CodegenBackend>> backends;
   backends.push_back(std::move(good_backend));
   backends.push_back(std::move(bad_backend));
@@ -641,11 +636,13 @@ TEST_F(AutotunerTest, ExcludeCublasConfig) {
   config_.exclude_cublas_config = true;
   std::vector<std::unique_ptr<BackendConfig>> configs;
   configs.push_back(GetTestConfig("test_config_1"));
+  configs.push_back(GetTestConfig("test_config_2"));
 
   auto backend = std::make_unique<MockCodegenBackend>();
   EXPECT_CALL(*backend, GetSupportedConfigs(_))
       .WillOnce(Return(std::move(configs)));
   EXPECT_CALL(*backend, Compile(_, _))
+      .WillOnce(Return(std::unique_ptr<Executable>()))
       .WillOnce(Return(std::unique_ptr<Executable>()));
   EXPECT_CALL(*backend, name()).WillRepeatedly(Return("cublas"));
   std::vector<std::unique_ptr<CodegenBackend>> backends;
@@ -655,7 +652,8 @@ TEST_F(AutotunerTest, ExcludeCublasConfig) {
   EXPECT_CALL(*profiler, CreateInputBuffers(_))
       .WillOnce(Return(std::make_unique<InputBuffers>()));
   EXPECT_CALL(*profiler, Profile(_, _))
-      .WillOnce(Return(ProfileResult({absl::Seconds(1)})));
+      .WillOnce(Return(ProfileResult({absl::Seconds(1)})))
+      .WillOnce(Return(ProfileResult({absl::Seconds(2)})));
 
   TF_ASSERT_OK_AND_ASSIGN(
       auto autotuner, Autotuner::Create(std::move(backends),
@@ -686,11 +684,6 @@ TEST_F(AutotunerTest, SelectFirstConfig) {
   backends.push_back(std::move(backend));
 
   auto profiler = std::make_unique<MockProfiler>();
-  EXPECT_CALL(*profiler, CreateInputBuffers(_))
-      .WillOnce(Return(std::make_unique<InputBuffers>()));
-  EXPECT_CALL(*profiler, Profile(_, _))
-      .WillOnce(Return(ProfileResult({absl::Seconds(2)})))
-      .WillOnce(Return(ProfileResult({absl::Seconds(1)})));
 
   TF_ASSERT_OK_AND_ASSIGN(
       auto autotuner, Autotuner::Create(std::move(backends),
