@@ -882,6 +882,17 @@ func.func @less(%arg0: tensor<2xi32>, %arg1: tensor<2xi32>) -> tensor<2xi1> {
   func.return %0 : tensor<2xi1>
 }
 
+// CHECK-LABEL:   func @less_i1(
+// CHECK-SAME:               %[[VAL_0:.*]]: tensor<2xi1>,
+// CHECK-SAME:               %[[VAL_1:.*]]: tensor<2xi1>) -> tensor<2xi1> {
+// CHECK:           %[[VAL_2:.*]] = "tf.Less"(%[[VAL_0]], %[[VAL_1]]) : (tensor<2xi1>, tensor<2xi1>) -> tensor<2xi1>
+// CHECK:           return %[[VAL_2]] : tensor<2xi1>
+// CHECK:         }
+func.func @less_i1(%arg0: tensor<2xi1>, %arg1: tensor<2xi1>) -> tensor<2xi1> {
+  %0 = "mhlo.compare"(%arg0, %arg1) {comparison_direction = #mhlo<comparison_direction LT>} : (tensor<2xi1>, tensor<2xi1>) -> tensor<2xi1>
+  func.return %0 : tensor<2xi1>
+}
+
 // CHECK-LABEL:   func @broadcast_less(
 // CHECK-SAME:                         %[[VAL_0:.*]]: tensor<1x1xi32>,
 // CHECK-SAME:                         %[[VAL_1:.*]]: tensor<1x2xi32>) -> tensor<1x2xi1> {
