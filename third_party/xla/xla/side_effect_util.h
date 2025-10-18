@@ -36,6 +36,7 @@ extern const char kXlaComputeTypeAttr[];
 extern const char kXlaComputeTypeSparse[];
 extern const char kXlaComputeTypeDense[];
 extern const char kXlaComputeTypeHost[];
+extern const char kXlaComputeTypeSparseOffload[];
 
 // XLA frontend attribute name for the maximum number of ids expected per
 // partition *before* an input batch is partitioned.
