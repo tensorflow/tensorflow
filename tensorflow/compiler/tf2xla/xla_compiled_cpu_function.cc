@@ -25,9 +25,9 @@ limitations under the License.
 
 #include "absl/log/check.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "tensorflow/compiler/tf2xla/allocator.h"
 #include "xla/backends/cpu/runtime/rng_state_lib.h"
-#include "xla/cpu_function_runtime.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
@@ -72,7 +72,7 @@ XlaCompiledCpuFunction::XlaCompiledCpuFunction(const StaticData& static_data,
       alloc_mode == AllocMode::ARGS_VARIABLES_RESULTS_PROFILES_AND_TEMPS;
   // Allocate arg and temp buffers.
   alloc_buffer_table_ = tensorflow::MallocContiguousBuffers(
-      static_data.buffer_infos_, static_data.num_buffers_,
+      absl::MakeConstSpan(static_data.buffer_infos_, static_data.num_buffers_),
       /*allocate_entry_params=*/allocate_entry_params, buffer_table_,
       /*annotate_initialized=*/true);
   // If Hlo profiling is enabled the generated code expects an appropriately

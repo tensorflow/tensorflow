@@ -172,7 +172,6 @@ limitations under the License.
 #include "xla/service/conditional_simplifier.h"
 #include "xla/service/conditional_to_select.h"
 #include "xla/service/copy_insertion.h"
-#include "xla/service/cpu/buffer_info_util.h"
 #include "xla/service/cpu/conv_canonicalization.h"
 #include "xla/service/cpu/cpu_aot_compilation_result.h"
 #include "xla/service/cpu/cpu_aot_loader.h"

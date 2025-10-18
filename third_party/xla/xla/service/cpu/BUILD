@@ -172,24 +172,11 @@ cc_library(
 )
 
 cc_library(
-    name = "buffer_info_util",
-    srcs = ["buffer_info_util.cc"],
-    hdrs = ["buffer_info_util.h"],
-    deps = [
-        "//xla:cpu_function_runtime",
-        "//xla/hlo/ir:hlo",
-        "//xla/service:buffer_assignment",
-        "@com_google_absl//absl/types:span",
-    ],
-)
-
-cc_library(
     name = "cpu_compiler_pure",
     srcs = ["cpu_compiler.cc"],
     hdrs = ["cpu_compiler.h"],
     copts = tsl_copts(),
     deps = [
-        ":buffer_info_util",
         ":conv_canonicalization",
         ":cpu_aot_compilation_result",
         ":cpu_aot_loader",
@@ -428,7 +415,6 @@ cc_library(
     srcs = ["cpu_aot_compilation_result.cc"],
     hdrs = ["cpu_aot_compilation_result.h"],
     deps = [
-        ":buffer_info_util",
         ":cpu_executable",
         ":executable_proto_cc",
         "//xla:cpu_function_runtime",

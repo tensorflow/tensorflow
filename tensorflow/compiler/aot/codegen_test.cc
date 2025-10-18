@@ -24,7 +24,6 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "llvm/Support/TargetSelect.h"
 #include "tensorflow/compiler/aot/compile.h"
-#include "xla/cpu_function_runtime.h"
 #include "xla/service/cpu/cpu_aot_compilation_result.h"
 #include "xla/shape_util.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
@@ -40,7 +39,7 @@ namespace tensorflow {
 namespace tfcompile {
 namespace {
 
-using ::xla::cpu_function_runtime::BufferInfo;
+using ::xla::cpu::BufferAllocationInfo;
 
 void ExpectErrorContains(const absl::Status& status, absl::string_view str) {
   EXPECT_NE(absl::OkStatus(), status);
