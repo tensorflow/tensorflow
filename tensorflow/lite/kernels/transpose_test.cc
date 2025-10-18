@@ -86,6 +86,37 @@ class TransposeOpInt4Model : public SingleOpModel {
   int output_;
 };
 
+class TransposeOpInt8Model : public SingleOpModel {
+ public:
+  TransposeOpInt8Model(std::initializer_list<int> input_shape,
+                       std::initializer_list<int> perm_shape,
+                       std::initializer_list<int> perm) {
+    input_ = AddInput({TensorType_INT8, input_shape, 0.0f, 0.0f, 0.5f, 1});
+    perm_ = AddConstInput(TensorType_INT32, perm, perm_shape);
+    output_ = AddOutput(TensorType_INT8);
+    SetBuiltinOp(BuiltinOperator_TRANSPOSE, BuiltinOptions_TransposeOptions,
+                 CreateTransposeOptions(builder_).Union());
+    BuildInterpreter({input_shape});
+  }
+
+  void SetInput(std::initializer_list<int8_t> data) {
+    PopulateTensor<int8_t>(input_, data);
+  }
+
+  TfLiteTensor* GetOutputTensor() { return interpreter_->tensor(output_); }
+
+  void SetOutputQuantParams(float scale, int zero_point) {
+    TfLiteTensor* t = GetOutputTensor();
+    t->params.scale = scale;
+    t->params.zero_point = zero_point;
+  }
+
+ protected:
+  int input_;
+  int perm_;
+  int output_;
+};
+
 class TransposeOpModel : public SingleOpModel {
  public:
   void SetInput(std::initializer_list<float> data) {
@@ -370,6 +401,13 @@ TEST(TransposeTest, Test4DFlattenTwo) {
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 2, 2, 2}));
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({0, 4, 1, 5, 2, 6, 3, 7, 8, 12, 9,
                                                13, 10, 14, 11, 15}));
+}
+
+TEST(TransposeTest, Int8MismatchedQuantizationFails) {
+  TransposeOpInt8Model m({2, 2}, {2}, {1, 0});
+  m.SetOutputQuantParams(0.25f, 2);
+  m.SetInput({1, 2, 3, 4});
+  EXPECT_EQ(m.Invoke(), kTfLiteError);
 }
 
 TEST(TransposeTest, 3DDividedIntoTwo2DsOne) {
