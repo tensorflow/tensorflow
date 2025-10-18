@@ -103,10 +103,12 @@ using PJRT_LoadedExecutableDeleter =
 PJRT_LoadedExecutableDeleter MakeLoadedExecutableDeleter(const PJRT_Api* api);
 
 using PJRT_EventDeleter = std::function<void(PJRT_Event*)>;
+using PJRT_PromiseDeleter = std::function<void(PJRT_Promise*)>;
 
 // Pass in an API pointer; receive a custom deleter for smart pointers.
 // The lifetime of the Api pointed to must be longer than the event.
 PJRT_EventDeleter MakeEventDeleter(const PJRT_Api* api);
+PJRT_PromiseDeleter MakePromiseDeleter(const PJRT_Api* api);
 
 using PJRT_SerializedExecutableDeleter =
     std::function<void(PJRT_SerializedExecutable*)>;
