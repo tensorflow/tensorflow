@@ -699,6 +699,7 @@ lit_test_suite_for_gpus(
 #         "//xla/backends/gpu/codegen/triton/transforms:passes",
 #         "//xla/codegen/emitters/ir:xla",
 #         "//xla/codegen/emitters/transforms:passes",
+#         "//xla/codegen/xtile/ir:xtile",
 #         "//xla/stream_executor:device_description",
 #         "//xla/stream_executor/cuda:cuda_compute_capability",
 #         "@triton//:AllPassesAndDialects",

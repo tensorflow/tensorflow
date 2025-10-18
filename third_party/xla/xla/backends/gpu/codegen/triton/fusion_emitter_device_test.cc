@@ -2146,11 +2146,11 @@ ENTRY entry_computation {
   TF_ASSERT_OK_AND_ASSIGN(
       auto xtile_module_and_hlo_module,
       CreateXTileIrAndFileCheck(this, kHloText, "triton_computation", R"(
-CHECK:     triton_xla.extract
+CHECK:     xtile.extract
 CHECK-NOT: stablehlo.transpose
 CHECK:     tt.reshape
 CHECK-NOT: stablehlo.transpose
-CHECK:     triton_xla.insert
+CHECK:     xtile.insert
           )"));
 
   TF_ASSERT_OK(LowerXTileIrToTritonAndFileCheck(
@@ -2190,11 +2190,11 @@ ENTRY entry_computation {
   TF_ASSERT_OK_AND_ASSIGN(
       auto xtile_module_and_hlo_module,
       CreateXTileIrAndFileCheck(this, kHloText, "triton_computation", R"(
-CHECK:     triton_xla.extract
+CHECK:     xtile.extract
 CHECK:     stablehlo.transpose
 CHECK:     tt.reshape
 CHECK-NOT: stablehlo.transpose
-CHECK:     triton_xla.insert
+CHECK:     xtile.insert
           )"));
 
   TF_ASSERT_OK(LowerXTileIrToTritonAndFileCheck(
@@ -2234,11 +2234,11 @@ ENTRY entry_computation {
   TF_ASSERT_OK_AND_ASSIGN(
       auto xtile_module_and_hlo_module,
       CreateXTileIrAndFileCheck(this, kHloText, "triton_computation", R"(
-CHECK:     triton_xla.extract
+CHECK:     xtile.extract
 CHECK-NOT: stablehlo.transpose
 CHECK:     tt.reshape
 CHECK:     stablehlo.transpose
-CHECK:     triton_xla.insert
+CHECK:     xtile.insert
           )"));
 
   TF_ASSERT_OK(LowerXTileIrToTritonAndFileCheck(
@@ -2279,11 +2279,11 @@ ENTRY entry_computation {
   TF_ASSERT_OK_AND_ASSIGN(
       auto xtile_module_and_hlo_module,
       CreateXTileIrAndFileCheck(this, kHloText, "triton_computation", R"(
-CHECK:     triton_xla.extract
+CHECK:     xtile.extract
 CHECK:     stablehlo.transpose
 CHECK:     tt.reshape
 CHECK:     stablehlo.transpose
-CHECK:     triton_xla.insert
+CHECK:     xtile.insert
           )"));
 
   TF_ASSERT_OK(LowerXTileIrToTritonAndFileCheck(
@@ -2323,11 +2323,11 @@ ENTRY entry_computation {
   TF_ASSERT_OK_AND_ASSIGN(
       auto xtile_module_and_hlo_module,
       CreateXTileIrAndFileCheck(this, kHloText, "triton_computation", R"(
-CHECK:     triton_xla.extract
+CHECK:     xtile.extract
 CHECK:     stablehlo.transpose
 CHECK-NOT: tt.reshape
 CHECK-NOT: stablehlo.transpose
-CHECK:     triton_xla.insert
+CHECK:     xtile.insert
           )"));
 
   TF_ASSERT_OK(LowerXTileIrToTritonAndFileCheck(
@@ -2524,7 +2524,7 @@ ENTRY main {
   TF_ASSERT_OK_AND_ASSIGN(
       auto xtile_module_and_hlo_module,
       CreateXTileIrAndFileCheck(this, kHloText, "triton_computation", R"(
-CHECK:      %[[TILE:.*]] = triton_xla.extract {{.*}} : tensor<8x4x1xf32>
+CHECK:      %[[TILE:.*]] = xtile.extract {{.*}} -> tensor<8x4x1xf32>
 CHECK:      stablehlo.transpose %[[TILE]], dims = [2, 0, 1] : (tensor<8x4x1xf32>) -> tensor<1x8x4xf32>
           )"));
 

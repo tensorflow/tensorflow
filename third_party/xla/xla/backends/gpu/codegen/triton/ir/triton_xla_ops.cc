@@ -254,6 +254,64 @@ void InsertOp::getCanonicalizationPatterns(RewritePatternSet &results,
   results.add<InsertOpOffsetsSizesStridesFolder>(context);
 }
 
+OpFoldResult MemrefToPtrOp::fold(FoldAdaptor adaptor) {
+  if (auto ptr_to_memref = getOperand().getDefiningOp<PtrToMemrefOp>()) {
+    // memref_to_ptr(ptr_to_memref(x)) -> x
+    return ptr_to_memref.getOperand();
+  }
+
+  return {};
+}
+
+LogicalResult MemrefToPtrOp::verify() {
+  mlir::MemRefType src_type = getSrc().getType();
+  if (src_type.getElementType() != getType().getPointeeType()) {
+    getOperation()->emitError(
+        "source element type does not match result pointee type");
+    return failure();
+  }
+
+  // It is only safe to directly convert a pointer to a memref if the memref
+  // has no offset.
+  llvm::SmallVector<int64_t> strides;
+  int64_t offset = 0;
+  if (src_type.getStridesAndOffset(strides, offset).failed()) {
+    getOperation()->emitError("failed to get strides and offset") << src_type;
+    return failure();
+  }
+  if (offset != 0) {
+    getOperation()->emitError("memref has non-zero offset");
+    return failure();
+  }
+
+  return success();
+}
+
+LogicalResult PtrToMemrefOp::verify() {
+  mlir::MemRefType result_type = getType();
+  if (getSrc().getType().getPointeeType() != result_type.getElementType()) {
+    getOperation()->emitError(
+        "source pointee type does not match result element type");
+    return failure();
+  }
+
+  // It is only safe to directly convert a pointer to a memref if the memref
+  // has no offset.
+  llvm::SmallVector<int64_t> strides;
+  int64_t offset = 0;
+  if (result_type.getStridesAndOffset(strides, offset).failed()) {
+    getOperation()->emitError("failed to get strides and offset")
+        << result_type;
+    return failure();
+  }
+  if (offset != 0) {
+    getOperation()->emitError("memref has non-zero offset");
+    return failure();
+  }
+
+  return success();
+}
+
 }  // namespace mlir::triton::xla
 
 #define GET_OP_CLASSES
