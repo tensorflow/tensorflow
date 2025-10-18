@@ -95,13 +95,19 @@ PYBIND11_MODULE(_pywrap_profiler_plugin, m) {
 
   m.def(
       "xspace_to_tools_data",
-      [](const py::list& xspace_path_list, const py::str& py_tool_name,
-         const py::dict options = py::dict()) {
+      [](const py::list& xspace_path_list, const py::list& all_hosts_list,
+         const py::str& py_tool_name, const py::dict options = py::dict()) {
         std::vector<std::string> xspace_paths;
         xspace_paths.reserve(xspace_path_list.size());
         for (py::handle obj : xspace_path_list) {
           std::string xspace_path = std::string(py::cast<py::str>(obj));
           xspace_paths.push_back(xspace_path);
+        }
+
+        std::vector<std::string> all_hosts;
+        all_hosts.reserve(all_hosts_list.size());
+        for (py::handle obj : all_hosts_list) {
+          all_hosts.push_back(std::string(py::cast<py::str>(obj)));
         }
 
         std::string tool_name = std::string(py_tool_name);
@@ -110,8 +116,8 @@ PYBIND11_MODULE(_pywrap_profiler_plugin, m) {
 
         {
           py::gil_scoped_release release;
-          result = xprof::pywrap::XSpaceToToolsData(xspace_paths, tool_name,
-                                                    tool_options);
+          result = xprof::pywrap::XSpaceToToolsData(xspace_paths, all_hosts,
+                                                    tool_name, tool_options);
         }
 
         if (!result.ok()) {
@@ -120,18 +126,23 @@ PYBIND11_MODULE(_pywrap_profiler_plugin, m) {
         return py::make_tuple(py::bytes(result->first),
                               py::bool_(result->second));
       },
-      // TODO: consider defaulting `xspace_path_list` to empty list, since
-      // this parameter is only used for two of the tools.
-      py::arg(), py::arg(), py::arg() = py::dict());
+      py::arg(), py::arg(), py::arg(), py::arg() = py::dict());
 
   m.def(
       "xspace_to_tools_data_from_byte_string",
-      [](const py::list& xspace_string_list, const py::list& filenames_list,
-         const py::str& py_tool_name, const py::dict options = py::dict()) {
+      [](const py::list& xspace_string_list, const py::list& all_hosts_list,
+         const py::list& filenames_list, const py::str& py_tool_name,
+         const py::dict options = py::dict()) {
         std::vector<std::string> xspace_strings;
         xspace_strings.reserve(xspace_string_list.size());
         for (py::handle obj : xspace_string_list) {
           xspace_strings.push_back(std::string(py::cast<py::bytes>(obj)));
+        }
+
+        std::vector<std::string> all_hosts;
+        all_hosts.reserve(all_hosts_list.size());
+        for (py::handle obj : all_hosts_list) {
+          all_hosts.push_back(std::string(py::cast<py::str>(obj)));
         }
 
         std::vector<std::string> xspace_paths;
@@ -147,7 +158,7 @@ PYBIND11_MODULE(_pywrap_profiler_plugin, m) {
         {
           py::gil_scoped_release release;
           result = xprof::pywrap::XSpaceToToolsDataFromByteString(
-              xspace_strings, xspace_paths, tool_name, tool_options);
+              xspace_strings, all_hosts, xspace_paths, tool_name, tool_options);
         }
 
         if (!result.ok()) {
@@ -156,5 +167,5 @@ PYBIND11_MODULE(_pywrap_profiler_plugin, m) {
         return py::make_tuple(py::bytes(result->first),
                               py::bool_(result->second));
       },
-      py::arg(), py::arg(), py::arg(), py::arg() = py::dict());
+      py::arg(), py::arg(), py::arg(), py::arg(), py::arg() = py::dict());
 };
