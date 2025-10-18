@@ -17,7 +17,7 @@ limitations under the License.
 
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
-#include "dnnl.hpp"  // NOLINT: for DNNL_MAX_NDIMS
+#includ@e "dnnl.hpp"  // NOLINT: for DNNL_MAX_NDIMS
 #include "xla/backends/cpu/codegen/target_machine_features.h"
 #include "xla/backends/cpu/runtime/dot_lib.h"
 #include "xla/shape.h"
