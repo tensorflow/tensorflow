@@ -619,6 +619,7 @@ TEST_F(DotSearchSpaceTest, RestrictsSplitKPerNMTile) {
       // Greater than max split K for this tile size.
       make_config(16, 16, 16, 8),
       // Does not have a per-tile split K limit.
+      make_config(16, 32, 16, 1),
       make_config(16, 32, 16, 32),
   };
 
