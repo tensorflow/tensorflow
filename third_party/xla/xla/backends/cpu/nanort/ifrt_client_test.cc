@@ -319,6 +319,8 @@ int main(int argc, char** argv) {
       "ArrayImplTest.MakeArrayFromHostBufferAndCopyToHostBufferWithString:"
       "ArrayImplTest."
       "MakeArraysFromHostBufferShardsAndCopyToHostBufferWithString:"
+      // Custom layouts are not supported in NanoIfrtClient.
+      "ArrayImplTest.MakeArraysFromHostBufferShardsWithLayout:"
       // `MakeErrorArrays` is not supported in NanoIfrtClient.
       "ArrayImplTest.MakeErrorArrays:"
       "ArrayImplTest.CopyPoisonedArray:"
