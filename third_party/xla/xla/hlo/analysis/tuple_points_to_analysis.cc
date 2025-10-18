@@ -329,18 +329,30 @@ absl::Status TuplePointsToAnalysis::HandleRecvDone(HloInstruction* recv_done) {
 
 absl::Status TuplePointsToAnalysis::HandleAsyncStart(
     HloInstruction* async_start) {
-  // AsyncStart forwards its aliased operands to {0}.
   PointsToSet& points_to_set = CreateEmptyPointsToSet(async_start);
 
   points_to_set.ForEachMutableElement(
       [&](const ShapeIndex& target_index, PointsToSet::BufferList* buffers) {
         if (target_index.size() >= 2 && target_index.front() == 0) {
+          // AsyncStart forwards its aliased operands to element {0} of its
+          // output.
           const PointsToSet& operand_points_to_set =
               GetPointsToSet(async_start->operand(target_index[1]));
           ShapeIndex source_index(target_index.begin() + 2, target_index.end());
           *buffers = operand_points_to_set.element(source_index);
           for (HloInstruction* tuple :
                operand_points_to_set.tuple_sources(source_index)) {
+            points_to_set.add_tuple_source(target_index, tuple);
+          }
+        } else if (!target_index.empty() && target_index.front() == 1) {
+          // AsyncStart forwards the async wrapped computation root values to
+          // element {1} of its output.
+          HloInstruction* root = async_start->async_wrapped_instruction();
+          ShapeIndex source_index(target_index.begin() + 1, target_index.end());
+          const PointsToSet& root_points_to_set = GetPointsToSet(root);
+          *buffers = root_points_to_set.element(source_index);
+          for (HloInstruction* tuple :
+               root_points_to_set.tuple_sources(source_index)) {
             points_to_set.add_tuple_source(target_index, tuple);
           }
         } else {
