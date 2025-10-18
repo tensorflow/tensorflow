@@ -590,6 +590,9 @@ class PjRtCApiExecutable : public PjRtExecutable {
   absl::StatusOr<std::vector<std::vector<DimensionVector>>>
   GetOutputDimensions() const override;
 
+  absl::StatusOr<std::vector<std::shared_ptr<const PjRtLayout>>>
+  GetOutputLayouts() const override;
+
   absl::StatusOr<std::vector<std::vector<absl::string_view>>>
   GetOutputMemoryKinds() const override;
 
@@ -669,6 +672,11 @@ class PjRtCApiLoadedExecutable : public PjRtLoadedExecutable {
   absl::StatusOr<std::vector<std::vector<DimensionVector>>>
   GetOutputDimensions() const override {
     return executable_->GetOutputDimensions();
+  }
+
+  absl::StatusOr<std::vector<std::shared_ptr<const PjRtLayout>>>
+  GetOutputLayouts() const override {
+    return executable_->GetOutputLayouts();
   }
 
   absl::StatusOr<std::vector<std::vector<absl::string_view>>>
