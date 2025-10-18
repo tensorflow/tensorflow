@@ -492,6 +492,10 @@ def tf_copts(
             clean_dep("//tensorflow:no_lgpl_deps"): ["-D__TENSORFLOW_NO_LGPL_DEPS__", "-pthread"],
             "//conditions:default": ["-pthread"],
         })
+            + select({
+                "//conditions:default": [],
+                "//tensorflow:asan": ["-fsanitize=address", "-g"],
+            })
     )
 
 def tf_copts_exec(
@@ -592,10 +596,27 @@ def tf_gen_op_libs(
     # for various languages.
     if not deps:
         deps = []
+    asan_copts = select({
+        "//conditions:default": [],
+        "//tensorflow:asan": [
+            "-fsanitize=address",
+            "-g",
+            "-Wno-error",
+            "-Wno-unknown-warning-option",
+            "-Wno-gnu-offsetof-extensions",
+        ],
+    })
+    asan_linkopts = select({
+        "//conditions:default": [],
+        "//tensorflow:asan": [
+            "-fsanitize=address",
+        ],
+    })
     for n in op_lib_names:
         cc_library(
             name = n + "_op_lib",
-            copts = tf_copts_exec(is_external = is_external),
+            copts = tf_copts_exec(is_external = is_external) + asan_copts,
+            linkopts = asan_linkopts,
             features = features,
             srcs = [sub_directory + n + ".cc"],
             deps = deps + [clean_dep("//tensorflow/core:framework")],
@@ -939,7 +960,7 @@ def tf_cc_shared_library_opensource(
             additional_linker_inputs = additional_linker_inputs,
             copts = copts,
             data = data,
-            deps = deps + framework_so,
+            deps = deps,
             dynamic_deps = dynamic_deps,
             exports_filter = exports_filter,
             linkstatic = linkstatic,
@@ -1961,7 +1982,7 @@ def tf_gpu_kernel_library(
         deps = [],
         hdrs = [],
         **kwargs):
-    copts = copts + tf_copts() + _cuda_copts(opts = cuda_copts) + rocm_copts(opts = cuda_copts)
+    copts = copts + tf_copts() + _cuda_copts(opts = cuda_copts) + rocm_copts()
     kwargs["features"] = kwargs.get("features", []) + ["-use_header_modules"]
 
     cuda_library(
@@ -2229,7 +2250,7 @@ CollectedDepsInfo = provider("CollectedDepsInfo", fields = ["tf_collected_deps"]
 # target and return a struct with one field called 'tf_collected_deps'.
 # tf_collected_deps will be the union of the deps of the current target
 # and the tf_collected_deps of the dependencies of this target.
-def _collect_deps_aspect_impl(target, ctx):
+def _collect_deps_aspect_impl(ctx):
     direct, transitive = [], []
     all_deps = []
     if hasattr(ctx.rule.attr, "deps"):
@@ -2299,7 +2320,7 @@ check_deps = rule(
     },
 )
 
-# TODO(b/356020232): cleanup use_pywrap_rules after migration is done
+# TODO(b/356020232): remove completely after migration is done
 def tf_custom_op_library(
         name,
         srcs = [],
@@ -2408,7 +2429,7 @@ def _append_init_to_versionscript_impl(ctx):
     mod_name = ctx.attr.module_name
     if ctx.attr.is_version_script:
         ctx.actions.expand_template(
-            template = ctx.file.template_file,
+            template = ctx.file.template,
             output = ctx.outputs.versionscript,
             substitutions = {
                 "global:": "global:\n     PyInit_*;\n     _PyInit_*;",
@@ -2417,7 +2438,7 @@ def _append_init_to_versionscript_impl(ctx):
         )
     else:
         ctx.actions.expand_template(
-            template = ctx.file.template_file,
+            template = ctx.file.template,
             output = ctx.outputs.versionscript,
             substitutions = {
                 "*tensorflow*": "*tensorflow*\nPyInit_*\n_PyInit_*\n",
