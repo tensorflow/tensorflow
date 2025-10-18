@@ -1024,7 +1024,7 @@ void Queue<TaskType>::PadOpenBatchWithLowPriorityTasks() {
           tsl::profiler::ContextType::kSharedBatchScheduler,
           batches.back()->traceme_context_id());
 
-      batches.back()->AddTask(std::move(output_tasks[i]));
+      batches.back()->AddTask(std::move(output_tasks[i]), task_time);
     }
   }
 }
@@ -1200,42 +1200,45 @@ Queue<TaskType>::ScheduleBatch() {
       // starting a new batch because starting a new batch will close the old
       // batch, making it read-only.
       Batch<TaskType>& old_batch = *batches[0];
-      uint64 old_batch_time = old_batch.EarliestTaskStartTime().value();
-      std::vector<std::unique_ptr<TaskType>> trimmed_tasks;
-      MaybeBatchDown(
-          /* batch= */ old_batch,
-          /* allowed_batch_sizes= */ options_.allowed_batch_sizes,
-          /* disable_padding= */ options_.disable_padding,
-          /* batch_padding_policy= */ options_.batch_padding_policy,
-          /* model_batch_stats= */ options_.model_batch_stats,
-          /* out_trimmed_tasks= */ trimmed_tasks);
+      if (!old_batch.empty()) {
+        uint64 old_batch_time = old_batch.EarliestTaskStartTime().value();
+        std::vector<std::unique_ptr<TaskType>> trimmed_tasks;
+        MaybeBatchDown(
+            /* batch= */ old_batch,
+            /* allowed_batch_sizes= */ options_.allowed_batch_sizes,
+            /* disable_padding= */ options_.disable_padding,
+            /* batch_padding_policy= */ options_.batch_padding_policy,
+            /* model_batch_stats= */ options_.model_batch_stats,
+            /* out_trimmed_tasks= */ trimmed_tasks);
 
-      StartNewBatch();
+        StartNewBatch();
 
-      // Move the trimmed tasks, if any, into the new batch.
-      Batch<TaskType>& new_batch = *batches[1];
-      for (std::unique_ptr<TaskType>& task : trimmed_tasks) {
-        new_batch.AddTask(std::move(task), old_batch_time);
-      }
-      if (!new_batch.empty()) {
-        // TODO - b/325954758: Reconsider the starting time of a trimmed batch.
-        //
-        // Ideally, we'd set open_batch_start_time_micros_ to time we received
-        // the first task in the open batch, but we don't have this information
-        // here. For now, we're trying as alternative solution that doesn't
-        // require adding time to each task: assume that requests arrived at a
-        // steady rate and therefore use a point between the old value of
-        // open_batch_start_time_micros_ and NOW.
-        //
-        // Let's say that originally, the batch had 10 requests, and we want to
-        // schedule a batch of size 8 and leave 2 requests in the open batch
-        // (new_batch). Then, variable `position` is 0.8, which means we have to
-        // set open_batch_start_time_micros_ to be at a position of 80% between
-        // open_batch_start_time_micros_ and now.
-        double position = static_cast<double>(old_batch.size()) /
-                          (old_batch.size() + new_batch.size());
-        open_batch_start_time_micros_ +=
-            (env_->NowMicros() - open_batch_start_time_micros_) * position;
+        // Move the trimmed tasks, if any, into the new batch.
+        Batch<TaskType>& new_batch = *batches[1];
+        for (std::unique_ptr<TaskType>& task : trimmed_tasks) {
+          new_batch.AddTask(std::move(task), old_batch_time);
+        }
+        if (!new_batch.empty()) {
+          // TODO - b/325954758: Reconsider the starting time of a trimmed
+          // batch.
+          //
+          // Ideally, we'd set open_batch_start_time_micros_ to time we received
+          // the first task in the open batch, but we don't have this
+          // information here. For now, we're trying as alternative solution
+          // that doesn't require adding time to each task: assume that requests
+          // arrived at a steady rate and therefore use a point between the old
+          // value of open_batch_start_time_micros_ and NOW.
+          //
+          // Let's say that originally, the batch had 10 requests, and we want
+          // to schedule a batch of size 8 and leave 2 requests in the open
+          // batch (new_batch). Then, variable `position` is 0.8, which means we
+          // have to set open_batch_start_time_micros_ to be at a position of
+          // 80% between open_batch_start_time_micros_ and now.
+          double position = static_cast<double>(old_batch.size()) /
+                            (old_batch.size() + new_batch.size());
+          open_batch_start_time_micros_ +=
+              (env_->NowMicros() - open_batch_start_time_micros_) * position;
+        }
       }
     }
 

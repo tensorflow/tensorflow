@@ -95,8 +95,7 @@ void RecordPaddingSize(int32_t padding_size, const string& model_name,
       ->Add(static_cast<double>(padding_size));
 }
 
-void RecordPaddingSizeV2(int32_t padding_size, const string& model_name,
-                         int32_t execution_batch_size, const string& op_name) {
+std::vector<double> GetBucketLimitsForPaddingSizeV2() {
   // Bucket containing 0 has bounds [-2/3, 2/3).
   // Remaining buckets are centered at powers of 2 and have bounds:
   // [(2/3) * 2^i, (4/3) * 2^i) for i = 1, ..., 13.
@@ -112,14 +111,20 @@ void RecordPaddingSizeV2(int32_t padding_size, const string& model_name,
     bucket_limits.push_back(bound);
     bound *= growth_factor;
   }
+  return bucket_limits;
+}
 
-  static auto* cell = tensorflow::monitoring::Sampler<3>::New(
-      {"/tensorflow/serving/batching/padding_size_v2",
-       "Tracks the padding size distribution on batches by model_name (if "
-       "available).",
-       "model_name", "execution_batch_size", "op_name"},
-      monitoring::Buckets::Explicit(bucket_limits));
-  cell->GetCell(model_name, absl::StrCat(execution_batch_size), op_name)
+static auto* padding_size_v2_sampler = tensorflow::monitoring::Sampler<3>::New(
+    {"/tensorflow/serving/batching/padding_size_v2",
+     "Tracks the padding size distribution on batches by model_name (if "
+     "available).",
+     "model_name", "execution_batch_size", "op_name"},
+    monitoring::Buckets::Explicit(GetBucketLimitsForPaddingSizeV2()));
+
+void RecordPaddingSizeV2(int32_t padding_size, const string& model_name,
+                         int32_t execution_batch_size, const string& op_name) {
+  padding_size_v2_sampler
+      ->GetCell(model_name, absl::StrCat(execution_batch_size), op_name)
       ->Add(static_cast<double>(padding_size));
 }
 
@@ -184,15 +189,17 @@ void RecordProcessedBatchSize(int32_t batch_size, const string& model_name,
   cell->GetCell(model_name, op_name)->Add(static_cast<double>(batch_size));
 }
 
+static auto* processed_batch_size_v2_counter = monitoring::Counter<3>::New(
+    "/tensorflow/serving/batching/processed_batch_size_v2",
+    "Tracks the batch size on processing by model_name and op name (if "
+    "available).",
+    "model_name", "op_name", "batch_size");
+
 // Export the exact number instead of the distribution of processed batch size.
 void RecordProcessedBatchSizeV2(int32_t batch_size, const string& model_name,
                                 const string& op_name) {
-  static auto* cell = monitoring::Counter<3>::New(
-      "/tensorflow/serving/batching/processed_batch_size_v2",
-      "Tracks the batch size on processing by model_name and op name (if "
-      "available).",
-      "model_name", "op_name", "batch_size");
-  cell->GetCell(model_name, op_name, std::to_string(batch_size))
+  processed_batch_size_v2_counter
+      ->GetCell(model_name, op_name, std::to_string(batch_size))
       ->IncrementBy(1);
 }
 

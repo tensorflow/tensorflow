@@ -83,6 +83,23 @@ class FakeTask : public BatchTask {
   const size_t size_;
 };
 
+TEST(MaybeBatchDownTest, EmptyBatch) {
+  Batch<FakeTask> batch;
+  batch.Close();
+
+  std::vector<std::unique_ptr<FakeTask>> out_trimmed_tasks;
+
+  MaybeBatchDown(
+      /* batch= */ batch, /* allowed_batch_sizes= */ {1, 2, 4, 8},
+      /* disable_padding= */ false,
+      /* batch_padding_policy= */ kBatchDownPolicy,
+      /* model_batch_stats= */ nullptr,
+      /* out_trimmed_tasks= */ out_trimmed_tasks);
+
+  EXPECT_TRUE(batch.empty());
+  EXPECT_TRUE(out_trimmed_tasks.empty());
+}
+
 TEST(MaybeBatchDownTest, PadUp) {
   Batch<FakeTask> batch;
   batch.AddTask(std::make_unique<FakeTask>(1));
