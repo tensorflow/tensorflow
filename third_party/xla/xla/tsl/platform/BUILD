@@ -58,6 +58,8 @@ exports_files(
         "threadpool.cc",
         "threadpool.h",
         "env.h",
+        "numa_hwloc.cc",
+        "numa_noop.cc",
     ],
     visibility = internal_visibility([
         "//tensorflow/core/platform:__subpackages__",

@@ -324,7 +324,14 @@ cc_library(
     srcs = [
         "port.cc",
         "@local_tsl//tsl/platform:cpu_info.cc",
-    ],
+    ] + select({
+        "//xla/tsl:with_numa_support": [
+            "//xla/tsl/platform:numa_hwloc.cc",
+        ],
+        "//conditions:default": [
+            "//xla/tsl/platform:numa_noop.cc",
+        ],
+    }),
     hdrs = [
         "//xla/tsl/platform/profile_utils:cpu_utils.h",
         "@local_tsl//tsl/platform:cpu_info.h",
@@ -336,11 +343,6 @@ cc_library(
         "@local_tsl//tsl/platform:snappy.h",
     ],
     copts = tsl_copts(),
-    defines = ["TF_USE_SNAPPY"] + select({
-        # TF Additional NUMA defines
-        "//xla/tsl:with_numa_support": ["TENSORFLOW_USE_NUMA"],
-        "//conditions:default": [],
-    }),
     tags = [
         "manual",
         "no_oss",
@@ -357,12 +359,12 @@ cc_library(
         "@local_tsl//tsl/platform",
         "@snappy",
     ] + select({
-        # TF Additional NUMA dependencies
         "//xla/tsl:with_numa_support": [
-            # Don't merge in a single line
+            "@com_google_absl//absl/log",
             "@hwloc",
         ],
-        "//conditions:default": [],
+        "//conditions:default": [
+        ],
     }),
 )
 
@@ -608,6 +610,7 @@ filegroup(
         "status.h",
         "statusor.h",
         "tracing_impl.h",
+        "//xla/tsl/platform:numa_noop.cc",
         "//xla/tsl/platform/profile_utils:cpu_utils.h",
         "//xla/tsl/platform/profile_utils:i_cpu_utils_helper.h",
     ],
