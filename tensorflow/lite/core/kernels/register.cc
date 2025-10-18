@@ -179,7 +179,7 @@ BuiltinOpResolver::BuiltinOpResolver() {
              /* max_version = */ 8);
   AddBuiltin(BuiltinOperator_DEQUANTIZE, Register_DEQUANTIZE(),
              /* min_version = */ 1,
-             /* max_version = */ 6);
+             /* max_version = */ 7);
   AddBuiltin(BuiltinOperator_PRELU, Register_PRELU());
   AddBuiltin(BuiltinOperator_MAXIMUM, Register_MAXIMUM(),
              /* min_version = */ 1,
