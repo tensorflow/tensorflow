@@ -21,6 +21,7 @@ cc_library(
     deps = [
         "//xla:shape_util",
         "//xla:util",
+        "//xla:xla_data_proto_cc",
         "//xla/tsl/platform:logging",
         "@XNNPACK",
         "@com_google_absl//absl/base:core_headers",
