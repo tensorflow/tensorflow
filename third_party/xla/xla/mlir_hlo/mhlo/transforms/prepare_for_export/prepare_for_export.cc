@@ -130,7 +130,8 @@ void prepareExplicitCapturedConstants(Operation* op) {
       // it explicit and replace uses within the block
       Operation *definingOp = input.getDefiningOp();
       mlir::DenseElementsAttr attr;
-      if (matchPattern(input, m_Constant(&attr))) {
+      if (mlir::isa_and_present<ConstantOp>(input.getDefiningOp()) &&
+          matchPattern(input, m_Constant(&attr))) {
         Operation *clonedOp = builder.clone(*definingOp);
         // Find which uses belong to the block and replace
         // with the cloned/explicit one
@@ -146,9 +147,10 @@ void prepareExplicitCapturedConstants(Operation* op) {
 }  // namespace
 
 void PrepareForExportPass::runOnOperation() {
-  getOperation().walk([&](Operation *op) {
+  getOperation().walk([&](Operation* op) {
     mlir::SplatElementsAttr attr;
-    if (matchPattern(op, m_Constant(&attr))) return prepareConstantOp(op, attr);
+    if (isa<ConstantOp>(op) && matchPattern(op, m_Constant(&attr)))
+      return prepareConstantOp(op, attr);
 
     if (auto bcastOp = dyn_cast<BroadcastInDimOp>(op))
       return prepareBroadcastInDim(bcastOp);
