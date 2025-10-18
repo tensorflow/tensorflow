@@ -1,0 +1,108 @@
+"""BUILD file for RISC-V Python toolchain configuration."""
+
+load("@rules_python//python:defs.bzl", "py_runtime", "py_runtime_pair")
+load(":riscv64_py_cc_toolchain.bzl", "riscv64_py_cc_toolchain_rule")
+
+package(default_visibility = ["//visibility:public"])
+
+# ============================================================================
+# Python Runtime Configuration
+# ============================================================================
+
+# This points to the Python interpreter on your RISC-V system
+# Update the interpreter_path to match your actual Python installation
+py_runtime(
+    name = "riscv64_py_runtime",
+    interpreter_path = "/AI/zjg/python/venv11/bin/python",
+    python_version = "PY3",
+    visibility = ["//visibility:public"],
+)
+
+py_runtime_pair(
+    name = "riscv64_py_runtime_pair",
+    py3_runtime = ":riscv64_py_runtime",
+    visibility = ["//visibility:public"],
+)
+
+toolchain(
+    name = "python_riscv64_toolchain",
+    exec_compatible_with = [
+        "@platforms//cpu:riscv64",
+        "@platforms//os:linux",
+    ],
+    target_compatible_with = [
+        "@platforms//cpu:riscv64",
+        "@platforms//os:linux",
+    ],
+    toolchain = ":riscv64_py_runtime_pair",
+    toolchain_type = "@rules_python//python:toolchain_type",
+    visibility = ["//visibility:public"],
+)
+
+# ============================================================================
+# Python Headers Configuration
+# ============================================================================
+
+# This cc_library provides the Python C API headers
+# The headers are needed for compiling Python extension modules
+# Update the include path to match your Python installation
+cc_library(
+    name = "python_headers",
+    hdrs = glob([
+        "include/python3.11/**/*.h",
+        "include/python3.11/*.h",
+    ]),
+    includes = [
+        "include/python3.11",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+# Shared library for linking
+cc_library(
+    name = "python_lib",
+    srcs = ["lib/libpython3.11.so"],
+    visibility = ["//visibility:public"],
+)
+
+# ============================================================================
+# Python C/C++ Toolchain Configuration
+# ============================================================================
+
+# This is the key fix: the py_cc_toolchain implementation
+riscv64_py_cc_toolchain_rule(
+    name = "riscv64_py_cc_impl",
+    python_headers = [":python_headers"],
+    python_version = "3.11",
+)
+
+toolchain(
+    name = "riscv64_py_cc_toolchain",
+    exec_compatible_with = [
+        "@platforms//cpu:riscv64",
+        "@platforms//os:linux",
+    ],
+    target_compatible_with = [
+        "@platforms//cpu:riscv64",
+        "@platforms//os:linux",
+    ],
+    toolchain = ":riscv64_py_cc_impl",
+    toolchain_type = "@rules_python//python/cc:toolchain_type",
+    visibility = ["//visibility:public"],
+)
+
+# ============================================================================
+# File Groups
+# ============================================================================
+
+filegroup(
+    name = "libpython",
+    srcs = ["lib/libpython3.11.so"],
+    visibility = ["//visibility:public"],
+)
+
+filegroup(
+    name = "python_binary",
+    srcs = ["bin/python"],
+    visibility = ["//visibility:public"],
+)

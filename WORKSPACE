@@ -106,6 +106,17 @@ register_toolchains("@rules_ml_toolchain//cc:linux_aarch64_linux_aarch64")
 
 register_toolchains("@rules_ml_toolchain//cc:linux_aarch64_linux_aarch64_cuda")
 
+# RISC-V Python toolchain configuration
+local_repository(
+    name = "python_riscv64-unknown-linux-gnu",
+    path = "third_party/python_riscv64_toolchain",
+)
+
+register_toolchains(
+    "@python_riscv64-unknown-linux-gnu//:python_riscv64_toolchain",
+    "@python_riscv64-unknown-linux-gnu//:riscv64_py_cc_toolchain",
+)
+
 load(
     "@rules_ml_toolchain//third_party/gpus/cuda/hermetic:cuda_json_init_repository.bzl",
     "cuda_json_init_repository",
