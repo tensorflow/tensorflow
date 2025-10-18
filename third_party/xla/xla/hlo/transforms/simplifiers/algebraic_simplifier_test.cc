@@ -364,6 +364,25 @@ TEST_F(AlgebraicSimplifierTest, NotEliminateReshapeTransposeChain) {
   EXPECT_FALSE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
 }
 
+// Reshape-transpose chain is not eliminated since the transpose is identity
+// permutation.
+TEST_F(AlgebraicSimplifierTest, NotEliminateReshapeTransposeChain2) {
+  constexpr absl::string_view kModuleStr = R"(
+    HloModule m
+    test {
+      %param = f32[4,4,1,4] parameter(0)
+      %reshape.96335 = f32[4,4,4] reshape(%param)
+      %transpose.8665 = f32[4,4,4] transpose(%reshape.96335), dimensions={0,1,2}
+      ROOT %reshape.96336 = f32[4,4,1,4] reshape(%transpose.8665)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  EXPECT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Reshape()));
+  VLOG(2) << "Module after: " << m->ToString();
+}
+
 // (Abs(A)) * (Abs(A)) => (A*A)
 TEST_F(AlgebraicSimplifierTest, SquareOfAbs) {
   constexpr absl::string_view kModuleStr = R"(

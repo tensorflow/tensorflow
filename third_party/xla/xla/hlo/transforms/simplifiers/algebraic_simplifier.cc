@@ -6226,6 +6226,12 @@ AlgebraicSimplifierVisitor::TryRemovingReshapeTransposeChain(
         break;
       }
       if (current->opcode() == HloOpcode::kTranspose) {
+        if (IsIdentityPermutation(
+                Cast<HloTransposeInstruction>(current)->dimensions())) {
+          // This transpose will be eliminated separately in HandleTranspose.
+          is_nop = false;
+          break;
+        }
         permutation = ComposePermutations(
             get_effective_permutation(current->dimensions(),
                                       current->operand(0)->shape(),
@@ -6235,6 +6241,7 @@ AlgebraicSimplifierVisitor::TryRemovingReshapeTransposeChain(
       starting_instruction = current;
       current = current->mutable_operand(0);
     }
+
     if (is_nop && starting_instruction != nullptr &&
         Shape::Equal().IgnoreLayout()(
             reshape->shape(), starting_instruction->operand(0)->shape()) &&
