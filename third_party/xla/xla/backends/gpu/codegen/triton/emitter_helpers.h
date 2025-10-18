@@ -50,6 +50,7 @@ limitations under the License.
 #include "xla/tsl/platform/status.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
+#include "triton/Dialect/Triton/IR/Types.h"
 
 namespace xla::gpu::triton {
 
@@ -229,6 +230,10 @@ absl::StatusOr<stream_executor::gpu::TmaMetadata> ExtractTmaMetadata(
 // Extracts thread dimensions from Triton module attributes.
 absl::StatusOr<stream_executor::ThreadDim> ExtractThreadDims(
     mlir::ModuleOp triton_module, mlir::LLVM::LLVMFuncOp func_op);
+
+// Returns the triton pointer type that corresponds to the given memref type,
+// i.e. has the same element type and address space.
+::mlir::triton::PointerType GetPointerType(mlir::MemRefType memref_type);
 
 }  // namespace xla::gpu::triton
 
