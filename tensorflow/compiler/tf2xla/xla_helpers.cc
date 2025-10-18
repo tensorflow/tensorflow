@@ -133,6 +133,10 @@ DataType XlaHelpers::SumAccumulationType(const DataType& dtype) {
   if (dtype == DT_UINT8 || dtype == DT_UINT16) {
     return DT_UINT32;
   }
+  // Upcast int32 to int64 to avoid overflow in mean/sum reductions.
+  if (dtype == DT_INT32) {
+    return DT_INT64;
+  }
   return dtype;
 }
 
