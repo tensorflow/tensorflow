@@ -152,16 +152,19 @@ bool WeightCacheBuilder::StartBuildStep() {
   XNNPACK_RETURN_CHECK(fd_.Read(&header, sizeof(header)),
                        "could not read cache file header.");
   if (header.buffer_list_size) {
-    MMapHandle buffer_list_data;
-    XNNPACK_RETURN_CHECK(buffer_list_data.Map(fd_, header.buffer_list_offset,
-                                              file_path_.c_str()),
-                         "could not map buffer list mapping");
+    std::unique_ptr<uint8_t[]> buffer_list_data =
+        std::make_unique<uint8_t[]>(header.buffer_list_size);
+    fd_.SetPos(header.buffer_list_offset);
+    XNNPACK_RETURN_CHECK(
+        fd_.Read(buffer_list_data.get(), header.buffer_list_size),
+        "could not read buffer list data");
+
     flatbuffers::Verifier verifier(
-        reinterpret_cast<const uint8_t*>(buffer_list_data.data()),
+        reinterpret_cast<const uint8_t*>(buffer_list_data.get()),
         header.buffer_list_size);
     XNNPACK_RETURN_CHECK(cache::schema::VerifyBufferListBuffer(verifier),
                          "could not verify buffer list mapping");
-    cache::schema::GetBufferList(buffer_list_data.data())->UnPackTo(&schema_);
+    cache::schema::GetBufferList(buffer_list_data.get())->UnPackTo(&schema_);
   }
 
   // Move cursor to end of existing data.
@@ -470,52 +473,75 @@ bool MMapWeightCacheProvider::LoadLastBuildStep() {
     return header;
   }();
 
+  uint8_t* segment_data = nullptr;
+  size_t segment_offset = 0;
   // Map last data segment:
   // - either resize the last mmap handle;
   // - or add a new mapping handle.
+  //
+  // If a mapping has failed previously, fall back to using in memory buffers.
   {
     MMapHandle& last_mmap_handle = mmap_handles_.back();
     const int last_mmap_size = last_mmap_handle.size();
     if (!last_mmap_handle.Resize(last_mmap_size +
                                  builder_.LastBuildStepSize())) {
       mmap_handles_.emplace_back();
-      if (file_descriptor_.IsValid()) {
-        XNNPACK_RETURN_CHECK(
-            mmap_handles_.back().Map(file_descriptor_,
-                                     /*offset=*/builder_.LastBuildStepStart(),
-                                     file_path_.c_str()),
-            "could not map last build step");
+      if (!file_descriptor_.IsValid()) {
+        file_descriptor_ = FileDescriptor::Open(file_path_.c_str(), O_RDONLY);
+      }
+      if (mmap_handles_.back().Map(file_descriptor_,
+                                   /*offset=*/builder_.LastBuildStepStart(),
+                                   file_path_.c_str())) {
+        // Read the updated buffer list.
+        MMapHandle& segment_mmap_handle = mmap_handles_.back();
+        segment_data = segment_mmap_handle.data();
+        segment_offset = segment_mmap_handle.offset();
       } else {
-        XNNPACK_RETURN_CHECK(
-            mmap_handles_.back().Map(file_path_.c_str(),
-                                     /*offset=*/builder_.LastBuildStepStart()),
-            "could not map last build step");
+        if (fallback_buffers_.empty()) {
+          // Only log once, otherwise we just spam this for no reason.
+          TFLITE_LOG_PROD(
+              TFLITE_LOG_WARNING,
+              "Could not map last build step, falling back to using "
+              "a memory allocation.");
+        }
+        const size_t segment_size = builder_.LastBuildStepSize();
+
+        auto data = std::make_unique<uint8_t[]>(segment_size + kMinAlignment +
+                                                XNN_EXTRA_BYTES);
+        uint8_t* aligned_data =
+            data.get() + kMinAlignment -
+            (reinterpret_cast<uintptr_t>(data.get()) % kMinAlignment);
+        auto fd_pos = file_descriptor_.SetPos(builder_.LastBuildStepStart());
+        XNNPACK_RETURN_CHECK(file_descriptor_.Read(aligned_data, segment_size),
+                             "Could not read last build step.");
+        file_descriptor_.SetPos(fd_pos);
+        fallback_buffers_.push_back(std::move(data));
+        segment_data = aligned_data;
+        segment_offset = builder_.LastBuildStepStart();
       }
     }
   }
-  // Read the updated buffer list.
-  MMapHandle& segment_mmap_handle = mmap_handles_.back();
-  const size_t buffer_list_offset =
-      header.buffer_list_offset - segment_mmap_handle.offset();
 
-  flatbuffers::Verifier verifier(
-      segment_mmap_handle.data() + buffer_list_offset, header.buffer_list_size);
+  XNNPACK_RETURN_CHECK(segment_data != nullptr,
+                       "segment_data pointer should not be null");
+
+  const size_t buffer_list_offset = header.buffer_list_offset - segment_offset;
+  flatbuffers::Verifier verifier(segment_data + buffer_list_offset,
+                                 header.buffer_list_size);
   XNNPACK_RETURN_CHECK(cache::schema::VerifyBufferListBuffer(verifier),
                        "buffer list validation failed.");
 
-  const cache::schema::BufferList* buffer_list = cache::schema::GetBufferList(
-      segment_mmap_handle.data() + buffer_list_offset);
+  const cache::schema::BufferList* buffer_list =
+      cache::schema::GetBufferList(segment_data + buffer_list_offset);
   XNNPACK_RETURN_CHECK(buffer_list,
                        "could not get packed weights from flatbuffer.");
 
   // Update offset_to_addr_ with new offsets
-  const ptrdiff_t offset_modifier =
-      buffer_list->base_offset() - segment_mmap_handle.offset();
+  const ptrdiff_t offset_modifier = buffer_list->base_offset() - segment_offset;
   for (const auto* buffer : *(buffer_list->buffers())) {
     const size_t offset = buffer->offset();
     if (!offset_to_addr_.count(offset)) {
-      offset_to_addr_.insert(
-          {offset, segment_mmap_handle.data() + offset + offset_modifier});
+      offset_to_addr_.insert({offset, segment_data + offset + offset_modifier});
     }
   }
   return true;
@@ -684,7 +710,7 @@ bool IsCompatibleCacheFile(const char* path) {
                        "Couldn't read file header.");
   XNNPACK_RETURN_CHECK(
       header.version == XNNPackCacheHeader::kVersion,
-      "Cache header version is incompatible. Expected %d, got %d.",
+      "Cache header version is incompatible. Expected %llu, got %llu.",
       XNNPackCacheHeader::kVersion, header.version);
   XNNPACK_RETURN_CHECK(xnn_experimental_check_build_identifier(
                            header.xnnpack_build_identifier,

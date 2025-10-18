@@ -22,6 +22,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <unordered_map>
+#include <vector>
 
 #include "xnnpack.h"  // from @XNNPACK
 #include "tensorflow/lite/c/common.h"
@@ -401,6 +402,11 @@ class MMapWeightCacheProvider {
   // Stores the loaded buffer addresses corresponding to the given offset in the
   // cache file.
   std::map<size_t, void*> offset_to_addr_;
+
+  // When the cache fails to map a file portion when reloading the last build
+  // step, it will fallback to allocate a buffer and read the file portion of
+  // interest into an allocated buffer.
+  std::vector<std::unique_ptr<uint8_t[]>> fallback_buffers_;
 };
 
 }  // namespace xnnpack
