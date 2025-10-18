@@ -2661,6 +2661,67 @@ TEST_F(CollectiveOpsTest, SendRecvCrossPartition) {
       LiteralTestUtil::Equal(LiteralUtil::CreateR0<uint32_t>(0), results[1]));
 }
 
+// This is an execution test for the example in Option 2 in go/dus-spmd, this
+// test should pass regardless of which DUS SPMD implementation option is used.
+TEST_F(CollectiveOpsTest, DusSingleDimensionInPartitionMode) {
+  if (test::DeviceIs(test::kCpu)) {
+    GTEST_SKIP();
+  }
+  const char* const kModuleStr = R"(
+  HloModule module
+
+  ENTRY entry {
+    %input = s32[16] parameter(0), sharding={devices=[4]0,1,2,3}
+    %update = s32[8] parameter(1), sharding={devices=[4]0,1,2,3}
+    %c3 = s32[] constant(3)
+    ROOT %dynamic-update-slice = s32[16]
+      dynamic-update-slice(%input, %update, %c3),
+      sharding={devices=[4]0,1,2,3}
+  })";
+  const int64_t kNumReplicas = 1;
+  const int64_t kNumPartitions = 4;
+  if (test_runner().device_count() < kNumReplicas * kNumPartitions) {
+    GTEST_SKIP() << "Test requires at least " << kNumReplicas * kNumPartitions
+                 << " devices (" << test_runner().device_count()
+                 << " available)";
+  }
+
+  // Create device assignment running across partitions.
+  DeviceAssignment device_assignment(/*replica_count=*/kNumReplicas,
+                                     /*computation_count=*/kNumPartitions);
+  for (int64_t i = 0; i < kNumPartitions; ++i) {
+    device_assignment(0, i) = i;
+  }
+
+  HloModuleConfig config = GetModuleConfigForTest(
+      /*replica_count=*/kNumReplicas, /*num_partitions=*/kNumPartitions);
+  config.set_use_spmd_partitioning(true);
+  config.set_num_partitions(4);
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr, config));
+
+  std::vector<int> input_vec = {0, 1, 2,  3,  4,  5,  6,  7,
+                                8, 9, 10, 11, 12, 13, 14, 15};
+  auto input_literal = LiteralUtil::CreateR1<int>(input_vec);
+  std::vector<int> update_vec = {100, 200, 300, 400, 500, 600, 700, 800};
+  auto update_literal = LiteralUtil::CreateR1<int>(update_vec);
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::vector<Literal> results,
+      ExecuteReplicated(std::move(module), {&input_literal, &update_literal},
+                        kNumReplicas * kNumPartitions, &device_assignment,
+                        /*run_hlo_passes=*/true, /*use_threads=*/true));
+  ASSERT_EQ(results.size(), kNumReplicas * kNumPartitions);
+  EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR1<int>({0, 1, 2, 100}),
+                                     results[0]));
+  EXPECT_TRUE(LiteralTestUtil::Equal(
+      LiteralUtil::CreateR1<int>({200, 300, 400, 500}), results[1]));
+  EXPECT_TRUE(LiteralTestUtil::Equal(
+      LiteralUtil::CreateR1<int>({600, 700, 800, 11}), results[0]));
+  EXPECT_TRUE(LiteralTestUtil::Equal(
+      LiteralUtil::CreateR1<int>({12, 13, 14, 15}), results[1]));
+}
+
 class Fp8CollectiveOpsTest : public CollectiveOpsTest {
  public:
   Fp8CollectiveOpsTest() {
