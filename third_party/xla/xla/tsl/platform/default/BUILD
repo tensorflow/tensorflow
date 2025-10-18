@@ -600,7 +600,6 @@ filegroup(
         "casts.h",
         "context.h",
         "env.cc",
-        "integral_types.h",
         "load_library.cc",
         "port.cc",
         "posix_file_system.cc",
