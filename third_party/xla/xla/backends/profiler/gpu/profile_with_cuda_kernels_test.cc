@@ -105,7 +105,7 @@ void HandleRecords(PmSamples* samples) {
   }
 }
 
-TEST(ProfilerCudaKernelSanityTest, SimpleAddSub) {
+void SimpleAddSubWithProfilerTest(bool enable_activity_hardware_tracing) {
   // Ensure this is only run on CUPTI > 26 (paired w/ CUDA 12.6)
   if (CUPTI_API_VERSION < 24) {
     GTEST_SKIP() << "PM Sampling not supported on this version of CUPTI";
@@ -125,6 +125,7 @@ TEST(ProfilerCudaKernelSanityTest, SimpleAddSub) {
 
   CuptiTracerCollectorOptions collector_options;
   collector_options.num_gpus = CuptiTracer::NumGpus();
+  LOG(INFO) << "Cupti found #gpus: " << collector_options.num_gpus;
   uint64_t start_walltime_ns = absl::GetCurrentTimeNanos();
   uint64_t start_gputime_ns = CuptiTracer::GetTimestamp();
   auto collector = CreateCuptiCollector(collector_options, start_walltime_ns,
@@ -143,6 +144,8 @@ TEST(ProfilerCudaKernelSanityTest, SimpleAddSub) {
 
   CuptiTracerOptions tracer_options;
   tracer_options.enable_nvtx_tracking = false;
+  tracer_options.enable_activity_hardware_tracing =
+      enable_activity_hardware_tracing;
 
   tracer_options.pm_sampler_options = sampler_options;
 
@@ -196,6 +199,14 @@ TEST(ProfilerCudaKernelSanityTest, SimpleAddSub) {
   if (records_cycles > 0) {
     LOG(INFO) << "Sampled " << total_cycles << " cycles";
   }
+}
+
+TEST(ProfilerCudaKernelSanityTest, SimpleAddSubWithHESDisabled) {
+  SimpleAddSubWithProfilerTest(/*enable_activity_hardware_tracing=*/false);
+}
+
+TEST(ProfilerCudaKernelSanityTest, SimpleAddSubWithHESEnabled) {
+  SimpleAddSubWithProfilerTest(/*enable_activity_hardware_tracing=*/true);
 }
 
 }  // namespace

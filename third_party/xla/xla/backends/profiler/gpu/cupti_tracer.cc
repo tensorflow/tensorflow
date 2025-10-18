@@ -1379,6 +1379,15 @@ absl::Status CuptiTracer::EnableActivityTracing() {
                       "overhead may be big. CUPTI ERROR CODE:"
                    << err;
     }
+    if (option_->enable_activity_hardware_tracing) {
+      auto err = cupti_interface_->ActivityEnableHWTrace(true);
+      if (err == CUPTI_ERROR_NOT_SUPPORTED) {
+        LOG(WARNING) << "CUPTI HW trace not enabled due to not supported on "
+                        "this platform!";
+      } else if (err != CUPTI_SUCCESS) {
+        LOG(WARNING) << "Fail to enable HW trace, CUPTI ERROR CODE:" << err;
+      }
+    }
     RETURN_IF_CUPTI_ERROR(ActivityRegisterCallbacks(
         RequestCuptiActivityBuffer, ProcessCuptiActivityBuffer));
     VLOG(1) << "Enabling activity tracing for "
@@ -1415,6 +1424,15 @@ absl::Status CuptiTracer::DisableActivityTracing() {
       RETURN_IF_CUPTI_ERROR(ActivityDisable(activity));
     }
     option_->activities_selected.clear();
+
+    if (option_->enable_activity_hardware_tracing) {
+      auto err = cupti_interface_->ActivityEnableHWTrace(false);
+      // CUPTI_ERROR_NOT_SUPPORTED here is ok as it already handled/logged
+      // in EnableActivityTracing.
+      if (err != CUPTI_SUCCESS && err != CUPTI_ERROR_NOT_SUPPORTED) {
+        LOG(WARNING) << "Fail to disable HW trace, CUPTI ERROR CODE:" << err;
+      }
+    }
 
     VLOG(1) << "Flushing CUPTI activity buffer";
     RETURN_IF_CUPTI_ERROR(ActivityFlushAll(CUPTI_ACTIVITY_FLAG_FLUSH_FORCED));
