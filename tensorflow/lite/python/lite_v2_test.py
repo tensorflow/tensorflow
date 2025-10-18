@@ -2338,11 +2338,11 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
     def representative_dataset_gen():
       for _ in range(2):
         yield {
-            'x': np.random.uniform(low=0, high=1, size=(1, 1)).astype(
-                np.float32
+            'x': (
+                np.random.uniform(low=0, high=1, size=(1, 1)).astype(np.float32)
             ),
-            'y': np.random.uniform(low=0, high=1, size=(1, 1)).astype(
-                np.float32
+            'y': (
+                np.random.uniform(low=0, high=1, size=(1, 1)).astype(np.float32)
             ),
         }
 
@@ -2441,8 +2441,10 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
         yield (
             'add',
             {
-                'x': np.random.uniform(low=0, high=1, size=(1,)).astype(
-                    np.float32
+                'x': (
+                    np.random.uniform(low=0, high=1, size=(1,)).astype(
+                        np.float32
+                    )
                 ),
             },
         )
@@ -2450,8 +2452,10 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
         yield (
             'sub',
             {
-                'x': np.random.uniform(low=0, high=1, size=(1,)).astype(
-                    np.float32
+                'x': (
+                    np.random.uniform(low=0, high=1, size=(1,)).astype(
+                        np.float32
+                    )
                 ),
             },
         )
@@ -2798,7 +2802,8 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
 
       def call(self, x):
         return tf.quantization.fake_quant_with_min_max_vars(
-            x, -3.0, 3.0, narrow_range=True)
+            x, -3.0, 3.0, narrow_range=True
+        )
 
     inp = tf.keras.Input(shape=(6, 8, 48), batch_size=1)
     x = _FakeQuantVarsLayer()(inp)
@@ -3579,7 +3584,8 @@ class FromKerasModelTest(lite_v2_test_util.ModelTest):
 
       def call(self, x):
         return tf.quantization.fake_quant_with_min_max_vars(
-            x, -3.0, 3.0, narrow_range=True)
+            x, -3.0, 3.0, narrow_range=True
+        )
 
     inp = tf.keras.Input(shape=(6, 8, 6), batch_size=1)
     x = _FakeQuantVarsLayer()(inp)
