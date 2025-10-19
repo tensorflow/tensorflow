@@ -188,6 +188,34 @@ RemoteProfilerSessionManagerOptions GetRemoteSessionManagerOptionsLocked(
                 .set_int64_value(value);
           },
           options.mutable_profiler_options());
+    } else if (key == "watched_sync_flag_number") {
+      SetOption<int>(
+          key, kw.second,
+          [](tensorflow::ProfileOptions* options, int value) {
+            if (value > INT_MAX) {
+              LOG(WARNING) << "watched_sync_flag_number value is too large: "
+                           << value << ", masking with INT_MAX";
+              value = INT_MAX & value;
+            }
+            (*options->mutable_advanced_configuration())
+                ["watched_sync_flag_number"]
+                    .set_int64_value(value);
+          },
+          options.mutable_profiler_options());
+    } else if (key == "watched_sync_flag_mask") {
+      SetOption<int>(
+          key, kw.second,
+          [](tensorflow::ProfileOptions* options, int value) {
+            if (value > INT_MAX) {
+              LOG(WARNING) << "watched_sync_flag_mask value is too large: "
+                           << value << ", masking with INT_MAX";
+              value = INT_MAX & value;
+            }
+            (*options
+                  ->mutable_advanced_configuration())["watched_sync_flag_mask"]
+                .set_int64_value(value);
+          },
+          options.mutable_profiler_options());
     } else {
       LOG(WARNING) << "Unrecognised key: " << key;
     }
