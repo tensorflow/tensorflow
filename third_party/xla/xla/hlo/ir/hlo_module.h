@@ -36,7 +36,6 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
 #include "absl/strings/cord.h"
-#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
@@ -387,6 +386,16 @@ class HloModule {
   // `execution_threads` list means all execution threads are included.
   std::vector<HloComputation*> MakeComputationSorted(
       const absl::flat_hash_set<absl::string_view>& execution_threads) const;
+
+  // Returns a canonical stable post-order list of computations called directly
+  // or indirectly by computations in the module.
+  std::vector<HloComputation*> MakeComputationCanonicalPostOrder() {
+    return MakeComputationCanonicalPostOrder({});
+  }
+  // Same as above but only for specified `execution_threads`. Empty
+  // `execution_threads` list means all execution threads are included.
+  std::vector<HloComputation*> MakeComputationCanonicalPostOrder(
+      const absl::flat_hash_set<absl::string_view>& execution_threads);
 
   // Gets the computations in this module which aren't for fusion nodes.
   //
