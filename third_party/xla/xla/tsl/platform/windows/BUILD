@@ -174,6 +174,7 @@ cc_library(
     name = "platform_port",
     srcs = [
         "port.cc",
+        "//xla/tsl/platform:numa_noop.cc",
         "@local_tsl//tsl/platform:cpu_info.cc",
     ],
     hdrs = [

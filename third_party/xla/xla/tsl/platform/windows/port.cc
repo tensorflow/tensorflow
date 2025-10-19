@@ -105,25 +105,6 @@ int GetCurrentCPU() {
   return GetCurrentProcessorNumber();
 }
 
-bool NUMAEnabled() {
-  // Not yet implemented: coming soon.
-  return false;
-}
-
-int NUMANumNodes() { return 1; }
-
-void NUMASetThreadNodeAffinity(int node) {}
-
-int NUMAGetThreadNodeAffinity() { return kNUMANoAffinity; }
-
-void* NUMAMalloc(int node, size_t size, int minimum_alignment) {
-  return tsl::port::AlignedMalloc(size, minimum_alignment);
-}
-
-void NUMAFree(void* ptr, size_t size) { tsl::port::Free(ptr); }
-
-int NUMAGetMemAffinity(const void* addr) { return kNUMANoAffinity; }
-
 bool Snappy_Compress(const char* input, size_t length, string* output) {
 #ifdef TF_USE_SNAPPY
   output->resize(snappy::MaxCompressedLength(length));
