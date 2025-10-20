@@ -98,7 +98,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 }
 
 bool IsQuantizedType(TfLiteType type) {
-  return type == kTfLiteUInt8 || type == kTfLiteInt8 || type == kTfLiteInt16;
+  return type == kTfLiteUInt8 || type == kTfLiteInt8 ||
+         type == kTfLiteInt16 || type == kTfLiteInt4;
 }
 
 TfLiteStatus CheckQuantizationParams(TfLiteContext* context,
