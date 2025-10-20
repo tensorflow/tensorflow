@@ -694,11 +694,11 @@ TFE_TensorHandle* NumpyToTFE_TensorHandle(TFE_Context* ctx, PyObject* obj) {
   absl::Status status = tensorflow::NdarrayToTensor(ctx, obj, &tf_tensor);
 
   if (TF_PREDICT_FALSE(!status.ok())) {
-    PyErr_SetString(PyExc_ValueError,
-                    tensorflow::strings::StrCat(
-                        "Failed to convert a NumPy array to a Tensor (",
-                        status.message(), ").")
-                        .c_str());
+    PyErr_SetString(
+        PyExc_ValueError,
+        absl::StrCat("Failed to convert a NumPy array to a Tensor (",
+                     status.message(), ").")
+            .c_str());
     return nullptr;
   }
 
@@ -758,8 +758,7 @@ TFE_TensorHandle* PySeqToTFE_TensorHandle(TFE_Context* ctx, PyObject* obj,
                .ok()) {
         PyErr_SetString(
             PyExc_TypeError,
-            tensorflow::strings::StrCat("Invalid dtype argument value ", dtype)
-                .c_str());
+            absl::StrCat("Invalid dtype argument value ", dtype).c_str());
         return nullptr;
       }
     }
