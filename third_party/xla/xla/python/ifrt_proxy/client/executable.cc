@@ -744,6 +744,15 @@ LoadedExecutable::Execute(absl::Span<xla::ifrt::ArrayRef> args,
       output_spec_cache_->Retrieve().has_value();
 
   xla::ifrt::LoadedExecutable::ExecuteResult result;
+  // TODO(hyeontaek): `GetOutputLayouts()` uses a concrete layout for a
+  // default layout. This will change as proper IFRT layout support is fleshed
+  // out. While the code here using `layouts` will automatically benefit from
+  // the semantics change for `GetOutputLayouts()`, we would have a slightly
+  // inconsistent state here until the change happens where output arrays use a
+  // concrete layout for a default layout. This will not cause an issue for the
+  // time being when the user always uses concrete layouts, but we would need to
+  // resolve this issue before the user begins to use `nullptr` default layouts
+  // without resolving it to a concrete layout.
   absl::StatusOr<std::vector<std::shared_ptr<const xla::PjRtLayout>>> layouts =
       GetOutputLayouts();
 

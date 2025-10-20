@@ -161,14 +161,11 @@ TEST_F(ArrayTest, FullyReplicatedShard) {
 }
 
 TEST_F(ArrayTest, GetDefaultPjRtLayoutSuccess) {
-  ON_CALL(*mock_client_, GetDefaultPjRtLayout).WillByDefault(Return(kLayout1));
-
   auto array = tsl::MakeRef<Array>(
       mock_client_.get(), rpc_helper_, DType(DType::Kind::kBF16), Shape({}),
       sharding_, ArrayHandle{1234}, /*layout=*/nullptr);
   TF_ASSERT_OK_AND_ASSIGN(auto layout_1, array->pjrt_layout());
-  ASSERT_NE(layout_1, nullptr);
-  EXPECT_EQ(*layout_1, *kLayout1);
+  EXPECT_EQ(layout_1, nullptr);
 }
 
 TEST_F(ArrayTest, GetCustomLayoutSuccess) {
@@ -306,8 +303,7 @@ TEST_F(ArrayTest, AssembleArrayFromSingleDeviceArraysDefaultPjRtLayoutSuccess) {
       SingleDeviceShardSemantics::kAllShards);
   TF_ASSERT_OK(result.status());
   TF_ASSERT_OK_AND_ASSIGN(auto layout, result.value()->pjrt_layout());
-  ASSERT_NE(layout, nullptr);
-  EXPECT_EQ(*layout, *kLayout1);
+  EXPECT_EQ(layout, nullptr);
 }
 
 TEST_F(ArrayTest, RemapArraysSuccess) {
