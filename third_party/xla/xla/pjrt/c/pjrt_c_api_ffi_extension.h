@@ -49,23 +49,11 @@ struct PJRT_FFI_Type_Register_Args {
 };
 PJRT_DEFINE_STRUCT_TRAITS(PJRT_FFI_Type_Register_Args, type_info);
 
-struct PJRT_FFI_TypeID_Register_Args {
-  size_t struct_size;
-  PJRT_Extension_Base* extension_start;
-
-  const char* type_name;
-  size_t type_name_size;
-  int64_t type_id;  // in-out
-};
-PJRT_DEFINE_STRUCT_TRAITS(PJRT_FFI_TypeID_Register_Args, type_id);
-
 // Registers external type in a static type registry. If `type_id` is set to `0`
 // XLA will assign a unique type id to it and return via out argument, otherwise
 // it will verify that user-provided type id matches previously registered type
 // id for the given type name.
 typedef PJRT_Error* PJRT_FFI_Type_Register(PJRT_FFI_Type_Register_Args* args);
-typedef PJRT_Error* PJRT_FFI_TypeID_Register(
-    PJRT_FFI_TypeID_Register_Args* args);
 
 // User-data that will be forwarded to the FFI handlers. Deleter is optional,
 // and can be nullptr. Deleter will be called when the context is destroyed.
@@ -109,7 +97,7 @@ typedef PJRT_Error* PJRT_FFI_Register_Handler(
 
 typedef struct PJRT_FFI_Extension {
   PJRT_Extension_Base base;
-  PJRT_FFI_TypeID_Register* type_id_register;
+  PJRT_FFI_Type_Register* type_id_register;
   PJRT_FFI_UserData_Add* user_data_add;
   PJRT_FFI_Register_Handler* register_handler;
   PJRT_FFI_Type_Register* type_register;
