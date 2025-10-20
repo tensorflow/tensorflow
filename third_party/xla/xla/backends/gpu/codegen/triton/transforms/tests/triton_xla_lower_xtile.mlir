@@ -37,3 +37,18 @@ xtile.entry_func @layout_preserved(%input: !arg_type,
 // CHECK-SAME: [1, 1, 1, 1] [1, 1, 1, 1] : tensor<1x1x1x1xbf16>
 // CHECK:   return
 // CHECK: }
+
+// -----
+
+!memref_type = memref<32xf64, #nvvm.memory_space<global>>
+// CHECK:func.func @scalar_insert_extract(
+// CHECK-SAME: %[[ARG0:.*]]: !tt.ptr<f64>, %[[ARG1:.*]]: !tt.ptr<f64>) {
+xtile.entry_func @scalar_insert_extract(%input: !memref_type,
+                                        %output: !memref_type,
+                                        %tile_id: index) {
+  // CHECK: %[[SCALAR_VALUE:.*]] = tt.load %[[ARG0]] : !tt.ptr<f64>
+  %tile = xtile.extract %input[%tile_id][1][1] : !memref_type -> tensor<f64>
+  // CHECK: tt.store %[[ARG1]], %[[SCALAR_VALUE]] : !tt.ptr<f64>
+  xtile.insert %tile into %output[%tile_id][1][1] : tensor<f64> -> !memref_type
+  xtile.return
+}

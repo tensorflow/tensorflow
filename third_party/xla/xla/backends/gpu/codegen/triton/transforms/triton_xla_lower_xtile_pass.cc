@@ -26,6 +26,7 @@ limitations under the License.
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
+#include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
@@ -211,6 +212,16 @@ class XTileExtractToTriton
     mlir::Value memref_to_ptr =
         CreateMemrefToPtr(rewriter, extract_op.getSource());
 
+    if (extract_op.getType().getRank() == 0) {
+      mlir::Value scalar_value = rewriter.create<ttir::LoadOp>(
+          extract_op->getLoc(), memref_to_ptr, ttir::CacheModifier::NONE,
+          ttir::EvictionPolicy::NORMAL, /*isVolatile=*/false);
+
+      rewriter.replaceOpWithNewOp<mlir::tensor::FromElementsOp>(
+          extract_op, extract_op.getType(), scalar_value);
+      return mlir::success();
+    }
+
     absl::StatusOr<SmallVector<int64_t>> minor_to_major_or =
         getPermutationMinorToMajor(source_type);
     if (!minor_to_major_or.ok()) {
@@ -242,6 +253,15 @@ class XTileInsertToTriton
 
     mlir::Value memref_to_ptr =
         CreateMemrefToPtr(rewriter, insert_op.getDestination());
+
+    if (insert_op.getSource().getType().getRank() == 0) {
+      mlir::Value scalar_value = rewriter.create<mlir::tensor::ExtractOp>(
+          insert_op.getLoc(), insert_op.getSource());
+
+      rewriter.replaceOpWithNewOp<ttir::StoreOp>(
+          insert_op, memref_to_ptr, scalar_value, /*mask=*/nullptr);
+      return mlir::success();
+    }
 
     absl::StatusOr<SmallVector<int64_t>> minor_to_major_or =
         getPermutationMinorToMajor(destination_type);
