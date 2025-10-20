@@ -197,6 +197,15 @@ absl::StatusOr<Autotuner::Config> Autotuner::TuneBestConfig(
   VLOG(1) << "Successfully compiled " << executable_candidates.size()
           << " configs out of " << supported_configs.size() << " configs.";
 
+  bool skip_profiling =
+      executable_candidates.size() == 1 || autotune_config_.select_first_config;
+  if (skip_profiling) {
+    VLOG(1) << "Skipping profiling and using the "
+            << (autotune_config_.select_first_config ? "first" : "only")
+            << " config: " << executable_candidates[0].config.ToString();
+    return std::move(executable_candidates[0].config);
+  }
+
   TF_ASSIGN_OR_RETURN(std::vector<ConfigResult> results,
                       ProfileAll(executable_candidates));
   LogConfigResults(*instr, results);
@@ -385,9 +394,6 @@ absl::StatusOr<Autotuner::ConfigResult> Autotuner::PickBestConfig(
 
   if (best_result == nullptr) {
     return absl::NotFoundError("No valid config found!");
-  }
-  if (autotune_config_.select_first_config) {
-    return std::move(results[0]);
   }
 
   return std::move(*best_result);
