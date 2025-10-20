@@ -88,28 +88,6 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   return ResizeOutputTensor(context, &op_context);
 }
 
-bool IsQuantizedType(TfLiteType type) {
-  return type == kTfLiteUInt8 || type == kTfLiteInt8 ||
-         type == kTfLiteInt16 || type == kTfLiteInt4;
-}
-
-TfLiteStatus CheckQuantizationParams(TfLiteContext* context,
-                                     const TfLiteTensor* input,
-                                     const TfLiteTensor* output) {
-  if (!IsQuantizedType(input->type)) {
-    return kTfLiteOk;
-  }
-  if (input->params.scale != output->params.scale ||
-      input->params.zero_point != output->params.zero_point) {
-    TF_LITE_KERNEL_LOG(
-        context,
-        "Input and output tensors must have the same scale and zero_point for "
-        "quantized Transpose.");
-    return kTfLiteError;
-  }
-  return kTfLiteOk;
-}
-
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   TransposeContext op_context(context, node);
 
@@ -151,7 +129,6 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       }
       [[fallthrough]];
     case kTfLiteUInt8:
-      [[fallthrough]];
     case kTfLiteInt8:
       TF_LITE_TRANSPOSE(reference_ops, int8_t);
       break;

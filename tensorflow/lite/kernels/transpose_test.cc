@@ -415,15 +415,19 @@ TEST_P(TransposeOpQuantizationTest, MismatchedQuantizationFails) {
   TensorType tensor_type = GetParam();
   TransposeOpQuantizedModel m(tensor_type, {2, 2}, {2}, {1, 0});
   m.SetOutputQuantParams(0.25f, 2);
-  
-  if (tensor_type == TensorType_INT8) {
-    m.SetInput<int8_t>({1, 2, 3, 4});
-  } else if (tensor_type == TensorType_UINT8) {
-    m.SetInput<uint8_t>({1, 2, 3, 4});
-  } else if (tensor_type == TensorType_INT16) {
-    m.SetInput<int16_t>({1, 2, 3, 4});
+  switch (tensor_type) {
+    case TensorType_UINT8:
+      m.SetInput<uint8_t>({1, 2, 3, 4});
+      break;
+    case TensorType_INT8:
+      m.SetInput<int8_t>({1, 2, 3, 4});
+      break;
+    case TensorType_INT16:
+      m.SetInput<int16_t>({1, 2, 3, 4});
+      break;
+    default:
+      break;
   }
-  
   EXPECT_EQ(m.Invoke(), kTfLiteError);
 }
 

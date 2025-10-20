@@ -97,28 +97,6 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   return ResizeOutputTensor(context, input, size, output);
 }
 
-bool IsQuantizedType(TfLiteType type) {
-  return type == kTfLiteUInt8 || type == kTfLiteInt8 ||
-         type == kTfLiteInt16 || type == kTfLiteInt4;
-}
-
-TfLiteStatus CheckQuantizationParams(TfLiteContext* context,
-                                     const TfLiteTensor* input,
-                                     const TfLiteTensor* output) {
-  if (!IsQuantizedType(output->type)) {
-    return kTfLiteOk;
-  }
-  if (input->params.scale != output->params.scale ||
-      input->params.zero_point != output->params.zero_point) {
-    TF_LITE_KERNEL_LOG(
-        context,
-        "Input and output tensors must have the same scale and zero_point for "
-        "quantized ResizeBilinear.");
-    return kTfLiteError;
-  }
-  return kTfLiteOk;
-}
-
 template <KernelType kernel_type>
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   auto* params =
