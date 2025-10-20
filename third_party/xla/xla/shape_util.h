@@ -463,8 +463,12 @@ class ShapeUtil {
   // 'dimensions' is set to {3, 1, 0, 2}. This means the corresponding input
   // shape is [10, 1, 11, 32]. The normalized output shape is [32, 110] with
   // 'permutation' set to {1,0}.
-  static absl::InlinedVector<int64_t, 3> GetNormalizedLogicalTransposeShape(
-      const Shape& output_shape, absl::Span<int64_t const> dimensions,
+  // Note: the method fails if the input shape or the output shape has a
+  // non-monotonic layout.
+  static absl::StatusOr<absl::InlinedVector<int64_t, 3>>
+  GetNormalizedLogicalTransposeShape(
+      const Shape& input_shape, const Shape& output_shape,
+      absl::Span<int64_t const> dimensions,
       absl::InlinedVector<int64_t, 3>& permutation);
 
   // Returns an empty tuple shape. Can be used as a sentinel Shape value.
