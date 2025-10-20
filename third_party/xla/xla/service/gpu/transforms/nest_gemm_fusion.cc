@@ -1164,6 +1164,7 @@ class NestGemmFusionVisitor : public DfsHloRewriteVisitor {
     switch (instruction->opcode()) {
       case HloOpcode::kBroadcast:
       case HloOpcode::kConstant:
+      case HloOpcode::kPad:
       case HloOpcode::kParameter:
         return absl::OkStatus();
       case HloOpcode::kFusion:
