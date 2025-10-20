@@ -16,18 +16,12 @@ limitations under the License.
 #ifndef XLA_CODEGEN_INTRINSIC_INTRINSIC_H_
 #define XLA_CODEGEN_INTRINSIC_INTRINSIC_H_
 
-#include <cstddef>
 #include <cstdint>
-#include <optional>
 #include <string>
-#include <variant>
 #include <vector>
 
-#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/match.h"
-#include "absl/strings/str_cat.h"
-#include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/Module.h"
@@ -36,68 +30,11 @@ limitations under the License.
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypes.h"
-#include "mlir/IR/MLIRContext.h"
+#include "xla/codegen/intrinsic/type.h"
+#include "xla/codegen/intrinsic/vec_name_mangler.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla::codegen::intrinsics {
-
-// A scalar argument or result.
-struct Scalar {
-  PrimitiveType type;
-};
-
-// A vector argument or result.
-struct Vec {
-  PrimitiveType type;
-  size_t width;
-};
-
-class Type : public std::variant<Scalar, Vec> {
- public:
-  using std::variant<Scalar, Vec>::variant;
-  Type(PrimitiveType type, std::optional<size_t> vector_width);
-
-  std::string name() const;
-  bool is_scalar() const;
-  bool is_vector() const;
-  PrimitiveType element_type() const;
-  std::optional<size_t> vector_width() const;
-  llvm::Type* to_ir_type(llvm::LLVMContext& context) const;
-  mlir::Type to_ir_type(mlir::MLIRContext& context) const;
-
-  template <typename Sink>
-  friend void AbslStringify(Sink& sink, const Type& type) {
-    absl::Format(&sink, "%s", type.name());
-  }
-
-  // Shortened builders for the scalar and vector types defined above.
-  static constexpr Type S(PrimitiveType type) { return Scalar{type}; }
-  static constexpr Type V(PrimitiveType type, size_t width) {
-    return Vec{type, width};
-  }
-
-  // Verifies that the two types have the same width.
-  static absl::Status VerifySameWidth(const Type& a, const Type& b);
-
-  // Verifies that the two types have the same width and element type.
-  static absl::Status VerifySameWidthAndElementType(const Type& a,
-                                                    const Type& b);
-
-  // Returns the LLVM IR type for the given intrinsic type.
-  static llvm::Type* TypeToIrType(Type type, llvm::LLVMContext& context);
-
-  // Returns the MLIR type for the given intrinsic type.
-  static mlir::Type TypeToIrType(Type type, mlir::MLIRContext& context);
-
-  // Returns the intrinsic type for the given MLIR type.
-  static Type TypeFromIrType(mlir::Type type);
-
-  // Returns the intrinsic type for the given LLVM type.
-  static Type TypeFromIrType(llvm::Type* type);
-
-  // Returns the intrinsic type for the given type name, e.g. v4f32.
-  static Type FromName(absl::string_view name);
-};
 
 enum class DeviceType {
   kAmdCpu,
@@ -158,12 +95,8 @@ class Intrinsic {
 
   template <typename... Types>
   static std::string Name(Types... args) {
-    std::vector<std::string> arg_names = {args.name()...};
-    if (Derived::kLastArgIsReturnType) {
-      arg_names.insert(--arg_names.end(), "to");
-    }
-    return absl::StrCat("xla.", Derived::kName, ".",
-                        absl::StrJoin(arg_names, "."));
+    return ::xla::codegen::intrinsic::FunctionName(
+        Derived::kLastArgIsReturnType, {args...}, Derived::kName);
   }
 
   template <typename... Args>

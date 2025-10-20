@@ -16,14 +16,17 @@ limitations under the License.
 #ifndef XLA_CODEGEN_INTRINSIC_VEC_NAME_MANGLER_H_
 #define XLA_CODEGEN_INTRINSIC_VEC_NAME_MANGLER_H_
 
-#include <algorithm>
 #include <cstddef>
 #include <string>
 #include <vector>
 
+#include "absl/algorithm/container.h"
+#include "absl/log/check.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
+#include "xla/codegen/intrinsic/type.h"
 
 namespace xla::codegen::intrinsic {
 
@@ -54,10 +57,43 @@ inline std::string GetMangledNamePrefix(
   std::string mask = is_masked ? "M" : "N";
 
   std::vector<std::string> param_strings(param_cardinalities.size());
-  std::transform(param_cardinalities.begin(), param_cardinalities.end(),
-                 param_strings.begin(), VecParamCardinalityToString);
+  absl::c_transform(param_cardinalities, param_strings.begin(),
+                    VecParamCardinalityToString);
   return absl::StrCat("_ZGV_LLVM_", mask, vector_width,
                       absl::StrJoin(param_strings, ""));
+}
+
+inline std::string GetMangledNamePrefix(
+    bool is_masked, bool last_arg_is_return_type,
+    absl::Span<const intrinsics::Type> types) {
+  std::vector<VecParamCardinality> param_cardinalities;
+  auto front = types.front();
+  // Remove the return type if it's in the types list:
+  for (const auto& type : types.first(types.size() - last_arg_is_return_type)) {
+    if (type.is_scalar()) {
+      param_cardinalities.push_back(VecParamCardinality::kScalar);
+    } else {
+      param_cardinalities.push_back(VecParamCardinality::kVector);
+    }
+    CHECK(type.vector_width() == front.vector_width())
+        << "All types must have the same vector width.";
+  }
+  return GetMangledNamePrefix(is_masked, front.vector_width().value_or(1),
+                              param_cardinalities);
+}
+
+inline std::string FunctionName(bool last_arg_is_return_type,
+                                absl::Span<const intrinsics::Type> types,
+                                absl::string_view func_name) {
+  std::vector<std::string> type_names;
+  type_names.reserve(types.size());
+  for (const auto& type : types) {
+    type_names.push_back(type.name());
+  }
+  if (last_arg_is_return_type) {
+    type_names.insert(--type_names.end(), "to");
+  }
+  return absl::StrCat("xla.", func_name, ".", absl::StrJoin(type_names, "."));
 }
 
 }  // namespace xla::codegen::intrinsic

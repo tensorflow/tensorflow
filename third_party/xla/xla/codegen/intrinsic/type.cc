@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/codegen/intrinsic/intrinsic.h"
+#include "xla/codegen/intrinsic/type.h"
 
 #include <cctype>
 #include <cstddef>
@@ -22,7 +22,6 @@ limitations under the License.
 #include <variant>
 
 #include "absl/log/check.h"
-#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
@@ -33,14 +32,14 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/Types.h"
 #include "mlir/Support/LLVM.h"
 #include "xla/mlir/utils/type_util.h"
 #include "xla/primitive_util.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/util.h"
-#include "xla/xla_data.pb.h"
 
-namespace xla::codegen {
+namespace xla::codegen::intrinsics {
 
 namespace {
 std::string LowercaseLLVMPrimitiveTypeName(PrimitiveType type) {
@@ -69,8 +68,6 @@ PrimitiveType FromLowercaseLLVMTypeName(absl::string_view in) {
 }
 }  // namespace
 
-namespace intrinsics {
-
 Type::Type(PrimitiveType type, std::optional<size_t> vector_width) {
   if (vector_width) {
     emplace<1>(Vec{type, *vector_width});
@@ -80,6 +77,27 @@ Type::Type(PrimitiveType type, std::optional<size_t> vector_width) {
 }
 
 namespace {
+template <typename ScalarFn, typename VectorFn>
+static absl::Status VerifyTypes(ScalarFn scalar, VectorFn vector, const Type& a,
+                                const Type& b) {
+  // A pair of scalar types.
+  auto* sa = std::get_if<Scalar>(&a);
+  auto* sb = std::get_if<Scalar>(&b);
+  if (sa && sb) {
+    return scalar(*sa, *sb);
+  }
+
+  // A pair of vector types.
+  auto* va = std::get_if<Vec>(&a);
+  auto* vb = std::get_if<Vec>(&b);
+  if (va && vb) {
+    return vector(*va, *vb);
+  }
+
+  return InvalidArgument("Expected types of the same kind, but got %s and %s",
+                         a.name(), b.name());
+}
+
 template <typename R, typename ScalarFn, typename VectorFn>
 static R Visit(ScalarFn scalar, VectorFn vector, const Type* type) {
   if (auto* s = std::get_if<Scalar>(type)) {
@@ -125,29 +143,6 @@ std::optional<size_t> Type::vector_width() const {
       [](const Scalar& scalar) { return std::nullopt; },
       [](const Vec& vec) { return vec.width; }, this);
 }
-
-namespace {
-template <typename ScalarFn, typename VectorFn>
-static absl::Status VerifyTypes(ScalarFn scalar, VectorFn vector, const Type& a,
-                                const Type& b) {
-  // A pair of scalar types.
-  auto* sa = std::get_if<Scalar>(&a);
-  auto* sb = std::get_if<Scalar>(&b);
-  if (sa && sb) {
-    return scalar(*sa, *sb);
-  }
-
-  // A pair of vector types.
-  auto* va = std::get_if<Vec>(&a);
-  auto* vb = std::get_if<Vec>(&b);
-  if (va && vb) {
-    return vector(*va, *vb);
-  }
-
-  return InvalidArgument("Expected types of the same kind, but got %s and %s",
-                         a.name(), b.name());
-}
-}  // namespace
 
 absl::Status Type::VerifySameWidth(const Type& a, const Type& b) {
   return VerifyTypes(
@@ -221,5 +216,4 @@ Type Type::TypeFromIrType(llvm::Type* type) {
   return Type(llvm_ir::PrimitiveTypeFromIrType(type), std::nullopt);
 }
 
-}  // namespace intrinsics
-}  // namespace xla::codegen
+}  // namespace xla::codegen::intrinsics

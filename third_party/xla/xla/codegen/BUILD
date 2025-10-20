@@ -221,6 +221,7 @@ cc_library(
         "//xla/codegen/intrinsic:rsqrt",
         "//xla/codegen/intrinsic:string_interner",
         "//xla/codegen/intrinsic:tanh",
+        "//xla/codegen/intrinsic:type",
         "//xla/codegen/intrinsic:vec_name_mangler",
         "//xla/service/llvm_ir:llvm_util",
         "@com_google_absl//absl/container:flat_hash_map",
