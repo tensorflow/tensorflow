@@ -158,8 +158,6 @@ std::string DefaultCollectiveDevicesIfEmpty(
 
 }  // namespace
 
-// TODO(b/390097558): Add an option to generate perf table for collective which
-// gets overlap to model resource contention.
 int main(int argc, char* argv[]) {
   // Default args.
   int32_t num_nodes = 1;
