@@ -103,7 +103,7 @@ absl::Status HierarchicalTreeBroadcaster::InitializeCollectiveParams(
 
   if (VLOG_IS_ON(2)) {
     string dpt_buf;
-    for (int dpt : dev_per_task) strings::StrAppend(&dpt_buf, dpt, ";");
+    for (int dpt : dev_per_task) absl::StrAppend(&dpt_buf, dpt, ";");
     VLOG(2) << "HierarchicalTreeBroadcaster::InitializeCollectiveParams device="
             << device_name << " source_rank=" << col_params->source_rank
             << " dev_per_task=" << dpt_buf;
@@ -304,7 +304,7 @@ void HierarchicalTreeBroadcaster::RunTree() {
     if (VLOG_IS_ON(1)) {
       string subdiv_buf;
       for (int r : col_params_->instance.impl_details.subdiv_permutations[si]) {
-        strings::StrAppend(&subdiv_buf, r, ",");
+        absl::StrAppend(&subdiv_buf, r, ",");
       }
       VLOG(1) << "Running Broadcast tree device=" << col_ctx_->device_name
               << " subdiv=" << si << " perm=" << subdiv_buf
@@ -318,7 +318,7 @@ void HierarchicalTreeBroadcaster::RunTree() {
     if (my_rank >= 0 && my_rank != source_rank) {
       // Begin by receiving the value.
       tsl::profiler::TraceMe activity(
-          [&] { return strings::StrCat("ReceiveValue:", si); },
+          [&] { return absl::StrCat("ReceiveValue:", si); },
           tsl::profiler::TraceMeLevel::kInfo);
       int recv_from_rank = TreeRecvFrom(*col_params_, si);
       absl::Notification note;
@@ -334,7 +334,7 @@ void HierarchicalTreeBroadcaster::RunTree() {
     // Then forward value to all descendent devices.
     {
       tsl::profiler::TraceMe activity(
-          [&] { return strings::StrCat("ForwardValue:", si); },
+          [&] { return absl::StrCat("ForwardValue:", si); },
           tsl::profiler::TraceMeLevel::kInfo);
       if (my_rank >= 0 && status_.ok()) {
         std::vector<int> send_to_ranks;

@@ -154,7 +154,7 @@ absl::Status FindSaveOp(const Graph* graph, Node** save_op,
 Node* FindRestoreAllOp(const Graph* graph, absl::string_view save_prefix) {
   for (Node* node : graph->op_nodes()) {
     // The restore_all op should have the same prefix of the save_op.
-    if (node->name() == strings::StrCat(save_prefix, "/restore_all")) {
+    if (node->name() == absl::StrCat(save_prefix, "/restore_all")) {
       return node;
     }
   }
@@ -254,21 +254,21 @@ absl::Status AddRestoreVariableSubgraphs(
   if (restore_all == nullptr) {
     return errors::InvalidArgument("graph has SaveOp, but no restore_all NoOp");
   }
-  const string restore_op_name = strings::StrCat(name_prefix, "/RestoreV2");
-  const string assign_op_name = strings::StrCat(name_prefix, "/Assign");
+  const string restore_op_name = absl::StrCat(name_prefix, "/RestoreV2");
+  const string assign_op_name = absl::StrCat(name_prefix, "/Assign");
   for (Node* var : variables) {
     // Add an extra prefix after calling graph->NewName because the "unique"
     // name may conflict with names generated for Send nodes.
     // TODO(b/77547936): fix this more generally and get rid of the extra prefix
     // here.
     string new_restore_op_name =
-        strings::StrCat(graph->NewName(restore_op_name), "_qt");
+        absl::StrCat(graph->NewName(restore_op_name), "_qt");
     string new_assign_op_name =
-        strings::StrCat(graph->NewName(assign_op_name), "_qt");
+        absl::StrCat(graph->NewName(assign_op_name), "_qt");
     string tensor_names_op_name =
-        strings::StrCat(new_restore_op_name, "/tensor_names");
+        absl::StrCat(new_restore_op_name, "/tensor_names");
     string shape_and_slices_op_name =
-        strings::StrCat(new_restore_op_name, "/shape_and_slices");
+        absl::StrCat(new_restore_op_name, "/shape_and_slices");
 
     // Construct the tensor_names input with the variable name.
     Node* tensor_names;
@@ -331,12 +331,12 @@ absl::Status AddSaveAndRestore(Graph* graph,
 // dimensions of input and return.
 absl::Status MakeReductionAxes(Graph* graph, string name_prefix, Node* input,
                                Node** output) {
-  name_prefix = strings::StrCat(name_prefix, "/ReductionAxes");
+  name_prefix = absl::StrCat(name_prefix, "/ReductionAxes");
   Node* start;
   Tensor zero_tensor(DT_INT32, TensorShape());
   zero_tensor.flat<int32>()(0) = 0;
   TF_RETURN_IF_ERROR(
-      NodeBuilder(strings::StrCat(name_prefix, "/RangeStart"), "Const")
+      NodeBuilder(absl::StrCat(name_prefix, "/RangeStart"), "Const")
           .Attr("dtype", DT_INT32)
           .Attr("value", zero_tensor)
           .Finalize(graph, &start));
@@ -344,17 +344,17 @@ absl::Status MakeReductionAxes(Graph* graph, string name_prefix, Node* input,
   Tensor one_tensor(DT_INT32, TensorShape());
   one_tensor.flat<int32>()(0) = 1;
   TF_RETURN_IF_ERROR(
-      NodeBuilder(strings::StrCat(name_prefix, "/RangeDelta"), "Const")
+      NodeBuilder(absl::StrCat(name_prefix, "/RangeDelta"), "Const")
           .Attr("dtype", DT_INT32)
           .Attr("value", one_tensor)
           .Finalize(graph, &delta));
   Node* rank;
   TF_RETURN_IF_ERROR(
-      NodeBuilder(strings::StrCat(name_prefix, "/InputRank"), "Rank")
+      NodeBuilder(absl::StrCat(name_prefix, "/InputRank"), "Rank")
           .Input(input)
           .Finalize(graph, &rank));
   TF_RETURN_IF_ERROR(
-      NodeBuilder(strings::StrCat(name_prefix, "/ReductionAxes"), "Range")
+      NodeBuilder(absl::StrCat(name_prefix, "/ReductionAxes"), "Range")
           .Input(start)
           .Input(rank)
           .Input(delta)
@@ -368,40 +368,38 @@ absl::Status MakeExponentialMovingAverage(Graph* graph, string name_prefix,
                                           Node* decay, Node* update_variable,
                                           Node** assign_value) {
   // variable_t+1 = variable_t - [(variable_t - value) * (1 - decay)]
-  name_prefix = strings::StrCat(name_prefix, "/EMA");
+  name_prefix = absl::StrCat(name_prefix, "/EMA");
   Node* one;
   Tensor one_tensor(DT_FLOAT, TensorShape());
   one_tensor.flat<float>()(0) = 1.0;
   TF_RETURN_IF_ERROR(
-      NodeBuilder(strings::StrCat(name_prefix, "/OneConst"), "Const")
+      NodeBuilder(absl::StrCat(name_prefix, "/OneConst"), "Const")
           .Attr("dtype", DT_FLOAT)
           .Attr("value", one_tensor)
           .Finalize(graph, &one));
   Node* decay_complement;
   TF_RETURN_IF_ERROR(
-      NodeBuilder(strings::StrCat(name_prefix, "/DecayComplement"), "Sub")
+      NodeBuilder(absl::StrCat(name_prefix, "/DecayComplement"), "Sub")
           .Input(one)
           .Input(decay)
           .Finalize(graph, &decay_complement));
 
   Node* value_diff;
-  TF_RETURN_IF_ERROR(
-      NodeBuilder(strings::StrCat(name_prefix, "/ValueDiff"), "Sub")
-          .Input(update_variable)
-          .Input(input)
-          .Finalize(graph, &value_diff));
+  TF_RETURN_IF_ERROR(NodeBuilder(absl::StrCat(name_prefix, "/ValueDiff"), "Sub")
+                         .Input(update_variable)
+                         .Input(input)
+                         .Finalize(graph, &value_diff));
   Node* update_value;
   TF_RETURN_IF_ERROR(
-      NodeBuilder(strings::StrCat(name_prefix, "/UpdateValue"), "Mul")
+      NodeBuilder(absl::StrCat(name_prefix, "/UpdateValue"), "Mul")
           .Input(value_diff)
           .Input(decay_complement)
           .Finalize(graph, &update_value));
 
-  TF_RETURN_IF_ERROR(
-      NodeBuilder(strings::StrCat(name_prefix, "/EMAValue"), "Sub")
-          .Input(update_variable)
-          .Input(update_value)
-          .Finalize(graph, assign_value));
+  TF_RETURN_IF_ERROR(NodeBuilder(absl::StrCat(name_prefix, "/EMAValue"), "Sub")
+                         .Input(update_variable)
+                         .Input(update_value)
+                         .Finalize(graph, assign_value));
   return absl::OkStatus();
 }
 
@@ -421,20 +419,19 @@ absl::Status MakeInitializedEMAVariable(Graph* graph, const string& name,
                                         std::vector<Node*>* added_variables,
                                         Node** var) {
   // TODO(suharshs): Update this to use ResourceVariables when they are ready.
-  TF_RETURN_IF_ERROR(
-      NodeBuilder(strings::StrCat(name, "/Variable"), "VariableV2")
-          .Attr("shape", TensorShape())
-          .Attr("dtype", DT_FLOAT)
-          .Finalize(graph, var));
+  TF_RETURN_IF_ERROR(NodeBuilder(absl::StrCat(name, "/Variable"), "VariableV2")
+                         .Attr("shape", TensorShape())
+                         .Attr("dtype", DT_FLOAT)
+                         .Finalize(graph, var));
   added_variables->push_back(*var);
 
   Node* is_initialized;
-  TF_RETURN_IF_ERROR(NodeBuilder(strings::StrCat(name, "/IsInitialized"),
-                                 "IsVariableInitialized")
-                         .Input(*var)
-                         .Finalize(graph, &is_initialized));
+  TF_RETURN_IF_ERROR(
+      NodeBuilder(absl::StrCat(name, "/IsInitialized"), "IsVariableInitialized")
+          .Input(*var)
+          .Finalize(graph, &is_initialized));
   Node* switch_node;
-  TF_RETURN_IF_ERROR(NodeBuilder(strings::StrCat(name, "/Switch"), "Switch")
+  TF_RETURN_IF_ERROR(NodeBuilder(absl::StrCat(name, "/Switch"), "Switch")
                          .Input(init_val)
                          .Input(is_initialized)
                          .Finalize(graph, &switch_node));
@@ -446,15 +443,14 @@ absl::Status MakeInitializedEMAVariable(Graph* graph, const string& name,
                                                   decay, *var, &ema_value));
 
   Node* assign_value;
-  TF_RETURN_IF_ERROR(NodeBuilder(strings::StrCat(name, "/Merge"), "Merge")
+  TF_RETURN_IF_ERROR(NodeBuilder(absl::StrCat(name, "/Merge"), "Merge")
                          .Input({output_false, ema_value})
                          .Finalize(graph, &assign_value));
 
-  TF_RETURN_IF_ERROR(
-      NodeBuilder(strings::StrCat(name, "/AssignValue"), "Assign")
-          .Input(*var)
-          .Input(assign_value)
-          .Finalize(graph, var));
+  TF_RETURN_IF_ERROR(NodeBuilder(absl::StrCat(name, "/AssignValue"), "Assign")
+                         .Input(*var)
+                         .Input(assign_value)
+                         .Finalize(graph, var));
   return absl::OkStatus();
 }
 
@@ -468,23 +464,22 @@ absl::Status MakeEMAMinMaxVars(Graph* graph, const string& name_prefix,
   Tensor decay_tensor(DT_FLOAT, TensorShape());
   decay_tensor.flat<float>()(0) = kEMADecay;
   Node* decay;
-  TF_RETURN_IF_ERROR(
-      NodeBuilder(strings::StrCat(name_prefix, "/Decay"), "Const")
-          .Attr("dtype", DT_FLOAT)
-          .Attr("value", decay_tensor)
-          .Finalize(graph, &decay));
+  TF_RETURN_IF_ERROR(NodeBuilder(absl::StrCat(name_prefix, "/Decay"), "Const")
+                         .Attr("dtype", DT_FLOAT)
+                         .Attr("value", decay_tensor)
+                         .Finalize(graph, &decay));
 
   Node* reduction_axes;
   TF_RETURN_IF_ERROR(
       MakeReductionAxes(graph, name_prefix, input, &reduction_axes));
   Node* min;
-  string min_name = strings::StrCat(name_prefix, "/Min");
+  string min_name = absl::StrCat(name_prefix, "/Min");
   TF_RETURN_IF_ERROR(NodeBuilder(min_name, "Min")
                          .Input(input)
                          .Input(reduction_axes)
                          .Finalize(graph, &min));
   Node* max;
-  string max_name = strings::StrCat(name_prefix, "/Max");
+  string max_name = absl::StrCat(name_prefix, "/Max");
   TF_RETURN_IF_ERROR(NodeBuilder(max_name, "Max")
                          .Input(input)
                          .Input(reduction_axes)
@@ -508,14 +503,14 @@ absl::Status MakeInputMinMax(Graph* graph, const string& name_prefix,
     Tensor input_min_tensor(DT_FLOAT, TensorShape());
     input_min_tensor.flat<float>()(0) = edge.input_min;
     TF_RETURN_IF_ERROR(
-        NodeBuilder(strings::StrCat(name_prefix, "/InputMin"), "Const")
+        NodeBuilder(absl::StrCat(name_prefix, "/InputMin"), "Const")
             .Attr("dtype", DT_FLOAT)
             .Attr("value", input_min_tensor)
             .Finalize(graph, input_min));
     Tensor input_max_tensor(DT_FLOAT, TensorShape());
     input_max_tensor.flat<float>()(0) = edge.input_max;
     TF_RETURN_IF_ERROR(
-        NodeBuilder(strings::StrCat(name_prefix, "/InputMax"), "Const")
+        NodeBuilder(absl::StrCat(name_prefix, "/InputMax"), "Const")
             .Attr("dtype", DT_FLOAT)
             .Attr("value", input_max_tensor)
             .Finalize(graph, input_max));
@@ -541,7 +536,7 @@ absl::Status MakeQuantizeOp(Graph* graph, const string& name_prefix,
   Node* input_max;
   TF_RETURN_IF_ERROR(MakeInputMinMax(graph, name_prefix, edge, added_variables,
                                      &input_min, &input_max));
-  string quant_name = strings::StrCat(name_prefix, "/", quant_op_type);
+  string quant_name = absl::StrCat(name_prefix, "/", quant_op_type);
   if (quant_op_type == "QuantizeAndDequantizeV2") {
     TF_RETURN_IF_ERROR(NodeBuilder(quant_name, quant_op_type)
                            .Input(edge.edge->src())

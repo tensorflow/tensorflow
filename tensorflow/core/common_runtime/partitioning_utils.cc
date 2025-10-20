@@ -55,7 +55,7 @@ absl::Status PartitionFunctionGraph(
   }
   int64_t edge_name_counter = 0;
   partition_options.new_name = [&edge_name_counter](const string& prefix) {
-    return strings::StrCat(prefix, "/_", ++edge_name_counter);
+    return absl::StrCat(prefix, "/_", ++edge_name_counter);
   };
   partition_options.get_incarnation =
       [&device_set](const string& name) -> int64 {
@@ -268,7 +268,7 @@ absl::Status UpdateArgAndRetvalMetadata(
 
 string FunctionNameGenerator::GetName() {
   while (true) {
-    const string candidate = strings::StrCat(name_, "_", counter_++);
+    const string candidate = absl::StrCat(name_, "_", counter_++);
     if (flib_def_->Find(candidate) == nullptr) {
       return candidate;
     }
