@@ -76,15 +76,6 @@ struct TestParams {
   int64_t num_elements;
 };
 
-template <typename T>
-std::vector<T> ToVector(const Array<T>& array) {
-  std::vector<T> result;
-  result.reserve(array.num_elements());
-  array.Each(
-      [&](absl::Span<const int64_t> indices, T val) { result.push_back(val); });
-  return result;
-}
-
 class AllReduceKernelTest : public ::testing::Test,
                             public ::testing::WithParamInterface<TestParams> {
  public:
