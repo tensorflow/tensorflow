@@ -19,6 +19,7 @@ limitations under the License.
 #include "mlir/Dialect/Func/Extensions/InlinerExtension.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/LLVMIR/Transforms/InlinerInterfaceImpl.h"
+#include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/InitAllExtensions.h"
 #include "mlir/Pass/PassOptions.h"
@@ -87,10 +88,10 @@ int main(int argc, char** argv) {
   mlir::LLVM::registerInlinerInterface(registry);
   mlir::func::registerInlinerExtension(registry);
   registerTritonDialects(registry);  // This registers all passes as well.
-  registry
-      .insert<mlir::func::FuncDialect, mlir::tensor::TensorDialect,
-              mlir::triton::xla::XlaTritonDialect, xla::XlaDialect,
-              xla::xtile::XTileDialect, mlir::stablehlo::StablehloDialect>();
+  registry.insert<mlir::func::FuncDialect, mlir::tensor::TensorDialect,
+                  mlir::triton::xla::XlaTritonDialect, xla::XlaDialect,
+                  xla::xtile::XTileDialect, mlir::stablehlo::StablehloDialect,
+                  mlir::memref::MemRefDialect>();
   mlir::triton::xla::registerTritonXlaTransformsPasses();
   xla::emitters::registerTransformsPasses();
   xla::gpu::registerGpuFusionTransformsPasses();

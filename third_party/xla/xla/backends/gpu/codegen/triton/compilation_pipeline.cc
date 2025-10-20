@@ -35,6 +35,7 @@ void CreateTritonXlaPipeline(
     bool allow_tma) {
   pm->addPass(mlir::triton::xla::CreateTritonXLASqueezeDimsPass());
   pm->addPass(mlir::triton::xla::CreateTritonXLAFoldTransposePass());
+  pm->addPass(mlir::triton::xla::CreateTritonXLALowerXTilePass());
 
   auto* cuda_cc = std::get_if<stream_executor::CudaComputeCapability>(&gpu_cc);
   bool is_at_least_hopper = cuda_cc != nullptr && cuda_cc->IsAtLeastHopper();

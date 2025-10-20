@@ -35,6 +35,7 @@ limitations under the License.
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/LLVMIR/LLVMAttrs.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
+#include "mlir/Dialect/LLVMIR/NVVMDialect.h"
 #include "mlir/Dialect/Math/IR/Math.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
@@ -618,20 +619,9 @@ absl::StatusOr<stream_executor::gpu::TmaMetadata> ExtractTmaMetadata(
   return tma_metadata;
 }
 
-::mlir::triton::PointerType GetPointerType(mlir::MemRefType memref_type) {
-  int address_space = 0;
-
-  mlir::Attribute memory_space_attr = memref_type.getMemorySpace();
-  if (auto int_memory_space_attr =
-          mlir::dyn_cast_if_present<mlir::IntegerAttr>(memory_space_attr)) {
-    address_space = int_memory_space_attr.getInt();
-  } else if (auto llvm_memory_space_attr = mlir::dyn_cast_if_present<
-                 mlir::LLVM::LLVMAddrSpaceAttrInterface>(memory_space_attr)) {
-    address_space = llvm_memory_space_attr.getAddressSpace();
-  }
-
-  return ::mlir::triton::PointerType::get(memref_type.getElementType(),
-                                          address_space);
+::mlir::triton::PointerType GetGlobalPointerType(mlir::Type element_type) {
+  return ::mlir::triton::PointerType::get(
+      element_type, static_cast<unsigned>(mlir::NVVM::NVVMMemorySpace::Global));
 }
 
 }  // namespace xla::gpu::triton

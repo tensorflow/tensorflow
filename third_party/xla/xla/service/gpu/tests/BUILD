@@ -687,6 +687,7 @@ lit_test_suite_for_gpus(
 #         "@llvm-project//mlir:FuncExtensions",
 #         "@llvm-project//mlir:LLVMIRTransforms",
 #         "@llvm-project//mlir:LLVMToLLVMIRTranslation",
+#         "@llvm-project//mlir:MemRefDialect",
 #         "@llvm-project//mlir:MlirOptLib",
 #         "@llvm-project//mlir:Pass",
 #         "@llvm-project//mlir:RegisterAllExtensions",  # buildcleaner: keep

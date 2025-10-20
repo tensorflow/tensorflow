@@ -137,6 +137,7 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:LLVMDialect",
         "@llvm-project//mlir:MathDialect",
+        "@llvm-project//mlir:NVVMDialect",
         "@llvm-project//mlir:Support",
         "@triton//:TritonDialects",
     ],

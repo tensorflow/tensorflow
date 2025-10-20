@@ -48,6 +48,7 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/triton/emitter_helpers.h"
 #include "xla/backends/gpu/codegen/triton/ir/triton_xla_ops.h"
 #include "xla/codegen/xtile/ir/xtile_ops.h"
+#include "third_party/triton/include/triton/Dialect/Triton/IR/Types.h"
 #include "triton/Dialect/Triton/IR/Dialect.h"
 
 namespace mlir::triton::xla {
@@ -67,7 +68,8 @@ llvm::SmallVector<mlir::Type> GetPtrArgTypes(mlir::ValueRange args) {
   arg_types.reserve(args.size());
   for (auto arg : args) {
     mlir::MemRefType memref_type = mlir::cast<mlir::MemRefType>(arg.getType());
-    arg_types.push_back(::xla::gpu::triton::GetPointerType(memref_type));
+    arg_types.push_back(
+        ::xla::gpu::triton::GetGlobalPointerType(memref_type.getElementType()));
   }
   return arg_types;
 }
@@ -124,9 +126,9 @@ absl::StatusOr<llvm::SmallVector<int64_t>> getPermutationMinorToMajor(
 
 MemrefToPtrOp CreateMemrefToPtr(mlir::OpBuilder& builder,
                                 mlir::TypedValue<mlir::MemRefType> memref) {
-  mlir::MemRefType memref_type = memref.getType();
-  return builder.create<MemrefToPtrOp>(
-      memref.getLoc(), ::xla::gpu::triton::GetPointerType(memref_type), memref);
+  PointerType ptr_type = ::xla::gpu::triton::GetGlobalPointerType(
+      memref.getType().getElementType());
+  return builder.create<MemrefToPtrOp>(memref.getLoc(), ptr_type, memref);
 }
 
 // Rewrite a xtile entry to a func.func with the same body, but with memref
@@ -281,6 +283,26 @@ class XTileInsertToTriton
   }
 };
 
+class FoldIntoMemrefToPtr : public mlir::OpRewritePattern<MemrefToPtrOp> {
+ public:
+  using OpRewritePattern::OpRewritePattern;
+
+  mlir::LogicalResult matchAndRewrite(
+      MemrefToPtrOp op, mlir::PatternRewriter& rewriter) const override {
+    // As a transpose doesn't add any offset we can simply fold it into the
+    // memref_to_ptr.
+    if (auto transpose =
+            op.getSrc().getDefiningOp<mlir::memref::TransposeOp>()) {
+      auto new_ptr = rewriter.create<MemrefToPtrOp>(op.getLoc(), op.getType(),
+                                                    transpose.getIn());
+      rewriter.replaceOp(op, new_ptr);
+      return mlir::success();
+    }
+
+    return mlir::failure();
+  }
+};
+
 class TritonXLALowerXTilePass
     : public impl::TritonXLALowerXTilePassBase<TritonXLALowerXTilePass> {
  public:
@@ -293,7 +315,9 @@ class TritonXLALowerXTilePass
     mlir::RewritePatternSet patterns(context);
 
     patterns.add<XTileEntryToTriton>(context, module);
-    patterns.add<XTileExtractToTriton, XTileInsertToTriton>(context);
+    patterns
+        .add<XTileExtractToTriton, XTileInsertToTriton, FoldIntoMemrefToPtr>(
+            context);
     if (mlir::failed(
             mlir::applyPatternsGreedily(module, std::move(patterns)))) {
       signalPassFailure();
