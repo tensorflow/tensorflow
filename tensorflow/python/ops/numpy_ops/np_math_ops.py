@@ -1365,7 +1365,7 @@ def argsort(a, axis=-1, kind='quicksort', order=None):  # pylint: disable=missin
 
   if a.dtype in (dtypes.complex64, dtypes.complex128):
     raise TypeError(
-        'argsort does not support complex64/complex128 dtypes on CPU backend. '
+        'argsort does not support complex64/complex128 dtypes. '
         f'Received dtype: {a.dtype}'
     )
 
