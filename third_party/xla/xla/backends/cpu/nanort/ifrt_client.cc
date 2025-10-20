@@ -412,9 +412,7 @@ class NanoArray final : public NanoValue<NanoArray, ifrt::Array> {
 
   absl::StatusOr<std::shared_ptr<const PjRtLayout>> pjrt_layout()
       const override {
-    TF_RETURN_IF_ERROR(ValidateNotDeleted());
-    return std::make_shared<PjRtLayout>(
-        LayoutUtil::MakeDescendingLayout(shape().dims().size()));
+    return nullptr;
   }
 
   absl::StatusOr<std::vector<ifrt::ArrayRef>> DisassembleIntoSingleDeviceArrays(
@@ -646,7 +644,7 @@ class ShardedNanoArray final : public NanoValue<ShardedNanoArray, ifrt::Array> {
 
   absl::StatusOr<std::shared_ptr<const PjRtLayout>> pjrt_layout()
       const override {
-    return std::make_shared<PjRtLayout>(Layout(shape().dims()));
+    return nullptr;
   }
 
   absl::StatusOr<std::vector<ifrt::ArrayRef>> DisassembleIntoSingleDeviceArrays(
