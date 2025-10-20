@@ -123,8 +123,10 @@ TEST_F(ComplexUnaryOpTest, AsinTest) {
 }
 
 TEST_F(ComplexUnaryOpTest, AsinhTest) {
-  UnaryTestHelper<complex_unary_op_samples::Asinh<float>>(Asinh);
-  UnaryTestHelper<complex_unary_op_samples::Asinh<double>>(Asinh);
+  UnaryTestHelper<complex_unary_op_samples::Asinh<float>>(
+      [](XlaOp x) { return Asinh(x); });
+  UnaryTestHelper<complex_unary_op_samples::Asinh<double>>(
+      [](XlaOp x) { return Asinh(x); });
 }
 
 }  // namespace
