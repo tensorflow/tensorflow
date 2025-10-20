@@ -188,7 +188,7 @@ bool GetResourceArgIndexIfUsedInAssignmentOp(
           GetForwardedDTensorLayoutInput(assign_variable_op.getResource());
       if (llvm::isa<mlir::BlockArgument>(resource)) {
         *resource_argument_index_for_assign_variable =
-            cast<mlir::BlockArgument>(resource).getArgNumber();
+            llvm::cast<mlir::BlockArgument>(resource).getArgNumber();
         return true;
       }
     }
@@ -221,7 +221,7 @@ mlir::LogicalResult UpdateFunctionArgsUsingLayout(mlir::func::FuncOp function) {
 
     // If argument is a resource type update the subtype shape information
     // to reflect local shape of resources.
-    if (isa<mlir::TF::ResourceType>(arg_type)) {
+    if (llvm::isa<mlir::TF::ResourceType>(arg_type)) {
       if (mlir::failed(UpdateResourceArgumentType(argument_index, function)))
         return mlir::failure();
       continue;
