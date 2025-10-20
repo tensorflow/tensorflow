@@ -49,6 +49,20 @@ limitations under the License.
 
 namespace tflite::xnnpack {
 
+#ifdef _WIN32
+// Helper to split a value in high/low parts to pass to Windows APIs.
+struct HighLow {
+  DWORD high;
+  DWORD low;
+  static HighLow From(uint64_t val) {
+    static_assert(sizeof(val) <= 2 * sizeof(DWORD),
+                  "Value type doesn't fit in two DWORDs.");
+    return {static_cast<DWORD>(val >> CHAR_BIT * sizeof(DWORD)),
+            static_cast<DWORD>(val)};
+  }
+};
+#endif
+
 void swap(MMapHandle& a, MMapHandle& b) {
   using std::swap;
   swap(a.size_, b.size_);
@@ -121,7 +135,7 @@ bool MMapHandle::Map(const FileDescriptorView& fd, const size_t offset,
                          /*flProtect=*/PAGE_READONLY, /*dwMaximumSizeHigh=*/0,
                          /*dwMaximumSizeLow=*/0, /*lpName=*/handle_name);
   XNNPACK_RETURN_CHECK(file_mapping_ != NULL,
-                       "could not create a file mapping: %s.",
+                       "could not create a file mapping: %s",
                        GetLastErrorString().c_str());
 
   SYSTEM_INFO sys_info;
@@ -129,18 +143,15 @@ bool MMapHandle::Map(const FileDescriptorView& fd, const size_t offset,
 
   offset_page_adjustment_ = offset_ % sys_info.dwAllocationGranularity;
 
-  const size_t adjusted_offset = offset - offset_page_adjustment_;
-  const DWORD file_offset_high =
-      sizeof(DWORD) < sizeof(adjusted_offset)
-          ? (adjusted_offset >> CHAR_BIT * sizeof(DWORD))
-          : 0;
-  const DWORD file_offset_low = static_cast<DWORD>(adjusted_offset);
+  const size_t adjusted_offset = offset_ - offset_page_adjustment_;
+  const size_t adjusted_size = size_ + offset_page_adjustment_;
+  HighLow file_offset = HighLow::From(adjusted_offset);
 
-  data_ = static_cast<uint8_t*>(MapViewOfFile(file_mapping_, FILE_MAP_READ,
-                                              file_offset_high, file_offset_low,
-                                              /*dwNumberOfBytesToMap=*/0));
+  data_ = static_cast<uint8_t*>(MapViewOfFile(
+      file_mapping_, FILE_MAP_READ, file_offset.high, file_offset.low,
+      /*dwNumberOfBytesToMap=*/adjusted_size));
 
-  XNNPACK_RETURN_CHECK(data_ != nullptr, "could not map file (%s): %s.",
+  XNNPACK_RETURN_CHECK(data_ != nullptr, "could not map file (%s): %s",
                        safe_path, GetLastErrorString().c_str());
 #else
   offset_page_adjustment_ = offset_ % getpagesize();
