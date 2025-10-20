@@ -16,9 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_TSL_PLATFORM_SNAPPY_H_
 #define TENSORFLOW_TSL_PLATFORM_SNAPPY_H_
 
-#include "xla/tsl/platform/types.h"
+#include <cstddef>
+#include <string>
 
-#if !defined(PLATFORM_WINDOWS)
+#if __has_include(<sys/uio.h>)
 #include <sys/uio.h>
 namespace tsl {
 using ::iovec;  // NOLINT(misc-unused-using-decls)
@@ -36,10 +37,10 @@ namespace tsl {
 namespace port {
 
 // Snappy compression/decompression support
-bool Snappy_Compress(const char* input, size_t length, string* output);
+bool Snappy_Compress(const char* input, size_t length, std::string* output);
 
 bool Snappy_CompressFromIOVec(const struct iovec* iov,
-                              size_t uncompressed_length, string* output);
+                              size_t uncompressed_length, std::string* output);
 
 bool Snappy_GetUncompressedLength(const char* input, size_t length,
                                   size_t* result);

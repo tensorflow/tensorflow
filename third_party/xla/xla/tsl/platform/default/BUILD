@@ -323,6 +323,7 @@ cc_library(
     name = "platform_port",
     srcs = [
         "port.cc",
+        "//xla/tsl/platform:snappy.cc",
         "@local_tsl//tsl/platform:cpu_info.cc",
     ] + select({
         "//xla/tsl:with_numa_support": [
@@ -350,6 +351,7 @@ cc_library(
         "nobuilder",
     ],
     deps = [
+        "//xla/tsl/lib/strings:resize_uninitialized",
         "//xla/tsl/platform:byte_order",
         "//xla/tsl/platform:dynamic_annotations",
         "//xla/tsl/platform:logging",
@@ -612,6 +614,7 @@ filegroup(
         "statusor.h",
         "tracing_impl.h",
         "//xla/tsl/platform:numa_noop.cc",
+        "//xla/tsl/platform:snappy.cc",
         "//xla/tsl/platform/profile_utils:cpu_utils.h",
         "//xla/tsl/platform/profile_utils:i_cpu_utils_helper.h",
     ],

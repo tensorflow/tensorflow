@@ -16,9 +16,6 @@ limitations under the License.
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#ifdef TF_USE_SNAPPY
-#include "snappy.h"
-#endif
 
 #include <Windows.h>
 #include <processthreadsapi.h>
@@ -32,7 +29,6 @@ limitations under the License.
 #include "tsl/platform/init_main.h"
 #include "tsl/platform/mem.h"
 #include "tsl/platform/numa.h"
-#include "tsl/platform/snappy.h"
 
 namespace tsl {
 namespace port {
@@ -103,61 +99,6 @@ int GetCurrentCPU() {
   // On the plus side, this number is probably guaranteed to be within
   // [0, NumTotalCPUs()) due to its incomplete implementation.
   return GetCurrentProcessorNumber();
-}
-
-bool Snappy_Compress(const char* input, size_t length, string* output) {
-#ifdef TF_USE_SNAPPY
-  output->resize(snappy::MaxCompressedLength(length));
-  size_t outlen;
-  snappy::RawCompress(input, length, &(*output)[0], &outlen);
-  output->resize(outlen);
-  return true;
-#else
-  return false;
-#endif
-}
-
-bool Snappy_CompressFromIOVec(const struct iovec* iov,
-                              size_t uncompressed_length, string* output) {
-#ifdef TF_USE_SNAPPY
-  output->resize(snappy::MaxCompressedLength(uncompressed_length));
-  size_t outlen;
-  const snappy::iovec* snappy_iov = reinterpret_cast<const snappy::iovec*>(iov);
-  snappy::RawCompressFromIOVec(snappy_iov, uncompressed_length, &(*output)[0],
-                               &outlen);
-  output->resize(outlen);
-  return true;
-#else
-  return false;
-#endif
-}
-
-bool Snappy_GetUncompressedLength(const char* input, size_t length,
-                                  size_t* result) {
-#ifdef TF_USE_SNAPPY
-  return snappy::GetUncompressedLength(input, length, result);
-#else
-  return false;
-#endif
-}
-
-bool Snappy_Uncompress(const char* input, size_t length, char* output) {
-#ifdef TF_USE_SNAPPY
-  return snappy::RawUncompress(input, length, output);
-#else
-  return false;
-#endif
-}
-
-bool Snappy_UncompressToIOVec(const char* compressed, size_t compressed_length,
-                              const struct iovec* iov, size_t iov_cnt) {
-#ifdef TF_USE_SNAPPY
-  const snappy::iovec* snappy_iov = reinterpret_cast<const snappy::iovec*>(iov);
-  return snappy::RawUncompressToIOVec(compressed, compressed_length, snappy_iov,
-                                      iov_cnt);
-#else
-  return false;
-#endif
 }
 
 string Demangle(const char* mangled) { return mangled; }

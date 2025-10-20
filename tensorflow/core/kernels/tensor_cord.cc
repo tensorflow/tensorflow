@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstring>
 
+#include "xla/tsl/lib/strings/resize_uninitialized.h"
 #include "tensorflow/core/framework/variant.h"
 
 namespace tensorflow {
@@ -60,40 +61,9 @@ void TensorCord::StringReleaser(void* str_ptr) {
   delete static_cast<string*>(str_ptr);
 }
 
-namespace {
-
-// Helpers for STLStringResizeUninitialized
-// HasMember is true_type or false_type, depending on whether or not
-// T has a __resize_default_init member. Resize will call the
-// __resize_default_init member if it exists, and will call the resize
-// member otherwise.
-template <typename string_type, typename = void>
-struct ResizeUninitializedTraits {
-  using HasMember = std::false_type;
-  static void Resize(string_type* s, size_t new_size) { s->resize(new_size); }
-};
-
-// __resize_default_init is provided by libc++ >= 8.0.
-template <typename string_type>
-struct ResizeUninitializedTraits<
-    string_type, absl::void_t<decltype(std::declval<string_type&>()
-                                           .__resize_default_init(237))> > {
-  using HasMember = std::true_type;
-  static void Resize(string_type* s, size_t new_size) {
-    s->__resize_default_init(new_size);
-  }
-};
-
-// Resize string `s` to `new_size`, leaving the data uninitialized.
-static inline void STLStringResizeUninitialized(string* s, size_t new_size) {
-  ResizeUninitializedTraits<string>::Resize(s, new_size);
-}
-
-}  // namespace
-
 TensorCord::operator string() const {
   string out;
-  STLStringResizeUninitialized(&out, size());
+  tsl::STLStringResizeUninitialized(&out, size());
   char* data = const_cast<char*>(out.data());
   for (auto* rep : chunks_) {
     auto view = rep->view();

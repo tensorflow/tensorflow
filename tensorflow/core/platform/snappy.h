@@ -16,7 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PLATFORM_SNAPPY_H_
 #define TENSORFLOW_CORE_PLATFORM_SNAPPY_H_
 
-#include "tensorflow/core/platform/types.h"
 #include "tsl/platform/snappy.h"
 
 #if !defined(PLATFORM_WINDOWS)
