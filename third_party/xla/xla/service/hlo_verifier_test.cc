@@ -3658,7 +3658,6 @@ TEST_F(HloVerifierTest, NoErrorOnDuplicateChannelId) {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnUnverifiedModule(hlo_string));
   HloVerifierOpts opts{};
-  opts.verify_unique_channel_ids = false;
   HloVerifier verifier(std::move(opts));
   ASSERT_IS_OK(verifier.Run(module.get()).status());
 }

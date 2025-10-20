@@ -175,9 +175,6 @@ struct HloVerifierOpts {
   // cloned (".clone" suffix) or rematted (".remat");
   bool verify_instruction_name_unchanged = false;
 
-  // Check if channel instructions all have unique channel ids.
-  bool verify_unique_channel_ids = true;
-
   // Check if a shape has a host memory space color
   bool verify_no_host_memory_space = false;
 
