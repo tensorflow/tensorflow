@@ -151,9 +151,7 @@ class CollectiveOpsTestE2E : public HloHardwareIndependentTestBase {
         IsCuda() ? "f8e5m2" : "f8e5m2fnuz";
   }
 
-  bool IsCuda() {
-    return std::holds_alternative<se::CudaComputeCapability>(Capability());
-  }
+  bool IsCuda() { return Capability().IsCuda(); }
 
   const se::GpuComputeCapability& Capability() {
     return hlo_runner_->backend()
@@ -164,10 +162,9 @@ class CollectiveOpsTestE2E : public HloHardwareIndependentTestBase {
 
   bool HasFp8Support() {
     if (IsCuda()) {
-      return std::get<se::CudaComputeCapability>(Capability()).IsAtLeast(8, 9);
+      return Capability().cuda_compute_capability()->IsAtLeast(8, 9);
     }
-    return std::get<se::RocmComputeCapability>(Capability())
-               .has_fp8_support() &&
+    return Capability().rocm_compute_capability()->has_fp8_support() &&
            GetDebugOptionsForTest().xla_gpu_enable_cublaslt();
   }
 

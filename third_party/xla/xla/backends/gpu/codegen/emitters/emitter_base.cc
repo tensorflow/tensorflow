@@ -505,15 +505,14 @@ void AddLoweringPasses(mlir::OpPassManager& pm,
   pm.addPass(mlir::createCSEPass());
 
   // This pass has to run before `ExpandFloatOpsPass`.
-  if (auto* cc = std::get_if<se::CudaComputeCapability>(
-          &device.gpu_compute_capability())) {
+  if (auto* cc = device.gpu_compute_capability().cuda_compute_capability()) {
     se::SemanticVersion ptx_version =
         nvptx::DetermineHighestSupportedPtxVersionFromCudaVersion(
             device.runtime_version());
     pm.addPass(CreateConvertFloatNvidiaPass(
         cc->major, cc->minor, ptx_version.major(), ptx_version.minor()));
-  } else if (auto* cc = std::get_if<se::RocmComputeCapability>(
-                 &device.gpu_compute_capability())) {
+  } else if (auto* cc =
+                 device.gpu_compute_capability().rocm_compute_capability()) {
     if (cc->has_fp8_support()) {
       pm.addPass(CreateConvertFloatAMDPass(*cc));
     }

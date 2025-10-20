@@ -389,8 +389,7 @@ absl::StatusOr<Value> EmitElementwiseLibdeviceFunction(
         absl::StrCat("Unsupported elementwise operation ", hlo.ToString()));
   }
   llvm::Triple triple("nvptx64-unknown-unknown");
-  if (std::holds_alternative<se::RocmComputeCapability>(
-          device_info.gpu_compute_capability())) {
+  if (device_info.gpu_compute_capability().IsRocm()) {
     triple.setTriple("amdgcn-unknown-unknown");
   }
   llvm::SmallVector<Value, 2> casted_inputs;

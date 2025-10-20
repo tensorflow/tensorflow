@@ -871,6 +871,7 @@ xla_test(
         "//xla/service/gpu/tests:gpu_codegen_test",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor/cuda:cuda_compute_capability",
+        "//xla/stream_executor/rocm:rocm_compute_capability",
         "//xla/tests:test_utils",
         "//xla/tests:xla_internal_test_main",  # fixdeps: keep
         "//xla/tsl/lib/core:status_test_util",

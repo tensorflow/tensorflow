@@ -265,9 +265,8 @@ class TritonSupportTest : public TritonSupportTestBase {
     BlockLevelParameters block_level_parameters =
         FromOutputTileSizes(std::move(output_tile_sizes));
     const se::DeviceDescription dev_info =
-        std::holds_alternative<se::CudaComputeCapability>(cc)
-            ? TestGpuDeviceInfo::RTXA6000DeviceInfo(cc)
-            : TestGpuDeviceInfo::AMDMI210DeviceInfo();
+        cc.IsCuda() ? TestGpuDeviceInfo::RTXA6000DeviceInfo(cc)
+                    : TestGpuDeviceInfo::AMDMI210DeviceInfo();
     auto run_triton_codegen = [&]() {
       return TritonWrapper("test_fn", &ti.TritonFusion(), cc, dev_info,
                            block_level_parameters, &llvm_module_,
@@ -542,8 +541,7 @@ ENTRY triton_computation {
 
   bool crashes_on_failure = false;
   if (data_type_in != data_type_out && any_is(PrimitiveType::F8E4M3FN) &&
-      std::holds_alternative<se::CudaComputeCapability>(cc) &&
-      !std::get<se::CudaComputeCapability>(cc).IsAtLeastHopper()) {
+      cc.IsCuda() && !cc.cuda_compute_capability()->IsAtLeastHopper()) {
     crashes_on_failure |= any_is(F16) || any_is(BF16) || any_is(F32);
 
     // Crashes due to unsupported/unspecified rounding mode.
@@ -1869,7 +1867,7 @@ TEST_P(DotTypesTest, Dot) {
 
   ExpectedFailMode fail_mode = ExpectedFailMode::kFail;
   if (input_type == F8E4M3FN || result_type == F8E4M3FN) {
-    if (auto* cuda_cc = std::get_if<se::CudaComputeCapability>(&cc);
+    if (auto* cuda_cc = cc.cuda_compute_capability();
         cuda_cc && !cuda_cc->IsAtLeastHopper()) {
       // Hits llvm::report_fatal_error during Triton compilation.
       fail_mode = ExpectedFailMode::kFailOrCrash;

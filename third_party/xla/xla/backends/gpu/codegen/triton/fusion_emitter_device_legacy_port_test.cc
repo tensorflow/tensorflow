@@ -113,12 +113,12 @@ class TritonTest : public GpuCodegenTest {
   }
 
   stream_executor::GpuComputeCapability CudaAmpereOrRocm() {
-    if (std::holds_alternative<stream_executor::RocmComputeCapability>(
-            GpuComputeCapability())) {
+    if (GpuComputeCapability().IsRocm()) {
       return stream_executor::GpuComputeCapability{
           device_desc().rocm_compute_capability()};
     }
-    return se::CudaComputeCapability::Ampere();
+    return stream_executor::GpuComputeCapability{
+        se::CudaComputeCapability::Ampere()};
   }
 
   // Returns the module, its fusion computation and associated block level
@@ -513,12 +513,13 @@ ENTRY entry {
 
   const HloFusionInstruction* fusion1 = Cast<HloFusionInstruction>(
       module1_and_metadata.computation->FusionInstruction());
-  EXPECT_THAT(TritonWrapper("test_fn", fusion1, cc, device_info,
-                            module1_and_metadata.block_level_parameters,
-                            &llvm_module, symbolic_expr_context_),
-              absl_testing::StatusIs(
-                  tsl::error::RESOURCE_EXHAUSTED,
-                  ::testing::HasSubstr("Shared memory size limit exceeded")));
+  EXPECT_THAT(
+      TritonWrapper("test_fn", fusion1, se::GpuComputeCapability{cc},
+                    device_info, module1_and_metadata.block_level_parameters,
+                    &llvm_module, symbolic_expr_context_),
+      absl_testing::StatusIs(
+          tsl::error::RESOURCE_EXHAUSTED,
+          ::testing::HasSubstr("Shared memory size limit exceeded")));
 
   TF_ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module2_and_metadata,
                           GetModuleAndNestedFusionMetadata(absl::Substitute(
@@ -529,9 +530,9 @@ ENTRY entry {
 
   TF_ASSERT_OK_AND_ASSIGN(
       const auto result,
-      TritonWrapper("test_fn", fusion2, cc, device_info,
-                    module2_and_metadata.block_level_parameters, &llvm_module,
-                    symbolic_expr_context_));
+      TritonWrapper("test_fn", fusion2, se::GpuComputeCapability{cc},
+                    device_info, module2_and_metadata.block_level_parameters,
+                    &llvm_module, symbolic_expr_context_));
   // Use optin shared memory which is > shared_memory_per_block.
   EXPECT_GT(result.shmem_bytes, device_info.shared_memory_per_block());
 }
@@ -859,11 +860,12 @@ ENTRY entry {
 
   const HloFusionInstruction* fusion1 = Cast<HloFusionInstruction>(
       module1_and_metadata.computation->FusionInstruction());
-  EXPECT_THAT(TritonWrapper("test_fn", fusion1, cc, device_info,
-                            module1_and_metadata.block_level_parameters,
-                            &llvm_module, symbolic_expr_context_),
-              absl_testing::StatusIs(tsl::error::RESOURCE_EXHAUSTED,
-                                     "Tiling complexity heuristic exceeded"));
+  EXPECT_THAT(
+      TritonWrapper("test_fn", fusion1, se::GpuComputeCapability{cc},
+                    device_info, module1_and_metadata.block_level_parameters,
+                    &llvm_module, symbolic_expr_context_),
+      absl_testing::StatusIs(tsl::error::RESOURCE_EXHAUSTED,
+                             "Tiling complexity heuristic exceeded"));
 
   // Succeeds if the tiling is not too complex.
   TF_ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module2_and_metadata,
@@ -873,7 +875,8 @@ ENTRY entry {
   const HloFusionInstruction* fusion2 = Cast<HloFusionInstruction>(
       module1_and_metadata.computation->FusionInstruction());
 
-  TF_EXPECT_OK(TritonWrapper("test_fn", fusion2, cc, device_info,
+  TF_EXPECT_OK(TritonWrapper("test_fn", fusion2, se::GpuComputeCapability{cc},
+                             device_info,
                              module2_and_metadata.block_level_parameters,
                              &llvm_module, symbolic_expr_context_)
                    .status());
@@ -1208,8 +1211,7 @@ ENTRY e {
 // TODO(b/393299275): this should just be a fusion test and does not need to be
 // in the codegen directory.
 TEST_F(TritonGemmTest, DoNotFuseConcatenationOfSplitNonContractingDimension) {
-  if (std::holds_alternative<se::RocmComputeCapability>(
-          GpuComputeCapability())) {
+  if (GpuComputeCapability().IsRocm()) {
     GTEST_SKIP() << "Not using autotuner on ROCM yet.";
   }
   if (!SupportsBF16(GpuComputeCapability())) {
@@ -1811,8 +1813,7 @@ TEST_F(TritonGemmTest, DISABLED_SplitLHSInputOutputIsFused) {
   if (!SupportsBF16(GpuComputeCapability())) {
     GTEST_SKIP() << "BF16 not supported.";
   }
-  if (std::holds_alternative<se::RocmComputeCapability>(
-          GpuComputeCapability())) {
+  if (GpuComputeCapability().IsRocm()) {
     GTEST_SKIP() << "Skipped until corresponding issue on ROCm is fixed.";
   }
 
@@ -1968,8 +1969,7 @@ ENTRY e {
 // probably be made deviceless and repurposed to test that opt-in shared memory
 // is used only.
 TEST_F(CompareTest, UsingOptinSharedMemoryProducesSameResult) {
-  if (std::holds_alternative<se::RocmComputeCapability>(
-          GpuComputeCapability())) {
+  if (GpuComputeCapability().IsRocm()) {
     GTEST_SKIP() << "No Optin Shared Memory on AMD.";
   }
   const se::DeviceDescription dev_info =

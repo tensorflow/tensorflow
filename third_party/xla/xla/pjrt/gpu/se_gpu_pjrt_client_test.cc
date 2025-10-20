@@ -1258,8 +1258,9 @@ TEST(StreamExecutorGpuClientTest, GetDeviceFabricInfo) {
                 ->local_device_state();
         if (local_device_state != nullptr) {
           se::StreamExecutor* executor = local_device_state->executor();
-          if (auto* cc = std::get_if<se::CudaComputeCapability>(
-                  &executor->GetDeviceDescription().gpu_compute_capability())) {
+          if (auto* cc = executor->GetDeviceDescription()
+                             .gpu_compute_capability()
+                             .cuda_compute_capability()) {
             if (cc->IsAtLeastHopper()) {
               auto fabric_info =
                   GetDeviceFabricInfo(executor->device_ordinal());

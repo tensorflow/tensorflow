@@ -83,13 +83,11 @@ std::vector<xla::PrimitiveType> AllXlaDataTypes() {
 }
 
 bool SupportsBF16(const stream_executor::GpuComputeCapability& cc) {
-  if (std::holds_alternative<stream_executor::CudaComputeCapability>(cc)) {
-    return std::get<stream_executor::CudaComputeCapability>(cc).IsAtLeast(
+  if (cc.IsCuda()) {
+    return cc.cuda_compute_capability()->IsAtLeast(
         se::CudaComputeCapability::kAmpere);
-  } else if (std::holds_alternative<stream_executor::RocmComputeCapability>(
-                 cc)) {
-    return std::get<stream_executor::RocmComputeCapability>(cc)
-        .has_bf16_dtype_support();
+  } else if (cc.IsRocm()) {
+    return cc.rocm_compute_capability()->has_bf16_dtype_support();
   }
   CHECK(false);
 }
@@ -239,10 +237,10 @@ std::string PrimitiveTypeAndHloOpcodeToString(PrimitiveType data_type,
 
 std::string ComputeCapabilityToString(
     const stream_executor::GpuComputeCapability& cc) {
-  if (auto cuda_cc = std::get_if<se::CudaComputeCapability>(&cc)) {
+  if (auto* cuda_cc = cc.cuda_compute_capability()) {
     return absl::StrReplaceAll(cuda_cc->ToString(), {{".", ""}});
   } else {
-    CHECK(std::holds_alternative<se::RocmComputeCapability>(cc));
+    CHECK(cc.IsRocm());
     return "rocm";
   }
 }

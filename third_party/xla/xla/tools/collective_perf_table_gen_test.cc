@@ -41,11 +41,11 @@ class CollectivePerfTableGenTest : public HloTestBase {
 
  protected:
   bool IsCuda() {
-    return std::holds_alternative<stream_executor::CudaComputeCapability>(
-        backend()
-            .default_stream_executor()
-            ->GetDeviceDescription()
-            .gpu_compute_capability());
+    return backend()
+        .default_stream_executor()
+        ->GetDeviceDescription()
+        .gpu_compute_capability()
+        .IsCuda();
   }
 
   CollectivePerfTableGen::Config cfg_;

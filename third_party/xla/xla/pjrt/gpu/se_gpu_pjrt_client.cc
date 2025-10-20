@@ -1553,15 +1553,15 @@ absl::StatusOr<DeviceTopologyPair> BuildDistributedDevices(
 
 std::string MakeComputeCapabilityString(const se::DeviceDescription* desc) {
   se::GpuComputeCapability cc = desc->gpu_compute_capability();
-  if (std::holds_alternative<se::CudaComputeCapability>(cc)) {
-    auto nvcc = std::get<se::CudaComputeCapability>(cc);
-    return absl::StrCat(nvcc.major, ".", nvcc.minor);
-  } else if (std::holds_alternative<se::RocmComputeCapability>(cc)) {
-    auto rocmcc = std::get<se::RocmComputeCapability>(cc);
-    return rocmcc.gfx_version();
-  } else {
-    return "unknown";
+  if (cc.IsCuda()) {
+    auto* nvcc = cc.cuda_compute_capability();
+    return absl::StrCat(nvcc->major, ".", nvcc->minor);
   }
+  if (cc.IsRocm()) {
+    auto* rocmcc = cc.rocm_compute_capability();
+    return rocmcc->gfx_version();
+  }
+  return "unknown";
 }
 
 StreamExecutorGpuDevice::StreamExecutorGpuDevice(

@@ -56,6 +56,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/rocm/rocm_compute_capability.h"
 #include "xla/tests/test_utils.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/env.h"
@@ -3022,7 +3023,7 @@ ENTRY entry_computation {
 TEST_F(TritonEmitterTest, ConvertF16ToF8E5M2Exhaustive) {
   // TODO(b/396595945): enable post-Ampere once Triton respects RTNE semantics
   // on H100.
-  if (auto cc = std::get_if<se::CudaComputeCapability>(&GpuComputeCapability());
+  if (auto cc = GpuComputeCapability().cuda_compute_capability();
       cc && cc->IsAtLeastHopper()) {
     GTEST_SKIP() << "Skipping tests above Ampere, Triton's conversion isn't "
                     "always correct";
@@ -4074,7 +4075,7 @@ INSTANTIATE_TEST_SUITE_P(
     DotUnsetAlgorithmEmitterTest::ParamToString);
 
 TEST_F(TritonEmitterTest, ScaledDotIsSupportedByReferencePlatform) {
-  if (!std::get_if<se::CudaComputeCapability>(&GpuComputeCapability())) {
+  if (GpuComputeCapability().IsRocm()) {
     GTEST_SKIP() << "Ignore scaled dot test on ROCM.";
   }
   constexpr absl::string_view kHloText = R"(
@@ -4095,7 +4096,7 @@ TEST_F(TritonEmitterTest, ScaledDotIsSupportedByReferencePlatform) {
 }
 
 TEST_F(TritonEmitterTest, RocmWarpSizeIsSetCorrectly) {
-  if (std::get_if<se::CudaComputeCapability>(&GpuComputeCapability())) {
+  if (GpuComputeCapability().IsCuda()) {
     GTEST_SKIP() << "Warp size is always 32 on CUDA";
   }
 
@@ -4126,7 +4127,8 @@ TEST_F(TritonEmitterTest, RocmWarpSizeIsSetCorrectly) {
   const se::DeviceDescription dev_info =
       TestGpuDeviceInfo::AMDMI210DeviceInfo();
   TF_ASSERT_OK(TritonWrapper(
-      "test_fn", triton_fusion, se::RocmComputeCapability("gfx942"), dev_info,
+      "test_fn", triton_fusion,
+      se::GpuComputeCapability{se::RocmComputeCapability("gfx942")}, dev_info,
       BlockLevelParameters(), &llvm_module, symbolic_expr_context));
   TF_EXPECT_OK(tsl::Env::Default()->GetMatchingPaths(
       tsl::io::JoinPath(output_directory, "*.triton-passes.log"), &paths));
@@ -4142,7 +4144,8 @@ TEST_F(TritonEmitterTest, RocmWarpSizeIsSetCorrectly) {
   const se::DeviceDescription dev_info_n =
       TestGpuDeviceInfo::AMDRX7900DeviceInfo();
   TF_ASSERT_OK(TritonWrapper(
-      "test_fn", triton_fusion, se::RocmComputeCapability("gfx1100"),
+      "test_fn", triton_fusion,
+      se::GpuComputeCapability{se::RocmComputeCapability("gfx1100")},
       dev_info_n, BlockLevelParameters(), &llvm_module, symbolic_expr_context));
   TF_EXPECT_OK(tsl::Env::Default()->GetMatchingPaths(
       tsl::io::JoinPath(output_directory, "*.triton-passes.log"), &paths));

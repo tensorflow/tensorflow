@@ -36,7 +36,7 @@ void CreateTritonXlaPipeline(
   pm->addPass(mlir::triton::xla::CreateTritonXLASqueezeDimsPass());
   pm->addPass(mlir::triton::xla::CreateTritonXLAFoldTransposePass());
 
-  auto* cuda_cc = std::get_if<stream_executor::CudaComputeCapability>(&gpu_cc);
+  auto* cuda_cc = gpu_cc.cuda_compute_capability();
   bool is_at_least_hopper = cuda_cc != nullptr && cuda_cc->IsAtLeastHopper();
 
   if (rewrite_int4) {
@@ -75,15 +75,13 @@ void CreateTritonPipeline(
     const stream_executor::GpuComputeCapability& gpu_cc, int num_warps,
     int num_ctas, int num_stages,
     mlir::triton::nvidia_gpu::ClusterInfo& out_cluster_info) {
-  if (auto* cuda_cc =
-          std::get_if<stream_executor::CudaComputeCapability>(&gpu_cc)) {
+  if (auto* cuda_cc = gpu_cc.cuda_compute_capability()) {
     return CreateTritonCudaPipeline(pm, *cuda_cc, num_warps, num_ctas,
                                     num_stages, out_cluster_info);
   }
 
-  CreateTritonRocmPipeline(
-      pm, std::get<stream_executor::RocmComputeCapability>(gpu_cc), num_warps,
-      num_ctas, num_stages);
+  CreateTritonRocmPipeline(pm, *gpu_cc.rocm_compute_capability(), num_warps,
+                           num_ctas, num_stages);
   // There is no clusters in ROCm for now.
   out_cluster_info.clusterDimX = 1;
   out_cluster_info.clusterDimY = 1;

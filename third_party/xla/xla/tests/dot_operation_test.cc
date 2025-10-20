@@ -323,7 +323,7 @@ class ParametricDotTest : public DotOperationTest,
                                .default_stream_executor()
                                ->GetDeviceDescription()
                                .gpu_compute_capability();
-    if (std::holds_alternative<se::RocmComputeCapability>(gpu_comp)) {
+    if (gpu_comp.IsRocm()) {
       absl::string_view name(
           ::testing::UnitTest::GetInstance()->current_test_info()->name());
       if (name.find("TestF16/270x270x520_MajorToMinor") != std::string::npos) {

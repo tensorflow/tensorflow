@@ -75,8 +75,7 @@ class TritonTest : public GpuCodegenTest {
     return device_desc().gpu_compute_capability();
   }
   stream_executor::GpuComputeCapability CudaAmpereOrRocm() {
-    if (std::holds_alternative<stream_executor::RocmComputeCapability>(
-            GpuComputeComp())) {
+    if (GpuComputeComp().IsRocm()) {
       return stream_executor::GpuComputeCapability{
           device_desc().rocm_compute_capability()};
     }

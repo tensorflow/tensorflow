@@ -93,7 +93,7 @@ class GpuBlasLtMatmulThunkTest : public HloTestBase {
   }
 
   void SetUp() override {
-    if (auto* rocm = std::get_if<se::RocmComputeCapability>(&gpu_comp());
+    if (auto* rocm = gpu_comp().rocm_compute_capability();
         rocm != nullptr && !rocm->has_hipblaslt()) {
       GTEST_SKIP() << "No hipblas-lt support on this architecture!";
     }
