@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/codegen/tiling/tiled_hlo_schedule.h"
 
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <vector>
 
@@ -114,6 +115,15 @@ absl::StatusOr<IndexingMap> MajorToMinorScheduleImpl(
 }
 }  // namespace
 
+absl::StatusOr<std::unique_ptr<TiledHloSchedule>>
+CreateMajorToMinorTiledHloSchedule(
+    const TilingSpecification& tiling_specification) {
+  // The major-to-minor schedule can just throw away the specification since
+  // it doesn't need to know about any specific of parameters to produce a
+  // schedule.
+  return std::make_unique<MajorToMinorTiledHloSchedule>();
+}
+
 absl::StatusOr<IndexingMap> MajorToMinorTiledHloSchedule::Schedule(
     const IndexingMap& tile_offsets_indexing, IterationSpace iteration_space,
     gpu::SymbolicExprContext* ctx) const {
@@ -122,7 +132,7 @@ absl::StatusOr<IndexingMap> MajorToMinorTiledHloSchedule::Schedule(
   return MajorToMinorScheduleImpl(tile_offsets_indexing, iteration_space, ctx);
 }
 
-absl::StatusOr<TransposedDotTiledHloSchedule>
+absl::StatusOr<std::unique_ptr<TransposedDotTiledHloSchedule>>
 TransposedDotTiledHloSchedule::Create(
     const TilingSpecification& tiling_specification) {
   const TilingSpecification::ParameterMapping& parameter_mapping =
@@ -191,7 +201,8 @@ TransposedDotTiledHloSchedule::Create(
   TF_ASSIGN_OR_RETURN(int64_t n_dim_id, tiling_specification.ParameterIndex(
                                             dot, n_local_parameter_index));
 
-  return TransposedDotTiledHloSchedule(m_dim_id, n_dim_id);
+  return std::unique_ptr<TransposedDotTiledHloSchedule>(
+      new TransposedDotTiledHloSchedule(m_dim_id, n_dim_id));
 }
 
 absl::StatusOr<IndexingMap> TransposedDotTiledHloSchedule::Schedule(

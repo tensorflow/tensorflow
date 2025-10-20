@@ -20,6 +20,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -28,6 +29,9 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/fusions.h"
 #include "xla/codegen/tiling/symbolic_tile_analysis.h"
 #include "xla/codegen/tiling/tiled_hlo_computation.h"
+#include "xla/codegen/tiling/tiled_hlo_instruction.h"
+#include "xla/codegen/tiling/tiled_hlo_schedule.h"
+#include "xla/codegen/tiling/tiling_specification.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
@@ -39,9 +43,8 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
 
 namespace xla {
 namespace gpu {
@@ -595,6 +598,7 @@ class CoalescingForTiledHloTest : public CoalescingTest {
     TiledHloComputation tiled_hlo_computation =
         *symbolic_tile_analysis.ComputeTiledHloInstructions(
             Tiling({{root, FlatTiling(tile_sizes.begin(), tile_sizes.end())}}),
+            CreateMajorToMinorTiledHloSchedule,
             /*constraints_are_known_satisfied=*/true,
             /*compute_all_tile_offset_indexing_maps=*/true);
 
@@ -618,6 +622,7 @@ class CoalescingForTiledHloTest : public CoalescingTest {
     TiledHloComputation tiled_hlo_computation =
         *symbolic_tile_analysis.ComputeTiledHloInstructions(
             Tiling({{root, FlatTiling(tile_sizes.begin(), tile_sizes.end())}}),
+            CreateMajorToMinorTiledHloSchedule,
             /*constraints_are_known_satisfied=*/true,
             /*compute_all_tile_offset_indexing_maps=*/true);
 

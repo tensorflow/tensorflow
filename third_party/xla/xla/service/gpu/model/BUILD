@@ -704,6 +704,9 @@ xla_cc_test(
         "//xla/backends/gpu/codegen:fusions",
         "//xla/codegen/tiling:symbolic_tile_analysis",
         "//xla/codegen/tiling:tiled_hlo_computation",
+        "//xla/codegen/tiling:tiled_hlo_instruction",
+        "//xla/codegen/tiling:tiled_hlo_schedule",
+        "//xla/codegen/tiling:tiling_specification",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/hlo/utils:hlo_traversal",
@@ -712,12 +715,11 @@ xla_cc_test(
         "//xla/service/gpu:hlo_fusion_analysis",
         "//xla/service/gpu/model/experimental:symbolic_expr",
         "//xla/stream_executor:device_description",
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//mlir:IR",
-        "@local_tsl//tsl/platform:statusor",
-        "@local_tsl//tsl/platform:test",
     ],
 )
 

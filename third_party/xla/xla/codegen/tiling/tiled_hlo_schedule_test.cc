@@ -340,7 +340,7 @@ ENTRY main {
 
   MajorToMinorTiledHloSchedule major_to_minor_scheduler;
   TF_ASSERT_OK_AND_ASSIGN(
-      TransposedDotTiledHloSchedule transposed_scheduler,
+      std::unique_ptr<TransposedDotTiledHloSchedule> transposed_scheduler,
       TransposedDotTiledHloSchedule::Create(tiling_specification));
 
   IndexingMap offsets_indexing = *ParseIndexingMap(R"(
@@ -366,8 +366,8 @@ ENTRY main {
                                         &symbolic_expr_context_));
   TF_ASSERT_OK_AND_ASSIGN(
       IndexingMap transposed_scheduled_indexing,
-      transposed_scheduler.Schedule(offsets_indexing, iteration_space,
-                                    &symbolic_expr_context_));
+      transposed_scheduler->Schedule(offsets_indexing, iteration_space,
+                                     &symbolic_expr_context_));
 
   int64_t m_bound = iteration_space[3].dimension_size;
   int64_t n_bound = iteration_space[4].dimension_size;
