@@ -97,6 +97,20 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   return ResizeOutputTensor(context, input, size, output);
 }
 
+TfLiteStatus CheckQuantizationParams(TfLiteContext* context,
+                                     const TfLiteTensor* input,
+                                     const TfLiteTensor* output) {
+  if (input->params.scale != output->params.scale ||
+      input->params.zero_point != output->params.zero_point) {
+    TF_LITE_KERNEL_LOG(
+        context,
+        "Input and output tensors must have the same scale and zero_point for "
+        "quantized ResizeBilinear.");
+    return kTfLiteError;
+  }
+  return kTfLiteOk;
+}
+
 template <KernelType kernel_type>
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   auto* params =
@@ -131,30 +145,21 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       TF_LITE_RESIZE_BILINEAR(optimized_ops, ResizeBilinear, float);
     }
   } else if (output->type == kTfLiteUInt8) {
-    if (input->params.scale != output->params.scale || input->params.zero_point != output->params.zero_point) {
-      TF_LITE_KERNEL_LOG(context, "Input and output tensors must have the same scale and zero_point for uint8 quantized ResizeBilinear.");
-      return kTfLiteError;
-    }
+    TF_LITE_ENSURE_OK(context, CheckQuantizationParams(context, input, output));
     if (kernel_type == kReference) {
       TF_LITE_RESIZE_BILINEAR(reference_ops, ResizeBilinear, uint8_t);
     } else if (kernel_type == kOptimized) {
       TF_LITE_RESIZE_BILINEAR(optimized_ops, ResizeBilinear, uint8_t);
     }
   } else if (output->type == kTfLiteInt8) {
-    if (input->params.scale != output->params.scale || input->params.zero_point != output->params.zero_point) {
-      TF_LITE_KERNEL_LOG(context, "Input and output tensors must have the same scale and zero_point for int8 quantized ResizeBilinear.");
-      return kTfLiteError;
-    }
+    TF_LITE_ENSURE_OK(context, CheckQuantizationParams(context, input, output));
     if (kernel_type == kReference) {
       TF_LITE_RESIZE_BILINEAR(reference_ops, ResizeBilinearInteger, int8_t);
     } else if (kernel_type == kOptimized) {
       TF_LITE_RESIZE_BILINEAR(optimized_ops, ResizeBilinear, int8_t);
     }
   } else if (output->type == kTfLiteInt16) {
-    if (input->params.scale != output->params.scale || input->params.zero_point != output->params.zero_point) {
-      TF_LITE_KERNEL_LOG(context, "Input and output tensors must have the same scale and zero_point for int16 quantized ResizeBilinear.");
-      return kTfLiteError;
-    }
+    TF_LITE_ENSURE_OK(context, CheckQuantizationParams(context, input, output));
     TF_LITE_RESIZE_BILINEAR(reference_ops, ResizeBilinearInteger, int16_t);
 #undef TF_LITE_RESIZE_BILINEAR
   } else {
