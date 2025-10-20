@@ -1006,7 +1006,7 @@ message MeshProto {
 // axis name to reduce proto size.
 //
 // Constraints:
-// - `axis_index` is a valid index into `mesh.axes`.
+// - `mesh_axis_index` is a valid index into `mesh.axes`.
 message AxisRefProto {
   // When splitting a full axis into n sub-axes, the axis is reshaped into
   // [k_1,...,k_n], and the ith sub-axis can be expressed by the product of
@@ -1027,7 +1027,7 @@ message AxisRefProto {
     int64 size = 2;
   }
 
-  int64 axis_index = 1;
+  int64 mesh_axis_index = 1;
   optional SubAxis sub_axis_info = 2;
 }
 
