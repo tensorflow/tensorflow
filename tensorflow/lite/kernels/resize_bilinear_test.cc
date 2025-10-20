@@ -465,15 +465,31 @@ TEST_P(ResizeBilinearOpTest, HorizontalResizeExtremeNegativeValuesInt16) {
 INSTANTIATE_TEST_SUITE_P(ResizeBilinearOpTest, ResizeBilinearOpTest,
                          testing::Values(TestType::kConst, TestType::kDynamic));
 
-TEST(ResizeBilinearOpTest_Negative, Int8MismatchedQuantizationFails) {
-  ResizeBilinearOpModel m({TensorType_INT8, {1, 2, 2, 1}, 0.0f, 0.0f, 0.5f, 1},
+class ResizeBilinearOpQuantizationTest
+    : public ::testing::TestWithParam<TensorType> {};
+
+TEST_P(ResizeBilinearOpQuantizationTest, MismatchedQuantizationFails) {
+  TensorType tensor_type = GetParam();
+  ResizeBilinearOpModel m({tensor_type, {1, 2, 2, 1}, 0.0f, 0.0f, 0.5f, 1},
                           {3, 3}, TestType::kConst);
   TfLiteTensor* output_tensor = m.GetOutputTensor(0);
   output_tensor->params.scale = 0.25f;
   output_tensor->params.zero_point = 2;
-  m.SetInput<int8_t>({1, 2, 3, 4});
+  
+  if (tensor_type == TensorType_INT8) {
+    m.SetInput<int8_t>({1, 2, 3, 4});
+  } else if (tensor_type == TensorType_UINT8) {
+    m.SetInput<uint8_t>({1, 2, 3, 4});
+  } else if (tensor_type == TensorType_INT16) {
+    m.SetInput<int16_t>({1, 2, 3, 4});
+  }
+  
   EXPECT_EQ(m.Invoke(), kTfLiteError);
 }
+
+INSTANTIATE_TEST_SUITE_P(QuantizationTests, ResizeBilinearOpQuantizationTest,
+                         testing::Values(TensorType_UINT8, TensorType_INT8,
+                                        TensorType_INT16));
 
 }  // namespace
 }  // namespace tflite

@@ -151,8 +151,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       }
       [[fallthrough]];
     case kTfLiteUInt8:
-      TF_LITE_TRANSPOSE(reference_ops, int8_t);
-      break;
+      [[fallthrough]];
     case kTfLiteInt8:
       TF_LITE_TRANSPOSE(reference_ops, int8_t);
       break;
