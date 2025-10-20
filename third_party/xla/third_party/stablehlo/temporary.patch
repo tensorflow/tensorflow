@@ -904,6 +904,36 @@ diff --ruN a/stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_simplific
  // -----
  
  ////////
+diff --ruN a/stablehlo/stablehlo/tests/transforms/stablehlo_refine_shapes.mlir b/stablehlo/stablehlo/tests/transforms/stablehlo_refine_shapes.mlir
+--- stablehlo/stablehlo/tests/transforms/stablehlo_refine_shapes.mlir
++++ stablehlo/stablehlo/tests/transforms/stablehlo_refine_shapes.mlir
+@@ -752,7 +752,7 @@
+     %2 = call @refine_call_callee(%arg0_different_i32, %1) : (tensor<i32>, tensor<?xf32>) -> tensor<?xf32>
+     return %2 : tensor<?xf32>
+   }
+-  // expected-error@+1{{'func.func' op refined with invompatible refinement keys}}
++  // expected-error@+1{{'func.func' op refined with incompatible refinement keys}}
+   func.func @refine_call_callee(%arg0: tensor<i32>, %arg1: tensor<?xf32>) -> tensor<?xf32> {
+     return %arg1 : tensor<?xf32>
+   }
+@@ -770,7 +770,7 @@
+     %2 = call @refine_call_callee(%arg0_different, %1) : (tensor<i32>, tensor<?xf32>) -> tensor<?xf32>
+     return %2 : tensor<?xf32>
+   }
+-  // expected-error@+1{{'func.func' op refined with invompatible refinement keys}}
++  // expected-error@+1{{'func.func' op refined with incompatible refinement keys}}
+   func.func @refine_call_callee(%arg0: tensor<i32>, %arg1: tensor<?xf32>) -> tensor<?xf32> {
+     return %arg1 : tensor<?xf32>
+   }
+@@ -789,7 +789,7 @@
+     %4 = call @refine_call_callee(%arg0_new, %3) : (tensor<i32>, tensor<?xf32>) -> tensor<?xf32>
+     return %4 : tensor<?xf32>
+   }
+-  // expected-error@+1{{'func.func' op refined with invompatible refinement keys}}
++  // expected-error@+1{{'func.func' op refined with incompatible refinement keys}}
+   func.func @refine_call_callee(%arg0: tensor<i32>, %arg1: tensor<?xf32>) -> tensor<?xf32> {
+     return %arg1 : tensor<?xf32>
+   }
 diff --ruN a/stablehlo/stablehlo/transforms/ChloLegalizeToStablehlo.cpp b/stablehlo/stablehlo/transforms/ChloLegalizeToStablehlo.cpp
 --- stablehlo/stablehlo/transforms/ChloLegalizeToStablehlo.cpp
 +++ stablehlo/stablehlo/transforms/ChloLegalizeToStablehlo.cpp
@@ -1431,6 +1461,18 @@ diff --ruN a/stablehlo/stablehlo/transforms/ChloLegalizeToStablehlo.cpp b/stable
    populateChloBroadcastingPatterns(context, patterns);
    populateChloDecompositionPatterns(context, patterns);
  }
+diff --ruN a/stablehlo/stablehlo/transforms/StablehloRefineShapes.cpp b/stablehlo/stablehlo/transforms/StablehloRefineShapes.cpp
+--- stablehlo/stablehlo/transforms/StablehloRefineShapes.cpp
++++ stablehlo/stablehlo/transforms/StablehloRefineShapes.cpp
+@@ -461,7 +461,7 @@
+   LogicalResult emitDifferentRefinementContextError(func::FuncOp func,
+                                                     RefinementKey key,
+                                                     RefinementKey prevKey) {
+-    return func.emitOpError() << "refined with invompatible refinement keys:"
++    return func.emitOpError() << "refined with incompatible refinement keys:"
+                               << "\n  curr=" << key.toString()
+                               << "\n  prev=" << prevKey.toString();
+   }
 diff --ruN a/stablehlo/stablehlo/transforms/optimization/Passes.td b/stablehlo/stablehlo/transforms/optimization/Passes.td
 --- stablehlo/stablehlo/transforms/optimization/Passes.td
 +++ stablehlo/stablehlo/transforms/optimization/Passes.td
