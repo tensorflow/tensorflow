@@ -421,6 +421,41 @@ def TTXLA_GetPeerPtrOp : TTXLA_Op<"get_peer_ptr", [Pure]> {
   }];
 }
 
+def TTXLA_MemrefToPtrOp : TTXLA_Op<"memref_to_ptr", [Pure]> {
+  let summary = [{
+    A specialized version of unrealized_conversion_cast that converts a
+    memref to a pointer.
+  }];
+
+  let arguments = (ins AnyMemRef:$src);
+
+  let results = (outs TT_Ptr:$result);
+
+  let assemblyFormat = [{
+    $src `from` type($src) `to` type($result) attr-dict
+  }];
+
+  let hasFolder = 1;
+  let hasVerifier = 1;
+}
+
+def TTXLA_PtrToMemrefOp : TTXLA_Op<"ptr_to_memref", [Pure]> {
+  let summary = [{
+    A specialized version of unrealized_conversion_cast that converts a
+    pointer to a memref.
+  }];
+
+  let arguments = (ins TT_Ptr:$src);
+
+  let results = (outs AnyMemRef:$result);
+
+  let assemblyFormat = [{
+    $src `from` type($src) `to` type($result) attr-dict
+  }];
+
+  let hasVerifier = 1;
+}
+
 
 #endif // XLA_BACKENDS_GPU_CODEGEN_TRITON_IR_TRITON_XLA_OPS_TD_
 
