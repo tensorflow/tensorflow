@@ -22,14 +22,14 @@ limitations under the License.
 #include <vector>
 
 #include "xla/backends/cpu/alignment.h"
-#include "xla/cpu_function_runtime.h"
+#include "xla/backends/cpu/buffer_allocation_info.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
 namespace {
 
-using ::xla::cpu_function_runtime::BufferInfo;
+using ::xla::cpu::BufferAllocationInfo;
 
 TEST(AllocatorTest, AlignmentValue) {
   // We've chosen 64 byte alignment for the tfcompile runtime to mimic the
@@ -41,33 +41,36 @@ TEST(AllocatorTest, AlignmentValue) {
   EXPECT_LE(xla::cpu::MinAlign(), Allocator::kAllocatorAlignment);
 }
 
-std::vector<BufferInfo> SizesToBufferInfos(const intptr_t* sizes, size_t n) {
-  std::vector<BufferInfo> buffer_infos;
-  std::transform(sizes, sizes + n, std::back_inserter(buffer_infos),
-                 [&](intptr_t size) {
-                   if (size == -1) {
-                     // Use a dummy on-stack buffer allocation to indicate the
-                     // the current slot does not need an allocation.
-                     int64_t on_stack_buffer_size = 4;
-                     return BufferInfo::MakeOnStackBuffer(on_stack_buffer_size);
-                   }
-                   return BufferInfo::MakeTempBuffer(size);
-                 });
+std::vector<BufferAllocationInfo> SizesToBufferAllocationInfos(
+    const intptr_t* sizes, size_t n) {
+  std::vector<BufferAllocationInfo> buffer_infos;
+  std::transform(
+      sizes, sizes + n, std::back_inserter(buffer_infos), [&](intptr_t size) {
+        if (size == -1) {
+          // Use a dummy on-stack buffer allocation to indicate the
+          // the current slot does not need an allocation.
+          int64_t on_stack_buffer_size = 4;
+          return BufferAllocationInfo::ThreadLocal(on_stack_buffer_size);
+        }
+        return BufferAllocationInfo::Temp(size);
+      });
   return buffer_infos;
 }
 
 // Simple wrappers to make writing tests more ergonomic.
 
 size_t AlignedBufferBytesFromSizes(const intptr_t* sizes, size_t n) {
-  std::vector<BufferInfo> buffer_infos = SizesToBufferInfos(sizes, n);
-  return tensorflow::AlignedBufferBytes(buffer_infos.data(), n,
+  std::vector<BufferAllocationInfo> buffer_infos =
+      SizesToBufferAllocationInfos(sizes, n);
+  return tensorflow::AlignedBufferBytes(buffer_infos,
                                         /*allocate_entry_params=*/false);
 }
 
 void* MallocContiguousBuffersFromSizes(const intptr_t* sizes, size_t n,
                                        void** bufs, bool annotate_initialized) {
-  std::vector<BufferInfo> buffer_infos = SizesToBufferInfos(sizes, n);
-  return tensorflow::MallocContiguousBuffers(buffer_infos.data(), n,
+  std::vector<BufferAllocationInfo> buffer_infos =
+      SizesToBufferAllocationInfos(sizes, n);
+  return tensorflow::MallocContiguousBuffers(buffer_infos,
                                              /*allocate_entry_params=*/false,
                                              bufs, annotate_initialized);
 }

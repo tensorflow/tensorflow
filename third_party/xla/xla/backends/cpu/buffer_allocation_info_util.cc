@@ -21,7 +21,6 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
-#include "absl/log/log.h"
 #include "absl/types/span.h"
 #include "xla/backends/cpu/buffer_allocation_info.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -88,11 +87,6 @@ std::vector<BufferAllocationInfo> CreateBufferAllocationInfos(
       DCHECK(allocation.IsPreallocatedTempBuffer());
       allocations.push_back(BufferAllocationInfo::Temp(allocation.size()));
     }
-  }
-
-  VLOG(3) << "Created " << allocations.size() << " buffer allocation infos: ";
-  for (const BufferAllocationInfo& allocation : allocations) {
-    VLOG(3) << "  " << allocation;
   }
 
   return allocations;

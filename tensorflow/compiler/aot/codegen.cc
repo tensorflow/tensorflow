@@ -44,11 +44,11 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/allocator.h"
 #include "tensorflow/compiler/tf2xla/tf2xla.pb.h"
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
+#include "xla/backends/cpu/buffer_allocation_info.h"
+#include "xla/backends/cpu/buffer_allocation_info_util.h"
 #include "xla/backends/cpu/runtime/thunk.pb.h"
 #include "xla/backends/cpu/runtime/thunk_proto_serdes.h"
-#include "xla/cpu_function_runtime.h"
 #include "xla/debug_options_flags.h"
-#include "xla/service/cpu/buffer_info_util.h"
 #include "xla/service/cpu/cpu_aot_compilation_result.h"
 #include "xla/service/cpu/cpu_executable.h"
 #include "xla/shape.h"
@@ -65,7 +65,7 @@ namespace tfcompile {
 
 namespace {
 
-using BufferInfo = xla::cpu_function_runtime::BufferInfo;
+using xla::cpu::BufferAllocationInfo;
 
 bool IsAlpha(char c) {
   return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z');
@@ -117,33 +117,36 @@ absl::Status XLATypeToCpp(xla::PrimitiveType type, string* str) {
 }
 
 // Returns the sum of the size of each buffer in `buffer_infos`.
-size_t TotalBufferBytes(const std::vector<BufferInfo>& buffer_infos) {
-  return std::accumulate(buffer_infos.begin(), buffer_infos.end(), size_t{0},
-                         [](size_t size, const BufferInfo& buffer_info) {
-                           return size + buffer_info.size();
-                         });
+size_t TotalBufferBytes(absl::Span<const BufferAllocationInfo> buffer_infos) {
+  return std::accumulate(
+      buffer_infos.begin(), buffer_infos.end(), size_t{0},
+      [](size_t size, const BufferAllocationInfo& buffer_info) {
+        return size + buffer_info.size();
+      });
 }
 
-// Returns a vector of BufferInfo instances in `buffer_infos` that are entry
-// parameter buffers.
-std::vector<BufferInfo> ExtractEntryParamBufferInfos(
-    const std::vector<BufferInfo>& buffer_infos) {
-  std::vector<BufferInfo> result;
+// Returns a vector of BufferAllocationInfo instances in `buffer_infos` that are
+// entry parameter buffers.
+std::vector<BufferAllocationInfo> ExtractEntryParamBufferAllocationInfos(
+    absl::Span<const BufferAllocationInfo> buffer_infos) {
+  std::vector<BufferAllocationInfo> result;
   std::copy_if(buffer_infos.begin(), buffer_infos.end(),
-               std::back_inserter(result), [](const BufferInfo& buffer_info) {
+               std::back_inserter(result),
+               [](const BufferAllocationInfo& buffer_info) {
                  return buffer_info.is_entry_parameter();
                });
   return result;
 }
 
-// Returns a vector of BufferInfo instances in `buffer_infos` that are temp
-// buffers.
-std::vector<BufferInfo> ExtractTempBufferInfos(
-    const std::vector<BufferInfo>& buffer_infos) {
-  std::vector<BufferInfo> result;
+// Returns a vector of BufferAllocationInfo instances in `buffer_infos` that are
+// temp buffers.
+std::vector<BufferAllocationInfo> ExtractTempBufferAllocationInfos(
+    absl::Span<const BufferAllocationInfo> buffer_infos) {
+  std::vector<BufferAllocationInfo> result;
   std::copy_if(buffer_infos.begin(), buffer_infos.end(),
-               std::back_inserter(result), [](const BufferInfo& buffer_info) {
-                 return buffer_info.is_temp_buffer();
+               std::back_inserter(result),
+               [](const BufferAllocationInfo& buffer_info) {
+                 return buffer_info.is_temp();
                });
   return result;
 }
@@ -471,25 +474,24 @@ absl::Status ValidateFeedFetchCppNames(const tf2xla::Config& config) {
 }
 
 // Returns a list of C++ expressions that, when executed, will construct the
-// BufferInfo instances in `buffer_infos`.
-std::vector<string> BufferInfosToCppExpression(
-    const std::vector<BufferInfo>& buffer_infos) {
-  std::vector<string> buffer_infos_as_strings;
-  std::transform(buffer_infos.begin(), buffer_infos.end(),
-                 std::back_inserter(buffer_infos_as_strings),
-                 [](const BufferInfo& buffer_info) {
-                   xla::cpu_function_runtime::EncodedBufferInfo encoded =
-                       buffer_info.Encode();
-                   auto param_to_str = [](uint32_t param) -> std::string {
-                     return param == ~0U ? "~0U" : absl::StrCat(param, "U");
-                   };
-                   return absl::StrCat(
-                       "::xla::cpu_function_runtime::BufferInfo("
-                       "::xla::cpu_function_runtime::EncodedBufferInfo{",
-                       encoded.packed_kind_and_size, "ULL, ",
-                       param_to_str(encoded.entry_param_number), ", ",
-                       param_to_str(encoded.result_param_number), "})");
-                 });
+// BufferAllocationInfo instances in `buffer_infos`.
+std::vector<std::string> BufferAllocationInfosToCppExpression(
+    absl::Span<const BufferAllocationInfo> buffer_infos) {
+  std::vector<std::string> buffer_infos_as_strings;
+  absl::c_transform(
+      buffer_infos, std::back_inserter(buffer_infos_as_strings),
+      [](const BufferAllocationInfo& buffer_info) {
+        xla::cpu::EncodedBufferAllocationInfo encoded(buffer_info);
+        auto param_to_str = [](int32_t param) -> std::string {
+          return param == -1 ? "~0U" : absl::StrCat(param, "U");
+        };
+        return absl::StrCat(
+            "static_cast<::xla::cpu::BufferAllocationInfo>("
+            "::xla::cpu::EncodedBufferAllocationInfo{",
+            encoded.packed_kind_and_size, "ULL, ",
+            param_to_str(encoded.entry_param_number), ", ",
+            param_to_str(encoded.result_number), "})");
+      });
   return buffer_infos_as_strings;
 }
 
@@ -659,8 +661,8 @@ absl::Status ExtendRewrites(
       const std::string function_declarations_from_obj_files,
       GenFunctionDeclarations(absl::MakeSpan(entry_point_symbols)));
 
-  const int64_t buffer_infos_size = aot_thunks->buffer_infos().size();
-  const std::optional<size_t> temp_allocation_index =
+  int64_t buffer_infos_size = aot_thunks->buffer_allocation_infos().size();
+  std::optional<size_t> temp_allocation_index =
       aot_thunks->temp_allocation_index();
   if (temp_allocation_index.has_value() &&
       (*temp_allocation_index < 0 ||
@@ -838,21 +840,21 @@ absl::Status GenerateHeader(
   TF_RETURN_IF_ERROR(ValidateConfig(config));
   TF_RETURN_IF_ERROR(ValidateFeedFetchCppNames(config));
 
-  const std::vector<BufferInfo>& buffer_infos =
-      compile_result.aot->buffer_infos();
+  absl::Span<const BufferAllocationInfo> buffer_infos =
+      compile_result.aot->buffer_allocation_infos();
 
   const std::vector<int32> arg_index_table =
-      ::xla::cpu::CreateArgIndexTableFromBufferInfos(buffer_infos);
+      ::xla::cpu::CreateArgIndexTable(buffer_infos);
   const std::vector<int32> result_index_table =
-      ::xla::cpu::CreateResultIndexTableFromBufferInfos(buffer_infos);
+      ::xla::cpu::CreateResultIndexTable(buffer_infos);
   std::vector<string> buffer_infos_as_strings =
-      BufferInfosToCppExpression(buffer_infos);
+      BufferAllocationInfosToCppExpression(buffer_infos);
 
   // Compute sizes and generate methods.
-  std::vector<BufferInfo> buffer_infos_for_args =
-      ExtractEntryParamBufferInfos(buffer_infos);
-  std::vector<BufferInfo> buffer_infos_for_temps =
-      ExtractTempBufferInfos(buffer_infos);
+  std::vector<BufferAllocationInfo> buffer_infos_for_args =
+      ExtractEntryParamBufferAllocationInfos(buffer_infos);
+  std::vector<BufferAllocationInfo> buffer_infos_for_temps =
+      ExtractTempBufferAllocationInfos(buffer_infos);
   const xla::ProgramShapeProto& ps = compile_result.program_shape;
   string methods_arg, methods_result, methods_variable;
   TF_RETURN_IF_ERROR(GenArgMethods(config, ps, compile_result, &methods_arg));
@@ -868,13 +870,13 @@ absl::Status GenerateHeader(
       CheckEqual(ps.result().tuple_shapes_size(), result_index_table.size(),
                  "Result number mismatch, proto vs. result_index_table"));
   TF_ASSIGN_OR_RETURN(auto program_shape, xla::ProgramShape::FromProto(ps));
-  const size_t arg_bytes_aligned = tensorflow::AlignedBufferBytes(
-      buffer_infos_for_args.data(), buffer_infos_for_args.size(),
-      /*allocate_entry_params=*/true);
+  const size_t arg_bytes_aligned =
+      tensorflow::AlignedBufferBytes(buffer_infos_for_args,
+                                     /*allocate_entry_params=*/true);
   const size_t arg_bytes_total = TotalBufferBytes(buffer_infos_for_args);
-  const size_t temp_bytes_aligned = tensorflow::AlignedBufferBytes(
-      buffer_infos_for_temps.data(), buffer_infos_for_temps.size(),
-      /*allocate_entry_params=*/true);
+  const size_t temp_bytes_aligned =
+      tensorflow::AlignedBufferBytes(buffer_infos_for_temps,
+                                     /*allocate_entry_params=*/true);
   const size_t temp_bytes_total = TotalBufferBytes(buffer_infos_for_temps);
 
   // Create rewrite strings for namespace start and end.
@@ -980,7 +982,7 @@ class {{CLASS}} final : public tensorflow::{{COMPUTATION_CLASS_BASE}} {
 
   // Byte size of each argument buffer. There are kNumArgs entries.
   static const ::int64_t ArgSize(::tensorflow::int32 index) {
-    return BufferInfos()[ArgIndexToBufferIndex()[index]].size();
+    return BufferAllocationInfos()[ArgIndexToBufferIndex()[index]].size();
   }
 
   // Returns static data used to create an XlaCompiledCpuFunction.
@@ -989,7 +991,7 @@ class {{CLASS}} final : public tensorflow::{{COMPUTATION_CLASS_BASE}} {
       XlaCompiledCpuFunction::StaticData* data =
         new XlaCompiledCpuFunction::StaticData;
       set_static_data_function_library_symbol_map(data, FunctionLibrarySymbolMap());
-      set_static_data_buffer_infos(data, BufferInfos());
+      set_static_data_buffer_infos(data, BufferAllocationInfos());
       set_static_data_num_buffers(data, kNumBuffers);
       set_static_data_result_index_table(data, ResultIndexToBufferIndex());
       set_static_data_num_results(data, kNumResults);
@@ -1081,12 +1083,12 @@ class {{CLASS}} final : public tensorflow::{{COMPUTATION_CLASS_BASE}} {
   // Number of buffers for the compiled computation.
   static constexpr size_t kNumBuffers = {{NUM_BUFFERS}};
 
-  static const ::xla::cpu_function_runtime::BufferInfo* BufferInfos() {
-    static const ::xla::cpu_function_runtime::BufferInfo
-      kBufferInfos[kNumBuffers] = {
+  static const ::xla::cpu::BufferAllocationInfo* BufferAllocationInfos() {
+    static const ::xla::cpu::BufferAllocationInfo
+      kBufferAllocationInfos[kNumBuffers] = {
 {{BUFFER_INFOS_AS_STRING}}
       };
-    return kBufferInfos;
+    return kBufferAllocationInfos;
   }
 
   static const ::tensorflow::int32* ResultIndexToBufferIndex() {

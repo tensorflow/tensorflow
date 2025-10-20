@@ -22,7 +22,8 @@ namespace {
 
 TEST(BufferAllocationInfoTest, RoundTrip) {
   auto round_trip = [](const BufferAllocationInfo& buffer_info) {
-    BufferAllocationInfo round_trip(buffer_info.Encode());
+    EncodedBufferAllocationInfo encoded(buffer_info);
+    BufferAllocationInfo round_trip(encoded);
     ASSERT_EQ(round_trip, buffer_info);
   };
 

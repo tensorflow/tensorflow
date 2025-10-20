@@ -29,8 +29,8 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
 #include "xla/backends/cpu/alignment.h"
+#include "xla/backends/cpu/buffer_allocation_info.h"
 #include "xla/backends/cpu/runtime/rng_state_lib.h"
-#include "xla/cpu_function_runtime.h"
 #include "xla/executable_run_options.h"
 #include "xla/service/custom_call_status_internal.h"
 #include "tensorflow/core/platform/types.h"
@@ -123,7 +123,7 @@ class XlaCompiledCpuFunction {
     // End serialized thunk execution specific
 
     // Contains information about the buffers used by the XLA computation.
-    const xla::cpu_function_runtime::BufferInfo* buffer_infos_ = nullptr;
+    const xla::cpu::BufferAllocationInfo* buffer_infos_ = nullptr;
     int32_t num_buffers_ = 0;
 
     // Result parameter i is described by
@@ -251,9 +251,7 @@ class XlaCompiledCpuFunction {
   // called for each positional argument, in order to set the argument buffers.
   //
   // Allocated memory must be aligned to the size specified by
-  // xla::cpu_function_runtime::MinAlign(). If possible, use the functions in
-  // tensorflow/compiler/tf2xla/cpu_function_runtime.h to ensure correct
-  // alignment.
+  // xla::cpu::MinAlign().
   //
   // Aliasing of argument and result buffers is not allowed, and results in
   // undefined behavior.
@@ -362,7 +360,7 @@ class XlaCompiledCpuFunction {
     return temp_allocation_index_;
   }
 
-  const xla::cpu_function_runtime::BufferInfo* buffer_infos() const {
+  const xla::cpu::BufferAllocationInfo* buffer_infos() const {
     return buffer_infos_;
   }
 
@@ -415,7 +413,7 @@ class XlaCompiledCpuFunction {
 
   static void set_static_data_buffer_infos(
       StaticData* static_data,
-      const xla::cpu_function_runtime::BufferInfo* buffer_infos) {
+      const xla::cpu::BufferAllocationInfo* buffer_infos) {
     static_data->buffer_infos_ = buffer_infos;
   }
 
@@ -531,7 +529,7 @@ class XlaCompiledCpuFunction {
   void** const buffer_table_;
 
   // Describes the buffers used by the XLA computation.
-  const xla::cpu_function_runtime::BufferInfo* const buffer_infos_;
+  const xla::cpu::BufferAllocationInfo* const buffer_infos_;
   const int32 num_buffers_;
 
   // Indices of expanded result tuple.

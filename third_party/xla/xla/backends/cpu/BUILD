@@ -41,12 +41,6 @@ cc_library(
     name = "buffer_allocation_info",
     hdrs = ["buffer_allocation_info.h"],
     visibility = internal_visibility([":friends"]),
-    deps = [
-        "//xla:xla_data_proto_cc",
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/strings:str_format",
-        "@com_google_absl//absl/strings:string_view",
-    ],
 )
 
 cc_library(

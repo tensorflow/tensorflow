@@ -22,7 +22,7 @@ limitations under the License.
 #include <cstdlib>
 
 namespace xla {
-namespace cpu_function_runtime {
+namespace cpu_function_runtime_deprecated {
 
 struct EncodedBufferInfo {
   uint64_t packed_kind_and_size = 0;
@@ -174,7 +174,7 @@ class BufferInfo {
   int32_t result_param_number_ = -1;
 };
 
-}  // namespace cpu_function_runtime
+}  // namespace cpu_function_runtime_deprecated
 }  // namespace xla
 
 #endif  // XLA_CPU_FUNCTION_RUNTIME_H_
