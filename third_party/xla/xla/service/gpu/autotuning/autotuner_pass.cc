@@ -35,6 +35,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/compiler.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/platform/errors.h"
@@ -101,11 +102,17 @@ absl::StatusOr<std::unique_ptr<AutotunerPass>> AutotunerPass::Create(
                                    GetProfileOptions(debug_options), allocator);
   }
 
+  se::DeviceDescription device_description = target_config->device_description;
+  device_description.set_dnn_version(
+      {static_cast<unsigned>(target_config->dnn_version_info.major_version()),
+       static_cast<unsigned>(target_config->dnn_version_info.minor_version()),
+       static_cast<unsigned>(target_config->dnn_version_info.patch())});
+
   std::unique_ptr<AutotunerCacheInterface> cache =
       std::make_unique<LegacyCache>(
           debug_options.xla_gpu_experimental_autotuner_cache_dir(),
           debug_options.xla_gpu_experimental_autotune_cache_mode(),
-          target_config->device_description);
+          device_description);
 
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<Autotuner> autotuner,
