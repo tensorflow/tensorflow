@@ -589,10 +589,11 @@ absl::StatusOr<xla::ifrt::ArrayRef> Array::AssembleArrayFromSingleDeviceArrays(
   // We assume that all shards have the same layout.
   const xla::ifrt::ArrayRef& rcref = arrays[0];
   Array* array = llvm::cast<Array>(rcref.get());
-
+  TF_ASSIGN_OR_RETURN(std::shared_ptr<const xla::PjRtLayout> layout,
+                      array->pjrt_layout());
   return xla::ifrt::ArrayRef(tsl::MakeRef<Array>(
       client, std::move(rpc_helper), dtype, std::move(shape),
-      std::move(sharding), result_handle, array->custom_layout()));
+      std::move(sharding), result_handle, std::move(layout)));
 }
 
 absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> Array::RemapArrays(
@@ -664,7 +665,9 @@ absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> Array::RemapArrays(
     if (output_layouts[mapping.out_array] == nullptr) {
       const xla::ifrt::ArrayRef& rcref = arrays[mapping.in_array];
       Array* array = llvm::cast<Array>(rcref.get());
-      output_layouts[mapping.out_array] = array->custom_layout();
+      TF_ASSIGN_OR_RETURN(std::shared_ptr<const xla::PjRtLayout> layout,
+                          array->pjrt_layout());
+      output_layouts[mapping.out_array] = std::move(layout);
     }
   }
 
@@ -751,8 +754,7 @@ Array::DisassembleIntoSingleDeviceArrays(
   for (int i = 0; i < result_handles.size(); ++i) {
     result.push_back(xla::ifrt::ArrayRef(tsl::MakeRef<Array>(
         client_, rpc_helper_, dtype_, std::move(shape_and_shardings[i].first),
-        std::move(shape_and_shardings[i].second), result_handles[i],
-        this->custom_layout())));
+        std::move(shape_and_shardings[i].second), result_handles[i], layout_)));
   }
 
   return result;
@@ -792,7 +794,7 @@ absl::StatusOr<xla::ifrt::ArrayRef> Array::FullyReplicatedShard(
 
   return xla::ifrt::ArrayRef(tsl::MakeRef<Array>(
       client_, rpc_helper_, dtype_, shape_, std::move(single_device_sharding),
-      result_handle, this->custom_layout()));
+      result_handle, layout_));
 }
 
 tsl::Future<> Array::CopyToStringHostBuffer(
@@ -940,15 +942,7 @@ tsl::Future<> Array::CopyToHostBuffer(
 }
 
 absl::StatusOr<std::shared_ptr<const PjRtLayout>> Array::pjrt_layout() const {
-  absl::MutexLock l(mu_);
-  if (custom_layout_ != nullptr) {
-    return custom_layout_;
-  }
-
-  TF_ASSIGN_OR_RETURN(auto shard_shape, sharding_->GetShardShape(shape_));
-  return client_->GetDefaultPjRtLayout(dtype_, shard_shape.dims(),
-                                       sharding_->devices()->devices().front(),
-                                       sharding_->memory_kind());
+  return layout_;
 }
 
 xla::ifrt::Client* Array::client() const { return client_; }
