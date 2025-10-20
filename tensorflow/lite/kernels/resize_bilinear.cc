@@ -97,9 +97,16 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   return ResizeOutputTensor(context, input, size, output);
 }
 
+bool IsQuantizedType(TfLiteType type) {
+  return type == kTfLiteUInt8 || type == kTfLiteInt8 || type == kTfLiteInt16;
+}
+
 TfLiteStatus CheckQuantizationParams(TfLiteContext* context,
                                      const TfLiteTensor* input,
                                      const TfLiteTensor* output) {
+  if (!IsQuantizedType(output->type)) {
+    return kTfLiteOk;
+  }
   if (input->params.scale != output->params.scale ||
       input->params.zero_point != output->params.zero_point) {
     TF_LITE_KERNEL_LOG(
@@ -129,6 +136,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
                       ResizeOutputTensor(context, input, size, output));
   }
 
+  TF_LITE_ENSURE_OK(context, CheckQuantizationParams(context, input, output));
+
   if (output->type == kTfLiteFloat32) {
 #define TF_LITE_RESIZE_BILINEAR(type, opname, datatype)              \
   tflite::ResizeBilinearParams op_params;                            \
@@ -145,21 +154,18 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       TF_LITE_RESIZE_BILINEAR(optimized_ops, ResizeBilinear, float);
     }
   } else if (output->type == kTfLiteUInt8) {
-    TF_LITE_ENSURE_OK(context, CheckQuantizationParams(context, input, output));
     if (kernel_type == kReference) {
       TF_LITE_RESIZE_BILINEAR(reference_ops, ResizeBilinear, uint8_t);
     } else if (kernel_type == kOptimized) {
       TF_LITE_RESIZE_BILINEAR(optimized_ops, ResizeBilinear, uint8_t);
     }
   } else if (output->type == kTfLiteInt8) {
-    TF_LITE_ENSURE_OK(context, CheckQuantizationParams(context, input, output));
     if (kernel_type == kReference) {
       TF_LITE_RESIZE_BILINEAR(reference_ops, ResizeBilinearInteger, int8_t);
     } else if (kernel_type == kOptimized) {
       TF_LITE_RESIZE_BILINEAR(optimized_ops, ResizeBilinear, int8_t);
     }
   } else if (output->type == kTfLiteInt16) {
-    TF_LITE_ENSURE_OK(context, CheckQuantizationParams(context, input, output));
     TF_LITE_RESIZE_BILINEAR(reference_ops, ResizeBilinearInteger, int16_t);
 #undef TF_LITE_RESIZE_BILINEAR
   } else {
