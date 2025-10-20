@@ -45,7 +45,7 @@ class MathGradTest : public ::testing::Test {
     const DataType src = x.dtype();
     auto adef = [](const string& name,
                    const DataType type) {  // E.g., x:float, dy:double
-      return strings::StrCat(name, ":", DataTypeString(type));
+      return absl::StrCat(name, ":", DataTypeString(type));
     };
     // Sum(op(x)), sum all output of op(x).
     auto test = FDH::Define("Test", {adef("x", src)}, {adef("l", dst)}, {},
@@ -119,7 +119,7 @@ class MathGradTest : public ::testing::Test {
                Tensor* dy) {
     const DataType T = x.dtype();
     auto adef = [T](const string& name) {  // E.g., x:float, dy:double
-      return strings::StrCat(name, ":", DataTypeString(T));
+      return absl::StrCat(name, ":", DataTypeString(T));
     };
     // Sum(op(x)), sum all output of op(x).
     auto test = FDH::Define("Test", {adef("x"), adef("y")}, {adef("l")}, {},
@@ -175,7 +175,7 @@ class MathGradTest : public ::testing::Test {
                      Tensor* dx, Tensor* di) {
     const DataType T = x.dtype();
     auto adef = [T](const string& name) {  // E.g., x:float, dy:double
-      return strings::StrCat(name, ":", DataTypeString(T));
+      return absl::StrCat(name, ":", DataTypeString(T));
     };
     // Sum(op(x, idx)), sum all output of op(x, idx).
     auto test = FDH::Define("Test", {adef("x"), "i:int32"}, {adef("l")}, {},
@@ -286,7 +286,7 @@ class MathGradTest : public ::testing::Test {
                         const Tensor& y, bool ay, Tensor* dx, Tensor* dy) {
     const DataType T = x.dtype();
     auto adef = [T](const string& name) {  // E.g., x:float, dy:double
-      return strings::StrCat(name, ":", DataTypeString(T));
+      return absl::StrCat(name, ":", DataTypeString(T));
     };
     // Sum(op(x)), sum all output of op(x).
     auto test =
