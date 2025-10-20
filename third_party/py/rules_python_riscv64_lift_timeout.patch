@@ -1,0 +1,13 @@
+diff --git a/python/private/pypi/attrs.bzl b/python/private/pypi/attrs.bzl
+index a122fc84..2b82f36c 100644
+--- a/python/private/pypi/attrs.bzl
++++ b/python/private/pypi/attrs.bzl
+@@ -222,7 +222,7 @@ or
+     ),
+     # 600 is documented as default here: https://docs.bazel.build/versions/master/skylark/lib/repository_ctx.html#execute
+     "timeout": attr.int(
+-        default = 600,
++        default = 7200,
+         doc = "Timeout (in seconds) on the rule's execution duration.",
+     ),
+ }
