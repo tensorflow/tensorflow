@@ -137,67 +137,37 @@ absl::StatusOr<std::vector<xla::ifrt::ArraySpec>> ExtractOutSpecs(
   return out_specs;
 }
 
+absl::StatusOr<std::shared_ptr<const xla::PjRtLayout>> BuildDefaultLayout(
+    const xla::ifrt::ArraySpec& arg_spec, xla::ifrt::Client* client) {
+  TF_ASSIGN_OR_RETURN(auto shard_shape,
+                      arg_spec.sharding->GetShardShape(arg_spec.shape));
+  return client->GetDefaultPjRtLayout(
+      arg_spec.dtype, shard_shape.dims(),
+      arg_spec.sharding->devices()->devices().front(),
+      arg_spec.sharding->memory_kind());
+}
+
 absl::StatusOr<std::shared_ptr<const xla::PjRtLayout>>
-GetParameterLayoutFromConsumer(
+GetParameterLayoutFromLoadedExecutable(
     xla::ifrt::Client* client,
     const AtomExecutableMap& atom_program_executables,
     absl::Span<const xla::ifrt::ArraySpec> in_specs,
     absl::Span<const xla::ifrt::ArraySpec> out_specs,
-    mlir::SymbolTableCollection& symbol_table, mlir::OpOperand& param_operand) {
-  if (auto call_op = llvm::dyn_cast<xla::ifrt::CallLoadedExecutableOp>(
-          param_operand.getOwner())) {
-    // The parameter is used by a CallLoadedExecutableOp, return the layout
-    // from the atom program executable.
-    xla::ifrt::LoadedExecutableOp loaded_exec_op =
-        call_op.getCalleeOp(symbol_table);
-    auto atom_program_name = loaded_exec_op.getSymName().str();
-    auto exec_it = atom_program_executables.find(atom_program_name);
-    if (exec_it != atom_program_executables.end()) {
-      TF_ASSIGN_OR_RETURN(auto exec_layouts,
-                          exec_it->second->GetParameterLayouts());
-      return std::move(exec_layouts[param_operand.getOperandNumber()]);
-    } else {
-      return absl::FailedPreconditionError(absl::StrFormat(
-          "Could not find SPMD executable %s", atom_program_name));
-    }
-  } else if (auto return_op = llvm::dyn_cast<mlir::func::ReturnOp>(
-                 param_operand.getOwner())) {
-    // TODO(b/382761415): AUTO layouts should be handled during IFRT IR program
-    // compilation so that by the time this method is called there should be no
-    // AUTO layouts.
-    // The parameter is not used by any atom program, return device default
-    // layout.
-    const auto& out_spec = out_specs[param_operand.getOperandNumber()];
-    TF_ASSIGN_OR_RETURN(auto shard_shape,
-                        out_spec.sharding->GetShardShape(out_spec.shape));
-    return client->GetDefaultPjRtLayout(
-        out_spec.dtype, shard_shape.dims(),
-        out_spec.sharding->devices()->devices().front(),
-        out_spec.sharding->memory_kind());
-  } else if (auto copy_arrays =
-                 llvm::dyn_cast<ifrt::CopyArraysOp>(param_operand.getOwner())) {
-    // If the parameter is used by a CopyArraysOp, we assume a default layout.
-    if (auto arg = llvm::dyn_cast<mlir::BlockArgument>(param_operand.get())) {
-      const auto& arg_spec = in_specs[arg.getArgNumber()];
-      TF_ASSIGN_OR_RETURN(auto shard_shape,
-                          arg_spec.sharding->GetShardShape(arg_spec.shape));
-      return client->GetDefaultPjRtLayout(
-          arg_spec.dtype, shard_shape.dims(),
-          arg_spec.sharding->devices()->devices().front(),
-          arg_spec.sharding->memory_kind());
-    } else {
-      return absl::FailedPreconditionError(absl::StrFormat(
-          "Parameter used by CopyArraysOp does not originate from a block "
-          "argument. Parameter used by %s",
-          xla::ifrt::OperationToString(param_operand.getOwner(),
-                                       mlir::OpPrintingFlags())));
-    }
+    mlir::SymbolTableCollection& symbol_table,
+    ifrt::CallLoadedExecutableOp& call_op, int param_operand_number) {
+  // The parameter is used by a CallLoadedExecutableOp, return the layout
+  // from the atom program executable.
+  xla::ifrt::LoadedExecutableOp loaded_exec_op =
+      call_op.getCalleeOp(symbol_table);
+  auto atom_program_name = loaded_exec_op.getSymName().str();
+  auto exec_it = atom_program_executables.find(atom_program_name);
+  if (exec_it != atom_program_executables.end()) {
+    TF_ASSIGN_OR_RETURN(auto exec_layouts,
+                        exec_it->second->GetParameterLayouts());
+    return std::move(exec_layouts[param_operand_number]);
   } else {
     return absl::FailedPreconditionError(absl::StrFormat(
-        "Layouts are supported only for programs that have parameters used "
-        "only by CallLoadedExecutableOp ops. Used by %s",
-        xla::ifrt::OperationToString(param_operand.getOwner(),
-                                     mlir::OpPrintingFlags())));
+        "Could not find SPMD executable %s", atom_program_name));
   }
 }
 
@@ -213,35 +183,72 @@ absl::Status PopulateLayouts(mlir::ModuleOp mlir_module,
     std::shared_ptr<const xla::PjRtLayout> parameter_layout;
     if (arg.use_empty()) {
       // The argument is not used. Return device default layout.
-      const auto& arg_spec = in_specs[arg.getArgNumber()];
-      TF_ASSIGN_OR_RETURN(auto shard_shape,
-                          arg_spec.sharding->GetShardShape(arg_spec.shape));
-      TF_ASSIGN_OR_RETURN(parameter_layout,
-                          client->GetDefaultPjRtLayout(
-                              arg_spec.dtype, shard_shape.dims(),
-                              arg_spec.sharding->devices()->devices().front(),
-                              arg_spec.sharding->memory_kind()));
+      TF_ASSIGN_OR_RETURN(
+          parameter_layout,
+          BuildDefaultLayout(in_specs[arg.getArgNumber()], client));
     } else {
-      mlir::OpOperand& first_use = *arg.getUses().begin();
-      TF_ASSIGN_OR_RETURN(parameter_layout,
-                          GetParameterLayoutFromConsumer(
-                              client, atom_program_executables, in_specs,
-                              out_specs, symbol_table, first_use));
-      for (mlir::OpOperand& use : llvm::drop_begin(arg.getUses())) {
-        TF_ASSIGN_OR_RETURN(auto layout_from_executable,
-                            GetParameterLayoutFromConsumer(
-                                client, atom_program_executables, in_specs,
-                                out_specs, symbol_table, use));
-        // Verify that all uses of the parameter have the same layout.
-        if (*parameter_layout != *layout_from_executable) {
+      bool found_copy_arrays_user = false;
+      // Find the layout from the first LoadedExecutableOp consumer or just
+      // return any of the users otherwise. Possible users: CopyArraysOp,
+      // ReturnOp, and other LoadedExecutableOp.
+      for (mlir::OpOperand& use : arg.getUses()) {
+        if (llvm::isa<mlir::func::ReturnOp>(use.getOwner())) {
+          continue;
+        }
+        if (llvm::isa<ifrt::CopyArraysOp>(use.getOwner())) {
+          found_copy_arrays_user = true;
+          continue;
+        }
+
+        if (!llvm::isa<ifrt::CallLoadedExecutableOp>(use.getOwner())) {
+          return absl::FailedPreconditionError(absl::StrFormat(
+              "Layouts are supported only for programs that have parameters "
+              "used only by CallLoadedExecutableOp ops. Parameter %d is used "
+              "by %s",
+              arg.getArgNumber(),
+              xla::ifrt::OperationToString(use.getOwner(),
+                                           mlir::OpPrintingFlags())));
+        }
+        auto call_op = llvm::cast<ifrt::CallLoadedExecutableOp>(use.getOwner());
+        TF_ASSIGN_OR_RETURN(
+            std::shared_ptr<const xla::PjRtLayout> consumer_layout,
+            GetParameterLayoutFromLoadedExecutable(
+                client, atom_program_executables, in_specs, out_specs,
+                symbol_table, call_op, use.getOperandNumber()));
+        if (!parameter_layout) {
+          parameter_layout = std::move(consumer_layout);
+          continue;
+        }
+        if (*parameter_layout != *consumer_layout) {
           return absl::InternalError(absl::StrFormat(
               "Parameter %d is used by atom programs with incompatible "
               "layouts: %s vs. %s. This happens because support for layout "
               "progation within MPMD programs is limited. Contact "
               "ml-pathways-team@ for help",
               arg.getArgNumber(), parameter_layout->ToString(),
-              layout_from_executable->ToString()));
+              consumer_layout->ToString()));
         }
+      }
+      if (parameter_layout && found_copy_arrays_user) {
+        // Need to check if the layout is compatible with the CopyArraysOp.
+        TF_ASSIGN_OR_RETURN(
+            std::shared_ptr<const xla::PjRtLayout> default_layout,
+            BuildDefaultLayout(in_specs[arg.getArgNumber()], client));
+        if (*parameter_layout != *default_layout) {
+          return absl::InternalError(absl::StrFormat(
+              "Parameter %d is used by atom program with layout: %s and in "
+              "transfer op with layout: %s. This happens because support for "
+              "layout progation within MPMD programs is limited. Contact "
+              "ml-pathways-team@ for help",
+              arg.getArgNumber(), parameter_layout->ToString(),
+              default_layout->ToString()));
+        }
+      }
+      if (!parameter_layout) {
+        // The argument was skipped above, meaning only used by ReturnOp.
+        TF_ASSIGN_OR_RETURN(
+            parameter_layout,
+            BuildDefaultLayout(in_specs[arg.getArgNumber()], client));
       }
     }
     in_specs[arg.getArgNumber()].layout = std::move(parameter_layout);
@@ -252,15 +259,9 @@ absl::Status PopulateLayouts(mlir::ModuleOp mlir_module,
     auto& out_spec = out_specs[return_operand.getOperandNumber()];
     if (mlir::BlockArgument block_arg =
             llvm::dyn_cast<mlir::BlockArgument>(return_operand.get())) {
-      // The output is an argument of the IFRT IR program. Assume device
-      // default layout.
-      TF_ASSIGN_OR_RETURN(auto shard_shape,
-                          out_spec.sharding->GetShardShape(out_spec.shape));
-      TF_ASSIGN_OR_RETURN(out_spec.layout,
-                          client->GetDefaultPjRtLayout(
-                              out_spec.dtype, shard_shape.dims(),
-                              out_spec.sharding->devices()->devices().front(),
-                              out_spec.sharding->memory_kind()));
+      // If result is a main func BlockArg, then it has already propagated the
+      // layout above.
+      out_spec.layout = in_specs[block_arg.getArgNumber()].layout;
       continue;
     }
     auto op_result = llvm::cast<mlir::OpResult>(return_operand.get());
@@ -286,13 +287,8 @@ absl::Status PopulateLayouts(mlir::ModuleOp mlir_module,
     } else if (llvm::isa<ifrt::CopyArraysOp>(op_result.getOwner())) {
       // The output is produced by a CopyArraysOp. Must be device
       // default layout.
-      TF_ASSIGN_OR_RETURN(auto shard_shape,
-                          out_spec.sharding->GetShardShape(out_spec.shape));
       TF_ASSIGN_OR_RETURN(out_spec.layout,
-                          client->GetDefaultPjRtLayout(
-                              out_spec.dtype, shard_shape.dims(),
-                              out_spec.sharding->devices()->devices().front(),
-                              out_spec.sharding->memory_kind()));
+                          BuildDefaultLayout(out_spec, client));
     } else {
       return absl::FailedPreconditionError(absl::StrFormat(
           "Layouts are supported only for programs that have outputs produced "
