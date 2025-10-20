@@ -1,0 +1,24 @@
+diff --git a/include/tfrt/support/forward_decls.h b/include/tfrt/support/forward_decls.h
+index c3a42504..eeef33ec 100644
+--- a/include/tfrt/support/forward_decls.h
++++ b/include/tfrt/support/forward_decls.h
+@@ -20,6 +20,7 @@
+ #ifndef TFRT_SUPPORT_FORWARD_DECLS_H_
+ #define TFRT_SUPPORT_FORWARD_DECLS_H_
+ 
++#include <cstdint>
+ #include <cstddef>
+ #include <memory>
+ 
+diff --git a/include/tfrt/support/raw_coding.h b/include/tfrt/support/raw_coding.h
+index ba7d6357..1ca6c74c 100644
+--- a/include/tfrt/support/raw_coding.h
++++ b/include/tfrt/support/raw_coding.h
+@@ -21,6 +21,7 @@
+ #ifndef TFRT_SUPPORT_RAW_CODING_H_
+ #define TFRT_SUPPORT_RAW_CODING_H_
+ 
++#include <cstdint>
+ #include <cstring>
+ 
+ #include "tfrt/support/forward_decls.h"
