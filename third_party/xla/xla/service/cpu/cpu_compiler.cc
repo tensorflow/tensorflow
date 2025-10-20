@@ -931,14 +931,12 @@ absl::Status CpuCompiler::RunHloPassesAfterLayoutAssn(
   // so until another solution is developed the passes creating XNNPACK fusions
   // have to run after layout assignment.
   LibraryRewriterOptions options = {
-      /*use_onednn=*/module->config().debug_options().xla_cpu_use_onednn(),
-      /*use_xnnpack=*/module->config().debug_options().xla_cpu_use_xnnpack(),
+      /*use_onednn=*/debug_options.xla_cpu_use_onednn(),
+      /*use_xnnpack=*/debug_options.xla_cpu_use_xnnpack(),
       /*onednn_fusion_types=*/
-      &module->config()
-           .debug_options()
-           .xla_cpu_experimental_onednn_fusion_type(),
+      &debug_options.xla_cpu_experimental_onednn_fusion_type(),
       /*xnn_fusion_types=*/
-      &module->config().debug_options().xla_cpu_experimental_xnn_fusion_type()};
+      &debug_options.xla_cpu_experimental_xnn_fusion_type()};
   if (options.use_onednn || options.use_xnnpack) {
     HloPassPipeline lib_pipeline("dot-library-passes");
     lib_pipeline.AddPass<DotDecomposer>();
