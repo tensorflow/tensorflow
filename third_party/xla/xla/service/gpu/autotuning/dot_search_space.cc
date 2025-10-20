@@ -175,7 +175,10 @@ std::vector<TritonGemmConfig> TritonDotFusionSearchSpace::OptimizeConfigSet(
 
   absl::flat_hash_map<std::pair<int, int>, std::pair<int, int>>
       m_n_to_split_limits;
-  std::pair<int, int> global_split_limits;
+  // Init with first config vals, otherwise they would be 0 and min comparison
+  // won't update properly.
+  std::pair<int, int> global_split_limits{configs.front().split_k,
+                                          configs.front().split_k};
   auto update_split_limits = [](auto& limits, int value) {
     limits = std::minmax({limits.first, limits.second, value});
   };
