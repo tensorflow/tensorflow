@@ -215,6 +215,22 @@ class PjRtTopologyDescription {
   }
 };
 
+// Returns true if it's TPU topology.
+inline bool IsTpuTopology(const PjRtTopologyDescription& topology_description) {
+  return topology_description.platform_id() == xla::TpuId();
+}
+
+// Returns true if it's GPU topology.
+inline bool IsGpuTopology(const PjRtTopologyDescription& topology_description) {
+  return topology_description.platform_id() == xla::CudaId() ||
+         topology_description.platform_id() == xla::RocmId();
+}
+
+// Returns true if it's CPU topology.
+inline bool IsCpuTopology(const PjRtTopologyDescription& topology_description) {
+  return topology_description.platform_id() == xla::CpuId();
+}
+
 // Abstract interface that all registered compilers must implement.
 class PjRtCompiler {
  public:
