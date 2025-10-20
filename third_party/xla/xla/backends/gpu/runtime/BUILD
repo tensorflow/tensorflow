@@ -1,6 +1,6 @@
 load("@local_config_cuda//cuda:build_defs.bzl", "cuda_library")
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
-load("//xla:xla.default.bzl", "xla_cc_test", "xla_internal")
+load("//xla:xla.default.bzl", "xla_cc_test", "xla_internal", "xla_py_proto_library")
 load("//xla/tests:build_defs.bzl", "xla_test")
 load("//xla/tsl:tsl.bzl", "internal_visibility", "nvtx_headers")
 load("//xla/tsl:tsl.default.bzl", "get_compatible_with_portable")
@@ -2445,6 +2445,11 @@ tf_proto_library(
     ],
 )
 
+xla_py_proto_library(
+    name = "thunk_proto_py",
+    deps = [":thunk_proto"],
+)
+
 tf_proto_library(
     name = "dynamic_slice_thunk_proto",
     srcs = [
@@ -3091,6 +3096,11 @@ xla_test(
 tf_proto_library(
     name = "buffer_debug_log_proto",
     srcs = ["buffer_debug_log.proto"],
+)
+
+xla_py_proto_library(
+    name = "buffer_debug_log_proto_py",
+    deps = [":buffer_debug_log_proto"],
 )
 
 cc_library(

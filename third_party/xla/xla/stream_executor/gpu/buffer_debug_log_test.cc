@@ -144,8 +144,8 @@ TEST_F(BufferDebugLogTest, ReadAsProto) {
                           device_log.ReadProto(*stream_));
 
   EXPECT_THAT(log_proto, EqualsProto(R"pb(
-                entries { thunk_id: 123 buffer_idx: 4 value: 12341234 }
-                entries { thunk_id: 567 buffer_idx: 8 value: 56785678 }
+                entries { thunk_id: 123 buffer_idx: 4 checksum: 12341234 }
+                entries { thunk_id: 567 buffer_idx: 8 checksum: 56785678 }
               )pb"));
 }
 
