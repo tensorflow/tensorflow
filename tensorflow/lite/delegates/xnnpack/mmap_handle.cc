@@ -121,19 +121,10 @@ bool MMapHandle::Map(const FileDescriptorView& fd, const size_t offset,
                        "could not convert file descriptor to file handle: %s.",
                        strerror(errno));
 
-  // Create the handle name, which is either NULL or the path with backslashes
-  // replaced by `_`.
-  std::string name;
-  const char* handle_name = nullptr;
-  if (path && path[0] != '\0') {
-    name = path;
-    std::replace(name.begin(), name.end(), '\\', '_');
-    handle_name = name.c_str();
-  }
   file_mapping_ =
       CreateFileMappingA(osf_handle, /*lpFileMappingAttributes=*/nullptr,
                          /*flProtect=*/PAGE_READONLY, /*dwMaximumSizeHigh=*/0,
-                         /*dwMaximumSizeLow=*/0, /*lpName=*/handle_name);
+                         /*dwMaximumSizeLow=*/0, /*lpName=*/nullptr);
   XNNPACK_RETURN_CHECK(file_mapping_ != NULL,
                        "could not create a file mapping: %s",
                        GetLastErrorString().c_str());
