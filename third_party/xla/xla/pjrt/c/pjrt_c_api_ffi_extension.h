@@ -97,12 +97,12 @@ typedef PJRT_Error* PJRT_FFI_Register_Handler(
 
 typedef struct PJRT_FFI_Extension {
   PJRT_Extension_Base base;
-  PJRT_FFI_Type_Register* type_id_register;
+  PJRT_FFI_Type_Register* type_register;
   PJRT_FFI_UserData_Add* user_data_add;
   PJRT_FFI_Register_Handler* register_handler;
-  PJRT_FFI_Type_Register* type_register;
+  PJRT_FFI_Type_Register* type_id_register;  // TODO(ezhulenev): Remove this.
 } PJRT_FFI;
-PJRT_DEFINE_STRUCT_TRAITS(PJRT_FFI_Extension, type_register);
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_FFI_Extension, type_id_register);
 
 #ifdef __cplusplus
 }
