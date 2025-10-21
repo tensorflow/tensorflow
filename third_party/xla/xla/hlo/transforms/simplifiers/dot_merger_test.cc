@@ -59,7 +59,7 @@ TEST_F(DotMergerTest, MergeRHS) {
     rhs1 = f32[100, 50] parameter(2)
     dot0 = f32[200, 10] dot(lhs, rhs0), lhs_contracting_dims={1}, rhs_contracting_dims={0}
     dot1 = f32[200, 50] dot(lhs, rhs1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
-    ROOT tuple = (f32[200,10], f32[200,50]) tuple(dot0, dot1)
+    ROOT tuple = (f32[200,10], f32[200,50], f32[200,100]) tuple(dot0, dot1, lhs)
   })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(module_string));
@@ -68,14 +68,18 @@ TEST_F(DotMergerTest, MergeRHS) {
   EXPECT_TRUE(changed);
   const HloInstruction* dot0 = nullptr;
   const HloInstruction* dot1 = nullptr;
-  EXPECT_THAT(
-      module->entry_computation()->root_instruction(),
-      GmockMatch(m::Tuple(m::Slice(m::Op(&dot0)), m::Slice(m::Op(&dot1)))));
+  const HloInstruction* lhs = nullptr;
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Tuple(m::Slice(m::Op(&dot0)),
+                                  m::Slice(m::Op(&dot1)), m::Op(&lhs))));
   EXPECT_EQ(dot0, dot1);
   EXPECT_THAT(dot0,
               GmockMatch(m::Dot(m::Parameter(0),
                                 m::Concatenate().WithBinaryOperandsAnyOrder(
                                     m::Parameter(1), m::Parameter(2)))));
+  EXPECT_TRUE(lhs != nullptr);
+  // We want a deterministic first user.
+  EXPECT_EQ(lhs->users()[0], dot0);
 }
 
 TEST_F(DotMergerTest, MergeRHSWithLHS) {
