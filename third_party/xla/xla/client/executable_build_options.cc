@@ -169,8 +169,6 @@ absl::StatusOr<ExecutableBuildOptionsProto> ExecutableBuildOptions::ToProto()
   output.set_num_partitions(num_partitions());
   output.set_use_spmd_partitioning(use_spmd_partitioning());
   output.set_use_auto_spmd_partitioning(use_auto_spmd_partitioning());
-  output.set_exec_time_optimization_effort(exec_time_optimization_effort());
-  output.set_memory_fitting_effort(memory_fitting_effort());
   output.set_optimization_level(optimization_level());
   output.set_memory_fitting_level(memory_fitting_level());
   output.set_deduplicate_hlo(deduplicate_hlo());
@@ -230,9 +228,6 @@ absl::StatusOr<ExecutableBuildOptions> ExecutableBuildOptionsFromProto(
   output.set_num_partitions(input.num_partitions());
   output.set_use_spmd_partitioning(input.use_spmd_partitioning());
   output.set_use_auto_spmd_partitioning(input.use_auto_spmd_partitioning());
-  output.set_exec_time_optimization_effort(
-      input.exec_time_optimization_effort());
-  output.set_memory_fitting_effort(input.memory_fitting_effort());
   output.set_optimization_level(input.optimization_level());
   output.set_memory_fitting_level(input.memory_fitting_level());
   output.set_deduplicate_hlo(input.deduplicate_hlo());
@@ -291,10 +286,6 @@ ExecutionOptions CreateExecutionOptions(
   for (auto t : build_options.auto_spmd_partitioning_mesh_ids()) {
     execution_options.mutable_auto_spmd_partitioning_mesh_ids()->Add(t);
   }
-  execution_options.set_exec_time_optimization_effort(
-      build_options.exec_time_optimization_effort());
-  execution_options.set_memory_fitting_effort(
-      build_options.memory_fitting_effort());
   execution_options.set_optimization_level(build_options.optimization_level());
   execution_options.set_memory_fitting_level(
       build_options.memory_fitting_level());
