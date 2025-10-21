@@ -400,10 +400,18 @@ class HloComputation {
   //   computation_map: a map from computation id to HloComputation*. This map
   //     must contain all computations which the newly constructed computation
   //     calls.
+  //   preserve_instruction_ids: if true, the instruction ids in the proto will
+  //     be preserved. Otherwise, the instruction ids will be remapped to start
+  //     from 0.
+  //   id_remap_map: if not null, it will be populated with a map from the
+  //     original instruction ids in the proto as is, to the remapped
+  //     instructions full unique ids using the proto's computation id. This is
+  //     only meaningful if preserve_instruction_ids is false.
   static absl::StatusOr<std::unique_ptr<HloComputation>> CreateFromProto(
       const HloComputationProto& proto,
       const absl::flat_hash_map<int64_t, HloComputation*>& computation_map,
-      bool prohibit_empty_literal = true);
+      bool prohibit_empty_literal = true, bool preserve_instruction_ids = true,
+      absl::flat_hash_map<int64_t, int64_t>* id_remap_map = nullptr);
 
   // Generates a hash value of an HLO computation. Hash considers
   // information on opcode, shape, operands, and typically a root instruction.
@@ -948,12 +956,13 @@ class HloComputation {
   explicit HloComputation(
       const std::string& name, int parameter_count,
       std::vector<std::unique_ptr<HloInstruction>>* instructions,
-      HloInstruction* root_instruction, bool from_proto = false);
+      HloInstruction* root_instruction, bool preserve_instruction_ids = false);
 
   // Internal helper for adding instructions. Only assigns a unique id if it is
   // not already set.
   HloInstruction* AddInstructionInternal(
-      std::unique_ptr<HloInstruction> instruction, bool from_proto = false);
+      std::unique_ptr<HloInstruction> instruction,
+      bool preserve_unique_id = false);
 
   // Internal helper for comparison with different options.
   bool EqualInternal(

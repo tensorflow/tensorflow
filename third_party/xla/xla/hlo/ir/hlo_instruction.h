@@ -314,8 +314,9 @@ class HloInstruction {
   // Creates an instruction from the given proto. Arguments:
   //
   //   proto: the proto to convert from.
-  //   instruction_map: a map from local instruction id to HloInstruction*. This
-  //     map must contain all operands of the newly constructed instruction.
+  //   instruction_map: a map from local instruction id (as defined in the
+  //     proto) to HloInstruction*. This map must contain all operands of the
+  //     newly constructed instruction.
   //   computation_map: a map from computation id to HloComputation*. This map
   //     must contain all computations which the newly constructed instruction
   //     calls.
@@ -1884,6 +1885,13 @@ class HloInstruction {
   // general unique ID.
   static int32_t CalculateLocalId(int64_t unique_id) {
     return static_cast<int32_t>(unique_id & 0xFFFFFFFF);
+  }
+
+  // Returns the parent ID of the instruction by extracting it from the more
+  // general unique ID. The method does not differentiate between a parentless
+  // unique id and a unique id with a parent id of 0.
+  static int32_t CalculateParentId(int64_t unique_id) {
+    return static_cast<int32_t>(unique_id >> 32);
   }
 
   bool has_backend_config() const { return !backend_config_.empty(); }

@@ -29,6 +29,7 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include "absl/base/attributes.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/container/btree_map.h"
 #include "absl/container/flat_hash_map.h"
@@ -492,33 +493,63 @@ class HloModule {
   // for loading a proto that had its ids manually created, created incorrectly
   // or in an older version of the compiler. Instructions will only have the
   // local id in the id field.
+  ABSL_DEPRECATED(
+      "Use CreateFromProto with preserve_instruction_ids=false "
+      "instead.")
   static absl::StatusOr<HloModuleProto> RemapInstructionIds(
       const HloModuleProto& proto);
 
   // Updates the instruction ids in the computation's schedule to match the new
   // instruction ids as defined by the old_instr_id_to_new_id map. The map only
   // needs to be consistent and unique within the computation level.
+  ABSL_DEPRECATED(
+      "Use CreateFromProto with preserve_instruction_ids=false "
+      "instead when loading the HLO module.")
   static absl::Status UpdateIdsInSchedule(
       HloModuleProto& proto, int64_t computation_proto_id,
       absl::flat_hash_map<int64_t, int64_t>& old_instr_id_to_new_id);
 
-  // Convert an HloModule to or from a proto.
+  // Updates all instruction ids in the buffer assignment proto with modified
+  // instruction ids as defined in the map.
+  static absl::Status UpdateBufferAssignmentProto(
+      BufferAssignmentProto* buffer_assignment_proto,
+      const absl::flat_hash_map<int64_t, absl::flat_hash_map<int64_t, int64_t>>&
+          computation_id_to_id_remap_map);
+
+  // Convert an HloModule to a proto.
   HloModuleProto ToProto() const;
 
-  // Converts an HloModuleProto to an HloModule. If the module had its ids
-  // manually changed or was created in an older version of the compiler, it
-  // might be necessary to call RemapInstructionIds to make the ids consistent
-  // and compact.
+  // Converts an HloModuleProto to an HloModule. If preserve_instruction_ids is
+  // true, the instruction ids in the proto will be preserved. Otherwise, the
+  // instruction ids will be remapped to be consecutive starting from 0. If the
+  // conversion is using too much memory, preserve_instruction_ids should be
+  // set to false. If a pointer to a buffer assignment proto is provided, that
+  // means the proto will be updated to keep the HloModule and the Buffer
+  // Assignment proto consistent.
   static absl::StatusOr<std::unique_ptr<HloModule>> CreateFromProto(
       const HloModuleProto& proto, const HloModuleConfig& module_config,
       bool prohibit_empty_literal = true,
-      std::unique_ptr<CompilationEnvironments> comp_envs = nullptr);
+      std::unique_ptr<CompilationEnvironments> comp_envs = nullptr,
+      bool preserve_instruction_ids = true,
+      BufferAssignmentProto* buffer_assignment_proto = nullptr);
+
+  static absl::StatusOr<std::unique_ptr<HloModule>> CreateFromProto(
+      const HloModuleProto& proto, const HloModuleConfig& module_config,
+      BufferAssignmentProto* buffer_assignment_proto,
+      bool preserve_instruction_ids = true);
 
   // Convert an HloModule to or from a proto that includes module configuration
   HloModuleProtoWithConfig ToProtoWithConfig() const;
   static absl::StatusOr<std::unique_ptr<HloModule>> CreateFromProtoWithConfig(
       const HloModuleProtoWithConfig& proto, bool prohibit_empty_literal = true,
-      std::unique_ptr<CompilationEnvironments> comp_envs = nullptr);
+      std::unique_ptr<CompilationEnvironments> comp_envs = nullptr,
+      bool preserve_instruction_ids = true,
+      BufferAssignmentProto* buffer_assignment_proto = nullptr);
+
+  static absl::StatusOr<std::unique_ptr<HloModule>> CreateFromProtoWithConfig(
+      const HloModuleProtoWithConfig& proto,
+      BufferAssignmentProto* buffer_assignment_proto,
+      bool preserve_instruction_ids = true);
 
   // Creates and returns an HloModuleConfig with an appropriate program shape
   // for the HLO module in the given proto.

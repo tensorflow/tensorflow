@@ -659,7 +659,6 @@ absl::Status HloModule::CheckUniqueNamesAndIdsForComputationsAndInstructions()
   }
   return absl::OkStatus();
 }
-
 /* static */
 absl::Status HloModule::UpdateIdsInSchedule(
     HloModuleProto& proto, int64_t computation_proto_id,
@@ -726,10 +725,26 @@ absl::StatusOr<HloModuleProto> HloModule::RemapInstructionIds(
 /* static */
 absl::StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProto(
     const HloModuleProto& proto, const HloModuleConfig& module_config,
+    BufferAssignmentProto* buffer_assignment_proto,
+    bool preserve_instruction_ids) {
+  return CreateFromProto(proto, module_config, /*prohibit_empty_literal=*/true,
+                         /*comp_envs=*/nullptr, preserve_instruction_ids,
+                         buffer_assignment_proto);
+}
+
+/* static */
+absl::StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProto(
+    const HloModuleProto& proto, const HloModuleConfig& module_config,
     bool prohibit_empty_literal,
-    std::unique_ptr<CompilationEnvironments> comp_envs) {
+    std::unique_ptr<CompilationEnvironments> comp_envs,
+    bool preserve_instruction_ids,
+    BufferAssignmentProto* buffer_assignment_proto) {
   VLOG(2) << "CreateFromProto()";
   XLA_VLOG_LINES(3, proto.DebugString());
+  bool buffer_assignment_needs_remap =
+      !preserve_instruction_ids && buffer_assignment_proto != nullptr;
+  bool requires_remap_memorization =
+      proto.has_schedule() || buffer_assignment_needs_remap;
 
   // The ProgramShape in the passed in module config must match the shapes of
   // the entry parameters and root.
@@ -763,11 +778,20 @@ absl::StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProto(
   absl::flat_hash_map<HloComputation*, int64_t> to_proto_id;
   std::vector<std::unique_ptr<HloComputation>> computations;
   HloComputation* entry = nullptr;
+  // Only used for fixing the schedule or buffer assignment later
+  absl::flat_hash_map<int64_t, absl::flat_hash_map<int64_t, int64_t>>
+      computation_id_to_id_remap_map;
   for (const HloComputationProto& computation_proto : proto.computations()) {
+    // Old instruction ids to new instruction ids after they are loaded into the
+    // computation and potentially changed. Only used for fixing the schedule
+    // or buffer assignment later.
+    absl::flat_hash_map<int64_t, int64_t> id_remap_map;
     TF_ASSIGN_OR_RETURN(
         std::unique_ptr<HloComputation> computation,
-        HloComputation::CreateFromProto(computation_proto, computation_map,
-                                        prohibit_empty_literal));
+        HloComputation::CreateFromProto(
+            computation_proto, computation_map, prohibit_empty_literal,
+            preserve_instruction_ids,
+            requires_remap_memorization ? &id_remap_map : nullptr));
     CHECK_NE(computation.get(), nullptr);
     int64_t computation_id = computation_proto.id();
     TF_RET_CHECK(computation_id != -1);
@@ -778,6 +802,9 @@ absl::StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProto(
       entry = computation.get();
     }
     computations.push_back(std::move(computation));
+    if (requires_remap_memorization) {
+      computation_id_to_id_remap_map[computation_id] = std::move(id_remap_map);
+    }
   }
   TF_RET_CHECK(entry != nullptr);
 
@@ -816,8 +843,18 @@ absl::StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProto(
   if (proto.has_schedule()) {
     TF_ASSIGN_OR_RETURN(
         HloSchedule schedule,
-        HloSchedule::CreateFromProto(module.get(), proto.schedule()));
+        HloSchedule::CreateFromProto(module.get(), proto.schedule(),
+                                     preserve_instruction_ids
+                                         ? nullptr
+                                         : &computation_id_to_id_remap_map));
     TF_RETURN_IF_ERROR(module->set_schedule(std::move(schedule)));
+  }
+
+  // If a pointer to a buffer assignment proto is provided, that means we need
+  // to keep the HloModule and the Buffer Assignment proto consistent.
+  if (buffer_assignment_needs_remap) {
+    TF_RETURN_IF_ERROR(UpdateBufferAssignmentProto(
+        buffer_assignment_proto, computation_id_to_id_remap_map));
   }
 
   for (const auto& prefetch : proto.cross_program_prefetches()) {
@@ -877,6 +914,42 @@ absl::StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProto(
 
   DeduplicateOriginalValues(module.get());
   return module;
+}
+
+/* static */
+absl::Status HloModule::UpdateBufferAssignmentProto(
+    BufferAssignmentProto* buffer_assignment_proto,
+    const absl::flat_hash_map<int64_t, absl::flat_hash_map<int64_t, int64_t>>&
+        computation_id_to_id_remap_map) {
+  for (xla::LogicalBufferProto& logical_buffer :
+       *buffer_assignment_proto->mutable_logical_buffers()) {
+    int64_t computation_id = HloInstruction::CalculateParentId(
+        logical_buffer.defined_at().instruction_id());
+    TF_RET_CHECK(computation_id_to_id_remap_map.contains(computation_id))
+        << "Computation id " << computation_id << " not found in id remap map.";
+    TF_RET_CHECK(computation_id_to_id_remap_map.at(computation_id)
+                     .contains(logical_buffer.defined_at().instruction_id()))
+        << "Instruction id " << logical_buffer.defined_at().instruction_id()
+        << " not found in id remap map for computation id " << computation_id;
+    logical_buffer.mutable_defined_at()->set_instruction_id(
+        computation_id_to_id_remap_map.at(computation_id)
+            .at(logical_buffer.defined_at().instruction_id()));
+  }
+  for (xla::BufferAssignmentProto::BufferAlias& buffer_alias :
+       *buffer_assignment_proto->mutable_buffer_aliases()) {
+    int64_t computation_id = HloInstruction::CalculateParentId(
+        buffer_alias.location().instruction_id());
+    TF_RET_CHECK(computation_id_to_id_remap_map.contains(computation_id))
+        << "Computation id " << computation_id << " not found in id remap map.";
+    TF_RET_CHECK(computation_id_to_id_remap_map.at(computation_id)
+                     .contains(buffer_alias.location().instruction_id()))
+        << "Instruction id " << buffer_alias.location().instruction_id()
+        << " not found in id remap map for computation id " << computation_id;
+    buffer_alias.mutable_location()->set_instruction_id(
+        computation_id_to_id_remap_map.at(computation_id)
+            .at(buffer_alias.location().instruction_id()));
+  }
+  return absl::OkStatus();
 }
 
 /* static */
@@ -986,15 +1059,27 @@ absl::StatusOr<HloModuleConfig> HloModule::CreateModuleConfigFromProto(
   return config;
 }
 
+/* static */
+absl::StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProtoWithConfig(
+    const HloModuleProtoWithConfig& proto,
+    BufferAssignmentProto* buffer_assignment_proto,
+    bool preserve_instruction_ids) {
+  return CreateFromProtoWithConfig(
+      proto, /*prohibit_empty_literal=*/true,
+      /*comp_envs=*/nullptr, preserve_instruction_ids, buffer_assignment_proto);
+}
+
 absl::StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProtoWithConfig(
     const HloModuleProtoWithConfig& proto, bool prohibit_empty_literal,
-    std::unique_ptr<CompilationEnvironments> comp_envs) {
+    std::unique_ptr<CompilationEnvironments> comp_envs,
+    bool preserve_instruction_ids,
+    BufferAssignmentProto* buffer_assignment_proto) {
   const auto& hlo_module_proto = proto.hlo_module();
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModuleConfig> config_ptr,
                       HloModuleConfig::CreateFromProto(proto.config()));
-  return HloModule::CreateFromProto(hlo_module_proto, *config_ptr,
-                                    prohibit_empty_literal,
-                                    std::move(comp_envs));
+  return HloModule::CreateFromProto(
+      hlo_module_proto, *config_ptr, prohibit_empty_literal,
+      std::move(comp_envs), preserve_instruction_ids, buffer_assignment_proto);
 }
 
 namespace {
