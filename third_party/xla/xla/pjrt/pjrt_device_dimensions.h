@@ -34,6 +34,10 @@ namespace xla {
 // Represents device dimensions (e.g., mesh bounds or chip coordinates).
 class PjRtDeviceDimensions {
  public:
+  using DimensionsContainer = absl::InlinedVector<int32_t, 4>;
+  using iterator = DimensionsContainer::iterator;
+  using const_iterator = DimensionsContainer::const_iterator;
+
   PjRtDeviceDimensions() = default;
   PjRtDeviceDimensions(std::initializer_list<int32_t> dims)
       : dimensions_(dims) {}
@@ -41,6 +45,13 @@ class PjRtDeviceDimensions {
       : dimensions_(dims.begin(), dims.end()) {}
 
   int32_t& operator[](size_t i) { return dimensions_[i]; }
+
+  iterator begin() { return dimensions_.begin(); }
+  const_iterator begin() const { return dimensions_.begin(); }
+
+  iterator end() { return dimensions_.end(); }
+  const_iterator end() const { return dimensions_.end(); }
+
   const int32_t& operator[](size_t i) const { return dimensions_[i]; }
 
   size_t size() const { return dimensions_.size(); }
@@ -53,6 +64,11 @@ class PjRtDeviceDimensions {
   friend bool operator!=(const PjRtDeviceDimensions& a,
                          const PjRtDeviceDimensions& b) {
     return !(a == b);
+  }
+
+  friend bool operator<(const PjRtDeviceDimensions& a,
+                        const PjRtDeviceDimensions& b) {
+    return a.dimensions_ < b.dimensions_;
   }
 
   friend std::ostream& operator<<(std::ostream& os,
@@ -78,7 +94,7 @@ class PjRtDeviceDimensions {
       absl::string_view text);
 
  private:
-  absl::InlinedVector<int32_t, 3> dimensions_;
+  DimensionsContainer dimensions_;
 };
 
 // Support for absl flags.

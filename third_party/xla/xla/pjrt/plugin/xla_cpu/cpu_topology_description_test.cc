@@ -17,11 +17,14 @@ limitations under the License.
 
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_compiler.h"
+#include "xla/pjrt/pjrt_device_dimensions.h"
 #include "xla/pjrt/plugin/xla_cpu/cpu_topology.h"
 #include "xla/tsl/platform/statusor.h"
 
@@ -98,6 +101,19 @@ TEST(CpuTopologyDescriptionTest, FromProto) {
 
   EXPECT_THAT(cpu_topology->cpu_topology().machine_attributes(),
               ElementsAre("attrA", "attrB"));
+}
+
+TEST(CpuTopologyDescriptionTest, LogicalDeviceOfDefaultTypeForId) {
+  std::vector<CpuTopology::CpuDevice> cpu_devices = {{0, 0}, {0, 1}};
+  std::vector<std::string> machine_attributes = {"attr1", "attr2"};
+  CpuTopologyDescription topology(xla::CpuId(), "cpu", "1.0", cpu_devices,
+                                  machine_attributes);
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto device_core,
+      topology.LogicalDeviceOfDefaultTypeForId(xla::PjRtGlobalDeviceId(1)));
+  auto [device_coords, core_id] = std::move(device_core);
+  ASSERT_EQ(device_coords, (PjRtDeviceDimensions{0, 0, 1}));
+  ASSERT_EQ(core_id, 0);
 }
 
 }  // namespace

@@ -25,8 +25,10 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/pjrt/gpu/gpu_topology.h"
+#include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_device_description.h"
+#include "xla/pjrt/pjrt_device_dimensions.h"
 #include "xla/pjrt/pjrt_stream_executor_device_description.h"
 #include "xla/stream_executor/device_description.pb.h"
 #include "xla/xla_data.pb.h"
@@ -99,6 +101,10 @@ class StreamExecutorGpuTopologyDescription : public PjRtTopologyDescription {
   absl::StatusOr<int> CoreCountOfDefaultTypePerChip() const override {
     return 1;
   }
+
+  absl::StatusOr<std::pair<PjRtDeviceDimensions, int32_t>>
+  LogicalDeviceOfDefaultTypeForId(
+      xla::PjRtGlobalDeviceId device_id) const override;
 
   absl::StatusOr<std::string> Serialize() const override;
 

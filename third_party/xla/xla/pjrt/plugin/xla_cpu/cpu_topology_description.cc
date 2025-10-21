@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/status/status.h"
@@ -27,8 +28,10 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/layout.h"
 #include "xla/layout_util.h"
+#include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_device_description.h"
+#include "xla/pjrt/pjrt_device_dimensions.h"
 #include "xla/pjrt/plugin/xla_cpu/cpu_device_description.h"
 #include "xla/pjrt/plugin/xla_cpu/cpu_topology.h"
 #include "xla/shape.h"
@@ -49,6 +52,12 @@ absl::StatusOr<std::string> CpuTopologyDescription::Serialize() const {
     return absl::InternalError("Failed to serialize cpu_topology");
   }
   return result;
+}
+
+absl::StatusOr<std::pair<PjRtDeviceDimensions, int32_t>>
+CpuTopologyDescription::LogicalDeviceOfDefaultTypeForId(
+    xla::PjRtGlobalDeviceId device_id) const {
+  return std::make_pair(PjRtDeviceDimensions{0, 0, device_id.value()}, 0);
 }
 
 std::vector<std::unique_ptr<const PjRtDeviceDescription>>

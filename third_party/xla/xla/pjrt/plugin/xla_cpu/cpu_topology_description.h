@@ -31,6 +31,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_device_description.h"
+#include "xla/pjrt/pjrt_device_dimensions.h"
 #include "xla/pjrt/plugin/xla_cpu/cpu_topology.h"
 
 namespace xla {
@@ -96,6 +97,10 @@ class CpuTopologyDescription : public PjRtTopologyDescription {
   }
 
   absl::StatusOr<std::string> Serialize() const override;
+
+  absl::StatusOr<std::pair<PjRtDeviceDimensions, int32_t>>
+  LogicalDeviceOfDefaultTypeForId(
+      xla::PjRtGlobalDeviceId device_id) const override;
 
   // Returns vendor specific attributes about the topology.
   const absl::flat_hash_map<std::string, PjRtDeviceAttribute>& Attributes()

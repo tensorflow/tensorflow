@@ -34,6 +34,30 @@ TEST(PjRtDeviceDimensionsTest, Equality) {
   EXPECT_NE((PjRtDeviceDimensions{1, 2, 3}), (PjRtDeviceDimensions{1, 2, 4}));
 }
 
+TEST(PjRtDeviceDimensionsTest, LessThan) {
+  // Same size comparisons
+  EXPECT_TRUE((PjRtDeviceDimensions{1, 2, 3}) <
+              (PjRtDeviceDimensions{1, 2, 4}));
+  EXPECT_TRUE((PjRtDeviceDimensions{1, 2, 3}) <
+              (PjRtDeviceDimensions{1, 3, 0}));
+  EXPECT_TRUE((PjRtDeviceDimensions{1, 2, 3}) <
+              (PjRtDeviceDimensions{2, 0, 0}));
+  EXPECT_FALSE((PjRtDeviceDimensions{1, 2, 3}) <
+               (PjRtDeviceDimensions{1, 2, 3}));
+  EXPECT_FALSE((PjRtDeviceDimensions{1, 2, 4}) <
+               (PjRtDeviceDimensions{1, 2, 3}));
+
+  // Different size comparisons (shorter is less than longer if prefixes match)
+  EXPECT_TRUE((PjRtDeviceDimensions{1, 2}) < (PjRtDeviceDimensions{1, 2, 3}));
+  EXPECT_FALSE((PjRtDeviceDimensions{1, 2, 3}) < (PjRtDeviceDimensions{1, 2}));
+  EXPECT_TRUE((PjRtDeviceDimensions{}) < (PjRtDeviceDimensions{1}));
+  EXPECT_FALSE((PjRtDeviceDimensions{1}) < (PjRtDeviceDimensions{}));
+
+  // Different size comparisons with different prefixes
+  EXPECT_TRUE((PjRtDeviceDimensions{1, 1}) < (PjRtDeviceDimensions{1, 2, 3}));
+  EXPECT_TRUE((PjRtDeviceDimensions{0, 2}) < (PjRtDeviceDimensions{1, 2, 3}));
+}
+
 TEST(PjRtDeviceDimensionsTest, Ostream) {
   std::stringstream ss;
   ss << PjRtDeviceDimensions{1, 2, 3};
@@ -103,6 +127,21 @@ TEST(AbslParseFlagTest, InvalidInputs) {
 TEST(AbslUnparseFlagTest, ConvertsCorrectly) {
   EXPECT_EQ(AbslUnparseFlag(PjRtDeviceDimensions{1, 2, 3}), "1,2,3");
   EXPECT_EQ(AbslUnparseFlag(PjRtDeviceDimensions{0, 0, 0}), "0,0,0");
+}
+
+TEST(PjRtDeviceDimensionsTest, Iterator) {
+  const PjRtDeviceDimensions const_dims = {4, 5, 6};
+  int i = 4;
+  for (int d : const_dims) {
+    EXPECT_EQ(d, i);
+    i++;
+  }
+
+  PjRtDeviceDimensions mutable_dims = {7, 8, 9};
+  for (int& d : mutable_dims) {
+    d *= 2;
+  }
+  EXPECT_EQ(mutable_dims, (PjRtDeviceDimensions{14, 16, 18}));
 }
 
 TEST(PjRtDeviceDimensionsTest, SubscriptAccess) {

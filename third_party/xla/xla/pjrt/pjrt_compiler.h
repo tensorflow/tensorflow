@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "xla/hlo/builder/xla_computation.h"
+#include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_device_description.h"
 #include "xla/pjrt/pjrt_device_dimensions.h"
 #include "xla/pjrt/pjrt_executable.h"
@@ -156,8 +157,9 @@ class PjRtTopologyDescription {
 
   // Returns a unique integer ID for the logical device of the default type on
   // the chip at the given coordinates and with the given core index.
-  virtual absl::StatusOr<int32_t> IdForLogicalDeviceOfDefaultType(
-      const PjRtDeviceDimensions& chip, int core_index) const {
+  virtual absl::StatusOr<xla::PjRtGlobalDeviceId>
+  IdForLogicalDeviceOfDefaultType(const PjRtDeviceDimensions& chip,
+                                  int core_index) const {
     return absl::UnimplementedError(
         "IdForLogicalDeviceOfDefaultType is unsupported.");
   }
@@ -165,7 +167,7 @@ class PjRtTopologyDescription {
   // Returns the chip coordinates and core index of the logical device of the
   // default type for the given unique device ID.
   virtual absl::StatusOr<std::pair<PjRtDeviceDimensions, int32_t>>
-  LogicalDeviceOfDefaultTypeForId(int device_id) const {
+  LogicalDeviceOfDefaultTypeForId(xla::PjRtGlobalDeviceId device_id) const {
     return absl::UnimplementedError(
         "LogicalDeviceCoordsOfDefaultTypeForId is unsupported.");
   }

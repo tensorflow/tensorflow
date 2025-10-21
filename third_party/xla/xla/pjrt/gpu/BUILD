@@ -629,8 +629,10 @@ cc_library(
         ":gpu_topology",
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
+        "//xla/pjrt:pjrt_common",
         "//xla/pjrt:pjrt_compiler",
         "//xla/pjrt:pjrt_device_description",
+        "//xla/pjrt:pjrt_device_dimensions",
         "//xla/pjrt:pjrt_stream_executor_device_description",
         "//xla/stream_executor:device_description_proto_cc",
         "//xla/tsl/lib/strings:proto_serialization",
@@ -642,6 +644,7 @@ cc_library(
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
+        "@local_tsl//tsl/platform:casts",
     ],
 )
 
@@ -651,9 +654,12 @@ xla_cc_test(
     deps = [
         ":gpu_topology",
         ":se_gpu_topology_description",
+        "//xla/pjrt:pjrt_common",
         "//xla/pjrt:pjrt_compiler",
         "//xla/pjrt:pjrt_device_description",
+        "//xla/pjrt:pjrt_device_dimensions",
         "//xla/pjrt:pjrt_stream_executor_device_description",
+        "//xla/tsl/platform:statusor",
         "@com_google_googletest//:gtest_main",
     ],
 )

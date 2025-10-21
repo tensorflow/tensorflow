@@ -81,8 +81,10 @@ cc_library(
         ":cpu_topology",
         "//xla:shape_util",
         "//xla/pjrt:pjrt_client",
+        "//xla/pjrt:pjrt_common",
         "//xla/pjrt:pjrt_compiler",
         "//xla/pjrt:pjrt_device_description",
+        "//xla/pjrt:pjrt_device_dimensions",
         "//xla/tsl/lib/strings:proto_serialization",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status",
@@ -115,9 +117,10 @@ xla_cc_test(
     deps = [
         ":cpu_topology",
         ":cpu_topology_description",
+        "//xla/pjrt:pjrt_common",
         "//xla/pjrt:pjrt_compiler",
+        "//xla/pjrt:pjrt_device_dimensions",
         "//xla/tsl/platform:statusor",
-        "@com_google_absl//absl/status:statusor",
         "@com_google_googletest//:gtest_main",
     ],
 )
