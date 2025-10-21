@@ -404,6 +404,7 @@ cc_library(
     visibility = internal_visibility([":friends"]),
     deps = [
         ":pjrt_common",
+        ":pjrt_device_dimensions",
         ":pjrt_layout",
         "//xla:debug_options_flags",
         "//xla:shape_util",
