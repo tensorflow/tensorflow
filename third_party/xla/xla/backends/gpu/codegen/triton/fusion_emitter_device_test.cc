@@ -15,10 +15,13 @@ limitations under the License.
 
 #include <array>
 #include <cstdint>
+#include <memory>
+#include <optional>
 #include <ostream>
 #include <string>
+#include <tuple>
 #include <utility>
-#include <variant>
+#include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -44,6 +47,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/filecheck.h"
+#include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/primitive_util.h"
@@ -4272,6 +4276,228 @@ ENTRY entry {
 
   EXPECT_TRUE(RunAndCompareNoHloPasses(
       kHloText, ErrorSpec{/*aabs=*/1e-1, /*arel=*/1e-2}));
+}
+
+TEST_F(TritonEmitterTest, UseTransposedDotScheduleWhenDotLhsIsSmallerThanRhs) {
+  constexpr int tile_batch = 1;
+  constexpr int tile_m = 16;
+  constexpr int tile_n = 8;
+  constexpr int tile_k = 32;
+  const std::string hlo_text =
+      absl::Substitute(R"(
+
+lhs {
+  ROOT p0 = f32[2,32,64] parameter(0)
+}
+
+rhs {
+  ROOT p0 = f32[2,64,128] parameter(0)
+}
+
+fusion {
+  p0 = f32[2,32,64] parameter(0)
+  p1 = f32[2,64,128] parameter(1)
+
+  lhs = f32[2,32,64] fusion(p0), kind=kCustom, calls=lhs, backend_config={
+    "fusion_backend_config":{
+      "kind":"__triton_nested_gemm_fusion", "block_level_fusion_config":{
+        "output_tiles":[{"sizes":["$0", "$1", "$2"]}]
+      }
+    }
+  }
+  rhs = f32[2,64,128] fusion(p1), kind=kCustom, calls=rhs, backend_config={
+    "fusion_backend_config":{
+      "kind":"__triton_nested_gemm_fusion", "block_level_fusion_config":{
+        "output_tiles":[{"sizes":["$0", "$1", "$3"]}]
+      }
+    }
+  }
+
+  ROOT dot = f32[2,32,128] dot(lhs, rhs),
+    lhs_batch_dims={0}, rhs_batch_dims={0},
+    lhs_contracting_dims={2}, rhs_contracting_dims={1}
+}
+
+ENTRY main {
+  p0 = f32[2,32,64] parameter(0)
+  p1 = f32[2,64,128] parameter(1)
+  ROOT fusion = f32[2,32,128] fusion(p0, p1),
+    kind=kCustom, calls=fusion, backend_config={
+      "fusion_backend_config":{
+        "kind":"__triton_nested_gemm_fusion",
+        "block_level_fusion_config":{
+          "output_tiles":[{"sizes":["$1", "$2", "$3"]}],
+          "num_warps":"4",
+          "num_ctas":"1",
+          "num_stages":"1"}}}
+})",
+                       tile_k, tile_batch, tile_m, tile_n);
+
+  int64_t m = 32;
+  int64_t n = 128;
+
+  int64_t num_m_tiles = (m / tile_m);
+  int64_t num_n_tiles = (n / tile_n);
+
+  TF_EXPECT_OK(CreateTritonIrAndFileCheck(
+      this, hlo_text, "fusion",
+      absl::Substitute(
+          R"(
+CHECK-DAG: (pid_0) -> ((pid_0 mod $0) * $1)
+CHECK-DAG: (pid_0) -> (((pid_0 floordiv $0) mod $2) * $3)
+)",
+          num_m_tiles, tile_m, num_n_tiles, tile_n)));
+
+  // Ensure that the transposed schedule still produces correct numerics.
+  EXPECT_TRUE(RunAndCompareNoHloPasses(
+      hlo_text, ErrorSpec{/*aabs=*/2e-4, /*arel=*/1e-6}));
+}
+
+TEST_F(TritonEmitterTest, UseMajorToMinorScheduleWhenDotLhsIsLargerThanRhs) {
+  constexpr int tile_batch = 1;
+  constexpr int tile_m = 16;
+  constexpr int tile_n = 8;
+  constexpr int tile_k = 32;
+  const std::string hlo_text =
+      absl::Substitute(R"(
+
+lhs {
+  ROOT p0 = f32[2,128,64] parameter(0)
+}
+
+rhs {
+  ROOT p0 = f32[2,64,32] parameter(0)
+}
+
+fusion {
+  p0 = f32[2,128,64] parameter(0)
+  p1 = f32[2,64,32] parameter(1)
+
+  lhs = f32[2,128,64] fusion(p0), kind=kCustom, calls=lhs, backend_config={
+    "fusion_backend_config":{
+      "kind":"__triton_nested_gemm_fusion", "block_level_fusion_config":{
+        "output_tiles":[{"sizes":["$0", "$1", "$2"]}]
+      }
+    }
+  }
+  rhs = f32[2,64,32] fusion(p1), kind=kCustom, calls=rhs, backend_config={
+    "fusion_backend_config":{
+      "kind":"__triton_nested_gemm_fusion", "block_level_fusion_config":{
+        "output_tiles":[{"sizes":["$0", "$1", "$3"]}]
+      }
+    }
+  }
+
+  ROOT dot = f32[2,128,32] dot(lhs, rhs),
+    lhs_batch_dims={0}, rhs_batch_dims={0},
+    lhs_contracting_dims={2}, rhs_contracting_dims={1}
+}
+
+ENTRY main {
+  p0 = f32[2,128,64] parameter(0)
+  p1 = f32[2,64,32] parameter(1)
+  ROOT fusion = f32[2,128,32] fusion(p0, p1),
+    kind=kCustom, calls=fusion, backend_config={
+      "fusion_backend_config":{
+        "kind":"__triton_nested_gemm_fusion",
+        "block_level_fusion_config":{
+          "output_tiles":[{"sizes":["$1", "$2", "$3"]}],
+          "num_warps":"4",
+          "num_ctas":"1",
+          "num_stages":"1"}}}
+})",
+                       tile_k, tile_batch, tile_m, tile_n);
+
+  int64_t m = 128;
+  int64_t n = 32;
+
+  int64_t num_m_tiles = (m / tile_m);
+  int64_t num_n_tiles = (n / tile_n);
+
+  TF_EXPECT_OK(CreateTritonIrAndFileCheck(
+      this, hlo_text, "fusion",
+      absl::Substitute(
+          R"(
+CHECK-DAG: (pid_0) -> ((pid_0 mod $0) * $1)
+CHECK-DAG: (pid_0) -> (((pid_0 floordiv $0) mod $2) * $3)
+)",
+          num_n_tiles, tile_n, num_m_tiles, tile_m)));
+
+  // Ensure that the major-to-minor schedule still produces correct numerics.
+  EXPECT_TRUE(RunAndCompareNoHloPasses(
+      hlo_text, ErrorSpec{/*aabs=*/2e-4, /*arel=*/1e-6}));
+}
+
+TEST_F(TritonEmitterTest, UseMajorToMinorScheduleWhenFusionIsNotRootedInDot) {
+  constexpr int tile_batch = 1;
+  constexpr int tile_m = 16;
+  constexpr int tile_n = 8;
+  constexpr int tile_k = 32;
+  const std::string hlo_text =
+      absl::Substitute(R"(
+
+lhs {
+  ROOT p0 = f32[2,32,64] parameter(0)
+}
+
+rhs {
+  ROOT p0 = f32[2,64,128] parameter(0)
+}
+
+fusion {
+  p0 = f32[2,32,64] parameter(0)
+  p1 = f32[2,64,128] parameter(1)
+
+  lhs = f32[2,32,64] fusion(p0), kind=kCustom, calls=lhs, backend_config={
+    "fusion_backend_config":{
+      "kind":"__triton_nested_gemm_fusion", "block_level_fusion_config":{
+        "output_tiles":[{"sizes":["$0", "$1", "$2"]}]
+      }
+    }
+  }
+  rhs = f32[2,64,128] fusion(p1), kind=kCustom, calls=rhs, backend_config={
+    "fusion_backend_config":{
+      "kind":"__triton_nested_gemm_fusion", "block_level_fusion_config":{
+        "output_tiles":[{"sizes":["$0", "$1", "$3"]}]
+      }
+    }
+  }
+
+  dot = f32[2,32,128] dot(lhs, rhs),
+    lhs_batch_dims={0}, rhs_batch_dims={0},
+    lhs_contracting_dims={2}, rhs_contracting_dims={1}
+  ROOT abs = f32[2,32,128] abs(dot)
+}
+
+ENTRY main {
+  p0 = f32[2,32,64] parameter(0)
+  p1 = f32[2,64,128] parameter(1)
+  ROOT fusion = f32[2,32,128] fusion(p0, p1),
+    kind=kCustom, calls=fusion, backend_config={
+      "fusion_backend_config":{
+        "kind":"__triton_nested_gemm_fusion",
+        "block_level_fusion_config":{
+          "output_tiles":[{"sizes":["$1", "$2", "$3"]}],
+          "num_warps":"4",
+          "num_ctas":"1",
+          "num_stages":"1"}}}
+})",
+                       tile_k, tile_batch, tile_m, tile_n);
+
+  int64_t m = 32;
+  int64_t n = 128;
+
+  int64_t num_m_tiles = (m / tile_m);
+  int64_t num_n_tiles = (n / tile_n);
+
+  TF_EXPECT_OK(CreateTritonIrAndFileCheck(
+      this, hlo_text, "fusion",
+      absl::Substitute(
+          R"(
+CHECK-DAG: (pid_0) -> ((pid_0 mod $0) * $1)
+CHECK-DAG: (pid_0) -> (((pid_0 floordiv $0) mod $2) * $3)
+)",
+          num_n_tiles, tile_n, num_m_tiles, tile_m)));
 }
 
 struct ScaleDotTestParams {

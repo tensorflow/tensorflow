@@ -1776,12 +1776,48 @@ absl::Status EmitGeneric(mlir::OpBuilder builder,
                             ->config()
                             .debug_options()
                             .xla_gpu_unsupported_annotate_with_emitter_loc());
+  absl::Span<const HloInstruction* const> roots =
+      symbolic_tile_analysis.GetRoots();
+  int64_t root_index = FindIndex(roots, root);
+  TiledHloScheduleBuilder schedule_builder = CreateMajorToMinorTiledHloSchedule;
 
-  int64_t root_index = FindIndex(symbolic_tile_analysis.GetRoots(), root);
+  // TODO(b/417977182): this is a hacky heuristic to avoid regressing cases
+  // involving hardcoded grid tiling in the legacy emitter, as we enable the new
+  // one for `dot` fusions.
+  //
+  // The idea here is that, if `lhs` can fully fit in L2 cache, and `rhs` does
+  // not, we should start with iterating over the full `lhs` in order to have it
+  // in cache for all subsequent iterations over `rhs`. That means we should
+  // iterate over `lhs`'s non-contracting dimensions first.
+  //
+  // Whenever it is not true that one of the operands can fit fully in cache, it
+  // is more beneficial to use a "planar snake" space-filling curve to optimize
+  // L2 cache hits, but this is not implemented yet.
+  if (roots.size() == 1 && root->opcode() == HloOpcode::kDot) {
+    int64_t lhs_bytes_size =
+        Product(root->operand(0)->shape().dimensions()) *
+        primitive_util::ByteWidth(root->operand(0)->shape().element_type());
+    int64_t rhs_bytes_size =
+        Product(root->operand(1)->shape().dimensions()) *
+        primitive_util::ByteWidth(root->operand(1)->shape().element_type());
+    if (lhs_bytes_size < rhs_bytes_size) {
+      // Validates whether the expected invariants are upheld by the analysis to
+      // ensure we don't crash later.
+      //
+      // TODO(b/417977182): use a "conformance" API instead of a builder to
+      // reuse what we build here directly.
+      absl::StatusOr<std::unique_ptr<TransposedDotTiledHloSchedule>>
+          transposed_schedule = TransposedDotTiledHloSchedule::Create(
+              symbolic_tile_analysis.GetTilingSpecification());
+      if (transposed_schedule.ok()) {
+        schedule_builder = TransposedDotTiledHloSchedule::Create;
+      }
+    }
+  }
   TF_RET_CHECK(root_index < symbolic_tile_analysis.GetRoots().size());
   TF_ASSIGN_OR_RETURN(TiledHloComputation tiled_hlo_computation,
                       symbolic_tile_analysis.ComputeTiledHloInstructions(
-                          tiling, CreateMajorToMinorTiledHloSchedule,
+                          tiling, schedule_builder,
                           /*constraints_are_known_satisfied=*/false,
                           /*compute_all_tile_offset_indexing_maps=*/true));
   VLOG(3) << "EmitGeneric: tiled HLO computation:\n"
