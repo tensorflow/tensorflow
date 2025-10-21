@@ -245,6 +245,9 @@ class AsyncTracker {
   virtual ResourcesVector GetResourcesFromInstructionImpl(
       const HloInstruction& hlo) const;
 
+  // Gets the resource type associated with the given op.
+  static ResourceType GetResourceTypeForOp(HloOpcode op);
+
   // Returns resources used (i.e., occupied or released) by this instruction
   absl::Span<const ResourcePair> GetResourcesFromInstruction(
       const HloInstruction& hlo) const;
@@ -1784,6 +1787,7 @@ class LatencyHidingScheduler : public HloModulePass {
     double reduce_scatter_wasted_cycles = 0;
     double send_wasted_cycles = 0;
     double recv_wasted_cycles = 0;
+    double call_wasted_cycles = 0;
     double total_cycles = 0;
     int64_t memory_pressure_peak = 0;
 
@@ -1792,7 +1796,7 @@ class LatencyHidingScheduler : public HloModulePass {
              collective_broadcast_wasted_cycles +
              collective_permute_wasted_cycles + all_to_all_wasted_cycles +
              ragged_all_to_all_wasted_cycles + reduce_scatter_wasted_cycles +
-             send_wasted_cycles + recv_wasted_cycles;
+             send_wasted_cycles + recv_wasted_cycles + call_wasted_cycles;
     }
 
     ScheduleProto::SchedulerStatisticsProto ToProto() const;

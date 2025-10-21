@@ -1675,9 +1675,10 @@ message ScheduleProto {
     double reduce_scatter_wasted_cycles = 7;
     double send_wasted_cycles = 8;
     double recv_wasted_cycles = 9;
-    double total_wasted_cycles = 10;
-    double total_cycles = 11;
-    int64 memory_pressure_peak = 12;
+    double call_wasted_cycles = 10;
+    double total_wasted_cycles = 11;
+    double total_cycles = 12;
+    int64 memory_pressure_peak = 13;
   }
 
   message ComputationScheduleProto {
