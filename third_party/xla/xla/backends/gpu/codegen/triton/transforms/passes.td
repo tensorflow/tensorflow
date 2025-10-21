@@ -43,7 +43,9 @@ def TritonXLASqueezeDimsPass : Pass<"triton-xla-squeeze-dims", "mlir::ModuleOp">
   }];
   let dependentDialects = [
     "::mlir::triton::xla::XlaTritonDialect",
-    "triton::TritonDialect"
+    "::mlir::triton::TritonDialect",
+    "::xla::xtile::XTileDialect",
+    "::mlir::memref::MemRefDialect",
   ];
   let options = [
     Option<"finalize_", "finalize", "bool", "true",
