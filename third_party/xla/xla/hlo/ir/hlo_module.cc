@@ -1222,10 +1222,6 @@ absl::StatusOr<HloModuleConfig> HloModule::CreateModuleConfigFromShape(
     module_config.set_auto_spmd_partitioning_mesh_ids(std::vector<int64_t>(
         execution_options->auto_spmd_partitioning_mesh_ids().begin(),
         execution_options->auto_spmd_partitioning_mesh_ids().end()));
-    module_config.set_exec_time_optimization_effort(
-        execution_options->exec_time_optimization_effort());
-    module_config.set_memory_fitting_effort(
-        execution_options->memory_fitting_effort());
     module_config.set_optimization_level(
         execution_options->optimization_level());
     module_config.set_memory_fitting_level(
@@ -1757,6 +1753,12 @@ void HloModule::Clone(const std::string& suffix, HloCloneContext* context,
   }
   for (const auto& [parameter, indices, offset] : CrossProgramPrefetches()) {
     module->AddCrossProgramPrefetch(parameter, indices, offset);
+  }
+  if (has_spmd_output_sharding()) {
+    module->set_spmd_output_sharding(spmd_output_sharding());
+  }
+  if (has_spmd_parameters_shardings()) {
+    module->set_spmd_parameters_shardings(spmd_parameters_shardings());
   }
 
   // To make clone behavior match uncloned behavior, we reorder
