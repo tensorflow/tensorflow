@@ -29,6 +29,7 @@ limitations under the License.
 #include "xla/autotuning.pb.h"
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/compiler.h"
@@ -183,6 +184,79 @@ TEST_F(FissionBackendTest, ApplyCustomKernelConfigToFusionInstruction) {
       *hlo_module->entry_computation()->root_instruction(), any));
   EXPECT_THAT(RunFileCheck(hlo_module->ToString(), "CHECK: \"kernel_index\":3"),
               IsOkAndHolds(true));
+}
+
+TEST_F(FissionBackendTest, ApplyCublasConfigToFusionInWhileBody) {
+  const char kWhileHlo[] = R"(
+HloModule module
+
+fusion_computation {
+  fp0 = bf16[1024,1024]{1,0} parameter(0)
+  convert0 = f32[1024,1024]{1,0} convert(fp0)
+  fp1 = s8[1024,1024]{1,0} parameter(1)
+  convert1 = f32[1024,1024]{1,0} convert(fp1)
+  ROOT dot = f32[1024,1024]{1,0} dot(convert0, convert1),
+      lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+
+while_cond {
+  cond_param = (s32[], f32[1024,1024]{1,0}, bf16[1024,1024]{1,0}, s8[1024,1024]{1,0}) parameter(0)
+  count = s32[] get-tuple-element(cond_param), index=0
+  limit = s32[] constant(1)
+  ROOT result = pred[] compare(count, limit), direction=LT
+}
+
+while_body {
+  body_param = (s32[], f32[1024,1024]{1,0}, bf16[1024,1024]{1,0}, s8[1024,1024]{1,0}) parameter(0)
+  count = s32[] get-tuple-element(body_param), index=0
+  p0_body = bf16[1024,1024]{1,0} get-tuple-element(body_param), index=2
+  p1_body = s8[1024,1024]{1,0} get-tuple-element(body_param), index=3
+  fusion = f32[1024,1024]{1,0} fusion(p0_body, p1_body),
+    kind=kCustom, calls=fusion_computation,
+    backend_config={"fusion_backend_config":{"kind":"__triton_gemm"}}
+  one = s32[] constant(1)
+  new_count = s32[] add(count, one)
+  ROOT result = (s32[], f32[1024,1024]{1,0}, bf16[1024,1024]{1,0}, s8[1024,1024]{1,0}) tuple(new_count, fusion, p0_body, p1_body)
+}
+
+ENTRY main {
+  p0 = bf16[1024,1024]{1,0} parameter(0)
+  p1 = s8[1024,1024]{1,0} parameter(1)
+  c0 = s32[] constant(0)
+  init_f32 = f32[1024,1024]{1,0} broadcast(f32[] constant(0.0)), dimensions={}
+  while_init = (s32[], f32[1024,1024]{1,0}, bf16[1024,1024]{1,0}, s8[1024,1024]{1,0}) tuple(c0, init_f32, p0, p1)
+  while_result = (s32[], f32[1024,1024]{1,0}, bf16[1024,1024]{1,0}, s8[1024,1024]{1,0}) while(while_init),
+    body=while_body, condition=while_cond
+  ROOT result = f32[1024,1024]{1,0} get-tuple-element(while_result), index=1
+}
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                          ParseAndReturnVerifiedModule(kWhileHlo));
+  hlo_module->mutable_config()
+      .mutable_debug_options()
+      .set_xla_gpu_enable_cublaslt(false);
+
+  HloInstruction* while_instr =
+      hlo_module->entry_computation()->root_instruction()->mutable_operand(0);
+  ASSERT_EQ(while_instr->opcode(), HloOpcode::kWhile);
+  HloComputation* body_computation = while_instr->while_body();
+  HloInstruction* fusion_instr =
+      body_computation->root_instruction()->mutable_operand(1);
+  ASSERT_EQ(fusion_instr->opcode(), HloOpcode::kFusion);
+
+  AutotuneResult::GemmKey config;
+  config.set_algorithm(3);
+  google::protobuf::Any any;
+  any.PackFrom(config);
+  TF_EXPECT_OK(backend_.ApplyConfig(*fusion_instr, any));
+  EXPECT_THAT(
+      RunFileCheck(
+          hlo_module->ToString(),
+          "CHECK: while_body"
+          "\nCHECK: custom-call({{.*}}), custom_call_target=\"__cublas$gemm\""
+          "\nCHECK: \"selected_algorithm\":\"3\""),
+      IsOkAndHolds(true));
 }
 
 }  // namespace
