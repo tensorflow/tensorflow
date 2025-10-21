@@ -162,16 +162,9 @@ HeuristicLayoutAssignment(const HloInstruction* instr,
     }
   }
 
-  const auto* rocm_compute_capability =
-      std::get_if<se::RocmComputeCapability>(&gpu_version);
-  if (rocm_compute_capability && input_ty == F16) {
-    return kAllNHWC;
-  }
-
-  // If we're not Volta or not fp16/bfloat16, or not conv2D, the decision is
-  // easy: Use NCHW.
   const bool isFloat16 = (input_ty == F16) || (input_ty == BF16);
   if (std::holds_alternative<se::CudaComputeCapability>(gpu_version)) {
+    // CUDA:
     // If we're not Volta or not fp16/bfloat16, or not conv2D, the decision is
     // easy: Use NCHW.
     const auto* cuda_compute_capability =
@@ -184,6 +177,9 @@ HeuristicLayoutAssignment(const HloInstruction* instr,
       return kAllNCHW;
     }
   } else if (std::holds_alternative<se::RocmComputeCapability>(gpu_version)) {
+    // ROCm:
+    // If we do not have NHWC layout support or not fp16/bfloat16, or not
+    // conv2D, or ROCm NHWC is disabled the decision is to use NCHW.
     bool is_enabled = false;
     TF_CHECK_OK(tsl::ReadBoolFromEnvVar("TF_USE_ROCM_NHWC",
                                         /*default_val=*/false, &is_enabled));
@@ -198,7 +194,7 @@ HeuristicLayoutAssignment(const HloInstruction* instr,
 
   VLOG(2) << "Using heuristic to figure out layouts for " << instr->ToString();
 
-  // For other Volta f16 convolutions, use NHWC.
+  // For other f16 convolutions, use NHWC.
   return kAllNHWC;
 }
 

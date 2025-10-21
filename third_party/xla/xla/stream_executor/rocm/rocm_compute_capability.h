@@ -43,6 +43,14 @@ class RocmComputeCapability {
 
   RocmComputeCapability() = default;
 
+  static RocmComputeCapability EarliestCDNASupport() {
+    return RocmComputeCapability{"gfx908"};
+  }
+
+  static RocmComputeCapability EarliestRDNASupport() {
+    return RocmComputeCapability{"gfx1030"};
+  }
+
   std::string gcn_arch_name() const { return gcn_arch_name_; }
 
   std::string ToString() const { return gcn_arch_name(); }
@@ -83,8 +91,7 @@ class RocmComputeCapability {
       "gfx1030",  // RX68xx / RX69xx
       "gfx1100",  // RX7900
       "gfx1101",  // RX7700 / RX7800
-      "gfx1103", "gfx1150", "gfx1151", "gfx1200", "gfx1201",
-  };
+      "gfx1103", "gfx1150", "gfx1151", "gfx1200", "gfx1201"};
 
   bool is_supported_gfx_version() const {
     return IsThisGfxInAnyList(kSupportedGfxVersions);
