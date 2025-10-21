@@ -391,6 +391,28 @@ class TransposeOpQuantizedModel : public SingleOpModel {
     PopulateTensor<T>(input_, data);
   }
 
+  void SetInputFromInt16(std::initializer_list<int16_t> data) {
+    switch (tensor_type_) {
+      case TensorType_UINT8: {
+        std::vector<uint8_t> converted;
+        for (auto val : data) converted.push_back(static_cast<uint8_t>(val));
+        PopulateTensor<uint8_t>(input_, converted);
+        break;
+      }
+      case TensorType_INT8: {
+        std::vector<int8_t> converted;
+        for (auto val : data) converted.push_back(static_cast<int8_t>(val));
+        PopulateTensor<int8_t>(input_, converted);
+        break;
+      }
+      case TensorType_INT16:
+        PopulateTensor<int16_t>(input_, data);
+        break;
+      default:
+        break;
+    }
+  }
+
   TfLiteTensor* GetOutputTensor() { return interpreter_->tensor(output_); }
 
   void SetOutputQuantParams(float scale, int zero_point) {
@@ -415,19 +437,7 @@ TEST_P(TransposeOpQuantizationTest, MismatchedQuantizationFails) {
   TensorType tensor_type = GetParam();
   TransposeOpQuantizedModel m(tensor_type, {2, 2}, {2}, {1, 0});
   m.SetOutputQuantParams(0.25f, 2);
-  switch (tensor_type) {
-    case TensorType_UINT8:
-      m.SetInput<uint8_t>({1, 2, 3, 4});
-      break;
-    case TensorType_INT8:
-      m.SetInput<int8_t>({1, 2, 3, 4});
-      break;
-    case TensorType_INT16:
-      m.SetInput<int16_t>({1, 2, 3, 4});
-      break;
-    default:
-      break;
-  }
+  m.SetInputFromInt16({1, 2, 3, 4});
   EXPECT_EQ(m.Invoke(), kTfLiteError);
 }
 

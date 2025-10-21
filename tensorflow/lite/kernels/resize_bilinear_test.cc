@@ -40,7 +40,8 @@ class ResizeBilinearOpModel : public SingleOpModel {
   explicit ResizeBilinearOpModel(const TensorData& input,
                                  std::initializer_list<int> size_data,
                                  TestType test_type,
-                                 bool half_pixel_centers = false) {
+                                 bool half_pixel_centers = false)
+      : input_type_(input.type) {
     bool const_size = (test_type == TestType::kConst);
 
     input_ = AddInput(input);
@@ -68,6 +69,28 @@ class ResizeBilinearOpModel : public SingleOpModel {
     PopulateTensor(input_, data);
   }
 
+  void SetInputFromInt16(std::initializer_list<int16_t> data) {
+    switch (input_type_) {
+      case TensorType_UINT8: {
+        std::vector<uint8_t> converted;
+        for (auto val : data) converted.push_back(static_cast<uint8_t>(val));
+        PopulateTensor<uint8_t>(input_, converted);
+        break;
+      }
+      case TensorType_INT8: {
+        std::vector<int8_t> converted;
+        for (auto val : data) converted.push_back(static_cast<int8_t>(val));
+        PopulateTensor<int8_t>(input_, converted);
+        break;
+      }
+      case TensorType_INT16:
+        PopulateTensor<int16_t>(input_, data);
+        break;
+      default:
+        break;
+    }
+  }
+
   template <typename T>
   std::vector<T> GetOutput() {
     return ExtractVector<T>(output_);
@@ -77,6 +100,7 @@ class ResizeBilinearOpModel : public SingleOpModel {
   int input_;
   int size_;
   int output_;
+  TensorType input_type_;
 };
 
 class ResizeBilinearOpTest : public ::testing::TestWithParam<TestType> {};
@@ -475,19 +499,7 @@ TEST_P(ResizeBilinearOpQuantizationTest, MismatchedQuantizationFails) {
   TfLiteTensor* output_tensor = m.GetOutputTensor(0);
   output_tensor->params.scale = 0.25f;
   output_tensor->params.zero_point = 2;
-  switch (tensor_type) {
-    case TensorType_UINT8:
-      m.SetInput<uint8_t>({1, 2, 3, 4});
-      break;
-    case TensorType_INT8:
-      m.SetInput<int8_t>({1, 2, 3, 4});
-      break;
-    case TensorType_INT16:
-      m.SetInput<int16_t>({1, 2, 3, 4});
-      break;
-    default:
-      break;
-  }
+  m.SetInputFromInt16({1, 2, 3, 4});
   EXPECT_EQ(m.Invoke(), kTfLiteError);
 }
 
