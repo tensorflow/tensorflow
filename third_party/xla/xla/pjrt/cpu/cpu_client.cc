@@ -1540,8 +1540,8 @@ absl::StatusOr<PjRtLoadedExecutable::Result> PjRtCpuExecutable::ExecuteHelper(
         });
   }
 
-  auto* cpu_executable =
-      tsl::down_cast<cpu::CpuExecutable*>(cpu_executable_.get());
+  auto cpu_executable =
+      tsl::down_pointer_cast<cpu::CpuExecutable>(cpu_executable_);
   // `buffer_alloc` and `buffer_alloc_and_copy` are used to do real memory
   // allocation and copy work.
   BufferAlloc buffer_alloc;
@@ -1755,7 +1755,6 @@ absl::StatusOr<PjRtLoadedExecutable::Result> PjRtCpuExecutable::ExecuteHelper(
          buffer_alloc_and_copy = std::move(buffer_alloc_and_copy),
          buffer_table = std::move(buffer_table),
          run_options = std::move(run_options),
-         cpu_executable_copy = cpu_executable_,
          device_assignment = std::move(device_assignment),
          cpu_run_options = std::move(cpu_run_options),
          compute_reservation = std::move(compute_reservation),
