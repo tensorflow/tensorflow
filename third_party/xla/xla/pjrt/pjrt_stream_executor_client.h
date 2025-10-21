@@ -600,14 +600,6 @@ class PjRtStreamExecutorBuffer : public CommonPjRtBufferImpl {
   PjRtStreamExecutorBuffer& operator=(const PjRtStreamExecutorBuffer&) = delete;
   PjRtStreamExecutorBuffer& operator=(PjRtStreamExecutorBuffer&&) = delete;
 
-  absl::StatusOr<size_t> GetOnDeviceSizeInBytes() const override;
-
-  Future<> CopyRawToHost(void* dst, int64_t offset,
-                         int64_t transfer_size) override;
-
-  Future<> CopyRawToHostFuture(Future<void*> dst, int64_t offset,
-                               int64_t transfer_size) override;
-
   // Drops the buffer's reference to its associated device memory, leaving the
   // buffer in an invalid state. The memory will be freed lazily when all async
   // operations using the buffer have completed, according to the allocation
@@ -633,8 +625,6 @@ class PjRtStreamExecutorBuffer : public CommonPjRtBufferImpl {
       PjRtMemorySpace* dst_memory_space) override;
 
   Future<> GetReadyFuture() override;
-
-  bool IsOnCpu() const override;
 
   // Similar to Delete, drops the buffer's reference to its associated device
   // memory, leaving the buffer in an invalid state, but returns the

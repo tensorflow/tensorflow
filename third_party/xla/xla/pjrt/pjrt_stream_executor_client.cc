@@ -718,11 +718,6 @@ void PjRtStreamExecutorBuffer::ScopedHold::ConvertUsageHold(
   SetState(kConverted);
 }
 
-bool PjRtStreamExecutorBuffer::IsOnCpu() const {
-  return memory_space() != nullptr &&
-         memory_space()->kind() == PinnedHostMemorySpace::kKind;
-}
-
 bool PjRtStreamExecutorClient::IsOnCpu(PjRtMemorySpace* memory_space) {
   return memory_space->kind() == PinnedHostMemorySpace::kKind;
 }
@@ -1402,30 +1397,6 @@ void PjRtStreamExecutorBuffer::ConvertUsageHold(TrackedDeviceBuffer* buffer,
   CHECK(device_buffer() == buffer || device_buffer() == nullptr);
   buffer->AddUsageEvent(std::move(event), reference_held);
   DecrementUsage();
-}
-
-absl::StatusOr<size_t> PjRtStreamExecutorBuffer::GetOnDeviceSizeInBytes()
-    const {
-  absl::MutexLock lock(&mu_);
-  if (device_buffer() == nullptr || !device_buffer()->device_memory()) {
-    return InvalidArgument(
-        "GetOnDeviceSizeInBytes called on deleted or donated buffer");
-  }
-  return device_buffer()->device_memory()->mem().size();
-}
-
-Future<> PjRtStreamExecutorBuffer::CopyRawToHost(void* dst, int64_t offset,
-                                                 int64_t transfer_size) {
-  auto* se_client = tensorflow::down_cast<PjRtStreamExecutorClient*>(client());
-  return se_client->CopyRawSubBufferToHost(this, Future<void*>(dst), offset,
-                                           transfer_size);
-}
-
-Future<> PjRtStreamExecutorBuffer::CopyRawToHostFuture(Future<void*> dst,
-                                                       int64_t offset,
-                                                       int64_t transfer_size) {
-  auto* se_client = tensorflow::down_cast<PjRtStreamExecutorClient*>(client());
-  return se_client->CopyRawSubBufferToHost(this, dst, offset, transfer_size);
 }
 
 PjRtStreamExecutorBuffer::ScopedHold

@@ -226,6 +226,9 @@ TrackedDeviceBuffer::GetAsyncValueDefinitionEvents() {
 
 tsl::RCReference<CommonPjRtRawBuffer> TrackedDeviceBuffer::GetRawBuffer(
     PjRtMemorySpace* memory_space) {
+  if (!device_memory_) {
+    return tsl::RCReference<CommonPjRtRawBuffer>();
+  }
   return tsl::MakeRef<PjRtStreamExecutorRawBuffer>(
       tensorflow::down_cast<PjRtStreamExecutorClient*>(memory_space->client()),
       memory_space,
