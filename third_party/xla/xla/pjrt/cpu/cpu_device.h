@@ -31,7 +31,6 @@ limitations under the License.
 #include "xla/pjrt/cpu/execution_stream_event_map.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
-#include "xla/pjrt/pjrt_future.h"
 #include "xla/pjrt/plugin/xla_cpu/cpu_device_description.h"
 #include "xla/pjrt/semaphore.h"
 

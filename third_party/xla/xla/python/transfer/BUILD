@@ -34,7 +34,7 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     deps = [
         ":transfer_socket_proto_cc",
-        "//xla/pjrt:pjrt_future",
+        "//xla:future",
         "//xla/tsl/concurrency:ref_count",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/functional:any_invocable",
@@ -111,9 +111,9 @@ cc_library(
     deps = [
         ":streaming",
         ":transfer_socket_proto_cc",
+        "//xla:future",
         "//xla/pjrt:pjrt_client",
         "//xla/pjrt:pjrt_compiler",
-        "//xla/pjrt:pjrt_future",
         "//xla/pjrt:raw_buffer",
         "//xla/python/ifrt",
         "//xla/tsl/concurrency:ref_count",

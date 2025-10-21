@@ -24,7 +24,6 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/pjrt/async_work_runner.h"
 #include "xla/pjrt/device_event.h"
-#include "xla/pjrt/pjrt_future.h"
 #include "xla/shape.h"
 #include "xla/tsl/concurrency/async_value.h"
 #include "xla/tsl/concurrency/ref_count.h"

@@ -46,7 +46,6 @@ limitations under the License.
 #include "xla/pjrt/device_event.h"
 #include "xla/pjrt/host_callback.h"
 #include "xla/pjrt/pjrt_client.h"
-#include "xla/pjrt/pjrt_future.h"
 #include "xla/pjrt/raw_buffer.h"
 #include "xla/primitive_util.h"
 #include "xla/shape.h"

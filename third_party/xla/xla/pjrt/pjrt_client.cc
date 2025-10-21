@@ -30,7 +30,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_executable.h"
-#include "xla/pjrt/pjrt_future.h"
 #include "xla/pjrt/utils.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/tsl/platform/statusor.h"

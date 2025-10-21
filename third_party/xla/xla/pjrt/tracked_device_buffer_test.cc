@@ -31,7 +31,6 @@ limitations under the License.
 #include "xla/literal_util.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
-#include "xla/pjrt/pjrt_future.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
