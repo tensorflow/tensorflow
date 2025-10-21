@@ -47,8 +47,11 @@ limitations under the License.
 #include "xla/service/platform_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream.h"
+#include "xla/stream_executor/stream_executor.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
@@ -71,6 +74,28 @@ using ::testing::VariantWith;
 
 MATCHER_P(ThunkKindIs, kind, "") {
   return ExplainMatchResult(::testing::Eq(kind), arg->kind(), result_listener);
+}
+
+se::StreamExecutor* GpuExecutor() {
+  auto name =
+      absl::AsciiStrToUpper(PlatformUtil::CanonicalPlatformName("gpu").value());
+  auto* platform = se::PlatformManager::PlatformWithName(name).value();
+  return platform->ExecutorForDevice(0).value();
+}
+
+bool IsAtLeastCuda12900(const se::StreamExecutor* stream_executor) {
+  const auto& device_description = stream_executor->GetDeviceDescription();
+  const auto* cuda_cc = std::get_if<se::CudaComputeCapability>(
+      &device_description.gpu_compute_capability());
+  if (cuda_cc != nullptr) {
+    if (device_description.driver_version() >=
+            stream_executor::SemanticVersion(12, 9, 0) &&
+        device_description.runtime_version() >=
+            stream_executor::SemanticVersion(12, 9, 0)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 class DynamicSliceFusionTest : public HloTestBase {
@@ -100,6 +125,30 @@ class DynamicSliceFusionTest : public HloTestBase {
     debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::COLLECTIVES);
     debug_options.add_xla_gpu_enable_command_buffer(
         DebugOptions::DYNAMIC_SLICE_FUSION);
+    HloModuleConfig config;
+    config.set_debug_options(debug_options);
+    return config;
+  }
+
+  HloModuleConfig GetModuleConfigWithCommandBufferUnrollLoops() {
+    DebugOptions debug_options = GetDebugOptionsForTest();
+    debug_options.set_xla_gpu_enable_cublaslt(false);
+    debug_options.set_xla_gpu_gemm_rewrite_size_threshold(0);
+    debug_options.set_xla_gpu_enable_dynamic_slice_fusion(true);
+    debug_options.set_xla_gpu_triton_gemm_any(false);
+    debug_options.set_xla_gpu_enable_cublaslt(false);
+    debug_options.set_xla_gpu_cublas_fallback(true);
+    debug_options.set_xla_gpu_graph_min_graph_size(1);
+    debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::FUSION);
+    debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::CUBLAS);
+    debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::CUBLASLT);
+    debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::CUSTOM_CALL);
+    debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::CUDNN);
+    debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::COLLECTIVES);
+    debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::WHILE);
+    debug_options.add_xla_gpu_enable_command_buffer(
+        DebugOptions::DYNAMIC_SLICE_FUSION);
+    debug_options.set_xla_gpu_command_buffer_unroll_loops(true);
     HloModuleConfig config;
     config.set_debug_options(debug_options);
     return config;
@@ -3454,10 +3503,6 @@ TEST_F(DynamicSliceFusionTest,
     ROOT %while = while(%initial_tuple), condition=%Cond, body=%Body, backend_config={"known_trip_count":{"n":"11"}}
   })";
 
-  // Run the same HLO with and without command buffer and compare results.
-  HloModuleConfig with_cmd_buffer = GetModuleConfigWithCommandBuffer();
-  HloModuleConfig without_cmd_buffer = GetModuleConfigWithoutCommandBuffer();
-
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> cmd_buffer_module,
                           ParseAndReturnVerifiedModule(hlo));
 
@@ -3469,6 +3514,15 @@ TEST_F(DynamicSliceFusionTest,
       RunAndCompareTwoModules(hlo, hlo, GetModuleConfigWithCommandBuffer(),
                               GetModuleConfigWithoutCommandBuffer(), error_spec,
                               /*run_hlo_passes=*/true));
+
+  se::StreamExecutor* stream_executor = GpuExecutor();
+  if (!IsAtLeastCuda12900(stream_executor)) {
+    GTEST_SKIP() << "While loop unrolling is not supported for CUDA < 12.9";
+  }
+  EXPECT_TRUE(RunAndCompareTwoModules(
+      hlo, hlo, GetModuleConfigWithCommandBufferUnrollLoops(),
+      GetModuleConfigWithoutCommandBuffer(), error_spec,
+      /*run_hlo_passes=*/true));
 }
 
 TEST_F(DynamicSliceFusionTest, MultipleOffsetsAsFunctionOfInductionVariable) {

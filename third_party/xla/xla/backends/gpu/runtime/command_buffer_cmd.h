@@ -869,6 +869,10 @@ class WhileCmd : public CommandBufferCmd {
   absl::Status Initialize(const Thunk::InitializeParams& params,
                           StateManager& state) override;
 
+  absl::Status Prepare(
+      const Thunk::PrepareParams& params,
+      Thunk::ResourceRequestsInterface& resource_requests) override;
+
   absl::StatusOr<const se::CommandBuffer::Command*> Record(
       const Thunk::ExecuteParams& execute_params,
       const RecordParams& record_params, RecordAction record_action,
@@ -1240,7 +1244,7 @@ class DynamicSliceFusionCmd : public CommandBufferCmd {
 
   bool requires_initialization() override;
 
-  bool support_loop_unroll() override { return false; }
+  bool support_loop_unroll() override { return true; }
 
   bool IsNestedCommandBuffer() const final { return true; }
 

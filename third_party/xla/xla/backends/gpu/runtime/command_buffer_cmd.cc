@@ -1493,6 +1493,14 @@ absl::Status WhileCmd::Initialize(const Thunk::InitializeParams& params,
   return absl::OkStatus();
 }
 
+absl::Status WhileCmd::Prepare(
+    const Thunk::PrepareParams& params,
+    Thunk::ResourceRequestsInterface& resource_requests) {
+  TF_RETURN_IF_ERROR(cond_commands_.Prepare(params, resource_requests));
+  TF_RETURN_IF_ERROR(body_commands_.Prepare(params, resource_requests));
+  return absl::OkStatus();
+}
+
 absl::StatusOr<const se::CommandBuffer::Command*> WhileCmd::Record(
     const Thunk::ExecuteParams& execute_params,
     const RecordParams& record_params, RecordAction record_action,
