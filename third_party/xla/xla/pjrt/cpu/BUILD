@@ -52,7 +52,6 @@ cc_library(
     visibility = internal_visibility(["//xla/pjrt/cpu:legacy_cpu_buffer_internal_users"]),
     deps = [
         ":cpu_event",
-        "//xla:cpu_function_runtime",
         "//xla:future",
         "//xla:literal",
         "//xla:shape_tree",

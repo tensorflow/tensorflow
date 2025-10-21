@@ -197,7 +197,6 @@ cc_library(
         ":runtime_symbol_generator",
         ":small_while_loop_hoisting_pass",
         ":thunk_emitter",
-        "//xla:cpu_function_runtime",
         "//xla:debug_options_flags",
         "//xla:literal",
         "//xla:literal_pool",
@@ -417,7 +416,6 @@ cc_library(
     deps = [
         ":cpu_executable",
         ":executable_proto_cc",
-        "//xla:cpu_function_runtime",
         "//xla:util",
         "//xla/backends/cpu:buffer_allocation_info",
         "//xla/backends/cpu:buffer_allocation_info_util",
@@ -927,7 +925,6 @@ cc_library(
         ":ir_emitter2",
         ":parallel_fusion_emitter",
         "//xla:comparison_util",
-        "//xla:cpu_function_runtime",
         "//xla:shape_util",
         "//xla:status_macros",
         "//xla:util",
