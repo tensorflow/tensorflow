@@ -391,6 +391,44 @@ class MemorySpaceAssignmentTestBase : public HloTestBase {
     return block_prefetched_positions;
   }
 
+  struct CustomCallPrefetchInfo {
+    std::string prefetched_instruction_name;
+    std::string prefetch_start_instruction_name;
+    std::string prefetch_done_instruction_name;
+  };
+
+  // Returns a map of HloPositions to CustomCallPrefetchDetails for the given
+  // custom call prefetch instructions.
+  absl::flat_hash_map<HloPosition, std::vector<CustomCallPrefetchDetails>>
+  GetCustomCallPrefetchDetailsMap(
+      const HloModule* module,
+      std::vector<CustomCallPrefetchInfo> custom_call_prefetch_instructions) {
+    absl::flat_hash_map<HloPosition, std::vector<CustomCallPrefetchDetails>>
+        hlo_position_to_custom_call_prefetch_details;
+    for (const auto& info : custom_call_prefetch_instructions) {
+      HloInstruction* param =
+          FindInstruction(module, info.prefetched_instruction_name);
+      EXPECT_NE(param, nullptr);
+      HloPosition param_position{param, {}};
+      HloInstruction* prefetch_start =
+          FindInstruction(module, info.prefetch_start_instruction_name);
+      EXPECT_NE(prefetch_start, nullptr);
+      HloInstruction* prefetch_done =
+          FindInstruction(module, info.prefetch_done_instruction_name);
+      EXPECT_NE(prefetch_done, nullptr);
+
+      CustomCallPrefetchDetails details{/*prefetch_start=*/prefetch_start,
+                                        /*prefetch_done=*/prefetch_done,
+                                        /*intermediate_instructions=*/
+                                        {prefetch_done->mutable_operand(1),
+                                         prefetch_done->mutable_operand(2)}};
+
+      hlo_position_to_custom_call_prefetch_details[param_position].push_back(
+          details);
+    }
+    return hlo_position_to_custom_call_prefetch_details;
+  }
+
   // Checks for every instruction in instruction_names that the operand at
   // operand_index has the given opcode and memory space.
   void CheckOperandOpcodeAndMemorySpaceForInstructionNames(

@@ -2007,7 +2007,7 @@ absl::Status MsaAlgorithm::ProcessColoredBuffers() {
   return absl::OkStatus();
 }
 
-int64_t MsaAlgorithm::MaxReservedScopedMemory() {
+int64_t MsaAlgorithm::MaxScopedMemoryOffset() {
   const std::vector<HloInstruction*>& instruction_sequence =
       hlo_live_range_.flattened_instruction_sequence().instructions();
   int64_t max_reserved_scoped_memory = 0;
@@ -2089,6 +2089,35 @@ std::optional<int64_t> MsaAlgorithm::EarliestBlockPrefetchStartTime(
 
 namespace {
 
+struct UseInterval {
+  int64_t first_use_time;
+  int64_t last_use_time;
+};
+
+absl::flat_hash_map<const HloValue*, UseInterval> GetUseIntervals(
+    const std::vector<const HloValue*>& values,
+    const absl::flat_hash_map<const HloInstruction*, int64_t>&
+        instruction_schedule) {
+  absl::flat_hash_map<const HloValue*, UseInterval> value_to_use_intervals;
+  for (const HloValue* value : values) {
+    UseInterval& use_interval = value_to_use_intervals[value];
+    use_interval.first_use_time = std::numeric_limits<int64_t>::max();
+    use_interval.last_use_time = -1;
+    for (const HloUse& use : value->GetUses()) {
+      auto it = instruction_schedule.find(use.instruction);
+      if (it == instruction_schedule.end()) {
+        continue;
+      }
+      use_interval.first_use_time =
+          std::min(use_interval.first_use_time, it->second);
+      use_interval.last_use_time =
+          std::max(use_interval.last_use_time, it->second);
+    }
+    CHECK_NE(use_interval.last_use_time, -1);
+  }
+  return value_to_use_intervals;
+}
+
 absl::flat_hash_set<HloPosition> GetParameterInstructionsAliasedToOutput(
     const HloInputOutputAliasConfig& alias_config,
     const HloInstruction* root_instruction) {
@@ -2104,17 +2133,245 @@ absl::flat_hash_set<HloPosition> GetParameterInstructionsAliasedToOutput(
   return aliased_parameter_positions;
 }
 
+void PopulateExistingBlockPrefetchedValues(
+    const Options& options, const HloAliasAnalysis& alias_analysis,
+    std::vector<const HloValue*>& block_prefetched_values,
+    absl::flat_hash_map<const HloValue*, const HloValue*>&
+        prefetch_done_value_to_original_value,
+    absl::flat_hash_map<const HloValue*, HloInstruction*>&
+        prefetch_done_value_to_prefetch_start_instruction) {
+  // Block prefetched values are prefetch done HloValues. Original values are
+  // the HLO values that are being prefetched. We maintain a map of prefetch
+  // done value to original value. We also maintain a map of prefetch done
+  // HloValue to the prefetch start instruction.
+  for (const auto& [position, custom_call_prefetch_details] :
+       options.hlo_position_to_custom_call_prefetch_details) {
+    const HloValue* original_value =
+        &alias_analysis.dataflow_analysis().GetUniqueValueAt(
+            position.instruction, position.index);
+    for (const auto& custom_call_prefetch_detail :
+         custom_call_prefetch_details) {
+      HloInstruction* prefetch_start =
+          custom_call_prefetch_detail.prefetch_start;
+      HloInstruction* prefetch_done = custom_call_prefetch_detail.prefetch_done;
+      const HloValue* prefetch_done_value =
+          &alias_analysis.dataflow_analysis().GetUniqueValueAt(prefetch_done,
+                                                               {});
+      prefetch_done_value_to_original_value[prefetch_done_value] =
+          original_value;
+      prefetch_done_value_to_prefetch_start_instruction[prefetch_done_value] =
+          prefetch_start;
+      block_prefetched_values.push_back(prefetch_done_value);
+    }
+  }
+}
+
 }  // namespace
 
-absl::Status MsaAlgorithm::ProcessBlockPrefetches() {
-  if (!options_.hlo_position_to_custom_call_prefetch_details.empty()) {
-    return absl::UnimplementedError(
-        "Block prefetching for custom call prefetches is not yet implemented "
-        "in MSA.");
-  }
-  if (options_.reserved_bytes_for_block_prefetches <= 0) {
+absl::Status MsaAlgorithm::AllocateAndScheduleExistingBlockPrefetches() {
+  if (options_.hlo_position_to_custom_call_prefetch_details.empty()) {
     return absl::OkStatus();
   }
+  if (options_.reserved_bytes_for_block_prefetches <= 0) {
+    return absl::FailedPreconditionError(
+        "Reserved bytes for block prefetches is zero, we need memory to "
+        "schedule custom call block prefetches.");
+  }
+  // List of all block prefetched HloValues.
+  std::vector<const HloValue*> block_prefetched_values;
+  absl::flat_hash_map<const HloValue*, const HloValue*>
+      prefetch_done_value_to_original_value;
+  absl::flat_hash_map<const HloValue*, HloInstruction*>
+      prefetch_done_value_to_prefetch_start_instruction;
+
+  PopulateExistingBlockPrefetchedValues(
+      options_, alias_analysis_, block_prefetched_values,
+      prefetch_done_value_to_original_value,
+      prefetch_done_value_to_prefetch_start_instruction);
+
+  const auto& instruction_schedule = hlo_live_range_.instruction_schedule();
+
+  // Compute the live ranges for each block prefetched value.
+  absl::flat_hash_map<const HloValue*, UseInterval> value_to_use_intervals =
+      GetUseIntervals(block_prefetched_values, instruction_schedule);
+
+  // Erase all the values from block_prefetched_values that have been finalized.
+  block_prefetched_values.erase(
+      std::remove_if(block_prefetched_values.begin(),
+                     block_prefetched_values.end(),
+                     [&](const HloValue* value) {
+                       return finalized_values_.contains(value);
+                     }),
+      block_prefetched_values.end());
+
+  // Sort block prefetched values in ascending order of first use time.
+  absl::c_sort(block_prefetched_values,
+               [&](const HloValue* a, const HloValue* b) {
+                 return value_to_use_intervals.at(a).first_use_time <
+                        value_to_use_intervals.at(b).first_use_time;
+               });
+
+  // We need to reserve a continuous block of memory for the block prefetches,
+  // since scoped allocations are initially placed at offset 0 we place the
+  // block prefetches at the end of the reserved scoped allocations.
+  int64_t block_prefetching_starting_offset = MaxScopedMemoryOffset();
+  // All block prefetches should be placed within this limit.
+  int64_t block_prefetching_limit_bytes =
+      block_prefetching_starting_offset +
+      options_.reserved_bytes_for_block_prefetches;
+  CHECK_LE(block_prefetching_limit_bytes, options_.max_size_in_bytes);
+  VLOG(1) << "block prefetched values bytes limit: "
+          << block_prefetching_limit_bytes;
+  int64_t previous_start_time = -1;
+  int64_t max_in_flight_prefetches_allowed =
+      options_.max_outstanding_block_prefetches;
+  std::vector<int64_t> prefetch_end_times;
+  std::vector<int64_t> prefetch_done_schedule_before_times;
+
+  absl::flat_hash_map<const HloValue*, Allocation*> value_to_pinned_allocation;
+
+  // For each block prefetched value, we try to find a chunk within the block
+  // prefetching limit, ensuring FIFO ordering. After a suitable chunk is found
+  // for a block prefetched value, we:
+  // 1. Commit the chunk to the alternate memory.
+  // 2. Update the operands in alternate memory map.
+  // 3. Add the copy done and copy start values to the finalized values set.
+  // 4. Add a repack allocation block to the repack allocation blocks list.
+  // 5. Serve the uses of the original value from the pinned allocation in the
+  //    default memory.
+  // 6. Clear the pending chunks after the loop.
+  for (const HloValue* prefetch_done_value : block_prefetched_values) {
+    UseInterval use_interval = value_to_use_intervals.at(prefetch_done_value);
+    int64_t first_use_time = use_interval.first_use_time;
+    int64_t last_use_time = use_interval.last_use_time;
+    auto it = prefetch_done_value_to_original_value.find(prefetch_done_value);
+    CHECK(it != prefetch_done_value_to_original_value.end());
+    const HloValue* original_value = it->second;
+    int64_t definition_time =
+        instruction_schedule.at(original_value->defining_instruction());
+    int64_t end_time = last_use_time;
+    int64_t buffer_size = buffer_intervals_.at(prefetch_done_value).size;
+    int64_t earliest_start_time_candidate =
+        std::max(definition_time, previous_start_time);
+    CHECK_LE(earliest_start_time_candidate, first_use_time);
+
+    // Find the earliest start time for which a chunk can be allocated for the
+    // block prefetched value.
+    std::optional<int64_t> optional_start_time = EarliestBlockPrefetchStartTime(
+        previous_start_time, definition_time, first_use_time, end_time,
+        buffer_size, block_prefetching_limit_bytes,
+        max_in_flight_prefetches_allowed, prefetch_done_schedule_before_times,
+        prefetch_end_times);
+
+    if (!optional_start_time.has_value()) {
+      // Custom call block prefetches must be allocated in the alternate memory.
+      return absl::FailedPreconditionError(absl::StrCat(
+          "Could not find a chunk for block prefetched value: ",
+          prefetch_done_value->defining_position().ToString(), " buffer size: ",
+          buffer_size, " within limit: ", block_prefetching_limit_bytes));
+    }
+
+    int64_t start_time = optional_start_time.value();
+    MsaBufferInterval interval = MsaBufferInterval{/*buffer=*/original_value,
+                                                   /*size=*/buffer_size,
+                                                   /*start=*/start_time,
+                                                   /*end=*/end_time,
+                                                   /*colocations=*/{},
+                                                   /*need_allocation=*/true};
+    Chunk chunk_candidate = FindChunkCandidate(interval);
+
+    // The chunk candidate should always be within the block prefetched values
+    // limit, otherwise we would have returned earlier.
+    CHECK_LE(chunk_candidate.chunk_end(), block_prefetching_limit_bytes);
+
+    // Add a pinned allocation in the default memory to serve as the prev
+    // allocation for the copy allocation or extend the existing pinned
+    // allocation.
+    Allocation* pinned_allocation;
+    auto pinned_allocation_it = value_to_pinned_allocation.find(original_value);
+    if (pinned_allocation_it == value_to_pinned_allocation.end()) {
+      allocations_->push_back(std::make_unique<PinnedAllocation>(
+          original_value->defining_position(), MemorySpace::kDefault,
+          kDummyChunk, definition_time, end_time));
+      pinned_allocation = allocations_->back().get();
+      value_to_pinned_allocation[original_value] = pinned_allocation;
+    } else {
+      pinned_allocation = pinned_allocation_it->second;
+      pinned_allocation->Extend(end_time);
+    }
+
+    HloInstruction* async_mem_op_start =
+        prefetch_done_value_to_prefetch_start_instruction[prefetch_done_value];
+    HloInstruction* asyn_mem_op_done = prefetch_done_value->instruction();
+
+    // Add an async slice copy for the block prefetched value value.
+    AddAsyncCopyOrOtherMemOp(
+        /*prev_allocation=*/*pinned_allocation,
+        /*memory_space=*/MemorySpace::kAlternate,
+        /*chunk=*/chunk_candidate,
+        /*exclusive_start_time=*/InclusiveToExclusiveStartTime(start_time),
+        /*end_time=*/end_time,
+        /*copy_done_schedule_before_time=*/first_use_time,
+        /*allocations=*/allocations_,
+        /*aliased_offset=*/nullptr,
+        /*resource=*/0.0,
+        /*cross_program_prefetch_index=*/std::nullopt,
+        /*sync_mem_op=*/nullptr,
+        /*async_mem_op_start*/ async_mem_op_start,
+        /*async_mem_op_done=*/asyn_mem_op_done);
+
+    previous_start_time = start_time;
+    auto const sorted_position = std::lower_bound(
+        prefetch_end_times.begin(), prefetch_end_times.end(), end_time);
+    prefetch_end_times.insert(sorted_position, end_time);
+    prefetch_done_schedule_before_times.push_back(first_use_time);
+
+    // 1. Commit the chunk to the alternate memory.
+    AddToPendingChunks(interval, chunk_candidate);
+
+    for (const HloUse& use : prefetch_done_value->GetUses()) {
+      allocations_->back()->AddUse(use);
+      // 2. Update the operands in alternate memory map.
+      operands_in_alternate_memory_map_[use.instruction].insert(
+          std::make_pair(use.operand_number, use.operand_index));
+    }
+
+    // 3. Add the copy done and copy start values to the finalized values set.
+    finalized_values_.insert(prefetch_done_value);
+    const HloValue* copy_start_value =
+        &alias_analysis_.dataflow_analysis().GetUniqueValueAt(
+            async_mem_op_start, {0});
+    finalized_values_.insert(copy_start_value);
+
+    // 4. Add a repack allocation block to the repack allocation blocks list.
+    repack_allocation_blocks_.push_back(MakeRepackAllocationBlock(
+        start_time, end_time, chunk_candidate.size, chunk_candidate.offset,
+        allocations_->back().get()));
+    repack_allocation_blocks_.back().next_colocated =
+        &(repack_allocation_blocks_.back());
+  }
+
+  // 5. Serve the uses of the original value from the pinned allocation in the
+  //    default memory.
+  for (auto [_, original_value] : prefetch_done_value_to_original_value) {
+    Allocation* allocation = value_to_pinned_allocation[original_value];
+    for (const HloUse& use : original_value->GetUses()) {
+      allocation->AddUse(use);
+    }
+    finalized_values_.insert(original_value);
+  }
+
+  // 6. Clear the pending chunks.
+  ClearPendingChunks();
+  return absl::OkStatus();
+}
+
+absl::Status MsaAlgorithm::CreateNewBlockPrefetches() {
+  if (!options_.hlo_position_to_custom_call_prefetch_details.empty() ||
+      options_.reserved_bytes_for_block_prefetches <= 0) {
+    return absl::OkStatus();
+  }
+
   absl::flat_hash_set<HloPosition> aliased_parameter_positions =
       GetParameterInstructionsAliasedToOutput(
           module_->input_output_alias_config(),
@@ -2127,21 +2384,39 @@ absl::Status MsaAlgorithm::ProcessBlockPrefetches() {
   absl::flat_hash_map<const HloValue*, const HloValue*>
       sliced_value_to_original_value;
   for (const HloPosition& position : options_.block_prefetched_positions) {
-    if (aliased_parameter_positions.contains(position)) {
-      // TODO(b/441344194): Add support for block allocations for parameters
-      // that are aliased to outputs.
-      continue;
-    }
     const HloValue* value =
         &alias_analysis_.dataflow_analysis().GetUniqueValueAt(
             position.instruction, position.index);
-    block_prefetched_values.push_back(value);
+    const HloBuffer& buffer = alias_analysis_.GetBufferContainingValue(*value);
+    if (!aliased_parameter_positions.contains(value->defining_position()) &&
+        buffer.values().size() == 1) {
+      block_prefetched_values.push_back(value);
+    } else if (aliased_parameter_positions.contains(position)) {
+      // TODO(b/441344194): Add support for block allocations for parameters
+      // that are aliased to outputs.
+      LOG(WARNING) << "Skipping block prefetch for value: "
+                   << position.ToString()
+                   << " because it is aliased to a program output.";
+    } else {
+      LOG(WARNING) << "Skipping block prefetch for value: "
+                   << position.ToString()
+                   << " because it is aliased to multiple values.";
+    }
+
     // As mentioned above, we also track slices of block prefetched values.
     for (const HloUse& use : value->GetUses()) {
       if (use.instruction->opcode() == HloOpcode::kSlice) {
         const HloValue* slice_value =
             &alias_analysis_.dataflow_analysis().GetUniqueValueAt(
                 use.instruction, {});
+        const HloBuffer& buffer =
+            alias_analysis_.GetBufferContainingValue(*slice_value);
+        if (buffer.values().size() > 1) {
+          VLOG(1) << "Skipping block prefetch for value: "
+                  << value->defining_position().ToString()
+                  << " because it is aliased to multiple values.";
+          continue;
+        }
         block_prefetched_values.push_back(slice_value);
         sliced_value_to_original_value[slice_value] = value;
       }
@@ -2149,16 +2424,12 @@ absl::Status MsaAlgorithm::ProcessBlockPrefetches() {
   }
 
   const auto& instruction_schedule = hlo_live_range_.instruction_schedule();
-  struct LiveRange {
-    int64_t first_use_time;
-    int64_t last_use_time;
-  };
   // Compute the live ranges for each block prefetched value.
-  absl::flat_hash_map<const HloValue*, LiveRange> value_to_live_ranges;
+  absl::flat_hash_map<const HloValue*, UseInterval> value_to_use_intervals;
   for (const HloValue* value : block_prefetched_values) {
-    LiveRange& live_range = value_to_live_ranges[value];
-    live_range.first_use_time = std::numeric_limits<int64_t>::max();
-    live_range.last_use_time = -1;
+    UseInterval& use_interval = value_to_use_intervals[value];
+    use_interval.first_use_time = std::numeric_limits<int64_t>::max();
+    use_interval.last_use_time = -1;
     bool is_original_value = !sliced_value_to_original_value.contains(value);
     for (const HloUse& use : value->GetUses()) {
       // We skip slices here because they have been explicitly added to
@@ -2170,62 +2441,70 @@ absl::Status MsaAlgorithm::ProcessBlockPrefetches() {
       if (it == instruction_schedule.end()) {
         continue;
       }
-      live_range.first_use_time =
-          std::min(live_range.first_use_time, it->second);
-      live_range.last_use_time = std::max(live_range.last_use_time, it->second);
+      use_interval.first_use_time =
+          std::min(use_interval.first_use_time, it->second);
+      use_interval.last_use_time =
+          std::max(use_interval.last_use_time, it->second);
     }
-    if (live_range.last_use_time == -1) {
-      // If the value does not have any direct uses other than slices, we can
-      // finalize it. Note, slices are handled separately as part of
-      // block_prefetched_values.
+  }
+
+  // Finalize all the values that have no uses.
+  for (const auto& [value, use_interval] : value_to_use_intervals) {
+    if (use_interval.last_use_time == -1) {
       finalized_values_.insert(value);
     }
   }
 
-  // Erase all the values from block_prefetched_values that are not used
-  // directly and have been finalized.
+  // Erase all the values from block_prefetched_values that have been finalized.
   block_prefetched_values.erase(
-      std::remove_if(
-          block_prefetched_values.begin(), block_prefetched_values.end(),
-          [&](const HloValue* value) {
-            return value_to_live_ranges.at(value).last_use_time == -1;
-          }),
+      std::remove_if(block_prefetched_values.begin(),
+                     block_prefetched_values.end(),
+                     [&](const HloValue* value) {
+                       return finalized_values_.contains(value);
+                     }),
       block_prefetched_values.end());
 
   // Sort block prefetched value values in ascending order of first use time.
   absl::c_sort(block_prefetched_values,
                [&](const HloValue* a, const HloValue* b) {
-                 return value_to_live_ranges.at(a).first_use_time <
-                        value_to_live_ranges.at(b).first_use_time;
+                 return value_to_use_intervals.at(a).first_use_time <
+                        value_to_use_intervals.at(b).first_use_time;
                });
 
   // Block allocations can also happen in the fragmented scoped memory, so we
   // need to account for the max reserved scoped memory in the block prefetched
   // memory limit.
-  int64_t max_reserved_scoped_memory = MaxReservedScopedMemory();
+  int64_t block_prefetching_starting_offset = MaxScopedMemoryOffset();
   int64_t block_prefetching_limit_bytes =
-      max_reserved_scoped_memory + options_.reserved_bytes_for_block_prefetches;
+      block_prefetching_starting_offset +
+      options_.reserved_bytes_for_block_prefetches;
   CHECK_LE(block_prefetching_limit_bytes, options_.max_size_in_bytes);
   VLOG(1) << "block prefetched values bytes limit: "
           << block_prefetching_limit_bytes;
-
-  // To ensure fifo ordering, we need to ensure that the prefetch start time of
-  // each block prefetched value is greater than or equal to the previous block
-  // prefetched value's prefetch start time. We are traversing these is
-  // ascending order of use time, so the previous prefetchs start time will
-  // always be less than or equal to the current prefetchs use time.
   int64_t previous_start_time = -1;
   int64_t max_in_flight_prefetches_allowed =
       options_.max_outstanding_block_prefetches;
   std::vector<int64_t> prefetch_end_times;
-  std::vector<int64_t> copy_done_schedule_before_times;
+  std::vector<int64_t> prefetch_done_schedule_before_times;
 
   absl::flat_hash_map<const HloValue*, Allocation*> value_to_pinned_allocation;
 
+  // For each block prefetched value, we try to find a chunk within the block
+  // prefetching limit, ensuring FIFO ordering. After a suitable chunk is found
+  // for a block prefetched value, we:
+  // 1. Commit the chunk to the alternate memory.
+  // 2. Update the operands in alternate memory map.
+  // 3. Add the value to the finalized values set.
+  // 4. Add a repack allocation block to the repack allocation blocks list.
+  // Outside the loop:
+  // 5. Finalize the original sources of the sliced values that have not yet
+  //    been finalized, so we don't try to process those sources again, outside
+  //    of block prefetching.
+  // 6. Clear the pending chunks after the loop.
   for (const HloValue* maybe_sliced_value : block_prefetched_values) {
-    LiveRange live_range = value_to_live_ranges.at(maybe_sliced_value);
-    int64_t first_use_time = live_range.first_use_time;
-    int64_t last_use_time = live_range.last_use_time;
+    UseInterval use_interval = value_to_use_intervals.at(maybe_sliced_value);
+    int64_t first_use_time = use_interval.first_use_time;
+    int64_t last_use_time = use_interval.last_use_time;
     auto it = sliced_value_to_original_value.find(maybe_sliced_value);
     const HloValue* original_value;
     if (it != sliced_value_to_original_value.end()) {
@@ -2242,7 +2521,7 @@ absl::Status MsaAlgorithm::ProcessBlockPrefetches() {
     std::optional<int64_t> optional_start_time = EarliestBlockPrefetchStartTime(
         previous_start_time, definition_time, first_use_time, end_time,
         buffer_size, block_prefetching_limit_bytes,
-        max_in_flight_prefetches_allowed, copy_done_schedule_before_times,
+        max_in_flight_prefetches_allowed, prefetch_done_schedule_before_times,
         prefetch_end_times);
 
     if (!optional_start_time.has_value()) {
@@ -2252,8 +2531,8 @@ absl::Status MsaAlgorithm::ProcessBlockPrefetches() {
                    << " within limit: " << block_prefetching_limit_bytes;
       continue;
     }
-    int64_t start_time = optional_start_time.value();
 
+    int64_t start_time = optional_start_time.value();
     MsaBufferInterval interval = MsaBufferInterval{/*buffer=*/original_value,
                                                    /*size=*/buffer_size,
                                                    /*start=*/start_time,
@@ -2304,16 +2583,9 @@ absl::Status MsaAlgorithm::ProcessBlockPrefetches() {
     auto const sorted_position = std::lower_bound(
         prefetch_end_times.begin(), prefetch_end_times.end(), end_time);
     prefetch_end_times.insert(sorted_position, end_time);
-    copy_done_schedule_before_times.push_back(first_use_time);
+    prefetch_done_schedule_before_times.push_back(first_use_time);
 
-    // Bookkeeping Checklist:
-    // Commit the chunk to the alternate memory.
-    // Add entries to operands in alternate memory map.
-    // Add the value to the finalized values set.
-    // Add a repack allocation block to the repack allocation blocks list.
-    // Clear the pending chunks.
-
-    // Commit the chunk to the alternate memory.
+    // 1. Commit the chunk to the alternate memory.
     AddToPendingChunks(interval, chunk_candidate);
 
     for (const HloUse& use : maybe_sliced_value->GetUses()) {
@@ -2324,14 +2596,14 @@ absl::Status MsaAlgorithm::ProcessBlockPrefetches() {
         continue;
       }
       allocations_->back()->AddUse(use);
-      // Add entries to operands in alternate memory map.
+      // 2. Update the operands in alternate memory map.
       operands_in_alternate_memory_map_[use.instruction].insert(
           std::make_pair(use.operand_number, use.operand_index));
     }
 
-    // Add the value to the finalized values set.
+    // 3. Add the value to the finalized values set.
     finalized_values_.insert(maybe_sliced_value);
-    // Add a repack allocation block to the repack allocation blocks list.
+    // 4. Add a repack allocation block to the repack allocation blocks list.
     repack_allocation_blocks_.push_back(MakeRepackAllocationBlock(
         start_time, end_time, chunk_candidate.size, chunk_candidate.offset,
         allocations_->back().get()));
@@ -2339,8 +2611,9 @@ absl::Status MsaAlgorithm::ProcessBlockPrefetches() {
         &(repack_allocation_blocks_.back());
   }
 
-  // Finalize the original values of the sliced values that are not finalized
-  // yet to avoid being allocated twice.
+  // 5. Finalize the original sources of the sliced values that have not yet
+  //    been finalized, so we don't try to process those sources again, outside
+  //    of block prefetching.
   for (auto [_, original_value] : sliced_value_to_original_value) {
     if (finalized_values_.contains(original_value)) {
       continue;
@@ -2352,7 +2625,7 @@ absl::Status MsaAlgorithm::ProcessBlockPrefetches() {
     finalized_values_.insert(original_value);
   }
 
-  // Clear the pending chunks.
+  // 6. Clear the pending chunks.
   ClearPendingChunks();
   return absl::OkStatus();
 }
@@ -2370,7 +2643,9 @@ absl::StatusOr<HeapSimulator::Result<HloValue>> MsaAlgorithm::Finish() {
                                                                  : "disabled");
 
   AllocateReservedScopedAllocations();
-  TF_RETURN_IF_ERROR(ProcessBlockPrefetches());
+
+  TF_RETURN_IF_ERROR(AllocateAndScheduleExistingBlockPrefetches());
+  TF_RETURN_IF_ERROR(CreateNewBlockPrefetches());
 
   std::vector<MsaBufferInterval> sorted_buffer_intervals =
       GetSortedBufferIntervals();
@@ -5969,7 +6244,8 @@ void MsaAlgorithm::AddAsyncCopyOrOtherMemOp(
     int64_t copy_done_schedule_before_time, AllocationSequence* allocations,
     AliasedOffset* aliased_offset, float resource,
     std::optional<int> cross_program_prefetch_index,
-    HloInstruction* sync_mem_op) {
+    HloInstruction* sync_mem_op, HloInstruction* async_mem_op_start,
+    HloInstruction* async_mem_op_done) {
   VLOG(3) << "Copy to "
           << (memory_space == MemorySpace::kDefault ? "default" : "alternate")
           << " memory in (" << exclusive_start_time << ", "
@@ -5980,7 +6256,7 @@ void MsaAlgorithm::AddAsyncCopyOrOtherMemOp(
   allocations->push_back(std::make_unique<CopyAllocation>(
       prev_allocation, memory_space, chunk, exclusive_start_time,
       copy_done_schedule_before_time, end_time, cross_program_prefetch_index,
-      sync_mem_op));
+      sync_mem_op, async_mem_op_start, async_mem_op_done));
 
   RegisterAsyncCopy(memory_space, exclusive_start_time,
                     copy_done_schedule_before_time, allocations, aliased_offset,
