@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_TSL_PROFILER_UTILS_TRACE_UTILS_H_
 #define XLA_TSL_PROFILER_UTILS_TRACE_UTILS_H_
 
+#include <cstdint>
 #include <optional>
 
 #include "absl/strings/numbers.h"
@@ -30,6 +31,9 @@ namespace profiler {
 // Support up to 500 accelerator devices.
 constexpr uint32 kFirstDeviceId = 1;
 constexpr uint32 kLastDeviceId = 500;
+
+// Max. devices per host. Power of 10 for ease of debugging.
+static constexpr uint32_t kMaxDevicesPerHost = 1000;
 // Support Upto 200 custom planes as fake devices (i.e., planes with a
 // "/custom:" prefix). See `<project_name>::kCustomPlanePrefix` for more
 // information
