@@ -15,9 +15,11 @@ limitations under the License.
 
 #include "xla/service/spmd/shardy/round_trip_common/export_named_computations.h"
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <tuple>
+#include <utility>
 
 #include "absl/log/check.h"
 #include "llvm/ADT/DenseMap.h"
@@ -127,6 +129,16 @@ StringAttr createFuncOpOrGetFromCache(
   return funcSymName;
 }
 
+int64_t updateCallSiteCount(
+    llvm::SmallDenseMap<ComputationKey, int64_t>& funcCallSiteCounts,
+    ComputationKey key) {
+  if (auto it = funcCallSiteCounts.find(key); it != funcCallSiteCounts.end()) {
+    return ++it->second;
+  }
+  funcCallSiteCounts.try_emplace(key, 1);
+  return 1;
+}
+
 // Converts a `NamedComputationOp` into a `CallOp`.
 class ExportNamedComputationsPass
     : public mlir::PassWrapper<ExportNamedComputationsPass,
@@ -151,6 +163,55 @@ class ExportNamedComputationsPass
     ModuleOp moduleOp = getOperation();
     SymbolTable symbolTable(moduleOp);
     mlir::Block& moduleBlock = moduleOp.getRegion().front();
+
+    if (dedupFunctionsFully) {
+      llvm::SmallDenseMap<ComputationKey, int64_t> funcCallSiteCounts;
+      llvm::SmallDenseMap<std::pair<StringRef, ManualAxesAttr>,
+                          std::pair<NamedComputationOp, int64_t>>
+          funcToNamedComputations;
+      moduleOp.walk([&](NamedComputationOp namedComputationOp) {
+        ManualAxesAttr manualAxesAttr =
+            namedComputationOp->getAttrOfType<ManualAxesAttr>(kManualAxes);
+        const int64_t callSiteCount = updateCallSiteCount(
+            funcCallSiteCounts,
+            std::make_tuple(namedComputationOp.getName(),
+                            namedComputationOp.getInShardings().value_or(
+                                TensorShardingPerValueAttr()),
+                            namedComputationOp.getOutShardings().value_or(
+                                TensorShardingPerValueAttr()),
+                            manualAxesAttr));
+        auto key = std::pair(namedComputationOp.getName(), manualAxesAttr);
+        if (auto it = funcToNamedComputations.find(key);
+            it != funcToNamedComputations.end()) {
+          auto& [cachedNamedComputationOp, cachedCallSiteCount] = it->second;
+          if (callSiteCount > cachedCallSiteCount) {
+            cachedNamedComputationOp = namedComputationOp;
+            cachedCallSiteCount = callSiteCount;
+          }
+          return;
+        }
+        funcToNamedComputations.try_emplace(key, namedComputationOp,
+                                            callSiteCount);
+      });
+
+      for (auto& [_, namedComputationCountPair] : funcToNamedComputations) {
+        auto& [namedComputationOp, callSiteCount] = namedComputationCountPair;
+        mlir::IRRewriter rewriter(namedComputationOp);
+        rewriter.setInsertionPointToEnd(&moduleBlock);
+        ManualAxesAttr manualAxesAttr =
+            namedComputationOp->getAttrOfType<ManualAxesAttr>(kManualAxes);
+        StringAttr funcSymName =
+            createFuncOp(namedComputationOp, rewriter, symbolTable,
+                         namedComputationOp.getInShardings(),
+                         namedComputationOp.getOutShardings(), manualAxesAttr);
+        funcCache.try_emplace(
+            std::make_tuple(namedComputationOp.getName(),
+                            TensorShardingPerValueAttr(),
+                            TensorShardingPerValueAttr(), manualAxesAttr),
+            funcSymName);
+      }
+    }
+
     // NOTE: The walk needs to be in post order, which is the default order, to
     // account for nested named computations.
     moduleOp.walk([&](NamedComputationOp namedComputationOp) {
