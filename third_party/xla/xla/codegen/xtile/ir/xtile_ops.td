@@ -25,11 +25,45 @@ include "mlir/IR/AttrTypeBase.td"
 include "mlir/IR/OpAsmInterface.td"
 include "mlir/IR/OpBase.td"
 include "mlir/IR/SymbolInterfaces.td"
+include "mlir/IR/Interfaces.td"
 include "xla/codegen/xtile/ir/xtile_dialect.td"
 include "xla/codegen/xtile/ir/xtile_attrs.td"
 
 class XTile_Op<string mnemonic, list<Trait> traits = []> :
       Op<XTileDialect, mnemonic, traits> {
+}
+
+def TiledBufferInterface : OpInterface<"TiledBufferInterface"> {
+  let description = [{
+
+  }];
+
+  let cppNamespace = "::xla::xtile";
+
+  let extraClassDeclaration = [{
+    // Returns the set of unit dimensions that are removed from the tile
+    // dimensions.
+    llvm::SmallDenseSet<unsigned> getReducedDimensions();
+  }];
+
+  let extraTraitClassDeclaration = [{
+    llvm::SmallDenseSet<unsigned> getReducedDimensions() {
+      return static_cast<TiledBufferInterface>($_op).getReducedDimensions();
+    }
+  }];
+
+  let methods = [
+    InterfaceMethod<"Get the memref value of the buffer.",
+                    "mlir::TypedValue<mlir::MemRefType>", "getBuffer">,
+    InterfaceMethod<"Get the tensor value of the tile.",
+                    "mlir::TypedValue<mlir::RankedTensorType>", "getTile">,
+    InterfaceMethod<"Get the offsets into the buffer.",
+                    "mlir::ValueRange", "getOffsets">,
+    InterfaceMethod<"Get the full unreduced tile shape.",
+                    "llvm::ArrayRef<int64_t>", "getFullTileShape">,
+    InterfaceMethod<"Get the stride lengths of the buffer.",
+                    "llvm::ArrayRef<int64_t>", "getStrides">,
+  ];
 }
 
 
@@ -111,7 +145,7 @@ def EntryFuncReturnOp : XTile_Op<"return", [Pure, HasParent<"EntryFuncOp">,
   let assemblyFormat = "attr-dict";
 }
 
-def ExtractTileOp : XTile_Op<"extract"> {
+def ExtractTileOp : XTile_Op<"extract", [TiledBufferInterface]> {
   let summary = "Extract a tile from a memref.";
   let description = [{
   }];
@@ -132,13 +166,14 @@ def ExtractTileOp : XTile_Op<"extract"> {
   }];
 
   let extraClassDeclaration = [{
-    llvm::SmallDenseSet<unsigned> getReducedDimensions();
+    mlir::TypedValue<mlir::MemRefType> getBuffer();
+    mlir::TypedValue<mlir::RankedTensorType> getTile();
   }];
 
   let hasVerifier = 1;
 }
 
-def InsertTileOp : XTile_Op<"insert"> {
+def InsertTileOp : XTile_Op<"insert", [TiledBufferInterface]> {
   let summary = "Insert a tile into a memref.";
   let description = [{
   }];
@@ -159,7 +194,8 @@ def InsertTileOp : XTile_Op<"insert"> {
   }];
 
   let extraClassDeclaration = [{
-    llvm::SmallDenseSet<unsigned> getReducedDimensions();
+    mlir::TypedValue<mlir::MemRefType> getBuffer();
+    mlir::TypedValue<mlir::RankedTensorType> getTile();
   }];
 
   let hasVerifier = 1;

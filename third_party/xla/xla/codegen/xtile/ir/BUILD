@@ -49,6 +49,8 @@ gentbl_cc_library(
     compatible_with = get_compatible_with_portable(),
     strip_include_prefix = ".",
     tbl_outs = {
+        "xtile_interface_ops.h.inc": ["-gen-op-interface-decls"],
+        "xtile_interface_ops.cc.inc": ["-gen-op-interface-defs"],
         "xtile_ops.h.inc": ["-gen-op-decls"],
         "xtile_ops.cc.inc": ["-gen-op-defs"],
     },

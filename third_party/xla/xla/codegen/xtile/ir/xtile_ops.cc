@@ -40,9 +40,54 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"
 
 #define GET_OP_CLASSES
+#include "xla/codegen/xtile/ir/xtile_interface_ops.cc.inc"
 #include "xla/codegen/xtile/ir/xtile_ops.cc.inc"
 
 namespace xla::xtile {
+
+llvm::SmallDenseSet<unsigned> TiledBufferInterface::getReducedDimensions() {
+  std::optional<llvm::SmallDenseSet<unsigned>> mask =
+      mlir::computeRankReductionMask(getFullTileShape(),
+                                     getTile().getType().getShape());
+  // This should have already been verified.
+  CHECK(mask.has_value());
+  return *mask;
+}
+
+static mlir::LogicalResult VerifyBufferOp(TiledBufferInterface op) {
+  mlir::MemRefType buffer_type = op.getBuffer().getType();
+  int64_t buffer_rank = buffer_type.getRank();
+
+  if (op.getFullTileShape().size() != buffer_rank) {
+    return op.emitOpError()
+           << "full tile shape size: " << op.getFullTileShape().size()
+           << " does not match rank of buffer: " << buffer_rank;
+  }
+
+  size_t offset_count = op.getOffsets().size();
+  if (offset_count != buffer_rank) {
+    return op.emitOpError() << "expected " << buffer_rank
+                            << " offset operands, got " << offset_count;
+  }
+
+  mlir::RankedTensorType tile_type = op.getTile().getType();
+  if (!mlir::computeRankReductionMask(op.getFullTileShape(),
+                                      tile_type.getShape())) {
+    return op.emitOpError() << "full tile shape: [" << op.getFullTileShape()
+                            << "] does not reduce to tile shape: ["
+                            << tile_type.getShape() << "]";
+  }
+
+  mlir::Type buffer_element_type = buffer_type.getElementType();
+  mlir::Type tile_element_type = tile_type.getElementType();
+  if (buffer_element_type != tile_element_type) {
+    return op.emitOpError()
+           << "buffer element type: " << buffer_element_type
+           << " does not match element type of tile: " << tile_element_type;
+  }
+
+  return mlir::success();
+}
 
 // This is lifted from the func::FuncOp builder, modified to make the tile
 // index implicit.
@@ -130,94 +175,25 @@ mlir::LogicalResult EntryFuncOp::verify() {
   return mlir::success();
 }
 
-llvm::SmallDenseSet<unsigned> ExtractTileOp::getReducedDimensions() {
-  std::optional<llvm::SmallDenseSet<unsigned>> mask =
-      mlir::computeRankReductionMask(getFullTileShape(), getType().getShape());
-  // This should have already been verified.
-  CHECK(mask.has_value());
-  return *mask;
+mlir::TypedValue<mlir::MemRefType> ExtractTileOp::getBuffer() {
+  return getSource();
+}
+
+mlir::TypedValue<mlir::RankedTensorType> ExtractTileOp::getTile() {
+  return getResult();
 }
 
 // This is the function ODS expects you to implement
-mlir::LogicalResult ExtractTileOp::verify() {
-  mlir::MemRefType source_type = getSource().getType();
-  int64_t source_rank = source_type.getRank();
-  mlir::Type source_element_type = source_type.getElementType();
+mlir::LogicalResult ExtractTileOp::verify() { return VerifyBufferOp(*this); }
 
-  if (getFullTileShape().size() != source_rank) {
-    return emitOpError() << "full tile shape size: "
-                         << getFullTileShape().size()
-                         << " does not match rank of source: " << source_rank;
-  }
-
-  size_t offset_count = getOffsets().size();
-  if (offset_count != source_rank) {
-    return emitOpError() << "expected " << source_rank
-                         << " offset operands, got " << offset_count;
-  }
-
-  mlir::RankedTensorType result_type = getType();
-  if (!mlir::computeRankReductionMask(getFullTileShape(),
-                                      result_type.getShape())) {
-    return emitOpError() << "full tile shape: [" << getFullTileShape()
-                         << "] does not reduce to result shape: ["
-                         << result_type.getShape() << "]";
-  }
-
-  if (result_type.getElementType() != source_element_type) {
-    return emitOpError() << "result element type: "
-                         << result_type.getElementType()
-                         << " does not match element type of source: "
-                         << source_element_type;
-  }
-
-  return mlir::success();
+mlir::TypedValue<mlir::MemRefType> InsertTileOp::getBuffer() {
+  return getDestination();
 }
 
-llvm::SmallDenseSet<unsigned> InsertTileOp::getReducedDimensions() {
-  std::optional<llvm::SmallDenseSet<unsigned>> mask =
-      mlir::computeRankReductionMask(getFullTileShape(),
-                                     getSource().getType().getShape());
-  // This should have already been verified.
-  CHECK(mask.has_value());
-  return *mask;
+mlir::TypedValue<mlir::RankedTensorType> InsertTileOp::getTile() {
+  return getSource();
 }
 
-mlir::LogicalResult InsertTileOp::verify() {
-  mlir::MemRefType destination_type = getDestination().getType();
-  int64_t destination_rank = destination_type.getRank();
-
-  if (getFullTileShape().size() != destination_rank) {
-    return emitOpError() << "full tile shape size: "
-                         << getFullTileShape().size()
-                         << " does not match rank of destination: "
-                         << destination_rank;
-  }
-
-  size_t offset_count = getOffsets().size();
-  if (offset_count != destination_rank) {
-    return emitOpError() << "expected " << destination_rank
-                         << " offset operands, got " << offset_count;
-  }
-
-  mlir::RankedTensorType source_type = getSource().getType();
-  if (!mlir::computeRankReductionMask(getFullTileShape(),
-                                      source_type.getShape())) {
-    return emitOpError() << "full tile shape: [" << getFullTileShape()
-                         << "] does not reduce to source shape: ["
-                         << source_type.getShape() << "]";
-  }
-
-  mlir::Type destination_element_type = destination_type.getElementType();
-  mlir::Type source_element_type = source_type.getElementType();
-  if (destination_element_type != source_element_type) {
-    return emitOpError() << "destination element type: "
-                         << destination_element_type
-                         << " does not match element type of source: "
-                         << source_element_type;
-  }
-
-  return mlir::success();
-}
+mlir::LogicalResult InsertTileOp::verify() { return VerifyBufferOp(*this); }
 
 }  // namespace xla::xtile
