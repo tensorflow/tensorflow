@@ -196,8 +196,12 @@ class BatchTest(test_base.DatasetTestBase, parameterized.TestCase):
         dataset,
         expected_error=(
             errors.InvalidArgumentError,
-            r"Cannot batch tensors with different shapes in component 0. First "
-            r"element had shape \[3\] and element 2 had shape \[4\]."))
+            (
+                r"Cannot batch tensors with different shapes in component 0. "
+                r"First element had shape \[3\] and element 2 had shape \[4\]."
+            ),
+        ),
+    )
 
   @combinations.generate(test_base.default_test_combinations())
   def testRagged(self):
