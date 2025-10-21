@@ -56,7 +56,9 @@ limitations under the License.
 #include "xla/autotuning.pb.h"
 #include "xla/backends/gpu/codegen/triton/dot_algorithms.h"
 #include "xla/backends/gpu/codegen/triton/emitter_helpers.h"
+#include "xla/backends/gpu/codegen/triton/ir/triton_xla_ops.h"
 #include "xla/codegen/emitter_loc_op_builder.h"
+#include "xla/codegen/xtile/ir/xtile_ops.h"
 #include "xla/comparison_util.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -1063,8 +1065,21 @@ class MatMulEmitterHelper {
   // bases: The base pointers of each argument.
   absl::StatusOr<Value> EmitTensorPointer(
       EmitterLocOpBuilder b, const HloInstruction* hlo, const Side& side,
-      const ValueRange& bases, Value pid_k,
+      const ValueRange& args, Value pid_k,
       std::vector<int32_t>& boundary_checks) {
+    llvm::SmallVector<mlir::Value> bases;
+    bases.reserve(hlo->operand_count());
+    for (mlir::Value arg : args) {
+      if (mlir::MemRefType memref_type =
+              mlir::dyn_cast<mlir::MemRefType>(arg.getType())) {
+        auto ptr_type =
+            triton::GetGlobalPointerType(memref_type.getElementType());
+        bases.push_back(b.create<mt::xla::MemrefToPtrOp>(ptr_type, arg));
+      } else {
+        bases.push_back(arg);
+      }
+    }
+
     Value base;
 
     // Concatenations of parameters are handled during generation of block
@@ -1107,6 +1122,7 @@ class MatMulEmitterHelper {
       // Load of a scalar.
       return base;
     }
+
     auto tensor_ptr = mlir::cast<Value>(
         b.create<mt::MakeTensorPtrOp>(
              base, tensor_params.bounds, tensor_params.strides,
@@ -1876,8 +1892,7 @@ absl::Status EmitMatMul(EmitterLocOpBuilder& b,
                         absl::string_view libdevice_path,
                         const se::DeviceDescription& device_info,
                         const HloFusionInstruction* fusion,
-                        mlir::FunctionOpInterface fn,
-                        const BlockLevelParameters&) {
+                        xtile::EntryFuncOp fn, const BlockLevelParameters&) {
   TF_ASSIGN_OR_RETURN(TritonGemmConfig config, GetTritonGemmConfig(fusion));
   TF_ASSIGN_OR_RETURN(auto analysis,
                       TritonFusionAnalysis::Execute(
@@ -1989,7 +2004,8 @@ absl::Status EmitMatMul(EmitterLocOpBuilder& b,
 
   // Emit tensor store operations for all outputs.
   for (int i = 0;
-       i < fn.getNumArguments() - dot_instr->parent()->num_parameters(); ++i) {
+       i < fn.getBufferArgs().size() - dot_instr->parent()->num_parameters();
+       ++i) {
     const HloInstruction* producer =
         root->shape().IsTuple() ? root->operand(i) : root;
     std::vector<int32_t> boundary_checks;

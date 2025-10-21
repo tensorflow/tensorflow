@@ -231,9 +231,9 @@ absl::StatusOr<stream_executor::gpu::TmaMetadata> ExtractTmaMetadata(
 absl::StatusOr<stream_executor::ThreadDim> ExtractThreadDims(
     mlir::ModuleOp triton_module, mlir::LLVM::LLVMFuncOp func_op);
 
-// Returns the triton pointer type that corresponds to the given memref type,
-// i.e. has the same element type and address space.
-::mlir::triton::PointerType GetPointerType(mlir::MemRefType memref_type);
+// Returns the triton pointer type with global memory space and the given
+// element type.
+::mlir::triton::PointerType GetGlobalPointerType(mlir::Type element_type);
 
 }  // namespace xla::gpu::triton
 

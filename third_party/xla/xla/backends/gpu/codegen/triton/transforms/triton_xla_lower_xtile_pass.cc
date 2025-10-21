@@ -49,6 +49,7 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/triton/ir/triton_xla_ops.h"
 #include "xla/codegen/xtile/ir/xtile_ops.h"
 #include "triton/Dialect/Triton/IR/Dialect.h"
+#include "triton/Dialect/Triton/IR/Types.h"
 
 namespace mlir::triton::xla {
 
@@ -67,7 +68,8 @@ llvm::SmallVector<mlir::Type> GetPtrArgTypes(mlir::ValueRange args) {
   arg_types.reserve(args.size());
   for (auto arg : args) {
     mlir::MemRefType memref_type = mlir::cast<mlir::MemRefType>(arg.getType());
-    arg_types.push_back(::xla::gpu::triton::GetPointerType(memref_type));
+    arg_types.push_back(
+        ::xla::gpu::triton::GetGlobalPointerType(memref_type.getElementType()));
   }
   return arg_types;
 }
@@ -124,9 +126,9 @@ absl::StatusOr<llvm::SmallVector<int64_t>> getPermutationMinorToMajor(
 
 MemrefToPtrOp CreateMemrefToPtr(mlir::OpBuilder& builder,
                                 mlir::TypedValue<mlir::MemRefType> memref) {
-  mlir::MemRefType memref_type = memref.getType();
-  return builder.create<MemrefToPtrOp>(
-      memref.getLoc(), ::xla::gpu::triton::GetPointerType(memref_type), memref);
+  PointerType ptr_type = ::xla::gpu::triton::GetGlobalPointerType(
+      memref.getType().getElementType());
+  return builder.create<MemrefToPtrOp>(memref.getLoc(), ptr_type, memref);
 }
 
 // Rewrite a xtile entry to a func.func with the same body, but with memref
