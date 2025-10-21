@@ -384,8 +384,8 @@ static absl::Status RegisterHandler(absl::string_view name,
   // Check the API versions.
   TF_ASSIGN_OR_RETURN(XLA_FFI_Metadata metadata, GetMetadata(bundle.execute));
   const XLA_FFI_Api_Version& api_version = metadata.api_version;
-  if (api_version.major_version != XLA_FFI_API_MAJOR ||
-      api_version.minor_version != XLA_FFI_API_MINOR) {
+  if (std::make_pair(api_version.major_version, api_version.minor_version) >
+      std::make_pair(XLA_FFI_API_MAJOR, XLA_FFI_API_MINOR)) {
     return InvalidArgument(
         "FFI handler registration for %s on platform %s (canonical %s) failed "
         "because the handler's API version (%d.%d) is incompatible with the "
