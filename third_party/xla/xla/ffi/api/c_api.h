@@ -61,6 +61,15 @@ XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_Extension_Base, next);
 // Version
 //===----------------------------------------------------------------------===//
 
+// XLA FFI provides a stable binary API for registering custom calls with
+// XLA runtime. XLA runtime guarantees that old API version are supported for
+// at least 12 months, after that point FFI library has to be recompiled with
+// latest XLA FFI headers to support new features. We don't plan to break ABI
+// compatibility, unless it's absolutely necessary to enable new features that
+// can't be implemented in a backward compatible way.
+//
+// The range of supported API versions is defined in `xla/ffi/ffi_api.cc`.
+
 // Incremented when an ABI-incompatible change is made to the interface.
 //
 // Major changes include:

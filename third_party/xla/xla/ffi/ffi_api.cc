@@ -97,6 +97,25 @@ struct XLA_FFI_ExecutionContext {
 
 namespace xla::ffi {
 
+// The minimum XLA:FFI API version that XLA runtime supports.
+static constexpr std::pair<int32_t, int32_t> kMinSupportedApiVersion = {
+    /*major=*/0,
+    /*minor=*/1,
+};
+
+// The maximum XLA:FFI API version that XLA runtime supports.
+static constexpr std::pair<int32_t, int32_t> kMaxSupportedApiVersion = {
+    XLA_FFI_API_MAJOR,
+    XLA_FFI_API_MINOR,
+};
+
+static bool IsSupportedApiVersion(const XLA_FFI_Api_Version& api_version) {
+  std::pair<int32_t, int32_t> version = {api_version.major_version,
+                                         api_version.minor_version};
+  return version >= kMinSupportedApiVersion &&
+         version <= kMaxSupportedApiVersion;
+}
+
 bool IsCommandBufferCompatible(XLA_FFI_Handler_Traits traits) {
   return traits & XLA_FFI_HANDLER_TRAITS_COMMAND_BUFFER_COMPATIBLE;
 }
@@ -381,17 +400,18 @@ static absl::Status RegisterHandler(absl::string_view name,
         name, platform);
   }
 
-  // Check the API versions.
+  // Check the API version that FFI handler was compiled with is supported.
   TF_ASSIGN_OR_RETURN(XLA_FFI_Metadata metadata, GetMetadata(bundle.execute));
-  const XLA_FFI_Api_Version& api_version = metadata.api_version;
-  if (std::make_pair(api_version.major_version, api_version.minor_version) >
-      std::make_pair(XLA_FFI_API_MAJOR, XLA_FFI_API_MINOR)) {
+  if (!IsSupportedApiVersion(metadata.api_version)) {
     return InvalidArgument(
-        "FFI handler registration for %s on platform %s (canonical %s) failed "
-        "because the handler's API version (%d.%d) is incompatible with the "
-        "framework's API version (%d.%d)",
-        name, platform, canonical_platform, api_version.major_version,
-        api_version.minor_version, XLA_FFI_API_MAJOR, XLA_FFI_API_MINOR);
+        "XLA FFI handler registration for %s on platform %s (canonical %s) "
+        "failed because the handler's API version (%d.%d) is incompatible with "
+        "the framework's API version (%d.%d). Minimum supported API version is "
+        "(%d.%d).",
+        name, platform, canonical_platform, metadata.api_version.major_version,
+        metadata.api_version.minor_version, kMaxSupportedApiVersion.first,
+        kMaxSupportedApiVersion.second, kMinSupportedApiVersion.first,
+        kMinSupportedApiVersion.second);
   }
 
   // Incorporate handler traits.
