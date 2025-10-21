@@ -2562,9 +2562,9 @@ TEST_F(GetAliveTasksTest, SuccessfulGetAliveTasks) {
                   const std::vector<IncarnationId>& incarnations) {
     EXPECT_OK(status);
     EXPECT_THAT(alive_tasks, UnorderedElementsAreArray(GetTaskMatchers()));
-    EXPECT_EQ(incarnations,
-              (std::vector<IncarnationId>{IncarnationId(0), IncarnationId(1),
-                                          IncarnationId(2)}));
+    EXPECT_THAT(incarnations,
+                UnorderedElementsAre(IncarnationId(0), IncarnationId(1),
+                                     IncarnationId(2)));
     finished.DecrementCount();
   };
   GetCoordinationService()->GetAliveTasksAsync(GetTask(0), GetTasks(), done);
@@ -2583,8 +2583,8 @@ TEST_F(GetAliveTasksTest, FailedTaskBeforeCallingGetAliveTasks) {
     EXPECT_OK(status);
     EXPECT_THAT(alive_tasks, UnorderedElementsAre(EqualsProto(GetTask(0)),
                                                   EqualsProto(GetTask(1))));
-    EXPECT_EQ(incarnations,
-              (std::vector<IncarnationId>{IncarnationId(0), IncarnationId(1)}));
+    EXPECT_THAT(incarnations,
+                UnorderedElementsAre(IncarnationId(0), IncarnationId(1)));
     finished.DecrementCount();
   };
   ASSERT_OK(GetCoordinationService()->ReportTaskError(
@@ -2605,8 +2605,8 @@ TEST_F(GetAliveTasksTest, FailedTaskAfterCallingGetAliveTasks) {
     EXPECT_OK(status);
     EXPECT_THAT(alive_tasks, UnorderedElementsAre(EqualsProto(GetTask(0)),
                                                   EqualsProto(GetTask(1))));
-    EXPECT_EQ(incarnations,
-              (std::vector<IncarnationId>{IncarnationId(0), IncarnationId(1)}));
+    EXPECT_THAT(incarnations,
+                UnorderedElementsAre(IncarnationId(0), IncarnationId(1)));
     finished.DecrementCount();
   };
   GetCoordinationService()->GetAliveTasksAsync(GetTask(0), GetTasks(), done);
@@ -2630,8 +2630,8 @@ TEST_F(GetAliveTasksTest, ConcurrentGetAliveTasks) {
     EXPECT_OK(status);
     EXPECT_THAT(alive_tasks, UnorderedElementsAre(EqualsProto(tasks_01[0]),
                                                   EqualsProto(tasks_01[1])));
-    EXPECT_EQ(incarnations,
-              (std::vector<IncarnationId>{IncarnationId(0), IncarnationId(1)}));
+    EXPECT_THAT(incarnations,
+                UnorderedElementsAre(IncarnationId(0), IncarnationId(1)));
     finished_01.DecrementCount();
   };
 
@@ -2644,8 +2644,8 @@ TEST_F(GetAliveTasksTest, ConcurrentGetAliveTasks) {
     EXPECT_OK(status);
     EXPECT_THAT(alive_tasks, UnorderedElementsAre(EqualsProto(tasks_12[0]),
                                                   EqualsProto(tasks_12[1])));
-    EXPECT_EQ(incarnations,
-              (std::vector<IncarnationId>{IncarnationId(1), IncarnationId(2)}));
+    EXPECT_THAT(incarnations,
+                UnorderedElementsAre(IncarnationId(1), IncarnationId(2)));
     finished_12.DecrementCount();
   };
 
