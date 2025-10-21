@@ -494,7 +494,7 @@ typedef XLA_FFI_Error* XLA_FFI_Handler_Register(
 
 #define XLA_FFI_UNKNOWN_TYPE_ID XLA_FFI_TypeId{0}
 
-struct XLA_FFI_TypeId_Register_Args {
+struct XLA_FFI_Type_Register_Args {
   size_t struct_size;
   XLA_FFI_Extension_Base* extension_start;
 
@@ -503,14 +503,13 @@ struct XLA_FFI_TypeId_Register_Args {
   XLA_FFI_TypeInfo* type_info;
 };
 
-XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_TypeId_Register_Args, type_id);
+XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_Type_Register_Args, type_id);
 
 // Registers user type `name` with XLA. If type id is `XLA_FFI_UNKNOWN_TYPE_ID`,
 // XLA will assign a unique type id and return it in `type_id` out argument,
 // otherwise XLA will verify that type id is unique and matches the type id of
 // the type registered with the same `name` earlier.
-typedef XLA_FFI_Error* XLA_FFI_TypeId_Register(
-    XLA_FFI_TypeId_Register_Args* args);
+typedef XLA_FFI_Error* XLA_FFI_Type_Register(XLA_FFI_Type_Register_Args* args);
 
 //===----------------------------------------------------------------------===//
 // ExecutionContext
@@ -754,7 +753,7 @@ struct XLA_FFI_Api {
   _XLA_FFI_API_STRUCT_FIELD(XLA_FFI_Error_Destroy);
   _XLA_FFI_API_STRUCT_FIELD(XLA_FFI_Handler_Register);
   _XLA_FFI_API_STRUCT_FIELD(XLA_FFI_Stream_Get);
-  _XLA_FFI_API_STRUCT_FIELD(XLA_FFI_TypeId_Register);
+  _XLA_FFI_API_STRUCT_FIELD(XLA_FFI_Type_Register);
   _XLA_FFI_API_STRUCT_FIELD(XLA_FFI_ExecutionContext_Get);
   _XLA_FFI_API_STRUCT_FIELD(XLA_FFI_State_Set);
   _XLA_FFI_API_STRUCT_FIELD(XLA_FFI_State_Get);
