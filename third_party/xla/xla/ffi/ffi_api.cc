@@ -672,8 +672,7 @@ static XLA_FFI_Error* XLA_FFI_DeviceOrdinal_Get(
   return nullptr;
 }
 
-static XLA_FFI_Error* XLA_FFI_TypeId_Register(
-    XLA_FFI_TypeId_Register_Args* args) {
+static XLA_FFI_Error* XLA_FFI_Type_Register(XLA_FFI_Type_Register_Args* args) {
   XLA_FFI_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
       "XLA_FFI_ExecutionContext_Get_Args",
       XLA_FFI_ExecutionContext_Get_Args_STRUCT_SIZE, args->struct_size));
@@ -998,7 +997,7 @@ static XLA_FFI_Api api = {
     XLA_FFI_Error_Destroy,
     XLA_FFI_Handler_Register,
     XLA_FFI_Stream_Get,
-    XLA_FFI_TypeId_Register,
+    XLA_FFI_Type_Register,
     XLA_FFI_ExecutionContext_Get,
     XLA_FFI_State_Set,
     XLA_FFI_State_Get,
