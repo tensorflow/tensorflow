@@ -406,10 +406,10 @@ void AllocateAndParseFlags() {
             &enable_tpu_variable_runtime_reformatting_pass,
             "Enables TPUVariableRuntimeReformatting pass for MLIR-Based "
             "TensorFlow Compiler Bridge. This enables weight update sharding "
-            "and creates TPUReshardVariables ops.")}),
-  Flag("tf_serialize_mlir_to_compressed_bytecode",
-       &enable_serialize_mlir_to_compressed_bytecode,
-       "If true, serialize MLIR to compressed bytecode.");
+            "and creates TPUReshardVariables ops."),
+       Flag("tf_serialize_mlir_to_compressed_bytecode",
+            &enable_serialize_mlir_to_compressed_bytecode,
+            "If true, serialize MLIR to compressed bytecode.")});
 
   AppendMarkForCompilationPassFlagsInternal(flag_list);
   xla::ParseFlagsFromEnvAndDieIfUnknown("TF_XLA_FLAGS", *flag_list);
