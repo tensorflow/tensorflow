@@ -20,7 +20,7 @@ package_group(
         "//third_party/gxlang/...",
         "//third_party/openxla_pjrt_plugin/...",
         "//third_party/py/jax/...",
-        "//third_party/torch_tpu/...",
+        "//third_party/py/torch_tpu/...",
     ],
 )
 

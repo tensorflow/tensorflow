@@ -28,7 +28,7 @@ package_group(
         "//third_party/gxlang/...",
         "//third_party/openxla_pjrt_plugin/...",
         "//third_party/py/jax/...",
-        "//third_party/torch_tpu/...",
+        "//third_party/py/torch_tpu/...",
     ],
 )
 
@@ -101,7 +101,7 @@ cc_library(
     srcs = ["abstract_tracked_device_buffer.cc"],
     hdrs = ["abstract_tracked_device_buffer.h"],
     visibility = [
-        "//third_party/torch_tpu/pjrt:__pkg__",
+        "//third_party/py/torch_tpu/pjrt:__pkg__",
         "//xla:internal",
     ],
     deps = [
@@ -136,7 +136,7 @@ cc_library(
     ],
     visibility = internal_visibility([
         ":friends",
-        "//third_party/torch_tpu:__pkg__",
+        "//third_party/py/torch_tpu:__pkg__",
     ]),
     deps = [
         ":abstract_tracked_device_buffer",
