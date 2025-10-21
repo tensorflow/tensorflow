@@ -1936,21 +1936,15 @@ tf_cc_tests(
 )
 
 tf_cc_tests(
-    name = "cell_reader_test",
+    name = "test_utils_test",
     size = "small",
     srcs = [
-        "//tensorflow/core/lib/monitoring:cell_reader_test.cc",
         "//tensorflow/core/lib/monitoring:test_utils_test.cc",
     ],
     deps = [
         ":protos_all_cc",
         ":test",
         ":test_main",
-        "//tensorflow/core/lib/monitoring:cell_reader",
-        "//tensorflow/core/lib/monitoring:counter",
-        "//tensorflow/core/lib/monitoring:gauge",
-        "//tensorflow/core/lib/monitoring:percentile_sampler",
-        "//tensorflow/core/lib/monitoring:sampler",
         "//tensorflow/core/lib/monitoring:test_utils",
         "//tensorflow/core/lib/monitoring:types",
         "//tensorflow/core/platform:errors",

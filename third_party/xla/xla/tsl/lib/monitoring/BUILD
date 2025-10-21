@@ -1,6 +1,10 @@
 load("//xla/tsl:tsl.bzl", "internal_visibility")
 load("//xla/tsl:tsl.default.bzl", "filegroup")
 load(
+    "//xla/tsl/platform:build_config.bzl",
+    "tsl_cc_test",
+)
+load(
     "//xla/tsl/platform:rules_cc.bzl",
     "cc_library",
 )
@@ -177,6 +181,22 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
+    ],
+)
+
+tsl_cc_test(
+    name = "cell_reader_test",
+    size = "small",
+    srcs = ["cell_reader_test.cc"],
+    deps = [
+        ":cell_reader",
+        ":counter",
+        ":gauge",
+        ":percentile_sampler",
+        ":sampler",
+        ":test_utils",
+        ":types",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
