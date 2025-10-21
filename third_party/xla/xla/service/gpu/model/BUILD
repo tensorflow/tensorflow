@@ -906,7 +906,9 @@ xla_cc_test(
     deps = [
         ":sol_gpu_cost_model_stats_collection",
         "//xla:shape_util",
+        "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/service:hlo_cost_analysis",
         "//xla/service/gpu:backend_configs_cc",
         "//xla/service/gpu:gpu_device_info_for_tests",
         "//xla/service/gpu/model/experimental:symbolic_expr",
