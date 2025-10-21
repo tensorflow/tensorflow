@@ -98,6 +98,30 @@ class XtileLoweringTest(absltest.TestCase):
         lambda arg: arg.transpose(),
     )
 
+  def test_strided(self):
+    ir = """
+      module @tiled_slice {
+        xtile.entry_func @tiled_slice(
+            %input: memref<64x64xf32>,
+            %output: memref<4x32xf32>,
+            %tile_id: index) attributes {xtile.tiling_info = #xtile.tiling_info<tile_count:1, tiles_per_workgroup:1>} {
+          %input_tile = xtile.extract %input[%tile_id, %tile_id][4, 32][21, 2] : memref<64x64xf32> -> tensor<4x32xf32>
+          xtile.insert %input_tile into %output[%tile_id, %tile_id][4, 32][1, 1] : tensor<4x32xf32> -> memref<4x32xf32>
+          xtile.return
+        }
+      }
+    """
+
+    compare_kernel(
+        ir,
+        "tiled_slice",
+        1,
+        [(64, 64)],
+        (4, 32),
+        np.float32,
+        lambda arg: arg[::21, ::2],
+    )
+
   def test_transpose(self):
     ir = """
       module @tiled_transpose {

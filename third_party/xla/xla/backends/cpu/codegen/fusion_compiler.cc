@@ -255,6 +255,7 @@ static void AddTiledLoweringPasses(mlir::OpPassManager& pm) {
   pm.addPass(mlir::createConvertVectorToLLVMPass());
 
   pm.addPass(mlir::createConvertComplexToStandardPass());
+  pm.addPass(mlir::memref::createExpandStridedMetadataPass());
 
   AddGenericLoweringPasses(pm);
 }
