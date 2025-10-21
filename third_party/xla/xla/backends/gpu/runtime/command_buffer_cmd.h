@@ -1298,7 +1298,7 @@ class DynamicSliceCopyFusionCmd : public CommandBufferCmd {
 
   bool force_update() override { return offsets_.depends_on_loop; }
 
-  bool support_loop_unroll() override { return false; }
+  bool support_loop_unroll() override { return true; }
 
   BufferUseVector buffers() const override;
 

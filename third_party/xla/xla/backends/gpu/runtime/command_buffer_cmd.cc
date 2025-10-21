@@ -2730,8 +2730,12 @@ DynamicSliceCopyFusionCmd::Record(const Thunk::ExecuteParams& execute_params,
       [&](const se::CommandBuffer::Command* command) {
         int64_t iteration_index = 0;
         if (offsets_.depends_on_loop) {
-          TF_ASSIGN_OR_RETURN(iteration_index,
-                              WhileThunk::CurrentLoopIteration());
+          if (WhileThunk::RunningWhileThunkLoop()) {
+            TF_ASSIGN_OR_RETURN(iteration_index,
+                                WhileThunk::CurrentLoopIteration());
+          } else {
+            iteration_index = record_params.unroll_iteration;
+          }
         }
         int64_t src_offset = offsets_.src_offsets[iteration_index];
         int64_t dst_offset = offsets_.dst_offsets[iteration_index];

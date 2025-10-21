@@ -576,6 +576,28 @@ TEST_P(CommandBufferTest, DynamicSliceCopyFusionCmd) {
 
   EXPECT_TRUE(
       RunAndCompareNoHloPasses(std::move(module), ErrorSpec{1e-3, 2e-3}));
+
+  if (!IsAtLeastCuda12900(GpuExecutor())) {
+    GTEST_SKIP() << "While loop unrolling is not supported for CUDA < 12.9";
+  }
+
+  debug_options.add_xla_gpu_enable_command_buffer(
+      DebugOptions::DYNAMIC_SLICE_COPY_FUSION);
+  debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::FUSION);
+  debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::CUBLAS);
+  debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::CUBLASLT);
+  debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::CUSTOM_CALL);
+  debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::CUDNN);
+  debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::COLLECTIVES);
+  debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::WHILE);
+  debug_options.set_xla_gpu_command_buffer_unroll_loops(true);
+  config.set_debug_options(debug_options);
+
+  TF_ASSERT_OK_AND_ASSIGN(auto unrolled_module,
+                          ParseAndReturnVerifiedModule(hlo_text, config));
+
+  EXPECT_TRUE(RunAndCompareNoHloPasses(std::move(unrolled_module),
+                                       ErrorSpec{1e-3, 2e-3}));
 }
 
 TEST_P(CommandBufferUnrollTest, WhileLoop) {

@@ -61,6 +61,8 @@ static std::list<RunningLoop>& RunningLoops() {
   return loops;
 }
 
+bool WhileThunk::RunningWhileThunkLoop() { return RunningLoops().size() > 0; }
+
 absl::StatusOr<int64_t> WhileThunk::CurrentLoopIteration(int64_t depth) {
   if (depth >= RunningLoops().size()) {
     return absl::InvalidArgumentError(absl::StrFormat(

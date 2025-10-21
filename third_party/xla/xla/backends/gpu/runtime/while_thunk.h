@@ -87,6 +87,7 @@ class WhileThunk : public Thunk {
   //
   // Implementation relies on thread local storage, be careful when call it from
   // code running on multiple threads.
+  static bool RunningWhileThunkLoop();
   static absl::StatusOr<int64_t> CurrentLoopIteration(int64_t depth = 0);
   static absl::StatusOr<int64_t> CurrentLoopIteration(
       const HloInstruction* while_instr);
