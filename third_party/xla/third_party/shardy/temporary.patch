@@ -1,55 +1,114 @@
+diff --git a/third_party/llvm/generated.patch b/third_party/llvm/generated.patch
+index 509398d..2856e5f 100644
+--- a/third_party/llvm/generated.patch
++++ b/third_party/llvm/generated.patch
+@@ -1 +1,34 @@
+ Auto generated patch. Do not edit or delete it, even if empty.
++diff -ruN --strip-trailing-cr a/mlir/test/Target/SPIRV/function-decorations-asserts.mlir b/mlir/test/Target/SPIRV/function-decorations-asserts.mlir
++--- a/mlir/test/Target/SPIRV/function-decorations-asserts.mlir
+++++ b/mlir/test/Target/SPIRV/function-decorations-asserts.mlir
++@@ -0,0 +1,20 @@
+++// REQUIRES: asserts
+++// RUN: mlir-translate --no-implicit-module --test-spirv-roundtrip --split-input-file --debug %s | FileCheck %s
+++
+++spirv.module Logical GLSL450 requires #spirv.vce<v1.0, [Shader, Linkage], []> {
+++    spirv.func @linkage_attr_test_kernel()  "DontInline"  attributes {}  {
+++        %uchar_0 = spirv.Constant 0 : i8
+++        %ushort_1 = spirv.Constant 1 : i16
+++        %uint_0 = spirv.Constant 0 : i32
+++        spirv.FunctionCall @outside.func.with.linkage(%uchar_0):(i8) -> ()
+++        spirv.Return
+++    }
+++    // CHECK: linkage_attributes = #spirv.linkage_attributes<linkage_name = "outside.func", linkage_type = <Import>>
+++    spirv.func @outside.func.with.linkage(%arg0 : i8) -> () "Pure" attributes {
+++      linkage_attributes=#spirv.linkage_attributes<
+++        linkage_name="outside.func",
+++        linkage_type=<Import>
+++      >
+++    }
+++    spirv.func @inside.func() -> () "Pure" attributes {} {spirv.Return}
+++}
++diff -ruN --strip-trailing-cr a/mlir/test/Target/SPIRV/function-decorations.mlir b/mlir/test/Target/SPIRV/function-decorations.mlir
++--- a/mlir/test/Target/SPIRV/function-decorations.mlir
+++++ b/mlir/test/Target/SPIRV/function-decorations.mlir
++@@ -1,5 +1,4 @@
++ // RUN: mlir-translate --no-implicit-module --test-spirv-roundtrip --split-input-file %s | FileCheck %s
++-// RUN: mlir-translate --no-implicit-module --test-spirv-roundtrip --split-input-file --debug %s | FileCheck %s
++ 
++ spirv.module Logical GLSL450 requires #spirv.vce<v1.0, [Shader, Linkage], []> {
++     spirv.func @linkage_attr_test_kernel()  "DontInline"  attributes {}  {
 diff --git a/third_party/llvm/workspace.bzl b/third_party/llvm/workspace.bzl
-index ba4c1a2..622428b 100644
+index 622428b..b1675f1 100644
 --- a/third_party/llvm/workspace.bzl
 +++ b/third_party/llvm/workspace.bzl
 @@ -4,8 +4,8 @@ load("//third_party:repo.bzl", "tf_http_archive")
  
  def repo(name):
      """Imports LLVM."""
--    LLVM_COMMIT = "bfee9db7857757e63b64fb4d411a264690ff711a"
--    LLVM_SHA256 = "b14cb659a35562d1fccee470d0bba41cf96363e1b576e113a3a795db9ad78e3e"
-+    LLVM_COMMIT = "d5ce81dc8143eed18a7342093b991a63b025e2d9"
-+    LLVM_SHA256 = "07efbd552b4539a0b52201cfe73767a4265720789facdfa0d73bfeeb78ea19d3"
+-    LLVM_COMMIT = "d5ce81dc8143eed18a7342093b991a63b025e2d9"
+-    LLVM_SHA256 = "07efbd552b4539a0b52201cfe73767a4265720789facdfa0d73bfeeb78ea19d3"
++    LLVM_COMMIT = "32de3b9ef9e7e8debc14416e968456ca13b48bea"
++    LLVM_SHA256 = "e048b05e1fb9366e224ea3c06f8473714114039bfad00e81db4ecb6409f23efa"
  
      tf_http_archive(
          name = name,
 diff --git a/third_party/stablehlo/temporary.patch b/third_party/stablehlo/temporary.patch
-index 8949936..473baf0 100755
+index f2e3e59..473baf0 100755
 --- a/third_party/stablehlo/temporary.patch
 +++ b/third_party/stablehlo/temporary.patch
-@@ -537,6 +537,17 @@ diff --ruN a/stablehlo/stablehlo/conversions/tosa/transforms/StablehloQuantLegal
-    // unary ops
-    patterns->addWithLabel<QuantizedStablehloOpConversion<stablehlo::AbsOp>>(
-        {"StablehloQuantAbsOp"}, context);
-+diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.cpp b/stablehlo/stablehlo/dialect/StablehloOps.cpp
-+--- stablehlo/stablehlo/dialect/StablehloOps.cpp
-++++ stablehlo/stablehlo/dialect/StablehloOps.cpp
-+@@ -3164,6 +3164,7 @@
-+ using mlir::hlo::printVariadicOperandWithAttribute;
-+ using mlir::hlo::printVariadicSameOperandsAndResultType;
-+ 
-++using mlir::stablehlo::TokenType;
-+ #define GET_OP_CLASSES
-+ #include "stablehlo/dialect/StablehloOps.cpp.inc"
-+ 
- diff --ruN a/stablehlo/stablehlo/integrations/c/VhloDialect.h b/stablehlo/stablehlo/integrations/c/VhloDialect.h
- --- stablehlo/stablehlo/integrations/c/VhloDialect.h
- +++ stablehlo/stablehlo/integrations/c/VhloDialect.h
-@@ -787,6 +798,17 @@ diff --ruN a/stablehlo/stablehlo/integrations/cpp/builder/StablehloBuilderTest.c
- +
-  }  // namespace stablehlo
-  }  // namespace mlir
-+diff --ruN a/stablehlo/stablehlo/reference/InterpreterOps.cpp b/stablehlo/stablehlo/reference/InterpreterOps.cpp
-+--- stablehlo/stablehlo/reference/InterpreterOps.cpp
-++++ stablehlo/stablehlo/reference/InterpreterOps.cpp
-+@@ -46,6 +46,7 @@
-+ #include "stablehlo/reference/ProcessGrid.h"
-+ #include "stablehlo/reference/Value.h"
-+ 
-++using mlir::stablehlo::TokenType;
-+ #define GET_OP_CLASSES
-+ #include "stablehlo/reference/InterpreterOps.cpp.inc"
-+ 
- diff --ruN a/stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_folder.mlir b/stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_folder.mlir
- --- stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_folder.mlir
- +++ stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_folder.mlir
+@@ -904,36 +904,6 @@ diff --ruN a/stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_simplific
+  // -----
+  
+  ////////
+-diff --ruN a/stablehlo/stablehlo/tests/transforms/stablehlo_refine_shapes.mlir b/stablehlo/stablehlo/tests/transforms/stablehlo_refine_shapes.mlir
+---- stablehlo/stablehlo/tests/transforms/stablehlo_refine_shapes.mlir
+-+++ stablehlo/stablehlo/tests/transforms/stablehlo_refine_shapes.mlir
+-@@ -752,7 +752,7 @@
+-     %2 = call @refine_call_callee(%arg0_different_i32, %1) : (tensor<i32>, tensor<?xf32>) -> tensor<?xf32>
+-     return %2 : tensor<?xf32>
+-   }
+--  // expected-error@+1{{'func.func' op refined with invompatible refinement keys}}
+-+  // expected-error@+1{{'func.func' op refined with incompatible refinement keys}}
+-   func.func @refine_call_callee(%arg0: tensor<i32>, %arg1: tensor<?xf32>) -> tensor<?xf32> {
+-     return %arg1 : tensor<?xf32>
+-   }
+-@@ -770,7 +770,7 @@
+-     %2 = call @refine_call_callee(%arg0_different, %1) : (tensor<i32>, tensor<?xf32>) -> tensor<?xf32>
+-     return %2 : tensor<?xf32>
+-   }
+--  // expected-error@+1{{'func.func' op refined with invompatible refinement keys}}
+-+  // expected-error@+1{{'func.func' op refined with incompatible refinement keys}}
+-   func.func @refine_call_callee(%arg0: tensor<i32>, %arg1: tensor<?xf32>) -> tensor<?xf32> {
+-     return %arg1 : tensor<?xf32>
+-   }
+-@@ -789,7 +789,7 @@
+-     %4 = call @refine_call_callee(%arg0_new, %3) : (tensor<i32>, tensor<?xf32>) -> tensor<?xf32>
+-     return %4 : tensor<?xf32>
+-   }
+--  // expected-error@+1{{'func.func' op refined with invompatible refinement keys}}
+-+  // expected-error@+1{{'func.func' op refined with incompatible refinement keys}}
+-   func.func @refine_call_callee(%arg0: tensor<i32>, %arg1: tensor<?xf32>) -> tensor<?xf32> {
+-     return %arg1 : tensor<?xf32>
+-   }
+ diff --ruN a/stablehlo/stablehlo/transforms/ChloLegalizeToStablehlo.cpp b/stablehlo/stablehlo/transforms/ChloLegalizeToStablehlo.cpp
+ --- stablehlo/stablehlo/transforms/ChloLegalizeToStablehlo.cpp
+ +++ stablehlo/stablehlo/transforms/ChloLegalizeToStablehlo.cpp
+@@ -1461,18 +1431,6 @@ diff --ruN a/stablehlo/stablehlo/transforms/ChloLegalizeToStablehlo.cpp b/stable
+    populateChloBroadcastingPatterns(context, patterns);
+    populateChloDecompositionPatterns(context, patterns);
+  }
+-diff --ruN a/stablehlo/stablehlo/transforms/StablehloRefineShapes.cpp b/stablehlo/stablehlo/transforms/StablehloRefineShapes.cpp
+---- stablehlo/stablehlo/transforms/StablehloRefineShapes.cpp
+-+++ stablehlo/stablehlo/transforms/StablehloRefineShapes.cpp
+-@@ -461,7 +461,7 @@
+-   LogicalResult emitDifferentRefinementContextError(func::FuncOp func,
+-                                                     RefinementKey key,
+-                                                     RefinementKey prevKey) {
+--    return func.emitOpError() << "refined with invompatible refinement keys:"
+-+    return func.emitOpError() << "refined with incompatible refinement keys:"
+-                               << "\n  curr=" << key.toString()
+-                               << "\n  prev=" << prevKey.toString();
+-   }
+ diff --ruN a/stablehlo/stablehlo/transforms/optimization/Passes.td b/stablehlo/stablehlo/transforms/optimization/Passes.td
+ --- stablehlo/stablehlo/transforms/optimization/Passes.td
+ +++ stablehlo/stablehlo/transforms/optimization/Passes.td
