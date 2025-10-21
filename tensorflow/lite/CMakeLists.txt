@@ -51,7 +51,7 @@ if(NOT TENSORFLOW_SOURCE_DIR)
   FetchContent_Declare(
     tensorflow
     GIT_REPOSITORY https://github.com/tensorflow/tensorflow.git
-    GIT_TAG v2.19.0
+    GIT_TAG 6f3bab216d91a50960faf120f80b11c3e1c010ed  # <- updated from v2.19.0
     GIT_SHALLOW TRUE
     GIT_PROGRESS TRUE
     SOURCE_DIR ${CMAKE_CURRENT_BINARY_DIR}/tensorflow-src
