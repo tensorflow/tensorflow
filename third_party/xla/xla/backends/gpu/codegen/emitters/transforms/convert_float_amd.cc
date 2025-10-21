@@ -218,7 +218,8 @@ struct RewriteFp8TruncFPattern : public Fp8OpRewritePattern<arith::TruncFOp> {
     llvm::transform(inputs, inputs.begin(), [&](mlir::Value v) -> mlir::Value {
       if (v.getType().getIntOrFloatBitWidth() < f32_ty.getWidth()) {
         return b.create<arith::ExtFOp>(f32_ty, v);
-      } else if (v.getType() != f32_ty) {
+      }
+      if (v.getType() != f32_ty) {
         return b.create<arith::TruncFOp>(f32_ty, v);
       } else {
         return v;
