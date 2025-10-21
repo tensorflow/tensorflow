@@ -759,6 +759,12 @@ TEST(OpVersionTest, VersioningDequantizeTest) {
 
   fake_op_sig = {
       .op = BuiltinOperator_DEQUANTIZE,
+      .inputs = CreateOpSignatureTensorSpecs(kTfLiteInt2),
+  };
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 7);
+
+  fake_op_sig = {
+      .op = BuiltinOperator_DEQUANTIZE,
       .inputs = CreateOpSignatureTensorSpecs(kTfLiteFloat32),
   };
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 1);

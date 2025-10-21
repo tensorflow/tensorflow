@@ -4279,7 +4279,7 @@ def TFL_DequantizeOp: TFL_Op<"dequantize", [NoMemoryEffect]> {
     quantization parameters.
   }];
 
-  let arguments = (ins TFL_TensorOf<[QI4, QI8, QUI8, QI16, F16]>:$input);
+  let arguments = (ins TFL_TensorOf<[QI2, QI4, QI8, QUI8, QI16, F16]>:$input);
 
   let results = (outs TFL_FpTensor:$output);
 

@@ -499,6 +499,9 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       return 1;
 
     case BuiltinOperator_DEQUANTIZE:
+      if (op_sig.inputs.at(0).type == kTfLiteInt2) {
+        return 7;
+      }
       if (op_sig.inputs.at(0).type == kTfLiteInt4) {
         return 6;
       }
