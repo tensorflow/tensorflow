@@ -816,8 +816,7 @@ bool HloRunner::HasProperty(const HloRunnerPropertyTag::Type tag) const {
   if (tag == HloRunnerPropertyTag::kUsingGpuRocm) {
     const stream_executor::DeviceDescription& device_description =
         backend().default_stream_executor()->GetDeviceDescription();
-    return std::holds_alternative<stream_executor::RocmComputeCapability>(
-        device_description.gpu_compute_capability());
+    return device_description.gpu_compute_capability().IsRocm();
   }
   if (tag == HloRunnerPropertyTag::kCpu) {
     return backend().platform()->Name() == "Host";
@@ -825,8 +824,7 @@ bool HloRunner::HasProperty(const HloRunnerPropertyTag::Type tag) const {
   if (tag == HloRunnerPropertyTag::kUsingGpuCuda) {
     const stream_executor::DeviceDescription& device_description =
         backend().default_stream_executor()->GetDeviceDescription();
-    return std::holds_alternative<stream_executor::CudaComputeCapability>(
-        device_description.gpu_compute_capability());
+    return device_description.gpu_compute_capability().IsCuda();
   }
   return false;
 }

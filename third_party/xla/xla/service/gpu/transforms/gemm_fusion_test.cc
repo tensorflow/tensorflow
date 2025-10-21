@@ -203,8 +203,10 @@ ENTRY e {
   EXPECT_TRUE(CublasRequiresPadding(
       *xla::Cast<HloDotInstruction>(
           module->entry_computation()->root_instruction()),
-      cc));
-  EXPECT_TRUE(GemmFusion(cc).Run(module.get()).value());
+      stream_executor::GpuComputeCapability{cc}));
+  EXPECT_TRUE(GemmFusion(stream_executor::GpuComputeCapability{cc})
+                  .Run(module.get())
+                  .value());
 }
 
 TEST_F(GemmFusionTest, FuseSliceOfParameterWithOtherUsers) {
@@ -902,7 +904,9 @@ ENTRY e {
   ROOT dot = f32[2,2] dot(p0e, p1c),
     lhs_contracting_dims={1}, rhs_contracting_dims={0}
 })"));
-  EXPECT_TRUE(GemmFusion(se::RocmComputeCapability{}).Run(module.get()).ok());
+  EXPECT_TRUE(GemmFusion(se::GpuComputeCapability{se::RocmComputeCapability{}})
+                  .Run(module.get())
+                  .ok());
 }
 
 TEST_F(GemmFusionTest, ParameterUsedElementwiseTwiceIsFused) {

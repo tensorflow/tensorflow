@@ -75,7 +75,7 @@ class NestGemmFusionTest : public HloHardwareIndependentTestBase {
  protected:
   const se::DeviceDescription device_description_{
       TestGpuDeviceInfo::RTXA6000DeviceInfo(
-          se::CudaComputeCapability::Ampere())};
+          se::GpuComputeCapability{se::CudaComputeCapability::Ampere()})};
   mlir::MLIRContext mlir_context_;
   SymbolicExprContext symbolic_expr_context_{&mlir_context_};
 

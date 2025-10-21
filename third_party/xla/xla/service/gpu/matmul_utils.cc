@@ -324,7 +324,7 @@ absl::StatusOr<bool> CanFoldTransposeOperandIntoDot(const HloInstruction& dot,
   Shape c_matrix_shape = c_shape;
   // hipBlasLt does not yet support the C matrix to be BF16 for fp8 matmul
   // with fp8 output. Thus only do this for CUDA side.
-  if (std::holds_alternative<se::CudaComputeCapability>(gpu_version) &&
+  if (gpu_version.IsCuda() &&
       primitive_util::IsF8Type(lhs_shape.element_type()) &&
       primitive_util::IsF8Type(output_shape.element_type()) && (beta == 0.0)) {
     // By default, if c is not present (i.e., beta is 0), c_shape will be the

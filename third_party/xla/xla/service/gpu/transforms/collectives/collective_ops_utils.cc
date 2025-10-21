@@ -143,7 +143,7 @@ bool IsGPUSyncCollective(const HloInstruction& instr) {
 absl::StatusOr<GPUCommunicationType> CommunicationType(
     int num_devices_per_host, const HloChannelInstruction& instr,
     const se::GpuComputeCapability& gpu_version) {
-  if (!std::holds_alternative<se::CudaComputeCapability>(gpu_version)) {
+  if (!gpu_version.IsCuda()) {
     return absl::FailedPreconditionError("Only CUDA is supported.");
   }
 

@@ -155,107 +155,143 @@ class FloatSupportTest : public HloHardwareIndependentTestBase {
 };
 
 TEST_F(FloatSupportTest, ShouldAlwaysConvertFp8Dot) {
-  TestDotConversion(F8E4M3FN, F8E4M3FN, F16,
-                    se::CudaComputeCapability::Hopper(),
-                    /*should_convert_lhs=*/true,
-                    /*should_convert_rhs=*/true, F8E4M3FN);
+  TestDotConversion(
+      F8E4M3FN, F8E4M3FN, F16,
+      se::GpuComputeCapability{se::CudaComputeCapability::Hopper()},
+      /*should_convert_lhs=*/true,
+      /*should_convert_rhs=*/true, F8E4M3FN);
 
-  TestDotConversion(F8E4M3FN, F8E4M3FN, F32,
-                    se::CudaComputeCapability::Hopper(),
-                    /*should_convert_lhs=*/true,
-                    /*should_convert_rhs=*/true, F8E4M3FN);
+  TestDotConversion(
+      F8E4M3FN, F8E4M3FN, F32,
+      se::GpuComputeCapability{se::CudaComputeCapability::Hopper()},
+      /*should_convert_lhs=*/true,
+      /*should_convert_rhs=*/true, F8E4M3FN);
 
-  TestDotConversion(F8E4M3FN, F8E4M3FN, F16,
-                    se::CudaComputeCapability::Ampere(),
-                    /*should_convert_lhs=*/true,
-                    /*should_convert_rhs=*/true, F8E4M3FN);
+  TestDotConversion(
+      F8E4M3FN, F8E4M3FN, F16,
+      se::GpuComputeCapability{se::CudaComputeCapability::Ampere()},
+      /*should_convert_lhs=*/true,
+      /*should_convert_rhs=*/true, F8E4M3FN);
 
-  TestDotConversion(F8E4M3FN, F8E4M3FN, F32,
-                    se::CudaComputeCapability::Hopper(),
-                    /*should_convert_lhs=*/true,
-                    /*should_convert_rhs=*/true, F8E4M3FN);
+  TestDotConversion(
+      F8E4M3FN, F8E4M3FN, F32,
+      se::GpuComputeCapability{se::CudaComputeCapability::Hopper()},
+      /*should_convert_lhs=*/true,
+      /*should_convert_rhs=*/true, F8E4M3FN);
 
-  TestDotConversion(F8E5M2, F8E5M2, F16, se::CudaComputeCapability::Ampere(),
-                    /*should_convert_lhs=*/true,
-                    /*should_convert_rhs=*/true, F8E5M2);
+  TestDotConversion(
+      F8E5M2, F8E5M2, F16,
+      se::GpuComputeCapability{se::CudaComputeCapability::Ampere()},
+      /*should_convert_lhs=*/true,
+      /*should_convert_rhs=*/true, F8E5M2);
 
-  TestDotConversion(F8E5M2, F8E5M2, F32, se::CudaComputeCapability::Ampere(),
-                    /*should_convert_lhs=*/true,
-                    /*should_convert_rhs=*/true, F8E5M2);
+  TestDotConversion(
+      F8E5M2, F8E5M2, F32,
+      se::GpuComputeCapability{se::CudaComputeCapability::Ampere()},
+      /*should_convert_lhs=*/true,
+      /*should_convert_rhs=*/true, F8E5M2);
 
-  TestDotConversion(F8E5M2, F8E4M3FN, F16, se::CudaComputeCapability::Hopper(),
-                    /*should_convert_lhs=*/true,
-                    /*should_convert_rhs=*/false, F8E5M2);
+  TestDotConversion(
+      F8E5M2, F8E4M3FN, F16,
+      se::GpuComputeCapability{se::CudaComputeCapability::Hopper()},
+      /*should_convert_lhs=*/true,
+      /*should_convert_rhs=*/false, F8E5M2);
 
-  TestDotConversion(F8E5M2, F8E4M3FN, F32, se::CudaComputeCapability::Hopper(),
-                    /*should_convert_lhs=*/true,
-                    /*should_convert_rhs=*/false, F8E5M2);
+  TestDotConversion(
+      F8E5M2, F8E4M3FN, F32,
+      se::GpuComputeCapability{se::CudaComputeCapability::Hopper()},
+      /*should_convert_lhs=*/true,
+      /*should_convert_rhs=*/false, F8E5M2);
 
-  TestDotConversion(F8E5M2, F16, F16, se::CudaComputeCapability::Hopper(),
-                    /*should_convert_lhs=*/true,
-                    /*should_convert_rhs=*/false, F8E5M2);
+  TestDotConversion(
+      F8E5M2, F16, F16,
+      se::GpuComputeCapability{se::CudaComputeCapability::Hopper()},
+      /*should_convert_lhs=*/true,
+      /*should_convert_rhs=*/false, F8E5M2);
 
-  TestDotConversion(F8E5M2, F16, F32, se::CudaComputeCapability::Hopper(),
-                    /*should_convert_lhs=*/true,
-                    /*should_convert_rhs=*/false, F8E5M2);
+  TestDotConversion(
+      F8E5M2, F16, F32,
+      se::GpuComputeCapability{se::CudaComputeCapability::Hopper()},
+      /*should_convert_lhs=*/true,
+      /*should_convert_rhs=*/false, F8E5M2);
 }
 
 TEST_F(FloatSupportTest, ShouldConvertTritonUnsupportedFp8Dot) {
-  TestTritonFusedDot(F8E4M3FN, F8E4M3FN, F16,
-                     se::CudaComputeCapability::Hopper(),
-                     /*should_convert_lhs=*/true,
-                     /*should_convert_rhs=*/true, F8E4M3FN);
+  TestTritonFusedDot(
+      F8E4M3FN, F8E4M3FN, F16,
+      se::GpuComputeCapability{se::CudaComputeCapability::Hopper()},
+      /*should_convert_lhs=*/true,
+      /*should_convert_rhs=*/true, F8E4M3FN);
 
-  TestTritonFusedDot(F8E4M3FN, F8E4M3FN, F32,
-                     se::CudaComputeCapability::Hopper(),
-                     /*should_convert_lhs=*/false,
-                     /*should_convert_rhs=*/false, F8E4M3FN);
+  TestTritonFusedDot(
+      F8E4M3FN, F8E4M3FN, F32,
+      se::GpuComputeCapability{se::CudaComputeCapability::Hopper()},
+      /*should_convert_lhs=*/false,
+      /*should_convert_rhs=*/false, F8E4M3FN);
 
-  TestTritonFusedDot(F8E4M3FN, F8E4M3FN, F16,
-                     se::CudaComputeCapability::Ampere(),
-                     /*should_convert_lhs=*/true,
-                     /*should_convert_rhs=*/true, F8E4M3FN);
+  TestTritonFusedDot(
+      F8E4M3FN, F8E4M3FN, F16,
+      se::GpuComputeCapability{se::CudaComputeCapability::Ampere()},
+      /*should_convert_lhs=*/true,
+      /*should_convert_rhs=*/true, F8E4M3FN);
 
-  TestTritonFusedDot(F8E4M3FN, F8E4M3FN, F32,
-                     se::CudaComputeCapability::Hopper(),
-                     /*should_convert_lhs=*/false,
-                     /*should_convert_rhs=*/false, F8E4M3FN);
+  TestTritonFusedDot(
+      F8E4M3FN, F8E4M3FN, F32,
+      se::GpuComputeCapability{se::CudaComputeCapability::Hopper()},
+      /*should_convert_lhs=*/false,
+      /*should_convert_rhs=*/false, F8E4M3FN);
 
-  TestTritonFusedDot(F8E5M2, F8E5M2, F16, se::CudaComputeCapability::Ampere(),
-                     /*should_convert_lhs=*/true,
-                     /*should_convert_rhs=*/true, F8E5M2);
+  TestTritonFusedDot(
+      F8E5M2, F8E5M2, F16,
+      se::GpuComputeCapability{se::CudaComputeCapability::Ampere()},
+      /*should_convert_lhs=*/true,
+      /*should_convert_rhs=*/true, F8E5M2);
 
-  TestTritonFusedDot(F8E5M2, F8E5M2, F32, se::CudaComputeCapability::Ampere(),
-                     /*should_convert_lhs=*/true,
-                     /*should_convert_rhs=*/true, F8E5M2);
+  TestTritonFusedDot(
+      F8E5M2, F8E5M2, F32,
+      se::GpuComputeCapability{se::CudaComputeCapability::Ampere()},
+      /*should_convert_lhs=*/true,
+      /*should_convert_rhs=*/true, F8E5M2);
 
-  TestTritonFusedDot(F8E5M2, F8E4M3FN, F16, se::CudaComputeCapability::Hopper(),
-                     /*should_convert_lhs=*/true,
-                     /*should_convert_rhs=*/false, F8E5M2);
+  TestTritonFusedDot(
+      F8E5M2, F8E4M3FN, F16,
+      se::GpuComputeCapability{se::CudaComputeCapability::Hopper()},
+      /*should_convert_lhs=*/true,
+      /*should_convert_rhs=*/false, F8E5M2);
 
-  TestTritonFusedDot(F8E5M2, F8E4M3FN, F32, se::CudaComputeCapability::Hopper(),
-                     /*should_convert_lhs=*/false,
-                     /*should_convert_rhs=*/false, F8E5M2);
+  TestTritonFusedDot(
+      F8E5M2, F8E4M3FN, F32,
+      se::GpuComputeCapability{se::CudaComputeCapability::Hopper()},
+      /*should_convert_lhs=*/false,
+      /*should_convert_rhs=*/false, F8E5M2);
 
-  TestTritonFusedDot(F8E5M2, F16, F16, se::CudaComputeCapability::Hopper(),
-                     /*should_convert_lhs=*/true,
-                     /*should_convert_rhs=*/false, F8E5M2);
+  TestTritonFusedDot(
+      F8E5M2, F16, F16,
+      se::GpuComputeCapability{se::CudaComputeCapability::Hopper()},
+      /*should_convert_lhs=*/true,
+      /*should_convert_rhs=*/false, F8E5M2);
 
-  TestTritonFusedDot(F8E5M2, F16, F32, se::CudaComputeCapability::Hopper(),
-                     /*should_convert_lhs=*/true,
-                     /*should_convert_rhs=*/false, F8E5M2);
+  TestTritonFusedDot(
+      F8E5M2, F16, F32,
+      se::GpuComputeCapability{se::CudaComputeCapability::Hopper()},
+      /*should_convert_lhs=*/true,
+      /*should_convert_rhs=*/false, F8E5M2);
 }
 
 TEST_F(FloatSupportTest, ShouldKeepBf16OnAmpere) {
-  TestDotConversion(BF16, BF16, F32, se::CudaComputeCapability::Ampere(),
-                    /*should_convert_lhs=*/false,
-                    /*should_convert_rhs=*/false, BF16);
+  TestDotConversion(
+      BF16, BF16, F32,
+      se::GpuComputeCapability{se::CudaComputeCapability::Ampere()},
+      /*should_convert_lhs=*/false,
+      /*should_convert_rhs=*/false, BF16);
 }
 
 TEST_F(FloatSupportTest, ShouldKeepBf16OnHopper) {
-  TestDotConversion(BF16, BF16, F32, se::CudaComputeCapability::Hopper(),
-                    /*should_convert_lhs=*/false,
-                    /*should_convert_rhs=*/false, BF16);
+  TestDotConversion(
+      BF16, BF16, F32,
+      se::GpuComputeCapability{se::CudaComputeCapability::Hopper()},
+      /*should_convert_lhs=*/false,
+      /*should_convert_rhs=*/false, BF16);
 }
 
 TEST_F(FloatSupportTest, Bf16ReducePrecisionIsNotNormalized) {
@@ -270,7 +306,8 @@ ENTRY main {
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(kHloModule));
-  EXPECT_FALSE(Normalize(module.get(), cc, BF16, F32));
+  EXPECT_FALSE(
+      Normalize(module.get(), se::GpuComputeCapability{cc}, BF16, F32));
 }
 
 TEST_F(FloatSupportTest, Bf16TotalOrderSortIsNotNormalized) {
@@ -300,12 +337,17 @@ ENTRY sort {
 }
 )";
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
+  EXPECT_FALSE(Normalize(
+      module.get(),
+      se::GpuComputeCapability{se::CudaComputeCapability::Volta()}, BF16, F32));
   EXPECT_FALSE(
-      Normalize(module.get(), se::CudaComputeCapability::Volta(), BF16, F32));
+      Normalize(module.get(),
+                se::GpuComputeCapability{se::CudaComputeCapability::Ampere()},
+                BF16, F32));
   EXPECT_FALSE(
-      Normalize(module.get(), se::CudaComputeCapability::Ampere(), BF16, F32));
-  EXPECT_FALSE(
-      Normalize(module.get(), se::CudaComputeCapability::Hopper(), BF16, F32));
+      Normalize(module.get(),
+                se::GpuComputeCapability{se::CudaComputeCapability::Hopper()},
+                BF16, F32));
 }
 
 TEST_F(FloatSupportTest, Bf16ExpIsNotNormalized) {
@@ -320,7 +362,8 @@ ENTRY main {
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(kHloModule));
-  EXPECT_FALSE(Normalize(module.get(), cc, BF16, F32));
+  EXPECT_FALSE(
+      Normalize(module.get(), se::GpuComputeCapability{cc}, BF16, F32));
 }
 
 TEST_F(FloatSupportTest, Bf16LogIsNotNormalized) {
@@ -335,7 +378,8 @@ ENTRY main {
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(kHloModule));
-  EXPECT_FALSE(Normalize(module.get(), cc, BF16, F32));
+  EXPECT_FALSE(
+      Normalize(module.get(), se::GpuComputeCapability{cc}, BF16, F32));
 }
 
 TEST_F(FloatSupportTest, Bf16MinimumIsOnlyNormalizedPreAmpere) {
@@ -351,11 +395,16 @@ ENTRY main {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(kHloModule));
   EXPECT_FALSE(
-      Normalize(module.get(), se::CudaComputeCapability::Hopper(), BF16, F32));
+      Normalize(module.get(),
+                se::GpuComputeCapability{se::CudaComputeCapability::Hopper()},
+                BF16, F32));
   EXPECT_FALSE(
-      Normalize(module.get(), se::CudaComputeCapability::Ampere(), BF16, F32));
-  EXPECT_TRUE(
-      Normalize(module.get(), se::CudaComputeCapability::Volta(), BF16, F32));
+      Normalize(module.get(),
+                se::GpuComputeCapability{se::CudaComputeCapability::Ampere()},
+                BF16, F32));
+  EXPECT_TRUE(Normalize(
+      module.get(),
+      se::GpuComputeCapability{se::CudaComputeCapability::Volta()}, BF16, F32));
 }
 
 TEST_F(FloatSupportTest, Bf16MaximumIsOnlyNormalizedPreAmpere) {
@@ -371,11 +420,16 @@ ENTRY main {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(kHloModule));
   EXPECT_FALSE(
-      Normalize(module.get(), se::CudaComputeCapability::Hopper(), BF16, F32));
+      Normalize(module.get(),
+                se::GpuComputeCapability{se::CudaComputeCapability::Hopper()},
+                BF16, F32));
   EXPECT_FALSE(
-      Normalize(module.get(), se::CudaComputeCapability::Ampere(), BF16, F32));
-  EXPECT_TRUE(
-      Normalize(module.get(), se::CudaComputeCapability::Volta(), BF16, F32));
+      Normalize(module.get(),
+                se::GpuComputeCapability{se::CudaComputeCapability::Ampere()},
+                BF16, F32));
+  EXPECT_TRUE(Normalize(
+      module.get(),
+      se::GpuComputeCapability{se::CudaComputeCapability::Volta()}, BF16, F32));
 }
 
 TEST_F(FloatSupportTest,
@@ -400,13 +454,15 @@ ENTRY main {
   TF_ASSERT_OK_AND_ASSIGN(auto module_with_supported_reducer,
                           ParseAndReturnVerifiedModule(
                               absl::Substitute(kHloModuleTemplate, "add")));
-  EXPECT_FALSE(Normalize(module_with_supported_reducer.get(), cc, BF16, F32));
+  EXPECT_FALSE(Normalize(module_with_supported_reducer.get(),
+                         se::GpuComputeCapability{cc}, BF16, F32));
 
   // There is no bf16 instruction for divide, however.
   TF_ASSERT_OK_AND_ASSIGN(auto module_with_unsupported_reducer,
                           ParseAndReturnVerifiedModule(
                               absl::Substitute(kHloModuleTemplate, "divide")));
-  EXPECT_TRUE(Normalize(module_with_unsupported_reducer.get(), cc, BF16, F32));
+  EXPECT_TRUE(Normalize(module_with_unsupported_reducer.get(),
+                        se::GpuComputeCapability{cc}, BF16, F32));
 }
 
 TEST_F(FloatSupportTest, BF16LogAndExpOnRocmIsNormalized) {
@@ -422,12 +478,14 @@ ENTRY main {
   TF_ASSERT_OK_AND_ASSIGN(
       auto module_log,
       ParseAndReturnVerifiedModule(absl::Substitute(kHloModule, "log")));
-  EXPECT_TRUE(Normalize(module_log.get(), cc, BF16, F32));
+  EXPECT_TRUE(
+      Normalize(module_log.get(), se::GpuComputeCapability{cc}, BF16, F32));
 
   TF_ASSERT_OK_AND_ASSIGN(auto module_exp,
                           ParseAndReturnVerifiedModule(
                               absl::Substitute(kHloModule, "exponential")));
-  EXPECT_TRUE(Normalize(module_exp.get(), cc, BF16, F32));
+  EXPECT_TRUE(
+      Normalize(module_exp.get(), se::GpuComputeCapability{cc}, BF16, F32));
 }
 
 TEST_F(FloatSupportTest, ScaledDotIsIgnored) {
@@ -448,7 +506,8 @@ TEST_F(FloatSupportTest, ScaledDotIsIgnored) {
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(kHloModule));
-  EXPECT_FALSE(Normalize(module.get(), cc, BF16, F32));
+  EXPECT_FALSE(
+      Normalize(module.get(), se::GpuComputeCapability{cc}, BF16, F32));
 }
 
 }  // namespace

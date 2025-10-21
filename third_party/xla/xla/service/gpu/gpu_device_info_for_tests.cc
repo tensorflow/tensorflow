@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 
 #include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/rocm/rocm_compute_capability.h"
 #include "xla/stream_executor/semantic_version.h"
 
 namespace xla {
@@ -101,8 +102,8 @@ stream_executor::DeviceDescription TestGpuDeviceInfo::RTXB200SXMDeviceInfo(
 
 stream_executor::DeviceDescription TestGpuDeviceInfo::AMDMI210DeviceInfo() {
   stream_executor::DeviceDescription b;
-  b.set_gpu_compute_capability(
-      stream_executor::RocmComputeCapability("gfx90a"));
+  b.set_gpu_compute_capability(stream_executor::GpuComputeCapability(
+      stream_executor::RocmComputeCapability("gfx90a")));
   b.set_threads_per_block_limit(1024);
   b.set_threads_per_warp(64);
   b.set_shared_memory_per_block(64 * 1024);
@@ -125,8 +126,8 @@ stream_executor::DeviceDescription TestGpuDeviceInfo::AMDMI210DeviceInfo() {
 
 stream_executor::DeviceDescription TestGpuDeviceInfo::AMDRX7900DeviceInfo() {
   stream_executor::DeviceDescription b;
-  b.set_gpu_compute_capability(
-      stream_executor::RocmComputeCapability("gfx1100"));
+  b.set_gpu_compute_capability(stream_executor::GpuComputeCapability(
+      stream_executor::RocmComputeCapability("gfx1100")));
   return b;
 }
 

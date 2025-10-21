@@ -128,7 +128,7 @@ class ConvBfloat16Support : public FloatSupport {
  public:
   explicit ConvBfloat16Support(
       se::dnn::VersionInfo cudnn_version,
-      se::CudaComputeCapability cuda_compute_capability)
+      const se::CudaComputeCapability& cuda_compute_capability)
       : FloatSupport(BF16),
         is_conv_bf16_supported_(cuda_compute_capability.IsAtLeast(
             se::CudaComputeCapability::kAmpere)) {}
@@ -154,7 +154,7 @@ class ConvBfloat16Support : public FloatSupport {
 class MatmulBfloat16Support : public FloatSupport {
  public:
   explicit MatmulBfloat16Support(
-      se::CudaComputeCapability cuda_compute_capability)
+      const se::CudaComputeCapability& cuda_compute_capability)
       : FloatSupport(BF16),
         is_matmul_bf16_supported_(cuda_compute_capability.IsAtLeast(
             se::CudaComputeCapability::kAmpere)) {}
@@ -179,11 +179,10 @@ class MatmulBfloat16Support : public FloatSupport {
 }  // namespace
 
 absl::Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
-    HloModule* hlo_module, se::GpuComputeCapability gpu_version,
+    HloModule* hlo_module, const se::GpuComputeCapability& gpu_version,
     se::dnn::VersionInfo dnn_version,
     const se::SemanticVersion& toolkit_version) {
-  auto cuda_compute_capability =
-      std::get<se::CudaComputeCapability>(gpu_version);
+  auto* cuda_compute_capability = gpu_version.cuda_compute_capability();
   // Convert convolutions into CustomCalls to cudnn, then canonicalize them
   // (ConvPaddingLegalization). Also expand cuSolver calls.
   HloPassPipeline pipeline("conv_canonicalization");
@@ -192,11 +191,11 @@ absl::Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
       /*allow_mixed_precision=*/false);
 
   // Convert unsupported bf16 convolutions to f32.
-  ConvBfloat16Support conv_bf16_support(dnn_version, cuda_compute_capability);
+  ConvBfloat16Support conv_bf16_support(dnn_version, *cuda_compute_capability);
   pipeline.AddPass<FloatNormalization>(&conv_bf16_support);
 
   // Convert unsupported bf16 matmuls to f32.
-  MatmulBfloat16Support matmul_bf16_support(cuda_compute_capability);
+  MatmulBfloat16Support matmul_bf16_support(*cuda_compute_capability);
   pipeline.AddPass<FloatNormalization>(&matmul_bf16_support);
 
   pipeline.AddPass<GpusolverRewriter>(
@@ -204,11 +203,11 @@ absl::Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
   if (!hlo_module->config()
            .debug_options()
            .xla_gpu_experimental_disable_binary_libraries()) {
-    pipeline.AddPass<ConvRewriter>(cuda_compute_capability, dnn_version);
-    pipeline.AddPass<CudnnFusedConvRewriter>(cuda_compute_capability,
+    pipeline.AddPass<ConvRewriter>(gpu_version, dnn_version);
+    pipeline.AddPass<CudnnFusedConvRewriter>(*cuda_compute_capability,
                                              dnn_version, toolkit_version);
     pipeline.AddPass<ConvPaddingLegalization>();
-    pipeline.AddPass<CudnnPadForConvolutions>(cuda_compute_capability);
+    pipeline.AddPass<CudnnPadForConvolutions>(*cuda_compute_capability);
   }
   // The conv padding/vectorization passes which we need to get rid of.  They
   // also leave behind unnecessary tuple/get-tuple-element pairs that
@@ -273,8 +272,9 @@ absl::Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(
     const GpuAliasInfo* alias_info, tsl::thread::ThreadPool* thread_pool) {
   // This needs to run before GemmRewriter, which is part of
   // OptimizeHloPostLayoutAssignment().
-  auto cuda_compute_capability = std::get<se::CudaComputeCapability>(
-      gpu_target_config.device_description.gpu_compute_capability());
+  auto* cuda_compute_capability =
+      gpu_target_config.device_description.gpu_compute_capability()
+          .cuda_compute_capability();
 
   HloPassPipeline pre_pipeline("nvptx post-layout_assignment part 1");
   if (hlo_module->config().debug_options().xla_gpu_enable_cudnn_layer_norm() &&
@@ -282,11 +282,11 @@ absl::Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(
            .debug_options()
            .xla_gpu_experimental_disable_binary_libraries()) {
     // Rewrite normalization patterns into cuDNN Custom Calls.
-    pre_pipeline.AddPass<CudnnNormRewriter>(cuda_compute_capability);
+    pre_pipeline.AddPass<CudnnNormRewriter>(*cuda_compute_capability);
   }
 
   pre_pipeline.AddPass<BlockScalingRewriter>(
-      cuda_compute_capability.IsAtLeastBlackwell()
+      cuda_compute_capability->IsAtLeastBlackwell()
           ? gpu_target_config.dnn_version_info
           : se::dnn::VersionInfo{});
   pre_pipeline.AddPass<DotDimensionMerger>();
@@ -296,11 +296,11 @@ absl::Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(
            .xla_gpu_experimental_disable_binary_libraries()) {
     for (const CublasPaddingRequirement& requirement :
          CublasPaddingRequirements) {
-      if (cuda_compute_capability.SupportsAllFeaturesOf(
+      if (cuda_compute_capability->SupportsAllFeaturesOf(
               requirement.min_compute_capability)) {
-        pre_pipeline.AddPass<CublasPadForGemms>(cuda_compute_capability,
-                                                requirement.data_type,
-                                                requirement.multiple_of);
+        pre_pipeline.AddPass<CublasPadForGemms>(
+            gpu_target_config.device_description.gpu_compute_capability(),
+            requirement.data_type, requirement.multiple_of);
       }
     }
   }
@@ -691,8 +691,8 @@ NVPTXCompiler::CompileTargetBinary(
           module_config.debug_options(),
           /*is_autotuning_compilation=*/options.is_autotuning_compilation);
 
-  se::CudaComputeCapability cc = std::get<se::CudaComputeCapability>(
-      device_description.gpu_compute_capability());
+  se::CudaComputeCapability cc =
+      *device_description.gpu_compute_capability().cuda_compute_capability();
 
   // This may print multiple lines per HLO compilation because of the
   // parallelized compilation of LLVM modules.
@@ -751,8 +751,8 @@ absl::StatusOr<std::vector<uint8_t>> NVPTXCompiler::LinkModules(
     return std::vector<uint8_t>{};
   }
 
-  auto cc = std::get<stream_executor::CudaComputeCapability>(
-      device_description.gpu_compute_capability());
+  auto cc =
+      device_description.gpu_compute_capability().cuda_compute_capability();
 
   TF_ASSIGN_OR_RETURN(const se::cuda::CompilationProvider* compilation_provider,
                       GetCompilationProvider(debug_options));
@@ -772,7 +772,7 @@ absl::StatusOr<std::vector<uint8_t>> NVPTXCompiler::LinkModules(
           << compilation_provider->name();
   TF_ASSIGN_OR_RETURN(
       se::cuda::Assembly assembly,
-      compilation_provider->CompileAndLink(cc, inputs, compilation_options));
+      compilation_provider->CompileAndLink(*cc, inputs, compilation_options));
 
   return std::move(assembly.cubin);
 }

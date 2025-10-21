@@ -223,28 +223,20 @@ bool IsSupportedDotAlgorithmOnGpu(
     PrimitiveType output_storage_type) {
   // Note: We may want to add some complex types here if people request that.
   const bool is_cuda_ge_ampere =
-      std::holds_alternative<se::CudaComputeCapability>(
-          gpu_compute_capability) &&
-      std::get<se::CudaComputeCapability>(gpu_compute_capability)
-          .IsAtLeastAmpere();
+      gpu_compute_capability.IsCuda() &&
+      gpu_compute_capability.cuda_compute_capability()->IsAtLeastAmpere();
 
   const bool is_cuda_ge_ada =
-      std::holds_alternative<se::CudaComputeCapability>(
-          gpu_compute_capability) &&
-      std::get<se::CudaComputeCapability>(gpu_compute_capability)
-          .IsAtLeast(8, 9);
+      gpu_compute_capability.IsCuda() &&
+      gpu_compute_capability.cuda_compute_capability()->IsAtLeast(8, 9);
 
   const bool is_rocm_mi100_and_above =
-      std::holds_alternative<se::RocmComputeCapability>(
-          gpu_compute_capability) &&
-      std::get<se::RocmComputeCapability>(gpu_compute_capability)
-          .gfx9_mi100_or_later();
+      gpu_compute_capability.IsRocm() &&
+      gpu_compute_capability.rocm_compute_capability()->gfx9_mi100_or_later();
 
-  const bool is_rocm_bf16 =
-      std::holds_alternative<se::RocmComputeCapability>(
-          gpu_compute_capability) &&
-      std::get<se::RocmComputeCapability>(gpu_compute_capability)
-          .has_bf16_dtype_support();
+  const bool is_rocm_bf16 = gpu_compute_capability.IsRocm() &&
+                            gpu_compute_capability.rocm_compute_capability()
+                                ->has_bf16_dtype_support();
 
   switch (algorithm) {
     case PrecisionConfig::ALG_DOT_ANY_F8_ANY_F8_F32:

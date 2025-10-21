@@ -34,11 +34,11 @@ class ConvolutionLayoutNormalizationTest : public HloTestBase {
         .cuda_compute_capability();
   }
   bool IsRocm() {
-    return std::holds_alternative<se::RocmComputeCapability>(
-        backend()
-            .default_stream_executor()
-            ->GetDeviceDescription()
-            .gpu_compute_capability());
+    return backend()
+        .default_stream_executor()
+        ->GetDeviceDescription()
+        .gpu_compute_capability()
+        .IsRocm();
   }
 };
 

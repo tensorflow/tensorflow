@@ -318,8 +318,7 @@ absl::StatusOr<std::string> CompileToPtx(
       return std::string();
     }
 
-    auto compute_capability =
-        std::get_if<se::CudaComputeCapability>(&gpu_version);
+    auto compute_capability = gpu_version.cuda_compute_capability();
     if (!compute_capability) {
       return xla::Internal("Incompatible compute capability was specified.");
     }

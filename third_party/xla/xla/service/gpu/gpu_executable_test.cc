@@ -147,7 +147,7 @@ TEST(GpuExecutableTest, RunThunkPasses) {
     params.module_name = absl::StrCat("test_module", execution_count++);
     se::DeviceDescription device_description;
     device_description.set_gpu_compute_capability(
-        se::CudaComputeCapability::Volta());
+        se::GpuComputeCapability{se::CudaComputeCapability::Volta()});
     device_description.set_driver_version({12, 3, 0});
     device_description.set_runtime_version({12, 3, 0});
     params.device_description = device_description;
@@ -395,7 +395,7 @@ TEST(GpuExecutableTest, DumpsMetadataListProto) {
     params.module_name = absl::StrCat("test_module", execution_count++);
     se::DeviceDescription device_description;
     device_description.set_gpu_compute_capability(
-        se::CudaComputeCapability::Volta());
+        se::GpuComputeCapability{se::CudaComputeCapability::Volta()});
     device_description.set_driver_version({12, 3, 0});
     device_description.set_runtime_version({12, 3, 0});
     params.device_description = device_description;
