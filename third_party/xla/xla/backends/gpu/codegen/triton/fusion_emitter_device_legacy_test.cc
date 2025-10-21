@@ -263,7 +263,10 @@ ENTRY e {
 })";
   TF_EXPECT_OK(
       CreateTritonIrAndFileCheckForDot(this, kHloText, "triton_gemm_r", R"(
-CHECK:    func.func @triton_fn(%[[LHS:.*]]: !tt.ptr<i8>, %[[RHS:.*]]: !tt.ptr<f32>, %[[OUT:.*]]: !tt.ptr<f32>) {
+CHECK:    xtile.entry_func @triton_fn(
+CHECK-SAME:   %[[LHS_MEMREF:.*]]: memref<80x115xi8>
+CHECK-SAME:   %[[RHS_MEMREF:.*]]: memref<137x115xf32>
+CHECK-SAME:   %[[OUT_MEMREF:.*]]: memref<80x137xf32>
 CHECK-DAG:  %[[ZERO_KN:.*]] = arith.constant dense<0.000000e+00> : tensor<32x64xf32>
 CHECK-DAG:  %[[ZERO_MK:.*]] = arith.constant dense<0.000000e+00> : tensor<16x32xf32>
 CHECK-DAG:  %[[ZERO_MN:.*]] = arith.constant dense<0.000000e+00> : tensor<16x64xf32>
@@ -288,9 +291,11 @@ CHECK:      %[[PID_M:.*]] = arith.remsi %[[PID_NC]], %[[GROUP_SIZE]]
 CHECK:      %[[TILE_INDEX_M:.*]] = arith.addi %[[FIRST_PID_M]], %[[PID_M]] : i32
 CHECK:      %[[TMP:.*]] = arith.remsi %[[PID_NC]], %[[WIDTH]] : i32
 CHECK:      %[[TILE_INDEX_N:.*]] = arith.divsi %[[TMP]], %[[GROUP_SIZE]] : i32
+CHECK:      %[[LHS:.*]] = triton_xla.memref_to_ptr %[[LHS_MEMREF]]
 CHECK:      %[[TILE_OFFSET_M_LHS:.*]] = arith.muli %[[TILE_INDEX_M]], %[[TILE_SIZE_M]]
 CHECK:      %[[LHS_PTR:.*]] = tt.make_tensor_ptr %[[LHS]]
 CHECK:      %[[LHS_TILE_PTR:.*]] = tt.advance %[[LHS_PTR]], [%[[TILE_OFFSET_M_LHS]], %[[C0]]]
+CHECK:      %[[RHS:.*]] = triton_xla.memref_to_ptr %[[RHS_MEMREF]]
 CHECK:      %[[TILE_OFFSET_N_RHS:.*]] = arith.muli %[[TILE_INDEX_N]], %[[TILE_SIZE_N]]
 CHECK:      %[[RHS_PTR:.*]] = tt.make_tensor_ptr %[[RHS]]
 CHECK:      %[[RHS_TILE_PTR:.*]] = tt.advance %[[RHS_PTR]], [%[[C0]], %[[TILE_OFFSET_N_RHS]]]
@@ -323,10 +328,11 @@ CHECK:        scf.yield %[[RHS_TILE]] : tensor<32x64xf32>
 CHECK:        %[[ACC_NEXT:.*]] = tt.dot %[[LHS_MASK_IF_STMT]], %[[RHS_MASK_IF_STMT]], %[[ACC]]
 CHECK:        scf.yield %[[LHS_ITER_PTR_NEXT]], %[[RHS_ITER_PTR_NEXT]], %[[ACC_NEXT]] : !tt.ptr<tensor<16x32xi8>>, !tt.ptr<tensor<32x64xf32>>, tensor<16x64xf32>
 CHECK:      }
+CHECK:      %[[OUT:.*]] = triton_xla.memref_to_ptr %[[OUT_MEMREF]]
 CHECK:      %[[OUT_PTR:.*]] = tt.make_tensor_ptr %[[OUT]], [%[[C80]], %[[SIZE_M]]], [%[[SIZE_M]], %[[C1]]], [%[[C0]], %[[C0]]] {order = array<i32: 1, 0>} : <tensor<16x64xf32>>
 CHECK:      %[[OUT_OFFSET:.*]] = tt.advance %[[OUT_PTR]], [%[[TILE_OFFSET_M_LHS]], %[[TILE_OFFSET_N_RHS]]] : <tensor<16x64xf32>>
 CHECK:      tt.store %[[OUT_OFFSET]], %[[FOR]]#2 {boundaryCheck = array<i32: 1>} : !tt.ptr<tensor<16x64xf32>>
-CHECK:      return
+CHECK:      xtile.return
 CHECK:    }
 )"));
 }
@@ -355,7 +361,10 @@ ENTRY e {
 
   TF_EXPECT_OK(
       CreateTritonIrAndFileCheckForDot(this, kHloText, "triton_dot", R"(
-CHECK:    func.func @triton_fn(%[[LHS:.*]]: !tt.ptr<f32>, %[[RHS:.*]]: !tt.ptr<f32>, %[[OUT:.*]]: !tt.ptr<f32>) {
+CHECK:    xtile.entry_func @triton_fn(
+CHECK-SAME:   %[[LHS_MEMREF:.*]]: memref<137x115xf32>
+CHECK-SAME:   %[[RHS_MEMREF:.*]]: memref<1x115xf32>
+CHECK-SAME:   %[[OUT_MEMREF:.*]]: memref<137x1xf32>
 CHECK-DAG:  %[[ZERO_KN:.*]] = arith.constant dense<0.000000e+00> : tensor<32x16xf32>
 CHECK-DAG:  %[[ZERO_MK:.*]] = arith.constant dense<0.000000e+00> : tensor<16x32xf32>
 CHECK-DAG:  %[[ZERO_MN:.*]] = arith.constant dense<0.000000e+00> : tensor<16x16xf32>
@@ -378,9 +387,11 @@ CHECK:    %[[PID_M:.*]] = arith.remsi %[[PID_NC]], %[[GROUP_SIZE]]
 CHECK:    %[[TILE_INDEX_M:.*]] = arith.addi %[[FIRST_PID_M]], %[[PID_M]]
 CHECK:    %[[TMP:.*]] = arith.remsi %[[PID_NC]], %[[C8]]
 CHECK:    %[[TILE_INDEX_N:.*]] = arith.divsi %[[TMP]], %[[GROUP_SIZE]]
+CHECK:    %[[LHS:.*]] = triton_xla.memref_to_ptr %[[LHS_MEMREF]]
 CHECK:    %[[TILE_OFFSET_M_LHS:.*]] = arith.muli %[[TILE_INDEX_M]], %[[TILE_SIZE_M]]
 CHECK:    %[[LHS_PTR:.*]] = tt.make_tensor_ptr %[[LHS]]
 CHECK:    %[[LHS_TILE_PTR:.*]] = tt.advance %[[LHS_PTR]], [%[[TILE_OFFSET_M_LHS]], %[[C0]]]
+CHECK:    %[[RHS:.*]] = triton_xla.memref_to_ptr %[[RHS_MEMREF]]
 CHECK:    %[[TILE_OFFSET_N_RHS:.*]] = arith.muli %[[TILE_INDEX_N]], %[[TILE_SIZE_M]]
 CHECK:    %[[RHS_PTR:.*]] = tt.make_tensor_ptr %[[RHS]]
 CHECK:    %[[RHS_TILE_PTR:.*]] = tt.advance %[[RHS_PTR]], [%[[C0]], %[[TILE_OFFSET_N_RHS]]]
@@ -413,10 +424,11 @@ CHECK:      %[[ACC_NEXT:.*]] = tt.dot %[[LHS_MASK_IF_STMT]], %[[RHS_MASK_IF_STMT
 CHECK:      scf.yield %[[LHS_ITER_PTR_NEXT]], %[[RHS_ITER_PTR_NEXT]], %[[ACC_NEXT]] : !tt.ptr<tensor<16x32xf32>>, !tt.ptr<tensor<32x16xf32>>, tensor<16x16xf32>
 CHECK:    }
 
+CHECK:    %[[OUT:.*]] = triton_xla.memref_to_ptr %[[OUT_MEMREF]]
 CHECK:    %[[OUT_PTR:.*]] = tt.make_tensor_ptr %[[OUT]], [%[[SIZE_M]], %[[C1]]], [%[[C1]], %[[C1]]], [%[[C0]], %[[C0]]] {order = array<i32: 1, 0>} : <tensor<16x16xf32>>
 CHECK:    %[[OUT_OFFSET:.*]] = tt.advance %[[OUT_PTR]], [%[[TILE_OFFSET_M_LHS]], %[[TILE_OFFSET_N_RHS]]] : <tensor<16x16xf32>>
 CHECK:    tt.store %[[OUT_OFFSET]], %[[FOR]]#2 {boundaryCheck = array<i32: 0, 1>} : !tt.ptr<tensor<16x16xf32>>
-CHECK:    return
+CHECK:    xtile.return
 CHECK:  }
 )"));
 }
@@ -490,10 +502,12 @@ ENTRY e {
 
   TF_EXPECT_OK(
       CreateTritonIrAndFileCheckForDot(this, kHloText, "triton_gemm", R"(
-CHECK:   func.func @triton_fn(%[[P0:[^:]*]]: !tt.ptr<f32>
-CHECK-SAME:                 %[[P1:[^:]*]]: !tt.ptr<f32>
-CHECK-SAME:                 %[[P2:[^:]*]]: !tt.ptr<f32>
-CHECK-DAG: %[[ARG_PTR:.*]] = arith.select %[[CONCAT_COND:.*]], %[[P1]], %[[P2]]
+CHECK:   xtile.entry_func @triton_fn(%[[P0:[^:]*]]: memref<2x3x10xf32>
+CHECK-SAME:                          %[[P1:[^:]*]]: memref<2x10x128xf32>
+CHECK-SAME:                          %[[P2:[^:]*]]: memref<2x10x256xf32>
+CHECK-DAG: %[[P1_PTR:.*]] = triton_xla.memref_to_ptr %[[P1]]
+CHECK-DAG: %[[P2_PTR:.*]] = triton_xla.memref_to_ptr %[[P2]]
+CHECK-DAG: %[[ARG_PTR:.*]] = arith.select %[[CONCAT_COND:.*]], %[[P1_PTR]], %[[P2_PTR]]
 CHECK-DAG: %[[BATCH_STRIDE_P1:.*]] = arith.constant 1280
 CHECK-DAG: %[[BATCH_STRIDE_P2:.*]] = arith.constant 2560
 CHECK-DAG: %[[BATCH_STRIDE:.*]] = arith.select %[[CONCAT_COND_2:.*]], %[[BATCH_STRIDE_P1]], %[[BATCH_STRIDE_P2]]
@@ -537,13 +551,17 @@ ENTRY e {
 
   ASSERT_THAT(
       CreateTritonIrAndFileCheckForDot(this, kHloText, "triton_gemm", R"(
-CHECK:     func.func @triton_fn({{[^,]*}}, %[[DYNAMIC_SLICE_INPUT:[^:]*]]: !tt.ptr<f32>, %[[START_INDEX0_PTR:[^:]*]]: !tt.ptr<i32>
+CHECK:     xtile.entry_func @triton_fn(
+CHECK-SAME: {{[^,]*}}, %[[DYNAMIC_SLICE_INPUT_MEMREF:[^:]*]]: memref<4x5x2xf32>
+CHECK-SAME: {{[^,]*}}, %[[START_INDEX0_MEMREF:[^:]*]]: memref<i32>
 CHECK-DAG:   %[[C0_i32:.*]] = arith.constant 0 : i32
 CHECK-DAG:   %[[C1_i64:.*]] = arith.constant 1 : i64
 CHECK-DAG:   %[[C2_i64:.*]] = arith.constant 2 : i64
 CHECK-DAG:   %[[C3_i32:.*]] = arith.constant 3 : i32
 CHECK-DAG:   %[[C5_i32:.*]] = arith.constant 5 : i32
 CHECK-DAG:   %[[C5_i64:.*]] = arith.constant 5 : i64
+CHECK-DAG:   %[[DYNAMIC_SLICE_INPUT:.*]] = triton_xla.memref_to_ptr %[[DYNAMIC_SLICE_INPUT_MEMREF]]
+CHECK-DAG:   %[[START_INDEX0_PTR:.*]] = triton_xla.memref_to_ptr %[[START_INDEX0_MEMREF]]
 CHECK-DAG:   %[[START_INDEX0:.*]] = tt.load %[[START_INDEX0_PTR]] : !tt.ptr<i32>
 CHECK-DAG:   %[[SEMI_CLAMPED_START_INDEX0:.*]] = arith.maxsi %[[START_INDEX0]], %[[C0_i32]] : i32
 CHECK-DAG:   %[[CLAMPED_START_INDEX0:.*]] = arith.minsi %[[SEMI_CLAMPED_START_INDEX0]], %[[C3_i32]] : i32
@@ -1229,7 +1247,7 @@ ENTRY e {
 })";
   TF_EXPECT_OK(
       CreateTritonIrAndFileCheckForDot(this, kHloText, "triton_gemm_r", R"(
-CHECK:    func.func @triton_fn
+CHECK:    xtile.entry_func @triton_fn
 CHECK-DAG:      %[[ZERO:.*]] = arith.constant dense<0>
 CHECK-DAG:      %[[FMIN:.*]] = arith.constant dense<-1.280000e+02>
 CHECK-DAG:      %[[IMIN:.*]] = arith.constant dense<-128>

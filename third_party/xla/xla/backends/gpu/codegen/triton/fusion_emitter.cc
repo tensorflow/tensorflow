@@ -1936,8 +1936,14 @@ absl::Status CreateInternalError(absl::string_view message,
 
 mlir::MemRefType GetMemRefType(const Shape& shape, mlir::Type element_type) {
   mlir::MLIRContext* context = element_type.getContext();
-
   mlir::Type storage_type = StorageType(element_type);
+
+  // Don't add any attribute for default layouts as it adds a lot of noise to
+  // the printed IR.
+  if (LayoutUtil::IsMonotonicWithDim0Major(shape.layout())) {
+    return mlir::MemRefType::get(shape.dimensions(), storage_type);
+  }
+
   auto minor_to_major_attr =
       mlir::DenseI64ArrayAttr::get(context, shape.layout().minor_to_major());
   auto layout = mtx::LayoutAttr::get(context, minor_to_major_attr);
@@ -2328,7 +2334,6 @@ absl::Status LowerXTileToTriton(mlir::ModuleOp xtile_dialect_module,
     // Disable verifier because the Triton code may be invalid due to the
     // unsupported types.
     pm.enableVerifier(/*enabled=*/false);
-    pm.addPass(mlir::triton::xla::CreateTritonXLALowerXTilePass());
     pm.addPass(mlir::triton::xla::CreateTensorLowerToTritonPass());
     pm.addPass(mlir::triton::xla::CreateStableHLOLowerToTritonPass());
     if (mlir::failed(pm.run(xtile_dialect_module))) {
