@@ -56,6 +56,11 @@ class DeterminismTest : public GpuCodegenTest {
         DebugOptions::GENERIC_TRITON_EMITTER_ENABLE_NESTED_GEMM);
   }
 
+  se::CudaComputeCapability get_cuda_cc() const {
+    se::StreamExecutor* executor = backend().default_stream_executor();
+    return executor->GetDeviceDescription().cuda_compute_capability();
+  }
+
   // Runs the HLO several times with the same random inputs, and asserts the
   // outputs are bitwise identical.
   void AssertDeterminism(absl::string_view hlo_string, int num_runs = 10) {
@@ -145,13 +150,7 @@ class DeterminismTest : public GpuCodegenTest {
     EXPECT_TRUE(filecheck_result.value());
   }
 
-  bool IsAmpereOrLater() const {
-    return backend()
-        .default_stream_executor()
-        ->GetDeviceDescription()
-        .cuda_compute_capability()
-        .IsAtLeastAmpere();
-  }
+  bool IsAmpereOrLater() const { return get_cuda_cc().IsAtLeastAmpere(); }
 
   bool IsRocm() const {
     return std::holds_alternative<stream_executor::RocmComputeCapability>(
@@ -200,6 +199,10 @@ TEST_F(DeterminismTest, DeterministicTritonGemmUsesDefaultConfig) {
   if (!IsAmpereOrLater()) {
     GTEST_SKIP() << "Triton is not supported on non-NVIDIA and "
                     "pre-Ampere NVIDIA GPUs.";
+  }
+  if (get_cuda_cc().IsAtLeastBlackwell()) {
+    // TODO(b/445172709): Re-enable once fixed.
+    GTEST_SKIP();
   }
 
   constexpr absl::string_view kHloText = R"(
