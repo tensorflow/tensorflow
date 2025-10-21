@@ -596,10 +596,12 @@ bool HasUnspecifiedDimension(const TfLiteTensor* tensor) {
   return false;
 }
 
+namespace {
 bool IsQuantizedType(TfLiteType type) {
   return type == kTfLiteUInt8 || type == kTfLiteInt8 ||
          type == kTfLiteInt16 || type == kTfLiteInt4;
 }
+}  // namespace
 
 TfLiteStatus CheckQuantizationParams(TfLiteContext* context,
                                      const TfLiteTensor* input,

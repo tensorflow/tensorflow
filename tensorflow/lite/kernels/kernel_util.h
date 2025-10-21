@@ -338,9 +338,6 @@ bool IsMobilePlatform();
 // Returns whether there is unspecified dimension in the tensor's dim signature.
 bool HasUnspecifiedDimension(const TfLiteTensor* tensor);
 
-// Returns whether the given type is a quantized type.
-bool IsQuantizedType(TfLiteType type);
-
 // Checks that input and output tensors have the same quantization parameters
 // (scale and zero_point) for quantized types. Returns kTfLiteOk if they match
 // or if the type is not quantized, otherwise returns kTfLiteError.
