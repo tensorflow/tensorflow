@@ -4941,10 +4941,10 @@ TEST_F(HloVerifierTest, ScaledDotWithNoScalesFails) {
   static constexpr absl::string_view kScaledDotHloString = R"(
     HloModule module
     ENTRY entry_computation {
-      a = f32[2,10] parameter(0)
-      b = f32[10,2] parameter(1)
-      a_scale = f32[] constant(1)
-      b_scale = f32[] constant(1)
+      a = bf16[2,10] parameter(0)
+      b = bf16[10,2] parameter(1)
+      a_scale = bf16[] constant(1)
+      b_scale = bf16[] constant(1)
       ROOT dot = f32[2,2] scaled-dot(a, b, a_scale, b_scale),
         lhs_contracting_dims={1},
         rhs_contracting_dims={0}

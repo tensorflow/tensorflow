@@ -40,9 +40,6 @@ limitations under the License.
 #include "xla/codegen/emitter_loc_op_builder.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
-#include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/hlo/utils/hlo_traversal.h"
-#include "xla/primitive_util.h"
 #include "xla/service/algorithm_util.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/tsl/platform/errors.h"
@@ -142,6 +139,9 @@ absl::StatusOr<ttir::ScaleDotElemType> GetScaleDotElemType(Type value) {
   if (type == mlir::Float4E2M1FNType::get(value.getContext())) {
     return ttir::ScaleDotElemType::E2M1;
   }
+  if (type == mlir::BFloat16Type::get(value.getContext())) {
+    return ttir::ScaleDotElemType::BF16;
+  }
   return absl::InvalidArgumentError(
       absl::StrCat("Unsupported type: ", llvm_ir::DumpToString(type)));
 }
@@ -153,12 +153,16 @@ absl::StatusOr<Value> ScaledDot(EmitterLocOpBuilder b,
   TF_ASSIGN_OR_RETURN(auto rhs_dot_elem_type,
                       GetScaleDotElemType(operands.rhs.getType()));
 
-  auto lhs_scale = Bitcast(b, operands.lhs_scale, b.getI8Type());
-  auto rhs_scale = Bitcast(b, operands.rhs_scale, b.getI8Type());
-
-  // TODO(b/436988479): Remove this once we have a fix for the scaled dot
-  // rewrite on the Triton side. With this transpose we have matching numerics.
-  rhs_scale = b.create<ttir::TransOp>(rhs_scale, mlir::ArrayRef<int32_t>{1, 0});
+  Value lhs_scale;
+  if (lhs_dot_elem_type != ttir::ScaleDotElemType::BF16) {
+    lhs_scale = Bitcast(b, operands.lhs_scale, b.getI8Type());
+  }
+  Value rhs_scale;
+  if (rhs_dot_elem_type != ttir::ScaleDotElemType::BF16) {
+    rhs_scale = Bitcast(b, operands.rhs_scale, b.getI8Type());
+    rhs_scale =
+        b.create<ttir::TransOp>(rhs_scale, mlir::ArrayRef<int32_t>{1, 0});
+  }
 
   // make type with the same shape as the scale but with i8 type
   return b.create<ttir::DotScaledOp>(

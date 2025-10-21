@@ -865,11 +865,11 @@ absl::StatusOr<Value> MaskDotOperand(EmitterLocOpBuilder b,
 // Returns `shape` without all its unit dimensions, as well as the index of the
 // remaining dimensions in the original `shape`.
 std::pair<SmallVector<int64_t>, SmallVector<int64_t>> CollapseUnitDims(
-    llvm::ArrayRef<int64_t> shape) {
+    llvm::ArrayRef<int64_t> shape, llvm::ArrayRef<int64_t> counterpart_shape) {
   SmallVector<int64_t> shape_without_unit_dims;
   SmallVector<int64_t> non_unit_dims_indices;
   for (auto [i, size] : llvm::enumerate(shape)) {
-    if (size != 1) {
+    if (size != 1 || size != counterpart_shape[i]) {
       shape_without_unit_dims.push_back(size);
       non_unit_dims_indices.push_back(i);
     }
@@ -884,15 +884,28 @@ enum class DotOperandSide { kLhs, kRhs };
 // the given side (the second dimension for LHS, the first dimension for the
 // RHS).
 //
+// If it is a scaled-dot scale operand then we drop the extra dims only
+// when they equal to 1  and are matching with the corresponding operand.
+// Example:
+//   when lhs_scale operand with shape [1,128, 1] (passed as operand parameter)
+//   and lhs operand with shape [1,128, 32] (passed as counterpart_operand
+//   parameter)
+//   the function will drop only the first dim and will keep the last one
+//   because the last one of the lhs operand is not equal to 1.
+//
 // Returns an error if canonicalization is not possible.
-absl::StatusOr<Value> CanonicalizeDotOperand(EmitterLocOpBuilder b,
-                                             Value operand,
-                                             int64_t contracting_dim_idx,
-                                             DotOperandSide side) {
+absl::StatusOr<Value> CanonicalizeDotOperand(
+    EmitterLocOpBuilder b, Value operand, int64_t contracting_dim_idx,
+    DotOperandSide side, Value counterpart_operand = nullptr) {
   llvm::ArrayRef<int64_t> shape =
       mlir::cast<ShapedType>(operand.getType()).getShape();
+  llvm::ArrayRef<int64_t> counterpart_shape =
+      counterpart_operand == nullptr
+          ? shape
+          : mlir::cast<ShapedType>(counterpart_operand.getType()).getShape();
+
   auto [shape_without_unit_dims, non_unit_dims_indices] =
-      CollapseUnitDims(shape);
+      CollapseUnitDims(shape, counterpart_shape);
 
   if (shape_without_unit_dims.size() != 2) {
     return absl::FailedPreconditionError(
@@ -970,7 +983,7 @@ absl::StatusOr<ScalarOrTensor> EmitDot(
       GetPaddedTileSizes(tiled_hlo_dot.tile_sizes());
 
   SmallVector<int64_t, 2> padded_tile_sizes_no_unit_dims =
-      CollapseUnitDims(padded_tile_sizes).first;
+      CollapseUnitDims(padded_tile_sizes, padded_tile_sizes).first;
 
   // Sanity check: Triton historically did not support non-2D dots (and still
   // doesn't support arbitrary nD dots), so we require that the dot is tiled
@@ -1113,7 +1126,7 @@ absl::StatusOr<ScalarOrTensor> EmitScaledDot(
       GetPaddedTileSizes(tiled_hlo_dot.tile_sizes());
 
   SmallVector<int64_t, 2> padded_tile_sizes_no_unit_dims =
-      CollapseUnitDims(padded_tile_sizes).first;
+      CollapseUnitDims(padded_tile_sizes, padded_tile_sizes).first;
 
   // Sanity check: Triton historically did not support non-2D dots (and still
   // doesn't support arbitrary nD dots), so we require that the dot is tiled
@@ -1202,18 +1215,19 @@ absl::StatusOr<ScalarOrTensor> EmitScaledDot(
 
     // Canonicalize the dot operands to match Triton's/the hardware's
     // expectations.
+
+    TF_ASSIGN_OR_RETURN(
+        lhs_scale, CanonicalizeDotOperand(b, lhs_scale, lhs_contracting_dim_idx,
+                                          DotOperandSide::kLhs, lhs));
+    TF_ASSIGN_OR_RETURN(
+        rhs_scale, CanonicalizeDotOperand(b, rhs_scale, rhs_contracting_dim_idx,
+                                          DotOperandSide::kRhs, rhs));
     TF_ASSIGN_OR_RETURN(lhs,
                         CanonicalizeDotOperand(b, lhs, lhs_contracting_dim_idx,
                                                DotOperandSide::kLhs));
     TF_ASSIGN_OR_RETURN(rhs,
                         CanonicalizeDotOperand(b, rhs, rhs_contracting_dim_idx,
                                                DotOperandSide::kRhs));
-    TF_ASSIGN_OR_RETURN(
-        lhs_scale, CanonicalizeDotOperand(b, lhs_scale, lhs_contracting_dim_idx,
-                                          DotOperandSide::kLhs));
-    TF_ASSIGN_OR_RETURN(
-        rhs_scale, CanonicalizeDotOperand(b, rhs_scale, rhs_contracting_dim_idx,
-                                          DotOperandSide::kRhs));
 
     TF_ASSIGN_OR_RETURN(
         Value acc_next,

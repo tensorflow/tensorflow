@@ -63,7 +63,13 @@ TEST(CompositeRewriterTest, ScaledDotCompositeRewrite) {
           to_apply=%xla.scaled_dot.1,
           is_composite=true,
           frontend_attributes={
-            composite.attributes={preferred_element_type = bf16},
+            composite.attributes={
+              preferred_element_type = bf16,
+              lhs_contracting_dim_index = 2 : i64,
+              rhs_contracting_dim_index = 1 : i64,
+              lhs_batch_dim_index = 0 : i64,
+              rhs_batch_dim_index = 0 : i64
+            },
             composite.name="xla.scaled_dot",
             composite.version="1"
           }

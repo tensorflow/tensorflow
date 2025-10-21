@@ -409,11 +409,9 @@ cc_library(
     hdrs = ["dot_algorithms.h"],
     deps = [
         ":emitter_helpers",
-        "//xla:shape_util",
         "//xla:xla_data_proto_cc",
         "//xla/codegen:emitter_loc_op_builder",
         "//xla/hlo/ir:hlo",
-        "//xla/hlo/utils:hlo_traversal",
         "//xla/service:algorithm_util",
         "//xla/service/llvm_ir:llvm_util",
         "//xla/tsl/platform:errors",

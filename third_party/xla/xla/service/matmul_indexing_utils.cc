@@ -60,7 +60,11 @@ absl::StatusOr<std::vector<int64_t>> GetNonContractingDims(
                                          contracting_dims, batch_dims);
 
   TF_RET_CHECK(batch_dims.size() + contracting_dims.size() + nc.size() ==
-               shape.dimensions().size());
+               shape.dimensions().size())
+      << "batch_dims: " << batch_dims.size()
+      << " contracting_dims: " << contracting_dims.size()
+      << " nc: " << nc.size()
+      << " vs shape dims size: " << shape.dimensions().size();
   return std::vector<int64_t>(nc.begin(), nc.end());
 }
 
@@ -130,15 +134,13 @@ absl::StatusOr<std::array<DotOperandDims, 4>> DotOperandDims::FromScaledDot(
     const HloInstruction* scaled_dot) {
   TF_ASSIGN_OR_RETURN(auto lhs_dims, FromDotOperand(scaled_dot, 0));
   DotOperandDims lhs_scale_dims;
-  if (scaled_dot->operand(2)->opcode() != HloOpcode::kConstant ||
-      !scaled_dot->operand(2)->shape().dimensions().empty()) {
+  if (!ShapeUtil::IsScalar(scaled_dot->operand(2)->shape())) {
     TF_ASSIGN_OR_RETURN(lhs_scale_dims, FromDotOperand(scaled_dot, 2));
   }
 
   TF_ASSIGN_OR_RETURN(auto rhs_dims, FromDotOperand(scaled_dot, 1));
   DotOperandDims rhs_scale_dims;
-  if (scaled_dot->operand(3)->opcode() != HloOpcode::kConstant ||
-      !scaled_dot->operand(3)->shape().dimensions().empty()) {
+  if (!ShapeUtil::IsScalar(scaled_dot->operand(3)->shape())) {
     TF_ASSIGN_OR_RETURN(rhs_scale_dims, FromDotOperand(scaled_dot, 3));
   }
 
