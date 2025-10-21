@@ -1897,6 +1897,7 @@ absl::Status CheckMixedPrecisionOperands(const HloInstruction* instruction) {
     case HloOpcode::kAsyncDone:
     case HloOpcode::kAsyncUpdate:
     case HloOpcode::kAsyncStart:
+    case HloOpcode::kCollectivePermute:
     case HloOpcode::kCollectivePermuteStart:
     case HloOpcode::kCollectivePermuteDone:
     case HloOpcode::kCopyDone:

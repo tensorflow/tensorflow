@@ -2261,6 +2261,24 @@ TEST_F(HloVerifierTest, CollectivePermuteAsyncMixedPrecisionOperandsAllowed) {
   ASSERT_TRUE(status.ok());
 }
 
+TEST_F(HloVerifierTest, CollectivePermuteMixedPrecisionOperandsAllowed) {
+  const char* const kModuleStr = R"(
+    HloModule test
+    ENTRY entry {
+      p0 = f32[128] parameter(0)
+      p1 = bf16[128] parameter(1)
+      ROOT permute = (f32[128], bf16[128]) collective-permute(p0, p1),
+        source_target_pairs={{0,1}, {1,0}}, channel_id=1
+    }
+    )";
+  HloModuleConfig config;
+  config.set_num_partitions(2);
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(kModuleStr, config));
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_TRUE(status.ok());
+}
+
 TEST_F(HloVerifierTest, FusionMoreOperandsThanParameters) {
   const char* const kModuleStr = R"(
   HloModule test
