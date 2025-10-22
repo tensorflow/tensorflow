@@ -50,6 +50,10 @@ class DeterminismTest : public GpuCodegenTest {
  public:
   DeterminismTest() : debug_options_(HloTestBase::GetDebugOptionsForTest()) {
     debug_options_.set_xla_gpu_exclude_nondeterministic_ops(true);
+    // TODO(b/393299275): remove when the flag is enabled by default.
+    debug_options_.clear_xla_gpu_unsupported_generic_triton_emitter_features();
+    debug_options_.add_xla_gpu_unsupported_generic_triton_emitter_features(
+        DebugOptions::GENERIC_TRITON_EMITTER_ENABLE_NESTED_GEMM);
   }
 
   se::CudaComputeCapability get_cuda_cc() const {

@@ -192,8 +192,7 @@ ENTRY e {
               GmockMatch(match::Concatenate(match::Fusion(), match::Fusion())));
 }
 
-// TODO(b/393299275): update test to use a unsupported operation.
-TEST_F(NestGemmFusionTest, DISABLED_UnsupportedComputationsAreNotChanged) {
+TEST_F(NestGemmFusionTest, UnsupportedComputationsAreNotChanged) {
   // Fusions other than kTritonNestedGemmFusionKind are not supported.
   // In this case pass should only change the supported fusions.
   absl::string_view hlo = R"(

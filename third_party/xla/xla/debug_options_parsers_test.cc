@@ -390,13 +390,10 @@ TEST(ParseRepeatedEnumFlagsTest, GenericTritonEmitterFeatures) {
   const auto& enabled_features =
       debug_options.xla_gpu_unsupported_generic_triton_emitter_features();
 
-  // Check default setting.
+  // Check that the default setting is empty.
   ASSERT_THAT(
       enabled_features,
-      testing::UnorderedElementsAre(
-          DebugOptions::GENERIC_TRITON_EMITTER_ENABLE_NESTED_GEMM,
-          DebugOptions::GENERIC_TRITON_EMITTER_ALLOW_ALL_GEMM_SHAPES,
-          DebugOptions::GENERIC_TRITON_EMITTER_ALLOW_ALL_OPS_IN_GEMM_FUSION));
+      ElementsAre(DebugOptions::GENERIC_TRITON_EMITTER_ENABLE_NESTED_GEMM));
 
   // Initialize the flag objects.
   std::vector<tsl::Flag> flag_objects;
@@ -404,23 +401,24 @@ TEST(ParseRepeatedEnumFlagsTest, GenericTritonEmitterFeatures) {
 
   // Adding options.
   SetXlaFlagsEnvVar(
-      "--xla_gpu_unsupported_generic_triton_emitter_features="
-      "-allow_all_gemm_shapes");
+      "--xla_gpu_unsupported_generic_triton_emitter_features=+allow_all_gemm_"
+      "shapes");
   ParseFlagsFromEnvAndDieIfUnknown("XLA_FLAGS", flag_objects);
+  EXPECT_EQ(enabled_features.size(), 2);
   EXPECT_THAT(
       enabled_features,
-      testing::UnorderedElementsAre(
-          DebugOptions::GENERIC_TRITON_EMITTER_ENABLE_NESTED_GEMM,
-          DebugOptions::GENERIC_TRITON_EMITTER_ALLOW_ALL_OPS_IN_GEMM_FUSION));
+      ElementsAre(DebugOptions::GENERIC_TRITON_EMITTER_ENABLE_NESTED_GEMM,
+                  DebugOptions::GENERIC_TRITON_EMITTER_ALLOW_ALL_GEMM_SHAPES));
 
   // Overwriting options.
   SetXlaFlagsEnvVar(
       "--xla_gpu_unsupported_generic_triton_emitter_features=disable_legacy_"
       "gemm,allow_all_ops_in_gemm_fusion");
   ParseFlagsFromEnvAndDieIfUnknown("XLA_FLAGS", flag_objects);
+  EXPECT_EQ(enabled_features.size(), 2);
   EXPECT_THAT(
       enabled_features,
-      testing::UnorderedElementsAre(
+      ElementsAre(
           DebugOptions::GENERIC_TRITON_EMITTER_DISABLE_LEGACY_GEMM,
           DebugOptions::GENERIC_TRITON_EMITTER_ALLOW_ALL_OPS_IN_GEMM_FUSION));
 
@@ -429,9 +427,10 @@ TEST(ParseRepeatedEnumFlagsTest, GenericTritonEmitterFeatures) {
       "--xla_gpu_unsupported_generic_triton_emitter_features=-disable_legacy_"
       "gemm,-unspecified,+enable_nested_gemm,+allow_all_ops_in_gemm_fusion");
   ParseFlagsFromEnvAndDieIfUnknown("XLA_FLAGS", flag_objects);
+  EXPECT_EQ(enabled_features.size(), 2);
   EXPECT_THAT(
       enabled_features,
-      testing::UnorderedElementsAre(
+      ElementsAre(
           DebugOptions::GENERIC_TRITON_EMITTER_ALLOW_ALL_OPS_IN_GEMM_FUSION,
           DebugOptions::GENERIC_TRITON_EMITTER_ENABLE_NESTED_GEMM));
 }
