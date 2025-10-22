@@ -601,6 +601,17 @@ ENTRY main {
   )");
 }
 
+TEST_F(LayoutNormalizationTest, ZeroSizedConstant) {
+  const char* hlo = R"(
+  HloModule zero_sized_constant, entry_computation_layout={()->s32[0,179]{0,1}}
+  ENTRY main() -> s32[0,179] {
+    ROOT %constant = s32[0,179]{1,0} constant({  })
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  TF_ASSERT_OK_AND_ASSIGN(auto status, LayoutNormalization().Run(module.get()));
+  EXPECT_FALSE(status);
+}
+
 TEST_F(LayoutNormalizationTest, ConstantAvoidRevisitOfUser) {
   const char* hlo = R"(
 HloModule module
