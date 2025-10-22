@@ -2166,7 +2166,6 @@ tf_xla_py_strict_test(
         "gpu_a100",
         "gpu_h100",
     ],
-    env = {"XLA_FLAGS": "--xla_backend_extra_options=xla_cpu_disable_new_fusion_emitters=true"},
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
     ],
