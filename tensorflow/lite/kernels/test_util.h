@@ -109,6 +109,9 @@ inline std::vector<T> Quantize(const std::vector<float>& data, float scale,
   if (type == kTfLiteInt4) {
     min = -7;
     max = 7;
+  } else if (type == kTfLiteInt2) {
+    min = -2;
+    max = 1;
   }
 
   q.reserve(data.size());
@@ -570,6 +573,15 @@ class SingleOpModel {
                        quantized_output.data() + quantized_output.size());
   }
 
+  void QuantizeAndPopulate2bit(int index, const std::vector<float>& data) {
+    TfLiteTensor* t = interpreter_->tensor(index);
+    t->type = kTfLiteInt2;
+    std::vector<int8_t> quantized_output =
+        Quantize<int8_t>(data, t->params.scale, t->params.zero_point, t->type);
+    PopulateTensor2bit(index, /*offset=*/0, quantized_output.data(),
+                       quantized_output.data() + quantized_output.size());
+  }
+
   void SymmetricQuantizeAndPopulate(int index, const std::vector<float>& data) {
     std::vector<int8_t> q = QuantizeTensor(index, data);
     PopulateTensor(index, /*offset=*/0, reinterpret_cast<uint8_t*>(q.data()),
@@ -583,6 +595,10 @@ class SingleOpModel {
       std::vector<int8_t> q = Quantize<int8_t>(data, t->params.scale,
                                                t->params.zero_point, t->type);
       PopulateTensor4bit(index, /*offset=*/0, q.data(), q.data() + q.size());
+    } else if (t->type == kTfLiteInt2) {
+      std::vector<int8_t> q = Quantize<int8_t>(data, t->params.scale,
+                                               t->params.zero_point, t->type);
+      PopulateTensor2bit(index, /*offset=*/0, q.data(), q.data() + q.size());
     } else {
       std::vector<int8_t> q = QuantizeTensor(index, data);
       PopulateTensor(index, /*offset=*/0, q.data(), q.data() + q.size());
@@ -663,6 +679,9 @@ class SingleOpModel {
       PopulateTensor4bit(index, /*offset=*/0, quantized_output.data(),
                          quantized_output.data() + quantized_output.size());
 
+    } else if (t->type == kTfLiteInt2) {
+      PopulateTensor2bit(index, /*offset=*/0, quantized_output.data(),
+                         quantized_output.data() + quantized_output.size());
     } else {
       PopulateTensor(index, /*offset=*/0, quantized_output.data(),
                      quantized_output.data() + quantized_output.size());
@@ -888,6 +907,9 @@ class SingleOpModel {
         } else if (t.type == TensorType_INT4) {
           std::tie(t.scale, t.zero_point) =
               QuantizationParams<int8_t>(t.min, t.max, kTfLiteInt4);
+        } else if (t.type == TensorType_INT2) {
+          std::tie(t.scale, t.zero_point) =
+              QuantizationParams<int8_t>(t.min, t.max, kTfLiteInt2);
         } else {
           ABSL_LOG(FATAL) << "No support for the requested quantized type";
         }
@@ -940,6 +962,9 @@ class SingleOpModel {
     if (type == kTfLiteInt4) {
       qmin = -7;
       qmax = 7;
+    } else if (type == kTfLiteInt2) {
+      qmin = -2;
+      qmax = 2;
     } else {
       qmin = std::numeric_limits<T>::min();
       qmax = std::numeric_limits<T>::max();
