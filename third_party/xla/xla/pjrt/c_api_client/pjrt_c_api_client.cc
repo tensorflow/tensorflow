@@ -1725,6 +1725,63 @@ PjRtCApiExecutable::GetOutputDimensions() const {
   return std::vector<std::vector<DimensionVector>>{std::move(out)};
 }
 
+absl::StatusOr<std::vector<std::shared_ptr<const PjRtLayout>>>
+PjRtCApiExecutable::GetOutputLayouts() const {
+  const PJRT_Api* c_api = pjrt_c_api();
+  if (c_api->pjrt_api_version.major_version == 0 &&
+      c_api->pjrt_api_version.minor_version < 81) {
+    // If the PJRT C API version is too old, fall back to the default
+    // implementation.
+    return this->PjRtExecutable::GetOutputLayouts();
+  }
+  PJRT_Layouts_Extension* extension =
+      pjrt::FindExtension<PJRT_Layouts_Extension>(
+          c_api, PJRT_Extension_Type::PJRT_Extension_Type_Layouts);
+  if (extension == nullptr ||
+      extension->PJRT_Layouts_MemoryLayout_Serialize == nullptr ||
+      extension->PJRT_Layouts_PJRT_Executable_GetOutputLayouts == nullptr) {
+    // If we can't find PJRT_Layouts_PJRT_Executable_GetOutputLayouts support,
+    // fall back to the default implementation.
+    return this->PjRtExecutable::GetOutputLayouts();
+  }
+
+  PJRT_Layouts_PJRT_Executable_GetOutputLayouts_Args args;
+  args.struct_size =
+      PJRT_Layouts_PJRT_Executable_GetOutputLayouts_Args_STRUCT_SIZE;
+  args.extension_start = nullptr;
+  args.executable = c_executable();
+  RETURN_STATUS_IF_PJRT_ERROR(
+      extension->PJRT_Layouts_PJRT_Executable_GetOutputLayouts(&args), c_api);
+
+  std::vector<std::shared_ptr<const PjRtLayout>> layouts;
+  layouts.reserve(args.num_outputs);
+  for (int i = 0; i < args.num_outputs; ++i) {
+    // TODO(b/343274093): returns a PjRtLayout that wraps a C API layout
+    // directly instead of de/serializing into an xla::Layout.
+    PJRT_Layouts_MemoryLayout_Serialize_Args serialize_args;
+    serialize_args.struct_size =
+        PJRT_Layouts_MemoryLayout_Serialize_Args_STRUCT_SIZE;
+    serialize_args.extension_start = nullptr;
+    serialize_args.layout = args.layouts[i];
+    pjrt::LogFatalIfPjrtError(
+        extension->PJRT_Layouts_MemoryLayout_Serialize(&serialize_args), c_api);
+
+    // Clean up `PJRT_Layouts_SerializedLayout`.
+    absl::Cleanup cleanup = [&serialize_args] {
+      serialize_args.serialized_layout_deleter(
+          serialize_args.serialized_layout);
+    };
+
+    std::string serialized_layout(serialize_args.serialized_bytes,
+                                  serialize_args.serialized_bytes_size);
+    absl::StatusOr<std::shared_ptr<const PjRtLayout>> pjrt_layout =
+        PjRtLayout::Deserialize(serialized_layout);
+    TF_CHECK_OK(pjrt_layout.status());
+    layouts.push_back(*std::move(pjrt_layout));
+  }
+  return layouts;
+}
+
 absl::StatusOr<std::vector<std::vector<absl::string_view>>>
 PjRtCApiExecutable::GetOutputMemoryKinds() const {
   PJRT_Executable_OutputMemoryKinds_Args args;
