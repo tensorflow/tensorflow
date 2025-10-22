@@ -95,6 +95,11 @@ absl::Status GpuTracer::DoStart() {
   options_.activities_selected.push_back(CUPTI_ACTIVITY_KIND_OVERHEAD);
   options_.activities_selected.push_back(CUPTI_ACTIVITY_KIND_MEMSET);
 
+  // TODO: Change default to true once we have more confidence in HES.
+  ReadBoolFromEnvVar("TF_GPU_CUPTI_ENABLE_ACTIVITY_HW_TRACING", false,
+                     &options_.enable_activity_hardware_tracing)
+      .IgnoreError();
+
 // CUDA/CUPTI 10 have issues (leaks and crashes) with CuptiFinalize.
 #if CUDA_VERSION >= 11000
   options_.cupti_finalize = true;
