@@ -85,6 +85,12 @@ auto* test_percentiles_with_labels = monitoring::PercentileSampler<2>::New(
     GetDefaultPercentiles(), /*max_samples=*/1024,
     monitoring::UnitOfMeasure::kTime);
 
+void IncrementLazyCounter() {
+  static auto* test_counter = monitoring::Counter<0>::New(
+      "/tensorflow/monitoring/test/lazy_counter", "Test lazy counter.");
+  test_counter->GetCell()->IncrementBy(1);
+}
+
 TEST(CellReaderTest, CounterDeltaNoLabels) {
   CellReader<int64_t> cell_reader("/tensorflow/monitoring/test/counter");
   EXPECT_EQ(cell_reader.Delta(), 0);
@@ -1249,7 +1255,7 @@ TEST(CellReaderTest, WrongNumberOfLabels) {
                "has 2 labels");
 }
 
-TEST(CellReaderTest, MetricIsNotFound) {
+TEST(CellReaderTest, MetricIsNotFoundRead) {
   CellReader<int64_t> cell_reader("/metric/does/not/exist");
   CellReader<int64_t> empty_cell_reader("");
   EXPECT_DEATH(cell_reader.Read(), "Metric descriptor is not found");
@@ -1293,6 +1299,24 @@ TEST(CellReaderTest, InvalidType) {
                "Tensorflow CellReader does not support type");
 }
 #endif
+
+TEST(CellReaderTest, MetricIsNotFoundDelta) {
+  CellReader<int64_t> cell_reader("/metric/does/not/exist");
+  CellReader<int64_t> empty_cell_reader("");
+  EXPECT_EQ(cell_reader.Delta(), 0);
+  EXPECT_EQ(empty_cell_reader.Delta(), 0);
+}
+
+TEST(CellReaderTest, LazyInitializationDelta) {
+  CellReader<int64_t> cell_reader("/tensorflow/monitoring/test/lazy_counter");
+  EXPECT_EQ(cell_reader.Delta(), 0);
+}
+
+TEST(CellReaderTest, LazyInitializationDeltaAfterIncrement) {
+  CellReader<int64_t> cell_reader("/tensorflow/monitoring/test/lazy_counter");
+  IncrementLazyCounter();
+  EXPECT_EQ(cell_reader.Delta(), 1);
+}
 
 }  // namespace
 }  // namespace testing
