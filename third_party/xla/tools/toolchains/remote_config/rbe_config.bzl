@@ -92,14 +92,14 @@ def _tensorflow_local_config(name):
         platform_constraint = "@%s_config_platform//:platform_constraint" % name,
     )
 
-def _ml_build_rbe_config(container_image):
+def _ml_build_rbe_config(name, container_image):
     exec_properties = {
         "container-image": container_image,
         "Pool": "default",
     }
 
     remote_platform_configure(
-        name = "ml_build_config_platform",
+        name = name + "_config_platform",
         platform = "linux",
         platform_exec_properties = exec_properties,
     )
