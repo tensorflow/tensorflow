@@ -81,17 +81,10 @@ void Cumsum::GetCumsumCode(const OperationDef& op_def) {
   }
 
   if (axis_ == Axis::CHANNELS) {
-    if (definition_.precision == CalculationsPrecision::F16) {
       c += "    res.x = res.w + curr.x;\n";
       c += "    res.y = res.x + curr.y;\n";
       c += "    res.z = res.y + curr.z;\n";
       c += "    res.w = res.z + curr.w;\n";
-    } else {
-      c += "    res.x = res.w + curr.x;\n";
-      c += "    res.y = res.x + curr.y;\n";
-      c += "    res.z = res.y + curr.z;\n";
-      c += "    res.w = res.z + curr.w;\n";
-    }
   } else {
     c += "    res += curr;\n";
   }
