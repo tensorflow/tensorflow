@@ -40,7 +40,7 @@ limitations under the License.
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
 
-namespace stream_executor::cuda {
+namespace stream_executor::gpu {
 namespace {
 
 using ::tsl::proto_testing::EqualsProto;
@@ -150,4 +150,4 @@ TEST_F(BufferDebugLogTest, ReadAsProto) {
 }
 
 }  // namespace
-}  // namespace stream_executor::cuda
+}  // namespace stream_executor::gpu

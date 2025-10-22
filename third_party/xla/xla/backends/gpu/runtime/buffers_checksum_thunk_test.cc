@@ -45,7 +45,7 @@ namespace {
 
 namespace se = stream_executor;
 
-using ::stream_executor::cuda::BufferDebugLog;
+using ::stream_executor::gpu::BufferDebugLog;
 using ::testing::UnorderedElementsAre;
 
 class BuffersDebugChecksumThunkTest : public ::testing::Test {

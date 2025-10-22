@@ -26,7 +26,7 @@ limitations under the License.
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/stream.h"
 
-namespace stream_executor::cuda {
+namespace stream_executor::gpu {
 
 // A wrapper over a device memory buffer used to store debug info about contents
 // of buffers (e.g. checksums).
@@ -112,6 +112,6 @@ class BufferDebugLog {
   DeviceMemory<uint8_t> memory_;
 };
 
-}  // namespace stream_executor::cuda
+}  // namespace stream_executor::gpu
 
 #endif  // XLA_STREAM_EXECUTOR_GPU_BUFFER_DEBUG_LOG_H_

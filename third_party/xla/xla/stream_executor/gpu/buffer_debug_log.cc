@@ -31,7 +31,7 @@ limitations under the License.
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 
-namespace stream_executor::cuda {
+namespace stream_executor::gpu {
 
 using ::xla::gpu::BufferDebugLogEntry;
 using ::xla::gpu::BufferDebugLogHeader;
@@ -109,4 +109,4 @@ absl::StatusOr<xla::gpu::BufferDebugLogProto> BufferDebugLog::ReadProto(
   return buffer_debug_log_proto;
 }
 
-}  // namespace stream_executor::cuda
+}  // namespace stream_executor::gpu

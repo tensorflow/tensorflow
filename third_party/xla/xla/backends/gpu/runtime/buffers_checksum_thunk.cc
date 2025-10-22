@@ -80,8 +80,8 @@ absl::Status BuffersDebugChecksumThunk::ExecuteOnStream(
 
   se::DeviceMemory<uint8_t> log_ptr(
       params.buffer_allocations->GetDeviceAddress(log_slice_));
-  se::cuda::BufferDebugLog buffer_debug_log =
-      se::cuda::BufferDebugLog::FromDeviceMemoryUnchecked(log_ptr);
+  se::gpu::BufferDebugLog buffer_debug_log =
+      se::gpu::BufferDebugLog::FromDeviceMemoryUnchecked(log_ptr);
 
   for (const auto& [entry_id, buffer] : buffers_) {
     se::DeviceMemory<uint8_t> device_buffer(

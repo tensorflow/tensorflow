@@ -130,8 +130,8 @@ absl::StatusOr<std::unique_ptr<Thunk>> WrapThunk(
 XLA_FFI_DEFINE_HANDLER_SYMBOL(
     kDebugLogInitHandler,
     [](se::Stream* absl_nonnull stream, xla::ffi::Buffer<U8> log_buffer) {
-      return se::cuda::BufferDebugLog::CreateOnDevice(
-                 *stream, log_buffer.device_memory())
+      return se::gpu::BufferDebugLog::CreateOnDevice(*stream,
+                                                     log_buffer.device_memory())
           .status();
     },
     xla::ffi::Ffi::Bind().Ctx<xla::ffi::Stream>().Arg<xla::ffi::Buffer<U8>>());
@@ -147,8 +147,8 @@ XLA_FFI_DEFINE_HANDLER_SYMBOL(
       CHECK(hlo_module != nullptr);
       const DebugOptions& debug_options = hlo_module->config().debug_options();
 
-      se::cuda::BufferDebugLog buffer_debug_log =
-          se::cuda::BufferDebugLog::FromDeviceMemoryUnchecked(
+      se::gpu::BufferDebugLog buffer_debug_log =
+          se::gpu::BufferDebugLog::FromDeviceMemoryUnchecked(
               log_buffer.device_memory());
       TF_ASSIGN_OR_RETURN(xla::gpu::BufferDebugLogProto buffer_debug_log_proto,
                           buffer_debug_log.ReadProto(*stream));
