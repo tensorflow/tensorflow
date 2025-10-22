@@ -396,44 +396,6 @@ void StallStreamOnError(LocalDeviceState* local_device, se::Stream* stream) {
   }
 }
 
-// Does all necessary bookkeeping, after a buffer is successfully enqueued onto
-// a stream, to ensure that the buffer will be kept alive until its use on that
-// stream is complete.
-//
-//   device_buffer:              the buffer that was enqueued.
-//   buffer_local_device:        the device the buffer was allocated on.
-//   stream_local_device:        the device that manages usage_stream.
-//   event:                      an event that was recorded on usage_stream
-//                               after the usage of device_buffer was enqueued.
-//   usage_stream:               the stream the operation using device_buffer
-//                               was enqueued on.
-void RecordUsage(PjRtStreamExecutorBuffer::ScopedHold device_buffer,
-                 LocalDeviceState* buffer_local_device,
-                 LocalDeviceState* stream_local_device,
-                 BufferSequencingEventRef event, se::Stream* usage_stream,
-                 std::vector<tsl::RCReference<RawSEDeviceMemory>>*
-                     buffers_to_release = nullptr) {
-  tsl::profiler::TraceMe traceme("RecordUsage");
-  bool retain_buffer_until_completion =
-      // If the buffer wasn't allocated on the same device as the stream, always
-      // retain a reference.
-      (stream_local_device != buffer_local_device) ||
-      // In the synchronous allocation model, always retain a reference.
-      (stream_local_device->allocation_model() ==
-       LocalDeviceState::kSynchronous);
-  if (retain_buffer_until_completion) {
-    if (buffers_to_release) {
-      buffers_to_release->push_back(device_buffer->device_memory());
-    } else {
-      buffer_local_device
-          ->ThenRelease(usage_stream, device_buffer->device_memory())
-          .IgnoreError();
-    }
-  }
-  device_buffer.ConvertUsageHold(usage_stream, event,
-                                 retain_buffer_until_completion);
-}
-
 // Adds necessary synchronization after a copy has been enqueued to a buffer.
 // definition_event was added when the buffer was allocated, but has not yet
 // had an event recorded.
@@ -706,16 +668,6 @@ AllocateDestinationBuffer(const Shape& on_host_shape, PjRtDevice* device,
       on_device_shape, std::move(dst_device_buffer), client, device,
       memory_space);
   return py_buffer;
-}
-
-void PjRtStreamExecutorBuffer::ScopedHold::ConvertUsageHold(
-    se::Stream* usage_stream, BufferSequencingEventRef event,
-    bool reference_held) {
-  CHECK(ok());
-  CHECK_EQ(type(), kUsage);
-  parent()->ConvertUsageHold(buffer(), usage_stream, std::move(event),
-                             reference_held);
-  SetState(kConverted);
 }
 
 bool PjRtStreamExecutorClient::IsOnCpu(PjRtMemorySpace* memory_space) {
@@ -1388,26 +1340,6 @@ void PjRtStreamExecutorBuffer::Delete() {
   // events defined on the compute stream. All streams other than the compute
   // stream are expected to WaitFor compute stream before any write operations.
   TF_CHECK_OK(Release(/*wait_for_operations_to_complete=*/false).status());
-}
-
-void PjRtStreamExecutorBuffer::ConvertUsageHold(TrackedDeviceBuffer* buffer,
-                                                se::Stream* usage_stream,
-                                                BufferSequencingEventRef event,
-                                                bool reference_held) {
-  absl::MutexLock lock(&mu_);
-  CHECK(device_buffer() == buffer || device_buffer() == nullptr);
-  buffer->AddUsageEvent(std::move(event), reference_held);
-  DecrementUsage();
-}
-
-PjRtStreamExecutorBuffer::ScopedHold
-PjRtStreamExecutorBuffer::GetBufferWithHold(ScopedHold::Type type) {
-  absl::MutexLock lock(&mu_);
-  // Ensure that at most one donation hold can be in progress at a time.
-  WaitForOutstandingDonationHold();
-  ScopedHold hold(this, type);
-  AcquireHoldLocked(&hold);
-  return hold;
 }
 
 Future<> PjRtStreamExecutorBuffer::GetReadyFuture() {

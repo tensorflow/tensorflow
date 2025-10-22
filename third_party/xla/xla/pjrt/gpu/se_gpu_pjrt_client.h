@@ -140,10 +140,6 @@ class StreamExecutorGpuClient : public xla::PjRtStreamExecutorClient {
       std::optional<absl::Span<const std::optional<Layout>>> device_layouts,
       PjRtMemorySpace* memory_space) override;
 
-  Future<> CopyRawSubBufferToHost(PjRtBuffer* buffer, Future<void*> dst,
-                                  int64_t offset,
-                                  int64_t transfer_size) override;
-
   void ScheduleRemoteSend(
       PjRtMemorySpace* memory_space,
       tsl::RCReference<CommonPjRtRawBuffer> raw_buffer,

@@ -424,35 +424,6 @@ class PjRtStreamExecutorClient : public CommonPjRtClient {
   friend class PjRtStreamExecutorBuffer;
   friend class PjRtStreamExecutorRawBuffer;
 
-  virtual void CopyToRemoteDevice(PjRtBuffer* buffer,
-                                  absl::string_view serialized_descriptor,
-                                  PjRtBuffer::RemoteSendCallback on_done) {
-    on_done(Unimplemented("Cross host sends not implemented."),
-            /*sends_were_enqueued=*/false);
-  }
-
-  virtual Future<> CopyRawSubBufferToHost(PjRtBuffer* buffer, Future<void*> dst,
-                                          int64_t offset,
-                                          int64_t transfer_size) {
-    return Future<>(Unimplemented("Raw copies to host not implemented."));
-  }
-
-  virtual tsl::RCReference<PjRtDeviceEvent> CopyRawHostToDevice(
-      LocalDeviceState* local_device,
-      tsl::RCReference<RawSEDeviceMemory> device_buffer, const void* src,
-      int64_t offset, int64_t transfer_size) {
-    return CreateErrorDeviceEvent(
-        Unimplemented("Raw copies h2d not implemented."));
-  }
-
-  virtual tsl::RCReference<PjRtDeviceEvent> CopyRawDeviceToHost(
-      LocalDeviceState* local_device,
-      tsl::RCReference<RawSEDeviceMemory> device_buffer, void* dst,
-      int64_t offset, int64_t transfer_size) {
-    return CreateErrorDeviceEvent(
-        Unimplemented("Raw copies d2h not implemented."));
-  }
-
   // Helper function for creating PjRtStreamExecutorExecutables. Modifies
   // `options` in-place.
   struct ExecutableExtras {
@@ -557,38 +528,6 @@ absl::StatusOr<DeviceAssignment> DevicesToDeviceAssignment(
 
 class PjRtStreamExecutorBuffer : public CommonPjRtBufferImpl {
  public:
-  class ScopedHold : public CommonPjRtBuffer::ScopedHold {
-   public:
-    // Converts the hold into a usage event. Only valid for holds of type
-    // kUsage.
-    //
-    //   usage_stream:   the stream that the buffer was used on.
-    //   event:          an event that has been recorded on usage_stream after
-    //                   the buffer was used.
-    //   reference_held: true if and only if the caller has caused a
-    //                   reference to this->buffer() to stay live until after
-    //                   the host is sure that the usage (transfer or execution)
-    //                   has completed.
-    void ConvertUsageHold(se::Stream* usage_stream,
-                          BufferSequencingEventRef event, bool reference_held);
-
-    TrackedDeviceBuffer* buffer() const {
-      return static_cast<TrackedDeviceBuffer*>(
-          CommonPjRtBuffer::ScopedHold::buffer());
-    }
-    TrackedDeviceBuffer* operator->() const { return buffer(); }
-    const TrackedDeviceBuffer& operator*() const { return *buffer(); }
-
-    PjRtStreamExecutorBuffer* parent() const {
-      return static_cast<PjRtStreamExecutorBuffer*>(
-          CommonPjRtBuffer::ScopedHold::parent());
-    }
-
-   private:
-    using CommonPjRtBuffer::ScopedHold::ScopedHold;
-    friend class PjRtStreamExecutorBuffer;
-    friend class PjRtStreamExecutorClient;
-  };
   PjRtStreamExecutorBuffer(Shape on_device_shape,
                            std::unique_ptr<TrackedDeviceBuffer> device_buffer,
                            PjRtClient* client, PjRtDevice* device,
@@ -610,16 +549,6 @@ class PjRtStreamExecutorBuffer : public CommonPjRtBufferImpl {
   // GetBufferWithExternalReference, the memory will not be freed until the
   // external framework drops the reference.
   void Delete() override;
-
-  // Returns a hold on the TrackedDeviceBuffer holding the device
-  // buffers. See comment on ScopedHold.
-  ScopedHold GetBufferWithHold(ScopedHold::Type type);
-  ScopedHold GetBufferWithUsageHold() {
-    return GetBufferWithHold(ScopedHold::kUsage);
-  }
-  ScopedHold GetBufferWithExternalReference() {
-    return GetBufferWithHold(ScopedHold::kExternalReference);
-  }
 
   Future<> GetReadyFuture() override;
 
@@ -643,20 +572,6 @@ class PjRtStreamExecutorBuffer : public CommonPjRtBufferImpl {
 
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> DonateWithControlDependency(
       Future<> dependency) override;
-
- private:
-  friend class PjRtClient;
-
-  TrackedDeviceBuffer* device_buffer() const
-      ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-    return static_cast<TrackedDeviceBuffer*>(CommonPjRtBuffer::device_buffer());
-  }
-
-  // Drops a usage hold and calls device_buffer_->AddUsageEvent. Does a sanity
-  // check that buffer==device_buffer_ or device_buffer_==nullptr. Called after
-  // device_buffer_ was successfully enqueued on a stream.
-  void ConvertUsageHold(TrackedDeviceBuffer* buffer, se::Stream* usage_stream,
-                        BufferSequencingEventRef event, bool reference_held);
 };
 
 // Allocates the device buffers for a buffer that will be used as the
