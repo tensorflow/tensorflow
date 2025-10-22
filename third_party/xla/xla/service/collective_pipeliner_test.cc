@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -3252,6 +3253,104 @@ ENTRY main.3813_spmd {
   HloVerifier verifier(/*layout_sensitive=*/false,
                        /*allow_mixed_precision*/ true);
   ASSERT_IS_OK(verifier.Run(module.get()).status());
+}
+
+TEST_F(CollectivePipelinerTest, ClonedWhileLoopHasUniqueBodyAndCondition) {
+  constexpr absl::string_view hlo_string = R"(
+HloModule module
+
+to_apply0 {
+  Arg_0.732 = bf16[] parameter(0)
+  Arg_1.733 = bf16[] parameter(1)
+  ROOT add.734 = bf16[] add(Arg_0.732, Arg_1.733)
+}
+
+body_inner {
+ p2 = (s32[], bf16[3,4096,4096]{2,1,0}) parameter(0)
+ gte1 = s32[] get-tuple-element(p2), index=0
+  gte2 = bf16[3,4096,4096]{2,1,0} get-tuple-element(p2), index=1
+  add = bf16[3,4096,4096]{2,1,0} add(gte2, gte2)
+  ROOT tuple = (s32[], bf16[3,4096,4096]{2,1,0}) tuple(gte1, gte2)
+
+}
+
+condition_inner {
+  cond_p1 = (s32[], bf16[3,4096,4096]{2,1,0}) parameter(0)
+  gte1 = s32[] get-tuple-element(cond_p1), index=0
+  c1 = s32[] constant(9)
+  ROOT comp0 = pred[] compare(gte1, c1), direction=LT
+}
+
+body {
+  p2 = (s32[], bf16[3,4096,4096]{2,1,0}, bf16[10,512,3,4096]{3,2,1,0}) parameter(0)
+  gte2 = bf16[3,4096,4096]{2,1,0} get-tuple-element(p2), index=1
+  gte3 = bf16[10,512,3,4096]{3,2,1,0} get-tuple-element(p2), index=2
+  c2 = s32[] constant(9)
+  gte4 = s32[] get-tuple-element(p2), index=0
+  sub0 = s32[] subtract(c2, gte4)
+  c3 = s32[] constant(0)
+  comp1 = pred[] compare(sub0, c3), direction=LT
+  c4 = s32[] constant(19)
+  sub2 = s32[] subtract(c4, gte4)
+  sel0 = s32[] select(comp1, sub2, sub0)
+
+  rsp0 = bf16[3,4096,4096]{2,1,0} reshape(gte2)
+  t = (s32[], bf16[3,4096,4096]{2,1,0}) tuple(c3, rsp0)
+  w0 = (s32[], bf16[3,4096,4096]{2,1,0}) while(t), condition=condition_inner, body=body_inner
+  rsp0_postwhile = bf16[3,4096,4096]{2,1,0} get-tuple-element(w0), index=1
+  rs0 = bf16[3,4096,512]{2,1,0} reduce-scatter(rsp0_postwhile), channel_id=75, replica_groups={{0,1,2,3}}, dimensions={2}, to_apply=to_apply0
+  tran0 = bf16[512,3,4096]{0,2,1} transpose(rs0), dimensions={2,0,1}
+  rsp1 = bf16[1,512,3,4096]{3,2,1,0} bitcast(tran0)
+  dus0 = bf16[10,512,3,4096]{3,2,1,0} dynamic-update-slice(gte3, rsp1, sel0, c3, c3, /*index=5*/c3)
+  c5 = s32[] constant(1)
+  add0 = s32[] add(gte4, c5)
+  ROOT t1 = (s32[], bf16[3,4096,4096]{2,1,0}, bf16[10,512,3,4096]{3,2,1,0}) tuple(add0, rsp0, dus0)
+} // body
+
+condition {
+  cond_p1 = (s32[], bf16[3,4096,4096]{2,1,0}, bf16[10,512,3,4096]{3,2,1,0}) parameter(0)
+  gte1 = s32[] get-tuple-element(cond_p1), index=0
+  c1 = s32[] constant(9)
+  ROOT comp0 = pred[] compare(gte1, c1), direction=LT
+}
+
+ENTRY main.3813_spmd {
+  p0 = bf16[3,4096,4096]{2,1,0} parameter(0)
+  p1 = bf16[10,512,3,4096]{3,2,1,0} parameter(1)
+  c0 = s32[] constant(0)
+
+  t0 = (s32[], bf16[3,4096,4096]{2,1,0}, bf16[10,512,3,4096]{3,2,1,0}) tuple(c0, p0, p1)
+  w0 = (s32[], bf16[3,4096,4096]{2,1,0}, bf16[10,512,3,4096]{3,2,1,0}) while(t0), condition=condition, body=body
+  ROOT gte0 = bf16[3,4096,4096]{2,1,0} get-tuple-element(w0), index=1
+}
+)";
+  auto module = ParseAndReturnUnverifiedModule(hlo_string, config_).value();
+  XLA_VLOG_LINES(1, absl::StrCat("Before: ", module->ToString()));
+  EXPECT_TRUE(
+      RunOptimizer(module.get(), /*last_run=*/true, 0,
+                   /*pipeline_use_tree=*/true,
+                   /*process_different_sized_ops=*/true,
+                   collective_pipeliner_utils::PipeliningDirection::kForward,
+                   HloPredicateIsOp<HloOpcode::kReduceScatter>)
+          .value());
+  XLA_VLOG_LINES(1, absl::StrCat("After: ", module->ToString()));
+  HloVerifier verifier(/*layout_sensitive=*/false,
+                       /*allow_mixed_precision*/ true);
+  ASSERT_IS_OK(verifier.Run(module.get()).status());
+  absl::flat_hash_set<HloComputation*> body_computations_seen;
+  absl::flat_hash_set<HloComputation*> condition_computations_seen;
+  for (auto* computation : module->computations()) {
+    for (auto* instruction : computation->instructions()) {
+      if (instruction->opcode() == HloOpcode::kWhile) {
+        ASSERT_TRUE(
+            !body_computations_seen.contains(instruction->while_body()));
+        ASSERT_TRUE(!condition_computations_seen.contains(
+            instruction->while_condition()));
+        body_computations_seen.insert(instruction->while_body());
+        condition_computations_seen.insert(instruction->while_condition());
+      }
+    }
+  }
 }
 
 TEST_F(CollectivePipelinerTest,
