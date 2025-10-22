@@ -6876,6 +6876,9 @@ absl::Status MsaAlgorithm::WindowPrefetch() {
     if (!instruction->IsOutputFusion() && !instruction->IsLoopFusion()) {
       continue;
     }
+    if (instruction->parent()->execution_thread() == "sparsecore") {
+      continue;
+    }
 
     window_prefetchable_instructions.insert(instruction);
 
