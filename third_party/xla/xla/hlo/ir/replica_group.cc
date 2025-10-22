@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
 #include "xla/array.h"
+#include "xla/hlo/ir/mesh_and_axis.h"
 #include "xla/printer.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
@@ -45,6 +46,55 @@ std::string ReplicaGroupsToString(
   return absl::StrCat("{", absl::StrJoin(replica_group_str, ","), "}");
 }
 
+/************** MeshAxesReplicaGroupList implementation ***********************/
+
+int64_t MeshAxesReplicaGroupList::num_replica_groups() const {
+  return mesh_.device_assignment().num_elements() / num_devices_per_group();
+}
+
+int64_t MeshAxesReplicaGroupList::num_devices_per_group() const {
+  // Number of devices per replica group is equal to the product of the sizes of
+  // all axes which are reduced across.
+  int64_t devices_per_group = 1;
+  for (const AxisRef& axis : axes_) {
+    int64_t axis_size =
+        axis.sub_axis_info().has_value()
+            ? axis.sub_axis_info()->size
+            : mesh_.device_assignment().dim(axis.mesh_axis_index());
+    devices_per_group *= axis_size;
+  }
+  return devices_per_group;
+}
+
+void MeshAxesReplicaGroupList::Print(Printer* printer) const {
+  // TODO(varcho): Implement this.
+}
+
+std::string MeshAxesReplicaGroupList::ToString() const {
+  // TODO(varcho): Implement this.
+  return "";
+}
+
+MeshAxesReplicaGroupListProto MeshAxesReplicaGroupList::ToProto() const {
+  MeshAxesReplicaGroupListProto proto;
+  *proto.mutable_mesh() = mesh_.ToProto();
+  for (const AxisRef& axis : axes_) {
+    *proto.add_axes() = axis.ToProto();
+  }
+  return proto;
+}
+
+MeshAxesReplicaGroupList MeshAxesReplicaGroupList::FromProto(
+    const MeshAxesReplicaGroupListProto& proto) {
+  Mesh mesh = Mesh::FromProto(proto.mesh());
+  std::vector<AxisRef> axes;
+  for (const AxisRefProto& axis_proto : proto.axes()) {
+    axes.push_back(AxisRef::FromProto(axis_proto));
+  }
+  return MeshAxesReplicaGroupList(mesh, axes);
+}
+
+/************** IotaReplicaGroupList implementation ***************************/
 int64_t IotaReplicaGroupList::num_replica_groups() const {
   DCHECK_GE(num_replica_groups_, 0);
   return num_replica_groups_;
@@ -121,6 +171,7 @@ std::shared_ptr<std::vector<ReplicaGroup>> ExpandIota(
 }
 }  // namespace
 
+/************** CollectiveDeviceList implementation ***************************/
 const std::vector<ReplicaGroup>& CollectiveDeviceList::replica_groups() const {
   if (replica_groups_ == nullptr) {
     CHECK(iota_replica_group_list_.has_value());
