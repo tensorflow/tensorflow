@@ -945,6 +945,11 @@ FieldOffsetsAndSizesForVersion(int major_version, int minor_version) {
     if (minor_version >= 79) {
       add_field("PJRT_LoadedExecutable_GetDeviceAssignment", kFnPtrSize);
     }
+    if (minor_version >= 80) {
+      add_field("PJRT_Event_Promise_Get", kFnPtrSize);
+      add_field("PJRT_Promise_Set", kFnPtrSize);
+      add_field("PJRT_Promise_Destroy", kFnPtrSize);
+    }
     return version_offsets_and_sizes;
   }
   LOG(FATAL) << "Unsupported API version: " << major_version << "."
@@ -1336,6 +1341,15 @@ TEST_F(PjrtCAbiTestBase, FieldOffsetsAndSizes) {
           {"PJRT_LoadedExecutable_GetDeviceAssignment",
            {offsetof(PJRT_Api, PJRT_LoadedExecutable_GetDeviceAssignment),
             sizeof(PJRT_Api::PJRT_LoadedExecutable_GetDeviceAssignment)}},
+          {"PJRT_Event_Promise_Get",
+           {offsetof(PJRT_Api, PJRT_Event_Promise_Get),
+            sizeof(PJRT_Api::PJRT_Event_Promise_Get)}},
+          {"PJRT_Promise_Set",
+           {offsetof(PJRT_Api, PJRT_Promise_Set),
+            sizeof(PJRT_Api::PJRT_Promise_Set)}},
+          {"PJRT_Promise_Destroy",
+           {offsetof(PJRT_Api, PJRT_Promise_Destroy),
+            sizeof(PJRT_Api::PJRT_Promise_Destroy)}},
       };
   ASSERT_EQ(api_->pjrt_api_version.major_version, PJRT_API_MAJOR);
   ASSERT_EQ(api_->pjrt_api_version.minor_version, PJRT_API_MINOR);

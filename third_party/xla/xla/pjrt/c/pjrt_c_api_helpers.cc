@@ -210,6 +210,7 @@ absl::StatusCode PjrtErrorCodeToStatusCode(PJRT_Error_Code code) {
 
 PJRT_Error_Code StatusCodeToPjrtErrorCode(absl::StatusCode code) {
   switch (static_cast<tsl::error::Code>(code)) {
+    case tsl::error::OK:
     case tsl::error::CANCELLED:
     case tsl::error::UNKNOWN:
     case tsl::error::INVALID_ARGUMENT:
@@ -227,9 +228,6 @@ PJRT_Error_Code StatusCodeToPjrtErrorCode(absl::StatusCode code) {
     case tsl::error::UNAVAILABLE:
     case tsl::error::DATA_LOSS:
       return static_cast<PJRT_Error_Code>(code);
-    case tsl::error::OK:
-      CHECK(false) << "Status::OK() cannot be converted to PJRT_Error code, "
-                      "use nullptr instead";
     case tensorflow::error::
         DO_NOT_USE_RESERVED_FOR_FUTURE_EXPANSION_USE_DEFAULT_IN_SWITCH_INSTEAD_:
       CHECK(false) << "got DO_NOT_USE_RESERVED_FOR_FUTURE_EXPANSION_"
@@ -269,6 +267,18 @@ PJRT_EventDeleter MakeEventDeleter(const PJRT_Api* api) {
     args.event = managed;
 
     LogFatalIfPjrtError(api->PJRT_Event_Destroy(&args), api);
+  };
+}
+
+PJRT_PromiseDeleter MakePromiseDeleter(const PJRT_Api* api) {
+  CHECK(api != nullptr);
+  return [api](PJRT_Promise* managed) {
+    PJRT_Promise_Destroy_Args args;
+    args.struct_size = PJRT_Promise_Destroy_Args_STRUCT_SIZE;
+    args.extension_start = nullptr;
+    args.promise = managed;
+
+    LogFatalIfPjrtError(api->PJRT_Promise_Destroy(&args), api);
   };
 }
 
