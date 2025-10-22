@@ -124,7 +124,7 @@ static std::string ToString(rocblas_status status) {
 }
 
 bool ROCMBlas::Init() {
-  std::unique_ptr<ActivateContext> activation = parent_->Activate();
+  std::unique_ptr<ActivateContext> activation = stream_->parent()->Activate();
   rocblas_status ret = wrap::rocblas_create_handle(&blas_);
   if (ret != rocblas_status_success) {
     LOG(ERROR) << "failed to create rocBLAS handle: " << ToString(ret);
@@ -151,19 +151,19 @@ bool ROCMBlas::Init() {
   return true;
 }
 
-ROCMBlas::ROCMBlas(StreamExecutor *parent)
-    : parent_(CHECK_NOTNULL(parent)),
+ROCMBlas::ROCMBlas(Stream* stream)
+    : stream_(CHECK_NOTNULL(stream)),
       blas_(nullptr)
 #if TF_HIPBLASLT
       ,
-      blas_lt_(parent)
+      blas_lt_(stream->parent())
 #endif
 {
 }
 
 ROCMBlas::~ROCMBlas() {
   if (blas_ != nullptr) {
-    std::unique_ptr<ActivateContext> activation = parent_->Activate();
+    std::unique_ptr<ActivateContext> activation = stream_->parent()->Activate();
     wrap::rocblas_destroy_handle(blas_);
   }
 }
@@ -368,7 +368,7 @@ absl::Status ROCMBlas::DoBlasInternalImpl(FuncT rocblas_func, Stream *stream,
   absl::MutexLock lock{mu_};
 
   CHECK(blas_ != nullptr);
-  std::unique_ptr<ActivateContext> activation = parent_->Activate();
+  std::unique_ptr<ActivateContext> activation = stream_->parent()->Activate();
   if (!SetStream(stream)) {
     return absl::InternalError("Setting stream failed");
   }
@@ -467,8 +467,8 @@ Impl_DoBlasScal(wrap::rocblas_sscal, float, float)
 void ROCMBlas::MaybeLogGemmOp(GemmCallTrace::GemmType op,
                               blas::CallContext context, uint64_t size1,
                               uint64_t size2) {
-  auto status =
-      parent_->RecordApiTrace(GemmCallTrace{op, (int)context, size1, size2});
+  auto status = stream_->parent()->RecordApiTrace(
+      GemmCallTrace{op, (int)context, size1, size2});
 }
 
 absl::Status ROCMBlas::DoBlasGemm(
@@ -1278,34 +1278,4 @@ absl::Status ROCMBlas::GetVersion(std::string *version) {
 }
 
 }  // namespace gpu
-
-void initialize_rocblas() {
-  auto rocBlasAlreadyRegistered = PluginRegistry::Instance()->HasFactory(
-      rocm::kROCmPlatformId, PluginKind::kBlas);
-
-  if (!rocBlasAlreadyRegistered) {
-    absl::Status status =
-        PluginRegistry::Instance()
-            ->RegisterFactory<PluginRegistry::BlasFactory>(
-                rocm::kROCmPlatformId, "rocBLAS",
-                [](StreamExecutor *parent) -> blas::BlasSupport * {
-                  gpu::ROCMBlas *blas = new gpu::ROCMBlas(parent);
-                  if (!blas->Init()) {
-                    // Note: Init() will log a more specific error.
-                    delete blas;
-                    return nullptr;
-                  }
-                  return blas;
-                });
-
-    if (!status.ok()) {
-      LOG(ERROR) << "Unable to register rocBLAS factory: " << status.message();
-    }
-  }
-}
-
 }  // namespace stream_executor
-
-STREAM_EXECUTOR_REGISTER_MODULE_INITIALIZER(register_rocblas, {
-  stream_executor::initialize_rocblas();
-});
