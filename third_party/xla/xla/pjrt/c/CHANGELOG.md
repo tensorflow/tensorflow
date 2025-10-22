@@ -1,5 +1,9 @@
 # PJRT C API changelog
 
+## 0.81
+
+* Added `PJRT_Layouts_PJRT_Executable_GetOutputLayouts`.
+
 ## 0.80
 
 * Added `PJRT_Extension_Type::PJRT_Extension_Type_HostAllocator`.

@@ -158,6 +158,10 @@ struct PJRT_Executable {
   std::vector<int64_t> out_dimensions;
   std::vector<size_t> out_dimension_sizes;
 
+  bool out_layouts_ran ABSL_GUARDED_BY(mutex) = false;
+  std::vector<PJRT_Layouts_MemoryLayout> out_layouts;
+  std::vector<PJRT_Layouts_MemoryLayout*> out_layouts_pointers;
+
   explicit PJRT_Executable(std::shared_ptr<xla::PjRtExecutable> executable);
   explicit PJRT_Executable(xla::PjRtExecutable* executable);
 
