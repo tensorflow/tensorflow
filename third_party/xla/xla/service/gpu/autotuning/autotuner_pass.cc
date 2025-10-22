@@ -102,17 +102,11 @@ absl::StatusOr<std::unique_ptr<AutotunerPass>> AutotunerPass::Create(
                                    GetProfileOptions(debug_options), allocator);
   }
 
-  se::DeviceDescription device_description = target_config->device_description;
-  device_description.set_dnn_version(
-      {static_cast<unsigned>(target_config->dnn_version_info.major_version()),
-       static_cast<unsigned>(target_config->dnn_version_info.minor_version()),
-       static_cast<unsigned>(target_config->dnn_version_info.patch())});
-
   std::unique_ptr<AutotunerCacheInterface> cache =
       std::make_unique<LegacyCache>(
           debug_options.xla_gpu_experimental_autotuner_cache_dir(),
           debug_options.xla_gpu_experimental_autotune_cache_mode(),
-          device_description);
+          target_config->device_description);
 
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<Autotuner> autotuner,

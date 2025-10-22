@@ -68,6 +68,11 @@ absl::StatusOr<Compiler::TargetConfig> Compiler::TargetConfig::FromProto(
                                       proto.runtime_version().minor(),
                                       proto.runtime_version().patch());
   target_config.device_description.set_runtime_version(runtime_version);
+  se::SemanticVersion dnn_version(
+      static_cast<unsigned>(proto.dnn_version_info().major()),
+      static_cast<unsigned>(proto.dnn_version_info().minor()),
+      static_cast<unsigned>(proto.dnn_version_info().patch()));
+  target_config.device_description.set_dnn_version(dnn_version);
   return target_config;
 }
 
