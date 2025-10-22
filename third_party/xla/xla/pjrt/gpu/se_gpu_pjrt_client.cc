@@ -71,6 +71,7 @@ limitations under the License.
 #include "xla/pjrt/gpu/gpu_topology.pb.h"
 #include "xla/pjrt/gpu/se_gpu_topology_description.h"
 #include "xla/pjrt/host_memory_spaces.h"
+#include "xla/pjrt/host_to_device_transfer_manager.h"
 #include "xla/pjrt/local_device_state.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
@@ -663,13 +664,8 @@ StreamExecutorGpuClient::CreateBuffersForAsyncHostToDevice(
     absl::Span<const PjRtClient::ShapeSpec> shape_specs,
     std::optional<absl::Span<const std::optional<Layout>>> device_layouts,
     PjRtMemorySpace* memory_space) {
-  CHECK_EQ(memory_space->devices().size(), 1);
-  PjRtDevice* device = memory_space->devices()[0];
-  auto* stream_executor_device =
-      tensorflow::down_cast<PjRtStreamExecutorDevice*>(device);
-  return xla::GpuAsyncHostToDeviceTransferManager::Create(
-      shape_specs, std::move(device_layouts), stream_executor_device, this,
-      memory_space);
+  return xla::CreateAsyncHostToDeviceTransferManager(
+      shape_specs, std::move(device_layouts), memory_space);
 }
 
 absl::StatusOr<absl::flat_hash_map<GlobalDeviceId, IncarnationId>>
