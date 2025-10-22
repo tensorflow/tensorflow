@@ -359,8 +359,8 @@ CheckStoreIntoSliceIsCompatible(
                             HloOpcode::kAllReduce, HloOpcode::kTranspose,
                             HloOpcode::kBroadcast, HloOpcode::kAllGather,
                             HloOpcode::kReduce, HloOpcode::kGetTupleElement,
-                            HloOpcode::kConcatenate, HloOpcode::kReduceScatter>(
-               i) ||
+                            HloOpcode::kConcatenate, HloOpcode::kReduceScatter,
+                            HloOpcode::kBitcast>(i) ||
            (multi_uses_pipelining && i->IsElementwise()) ||
            (i->opcode() == HloOpcode::kCustomCall &&
             !Cast<HloCustomCallInstruction>(i)
@@ -1882,6 +1882,14 @@ absl::Status TransformLoopForward(
         MapNewOperands(instr->operands(), while_body_to_peeled);
     HloInstruction* cloned_instr = loop_computation->AddInstruction(
         instr->CloneWithNewOperands(instr->shape(), new_operands));
+    if (cloned_instr->opcode() == HloOpcode::kWhile) {
+      cloned_instr->set_while_condition(
+          loop_computation->parent()->AddEmbeddedComputation(
+              instr->while_condition()->CloneWithReplacements(nullptr)));
+      cloned_instr->set_while_body(
+          loop_computation->parent()->AddEmbeddedComputation(
+              instr->while_body()->CloneWithReplacements(nullptr)));
+    }
     TF_RETURN_IF_ERROR(
         UpdateControlDependencies(instr, cloned_instr, while_body_to_peeled));
     UpdateInstructionChannelId(cloned_instr, next_channel_id);
@@ -3051,6 +3059,14 @@ static absl::Status TransformLoopBackward(
           MapNewOperands(instr->operands(), while_body_replacement_map);
       cloned_instr = body_builder.AddInstruction(
           instr->CloneWithNewOperands(instr->shape(), new_operands));
+      if (cloned_instr->opcode() == HloOpcode::kWhile) {
+        cloned_instr->set_while_condition(
+            while_loop->GetModule()->AddEmbeddedComputation(
+                instr->while_condition()->CloneWithReplacements(nullptr)));
+        cloned_instr->set_while_body(
+            while_loop->GetModule()->AddEmbeddedComputation(
+                instr->while_body()->CloneWithReplacements(nullptr)));
+      }
       TF_RETURN_IF_ERROR(UpdateControlDependencies(instr, cloned_instr,
                                                    while_body_replacement_map));
       UpdateInstructionChannelId(cloned_instr, next_channel_id);
