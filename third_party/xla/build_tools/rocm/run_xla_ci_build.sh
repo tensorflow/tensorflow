@@ -26,7 +26,7 @@ if [ ! -d /tf/pkg ]; then
 fi
 
 SCRIPT_DIR=$(dirname $0)
-bazel --bazelrc="$SCRIPT_DIR/rocm_xla.bazelrc" test \
+bazel --bazelrc="$SCRIPT_DIR/rocm_xla_ci.bazelrc" test \
 	"$@" \
 	--build_tag_filters=$TAG_FILTERS \
     --test_tag_filters=$TAG_FILTERS \
