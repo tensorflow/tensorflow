@@ -49,6 +49,38 @@ namespace xla {
 namespace gpu {
 using hlo_query::NextChannelId;
 
+// Corrects the offsets in the local metadata to account for the number of input
+// rows in the combined ragged tensor.
+HloInstruction* CorrectOffsets(HloRaggedAllToAllInstruction* ragged_all_to_all,
+                               HloInstruction* local_metadata,
+                               HloComputation* computation) {
+  const Shape& shape = local_metadata->shape();
+
+  HloInstruction* iota = computation->AddInstruction(
+      HloInstruction::CreateIota(/*shape=*/shape, /*iota_dimension=*/0));
+
+  int64_t num_input_rows = ragged_all_to_all->operand(0)->shape().dimensions(0);
+
+  HloInstruction* num_input_rows_constant =
+      computation->AddInstruction(HloInstruction::CreateConstant(
+          LiteralUtil::CreateR0<int64_t>(num_input_rows)));
+
+  HloInstruction* num_input_rows_constant_broadcast =
+      computation->AddInstruction(HloInstruction::CreateBroadcast(
+          /*shape=*/shape, num_input_rows_constant,
+          /*broadcast_dimensions=*/{}));
+
+  HloInstruction* input_offsets_offset =
+      computation->AddInstruction(HloInstruction::CreateBinary(
+          /*shape=*/shape, HloOpcode::kMultiply,
+          /*lhs=*/iota, /*rhs=*/num_input_rows_constant_broadcast));
+
+  return computation->AddInstruction(HloInstruction::CreateBinary(
+      /*shape=*/shape, HloOpcode::kAdd,
+      /*lhs=*/local_metadata,
+      /*rhs=*/input_offsets_offset));
+}
+
 // Exchanges the metadata between the hosts and computes the intra-host
 // metadata.
 //
@@ -88,33 +120,8 @@ HloInstruction* GetIntraHostMetadata(
           /*split_dimension=*/0));
 
   if (correct_offsets) {
-    HloInstruction* iota =
-        computation->AddInstruction(HloInstruction::CreateIota(
-            /*shape=*/new_metadata_shape,
-            /*iota_dimension=*/0));
-
-    int64_t num_input_rows =
-        ragged_all_to_all->operand(0)->shape().dimensions(0);
-
-    HloInstruction* num_input_rows_constant =
-        computation->AddInstruction(HloInstruction::CreateConstant(
-            LiteralUtil::CreateR0<int64_t>(num_input_rows)));
-
-    HloInstruction* num_input_rows_constant_broadcast =
-        computation->AddInstruction(HloInstruction::CreateBroadcast(
-            /*shape=*/new_metadata_shape, num_input_rows_constant,
-            /*broadcast_dimensions=*/{}));
-
-    HloInstruction* input_offsets_offset =
-        computation->AddInstruction(HloInstruction::CreateBinary(
-            /*shape=*/new_metadata_shape, HloOpcode::kMultiply,
-            /*lhs=*/iota, /*rhs=*/num_input_rows_constant_broadcast));
-
     new_local_metadata =
-        computation->AddInstruction(HloInstruction::CreateBinary(
-            /*shape=*/new_metadata_shape, HloOpcode::kAdd,
-            /*lhs=*/new_local_metadata,
-            /*rhs=*/input_offsets_offset));
+        CorrectOffsets(ragged_all_to_all, new_local_metadata, computation);
   }
 
   HloInstruction* new_local_metadata_transposed =
