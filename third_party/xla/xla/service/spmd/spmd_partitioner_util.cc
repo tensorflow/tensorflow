@@ -2534,10 +2534,9 @@ HloSharding CreateMatchingShardingOnDims(
   if (to_be_partially_replicated) {
     return AlignShardingOnDims(HloSharding::PartialTile(tgt_tile_assignment),
                                target_dims, source_sharding, source_dims);
-  } else {
-    return AlignShardingOnDims(HloSharding::Tile(tgt_tile_assignment),
-                               target_dims, source_sharding, source_dims);
   }
+  return AlignShardingOnDims(HloSharding::Tile(tgt_tile_assignment),
+                             target_dims, source_sharding, source_dims);
 }
 
 std::optional<GatherScatterParallelDimSharding>
@@ -2909,8 +2908,8 @@ std::vector<std::vector<int64_t>> GetPartitionGroupsAcrossTargetDims(
       [&](absl::Span<const int64_t> indices, int64_t device) {
         int64_t group_id = 0;
         for (int64_t dim = 0; dim < indices.size(); ++dim) {
-          auto it = absl::c_find(target_dims, dim);
-          if (it != target_dims.end()) {
+          if (auto it = absl::c_find(target_dims, dim);
+              it != target_dims.end()) {
             int64_t group_size =
                 group_sizes[std::distance(target_dims.begin(), it)];
             group_id *= sharding.tile_assignment().dim(dim) / group_size;
@@ -2963,8 +2962,7 @@ std::optional<IotaReplicaGroupList> GetIotaPartitionGroupsAcrossTargetDims(
   std::vector<int64_t> target_dim_locations;
   for (int64_t dim = 0; dim < sharding.tile_assignment().num_dimensions();
        ++dim) {
-    auto it = std::find(target_dims.begin(), target_dims.end(), dim);
-    if (it != target_dims.end()) {
+    if (auto it = absl::c_find(target_dims, dim); it != target_dims.end()) {
       int64_t current_val = sharding.tile_assignment().dim(dim);
       int64_t group_size = group_sizes[std::distance(target_dims.begin(), it)];
       reshape_dimensions.push_back(current_val / group_size);
@@ -2978,8 +2976,8 @@ std::optional<IotaReplicaGroupList> GetIotaPartitionGroupsAcrossTargetDims(
   std::vector<int> transpose_dims(reshape_dimensions.size());
   std::iota(transpose_dims.begin(), transpose_dims.end(), 0);
   for (int64_t loc : target_dim_locations) {
-    auto it = std::find(transpose_dims.begin(), transpose_dims.end(), loc);
-    if (it != transpose_dims.end()) {
+    if (auto it = absl::c_find(transpose_dims, loc);
+        it != transpose_dims.end()) {
       transpose_dims.erase(it);
       transpose_dims.push_back(loc);
     }
@@ -3047,8 +3045,7 @@ std::optional<IotaReplicaGroupList> GetIotaPartitionGroupsForReplication(
                                            replication_dims.end());
   std::sort(replication_dims_sorted.begin(), replication_dims_sorted.end());
   for (int64_t i : replication_dims_sorted) {
-    auto it = std::find(transpose_dims.begin(), transpose_dims.end(), i);
-    if (it != transpose_dims.end()) {
+    if (auto it = absl::c_find(transpose_dims, i); it != transpose_dims.end()) {
       transpose_dims.erase(it);
       transpose_dims.push_back(i);
     }

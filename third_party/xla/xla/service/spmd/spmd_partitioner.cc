@@ -2467,10 +2467,9 @@ SpmdPartitioningVisitor::MakePartitioningState() {
     state.collective_ops_creator = *visiting_collective_ops_creator_;
     state.partition_id = *visiting_partition_id_;
     return CreatePerGroupPartitioningState(state, *device_groups_, &b_);
-  } else {
-    state.collective_ops_creator = collective_ops_creator_;
-    state.partition_id = partition_id_;
   }
+  state.collective_ops_creator = collective_ops_creator_;
+  state.partition_id = partition_id_;
   return state;
 }
 
@@ -3323,7 +3322,8 @@ absl::Status SpmdPartitioningVisitor::HandleReshape(HloInstruction* hlo) {
           output_shard_size * split_factor);
       return operand.state().b->AddInstruction(HloInstruction::CreateReshape(
           output_shard_shape, reshard_operand->sharded_input));
-    } else if (output_dim_size % input_dim_size == 0) {
+    }
+    if (output_dim_size % input_dim_size == 0) {
       // Merge dims.
       int64_t merge_factor = output_dim_size / input_dim_size;
       // First reshape locally. (The sharded dimension could include padded
@@ -5054,22 +5054,20 @@ SPMDCollectiveOpsCreator GetDefaultCollectiveOpsCreator(int64_t num_partitions,
           // If the src/dst pairs are empty, then the collective permute
           // just initializes the output to zero.
           return CreateZero(operand->shape(), b);
-        } else {
-          // A collective-permute is a copy if all pairs are "identity" and
-          // all partitions are listed.
-          bool is_copy =
-              src_dst_pairs.size() == num_partitions &&
-              absl::c_all_of(src_dst_pairs,
-                             [](const std::pair<int64_t, int64_t>& pair) {
-                               return pair.first == pair.second;
-                             });
-          if (is_copy) {
-            return operand;
-          } else {
-            return b->AddInstruction(HloInstruction::CreateCollectivePermute(
-                operand->shape(), operand, src_dst_pairs, channel_id));
-          }
         }
+        // A collective-permute is a copy if all pairs are "identity" and
+        // all partitions are listed.
+        bool is_copy =
+            src_dst_pairs.size() == num_partitions &&
+            absl::c_all_of(src_dst_pairs,
+                           [](const std::pair<int64_t, int64_t>& pair) {
+                             return pair.first == pair.second;
+                           });
+        if (is_copy) {
+          return operand;
+        }
+        return b->AddInstruction(HloInstruction::CreateCollectivePermute(
+            operand->shape(), operand, src_dst_pairs, channel_id));
       },
       [create_all_to_all_list_of_lists](
           SpmdBuilder* b, absl::Span<HloInstruction* const> operands,
@@ -5309,13 +5307,13 @@ HloInstruction* SpmdPartitioner::AllReduceAlongShardingDimsInternal(
           .create_cross_partition_all_reduce_with_iota_device_list(
               b, operand, reduction, partition_group_list.value(),
               (*next_channel_id)++);
-    } else {
-      auto partition_subgroups =
-          GetPartitionGroupsForReplication(sharding, selected_dims);
-      return collectives_creator.create_cross_partition_all_reduce(
-          b, operand, reduction, partition_subgroups, (*next_channel_id)++);
     }
+    auto partition_subgroups =
+        GetPartitionGroupsForReplication(sharding, selected_dims);
+    return collectives_creator.create_cross_partition_all_reduce(
+        b, operand, reduction, partition_subgroups, (*next_channel_id)++);
   }
+
   auto result = operand;
   for (auto it = selected_dims.rbegin(); it != selected_dims.rend(); ++it) {
     if (sharding.tile_assignment().dim(*it) == 1) {

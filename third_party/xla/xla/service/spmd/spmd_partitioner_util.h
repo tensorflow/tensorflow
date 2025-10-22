@@ -17,29 +17,21 @@ limitations under the License.
 #define XLA_SERVICE_SPMD_SPMD_PARTITIONER_UTIL_H_
 
 #include <algorithm>
-#include <cstddef>
 #include <cstdint>
 #include <initializer_list>
 #include <limits>
 #include <memory>
 #include <optional>
 #include <string>
-#include <tuple>
 #include <type_traits>
 #include <utility>
 #include <vector>
 
-#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
-#include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
-#include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/str_replace.h"
 #include "absl/types/span.h"
-#include "absl/utility/utility.h"
-#include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -47,7 +39,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/ir/replica_group.h"
 #include "xla/hlo/transforms/simplifiers/hlo_dce.h"
-#include "xla/hlo/utils/hlo_query.h"
 #include "xla/hlo/utils/hlo_sharding_util.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
@@ -55,7 +46,6 @@ limitations under the License.
 #include "xla/service/spmd/spmd_partitioner.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -822,9 +812,6 @@ template <typename Arg, IsHloModulePointer<Arg> = 0>
 std::decay_t<Arg> FakeHloModule(Arg&& module, HloModule* fake_module) {
   return fake_module;
 }
-template <class T>
-using decay_rvalue_reference_t =
-    std::conditional_t<std::is_rvalue_reference<T>::value, std::decay_t<T>, T>;
 
 // Modifies SpmdPartitioningVisitor* type objects.
 template <typename Arg, IsSpmdPartitioningVisitorPointer<Arg> = 0>
