@@ -424,16 +424,16 @@ CommonPjRtBufferImpl::CopyToCpuMemorySpace(const xla::Shape& dst_shape,
             *literal, dst_shape,
             PjRtClient::HostBufferSemantics::kImmutableUntilTransferCompletes,
             dst_raw_buffer);
+        if (!status_or_h2d_transfer_event.ok()) {
+          definition_event_promise->SetError(status);
+        } else {
+          status_or_h2d_transfer_event.value()->AndThen(
+              [literal = std::move(literal)] {});
+          definition_event_promise->Set(
+              *std::move(status_or_h2d_transfer_event));
+        }
       } else {
-        status_or_h2d_transfer_event =
-            dst_raw_buffer->MakeAllocationReadyEvent();
-      }
-      if (!status_or_h2d_transfer_event.ok()) {
-        definition_event_promise->SetError(status);
-      } else {
-        status_or_h2d_transfer_event.value()->AndThen(
-            [literal = std::move(literal)] {});
-        definition_event_promise->Set(*std::move(status_or_h2d_transfer_event));
+        definition_event_promise->SetReady();
       }
     }
   });
@@ -663,7 +663,8 @@ CommonPjRtBufferImpl::CopyToMemorySpace(PjRtMemorySpace* dst_memory_space) {
     TF_ASSIGN_OR_RETURN(auto dest_shape, client()->GetCopyDestinationShape(
                                              on_device_shape(), memory_space(),
                                              dst_memory_space));
-    if (dest_shape == on_device_shape()) {
+    if (xla::Shape::Equal().IgnoreMemorySpaceInLayout()(dest_shape,
+                                                        on_device_shape())) {
       return DirectCopyToMemorySpace(dst_memory_space);
     }
     if (!primitive_util::IsSubByteNonPredType(dest_shape.element_type())) {

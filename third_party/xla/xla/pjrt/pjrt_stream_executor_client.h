@@ -621,9 +621,6 @@ class PjRtStreamExecutorBuffer : public CommonPjRtBufferImpl {
     return GetBufferWithHold(ScopedHold::kExternalReference);
   }
 
-  absl::StatusOr<std::unique_ptr<PjRtBuffer>> CopyToMemorySpace(
-      PjRtMemorySpace* dst_memory_space) override;
-
   Future<> GetReadyFuture() override;
 
   // Similar to Delete, drops the buffer's reference to its associated device
@@ -660,17 +657,6 @@ class PjRtStreamExecutorBuffer : public CommonPjRtBufferImpl {
   // device_buffer_ was successfully enqueued on a stream.
   void ConvertUsageHold(TrackedDeviceBuffer* buffer, se::Stream* usage_stream,
                         BufferSequencingEventRef event, bool reference_held);
-
-  absl::StatusOr<
-      std::pair<std::unique_ptr<PjRtBuffer>, BufferSequencingEventRef>>
-  CopyToDeviceHelper(PjRtDevice* dst_device, LocalDeviceState* dst_local_device,
-                     PjRtMemorySpace* dst_memory_space,
-                     LocalDeviceState* transfer_local_device,
-                     LocalDeviceState* src_local_device,
-                     se::Stream* transfer_stream,
-                     const TrackedDeviceBuffer& src_device_buffer);
-  absl::StatusOr<std::unique_ptr<PjRtBuffer>> CopyToDeviceMemorySpace(
-      PjRtDevice* dst_device, PjRtMemorySpace* dst_memory_space = nullptr);
 };
 
 // Allocates the device buffers for a buffer that will be used as the
