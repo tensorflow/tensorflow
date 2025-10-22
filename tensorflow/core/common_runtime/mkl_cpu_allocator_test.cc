@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/mkl_cpu_allocator.h"
 
+#include "absl/status/status.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/test.h"
@@ -41,10 +42,10 @@ TEST(MKLBFCAllocatorTest, TestMaxLimit) {
   EXPECT_EQ(stats->bytes_limit, max_mem_bytes);
 
   setenv(MklCPUAllocator::kMaxLimitStr, "wrong-input", 1);
-  EXPECT_TRUE(errors::IsInvalidArgument(a.Initialize()));
+  EXPECT_TRUE(absl::IsInvalidArgument(a.Initialize()));
 
   setenv(MklCPUAllocator::kMaxLimitStr, "-20", 1);
-  EXPECT_TRUE(errors::IsInvalidArgument(a.Initialize()));
+  EXPECT_TRUE(absl::IsInvalidArgument(a.Initialize()));
 }
 
 }  // namespace tensorflow
