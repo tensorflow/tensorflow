@@ -91,6 +91,74 @@ ENTRY %convolution (operand f64[2,2,2,3]{3,2,1,0}) -> (f64[2,2,4,4]{3,2,1,0}, u8
   EXPECT_TRUE(ShapeUtil::Equal(conv->shape(), expected_conv_shape));
 }
 
+TEST_F(ConvPaddingLegalizationTest, ForwardConvolveWithWindowDilation) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+  HloModule convolution_module
+ENTRY %convolution (input f32[1,3,5,5]{3,2,1,0}, kernel f32[3,3,3,3]{3,2,1,0}) -> (f32[1,3,5,5]{3,2,1,0}, u8[0]) {
+  %input = f32[1,3,5,5]{3,2,1,0} parameter(0)
+  %kernel = f32[3,3,3,3]{3,2,1,0} parameter(1)
+  ROOT %custom-call = (f32[1,3,5,5]{3,2,1,0}, u8[0]{0}) custom-call(%input, %kernel), window={size=3x3 pad=2_2x2_2 rhs_dilate=2x2}, dim_labels=bf01_01io->bf01, custom_call_target="__cudnn$convForward"
+}
+                                               )")
+                    .value();
+  EXPECT_FALSE(ConvPaddingLegalization().Run(module.get()).value());
+  auto root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root,
+              GmockMatch(m::CustomCall({kCudnnConvForwardCallTarget},
+                                       m::Parameter(0), m::Parameter(1))));
+  for (int i = 0; i < 2; ++i) {
+    const WindowDimension& dim = root->window().dimensions(i);
+    EXPECT_EQ(2, dim.window_dilation());
+    EXPECT_EQ(3, dim.size());
+  }
+}
+
+TEST_F(ConvPaddingLegalizationTest,
+       ForwardConvolveWithWindowDilationAndAsymmetricPadding) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+  HloModule convolution_module
+ENTRY %convolution (input f32[1,3,5,5]{3,2,1,0}, kernel f32[3,3,3,3]{3,2,1,0}) -> (f32[1,3,5,5]{3,2,1,0}, u8[0]) {
+  %input = f32[1,3,5,5]{3,2,1,0} parameter(0)
+  %kernel = f32[3,3,3,3]{3,2,1,0} parameter(1)
+  ROOT %custom-call = (f32[1,3,5,5]{3,2,1,0}, u8[0]{0}) custom-call(%input, %kernel), window={size=3x3 pad=1_2x1_2 rhs_dilate=2x2}, dim_labels=bf01_01io->bf01, custom_call_target="__cudnn$convForward"
+}
+                                               )")
+                    .value();
+  ASSERT_TRUE(ConvPaddingLegalization().Run(module.get()).value());
+  auto root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root,
+              GmockMatch(m::CustomCall({kCudnnConvForwardCallTarget},
+                                       m::Pad(m::Parameter(0), m::Op()),
+                                       m::Pad(m::Parameter(1), m::Op()))));
+  for (int i = 0; i < 2; ++i) {
+    const WindowDimension& dim = root->window().dimensions(i);
+    EXPECT_EQ(1, dim.window_dilation());
+  }
+}
+
+TEST_F(ConvPaddingLegalizationTest,
+       ForwardConvolveWithWindowDilationAndBaseDilation) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+  HloModule convolution_module
+ENTRY %convolution (input f32[1,3,5,5]{3,2,1,0}, kernel f32[3,3,3,3]{3,2,1,0}) -> (f32[1,3,9,9]{3,2,1,0}, u8[0]) {
+  %input = f32[1,3,5,5]{3,2,1,0} parameter(0)
+  %kernel = f32[3,3,3,3]{3,2,1,0} parameter(1)
+  ROOT %custom-call = (f32[1,3,9,9]{3,2,1,0}, u8[0]{0}) custom-call(%input, %kernel), window={size=3x3 pad=2_2x2_2 rhs_dilate=2x2 lhs_dilate=2x2}, dim_labels=bf01_01io->bf01, custom_call_target="__cudnn$convForward"
+}
+                                               )")
+                    .value();
+  ASSERT_TRUE(ConvPaddingLegalization().Run(module.get()).value());
+  auto root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root,
+              GmockMatch(m::CustomCall({kCudnnConvForwardCallTarget},
+                                       m::Pad(m::Parameter(0), m::Op()),
+                                       m::Pad(m::Parameter(1), m::Op()))));
+  for (int i = 0; i < 2; ++i) {
+    const WindowDimension& dim = root->window().dimensions(i);
+    EXPECT_EQ(1, dim.window_dilation());
+  }
+}
+
 }  // anonymous namespace
 }  // namespace gpu
 }  // namespace xla
