@@ -20,17 +20,13 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
-#include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
-#include "xla/hlo/testlib/pattern_matcher_gmock.h"
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/service/pattern_matcher.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -61,6 +57,55 @@ TEST_F(DotDecomposerTest, CanonicalizeMultipleNonContractingDims) {
                                         /*lhs_contracting_dim=*/1,
                                         /*rhs_contracting_dim=*/0),
                                 op::Shape("f32[4032,512]"))));
+}
+
+TEST_F(DotDecomposerTest,
+       DontCanonicalizeLhsContractingDim0AndRhsContractingDim1) {
+  absl::string_view module_string = R"(
+  HloModule module
+
+  ENTRY main {
+    p0 = f32[512,64]{1,0} parameter(0)
+    p1 = f32[1024,512]{1,0} parameter(1)
+    ROOT dot = f32[64,1024]{1,0} dot(p0, p1), lhs_contracting_dims={0},
+                                              rhs_contracting_dims={1}
+  })";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(module_string));
+  TF_ASSERT_OK_AND_ASSIGN(bool canonicalized,
+                          DotDecomposer().Run(module.get()));
+  EXPECT_FALSE(canonicalized) << module->ToString();
+}
+
+TEST_F(DotDecomposerTest, TransposeContractingDimsUponCanonicalization) {
+  absl::string_view module_string = R"(
+  HloModule module
+
+  ENTRY main {
+    p0 = f32[512,32,32]{2,1,0} parameter(0)
+    p1 = f32[1024,512]{1,0} parameter(1)
+    // This dot is considered non-canonical because the LHS has two
+    // non-contracting dimensions. Both, LHS and RHS operands are canonicalized,
+    // which involves transposing the contracting dimensions to be 1 and 0 on
+    // the LHS and RHS, respectively.
+    // TODO(tjoerg): Consider leaving the RHS alone, since it is canonical.
+    ROOT dot = f32[32,32,1024]{2,1,0} dot(p0, p1), lhs_contracting_dims={0},
+                                                   rhs_contracting_dims={1}
+  })";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(module_string));
+  TF_ASSERT_OK_AND_ASSIGN(bool canonicalized,
+                          DotDecomposer().Run(module.get()));
+  EXPECT_TRUE(canonicalized) << module->ToString();
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::Reshape(AllOf(op::Dot(op::Reshape(op::Transpose()),
+                                        op::Reshape(op::Transpose()),
+                                        /*lhs_contracting_dim=*/1,
+                                        /*rhs_contracting_dim=*/0),
+                                op::Shape("f32[1024,1024]"))))
+      << module->ToString();
 }
 
 TEST_F(DotDecomposerTest, DontCanonicalizeIfNoNoncontractingDims) {

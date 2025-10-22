@@ -89,6 +89,7 @@ absl::Status CanonicalizeDot(HloDotInstruction* original_dot) {
   }
   // The canonical form of the lhs is
   // [BatchDims, NonContractingDimsProduct, ContractingsDimsProduct]
+  // However, [ContractingDim, NonContractingDim] is considered canonical too.
   // If NonContractingDimsProduct is 1, it is omitted.
   std::vector<int64_t> lhs_transpose;
   lhs_transpose.reserve(lhs_rank);
@@ -147,6 +148,7 @@ absl::Status CanonicalizeDot(HloDotInstruction* original_dot) {
 
   // The canonical form of the rhs is
   // [BatchDims, ContractingsDimsProduct, NonContractingDimsProduct]
+  // However, [NonContractingDim, ContractingDim] is considered canonical too.
   // If NonContractingDimsProduct is 1, it is omitted.
   std::vector<int64_t> rhs_transpose;
   rhs_transpose.reserve(rhs_rank);
