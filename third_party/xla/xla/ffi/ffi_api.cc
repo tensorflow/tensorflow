@@ -201,8 +201,8 @@ static absl::StatusOr<XLA_FFI_Future*> Call(Handler& handler,
 
   XLA_FFI_Error* error = nullptr;
 
-  // FFI handlers might be defined in external libraries and use exceptions,
-  // so take extra care to catch them and convert to a status.
+  // FFI handlers might be defined in external libraries and use exceptions, so
+  // take extra care to catch them and convert to a status.
   try {
     if constexpr (std::is_same_v<Handler, Ffi>) {
       error = handler.Call(&ffi_call_frame);
@@ -430,8 +430,7 @@ static absl::Status RegisterHandler(absl::string_view name,
         kMinSupportedApiVersion.second);
   }
 
-  // Incorporate handler traits passed explicitly via handler registration
-  // API.
+  // Incorporate handler traits passed explicitly via handler registration API.
   metadata.traits |= traits;
 
   // Incorporate state type id from the instantiate implementation if present.
