@@ -105,8 +105,9 @@ TEST(FfiTest, StaticHandlerRegistration) {
   TF_ASSERT_OK(handler0.status());
   TF_ASSERT_OK(handler1.status());
 
-  ASSERT_EQ(handler0->traits, XLA_FFI_HANDLER_TRAITS_COMMAND_BUFFER_COMPATIBLE);
-  ASSERT_EQ(handler1->traits, 0);
+  ASSERT_EQ(handler0->metadata.traits,
+            XLA_FFI_HANDLER_TRAITS_COMMAND_BUFFER_COMPATIBLE);
+  ASSERT_EQ(handler1->metadata.traits, 0);
 
   // Check that platform name was canonicalized an we can find handlers
   // registered for "Host" platform as "Cpu" handlers.
@@ -122,7 +123,8 @@ TEST(FfiTest, RegistrationTraitsBackwardsCompatibility) {
                            XLA_FFI_HANDLER_TRAITS_COMMAND_BUFFER_COMPATIBLE);
   auto handler = FindHandler("traits-bwd-compat", "Host");
   TF_ASSERT_OK(handler.status());
-  ASSERT_EQ(handler->traits, XLA_FFI_HANDLER_TRAITS_COMMAND_BUFFER_COMPATIBLE);
+  ASSERT_EQ(handler->metadata.traits,
+            XLA_FFI_HANDLER_TRAITS_COMMAND_BUFFER_COMPATIBLE);
 }
 
 // Declare XLA FFI handler as a function (extern "C" declaration).
@@ -139,7 +141,7 @@ TEST(FfiTest, StaticHandlerSymbolRegistration) {
   auto handler0 = FindHandler("no-op-sym-0", "Cpu");
 
   TF_ASSERT_OK(handler0.status());
-  ASSERT_EQ(handler0->traits, 0);
+  ASSERT_EQ(handler0->metadata.traits, 0);
 }
 
 TEST(FfiTest, ForwardError) {

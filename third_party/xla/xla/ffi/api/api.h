@@ -1609,13 +1609,17 @@ class Handler : public Ffi {
       return err;
     }
 
+    // Set the API version to the version of the FFI headers used by a handler.
     extension->metadata->api_version = XLA_FFI_Api_Version{
         XLA_FFI_Api_Version_STRUCT_SIZE,
-        /*extension_start=*/nullptr, XLA_FFI_API_MAJOR, XLA_FFI_API_MINOR};
+        /*extension_start=*/nullptr,
+        XLA_FFI_API_MAJOR,
+        XLA_FFI_API_MINOR,
+    };
 
     // Collect all traits and store them in the metadata.
     XLA_FFI_Handler_Traits traits = 0;
-    for (const auto& trait : traits_) {
+    for (const Traits& trait : traits_) {
       traits |= static_cast<XLA_FFI_Handler_Traits>(trait);
     }
     extension->metadata->traits = traits;
@@ -1737,7 +1741,8 @@ class Handler : public Ffi {
     // Find index of every attribute in the sorted attributes vector.
     for (size_t i = 0; i < attrs_.size(); ++i) {
       attrs_idx_.push_back(std::distance(
-          sorted.begin(), std::find(sorted.begin(), sorted.end(), attrs_[i])));
+          sorted.begin(),
+          std::find(sorted.begin(), sorted.end(), attrs_[i])));  // NOLINT
     }
   }
 

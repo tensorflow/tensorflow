@@ -206,7 +206,7 @@ bool IsConvertible(const CustomCallThunk& custom_call_thunk,
   absl::StatusOr<ffi::HandlerRegistration> registration =
       ffi::FindHandler(target_name, "gpu");
   return registration.ok()
-             ? ffi::IsCommandBufferCompatible(registration->traits)
+             ? ffi::IsCommandBufferCompatible(registration->metadata)
              : false;
 }
 

@@ -258,7 +258,7 @@ static bool IsCommand(const HloCustomCallInstruction* hlo,
   // Check if FFI handler is compatible with command buffers.
   auto registration = ffi::FindHandler(hlo->custom_call_target(), "gpu");
   return registration.ok()
-             ? ffi::IsCommandBufferCompatible(registration->traits)
+             ? ffi::IsCommandBufferCompatible(registration->metadata)
              : false;
 }
 
