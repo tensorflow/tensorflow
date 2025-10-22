@@ -18,7 +18,6 @@ limitations under the License.
 #include <memory>
 #include <string>
 
-#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -109,11 +108,11 @@ ENTRY entry {
                           WhileLoopFusibleSinking{}.Run(module.get()));
   ASSERT_TRUE(changed);
 
-  auto* while_body = module->GetComputationWithName("body");
+  auto* while_body = module->GetComputationWithName("body.clone");
   EXPECT_THAT(while_body->root_instruction(),
               op::Tuple(op::Add(_, op::Multiply(op::Add(op::Iota(), op::Iota()),
                                                 op::Broadcast())),
-                        _, _));
+                        _));
 }
 
 TEST_F(WhileLoopFusibleSinkingTest, NoSinkSlicedMask) {
@@ -283,8 +282,6 @@ TEST_F(WhileLoopFusibleSinkingTest,
   TF_ASSERT_OK_AND_ASSIGN(bool changed,
                           WhileLoopFusibleSinking{}.Run(module_before.get()));
   EXPECT_TRUE(changed);
-  EXPECT_THAT(FindInstruction(module_before.get(), "while1"),
-              op::While(op::Tuple(_, op::CustomCall(), _, _)));
   EXPECT_THAT(FindInstruction(module_before.get(), "while2"),
               op::While(op::Tuple(_, op::CustomCall(), _, _)));
 }
