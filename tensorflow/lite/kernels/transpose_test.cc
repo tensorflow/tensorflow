@@ -393,13 +393,7 @@ class TransposeOpQuantizedModel : public SingleOpModel {
 
   TfLiteTensor* GetInputTensor(int index) { return interpreter_->tensor(input_); }
 
-  TfLiteTensor* GetOutputTensor() { return interpreter_->tensor(output_); }
-
-  void SetOutputQuantParams(float scale, int zero_point) {
-    TfLiteTensor* t = GetOutputTensor();
-    t->params.scale = scale;
-    t->params.zero_point = zero_point;
-  }
+  TfLiteTensor* GetOutputTensor(int index) { return interpreter_->tensor(output_); }
 
   TensorType tensor_type() const { return tensor_type_; }
 
@@ -416,7 +410,9 @@ class TransposeOpQuantizationTest
 TEST_P(TransposeOpQuantizationTest, MismatchedQuantizationFails) {
   TensorType tensor_type = GetParam();
   TransposeOpQuantizedModel m(tensor_type, {2, 2}, {2}, {1, 0});
-  m.SetOutputQuantParams(0.25f, 2);
+  TfLiteTensor* output_tensor = m.GetOutputTensor(0);
+  output_tensor->params.scale = 0.25f;
+  output_tensor->params.zero_point = 2;
   std::vector<int16_t> input_data = {1, 2, 3, 4};
   TfLiteTensor* input_tensor = m.GetInputTensor(0);
   std::memcpy(input_tensor->data.raw, input_data.data(),

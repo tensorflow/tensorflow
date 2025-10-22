@@ -40,8 +40,7 @@ class ResizeBilinearOpModel : public SingleOpModel {
   explicit ResizeBilinearOpModel(const TensorData& input,
                                  std::initializer_list<int> size_data,
                                  TestType test_type,
-                                 bool half_pixel_centers = false)
-      : input_type_(input.type) {
+                                 bool half_pixel_centers = false) {
     bool const_size = (test_type == TestType::kConst);
 
     input_ = AddInput(input);
@@ -69,6 +68,10 @@ class ResizeBilinearOpModel : public SingleOpModel {
     PopulateTensor(input_, data);
   }
 
+  TfLiteTensor* GetInputTensor(int index) { return interpreter_->tensor(input_); }
+
+  TfLiteTensor* GetOutputTensor(int index) { return interpreter_->tensor(output_); }
+
   template <typename T>
   std::vector<T> GetOutput() {
     return ExtractVector<T>(output_);
@@ -78,7 +81,6 @@ class ResizeBilinearOpModel : public SingleOpModel {
   int input_;
   int size_;
   int output_;
-  TensorType input_type_;
 };
 
 class ResizeBilinearOpTest : public ::testing::TestWithParam<TestType> {};
