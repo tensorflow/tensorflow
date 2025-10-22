@@ -479,7 +479,6 @@ common:use_tar_archive_files --repo_env=USE_LLVM_TAR_ARCHIVE_FILES=1
 common:use_tar_archive_files --repo_env=USE_MIRRORED_TAR_ARCHIVE_FILES=1
 
 # Make Bazel not try to probe the host system for a C++ toolchain.
-common:rbe_base --config=use_tar_archive_files
 common:rbe_base --config=resultstore
 common:rbe_base --define=EXECUTOR=remote
 common:rbe_base --jobs=800
