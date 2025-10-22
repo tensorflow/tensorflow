@@ -68,8 +68,9 @@ struct PJRT_Transfers_PJRT_Buffer_CopyToRemoteDevice_Args {
   size_t struct_size;
   PJRT_Extension_Base* extension_start;
   PJRT_Buffer* buffer;
-  const char* serialized_descriptor;
-  size_t serialized_descriptor_size;
+  PJRT_Event* event;
+  char** serialized_descriptor;
+  size_t* serialized_descriptor_size;
 };
 PJRT_DEFINE_STRUCT_TRAITS(PJRT_Transfers_PJRT_Buffer_CopyToRemoteDevice_Args,
                           serialized_descriptor_size);
