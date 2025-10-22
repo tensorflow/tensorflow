@@ -28,8 +28,8 @@ limitations under the License.
 namespace xla {
 namespace sdy {
 
-void addStablehloExportPipeline(
-    mlir::OpPassManager& pm, const StablehloExportPipelineOptions& options) {
+void addStablehloExportPipeline(mlir::OpPassManager& pm,
+                                const StablehloExportPipelineOptions& options) {
   pm.addPass(createStablehloExportManualReductionCollectivesPass());
   // This pass converts `sdy.constant` (which isn't foldable) into
   // `stablehlo.constant` (which is foldable), therefore greedy pattern
@@ -44,14 +44,15 @@ void addStablehloExportPipeline(
   // free variable that has a sharding is lifted as an additional result, and in
   // effect the op will have a replicated sharding for all results.
   pm.addPass(createExportStablehloShardingsPass(
-      /*addMissingShardingToControlFlow=*/true));
+      /*addMissingShardingToControlFlow=*/options
+          .addMissingShardingToControlFlow));
   pm.addPass(createStablehloRoundTripExportCallbackCustomCallsPass());
 }
 
 namespace {
 
-void stablehloExportPipeline(
-    mlir::OpPassManager& pm, const StablehloExportPipelineOptions& options) {
+void stablehloExportPipeline(mlir::OpPassManager& pm,
+                             const StablehloExportPipelineOptions& options) {
   addStablehloExportPipeline(pm, options);
 }
 
