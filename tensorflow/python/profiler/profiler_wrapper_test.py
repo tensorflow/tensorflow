@@ -23,10 +23,12 @@ class ProfilerSessionTest(test_util.TensorFlowTestCase):
 
   def test_xspace_to_tools_data_default_options(self):
     # filenames only used for `hlo_proto` tool.
-    profiler_wrapper_plugin.xspace_to_tools_data([], 'trace_viewer')
+    profiler_wrapper_plugin.xspace_to_tools_data([], [], 'trace_viewer')
 
   def _test_xspace_to_tools_data_options(self, options):
-    profiler_wrapper_plugin.xspace_to_tools_data([], 'trace_viewer', options)
+    profiler_wrapper_plugin.xspace_to_tools_data(
+        [], [], 'trace_viewer', options
+    )
 
   def test_xspace_to_tools_data_empty_options(self):
     self._test_xspace_to_tools_data_options({})
