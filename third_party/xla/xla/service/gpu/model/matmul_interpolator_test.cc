@@ -413,7 +413,7 @@ INSTANTIATE_TEST_SUITE_P(
              /*clock_cycles=*/0},
             // Expected duration based on linear interpolation of flops/sec
             // between (1,1024,1024,512) and (1,1024,4096,512).
-            /*expected_duration=*/absl::Microseconds(9),
+            /*expected_duration=*/absl::Microseconds(8),
         },
     }),
     [](const TestParamInfo<MatmulInterpolatorDefaultTableTest::ParamType>&
@@ -497,7 +497,7 @@ INSTANTIATE_TEST_SUITE_P(
              /*clock_cycles=*/0},
             // Expected duration based on nearest point (1,2048,2048,2048)
             // flops/sec and scaling by new dimensions.
-            /*expected_duration=*/absl::Microseconds(72),
+            /*expected_duration=*/absl::Microseconds(67),
         },
         {
             /*test_name=*/"interpolate_larger_batch_s8",
@@ -509,7 +509,7 @@ INSTANTIATE_TEST_SUITE_P(
              /*clock_cycles=*/0},
             // Expected duration based on nearest point (1,2048,2048,2048)
             // flops/sec and scaling by new dimensions.
-            /*expected_duration=*/absl::Microseconds(280),
+            /*expected_duration=*/absl::Microseconds(275),
         },
     }),
     [](const TestParamInfo<MatmulInterpolatorDefaultTableTest::ParamType>&
@@ -539,7 +539,7 @@ INSTANTIATE_TEST_SUITE_P(
              /*rhs_type=*/"s8",
              /*result_type=*/"s8",
              /*clock_cycles=*/0},
-            /*expected_duration=*/absl::Microseconds(44),
+            /*expected_duration=*/absl::Microseconds(39),
         },
         {
             /*test_name=*/"exact_match2_s8",
@@ -549,7 +549,93 @@ INSTANTIATE_TEST_SUITE_P(
              /*rhs_type=*/"s8",
              /*result_type=*/"s8",
              /*clock_cycles=*/0},
-            /*expected_duration=*/absl::Microseconds(64),
+            /*expected_duration=*/absl::Microseconds(59),
+        },
+    }),
+    [](const TestParamInfo<MatmulInterpolatorDefaultTableTest::ParamType>&
+           info) { return info.param.test_name; });
+
+using H100F8Test = MatmulInterpolatorDefaultTableTest;
+
+TEST_P(H100F8Test, EstimatesRuntimeForF8) {
+  const auto& [_, spec, expected_duration] = GetParam();
+  TF_ASSERT_OK_AND_ASSIGN(DotContext context,
+                          Dot(spec.b, spec.m, spec.n, spec.k, spec.lhs_type,
+                              spec.rhs_type, spec.result_type));
+  // Compare with nanosecond precision.
+  EXPECT_EQ(
+      absl::Trunc(*GetMatmulInterpolatorH100()->EstimatedRuntime(*context.dot),
+                  absl::Microseconds(1)),
+      expected_duration);
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    MatmulInterpolatorDefaultTableTestInstantiationF8, H100F8Test,
+    ValuesIn<ParametrizedTestCase>({
+        {
+            /*test_name=*/"extrapolate_small_f8e4m3fn_f8e4m3fn_bf16",
+            /*spec=*/
+            {/*b=*/1, /*m=*/64, /*n=*/64, /*k=*/64,
+             /*lhs_type=*/"f8e4m3fn",
+             /*rhs_type=*/"f8e4m3fn",
+             /*result_type=*/"bf16",
+             /*clock_cycles=*/0},
+            // Expected duration based on nearest point (1,512,512,512)
+            // flops/sec and scaling by new dimensions.
+            /*expected_duration=*/absl::Microseconds(0),
+        },
+        {
+            /*test_name=*/"interpolate_larger_f8e4m3fn_f8e4m3fn_bf16",
+            /*spec=*/
+            {/*b=*/1, /*m=*/2048, /*n=*/2048, /*k=*/2048,
+             /*lhs_type=*/"f8e4m3fn",
+             /*rhs_type=*/"f8e4m3fn",
+             /*result_type=*/"bf16",
+             /*clock_cycles=*/0},
+            // Expected duration based on nearest point (1,2048,2048,2048)
+            // flops/sec and scaling by new dimensions.
+            /*expected_duration=*/absl::Microseconds(12),
+        },
+    }),
+    [](const TestParamInfo<MatmulInterpolatorDefaultTableTest::ParamType>&
+           info) { return info.param.test_name; });
+
+using B200F8Test = MatmulInterpolatorDefaultTableTest;
+
+TEST_P(B200F8Test, EstimatesRuntimeForF8) {
+  const auto& [_, spec, expected_duration] = GetParam();
+  TF_ASSERT_OK_AND_ASSIGN(DotContext context,
+                          Dot(spec.b, spec.m, spec.n, spec.k, spec.lhs_type,
+                              spec.rhs_type, spec.result_type));
+  // Compare with nanosecond precision.
+  EXPECT_EQ(
+      absl::Trunc(*GetMatmulInterpolatorB200()->EstimatedRuntime(*context.dot),
+                  absl::Microseconds(1)),
+      expected_duration);
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    MatmulInterpolatorDefaultTableTestInstantiationF8, B200F8Test,
+    ValuesIn<ParametrizedTestCase>({
+        {
+            /*test_name=*/"exact_match1_f8e4m3fn_f8e5m2_bf16",
+            /*spec=*/
+            {/*b=*/1, /*m=*/512, /*n=*/512, /*k=*/512,
+             /*lhs_type=*/"f8e4m3fn",
+             /*rhs_type=*/"f8e5m2",
+             /*result_type=*/"bf16",
+             /*clock_cycles=*/0},
+            /*expected_duration=*/absl::Microseconds(5),
+        },
+        {
+            /*test_name=*/"exact_match2_f8e4m3fn_f8e4m3fn_bf16",
+            /*spec=*/
+            {/*b=*/1, /*m=*/2048, /*n=*/2048, /*k=*/2048,
+             /*lhs_type=*/"f8e4m3fn",
+             /*rhs_type=*/"f8e4m3fn",
+             /*result_type=*/"bf16",
+             /*clock_cycles=*/0},
+            /*expected_duration=*/absl::Microseconds(12),
         },
     }),
     [](const TestParamInfo<MatmulInterpolatorDefaultTableTest::ParamType>&
