@@ -298,11 +298,15 @@ xla_cc_test(
 
 cc_library(
     name = "util",
-    srcs = ["util.cc"],
+    srcs = [
+        "metrics.cc",
+        "util.cc",
+    ],
     hdrs = [
         "iterator_util.h",
         "map_util.h",
         "maybe_owning.h",
+        "metrics.h",
         "overflow_util.h",
         "util.h",
     ],
@@ -341,6 +345,17 @@ cc_library(
         "@local_tsl//tsl/platform:numbers",
         "@local_tsl//tsl/platform:protobuf",
         "@local_tsl//tsl/platform:stacktrace",
+    ],
+)
+
+xla_cc_test(
+    name = "metrics_test",
+    srcs = ["metrics_test.cc"],
+    deps = [
+        ":util",
+        "//xla/tsl/platform:test_main",
+        "@com_google_absl//absl/log:globals",
+        "@com_google_googletest//:gtest",
     ],
 )
 
