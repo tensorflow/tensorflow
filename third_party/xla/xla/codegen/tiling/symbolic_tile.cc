@@ -328,8 +328,20 @@ llvm::SmallVector<int64_t> EvaluateTileOffsets(
 
 llvm::SmallVector<int64_t> EvaluateTileSizes(
     const SymbolicTile& symbolic_tile, absl::Span<int64_t const> parameters) {
+  llvm::SmallVector<int64_t> clamped_parameters;
+  clamped_parameters.reserve(parameters.size());
+  // We need to clamp the parameters to the dimension bounds, otherwise the
+  // stride expressions would potentially return wrong results. The underlying
+  // implementation detail is that the IfNeqOne affine expression that we use
+  // for expanding reshapes assumes that the tile parameter is not bigger than
+  // the dimension bound. To make the assumption hold, we clamp the parameters
+  // accordingly.
+  for (auto [parameter, dim_bounds] :
+       llvm::zip(parameters, symbolic_tile.tile_map().GetDimensionBounds())) {
+    clamped_parameters.push_back(std::min(parameter, dim_bounds.upper));
+  }
   return EvaluateAffineMap(symbolic_tile.size_map(),
-                           /*dim_values=*/parameters);
+                           /*dim_values=*/clamped_parameters);
 }
 
 llvm::SmallVector<int64_t> EvaluateTileStrides(
