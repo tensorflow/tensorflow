@@ -824,7 +824,7 @@ class PjRtStreamExecutorLoadedExecutable : public PjRtLoadedExecutable {
       int device_ordinal, const ExecuteOptions& options,
       absl::Span<const Shape> executable_parameter_shapes,
       absl::Span<PjRtBuffer* const> argument_handles,
-      absl::Span<const PjRtStreamExecutorBuffer::ScopedHold> device_buffers,
+      absl::Span<const CommonPjRtBuffer::ScopedHold> device_buffers,
       absl::flat_hash_set<BufferSequencingEvent*>& events) const;
 
   absl::StatusOr<ShapeTree<tsl::RCReference<RawSEDeviceMemory>>>
@@ -832,7 +832,7 @@ class PjRtStreamExecutorLoadedExecutable : public PjRtLoadedExecutable {
       absl::Span<PjRtBuffer* const> argument_handles, int replica,
       int partition, int executable_idx, const RunId& run_id,
       const ExecuteOptions& options, PjRtDevice* device,
-      std::vector<PjRtStreamExecutorBuffer::ScopedHold>* device_buffers,
+      std::vector<CommonPjRtBuffer::ScopedHold>* device_buffers,
       std::shared_ptr<DeviceAssignment> device_assignment,
       std::vector<absl::AnyInvocable<void() &&>>& compute_callbacks) const;
 
@@ -841,9 +841,7 @@ class PjRtStreamExecutorLoadedExecutable : public PjRtLoadedExecutable {
       int device_ordinal, const ExecuteOptions& options,
       ShapeTree<tsl::RCReference<RawSEDeviceMemory>> result_buffer,
       BufferSequencingEventRef definition_event, PjRtDevice* device,
-      std::vector<absl::AnyInvocable<void() &&>>& compute_callbacks,
-      std::vector<tsl::RCReference<RawSEDeviceMemory>>& buffers_to_release)
-      const;
+      std::vector<absl::AnyInvocable<void() &&>>& compute_callbacks) const;
 
   absl::StatusOr<Result> ExecuteHelper(
       absl::Span<PjRtBuffer* const> argument_handles, int replica,

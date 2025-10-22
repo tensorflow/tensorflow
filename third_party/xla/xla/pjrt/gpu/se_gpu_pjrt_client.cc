@@ -60,6 +60,7 @@ limitations under the License.
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/layout.h"
 #include "xla/literal.h"
+#include "xla/pjrt/abstract_tracked_device_buffer.h"
 #include "xla/pjrt/device_event.h"
 #include "xla/pjrt/distributed/client.h"
 #include "xla/pjrt/distributed/in_memory_key_value_store.h"
@@ -1043,11 +1044,14 @@ StreamExecutorGpuClient::MakeCrossHostReceiveBuffers(
                                 definition_event));
 
   // Acquire a hold on the buffer to access the underlying memory.
-  PjRtStreamExecutorBuffer::ScopedHold hold = buffer->GetBufferWithUsageHold();
+  CommonPjRtBuffer::ScopedHold hold =
+      buffer->GetBufferWithHold(CommonPjRtBuffer::ScopedHold::kUsage);
 
   auto recv = [this, gpu_collectives, notifier, local_device, definition_event,
-               stream, mem = hold->device_memory(), shape = shapes[0],
-               dtype = buffer->element_type()]() mutable {
+               stream,
+               mem = tensorflow::down_cast<TrackedDeviceBuffer*>(hold.buffer())
+                         ->device_memory(),
+               shape = shapes[0], dtype = buffer->element_type()]() mutable {
     auto f = [&]() -> absl::Status {
       // Create a CliqueId.
       TF_ASSIGN_OR_RETURN(CliqueId clique_id,
