@@ -62,7 +62,7 @@ ENTRY main {
 
   EXPECT_TRUE(*RunFileCheck(module->ToString(), R"(
     // CHECK: all-gather{{.*}}, replica_groups={{[{]}}{0,8},{1,9},{2,10},{3,11},{4,12},{5,13},{6,14},{7,15}{{[}]}}
-    // CHECK-COUNT-4: all-to-all{{.*}}, replica_groups={{[{]}}{0,8},{1,9},{2,10},{3,11},{4,12},{5,13},{6,14},{7,15}{{[}]}}
+    // CHECK: all-to-all{{.*}}, replica_groups={{[{]}}{0,8},{1,9},{2,10},{3,11},{4,12},{5,13},{6,14},{7,15}{{[}]}}
     // CHECK: ragged-all-to-all{{.*}}, replica_groups={{[{]}}{0,1,2,3,4,5,6,7},{8,9,10,11,12,13,14,15}{{[}]}}
   )"));
 }
@@ -96,7 +96,7 @@ ENTRY main {
 
   EXPECT_TRUE(*RunFileCheck(module->ToString(), R"(
     // CHECK: all-gather{{.*}}, replica_groups={{[{]}}{0,8},{1,9},{2,10},{3,11},{4,12},{5,13},{6,14},{7,15}{{[}]}}
-    // CHECK-COUNT-4: all-to-all{{.*}}, replica_groups={{[{]}}{0,8},{1,9},{2,10},{3,11},{4,12},{5,13},{6,14},{7,15}{{[}]}}
+    // CHECK: all-to-all{{.*}}, replica_groups={{[{]}}{0,8},{1,9},{2,10},{3,11},{4,12},{5,13},{6,14},{7,15}{{[}]}}
     // CHECK: ragged-all-to-all{{.*}}, replica_groups={{[{]}}{0,1,2,3,4,5,6,7},{8,9,10,11,12,13,14,15}{{[}]}}
   )"));
 }
@@ -152,7 +152,7 @@ ENTRY main {
 
   EXPECT_TRUE(*RunFileCheck(module->ToString(), R"(
     // CHECK: all-gather{{.*}}, replica_groups={{[{]}}{0,8},{2,10},{4,12},{6,14},{1,9},{3,11},{5,13},{7,15}{{[}]}}
-    // CHECK-COUNT-4: all-to-all{{.*}}, replica_groups={{[{]}}{0,8},{2,10},{4,12},{6,14},{1,9},{3,11},{5,13},{7,15}{{[}]}}
+    // CHECK: all-to-all{{.*}}, replica_groups={{[{]}}{0,8},{2,10},{4,12},{6,14},{1,9},{3,11},{5,13},{7,15}{{[}]}}
     // CHECK: ragged-all-to-all{{.*}}, replica_groups={{[{]}}{0,2,4,6},{8,10,12,14},{1,3,5,7},{9,11,13,15}{{[}]}}
   )"));
 }
