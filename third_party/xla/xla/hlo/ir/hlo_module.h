@@ -91,14 +91,14 @@ using NumericOrString = std::variant<std::string, int64_t, double>;
 // attached to.
 class HloModule {
  public:
-  HloModule(const std::string& name, HloModuleConfig config);
+  HloModule(absl::string_view name, HloModuleConfig config);
   // REQUIRED: comp_envs must not be null.
-  HloModule(const std::string& name, HloModuleConfig config,
+  HloModule(absl::string_view name, HloModuleConfig config,
             std::unique_ptr<CompilationEnvironments> comp_envs);
 
   // You can share a config from other modules by passing
   // HloModule::shared_config()
-  HloModule(const std::string& name,
+  HloModule(absl::string_view name,
             std::shared_ptr<const HloModuleConfig> config,
             std::unique_ptr<CompilationEnvironments> comp_envs);
   virtual ~HloModule();
