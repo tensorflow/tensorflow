@@ -421,7 +421,6 @@ class PjRtStreamExecutorClient : public CommonPjRtClient {
                          const CommonPjRtRawBuffer& raw_buffer);
 
  protected:
-  friend class PjRtStreamExecutorBuffer;
   friend class PjRtStreamExecutorRawBuffer;
 
   // Helper function for creating PjRtStreamExecutorExecutables. Modifies
@@ -525,59 +524,6 @@ class PjRtStreamExecutorClient : public CommonPjRtClient {
 // xla::DeviceAssignment.
 absl::StatusOr<DeviceAssignment> DevicesToDeviceAssignment(
     absl::Span<const std::vector<PjRtDevice*>> devices);
-
-class PjRtStreamExecutorBuffer : public CommonPjRtBufferImpl {
- public:
-  PjRtStreamExecutorBuffer(Shape on_device_shape,
-                           std::unique_ptr<TrackedDeviceBuffer> device_buffer,
-                           PjRtClient* client, PjRtDevice* device,
-                           PjRtMemorySpace* memory_space);
-  ~PjRtStreamExecutorBuffer() override;
-
-  PjRtStreamExecutorBuffer(const PjRtStreamExecutorBuffer&) = delete;
-  PjRtStreamExecutorBuffer(PjRtStreamExecutorBuffer&&) = delete;
-  PjRtStreamExecutorBuffer& operator=(const PjRtStreamExecutorBuffer&) = delete;
-  PjRtStreamExecutorBuffer& operator=(PjRtStreamExecutorBuffer&&) = delete;
-
-
-  // Similar to Delete, drops the buffer's reference to its associated device
-  // memory, leaving the buffer in an invalid state, but returns the
-  // TrackedDeviceBuffer rather than freeing the device memory, so that another
-  // framework can take ownership of it.
-  //
-  // When called with wait_for_operations_to_complete=false, the buffer returned
-  // from Release should be dropped on the compute stream, since the only events
-  // that Release doesn't wait for are events defined on the compute stream.
-  //
-  // If wait_for_operations_to_complete=true, the host will block until any
-  // potentially outstanding asynchronous operations have completed before
-  // returning, in which case it is safe to read or mutate the returned buffer.
-  // If the buffer was shared via an external reference it is the client's
-  // responsibility that accesses via that reference do not interfere with
-  // accesses via the buffer returned from Release.
-  absl::StatusOr<tsl::RCReference<RawSEDeviceMemory>> Release(
-      bool wait_for_operations_to_complete);
-};
-
-// Allocates the device buffers for a buffer that will be used as the
-// destination of a copy, either from the host or another device. copy_stream
-// may be nullptr, e.g., when allocating a buffer for a cross-host copy. If the
-// buffer is a tuple then the tuple tables are allocated, and all necessary
-// synchronization for them is dealt with, before the buffer is returned.
-//
-// It is safe to delete the returned PjRtBuffer without further
-// synchronization if an error occurs before the buffer is used.
-//
-// The caller may optionally provide a definition event to be recorded in
-// the buffer.
-// TODO(phawkins): replace on_host_shape here with on_device_shape.
-absl::StatusOr<std::unique_ptr<PjRtStreamExecutorBuffer>>
-AllocateDestinationBuffer(const Shape& on_host_shape, PjRtDevice* device,
-                          LocalDeviceState* local_device,
-                          se::Stream* copy_stream, bool is_uninitialized_create,
-                          PjRtStreamExecutorClient* client,
-                          BufferSequencingEventRef definition_event = nullptr,
-                          PjRtMemorySpace* memory_space = nullptr);
 
 // Wraps one or more XLA LocalExecutables (one per partition, as specified by
 // the build options).
