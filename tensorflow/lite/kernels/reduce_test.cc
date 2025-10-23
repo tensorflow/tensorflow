@@ -1985,3 +1985,29 @@ TEST(ConstFloatProdOpTest, EmptyAxis) {
 
 }  // namespace
 }  // namespace tflite
+
+// TEST
+TEST(QuantizedReduceSumTest, Int8ReferenceKernelNoOverflow) {
+  using ::tflite::TensorType_INT8;
+  using ::tflite::TensorType_INT32;
+
+  // Build a simple model with a ReduceSum op.
+  int input_shape[] = {2, 1, 128};
+  int axis_shape[] = {1};
+  int axis_data[] = {2};  // Reduce over last dimension
+
+  // Create interpreter
+  TfLiteQuantizationParams quant_params = {0.1f, 0};  // arbitrary scale/zero_point
+  std::vector<int8_t> input_data(128, 2);  // All values = 2
+
+  // Expected sum: 2 * 128 = 256 → should saturate properly but not overflow to -1
+  float expected_output = 256.0f;
+
+  // Build model
+  ReduceOpModel model(TensorType_INT8, {1, 128}, TensorType_INT8, {1}, false, true);
+  model.PopulateTensor<int8_t>(model.input(), input_data);
+  model.Invoke();
+
+  auto output = model.GetOutput<int8_t>();
+  EXPECT_NEAR(output[0], expected_output, 1.0f);
+}
