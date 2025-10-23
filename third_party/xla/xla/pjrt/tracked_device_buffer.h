@@ -180,9 +180,7 @@ class TrackedDeviceBuffer : public AbstractTrackedDeviceBuffer {
 
   void AddUsageEvent(tsl::RCReference<PjRtDeviceEvent> event) override;
 
-  void Delete(PjRtMemorySpace* memory_space) override {
-    LOG(FATAL) << "Implement";
-  }
+  void Delete(PjRtMemorySpace* memory_space) override;
 
   absl::Status WaitUntilBufferReadyOnStream(std::intptr_t stream) override {
     for (const BufferSequencingEventRef& event : definition_events()) {
@@ -190,6 +188,12 @@ class TrackedDeviceBuffer : public AbstractTrackedDeviceBuffer {
     }
     return absl::OkStatus();
   }
+
+  absl::StatusOr<std::unique_ptr<AbstractTrackedDeviceBuffer>>
+  CloneWithControlDependency(PjRtMemorySpace* memory_space,
+                             Future<> dependency) override;
+
+  Future<> GetReadyFuture(PjRtMemorySpace* memory_space) override;
 
  private:
   PjRtDevice* device_;

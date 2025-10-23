@@ -107,8 +107,9 @@ void PjRtStreamExecutorDeviceEventPromise::SetFromSEEvent(
   event.AndThen([event = event_, original_event = event]() {
     if (auto* error = original_event.GetErrorIfPresent()) {
       event.SetError(*error);
+    } else {
+      event.SetStateConcrete();
     }
-    event.SetStateConcrete();
   });
 }
 
