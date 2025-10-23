@@ -209,10 +209,11 @@ struct RewriteXlaLoop : mlir::OpRewritePattern<LoopOp> {
 
   mlir::LogicalResult matchAndRewrite(
       LoopOp op, mlir::PatternRewriter& rewriter) const override {
+    gpu::SymbolicExprContext symbolic_expr_context(op.getContext());
     Location loc = op.getLoc();
     ImplicitLocOpBuilder b(loc, rewriter);
 
-    IndexingMap indexing_map = op.getIndexingMap();
+    IndexingMap indexing_map = op.getIndexingMap(&symbolic_expr_context);
     SmallVector<Value, 4> lbs, ubs, steps;
     emitters::GetLoopBoundsFromIndexingMap(b, indexing_map, &lbs, &ubs, &steps);
     mlir::scf::LoopNest loop_nest = mlir::scf::buildLoopNest(
@@ -260,7 +261,9 @@ mlir::VectorType getThreadLevelVectorType(
     vector_dims.push_back(2);
     data_type = complex.getElementType();
   }
-  IndexingMap map = indexed_vector.getIndexingMapAttr().getIndexingMap();
+  gpu::SymbolicExprContext symbolic_expr_context(indexed_vector.getContext());
+  IndexingMap map = indexed_vector.getIndexingMapAttr().getIndexingMap(
+      &symbolic_expr_context);
   for (auto bound : map.GetSymbolBounds()) {
     vector_dims.push_back(bound.GetLoopTripCount());
   }
@@ -307,8 +310,10 @@ struct RewriteInsert : mlir::OpRewritePattern<gpu::InsertOp> {
             scalar = b.create<mlir::vector::ExtractOp>(convert, vector_offset)
                          .getResult();
           }
+          gpu::SymbolicExprContext symbolic_expr_context(op.getContext());
           auto tensor_indices = b.create<ApplyIndexingOp>(
-              map_results, ValueRange(), op.getMap().getIndexingMap());
+              map_results, ValueRange(),
+              op.getMap().getIndexingMap(&symbolic_expr_context));
           Value new_tensor = b.create<mlir::tensor::InsertOp>(
               scalar, iter_args.back(), tensor_indices.getResults());
           b.create<YieldOp>(new_tensor);

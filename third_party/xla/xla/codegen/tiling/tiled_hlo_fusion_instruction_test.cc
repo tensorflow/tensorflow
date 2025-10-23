@@ -49,7 +49,7 @@ TEST_F(TiledHloFusionInstructionTest,
   IndexingMap tile_offsets_indexing = IndexingMap::FromTensorSizes(
       ParseAffineMap("(d0) -> (d0 floordiv 16, (d0 mod 16) * 16)",
                      &symbolic_expr_context_),
-      /*dim_upper_bounds=*/{8},
+      &symbolic_expr_context_, /*dim_upper_bounds=*/{8},
       /*symbol_upper_bounds=*/{});
 
   EXPECT_THAT(TiledHloFusionInstruction::Create(

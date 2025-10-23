@@ -105,7 +105,7 @@ absl::StatusOr<IndexingMap> MajorToMinorScheduleImpl(
   IndexingMap program_id_to_output_dims{
       mlir::AffineMap::get(
           /*dimCount=*/1, /*symbolCount=*/0, tile_exprs, mlir_context),
-      dim_vars, /*range_vars=*/{}, /*rt_vars=*/{}};
+      symbolic_expr_context, dim_vars, /*range_vars=*/{}, /*rt_vars=*/{}};
   auto scheduled_indexing =
       ComposeIndexingMaps(program_id_to_output_dims, tile_offsets_indexing);
   scheduled_indexing.Simplify();

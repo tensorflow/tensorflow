@@ -212,14 +212,15 @@ CpuScatterFusion::CpuScatterFusion(
 }
 IndexingMap GetScatterIndexingMap(
     absl::Span<const int64_t> updates_operand_shape, int64_t num_threads,
-    int64_t vector_size, mlir::MLIRContext* context) {
+    int64_t vector_size, gpu::SymbolicExprContext* symbolic_expr_context) {
   using mlir::AffineExpr;
+  mlir::MLIRContext* mlir_context = symbolic_expr_context->GetMLIRContext();
 
   // Delinearize thread_expr w.r.t. number of thread tiles per dimension.
-  auto thread_expr = mlir::getAffineDimExpr(0, context);
-  auto index_id = mlir::getAffineSymbolExpr(0, context);
-  auto slice_linear_index = mlir::getAffineSymbolExpr(1, context);
-  auto vector_element_id = mlir::getAffineSymbolExpr(2, context);
+  auto thread_expr = mlir::getAffineDimExpr(0, mlir_context);
+  auto index_id = mlir::getAffineSymbolExpr(0, mlir_context);
+  auto slice_linear_index = mlir::getAffineSymbolExpr(1, mlir_context);
+  auto vector_element_id = mlir::getAffineSymbolExpr(2, mlir_context);
 
   int64_t num_updates = updates_operand_shape.front();
   int64_t num_updates_per_thread = CeilOfRatio(num_updates, num_threads);
@@ -241,10 +242,11 @@ IndexingMap GetScatterIndexingMap(
       {updates_id_expr, {0, num_updates}},
       {slice_linear_index_expr, {0, num_slice_elements - 1}}};
 
-  auto affine_map =
-      mlir::AffineMap::get(/*num_dims=*/1, /*num_symbols=*/3, result, context);
+  auto affine_map = mlir::AffineMap::get(/*num_dims=*/1, /*num_symbols=*/3,
+                                         result, mlir_context);
   return IndexingMap(
-      affine_map, {IndexingMap::Variable({0, num_threads - 1, "thread_id"})},
+      affine_map, symbolic_expr_context,
+      {IndexingMap::Variable({0, num_threads - 1, "thread_id"})},
       {IndexingMap::Variable({0, num_updates_per_thread - 1, "index_id"}),
        IndexingMap::Variable({0, num_vectors_per_slice - 1, "vector_id"}),
        IndexingMap::Variable({0, vector_size - 1, "vector_element_id"})},
@@ -348,7 +350,6 @@ absl::Status CpuScatterFusion::EmitEntryFunction(
   absl::Span<HloInstruction* const> scatter_updates =
       scatter->scatter_updates();
 
-  mlir::MLIRContext* context = entry_function.getContext();
   ImplicitLocOpBuilder b(entry_function.getLoc(), entry_function);
   b.setInsertionPointToStart(entry_function.addEntryBlock());
   // %arg1 and %arg4 do alias -- they point to the same address!
@@ -371,8 +372,9 @@ absl::Status CpuScatterFusion::EmitEntryFunction(
   workgroup_id->setAttr("xla.range",
                         b.getIndexArrayAttr({0, num_threads_ - 1}));
 
-  IndexingMap map = GetScatterIndexingMap(update_shape.dimensions(),
-                                          num_threads_, vector_size_, context);
+  IndexingMap map =
+      GetScatterIndexingMap(update_shape.dimensions(), num_threads_,
+                            vector_size_, symbolic_expr_context_);
   map.Simplify();
 
   const ScatterDimensionNumbers& scatter_dims =

@@ -201,7 +201,7 @@ def ApplyIndexingOp : XLA_Op<"apply_indexing", [Pure]> {
   ];
   let extraClassDeclaration = [{
     // Returns the indexing map constructed from IndexingMapAttr.
-    xla::IndexingMap getIndexingMap();
+    xla::IndexingMap getIndexingMap(xla::gpu::SymbolicExprContext* symbolic_expr_context);
     // Extracts the affine map from the attribute.
     mlir::AffineMap getAffineMap() { return getIndexingMapAttr().getMap(); }
   }];
@@ -266,7 +266,7 @@ def LoopOp : XLA_Op<"loop", [
              mlir::ValueRange, mlir::ValueRange)>;
 
     // Returns the indexing map constructed from IndexingMapAttr.
-    xla::IndexingMap getIndexingMap();
+    xla::IndexingMap getIndexingMap(xla::gpu::SymbolicExprContext* symbolic_expr_context);
     int64_t getNumInductionVars() {
       return getBody()->getNumArguments() - getIndexingMapAttr().getNumResults()
         - getNumResults();

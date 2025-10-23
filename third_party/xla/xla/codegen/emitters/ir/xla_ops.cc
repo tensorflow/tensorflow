@@ -105,9 +105,14 @@ std::optional<Interval> GetRange(mlir::Value value) {
   };
 
   if (auto apply = value.getDefiningOp<ApplyIndexingOp>()) {
-    return apply.getIndexingMap().GetRangeEvaluator().ComputeExpressionRange(
-        apply.getIndexingMap().GetAffineMap().getResult(
-            mlir::cast<mlir::OpResult>(value).getResultNumber()));
+    SymbolicExprContext symbolic_expr_context(apply.getContext());
+    return apply.getIndexingMap(&symbolic_expr_context)
+        .GetRangeEvaluator()
+        .ComputeExpressionRange(
+            apply.getIndexingMap(&symbolic_expr_context)
+                .GetAffineMap()
+                .getResult(
+                    mlir::cast<mlir::OpResult>(value).getResultNumber()));
   } else if (auto cst = value.getDefiningOp<mlir::arith::ConstantIndexOp>()) {
     return {{cst.value(), cst.value()}};
   } else if (value.getDefiningOp()) {
@@ -140,7 +145,8 @@ std::optional<Interval> GetIVRange(mlir::Value iv) {
     }
   }
   if (auto loop_op = mlir::dyn_cast<xla::LoopOp>(parent)) {
-    const auto& indexing_map = loop_op.getIndexingMap();
+    SymbolicExprContext symbolic_expr_context(loop_op.getContext());
+    const auto& indexing_map = loop_op.getIndexingMap(&symbolic_expr_context);
     if (bbarg.getArgNumber() >= loop_op.getNumInductionVars() &&
         bbarg.getArgNumber() <
             loop_op.getNumInductionVars() + indexing_map.GetNumResults()) {
@@ -207,7 +213,9 @@ void ApplyIndexingOp::build(OpBuilder& builder, OperationState& result,
                             ValueRange operands, AffineMap affine_map,
                             ArrayRef<IndexingMap::Variable> dim_vars,
                             ArrayRef<IndexingMap::Variable> range_vars) {
-  IndexingMap indexing_map(affine_map, dim_vars, range_vars, {});
+  SymbolicExprContext symbolic_expr_context(affine_map.getContext());
+  IndexingMap indexing_map(affine_map, &symbolic_expr_context, dim_vars,
+                           range_vars, {});
   build(builder, result, operands, indexing_map);
 }
 
@@ -238,13 +246,19 @@ ParseResult ApplyIndexingOp::parse(OpAsmParser& parser,
       parser.parseOptionalAttrDict(result.attributes)) {
     return failure();
   }
-  auto map = indexing_map_attr.getIndexingMap().GetAffineMap();
+  SymbolicExprContext symbolic_expr_context(parser.getContext());
+  auto map =
+      indexing_map_attr.getIndexingMap(&symbolic_expr_context).GetAffineMap();
   result.addTypes(SmallVector<Type, 2>(map.getNumResults(), index_type));
+
   return success();
 }
 
 void ApplyIndexingOp::print(OpAsmPrinter& p) {
-  AffineMap affine_map = getIndexingMapAttr().getIndexingMap().GetAffineMap();
+  SymbolicExprContext symbolic_expr_context(getContext());
+  AffineMap affine_map = getIndexingMapAttr()
+                             .getIndexingMap(&symbolic_expr_context)
+                             .GetAffineMap();
   p << " " << getIndexingMapAttr();
 
   auto operands = getOperands();
@@ -269,7 +283,10 @@ void ApplyIndexingOp::print(OpAsmPrinter& p) {
 }
 
 LogicalResult ApplyIndexingOp::verify() {
-  auto affine_map = getIndexingMapAttr().getIndexingMap().GetAffineMap();
+  SymbolicExprContext symbolic_expr_context(getContext());
+  auto affine_map = getIndexingMapAttr()
+                        .getIndexingMap(&symbolic_expr_context)
+                        .GetAffineMap();
   unsigned num_variables = affine_map.getNumDims() + affine_map.getNumSymbols();
   if (getOperands().size() != num_variables) {
     return emitOpError(absl::StrCat(
@@ -277,14 +294,15 @@ LogicalResult ApplyIndexingOp::verify() {
         " does not match the sum of dimensions ", affine_map.getNumDims(),
         " and symbols ", affine_map.getNumSymbols(), " in the affine map"));
   }
-  if (!getIndexingMap().GetConstraints().empty()) {
+  if (!getIndexingMap(&symbolic_expr_context).GetConstraints().empty()) {
     return emitOpError("apply indexing op cannot have any constraints");
   }
   return success();
 }
 
-IndexingMap ApplyIndexingOp::getIndexingMap() {
-  return getIndexingMapAttr().getIndexingMap();
+IndexingMap ApplyIndexingOp::getIndexingMap(
+    SymbolicExprContext* symbolic_expr_context) {
+  return getIndexingMapAttr().getIndexingMap(symbolic_expr_context);
 }
 
 namespace {
@@ -298,7 +316,8 @@ struct IndexingMapWithAdditions {
 absl::StatusOr<IndexingMapWithAdditions> GetNewIndexingMapAfterFoldingSequence(
     IndexingMap indexing_map,
     SmallVector<std::pair<int, ApplyIndexingOp>, 2> apply_indexing_ops,
-    mlir::DenseMap<Value, AffineExpr> operand_exprs, SymbolicExprContext* ctx) {
+    mlir::DenseMap<Value, AffineExpr> operand_exprs,
+    SymbolicExprContext* symbolic_expr_context) {
   int num_dims = indexing_map.GetDimensionCount();
 
   SmallVector<Value> added_dim_args;
@@ -306,7 +325,7 @@ absl::StatusOr<IndexingMapWithAdditions> GetNewIndexingMapAfterFoldingSequence(
 
   mlir::DenseMap<AffineExpr, AffineExpr> replacements;
   for (auto& [operand_id, producer] : apply_indexing_ops) {
-    auto producer_map = producer.getIndexingMap();
+    auto producer_map = producer.getIndexingMap(symbolic_expr_context);
     mlir::OpResult producer_result = producer->getOpResult(0);
     int producer_result_id = producer_result.getResultNumber();
     int num_producer_dims = producer.getAffineMap().getNumDims();
@@ -325,8 +344,9 @@ absl::StatusOr<IndexingMapWithAdditions> GetNewIndexingMapAfterFoldingSequence(
       auto& replacement_expr = operand_exprs[producer_operand.get()];
       if (!replacement_expr) {
         int dim_num = producer_operand_number;
-        replacement_expr = getAffineDimExpr(num_dims + added_dim_args.size(),
-                                            ctx->GetMLIRContext());
+        replacement_expr =
+            getAffineDimExpr(num_dims + added_dim_args.size(),
+                             symbolic_expr_context->GetMLIRContext());
         added_dim_args.push_back(producer_operand.get());
         new_dim_vars.push_back(producer_map.GetDimVar(dim_num));
       }
@@ -341,8 +361,8 @@ absl::StatusOr<IndexingMapWithAdditions> GetNewIndexingMapAfterFoldingSequence(
   auto new_affine_map = indexing_map.GetAffineMap().replace(
       replacements, num_dims + added_dim_args.size(),
       indexing_map.GetSymbolCount());
-  IndexingMap new_indexing_map(new_affine_map, new_dim_vars,
-                               indexing_map.GetRangeVars(),
+  IndexingMap new_indexing_map(new_affine_map, symbolic_expr_context,
+                               new_dim_vars, indexing_map.GetRangeVars(),
                                indexing_map.GetRTVars());
 
   return IndexingMapWithAdditions{new_indexing_map, added_dim_args};
@@ -357,7 +377,9 @@ struct SimplifyIndexingMap : public mlir::OpRewritePattern<ApplyIndexingOp> {
 
   LogicalResult matchAndRewrite(ApplyIndexingOp indexing_op,
                                 PatternRewriter& rewriter) const override {
-    IndexingMap indexing_map = indexing_op.getIndexingMap();
+    SymbolicExprContext symbolic_expr_context(indexing_op.getContext());
+    IndexingMap indexing_map =
+        indexing_op.getIndexingMap(&symbolic_expr_context);
     if (!indexing_map.Simplify()) {
       return rewriter.notifyMatchFailure(indexing_op,
                                          "IndexingMap is already simplified");
@@ -374,7 +396,9 @@ struct RemoveUnusedVariables : public mlir::OpRewritePattern<ApplyIndexingOp> {
 
   LogicalResult matchAndRewrite(ApplyIndexingOp indexing_op,
                                 PatternRewriter& rewriter) const override {
-    IndexingMap indexing_map = indexing_op.getIndexingMap();
+    SymbolicExprContext symbolic_expr_context(indexing_op.getContext());
+    IndexingMap indexing_map =
+        indexing_op.getIndexingMap(&symbolic_expr_context);
     auto unused_symbols_bit_vector = indexing_map.RemoveUnusedVars();
     if (unused_symbols_bit_vector.count() == 0) {
       return rewriter.notifyMatchFailure(indexing_op,
@@ -398,7 +422,9 @@ struct MoveSymbolsToDims : public mlir::OpRewritePattern<ApplyIndexingOp> {
 
   LogicalResult matchAndRewrite(ApplyIndexingOp indexing_op,
                                 PatternRewriter& rewriter) const override {
-    IndexingMap indexing_map = indexing_op.getIndexingMap();
+    SymbolicExprContext symbolic_expr_context(indexing_op.getContext());
+    IndexingMap indexing_map =
+        indexing_op.getIndexingMap(&symbolic_expr_context);
     if (indexing_map.GetSymbolCount() == 0) {
       return rewriter.notifyMatchFailure(indexing_op, "No symbols found");
     }
@@ -415,7 +441,9 @@ struct FoldApplyIndexingSequence
 
   LogicalResult matchAndRewrite(ApplyIndexingOp indexing_op,
                                 PatternRewriter& rewriter) const override {
-    auto indexing_map = indexing_op.getIndexingMap();
+    SymbolicExprContext symbolic_expr_context(indexing_op.getContext());
+    IndexingMap indexing_map =
+        indexing_op.getIndexingMap(&symbolic_expr_context);
     SmallVector<std::pair<int, ApplyIndexingOp>, 2> apply_indexing_ops;
     bool all_apply_indexing_operands_have_one_use = true;
     for (auto& operand : indexing_op->getOpOperands()) {
@@ -449,8 +477,6 @@ struct FoldApplyIndexingSequence
               : getAffineSymbolExpr(operand_number - num_dims, ctx);
     }
 
-    // TODO(b/446856303): Get SymbolicExprContext from IndexingMap.
-    SymbolicExprContext symbolic_expr_context(ctx);
     auto replacement = GetNewIndexingMapAfterFoldingSequence(
         indexing_map, apply_indexing_ops, operand_exprs,
         &symbolic_expr_context);
@@ -490,7 +516,9 @@ struct FoldApplyIndexingOperands
 
   LogicalResult matchAndRewrite(ApplyIndexingOp indexing_op,
                                 PatternRewriter& rewriter) const override {
-    IndexingMap indexing_map = indexing_op.getIndexingMap();
+    SymbolicExprContext symbolic_expr_context(indexing_op.getContext());
+    IndexingMap indexing_map =
+        indexing_op.getIndexingMap(&symbolic_expr_context);
     AffineMap affine_map = indexing_map.GetAffineMap();
 
     MLIRContext* ctx = affine_map.getContext();
@@ -556,7 +584,9 @@ struct FoldApplyIndexingResults
   LogicalResult matchAndRewrite(ApplyIndexingOp indexing_op,
                                 PatternRewriter& rewriter) const override {
     Location loc = indexing_op.getLoc();
-    IndexingMap indexing_map = indexing_op.getIndexingMap();
+    SymbolicExprContext symbolic_expr_context(indexing_op.getContext());
+    IndexingMap indexing_map =
+        indexing_op.getIndexingMap(&symbolic_expr_context);
     if (indexing_map.IsKnownEmpty()) {
       return rewriter.notifyMatchFailure(indexing_op,
                                          "Domain of the indexing map is empty");
@@ -755,8 +785,9 @@ void LoopOp::build(OpBuilder& builder, OperationState& result,
   OpBuilder::InsertionGuard guard(builder);
 
   int64_t num_ivs = indexing_map_attr.getRangeVars().size();
+  SymbolicExprContext symbolic_expr_context(builder.getContext());
   int64_t num_indexing_map_results =
-      indexing_map_attr.getIndexingMap().GetNumResults();
+      indexing_map_attr.getIndexingMap(&symbolic_expr_context).GetNumResults();
   int64_t num_inits = inits.size();
   result.addOperands(dims);
   result.addOperands(inits);
@@ -893,7 +924,8 @@ LogicalResult LoopOp::verify() {
   if (getInits().size() != getNumResults()) {
     return emitOpError("mismatch in number of loop-carried values and results");
   }
-  IndexingMap indexing_map = getIndexingMap();
+  SymbolicExprContext symbolic_expr_context(getContext());
+  IndexingMap indexing_map = getIndexingMap(&symbolic_expr_context);
   if (indexing_map.GetRangeVarsCount() != getNumInductionVars()) {
     return emitOpError() << "mismatch in number of induction variables "
                          << getNumInductionVars()
@@ -918,8 +950,8 @@ LogicalResult LoopOp::verify() {
   return success();
 }
 
-IndexingMap LoopOp::getIndexingMap() {
-  return getIndexingMapAttr().getIndexingMap();
+IndexingMap LoopOp::getIndexingMap(SymbolicExprContext* symbolic_expr_context) {
+  return getIndexingMapAttr().getIndexingMap(symbolic_expr_context);
 }
 
 namespace {
@@ -933,10 +965,9 @@ struct SimplifyLoopOfApplyIndexing : public mlir::OpRewritePattern<LoopOp> {
 
   LogicalResult matchAndRewrite(LoopOp loop_op,
                                 PatternRewriter& rewriter) const override {
-    auto loop_indexing_map = loop_op.getIndexingMap();
     MLIRContext* mlir_context = loop_op.getContext();
-    // TODO(b/446856303): Get context from IndexingMap instead.
     SymbolicExprContext symbolic_expr_context(mlir_context);
+    auto loop_indexing_map = loop_op.getIndexingMap(&symbolic_expr_context);
     int num_dims = loop_indexing_map.GetDimVarsCount();
 
     SmallVector<std::pair<int, ApplyIndexingOp>, 2> apply_indexing_ops;
@@ -946,7 +977,8 @@ struct SimplifyLoopOfApplyIndexing : public mlir::OpRewritePattern<LoopOp> {
     for (auto& operand : loop_op->getOpOperands().take_front(num_dims)) {
       if (auto producer = operand.get().getDefiningOp<ApplyIndexingOp>()) {
         // Producer should be canonicalized via MoveSymbolsToDims pattern.
-        if (producer.getIndexingMap().GetSymbolCount() > 0) {
+        if (producer.getIndexingMap(&symbolic_expr_context).GetSymbolCount() >
+            0) {
           continue;
         }
         apply_indexing_ops.push_back({operand.getOperandNumber(), producer});
@@ -1021,8 +1053,9 @@ struct FoldConstantDimensions : public mlir::OpRewritePattern<LoopOp> {
 
   LogicalResult matchAndRewrite(LoopOp loop_op,
                                 PatternRewriter& rewriter) const override {
-    auto loop_indexing_map = loop_op.getIndexingMap();
     auto ctx = loop_op.getContext();
+    SymbolicExprContext symbolic_expr_context(ctx);
+    auto loop_indexing_map = loop_op.getIndexingMap(&symbolic_expr_context);
     int num_dims = loop_indexing_map.GetDimVarsCount();
 
     SmallVector<Value, 4> used_operands;
@@ -1062,10 +1095,10 @@ struct FoldConstantDimensions : public mlir::OpRewritePattern<LoopOp> {
       new_constraints[expr.replaceDims(dim_replacements)] = interval;
     }
 
-    IndexingMap new_indexing_map(new_affine_map, std::move(used_dim_vars),
-                                 loop_indexing_map.GetRangeVars(),
-                                 loop_indexing_map.GetRTVars(),
-                                 new_constraints);
+    IndexingMap new_indexing_map(
+        new_affine_map, &symbolic_expr_context, std::move(used_dim_vars),
+        loop_indexing_map.GetRangeVars(), loop_indexing_map.GetRTVars(),
+        new_constraints);
 
     auto new_loop_op = rewriter.create<LoopOp>(
         loop_op.getLoc(), new_indexing_map, used_operands, loop_op.getInits());
@@ -1113,6 +1146,8 @@ std::optional<IndexingMap> parseChainOfStringsAsIndexingMap(
   while (parser.parseOptionalAttribute(indexing_map_attr).has_value()) {
     indexing_map_str.append(indexing_map_attr.getValue());
   }
+  // The IndexingMap created here is used only for parsing, so we can pass
+  // a temporary SymbolicExprContext.
   gpu::SymbolicExprContext symbolic_expr_context(parser.getContext());
   return ParseIndexingMap(indexing_map_str, &symbolic_expr_context);
 }

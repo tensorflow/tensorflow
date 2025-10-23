@@ -1390,6 +1390,7 @@ class ElementalHloToMlirEpilogueTest : public ElementalHloToMlirTest {
       epilogue.root_indexing.push_back(
           IndexingMap{mlir::AffineMap::getMultiDimIdentityMap(3, &mlir_context_)
                           .getSubMap({0, 2, 1}),
+                      &symbolic_expr_context_,
                       DimVarsFromTensorSizes({2, 17, 17}),
                       {},
                       {}});

@@ -426,6 +426,7 @@ IndexingMap ReductionFusion::GetIndexingMap(
   auto num_groups = static_cast<int64_t>(reduction_heroes_.size());
   return IndexingMap{
       AffineMap::get(6, symbol_sizes.size(), results, mlir_context),
+      symbolic_expr_context_,
       DimVarsFromGPUGrid(
           {Product(num_threads_), 1, 1, Product(num_blocks_), num_groups, 1}),
       RangeVarsFromTensorSizes(symbol_sizes),
@@ -440,6 +441,7 @@ IndexingMap ReductionFusion::GetThreadIndexingMap(
                                    results.front().getContext());
   return IndexingMap{
       affine_map,
+      symbolic_expr_context_,
       {IndexingMap::Variable{0, Product(num_threads_) - 1,
                              ToVariableName(VariableKind::kThreadX)}},
       RangeVarsFromTensorSizes(symbol_sizes),

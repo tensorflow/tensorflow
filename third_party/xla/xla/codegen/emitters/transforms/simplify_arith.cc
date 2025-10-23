@@ -344,7 +344,9 @@ struct RefineConstraints : public OpRewritePattern<ApplyIndexingOp> {
                                 PatternRewriter& rewriter) const override {
     // Right now, we only handle loop induction variables, but other rules might
     // be added.
-    IndexingMap indexing_map = indexing_op.getIndexingMap();
+    gpu::SymbolicExprContext symbolic_expr_context(indexing_op.getContext());
+    IndexingMap indexing_map =
+        indexing_op.getIndexingMap(&symbolic_expr_context);
     int64_t dim_count = indexing_map.GetDimensionCount();
     bool updated_bounds = false;
     for (mlir::OpOperand& operand : indexing_op->getOpOperands()) {

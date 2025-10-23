@@ -330,6 +330,7 @@ IndexingMap TransposeFusion::GetSharedMemoryIndexing(
   dim_var_sizes[KernelFusionInterface::kIndexingMapBlockIdxDims[0]] =
       Product(block_counts_);
   return {mlir::AffineMap::get(6, 2, thread_offsets, mlir_context),
+          symbolic_expr_context,
           DimVarsFromGPUGrid(dim_var_sizes),
           RangeVarsFromTensorSizes({block_size_ / kNumRows, vector_size_}),
           {}};
@@ -520,6 +521,7 @@ IndexingMap TransposeFusion::GetIndexing(
       Product(block_counts_);
   IndexingMap result{
       mlir::AffineMap::get(6, 2, offsets, mlir_context),
+      symbolic_expr_context,
       DimVarsFromTensorSizes(dim_var_sizes),
       RangeVarsFromTensorSizes({block_size_ / kNumRows, vector_size_}),
       {}};
@@ -867,7 +869,11 @@ IndexingMap PackedTranspose::GetInputIndexing(
   IndexingMap canonical_input_indexing{
       mlir::AffineMap::get(/*num_dims=*/6, /*num_symbols=*/2, canonical_offsets,
                            mlir_context),
-      std::move(dim_vars), std::move(range_vars), /*rt_vars=*/{}, constraints};
+      symbolic_expr_context,
+      std::move(dim_vars),
+      std::move(range_vars),
+      /*rt_vars=*/{},
+      constraints};
   canonical_input_indexing.Simplify();
 
   // Actual indexing.
@@ -909,7 +915,11 @@ IndexingMap PackedTranspose::GetShmemWriteIndexing(
 
   IndexingMap shmem_write_indexing_map{
       mlir::AffineMap::get(6, 2, {shmem_row, shmem_col}, mlir_context),
-      dim_vars, range_vars, /*rt_vars=*/{}, constraints};
+      symbolic_expr_context,
+      dim_vars,
+      range_vars,
+      /*rt_vars=*/{},
+      constraints};
   shmem_write_indexing_map.Simplify();
   return shmem_write_indexing_map;
 }
@@ -946,7 +956,11 @@ IndexingMap PackedTranspose::GetShmemReadIndexing(
 
   IndexingMap shmem_read_indexing_map{
       mlir::AffineMap::get(6, 3, {shmem_row, shmem_col}, mlir_context),
-      dim_vars, range_vars, /*rt_vars=*/{}, constraints};
+      symbolic_expr_context,
+      dim_vars,
+      range_vars,
+      /*rt_vars=*/{},
+      constraints};
   shmem_read_indexing_map.Simplify();
   return shmem_read_indexing_map;
 }
@@ -1001,7 +1015,11 @@ IndexingMap PackedTranspose::GetOutputIndexing(
       {shmem_row, Interval{0, populated_shmem_rows_ - 1}}};
   IndexingMap canonical_output_indexing{
       mlir::AffineMap::get(6, 3, canonical_offsets, mlir_context),
-      std::move(dim_vars), std::move(range_vars), /*rt_vars=*/{}, constraints};
+      symbolic_expr_context,
+      std::move(dim_vars),
+      std::move(range_vars),
+      /*rt_vars=*/{},
+      constraints};
   canonical_output_indexing.Simplify();
 
   // Actual indexing.

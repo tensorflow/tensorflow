@@ -230,7 +230,10 @@ absl::StatusOr<OutputTilingInfo> ComputeOutputTilingInfo(
           /*dimCount=*/num_tiling_parameters,
           /*symbolCount=*/root_indexing.GetRTVarsCount(),
           /*results=*/tiled_dims, mlir_context),
-      dim_vars, /*range_vars=*/{}, /*rt_vars=*/root_indexing.GetRTVars(),
+      symbolic_expr_context,
+      dim_vars,
+      /*range_vars=*/{},
+      /*rt_vars=*/root_indexing.GetRTVars(),
       constraints};
 
   TF_ASSIGN_OR_RETURN(
@@ -315,9 +318,13 @@ absl::StatusOr<IndexingMap> ComputeTileOffsetIndexing(
     updated_constraints[updated_expr] = interval;
   }
 
-  IndexingMap simplified_indexing_map = IndexingMap{
-      simplified_affine_map, tile_offset_indexing.GetDimVars(),
-      /*range_vars=*/{}, tile_offset_indexing.GetRTVars(), updated_constraints};
+  IndexingMap simplified_indexing_map =
+      IndexingMap{simplified_affine_map,
+                  tile_offset_indexing.GetSymbolicExprContext(),
+                  tile_offset_indexing.GetDimVars(),
+                  /*range_vars=*/{},
+                  tile_offset_indexing.GetRTVars(),
+                  updated_constraints};
 
   simplified_indexing_map.Simplify();
   simplified_indexing_map.RescaleSymbols();
@@ -822,7 +829,8 @@ absl::StatusOr<IndexingMap> IndexingMapForRootInstruction(
           input_space.size(), /*symbolCount=*/0, result_exprs,
           symbolic_expr_context->GetMLIRContext());
 
-      return IndexingMap::FromTensorSizes(affine_map, std::move(input_space),
+      return IndexingMap::FromTensorSizes(affine_map, symbolic_expr_context,
+                                          std::move(input_space),
                                           /*symbol_upper_bounds=*/{});
     }
     dim_offset += num_tiling_parameters;
@@ -1007,8 +1015,10 @@ IndexingMap InsertTilingParameterForContractingDimensions(
     mlir::AffineMap first_affine_map =
         mlir::AffineMap::get(num_inputs, /*symbolCount=*/0, results, ctx);
 
-    IndexingMap first_indexing_map =
-        IndexingMap::FromTensorSizes(first_affine_map, tileable_sizes, {});
+    IndexingMap first_indexing_map = IndexingMap::FromTensorSizes(
+        first_affine_map,
+        outermost_fusion_root_to_operand.GetSymbolicExprContext(),
+        tileable_sizes, {});
 
     return ComposeIndexingMaps(first_indexing_map, map_without_range_variables);
   }
@@ -1126,6 +1136,7 @@ std::vector<OperandIndexingSet> GetOperandIndexingMaps(
         *operands_indexing.indexing_maps[0].begin();
     indexing_maps.push_back({OperandIndexing{
         IndexingMap{pad_indexing_map.map().GetAffineMap(),
+                    pad_indexing_map.map().GetSymbolicExprContext(),
                     DimVarsFromTensorSizes(hlo->shape().dimensions()),
                     pad_indexing_map.map().GetRangeVars(),
                     pad_indexing_map.map().GetRTVars()}}});
