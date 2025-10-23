@@ -572,7 +572,7 @@ TEST_F(GpuP2PPipelinerTest, OneSendRecvWithConflictingAllReduceAfterLoop) {
   // Find conflicting all-reduce after loop.
   HloInstruction* ar_op = FindInstruction(module.get(), "ar");
 
-  // Expect all peeled ops to have control dependencies to teh conflicting
+  // Expect all peeled ops to have control dependencies to the conflicting
   // all-reduce after the loop.
   EXPECT_THAT(ar_op->control_predecessors(),
               UnorderedElementsAre(peeled_send_done_op, peeled_recv_done_op));
