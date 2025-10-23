@@ -68,13 +68,15 @@ class ResizeBilinearOpModel : public SingleOpModel {
     PopulateTensor(input_, data);
   }
 
-  TfLiteTensor* GetInputTensor(int index) { return interpreter_->tensor(input_); }
-
-  TfLiteTensor* GetOutputTensor(int index) { return interpreter_->tensor(output_); }
-
   template <typename T>
   std::vector<T> GetOutput() {
     return ExtractVector<T>(output_);
+  }
+
+  void SetOutputQuantParams(float scale, int zero_point) {
+    TfLiteTensor* output_tensor = interpreter_->tensor(output_);
+    output_tensor->params.scale = scale;
+    output_tensor->params.zero_point = zero_point;
   }
 
  private:
@@ -476,13 +478,20 @@ TEST_P(ResizeBilinearOpQuantizationTest, MismatchedQuantizationFails) {
   TensorType tensor_type = GetParam();
   ResizeBilinearOpModel m({tensor_type, {1, 2, 2, 1}, 0.0f, 0.0f, 0.5f, 1},
                           {3, 3}, TestType::kConst);
-  TfLiteTensor* output_tensor = m.GetOutputTensor(0);
-  output_tensor->params.scale = 0.25f;
-  output_tensor->params.zero_point = 2;
-  std::vector<int16_t> input_data = {1, 2, 3, 4};
-  TfLiteTensor* input_tensor = m.GetInputTensor(0);
-  std::memcpy(input_tensor->data.raw, input_data.data(),
-              input_data.size() * sizeof(int16_t));
+  m.SetOutputQuantParams(0.25f, 2);
+  switch (tensor_type) {
+    case TensorType_UINT8:
+      m.SetInput<uint8_t>({1, 2, 3, 4});
+      break;
+    case TensorType_INT8:
+      m.SetInput<int8_t>({1, 2, 3, 4});
+      break;
+    case TensorType_INT16:
+      m.SetInput<int16_t>({1, 2, 3, 4});
+      break;
+    default:
+      break;
+  }
   EXPECT_EQ(m.Invoke(), kTfLiteError);
 }
 
