@@ -16,28 +16,30 @@ limitations under the License.
 #include "xla/tests/test_utils.h"
 
 #include <algorithm>
-#include <cmath>
 #include <cstdint>
 #include <memory>
-#include <numeric>
 #include <optional>
 #include <random>
 #include <utility>
+#include <vector>
 
+#include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/hlo/analysis/hlo_dataflow_analysis.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
+#include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
-#include "xla/primitive_util.h"
+#include "xla/service/hlo_module_config.h"
+#include "xla/service/hlo_value.h"
 #include "xla/service/hlo_verifier.h"
-#include "xla/service/transfer_manager.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
@@ -200,7 +202,8 @@ absl::StatusOr<Literal> CreateLiteralForConstrainedUses(
     const absl::Span<HloInstruction* const> constrained_uses,
     const HloInstruction& param, const Shape& param_shape,
     std::minstd_rand0* engine, bool use_large_range,
-    std::optional<int64_t> max_bits_of_precision) {
+    std::optional<int64_t> max_bits_of_precision,
+    std::optional<std::pair<int64_t, int64_t>> integer_range) {
   int64_t index_bound = INT64_MAX;
   bool no_duplicates = false;
   bool needs_constant = false;
@@ -280,12 +283,15 @@ absl::StatusOr<Literal> CreateLiteralForConstrainedUses(
   if (constraint_count > 1) {
     return Unimplemented("Conflicting operand generation constraints.");
   }
+
   if (index_bound != INT64_MAX) {
     return MakeFakeLiteral(param_shape, engine,
                            std::pair<int64_t, int64_t>(0, index_bound),
                            needs_sorted_indices, no_duplicates, use_large_range,
                            max_bits_of_precision);
-  } else if (needs_constant) {
+  }
+
+  if (needs_constant) {
     switch (constant_type) {
       case ConstantType::kZero:
         return LiteralUtil::Zero(param_shape.element_type());
@@ -295,16 +301,16 @@ absl::StatusOr<Literal> CreateLiteralForConstrainedUses(
         // We want the identity element for the computation, but we don't
         // really know what it is - so any value we generate will be just as
         // wrong.
-        return MakeFakeLiteral(param_shape, engine, /*limit=*/std::nullopt,
+        return MakeFakeLiteral(param_shape, engine, /*limit=*/integer_range,
                                /*is_sorted=*/needs_sorted_indices,
                                /*no_duplicates=*/false, use_large_range,
                                max_bits_of_precision);
     }
-  } else {
-    return MakeFakeLiteral(param_shape, engine, /*limit=*/std::nullopt,
-                           /*is_sorted=*/needs_sorted_indices, no_duplicates,
-                           use_large_range, max_bits_of_precision);
   }
+
+  return MakeFakeLiteral(param_shape, engine, /*limit=*/integer_range,
+                         /*is_sorted=*/needs_sorted_indices, no_duplicates,
+                         use_large_range, max_bits_of_precision);
 }
 
 // Given a module entry parameter, use the dataflow analysis to see if a
@@ -313,12 +319,13 @@ absl::StatusOr<Literal> MakeConstrainedArgument(
     const HloDataflowAnalysis& dataflow, const HloInstruction& param,
     const Shape& param_shape, std::minstd_rand0* engine, bool use_large_range,
     bool treat_gte_as_data_formatting,
-    std::optional<int64_t> max_bits_of_precision) {
+    std::optional<int64_t> max_bits_of_precision,
+    std::optional<std::pair<int64_t, int64_t>> integer_range) {
   const auto constrained_uses =
       FindConstrainedUses(dataflow, param, treat_gte_as_data_formatting);
   return CreateLiteralForConstrainedUses(constrained_uses, param, param_shape,
                                          engine, use_large_range,
-                                         max_bits_of_precision);
+                                         max_bits_of_precision, integer_range);
 }
 
 }  // namespace
@@ -326,27 +333,31 @@ absl::StatusOr<Literal> MakeConstrainedArgument(
 absl::StatusOr<std::vector<Literal>> MakeFakeArguments(
     const HloModule* module, bool pseudo_random, bool use_large_range,
     bool treat_gte_as_data_formatting,
-    std::optional<int64_t> max_bits_of_precision, std::minstd_rand0* engine) {
+    std::optional<int64_t> max_bits_of_precision,
+    std::optional<std::pair<int64_t, int64_t>> integer_range,
+    std::minstd_rand0* engine) {
   if (!pseudo_random) {
     return MakeFakeArguments(module, nullptr, use_large_range,
                              treat_gte_as_data_formatting,
-                             max_bits_of_precision);
+                             max_bits_of_precision, integer_range);
   }
   if (engine == nullptr) {
     auto new_engine =
         pseudo_random ? std::make_unique<std::minstd_rand0>() : nullptr;
     return MakeFakeArguments(module, new_engine.get(), use_large_range,
                              treat_gte_as_data_formatting,
-                             max_bits_of_precision);
+                             max_bits_of_precision, integer_range);
   }
   return MakeFakeArguments(module, engine, use_large_range,
-                           treat_gte_as_data_formatting, max_bits_of_precision);
+                           treat_gte_as_data_formatting, max_bits_of_precision,
+                           integer_range);
 }
 
 absl::StatusOr<std::vector<Literal>> MakeFakeArguments(
     const HloModule* module, std::minstd_rand0* engine, bool use_large_range,
     bool treat_gte_as_data_formatting,
-    std::optional<int64_t> max_bits_of_precision) {
+    std::optional<int64_t> max_bits_of_precision,
+    std::optional<std::pair<int64_t, int64_t>> integer_range) {
   TF_ASSIGN_OR_RETURN(auto dataflow, HloDataflowAnalysis::Run(*module));
   const auto params = module->entry_computation()->parameter_instructions();
   std::vector<Literal> arguments(params.size());
@@ -366,7 +377,7 @@ absl::StatusOr<std::vector<Literal>> MakeFakeArguments(
         arguments[i],
         MakeConstrainedArgument(*dataflow, *params[i], param_shape, engine,
                                 use_large_range, treat_gte_as_data_formatting,
-                                max_bits_of_precision));
+                                max_bits_of_precision, integer_range));
   }
   return std::move(arguments);
 }
