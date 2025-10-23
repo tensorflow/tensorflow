@@ -4,12 +4,7 @@ load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     # By default, these targets should only be used within the quantization library.
-    default_visibility = [
-        "//learning/brain/mlir/quantization:__subpackages__",
-        "//tensorflow/compiler/mlir/lite:__subpackages__",
-        "//tensorflow/compiler/mlir/quantization:__subpackages__",
-        "//tensorflow/compiler/mlir/stablehlo:__subpackages__",
-    ],
+    default_visibility = ["//tensorflow/compiler/mlir/lite:__subpackages__"],
     licenses = ["notice"],
 )
 
