@@ -33,7 +33,8 @@ class TFProfTensorTest : public ::testing::Test {
     string graph_path =
         io::JoinPath(testing::TensorFlowSrcRoot(),
                      "core/profiler/internal/testdata/graph.pbtxt");
-    std::unique_ptr<tensorflow::GraphDef> graph_pb(new tensorflow::GraphDef());
+    std::unique_ptr<tensorflow::GraphDef> graph_pb =
+        std::make_unique<tensorflow::GraphDef>();
     TF_CHECK_OK(
         ReadProtoFile(Env::Default(), graph_path, graph_pb.get(), false));
 
@@ -43,8 +44,8 @@ class TFProfTensorTest : public ::testing::Test {
     string ckpt_path = io::JoinPath(testing::TensorFlowSrcRoot(),
                                     "core/profiler/internal/testdata/ckpt");
     TF_Status* status = TF_NewStatus();
-    std::unique_ptr<checkpoint::CheckpointReader> ckpt_reader(
-        new checkpoint::CheckpointReader(ckpt_path, status));
+    std::unique_ptr<checkpoint::CheckpointReader> ckpt_reader =
+        std::make_unique<checkpoint::CheckpointReader>(ckpt_path, status);
     CHECK(TF_GetCode(status) == TF_OK);
     TF_DeleteStatus(status);
 
