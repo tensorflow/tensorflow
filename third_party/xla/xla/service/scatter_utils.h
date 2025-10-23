@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef XLA_SERVICE_SCATTER_UTILS_H_
 #define XLA_SERVICE_SCATTER_UTILS_H_
 
+#include "absl/status/statusor.h"
+#include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
