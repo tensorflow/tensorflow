@@ -32,7 +32,7 @@ cc_library(
 
 cc_library(
     name = "ynn_threadpool",
-    srcs = ["ynn_threadpool_impl.cc"],
+    srcs = ["ynn_threadpool.cc"],
     hdrs = ["ynn_threadpool.h"],
     deps = [
         ":ynn_interop",
