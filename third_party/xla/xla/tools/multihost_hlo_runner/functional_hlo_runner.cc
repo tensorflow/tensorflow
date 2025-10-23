@@ -1223,16 +1223,17 @@ absl::Status LoadAndRunAndDump(
     const xla::FunctionalHloRunner::RunningOptions& running_options,
     absl::string_view hlo_file, InputFormat input_format,
     std::string dump_output_to, int task_id, int num_nodes,
-    std::shared_ptr<xla::KeyValueStoreInterface> kv_store) {
+    std::shared_ptr<xla::KeyValueStoreInterface> kv_store,
+    std::minstd_rand0* engine) {
   TF_ASSIGN_OR_RETURN(
       CompileOptions compile_options,
       FunctionalHloRunner::CreateCompileOptions(client, raw_compile_options,
                                                 task_id, num_nodes, kv_store));
   TF_ASSIGN_OR_RETURN(
       FunctionalHloRunner::PerDeviceLiteralVecType output,
-      FunctionalHloRunner::LoadAndRun(client, debug_options, preproc_options,
-                                      compile_options, running_options,
-                                      hlo_file, input_format));
+      FunctionalHloRunner::LoadAndRun(
+          client, debug_options, preproc_options, compile_options,
+          running_options, hlo_file, input_format, /*arguments=*/{}, engine));
   return dump_output_to.empty()
              ? absl::OkStatus()
              : FunctionalHloRunner::DumpOutput(output, dump_output_to, task_id);

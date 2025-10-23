@@ -314,7 +314,8 @@ absl::Status LoadAndRunAndDump(
     const xla::FunctionalHloRunner::RunningOptions& running_options,
     absl::string_view hlo_file, InputFormat input_format,
     std::string dump_output_to = "", int task_id = 0, int num_nodes = 1,
-    std::shared_ptr<xla::KeyValueStoreInterface> kv_store = nullptr);
+    std::shared_ptr<xla::KeyValueStoreInterface> kv_store = nullptr,
+    std::minstd_rand0* engine = nullptr);
 
 // Loads an HLO module from hlo_file according to input_format and run it.
 // The HLO module is run with the provided arguments if the arguments map is
