@@ -655,6 +655,16 @@ def map_to_output_names(y_pred, output_names, struct):
     if len(new_struct) == 1:
       return new_struct[0]
     return new_struct
+  # Handle case where struct is improperly nested for single output.
+  # This occurs when a single output comes from a multi-output layer (e.g., RNN with return_state=True)
+  elif single_output and nest.is_nested(struct) and not isinstance(struct, dict):
+    flat_struct = nest.flatten(struct)
+    if len(flat_struct) == 1:
+      # Unwrap single-element structure to match single output
+      return flat_struct[0]
+    # If struct has multiple values but model has single output, take the first element.
+    # This matches the behavior when return_state=True but only sequences are used.
+    return flat_struct[0]
   else:
     return struct
 
