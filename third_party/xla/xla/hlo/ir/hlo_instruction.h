@@ -2037,6 +2037,16 @@ class alignas(kInstructionTypeMask + 1) HloInstruction {
     return proto;
   }
 
+  // Applies a function `fn` to the underlying backend config proto. The
+  // function receives a mutable pointer to a proto of type `ConfigProto`.
+  //
+  // If the proto is not already parsed, it will return an error.
+  template <typename ConfigProto, EnableIfProto<ConfigProto>* = nullptr>
+  absl::Status MutateBackendConfig(
+      const std::function<absl::Status(ConfigProto*)>& fn) {
+    return backend_config_.ApplyFnOnProto(fn);
+  }
+
   absl::Status set_backend_config(const tsl::protobuf::Message& proto) {
     backend_config_ = BackendConfigWrapper(proto);
     return absl::OkStatus();
