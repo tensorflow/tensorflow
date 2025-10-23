@@ -40,17 +40,17 @@ limitations under the License.
 
 namespace xla::cpu {
 
-// A work queue that partitions `num_tasks` tasks into `num_partitions`
-// partitions processed by parallel workers.
+// A work queue that partitions `num_work_items` work items into
+// `num_partitions` partitions processed by parallel workers.
 class WorkQueue {
  public:
-  WorkQueue(size_t num_tasks, size_t num_partitions);
+  WorkQueue(size_t num_work_items, size_t num_partitions);
 
-  // Returns the next task in the given partition. Returns std::nullopt
+  // Returns the next work item in the given partition. Returns std::nullopt
   // if the partition is complete.
   std::optional<size_t> Pop(size_t partition_index);
 
-  // Return the partition [begin, end) task range.
+  // Return the partition [begin, end) work items range.
   std::pair<size_t, size_t> partition_range(size_t partition_index) const;
 
   size_t num_partitions() const { return partitions_.size(); }
@@ -63,7 +63,7 @@ class WorkQueue {
   struct Partition {
     void Initialize(size_t begin, size_t end);
 
-    // Tracks index of the next task in the assigned partition.
+    // Tracks index of the next work item in the assigned partition.
     ABSL_CACHELINE_ALIGNED std::atomic<size_t> index;
     size_t begin;
     size_t end;
@@ -85,10 +85,10 @@ class WorkQueue {
   ABSL_CACHELINE_ALIGNED std::atomic<size_t> num_work_stealing_workers_;
 };
 
-// Worker processes tasks from the work queue starting from the assigned
+// Worker processes work items from the work queue starting from the assigned
 // work partition. Once the assigned partition is complete it tries to pop
-// the task from the next partition. Once the work queue is empty (the worker
-// wraps around to the initial partition) it returns and empty task.
+// the work item from the next partition. Once the work queue is empty (the
+// worker wraps around to the initial partition) it returns and empty work item.
 class Worker {
  public:
   Worker(size_t worker_index, WorkQueue* queue);
@@ -96,23 +96,23 @@ class Worker {
   std::optional<size_t> Pop();
 
   // Schedule `num_workers` workers into the Eigen thread pool that process
-  // `num_tasks` parallel tasks and return an async value that becomes
+  // `num_work_items` parallel work items and return an async value that becomes
   // available when all workers are completed.
-  template <typename ParallelTask>
+  template <typename ParallelWork>
   static tsl::AsyncValueRef<tsl::Chain> Parallelize(
       Eigen::ThreadPoolInterface* thread_pool, size_t num_workers,
-      size_t num_tasks, ParallelTask&& parallel_task);
+      size_t num_work_items, ParallelWork&& parallel_work);
 
  private:
-  template <typename ParallelTask>
+  template <typename ParallelWork>
   struct ParallelizeContext;
 
-  template <typename ParallelTask>
-  static absl::Status ExecuteInline(size_t num_tasks,
-                                    ParallelTask&& parallel_task);
+  template <typename ParallelWork>
+  static absl::Status ExecuteInline(size_t num_work_items,
+                                    ParallelWork&& parallel_work);
 
-  template <typename ParallelTask>
-  static void Parallelize(std::shared_ptr<ParallelizeContext<ParallelTask>> ctx,
+  template <typename ParallelWork>
+  static void Parallelize(std::shared_ptr<ParallelizeContext<ParallelWork>> ctx,
                           uint16_t start_index, uint16_t end_index);
 
   size_t worker_index_;
@@ -126,14 +126,14 @@ inline void WorkQueue::Partition::Initialize(size_t begin, size_t end) {
   this->end = end;
 }
 
-inline WorkQueue::WorkQueue(size_t num_tasks, size_t num_partitions)
+inline WorkQueue::WorkQueue(size_t num_work_items, size_t num_partitions)
     : partitions_(num_partitions),
-      empty_(num_tasks == 0),
+      empty_(num_work_items == 0),
       num_work_stealing_workers_(0) {
-  size_t partition_size = num_tasks / num_partitions;
-  size_t rem_tasks = num_tasks % num_partitions;
+  size_t partition_size = num_work_items / num_partitions;
+  size_t rem_work_items = num_work_items % num_partitions;
   for (size_t i = 0, begin = 0, end = 0; i < num_partitions; ++i, begin = end) {
-    end = begin + partition_size + ((i < rem_tasks) ? 1 : 0);
+    end = begin + partition_size + ((i < rem_work_items) ? 1 : 0);
     partitions_[i].Initialize(begin, end);
   }
 }
@@ -148,7 +148,7 @@ inline std::optional<size_t> WorkQueue::Pop(size_t partition_index) {
     return std::nullopt;
   }
 
-  // Try to acquire the next task in the partition.
+  // Try to acquire the next work item in the partition.
   size_t index = partition.index.fetch_add(1, std::memory_order_relaxed);
   return ABSL_PREDICT_FALSE(index >= partition.end) ? std::nullopt
                                                     : std::make_optional(index);
@@ -183,18 +183,18 @@ inline Worker::Worker(size_t worker_index, WorkQueue* queue)
       queue_(queue) {}
 
 inline std::optional<size_t> Worker::Pop() {
-  std::optional<size_t> task = queue_->Pop(partition_index_);
-  if (ABSL_PREDICT_TRUE(task)) {
-    return task;
+  std::optional<size_t> work_item = queue_->Pop(partition_index_);
+  if (ABSL_PREDICT_TRUE(work_item)) {
+    return work_item;
   }
 
-  // If we didn't find a task in the initially assigned partition, notify the
-  // work queue that we are switching to work stealing mode.
+  // If we didn't find a work item in the initially assigned partition, notify
+  // the work queue that we are switching to work stealing mode.
   if (ABSL_PREDICT_FALSE(partition_index_ == worker_index_)) {
     queue_->NotifyWorkStealingWorker();
   }
 
-  while (!task.has_value() && !queue_->IsEmpty()) {
+  while (!work_item.has_value() && !queue_->IsEmpty()) {
     // Wrap around to the first partition.
     if (ABSL_PREDICT_FALSE(++partition_index_ >= queue_->num_partitions())) {
       partition_index_ = 0;
@@ -206,44 +206,44 @@ inline std::optional<size_t> Worker::Pop() {
       break;
     }
 
-    task = queue_->Pop(partition_index_);
+    work_item = queue_->Pop(partition_index_);
   }
 
-  return task;
+  return work_item;
 }
 
-template <typename ParallelTask>
+template <typename ParallelWork>
 struct Worker::ParallelizeContext {
   ParallelizeContext(Eigen::ThreadPoolInterface* thread_pool,
                      tsl::CountDownAsyncValueRef<tsl::Chain> count_down,
-                     size_t num_tasks, ParallelTask&& parallel_task);
+                     size_t num_work_items, ParallelWork&& parallel_work);
 
   Eigen::ThreadPoolInterface* thread_pool;
   tsl::CountDownAsyncValueRef<tsl::Chain> count_down;
 
   WorkQueue work_queue;
-  ParallelTask parallel_task;
+  ParallelWork parallel_work;
 };
 
-template <typename ParallelTask>
-Worker::ParallelizeContext<ParallelTask>::ParallelizeContext(
+template <typename ParallelWork>
+Worker::ParallelizeContext<ParallelWork>::ParallelizeContext(
     Eigen::ThreadPoolInterface* thread_pool,
-    tsl::CountDownAsyncValueRef<tsl::Chain> count_down, size_t num_tasks,
-    ParallelTask&& parallel_task)
+    tsl::CountDownAsyncValueRef<tsl::Chain> count_down, size_t num_work_items,
+    ParallelWork&& parallel_work)
     : thread_pool(thread_pool),
       count_down(std::move(count_down)),
-      work_queue(num_tasks, /*num_partitions=*/this->count_down.count()),
-      parallel_task(std::forward<ParallelTask>(parallel_task)) {}
+      work_queue(num_work_items, /*num_partitions=*/this->count_down.count()),
+      parallel_work(std::forward<ParallelWork>(parallel_work)) {}
 
-template <typename ParallelTask>
+template <typename ParallelWork>
 // NOLINTNEXTLINE(readability-function-cognitive-complexity)
-void Worker::Parallelize(std::shared_ptr<ParallelizeContext<ParallelTask>> ctx,
+void Worker::Parallelize(std::shared_ptr<ParallelizeContext<ParallelWork>> ctx,
                          uint16_t start_index, uint16_t end_index) {
   DCHECK_LT(start_index, end_index) << "Invalid worker index range";
 
-  using R = std::invoke_result_t<ParallelTask, size_t>;
+  using R = std::invoke_result_t<ParallelWork, size_t>;
   static_assert(std::is_same_v<R, absl::Status> || std::is_void_v<R>,
-                "Unsupported parallel task return type");
+                "Unsupported parallel work return type");
 
   // Recursively split assigned workers into two halves and schedule the
   // right half into the thread pool.
@@ -254,7 +254,7 @@ void Worker::Parallelize(std::shared_ptr<ParallelizeContext<ParallelTask>> ctx,
     }
 
     // If we have workers in the work stealing mode, we can skip scheduling
-    // more tasks as existing workers will process remaining partitions. By
+    // more workers as existing workers will process remaining partitions. By
     // doing this optimization we avoid unnecessary thread pool overheads.
     size_t skip_workers =
         ctx->work_queue.DecrementWorkStealingWorkers(end_index - start_index);
@@ -283,54 +283,54 @@ void Worker::Parallelize(std::shared_ptr<ParallelizeContext<ParallelTask>> ctx,
 
   // Execute the `start_index` worker in the caller thread.
   Worker worker(start_index, &ctx->work_queue);
-  size_t num_processed_tasks = 0;
+  size_t num_processed_work_items = 0;
 
   // Keep track of the first error status encountered by any of the workers.
   absl::Status status;
 
-  while (std::optional<size_t> task = worker.Pop()) {
+  while (std::optional<size_t> work_item = worker.Pop()) {
     if constexpr (std::is_same_v<R, absl::Status>) {
       if (ABSL_PREDICT_TRUE(status.ok())) {
-        status.Update(ctx->parallel_task(*task));
+        status.Update(ctx->parallel_work(*work_item));
       }
     } else {
-      ctx->parallel_task(*task);
+      ctx->parallel_work(*work_item);
     }
-    ++num_processed_tasks;
+    ++num_processed_work_items;
   }
 
-  ctx->count_down.CountDown(num_processed_tasks, std::move(status));
+  ctx->count_down.CountDown(num_processed_work_items, std::move(status));
 }
 
-template <typename ParallelTask>
+template <typename ParallelWork>
 ABSL_ATTRIBUTE_ALWAYS_INLINE absl::Status Worker::ExecuteInline(
-    size_t num_tasks, ParallelTask&& parallel_task) {
-  using R = std::invoke_result_t<ParallelTask, size_t>;
+    size_t num_work_items, ParallelWork&& parallel_work) {
+  using R = std::invoke_result_t<ParallelWork, size_t>;
   static_assert(std::is_same_v<R, absl::Status> || std::is_void_v<R>,
-                "Unsupported parallel task return type");
+                "Unsupported parallel work return type");
 
-  for (size_t i = 0; i < num_tasks; ++i) {
+  for (size_t i = 0; i < num_work_items; ++i) {
     if constexpr (std::is_same_v<R, absl::Status>) {
-      absl::Status status = parallel_task(i);
+      absl::Status status = parallel_work(i);
       if (ABSL_PREDICT_FALSE(!status.ok())) {
         return status;
       }
     } else {
-      parallel_task(i);
+      parallel_work(i);
     }
   }
 
   return absl::OkStatus();
 }
 
-template <typename ParallelTask>
+template <typename ParallelWork>
 ABSL_ATTRIBUTE_ALWAYS_INLINE tsl::AsyncValueRef<tsl::Chain> Worker::Parallelize(
     Eigen::ThreadPoolInterface* thread_pool, size_t num_workers,
-    size_t num_tasks, ParallelTask&& parallel_task) {
+    size_t num_work_items, ParallelWork&& parallel_work) {
   // Short-circuit single-threaded execution.
   if (ABSL_PREDICT_FALSE(num_workers == 1)) {
-    if (absl::Status status =
-            ExecuteInline(num_tasks, std::forward<ParallelTask>(parallel_task));
+    if (absl::Status status = ExecuteInline(
+            num_work_items, std::forward<ParallelWork>(parallel_work));
         ABSL_PREDICT_FALSE(!status.ok())) {
       return status;
     }
@@ -341,16 +341,16 @@ ABSL_ATTRIBUTE_ALWAYS_INLINE tsl::AsyncValueRef<tsl::Chain> Worker::Parallelize(
   if (ABSL_PREDICT_FALSE(num_workers > std::numeric_limits<uint16_t>::max())) {
     num_workers = std::numeric_limits<uint16_t>::max();
   }
-  // Ensure we don't launch more workers than tasks.
-  // Extra workers would be idle or cause out-of-bounds partition access.
-  num_workers = std::min(num_tasks, num_workers);
+  // Ensure we don't launch more workers than work items. Extra workers would be
+  // idle or cause out-of-bounds partition access.
+  num_workers = std::min(num_work_items, num_workers);
 
-  tsl::CountDownAsyncValueRef<tsl::Chain> count_down(num_tasks);
+  tsl::CountDownAsyncValueRef<tsl::Chain> count_down(num_work_items);
   auto execute_event = count_down.AsRef();
 
-  auto ctx = std::make_shared<ParallelizeContext<ParallelTask>>(
-      thread_pool, std::move(count_down), num_tasks,
-      std::forward<ParallelTask>(parallel_task));
+  auto ctx = std::make_shared<ParallelizeContext<ParallelWork>>(
+      thread_pool, std::move(count_down), num_work_items,
+      std::forward<ParallelWork>(parallel_work));
 
   Parallelize(std::move(ctx), 0, num_workers);
 
