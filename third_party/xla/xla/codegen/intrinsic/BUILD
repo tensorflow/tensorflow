@@ -185,6 +185,7 @@ cc_library(
     hdrs = ["vec_name_mangler.h"],
     deps = [
         ":type",
+        "//xla:util",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",

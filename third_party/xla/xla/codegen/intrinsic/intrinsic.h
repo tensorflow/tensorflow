@@ -95,7 +95,7 @@ class Intrinsic {
 
   template <typename... Types>
   static std::string Name(Types... args) {
-    return ::xla::codegen::intrinsic::FunctionName(
+    return ::xla::codegen::intrinsic::GetTypedName(
         Derived::kLastArgIsReturnType, {args...}, Derived::kName);
   }
 

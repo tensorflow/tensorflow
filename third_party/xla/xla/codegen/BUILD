@@ -207,10 +207,23 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "intrinsic_function",
+    hdrs = ["intrinsic_function.h"],
+    deps = [
+        "//xla/codegen/intrinsic",
+        "//xla/codegen/intrinsic:type",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
+        "@llvm-project//llvm:ir_headers",
+    ],
+)
+
+cc_library(
     name = "intrinsic_lib",
     srcs = ["intrinsic_lib.cc"],
     hdrs = ["intrinsic_lib.h"],
     deps = [
+        ":intrinsic_function",
         "//xla:xla_data_proto_cc",
         "//xla/codegen/intrinsic",
         "//xla/codegen/intrinsic:erf",
@@ -226,14 +239,15 @@ cc_library(
         "//xla/service/llvm_ir:llvm_util",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Analysis",
         "@llvm-project//llvm:ExecutionEngine",
         "@llvm-project//llvm:IPO",
         "@llvm-project//llvm:JITLink",
+        "@llvm-project//llvm:Linker",
         "@llvm-project//llvm:Passes",
         "@llvm-project//llvm:Scalar",
         "@llvm-project//llvm:Support",
