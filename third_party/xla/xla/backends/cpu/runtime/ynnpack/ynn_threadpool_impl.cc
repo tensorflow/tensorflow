@@ -13,8 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/backends/cpu/ynn_threadpool.h"
-
 #include <algorithm>
 #include <atomic>
 #include <cassert>
@@ -25,6 +23,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "ynnpack/include/ynnpack.h"
 #include "absl/algorithm/container.h"
 #include "absl/base/optimization.h"
 #include "absl/base/thread_annotations.h"
@@ -35,6 +34,8 @@ limitations under the License.
 #include "slinky/base/function_ref.h"
 #include "slinky/base/ref_count.h"
 #include "slinky/base/thread_pool.h"
+#include "xla/backends/cpu/runtime/ynnpack/ynn_interop.h"
+#include "xla/backends/cpu/runtime/ynnpack/ynn_threadpool.h"
 
 #define EIGEN_USE_THREADS
 #include "Eigen/ThreadPool"
@@ -42,11 +43,37 @@ limitations under the License.
 
 namespace xla::cpu {
 
+namespace {
+
+// This is an implementation of slinky::thread_pool, using absl::Mutex for
+// synchronization, and dispatches work to Eigen::ThreadPoolInterface.
+class YnnThreadpoolImpl final : public slinky::thread_pool {
+ public:
+  explicit YnnThreadpoolImpl(Eigen::ThreadPoolDevice* device);
+  explicit YnnThreadpoolImpl(Eigen::ThreadPoolInterface* threadpool);
+  ~YnnThreadpoolImpl() final;
+
+  YnnThreadpoolImpl(YnnThreadpoolImpl&&) = delete;
+  YnnThreadpoolImpl& operator=(YnnThreadpoolImpl&&) = delete;
+
+  slinky::ref_count<task> enqueue(size_t n, task_body t,
+                                  int32_t max_workers) final;
+
+  void wait_for(task* t) final;
+  void wait_for(predicate_ref condition) final;
+
+  void atomic_call(slinky::function_ref<void()> t) final;
+
+  int thread_count() const final;
+
+ private:
+  class impl;
+  slinky::ref_count<impl> impl_;
+};
+
 //===----------------------------------------------------------------------===//
 // work_queue
 //===----------------------------------------------------------------------===//
-
-namespace {
 
 // Forward declare.
 class worker;
@@ -199,9 +226,9 @@ namespace {
 // completed the task.
 enum class task_state { kPending, kComplete, kDone };
 
-class task_impl final : public YnnThreadpool::task {
+class task_impl final : public YnnThreadpoolImpl::task {
  public:
-  task_impl(YnnThreadpool::task_body body, size_t num_work_items,
+  task_impl(YnnThreadpoolImpl::task_body body, size_t num_work_items,
             size_t num_partitions);
 
   // Runs this task by process work items in the current thread.
@@ -212,16 +239,14 @@ class task_impl final : public YnnThreadpool::task {
   bool done() const final;
 
  private:
-  YnnThreadpool::task_body body_;
+  YnnThreadpoolImpl::task_body body_;
   work_queue work_queue_;
 
   ABSL_CACHELINE_ALIGNED std::atomic<size_t> worker_index_;
   ABSL_CACHELINE_ALIGNED std::atomic<size_t> pending_work_items_;
 };
 
-}  // namespace
-
-task_impl::task_impl(YnnThreadpool::task_body body, size_t num_work_items,
+task_impl::task_impl(YnnThreadpoolImpl::task_body body, size_t num_work_items,
                      size_t num_partitions)
     : body_(std::move(body)),
       work_queue_(num_work_items, num_partitions),
@@ -241,7 +266,7 @@ task_state task_impl::run() {
   size_t num_processed_work_items = 0;
 
   if (std::optional<size_t> item = w.pop_work_item()) {
-    YnnThreadpool::task_body body = body_;
+    YnnThreadpoolImpl::task_body body = body_;
 
     do {
       body(*item);
@@ -275,14 +300,14 @@ bool task_impl::done() const {
 }
 
 //===----------------------------------------------------------------------===//
-// YnnThreadpool::impl
+// YnnThreadpoolImpl::impl
 //===----------------------------------------------------------------------===//
 
 // We keep a stack of tasks that are currently being processed by current
 // thread, to avoid recursive calls.
 static thread_local std::vector<const task_impl*> task_stack;  // NOLINT
 
-class YnnThreadpool::impl : public slinky::ref_counted<impl> {
+class YnnThreadpoolImpl::impl : public slinky::ref_counted<impl> {
  public:
   explicit impl(Eigen::ThreadPoolInterface* threadpool);
 
@@ -293,7 +318,7 @@ class YnnThreadpool::impl : public slinky::ref_counted<impl> {
   void work_on_tasks(const absl::Condition& condition);
 
   // Enqueues a new task into the queue and returns a reference to it.
-  slinky::ref_count<task_impl> enqueue(YnnThreadpool::task_body body,
+  slinky::ref_count<task_impl> enqueue(YnnThreadpoolImpl::task_body body,
                                        size_t num_work_items,
                                        size_t num_partitions);
 
@@ -352,12 +377,12 @@ class YnnThreadpool::impl : public slinky::ref_counted<impl> {
   ABSL_CACHELINE_ALIGNED absl::Mutex waiter_mutex_;
 };
 
-YnnThreadpool::impl::impl(Eigen::ThreadPoolInterface* threadpool)
+YnnThreadpoolImpl::impl::impl(Eigen::ThreadPoolInterface* threadpool)
     : threadpool_(threadpool),
       thread_count_(threadpool_ ? threadpool_->NumThreads() : 0) {}
 
-slinky::ref_count<task_impl> YnnThreadpool::impl::enqueue(
-    YnnThreadpool::task_body body, size_t num_work_items,
+slinky::ref_count<task_impl> YnnThreadpoolImpl::impl::enqueue(
+    YnnThreadpoolImpl::task_body body, size_t num_work_items,
     size_t num_partitions) {
   slinky::ref_count<task_impl> task(
       new task_impl(std::move(body), num_work_items, num_partitions));
@@ -366,7 +391,7 @@ slinky::ref_count<task_impl> YnnThreadpool::impl::enqueue(
   return tasks_.emplace_back(std::move(task));
 }
 
-slinky::ref_count<task_impl> YnnThreadpool::impl::dequeue() {
+slinky::ref_count<task_impl> YnnThreadpoolImpl::impl::dequeue() {
   absl::MutexLock lock(tasks_mutex_);
 
   for (auto i = tasks_.begin(); i != tasks_.end();) {
@@ -390,7 +415,7 @@ slinky::ref_count<task_impl> YnnThreadpool::impl::dequeue() {
   return nullptr;
 }
 
-task_state YnnThreadpool::impl::work_on_task(task_impl* task) {
+task_state YnnThreadpoolImpl::impl::work_on_task(task_impl* task) {
   DCHECK(absl::c_find(task_stack, task) == task_stack.end());
 
   task_stack.push_back(task);
@@ -408,7 +433,7 @@ task_state YnnThreadpool::impl::work_on_task(task_impl* task) {
   return state;
 }
 
-void YnnThreadpool::impl::work_on_tasks(const absl::Condition& condition) {
+void YnnThreadpoolImpl::impl::work_on_tasks(const absl::Condition& condition) {
   while (slinky::ref_count<task_impl> task = dequeue()) {
     work_on_task(&*task);
 
@@ -418,30 +443,30 @@ void YnnThreadpool::impl::work_on_tasks(const absl::Condition& condition) {
   }
 }
 
-void YnnThreadpool::impl::await(const absl::Condition& condition) {
+void YnnThreadpoolImpl::impl::await(const absl::Condition& condition) {
   if (ABSL_PREDICT_FALSE(!condition.Eval())) {
     absl::MutexLock lock(waiter_mutex_);
     waiter_mutex_.Await(condition);
   }
 }
 
-void YnnThreadpool::impl::signal_waiters() {
+void YnnThreadpoolImpl::impl::signal_waiters() {
   absl::MutexLock lock(waiter_mutex_);
 }
 
-void YnnThreadpool::impl::atomic_call(slinky::function_ref<void()> t) {
+void YnnThreadpoolImpl::impl::atomic_call(slinky::function_ref<void()> t) {
   absl::MutexLock lock(waiter_mutex_);
   t();
 }
 
-bool YnnThreadpool::impl::can_schedule_workers() const {
-  // One reference is owned by the parent YnnThreadpool, every other
+bool YnnThreadpoolImpl::impl::can_schedule_workers() const {
+  // One reference is owned by the parent YnnThreadpoolImpl, every other
   // reference is owned by a worker scheduled into the underlying scheduler.
   return ref_count() < 1 + thread_count();
 }
 
-void YnnThreadpool::impl::schedule_workers(int64_t num_workers,
-                                           slinky::ref_count<task_impl> task) {
+void YnnThreadpoolImpl::impl::schedule_workers(
+    int64_t num_workers, slinky::ref_count<task_impl> task) {
   if (ABSL_PREDICT_TRUE(num_workers > 0 && can_schedule_workers())) {
     slinky::ref_count<schedule_state> state(
         new schedule_state(num_workers - 1, std::move(task), {this}));
@@ -452,7 +477,7 @@ void YnnThreadpool::impl::schedule_workers(int64_t num_workers,
 }
 
 template <bool release_impl_ref>
-void YnnThreadpool::impl::schedule_workers(schedule_state* context) {
+void YnnThreadpoolImpl::impl::schedule_workers(schedule_state* context) {
   auto state = slinky::ref_count<schedule_state>::assume(context);
 
   // We recursively keep scheduling workers into the underlying scheduler.
@@ -476,7 +501,7 @@ void YnnThreadpool::impl::schedule_workers(schedule_state* context) {
     state->impl->add_ref();
     state->impl->threadpool_->Schedule(
         [state = slinky::ref_count<schedule_state>(state).take()]() {
-          YnnThreadpool::impl::schedule_workers</*release_impl_ref=*/true>(
+          YnnThreadpoolImpl::impl::schedule_workers</*release_impl_ref=*/true>(
               state);
         });
   }
@@ -493,18 +518,18 @@ void YnnThreadpool::impl::schedule_workers(schedule_state* context) {
 }
 
 //===----------------------------------------------------------------------===//
-// YnnThreadpool
+// YnnThreadpoolImpl
 //===----------------------------------------------------------------------===//
 
-YnnThreadpool::YnnThreadpool(Eigen::ThreadPoolDevice* device)
+YnnThreadpoolImpl::YnnThreadpoolImpl(Eigen::ThreadPoolDevice* device)
     : impl_(new impl(device ? device->getPool() : nullptr)) {}
 
-YnnThreadpool::YnnThreadpool(Eigen::ThreadPoolInterface* threadpool)
+YnnThreadpoolImpl::YnnThreadpoolImpl(Eigen::ThreadPoolInterface* threadpool)
     : impl_(new impl(threadpool)) {}
 
-YnnThreadpool::~YnnThreadpool() = default;
+YnnThreadpoolImpl::~YnnThreadpoolImpl() = default;
 
-slinky::ref_count<YnnThreadpool::task> YnnThreadpool::enqueue(
+slinky::ref_count<YnnThreadpoolImpl::task> YnnThreadpoolImpl::enqueue(
     size_t n, task_body t, int32_t max_workers) {
   CHECK_GE(max_workers, n);
 
@@ -528,7 +553,7 @@ slinky::ref_count<YnnThreadpool::task> YnnThreadpool::enqueue(
   return task;
 }
 
-void YnnThreadpool::wait_for(task* t) {
+void YnnThreadpoolImpl::wait_for(task* t) {
   task_impl* task = static_cast<task_impl*>(t);
   task_state state = impl_->work_on_task(task);
 
@@ -544,15 +569,31 @@ void YnnThreadpool::wait_for(task* t) {
   impl_->await(absl::Condition(task, &task_impl::done));
 }
 
-void YnnThreadpool::wait_for(predicate_ref condition) {
+void YnnThreadpoolImpl::wait_for(predicate_ref condition) {
   impl_->work_on_tasks(absl::Condition(&condition));
   impl_->await(absl::Condition(&condition));
 }
 
-void YnnThreadpool::atomic_call(slinky::function_ref<void()> t) {
+void YnnThreadpoolImpl::atomic_call(slinky::function_ref<void()> t) {
   impl_->atomic_call(t);
 }
 
-int YnnThreadpool::thread_count() const { return impl_->thread_count(); }
+int YnnThreadpoolImpl::thread_count() const { return impl_->thread_count(); }
+
+}  // namespace
+
+absl::StatusOr<YnnThreadpool> CreateYnnThreadpool(
+    Eigen::ThreadPoolInterface* threadpool) {
+  return CreateYnnThreadpool([&](ynn_threadpool_t* ynn_threadpool) {
+    *ynn_threadpool =
+        reinterpret_cast<ynn_threadpool_t>(new YnnThreadpoolImpl(threadpool));
+    return ynn_status_success;
+  });
+}
+
+absl::StatusOr<YnnThreadpool> CreateYnnThreadpool(
+    const Eigen::ThreadPoolDevice* device) {
+  return CreateYnnThreadpool(device->getPool());
+}
 
 }  // namespace xla::cpu
