@@ -1,5 +1,6 @@
 diff --ruN a/stablehlo/stablehlo/conversions/linalg/tests/pointwise.mlir b/stablehlo/stablehlo/conversions/linalg/tests/pointwise.mlir
 --- stablehlo/stablehlo/conversions/linalg/tests/pointwise.mlir
+oa
 +++ stablehlo/stablehlo/conversions/linalg/tests/pointwise.mlir
 @@ -1,5 +1,6 @@
  // RUN: stablehlo-opt %s --stablehlo-legalize-to-linalg --split-input-file --canonicalize | FileCheck %s
