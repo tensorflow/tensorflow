@@ -136,7 +136,6 @@ limitations under the License.
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "third_party/gpus/cuda/include/cuda_runtime_api.h"
 #include "third_party/gpus/cuda/nvml/include/nvml.h"
-#include "xla/service/gpu/model/gpu_collective_performance_model.h"
 #include "xla/stream_executor/gpu/gpu_cudamallocasync_allocator.h"
 #elif TENSORFLOW_USE_ROCM
 #include "rocm/rocm_config.h"
@@ -1177,10 +1176,6 @@ std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> BuildLocalDevices(
 
 absl::StatusOr<std::string> GetDeviceFabricInfo(const int device_ordinal) {
 #if defined(GOOGLE_CUDA) && CUDA_VERSION >= 12040
-  if (!gpu::GpuPerformanceWithCollectiveModel::InitNvml()) {
-    return absl::InternalError("Failed to initialize NVML library.");
-  }
-
   char pciBusId[] = "00000000:00:00.0";
   cudaDeviceGetPCIBusId(pciBusId, sizeof(pciBusId), device_ordinal);
   nvmlDevice_t device;

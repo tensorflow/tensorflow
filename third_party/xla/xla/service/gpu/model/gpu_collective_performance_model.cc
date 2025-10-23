@@ -380,42 +380,14 @@ RocmBandwidthSettings CreateSettings(
 
 }  // namespace
 
-/*static*/ bool GpuPerformanceWithCollectiveModel::InitNvml() {
-#if GOOGLE_CUDA && (defined(PLATFORM_POSIX) || defined(PLATFORM_GOOGLE))
-  nvmlReturn_t init_result = nvmlInit();
-  if (init_result != NVML_SUCCESS) {
-    LOG(ERROR) << "NVML init failed with " << init_result;
-  }
-  return init_result == NVML_SUCCESS;
-#elif TENSORFLOW_USE_ROCM
-  return true;
-#else
-  return false;
-#endif  // GOOGLE_CUDA
-}
-
-/*static*/ bool GpuPerformanceWithCollectiveModel::ShutdownNvml() {
-#if GOOGLE_CUDA
-  nvmlReturn_t shutdown_result = nvmlShutdown();
-  return shutdown_result == NVML_SUCCESS;
-#elif TENSORFLOW_USE_ROCM
-  return true;
-#else
-  return false;
-#endif  // GOOGLE_CUDA
-}
-
 /*static*/ uint32_t
 GpuPerformanceWithCollectiveModel::CheckIfNvlinkSupportsP2P() {
 #if GOOGLE_CUDA
   // We will use nvml library to detect nvlink capability
   // to see if it supports p2p communication.
-  // We first load libnvidia-ml.so and assign symbols to function pointers
-  // to avoid linking errors.
   // Then gpu 0 will be used to query for nvlink capability, note that
   // we only look at link 0 of gpu 0 since all other links are assumed
   // to have the same capability.
-  CHECK(InitNvml()) << "NVML init failed.";
   nvmlDevice_t nvml_device;
   nvmlReturn_t get_device_result = nvmlDeviceGetHandleByIndex(0, &nvml_device);
   CHECK(get_device_result == NVML_SUCCESS);
@@ -427,7 +399,6 @@ GpuPerformanceWithCollectiveModel::CheckIfNvlinkSupportsP2P() {
       &supported_p2p);
   CHECK(nvlink_cap_result == NVML_SUCCESS ||
         nvlink_cap_result == NVML_ERROR_NOT_SUPPORTED);
-  CHECK(ShutdownNvml()) << "NVML shutdown failed.";
   return supported_p2p;
 #else
   return 0;

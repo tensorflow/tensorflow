@@ -500,25 +500,6 @@ cc_library(
     ]),
 )
 
-xla_test(
-    name = "gpu_collective_performance_model_test",
-    srcs = ["gpu_collective_performance_model_test.cc"],
-    backends = ["nvgpu_any"],
-    tags = [
-        "cuda-only",
-        "gpu",
-    ],
-    deps = [
-        ":gpu_collective_performance_model",
-        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
-        "//xla/service/gpu:backend_configs_cc",
-        "//xla/tests:xla_internal_test_main",
-        "@com_google_googletest//:gtest",
-    ] + if_cuda_is_configured([
-        "@local_config_cuda//cuda:cuda_headers",
-    ]),
-)
-
 cc_library(
     name = "gpu_indexing_performance_model",
     srcs = ["gpu_indexing_performance_model.cc"],

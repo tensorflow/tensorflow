@@ -35,12 +35,6 @@ class GpuPerformanceWithCollectiveModel : public GpuPerformanceModelBase {
       const HloInstruction& instr, const GpuHloCostAnalysis* cost_analysis,
       const se::DeviceDescription& gpu_device_info);
 
-  // Initialize nvml library.
-  static bool InitNvml();
-
-  // Shut down nvml library.
-  static bool ShutdownNvml();
-
   // This checks if the nvlink supports direct P2P communication,
   // If not, we will use PCIE bandwidth to estimate latency.
   static uint32_t CheckIfNvlinkSupportsP2P();
