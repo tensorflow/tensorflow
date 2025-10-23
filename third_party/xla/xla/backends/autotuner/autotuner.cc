@@ -34,6 +34,7 @@ limitations under the License.
 #include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
+#include "llvm/ADT/STLExtras.h"
 #include "google/protobuf/text_format.h"
 #include "xla/autotuning.pb.h"
 #include "xla/backends/autotuner/autotuner_cache_interface.h"
@@ -132,16 +133,14 @@ absl::Status Autotuner::Autotune(HloModule* module,
 
 absl::Status Autotuner::Autotune(HloInstruction* instr) {
   TF_ASSIGN_OR_RETURN(Config config, GetConfig(instr));
-  CodegenBackend* codegen_backend = config.codegen_backend;
   TF_RETURN_IF_ERROR(
-      codegen_backend->ApplyConfig(*instr, *config.backend_config));
+      config.codegen_backend->ApplyConfig(*instr, *config.backend_config));
   return DumpLogsToFile();
 }
 
 absl::StatusOr<Autotuner::Config> Autotuner::GetConfig(HloInstruction* instr) {
   VLOG(1) << "Getting config for HLO: " << instr->ToString();
-  std::optional<Config> cached_config = LookUp(instr);
-  if (cached_config.has_value()) {
+  if (auto cached_config = LookUp(instr)) {
     VLOG(1) << "Using cached config: " << cached_config->ToString();
     return std::move(cached_config.value());
   }
@@ -178,15 +177,15 @@ absl::StatusOr<Autotuner::Config> Autotuner::TuneBestConfig(
       CompileAll(instr, supported_configs);
 
   std::vector<ExecutableCandidate> executable_candidates;
-  for (int i = 0; i < executables.size(); ++i) {
-    if (executables[i].ok()) {
-      executable_candidates.push_back(
-          {std::move(supported_configs[i]), std::move(executables[i].value())});
-    } else {
-      VLOG(4) << "Compilation failed for config "
-              << supported_configs[i].ToString()
-              << " with status: " << executables[i].status();
+  for (auto&& [supported_config, executable] :
+       llvm::zip(supported_configs, executables)) {
+    if (!executable.ok()) {
+      VLOG(4) << "Compilation failed for config " << supported_config.ToString()
+              << " with status: " << executable.status();
+      continue;
     }
+    executable_candidates.push_back(
+        {std::move(supported_config), std::move(executable.value())});
   }
 
   if (executable_candidates.empty()) {
@@ -202,8 +201,8 @@ absl::StatusOr<Autotuner::Config> Autotuner::TuneBestConfig(
   if (skip_profiling) {
     VLOG(1) << "Skipping profiling and using the "
             << (autotune_config_.select_first_config ? "first" : "only")
-            << " config: " << executable_candidates[0].config.ToString();
-    return std::move(executable_candidates[0].config);
+            << " config: " << executable_candidates.front().config.ToString();
+    return std::move(executable_candidates.front().config);
   }
 
   TF_ASSIGN_OR_RETURN(std::vector<ConfigResult> results,
@@ -235,8 +234,7 @@ Autotuner::InstructionsByFingerprint Autotuner::GetAutotuningCandidates(
 std::optional<Autotuner::Config> Autotuner::LookUp(
     const HloInstruction* instr) {
   if (cache_) {
-    auto cached_config = cache_->Lookup(instr);
-    if (cached_config.has_value()) {
+    if (auto cached_config = cache_->Lookup(instr)) {
       VLOG(1) << "Found cached config for HLO: " << instr->ToString();
       for (auto& codegen_backend : codegen_backends_) {
         if (codegen_backend->name() == cached_config->codegen_backend_name) {
@@ -254,12 +252,12 @@ std::optional<Autotuner::Config> Autotuner::LookUp(
 }
 
 void Autotuner::Insert(const HloInstruction* instr, Autotuner::Config& config) {
-  if (cache_) {
-    AutotunerCacheInterface::Config cached_config;
-    cached_config.codegen_backend_name = config.codegen_backend->name();
-    cached_config.backend_config = *config.backend_config;
-    CHECK_OK(cache_->Insert(instr, cached_config));
+  if (!cache_) {
+    return;
   }
+  AutotunerCacheInterface::Config cached_config{
+      std::string(config.codegen_backend->name()), *config.backend_config};
+  CHECK_OK(cache_->Insert(instr, cached_config));
 }
 
 absl::StatusOr<std::vector<Autotuner::Config>> Autotuner::GetSupportedConfigs(
@@ -312,7 +310,7 @@ absl::StatusOr<std::vector<Autotuner::ConfigResult>> Autotuner::ProfileAll(
 
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<InputBuffers> input_buffers,
-      profiler_->CreateInputBuffers(candidates[0].executable.get()));
+      profiler_->CreateInputBuffers(candidates.front().executable.get()));
 
   std::optional<ScopedShapedBuffer> reference_output;
   if (autotune_config_.check_buffers) {
@@ -320,9 +318,9 @@ absl::StatusOr<std::vector<Autotuner::ConfigResult>> Autotuner::ProfileAll(
                         GetReferenceOutput(candidates, *input_buffers));
   }
 
-  for (int i = 0; i < candidates.size(); ++i) {
+  for (auto&& candidate : candidates) {
     absl::StatusOr<ProfileResult> profile_result =
-        profiler_->Profile(candidates[i].executable.get(), *input_buffers);
+        profiler_->Profile(candidate.executable.get(), *input_buffers);
 
     std::optional<Failure> failure = std::nullopt;
     absl::Duration duration = absl::ZeroDuration();
@@ -345,7 +343,7 @@ absl::StatusOr<std::vector<Autotuner::ConfigResult>> Autotuner::ProfileAll(
       }
     }
     results_vec.push_back(
-        {std::move(candidates[i].config), failure, duration, scratch_bytes});
+        {std::move(candidate.config), failure, duration, scratch_bytes});
   }
   return results_vec;
 }
@@ -379,15 +377,18 @@ absl::StatusOr<Autotuner::ConfigResult> Autotuner::PickBestConfig(
     absl::Duration min_duration_with_optimzed_scratch_bytes =
         absl::InfiniteDuration();
     for (ConfigResult& result : results) {
-      if (!result.failure.has_value() && result.duration <= duration_limit) {
-        if (result.scratch_bytes < min_scratch_bytes) {
-          min_scratch_bytes = result.scratch_bytes;
-          min_duration_with_optimzed_scratch_bytes = result.duration;
-          best_result = &result;
-        } else if (result.scratch_bytes == min_scratch_bytes &&
-                   result.duration < min_duration_with_optimzed_scratch_bytes) {
-          best_result = &result;
-        }
+      if (result.failure.has_value() || result.duration > duration_limit) {
+        continue;
+      }
+      if (result.scratch_bytes < min_scratch_bytes) {
+        min_scratch_bytes = result.scratch_bytes;
+        min_duration_with_optimzed_scratch_bytes = result.duration;
+        best_result = &result;
+        continue;
+      }
+      if (result.scratch_bytes == min_scratch_bytes &&
+          result.duration < min_duration_with_optimzed_scratch_bytes) {
+        best_result = &result;
       }
     }
   }
@@ -436,13 +437,13 @@ std::optional<Autotuner::Failure> Autotuner::CheckBuffers(
 
 void Autotuner::LogConfigResults(const HloInstruction& instr,
                                  const std::vector<ConfigResult>& results) {
-  for (const auto& result : results) {
+  for (const Autotuner::ConfigResult& result : results) {
     VLOG(2) << result.ToString(/*verbose=*/VLOG_IS_ON(3));
   }
   if (!autotune_config_.dump_logs_to.empty()) {
     AutotuningLog log;
     log.mutable_instr()->PackFrom(instr.ToProto());
-    for (const auto& result : results) {
+    for (const Autotuner::ConfigResult& result : results) {
       *log.add_results() = result.ToProto();
     }
     *logs_.add_logs() = log;
@@ -516,22 +517,25 @@ AutotuneResult::FailureResult Autotuner::Failure::ToProto() const {
 
 AutotuneResult Autotuner::ConfigResult::ToProto() const {
   AutotuneResult result;
-  if (config.backend_config->Is<AutotuneResult::GemmKey>()) {
-    config.backend_config->UnpackTo(result.mutable_gemm());
-  } else if (config.backend_config->Is<AutotuneResult::TritonGemmKey>()) {
-    config.backend_config->UnpackTo(result.mutable_triton());
-  } else if (config.backend_config
-                 ->Is<stream_executor::dnn::AlgorithmProto>()) {
-    config.backend_config->UnpackTo(result.mutable_algorithm());
-  } else {
-    result.mutable_other()->set_name(config.codegen_backend->name());
-    *result.mutable_other()->mutable_config() = *config.backend_config;
-  }
+  *result.mutable_run_time() = tsl::proto_utils::ToDurationProto(duration);
+  result.set_scratch_bytes(scratch_bytes);
   if (failure.has_value()) {
     *result.mutable_failure() = failure->ToProto();
   }
-  *result.mutable_run_time() = tsl::proto_utils::ToDurationProto(duration);
-  result.set_scratch_bytes(scratch_bytes);
+  if (config.backend_config->Is<AutotuneResult::GemmKey>()) {
+    config.backend_config->UnpackTo(result.mutable_gemm());
+    return result;
+  }
+  if (config.backend_config->Is<AutotuneResult::TritonGemmKey>()) {
+    config.backend_config->UnpackTo(result.mutable_triton());
+    return result;
+  }
+  if (config.backend_config->Is<stream_executor::dnn::AlgorithmProto>()) {
+    config.backend_config->UnpackTo(result.mutable_algorithm());
+    return result;
+  }
+  result.mutable_other()->set_name(config.codegen_backend->name());
+  *result.mutable_other()->mutable_config() = *config.backend_config;
   return result;
 }
 
