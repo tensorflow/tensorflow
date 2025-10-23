@@ -355,45 +355,47 @@ absl::Status HloSchedule::Verify() const {
     // For each computation verify the set of instructions is the same and
     // that each dependency and control edge is honored.
     for (const HloComputation* computation : nonfusion_computations) {
-      absl::flat_hash_map<const HloInstruction*, int> instruction_position;
-      int pos = 0;
-      for (const HloInstruction* instruction :
-           sequence(computation).instructions()) {
-        TF_RET_CHECK(instruction_position.insert({instruction, pos}).second)
-            << "Instruction " << instruction->name()
-            << " appears more than once in the schedule";
-        pos++;
-      }
-
-      TF_RET_CHECK(instruction_position.size() ==
-                   computation->instruction_count())
-          << "Schedule for computation " << computation->name() << " has "
-          << instruction_position.size() << " instructions, expected "
-          << computation->instruction_count();
-      for (const HloInstruction* instruction : computation->instructions()) {
-        TF_RET_CHECK(instruction_position.contains(instruction))
-            << "Instruction " << instruction->name() << " is not in schedule";
-      }
-
-      for (const HloInstruction* instruction : computation->instructions()) {
-        for (const HloInstruction* operand : instruction->operands()) {
-          TF_RET_CHECK(instruction_position.at(operand) <
-                       instruction_position.at(instruction))
-              << "Instruction " << instruction->name()
-              << " is not scheduled after its operand " << operand->name();
-        }
-
-        for (const HloInstruction* pred : instruction->control_predecessors()) {
-          TF_RET_CHECK(instruction_position.at(pred) <
-                       instruction_position.at(instruction))
-              << "Instruction " << instruction->name()
-              << " is not scheduled after its control predecessor "
-              << pred->name();
-        }
-      }
+      TF_RETURN_IF_ERROR(Verify(computation));
     }
   }
 
+  return absl::OkStatus();
+}
+
+absl::Status HloSchedule::Verify(const HloComputation* computation) const {
+  absl::flat_hash_map<const HloInstruction*, int> instruction_position;
+  int pos = 0;
+  for (const HloInstruction* instruction :
+       sequence(computation).instructions()) {
+    TF_RET_CHECK(instruction_position.insert({instruction, pos}).second)
+        << "Instruction " << instruction->name()
+        << " appears more than once in the schedule";
+    pos++;
+  }
+  TF_RET_CHECK(instruction_position.size() == computation->instruction_count())
+      << "Schedule for computation " << computation->name() << " has "
+      << instruction_position.size() << " instructions, expected "
+      << computation->instruction_count();
+  for (const HloInstruction* instruction : computation->instructions()) {
+    TF_RET_CHECK(instruction_position.contains(instruction))
+        << "Instruction " << instruction->name() << " is not in schedule";
+  }
+
+  for (const HloInstruction* instruction : computation->instructions()) {
+    for (const HloInstruction* operand : instruction->operands()) {
+      TF_RET_CHECK(instruction_position.at(operand) <
+                   instruction_position.at(instruction))
+          << "Instruction " << instruction->name()
+          << " is not scheduled after its operand " << operand->name();
+    }
+
+    for (const HloInstruction* pred : instruction->control_predecessors()) {
+      TF_RET_CHECK(instruction_position.at(pred) <
+                   instruction_position.at(instruction))
+          << "Instruction " << instruction->name()
+          << " is not scheduled after its control predecessor " << pred->name();
+    }
+  }
   return absl::OkStatus();
 }
 
