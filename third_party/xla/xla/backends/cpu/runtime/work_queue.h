@@ -55,6 +55,8 @@ class WorkQueue {
 
   size_t num_partitions() const { return partitions_.size(); }
 
+  bool IsEmpty() const { return empty_.load(std::memory_order_relaxed); }
+
  private:
   friend class Worker;
 
@@ -67,9 +69,8 @@ class WorkQueue {
     size_t end;
   };
 
-  // An empty work queue flag to stop worker threads from looping through all
-  // partitions looking for work.
-  bool IsEmpty() const { return empty_.load(std::memory_order_relaxed); }
+  // Sets an empty work queue flag to stop worker threads from looping through
+  // all partitions looking for work.
   void SetEmpty() { empty_.store(true, std::memory_order_relaxed); }
 
   // Notify that one of the workers switched to the work stealing mode.

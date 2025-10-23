@@ -15,6 +15,35 @@ package_group(
 )
 
 cc_library(
+    name = "slinky_threadpool",
+    srcs = ["slinky_threadpool.cc"],
+    hdrs = ["slinky_threadpool.h"],
+    deps = [
+        "//xla/backends/cpu/runtime:work_queue",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:fixed_array",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/synchronization",
+        "@eigen_archive//:eigen3",
+        "@slinky//slinky/base:thread_pool",
+    ],
+)
+
+ynn_cc_test(
+    name = "slinky_threadpool_test",
+    srcs = ["slinky_threadpool_test.cc"],
+    deps = [
+        ":slinky_threadpool",
+        "//xla/tsl/platform:env",
+        "@com_google_googletest//:gtest_main",
+        "@slinky//slinky/base:thread_pool",
+    ],
+)
+
+cc_library(
     name = "ynn_interop",
     srcs = ["ynn_interop.cc"],
     hdrs = ["ynn_interop.h"],
@@ -35,6 +64,7 @@ cc_library(
     srcs = ["ynn_threadpool.cc"],
     hdrs = ["ynn_threadpool.h"],
     deps = [
+        ":slinky_threadpool",
         ":ynn_interop",
         "@XNNPACK//ynnpack:ynnpack_h",
         "@com_google_absl//absl/algorithm:container",
@@ -45,17 +75,6 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/synchronization",
         "@eigen_archive//:eigen3",
-        "@slinky//slinky/base:thread_pool",
-    ],
-)
-
-ynn_cc_test(
-    name = "ynn_threadpool_test",
-    srcs = ["ynn_threadpool_test.cc"],
-    deps = [
-        ":ynn_threadpool",
-        "//xla/tsl/platform:env",
-        "@com_google_googletest//:gtest_main",
         "@slinky//slinky/base:thread_pool",
     ],
 )
