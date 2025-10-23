@@ -380,12 +380,13 @@ absl::StatusOr<Autotuner::ConfigResult> Autotuner::PickBestConfig(
         absl::InfiniteDuration();
     for (ConfigResult& result : results) {
       if (!result.failure.has_value() && result.duration <= duration_limit) {
-        if (result.scratch_bytes < min_scratch_bytes) {
+        bool current_result_is_better =
+            result.scratch_bytes < min_scratch_bytes ||
+            (result.scratch_bytes == min_scratch_bytes &&
+             result.duration < min_duration_with_optimzed_scratch_bytes);
+        if (current_result_is_better) {
           min_scratch_bytes = result.scratch_bytes;
           min_duration_with_optimzed_scratch_bytes = result.duration;
-          best_result = &result;
-        } else if (result.scratch_bytes == min_scratch_bytes &&
-                   result.duration < min_duration_with_optimzed_scratch_bytes) {
           best_result = &result;
         }
       }

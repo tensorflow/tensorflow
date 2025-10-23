@@ -503,13 +503,15 @@ TEST_F(AutotunerTest, AutotuneWithBufferCheck) {
 
 TEST_F(AutotunerTest, AutotuneWithScratchBytesOptimization) {
   std::vector<std::unique_ptr<BackendConfig>> configs;
-  configs.push_back(GetTestConfig("config_more_time_less_scratch"));
+  configs.push_back(GetTestConfig("config_most_time_less_scratch"));
   configs.push_back(GetTestConfig("config_less_time_less_scratch"));
   configs.push_back(GetTestConfig("config_least_time_most_scratch"));
+  configs.push_back(GetTestConfig("config_more_time_less_scratch"));
   auto backend_1 = std::make_unique<MockCodegenBackend>();
   EXPECT_CALL(*backend_1, GetSupportedConfigs)
       .WillOnce(Return(std::move(configs)));
   EXPECT_CALL(*backend_1, Compile(_, _))
+      .WillOnce(Return(std::unique_ptr<Executable>()))
       .WillOnce(Return(std::unique_ptr<Executable>()))
       .WillOnce(Return(std::unique_ptr<Executable>()))
       .WillOnce(Return(std::unique_ptr<Executable>()));
@@ -524,7 +526,7 @@ TEST_F(AutotunerTest, AutotuneWithScratchBytesOptimization) {
       .WillOnce(Return(std::make_unique<InputBuffers>()));
   EXPECT_CALL(*profiler, Profile(_, _))
       .WillOnce(Return(ProfileResult({
-          /*duration=*/absl::Microseconds(5),
+          /*duration=*/absl::Microseconds(7),
           /*output_buffer=*/std::nullopt,
           /*scratch_bytes=*/100,
       })))
@@ -537,12 +539,17 @@ TEST_F(AutotunerTest, AutotuneWithScratchBytesOptimization) {
           /*duration=*/absl::Microseconds(2),
           /*output_buffer=*/std::nullopt,
           /*scratch_bytes=*/200,
+      })))
+      .WillOnce(Return(ProfileResult({
+          /*duration=*/absl::Microseconds(6),
+          /*output_buffer=*/std::nullopt,
+          /*scratch_bytes=*/100,
       })));
 
   std::vector<std::unique_ptr<CodegenBackend>> backends;
   backends.push_back(std::move(backend_1));
   config_.optimize_scratch_bytes = true;
-  config_.scratch_bytes_window_size_us = 2;
+  config_.scratch_bytes_window_size_us = 8;
   TF_ASSERT_OK_AND_ASSIGN(
       auto autotuner,
       Autotuner::Create(std::move(backends), std::move(profiler), config_,
