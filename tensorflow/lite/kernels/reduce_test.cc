@@ -1986,7 +1986,7 @@ TEST(ConstFloatProdOpTest, EmptyAxis) {
 }  // namespace
 }  // namespace tflite
 
-// TEST
+// TEST //
 TEST(QuantizedReduceSumTest, Int8ReferenceKernelNoOverflow) {
   using ::tflite::TensorType_INT8;
   using ::tflite::TensorType_INT32;
