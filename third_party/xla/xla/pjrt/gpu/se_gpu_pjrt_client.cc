@@ -492,6 +492,18 @@ StreamExecutorGpuClient::MakeCrossHostReceiveBuffers(
     return absl::InternalError("Failed to get GPU collectives");
   }
 
+  TF_ASSIGN_OR_RETURN(auto* memory_space, device->default_memory_space());
+  TF_ASSIGN_OR_RETURN(
+      Shape on_device_shape,
+      MakeDefaultShapeForMemorySpace(
+          memory_space, shape, shape.has_layout() ? &shape.layout() : nullptr));
+  TF_ASSIGN_OR_RETURN(size_t on_device_bytes_count,
+                      GetOnDeviceBytesCount(memory_space, on_device_shape));
+  TF_ASSIGN_OR_RETURN(tsl::RCReference<CommonPjRtRawBuffer> raw_buffer,
+                      AllocateRawBuffer(memory_space, on_device_bytes_count,
+                                        /*retry_on_oom=*/true,
+                                        /*allocate_after=*/{}));
+
   // Allocate an uninitialized buffer. The buffer will be populated with data
   // received from the sending process.
   TF_ASSIGN_OR_RETURN(LocalDeviceState * local_device,
@@ -501,25 +513,24 @@ StreamExecutorGpuClient::MakeCrossHostReceiveBuffers(
   BufferSequencingEventRef definition_event =
       BufferSequencingEvent::Create(this->thread_pool());
   TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<PjRtStreamExecutorBuffer> buffer,
-      AllocateDestinationBuffer(shape, device, local_device,
-                                /*copy_stream=*/stream,
-                                /*is_uninitialized_create=*/true, this,
-                                definition_event));
+      auto buffer,
+      DefineBuffer(
+          on_device_shape, raw_buffer,
+          {tsl::MakeRef<PjRtStreamExecutorDeviceEvent>(definition_event)},
+          /*raw_buffer_is_mutable=*/true));
 
-  // Acquire a hold on the buffer to access the underlying memory.
-  CommonPjRtBuffer::ScopedHold hold =
-      buffer->GetBufferWithHold(CommonPjRtBuffer::ScopedHold::kUsage);
-
-  auto recv = [this, gpu_collectives, notifier, local_device, definition_event,
-               stream,
-               mem = tensorflow::down_cast<TrackedDeviceBuffer*>(hold.buffer())
-                         ->device_memory(),
-               shape = shapes[0], dtype = buffer->element_type()]() mutable {
+  auto recv = [this, gpu_collectives, notifier = std::move(notifier),
+               local_device, definition_event, stream,
+               raw_buffer = std::move(raw_buffer), shape = shapes[0],
+               dtype = buffer->element_type()]() mutable {
+    WaitForAllocation(stream, *raw_buffer);
     auto f = [&]() -> absl::Status {
       // Create a CliqueId.
       TF_ASSIGN_OR_RETURN(CliqueId clique_id,
                           gpu_collectives->CreateUniqueCliqueId());
+      auto mem =
+          tensorflow::down_cast<PjRtStreamExecutorRawBuffer*>(raw_buffer.get())
+              ->device_buffer();
 
       // Notify the caller with the CliqueId. They will send the id to the
       // sender.
@@ -562,7 +573,7 @@ StreamExecutorGpuClient::MakeCrossHostReceiveBuffers(
       // Keep mem alive until the Recv has finished executing. Note that
       // recv_event is fulfilled when the receive is enqueued, but not
       // necessarily executed.
-      TF_RETURN_IF_ERROR(local_device->ThenRelease(stream, mem));
+      definition_event.AndThen([mem]() {});
 
       // Set definition event.
       TF_RETURN_IF_ERROR(
