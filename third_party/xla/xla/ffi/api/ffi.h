@@ -748,6 +748,12 @@ using Token = BufferR0<DataType::TOKEN>;  // NOLINT
 namespace internal {
 
 template <DataType dtype, size_t rank>
+XLA_FFI_ATTRIBUTE_ALWAYS_INLINE bool IsaBuffer(XLA_FFI_Buffer* buf) {
+  return static_cast<DataType>(buf->dtype) == dtype &&
+         (rank == internal::kDynamicRank || buf->rank == rank);
+}
+
+template <DataType dtype, size_t rank>
 XLA_FFI_ATTRIBUTE_ALWAYS_INLINE std::optional<Buffer<dtype, rank>> DecodeBuffer(
     XLA_FFI_Buffer* buf, DiagnosticEngine& diagnostic) {
   if (auto buf_dtype = static_cast<DataType>(buf->dtype);
@@ -821,6 +827,11 @@ inline std::ostream& operator<<(std::ostream& os, const XLA_FFI_ArgType type) {
 template <>
 struct ArgDecoding<AnyBuffer> {
   XLA_FFI_ATTRIBUTE_ALWAYS_INLINE
+  static bool Isa(XLA_FFI_ArgType type, void* arg) {
+    return type == XLA_FFI_ArgType_BUFFER;
+  }
+
+  XLA_FFI_ATTRIBUTE_ALWAYS_INLINE
   static std::optional<AnyBuffer> Decode(XLA_FFI_ArgType type, void* arg,
                                          DiagnosticEngine& diagnostic) {
     if (XLA_FFI_PREDICT_FALSE(type != XLA_FFI_ArgType_BUFFER)) {
@@ -833,6 +844,13 @@ struct ArgDecoding<AnyBuffer> {
 
 template <DataType dtype, size_t rank>
 struct ArgDecoding<Buffer<dtype, rank>> {
+  XLA_FFI_ATTRIBUTE_ALWAYS_INLINE
+  static bool Isa(XLA_FFI_ArgType type, void* arg) {
+    return type == XLA_FFI_ArgType_BUFFER &&
+           internal::IsaBuffer<dtype, rank>(
+               reinterpret_cast<XLA_FFI_Buffer*>(arg));
+  }
+
   XLA_FFI_ATTRIBUTE_ALWAYS_INLINE
   static std::optional<Buffer<dtype, rank>> Decode(
       XLA_FFI_ArgType type, void* arg, DiagnosticEngine& diagnostic) {
@@ -896,6 +914,11 @@ inline std::ostream& operator<<(std::ostream& os, const XLA_FFI_RetType type) {
 template <>
 struct RetDecoding<AnyBuffer> {
   XLA_FFI_ATTRIBUTE_ALWAYS_INLINE
+  static bool Isa(XLA_FFI_RetType type, void* ret) {
+    return type == XLA_FFI_RetType_BUFFER;
+  }
+
+  XLA_FFI_ATTRIBUTE_ALWAYS_INLINE
   static std::optional<Result<AnyBuffer>> Decode(XLA_FFI_RetType type,
                                                  void* ret,
                                                  DiagnosticEngine& diagnostic) {
@@ -909,6 +932,13 @@ struct RetDecoding<AnyBuffer> {
 
 template <DataType dtype, size_t rank>
 struct RetDecoding<Buffer<dtype, rank>> {
+  XLA_FFI_ATTRIBUTE_ALWAYS_INLINE
+  static bool Isa(XLA_FFI_RetType type, void* ret) {
+    return type == XLA_FFI_RetType_BUFFER &&
+           internal::IsaBuffer<dtype, rank>(
+               reinterpret_cast<XLA_FFI_Buffer*>(ret));
+  }
+
   XLA_FFI_ATTRIBUTE_ALWAYS_INLINE
   static std::optional<Result<Buffer<dtype, rank>>> Decode(
       XLA_FFI_RetType type, void* ret, DiagnosticEngine& diagnostic) {
@@ -1000,6 +1030,11 @@ XLA_FFI_REGISTER_ARRAY_ATTR_DECODING(double, XLA_FFI_DataType_F64);
 template <>
 struct AttrDecoding<std::string_view> {
   using Type = std::string_view;
+
+  XLA_FFI_ATTRIBUTE_ALWAYS_INLINE static bool Isa(XLA_FFI_AttrType type,
+                                                  void* attr) {
+    return type == XLA_FFI_AttrType_STRING;
+  }
 
   XLA_FFI_ATTRIBUTE_ALWAYS_INLINE static std::optional<std::string_view> Decode(
       XLA_FFI_AttrType type, void* attr, DiagnosticEngine& diagnostic) {

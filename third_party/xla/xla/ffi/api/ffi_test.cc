@@ -639,6 +639,9 @@ TEST(FfiTest, RemainingArgs) {
   auto fn = [&](RemainingArgs args) {
     EXPECT_EQ(args.size(), 1);
 
+    EXPECT_TRUE(args.isa<AnyBuffer>(0));
+    EXPECT_FALSE(args.isa<BufferR2<F64>>(0));
+
     ErrorOr<AnyBuffer> arg0 = args.get<AnyBuffer>(0);
     ErrorOr<AnyBuffer> arg1 = args.get<AnyBuffer>(1);
 
@@ -665,6 +668,9 @@ TEST(FfiTest, RemainingRets) {
 
   auto fn = [&](Result<AnyBuffer> ret, RemainingRets rets) {
     EXPECT_EQ(rets.size(), 1);
+
+    EXPECT_TRUE(rets.isa<AnyBuffer>(0));
+    EXPECT_FALSE(rets.isa<BufferR2<F64>>(0));
 
     ErrorOr<Result<AnyBuffer>> ret0 = rets.get<AnyBuffer>(0);
     ErrorOr<Result<AnyBuffer>> ret1 = rets.get<AnyBuffer>(1);
@@ -860,8 +866,17 @@ TEST(FfiTest, AutoBindingStructs) {
 
 TEST(FfiTest, AutoBindingDictionary) {
   auto handler = Ffi::BindTo(+[](Dictionary attrs) {
+    EXPECT_TRUE(attrs.contains("i32"));
+    EXPECT_TRUE(attrs.contains("f32"));
+
+    EXPECT_TRUE(attrs.contains<int32_t>("i32"));
+    EXPECT_TRUE(attrs.contains<float>("f32"));
+    EXPECT_FALSE(attrs.contains<int64_t>("i32"));
+    EXPECT_FALSE(attrs.contains<int64_t>("f32"));
+
     EXPECT_EQ(*attrs.get<int32_t>("i32"), 42);
     EXPECT_EQ(*attrs.get<float>("f32"), 42.0f);
+
     return Error::Success();
   });
 

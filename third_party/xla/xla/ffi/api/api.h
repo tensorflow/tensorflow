@@ -903,6 +903,7 @@ struct AttrsBinding<Dictionary> {
 //
 //   template <>
 //   struct ArgDecoding<MyType> {
+//     static bool Isa(XLA_FFI_ArgType type, void* arg);
 //     static std::optional<MyType> Decode(XLA_FFI_ArgType type, void* arg);
 //   };
 //
@@ -920,6 +921,7 @@ struct ArgDecoding;
 //
 //   template <>
 //   struct RetDecoding<MyType> {
+//     static bool Isa(XLA_FFI_RetType type, void* ret);
 //     static std::optional<MyType> Decode(XLA_FFI_RetType type, void* ret);
 //   };
 //
@@ -937,9 +939,10 @@ struct RetDecoding;
 //
 //   template <>
 //   struct AttrDecoding<MyType> {
-//    using Type = <handler argument type for attribute type MyType>
-//    static std::optional<MyType> Decode(XLA_FFI_AttrType type, void* attr,
-//                                        DiagnosticEngine&);
+//     using Type = <handler argument type for attribute type MyType>
+//     static bool Isa(XLA_FFI_AttrType type, void* attr);
+//     static std::optional<MyType> Decode(XLA_FFI_AttrType type, void* attr,
+//                                         DiagnosticEngine&);
 //   }
 //
 template <typename T>
@@ -1205,6 +1208,12 @@ class RemainingArgsBase {
     assert(offset <= args_->size && "illegal remaining args offset");
   }
 
+  template <typename T>
+  bool isa(size_t index) const {
+    size_t idx = offset() + index;
+    return ArgDecoding<T>::Isa(args_->types[idx], args_->args[idx]);
+  }
+
   size_t size() const { return args_->size - offset_; }
   bool empty() const { return size() == 0; }
 
@@ -1230,6 +1239,12 @@ class RemainingRetsBase {
   RemainingRetsBase(const XLA_FFI_Rets* rets, size_t offset)
       : rets_(rets), offset_(offset) {
     assert(offset <= rets_->size && "illegal remaining rets offset");
+  }
+
+  template <typename T>
+  bool isa(size_t index) const {
+    size_t idx = offset_ + index;
+    return RetDecoding<T>::Isa(rets_->types[idx], rets_->rets[idx]);
   }
 
   size_t size() const { return rets_->size - offset_; }
@@ -1263,6 +1278,18 @@ class DictionaryBase {
   size_t size() const { return attrs_->size; }
 
   bool contains(std::string_view name) const { return Find(name).has_value(); }
+
+  template <typename T>
+  bool contains(std::string_view name) const {
+    std::optional<size_t> idx = Find(name);
+    if (XLA_FFI_PREDICT_FALSE(!idx.has_value())) {
+      return false;
+    }
+
+    XLA_FFI_AttrType attr_type = attrs_->types[*idx];
+    void* attr = attrs_->attrs[*idx];
+    return AttrDecoding<T>::Isa(attr_type, attr);
+  }
 
  protected:
   template <typename T, typename... Ts>
@@ -1768,6 +1795,12 @@ class Handler : public Ffi {
   template <>                                                              \
   struct AttrDecoding<T> {                                                 \
     using Type = T;                                                        \
+    XLA_FFI_ATTRIBUTE_ALWAYS_INLINE static bool Isa(XLA_FFI_AttrType type, \
+                                                    void* attr) {          \
+      return type == XLA_FFI_AttrType_SCALAR &&                            \
+             reinterpret_cast<XLA_FFI_Scalar*>(attr)->dtype == TYPE;       \
+    }                                                                      \
+                                                                           \
     XLA_FFI_ATTRIBUTE_ALWAYS_INLINE static std::optional<T> Decode(        \
         XLA_FFI_AttrType type, void* attr, DiagnosticEngine& diagnostic) { \
       if (XLA_FFI_PREDICT_FALSE(type != XLA_FFI_AttrType_SCALAR)) {        \
