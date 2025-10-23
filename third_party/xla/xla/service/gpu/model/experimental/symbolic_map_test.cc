@@ -18,6 +18,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "llvm/ADT/SmallBitVector.h"
+#include "mlir/IR/MLIRContext.h"
 #include "xla/service/gpu/model/experimental/symbolic_expr.h"
 
 namespace xla {
@@ -27,8 +28,8 @@ namespace {
 using ::testing::ElementsAre;
 
 struct SymbolicMapTest : public ::testing::Test {
-  // TODO(b/446856305): MLIRContext should not be used in this test.
-  SymbolicExprContext ctx{nullptr};
+  mlir::MLIRContext mlir_context;
+  SymbolicExprContext ctx{&mlir_context};
 };
 
 TEST_F(SymbolicMapTest, GetSymbolAndDimExpressions) {

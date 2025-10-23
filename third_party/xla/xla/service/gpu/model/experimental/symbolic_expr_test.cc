@@ -23,6 +23,8 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "llvm/ADT/DenseMap.h"
+#include "mlir/IR/AffineExpr.h"
+#include "mlir/IR/MLIRContext.h"
 #include "xla/hlo/analysis/indexing_test_utils.h"
 
 namespace xla {
@@ -34,8 +36,8 @@ using ::testing::Values;
 // Test fixture to hold the context for all tests.
 struct SymbolicExprTest : public ::testing::Test {
  protected:
-  // There should not be any usage of MLIRContext in this test.
-  SymbolicExprContext ctx{nullptr};
+  mlir::MLIRContext mlir_context;
+  SymbolicExprContext ctx{&mlir_context};
   SymbolicExpr v0 = ctx.CreateVariable(0);
   SymbolicExpr v1 = ctx.CreateVariable(1);
   SymbolicExpr c2 = ctx.CreateConstant(2);
@@ -165,6 +167,20 @@ TEST_F(SymbolicExprTest, UniquingWorks) {
   EXPECT_EQ(add1, add2);
   SymbolicExpr add3 = v0 + 99;
   EXPECT_NE(add1, add3);
+}
+
+TEST_F(SymbolicExprTest, UniquingDoesNotCrashWithCombinedAffineExpr) {
+  mlir::AffineExpr affine_expr = mlir::getAffineDimExpr(0, &mlir_context);
+  SymbolicExpr c1 = ctx.CreateConstant(42);
+  EXPECT_EQ(affine_expr, mlir::getAffineDimExpr(0, &mlir_context));
+  EXPECT_EQ(c1, ctx.CreateConstant(42));
+}
+
+TEST_F(SymbolicExprTest, UniquingWorksAcrossDifferentContexts) {
+  SymbolicExprContext ctx2(&mlir_context);
+
+  EXPECT_EQ(ctx.CreateConstant(42), ctx2.CreateConstant(42));
+  EXPECT_EQ(ctx.CreateVariable(0), ctx2.CreateVariable(0));
 }
 
 TEST_F(SymbolicExprTest, Replace) {

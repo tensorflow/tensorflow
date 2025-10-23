@@ -162,9 +162,9 @@ class SymbolicExprContext {
  private:
   SymbolicExpr GetOrCreate(SymbolicExprType type, int64_t value,
                            SymbolicExpr lhs, SymbolicExpr rhs);
-  mlir::StorageUniquer uniquer_;
   // TODO(b/446856305): MLIRContext is only used here temporarily while we have
-  // AffineMap <-> SymbolicMap convertors.
+  // AffineMap <-> SymbolicMap convertors. In the future, we only will need a
+  // StorageUniquer pointer.
   mlir::MLIRContext* mlir_context_;
 };
 
