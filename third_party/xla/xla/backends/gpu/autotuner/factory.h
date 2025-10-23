@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/service/compiler.h"
+#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/stream_executor/stream_executor.h"
 
 namespace xla {
@@ -30,7 +31,13 @@ namespace gpu {
 
 struct GetCodegenBackends {
   using Type = std::function<std::vector<std::unique_ptr<CodegenBackend>>(
+<<<<<<< HEAD
       stream_executor::StreamExecutor*, const DebugOptions*, Compiler*)>;
+=======
+      stream_executor::StreamExecutor*, const DebugOptions*, Compiler*,
+      const Compiler::TargetConfig*,
+      SymbolicExprContext* symbolic_expr_context)>;
+>>>>>>> upstream/master
 };
 
 }  // namespace gpu

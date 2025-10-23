@@ -13,10 +13,7 @@ pytype_strict_library(
         "__init__.py",
         "core.py",
     ],
-    visibility = [
-        "//tensorflow:__subpackages__",
-        "//tensorflow:types_allowlist",
-    ],
+    visibility = ["//tensorflow:__subpackages__"],
     deps = [
         ":doc_typealias",
         "//tensorflow/python:pywrap_tensorflow",

@@ -18,10 +18,13 @@ limitations under the License.
 #include <cstdint>
 #include <exception>
 #include <string>
-#include <utility>
 
 // Placeholder for lineage logging import.
 // Placeholder for lineage logging additional import.
+<<<<<<< HEAD
+=======
+#include "absl/base/call_once.h"
+>>>>>>> upstream/master
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
@@ -36,6 +39,8 @@ namespace tensorflow {
 namespace saved_model {
 namespace python {
 
+// Helper variable for logging.
+
 namespace py = pybind11;
 
 class MetricException : public std::exception {
@@ -46,6 +51,8 @@ class MetricException : public std::exception {
  private:
   std::string message_ = "";
 };
+
+// Placeholder for a helper function for logging.
 
 void DefineMetricsModule(py::module main_module) {
   // Deduplicate writes from lineage log. This should reduce the number of
@@ -207,6 +214,7 @@ void DefineMetricsModule(py::module main_module) {
         }
         metrics::SavedModelReadPathAndSingleprint().Set(
             path_and_singleprint.value());
+        // Placeholder for lineage logging dedup setup.
         // Placeholder for lineage logging input call.
       },
       py::kw_only(), py::arg("path"), py::arg("singleprint"),
@@ -243,6 +251,7 @@ void DefineMetricsModule(py::module main_module) {
         }
         metrics::SavedModelWritePathAndSingleprint().Set(
             path_and_singleprint.value());
+        // Placeholder for lineage logging dedup setup.
         // Placeholder for lineage logging output call.
       },
       py::kw_only(), py::arg("path"), py::arg("singleprint"),

@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "absl/functional/any_invocable.h"
 #include "absl/status/statusor.h"
+#include "llvm/IR/FMF.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
 #include "mlir/IR/BuiltinOps.h"
@@ -46,6 +47,7 @@ class FusionCompiler {
     int32_t vector_width;
     int32_t verification_level;
     bool fast_min_max;
+    llvm::FastMathFlags fast_math_flags;
   };
 
   FusionCompiler(mlir::MLIRContext* context, Options options,
@@ -65,11 +67,19 @@ class FusionCompiler {
  private:
   Options options_;
   CompilationHooks hooks_;
+<<<<<<< HEAD
   // Pass manager that holds the optimization & loop transformation passes.
   mlir::PassManager optimization_pass_manager_;
   // Pass manager that holds the passes responsible for lowering the module from
   // MLIR to LLVM.
   mlir::PassManager lowering_pass_manager_;
+=======
+  // We have 2 distinct pipelines for scalar and tiled kernels, this is
+  // because they differ slightly in their semantics, ideally these would be
+  // unified but this is a larger change.
+  mlir::PassManager scalar_pass_manager_;
+  mlir::PassManager tiled_pass_manager_;
+>>>>>>> upstream/master
 };
 
 }  // namespace xla::cpu

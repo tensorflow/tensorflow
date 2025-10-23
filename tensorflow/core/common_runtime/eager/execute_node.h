@@ -136,7 +136,7 @@ class ExecuteNode : public EagerNode {
 
   std::string DebugString() const override {
     std::string out = "[ExecuteNode]";
-    strings::StrAppend(&out, " kernel: ", kernel_->name());
+    absl::StrAppend(&out, " kernel: ", kernel_->name());
     return out;
   }
 
@@ -232,7 +232,7 @@ class AsyncExecuteNode : public EagerNode {
 
   std::string DebugString() const override {
     std::string out = "[AsyncExecuteNode]";
-    strings::StrAppend(&out, " kernel: ", kernel_->name());
+    absl::StrAppend(&out, " kernel: ", kernel_->name());
     return out;
   }
 

@@ -1256,7 +1256,7 @@ class SparseApplyAdadeltaOp : public OpKernel {
 
     for (int d = 1; d < var.dims(); d++) {
       OP_REQUIRES(ctx, var.dim_size(d) == grad.dim_size(d),
-                  errors::InvalidArgument(strings::StrCat(
+                  errors::InvalidArgument(absl::StrCat(
                       "var and grad must match in dimension ", d)));
     }
     const Tindex N = indices.dim_size(0);
@@ -1465,7 +1465,7 @@ class SparseApplyProximalGradientDescentOp : public OpKernel {
     int64_t inner_dim = 1;
     for (int d = 1; d < var.dims(); d++) {
       OP_REQUIRES(ctx, var.dim_size(d) == grad.dim_size(d),
-                  errors::InvalidArgument(strings::StrCat(
+                  errors::InvalidArgument(absl::StrCat(
                       "var and grad must match in dimension ", d)));
       inner_dim *= grad.dim_size(d);
     }
@@ -1925,7 +1925,7 @@ class SparseApplyAdagradOp : public OpKernel {
     int64_t inner_dim = 1;
     for (int d = 1; d < var.dims(); d++) {
       OP_REQUIRES(ctx, var.dim_size(d) == grad.dim_size(d),
-                  errors::InvalidArgument(strings::StrCat(
+                  errors::InvalidArgument(absl::StrCat(
                       "var and grad must match in dimension ", d)));
       inner_dim *= grad.dim_size(d);
     }
@@ -2059,7 +2059,7 @@ class SparseApplyAdagradV2Op : public OpKernel {
     int64_t inner_dim = 1;
     for (int d = 1; d < var.dims(); d++) {
       OP_REQUIRES(ctx, var.dim_size(d) == grad.dim_size(d),
-                  errors::InvalidArgument(strings::StrCat(
+                  errors::InvalidArgument(absl::StrCat(
                       "var and grad must match in dimension ", d)));
       inner_dim *= grad.dim_size(d);
     }
@@ -2208,7 +2208,7 @@ class SparseApplyProximalAdagradOp : public OpKernel {
     int64_t inner_dim = 1;
     for (int d = 1; d < var.dims(); d++) {
       OP_REQUIRES(ctx, var.dim_size(d) == grad.dim_size(d),
-                  errors::InvalidArgument(strings::StrCat(
+                  errors::InvalidArgument(absl::StrCat(
                       "var and grad must match in dimension ", d)));
       inner_dim *= grad.dim_size(d);
     }
@@ -2465,7 +2465,7 @@ class SparseApplyAdagradDAOp : public OpKernel {
     int64_t inner_dim = 1;
     for (int d = 1; d < var.dims(); d++) {
       OP_REQUIRES(ctx, var.dim_size(d) == grad.dim_size(d),
-                  errors::InvalidArgument(strings::StrCat(
+                  errors::InvalidArgument(absl::StrCat(
                       "var and grad must match in dimension ", d)));
       inner_dim *= grad.dim_size(d);
     }
@@ -2891,7 +2891,7 @@ class SparseApplyFtrlOp : public OpKernel {
     int64_t inner_dim = 1;
     for (int d = 1; d < var.dims(); d++) {
       OP_REQUIRES(ctx, var.dim_size(d) == grad.dim_size(d),
-                  errors::InvalidArgument(strings::StrCat(
+                  errors::InvalidArgument(absl::StrCat(
                       "var and grad must match in dimension ", d)));
       inner_dim *= grad.dim_size(d);
     }
@@ -3209,7 +3209,7 @@ class SparseApplyMomentumOp : public OpKernel {
 
     for (int d = 1; d < var.dims(); d++) {
       OP_REQUIRES(ctx, var.dim_size(d) == grad.dim_size(d),
-                  errors::InvalidArgument(strings::StrCat(
+                  errors::InvalidArgument(absl::StrCat(
                       "var and grad must match in dimension ", d)));
     }
     const Tindex N = indices.dim_size(0);
@@ -3428,7 +3428,7 @@ class SparseApplyKerasMomentumOp : public OpKernel {
 
     for (int d = 1; d < var.dims(); d++) {
       OP_REQUIRES(ctx, var.dim_size(d) == grad.dim_size(d),
-                  errors::InvalidArgument(strings::StrCat(
+                  errors::InvalidArgument(absl::StrCat(
                       "var and grad must match in dimension ", d)));
     }
     const Tindex N = indices.dim_size(0);

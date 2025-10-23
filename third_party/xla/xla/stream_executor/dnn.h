@@ -588,9 +588,6 @@ class ConvolutionDescriptor {
     return *this;
   }
 
-  // TODO(timshen): remove this function. No users of this class is setting a
-  // non-default pad alignment.
-  PadAlignment pad_alignment() const { return PadAlignment::kDefault; }
   int group_count() const { return proto_.group_count(); }
   int ndims() const { return padding().size(); }
   bool convolution_not_crosscorr() const {

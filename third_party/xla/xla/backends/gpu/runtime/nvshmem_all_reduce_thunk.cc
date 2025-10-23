@@ -30,13 +30,21 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/nvshmem_collective_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/core/collectives/communicator.h"
+<<<<<<< HEAD
+=======
+#include "xla/hlo/ir/collective_op_group_mode.h"
+>>>>>>> upstream/master
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/transforms/collectives/collective_ops_utils.h"
 #include "xla/stream_executor/stream.h"
+<<<<<<< HEAD
 #include "xla/tsl/concurrency/async_value_ref.h"
+=======
+#include "xla/tsl/platform/errors.h"
+>>>>>>> upstream/master
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 
@@ -53,6 +61,7 @@ absl::Status RunNvshmemAllReduce(ReductionKind reduction_kind,
   VLOG(3) << "Performing nvshmem all-reduce from device ordinal: "
           << *nvshmem_comm->CurrentRank();
   for (DeviceBufferPair& buffer : buffers) {
+<<<<<<< HEAD
     auto event = nvshmem_comm->AllReduce(
         buffer.source_buffer, buffer.destination_buffer, buffer.element_type,
         buffer.element_count, reduction_kind, GpuCollectives::On(stream));
@@ -60,6 +69,12 @@ absl::Status RunNvshmemAllReduce(ReductionKind reduction_kind,
     if (event.IsError()) {
       return event.GetError();
     }
+=======
+    auto future = nvshmem_comm->AllReduce(
+        buffer.source_buffer, buffer.destination_buffer, buffer.element_type,
+        buffer.element_count, reduction_kind, GpuCollectives::On(stream));
+    TF_RETURN_IF_ERROR(future.Await());
+>>>>>>> upstream/master
   }
 
   return absl::OkStatus();

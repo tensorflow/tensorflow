@@ -158,8 +158,14 @@ class VariableAggregation(enum.Enum):
 
 if VariableAggregationV2.__doc__ is not None:
   VariableAggregation.__doc__ = (
+<<<<<<< HEAD
       VariableAggregationV2.__doc__ +
       "* `ONLY_FIRST_TOWER`: Deprecated alias for `ONLY_FIRST_REPLICA`.\n  ")
+=======
+      VariableAggregationV2.__doc__
+      + "* `ONLY_FIRST_TOWER`: Deprecated alias for `ONLY_FIRST_REPLICA`.\n  "
+  )
+>>>>>>> upstream/master
 
 
 def validate_synchronization_aggregation_trainable(synchronization, aggregation,

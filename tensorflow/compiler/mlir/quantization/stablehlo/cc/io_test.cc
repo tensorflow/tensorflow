@@ -23,6 +23,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "xla/tsl/platform/env.h"
@@ -39,8 +40,6 @@ using ::testing::IsEmpty;
 using ::testing::Not;
 using ::testing::SizeIs;
 using ::testing::UnorderedElementsAre;
-using ::tsl::testing::IsOk;
-using ::tsl::testing::StatusIs;
 
 // A test-only derived class of `tsl::Env` which is broken. Used to cause
 // failure for the `CreateTmpDir` function. Each of the overridden member

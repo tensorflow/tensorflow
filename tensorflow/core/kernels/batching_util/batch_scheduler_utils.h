@@ -74,6 +74,9 @@ void MaybeBatchDown(Batch<TaskType>& batch,
                     absl::string_view batch_padding_policy,
                     ModelBatchStats* model_batch_stats,
                     std::vector<std::unique_ptr<TaskType>>& out_trimmed_tasks) {
+  if (batch.empty()) {
+    return;
+  }
   if (batch_padding_policy == kPadUpPolicy) {
     // This is the default behavior of batch resource when it is given a batch
     // size that doesn't match any of the allowed batch sizes.

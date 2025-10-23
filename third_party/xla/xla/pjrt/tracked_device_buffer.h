@@ -33,7 +33,9 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/pjrt/abstract_tracked_device_buffer.h"
+#include "xla/pjrt/buffer_sequencing_event.h"
 #include "xla/pjrt/event_pool.h"
+#include "xla/pjrt/local_device_state.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/service/executable.h"
@@ -49,6 +51,7 @@ limitations under the License.
 
 namespace xla {
 
+<<<<<<< HEAD
 // A BufferSequencingEvent keeps track of dependencies of a buffer on each
 // stream it has been used on.
 //
@@ -180,6 +183,8 @@ class BufferSequencingEvent : tsl::AsyncPayload::KeepOnError {
 
 using BufferSequencingEventRef = tsl::AsyncValueRef<BufferSequencingEvent>;
 
+=======
+>>>>>>> upstream/master
 // TODO(parkers): Implement PjRtRawBuffer API.
 class RawSEDeviceMemory : public tsl::ReferenceCounted<RawSEDeviceMemory> {
  public:
@@ -200,11 +205,18 @@ class RawSEDeviceMemory : public tsl::ReferenceCounted<RawSEDeviceMemory> {
                               const Shape& on_device_shape) const;
 
   static tsl::RCReference<RawSEDeviceMemory> Create(
-      se::DeviceMemoryBase value, PjRtLocalDeviceId device_id,
+      se::DeviceMemoryBase value, LocalDeviceState* local_device,
       se::DeviceMemoryAllocator* allocator);
   static tsl::RCReference<RawSEDeviceMemory> CreateForeign(
       se::DeviceMemoryBase value,
       absl::AnyInvocable<void() &&> on_delete_callback);
+
+  // Returns a definition event (or nullptr if the definition is known to be in
+  // the past).
+  virtual absl::StatusOr<BufferSequencingEventRef> GetDefinitionEvent(
+      tsl::thread::ThreadPool* thread_pool, bool nullptr_if_past) const {
+    return BufferSequencingEventRef();
+  }
 
  private:
   se::DeviceMemoryBase value_;
@@ -218,8 +230,6 @@ class TrackedDeviceBuffer : public AbstractTrackedDeviceBuffer {
  public:
   // Helper object to keep track of usage of the buffer on streams.
   struct StreamAndEvent {
-    // A stream the buffer has been used on.
-    se::Stream* stream;
     // An event that is later than the most recent usage of the buffer on
     // stream.
     BufferSequencingEventRef event;
@@ -282,8 +292,12 @@ class TrackedDeviceBuffer : public AbstractTrackedDeviceBuffer {
   //                   reference to *this to stay live until after the host
   //                   is sure that the usage (transfer or execution) has
   //                   completed.
+<<<<<<< HEAD
   void AddUsageEvent(se::Stream* usage_stream, BufferSequencingEventRef event,
                      bool reference_held);
+=======
+  void AddUsageEvent(BufferSequencingEventRef event, bool reference_held);
+>>>>>>> upstream/master
 
   using StreamAndEventContainer = absl::InlinedVector<StreamAndEvent, 3>;
   // Returns the set of streams that the buffer was used on, and for each stream
@@ -303,12 +317,17 @@ class TrackedDeviceBuffer : public AbstractTrackedDeviceBuffer {
   tsl::RCReference<CommonPjRtRawBuffer> GetRawBuffer(
       PjRtMemorySpace* memory_space) override;
 
-  void AddUsageEvent(tsl::RCReference<PjRtDeviceEvent> event) override {
-    LOG(FATAL) << "Implement";
-  }
+  void AddUsageEvent(tsl::RCReference<PjRtDeviceEvent> event) override;
 
   void Delete(PjRtMemorySpace* memory_space) override {
     LOG(FATAL) << "Implement";
+  }
+
+  absl::Status WaitUntilBufferReadyOnStream(std::intptr_t stream) override {
+    for (const BufferSequencingEventRef& event : definition_events()) {
+      TF_RETURN_IF_ERROR(event->WaitForEventOnExternalStream(stream));
+    }
+    return absl::OkStatus();
   }
 
  private:

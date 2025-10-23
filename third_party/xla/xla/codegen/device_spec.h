@@ -50,14 +50,15 @@ class DeviceSpec {
     return std::holds_alternative<stream_executor::DeviceDescription>(type_);
   }
   bool IsAmdGpu() const {
-    return IsGpu() &&
-           std::holds_alternative<stream_executor::RocmComputeCapability>(
-               gpu().gpu_compute_capability());
+    return IsGpu() && gpu().gpu_compute_capability().IsRocm();
   }
   bool IsNvidiaGpu() const {
-    return IsGpu() &&
-           std::holds_alternative<stream_executor::CudaComputeCapability>(
-               gpu().gpu_compute_capability());
+    return IsGpu() && gpu().gpu_compute_capability().IsCuda();
+  }
+  bool IsIntelGpu() const {
+    // TODO(intel-gpu): Align with CUDA and ROCM approach of detecting Intel
+    // GPU.
+    return absl::StrContains(gpu().name(), "Intel");
   }
 
  private:

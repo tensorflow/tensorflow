@@ -67,14 +67,13 @@ namespace {
  *   - Requires exactly one operand and one result.
  *   - Operand type must be a float type.
  *   - Result type must be an integer type.
- *   - All users of the quantize op must be either quant.dequantize composite
- *   ops or func::ReturnOps.
+ *   - All users of the quantize op must be quant.dequantize composites.
  *
  * - **quant.dequantize:**
  *   - Requires exactly one operand and one result.
  *   - Legalization is supported only if the operand is:
- *     - The only user of a block argument, or
- *     - Defined by a stablehlo::UniformQuantizeOp.
+ *     - quant.quantize composite op
+ *     - quantized type.
  *   - Operand type must be an integer type or a quant::QuantizedType. The later
  *      case is for the case where the operand is defined by a
  *      stablehlo::UniformQuantizeOp.
@@ -83,71 +82,29 @@ namespace {
  * - Any other composite op name is unsupported.
  **/
 
-llvm::LogicalResult isSupportedQuantCompositeOp(stablehlo::CompositeOp op) {
-  if (op.getName() != "quant.quantize" && op.getName() != "quant.dequantize" &&
-      op.getName() != "quant.fake_quant") {
-    return failure();
-  }
+bool isRewritableQuantizeCompositeOp(stablehlo::CompositeOp op) {
+  return op.getName() == "quant.quantize" && op.getNumOperands() == 1 &&
+         op.getNumResults() == 1 &&
+         isa<FloatType>(getElementTypeOrSelf(op.getOperand(0).getType())) &&
+         isa<IntegerType>(getElementTypeOrSelf(op.getType(0)));
+}
 
-  if (op.getNumOperands() != 1 || op.getNumResults() != 1) {
-    return failure();
-  }
+bool isRewritableDequantizeCompositeOp(stablehlo::CompositeOp op) {
+  return op.getName() == "quant.dequantize" && op.getNumOperands() == 1 &&
+         op.getNumResults() == 1 &&
+         (isa<IntegerType>(getElementTypeOrSelf(op.getOperand(0).getType())) ||
+          isa<quant::QuantizedType>(
+              getElementTypeOrSelf(op.getOperand(0).getType()))) &&
+         isa<FloatType>(getElementTypeOrSelf(op.getType(0)));
+}
 
-  if (op.getName() == "quant.fake_quant") {
-    if (op.getOperand(0).getType() != op.getType(0)) {
-      return failure();
-    }
-    if (!isa<FloatType>(getElementTypeOrSelf(op.getType(0)))) {
-      return failure();
-    }
-
-    auto dtypeAttr = llvm::dyn_cast_or_null<TypeAttr>(
-        op.getCompositeAttributes().get("dtype"));
-    if (dtypeAttr == nullptr) {
-      return failure();
-    }
-    return success();
-  }
-
-  if (op.getName() == "quant.quantize") {
-    if (!isa<FloatType>(getElementTypeOrSelf(op.getOperand(0).getType()))) {
-      return failure();
-    }
-    if (!isa<IntegerType>(getElementTypeOrSelf(op.getType(0)))) {
-      return failure();
-    }
-    for (auto* user : op->getUsers()) {
-      bool isFedToDequantizeComposite =
-          isa<stablehlo::CompositeOp>(user) &&
-          cast<stablehlo::CompositeOp>(user).getName() == "quant.dequantize";
-      bool isFedToReturnOp = isa<func::ReturnOp>(user);
-      if (!isFedToDequantizeComposite && !isFedToReturnOp) {
-        return failure();
-      }
-    }
-
-    return success();
-  }
-
-  // op.getName() == "quant.dequantize
-  bool isOnlyUserOfBlockArgument =
-      isa<BlockArgument>(op.getOperand(0)) &&
-      cast<BlockArgument>(op.getOperand(0)).hasOneUse();
-  bool isDefinedByQuantizeOp =
-      op.getOperand(0).getDefiningOp() != nullptr &&
-      mlir::isa<stablehlo::UniformQuantizeOp>(op.getOperand(0).getDefiningOp());
-  if (!isOnlyUserOfBlockArgument && !isDefinedByQuantizeOp) {
-    return failure();
-  }
-  if (!isa<IntegerType>(getElementTypeOrSelf(op.getOperand(0).getType())) &&
-      !isa<quant::QuantizedType>(
-          getElementTypeOrSelf(op.getOperand(0).getType()))) {
-    return failure();
-  }
-  if (!isa<FloatType>(getElementTypeOrSelf(op.getType(0)))) {
-    return failure();
-  }
-  return success();
+bool isRewritableFakeQuantCompositeOp(stablehlo::CompositeOp op) {
+  return op.getName() == "quant.fake_quant" && op.getNumOperands() == 1 &&
+         op.getNumResults() == 1 &&
+         op.getOperand(0).getType() == op.getType(0) &&
+         isa<FloatType>(getElementTypeOrSelf(op.getType(0))) &&
+         llvm::dyn_cast_or_null<TypeAttr>(
+             op.getCompositeAttributes().get("dtype"));
 }
 
 /**
@@ -224,44 +181,34 @@ LogicalResult getQuantCompositeAttributes(
   return success();
 }
 
-class RewriteQuantizeCompositeOp
-    : public OpRewritePattern<stablehlo::CompositeOp> {
-  using OpRewritePattern<stablehlo::CompositeOp>::OpRewritePattern;
+FailureOr<stablehlo::UniformQuantizeOp> buildUniformQuantizeOp(
+    stablehlo::CompositeOp op, PatternRewriter& rewriter) {
+  SmallVector<double> scales;
+  SmallVector<int64_t> zeroPoints;
+  int32_t quantizedDimension;
+  int64_t storageTypeMin;
+  int64_t storageTypeMax;
+  std::string dtypeStr;
+  Type storageType;
 
-  LogicalResult matchAndRewrite(stablehlo::CompositeOp op,
-                                PatternRewriter& rewriter) const final {
-    if (op.getName() != "quant.quantize") {
-      return failure();
-    }
-
-    SmallVector<double> scales;
-    SmallVector<int64_t> zeroPoints;
-    int32_t quantizedDimension;
-    int64_t storageTypeMin;
-    int64_t storageTypeMax;
-    std::string dtypeStr;
-    Type storageType;
-
-    if (failed(getQuantCompositeAttributes(op, scales, zeroPoints,
-                                           quantizedDimension, storageTypeMin,
-                                           storageTypeMax, storageType))) {
-      return failure();
-    }
-
-    Type expressedType = getElementTypeOrSelf(op.getInputs().front().getType());
-    Type quantizedElementType = stablehlo::getQuantizedElementType(
-        op.getLoc(), storageType, expressedType, scales, zeroPoints,
-        quantizedDimension, storageTypeMin, storageTypeMax);
-    RankedTensorType outputQuantizedType = RankedTensorType::get(
-        llvm::cast<ShapedType>(op.getResults().front().getType()).getShape(),
-        quantizedElementType);
-    auto stablehloQuantizeOp = rewriter.create<stablehlo::UniformQuantizeOp>(
-        op.getLoc(), outputQuantizedType,
-        /*input=*/op.getOperand(0));
-    rewriter.replaceAllOpUsesWith(op, stablehloQuantizeOp.getResult());
-    return success();
+  if (failed(getQuantCompositeAttributes(op, scales, zeroPoints,
+                                         quantizedDimension, storageTypeMin,
+                                         storageTypeMax, storageType))) {
+    return rewriter.notifyMatchFailure(op,
+                                       "Failed to get quantization attributes");
   }
-};
+
+  Type expressedType = getElementTypeOrSelf(op.getInputs().front().getType());
+  Type quantizedElementType = stablehlo::getQuantizedElementType(
+      op.getLoc(), storageType, expressedType, scales, zeroPoints,
+      quantizedDimension, storageTypeMin, storageTypeMax);
+  RankedTensorType outputQuantizedType = RankedTensorType::get(
+      llvm::cast<ShapedType>(op.getResults().front().getType()).getShape(),
+      quantizedElementType);
+  return stablehlo::UniformQuantizeOp::create(rewriter, op.getLoc(),
+                                              outputQuantizedType,
+                                              /*input=*/op.getOperand(0));
+}
 
 class RewriteDequantizeCompositeOp
     : public OpRewritePattern<stablehlo::CompositeOp> {
@@ -270,7 +217,11 @@ class RewriteDequantizeCompositeOp
   LogicalResult matchAndRewrite(stablehlo::CompositeOp op,
                                 PatternRewriter& rewriter) const final {
     if (op.getName() != "quant.dequantize") {
-      return failure();
+      return rewriter.notifyMatchFailure(op, "Not a dequantize composite op");
+    }
+    if (!isRewritableDequantizeCompositeOp(op)) {
+      return rewriter.notifyMatchFailure(
+          op, "Not a rewritable dequantize composite op");
     }
 
     SmallVector<double> scales;
@@ -287,54 +238,33 @@ class RewriteDequantizeCompositeOp
       return failure();
     }
 
-    Type expressedType =
-        getElementTypeOrSelf(op.getResults().front().getType());
-    Type quantizedElementType = stablehlo::getQuantizedElementType(
-        op.getLoc(), storageType, expressedType, scales, zeroPoints,
-        quantizedDimension, storageTypeMin, storageTypeMax);
-    auto quantizedType =
-        llvm::cast<ShapedType>(op.getResults().front().getType())
-            .clone(quantizedElementType);
-
-    // If the operand of the dequantize compposite op defined by block
-    // argument, we need to create a new block argument with the quantized type.
-    // Otherwise, we can directly use the composite op's operand.
+    // If operand is already quantized, rewrite
     Value quantizedInput = op.getOperand(0);
-    if (isa<BlockArgument>(op.getOperand(0))) {
-      auto funcOp = op->getParentOfType<func::FuncOp>();
-      if (funcOp == nullptr) {
-        return rewriter.notifyMatchFailure(op,
-                                           "Failed to find enclosing function");
-      }
-      SmallVector<Type> newFuncInputTypes;
-      auto funcInputTypes = funcOp.getFunctionType().getInputs();
-      int updatedArgIdx = -1;
-      for (auto [i, arg] : llvm::enumerate(funcOp.getArguments())) {
-        if (arg == quantizedInput) {
-          newFuncInputTypes.push_back(quantizedType);
-          updatedArgIdx = i;
-        } else {
-          newFuncInputTypes.push_back(funcInputTypes[i]);
-        }
-      }
-      rewriter.modifyOpInPlace(funcOp, [&]() {
-        funcOp.setType(rewriter.getFunctionType(
-            newFuncInputTypes, funcOp.getFunctionType().getResults()));
-      });
-      funcOp.getBody()
-          .front()
-          .getArgument(updatedArgIdx)
-          .setType(quantizedType);
-      quantizedInput = funcOp.getBody().front().getArgument(updatedArgIdx);
+    if (isa<quant::QuantizedType>(
+            getElementTypeOrSelf(op.getOperand(0).getType()))) {
+      rewriter.replaceOpWithNewOp<stablehlo::UniformDequantizeOp>(
+          op, op.getType(0),
+          /*input=*/quantizedInput);
+      return success();
     }
 
-    auto stablehloDeQuantizeOp =
-        rewriter.create<stablehlo::UniformDequantizeOp>(
-            op.getLoc(), op.getType(0),
-            /*input=*/quantizedInput);
-    rewriter.eraseOp(op);
-    rewriter.replaceAllOpUsesWith(op, stablehloDeQuantizeOp.getResult());
+    // Otherwise the operand must be a composite op
+    auto quantizeCompositeOp =
+        quantizedInput.getDefiningOp<stablehlo::CompositeOp>();
+    if (!quantizeCompositeOp ||
+        !isRewritableQuantizeCompositeOp(quantizeCompositeOp)) {
+      return rewriter.notifyMatchFailure(
+          op, "Operand is not quantized or a quantize composite op");
+    }
 
+    auto quantizeOp = buildUniformQuantizeOp(quantizeCompositeOp, rewriter);
+    if (failed(quantizeOp)) {
+      return rewriter.notifyMatchFailure(op, "Failed to build quantize op");
+    }
+
+    rewriter.replaceOpWithNewOp<stablehlo::UniformDequantizeOp>(
+        op, op.getType(0),
+        /*input=*/quantizeOp->getResult());
     return success();
   }
 };
@@ -352,7 +282,11 @@ class RewriteFakeQuantCompositeOp
   LogicalResult matchAndRewrite(stablehlo::CompositeOp op,
                                 PatternRewriter& rewriter) const final {
     if (op.getName() != "quant.fake_quant") {
-      return failure();
+      return rewriter.notifyMatchFailure(op, "Not a fake quant composite op");
+    }
+    if (!isRewritableFakeQuantCompositeOp(op)) {
+      return rewriter.notifyMatchFailure(
+          op, "Not a rewritable fake quant composite op");
     }
 
     SmallVector<double> scales;
@@ -377,32 +311,9 @@ class RewriteFakeQuantCompositeOp
         llvm::cast<ShapedType>(op.getType(0)).getShape(), quantizedElementType);
     auto stablehloQuantizeOp = rewriter.create<stablehlo::UniformQuantizeOp>(
         op.getLoc(), quantizedType, /*input=*/op.getOperand(0));
-    auto stablehloDeQuantizeOp =
-        rewriter.create<stablehlo::UniformDequantizeOp>(
-            op.getLoc(), op.getType(0),
-            /*input=*/stablehloQuantizeOp.getResult());
-    rewriter.replaceAllOpUsesWith(op, stablehloDeQuantizeOp.getResult());
-    return success();
-  }
-};
-
-/**
- * When there is a quantize op at the output, the return op's operand is a
- * quantized tensor. However, the function's return type is still a simple
- * integer. This pattern makes sure the function's signature is updated so
- * that it's return type conforms the operand of its return op.
- */
-struct UpdateFunctionTypePattern : public OpRewritePattern<func::ReturnOp> {
-  using OpRewritePattern::OpRewritePattern;
-  LogicalResult matchAndRewrite(func::ReturnOp op,
-                                PatternRewriter& rewriter) const override {
-    auto funcOp = op->getParentOfType<func::FuncOp>();
-    if (funcOp == nullptr) {
-      return rewriter.notifyMatchFailure(op,
-                                         "Failed to find enclosing function");
-    }
-    funcOp.setType(rewriter.getFunctionType(funcOp.getArgumentTypes(),
-                                            op.getOperandTypes()));
+    rewriter.replaceOpWithNewOp<stablehlo::UniformDequantizeOp>(
+        op, op.getType(0),
+        /*input=*/stablehloQuantizeOp.getResult());
     return success();
   }
 };
@@ -413,39 +324,18 @@ class StablehloLegalizeQuantCompositePass
  public:
   void runOnOperation() override {
     MLIRContext& ctx = getContext();
-    auto module = getOperation();
-
     RewritePatternSet patterns(&ctx);
-    patterns.add<RewriteQuantizeCompositeOp, RewriteDequantizeCompositeOp,
-                 RewriteFakeQuantCompositeOp>(&ctx);
+    patterns.add<RewriteDequantizeCompositeOp, RewriteFakeQuantCompositeOp>(
+        &ctx);
 
-    ConversionTarget target(getContext());
-    target.addLegalDialect<func::FuncDialect>();
-    target.addLegalDialect<quant::QuantDialect>();
-
-    // Declare all the MHLO ops as legal except for the quantization
-    // composites we want to lower.
-    target.addDynamicallyLegalDialect<stablehlo::StablehloDialect>(
-        [](Operation* op) {
-          auto compositeOp = dyn_cast_or_null<stablehlo::CompositeOp>(op);
-          if (!compositeOp) {
-            return true;
-          }
-          return failed(isSupportedQuantCompositeOp(compositeOp));
-        });
-
-    if (failed(applyPartialConversion(getOperation(), target,
-                                      std::move(patterns)))) {
+    GreedyRewriteConfig config;
+    config.enableFolding(false);
+    config.setMaxIterations(3);
+    if (failed(applyPatternsGreedily(getOperation(), std::move(patterns),
+                                     config))) {
       getOperation().emitError("Composite lowering pass failed.");
       signalPassFailure();
     }
-
-    GreedyRewriteConfig greedyRewriteConfig;
-    RewritePatternSet cleanupPatterns(&ctx);
-    cleanupPatterns.add<UpdateFunctionTypePattern>(&ctx);
-
-    (void)applyPatternsGreedily(module, std::move(cleanupPatterns),
-                                greedyRewriteConfig);
   }
 };
 

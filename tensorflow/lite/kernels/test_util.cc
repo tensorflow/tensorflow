@@ -154,7 +154,11 @@ std::string GetDumpedModelName() {
   static absl::NoDestructor<std::string> previous_test_name ABSL_GUARDED_BY(
       mutex);
   static int model_serial ABSL_GUARDED_BY(mutex) = 0;
+<<<<<<< HEAD
   absl::MutexLock lock(&mutex);
+=======
+  absl::MutexLock lock(mutex);
+>>>>>>> upstream/master
 
   const testing::TestInfo* test_info =
       ::testing::UnitTest::GetInstance()->current_test_info();

@@ -104,6 +104,7 @@ cc_library(
         "//xla/service/spmd/shardy:utils",
         "@com_google_absl//absl/log:check",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:Analysis",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",

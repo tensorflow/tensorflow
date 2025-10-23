@@ -212,7 +212,10 @@ cc_library(
         "//xla/hlo/tools/hlo_diff/graph:hlo_gumgraph_node",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:die_if_null",
+<<<<<<< HEAD
         "@com_google_absl//absl/strings",
+=======
+>>>>>>> upstream/master
         "@com_google_absl//absl/types:span",
     ],
 )
@@ -228,8 +231,11 @@ xla_cc_test(
         "//xla/hlo/tools/hlo_diff/graph:hlo_gumgraph",
         "//xla/hlo/tools/hlo_diff/utils:test_util",
         "//xla/tsl/platform:statusor",
+<<<<<<< HEAD
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
+=======
+>>>>>>> upstream/master
         "@com_google_googletest//:gtest_main",
     ],
 )

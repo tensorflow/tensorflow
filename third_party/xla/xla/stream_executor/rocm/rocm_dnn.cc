@@ -56,7 +56,6 @@ limitations under the License.
 #include "xla/stream_executor/numeric_options.h"
 #include "xla/stream_executor/platform/initialize.h"
 #include "xla/stream_executor/plugin_registry.h"
-#include "xla/stream_executor/rocm/rocm_diagnostics.h"
 #include "xla/stream_executor/rocm/rocm_platform_id.h"
 #include "xla/stream_executor/scratch_allocator.h"
 #include "xla/stream_executor/stream.h"
@@ -628,7 +627,7 @@ class CachedFusionPlans {
                            miopenFusionPlanDescriptor_t* fusion_plan,
                            miopenFusionDirection_t fusion_direction,
                            miopenTensorDescriptor_t input_descriptor) {
-    absl::MutexLock lock{&cached_plans_mutex};
+    absl::MutexLock lock{cached_plans_mutex};
 
     bool found_cached_plan = false;
 
@@ -654,7 +653,7 @@ class CachedFusionPlans {
 
   // Need to figure out the right place to call this routine
   static void Clear() {
-    absl::MutexLock lock{&cached_plans_mutex};
+    absl::MutexLock lock{cached_plans_mutex};
 
     for (auto it : cached_plans) {
       auto status = wrap::miopenDestroyFusionPlan(it.second);
@@ -671,13 +670,13 @@ class CachedFusionPlans {
 
   // Is the Fusion plan corresponding to this hash unsupported
   static bool IsUnsupportedFusionPlan(uint64_t hash) {
-    absl::MutexLock lock{&cached_plans_mutex};
+    absl::MutexLock lock{cached_plans_mutex};
     return unsupported_plans.count(hash) > 0;
   }
 
   // Mark the given hash value as corresponding to an unsupported fusion plan
   static void MarkFusionPlanUnsupported(uint64_t hash) {
-    absl::MutexLock lock{&cached_plans_mutex};
+    absl::MutexLock lock{cached_plans_mutex};
     unsupported_plans.insert(hash);
   }
 
@@ -747,7 +746,7 @@ class MIOpenAccess {
   explicit MIOpenAccess(miopenHandle_t handle) : handle_(handle) {}
 
   ~MIOpenAccess() {
-    absl::MutexLock lock(&mutex_);
+    absl::MutexLock lock(mutex_);
     wrap::miopenDestroy(handle_);
   }
 
@@ -819,18 +818,6 @@ absl::Status MIOpenSupport::Init() {
 
   CHECK_EQ(miopen_handle, nullptr);
   LOG(ERROR) << "could not create miopen handle: " << ToString(status);
-  if (status == miopenStatusNotInitialized) {
-    auto result = rocm::Diagnostician::FindKernelDriverVersion();
-    if (!result.ok()) {
-      LOG(ERROR) << "error retrieving driver version: "
-                 << rocm::DriverVersionStatusToString(result);
-    } else {
-      const auto& version = result.value();
-      LOG(INFO) << "possibly insufficient driver version: "
-                << rocm::DriverVersionToString(version);
-    }
-  }
-
   return absl::Status{absl::StatusCode::kInternal,
                       absl::StrCat("miopen library could not create a handle: ",
                                    ToString(status))};
@@ -1042,10 +1029,6 @@ absl::StatusOr<ScopedConvolutionDescriptor> scope(
   }
   const auto& strides64 = convolution_descriptor.strides();
   const auto& padding64 = convolution_descriptor.padding();
-  if (convolution_descriptor.pad_alignment() ==
-      dnn::PadAlignment::kTensorFlowPadding) {
-    LOG(ERROR) << "TensorFlow padding alignment is not supported.";
-  }
 
   // MIOpen requires arrays of ints.
   std::vector<int> strides(convolution_descriptor.ndims());

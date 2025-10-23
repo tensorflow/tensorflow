@@ -17,6 +17,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
 #include "xla/service/gpu/tests/gpu_codegen_test.h"
 #include "tsl/platform/test.h"

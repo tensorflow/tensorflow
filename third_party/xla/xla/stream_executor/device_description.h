@@ -26,28 +26,31 @@ limitations under the License.
 #include <type_traits>
 #include <utility>
 #include <variant>
-#include <vector>
 
+<<<<<<< HEAD
 #include "absl/algorithm/container.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
+=======
+#include "absl/status/statusor.h"
+>>>>>>> upstream/master
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.pb.h"
 #include "xla/stream_executor/launch_dim.h"
+#include "xla/stream_executor/rocm/rocm_compute_capability.h"
 #include "xla/stream_executor/semantic_version.h"
 
 namespace stream_executor {
 
-// ROCm compute capability, as reported by the device description.
-class RocmComputeCapability {
+class GpuComputeCapability
+    : public std::variant<CudaComputeCapability, RocmComputeCapability> {
  public:
-  // gcn_arch_name example --  gfx90a:sramecc+:xnack-
-  // gfx_version is the "gfx90a" part of the gcn_arch_name
-  explicit RocmComputeCapability(std::string gcn_arch_name)
-      : gcn_arch_name_(std::move(gcn_arch_name)) {}
+  using std::variant<CudaComputeCapability, RocmComputeCapability>::variant;
+  using std::variant<CudaComputeCapability, RocmComputeCapability>::operator=;
 
+<<<<<<< HEAD
   explicit RocmComputeCapability(const RocmComputeCapabilityProto& proto)
       : gcn_arch_name_(proto.gcn_arch_name()) {}
 
@@ -77,18 +80,21 @@ class RocmComputeCapability {
   bool gfx9_mi350() const { return gfx_version() == "gfx950"; }
 
   bool gfx9_mi300_series() const { return gfx9_mi300() || gfx9_mi350(); }
+=======
+  bool IsCuda() const {
+    return std::holds_alternative<CudaComputeCapability>(*this);
+  }
+>>>>>>> upstream/master
 
-  bool gfx9_mi100_or_later() const {
-    static constexpr absl::string_view kList[] = {"gfx908", "gfx90a", "gfx942",
-                                                  "gfx950"};
-    return absl::c_count(kList, gfx_version()) != 0;
+  bool IsRocm() const {
+    return std::holds_alternative<RocmComputeCapability>(*this);
   }
 
-  bool gfx9_mi200_or_later() const {
-    static constexpr absl::string_view kList[] = {"gfx90a", "gfx942", "gfx950"};
-    return absl::c_count(kList, gfx_version()) != 0;
+  const CudaComputeCapability* cuda_compute_capability() const {
+    return std::get_if<CudaComputeCapability>(this);
   }
 
+<<<<<<< HEAD
   bool gfx10_rx68xx() const { return gfx_version() == "gfx1030"; }
 
   bool gfx10_rx69xx() const { return gfx_version() == "gfx1030"; }
@@ -111,14 +117,19 @@ class RocmComputeCapability {
 
   bool has_fast_fp16_support() const {
     return gfx9_mi100_or_later() || gfx10_rx68xx() || gfx10_rx69xx() || gfx11();
+=======
+  const RocmComputeCapability* rocm_compute_capability() const {
+    return std::get_if<RocmComputeCapability>(this);
+>>>>>>> upstream/master
   }
 
-  bool has_mfma_instr_support() const { return gfx9_mi100_or_later(); }
-
-  bool has_amd_matrix_core() const {
-    return (gfx9_mi100_or_later() || gfx_version().find("gfx11") ||
-            gfx_version().find("gfx12"));
+  std::string ToString() const {
+    if (auto ptr = cuda_compute_capability()) {
+      return ptr->ToString();
+    }
+    return rocm_compute_capability()->ToString();
   }
+<<<<<<< HEAD
 
   bool has_packed_fp16_atomics_support() const { return gfx9_mi100_or_later(); }
 
@@ -168,10 +179,9 @@ class RocmComputeCapability {
       "gfx1100", "gfx1101", "gfx1102",  // RX7900
       "gfx1200", "gfx1201",             // RX8900      
   };
+=======
+>>>>>>> upstream/master
 };
-
-using GpuComputeCapability =
-    std::variant<CudaComputeCapability, RocmComputeCapability>;
 
 // Data that describes the execution target of the StreamExecutor, in terms of
 // important logical parameters. These include dimensionality limits and
@@ -197,6 +207,9 @@ class DeviceDescription {
   SemanticVersion compile_time_toolkit_version() const {
     return compile_time_toolkit_version_;
   }
+
+  // Returns the DNN version (cuDNN or hipDNN) - or 0.0.0 if not available.
+  SemanticVersion dnn_version() const { return dnn_version_; }
 
   // Returns the name that the device reports. Vendor dependent.
   const std::string& name() const { return name_; }
@@ -324,6 +337,7 @@ class DeviceDescription {
   // also we do not count what occupies cache, but rather claim that what is
   // much smaller than the cache size will likely stay in it.
   constexpr int64_t l1_cache_size_per_SM() const {
+<<<<<<< HEAD
     return std::visit(
         [](const auto& capability) -> int64_t {
           if constexpr (std::is_same_v<std::decay_t<decltype(capability)>,
@@ -378,6 +392,47 @@ class DeviceDescription {
           return 32;
         },
         gpu_compute_capability_);
+=======
+    if (auto* capability = gpu_compute_capability_.rocm_compute_capability()) {
+      // MI100 and MI200 has 16KB L1 cache per CU.
+      if (capability->gfx9_mi100() || capability->gfx9_mi200()) {
+        return 16 * 1024;
+      }
+      // MI300 has 32KB L1 cache per CU.
+      if (capability->gfx9_mi300_series()) {
+        return 32 * 1024;
+      }
+    }
+    // Default return for other GPUs (e.g., RTX A6000).
+    return 2 * 1024;
+  }
+
+  constexpr int64_t dram_to_l2_transaction_size_bytes() const {
+    if (auto* capability = gpu_compute_capability_.rocm_compute_capability()) {
+      // DRAM->L2 bus is 128 Byte width for MI300.
+      if (capability->gfx9_mi300_series()) {
+        return 128;
+      }
+    }
+    // Cache line is 128B that is split into 4 sectors of 32B. Default
+    // transaction size from DRAM -> L2 = 64 Bytes = 2 sectors, since
+    // V100, but it can be also configured.
+    // https://developer.download.nvidia.com/video/gputechconf/gtc/2020/presentations/s21819-optimizing-applications-for-nvidia-ampere-gpu-architecture.pdf
+    // (page 10).
+    // return 64 Bytes by default.
+    return 64;
+  }
+
+  constexpr int64_t memory_transactions_per_clock() const {
+    if (auto* capability = gpu_compute_capability_.rocm_compute_capability()) {
+      // 16 works well on MI300.
+      if (capability->gfx9_mi300_series()) {
+        return 16;
+      }
+    }
+    // Default return for other GPUs.
+    return 32;
+>>>>>>> upstream/master
   }
 
   GpuDeviceInfoProto ToGpuProto() const;
@@ -414,6 +469,10 @@ class DeviceDescription {
   void set_runtime_version(const SemanticVersion& value) {
     runtime_version_ = value;
   }
+<<<<<<< HEAD
+=======
+  void set_dnn_version(const SemanticVersion& value) { dnn_version_ = value; }
+>>>>>>> upstream/master
   void set_compile_time_toolkit_version(const SemanticVersion& value) {
     compile_time_toolkit_version_ = value;
   }
@@ -520,6 +579,7 @@ class DeviceDescription {
   SemanticVersion driver_version_{0, 0, 0};
   SemanticVersion runtime_version_{0, 0, 0};
   SemanticVersion compile_time_toolkit_version_{0, 0, 0};
+  SemanticVersion dnn_version_{0, 0, 0};
 };
 
 // Returns whether the given thread_dim is acceptable given the limits described

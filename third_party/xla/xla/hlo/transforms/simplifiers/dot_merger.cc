@@ -564,8 +564,18 @@ absl::StatusOr<bool> MergeDots(HloComputation* comp, int64_t max_size_to_merge,
     }
   }
 
-  // Now it's finally safe to delete the old instructions from the graph.
-  for (HloInstruction* instr : dead_instrs) {
+  // Now it's finally safe to delete the old instructions from the graph. We
+  // need to sort by unique id again to make the removal order deterministic.
+  // Otherwise the users list of HloInstructions would be non-deterministic, as
+  // removal works by swapping with the last element of the vector and then
+  // popping the last element.
+  std::vector<HloInstruction*> sorted_dead_instrs(dead_instrs.begin(),
+                                                  dead_instrs.end());
+  absl::c_sort(sorted_dead_instrs,
+               [](const HloInstruction* a, const HloInstruction* b) {
+                 return a->unique_id() < b->unique_id();
+               });
+  for (HloInstruction* instr : sorted_dead_instrs) {
     TF_RETURN_IF_ERROR(comp->RemoveInstruction(instr));
   }
 

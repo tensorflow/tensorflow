@@ -16,11 +16,11 @@ limitations under the License.
 #ifndef XLA_BACKENDS_CPU_RUNTIME_ONEDNN_ONEDNN_INTEROP_H_
 #define XLA_BACKENDS_CPU_RUNTIME_ONEDNN_ONEDNN_INTEROP_H_
 
-#include "oneapi/dnnl/dnnl_graph.hpp"
 #include "absl/base/optimization.h"
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
+#include "oneapi/dnnl/dnnl_graph.hpp"
 #include "xla/tsl/platform/logging.h"
-#include "xla/util.h"
 
 namespace xla::cpu {
 
@@ -76,7 +76,8 @@ inline absl::Status OneDnnStatusToStatus(dnnl::graph::status status) {
     }
   };
 
-  return Internal("DNNL operation failed: %s", error_message(status));
+  return absl::InternalError(
+      absl::StrCat("DNNL operation failed: ", error_message(status)));
 }
 
 }  // namespace xla::cpu

@@ -1,6 +1,5 @@
+load("@rules_python//python:proto.bzl", "py_proto_library")
 load("//tensorflow:strict.default.bzl", "py_strict_library")
-
-# Placeholder: load py_proto_library
 load("//tensorflow:tensorflow.default.bzl", "cuda_py_strict_test", "tf_py_strict_test")
 load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library")
 load("//tensorflow/core/platform:distribute.bzl", "distribute_py_strict_test")

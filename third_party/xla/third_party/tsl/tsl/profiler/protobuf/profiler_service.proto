@@ -4,6 +4,7 @@ package tensorflow;
 
 import "tsl/profiler/protobuf/profiler_options.proto";
 import "tsl/profiler/protobuf/profiler_service_monitor_result.proto";
+import "tsl/profiler/protobuf/xplane.proto";
 
 // The ProfilerService service retrieves performance information about
 // the programs running on connected devices over a period of time.
@@ -29,7 +30,7 @@ message ToolRequestOptions {
   bool save_to_repo = 3;
 }
 
-// Next-ID: 9
+// Next-ID: 10
 message ProfileRequest {
   // In future, the caller will be able to customize when profiling starts and
   // stops. For now, it collects `duration_ms` milliseconds worth of data.
@@ -59,6 +60,8 @@ message ProfileRequest {
   // We use it as identifier in part of our output filename.
   string host_name = 7;
 
+  // If true, the response will contain the XSpace in the response.
+  bool emit_xspace = 9;
   // In future, the caller will indicate which TF session is being profiled, and
   // only data relating to that program will be returned. For now, we assume
   // all activity during the profiling period is relevant.
@@ -73,7 +76,7 @@ message ProfileToolData {
   bytes data = 2;
 }
 
-// Next-ID: 8
+// Next-ID: 9
 message ProfileResponse {
   // Data payload for each required tools.
   repeated ProfileToolData tool_data = 6;
@@ -81,6 +84,10 @@ message ProfileResponse {
   // When we write profiling data directly to repository directory, we need a
   // way to figure out whether the captured trace is empty.
   bool empty_trace = 7;
+
+  // The XSpace proto containing the raw profiling data (e.g. pre-analysis).
+  // This field is only populated if ProfileRequest.emit_xspace is true.
+  tensorflow.profiler.XSpace xspace = 8;
 
   reserved 1, 2, 3, 4, 5;
 }

@@ -754,7 +754,7 @@ absl::StatusOr<CudnnGraph> GetCudnnBlockScaledDotOperationGraph(
     const dnn::TensorDescriptor& lhs_scale,
     const dnn::TensorDescriptor& rhs_data,
     const dnn::TensorDescriptor& rhs_scale, dnn::DataType result_type,
-    int block_size);
+    int block_size, bool has_global_scale);
 
 }  // namespace gpu
 }  // namespace stream_executor

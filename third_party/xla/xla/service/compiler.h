@@ -37,7 +37,6 @@ limitations under the License.
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/hlo/ir/hlo_module_group.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/buffer_value.h"
@@ -84,7 +83,7 @@ class AotCompilationResult {
   }
 
   virtual absl::StatusOr<std::unique_ptr<Executable>> LoadExecutable(
-      Compiler* compiler, const se::StreamExecutor* executor) const&& {
+      Compiler* compiler, const se::StreamExecutor* executor) && {
     return Unimplemented("LoadExecutable unimplemented.");
   }
 
@@ -259,14 +258,14 @@ class Compiler {
   // TODO(b/68666782): Remove this method after adding support for multiple
   // modules to RunHloPasses and RunBackends.
   virtual absl::StatusOr<std::vector<std::unique_ptr<Executable>>> Compile(
-      std::unique_ptr<HloModuleGroup> module_group,
-      std::vector<std::vector<se::StreamExecutor*>> stream_exec,
+      std::unique_ptr<HloModule> hlo_module,
+      std::vector<se::StreamExecutor*> stream_exec,
       const CompileOptions& options) = 0;
   absl::StatusOr<std::vector<std::unique_ptr<Executable>>> Compile(
-      std::unique_ptr<HloModuleGroup> module_group,
-      std::vector<std::vector<se::StreamExecutor*>> stream_exec,
+      std::unique_ptr<HloModule> hlo_module,
+      std::vector<se::StreamExecutor*> stream_exec,
       se::DeviceMemoryAllocator* device_allocator) {
-    return Compile(std::move(module_group), stream_exec,
+    return Compile(std::move(hlo_module), stream_exec,
                    CompileOptions{device_allocator});
   }
 
@@ -289,16 +288,16 @@ class Compiler {
   virtual std::unique_ptr<tsl::protobuf::Message> ComputeDefaultBackendConfig(
       const HloInstruction& hlo, se::StreamExecutor* executor) const;
 
-  // Compiles the HLO module group for ahead-of-time execution.  This is
-  // intended for use in static compilation.
+  // Compiles the HLO module for ahead-of-time execution.  This is intended for
+  // use in static compilation.
   virtual absl::StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
-  CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
+  CompileAheadOfTime(std::unique_ptr<HloModule> module,
                      const AotCompilationOptions& options) = 0;
 
   // Similar to CompileAheadOfTime above but AotCompilationMetadata
   // has an argument that can be populated during compilation.
   virtual absl::StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
-  CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
+  CompileAheadOfTime(std::unique_ptr<HloModule> module,
                      const AotCompilationOptions& options,
                      std::unique_ptr<AotCompilationMetadata>* metadata);
 

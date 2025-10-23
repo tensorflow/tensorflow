@@ -238,7 +238,7 @@ absl::Status WrapTensorAsEvents(const DebugNodeKey& debug_node_key,
 // sets parallel_iterations attribute of all while_loops to 1 to prevent
 // the same node from between executed multiple times concurrently.
 string AppendTimestampToFilePath(const string& in, const uint64 timestamp) {
-  string out = strings::StrCat(in, "_", timestamp);
+  string out = absl::StrCat(in, "_", timestamp);
 
   uint64 i = 1;
   while (Env::Default()->FileExists(out).ok()) {
@@ -391,8 +391,8 @@ absl::Status DebugIO::PublishDebugMetadata(
       grpc_event.set_wall_time(event.wall_time());
       LogMessage* log_message_grpc = grpc_event.mutable_log_message();
       log_message_grpc->set_message(
-          strings::StrCat(json_metadata.substr(0, json_metadata.size() - 1),
-                          ",\"grpc_path\":\"", path, "\"}"));
+          absl::StrCat(json_metadata.substr(0, json_metadata.size() - 1),
+                       ",\"grpc_path\":\"", path, "\"}"));
 
       status.Update(
           DebugGrpcIO::SendEventProtoThroughGrpcStream(grpc_event, url, true));
@@ -402,9 +402,9 @@ absl::Status DebugIO::PublishDebugMetadata(
     } else if (absl::StartsWith(absl::AsciiStrToLower(url), kFileURLScheme)) {
       const string dump_root_dir = url.substr(strlen(kFileURLScheme));
       const string core_metadata_path = AppendTimestampToFilePath(
-          io::JoinPath(dump_root_dir,
-                       strings::StrCat(
-                           DebugNodeKey::kMetadataFilePrefix,
+          io::JoinPath(
+              dump_root_dir,
+              absl::StrCat(DebugNodeKey::kMetadataFilePrefix,
                            DebugIO::kCoreMetadataTag, "sessionrun",
                            strings::Printf("%.14lld", static_cast<long long>(
                                                           session_run_index)))),
@@ -472,7 +472,7 @@ absl::Status DebugIO::PublishDebugTensor(
       (*callback)(debug_node_key, tensor);
     } else {
       return absl::Status(absl::StatusCode::kUnavailable,
-                          strings::StrCat("Invalid debug target URL: ", url));
+                          absl::StrCat("Invalid debug target URL: ", url));
     }
   }
 
@@ -483,8 +483,7 @@ absl::Status DebugIO::PublishDebugTensor(
         "Publishing to ", num_failed_urls, " of ", debug_urls.size(),
         " debug target URLs failed, due to the following errors:");
     for (absl::Status& status : fail_statuses) {
-      error_message =
-          strings::StrCat(error_message, " ", status.message(), ";");
+      error_message = absl::StrCat(error_message, " ", status.message(), ";");
     }
 
     return absl::Status(absl::StatusCode::kInternal, error_message);
@@ -646,7 +645,7 @@ string DebugFileIO::GetDumpFilePathForNodeDumping(
     const uint64 wall_time_us, const int64_t step_id) {
   return AppendTimestampToFilePath(
       io::JoinPath(
-          dump_root_dir, kDumpSubDirName, strings::StrCat("step-", step_id),
+          dump_root_dir, kDumpSubDirName, absl::StrCat("step-", step_id),
           strings::StrCat(
               absl::StrReplaceAll(debug_node_key.io_of_node, {{"/", "-"}}), ":",
               debug_node_key.is_input ? "in" : "out", ":",
@@ -662,8 +661,8 @@ absl::Status DebugFileIO::DumpEventProtoToFile(const Event& event_proto,
   absl::Status s = RecursiveCreateDir(env, dir_name);
   if (!s.ok()) {
     return absl::Status(absl::StatusCode::kFailedPrecondition,
-                        strings::StrCat("Failed to create directory  ",
-                                        dir_name, ", due to: ", s.message()));
+                        absl::StrCat("Failed to create directory  ", dir_name,
+                                     ", due to: ", s.message()));
   }
 
   const string file_path = io::JoinPath(dir_name, file_name);
@@ -702,15 +701,14 @@ absl::Status DebugFileIO::RecursiveCreateDir(Env* env, const string& dir) {
     if (!s.ok()) {
       return absl::Status(
           absl::StatusCode::kFailedPrecondition,
-          strings::StrCat("Failed to create directory  ", parent_dir));
+          absl::StrCat("Failed to create directory  ", parent_dir));
     }
   } else if (env->FileExists(parent_dir).ok() &&
              !env->IsDirectory(parent_dir).ok()) {
     // The path exists, but it is a file.
-    return absl::Status(
-        absl::StatusCode::kFailedPrecondition,
-        strings::StrCat("Failed to create directory  ", parent_dir,
-                        " because the path exists as a file "));
+    return absl::Status(absl::StatusCode::kFailedPrecondition,
+                        absl::StrCat("Failed to create directory  ", parent_dir,
+                                     " because the path exists as a file "));
   }
 
   env->CreateDir(dir).IgnoreError();
@@ -721,7 +719,7 @@ absl::Status DebugFileIO::RecursiveCreateDir(Env* env, const string& dir) {
   } else {
     return absl::Status(
         absl::StatusCode::kAborted,
-        strings::StrCat("Failed to create directory  ", parent_dir));
+        absl::StrCat("Failed to create directory  ", parent_dir));
   }
 }
 
@@ -764,7 +762,7 @@ void DebugFileIO::resetDiskByteUsage() {
 #ifndef PLATFORM_WINDOWS
 DebugGrpcChannel::DebugGrpcChannel(const string& server_stream_addr)
     : server_stream_addr_(server_stream_addr),
-      url_(strings::StrCat(DebugIO::kGrpcURLScheme, server_stream_addr)) {}
+      url_(absl::StrCat(DebugIO::kGrpcURLScheme, server_stream_addr)) {}
 
 absl::Status DebugGrpcChannel::Connect(const int64_t timeout_micros) {
   ::grpc::ChannelArguments args;
@@ -877,8 +875,8 @@ absl::Status DebugGrpcIO::ReceiveEventReplyProtoThroughGrpcStream(
   if (debug_grpc_channel->ReadEventReply(event_reply)) {
     return absl::OkStatus();
   } else {
-    return errors::Cancelled(strings::StrCat(
-        "Reading EventReply from stream URL ", grpc_stream_url, " failed."));
+    return errors::Cancelled(absl::StrCat("Reading EventReply from stream URL ",
+                                          grpc_stream_url, " failed."));
   }
 }
 
@@ -915,8 +913,8 @@ absl::Status DebugGrpcIO::SendEventProtoThroughGrpcStream(
 
   bool write_ok = debug_grpc_channel->WriteEvent(event_proto);
   if (!write_ok) {
-    return errors::Cancelled(strings::StrCat("Write event to stream URL ",
-                                             grpc_stream_url, " failed."));
+    return errors::Cancelled(absl::StrCat("Write event to stream URL ",
+                                          grpc_stream_url, " failed."));
   }
 
   if (receive_reply) {

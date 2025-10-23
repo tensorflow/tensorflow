@@ -1247,16 +1247,29 @@ static std::optional<Value> GetAs1DValue(PatternRewriter& rewriter, Value value,
 }
 
 // Tries to get the given `bias` as a 1D tensor of `num_channels` elements.
+<<<<<<< HEAD
 // If `bias` is a `NoneType`, a 1D tensor of zeros is created.
+=======
+// If `bias` is a `NoneType`, a 1D tensor of zeros is created with the given
+// `fallback_element_type`.
+>>>>>>> upstream/master
 // Otherwise, it uses `GetAs1DValue` to handle scalar constants and other
 // broadcastable shapes.
 static std::optional<Value> GetBiasIn1D(PatternRewriter& rewriter, Value bias,
                                         int num_channels,
+<<<<<<< HEAD
                                         Type filter_element_type) {
   // If it's none, create a zero tensor with shape {num_channels}.
   if (mlir::isa<NoneType>(bias.getType())) {
     RankedTensorType type =
         RankedTensorType::get({num_channels}, filter_element_type);
+=======
+                                        Type fallback_element_type) {
+  // If it's none, create a zero tensor with shape {num_channels}.
+  if (mlir::isa<NoneType>(bias.getType())) {
+    RankedTensorType type =
+        RankedTensorType::get({num_channels}, fallback_element_type);
+>>>>>>> upstream/master
     auto attr = rewriter.getZeroAttr(type);
     return rewriter.create<arith::ConstantOp>(bias.getLoc(), type, attr);
   }
@@ -1294,6 +1307,7 @@ static RankedTensorType GetRankedTensorType(Value value) {
   return nullptr;
 }
 
+<<<<<<< HEAD
 // Gets the number of channels and filter element type for a FullyConnected op.
 // This is used to determine the shape of the bias tensor when fusing an Add op.
 // It first tries to get this information from the filter tensor. If the filter
@@ -1326,6 +1340,8 @@ static std::optional<std::pair<int, Type>> GetFcNumChannelsAndFilterType(
   return {{num_channels, filter_element_type}};
 }
 
+=======
+>>>>>>> upstream/master
 // Fuse Add with proceeding FullyConnected.
 // TODO(b/136285429): Move to tablegen when variadic is supported
 struct FuseFullyConnectedAndAdd : public OpRewritePattern<TFL::AddOp> {
@@ -1369,6 +1385,7 @@ struct FuseFullyConnectedAndAdd : public OpRewritePattern<TFL::AddOp> {
     ElementsAttr bias_value;
     if (fc_op.getFusedActivationFunction() != "NONE") return failure();
 
+<<<<<<< HEAD
     // Get the number of channels if possible.
     auto fc_info = GetFcNumChannelsAndFilterType(fc_op);
     if (!fc_info) {
@@ -1385,6 +1402,8 @@ struct FuseFullyConnectedAndAdd : public OpRewritePattern<TFL::AddOp> {
       return failure();
     }
 
+=======
+>>>>>>> upstream/master
     auto fc_output_type =
         mlir::dyn_cast<RankedTensorType>(fc_op.getOutput()[0].getType());
     auto add_output_type =
@@ -1398,6 +1417,34 @@ struct FuseFullyConnectedAndAdd : public OpRewritePattern<TFL::AddOp> {
       return failure();
     }
 
+<<<<<<< HEAD
+=======
+    // Get the number of output channels.
+    if (fc_output_type.getShape().empty()) {
+      return failure();
+    }
+    const int64_t num_channels = fc_output_type.getShape().back();
+    if (::mlir::ShapedType::isDynamic(num_channels)) {
+      return failure();
+    }
+
+    auto bias_1d = GetBiasIn1D(rewriter, bias, num_channels,
+                               add_output_type.getElementType());
+    // Get the added value as a 1D tensor.
+    auto add_rhs_1d = GetAs1DValue(rewriter, add_rhs, num_channels);
+
+    if (!bias_1d.has_value() || !add_rhs_1d.has_value()) {
+      return failure();
+    }
+    // Sanity check that bias and add_rhs can be broadcasted together (shapes
+    // should be broadcastable and element types must match).
+    if (!IsBroadcastableElementsAttrAndType(bias_1d->getType(),
+                                            add_rhs_1d->getType())) {
+      return rewriter.notifyMatchFailure(
+          add_op, "Bias and add_rhs are not broadcastable");
+    }
+
+>>>>>>> upstream/master
     auto new_bias =
         rewriter
             .create<AddOp>(add_op.getLoc(), bias_1d.value(), add_rhs_1d.value(),
@@ -1476,6 +1523,21 @@ struct FuseAddAndFullyConnected
       if (!IsF32Value(add_op.getRhs()) || !IsF32Value(fc_op.getFilter()) ||
           !IsF32Value(old_bias))
         return failure();
+    }
+
+    // Checks the constant requirements. Only apply this optimization if rhs,
+    // filter, and bias are constant foldable. Otherwise, the generated FC bias
+    // operand will not be folded to a single vector.
+    if (!matchPattern(add_op.getRhs(), m_Constant())) {
+      return failure();
+    }
+
+    if (!matchPattern(fc_op.getFilter(), m_Constant())) {
+      return failure();
+    }
+
+    if (!matchPattern(old_bias, m_Constant())) {
+      return failure();
     }
 
     auto new_bias = rewriter.create<TFL::FullyConnectedOp>(

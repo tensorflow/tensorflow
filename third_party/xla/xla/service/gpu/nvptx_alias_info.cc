@@ -18,6 +18,7 @@ limitations under the License.
 #include <optional>
 #include <utility>
 
+#include "absl/strings/match.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/gpu/alias_info.h"

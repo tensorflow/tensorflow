@@ -256,6 +256,7 @@ absl::StatusOr<cuda::Assembly> CompileAndLinkUsingLibNvJitLink(
   }
 
   return cuda::Assembly{std::move(cubin), maybe_compilation_log};
+<<<<<<< HEAD
 }
 
 absl::StatusOr<int> GetLatestPtxIsaVersionForLibNvJitLink() {
@@ -301,6 +302,56 @@ absl::StatusOr<int> GetLatestPtxIsaVersionForLibNvJitLink() {
   return GetLatestPtxIsaVersionFromUnsupportedVersionErrorLog(error_log);
 }
 
+=======
+}
+
+absl::StatusOr<int> GetLatestPtxIsaVersionForLibNvJitLink() {
+  absl::string_view ptx_contents = ".version 99.99";
+  // The call to `nvJitLinkCreate` below requires an arch to be specified in
+  // order to succeed.
+  std::vector<const char*> cli_args_ptrs{"-arch=sm_90a"};
+  nvJitLinkHandle link_handle = nullptr;
+  nvJitLinkResult create_result =
+      nvJitLinkCreate(&link_handle, /*num_args=*/cli_args_ptrs.size(),
+                      /*args=*/cli_args_ptrs.data());
+
+  absl::Cleanup link_handle_cleaner = [&link_handle] {
+    if (link_handle != nullptr) {
+      CHECK_EQ(nvJitLinkDestroy(&link_handle), NVJITLINK_SUCCESS);
+    }
+  };
+
+  if (create_result != NVJITLINK_SUCCESS) {
+    TF_ASSIGN_OR_RETURN(std::string error_log,
+                        nvJitLinkGetErrorLog(link_handle));
+
+    VLOG(3) << "libnvjitlink error log output: " << error_log;
+
+    return ToStatus(create_result, error_log);
+  }
+
+  std::optional<absl::LeakCheckDisabler> disabler;
+  absl::StatusOr<NvJitLinkVersion> version = GetNvJitLinkVersion();
+  if (!version.ok() || std::get<0>(*version) < 13) {
+    // libnvjitlink prior to CUDA 13 has a memory leak when calling
+    // nvJitLinkAddData when the input PTX is invalid.
+    disabler.emplace();
+  }
+
+  nvJitLinkResult result =
+      nvJitLinkAddData(link_handle, NVJITLINK_INPUT_PTX, ptx_contents.data(),
+                       ptx_contents.size(), nullptr);
+
+  if (result == NVJITLINK_SUCCESS) {
+    return absl::InternalError(
+        "libnvjitlink compilation succeeded where it was expected to fail");
+  }
+
+  TF_ASSIGN_OR_RETURN(std::string error_log, nvJitLinkGetErrorLog(link_handle));
+  return GetLatestPtxIsaVersionFromUnsupportedVersionErrorLog(error_log);
+}
+
+>>>>>>> upstream/master
 #undef RETURN_IF_NVJITLINK_ERROR
 
 }  // namespace stream_executor

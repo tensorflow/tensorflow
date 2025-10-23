@@ -65,7 +65,7 @@ class BackendConfigWrapper {
   explicit BackendConfigWrapper(const tsl::protobuf::Message& proto)
       : proto_(CloneBackendConfigProto(&proto)) {}
   BackendConfigWrapper(const BackendConfigWrapper& other) {
-    absl::MutexLock other_lock{&other.mutex_};
+    absl::MutexLock other_lock{other.mutex_};
     proto_ = CloneBackendConfigProto(other.proto_.get());
     raw_string_ = other.raw_string_;
   }
@@ -87,13 +87,13 @@ class BackendConfigWrapper {
   //
   //          Prefer to use the safer (but potentially slower) GetProto().
   const std::string& GetRawString() const {
-    absl::WriterMutexLock lock{&mutex_};
+    absl::WriterMutexLock lock{mutex_};
     return GetRawStringWithoutMutex();
   }
   absl::Status GetProto(tsl::protobuf::Message* output_proto) const;
 
   bool empty() const {
-    absl::MutexLock lock{&mutex_};
+    absl::MutexLock lock{mutex_};
     return proto_ == nullptr && raw_string_.empty();
   }
 

@@ -1,9 +1,10 @@
 load("//xla:xla.default.bzl", "xla_cc_test", "xla_internal")
 load("//xla/service/cpu:build_defs.bzl", "runtime_copts")
-load("//xla/tsl:tsl.bzl", "if_google", "if_windows", "internal_visibility")
+load("//xla/tsl:tsl.bzl", "if_windows", "internal_visibility")
 load("//xla/tsl:tsl.default.bzl", "filegroup")
 load("//xla/tsl/platform:build_config.bzl", "tf_proto_library")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
+load("//xla/tsl/xnnpack:build_defs.bzl", "if_ynnpack")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -151,7 +152,8 @@ tf_proto_library(
         "//xla/service:buffer_assignment_proto",
         "//xla:xla_data_proto",
         "//xla/service:hlo_proto",
-    ] + if_google(["@com_google_protobuf//:any"]),
+        "@com_google_protobuf//:any_proto",
+    ],
     visibility = ["//visibility:public"],
 )
 
@@ -159,6 +161,7 @@ cc_library(
     name = "thunk",
     srcs = ["thunk.cc"],
     hdrs = ["thunk.h"],
+    defines = if_ynnpack(["XLA_YNNPACK"]),
     deps = [
         ":buffer_allocations",
         ":function_library",
@@ -187,7 +190,10 @@ cc_library(
         "@com_google_absl//absl/strings:string_view",
         "@local_tsl//tsl/profiler/lib:traceme",
         "@local_tsl//tsl/profiler/lib:traceme_encode",
-    ],
+    ] + if_ynnpack([
+        "//xla/backends/cpu/runtime/ynnpack:ynn_interop",
+        "//xla/backends/cpu/runtime/ynnpack:ynn_threadpool",
+    ]),
 )
 
 cc_library(
@@ -345,6 +351,7 @@ cc_library(
     deps = [
         ":collective_thunk",
         ":thunk",
+        "//xla:future",
         "//xla:shape_util",
         "//xla/backends/cpu/collectives:cpu_collectives",
         "//xla/core/collectives:communicator",
@@ -467,6 +474,7 @@ cc_library(
     deps = [
         ":collective_thunk",
         ":thunk",
+        "//xla:future",
         "//xla:shape_util",
         "//xla:util",
         "//xla/backends/cpu/collectives:cpu_collectives",
@@ -494,6 +502,7 @@ cc_library(
     deps = [
         ":collective_thunk",
         ":thunk",
+        "//xla:future",
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
         "//xla/backends/cpu/collectives:cpu_collectives",
@@ -519,6 +528,7 @@ cc_library(
     deps = [
         ":collective_thunk",
         ":thunk",
+        "//xla:future",
         "//xla:shape_util",
         "//xla:util",
         "//xla:xla_data_proto_cc",
@@ -545,6 +555,7 @@ cc_library(
     deps = [
         ":collective_thunk",
         ":thunk",
+        "//xla:future",
         "//xla:shape_util",
         "//xla:status_macros",
         "//xla:xla_data_proto_cc",
@@ -575,6 +586,7 @@ cc_library(
     hdrs = ["collective_thunk.h"],
     deps = [
         ":thunk",
+        "//xla:future",
         "//xla:shape_util",
         "//xla:status_macros",
         "//xla:util",
@@ -584,6 +596,7 @@ cc_library(
         "//xla/backends/cpu/collectives:cpu_collectives",
         "//xla/core/collectives:communicator",
         "//xla/core/collectives:rank_id",
+        "//xla/hlo/ir:collective_op_group_mode",
         "//xla/runtime:buffer_use",
         "//xla/runtime:resource_use",
         "//xla/service:buffer_assignment",
@@ -992,7 +1005,6 @@ cc_library(
         "//xla/stream_executor:device_memory",
         "//xla/tsl/concurrency:async_value",
         "//xla/tsl/platform:statusor",
-        "@com_google_absl//absl/base:config",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/memory",
@@ -1119,7 +1131,6 @@ cc_library(
         "//xla/runtime:buffer_use",
         "//xla/service:buffer_assignment",
         "//xla/stream_executor:device_memory",
-        "//xla/stream_executor:stream_executor_h",
         "//xla/tsl/concurrency:async_value",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/container:inlined_vector",
@@ -1213,7 +1224,6 @@ cc_library(
     hdrs = ["work_queue.h"],
     deps = [
         "//xla/tsl/concurrency:async_value",
-        "//xla/tsl/lib/math:math_util",
         "//xla/tsl/platform:logging",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:fixed_array",
@@ -1241,6 +1251,7 @@ xla_cc_test(
 xla_cc_test(
     name = "thunk_sequence_serdes_test",
     srcs = ["thunk_sequence_serdes_test.cc"],
+    local_defines = if_ynnpack(["XLA_YNNPACK"]),
     deps = [
         ":all_gather_thunk",
         ":all_reduce_thunk",
@@ -1256,7 +1267,6 @@ xla_cc_test(
         ":dot_thunk",
         ":fft_thunk",
         ":infeed_thunk",
-        ":kernel",
         ":kernel_thunk",
         ":logical_id_thunk",
         ":outfeed_thunk",
@@ -1288,7 +1298,6 @@ xla_cc_test(
         "//xla/service:hlo_proto_cc",
         "//xla/stream_executor:launch_dim",
         "//xla/tsl/platform:errors",
-        "//xla/tsl/platform:status",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -1300,7 +1309,9 @@ xla_cc_test(
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:casts",
-    ],
+    ] + if_ynnpack([
+        "//xla/backends/cpu/runtime/ynnpack:ynn_fusion_thunk",
+    ]),
 )
 
 cc_library(

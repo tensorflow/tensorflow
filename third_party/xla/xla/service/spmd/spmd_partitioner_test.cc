@@ -32,14 +32,15 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/match.h"
 #include "absl/strings/string_view.h"
-#include "xla/hlo/ir/collective_device_list.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/hlo/ir/replica_group.h"
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/utils/hlo_matchers.h"
@@ -83,6 +84,7 @@ class SpmdPartitioningTest
  public:
   absl::StatusOr<std::unique_ptr<HloModule>> PartitionComputation(
       absl::string_view hlo_module, int64_t num_devices,
+<<<<<<< HEAD
       bool use_all_gather = false, bool conv_halo_exchange_always_on_lhs = true,
       bool choose_faster_windowed_einsum = false,
       bool unroll_windowed_einsum = false,
@@ -100,24 +102,18 @@ class SpmdPartitioningTest
     // different paths of the implementation.
     SpmdPartitionerOptions options;
     options.conv_halo_exchange_always_on_lhs = conv_halo_exchange_always_on_lhs;
+=======
+      SpmdPartitionerOptions options = SpmdPartitionerOptions(),
+      bool use_all_gather = true) {
+>>>>>>> upstream/master
     options.allow_module_signature_change = true;
-    options.choose_faster_windowed_einsum_over_mem =
-        choose_faster_windowed_einsum;
-    options.unroll_windowed_einsum = unroll_windowed_einsum;
-    options.bidirectional_windowed_einsum = bidirectional_windowed_einsum;
-    options.partial_windowed_einsum = true;
-    options.total_bytes_windowed_einsum_threshold =
-        total_bytes_windowed_einsum_threshold;
-    if (threshold_for_windowed_einsum_mib >= 0) {
-      options.threshold_for_windowed_einsum_mib =
-          threshold_for_windowed_einsum_mib;
-    }
-    options.preferred_gather_partition_methods = gather_methods;
-    options.preferred_scatter_partition_methods = scatter_methods;
     auto collective_ops_creator =
         GetDefaultCollectiveOpsCreator(num_devices, /*num_replicas=*/1);
+<<<<<<< HEAD
     // Do not use all-gather for pattern-matching purpose, as the partitioner
     // might create reshape/transposes around it.
+=======
+>>>>>>> upstream/master
     if (!use_all_gather) {
       collective_ops_creator.create_cross_partition_all_gather = nullptr;
     }
@@ -288,18 +284,18 @@ TEST_P(SpmdPartitioningTest, PartitionCall) {
 HloModule jit_f
 
 g {
-  Arg_0.6 = s32[8,2]{1,0} parameter(0), sharding={devices=[2,2]<=[4]}
-  constant.0 = s32[] constant(2), sharding={replicated}
-  broadcast.0 = s32[8,2]{1,0} broadcast(constant.0), dimensions={}, sharding={devices=[2,2]<=[4]}
-  ROOT multiply.9 = s32[8,2]{1,0} multiply(Arg_0.6, broadcast.0), sharding={devices=[2,2]<=[4]}
+  param = s32[8,2]{1,0} parameter(0), sharding={devices=[2,2]<=[4]}
+  constant.0 = s32[] constant(0), sharding={replicated}
+  broadcast = s32[8,2]{1,0} broadcast(constant.0), dimensions={}, sharding={devices=[2,2]<=[4]}
+  ROOT multiply = s32[8,2]{1,0} multiply(param, broadcast), sharding={devices=[2,2]<=[4]}
 }
 
 ENTRY main {
-  Arg_0.1 = s32[8,2]{1,0} parameter(0), sharding={devices=[2,2]<=[4]}
-  constant.1 = s32[] constant(3), sharding={replicated}
-  broadcast.1 = s32[8,2]{1,0} broadcast(constant.1), dimensions={}, sharding={devices=[2,2]<=[4]}
-  multiply.4 = s32[8,2]{1,0} multiply(Arg_0.1, broadcast.1), sharding={devices=[2,2]<=[4]}
-  ROOT call = s32[8,2]{1,0} call(multiply.4), to_apply=g, sharding={devices=[2,2]<=[4]}, backend_config={"flag_configs":[],"scoped_memory_configs":[],"compute_type":"COMPUTE_TYPE_DEFAULT","device_type":"DEVICE_TYPE_HOST","used_scoped_memory_configs":[]}
+  input = s32[8,2]{1,0} parameter(0), sharding={devices=[2,2]<=[4]}
+  constant.3 = s32[] constant(3), sharding={replicated}
+  broadcast = s32[8,2]{1,0} broadcast(constant.3), dimensions={}, sharding={devices=[2,2]<=[4]}
+  multiply = s32[8,2]{1,0} multiply(input, broadcast), sharding={devices=[2,2]<=[4]}
+  ROOT call = s32[8,2]{1,0} call(multiply), to_apply=g, sharding={devices=[2,2]<=[4]}, backend_config={"flag_configs":[],"scoped_memory_configs":[],"compute_type":"COMPUTE_TYPE_DEFAULT","device_type":"DEVICE_TYPE_HOST","used_scoped_memory_configs":[]}
 })";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           PartitionComputation(hlo_string, /*num_devices=*/4));
@@ -313,6 +309,211 @@ ENTRY main {
                                     op::Shape("s32[4,1]")));
 }
 
+TEST_P(SpmdPartitioningTest, PartitionCallMultipleCallsites) {
+  absl::string_view hlo_string = R"(
+HloModule jit_f
+
+g {
+  param = s32[8,2]{1,0} parameter(0), sharding={devices=[2,2]<=[4]}
+  constant.0 = s32[] constant(0), sharding={replicated}
+  broadcast = s32[8,2]{1,0} broadcast(constant.0), dimensions={}, sharding={devices=[2,2]<=[4]}
+  ROOT multiply = s32[8,2]{1,0} multiply(param, broadcast), sharding={devices=[2,2]<=[4]}
+}
+
+ENTRY main {
+  input = s32[8,2]{1,0} parameter(0), sharding={devices=[2,2]<=[4]}
+  constant.3 = s32[] constant(3), sharding={replicated}
+  broadcast = s32[8,2]{1,0} broadcast(constant.3), dimensions={}, sharding={devices=[2,2]<=[4]}
+  multiply = s32[8,2]{1,0} multiply(input, broadcast), sharding={devices=[2,2]<=[4]}
+  call.0 = s32[8,2]{1,0} call(multiply), to_apply=g, sharding={devices=[2,2]<=[4]}
+  add = s32[8,2]{1,0} add(input, broadcast), sharding={devices=[2,2]<=[4]}
+  call.1 = s32[8,2]{1,0} call(add), to_apply=g, sharding={devices=[2,2]<=[4]}
+  ROOT root = s32[8,2]{1,0} add(call.0, call.1), sharding={devices=[2,2]<=[4]}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/4));
+  VLOG(1) << module->ToString();
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root,
+              AllOf(op::Add(op::Call(), op::Call()), op::Shape("s32[4,1]")));
+  const HloInstruction* call0 = root->operand(0);
+  const HloInstruction* call1 = root->operand(1);
+  EXPECT_EQ(call0->to_apply(), call1->to_apply());
+  const HloInstruction* call_comp_root = call0->to_apply()->root_instruction();
+  EXPECT_THAT(call_comp_root, AllOf(op::Multiply(op::Parameter(0),
+                                                 op::Broadcast(op::Constant())),
+                                    op::Shape("s32[4,1]")));
+}
+
+TEST_P(SpmdPartitioningTest, PartitionCallMultipleMismatchedCallsites) {
+  absl::string_view hlo_string = R"(
+HloModule jit_f
+
+g {
+  param = s32[8,2]{1,0} parameter(0), sharding={devices=[2,2]<=[4]}
+  constant.0 = s32[] constant(0), sharding={replicated}
+  broadcast = s32[8,2]{1,0} broadcast(constant.0), dimensions={}, sharding={devices=[2,2]<=[4]}
+  ROOT multiply = s32[8,2]{1,0} multiply(param, broadcast), sharding={devices=[2,2]<=[4]}
+}
+
+ENTRY main {
+  input0 = s32[8,2]{1,0} parameter(0), sharding={devices=[2,2]<=[4]}
+  input1 = s32[8,2]{1,0} parameter(1), sharding={devices=[4,1]<=[4]}
+  multiply = s32[8,2]{1,0} multiply(input0, input0), sharding={devices=[2,2]<=[4]}
+  call.0 = s32[8,2]{1,0} call(multiply), to_apply=g, sharding={devices=[2,2]<=[4]}
+  add = s32[8,2]{1,0} add(input1, input1), sharding={devices=[4,1]<=[4]}
+  call.1 = s32[8,2]{1,0} call(add), to_apply=g, sharding={devices=[2,2]<=[4]}
+  ROOT root = s32[8,2]{1,0} add(call.0, call.1), sharding={devices=[2,2]<=[4]}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/4));
+  VLOG(1) << module->ToString();
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root,
+              AllOf(op::Add(op::Call(), op::Call()), op::Shape("s32[4,1]")));
+  const HloInstruction* call0 = root->operand(0);
+  const HloInstruction* call1 = root->operand(1);
+  EXPECT_NE(call0->to_apply(), call1->to_apply());
+  EXPECT_THAT(call0->operand(0),
+              AllOf(op::Multiply(op::Parameter(0), op::Parameter(0)),
+                    op::Shape("s32[4,1]")));
+  EXPECT_THAT(call1->operand(0),
+              AllOf(op::Add(op::Parameter(1), op::Parameter(1)),
+                    op::Shape("s32[2,2]")));
+  const HloInstruction* call0_comp_root = call0->to_apply()->root_instruction();
+  EXPECT_THAT(
+      call0_comp_root,
+      AllOf(op::Multiply(op::Parameter(0), op::Broadcast(op::Constant())),
+            op::Shape("s32[4,1]")));
+  const HloInstruction* call1_comp_root = call1->to_apply()->root_instruction();
+  EXPECT_THAT(call1_comp_root,
+              AllOf(op::Multiply(op::Reshape(), op::Broadcast(op::Constant())),
+                    op::Shape("s32[4,1]")));
+  EXPECT_EQ(module->computation_count(), 3);
+}
+
+TEST_P(SpmdPartitioningTest, PartitionCallMultipleMatchedCallsites) {
+  absl::string_view hlo_string = R"(
+HloModule jit_f
+
+g {
+  param = s32[8,2]{1,0} parameter(0), sharding={devices=[2,2]<=[4]}
+  constant.0 = s32[] constant(0), sharding={replicated}
+  broadcast = s32[8,2]{1,0} broadcast(constant.0), dimensions={}, sharding={devices=[2,2]<=[4]}
+  ROOT multiply = s32[8,2]{1,0} multiply(param, broadcast), sharding={devices=[2,2]<=[4]}
+}
+
+ENTRY main {
+  input0 = s32[8,2]{1,0} parameter(0), sharding={devices=[2,2]<=[4]}
+  input1 = s32[8,2]{1,0} parameter(1), sharding={devices=[2,2]<=[4]}
+  multiply = s32[8,2]{1,0} multiply(input0, input0), sharding={devices=[2,2]<=[4]}
+  call.0 = s32[8,2]{1,0} call(multiply), to_apply=g, sharding={devices=[2,2]<=[4]}
+  add = s32[8,2]{1,0} add(input1, input1), sharding={devices=[2,2]<=[4]}
+  call.1 = s32[8,2]{1,0} call(add), to_apply=g, sharding={devices=[2,2]<=[4]}
+  ROOT root = s32[8,2]{1,0} add(call.0, call.1), sharding={devices=[2,2]<=[4]}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/4));
+  VLOG(1) << module->ToString();
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root,
+              AllOf(op::Add(op::Call(), op::Call()), op::Shape("s32[4,1]")));
+  const HloInstruction* call0 = root->operand(0);
+  const HloInstruction* call1 = root->operand(1);
+  EXPECT_EQ(call0->to_apply(), call1->to_apply());
+  EXPECT_THAT(call0->operand(0),
+              AllOf(op::Multiply(op::Parameter(0), op::Parameter(0)),
+                    op::Shape("s32[4,1]")));
+  EXPECT_THAT(call1->operand(0),
+              AllOf(op::Add(op::Parameter(1), op::Parameter(1)),
+                    op::Shape("s32[4,1]")));
+  const HloInstruction* call0_comp_root = call0->to_apply()->root_instruction();
+  EXPECT_THAT(
+      call0_comp_root,
+      AllOf(op::Multiply(op::Parameter(0), op::Broadcast(op::Constant())),
+            op::Shape("s32[4,1]")));
+  EXPECT_EQ(module->computation_count(), 2);
+}
+
+TEST_P(SpmdPartitioningTest, PartitionCallMultipleCallsitesMatchedByReshard) {
+  absl::string_view hlo_string = R"(
+HloModule jit_f
+
+g {
+  param = s32[8,2]{1,0} parameter(0), sharding={devices=[2,2]<=[4]}
+  constant.0 = s32[] constant(0), sharding={replicated}
+  broadcast = s32[8,2]{1,0} broadcast(constant.0), dimensions={}, sharding={devices=[2,2]<=[4]}
+  ROOT multiply = s32[8,2]{1,0} multiply(param, broadcast), sharding={devices=[2,2]<=[4]}
+}
+
+ENTRY main {
+  input0 = s32[8,2]{1,0} parameter(0), sharding={devices=[2,2]<=[4]}
+  input1 = s32[8,2]{1,0} parameter(1), sharding={devices=[4,1]<=[4]}
+  multiply = s32[8,2]{1,0} multiply(input0, input0), sharding={devices=[2,2]<=[4]}
+  call.0 = s32[8,2]{1,0} call(multiply), to_apply=g, sharding={devices=[2,2]<=[4]}
+  add = s32[8,2]{1,0} add(input1, input1), sharding={devices=[4,1]<=[4]}
+  copy.1 = s32[8,2]{1,0} copy(add), sharding={devices=[2,2]<=[4]}
+  call.1 = s32[8,2]{1,0} call(copy.1), to_apply=g, sharding={devices=[2,2]<=[4]}
+  ROOT root = s32[8,2]{1,0} add(call.0, call.1), sharding={devices=[2,2]<=[4]}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/4));
+  VLOG(1) << module->ToString();
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root,
+              AllOf(op::Add(op::Call(), op::Call()), op::Shape("s32[4,1]")));
+  const HloInstruction* call0 = root->operand(0);
+  const HloInstruction* call1 = root->operand(1);
+  EXPECT_EQ(call0->to_apply(), call1->to_apply());
+  EXPECT_THAT(call0->operand(0),
+              AllOf(op::Multiply(op::Parameter(0), op::Parameter(0)),
+                    op::Shape("s32[4,1]")));
+  EXPECT_THAT(call1->operand(0),
+              AllOf(op::Copy(op::Reshape()), op::Shape("s32[4,1]")));
+  const HloInstruction* call0_comp_root = call0->to_apply()->root_instruction();
+  EXPECT_THAT(
+      call0_comp_root,
+      AllOf(op::Multiply(op::Parameter(0), op::Broadcast(op::Constant())),
+            op::Shape("s32[4,1]")));
+  EXPECT_EQ(module->computation_count(), 2);
+}
+
+TEST_P(SpmdPartitioningTest, PartitionConditionalMismatchedBranches) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+branch_ceil {
+  param = f32[8,2] parameter(0), sharding={devices=[2,2]<=[4]}
+  ROOT tgte1 = f32[8,2] ceil(param), sharding={devices=[2,2]<=[4]}
+}
+
+branch_floor {
+  param = f32[8,2] parameter(0), sharding={devices=[2,2]<=[4]}
+  ROOT tgte1 = f32[8,2] floor(param), sharding={devices=[2,2]<=[4]}
+}
+
+ENTRY entry {
+  p0 = f32[8,2] parameter(0), sharding={devices=[2,2]<=[4]}
+  p1 = f32[8,2] parameter(1), sharding={devices=[4,1]<=[4]}
+  b0 = s32[] parameter(2), sharding={replicated}
+  ROOT conditional = f32[8,2] conditional(b0, p0, p1, p0, p0),
+    branch_computations={branch_ceil, branch_floor, branch_ceil, branch_floor},
+    sharding={devices=[2,2]<=[4]}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/4));
+  VLOG(1) << module->ToString();
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, AllOf(op::Conditional(op::Parameter(2), op::Parameter(0),
+                                          op::Parameter(1), op::Parameter(0),
+                                          op::Parameter(0)),
+                          op::Shape("f32[4,1]")));
+
+  EXPECT_EQ(root->branch_computation(0), root->branch_computation(2));
+  EXPECT_NE(root->branch_computation(1), root->branch_computation(3));
+}
+
 TEST_P(SpmdPartitioningTest, TiledToReplicated) {
   absl::string_view hlo_string = R"(
 HloModule module
@@ -324,15 +525,11 @@ ENTRY entry {
 })";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           PartitionComputation(hlo_string, /*num_devices=*/2));
-  HloInstruction* root = module->entry_computation()->root_instruction();
-  EXPECT_THAT(
-      root,
-      op::Copy(op::AllReduce(AllOf(
-          op::DynamicUpdateSlice(
-              op::Broadcast(), AllOf(op::Constant(), op::Shape("s32[1,3]")),
-              op::Reshape(op::DynamicSlice(op::Constant(), op::PartitionId())),
-              op::Constant()),
-          op::Shape("s32[2,3]")))));
+  auto sharded_constant = AllOf(op::Constant(), op::Shape("s32[1,3]"));
+  auto replicated_constant =
+      AllOf(op::AllGather(op::Constant()), op::Shape("s32[2,3]"));
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::Copy(replicated_constant));
 }
 
 TEST_P(SpmdPartitioningTest,
@@ -353,23 +550,15 @@ ENTRY entry {
                           PartitionComputation(hlo_string, /*num_devices=*/4));
   VLOG(1) << module->ToString();
 
-  // Verify all-reduce instruction is generated.
-  auto all_reduce_instruction =
-      std::find_if(module->entry_computation()->instructions().begin(),
-                   module->entry_computation()->instructions().end(),
-                   HloPredicateIsOp<HloOpcode::kAllReduce>);
-  EXPECT_NE(all_reduce_instruction,
-            module->entry_computation()->instructions().end());
+  // Verify all-gather instruction is generated.
+  HloInstruction* all_gather =
+      FindInstruction(module.get(), HloOpcode::kAllGather);
+  EXPECT_NE(all_gather, nullptr);
 
-  // Verify all-reduce instruction contains ReplicaGroupV2.
-  EXPECT_TRUE((*all_reduce_instruction)
-                  ->device_list()
-                  .iota_replica_group_list()
-                  .has_value());
-  IotaReplicaGroupList list = (*all_reduce_instruction)
-                                  ->device_list()
-                                  .iota_replica_group_list()
-                                  .value();
+  // Verify all-gather instruction contains ReplicaGroupV2.
+  EXPECT_TRUE(all_gather->device_list().iota_replica_group_list().has_value());
+  IotaReplicaGroupList list =
+      all_gather->device_list().iota_replica_group_list().value();
   EXPECT_EQ(list.num_replica_groups(), 1);
   EXPECT_EQ(list.num_devices_per_group(), 4);
   EXPECT_THAT(list.reshape_dims(), ::testing::ElementsAre(4));
@@ -387,15 +576,11 @@ ENTRY entry {
 })";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           PartitionComputation(hlo_string, /*num_devices=*/2));
+  auto sharded_constant = AllOf(op::Constant(), op::Shape("s32[1,3]"));
+  auto replicated_constant =
+      AllOf(op::AllGather(op::Constant()), op::Shape("s32[2,3]"));
   HloInstruction* root = module->entry_computation()->root_instruction();
-  EXPECT_THAT(
-      root,
-      op::Copy(op::Copy(op::AllReduce(AllOf(
-          op::DynamicUpdateSlice(
-              op::Broadcast(), AllOf(op::Constant(), op::Shape("s32[1,3]")),
-              op::Reshape(op::DynamicSlice(op::Constant(), op::PartitionId())),
-              op::Constant()),
-          op::Shape("s32[2,3]"))))));
+  EXPECT_THAT(root, op::Copy(op::Copy(replicated_constant)));
 }
 
 TEST_P(SpmdPartitioningTest, TiledToTiledEven) {
@@ -584,13 +769,8 @@ ENTRY entry {
                           PartitionComputation(hlo_string, /*num_devices=*/2));
   HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(
-      root,
-      op::Copy(op::AllReduce(op::DynamicUpdateSlice(
-          op::Broadcast(),
-          op::GetTupleElement(
-              AllOf(op::Infeed(), op::Shape("(f32[4,2]{1,0}, token[])"))),
-          op::Reshape(op::DynamicSlice(op::Constant(), op::PartitionId())),
-          op::Constant()))));
+      root, op::Copy(op::AllGather(op::GetTupleElement(
+                AllOf(op::Infeed(), op::Shape("(f32[4,2]{1,0}, token[])"))))));
 }
 
 TEST_P(SpmdPartitioningTest, UnevenTiledInfeed) {
@@ -913,10 +1093,7 @@ ENTRY entry {
                              op::Constant(), op::Constant(), op::Constant())),
                          op::Shape("f32[16,3,6,16,32]"));
   auto resharded_rhs =
-      AllOf(op::Shape("f32[16,6,6,16,32]"),
-            op::AllReduce(op::DynamicUpdateSlice(
-                op::Broadcast(), rhs, op::Constant(), op::Reshape(),
-                op::Constant(), op::Constant(), op::Constant())));
+      AllOf(op::Shape("f32[16,6,6,16,32]"), op::AllGather(rhs));
 
   auto left_halo = AllOf(op::CollectivePermute(op::Slice(lhs)),
                          op::Shape("f32[16,2,12,24,32]"));
@@ -2025,11 +2202,17 @@ ENTRY entry {
     window={size=28x28 pad=1_1x1_1}, dim_labels=f01b_i01o->01bf, sharding={replicated}
 })";
 
+  SpmdPartitionerOptions options;
+  options.conv_halo_exchange_always_on_lhs = false;
   TF_ASSERT_OK_AND_ASSIGN(
       auto module,
+<<<<<<< HEAD
       PartitionComputation(hlo_string, /*num_devices=*/2,
                            /*use_all_gather=*/false,
                            /*conv_halo_exchange_always_on_lhs=*/false));
+=======
+      PartitionComputation(hlo_string, /*num_devices=*/2, options));
+>>>>>>> upstream/master
   VLOG(1) << module->ToString();
 
   const auto root = module->entry_computation()->root_instruction();
@@ -2065,12 +2248,17 @@ ENTRY entry {
   ROOT %conv = f32[7,7,3,64] convolution(%lhs.copy, %rhs.copy),
     window={size=112x112 pad=3_2x3_2 rhs_dilate=2x2}, dim_labels=f01b_i01o->01bf, sharding={replicated}
 })";
-
+  SpmdPartitionerOptions options;
+  options.conv_halo_exchange_always_on_lhs = false;
   TF_ASSERT_OK_AND_ASSIGN(
       auto module,
+<<<<<<< HEAD
       PartitionComputation(hlo_string, /*num_devices=*/2,
                            /*use_all_gather=*/false,
                            /*conv_halo_exchange_always_on_lhs=*/false));
+=======
+      PartitionComputation(hlo_string, /*num_devices=*/2, options));
+>>>>>>> upstream/master
   VLOG(1) << module->ToString();
 
   const auto root = module->entry_computation()->root_instruction();
@@ -2108,11 +2296,17 @@ ENTRY entry {
     window={size=28x28 pad=0_-1x0_-1 rhs_dilate=2x2}, dim_labels=f01b_i01o->01bf, sharding={replicated}
 })";
 
+  SpmdPartitionerOptions options;
+  options.conv_halo_exchange_always_on_lhs = false;
   TF_ASSERT_OK_AND_ASSIGN(
       auto module,
+<<<<<<< HEAD
       PartitionComputation(hlo_string, /*num_devices=*/2,
                            /*use_all_gather=*/false,
                            /*conv_halo_exchange_always_on_lhs=*/false));
+=======
+      PartitionComputation(hlo_string, /*num_devices=*/2, options));
+>>>>>>> upstream/master
   VLOG(1) << module->ToString();
 
   const auto root = module->entry_computation()->root_instruction();
@@ -2142,11 +2336,17 @@ ENTRY entry {
     window={size=7x7 pad=1_0x1_0 rhs_dilate=2x2}, dim_labels=f01b_i01o->01bf, sharding={replicated}
 })";
 
+  SpmdPartitionerOptions options;
+  options.conv_halo_exchange_always_on_lhs = false;
   TF_ASSERT_OK_AND_ASSIGN(
       auto module,
+<<<<<<< HEAD
       PartitionComputation(hlo_string, /*num_devices=*/2,
                            /*use_all_gather=*/false,
                            /*conv_halo_exchange_always_on_lhs=*/false));
+=======
+      PartitionComputation(hlo_string, /*num_devices=*/2, options));
+>>>>>>> upstream/master
   VLOG(1) << module->ToString();
 
   const auto root = module->entry_computation()->root_instruction();
@@ -2408,17 +2608,11 @@ ENTRY entry {
   VLOG(1) << module->ToString();
 
   auto param0 = AllOf(op::Parameter(0), op::Shape("f32[7,129]"));
-  auto param0_adjusted =
-      AllOf(op::Select(op::Compare(op::Add(), op::Broadcast(op::Constant())),
-                       param0, op::Broadcast(op::Constant())),
-            op::Shape("f32[7,129]"));
-  auto param0_replicated = AllOf(op::AllReduce(op::DynamicUpdateSlice(
-                                     op::Broadcast(), param0_adjusted, _, _)),
-                                 op::Shape("f32[7,257]"));
+  auto param0_replicated =
+      AllOf(op::Slice(op::AllGather(param0)), op::Shape("f32[7,257]"));
   auto param1 = AllOf(op::Parameter(1), op::Shape("f32[7,58]"));
-  auto param1_replicated = AllOf(
-      op::AllReduce(op::DynamicUpdateSlice(op::Broadcast(), param1, _, _)),
-      op::Shape("f32[7,116]"));
+  auto param1_replicated =
+      AllOf(op::AllGather(param1), op::Shape("f32[7,116]"));
 
   auto concatenate =
       AllOf(op::Concatenate(param0_replicated, param1_replicated),
@@ -2449,8 +2643,7 @@ ENTRY entry {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           PartitionComputation(hlo_string, /*num_devices=*/4));
 
-  auto param0_replicated = AllOf(op::AllReduce(
-      op::DynamicUpdateSlice(op::Broadcast(), op::Parameter(0), _)));
+  auto param0_replicated = AllOf(op::AllGather(op::Parameter(0)));
   auto concatenate_replicated =
       AllOf(op::Concatenate(param0_replicated, param0_replicated),
             op::Shape("f32[512]"));
@@ -2533,7 +2726,7 @@ ENTRY entry {
 
 // Pad is treated as a special case of window operator. When this pad-window has
 // a large edge pad, halo exchange with collective permute is not sufficient.
-// resharding with collective(AG or AR) is needed.
+// resharding with collective (AG or AR) is needed.
 // This test case aims to validate the collective insertion behavior when spmd
 // partitioner handles large cross-partition pad in SPMD partitioner.
 TEST_P(SpmdPartitioningTest, LargeEdgePadAlongCrossPartitionDimension) {
@@ -2541,29 +2734,84 @@ TEST_P(SpmdPartitioningTest, LargeEdgePadAlongCrossPartitionDimension) {
     HloModule module
 
     ENTRY entry {
-      %param0 = f32[14,257] parameter(0), sharding={devices=[2,4]0,1,2,3,4,5,6,7}
+      %param0 = f32[14,257] parameter(0), sharding={devices=[2,4]<=[8]}
       %const = f32[] constant(0)
-      ROOT %pad = f32[14,2257] pad(%param0, %const), padding=0_0x0_2000,
-    sharding={devices=[2,4]0,1,2,3,4,5,6,7}
+      ROOT %pad = f32[14,2257] pad(%param0, %const), padding=0_0x0_2000, sharding={devices=[2,4]<=[8]}
   })";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           PartitionComputation(hlo_string, /*num_devices=*/8));
+
+  auto param0 = AllOf(op::Parameter(), op::Shape("f32[7,65]"));
+  auto all_gather = AllOf(op::AllGather(param0), op::Shape("f32[7,260]"));
+  auto remove_padding = AllOf(op::Slice(all_gather), op::Shape("f32[7,257]"));
+  auto pad =
+      AllOf(op::Pad(remove_padding, op::Constant()), op::Shape("f32[7,2260]"));
+  auto dynamic_slice =
+      AllOf(op::DynamicSlice(pad, _, _), op::Shape("f32[7,565]"));
+
+  EXPECT_THAT(module->entry_computation()->root_instruction(), dynamic_slice);
+}
+
+TEST_P(SpmdPartitioningTest, LargeRightPadOnSliceHaloExchange) {
+  const char* const hlo_string = R"(
+  HloModule module
+
+  ENTRY main() -> f64[11] {
+        %constant.946 = f64[] constant(0)
+        %p.0 = f64[12272]{0} parameter(0),
+           sharding={devices=[2]<=[2,1]T(1,0)}
+        %slice.1057 = f64[1]{0} slice(%p.0),
+           slice={[12271:12272]},
+           sharding={devices=[2]<=[2,1]T(1,0)}
+        ROOT %pad.1059 = f64[11]{0} pad(%slice.1057, %constant.946),
+           padding=0_10, sharding={devices=[2]<=[2,1]T(1,0)}
+      }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/2));
   VLOG(1) << module->ToString();
 
-  const HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      AllOf(op::Shape("f64[6]"),
+            op::Select(op::Compare(),
+                       op::DynamicSlice(
+                           op::Pad(op::Concatenate(_, _, op::Broadcast(_)),
+                                   op::Constant()),
+                           _),
+                       op::Broadcast(_))));
+}
 
-  // Reshard operand will trigger collective.
-  // All-gather is intended to be used in production for pad operation,
-  // dynamic-update-slice + all-reduce is used in test environment for pattern
-  // matching purpose.
-  const HloInstruction* all_reduce =
-      FindInstruction(module.get(), HloOpcode::kAllReduce);
-  ASSERT_NE(all_reduce, nullptr);
+TEST_P(SpmdPartitioningTest, LargeLeftPadOnSliceHaloExchange) {
+  const char* const hlo_string = R"(
+  HloModule module
 
-  EXPECT_THAT(all_reduce->operand(0), op::DynamicUpdateSlice());
+  ENTRY main() -> f64[11] {
+        %constant.946 = f64[] constant(0)
+        %p.0 = f64[12272]{0} parameter(0),
+           sharding={devices=[2]<=[2,1]T(1,0)}
+        %slice.1057 = f64[1]{0} slice(%p.0),
+           slice={[12271:12272]},
+           sharding={devices=[2]<=[2,1]T(1,0)}
+        ROOT %pad.1059 = f64[11]{0} pad(%slice.1057, %constant.946),
+           padding=10_0, sharding={devices=[2]<=[2,1]T(1,0)}
+      }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/2));
+  VLOG(1) << module->ToString();
 
-  EXPECT_THAT(root, op::DynamicSlice(op::Pad(all_reduce, _), _, _));
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      AllOf(op::Shape("f64[6]"),
+            op::Select(_,
+                       op::DynamicSlice(
+                           op::Pad(op::Concatenate(op::Broadcast(_),
+                                                   op::CollectivePermute(), _),
+                                   op::Constant()),
+                           _),
+                       op::Broadcast(_))));
 }
 
 TEST_P(SpmdPartitioningTest, LargeRightPadOnSliceHaloExchange) {
@@ -3646,7 +3894,7 @@ ENTRY entry {
         EXPECT_EQ(operand->shape().dimensions(0), 1);
         EXPECT_EQ(operand->shape().dimensions(1), 1024);
       }
-      EXPECT_THAT(inst, op::Sort(op::AllReduce(), op::AllReduce()));
+      EXPECT_THAT(inst, op::Sort(op::AllGather(), op::AllGather()));
     }
     EXPECT_NE(inst->opcode(), HloOpcode::kAllToAll);
   }
@@ -4077,8 +4325,7 @@ ENTRY %reshape {
       auto module, PartitionComputation(hlo_string, /*num_devices=*/128));
   VLOG(1) << module->ToString();
   const auto root = module->entry_computation()->root_instruction();
-  auto reshape = AllOf(op::Reshape(op::AllReduce(op::DynamicUpdateSlice(
-                           _, op::Parameter(0), _, _, _, _, _, _, _))),
+  auto reshape = AllOf(op::Reshape(op::AllGather(op::Parameter(0))),
                        op::Shape("bf16[320,4,8]"));
   EXPECT_THAT(root, AllOf(op::DynamicSlice(reshape, _, _, _),
                           op::Shape("bf16[40,4,8]")));
@@ -4117,8 +4364,7 @@ ENTRY %reshape {
   auto param = AllOf(op::Parameter(0), op::Shape("bf16[6]"));
   // Reshard param from {devices=[4]<=[4]} to {devices=[2,2]<=[4]
   // last_tile_dim_replicate}
-  auto reshard_param = AllOf(op::AllReduce(op::DynamicUpdateSlice(_, param, _)),
-                             op::Shape("bf16[12]"));
+  auto reshard_param = AllOf(op::AllGather(param), op::Shape("bf16[12]"));
 
   auto reshape = AllOf(op::Reshape(reshard_param), op::Shape("bf16[3,4]"));
 
@@ -4169,9 +4415,7 @@ ENTRY %reshape {
                           PartitionComputation(hlo_string, /*num_devices=*/4));
 
   auto param = AllOf(op::Shape("bf16[2,8]"), op::Parameter(0));
-  auto param_replicated = AllOf(
-      op::Shape("bf16[8,8]"), op::AllReduce(op::DynamicUpdateSlice(
-                                  op::Broadcast(op::Constant()), param, _, _)));
+  auto param_replicated = AllOf(op::Shape("bf16[8,8]"), op::AllGather(param));
   auto reshape = AllOf(op::Shape("bf16[64]"), op::Reshape(param_replicated));
   auto reshape_resharded =
       AllOf(op::Shape("bf16[16]"), op::DynamicSlice(reshape, _));
@@ -4505,12 +4749,8 @@ ENTRY %main {
                          op::Shape("f32[14,1]"));
   auto reshape_r = AllOf(op::Reshape(op::GetTupleElement(local_reduce)),
                          op::Shape("s32[14,1]"));
-  auto broadcast_l =
-      AllOf(op::AllReduce(op::DynamicUpdateSlice(_, reshape_l, _, _)),
-            op::Shape("f32[14,4]"));
-  auto broadcast_r =
-      AllOf(op::AllReduce(op::DynamicUpdateSlice(_, reshape_r, _, _)),
-            op::Shape("s32[14,4]"));
+  auto broadcast_l = AllOf(op::AllGather(reshape_l), op::Shape("f32[14,4]"));
+  auto broadcast_r = AllOf(op::AllGather(reshape_r), op::Shape("s32[14,4]"));
   const auto root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, AllOf(op::Reduce(broadcast_l, broadcast_r, op::Parameter(2),
                                      op::Parameter(3)),
@@ -4560,12 +4800,8 @@ ENTRY %main {
                          op::Shape("f32[28,1]"));
   auto reshape_r = AllOf(op::Reshape(op::GetTupleElement(local_reduce)),
                          op::Shape("s32[28,1]"));
-  auto broadcast_l =
-      AllOf(op::AllReduce(op::DynamicUpdateSlice(_, reshape_l, _, _)),
-            op::Shape("f32[28,2]"));
-  auto broadcast_r =
-      AllOf(op::AllReduce(op::DynamicUpdateSlice(_, reshape_r, _, _)),
-            op::Shape("s32[28,2]"));
+  auto broadcast_l = AllOf(op::AllGather(reshape_l), op::Shape("f32[28,2]"));
+  auto broadcast_r = AllOf(op::AllGather(reshape_r), op::Shape("s32[28,2]"));
   const auto root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, AllOf(op::Reduce(broadcast_l, broadcast_r, op::Parameter(2),
                                      op::Parameter(3)),
@@ -4937,11 +5173,17 @@ ENTRY entry {
     dim_labels=bf_io->bf, sharding={replicated}
 })";
 
+  SpmdPartitionerOptions options;
+  options.conv_halo_exchange_always_on_lhs = false;
   TF_ASSERT_OK_AND_ASSIGN(
       auto module,
+<<<<<<< HEAD
       PartitionComputation(hlo_string, /*num_devices=*/2,
                            /*use_all_gather=*/false,
                            /*conv_halo_exchange_always_on_lhs=*/false));
+=======
+      PartitionComputation(hlo_string, /*num_devices=*/2, options));
+>>>>>>> upstream/master
   VLOG(1) << module->ToString();
 
   const auto root = module->entry_computation()->root_instruction();
@@ -5099,8 +5341,11 @@ ENTRY entry {
   ROOT %dot.224 = f32[2048,2176]{1,0} dot(f32[2048,2,3264]{2,1,0} %p0, f32[2,3264,2176]{2,1,0} %p1), lhs_contracting_dims={1,2}, rhs_contracting_dims={0,1}, sharding={devices=[1,2]0,1}
 })";
 
+  SpmdPartitionerOptions options;
+  options.threshold_for_windowed_einsum_mib = 0;
   TF_ASSERT_OK_AND_ASSIGN(
       auto module,
+<<<<<<< HEAD
       PartitionComputation(hlo_string, /*num_devices=*/2,
                            /*use_all_gather=*/false,
                            /*conv_halo_exchange_always_on_lhs=*/true,
@@ -5108,6 +5353,9 @@ ENTRY entry {
                            /*unroll_windowed_einsum=*/false,
                            /*bidirectional_windowed_einsum=*/false,
                            /*threshold_for_windowed_einsum_mib=*/0));
+=======
+      PartitionComputation(hlo_string, /*num_devices=*/2, options));
+>>>>>>> upstream/master
   VLOG(1) << module->ToString();
 
   // Check while op.
@@ -5152,8 +5400,11 @@ ENTRY entry {
   ROOT %dot.224 = f32[4096,2176]{1,0} dot(f32[4096,2,3264]{2,1,0} %p0, f32[2,3264,2176]{2,1,0} %p1), lhs_contracting_dims={1,2}, rhs_contracting_dims={0,1}, sharding={devices=[1,2]0,1}
 })";
 
+  SpmdPartitionerOptions options;
+  options.threshold_for_windowed_einsum_mib = 0;
   TF_ASSERT_OK_AND_ASSIGN(
       auto module,
+<<<<<<< HEAD
       PartitionComputation(hlo_string, /*num_devices=*/2,
                            /*use_all_gather=*/false,
                            /*conv_halo_exchange_always_on_lhs=*/true,
@@ -5161,6 +5412,9 @@ ENTRY entry {
                            /*unroll_windowed_einsum=*/false,
                            /*bidirectional_windowed_einsum=*/false,
                            /*threshold_for_windowed_einsum_mib=*/0));
+=======
+      PartitionComputation(hlo_string, /*num_devices=*/2, options));
+>>>>>>> upstream/master
   VLOG(1) << module->ToString();
 
   // Check while op.
@@ -5210,8 +5464,12 @@ ENTRY entry {
   ROOT %dot.128 = bf16[512,768]{1,0} dot(bf16[512,4,512]{2,1,0} %multiply.611, bf16[4,512,768]{2,1,0} %reshape.1074), lhs_contracting_dims={1,2}, rhs_contracting_dims={0,1}, sharding={devices=[16,4]<=[64]}
 })";
 
+  SpmdPartitionerOptions options;
+  options.choose_faster_windowed_einsum_over_mem = true;
+  options.threshold_for_windowed_einsum_mib = 0;
   TF_ASSERT_OK_AND_ASSIGN(
       auto module,
+<<<<<<< HEAD
       PartitionComputation(hlo_string, /*num_devices=*/64,
                            /*use_all_gather=*/false,
                            /*conv_halo_exchange_always_on_lhs=*/true,
@@ -5219,11 +5477,14 @@ ENTRY entry {
                            /*unroll_windowed_einsum=*/false,
                            /*bidirectional_windowed_einsum=*/false,
                            /*threshold_for_windowed_einsum_mib=*/0));
+=======
+      PartitionComputation(hlo_string, /*num_devices=*/64, options));
+>>>>>>> upstream/master
   VLOG(1) << module->ToString();
 
   // Check while op.
   const auto arg0 = AllOf(op::Reshape(), op::Shape("bf16[32,1,512]{2,1,0}"));
-  const auto arg1 = AllOf(op::AllReduce(), op::Shape("bf16[1,512,768]{2,1,0}"));
+  const auto arg1 = AllOf(op::AllGather(), op::Shape("bf16[1,512,768]{2,1,0}"));
 
   const auto while_op =
       AllOf(op::While(op::Tuple(arg0, arg1, op::Broadcast(), op::Broadcast(),
@@ -5264,8 +5525,14 @@ ENTRY entry {
   ROOT dot.1104 = bf16[32,64,1025,16384]{3,2,1,0} dot(reshape.9434, reshape.9438), lhs_batch_dims={2}, lhs_contracting_dims={3}, rhs_batch_dims={0}, rhs_contracting_dims={1}, sharding={devices=[1,8,1,8]<=[64]}
 })";
 
+  SpmdPartitionerOptions options;
+  options.unroll_windowed_einsum = true;
+  options.bidirectional_windowed_einsum = true;
+  options.choose_faster_windowed_einsum_over_mem = true;
+  options.threshold_for_windowed_einsum_mib = 0;
   TF_ASSERT_OK_AND_ASSIGN(
       auto module,
+<<<<<<< HEAD
       PartitionComputation(hlo_string, /*num_devices=*/64,
                            /*use_all_gather=*/false,
                            /*conv_halo_exchange_always_on_lhs=*/true,
@@ -5273,6 +5540,9 @@ ENTRY entry {
                            /*unroll_windowed_einsum=*/true,
                            /*bidirectional_windowed_einsum=*/true,
                            /*threshold_for_windowed_einsum_mib=*/0));
+=======
+      PartitionComputation(hlo_string, /*num_devices=*/64, options));
+>>>>>>> upstream/master
   VLOG(1) << module->ToString();
   TF_ASSERT_OK(HloVerifier(/*layout_sensitive=*/false,
                            /*allow_mixed_precision=*/false)
@@ -5306,8 +5576,12 @@ ENTRY entry {
   ROOT %dot.224 = f32[2048,2176]{1,0} dot(f32[2048,2,3264]{2,1,0} %p0, f32[2,3264,2176]{2,1,0} %p1), lhs_contracting_dims={1,2}, rhs_contracting_dims={0,1}, sharding={devices=[1,2]0,1}
 })";
 
+  SpmdPartitionerOptions options;
+  options.threshold_for_windowed_einsum_mib = 5;
+  options.total_bytes_windowed_einsum_threshold = 1 << 30;
   TF_ASSERT_OK_AND_ASSIGN(
       auto module,
+<<<<<<< HEAD
       PartitionComputation(hlo_string, /*num_devices=*/2,
                            /*use_all_gather=*/false,
                            /*conv_halo_exchange_always_on_lhs=*/true,
@@ -5318,6 +5592,9 @@ ENTRY entry {
                            {GatherScatterPartitioningMethod::kExplicitBatch},
                            {GatherScatterPartitioningMethod::kExplicitBatch},
                            /*total_bytes_windowed_einsum_threshold=*/1 << 30));
+=======
+      PartitionComputation(hlo_string, /*num_devices=*/2, options));
+>>>>>>> upstream/master
   VLOG(1) << module->ToString();
   // Total bytes threshold overrides threshold_for_windowed_einsum_mib,
   // there shouldn't be any while loop after partitioner.
@@ -5359,8 +5636,11 @@ ENTRY entry {
   ROOT %dot.224 = f32[2048,2176]{1,0} dot(f32[2048,2,3264]{2,1,0} %p0, f32[2,3264,2176]{2,1,0} %p1), lhs_contracting_dims={1,2}, rhs_contracting_dims={0,1}, sharding={devices=[1,2]0,1}, frontend_attributes={_xla_collective_matmul="none"}
 })";
 
+  SpmdPartitionerOptions options;
+  options.threshold_for_windowed_einsum_mib = 0;
   TF_ASSERT_OK_AND_ASSIGN(
       auto module,
+<<<<<<< HEAD
       PartitionComputation(hlo_string, /*num_devices=*/2,
                            /*use_all_gather=*/false,
                            /*conv_halo_exchange_always_on_lhs=*/true,
@@ -5368,6 +5648,9 @@ ENTRY entry {
                            /*unroll_windowed_einsum=*/false,
                            /*bidirectional_windowed_einsum=*/false,
                            /*threshold_for_windowed_einsum_mib=*/0));
+=======
+      PartitionComputation(hlo_string, /*num_devices=*/2, options));
+>>>>>>> upstream/master
   ASSERT_FALSE(absl::c_any_of(module->entry_computation()->instructions(),
                               [](const HloInstruction* inst) {
                                 return inst->opcode() == HloOpcode::kWhile;
@@ -5770,13 +6053,19 @@ ENTRY entry {
     sharding={devices=[1,4,1]<=[4]}
 })";
 
+  SpmdPartitionerOptions options;
+  options.unroll_windowed_einsum = true;
   TF_ASSERT_OK_AND_ASSIGN(
       auto module,
+<<<<<<< HEAD
       PartitionComputation(hlo_string, /*num_devices=*/4,
                            /*use_all_gather=*/false,
                            /*conv_halo_exchange_always_on_lhs =*/true,
                            /*choose_faster_windowed_einsum =*/false,
                            /*unroll_windowed_einsum =*/true));
+=======
+      PartitionComputation(hlo_string, /*num_devices=*/4, options));
+>>>>>>> upstream/master
   VLOG(1) << module->ToString();
 
   const auto lhs = AllOf(
@@ -5846,14 +6135,20 @@ ENTRY entry {
     sharding={devices=[1,4,1]<=[4]}
 })";
 
+  SpmdPartitionerOptions options;
+  options.bidirectional_windowed_einsum = true;
   TF_ASSERT_OK_AND_ASSIGN(
       auto module,
+<<<<<<< HEAD
       PartitionComputation(hlo_string, /*num_devices=*/4,
                            /*use_all_gather=*/false,
                            /*conv_halo_exchange_always_on_lhs =*/true,
                            /*choose_faster_windowed_einsum =*/false,
                            /*unroll_windowed_einsum =*/false,
                            /*bidirectional_windowed_einsum =*/true));
+=======
+      PartitionComputation(hlo_string, /*num_devices=*/4, options));
+>>>>>>> upstream/master
   VLOG(1) << module->ToString();
   const auto lhs = AllOf(
       op::Copy(op::DynamicSlice(op::Parameter(0), op::Constant(),
@@ -6015,13 +6310,19 @@ ENTRY entry {
     sharding={devices=[2,1,4,1]<=[8]}
 })";
 
+  SpmdPartitionerOptions options;
+  options.unroll_windowed_einsum = true;
   TF_ASSERT_OK_AND_ASSIGN(
       auto module,
+<<<<<<< HEAD
       PartitionComputation(hlo_string, /*num_devices=*/8,
                            /*use_all_gather=*/false,
                            /*conv_halo_exchange_always_on_lhs =*/true,
                            /*choose_faster_windowed_einsum =*/false,
                            /*unroll_windowed_einsum =*/true));
+=======
+      PartitionComputation(hlo_string, /*num_devices=*/8, options));
+>>>>>>> upstream/master
   VLOG(1) << module->ToString();
 
   const auto lhs =
@@ -6091,14 +6392,20 @@ ENTRY entry {
     sharding={devices=[2,1,4,1]<=[8]}
 })";
 
+  SpmdPartitionerOptions options;
+  options.bidirectional_windowed_einsum = true;
   TF_ASSERT_OK_AND_ASSIGN(
       auto module,
+<<<<<<< HEAD
       PartitionComputation(hlo_string, /*num_devices=*/8,
                            /*use_all_gather=*/false,
                            /*conv_halo_exchange_always_on_lhs =*/true,
                            /*choose_faster_windowed_einsum =*/false,
                            /*unroll_windowed_einsum =*/false,
                            /*bidirectional_windowed_einsum =*/true));
+=======
+      PartitionComputation(hlo_string, /*num_devices=*/8, options));
+>>>>>>> upstream/master
   VLOG(1) << module->ToString();
 
   const auto lhs =
@@ -6223,29 +6530,24 @@ TEST_P(SpmdPartitioningTest, EinsumRHSWindowedNonContractingNoDoubleAG) {
 HloModule module
 
 ENTRY entry {
-  %lhs = f32[32,24,64,128] parameter(0)
-  %lhs.copy = f32[32,24,64,128] copy(%lhs), sharding={devices=[1,2,1,1]0,1}
-  %lhs2 = f32[32,24,64,128] parameter(2)
-  %lhs2.copy = f32[32,24,64,128] copy(%lhs2), sharding={devices=[1,2,1,1]0,1}
-  %rhs = f32[32,39295,64,128] parameter(1)
-  %rhs.copy = f32[32,39295,64,128] copy(%rhs), sharding={devices=[1,2,1,1]0,1}
-  %dot = f32[32,24,39295] dot(%lhs.copy, %rhs.copy),
+  %lhs = f32[32,24,64,128] parameter(0), sharding={devices=[1,2,1,1]0,1}
+  %lhs2 = f32[32,24,64,128] parameter(2), sharding={devices=[1,2,1,1]0,1}
+  %rhs = f32[32,40,64,128] parameter(1), sharding={devices=[1,2,1,1]0,1}
+  %dot = f32[32,24,40] dot(%lhs, %rhs),
     lhs_batch_dims={0}, rhs_batch_dims={0},
     lhs_contracting_dims={2,3}, rhs_contracting_dims={2,3},
     sharding={devices=[1,2,1]0,1}
-  %dot2 = f32[32,24,39295] dot(%lhs2.copy, %rhs.copy),
+  %dot2 = f32[32,24,40] dot(%lhs2, %rhs),
     lhs_batch_dims={0}, rhs_batch_dims={0},
     lhs_contracting_dims={2,3}, rhs_contracting_dims={2,3},
     sharding={devices=[1,2,1]0,1}
   ROOT %t = tuple(%dot, %dot2)
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, PartitionComputation(hlo_string,
-                                                            /*num_devices=*/2));
-  VLOG(1) << module->ToString();
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/2));
   const auto root = module->entry_computation()->root_instruction();
-  const auto tuple_element = op::AllReduce(op::DynamicUpdateSlice(
-      _, op::Dot(_, op::AllReduce(op::DynamicUpdateSlice())), _, _, _));
+  const auto tuple_element = op::AllGather(op::Dot(_, op::AllGather()));
   EXPECT_THAT(root, op::Tuple(tuple_element, tuple_element));
 }
 
@@ -6277,10 +6579,8 @@ ENTRY entry {
   const auto root = module->entry_computation()->root_instruction();
   EXPECT_THAT(
       root,
-      op::Tuple(op::AllReduce(op::DynamicUpdateSlice(
-                    _, op::Slice(op::GetTupleElement(op::While(_))), _, _, _)),
-                op::AllReduce(op::DynamicUpdateSlice(
-                    _, op::Dot(_, op::Slice(_)), _, _, _))));
+      op::Tuple(op::AllGather(op::Slice(op::GetTupleElement(op::While(_)))),
+                op::AllGather(op::Dot(_, op::Slice(_)))));
 }
 
 TEST_P(SpmdPartitioningTest,
@@ -6306,25 +6606,28 @@ ENTRY entry {
   ROOT %t = tuple(%dot, %dot2)
 })";
 
+  SpmdPartitionerOptions options;
+  options.unroll_windowed_einsum = true;
   TF_ASSERT_OK_AND_ASSIGN(
       auto module,
+<<<<<<< HEAD
       PartitionComputation(hlo_string, /*num_devices=*/2,
                            /*use_all_gather=*/false,
                            /*conv_halo_exchange_always_on_lhs =*/true,
                            /*choose_faster_windowed_einsum =*/false,
                            /*unroll_windowed_einsum =*/true));
+=======
+      PartitionComputation(hlo_string, /*num_devices=*/2, options));
+>>>>>>> upstream/master
   VLOG(1) << module->ToString();
   const auto root = module->entry_computation()->root_instruction();
   EXPECT_THAT(
       root,
-      op::Tuple(op::AllReduce(op::DynamicUpdateSlice(
-                    _, op::Slice(op::GetTupleElement(op::While(_))), _, _, _)),
-                op::AllReduce(op::DynamicUpdateSlice(
-                    _, op::Dot(_, op::Slice(_)), _, _, _))));
+      op::Tuple(op::AllGather(op::Slice(op::GetTupleElement(op::While(_)))),
+                op::AllGather(op::Dot(_, op::Slice(_)))));
 
-  // Tuple<-AllReduce<-DynamicUpdateSlice<-Slice<-GetTupleElement<-While
-  const auto while_loop =
-      root->operand(0)->operand(0)->operand(1)->operand(0)->operand(0);
+  // Tuple<-AllGather<-Slice<-GetTupleElement<-While
+  const auto while_loop = root->operand(0)->operand(0)->operand(0)->operand(0);
   // Check loop condition.
   EXPECT_THAT(
       while_loop->while_condition()->root_instruction(),
@@ -6378,26 +6681,29 @@ ENTRY entry {
   ROOT %t = tuple(%dot, %dot2)
 })";
 
+  SpmdPartitionerOptions options;
+  options.bidirectional_windowed_einsum = true;
   TF_ASSERT_OK_AND_ASSIGN(
       auto module,
+<<<<<<< HEAD
       PartitionComputation(hlo_string, /*num_devices=*/4,
                            /*use_all_gather=*/false,
                            /*conv_halo_exchange_always_on_lhs =*/true,
                            /*choose_faster_windowed_einsum =*/false,
                            /*unroll_windowed_einsum =*/false,
                            /*bidirectional_windowed_einsum =*/true));
+=======
+      PartitionComputation(hlo_string, /*num_devices=*/4, options));
+>>>>>>> upstream/master
   VLOG(1) << module->ToString();
   const auto root = module->entry_computation()->root_instruction();
   EXPECT_THAT(
       root,
-      op::Tuple(op::AllReduce(op::DynamicUpdateSlice(
-                    _, op::Slice(op::GetTupleElement(op::While(_))), _, _, _)),
-                op::AllReduce(op::DynamicUpdateSlice(
-                    _, op::Dot(_, op::Slice(_)), _, _, _))));
+      op::Tuple(op::AllGather(op::Slice(op::GetTupleElement(op::While(_)))),
+                op::AllGather(op::Dot(_, op::Slice(_)))));
 
-  // Tuple<-AllReduce<-DynamicUpdateSlice<-Slice<-GetTupleElement<-While
-  const auto while_loop =
-      root->operand(0)->operand(0)->operand(1)->operand(0)->operand(0);
+  // Tuple<-AllGather<-Slice<-GetTupleElement<-While
+  const auto while_loop = root->operand(0)->operand(0)->operand(0)->operand(0);
   // Check loop condition.
   EXPECT_THAT(
       while_loop->while_condition()->root_instruction(),
@@ -6519,13 +6825,19 @@ ENTRY entry {
     sharding={devices=[1,2,1]0,1}
 })";
 
+  SpmdPartitionerOptions options;
+  options.unroll_windowed_einsum = true;
   TF_ASSERT_OK_AND_ASSIGN(
       auto module,
+<<<<<<< HEAD
       PartitionComputation(hlo_string, /*num_devices=*/2,
                            /*use_all_gather=*/false,
                            /*conv_halo_exchange_always_on_lhs =*/true,
                            /*choose_faster_windowed_einsum =*/false,
                            /*unroll_windowed_einsum =*/true));
+=======
+      PartitionComputation(hlo_string, /*num_devices=*/2, options));
+>>>>>>> upstream/master
   VLOG(1) << module->ToString();
 
   const auto root = module->entry_computation()->root_instruction();
@@ -6591,14 +6903,20 @@ ENTRY entry {
     sharding={devices=[1,4,1]<=[4]}
 })";
 
+  SpmdPartitionerOptions options;
+  options.bidirectional_windowed_einsum = true;
   TF_ASSERT_OK_AND_ASSIGN(
       auto module,
+<<<<<<< HEAD
       PartitionComputation(hlo_string, /*num_devices=*/4,
                            /*use_all_gather=*/false,
                            /*conv_halo_exchange_always_on_lhs =*/true,
                            /*choose_faster_windowed_einsum =*/false,
                            /*unroll_windowed_einsum =*/false,
                            /*bidirectional_windowed_einsum =*/true));
+=======
+      PartitionComputation(hlo_string, /*num_devices=*/4, options));
+>>>>>>> upstream/master
   VLOG(1) << module->ToString();
 
   const auto root = module->entry_computation()->root_instruction();
@@ -6742,13 +7060,19 @@ ENTRY entry {
     sharding={devices=[1,2,1]0,1}
 })";
 
+  SpmdPartitionerOptions options;
+  options.unroll_windowed_einsum = true;
   TF_ASSERT_OK_AND_ASSIGN(
       auto module,
+<<<<<<< HEAD
       PartitionComputation(hlo_string, /*num_devices=*/2,
                            /*use_all_gather=*/false,
                            /*conv_halo_exchange_always_on_lhs =*/true,
                            /*choose_faster_windowed_einsum =*/false,
                            /*unroll_windowed_einsum =*/true));
+=======
+      PartitionComputation(hlo_string, /*num_devices=*/2, options));
+>>>>>>> upstream/master
   VLOG(1) << module->ToString();
 
   const auto root = module->entry_computation()->root_instruction();
@@ -6819,14 +7143,20 @@ ENTRY entry {
     sharding={devices=[1,4,1]<=[4]}
 })";
 
+  SpmdPartitionerOptions options;
+  options.bidirectional_windowed_einsum = true;
   TF_ASSERT_OK_AND_ASSIGN(
       auto module,
+<<<<<<< HEAD
       PartitionComputation(hlo_string, /*num_devices=*/4,
                            /*use_all_gather=*/false,
                            /*conv_halo_exchange_always_on_lhs =*/true,
                            /*choose_faster_windowed_einsum =*/false,
                            /*unroll_windowed_einsum =*/false,
                            /*bidirectional_windowed_einsum =*/true));
+=======
+      PartitionComputation(hlo_string, /*num_devices=*/4, options));
+>>>>>>> upstream/master
   VLOG(1) << module->ToString();
 
   const auto root = module->entry_computation()->root_instruction();
@@ -7080,13 +7410,19 @@ ENTRY entry {
     to_apply=sum, sharding={devices=[1,2]0,1}
 })";
 
+  SpmdPartitionerOptions options;
+  options.unroll_windowed_einsum = true;
   TF_ASSERT_OK_AND_ASSIGN(
       auto module,
+<<<<<<< HEAD
       PartitionComputation(hlo_string, /*num_devices=*/2,
                            /*use_all_gather=*/false,
                            /*conv_halo_exchange_always_on_lhs =*/true,
                            /*choose_faster_windowed_einsum =*/false,
                            /*unroll_windowed_einsum =*/true));
+=======
+      PartitionComputation(hlo_string, /*num_devices=*/2, options));
+>>>>>>> upstream/master
   VLOG(1) << module->ToString();
 
   const auto root = module->entry_computation()->root_instruction();
@@ -7184,14 +7520,20 @@ ENTRY entry {
     to_apply=sum, sharding={devices=[1,4]<=[4]}
 })";
 
+  SpmdPartitionerOptions options;
+  options.bidirectional_windowed_einsum = true;
   TF_ASSERT_OK_AND_ASSIGN(
       auto module,
+<<<<<<< HEAD
       PartitionComputation(hlo_string, /*num_devices=*/4,
                            /*use_all_gather=*/false,
                            /*conv_halo_exchange_always_on_lhs =*/true,
                            /*choose_faster_windowed_einsum =*/false,
                            /*unroll_windowed_einsum =*/false,
                            /*bidirectional_windowed_einsum =*/true));
+=======
+      PartitionComputation(hlo_string, /*num_devices=*/4, options));
+>>>>>>> upstream/master
   VLOG(1) << module->ToString();
 
   const auto root = module->entry_computation()->root_instruction();
@@ -7329,13 +7671,19 @@ ENTRY entry {
     to_apply=sum, sharding={replicated}
 })";
 
+  SpmdPartitionerOptions options;
+  options.unroll_windowed_einsum = true;
   TF_ASSERT_OK_AND_ASSIGN(
       auto module,
+<<<<<<< HEAD
       PartitionComputation(hlo_string, /*num_devices=*/2,
                            /*use_all_gather=*/false,
                            /*conv_halo_exchange_always_on_lhs =*/true,
                            /*choose_faster_windowed_einsum =*/false,
                            /*unroll_windowed_einsum =*/true));
+=======
+      PartitionComputation(hlo_string, /*num_devices=*/2, options));
+>>>>>>> upstream/master
   VLOG(1) << module->ToString();
 
   const auto root = module->entry_computation()->root_instruction();
@@ -7429,14 +7777,20 @@ ENTRY entry {
     to_apply=sum, sharding={replicated}
 })";
 
+  SpmdPartitionerOptions options;
+  options.bidirectional_windowed_einsum = true;
   TF_ASSERT_OK_AND_ASSIGN(
       auto module,
+<<<<<<< HEAD
       PartitionComputation(hlo_string, /*num_devices=*/4,
                            /*use_all_gather=*/false,
                            /*conv_halo_exchange_always_on_lhs =*/true,
                            /*choose_faster_windowed_einsum =*/false,
                            /*unroll_windowed_einsum =*/false,
                            /*bidirectional_windowed_einsum =*/true));
+=======
+      PartitionComputation(hlo_string, /*num_devices=*/4, options));
+>>>>>>> upstream/master
   VLOG(1) << module->ToString();
 
   const auto root = module->entry_computation()->root_instruction();
@@ -7548,13 +7902,19 @@ ENTRY entry {
     sharding={devices=[1,2,1]0,1}
 })";
 
+  SpmdPartitionerOptions options;
+  options.unroll_windowed_einsum = true;
   TF_ASSERT_OK_AND_ASSIGN(
       auto module,
+<<<<<<< HEAD
       PartitionComputation(hlo_string, /*num_devices=*/2,
                            /*use_all_gather=*/false,
                            /*conv_halo_exchange_always_on_lhs =*/true,
                            /*choose_faster_windowed_einsum =*/false,
                            /*unroll_windowed_einsum =*/true));
+=======
+      PartitionComputation(hlo_string, /*num_devices=*/2, options));
+>>>>>>> upstream/master
   VLOG(1) << module->ToString();
 
   const auto root = module->entry_computation()->root_instruction();
@@ -7629,14 +7989,20 @@ ENTRY entry {
     sharding={devices=[1,4,1]<=[4]}
 })";
 
+  SpmdPartitionerOptions options;
+  options.bidirectional_windowed_einsum = true;
   TF_ASSERT_OK_AND_ASSIGN(
       auto module,
+<<<<<<< HEAD
       PartitionComputation(hlo_string, /*num_devices=*/4,
                            /*use_all_gather=*/false,
                            /*conv_halo_exchange_always_on_lhs =*/true,
                            /*choose_faster_windowed_einsum =*/false,
                            /*unroll_windowed_einsum =*/false,
                            /*bidirectional_windowed_einsum =*/true));
+=======
+      PartitionComputation(hlo_string, /*num_devices=*/4, options));
+>>>>>>> upstream/master
   VLOG(1) << module->ToString();
 
   auto input_subtuple =
@@ -7713,10 +8079,7 @@ ENTRY entry {
       op::Shape("bf16[1,1536,256,1]"));
 
   const auto partial_replicate_rhs =
-      AllOf(op::AllReduce(op::DynamicUpdateSlice(
-                op::Broadcast(), rhs, op::Constant(), op::Constant(),
-                op::Reshape(), op::Constant())),
-            op::Shape("bf16[1,1536,512,1]"));
+      AllOf(op::AllGather(rhs), op::Shape("bf16[1,1536,512,1]"));
   EXPECT_THAT(
       root,
       AllOf(op::DynamicSlice(
@@ -7755,10 +8118,7 @@ ENTRY entry {
       op::Shape("bf16[1,1536,256,1]"));
 
   const auto partial_replicate_rhs =
-      AllOf(op::AllReduce(op::DynamicUpdateSlice(
-                op::Broadcast(), rhs, op::Constant(), op::Constant(),
-                op::Reshape(), op::Constant())),
-            op::Shape("bf16[1,1536,512,1]"));
+      AllOf(op::AllGather(rhs), op::Shape("bf16[1,1536,512,1]"));
   EXPECT_THAT(
       root,
       AllOf(op::DynamicSlice(
@@ -7958,10 +8318,7 @@ ENTRY entry {
 
   const auto root = module->entry_computation()->root_instruction();
   auto input = AllOf(op::Parameter(0), op::Shape("s32[128,32]"));
-  auto update = AllOf(
-      op::AllReduce(op::DynamicUpdateSlice(op::Broadcast(), op::Parameter(2),
-                                           op::Constant(), op::Reshape())),
-      op::Shape("s32[128,2]"));
+  auto update = AllOf(op::AllGather(op::Parameter(2)), op::Shape("s32[128,2]"));
 
   EXPECT_THAT(root,
               AllOf(op::Select(op::Broadcast(),
@@ -8029,11 +8386,8 @@ ENTRY entry {
   auto input = AllOf(op::Copy(op::DynamicSlice(op::Parameter(0), op::Reshape(),
                                                op::Reshape())),
                      op::Shape("s32[64,32]"));
-  auto update = AllOf(op::AllReduce(op::DynamicUpdateSlice(
-                          op::Broadcast(),
-                          op::Copy(op::DynamicSlice(
-                              op::Parameter(1), op::Reshape(), op::Reshape())),
-                          op::Constant(), op::Reshape())),
+  auto update = AllOf(op::AllGather(op::Copy(op::DynamicSlice(
+                          op::Parameter(1), op::Reshape(), op::Reshape()))),
                       op::Shape("s32[64,2]"));
 
   EXPECT_THAT(root,
@@ -8184,7 +8538,7 @@ ENTRY entry {
                           PartitionComputation(hlo_string, /*num_devices=*/8));
   auto root = module->entry_computation()->root_instruction();
   auto operand = AllOf(op::Shape("f32[2,9,8]"), op::Parameter(0));
-  auto indices = AllOf(op::Shape("s32[2,2,2]"), op::AllReduce());
+  auto indices = AllOf(op::Shape("s32[2,2,2]"), op::AllGather());
   auto gather = AllOf(op::Shape("f32[8,2,2]"), op::Gather(operand, indices));
   VLOG(1) << module->ToString();
   EXPECT_THAT(root, op::CollectivePermute(gather));
@@ -8434,17 +8788,14 @@ ENTRY entry {
                              op::Shape("f32[3,9]"));
   EXPECT_THAT(
       root,
-      AllOf(op::Tuple(op::DynamicSlice(
-                          op::Pad(op::AllReduce(op::DynamicUpdateSlice(
-                                      _, op::GetTupleElement(scatter), _, _)),
-                                  _),
-                          _, _),
-                      op::DynamicSlice(
-                          op::Pad(op::AllReduce(op::DynamicUpdateSlice(
-                                      _, op::GetTupleElement(scatter), _, _)),
-                                  _),
-                          _, _)),
-            op::Shape("(f32[2,3],f32[2,3])")));
+      AllOf(
+          op::Tuple(op::DynamicSlice(
+                        op::Pad(op::AllGather(op::GetTupleElement(scatter)), _),
+                        _, _),
+                    op::DynamicSlice(
+                        op::Pad(op::AllGather(op::GetTupleElement(scatter)), _),
+                        _, _)),
+          op::Shape("(f32[2,3],f32[2,3])")));
 }
 
 TEST_P(SpmdPartitioningTest, VariadicScatterSharedOperands) {
@@ -8724,7 +9075,7 @@ ENTRY entry {
   VLOG(1) << module->ToString();
   const auto root = module->entry_computation()->root_instruction();
   auto operand = AllOf(op::Shape("f32[2,9,8]"), op::Select());
-  auto indices = AllOf(op::Shape("s32[2,2,2]"), op::AllReduce());
+  auto indices = AllOf(op::Shape("s32[2,2,2]"), op::AllGather());
   auto update = AllOf(op::Shape("f32[2,2,8]"), op::CollectivePermute());
   auto scatter =
       AllOf(op::Shape("f32[2,9,8]"), op::Scatter(operand, indices, update));
@@ -9299,12 +9650,10 @@ ENTRY entry {
 
   const auto lhs = AllOf(op::Shape("f32[24,6]"), op::Parameter(0));
   auto partial_replicated_lhs =
-      AllOf(op::Shape("f32[24,12]"),
-            op::AllReduce(op::DynamicUpdateSlice(_, lhs, _, _)));
+      AllOf(op::Shape("f32[24,12]"), op::AllGather(lhs));
   const auto rhs = AllOf(op::Shape("f32[16,6]"), op::Parameter(1));
   auto partial_replicated_rhs =
-      AllOf(op::Shape("f32[16,12]"),
-            op::AllReduce(op::DynamicUpdateSlice(_, rhs, _, _)));
+      AllOf(op::Shape("f32[16,12]"), op::AllGather(rhs));
   const auto root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root,
               AllOf(op::Dot(partial_replicated_lhs, partial_replicated_rhs),
@@ -9331,8 +9680,7 @@ ENTRY entry {
   const auto lhs = AllOf(op::Shape("f32[24,50]"), op::Parameter(0));
   const auto rhs = AllOf(op::Shape("f32[16,50]"), op::Parameter(1));
   auto partial_replicated_rhs =
-      AllOf(op::Shape("f32[32,50]"),
-            op::AllReduce(op::DynamicUpdateSlice(_, rhs, _, _)));
+      AllOf(op::Shape("f32[32,50]"), op::AllGather(rhs));
   const auto root = module->entry_computation()->root_instruction();
   EXPECT_THAT(
       root, AllOf(op::Shape("f32[24,16]"),
@@ -9364,8 +9712,7 @@ ENTRY entry {
       AllOf(op::Shape("f32[24,100]"), op::DynamicSlice(lhs, _, _));
   const auto rhs = AllOf(op::Shape("f32[16,50]"), op::Parameter(1));
   auto partial_replicated_rhs = AllOf(
-      op::Shape("f32[16,100]"), op::AllReduce(op::DynamicUpdateSlice(
-                                    _, op::CollectivePermute(rhs), _, _)));
+      op::Shape("f32[16,100]"), op::AllGather(op::CollectivePermute(rhs)));
   const auto root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, AllOf(op::Shape("f32[24,16]"),
                           op::Dot(lhs_slice, partial_replicated_rhs)));
@@ -9420,8 +9767,7 @@ ENTRY entry {
   const auto lhs = AllOf(op::Shape("f32[2,12,100]"), op::Parameter(0));
   const auto rhs = AllOf(op::Shape("f32[2,16,100]"), op::Parameter(1));
   auto partial_replicated_rhs =
-      AllOf(op::Shape("f32[2,32,100]"),
-            op::AllReduce(op::DynamicUpdateSlice(_, rhs, _, _, _)));
+      AllOf(op::Shape("f32[2,32,100]"), op::AllGather(rhs));
   const auto root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, AllOf(op::Shape("f32[2,12,32]"),
                           op::Dot(lhs, partial_replicated_rhs)));
@@ -9507,8 +9853,7 @@ ENTRY entry {
   const auto lhs = AllOf(op::Shape("f32[2,24,50]"), op::Parameter(0));
   const auto rhs = AllOf(op::Shape("f32[2,16,100]"), op::Parameter(1));
   auto partial_replicated_lhs =
-      AllOf(op::Shape("f32[2,24,100]"),
-            op::AllReduce(op::DynamicUpdateSlice(_, lhs, _, _, _)));
+      AllOf(op::Shape("f32[2,24,100]"), op::AllGather(lhs));
   const auto root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, AllOf(op::Shape("f32[2,24,16]"),
                           op::Dot(partial_replicated_lhs, rhs)));
@@ -9534,8 +9879,7 @@ ENTRY entry {
   const auto lhs = AllOf(op::Shape("f32[2,8,12,100]"), op::Parameter(0));
   const auto rhs = AllOf(op::Shape("f32[2,8,16,100]"), op::Parameter(1));
   auto partial_replicated_rhs =
-      AllOf(op::Shape("f32[2,8,32,100]"),
-            op::AllReduce(op::DynamicUpdateSlice(_, rhs, _, _, _, _)));
+      AllOf(op::Shape("f32[2,8,32,100]"), op::AllGather(rhs));
   auto dot =
       AllOf(op::Shape("f32[2,8,12,32]"), op::Dot(lhs, partial_replicated_rhs));
   auto reshape = AllOf(op::Shape("f32[2,2,4,12,32]"), op::Reshape(dot));
@@ -9700,8 +10044,7 @@ ENTRY entry {
   const auto lhs = AllOf(op::Shape("f32[12,8,100]"), op::Parameter(0));
   const auto rhs = AllOf(op::Shape("f32[16,50]"), op::Parameter(1));
   auto partially_replicated_rhs =
-      AllOf(op::Shape("f32[16,100]"),
-            op::AllReduce(op::DynamicUpdateSlice(op::Broadcast(_), rhs, _, _)));
+      AllOf(op::Shape("f32[16,100]"), op::AllGather(rhs));
   auto dot =
       AllOf(op::Shape("f32[12,8,16]"), op::Dot(lhs, partially_replicated_rhs));
   const auto root = module->entry_computation()->root_instruction();
@@ -9754,10 +10097,9 @@ ENTRY entry {
 
   const auto lhs = AllOf(op::Shape("f32[12,8,50]"), op::Parameter(0));
   const auto rhs = AllOf(op::Shape("f32[50,25]"), op::Parameter(1));
-  auto dot = AllOf(
-      op::Shape("f32[12,8,50]"),
-      op::Dot(lhs, AllOf(op::Shape("f32[50,50]"),
-                         op::AllReduce(op::DynamicUpdateSlice(_, rhs, _, _)))));
+  auto dot =
+      AllOf(op::Shape("f32[12,8,50]"),
+            op::Dot(lhs, AllOf(op::Shape("f32[50,50]"), op::AllGather(rhs))));
   const auto root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, AllOf(op::Shape("f32[12,4,50]"),
                           op::DynamicSlice(op::AllReduce(dot), _, _, _)))
@@ -9784,10 +10126,9 @@ ENTRY entry {
 
   const auto lhs = AllOf(op::Shape("f32[12,4,10]"), op::Parameter(0));
   const auto rhs = AllOf(op::Shape("f32[5,50]"), op::Parameter(1));
-  auto dot = AllOf(
-      op::Shape("f32[12,4,50]"),
-      op::Dot(lhs, AllOf(op::Shape("f32[10,50]"),
-                         op::AllReduce(op::DynamicUpdateSlice(_, rhs, _, _)))));
+  auto dot =
+      AllOf(op::Shape("f32[12,4,50]"),
+            op::Dot(lhs, AllOf(op::Shape("f32[10,50]"), op::AllGather(rhs))));
   const auto root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, dot) << module->ToString();
 }
@@ -9855,9 +10196,8 @@ ENTRY main {
   VLOG(1) << module->ToString();
 
   const auto lhs = AllOf(op::Shape("bf16[1024,256]"), op::Parameter(0));
-  const auto rhs = AllOf(op::Shape("bf16[1024,256]"),
-                         op::AllReduce(op::DynamicUpdateSlice(
-                             op::Broadcast(), op::Parameter(1), _, _)));
+  const auto rhs =
+      AllOf(op::Shape("bf16[1024,256]"), op::AllGather(op::Parameter(1)));
   auto dot = AllOf(op::Shape("bf16[256,256]"), op::Dot(lhs, rhs));
   const auto root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, op::AllReduce(dot));
@@ -9881,9 +10221,8 @@ ENTRY main {
   const auto all_to_all_p1 = AllOf(
       op::Shape("bf16[32,64,16]"),
       op::Reshape(op::Transpose(op::AllToAll(op::Reshape(op::Parameter(1))))));
-  const auto rhs = AllOf(op::Shape("bf16[32,64,32]"),
-                         op::AllReduce(op::DynamicUpdateSlice(
-                             op::Broadcast(), all_to_all_p1, _, _, _)));
+  const auto rhs =
+      AllOf(op::Shape("bf16[32,64,32]"), op::AllGather(all_to_all_p1));
   auto dot = AllOf(op::Shape("bf16[32,32,64]"), op::Dot(lhs, rhs));
   const auto root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, op::AllReduce(dot));
@@ -9903,9 +10242,8 @@ ENTRY main {
       auto module, PartitionComputation(hlo_string, /*num_devices=*/128));
   VLOG(1) << module->ToString();
 
-  const auto lhs = AllOf(op::Shape("bf16[128,8,8,1280]"),
-                         op::AllReduce(op::DynamicUpdateSlice(
-                             op::Broadcast(), op::Parameter(0), _, _, _, _)));
+  const auto lhs =
+      AllOf(op::Shape("bf16[128,8,8,1280]"), op::AllGather(op::Parameter(0)));
   const auto rhs = AllOf(op::Shape("bf16[3,3,1280,160]"), op::Parameter(1));
   const auto root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root,
@@ -9946,10 +10284,8 @@ ENTRY entry {
       AllOf(op::Shape("f32[6,2]"), op::Multiply(multiply_lhs, multiply_rhs));
   auto add = AllOf(op::Shape("f32[6,2]"), op::Add(multiply, multiply_rhs));
   const auto root = module->entry_computation()->root_instruction();
-  EXPECT_THAT(root, AllOf(op::Shape("f32[6,3]"),
-                          op::AllReduce(op::DynamicUpdateSlice(
-                              op::Broadcast(), op::Select(_, add, _),
-                              op::Constant(), op::Reshape()))));
+  EXPECT_THAT(root,
+              AllOf(op::Shape("f32[6,3]"), op::Slice(op::AllGather(add))));
 }
 
 TEST_P(SpmdPartitioningTest, ElementwiseTest_SubgroupSharding_ReplicateToTile) {
@@ -10029,9 +10365,8 @@ ENTRY entry {
   auto tiled = AllOf(op::Shape("f32[4,4]"),
                      op::Copy(op::DynamicSlice(op::Parameter(0), op::Reshape(),
                                                op::Reshape())));
-  auto partially_replicated = AllOf(
-      op::Shape("f32[4,8]"), op::Copy(op::AllReduce(op::DynamicUpdateSlice(
-                                 op::Broadcast(_), tiled, _, _))));
+  auto partially_replicated =
+      AllOf(op::Shape("f32[4,8]"), op::Copy(op::AllGather(tiled)));
   const auto root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, partially_replicated);
 }
@@ -10049,19 +10384,19 @@ ENTRY entry {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           PartitionComputation(hlo_string, /*num_devices=*/6));
   VLOG(1) << module->ToString();
-  auto tiled = AllOf(op::Shape("f32[4,3]"), op::Select(_, op::Parameter(0), _));
-  auto partially_replicated = AllOf(
-      op::Shape("f32[8,4]"),
-      op::Copy(op::Reshape(op::Transpose(op::AllToAll(op::Reshape(op::AllReduce(
-          op::DynamicUpdateSlice(op::Broadcast(), tiled, _, _))))))));
+  auto tiled = AllOf(op::Shape("f32[4,3]"), op::Parameter(0));
+  auto partially_replicated =
+      AllOf(op::Shape("f32[8,4]"),
+            op::Copy(op::Reshape(op::Transpose(
+                op::AllToAll(op::Reshape(op::Slice(op::AllGather(tiled))))))));
   const auto root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, partially_replicated);
 
-  const HloInstruction* all_reduce =
-      FindInstruction(module.get(), "all-reduce");
-  EXPECT_NE(all_reduce, nullptr);
+  const HloInstruction* all_gather =
+      FindInstruction(module.get(), "all-gather");
+  EXPECT_NE(all_gather, nullptr);
   EXPECT_TRUE(
-      absl::StrContains(all_reduce->ToString(), "replica_groups=[2,3]<=[6]"));
+      absl::StrContains(all_gather->ToString(), "replica_groups=[2,3]<=[6]"));
 }
 
 TEST_P(SpmdPartitioningTest, PartialReplicateToTileReshardUnevenPartition) {
@@ -10138,8 +10473,7 @@ ENTRY entry {
                                       op::Reshape())));
   auto partially_replicated =
       AllOf(op::Shape("f32[4,8]"),
-            op::Copy(op::AllReduce(op::DynamicUpdateSlice(
-                op::Broadcast(_), partially_replicated_init, _, _))));
+            op::Copy(op::AllGather(partially_replicated_init)));
   const auto root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, partially_replicated);
 }
@@ -10195,8 +10529,7 @@ ENTRY entry {
                 op::Parameter(0), op::Reshape(), op::Reshape()))));
   auto partially_replicated =
       AllOf(op::Shape("f32[8,4]"),
-            op::Copy(op::AllReduce(op::DynamicUpdateSlice(
-                op::Broadcast(_), partially_replicated_init, _, _))));
+            op::Copy(op::AllGather(partially_replicated_init)));
   const auto root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, partially_replicated);
 }
@@ -10254,9 +10587,7 @@ ENTRY entry {
   auto concat = op::Concatenate(piece1, piece2);
   auto partially_replicated =
       AllOf(op::Shape("f32[3,3]"),
-            op::AllReduce(op::DynamicUpdateSlice(
-                op::Broadcast(_),
-                op::Select(_, op::DynamicSlice(concat, _, _), _), _, _)));
+            op::Slice(op::AllGather(op::DynamicSlice(concat, _, _))));
   const auto root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, op::Copy(partially_replicated));
 }
@@ -10641,8 +10972,7 @@ ENTRY entry {
   const auto lhs = AllOf(op::Shape("f32[4,275,4]"));
   const auto rhs = AllOf(op::Shape("f32[1,275,4]"));
   auto conv = AllOf(op::Convolution(lhs, rhs), op::Shape("f32[5,4,4]"));
-  EXPECT_THAT(root, AllOf(op::AllReduce(op::DynamicUpdateSlice(
-                              _, op::CollectivePermute(conv), _, _, _)),
+  EXPECT_THAT(root, AllOf(op::AllGather(op::CollectivePermute(conv)),
                           op::Shape("f32[5,4,8]")));
 }
 
@@ -10667,8 +10997,7 @@ ENTRY entry {
   const auto lhs = AllOf(op::Shape("f32[4,275,4]"));
   const auto rhs = AllOf(op::Shape("f32[1,275,4]"));
   auto conv = AllOf(op::Convolution(lhs, rhs), op::Shape("f32[5,4,4]"));
-  EXPECT_THAT(root, AllOf(op::AllReduce(op::DynamicUpdateSlice(
-                              _, op::CollectivePermute(conv), _, _, _)),
+  EXPECT_THAT(root, AllOf(op::AllGather(op::CollectivePermute(conv)),
                           op::Shape("f32[5,4,8]")));
 }
 
@@ -11283,11 +11612,9 @@ ENTRY entry {
   const auto root = module->entry_computation()->root_instruction();
   auto param = AllOf(op::Parameter(), op::Shape("f32[2000, 1000]"));
   auto resharded_lhs =
-      AllOf(op::AllReduce(op::DynamicUpdateSlice(_, param, _, _)),
-            op::Shape("f32[2000, 4000]"));
+      AllOf(op::AllGather(param), op::Shape("f32[2000, 4000]"));
   auto resharded_rhs =
-      AllOf(op::AllReduce(op::DynamicUpdateSlice(_, op::Copy(param), _, _)),
-            op::Shape("f32[4000, 1000]"));
+      AllOf(op::AllGather(op::Copy(param)), op::Shape("f32[4000, 1000]"));
   EXPECT_THAT(root, AllOf(op::Convolution(resharded_lhs, resharded_rhs),
                           op::Shape("f32[2000, 1000]")));
 }
@@ -11355,8 +11682,7 @@ ENTRY %module {
   auto operand = AllOf(op::Shape("s32[1,4,2,2]"), op::Reshape());
   auto indices = AllOf(op::Shape("s32[2,1,4]"), op::Subtract());
   auto gather = AllOf(op::Shape("s32[1,4,2,2]"), op::Gather(operand, indices));
-  EXPECT_THAT(root,
-              op::AllReduce(op::DynamicUpdateSlice(_, gather, _, _, _, _)));
+  EXPECT_THAT(root, op::AllGather(gather));
 }
 
 TEST_P(SpmdPartitioningTest, GatherParallelDimRedistributionIndices) {
@@ -11385,8 +11711,7 @@ ENTRY %module {
   auto operand = AllOf(op::Shape("s32[2,2,2,2]"), op::Reshape());
   auto indices = AllOf(op::Shape("s32[2,2,2]"), op::Subtract());
   auto gather = AllOf(op::Shape("s32[2,2,2,2]"), op::Gather(operand, indices));
-  EXPECT_THAT(root, op::AllReduce(op::AllReduce(
-                        op::DynamicUpdateSlice(_, gather, _, _, _, _))));
+  EXPECT_THAT(root, op::AllGather(op::AllGather(gather)));
 }
 
 TEST_P(SpmdPartitioningTest, GatherParallelDimReplicatedIndices) {
@@ -11416,8 +11741,7 @@ ENTRY %module {
   auto operand = AllOf(op::Shape("s32[1,4,2,2]"), op::Parameter());
   auto indices = AllOf(op::Shape("s32[2,1,4]"), op::Subtract());
   auto gather = AllOf(op::Shape("s32[1,4,2,2]"), op::Gather(operand, indices));
-  EXPECT_THAT(root,
-              op::AllReduce(op::DynamicUpdateSlice(_, gather, _, _, _, _)));
+  EXPECT_THAT(root, op::AllGather(gather));
 }
 
 TEST_P(SpmdPartitioningTest, GatherParallelDimReplicatedOperand) {
@@ -11446,8 +11770,7 @@ ENTRY %module {
   auto operand = AllOf(op::Shape("s32[1,4,2,2]"), op::DynamicSlice());
   auto indices = AllOf(op::Shape("s32[2,1,4]"), op::Subtract());
   auto gather = AllOf(op::Shape("s32[1,4,2,2]"), op::Gather(operand, indices));
-  EXPECT_THAT(root,
-              op::AllReduce(op::DynamicUpdateSlice(_, gather, _, _, _, _)));
+  EXPECT_THAT(root, op::AllGather(gather));
 }
 
 TEST_P(SpmdPartitioningTest, GatherParallelDimPartialReplicatedIndices) {
@@ -11477,8 +11800,7 @@ ENTRY %module {
   auto operand = AllOf(op::Shape("s32[1,4,2,2]"), op::Parameter());
   auto indices = AllOf(op::Shape("s32[2,1,4]"), op::Subtract());
   auto gather = AllOf(op::Shape("s32[1,4,2,2]"), op::Gather(operand, indices));
-  EXPECT_THAT(root,
-              op::AllReduce(op::DynamicUpdateSlice(_, gather, _, _, _, _)));
+  EXPECT_THAT(root, op::AllGather(gather));
 }
 
 TEST_P(SpmdPartitioningTest, GatherParallelDimPartialReplicatedOperand) {
@@ -11508,8 +11830,7 @@ ENTRY %module {
   auto operand = AllOf(op::Shape("s32[1,4,2,2]"), op::DynamicSlice());
   auto indices = AllOf(op::Shape("s32[2,1,4]"), op::Subtract());
   auto gather = AllOf(op::Shape("s32[1,4,2,2]"), op::Gather(operand, indices));
-  EXPECT_THAT(root,
-              op::AllReduce(op::DynamicUpdateSlice(_, gather, _, _, _, _)));
+  EXPECT_THAT(root, op::AllGather(gather));
 }
 
 TEST_P(SpmdPartitioningTest, GatherParallelDimSwappedDimensions) {
@@ -11539,8 +11860,7 @@ ENTRY %module {
   auto operand = AllOf(op::Shape("s32[4,1,2,2]"), op::CollectivePermute());
   auto indices = AllOf(op::Shape("s32[2,4,1]"), op::Subtract());
   auto gather = AllOf(op::Shape("s32[4,1,2,2]"), op::Gather(operand, indices));
-  EXPECT_THAT(root, op::AllReduce(op::AllReduce(
-                        op::DynamicUpdateSlice(_, gather, _, _, _, _))));
+  EXPECT_THAT(root, op::AllGather(op::AllGather(gather)));
 }
 
 TEST_P(SpmdPartitioningTest, GatherParallelDimFromOutsideWhilePositive) {
@@ -11603,10 +11923,7 @@ ENTRY entry {
   auto operand = AllOf(op::Shape("s32[1,4,2,2]"), op::DynamicSlice());
   auto indices = AllOf(op::Shape("s32[2,1,4]"), op::Subtract());
   auto gather = AllOf(op::Shape("s32[1,4,2,2]"), op::Gather(operand, indices));
-  EXPECT_THAT(
-      root,
-      op::Tuple(op::AllReduce(op::DynamicUpdateSlice(_, gather, _, _, _, _)), _,
-                _));
+  EXPECT_THAT(root, op::Tuple(op::AllGather(gather), _, _));
 }
 
 TEST_P(SpmdPartitioningTest, GatherParallelDimFromOutsideWhileNegative) {
@@ -11671,10 +11988,7 @@ ENTRY entry {
   auto operand = AllOf(op::Shape("s32[8,4,2,2]"), op::GetTupleElement());
   auto indices = AllOf(op::Shape("s32[2,1,4]"), op::Concatenate());
   auto gather = AllOf(op::Shape("s32[1,4,2,2]"), op::Gather(operand, indices));
-  EXPECT_THAT(
-      root,
-      op::Tuple(op::AllReduce(op::DynamicUpdateSlice(_, gather, _, _, _, _)), _,
-                _));
+  EXPECT_THAT(root, op::Tuple(op::AllGather(gather), _, _));
 }
 
 TEST_P(SpmdPartitioningTest, ScatterRepsOnLastTileDimDontDivideGroups) {
@@ -11807,9 +12121,7 @@ ENTRY entry {
     auto indices = AllOf(op::Shape("s32[2,1,4]"), op::Subtract());
     auto gather =
         AllOf(op::Shape("s32[1,4,2,2]"), op::Gather(operand, indices));
-    EXPECT_THAT(
-        partitioned_gather,
-        op::Copy(op::AllReduce(op::DynamicUpdateSlice(_, gather, _, _, _, _))));
+    EXPECT_THAT(partitioned_gather, op::Copy(op::AllGather(gather)));
   }
 
   // Verify scatter is partitioned properly.
@@ -11823,9 +12135,7 @@ ENTRY entry {
     auto update = AllOf(op::Shape("s32[1,4,2,2]"), op::DynamicSlice());
     auto scatter =
         AllOf(op::Shape("s32[1,4,2,2]"), op::Scatter(operand, indices, update));
-    EXPECT_THAT(partitioned_scatter,
-                op::Copy(op::AllReduce(
-                    op::DynamicUpdateSlice(_, scatter, _, _, _, _))));
+    EXPECT_THAT(partitioned_scatter, op::Copy(op::AllGather(scatter)));
   }
 }
 
@@ -11856,11 +12166,10 @@ ENTRY %module {
                           PartitionComputation(hlo_string, /*num_devices=*/4));
   const auto root = module->entry_computation()->root_instruction();
   VLOG(1) << module->ToString();
-  auto operand = AllOf(op::Shape("s32[4,4,2,2]"), op::AllReduce());
+  auto operand = AllOf(op::Shape("s32[4,4,2,2]"), op::AllGather());
   auto indices = AllOf(op::Shape("s32[2,4,2]"), op::Subtract());
   auto gather = AllOf(op::Shape("s32[4,2,2,2]"), op::Gather(operand, indices));
-  EXPECT_THAT(root, op::AllReduce(op::AllReduce(
-                        op::DynamicUpdateSlice(_, gather, _, _, _, _))));
+  EXPECT_THAT(root, op::AllGather(op::AllGather(gather)));
 }
 
 TEST_P(SpmdPartitioningTest, Gather_b303520921) {
@@ -11912,8 +12221,7 @@ ENTRY %module {
   auto operand = AllOf(op::Shape("s32[2,4,1,2]"), op::Reshape());
   auto indices = AllOf(op::Shape("s32[2,2,4]"), op::Subtract());
   auto gather = AllOf(op::Shape("s32[2,4,1,2]"), op::Gather(operand, indices));
-  EXPECT_THAT(root, op::AllReduce(op::AllReduce(
-                        op::DynamicUpdateSlice(_, gather, _, _, _, _))));
+  EXPECT_THAT(root, op::AllGather(op::AllGather(gather)));
   auto* all_to_all = FindInstruction(module.get(), "all-to-all");
   EXPECT_TRUE(all_to_all != nullptr);
   if (GetParam() ==
@@ -11955,9 +12263,7 @@ ENTRY %module {
   auto indices = AllOf(op::Shape("s32[2,2,1]"), op::Subtract());
   auto gather = AllOf(op::Shape("s32[2,1,2,2]"), op::Gather(operand, indices));
   VLOG(1) << module->ToString();
-  EXPECT_THAT(root,
-              op::AllReduce(op::DynamicUpdateSlice(
-                  _, op::AllReduce(op::Select(_, _, gather)), _, _, _, _)));
+  EXPECT_THAT(root, op::AllGather(op::AllReduce(op::Select(_, _, gather))));
 }
 
 TEST_P(SpmdPartitioningTest,
@@ -12005,11 +12311,14 @@ ENTRY %module {
     collapsed_slice_dims={0,1}, start_index_map={1,0}, index_vector_dim=0,
     slice_sizes={1,1,2,2}, sharding={devices=[4,2,1,1]<=[8]}
 })";
+  SpmdPartitionerOptions options;
   for (const GatherScatterPartitioningMethod& method :
        {GatherScatterPartitioningMethod::kIndexParallel,
         GatherScatterPartitioningMethod::kIndexPassthrough}) {
+    options.preferred_gather_partition_methods = {method};
     TF_ASSERT_OK_AND_ASSIGN(
         auto module,
+<<<<<<< HEAD
         PartitionComputation(hlo_string, /*num_devices=*/8,
                              /*use_all_gather=*/false,
                              /*conv_halo_exchange_always_on_lhs=*/true,
@@ -12018,6 +12327,9 @@ ENTRY %module {
                              /*bidirectional_windowed_einsum=*/false,
                              /*threshold_for_windowed_einsum_mib=*/-1, {method},
                              {method}));
+=======
+        PartitionComputation(hlo_string, /*num_devices=*/8, options));
+>>>>>>> upstream/master
     VLOG(1) << module->ToString();
     auto operand = AllOf(op::Shape("s32[2,4,2,2]"), op::Parameter());
     auto indices = AllOf(op::Shape("s32[2,2,2]"), op::Subtract());
@@ -12051,9 +12363,8 @@ ENTRY %module {
   auto indices = AllOf(op::Shape("s32[2,8,4]"), op::Subtract());
   auto gather = AllOf(op::Shape("s32[8,4,1,2]"), op::Gather(operand, indices));
   EXPECT_THAT(
-      root, op::AllReduce(op::DynamicUpdateSlice(
-                _, op::AllReduce(op::AllReduce(op::Select(_, _, gather))), _, _,
-                _, _)));
+      root,
+      op::AllGather(op::AllReduce(op::AllReduce(op::Select(_, _, gather)))));
 }
 
 TEST_P(SpmdPartitioningTest,
@@ -12079,10 +12390,7 @@ ENTRY %module {
   auto operand = AllOf(op::Shape("s32[8,4,1,2]"), op::Parameter());
   auto indices = AllOf(op::Shape("s32[2,4,4]"), op::CollectivePermute());
   auto gather = AllOf(op::Shape("s32[4,4,1,2]"), op::Gather(operand, indices));
-  EXPECT_THAT(
-      root, op::AllReduce(op::DynamicUpdateSlice(
-                _, op::AllReduce(op::DynamicUpdateSlice(_, gather, _, _, _, _)),
-                _, _, _, _)));
+  EXPECT_THAT(root, op::AllGather(op::AllGather(gather)));
 }
 
 TEST_P(SpmdPartitioningTest,
@@ -12105,13 +12413,10 @@ ENTRY %module {
                           PartitionComputation(hlo_string, /*num_devices=*/8));
   VLOG(1) << module->ToString();
   const auto root = module->entry_computation()->root_instruction();
-  auto operand = AllOf(op::Shape("s32[8,4,1,2]"), op::AllReduce());
+  auto operand = AllOf(op::Shape("s32[8,4,1,2]"), op::AllGather());
   auto indices = AllOf(op::Shape("s32[2,4,2]"), op::Parameter());
   auto gather = AllOf(op::Shape("s32[4,2,1,2]"), op::Gather(operand, indices));
-  EXPECT_THAT(
-      root, op::AllReduce(op::AllReduce(op::DynamicUpdateSlice(
-                _, op::AllReduce(op::DynamicUpdateSlice(_, gather, _, _, _, _)),
-                _, _, _, _))));
+  EXPECT_THAT(root, op::AllGather(op::AllGather(op::AllGather(gather))));
 }
 
 TEST_P(SpmdPartitioningTest,
@@ -12130,8 +12435,10 @@ ENTRY %module {
     collapsed_slice_dims={0,1}, start_index_map={0,1}, index_vector_dim=0,
     slice_sizes={1,1,2,2}, sharding={replicated}
 })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          PartitionComputation(hlo_string, /*num_devices=*/8));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module,
+      PartitionComputation(hlo_string, /*num_devices=*/8,
+                           SpmdPartitionerOptions(), /*use_all_gather=*/false));
   VLOG(1) << module->ToString();
   const auto root = module->entry_computation()->root_instruction();
   auto operand = AllOf(op::Shape("s32[4,2,2,2]"), op::Parameter());
@@ -12163,12 +12470,12 @@ ENTRY %module {
                           PartitionComputation(hlo_string, /*num_devices=*/8));
   VLOG(1) << module->ToString();
   const auto root = module->entry_computation()->root_instruction();
-  auto operand = AllOf(op::Shape("s32[8,2,2,2]"), op::AllReduce());
+  auto operand = AllOf(op::Shape("s32[8,2,2,2]"), op::AllGather());
   auto indices = AllOf(op::Shape("s32[2,4,2]"), op::Subtract());
   auto gather = AllOf(op::Shape("s32[4,2,2,2]"), op::Gather(operand, indices));
-  EXPECT_THAT(root,
-              op::AllReduce(op::AllReduce(op::DynamicUpdateSlice(
-                  _, op::AllReduce(op::Select(_, _, gather)), _, _, _, _))));
+  EXPECT_THAT(
+      root,
+      op::AllGather(op::AllGather(op::AllReduce(op::Select(_, _, gather)))));
 }
 
 TEST_P(SpmdPartitioningTest, GatherTrivialSlicedOperandPartial) {
@@ -12186,7 +12493,7 @@ ENTRY main.4 {
                           PartitionComputation(hlo_string, /*num_devices=*/8));
   VLOG(1) << module->ToString();
   const auto root = module->entry_computation()->root_instruction();
-  auto operand = AllOf(op::Shape("s64[8,1]"), op::AllReduce());
+  auto operand = AllOf(op::Shape("s64[8,1]"), op::AllGather());
   auto indices = AllOf(op::Shape("s32[2]"), op::Subtract());
   auto gather = AllOf(op::Shape("s64[2,1]"), op::Gather(operand, indices));
   EXPECT_THAT(root, op::AllReduce(op::Select(_, _, gather)));
@@ -12295,12 +12602,19 @@ ENTRY entry {
     collapsed_slice_dims={0}, start_index_map={0}, index_vector_dim=2,
     slice_sizes={1,16}, sharding={devices=[4,1,1,8]<=[32] last_tile_dim_replicate}
 })";
+  SpmdPartitionerOptions options;
+  options.preferred_gather_partition_methods = {
+      GatherScatterPartitioningMethod::kTrivialSlicedOperand};
   TF_ASSERT_OK_AND_ASSIGN(
       auto module,
+<<<<<<< HEAD
       PartitionComputation(
           hlo_string, /*num_devices=*/32, /*use_all_gather=*/false, true, false,
           false, false, -1,
           {GatherScatterPartitioningMethod::kTrivialSlicedOperand}));
+=======
+      PartitionComputation(hlo_string, /*num_devices=*/32, options));
+>>>>>>> upstream/master
   VLOG(1) << module->ToString();
   HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, op::AllReduce(op::Select(_, _, op::Gather(_, _))));
@@ -12327,18 +12641,22 @@ ENTRY entry {
     collapsed_slice_dims={0}, start_index_map={0}, index_vector_dim=2,
     slice_sizes={1,16}, sharding={devices=[4,1,1,8]<=[32] last_tile_dim_replicate}
 })";
+  SpmdPartitionerOptions options;
+  options.preferred_gather_partition_methods = {
+      GatherScatterPartitioningMethod::kIndexParallel};
   TF_ASSERT_OK_AND_ASSIGN(
       auto module,
+<<<<<<< HEAD
       PartitionComputation(
           hlo_string, /*num_devices=*/32, /*use_all_gather=*/false, true, false,
           false, false, -1, {GatherScatterPartitioningMethod::kIndexParallel}));
+=======
+      PartitionComputation(hlo_string, /*num_devices=*/32, options));
+>>>>>>> upstream/master
   VLOG(1) << module->ToString();
   HloInstruction* root = module->entry_computation()->root_instruction();
-  EXPECT_THAT(
-      root,
-      op::AllReduce(op::DynamicUpdateSlice(
-          _, op::AllReduce(op::Select(_, _, op::Gather(op::AllReduce(_), _))),
-          _, _, _)));
+  EXPECT_THAT(root, op::AllGather(op::AllReduce(
+                        op::Select(_, _, op::Gather(op::AllGather(_), _)))));
   auto gather = FindInstruction(module.get(), HloOpcode::kGather);
   EXPECT_THAT(
       gather->operand(1),
@@ -12346,8 +12664,6 @@ ENTRY entry {
   auto collective_permute =
       FindInstruction(module.get(), HloOpcode::kCollectivePermute);
   EXPECT_NE(collective_permute, nullptr);
-  auto all_reduce = FindInstruction(module.get(), HloOpcode::kAllReduce);
-  EXPECT_THAT(all_reduce->operand(0), op::DynamicUpdateSlice(_, _, _, _));
   auto dynamic_slice = FindInstruction(module.get(), HloOpcode::kDynamicSlice);
   EXPECT_THAT(dynamic_slice->operand(1), op::PartitionId());
 }
@@ -12395,8 +12711,7 @@ ENTRY %module {
   auto update = AllOf(op::Shape("s32[1,4,2,2]"), op::Parameter());
   auto scatter =
       AllOf(op::Shape("s32[1,4,2,2]"), op::Scatter(operand, indices, update));
-  EXPECT_THAT(root,
-              op::AllReduce(op::DynamicUpdateSlice(_, scatter, _, _, _, _)));
+  EXPECT_THAT(root, op::AllGather(scatter));
 }
 
 TEST_P(SpmdPartitioningTest, ScatterParallelDimReplicatedIndices) {
@@ -12440,8 +12755,7 @@ ENTRY %module {
   auto update = AllOf(op::Shape("s32[1,4,2,2]"), op::Parameter());
   auto scatter =
       AllOf(op::Shape("s32[1,4,2,2]"), op::Scatter(operand, indices, update));
-  EXPECT_THAT(root,
-              op::AllReduce(op::DynamicUpdateSlice(_, scatter, _, _, _, _)));
+  EXPECT_THAT(root, op::AllGather(scatter));
 }
 
 TEST_P(SpmdPartitioningTest, ScatterParallelDimReplicatedOperand) {
@@ -12484,8 +12798,7 @@ ENTRY %module {
   auto update = AllOf(op::Shape("s32[1,4,2,2]"), op::Parameter());
   auto scatter =
       AllOf(op::Shape("s32[1,4,2,2]"), op::Scatter(operand, indices, update));
-  EXPECT_THAT(root,
-              op::AllReduce(op::DynamicUpdateSlice(_, scatter, _, _, _, _)));
+  EXPECT_THAT(root, op::AllGather(scatter));
 }
 
 TEST_P(SpmdPartitioningTest, ScatterParallelDimReplicatedUpdate) {
@@ -12528,8 +12841,7 @@ ENTRY %module {
   auto update = AllOf(op::Shape("s32[1,4,2,2]"), op::DynamicSlice());
   auto scatter =
       AllOf(op::Shape("s32[1,4,2,2]"), op::Scatter(operand, indices, update));
-  EXPECT_THAT(root,
-              op::AllReduce(op::DynamicUpdateSlice(_, scatter, _, _, _, _)));
+  EXPECT_THAT(root, op::AllGather(scatter));
 }
 
 TEST_P(SpmdPartitioningTest, ScatterParallelDimPartialReplicatedIndices) {
@@ -12573,8 +12885,7 @@ ENTRY %module {
   auto update = AllOf(op::Shape("s32[1,4,2,2]"), op::Parameter());
   auto scatter =
       AllOf(op::Shape("s32[1,4,2,2]"), op::Scatter(operand, indices, update));
-  EXPECT_THAT(root,
-              op::AllReduce(op::DynamicUpdateSlice(_, scatter, _, _, _, _)));
+  EXPECT_THAT(root, op::AllGather(scatter));
 }
 
 TEST_P(SpmdPartitioningTest, ScatterParallelDimPartialReplicatedOperand) {
@@ -12618,8 +12929,7 @@ ENTRY %module {
   auto update = AllOf(op::Shape("s32[1,4,2,2]"), op::Parameter());
   auto scatter =
       AllOf(op::Shape("s32[1,4,2,2]"), op::Scatter(operand, indices, update));
-  EXPECT_THAT(root,
-              op::AllReduce(op::DynamicUpdateSlice(_, scatter, _, _, _, _)));
+  EXPECT_THAT(root, op::AllGather(scatter));
 }
 
 TEST_P(SpmdPartitioningTest, ScatterParallelDimPartialReplicatedUpdate) {
@@ -12663,8 +12973,7 @@ ENTRY %module {
   auto update = AllOf(op::Shape("s32[1,4,2,2]"), op::DynamicSlice());
   auto scatter =
       AllOf(op::Shape("s32[1,4,2,2]"), op::Scatter(operand, indices, update));
-  EXPECT_THAT(root,
-              op::AllReduce(op::DynamicUpdateSlice(_, scatter, _, _, _, _)));
+  EXPECT_THAT(root, op::AllGather(scatter));
 }
 
 TEST_P(SpmdPartitioningTest, ScatterParallelDimSwappedDimensions) {
@@ -12708,8 +13017,7 @@ ENTRY %module {
   auto update = AllOf(op::Shape("s32[4,1,2,2]"), op::CollectivePermute());
   auto scatter =
       AllOf(op::Shape("s32[4,1,2,2]"), op::Scatter(operand, indices, update));
-  EXPECT_THAT(root, op::AllReduce(op::AllReduce(
-                        op::DynamicUpdateSlice(_, scatter, _, _, _, _))));
+  EXPECT_THAT(root, op::AllGather(op::AllGather(scatter)));
 }
 
 TEST_P(SpmdPartitioningTest, ScatterParallelDimFromOutsideWhilePositive) {
@@ -12787,10 +13095,7 @@ ENTRY entry {
   auto update = AllOf(op::Shape("s32[1,4,2,2]"), op::DynamicSlice());
   auto scatter =
       AllOf(op::Shape("s32[1,4,2,2]"), op::Scatter(operand, indices, update));
-  EXPECT_THAT(
-      root,
-      op::Tuple(op::AllReduce(op::DynamicUpdateSlice(_, scatter, _, _, _, _)),
-                _, _, _));
+  EXPECT_THAT(root, op::Tuple(op::AllGather(scatter), _, _, _));
 }
 
 TEST_P(SpmdPartitioningTest, ScatterParallelDimAndNonParallelDimPartitioned) {
@@ -12838,9 +13143,8 @@ ENTRY %module {
   auto update = AllOf(op::Shape("s32[4,2,2,2]"));
   auto scatter =
       AllOf(op::Shape("s32[4,4,2,2]"), op::Scatter(operand, indices, update));
-  EXPECT_THAT(root, op::AllReduce(op::AllReduce(op::DynamicUpdateSlice(
-                        _, op::DynamicSlice(op::AllReduce(scatter), _, _, _, _),
-                        _, _, _, _))));
+  EXPECT_THAT(root, op::AllGather(op::AllGather(
+                        op::DynamicSlice(op::AllReduce(scatter), _, _, _, _))));
 }
 
 TEST_P(SpmdPartitioningTest, b_356877097) {
@@ -12870,7 +13174,7 @@ ENTRY main.22 {
   const auto root = module->entry_computation()->root_instruction();
   auto operand = AllOf(op::Shape("f32[16,2]"), op::Broadcast());
   auto indices = AllOf(op::Shape("s32[8,2]"), op::Subtract());
-  auto update = AllOf(op::Shape("f32[8]"), op::AllReduce());
+  auto update = AllOf(op::Shape("f32[8]"), op::AllGather());
   EXPECT_THAT(root, AllOf(op::Shape("f32[16,2]"),
                           op::Scatter(operand, indices, update)));
 }
@@ -12916,8 +13220,7 @@ ENTRY %module {
   auto update = AllOf(op::Shape("s32[2,4,1,2]"), op::DynamicSlice());
   auto scatter =
       AllOf(op::Shape("s32[2,4,1,2]"), op::Scatter(operand, indices, update));
-  EXPECT_THAT(root, op::AllReduce(op::AllReduce(
-                        op::DynamicUpdateSlice(_, scatter, _, _, _, _))));
+  EXPECT_THAT(root, op::AllGather(op::AllGather(scatter)));
 }
 
 TEST_P(SpmdPartitioningTest,
@@ -12962,8 +13265,7 @@ ENTRY %module {
   auto scatter =
       AllOf(op::Shape("s32[2,2,2,2]"), op::Scatter(operand, indices, update));
   VLOG(1) << module->ToString();
-  EXPECT_THAT(root, op::AllReduce(op::AllReduce(
-                        op::DynamicUpdateSlice(_, scatter, _, _, _, _))));
+  EXPECT_THAT(root, op::AllGather(op::AllGather(scatter)));
 }
 
 TEST_P(SpmdPartitioningTest, ScatterMergedIndexParallelAndIndexPassthrough) {
@@ -12999,11 +13301,14 @@ ENTRY %module {
     index_vector_dim=0, sharding={replicated}
 })";
 
+  SpmdPartitionerOptions options;
   for (const GatherScatterPartitioningMethod& method :
        {GatherScatterPartitioningMethod::kIndexParallel,
         GatherScatterPartitioningMethod::kIndexPassthrough}) {
+    options.preferred_scatter_partition_methods = {method};
     TF_ASSERT_OK_AND_ASSIGN(
         auto module,
+<<<<<<< HEAD
         PartitionComputation(hlo_string, /*num_devices=*/8,
                              /*use_all_gather=*/false,
                              /*conv_halo_exchange_always_on_lhs=*/true,
@@ -13012,6 +13317,9 @@ ENTRY %module {
                              /*bidirectional_windowed_einsum=*/false,
                              /*threshold_for_windowed_einsum_mib=*/-1, {method},
                              {method}));
+=======
+        PartitionComputation(hlo_string, /*num_devices=*/8, options));
+>>>>>>> upstream/master
     VLOG(1) << module->ToString();
     auto operand = AllOf(op::Shape("s32[2,4,2,2]"), op::Select());
     auto indices = AllOf(op::Shape("s32[2,2,2]"), op::Subtract());
@@ -13019,8 +13327,7 @@ ENTRY %module {
     auto scatter =
         AllOf(op::Shape("s32[2,4,2,2]"), op::Scatter(operand, indices, update));
     EXPECT_THAT(module->entry_computation()->root_instruction(),
-                op::AllReduce(op::DynamicUpdateSlice(_, op::AllReduce(scatter),
-                                                     _, _, _, _)));
+                op::AllGather(op::AllReduce(scatter)));
   }
 }
 
@@ -13061,8 +13368,7 @@ ENTRY %module {
   auto update = AllOf(op::Shape("s32[8,4,1,2]"), op::DynamicSlice());
   auto scatter =
       AllOf(op::Shape("s32[4,2,1,2]"), op::Scatter(operand, indices, update));
-  EXPECT_THAT(root, op::AllReduce(op::AllReduce(op::AllReduce(
-                        op::DynamicUpdateSlice(_, scatter, _, _, _, _)))));
+  EXPECT_THAT(root, op::AllGather(op::AllGather(op::AllGather(scatter))));
 }
 
 TEST_P(SpmdPartitioningTest,
@@ -13102,8 +13408,7 @@ ENTRY %module {
   auto update = AllOf(op::Shape("s32[4,4,1,2]"), op::DynamicSlice());
   auto scatter =
       AllOf(op::Shape("s32[8,4,1,2]"), op::Scatter(operand, indices, update));
-  EXPECT_THAT(root, op::AllReduce(op::DynamicUpdateSlice(
-                        _, op::AllReduce(scatter), _, _, _, _)));
+  EXPECT_THAT(root, op::AllGather(op::AllReduce(scatter)));
 }
 
 TEST_P(SpmdPartitioningTest,
@@ -13134,8 +13439,10 @@ ENTRY %module {
     scatter_dims_to_operand_dims={0,1},
     index_vector_dim=0, sharding={replicated}
 })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          PartitionComputation(hlo_string, /*num_devices=*/8));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module,
+      PartitionComputation(hlo_string, /*num_devices=*/8,
+                           SpmdPartitionerOptions(), /*use_all_gather=*/false));
   VLOG(1) << module->ToString();
   const auto root = module->entry_computation()->root_instruction();
   auto operand = AllOf(op::Shape("s32[8,4,1,2]"), op::Select());
@@ -13184,8 +13491,7 @@ ENTRY %module {
   auto update = AllOf(op::Shape("s32[4,4,2,2]"), op::DynamicSlice());
   auto scatter =
       AllOf(op::Shape("s32[4,2,2,2]"), op::Scatter(operand, indices, update));
-  EXPECT_THAT(root, op::AllReduce(op::AllReduce(op::DynamicUpdateSlice(
-                        _, op::AllReduce(scatter), _, _, _, _))));
+  EXPECT_THAT(root, op::AllGather(op::AllGather(op::AllReduce(scatter))));
 }
 
 TEST_P(SpmdPartitioningTest,
@@ -13225,8 +13531,7 @@ ENTRY %module {
   auto update = AllOf(op::Shape("s32[4,2,2,2]"), op::DynamicSlice());
   auto scatter =
       AllOf(op::Shape("s32[8,2,2,2]"), op::Scatter(operand, indices, update));
-  EXPECT_THAT(root, op::AllReduce(op::DynamicUpdateSlice(
-                        _, op::AllReduce(op::AllReduce(scatter)), _, _, _, _)));
+  EXPECT_THAT(root, op::AllGather(op::AllReduce(op::AllReduce(scatter))));
 }
 
 TEST_P(SpmdPartitioningTest, ScatterTrivialSlicedOperandPartial) {
@@ -13254,13 +13559,13 @@ ENTRY main.4 {
                           PartitionComputation(hlo_string, /*num_devices=*/8));
   VLOG(1) << module->ToString();
   const auto root = module->entry_computation()->root_instruction();
-  auto operand = AllOf(op::Shape("s64[8,1]"), op::AllReduce());
+  auto operand = AllOf(op::Shape("s64[8,1]"), op::AllGather());
   auto indices = AllOf(op::Shape("s32[2]"), op::Subtract());
   auto update = AllOf(op::Shape("s64[2,1]"), op::Parameter());
   auto scatter =
       AllOf(op::Shape("s64[8,1]"), op::Scatter(operand, indices, update));
-  EXPECT_THAT(root, op::AllReduce(op::AllReduce(op::DynamicUpdateSlice(
-                        _, op::DynamicSlice(scatter, _, _), _, _))));
+  EXPECT_THAT(root,
+              op::AllGather(op::AllGather(op::DynamicSlice(scatter, _, _))));
 }
 
 // Tests for scatter partitioning methods with SPMD config option.
@@ -13286,12 +13591,19 @@ ENTRY entry {
       scatter_dims_to_operand_dims={0},
       index_vector_dim=2, sharding={devices=[8,1,4]<=[4,8]T(1,0) last_tile_dim_replicate}
 })";
+  SpmdPartitionerOptions options;
+  options.preferred_scatter_partition_methods = {
+      GatherScatterPartitioningMethod::kTrivialSlicedOperand};
   TF_ASSERT_OK_AND_ASSIGN(
       auto module,
+<<<<<<< HEAD
       PartitionComputation(
           hlo_string, /*num_devices=*/32, /*use_all_gather=*/false, true, false,
           false, false, -1,
           {GatherScatterPartitioningMethod::kTrivialSlicedOperand}));
+=======
+      PartitionComputation(hlo_string, /*num_devices=*/32, options));
+>>>>>>> upstream/master
   VLOG(1) << module->ToString();
   HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, op::AllReduce(op::Scatter(op::Select(_, _, _),
@@ -13325,11 +13637,18 @@ ENTRY entry {
       scatter_dims_to_operand_dims={0},
       index_vector_dim=2, sharding={devices=[8,1,4]<=[4,8]T(1,0) last_tile_dim_replicate}
 })";
+  SpmdPartitionerOptions options;
+  options.preferred_scatter_partition_methods = {
+      GatherScatterPartitioningMethod::kIndexParallel};
   TF_ASSERT_OK_AND_ASSIGN(
       auto module,
+<<<<<<< HEAD
       PartitionComputation(
           hlo_string, /*num_devices=*/32, /*use_all_gather=*/false, true, false,
           false, false, -1, {GatherScatterPartitioningMethod::kIndexParallel}));
+=======
+      PartitionComputation(hlo_string, /*num_devices=*/32, options));
+>>>>>>> upstream/master
   VLOG(1) << module->ToString();
   auto all_to_all = FindInstruction(module.get(), HloOpcode::kAllToAll);
   EXPECT_NE(all_to_all, nullptr);
@@ -13570,12 +13889,17 @@ ENTRY %module {
     reshape(bf16[128,1024,4,176,256,1,1]{6,5,4,3,2,1,0} %convolution.3),
     sharding={replicated}
 })";
+<<<<<<< HEAD
   TF_ASSERT_OK_AND_ASSIGN(
       auto module,
       PartitionComputation(hlo_string, /*num_devices=*/8,
                            /*use_all_gather=*/false,
                            /*conv_halo_exchange_always_on_lhs =*/true,
                            /*choose_faster_windowed_einsum =*/false));
+=======
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/8));
+>>>>>>> upstream/master
   const HloInstruction* while_inst = FindInstruction(module.get(), "while");
   EXPECT_NE(while_inst, nullptr);
   const HloComputation* cond_comp = while_inst->while_condition();
@@ -13606,12 +13930,18 @@ ENTRY %module {
     reshape(bf16[128,1024,4,176,256,1,1]{6,5,4,3,2,1,0} %convolution.3),
     sharding={replicated}
 })";
+  SpmdPartitionerOptions options;
+  options.choose_faster_windowed_einsum_over_mem = true;
   TF_ASSERT_OK_AND_ASSIGN(
       auto module,
+<<<<<<< HEAD
       PartitionComputation(hlo_string, /*num_devices=*/8,
                            /*use_all_gather=*/false,
                            /*conv_halo_exchange_always_on_lhs =*/true,
                            /*choose_faster_windowed_einsum =*/true));
+=======
+      PartitionComputation(hlo_string, /*num_devices=*/8, options));
+>>>>>>> upstream/master
   const HloInstruction* while_inst = FindInstruction(module.get(), "while");
   EXPECT_NE(while_inst, nullptr);
   const HloComputation* cond_comp = while_inst->while_condition();
@@ -13649,12 +13979,18 @@ ENTRY entry {
   ROOT %output = bf16[16,36,256,16,4,288,1]{6,5,4,3,2,1,0}
    copy(%convolution.10), sharding={replicated}
 })";
+  SpmdPartitionerOptions options;
+  options.choose_faster_windowed_einsum_over_mem = true;
   TF_ASSERT_OK_AND_ASSIGN(
       auto module,
+<<<<<<< HEAD
       PartitionComputation(hlo_string, /*num_devices=*/32,
                            /*use_all_gather=*/false,
                            /*conv_halo_exchange_always_on_lhs =*/true,
                            /*choose_faster_windowed_einsum =*/true));
+=======
+      PartitionComputation(hlo_string, /*num_devices=*/32, options));
+>>>>>>> upstream/master
   const HloInstruction* while_inst = FindInstruction(module.get(), "while");
   EXPECT_NE(while_inst, nullptr);
   const HloComputation* cond_comp = while_inst->while_condition();
@@ -13692,12 +14028,17 @@ ENTRY entry {
   ROOT %output = bf16[16,36,256,16,4,288,1]{6,5,4,3,2,1,0}
    copy(%convolution.10), sharding={replicated}
 })";
+<<<<<<< HEAD
   TF_ASSERT_OK_AND_ASSIGN(
       auto module,
       PartitionComputation(hlo_string, /*num_devices=*/32,
                            /*use_all_gather=*/false,
                            /*conv_halo_exchange_always_on_lhs =*/true,
                            /*choose_faster_windowed_einsum =*/false));
+=======
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/32));
+>>>>>>> upstream/master
   const HloInstruction* while_inst = FindInstruction(module.get(), "while");
   EXPECT_NE(while_inst, nullptr);
   const HloComputation* cond_comp = while_inst->while_condition();
@@ -13727,12 +14068,18 @@ ENTRY entry {
     sharding={devices=[2,2,2]<=[8]}
   ROOT %output = f32[8,2,2] copy(%dot), sharding={replicated}
 })";
+  SpmdPartitionerOptions options;
+  options.choose_faster_windowed_einsum_over_mem = true;
   TF_ASSERT_OK_AND_ASSIGN(
       auto module,
+<<<<<<< HEAD
       PartitionComputation(hlo_string, /*num_devices=*/8,
                            /*use_all_gather=*/false,
                            /*conv_halo_exchange_always_on_lhs =*/true,
                            /*choose_faster_windowed_einsum =*/true));
+=======
+      PartitionComputation(hlo_string, /*num_devices=*/8, options));
+>>>>>>> upstream/master
 
   const HloInstruction* dot_op = FindInstruction(module.get(), HloOpcode::kDot);
   auto op1 = op::Shape("f32[4,2,4,4]");
@@ -13755,12 +14102,17 @@ ENTRY entry {
     sharding={devices=[1,2,1,2]<=[4]}
 })";
 
+<<<<<<< HEAD
   TF_ASSERT_OK_AND_ASSIGN(
       auto module,
       PartitionComputation(hlo_string, /*num_devices=*/4,
                            /*use_all_gather=*/false,
                            /*conv_halo_exchange_always_on_lhs=*/true,
                            /*choose_faster_windowed_einsum=*/true));
+=======
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/4));
+>>>>>>> upstream/master
   VLOG(1) << module->ToString();
   const auto root = module->entry_computation()->root_instruction();
   auto dot = AllOf(op::Shape("f32[16,32,24,1024]"),
@@ -14031,10 +14383,8 @@ ENTRY entry {
   auto param0 = AllOf(op::Parameter(0), op::Shape("f32[1,1]"));
   auto broadcast =
       AllOf(op::AllReduce(op::Select(_, param0, _)), op::Shape("f32[1,1]"));
-  EXPECT_THAT(
-      root,
-      AllOf(op::Copy(op::AllReduce(op::DynamicUpdateSlice(_, broadcast, _, _))),
-            op::Shape("f32[1,2]")));
+  EXPECT_THAT(root,
+              AllOf(op::Copy(op::AllGather(broadcast)), op::Shape("f32[1,2]")));
 }
 
 TEST_P(SpmdPartitioningTest, BroadcastAsReplicate3) {
@@ -14245,12 +14595,10 @@ ENTRY entry {
   VLOG(1) << module->ToString();
   const auto root = module->entry_computation()->root_instruction();
   EXPECT_THAT(
-      root, op::Copy(op::AllReduce(op::DynamicUpdateSlice(
-                _,
-                op::CollectivePermute(op::AllReduce(op::Scatter(
-                    op::Shape("bf16[50048,1020]"), op::Shape("s32[512,1024,1]"),
-                    op::Shape("bf16[512,1024,1020]")))),
-                _, _))));
+      root,
+      op::Copy(op::AllGather(op::CollectivePermute(op::AllReduce(op::Scatter(
+          op::Shape("bf16[50048,1020]"), op::Shape("s32[512,1024,1]"),
+          op::Shape("bf16[512,1024,1020]")))))));
 }
 
 TEST_P(SpmdPartitioningTest, ScatterPreferTrivialIfSmallerThanIndices) {
@@ -14287,12 +14635,9 @@ ENTRY entry {
   VLOG(1) << module->ToString();
   const auto root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root,
-              op::Copy(op::AllReduce(op::DynamicUpdateSlice(
-                  _,
-                  op::AllReduce(op::Scatter(op::Shape("bf16[32,128,50001]"),
-                                            op::Shape("s32[32,256,3]"),
-                                            op::Shape("bf16[32,256]"))),
-                  _, _, _))));
+              op::Copy(op::AllGather(op::AllReduce(op::Scatter(
+                  op::Shape("bf16[32,128,50001]"), op::Shape("s32[32,256,3]"),
+                  op::Shape("bf16[32,256]"))))));
 }
 
 TEST_P(SpmdPartitioningTest, GatherOperandPassthroughIndexPassthrough) {
@@ -14625,13 +14970,15 @@ ENTRY entry {
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           PartitionComputation(hlo_string, /*num_devices=*/16));
-  VLOG(1) << module->ToString();
-  auto dus =
-      AllOf(op::Shape("f32[3,2]"),
-            op::DynamicUpdateSlice(op::Broadcast(),
-                                   op::Select(_, op::Parameter(0), _), _, _));
+
+  auto param0 = AllOf(op::Parameter(0), op::Shape("f32[1,1]"));
+  auto all_gather_dim_1 = AllOf(op::AllGather(param0), op::Shape("f32[1,2]"));
+  auto all_reduce_dus_dim_0 =
+      AllOf(op::AllReduce(op::DynamicUpdateSlice(
+                _, op::Select(_, all_gather_dim_1, _), _, _)),
+            op::Shape("f32[3,2]"));
   EXPECT_THAT(module->entry_computation()->root_instruction(),
-              op::Copy(AllOf(op::AllReduce(op::AllReduce(dus)))));
+              op::Copy(all_reduce_dus_dim_0));
 }
 
 TEST_P(SpmdPartitioningTest, GatherPassthrough) {
@@ -14881,10 +15228,8 @@ ENTRY %main.21 (Arg_0.1: f32[4,4,8], Arg_1.2: f32[4,8]) -> (f32[4,4,8], f32[4]) 
 
   XLA_VLOG_LINES(1, module->ToString());
   EXPECT_THAT(module->entry_computation()->root_instruction(),
-              op::Tuple(op::AllReduce(op::DynamicUpdateSlice(
-                            _, op::Shape("f32[1,4,8]"), _, _, _)),
-                        op::AllReduce(op::DynamicUpdateSlice(
-                            _, op::Shape("f32[1]"), _))));
+              op::Tuple(op::AllGather(op::Shape("f32[1,4,8]")),
+                        op::AllGather(op::Shape("f32[1]"))));
 }
 
 TEST_P(SpmdPartitioningTest, UnevenPadAllToAllReshard) {
@@ -15148,7 +15493,7 @@ ENTRY %main.21 {
   XLA_VLOG_LINES(1, module->ToString());
   auto* gather = FindInstruction(module.get(), HloOpcode::kGather);
   EXPECT_NE(gather, nullptr);
-  EXPECT_THAT(gather, op::Shape("bf16[2048,64]"));
+  EXPECT_THAT(gather, op::Shape("bf16[4096,32]"));
 }
 
 TEST_P(SpmdPartitioningTest, ScatterCostModelForUnmatchedSharding) {
@@ -15207,87 +15552,121 @@ ENTRY %main.21 {
               AllOf(op::Shape("s32[2,64]"), op::Scatter(p0, p0_copy, p0_copy)));
 }
 
-TEST_P(SpmdPartitioningTest, ComplexReshardUnmerge) {
+TEST_P(SpmdPartitioningTest, ComplexReshardSplit) {
   const char* const hlo_string = R"(
 HloModule Test
 
-ENTRY main.4 {
-  Arg_0.1 = f32[8,8,8,8]{3,2,1,0} parameter(0), sharding={devices=[1,1,2,8]0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15}
-  tuple.2 = (f32[8,8,8,8]{3,2,1,0}) tuple(Arg_0.1), sharding={{devices=[1,4,2,2]0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15}}
-  ROOT get-tuple-element.3 = f32[8,8,8,8]{3,2,1,0} get-tuple-element(tuple.2), index=0, sharding={devices=[1,4,2,2]0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15}
+ENTRY main {
+  p0 = f32[8,8,8] parameter(0), sharding={devices=[1,2,8]<=[16]}
+  ROOT copy = f32[8,8,8] copy(p0), sharding={devices=[4,2,2]<=[16]}
 }
 )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           PartitionComputation(hlo_string, /*num_devices=*/16));
 
-  XLA_VLOG_LINES(1, module->ToString());
-  auto* allreduce = FindInstruction(module.get(), HloOpcode::kAllReduce);
-  EXPECT_EQ(allreduce, nullptr);
-  auto* alltoall = FindInstruction(module.get(), HloOpcode::kAllToAll);
-  EXPECT_NE(alltoall, nullptr);
+  const HloComputation* entry = module->entry_computation();
+  EXPECT_EQ(NumOfInstructions(entry, HloOpcode::kAllReduce), 0);
+  EXPECT_EQ(NumOfInstructions(entry, HloOpcode::kAllToAll), 1);
+  EXPECT_EQ(NumOfInstructions(entry, HloOpcode::kCollectivePermute), 1);
 }
 
-TEST_P(SpmdPartitioningTest, ComplexReshardUnmergeToRight) {
+TEST_P(SpmdPartitioningTest, ComplexReshardSplitToRight) {
   const char* const hlo_string = R"(
 HloModule Test
 
-ENTRY main.4 {
-  Arg_0.1 = f32[8,32]{1,0} parameter(0), sharding={devices=[8,1]<=[4,2]T(1,0)}
-  tuple.2 = (f32[8,32]{1,0}) tuple(Arg_0.1), sharding={{devices=[2,4]<=[4,2]T(1,0)}}
-  ROOT get-tuple-element.3 = f32[8,32]{1,0} get-tuple-element(tuple.2), index=0, sharding={devices=[2,4]<=[4,2]T(1,0)}
+ENTRY main {
+  p0 = f32[8,32] parameter(0), sharding={devices=[8,1]<=[8]}
+  ROOT copy = f32[8,32] copy(p0), sharding={devices=[2,4]<=[8]}
 }
 )";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           PartitionComputation(hlo_string, /*num_devices=*/8));
 
-  XLA_VLOG_LINES(1, module->ToString());
-  auto* allreduce = FindInstruction(module.get(), HloOpcode::kAllReduce);
-  EXPECT_EQ(allreduce, nullptr);
-  auto* alltoall = FindInstruction(module.get(), HloOpcode::kAllToAll);
-  EXPECT_NE(alltoall, nullptr);
+  const HloComputation* entry = module->entry_computation();
+  EXPECT_EQ(NumOfInstructions(entry, HloOpcode::kAllReduce), 0);
+  EXPECT_EQ(NumOfInstructions(entry, HloOpcode::kAllToAll), 1);
+  EXPECT_EQ(NumOfInstructions(entry, HloOpcode::kCollectivePermute), 0);
 }
 
-TEST_P(SpmdPartitioningTest, ComplexReshardUnmergeToLeft) {
+TEST_P(SpmdPartitioningTest, ComplexReshardSplitToLeft1) {
   const char* const hlo_string = R"(
 HloModule Test
 
-ENTRY main.4 {
-  Arg_0.1 = f32[8,32]{1,0} parameter(0), sharding={devices=[1,8]<=[4,2]T(1,0)}
-  tuple.2 = (f32[8,32]{1,0}) tuple(Arg_0.1), sharding={{devices=[2,4]<=[4,2]T(1,0)}}
-  ROOT get-tuple-element.3 = f32[8,32]{1,0} get-tuple-element(tuple.2), index=0, sharding={devices=[2,4]<=[4,2]T(1,0)}
+ENTRY main {
+  p0 = f32[8,32] parameter(0), sharding={devices=[1,8]<=[8]}
+  ROOT copy = f32[8,32] copy(p0), sharding={devices=[2,4]<=[4,2]T(1,0)}
 }
 )";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           PartitionComputation(hlo_string, /*num_devices=*/8));
 
-  XLA_VLOG_LINES(1, module->ToString());
-  auto* allreduce = FindInstruction(module.get(), HloOpcode::kAllReduce);
-  EXPECT_EQ(allreduce, nullptr);
-  auto* alltoall = FindInstruction(module.get(), HloOpcode::kAllToAll);
-  EXPECT_NE(alltoall, nullptr);
+  const HloComputation* entry = module->entry_computation();
+  EXPECT_EQ(NumOfInstructions(entry, HloOpcode::kAllReduce), 0);
+  EXPECT_EQ(NumOfInstructions(entry, HloOpcode::kAllToAll), 1);
+  EXPECT_EQ(NumOfInstructions(entry, HloOpcode::kCollectivePermute), 0);
 }
 
-TEST_P(SpmdPartitioningTest, NoComplexReshardUnmergeToLeft) {
+TEST_P(SpmdPartitioningTest, ComplexReshardSplitToLeft2) {
   const char* const hlo_string = R"(
 HloModule Test
 
-ENTRY main.4 {
-  Arg_0.1 = f32[8,33]{1,0} parameter(0), sharding={devices=[1,8]<=[4,2]T(1,0)}
-  tuple.2 = (f32[8,33]{1,0}) tuple(Arg_0.1), sharding={{devices=[2,4]<=[4,2]T(1,0)}}
-  ROOT get-tuple-element.3 = f32[8,33]{1,0} get-tuple-element(tuple.2), index=0, sharding={devices=[2,4]<=[4,2]T(1,0)}
+ENTRY main {
+  p0 = f32[5,32] parameter(0), sharding={devices=[1,8]<=[8]}
+  ROOT copy = f32[5,32] copy(p0), sharding={devices=[4,2]<=[2,4]T(1,0)}
 }
 )";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           PartitionComputation(hlo_string, /*num_devices=*/8));
 
-  XLA_VLOG_LINES(1, module->ToString());
-  auto* allreduce = FindInstruction(module.get(), HloOpcode::kAllReduce);
-  EXPECT_NE(allreduce, nullptr);
-  auto* alltoall = FindInstruction(module.get(), HloOpcode::kAllToAll);
-  EXPECT_EQ(alltoall, nullptr);
+  const HloComputation* entry = module->entry_computation();
+  EXPECT_EQ(NumOfInstructions(entry, HloOpcode::kAllReduce), 0);
+  EXPECT_EQ(NumOfInstructions(entry, HloOpcode::kAllToAll), 1);
+  EXPECT_EQ(NumOfInstructions(entry, HloOpcode::kCollectivePermute), 0);
+}
+
+TEST_P(SpmdPartitioningTest, NoComplexReshardSplitToLeft) {
+  const char* const hlo_string = R"(
+HloModule Test
+
+ENTRY main {
+  p0 = f32[8,33] parameter(0), sharding={devices=[1,8]<=[8]}
+  ROOT copy = f32[8,33] copy(p0), sharding={devices=[2,4]<=[4,2]T(1,0)}
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/8));
+
+  const HloComputation* entry = module->entry_computation();
+  EXPECT_EQ(NumOfInstructions(entry, HloOpcode::kAllGather), 1);
+  EXPECT_EQ(NumOfInstructions(entry, HloOpcode::kAllToAll), 0);
+  EXPECT_EQ(NumOfInstructions(entry, HloOpcode::kCollectivePermute), 0);
+}
+
+TEST_P(SpmdPartitioningTest, ReshardToASingleAllToAll) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %param0 = f32[8,32] parameter(0), sharding={devices=[8,4]<=[2,4,4]T(0,2,1)}
+  ROOT %copy = f32[8,32] copy(%param0), sharding={devices=[2,16]<=[32]}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/32));
+  auto param0 = AllOf(op::Parameter(0), op::Shape("f32[1,8]"));
+  auto reshape0 = AllOf(op::Reshape(op::Reshape(op::Reshape(param0))),
+                        op::Shape("f32[1,1,1,4,2]"));
+  auto all_to_all = AllOf(op::AllToAll(reshape0), op::Shape("f32[1,1,1,4,2]"));
+  auto transpose =
+      AllOf(op::Transpose(all_to_all), op::Shape("f32[1,4,1,1,2]"));
+  auto reshape1 = AllOf(op::Reshape(op::Reshape(op::Reshape(transpose))),
+                        op::Shape("f32[4,2]"));
+  auto copy = AllOf(op::Copy(reshape1), op::Shape("f32[4,2]"));
+  EXPECT_THAT(module->entry_computation()->root_instruction(), copy);
 }
 
 TEST_P(SpmdPartitioningTest, ReshardCrash) {
@@ -15312,20 +15691,23 @@ TEST_P(SpmdPartitioningTest, ReshardNoFullRematCompatible) {
 HloModule Test
 
 ENTRY main.6 {
-  Arg_0.1 = f32[6,32,4] parameter(0), sharding={devices=[4,2,1]0,2,1,3,4,6,5,7}
-  ROOT copy = copy(Arg_0.1), sharding={devices=[2,2,2]<=[8]}
+
+  p0 = f32[6,32,4] parameter(0), sharding={devices=[4,2,1]<=[2,2,2]T(0,2,1)}
+  ROOT copy = copy(p0), sharding={devices=[2,2,2]<=[8]}
 })";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           PartitionComputation(hlo_string, /*num_devices=*/8));
 
-  XLA_VLOG_LINES(1, module->ToString());
-  auto* allreduce = FindInstruction(module.get(), HloOpcode::kAllReduce);
-  EXPECT_NE(allreduce, nullptr);
-  // It should not touch the middle dim in the [2,2,2] sharding.
-  EXPECT_EQ(allreduce->replica_groups().size(), 2);
-  EXPECT_EQ(FindInstruction(module.get(), HloOpcode::kCollectivePermute),
-            nullptr);
+  auto param0 = AllOf(op::Parameter(0), op::Shape("f32[2,16,4]"));
+  auto all_gather =
+      AllOf(op::AllGather(op::Copy(param0)), op::Shape("f32[8,16,4]"));
+  auto remove_padding = AllOf(op::Slice(all_gather), op::Shape("f32[6,16,4]"));
+
+  auto dynamic_slice = AllOf(op::DynamicSlice(remove_padding, _, _, _),
+                             op::Shape("f32[3,16,2]"));
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::Copy(dynamic_slice));
 }
 
 TEST_P(SpmdPartitioningTest, ReshardNoFullRematIncompatible) {
@@ -15340,14 +15722,15 @@ ENTRY main.6 {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           PartitionComputation(hlo_string, /*num_devices=*/8));
 
-  XLA_VLOG_LINES(1, module->ToString());
-  auto* allreduce = FindInstruction(module.get(), HloOpcode::kAllReduce);
-  EXPECT_NE(allreduce, nullptr);
-  // It should not touch the middle dim in the [2,2,2] sharding.
-  EXPECT_EQ(allreduce->replica_groups().size(), 2);
-  // Collective permute to resolve different device orders.
-  EXPECT_NE(FindInstruction(module.get(), HloOpcode::kCollectivePermute),
-            nullptr);
+  auto param0 = AllOf(op::Parameter(0), op::Shape("f32[2,16,4]"));
+  auto all_gather =
+      AllOf(op::AllGather(op::Copy(param0)), op::Shape("f32[8,16,4]"));
+  auto remove_padding = AllOf(op::Slice(all_gather), op::Shape("f32[6,16,4]"));
+
+  auto dynamic_slice = AllOf(op::DynamicSlice(remove_padding, _, _, _),
+                             op::Shape("f32[3,16,2]"));
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::Copy(op::CollectivePermute(dynamic_slice)));
 }
 
 TEST_P(SpmdPartitioningTest, OutfeedChainedManualPartitioned) {
@@ -15610,8 +15993,12 @@ ENTRY %entry {
   ROOT %dot.339 = bf16[64,2048,65536]{2,1,0} dot(bf16[64,2048,20480]{2,1,0} %copy.11, bf16[20480,65536]{1,0} %reshape.44), lhs_contracting_dims={2}, rhs_contracting_dims={0}, sharding={devices=[8,1,4]<=[32]}
 })";
 
+  SpmdPartitionerOptions options;
+  options.choose_faster_windowed_einsum_over_mem = true;
+  options.bidirectional_windowed_einsum = true;
   TF_ASSERT_OK_AND_ASSIGN(
       auto module,
+<<<<<<< HEAD
       PartitionComputation(hlo_string, /*num_devices=*/32,
                            /*use_all_gather=*/false,
                            /*conv_halo_exchange_always_on_lhs=*/true,
@@ -15619,6 +16006,9 @@ ENTRY %entry {
                            /*unroll_windowed_einsum=*/false,
                            /*bidirectional_windowed_einsum=*/true,
                            /*threshold_for_windowed_einsum_mib=*/-1));
+=======
+      PartitionComputation(hlo_string, /*num_devices=*/32, options));
+>>>>>>> upstream/master
   XLA_VLOG_LINES(1, module->ToString());
 
   // Check while op.
@@ -15626,11 +16016,11 @@ ENTRY %entry {
       AllOf(op::CollectivePermute(), op::Shape("bf16[8,2048,1,5120]"));
   const auto broadcast =
       AllOf(op::Broadcast(), op::Shape("bf16[8,2048,16384]"));
-  const auto all_reduce =
-      AllOf(op::AllReduce(), op::Shape("bf16[20480,16384]"));
+  const auto all_gather =
+      AllOf(op::AllGather(), op::Shape("bf16[20480,16384]"));
   const auto root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, AllOf(op::GetTupleElement(op::While(op::Tuple(
-                              op::Reshape(), all_reduce, op::Broadcast(),
+                              op::Reshape(), all_gather, op::Broadcast(),
                               collective_permute, op::Constant()))),
                           op::Shape("bf16[8,2048,16384]")));
 }
@@ -15645,8 +16035,12 @@ ENTRY entry {
   ROOT %dot = f32[8,2048,2176]{2,1,0} dot(f32[8,2048,3264]{2,1,0} %p0, f32[3264,2176]{1,0} %p1), lhs_contracting_dims={2}, rhs_contracting_dims={0}, sharding={devices=[2,1,4]<=[8]}
 })";
 
+  SpmdPartitionerOptions options;
+  options.partial_windowed_einsum = true;
+  options.threshold_for_windowed_einsum_mib = 0;
   TF_ASSERT_OK_AND_ASSIGN(
       auto module,
+<<<<<<< HEAD
       PartitionComputation(hlo_string, /*num_devices=*/8,
                            /*use_all_gather=*/false,
                            /*conv_halo_exchange_always_on_lhs=*/true,
@@ -15654,6 +16048,9 @@ ENTRY entry {
                            /*unroll_windowed_einsum=*/false,
                            /*bidirectional_windowed_einsum=*/false,
                            /*threshold_for_windowed_einsum_mib=*/0));
+=======
+      PartitionComputation(hlo_string, /*num_devices=*/8, options));
+>>>>>>> upstream/master
 
   // While op.
   const auto arg0 = AllOf(op::Parameter(0), op::Shape("f32[4,512,3264]"));
@@ -15722,8 +16119,12 @@ ENTRY entry {
   ROOT %dot = f32[8,2048,2176]{2,1,0} dot(f32[8,2048,3264]{2,1,0} %p0, f32[3264,2176]{1,0} %p1), lhs_contracting_dims={2}, rhs_contracting_dims={0}, sharding={devices=[2,1,4]<=[8]}
 })";
 
+  SpmdPartitionerOptions options;
+  options.partial_windowed_einsum = true;
+  options.threshold_for_windowed_einsum_mib = 0;
   TF_ASSERT_OK_AND_ASSIGN(
       auto module,
+<<<<<<< HEAD
       PartitionComputation(hlo_string, /*num_devices=*/8,
                            /*use_all_gather=*/false,
                            /*conv_halo_exchange_always_on_lhs=*/true,
@@ -15731,6 +16132,9 @@ ENTRY entry {
                            /*unroll_windowed_einsum=*/true,
                            /*bidirectional_windowed_einsum=*/false,
                            /*threshold_for_windowed_einsum_mib=*/0));
+=======
+      PartitionComputation(hlo_string, /*num_devices=*/8, options));
+>>>>>>> upstream/master
 
   // While op.
   const auto arg0 = AllOf(op::Parameter(0), op::Shape("f32[4,512,3264]"));
@@ -15799,8 +16203,11 @@ ENTRY entry {
   ROOT %dot = f32[8,2048,2176]{2,1,0} dot(f32[8,2048,3264]{2,1,0} %p0, f32[3264,2176]{1,0} %p1), lhs_contracting_dims={2}, rhs_contracting_dims={0}, sharding={devices=[2,1,4]0,2,4,6,1,3,5,7}
 })";
 
+  SpmdPartitionerOptions options;
+  options.threshold_for_windowed_einsum_mib = 0;
   TF_ASSERT_OK_AND_ASSIGN(
       auto module,
+<<<<<<< HEAD
       PartitionComputation(hlo_string, /*num_devices=*/8,
                            /*use_all_gather=*/false,
                            /*conv_halo_exchange_always_on_lhs=*/true,
@@ -15808,6 +16215,9 @@ ENTRY entry {
                            /*unroll_windowed_einsum=*/false,
                            /*bidirectional_windowed_einsum=*/false,
                            /*threshold_for_windowed_einsum_mib=*/0));
+=======
+      PartitionComputation(hlo_string, /*num_devices=*/8, options));
+>>>>>>> upstream/master
 
   const auto root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, AllOf(op::Dot(), op::Shape("f32[4,2048,544]")));
@@ -15825,8 +16235,11 @@ ENTRY entry {
   ROOT %dot = f32[8,2048,2176]{2,1,0} dot(f32[8,2048,3264]{2,1,0} %p0, f32[3264,2176]{1,0} %p1), lhs_contracting_dims={2}, rhs_contracting_dims={0}, sharding={devices=[2,1,4]<=[8]}
 })";
 
+  SpmdPartitionerOptions options;
+  options.threshold_for_windowed_einsum_mib = 0;
   TF_ASSERT_OK_AND_ASSIGN(
       auto module,
+<<<<<<< HEAD
       PartitionComputation(hlo_string, /*num_devices=*/8,
                            /*use_all_gather=*/false,
                            /*conv_halo_exchange_always_on_lhs=*/true,
@@ -15834,6 +16247,9 @@ ENTRY entry {
                            /*unroll_windowed_einsum=*/false,
                            /*bidirectional_windowed_einsum=*/false,
                            /*threshold_for_windowed_einsum_mib=*/0));
+=======
+      PartitionComputation(hlo_string, /*num_devices=*/8, options));
+>>>>>>> upstream/master
 
   const auto root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, AllOf(op::Dot(), op::Shape("f32[4,2048,544]")));
@@ -15851,8 +16267,11 @@ ENTRY entry {
   ROOT %dot = f32[8,2048,2176]{2,1,0} dot(f32[8,2048,3264]{2,1,0} %p0, f32[3264,2176]{1,0} %p1), lhs_contracting_dims={2}, rhs_contracting_dims={0}, sharding={devices=[1,1,8]<=[8]}
 })";
 
+  SpmdPartitionerOptions options;
+  options.threshold_for_windowed_einsum_mib = 0;
   TF_ASSERT_OK_AND_ASSIGN(
       auto module,
+<<<<<<< HEAD
       PartitionComputation(hlo_string, /*num_devices=*/8,
                            /*use_all_gather=*/false,
                            /*conv_halo_exchange_always_on_lhs=*/true,
@@ -15860,6 +16279,9 @@ ENTRY entry {
                            /*unroll_windowed_einsum=*/false,
                            /*bidirectional_windowed_einsum=*/false,
                            /*threshold_for_windowed_einsum_mib=*/0));
+=======
+      PartitionComputation(hlo_string, /*num_devices=*/8, options));
+>>>>>>> upstream/master
 
   const auto root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, AllOf(op::Dot(), op::Shape("f32[8,2048,272]")));
@@ -15880,6 +16302,7 @@ ENTRY %extracted_computation (param: f32[13,128,312,16,312]) -> f32[13,39936,499
 })";
 
   TF_ASSERT_OK_AND_ASSIGN(
+<<<<<<< HEAD
       auto module,
       PartitionComputation(hlo_string, /*num_devices=*/128,
                            /*use_all_gather=*/false,
@@ -15888,6 +16311,9 @@ ENTRY %extracted_computation (param: f32[13,128,312,16,312]) -> f32[13,39936,499
                            /*unroll_windowed_einsum=*/false,
                            /*bidirectional_windowed_einsum=*/true,
                            /*threshold_for_windowed_einsum_mib=*/-1));
+=======
+      auto module, PartitionComputation(hlo_string, /*num_devices=*/128));
+>>>>>>> upstream/master
   XLA_VLOG_LINES(1, module->ToString());
   // Check an all-to-all is emitted for resharding.
   auto all_to_all = FindInstruction(module.get(), HloOpcode::kAllToAll);
@@ -15912,6 +16338,7 @@ ENTRY entry {
   ROOT sort.209 = (f32[4,16384,4096]{2,1,0}, s32[4,16384,4096]{2,1,0}) sort(param.0, param.1), dimensions={2}, to_apply=top_k_gt_f32_comparator_64.35303, sharding={{devices=[4,4,4]<=[64]}, {devices=[4,4,4]<=[64]}}
 })";
 
+<<<<<<< HEAD
   TF_ASSERT_OK_AND_ASSIGN(
       auto module,
       PartitionComputation(
@@ -15919,6 +16346,10 @@ ENTRY entry {
           /*use_all_gather=*/false,
           /*conv_halo_exchange_always_on_lhs=*/true,
           /*xla_tpu_enable_log_recorder_partitioned_logging=*/true));
+=======
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/64));
+>>>>>>> upstream/master
   XLA_VLOG_LINES(1, module->ToString());
 
   EXPECT_THAT(
@@ -15956,6 +16387,7 @@ ENTRY offloading (param0: f32[1,256,128]) -> f32[1,256,128] {
 }
 )";
 
+<<<<<<< HEAD
   TF_ASSERT_OK_AND_ASSIGN(
       auto module,
       PartitionComputation(
@@ -15963,6 +16395,11 @@ ENTRY offloading (param0: f32[1,256,128]) -> f32[1,256,128] {
           /*use_all_gather=*/false,
           /*conv_halo_exchange_always_on_lhs=*/true,
           /*xla_tpu_enable_log_recorder_partitioned_logging=*/true));
+=======
+  SpmdPartitionerOptions options;
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/4));
+>>>>>>> upstream/master
   XLA_VLOG_LINES(1, module->ToString());
 
   // Check that the partitioner does not insert any sharding code between
@@ -16013,9 +16450,7 @@ ENTRY entry {
                           PartitionComputation(hlo_string, /*num_devices=*/2));
 
   auto param0 = AllOf(op::Parameter(0), op::Shape("s32[2]"));
-  auto param0_replicated = AllOf(op::AllReduce(op::DynamicUpdateSlice(
-                                     op::Broadcast(op::Constant()), param0, _)),
-                                 op::Shape("s32[4]"));
+  auto param0_replicated = AllOf(op::AllGather(param0), op::Shape("s32[4]"));
   auto result =
       AllOf(op::BitcastConvert(param0_replicated), op::Shape("f32[4]"));
   EXPECT_THAT(module->entry_computation()->root_instruction(), result);
@@ -16034,9 +16469,7 @@ ENTRY entry {
                           PartitionComputation(hlo_string, /*num_devices=*/4));
 
   auto param0 = AllOf(op::Parameter(0), op::Shape("s32[2,1]"));
-  auto param0_reshard = AllOf(op::AllReduce(op::DynamicUpdateSlice(
-                                  op::Broadcast(op::Constant()), param0, _, _)),
-                              op::Shape("s32[2,2]"));
+  auto param0_reshard = AllOf(op::AllGather(param0), op::Shape("s32[2,2]"));
   auto result = AllOf(op::BitcastConvert(param0_reshard), op::Shape("f64[2]"));
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::CollectivePermute(result));
@@ -16076,16 +16509,19 @@ ENTRY entry {
   // TODO(b/353990256). Involuntary full rematerialization between shardings
   // {devices=[2,2,2]<=[8]} to {devices=[8,1,1]<=[8]}.
   auto param0 = AllOf(op::Parameter(0), op::Shape("f32[16,16,16]"));
-  auto param0_replicated = op::AllReduce(op::AllReduce(
-      op::AllReduce(op::DynamicUpdateSlice(op::Broadcast(), param0, _, _, _))));
+  auto param0_replicated =
+      AllOf(op::AllGather(op::AllGather(op::AllGather(param0))),
+            op::Shape("f32[32,32,32]"));
   auto param0_reshard = AllOf(op::Shape("f32[4,32,32]"),
                               op::DynamicSlice(param0_replicated, _, _, _));
   auto cholesky =
       AllOf(op::Cholesky(param0_reshard), op::Shape("f32[4,32,32]"));
-  auto cholesky_replicated =
-      op::AllReduce(op::DynamicUpdateSlice(op::Broadcast(), cholesky, _, _, _));
+  auto cholesky_partially_replicated =
+      AllOf(op::AllGather(op::Copy(op::Reshape(cholesky))),
+            op::Shape("f32[1,16,32,32]"));
   EXPECT_THAT(module->entry_computation()->root_instruction(),
-              AllOf(op::DynamicSlice(cholesky_replicated, _, _, _),
+              AllOf(op::Reshape(op::DynamicSlice(cholesky_partially_replicated,
+                                                 _, _, _, _)),
                     op::Shape("f32[16,16,16]")));
 }
 
@@ -16102,14 +16538,10 @@ ENTRY main {
 
   auto param0 = AllOf(op::Parameter(0), op::Shape("f32[5,16,16]"));
   auto param0_reshard =
-      AllOf(op::Shape("f32[5,32,32]"),
-            op::AllReduce(op::AllReduce(
-                op::DynamicUpdateSlice(op::Broadcast(), param0, _, _, _))));
+      AllOf(op::Shape("f32[5,32,32]"), op::AllGather(op::AllGather(param0)));
   auto param1 = AllOf(op::Parameter(1), op::Shape("f32[5,16,24]"));
   auto param1_reshard =
-      AllOf(op::Shape("f32[5,32,48]"),
-            op::AllReduce(op::AllReduce(
-                op::DynamicUpdateSlice(op::Broadcast(), param1, _, _, _))));
+      AllOf(op::Shape("f32[5,32,48]"), op::AllGather(op::AllGather(param1)));
 
   auto ts = AllOf(op::TriangularSolve(param0_reshard, param1_reshard),
                   op::Shape("f32[5,32,48]"));
@@ -16295,8 +16727,10 @@ ENTRY entry {
   add = s32[2,4]{1,0} add(constant, a), sharding={unreduced}
   ROOT copy = s32[2,4]{1,0} copy(%add), sharding={unreduced}
 })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          PartitionComputation(hlo_string, /*num_devices=*/2));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module,
+      PartitionComputation(hlo_string, /*num_devices=*/2,
+                           SpmdPartitionerOptions(), /*use_all_gather=*/false));
   VLOG(1) << module->ToString();
   // Check that we use all-reduce to reshard the operands of the add in spite
   // that the `add` has unreduced axes.
@@ -16355,6 +16789,25 @@ ENTRY entry {
   EXPECT_EQ(FindInstruction(module.get(), HloOpcode::kAllReduce), nullptr);
 }
 
+<<<<<<< HEAD
+=======
+TEST_P(SpmdPartitioningTest, SubgroupUnreducedAndReplicated) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  a = f32[8,1024]{1,0} parameter(0), sharding={devices=[2,2,4]<=[2,2,4]T(0,1,2) last_tile_dim_replicate}
+  b = f32[1024,256]{1,0} parameter(1), sharding={devices=[2,2,4]<=[2,2,4]T(1,2,0) last_tile_dim_replicate}
+  ROOT dot = f32[8,256]{1,0} dot(a, b), lhs_contracting_dims={1}, rhs_contracting_dims={0}, sharding={devices=[2,2,2,2]<=[2,2,2,2]T(0,2,1,3) last_tile_dims={unreduced,replicated}}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/16));
+  VLOG(1) << module->ToString();
+  EXPECT_THAT(module->entry_computation()->root_instruction(), op::Dot());
+  EXPECT_EQ(FindInstruction(module.get(), HloOpcode::kAllReduce), nullptr);
+}
+
+>>>>>>> upstream/master
 TEST_P(SpmdPartitioningTest, OriginalValueWithTrivialShardingAnnotation) {
   absl::string_view hlo_string = R"(
 HloModule module
@@ -16366,8 +16819,12 @@ ENTRY entry {
 })";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
+<<<<<<< HEAD
                           PartitionComputation(hlo_string, /*num_devices=*/16,
                                                /*use_all_gather=*/true));
+=======
+                          PartitionComputation(hlo_string, /*num_devices=*/16));
+>>>>>>> upstream/master
   const HloComputation* recovery_computation =
       module->original_value_recovery_table()
           .begin()
@@ -16428,8 +16885,12 @@ ENTRY entry {
 })";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
+<<<<<<< HEAD
                           PartitionComputation(hlo_string, /*num_devices=*/16,
                                                /*use_all_gather=*/true));
+=======
+                          PartitionComputation(hlo_string, /*num_devices=*/16));
+>>>>>>> upstream/master
   const HloComputation* recovery_computation =
       module->original_value_recovery_table()
           .begin()
@@ -16564,6 +17025,38 @@ ENTRY entry {
   TF_EXPECT_OK(partitioner.Run(module.get()).status());
 }
 
+<<<<<<< HEAD
+=======
+TEST_P(SpmdPartitioningTest, KeepShardings) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  a = f32[32] parameter(0), sharding={devices=[4]<=[4]}
+  b = f32[32] parameter(1), sharding={devices=[4]<=[4]}
+  c = f32[32] add(a, b), sharding={devices=[4]<=[4]}
+  ROOT d = f32[32] abs(c), sharding={devices=[4]<=[4]}
+})";
+
+  HloModuleConfig config = GetModuleConfigForTest();
+  config.set_use_spmd_partitioning(true);
+  config.set_num_partitions(4);
+  config.mutable_debug_options().set_xla_keep_shardings_after_spmd(true);
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string, config));
+  SpmdPartitionerOptions options;
+  options.allow_module_signature_change = true;
+  SpmdPartitioner partitioner(/*num_partitions=*/4, /*num_replicas=*/1,
+                              options);
+  TF_EXPECT_OK(partitioner.Run(module.get()).status());
+  for (const HloInstruction* inst :
+       module->entry_computation()->instructions()) {
+    EXPECT_TRUE(inst->has_sharding());
+    EXPECT_EQ(inst->shape().dimensions()[0], 8);
+  }
+}
+
+>>>>>>> upstream/master
 }  // namespace
 }  // namespace spmd
 }  // namespace xla

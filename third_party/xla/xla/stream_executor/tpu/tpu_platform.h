@@ -95,9 +95,9 @@ class TpuPlatform : public ::tensorflow::tpu::TpuPlatformInterface {
   void InsertEvent(stream_executor::Event* key, SE_Event* val);
   SE_Event* LookupEvent(stream_executor::Event* key);
   SE_Stream* LookupStream(stream_executor::Stream* key) {
-    mutex().Lock();
+    mutex().lock();
     auto stream = stream_map_.at(key);
-    mutex().Unlock();
+    mutex().unlock();
     return stream;
   }
   void EraseEvent(stream_executor::Event* key) override;

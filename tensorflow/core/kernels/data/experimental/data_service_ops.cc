@@ -147,7 +147,7 @@ void RegisterDatasetOp::Compute(OpKernelContext* ctx) {
                      dataset_def, metadata, requested_dataset_id, dataset_id);
                },
                /*description=*/
-               strings::StrCat("register dataset with dispatcher at ", address),
+               absl::StrCat("register dataset with dispatcher at ", address),
                deadline_micros));
 
   if (op_version_ >= 2) {

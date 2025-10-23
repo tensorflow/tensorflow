@@ -163,7 +163,7 @@ void AddReadControl(const std::vector<NodeDef*>& recvs,
                     const std::vector<string>& inputs) {
   for (NodeDef* recv : recvs) {
     for (const string& input : inputs) {
-      recv->add_input(strings::StrCat("^", input));
+      recv->add_input(absl::StrCat("^", input));
     }
   }
 }
@@ -328,12 +328,12 @@ NodeDef* AddDummyConst(const PartitionOptions& opts, GraphDef* gdef,
   const Node* src = edge->src();
   Tensor tensor(DT_FLOAT, TensorShape({0}));
   NodeDef* result = gdef->add_node();
-  *status = NodeDefBuilder(opts.new_name(strings::StrCat(src->name(), "/ctrl")),
-                           "Const")
-                .Device(src->assigned_device_name())
-                .Attr("dtype", DT_FLOAT)
-                .Attr("value", tensor)
-                .Finalize(result, /*consume=*/true);
+  *status =
+      NodeDefBuilder(opts.new_name(absl::StrCat(src->name(), "/ctrl")), "Const")
+          .Device(src->assigned_device_name())
+          .Attr("dtype", DT_FLOAT)
+          .Attr("value", tensor)
+          .Finalize(result, /*consume=*/true);
   return result;
 }
 
@@ -342,7 +342,7 @@ NodeDef* AddControlTrigger(const PartitionOptions& opts, GraphDef* gdef,
                            const string& assigned_device_name, int64_t epoch,
                            int64_t starttime, absl::Status* status) {
   NodeDef* result = gdef->add_node();
-  *status = NodeDefBuilder(opts.new_name(strings::StrCat("synch_", epoch)),
+  *status = NodeDefBuilder(opts.new_name(absl::StrCat("synch_", epoch)),
                            "ControlTrigger")
                 .Device(assigned_device_name)
                 .Attr("_start_time", starttime)
@@ -399,7 +399,7 @@ void OptimizeControlFlowColocation(Graph* graph) {
 }
 
 string ControlLoopName(const string& name) {
-  return strings::StrCat("_cloop", name);
+  return absl::StrCat("_cloop", name);
 }
 
 bool IsControlLoop(const Node* node) {
@@ -700,7 +700,7 @@ absl::Status AddControlFlow(const PartitionOptions& opts, Graph* g,
         break;
       }
 
-      const string& cl_key = strings::StrCat(curr_frame_name, "$$", dst_device);
+      const string& cl_key = absl::StrCat(curr_frame_name, "$$", dst_device);
       auto it = control_loops.find(cl_key);
       if (it != control_loops.end()) {
         if (child_loop.enter != nullptr) {
@@ -756,8 +756,7 @@ absl::Status AddControlFlow(const PartitionOptions& opts, Graph* g,
       const string& src_frame_name = cf_info[src_frame->id()].frame_name;
       const string& dst_frame_name = cf_info[dst_frame->id()].frame_name;
       if (!src_frame_name.empty() && src_frame_name == dst_frame_name) {
-        const string& cl_key =
-            strings::StrCat(dst_frame_name, "$$", dst_device);
+        const string& cl_key = absl::StrCat(dst_frame_name, "$$", dst_device);
         ControlLoop loop = control_loops[cl_key];
         DCHECK(loop.enter != nullptr);
         // Note that we'll create multiple duplicate edges if dst has multiple
@@ -1163,7 +1162,7 @@ absl::Status Partition(const PartitionOptions& opts, Graph* g,
         tensor_name_attr = opts.get_tensor_name_attr(edge);
       } else {
         tensor_name_attr =
-            strings::StrCat("edge_", edge->id(), "_", edge->src()->name());
+            absl::StrCat("edge_", edge->id(), "_", edge->src()->name());
       }
 
       if (VLOG_IS_ON(1) && IsConstant(edge->src())) {
@@ -1297,8 +1296,8 @@ absl::Status Partition(const PartitionOptions& opts, Graph* g,
   if (VLOG_IS_ON(2)) {
     for (auto& it : *partitions) {
       GraphDef* gdef = &it.second;
-      DumpGraphDefToFile(strings::StrCat("partition_", it.first, "_",
-                                         reinterpret_cast<uintptr_t>(gdef)),
+      DumpGraphDefToFile(absl::StrCat("partition_", it.first, "_",
+                                      reinterpret_cast<uintptr_t>(gdef)),
                          *gdef);
     }
   }

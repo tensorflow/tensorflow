@@ -29,6 +29,7 @@ limitations under the License.
 #include "xla/hlo/pass/hlo_pass_interface.h"
 #include "xla/service/gpu/autotuning/autotuner_compile_util.h"
 #include "xla/service/gpu/autotuning/autotuner_util.h"
+#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/service/shaped_buffer.h"
 #include "xla/shape.h"
 #include "xla/stream_executor/stream.h"
@@ -41,8 +42,9 @@ namespace xla::gpu {
 // generated with the regular emitters.
 class TritonFusionNumericsVerifier : public HloModulePass {
  public:
-  explicit TritonFusionNumericsVerifier(const DeviceOrDevicelessConfig& config)
-      : config_(config) {}
+  TritonFusionNumericsVerifier(const DeviceOrDevicelessConfig& config,
+                               SymbolicExprContext* symbolic_expr_context)
+      : config_(config), symbolic_expr_context_(symbolic_expr_context) {}
 
   static absl::string_view Name() { return "triton-numerics-verifier"; }
   absl::string_view name() const override { return Name(); }
@@ -58,6 +60,7 @@ class TritonFusionNumericsVerifier : public HloModulePass {
 
  private:
   DeviceOrDevicelessConfig config_;
+  SymbolicExprContext* symbolic_expr_context_;
 
   // In some models there are many identical fusions. These are cached to avoid
   // expensive recomputations.
@@ -70,7 +73,7 @@ namespace triton_fusion_numerics_pass_internal {
 absl::StatusOr<ScopedShapedBuffer> CompileAndRunFusion(
     AutotunerCompileUtil& util, const HloFusionInstruction& fusion,
     const DeviceOrDevicelessConfig& config, const DebugOptions& debug_opts,
-    bool disable_triton);
+    bool disable_triton, SymbolicExprContext* symbolic_expr_context);
 absl::Status CompareBuffers(const ScopedShapedBuffer& current,
                             const ScopedShapedBuffer& expected,
                             const Shape& shape, const DebugOptions& debug_opts,

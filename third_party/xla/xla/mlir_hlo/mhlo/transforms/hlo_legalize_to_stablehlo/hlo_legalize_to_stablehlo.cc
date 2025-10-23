@@ -18,8 +18,6 @@ limitations under the License.
 #include <string>
 #include <type_traits>
 
-#include "llvm/ADT/ArrayRef.h"
-#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mhlo/IR/hlo_ops.h"
 #include "mhlo/transforms/map_stablehlo_to_hlo_op.h"
@@ -27,13 +25,13 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/BuiltinAttributes.h"
+#include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/Diagnostics.h"
-#include "mlir/IR/Location.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/SymbolTable.h"
-#include "mlir/IR/Types.h"
+#include "mlir/IR/ValueRange.h"
 #include "mlir/Support/DebugStringHelper.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
@@ -108,9 +106,43 @@ std::optional<int64_t> getPublicFeaturesNotInStablehlo(HloOpTy hloOp) {
     return 1;
   }
   // StableHLO doesn't support TopK yet.
-  // Proposal: https://github.com/openxla/stablehlo/pull/1593
   if constexpr (std::is_same<HloOpTy, mhlo::ErfOp>::value) {
     // Version 1: Initial version for ErfOp.
+    return 1;
+  }
+  // StableHLO doesn't support Acosh yet.
+  if constexpr (std::is_same<HloOpTy, mhlo::AcoshOp>::value) {
+    // Version 1: Initial version for AcoshOp.
+    return 1;
+  }
+  // StableHLO doesn't support Acos yet.
+  if constexpr (std::is_same<HloOpTy, mhlo::AcosOp>::value) {
+    // Version 1: Initial version for AcosOp.
+    return 1;
+  }
+  // StableHLO doesn't support Atanh yet.
+  if constexpr (std::is_same<HloOpTy, mhlo::AtanhOp>::value) {
+    // Version 1: Initial version for AtanhOp.
+    return 1;
+  }
+  // StableHLO doesn't support Cosh yet.
+  if constexpr (std::is_same<HloOpTy, mhlo::CoshOp>::value) {
+    // Version 1: Initial version for CoshOp.
+    return 1;
+  }
+  // StableHLO doesn't support Sinh yet.
+  if constexpr (std::is_same<HloOpTy, mhlo::SinhOp>::value) {
+    // Version 1: Initial version for CoshOp.
+    return 1;
+  }
+  // StableHLO doesn't support Asin yet.
+  if constexpr (std::is_same<HloOpTy, mhlo::AsinOp>::value) {
+    // Version 1: Initial version for AsinOp.
+    return 1;
+  }
+  // StableHLO doesn't support Asinh yet.
+  if constexpr (std::is_same<HloOpTy, mhlo::AsinhOp>::value) {
+    // Version 1: Initial version for AsinhOp.
     return 1;
   }
   return std::nullopt;
@@ -186,9 +218,10 @@ Attribute convertDenseArray(mlir::StringAttr hloName, Attribute hloAttr) {
 
   // Handle DenseIntElementsAttr --> DenseI64ArrayAttr for StableHLO ops that
   // use dense arrays. This is temporary while MHLO integrates this change.
-  if (isDenseI64Array<StablehloOpTy>(hloName))
+  if (isDenseI64Array<StablehloOpTy>(hloName)) {
     return DenseI64ArrayAttr::get(
         hloAttr.getContext(), llvm::to_vector(denseInts.getValues<int64_t>()));
+  }
 
   return {};
 }
@@ -384,12 +417,13 @@ FailureOr<func::FuncOp> rewriteMhloRegionAsFunc(
   // Must be isolated from above
   SetVector<Value> values;
   getUsedValuesDefinedAbove(region, values);
-  if (!values.empty())
+  if (!values.empty()) {
     return notifyConversionFailure(
         rewriter, op,
         "MHLO feature serialization in StableHLO only supports regions that "
         "do not capture SSA values from above",
         op);
+  }
 
   // Insert into the parent module
   OpBuilder::InsertionGuard g(rewriter);
@@ -398,9 +432,10 @@ FailureOr<func::FuncOp> rewriteMhloRegionAsFunc(
 
   // Convert so that function signature is correct
   if (failed(rewriter.convertRegionTypes(&region, *typeConverter,
-                                         /*entryConversion=*/nullptr)))
+                                         /*entryConversion=*/nullptr))) {
     return notifyConversionFailure(rewriter, op,
                                    "failed to convert region types", op);
+  }
 
   // Create function with args that match block inputs / return types
   rewriter.setInsertionPointToEnd(&module.getBodyRegion().front());
@@ -439,19 +474,28 @@ LogicalResult convertAttributes(ConversionPatternRewriter& rewriter,
     }
 
     // Handle DenseElements --> DenseArray for certain StableHLO ops
-    if constexpr (!std::is_same<HloOpTy, mhlo::ErfOp>::value &&
+    if constexpr (!std::is_same<HloOpTy, mhlo::AcosOp>::value &&
+                  !std::is_same<HloOpTy, mhlo::AcoshOp>::value &&
+                  !std::is_same<HloOpTy, mhlo::AtanhOp>::value &&
+                  !std::is_same<HloOpTy, mhlo::CoshOp>::value &&
+                  !std::is_same<HloOpTy, mhlo::SinhOp>::value &&
+                  !std::is_same<HloOpTy, mhlo::AsinOp>::value &&
+                  !std::is_same<HloOpTy, mhlo::AsinhOp>::value &&
+                  !std::is_same<HloOpTy, mhlo::ErfOp>::value &&
                   !std::is_same<HloOpTy, mhlo::TopKOp>::value) {
-      if (!stablehloAttr)
+      if (!stablehloAttr) {
         stablehloAttr = convertDenseArray<HloToStablehloOp<HloOpTy>>(
             hloAttr.getName(), hloAttr.getValue());
+      }
     }
 
     // Generic handler for all other attributes
     if (!stablehloAttr) stablehloAttr = convertAttr(hloAttr.getValue());
 
-    if (!stablehloAttr)
+    if (!stablehloAttr) {
       return notifyConversionFailure(rewriter, hloOp, "failed to convert attr ",
                                      hloAttr.getValue());
+    }
     stablehloAttrs.push_back({hloAttr.getName(), stablehloAttr});
   }
   return success();
@@ -483,10 +527,11 @@ LogicalResult rewriteMhloOpAsCustomCall(HloOpTy hloOp,
 
   // Convert MHLO attributes to StableHLO equivalents.
   SmallVector<Type> stablehloTypes;
-  if (failed(
-          typeConverter->convertTypes(hloOp->getResultTypes(), stablehloTypes)))
+  if (failed(typeConverter->convertTypes(hloOp->getResultTypes(),
+                                         stablehloTypes))) {
     return notifyConversionFailure(rewriter, hloOp,
                                    "failed to convert op types", hloOp);
+  }
 
   // Convert MHLO attributes to StableHLO equivalents.
   SmallVector<NamedAttribute> stablehloConvertedAttrs;
@@ -507,14 +552,16 @@ LogicalResult rewriteMhloOpAsCustomCall(HloOpTy hloOp,
       "call_target_name", rewriter.getStringAttr(stablehloCallTargetName)));
   stablehloAttrs.push_back(rewriter.getNamedAttr(
       "mhlo.attributes", rewriter.getDictionaryAttr(stablehloConvertedAttrs)));
-  if (stablehloConvertedRegion)
+  if (stablehloConvertedRegion) {
     stablehloAttrs.push_back(rewriter.getNamedAttr(
         "called_computations",
         rewriter.getArrayAttr(FlatSymbolRefAttr::get(
             rewriter.getContext(), stablehloConvertedRegion->getSymName()))));
-  if (auto featureVersion = getPublicFeaturesNotInStablehlo(hloOp))
+  }
+  if (auto featureVersion = getPublicFeaturesNotInStablehlo(hloOp)) {
     stablehloAttrs.push_back(rewriter.getNamedAttr(
         "mhlo.version", rewriter.getI64IntegerAttr(featureVersion.value())));
+  }
   rewriter.replaceOpWithNewOp<stablehlo::CustomCallOp>(
       hloOp, stablehloTypes, stablehloOperands, stablehloAttrs);
   return success();
@@ -535,14 +582,16 @@ class HloToStablehloCustomCallOpConverter
   LogicalResult matchAndRewrite(
       HloOpTy hloOp, typename HloOpTy::Adaptor adaptor,
       ConversionPatternRewriter& rewriter) const final {
-    if (hasPrivateFeaturesNotInStablehlo(hloOp))
+    if (hasPrivateFeaturesNotInStablehlo(hloOp)) {
       return notifyConversionFailure(
           rewriter, hloOp, "op has private features not in StableHLO", hloOp);
+    }
     bool hasExperimentalFeatures = hasExperimentalFeaturesNotInStablehlo(hloOp);
-    if (!allowExperimentalFeatures && hasExperimentalFeatures)
+    if (!allowExperimentalFeatures && hasExperimentalFeatures) {
       return notifyConversionFailure(
           rewriter, hloOp,
           "op has experimental features, but conversion not enabled", hloOp);
+    }
     auto hasPublicFeatures = hasPublicFeaturesNotInStablehlo(hloOp);
     if (hasPublicFeatures || hasExperimentalFeatures) {
       return rewriteMhloOpAsCustomCall(
@@ -562,9 +611,11 @@ class HloToStablehloOpConverter
 
  public:
   HloToStablehloOpConverter(TypeConverter& converter, MLIRContext* context,
-                            bool allowExperimentalFeatures)
+                            bool allowExperimentalFeatures,
+                            bool allowXlaFeatures)
       : OpConversionPattern<HloOpTy>::OpConversionPattern(converter, context),
-        allowExperimentalFeatures(allowExperimentalFeatures) {}
+        allowExperimentalFeatures(allowExperimentalFeatures),
+        allowXlaFeatures(allowXlaFeatures) {}
 
   LogicalResult matchAndRewrite(
       HloOpTy hloOp, typename HloOpTy::Adaptor adaptor,
@@ -578,7 +629,8 @@ class HloToStablehloOpConverter
     //   2) Features that might be a good fit for StableHLO but haven't yet
     //      been proposed or approved in StableHLO. Conversion of such features
     //      should succeed using custom_call extensibility protocol (see below).
-    if (hasPrivateFeaturesNotInStablehlo(hloOp)) return failure();
+    if (!allowXlaFeatures && hasPrivateFeaturesNotInStablehlo(hloOp))
+      return failure();
 
     // These operands have already been converted to StableHLO by
     // the dialect conversion infrastructure.
@@ -600,9 +652,11 @@ class HloToStablehloOpConverter
     // turn out that the original MHLO op no longer exists or has different
     // attributes in the current version.
     bool hasExperimentalFeatures = hasExperimentalFeaturesNotInStablehlo(hloOp);
-    if (!allowExperimentalFeatures && hasExperimentalFeatures) return failure();
+    if (!allowXlaFeatures && !allowExperimentalFeatures &&
+        hasExperimentalFeatures)
+      return failure();
     auto hasPublicFeatures = hasPublicFeaturesNotInStablehlo(hloOp);
-    if (hasPublicFeatures || hasExperimentalFeatures) {
+    if (!allowXlaFeatures && (hasPublicFeatures || hasExperimentalFeatures)) {
       return rewriteMhloOpAsCustomCall(
           hloOp, rewriter, this->getTypeConverter(), stablehloOperands);
     }
@@ -656,6 +710,7 @@ class HloToStablehloOpConverter
   }
 
   bool allowExperimentalFeatures;
+  bool allowXlaFeatures;
 };
 
 // Deprecated ops.
@@ -663,7 +718,11 @@ template <>
 class HloToStablehloOpConverter<stablehlo::UnaryEinsumOp>
     : public OpConversionPattern<stablehlo::UnaryEinsumOp> {
  public:
-  using OpConversionPattern::OpConversionPattern;
+  HloToStablehloOpConverter(TypeConverter& converter, MLIRContext* context,
+                            bool /*allowExperimentalFeatures*/,
+                            bool /*allowXlaFeatures*/)
+      : OpConversionPattern<stablehlo::UnaryEinsumOp>::OpConversionPattern(
+            converter, context) {}
   LogicalResult matchAndRewrite(stablehlo::UnaryEinsumOp stablehloOp,
                                 typename stablehlo::UnaryEinsumOp::Adaptor,
                                 ConversionPatternRewriter&) const final {
@@ -676,9 +735,10 @@ template <typename... StablehloOpTypes>
 void populateHloToStablehloPatterns(RewritePatternSet* patterns,
                                     TypeConverter* converter,
                                     MLIRContext* context,
-                                    bool allowExperimentalFeatures) {
+                                    bool allowExperimentalFeatures,
+                                    bool allowXlaFeatures) {
   patterns->add<HloToStablehloOpConverter<StablehloOpTypes>...>(
-      *converter, context, allowExperimentalFeatures);
+      *converter, context, allowExperimentalFeatures, allowXlaFeatures);
 }
 
 template <typename... HloOpTypes>
@@ -695,7 +755,8 @@ void populateHloToStablehloCustomCallPatterns(RewritePatternSet* patterns,
 void populateHloToStablehloPatterns(RewritePatternSet* patterns,
                                     TypeConverter* converter,
                                     MLIRContext* context,
-                                    bool allowExperimentalFeatures) {
+                                    bool allowExperimentalFeatures,
+                                    bool allowXlaFeatures) {
   // Populate conversion patterns for all StableHLO ops.
   // Our guiding principle is to support all StableHLO functionality in MHLO.
   // The inverse is not necessarily true - some MHLO ops are missing from
@@ -705,9 +766,17 @@ void populateHloToStablehloPatterns(RewritePatternSet* patterns,
   populateHloToStablehloPatterns<
 #define GET_OP_LIST
 #include "stablehlo/dialect/StablehloOps.cpp.inc"
-      >(patterns, converter, context, allowExperimentalFeatures);
+      >(patterns, converter, context, allowExperimentalFeatures,
+        allowXlaFeatures);
 
-  populateHloToStablehloCustomCallPatterns<mhlo::TopKOp, mhlo::ErfOp>(
+  populateHloToStablehloPatterns<mhlo::AddDependencyOp, mhlo::AsyncStartOp,
+                                 mhlo::AsyncUpdateOp, mhlo::AsyncDoneOp>(
+      patterns, converter, context, allowExperimentalFeatures,
+      allowXlaFeatures);
+
+  populateHloToStablehloCustomCallPatterns<
+      mhlo::AcosOp, mhlo::AcoshOp, mhlo::AsinOp, mhlo::AsinhOp, mhlo::AtanhOp,
+      mhlo::CoshOp, mhlo::SinhOp, mhlo::ErfOp, mhlo::TopKOp>(
       patterns, converter, context, allowExperimentalFeatures);
 }
 

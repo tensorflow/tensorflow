@@ -250,7 +250,7 @@ TEST_F(OptimizeInputOutputBufferAliasTest, AllDifferentMemorySpaces) {
   std::vector<Shape> input = {
       ShapeUtil::MakeTupleShape({r1f32_, r2f32_, r3f32_, r4f32_})};
   Shape output = ShapeUtil::MakeTupleShape({r1f32_, r2f32_, r3f32_, r4f32_});
-  for (int i = 0; i < output.tuple_shapes_size(); ++i) {
+  for (int i = 0; i < output.tuple_shapes().size(); ++i) {
     output.mutable_tuple_shapes(i)->mutable_layout()->set_memory_space(
         Layout::kHostMemorySpace);
   }

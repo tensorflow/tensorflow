@@ -39,7 +39,7 @@ namespace gpu {
 // so it should go strictly later.
 class CublasPadForGemms : public HloModulePass {
  public:
-  CublasPadForGemms(const se::GpuComputeCapability gpu_compute_capability,
+  CublasPadForGemms(const se::GpuComputeCapability& gpu_compute_capability,
                     PrimitiveType datatype, int32_t pad_to_multiple_of)
       : gpu_compute_capability_(gpu_compute_capability),
         datatype_(datatype),

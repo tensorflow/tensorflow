@@ -33,6 +33,10 @@ cc_library(
         "allowlisted_flex_ops_internal.h",
     ],
     compatible_with = get_compatible_with_portable(),
+    copts = select({
+        "//tensorflow:android": ["-Wno-private-header"],
+        "//conditions:default": [],
+    }),
     features = tf_features_nolayering_check_if_ios(),
     visibility = internal_visibility_allowlist(),
     deps = if_mobile([

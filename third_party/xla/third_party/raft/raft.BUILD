@@ -18,6 +18,7 @@ BASE_COPTS = [
 
 cuda_library(
     name = "raft_matrix",
+<<<<<<< HEAD
     srcs = glob([
         "cpp/include/raft/core/detail/*.hpp",
         "cpp/include/raft/core/resource/detail/*.hpp",
@@ -43,6 +44,24 @@ cuda_library(
     visibility = ["//visibility:public"],
     deps = [
         "@kokkos//:mdspan",
+=======
+    copts = BASE_COPTS,
+    includes = [
+        "cpp/include",
+        "cpp/internal",
+    ],
+    textual_hdrs = glob([
+        "cpp/include/**/*.cuh",
+        "cpp/include/**/*.hpp",
+        "cpp/internal/**/*.cuh",
+    ]) + [
+        "cpp/include/raft/compat/clang_cuda_intrinsics.h",
+        "cpp/include/raft/thirdparty/mdspan/include/experimental/mdarray",
+        "cpp/include/raft/thirdparty/mdspan/include/experimental/mdspan",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+>>>>>>> upstream/master
         "@rapids_logger",
         "@rmm",
     ],

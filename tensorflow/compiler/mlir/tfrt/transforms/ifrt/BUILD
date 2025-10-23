@@ -212,11 +212,13 @@ tf_cc_test(
         "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
+<<<<<<< HEAD
         "@llvm-project//mlir:RegisterAllDialects",
+=======
+        "@llvm-project//mlir:RegisterAllDialects",  # buildcleaner: keep
+>>>>>>> upstream/master
         "@local_tsl//tsl/platform:protobuf",
-        "@local_xla//xla/pjrt:pjrt_client",
         "@local_xla//xla/pjrt:pjrt_compiler",
-        "@local_xla//xla/pjrt/gpu:se_gpu_pjrt_client",
         "@local_xla//xla/pjrt/plugin/xla_cpu:cpu_topology_description",
         "@local_xla//xla/python/ifrt",
         "@local_xla//xla/python/ifrt:mock",
@@ -224,6 +226,7 @@ tf_cc_test(
         "@local_xla//xla/python/pjrt_ifrt",
         "@local_xla//xla/python/pjrt_ifrt:tfrt_cpu_client_test_lib",
         "@local_xla//xla/service:computation_placer_hdr",
+        "@local_xla//xla/tsl/platform:statusor",
     ],
 )
 

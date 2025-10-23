@@ -17,18 +17,18 @@ limitations under the License.
 
 #include <optional>
 
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
+#include "absl/status/status_matchers.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/status_matchers.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
 namespace {
 using ::testing::HasSubstr;
-using ::tsl::testing::StatusIs;
 
 class TransposeDimensionGrouperTest : public HloHardwareIndependentTestBase {
  public:

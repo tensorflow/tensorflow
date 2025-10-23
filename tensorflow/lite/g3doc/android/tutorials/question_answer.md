@@ -226,9 +226,15 @@ model with parameters before running predictions with the model.
 
 A TensorFlow Lite model is stored as a `*.tflite` file. The model file contains
 the prediction logic and typically includes
+<<<<<<< HEAD
 [metadata](https://ai.google.dev/edge/litert/models/metadata) about how to interpret prediction
 results. Typically, model files are stored in the `src/main/assets` directory of
 your development project, as in the code example:
+=======
+[metadata](https://ai.google.dev/edge/litert/models/metadata) about how to
+interpret prediction results. Typically, model files are stored in the
+`src/main/assets` directory of your development project, as in the code example:
+>>>>>>> upstream/master
 
 -   `<project>/src/main/assets/mobilebert_qa.tflite`
 

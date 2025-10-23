@@ -27,7 +27,7 @@ class DeterminismState {
  public:
   explicit DeterminismState(absl::string_view env_var) : env_var_(env_var) {}
   bool Required() {
-    absl::MutexLock l(mutex_);
+    absl::MutexLock l(*mutex_);
 
     if (state_ == Value::NOT_SET) {
       bool env_var_set = false;
@@ -39,7 +39,7 @@ class DeterminismState {
     return state_ == Value::ENABLED;
   }
   void Enable(bool enabled) {
-    absl::MutexLock l(mutex_);
+    absl::MutexLock l(*mutex_);
     state_ = enabled ? Value::ENABLED : Value::DISABLED;
   }
 

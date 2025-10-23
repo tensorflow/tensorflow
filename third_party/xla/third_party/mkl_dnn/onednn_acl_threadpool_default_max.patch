@@ -175,4 +175,8 @@ index e9ba21c803..384dfec1b9 100644
 +    std::mutex _mtx;
  };
  
+<<<<<<< HEAD
  } // namespace aarch64
+=======
+ } // namespace aarch64
+>>>>>>> upstream/master

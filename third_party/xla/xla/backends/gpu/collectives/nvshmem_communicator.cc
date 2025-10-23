@@ -27,15 +27,19 @@ limitations under the License.
 #include "third_party/nvshmem/nvshmemx.h"  // IWYU pragma: keep
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/backends/gpu/collectives/nvshmem_collectives.h"
+#include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
+#include "xla/future.h"
 #include "xla/primitive_util.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/gpu/gpu_stream.h"
 #include "xla/stream_executor/stream.h"
-#include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/util.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/casts.h"
 
 namespace xla::gpu {
 
@@ -208,7 +212,7 @@ absl::StatusOr<size_t> NvshmemCommunicator::CurrentRank() {
   return rank;
 }
 
-tsl::AsyncValueRef<NvshmemCommunicator::Event> NvshmemCommunicator::AllReduce(
+Future<> NvshmemCommunicator::AllReduce(
     se::DeviceMemoryBase send_buffer, se::DeviceMemoryBase recv_buffer,
     PrimitiveType dtype, size_t count, ReductionKind reduction_kind,
     const Communicator::Executor& executor) {
@@ -292,7 +296,7 @@ tsl::AsyncValueRef<NvshmemCommunicator::Event> NvshmemCommunicator::AllReduce(
     default:
       return absl::InternalError("Invalid Nvshmem reduction type.");
   }
-  return OkEvent();
+  return absl::OkStatus();
 }
 
 std::string NvshmemCommunicator::ToString() const {
@@ -430,9 +434,10 @@ absl::Status NvshmemCommunicator::P2P(absl::string_view op_name,
   return absl::OkStatus();
 }
 
-tsl::AsyncValueRef<NvshmemCommunicator::Event> NvshmemCommunicator::Send(
-    se::DeviceMemoryBase recv_buffer, se::DeviceMemoryBase send_buffer,
-    PrimitiveType dtype, size_t count, RankId peer, const Executor& executor) {
+Future<> NvshmemCommunicator::Send(se::DeviceMemoryBase recv_buffer,
+                                   se::DeviceMemoryBase send_buffer,
+                                   PrimitiveType dtype, size_t count,
+                                   RankId peer, const Executor& executor) {
   VLOG(1) << "Send NVSHMEM communicator: " << ToString();
   if (aborted_) {
     return absl::FailedPreconditionError("NvshmemCommunicator aborted");
@@ -444,12 +449,13 @@ tsl::AsyncValueRef<NvshmemCommunicator::Event> NvshmemCommunicator::Send(
   count = ToRealCount(dtype, count);
   TF_RETURN_IF_ERROR(
       P2P("send", dtype, recv_buffer, send_buffer, count, peer, executor));
-  return tsl::MakeAvailableAsyncValueRef<Event>();
+  return absl::OkStatus();
 }
 
-tsl::AsyncValueRef<NvshmemCommunicator::Event> NvshmemCommunicator::Recv(
-    se::DeviceMemoryBase recv_buffer, se::DeviceMemoryBase send_buffer,
-    PrimitiveType dtype, size_t count, RankId peer, const Executor& executor) {
+Future<> NvshmemCommunicator::Recv(se::DeviceMemoryBase recv_buffer,
+                                   se::DeviceMemoryBase send_buffer,
+                                   PrimitiveType dtype, size_t count,
+                                   RankId peer, const Executor& executor) {
   VLOG(1) << "Recv NVSHMEM communicator: " << ToString();
   if (aborted_) {
     return absl::FailedPreconditionError("NvshmemCommunicator aborted");
@@ -461,7 +467,7 @@ tsl::AsyncValueRef<NvshmemCommunicator::Event> NvshmemCommunicator::Recv(
   count = ToRealCount(dtype, count);
   TF_RETURN_IF_ERROR(
       P2P("recv", dtype, recv_buffer, send_buffer, count, peer, executor));
-  return tsl::MakeAvailableAsyncValueRef<Event>();
+  return absl::OkStatus();
 }
 
 absl::Status NvshmemCommunicator::Quiet(const Executor& executor) {

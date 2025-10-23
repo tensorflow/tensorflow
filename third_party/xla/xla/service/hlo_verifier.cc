@@ -43,9 +43,10 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
+#include "absl/strings/substitute.h"
 #include "absl/types/span.h"
 #include "xla/comparison_util.h"
-#include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
+#include "xla/hlo/ir/collective_op_group_mode.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
@@ -86,32 +87,6 @@ absl::Status CheckOperandCount(const HloInstruction* hlo, int expected) {
                     HloOpcodeString(hlo->opcode()), hlo->ToString());
   }
   return absl::OkStatus();
-}
-
-int64_t GetSubgroupSize(HloCollectiveInstruction* hlo,
-                        CollectiveOpGroupMode group_mode) {
-  const HloModuleConfig& config = hlo->GetModule()->config();
-  switch (group_mode) {
-    case CollectiveOpGroupMode::kCrossReplica:
-    case CollectiveOpGroupMode::kCrossReplicaAndPartition: {
-      int64_t replica_subgroup_size =
-          hlo->replica_groups().empty()
-              ? config.replica_count()
-              : hlo->replica_groups()[0].replica_ids_size();
-      if (group_mode == CollectiveOpGroupMode::kCrossReplicaAndPartition) {
-        // Replicas from all partitions participate.
-        replica_subgroup_size *= config.num_partitions();
-      }
-      return replica_subgroup_size;
-    }
-    case CollectiveOpGroupMode::kFlattenedID:
-      // Empty replica groups not allowed in this mode.
-      return hlo->replica_groups()[0].replica_ids_size();
-    case CollectiveOpGroupMode::kCrossPartition:
-      return hlo->replica_groups().empty()
-                 ? config.num_partitions()
-                 : hlo->replica_groups()[0].replica_ids_size();
-  }
 }
 
 absl::Status CheckUnaryOpWithResultAccuracy(HloInstruction* unary) {
@@ -244,6 +219,7 @@ absl::Status ShapeVerifier::HandleRaggedDot(HloInstruction* ragged_dot) {
 absl::StatusOr<bool> IsNoOpScale(const HloInstruction* dot,
                                  const HloInstruction* operand,
                                  const HloInstruction* scale_operand) {
+<<<<<<< HEAD
   // It should be a constant scalar.
   if (!ShapeUtil::IsScalar(scale_operand->shape()) ||
       scale_operand->opcode() != HloOpcode::kConstant) {
@@ -279,6 +255,24 @@ absl::StatusOr<bool> IsNoOpScale(const HloInstruction* dot,
         scale_operand->name(), dot->ToString()));
   }
   return true;  // Dummy constant scale equal to 1 with integer type found.
+=======
+  // It should have the same type as the operand, and the shape should have the
+  // same rank as the operand but with dim sizes equal to 1.
+  const Shape& shape = scale_operand->shape();
+  if (shape.element_type() != operand->shape().element_type()) {
+    return false;
+  }
+  if (operand->shape().element_type() != BF16) {
+    return false;
+  }
+  // It might be enough to check the types only but for now let's check the
+  // shape as well.
+  return std::all_of(shape.dimensions().begin(), shape.dimensions().end(),
+                     [](int64_t dim) { return dim == 1; }) &&
+         std::any_of(operand->shape().dimensions().begin(),
+                     operand->shape().dimensions().end(),
+                     [](int64_t dim) { return dim != 1; });
+>>>>>>> upstream/master
 }
 
 absl::Status ScalesShapeVerifier(
@@ -316,9 +310,16 @@ absl::Status ScalesShapeVerifier(
   for (int i = 0; i < operand_dims.size(); ++i) {
     if (operand_dims[i] % scale_operand_dims[i]) {
       return absl::FailedPreconditionError(absl::StrFormat(
+<<<<<<< HEAD
           "Dimension %d of operand %s should be a multiple of dimension "
           "%d of scale operand %s in %s",
           i, operand->name(), i, scale_operand->name(), dot->ToString()));
+=======
+          "Dimension %d of operand \n%s\n should be a multiple of dimension "
+          "%d of scale operand \n%s\n in %s",
+          i, operand->ToString(), i, scale_operand->ToString(),
+          dot->ToString()));
+>>>>>>> upstream/master
     }
   }
   return absl::OkStatus();
@@ -330,9 +331,15 @@ absl::Status ShapeVerifier::HandleScaledDot(HloInstruction* scaled_dot) {
 
   TF_ASSIGN_OR_RETURN(auto dim_numbers,
                       DotOperandDims::FromScaledDot(scaled_dot));
+<<<<<<< HEAD
   TF_RETURN_IF_ERROR(ScalesShapeVerifier(scaled_dot, dim_numbers, 0, 1));
   TF_RETURN_IF_ERROR(ScalesShapeVerifier(scaled_dot, dim_numbers, 2, 3));
   if (ShapeUtil::IsScalar(scaled_dot->operand(1)->shape()) &&
+=======
+  TF_RETURN_IF_ERROR(ScalesShapeVerifier(scaled_dot, dim_numbers, 0, 2));
+  TF_RETURN_IF_ERROR(ScalesShapeVerifier(scaled_dot, dim_numbers, 1, 3));
+  if (ShapeUtil::IsScalar(scaled_dot->operand(2)->shape()) &&
+>>>>>>> upstream/master
       ShapeUtil::IsScalar(scaled_dot->operand(3)->shape())) {
     return absl::FailedPreconditionError(absl::StrFormat(
         "At least one of the scales should be not a scalar in %s",
@@ -341,7 +348,11 @@ absl::Status ShapeVerifier::HandleScaledDot(HloInstruction* scaled_dot) {
   TF_ASSIGN_OR_RETURN(
       const Shape expected,
       ShapeInference::InferDotOpShape(
+<<<<<<< HEAD
           scaled_dot->operand(0)->shape(), scaled_dot->operand(2)->shape(),
+=======
+          scaled_dot->operand(0)->shape(), scaled_dot->operand(1)->shape(),
+>>>>>>> upstream/master
           scaled_dot->dot_dimension_numbers(),
           /*preferred_element_type=*/scaled_dot->shape().element_type()));
   return CheckShape(scaled_dot, expected);
@@ -457,28 +468,33 @@ static absl::Status CheckReplicaGroups(HloInstruction* hlo,
     int64_t replica_count = hlo->GetModule()->config().replica_count();
     int64_t num_partitions = hlo->GetModule()->config().num_partitions();
     switch (group_mode) {
-      case CollectiveOpGroupMode::kCrossReplica:
-      case CollectiveOpGroupMode::kCrossReplicaAndPartition: {
+      case CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA:
+      case CollectiveOpGroupMode::
+          COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA_AND_PARTITION: {
         TF_RET_CHECK(replica_count == 1 || n == replica_count)
             << "In " << CollectiveOpGroupModeToString(group_mode)
             << " mode, replica groups should contain " << replica_count
             << " replicas, but found " << n << ": " << hlo->ToString();
         break;
       }
-      case CollectiveOpGroupMode::kCrossPartition: {
+      case CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_PARTITION: {
         TF_RET_CHECK(num_partitions == 1 || n == num_partitions)
             << "In " << CollectiveOpGroupModeToString(group_mode)
             << " mode, replica groups should contain " << num_partitions
             << " partitions, but found " << n << ": " << hlo->ToString();
         break;
       }
-      case CollectiveOpGroupMode::kFlattenedID: {
+      case CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_FLATTENED_ID: {
         const int64_t num_flattened_ids = replica_count * num_partitions;
         TF_RET_CHECK(num_flattened_ids == 1 || n == num_flattened_ids)
             << "In " << CollectiveOpGroupModeToString(group_mode)
             << " mode, replica groups should contain " << num_flattened_ids
             << " flattened IDs, but found " << n << ": " << hlo->ToString();
         break;
+      }
+      default: {
+        return InvalidArgument("Invalid collective op group mode: %d",
+                               static_cast<int>(group_mode));
       }
     }
 
@@ -490,7 +506,8 @@ static absl::Status CheckReplicaGroups(HloInstruction* hlo,
       }
     }
   } else {
-    TF_RET_CHECK(group_mode != CollectiveOpGroupMode::kFlattenedID)
+    TF_RET_CHECK(group_mode !=
+                 CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_FLATTENED_ID)
         << "Replica groups must be specified in flattened-id mode";
   }
 
@@ -840,12 +857,14 @@ absl::Status CheckDuplicatedSourceOrTarget(
   // source-target pairs. Also, based on the group formation mode, check if the
   // source and target IDs are within expected range.
 
-  // Note: for collective-permute, only kCrossReplica and kCrossPartition modes
-  // are valid.
+  // Note: for collective-permute, only COLLECTIVE_OP_GROUP_MODE_FLATTENED_ID
+  // and kCrossPartition modes are valid.
   const HloModuleConfig& config = collective_permute->GetModule()->config();
-  const int64_t limit = group_mode == CollectiveOpGroupMode::kCrossReplica
-                            ? config.replica_count()
-                            : config.num_partitions();
+  const int64_t limit =
+      group_mode ==
+              CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA
+          ? config.replica_count()
+          : config.num_partitions();
   absl::flat_hash_map<int64_t, std::vector<int64_t>> seen_source_to_targets;
   absl::flat_hash_map<int64_t, std::vector<int64_t>> seen_target_to_sources;
   int allowed_seen_count = 1;
@@ -1517,11 +1536,16 @@ absl::Status ShapeVerifier::HandleCustomCall(HloInstruction* instruction) {
     const Shape& operand_subshape = ShapeUtil::GetSubshape(
         custom_call->operand(pair.second.first)->shape(), pair.second.second);
     if (opts_.layout_sensitive) {
-      TF_RET_CHECK(Shape::Equal().IgnoreBuffer(ignore_buffer)(operand_subshape,
-                                                              output_subshape))
-          << "Different aliasing shapes: "
-          << operand_subshape.ToString(/*print_layout=*/true) << " vs "
-          << output_subshape.ToString(/*print_layout=*/true);
+      bool operand_is_scalar = operand_subshape.IsArray() &&
+                               ShapeUtil::ElementsIn(operand_subshape) == 1;
+      auto shape_equal_checker = Shape::Equal().IgnoreBuffer(ignore_buffer);
+      if (operand_is_scalar) {
+        shape_equal_checker.IgnoreMemorySpaceInLayout();
+      }
+      TF_RET_CHECK(shape_equal_checker(operand_subshape, output_subshape))
+          << absl::Substitute("Different aliasing shapes: $0 vs $1",
+                              operand_subshape.ToString(/*print_layout=*/true),
+                              output_subshape.ToString(/*print_layout=*/true));
     } else {
       TF_RET_CHECK(
           Shape::Equal().IgnoreDynamicDimension().IgnoreLayout().IgnoreBuffer(
@@ -1726,8 +1750,12 @@ absl::Status CheckCallableInstructionThreadName(
           instruction->parent()->execution_thread() !=
               computation->execution_thread()) {
         return Internal(
+<<<<<<< HEAD
             "Non-Embedded context callable instruction %s expects parent "
             "computation thread name "
+=======
+            "Callable instruction %s expects parent computation thread name "
+>>>>>>> upstream/master
             "same as called computation's thread name (%s vs %s).",
             instruction->ToString(), instruction->parent()->execution_thread(),
             computation->execution_thread());
@@ -1921,6 +1949,7 @@ absl::Status CheckMixedPrecisionOperands(const HloInstruction* instruction) {
     case HloOpcode::kConvolution:
     case HloOpcode::kDot:
     case HloOpcode::kRaggedDot:
+    case HloOpcode::kScaledDot:
     case HloOpcode::kAllReduce:
     case HloOpcode::kAllReduceStart:
     case HloOpcode::kAllReduceDone:
@@ -1930,6 +1959,9 @@ absl::Status CheckMixedPrecisionOperands(const HloInstruction* instruction) {
     case HloOpcode::kAsyncDone:
     case HloOpcode::kAsyncUpdate:
     case HloOpcode::kAsyncStart:
+    case HloOpcode::kCollectivePermute:
+    case HloOpcode::kCollectivePermuteStart:
+    case HloOpcode::kCollectivePermuteDone:
     case HloOpcode::kCopyDone:
     case HloOpcode::kCopyStart:
     case HloOpcode::kCustomCall:
@@ -2538,6 +2570,7 @@ absl::Status VerifyAsynchronousInstructionPairs(const HloModule& module) {
   return absl::OkStatus();
 }
 
+<<<<<<< HEAD
 // Helper function to match source-target pairs for a pair of send/recv
 // instructions.
 absl::Status VerifySourceTargetPairs(const HloInstruction* first,
@@ -2620,11 +2653,150 @@ absl::Status HandleSendInstruction(const HloInstruction* instruction,
       return Internal("Expected recv to match send, but found %s",
                       instruction->ToString());
     default:
+=======
+enum class DfaState { kNoExpectation, kExpectSend, kExpectRecv };
+
+// Checks that the send/recv instructions in the module do not deadlock. This is
+// only done on scheduled modules and is specific to device-to-device
+// communications on GPU. At a high level, we want to check that:
+// 1. no collectives are scheduled between a matching pair of send and recv
+// 2. no two send instructions are scheduled in a row
+// 3. no two recv instructions are scheduled in a row
+// 4. the program does not terminate with a dangling send or recv
+absl::Status VerifyNoConflictingSourceTargetPairs(
+    const HloInstruction* instruction, SourceTargetPairs source_target_pairs) {
+  // Check for cycles
+  if (collective_permute_cycle::HasCycles(source_target_pairs)) {
+    return Internal(
+        "Expected send and recv instructions to have non-cyclical "
+        "source-target pairs, but found %s",
+        instruction->ToString());
+  }
+  // Check for duplicate sources and targets
+  if (HasDuplicateSourcesOrTargets(source_target_pairs)) {
+    return Internal(
+        "Expected send and recv instructions to have unique source and target "
+        "pairs, but found %s",
+        instruction->ToString());
+  }
+  return absl::OkStatus();
+}
+
+// Checks that the given instruction
+// (1) does not contain a cycle
+// (2) does not form a cycle with any of the instructions in the provided set
+// (3) does not have duplicate sources or targets
+// (4) does not contain duplicate sources or targets with any of the
+//     instructions in the provided set
+// If all 4 checks pass, insert the instruction into the provided set of
+// instructions
+template <typename T>
+absl::Status VerifyNoConflictingSendOrRecv(
+    const T* instruction, absl::flat_hash_set<const T*>& instructions) {
+  TF_ASSIGN_OR_RETURN(SourceTargetPairs source_target_pairs_array,
+                      SourceTargetPairs::FromInstruction(instruction));
+  for (const T* existing_instruction : instructions) {
+    TF_ASSIGN_OR_RETURN(
+        SourceTargetPairs existing_source_target_pairs_array,
+        SourceTargetPairs::FromInstruction(existing_instruction));
+    TF_RETURN_IF_ERROR(VerifyNoConflictingSourceTargetPairs(
+        existing_instruction,
+        SourceTargetPairs::Join(source_target_pairs_array,
+                                existing_source_target_pairs_array)));
+  }
+  instructions.insert(instruction);
+  return absl::OkStatus();
+}
+
+template <typename T>
+absl::StatusOr<bool> ShouldSkipDeadlockCheck(const T* instruction) {
+  if (instruction->is_host_transfer()) {
+    return true;
+  }
+  // TODO: b/441038687 - Remove kSendRecvValidationAttr
+  // TODO: b/441088186 - update static analyzer logic to also handle
+  // instructions annotated with _xla_send_recv_pipeline
+  // For now we will skip checks for instructions annotated with
+  // _xla_send_recv_pipeline and _xla_send_recv_validation, since they introduce
+  // extra constraints that have not been modeled by this function.
+  if (instruction->frontend_attributes().map().contains(
+          kSendRecvPipelineAttr) ||
+      instruction->frontend_attributes().map().contains(
+          kSendRecvValidationAttr)) {
+    return true;
+  }
+  // Check that the instruction itself does not have conflicting
+  // source-target pairs.
+  TF_ASSIGN_OR_RETURN(SourceTargetPairs source_target_pairs_array,
+                      SourceTargetPairs::FromInstruction(instruction));
+  TF_RETURN_IF_ERROR(VerifyNoConflictingSourceTargetPairs(
+      instruction, source_target_pairs_array));
+  return false;
+}
+
+// Finds a matching instruction (Send or Recv) for the given instruction in the
+// provided set of candidates. Matching is based on the
+// kSendRecvSourceTargetPairsAttr.
+template <typename T, typename U>
+const U* FindMatchingInstruction(
+    const T* instruction, const absl::flat_hash_set<const U*>& candidates) {
+  auto it = instruction->frontend_attributes().map().find(
+      kSendRecvSourceTargetPairsAttr);
+  if (it == instruction->frontend_attributes().map().end()) {
+    return nullptr;  // Should not happen based on checks in caller
+  }
+  const std::string& source_target_pairs = it->second;
+
+  for (const U* candidate : candidates) {
+    auto candidate_it = candidate->frontend_attributes().map().find(
+        kSendRecvSourceTargetPairsAttr);
+    if (candidate_it != candidate->frontend_attributes().map().end() &&
+        candidate_it->second == source_target_pairs) {
+      return candidate;
+    }
+  }
+  return nullptr;
+}
+
+absl::Status CheckDeadlocksForSend(
+    const HloSendInstruction* send, DfaState& current_state,
+    absl::flat_hash_set<const HloSendInstruction*>& pending_send_instructions,
+    absl::flat_hash_set<const HloRecvInstruction*>& pending_recv_instructions) {
+  TF_ASSIGN_OR_RETURN(bool skip, ShouldSkipDeadlockCheck(send));
+  if (skip) {
+    return absl::OkStatus();
+  }
+  switch (current_state) {
+    case DfaState::kNoExpectation:
+      pending_send_instructions.insert(send);
+      current_state = DfaState::kExpectRecv;
+      break;
+    case DfaState::kExpectRecv:
+      if (!VerifyNoConflictingSendOrRecv(send, pending_send_instructions)
+               .ok()) {
+        return Internal("Expected recv, but found %s", send->ToString());
+      }
+      break;
+    case DfaState::kExpectSend:
+      const HloRecvInstruction* recv =
+          FindMatchingInstruction(send, pending_recv_instructions);
+      if (recv != nullptr) {
+        pending_recv_instructions.erase(recv);
+        if (pending_recv_instructions.empty()) {
+          current_state = DfaState::kNoExpectation;
+        }
+      } else {
+        // We couldn't find a matching recv instruction, so we will put this
+        // send in the set of unmatched send instructions.
+        pending_send_instructions.insert(send);
+      }
+>>>>>>> upstream/master
       break;
   }
   return absl::OkStatus();
 }
 
+<<<<<<< HEAD
 // Helper function to handle the state transitions for a Recv instruction.
 absl::Status HandleRecvInstruction(const HloInstruction* instruction,
                                    DfaState& current_state,
@@ -2646,12 +2818,69 @@ absl::Status HandleRecvInstruction(const HloInstruction* instruction,
       current_state = DfaState::kNoException;
       current_instruction = nullptr;
       break;
+=======
+absl::Status CheckDeadlocksForRecv(
+    const HloRecvInstruction* recv, DfaState& current_state,
+    absl::flat_hash_set<const HloSendInstruction*>& send_instructions,
+    absl::flat_hash_set<const HloRecvInstruction*>& recv_instructions) {
+  TF_ASSIGN_OR_RETURN(bool skip, ShouldSkipDeadlockCheck(recv));
+  if (skip) {
+    return absl::OkStatus();
+  }
+  switch (current_state) {
+    case DfaState::kNoExpectation:
+      recv_instructions.insert(recv);
+      current_state = DfaState::kExpectSend;
+      break;
+    case DfaState::kExpectSend:
+      if (!VerifyNoConflictingSendOrRecv(recv, recv_instructions).ok()) {
+        return Internal("Expected send, but found %s", recv->ToString());
+      }
+      break;
+    case DfaState::kExpectRecv:
+      const HloSendInstruction* send =
+          FindMatchingInstruction(recv, send_instructions);
+      if (send != nullptr) {
+        send_instructions.erase(send);
+        if (send_instructions.empty()) {
+          current_state = DfaState::kNoExpectation;
+        }
+      } else {
+        // We couldn't find a matching send instruction, so we will put this
+        // recv in the set of unmatched recv instructions.
+        recv_instructions.insert(recv);
+      }
+      break;
+  }
+  return absl::OkStatus();
+}
+
+absl::Status CheckDeadlocksForOtherCollectives(
+    const HloInstruction* instruction, DfaState& current_state,
+    absl::flat_hash_set<const HloSendInstruction*>& send_instructions,
+    absl::flat_hash_set<const HloRecvInstruction*>& recv_instructions) {
+  switch (current_state) {
+    case DfaState::kExpectSend:
+    case DfaState::kExpectRecv:
+      // We have some left-over unmatched send or recv instructions.
+      if (!send_instructions.empty() || !recv_instructions.empty()) {
+        return Internal(
+            "Expected send and recv instructions to have the same "
+            "source-target pairs, but could not match some "
+            "instructions. Introducing the following instruction will "
+            "cause a deadlock:\n%s",
+            instruction->ToString());
+      }
+      return Internal("Expected send or recv, but found %s",
+                      instruction->ToString());
+>>>>>>> upstream/master
     default:
       break;
   }
   return absl::OkStatus();
 }
 
+<<<<<<< HEAD
 // Checks that the send/recv instructions in the module do not deadlock. This is
 // only done on scheduled modules and is specific to device-to-device
 // communications on GPU. At a high level, we want to check that:
@@ -2706,6 +2935,127 @@ absl::Status VerifyNoCollectiveDeadlocks(const HloModule& module) {
                    current_instruction == nullptr
                        ? ""
                        : current_instruction->ToString());
+=======
+bool IsOtherCollective(const HloInstruction* instruction) {
+  switch (instruction->opcode()) {
+    case HloOpcode::kAllGather:
+    case HloOpcode::kAllReduce:
+    case HloOpcode::kAllToAll:
+    case HloOpcode::kRaggedAllToAll:
+    case HloOpcode::kCollectivePermute:
+    case HloOpcode::kReduceScatter:
+    case HloOpcode::kCollectiveBroadcast:
+      return true;
+    default:
+      return false;
+  }
+}
+
+absl::Status CheckPendingSendRecvDeadlocks(
+    absl::flat_hash_set<const HloSendInstruction*>& send_instructions,
+    absl::flat_hash_set<const HloRecvInstruction*>& recv_instructions) {
+  if (recv_instructions.empty() && !send_instructions.empty()) {
+    return Internal("Expected recv to match send");
+  }
+  if (send_instructions.empty() && !recv_instructions.empty()) {
+    return Internal("Expected send to match recv");
+  }
+  std::string last_checked_instructions = "";
+  for (const HloSendInstruction* send_instruction : send_instructions) {
+    const HloRecvInstruction* recv_instruction =
+        FindMatchingInstruction(send_instruction, recv_instructions);
+    if (recv_instruction != nullptr) {
+      recv_instructions.erase(recv_instruction);
+    } else {
+      absl::StrAppend(&last_checked_instructions, send_instruction->ToString(),
+                      ",");
+    }
+  }
+  for (const HloRecvInstruction* recv_instruction : recv_instructions) {
+    const HloSendInstruction* send_instruction =
+        FindMatchingInstruction(recv_instruction, send_instructions);
+    if (send_instruction != nullptr) {
+      send_instructions.erase(send_instruction);
+    } else {
+      absl::StrAppend(&last_checked_instructions, recv_instruction->ToString(),
+                      ",");
+    }
+  }
+  if (!last_checked_instructions.empty()) {
+    return Internal("Deadlock detected. Last checked instructions: %s",
+                    last_checked_instructions);
+  }
+  return absl::OkStatus();
+}
+
+absl::Status VerifyNoCollectiveDeadlocksRecursive(
+    const HloComputation* computation, DfaState& current_state,
+    absl::flat_hash_set<const HloSendInstruction*>& send_instructions,
+    absl::flat_hash_set<const HloRecvInstruction*>& recv_instructions) {
+  for (const HloInstruction* instruction : computation->instructions()) {
+    if (instruction->called_computations().empty()) {
+      if (instruction->opcode() == HloOpcode::kSend) {
+        TF_RETURN_IF_ERROR(CheckDeadlocksForSend(
+            DynCast<HloSendInstruction>(instruction), current_state,
+            send_instructions, recv_instructions));
+      } else if (instruction->opcode() == HloOpcode::kRecv) {
+        TF_RETURN_IF_ERROR(CheckDeadlocksForRecv(
+            DynCast<HloRecvInstruction>(instruction), current_state,
+            send_instructions, recv_instructions));
+      } else if (IsOtherCollective(instruction)) {
+        TF_RETURN_IF_ERROR(CheckDeadlocksForOtherCollectives(
+            instruction, current_state, send_instructions, recv_instructions));
+      } else {
+        continue;
+      }
+    } else {
+      for (const HloComputation* computation :
+           instruction->called_computations()) {
+        // special handling for grouped multi-op async collectives
+        if (computation->IsAsyncComputation() &&
+            !computation->CanExpandIntoSingleInstruction()) {
+          // Reset the state machine for async-grouped send and recv. This block
+          // essentially calls the main VerifyNoCollectiveDeadlocks function
+          // on the async computation without recursion. This is necessary for
+          // async-wrapped send and recv instructions that are sandwiched in
+          // between partially pipelined collectives.
+          DfaState async_comp_current_state = DfaState::kNoExpectation;
+          absl::flat_hash_set<const HloSendInstruction*>
+              async_comp_send_instructions;
+          absl::flat_hash_set<const HloRecvInstruction*>
+              async_comp_recv_instructions;
+          TF_RETURN_IF_ERROR(VerifyNoCollectiveDeadlocksRecursive(
+              computation, async_comp_current_state,
+              async_comp_send_instructions, async_comp_recv_instructions));
+          if (current_state != DfaState::kNoExpectation) {
+            TF_RETURN_IF_ERROR(CheckPendingSendRecvDeadlocks(
+                async_comp_send_instructions, async_comp_recv_instructions));
+          }
+        } else {
+          // normal case
+          TF_RETURN_IF_ERROR(VerifyNoCollectiveDeadlocksRecursive(
+              computation, current_state, send_instructions,
+              recv_instructions));
+        }
+      }
+    }
+  }
+  return absl::OkStatus();
+}
+
+absl::Status VerifyNoCollectiveDeadlocks(const HloModule& module) {
+  DfaState current_state = DfaState::kNoExpectation;
+  absl::flat_hash_set<const HloSendInstruction*> send_instructions;
+  absl::flat_hash_set<const HloRecvInstruction*> recv_instructions;
+  TF_RETURN_IF_ERROR(VerifyNoCollectiveDeadlocksRecursive(
+      module.entry_computation(), current_state, send_instructions,
+      recv_instructions));
+  if (current_state != DfaState::kNoExpectation) {
+    TF_RETURN_IF_ERROR(
+        CheckPendingSendRecvDeadlocks(send_instructions, recv_instructions));
+  }
+  return absl::OkStatus();
+>>>>>>> upstream/master
 }
 
 // Checks that the asynchronous computation only has a root and parameter
@@ -2744,10 +3094,44 @@ absl::Status VerifyLayoutConstrainedAllReduce(const HloModule& module) {
   return absl::OkStatus();
 }
 
-// Verifies that leaf nodes in an original value contain values.
+namespace {
+std::string FormatShapeIndexValidationError(
+    absl::string_view instruction_name,
+    const absl::flat_hash_set<ShapeIndex>& shape_leaf_indices,
+    const absl::flat_hash_set<ShapeIndex>& ov_leaf_indices) {
+  std::vector<ShapeIndex> shape_only;
+  std::vector<ShapeIndex> ov_only;
+  for (const auto& idx : shape_leaf_indices) {
+    if (!ov_leaf_indices.contains(idx)) {
+      shape_only.push_back(idx);
+    }
+  }
+  for (const auto& idx : ov_leaf_indices) {
+    if (!shape_leaf_indices.contains(idx)) {
+      ov_only.push_back(idx);
+    }
+  }
+  std::sort(shape_only.begin(), shape_only.end());
+  std::sort(ov_only.begin(), ov_only.end());
+  auto shape_index_formatter = [](std::string* out, const ShapeIndex& i) {
+    absl::StrAppend(out, i.ToString());
+  };
+  return absl::StrFormat(
+      "Mismatched tuple structure in original_value for "
+      "instruction %s. Leaf indices in shape and original_value "
+      "do not match.\nIn shape only: {%s}\nIn original_value only: {%s}",
+      instruction_name, absl::StrJoin(shape_only, ", ", shape_index_formatter),
+      absl::StrJoin(ov_only, ", ", shape_index_formatter));
+}
+
+}  // namespace
+
+// Verifies that the original value has the same tuple structure as the
+// instruction shape.
 absl::Status VerifyOriginalValue(const HloModule& module) {
   for (const HloComputation* computation : module.computations()) {
     for (const HloInstruction* instruction : computation->instructions()) {
+<<<<<<< HEAD
       if (auto original_value = instruction->original_value()) {
         // An original value is expected to have intermediate nodes that are
         // always nullopt and leaves with actual values.
@@ -2758,6 +3142,29 @@ absl::Status VerifyOriginalValue(const HloModule& module) {
                 " Instruction: %s.",
                 instruction->ToString());
           }
+=======
+      if (instruction->original_value()) {
+        const auto& shape = instruction->shape();
+        const auto& original_value = instruction->original_value();
+        if (original_value->is_synthetic_call()) {
+          continue;
+        }
+        absl::flat_hash_set<ShapeIndex> shape_leaf_indices;
+        ShapeUtil::ForEachLeafShape(
+            shape, [&](const Shape& /*subshape*/, const ShapeIndex& index) {
+              shape_leaf_indices.insert(index);
+            });
+
+        absl::flat_hash_set<ShapeIndex> ov_leaf_indices;
+        for (const auto& [index, value] : original_value->original_arrays()) {
+          ov_leaf_indices.insert(index);
+        }
+
+        if (shape_leaf_indices != ov_leaf_indices) {
+          return Internal("%s", FormatShapeIndexValidationError(
+                                    instruction->name(), shape_leaf_indices,
+                                    ov_leaf_indices));
+>>>>>>> upstream/master
         }
       }
     }
@@ -3014,6 +3421,7 @@ absl::Status CheckElementwiseInstruction(HloInstruction* instruction) {
   return absl::OkStatus();
 }
 
+<<<<<<< HEAD
 // Visitor which verifies various fields on the HLO instruction. This class does
 // not check result shape as that is checked in the ShapeVerifier.
 class InstructionVerifier : public DfsHloVisitorWithDefault {
@@ -3367,6 +3775,8 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
   std::optional<int64_t> num_devices_;
 };
 
+=======
+>>>>>>> upstream/master
 bool IsCollectivesGroupComputation(HloComputation* computation) {
   auto maybe_caller = computation->GetUniqueCaller(HloOpcode::kAsyncStart);
   if (!maybe_caller.has_value()) {
@@ -3470,7 +3880,8 @@ absl::Status CheckBufferHasUniqueWriters(const HloInstruction* inst) {
       });
 }
 
-absl::Status VerifyPin(const HloCustomCallInstruction* inst) {
+absl::Status VerifyPin(const HloCustomCallInstruction* inst,
+                       bool layout_sentitive) {
   if (inst->operand_count() != 1 || !inst->operand(0)->shape().IsArray() ||
       inst->operand(0)->shape().IsBuffer()) {
     return InvalidArgument(
@@ -3481,8 +3892,8 @@ absl::Status VerifyPin(const HloCustomCallInstruction* inst) {
     return InvalidArgument("custom-call to Pin must have one buffer result");
   }
 
-  if (!xla::Shape::Equal()(inst->operand(0)->shape(),
-                           inst->shape().buffer_shape())) {
+  if (!xla::Shape::Equal().IgnoreLayout(!layout_sentitive)(
+          inst->operand(0)->shape(), inst->shape().buffer_shape())) {
     return InvalidArgument(
         "custom-call to Pin must have the same shape as the operand");
   }
@@ -3508,7 +3919,8 @@ absl::Status VerifyCreateBuffer(const HloInstruction* inst) {
   return CheckBufferHasUniqueWriter(inst, {});
 }
 
-absl::Status VerifyUnpin(const HloCustomCallInstruction* inst) {
+absl::Status VerifyUnpin(const HloCustomCallInstruction* inst,
+                         bool layout_sentitive) {
   if (inst->operand_count() != 1 || !inst->operand(0)->shape().IsBuffer()) {
     return InvalidArgument("custom-call to Unpin must have one buffer operand");
   }
@@ -3518,8 +3930,8 @@ absl::Status VerifyUnpin(const HloCustomCallInstruction* inst) {
         "custom-call to Unpin must have one array non-buffer result");
   }
 
-  if (!xla::Shape::Equal()(inst->operand(0)->shape().buffer_shape(),
-                           inst->shape())) {
+  if (!xla::Shape::Equal().IgnoreLayout(!layout_sentitive)(
+          inst->operand(0)->shape().buffer_shape(), inst->shape())) {
     return InvalidArgument(
         "custom-call to Unpin must have the same shape as the operand");
   }
@@ -3642,15 +4054,16 @@ absl::Status VerifyBuffersInResults(
 //   output-to-operand-aliasing.
 // - An HLO buffer result can only be updated at most once.
 //
-absl::Status VerifyCustomCall(const HloCustomCallInstruction* inst) {
+absl::Status VerifyCustomCall(const HloCustomCallInstruction* inst,
+                              bool layout_sentitive) {
   if (inst->IsCustomCall(kPinCustomCallTarget)) {
-    return VerifyPin(Cast<HloCustomCallInstruction>(inst));
+    return VerifyPin(Cast<HloCustomCallInstruction>(inst), layout_sentitive);
   }
   if (inst->IsCustomCall(kCreateBufferCustomCallTarget)) {
     return VerifyCreateBuffer(inst);
   }
   if (inst->IsCustomCall(kUnpinCustomCallTarget)) {
-    return VerifyUnpin(Cast<HloCustomCallInstruction>(inst));
+    return VerifyUnpin(Cast<HloCustomCallInstruction>(inst), layout_sentitive);
   }
 
   TF_RETURN_IF_ERROR(VerifyBuffersInOperands(inst));
@@ -3674,12 +4087,12 @@ absl::Status VerifyNoBuffersInContext(const HloInstruction* inst) {
   return absl::OkStatus();
 }
 
-absl::Status VerifyBuffers(const HloModule& module) {
+absl::Status VerifyBuffers(const HloModule& module, bool layout_sentitive) {
   for (auto* comp : module.computations()) {
     for (auto* inst : comp->instructions()) {
       if (inst->opcode() == HloOpcode::kCustomCall) {
-        TF_RETURN_IF_ERROR(
-            VerifyCustomCall(Cast<HloCustomCallInstruction>(inst)));
+        TF_RETURN_IF_ERROR(VerifyCustomCall(
+            Cast<HloCustomCallInstruction>(inst), layout_sentitive));
       } else if (inst->opcode() == HloOpcode::kWhile) {
         TF_RETURN_IF_ERROR(CheckBufferHasUniqueWriters(inst));
       } else if (inst->opcode() == HloOpcode::kParameter) {
@@ -3698,6 +4111,331 @@ absl::Status VerifyBuffers(const HloModule& module) {
 }
 
 }  // namespace
+
+absl::Status InstructionVerifier::DefaultAction(HloInstruction*) {
+  return absl::OkStatus();
+}
+
+absl::Status InstructionVerifier::HandleFusion(HloInstruction* fusion) {
+  TF_RETURN_IF_ERROR(CheckCallableInstructionThreadName(fusion));
+  return CheckFusionInstruction(fusion);
+}
+
+absl::Status InstructionVerifier::HandleBroadcast(HloInstruction* broadcast) {
+  // If you see this failure then someone has confused the difference
+  // between the HLO broadcast op, and the UserComputation broadcast
+  // op. See https://groups.google.com/forum/#!topic/xla-dev/9LqijHmTt_I
+  // or ComputationLowerer::Visit()
+  TF_RET_CHECK(broadcast->dimensions().size() ==
+               broadcast->operand(0)->shape().dimensions().size())
+      << "Broadcast HLO (" << broadcast->ToShortString()
+      << ") has invalid number of dimensions: "
+      << broadcast->dimensions().size()
+      << " != " << broadcast->operand(0)->shape().dimensions().size();
+  if (opts_.verify_broadcast_dimensions_order) {
+    TF_RET_CHECK(absl::c_is_sorted(broadcast->dimensions()))
+        << "Broadcast dimensions should be ordered, got: "
+        << broadcast->ToString();
+  }
+  return absl::OkStatus();
+}
+
+absl::Status InstructionVerifier::HandleBitcastConvert(HloInstruction* c) {
+  // Shape verifier will check all we need.
+  return absl::OkStatus();
+}
+
+absl::Status InstructionVerifier::HandleWhile(HloInstruction* xla_while) {
+  auto* while_cond = xla_while->while_condition();
+  auto* while_body = xla_while->while_body();
+  if (while_cond->num_parameters() != 1) {
+    return FailedPrecondition(
+        "While condition must have exactly 1 parameter; had %d : %s",
+        while_cond->num_parameters(), while_cond->ToString());
+  }
+  if (while_body->num_parameters() != 1) {
+    return FailedPrecondition(
+        "While body must have exactly 1 parameter; had %d : %s",
+        while_body->num_parameters(), while_body->ToString());
+  }
+  if (xla_while->operand_count() != 1) {
+    return FailedPrecondition(
+        "While loop must have exactly one operand; had %d : %s",
+        xla_while->operand_count(), xla_while->ToString());
+  }
+  // Allow kWhile to contain computations on separate thread.
+  TF_RETURN_IF_ERROR(CheckCallableInstructionThreadName(xla_while));
+
+  // Verify consistency of sharding of while instructions and related
+  // instructions (parameters, root) in its called computations.
+  TF_RETURN_IF_ERROR(VerifyConsistentSharding(
+      xla_while, {xla_while, xla_while->while_body()->root_instruction(),
+                  xla_while->while_body()->parameter_instruction(0),
+                  xla_while->while_condition()->parameter_instruction(0)}));
+
+  return absl::OkStatus();
+}
+
+absl::Status InstructionVerifier::HandleCall(HloInstruction* call) {
+  if (opts_.verify_call_nested_computation_thread_name) {
+    return CheckCallableInstructionThreadName(call);
+  }
+
+  // As opposed to other callable instructions, nothing respects input/output
+  // aliasing for call instructions, so make sure it's not set.
+  const HloCallableInstruction* callable =
+      DynCast<const HloCallableInstruction>(call);
+  TF_RET_CHECK(callable != nullptr);
+  TF_RET_CHECK(callable->output_to_operand_aliasing().empty())
+      << "Call instruction " << call->ToString()
+      << " may not have an output-to-operand aliasing set.";
+  return absl::OkStatus();
+}
+
+absl::Status InstructionVerifier::HandleConditional(
+    HloInstruction* conditional) {
+  const std::vector<HloComputation*> branch_computations =
+      conditional->branch_computations();
+  std::vector<const HloInstruction*> sharding_check_instructions;
+  sharding_check_instructions.reserve(branch_computations.size() + 1);
+  sharding_check_instructions.push_back(conditional);
+
+  for (const HloComputation* branch_computation : branch_computations) {
+    if (branch_computation->num_parameters() != 1) {
+      return FailedPrecondition(
+          "Branch computation %s of %s must have 1 parameter instead of %d",
+          branch_computation->name(), conditional->ToString(),
+          branch_computation->num_parameters());
+    }
+    sharding_check_instructions.push_back(
+        branch_computation->root_instruction());
+  }
+  // Allow kConditional to contain computations on separate thread.
+  TF_RETURN_IF_ERROR(CheckCallableInstructionThreadName(conditional));
+
+  // Verify consistency of sharding of conditional instructions and roots of
+  // its branches.
+  TF_RETURN_IF_ERROR(
+      VerifyConsistentSharding(conditional, sharding_check_instructions));
+
+  return absl::OkStatus();
+}
+
+absl::Status InstructionVerifier::HandleElementwiseUnary(
+    HloInstruction* instruction) {
+  TF_RETURN_IF_ERROR(CheckUnaryOpWithResultAccuracy(instruction));
+  return CheckElementwiseInstruction(instruction);
+}
+
+absl::Status InstructionVerifier::HandleElementwiseBinary(
+    HloInstruction* instruction) {
+  return CheckElementwiseInstruction(instruction);
+}
+
+absl::Status InstructionVerifier::HandleGetTupleElement(HloInstruction* gte) {
+  TF_RET_CHECK(gte->operand(0)->shape().IsTuple());
+  return absl::OkStatus();
+}
+
+absl::Status InstructionVerifier::HandleTranspose(HloInstruction* transpose) {
+  const Shape& shape = transpose->shape();
+  const HloInstruction* operand = transpose->operand(0);
+  TF_RET_CHECK(shape.dimensions().size() == transpose->dimensions().size());
+  TF_RET_CHECK(shape.dimensions().size() ==
+               transpose->operand(0)->shape().dimensions().size());
+  TF_RET_CHECK(std::equal(
+      shape.dimensions().begin(), shape.dimensions().end(),
+      Permute(operand->shape().dimensions(), transpose->dimensions()).begin()))
+      << "shape: " << shape << ", operand->shape(): " << shape
+      << ", dimensions: {" << absl::StrJoin(transpose->dimensions(), ", ")
+      << "}";
+  return absl::OkStatus();
+}
+
+absl::Status InstructionVerifier::HandleAllReduce(HloInstruction* crs) {
+  if (crs->channel_id().has_value()) {
+    TF_RET_CHECK(crs->channel_id().value() > 0)
+        << "All reduce channel id must be greater than 0 for "
+        << crs->ToShortString();
+  }
+  return absl::OkStatus();
+}
+
+absl::Status InstructionVerifier::HandleReshape(HloInstruction* hlo) {
+  if (opts_.verify_reshape_is_bitcast && !hlo->IsFused()) {
+    TF_RET_CHECK(
+        ShapeUtil::ReshapeIsBitcast(hlo->operand(0)->shape(), hlo->shape()))
+        << "Reshape should be a physical bitcast, got: " << hlo->ToString();
+  }
+  return absl::OkStatus();
+}
+
+absl::Status InstructionVerifier::HandleCustomCall(HloInstruction* hlo) {
+  if (opts_.verify_call_nested_computation_thread_name) {
+    // Allow kCustomCall to contain computations on separate thread.
+    return CheckCallableInstructionThreadName(hlo);
+  }
+  return absl::OkStatus();
+}
+
+absl::Status InstructionVerifier::HandleScatter(HloInstruction* scatter) {
+  int64_t rank = scatter->operand(0)->shape().dimensions().size();
+  for (int64_t operand_dim :
+       scatter->scatter_dimension_numbers().scatter_dims_to_operand_dims()) {
+    if (operand_dim > rank) {
+      return absl::OutOfRangeError(absl::StrCat(
+          "The provided scatter_dims_to_operand_dim was out of range.",
+          " (operand_dim: ", operand_dim, ", rank: ", rank, ")"));
+    }
+  }
+  return absl::OkStatus();
+}
+
+absl::Status InstructionVerifier::Preprocess(HloInstruction* instruction) {
+  auto [it, inserted] =
+      instructions_by_name_.emplace(instruction->name(), instruction);
+  TF_RET_CHECK(inserted) << "HLO has name that is not unique within module:\n"
+                         << instruction->ToString()
+                         << " in computation: " << instruction->parent()->name()
+                         << "\nPrevious HLO with same name:\n"
+                         << it->second->ToString()
+                         << " in computation: " << it->second->parent()->name();
+
+  if (instruction->has_sharding()) {
+    absl::Status status =
+        instruction->sharding().Validate(instruction->shape(), num_devices_);
+    if (!status.ok()) {
+      return absl::Status(
+          status.code(),
+          absl::StrCat("Invalid sharding for instruction: ",
+                       instruction->ToString(), ": ", status.message()));
+    }
+  }
+
+  if (opts_.verify_call_nested_computation_thread_name &&
+      instruction->has_to_apply() &&
+      instruction->to_apply()->execution_thread() !=
+          instruction->parent()->execution_thread()) {
+    return Internal(
+        "%s to_apply computation execution thread does not match (%s vs %s)",
+        instruction->name(), instruction->to_apply()->execution_thread(),
+        instruction->parent()->execution_thread());
+  }
+
+  return absl::OkStatus();
+}
+
+absl::Status InstructionVerifier::Postprocess(HloInstruction* instruction) {
+  if (opts_.verify_no_host_memory_space) {
+    TF_RETURN_IF_ERROR(VerifyNoHostMemorySpace(instruction));
+  }
+  if (!opts_.InstructionCanChangeLayout(instruction) &&
+      instruction->shape().IsArray() && instruction->shape().has_layout()) {
+    const Shape& result_shape = instruction->shape();
+    const Layout& result_layout = result_shape.layout();
+    for (HloInstruction* operand : instruction->operands()) {
+      const Shape& operand_shape = operand->shape();
+      if (operand_shape.IsArray() &&
+          operand_shape.dimensions().size() ==
+              result_shape.dimensions().size() &&
+          operand_shape.has_layout()) {
+        const Layout& operand_layout = operand_shape.layout();
+        Layout::Equal equal_predicate =
+            Layout::Equal().IgnoreTiles().IgnoreMemorySpace();
+        if (instruction->opcode() == HloOpcode::kConvert ||
+            instruction->opcode() == HloOpcode::kCompare ||
+            instruction->opcode() == HloOpcode::kIsFinite ||
+            (instruction->opcode() == HloOpcode::kSelect &&
+             operand_shape.element_type() == PRED) ||
+            instruction->opcode() == HloOpcode::kScatter) {
+          // Some instructions can change element_size_in_bits
+          // Select instructions ignore element_size_in_bits for predicate
+          equal_predicate.IgnoreElementSize();
+        } else if (instruction->opcode() == HloOpcode::kDynamicSlice ||
+                   instruction->opcode() == HloOpcode::kDynamicUpdateSlice ||
+                   instruction->opcode() == HloOpcode::kCopy) {
+          TF_RETURN_IF_ERROR(HostOffloadInstructionCanChangeMemorySpace(
+              instruction, operand_layout.memory_space(),
+              result_layout.memory_space()));
+          equal_predicate.IgnoreMemorySpace();
+        }
+        TF_RET_CHECK(equal_predicate(result_layout, operand_layout))
+            << "Instruction shouldn't change layouts "
+            << instruction->ToString() << " From " << result_shape << " To "
+            << operand_shape;
+      }
+    }
+  }
+  return absl::OkStatus();
+}
+
+absl::Status InstructionVerifier::VerifyConsistentSharding(
+    const HloInstruction* parent,
+    absl::Span<const HloInstruction* const> instructions) {
+  const HloInstruction* common_sharding_inst = nullptr;
+  for (const HloInstruction* check_inst : instructions) {
+    if (!check_inst->has_sharding()) {
+      continue;
+    }
+    if (!common_sharding_inst) {
+      common_sharding_inst = check_inst;
+      continue;
+    }
+    TF_RET_CHECK(check_inst->sharding() == common_sharding_inst->sharding())
+        << "Inconsistent " << parent->opcode()
+        << " sharding among instructions: \n"
+        << common_sharding_inst->ToString() << "\n"
+        << check_inst->ToString();
+  }
+  return absl::OkStatus();
+}
+
+absl::Status InstructionVerifier::HostOffloadInstructionCanChangeMemorySpace(
+    const HloInstruction* instruction, const int64_t operand_memory_space,
+    const int64_t result_memory_space) {
+  TF_RET_CHECK(!(operand_memory_space == Layout::kGenericFastMemorySpace &&
+                 result_memory_space != Layout::kGenericFastMemorySpace) ||
+               (operand_memory_space != Layout::kGenericFastMemorySpace &&
+                result_memory_space == Layout::kGenericFastMemorySpace))
+      << "Instruction shouldn't change layout memory space between generic "
+         "fast memory space and others for instruction: "
+      << instruction->ToString();
+
+  if (instruction->opcode() == HloOpcode::kDynamicSlice) {
+    TF_RET_CHECK(!(operand_memory_space == Layout::kDefaultMemorySpace &&
+                   result_memory_space == Layout::kHostMemorySpace))
+        << "DynamicSlice instruction shouldn't change layout memory "
+        << "space from device to host: " << instruction->ToString();
+  } else if (instruction->opcode() == HloOpcode::kDynamicUpdateSlice) {
+    TF_RET_CHECK(!(operand_memory_space == Layout::kHostMemorySpace &&
+                   result_memory_space == Layout::kDefaultMemorySpace))
+        << "DynamicUpdateSlice instruction shouldn't change layout "
+        << "memory space from host to device: " << instruction->ToString();
+  } else if (instruction->opcode() != HloOpcode::kCopy) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Instruction shouldn't change layout memory space: ",
+                     instruction->ToString()));
+  }
+  return absl::OkStatus();
+}
+
+absl::Status InstructionVerifier::VerifyNoHostMemorySpace(
+    const HloInstruction* instruction) {
+  return ShapeUtil::ForEachSubshapeWithStatus(
+      instruction->shape(),
+      [&](const Shape& subshape, const ShapeIndex& index) -> absl::Status {
+        if (subshape.has_layout()) {
+          const Layout& result_layout = subshape.layout();
+          if (result_layout.memory_space() == Layout::kHostMemorySpace) {
+            return absl::InternalError(absl::StrCat(
+                "Instruction shouldn't have the layout of host memory "
+                "space: ",
+                instruction->ToString()));
+          }
+        }
+        return absl::OkStatus();
+      });
+}
 
 absl::StatusOr<bool> HloVerifier::Run(
     HloModule* module,
@@ -3738,7 +4476,8 @@ absl::StatusOr<bool> HloVerifier::Run(
       }
     }
 
-    TF_RETURN_IF_ERROR(VerifyBuffers(*module));
+    TF_RETURN_IF_ERROR(VerifyBuffers(
+        *module, target_metadata_->GetVerifierOpts().IsLayoutSensitive()));
 
     TF_RETURN_IF_ERROR(shape_verifier->VerifyEntryComputationLayout(*module));
 

@@ -125,10 +125,6 @@ struct HloProtoEvaluator {
   HloProtoEvaluator& WithComputation(
       std::unique_ptr<HloComputation> new_computation) {
     computation = new_computation.get();
-    computation->ClearUniqueIdInternal();
-    for (HloInstruction* inst : computation->instructions()) {
-      inst->ClearUniqueIdInternal();
-    }
     module.AddEmbeddedComputation(std::move(new_computation));
     return *this;
   }
@@ -168,7 +164,10 @@ struct HloProtoEvaluator {
       int64_t operand_handle = inst.operand_ids(i);
       std::unique_ptr<HloInstruction> operand =
           HloInstruction::CreateConstant(operands[i].Clone());
-      operand_map[operand_handle] = operand.get();
+      // FromProto uses local ids, so explicitly downcasts the unique id to
+      // a local id to avoid issues.
+      operand_map[HloInstruction::CalculateLocalId(operand_handle)] =
+          operand.get();
       builder.AddInstruction(std::move(operand));
     }
 
@@ -190,7 +189,6 @@ struct HloProtoEvaluator {
     TF_ASSIGN_OR_RETURN(
         auto new_instruction,
         HloInstruction::CreateFromProto(inst, operand_map, computation_map));
-    new_instruction->ClearUniqueIdInternal();
     builder.AddInstruction(std::move(new_instruction));
     auto computation = builder.Build();
     module.AddEntryComputation(std::move(computation));

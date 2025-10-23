@@ -66,7 +66,8 @@ std::map<std::thread::id, string>& GetThreadNameRegistry()
 class PThread : public Thread {
  public:
   PThread(const ThreadOptions& thread_options, const std::string& name,
-          absl::AnyInvocable<void()> fn) {
+          absl::AnyInvocable<void()> fn, bool detached = false)
+      : detached_(detached) {
     ThreadParams* params = new ThreadParams;
     params->name = name;
     params->fn = std::move(fn);
@@ -75,14 +76,24 @@ class PThread : public Thread {
     if (thread_options.stack_size != 0) {
       pthread_attr_setstacksize(&attributes, thread_options.stack_size);
     }
+    if (detached) {
+      pthread_attr_setdetachstate(&attributes, PTHREAD_CREATE_DETACHED);
+    }
     int ret = pthread_create(&thread_, &attributes, &ThreadFn, params);
     // There is no mechanism for the thread creation API to fail, so we CHECK.
     CHECK_EQ(ret, 0) << "Thread " << name
                      << " creation via pthread_create() failed.";
     pthread_attr_destroy(&attributes);
+#if !defined(__APPLE__) && !defined(__EMSCRIPTEN__)
+    pthread_setname_np(thread_, name.c_str());
+#endif
   }
 
-  ~PThread() override { pthread_join(thread_, nullptr); }
+  ~PThread() override {
+    if (!detached_) {
+      pthread_join(thread_, nullptr);
+    }
+  }
 
  private:
   struct ThreadParams {
@@ -93,18 +104,19 @@ class PThread : public Thread {
     std::unique_ptr<ThreadParams> params(
         reinterpret_cast<ThreadParams*>(params_arg));
     {
-      absl::MutexLock l(&name_mutex);
+      absl::MutexLock l(name_mutex);
       GetThreadNameRegistry().emplace(std::this_thread::get_id(), params->name);
     }
     params->fn();
     {
-      absl::MutexLock l(&name_mutex);
+      absl::MutexLock l(name_mutex);
       GetThreadNameRegistry().erase(std::this_thread::get_id());
     }
     return nullptr;
   }
 
   pthread_t thread_;
+  bool detached_;
 };
 
 class PosixEnv : public Env {
@@ -142,6 +154,11 @@ class PosixEnv : public Env {
                       absl::AnyInvocable<void()> fn) override {
     return new PThread(thread_options, name, std::move(fn));
   }
+  void StartDetachedThread(const ThreadOptions& thread_options,
+                           const string& name,
+                           absl::AnyInvocable<void()> fn) override {
+    PThread detached(thread_options, name, std::move(fn), /*detached=*/true);
+  }
 
   int64_t GetCurrentThreadId() override {
     static thread_local int64_t current_thread_id =
@@ -151,7 +168,7 @@ class PosixEnv : public Env {
 
   bool GetCurrentThreadName(string* name) override {
     {
-      absl::MutexLock l(&name_mutex);
+      absl::MutexLock l(name_mutex);
       auto thread_name =
           GetThreadNameRegistry().find(std::this_thread::get_id());
       if (thread_name != GetThreadNameRegistry().end()) {

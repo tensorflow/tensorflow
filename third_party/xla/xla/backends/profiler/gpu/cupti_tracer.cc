@@ -634,24 +634,28 @@ static GraphResourceCreationInfo& GetGraphResourceCreationInfo() {
 class GuardedCallbackAnnotationsAndEvents {
  public:
   CallbackAnnotationsAndEvents Consume() {
-    absl::MutexLock lock(&mu_);
+    absl::MutexLock lock(mu_);
     CallbackAnnotationsAndEvents grabbed;
     std::swap(grabbed, annotations_and_events_);
     return grabbed;
   }
 
   void Clear() {
-    absl::MutexLock lock(&mu_);
+    absl::MutexLock lock(mu_);
     annotations_and_events_.Clear();
   }
 
   void IncNumDroppedEvents() {
-    absl::MutexLock lock(&mu_);
+    absl::MutexLock lock(mu_);
     annotations_and_events_.IncNumDroppedEvents();
   }
 
   void Push(const CuptiTracer& tracer, CuptiTracerEvent&& event) {
+<<<<<<< HEAD
     absl::MutexLock lock(&mu_);
+=======
+    absl::MutexLock lock(mu_);
+>>>>>>> upstream/master
     // Some logic change as no cross thread string comparison should be
     // made here. The max_annotation_string is used to limit per-thread
     // annotation string count. And annotation string is not collected
@@ -670,7 +674,11 @@ class GuardedCallbackAnnotationsAndEvents {
       const int64_t* head = sequence.data();
       const int64_t* curr = &sequence.back();
 
+<<<<<<< HEAD
       absl::MutexLock lock(&mu_);
+=======
+      absl::MutexLock lock(mu_);
+>>>>>>> upstream/master
       ScopeRangeIdTree& tree = annotations_and_events_.scope_range_id_tree();
       for (; curr > head && !tree.contains(*curr); --curr) {
         tree.emplace(*curr, *(curr - 1));
@@ -996,7 +1004,11 @@ class CuptiDriverApiHookWithActivityApi : public CuptiDriverApiHook {
   absl::Status SyncAndFlush() override {
     if (option_.sync_devices_before_stop) {
       CuptiApiTracingDisabler disabler;
+<<<<<<< HEAD
       absl::MutexLock lock(&mutex_);
+=======
+      absl::MutexLock lock(mutex_);
+>>>>>>> upstream/master
       for (auto& ctx : contexts_) {
         cuCtxPushCurrent(ctx);
         cuCtxSynchronize();  // Ignore error here for best effort.
@@ -1011,7 +1023,7 @@ class CuptiDriverApiHookWithActivityApi : public CuptiDriverApiHook {
   void TrackContext(CUpti_CallbackId cbid, CUcontext ctx) {
     if (!option_.sync_devices_before_stop) return;
     if (ctx == nullptr) return;
-    absl::MutexLock lock(&mutex_);
+    absl::MutexLock lock(mutex_);
     if (cbid == CUPTI_DRIVER_TRACE_CBID_cuCtxDestroy_v2 ||
         cbid == CUPTI_DRIVER_TRACE_CBID_cuCtxDestroy) {
       contexts_.erase(ctx);
@@ -1107,7 +1119,7 @@ absl::Status CuptiTracer::Enable(
     return status;
   }
 
-  EnableActivityTracing().IgnoreError();
+  TF_RETURN_IF_ERROR(EnableActivityTracing());
   tsl::profiler::AnnotationStack::Enable(true);
 
   int num_gpus_requested = xplanes.size();

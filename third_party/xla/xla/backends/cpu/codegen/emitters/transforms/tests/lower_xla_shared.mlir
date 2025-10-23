@@ -29,7 +29,13 @@ func.func @forall_op(%input: tensor<1024x32x2xf32>) -> (tensor<1024x32x2xf32>) {
 // CHECK-NEXT: }
 // CHECK-NOT: loop_annotation
 // CHECK: scf.yield
+<<<<<<< HEAD
 // CHECK-NEXT: } {loop_annotation = #[[LOOP_ANNOTATION]]}
 // CHECK: scf.yield
 // CHECK-NEXT: } {loop_annotation = #[[LOOP_ANNOTATION]]}
+=======
+// CHECK-NEXT: }
+// CHECK: scf.yield
+// CHECK-NEXT: }
+>>>>>>> upstream/master
 

@@ -1,8 +1,7 @@
 # Helper libraries for TensorFlow API compatibility test.
 
+load("@rules_python//python:proto.bzl", "py_proto_library")
 load("//tensorflow:strict.default.bzl", "py_strict_library")
-
-# Placeholder: load py_proto_library
 load(
     "//tensorflow/core/platform:build_config.bzl",
     "tf_proto_library",

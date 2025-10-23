@@ -77,10 +77,9 @@ namespace xla {
 static absl::StatusOr<std::string> AotCompileCpuExecutable(
     std::unique_ptr<HloModule> hlo_module) {
   cpu::CpuCompiler cpu_compiler;
-  auto module_group = std::make_unique<HloModuleGroup>(std::move(hlo_module));
   TF_ASSIGN_OR_RETURN(
       std::vector<std::unique_ptr<Executable>> executables,
-      cpu_compiler.Compile(std::move(module_group), {{nullptr}}, {nullptr}));
+      cpu_compiler.Compile(std::move(hlo_module), {nullptr}, {nullptr}));
   TF_ASSIGN_OR_RETURN(std::unique_ptr<AotCompilationResult> aot_result,
                       cpu_compiler.Export(executables[0].get()));
   return aot_result->SerializeAsString();
@@ -100,8 +99,6 @@ static absl::StatusOr<std::string> CompileGpuExecutable(
 
   TF_ASSIGN_OR_RETURN(auto gpu_compiler, Compiler::GetForPlatform(platform));
 
-  auto module_group = std::make_unique<HloModuleGroup>(std::move(hlo_module));
-
   if (aot) {
     AotCompilationOptions aot_options(platform->id());
     aot_options.set_target_config(*target_config);
@@ -110,7 +107,7 @@ static absl::StatusOr<std::string> CompileGpuExecutable(
 
     TF_ASSIGN_OR_RETURN(
         std::vector<std::unique_ptr<AotCompilationResult>> aot_results,
-        gpu_compiler->CompileAheadOfTime(std::move(module_group), aot_options));
+        gpu_compiler->CompileAheadOfTime(std::move(hlo_module), aot_options));
     TF_ASSIGN_OR_RETURN(std::string compile_result,
                         aot_results[0]->SerializeAsString());
     *result.mutable_hlo_module() =
@@ -128,7 +125,7 @@ static absl::StatusOr<std::string> CompileGpuExecutable(
 
   TF_ASSIGN_OR_RETURN(
       std::vector<std::unique_ptr<Executable>> executables,
-      gpu_compiler->Compile(std::move(module_group), {{stream_executor}},
+      gpu_compiler->Compile(std::move(hlo_module), {stream_executor},
                             compile_options));
   *result.mutable_hlo_module() = executables[0]->module().ToProto();
   return executables[0]->module().ToString();
@@ -151,7 +148,7 @@ absl::Status WriteResultFile(const absl::string_view result_output_file,
   if (result_output_file.empty()) {
     return absl::OkStatus();
   }
-  absl::MutexLock ml(&stats.stats_mutex);
+  absl::MutexLock ml(stats.stats_mutex);
   const double secs = std::floor(stats.cumulative_secs);
   const double nanos =
       (stats.cumulative_secs - secs) * tsl::EnvTime::kSecondsToNanos;

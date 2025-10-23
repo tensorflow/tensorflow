@@ -1,0 +1,7 @@
+// RUN: gpu_test_correctness %s
+// RUN: cpu_test_correctness %s
+
+fusion {
+  %p0 = s2[1001] parameter(0)
+  ROOT %add = s8[1001] convert(%p0)
+}

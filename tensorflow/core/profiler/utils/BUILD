@@ -171,10 +171,14 @@ cc_library(
     name = "cost_utils",
     hdrs = ["cost_utils.h"],
     copts = tf_profiler_copts(),
+<<<<<<< HEAD
     visibility = [
         "//perftools/accelerators/xprof/convert:__pkg__",
         "//perftools/gputools/profiler/collector:__pkg__",
     ],
+=======
+    visibility = ["//visibility:private"],
+>>>>>>> upstream/master
     deps = [
         "@org_xprof//xprof/utils:cost_utils",
     ],

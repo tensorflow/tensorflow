@@ -568,7 +568,7 @@ CHECK-COUNT-6:  %{{.*}} = tt.dot %{{.*}}, %{{.*}}, %{{.*}} : tensor<64x32xbf16> 
 }
 
 TEST_F(Triton6xBF16GemmTest, Emit6xBF16GemmEndToEnd) {
-  if (std::holds_alternative<se::RocmComputeCapability>(GpuComputeComp())) {
+  if (GpuComputeComp().IsRocm()) {
     GTEST_SKIP() << "ALG_DOT_BF16_BF16_F32_X6 not supported on ROCM.";
   }
   constexpr absl::string_view kHloText = R"(
@@ -672,7 +672,7 @@ CHECK-COUNT-3:  %{{.*}} = tt.dot %{{.*}}, %{{.*}}, %{{.*}} : tensor<64x32xbf16> 
 }
 
 TEST_F(Triton3xBF16GemmTest, Emit3xBF16GemmEndToEnd) {
-  if (std::holds_alternative<se::RocmComputeCapability>(GpuComputeComp())) {
+  if (GpuComputeComp().IsRocm()) {
     GTEST_SKIP() << "ALG_DOT_BF16_BF16_F32_X3 not supported on ROCM.";
   }
   constexpr absl::string_view kHloText = R"(
@@ -698,8 +698,12 @@ CHECK-NOT: mma.sync.aligned.{{.*}}.row.col.f32.tf32.tf32.f32
 }
 
 TEST_F(TritonAlgorithmTest, Algorithm_BF16_BF16_F32_X3) {
+<<<<<<< HEAD
   // TODO(rocm): weekly-sync 24-10-28
   if (std::holds_alternative<se::RocmComputeCapability>(GpuComputeComp())) {
+=======
+  if (GpuComputeComp().IsRocm()) {
+>>>>>>> upstream/master
     GTEST_SKIP() << "Triton currently disabled on ROCM.";
   }
   constexpr absl::string_view kHloText = R"(
@@ -722,8 +726,12 @@ TEST_F(TritonAlgorithmTest, Algorithm_BF16_BF16_F32_X3) {
 }
 
 TEST_F(TritonAlgorithmTest, Algorithm_BF16_BF16_F32_X6) {
+<<<<<<< HEAD
   // TODO(rocm): weekly-sync 24-10-28
   if (std::holds_alternative<se::RocmComputeCapability>(GpuComputeComp())) {
+=======
+  if (GpuComputeComp().IsRocm()) {
+>>>>>>> upstream/master
     GTEST_SKIP() << "Triton currently disabled on ROCM.";
   }
   constexpr absl::string_view kHloText = R"(
@@ -746,7 +754,7 @@ TEST_F(TritonAlgorithmTest, Algorithm_BF16_BF16_F32_X6) {
 }
 
 TEST_F(TritonAlgorithmTest, Algorithm_TF32_TF32_F32) {
-  if (std::holds_alternative<se::RocmComputeCapability>(GpuComputeComp())) {
+  if (GpuComputeComp().IsRocm()) {
     GTEST_SKIP() << "Triton currently disabled on ROCM.";
   }
   constexpr absl::string_view kHloText = R"(
@@ -771,7 +779,7 @@ TEST_F(TritonAlgorithmTest, Algorithm_TF32_TF32_F32) {
 }
 
 TEST_F(TritonAlgorithmTest, Algorithm_TF32_TF32_F32_X3) {
-  if (std::holds_alternative<se::RocmComputeCapability>(GpuComputeComp())) {
+  if (GpuComputeComp().IsRocm()) {
     GTEST_SKIP() << "Triton currently disabled on ROCM.";
   }
   constexpr absl::string_view kHloText = R"(
@@ -800,7 +808,7 @@ TEST_F(TritonAlgorithmTest, Algorithm_BF16_BF16_F32) {
   if (!SupportsBF16(GpuComputeComp())) {
     GTEST_SKIP() << "BF16 not supported.";
   }
-  if (std::holds_alternative<se::RocmComputeCapability>(GpuComputeComp())) {
+  if (GpuComputeComp().IsRocm()) {
     GTEST_SKIP() << "Triton currently disabled on ROCM.";
   }
   constexpr absl::string_view kHloText = R"(
@@ -1838,7 +1846,8 @@ class PrecisionTests
     module->mutable_config().set_debug_options(debug_options);
     TF_ASSIGN_OR_RETURN(module, GetOptimizedModule(std::move(module)));
     if (backend == Backend::kTriton) {
-      TF_RETURN_IF_ERROR(CheckGemmPattern(*module, "CHECK: __triton_gemm"));
+      TF_RETURN_IF_ERROR(CheckGemmPattern(
+          *module, "CHECK: {{__triton_gemm|__triton_nested_gemm_fusion}}"));
     } else if (backend == Backend::kBlas) {
       TF_RETURN_IF_ERROR(CheckGemmPattern(*module, "CHECK: __cublas$gemm"));
     } else {
@@ -1884,7 +1893,7 @@ MATCHER_P(RelativeDifferenceIsWithin, max_rel_difference, "") {
 }
 
 TEST_P(PrecisionTests, PrecisionCheck) {
-  if (std::holds_alternative<se::RocmComputeCapability>(GpuComputeComp())) {
+  if (GpuComputeComp().IsRocm()) {
     GTEST_SKIP() << "Precision tests is unknown for ROCM.";
   }
 
@@ -1966,7 +1975,7 @@ TEST_P(PrecisionTests, CheckPrecisionDegradationAlongKDimension) {
         << "To run the test, set --v=1 and rerun the test.\n"
         << "The test is quite slow and produces output for manual inspection.";
   }
-  if (std::holds_alternative<se::RocmComputeCapability>(GpuComputeComp())) {
+  if (GpuComputeComp().IsRocm()) {
     GTEST_SKIP() << "Precision tests is unknown for ROCM.";
   }
   Backend backend = std::get<1>(GetParam());

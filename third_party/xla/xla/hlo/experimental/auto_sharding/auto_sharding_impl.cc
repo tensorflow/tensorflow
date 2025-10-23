@@ -14,13 +14,10 @@ limitations under the License.
 ==============================================================================*/
 
 #include <cstddef>
-#include <cstdint>
 #include <optional>
 #include <string>
-#include <utility>
 #include <vector>
 
-#include "absl/container/btree_set.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"

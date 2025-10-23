@@ -156,9 +156,9 @@ class SummaryImageOp : public OpKernel {
       // convention for display, so we append "/image" to guarantee that the
       // image(s) won't be displayed in the global scope with no name.
       if (max_images_ > 1) {
-        v->set_tag(strings::StrCat(tag, "/image/", i));
+        v->set_tag(absl::StrCat(tag, "/image/", i));
       } else {
-        v->set_tag(strings::StrCat(tag, "/image"));
+        v->set_tag(absl::StrCat(tag, "/image"));
       }
 
       auto image = ith_image(i);

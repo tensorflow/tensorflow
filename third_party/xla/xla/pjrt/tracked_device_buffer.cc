@@ -17,9 +17,11 @@ limitations under the License.
 
 #include <algorithm>
 #include <atomic>
+#include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <iterator>
+#include <limits>
 #include <memory>
 #include <string>
 #include <utility>
@@ -32,7 +34,10 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "xla/pjrt/buffer_sequencing_event.h"
+#include "xla/pjrt/device_event.h"
 #include "xla/pjrt/event_pool.h"
+#include "xla/pjrt/local_device_state.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/se_raw_buffer.h"
@@ -45,11 +50,13 @@ limitations under the License.
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/platform/logging.h"
+#include "xla/tsl/platform/threadpool.h"
 #include "tsl/profiler/lib/connected_traceme.h"
 #include "tsl/profiler/lib/context_types.h"
 
 namespace xla {
 
+<<<<<<< HEAD
 void BufferSequencingEvent::SetSequencingEvent(EventPool::Handle event,
                                                se::Stream* stream) {
   EventState state;
@@ -151,6 +158,8 @@ void BufferSequencingEvent::ExecuteOrAddToFutureTasks(
   });
 }
 
+=======
+>>>>>>> upstream/master
 ShapedBuffer RawSEDeviceMemory::AsShapedBuffer(
     PjRtDevice* device, const Shape& on_device_shape) const {
   ShapedBuffer shaped_buffer(on_device_shape, device->local_device_id().value(),
@@ -166,15 +175,22 @@ ShapedBuffer RawSEDeviceMemory::AsShapedBuffer(
 
 class AllocatedRawSEDeviceMemory : public RawSEDeviceMemory {
  public:
-  AllocatedRawSEDeviceMemory(se::DeviceMemoryBase value, int device_ordinal,
+  AllocatedRawSEDeviceMemory(se::DeviceMemoryBase value,
+                             LocalDeviceState* local_device,
                              se::DeviceMemoryAllocator* allocator)
       : RawSEDeviceMemory(value),
         allocator_(allocator),
-        device_ordinal_(device_ordinal) {}
+        local_device_(local_device) {
+    if (local_device_->allocation_model() ==
+        LocalDeviceState::kComputeSynchronized) {
+      sync_point_ = local_device_->GetNextComputeStreamSyncPoint();
+    }
+  }
 
   ~AllocatedRawSEDeviceMemory() override {
     if (allocator_) {
-      absl::Status status = allocator_->Deallocate(device_ordinal_, mem());
+      absl::Status status = allocator_->Deallocate(
+          local_device_->local_device_id().value(), mem());
       if (!status.ok()) {
         LOG(ERROR) << "Buffer deallocation failed: " << status;
       }
@@ -183,15 +199,26 @@ class AllocatedRawSEDeviceMemory : public RawSEDeviceMemory {
 
   void UnsafeReleaseMemory() override { allocator_ = nullptr; }
 
+  absl::StatusOr<BufferSequencingEventRef> GetDefinitionEvent(
+      tsl::thread::ThreadPool* thread_pool,
+      bool nullptr_if_past) const override {
+    if (sync_point_ != std::numeric_limits<size_t>::max()) {
+      return local_device_->GetEventForComputeStreamSyncPoint(
+          sync_point_, thread_pool, nullptr_if_past);
+    }
+    return BufferSequencingEventRef();
+  }
+
  private:
   se::DeviceMemoryAllocator* allocator_;
-  int device_ordinal_;
+  LocalDeviceState* local_device_;
+  size_t sync_point_ = std::numeric_limits<size_t>::max();
 };
 
 tsl::RCReference<RawSEDeviceMemory> RawSEDeviceMemory::Create(
-    se::DeviceMemoryBase value, PjRtLocalDeviceId device_id,
+    se::DeviceMemoryBase value, LocalDeviceState* local_device,
     se::DeviceMemoryAllocator* allocator) {
-  return tsl::MakeRef<AllocatedRawSEDeviceMemory>(value, device_id.value(),
+  return tsl::MakeRef<AllocatedRawSEDeviceMemory>(value, local_device,
                                                   allocator);
 }
 
@@ -257,23 +284,36 @@ void TrackedDeviceBuffer::ConfirmDonation() {
   ReleaseDeviceMemory();
 }
 
+<<<<<<< HEAD
 void TrackedDeviceBuffer::AddUsageEvent(se::Stream* usage_stream,
                                         BufferSequencingEventRef event,
+=======
+void TrackedDeviceBuffer::AddUsageEvent(BufferSequencingEventRef event,
+>>>>>>> upstream/master
                                         bool reference_held) {
   CHECK(in_use_);
 
   // If the event is 0, it means that the event is not recorded yet and the task
   // related to this event is deferred, so just add it.
   if (!event->IsDefined()) {
+<<<<<<< HEAD
     usage_events_.push_back({usage_stream, event, reference_held});
+=======
+    usage_events_.push_back({event, reference_held});
+>>>>>>> upstream/master
     return;
   }
+  auto* usage_stream = event->definition_stream();
 
   for (auto& existing : usage_events_) {
     // If the existing event is 0, it means that the event is not recorded yet
     // and the task related to this event is deferred, so don't replace it.
     if (!existing.event->IsDefined()) continue;
+<<<<<<< HEAD
     if (existing.stream == usage_stream) {
+=======
+    if (existing.event->definition_stream() == usage_stream) {
+>>>>>>> upstream/master
       if (*existing.event < *event) {
         existing.event = event;
         existing.reference_held = reference_held;
@@ -281,7 +321,7 @@ void TrackedDeviceBuffer::AddUsageEvent(se::Stream* usage_stream,
       return;
     }
   }
-  usage_events_.push_back({usage_stream, event, reference_held});
+  usage_events_.push_back({event, reference_held});
 }
 
 TrackedDeviceBuffer::StreamAndEventContainer
@@ -303,6 +343,12 @@ TrackedDeviceBuffer::GetAsyncValueDefinitionEvents() {
 
 tsl::RCReference<CommonPjRtRawBuffer> TrackedDeviceBuffer::GetRawBuffer(
     PjRtMemorySpace* memory_space) {
+<<<<<<< HEAD
+=======
+  if (!device_memory_) {
+    return tsl::RCReference<CommonPjRtRawBuffer>();
+  }
+>>>>>>> upstream/master
   return tsl::MakeRef<PjRtStreamExecutorRawBuffer>(
       tensorflow::down_cast<PjRtStreamExecutorClient*>(memory_space->client()),
       memory_space,
@@ -312,6 +358,19 @@ tsl::RCReference<CommonPjRtRawBuffer> TrackedDeviceBuffer::GetRawBuffer(
       device_memory_);
 }
 
+<<<<<<< HEAD
+=======
+void TrackedDeviceBuffer::AddUsageEvent(
+    tsl::RCReference<PjRtDeviceEvent> event) {
+  if (event) {
+    AddUsageEvent(
+        tensorflow::down_cast<PjRtStreamExecutorDeviceEvent*>(event.get())
+            ->event(),
+        true);
+  }
+}
+
+>>>>>>> upstream/master
 void GetDeviceBufferEvents(
     const TrackedDeviceBuffer& buffer, bool get_usage_events,
     absl::flat_hash_set<BufferSequencingEvent*>* events) {

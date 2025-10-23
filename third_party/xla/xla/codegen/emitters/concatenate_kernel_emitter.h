@@ -24,7 +24,10 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
+<<<<<<< HEAD
 #include "mlir/IR/MLIRContext.h"
+=======
+>>>>>>> upstream/master
 #include "xla/codegen/emitters/computation_partitioner.h"
 #include "xla/codegen/emitters/ir/xla_ops.h"
 #include "xla/codegen/emitters/kernel_arguments.h"
@@ -37,6 +40,10 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/runtime/work_dimensions.h"
 #include "xla/service/buffer_assignment.h"
+<<<<<<< HEAD
+=======
+#include "xla/service/gpu/model/experimental/symbolic_expr.h"
+>>>>>>> upstream/master
 #include "xla/shape.h"
 
 namespace xla::emitters {
@@ -44,8 +51,13 @@ namespace xla::emitters {
 class ConcatenateFusionKernelEmitter final : public MlirKernelEmitter {
  public:
   ConcatenateFusionKernelEmitter(
+<<<<<<< HEAD
       mlir::MLIRContext& mlir_context, const HloFusionInstruction& fusion,
       const HloFusionSpec& fusion_spec,
+=======
+      gpu::SymbolicExprContext& symbolic_expr_context,
+      const HloFusionInstruction& fusion, const HloFusionSpec& fusion_spec,
+>>>>>>> upstream/master
       const BufferAssignment* buffer_assignment,
       KernelArguments::BufferAlignment buffer_alignment,
       WorkDimensions work_dimensions, absl::string_view entry_function_name,
@@ -55,7 +67,11 @@ class ConcatenateFusionKernelEmitter final : public MlirKernelEmitter {
 
   static IndexingMap ComputeWorkItemIdToOutputIndexing(
       const WorkDimensions& work_dimensions, const Shape& largest_shape,
+<<<<<<< HEAD
       mlir::MLIRContext* ctx);
+=======
+      gpu::SymbolicExprContext* ctx);
+>>>>>>> upstream/master
 
   // Get the shape used for indexing.
   // For concatenate, this is the largest shape.
@@ -71,7 +87,12 @@ class ConcatenateFusionKernelEmitter final : public MlirKernelEmitter {
   std::string name() const final { return "concatenate_fusion_kernel_emitter"; }
 
  private:
+<<<<<<< HEAD
   IndexingMap ComputeWorkItemIdToOutputIndexing(mlir::MLIRContext* ctx) const;
+=======
+  IndexingMap ComputeWorkItemIdToOutputIndexing(
+      gpu::SymbolicExprContext* ctx) const;
+>>>>>>> upstream/master
 
   absl::Status EmitEntryFunction(
       const emitters::PartitionedComputations& computations,
@@ -81,10 +102,17 @@ class ConcatenateFusionKernelEmitter final : public MlirKernelEmitter {
 
   std::vector<emitters::EpilogueSpecification> GetEpilogues(
       const HloFusionInstruction& fusion,
+<<<<<<< HEAD
       mlir::MLIRContext* mlir_context) const;
 
  private:
   mlir::MLIRContext& mlir_context_;
+=======
+      gpu::SymbolicExprContext* symbolic_expr_context) const;
+
+ private:
+  gpu::SymbolicExprContext& symbolic_expr_context_;
+>>>>>>> upstream/master
   const HloFusionInstruction& fusion_;
   const HloFusionSpec& fusion_spec_;
   const BufferAssignment* buffer_assignment_;

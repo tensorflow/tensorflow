@@ -19,6 +19,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "xla/tests/xla_test_backend_predicates.h"
 #include <gtest/gtest.h>
 #include "absl/types/span.h"
 #include "xla/array3d.h"
@@ -103,6 +104,10 @@ TEST_F(CopyOpTest, CopyDynamicR1S1310720U32Dynamic0) {
   if (test_runner().HasProperty(HloRunnerPropertyTag::kCpu)) {
     GTEST_SKIP();
   }
+  if (test::DeviceTypeIs(test::kGpu) && !test::UsingStreamExecutorGpuClient()) {
+    // TODO: b/443805514 - Enable this test for the TFRT GPU client.
+    GTEST_SKIP() << "Does not work with the TFRT GPU client.";
+  }
   Shape bounded_shape =
       ShapeUtil::MakeShape(PrimitiveType::F32, {1310720}, {true});
   TestDynamicCopyOp(LiteralUtil::CreateRandomLiteral<PrimitiveType::F32>(
@@ -115,6 +120,10 @@ TEST_F(CopyOpTest, CopyDynamicR1S1310720U32Dynamic106632) {
   // TODO(vsytch): CPU emitter doesn't handle dynamic shapes.
   if (test_runner().HasProperty(HloRunnerPropertyTag::kCpu)) {
     GTEST_SKIP();
+  }
+  if (test::DeviceTypeIs(test::kGpu) && !test::UsingStreamExecutorGpuClient()) {
+    // TODO: b/443805514 - Enable this test for the TFRT GPU client.
+    GTEST_SKIP() << "Does not work with the TFRT GPU client.";
   }
   Shape bounded_shape =
       ShapeUtil::MakeShape(PrimitiveType::F32, {1310720}, {true});
@@ -130,6 +139,10 @@ TEST_F(CopyOpTest, CopyDynamicR1S1310720U32Dynamic1310720) {
   if (test_runner().HasProperty(HloRunnerPropertyTag::kCpu)) {
     GTEST_SKIP();
   }
+  if (test::DeviceTypeIs(test::kGpu) && !test::UsingStreamExecutorGpuClient()) {
+    // TODO: b/443805514 - Enable this test for the TFRT GPU client.
+    GTEST_SKIP() << "Does not work with the TFRT GPU client.";
+  }
   Shape bounded_shape =
       ShapeUtil::MakeShape(PrimitiveType::F32, {1310720}, {true});
   TestDynamicCopyOp(
@@ -143,6 +156,10 @@ TEST_F(CopyOpTest, CopyDynamicR1S512U32Dynamic64) {
   // TODO(vsytch): CPU emitter doesn't handle dynamic shapes.
   if (test_runner().HasProperty(HloRunnerPropertyTag::kCpu)) {
     GTEST_SKIP();
+  }
+  if (test::DeviceTypeIs(test::kGpu) && !test::UsingStreamExecutorGpuClient()) {
+    // TODO: b/443805514 - Enable this test for the TFRT GPU client.
+    GTEST_SKIP() << "Does not work with the TFRT GPU client.";
   }
   Shape bounded_shape = ShapeUtil::MakeShape(PrimitiveType::F32, {512}, {true});
   TestDynamicCopyOp(LiteralUtil::CreateRandomLiteral<PrimitiveType::F32>(

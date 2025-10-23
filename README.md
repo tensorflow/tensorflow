@@ -141,10 +141,17 @@ open-source software development.
 Follow these steps to patch a specific version of TensorFlow, for example, to
 apply fixes to bugs or security vulnerabilities:
 
+<<<<<<< HEAD
 *    Clone the TensorFlow repository and switch to the appropriate branch for
   your desired version—for example, `r2.8` for version 2.8.
 *   Apply the desired changes (i.e., cherry-pick them) and resolve any code
   conflicts.
+=======
+*   Clone the TensorFlow repository and switch to the appropriate branch for
+    your desired version—for example, `r2.8` for version 2.8.
+*   Apply the desired changes (i.e., cherry-pick them) and resolve any code
+    conflicts.
+>>>>>>> upstream/master
 *   Run TensorFlow tests and ensure they pass.
 *   [Build](https://www.tensorflow.org/install/source) the TensorFlow pip
     package from source.

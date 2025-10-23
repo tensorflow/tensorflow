@@ -98,15 +98,9 @@ absl::Status RocmKernel::Launch(const ThreadDim& thread_dims,
 
     void** params = const_cast<void**>(packed.argument_addresses().data());
 
-    if (cluster_dims.has_value()) {
-      return stream->LaunchKernel(thread_dims, block_dims, cluster_dims,
-                                  function, name(), params,
-                                  packed.number_of_shared_bytes());
-    } else {
-      return stream->LaunchKernel(thread_dims, block_dims, std::nullopt,
-                                  function, name(), params,
-                                  packed.number_of_shared_bytes());
-    }
+    return stream->LaunchKernel(thread_dims, block_dims, cluster_dims, function,
+                                name(), params,
+                                packed.number_of_shared_bytes());
   };
 
   // If arguments are already packed we can just launch the kernel.

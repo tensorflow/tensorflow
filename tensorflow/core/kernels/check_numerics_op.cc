@@ -180,7 +180,7 @@ class CheckNumericsV2Op<CPUDevice, T> : public CheckNumericsOp<CPUDevice, T> {
       return strings::StrCat(anomalies[0], ", ", anomalies[1], ", and ",
                              anomalies[2]);
     } else if (anomalies.size() == 2) {
-      return strings::StrCat(anomalies[0], " and ", anomalies[1]);
+      return absl::StrCat(anomalies[0], " and ", anomalies[1]);
     } else {
       return anomalies[0];
     }

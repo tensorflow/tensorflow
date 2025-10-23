@@ -93,15 +93,15 @@ class StringListEncoderImpl : public StringListEncoder {
     core::PutVarint32(out_, m.ByteSizeLong());
     tensorflow::string serialized_message;
     m.AppendToString(&serialized_message);
-    strings::StrAppend(&rest_, serialized_message);
+    absl::StrAppend(&rest_, serialized_message);
   }
 
   void Append(const string& s) override {
     core::PutVarint32(out_, s.length());
-    strings::StrAppend(&rest_, s);
+    absl::StrAppend(&rest_, s);
   }
 
-  void Finalize() override { strings::StrAppend(out_, rest_); }
+  void Finalize() override { absl::StrAppend(out_, rest_); }
 
  private:
   string* out_;

@@ -1,4 +1,5 @@
 Auto generated patch. Do not edit or delete it, even if empty.
+<<<<<<< HEAD
 diff -ruN --strip-trailing-cr a/llvm/include/llvm/Analysis/LoopInfo.h b/llvm/include/llvm/Analysis/LoopInfo.h
 --- a/llvm/include/llvm/Analysis/LoopInfo.h
 +++ b/llvm/include/llvm/Analysis/LoopInfo.h
@@ -252,3 +253,38 @@ diff -ruN --strip-trailing-cr a/mlir/test/Dialect/Linalg/linalg-morph-category-o
  
  func.func @exp(%A : tensor<16x8xf32>, %B : tensor<16x8xf32>) ->  tensor<16x8xf32> {
    %exp = linalg.exp ins(%A : tensor<16x8xf32>) outs(%B :  tensor<16x8xf32>) -> tensor<16x8xf32>
+=======
+diff -ruN --strip-trailing-cr a/mlir/test/Target/SPIRV/function-decorations-asserts.mlir b/mlir/test/Target/SPIRV/function-decorations-asserts.mlir
+--- a/mlir/test/Target/SPIRV/function-decorations-asserts.mlir
++++ b/mlir/test/Target/SPIRV/function-decorations-asserts.mlir
+@@ -0,0 +1,20 @@
++// REQUIRES: asserts
++// RUN: mlir-translate --no-implicit-module --test-spirv-roundtrip --split-input-file --debug %s | FileCheck %s
++
++spirv.module Logical GLSL450 requires #spirv.vce<v1.0, [Shader, Linkage], []> {
++    spirv.func @linkage_attr_test_kernel()  "DontInline"  attributes {}  {
++        %uchar_0 = spirv.Constant 0 : i8
++        %ushort_1 = spirv.Constant 1 : i16
++        %uint_0 = spirv.Constant 0 : i32
++        spirv.FunctionCall @outside.func.with.linkage(%uchar_0):(i8) -> ()
++        spirv.Return
++    }
++    // CHECK: linkage_attributes = #spirv.linkage_attributes<linkage_name = "outside.func", linkage_type = <Import>>
++    spirv.func @outside.func.with.linkage(%arg0 : i8) -> () "Pure" attributes {
++      linkage_attributes=#spirv.linkage_attributes<
++        linkage_name="outside.func",
++        linkage_type=<Import>
++      >
++    }
++    spirv.func @inside.func() -> () "Pure" attributes {} {spirv.Return}
++}
+diff -ruN --strip-trailing-cr a/mlir/test/Target/SPIRV/function-decorations.mlir b/mlir/test/Target/SPIRV/function-decorations.mlir
+--- a/mlir/test/Target/SPIRV/function-decorations.mlir
++++ b/mlir/test/Target/SPIRV/function-decorations.mlir
+@@ -1,5 +1,4 @@
+ // RUN: mlir-translate --no-implicit-module --test-spirv-roundtrip --split-input-file %s | FileCheck %s
+-// RUN: mlir-translate --no-implicit-module --test-spirv-roundtrip --split-input-file --debug %s | FileCheck %s
+ 
+ spirv.module Logical GLSL450 requires #spirv.vce<v1.0, [Shader, Linkage], []> {
+     spirv.func @linkage_attr_test_kernel()  "DontInline"  attributes {}  {
+>>>>>>> upstream/master

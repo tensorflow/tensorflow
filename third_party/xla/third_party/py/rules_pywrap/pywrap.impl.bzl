@@ -2,6 +2,10 @@ load("@bazel_tools//tools/cpp:toolchain_utils.bzl", "find_cpp_toolchain", "use_c
 load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
 load("@rules_cc//cc:cc_import.bzl", "cc_import")
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
+<<<<<<< HEAD
+=======
+load("@rules_python//python:py_info.bzl", "PyInfo")
+>>>>>>> upstream/master
 load("@rules_python//python:py_library.bzl", "py_library")
 
 PywrapInfo = provider(

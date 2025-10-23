@@ -149,6 +149,7 @@ class NVPTXCompilationTests
                              PtxCompilationMethod compilation_method,
                              PtxLinkingMethod linking_method) {
     using CudaComputeCapability = stream_executor::CudaComputeCapability;
+<<<<<<< HEAD
     if (!::testing::Value(
             backend()
                 .default_stream_executor()
@@ -158,6 +159,15 @@ class NVPTXCompilationTests
                 CudaComputeCapability{9, 0,
                                       CudaComputeCapability::FeatureExtension::
                                           kAcceleratedFeatures})) &&
+=======
+    auto cc = backend()
+                  .default_stream_executor()
+                  ->GetDeviceDescription()
+                  .gpu_compute_capability();
+    if ((cc.cuda_compute_capability()->major < 9 ||
+         cc.cuda_compute_capability()->feature_extension !=
+             CudaComputeCapability::FeatureExtension::kAcceleratedFeatures) &&
+>>>>>>> upstream/master
         name == "requires_sm90a") {
       GTEST_SKIP() << "This test requires SM 9.0a";
     }

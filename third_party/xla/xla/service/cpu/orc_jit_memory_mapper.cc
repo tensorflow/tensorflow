@@ -48,7 +48,7 @@ llvm::SectionMemoryManager::MemoryMapper* GetInstance(
       return nullptr;
     }
   }
-  absl::MutexLock lock(&mapper_instances_mutex);
+  absl::MutexLock lock(mapper_instances_mutex);
   auto it = mapper_instances->find(allocation_region_name);
   if (it == mapper_instances->end()) {
     it = mapper_instances
@@ -68,7 +68,7 @@ Registrar::Registrar(Registrar::MemoryMapperGetter* mapper_getter) {
       std::memory_order_acquire));
 
   {
-    absl::MutexLock lock(&mapper_instances_mutex);
+    absl::MutexLock lock(mapper_instances_mutex);
     if (mapper_instances == nullptr) {
       mapper_instances =
           new absl::flat_hash_map<std::string,

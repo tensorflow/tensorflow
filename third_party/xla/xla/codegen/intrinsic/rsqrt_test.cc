@@ -73,6 +73,15 @@ void AddOneOverSqrt(llvm::LLVMContext& context, llvm::Module& module,
   builder.CreateRet(one_over_sqrt);
 }
 
+<<<<<<< HEAD
+=======
+llvm::StringMap<bool> GetHostCPUFeatures() {
+  static const absl::NoDestructor<llvm::StringMap<bool>> features(
+      llvm::sys::getHostCPUFeatures());
+  return *features;
+}
+bool isAmd() { return GetHostCPUFeatures().lookup("sse4a"); }
+>>>>>>> upstream/master
 JitRunner CreateJitRunnerWithRsqrt(
     Type type, bool disable_platform_dependent_math = false) {
   auto context = std::make_unique<llvm::LLVMContext>();
@@ -80,10 +89,19 @@ JitRunner CreateJitRunnerWithRsqrt(
 
   std::unique_ptr<llvm::TargetMachine> target_machine =
       xla::codegen::intrinsic::CreateHostTargetMachine();
+<<<<<<< HEAD
   llvm::Function* rsqrt_func =
       Rsqrt::CreateDefinition(module.get(),
                               {target_machine->getTargetFeatureString().str(),
                                disable_platform_dependent_math},
+=======
+  DeviceType device_type =
+      isAmd() ? DeviceType::kAmdCpu : DeviceType::kIntelCpu;
+  llvm::Function* rsqrt_func =
+      Rsqrt::CreateDefinition(module.get(),
+                              {target_machine->getTargetFeatureString().str(),
+                               device_type, disable_platform_dependent_math},
+>>>>>>> upstream/master
                               type)
           .value();
   rsqrt_func->setLinkage(llvm::Function::ExternalLinkage);
@@ -93,6 +111,7 @@ JitRunner CreateJitRunnerWithRsqrt(
   return JitRunner(std::move(module), std::move(context));
 }
 
+<<<<<<< HEAD
 llvm::StringMap<bool> GetHostCPUFeatures() {
   static const absl::NoDestructor<llvm::StringMap<bool>> features(
       llvm::sys::getHostCPUFeatures());
@@ -102,6 +121,10 @@ llvm::StringMap<bool> GetHostCPUFeatures() {
 bool hasAvx() { return GetHostCPUFeatures().lookup("avx"); }
 bool hasAvx512Support() { return GetHostCPUFeatures().lookup("avx512f"); }
 bool isAmd() { return GetHostCPUFeatures().lookup("sse4a"); }
+=======
+bool hasAvx() { return GetHostCPUFeatures().lookup("avx"); }
+bool hasAvx512Support() { return GetHostCPUFeatures().lookup("avx512f"); }
+>>>>>>> upstream/master
 
 TEST(FeaturesTest, HostFeatures) {
   std::cout << "CPU: " << llvm::sys::getHostCPUName().str() << "\n";

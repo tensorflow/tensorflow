@@ -531,6 +531,14 @@ struct LaunchFusedMatMulOp<GPUDevice, T> {
     use_cudnn = true;
 #endif
 
+<<<<<<< HEAD
+=======
+    const auto& cc =
+        stream->parent()->GetDeviceDescription().gpu_compute_capability();
+    if (auto* procm = cc.rocm_compute_capability()) {
+      use_cudnn = !procm->gfx9_mi200_or_later();
+    }
+>>>>>>> upstream/master
     BlasScratchAllocator scratch_allocator(context);
 
     // The Gelu exact fusion is supported by the cuDNN.

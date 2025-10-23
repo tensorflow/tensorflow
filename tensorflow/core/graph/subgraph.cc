@@ -195,12 +195,12 @@ absl::Status PruneForTargets(Graph* g, const NameIndex& name_index,
   std::unordered_set<const Node*> targets;
   for (Node* n : fetch_nodes) {
     if (!AddNodeToTargets(n->name(), name_index, &targets)) {
-      strings::StrAppend(&not_found, n->name(), " ");
+      absl::StrAppend(&not_found, n->name(), " ");
     }
   }
   for (const string& s : target_nodes) {
     if (!AddNodeToTargets(s, name_index, &targets)) {
-      strings::StrAppend(&not_found, s, " ");
+      absl::StrAppend(&not_found, s, " ");
     }
   }
   if (!not_found.empty()) {
@@ -238,8 +238,8 @@ absl::Status RecvFeedRewrite::AddNode(Graph* g,
                                       NodeBuilder::NodeOut feed_tensor,
                                       Node** out_node) {
   TF_RETURN_IF_ERROR(
-      NodeBuilder(strings::StrCat("_recv_", feed_tensor.node->name(), "_",
-                                  feed_tensor.index),
+      NodeBuilder(absl::StrCat("_recv_", feed_tensor.node->name(), "_",
+                               feed_tensor.index),
                   "_Recv")
           .Attr("tensor_type",
                 BaseType(feed_tensor.node->output_type(feed_tensor.index)))
@@ -279,8 +279,8 @@ absl::Status SendFetchRewrite::AddNode(Graph* g,
                                        NodeBuilder::NodeOut fetch_tensor,
                                        Node** out_node) {
   TF_RETURN_IF_ERROR(
-      NodeBuilder(strings::StrCat("_send_", fetch_tensor.node->name(), "_",
-                                  fetch_tensor.index),
+      NodeBuilder(absl::StrCat("_send_", fetch_tensor.node->name(), "_",
+                               fetch_tensor.index),
                   "_Send")
           .Input(fetch_tensor.node, fetch_tensor.index)
           .Attr("tensor_name", endpoint_name())

@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/base/no_destructor.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -39,6 +40,7 @@ class XnnMatcher : public LibraryMatcher {
 
   // Returns the set of supported HLO instructions.
   absl::flat_hash_set<HloOpcode> SupportedOps() const override {
+<<<<<<< HEAD
     static const auto* kSupportedOps = []() {
       static auto* supported_ops =
           new absl::flat_hash_set<HloOpcode>{HloOpcode::kDot};
@@ -50,6 +52,20 @@ class XnnMatcher : public LibraryMatcher {
       }
       return supported_ops;
     }();
+=======
+    static const absl::NoDestructor<absl::flat_hash_set<HloOpcode>>
+        kSupportedOps{[]() {
+          absl::flat_hash_set<HloOpcode> supported_ops{
+              HloOpcode::kDot, HloOpcode::kReduce, HloOpcode::kConstant};
+          for (const auto& [op, _] : GetXnnUnaryOpMap()) {
+            supported_ops.insert(op);
+          }
+          for (const auto& [op, _] : GetXnnBinaryOpMap()) {
+            supported_ops.insert(op);
+          }
+          return supported_ops;
+        }()};
+>>>>>>> upstream/master
     return *kSupportedOps;
   }
 
@@ -60,9 +76,24 @@ class XnnMatcher : public LibraryMatcher {
           instr->dot_dimension_numbers(), instr->operand(0)->shape(),
           instr->operand(1)->shape(), instr->shape(), target_machine_features_);
     }
+<<<<<<< HEAD
     if (instr->IsConstant()) {
       return IsConstantSupportedByXnn(instr);
     }
+=======
+    if (instr->opcode() == HloOpcode::kReduce) {
+      return IsReduceOpSupportedByXnn(instr);
+    }
+    if (instr->IsConstant()) {
+      return IsConstantSupportedByXnn(instr);
+    }
+    // TODO(b/441837668): Need to get the reduction performance/cost model
+    // right before enabling fusions. Fusions make performance analysis quite
+    // challenging.
+    if (fuse_reduce_) {
+      return false;
+    }
+>>>>>>> upstream/master
     if (instr->IsElementwise()) {
       return IsElementwiseOpSupportedByXnn(instr);
     }
@@ -76,6 +107,12 @@ class XnnMatcher : public LibraryMatcher {
     if (fuse_dot_ && instr->opcode() == HloOpcode::kDot) {
       return true;
     }
+<<<<<<< HEAD
+=======
+    if (fuse_reduce_ && instr->opcode() == HloOpcode::kReduce) {
+      return true;
+    }
+>>>>>>> upstream/master
     return fuse_eltwise_ && instr->IsElementwise();
   }
 

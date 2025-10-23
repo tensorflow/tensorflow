@@ -43,15 +43,16 @@ size_t GetFdSizeBytes(int fd) {
 }  // namespace
 
 MMAPAllocation::MMAPAllocation(const char* filename,
-                               ErrorReporter* error_reporter)
-    : MMAPAllocation(error_reporter, open(filename, O_RDONLY)) {
+                               ErrorReporter* error_reporter, bool map_private)
+    : MMAPAllocation(error_reporter, open(filename, O_RDONLY), map_private) {
   if (mmap_fd_ == -1) {
     TF_LITE_REPORT_ERROR(error_reporter, "Could not open '%s'.", filename);
   }
 }
 
-MMAPAllocation::MMAPAllocation(int fd, ErrorReporter* error_reporter)
-    : MMAPAllocation(error_reporter, dup(fd)) {
+MMAPAllocation::MMAPAllocation(int fd, ErrorReporter* error_reporter,
+                               bool map_private)
+    : MMAPAllocation(error_reporter, dup(fd), map_private) {
   if (mmap_fd_ == -1) {
     TF_LITE_REPORT_ERROR(error_reporter, "Failed to dup '%d' file descriptor.",
                          fd);
@@ -59,28 +60,31 @@ MMAPAllocation::MMAPAllocation(int fd, ErrorReporter* error_reporter)
 }
 
 MMAPAllocation::MMAPAllocation(const char* filename, size_t offset,
-                               size_t length, ErrorReporter* error_reporter)
-    : MMAPAllocation(error_reporter, open(filename, O_RDONLY), offset, length) {
+                               size_t length, ErrorReporter* error_reporter,
+                               bool map_private)
+    : MMAPAllocation(error_reporter, open(filename, O_RDONLY), offset, length,
+                     map_private) {
   if (mmap_fd_ == -1) {
     TF_LITE_REPORT_ERROR(error_reporter, "Could not open '%s'.", filename);
   }
 }
 
 MMAPAllocation::MMAPAllocation(int fd, size_t offset, size_t length,
-                               ErrorReporter* error_reporter)
-    : MMAPAllocation(error_reporter, dup(fd), offset, length) {
+                               ErrorReporter* error_reporter, bool map_private)
+    : MMAPAllocation(error_reporter, dup(fd), offset, length, map_private) {
   if (mmap_fd_ == -1) {
     TF_LITE_REPORT_ERROR(error_reporter, "Failed to dup '%d' file descriptor.",
                          fd);
   }
 }
 
-MMAPAllocation::MMAPAllocation(ErrorReporter* error_reporter, int owned_fd)
+MMAPAllocation::MMAPAllocation(ErrorReporter* error_reporter, int owned_fd,
+                               bool map_private)
     : MMAPAllocation(error_reporter, owned_fd, /*offset=*/0,
-                     /*length=*/GetFdSizeBytes(owned_fd)) {}
+                     /*length=*/GetFdSizeBytes(owned_fd), map_private) {}
 
 MMAPAllocation::MMAPAllocation(ErrorReporter* error_reporter, int owned_fd,
-                               size_t offset, size_t length)
+                               size_t offset, size_t length, bool map_private)
     : Allocation(error_reporter, Allocation::Type::kMMap),
       mmap_fd_(owned_fd),
       mmapped_buffer_(MAP_FAILED),
@@ -103,9 +107,10 @@ MMAPAllocation::MMAPAllocation(ErrorReporter* error_reporter, int owned_fd,
     return;
   }
 
-  mmapped_buffer_ =
-      mmap(nullptr, /*__len=*/length + offset_in_buffer_, PROT_READ, MAP_SHARED,
-           mmap_fd_, /*__offset=*/offset - offset_in_buffer_);
+  mmapped_buffer_ = mmap(nullptr, /*__len=*/length + offset_in_buffer_,
+                         map_private ? (PROT_READ | PROT_WRITE) : PROT_READ,
+                         map_private ? MAP_PRIVATE : MAP_SHARED, mmap_fd_,
+                         /*__offset=*/offset_of_buffer_in_file_);
   if (mmapped_buffer_ == MAP_FAILED) {
     TF_LITE_REPORT_ERROR(error_reporter,
                          "Mmap of '%d' at offset '%d' failed with error '%d'.",

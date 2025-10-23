@@ -12,7 +12,7 @@
 #    a watch state.
 # ":debug_node_key" - Defines a struct used for tracking tensors.
 
-# Placeholder: load py_proto_library
+load("@rules_python//python:proto.bzl", "py_proto_library")
 load(
     "//tensorflow:tensorflow.bzl",
     "check_deps",

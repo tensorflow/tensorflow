@@ -506,6 +506,21 @@ absl::Status LayoutUtil::CopyLayoutBetweenShapes(const Shape& src, Shape* dst) {
   return ret;
 }
 
+Layout LayoutUtil::MoveDimToMinor(const Layout& layout, const int64_t dim) {
+  if (dim == MinorToMajor(layout).front()) {
+    return layout;
+  }
+  Layout result = layout;
+  result.clear_minor_to_major();
+  result.add_minor_to_major(dim);
+  for (int64_t current_dim : MinorToMajor(layout)) {
+    if (current_dim != dim) {
+      result.add_minor_to_major(current_dim);
+    }
+  }
+  return result;
+}
+
 /*static*/ int64_t LayoutUtil::LinearIndex(const Shape& shape,
                                            absl::Span<const int64_t> indices) {
   CHECK(shape.IsArray());

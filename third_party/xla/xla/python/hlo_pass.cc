@@ -36,44 +36,13 @@ namespace xla {
 namespace {
 
 NB_MODULE(_hlo_pass, m) {
-  nb::class_<HloModuleGroup> hlo_module_group_class(m, "HloModuleGroup");
-  hlo_module_group_class
-      .def("__init__",
-           [](HloModuleGroup* self, const std::string& name,
-              const std::vector<std::shared_ptr<HloModule>>& hlo_modules) {
-             std::vector<std::unique_ptr<HloModule>> modules;
-             modules.reserve(hlo_modules.size());
-             for (const auto& m : hlo_modules) {
-               modules.push_back(m->Clone(/*suffix=*/""));
-             }
-             new (self) HloModuleGroup(name, std::move(modules));
-           })
-      .def_prop_ro("name", &HloModuleGroup::name)
-      .def("to_string", &HloModuleGroup::ToString)
-      .def("to_modules",
-           [](HloModuleGroup& m) -> std::vector<std::shared_ptr<HloModule>> {
-             std::vector<std::unique_ptr<HloModule>> modules =
-                 m.ConsumeModules();
-             std::vector<std::shared_ptr<HloModule>> shared_modules;
-             shared_modules.reserve(modules.size());
-             for (auto& module : modules) {
-               shared_modules.push_back(std::move(module));
-             }
-             return shared_modules;
-           });
-
   // Hlo Module Passes
   nb::class_<HloPassInterface> hlo_pass_interface(m, "HloPassInterface");
   hlo_pass_interface.def_prop_ro("name", &HloPassInterface::name)
       .def("is_pass_pipeline", &HloPassInterface::IsPassPipeline)
-      .def("run",
-           [](HloPassInterface& pass, HloModule* module) -> bool {
-             return xla::ValueOrThrow(pass.Run(module));
-           })
-      .def("run_on_module_group",
-           [](HloPassInterface& pass, HloModuleGroup* module_group) -> bool {
-             return xla::ValueOrThrow(pass.RunOnModuleGroup(module_group));
-           });
+      .def("run", [](HloPassInterface& pass, HloModule* module) -> bool {
+        return xla::ValueOrThrow(pass.Run(module));
+      });
 
   nb::class_<HloDCE, HloPassInterface>(m, "HloDCE").def(nb::init<>());
   nb::class_<CallInliner, HloPassInterface>(m, "CallInliner").def(nb::init<>());

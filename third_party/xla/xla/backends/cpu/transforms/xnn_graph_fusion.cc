@@ -131,16 +131,8 @@ bool XnnGraphFusion::IsOpSupported(const HloInstruction* instr) {
   switch (instr->opcode()) {
     case HloOpcode::kBitcast:
       return IsBitcastOpSupportedByXnn(instr);
-    case HloOpcode::kBroadcast: {
-      if (instr->GetModule()
-              ->config()
-              .debug_options()
-              .xla_cpu_experimental_xnn_graph_fusion_mode() !=
-          DebugOptions::XNN_GRAPH_FUSION_MODE_GREEDY_SLINKY) {
-        return false;
-      }
+    case HloOpcode::kBroadcast:
       return IsBroadcastOpSupportedByXnn(instr);
-    }
     case HloOpcode::kReduce:
       return IsReduceOpSupportedByXnn(instr);
     default:

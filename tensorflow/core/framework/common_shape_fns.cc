@@ -710,7 +710,7 @@ absl::Status Conv2DShapeImpl(shape_inference::InferenceContext* c,
     absl::Status s = c->GetAttr("explicit_paddings", &explicit_paddings);
     // Use the default value, which is an empty list, if the attribute is not
     // found. Otherwise return the error to the caller.
-    if (!s.ok() && !errors::IsNotFound(s)) {
+    if (!s.ok() && !absl::IsNotFound(s)) {
       return s;
     }
     TF_RETURN_IF_ERROR(CheckValidPadding(padding, explicit_paddings,
@@ -724,7 +724,7 @@ absl::Status Conv2DShapeImpl(shape_inference::InferenceContext* c,
     // `padding_list` attribute is used by Fused int8 convolutions to support
     // explicit paddings.
     absl::Status s_p_list = c->GetAttr("padding_list", &p_list);
-    if (!s_p_list.ok() && !errors::IsNotFound(s_p_list)) {
+    if (!s_p_list.ok() && !absl::IsNotFound(s_p_list)) {
       return s_p_list;
     }
     if (s_p_list.ok() && !p_list.empty()) {
@@ -1872,7 +1872,7 @@ absl::Status MaxPoolShapeImpl(shape_inference::InferenceContext* c,
     absl::Status status = c->GetAttr("explicit_paddings", &explicit_paddings);
     // Use the default value, which is an empty list, if the attribute is not
     // found. Otherwise return the error to the caller.
-    if (!status.ok() && !errors::IsNotFound(status)) {
+    if (!status.ok() && !absl::IsNotFound(status)) {
       return status;
     }
     TF_RETURN_IF_ERROR(CheckValidPadding(padding, explicit_paddings,

@@ -312,6 +312,10 @@ absl::StatusOr<bool> UnrollInternal(HloInstruction* while_op,
     unrolled_body_call_op =
         computation->AddInstruction(HloInstruction::CreateCall(
             while_op->shape(), call_operands, unrolled_body));
+<<<<<<< HEAD
+=======
+    unrolled_body_call_op->set_original_value(while_op->original_value());
+>>>>>>> upstream/master
     new_calls.push_back(unrolled_body_call_op);
     call_operands.clear();
     call_operands.push_back(unrolled_body_call_op);
@@ -360,6 +364,10 @@ absl::StatusOr<UnrollResult> UnrollInternalWrappedAndReturnReplacement(
         HloInstruction::CreateCall(while_op->shape(), call_operands,
                                    unrolled_body),
         absl::StrCat(while_op->name(), "-unrolled-body-call-", i));
+<<<<<<< HEAD
+=======
+    unrolled_body_call_op->set_original_value(while_op->original_value());
+>>>>>>> upstream/master
     new_calls.push_back(unrolled_body_call_op);
 
     call_operands.clear();

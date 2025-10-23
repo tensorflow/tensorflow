@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_PJRT_PJRT_FUTURE_H_
 #define XLA_PJRT_PJRT_FUTURE_H_
 
+<<<<<<< HEAD
 #include <algorithm>
 #include <atomic>
 #include <cstdint>
@@ -805,6 +806,17 @@ class PjRtFuture<void> : public internal::PjRtFutureBase<absl::Status> {
   static absl::NoDestructor<tsl::AsyncValueOwningRef<absl::Status>>
       ready_promise_;
 };
+=======
+#include "absl/base/macros.h"
+#include "xla/future.h"
+
+namespace xla {
+
+template <typename T = void>
+using PjRtFuture ABSL_DEPRECATE_AND_INLINE() = ::xla::Future<T>;
+
+using PjRtFutureHelpers ABSL_DEPRECATE_AND_INLINE() = ::xla::FutureHelpers;
+>>>>>>> upstream/master
 
 }  // namespace xla
 

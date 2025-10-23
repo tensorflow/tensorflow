@@ -61,7 +61,10 @@ void addSdyRoundTripExportPipeline(mlir::OpPassManager& pm,
 void addSdyRoundTripImportPipeline(mlir::OpPassManager& pm,
                                    bool enableConstantImport,
                                    bool importFuncCalls,
+<<<<<<< HEAD
                                    bool importOnlyUninlineableFuncCalls,
+=======
+>>>>>>> upstream/master
                                    bool liftAndDedupMeshes) {
   addCommonPreImportPasses(pm, enableConstantImport);
   pm.addPass(createSdyRoundTripImportShardyAttrsPass());
@@ -69,8 +72,12 @@ void addSdyRoundTripImportPipeline(mlir::OpPassManager& pm,
   // pass.
   pm.addPass(createSdyRoundTripCloneManualComputationCallsPass());
   pm.addPass(createSdyRoundTripShardMapImportPass());
+<<<<<<< HEAD
   addCommonPostImportPasses(pm, importFuncCalls,
                             importOnlyUninlineableFuncCalls);
+=======
+  addCommonPostImportPasses(pm, importFuncCalls);
+>>>>>>> upstream/master
   if (liftAndDedupMeshes) {
     // Lift and dedup meshes required here because of sdy shardings added
     // directly to hlo in tf2xla.
@@ -114,11 +121,14 @@ struct SdyRoundTripImportPipelineOptions
   Option<bool> importFuncCalls{*this, "import-func-calls",
                                llvm::cl::desc("Import func calls."),
                                llvm::cl::init(false)};
+<<<<<<< HEAD
   // TODO(b/430894772): Drop the flag and import all func calls always.
   Option<bool> importOnlyUninlineableFuncCalls{
       *this, "import-only-uninlineable-func-calls",
       llvm::cl::desc("Import only unlineable func calls."),
       llvm::cl::init(true)};
+=======
+>>>>>>> upstream/master
   Option<bool> liftAndDedupMeshes{*this, "lift-and-dedup-meshes",
                                   llvm::cl::desc("Lift and dedup meshes."),
                                   llvm::cl::init(false)};
@@ -126,9 +136,15 @@ struct SdyRoundTripImportPipelineOptions
 
 void sdyRoundTripImportPipeline(
     mlir::OpPassManager& pm, const SdyRoundTripImportPipelineOptions& options) {
+<<<<<<< HEAD
   addSdyRoundTripImportPipeline(
       pm, options.enableConstantImport, options.importFuncCalls,
       options.importOnlyUninlineableFuncCalls, options.liftAndDedupMeshes);
+=======
+  addSdyRoundTripImportPipeline(pm, options.enableConstantImport,
+                                options.importFuncCalls,
+                                options.liftAndDedupMeshes);
+>>>>>>> upstream/master
 }
 
 }  // namespace

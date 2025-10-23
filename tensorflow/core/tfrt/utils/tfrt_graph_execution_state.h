@@ -86,20 +86,20 @@ class TfrtGraphExecutionState {
   // Return the preprocessed full graph. Note that it does not contain the
   // function library in the original graph.
   const tensorflow::Graph& graph() const {
-    absl::MutexLock lock(&graph_execution_state_mu_);
+    absl::MutexLock lock(graph_execution_state_mu_);
     DCHECK(graph_execution_state_->full_graph());
     return *graph_execution_state_->full_graph();
   }
 
   // The original graph.
   const GraphDef* original_graph_def() const {
-    absl::MutexLock lock(&graph_execution_state_mu_);
+    absl::MutexLock lock(graph_execution_state_mu_);
     return graph_execution_state_->original_graph_def();
   }
 
   // Return the function library in the original graph.
   const FunctionLibraryDefinition& flib_def() const {
-    absl::MutexLock lock(&graph_execution_state_mu_);
+    absl::MutexLock lock(graph_execution_state_mu_);
     return graph_execution_state_->flib_def();
   }
 

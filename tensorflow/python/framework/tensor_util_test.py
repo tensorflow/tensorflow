@@ -1013,6 +1013,9 @@ class TensorUtilTest(test.TestCase, parameterized.TestCase):
     self.assertFalse(tensor_util.ShapeEquals(t, [5, 3]))
     self.assertFalse(tensor_util.ShapeEquals(t, [1, 4]))
     self.assertFalse(tensor_util.ShapeEquals(t, [4]))
+    self.assertFalse(tensor_util.ShapeEquals(t, [2]))
+    self.assertFalse(tensor_util.ShapeEquals(t, []))
+    self.assertFalse(tensor_util.ShapeEquals(t, [2, 2, 1]))
 
 
 @test_util.run_all_in_graph_and_eager_modes

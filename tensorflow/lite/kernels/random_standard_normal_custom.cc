@@ -13,7 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <cmath>
+#include <algorithm>
+#include <cstddef>
 #include <random>
 
 #include "tensorflow/lite/core/c/common.h"

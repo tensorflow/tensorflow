@@ -22,8 +22,8 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/status/statusor.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
+#include "xla/pjrt/c_api_client/pjrt_c_api_client.h"
 #include "xla/pjrt/pjrt_api.h"
-#include "xla/pjrt/pjrt_c_api_client.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/tsl/platform/statusor.h"
 

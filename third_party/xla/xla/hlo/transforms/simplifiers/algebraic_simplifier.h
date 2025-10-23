@@ -600,6 +600,11 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
   }
 
  protected:
+  // Allow backend targets to amend user-guided fusion attributes based on
+  // various criteria.
+  virtual void AmendUserGuidedFusionAttr(HloInstruction* inst) {}
+
+ protected:
   // The backend-specific options selected for the algebraic simplifier.
   const AlgebraicSimplifierOptions& options_;
 
@@ -839,6 +844,11 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
   absl::Status ReplaceReduceWithReshape(const Shape& reduce_result_shape,
                                         bool multi_output_reduce,
                                         HloReduceInstruction* reduce);
+
+  // Detects a chain of transposes and reshapes that can be replaced with a
+  // nop.
+  absl::StatusOr<bool> TryRemovingReshapeTransposeChain(
+      HloInstruction* reshape);
 
   // Helper function for HandleReduce. Reorders reduce dot
   // to a dot reduce. reduce(dot(A, B)) to dot(A, reduce(B))

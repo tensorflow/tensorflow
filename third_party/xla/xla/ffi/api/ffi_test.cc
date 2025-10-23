@@ -39,7 +39,7 @@ limitations under the License.
 #include "xla/ffi/execution_context.h"
 #include "xla/ffi/execution_state.h"
 #include "xla/ffi/ffi_api.h"
-#include "xla/ffi/type_id_registry.h"
+#include "xla/ffi/type_registry.h"
 #include "xla/primitive_util.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_allocator.h"
@@ -1202,13 +1202,14 @@ struct MyDataWithExplicitTypeId {
 
 // Rely on XLA to assign unique type id for the type.
 TypeId MyDataWithAutoTypeId::id = XLA_FFI_UNKNOWN_TYPE_ID;
-XLA_FFI_REGISTER_TYPE(GetXlaFfiApi(), "my_data_auto",
-                      &MyDataWithAutoTypeId::id);
+XLA_FFI_REGISTER_TYPE(GetXlaFfiApi(), "my_data_auto", &MyDataWithAutoTypeId::id,
+                      TypeInfo<MyDataWithAutoTypeId>());
 
 // Provide explicit type id and rely on XLA to check that it's unique.
 TypeId MyDataWithExplicitTypeId::id = {42};
 XLA_FFI_REGISTER_TYPE(GetXlaFfiApi(), "my_data_explicit",
-                      &MyDataWithExplicitTypeId::id);
+                      &MyDataWithExplicitTypeId::id,
+                      TypeInfo<MyDataWithExplicitTypeId>());
 
 TEST(FfiTest, UserData) {
   MyDataWithAutoTypeId data0{"foo"};
@@ -1219,9 +1220,9 @@ TEST(FfiTest, UserData) {
 
   ExecutionContext execution_context;
   TF_ASSERT_OK(execution_context.Insert(
-      TypeIdRegistry::TypeId(MyDataWithAutoTypeId::id.type_id), &data0));
+      TypeRegistry::TypeId(MyDataWithAutoTypeId::id.type_id), &data0));
   TF_ASSERT_OK(execution_context.Insert(
-      TypeIdRegistry::TypeId(MyDataWithExplicitTypeId::id.type_id), &data1));
+      TypeRegistry::TypeId(MyDataWithExplicitTypeId::id.type_id), &data1));
 
   CallFrameBuilder builder(/*num_args=*/0, /*num_rets=*/0);
   auto call_frame = builder.Build();
@@ -1253,7 +1254,8 @@ struct MyState {
 };
 
 TypeId MyState::id = {};  // zero-initialize type id
-XLA_FFI_REGISTER_TYPE(GetXlaFfiApi(), "state", &MyState::id);
+XLA_FFI_REGISTER_TYPE(GetXlaFfiApi(), "state", &MyState::id,
+                      TypeInfo<MyState>());
 
 TEST(FfiTest, StatefulHandler) {
   ExecutionState execution_state;
@@ -1434,25 +1436,55 @@ TEST(FfiTest, AsyncHandler) {
 }
 
 TEST(FfiTest, Metadata) {
-  auto api = GetXlaFfiApi();
-  auto handler = Ffi::BindTo([]() { return Error::Success(); });
-  auto maybe_metadata = GetMetadata(*handler);
+  auto handler =
+      Ffi::BindInstantiate().To([]() -> ErrorOr<std::unique_ptr<MyState>> {
+        return std::make_unique<MyState>(42);
+      });
+
+  absl::StatusOr<XLA_FFI_Metadata> maybe_metadata = GetMetadata(*handler);
   EXPECT_TRUE(maybe_metadata.ok());
-  auto metadata = maybe_metadata.value();
-  EXPECT_EQ(metadata.api_version.major_version, api->api_version.major_version);
-  EXPECT_EQ(metadata.api_version.minor_version, api->api_version.minor_version);
+
+  XLA_FFI_Metadata metadata = maybe_metadata.value();
+  EXPECT_EQ(metadata.api_version.major_version, XLA_FFI_API_MAJOR);
+  EXPECT_EQ(metadata.api_version.minor_version, XLA_FFI_API_MINOR);
   EXPECT_EQ(metadata.traits, 0);
+  EXPECT_EQ(metadata.state_type_id.type_id, MyState::id.type_id);
 }
 
 TEST(FfiTest, MetadataTraits) {
   auto handler = Ffi::BindTo([]() { return Error::Success(); },
                              {Traits::kCmdBufferCompatible});
-  auto maybe_metadata = GetMetadata(*handler);
+
+  absl::StatusOr<XLA_FFI_Metadata> maybe_metadata = GetMetadata(*handler);
   EXPECT_TRUE(maybe_metadata.ok());
-  auto metadata = maybe_metadata.value();
+
+  XLA_FFI_Metadata metadata = maybe_metadata.value();
   EXPECT_EQ(metadata.api_version.major_version, XLA_FFI_API_MAJOR);
   EXPECT_EQ(metadata.api_version.minor_version, XLA_FFI_API_MINOR);
   EXPECT_EQ(metadata.traits, XLA_FFI_HANDLER_TRAITS_COMMAND_BUFFER_COMPATIBLE);
+  EXPECT_EQ(metadata.state_type_id.type_id, XLA_FFI_UNKNOWN_TYPE_ID.type_id);
+}
+
+// Test that we can automatically generate FFI handler type signature from a C++
+// function declaration.
+static Error BufferR2F32Function(BufferR2<F32> buffer) {
+  EXPECT_EQ(buffer.dimensions().size(), 2);
+  return Error::Success();
+}
+
+XLA_FFI_DEFINE_HANDLER_SYMBOL(BufferR2F32Handler, BufferR2F32Function);
+
+TEST(FfiTest, DefineAutoSymbol) {
+  std::vector<float> storage(4, 0.0f);
+  se::DeviceMemoryBase memory(storage.data(), 4 * sizeof(float));
+
+  CallFrameBuilder builder(/*num_args=*/1, /*num_rets=*/0);
+  builder.AddBufferArg(memory, PrimitiveType::F32, /*dims=*/{2, 2});
+  auto call_frame = builder.Build();
+
+  auto status = Call(BufferR2F32Handler, call_frame);
+
+  TF_ASSERT_OK(status);
 }
 
 //===----------------------------------------------------------------------===//

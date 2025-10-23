@@ -93,7 +93,7 @@ static absl::Status ValidateConvolutionShapes(
   return absl::OkStatus();
 }
 
-bool IsSupportedType(PrimitiveType primitive_type) {
+inline bool IsConvSupportedType(PrimitiveType primitive_type) {
   return primitive_type == PrimitiveType::F16 ||
          primitive_type == PrimitiveType::F32;
 }
@@ -105,7 +105,7 @@ absl::StatusOr<ConvolutionCanonicalDims> GetConvolutionCanonicalDims(
       slices.input_shape, slices.kernel_shape, slices.output_shape, dnums));
 
   auto primitive_type = slices.input_shape.element_type();
-  if (!IsSupportedType(primitive_type)) {
+  if (!IsConvSupportedType(primitive_type)) {
     return InvalidArgument("ConvolutionThunk: Unsupported element type (%s)",
                            PrimitiveType_Name(primitive_type));
   }

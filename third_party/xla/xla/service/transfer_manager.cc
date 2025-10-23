@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/synchronization/mutex.h"
+#include "absl/synchronization/notification.h"
 #include "xla/literal.h"
 #include "xla/service/compiler.h"
 #include "xla/service/maybe_owning_device_memory.h"
@@ -198,7 +199,7 @@ absl::Status TransferManager::ReadDynamicShapes(
 /* static */ void TransferManager::RegisterTransferManager(
     se::Platform::Id platform_id,
     TransferManagerCreationFunction creation_function) {
-  absl::MutexLock lock(&TransferManager::platform_transfer_manager_mutex_);
+  absl::MutexLock lock(TransferManager::platform_transfer_manager_mutex_);
   auto* managers = GetPlatformTransferManagers();
   CHECK(managers->find(platform_id) == managers->end());
   (*managers)[platform_id].creation_function = creation_function;
@@ -206,7 +207,7 @@ absl::Status TransferManager::ReadDynamicShapes(
 
 /* static */ absl::StatusOr<TransferManager*> TransferManager::GetForPlatform(
     const se::Platform* platform) {
-  absl::MutexLock lock(&TransferManager::platform_transfer_manager_mutex_);
+  absl::MutexLock lock(TransferManager::platform_transfer_manager_mutex_);
   auto* managers = GetPlatformTransferManagers();
 
   auto it = managers->find(platform->id());

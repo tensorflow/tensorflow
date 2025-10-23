@@ -1,5 +1,5 @@
 // RUN: mlir-hlo-opt --chlo-legalize-to-hlo --split-input-file -verify-diagnostics %s | FileCheck %s --dump-input-context=20
-// RUN: mlir-hlo-opt --chlo-legalize-to-high-level-mhlo --split-input-file -verify-diagnostics %s | FileCheck %s --check-prefix=CHECK-HIGH-LEVEL
+// RUN: mlir-hlo-opt --chlo-legalize-to-high-level-mhlo="enable-acosh enable-acos enable-atanh enable-cosh enable-sinh enable-asin enable-asinh" --split-input-file -verify-diagnostics %s | FileCheck %s --check-prefix=CHECK-HIGH-LEVEL
 
 // CHECK-LABEL: func.func @asin_bf16(
 // CHECK-SAME:    %[[TMP_arg0:.*]]: tensor<bf16>
@@ -20,6 +20,7 @@ func.func @asin_bf16(%arg : tensor<bf16>) -> tensor<bf16> {
 // -----
 
 // CHECK-LABEL: func.func @asin_f16(
+// CHECK-HIGH-LEVEL-LABEL: func.func @asin_f16(
 // CHECK-SAME:    %[[TMP_arg0:.*]]: tensor<f16>
 // CHECK-NEXT:    %[[TMP_1:.*]] = mhlo.constant dense<1.000000e+00> : tensor<f16>
 // CHECK-NEXT:    %[[TMP_2:.*]] = mhlo.subtract %[[TMP_1]], %[[TMP_arg0]] : tensor<f16>
@@ -31,6 +32,7 @@ func.func @asin_bf16(%arg : tensor<bf16>) -> tensor<bf16> {
 // CHECK-NEXT:    %[[TMP_8:.*]] = mhlo.add %[[TMP_7]], %[[TMP_7]] : tensor<f16>
 // CHECK-NEXT:    return %[[TMP_8]] : tensor<f16>
 func.func @asin_f16(%arg : tensor<f16>) -> tensor<f16> {
+  // CHECK-HIGH-LEVEL: mhlo.asin
   %result = "chlo.asin"(%arg) : (tensor<f16>) -> tensor<f16>
   func.return %result : tensor<f16>
 }
@@ -38,6 +40,7 @@ func.func @asin_f16(%arg : tensor<f16>) -> tensor<f16> {
 // -----
 
 // CHECK-LABEL: func.func @asin_f32(
+// CHECK-HIGH-LEVEL-LABEL: func.func @asin_f32(
 // CHECK-SAME:    %[[TMP_arg0:.*]]: tensor<f32>) -> tensor<f32>
 // CHECK-NEXT:    %[[TMP_1:.*]] = mhlo.constant dense<1.000000e+00> : tensor<f32>
 // CHECK-NEXT:    %[[TMP_2:.*]] = mhlo.subtract %[[TMP_1]], %[[TMP_arg0]] : tensor<f32>
@@ -49,13 +52,14 @@ func.func @asin_f16(%arg : tensor<f16>) -> tensor<f16> {
 // CHECK-NEXT:    %[[TMP_8:.*]] = mhlo.add %[[TMP_7]], %[[TMP_7]] : tensor<f32>
 // CHECK-NEXT:    return %[[TMP_8]] : tensor<f32>
 func.func @asin_f32(%arg : tensor<f32>) -> tensor<f32> {
+  // CHECK-HIGH-LEVEL: mhlo.asin
   %result = "chlo.asin"(%arg) : (tensor<f32>) -> tensor<f32>
   func.return %result : tensor<f32>
 }
 
 // -----
-
 // CHECK-LABEL:  func.func @asin_f64(
+// CHECK-HIGH-LEVEL-LABEL: func.func @asin_f64(
 // CHECK-SAME:    %[[TMP_arg0:.*]]: tensor<f64>) -> tensor<f64>
 // CHECK-NEXT:    %[[TMP_1:.*]] = mhlo.constant dense<1.000000e+00> : tensor<f64>
 // CHECK-NEXT:    %[[TMP_2:.*]] = mhlo.subtract %[[TMP_1]], %[[TMP_arg0]] : tensor<f64>
@@ -67,6 +71,7 @@ func.func @asin_f32(%arg : tensor<f32>) -> tensor<f32> {
 // CHECK-NEXT:    %[[TMP_8:.*]] = mhlo.add %[[TMP_7]], %[[TMP_7]] : tensor<f64>
 // CHECK-NEXT:    return %[[TMP_8]] : tensor<f64>
 func.func @asin_f64(%arg : tensor<f64>) -> tensor<f64> {
+  // CHECK-HIGH-LEVEL: mhlo.asin
   %result = "chlo.asin"(%arg) : (tensor<f64>) -> tensor<f64>
   func.return %result : tensor<f64>
 }
@@ -74,6 +79,7 @@ func.func @asin_f64(%arg : tensor<f64>) -> tensor<f64> {
 // -----
 
 // CHECK-LABEL: func.func @asin_complex_f32(
+// CHECK-HIGH-LEVEL-LABEL: func.func @asin_complex_f32(
 // CHECK-SAME:   %[[TEMP_arg0:.*]]: tensor<complex<f32>>) -> tensor<complex<f32>>
 // CHECK: %[[TEMP_0:.*]] = mhlo.real %[[TEMP_arg0:.*]] : (tensor<complex<f32>>) -> tensor<f32>
 // CHECK: %[[TEMP_1:.*]] = mhlo.real %[[TEMP_arg0:.*]] : (tensor<complex<f32>>) -> tensor<f32>
@@ -220,6 +226,7 @@ func.func @asin_complex_f32(%arg : tensor<complex<f32>>) -> tensor<complex<f32>>
   %result = "chlo.asin"(%arg) : (tensor<complex<f32>>) -> tensor<complex<f32>>
   func.return %result : tensor<complex<f32>>
 }
+// CHECK-HIGH-LEVEL-NOT: mhlo.asin
 
 // -----
 
@@ -404,8 +411,10 @@ func.func @asin_complex_f64_dynamic(%arg : tensor<?xcomplex<f64>>) -> tensor<?xc
 // -----
 
 // CHECK-LABEL: @asinh_bf16
+// CHECK-HIGH-LEVEL-LABEL: @asinh_bf16
 // CHECK-SAME: %[[ARG:.*]]: tensor<bf16>
 func.func @asinh_bf16(%arg : tensor<bf16>) -> tensor<bf16> {
+  // CHECK-HIGH-LEVEL: mhlo.asinh
   // Check for the bf16-specific max value.
   // CHECK: mhlo.constant dense<3.389{{.*}}e+38>
   %result = "chlo.asinh"(%arg) : (tensor<bf16>) -> tensor<bf16>
@@ -415,8 +424,10 @@ func.func @asinh_bf16(%arg : tensor<bf16>) -> tensor<bf16> {
 // -----
 
 // CHECK-LABEL: @asinh_f16
+// CHECK-HIGH-LEVEL-LABEL: @asinh_f16
 // CHECK-SAME: %[[ARG:.*]]: tensor<f16>
 func.func @asinh_f16(%arg : tensor<f16>) -> tensor<f16> {
+  // CHECK-HIGH-LEVEL: mhlo.asinh
   // Check for the f16-specific max value.
   // CHECK: mhlo.constant dense<6.550{{.*}}e+04>
   %result = "chlo.asinh"(%arg) : (tensor<f16>) -> tensor<f16>
@@ -426,8 +437,10 @@ func.func @asinh_f16(%arg : tensor<f16>) -> tensor<f16> {
 // -----
 
 // CHECK-LABEL: @asinh_f32
+// CHECK-HIGH-LEVEL-LABEL: @asinh_f32
 // CHECK-SAME: %[[ARG:.*]]: tensor<f32>
 func.func @asinh_f32(%arg : tensor<f32>) -> tensor<f32> {
+  // CHECK-HIGH-LEVEL: mhlo.asinh
   // Check for the f32-specific max value.
   // CHECK: mhlo.constant dense<3.402{{.*}}E+38>
   %result = "chlo.asinh"(%arg) : (tensor<f32>) -> tensor<f32>
@@ -437,8 +450,10 @@ func.func @asinh_f32(%arg : tensor<f32>) -> tensor<f32> {
 // -----
 
 // CHECK-LABEL:  @asinh_f64
+// CHECK-HIGH-LEVEL-LABEL: @asinh_f64
 // CHECK-SAME:   %[[VAL_0:.*]]: tensor<f64>) -> tensor<f64> {
 func.func @asinh_f64(%arg : tensor<f64>) -> tensor<f64> {
+  // CHECK-HIGH-LEVEL: mhlo.asinh
   // CHECK:   %[[VAL_1:.*]] = mhlo.sign %[[VAL_0]] : tensor<f64>
   // CHECK:   %[[VAL_2:.*]] = mhlo.abs %[[VAL_0]] : tensor<f64>
   // CHECK:   %[[VAL_3:.*]] = mhlo.constant dense<1.7976931348623157E+308> : tensor<f64>
@@ -467,6 +482,7 @@ func.func @asinh_f64(%arg : tensor<f64>) -> tensor<f64> {
 // -----
 
 // CHECK-LABEL: func.func @acosh_complex_f32(
+// CHECK-HIGH-LEVEL-LABEL: func.func @acosh_complex_f32(
 // CHECK-SAME:   %[[TEMP_arg0:.*]]: tensor<complex<f32>>) -> tensor<complex<f32>> {
 // CHECK: %[[TEMP_0:.*]] = mhlo.real %[[TEMP_arg0:.*]] : (tensor<complex<f32>>) -> tensor<f32>
 // CHECK: %[[TEMP_1:.*]] = mhlo.abs %[[TEMP_0]] : tensor<f32>
@@ -613,11 +629,13 @@ func.func @acosh_complex_f32(%arg : tensor<complex<f32>>) -> tensor<complex<f32>
   %result = "chlo.acosh"(%arg) : (tensor<complex<f32>>) -> tensor<complex<f32>>
   func.return %result : tensor<complex<f32>>
 }
+// CHECK-HIGH-LEVEL-NOT: mhlo.acosh
 
 // -----
 
 // Lower statically shaped `constant_like` to constant.
-// CHECK-LABEL: @constant_like_static_shape
+// CHECK-LABEL: func.func @constant_like_static_shape
+// CHECK-HIGH-LEVEL-LABEL: func.func @constant_like_static_shape
 func.func @constant_like_static_shape(%arg : tensor<1x2xi64>) -> tensor<1x2xf32> {
   // CHECK: %[[RESULT:.*]] = mhlo.constant dense<3.200000e+00> : tensor<1x2xf32>
   // CHECK: return %[[RESULT]]
@@ -656,7 +674,8 @@ func.func @conj(%arg0: tensor<3xcomplex<f32>>) -> tensor<3xcomplex<f32>> {
 
 // -----
 
-// CHECK-LABEL: @erf_f64
+// CHECK-LABEL: func.func @erf_f64
+// CHECK-HIGH-LEVEL-LABEL: func.func @erf_f64
 // CHECK-SAME: %[[ARG:.*]]: tensor<f64>
 func.func @erf_f64(%arg : tensor<f64>) -> tensor<f64> {
   // CHECK-HIGH-LEVEL: mhlo.erf
@@ -668,7 +687,8 @@ func.func @erf_f64(%arg : tensor<f64>) -> tensor<f64> {
 
 // -----
 
-// CHECK-LABEL: @erf_f32
+// CHECK-LABEL: func.func @erf_f32
+// CHECK-HIGH-LEVEL-LABEL: func.func @erf_f32
 // CHECK-SAME: %[[ARG:.*]]: tensor<f32>
 func.func @erf_f32(%arg : tensor<f32>) -> tensor<f32> {
   // CHECK-HIGH-LEVEL: mhlo.erf
@@ -680,7 +700,8 @@ func.func @erf_f32(%arg : tensor<f32>) -> tensor<f32> {
 
 // -----
 
-// CHECK-LABEL: @erf_f16
+// CHECK-LABEL: func.func @erf_f16
+// CHECK-HIGH-LEVEL-LABEL: func.func @erf_f16
 // CHECK-SAME: %[[ARG:.*]]: tensor<f16>
 func.func @erf_f16(%arg : tensor<f16>) -> tensor<f16> {
   // CHECK-HIGH-LEVEL: mhlo.erf
@@ -692,7 +713,8 @@ func.func @erf_f16(%arg : tensor<f16>) -> tensor<f16> {
 
 // -----
 
-// CHECK-LABEL: @erf_bf16
+// CHECK-LABEL: func.func @erf_bf16
+// CHECK-HIGH-LEVEL-LABEL: func.func @erf_bf16
 // CHECK-SAME: %[[ARG:.*]]: tensor<bf16>
 func.func @erf_bf16(%arg : tensor<bf16>) -> tensor<bf16> {
   // CHECK-HIGH-LEVEL: mhlo.erf
@@ -704,7 +726,18 @@ func.func @erf_bf16(%arg : tensor<bf16>) -> tensor<bf16> {
 
 // -----
 
-// CHECK-LABEL: @acosh
+// CHECK-LABEL: func.func @acos
+// CHECK-HIGH-LEVEL-LABEL: func.func @acos
+func.func @acos(%arg : tensor<f64>) -> tensor<f64> {
+  // CHECK-HIGH-LEVEL: mhlo.acos
+  %1 = "chlo.acos"(%arg) : (tensor<f64>) -> tensor<f64>
+  func.return %1 : tensor<f64>
+}
+
+// -----
+
+// CHECK-LABEL: func.func @acosh
+// CHECK-HIGH-LEVEL-LABEL: func.func @acosh
 // CHECK-SAME:  %[[VAL_0:.*]]: tensor<f16>) -> tensor<f16> {
 func.func @acosh(%arg: tensor<f16>) -> tensor<f16> {
   // CHECK-DAG:   %[[VAL_1:.*]] = mhlo.constant dense<6.550400e+04> : tensor<f16>
@@ -728,160 +761,12 @@ func.func @acosh(%arg: tensor<f16>) -> tensor<f16> {
   %1 = "chlo.acosh"(%arg) : (tensor<f16>) -> tensor<f16>
   func.return %1 : tensor<f16>
 }
+// CHECK-HIGH-LEVEL: mhlo.acosh
 
 // -----
 
-// CHECK-LABEL: func.func @acosh_complex_f32(
-// CHECK-SAME:   %[[TEMP_arg0:.*]]: tensor<complex<f32>>) -> tensor<complex<f32>> {
-// CHECK: %[[TEMP_0:.*]] = mhlo.real %[[TEMP_arg0:.*]] : (tensor<complex<f32>>) -> tensor<f32>
-// CHECK: %[[TEMP_1:.*]] = mhlo.abs %[[TEMP_0]] : tensor<f32>
-// CHECK: %[[TEMP_2:.*]] = mhlo.imag %[[TEMP_arg0:.*]] : (tensor<complex<f32>>) -> tensor<f32>
-// CHECK: %[[TEMP_3:.*]] = mhlo.abs %[[TEMP_2]] : tensor<f32>
-// CHECK: %[[TEMP_4:.*]] = mhlo.maximum %[[TEMP_1]], %[[TEMP_3]] : tensor<f32>
-// CHECK: %[[TEMP_5:.*]] = mhlo.constant dense<3.40282347E+38> : tensor<f32>
-// CHECK: %[[TEMP_6:.*]] = mhlo.sqrt %[[TEMP_5]] : tensor<f32>
-// CHECK: %[[TEMP_7:.*]] = mhlo.constant dense<8.000000e+00> : tensor<f32>
-// CHECK: %[[TEMP_8:.*]] = mhlo.divide %[[TEMP_6]], %[[TEMP_7]] : tensor<f32>
-// CHECK: %[[TEMP_9:.*]] = mhlo.compare  GE, %[[TEMP_4]], %[[TEMP_8]] : (tensor<f32>, tensor<f32>) -> tensor<i1>
-// CHECK: %[[TEMP_10:.*]] = mhlo.constant dense<1.000000e+00> : tensor<f32>
-// CHECK: %[[TEMP_11:.*]] = mhlo.compare  LE, %[[TEMP_1]], %[[TEMP_10]] : (tensor<f32>, tensor<f32>) -> tensor<i1>
-// CHECK: %[[TEMP_12:.*]] = mhlo.constant dense<5.000000e-01> : tensor<f32>
-// CHECK: %[[TEMP_13:.*]] = mhlo.add %[[TEMP_1]], %[[TEMP_10]] : tensor<f32>
-// CHECK: %[[TEMP_14:.*]] = mhlo.abs %[[TEMP_13]] : tensor<f32>
-// CHECK: %[[TEMP_15:.*]] = mhlo.maximum %[[TEMP_14]], %[[TEMP_3]] : tensor<f32>
-// CHECK: %[[TEMP_16:.*]] = mhlo.minimum %[[TEMP_14]], %[[TEMP_3]] : tensor<f32>
-// CHECK: %[[TEMP_17:.*]] = mhlo.compare  EQ, %[[TEMP_15]], %[[TEMP_16]] : (tensor<f32>, tensor<f32>) -> tensor<i1>
-// CHECK: %[[TEMP_18:.*]] = mhlo.constant dense<1.41421354> : tensor<f32>
-// CHECK: %[[TEMP_19:.*]] = mhlo.multiply %[[TEMP_18]], %[[TEMP_15]] : tensor<f32>
-// CHECK: %[[TEMP_20:.*]] = mhlo.divide %[[TEMP_16]], %[[TEMP_15]] : tensor<f32>
-// CHECK: %[[TEMP_21:.*]] = mhlo.multiply %[[TEMP_20]], %[[TEMP_20]] : tensor<f32>
-// CHECK: %[[TEMP_22:.*]] = mhlo.add %[[TEMP_10]], %[[TEMP_21]] : tensor<f32>
-// CHECK: %[[TEMP_23:.*]] = mhlo.sqrt %[[TEMP_22]] : tensor<f32>
-// CHECK: %[[TEMP_24:.*]] = mhlo.compare  EQ, %[[TEMP_23]], %[[TEMP_10]] : (tensor<f32>, tensor<f32>) -> tensor<i1>
-// CHECK: %[[TEMP_25:.*]] = mhlo.constant dense<0.000000e+00> : tensor<f32>
-// CHECK: %[[TEMP_26:.*]] = mhlo.compare  GT, %[[TEMP_21]], %[[TEMP_25]] : (tensor<f32>, tensor<f32>) -> tensor<i1>
-// CHECK: %[[TEMP_27:.*]] = mhlo.and %[[TEMP_24]], %[[TEMP_26]] : tensor<i1>
-// CHECK: %[[TEMP_28:.*]] = mhlo.multiply %[[TEMP_15]], %[[TEMP_21]] : tensor<f32>
-// CHECK: %[[TEMP_29:.*]] = mhlo.constant dense<2.000000e+00> : tensor<f32>
-// CHECK: %[[TEMP_30:.*]] = mhlo.divide %[[TEMP_28]], %[[TEMP_29]] : tensor<f32>
-// CHECK: %[[TEMP_31:.*]] = mhlo.add %[[TEMP_15]], %[[TEMP_30]] : tensor<f32>
-// CHECK: %[[TEMP_32:.*]] = mhlo.multiply %[[TEMP_15]], %[[TEMP_23]] : tensor<f32>
-// CHECK: %[[TEMP_33:.*]] = mhlo.select %[[TEMP_27]], %[[TEMP_31]], %[[TEMP_32]] : tensor<i1>, tensor<f32>
-// CHECK: %[[TEMP_34:.*]] = mhlo.select %[[TEMP_17]], %[[TEMP_19]], %[[TEMP_33]] : tensor<i1>, tensor<f32>
-// CHECK: %[[TEMP_35:.*]] = mhlo.subtract %[[TEMP_1]], %[[TEMP_10]] : tensor<f32>
-// CHECK: %[[TEMP_36:.*]] = mhlo.abs %[[TEMP_35]] : tensor<f32>
-// CHECK: %[[TEMP_37:.*]] = mhlo.maximum %[[TEMP_36]], %[[TEMP_3]] : tensor<f32>
-// CHECK: %[[TEMP_38:.*]] = mhlo.minimum %[[TEMP_36]], %[[TEMP_3]] : tensor<f32>
-// CHECK: %[[TEMP_39:.*]] = mhlo.compare  EQ, %[[TEMP_37]], %[[TEMP_38]] : (tensor<f32>, tensor<f32>) -> tensor<i1>
-// CHECK: %[[TEMP_40:.*]] = mhlo.multiply %[[TEMP_18]], %[[TEMP_37]] : tensor<f32>
-// CHECK: %[[TEMP_41:.*]] = mhlo.divide %[[TEMP_38]], %[[TEMP_37]] : tensor<f32>
-// CHECK: %[[TEMP_42:.*]] = mhlo.multiply %[[TEMP_41]], %[[TEMP_41]] : tensor<f32>
-// CHECK: %[[TEMP_43:.*]] = mhlo.add %[[TEMP_10]], %[[TEMP_42]] : tensor<f32>
-// CHECK: %[[TEMP_44:.*]] = mhlo.sqrt %[[TEMP_43]] : tensor<f32>
-// CHECK: %[[TEMP_45:.*]] = mhlo.compare  EQ, %[[TEMP_44]], %[[TEMP_10]] : (tensor<f32>, tensor<f32>) -> tensor<i1>
-// CHECK: %[[TEMP_46:.*]] = mhlo.compare  GT, %[[TEMP_42]], %[[TEMP_25]] : (tensor<f32>, tensor<f32>) -> tensor<i1>
-// CHECK: %[[TEMP_47:.*]] = mhlo.and %[[TEMP_45]], %[[TEMP_46]] : tensor<i1>
-// CHECK: %[[TEMP_48:.*]] = mhlo.multiply %[[TEMP_37]], %[[TEMP_42]] : tensor<f32>
-// CHECK: %[[TEMP_49:.*]] = mhlo.divide %[[TEMP_48]], %[[TEMP_29]] : tensor<f32>
-// CHECK: %[[TEMP_50:.*]] = mhlo.add %[[TEMP_37]], %[[TEMP_49]] : tensor<f32>
-// CHECK: %[[TEMP_51:.*]] = mhlo.multiply %[[TEMP_37]], %[[TEMP_44]] : tensor<f32>
-// CHECK: %[[TEMP_52:.*]] = mhlo.select %[[TEMP_47]], %[[TEMP_50]], %[[TEMP_51]] : tensor<i1>, tensor<f32>
-// CHECK: %[[TEMP_53:.*]] = mhlo.select %[[TEMP_39]], %[[TEMP_40]], %[[TEMP_52]] : tensor<i1>, tensor<f32>
-// CHECK: %[[TEMP_54:.*]] = mhlo.add %[[TEMP_34]], %[[TEMP_53]] : tensor<f32>
-// CHECK: %[[TEMP_55:.*]] = mhlo.multiply %[[TEMP_12]], %[[TEMP_54]] : tensor<f32>
-// CHECK: %[[TEMP_56:.*]] = mhlo.add %[[TEMP_55]], %[[TEMP_1]] : tensor<f32>
-// CHECK: %[[TEMP_57:.*]] = mhlo.multiply %[[TEMP_12]], %[[TEMP_56]] : tensor<f32>
-// CHECK: %[[TEMP_58:.*]] = mhlo.multiply %[[TEMP_3]], %[[TEMP_3]] : tensor<f32>
-// CHECK: %[[TEMP_59:.*]] = mhlo.add %[[TEMP_34]], %[[TEMP_13]] : tensor<f32>
-// CHECK: %[[TEMP_60:.*]] = mhlo.divide %[[TEMP_58]], %[[TEMP_59]] : tensor<f32>
-// CHECK: %[[TEMP_61:.*]] = mhlo.subtract %[[TEMP_53]], %[[TEMP_35]] : tensor<f32>
-// CHECK: %[[TEMP_62:.*]] = mhlo.add %[[TEMP_60]], %[[TEMP_61]] : tensor<f32>
-// CHECK: %[[TEMP_63:.*]] = mhlo.multiply %[[TEMP_57]], %[[TEMP_62]] : tensor<f32>
-// CHECK: %[[TEMP_64:.*]] = mhlo.sqrt %[[TEMP_63]] : tensor<f32>
-// CHECK: %[[TEMP_65:.*]] = mhlo.divide %[[TEMP_57]], %[[TEMP_59]] : tensor<f32>
-// CHECK: %[[TEMP_66:.*]] = mhlo.add %[[TEMP_53]], %[[TEMP_35]] : tensor<f32>
-// CHECK: %[[TEMP_67:.*]] = mhlo.divide %[[TEMP_57]], %[[TEMP_66]] : tensor<f32>
-// CHECK: %[[TEMP_68:.*]] = mhlo.add %[[TEMP_65]], %[[TEMP_67]] : tensor<f32>
-// CHECK: %[[TEMP_69:.*]] = mhlo.sqrt %[[TEMP_68]] : tensor<f32>
-// CHECK: %[[TEMP_70:.*]] = mhlo.multiply %[[TEMP_3]], %[[TEMP_69]] : tensor<f32>
-// CHECK: %[[TEMP_71:.*]] = mhlo.select %[[TEMP_11]], %[[TEMP_64]], %[[TEMP_70]] : tensor<i1>, tensor<f32>
-// CHECK: %[[TEMP_72:.*]] = mhlo.select %[[TEMP_9]], %[[TEMP_3]], %[[TEMP_71]] : tensor<i1>, tensor<f32>
-// CHECK: %[[TEMP_73:.*]] = mhlo.constant dense<9.99999995E+11> : tensor<f32>
-// CHECK: %[[TEMP_74:.*]] = mhlo.multiply %[[TEMP_8]], %[[TEMP_73]] : tensor<f32>
-// CHECK: %[[TEMP_75:.*]] = mhlo.compare  LT, %[[TEMP_1]], %[[TEMP_74]] : (tensor<f32>, tensor<f32>) -> tensor<i1>
-// CHECK: %[[TEMP_76:.*]] = mhlo.constant dense<9.99999997E-7> : tensor<f32>
-// CHECK: %[[TEMP_77:.*]] = mhlo.multiply %[[TEMP_8]], %[[TEMP_76]] : tensor<f32>
-// CHECK: %[[TEMP_78:.*]] = mhlo.constant dense<1.000000e+02> : tensor<f32>
-// CHECK: %[[TEMP_79:.*]] = mhlo.multiply %[[TEMP_8]], %[[TEMP_78]] : tensor<f32>
-// CHECK: %[[TEMP_80:.*]] = mhlo.select %[[TEMP_75]], %[[TEMP_77]], %[[TEMP_79]] : tensor<i1>, tensor<f32>
-// CHECK: %[[TEMP_81:.*]] = mhlo.compare  GE, %[[TEMP_3]], %[[TEMP_80]] : (tensor<f32>, tensor<f32>) -> tensor<i1>
-// CHECK: %[[TEMP_82:.*]] = mhlo.select %[[TEMP_81]], %[[TEMP_3]], %[[TEMP_1]] : tensor<i1>, tensor<f32>
-// CHECK: %[[TEMP_83:.*]] = mhlo.select %[[TEMP_81]], %[[TEMP_80]], %[[TEMP_8]] : tensor<i1>, tensor<f32>
-// CHECK: %[[TEMP_84:.*]] = mhlo.compare  GE, %[[TEMP_82]], %[[TEMP_83]] : (tensor<f32>, tensor<f32>) -> tensor<i1>
-// CHECK: %[[TEMP_85:.*]] = mhlo.log %[[TEMP_29]] : tensor<f32>
-// CHECK: %[[TEMP_86:.*]] = mhlo.log %[[TEMP_82]] : tensor<f32>
-// CHECK: %[[TEMP_87:.*]] = mhlo.add %[[TEMP_85]], %[[TEMP_86]] : tensor<f32>
-// CHECK: %[[TEMP_88:.*]] = mhlo.constant dense<0x7F800000> : tensor<f32>
-// CHECK: %[[TEMP_89:.*]] = mhlo.compare  EQ, %[[TEMP_3]], %[[TEMP_88]] : (tensor<f32>, tensor<f32>) -> tensor<i1>
-// CHECK: %[[TEMP_90:.*]] = mhlo.not %[[TEMP_89]] : tensor<i1>
-// CHECK: %[[TEMP_91:.*]] = mhlo.and %[[TEMP_81]], %[[TEMP_90]] : tensor<i1>
-// CHECK: %[[TEMP_92:.*]] = mhlo.divide %[[TEMP_1]], %[[TEMP_3]] : tensor<f32>
-// CHECK: %[[TEMP_93:.*]] = mhlo.select %[[TEMP_91]], %[[TEMP_92]], %[[TEMP_25]] : tensor<i1>, tensor<f32>
-// CHECK: %[[TEMP_94:.*]] = mhlo.multiply %[[TEMP_93]], %[[TEMP_93]] : tensor<f32>
-// CHECK: %[[TEMP_95:.*]] = mhlo.log_plus_one %[[TEMP_94]] : tensor<f32>
-// CHECK: %[[TEMP_96:.*]] = mhlo.multiply %[[TEMP_12]], %[[TEMP_95]] : tensor<f32>
-// CHECK: %[[TEMP_97:.*]] = mhlo.add %[[TEMP_87]], %[[TEMP_96]] : tensor<f32>
-// CHECK: %[[TEMP_98:.*]] = mhlo.constant dense<1.17549435E-38> : tensor<f32>
-// CHECK: %[[TEMP_99:.*]] = mhlo.sqrt %[[TEMP_98]] : tensor<f32>
-// CHECK: %[[TEMP_100:.*]] = mhlo.constant dense<4.000000e+00> : tensor<f32>
-// CHECK: %[[TEMP_101:.*]] = mhlo.multiply %[[TEMP_99]], %[[TEMP_100]] : tensor<f32>
-// CHECK: %[[TEMP_102:.*]] = mhlo.compare  LT, %[[TEMP_3]], %[[TEMP_101]] : (tensor<f32>, tensor<f32>) -> tensor<i1>
-// CHECK: %[[TEMP_103:.*]] = mhlo.compare  LT, %[[TEMP_1]], %[[TEMP_10]] : (tensor<f32>, tensor<f32>) -> tensor<i1>
-// CHECK: %[[TEMP_104:.*]] = mhlo.and %[[TEMP_102]], %[[TEMP_103]] : tensor<i1>
-// CHECK: %[[TEMP_105:.*]] = mhlo.multiply %[[TEMP_13]], %[[TEMP_35]] : tensor<f32>
-// CHECK: %[[TEMP_106:.*]] = mhlo.add %[[TEMP_55]], %[[TEMP_10]] : tensor<f32>
-// CHECK: %[[TEMP_107:.*]] = mhlo.divide %[[TEMP_105]], %[[TEMP_106]] : tensor<f32>
-// CHECK: %[[TEMP_108:.*]] = mhlo.negate %[[TEMP_107]] : tensor<f32>
-// CHECK: %[[TEMP_109:.*]] = mhlo.compare  GE, %[[TEMP_1]], %[[TEMP_10]] : (tensor<f32>, tensor<f32>) -> tensor<i1>
-// CHECK: %[[TEMP_110:.*]] = mhlo.multiply %[[TEMP_12]], %[[TEMP_58]] : tensor<f32>
-// CHECK: %[[TEMP_111:.*]] = mhlo.divide %[[TEMP_110]], %[[TEMP_59]] : tensor<f32>
-// CHECK: %[[TEMP_112:.*]] = mhlo.multiply %[[TEMP_12]], %[[TEMP_66]] : tensor<f32>
-// CHECK: %[[TEMP_113:.*]] = mhlo.add %[[TEMP_111]], %[[TEMP_112]] : tensor<f32>
-// CHECK: %[[TEMP_114:.*]] = mhlo.constant dense<1.500000e+00> : tensor<f32>
-// CHECK: %[[TEMP_115:.*]] = mhlo.compare  LE, %[[TEMP_55]], %[[TEMP_114]] : (tensor<f32>, tensor<f32>) -> tensor<i1>
-// CHECK: %[[TEMP_116:.*]] = mhlo.divide %[[TEMP_110]], %[[TEMP_61]] : tensor<f32>
-// CHECK: %[[TEMP_117:.*]] = mhlo.add %[[TEMP_111]], %[[TEMP_116]] : tensor<f32>
-// CHECK: %[[TEMP_118:.*]] = mhlo.subtract %[[TEMP_55]], %[[TEMP_10]] : tensor<f32>
-// CHECK: %[[TEMP_119:.*]] = mhlo.select %[[TEMP_115]], %[[TEMP_117]], %[[TEMP_118]] : tensor<i1>, tensor<f32>
-// CHECK: %[[TEMP_120:.*]] = mhlo.select %[[TEMP_109]], %[[TEMP_113]], %[[TEMP_119]] : tensor<i1>, tensor<f32>
-// CHECK: %[[TEMP_121:.*]] = mhlo.select %[[TEMP_104]], %[[TEMP_108]], %[[TEMP_120]] : tensor<i1>, tensor<f32>
-// CHECK: %[[TEMP_122:.*]] = mhlo.multiply %[[TEMP_121]], %[[TEMP_106]] : tensor<f32>
-// CHECK: %[[TEMP_123:.*]] = mhlo.sqrt %[[TEMP_122]] : tensor<f32>
-// CHECK: %[[TEMP_124:.*]] = mhlo.divide %[[TEMP_3]], %[[TEMP_123]] : tensor<f32>
-// CHECK: %[[TEMP_125:.*]] = mhlo.add %[[TEMP_121]], %[[TEMP_123]] : tensor<f32>
-// CHECK: %[[TEMP_126:.*]] = mhlo.log_plus_one %[[TEMP_125]] : tensor<f32>
-// CHECK: %[[TEMP_127:.*]] = mhlo.select %[[TEMP_104]], %[[TEMP_124]], %[[TEMP_126]] : tensor<i1>, tensor<f32>
-// CHECK: %[[TEMP_128:.*]] = mhlo.select %[[TEMP_84]], %[[TEMP_97]], %[[TEMP_127]] : tensor<i1>, tensor<f32>
-// CHECK: %[[TEMP_129:.*]] = mhlo.complex %[[TEMP_72]], %[[TEMP_128]] : tensor<complex<f32>>
-// CHECK: %[[TEMP_130:.*]] = mhlo.imag %[[TEMP_129]] : (tensor<complex<f32>>) -> tensor<f32>
-// CHECK: %[[TEMP_131:.*]] = mhlo.imag %[[TEMP_arg0:.*]] : (tensor<complex<f32>>) -> tensor<f32>
-// CHECK: %[[TEMP_132:.*]] = mhlo.constant dense<0.000000e+00> : tensor<f32>
-// CHECK: %[[TEMP_133:.*]] = mhlo.compare  LT, %[[TEMP_131]], %[[TEMP_132]] : (tensor<f32>, tensor<f32>) -> tensor<i1>
-// CHECK: %[[TEMP_134:.*]] = mhlo.real %[[TEMP_129]] : (tensor<complex<f32>>) -> tensor<f32>
-// CHECK: %[[TEMP_135:.*]] = mhlo.real %[[TEMP_arg0:.*]] : (tensor<complex<f32>>) -> tensor<f32>
-// CHECK: %[[TEMP_136:.*]] = mhlo.atan2 %[[TEMP_134]], %[[TEMP_135]] : tensor<f32>
-// CHECK: %[[TEMP_137:.*]] = mhlo.negate %[[TEMP_136]] : tensor<f32>
-// CHECK: %[[TEMP_138:.*]] = mhlo.select %[[TEMP_133]], %[[TEMP_137]], %[[TEMP_136]] : tensor<i1>, tensor<f32>
-// CHECK: %[[TEMP_139:.*]] = mhlo.complex %[[TEMP_130]], %[[TEMP_138]] : tensor<complex<f32>>
-// CHECK: return %[[TEMP_139]] : tensor<complex<f32>>
-func.func @acosh_complex_f32(%arg : tensor<complex<f32>>) -> tensor<complex<f32>> {
-  %result = "chlo.acosh"(%arg) : (tensor<complex<f32>>) -> tensor<complex<f32>>
-  func.return %result : tensor<complex<f32>>
-}
-
-// -----
-
-// CHECK-LABEL: @erfc_f64
+// CHECK-LABEL: func.func @erfc_f64
+// CHECK-HIGH-LEVEL-LABEL: func.func @erfc_f64
 // CHECK-SAME: %[[ARG:.*]]: tensor<f64>
 func.func @erfc_f64(%arg : tensor<f64>) -> tensor<f64> {
   // CHECK-NEXT: %[[TMP_0:.*]] = mhlo.multiply %[[ARG]], %[[ARG]]
@@ -2604,7 +2489,8 @@ func.func @polygamma_f16(%lhs : tensor<f16>, %rhs : tensor<f16>) -> tensor<f16> 
 // -----
 
 
-// CHECK-LABEL: @sinh_f32
+// CHECK-LABEL: func.func @sinh_f32
+// CHECK-HIGH-LEVEL-LABEL: func.func @sinh_f32
 // CHECK-SAME: (%[[X:.*]]: tensor<f32>)
 func.func @sinh_f32(%x : tensor<f32>) -> tensor<f32> {
   // CHECK: %[[HALF:.*]] = mhlo.constant dense<5.000000e-01> : tensor<f32>
@@ -2628,10 +2514,12 @@ func.func @sinh_f32(%x : tensor<f32>) -> tensor<f32> {
   %1 = chlo.sinh %x : tensor<f32> -> tensor<f32>
   func.return %1 : tensor<f32>
 }
+// CHECK-HIGH-LEVEL: mhlo.sinh
 
 // -----
 
-// CHECK-LABEL: @sinh_f16
+// CHECK-LABEL: func.func @sinh_f16
+// CHECK-HIGH-LEVEL-LABEL: func.func @sinh_f16
 // CHECK-SAME: (%[[ARG0:.*]]: tensor<f16>)
 func.func @sinh_f16(%x : tensor<f16>) -> tensor<f16> {
   // CHECK: mhlo.convert %[[ARG0]] : (tensor<f16>) -> tensor<f32>
@@ -2640,10 +2528,12 @@ func.func @sinh_f16(%x : tensor<f16>) -> tensor<f16> {
   %1 = chlo.sinh %x : tensor<f16> -> tensor<f16>
   func.return %1 : tensor<f16>
 }
+// CHECK-HIGH-LEVEL: mhlo.sinh
 
 // -----
 
-// CHECK-LABEL: @sinh_complex
+// CHECK-LABEL: func.func @sinh_complex
+// CHECK-HIGH-LEVEL-LABEL: func.func @sinh_complex
 // CHECK-SAME: (%[[X:.*]]: tensor<2xcomplex<f32>>)
 func.func @sinh_complex(%x : tensor<2xcomplex<f32>>) -> tensor<2xcomplex<f32>> {
   // CHECK: %[[HALF:.*]] = mhlo.constant dense<(5.000000e-01,0.000000e+00)> : tensor<2xcomplex<f32>>
@@ -2657,12 +2547,15 @@ func.func @sinh_complex(%x : tensor<2xcomplex<f32>>) -> tensor<2xcomplex<f32>> {
   %1 = chlo.sinh %x : tensor<2xcomplex<f32>> -> tensor<2xcomplex<f32>>
   func.return %1 : tensor<2xcomplex<f32>>
 }
+// CHECK-HIGH-LEVEL-NOT: mhlo.sinh
 
 // -----
 
-// CHECK-LABEL: @cosh_f32
+// CHECK-LABEL: func.func @cosh_f32
+// CHECK-HIGH-LEVEL-LABEL: func.func @cosh_f32
 // CHECK-SAME: (%[[X:.*]]: tensor<f32>)
 func.func @cosh_f32(%x : tensor<f32>) -> tensor<f32> {
+  // CHECK-HIGH-LEVEL: mhlo.cosh
   // CHECK: %[[HALF:.*]] = mhlo.constant dense<5.000000e-01> : tensor<f32>
   // CHECK: %[[LOG_HALF:.*]] = mhlo.log %[[HALF]] : tensor<f32>
   // CHECK: %[[X_PLUS_LOG_HALF:.*]] = mhlo.add %[[X]], %[[LOG_HALF]] : tensor<f32>
@@ -2677,7 +2570,8 @@ func.func @cosh_f32(%x : tensor<f32>) -> tensor<f32> {
 
 // -----
 
-// CHECK-LABEL: @cosh_f16
+// CHECK-LABEL: func.func @cosh_f16
+// CHECK-HIGH-LEVEL-LABEL: func.func @cosh_f16
 // CHECK-SAME: (%[[ARG0:.*]]: tensor<f16>)
 func.func @cosh_f16(%x : tensor<f16>) -> tensor<f16> {
   // CHECK: mhlo.convert %[[ARG0]] : (tensor<f16>) -> tensor<f32>
@@ -2706,7 +2600,8 @@ func.func @cosh_complex_f32(%x : tensor<complex<f32>>) -> tensor<complex<f32>> {
 
 // -----
 
-// CHECK-LABEL: @atanh_f32
+// CHECK-LABEL: func.func @atanh_f32
+// CHECK-HIGH-LEVEL-LABEL: func.func @atanh_f32
 // CHECK-SAME: %[[ARG:.*]]: tensor<f32>
 func.func @atanh_f32(%arg : tensor<f32>) -> tensor<f32> {
   // CHECK-NEXT: %[[TMP_0:.*]] = mhlo.abs %[[ARG]]
@@ -2724,10 +2619,12 @@ func.func @atanh_f32(%arg : tensor<f32>) -> tensor<f32> {
   %result = "chlo.atanh"(%arg) : (tensor<f32>) -> tensor<f32>
   func.return %result : tensor<f32>
 }
+// CHECK-HIGH-LEVEL: mhlo.atanh
 
 // -----
 
-// CHECK-LABEL: @atanh_complex_f32
+// CHECK-LABEL: func.func @atanh_complex_f32
+// CHECK-HIGH-LEVEL-LABEL: func.func @atanh_complex_f32
 // CHECK-SAME: %[[ARG:.*]]: tensor<complex<f32>>
 func.func @atanh_complex_f32(%arg : tensor<complex<f32>>) -> tensor<complex<f32>> {
   // CHECK-NEXT: %[[REAL:.*]] = mhlo.real %[[ARG]]
@@ -2802,10 +2699,12 @@ func.func @atanh_complex_f32(%arg : tensor<complex<f32>>) -> tensor<complex<f32>
   %result = "chlo.atanh"(%arg) : (tensor<complex<f32>>) -> tensor<complex<f32>>
   func.return %result : tensor<complex<f32>>
 }
+// CHECK-HIGH-LEVEL-NOT: mhlo.atanh
 
 // -----
 
-// CHECK-LABEL: @next_after_f32
+// CHECK-LABEL: func.func @next_after_f32
+// CHECK-HIGH-LEVEL-LABEL: func.func @next_after_f32
 // CHECK-SAME: (%[[ARG0:.*]]: tensor<2xf32>, %[[ARG1:.*]]: tensor<2xf32>)
 func.func @next_after_f32(%x: tensor<2xf32>, %y: tensor<2xf32>) -> tensor<2xf32> {
   // CHECK: %[[X_AS_INT:.*]] = mhlo.bitcast_convert %[[ARG0]] : (tensor<2xf32>) -> tensor<2xi32>
@@ -2845,7 +2744,8 @@ func.func @next_after_f32(%x: tensor<2xf32>, %y: tensor<2xf32>) -> tensor<2xf32>
 
 // -----
 
-// CHECK-LABEL: @top_k
+// CHECK-LABEL: func.func @top_k
+// CHECK-HIGH-LEVEL-LABEL: func.func @top_k
 // CHECK-SAME: (%[[ARG:.*]]: tensor<16x16xf32>)
 func.func @top_k(%arg : tensor<16x16xf32>) -> (tensor<16x8xf32>, tensor<16x8xi32>) {
   // CHECK-HIGH-LEVEL: mhlo.topk
@@ -2856,7 +2756,8 @@ func.func @top_k(%arg : tensor<16x16xf32>) -> (tensor<16x8xf32>, tensor<16x8xi32
 
 // -----
 
-// CHECK-LABEL: @dyn_top_k
+// CHECK-LABEL: func.func @dyn_top_k
+// CHECK-HIGH-LEVEL-LABEL: func.func @dyn_top_k
 // CHECK-SAME: ([[ARG:%.*]]: tensor<?x5x?xi1>
 // CHECK-SAME: -> (tensor<?x5x2xi1>, tensor<?x5x2xi32>)
 func.func @dyn_top_k(%arg0: tensor<?x5x?xi1>) -> (tensor<?x5x2xi1>, tensor<?x5x2xi32>) {
@@ -2867,7 +2768,6 @@ func.func @dyn_top_k(%arg0: tensor<?x5x?xi1>) -> (tensor<?x5x2xi1>, tensor<?x5x2
 }
 
 // -----
-
 func.func @unranked_top_k(%arg : tensor<*xf32>) -> (tensor<*xf32>, tensor<*xi32>) {
   // expected-error@+1 {{failed to legalize operation 'chlo.top_k' that was explicitly marked illegal}}
   %1:2 = chlo.top_k(%arg, k=8) : tensor<*xf32> -> (tensor<*xf32>, tensor<*xi32>)
@@ -3644,7 +3544,8 @@ func.func @erf_inv_wide(%arg0 : tensor<16x16xf64>) {
 }
 
 // -----
-
+// CHECK-LABEL: func.func @ragged_dot_non_contracting
+// CHECK-HIGH-LEVEL-LABEL: func.func @ragged_dot_non_contracting
 func.func @ragged_dot_non_contracting(%lhs : tensor<2x11x5xf32>, %rhs : tensor<3x2x5x7xf32>, %group_sizes : tensor<3xi64>) -> tensor<2x11x7xf32> {
   // CHECK-HIGH-LEVEL: mhlo.ragged_dot
   %0 = "chlo.ragged_dot"(%lhs, %rhs, %group_sizes) {
@@ -3662,7 +3563,8 @@ func.func @ragged_dot_non_contracting(%lhs : tensor<2x11x5xf32>, %rhs : tensor<3
 }
 
 // -----
-
+// CHECK-LABEL: func.func @ragged_dot_contracting
+// CHECK-HIGH-LEVEL-LABEL: func.func @ragged_dot_contracting
 func.func @ragged_dot_contracting(%lhs : tensor<2x11x5xf32>, %rhs : tensor<2x5x7xf32>, %group_sizes : tensor<2x3xi64>) -> tensor<3x2x11x7xf32> {
   // CHECK-HIGH-LEVEL: mhlo.ragged_dot
   %0 = "chlo.ragged_dot"(%lhs, %rhs, %group_sizes) {
@@ -3680,7 +3582,8 @@ func.func @ragged_dot_contracting(%lhs : tensor<2x11x5xf32>, %rhs : tensor<2x5x7
 }
 
 // -----
-
+// CHECK-LABEL: func.func @ragged_dot_batch
+// CHECK-HIGH-LEVEL-LABEL: func.func @ragged_dot_batch
 func.func @ragged_dot_batch(%lhs : tensor<19x17x11x5xf32>, %rhs : tensor<19x17x5x7xf32>, %group_sizes : tensor<19x3xi64>) -> tensor<19x17x11x7xf32> {
   // CHECK-HIGH-LEVEL: mhlo.ragged_dot
   %0 = "chlo.ragged_dot"(%lhs, %rhs, %group_sizes) {
@@ -3698,7 +3601,8 @@ func.func @ragged_dot_batch(%lhs : tensor<19x17x11x5xf32>, %rhs : tensor<19x17x5
 }
 
 // -----
-
+// CHECK-LABEL: func.func @ragged_dot_frontend_attributes
+// CHECK-HIGH-LEVEL-LABEL: func.func @ragged_dot_frontend_attributes
 func.func @ragged_dot_frontend_attributes(%lhs : tensor<2x11x5xf32>, %rhs : tensor<3x2x5x7xf32>, %group_sizes : tensor<3xi64>) -> tensor<2x11x7xf32> {
   // CHECK-HIGH-LEVEL: mhlo.ragged_dot
   // CHECK-HIGH-LEVEL: mhlo.frontend_attributes = {foo = "bar"}

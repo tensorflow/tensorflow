@@ -92,7 +92,7 @@ absl::Status PlatformManagerImpl::RegisterPlatform(
     std::unique_ptr<Platform> platform) {
   CHECK(platform != nullptr);
   std::string key = absl::AsciiStrToLower(platform->Name());
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
   if (name_map_.find(key) != name_map_.end()) {
     return absl::InternalError("platform is already registered with name: \"" +
                                platform->Name() + "\"");
@@ -120,7 +120,7 @@ absl::StatusOr<Platform*> PlatformManagerImpl::PlatformWithId(
 
 absl::StatusOr<Platform*> PlatformManagerImpl::PlatformWithName(
     absl::string_view target, bool initialize_platform) {
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
 
   TF_ASSIGN_OR_RETURN(Platform * platform, LookupByNameLocked(target));
   if (initialize_platform && !platform->Initialized()) {
@@ -132,7 +132,7 @@ absl::StatusOr<Platform*> PlatformManagerImpl::PlatformWithName(
 
 absl::StatusOr<Platform*> PlatformManagerImpl::PlatformWithId(
     const Platform::Id& id, bool initialize_platform) {
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
 
   TF_ASSIGN_OR_RETURN(Platform * platform, LookupByIdLocked(id));
   if (initialize_platform && !platform->Initialized()) {
@@ -144,7 +144,7 @@ absl::StatusOr<Platform*> PlatformManagerImpl::PlatformWithId(
 
 absl::StatusOr<Platform*> PlatformManagerImpl::InitializePlatformWithId(
     const Platform::Id& id) {
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
 
   TF_ASSIGN_OR_RETURN(Platform * platform, LookupByIdLocked(id));
   if (platform->Initialized()) {
@@ -160,7 +160,7 @@ absl::StatusOr<Platform*> PlatformManagerImpl::InitializePlatformWithId(
 absl::StatusOr<std::vector<Platform*>> PlatformManagerImpl::PlatformsWithFilter(
     const std::function<bool(const Platform*)>& filter,
     bool initialize_platform) {
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
   CHECK_EQ(id_map_.size(), name_map_.size());
   std::vector<Platform*> platforms;
   platforms.reserve(id_map_.size());

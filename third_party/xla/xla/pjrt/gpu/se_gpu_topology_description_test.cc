@@ -16,14 +16,27 @@ limitations under the License.
 #include "xla/pjrt/gpu/se_gpu_topology_description.h"
 
 #include <memory>
+<<<<<<< HEAD
+=======
+#include <utility>
+>>>>>>> upstream/master
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "xla/pjrt/gpu/gpu_topology.h"
+<<<<<<< HEAD
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_device_description.h"
 #include "xla/pjrt/pjrt_stream_executor_device_description.h"
+=======
+#include "xla/pjrt/pjrt_common.h"
+#include "xla/pjrt/pjrt_compiler.h"
+#include "xla/pjrt/pjrt_device_description.h"
+#include "xla/pjrt/pjrt_device_dimensions.h"
+#include "xla/pjrt/pjrt_stream_executor_device_description.h"
+#include "xla/tsl/platform/statusor.h"
+>>>>>>> upstream/master
 
 namespace xla {
 namespace {
@@ -99,5 +112,84 @@ TEST(StreamExecutorGpuTopologyDescriptionTest, AsymmetricTopology) {
   EXPECT_EQ(device_descs.size(), 0);
 }
 
+<<<<<<< HEAD
+=======
+TEST(PjRtTopologyUtilsGPUTest, GetDeviceCoords) {
+  std::shared_ptr<xla::GpuTopology> gpu_topology =
+      std::make_shared<xla::GpuTopology>(
+          /*platform_version=*/"12.3", /*num_partitions=*/1,
+          /*num_hosts_per_partition=*/1, /*num_devices_per_host=*/4);
+  StreamExecutorGpuTopologyDescription topology_desc(
+      xla::CudaId(), xla::CudaName(), gpu_topology);
+
+  TF_ASSERT_OK_AND_ASSIGN(auto device_core,
+                          topology_desc.LogicalDeviceOfDefaultTypeForId(
+                              xla::PjRtGlobalDeviceId(1)));
+  auto [device_coords, core_id] = std::move(device_core);
+  ASSERT_EQ(device_coords, (PjRtDeviceDimensions{0, 0, 1}));
+  ASSERT_EQ(core_id, 0);
+}
+
+TEST(PjRtTopologyUtilsGPUTest, GetDeviceCoordsSingleHostScopedPartition) {
+  std::shared_ptr<xla::GpuTopology> gpu_topology =
+      std::make_shared<xla::GpuTopology>(
+          /*platform_version=*/"12.3", /*num_partitions=*/4,
+          /*num_hosts_per_partition=*/1, /*num_devices_per_host=*/4);
+  StreamExecutorGpuTopologyDescription topology_desc(
+      xla::CudaId(), xla::CudaName(), gpu_topology);
+
+  TF_ASSERT_OK_AND_ASSIGN(auto device_core1,
+                          topology_desc.LogicalDeviceOfDefaultTypeForId(
+                              xla::PjRtGlobalDeviceId(1)));
+  auto [device_coords1, core_id1] = std::move(device_core1);
+  ASSERT_EQ(device_coords1, (PjRtDeviceDimensions{0, 0, 1}));
+  ASSERT_EQ(core_id1, 0);
+
+  TF_ASSERT_OK_AND_ASSIGN(auto device_core2,
+                          topology_desc.LogicalDeviceOfDefaultTypeForId(
+                              xla::PjRtGlobalDeviceId(6)));
+  auto [device_coords2, core_id2] = std::move(device_core2);
+  ASSERT_EQ(device_coords2, (PjRtDeviceDimensions{1, 0, 2}));
+  ASSERT_EQ(core_id2, 0);
+
+  TF_ASSERT_OK_AND_ASSIGN(auto device_core3,
+                          topology_desc.LogicalDeviceOfDefaultTypeForId(
+                              xla::PjRtGlobalDeviceId(10)));
+  auto [device_coords3, core_id3] = std::move(device_core3);
+  ASSERT_EQ(device_coords3, (PjRtDeviceDimensions{2, 0, 2}));
+  ASSERT_EQ(core_id3, 0);
+}
+
+TEST(PjRtTopologyUtilsGPUTest, GetDeviceCoordsMultipleHostScopedPartition) {
+  std::shared_ptr<xla::GpuTopology> gpu_topology =
+      std::make_shared<xla::GpuTopology>(
+          /*platform_version=*/"12.3", /*num_partitions=*/1,
+          /*num_hosts_per_partition=*/4, /*num_devices_per_host=*/4);
+  StreamExecutorGpuTopologyDescription topology_desc(
+      xla::CudaId(), xla::CudaName(), gpu_topology);
+
+  TF_ASSERT_OK_AND_ASSIGN(auto device_core1,
+                          topology_desc.LogicalDeviceOfDefaultTypeForId(
+                              xla::PjRtGlobalDeviceId(1)));
+  auto [device_coords1, core_id1] = std::move(device_core1);
+  ASSERT_EQ(device_coords1, (PjRtDeviceDimensions{0, 0, 1}));
+  ASSERT_EQ(core_id1, 0);
+
+  TF_ASSERT_OK_AND_ASSIGN(auto device_core2,
+                          topology_desc.LogicalDeviceOfDefaultTypeForId(
+                              xla::PjRtGlobalDeviceId(6)));
+  auto [device_coords2, core_id2] = std::move(device_core2);
+  ASSERT_EQ(device_coords2, (PjRtDeviceDimensions{0, 1, 2}));
+  ASSERT_EQ(core_id2, 0);
+
+  TF_ASSERT_OK_AND_ASSIGN(auto device_core3,
+                          topology_desc.LogicalDeviceOfDefaultTypeForId(
+                              xla::PjRtGlobalDeviceId(10)));
+  auto [device_coords3, core_id3] = std::move(device_core3);
+  ASSERT_EQ(device_coords3, (PjRtDeviceDimensions{0, 2, 2}));
+  ASSERT_EQ(core_id3, 0);
+}
+
+>>>>>>> upstream/master
 }  // namespace
 }  // namespace xla

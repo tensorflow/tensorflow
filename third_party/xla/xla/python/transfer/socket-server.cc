@@ -26,6 +26,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
@@ -46,24 +47,23 @@ limitations under the License.
 
 namespace aux {
 
-class SocketServer::SocketNetworkState : public PollEventLoop::Handler {
+class SocketServer::SocketNetworkState : public SocketFdPacketState {
  public:
   explicit SocketNetworkState(std::shared_ptr<PullTable> table,
                               std::shared_ptr<BulkTransportFactory> factory,
                               int fd)
-      : table_(std::move(table)), factory_(std::move(factory)), fd_(fd) {
-    is_connected_ = true;
+      : table_(std::move(table)), factory_(std::move(factory)) {
+    RegisterFd(fd, /*start_connected=*/true);
   }
   explicit SocketNetworkState(std::shared_ptr<PullTable> table,
                               std::shared_ptr<BulkTransportFactory> factory,
                               const SocketAddress& addr)
       : table_(std::move(table)),
         factory_(std::move(factory)),
-        fd_(-1),
         remote_addr_(addr) {
-    StartConnect();
   }
-  ~SocketNetworkState() override { close(fd_); }
+
+  ~SocketNetworkState() override = default;
 
   void StartConnect() {
     int send_fd = socket(remote_addr_.address().sa_family,
@@ -77,17 +77,15 @@ class SocketServer::SocketNetworkState : public PollEventLoop::Handler {
     CHECK_GE(
         setsockopt(send_fd, IPPROTO_TCP, TCP_NODELAY, &value, sizeof(value)), 0)
         << strerror(errno) << " " << errno;
-    fd_ = send_fd;
+    RegisterFd(send_fd, /*start_connected=*/false);
   }
 
-  void PopulatePollInfo(pollfd& events) override {
-    events.fd = fd_;
-    events.events = POLLIN;
-    if (!can_send_) {
-      events.events = POLLOUT;
-    }
+  void ConnectFailed() override {
+    loop()->ScheduleAt(absl::Now() + absl::Seconds(2),
+                       [this]() { StartConnect(); });
   }
 
+<<<<<<< HEAD
   bool HandleEvents(const pollfd& events) override {
     tsl::profiler::TraceMe __trace("SocketServer::HandleEvents");
     if (!is_connected_) {
@@ -198,30 +196,42 @@ class SocketServer::SocketNetworkState : public PollEventLoop::Handler {
     }
     mu_.Unlock();
     return true;
+=======
+  void RecvClosed(absl::Status error) override {
+    Shutdown(SHUT_RDWR);
+    if (error.ok()) {
+      error =
+          absl::InternalError("SocketServer: Connection closed recv() == 0.");
+    }
+    Poison(error);
+    DropSysRef();
+>>>>>>> upstream/master
   }
 
-  bool can_send_ = false;
-  bool is_connected_ = false;
-  size_t write_offset_ = 0;
-  std::deque<std::string> frames_;
+  void SendClosed(absl::Status error) override {
+    Shutdown(SHUT_RDWR);
+    {
+      absl::MutexLock l(mu_);
+      is_poisoned_ = true;
+      poison_status_ =
+          absl::InternalError("SocketServer: Connection closed recv() == 0.");
+    }
+    DropSysRef();
+  }
 
-  void SendFrame(const SocketTransferRequest& req) {
+  bool SendFrame(const SocketTransferRequest& req) {
     uint32_t header = req.ByteSizeLong();
     std::string opacket = std::string(absl::string_view(
         reinterpret_cast<const char*>(&header), sizeof(header)));
     req.AppendToString(&opacket);
-    {
-      absl::MutexLock l(&mu_);
-      frames_.push_back(std::move(opacket));
-    }
-    loop()->SendWake(this);
+    return SendRawFrame(std::move(opacket));
   }
 
   tsl::RCReference<ChunkDestination> GetNextDest(size_t req_id, size_t offset,
                                                  size_t size, bool is_largest) {
     tsl::RCReference<ChunkDestination> dest;
     {
-      absl::MutexLock l(&mu_);
+      absl::MutexLock l(mu_);
       auto it = dests_.find(req_id);
       CHECK(it != dests_.end());
       if (is_largest) {
@@ -232,6 +242,7 @@ class SocketServer::SocketNetworkState : public PollEventLoop::Handler {
       if (it->second.transferred_size == 0) {
         dest = std::move(it->second.dest);
         dests_.erase(it);
+        CheckSendNoMorePulls();
       } else {
         dest = it->second.dest;
       }
@@ -240,29 +251,29 @@ class SocketServer::SocketNetworkState : public PollEventLoop::Handler {
   }
 
   std::optional<size_t> InstallPull(tsl::RCReference<ChunkDestination> dest) {
-    mu_.Lock();
+    mu_.lock();
     if (is_poisoned_) {
       auto poison_status = poison_status_;
       dest->Poison(std::move(poison_status));
-      mu_.Unlock();
+      mu_.unlock();
       return std::nullopt;
     }
     dests_[next_req_id_].dest = std::move(dest);
     size_t req_id = next_req_id_;
     ++next_req_id_;
-    mu_.Unlock();
+    mu_.unlock();
     return req_id;
   }
 
   std::optional<size_t> InstallPullList(
       std::vector<tsl::RCReference<ChunkDestination>> dests) {
-    mu_.Lock();
+    mu_.lock();
     if (is_poisoned_) {
       auto poison_status = poison_status_;
       for (auto& dest : dests) {
         dest->Poison(poison_status);
       }
-      mu_.Unlock();
+      mu_.unlock();
       return std::nullopt;
     }
     size_t req_id = next_req_id_;
@@ -270,7 +281,7 @@ class SocketServer::SocketNetworkState : public PollEventLoop::Handler {
       dests_[next_req_id_].dest = std::move(dest);
       ++next_req_id_;
     }
-    mu_.Unlock();
+    mu_.unlock();
     return req_id;
   }
 
@@ -284,6 +295,15 @@ class SocketServer::SocketNetworkState : public PollEventLoop::Handler {
   }
 
   BulkTransportInterface* bulk_transport() { return bulk_transport_.get(); }
+
+  void HandlePacket(absl::string_view buffer) override {
+    SocketTransferRequest req;
+    if (!req.ParseFromArray(buffer.data(), buffer.size())) {
+      Poison(absl::InternalError("Could not parse SocketTransferRequest."));
+      return;
+    }
+    HandlePacket(req);
+  }
 
   void HandlePacket(const SocketTransferPullRequest& req) {
     class SocketConnectionState : public ConnectionState {
@@ -299,10 +319,14 @@ class SocketServer::SocketNetworkState : public PollEventLoop::Handler {
         msg.data = const_cast<void*>(data);
         msg.size = size;
         msg.on_send = [val = tsl::FormRef(this), offset, req_id, is_largest](
-                          int bond_id, size_t size) {
+                          absl::StatusOr<int> bond_id, size_t size) {
+          if (!bond_id.ok()) {
+            val->SendError(req_id, offset, size, is_largest, bond_id.status());
+            return;
+          }
           SocketTransferRequest response;
           auto* packet = response.mutable_packet();
-          packet->set_bulk_transport_id(bond_id);
+          packet->set_bulk_transport_id(*bond_id);
           packet->set_offset(offset);
           packet->set_size(size);
           packet->set_req_id(req_id);
@@ -335,7 +359,7 @@ class SocketServer::SocketNetworkState : public PollEventLoop::Handler {
       SocketNetworkState* state_;
     };
     {
-      absl::MutexLock l(&mu_);
+      absl::MutexLock l(mu_);
       ++num_refs_;
     }
     table_->Handle(tsl::MakeRef<SocketConnectionState>(this), req,
@@ -386,41 +410,74 @@ class SocketServer::SocketNetworkState : public PollEventLoop::Handler {
         packet.size(), packet.bulk_transport_id(),
         [offset = packet.offset(), dest = std::move(dest)](
             absl::StatusOr<BulkTransportInterface::Message> msgor) {
-          auto msg = std::move(msgor).value();
-          CHECK_OK(
-              dest->Put(msg.data, offset, msg.size, std::move(msg.on_done)));
+          if (!msgor.ok()) {
+            dest->Poison(msgor.status());
+          } else {
+            auto msg = std::move(msgor).value();
+            CHECK_OK(
+                dest->Put(msg.data, offset, msg.size, std::move(msg.on_done)));
+          }
         });
   }
 
-  void DropRef() {
-    {
-      absl::MutexLock l(&mu_);
-      CHECK_NE(num_refs_, 0);
-      --num_refs_;
-      ShutdownIfNeeded();
+  std::unique_ptr<SocketNetworkState> DropRef() {
+    absl::MutexLock l(mu_);
+    CHECK_NE(num_refs_, 0);
+    --num_refs_;
+    ShutdownIfNeeded();
+    return ReturnCheckIfRefsAreZero();
+  }
+
+  std::unique_ptr<SocketNetworkState> DropSysRef() {
+    absl::MutexLock l(mu_);
+    CHECK_NE(num_sys_refs_, 0);
+    --num_sys_refs_;
+    ShutdownIfNeeded();
+    return ReturnCheckIfRefsAreZero();
+  }
+
+  std::unique_ptr<SocketNetworkState> ReturnCheckIfRefsAreZero()
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+    if (num_refs_ == 0 && num_sys_refs_ == 0) {
+      // destroy outside of mutex scope.
+      return std::unique_ptr<SocketNetworkState>(this);
+    }
+    return {};
+  }
+
+  void CheckSendNoMorePulls() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+    if (dests_.empty() && no_more_pulls_) {
+      SocketTransferRequest msg;
+      msg.mutable_half_close();
+      SendFrame(msg);
     }
   }
 
-  void NoMorePulls() {
-    SocketTransferRequest msg;
-    msg.mutable_half_close();
-    SendFrame(msg);
-    DropRef();
+  void IncRef() {
+    absl::MutexLock l(mu_);
+    ++num_refs_;
+  }
+
+  std::unique_ptr<SocketNetworkState> NoMorePulls() {
+    absl::MutexLock l(mu_);
+    no_more_pulls_ = true;
+    CheckSendNoMorePulls();
+    CHECK_NE(num_refs_, 0);
+    --num_refs_;
+    return ReturnCheckIfRefsAreZero();
   }
 
   void HandlePacket(const SocketTransferHalfClose& half_close) {
-    mu_.Lock();
-    CHECK(!peer_is_closed_);
-    peer_is_closed_ = true;
+    mu_.lock();
+    peer_half_closed_ = true;
     ShutdownIfNeeded();
-    mu_.Unlock();
+    mu_.unlock();
   }
 
-  void ShutdownIfNeeded() {
-    if (!peer_is_closed_ || num_refs_ != 0) {
-      return;
+  void ShutdownIfNeeded() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+    if (num_refs_ == 0 && peer_half_closed_) {
+      Shutdown(SHUT_RDWR);
     }
-    loop()->SendWake(this);
   }
 
   void Pull(uint64_t uuid, int buf_id,
@@ -466,25 +523,20 @@ class SocketServer::SocketNetworkState : public PollEventLoop::Handler {
     std::string opacket = std::string(absl::string_view(
         reinterpret_cast<const char*>(&header), sizeof(header)));
     opacket += "Injected Failure.";
-    {
-      absl::MutexLock l(&mu_);
-      frames_.push_back(std::move(opacket));
-    }
-    loop()->SendWake(this);
+    SendRawFrame(std::move(opacket));
   }
 
   static void Accept(std::shared_ptr<PullTable> table,
                      std::shared_ptr<BulkTransportFactory> factory,
                      int sockfd) {
-    auto* remote = new SocketNetworkState(table, factory, sockfd);
-    remote->Register();
+    new SocketNetworkState(table, factory, sockfd);
   }
 
   void ClearDestTable() {
     absl::Status poison_status;
     absl::flat_hash_map<uint64_t, DestState> dests;
     {
-      absl::MutexLock l(&mu_);
+      absl::MutexLock l(mu_);
       std::swap(dests, dests_);
       poison_status = poison_status_;
     }
@@ -495,9 +547,9 @@ class SocketServer::SocketNetworkState : public PollEventLoop::Handler {
 
   void Poison(absl::Status s) {
     {
-      absl::MutexLock l(&mu_);
+      absl::MutexLock l(mu_);
       is_poisoned_ = true;
-      shutdown(fd_, SHUT_RDWR);
+      Shutdown(SHUT_RDWR);
       poison_status_ = s;
     }
     ClearDestTable();
@@ -507,15 +559,13 @@ class SocketServer::SocketNetworkState : public PollEventLoop::Handler {
   std::shared_ptr<PullTable> table_;
   std::shared_ptr<BulkTransportFactory> factory_;
   absl::Mutex mu_;
-  size_t num_refs_ = 1;
-  bool peer_is_closed_ = false;
+  size_t num_refs_ ABSL_GUARDED_BY(mu_) = 0;
+  size_t num_sys_refs_ ABSL_GUARDED_BY(mu_) = 2;
+  bool no_more_pulls_ = false;
+  bool peer_half_closed_ = false;
   bool is_poisoned_ = false;
   absl::Status poison_status_;
-  int fd_ = -1;
   SocketAddress remote_addr_;
-  size_t recv_count_ = 0;
-  std::unique_ptr<char[]> network_buffer_ =
-      std::unique_ptr<char[]>(new char[4096]);
 
   uint64_t next_req_id_ = 0;
   struct DestState {
@@ -573,8 +623,9 @@ tsl::RCReference<SocketServer::Connection> SocketServer::Connect(
     const SocketAddress& other_addr) {
   auto* local_ =
       new SocketNetworkState(pull_table_, bulk_transport_factory_, other_addr);
-  local_->Register();
   local_->StartBulkTransporting();
+  local_->IncRef();
+  local_->StartConnect();
   return tsl::MakeRef<Connection>(local_);
 }
 

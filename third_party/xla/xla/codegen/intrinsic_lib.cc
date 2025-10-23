@@ -70,6 +70,10 @@ limitations under the License.
 #include "xla/codegen/intrinsic/rsqrt.h"
 #include "xla/codegen/intrinsic/string_interner.h"
 #include "xla/codegen/intrinsic/tanh.h"
+<<<<<<< HEAD
+=======
+#include "xla/codegen/intrinsic/type.h"
+>>>>>>> upstream/master
 #include "xla/codegen/intrinsic/vec_name_mangler.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/xla_data.pb.h"
@@ -154,6 +158,7 @@ class IntrinsicAdapter : public IntrinsicFunction {
   }
   std::string GenerateMangledSimdPrefix(
       absl::Span<const Type> types) const override {
+<<<<<<< HEAD
     std::vector<intrinsic::VecParamCardinality> param_cardinalities;
     auto front = types.front();
     // Remove the return type if it's in the types list:
@@ -170,6 +175,10 @@ class IntrinsicAdapter : public IntrinsicFunction {
     return intrinsic::GetMangledNamePrefix(Intrinsic::kIsMasked,
                                            front.vector_width().value_or(1),
                                            param_cardinalities);
+=======
+    return intrinsic::GetMangledNamePrefix(
+        Intrinsic::kIsMasked, Intrinsic::kLastArgIsReturnType, types);
+>>>>>>> upstream/master
   }
 };
 
@@ -227,6 +236,22 @@ GetCalledApproximatableFunctions(
   return called_targets;
 }
 
+<<<<<<< HEAD
+=======
+bool ElementTypesMatch(const std::vector<Type>& types1,
+                       const std::vector<Type>& types2) {
+  if (types1.size() != types2.size()) {
+    return false;
+  }
+  for (int i = 0; i < types1.size(); ++i) {
+    if (types1[i].element_type() != types2[i].element_type()) {
+      return false;
+    }
+  }
+  return true;
+}
+
+>>>>>>> upstream/master
 }  // anonymous namespace
 
 std::vector<llvm::VecDesc> IntrinsicFunctionLib::Vectorizations() {
@@ -238,8 +263,13 @@ std::vector<llvm::VecDesc> IntrinsicFunctionLib::Vectorizations() {
          math_func->SupportedVectorTypes(options_.features)) {
       for (const auto& vector_types :
            math_func->SupportedVectorTypes(options_.features)) {
+<<<<<<< HEAD
         if (target_types.front().element_type() !=
             vector_types.front().element_type()) {
+=======
+        if (!ElementTypesMatch(target_types, vector_types) ||
+            target_types.front().is_vector()) {
+>>>>>>> upstream/master
           continue;
         }
         absl::string_view target_name = intrinsic::StringInterner::Get().Intern(

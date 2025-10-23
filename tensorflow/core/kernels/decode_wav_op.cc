@@ -73,12 +73,23 @@ class DecodeWavOp : public OpKernel {
       output_channel_count = desired_channels_;
     }
 
+<<<<<<< HEAD
     OP_REQUIRES(context, output_sample_count >= 0,
               errors::InvalidArgument("Output sample count must be >= 0, got ",
                                       output_sample_count));
     OP_REQUIRES(context, output_channel_count >= 0,
               errors::InvalidArgument("Output channel count must be >= 0, got ",
                                       output_channel_count));
+=======
+    OP_REQUIRES(
+        context, output_sample_count >= 0,
+        errors::InvalidArgument("Output sample count must be >= 0, got ",
+                                output_sample_count));
+    OP_REQUIRES(
+        context, output_channel_count >= 0,
+        errors::InvalidArgument("Output channel count must be >= 0, got ",
+                                output_channel_count));
+>>>>>>> upstream/master
     Tensor* output = nullptr;
     OP_REQUIRES_OK(
         context,

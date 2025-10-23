@@ -2447,6 +2447,89 @@ ENTRY entry {
   EXPECT_EQ(select_instr_loop->opcode(), HloOpcode::kSelect);
 }
 
+TEST_F(CollectivePipelinerTest, ForwardSinkAllReduceFeedingAllGather) {
+  constexpr absl::string_view hlo_string = R"(
+HloModule module
+
+add {
+  lhs = bf16[] parameter(0)
+  rhs = bf16[] parameter(1)
+  ROOT add = bf16[] add(lhs, rhs)
+}
+
+while_cond {
+  param = (s32[], bf16[3,8,128], bf16[3,8,128]) parameter(0)
+  gte = s32[] get-tuple-element(param), index=0
+  constant.1 = s32[] constant(3)
+  ROOT cmp = pred[] compare(gte, constant.1), direction=LT
+}
+
+while_body {
+  param = (s32[], bf16[3,8,128], bf16[3,8,128]) parameter(0)
+  get-tuple-element.394 = s32[] get-tuple-element(param), index=0
+  get-tuple-element.395 = bf16[3,8,128] get-tuple-element(param), index=1
+  get-tuple-element.35 = bf16[3,8,128] get-tuple-element(param), index=2
+  constant.2557 = s32[] constant(1)
+  add.230 = s32[] add(get-tuple-element.394, constant.2557)
+  constant.2559 = s32[] constant(3)
+  subtract.139 = s32[] subtract(constant.2559, get-tuple-element.394)
+  constant.2560 = s32[] constant(-1)
+  add.231 = s32[] add(subtract.139, constant.2560)
+  constant.2561 = s32[] constant(0)
+  compare.747 = pred[] compare(add.231, constant.2561), direction=LT
+  constant.2562 = s32[] constant(2)
+  add.232 = s32[] add(subtract.139, constant.2562)
+  select.1348 = s32[] select(compare.747, add.232, add.231)
+  dynamic-slice.99 = bf16[1,8,128] dynamic-slice(get-tuple-element.35, select.1348, constant.2561, constant.2561), dynamic_slice_sizes={1,8,128}
+  mul = bf16[1,8,128] multiply(dynamic-slice.99, dynamic-slice.99)
+  t2 = bf16[1,128,8] transpose(mul), dimensions={0,2,1}
+  rs.1 = bf16[1,128,2] reduce-scatter(t2), replica_groups={{0,1,2,3}}, dimensions={2}, to_apply=add
+  ar.1 = bf16[1,128,2] all-reduce(rs.1), replica_groups={{0,1,2,3}}, to_apply=add
+  ag.1 = bf16[1,128,8] all-gather(ar.1), replica_groups={{0,1,2,3}}, dimensions={2}
+  %c = bf16[] custom-call(), custom_call_target="Boh"
+  %b = bf16[1,128,8] broadcast(c), dimensions={}
+  %a = bf16[1,128,8] add(ag.1, b)
+  %t = bf16[1,8,128] transpose(a), dimensions={0,2,1}
+  dynamic-update-slice.35 = bf16[3,8,128] dynamic-update-slice(get-tuple-element.395, t, select.1348, constant.2561, constant.2561)
+  ROOT tuple = (s32[], bf16[3,8,128], bf16[3,8,128]) tuple(add.230, dynamic-update-slice.35, get-tuple-element.35), control-predecessors={select.1348}
+}
+
+ENTRY entry {
+  c0 = s32[] constant(0)
+  p0 = bf16[3,8,128] parameter(0)
+  tuple = (s32[], bf16[3,8,128], bf16[3,8,128]) tuple(c0, p0, p0)
+  while = (s32[], bf16[3,8,128], bf16[3,8,128]) while(tuple), condition=while_cond, body=while_body
+  ROOT gte1 = bf16[3,8,128] get-tuple-element(while), index=1
+}
+)";
+  auto module = ParseAndReturnUnverifiedModule(hlo_string, config_).value();
+  EXPECT_TRUE(RunOptimizer(
+                  module.get(), /*last_run=*/true,
+                  /*level_to_operate_on=*/0,
+                  /*pipeline_use_tree=*/true,
+                  /*process_different_sized_ops=*/true,
+                  collective_pipeliner_utils::PipeliningDirection::kForwardSink)
+                  .value());
+  XLA_VLOG_LINES(1, module->ToString());
+  const HloInstruction* while_instr =
+      FindInstruction(module.get(), HloOpcode::kWhile);
+  const HloComputation* comp = while_instr->while_body();
+  const HloInstruction* root_loop = comp->root_instruction();
+  EXPECT_TRUE(root_loop->HasControlDependencies());
+  EXPECT_EQ(root_loop->control_predecessors().size(), 1);
+  const HloInstruction* select_instr_loop =
+      root_loop->control_predecessors()[0];
+  const HloInstruction* transpose_instr =
+      FindInstruction(module.get(), HloOpcode::kTranspose);
+  EXPECT_EQ(transpose_instr->dimensions(), std::vector<int64_t>({0, 1, 3, 2}));
+  EXPECT_EQ(select_instr_loop->opcode(), HloOpcode::kSelect);
+  // All-reduce is sunk outside the loop with all-gather consumer.
+  const HloInstruction* all_reduce =
+      FindInstruction(module.get(), HloOpcode::kAllReduce);
+  EXPECT_EQ(all_reduce->users().size(), 1);
+  EXPECT_EQ(all_reduce->users()[0]->opcode(), HloOpcode::kAllGather);
+}
+
 TEST_F(CollectivePipelinerTest, ForwardSinkLinearShape4097) {
   constexpr absl::string_view hlo_string = R"(
 HloModule module

@@ -257,7 +257,13 @@ void DoRollWithMemcpy(const OpKernelContext* context,
     int64_t i = start;
     while (i < end) {
       // copy group of elements
-      memcpy(out_ptr, in_ptr, group_size * sizeof(T));
+      if constexpr (DataTypeCanUseMemcpy(DataTypeToEnum<T>::v())) {
+        memcpy(out_ptr, in_ptr, group_size * sizeof(T));
+      } else {
+        for (int64_t k = 0; k < group_size; ++k) {
+          *out_ptr++ = *in_ptr++;
+        }
+      }
 
       // shift i and the pointers over to the next group position
       i += group_size;

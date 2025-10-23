@@ -119,6 +119,60 @@ TEST_F(InstructionFusionTest, FuseInstructionsIntoMultiOutput) {
       << module->ToString();
 }
 
+TEST_F(InstructionFusionTest, FuseInstructionsWithOriginalValue) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+  HloModule test_module
+  ENTRY entry_computation {
+    p0 = f32[4,3]{1,0} parameter(0), origin={{"p0"}}
+    add = f32[4,3]{1,0} add(p0, p0), origin={{"add"}}
+    ROOT sub = f32[4,3]{1,0} subtract(add, p0), origin={{"sub"}}
+  })")
+                    .value();
+  HloInstruction* sub = module->entry_computation()->root_instruction();
+  HloInstruction* add = sub->mutable_operand(0);
+  HloInstruction* fusion =
+      InstructionFusionForTesting().Fuse(add, sub, module->entry_computation());
+
+  ASSERT_THAT(fusion, op::Fusion()) << module->ToString();
+  EXPECT_THAT(fusion->fused_expression_root(),
+              op::Subtract(op::Add(), op::Parameter()))
+      << module->ToString();
+  absl::string_view expected_origin = "{\"sub\"}";
+  ASSERT_NE(fusion->original_value(), nullptr);
+  EXPECT_EQ(fusion->original_value()->ToString(), expected_origin);
+  ASSERT_NE(fusion->fused_expression_root()->original_value(), nullptr);
+  ASSERT_EQ(fusion->fused_expression_root()->original_value()->ToString(),
+            expected_origin);
+}
+
+TEST_F(InstructionFusionTest,
+       FuseInstructionsIntoMultiOutputWithOriginalValue) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+  HloModule test_module
+  ENTRY entry_computation {
+    p0 = f32[4,3]{1,0} parameter(0), origin={{"p0"}}
+    abs = f32[4,3]{1,0} abs(p0), origin={{"abs"}}
+    tanh = f32[4,3]{1,0} tanh(abs), origin={{"tanh"}}
+    ROOT add = f32[4,3]{1,0} add(abs, tanh), origin={{"add"}}
+  })")
+                    .value();
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  HloInstruction* abs = root->mutable_operand(0);
+  HloInstruction* tanh = root->mutable_operand(1);
+  HloInstruction* fusion = InstructionFusionForTesting().FuseIntoMultiOutput(
+      abs, tanh, module->entry_computation());
+
+  absl::string_view expected_original_value = "({\"tanh\"}, {\"abs\"})";
+  ASSERT_THAT(fusion, op::Fusion()) << module->ToString();
+  EXPECT_THAT(fusion->fused_expression_root(), op::Tuple(op::Tanh(), op::Abs()))
+      << module->ToString();
+  ASSERT_NE(fusion->fused_expression_root()->original_value(), nullptr);
+  ASSERT_EQ(fusion->fused_expression_root()->original_value()->ToString(),
+            expected_original_value);
+  ASSERT_NE(fusion->original_value(), nullptr);
+  EXPECT_EQ(fusion->original_value()->ToString(), expected_original_value);
+}
+
 TEST_F(InstructionFusionTest, AvoidDuplicationIfNotAllFusible) {
   HloComputation::Builder builder(TestName());
   auto shape = ShapeUtil::MakeShape(F32, {16, 16});

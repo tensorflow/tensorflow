@@ -9,10 +9,17 @@ load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 # Details: https://github.com/google-ml-infra/rules_ml_toolchain
 http_archive(
     name = "rules_ml_toolchain",
+<<<<<<< HEAD
     sha256 = "9a3e9b3e1f5e8368ab5dfa7d4ec17688810ceeb521b637c975c53d8ade65d513",
     strip_prefix = "rules_ml_toolchain-087c24520fa94fcded738b8a3cd1113566629140",
     urls = [
         "https://github.com/google-ml-infra/rules_ml_toolchain/archive/087c24520fa94fcded738b8a3cd1113566629140.tar.gz",
+=======
+    sha256 = "4133c6c2045de5d7a133f6fc008ee6bd613af778f12143d09003e908dd541d8c",
+    strip_prefix = "rules_ml_toolchain-d8d8f49297a1e74fcceffc9ef6c7f8da9b0a0c53",
+    urls = [
+        "https://github.com/google-ml-infra/rules_ml_toolchain/archive/d8d8f49297a1e74fcceffc9ef6c7f8da9b0a0c53.tar.gz",
+>>>>>>> upstream/master
     ],
 )
 
@@ -27,6 +34,15 @@ register_toolchains("@rules_ml_toolchain//cc:linux_x86_64_linux_x86_64")
 
 register_toolchains("@rules_ml_toolchain//cc:linux_x86_64_linux_x86_64_cuda")
 
+<<<<<<< HEAD
+=======
+register_toolchains("@rules_ml_toolchain//cc:linux_x86_64_linux_x86_64_sycl")
+
+register_toolchains("@rules_ml_toolchain//cc:linux_aarch64_linux_aarch64")
+
+register_toolchains("@rules_ml_toolchain//cc:linux_aarch64_linux_aarch64_cuda")
+
+>>>>>>> upstream/master
 # Initialize the XLA repository and all dependencies.
 #
 # The cascade of load() statements and xla_workspace?() calls works around the

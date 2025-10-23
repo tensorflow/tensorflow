@@ -1,6 +1,10 @@
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
+<<<<<<< HEAD
 
 # Placeholder: load py_proto_library
+=======
+load("@rules_python//python:proto.bzl", "py_proto_library")
+>>>>>>> upstream/master
 load("//tensorflow:tensorflow.bzl", "if_google", "tf_cc_shared_object", "tf_cc_test")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library")

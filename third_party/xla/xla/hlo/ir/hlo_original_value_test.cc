@@ -98,6 +98,14 @@ TEST(OriginalValueTest, ToStringTuple) {
             "({\"inst1\" {1}}, {\"inst2\" {2}}, ({\"inst3\" {3}}, {}))");
 }
 
+<<<<<<< HEAD
+=======
+TEST(OriginalValueTest, ToStringSynthetic) {
+  OriginalValue value = OriginalValue::SyntheticCall();
+  EXPECT_EQ(value.ToString(), "[synthetic_call]");
+}
+
+>>>>>>> upstream/master
 TEST(OriginalValueTest, ProtoSerde) {
   OriginalValue value(Node::Tuple({Node::Leaf(OriginalArray{"inst1", {1}}),
                                    Node::Leaf(OriginalArray{"inst2", {2}})}));
@@ -115,6 +123,17 @@ TEST(OriginalValueTest, ProtoSerde) {
       OriginalValue::FromProto(proto_with_null);
   EXPECT_EQ(value_with_null_from_proto->ToString(), value_with_null.ToString());
   EXPECT_EQ(*value_with_null_from_proto, value_with_null);
+<<<<<<< HEAD
+=======
+
+  // Test with synthetic call.
+  OriginalValue value_synthetic = OriginalValue::SyntheticCall();
+  OriginalValueProto proto_synthetic = value_synthetic.ToProto();
+  std::shared_ptr<OriginalValue> value_synthetic_from_proto =
+      OriginalValue::FromProto(proto_synthetic);
+  EXPECT_TRUE(value_synthetic_from_proto->is_synthetic_call());
+  EXPECT_EQ(*value_synthetic_from_proto, value_synthetic);
+>>>>>>> upstream/master
 }
 
 TEST(OriginalValueTest, ElementAccess) {
@@ -151,6 +170,7 @@ TEST(OriginalValueTest, Elements) {
   EXPECT_THAT(elements[2].second, Optional(Eq(OriginalArray{"inst3", {3}})));
 }
 
+<<<<<<< HEAD
 TEST(OriginalValueTest, CopySubtreeFrom) {
   OriginalValue src(
       Node::Tuple({Node::Leaf(OriginalArray{"src1", {1}}),
@@ -165,6 +185,8 @@ TEST(OriginalValueTest, CopySubtreeFrom) {
   EXPECT_EQ(dst.ToString(), "{\"src1\" {1}}");
 }
 
+=======
+>>>>>>> upstream/master
 TEST(OriginalValueTest, EqualityAndHashing) {
   OriginalValue value1(Node::Leaf(OriginalArray{"inst1", {}}));
   OriginalValue value2(Node::Leaf(OriginalArray{"inst1", {}}));
@@ -173,11 +195,25 @@ TEST(OriginalValueTest, EqualityAndHashing) {
                                     Node::Leaf(OriginalArray{"inst2", {2}})}));
   OriginalValue value5(Node::Tuple({Node::Leaf(OriginalArray{"inst1", {1}}),
                                     Node::Leaf(OriginalArray{"inst2", {2}})}));
+<<<<<<< HEAD
+=======
+  OriginalValue value_with_root_value(Node::Tuple(
+      OriginalArray{"root", {}}, {Node::Leaf(OriginalArray{"inst1", {1}}),
+                                  Node::Leaf(OriginalArray{"inst2", {2}})}));
+  OriginalValue synthetic1 = OriginalValue::SyntheticCall();
+  OriginalValue synthetic2 = OriginalValue::SyntheticCall();
+>>>>>>> upstream/master
 
   EXPECT_EQ(value1, value2);
   EXPECT_NE(value1, value3);
   EXPECT_NE(value1, value4);
   EXPECT_EQ(value4, value5);
+<<<<<<< HEAD
+=======
+  EXPECT_EQ(value4, value_with_root_value);
+  EXPECT_EQ(synthetic1, synthetic2);
+  EXPECT_NE(value1, synthetic1);
+>>>>>>> upstream/master
 
   EXPECT_TRUE(absl::VerifyTypeImplementsAbslHashCorrectly({
       value1,
@@ -185,6 +221,12 @@ TEST(OriginalValueTest, EqualityAndHashing) {
       value3,
       value4,
       value5,
+<<<<<<< HEAD
+=======
+      value_with_root_value,
+      synthetic1,
+      synthetic2,
+>>>>>>> upstream/master
   }));
 }
 
@@ -242,6 +284,32 @@ ENTRY main {
   EXPECT_EQ(gte->original_value()->ToString(), "{\"p1\"}");
 }
 
+<<<<<<< HEAD
+=======
+TEST_F(OriginalValueHloTest, CreateFromInstructionGteSynthetic) {
+  const char* hlo_string = R"(
+HloModule test
+
+ENTRY main {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  tuple = (f32[], f32[]) tuple(p0, p1)
+  ROOT gte = f32[] get-tuple-element(tuple), index=1
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  HloInstruction* tuple = FindInstruction(module.get(), "tuple");
+  HloInstruction* gte = module->entry_computation()->root_instruction();
+
+  tuple->set_original_value(
+      std::make_shared<OriginalValue>(OriginalValue::SyntheticCall()));
+  gte->set_original_value(OriginalValue::CreateFromInstruction(gte));
+
+  EXPECT_EQ(gte->original_value(), nullptr);
+}
+
+>>>>>>> upstream/master
 TEST_F(OriginalValueHloTest, CreateFromInstructionTuple) {
   const char* hlo_string = R"(
 HloModule test
@@ -258,6 +326,34 @@ ENTRY main {
   EXPECT_EQ(p0->original_value()->ToString(), "({\"p0\" {0}}, {\"p0\" {1}})");
 }
 
+<<<<<<< HEAD
+=======
+TEST_F(OriginalValueHloTest, CreateFromInstructionTupleWithSyntheticElement) {
+  const char* hlo_string = R"(
+HloModule test
+
+ENTRY main {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT tuple = (f32[], f32[]) tuple(p0, p1)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  HloInstruction* p0 = module->entry_computation()->parameter_instruction(0);
+  HloInstruction* p1 = module->entry_computation()->parameter_instruction(1);
+  HloInstruction* tuple = module->entry_computation()->root_instruction();
+
+  p0->set_original_value(OriginalValue::CreateFromInstruction(p0));
+  p1->set_original_value(
+      std::make_shared<OriginalValue>(OriginalValue::SyntheticCall()));
+  tuple->set_original_value(OriginalValue::CreateFromInstruction(tuple));
+
+  ASSERT_NE(tuple->original_value(), nullptr);
+  EXPECT_EQ(tuple->original_value()->ToString(), "({\"p0\"}, {})");
+}
+
+>>>>>>> upstream/master
 TEST_F(OriginalValueHloTest, CopyOriginalValue) {
   const char* hlo_string = R"(
 HloModule test
@@ -273,14 +369,47 @@ ENTRY main {
 
   std::unique_ptr<HloInstruction> clone = p0->Clone();
 
+<<<<<<< HEAD
   CopyOriginalValue(p0, clone.get(), /*clone=*/false);
   EXPECT_EQ(p0->original_value(), clone->original_value());
 
   CopyOriginalValue(p0, clone.get(), /*clone=*/true);
+=======
+  CopyOriginalValue(p0, clone.get(), /*clone=*/false, /*issue_warning=*/false);
+  EXPECT_EQ(p0->original_value(), clone->original_value());
+
+  CopyOriginalValue(p0, clone.get(), /*clone=*/true, /*issue_warning=*/false);
+>>>>>>> upstream/master
   EXPECT_NE(p0->original_value(), clone->original_value());
   EXPECT_EQ(*p0->original_value(), *clone->original_value());
 }
 
+<<<<<<< HEAD
+=======
+TEST_F(OriginalValueHloTest, CopyOriginalValueSynthetic) {
+  const char* hlo_string = R"(
+HloModule test
+
+ENTRY main {
+  ROOT p0 = f32[] parameter(0)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  HloInstruction* p0 = module->entry_computation()->parameter_instruction(0);
+  p0->set_original_value(
+      std::make_shared<OriginalValue>(OriginalValue::SyntheticCall()));
+
+  std::unique_ptr<HloInstruction> clone = p0->Clone();
+
+  CopyOriginalValue(p0, clone.get(), /*clone=*/false, /*issue_warning=*/false);
+  EXPECT_EQ(p0->original_value(), clone->original_value());
+
+  CopyOriginalValue(p0, clone.get(), /*clone=*/true, /*issue_warning=*/false);
+  EXPECT_EQ(p0->original_value(), clone->original_value());
+}
+
+>>>>>>> upstream/master
 TEST_F(OriginalValueHloTest, DeduplicateOriginalValues) {
   const char* hlo_string = R"(
 HloModule test
@@ -325,5 +454,37 @@ ENTRY main {
   EXPECT_NE(p0->original_value(), p1->original_value());
 }
 
+<<<<<<< HEAD
+=======
+TEST_F(OriginalValueHloTest, DeduplicateOriginalValuesWithSynthetic) {
+  const char* hlo_string = R"(
+HloModule test
+
+ENTRY main {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT add = f32[] add(p0, p1)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  HloInstruction* p0 = FindInstruction(module.get(), "p0");
+  HloInstruction* p1 = FindInstruction(module.get(), "p1");
+
+  auto value1 = std::make_shared<OriginalValue>(OriginalValue::SyntheticCall());
+  auto value2 = std::make_shared<OriginalValue>(OriginalValue::SyntheticCall());
+
+  p0->set_original_value(value1);
+  p1->set_original_value(value2);
+
+  EXPECT_NE(p0->original_value(), p1->original_value());
+  EXPECT_EQ(*p0->original_value(), *p1->original_value());
+
+  DeduplicateOriginalValues(module.get());
+
+  EXPECT_EQ(p0->original_value(), p1->original_value());
+}
+
+>>>>>>> upstream/master
 }  // namespace
 }  // namespace xla

@@ -12,48 +12,62 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#if defined(INTEL_MKL)
+
 #include "xla/service/cpu/onednn_matmul.h"
 
 #include <algorithm>
-#include <cmath>
+#include <cstdint>
 #include <cstring>
 #include <initializer_list>
 #include <iterator>
+#include <memory>
+#include <numeric>
+#include <string>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
-#include "absl/base/dynamic_annotations.h"
+#include "absl/algorithm/container.h"
+#include "absl/base/attributes.h"
+#include "absl/log/log.h"
+#include "absl/status/statusor.h"
+#include "absl/types/span.h"
 #include "unsupported/Eigen/CXX11/Tensor"
-#include "dnnl.hpp"
+#include "oneapi/dnnl/dnnl.hpp"
+#include "oneapi/dnnl/dnnl_common.hpp"
+#include "oneapi/dnnl/dnnl_types.h"
 #include "xla/executable_run_options.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/literal.h"
 #include "xla/service/cpu/backend_config.pb.h"
 #include "xla/service/cpu/onednn_config.pb.h"
 #include "xla/service/cpu/onednn_memory_util.h"
 #include "xla/service/cpu/onednn_util.h"
 #include "xla/service/cpu/runtime_lightweight_check.h"
 #include "xla/shape.h"
-#include "xla/shape_util.h"
-#include "xla/tsl/util/onednn_threadpool.h"
 #include "tsl/platform/cpu_info.h"
-#include "tsl/platform/logging.h"
 
 #define EIGEN_USE_THREADS
 
 namespace xla {
 namespace cpu {
 namespace {
+
 using dnnl::engine;
 using dnnl::matmul;
 using dnnl::memory;
+using dnnl::primitive;
 using dnnl::stream;
 
 void TransposeIfNecessary(
     const tsl::protobuf::RepeatedField<uint64_t> dimensions,
     bool transpose_last_2_dims, dnnl::memory::desc& mem_desc) {
-  if (mem_desc.get_ndims() < 2) return;
+  if (mem_desc.get_ndims() < 2) {
+    return;
+  }
   std::vector<int> permutation(mem_desc.get_ndims());
   std::iota(permutation.begin(), permutation.end(), 0);
   int counter = 0;
@@ -210,6 +224,86 @@ CreateOneDnnPrimDesc<dnnl::matmul::primitive_desc>(HloInstruction* instr) {
 
   return CreateMatMulPrimDesc(input_shape, weight_shape, output_shape,
                               fused_shapes, matmul_config);
+}
+
+void ExecuteOneDnnMatMul(absl::Span<MemrefInfoHandler> arguments,
+                         absl::Span<MemrefInfoHandler> results,
+                         OneDnnMatMulConfig matmul_config,
+                         const dnnl::engine& cpu_engine,
+                         dnnl::stream& onednn_stream,
+                         OneDnnResources& resources) {
+  MemrefInfo input_minfo(arguments[0].get());
+  MemrefInfo weights_minfo(arguments[1].get());
+  MemrefInfo output_minfo(results[0].get());
+
+  auto input_md = input_minfo.GetOneDnnMemDesc();
+  auto weights_md = weights_minfo.GetOneDnnMemDesc();
+  auto output_md = output_minfo.GetOneDnnMemDesc();
+
+  // Input and weights memory::desc need to be in correct layout before matmul
+  // primitive descriptor is created.
+  TransposeIfNecessary(matmul_config.lhs().tensor().dimensions(),
+                       matmul_config.transpose_a(), input_md);
+  TransposeIfNecessary(matmul_config.rhs().tensor().dimensions(),
+                       matmul_config.transpose_b(), weights_md);
+  TransposeIfNecessary(matmul_config.result().tensor().dimensions(), false,
+                       output_md);
+
+  auto weight_format = memory::format_tag::ab;
+  if (matmul_config.optimization_config().weights_prepacked()) {
+    // Weight pre-packing is supported for 2D weights only.
+    // Since prepacked weights array is flattened, try to infer the dims from
+    // input and output.
+    // TODO(intel-tf): Add support for prepacked weights for higher than 2D
+    // array.
+    weights_md =
+        memory::desc({input_md.get_dims().back(), output_md.get_dims().back()},
+                     weights_md.get_data_type(), weight_format);
+  }
+
+  // Excluding input and weight operands.
+  const int64_t num_fused_operands = arguments.size() - 2;
+  std::vector<memory::desc> fused_mds;
+  std::vector<void*> fused_bufs;
+  for (int64_t i = 0; i < num_fused_operands; ++i) {
+    MemrefInfo operand_minfo(arguments[i + 2].get());
+    fused_mds.push_back(operand_minfo.GetOneDnnMemDesc());
+    fused_bufs.push_back(operand_minfo.Data());
+  }
+
+  FusedOperandsRef fused_operands_ref{fused_bufs, resources.postop_args};
+  auto matmul_pd =
+      CreateMatMulPrimDesc(cpu_engine, input_md, weights_md, output_md,
+                           fused_mds, matmul_config, &fused_operands_ref);
+
+  resources.src_mem = memory(input_md, cpu_engine, input_minfo.Data());
+  resources.wei_mem =
+      memory(matmul_pd->weights_desc(), cpu_engine, weights_minfo.Data());
+  resources.dst_mem = memory(output_md, cpu_engine, output_minfo.Data());
+
+  if (std::strstr(matmul_pd->impl_info_str(), "ref") != nullptr) {
+    LOG(WARNING) << "[Perf]: MatMul reference implementation being executed";
+  }
+
+  resources.primitive = primitive(*matmul_pd);
+
+  std::unordered_map<int, memory> matmul_args{
+      {DNNL_ARG_SRC, resources.src_mem},
+      {DNNL_ARG_WEIGHTS, resources.wei_mem},
+      {DNNL_ARG_DST, resources.dst_mem}};
+
+  if (matmul_config.optimization_config().user_scratchpad()) {
+    MemrefInfo scratch_minfo(results[1].get());
+    auto scratchpad_md = matmul_pd->scratchpad_desc();
+    resources.scratch_mem =
+        memory(scratchpad_md, cpu_engine, scratch_minfo.Data());
+    matmul_args.insert({DNNL_ARG_SCRATCHPAD, resources.scratch_mem});
+  }
+
+  matmul_args.insert(resources.postop_args.begin(),
+                     resources.postop_args.end());
+
+  resources.primitive.execute(onednn_stream, matmul_args);
 }
 
 ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_OneDnnMatMul(
@@ -423,5 +517,3 @@ ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_OneDnnMatMulReorder(
 
 }  // namespace cpu
 }  // namespace xla
-
-#endif  // INTEL_MKL

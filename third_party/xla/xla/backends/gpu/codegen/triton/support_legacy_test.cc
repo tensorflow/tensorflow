@@ -36,7 +36,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/primitive_util.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
-#include "xla/service/gpu/model/tiled_hlo_computation.h"
 #include "xla/service/gpu/triton_fusion_analysis.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tsl/lib/core/status_test_util.h"
@@ -56,11 +55,10 @@ se::GpuComputeCapability GetComputeCapability() {
 bool CombinationCrashesTriton(PrimitiveType lhs_type, PrimitiveType rhs_type,
                               PrimitiveType output_type,
                               se::GpuComputeCapability gpu_compute_capability) {
-  if (std::holds_alternative<se::CudaComputeCapability>(
-          gpu_compute_capability)) {
-    auto cuda_compute_capability =
-        std::get<se::CudaComputeCapability>(gpu_compute_capability);
-    if (!cuda_compute_capability.IsAtLeastHopper() &&
+  if (gpu_compute_capability.IsCuda()) {
+    auto* cuda_compute_capability =
+        gpu_compute_capability.cuda_compute_capability();
+    if (!cuda_compute_capability->IsAtLeastHopper() &&
         (lhs_type == F8E4M3FN || rhs_type == F8E4M3FN ||
          output_type == F8E4M3FN)) {
       return true;
@@ -130,7 +128,11 @@ ENTRY e {
       EXPECT_THAT(
           TritonWrapper("test_fn", &ti.TritonFusion(), GetComputeCapability(),
                         dev_info, block_level_parameters, &llvm_module_,
+<<<<<<< HEAD
                         mlir_context_),
+=======
+                        symbolic_expr_context_),
+>>>>>>> upstream/master
           absl_testing::StatusIs(
               absl::StatusCode::kInternal,
               ::testing::HasSubstr("Failed to compile Triton kernel")));
@@ -308,7 +310,11 @@ ENTRY e {
   EXPECT_THAT(
       TritonWrapper("test_fn", &ti.TritonFusion(), GetComputeCapability(),
                     dev_info, block_level_parameters, &llvm_module_,
+<<<<<<< HEAD
                     mlir_context_),
+=======
+                    symbolic_expr_context_),
+>>>>>>> upstream/master
       absl_testing::StatusIs(
           absl::StatusCode::kInternal,
           ::testing::HasSubstr("Failed to verify Triton module for fusion")));
@@ -352,7 +358,11 @@ ENTRY e {
   EXPECT_THAT(
       TritonWrapper("test_fn", &ti.TritonFusion(), GetComputeCapability(),
                     dev_info, block_level_parameters, &llvm_module_,
+<<<<<<< HEAD
                     mlir_context_),
+=======
+                    symbolic_expr_context_),
+>>>>>>> upstream/master
       absl_testing::StatusIs(absl::StatusCode::kInternal,
                              ::testing::HasSubstr("num_batch_dims <= 1")));
 }

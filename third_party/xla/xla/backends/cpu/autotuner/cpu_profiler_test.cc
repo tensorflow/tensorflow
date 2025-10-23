@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <memory>
 #include <utility>
-#include <vector>
 
 #include <gtest/gtest.h>
 #include "absl/status/statusor.h"
@@ -50,11 +49,15 @@ absl::StatusOr<std::unique_ptr<Executable>> CompileHloModule(
 
 class CpuProfilerTest : public HloHardwareIndependentTestBase {
  public:
+<<<<<<< HEAD
   CpuProfilerTest() { profile_options_.should_populate_output_buffer = false; }
+=======
+  CpuProfilerTest() = default;
+>>>>>>> upstream/master
   ProfileOptions profile_options_;
 };
 
-TEST_F(CpuProfilerTest, ProfileWithSharedBuffers) {
+TEST_F(CpuProfilerTest, CreateInputBuffersAndProfile) {
   constexpr absl::string_view kHloModule = R"(
         HloModule module
         ENTRY main {
@@ -63,11 +66,9 @@ TEST_F(CpuProfilerTest, ProfileWithSharedBuffers) {
       )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
                           ParseAndReturnVerifiedModule(kHloModule));
-
-  std::vector<std::unique_ptr<Executable>> executables;
-
-  TF_ASSERT_OK_AND_ASSIGN(executables.emplace_back(),
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Executable> executable,
                           CompileHloModule(std::move(hlo_module)));
+<<<<<<< HEAD
 
   auto profiler = CpuProfiler::Create(profile_options_);
   TF_ASSERT_OK_AND_ASSIGN(auto profiles, profiler->ProfileWithSharedBuffers(
@@ -85,6 +86,13 @@ TEST_F(CpuProfilerTest, ProfileWithSharedBuffersWithoutExecutable) {
 
   // No executable means no profiles.
   EXPECT_EQ(profiles.size(), 0);
+=======
+  auto profiler = CpuProfiler::Create(profile_options_);
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<InputBuffers> buffers,
+                          profiler->CreateInputBuffers(executable.get()));
+  TF_ASSERT_OK_AND_ASSIGN(ProfileResult profile,
+                          profiler->Profile(executable.get(), *buffers));
+>>>>>>> upstream/master
 }
 
 TEST_F(CpuProfilerTest, CreateInputBuffersAndProfile) {

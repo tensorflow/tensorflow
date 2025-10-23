@@ -197,8 +197,16 @@ def _irfft_wrapper(ifft_fn, fft_rank, default_name):
       return ifft_fn(input_tensor, fft_length, Treal=real_dtype, name=name)
 
   if ifft_fn.__doc__ is not None:
+<<<<<<< HEAD
     _irfft.__doc__ = re.sub("`input`", "`input_tensor`",
                             re.sub("    Treal.*?\n", "", ifft_fn.__doc__))
+=======
+    _irfft.__doc__ = re.sub(
+        "`input`",
+        "`input_tensor`",
+        re.sub("    Treal.*?\n", "", ifft_fn.__doc__),
+    )
+>>>>>>> upstream/master
   return _irfft
 
 

@@ -3,7 +3,7 @@
 // Checks no locations
 
 // CHECK-LABEL: hlo_module       {
-// CHECK: name: "after-all.2"
+// CHECK: name: "after-all.1"
 // CHECK-NEXT: opcode: "after-all"
 // CHECK-NEXT: shape {
 // CHECK-NEXT: element_type: TOKEN
@@ -26,7 +26,11 @@ module @main attributes {mhlo.cross_program_prefetches = [], mhlo.is_dynamic = f
 
 // CHECK-LABEL: hlo_module       {
 
+<<<<<<< HEAD
 // CHECK: name: "name_anothername_.2"
+=======
+// CHECK: name: "name_anothername_.1"
+>>>>>>> upstream/master
 // CHECK-NEXT: opcode: "after-all"
 // CHECK-NEXT: shape {
 // CHECK-NEXT:   element_type: TOKEN
@@ -71,7 +75,11 @@ module @main attributes {mhlo.cross_program_prefetches = [], mhlo.is_dynamic = f
 
 // CHECK-LABEL: hlo_module       {
 
+<<<<<<< HEAD
 // CHECK: name: "name_anothername_.2"
+=======
+// CHECK: name: "name_anothername_.1"
+>>>>>>> upstream/master
 // CHECK-NEXT: opcode: "after-all"
 // CHECK-NEXT: shape {
 // CHECK-NEXT:   element_type: TOKEN
@@ -134,10 +142,17 @@ module @main attributes {mhlo.cross_program_prefetches = [], mhlo.is_dynamic = f
 // -----
 
 // Checks how stacks get collapsed into a signel flat-line debug metadata string
+<<<<<<< HEAD
 // i.e "jit(my_add)/jit(main)/add" -> "add.3"
 
 // CHECK-LABEL: hlo_module       {
 // CHECK: name: "add.3"
+=======
+// i.e "jit(my_add)/jit(main)/add" -> "add.1"
+
+// CHECK-LABEL: hlo_module       {
+// CHECK: name: "add.1"
+>>>>>>> upstream/master
 #loc1 = loc("x")
 #loc2 = loc("y")
 module @jit_my_add attributes {jax.uses_shape_polymorphism = false, mhlo.num_partitions = 1 : i32, mhlo.num_replicas = 1 : i32} {

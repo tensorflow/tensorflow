@@ -162,7 +162,7 @@ string TensorSlice::DebugString() const {
     if (IsFullAt(d)) {
       buffer.append("-");
     } else {
-      strings::StrAppend(&buffer, starts_[d], ",", lengths_[d]);
+      absl::StrAppend(&buffer, starts_[d], ",", lengths_[d]);
     }
     first = false;
   }

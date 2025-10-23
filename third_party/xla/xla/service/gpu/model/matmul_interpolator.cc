@@ -54,6 +54,17 @@ limitations under the License.
 namespace xla::gpu {
 namespace {
 
+static const GemmPerfTable& Profile() {
+  static const GemmPerfTable* profile = []() {
+    auto* profile = new GemmPerfTable();
+    CHECK(tsl::protobuf::TextFormat::ParseFromString(kDefaultMatmulPTable,
+                                                     profile))
+        << "Cannot parse a default profile.";
+    return profile;
+  }();
+  return *profile;
+}
+
 struct InterpolationSpecification {
   int b;
   // Matmul dimensions are normalized to a number of bytes of output type.
@@ -174,17 +185,12 @@ InterpolationSpecification Spec(const HloFusionInstruction& dot_fusion,
 
 absl::StatusOr<GemmPerfTableEntryValues> ReadDefaultProfile(
     const se::DeviceDescription& device_info) {
-  GemmPerfTable table;
-  if (!tsl::protobuf::TextFormat::ParseFromString(kDefaultMatmulPTable,
-                                                  &table)) {
-    return absl::FailedPreconditionError("Cannot parse a default perf table.");
-  }
   std::string key = HloOpProfiles::GetProfileName(device_info);
 
-  if (!table.entries().contains(key)) {
+  if (!Profile().entries().contains(key)) {
     return absl::NotFoundError(absl::StrCat("Cannot find key: ", key));
   }
-  return table.entries().at(key);
+  return Profile().entries().at(key);
 }
 
 std::optional<InterpolationSpecification> GetInterpolationSpec(

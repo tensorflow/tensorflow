@@ -1,6 +1,9 @@
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("//xla:xla.default.bzl", "xla_cc_test")
+<<<<<<< HEAD
 load("//xla/tsl:tsl.bzl", "if_google")
+=======
+>>>>>>> upstream/master
 load("//xla/tsl/platform:build_config.bzl", "tf_proto_library")
 
 package(
@@ -37,13 +40,19 @@ cc_library(
         ":autotuner_cache_interface",
         ":codegen_backend",
         ":profiler",
+        "//xla:autotune_results_proto_cc",
+        "//xla:autotuning_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/service:executable",
         "//xla/service:shaped_buffer",
+<<<<<<< HEAD
         "//xla/stream_executor:device_description",
+=======
+>>>>>>> upstream/master
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",
+        "//xla/tsl/util/proto:proto_utils",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/functional:function_ref",
         "@com_google_absl//absl/log",
@@ -51,10 +60,20 @@ cc_library(
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/time",
+        "@com_google_protobuf//:any_cc_proto",
+        "@com_google_protobuf//:protobuf",
         "@local_tsl//tsl/platform:blocking_counter",
         "@local_tsl//tsl/platform:fingerprint",
+<<<<<<< HEAD
     ] + if_google(["@com_google_protobuf//:any_cc_proto"]),
+=======
+        "@local_tsl//tsl/platform:path",
+        "@local_tsl//tsl/platform:protobuf",
+    ],
+>>>>>>> upstream/master
 )
 
 xla_cc_test(
@@ -65,6 +84,8 @@ xla_cc_test(
         ":autotuner_cache_interface",
         ":codegen_backend",
         ":profiler",
+        "//xla:autotune_results_proto_cc",
+        "//xla:autotuning_proto_cc",
         "//xla:literal_util",
         "//xla:shape_util",
         "//xla/hlo/ir:hlo",
@@ -74,8 +95,10 @@ xla_cc_test(
         "//xla/service/gpu:backend_configs_cc",
         "//xla/stream_executor:device_description",
         "//xla/tsl/platform:env",
-        "//xla/tsl/platform:status_matchers",
         "//xla/tsl/platform:statusor",
+        "//xla/tsl/platform:test",
+        "//xla/tsl/util/proto:proto_matchers",
+        "//xla/tsl/util/proto:proto_utils",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/status:statusor",
@@ -83,6 +106,7 @@ xla_cc_test(
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:optional",
         "@com_google_googletest//:gtest_main",
+<<<<<<< HEAD
         "@local_tsl//tsl/platform:path",
     ] + if_google(["@com_google_protobuf//:any_cc_proto"]),
 )
@@ -91,6 +115,20 @@ tf_proto_library(
     name = "autotuner_cache_proto",
     srcs = ["autotuner_cache.proto"],
     deps = if_google(["@com_google_protobuf//:any"]),
+=======
+        "@com_google_protobuf//:any_cc_proto",
+        "@com_google_protobuf//:protobuf",
+        "@local_tsl//tsl/platform:path",
+        "@local_tsl//tsl/platform:protobuf",
+        "@local_tsl//tsl/platform:test",
+    ],
+>>>>>>> upstream/master
+)
+
+tf_proto_library(
+    name = "autotuner_cache_proto",
+    srcs = ["autotuner_cache.proto"],
+    protodeps = ["@com_google_protobuf//:any_proto"],
 )
 
 cc_library(
@@ -138,6 +176,10 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/synchronization",
+<<<<<<< HEAD
+=======
+        "@com_google_protobuf//:protobuf",
+>>>>>>> upstream/master
         "@llvm-project//llvm:Support",
         "@local_tsl//tsl/platform:base64",
         "@local_tsl//tsl/platform:path",
@@ -149,6 +191,10 @@ xla_cc_test(
     name = "file_based_autotuner_cache_test",
     srcs = ["file_based_autotuner_cache_test.cc"],
     deps = [
+<<<<<<< HEAD
+=======
+        ":autotuner_cache_interface",
+>>>>>>> upstream/master
         ":autotuner_cache_proto_cc",
         ":file_based_autotuner_cache",
         "//xla:literal_util",
@@ -161,6 +207,12 @@ xla_cc_test(
         "//xla/tsl/util/proto:proto_matchers",
         "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest_main",
+<<<<<<< HEAD
         "@local_tsl//tsl/platform:path",
     ] + if_google(["@com_google_protobuf//:any_cc_proto"]),
+=======
+        "@com_google_protobuf//:any_cc_proto",
+        "@local_tsl//tsl/platform:path",
+    ],
+>>>>>>> upstream/master
 )

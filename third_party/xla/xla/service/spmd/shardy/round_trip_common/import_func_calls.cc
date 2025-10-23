@@ -76,6 +76,11 @@ bool isInlineableCallOp(CallOp callOp) {
 
 // Returns the first non-maximal mesh on the argument shardings, if there is
 // one. Otherwise returns `std::nullopt`.
+<<<<<<< HEAD:third_party/xla/xla/service/spmd/shardy/round_trip_common/import_func_calls.cc
+=======
+// TODO(enver): Move to utils and potentially with a common helper that takes an
+// std::function to get the sharding given an index.
+>>>>>>> upstream/master:third_party/xla/xla/service/spmd/shardy/round_trip_common/import_uninlineable_func_calls.cc
 std::optional<mlir::Attribute> getMeshOrRefOnArguments(
     FuncOp funcOp, const SymbolTable& symbolTable) {
   for (int64_t argNum = 0; argNum < funcOp.getNumArguments(); ++argNum) {
@@ -126,6 +131,8 @@ void importCallOp(
   CHECK(funcOp) << "Failed to lookup function: " << calleeName.str();
 
   rewriter.setInsertionPoint(callOp);
+  TensorShardingPerValueAttr callOpResultShardings =
+      mlir::sdy::getShardingPerValue(callOp);
   auto namedCompOp = rewriter.create<NamedComputationOp>(
       callOp->getLoc(), callOp->getResultTypes(), calleeName,
       callOp.getOperands(),
@@ -133,7 +140,14 @@ void importCallOp(
       getFuncArgShardings(callOp, funcOp, symbolTable),
       // TODO(b/439018088): Take func result shardings if call op result
       // shardings are empty.
+<<<<<<< HEAD:third_party/xla/xla/service/spmd/shardy/round_trip_common/import_func_calls.cc
       /*outShardings=*/mlir::sdy::getShardingPerValue(callOp));
+=======
+      /*outShardings=*/
+      callOpResultShardings
+          ? callOpResultShardings
+          : getFuncResultShardings(callOp, funcOp, symbolTable));
+>>>>>>> upstream/master:third_party/xla/xla/service/spmd/shardy/round_trip_common/import_uninlineable_func_calls.cc
   namedCompOp->setAttrs(namedCompAttrs);
 
   mlir::Region& namedCompRegion = namedCompOp.getRegion();
@@ -182,9 +196,12 @@ class ImportFuncCallsPass
     for (mlir::CallGraphNode* node : llvm::reverse(rpo)) {
       if (node->isExternal()) continue;
       node->getCallableRegion()->walk([&](CallOp op) {
+<<<<<<< HEAD:third_party/xla/xla/service/spmd/shardy/round_trip_common/import_func_calls.cc
         if (onlyUninlineable && isInlineableCallOp(op)) {
           return;
         }
+=======
+>>>>>>> upstream/master:third_party/xla/xla/service/spmd/shardy/round_trip_common/import_uninlineable_func_calls.cc
         importCallOp(op, calleeNameToMovedRegion, rewriter, symbolTable);
       });
     }
@@ -199,10 +216,15 @@ class ImportFuncCallsPass
 
   StringRef getDescription() const override {
     return "Creates a pass to convert a CallOp to a NamedComputationOp with "
+<<<<<<< HEAD:third_party/xla/xla/service/spmd/shardy/round_trip_common/import_func_calls.cc
            "the function body inlined and the name of the callee. If "
            "onlyUninlineable is true, handle only CallOps with a "
            "backend_config or inlineable=false frontend attr. Otherwise, "
            "handle call CallOps.";
+=======
+           "the function body inlined and the name of the callee. Note that "
+           "the func bodies are cloned if the func is used by multiple calls.";
+>>>>>>> upstream/master:third_party/xla/xla/service/spmd/shardy/round_trip_common/import_uninlineable_func_calls.cc
   }
 
   void getDependentDialects(mlir::DialectRegistry& registry) const final {
@@ -215,6 +237,7 @@ class ImportFuncCallsPass
   ImportFuncCallsPass(ImportFuncCallsPass&&) = delete;
   ImportFuncCallsPass& operator=(ImportFuncCallsPass&&) = delete;
   ~ImportFuncCallsPass() override = default;
+<<<<<<< HEAD:third_party/xla/xla/service/spmd/shardy/round_trip_common/import_func_calls.cc
   ImportFuncCallsPass(bool onlyUninlineable) : ImportFuncCallsPass() {
     this->onlyUninlineable = onlyUninlineable;
   }
@@ -226,10 +249,13 @@ class ImportFuncCallsPass
           "Whether to convert only unlineable func calls, that is, the ones "
           "with a `backend_config` or `inlineable=false` frontend attr."),
       ::llvm::cl::init(true)};
+=======
+>>>>>>> upstream/master:third_party/xla/xla/service/spmd/shardy/round_trip_common/import_uninlineable_func_calls.cc
 };
 
 }  // namespace
 
+<<<<<<< HEAD:third_party/xla/xla/service/spmd/shardy/round_trip_common/import_func_calls.cc
 std::unique_ptr<mlir::Pass> createImportFuncCallsPass(bool onlyUninlineable) {
   return std::make_unique<ImportFuncCallsPass>(onlyUninlineable);
 }
@@ -237,6 +263,14 @@ std::unique_ptr<mlir::Pass> createImportFuncCallsPass(bool onlyUninlineable) {
 void registerImportFuncCallsPass() {
   mlir::registerPass(
       [] { return createImportFuncCallsPass(/*onlyUninlineable=*/true); });
+=======
+std::unique_ptr<mlir::Pass> createImportFuncCallsPass() {
+  return std::make_unique<ImportFuncCallsPass>();
+}
+
+void registerImportFuncCallsPass() {
+  mlir::registerPass([] { return createImportFuncCallsPass(); });
+>>>>>>> upstream/master:third_party/xla/xla/service/spmd/shardy/round_trip_common/import_uninlineable_func_calls.cc
 }
 
 }  // namespace sdy

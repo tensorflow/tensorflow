@@ -26,10 +26,12 @@ limitations under the License.
 
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
+#include "xla/future.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/c/pjrt_c_api_helpers.h"
 #include "xla/pjrt/c/pjrt_c_api_layouts_extension.h"
@@ -39,7 +41,6 @@ limitations under the License.
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_device_description.h"
 #include "xla/pjrt/pjrt_executable.h"
-#include "xla/pjrt/pjrt_future.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/shape.h"
 
@@ -197,11 +198,19 @@ struct PJRT_Buffer {
       external_references;
 };
 
+struct PJRT_FulfillAliasBufferCallback {
+  xla::PjRtFulfillAliasBufferCallback fulfill_alias_buffer_cb;
+};
+
 struct PJRT_Event {
-  xla::PjRtFuture<> future;
+  xla::Future<> future;
 };
 
 struct PJRT_SerializedExecutable {
+  std::string serialized;
+};
+
+struct PJRT_DeviceAssignmentSerialized {
   std::string serialized;
 };
 
@@ -283,6 +292,10 @@ PJRT_Error* PJRT_Client_DefaultDeviceAssignment(
     PJRT_Client_DefaultDeviceAssignment_Args* args);
 PJRT_Error* PJRT_Client_CreateUninitializedBuffer(
     PJRT_Client_CreateUninitializedBuffer_Args* args);
+PJRT_Error* PJRT_Client_CreateAliasBuffer(
+    PJRT_Client_CreateAliasBuffer_Args* args);
+PJRT_Error* PJRT_Client_FulfillAliasBuffer(
+    PJRT_Client_FulfillAliasBuffer_Args* args);
 PJRT_Error* PJRT_Client_BufferFromHostBuffer(
     PJRT_Client_BufferFromHostBuffer_Args* args);
 PJRT_Error* PJRT_Client_CreateViewOfDeviceBuffer(
@@ -375,6 +388,8 @@ PJRT_Error* PJRT_LoadedExecutable_GetExecutable(
 // until the next major version upgrade.
 PJRT_Error* PJRT_LoadedExecutable_Fingerprint(
     PJRT_LoadedExecutable_Fingerprint_Args* args);
+PJRT_Error* PJRT_LoadedExecutable_GetDeviceAssignment(
+    PJRT_LoadedExecutable_GetDeviceAssignment_Args* args);
 
 PJRT_Error* PJRT_Buffer_Destroy(PJRT_Buffer_Destroy_Args* args);
 PJRT_Error* PJRT_Buffer_ElementType(PJRT_Buffer_ElementType_Args* args);

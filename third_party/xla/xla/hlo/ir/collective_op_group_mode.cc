@@ -21,6 +21,10 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/util.h"
+<<<<<<< HEAD
+=======
+#include "xla/xla_data.pb.h"
+>>>>>>> upstream/master
 
 namespace xla {
 namespace {
@@ -31,11 +35,23 @@ struct CollectiveOpGroupModeInfo {
 };
 
 const CollectiveOpGroupModeInfo kGroupModeInfos[] = {
+<<<<<<< HEAD
     {CollectiveOpGroupMode::kCrossReplica, "cross_replica"},
     {CollectiveOpGroupMode::kCrossPartition, "cross_partition"},
     {CollectiveOpGroupMode::kCrossReplicaAndPartition,
      "cross_replica_and_partition"},
     {CollectiveOpGroupMode::kFlattenedID, "flattened_id"},
+=======
+    {CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA,
+     "cross_replica"},
+    {CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_PARTITION,
+     "cross_partition"},
+    {CollectiveOpGroupMode::
+         COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA_AND_PARTITION,
+     "cross_replica_and_partition"},
+    {CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_FLATTENED_ID,
+     "flattened_id"},
+>>>>>>> upstream/master
 };
 
 }  // namespace
@@ -70,6 +86,7 @@ absl::StatusOr<CollectiveOpGroupMode> GetCollectiveOpGroupMode(
       return InvalidArgument(
           "Cannot have use_global_device_ids=true without channel_id");
     }
+<<<<<<< HEAD
     return CollectiveOpGroupMode::kCrossReplica;
   }
   if (!use_global_device_ids.has_value()) {
@@ -79,6 +96,18 @@ absl::StatusOr<CollectiveOpGroupMode> GetCollectiveOpGroupMode(
     return CollectiveOpGroupMode::kCrossReplicaAndPartition;
   }
   return CollectiveOpGroupMode::kFlattenedID;
+=======
+    return CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA;
+  }
+  if (!use_global_device_ids.has_value()) {
+    return CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_PARTITION;
+  }
+  if (!*use_global_device_ids) {
+    return CollectiveOpGroupMode::
+        COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA_AND_PARTITION;
+  }
+  return CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_FLATTENED_ID;
+>>>>>>> upstream/master
 }
 
 }  // namespace xla

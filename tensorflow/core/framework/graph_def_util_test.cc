@@ -296,7 +296,7 @@ TEST(StrippedOpListForGraphTest, FlatTest) {
         graph_def.add_node()->set_op("F");
       } else {
         for (const string& op : graph_ops[order]) {
-          string name = strings::StrCat("name", graph_def.node_size());
+          string name = absl::StrCat("name", graph_def.node_size());
           NodeDef* node = graph_def.add_node();
           node->set_name(name);
           node->set_op(op);

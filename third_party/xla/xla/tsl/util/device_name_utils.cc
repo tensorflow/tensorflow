@@ -243,20 +243,20 @@ absl::Status DeviceNameUtils::CanonicalizeDeviceName(absl::string_view fullname,
 string DeviceNameUtils::ParsedNameToString(const ParsedName& pn) {
   string buf;
   if (pn.has_job) {
-    strings::StrAppend(&buf, "/job:", pn.job);
+    absl::StrAppend(&buf, "/job:", pn.job);
   }
   if (pn.has_replica) {
-    strings::StrAppend(&buf, "/replica:", pn.replica);
+    absl::StrAppend(&buf, "/replica:", pn.replica);
   }
   if (pn.has_task) {
-    strings::StrAppend(&buf, "/task:", pn.task);
+    absl::StrAppend(&buf, "/task:", pn.task);
   }
   if (pn.has_type) {
-    strings::StrAppend(&buf, "/device:", pn.type, ":");
+    absl::StrAppend(&buf, "/device:", pn.type, ":");
     if (pn.has_id) {
-      strings::StrAppend(&buf, pn.id);
+      absl::StrAppend(&buf, pn.id);
     } else {
-      strings::StrAppend(&buf, "*");
+      absl::StrAppend(&buf, "*");
     }
   }
   return buf;
@@ -527,14 +527,14 @@ const DeviceNameUtils::ParsedName DeviceNameUtils::AddressSpace(
 
 /* static */
 string DeviceNameUtils::LocalName(absl::string_view type, int id) {
-  return strings::StrCat("/device:", type, ":", id);
+  return absl::StrCat("/device:", type, ":", id);
 }
 
 namespace {
 // Returns the legacy local device name given its "type" and "id" (which is
 // '/device:type:id').
 string LegacyLocalName(absl::string_view type, int id) {
-  return strings::StrCat(type, ":", id);
+  return absl::StrCat(type, ":", id);
 }
 }  // anonymous namespace
 
@@ -572,16 +572,16 @@ bool DeviceNameUtils::SplitDeviceName(absl::string_view name, string* task,
         (pn.has_replica ? (9 + 4 /*estimated UB for # replica digits*/) : 0) +
         (pn.has_task ? (6 + 4 /*estimated UB for # task digits*/) : 0));
     if (pn.has_job) {
-      strings::StrAppend(task, "/job:", pn.job);
+      absl::StrAppend(task, "/job:", pn.job);
     }
     if (pn.has_replica) {
-      strings::StrAppend(task, "/replica:", pn.replica);
+      absl::StrAppend(task, "/replica:", pn.replica);
     }
     if (pn.has_task) {
-      strings::StrAppend(task, "/task:", pn.task);
+      absl::StrAppend(task, "/task:", pn.task);
     }
     device->clear();
-    strings::StrAppend(device, pn.type, ":", pn.id);
+    absl::StrAppend(device, pn.type, ":", pn.id);
     return true;
   }
   return false;
@@ -594,9 +594,9 @@ bool DeviceNameUtils::GetTaskName(const ParsedName& pn, string* task) {
     task->reserve((5 + pn.job.size()) +
                   (9 + 4 /*estimated UB for # replica digits*/) +
                   (6 + 4 /*estimated UB for # task digits*/));
-    strings::StrAppend(task, "/job:", pn.job);
-    strings::StrAppend(task, "/replica:", pn.replica);
-    strings::StrAppend(task, "/task:", pn.task);
+    absl::StrAppend(task, "/job:", pn.job);
+    absl::StrAppend(task, "/replica:", pn.replica);
+    absl::StrAppend(task, "/task:", pn.task);
     return true;
   }
   return false;

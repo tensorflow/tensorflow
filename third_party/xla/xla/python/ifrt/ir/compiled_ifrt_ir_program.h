@@ -19,9 +19,14 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+<<<<<<< HEAD
 #include "absl/status/statusor.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/OwningOpRef.h"
+=======
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+>>>>>>> upstream/master
 #include "xla/python/ifrt/array_spec.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/device.h"
@@ -46,6 +51,7 @@ struct CompiledIfrtIrProgram {
   // Specifications of the program outputs.
   std::vector<xla::ifrt::ArraySpec> out_specs;
 
+<<<<<<< HEAD
   // Hold the IfrtIRProgram to avoid the module from being destroyed, in the
   // case where the IfrtIRProgram owns the MLIR module.
   std::unique_ptr<xla::ifrt::IfrtIRProgram> program;
@@ -56,6 +62,18 @@ struct CompiledIfrtIrProgram {
   // the module is using the MLIR context of the program, and thus must be
   // destroyed before the program.
   mlir::OwningOpRef<mlir::ModuleOp> mlir_module;
+=======
+  // Indicates whether the program supports querying input/output layout. If
+  // this is OK, `in_specs` and `out_specs` will have `layout` field populated.
+  // Otherwise, the layout field will be nullptr.
+  absl::Status layout_status;
+
+  // The indices of the donatable inputs in the program.
+  std::vector<int> donatable_input_indices;
+
+  // The input program.
+  std::unique_ptr<xla::ifrt::IfrtIRProgram> program;
+>>>>>>> upstream/master
 
   // Mapping from logical device ids in IFRT IR MLIR module to runtime device
   // ids obtained from IFRT client.

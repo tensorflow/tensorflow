@@ -96,7 +96,7 @@ Uniquer* GetUniquer() {
 
 static std::string UniquifyName(const std::string& name) {
   Uniquer* uniquer = GetUniquer();
-  absl::MutexLock lock(&uniquer->mu);
+  absl::MutexLock lock(uniquer->mu);
   return uniquer->name_uniquer.GetUniqueName(name);
 }
 

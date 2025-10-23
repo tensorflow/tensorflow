@@ -18,7 +18,10 @@ limitations under the License.
 
 #include <memory>
 #include <optional>
+<<<<<<< HEAD
 #include <vector>
+=======
+>>>>>>> upstream/master
 
 #include "absl/log/check.h"
 #include "absl/status/statusor.h"
@@ -35,6 +38,7 @@ struct ProfileOptions {
   // Whether to initialize the buffers with random data or leave them
   // uninitialized.
   bool should_init_buffers = false;
+<<<<<<< HEAD
   // Whether to populate the output_buffer in the ProfileResult with the result
   // of the execution. This is to avoid data copies if the caller doesn't need
   // the output buffer.
@@ -44,6 +48,17 @@ struct ProfileOptions {
 struct ProfileResult {
   absl::Duration duration = absl::ZeroDuration();
   std::optional<ScopedShapedBuffer> output_buffer = std::nullopt;
+=======
+};
+
+struct ProfileResult {
+  // The duration of the executable run.
+  absl::Duration duration = absl::ZeroDuration();
+  // The output buffer of the executable., only captures the first buffer if
+  // the output is a tuple.
+  std::optional<ScopedShapedBuffer> output_buffer = std::nullopt;
+  // The scratch bytes used by the executable, if any.
+>>>>>>> upstream/master
   int scratch_bytes = 0;
 };
 
@@ -65,6 +80,7 @@ class Profiler {
     return Profile(executable.get(), *buffers);
   }
 
+<<<<<<< HEAD
   // Profiles multiple executables with shared buffers. This guarantees that
   // the provided executables have same arguments. This is important for
   // autotuning as we run same instruction with different configs.
@@ -85,6 +101,8 @@ class Profiler {
     return results;
   }
 
+=======
+>>>>>>> upstream/master
   // Creates Input buffers for a given executable on the device. The buffers
   // are created with the same shape as the input parameters of the executable.
   virtual absl::StatusOr<std::unique_ptr<InputBuffers>> CreateInputBuffers(

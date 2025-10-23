@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/grappler_item_builder.h"
@@ -119,8 +120,7 @@ bool FileInputYielder::NextItem(GrapplerItem* item) {
     }
   }
 
-  const string id =
-      strings::StrCat(Fingerprint64(metagraph.SerializeAsString()));
+  const string id = absl::StrCat(Fingerprint64(metagraph.SerializeAsString()));
 
   ItemConfig cfg;
   std::unique_ptr<GrapplerItem> new_item =

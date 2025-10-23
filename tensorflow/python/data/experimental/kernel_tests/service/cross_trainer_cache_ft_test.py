@@ -28,8 +28,7 @@ class CrossTrainerCacheFtTest(data_service_test_base.TestBase,
                               parameterized.TestCase):
   """Fault tolerance tests for tf.data service cross-trainer cache."""
 
-  @combinations.generate(
-      combinations.times(test_base.default_test_combinations()))
+  @combinations.generate(test_base.default_test_combinations())
   def testWorkerRestart(self):
     cluster = self._create_cluster(num_workers=1)
     dataset = dataset_ops.Dataset.range(10000000).repeat()
@@ -53,8 +52,7 @@ class CrossTrainerCacheFtTest(data_service_test_base.TestBase,
     elements = self._get_next(get_next, 100)
     self.assertEqual(elements, list(range(1, 101)))
 
-  @combinations.generate(
-      combinations.times(test_base.default_test_combinations()))
+  @combinations.generate(test_base.default_test_combinations())
   def testDispatcherRestart(self):
     cluster = self._create_cluster(num_workers=1)
     dataset = dataset_ops.Dataset.range(10000000).repeat()

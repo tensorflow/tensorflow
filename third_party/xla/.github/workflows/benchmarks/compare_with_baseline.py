@@ -95,14 +95,23 @@ def compare_metrics(
   # {
   #   ...,
   #   "metrics": {
-  #     "GPU_DEVICE_TIME": { "value_ms": 150.0, "unit": "ms", ... },
-  #     "GPU_DEVICE_MEMCPY_TIME": { "value_ms": 1.2, "unit": "ms", ... },
+  #     "GPU_DEVICE_TIME": { "value": 150.0, "unit": "ms", ... },
+  #     "GPU_DEVICE_MEMCPY_TIME": { "value": 1.2, "unit": "ms", ... },
+  #     "PEAK_GPU_MEMORY": { "value": 12.45, "unit": "GB", ... },
   #     ...
   #   }
   # }
   # If your actual results.json structure is different, you MUST adapt this
   # section.
   actual_metrics_container = results_data.get("metrics")
+  metric_to_baseline_key = {
+      "WALL_TIME": "baseline_ms",
+      "GPU_DEVICE_TIME": "baseline_ms",
+      "GPU_DEVICE_MEMCPY_TIME": "baseline_ms",
+      "CPU_TIME": "baseline_ms",
+      "PEAK_CPU_MEMORY": "baseline_gb",
+      "PEAK_GPU_MEMORY": "baseline_gb",
+  }
 
   if not actual_metrics_container or not isinstance(
       actual_metrics_container, dict
@@ -119,23 +128,34 @@ def compare_metrics(
     sys.exit(0)  # Exit cleanly if no metrics to compare
 
   for metric_name, baseline_info in config_baselines.items():
-    if not isinstance(baseline_info, dict) or not all(
-        key in baseline_info for key in ["baseline_ms", "threshold"]
+    if (
+        not isinstance(baseline_info, dict)
+        or "threshold" not in baseline_info
+        or not {"baseline_ms", "baseline_gb"}.intersection(baseline_info.keys())
     ):
       summary_messages.append(
           f"::warning title=Malformed Baseline::Metric '{metric_name}' in"
-          f" baseline for '{config_id}' is missing 'baseline_ms' or"
-          " 'threshold', or is not structured as a dictionary. Skipping."
+          f" baseline for '{config_id}' is missing 'threshold', or is missing"
+          " both 'baseline_ms' and 'baseline_gb', or is not structured as a"
+          " dictionary. Skipping."
+      )
+      continue
+
+    baseline_key = metric_to_baseline_key.get(metric_name)
+    if not baseline_key:
+      summary_messages.append(
+          f"::warning title=Unsupported Metric::Metric '{metric_name}' is not"
+          " supported by this script. Skipping."
       )
       continue
 
     try:
-      baseline_value_ms = float(baseline_info["baseline_ms"])
+      baseline_value = float(baseline_info[baseline_key])
       threshold_percentage = float(baseline_info["threshold"])
     except ValueError:
       summary_messages.append(
           f"::warning title=Invalid Baseline Value::Metric '{metric_name}' in"
-          f" baseline for '{config_id}' has non-numeric 'baseline_ms' or"
+          f" baseline for '{config_id}' has non-numeric '{baseline_key}' or"
           " 'threshold'. Skipping."
       )
       continue
@@ -143,9 +163,9 @@ def compare_metrics(
     # Extract the actual metric value from results.json
     actual_metric_entry = actual_metrics_container.get(metric_name)
 
-    if not actual_metric_entry or "value_ms" not in actual_metric_entry:
+    if not actual_metric_entry or "value" not in actual_metric_entry:
       summary_messages.append(
-          f"Metric '{metric_name}': Actual value or 'value_ms' key not found in"
+          f"Metric '{metric_name}': Actual value or 'value' key not found in"
           " results, or not a dictionary. Skipping."
       )
       # For debugging:
@@ -161,39 +181,49 @@ def compare_metrics(
       continue
 
     try:
-      actual_value_ms = float(actual_metric_entry["value_ms"])
+      actual_value = float(actual_metric_entry["value"])
     except (ValueError, TypeError):
       summary_messages.append(
           f"Metric '{metric_name}': Actual value"
-          f" '{actual_metric_entry['value_ms']}' is not a valid number."
+          f" '{actual_metric_entry['value']}' is not a valid number."
+          " Skipping."
+      )
+      continue
+
+    actual_unit = actual_metric_entry.get("unit")
+    if not actual_unit:
+      summary_messages.append(
+          f"Metric '{metric_name}': Actual value unit is not specified."
           " Skipping."
       )
       continue
 
     summary_messages.append(f"\nComparing metric: {metric_name}")
-    summary_messages.append(f"  Actual Value: {actual_value_ms:.3f} ms")
-    summary_messages.append(f"  Baseline Value: {baseline_value_ms:.3f} ms")
+    summary_messages.append(f"  Actual Value: {actual_value:.3f} {actual_unit}")
+    summary_messages.append(
+        f"  Baseline Value: {baseline_value:.3f} {actual_unit}"
+    )
     summary_messages.append(
         f"  Allowed Threshold: {threshold_percentage*100:.1f}%"
     )
 
     # Higher value is worse for time-based metrics
-    allowed_upper_bound = baseline_value_ms * (1.0 + threshold_percentage)
+    allowed_upper_bound = baseline_value * (1.0 + threshold_percentage)
     summary_messages.append(
         "  Allowed Upper Bound (Baseline * (1 + Threshold)):"
-        f" {allowed_upper_bound:.3f} ms"
+        f" {allowed_upper_bound:.3f} {actual_unit}"
     )
 
-    if actual_value_ms > allowed_upper_bound:
+    if actual_value > allowed_upper_bound:
       percentage_diff = 0.0
       if (
-          abs(baseline_value_ms) > 1e-9
+          abs(baseline_value) > 1e-9
       ):  # Avoid division by zero for very small baselines
         percentage_diff = (
-            (actual_value_ms - baseline_value_ms) / baseline_value_ms
+            (actual_value - baseline_value) / baseline_value
         ) * 100.0
       elif (
-          actual_value_ms > 0
+          actual_value > 0
       ):  # If baseline is effectively zero, any positive value is infinitely
         # worse.
         percentage_diff = float("inf")
@@ -201,10 +231,10 @@ def compare_metrics(
       # Use GitHub Actions error annotation for better visibility
       error_title = f"REGRESSION: {metric_name}"
       error_details = (
-          f"Value {actual_value_ms:.3f} ms is {percentage_diff:.2f}% worse than"
-          f" baseline {baseline_value_ms:.3f} ms. Exceeds threshold of"
-          f" {threshold_percentage*100:.1f}% (max allowed:"
-          f" {allowed_upper_bound:.3f} ms)."
+          f"Value {actual_value:.3f} {actual_unit} is {percentage_diff:.2f}%"
+          f" worse than baseline {baseline_value:.3f} {actual_unit}. Exceeds"
+          f" threshold of {threshold_percentage*100:.1f}% (max allowed:"
+          f" {allowed_upper_bound:.3f} {actual_unit})."
       )
       summary_messages.append(
           "  ::error"

@@ -17,6 +17,10 @@ limitations under the License.
 
 #include <string>
 
+<<<<<<< HEAD
+=======
+#include "absl/status/status_matchers.h"
+>>>>>>> upstream/master
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"

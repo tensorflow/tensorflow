@@ -433,6 +433,35 @@ def xla_test(
             (backend in AMD_GPU_DEFAULT_BACKENDS and is_rocm_configured())):
             test_names.append(test_name)
 
+        # For coverage purposes, we want all GPU tests to also run with the PjRt
+        # StreamExecutor GPU client, unless they are incompatible or blocking
+        # the PjRt test migration. Only until the TFRT GPU client is fully
+        # supported.
+        if device_type_for_env == "gpu" and "incompatible_with_pjrt_se_gpu_client" not in this_backend_tags and "test_migrated_to_hlo_runner_pjrt" in this_backend_tags:
+            variant_test_name = test_name + "_notfrt"
+            xla_cc_test(
+                name = variant_test_name,
+                srcs = srcs,
+                tags = this_backend_tags,
+                copts = copts + this_backend_copts,
+                args = args + this_backend_args,
+                deps = deps + backend_deps,
+                data = data + this_backend_data,
+                env = env | {
+                    "XLA_TEST_DEVICE": device,
+                    "XLA_TEST_DEVICE_TYPE": device_type_for_env,
+                    "XLA_TEST_MODIFIERS": ",".join(modifiers),
+                    "XLA_TEST_USE_STREAM_EXECUTOR_GPU_CLIENT": "",
+                },
+                linkstatic = linkstatic,
+                fail_if_no_test_linked = fail_if_no_test_linked,
+                fail_if_no_test_selected = fail_if_no_test_selected,
+                **this_backend_kwargs
+            )
+            if ((backend in NVIDIA_GPU_BACKENDS and is_cuda_configured()) or
+                (backend in AMD_GPU_DEFAULT_BACKENDS and is_rocm_configured())):
+                test_names.append(variant_test_name)
+
     # Notably, a test_suite with `tests = []` is not empty:
     # https://bazel.build/reference/be/general#test_suite_args and the default
     # `tests = []` behavior doesn't respect `--build_tag_filters` due to

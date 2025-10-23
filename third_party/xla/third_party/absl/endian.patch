@@ -1,7 +1,11 @@
 diff --git a/absl/base/BUILD.bazel b/absl/base/BUILD.bazel
 --- a/absl/base/BUILD.bazel
 +++ b/absl/base/BUILD.bazel
+<<<<<<< HEAD
 @@ -538,9 +538,6 @@ cc_library(
+=======
+@@ -542,9 +542,6 @@ cc_library(
+>>>>>>> upstream/master
      ],
      copts = ABSL_DEFAULT_COPTS,
      linkopts = ABSL_DEFAULT_LINKOPTS,

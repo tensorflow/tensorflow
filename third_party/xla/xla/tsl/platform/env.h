@@ -449,6 +449,15 @@ class Env {
       const ThreadOptions& thread_options, const std::string& name,
       absl::AnyInvocable<void()> fn) TF_MUST_USE_RESULT = 0;
 
+  /// \brief Starts a new detached thread that runs fn() and is identified
+  /// (for debugging/performance-analysis) by "name".
+  ///
+  virtual void StartDetachedThread(const ThreadOptions& thread_options,
+                                   const std::string& name,
+                                   absl::AnyInvocable<void()> fn) {
+    LOG(FATAL) << "StartDetachedThread is not implemented in this environment.";
+  }
+
   // Returns the thread id of calling thread.
   // Posix: Returns pthread id which is only guaranteed to be unique within a
   //        process.
@@ -551,6 +560,12 @@ class EnvWrapper : public Env {
                       absl::AnyInvocable<void()> fn) override {
     return target_->StartThread(thread_options, name, std::move(fn));
   }
+  void StartDetachedThread(const ThreadOptions& thread_options,
+                           const std::string& name,
+                           absl::AnyInvocable<void()> fn) override {
+    target_->StartDetachedThread(thread_options, name, std::move(fn));
+  }
+
   int64_t GetCurrentThreadId() override {
     return target_->GetCurrentThreadId();
   }

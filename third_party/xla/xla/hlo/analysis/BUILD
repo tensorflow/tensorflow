@@ -155,6 +155,7 @@ cc_library(
         "//xla/hlo/evaluator:hlo_evaluator",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/utils:hlo_query",
+        "//xla/service:call_inliner",
         "//xla/service:collective_ops_utils",
         "//xla/service:constant_value",
         "//xla/service:hlo_module_config",
@@ -316,6 +317,7 @@ xla_cc_test(
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest",
         "@com_google_googletest//:gtest_main",
@@ -622,6 +624,29 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "interval",
+    srcs = ["interval.cc"],
+    hdrs = ["interval.h"],
+    deps = [
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/numeric:int128",
+        "@com_google_absl//absl/strings:str_format",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+xla_cc_test(
+    name = "interval_test",
+    srcs = ["interval_test.cc"],
+    deps = [
+        ":interval",
+        "//xla/tests:hlo_test_base",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:test",
+    ],
+)
+
+cc_library(
     name = "indexing_analysis",
     srcs = [
         "indexing_analysis.cc",
@@ -634,6 +659,7 @@ cc_library(
         "indexing_map_serialization.h",
     ],
     deps = [
+        ":interval",
         "//xla:permutation_util",
         "//xla:shape_util",
         "//xla:util",
@@ -642,8 +668,11 @@ cc_library(
         "//xla/hlo/transforms/simplifiers:gather_simplifier",
         "//xla/hlo/utils:hlo_traversal",
         "//xla/service:matmul_indexing_utils",
+<<<<<<< HEAD
+=======
+        "//xla/service/gpu/model/experimental:symbolic_expr",
+>>>>>>> upstream/master
         "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/container:inlined_vector",
@@ -667,8 +696,10 @@ xla_cc_test(
     deps = [
         ":indexing_analysis",
         ":indexing_test_utils",
+        ":interval",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/hlo/testlib:verified_hlo_module",
+        "//xla/service/gpu/model/experimental:symbolic_expr",
         "//xla/tests:xla_internal_test_main",
         "@com_google_absl//absl/hash:hash_testing",
         "@com_google_absl//absl/strings:string_view",
@@ -687,6 +718,7 @@ xla_cc_test(
         ":indexing_analysis",
         ":indexing_test_utils",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/service/gpu/model/experimental:symbolic_expr",
         "//xla/tests:xla_internal_test_main",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest",
@@ -704,10 +736,10 @@ cc_library(
         ":indexing_analysis",
         "//xla:status_macros",
         "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/hlo/testlib:verified_hlo_module",
-        "//xla/tests:hlo_test_base",
+        "//xla/service/gpu/model/experimental:symbolic_expr",
         "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
@@ -730,6 +762,7 @@ xla_cc_test(
     deps = [
         ":indexing_analysis",
         ":indexing_test_utils",
+        ":interval",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/utils:hlo_traversal",
         "//xla/tests:xla_internal_test_main",

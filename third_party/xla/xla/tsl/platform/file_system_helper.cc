@@ -250,10 +250,10 @@ absl::Status GetMatchingPaths(FileSystem* fs, Env* env, const string& pattern,
 
         const std::string path = io::JoinPath(parent, children[j]);
         if (index == dirs.size() - 1) {
-          absl::MutexLock l(&result_mutex);
+          absl::MutexLock l(result_mutex);
           results->emplace_back(path);
         } else if (children_status[j].ok()) {
-          absl::MutexLock l(&queue_mutex);
+          absl::MutexLock l(queue_mutex);
           next_expand_queue.emplace_back(path, index);
         }
       }

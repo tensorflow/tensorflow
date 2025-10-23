@@ -17,12 +17,14 @@ limitations under the License.
 
 #include <memory>
 
+#include <gtest/gtest.h>
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/tests/test_utils.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace gpu {

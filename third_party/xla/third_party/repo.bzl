@@ -138,21 +138,16 @@ def tf_http_archive(name, sha256, urls, **kwargs):
         **kwargs
     )
 
-def _tf_vendored_impl(repository_ctx):
-    parent_path = repository_ctx.path(repository_ctx.attr.parent).dirname
-
-    # get_child doesn't allow slashes. Yes this is silly. bazel_skylib paths
-    # doesn't work with path objects.
-    relpath_parts = repository_ctx.attr.relpath.split("/")
-    vendored_path = parent_path
-    for part in relpath_parts:
-        vendored_path = vendored_path.get_child(part)
-    repository_ctx.symlink(vendored_path, ".")
+def _tf_vendored_impl(ctx):
+    ctx.symlink(ctx.path(ctx.attr._root).dirname.get_child(ctx.attr.path), ".")
 
 tf_vendored = repository_rule(
     implementation = _tf_vendored_impl,
+    doc = "Similar to local_repository, but path is relative to the root of the " +
+          "repository, not the root of the workspace.",
     attrs = {
-        "parent": attr.label(default = "//:WORKSPACE"),
-        "relpath": attr.string(),
+        "_root": attr.label(default = "//:unused"),
+        "path": attr.string(),
     },
+    local = True,
 )

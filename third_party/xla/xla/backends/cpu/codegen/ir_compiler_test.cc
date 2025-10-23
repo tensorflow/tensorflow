@@ -182,15 +182,16 @@ TEST(IrCompilerTest, TestAdditionalFeatures) {
     absl::string_view features = has_avx512 ? "+avx512f" : "-avx512f";
     absl::string_view triple = "x86_64-unknown-linux-gnu";
     std::string error;
+    llvm::Triple target_triple((llvm::StringRef(triple)));
     const llvm::Target* target =
-        llvm::TargetRegistry::lookupTarget(triple, error);
+        llvm::TargetRegistry::lookupTarget(target_triple, error);
     if (target == nullptr) {
       return absl::InternalError("Failed to lookup target: " + error);
     }
 
     llvm::TargetOptions target_options;
     return absl::WrapUnique(target->createTargetMachine(
-        llvm::Triple(llvm::Twine(triple)), cpu_name, features, target_options,
+        target_triple, cpu_name, features, target_options,
         /*RM=*/std::nullopt));
   };
 

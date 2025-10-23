@@ -23,6 +23,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/container/btree_set.h"
 #include "absl/container/flat_hash_set.h"
+#include "google/protobuf/repeated_field.h"
 
 namespace xla {
 namespace spmd {
@@ -32,7 +33,7 @@ namespace {
 std::function<tsl::protobuf::RepeatedField<int64_t>(int64_t)>  // NOLINT
 Convert(const std::vector<std::vector<int64_t>>& live) {
   return [live](int64_t live_idx) {
-    return ::proto2::RepeatedField<int64_t>(live[live_idx].begin(),  // NOLINT
+    return ::google::protobuf::RepeatedField<int64_t>(live[live_idx].begin(),  // NOLINT
                                             live[live_idx].end());
   };
 }

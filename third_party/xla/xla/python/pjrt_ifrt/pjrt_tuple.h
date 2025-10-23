@@ -55,9 +55,13 @@ class PjRtTuple final : public llvm::RTTIExtends<PjRtTuple, Tuple> {
     return {};
   }
 
+<<<<<<< HEAD
   Future<> GetReadyFuture() const override;
+=======
+  tsl::Future<> GetReadyFuture() const override;
+>>>>>>> upstream/master
 
-  Future<> Delete() override;
+  tsl::Future<> Delete() override;
 
   bool IsDeleted() const override;
 

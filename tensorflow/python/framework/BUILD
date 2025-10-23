@@ -1,10 +1,12 @@
 # python/framework package
 
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
+<<<<<<< HEAD
+=======
+load("@rules_python//python:proto.bzl", "py_proto_library")
+>>>>>>> upstream/master
 load("//tensorflow:pytype.default.bzl", "pytype_strict_library")
 load("//tensorflow:strict.default.bzl", "py_strict_library", "py_strict_test")
-
-# Placeholder: load py_proto_library
 load(
     "//tensorflow:tensorflow.bzl",
     "if_cuda_tools",
@@ -1729,6 +1731,7 @@ py_strict_library(
         ":composite_tensor",
         ":type_spec",
         ":type_spec_registry",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 

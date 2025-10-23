@@ -25,7 +25,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/ir_emission_utils.h"
-#include "tsl/platform/errors.h"
+#include "xla/tsl/platform/errors.h"
 
 namespace xla {
 namespace gpu {

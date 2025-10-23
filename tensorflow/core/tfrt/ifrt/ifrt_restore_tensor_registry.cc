@@ -25,7 +25,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/ifrt_types.h"
-#include "xla/python/ifrt/future.h"
+#include "xla/tsl/concurrency/future.h"
 #include "tensorflow/core/framework/tensor.h"
 
 namespace tensorflow {
@@ -33,7 +33,7 @@ namespace ifrt_serving {
 
 absl::Status IfrtRestoreTensorRegistry::TryRegister(
     absl::string_view name, RestoredTensorInfo restored_tensor_info) {
-  absl::MutexLock lock(&mutex_);
+  absl::MutexLock lock(mutex_);
   auto& info = restored_tensors_[name];
   if (info.tensor_future.IsValid()) {
     return absl::AlreadyExistsError(
@@ -43,12 +43,12 @@ absl::Status IfrtRestoreTensorRegistry::TryRegister(
   return absl::OkStatus();
 }
 
-xla::ifrt::Future<tensorflow::Tensor>
-IfrtRestoreTensorRegistry::GetRestoredTensor(absl::string_view name) const {
-  absl::MutexLock lock(&mutex_);
+tsl::Future<tensorflow::Tensor> IfrtRestoreTensorRegistry::GetRestoredTensor(
+    absl::string_view name) const {
+  absl::MutexLock lock(mutex_);
   auto it = restored_tensors_.find(name);
   if (it == restored_tensors_.end()) {
-    return xla::ifrt::Future<tensorflow::Tensor>(
+    return tsl::Future<tensorflow::Tensor>(
         absl::NotFoundError(absl::StrCat("Variable '", name, "' not found.")));
   }
 
@@ -56,7 +56,7 @@ IfrtRestoreTensorRegistry::GetRestoredTensor(absl::string_view name) const {
 }
 
 absl::Status IfrtRestoreTensorRegistry::SetUsedByHost(absl::string_view name) {
-  absl::MutexLock lock(&mutex_);
+  absl::MutexLock lock(mutex_);
   auto it = restored_tensors_.find(name);
   if (it == restored_tensors_.end()) {
     return absl::NotFoundError(
@@ -68,8 +68,8 @@ absl::Status IfrtRestoreTensorRegistry::SetUsedByHost(absl::string_view name) {
 }
 
 void IfrtRestoreTensorRegistry::Freeze() {
-  absl::MutexLock lock(&mutex_);
-  xla::ifrt::Future<tensorflow::Tensor> release_tensor_future(
+  absl::MutexLock lock(mutex_);
+  tsl::Future<tensorflow::Tensor> release_tensor_future(
       absl::UnavailableError("Tensor is already release."));
   for (auto& [name, info] : restored_tensors_) {
     if (!info.used_by_host) {
@@ -82,7 +82,7 @@ void IfrtRestoreTensorRegistry::Freeze() {
 
 absl::StatusOr<DtypeAndShape> IfrtRestoreTensorRegistry::GetDtypeAndShape(
     absl::string_view name) const {
-  absl::MutexLock lock(&mutex_);
+  absl::MutexLock lock(mutex_);
   auto it = restored_tensors_.find(name);
   if (it == restored_tensors_.end()) {
     return absl::NotFoundError(

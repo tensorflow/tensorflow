@@ -80,7 +80,7 @@ class RPCState : public GrpcClientCQTag {
               } else if (fail_fast_env_lower == "false") {
                 return false;
               } else {
-                string error_message = strings::StrCat(
+                string error_message = absl::StrCat(
                     "Invalid GRPC_FAIL_FAST config: ", fail_fast_env);
                 LOG(WARNING) << error_message;
                 done(errors::InvalidArgument(error_message));
@@ -187,12 +187,12 @@ class RPCState : public GrpcClientCQTag {
     } else {
       // Attach additional GRPC error information if any to the final status
       string error_msg = std::string(s.message());
-      strings::StrAppend(&error_msg, "\nAdditional GRPC error information");
+      absl::StrAppend(&error_msg, "\nAdditional GRPC error information");
       if (target_) {
-        strings::StrAppend(&error_msg, " from remote target ", *target_);
+        absl::StrAppend(&error_msg, " from remote target ", *target_);
       }
-      strings::StrAppend(&error_msg, " while calling ", method_);
-      strings::StrAppend(&error_msg, ":\n:", context_->debug_error_string());
+      absl::StrAppend(&error_msg, " while calling ", method_);
+      absl::StrAppend(&error_msg, ":\n:", context_->debug_error_string());
       s = errors::CreateWithUpdatedMessage(s, error_msg);
       // Always treat gRPC cancellation as a derived error. This ensures that
       // other error types are preferred during status aggregation. (gRPC

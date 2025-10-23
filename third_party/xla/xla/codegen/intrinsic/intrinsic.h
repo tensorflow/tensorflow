@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_CODEGEN_INTRINSIC_INTRINSIC_H_
 #define XLA_CODEGEN_INTRINSIC_INTRINSIC_H_
 
+<<<<<<< HEAD
 #include <cstddef>
 #include <cstdint>
 #include <optional>
@@ -28,6 +29,14 @@ limitations under the License.
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+=======
+#include <cstdint>
+#include <string>
+#include <vector>
+
+#include "absl/status/statusor.h"
+#include "absl/strings/match.h"
+>>>>>>> upstream/master
 #include "absl/strings/string_view.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/Module.h"
@@ -36,11 +45,17 @@ limitations under the License.
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypes.h"
+<<<<<<< HEAD
 #include "mlir/IR/MLIRContext.h"
+=======
+#include "xla/codegen/intrinsic/type.h"
+#include "xla/codegen/intrinsic/vec_name_mangler.h"
+>>>>>>> upstream/master
 #include "xla/xla_data.pb.h"
 
 namespace xla::codegen::intrinsics {
 
+<<<<<<< HEAD
 // A scalar argument or result.
 struct Scalar {
   PrimitiveType type;
@@ -97,11 +112,25 @@ class Type : public std::variant<Scalar, Vec> {
 
   // Returns the intrinsic type for the given type name, e.g. v4f32.
   static Type FromName(absl::string_view name);
+=======
+enum class DeviceType {
+  kAmdCpu,
+  kIntelCpu,
+  kArmCpu,
+  kNvidiaGpu,
+  kAmdGpu,
+>>>>>>> upstream/master
 };
 
 struct IntrinsicOptions {
   // CPU features available on the target machine.
   std::string features;
+<<<<<<< HEAD
+=======
+
+  // The type of device the target machine is running on.
+  DeviceType device_type;
+>>>>>>> upstream/master
   // Disables math functions that do not have the same results across e.g.
   // AMD vs. Intel CPUs.
   bool disable_platform_dependent_math = false;
@@ -147,12 +176,17 @@ class Intrinsic {
 
   template <typename... Types>
   static std::string Name(Types... args) {
+<<<<<<< HEAD
     std::vector<std::string> arg_names = {args.name()...};
     if (Derived::kLastArgIsReturnType) {
       arg_names.insert(--arg_names.end(), "to");
     }
     return absl::StrCat("xla.", Derived::kName, ".",
                         absl::StrJoin(arg_names, "."));
+=======
+    return ::xla::codegen::intrinsic::FunctionName(
+        Derived::kLastArgIsReturnType, {args...}, Derived::kName);
+>>>>>>> upstream/master
   }
 
   template <typename... Args>

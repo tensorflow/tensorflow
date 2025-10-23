@@ -167,18 +167,18 @@ def get_current_semver_version():
 
   for line in bazel_rc_file:
     wheel_type = (
-        _get_regex_match(line, '^build --repo_env=ML_WHEEL_TYPE="(.+)"')[0]
+        _get_regex_match(line, '^common --repo_env=ML_WHEEL_TYPE="(.+)"')[0]
         or wheel_type
     )
     wheel_build_date = (
         _get_regex_match(
-            line, '^build --repo_env=ML_WHEEL_BUILD_DATE="([0-9]*)"'
+            line, '^common --repo_env=ML_WHEEL_BUILD_DATE="([0-9]*)"'
         )[0]
         or wheel_build_date
     )
     (wheel_version_suffix, is_matched) = _get_regex_match(
         line,
-        '^build --repo_env=ML_WHEEL_VERSION_SUFFIX="(.*)"',
+        '^common --repo_env=ML_WHEEL_VERSION_SUFFIX="(.*)"',
         is_last_match=True,
     )
     if is_matched:
@@ -263,24 +263,24 @@ def update_bazelrc(old_version, new_version):
   old_wheel_type = _get_wheel_type(old_version)
   new_wheel_type = _get_wheel_type(new_version)
   replace_string_in_line(
-      'build --repo_env=ML_WHEEL_TYPE="%s"' % old_wheel_type,
-      'build --repo_env=ML_WHEEL_TYPE="%s"' % new_wheel_type,
+      'common --repo_env=ML_WHEEL_TYPE="%s"' % old_wheel_type,
+      'common --repo_env=ML_WHEEL_TYPE="%s"' % new_wheel_type,
       BAZEL_RC,
   )
 
   old_wheel_build_date = _get_wheel_build_date(old_version)
   new_wheel_build_date = _get_wheel_build_date(new_version)
   replace_string_in_line(
-      'build --repo_env=ML_WHEEL_BUILD_DATE="%s"' % old_wheel_build_date,
-      'build --repo_env=ML_WHEEL_BUILD_DATE="%s"' % new_wheel_build_date,
+      'common --repo_env=ML_WHEEL_BUILD_DATE="%s"' % old_wheel_build_date,
+      'common --repo_env=ML_WHEEL_BUILD_DATE="%s"' % new_wheel_build_date,
       BAZEL_RC,
   )
 
   old_wheel_suffix = _get_wheel_version_suffix(old_version)
   new_wheel_suffix = _get_wheel_version_suffix(new_version)
   replace_string_in_line(
-      'build --repo_env=ML_WHEEL_VERSION_SUFFIX="%s"' % old_wheel_suffix,
-      'build --repo_env=ML_WHEEL_VERSION_SUFFIX="%s"' % new_wheel_suffix,
+      'common --repo_env=ML_WHEEL_VERSION_SUFFIX="%s"' % old_wheel_suffix,
+      'common --repo_env=ML_WHEEL_VERSION_SUFFIX="%s"' % new_wheel_suffix,
       BAZEL_RC,
   )
 

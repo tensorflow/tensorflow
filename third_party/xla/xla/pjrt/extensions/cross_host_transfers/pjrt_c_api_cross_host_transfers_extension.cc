@@ -24,11 +24,18 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+<<<<<<< HEAD
+=======
+#include "xla/future.h"
+>>>>>>> upstream/master
 #include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/c/pjrt_c_api_helpers.h"
 #include "xla/pjrt/c/pjrt_c_api_wrapper_impl.h"
 #include "xla/pjrt/pjrt_client.h"
+<<<<<<< HEAD
 #include "xla/pjrt/pjrt_future.h"
+=======
+>>>>>>> upstream/master
 #include "xla/shape.h"
 
 namespace pjrt {
@@ -91,10 +98,15 @@ void PJRT_Transfers_PJRT_Buffer_CopyToRemoteDevice(
     PJRT_Transfers_PJRT_Buffer_CopyToRemoteDevice_Args* args) {
   std::string serialized_descriptor = std::string(
       args->serialized_descriptor, args->serialized_descriptor_size);
+<<<<<<< HEAD
   xla::PjRtFuture<std::string>::Promise promise =
       xla::PjRtFuture<std::string>::CreatePromise();
   promise.Set(std::move(serialized_descriptor));
   auto descriptor_future = xla::PjRtFuture<std::string>(std::move(promise));
+=======
+  xla::Future<std::string> descriptor_future(std::move(serialized_descriptor));
+
+>>>>>>> upstream/master
   // TODO(emilyaf): Support on_done callback.
   xla::PjRtBuffer::RemoteSendCallback on_done =
       [](absl::Status status, bool sends_were_enqueued) { CHECK_OK(status); };

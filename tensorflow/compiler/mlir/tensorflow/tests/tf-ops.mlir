@@ -5259,3 +5259,8 @@ func.func @testGeneratorDataset(%arg0: tensor<4xf32>,
               tensor<2xf32>) -> tensor<!tf_type.variant>
   return %0 : tensor<!tf_type.variant>
 }
+
+func.func @testDebugIdentity(%arg0: tensor<i32>) -> tensor<i32> {
+  %0 = "tf.DebugIdentity"(%arg0) {debug_urls = ["file:///tmp/foo"], device_name = "CPU", tensor_name = "test_tensor"} : (tensor<i32>) -> tensor<i32>
+  func.return %0 : tensor<i32>
+}

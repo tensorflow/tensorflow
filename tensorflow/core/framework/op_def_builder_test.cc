@@ -49,7 +49,7 @@ class OpDefBuilderTest : public ::testing::Test {
     if (status.ok()) {
       OpDef expected;
       protobuf::TextFormat::ParseFromString(
-          strings::StrCat("name: 'Test' ", proto), &expected);
+          absl::StrCat("name: 'Test' ", proto), &expected);
       // Allow different orderings
       CanonicalizeAttrTypeListOrder(&op_def);
       CanonicalizeAttrTypeListOrder(&expected);
@@ -69,7 +69,7 @@ class OpDefBuilderTest : public ::testing::Test {
     if (status.ok()) {
       OpDef expected;
       protobuf::TextFormat::ParseFromString(
-          strings::StrCat("name: 'Test' ", proto), &expected);
+          absl::StrCat("name: 'Test' ", proto), &expected);
       EXPECT_EQ(op_def.ShortDebugString(), expected.ShortDebugString());
     }
   }

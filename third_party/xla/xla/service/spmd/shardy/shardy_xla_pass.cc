@@ -42,6 +42,7 @@ limitations under the License.
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Support/LLVM.h"
 #include "shardy/common/file_utils.h"
+#include "shardy/dialect/sdy/transforms/common/propagation_options.h"
 #include "shardy/dialect/sdy/transforms/propagation/passes.h"
 #include "re2/re2.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -312,6 +313,7 @@ absl::Status runShardingPropagation(HloModule* hloModule,
                                     mlir::ModuleOp mlirModule,
                                     bool importMhloShardings,
                                     mlir::sdy::PropagationOptions options,
+                                    bool dedupFunctionsFully,
                                     absl::string_view passName) {
   LOG(INFO) << "Using Shardy for XLA SPMD propagation.";
 
@@ -373,13 +375,20 @@ absl::Status runShardingPropagation(HloModule* hloModule,
         /*allowPropagationToResults=*/
         spanToArrayRef(
             hloModule->config().allow_spmd_sharding_propagation_to_output()),
+<<<<<<< HEAD
         /*importFuncCalls=*/true,
         /*importOnlyUninlineableFuncCalls=*/false);
+=======
+        /*importFuncCalls=*/true);
+>>>>>>> upstream/master
   } else {
     // This branch is in production.
     addSdyRoundTripImportPipeline(pm, /*enableConstantImport=*/true,
                                   /*importFuncCalls=*/true,
+<<<<<<< HEAD
                                   /*importOnlyUninlineableFuncCalls=*/false,
+=======
+>>>>>>> upstream/master
                                   /*liftAndDedupMeshes=*/true);
   }
 
@@ -389,7 +398,14 @@ absl::Status runShardingPropagation(HloModule* hloModule,
   options.conservativePropagation = hloModule->use_auto_spmd_partitioning();
   options.enableAutoPartitioning = hloModule->use_auto_spmd_partitioning();
   mlir::sdy::addPropagationPipeline(pm, dumpIndex, options);
+<<<<<<< HEAD
   addStablehloExportPipeline(pm);
+=======
+
+  xla::sdy::StablehloExportPipelineOptions stablehloExportPipelineOptions;
+  stablehloExportPipelineOptions.dedupFunctionsFully = dedupFunctionsFully;
+  addStablehloExportPipeline(pm, stablehloExportPipelineOptions);
+>>>>>>> upstream/master
   pm.addPass(mlir::sdy::createSaveModuleOpPass(shardyDir, "output_module",
                                                dumpIndex++));
   tsl::StatusScopedDiagnosticHandler diagnosticHandler(
@@ -407,7 +423,11 @@ bool eraseInlineableAttrForShardyManualComputations(HloModule* module) {
         continue;
       }
       if (absl::StrContains(instruction->to_apply()->name(),
+<<<<<<< HEAD
                             sdy::kManualComputationBodyFuncName.str())) {
+=======
+                            sdy::kManualComputationFuncName.str())) {
+>>>>>>> upstream/master
         instruction->erase_frontend_attribute(kXlaInlineableAttr);
         // TODO(b/436603025). CallInliner do not inline the Shardy related
         // manual computations based on the callee name. We have to rename the
@@ -473,9 +493,16 @@ absl::StatusOr<bool> ShardyXLA::Run(
                                      useTupleArgs);
 
   if (runSdyShardingPropagation) {
-    TF_RETURN_IF_ERROR(runShardingPropagation(hloModule, mlirModule.get(),
-                                              importMhloShardings,
-                                              defaultOptions, name()));
+    TF_RETURN_IF_ERROR(
+        runShardingPropagation(hloModule, mlirModule.get(), importMhloShardings,
+                               defaultOptions, dedupFunctionsFully, name()));
+  }
+
+  // TODO(b/431836696): Remove once issue is fixed.
+  if (useTupleArgs) {
+    mlirModule.get()->removeAttr(
+        "mhlo.xla_entry_computation_parameter_layouts");
+    mlirModule.get()->removeAttr("mhlo.xla_entry_computation_parameter_tiles");
   }
 
   // TODO(b/431836696): Remove once issue is fixed.

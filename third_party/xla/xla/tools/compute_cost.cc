@@ -23,7 +23,6 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
-#include "absl/log/log.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "xla/debug_options_flags.h"
@@ -96,7 +95,9 @@ int main(int argc, char** argv) {
   bool parse_ok = tsl::Flags::Parse(&argc, argv, flag_list);
   tsl::port::InitMain(kUsageString.c_str(), &argc, &argv);
   if (!parse_ok) {
-    LOG(QFATAL) << kUsageString;
+    // Print the usage using cerr to avoid truncation by LOG.
+    std::cerr << kUsageString;
+    return 1;
   }
 
   std::unique_ptr<xla::HloCostAnalysis> analysis;

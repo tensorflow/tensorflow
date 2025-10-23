@@ -15,6 +15,7 @@
 #include "xla/hlo/tools/hlo_diff/hlo_gumgraph_diff.h"
 
 #include <memory>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -49,8 +50,13 @@ namespace {
 
 absl::StatusOr<std::unique_ptr<const HloGumgraphMappings>> FindMappings(
     const HloGumgraph& left, const HloGumgraph& right,
+<<<<<<< HEAD
     absl::Span<const std::pair<absl::string_view, absl::string_view>>
         manual_mappings = {},
+=======
+    const std::vector<std::pair<std::string, std::string>>& manual_mappings =
+        {},
+>>>>>>> upstream/master
     const MatchOptions& options = {}) {
   LOG(INFO) << "Running Matchers";
   auto mappings = std::make_unique<HloGumgraphMappings>();
@@ -121,7 +127,7 @@ absl::StatusOr<HloGumgraphDiffResults> ComputeDiff(const HloModule& left,
   std::unique_ptr<const DiffResult> diff_result =
       ConstructDiffResult(*left_graph, *right_graph, *mappings);
   std::unique_ptr<const DiffSummary> diff_summary =
-      ConstructDiffSummary(left, right, *diff_result);
+      ConstructDiffSummary(*left_graph, *right_graph, *diff_result);
   std::unique_ptr<const DiffEval> diff_eval = nullptr;
   if (options.run_eval) {
     diff_eval = ComputeDiffEval(*left_graph, *right_graph, *mappings,

@@ -94,9 +94,9 @@ absl::Status AddImages(const string& tag, int max_images, int batch_size, int w,
     // convention for display, so we append "/image" to guarantee that the
     // image(s) won't be displayed in the global scope with no name.
     if (max_images > 1) {
-      v->set_tag(strings::StrCat(tag, "/image/", i));
+      v->set_tag(absl::StrCat(tag, "/image/", i));
     } else {
-      v->set_tag(strings::StrCat(tag, "/image"));
+      v->set_tag(absl::StrCat(tag, "/image"));
     }
 
     const auto image = ith_image(i);
@@ -307,9 +307,9 @@ absl::Status AddTensorAsAudioToSummary(const Tensor& tensor, const string& tag,
   for (int i = 0; i < N; ++i) {
     Summary::Value* v = s->add_value();
     if (max_outputs > 1) {
-      v->set_tag(strings::StrCat(tag, "/audio/", i));
+      v->set_tag(absl::StrCat(tag, "/audio/", i));
     } else {
-      v->set_tag(strings::StrCat(tag, "/audio"));
+      v->set_tag(absl::StrCat(tag, "/audio"));
     }
 
     Summary::Audio* sa = v->mutable_audio();

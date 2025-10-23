@@ -54,6 +54,8 @@ inline constexpr const absl::string_view kGpu = "gpu";
 inline constexpr const absl::string_view kA100 = "a100";
 inline constexpr const absl::string_view kH100 = "h100";
 inline constexpr const absl::string_view kB100 = "b100";
+inline constexpr const absl::string_view kP100 = "p100";
+inline constexpr const absl::string_view kV100 = "v100";
 
 inline constexpr const absl::string_view kInterpreter = "interpreter";
 
@@ -92,6 +94,11 @@ bool BackendIsStrict(absl::string_view device);
 bool BackendSupportsFloat64();
 bool BackendSupportsComplex128();
 
+<<<<<<< HEAD
+=======
+bool UsingStreamExecutorGpuClient();
+
+>>>>>>> upstream/master
 // Useful to generate an intentionally empty set of inputs for a parameterized
 // test. This is needed when we are manipulating the inputs based on the
 // backend and would like some backends to receive zero inputs. Usage of this

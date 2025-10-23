@@ -465,6 +465,7 @@ absl::StatusOr<bool> ConditionalSimplifier::TryRemoveConditional(
 
   if (conditional->branch_count() == 1) {
     HloInstruction* call_op = create_call(0);
+    call_op->set_original_value(conditional->original_value());
     TF_RETURN_IF_ERROR(computation->ReplaceInstruction(conditional, call_op));
     TF_RETURN_IF_ERROR(CallInliner::Inline(call_op).status());
     return true;
@@ -481,6 +482,7 @@ absl::StatusOr<bool> ConditionalSimplifier::TryRemoveConditional(
       }
     }
     HloInstruction* call_op = create_call(branch_index);
+    call_op->set_original_value(conditional->original_value());
     TF_RETURN_IF_ERROR(computation->ReplaceInstruction(conditional, call_op));
     TF_RETURN_IF_ERROR(CallInliner::Inline(call_op).status());
 
@@ -527,7 +529,9 @@ absl::StatusOr<bool> ConditionalSimplifier::TryRemoveConditional(
   }
 
   HloInstruction* true_call_op = create_call(0);
+  true_call_op->set_original_value(conditional->original_value());
   HloInstruction* false_call_op = create_call(1);
+  false_call_op->set_original_value(conditional->original_value());
   auto condition_broadcast = [&](const Shape& shape) {
     if (ShapeUtil::IsScalar(shape)) {
       return conditional->mutable_operand(0);

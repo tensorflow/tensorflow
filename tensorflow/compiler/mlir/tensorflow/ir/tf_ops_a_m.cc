@@ -118,6 +118,7 @@ INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(CoshOp);
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(CrossOp);
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(DataFormatDimMapOp);
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(DataFormatVecPermuteOp);
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(DebugIdentityOp);
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(DigammaOp);
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(EluOp);
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(EluGradOp);
@@ -3725,6 +3726,8 @@ LogicalResult BitcastOp::verify() {
 //===----------------------------------------------------------------------===//
 // TableGen'd op method definitions
 //===----------------------------------------------------------------------===//
+
+using namespace mlir;  // NOLINT
 
 #define GET_OP_CLASSES
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_a_m.cc.inc"

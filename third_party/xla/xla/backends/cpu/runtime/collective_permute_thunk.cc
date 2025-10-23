@@ -22,11 +22,9 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/base/optimization.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/log/log.h"
 #include "absl/memory/memory.h"
-#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
@@ -37,6 +35,7 @@ limitations under the License.
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
+#include "xla/future.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/computation_placer.h"
@@ -44,7 +43,6 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
-#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla::cpu {
@@ -127,31 +125,24 @@ CollectivePermuteThunk::Execute(const ExecuteParams& params) {
         destination_buffer(i).ToString(), data.destination[i].opaque());
   }
 
-  return ExecuteWithCommunicator(
+  Future<> future = ExecuteWithCommunicator(
       params.collective_params,
       [&](const RendezvousKey& key, Communicator& comm) {
         CpuCollectives::Executor executor(key, DefaultCollectiveTimeout());
-        tsl::CountDownAsyncValueRef<Communicator::Event> state(
-            data.source.size());
+        std::vector<Future<>> futures(data.source.size());
         for (int32_t i = 0; i < data.source.size(); ++i) {
           const Shape& shape = source_shape(i);
 
-          auto communicator_event = comm.CollectivePermute(
+          futures[i] = comm.CollectivePermute(
               data.source[i], data.destination[i], shape.element_type(),
               ShapeUtil::ElementsIn(shape), source_replica_id, copy_to,
               executor);
-
-          communicator_event.AndThen([state, communicator_event]() mutable {
-            if (ABSL_PREDICT_FALSE(communicator_event.IsError())) {
-              state.CountDown(communicator_event.GetError());
-            } else {
-              state.CountDown();
-            }
-          });
         }
 
-        return state.AsRef();
+        return JoinFutures(futures);
       });
+
+  return ToExecuteEvent(future);
 }
 
 }  // namespace xla::cpu

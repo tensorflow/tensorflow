@@ -650,6 +650,12 @@ TensorBuffer* Int4OrInt2FromProtoField(Allocator* a, const TensorProto& in,
   const int64_t in_n = in.int_val().size();
   auto begin = in.int_val().begin();
   if (n <= in_n) {
+// swapping bits of the data pointer for big endian systems
+#if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+    for (int64_t i = 0; i < n; ++i) {
+      data[i] = ((data[i] & 0xF0) >> 4) | ((data[i] & 0x0F) << 4);
+    }
+#endif
     std::copy_n(begin, n, data);
   } else if (in_n > 0) {
     std::copy_n(begin, in_n, data);
@@ -919,22 +925,6 @@ absl::Status Tensor::BitcastFrom(const Tensor& other, DataType dtype,
     }
   }
   return absl::OkStatus();
-}
-
-// Notice that buf_ either points to a regular TensorBuffer or a SubBuffer.
-// For the latter case, we have to make sure that the refcount is
-// one both for the SubBuffer _and_ the underlying TensorBuffer.
-bool Tensor::RefCountIsOne() const {
-  return buf_ != nullptr && buf_->RefCountIsOne() &&
-         buf_->root_buffer()->RefCountIsOne() && buf_->OwnsMemory();
-}
-
-int Tensor::RefCount() const {
-  if (buf_->root_buffer() != buf_) {
-    LOG(ERROR) << "Tensor RefCount not reliable if buf_ points to a SubBuffer.";
-    return -1;
-  }
-  return buf_->RefCount();
 }
 
 // The macro CASES() expands to a switch statement conditioned on

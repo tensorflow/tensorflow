@@ -168,7 +168,7 @@ TFE_InputTensorHandles InputTFE_InputTensorHandles(
           // This is a subclass of EagerTensor that we don't support.
           PyErr_Clear();
           tensorflow::ThrowTypeError(
-              tensorflow::strings::StrCat(
+              absl::StrCat(
                   "Saw an object that is an instance of a strict subclass of "
                   "EagerTensor, which is not supported.  Item ",
                   i, " is type: ", elem->ob_type->tp_name)
@@ -236,10 +236,9 @@ TFE_InputTensorHandles InputTFE_InputTensorHandles(
                 .c_str());
       } else {
         tensorflow::ThrowTypeError(
-            tensorflow::strings::StrCat(
-                "provided list of inputs contains objects other "
-                "than 'EagerTensor'. Item ",
-                i, " is type: ", elem->ob_type->tp_name)
+            absl::StrCat("provided list of inputs contains objects other "
+                         "than 'EagerTensor'. Item ",
+                         i, " is type: ", elem->ob_type->tp_name)
                 .c_str());
       }
     }
@@ -271,16 +270,14 @@ TFE_OutputTensorHandles InputTFE_OutputTensorHandles(
 #endif
   // PyLong_AsLong might throw an error if an overflow occurs.
   if (PyErr_Occurred()) {
-    PyErr_SetString(PyExc_ValueError, tensorflow::strings::StrCat(
-                                          "Number of outputs is too big: ", sz)
-                                          .c_str());
+    PyErr_SetString(PyExc_ValueError,
+                    absl::StrCat("Number of outputs is too big: ", sz).c_str());
     throw py::error_already_set();
   }
   // We can't handle more than int32 sizes for number of outputs.
   if (static_cast<long>(static_cast<int32_t>(sz)) != sz) {  // NOLINT
-    PyErr_SetString(PyExc_ValueError, tensorflow::strings::StrCat(
-                                          "Number of outputs is too big: ", sz)
-                                          .c_str());
+    PyErr_SetString(PyExc_ValueError,
+                    absl::StrCat("Number of outputs is too big: ", sz).c_str());
     throw py::error_already_set();
   }
   if (sz > 0) {
@@ -497,9 +494,8 @@ static py::bytes TFE_GetCompilerIr(py::handle& ctx,
       return CompilerArgSource::CONCRETE_INPUT;
     } else {
       ThrowValueError(
-          tensorflow::strings::StrCat(
-              "Only accept tf.TensorSpec or tf.Tensor but got type ",
-              elem->ob_type->tp_name)
+          absl::StrCat("Only accept tf.TensorSpec or tf.Tensor but got type ",
+                       elem->ob_type->tp_name)
               .c_str());
     }
   }();

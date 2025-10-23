@@ -74,8 +74,8 @@ static Status CompileGraph(tensorflow::Graph* graph,
   options.flib_def = flib_def.get();
   tensorflow::XlaCompiler compiler(options);
 
-  std::unique_ptr<tensorflow::Graph> graph_copy(
-      new tensorflow::Graph(tensorflow::OpRegistry::Global()));
+  std::unique_ptr<tensorflow::Graph> graph_copy =
+      std::make_unique<tensorflow::Graph>(tensorflow::OpRegistry::Global());
   tensorflow::CopyGraph(*graph, graph_copy.get());
 
   tensorflow::XlaCompiler::CompileOptions compile_options;

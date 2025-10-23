@@ -43,7 +43,6 @@ using ::testing::ElementsAre;
 using ::testing::HasSubstr;
 using ::testing::Key;
 using ::testing::SizeIs;
-using ::tsl::testing::StatusIs;
 
 class CalibrationStatisticsSaverTest : public OpsTestBase {};
 

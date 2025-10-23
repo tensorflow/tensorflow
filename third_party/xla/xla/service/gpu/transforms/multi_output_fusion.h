@@ -27,6 +27,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
 #include "xla/service/gpu/gpu_fusible.h"
+#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/stream_executor/device_description.h"
@@ -96,8 +97,11 @@ class MultiOutputFusion : public HloModulePass {
  public:
   explicit MultiOutputFusion(
       const se::DeviceDescription& device_info,
-      HloCostAnalysis::ShapeSizeFunction shape_size_function)
-      : device_info_(device_info), shape_size_function_(shape_size_function) {}
+      HloCostAnalysis::ShapeSizeFunction shape_size_function,
+      SymbolicExprContext* symbolic_expr_context)
+      : device_info_(device_info),
+        shape_size_function_(shape_size_function),
+        symbolic_expr_context_(symbolic_expr_context) {}
 
   absl::string_view name() const override { return "multi_output_fusion"; }
 
@@ -126,6 +130,7 @@ class MultiOutputFusion : public HloModulePass {
 
   se::DeviceDescription device_info_;
   HloCostAnalysis::ShapeSizeFunction shape_size_function_;
+  SymbolicExprContext* symbolic_expr_context_;
 };
 
 }  // namespace gpu

@@ -139,6 +139,10 @@ def tf_xla_py_test(
                 # version.
                 continue
 
+            # Rules may set exec_properties, but Google has internal
+            # exec_properties values so they don't merge easily. Just strip them
+            # all for now.
+            kwargs.pop("exec_properties", {})
             test_rule(
                 name = updated_name,
                 srcs = srcs,

@@ -32,6 +32,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/functional/any_invocable.h"
+#include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -99,7 +100,7 @@ static auto& module_id_to_timestamp ABSL_GUARDED_BY(mu) =
     *new absl::flat_hash_map<int64_t, uint64_t>();
 
 int64_t StepNumberForModule(const HloModule& module) {
-  absl::MutexLock lock(&mu);
+  absl::MutexLock lock(mu);
   return module_id_to_step_number[module.unique_id()]++;
 }
 
@@ -367,7 +368,7 @@ static std::optional<std::string> GetDumpFilePath(
 
   // Make sure we are not going to dump more modules than the user has asked.
   if (opts.dump_max_hlo_modules > 0) {
-    absl::MutexLock lock(&mu);
+    absl::MutexLock lock(mu);
     if (module_id_to_timestamp.size() >= opts.dump_max_hlo_modules) {
       LOG(ERROR) << "Have already dumped " << module_id_to_timestamp.size()
                  << " modules, more than the limit of "
@@ -424,7 +425,7 @@ static std::optional<std::string> DumpToFileInDirOrStdoutImpl(
     const CanonicalDebugOptions& opts) {
   // Dump to stdout if that's called for.
   if (opts.dumping_to_stdout()) {
-    absl::MutexLock lock(&stdout_dump_mutex);
+    absl::MutexLock lock(stdout_dump_mutex);
     std::cout << "*** Begin " << filename << " ***\n"
               << contents << "\n*** End " << filename << " ***" << std::endl;
     return std::nullopt;
@@ -439,7 +440,7 @@ static std::optional<std::string> DumpToFileInDirOrStdoutImpl(
     const CanonicalDebugOptions& opts) {
   // Dump to stdout if that's called for.
   if (opts.dumping_to_stdout()) {
-    absl::MutexLock lock(&stdout_dump_mutex);
+    absl::MutexLock lock(stdout_dump_mutex);
     std::cout << "*** Begin " << filename << " ***\n";
     while (auto next_producer = data_producer.Next()) {
       std::cout << next_producer();
@@ -582,7 +583,7 @@ static std::vector<std::string> DumpHloModuleImpl(
     LOG_FIRST_N(INFO, 1) << "HloModule dump enabled with path prefix: "
                          << prefix << ", suffix: " << suffix;
     if (opts.dump_max_hlo_modules > 0) {
-      absl::MutexLock lock(&mu);
+      absl::MutexLock lock(mu);
       // Try to record the time we dumped this module to keep track of total
       // module count.
       module_id_to_timestamp.try_emplace(module.unique_id(),
@@ -643,7 +644,7 @@ std::string TimestampFor(const HloModule& module,
   if (!opts.xla_dump_include_timestamp()) {
     return "";
   }
-  absl::MutexLock lock(&mu);
+  absl::MutexLock lock(mu);
   auto timestamp_emplace = module_id_to_timestamp.try_emplace(
       module.unique_id(), tsl::Env::Default()->NowMicros());
   return std::to_string(timestamp_emplace.first->second);
@@ -774,6 +775,25 @@ void DumpPerModuleProtobufToFile(const HloModule& module,
                                      tsl::Env*, const tsl::protobuf::Message&)>
                                      text_formatter) {
   const std::string filename = FilenameFor(module, TimestampFor(module), name);
+  DumpProtobufToFile(proto, debug_options, filename, std::move(text_formatter));
+}
+
+void DumpPerExecutionProtobufToFile(
+    const HloModule& module, const tsl::protobuf::Message& proto,
+    const DebugOptions& debug_options, absl::string_view name,
+    absl::AnyInvocable<
+        absl::StatusOr<std::string>(tsl::Env*, const tsl::protobuf::Message&)>
+        text_formatter) {
+  int64_t execution_count = 0;
+  {
+    static auto& module_id_to_execution_count ABSL_GUARDED_BY(mu) =
+        *new absl::flat_hash_map<int64_t, int64_t>();
+    absl::MutexLock lock(mu);
+    execution_count = module_id_to_execution_count[module.unique_id()]++;
+  }
+
+  const std::string filename = FilenameFor(
+      module, name, absl::StrFormat("execution_%04d", execution_count));
   DumpProtobufToFile(proto, debug_options, filename, std::move(text_formatter));
 }
 
@@ -1056,7 +1076,7 @@ void DumpHloSnapshotIfEnabled(const HloModule& module,
   {
     static auto& module_id_to_execution_count ABSL_GUARDED_BY(mu) =
         *new absl::flat_hash_map<int64_t, int64_t>();
-    absl::MutexLock lock(&mu);
+    absl::MutexLock lock(mu);
     execution_count = module_id_to_execution_count[module.unique_id()]++;
     auto timestamp_emplace = module_id_to_timestamp.try_emplace(
         module.unique_id(), tsl::Env::Default()->NowMicros());
@@ -1093,7 +1113,7 @@ void DumpHloSnapshotIfEnabled(const HloSnapshot& snapshot,
   {
     static auto& module_name_to_execution_count ABSL_GUARDED_BY(mu) =
         *new absl::flat_hash_map<std::string, int64_t>();
-    absl::MutexLock lock(&mu);
+    absl::MutexLock lock(mu);
     execution_count = module_name_to_execution_count[name]++;
   }
   std::string filename = StrFormat("module_%s.execution_%04d.hlo_snapshot.pb",
@@ -1128,7 +1148,7 @@ void DumpHloUnoptimizedSnapshotIfEnabled(
     static absl::Mutex mu(absl::kConstInit);
     static auto& module_id_to_execution_count ABSL_GUARDED_BY(mu) =
         *new absl::flat_hash_map<int64_t, int64_t>();
-    absl::MutexLock lock(&mu);
+    absl::MutexLock lock(mu);
     execution_count =
         module_id_to_execution_count[hlo_snapshot.hlo_module().id()]++;
   }
@@ -1169,20 +1189,17 @@ void DumpHloUnoptimizedSnapshotIfEnabled(
   }
 }
 
-void DumpHloModuleMetadataIfEnabled(const std::vector<HloModule*>& modules) {
+void DumpHloModuleMetadataIfEnabled(HloModule* module) {
   absl::flat_hash_set<int64_t> dumped_module_ids;
-  for (const HloModule* module : modules) {
-    CanonicalDebugOptions opts(module->config().debug_options());
-    if (!module->config().debug_options().xla_dump_module_metadata()) {
-      continue;
-    }
-    DumpHloModuleMetadata(module->metadata().proto(), opts, &dumped_module_ids);
-    const std::optional<HloModuleMetadataProto>& prepartitioning_metadata =
-        module->metadata().prepartitioning_metadata();
-    if (prepartitioning_metadata.has_value()) {
-      DumpHloModuleMetadata(*prepartitioning_metadata, opts,
-                            &dumped_module_ids);
-    }
+  CanonicalDebugOptions opts(module->config().debug_options());
+  if (!module->config().debug_options().xla_dump_module_metadata()) {
+    return;
+  }
+  DumpHloModuleMetadata(module->metadata()->proto(), opts, &dumped_module_ids);
+  const std::optional<HloModuleMetadataProto>& prepartitioning_metadata =
+      module->metadata()->prepartitioning_metadata();
+  if (prepartitioning_metadata.has_value()) {
+    DumpHloModuleMetadata(*prepartitioning_metadata, opts, &dumped_module_ids);
   }
 }
 

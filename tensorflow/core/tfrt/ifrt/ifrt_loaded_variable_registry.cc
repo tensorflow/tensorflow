@@ -30,7 +30,7 @@ namespace ifrt_serving {
 
 absl::Status IfrtLoadedVariableRegistry::TryRegisterLoadedVariable(
     const Key& key, LoadedVariableConstructor&& loaded_variable_constructor) {
-  absl::MutexLock lock(&mutex_);
+  absl::MutexLock lock(mutex_);
   auto& variable = loaded_variable_map_[key];
   if (variable.array.IsValid()) {
     // Already registered. This is rare.
@@ -43,7 +43,7 @@ absl::Status IfrtLoadedVariableRegistry::TryRegisterLoadedVariable(
 
 absl::StatusOr<IfrtLoadedVariableRegistry::LoadedVariable>
 IfrtLoadedVariableRegistry::GetLoadedVariable(const Key& key) const {
-  absl::MutexLock lock(&mutex_);
+  absl::MutexLock lock(mutex_);
   auto it = loaded_variable_map_.find(key);
   if (it == loaded_variable_map_.end()) {
     return absl::NotFoundError(

@@ -120,6 +120,7 @@ TEST(CudaComputeCapabilityTest, ToProto) {
   EXPECT_EQ(proto2.minor(), 5);
   EXPECT_EQ(proto2.feature_extension(),
             CudaComputeCapabilityProto::FORWARD_COMPATIBLE_FEATURES);
+<<<<<<< HEAD
 }
 
 TEST(CudaComputeCapabilityTest, FromProtoWithFeatureExtensionUnspecified) {
@@ -166,6 +167,106 @@ TEST(CudaComputeCapabilityTest, FromProtoWithFeatureExtensionSpecified) {
   TF_ASSERT_OK_AND_ASSIGN(auto cc, CudaComputeCapability::FromProto(proto));
   EXPECT_EQ(cc.major, 100);
   EXPECT_EQ(cc.minor, 5);
+=======
+}
+
+TEST(CudaComputeCapabilityTest, FromProtoWithFeatureExtensionUnspecified) {
+  using FeatureExtension = CudaComputeCapability::FeatureExtension;
+
+  // An unspecified feature extension field should be interpreted as NONE - no
+  // feature extension enabled.
+  CudaComputeCapabilityProto proto;
+  proto.set_major(100);
+  proto.set_minor(5);
+  TF_ASSERT_OK_AND_ASSIGN(auto cc, CudaComputeCapability::FromProto(proto));
+  EXPECT_EQ(cc.major, 100);
+  EXPECT_EQ(cc.minor, 5);
+  EXPECT_EQ(cc.feature_extension, FeatureExtension::kNone);
+
+  // On Hopper we expect accelerated features to be the default as this is how
+  // XLA treated Hopper GPUs before we could handle feature extensions
+  // explicitly.
+  proto.set_major(9);
+  proto.set_minor(5);
+  TF_ASSERT_OK_AND_ASSIGN(cc, CudaComputeCapability::FromProto(proto));
+  EXPECT_EQ(cc.major, 9);
+  EXPECT_EQ(cc.minor, 5);
+  EXPECT_EQ(cc.feature_extension, FeatureExtension::kAcceleratedFeatures);
+
+  // On Blackwell we expect accelerated features to be the default as this is
+  // how XLA treated Blackwell GPUs before we could handle feature extensions
+  // explicitly.
+  proto.set_major(10);
+  proto.set_minor(2);
+  TF_ASSERT_OK_AND_ASSIGN(cc, CudaComputeCapability::FromProto(proto));
+  EXPECT_EQ(cc.major, 10);
+  EXPECT_EQ(cc.minor, 2);
+  EXPECT_EQ(cc.feature_extension, FeatureExtension::kAcceleratedFeatures);
+
+  proto.set_major(12);
+  proto.set_minor(0);
+  TF_ASSERT_OK_AND_ASSIGN(cc, CudaComputeCapability::FromProto(proto));
+  EXPECT_EQ(cc.major, 12);
+  EXPECT_EQ(cc.minor, 0);
+  EXPECT_NE(cc.feature_extension, FeatureExtension::kAcceleratedFeatures);
+}
+
+TEST(CudaComputeCapabilityTest, IsAtLeastMethods) {
+  using FeatureExtension = CudaComputeCapability::FeatureExtension;
+
+  // IsAtLeastVolta (sm_75)
+  EXPECT_TRUE(CudaComputeCapability(7, 0).IsAtLeastVolta());
+  EXPECT_TRUE(CudaComputeCapability(7, 4).IsAtLeastVolta());
+  EXPECT_TRUE(CudaComputeCapability(7, 5).IsAtLeastVolta());
+  EXPECT_TRUE(
+      CudaComputeCapability(7, 5, FeatureExtension::kAcceleratedFeatures)
+          .IsAtLeastVolta());
+  EXPECT_TRUE(CudaComputeCapability(8, 0).IsAtLeastVolta());
+
+  // IsAtLeastAmpere (sm_80)
+  EXPECT_FALSE(CudaComputeCapability(7, 5).IsAtLeastAmpere());
+  EXPECT_FALSE(
+      CudaComputeCapability(7, 5, FeatureExtension::kForwardCompatibleFeatures)
+          .IsAtLeastAmpere());
+  EXPECT_TRUE(CudaComputeCapability(8, 0).IsAtLeastAmpere());
+  EXPECT_TRUE(
+      CudaComputeCapability(8, 0, FeatureExtension::kAcceleratedFeatures)
+          .IsAtLeastAmpere());
+  EXPECT_TRUE(CudaComputeCapability(8, 6).IsAtLeastAmpere());
+  EXPECT_TRUE(CudaComputeCapability(9, 0).IsAtLeastAmpere());
+
+  // IsAtLeastHopper (sm_90)
+  EXPECT_FALSE(CudaComputeCapability(8, 9).IsAtLeastHopper());
+  EXPECT_TRUE(CudaComputeCapability(9, 0).IsAtLeastHopper());
+  EXPECT_TRUE(
+      CudaComputeCapability(9, 0, FeatureExtension::kAcceleratedFeatures)
+          .IsAtLeastHopper());
+  EXPECT_TRUE(CudaComputeCapability(9, 1).IsAtLeastHopper());
+  EXPECT_TRUE(CudaComputeCapability(10, 0).IsAtLeastHopper());
+
+  // IsAtLeastBlackwell (sm_100)
+  EXPECT_FALSE(CudaComputeCapability(9, 0).IsAtLeastBlackwell());
+  EXPECT_FALSE(
+      CudaComputeCapability(9, 0, FeatureExtension::kForwardCompatibleFeatures)
+          .IsAtLeastBlackwell());
+  EXPECT_TRUE(CudaComputeCapability(10, 0).IsAtLeastBlackwell());
+  EXPECT_TRUE(
+      CudaComputeCapability(10, 0, FeatureExtension::kAcceleratedFeatures)
+          .IsAtLeastBlackwell());
+  EXPECT_TRUE(CudaComputeCapability(10, 1).IsAtLeastBlackwell());
+}
+
+TEST(CudaComputeCapabilityTest, FromProtoWithFeatureExtensionSpecified) {
+  using FeatureExtension = CudaComputeCapability::FeatureExtension;
+
+  CudaComputeCapabilityProto proto;
+  proto.set_major(100);
+  proto.set_minor(5);
+  proto.set_feature_extension(CudaComputeCapabilityProto::ACCELERATED_FEATURES);
+  TF_ASSERT_OK_AND_ASSIGN(auto cc, CudaComputeCapability::FromProto(proto));
+  EXPECT_EQ(cc.major, 100);
+  EXPECT_EQ(cc.minor, 5);
+>>>>>>> upstream/master
   EXPECT_EQ(cc.feature_extension, FeatureExtension::kAcceleratedFeatures);
 }
 
@@ -245,6 +346,7 @@ TEST(CudaComputeCapabilityTest, ComparisonTest) {
       newer_but_same_generation_compatible));
   EXPECT_FALSE(base_but_accelerated.CanRunOn(next_generation));
   EXPECT_FALSE(base_but_accelerated.SupportsAllFeaturesOf(next_generation));
+<<<<<<< HEAD
 
   EXPECT_TRUE(base_but_forward_compatible.CanRunOn(base));
   EXPECT_TRUE(base_but_forward_compatible.SupportsAllFeaturesOf(base));
@@ -264,6 +366,27 @@ TEST(CudaComputeCapabilityTest, ComparisonTest) {
       base_but_forward_compatible.SupportsAllFeaturesOf(next_generation));
 }
 
+=======
+
+  EXPECT_TRUE(base_but_forward_compatible.CanRunOn(base));
+  EXPECT_TRUE(base_but_forward_compatible.SupportsAllFeaturesOf(base));
+  EXPECT_TRUE(base_but_forward_compatible.CanRunOn(newer_but_same_generation));
+  EXPECT_FALSE(base_but_forward_compatible.SupportsAllFeaturesOf(
+      newer_but_same_generation));
+  EXPECT_TRUE(base_but_forward_compatible.CanRunOn(
+      newer_but_same_generation_accelerated));
+  EXPECT_FALSE(base_but_forward_compatible.SupportsAllFeaturesOf(
+      newer_but_same_generation_accelerated));
+  EXPECT_TRUE(base_but_forward_compatible.CanRunOn(
+      newer_but_same_generation_compatible));
+  EXPECT_FALSE(base_but_forward_compatible.SupportsAllFeaturesOf(
+      newer_but_same_generation_compatible));
+  EXPECT_FALSE(base_but_forward_compatible.CanRunOn(next_generation));
+  EXPECT_FALSE(
+      base_but_forward_compatible.SupportsAllFeaturesOf(next_generation));
+}
+
+>>>>>>> upstream/master
 TEST(CudaComputeCapabilityTest, GetPtxAsTargetName) {
   EXPECT_EQ(CudaComputeCapability::Ampere().GetPtxAsTargetName(
                 CudaComputeCapability::CompileMode::kPtx),
@@ -274,6 +397,7 @@ TEST(CudaComputeCapabilityTest, GetPtxAsTargetName) {
   EXPECT_EQ(CudaComputeCapability::Ampere().GetPtxAsTargetName(
                 CudaComputeCapability::CompileMode::kSass),
             "sm_80");
+<<<<<<< HEAD
 
   EXPECT_EQ(CudaComputeCapability::Hopper().GetPtxAsTargetName(), "sm_90");
   EXPECT_EQ(
@@ -287,6 +411,39 @@ TEST(CudaComputeCapabilityTest, GetPtxAsTargetName) {
           CudaComputeCapability::FeatureExtension::kForwardCompatibleFeatures)
           .GetPtxAsTargetName(),
       "sm_100f");
+=======
+
+  EXPECT_EQ(CudaComputeCapability::Hopper().GetPtxAsTargetName(), "sm_90");
+  EXPECT_EQ(
+      CudaComputeCapability(
+          9, 0, CudaComputeCapability::FeatureExtension::kAcceleratedFeatures)
+          .GetPtxAsTargetName(),
+      "sm_90a");
+  EXPECT_EQ(
+      CudaComputeCapability(
+          10, 0,
+          CudaComputeCapability::FeatureExtension::kForwardCompatibleFeatures)
+          .GetPtxAsTargetName(),
+      "sm_100f");
+}
+
+TEST(CudaComputeCapabilityTest, WithoutAnyFeatureExtension) {
+  EXPECT_EQ(CudaComputeCapability(
+                100, 52, CudaComputeCapability::FeatureExtension::kNone)
+                .WithoutAnyFeatureExtension(),
+            CudaComputeCapability(100, 52));
+  EXPECT_EQ(CudaComputeCapability(
+                100, 52,
+                CudaComputeCapability::FeatureExtension::kAcceleratedFeatures)
+                .WithoutAnyFeatureExtension(),
+            CudaComputeCapability(100, 52));
+  EXPECT_EQ(
+      CudaComputeCapability(
+          100, 52,
+          CudaComputeCapability::FeatureExtension::kForwardCompatibleFeatures)
+          .WithoutAnyFeatureExtension(),
+      CudaComputeCapability(100, 52));
+>>>>>>> upstream/master
 }
 
 }  // namespace

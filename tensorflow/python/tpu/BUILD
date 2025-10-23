@@ -1,10 +1,9 @@
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
+load("@rules_python//python:proto.bzl", "py_proto_library")
 
 # Description: Operations defined for Cloud TPUs
 load("//tensorflow:pytype.default.bzl", "pytype_strict_library")
 load("//tensorflow:strict.default.bzl", "py_strict_library", "py_strict_test")
-
-# Placeholder: load py_proto_library
 load("//tensorflow:tensorflow.default.bzl", "tf_py_strict_test", "tf_python_pybind_extension")
 load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library")
 load("//tensorflow/core/platform:build_config_root.bzl", "if_pywrap")

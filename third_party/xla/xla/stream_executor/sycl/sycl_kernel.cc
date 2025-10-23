@@ -12,8 +12,12 @@ limitations under the License.
 
 #include "xla/stream_executor/sycl/sycl_kernel.h"
 
+<<<<<<< HEAD
 namespace stream_executor {
 namespace gpu {
+=======
+namespace stream_executor::sycl {
+>>>>>>> upstream/master
 
 // TODO(intel-tf): Implement this feature in SYCL
 absl::StatusOr<int32_t> SyclKernel::GetMaxOccupiedBlocksPerCore(
@@ -104,5 +108,9 @@ absl::Status SyclKernel::Launch(const ThreadDim& thread_dims,
   return absl::InternalError("Unsupported kernel arguments type");
 }
 
+<<<<<<< HEAD
 }  // namespace gpu
 }  // namespace stream_executor
+=======
+}  // namespace stream_executor::sycl
+>>>>>>> upstream/master

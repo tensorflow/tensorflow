@@ -94,7 +94,7 @@ TEST_F(SplitkRewriterTest, PaddingIsInserted) {
                           rewriter_.HloModulePass::Run(module.get()));
   EXPECT_TRUE(changed);
   EXPECT_TRUE(RunFileCheck(module->ToString(), R"(
-CHECK: f32[16,102528]{1,0} pad({{.*}}), padding=0_0x127_0
+CHECK: f32[16,102912]{1,0} pad(%lhs, %constant), padding=0_0x0_511
     )")
                   .value_or(false));
 }

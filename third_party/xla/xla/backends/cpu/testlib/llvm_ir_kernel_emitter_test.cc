@@ -45,7 +45,7 @@ TEST(LlvmIrKernelEmitterTest, ParseLlvmIr) {
     }
   )";
 
-  LlvmTestKernelEmitter::KernelArg arg{1024, BufferUse::kWrite};
+  LlvmTestKernelEmitter::KernelArg arg{1024, BufferUse::MemoryAccess::kWrite};
   LlvmTestKernelEmitter emitter(kLlvmIr, "noop", {}, {arg});
 
   TF_ASSERT_OK_AND_ASSIGN(KernelDefinition kernel_definition,

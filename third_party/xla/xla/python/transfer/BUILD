@@ -1,3 +1,4 @@
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("//xla:xla.default.bzl", "xla_cc_test")
 load(
     "//xla/tsl:tsl.bzl",
@@ -73,12 +74,15 @@ cc_library(
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
         "@local_tsl//tsl/platform:env",
+        "@local_tsl//tsl/profiler/lib:traceme",
     ],
 )
 
@@ -218,6 +222,7 @@ cc_library(
         ":streaming",
         ":transfer_socket_proto_cc",
         "//xla/tsl/concurrency:ref_count",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/log",
@@ -265,6 +270,7 @@ cc_library(
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla/pjrt:pjrt_client",
+        "//xla/pjrt:pjrt_layout",
         "//xla/pjrt/distributed:key_value_store_interface",
         "//xla/python/ifrt",
         "//xla/python/pjrt_ifrt",

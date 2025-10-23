@@ -18,7 +18,13 @@
 #define XLA_HLO_TOOLS_HLO_DIFF_HLO_GUMGRAPH_DIFF_H_
 
 #include <memory>
+<<<<<<< HEAD
 #include <utility>
+=======
+#include <string>
+#include <utility>
+#include <vector>
+>>>>>>> upstream/master
 
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -38,8 +44,12 @@ struct DiffOptions {
   HloGumgraphFingerprintOptions fingerprint_options;
   MatchOptions match_options;
   bool run_eval = false;
+<<<<<<< HEAD
   absl::Span<const std::pair<absl::string_view, absl::string_view>>
       manual_mappings;
+=======
+  std::vector<std::pair<std::string, std::string>> manual_mappings;
+>>>>>>> upstream/master
 };
 
 struct HloGumgraphDiffResults {

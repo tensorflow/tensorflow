@@ -172,6 +172,11 @@ cc_library(
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/base:no_destructor",
+<<<<<<< HEAD
+=======
+        "@com_google_absl//absl/log:absl_check",
+        "@com_google_absl//absl/log:absl_log",
+>>>>>>> upstream/master
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
@@ -1490,11 +1495,14 @@ cc_test(
     tags = ["tflite_nnapi"],
     deps = [
         ":cast_test_common",
+        ":kernel_util",
         ":test_main",
         ":test_util",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/c:c_api_types",
+        "//tensorflow/lite/kernels/internal:tensor_utils_no_eigen",
         "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_absl//absl/random",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest",
         "@eigen_archive//:eigen3",
@@ -3021,8 +3029,10 @@ cc_test(
     srcs = ["quantize_test.cc"],
     tags = ["tflite_nnapi"],
     deps = [
+        ":kernel_util",
         ":test_main",
         ":test_util",
+        "//tensorflow/lite/kernels/internal:tensor_utils",
         "//tensorflow/lite/kernels/internal:types",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",

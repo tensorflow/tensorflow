@@ -1058,12 +1058,23 @@ class MultiProcessPoolRunner(object):
                 process.pid,
             )
         # Terminate the process if it is still running
+<<<<<<< HEAD
         raise RuntimeError(f'Timeout waiting for {task_type}-{task_id} ' 
                            f'after {min(remaining_time, 120):.1f}s. '
                             'This often indicates a subprocess is stuck ' 
                             'in initialization or pipe reading. '
                             'Try increasing Docker container resources '
                             'or check for deadlocks.')
+=======
+        raise RuntimeError(
+            f'Timeout waiting for {task_type}-{task_id} '
+            f'after {min(remaining_time, 120):.1f}s. '
+            'This often indicates a subprocess is stuck '
+            'in initialization or pipe reading. '
+            'Try increasing Docker container resources '
+            'or check for deadlocks.'
+        )
+>>>>>>> upstream/master
 
       if error_container:
         error_type, error = error_container[0]

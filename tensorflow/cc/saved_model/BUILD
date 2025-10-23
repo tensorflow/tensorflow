@@ -523,6 +523,7 @@ cc_library(
     visibility = [
         "//learning/brain/contrib/hub/server/ingestion:__subpackages__",
         "//learning/brain/contrib/tpu_modeling:__subpackages__",
+        "//learning/gemini/deployment/disaggregation/wiz_cc:__subpackages__",
         "//learning/metadata/artifactoid/cc:__subpackages__",
         "//learning/tfx/pipeline/util:__subpackages__",
         "//tensorflow/core/tfrt:__subpackages__",

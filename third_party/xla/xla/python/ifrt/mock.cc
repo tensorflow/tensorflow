@@ -33,6 +33,7 @@ limitations under the License.
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
+#include "xla/python/ifrt/layout.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/remap_plan.h"
 #include "xla/python/ifrt/shape.h"
@@ -85,6 +86,9 @@ MockArray::MockArray(xla::ifrt::ArrayRef delegated)
           [this]() -> absl::StatusOr<std::shared_ptr<const xla::PjRtLayout>> {
             return delegated_->pjrt_layout();
           });
+  ON_CALL(*this, layout).WillByDefault([this]() -> CustomLayoutRef {
+    return delegated_->layout();
+  });
   ON_CALL(*this, DisassembleIntoSingleDeviceArrays(_, _))
       .WillByDefault(
           [this](ArrayCopySemantics array_copy_semantics,
@@ -152,6 +156,12 @@ MockClient::MockClient(std::unique_ptr<xla::ifrt::Client> delegated)
       .WillByDefault([this](const RemapPlan& plan, absl::Span<ArrayRef> arrays,
                             ArrayCopySemantics semantics) {
         return delegated_->RemapArrays(plan, arrays, semantics);
+      });
+  ON_CALL(*this, ReshardArrays)
+      .WillByDefault([this](absl::Span<ArrayRef> arrays,
+                            absl::Span<const ArraySpec> specs,
+                            ArrayCopySemantics semantics) {
+        return delegated_->ReshardArrays(arrays, specs, semantics);
       });
   ON_CALL(*this, GetReadyFuture)
       .WillByDefault([this](absl::Span<const ValueRef> values) {
@@ -224,6 +234,13 @@ MockClient::MockClient(std::unique_ptr<xla::ifrt::Client> delegated)
               -> absl::StatusOr<std::shared_ptr<const xla::PjRtLayout>> {
             return delegated_->GetDefaultPjRtLayout(dtype, dims, device,
                                                     memory_kind);
+          });
+  ON_CALL(*this, GetDefaultLayout)
+      .WillByDefault(
+          [this](
+              DType dtype, const Shape& shape,
+              const ShardingRef& sharding) -> absl::StatusOr<CustomLayoutRef> {
+            return delegated_->GetDefaultLayout(dtype, shape, sharding);
           });
   ON_CALL(*this, Attributes).WillByDefault([this]() -> const AttributeMap& {
     return delegated_->Attributes();

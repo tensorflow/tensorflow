@@ -1274,7 +1274,6 @@ TEST_P(CollectivePipelineParallelismTest,
 
 // This is the partially pipelined version of
 // NaiveBFSMicrobatch5CircularRepeat2Replica4 and should yield the same results.
-// TODO(b/383868854): replace this with GPU pipeliner implementation.
 TEST_P(CollectivePipelineParallelismTest,
        NaiveBFSMb5Cr2Replica4SendRecvPartiallyPipelined) {
   constexpr char kMoreComputationsStr[] = R"(
@@ -1508,7 +1507,6 @@ TEST_P(CollectivePipelineParallelismTest,
 
 // This is the async-grouped version of
 // NaiveBFSMicrobatch5CircularRepeat2Replica4 and should yield the same results.
-// TODO(b/383868854): replace this with GPU pipeliner implementation.
 TEST_P(CollectivePipelineParallelismTest,
        NaiveBFSMb5Cr2Replica4SendRecvAsyncGroup) {
   constexpr char kMoreComputationsStr[] = R"(

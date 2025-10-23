@@ -31,11 +31,11 @@
 #include "grpcpp/client_context.h"
 #include "grpcpp/support/client_callback.h"
 #include "grpcpp/support/sync_stream.h"
-#include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt_proxy/client/client_session.h"
 #include "xla/python/ifrt_proxy/common/grpc_ifrt_service.grpc.pb.h"
 #include "xla/python/ifrt_proxy/common/grpc_ifrt_service.pb.h"
 #include "xla/python/ifrt_proxy/common/ifrt_service.pb.h"
+#include "xla/tsl/concurrency/future.h"
 #include "tsl/platform/threadpool.h"
 #include "tsl/platform/unbounded_work_queue.h"
 
@@ -64,7 +64,7 @@ class GrpcClientSession : public ClientSession {
       GrpcIfrtSessionMetadata metadata,
       StreamTerminatedCallback stream_terminated_cb);
 
-  Future<std::shared_ptr<IfrtResponse>> Enqueue(
+  tsl::Future<std::shared_ptr<IfrtResponse>> Enqueue(
       std::unique_ptr<IfrtRequest> request) override;
 
   // `ResponseCallback` represents a function that can be invoked when
@@ -133,10 +133,10 @@ class GrpcClientSession : public ClientSession {
 
   const StreamTerminatedCallback stream_terminated_cb_;
 
-  // Threadpool used to perform `Future<>::Promise::Set()` for Futures returned
-  // to callers of `Enqueue(std::unique_ptr<IfrtRequest> request)`. We do this
-  // because `Set()` may block on arbitrary `OnReady` callbacks set by those
-  // callers.
+  // Threadpool used to perform `tsl::Future<>::Promise::Set()` for Futures
+  // returned to callers of `Enqueue(std::unique_ptr<IfrtRequest> request)`. We
+  // do this because `Set()` may block on arbitrary `OnReady` callbacks set by
+  // those callers.
   std::unique_ptr<tsl::UnboundedWorkQueue> user_futures_work_queue_;
 };
 

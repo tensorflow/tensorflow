@@ -48,7 +48,7 @@ class Resource : public ResourceBase {
   explicit Resource(const string& label) : label_(label) {}
   ~Resource() override {}
 
-  string DebugString() const override { return strings::StrCat("R/", label_); }
+  string DebugString() const override { return absl::StrCat("R/", label_); }
 
  private:
   string label_;
@@ -59,7 +59,7 @@ class Other : public ResourceBase {
   explicit Other(const string& label) : label_(label) {}
   ~Other() override {}
 
-  string DebugString() const override { return strings::StrCat("O/", label_); }
+  string DebugString() const override { return absl::StrCat("O/", label_); }
 
  private:
   string label_;
@@ -305,8 +305,8 @@ TEST(ResourceMgrTest, CreateFailAfterFinalize) {
   int finalize_count_ = 0;
   Finalizable* finalizable = new Finalizable(&finalize_count_);
   EXPECT_THAT(rm.Create("container", "resource-name", finalizable),
-              StatusIs(absl::StatusCode::kFailedPrecondition,
-                       HasSubstr("ResourceMgr is finalized")));
+              absl_testing::StatusIs(absl::StatusCode::kFailedPrecondition,
+                                     HasSubstr("ResourceMgr is finalized")));
   finalizable->Unref();
 }
 
@@ -318,8 +318,8 @@ TEST(ResourceMgrTest, CreateUnownedFailAfterFinalize) {
   int finalize_count_ = 0;
   Finalizable* finalizable = new Finalizable(&finalize_count_);
   EXPECT_THAT(rm.CreateUnowned("container", "resource-name", finalizable),
-              StatusIs(absl::StatusCode::kFailedPrecondition,
-                       HasSubstr("ResourceMgr is finalized")));
+              absl_testing::StatusIs(absl::StatusCode::kFailedPrecondition,
+                                     HasSubstr("ResourceMgr is finalized")));
   finalizable->Unref();
 }
 

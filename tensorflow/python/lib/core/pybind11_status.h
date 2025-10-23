@@ -18,10 +18,12 @@ limitations under the License.
 
 #include <Python.h>
 
+#include "absl/status/status.h"
+#include "absl/strings/string_view.h"
 #include "pybind11/cast.h"  // from @pybind11
 #include "pybind11/pybind11.h"  // from @pybind11
+#include "pybind11/pytypes.h"  // from @pybind11
 #include "tensorflow/c/tf_status_internal.h"
-#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
@@ -70,8 +72,10 @@ inline pybind11::dict TFStatusPayloadToDict(TF_Status* status) {
 
 inline void MaybeRaiseFromStatus(const absl::Status& status) {
   if (!status.ok()) {
-    PyErr_SetString(internal::StatusToPyExc(status),
-                    tsl::NullTerminatedMessage(status));
+    absl::string_view status_message = status.message();
+    pybind11::set_error(
+        internal::StatusToPyExc(status),
+        pybind11::str(status_message.data(), status_message.size()));
     throw pybind11::error_already_set();
   }
 }

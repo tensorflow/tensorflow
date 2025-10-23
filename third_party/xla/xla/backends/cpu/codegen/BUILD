@@ -65,6 +65,10 @@ cc_library(
         "//xla:util",
         "//xla:xla_proto_cc",
         "//xla/codegen:intrinsic_lib",
+<<<<<<< HEAD
+=======
+        "//xla/codegen/intrinsic",
+>>>>>>> upstream/master
         "//xla/codegen/intrinsic:intrinsic_compiler_lib",
         "//xla/service:hlo_module_config",
         "//xla/service/cpu:backend_config_proto_cc",
@@ -145,6 +149,7 @@ cc_library(
         "//xla:util",
         "//xla/backends/cpu/codegen/emitters/ir:xla_cpu",
         "//xla/backends/cpu/codegen/emitters/transforms:passes",
+        "//xla/backends/cpu/codegen/tiled/transforms:passes",
         "//xla/codegen:llvm_ir_kernel_source",
         "//xla/codegen:mlir_kernel_source",
         "//xla/codegen:trace_pass_instrumentation",
@@ -152,13 +157,14 @@ cc_library(
         "//xla/codegen/emitters/ir:xla_attrs_inc_gen",
         "//xla/codegen/emitters/transforms:pass_pipelines",
         "//xla/codegen/emitters/transforms:passes",
+        "//xla/codegen/xtile/ir:xtile",
         "//xla/mlir/tools/mlir_replay/public:compiler_trace_proto_cc",
         "//xla/mlir_hlo",
-        "//xla/mlir_hlo:mhlo_passes",
         "//xla/tsl/framework/mlir:status_scoped_diagnostic_handler",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/functional:any_invocable",
+        "@com_google_absl//absl/functional:function_ref",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
@@ -181,6 +187,7 @@ cc_library(
         "@llvm-project//mlir:LLVMToLLVMIRTranslation",
         "@llvm-project//mlir:MathDialect",
         "@llvm-project//mlir:MathToLLVM",
+        "@llvm-project//mlir:MemRefToLLVM",
         "@llvm-project//mlir:MemRefTransforms",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:ReconcileUnrealizedCasts",
@@ -190,9 +197,18 @@ cc_library(
         "@llvm-project//mlir:TensorDialect",
         "@llvm-project//mlir:ToLLVMIRTranslation",
         "@llvm-project//mlir:Transforms",
+        "@llvm-project//mlir:UBToLLVM",
         "@llvm-project//mlir:VectorDialect",
+<<<<<<< HEAD
         "@local_tsl//tsl/profiler/lib:traceme",
         "@local_tsl//tsl/profiler/lib:traceme_encode",
+=======
+        "@llvm-project//mlir:VectorToLLVM",
+        "@llvm-project//mlir:VectorToSCF",
+        "@local_tsl//tsl/profiler/lib:traceme",
+        "@local_tsl//tsl/profiler/lib:traceme_encode",
+        "@stablehlo//:stablehlo_passes",
+>>>>>>> upstream/master
     ],
 )
 
@@ -366,9 +382,9 @@ cc_library(
     hdrs = ["kernel_api_ir_builder.h"],
     deps = [
         ":symbol_name_util",
-        "//xla:cpu_function_runtime",
         "//xla:shape_util",
         "//xla:util",
+        "//xla/backends/cpu:alignment",
         "//xla/hlo/ir:hlo",
         "//xla/service:buffer_assignment",
         "//xla/service:hlo_module_config",
@@ -396,9 +412,9 @@ xla_cc_test(
     srcs = ["kernel_api_ir_builder_test.cc"],
     deps = [
         ":kernel_api_ir_builder",
-        "//xla:cpu_function_runtime",
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
+        "//xla/backends/cpu:alignment",
         "//xla/hlo/analysis:alias_info",
         "//xla/hlo/analysis:hlo_ordering",
         "//xla/hlo/ir:hlo",
@@ -623,8 +639,13 @@ cc_library(
         "//xla:util",
         "//xla/backends/cpu:alignment",
         "//xla/codegen:hlo_fusion_spec",
+        "//xla/codegen:ir_emission_utils",
         "//xla/codegen:mlir_kernel_definition",
         "//xla/codegen/emitters:concatenate_kernel_emitter",
+<<<<<<< HEAD
+=======
+        "//xla/codegen/emitters:dynamic_update_slice_kernel_emitter",
+>>>>>>> upstream/master
         "//xla/codegen/emitters:kernel_arguments",
         "//xla/codegen/emitters:loop_kernel_emitter",
         "//xla/codegen/emitters/ir:xla",
@@ -638,6 +659,10 @@ cc_library(
         "//xla/service:buffer_assignment",
         "//xla/service/cpu:backend_config_proto_cc",
         "//xla/service/gpu:ir_emission_utils",
+<<<<<<< HEAD
+=======
+        "//xla/service/gpu/model/experimental:symbolic_expr",
+>>>>>>> upstream/master
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:inlined_vector",

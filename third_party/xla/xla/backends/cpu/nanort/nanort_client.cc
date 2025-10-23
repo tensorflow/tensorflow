@@ -83,4 +83,10 @@ absl::StatusOr<std::unique_ptr<NanoRtExecutable>> NanoRtClient::Compile(
                                   optimized_hlo_program_shape);
 }
 
+absl::StatusOr<std::unique_ptr<AotCompilationResult>> NanoRtClient::Export(
+    NanoRtExecutable* executable) {
+  cpu::CpuCompiler compiler;
+  return compiler.Export(executable->executable());
+}
+
 }  // namespace xla::cpu

@@ -8,6 +8,9 @@ bazel-bin
 bazel-out
 bazel-testlogs
 
+# Ignore Bazel lock file
+MODULE.bazel.lock
+
 # Ignore files produced by `configure`
 .tf_configure.bazelrc
 xla_configure.bazelrc

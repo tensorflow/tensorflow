@@ -186,6 +186,38 @@ TEST(WeightCacheBuilderTest, AppendWithoutReserveWriteWorks) {
   EXPECT_THAT(cache_data, ElementsAreArray(payload));
 }
 
+TEST(WeightCacheBuilderTest, CorruptBufferListFailsGracefully) {
+  const std::string cache_path = testing::TempDir() + "/cache";
+  const std::string payload = "This is some data in the file.";
+  const PackIdentifier dummy_id{1, 2, 3};
+
+  FileDescriptor file_descriptor = FileDescriptor::Open(
+      cache_path.c_str(), O_CREAT | O_TRUNC | O_RDWR, 0644);
+  WeightCacheBuilder builder;
+  ASSERT_TRUE(builder.Start(cache_path.c_str(), file_descriptor));
+  ASSERT_TRUE(builder.StartBuildStep());
+
+  const size_t payload_size = size(payload);
+  auto loc = builder.Append(dummy_id, payload.c_str(), payload_size);
+  EXPECT_EQ(loc.size, payload_size);
+  ASSERT_TRUE(builder.StopBuildStep());
+
+  // corrupt the buffer list data.
+  {
+    FileDescriptor file_descriptor =
+        FileDescriptor::Open(cache_path.c_str(), O_RDWR, 0644);
+    ASSERT_TRUE(file_descriptor.IsValid());
+    XNNPackCacheHeader header;
+    file_descriptor.SetPos(0);
+    ASSERT_TRUE(file_descriptor.Read(&header, sizeof(header)));
+    file_descriptor.SetPos(header.buffer_list_offset + 1);
+    std::string data(8, 'a');
+    ASSERT_TRUE(file_descriptor.Write(data.data(), data.size()));
+  }
+
+  EXPECT_FALSE(builder.StartBuildStep());
+}
+
 TEST(WeightCacheBuilderTest, InvalidFileDescriptorFails) {
   WeightCacheBuilder builder;
   EXPECT_FALSE(builder.Start("", FileDescriptor()));
@@ -911,6 +943,33 @@ TEST_P(MMapWeightCacheProviderTest, XnnpackCApiJourney) {
         LightSpan<const char>(loaded_packed_data_3, size(packed_data_ref_3)),
         ElementsAreArray(packed_data_ref_3));
   }
+}
+
+TEST_P(MMapWeightCacheProviderTest, XnnpackRebuildOnVersionMismatch) {
+  TempFileDesc temp_fd;
+  const char* temp_fd_cpath = explicit_fd_path;
+  FileDescriptor temp_fd_value = temp_fd.Duplicate();
+
+  {  // Set bad build identifier
+    XNNPackCacheHeader header{.version = XNNPackCacheHeader::kVersion};
+    header.xnnpack_build_identifier[0] += 1;
+    ASSERT_TRUE(temp_fd_value.Write(&header, sizeof(header)));
+  }
+
+  if (!use_explicit_fd) {
+    temp_fd.Close();
+    temp_fd_cpath = temp_fd.GetCPath();
+    temp_fd_value.Close();
+    if (use_in_memory_cache) {
+      temp_fd_cpath = kInMemoryCachePath;
+    }
+  }
+
+  auto build_cache_provider = std::make_unique<MMapWeightCacheProvider>();
+  MMapWeightCacheProvider& cache_provider = *build_cache_provider;
+  ASSERT_TRUE(cache_provider.LoadOrStartBuild(temp_fd_cpath,
+                                              temp_fd_value.Duplicate()));
+  ASSERT_TRUE(cache_provider.StartBuildStep());
 }
 
 class IsCompatibleCacheFileTest : public testing::Test {

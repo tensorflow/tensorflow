@@ -15,7 +15,9 @@ limitations under the License.
 
 #include <algorithm>
 #include <cfloat>
+#include <cstddef>
 #include <cstdint>
+#include <iterator>
 #include <memory>
 #include <set>
 #include <stdexcept>
@@ -24,6 +26,8 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
+#include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "pybind11/pybind11.h"  // from @pybind11
 #include "pybind11/stl.h"  // from @pybind11
 #include "tensorflow/core/framework/kernel_def.pb.h"

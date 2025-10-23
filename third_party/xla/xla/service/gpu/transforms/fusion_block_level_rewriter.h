@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
+#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/stream_executor/device_description.h"
 
@@ -31,8 +32,16 @@ class FusionBlockLevelRewriter : public HloModulePass {
  public:
   explicit FusionBlockLevelRewriter(
       const se::DeviceDescription& device_info,
+<<<<<<< HEAD
       HloCostAnalysis::ShapeSizeFunction shape_size)
       : device_info_(device_info), shape_size_(shape_size) {}
+=======
+      HloCostAnalysis::ShapeSizeFunction shape_size,
+      SymbolicExprContext* symbolic_expr_context)
+      : device_info_(device_info),
+        shape_size_(shape_size),
+        symbolic_expr_context_(symbolic_expr_context) {}
+>>>>>>> upstream/master
 
   absl::string_view name() const override {
     return "fusion-block-level-rewriter";
@@ -46,6 +55,10 @@ class FusionBlockLevelRewriter : public HloModulePass {
  private:
   const se::DeviceDescription& device_info_;
   HloCostAnalysis::ShapeSizeFunction shape_size_;
+<<<<<<< HEAD
+=======
+  SymbolicExprContext* symbolic_expr_context_;
+>>>>>>> upstream/master
 };
 
 }  // namespace gpu

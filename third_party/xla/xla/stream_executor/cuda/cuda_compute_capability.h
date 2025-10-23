@@ -69,17 +69,26 @@ struct CudaComputeCapability {
     kVolta = 7,
     kAmpere = 8,
     kHopper = 9,
-    kBlackwell = 10
+    kBlackwell = 10,
+    kBlackwell_12 = 12
   };
 
   constexpr CudaComputeCapability() = default;
   constexpr CudaComputeCapability(int major, int minor)
       : CudaComputeCapability(major, minor, FeatureExtension::kNone) {}
+<<<<<<< HEAD
 
   constexpr CudaComputeCapability(int major, int minor,
                                   FeatureExtension feature_extension)
       : major{major}, minor{minor}, feature_extension{feature_extension} {}
 
+=======
+
+  constexpr CudaComputeCapability(int major, int minor,
+                                  FeatureExtension feature_extension)
+      : major{major}, minor{minor}, feature_extension{feature_extension} {}
+
+>>>>>>> upstream/master
   static absl::StatusOr<CudaComputeCapability> FromProto(
       const CudaComputeCapabilityProto& proto);
 
@@ -88,6 +97,7 @@ struct CudaComputeCapability {
   static absl::StatusOr<CudaComputeCapability> FromString(
       absl::string_view cuda_arch_name);
 
+<<<<<<< HEAD
   // Returns a CudaComputeCapability with the given major and minor versions
   // and the accelerated feature extension enabled if supported.
   // This function only exists for backwards compatibility reasons.
@@ -96,6 +106,8 @@ struct CudaComputeCapability {
   static CudaComputeCapability FromIntWithAutoFeatureExtension(int major,
                                                                int minor);
 
+=======
+>>>>>>> upstream/master
   constexpr static CudaComputeCapability Pascal() {
     return CudaComputeCapability{kPascal, 0};
   }
@@ -114,6 +126,7 @@ struct CudaComputeCapability {
   constexpr static CudaComputeCapability H100Family() {
     return CudaComputeCapability{kHopper, 0,
                                  FeatureExtension::kAcceleratedFeatures};
+<<<<<<< HEAD
   }
 
   // Includes all GPUs with compute capability 9.x. When comparing with
@@ -145,6 +158,39 @@ struct CudaComputeCapability {
                                  FeatureExtension::kForwardCompatibleFeatures};
   }
 
+=======
+  }
+
+  // Includes all GPUs with compute capability 9.x. When comparing with
+  // `IsAtLeast` this will return true for all compute capabilities of at
+  // least 9.0.
+  constexpr static CudaComputeCapability Hopper() {
+    return CudaComputeCapability{kHopper, 0, FeatureExtension::kNone};
+  }
+
+  // Includes all GPUs with compute capability 10.0, notably B200 and GB200.
+  // When comparing with `IsAtLeast` this will only be true for GPUs with
+  // compute capability 10.0.
+  constexpr static CudaComputeCapability B200Family() {
+    return CudaComputeCapability{kBlackwell, 0,
+                                 FeatureExtension::kAcceleratedFeatures};
+  }
+
+  // Includes all GPUs with compute capability 10.x. When comparing with
+  // `IsAtLeast` this will true for all compute capabilities of 10.0 or higher.
+  constexpr static CudaComputeCapability Blackwell() {
+    return CudaComputeCapability{kBlackwell, 0, FeatureExtension::kNone};
+  }
+
+  // Includes all GPUs with compute capability 10.x. When comparing with
+  // `IsAtLeast` this will true for all 10.x compute capabilities but not for
+  // compute capabilities with a higher major version.
+  constexpr static CudaComputeCapability BlackwellGenerationOnly() {
+    return CudaComputeCapability{kBlackwell, 0,
+                                 FeatureExtension::kForwardCompatibleFeatures};
+  }
+
+>>>>>>> upstream/master
   // Returns true if the compute capability is at least
   // `other_major.other_minor`. It is equivalent to
   // this->SupportsAllFeaturesOf(CudaComputeCapability{other_major,
@@ -212,6 +258,15 @@ struct CudaComputeCapability {
     return other.SupportsAllFeaturesOf(*this);
   }
 
+<<<<<<< HEAD
+=======
+  // Returns a copy of this compute capability without any feature extension
+  // set.
+  CudaComputeCapability WithoutAnyFeatureExtension() const {
+    return CudaComputeCapability{major, minor, FeatureExtension::kNone};
+  }
+
+>>>>>>> upstream/master
   // Returns a string representation of the compute capability. The format is
   // not guaranteed to follow any standard and should only be used for logging.
   std::string ToString() const;

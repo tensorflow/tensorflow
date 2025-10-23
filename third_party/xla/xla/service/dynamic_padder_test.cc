@@ -1447,8 +1447,13 @@ ENTRY main {
   ROOT out = reduce(param, zero), to_apply=add, dimensions={0,1,2,3,4,5,6,7}
 }
 )";
-
-  CompileAndVerifyIr(hlo_text, R"(
+  HloModuleConfig config;
+  auto debug_options = GetDebugOptionsForTest();
+  debug_options.set_xla_gpu_autotune_level(0);
+  config.set_debug_options(debug_options);
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_text, config));
+  CompileAndVerifyIr(std::move(module), R"(
 CHECK: ret void
 )",
                      /*match_optimized_ir=*/true);

@@ -1,9 +1,11 @@
 load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("@rules_cc//cc:cc_test.bzl", "cc_test")
+<<<<<<< HEAD
+=======
+load("@rules_python//python:proto.bzl", "py_proto_library")
+>>>>>>> upstream/master
 load("//tensorflow:strict.default.bzl", "py_strict_binary", "py_strict_library", "py_strict_test")
-
-# Placeholder: load py_proto_library
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 load(

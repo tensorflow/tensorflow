@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+<<<<<<< HEAD
 
 namespace xla {
 
@@ -62,6 +63,12 @@ enum class CollectiveOpGroupMode {
   kCrossReplicaAndPartition,
   kFlattenedID,
 };
+=======
+#include "xla/xla_data.pb.h"
+
+namespace xla {
+
+>>>>>>> upstream/master
 
 absl::string_view CollectiveOpGroupModeToString(
     CollectiveOpGroupMode group_mode);

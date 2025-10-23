@@ -1140,9 +1140,14 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
   // (eg, parameter).
   switch (instr->opcode()) {
     case HloOpcode::kAbs:
+    case HloOpcode::kAsin:
+    case HloOpcode::kAsinh:
+    case HloOpcode::kAcos:
+    case HloOpcode::kAcosh:
     case HloOpcode::kAdd:
     case HloOpcode::kAnd:
     case HloOpcode::kAtan2:
+    case HloOpcode::kAtanh:
     case HloOpcode::kBitcastConvert:
     case HloOpcode::kCeil:
     case HloOpcode::kClamp:
@@ -1151,6 +1156,7 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
     case HloOpcode::kComplex:
     case HloOpcode::kConvert:
     case HloOpcode::kCos:
+    case HloOpcode::kCosh:
     case HloOpcode::kDivide:
     case HloOpcode::kErf:
     case HloOpcode::kExp:
@@ -1187,6 +1193,7 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
     case HloOpcode::kLogistic:
     case HloOpcode::kSign:
     case HloOpcode::kSin:
+    case HloOpcode::kSinh:
     case HloOpcode::kSlice:
     case HloOpcode::kSort:
     case HloOpcode::kTopK:
@@ -2219,7 +2226,7 @@ static std::string GraphTitle(const HloComputation& computation) {
 
 absl::StatusOr<std::string> WrapFusionExplorer(
     const HloComputation& computation) {
-  absl::MutexLock lock(&fusion_visualizer_state_mu);
+  absl::MutexLock lock(fusion_visualizer_state_mu);
   const FusionVisualizerProgress& visualizer_progress =
       fusion_visualizer_states[FusionVisualizerStateKey(computation)];
   return WrapFusionExplorer(visualizer_progress, GraphTitle(computation));
@@ -2255,7 +2262,7 @@ static absl::StatusOr<std::string> WrapDotInFormat(
 
 void RegisterGraphToURLRenderer(
     std::function<absl::StatusOr<std::string>(absl::string_view)> renderer) {
-  absl::MutexLock lock(&url_renderer_mu);
+  absl::MutexLock lock(url_renderer_mu);
   if (url_renderer != nullptr) {
     LOG(WARNING) << "Multiple calls to RegisterGraphToURLRenderer. Last call "
                     "wins, but because order of initialization in C++ is "
@@ -2271,7 +2278,7 @@ void RegisterFusionState(const HloComputation& computation,
                          absl::string_view label,
                          const HloInstruction& consumer,
                          const HloInstruction* producer) {
-  absl::MutexLock lock(&fusion_visualizer_state_mu);
+  absl::MutexLock lock(fusion_visualizer_state_mu);
   FusionVisualizerProgress& fusion_progress =
       fusion_visualizer_states[FusionVisualizerStateKey(computation)];
 
@@ -2304,7 +2311,7 @@ absl::StatusOr<std::string> RenderGraph(
     HloRenderOptions hlo_render_options,
     std::optional<absl::flat_hash_map<const HloInstruction*, ColorStats>>
         color_map) {
-  absl::MutexLock lock(&url_renderer_mu);
+  absl::MutexLock lock(url_renderer_mu);
   if (format == RenderedGraphFormat::kUrl && url_renderer == nullptr) {
     return Unavailable("Can't render as URL; no URL renderer was registered.");
   }
@@ -2361,7 +2368,7 @@ absl::StatusOr<std::string> RenderNeighborhoodAround(
     const absl::flat_hash_set<const HloInstruction*>& boundary,
     std::optional<absl::flat_hash_map<const HloInstruction*, ColorStats>>
         color_map) {
-  absl::MutexLock lock(&url_renderer_mu);
+  absl::MutexLock lock(url_renderer_mu);
   if (format == RenderedGraphFormat::kUrl && url_renderer == nullptr) {
     return FailedPrecondition(
         "Can't render as URL; no URL renderer was registered.");
@@ -2381,7 +2388,7 @@ absl::StatusOr<std::string> RenderNeighborhoodAround(
 absl::StatusOr<std::string> RenderAllPathsFromTo(
     const HloInstruction& from, const HloInstruction& to, int64_t max_nodes,
     RenderedGraphFormat format, HloRenderOptions hlo_render_options) {
-  absl::MutexLock lock(&url_renderer_mu);
+  absl::MutexLock lock(url_renderer_mu);
   if (format == RenderedGraphFormat::kUrl && url_renderer == nullptr) {
     return FailedPrecondition(
         "Can't render as URL; no URL renderer was registered.");

@@ -29,7 +29,6 @@ limitations under the License.
 
 // IWYU pragma: no_include "llvm/IR/Intrinsics.gen.inc"
 #include "absl/algorithm/container.h"
-#include "absl/base/macros.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -39,9 +38,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/APInt.h"
-#include "llvm/ADT/FloatingPointMode.h"
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/Constant.h"
 #include "llvm/IR/Constants.h"
@@ -86,9 +83,9 @@ using llvm_ir::IrArray;
 using llvm_ir::IrName;
 using llvm_ir::SetToFirstInsertPoint;
 using xla::float8_fnuz_ir_emitter::EmitF8fnuzToFloating;
-using xla::float8_fnuz_ir_emitter::EmitFloatingToF8fnuz;
 
 using IntrinsicType = xla::codegen::intrinsics::Type;
+<<<<<<< HEAD
 
 namespace {
 
@@ -107,6 +104,12 @@ absl::StatusOr<llvm::Value*> EmitF16ToF8e5m2(llvm::Value* f16_value,
   return b->CreateBitCast(truncated, b->getInt8Ty());
 }
 
+=======
+using FpTrunc = xla::codegen::intrinsics::FpTrunc;
+
+namespace {
+
+>>>>>>> upstream/master
 llvm::Value* EmitF8e5m2ToF16(llvm::Value* f8_value, llvm::IRBuilderBase* b) {
   llvm::Value* as_int8 = b->CreateBitCast(f8_value, b->getInt8Ty());
   llvm::Value* as_int16 = b->CreateZExt(as_int8, b->getInt16Ty());
@@ -114,6 +117,7 @@ llvm::Value* EmitF8e5m2ToF16(llvm::Value* f8_value, llvm::IRBuilderBase* b) {
   return b->CreateBitCast(shifted, b->getHalfTy());
 }
 
+<<<<<<< HEAD
 // Convert a float "fx_value" of type "fx_type" to an F8e "f8_exponent_bits"
 // bits wide.
 template <PrimitiveType fx_type, int f8_exponent_bits>
@@ -228,6 +232,14 @@ absl::StatusOr<llvm::Value*> EmitFxToF8e(llvm::Value* fx_value,
   //   f8_bits |= f8_sign
   f8_bits = b->CreateOr(f8_bits, f8_sign);
   return f8_bits;
+=======
+llvm::Value* EmitFxToF8e(llvm::Module* module, PrimitiveType fx_type,
+                         PrimitiveType f8_type, llvm::Value* fx_value,
+                         llvm::IRBuilderBase* b) {
+  llvm::Function* fptrunc = FpTrunc::GetOrInsertDeclaration(
+      module, IntrinsicType::S(fx_type), IntrinsicType::S(f8_type));
+  return b->CreateCall(fptrunc, {fx_value});
+>>>>>>> upstream/master
 }
 
 template <int f8_exponent_bits>
@@ -360,6 +372,7 @@ llvm::Value* EmitToF16F8e(llvm::Value* f8_value, llvm::IRBuilderBase* b) {
   return b->CreateBitCast(f16_as_int, b->getHalfTy());
 }
 
+<<<<<<< HEAD
 llvm::Value* EmitF16ToF8e4m3fn(llvm::Value* f16_value, llvm::Module* module,
                                llvm::IRBuilderBase* b) {
   llvm::Function* fptrunc =
@@ -403,6 +416,13 @@ llvm::Value* EmitF16ToF8e4m3b11fnuz(llvm::Value* f16_value,
   // e4m3b11 has no negative zero.
   f8_value = b->CreateSelect(is_zero, i8_const(0x00), f8_value);
   return f8_value;
+=======
+llvm::Value* EmitF8e4m3fnToF16(llvm::Value* f8_value, llvm::Module* module,
+                               llvm::IRBuilderBase* b) {
+  llvm::Function* fptrunc = FpTrunc::GetOrInsertDeclaration(
+      module, IntrinsicType::S(F8E4M3FN), IntrinsicType::S(F16));
+  return b->CreateCall(fptrunc, {f8_value});
+>>>>>>> upstream/master
 }
 
 llvm::Value* EmitF8e4m3b11fnuzToF16(llvm::Value* f8_value, llvm::Module* module,
@@ -734,20 +754,20 @@ absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitIntegerUnaryOp(
       }
       if (primitive_util::IsFloatingPointType(to_type)) {
         if (to_type == F8E5M2) {
-          return EmitF16ToF8e5m2(
-              EmitIntegralToFloating(operand_value, from_type, F16, module_,
-                                     b_),
-              b_);
+          operand_value = EmitIntegralToFloating(operand_value, from_type, F16,
+                                                 module_, b_);
+          return EmitFxToF8e(module_, F16, F8E5M2, operand_value, b_);
         }
         if (to_type == F8E4M3) {
-          return EmitFxToF8e<F16, 4>(
-              EmitIntegralToFloating(operand_value, from_type, F16, module_,
-                                     b_),
-              b_);
+          return EmitFxToF8e(module_, F16, F8E4M3,
+                             EmitIntegralToFloating(operand_value, from_type,
+                                                    F16, module_, b_),
+                             b_);
         }
         if (to_type == F8E4M3FN) {
           operand_value = EmitIntegralToFloating(operand_value, from_type, F16,
                                                  module_, b_);
+<<<<<<< HEAD
           return EmitF16ToF8e4m3fn(operand_value, module_, b_);
         }
         if (to_type == F8E4M3B11FNUZ) {
@@ -755,6 +775,14 @@ absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitIntegerUnaryOp(
               EmitIntegralToFloating(operand_value, from_type, F16, module_,
                                      b_),
               module_, b_);
+=======
+          return EmitFxToF8e(module_, F16, F8E4M3FN, operand_value, b_);
+        }
+        if (to_type == F8E4M3B11FNUZ) {
+          operand_value = EmitIntegralToFloating(operand_value, from_type, F16,
+                                                 module_, b_);
+          return EmitFxToF8e(module_, F16, F8E4M3B11FNUZ, operand_value, b_);
+>>>>>>> upstream/master
         }
         if (to_type == F4E2M1FN) {
           return EmitF16ToF4e2m1fn(
@@ -769,17 +797,15 @@ absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitIntegerUnaryOp(
               b_);
         }
         if (to_type == F8E5M2FNUZ || to_type == F8E4M3FNUZ) {
-          return EmitFloatingToF8fnuz(
-              F16,
-              EmitIntegralToFloating(operand_value, from_type, F16, module_,
-                                     b_),
-              to_type, b_);
+          operand_value = EmitIntegralToFloating(operand_value, from_type, F16,
+                                                 module_, b_);
+          return EmitFxToF8e(module_, F16, to_type, operand_value, b_);
         }
         if (to_type == F8E3M4) {
-          return EmitFxToF8e<F16, 3>(
-              EmitIntegralToFloating(operand_value, from_type, F16, module_,
-                                     b_),
-              b_);
+          return EmitFxToF8e(module_, F16, F8E3M4,
+                             EmitIntegralToFloating(operand_value, from_type,
+                                                    F16, module_, b_),
+                             b_);
         }
         return EmitIntegralToFloating(operand_value, from_type, to_type,
                                       module_, b_);
@@ -878,6 +904,16 @@ absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitIntegerUnaryOp(
 absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitFloatUnaryOp(
     const HloInstruction* op, llvm::Value* operand_value) {
   switch (op->opcode()) {
+    case HloOpcode::kAcos:
+      return EmitAcos(op->shape().element_type(), operand_value);
+    case HloOpcode::kAsin:
+      return EmitAsin(op->shape().element_type(), operand_value);
+    case HloOpcode::kAsinh:
+      return EmitAsinh(op->shape().element_type(), operand_value);
+    case HloOpcode::kAcosh:
+      return EmitAcosh(op->shape().element_type(), operand_value);
+    case HloOpcode::kAtanh:
+      return EmitAtanh(op->shape().element_type(), operand_value);
     case HloOpcode::kConvert: {
       PrimitiveType from_type = op->operand(0)->shape().element_type();
       PrimitiveType to_type = op->shape().element_type();
@@ -892,9 +928,14 @@ absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitFloatUnaryOp(
       // This is enabled explicitly by a flag only for XLA:CPU backend.
       if (options_.xla_cpu_use_truncate_f32_to_bf16_conversion) {
         if (from_type == F32 && to_type == BF16) {
+<<<<<<< HEAD
           llvm::Function* fptrunc =
               codegen::intrinsics::FpTrunc::GetOrInsertDeclaration(
                   module_, IntrinsicType::S(F32), IntrinsicType::S(BF16));
+=======
+          llvm::Function* fptrunc = FpTrunc::GetOrInsertDeclaration(
+              module_, IntrinsicType::S(F32), IntrinsicType::S(BF16));
+>>>>>>> upstream/master
           return b_->CreateCall(fptrunc, {operand_value});
         }
         if (from_type == BF16 && to_type == F32) {
@@ -920,9 +961,14 @@ absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitFloatUnaryOp(
       }
       if (from_type == F8E5M2) {
         TF_RET_CHECK(to_type != F8E5M2);
+<<<<<<< HEAD
         llvm::Function* fptrunc =
             codegen::intrinsics::FpTrunc::GetOrInsertDeclaration(
                 module_, IntrinsicType::S(F8E5M2), IntrinsicType::S(F16));
+=======
+        llvm::Function* fptrunc = FpTrunc::GetOrInsertDeclaration(
+            module_, IntrinsicType::S(F8E5M2), IntrinsicType::S(F16));
+>>>>>>> upstream/master
         operand_value = b_->CreateCall(fptrunc, {operand_value});
         from_type = F16;
         if (from_type == to_type) {
@@ -939,9 +985,14 @@ absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitFloatUnaryOp(
       }
       if (from_type == F8E4M3FN) {
         TF_RET_CHECK(to_type != F8E4M3FN);
+<<<<<<< HEAD
         llvm::Function* fptrunc =
             codegen::intrinsics::FpTrunc::GetOrInsertDeclaration(
                 module_, IntrinsicType::S(F8E4M3FN), IntrinsicType::S(F16));
+=======
+        llvm::Function* fptrunc = FpTrunc::GetOrInsertDeclaration(
+            module_, IntrinsicType::S(F8E4M3FN), IntrinsicType::S(F16));
+>>>>>>> upstream/master
         operand_value = b_->CreateCall(fptrunc, {operand_value});
         from_type = F16;
         if (from_type == to_type) {
@@ -1022,21 +1073,21 @@ absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitFloatUnaryOp(
               operand_value,
               llvm_ir::PrimitiveTypeToIrType(F16, module_->getContext()));
         }
-        return EmitF16ToF8e5m2(operand_value, b_);
+        return EmitFxToF8e(module_, F16, F8E5M2, operand_value, b_);
       }
       if (to_type == F8E4M3) {
         switch (from_type) {
           case F16:
-            return EmitFxToF8e<F16, 4>(operand_value, b_);
+            return EmitFxToF8e(module_, F16, F8E4M3, operand_value, b_);
           case F32:
-            return EmitFxToF8e<F32, 4>(operand_value, b_);
+            return EmitFxToF8e(module_, F32, F8E4M3, operand_value, b_);
           case F64:
-            return EmitFxToF8e<F64, 4>(operand_value, b_);
+            return EmitFxToF8e(module_, F64, F8E4M3, operand_value, b_);
           case BF16:
             operand_value = b_->CreateFPCast(
                 operand_value,
                 llvm_ir::PrimitiveTypeToIrType(F16, module_->getContext()));
-            return EmitFxToF8e<F16, 4>(operand_value, b_);
+            return EmitFxToF8e(module_, F16, F8E4M3, operand_value, b_);
           default:
             return InvalidArgument("Unsupported conversion from %s to %s",
                                    PrimitiveType_Name(from_type),
@@ -1050,19 +1101,29 @@ absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitFloatUnaryOp(
               operand_value,
               llvm_ir::PrimitiveTypeToIrType(F16, module_->getContext()));
         }
+<<<<<<< HEAD
         llvm::Function* fptrunc =
             codegen::intrinsics::FpTrunc::GetOrInsertDeclaration(
                 module_, IntrinsicType::S(F16), IntrinsicType::S(F8E4M3FN));
+=======
+        llvm::Function* fptrunc = FpTrunc::GetOrInsertDeclaration(
+            module_, IntrinsicType::S(F16), IntrinsicType::S(F8E4M3FN));
+>>>>>>> upstream/master
         return b_->CreateCall(fptrunc, {operand_value});
       }
       if (to_type == F8E4M3B11FNUZ) {
-        // Cast to F16 first. Casts to F8E4M3B11FNUZ must be from F16.
-        if (from_type != F16) {
+        if (from_type != F16 && from_type != F32 && from_type != F64) {
           operand_value = b_->CreateFPCast(
               operand_value,
               llvm_ir::PrimitiveTypeToIrType(F16, module_->getContext()));
+          from_type = F16;
         }
+<<<<<<< HEAD
         return EmitF16ToF8e4m3b11fnuz(operand_value, module_, b_);
+=======
+        return EmitFxToF8e(module_, from_type, F8E4M3B11FNUZ, operand_value,
+                           b_);
+>>>>>>> upstream/master
       }
       if (to_type == F4E2M1FN) {
         // Cast to F16 first. Casts to F4E2M1FN must be from F16.
@@ -1083,21 +1144,27 @@ absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitFloatUnaryOp(
         return EmitF32ToF8e8m0fnu(operand_value, b_);
       }
       if (to_type == F8E5M2FNUZ || to_type == F8E4M3FNUZ) {
-        return EmitFloatingToF8fnuz(from_type, operand_value, to_type, b_);
+        if (from_type != F16 && from_type != F32 && from_type != F64) {
+          operand_value = b_->CreateFPCast(
+              operand_value,
+              llvm_ir::PrimitiveTypeToIrType(F16, module_->getContext()));
+          from_type = F16;
+        }
+        return EmitFxToF8e(module_, from_type, to_type, operand_value, b_);
       }
       if (to_type == F8E3M4) {
         switch (from_type) {
           case F16:
-            return EmitFxToF8e<F16, 3>(operand_value, b_);
+            return EmitFxToF8e(module_, F16, F8E3M4, operand_value, b_);
           case F32:
-            return EmitFxToF8e<F32, 3>(operand_value, b_);
+            return EmitFxToF8e(module_, F32, F8E3M4, operand_value, b_);
           case F64:
-            return EmitFxToF8e<F64, 3>(operand_value, b_);
+            return EmitFxToF8e(module_, F64, F8E3M4, operand_value, b_);
           case BF16:
             operand_value = b_->CreateFPCast(
                 operand_value,
                 llvm_ir::PrimitiveTypeToIrType(F16, module_->getContext()));
-            return EmitFxToF8e<F16, 3>(operand_value, b_);
+            return EmitFxToF8e(module_, F16, F8E3M4, operand_value, b_);
           default:
             return InvalidArgument("Unsupported conversion from %s to %s",
                                    PrimitiveType_Name(from_type),
@@ -1193,8 +1260,12 @@ absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitFloatUnaryOp(
       return EmitLog1p(op->shape().element_type(), operand_value);
     case HloOpcode::kCos:
       return EmitCos(op->shape().element_type(), operand_value);
+    case HloOpcode::kCosh:
+      return EmitCosh(op->shape().element_type(), operand_value);
     case HloOpcode::kSin:
       return EmitSin(op->shape().element_type(), operand_value);
+    case HloOpcode::kSinh:
+      return EmitSinh(op->shape().element_type(), operand_value);
     case HloOpcode::kTan:
       return EmitTan(op->shape().element_type(), operand_value);
     case HloOpcode::kTanh:
@@ -2429,9 +2500,44 @@ absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitAtan2(
   return Unimplemented("atan2");
 }
 
+absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitAtanh(
+    PrimitiveType prim_type, llvm::Value* value) {
+  return Unimplemented("atanh");
+}
+
+absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitAsinh(
+    PrimitiveType prim_type, llvm::Value* value) {
+  return Unimplemented("asinh");
+}
+
 absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitTanh(
     PrimitiveType prim_type, llvm::Value* value) {
   return Unimplemented("tanh");
+}
+
+absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitAcos(
+    PrimitiveType prim_type, llvm::Value* value) {
+  return Unimplemented("acos");
+}
+
+absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitSinh(
+    PrimitiveType prim_type, llvm::Value* value) {
+  return Unimplemented("sinh");
+}
+
+absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitAcosh(
+    PrimitiveType prim_type, llvm::Value* value) {
+  return Unimplemented("acosh");
+}
+
+absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitAsin(
+    PrimitiveType prim_type, llvm::Value* value) {
+  return Unimplemented("asin");
+}
+
+absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitCosh(
+    PrimitiveType prim_type, llvm::Value* value) {
+  return Unimplemented("cosh");
 }
 
 absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitErf(
@@ -3384,6 +3490,11 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
     const ElementalIrEmitter::HloToElementGeneratorMap& operand_to_generator) {
   switch (hlo->opcode()) {
     case HloOpcode::kAbs:
+    case HloOpcode::kAsin:
+    case HloOpcode::kAsinh:
+    case HloOpcode::kAcos:
+    case HloOpcode::kAcosh:
+    case HloOpcode::kAtanh:
     case HloOpcode::kRoundNearestAfz:
     case HloOpcode::kRoundNearestEven:
     case HloOpcode::kCeil:
@@ -3391,6 +3502,7 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
     case HloOpcode::kConvert:
     case HloOpcode::kBitcastConvert:
     case HloOpcode::kCos:
+    case HloOpcode::kCosh:
     case HloOpcode::kErf:
     case HloOpcode::kExp:
     case HloOpcode::kExpm1:
@@ -3406,6 +3518,7 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
     case HloOpcode::kRsqrt:
     case HloOpcode::kSign:
     case HloOpcode::kSin:
+    case HloOpcode::kSinh:
     case HloOpcode::kSqrt:
     case HloOpcode::kCbrt:
     case HloOpcode::kTan:
@@ -3542,9 +3655,8 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
               b_->CreateUIToFP(elem_index_linear, float_ir_type);
           if (component_element_type == F8E4M3FNUZ ||
               component_element_type == F8E5M2FNUZ) {
-            TF_ASSIGN_OR_RETURN(
-                iota_result, EmitFloatingToF8fnuz(F16, float_val,
-                                                  component_element_type, b_));
+            iota_result = EmitFxToF8e(module_, F16, component_element_type,
+                                      float_val, b_);
           } else {
             iota_result = float_val;
           }

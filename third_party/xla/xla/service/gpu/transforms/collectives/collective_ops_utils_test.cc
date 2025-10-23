@@ -23,75 +23,15 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
-#include "xla/service/hlo_module_config.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla::gpu {
 namespace {
 
+using ::absl_testing::IsOkAndHolds;
 using ::testing::Test;
-using ::tsl::testing::IsOkAndHolds;
-
-GPUTopologyType GetTopologyType(se::CudaComputeCapability compute_capability,
-                                int num_partitions, int replica_count) {
-  HloModuleConfig config;
-  config.set_num_partitions(num_partitions);
-  config.set_replica_count(replica_count);
-  se::DeviceDescription device_description;
-  device_description.set_gpu_compute_capability(compute_capability);
-  return xla::gpu::GetTopologyType(config, device_description);
-}
-
-TEST(GetTopologyTypeTest, SingleHostSingleDevice) {
-  EXPECT_THAT(GetTopologyType(se::CudaComputeCapability::Ampere(),
-                              /*num_partitions=*/1, /*replica_count=*/1),
-              GPUTopologyType::SINGLE_HOST);
-  EXPECT_THAT(GetTopologyType(se::CudaComputeCapability::Hopper(),
-                              /*num_partitions=*/1, /*replica_count=*/1),
-              GPUTopologyType::SINGLE_HOST);
-}
-
-TEST(GetTopologyTypeTest, SingleHostMultiDevices) {
-  EXPECT_THAT(GetTopologyType(se::CudaComputeCapability::Ampere(),
-                              /*num_partitions=*/16, /*replica_count=*/1),
-              GPUTopologyType::SINGLE_HOST);
-  EXPECT_THAT(GetTopologyType(se::CudaComputeCapability::Ampere(),
-                              /*num_partitions=*/1, /*replica_count=*/16),
-              GPUTopologyType::SINGLE_HOST);
-  EXPECT_THAT(GetTopologyType(se::CudaComputeCapability::Hopper(),
-                              /*num_partitions=*/8, /*replica_count=*/1),
-              GPUTopologyType::SINGLE_HOST);
-  EXPECT_THAT(GetTopologyType(se::CudaComputeCapability::Hopper(),
-                              /*num_partitions=*/1, /*replica_count=*/8),
-              GPUTopologyType::SINGLE_HOST);
-}
-
-TEST(GetTopologyTypeTest, MultiHosts) {
-  EXPECT_THAT(GetTopologyType(se::CudaComputeCapability::Ampere(),
-                              /*num_partitions=*/32, /*replica_count=*/1),
-              GPUTopologyType::MULTI_HOST);
-  EXPECT_THAT(GetTopologyType(se::CudaComputeCapability::Ampere(),
-                              /*num_partitions=*/1, /*replica_count=*/32),
-              GPUTopologyType::MULTI_HOST);
-  EXPECT_THAT(GetTopologyType(se::CudaComputeCapability::Hopper(),
-                              /*num_partitions=*/16, /*replica_count=*/1),
-              GPUTopologyType::MULTI_HOST);
-  EXPECT_THAT(GetTopologyType(se::CudaComputeCapability::Hopper(),
-                              /*num_partitions=*/1, /*replica_count=*/16),
-              GPUTopologyType::MULTI_HOST);
-}
-
-TEST(GetTopologyTypeTest, NonAmpereAndHopper) {
-  EXPECT_EQ(GetTopologyType(se::CudaComputeCapability::Volta(),
-                            /*num_partitions=*/1, /*replica_count=*/1),
-            GPUTopologyType::UNKNOWN);
-  EXPECT_EQ(GetTopologyType(se::CudaComputeCapability::Blackwell(),
-                            /*num_partitions=*/1, /*replica_count=*/1),
-            GPUTopologyType::UNKNOWN);
-}
 
 class CommunicationTypeTest : public Test {
  protected:

@@ -34,10 +34,8 @@ limitations under the License.
 #include "xla/ffi/execution_state.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/runtime/object_pool.h"
-#include "xla/service/buffer_assignment.h"
 #include "xla/service/custom_call_status.h"
 #include "xla/service/gpu/buffer_allocations.h"
-#include "xla/shape.h"
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/stream.h"
 
@@ -61,25 +59,43 @@ class CustomCallThunk : public Thunk {
       std::function<void(stream_executor::Stream*, void**, const char*, size_t,
                          XlaCustomCallStatus*)>;
 
-  // We keep buffer allocation slice together with its shape to be able to fill
-  // FFI arguments with required details.
-  struct Slice {
-    BufferAllocation::Slice slice;
-    Shape shape;
-  };
-
   using Attribute = ffi::CallFrameBuilder::Attribute;
   using AttributesMap = ffi::CallFrameBuilder::AttributesMap;
 
+  // Creates a serializable custom call thunk. The callback is resolved using
+  // the legacy CustomCall registry. For new code please use XLA FFI instead.
   static absl::StatusOr<std::unique_ptr<CustomCallThunk>> Create(
       ThunkInfo thunk_info, std::string target_name,
-      CustomCallTarget call_target, std::vector<std::optional<Slice>> operands,
-      std::vector<std::optional<Slice>> results, const std::string& opaque);
+      std::vector<std::optional<ShapedSlice>> operands,
+      std::vector<std::optional<ShapedSlice>> results, std::string opaque,
+      CustomCallApiVersion api_version, absl::string_view platform_name);
 
+  // Creates a custom call thunk from the given legacy custom call target.
+  // Note that a thunk created this way can't be serialized to a proto.
+  // This function is only permitted for unit testing code.
   static absl::StatusOr<std::unique_ptr<CustomCallThunk>> Create(
       ThunkInfo thunk_info, std::string target_name,
-      XLA_FFI_Handler_Bundle bundle, std::vector<std::optional<Slice>> operands,
-      std::vector<std::optional<Slice>> results, AttributesMap attributes,
+      CustomCallTarget call_target,
+      std::vector<std::optional<ShapedSlice>> operands,
+      std::vector<std::optional<ShapedSlice>> results, std::string opaque);
+
+  // Creates a serializable custom call thunk. The callback is resolved using
+  // XLA FFI.
+  static absl::StatusOr<std::unique_ptr<CustomCallThunk>> Create(
+      ThunkInfo thunk_info, std::string target_name,
+      std::vector<std::optional<ShapedSlice>> operands,
+      std::vector<std::optional<ShapedSlice>> results, AttributesMap attributes,
+      const HloComputation* called_computation,
+      absl::string_view platform_name);
+
+  // Creates a serializable custom call thunk from the given XLA FFI handler
+  // bundle. Note that `target_name` needs to refer to a registered XLA FFI
+  // handler which matches the given bundle.
+  static absl::StatusOr<std::unique_ptr<CustomCallThunk>> Create(
+      ThunkInfo thunk_info, std::string target_name,
+      XLA_FFI_Handler_Bundle bundle,
+      std::vector<std::optional<ShapedSlice>> operands,
+      std::vector<std::optional<ShapedSlice>> results, AttributesMap attributes,
       const HloComputation* called_computation);
 
   absl::Status Prepare(const PrepareParams& params,
@@ -94,25 +110,27 @@ class CustomCallThunk : public Thunk {
     return call_frame_ ? std::make_optional(call_frame_->Copy()) : std::nullopt;
   }
 
-  const std::vector<std::optional<Slice>>& operands() const {
+  const std::vector<std::optional<ShapedSlice>>& operands() const {
     return operands_;
   }
-  const std::vector<std::optional<Slice>>& results() const { return results_; }
+  const std::vector<std::optional<ShapedSlice>>& results() const {
+    return results_;
+  }
 
   absl::string_view opaque() const { return opaque_; }
 
  private:
   CustomCallThunk(ThunkInfo thunk_info, std::string target_name,
-                  CustomCallTarget call_target,
-                  std::vector<std::optional<Slice>> operands,
-                  std::vector<std::optional<Slice>> results,
-                  const std::string& opaque);
+                  std::vector<std::optional<ShapedSlice>> operands,
+                  std::vector<std::optional<ShapedSlice>> results,
+                  std::string opaque, CustomCallTarget call_target,
+                  const std::optional<CustomCallApiVersion>& api_version);
 
   CustomCallThunk(ThunkInfo thunk_info, std::string target_name,
                   XLA_FFI_Handler_Bundle bundle,
-                  std::vector<std::optional<Slice>> operands,
-                  std::vector<std::optional<Slice>> results,
-                  ffi::CallFrame call_frame,
+                  std::vector<std::optional<ShapedSlice>> operands,
+                  std::vector<std::optional<ShapedSlice>> results,
+                  ffi::CallFrame call_frame, AttributesMap attributes,
                   std::unique_ptr<ffi::ExecutionState> execution_state,
                   const HloComputation* called_computation);
 
@@ -124,10 +142,14 @@ class CustomCallThunk : public Thunk {
                                  const ffi::ExecutionContext* execution_context,
                                  const BufferAllocations* buffer_allocations);
 
+  // API version of the custom call. If not set, it means the custom call thunk
+  // was initialized from a non-registered function pointer and can't be
+  // serialized to a proto.
+  std::optional<CustomCallApiVersion> api_version_;
   std::string target_name_;
 
-  std::vector<std::optional<Slice>> operands_;
-  std::vector<std::optional<Slice>> results_;
+  std::vector<std::optional<ShapedSlice>> operands_;
+  std::vector<std::optional<ShapedSlice>> results_;
 
   // This is a legacy custom call API that is discouraged, and will be
   // deprecated once XLA:FFI mechanism is ready.
@@ -138,6 +160,7 @@ class CustomCallThunk : public Thunk {
   // functions with XLA runtime. It's under construction, and still misses
   // a lot of features. Long term it will replace legacy custom calls.
   std::optional<XLA_FFI_Handler_Bundle> bundle_;
+  std::optional<AttributesMap> attributes_;
 
   // Reference call frame pre-initialized at construction time.
   std::optional<ffi::CallFrame> call_frame_;

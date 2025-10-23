@@ -15,24 +15,21 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_AUTOTUNING_AUTOTUNER_UTIL_H_
 #define XLA_SERVICE_GPU_AUTOTUNING_AUTOTUNER_UTIL_H_
 
-#include <algorithm>
 #include <cstdint>
 #include <functional>
 #include <memory>
 #include <optional>
 #include <string>
-#include <utility>
 #include <variant>
 
-#include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "xla/autotune_results.pb.h"
 #include "xla/autotuning.pb.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/service/gpu/autotuning/autotune_cache_key.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -107,6 +104,7 @@ class DeviceOrDevicelessConfig {
   mutable std::unique_ptr<se::DeviceMemoryAllocator> allocator_;
 };
 
+<<<<<<< HEAD
 class AutotuneCacheKey {
  public:
   // Tie a version to the cache key in order to invalidate the cache when
@@ -165,6 +163,8 @@ class AutotuneCacheKey {
 
 using AutotuneCacheKeySet = absl::flat_hash_set<AutotuneCacheKey>;
 
+=======
+>>>>>>> upstream/master
 class AutotuneConfig {
  public:
   bool should_init_buffers() const { return should_init_buffers_; }
@@ -266,6 +266,27 @@ class AutotunerUtil {
   static absl::StatusOr<bool> AddResult(const AutotuneCacheKey& key,
                                         AutotuneResult result,
                                         const AutotuneConfig& config);
+
+  // Used in the new autotuner to provide current cache compatibility.
+  static absl::StatusOr<std::optional<AutotuneResult>> TryFindInCache(
+      const AutotuneCacheKey& key, absl::string_view cache_dir);
+
+  // Used in the new autotuner to provide current cache compatibility.
+  struct ResultAndInserted {
+    // The result that ended up in the cache. This is the existing result if
+    // inserted is false, and the new result if inserted is true.
+    //
+    // We return a value, not a pointer, for thread safety reasons.
+    AutotuneResult result;
+    // Did we insert the given result into the cache?
+    bool inserted;
+  };
+
+  // Used in the new autotuner to provide current cache compatibility.
+  static absl::StatusOr<ResultAndInserted> AddResultToCaches(
+      const AutotuneCacheKey& key, AutotuneResult result,
+      absl::string_view cache_dir,
+      DebugOptions::AutotuneCacheMode autotune_cache_mode);
 
   // Functions to save/load XLA's autotuning results.
   //

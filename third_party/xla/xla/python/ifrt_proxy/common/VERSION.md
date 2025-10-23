@@ -97,3 +97,25 @@
 *   Added date: 2025-07-18
 *   Changes:
     *   Added support for `LoadedExecutable::devices()`.
+<<<<<<< HEAD
+=======
+
+## Version kGrpcAllowLargeTransferOptimizationViaSharedDirectory
+
+*   Added date: 2025-09-22
+*   Changes:
+    *   Optimize large transfers with the proxy-server and client in the same
+    machine to by using the file system.
+
+## Version kLoadedExecutableGetCostAnalysis
+
+*   Added date: 2025-10-01
+*   Changes:
+    *   Added support for `LoadedExecutable::GetCostAnalysis()`.
+
+## Version kLoadedExecutableGetHumanReadableProgramText
+
+*   Added date: 2025-10-01
+*   Changes:
+    *   Added support for `LoadedExecutable::GetHumanReadableProgramText()`.
+>>>>>>> upstream/master

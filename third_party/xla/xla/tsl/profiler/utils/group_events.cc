@@ -824,7 +824,12 @@ class GroupQueue {
 void MergeHostSteps(const XStatMetadata& group_id_stat_metadata,
                     const XPlaneVisitor& plane_visitor,
                     XPlaneBuilder* plane_builder, XLine* step_line) {
+  auto device_duration_stat_metadata = *plane_builder->GetOrCreateStatMetadata(
+      GetStatTypeStr(StatType::kDeviceDurationPs));
+  auto device_offset_stat_metadata = *plane_builder->GetOrCreateStatMetadata(
+      GetStatTypeStr(StatType::kDeviceOffsetPs));
   std::optional<int64_t> merged_group_id;
+  std::optional<Timespan> merged_device_timespan;
   std::optional<XEventBuilder> merged_step_builder;
   absl::flat_hash_set<const XEvent*> events_to_remove;
   for (XEvent& step_event : *step_line->mutable_events()) {
@@ -840,10 +845,24 @@ void MergeHostSteps(const XStatMetadata& group_id_stat_metadata,
     } else if (merged_group_id != group_id) {
       // Start a new step with the current event.
       merged_group_id = group_id;
+      merged_device_timespan.reset();
+      if (step_visitor.GetStat(StatType::kDeviceOffsetPs).has_value() &&
+          step_visitor.GetStat(StatType::kDeviceDurationPs).has_value()) {
+        merged_device_timespan = GetDeviceEventTimespan(step_visitor);
+      }
       merged_step_builder.emplace(step_line, plane_builder, &step_event);
     } else {
       // Multi-module step: extend the previous step until the end of the
       // current event and discard the current event.
+      if (merged_device_timespan.has_value()) {
+        merged_device_timespan->ExpandToInclude(
+            GetDeviceEventTimespan(step_visitor));
+        merged_step_builder->SetOrAddStatValue(
+            device_offset_stat_metadata, merged_device_timespan->begin_ps());
+        merged_step_builder->SetOrAddStatValue(
+            device_duration_stat_metadata,
+            merged_device_timespan->duration_ps());
+      }
       merged_step_builder->SetEndTimestampPs(step_visitor.EndTimestampPs());
       events_to_remove.insert(&step_event);
     }

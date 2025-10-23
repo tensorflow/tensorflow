@@ -1,5 +1,6 @@
 load("@bazel_skylib//rules:build_test.bzl", "build_test")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
 
 # Description:
 #   A tool for reducing a HLO module that produces incorrect results.

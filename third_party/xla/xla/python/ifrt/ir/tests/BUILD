@@ -43,6 +43,10 @@ xla_cc_binary(
         "//xla/python/ifrt/ir",
         "//xla/python/ifrt/ir:atom_program_compiler",
         "//xla/python/ifrt/ir:ifrt_ir_program",
+<<<<<<< HEAD
+=======
+        "//xla/python/ifrt/ir/conversions/mpmd:lower_to_ifrt",
+>>>>>>> upstream/master
         "//xla/python/ifrt/ir/transforms:passes",
         "//xla/python/ifrt/support:module_parsing",
         "//xla/tsl/platform:test",
@@ -54,12 +58,20 @@ xla_cc_binary(
         "@com_google_googletest//:gtest",
         "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:MathDialect",
         "@llvm-project//mlir:MlirOptLib",
+<<<<<<< HEAD
         "@llvm-project//mlir:RegisterAllDialects",
         "@llvm-project//mlir:RegisterAllExtensions",
         "@llvm-project//mlir:RegisterAllPasses",
+=======
+        "@llvm-project//mlir:RegisterAllDialects",  # buildcleaner: keep
+        "@llvm-project//mlir:RegisterAllPasses",  # buildcleaner: keep
+>>>>>>> upstream/master
         "@local_tsl//tsl/platform:path",
         "@local_tsl//tsl/platform:platform_port",
+        "@shardy//shardy/dialect/mpmd/ir:dialect",
+        "@shardy//shardy/dialect/sdy/ir:dialect",
     ],
 )
 
@@ -78,6 +90,7 @@ xla_cc_binary(
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:AllPassesAndDialects",
+        "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
@@ -144,6 +157,7 @@ cc_library(
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",

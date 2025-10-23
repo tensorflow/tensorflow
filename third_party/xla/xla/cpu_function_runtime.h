@@ -21,11 +21,14 @@ limitations under the License.
 #include <cassert>
 #include <cstdlib>
 
+<<<<<<< HEAD
 #include "absl/base/macros.h"
 #include "xla/backends/cpu/alignment.h"
 
+=======
+>>>>>>> upstream/master
 namespace xla {
-namespace cpu_function_runtime {
+namespace cpu_function_runtime_deprecated {
 
 struct EncodedBufferInfo {
   uint64_t packed_kind_and_size = 0;
@@ -177,6 +180,7 @@ class BufferInfo {
   int32_t result_param_number_ = -1;
 };
 
+<<<<<<< HEAD
 // Align to 64-bytes, to mimic tsl::Allocator::kAllocatorAlignment.
 ABSL_DEPRECATE_AND_INLINE()
 inline constexpr size_t Align() { return xla::cpu::Align(); }
@@ -223,6 +227,9 @@ void* MallocContiguousBuffers(const BufferInfo* buffer_infos, size_t n,
 // MallocContiguousBuffers.
 void FreeContiguous(void* contiguous);
 }  // namespace cpu_function_runtime
+=======
+}  // namespace cpu_function_runtime_deprecated
+>>>>>>> upstream/master
 }  // namespace xla
 
 #endif  // XLA_CPU_FUNCTION_RUNTIME_H_

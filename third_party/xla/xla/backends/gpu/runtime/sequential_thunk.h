@@ -47,6 +47,7 @@ class SequentialThunk : public Thunk {
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
 
   void ForAllThunks(absl::FunctionRef<void(const Thunk*)> fn) const override;
+  void ForAllThunksMutable(absl::FunctionRef<void(Thunk*)> fn) override;
 
   absl::StatusOr<ThunkProto> ToProto() const override;
 

@@ -22,9 +22,15 @@ limitations under the License.
 #include <string>
 
 #include "absl/log/log.h"
+<<<<<<< HEAD
 #include "xla/pjrt/gpu/tfrt/tracked_gpu_device_buffer.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_future.h"
+=======
+#include "xla/future.h"
+#include "xla/pjrt/gpu/tfrt/tracked_gpu_device_buffer.h"
+#include "xla/pjrt/pjrt_client.h"
+>>>>>>> upstream/master
 #include "xla/pjrt/proto/compile_options.pb.h"
 #include "xla/shape.h"
 #include "xla/stream_executor/device_description.pb.h"
@@ -63,6 +69,7 @@ class TfrtGpuBuffer final : public PjRtBuffer {
   ReleaseDeviceMemoryOwnership(bool wait_for_operations_to_complete) override;
 
   using PjRtBuffer::ToLiteralSync;
+<<<<<<< HEAD
   PjRtFuture<> ToLiteral(MutableLiteralBase* literal) override;
 
   PjRtFuture<> LazyToLiteral(
@@ -78,6 +85,22 @@ class TfrtGpuBuffer final : public PjRtBuffer {
 
   PjRtFuture<> CopyRawToHostFuture(PjRtFuture<void*> dst, int64_t offset,
                                    int64_t transfer_size) override;
+=======
+  Future<> ToLiteral(MutableLiteralBase* literal) override;
+
+  Future<> LazyToLiteral(
+      absl::AnyInvocable<Future<MutableLiteralBase*>() &&> generator) override;
+
+  absl::StatusOr<size_t> GetOnDeviceSizeInBytes() const override;
+
+  Future<> CopyRawToHost(void* dst, int64_t offset,
+                         int64_t transfer_size) override {
+    return CopyRawToHostFuture(Future<void*>(dst), offset, transfer_size);
+  }
+
+  Future<> CopyRawToHostFuture(Future<void*> dst, int64_t offset,
+                               int64_t transfer_size) override;
+>>>>>>> upstream/master
 
   void Delete() override;
 
@@ -86,16 +109,26 @@ class TfrtGpuBuffer final : public PjRtBuffer {
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> CopyToMemorySpace(
       PjRtMemorySpace* dst_memory_space) override;
 
+<<<<<<< HEAD
   void CopyToRemoteDevice(PjRtFuture<std::string> serialized_descriptor,
+=======
+  void CopyToRemoteDevice(Future<std::string> serialized_descriptor,
+>>>>>>> upstream/master
                           RemoteSendCallback on_done) override {
     on_done(Unimplemented("CopyToRemoteDevice not implemented."),
             /*sends_were_enqueued=*/false);
   }
 
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> DonateWithControlDependency(
+<<<<<<< HEAD
       PjRtFuture<> dependency) override;
 
   PjRtFuture<> GetReadyFuture() override;
+=======
+      Future<> dependency) override;
+
+  Future<> GetReadyFuture() override;
+>>>>>>> upstream/master
 
   bool IsOnCpu() const override;
 
@@ -171,7 +204,11 @@ class TfrtGpuBuffer final : public PjRtBuffer {
       ABSL_LOCKS_EXCLUDED(mu_);
 
   tsl::AsyncValueRef<bool> GetDonationEvent() {
+<<<<<<< HEAD
     absl::MutexLock lock(&mu_);
+=======
+    absl::MutexLock lock(mu_);
+>>>>>>> upstream/master
     return donation_event_;
   }
 
@@ -198,7 +235,11 @@ class TfrtGpuBuffer final : public PjRtBuffer {
   std::unique_ptr<TrackedGpuDeviceBuffer> ReleaseBufferLocked()
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
+<<<<<<< HEAD
   PjRtFuture<> ToLiteralHelper(PjRtFuture<MutableLiteralBase*> literal);
+=======
+  Future<> ToLiteralHelper(Future<MutableLiteralBase*> literal);
+>>>>>>> upstream/master
 
   TfrtGpuClient* client_;
   const Shape on_device_shape_;
@@ -216,7 +257,11 @@ class TfrtGpuBuffer final : public PjRtBuffer {
   // might fail. Note that concurrent calls to AcquireUsage() and
   // AcquireDonation() might fail even if the pending donation is aborted later.
   tsl::AsyncValueRef<bool> donation_event_ ABSL_GUARDED_BY(mu_);
+<<<<<<< HEAD
   PjRtFuture<>::Promise ready_promise_ ABSL_GUARDED_BY(mu_);
+=======
+  Future<> ready_future_ ABSL_GUARDED_BY(mu_);
+>>>>>>> upstream/master
 
   // This event is triggered when the last external reference is released.
   // It is used to make sure that the buffer is not deleted before all external

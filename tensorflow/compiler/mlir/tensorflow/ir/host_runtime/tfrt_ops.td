@@ -188,4 +188,19 @@ def TF_PwStreamResultsOp : TF_Op<"PwStreamResults"> {
   let hasVerifier = 1;
 }
 
+ def TF_IfrtResourceDeserializeOp : TF_Op<"IfrtResourceDeserialize", []> {
+   let summary = "Deserialize resource vars.";
+   let description = [{
+     This Op is a variant of IfrtResourceDeserialize for use with the
+     TFRT/IFRT runtime. It is not a stable interface.
+   }];
+
+   let arguments = (ins
+     Arg<TF_ResourceTensor, "The variable to change.">:$resource_var,
+     Arg<TF_StrTensor, "The directory to read from.">:$input_dir,
+     DefaultValuedOptionalAttr<BoolAttr, "true">:$require_matching_crc,
+     DefaultValuedOptionalAttr<StrAttr, "\"\"">:$tensor_name
+   );
+ }
+
 #endif // TFRT_OPS

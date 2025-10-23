@@ -49,6 +49,10 @@ void CreateXEvent(
     HostEventType event_type, int64_t offset_ps, int64_t duration_ps,
     std::initializer_list<std::pair<StatType, XStatValue>> stats = {});
 
+void CreateXEventMetadata(
+    XPlaneBuilder* plane_builder, absl::string_view event_name,
+    std::initializer_list<std::pair<StatType, XStatValue>> stats = {});
+
 void CreateTfFunctionCallEvent(XPlaneBuilder* plane_builder,
                                XLineBuilder* line_builder,
                                absl::string_view function_name,

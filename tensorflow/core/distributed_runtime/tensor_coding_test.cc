@@ -128,7 +128,7 @@ class TensorResponseTest : public ::testing::Test {
         test::FillValues<tstring>(&a, v);
         Validate(a, (elems == 0), true);
       }
-      v.push_back(strings::StrCat("This is string ", elems));
+      v.push_back(absl::StrCat("This is string ", elems));
     }
   }
 };
@@ -186,7 +186,7 @@ static void BM_TensorResponse(::testing::benchmark::State& state) {
     absl::Status s = response.ParseFrom(&source);
     bytes = response.tensor().TotalBytes();
   }
-  state.SetLabel(strings::StrCat("Bytes: ", bytes));
+  state.SetLabel(absl::StrCat("Bytes: ", bytes));
 }
 BENCHMARK(BM_TensorResponse)->Arg(0)->Arg(1000)->Arg(100000);
 
@@ -202,7 +202,7 @@ static void BM_TensorViaTensorProto(::testing::benchmark::State& state) {
     CHECK(t.FromProto(r.tensor()));
     bytes = t.TotalBytes();
   }
-  state.SetLabel(strings::StrCat("Bytes: ", bytes));
+  state.SetLabel(absl::StrCat("Bytes: ", bytes));
 }
 BENCHMARK(BM_TensorViaTensorProto)->Arg(0)->Arg(1000)->Arg(100000);
 

@@ -109,7 +109,7 @@ class Cluster {
   // Enables collecting the allocator stats. If called, must be called before
   // Provision().
   virtual absl::Status EnablePeakMemoryStats() {
-    return absl::UnimplementedError(strings ::StrCat(
+    return absl::UnimplementedError(absl::StrCat(
         "Peak Memory Stats are not supported on ", type(), " clusters"));
   }
 

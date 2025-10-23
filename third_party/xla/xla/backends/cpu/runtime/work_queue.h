@@ -33,7 +33,6 @@ limitations under the License.
 #include "Eigen/ThreadPool"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/concurrency/chain.h"
-#include "xla/tsl/lib/math/math_util.h"
 #include "xla/tsl/platform/logging.h"
 
 #define EIGEN_USE_THREADS
@@ -130,8 +129,7 @@ inline WorkQueue::WorkQueue(size_t num_tasks, size_t num_partitions)
     : partitions_(num_partitions),
       empty_(num_tasks == 0),
       num_work_stealing_workers_(0) {
-  size_t partition_size =
-      tsl::MathUtil::FloorOfRatio(num_tasks, num_partitions);
+  size_t partition_size = num_tasks / num_partitions;
   size_t rem_tasks = num_tasks % num_partitions;
   for (size_t i = 0, begin = 0, end = 0; i < num_partitions; ++i, begin = end) {
     end = begin + partition_size + ((i < rem_tasks) ? 1 : 0);

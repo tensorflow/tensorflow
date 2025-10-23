@@ -20,6 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include <gmock/gmock.h>
+#include "absl/status/status_matchers.h"
 #include "xla/tsl/platform/status_matchers.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/dtensor/cc/tensor_layout.h"
@@ -31,7 +32,6 @@ namespace slice_util {
 namespace {
 
 using ::testing::SizeIs;
-using ::tsl::testing::IsOk;
 
 TEST(TokenTest, NormalizeDynamic) {
   auto spec = Token(Token::REGULAR, /*begin=*/0, /*end=*/0, /*stride=*/1,

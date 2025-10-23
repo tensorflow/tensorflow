@@ -87,7 +87,8 @@ absl::Status NvshmemRecvThunk::RunNvshmemCollective(const ExecuteParams& params,
                       params.collective_params->device_assn->LogicalIdForDevice(
                           global_device_id));
   const int64_t current_id =
-      config_.config.group_mode == CollectiveOpGroupMode::kCrossReplica
+      config_.config.group_mode ==
+              CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA
           ? current_logical_id.replica_id
           : current_logical_id.computation_id;
   std::string device_string =
@@ -157,13 +158,10 @@ absl::Status NvshmemRecvThunk::RunNvshmemCollective(const ExecuteParams& params,
           << " source_buffer=" << buffer.source_buffer.opaque()
           << " element_count=" << buffer.element_count
           << " source_id=" << *source_id;
-  auto recv_event = nvshmem_comm->Recv(
+  auto recv_future = nvshmem_comm->Recv(
       buffer.destination_buffer, buffer.source_buffer, buffer.element_type,
       buffer.element_count, RankId(*source_id), GpuCollectives::On(stream));
-  tsl::BlockUntilReady(recv_event);
-  if (recv_event.IsError()) {
-    return recv_event.GetError();
-  }
+  TF_RETURN_IF_ERROR(recv_future.Await());
   TF_RETURN_IF_ERROR(nvshmem_comm->Quiet(GpuCollectives::On(stream)));
 
   return absl::OkStatus();

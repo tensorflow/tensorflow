@@ -40,6 +40,10 @@ limitations under the License.
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
+<<<<<<< HEAD
+=======
+#include "xla/xla_data.pb.h"
+>>>>>>> upstream/master
 
 namespace xla {
 namespace {

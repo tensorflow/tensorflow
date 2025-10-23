@@ -18,10 +18,16 @@ limitations under the License.
 
 #include <string>
 
+<<<<<<< HEAD
+=======
+#include "absl/status/statusor.h"
+>>>>>>> upstream/master
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 
 namespace tensorflow {
-
+// Serializes a MLIR module `module_op` to a compressed bytecode string.
+absl::StatusOr<std::string> SerializeMlirModuleToCompressedBytecode(
+    mlir::ModuleOp module_op);
 // Prints a MLIR module `module_op` and returns it as a string.
 std::string SerializeMlirModule(mlir::ModuleOp module_op);
 

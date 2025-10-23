@@ -236,7 +236,9 @@ float GetMaxLowLatencyBandwidth(const BandwidthSettings& bandwidth_settings) {
   auto max_sys_bw = bandwidth_settings.GetMaxSysBwFromGpu(
       bandwidth_settings.kLowLatencyMaxBandwidths.data());
   auto it = std::lower_bound(std::begin(speeds), std::end(speeds), max_sys_bw);
-  CHECK(it != std::cend(speeds));
+  if (it == speeds.end()) {
+    return speeds.back();
+  }
   return *it;
 }
 
@@ -379,6 +381,7 @@ RocmBandwidthSettings CreateSettings(
 }  // namespace
 
 /*static*/ bool GpuPerformanceWithCollectiveModel::InitNvml() {
+<<<<<<< HEAD
 #if GOOGLE_CUDA && defined(PLATFORM_POSIX) && !defined(PLATFORM_GOOGLE)
   void* libhandle = dlopen("libnvidia-ml.so.1", RTLD_NOW);
   CHECK(libhandle != nullptr) << "Failed to open libnvidia-ml.so.1";
@@ -410,8 +413,13 @@ RocmBandwidthSettings CreateSettings(
         LOG(WARNING) << dlsym_error;
       }
     }
+=======
+#if GOOGLE_CUDA && (defined(PLATFORM_POSIX) || defined(PLATFORM_GOOGLE))
+  nvmlReturn_t init_result = nvmlInit();
+  if (init_result != NVML_SUCCESS) {
+    LOG(ERROR) << "NVML init failed with " << init_result;
+>>>>>>> upstream/master
   }
-  nvmlReturn_t init_result = xla_nvmlInit();
   return init_result == NVML_SUCCESS;
 #elif TENSORFLOW_USE_ROCM
   return true;
@@ -422,7 +430,7 @@ RocmBandwidthSettings CreateSettings(
 
 /*static*/ bool GpuPerformanceWithCollectiveModel::ShutdownNvml() {
 #if GOOGLE_CUDA
-  nvmlReturn_t shutdown_result = xla_nvmlShutdown();
+  nvmlReturn_t shutdown_result = nvmlShutdown();
   return shutdown_result == NVML_SUCCESS;
 #elif TENSORFLOW_USE_ROCM
   return true;
@@ -443,13 +451,12 @@ GpuPerformanceWithCollectiveModel::CheckIfNvlinkSupportsP2P() {
   // to have the same capability.
   CHECK(InitNvml()) << "NVML init failed.";
   nvmlDevice_t nvml_device;
-  nvmlReturn_t get_device_result =
-      xla_nvmlDeviceGetHandleByIndex(0, &nvml_device);
+  nvmlReturn_t get_device_result = nvmlDeviceGetHandleByIndex(0, &nvml_device);
   CHECK(get_device_result == NVML_SUCCESS);
 
   uint32_t supported_p2p = 0;
 
-  nvmlReturn_t nvlink_cap_result = xla_nvmlDeviceGetNvLinkCapability(
+  nvmlReturn_t nvlink_cap_result = nvmlDeviceGetNvLinkCapability(
       nvml_device, /*nvlink link number*/ 0, NVML_NVLINK_CAP_P2P_SUPPORTED,
       &supported_p2p);
   CHECK(nvlink_cap_result == NVML_SUCCESS ||
@@ -467,11 +474,15 @@ GpuPerformanceWithCollectiveModel::ComputeAllreduceTime(
     const se::DeviceDescription& gpu_device_info) {
   // We use nccl group call to launch multiple allreduces so launch overhead
   // only occurs once.
-  const auto visitor = [&](const auto& cc) {
+  if (auto ptr =
+          gpu_device_info.gpu_compute_capability().cuda_compute_capability()) {
     return ComputeAllreduceTimeImpl(instr, cost_analysis, gpu_device_info,
-                                    CreateSettings(cc));
-  };
-  return std::visit(visitor, gpu_device_info.gpu_compute_capability());
+                                    CreateSettings(*ptr));
+  }
+  return ComputeAllreduceTimeImpl(
+      instr, cost_analysis, gpu_device_info,
+      CreateSettings(
+          *gpu_device_info.gpu_compute_capability().rocm_compute_capability()));
 }
 
 /*static*/ absl::Duration

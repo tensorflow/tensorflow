@@ -18,9 +18,8 @@
 load("@rules_cc//cc:cc_test.bzl", "cc_test")
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("@rules_shell//shell:sh_test.bzl", "sh_test")
-
-# Placeholder: load proto_library
-# Placeholder: load java_lite_proto_library
+load("@com_google_protobuf//bazel:proto_library.bzl", "proto_library")
+load("@com_google_protobuf//bazel:java_lite_proto_library.bzl", "java_lite_proto_library")
 load("@flatbuffers//:build_defs.bzl", "DEFAULT_FLATC_ARGS", "flatbuffer_android_library", "flatbuffer_cc_library", "flatbuffer_java_library", "flatc_path")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 load("//tensorflow/lite:build_def.bzl", "tflite_copts", "tflite_copts_warnings")

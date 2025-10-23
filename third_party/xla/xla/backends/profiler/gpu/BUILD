@@ -1,5 +1,9 @@
 load("@local_config_cuda//cuda:build_defs.bzl", "cuda_library")
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm_is_configured")
+<<<<<<< HEAD
+=======
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
+>>>>>>> upstream/master
 load("//xla:xla.default.bzl", "xla_cc_test")
 load("//xla/tests:build_defs.bzl", "xla_test")
 load(
@@ -166,7 +170,10 @@ cuda_library(
     testonly = 1,
     srcs = ["cuda_test.cu.cc"],
     hdrs = ["cuda_test.h"],
+<<<<<<< HEAD
     tags = ["cuda-only"],
+=======
+>>>>>>> upstream/master
     visibility = ["//visibility:public"],
     deps = [
         "@com_google_googletest//:gtest_for_library",
@@ -217,7 +224,10 @@ cc_library(
         ":cupti_interface",
         ":cupti_pm_sampler_factory",
         ":cupti_utils",
+<<<<<<< HEAD
         ":nvtx_utils",
+=======
+>>>>>>> upstream/master
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",
@@ -438,6 +448,7 @@ cc_library(
 )
 
 cc_library(
+<<<<<<< HEAD
     name = "nvtx_utils",
     srcs = ["nvtx_utils.cc"],
     hdrs = ["nvtx_utils.h"],
@@ -455,6 +466,8 @@ cc_library(
 )
 
 cc_library(
+=======
+>>>>>>> upstream/master
     name = "cupti_collector",
     srcs = ["cupti_collector.cc"],
     hdrs = ["cupti_collector.h"],
@@ -484,6 +497,7 @@ cc_library(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
         "@local_config_cuda//cuda:cuda_headers",
         "@local_tsl//tsl/platform:abi",
@@ -549,6 +563,59 @@ cc_library(
 )
 
 cc_library(
+<<<<<<< HEAD
+=======
+    name = "ondevice_event_exporter",
+    srcs = ["ondevice_event_exporter.cc"],
+    hdrs = ["ondevice_event_exporter.h"],
+    # copybara:uncomment compatible_with = ["//buildenv/target:non_prod"],
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":cupti_buffer_events",
+        "//xla/tsl/profiler/backends/gpu:ondevice_event_collector",
+        "//xla/tsl/profiler/backends/gpu:ondevice_trace_event",
+        "//xla/tsl/profiler/utils:lock_free_queue",
+        "//xla/tsl/profiler/utils:trace_utils",
+        "//xla/tsl/profiler/utils:xplane_builder",
+        "//xla/tsl/profiler/utils:xplane_schema",
+        "//xla/tsl/profiler/utils:xplane_utils",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/synchronization",
+        "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc",
+    ],
+)
+
+xla_cc_test(
+    name = "ondevice_event_exporter_test",
+    srcs = ["ondevice_event_exporter_test.cc"],
+    tags = [
+        "cuda-only",
+        "gpu",
+        "no_mac",
+        "requires-gpu-nvidia",
+    ],
+    deps = [
+        ":ondevice_event_exporter",
+        "//xla/tsl/profiler/backends/gpu:ondevice_event_receiver",
+        "//xla/tsl/profiler/backends/gpu:ondevice_trace_event",
+        "//xla/tsl/profiler/utils:xplane_builder",
+        "//xla/tsl/profiler/utils:xplane_schema",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:test",
+        "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc",
+    ],
+)
+
+cc_library(
+>>>>>>> upstream/master
     name = "cupti_status",
     srcs = ["cupti_status.cc"],
     hdrs = ["cupti_status.h"],

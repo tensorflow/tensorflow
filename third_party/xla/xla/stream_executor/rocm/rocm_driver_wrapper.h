@@ -133,6 +133,7 @@ namespace wrap {
   __macro(hipLaunchKernel)                          \
   __macro(hipMalloc)                                \
   __macro(hipMallocManaged)                         \
+  __macro(hipExtMallocWithFlags)                    \
   __macro(hipMemGetAddressRange)                    \
   __macro(hipMemGetInfo)                            \
   __macro(hipMemcpyDtoD)                            \

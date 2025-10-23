@@ -15,15 +15,23 @@ limitations under the License.
 
 #ifndef XLA_BACKENDS_GPU_RUNTIME_COMMAND_BUFFER_CONVERSION_PASS_H_
 #define XLA_BACKENDS_GPU_RUNTIME_COMMAND_BUFFER_CONVERSION_PASS_H_
+<<<<<<< HEAD:third_party/xla/xla/backends/gpu/runtime/command_buffer_conversion_pass.h
 
 #include <memory>
 #include <string>
+=======
+>>>>>>> upstream/master:third_party/xla/xla/service/gpu/transforms/command_buffer_conversion_pass.h
 
+#include "absl/base/nullability.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk_pass_pipeline.h"
+<<<<<<< HEAD:third_party/xla/xla/backends/gpu/runtime/command_buffer_conversion_pass.h
+=======
+#include "xla/hlo/ir/hlo_module.h"
+>>>>>>> upstream/master:third_party/xla/xla/service/gpu/transforms/command_buffer_conversion_pass.h
 #include "xla/stream_executor/device_description.h"
 
 namespace xla {
@@ -32,7 +40,8 @@ namespace gpu {
 // Converts compatible sequences of Thunks into CommandBufferThunks.
 class CommandBufferConversionPass : public ThunkPassInterface {
  public:
-  CommandBufferConversionPass() = default;
+  explicit CommandBufferConversionPass(absl::string_view module_name = "")
+      : module_name_(module_name) {}
 
   absl::string_view name() const override {
     return "command-buffer-conversion";
@@ -40,14 +49,19 @@ class CommandBufferConversionPass : public ThunkPassInterface {
 
   absl::StatusOr<bool> Run(SequentialThunk* root_thunk,
                            const DebugOptions& debug_options,
-                           const se::DeviceDescription& device_info) override;
+                           const HloModule* absl_nullable hlo_module,
+                           const se::DeviceDescription& device_info,
+                           ThunkPassBufferAllocator& allocator) override;
   struct CommandBufferConfig {
     // DebugOptions control which commands are enabled. Long term we want to
     // remove that flag and enable all supported commands by default.
     absl::flat_hash_set<DebugOptions::CommandBufferCmdType> enabled_commands;
-    absl::flat_hash_set<std::string> enabled_legacy_custom_call_targets;
     const se::DeviceDescription& device_description;
+    std::string ToString() const;
   };
+
+ private:
+  std::string module_name_;
 };
 
 }  // namespace gpu

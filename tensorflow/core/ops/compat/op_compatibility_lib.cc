@@ -30,17 +30,17 @@ namespace tensorflow {
 static string OpsHistoryDirectory(const string& ops_prefix,
                                   const string& history_version) {
   return io::JoinPath(ops_prefix,
-                      strings::StrCat("compat/ops_history_", history_version));
+                      absl::StrCat("compat/ops_history_", history_version));
 }
 
 static string OpsHistoryFile(const string& ops_prefix,
                              const string& history_version) {
-  return io::JoinPath(ops_prefix, strings::StrCat("compat/ops_history.",
-                                                  history_version, ".pbtxt"));
+  return io::JoinPath(ops_prefix, absl::StrCat("compat/ops_history.",
+                                               history_version, ".pbtxt"));
 }
 
 static string FileNameFromOpName(const string& op_name) {
-  return strings::StrCat(op_name, ".pbtxt");
+  return absl::StrCat(op_name, ".pbtxt");
 }
 
 static void AddNewOpToHistory(const OpDef& op,

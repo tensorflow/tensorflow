@@ -125,9 +125,12 @@ class SharedSendMsgQueue {
 
   // Starts a sender for 1 part of the thread.
   static void StartSubConnectionSender(
-      int fd, int bond_id, std::shared_ptr<SharedSendMsgQueue> msg_queue,
+      std::shared_ptr<int> fd, int bond_id,
+      std::shared_ptr<SharedSendMsgQueue> msg_queue,
       std::shared_ptr<SharedSendWorkQueue> work_queue,
       size_t artificial_send_limiti = std::numeric_limits<size_t>::max());
+
+  void Poison(absl::Status s);
 
  private:
   friend class SendConnectionHandler;
@@ -136,6 +139,7 @@ class SharedSendMsgQueue {
 
   absl::Mutex mu_;
   bool shutdown_ = false;
+  absl::Status poison_status_;
   std::deque<SendConnectionHandler*> handlers_;
   std::deque<aux::BulkTransportInterface::SendMessage> work_items_;
 };
@@ -145,7 +149,7 @@ class RecvThreadState {
  public:
   // Schedules recv() syscall on a particular fd.
   void ScheduleRecvWork(
-      size_t recv_size, int fd,
+      size_t recv_size, std::shared_ptr<int> fd,
       absl::AnyInvocable<
           void(absl::StatusOr<aux::BulkTransportInterface::Message> msg) &&>
           on_recv);
@@ -163,7 +167,7 @@ class RecvThreadState {
 
   struct recv_work_item {
     size_t recv_size;
-    int fd;
+    std::shared_ptr<int> fd;
     absl::AnyInvocable<
         void(absl::StatusOr<aux::BulkTransportInterface::Message> msg) &&>
         on_recv;

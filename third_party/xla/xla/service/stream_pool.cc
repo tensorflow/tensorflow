@@ -31,7 +31,11 @@ StreamPool::Ptr StreamPool::BorrowStream(se::StreamPriority priority) {
   std::unique_ptr<se::Stream> stream = nullptr;
 
   {
+<<<<<<< HEAD
     absl::MutexLock lock(&mu_);
+=======
+    absl::MutexLock lock(mu_);
+>>>>>>> upstream/master
     if (auto it = streams_with_pri_.find(priority);
         it != streams_with_pri_.end()) {
       std::vector<std::unique_ptr<se::Stream>>& streams = it->second;
@@ -71,7 +75,7 @@ StreamPool::Ptr StreamPool::BorrowStream(se::StreamPriority priority) {
 void StreamPool::ReturnStream(se::Stream* stream) {
   if (stream->ok()) {
     VLOG(1) << absl::StrFormat("StreamPool returning ok stream (%p)", stream);
-    absl::MutexLock lock(&mu_);
+    absl::MutexLock lock(mu_);
     auto priority = std::get<se::StreamPriority>(stream->priority());
     streams_with_pri_[priority].emplace_back(stream);
   } else {

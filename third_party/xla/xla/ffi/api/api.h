@@ -202,6 +202,23 @@ enum class ExecutionStage : uint8_t {
 };
 
 enum class Traits : uint32_t {
+  // Indicates that the handler is compatible with command buffers. In the
+  // XLA:GPU CUDA backend, we rely on graph capture to trace the execution of a
+  // FFI handler and record it as a command buffer (CUDA graph). For a FFI
+  // handler to be compatible with CUDA graphs, it has to satisfy certain
+  // constraints as documented in
+  // https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#prohibited-and-unhandled-operations.
+  //
+  // Broadly speaking, a handler that satisfies the following conditions should
+  // be compatible with command buffers:
+  //   1. it only launches kernels that must be captured in command buffers on
+  //      the device (e.g. it does *not* do autotuning). This is because
+  //      everything it launches will be captured in the command buffer;
+  //   2. the FFI handler only uses device allocations passed in as buffer
+  //      arguments (e.g. it does *not* do any runtime device memory
+  //      allocations);
+  //   3. the FFI handler may not query the execution status of the stream
+  //      (e.g. calling `cudaGetLastError` on the stream is invalid).
   kCmdBufferCompatible = XLA_FFI_HANDLER_TRAITS_COMMAND_BUFFER_COMPATIBLE,
 };
 
@@ -262,7 +279,8 @@ class Ffi {
   // `type_id`.
   static XLA_FFI_Error* RegisterTypeId(const XLA_FFI_Api* api,
                                        std::string_view name,
-                                       XLA_FFI_TypeId* type_id);
+                                       XLA_FFI_TypeId* type_id,
+                                       XLA_FFI_TypeInfo type_info = {nullptr});
 
   // This is a helper template that allows to convert function pointers from
   // the run time values to compile time values (template arguments) with
@@ -328,12 +346,15 @@ inline XLA_FFI_Error* Ffi::RegisterStaticHandler(
 
 inline XLA_FFI_Error* Ffi::RegisterTypeId(const XLA_FFI_Api* api,
                                           std::string_view name,
-                                          XLA_FFI_TypeId* type_id) {
+                                          XLA_FFI_TypeId* type_id,
+                                          XLA_FFI_TypeInfo type_info) {
+  assert(type_id && "type_id must not be null");
   XLA_FFI_TypeId_Register_Args args;
   args.struct_size = XLA_FFI_TypeId_Register_Args_STRUCT_SIZE;
   args.extension_start = nullptr;
   args.name = XLA_FFI_ByteSpan{name.data(), name.size()};
   args.type_id = type_id;
+  args.type_info = &type_info;
   return api->XLA_FFI_TypeId_Register(&args);
 }
 
@@ -1396,6 +1417,24 @@ struct NumArgs<T, Ts...> {
   static constexpr int64_t value = !IsTagged<T>::value + NumArgs<Ts...>::value;
 };
 
+// A template to detect result encodings that are state constructors. We use
+// this to report back the TypeId of the state as a part of the metadata.
+template <typename ResultEnconding, typename = void>
+struct IsStateConstructor : std::false_type {};
+
+// Check if the ResultEncoding has a static `state_type_id()` method returning
+// the XLA_FFI_TypeId.
+template <typename ResultEncoding>
+struct IsStateConstructor<
+    ResultEncoding,
+    std::enable_if_t<std::is_same_v<XLA_FFI_TypeId,
+                                    decltype(ResultEncoding::state_type_id())>>>
+    : std::true_type {};
+
+template <typename ResultEncoding>
+static constexpr bool is_state_constructor_v =  // NOLINT
+    IsStateConstructor<ResultEncoding>::value;
+
 }  // namespace internal
 
 //===----------------------------------------------------------------------===//
@@ -1572,16 +1611,23 @@ class Handler : public Ffi {
 
     extension->metadata->api_version = XLA_FFI_Api_Version{
         XLA_FFI_Api_Version_STRUCT_SIZE,
-        /*extension_start=*/nullptr,
-        XLA_FFI_API_MAJOR,
-        XLA_FFI_API_MINOR,
-    };
+        /*extension_start=*/nullptr, XLA_FFI_API_MAJOR, XLA_FFI_API_MINOR};
 
+    // Collect all traits and store them in the metadata.
     XLA_FFI_Handler_Traits traits = 0;
     for (const auto& trait : traits_) {
       traits |= static_cast<XLA_FFI_Handler_Traits>(trait);
     }
     extension->metadata->traits = traits;
+
+    // Check if the handler creates a new state object and if so, record its
+    // type id in the metadata.
+    using ResultEncoding = ResultEncoding<stage, ResultType>;
+    if constexpr (internal::is_state_constructor_v<ResultEncoding>) {
+      extension->metadata->state_type_id = ResultEncoding::state_type_id();
+    } else {
+      extension->metadata->state_type_id = XLA_FFI_UNKNOWN_TYPE_ID;
+    }
 
     return Sucess();
   }
@@ -1904,20 +1950,21 @@ auto DictionaryDecoder(Members... m) {
 #define XLA_FFI_ATTRIBUTE_UNUSED
 #endif
 
-// Use captureless lambda to function pointer conversion to create a static
-// XLA_FFI_Handler function pointer variable.
+// In all macros below we use captureless lambda to function pointer conversion
+// to create a static XLA_FFI_Handler function pointer variable.
+
+// Use explicit binding specification and traits to create a handler.
+#define XLA_FFI_DEFINE_HANDLER_EXPLICIT_WITH_TRAITS(fn, impl, binding, traits) \
+  static constexpr XLA_FFI_Handler* fn = +[](XLA_FFI_CallFrame* call_frame) {  \
+    static auto* handler = binding.To(impl, traits).release();                 \
+    return handler->Call(call_frame);                                          \
+  }
 
 // Use explicit binding specification to create a handler.
 #define XLA_FFI_DEFINE_HANDLER_EXPLICIT(fn, impl, binding)                    \
   static constexpr XLA_FFI_Handler* fn = +[](XLA_FFI_CallFrame* call_frame) { \
     static auto* handler = binding.To(impl).release();                        \
     return handler->Call(call_frame);                                         \
-  }
-
-#define XLA_FFI_DEFINE_HANDLER_EXPLICIT_WITH_TRAITS(fn, impl, binding, traits) \
-  static constexpr XLA_FFI_Handler* fn = +[](XLA_FFI_CallFrame* call_frame) {  \
-    static auto* handler = binding.To(impl, traits).release();                 \
-    return handler->Call(call_frame);                                          \
   }
 
 // Automatically infer binding specification from the implementation.
@@ -1934,11 +1981,11 @@ auto DictionaryDecoder(Members... m) {
 //
 // This is a trick to define macro with optional parameters.
 // Source: https://stackoverflow.com/a/8814003
-#define XLA_FFI_DEFINE_HANDLER(fn, impl, ...)                             \
-  XLA_FFI_DEFINE_HANDLER_X(                                               \
-      , fn, impl, ##__VA_ARGS__,                                          \
-      XLA_FFI_DEFINE_HANDLER_EXPLICIT_WITH_TRAITS(fn, impl, __VA_ARGS__), \
-      XLA_FFI_DEFINE_HANDLER_EXPLICIT(fn, impl, __VA_ARGS__),             \
+#define XLA_FFI_DEFINE_HANDLER(fn, impl, ...)                               \
+  XLA_FFI_DEFINE_HANDLER_X(                                                 \
+      , fn, impl, ##__VA_ARGS__,                                            \
+      XLA_FFI_DEFINE_HANDLER_EXPLICIT_WITH_TRAITS(fn, impl, ##__VA_ARGS__), \
+      XLA_FFI_DEFINE_HANDLER_EXPLICIT(fn, impl, ##__VA_ARGS__),             \
       XLA_FFI_DEFINE_HANDLER_AUTO(fn, impl))
 
 // TODO(ezhulenev): Add a callback so that end users can log registration error

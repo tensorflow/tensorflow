@@ -31,7 +31,7 @@ ExpectedCalls CreateRetriableErrors(const string& method, int n) {
   expected_calls.reserve(n);
   for (int i = 0; i < n; i++) {
     expected_calls.emplace_back(std::make_tuple(
-        method, errors::Unavailable(strings::StrCat("Retriable error #", i))));
+        method, errors::Unavailable(absl::StrCat("Retriable error #", i))));
   }
   return expected_calls;
 }

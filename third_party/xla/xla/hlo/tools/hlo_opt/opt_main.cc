@@ -135,7 +135,7 @@ absl::StatusOr<std::vector<std::unique_ptr<HloModule>>> GetModules(
             "'// ---'");
       } else {
         return absl::InternalError(
-            "'// ---' separator found in input, but -split-input-file not "
+            "'// ---' separator found in input, but --split-input-file not "
             "specified");
       }
     }
@@ -308,7 +308,9 @@ int main(int argc, char** argv) {
 
   bool parse_ok = tsl::Flags::Parse(&argc, argv, flag_list);
   if (!parse_ok) {
-    LOG(QFATAL) << kUsageString;
+    // Print the usage using cerr to avoid truncation by LOG.
+    std::cerr << kUsageString;
+    return 1;
   }
   tsl::port::InitMain(kUsageString.c_str(), &argc, &argv);
 

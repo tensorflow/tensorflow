@@ -30,6 +30,7 @@ cc_library(
     hdrs = [
         "convolution_handler.h",
         "custom_call_handler.h",
+        "dot_handler.h",
         "spmd_partitioner.h",
         "spmd_partitioner_util.h",
     ],
@@ -55,7 +56,6 @@ cc_library(
         "//xla/hlo/parser:hlo_lexer",
         "//xla/hlo/pass:hlo_pass",
         "//xla/hlo/pass:hlo_pass_pipeline",
-        "//xla/hlo/transforms/simplifiers:flatten_call_graph",
         "//xla/hlo/transforms/simplifiers:hlo_dce",
         "//xla/hlo/transforms/simplifiers:tuple_simplifier",
         "//xla/hlo/utils:hlo_query",
@@ -436,16 +436,30 @@ xla_cc_test(
     srcs = ["dot_handler_test.cc"],
     deps = [
         ":stateful_rng_spmd_partitioner",
+<<<<<<< HEAD
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass_pipeline",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+=======
+        "//xla:literal_util",
+        "//xla:xla_data_proto_cc",
+        "//xla:xla_proto_cc",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/pass:hlo_pass_pipeline",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/hlo/utils:hlo_matchers",
+>>>>>>> upstream/master
         "//xla/service:hlo_module_config",
         "//xla/service:hlo_verifier",
         "//xla/service:sharding_propagation",
         "//xla/tests:xla_internal_test_main",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",
+<<<<<<< HEAD
+=======
+        "@com_google_absl//absl/log",
+>>>>>>> upstream/master
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest",

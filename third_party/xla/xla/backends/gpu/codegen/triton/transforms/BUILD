@@ -35,29 +35,50 @@ cc_library(
         "generalize_kernel_signature.cc",
         "int4_passes.cc",
         "round_f32_to_tf32_for_tf32_dot_pass.cc",
+        "stablehlo_lower_to_triton.cc",
+        "tensor_lower_to_triton.cc",
+        "triton_xla_convert_unsupported_types.cc",
         "triton_xla_extract_insert_to_triton_pass.cc",
         "triton_xla_fold_transpose_pass.cc",
+<<<<<<< HEAD
+=======
+        "triton_xla_lower_atomics_pass.cc",
+        "triton_xla_lower_block_barrier_pass.cc",
+        "triton_xla_lower_get_tid_pass.cc",
+        "triton_xla_lower_remote_access_pass.cc",
+        "triton_xla_lower_xtile_pass.cc",
+>>>>>>> upstream/master
         "triton_xla_squeeze_dims_pass.cc",
+        "triton_xla_unswitch_loops_pass.cc",
     ],
     hdrs = ["passes.h"],
     deps = [
         ":passes_inc_gen",
         "//xla:permutation_util",
+<<<<<<< HEAD
         "//xla:shape_util",
+=======
+>>>>>>> upstream/master
         "//xla:util",
         "//xla/backends/gpu/codegen/triton:emitter_helpers",
         "//xla/backends/gpu/codegen/triton/ir:triton_xla",
         "//xla/codegen:emitter_loc_op_builder",
         "//xla/codegen/emitters/ir:xla",
-        "//xla/hlo/analysis:indexing_analysis",
+        "//xla/codegen/xtile/ir:xtile",
         "//xla/service/llvm_ir:llvm_util",
+<<<<<<< HEAD
         "//xla/stream_executor:device_description",
         "//xla/stream_executor/cuda:cuda_compute_capability",
+=======
+        "//xla/stream_executor/gpu:collective_kernel_metadata",
+>>>>>>> upstream/master
         "//xla/stream_executor/gpu:tma_metadata",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
@@ -67,13 +88,21 @@ cc_library(
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:FunctionInterfaces",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:InliningUtils",
+        "@llvm-project//mlir:LLVMCommonConversion",
         "@llvm-project//mlir:LLVMDialect",
+        "@llvm-project//mlir:MemRefDialect",
         "@llvm-project//mlir:NVVMDialect",
         "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Rewrite",
         "@llvm-project//mlir:SCFDialect",
         "@llvm-project//mlir:SCFTransforms",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
+<<<<<<< HEAD
+=======
+        "@stablehlo//:stablehlo_ops",
+>>>>>>> upstream/master
         "@triton//:TritonDialects",
     ],
 )

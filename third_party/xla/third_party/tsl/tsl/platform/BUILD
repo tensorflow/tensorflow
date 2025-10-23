@@ -118,14 +118,6 @@ cc_library(
 )
 
 cc_library(
-    name = "threadpool_async_executor",
-    hdrs = ["threadpool_async_executor.h"],
-    deps = [
-        "@local_xla//xla/tsl/platform:threadpool_async_executor",
-    ],
-)
-
-cc_library(
     name = "env_impl",
     deps = [
         "@local_xla//xla/tsl/platform:env_impl",
@@ -203,6 +195,7 @@ cc_library(
     hdrs = ["protobuf.h"],
     deps = [
         ":platform",
+        ":tstring",
         "@local_xla//xla/tsl/platform:types",
     ] + tsl_protobuf_deps(),
 )
@@ -458,7 +451,6 @@ filegroup(
         "statusor.h",
         "str_util.cc",
         "str_util.h",
-        "strcat.cc",
         "strcat.h",
         "stringpiece.h",
         "stringprintf.cc",
@@ -774,7 +766,6 @@ cc_library(
 
 cc_library(
     name = "strcat",
-    srcs = ["strcat.cc"],
     hdrs = ["strcat.h"],
     deps = [
         ":numbers",
@@ -1143,11 +1134,6 @@ cc_library(
     name = "notification",
     hdrs = ["notification.h"],
     compatible_with = get_compatible_with_portable(),
-    deps = [
-        "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/synchronization",
-        "@com_google_absl//absl/time",
-    ],
 )
 
 cc_library(
@@ -1337,7 +1323,7 @@ tsl_cc_test(
         ":platform_port",
         "@com_google_googletest//:gtest_main",
         "@local_xla//xla/tsl/platform:env",
-        "@local_xla//xla/tsl/platform:env_impl",
+        "@local_xla//xla/tsl/platform:env_time",
         "@local_xla//xla/tsl/platform:test",
     ],
 )
@@ -1365,23 +1351,6 @@ tsl_cc_test(
         ":str_util",
         "@com_google_googletest//:gtest_main",
         "@local_xla//xla/tsl/platform:test",
-    ],
-)
-
-tsl_cc_test(
-    name = "strcat_test",
-    size = "small",
-    srcs = [
-        "strcat_test.cc",
-    ],
-    deps = [
-        ":bfloat16",
-        ":strcat",
-        ":stringprintf",
-        "@com_google_absl//absl/strings",
-        "@com_google_googletest//:gtest_main",
-        "@local_xla//xla/tsl/platform:test",
-        "@local_xla//xla/tsl/platform:types",
     ],
 )
 

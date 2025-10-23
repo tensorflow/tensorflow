@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <stddef.h>
 
+#include <cstdint>
 #include <iosfwd>
 #include <memory>
 #include <set>
@@ -308,7 +309,7 @@ class TuplePointsToAnalysis : public DfsHloVisitorWithDefault {
   };
 
   const PerInstruction* PerInst(const HloInstruction* inst) const {
-    int id = inst->unique_id();
+    int64_t id = inst->unique_id();
     DCHECK_GE(id, 0);
     auto iter = per_instruction_.find(id);
     if (iter == per_instruction_.end()) {
@@ -317,7 +318,7 @@ class TuplePointsToAnalysis : public DfsHloVisitorWithDefault {
     return iter->second.get();
   }
   PerInstruction* PerInst(const HloInstruction* inst) {
-    int id = inst->unique_id();
+    int64_t id = inst->unique_id();
     DCHECK_GE(id, 0);
     auto iter = per_instruction_.find(id);
     if (iter == per_instruction_.end()) {
@@ -334,7 +335,8 @@ class TuplePointsToAnalysis : public DfsHloVisitorWithDefault {
   const std::unique_ptr<LogicalBufferAnalysis> logical_buffer_analysis_;
 
   // A map from instruction->unique_id() to
-  absl::flat_hash_map<int, std::unique_ptr<PerInstruction>> per_instruction_;
+  absl::flat_hash_map<int64_t, std::unique_ptr<PerInstruction>>
+      per_instruction_;
 
   // A map from LogicalBuffer->id() to alias information about that logical
   // buffer

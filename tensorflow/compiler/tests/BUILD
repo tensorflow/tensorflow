@@ -189,6 +189,9 @@ tf_xla_combined_py_test(
     name = "combined_ops_test_e",
     size = "medium",
     timeout = "long",
+    exec_properties = {
+        "cpp_link.mem": "16g",
+    },
     package = "tensorflow.compiler.tests",
     tags = [
         "no_cuda_asan",  # times out in individual tests
@@ -215,6 +218,9 @@ tf_xla_combined_py_test(
     # #TODO(b/286470564): Remove once the bug is fixed.
     # disable_tpu_tfrt = True,
     # copybara:uncomment_end
+    exec_properties = {
+        "cpp_link.mem": "16g",
+    },
     package = "tensorflow.compiler.tests",
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
@@ -223,7 +229,26 @@ tf_xla_combined_py_test(
         # go/keep-sorted start
         ":add_n_test_lib",
         ":cond_test_lib",
+        ":float_ops_test_lib",
         ":while_test_lib",
+        # go/keep-sorted end
+    ],
+)
+
+tf_xla_combined_py_test(
+    name = "combined_ops_test_g",
+    size = "medium",
+    timeout = "long",
+    exec_properties = {
+        "cpp_link.mem": "16g",
+    },
+    package = "tensorflow.compiler.tests",
+    tags = [
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+    ],
+    tests = [
+        # go/keep-sorted start
+        ":cast_test_lib",
         # go/keep-sorted end
     ],
 )
@@ -1464,6 +1489,7 @@ tf_xla_py_strict_test(
 tf_xla_py_strict_test(
     name = "scan_ops_test",
     size = "medium",
+    timeout = "long",
     srcs = ["scan_ops_test.py"],
     shard_count = 6,
     tags = [
@@ -1791,6 +1817,38 @@ tf_xla_py_strict_test(
 )
 
 tf_xla_py_strict_test(
+    name = "float_ops_test",
+    size = "medium",
+    srcs = ["float_ops_test.py"],
+    tags = [
+        "no_cuda_asan",  # times out
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+        "noasan",  #times out
+        "notap",
+    ],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python/ops:math_ops",
+        "//tensorflow/python/ops:nn_ops",
+        "//tensorflow/python/platform:test",
+        "//third_party/py/numpy",
+    ],
+)
+
+tf_xla_py_strict_test(
+    name = "cast_test",
+    size = "medium",
+    srcs = ["cast_test.py"],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/ops:math_ops",
+        "//tensorflow/python/platform:test",
+        "//third_party/py/numpy",
+    ],
+)
+
+tf_xla_py_strict_test(
     name = "fused_batchnorm_test",
     size = "medium",
     srcs = ["fused_batchnorm_test.py"],
@@ -2107,6 +2165,7 @@ tf_xla_py_strict_test(
         "gpu_a100",
         "gpu_h100",
     ],
+    env = {"XLA_FLAGS": "--xla_backend_extra_options=xla_cpu_disable_new_fusion_emitters=true"},
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
     ],

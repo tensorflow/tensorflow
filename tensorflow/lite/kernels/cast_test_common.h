@@ -59,6 +59,10 @@ class CastOpModel : public SingleOpModel {
     PopulateTensor4bit(input_, 0, f.data(), f.data() + f.size());
   }
 
+  void Set2BitInput(absl::Span<const int8_t> data) {
+    PopulateTensor2bit(input_, 0, data.data(), data.data() + data.size());
+  }
+
   int input() const { return input_; }
   int output() const { return output_; }
 

@@ -31,7 +31,6 @@ limitations under the License.
 
 namespace xla {
 
-// TODO(b/181653482): Fix for interprocedural collectives as well.
 absl::StatusOr<bool> CollectivesScheduleLinearizer::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {

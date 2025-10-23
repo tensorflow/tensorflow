@@ -679,6 +679,7 @@ TEST_F(IrEmissionUtilsTest, LiteralToAttrToXlaFormat) {
   }
 }
 
+<<<<<<< HEAD
 TEST_F(IrEmissionUtilsTest,
        CanEmitFusedDynamicUpdateSliceInPlaceForGpu_HandlesBitcasts) {
   const char* hlo = R"(
@@ -1104,6 +1105,8 @@ ENTRY main {
               absl_testing::IsOkAndHolds(true));
 }
 
+=======
+>>>>>>> upstream/master
 gpu::GpuBackendConfig CreateTestProto() {
   gpu::GpuBackendConfig proto;
   auto& knobs = *proto.mutable_cudnn_fmha_backend_config()

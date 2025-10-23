@@ -1,5 +1,7 @@
 """Provides build configuration for TSL"""
 
+load("@rules_cc//cc/common:cc_info.bzl", "CcInfo")
+load("@rules_cc//cc/common:cc_common.bzl", "cc_common")
 load("@rules_python//python:py_library.bzl", "py_library")
 load("@bazel_skylib//lib:new_sets.bzl", "sets")
 load(
@@ -9,9 +11,12 @@ load(
 load(
     "//xla/tsl/mkl:build_defs.bzl",
     "if_enable_mkl",
-    "if_mkl",
     "if_mkldnn_aarch64_acl",
     "if_mkldnn_openmp",
+<<<<<<< HEAD
+=======
+    "if_onednn",
+>>>>>>> upstream/master
     "if_onednn_async",
     "onednn_v3_define",
 )
@@ -241,6 +246,7 @@ def get_win_copts(
     Args:
         is_external: sets dllexport
         is_msvc: whether the compiler expects msvc-style flags.
+<<<<<<< HEAD
 
     Returns:
         A list of copts to pass to the cc_library.
@@ -290,6 +296,57 @@ def get_win_copts(
             "/DTF_COMPILE_LIBRARY",
         )
     else:
+=======
+
+    Returns:
+        A list of copts to pass to the cc_library.
+    """
+    WINDOWS_COPTS = []
+    if is_msvc:
+        WINDOWS_COPTS += [
+            "/DPLATFORM_WINDOWS",
+            "/DEIGEN_HAS_C99_MATH",
+            "/DTENSORFLOW_USE_EIGEN_THREADPOOL",
+            "/DEIGEN_AVOID_STL_ARRAY",
+            "/Iexternal/gemmlowp",
+            "/wd4018",  # -Wno-sign-compare
+            # Bazel's CROSSTOOL currently pass /EHsc to enable exception by
+            # default. We can't pass /EHs-c- to disable exception, otherwise
+            # we will get a waterfall of flag conflict warnings. Wait for
+            # Bazel to fix this.
+            # "/D_HAS_EXCEPTIONS=0",
+            # "/EHs-c-",
+            "/wd4577",
+            "/DNOGDI",
+            # Also see build:windows lines in tensorflow/opensource_only/.bazelrc
+            # where we set some other options globally.
+        ]
+    else:
+        WINDOWS_COPTS += [
+            "-DPLATFORM_WINDOWS",
+            "-DEIGEN_HAS_C99_MATH",
+            "-DTENSORFLOW_USE_EIGEN_THREADPOOL",
+            "-DEIGEN_AVOID_STL_ARRAY",
+            "-Iexternal/gemmlowp",
+            "-Wno-sign-compare",
+            "-DNOGDI",
+        ]
+
+    if is_external:
+        if is_msvc:
+            WINDOWS_COPTS.append(
+                "/UTF_COMPILE_LIBRARY",
+            )
+        else:
+            WINDOWS_COPTS.append(
+                "-UTF_COMPILE_LIBRARY",
+            )
+    elif is_msvc:
+        WINDOWS_COPTS.append(
+            "/DTF_COMPILE_LIBRARY",
+        )
+    else:
+>>>>>>> upstream/master
         WINDOWS_COPTS.append(
             "-DTF_COMPILE_LIBRARY",
         )
@@ -336,7 +393,7 @@ def tsl_copts(
         if_tensorrt(["-DGOOGLE_TENSORRT=1"]) +
         if_rocm(["-DTENSORFLOW_USE_ROCM=1"]) +
         # Compile in oneDNN based ops when building for x86 platforms
-        if_mkl(["-DINTEL_MKL"]) +
+        if_onednn(["-DXLA_ONEDNN"]) +
         # Enable additional ops (e.g., ops with non-NHWC data layout) and
         # optimizations for Intel builds using oneDNN if configured
         if_enable_mkl(["-DENABLE_MKL"]) +
@@ -409,7 +466,7 @@ def tsl_gpu_library(deps = None, cuda_deps = None, copts = tsl_copts(), **kwargs
             "@local_config_rocm//rocm:hip",
             "@local_config_rocm//rocm:rocm_headers",
         ]),
-        copts = (copts + if_cuda(["-DGOOGLE_CUDA=1", "-DNV_CUDNN_DISABLE_EXCEPTION"]) + if_rocm(["-DTENSORFLOW_USE_ROCM=1"]) + if_xla_available(["-DTENSORFLOW_USE_XLA=1"]) + if_mkl(["-DINTEL_MKL=1"]) + if_enable_mkl(["-DENABLE_MKL"]) + if_tensorrt(["-DGOOGLE_TENSORRT=1"])),
+        copts = (copts + if_cuda(["-DGOOGLE_CUDA=1", "-DNV_CUDNN_DISABLE_EXCEPTION"]) + if_rocm(["-DTENSORFLOW_USE_ROCM=1"]) + if_xla_available(["-DTENSORFLOW_USE_XLA=1"]) + if_onednn(["-DXLA_ONEDNN"]) + if_enable_mkl(["-DENABLE_MKL"]) + if_tensorrt(["-DGOOGLE_TENSORRT=1"])),
         **kwargs
     )
 
@@ -497,9 +554,6 @@ def get_compatible_with_libtpu_portable():
 
 def filegroup(**kwargs):
     native.filegroup(**kwargs)
-
-def internal_hlo_deps():
-    return []
 
 # Config setting selector used when building for products
 # which requires restricted licenses to be avoided.

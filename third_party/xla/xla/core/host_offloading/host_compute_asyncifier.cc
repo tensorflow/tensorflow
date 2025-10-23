@@ -33,6 +33,10 @@ limitations under the License.
 #include "xla/status_macros.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
+<<<<<<< HEAD
+=======
+#include "xla/xla_data.pb.h"
+>>>>>>> upstream/master
 #include "tsl/platform/casts.h"
 
 namespace xla {

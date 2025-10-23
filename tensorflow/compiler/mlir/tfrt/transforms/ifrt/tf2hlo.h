@@ -77,6 +77,8 @@ class TfToHloCompiler {
   virtual absl::StatusOr<std::string> Key(const Tf2HloArg& arg);
 
   virtual absl::StatusOr<Tf2HloResult> CompileTfToHlo(Tf2HloArg& arg);
+
+  virtual bool IsXlaCompilationDisabled() const { return false; }
 };
 
 }  // namespace ifrt_serving

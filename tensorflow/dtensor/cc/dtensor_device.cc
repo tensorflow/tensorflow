@@ -152,9 +152,10 @@ class DTensorDevice {
 
     // DTensor uses multi-client setup which doesn't use remote eager, so we can
     // enable eager async execution in ParallelDevice.
-    std::unique_ptr<tensorflow::parallel_device::ParallelDevice> parallel(
-        new tensorflow::parallel_device::ParallelDevice(
-            underlying_devices, is_async_, in_flight_nodes_limit_));
+    std::unique_ptr<tensorflow::parallel_device::ParallelDevice> parallel =
+        std::make_unique<tensorflow::parallel_device::ParallelDevice>(
+
+            underlying_devices, is_async_, in_flight_nodes_limit_);
 
     if (is_host_mesh) {
       std::string& tpu_host_mesh = Mesh::tpu_host_mesh();
@@ -2106,7 +2107,6 @@ void DTensorDevice::ExecuteRegularOperation(
   // into the three component tensors.
   std::vector<std::vector<TFE_TensorHandle*>> global_parallel_inputs;
   std::vector<std::vector<TFE_TensorHandle*>> global_parallel_sparse_inputs;
-  absl::flat_hash_set<int> global_sparse_input_indices;
   for (auto input : inputs_tf) {
     if (auto* sparse_input = llvm::dyn_cast<SparseTensorWithLayout>(input);
         sparse_input) {
@@ -2665,7 +2665,7 @@ TFE_TensorHandle* CopyFromDTensorDevice(TFE_Context* context,
                                         TFE_TensorHandle* tensor,
                                         const char* target_device_name,
                                         TF_Status* status, void* device_info) {
-  if (!absl::StrContains(std::string(target_device_name), "CPU")) {
+  if (!absl::StrContains(target_device_name, "CPU")) {
     TF_SetStatus(
         status, TF_UNIMPLEMENTED,
         "Trying to copy a tensor to a non-CPU device is not supported.");

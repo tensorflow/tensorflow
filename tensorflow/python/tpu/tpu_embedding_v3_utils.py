@@ -58,8 +58,8 @@ def unshuffle_from_sc_to_cpu(
   # checkpoints value to meet this requirement.
   if t.shape[0] % num_sparse_cores != 0:
     raise ValueError(
-        "The dim of table ({}) should be multiple of number of sparse cores"
-        " ({})".format(t.shape[1], num_sparse_cores)
+        "The first dim of the table ({}) should be multiple of number of sparse"
+        " cores ({})".format(t.shape[0], num_sparse_cores)
     )
   # get shards in the input t
   shards_t = array_ops.reshape(

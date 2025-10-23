@@ -47,6 +47,11 @@ limitations under the License.
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/statusor.h"
 
+#ifdef XLA_YNNPACK
+#include "xla/backends/cpu/runtime/ynnpack/ynn_interop.h"
+#include "xla/backends/cpu/runtime/ynnpack/ynn_threadpool.h"
+#endif  // XLA_YNNPACK
+
 namespace Eigen {
 struct ThreadPoolDevice;
 }  // namespace Eigen
@@ -87,6 +92,7 @@ class Thunk {
     kTopK,
     kWhile,
     kXnnFusion,
+    kYnnFusion,
     kOneDnnFusion,
   };
 
@@ -263,6 +269,28 @@ class Thunk {
   };
 
   //===--------------------------------------------------------------------===//
+<<<<<<< HEAD
+=======
+  // YnnParams
+  //===--------------------------------------------------------------------===//
+
+#ifdef XLA_YNNPACK
+  // Parameters capturing all the details required for running XNNPACK fusions.
+  struct YnnParams {
+    static absl::StatusOr<YnnParams> Create(
+        const ExecutableRunOptions* run_options);
+
+    YnnThreadpool threadpool = nullptr;
+
+    explicit YnnParams(YnnThreadpool threadpool);
+  };
+#else
+  // Use XnnParams for placeholder. The parameter won't be used anyway.
+  using YnnParams = XnnParams;
+#endif  // XLA_YNNPACK
+
+  //===--------------------------------------------------------------------===//
+>>>>>>> upstream/master
   // ExecuteParams
   //===--------------------------------------------------------------------===//
 
@@ -277,6 +305,12 @@ class Thunk {
     CollectiveExecuteParams* collective_params = nullptr;
     CustomCallExecuteParams* custom_call_params = nullptr;
     XnnParams* xnn_params = nullptr;
+<<<<<<< HEAD
+=======
+    YnnParams* ynn_params = nullptr;
+    int64_t run_id = -1;          // -1 means no run id is set.
+    int64_t device_ordinal = -1;  // -1 means no device ordinal is set.
+>>>>>>> upstream/master
     ExecuteSession session = ExecuteSession(ExecuteSession::kMaxWorkers,
                                             ExecuteSession::kSplitThreshold);
   };
@@ -347,7 +381,7 @@ class Thunk {
 
   // Encodes thunk info into the TraceMe compatible format. Used by
   // ThunkExecutor to create TraceMe annotations for profiler.
-  std::string TraceMeEncode() const;
+  std::string TraceMeEncode(int64_t run_id, int64_t device_ordinal) const;
 
   Kind kind_;
   Info info_;

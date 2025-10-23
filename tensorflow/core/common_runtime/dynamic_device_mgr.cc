@@ -89,7 +89,7 @@ string DynamicDeviceMgr::DebugString() const {
   string out;
   tf_shared_lock l(devices_mu_);
   for (const auto& it : dynamic_devices_) {
-    strings::StrAppend(&out, it.first->name(), "\n");
+    absl::StrAppend(&out, it.first->name(), "\n");
   }
   return out;
 }
@@ -100,8 +100,8 @@ string DynamicDeviceMgr::DeviceMappingString() const {
   for (const auto& it : dynamic_devices_) {
     auto d = it.first;
     if (!d->attributes().physical_device_desc().empty()) {
-      strings::StrAppend(&out, d->name(), " -> ",
-                         d->attributes().physical_device_desc(), "\n");
+      absl::StrAppend(&out, d->name(), " -> ",
+                      d->attributes().physical_device_desc(), "\n");
     }
   }
   return out;

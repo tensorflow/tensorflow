@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 #include <optional>
 
+#include <gtest/gtest.h>
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
 #include "absl/status/status_matchers.h"
@@ -36,14 +37,11 @@ limitations under the License.
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/status_matchers.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
 namespace {
 
-using ::tsl::testing::IsOkAndHolds;
 
 int64_t CountInstructions(HloComputation& computation, HloOpcode opcode) {
   int64_t count = 0;

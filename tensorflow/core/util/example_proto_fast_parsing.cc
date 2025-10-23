@@ -673,7 +673,7 @@ absl::Status FastParseSerializedExample(
       dense_feature_last_example[d] = example_index;
 
       if (example_dtype != config.dense[d].dtype) {
-        return example_error(strings::StrCat(
+        return example_error(absl::StrCat(
             "Data types don't match. Data type: ",
             DataTypeString(example_dtype),
             " but expected type: ", DataTypeString(config.dense[d].dtype)));
@@ -738,7 +738,7 @@ absl::Status FastParseSerializedExample(
 
         if (example_dtype != DT_INVALID &&
             example_dtype != config.dense[d].dtype) {
-          return example_error(strings::StrCat(
+          return example_error(absl::StrCat(
               "Data types don't match. ",
               "Expected type: ", DataTypeString(config.dense[d].dtype)));
         }
@@ -1602,7 +1602,7 @@ absl::Status FastParseSingleExample(const Config& config,
       dense_feature_already_seen[d] = true;
 
       if (example_dtype != config.dense[d].dtype) {
-        return example_error(strings::StrCat(
+        return example_error(absl::StrCat(
             "Data types don't match. Data type: ",
             DataTypeString(example_dtype),
             " but expected type: ", DataTypeString(config.dense[d].dtype)));
@@ -1669,7 +1669,7 @@ absl::Status FastParseSingleExample(const Config& config,
         }
         dense_feature_already_seen[d] = true;
         if (example_dtype != config.dense[d].dtype) {
-          return example_error(strings::StrCat(
+          return example_error(absl::StrCat(
               "Data types don't match. Data type: ",
               DataTypeString(example_dtype),
               " but expected type: ", DataTypeString(config.dense[d].dtype)));

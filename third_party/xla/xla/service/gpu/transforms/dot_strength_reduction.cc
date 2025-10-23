@@ -38,6 +38,10 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/platform/statusor.h"
+<<<<<<< HEAD
+=======
+#include "xla/xla_data.pb.h"
+>>>>>>> upstream/master
 
 namespace xla {
 namespace gpu {

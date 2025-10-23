@@ -22,7 +22,6 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <tuple>
-#include <type_traits>
 #include <vector>
 
 #include <gmock/gmock.h>
@@ -30,18 +29,17 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/base/log_severity.h"
 #include "absl/log/log.h"
-#include "absl/log/log_sink.h"
 #include "absl/log/scoped_mock_log.h"
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/analysis/hlo_ordering.h"
-#include "xla/hlo/ir/collective_device_list.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
+#include "xla/hlo/ir/replica_group.h"
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/hlo/utils/hlo_query.h"
@@ -83,6 +81,7 @@ class GpuHloScheduleTest : public HloTestBase {
         gpu_compiler->GetAliasInfo(gpu_device_info);
     int64_t pointer_size = gpu_compiler->GetPointerSize();
     return xla::gpu::ScheduleGpuModule(module, pointer_size, gpu_device_info,
+                                       gpu_compiler->symbolic_expr_context(),
                                        alias_info.get());
   }
 
@@ -1809,15 +1808,10 @@ TEST_F(GpuHloScheduleTest, LogAnErrorWhenArgumentSizeExceedsMemoryLimit) {
       auto module, ParseAndReturnVerifiedModule(kHloText, module_config));
 
   absl::ScopedMockLog mock_log(absl::MockLogDefault::kIgnoreUnexpected);
-  // absl::ScopedMockLog only works if we're actually using ABSL logging, and
-  // TSL supports a homegrown logging implementation, so we should only check
-  // the log is emitted when ABSL logging is used.
-  if constexpr (std::is_same_v<absl::LogSink, tsl::TFLogSink>) {
-    EXPECT_CALL(mock_log,
-                Log(absl::LogSeverity::kError, _,
-                    EndsWith("This indicates an error in the calculation!")))
-        .Times(1);
-  }
+  EXPECT_CALL(mock_log,
+              Log(absl::LogSeverity::kError, _,
+                  EndsWith("This indicates an error in the calculation!")))
+      .Times(1);
   mock_log.StartCapturingLogs();
   TF_ASSERT_OK_AND_ASSIGN(auto metadata, ScheduleGpuModule(module.get()));
   EXPECT_EQ(metadata.scheduler_mem_limit, 0);

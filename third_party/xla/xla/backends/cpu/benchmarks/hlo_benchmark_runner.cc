@@ -42,10 +42,15 @@ limitations under the License.
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/plugin/xla_cpu/cpu_client_options.h"
 #include "xla/pjrt/plugin/xla_cpu/xla_cpu_pjrt_client.h"
+#include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/shape_util.h"
 #include "xla/tests/test_utils.h"
 #include "xla/tools/hlo_module_loader.h"
+<<<<<<< HEAD
+=======
+#include "xla/tools/run_hlo_module.pb.h"
+>>>>>>> upstream/master
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
@@ -325,12 +330,6 @@ absl::Status CompileHloBenchmark(benchmark::State& state,
   if (benchmark_options.disable_parallel_task_assigner) {
     compile_options.executable_build_options.mutable_debug_options()
         ->add_xla_disable_hlo_passes("cpu-parallel-task-assigner");
-  }
-  // TODO(intel-tf): Remove this if-block once oneDNN custom calls are enabled
-  // with thunk runtime
-  if (!benchmark_options.use_thunk_runtime) {
-    compile_options.executable_build_options.mutable_debug_options()
-        ->set_xla_cpu_use_thunk_runtime(false);
   }
 
   for (auto _ : state) {

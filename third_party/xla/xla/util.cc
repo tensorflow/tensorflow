@@ -87,7 +87,7 @@ void ScopedLoggingTimer::StopAndLog() {
     double secs = elapsed_micros / 1000000.0;
 
     TimerStats& stats = *timer_stats_;
-    absl::MutexLock lock(&stats.stats_mutex);
+    absl::MutexLock lock(stats.stats_mutex);
     stats.cumulative_secs += secs;
     if (secs > stats.max_secs) {
       stats.max_secs = secs;
@@ -316,7 +316,7 @@ void LogLines(absl::LogSeverity sev, absl::string_view text, const char* fname,
   // Protect calls with a mutex so we don't interleave calls to LogLines from
   // multiple threads.
   static absl::Mutex log_lines_mu(absl::kConstInit);
-  absl::MutexLock lock(&log_lines_mu);
+  absl::MutexLock lock(log_lines_mu);
 
   size_t cur = 0;
   while (cur < text.size()) {
@@ -332,11 +332,6 @@ void LogLines(absl::LogSeverity sev, absl::string_view text, const char* fname,
   if (orig_sev == absl::LogSeverity::kFatal) {
     LogString(fname, lineno, orig_sev, "Aborting due to errors.");
   }
-}
-
-int64_t Product(absl::Span<const int64_t> xs) {
-  return absl::c_accumulate(xs, static_cast<int64_t>(1),
-                            std::multiplies<int64_t>());
 }
 
 std::vector<int64_t> ElemwiseProduct(absl::Span<const int64_t> a,
@@ -564,4 +559,5 @@ std::unique_ptr<void, FreeDeleter> AlignedAlloc(std::size_t alignment,
   return std::unique_ptr<void, FreeDeleter>(raw_ptr, FreeDeleter());
 }
 
+int64_t Product(absl::Span<const int64_t> xs) { return Product<int64_t>(xs); }
 }  // namespace xla

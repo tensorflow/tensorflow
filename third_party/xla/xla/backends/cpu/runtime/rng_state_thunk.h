@@ -40,7 +40,7 @@ class RngGetAndUpdateStateThunk final : public Thunk {
   tsl::AsyncValueRef<ExecuteEvent> Execute(const ExecuteParams& params) final;
 
   BufferUses buffer_uses() const final {
-    return {{state_buffer_, BufferUse::kWrite}};
+    return {BufferUse::Write(state_buffer_)};
   }
 
   int64_t delta() const { return rng_state_.delta(); }

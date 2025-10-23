@@ -73,6 +73,76 @@ func.func @erf_preserve(%arg0: tensor<3x20x20xbf16>) -> tensor<?x20x20xbf16> {
 
 // -----
 
+// CHECK-LABEL: func @acosh_preserve
+func.func @acosh_preserve(%arg0: tensor<3x20x20xbf16>) -> tensor<?x20x20xbf16> {
+  // CHECK-CC: stablehlo.custom_call @mhlo.acosh(%arg0) {mhlo.attributes = {}, mhlo.version = 1 : i64} : (tensor<3x20x20xbf16>) -> tensor<?x20x20xbf16>
+  // CHECK: stablehlo.composite "chlo.acosh" %arg0 {decomposition = @chlo.acosh.impl, version = 1 : i32}
+  %0 = chlo.acosh %arg0 : tensor<3x20x20xbf16> -> tensor<?x20x20xbf16>
+  return %0 : tensor<?x20x20xbf16>
+}
+
+// -----
+
+// CHECK-LABEL: func @acos_preserve
+func.func @acos_preserve(%arg0: tensor<3x20x20xbf16>) -> tensor<?x20x20xbf16> {
+  // CHECK-CC: stablehlo.custom_call @mhlo.acos(%arg0) {mhlo.attributes = {}, mhlo.version = 1 : i64} : (tensor<3x20x20xbf16>) -> tensor<?x20x20xbf16>
+  // CHECK: stablehlo.composite "chlo.acos" %arg0 {decomposition = @chlo.acos.impl, version = 1 : i32}
+  %0 = chlo.acos %arg0 : tensor<3x20x20xbf16> -> tensor<?x20x20xbf16>
+  return %0 : tensor<?x20x20xbf16>
+}
+
+// -----
+
+// CHECK-LABEL: func @atanh_preserve
+func.func @atanh_preserve(%arg0: tensor<3x20x20xbf16>) -> tensor<?x20x20xbf16> {
+  // CHECK-CC: stablehlo.custom_call @mhlo.atanh(%arg0) {mhlo.attributes = {}, mhlo.version = 1 : i64} : (tensor<3x20x20xbf16>) -> tensor<?x20x20xbf16>
+  // CHECK: stablehlo.composite "chlo.atanh" %arg0 {decomposition = @chlo.atanh.impl, version = 1 : i32}
+  %0 = chlo.atanh %arg0 : tensor<3x20x20xbf16> -> tensor<?x20x20xbf16>
+  return %0 : tensor<?x20x20xbf16>
+}
+
+// -----
+
+// CHECK-LABEL: func @cosh_preserve
+func.func @cosh_preserve(%arg0: tensor<3x20x20xbf16>) -> tensor<?x20x20xbf16> {
+  // CHECK-CC: stablehlo.custom_call @mhlo.cosh(%arg0) {mhlo.attributes = {}, mhlo.version = 1 : i64} : (tensor<3x20x20xbf16>) -> tensor<?x20x20xbf16>
+  // CHECK: stablehlo.composite "chlo.cosh" %arg0 {decomposition = @chlo.cosh.impl, version = 1 : i32}
+  %0 = chlo.cosh %arg0 : tensor<3x20x20xbf16> -> tensor<?x20x20xbf16>
+  return %0 : tensor<?x20x20xbf16>
+}
+
+// -----
+
+// CHECK-LABEL: func @sinh_preserve
+func.func @sinh_preserve(%arg0: tensor<3x20x20xbf16>) -> tensor<?x20x20xbf16> {
+  // CHECK-CC: stablehlo.custom_call @mhlo.sinh(%arg0) {mhlo.attributes = {}, mhlo.version = 1 : i64} : (tensor<3x20x20xbf16>) -> tensor<?x20x20xbf16>
+  // CHECK: stablehlo.composite "chlo.sinh" %arg0 {decomposition = @chlo.sinh.impl, version = 1 : i32}
+  %0 = chlo.sinh %arg0 : tensor<3x20x20xbf16> -> tensor<?x20x20xbf16>
+  return %0 : tensor<?x20x20xbf16>
+}
+
+// -----
+
+// CHECK-LABEL: func @asin_preserve
+func.func @asin_preserve(%arg0: tensor<3x20x20xbf16>) -> tensor<?x20x20xbf16> {
+  // CHECK-CC: stablehlo.custom_call @mhlo.asin(%arg0) {mhlo.attributes = {}, mhlo.version = 1 : i64} : (tensor<3x20x20xbf16>) -> tensor<?x20x20xbf16>
+  // CHECK: stablehlo.composite "chlo.asin" %arg0 {decomposition = @chlo.asin.impl, version = 1 : i32}
+  %0 = chlo.asin %arg0 : tensor<3x20x20xbf16> -> tensor<?x20x20xbf16>
+  return %0 : tensor<?x20x20xbf16>
+}
+
+// -----
+
+// CHECK-LABEL: func @asinh_preserve
+func.func @asinh_preserve(%arg0: tensor<3x20x20xbf16>) -> tensor<?x20x20xbf16> {
+  // CHECK-CC: stablehlo.custom_call @mhlo.asinh(%arg0) {mhlo.attributes = {}, mhlo.version = 1 : i64} : (tensor<3x20x20xbf16>) -> tensor<?x20x20xbf16>
+  // CHECK: stablehlo.composite "chlo.asinh" %arg0 {decomposition = @chlo.asinh.impl, version = 1 : i32}
+  %0 = chlo.asinh %arg0 : tensor<3x20x20xbf16> -> tensor<?x20x20xbf16>
+  return %0 : tensor<?x20x20xbf16>
+}
+
+// -----
+
 // CHECK-LABEL: func @tan_no_preserve
 func.func @tan_no_preserve(%arg0: tensor<16xf32>) -> tensor<?xf32> {
   // CHECK: chlo.tan

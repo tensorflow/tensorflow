@@ -241,6 +241,15 @@ message TryGetKeyValueResponse {
   KeyValueEntry kv = 1;
 }
 
+message IncrementKeyValueRequest {
+  string key = 1;
+  int64 increment = 2;
+}
+
+message IncrementKeyValueResponse {
+  KeyValueEntry kv = 1;
+}
+
 message GetKeyValueDirRequest {
   string directory_key = 1;
 }
@@ -384,6 +393,13 @@ service CoordinationService {
   // Get configuration key-value. The request does not block, but returns an
   // error if the requested key does not exist.
   rpc TryGetKeyValue(TryGetKeyValueRequest) returns (TryGetKeyValueResponse);
+
+  // Increment configuration key-value. The request does not block, if the key
+  // does not exist then it is initialize to 0 and then incremented.
+  rpc IncrementKeyValue(IncrementKeyValueRequest)
+      returns (IncrementKeyValueResponse) {
+    // [AUTOMATION]: Internal rpc option goes here.
+  }
 
   // Same as GetKeyValue, but returns all values that have keys which are
   // prefixed with the directory key.

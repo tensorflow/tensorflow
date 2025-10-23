@@ -104,7 +104,7 @@ BFCAllocator::~BFCAllocator() {
   // Lock the mutex to make sure that all memory effects are safely published
   // and available to a thread running the destructor (i.e., deallocations
   // happened on a different thread right before the destructor).
-  absl::MutexLock l(&mutex_);
+  absl::MutexLock l(mutex_);
 
   // Return memory back.
   VLOG(2) << "Number of regions allocated: "
@@ -446,7 +446,7 @@ void* BFCAllocator::AllocateRawInternal(size_t unused_alignment,
   // The BFC allocator tries to find the best fit first.
   BinNum bin_num = BinNumForSize(rounded_bytes);
 
-  absl::MutexLock l(&mutex_);
+  absl::MutexLock l(mutex_);
   if (!timestamped_chunks_.empty()) {
     // Merge timestamped chunks whose counts have become safe for general use.
     MergeTimestampedChunks(0);
@@ -703,7 +703,7 @@ void BFCAllocator::DeallocateRawInternal(void* ptr) {
     VLOG(2) << "tried to deallocate nullptr";
     return;
   }
-  absl::MutexLock l(&mutex_);
+  absl::MutexLock l(mutex_);
 
   // Find the chunk from the ptr.
   BFCAllocator::ChunkHandle h = region_manager_.get_handle(ptr);
@@ -947,7 +947,7 @@ bool BFCAllocator::TracksAllocationSizes() const { return true; }
 
 size_t BFCAllocator::RequestedSize(const void* ptr) const {
   CHECK(ptr);
-  absl::MutexLock l(&mutex_);
+  absl::MutexLock l(mutex_);
   BFCAllocator::ChunkHandle h = region_manager_.get_handle(ptr);
   CHECK(h != kInvalidChunkHandle)
       << "Asked for requested size of pointer we never allocated: " << ptr;
@@ -956,7 +956,7 @@ size_t BFCAllocator::RequestedSize(const void* ptr) const {
 }
 
 size_t BFCAllocator::AllocatedSize(const void* ptr) const {
-  absl::MutexLock l(&mutex_);
+  absl::MutexLock l(mutex_);
   BFCAllocator::ChunkHandle h = region_manager_.get_handle(ptr);
   CHECK(h != kInvalidChunkHandle)
       << "Asked for allocated size of pointer we never allocated: " << ptr;
@@ -965,7 +965,7 @@ size_t BFCAllocator::AllocatedSize(const void* ptr) const {
 }
 
 int64_t BFCAllocator::AllocationId(const void* ptr) const {
-  absl::MutexLock l(&mutex_);
+  absl::MutexLock l(mutex_);
   BFCAllocator::ChunkHandle h = region_manager_.get_handle(ptr);
   CHECK(h != kInvalidChunkHandle)
       << "Asked for allocation id of pointer we never allocated: " << ptr;
@@ -1146,7 +1146,7 @@ void BFCAllocator::MaybeWriteMemoryMap() {
 }
 
 MemoryDump BFCAllocator::RecordMemoryMap() {
-  absl::MutexLock l(&mutex_);
+  absl::MutexLock l(mutex_);
   return RecordMemoryMapInternal();
 }
 
@@ -1217,12 +1217,12 @@ MemoryDump BFCAllocator::RecordMemoryMapInternal() {
 }
 
 std::optional<AllocatorStats> BFCAllocator::GetStats() {
-  absl::MutexLock l(&mutex_);
+  absl::MutexLock l(mutex_);
   return stats_;
 }
 
 bool BFCAllocator::ClearStats() {
-  absl::MutexLock l(&mutex_);
+  absl::MutexLock l(mutex_);
   stats_.num_allocs = 0;
   stats_.peak_bytes_in_use = stats_.bytes_in_use;
   stats_.largest_alloc_size = 0;

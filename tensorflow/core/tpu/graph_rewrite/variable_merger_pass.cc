@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -75,9 +76,9 @@ absl::Status MergeVarHandleOps(const string& device,
     TF_RETURN_IF_ERROR(GetNodeAttr(nodes[i]->attrs(), "dtype", &dtypes[i]));
     TF_RETURN_IF_ERROR(GetNodeAttr(nodes[i]->attrs(), "shape", &shapes[i]));
   }
-  NodeDefBuilder builder(graph->NewName(strings::StrCat(
-                             "VarHandles_", MergedOpFingerprint(nodes))),
-                         "_VarHandlesOp");
+  NodeDefBuilder builder(
+      graph->NewName(absl::StrCat("VarHandles_", MergedOpFingerprint(nodes))),
+      "_VarHandlesOp");
   builder.Attr("N", num_var_handles);
   builder.Attr("containers", containers);
   builder.Attr("shared_names", names);
@@ -114,7 +115,7 @@ absl::Status MergeReadVariableOps(Node* handle_op, Node* control_node,
   }
   NodeDef node_def;
   node_def.set_name(graph->NewName(
-      strings::StrCat("ReadVariables_", MergedOpFingerprint(nodes))));
+      absl::StrCat("ReadVariables_", MergedOpFingerprint(nodes))));
   node_def.set_op("_ReadVariablesOp");
   AddNodeAttr("N", num_reads, &node_def);
   AddNodeAttr("dtypes", dtypes, &node_def);

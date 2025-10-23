@@ -1,5 +1,6 @@
 # PJRT C API changelog
 
+<<<<<<< HEAD
 ## 0.75
 
 * Added `PJRT_TopologyDescription_Deserialize.`
@@ -7,6 +8,35 @@
 ## 0.74
 
 * Added `PJRT_Extension_Type::PJRT_Extension_Type_CrossHostTransfers.`
+=======
+## 0.80
+
+* Added `PJRT_Extension_Type::PJRT_Extension_Type_HostAllocator`.
+
+## 0.79
+
+* Added `PJRT_LoadedExecutable_GetDeviceAssignment.`
+
+## 0.78
+
+* Add incarnations to `PJRT_ExecuteOptions`.
+
+## 0.77
+
+* Added buffer aliasing support to the PJRT C API
+
+## 0.76
+
+* Added `call_location` to `PJRT_ExecuteOptions`
+
+## 0.75
+
+* Added `PJRT_TopologyDescription_Deserialize`.
+
+## 0.74
+
+* Added `PJRT_Extension_Type::PJRT_Extension_Type_CrossHostTransfers`.
+>>>>>>> upstream/master
 
 ## 0.73
 

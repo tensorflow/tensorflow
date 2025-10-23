@@ -200,7 +200,7 @@ class FunctionInstantiationHelper {
         AddItem(arg_def.name(), {true, arg_index, 0, is_type_list, dtypes}));
     // Creates dtypes.size() nodes in the graph.
     for (size_t i = 0; i < dtypes.size(); ++i) {
-      TF_RETURN_IF_ERROR(AddItem(strings::StrCat(arg_def.name(), ":", i),
+      TF_RETURN_IF_ERROR(AddItem(absl::StrCat(arg_def.name(), ":", i),
                                  {true, arg_index, 0, false, {dtypes[i]}}));
       if (arg_index != result_.nodes.size()) {
         return errors::Internal(
@@ -209,7 +209,7 @@ class FunctionInstantiationHelper {
       }
       string name = arg_def.name();
       if (dtypes.size() > 1) {
-        strings::StrAppend(&name, "_", i);
+        absl::StrAppend(&name, "_", i);
       }
       NodeDef* gnode = AddNode(name);
       if (ints_on_device && dtypes[i] == DataType::DT_INT32) {
@@ -260,12 +260,12 @@ class FunctionInstantiationHelper {
       // Note that we rely on the backwards-compatibility test enforcing
       // that output_arg(*).name() doesn't change here.
       const string base_name =
-          strings::StrCat(node.name(), ":", node_sig->output_arg(i).name());
+          absl::StrCat(node.name(), ":", node_sig->output_arg(i).name());
       TF_RETURN_IF_ERROR(
           AddItem(base_name, {false, arg_index, start, is_type_list, dtypes}));
       for (int j = 0; j < static_cast<int>(dtypes.size()); ++j) {
         TF_RETURN_IF_ERROR(
-            AddItem(strings::StrCat(base_name, ":", j),
+            AddItem(absl::StrCat(base_name, ":", j),
                     {false, arg_index, start + j, false, {dtypes[j]}}));
       }
       start += dtypes.size();
@@ -401,9 +401,9 @@ class FunctionInstantiationHelper {
                                      DataTypeVectorString(item->dtypes));
     }
     for (size_t i = 0; i < dtypes.size(); ++i) {
-      string name = strings::StrCat(ret_def.name(), "_RetVal");
+      string name = absl::StrCat(ret_def.name(), "_RetVal");
       if (dtypes.size() > 1) {
-        strings::StrAppend(&name, "_", i);
+        absl::StrAppend(&name, "_", i);
       }
       NodeDef* gnode = AddNode(name);
       if (ints_on_device && dtypes[i] == DataType::DT_INT32) {
@@ -459,8 +459,8 @@ class FunctionInstantiationHelper {
   absl::Status AddItem(const string& name, const NameInfoItem& item) {
     if (!index_.insert({name, item}).second) {
       return errors::InvalidArgument(
-          strings::StrCat("Duplicated ", item.is_func_arg ? "arg" : "ret",
-                          " name: "),
+          absl::StrCat("Duplicated ", item.is_func_arg ? "arg" : "ret",
+                       " name: "),
           name);
     }
     return absl::OkStatus();
@@ -471,7 +471,7 @@ class FunctionInstantiationHelper {
   }
 
   string Dep(int node_index) const {
-    return strings::StrCat("^", Name(node_index));
+    return absl::StrCat("^", Name(node_index));
   }
 
   string Name(int node_index) const {
@@ -483,7 +483,7 @@ class FunctionInstantiationHelper {
     if (output_index == 0) {
       return Name(node_index);
     } else {
-      return strings::StrCat(Name(node_index), ":", output_index);
+      return absl::StrCat(Name(node_index), ":", output_index);
     }
   }
 
@@ -527,17 +527,17 @@ class FunctionInstantiationHelper {
 // Various helpers Print(proto) to print relevant protos to ascii.
 string Print(const OpDef::ArgDef& arg) {
   string out;
-  strings::StrAppend(&out, arg.name(), ":");
-  if (arg.is_ref()) strings::StrAppend(&out, "Ref(");
+  absl::StrAppend(&out, arg.name(), ":");
+  if (arg.is_ref()) absl::StrAppend(&out, "Ref(");
   if (!arg.number_attr().empty()) {
-    strings::StrAppend(&out, arg.number_attr(), "*");
+    absl::StrAppend(&out, arg.number_attr(), "*");
   }
   if (arg.type() != DT_INVALID) {
-    strings::StrAppend(&out, DataTypeString(arg.type()));
+    absl::StrAppend(&out, DataTypeString(arg.type()));
   } else {
-    strings::StrAppend(&out, arg.type_attr());
+    absl::StrAppend(&out, arg.type_attr());
   }
-  if (arg.is_ref()) strings::StrAppend(&out, ")");
+  if (arg.is_ref()) absl::StrAppend(&out, ")");
   return out;
 }
 
@@ -553,10 +553,10 @@ string Print(const AttrValue& attr_value,
              (attr_value.list().type_size() > 0)) {
     string ret = "{";
     for (int i = 0; i < attr_value.list().type_size(); ++i) {
-      if (i > 0) strings::StrAppend(&ret, ", ");
-      strings::StrAppend(&ret, DataTypeString(attr_value.list().type(i)));
+      if (i > 0) absl::StrAppend(&ret, ", ");
+      absl::StrAppend(&ret, DataTypeString(attr_value.list().type(i)));
     }
-    strings::StrAppend(&ret, "}");
+    absl::StrAppend(&ret, "}");
     return ret;
   } else if (attr_value.value_case() == AttrValue::kFunc) {
     if (attr_value.func().attr_size() == 0) {
@@ -564,13 +564,13 @@ string Print(const AttrValue& attr_value,
     }
     std::vector<string> entries;
     for (const auto& p : attr_value.func().attr()) {
-      entries.push_back(strings::StrCat(p.first, "=", Print(p.second)));
+      entries.push_back(absl::StrCat(p.first, "=", Print(p.second)));
     }
     std::sort(entries.begin(), entries.end());
-    return strings::StrCat(attr_value.func().name(), "[",
-                           absl::StrJoin(entries, ", "), "]");
+    return absl::StrCat(attr_value.func().name(), "[",
+                        absl::StrJoin(entries, ", "), "]");
   } else if (attr_value.value_case() == AttrValue::kS && hash_string_attrs) {
-    return strings::StrCat(Fingerprint64(attr_value.s()));
+    return absl::StrCat(Fingerprint64(attr_value.s()));
   }
   return SummarizeAttrValue(attr_value);
 }
@@ -578,26 +578,25 @@ string Print(const AttrValue& attr_value,
 // TODO(josh11b): Merge this with SummarizeNodeDef().
 string Print(const NodeDef& n) {
   string out;
-  strings::StrAppend(&out, n.name(), " = ", n.op());
+  absl::StrAppend(&out, n.name(), " = ", n.op());
   if (n.attr_size() > 0) {
     std::vector<string> entries;
     for (auto& a : n.attr()) {
-      entries.push_back(strings::StrCat(a.first, "=", Print(a.second)));
+      entries.push_back(absl::StrCat(a.first, "=", Print(a.second)));
     }
     std::sort(entries.begin(), entries.end());
     // Add a short device string at the end of all attributes.
     if (!n.device().empty()) {
       DeviceNameUtils::ParsedName parsed;
       if (DeviceNameUtils::ParseFullName(n.device(), &parsed)) {
-        entries.push_back(
-            strings::StrCat("device=", parsed.type, ":", parsed.id));
+        entries.push_back(absl::StrCat("device=", parsed.type, ":", parsed.id));
       } else {
         entries.push_back("device=<FAILED_TO_PARSE>");
       }
     }
-    strings::StrAppend(&out, "[", absl::StrJoin(entries, ", "), "]");
+    absl::StrAppend(&out, "[", absl::StrJoin(entries, ", "), "]");
   }
-  strings::StrAppend(&out, "(");
+  absl::StrAppend(&out, "(");
   std::vector<absl::string_view> dat;
   std::vector<string> dep;
   for (absl::string_view s : n.input()) {
@@ -607,9 +606,9 @@ string Print(const NodeDef& n) {
       dat.push_back(s);
     }
   }
-  strings::StrAppend(&out, absl::StrJoin(dat, ", "), ")");
+  absl::StrAppend(&out, absl::StrJoin(dat, ", "), ")");
   if (!dep.empty()) {
-    strings::StrAppend(&out, " @ ", absl::StrJoin(dep, ", "));
+    absl::StrAppend(&out, " @ ", absl::StrJoin(dep, ", "));
   }
   return out;
 }
@@ -617,33 +616,33 @@ string Print(const NodeDef& n) {
 string Print(const FunctionDef& fdef) {
   string out;
   const OpDef& sig = fdef.signature();
-  strings::StrAppend(&out, "\n", sig.name());
+  absl::StrAppend(&out, "\n", sig.name());
   if (sig.attr_size() > 0) {
-    strings::StrAppend(&out, "[");
+    absl::StrAppend(&out, "[");
     for (int i = 0; i < sig.attr_size(); ++i) {
       const auto& a = sig.attr(i);
-      if (i > 0) strings::StrAppend(&out, ", ");
+      if (i > 0) absl::StrAppend(&out, ", ");
       if (a.type() == "type") {
-        strings::StrAppend(&out, a.name(), ":", Print(a.allowed_values()));
+        absl::StrAppend(&out, a.name(), ":", Print(a.allowed_values()));
       } else {
-        strings::StrAppend(&out, a.name(), ":", a.type());
+        absl::StrAppend(&out, a.name(), ":", a.type());
       }
     }
-    strings::StrAppend(&out, "]");
+    absl::StrAppend(&out, "]");
   }
-  strings::StrAppend(&out, "(");
+  absl::StrAppend(&out, "(");
   for (int i = 0; i < sig.input_arg_size(); ++i) {
-    if (i > 0) strings::StrAppend(&out, ", ");
-    strings::StrAppend(&out, Print(sig.input_arg(i)));
+    if (i > 0) absl::StrAppend(&out, ", ");
+    absl::StrAppend(&out, Print(sig.input_arg(i)));
   }
-  strings::StrAppend(&out, ") -> (");
+  absl::StrAppend(&out, ") -> (");
   for (int i = 0; i < sig.output_arg_size(); ++i) {
-    if (i > 0) strings::StrAppend(&out, ", ");
-    strings::StrAppend(&out, Print(sig.output_arg(i)));
+    if (i > 0) absl::StrAppend(&out, ", ");
+    absl::StrAppend(&out, Print(sig.output_arg(i)));
   }
-  strings::StrAppend(&out, ") {\n");
+  absl::StrAppend(&out, ") {\n");
   for (const auto& n : fdef.node_def()) {
-    strings::StrAppend(&out, "  ", Print(n), "\n");
+    absl::StrAppend(&out, "  ", Print(n), "\n");
   }
   for (const auto& cr : fdef.control_ret()) {
     strings::StrAppend(&out, "  @return ", cr.first, " = ", cr.second, "\n");
@@ -651,7 +650,7 @@ string Print(const FunctionDef& fdef) {
   for (const auto& r : fdef.ret()) {
     strings::StrAppend(&out, "  return ", r.first, " = ", r.second, "\n");
   }
-  strings::StrAppend(&out, "}\n");
+  absl::StrAppend(&out, "}\n");
   return out;
 }
 
@@ -680,7 +679,7 @@ string Print(absl::Span<const NodeDef* const> nodes) {
   std::sort(arg.begin(), arg.end(), comp);
   std::sort(ret.begin(), ret.end(), comp);
   string out;
-  strings::StrAppend(&out, "\n(");
+  absl::StrAppend(&out, "\n(");
   auto get_type_and_device = [](const NodeDef& n) {
     DataType dt;
     if (!TryGetNodeAttr(n, "T", &dt)) {
@@ -694,22 +693,22 @@ string Print(absl::Span<const NodeDef* const> nodes) {
       } else {
         LOG(WARNING) << "Failed to parse device \"" << n.device() << "\" in "
                      << n.op() << ":" << n.name();
-        return strings::StrCat(DataTypeString(dt), "@",
-                               "<FAILED_TO_PARSE_DEVICE>");
+        return absl::StrCat(DataTypeString(dt), "@",
+                            "<FAILED_TO_PARSE_DEVICE>");
       }
     }
     return DataTypeString(dt);
   };
   for (size_t i = 0; i < arg.size(); ++i) {
     const NodeDef* n = arg[i];
-    if (i > 0) strings::StrAppend(&out, ", ");
+    if (i > 0) absl::StrAppend(&out, ", ");
     CHECK_GE(n->attr_size(), 2);
-    strings::StrAppend(&out, n->name(), ":", get_type_and_device(*n));
+    absl::StrAppend(&out, n->name(), ":", get_type_and_device(*n));
   }
-  strings::StrAppend(&out, ") -> (");
+  absl::StrAppend(&out, ") -> (");
   for (size_t i = 0; i < ret.size(); ++i) {
     const NodeDef* n = ret[i];
-    if (i > 0) strings::StrAppend(&out, ", ");
+    if (i > 0) absl::StrAppend(&out, ", ");
     CHECK_LE(2, n->attr_size());
 
     // The _RetVal op should have a unique non-control input. We assert that
@@ -720,7 +719,7 @@ string Print(absl::Span<const NodeDef* const> nodes) {
         DCHECK_EQ(found_non_control_input, false)
             << "RetVal node has more than one non-control input: "
             << absl::StrJoin(n->input(), ", ");
-        strings::StrAppend(&out, n->input(0), ":", get_type_and_device(*n));
+        absl::StrAppend(&out, n->input(0), ":", get_type_and_device(*n));
         found_non_control_input = true;
       }
     }
@@ -728,11 +727,11 @@ string Print(absl::Span<const NodeDef* const> nodes) {
         << "RetVal did not have any non-control inputs: "
         << absl::StrJoin(n->input(), ", ");
   }
-  strings::StrAppend(&out, ") {\n");
+  absl::StrAppend(&out, ") {\n");
   for (size_t i = 0; i < body.size(); ++i) {
-    strings::StrAppend(&out, "  ", Print(*body[i]), "\n");
+    absl::StrAppend(&out, "  ", Print(*body[i]), "\n");
   }
-  strings::StrAppend(&out, "}\n");
+  absl::StrAppend(&out, "}\n");
   return out;
 }
 
@@ -892,11 +891,11 @@ string DebugString(absl::Span<const NodeDef> instantiated_func_nodes) {
 string DebugStringWhole(const GraphDef& gdef) {
   string ret;
   for (const auto& fdef : gdef.library().function()) {
-    strings::StrAppend(&ret, Print(fdef));
+    absl::StrAppend(&ret, Print(fdef));
   }
-  strings::StrAppend(&ret, "\n");
+  absl::StrAppend(&ret, "\n");
   for (const auto& ndef : gdef.node()) {
-    strings::StrAppend(&ret, Print(ndef), "\n");
+    absl::StrAppend(&ret, Print(ndef), "\n");
   }
   return ret;
 }
@@ -1030,10 +1029,10 @@ class AttrKeyAndValue {
     if (key_suffix_ >= 0) {
       strings::StrAppend(s, first ? "" : ",", key_name_, key_suffix_, "=", v);
     } else {
-      strings::StrAppend(s, first ? "" : ",", key_name_, "=", v);
+      absl::StrAppend(s, first ? "" : ",", key_name_, "=", v);
     }
     if (add_escaped) {
-      strings::StrAppend(s, absl::CEscape(value_));
+      absl::StrAppend(s, absl::CEscape(value_));
     }
   }
 
@@ -1132,7 +1131,7 @@ string Canonicalize(const string& funcname, AttrSlice attrs,
                                       AttrKeyAndValue::kCEscape));
   }
   std::sort(entries.begin(), entries.end());
-  string result = strings::StrCat(funcname, "[");
+  string result = absl::StrCat(funcname, "[");
   bool first = true;
   for (const auto& entry : entries) {
     entry.AppendTo(first, &result);
@@ -1742,10 +1741,10 @@ string FunctionLibraryDefinition::UniqueFunctionName(
     absl::string_view prefix) const {
   tf_shared_lock l(mu_);
   int index = 0;
-  string name = strings::StrCat(prefix, index);
+  string name = absl::StrCat(prefix, index);
   while (records_.find(name) != records_.end()) {
     ++index;
-    name = strings::StrCat(prefix, index);
+    name = absl::StrCat(prefix, index);
   }
   return name;
 }
@@ -2082,7 +2081,7 @@ NodeDef FunctionDefHelper::Node::ToNodeDef() const {
     n.add_input(a);
   }
   for (const string& d : this->dep) {
-    n.add_input(strings::StrCat("^", d));
+    n.add_input(absl::StrCat("^", d));
   }
   if (!this->device.empty()) {
     n.set_device(this->device);
@@ -2198,7 +2197,7 @@ FunctionDef FunctionDefHelper::Define(const string& name,
       n->add_input(iter->second);
     }
     for (const string& d : src.dep) {
-      n->add_input(strings::StrCat("^", d));
+      n->add_input(absl::StrCat("^", d));
     }
 
     // Add the outputs of this node to ret_index.

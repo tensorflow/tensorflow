@@ -476,7 +476,11 @@ Value CanonicalizeStartIndices(mhlo::GatherOp gather_op, Value start_indices,
     // Add the padded offsets to the start indices (with broadcasting).
     start_indices = TFL::AddOp::create(
         rewriter, gather_op.getLoc(), start_indices, padded_offsets,
+<<<<<<< HEAD
         /*fused_activation_function=*/
+=======
+        /*fusedActivationFunction=*/
+>>>>>>> upstream/master
         mlir::StringAttr::get(rewriter.getContext(), "NONE"));
   }
 

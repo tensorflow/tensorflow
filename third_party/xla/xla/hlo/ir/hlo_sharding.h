@@ -35,6 +35,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/array.h"
+#include "xla/hlo/ir/named_sharding.h"
 #include "xla/hlo/ir/tile_assignment.h"  // IWYU pragma: export
 #include "xla/printer.h"
 #include "xla/shape.h"
@@ -522,6 +523,15 @@ class HloSharding {
     return -1;
   }
 
+  // Returns the unreduced subgroup dim, or -1 if it doesn't exist.
+  int64_t SubgroupUnreducedDim() const {
+    auto it = absl::c_find(subgroup_types_, OpSharding::UNREDUCED);
+    if (it != subgroup_types_.end()) {
+      return (it - subgroup_types_.begin()) + TiledDataRank();
+    }
+    return -1;
+  }
+
   // Returns the data rank for tiled sharding. It doesn't include subgroup dims.
   int64_t TiledDataRank() const {
     CHECK(IsTiled());
@@ -758,6 +768,16 @@ class HloSharding {
   // within the same shard group (i.e. under the same shard_group_id) will be
   // sharded alike or exactly the same as each other.
   ShardGroup shard_group_ = NotShardGroup();
+
+  // Optional field to migrate HloSharding to new NamedSharding representation.
+  // If this field is populated, all other fields in HloSharding should be empty
+  // or else are ignored. This is to facilitate migration from the old sharding
+  // format.
+  //
+  // Note that instead of reusing HloSharding's fields like metadata, we have
+  // separate fields in NamedSharding to treat it as a standalone message which
+  // is more clear and will help in future cleanup.
+  std::optional<NamedSharding> named_sharding_;
 };
 
 std::ostream& operator<<(std::ostream& out, const HloSharding& sharding);

@@ -1,6 +1,10 @@
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
+<<<<<<< HEAD
 
 # Placeholder: load py_proto_library
+=======
+load("@rules_python//python:proto.bzl", "py_proto_library")
+>>>>>>> upstream/master
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_binary",

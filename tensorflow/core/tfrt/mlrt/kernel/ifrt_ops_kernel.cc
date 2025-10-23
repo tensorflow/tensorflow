@@ -25,7 +25,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
-#include "xla/python/ifrt/future.h"
+#include "xla/tsl/concurrency/future.h"
 #include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/device_base.h"
@@ -242,7 +242,7 @@ absl::Status MlrtIfrtLoadVariableKernel::InvokeHelper() {
 
   if (used_by_host()) {
     if (ifrt_restore_tensor_registry.SetUsedByHost(runtime_name).ok()) {
-      xla::ifrt::Future<tensorflow::Tensor> restored_tensor_future =
+      tsl::Future<tensorflow::Tensor> restored_tensor_future =
           ifrt_restore_tensor_registry.GetRestoredTensor(runtime_name);
 
       restored_tensor_future.OnReady(

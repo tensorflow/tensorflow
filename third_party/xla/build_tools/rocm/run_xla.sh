@@ -51,7 +51,7 @@ fi
 export PYTHON_BIN_PATH=`which python3`
 export TF_NEED_ROCM=1
 export ROCM_PATH=$ROCM_INSTALL_DIR
-TAGS_FILTER="gpu,requires-gpu-amd,-requires-gpu-nvidia,-requires-gpu-intel,-no_oss,-oss_excluded,-oss_serial,-no_gpu,-cuda-only,-oneapi-only"
+TAGS_FILTER="gpu,requires-gpu-amd,-multi_gpu,-requires-gpu-nvidia,-requires-gpu-intel,-no_oss,-oss_excluded,-oss_serial,-no_gpu,-cuda-only,-oneapi-only"
 UNSUPPORTED_GPU_TAGS="$(echo -requires-gpu-sm{60,70,80,86,89,90}{,-only})"
 TAGS_FILTER="${TAGS_FILTER},${UNSUPPORTED_GPU_TAGS// /,}"
 
@@ -72,5 +72,6 @@ bazel \
     --action_env=TF_ROCM_AMDGPU_TARGETS=${AMD_GPU_GFX_ID} \
     --action_env=XLA_FLAGS=--xla_gpu_force_compilation_parallelism=16 \
     --action_env=XLA_FLAGS=--xla_gpu_enable_llvm_module_compilation_parallelism=true \
+    --repo_env="ROCM_PATH=$ROCM_PATH" \
     --run_under=//build_tools/ci:parallel_gpu_execute \
     -- //xla/...

@@ -26,6 +26,10 @@ limitations under the License.
 #include "xla/backends/gpu/autotuner/factory.h"
 #include "xla/backends/gpu/autotuner/triton.h"
 #include "xla/service/compiler.h"
+<<<<<<< HEAD
+=======
+#include "xla/service/gpu/model/experimental/symbolic_expr.h"
+>>>>>>> upstream/master
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
 #include "xla/stream_executor/platform/platform_object_registry.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -35,6 +39,7 @@ namespace gpu {
 
 std::vector<std::unique_ptr<CodegenBackend>> GetCodegenBackendsForCuda(
     stream_executor::StreamExecutor* stream_executor,
+<<<<<<< HEAD
     const DebugOptions* debug_options, Compiler* compiler) {
   std::vector<std::unique_ptr<CodegenBackend>> backends;
   backends.push_back(std::make_unique<TritonBackend>(stream_executor,
@@ -45,6 +50,20 @@ std::vector<std::unique_ptr<CodegenBackend>> GetCodegenBackendsForCuda(
       stream_executor, debug_options, compiler));
   backends.push_back(
       std::make_unique<CudnnBackend>(stream_executor, debug_options, compiler));
+=======
+    const DebugOptions* debug_options, Compiler* compiler,
+    const Compiler::TargetConfig* target_config,
+    SymbolicExprContext* symbolic_expr_context) {
+  std::vector<std::unique_ptr<CodegenBackend>> backends;
+  backends.push_back(std::make_unique<TritonBackend>(
+      debug_options, compiler, target_config, symbolic_expr_context));
+  backends.push_back(std::make_unique<CublasBackend>(
+      stream_executor, debug_options, compiler, target_config));
+  backends.push_back(std::make_unique<CublasLtBackend>(
+      stream_executor, debug_options, compiler, target_config));
+  backends.push_back(std::make_unique<CudnnBackend>(
+      stream_executor, debug_options, compiler, target_config));
+>>>>>>> upstream/master
   return backends;
 }
 

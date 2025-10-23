@@ -41,11 +41,12 @@ class ReduceScatterDecomposerTest : public HloHardwareIndependentTestBase {
   };
   void RunPass(
       absl::string_view hlo_module, PassAction action,
-      CollectiveOpGroupMode mode = CollectiveOpGroupMode::kCrossReplica,
+      CollectiveOpGroupMode mode =
+          CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA,
       int64_t shard_size = 0, int64_t shard_dimension = 0,
       int64_t replica_count = 2,
-      std::function<bool(const HloInstruction *)> should_decompose =
-          [](const HloInstruction *) { return true; },
+      std::function<bool(const HloInstruction*)> should_decompose =
+          [](const HloInstruction*) { return true; },
       std::optional<std::pair<std::string, std::string>> attribute =
           std::nullopt) {
     const int64_t partition_count = 2;
@@ -66,19 +67,22 @@ class ReduceScatterDecomposerTest : public HloHardwareIndependentTestBase {
     Literal multiplier = LiteralUtil::CreateR0<uint32_t>(shard_size);
     ::testing::Matcher<const ::xla::HloInstruction *> id_matcher = [&]() {
       switch (mode) {
-        case CollectiveOpGroupMode::kCrossPartition:
+        case CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_PARTITION:
           return op::PartitionId();
-        case CollectiveOpGroupMode::kCrossReplica:
+        case CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA:
           return op::ReplicaId();
-        case CollectiveOpGroupMode::kCrossReplicaAndPartition:
+        case CollectiveOpGroupMode::
+            COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA_AND_PARTITION:
           return op::ReplicaId();
-        case CollectiveOpGroupMode::kFlattenedID: {
+        case CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_FLATTENED_ID: {
           return op::Add(
               op::Multiply(op::ReplicaId(),
                            op::Constant(LiteralUtil::CreateR0<uint32_t>(
                                partition_count))),
               op::PartitionId());
         }
+        default:
+          LOG(FATAL) << "Unsupported mode: " << static_cast<int>(mode);
       }
     }();
     auto root = module->entry_computation()->root_instruction();
@@ -88,7 +92,8 @@ class ReduceScatterDecomposerTest : public HloHardwareIndependentTestBase {
     if (action == PassAction::kTableLookup) {
       slice_index = op::Reshape(op::DynamicSlice(op::Constant(), id_matcher));
     }
-    if (mode == CollectiveOpGroupMode::kCrossReplicaAndPartition) {
+    if (mode == CollectiveOpGroupMode::
+                    COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA_AND_PARTITION) {
       slice_index = op::Add(
           op::Multiply(
               slice_index,
@@ -128,7 +133,7 @@ ENTRY main {
 }
 )";
   RunPass(hlo_string, PassAction::kTrivialGroups,
-          CollectiveOpGroupMode::kCrossReplica,
+          CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA,
           /*shard_size=*/4);
 }
 
@@ -148,7 +153,7 @@ ENTRY main {
 }
 )";
   RunPass(hlo_string, PassAction::kTableLookup,
-          CollectiveOpGroupMode::kCrossReplica,
+          CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA,
           /*shard_size=*/4);
 }
 
@@ -170,7 +175,8 @@ ENTRY main {
 }
 )";
   RunPass(hlo_string, PassAction::kTrivialGroups,
-          CollectiveOpGroupMode::kCrossReplicaAndPartition,
+          CollectiveOpGroupMode::
+              COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA_AND_PARTITION,
           /*shard_size=*/2, /*shard_dimension=*/1);
 }
 
@@ -196,9 +202,9 @@ ENTRY main {
   // partition_id will be simplified by the pass to just partition_id
   RunPass(
       hlo_string, PassAction::kTrivialGroups,
-      CollectiveOpGroupMode::kCrossPartition,
+      CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_PARTITION,
       /*shard_size=*/4, /*shard_dimension=*/1, /*replica_count=*/1,
-      /*should_decompose =*/[](const HloInstruction *) { return true; },
+      /*should_decompose =*/[](const HloInstruction*) { return true; },
       std::make_pair("_scheduling_group_id", "1"));
 }
 
@@ -218,7 +224,7 @@ ENTRY main {
 }
 )";
   RunPass(hlo_string, PassAction::kTableLookup,
-          CollectiveOpGroupMode::kFlattenedID,
+          CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_FLATTENED_ID,
           /*shard_size=*/2, /*shard_dimension=*/1);
 }
 
@@ -256,9 +262,9 @@ ENTRY main {
 }
 )";
   RunPass(hlo_string, PassAction::kNoChange,
-          CollectiveOpGroupMode::kCrossReplica,
+          CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA,
           /*shard_size=*/0, /*shard_dimension=*/0,
-          /*replica_count=*/2, [](const HloInstruction *) { return false; });
+          /*replica_count=*/2, [](const HloInstruction*) { return false; });
 }
 
 }  // namespace

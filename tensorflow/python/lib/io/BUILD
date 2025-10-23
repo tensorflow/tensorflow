@@ -67,6 +67,7 @@ py_strict_library(
     srcs = ["file_io.py"],
     # copybara:uncomment_begin(google-only)
     # visibility = [
+    # "//learning/serving/servables/wiz/lora:__subpackages__",
     # "//third_party/cloud_tpu/convergence_tools:__subpackages__",
     # "//third_party/py/tf_slim:__subpackages__",
     # "//tensorflow:__subpackages__",

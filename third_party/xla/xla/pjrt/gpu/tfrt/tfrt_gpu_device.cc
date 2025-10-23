@@ -44,6 +44,10 @@ limitations under the License.
 #include "xla/pjrt/gpu/gpu_topology.pb.h"
 #include "xla/pjrt/gpu/tfrt/gpu_event.h"
 #include "xla/pjrt/gpu/tfrt/tfrt_gpu_client.h"
+<<<<<<< HEAD
+=======
+#include "xla/pjrt/gpu/tfrt/utils.h"
+>>>>>>> upstream/master
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_compiler.h"
@@ -73,9 +77,14 @@ TfrtGpuDevice::TfrtGpuDevice(Options&& options)
       local_device_id_(options.local_device_id),
       local_hardware_id_(options.local_hardware_id),
       executor_(options.executor),
+<<<<<<< HEAD
       stream_(options.executor == nullptr
                   ? nullptr
                   : options.executor->CreateStream().value()),
+=======
+      stream_(MaybeCreateStream(options.executor)),
+      d2h_stream_(MaybeCreateStream(options.executor)),
+>>>>>>> upstream/master
       prng_seed_generator_(prng_seed_device_()),
       prng_seed_distribution_(std::numeric_limits<int>::min(),
                               std::numeric_limits<int>::max()),
@@ -109,11 +118,24 @@ TfrtGpuDevice::~TfrtGpuDevice() {
   // Block the host until all pending work on the stream is done. This is to
   // avoid user-after-free errors in host callbacks.
   if (stream_ != nullptr) {
+<<<<<<< HEAD
     absl::Status status = stream_->BlockHostUntilDone();
+=======
+    absl::Status status = BlockHostUntilDoneWithHostCallback(stream_.get());
+>>>>>>> upstream/master
     if (!status.ok()) {
       LOG(ERROR) << "Failed to wait for stream to finish: " << status;
     }
   }
+<<<<<<< HEAD
+=======
+  if (d2h_stream_ != nullptr) {
+    absl::Status status = BlockHostUntilDoneWithHostCallback(d2h_stream_.get());
+    if (!status.ok()) {
+      LOG(ERROR) << "Failed to wait for d2h stream to finish: " << status;
+    }
+  }
+>>>>>>> upstream/master
 }
 
 PjRtClient* TfrtGpuDevice::client() const { return client_; }
@@ -154,7 +176,11 @@ absl::Status TfrtGpuDevice::TransferFromOutfeed(
 }
 
 int TfrtGpuDevice::GetNewPrngSeed() {
+<<<<<<< HEAD
   absl::MutexLock lock(&mu_);
+=======
+  absl::MutexLock lock(mu_);
+>>>>>>> upstream/master
   int x = 0;
   do {
     x = prng_seed_distribution_(prng_seed_generator_);
@@ -239,7 +265,11 @@ absl::StatusOr<tsl::AllocatorStats> TfrtGpuDevice::GetAllocatorStats() const {
 
 tsl::AsyncValueRef<GpuEvent> TfrtGpuDevice::SetLastCollectiveLaunchEvent(
     tsl::AsyncValueRef<GpuEvent> event) {
+<<<<<<< HEAD
   absl::MutexLock lock(&mu_);
+=======
+  absl::MutexLock lock(mu_);
+>>>>>>> upstream/master
   VLOG(3) << "SetLastCollectiveLaunchEvent: IsAvailable: "
           << event.IsAvailable() << "; pointer: " << event.GetAsyncValue()
           << "Old Event: IsAvailable: "

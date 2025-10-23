@@ -24,6 +24,10 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+<<<<<<< HEAD
+=======
+#include "absl/strings/str_format.h"
+>>>>>>> upstream/master
 #include "absl/strings/string_view.h"
 #include "xla/core/host_offloading/annotate_host_compute_offload.h"
 #include "xla/hlo/ir/hlo_computation.h"

@@ -142,7 +142,7 @@ class RecvAtHostOp : public AsyncOpKernel {
       rendezvous_key[i] = Rendezvous::CreateKey(
           device_ordinal_is_attr ? remote_device_ : remote_device,
           /*src_incarnation=*/1, cpu_device_,
-          strings::StrCat(rendezvous_key_base, key_, "_dtoh_", i),
+          absl::StrCat(rendezvous_key_base, key_, "_dtoh_", i),
           FrameAndIter(0, 0));
 
       OP_REQUIRES_OK_ASYNC(
@@ -301,7 +301,7 @@ class SendFromHostOp : public OpKernel {
       const string& rendezvous_key = Rendezvous::CreateKey(
           cpu_device_, /*src_incarnation=*/1,
           device_ordinal_is_attr ? remote_device_ : remote_device,
-          strings::StrCat(rendezvous_key_base, key_, "_htod_", i),
+          absl::StrCat(rendezvous_key_base, key_, "_htod_", i),
           FrameAndIter(0, 0));
 
       Rendezvous::ParsedKey parsed_key;

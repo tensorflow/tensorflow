@@ -1460,4 +1460,8 @@ index 6021d1330..93b65e31d 100644
 +    return true;
  }
  
+<<<<<<< HEAD
  bool CpuGemmAssemblyDispatch::is_activation_supported(const ActivationLayerInfo &activation)
+=======
+ bool CpuGemmAssemblyDispatch::is_activation_supported(const ActivationLayerInfo &activation)
+>>>>>>> upstream/master

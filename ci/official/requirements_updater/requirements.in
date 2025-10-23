@@ -1,7 +1,7 @@
 # Note that numpy 2.1.0 does not support python 3.9
 numpy >= 2.0.0, < 2.2.0
 wheel ~= 0.41.2
-h5py >= 3.11.0
+h5py >= 3.11.0, < 3.15.0
 lit ~= 17.0.2
 opt_einsum == 3.3.0
 astunparse == 1.6.3
@@ -34,6 +34,7 @@ packaging==23.2
 setuptools==78.1.1
 jax==0.4.7
 zstandard==0.23.0
+<<<<<<< HEAD
 # NVIDIA CUDA dependencies
 # Note that the wheels are downloaded only when the targets in bazel command
 # contain dependencies on these wheels.
@@ -49,8 +50,10 @@ nvidia-cusparse-cu12 == 12.5.1.3
 nvidia-nccl-cu12 == 2.27.7
 nvidia-nvjitlink-cu12 == 12.5.82
 nvidia-nvshmem-cu12>=3.2.5
+=======
+>>>>>>> upstream/master
 # The dependencies below are needed for TF wheel testing.
 tensorflow-io-gcs-filesystem==0.37.1 ; python_version <= "3.12"
 libclang >= 13.0.0
 google_pasta ~= 0.2
-flatbuffers ~= 24.3.25
+flatbuffers ~= 25.9.23

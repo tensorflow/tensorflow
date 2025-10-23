@@ -19,16 +19,19 @@ xla_cc_binary(
         "//xla/codegen/emitters/ir/tests:__subpackages__",
         "//xla/codegen/emitters/tests:__pkg__",
         "//xla/codegen/emitters/transforms/tests:__subpackages__",
+        "//xla/codegen/xtile/ir/tests:__pkg__",
     ],
     deps = [
         "//xla/backends/cpu/codegen/emitters/ir:xla_cpu",
         "//xla/backends/cpu/codegen/emitters/transforms:passes",
+        "//xla/backends/cpu/codegen/tiled/transforms:passes",
         "//xla/backends/gpu/codegen/emitters:emitter_base",
         "//xla/backends/gpu/codegen/emitters/ir:xla_gpu",
         "//xla/backends/gpu/codegen/emitters/transforms:passes",
         "//xla/codegen/emitters/ir:xla",
         "//xla/codegen/emitters/transforms:pass_pipelines",
         "//xla/codegen/emitters/transforms:passes",
+        "//xla/codegen/xtile/ir:xtile",
         "//xla/mlir_hlo",
         "//xla/service/gpu:gpu_device_info_for_tests",
         "@llvm-project//llvm:Support",
@@ -50,6 +53,26 @@ xla_cc_binary(
         "@llvm-project//mlir:TensorDialect",
         "@llvm-project//mlir:Transforms",
         "@llvm-project//mlir:VectorDialect",
+        "@stablehlo//:stablehlo_ops",
+    ],
+)
+
+cc_library(
+    name = "test_lib",
+    testonly = True,
+    srcs = ["test_lib.cc"],
+    hdrs = ["test_lib.h"],
+    visibility = [
+        "//xla/backends/cpu/codegen/tools:__subpackages__",
+        "//xla/backends/gpu/codegen/tools:__subpackages__",
+    ],
+    deps = [
+        "//xla:status_macros",
+        "//xla/hlo/ir:hlo",
+        "//xla/tools:hlo_module_loader",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
     ],
 )
 

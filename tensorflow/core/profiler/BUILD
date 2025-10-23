@@ -1,5 +1,5 @@
 # copybara:uncomment(oss-unused) load("//net/grpc/go/build_defs:go_grpc_library.bzl", "go_grpc_library")
-# Placeholder: load py_proto_library
+load("@rules_python//python:proto.bzl", "py_proto_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
 load("//tensorflow:tensorflow.default.bzl", "filegroup")
 load("//tensorflow/core/platform:build_config.bzl", "tf_additional_all_protos", "tf_proto_library")

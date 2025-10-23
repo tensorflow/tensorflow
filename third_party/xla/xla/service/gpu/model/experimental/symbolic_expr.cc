@@ -21,6 +21,10 @@ limitations under the License.
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+<<<<<<< HEAD
+=======
+#include <functional>
+>>>>>>> upstream/master
 #include <numeric>
 #include <optional>
 #include <string>
@@ -36,8 +40,16 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/strings/strip.h"
 #include "absl/types/span.h"
+<<<<<<< HEAD
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/MathExtras.h"
+=======
+#include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/DenseSet.h"
+#include "llvm/ADT/SmallVector.h"
+#include "llvm/Support/MathExtras.h"
+#include "mlir/IR/MLIRContext.h"
+>>>>>>> upstream/master
 #include "mlir/Support/StorageUniquer.h"
 
 namespace xla {
@@ -369,6 +381,7 @@ SymbolicExpr TrySimplifyDivModByGCD(SymbolicExprType op_type, SymbolicExpr lhs,
   }
 }
 
+<<<<<<< HEAD
 // Helper function to simplify (A + B) floordiv div if A is multiple of div.
 SymbolicExpr SimplifyFloorDivAddOperand(SymbolicExpr a, SymbolicExpr b,
                                         int64_t div) {
@@ -391,6 +404,30 @@ SymbolicExpr SimplifyFloorDivAddOperand(SymbolicExpr a, SymbolicExpr b,
     }
   }
   return SymbolicExpr();  // Cannot simplify
+=======
+// Simplifies (A + B) floordiv C = (A / C) + (B floordiv C) if A is a multiple
+// of C.
+SymbolicExpr SimplifyFloorDivAddOperand(SymbolicExpr a, SymbolicExpr b,
+                                        int64_t div) {
+  int64_t a_coeff;
+  SymbolicExpr remaining_expr;
+
+  if (a.GetType() == SymbolicExprType::kMul &&
+      a.GetRHS().GetType() == SymbolicExprType::kConstant) {
+    a_coeff = a.GetRHS().GetValue();
+    remaining_expr = a.GetLHS();
+  } else if (a.GetType() == SymbolicExprType::kConstant) {
+    a_coeff = a.GetValue();
+    remaining_expr = a.GetContext()->CreateConstant(1);
+  } else {
+    return SymbolicExpr();  // Cannot simplify
+  }
+
+  if (a_coeff % div != 0) {
+    return SymbolicExpr();  // Cannot simplify
+  }
+  return (remaining_expr * (a_coeff / div) + b / div).Canonicalize();
+>>>>>>> upstream/master
 }
 
 SymbolicExpr CanonicalizeFloorDiv(SymbolicExpr lhs, SymbolicExpr rhs) {
@@ -559,6 +596,7 @@ int64_t SymbolicExpr::GetValue() const { return impl_->value_; }
 
 bool SymbolicExpr::operator<(const SymbolicExpr& other) const {
   CHECK(*this && other);
+<<<<<<< HEAD
   SymbolicExprType lhs_type = GetType();
   SymbolicExprType rhs_type = other.GetType();
 
@@ -569,6 +607,14 @@ bool SymbolicExpr::operator<(const SymbolicExpr& other) const {
     return rhs_is_const;
   }
 
+=======
+  if (this == &other) {
+    return false;
+  }
+  SymbolicExprType lhs_type = GetType();
+  SymbolicExprType rhs_type = other.GetType();
+
+>>>>>>> upstream/master
   if (lhs_type != rhs_type) {
     return lhs_type < rhs_type;
   }
@@ -579,6 +625,14 @@ bool SymbolicExpr::operator<(const SymbolicExpr& other) const {
       return GetValue() < other.GetValue();
     case SymbolicExprType::kAdd:
     case SymbolicExprType::kMul:
+<<<<<<< HEAD
+=======
+    case SymbolicExprType::kFloorDiv:
+    case SymbolicExprType::kCeilDiv:
+    case SymbolicExprType::kMod:
+    case SymbolicExprType::kMax:
+    case SymbolicExprType::kMin:
+>>>>>>> upstream/master
       if (GetLHS() != other.GetLHS()) {
         return GetLHS() < other.GetLHS();
       }
@@ -588,26 +642,55 @@ bool SymbolicExpr::operator<(const SymbolicExpr& other) const {
   }
 }
 
+<<<<<<< HEAD
 std::string SymbolicExpr::ToString() const {
   switch (GetType()) {
     case SymbolicExprType::kConstant:
       return std::to_string(GetValue());
     case SymbolicExprType::kVariable:
       return absl::StrCat("v", GetValue());
+=======
+std::string SymbolicExpr::ToString(int64_t num_dims) const {
+  switch (GetType()) {
+    case SymbolicExprType::kConstant:
+      return std::to_string(GetValue());
+    case SymbolicExprType::kVariable: {
+      int64_t var_id = GetValue();
+      if (num_dims == -1) {
+        return absl::StrCat("v", var_id);
+      }
+      // If num_dims is provided, then the first num_dims variables are
+      // dimensions, and the rest are symbols.
+      if (var_id < num_dims) {
+        return absl::StrCat("d", var_id);
+      }
+      return absl::StrCat("s", var_id - num_dims);
+    }
+>>>>>>> upstream/master
     case SymbolicExprType::kAdd:
     case SymbolicExprType::kMul:
     case SymbolicExprType::kFloorDiv:
     case SymbolicExprType::kCeilDiv:
     case SymbolicExprType::kMod: {
       auto bin_op_str = GetBinaryOpString(GetType());
+<<<<<<< HEAD
       return absl::StrCat("(", GetLHS().ToString(), " ", bin_op_str, " ",
                           GetRHS().ToString(), ")");
+=======
+      return absl::StrCat("(", GetLHS().ToString(num_dims), " ", bin_op_str,
+                          " ", GetRHS().ToString(num_dims), ")");
+>>>>>>> upstream/master
     }
     case SymbolicExprType::kMax:
     case SymbolicExprType::kMin: {
       auto bin_op_str = GetBinaryOpString(GetType());
+<<<<<<< HEAD
       return absl::StrCat(bin_op_str, "(", GetLHS().ToString(), ", ",
                           GetRHS().ToString(), ")");
+=======
+      return absl::StrCat(bin_op_str, "(", GetLHS().ToString(num_dims), ", ",
+                          GetRHS().ToString(num_dims), ")");
+>>>>>>> upstream/master
     }
     default:
       LOG(FATAL) << "unknown type on symbolic expressions";
@@ -683,6 +766,83 @@ SymbolicExpr SymbolicExpr::ReplaceVariables(
   }
 }
 
+<<<<<<< HEAD
+=======
+SymbolicExpr SymbolicExpr::ReplaceSymbols(
+    absl::Span<const SymbolicExpr> sym_replacements, int64_t num_dims) const {
+  return ReplaceDimsAndSymbols({}, sym_replacements, num_dims);
+}
+
+SymbolicExpr SymbolicExpr::ReplaceDimsAndSymbols(
+    absl::Span<const SymbolicExpr> dim_replacements,
+    absl::Span<const SymbolicExpr> symbol_replacements,
+    int64_t num_dims) const {
+  llvm::SmallVector<SymbolicExpr> replacements;
+  replacements.append(dim_replacements.begin(), dim_replacements.end());
+  for (int64_t i = dim_replacements.size(); i < num_dims; ++i) {
+    replacements.push_back(GetContext()->CreateVariable(i));
+  }
+  replacements.append(symbol_replacements.begin(), symbol_replacements.end());
+  return ReplaceVariables(replacements);
+}
+
+SymbolicExpr SymbolicExpr::Replace(SymbolicExpr expr,
+                                   SymbolicExpr replacement) const {
+  llvm::DenseMap<SymbolicExpr, SymbolicExpr> replacements;
+  replacements[expr] = replacement;
+  return Replace(replacements);
+}
+
+SymbolicExpr SymbolicExpr::Replace(
+    const llvm::DenseMap<SymbolicExpr, SymbolicExpr>& replacements) const {
+  auto it = replacements.find(*this);
+  if (it != replacements.end()) {
+    return it->second;
+  }
+
+  SymbolicExprType type = GetType();
+  if (type == SymbolicExprType::kConstant ||
+      type == SymbolicExprType::kVariable) {
+    return *this;
+  }
+
+  SymbolicExpr lhs = GetLHS();
+  SymbolicExpr rhs = GetRHS();
+  SymbolicExpr new_lhs = lhs.Replace(replacements);
+  SymbolicExpr new_rhs = rhs.Replace(replacements);
+
+  if (new_lhs == lhs && new_rhs == rhs) {
+    return *this;
+  }
+  return GetContext()->CreateBinaryOp(type, new_lhs, new_rhs);
+}
+
+void SymbolicExpr::GetUsedVariables(
+    llvm::DenseSet<VariableID>& used_vars) const {
+  if (!*this) {
+    return;
+  }
+
+  switch (GetType()) {
+    case SymbolicExprType::kConstant:
+      return;
+    case SymbolicExprType::kVariable:
+      used_vars.insert(GetValue());
+      return;
+    case SymbolicExprType::kAdd:
+    case SymbolicExprType::kMul:
+    case SymbolicExprType::kFloorDiv:
+    case SymbolicExprType::kCeilDiv:
+    case SymbolicExprType::kMod:
+    case SymbolicExprType::kMin:
+    case SymbolicExprType::kMax:
+      GetLHS().GetUsedVariables(used_vars);
+      GetRHS().GetUsedVariables(used_vars);
+      return;
+  }
+}
+
+>>>>>>> upstream/master
 SymbolicExpr SymbolicExpr::Canonicalize() const {
   if (!*this) {
     return *this;
@@ -797,7 +957,12 @@ SymbolicExpr SymbolicExpr::max(SymbolicExpr other) const {
   return GetContext()->CreateBinaryOp(SymbolicExprType::kMax, *this, other);
 }
 
+<<<<<<< HEAD
 SymbolicExprContext::SymbolicExprContext() {
+=======
+SymbolicExprContext::SymbolicExprContext(mlir::MLIRContext* mlir_context)
+    : mlir_context_(mlir_context) {
+>>>>>>> upstream/master
   uniquer_.registerParametricStorageType<SymbolicExprStorage>();
 }
 
@@ -834,5 +999,32 @@ SymbolicExpr SymbolicExprContext::Parse(absl::string_view expr_str) {
   return Parser(expr_str, this).Parse();
 }
 
+<<<<<<< HEAD
+=======
+void SymbolicExpr::Walk(
+    const std::function<void(SymbolicExpr)>& callback) const {
+  if (!*this) {
+    return;
+  }
+
+  switch (GetType()) {
+    case SymbolicExprType::kConstant:
+    case SymbolicExprType::kVariable:
+      break;
+    case SymbolicExprType::kAdd:
+    case SymbolicExprType::kMul:
+    case SymbolicExprType::kFloorDiv:
+    case SymbolicExprType::kCeilDiv:
+    case SymbolicExprType::kMod:
+    case SymbolicExprType::kMin:
+    case SymbolicExprType::kMax:
+      GetLHS().Walk(callback);
+      GetRHS().Walk(callback);
+      break;
+  }
+  callback(*this);
+}
+
+>>>>>>> upstream/master
 }  // namespace gpu
 }  // namespace xla

@@ -22,6 +22,10 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/stream_executor/device_description.h"
+<<<<<<< HEAD
+=======
+#include "xla/stream_executor/device_description.pb.h"
+>>>>>>> upstream/master
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla {

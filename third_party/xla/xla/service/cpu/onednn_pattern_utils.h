@@ -15,10 +15,8 @@ limitations under the License.
 
 #ifndef XLA_SERVICE_CPU_ONEDNN_PATTERN_UTILS_H_
 #define XLA_SERVICE_CPU_ONEDNN_PATTERN_UTILS_H_
-#if defined(INTEL_MKL)
 
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/cpu/onednn_util.h"
 #include "xla/service/pattern_matcher.h"
 
@@ -61,5 +59,4 @@ inline auto SupportedConvert(HloInstruction** convert, Pattern pattern) {
 }  // namespace cpu
 }  // namespace xla
 
-#endif  // INTEL_MKL
 #endif  // XLA_SERVICE_CPU_ONEDNN_PATTERN_UTILS_H_

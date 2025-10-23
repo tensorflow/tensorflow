@@ -1,6 +1,6 @@
 # TPU Kernel Implementations
 
-# Placeholder: load py_proto_library
+load("@rules_python//python:proto.bzl", "py_proto_library")
 load(
     "//tensorflow:tensorflow.bzl",
     "if_google",
@@ -741,7 +741,6 @@ cc_library(
         ":tpu_program_group",
         "//tensorflow/compiler/tf2xla:host_compute_metadata_proto_cc",
         "//tensorflow/core:lib",
-        "//tensorflow/core/distributed_runtime/rpc:grpc_util",
         "@com_google_absl//absl/cleanup",
         "@local_xla//xla/stream_executor/tpu:proto_helper",
         "@local_xla//xla/stream_executor/tpu:tpu_ops_c_api_hdrs",
@@ -819,10 +818,10 @@ cc_library(
         ":tpu_compilation_cache_grpc",
         ":tpu_compilation_cache_interface",
         ":tpu_compilation_cache_rpc_support_hdrs",
-        "//tensorflow/core/distributed_runtime/rpc:grpc_util",
         "//tensorflow/core/lib/core:threadpool",
         "//tensorflow/core/platform:coding",
         "@local_xla//xla/tsl/distributed_runtime/rpc:grpc_call",
+        "@local_xla//xla/tsl/distributed_runtime/rpc:grpc_util",
     ] + tf_grpc_cc_dependencies(),
 )
 

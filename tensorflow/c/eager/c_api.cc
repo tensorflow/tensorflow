@@ -1153,11 +1153,10 @@ void SetOpAttrValueScalar(TFE_Context* ctx, TFE_Op* op,
       if (default_value.list().shape_size() > 0 ||
           default_value.list().func_size() > 0 ||
           default_value.list().tensor_size() > 0) {
-        TF_SetStatus(
-            status, TF_UNIMPLEMENTED,
-            tensorflow::strings::StrCat("Unable to get setfor default value: ",
-                                        default_value.DebugString())
-                .data());
+        TF_SetStatus(status, TF_UNIMPLEMENTED,
+                     absl::StrCat("Unable to get setfor default value: ",
+                                  default_value.DebugString())
+                         .data());
       }
     } break;
     case tensorflow::AttrValue::kTensor:
@@ -1165,11 +1164,10 @@ void SetOpAttrValueScalar(TFE_Context* ctx, TFE_Op* op,
     case tensorflow::AttrValue::kPlaceholder:
       TF_FALLTHROUGH_INTENDED;
     case tensorflow::AttrValue::VALUE_NOT_SET:
-      TF_SetStatus(
-          status, TF_UNIMPLEMENTED,
-          tensorflow::strings::StrCat("Unable to get setfor default value: ",
-                                      default_value.DebugString())
-              .data());
+      TF_SetStatus(status, TF_UNIMPLEMENTED,
+                   absl::StrCat("Unable to get setfor default value: ",
+                                default_value.DebugString())
+                       .data());
   }
 }
 }  // namespace tensorflow

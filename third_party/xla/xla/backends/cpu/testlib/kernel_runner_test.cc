@@ -75,8 +75,10 @@ TEST(KernelRunnerTest, Add) {
 
   constexpr int64_t kNumElements = 8;
   constexpr size_t kArgSizeBytes = kNumElements * sizeof(int32_t);
-  LlvmTestKernelEmitter::KernelArg read_arg{kArgSizeBytes, BufferUse::kRead};
-  LlvmTestKernelEmitter::KernelArg write_arg{kArgSizeBytes, BufferUse::kWrite};
+  LlvmTestKernelEmitter::KernelArg read_arg{kArgSizeBytes,
+                                            BufferUse::MemoryAccess ::kRead};
+  LlvmTestKernelEmitter::KernelArg write_arg{kArgSizeBytes,
+                                             BufferUse::MemoryAccess::kWrite};
   LlvmTestKernelEmitter emitter(kLlvmAddI32, "LlvmAddI32",
                                 NumWorkGroups{kNumElements},
                                 {read_arg, read_arg, write_arg});

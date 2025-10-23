@@ -153,7 +153,31 @@ void createIfrtToOutlinedAtomProgramsPipeline(
 void createIfrtPopulateAtomProgramMetadataPipeline(mlir::OpPassManager& pm);
 
 // Creates pipeline to lower an IFRT XLA program to be ready for compilation.
-void createIfrtCompileXlaPreprocessingPipeline(mlir::OpPassManager& pm);
+void createIfrtCompileXlaPreprocessingPipeline(
+    mlir::OpPassManager& pm,
+    std::shared_ptr<xla::ifrt::IfrtIRCompileOptions> compile_options);
+
+struct OutlinedAtomProgramsToCompiledPipelineOptions
+    : mlir::PassPipelineOptions<OutlinedAtomProgramsToCompiledPipelineOptions> {
+  ListOption<std::string> platform_names{
+      *this, "platform_names",
+      llvm::cl::desc("A list to represent a mapping from logical device IDs to "
+                     "platform name (e.g., tpu, cuda).")};
+
+  Option<bool> propagate_shardings{
+      *this, "propagate_shardings",
+      llvm::cl::desc("Whether to propagate shardings from executables for "
+                     "unspecified shardings.")};
+};
+
+// Creates pipeline of all the IFRT IR passes that require compilation-time
+// information (e.g., device assignments).
+absl::Status createOutlinedAtomProgramsToCompiledPipeline(
+    mlir::OpPassManager& pm, std::shared_ptr<AtomProgramCompiler> compiler,
+    const OutlinedAtomProgramsToCompiledPipelineOptions& options,
+    std::shared_ptr<xla::ifrt::IfrtIRCompileOptions> compile_options,
+    std::shared_ptr<AtomExecutableMap> atom_executable_map,
+    std::shared_ptr<AtomExecutableMap> bound_executable_map);
 
 struct OutlinedAtomProgramsToCompiledPipelineOptions
     : mlir::PassPipelineOptions<OutlinedAtomProgramsToCompiledPipelineOptions> {

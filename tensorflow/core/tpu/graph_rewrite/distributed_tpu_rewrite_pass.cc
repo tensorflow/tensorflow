@@ -1160,7 +1160,7 @@ absl::StatusOr<Node*> CreateConcatNode(int dim, int num_splits, DataType dtype,
       graph->NewName(absl::StrCat(name_prefix, "/concat_dim")));
   concat_dim_def.set_op("Const");
   AddNodeAttr("dtype", DT_INT32, &concat_dim_def);
-  concat_dim_def.set_device(std::string(device));
+  concat_dim_def.set_device(device);
   TensorProto tensor_proto;
   tensor_proto.set_dtype(DT_INT32);
   tensor_proto.add_int_val(dim);
@@ -1176,7 +1176,7 @@ absl::StatusOr<Node*> CreateConcatNode(int dim, int num_splits, DataType dtype,
   AddNodeAttr("N", num_splits, &concat_def);
   AddNodeAttr("T", dtype, &concat_def);
   concat_def.add_input(absl::StrCat(concat_dim_node->name(), ":0"));
-  concat_def.set_device(std::string(device));
+  concat_def.set_device(device);
   for (const auto& i : inputs) {
     concat_def.add_input(absl::StrCat(i.node->name(), ":", i.index));
   }
@@ -1207,7 +1207,7 @@ absl::StatusOr<Node*> CreateSliceNode(DataType dtype,
       graph->NewName(absl::StrCat(concat_node->name(), "/slice_begin")));
   begin_def.set_op("Const");
   AddNodeAttr("dtype", DT_INT32, &begin_def);
-  begin_def.set_device(std::string(device));
+  begin_def.set_device(device);
   TensorProto begin_tensor_proto;
   begin_tensor_proto.set_dtype(DT_INT32);
   for (int i = 0; i < shape.dims(); ++i) {
@@ -1224,7 +1224,7 @@ absl::StatusOr<Node*> CreateSliceNode(DataType dtype,
       graph->NewName(absl::StrCat(concat_node->name(), "/slice_size")));
   size_def.set_op("Const");
   AddNodeAttr("dtype", DT_INT32, &size_def);
-  size_def.set_device(std::string(device));
+  size_def.set_device(device);
   TensorProto sizes_tensor_proto;
   sizes_tensor_proto.set_dtype(DT_INT32);
   for (int i = 0; i < shape.dims(); ++i) {
@@ -1240,7 +1240,7 @@ absl::StatusOr<Node*> CreateSliceNode(DataType dtype,
   slice_def.set_name(
       graph->NewName(absl::StrCat(concat_node->name(), "/slice")));
   slice_def.set_op("Slice");
-  slice_def.set_device(std::string(device));
+  slice_def.set_device(device);
   AddNodeAttr("T", dtype, &slice_def);
   AddNodeAttr("Index", DT_INT32, &slice_def);
   slice_def.add_input(absl::StrCat(concat_node->name(), ":", concat_out_index));
@@ -1316,7 +1316,7 @@ absl::StatusOr<Node*> CreateXlaConcatNode(
   xla_concat_def.set_name(graph->NewName(
       absl::StrCat("sharded_output/replica_", replica_id, "_concat")));
   xla_concat_def.set_op("XlaConcatND");
-  xla_concat_def.set_device(std::string(device));
+  xla_concat_def.set_device(device);
   AddNodeAttr("T", dtype, &xla_concat_def);
   AddNodeAttr("N", static_cast<int64_t>(orig_inputs.size()), &xla_concat_def);
   const std::vector<int64_t> num_concats(

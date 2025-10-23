@@ -26,6 +26,7 @@ limitations under the License.
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/Visitors.h"
 #include "mlir/Support/LLVM.h"
+#include "xla/hlo/translate/hlo_to_mhlo/hlo_utils.h"
 #include "xla/hlo/translate/mhlo_to_hlo/stack_frame_index_builder.h"
 #include "xla/xla_data.pb.h"
 

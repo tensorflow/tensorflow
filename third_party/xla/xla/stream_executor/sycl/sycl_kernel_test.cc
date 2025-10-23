@@ -10,6 +10,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+<<<<<<< HEAD
 #include <gtest/gtest.h>
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -22,6 +23,26 @@ using tsl::testing::IsOkAndHolds;
 TEST(SyclKernelTest, CheckKernelLoading) {
   TF_ASSERT_OK_AND_ASSIGN(Platform * platform,
                           PlatformManager::PlatformWithName("SYCL"));
+=======
+#include <cstddef>
+#include <cstdint>
+#include <memory>
+
+#include <gtest/gtest.h>
+#include "absl/types/span.h"
+#include "xla/stream_executor/platform_manager.h"
+#include "xla/stream_executor/stream_executor.h"
+#include "xla/stream_executor/sycl/sycl_platform_id.h"
+#include "xla/tsl/platform/status_matchers.h"
+
+namespace stream_executor::sycl {
+namespace {
+
+TEST(SyclKernelTest, CheckKernelLoading) {
+  TF_ASSERT_OK_AND_ASSIGN(
+      Platform * platform,
+      stream_executor::PlatformManager::PlatformWithId(kSyclPlatformId));
+>>>>>>> upstream/master
   TF_ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
                           platform->ExecutorForDevice(0));
 
@@ -135,4 +156,8 @@ TEST(SyclKernelTest, CheckKernelLoading) {
 }
 
 }  // namespace
+<<<<<<< HEAD
 }  // namespace stream_executor::gpu
+=======
+}  // namespace stream_executor::sycl
+>>>>>>> upstream/master

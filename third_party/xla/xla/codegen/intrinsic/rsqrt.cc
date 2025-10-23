@@ -200,6 +200,7 @@ absl::StatusOr<llvm::Function*> Rsqrt::CreateDefinition(
       options.Contains("+avx512f") &&
       (type.element_type() == F64 ||
        (type.element_type() == F32 && type.vector_width().value_or(1) > 8));
+<<<<<<< HEAD
   // As a heuristic, we check for SSE4a to determine if we are on AMD.
   // This feature was added in 2007 and is set on all AMD CPUs since then, and
   // no intel cpus. This is a bit of a hack though, as there is no strict link
@@ -207,6 +208,9 @@ absl::StatusOr<llvm::Function*> Rsqrt::CreateDefinition(
   // future but they are very unlikely to do so as they haven't in the past 18
   // years.
   const bool is_amd = options.Contains("+sse4a");
+=======
+  const bool is_amd = options.device_type == DeviceType::kAmdCpu;
+>>>>>>> upstream/master
   const size_t num_steps = (is_amd && !using_avx512) ? 1 : 2;
   llvm::Value* refined_result =
       NewtonRaphsonRsqrtIteration(builder, x, y_approx, input_type, num_steps);

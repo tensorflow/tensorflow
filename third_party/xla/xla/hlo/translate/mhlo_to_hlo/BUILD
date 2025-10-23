@@ -51,6 +51,10 @@ xla_cc_test(
     srcs = ["attribute_exporter_test.cc"],
     deps = [
         ":attribute_exporter",
+<<<<<<< HEAD
+=======
+        "//xla:xla_data_proto_cc",
+>>>>>>> upstream/master
         "//xla/hlo/ir:hlo_sharding",
         "//xla/hlo/parser:hlo_parser",
         "//xla/mlir/utils:error_util",
@@ -116,6 +120,10 @@ cc_library(
     deps = [
         ":stack_frame_index_builder",
         "//xla:xla_data_proto_cc",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/parser:hlo_parser",
+        "//xla/hlo/translate/hlo_to_mhlo:hlo_utils",
+        "//xla/mlir_hlo:unregistered_attributes",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
@@ -128,6 +136,7 @@ cc_library(
     hdrs = ["module_attributes_exporter.h"],
     deps = [
         "//xla:xla_data_proto_cc",
+        "//xla/mlir_hlo:unregistered_attributes",
         "//xla/service:hlo_module_config",
         "//xla/service:hlo_proto_cc",
         "//xla/tsl/platform:errors",
@@ -182,6 +191,7 @@ cc_library(
         "//xla/hlo/builder:xla_computation",
         "//xla/hlo/builder/lib:approx_topk",
         "//xla/hlo/builder/lib:approx_topk_shape",
+        "//xla/hlo/builder/lib:math",
         "//xla/hlo/builder/lib:matrix",
         "//xla/hlo/builder/lib:quantize",
         "//xla/hlo/builder/lib:slicing",
@@ -194,6 +204,7 @@ cc_library(
         "//xla/mlir_hlo",
         "//xla/mlir_hlo:mhlo_passes",
         "//xla/mlir_hlo:stablehlo_extension_passes",
+        "//xla/mlir_hlo:unregistered_attributes",
         "//xla/service:collective_ops_utils",
         "//xla/service:computation_layout",
         "//xla/service:hlo_module_config",
@@ -275,6 +286,10 @@ xla_cc_test(
         "//xla/tsl/platform:status_matchers",
         "//xla/tsl/platform:test",
         "//xla/tsl/platform:test_main",
+<<<<<<< HEAD
+=======
+        "@com_google_absl//absl/status:status_matchers",
+>>>>>>> upstream/master
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
     ],
@@ -285,6 +300,7 @@ cc_library(
     srcs = ["translate.cc"],
     hdrs = ["translate.h"],
     deps = [
+        ":attribute_exporter",
         ":mlir_hlo_to_hlo",
         ":type_to_shape",
         "//xla:debug_options_flags",
@@ -293,6 +309,10 @@ cc_library(
         "//xla/hlo/builder:xla_computation",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/translate:register",
+<<<<<<< HEAD
+=======
+        "//xla/mlir_hlo:unregistered_attributes",
+>>>>>>> upstream/master
         "//xla/service:hlo_module_config",
         "//xla/service:hlo_proto_cc",
         "//xla/service:hlo_proto_util",

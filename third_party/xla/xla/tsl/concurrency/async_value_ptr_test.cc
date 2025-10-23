@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/tsl/concurrency/async_value.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
+#include "xla/tsl/concurrency/executor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/platform/test_benchmark.h"
 
@@ -282,7 +283,7 @@ TEST(AsyncValuePtrTest, FlatMapUnavailable) {
   EXPECT_EQ(fmapped_to_float.get(), 42.0f);
 }
 
-struct DeferredExecutor : public AsyncValue::Executor {
+struct DeferredExecutor : public Executor {
   void Execute(Task task) final { tasks.push_back(std::move(task)); }
 
   size_t Quiesce() {
@@ -290,7 +291,7 @@ struct DeferredExecutor : public AsyncValue::Executor {
     while (!tasks.empty()) {
       Task task = std::move(tasks.back());
       tasks.pop_back();
-      task();
+      std::move(task)();
       ++n;
     }
     return n;
@@ -620,10 +621,6 @@ TEST(AsyncValuePtrTest, Cast) {
 //===----------------------------------------------------------------------===//
 // Performance benchmarks below
 //===----------------------------------------------------------------------===//
-
-struct InlineExecutor : public AsyncValue::Executor {
-  void Execute(Task task) final { task(); }
-};
 
 static void BM_MapIntToFloat(benchmark::State& state) {
   auto ref = MakeAvailableAsyncValueRef<int32_t>(42);

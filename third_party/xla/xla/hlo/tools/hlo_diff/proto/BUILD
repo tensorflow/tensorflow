@@ -1,5 +1,5 @@
 load("//xla/tsl:tsl.bzl", "internal_visibility")
-load("//xla/tsl/platform:build_config.bzl", "tf_proto_library")
+load("//xla/tsl/platform:build_config.bzl", "tf_jspb_proto_library", "tf_proto_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -18,3 +18,11 @@ tf_proto_library(
     name = "diff_result_proto",
     srcs = ["diff_result.proto"],
 )
+<<<<<<< HEAD
+=======
+
+tf_jspb_proto_library(
+    name = "diff_result_jspb_proto",
+    deps = [":diff_result_proto"],
+)
+>>>>>>> upstream/master

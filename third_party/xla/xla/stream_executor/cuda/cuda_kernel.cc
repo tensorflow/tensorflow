@@ -34,6 +34,12 @@ limitations under the License.
 #include "xla/stream_executor/stream.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
+#include "tsl/profiler/lib/traceme.h"
+#include "tsl/profiler/lib/traceme_encode.h"
+
+using tsl::profiler::TraceMe;
+using tsl::profiler::TraceMeEncode;
+using tsl::profiler::TraceMeLevel;
 
 namespace stream_executor {
 namespace gpu {
@@ -84,11 +90,17 @@ absl::Status CudaKernel::Launch(const ThreadDim& thread_dims,
                                 const BlockDim& block_dims,
                                 const std::optional<ClusterDim>& cluster_dims,
                                 Stream* stream, const KernelArgs& args) {
+  TraceMe trace([] { return TraceMeEncode("CudaKernel::Launch", {}); },
+                /*level=*/TraceMeLevel::kVerbose);
+
   CUfunction function = gpu_function();
 
   // Launch kernels with packed arguments.
   auto launch = [this, stream, &cluster_dims, &thread_dims, &block_dims,
                  function](const KernelArgsPackedArrayBase& packed) {
+    TraceMe trace([] { return TraceMeEncode("CudaKernel::Launch/launch", {}); },
+                  /*level=*/TraceMeLevel::kVerbose);
+
     int32_t expected_number_of_arguments =
         Arity() + (packed.number_of_shared_bytes() > 0);
 
@@ -100,15 +112,9 @@ absl::Status CudaKernel::Launch(const ThreadDim& thread_dims,
 
     void** params = const_cast<void**>(packed.argument_addresses().data());
 
-    if (cluster_dims.has_value()) {
-      return stream->LaunchKernel(thread_dims, block_dims, cluster_dims,
-                                  function, name(), params,
-                                  packed.number_of_shared_bytes());
-    } else {
-      return stream->LaunchKernel(thread_dims, block_dims, std::nullopt,
-                                  function, name(), params,
-                                  packed.number_of_shared_bytes());
-    }
+    return stream->LaunchKernel(thread_dims, block_dims, cluster_dims, function,
+                                name(), params,
+                                packed.number_of_shared_bytes());
   };
 
   // If arguments are already packed we can just launch the kernel.

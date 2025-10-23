@@ -29,13 +29,13 @@ class NowSecondsEnv : public EnvWrapper {
 
   /// The current (fake) timestamp.
   uint64 NowSeconds() const override {
-    absl::MutexLock lock(&mu_);
+    absl::MutexLock lock(mu_);
     return now_;
   }
 
   /// Set the current (fake) timestamp.
   void SetNowSeconds(uint64 now) {
-    absl::MutexLock lock(&mu_);
+    absl::MutexLock lock(mu_);
     now_ = now;
   }
 

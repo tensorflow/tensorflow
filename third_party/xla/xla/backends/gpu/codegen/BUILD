@@ -148,6 +148,10 @@ cc_library(
         "//xla/hlo/utils:hlo_traversal",
         "//xla/service:buffer_assignment",
         "//xla/service:call_graph",
+<<<<<<< HEAD
+=======
+        "//xla/service:call_inliner",
+>>>>>>> upstream/master
         "//xla/service:custom_call_status",
         "//xla/service:custom_call_target_registry",
         "//xla/service:hlo_proto_cc",
@@ -187,6 +191,10 @@ xla_test(
             "multi_gpu",
             "no_oss",
         ],
+        "b200": [
+            "broken",
+            "no_oss",
+        ],
     },
     backends = ["gpu"],
     deps = [
@@ -213,7 +221,10 @@ xla_test(
         "//xla/service/gpu:ir_emission_utils",
         "//xla/service/gpu/transforms:dynamic_slice_fusion_rewriter",
         "//xla/stream_executor:device_memory",
+        "//xla/stream_executor:platform_manager",
         "//xla/stream_executor:stream",
+        "//xla/stream_executor:stream_executor_h",
+        "//xla/stream_executor/cuda:cuda_compute_capability",
         "//xla/tests:hlo_test_base",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",
@@ -245,6 +256,7 @@ cc_library(
         "//xla/service/gpu:ir_emitter_context",
         "//xla/service/gpu:launch_dimensions",
         "//xla/service/gpu:target_util",
+        "//xla/service/gpu/model/experimental:symbolic_expr",
         "//xla/service/llvm_ir:ir_array",
         "//xla/service/llvm_ir:llvm_util",
         "//xla/stream_executor:device_description",
@@ -260,6 +272,7 @@ cc_library(
         "@llvm-project//llvm:ir_headers",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:LLVMDialect",
+        "@llvm-project//mlir:TensorDialect",
     ],
 )
 
@@ -284,13 +297,14 @@ cc_library(
         "//xla/backends/gpu/codegen/emitters:scatter",
         "//xla/backends/gpu/codegen/emitters:transpose",
         "//xla/backends/gpu/codegen/triton:fusion",
+        "//xla/codegen:ir_emission_utils",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/utils:hlo_traversal",
         "//xla/service:buffer_assignment",
         "//xla/service/gpu:backend_configs_cc",
         "//xla/service/gpu:hlo_fusion_analysis",
         "//xla/service/gpu:ir_emission_utils",
-        "@com_google_absl//absl/algorithm:container",
+        "//xla/service/gpu/model/experimental:symbolic_expr",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
     ],

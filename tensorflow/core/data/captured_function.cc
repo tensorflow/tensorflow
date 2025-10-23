@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/time/clock.h"
 #include "tensorflow/core/common_runtime/function.h"
@@ -246,7 +247,7 @@ absl::Status CreateFunctionLibraryDefinition(
   DCHECK(lib_def != nullptr);
   const FunctionDef* fdef = lib_def->Find(func_name);
   if (TF_PREDICT_FALSE(fdef == nullptr)) {
-    return errors::FailedPrecondition(strings::StrCat(
+    return errors::FailedPrecondition(absl::StrCat(
         "Could not find required function definition ", func_name));
   }
   *result = std::make_unique<FunctionLibraryDefinition>(
@@ -429,7 +430,7 @@ absl::Status MakeIteratorFromInputElement(
       GetDatasetFromVariantTensor(return_values[0], &returned_dataset));
 
   // Create an iterator for the dataset that was returned by `f`.
-  std::string iterator_prefix = strings::StrCat(prefix, "[", thread_index, "]");
+  std::string iterator_prefix = absl::StrCat(prefix, "[", thread_index, "]");
 
   IteratorContext nested_ctx = MakeNestedIteratorContext(ctx);
   TF_RETURN_IF_ERROR(returned_dataset->MakeIterator(
@@ -842,7 +843,7 @@ absl::Status InstantiatedCapturedFunction::Run(
     if (was_recording) node->record_stop(EnvTime::NowNanos());
     TF_RETURN_IF_ERROR(lib_->RunSync(std::move(f_opts), f_handle_, &frame));
     if (ctx->stats_aggregator()) {
-      string prefix_with_func_name = strings::StrCat(
+      string prefix_with_func_name = absl::StrCat(
           node->name(), stats_utils::kDelimiter, captured_func_->func().name());
       ctx->stats_aggregator()->AddToHistogram(
           stats_utils::ExecutionTimeHistogramName(prefix_with_func_name),
@@ -904,7 +905,7 @@ absl::Status InstantiatedCapturedFunction::RunWithBorrowedArgs(
     // Resource usage for function execution is gathered from the executor.
     TF_RETURN_IF_ERROR(lib_->RunSync(std::move(f_opts), f_handle_, &frame));
     if (ctx->stats_aggregator()) {
-      string prefix_with_func_name = strings::StrCat(
+      string prefix_with_func_name = absl::StrCat(
           node->name(), stats_utils::kDelimiter, captured_func_->func().name());
       ctx->stats_aggregator()->AddToHistogram(
           stats_utils::ExecutionTimeHistogramName(prefix_with_func_name),
