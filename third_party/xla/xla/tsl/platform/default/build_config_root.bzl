@@ -19,6 +19,14 @@ GPU_TEST_PROPERTIES = {
     "Pool": "gpu-pool",
 }
 
+ROCM_SINGLE_GPU_TEST_PROPERTIES = {
+    "Pool": "linux_x64_gpu",
+}
+
+ROCM_MULTI_GPU_TEST_PROPERTIES = {
+    "Pool": "linux_x64_multigpu",
+}
+
 def tf_gpu_tests_tags():
     """Gets tags for TensorFlow GPU tests based on the configured environment.
 
@@ -38,9 +46,23 @@ def tf_gpu_tests_tags():
 def tf_cuda_tests_tags():
     return tf_gpu_tests_tags()
 
+def tf_has_tag(kwargs, tag):
+    return ("tags" in kwargs and kwargs["tags"] != None and tag in kwargs["tags"])
+
 def tf_exec_properties(kwargs):
-    if ("tags" in kwargs and kwargs["tags"] != None and
-        "remote-gpu" in kwargs["tags"]):
+    """Gets execution_properties for TensorFlow GPU tests based on the provided tags.
+
+    Args:
+      kwargs: all arguments of the xla test target
+    Returns:
+        execution_properties with the execution pool names for rbe.
+    """
+    if is_rocm_configured():
+        if tf_has_tag(kwargs, "multi_gpu"):
+            return ROCM_MULTI_GPU_TEST_PROPERTIES
+        if tf_has_tag(kwargs, "gpu"):
+            return ROCM_SINGLE_GPU_TEST_PROPERTIES
+    elif tf_has_tag(kwargs, "remote-gpu"):
         return GPU_TEST_PROPERTIES
     return {}
 
