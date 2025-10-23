@@ -441,7 +441,7 @@ py_test(
 
 verify_manylinux_compliance_test(
     name = "manylinux_compliance_test",
-    aarch64_compliance_tag = "manylinux_2_17_aarch64",
+    aarch64_compliance_tag = "manylinux_2_27_aarch64",
     ppc64le_compliance_tag = "manylinux_2_17_ppc64le",
     test_tags = [
         "manual",
