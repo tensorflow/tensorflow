@@ -15,13 +15,16 @@ limitations under the License.
 
 #include "tensorflow/core/util/strided_slice_op.h"
 
-#include <algorithm>
+#include <cstddef>
+#include <cstdint>
 #include <ostream>
 #include <tuple>
 #include <utility>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status_matchers.h"
+#include "absl/types/span.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
