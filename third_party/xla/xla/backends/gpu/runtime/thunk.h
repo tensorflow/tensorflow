@@ -138,7 +138,6 @@ class Thunk {
     kAllToAllDone,
     kAllToAllStart,
     kBuffersDebugChecksum,
-    kCholesky,
     kCollectiveBroadcast,
     kCollectiveBroadcastDone,
     kCollectiveBroadcastStart,

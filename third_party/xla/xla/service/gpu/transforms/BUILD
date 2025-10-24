@@ -1735,57 +1735,6 @@ xla_cc_test(
 )
 
 cc_library(
-    name = "gpusolver_rewriter",
-    srcs = ["gpusolver_rewriter.cc"],
-    hdrs = ["gpusolver_rewriter.h"],
-    tags = ["gpu"],
-    deps = [
-        "//xla:comparison_util",
-        "//xla:literal",
-        "//xla:literal_util",
-        "//xla:shape_util",
-        "//xla:util",
-        "//xla:xla_data_proto_cc",
-        "//xla/hlo/ir:hlo",
-        "//xla/hlo/pass:hlo_pass",
-        "//xla/service/gpu:ir_emission_utils",
-        "//xla/stream_executor:blas",
-        "//xla/stream_executor:gpu_solver_context",
-        "//xla/tsl/platform:errors",
-        "//xla/tsl/platform:statusor",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/functional:any_invocable",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings:string_view",
-    ],
-)
-
-xla_cc_test(
-    name = "gpusolver_rewriter_test",
-    srcs = ["gpusolver_rewriter_test.cc"],
-    tags = ["gpu"],
-    deps = [
-        ":gpusolver_rewriter",
-        "//xla:xla_data_proto_cc",
-        "//xla/hlo/ir:hlo",
-        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
-        "//xla/hlo/testlib:pattern_matcher_gmock",
-        "//xla/service:pattern_matcher",
-        "//xla/stream_executor:blas",
-        "//xla/stream_executor:device_memory",
-        "//xla/stream_executor:gpu_solver_context",
-        "//xla/stream_executor:stream",
-        "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-cc_library(
     name = "layout_assignment",
     srcs = ["layout_assignment.cc"],
     hdrs = ["layout_assignment.h"],

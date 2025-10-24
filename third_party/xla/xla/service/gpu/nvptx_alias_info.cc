@@ -53,10 +53,6 @@ std::optional<bool> NVPTXAliasInfo::MayAlias(
                 ->gemm_backend_config();
         return (config.beta() != 0.) && user->operand(2) == operand;
       }
-      // The operand of cholesky can be shared with the first output.
-      if (user->custom_call_target() == kCusolverCholeskyCallTarget) {
-        return user_index.size() == 1 && user_index[0] == 0;
-      }
       return false;
     default:
       return GpuAliasInfo::MayAlias(operand, operand_index, user, user_index);

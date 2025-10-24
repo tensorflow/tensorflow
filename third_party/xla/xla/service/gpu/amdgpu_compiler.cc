@@ -60,7 +60,6 @@ limitations under the License.
 #include "xla/service/gpu/transforms/conv_rewriter.h"
 #include "xla/service/gpu/transforms/cublas_pad_for_gemms.h"
 #include "xla/service/gpu/transforms/cudnn_fused_conv_rewriter.h"
-#include "xla/service/gpu/transforms/gpusolver_rewriter.h"
 #include "xla/service/gpu/transforms/triangular_solve_rewriter.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_verifier.h"
@@ -124,8 +123,6 @@ absl::Status AMDGPUCompiler::OptimizeHloConvolutionCanonicalization(
   ConvBfloat16Support conv_bf16_support(*gpu_version.rocm_compute_capability());
   pipeline.AddPass<FloatNormalization>(&conv_bf16_support);
 
-  pipeline.AddPass<GpusolverRewriter>(
-      stream_executor::RocmSolverContext::Create);
   pipeline.AddPass<ConvRewriter>(gpu_version);
   pipeline.AddPass<ConvPaddingLegalization>();
   auto rcc = gpu_version.rocm_compute_capability();
