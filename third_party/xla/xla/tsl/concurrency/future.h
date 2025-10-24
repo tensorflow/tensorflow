@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/base/attributes.h"
 #include "absl/base/no_destructor.h"
 #include "absl/base/optimization.h"
+#include "absl/functional/bind_front.h"
 #include "absl/meta/type_traits.h"
 #include "absl/status/status.h"
 #include "absl/types/span.h"
@@ -368,7 +369,7 @@ class FutureBase : public FutureMoveControl<is_move_only> {
   template <typename F, OnReadyFunctor<F>* = nullptr>
   ABSL_ATTRIBUTE_ALWAYS_INLINE void OnReady(F&& f) const& {
     CHECK(IsValid());
-    promise_.AndThen(Wrap(std::forward<F>(f)));
+    promise_.AndThen(AndThen(std::forward<F>(f)));
   }
 
   // Registers callback to be called once the promise is ready, with the final
@@ -376,7 +377,7 @@ class FutureBase : public FutureMoveControl<is_move_only> {
   template <typename F, OnReadyFunctor<F>* = nullptr>
   ABSL_ATTRIBUTE_ALWAYS_INLINE void OnReady(Executor& executor, F&& f) const& {
     CHECK(IsValid());
-    promise_.AndThen(executor, Wrap(std::forward<F>(f)));
+    promise_.AndThen(executor, AndThen(std::forward<F>(f)));
   }
 
   // Registers callback to be called once the promise is ready, with the final
@@ -385,7 +386,7 @@ class FutureBase : public FutureMoveControl<is_move_only> {
   template <typename F, OnReadyFunctor<F, true>* = nullptr>
   ABSL_ATTRIBUTE_ALWAYS_INLINE void OnReady(F&& f) && {
     CHECK(IsValid());
-    promise_.AndThen(std::move(*this).Wrap(std::forward<F>(f)));
+    promise_.AndThen(std::move(*this).AndThen(std::forward<F>(f)));
     promise_.reset();
   }
 
@@ -394,7 +395,7 @@ class FutureBase : public FutureMoveControl<is_move_only> {
   template <typename F, OnReadyFunctor<F, true>* = nullptr>
   ABSL_ATTRIBUTE_ALWAYS_INLINE void OnReady(Executor& executor, F&& f) && {
     CHECK(IsValid());
-    promise_.AndThen(executor, std::move(*this).Wrap(std::forward<F>(f)));
+    promise_.AndThen(executor, std::move(*this).AndThen(std::forward<F>(f)));
     promise_.reset();
   }
 
@@ -415,23 +416,23 @@ class FutureBase : public FutureMoveControl<is_move_only> {
 
   // Wraps a callback into a functor compatible with AsyncValue::AndThen.
   template <typename F>
-  auto Wrap(F&& f) const& {
-    return [promise = promise_.AsPtr(), f = std::forward<F>(f)]() mutable {
-      f(*promise);
+  auto AndThen(F&& f) const& {
+    return [ptr = promise_.AsPtr(), f = std::forward<F>(f)]() mutable {
+      std::move(f)(*ptr);
     };
   }
 
   // Wraps a callback into a functor compatible with AsyncValue::AndThen.
   template <typename F>
-  auto Wrap(F&& f) && {
-    return [promise = promise_.AsPtr(), f = std::forward<F>(f)]() mutable {
+  auto AndThen(F&& f) && {
+    return [ptr = promise_.AsPtr(), f = std::forward<F>(f)]() mutable {
       if constexpr (is_move_only) {
-        f(std::move(*promise));
+        std::move(f)(std::move(*ptr));
       } else {
         // We can't move from the promise to the caller because for copyable
         // futures we can have multiple copies of the Future sharing the
         // same underlying promise object.
-        f(*promise);
+        std::move(f)(*ptr);
       }
     };
   }
@@ -1151,8 +1152,16 @@ Future<future_type_t<T>> FutureBase<T, is_move_only>::Detach(
   }
 
   RCReference<IndirectAsyncValue> detached = MakeIndirectAsyncValue<T>();
-  promise_.AndThen(executor, [detached, ptr = promise_.AsPtr()] {
-    detached->ForwardTo(ptr.CopyRCRef());
+  promise_.AndThen([&executor, detached, ptr = promise_.AsPtr()] {
+    // If we hold the last reference to the detached promise, then we can safely
+    // forward it to the available value without using an executor, as we know
+    // that it will not execute any callbacks in the caller thread.
+    if (ABSL_PREDICT_FALSE(detached->NumRef() == 1 && !detached->HasWaiter())) {
+      detached->ForwardTo(ptr.CopyRCRef());
+    } else {
+      executor.Execute(absl::bind_front(&IndirectAsyncValue::ForwardTo,
+                                        std::move(detached), ptr.CopyRCRef()));
+    }
   });
   return Future<future_type_t<T>>(AsyncValueRef<T>(std::move(detached)),
                                   on_block_start_, on_block_end_);
@@ -1169,8 +1178,16 @@ Future<future_type_t<T>> FutureBase<T, is_move_only>::Detach(
 
   AsyncValuePtr<T> ptr = promise_.AsPtr();
   RCReference<IndirectAsyncValue> detached = MakeIndirectAsyncValue<T>();
-  ptr.AndThen(executor, [detached, ref = std::move(promise_)]() mutable {
-    detached->ForwardTo(ref.ReleaseRCRef());
+  ptr.AndThen([&executor, detached, ref = std::move(promise_)]() mutable {
+    // If we hold the last reference to the detached promise, then we can safely
+    // forward it to the available value without using an executor, as we know
+    // that it will not execute any callbacks in the caller thread.
+    if (ABSL_PREDICT_FALSE(detached->NumRef() == 1 && !detached->HasWaiter())) {
+      detached->ForwardTo(std::move(ref));
+    } else {
+      executor.Execute(absl::bind_front(&IndirectAsyncValue::ForwardTo,
+                                        std::move(detached), std::move(ref)));
+    }
   });
   return Future<future_type_t<T>>(AsyncValueRef<T>(std::move(detached)),
                                   std::move(on_block_start_),

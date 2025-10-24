@@ -642,7 +642,7 @@ TEST(FutureTest, DetachMoveOnly) {
   EXPECT_EQ(executor.num_tasks, 1);
 };
 
-TEST(DetachFutureTest, DetachOnThreadPool) {
+TEST(FutureTest, DetachOnThreadPool) {
   // We use static thread local counter to make sure that all callbacks are
   // executed on a thread inside the thread pool.
   static thread_local int32_t counter = 0;
@@ -674,6 +674,24 @@ TEST(DetachFutureTest, DetachOnThreadPool) {
 
   // Check that no callbacks were executed on the thread that sets the promise.
   EXPECT_EQ(counter, 0);
+}
+
+TEST(FutureTest, NoOpDetachDoesNotExecute) {
+  auto [promise, future] = Future<>::MakePromise();
+
+  CountingExecutor executor;
+  (void)future.Detach(executor);
+  promise.Set(absl::OkStatus());
+  EXPECT_EQ(executor.num_tasks, 0);
+}
+
+TEST(FutureTest, NoOpMoveOnlyDetachDoesNotExecute) {
+  auto [promise, future] = Future<std::unique_ptr<int32_t>>::MakePromise();
+
+  CountingExecutor executor;
+  (void)std::move(future).Detach(executor);
+  promise.Set(std::make_unique<int32_t>(42));
+  EXPECT_EQ(executor.num_tasks, 0);
 }
 
 TEST(FutureTest, MapOnExecutorDoesNotCopy) {
