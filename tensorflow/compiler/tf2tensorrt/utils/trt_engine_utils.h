@@ -32,7 +32,8 @@ limitations under the License.
 
 namespace tensorflow {
 namespace tensorrt {
-using ::tsl::StatusOr;
+template <typename T>
+using StatusOr ABSL_DEPRECATE_AND_INLINE() = ::absl::StatusOr<T>;
 
 // Creates a TensorRT execution context.
 ExecutionContext CreateExecutionContext(nvinfer1::ICudaEngine* cuda_engine);
