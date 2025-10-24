@@ -269,6 +269,144 @@ class XtileLoweringTest(absltest.TestCase):
         maxulp=5,
     )
 
+  def test_reduction_add_inner(self):
+    ir = """
+      module @reduction_add_inner {
+        xtile.entry_func @reduction_add_inner(
+            %input: memref<1024x32xf32>,
+            %init: memref<f32>,
+            %output: memref<1024xf32>,
+            %tile_id: index) attributes {xtile.tiling_info = #xtile.tiling_info<tile_count:128, tiles_per_workgroup:32>} {
+          %c_0 = arith.constant 0 : index
+          %c_8 = arith.constant 8 : index
+          %init_tile = xtile.extract %init[][][] : memref<f32> -> tensor<f32>
+          %index = arith.muli %tile_id, %c_8 : index
+          %input_tile = xtile.extract %input[%index, %c_0][8, 32][1, 1] : memref<1024x32xf32> -> tensor<8x32xf32>
+          %result = stablehlo.reduce(%input_tile init: %init_tile)
+                    across dimensions = [1]
+                    : (tensor<8x32xf32>, tensor<f32>) -> tensor<8xf32>
+            reducer(%arg0: tensor<f32>, %arg1: tensor<f32>) {
+              %add = arith.addf %arg0, %arg1 : tensor<f32>
+              stablehlo.return %add : tensor<f32>
+            }
+          xtile.insert %result into %output[%index][8][1] : tensor<8xf32> -> memref<1024xf32>
+          xtile.return
+        }
+      }
+    """
+
+    compare_kernel(
+        ir,
+        "reduction_add_inner",
+        4,
+        [(1024, 32), (1,)],
+        (1024,),
+        np.int32,
+        lambda input, init: np.sum(input, axis=1) + init,
+    )
+
+  def test_reduction_add_outer(self):
+    ir = """
+      module @reduction_add_outer {
+        xtile.entry_func @reduction_add_outer(
+            %input: memref<1024x32xf32>,
+            %init: memref<f32>,
+            %output: memref<32xf32>,
+            %tile_id: index) attributes {xtile.tiling_info = #xtile.tiling_info<tile_count:4, tiles_per_workgroup:1>} {
+          %c_0 = arith.constant 0 : index
+          %c_8 = arith.constant 8 : index
+          %init_tile = xtile.extract %init[][][] : memref<f32> -> tensor<f32>
+          %index = arith.muli %tile_id, %c_8 : index
+          %input_tile = xtile.extract %input[%c_0, %index][1024, 8][1, 1] : memref<1024x32xf32> -> tensor<1024x8xf32>
+          %result = stablehlo.reduce(%input_tile init: %init_tile)
+                    across dimensions = [0]
+                    : (tensor<1024x8xf32>, tensor<f32>) -> tensor<8xf32>
+            reducer(%arg0: tensor<f32>, %arg1: tensor<f32>) {
+              %add = arith.addf %arg0, %arg1 : tensor<f32>
+              stablehlo.return %add : tensor<f32>
+            }
+          xtile.insert %result into %output[%index][8][1] : tensor<8xf32> -> memref<32xf32>
+          xtile.return
+        }
+      }
+    """
+
+    compare_kernel(
+        ir,
+        "reduction_add_outer",
+        4,
+        [(1024, 32), (1,)],
+        (32,),
+        np.float32,
+        lambda input, init: np.sum(input, axis=0) + init,
+    )
+
+  def test_reduction_middle(self):
+    ir = """
+      module @reduction_add_middle {
+        xtile.entry_func @reduction_add_middle(
+            %input: memref<8x4x2xf32>,
+            %init: memref<f32>,
+            %output: memref<8x2xf32>,
+            %tile_id: index) attributes {xtile.tiling_info = #xtile.tiling_info<tile_count:1, tiles_per_workgroup:1>} {
+          %init_val = xtile.extract %init[][][] : memref<f32> -> tensor<f32>
+          %input_tile = xtile.extract %input[%tile_id, %tile_id, %tile_id][8, 4, 2][1, 1, 1] : memref<8x4x2xf32> -> tensor<8x4x2xf32>
+          %result = stablehlo.reduce(%input_tile init: %init_val)
+                    across dimensions = [1]
+                    : (tensor<8x4x2xf32>, tensor<f32>) -> tensor<8x2xf32>
+            reducer(%arg0: tensor<f32>, %arg1: tensor<f32>) {
+              %add = arith.addf %arg0, %arg1 : tensor<f32>
+              stablehlo.return %add : tensor<f32>
+            }
+          xtile.insert %result into %output[%tile_id, %tile_id][8, 2][1, 1] : tensor<8x2xf32> -> memref<8x2xf32>
+          xtile.return
+        }
+      }
+    """
+
+    compare_kernel(
+        ir,
+        "reduction_add_middle",
+        1,
+        [(8, 4, 2), (1,)],
+        (8, 2),
+        np.float32,
+        lambda input, init: np.sum(input, axis=1) + init,
+    )
+
+  def test_reduction_outer_inner(self):
+    ir = """
+      module @reduction_add_outer_inner {
+        xtile.entry_func @reduction_add_outer_inner(
+            %input: memref<8x4x2xf32>,
+            %init: memref<f32>,
+            %output: memref<4xf32>,
+            %tile_id: index) attributes {xtile.tiling_info = #xtile.tiling_info<tile_count:1, tiles_per_workgroup:1>} {
+          %init_val = xtile.extract %init[][][] : memref<f32> -> tensor<f32>
+          %input_tile = xtile.extract %input[%tile_id, %tile_id, %tile_id][8, 4, 2][1, 1, 1] : memref<8x4x2xf32> -> tensor<8x4x2xf32>
+          %result = stablehlo.reduce(%input_tile init: %init_val)
+                    across dimensions = [0, 2]
+                    : (tensor<8x4x2xf32>, tensor<f32>) -> tensor<4xf32>
+            reducer(%arg0: tensor<f32>, %arg1: tensor<f32>) {
+              %add = arith.addf %arg0, %arg1 : tensor<f32>
+              stablehlo.return %add : tensor<f32>
+            }
+          xtile.insert %result into %output[%tile_id][4][1] : tensor<4xf32> -> memref<4xf32>
+          xtile.return
+        }
+      }
+    """
+
+    compare_kernel(
+        ir,
+        "reduction_add_outer_inner",
+        1,
+        [(8, 4, 2), (1,)],
+        (4,),
+        np.float32,
+        lambda input, init: np.sum(input, axis=(0, 2)) + init,
+    )
+
 
 if __name__ == "__main__":
   absltest.main()

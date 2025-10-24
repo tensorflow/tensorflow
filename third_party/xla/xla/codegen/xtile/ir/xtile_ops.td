@@ -71,6 +71,7 @@ def TiledBufferInterface : OpInterface<"TiledBufferInterface"> {
 def EntryFuncOp : XTile_Op<"entry_func", [
     Symbol,
     IsolatedFromAbove,
+    AutomaticAllocationScope,
     FunctionOpInterface]>
 {
   let summary = "My custom entry function operation";

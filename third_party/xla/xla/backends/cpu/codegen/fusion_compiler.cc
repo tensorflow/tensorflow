@@ -61,6 +61,8 @@ limitations under the License.
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
+#include "mlir/Dialect/Vector/Transforms/Passes.h"
+#include "mlir/Dialect/Vector/Transforms/VectorRewritePatterns.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
@@ -244,15 +246,23 @@ static void AddTiledOptimizationPasses(mlir::OpPassManager& pm) {
 // The input IR is from the xtile dialect which uses tensors that are converted
 // first to the vector dialect and then to LLVM.
 static void AddTiledLoweringPasses(mlir::OpPassManager& pm) {
-  pm.addPass(CreateXTileToVectorPass());
-  pm.addPass(CreateElementalTensorToVectorPass());
   pm.addPass(CreateShloToVectorPass());
+  pm.addPass(CreateXTileToVectorPass());
+  pm.addPass(mlir::createCanonicalizerPass());
+  pm.addPass(CreateRewriteDynamicVectorExtractPass());
+  pm.addPass(CreateElementalTensorToVectorPass());
   pm.addPass(CreateLowerXTileEntryPass());
+  pm.addNestedPass<mlir::func::FuncOp>(
+      mlir::vector::createLowerVectorMultiReductionPass(
+          mlir::vector::VectorMultiReductionLowering::InnerParallel));
   pm.addPass(CreateTensorOpsToVectorPass());
   pm.addPass(cpu::createLowerToLLVMPass());
   pm.addPass(mlir::createConvertVectorToSCFPass(
       mlir::VectorTransferToSCFOptions().enableFullUnroll(false)));
-  pm.addPass(mlir::createConvertVectorToLLVMPass());
+  mlir::ConvertVectorToLLVMPassOptions options;
+  options.vectorTransposeLowering =
+      mlir::vector::VectorTransposeLowering::Shuffle1D;
+  pm.addPass(mlir::createConvertVectorToLLVMPass(options));
 
   pm.addPass(mlir::createConvertComplexToStandardPass());
   pm.addPass(mlir::memref::createExpandStridedMetadataPass());

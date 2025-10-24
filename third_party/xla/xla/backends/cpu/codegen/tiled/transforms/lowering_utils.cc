@@ -15,19 +15,20 @@ limitations under the License.
 
 #include "xla/backends/cpu/codegen/tiled/transforms/lowering_utils.h"
 
+#include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/BuiltinTypeInterfaces.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Value.h"
 #include "mlir/Support/LLVM.h"
 
 namespace xla::cpu {
 
-mlir::VectorType GetVectorType(mlir::RankedTensorType tensor_type) {
-  return mlir::VectorType::get(tensor_type.getShape(),
-                               tensor_type.getElementType());
+mlir::VectorType GetVectorType(mlir::ShapedType type) {
+  return mlir::VectorType::get(type.getShape(), type.getElementType());
 }
 
 mlir::TypedValue<mlir::VectorType> CastToVector(mlir::OpBuilder& builder,
@@ -45,9 +46,8 @@ mlir::TypedValue<mlir::VectorType> CastToVector(mlir::OpBuilder& builder,
   return mlir::cast<mlir::TypedValue<mlir::VectorType>>(cast_op.getResult(0));
 }
 
-mlir::RankedTensorType GetTensorType(mlir::VectorType vector_type) {
-  return mlir::RankedTensorType::get(vector_type.getShape(),
-                                     vector_type.getElementType());
+mlir::RankedTensorType GetTensorType(mlir::ShapedType type) {
+  return mlir::RankedTensorType::get(type.getShape(), type.getElementType());
 }
 
 mlir::TypedValue<mlir::RankedTensorType> CastToTensor(mlir::OpBuilder& builder,
@@ -64,6 +64,14 @@ mlir::TypedValue<mlir::RankedTensorType> CastToTensor(mlir::OpBuilder& builder,
       input.getLoc(), tensor_type, input_vector);
   return mlir::cast<mlir::TypedValue<mlir::RankedTensorType>>(
       cast_op.getResult(0));
+}
+
+mlir::TypedValue<mlir::MemRefType> CreateBufferOfShape(mlir::OpBuilder& builder,
+                                                       mlir::Location loc,
+                                                       mlir::ShapedType shape) {
+  mlir::MemRefType memrefType =
+      mlir::MemRefType::get(shape.getShape(), shape.getElementType());
+  return mlir::memref::AllocaOp::create(builder, loc, memrefType);
 }
 
 }  // namespace xla::cpu
