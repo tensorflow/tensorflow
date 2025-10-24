@@ -27,9 +27,20 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-// Helper function to convert mlir::AffineExpr to xla::gpu::SymbolicExpr.
-SymbolicExpr AffineToSymbolicExpr(::mlir::AffineExpr affine_expr,
-                                  SymbolicExprContext* context, int num_dims);
+// Converts an mlir::AffineExpr to xla::gpu::SymbolicExpr.
+SymbolicExpr AffineExprToSymbolicExpr(::mlir::AffineExpr affine_expr,
+                                      SymbolicExprContext* context,
+                                      int num_dims);
+
+// Converts a list of mlir::AffineExpr to xla::gpu::SymbolicExpr.
+std::vector<SymbolicExpr> AffineExprsToSymbolicExprs(
+    llvm::ArrayRef<mlir::AffineExpr> affine_exprs, SymbolicExprContext* context,
+    int num_dims);
+
+// Converts an xla::gpu::SymbolicExpr to an mlir::AffineExpr.
+mlir::AffineExpr SymbolicExprToAffineExpr(SymbolicExpr symbolic_expr,
+                                          mlir::MLIRContext* context,
+                                          int num_dims);
 
 // Converts an mlir::AffineMap to xla::gpu::SymbolicMap.
 SymbolicMap AffineMapToSymbolicMap(const mlir::AffineMap& affine_map,

@@ -98,6 +98,18 @@ class SymbolicMap {
   bool operator==(const SymbolicMap& other) const;
   bool operator!=(const SymbolicMap& other) const { return !(*this == other); }
 
+  template <typename H>
+  friend H AbslHashValue(H h, const SymbolicMap& map) {
+    return H::combine(std::move(h), map.ctx_, map.num_dimensions_,
+                      map.num_symbols_, map.exprs_);
+  }
+
+  friend ::llvm::hash_code hash_value(const SymbolicMap& map) {
+    return ::llvm::hash_combine(
+        map.ctx_, map.num_dimensions_, map.num_symbols_,
+        ::llvm::hash_combine_range(map.exprs_.begin(), map.exprs_.end()));
+  }
+
   template <typename Sink>
   friend void AbslStringify(Sink& sink, const SymbolicMap& map) {
     sink.Append(map.ToString());

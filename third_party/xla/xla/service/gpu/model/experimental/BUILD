@@ -216,6 +216,11 @@ cc_library(
     name = "symbolic_map",
     srcs = ["symbolic_map.cc"],
     hdrs = ["symbolic_map.h"],
+    compatible_with = ["//buildenv/target:non_prod"],
+    visibility = [
+        "//xla/hlo/analysis:__subpackages__",
+        "//xla/service/gpu:__subpackages__",
+    ],
     deps = [
         ":symbolic_expr",
         "@com_google_absl//absl/algorithm:container",
@@ -243,6 +248,14 @@ cc_library(
     srcs = ["symbolic_expr.cc"],
     hdrs = ["symbolic_expr.h"],
     compatible_with = get_compatible_with_portable(),
+    visibility = [
+        "//xla/backends/cpu/codegen:__subpackages__",
+        "//xla/backends/gpu/codegen:__subpackages__",
+        "//xla/codegen:__subpackages__",
+        "//xla/hlo/analysis:__subpackages__",
+        "//xla/service/cpu:__subpackages__",
+        "//xla/service/gpu:__subpackages__",
+    ],
     deps = [
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
@@ -273,6 +286,7 @@ cc_library(
     name = "symbolic_map_converter",
     srcs = ["symbolic_map_converter.cc"],
     hdrs = ["symbolic_map_converter.h"],
+    compatible_with = ["//buildenv/target:non_prod"],
     deps = [
         ":symbolic_expr",
         ":symbolic_map",
