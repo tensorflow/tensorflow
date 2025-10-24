@@ -82,7 +82,7 @@ class TraceMeProducer : public TraceMe {
   explicit TraceMeProducer(NameT&& name,
                            ContextType context_type = ContextType::kGeneric,
                            std::optional<uint64> context_id = std::nullopt,
-                           int level = 2)
+                           int level = tsl::profiler::TraceMeLevel::kCritical)
       : TraceMe(std::forward<NameT>(name), level),
         context_id_(context_id.has_value() ? context_id.value()
                                            : TraceMe::NewActivityId()) {
@@ -101,7 +101,7 @@ class TraceMeConsumer : public TraceMe {
  public:
   template <typename NameT>
   TraceMeConsumer(NameT&& name, ContextType context_type, uint64 context_id,
-                  int level = 2)
+                  int level = tsl::profiler::TraceMeLevel::kCritical)
       : TraceMe(std::forward<NameT>(name), level) {
     AppendMetadata([&] {
       return TraceMeEncode({{"_ct", context_type}, {"_c", context_id}});
