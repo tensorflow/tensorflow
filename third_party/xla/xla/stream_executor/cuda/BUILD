@@ -478,6 +478,63 @@ xla_test(
     ],
 )
 
+cuda_library(
+    name = "buffer_debug_nan_count_kernel_cuda",
+    srcs = ["buffer_debug_nan_count_kernel_cuda.cu.cc"],
+    # copybara:uncomment compatible_with = ["//buildenv/target:non_prod"],
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
+    deps = [
+        ":cuda_platform",
+        "//xla/backends/gpu/runtime:buffer_debug_log_structs",
+        "//xla/backends/gpu/runtime:thunk_buffer_id",
+        "//xla/stream_executor:kernel_spec",
+        "//xla/stream_executor/gpu:buffer_debug_nan_count_kernel",
+        "//xla/stream_executor/gpu:gpu_kernel_registry",
+        "//xla/tsl/platform:logging",
+        "@com_google_absl//absl/base",
+        "@local_config_cuda//cuda:cuda_headers",
+    ],
+    alwayslink = True,
+)
+
+xla_test(
+    name = "buffer_debug_nan_count_kernel_cuda_test",
+    srcs = ["buffer_debug_nan_count_kernel_cuda_test.cc"],
+    backends = ["gpu"],
+    tags = ["cuda-only"],
+    deps = [
+        ":buffer_debug_nan_count_kernel_cuda",
+        "//xla:types",
+        "//xla/backends/gpu/runtime:buffer_debug_log_structs",
+        "//xla/backends/gpu/runtime:thunk_buffer_id",
+        "//xla/backends/gpu/runtime:thunk_id",
+        "//xla/stream_executor:device_memory",
+        "//xla/stream_executor:launch_dim",
+        "//xla/stream_executor:platform",
+        "//xla/stream_executor:platform_manager",
+        "//xla/stream_executor:stream",
+        "//xla/stream_executor:stream_executor_h",
+        "//xla/stream_executor:stream_executor_memory_allocator",
+        "//xla/stream_executor:typed_kernel_factory",
+        "//xla/stream_executor/gpu:buffer_debug_log",
+        "//xla/stream_executor/gpu:buffer_debug_nan_count_kernel",
+        "//xla/stream_executor/gpu:gpu_kernel_registry",
+        "//xla/tsl/lib/core:status_test_util",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/cleanup",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 cc_library(
     name = "cudnn_plugin",
     srcs = ["cuda_dnn.cc"],
