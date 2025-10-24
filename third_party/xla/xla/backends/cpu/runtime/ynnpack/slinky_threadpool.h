@@ -38,8 +38,8 @@ class SlinkyThreadPool final : public slinky::thread_pool {
   explicit SlinkyThreadPool(Eigen::ThreadPoolInterface* threadpool);
   ~SlinkyThreadPool() final;
 
-  SlinkyThreadPool(SlinkyThreadPool&&) = default;
-  SlinkyThreadPool& operator=(SlinkyThreadPool&&) = default;
+  SlinkyThreadPool(SlinkyThreadPool&&);
+  SlinkyThreadPool& operator=(SlinkyThreadPool&&);
 
   slinky::ref_count<task> enqueue(size_t n, task_body t,
                                   int32_t max_workers) final;

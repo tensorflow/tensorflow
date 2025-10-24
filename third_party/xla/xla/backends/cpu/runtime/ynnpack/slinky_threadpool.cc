@@ -360,6 +360,9 @@ SlinkyThreadPool::SlinkyThreadPool(Eigen::ThreadPoolDevice* device)
 SlinkyThreadPool::SlinkyThreadPool(Eigen::ThreadPoolInterface* threadpool)
     : impl_(new Impl(threadpool)) {}
 
+SlinkyThreadPool::SlinkyThreadPool(SlinkyThreadPool&&) = default;
+SlinkyThreadPool& SlinkyThreadPool::operator=(SlinkyThreadPool&&) = default;
+
 SlinkyThreadPool::~SlinkyThreadPool() = default;
 
 slinky::ref_count<SlinkyThreadPool::task> SlinkyThreadPool::enqueue(

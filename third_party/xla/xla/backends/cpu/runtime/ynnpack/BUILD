@@ -38,7 +38,10 @@ ynn_cc_test(
     deps = [
         ":slinky_threadpool",
         "//xla/tsl/platform:env",
-        "@com_google_googletest//:gtest_main",
+        "//xla/tsl/platform:test",
+        "//xla/tsl/platform:test_benchmark",
+        "//xla/tsl/platform:test_main",
+        "@com_google_absl//absl/strings:str_format",
         "@slinky//slinky/base:thread_pool",
     ],
 )

@@ -19,11 +19,15 @@ limitations under the License.
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <vector>
 
-#include <gtest/gtest.h>
+#include "absl/strings/str_format.h"
+#include "slinky/base/ref_count.h"
 #include "slinky/base/thread_pool.h"
 #include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/test.h"
+#include "xla/tsl/platform/test_benchmark.h"
 #include "xla/tsl/platform/threadpool.h"
 
 namespace xla::cpu {
@@ -93,5 +97,59 @@ TEST(SlinkyThreadPoolTest, NestedLoops) {
     EXPECT_EQ(data[i], size);
   }
 }
+
+//===----------------------------------------------------------------------===//
+// Performance benchmarks below.
+//===----------------------------------------------------------------------===//
+
+static void BM_ParallelFor(benchmark::State& state) {
+  int64_t num_threads = state.range(0);
+  int64_t num_threadpools = state.range(1);
+
+  tsl::thread::ThreadPool threads(tsl::Env::Default(), "bench", num_threads);
+  std::vector<SlinkyThreadPool> thread_pools;
+  for (size_t i = 0; i < num_threadpools; ++i) {
+    thread_pools.emplace_back(threads.AsEigenThreadPool());
+  }
+
+  static constexpr size_t kNumLoops = 100;
+  static constexpr size_t kLoopSize = 100;
+
+  for (auto _ : state) {
+    std::vector<slinky::ref_count<slinky::thread_pool::task>> tasks;
+
+    for (size_t i = 0; i < kNumLoops; ++i) {
+      SlinkyThreadPool& thread_pool = thread_pools[i % num_threadpools];
+      tasks.push_back(thread_pool.enqueue(
+          kLoopSize, [](int64_t) {}, std::numeric_limits<int32_t>::max()));
+    }
+
+    for (size_t i = 0; i < kNumLoops; ++i) {
+      SlinkyThreadPool& thread_pool = thread_pools[i % num_threadpools];
+      thread_pool.wait_for(&*tasks[i]);
+    }
+  }
+
+  state.SetItemsProcessed(kLoopSize * kNumLoops * state.iterations());
+  state.SetLabel(absl::StrFormat("#threads=%d, #threadpools=%d", num_threads,
+                                 num_threadpools));
+}
+
+BENCHMARK(BM_ParallelFor)
+    ->ArgPair(8, 1)
+    ->ArgPair(8, 2)
+    ->ArgPair(8, 4)
+    ->ArgPair(8, 8)
+    ->ArgPair(8, 16)
+    ->ArgPair(16, 1)
+    ->ArgPair(16, 2)
+    ->ArgPair(16, 4)
+    ->ArgPair(16, 8)
+    ->ArgPair(16, 16)
+    ->ArgPair(32, 1)
+    ->ArgPair(32, 2)
+    ->ArgPair(32, 4)
+    ->ArgPair(32, 8)
+    ->ArgPair(32, 16);
 
 }  // namespace xla::cpu
