@@ -30,6 +30,7 @@ limitations under the License.
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/DialectRegistry.h"
 #include "mlir/IR/OperationSupport.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/SymbolTable.h"
@@ -41,6 +42,7 @@ limitations under the License.
 #include "shardy/dialect/sdy/ir/constants.h"
 #include "shardy/dialect/sdy/ir/dialect.h"
 #include "shardy/dialect/sdy/ir/utils.h"
+#include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/service/spmd/shardy/constants.h"
 #include "xla/service/spmd/shardy/utils.h"
 
@@ -231,13 +233,24 @@ class ExportNamedComputationsPass
       callOp->setAttrs(callOpAttrs);
 
       // Copy the func output shardings to the call op.
-      // TODO(enver): Add explicit reshard if callOp and funcOp result shardings
-      // mismatch.
       FuncOp funcOp = symbolTable.lookup<FuncOp>(funcSymName);
       if (TensorShardingPerValueAttr funcResultShardings =
               getFuncResultShardings(callOp, funcOp, symbolTable);
           funcResultShardings) {
         mlir::sdy::setShardings(callOp, funcResultShardings);
+        if (outShardings.has_value()) {
+          for (auto [funcResultSharding, outSharding, result] : llvm::zip_equal(
+                   funcResultShardings.getShardings(),
+                   outShardings->getShardings(), callOp.getResults())) {
+            if (!funcResultSharding.isEquivalent(outSharding)) {
+              rewriter.setInsertionPointAfterValue(result);
+              auto copyOp =
+                  mlir::mhlo::CopyOp::create(rewriter, result.getLoc(), result);
+              mlir::sdy::setShardings(copyOp, outSharding);
+              rewriter.replaceAllUsesExcept(result, copyOp, copyOp);
+            }
+          }
+        }
         if (manualAxesAttr) {
           callOp->setAttr(kManualAxes, manualAxesAttr);
         }
@@ -254,6 +267,10 @@ class ExportNamedComputationsPass
            "function called the `NamedComputationOp`'s `name`. The new "
            "`FuncOp` and `CallOp` have the same shardings as the original "
            "`NamedComputationOp`s operands/results.";
+  }
+
+  void getDependentDialects(mlir::DialectRegistry& registry) const final {
+    registry.insert<mlir::sdy::SdyDialect, mlir::mhlo::MhloDialect>();
   }
 
   Option<bool> dedupFunctionsFully{
