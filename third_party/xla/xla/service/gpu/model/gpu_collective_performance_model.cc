@@ -112,9 +112,6 @@ struct CudaBandwidthSettings {
   static constexpr double kSm80NvlinkBandwidth = 20.0;
   static constexpr double kSm90NvlinkBandwidth = 20.0;
 
-  // PCIE bandwidth for PCI Gen3 x16
-  static constexpr double kPciBandwidth = 12.0;
-
   // Discount factor for ring algorithm
   static constexpr double kRingAlgorithmDiscountFactor = 0.92;
 
@@ -210,9 +207,6 @@ struct RocmBandwidthSettings {
   static constexpr double kMi100InfinityFabricBandwidth = 37.5;
   static constexpr double kMi200InfinityFabricBandwidth = 75.0;
   static constexpr double kMi300InfinityFabricBandwidth = 112.0;
-
-  // PCIe bandwidth for PCI Gen4 x16 (approximate)
-  static constexpr double kPciBandwidth = 32.0;
 
   // Discount factor for ring algorithm (based on ROCm NCCL implementation)
   static constexpr double kRingAlgorithmDiscountFactor = 0.90;
@@ -321,10 +315,11 @@ absl::Duration ComputeAllreduceTimeImpl(
       std::max(num_devices, GetMinNumberOfChannels(CollectiveAlgo::RING));
   int64_t num_channels =
       std::max(min_nchannels, GetNcclMaxNumChannels(CollectiveAlgo::RING));
-  int default_threads =
-      (bw_intra_node * num_channels <= bandwidth_settings.kPciBandwidth)
-          ? 256
-          : bandwidth_settings.kLL128NumThreads;
+  int64_t pcie_bandwidth_gbps =
+      gpu_device_info.pcie_bandwidth() / 1024 / 1024 / 1024;
+  int default_threads = (bw_intra_node * num_channels <= pcie_bandwidth_gbps)
+                            ? 256
+                            : bandwidth_settings.kLL128NumThreads;
 
   int warp_size = gpu_device_info.threads_per_warp();
   int num_threads =

@@ -2924,9 +2924,9 @@ HloCostAnalysis::Options CreateHloAnalysisOpts(
         std::make_optional<HloRematerialization::HostMemoryOffloadConfig>(
             /*host_memory_space=*/host_memory_space_color,
             /*bandwidth_to_host_bytes_per_second=*/
-            gpu_device_info.memory_bandwidth(),
+            gpu_device_info.pcie_bandwidth(),
             /*bandwidth_from_host_bytes_per_second=*/
-            gpu_device_info.memory_bandwidth());
+            gpu_device_info.pcie_bandwidth());
   }
   return hlo_cost_analysis_options;
 }

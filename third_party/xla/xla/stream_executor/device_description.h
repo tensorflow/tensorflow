@@ -154,34 +154,28 @@ class DeviceDescription {
   // Returns the limit on the total number of threads that can be launched in a
   // single block; i.e. the limit on x * y * z dimensions of a ThreadDim.
   // This limit affects what constitutes a legitimate kernel launch request.
-  const int64_t& threads_per_block_limit() const {
-    return threads_per_block_limit_;
-  }
+  int64_t threads_per_block_limit() const { return threads_per_block_limit_; }
 
   // Returns the limit on the total number of threads that can be simultaneously
   // launched on a given multiprocessor.
-  const int64_t& threads_per_core_limit() const {
-    return threads_per_core_limit_;
-  }
+  int64_t threads_per_core_limit() const { return threads_per_core_limit_; }
 
   // Returns the number of threads per warp/wavefront.
   constexpr int64_t threads_per_warp() const { return threads_per_warp_; }
 
   // Returns the limit on the total number of registers per core.
-  const int64_t& registers_per_core_limit() const {
-    return registers_per_core_limit_;
-  }
+  int64_t registers_per_core_limit() const { return registers_per_core_limit_; }
 
   // Returns the limit on the total number of registers that can be
   // simultaneously used by a block.
-  const int64_t& registers_per_block_limit() const {
+  int64_t registers_per_block_limit() const {
     return registers_per_block_limit_;
   }
 
   // Returns the number of address bits available to kernel code running on the
   // platform. This affects things like the maximum allocation size and perhaps
   // types used in kernel code such as size_t.
-  const int64_t& device_address_bits() const { return device_address_bits_; }
+  int64_t device_address_bits() const { return device_address_bits_; }
 
   // Returns the device memory size in bytes.
   int64_t device_memory_size() const { return device_memory_size_; }
@@ -193,6 +187,9 @@ class DeviceDescription {
   // reads/writes to/from the device's own memory, not for transfers between the
   // host and device.)
   int64_t memory_bandwidth() const { return memory_bandwidth_; }
+
+  // Returns the PCIe memory bandwidth in bytes/sec.
+  int64_t pcie_bandwidth() const { return pcie_bandwidth_; }
 
   // Returns the device's core clock rate in GHz.
   float clock_rate_ghz() const { return clock_rate_ghz_; }
@@ -340,6 +337,7 @@ class DeviceDescription {
   void set_device_memory_size(int64_t value) { device_memory_size_ = value; }
   void set_l2_cache_size(int64_t value) { l2_cache_size_ = value; }
   void set_memory_bandwidth(int64_t value) { memory_bandwidth_ = value; }
+  void set_pcie_bandwidth(int64_t value) { pcie_bandwidth_ = value; }
 
   void set_shared_memory_per_core(int64_t value) {
     shared_memory_per_core_ = value;
@@ -400,7 +398,9 @@ class DeviceDescription {
   int64_t device_address_bits_ = kUninitialized<int64_t>;
   int64_t device_memory_size_ = kUninitialized<int64_t>;
   int64_t l2_cache_size_ = kUninitialized<int64_t>;
+
   int64_t memory_bandwidth_ = kUninitialized<int64_t>;
+  int64_t pcie_bandwidth_ = kUninitialized<int64_t>;
 
   // Shared memory limits on a given device.
   int64_t shared_memory_per_core_ = kUninitialized<int64_t>;

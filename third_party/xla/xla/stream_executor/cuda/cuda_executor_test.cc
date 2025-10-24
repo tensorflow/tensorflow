@@ -64,6 +64,7 @@ TEST(CudaExecutorTest, CreateDeviceDescription) {
   EXPECT_NE(result->driver_version(), kNullVersion);
   EXPECT_NE(result->compile_time_toolkit_version(), kNullVersion);
 
+  EXPECT_GT(result->pcie_bandwidth(), 1024 * 1024);
   EXPECT_THAT(result->platform_version(), Not(IsEmpty()));
   EXPECT_THAT(result->name(), Not(IsEmpty()));
   EXPECT_THAT(result->model_str(), Not(IsEmpty()));
