@@ -17,20 +17,24 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
 #include "xla/array.h"
+#include "xla/hlo/ir/mesh_and_axis.h"
+#include "xla/hlo/ir/tile_assignment.h"
 #include "xla/printer.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/protobuf.h"
 
 namespace xla {
 
@@ -45,6 +49,163 @@ std::string ReplicaGroupsToString(
   return absl::StrCat("{", absl::StrJoin(replica_group_str, ","), "}");
 }
 
+/************** MeshAxesReplicaGroupList implementation ***********************/
+int64_t MeshAxesReplicaGroupList::num_replica_groups() const {
+  return mesh_.device_assignment().num_elements() / num_devices_per_group();
+}
+
+int64_t MeshAxesReplicaGroupList::num_devices_per_group() const {
+  // Number of devices per replica group is equal to the product of the sizes of
+  // all axes which are reduced across.
+  int64_t devices_per_group = 1;
+  for (const AxisRef& axis : axes_) {
+    int64_t axis_size =
+        axis.sub_axis_info().has_value()
+            ? axis.sub_axis_info()->size
+            : mesh_.device_assignment().dim(axis.mesh_axis_index());
+    devices_per_group *= axis_size;
+  }
+  return devices_per_group;
+}
+
+Array<int64_t> MeshAxesReplicaGroupList::ToArray() const {
+  return mesh_.device_assignment().array();
+}
+
+std::vector<std::vector<int64_t>>
+MeshAxesReplicaGroupList::get_replica_groups_for_full_axes(
+    const std::vector<int64_t>& axis_sizes,
+    const absl::flat_hash_set<int64_t>& reduced_axes) const {
+  int64_t device_id_index = 0;
+  Array<int64_t> device_assignment_array = mesh_.device_assignment().array();
+  std::vector<int64_t> dev_ids;
+  for (int64_t id : device_assignment_array) {
+    dev_ids.push_back(id);
+  }
+
+  // Map containing the list of device ids for each replica group. The key for
+  // each group is equal to the value of the cartesian product iterator,
+  // ignoring the reduced axes.
+  absl::flat_hash_map<std::vector<int64_t>, std::vector<int64_t>>
+      replica_groups;
+  for (const auto& current : CartesianProduct(axis_sizes)) {
+    std::vector<int64_t> group_key;
+    for (int64_t i = 0; i < current.size(); ++i) {
+      if (!reduced_axes.contains(i)) {
+        group_key.push_back(current[i]);
+      }
+    }
+    replica_groups[group_key].push_back(dev_ids[device_id_index]);
+    device_id_index++;
+  }
+
+  std::vector<std::vector<int64_t>> result;
+  for (const auto& [group_key, group_value] : replica_groups) {
+    CHECK_EQ(group_value.size(), num_devices_per_group());
+    result.push_back(group_value);
+  }
+  return result;
+}
+
+std::vector<std::vector<int64_t>>
+MeshAxesReplicaGroupList::flattened_replica_groups() const {
+  int total_number_of_axes = mesh_.device_assignment().dimensions().size();
+  absl::flat_hash_map<int64_t, AxisRef> reduced_axes;
+  for (const AxisRef& axis : axes_) {
+    reduced_axes.insert_or_assign(axis.mesh_axis_index(), axis);
+  }
+
+  // Simplify implementation by computing equivalent replica groups by reshaping
+  // any sub-axes (m)k of an axis of size n into the equivalent dimensions of
+  // size [m, k, n/(m*k)].
+  std::vector<int64_t> reindex_axis_sizes;
+  absl::flat_hash_set<int64_t> reindexed_reduced_axes;
+  for (int64_t i = 0; i < total_number_of_axes; ++i) {
+    const auto axis_size = mesh_.device_assignment().dim(i);
+    if (!reduced_axes.contains(i)) {
+      reindex_axis_sizes.push_back(axis_size);
+      continue;
+    }
+
+    const AxisRef& axis = reduced_axes.at(i);
+    int64_t offset_index = reindex_axis_sizes.size();
+    if (axis.sub_axis_info().has_value()) {
+      int64_t pre_size = axis.sub_axis_info()->pre_size;
+      int64_t size = axis.sub_axis_info()->size;
+      int64_t post_size = axis_size / (pre_size * size);
+      reindex_axis_sizes.insert(reindex_axis_sizes.end(),
+                                {pre_size, size, post_size});
+      reindexed_reduced_axes.insert(offset_index + 1);
+    } else {
+      reindex_axis_sizes.push_back(axis_size);
+      reindexed_reduced_axes.insert(offset_index);
+    }
+  }
+
+  return get_replica_groups_for_full_axes(reindex_axis_sizes,
+                                          reindexed_reduced_axes);
+}
+
+void MeshAxesReplicaGroupList::Print(Printer* printer) const {
+  printer->Append(ToString());
+}
+
+std::string MeshAxesReplicaGroupList::ToString() const {
+  std::string rg_str = "@mesh";
+  std::vector<std::string> axes_names = mesh_.axis_names();
+  TileAssignment device_assignment = mesh_.device_assignment();
+
+  // Add the mesh axes names and sizes.
+  std::vector<std::string> formatted_axes_names;
+  formatted_axes_names.reserve(axes_names.size());
+  for (int64_t i = 0; i < axes_names.size(); ++i) {
+    formatted_axes_names.push_back(
+        absl::StrCat(axes_names[i], "=", device_assignment.dim(i)));
+  }
+  absl::StrAppend(&rg_str, "<", absl::StrJoin(formatted_axes_names, ","), ">");
+
+  // Add the axis names which are reduced across.
+  std::vector<std::string> reduced_axes_str;
+  reduced_axes_str.reserve(axes_.size());
+  for (const AxisRef& axis : axes_) {
+    std::string axis_str = axes_names[axis.mesh_axis_index()];
+    if (axis.sub_axis_info().has_value()) {
+      absl::StrAppend(&axis_str, ":(", axis.sub_axis_info()->pre_size, ")",
+                      axis.sub_axis_info()->size);
+    }
+    reduced_axes_str.push_back(axis_str);
+  }
+  absl::StrAppend(&rg_str, " {", absl::StrJoin(reduced_axes_str, ","), "}");
+
+  // Add the device assignment if it is not an iota case.
+  std::optional<IotaTileAssignment> iota = device_assignment.iota();
+  if (!(iota.has_value() && iota->reshape_dims().size() == 1)) {
+    absl::StrAppend(&rg_str, ", ", device_assignment.ToString());
+  }
+
+  return rg_str;
+}
+
+MeshAxesReplicaGroupListProto MeshAxesReplicaGroupList::ToProto() const {
+  MeshAxesReplicaGroupListProto proto;
+  *proto.mutable_mesh() = mesh_.ToProto();
+  for (const AxisRef& axis : axes_) {
+    *proto.add_axes() = axis.ToProto();
+  }
+  return proto;
+}
+
+MeshAxesReplicaGroupList MeshAxesReplicaGroupList::FromProto(
+    const MeshAxesReplicaGroupListProto& proto) {
+  Mesh mesh = Mesh::FromProto(proto.mesh());
+  std::vector<AxisRef> axes;
+  for (const AxisRefProto& axis_proto : proto.axes()) {
+    axes.push_back(AxisRef::FromProto(axis_proto));
+  }
+  return MeshAxesReplicaGroupList(mesh, axes);
+}
+
+/************** IotaReplicaGroupList implementation ***************************/
 int64_t IotaReplicaGroupList::num_replica_groups() const {
   DCHECK_GE(num_replica_groups_, 0);
   return num_replica_groups_;
@@ -121,6 +282,7 @@ std::shared_ptr<std::vector<ReplicaGroup>> ExpandIota(
 }
 }  // namespace
 
+/************** CollectiveDeviceList implementation ***************************/
 const std::vector<ReplicaGroup>& CollectiveDeviceList::replica_groups() const {
   if (replica_groups_ == nullptr) {
     CHECK(iota_replica_group_list_.has_value());
