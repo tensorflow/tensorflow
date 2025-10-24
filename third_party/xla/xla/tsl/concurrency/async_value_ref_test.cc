@@ -169,10 +169,10 @@ TEST(AsyncValueRefTest, CopyRef) {
   auto value = MakeAvailableAsyncValueRef<int32_t>(kTestValue);
 
   EXPECT_TRUE(value.IsConcrete());
+  EXPECT_EQ(value.NumRef(), 1);
 
-  EXPECT_TRUE(value.IsUnique());
   auto copied_value = value.CopyRef();
-  EXPECT_FALSE(value.IsUnique());
+  EXPECT_EQ(value.NumRef(), 2);
 
   EXPECT_EQ(value.GetAsyncValue(), copied_value.GetAsyncValue());
 }

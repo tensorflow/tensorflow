@@ -85,11 +85,8 @@ class AsyncValue {
   // Return true if this is an IndirectAsyncValue.
   bool IsIndirect() const;
 
-  // Return reference count. This should be used for testing and debugging only.
+  // Return reference count.
   uint32_t NumRef() const { return refcount_.load(std::memory_order_acquire); }
-
-  // Return true if reference count is 1.
-  bool IsUnique() const;
 
   // Add a new reference to this object.
   //
@@ -804,14 +801,6 @@ class IndirectAsyncValue : public AsyncValue {
     return v->kind() == AsyncValue::Kind::kIndirect;
   }
 
-  bool IsUnique() const {
-    // In addition to checking the refcount of this IndirectAsyncValue, we also
-    // need to check the refcount of the underlying value. If the underlying
-    // value is not available, we conservatively return false.
-    return (refcount_.load(std::memory_order_acquire) == 1) && IsAvailable() &&
-           value_->IsUnique();
-  }
-
  protected:
   // Constructor for TypedIndirectAsyncValue (defined below).
   template <typename T>
@@ -1148,16 +1137,6 @@ inline void AsyncValue::Destroy() {
     ::operator delete(this, alignment);
 #endif  // defined(__cpp_sized_deallocation)
   }
-}
-
-inline bool AsyncValue::IsUnique() const {
-  if (kind() != Kind::kIndirect) {
-    return refcount_.load(std::memory_order_acquire) == 1;
-  }
-
-  // If it is an IndirectAsyncValue, we also need to check the refcount of the
-  // underlying value.
-  return static_cast<const IndirectAsyncValue*>(this)->IsUnique();
 }
 
 }  // namespace tsl
