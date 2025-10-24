@@ -106,10 +106,6 @@ class YnnFusionThunkTest : public testing::TestWithParam<bool> {
 };
 
 TEST_P(YnnFusionThunkTest, ElementwiseAdd) {
-  if (use_threadpool()) {
-    GTEST_SKIP() << "Threadpool is not yet supported. Needs more clean-up.";
-  }
-
   tsl::thread::ThreadPool threads(tsl::Env::Default(), "test", 8);
   Eigen::ThreadPoolDevice device(threads.AsEigenThreadPool(),
                                  threads.NumThreads());
