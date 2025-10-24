@@ -573,6 +573,21 @@ tf_py_strict_test(
     ],
 )
 
+tf_py_strict_test(
+    name = "weighted_moments_test",
+    size = "small",
+    srcs = ["weighted_moments_test.py"],
+    deps = [
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:for_generated_wrappers",
+        "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/ops:nn_ops",
+        "//tensorflow/python/platform:client_testlib",
+        "//third_party/py/numpy",
+    ],
+)
+
 cuda_py_strict_test(
     name = "lrn_op_test",
     size = "medium",
