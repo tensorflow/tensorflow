@@ -1,34 +1,1588 @@
 Auto generated patch. Do not edit or delete it, even if empty.
-diff -ruN --strip-trailing-cr a/mlir/test/Target/SPIRV/function-decorations-asserts.mlir b/mlir/test/Target/SPIRV/function-decorations-asserts.mlir
---- a/mlir/test/Target/SPIRV/function-decorations-asserts.mlir
-+++ b/mlir/test/Target/SPIRV/function-decorations-asserts.mlir
-@@ -0,0 +1,20 @@
-+// REQUIRES: asserts
-+// RUN: mlir-translate --no-implicit-module --test-spirv-roundtrip --split-input-file --debug %s | FileCheck %s
-+
-+spirv.module Logical GLSL450 requires #spirv.vce<v1.0, [Shader, Linkage], []> {
-+    spirv.func @linkage_attr_test_kernel()  "DontInline"  attributes {}  {
-+        %uchar_0 = spirv.Constant 0 : i8
-+        %ushort_1 = spirv.Constant 1 : i16
-+        %uint_0 = spirv.Constant 0 : i32
-+        spirv.FunctionCall @outside.func.with.linkage(%uchar_0):(i8) -> ()
-+        spirv.Return
-+    }
-+    // CHECK: linkage_attributes = #spirv.linkage_attributes<linkage_name = "outside.func", linkage_type = <Import>>
-+    spirv.func @outside.func.with.linkage(%arg0 : i8) -> () "Pure" attributes {
-+      linkage_attributes=#spirv.linkage_attributes<
-+        linkage_name="outside.func",
-+        linkage_type=<Import>
-+      >
-+    }
-+    spirv.func @inside.func() -> () "Pure" attributes {} {spirv.Return}
-+}
-diff -ruN --strip-trailing-cr a/mlir/test/Target/SPIRV/function-decorations.mlir b/mlir/test/Target/SPIRV/function-decorations.mlir
---- a/mlir/test/Target/SPIRV/function-decorations.mlir
-+++ b/mlir/test/Target/SPIRV/function-decorations.mlir
-@@ -1,5 +1,4 @@
- // RUN: mlir-translate --no-implicit-module --test-spirv-roundtrip --split-input-file %s | FileCheck %s
--// RUN: mlir-translate --no-implicit-module --test-spirv-roundtrip --split-input-file --debug %s | FileCheck %s
+diff -ruN --strip-trailing-cr a/clang/lib/Sema/SemaConcept.cpp b/clang/lib/Sema/SemaConcept.cpp
+--- a/clang/lib/Sema/SemaConcept.cpp
++++ b/clang/lib/Sema/SemaConcept.cpp
+@@ -385,6 +385,28 @@
+     return inherited::TraverseStmt(E->getReplacement());
+   }
  
- spirv.module Logical GLSL450 requires #spirv.vce<v1.0, [Shader, Linkage], []> {
-     spirv.func @linkage_attr_test_kernel()  "DontInline"  attributes {}  {
++  bool TraverseTemplateName(TemplateName Template) {
++    if (auto *TTP = dyn_cast_if_present<TemplateTemplateParmDecl>(
++            Template.getAsTemplateDecl());
++        TTP && TTP->getDepth() < TemplateArgs.getNumLevels()) {
++      if (!TemplateArgs.hasTemplateArgument(TTP->getDepth(),
++                                            TTP->getPosition()))
++        return true;
++
++      TemplateArgument Arg = TemplateArgs(TTP->getDepth(), TTP->getPosition());
++      if (TTP->isParameterPack() && SemaRef.ArgPackSubstIndex) {
++        assert(Arg.getKind() == TemplateArgument::Pack &&
++               "Missing argument pack");
++        Arg = SemaRef.getPackSubstitutedTemplateArgument(Arg);
++      }
++      assert(!Arg.getAsTemplate().isNull() &&
++             "Null template template argument");
++      UsedTemplateArgs.push_back(
++          SemaRef.Context.getCanonicalTemplateArgument(Arg));
++    }
++    return inherited::TraverseTemplateName(Template);
++  }
++
+   void VisitConstraint(const NormalizedConstraintWithParamMapping &Constraint) {
+     if (!Constraint.hasParameterMapping()) {
+       for (const auto &List : TemplateArgs)
+diff -ruN --strip-trailing-cr a/clang/test/SemaTemplate/concepts.cpp b/clang/test/SemaTemplate/concepts.cpp
+--- a/clang/test/SemaTemplate/concepts.cpp
++++ b/clang/test/SemaTemplate/concepts.cpp
+@@ -1573,3 +1573,62 @@
+   template<typename... Ts> auto comma = (..., Ts());
+   auto b = comma<check<e{}>>;
+ } // namespace GH162770
++
++namespace GH164750 {
++
++template <typename>
++struct a;
++template <typename>
++struct b;
++
++template <template <typename> typename c, typename d, typename>
++concept e = !__is_convertible_to(c<d>*, b<d>*);
++
++template <typename...>
++struct f;
++template <typename g, typename... h>
++struct f<g, h...> {
++    g i;
++};
++
++template <typename, typename>
++struct u;
++template <typename j, template <typename> typename k, typename l>
++    requires e<k, j, l>
++struct u<const k<j>*, l> {
++    u(const a<j>*);
++};
++template <typename j, template <typename> typename k, typename l>
++struct u<const k<j>*, l> {
++    u(const b<j>*);
++};
++
++template <typename>
++struct m;
++template <typename n, typename... o>
++struct m<n (*)(o...)> {
++    template <template <typename> typename j>
++    using p = j<o...>;
++};
++
++template <typename q, typename r>
++struct s {
++    template <typename... p>
++    struct D {
++        using v = f<u<r, p>...>;
++    };
++    template <typename... t>
++    s(t... p1) : x(p1...) {}
++    m<q>::template p<D>::v x;
++};
++template <typename w, typename... t>
++void fn1(w, t... p2) {
++    s<w, t...>(p2...);
++}
++int* fn2(int) { return nullptr; }
++void fn3() {
++    fn1(fn2, static_cast<const a<int>*>(nullptr));
++    fn1(fn2, static_cast<const b<int>*>(nullptr));
++}
++
++}
+diff -ruN --strip-trailing-cr a/llvm/lib/Transforms/Vectorize/LoopVectorize.cpp b/llvm/lib/Transforms/Vectorize/LoopVectorize.cpp
+--- a/llvm/lib/Transforms/Vectorize/LoopVectorize.cpp
++++ b/llvm/lib/Transforms/Vectorize/LoopVectorize.cpp
+@@ -7231,6 +7231,9 @@
+     return DenseMap<const SCEV *, Value *>();
+   }
+ 
++  VPlanTransforms::narrowInterleaveGroups(
++      BestVPlan, BestVF,
++      TTI.getRegisterBitWidth(TargetTransformInfo::RGK_FixedWidthVector));
+   VPlanTransforms::removeDeadRecipes(BestVPlan);
+ 
+   VPlanTransforms::convertToConcreteRecipes(BestVPlan);
+@@ -8199,10 +8202,6 @@
+       if (CM.foldTailWithEVL())
+         VPlanTransforms::runPass(VPlanTransforms::addExplicitVectorLength,
+                                  *Plan, CM.getMaxSafeElements());
+-
+-      if (auto P = VPlanTransforms::narrowInterleaveGroups(*Plan, TTI))
+-        VPlans.push_back(std::move(P));
+-
+       assert(verifyVPlanIsValid(*Plan) && "VPlan is invalid");
+       VPlans.push_back(std::move(Plan));
+     }
+diff -ruN --strip-trailing-cr a/llvm/lib/Transforms/Vectorize/VPlan.cpp b/llvm/lib/Transforms/Vectorize/VPlan.cpp
+--- a/llvm/lib/Transforms/Vectorize/VPlan.cpp
++++ b/llvm/lib/Transforms/Vectorize/VPlan.cpp
+@@ -1191,7 +1191,6 @@
+   }
+   Old2NewVPValues[&VectorTripCount] = &NewPlan->VectorTripCount;
+   Old2NewVPValues[&VF] = &NewPlan->VF;
+-  Old2NewVPValues[&UF] = &NewPlan->UF;
+   Old2NewVPValues[&VFxUF] = &NewPlan->VFxUF;
+   if (BackedgeTakenCount) {
+     NewPlan->BackedgeTakenCount = new VPValue();
+diff -ruN --strip-trailing-cr a/llvm/lib/Transforms/Vectorize/VPlan.h b/llvm/lib/Transforms/Vectorize/VPlan.h
+--- a/llvm/lib/Transforms/Vectorize/VPlan.h
++++ b/llvm/lib/Transforms/Vectorize/VPlan.h
+@@ -4152,9 +4152,6 @@
+   /// Represents the vectorization factor of the loop.
+   VPValue VF;
+ 
+-  /// Represents the symbolic unroll factor of the loop.
+-  VPValue UF;
+-
+   /// Represents the loop-invariant VF * UF of the vector loop region.
+   VPValue VFxUF;
+ 
+@@ -4308,9 +4305,6 @@
+   VPValue &getVF() { return VF; };
+   const VPValue &getVF() const { return VF; };
+ 
+-  /// Returns the symbolic UF of the vector loop region.
+-  VPValue &getSymbolicUF() { return UF; };
+-
+   /// Returns VF * UF of the vector loop region.
+   VPValue &getVFxUF() { return VFxUF; }
+ 
+@@ -4320,12 +4314,6 @@
+ 
+   void addVF(ElementCount VF) { VFs.insert(VF); }
+ 
+-  /// Remove \p VF from the plan.
+-  void removeVF(ElementCount VF) {
+-    assert(hasVF(VF) && "tried to remove VF not present in plan");
+-    VFs.remove(VF);
+-  }
+-
+   void setVF(ElementCount VF) {
+     assert(hasVF(VF) && "Cannot set VF not already in plan");
+     VFs.clear();
+diff -ruN --strip-trailing-cr a/llvm/lib/Transforms/Vectorize/VPlanTransforms.cpp b/llvm/lib/Transforms/Vectorize/VPlanTransforms.cpp
+--- a/llvm/lib/Transforms/Vectorize/VPlanTransforms.cpp
++++ b/llvm/lib/Transforms/Vectorize/VPlanTransforms.cpp
+@@ -3956,9 +3956,6 @@
+   // used.
+   // TODO: Assert that they aren't used.
+ 
+-  VPValue *UF = Plan.getOrAddLiveIn(ConstantInt::get(TCTy, Plan.getUF()));
+-  Plan.getSymbolicUF().replaceAllUsesWith(UF);
+-
+   // If there are no users of the runtime VF, compute VFxUF by constant folding
+   // the multiplication of VF and UF.
+   if (VF.getNumUsers() == 0) {
+@@ -3978,6 +3975,7 @@
+   }
+   VF.replaceAllUsesWith(RuntimeVF);
+ 
++  VPValue *UF = Plan.getOrAddLiveIn(ConstantInt::get(TCTy, Plan.getUF()));
+   VPValue *MulByUF = Builder.createNaryOp(Instruction::Mul, {RuntimeVF, UF});
+   VFxUF.replaceAllUsesWith(MulByUF);
+ }
+@@ -4045,14 +4043,14 @@
+   return false;
+ }
+ 
+-/// Returns VF from \p VFs if \p IR is a full interleave group with factor and
+-/// number of members both equal to VF. The interleave group must also access
+-/// the full vector width.
+-static std::optional<ElementCount> isConsecutiveInterleaveGroup(
+-    VPInterleaveRecipe *InterleaveR, ArrayRef<ElementCount> VFs,
+-    VPTypeAnalysis &TypeInfo, const TargetTransformInfo &TTI) {
++/// Returns true if \p IR is a full interleave group with factor and number of
++/// members both equal to \p VF. The interleave group must also access the full
++/// vector width \p VectorRegWidth.
++static bool isConsecutiveInterleaveGroup(VPInterleaveRecipe *InterleaveR,
++                                         unsigned VF, VPTypeAnalysis &TypeInfo,
++                                         unsigned VectorRegWidth) {
+   if (!InterleaveR || InterleaveR->getMask())
+-    return std::nullopt;
++    return false;
+ 
+   Type *GroupElementTy = nullptr;
+   if (InterleaveR->getStoredValues().empty()) {
+@@ -4061,7 +4059,7 @@
+                 [&TypeInfo, GroupElementTy](VPValue *Op) {
+                   return TypeInfo.inferScalarType(Op) == GroupElementTy;
+                 }))
+-      return std::nullopt;
++      return false;
+   } else {
+     GroupElementTy =
+         TypeInfo.inferScalarType(InterleaveR->getStoredValues()[0]);
+@@ -4069,27 +4067,13 @@
+                 [&TypeInfo, GroupElementTy](VPValue *Op) {
+                   return TypeInfo.inferScalarType(Op) == GroupElementTy;
+                 }))
+-      return std::nullopt;
++      return false;
+   }
+ 
+-  auto GetVectorWidthForVF = [&TTI](ElementCount VF) {
+-    TypeSize Size = TTI.getRegisterBitWidth(
+-        VF.isFixed() ? TargetTransformInfo::RGK_FixedWidthVector
+-                     : TargetTransformInfo::RGK_ScalableVector);
+-    assert(Size.isScalable() == VF.isScalable() &&
+-           "if Size is scalable, VF must to and vice versa");
+-    return Size.getKnownMinValue();
+-  };
+-
+-  for (ElementCount VF : VFs) {
+-    unsigned MinVal = VF.getKnownMinValue();
+-    unsigned GroupSize = GroupElementTy->getScalarSizeInBits() * MinVal;
+-    auto IG = InterleaveR->getInterleaveGroup();
+-    if (IG->getFactor() == MinVal && IG->getNumMembers() == MinVal &&
+-        GroupSize == GetVectorWidthForVF(VF))
+-      return {VF};
+-  }
+-  return std::nullopt;
++  unsigned GroupSize = GroupElementTy->getScalarSizeInBits() * VF;
++  auto IG = InterleaveR->getInterleaveGroup();
++  return IG->getFactor() == VF && IG->getNumMembers() == VF &&
++         GroupSize == VectorRegWidth;
+ }
+ 
+ /// Returns true if \p VPValue is a narrow VPValue.
+@@ -4100,18 +4084,16 @@
+   return RepR && RepR->isSingleScalar();
+ }
+ 
+-std::unique_ptr<VPlan>
+-VPlanTransforms::narrowInterleaveGroups(VPlan &Plan,
+-                                        const TargetTransformInfo &TTI) {
+-  using namespace llvm::VPlanPatternMatch;
++void VPlanTransforms::narrowInterleaveGroups(VPlan &Plan, ElementCount VF,
++                                             unsigned VectorRegWidth) {
+   VPRegionBlock *VectorLoop = Plan.getVectorLoopRegion();
+-
+   if (!VectorLoop)
+-    return nullptr;
++    return;
+ 
+   VPTypeAnalysis TypeInfo(Plan);
++
++  unsigned VFMinVal = VF.getKnownMinValue();
+   SmallVector<VPInterleaveRecipe *> StoreGroups;
+-  std::optional<ElementCount> VFToOptimize;
+   for (auto &R : *VectorLoop->getEntryBasicBlock()) {
+     if (isa<VPCanonicalIVPHIRecipe>(&R) || match(&R, m_BranchOnCount()))
+       continue;
+@@ -4125,33 +4107,30 @@
+     //  * recipes writing to memory except interleave groups
+     // Only support plans with a canonical induction phi.
+     if (R.isPhi())
+-      return nullptr;
++      return;
+ 
+     auto *InterleaveR = dyn_cast<VPInterleaveRecipe>(&R);
+     if (R.mayWriteToMemory() && !InterleaveR)
+-      return nullptr;
++      return;
++
++    // Do not narrow interleave groups if there are VectorPointer recipes and
++    // the plan was unrolled. The recipe implicitly uses VF from
++    // VPTransformState.
++    // TODO: Remove restriction once the VF for the VectorPointer offset is
++    // modeled explicitly as operand.
++    if (isa<VPVectorPointerRecipe>(&R) && Plan.getUF() > 1)
++      return;
+ 
+     // All other ops are allowed, but we reject uses that cannot be converted
+     // when checking all allowed consumers (store interleave groups) below.
+     if (!InterleaveR)
+       continue;
+ 
+-    // Try to find a single VF, where all interleave groups are consecutive and
+-    // saturate the full vector width. If we already have a candidate VF, check
+-    // if it is applicable for the current InterleaveR, otherwise look for a
+-    // suitable VF across the Plans VFs.
+-    //
+-    if (VFToOptimize) {
+-      if (!isConsecutiveInterleaveGroup(InterleaveR, {*VFToOptimize}, TypeInfo,
+-                                        TTI))
+-        return nullptr;
+-    } else {
+-      if (auto VF = isConsecutiveInterleaveGroup(
+-              InterleaveR, to_vector(Plan.vectorFactors()), TypeInfo, TTI))
+-        VFToOptimize = *VF;
+-      else
+-        return nullptr;
+-    }
++    // Bail out on non-consecutive interleave groups.
++    if (!isConsecutiveInterleaveGroup(InterleaveR, VFMinVal, TypeInfo,
++                                      VectorRegWidth))
++      return;
++
+     // Skip read interleave groups.
+     if (InterleaveR->getStoredValues().empty())
+       continue;
+@@ -4185,34 +4164,24 @@
+     auto *WideMember0 = dyn_cast_or_null<VPWidenRecipe>(
+         InterleaveR->getStoredValues()[0]->getDefiningRecipe());
+     if (!WideMember0)
+-      return nullptr;
++      return;
+     for (const auto &[I, V] : enumerate(InterleaveR->getStoredValues())) {
+       auto *R = dyn_cast_or_null<VPWidenRecipe>(V->getDefiningRecipe());
+       if (!R || R->getOpcode() != WideMember0->getOpcode() ||
+           R->getNumOperands() > 2)
+-        return nullptr;
++        return;
+       if (any_of(enumerate(R->operands()),
+                  [WideMember0, Idx = I](const auto &P) {
+                    const auto &[OpIdx, OpV] = P;
+                    return !canNarrowLoad(WideMember0, OpIdx, OpV, Idx);
+                  }))
+-        return nullptr;
++        return;
+     }
+     StoreGroups.push_back(InterleaveR);
+   }
+ 
+   if (StoreGroups.empty())
+-    return nullptr;
+-
+-  // All interleave groups in Plan can be narrowed for VFToOptimize. Split the
+-  // original Plan into 2: a) a new clone which contains all VFs of Plan, except
+-  // VFToOptimize, and b) the original Plan with VFToOptimize as single VF.
+-  std::unique_ptr<VPlan> NewPlan;
+-  if (size(Plan.vectorFactors()) != 1) {
+-    NewPlan = std::unique_ptr<VPlan>(Plan.duplicate());
+-    Plan.setVF(*VFToOptimize);
+-    NewPlan->removeVF(*VFToOptimize);
+-  }
++    return;
+ 
+   // Convert InterleaveGroup \p R to a single VPWidenLoadRecipe.
+   SmallPtrSet<VPValue *, 4> NarrowedOps;
+@@ -4283,8 +4252,9 @@
+   auto *Inc = cast<VPInstruction>(CanIV->getBackedgeValue());
+   VPBuilder PHBuilder(Plan.getVectorPreheader());
+ 
+-  VPValue *UF = &Plan.getSymbolicUF();
+-  if (VFToOptimize->isScalable()) {
++  VPValue *UF = Plan.getOrAddLiveIn(
++      ConstantInt::get(CanIV->getScalarType(), 1 * Plan.getUF()));
++  if (VF.isScalable()) {
+     VPValue *VScale = PHBuilder.createElementCount(
+         CanIV->getScalarType(), ElementCount::getScalable(1));
+     VPValue *VScaleUF = PHBuilder.createNaryOp(Instruction::Mul, {VScale, UF});
+@@ -4296,10 +4266,6 @@
+         Plan.getOrAddLiveIn(ConstantInt::get(CanIV->getScalarType(), 1)));
+   }
+   removeDeadRecipes(Plan);
+-  assert(none_of(*VectorLoop->getEntryBasicBlock(),
+-                 IsaPred<VPVectorPointerRecipe>) &&
+-         "All VPVectorPointerRecipes should have been removed");
+-  return NewPlan;
+ }
+ 
+ /// Add branch weight metadata, if the \p Plan's middle block is terminated by a
+diff -ruN --strip-trailing-cr a/llvm/lib/Transforms/Vectorize/VPlanTransforms.h b/llvm/lib/Transforms/Vectorize/VPlanTransforms.h
+--- a/llvm/lib/Transforms/Vectorize/VPlanTransforms.h
++++ b/llvm/lib/Transforms/Vectorize/VPlanTransforms.h
+@@ -341,20 +341,14 @@
+   static DenseMap<const SCEV *, Value *> expandSCEVs(VPlan &Plan,
+                                                      ScalarEvolution &SE);
+ 
+-  /// Try to find a single VF among \p Plan's VFs for which all interleave
+-  /// groups (with known minimum VF elements) can be replaced by wide loads and
+-  /// stores processing VF elements, if all transformed interleave groups access
+-  /// the full vector width (checked via the maximum vector register width). If
+-  /// the transformation can be applied, the original \p Plan will be split in
+-  /// 2:
+-  ///  1. The original Plan with the single VF containing the optimized recipes
+-  ///  using wide loads instead of interleave groups.
+-  ///  2. A new clone which contains all VFs of Plan except the optimized VF.
+-  ///
+-  /// This effectively is a very simple form of loop-aware SLP, where we use
+-  /// interleave groups to identify candidates.
+-  static std::unique_ptr<VPlan>
+-  narrowInterleaveGroups(VPlan &Plan, const TargetTransformInfo &TTI);
++  /// Try to convert a plan with interleave groups with VF elements to a plan
++  /// with the interleave groups replaced by wide loads and stores processing VF
++  /// elements, if all transformed interleave groups access the full vector
++  /// width (checked via \o VectorRegWidth). This effectively is a very simple
++  /// form of loop-aware SLP, where we use interleave groups to identify
++  /// candidates.
++  static void narrowInterleaveGroups(VPlan &Plan, ElementCount VF,
++                                     unsigned VectorRegWidth);
+ 
+   /// Predicate and linearize the control-flow in the only loop region of
+   /// \p Plan. If \p FoldTail is true, create a mask guarding the loop
+diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/WebAssembly/memory-interleave.ll b/llvm/test/CodeGen/WebAssembly/memory-interleave.ll
+--- a/llvm/test/CodeGen/WebAssembly/memory-interleave.ll
++++ b/llvm/test/CodeGen/WebAssembly/memory-interleave.ll
+@@ -2103,10 +2103,7 @@
+ 
+ ; CHECK-LABEL: four_floats_same_op:
+ ; CHECK: loop
+-; CHECK: v128.load
+-; CHECK: v128.load
+-; CHECK: f32x4.mul
+-; CHECK: v128.store
++; CHECK-NOT: v128.load
+ define hidden void @four_floats_same_op(ptr noundef readonly captures(none) %a, ptr noundef readonly captures(none) %b, ptr noundef writeonly captures(none) %res, i32 noundef %N) {
+ entry:
+   %cmp45.not = icmp eq i32 %N, 0
+diff -ruN --strip-trailing-cr a/llvm/test/LTO/AArch64/Inputs/bar.ll b/llvm/test/LTO/AArch64/Inputs/bar.ll
+--- a/llvm/test/LTO/AArch64/Inputs/bar.ll
++++ b/llvm/test/LTO/AArch64/Inputs/bar.ll
+@@ -0,0 +1,35 @@
++;; This file contains the new semantic of the branch-target-enforcement, sign-return-address.
++;; Used for test mixing a mixed link case and also verify the import too in llc.
++
++; RUN: llc -mattr=+pauth -mattr=+bti %s -o - | FileCheck %s
++
++target datalayout = "e-m:e-i8:8:32-i16:16:32-i64:64-i128:128-n32:64-S128"
++target triple = "aarch64-unknown-linux-gnu"
++
++define dso_local void @bar() #0 {
++entry:
++  ret void
++}
++; CHECK-LABEL: bar:
++; CHECK-NOT:       hint
++; CHECK-NOT:       bti
++; CHECK:           ret
++
++define dso_local void @baz() #1 {
++entry:
++  ret void
++}
++
++; CHECK-LABEL: baz:
++; CHECK:           bti c
++; CHECK:           ret
++
++attributes #0 = { noinline nounwind optnone uwtable }
++attributes #1 = { noinline nounwind optnone uwtable "branch-target-enforcement" }
++
++!llvm.module.flags = !{!0, !1, !2, !3}
++
++!0 = !{i32 8, !"branch-target-enforcement", i32 2}
++!1 = !{i32 8, !"sign-return-address", i32 2}
++!2 = !{i32 8, !"sign-return-address-all", i32 2}
++!3 = !{i32 8, !"sign-return-address-with-bkey", i32 2}
+diff -ruN --strip-trailing-cr a/llvm/test/LTO/AArch64/Inputs/fiz.ll b/llvm/test/LTO/AArch64/Inputs/fiz.ll
+--- a/llvm/test/LTO/AArch64/Inputs/fiz.ll
++++ b/llvm/test/LTO/AArch64/Inputs/fiz.ll
+@@ -0,0 +1,41 @@
++;; This file contains the previous semantic of the branch-target-enforcement, sign-return-address.
++;; Used for test mixing a mixed link case and also verify the import too in llc.
++
++; RUN: llc -mattr=+pauth -mattr=+bti %s -o - | FileCheck %s
++
++target datalayout = "e-m:e-i8:8:32-i16:16:32-i64:64-i128:128-n32:64-S128"
++target triple = "aarch64-unknown-linux-gnu"
++
++declare void @func()
++
++define i32 @fiz_on() #0 {
++entry:
++  call void @func()
++  ret i32 42
++}
++
++; CHECK-LABEL: fiz_on:
++; CHECK:           paciasp
++; CHECK:           bl func
++; CHECK:           retaa
++
++define i32 @fiz_off() #1 {
++entry:
++  ret i32 43
++}
++
++; CHECK-LABEL: fiz_off:
++; CHECK-NOT:       pac
++; CHECK-NOT:       hint
++; CHECK-NOT:       bti
++; CHECK:           ret
++
++attributes #0 = { noinline nounwind optnone uwtable }
++attributes #1 = { noinline nounwind optnone uwtable "branch-target-enforcement"="false" "sign-return-address"="none" }
++
++!llvm.module.flags = !{!0, !1, !2, !3}
++
++!0 = !{i32 8, !"branch-target-enforcement", i32 1}
++!1 = !{i32 8, !"sign-return-address", i32 1}
++!2 = !{i32 8, !"sign-return-address-all", i32 0}
++!3 = !{i32 8, !"sign-return-address-with-bkey", i32 0}
+diff -ruN --strip-trailing-cr a/llvm/test/LTO/AArch64/Inputs/foo.ll b/llvm/test/LTO/AArch64/Inputs/foo.ll
+--- a/llvm/test/LTO/AArch64/Inputs/foo.ll
++++ b/llvm/test/LTO/AArch64/Inputs/foo.ll
+@@ -0,0 +1,38 @@
++;; This file contains the previous semantic of the branch-target-enforcement, sign-return-address.
++;; Used for test mixing a mixed link case and also verify the import too in llc.
++
++; RUN: llc -mattr=+pauth -mattr=+bti %s -o - | FileCheck %s
++
++target datalayout = "e-m:e-i8:8:32-i16:16:32-i64:64-i128:128-n32:64-S128"
++target triple = "aarch64-unknown-linux-gnu"
++
++define i32 @foo_on() #0 {
++entry:
++  ret i32 42
++}
++
++; CHECK-LABEL: foo_on:
++; CHECK:           pacibsp
++; CHECK:           mov
++; CHECK:           retab
++
++define i32 @foo_off() #1 {
++entry:
++  ret i32 43
++}
++
++; CHECK-LABEL: foo_off:
++; CHECK-NOT:       pac
++; CHECK-NOT:       hint
++; CHECK-NOT:       bti
++; CHECK:           ret
++
++attributes #0 = { noinline nounwind optnone uwtable }
++attributes #1 = { noinline nounwind optnone uwtable "branch-target-enforcement"="false" "sign-return-address"="none" }
++
++!llvm.module.flags = !{!0, !1, !2, !3}
++
++!0 = !{i32 8, !"branch-target-enforcement", i32 1}
++!1 = !{i32 8, !"sign-return-address", i32 1}
++!2 = !{i32 8, !"sign-return-address-all", i32 1}
++!3 = !{i32 8, !"sign-return-address-with-bkey", i32 1}
+diff -ruN --strip-trailing-cr a/llvm/test/LTO/AArch64/Inputs/old.ll b/llvm/test/LTO/AArch64/Inputs/old.ll
+--- a/llvm/test/LTO/AArch64/Inputs/old.ll
++++ b/llvm/test/LTO/AArch64/Inputs/old.ll
+@@ -0,0 +1,59 @@
++;; This file contains the previous semantic of the branch-target-enforcement, sign-return-address.
++;; Used for test mixing a mixed link case and also verify the import too in llc.
++
++; RUN: llc -mattr=+pauth -mattr=+bti %s -o - | FileCheck %s
++
++target datalayout = "e-m:e-i8:8:32-i16:16:32-i64:64-i128:128-n32:64-S128"
++target triple = "aarch64-unknown-linux-gnu"
++
++define i32 @old_bti() #0 {
++entry:
++  ret i32 2
++}
++
++; CHECK-LABEL: old_bti:
++; CHECK:           bti c
++; CHECK:           mov
++; CHECK:           ret
++
++define i32 @old_pac() #1 {
++entry:
++  ret i32 2
++}
++
++; CHECK-LABEL: old_pac:
++; CHECK:           paciasp
++; CHECK:           mov
++; CHECK:           retaa
++
++
++define i32 @old_none() #2 {
++entry:
++  ret i32 3
++}
++
++; CHECK-LABEL: old_none:
++; CHECK-NOT:           hint
++; CHECK-NOT:           paci
++; CHECK-NOT:           bti
++; CHECK:           ret
++
++declare i32 @func(i32)
++
++define i32 @old_none_leaf() #3 {
++entry:
++  %0 = call i32 @func()
++  ret i32 %0
++}
++
++; CHECK-LABEL: old_none_leaf:
++; CHECK:           paciasp
++; CHECK:           bl      func
++; CHECK:           retaa
++
++attributes #0 = { noinline nounwind optnone "branch-target-enforcement"="true" }
++attributes #1 = { noinline nounwind optnone "branch-target-enforcement"="false" "sign-return-address"="all" "sign-return-address-key"="a_key" }
++attributes #2 = { noinline nounwind optnone "branch-target-enforcement"="false" "sign-return-address"="none" }
++attributes #3 = { noinline nounwind optnone "branch-target-enforcement"="false" "sign-return-address"="non-leaf" "sign-return-address-key"="a_key" }
++
++;; Intentionally no module flags
+diff -ruN --strip-trailing-cr a/llvm/test/LTO/AArch64/TestInputs/bar.ll b/llvm/test/LTO/AArch64/TestInputs/bar.ll
+--- a/llvm/test/LTO/AArch64/TestInputs/bar.ll
++++ b/llvm/test/LTO/AArch64/TestInputs/bar.ll
+@@ -1,35 +0,0 @@
+-;; This file contains the new semantic of the branch-target-enforcement, sign-return-address.
+-;; Used for test mixing a mixed link case and also verify the import too in llc.
+-
+-; RUN: llc -mattr=+pauth -mattr=+bti %s -o - | FileCheck %s
+-
+-target datalayout = "e-m:e-i8:8:32-i16:16:32-i64:64-i128:128-n32:64-S128"
+-target triple = "aarch64-unknown-linux-gnu"
+-
+-define dso_local void @bar() #0 {
+-entry:
+-  ret void
+-}
+-; CHECK-LABEL: bar:
+-; CHECK-NOT:       hint
+-; CHECK-NOT:       bti
+-; CHECK:           ret
+-
+-define dso_local void @baz() #1 {
+-entry:
+-  ret void
+-}
+-
+-; CHECK-LABEL: baz:
+-; CHECK:           bti c
+-; CHECK:           ret
+-
+-attributes #0 = { noinline nounwind optnone uwtable }
+-attributes #1 = { noinline nounwind optnone uwtable "branch-target-enforcement" }
+-
+-!llvm.module.flags = !{!0, !1, !2, !3}
+-
+-!0 = !{i32 8, !"branch-target-enforcement", i32 2}
+-!1 = !{i32 8, !"sign-return-address", i32 2}
+-!2 = !{i32 8, !"sign-return-address-all", i32 2}
+-!3 = !{i32 8, !"sign-return-address-with-bkey", i32 2}
+diff -ruN --strip-trailing-cr a/llvm/test/LTO/AArch64/TestInputs/fiz.ll b/llvm/test/LTO/AArch64/TestInputs/fiz.ll
+--- a/llvm/test/LTO/AArch64/TestInputs/fiz.ll
++++ b/llvm/test/LTO/AArch64/TestInputs/fiz.ll
+@@ -1,41 +0,0 @@
+-;; This file contains the previous semantic of the branch-target-enforcement, sign-return-address.
+-;; Used for test mixing a mixed link case and also verify the import too in llc.
+-
+-; RUN: llc -mattr=+pauth -mattr=+bti %s -o - | FileCheck %s
+-
+-target datalayout = "e-m:e-i8:8:32-i16:16:32-i64:64-i128:128-n32:64-S128"
+-target triple = "aarch64-unknown-linux-gnu"
+-
+-declare void @func()
+-
+-define i32 @fiz_on() #0 {
+-entry:
+-  call void @func()
+-  ret i32 42
+-}
+-
+-; CHECK-LABEL: fiz_on:
+-; CHECK:           paciasp
+-; CHECK:           bl func
+-; CHECK:           retaa
+-
+-define i32 @fiz_off() #1 {
+-entry:
+-  ret i32 43
+-}
+-
+-; CHECK-LABEL: fiz_off:
+-; CHECK-NOT:       pac
+-; CHECK-NOT:       hint
+-; CHECK-NOT:       bti
+-; CHECK:           ret
+-
+-attributes #0 = { noinline nounwind optnone uwtable }
+-attributes #1 = { noinline nounwind optnone uwtable "branch-target-enforcement"="false" "sign-return-address"="none" }
+-
+-!llvm.module.flags = !{!0, !1, !2, !3}
+-
+-!0 = !{i32 8, !"branch-target-enforcement", i32 1}
+-!1 = !{i32 8, !"sign-return-address", i32 1}
+-!2 = !{i32 8, !"sign-return-address-all", i32 0}
+-!3 = !{i32 8, !"sign-return-address-with-bkey", i32 0}
+diff -ruN --strip-trailing-cr a/llvm/test/LTO/AArch64/TestInputs/foo.ll b/llvm/test/LTO/AArch64/TestInputs/foo.ll
+--- a/llvm/test/LTO/AArch64/TestInputs/foo.ll
++++ b/llvm/test/LTO/AArch64/TestInputs/foo.ll
+@@ -1,38 +0,0 @@
+-;; This file contains the previous semantic of the branch-target-enforcement, sign-return-address.
+-;; Used for test mixing a mixed link case and also verify the import too in llc.
+-
+-; RUN: llc -mattr=+pauth -mattr=+bti %s -o - | FileCheck %s
+-
+-target datalayout = "e-m:e-i8:8:32-i16:16:32-i64:64-i128:128-n32:64-S128"
+-target triple = "aarch64-unknown-linux-gnu"
+-
+-define i32 @foo_on() #0 {
+-entry:
+-  ret i32 42
+-}
+-
+-; CHECK-LABEL: foo_on:
+-; CHECK:           pacibsp
+-; CHECK:           mov
+-; CHECK:           retab
+-
+-define i32 @foo_off() #1 {
+-entry:
+-  ret i32 43
+-}
+-
+-; CHECK-LABEL: foo_off:
+-; CHECK-NOT:       pac
+-; CHECK-NOT:       hint
+-; CHECK-NOT:       bti
+-; CHECK:           ret
+-
+-attributes #0 = { noinline nounwind optnone uwtable }
+-attributes #1 = { noinline nounwind optnone uwtable "branch-target-enforcement"="false" "sign-return-address"="none" }
+-
+-!llvm.module.flags = !{!0, !1, !2, !3}
+-
+-!0 = !{i32 8, !"branch-target-enforcement", i32 1}
+-!1 = !{i32 8, !"sign-return-address", i32 1}
+-!2 = !{i32 8, !"sign-return-address-all", i32 1}
+-!3 = !{i32 8, !"sign-return-address-with-bkey", i32 1}
+diff -ruN --strip-trailing-cr a/llvm/test/LTO/AArch64/TestInputs/old.ll b/llvm/test/LTO/AArch64/TestInputs/old.ll
+--- a/llvm/test/LTO/AArch64/TestInputs/old.ll
++++ b/llvm/test/LTO/AArch64/TestInputs/old.ll
+@@ -1,59 +0,0 @@
+-;; This file contains the previous semantic of the branch-target-enforcement, sign-return-address.
+-;; Used for test mixing a mixed link case and also verify the import too in llc.
+-
+-; RUN: llc -mattr=+pauth -mattr=+bti %s -o - | FileCheck %s
+-
+-target datalayout = "e-m:e-i8:8:32-i16:16:32-i64:64-i128:128-n32:64-S128"
+-target triple = "aarch64-unknown-linux-gnu"
+-
+-define i32 @old_bti() #0 {
+-entry:
+-  ret i32 2
+-}
+-
+-; CHECK-LABEL: old_bti:
+-; CHECK:           bti c
+-; CHECK:           mov
+-; CHECK:           ret
+-
+-define i32 @old_pac() #1 {
+-entry:
+-  ret i32 2
+-}
+-
+-; CHECK-LABEL: old_pac:
+-; CHECK:           paciasp
+-; CHECK:           mov
+-; CHECK:           retaa
+-
+-
+-define i32 @old_none() #2 {
+-entry:
+-  ret i32 3
+-}
+-
+-; CHECK-LABEL: old_none:
+-; CHECK-NOT:           hint
+-; CHECK-NOT:           paci
+-; CHECK-NOT:           bti
+-; CHECK:           ret
+-
+-declare i32 @func(i32)
+-
+-define i32 @old_none_leaf() #3 {
+-entry:
+-  %0 = call i32 @func()
+-  ret i32 %0
+-}
+-
+-; CHECK-LABEL: old_none_leaf:
+-; CHECK:           paciasp
+-; CHECK:           bl      func
+-; CHECK:           retaa
+-
+-attributes #0 = { noinline nounwind optnone "branch-target-enforcement"="true" }
+-attributes #1 = { noinline nounwind optnone "branch-target-enforcement"="false" "sign-return-address"="all" "sign-return-address-key"="a_key" }
+-attributes #2 = { noinline nounwind optnone "branch-target-enforcement"="false" "sign-return-address"="none" }
+-attributes #3 = { noinline nounwind optnone "branch-target-enforcement"="false" "sign-return-address"="non-leaf" "sign-return-address-key"="a_key" }
+-
+-;; Intentionally no module flags
+diff -ruN --strip-trailing-cr a/llvm/test/LTO/AArch64/link-branch-target-enforcement.ll b/llvm/test/LTO/AArch64/link-branch-target-enforcement.ll
+--- a/llvm/test/LTO/AArch64/link-branch-target-enforcement.ll
++++ b/llvm/test/LTO/AArch64/link-branch-target-enforcement.ll
+@@ -2,7 +2,7 @@
+ ;; be mixed.
+ ;;
+ ; RUN: llvm-as %s -o %t1.bc
+-; RUN: llvm-as %p/TestInputs/foo.ll -o %t2.bc
++; RUN: llvm-as %p/Inputs/foo.ll -o %t2.bc
+ ; RUN: llvm-lto -exported-symbol main \
+ ; RUN:          -exported-symbol foo_on \
+ ; RUN:          -filetype=obj \
+diff -ruN --strip-trailing-cr a/llvm/test/LTO/AArch64/link-sign-return-address.ll b/llvm/test/LTO/AArch64/link-sign-return-address.ll
+--- a/llvm/test/LTO/AArch64/link-sign-return-address.ll
++++ b/llvm/test/LTO/AArch64/link-sign-return-address.ll
+@@ -2,10 +2,10 @@
+ ;; be mixed.
+ ;
+ ; RUN: llvm-as %s -o %t1.bc
+-; RUN: llvm-as %p/TestInputs/foo.ll -o %t2.bc
+-; RUN: llvm-as %p/TestInputs/fiz.ll -o %t3.bc
+-; RUN: llvm-as %p/TestInputs/bar.ll -o %t4.bc
+-; RUN: llvm-as %p/TestInputs/old.ll -o %t5.bc
++; RUN: llvm-as %p/Inputs/foo.ll -o %t2.bc
++; RUN: llvm-as %p/Inputs/fiz.ll -o %t3.bc
++; RUN: llvm-as %p/Inputs/bar.ll -o %t4.bc
++; RUN: llvm-as %p/Inputs/old.ll -o %t5.bc
+ ; RUN: llvm-lto -exported-symbol main \
+ ; RUN:          -exported-symbol foo_on \
+ ; RUN:          -exported-symbol foo_off \
+diff -ruN --strip-trailing-cr a/llvm/test/Transforms/LoopVectorize/AArch64/transform-narrow-interleave-to-widen-memory-constant-ops.ll b/llvm/test/Transforms/LoopVectorize/AArch64/transform-narrow-interleave-to-widen-memory-constant-ops.ll
+--- a/llvm/test/Transforms/LoopVectorize/AArch64/transform-narrow-interleave-to-widen-memory-constant-ops.ll
++++ b/llvm/test/Transforms/LoopVectorize/AArch64/transform-narrow-interleave-to-widen-memory-constant-ops.ll
+@@ -175,18 +175,28 @@
+ ; CHECK-NEXT:    br label %[[VECTOR_BODY:.*]]
+ ; CHECK:       [[VECTOR_BODY]]:
+ ; CHECK-NEXT:    [[INDEX:%.*]] = phi i64 [ 0, %[[VECTOR_PH]] ], [ [[INDEX_NEXT:%.*]], %[[VECTOR_BODY]] ]
+-; CHECK-NEXT:    [[TMP0:%.*]] = add i64 [[INDEX]], 1
++; CHECK-NEXT:    [[TMP0:%.*]] = add i64 [[INDEX]], 2
+ ; CHECK-NEXT:    [[TMP1:%.*]] = getelementptr inbounds nuw { double, double }, ptr [[A]], i64 [[INDEX]]
+ ; CHECK-NEXT:    [[TMP2:%.*]] = getelementptr inbounds nuw { double, double }, ptr [[A]], i64 [[TMP0]]
+-; CHECK-NEXT:    [[STRIDED_VEC1:%.*]] = load <2 x double>, ptr [[TMP1]], align 4
+-; CHECK-NEXT:    [[STRIDED_VEC4:%.*]] = load <2 x double>, ptr [[TMP2]], align 4
++; CHECK-NEXT:    [[WIDE_VEC:%.*]] = load <4 x double>, ptr [[TMP1]], align 4
++; CHECK-NEXT:    [[STRIDED_VEC:%.*]] = shufflevector <4 x double> [[WIDE_VEC]], <4 x double> poison, <2 x i32> <i32 0, i32 2>
++; CHECK-NEXT:    [[STRIDED_VEC1:%.*]] = shufflevector <4 x double> [[WIDE_VEC]], <4 x double> poison, <2 x i32> <i32 1, i32 3>
++; CHECK-NEXT:    [[WIDE_VEC2:%.*]] = load <4 x double>, ptr [[TMP2]], align 4
++; CHECK-NEXT:    [[STRIDED_VEC3:%.*]] = shufflevector <4 x double> [[WIDE_VEC2]], <4 x double> poison, <2 x i32> <i32 0, i32 2>
++; CHECK-NEXT:    [[STRIDED_VEC4:%.*]] = shufflevector <4 x double> [[WIDE_VEC2]], <4 x double> poison, <2 x i32> <i32 1, i32 3>
++; CHECK-NEXT:    [[TMP3:%.*]] = fadd <2 x double> [[STRIDED_VEC]], [[BROADCAST_SPLAT]]
++; CHECK-NEXT:    [[TMP4:%.*]] = fadd <2 x double> [[STRIDED_VEC3]], [[BROADCAST_SPLAT]]
+ ; CHECK-NEXT:    [[TMP5:%.*]] = fadd <2 x double> [[STRIDED_VEC1]], [[BROADCAST_SPLAT]]
+ ; CHECK-NEXT:    [[TMP6:%.*]] = fadd <2 x double> [[STRIDED_VEC4]], [[BROADCAST_SPLAT]]
+ ; CHECK-NEXT:    [[TMP7:%.*]] = getelementptr inbounds nuw { double, double }, ptr [[RES]], i64 [[INDEX]]
+ ; CHECK-NEXT:    [[TMP8:%.*]] = getelementptr inbounds nuw { double, double }, ptr [[RES]], i64 [[TMP0]]
+-; CHECK-NEXT:    store <2 x double> [[TMP5]], ptr [[TMP7]], align 4
+-; CHECK-NEXT:    store <2 x double> [[TMP6]], ptr [[TMP8]], align 4
+-; CHECK-NEXT:    [[INDEX_NEXT]] = add nuw i64 [[INDEX]], 2
++; CHECK-NEXT:    [[TMP9:%.*]] = shufflevector <2 x double> [[TMP3]], <2 x double> [[TMP5]], <4 x i32> <i32 0, i32 1, i32 2, i32 3>
++; CHECK-NEXT:    [[INTERLEAVED_VEC:%.*]] = shufflevector <4 x double> [[TMP9]], <4 x double> poison, <4 x i32> <i32 0, i32 2, i32 1, i32 3>
++; CHECK-NEXT:    store <4 x double> [[INTERLEAVED_VEC]], ptr [[TMP7]], align 4
++; CHECK-NEXT:    [[TMP10:%.*]] = shufflevector <2 x double> [[TMP4]], <2 x double> [[TMP6]], <4 x i32> <i32 0, i32 1, i32 2, i32 3>
++; CHECK-NEXT:    [[INTERLEAVED_VEC5:%.*]] = shufflevector <4 x double> [[TMP10]], <4 x double> poison, <4 x i32> <i32 0, i32 2, i32 1, i32 3>
++; CHECK-NEXT:    store <4 x double> [[INTERLEAVED_VEC5]], ptr [[TMP8]], align 4
++; CHECK-NEXT:    [[INDEX_NEXT]] = add nuw i64 [[INDEX]], 4
+ ; CHECK-NEXT:    [[TMP11:%.*]] = icmp eq i64 [[INDEX_NEXT]], 100
+ ; CHECK-NEXT:    br i1 [[TMP11]], label %[[MIDDLE_BLOCK:.*]], label %[[VECTOR_BODY]], !llvm.loop [[LOOP8:![0-9]+]]
+ ; CHECK:       [[MIDDLE_BLOCK]]:
+@@ -227,18 +237,28 @@
+ ; CHECK-NEXT:    br label %[[VECTOR_BODY:.*]]
+ ; CHECK:       [[VECTOR_BODY]]:
+ ; CHECK-NEXT:    [[INDEX:%.*]] = phi i64 [ 0, %[[VECTOR_PH]] ], [ [[INDEX_NEXT:%.*]], %[[VECTOR_BODY]] ]
+-; CHECK-NEXT:    [[TMP0:%.*]] = add i64 [[INDEX]], 1
++; CHECK-NEXT:    [[TMP0:%.*]] = add i64 [[INDEX]], 2
+ ; CHECK-NEXT:    [[TMP1:%.*]] = getelementptr inbounds nuw { double, double }, ptr [[A]], i64 [[INDEX]]
+ ; CHECK-NEXT:    [[TMP2:%.*]] = getelementptr inbounds nuw { double, double }, ptr [[A]], i64 [[TMP0]]
+-; CHECK-NEXT:    [[STRIDED_VEC1:%.*]] = load <2 x double>, ptr [[TMP1]], align 4
+-; CHECK-NEXT:    [[STRIDED_VEC4:%.*]] = load <2 x double>, ptr [[TMP2]], align 4
++; CHECK-NEXT:    [[WIDE_VEC:%.*]] = load <4 x double>, ptr [[TMP1]], align 4
++; CHECK-NEXT:    [[STRIDED_VEC:%.*]] = shufflevector <4 x double> [[WIDE_VEC]], <4 x double> poison, <2 x i32> <i32 0, i32 2>
++; CHECK-NEXT:    [[STRIDED_VEC1:%.*]] = shufflevector <4 x double> [[WIDE_VEC]], <4 x double> poison, <2 x i32> <i32 1, i32 3>
++; CHECK-NEXT:    [[WIDE_VEC2:%.*]] = load <4 x double>, ptr [[TMP2]], align 4
++; CHECK-NEXT:    [[STRIDED_VEC3:%.*]] = shufflevector <4 x double> [[WIDE_VEC2]], <4 x double> poison, <2 x i32> <i32 0, i32 2>
++; CHECK-NEXT:    [[STRIDED_VEC4:%.*]] = shufflevector <4 x double> [[WIDE_VEC2]], <4 x double> poison, <2 x i32> <i32 1, i32 3>
++; CHECK-NEXT:    [[TMP3:%.*]] = fadd <2 x double> [[BROADCAST_SPLAT]], [[STRIDED_VEC]]
++; CHECK-NEXT:    [[TMP4:%.*]] = fadd <2 x double> [[BROADCAST_SPLAT]], [[STRIDED_VEC3]]
+ ; CHECK-NEXT:    [[TMP5:%.*]] = fadd <2 x double> [[BROADCAST_SPLAT]], [[STRIDED_VEC1]]
+ ; CHECK-NEXT:    [[TMP6:%.*]] = fadd <2 x double> [[BROADCAST_SPLAT]], [[STRIDED_VEC4]]
+ ; CHECK-NEXT:    [[TMP7:%.*]] = getelementptr inbounds nuw { double, double }, ptr [[RES]], i64 [[INDEX]]
+ ; CHECK-NEXT:    [[TMP8:%.*]] = getelementptr inbounds nuw { double, double }, ptr [[RES]], i64 [[TMP0]]
+-; CHECK-NEXT:    store <2 x double> [[TMP5]], ptr [[TMP7]], align 4
+-; CHECK-NEXT:    store <2 x double> [[TMP6]], ptr [[TMP8]], align 4
+-; CHECK-NEXT:    [[INDEX_NEXT]] = add nuw i64 [[INDEX]], 2
++; CHECK-NEXT:    [[TMP9:%.*]] = shufflevector <2 x double> [[TMP3]], <2 x double> [[TMP5]], <4 x i32> <i32 0, i32 1, i32 2, i32 3>
++; CHECK-NEXT:    [[INTERLEAVED_VEC:%.*]] = shufflevector <4 x double> [[TMP9]], <4 x double> poison, <4 x i32> <i32 0, i32 2, i32 1, i32 3>
++; CHECK-NEXT:    store <4 x double> [[INTERLEAVED_VEC]], ptr [[TMP7]], align 4
++; CHECK-NEXT:    [[TMP10:%.*]] = shufflevector <2 x double> [[TMP4]], <2 x double> [[TMP6]], <4 x i32> <i32 0, i32 1, i32 2, i32 3>
++; CHECK-NEXT:    [[INTERLEAVED_VEC5:%.*]] = shufflevector <4 x double> [[TMP10]], <4 x double> poison, <4 x i32> <i32 0, i32 2, i32 1, i32 3>
++; CHECK-NEXT:    store <4 x double> [[INTERLEAVED_VEC5]], ptr [[TMP8]], align 4
++; CHECK-NEXT:    [[INDEX_NEXT]] = add nuw i64 [[INDEX]], 4
+ ; CHECK-NEXT:    [[TMP11:%.*]] = icmp eq i64 [[INDEX_NEXT]], 100
+ ; CHECK-NEXT:    br i1 [[TMP11]], label %[[MIDDLE_BLOCK:.*]], label %[[VECTOR_BODY]], !llvm.loop [[LOOP10:![0-9]+]]
+ ; CHECK:       [[MIDDLE_BLOCK]]:
+diff -ruN --strip-trailing-cr a/llvm/test/Transforms/LoopVectorize/AArch64/transform-narrow-interleave-to-widen-memory-cost.ll b/llvm/test/Transforms/LoopVectorize/AArch64/transform-narrow-interleave-to-widen-memory-cost.ll
+--- a/llvm/test/Transforms/LoopVectorize/AArch64/transform-narrow-interleave-to-widen-memory-cost.ll
++++ b/llvm/test/Transforms/LoopVectorize/AArch64/transform-narrow-interleave-to-widen-memory-cost.ll
+@@ -319,46 +319,46 @@
+ ; CHECK-NEXT:    br label %[[VECTOR_BODY:.*]]
+ ; CHECK:       [[VECTOR_BODY]]:
+ ; CHECK-NEXT:    [[INDEX:%.*]] = phi i64 [ 0, %[[VECTOR_PH]] ], [ [[INDEX_NEXT:%.*]], %[[VECTOR_BODY]] ]
+-; CHECK-NEXT:    [[TMP21:%.*]] = add i64 [[INDEX]], 1
+ ; CHECK-NEXT:    [[TMP20:%.*]] = add i64 [[INDEX]], 2
+-; CHECK-NEXT:    [[TMP22:%.*]] = add i64 [[INDEX]], 3
++; CHECK-NEXT:    [[TMP21:%.*]] = add i64 [[INDEX]], 4
++; CHECK-NEXT:    [[TMP22:%.*]] = add i64 [[INDEX]], 6
+ ; CHECK-NEXT:    [[TMP23:%.*]] = getelementptr double, ptr [[A]], i64 [[INDEX]]
+-; CHECK-NEXT:    [[TMP33:%.*]] = getelementptr double, ptr [[A]], i64 [[TMP21]]
+-; CHECK-NEXT:    [[TMP37:%.*]] = getelementptr double, ptr [[A]], i64 [[TMP20]]
+-; CHECK-NEXT:    [[TMP39:%.*]] = getelementptr double, ptr [[A]], i64 [[TMP22]]
+-; CHECK-NEXT:    [[TMP24:%.*]] = load double, ptr [[TMP23]], align 8
+-; CHECK-NEXT:    [[BROADCAST_SPLATINSERT1:%.*]] = insertelement <2 x double> poison, double [[TMP24]], i64 0
+-; CHECK-NEXT:    [[WIDE_LOAD:%.*]] = shufflevector <2 x double> [[BROADCAST_SPLATINSERT1]], <2 x double> poison, <2 x i32> zeroinitializer
+-; CHECK-NEXT:    [[TMP25:%.*]] = load double, ptr [[TMP33]], align 8
+-; CHECK-NEXT:    [[BROADCAST_SPLATINSERT12:%.*]] = insertelement <2 x double> poison, double [[TMP25]], i64 0
+-; CHECK-NEXT:    [[WIDE_LOAD12:%.*]] = shufflevector <2 x double> [[BROADCAST_SPLATINSERT12]], <2 x double> poison, <2 x i32> zeroinitializer
+-; CHECK-NEXT:    [[TMP26:%.*]] = load double, ptr [[TMP37]], align 8
+-; CHECK-NEXT:    [[BROADCAST_SPLATINSERT14:%.*]] = insertelement <2 x double> poison, double [[TMP26]], i64 0
+-; CHECK-NEXT:    [[WIDE_LOAD13:%.*]] = shufflevector <2 x double> [[BROADCAST_SPLATINSERT14]], <2 x double> poison, <2 x i32> zeroinitializer
+-; CHECK-NEXT:    [[TMP27:%.*]] = load double, ptr [[TMP39]], align 8
+-; CHECK-NEXT:    [[BROADCAST_SPLATINSERT16:%.*]] = insertelement <2 x double> poison, double [[TMP27]], i64 0
+-; CHECK-NEXT:    [[WIDE_LOAD14:%.*]] = shufflevector <2 x double> [[BROADCAST_SPLATINSERT16]], <2 x double> poison, <2 x i32> zeroinitializer
++; CHECK-NEXT:    [[TMP25:%.*]] = getelementptr double, ptr [[TMP23]], i32 2
++; CHECK-NEXT:    [[TMP26:%.*]] = getelementptr double, ptr [[TMP23]], i32 4
++; CHECK-NEXT:    [[TMP27:%.*]] = getelementptr double, ptr [[TMP23]], i32 6
++; CHECK-NEXT:    [[WIDE_LOAD:%.*]] = load <2 x double>, ptr [[TMP23]], align 8
++; CHECK-NEXT:    [[WIDE_LOAD12:%.*]] = load <2 x double>, ptr [[TMP25]], align 8
++; CHECK-NEXT:    [[WIDE_LOAD13:%.*]] = load <2 x double>, ptr [[TMP26]], align 8
++; CHECK-NEXT:    [[WIDE_LOAD14:%.*]] = load <2 x double>, ptr [[TMP27]], align 8
+ ; CHECK-NEXT:    [[TMP28:%.*]] = fmul <2 x double> [[WIDE_LOAD]], splat (double 5.000000e+00)
+ ; CHECK-NEXT:    [[TMP29:%.*]] = fmul <2 x double> [[WIDE_LOAD12]], splat (double 5.000000e+00)
+ ; CHECK-NEXT:    [[TMP30:%.*]] = fmul <2 x double> [[WIDE_LOAD13]], splat (double 5.000000e+00)
+ ; CHECK-NEXT:    [[TMP31:%.*]] = fmul <2 x double> [[WIDE_LOAD14]], splat (double 5.000000e+00)
+ ; CHECK-NEXT:    [[TMP32:%.*]] = getelementptr { double, double }, ptr [[B]], i64 [[INDEX]]
++; CHECK-NEXT:    [[TMP33:%.*]] = getelementptr { double, double }, ptr [[B]], i64 [[TMP20]]
+ ; CHECK-NEXT:    [[TMP34:%.*]] = getelementptr { double, double }, ptr [[B]], i64 [[TMP21]]
+-; CHECK-NEXT:    [[TMP38:%.*]] = getelementptr { double, double }, ptr [[B]], i64 [[TMP20]]
+ ; CHECK-NEXT:    [[TMP35:%.*]] = getelementptr { double, double }, ptr [[B]], i64 [[TMP22]]
+-; CHECK-NEXT:    store <2 x double> [[TMP28]], ptr [[TMP32]], align 8
+-; CHECK-NEXT:    store <2 x double> [[TMP29]], ptr [[TMP34]], align 8
+-; CHECK-NEXT:    store <2 x double> [[TMP30]], ptr [[TMP38]], align 8
+-; CHECK-NEXT:    store <2 x double> [[TMP31]], ptr [[TMP35]], align 8
++; CHECK-NEXT:    [[TMP36:%.*]] = shufflevector <2 x double> [[TMP28]], <2 x double> [[TMP28]], <4 x i32> <i32 0, i32 1, i32 2, i32 3>
++; CHECK-NEXT:    [[INTERLEAVED_VEC:%.*]] = shufflevector <4 x double> [[TMP36]], <4 x double> poison, <4 x i32> <i32 0, i32 2, i32 1, i32 3>
++; CHECK-NEXT:    store <4 x double> [[INTERLEAVED_VEC]], ptr [[TMP32]], align 8
++; CHECK-NEXT:    [[TMP37:%.*]] = shufflevector <2 x double> [[TMP29]], <2 x double> [[TMP29]], <4 x i32> <i32 0, i32 1, i32 2, i32 3>
++; CHECK-NEXT:    [[INTERLEAVED_VEC15:%.*]] = shufflevector <4 x double> [[TMP37]], <4 x double> poison, <4 x i32> <i32 0, i32 2, i32 1, i32 3>
++; CHECK-NEXT:    store <4 x double> [[INTERLEAVED_VEC15]], ptr [[TMP33]], align 8
++; CHECK-NEXT:    [[TMP38:%.*]] = shufflevector <2 x double> [[TMP30]], <2 x double> [[TMP30]], <4 x i32> <i32 0, i32 1, i32 2, i32 3>
++; CHECK-NEXT:    [[INTERLEAVED_VEC16:%.*]] = shufflevector <4 x double> [[TMP38]], <4 x double> poison, <4 x i32> <i32 0, i32 2, i32 1, i32 3>
++; CHECK-NEXT:    store <4 x double> [[INTERLEAVED_VEC16]], ptr [[TMP34]], align 8
++; CHECK-NEXT:    [[TMP39:%.*]] = shufflevector <2 x double> [[TMP31]], <2 x double> [[TMP31]], <4 x i32> <i32 0, i32 1, i32 2, i32 3>
++; CHECK-NEXT:    [[INTERLEAVED_VEC17:%.*]] = shufflevector <4 x double> [[TMP39]], <4 x double> poison, <4 x i32> <i32 0, i32 2, i32 1, i32 3>
++; CHECK-NEXT:    store <4 x double> [[INTERLEAVED_VEC17]], ptr [[TMP35]], align 8
+ ; CHECK-NEXT:    [[TMP40:%.*]] = getelementptr { double, double }, ptr [[C]], i64 [[INDEX]]
+-; CHECK-NEXT:    [[TMP42:%.*]] = getelementptr { double, double }, ptr [[C]], i64 [[TMP21]]
+ ; CHECK-NEXT:    [[TMP41:%.*]] = getelementptr { double, double }, ptr [[C]], i64 [[TMP20]]
++; CHECK-NEXT:    [[TMP42:%.*]] = getelementptr { double, double }, ptr [[C]], i64 [[TMP21]]
+ ; CHECK-NEXT:    [[TMP43:%.*]] = getelementptr { double, double }, ptr [[C]], i64 [[TMP22]]
+-; CHECK-NEXT:    store <2 x double> [[TMP28]], ptr [[TMP40]], align 8
+-; CHECK-NEXT:    store <2 x double> [[TMP29]], ptr [[TMP42]], align 8
+-; CHECK-NEXT:    store <2 x double> [[TMP30]], ptr [[TMP41]], align 8
+-; CHECK-NEXT:    store <2 x double> [[TMP31]], ptr [[TMP43]], align 8
+-; CHECK-NEXT:    [[INDEX_NEXT]] = add nuw i64 [[INDEX]], 4
++; CHECK-NEXT:    store <4 x double> [[INTERLEAVED_VEC]], ptr [[TMP40]], align 8
++; CHECK-NEXT:    store <4 x double> [[INTERLEAVED_VEC15]], ptr [[TMP41]], align 8
++; CHECK-NEXT:    store <4 x double> [[INTERLEAVED_VEC16]], ptr [[TMP42]], align 8
++; CHECK-NEXT:    store <4 x double> [[INTERLEAVED_VEC17]], ptr [[TMP43]], align 8
++; CHECK-NEXT:    [[INDEX_NEXT]] = add nuw i64 [[INDEX]], 8
+ ; CHECK-NEXT:    [[TMP44:%.*]] = icmp eq i64 [[INDEX_NEXT]], [[N_VEC]]
+ ; CHECK-NEXT:    br i1 [[TMP44]], label %[[MIDDLE_BLOCK:.*]], label %[[VECTOR_BODY]], !llvm.loop [[LOOP10:![0-9]+]]
+ ; CHECK:       [[MIDDLE_BLOCK]]:
+@@ -435,7 +435,7 @@
+   ret void
+ }
+ 
+-; We should interleave by 2 after narrowing interleave groups to saturate
++; FIXME: We should interleave by 2 after narrowing interleave groups to saturate
+ ; load/store units.
+ define void @test_interleave_after_narrowing(i32 %n, ptr %x, ptr noalias %y) {
+ ; CHECK-LABEL: define void @test_interleave_after_narrowing(
+@@ -447,18 +447,12 @@
+ ; CHECK:       [[VECTOR_BODY]]:
+ ; CHECK-NEXT:    [[INDEX:%.*]] = phi i64 [ 0, %[[VECTOR_PH]] ], [ [[INDEX_NEXT:%.*]], %[[VECTOR_BODY]] ]
+ ; CHECK-NEXT:    [[OFFSET_IDX:%.*]] = mul i64 [[INDEX]], 4
+-; CHECK-NEXT:    [[TMP5:%.*]] = add i64 [[OFFSET_IDX]], 4
+ ; CHECK-NEXT:    [[TMP0:%.*]] = getelementptr inbounds nuw float, ptr [[X]], i64 [[OFFSET_IDX]]
+-; CHECK-NEXT:    [[TMP7:%.*]] = getelementptr inbounds nuw float, ptr [[X]], i64 [[TMP5]]
+ ; CHECK-NEXT:    [[WIDE_LOAD:%.*]] = load <4 x float>, ptr [[TMP0]], align 4
+-; CHECK-NEXT:    [[WIDE_LOAD1:%.*]] = load <4 x float>, ptr [[TMP7]], align 4
+ ; CHECK-NEXT:    [[TMP1:%.*]] = fneg <4 x float> [[WIDE_LOAD]]
+-; CHECK-NEXT:    [[TMP4:%.*]] = fneg <4 x float> [[WIDE_LOAD1]]
+ ; CHECK-NEXT:    [[TMP2:%.*]] = getelementptr inbounds nuw float, ptr [[Y]], i64 [[OFFSET_IDX]]
+-; CHECK-NEXT:    [[TMP6:%.*]] = getelementptr inbounds nuw float, ptr [[Y]], i64 [[TMP5]]
+ ; CHECK-NEXT:    store <4 x float> [[TMP1]], ptr [[TMP2]], align 4
+-; CHECK-NEXT:    store <4 x float> [[TMP4]], ptr [[TMP6]], align 4
+-; CHECK-NEXT:    [[INDEX_NEXT]] = add nuw i64 [[INDEX]], 2
++; CHECK-NEXT:    [[INDEX_NEXT]] = add nuw i64 [[INDEX]], 1
+ ; CHECK-NEXT:    [[TMP3:%.*]] = icmp eq i64 [[INDEX_NEXT]], 256
+ ; CHECK-NEXT:    br i1 [[TMP3]], label %[[MIDDLE_BLOCK:.*]], label %[[VECTOR_BODY]], !llvm.loop [[LOOP13:![0-9]+]]
+ ; CHECK:       [[MIDDLE_BLOCK]]:
+diff -ruN --strip-trailing-cr a/llvm/test/Transforms/LoopVectorize/AArch64/transform-narrow-interleave-to-widen-memory-remove-loop-region.ll b/llvm/test/Transforms/LoopVectorize/AArch64/transform-narrow-interleave-to-widen-memory-remove-loop-region.ll
+--- a/llvm/test/Transforms/LoopVectorize/AArch64/transform-narrow-interleave-to-widen-memory-remove-loop-region.ll
++++ b/llvm/test/Transforms/LoopVectorize/AArch64/transform-narrow-interleave-to-widen-memory-remove-loop-region.ll
+@@ -13,8 +13,12 @@
+ ; VF2:       [[VECTOR_PH]]:
+ ; VF2-NEXT:    br label %[[VECTOR_BODY:.*]]
+ ; VF2:       [[VECTOR_BODY]]:
+-; VF2-NEXT:    [[WIDE_LOAD:%.*]] = load <2 x i64>, ptr [[DATA]], align 8
+-; VF2-NEXT:    store <2 x i64> [[WIDE_LOAD]], ptr [[DATA]], align 8
++; VF2-NEXT:    [[WIDE_VEC:%.*]] = load <4 x i64>, ptr [[DATA]], align 8
++; VF2-NEXT:    [[STRIDED_VEC:%.*]] = shufflevector <4 x i64> [[WIDE_VEC]], <4 x i64> poison, <2 x i32> <i32 0, i32 2>
++; VF2-NEXT:    [[STRIDED_VEC1:%.*]] = shufflevector <4 x i64> [[WIDE_VEC]], <4 x i64> poison, <2 x i32> <i32 1, i32 3>
++; VF2-NEXT:    [[TMP2:%.*]] = shufflevector <2 x i64> [[STRIDED_VEC]], <2 x i64> [[STRIDED_VEC1]], <4 x i32> <i32 0, i32 1, i32 2, i32 3>
++; VF2-NEXT:    [[INTERLEAVED_VEC:%.*]] = shufflevector <4 x i64> [[TMP2]], <4 x i64> poison, <4 x i32> <i32 0, i32 2, i32 1, i32 3>
++; VF2-NEXT:    store <4 x i64> [[INTERLEAVED_VEC]], ptr [[DATA]], align 8
+ ; VF2-NEXT:    br label %[[MIDDLE_BLOCK:.*]]
+ ; VF2:       [[MIDDLE_BLOCK]]:
+ ; VF2-NEXT:    br label %[[EXIT:.*]]
+diff -ruN --strip-trailing-cr a/llvm/test/Transforms/LoopVectorize/AArch64/transform-narrow-interleave-to-widen-memory-scalable.ll b/llvm/test/Transforms/LoopVectorize/AArch64/transform-narrow-interleave-to-widen-memory-scalable.ll
+--- a/llvm/test/Transforms/LoopVectorize/AArch64/transform-narrow-interleave-to-widen-memory-scalable.ll
++++ b/llvm/test/Transforms/LoopVectorize/AArch64/transform-narrow-interleave-to-widen-memory-scalable.ll
+@@ -1,81 +1,29 @@
+ ; NOTE: Assertions have been autogenerated by utils/update_test_checks.py UTC_ARGS: --check-globals none --filter-out-after "^scalar.ph:" --version 5
+-; RUN: opt -p loop-vectorize -force-vector-interleave=1 -S -mcpu=neoverse-512tvb %s | FileCheck --check-prefixes=IC1 %s
+-; RUN: opt -p loop-vectorize -S -mcpu=neoverse-512tvb %s | FileCheck --check-prefixes=CHECK %s
++; RUN: opt -p loop-vectorize -force-vector-interleave=1 -S -mcpu=neoverse-512tvb %s | FileCheck --check-prefixes=CHECK %s
+ 
+ target triple = "aarch64-unknown-linux"
+ 
+ define void @load_store_interleave_group(ptr noalias %data) {
+-; IC1-LABEL: define void @load_store_interleave_group(
+-; IC1-SAME: ptr noalias [[DATA:%.*]]) #[[ATTR0:[0-9]+]] {
+-; IC1-NEXT:  [[ENTRY:.*:]]
+-; IC1-NEXT:    [[TMP0:%.*]] = call i64 @llvm.vscale.i64()
+-; IC1-NEXT:    [[TMP1:%.*]] = shl nuw i64 [[TMP0]], 1
+-; IC1-NEXT:    [[MIN_ITERS_CHECK:%.*]] = icmp ult i64 100, [[TMP1]]
+-; IC1-NEXT:    br i1 [[MIN_ITERS_CHECK]], label %[[SCALAR_PH:.*]], label %[[VECTOR_PH:.*]]
+-; IC1:       [[VECTOR_PH]]:
+-; IC1-NEXT:    [[TMP2:%.*]] = call i64 @llvm.vscale.i64()
+-; IC1-NEXT:    [[TMP3:%.*]] = mul nuw i64 [[TMP2]], 2
+-; IC1-NEXT:    [[N_MOD_VF:%.*]] = urem i64 100, [[TMP3]]
+-; IC1-NEXT:    [[N_VEC:%.*]] = sub i64 100, [[N_MOD_VF]]
+-; IC1-NEXT:    br label %[[VECTOR_BODY:.*]]
+-; IC1:       [[VECTOR_BODY]]:
+-; IC1-NEXT:    [[INDEX:%.*]] = phi i64 [ 0, %[[VECTOR_PH]] ], [ [[INDEX_NEXT:%.*]], %[[VECTOR_BODY]] ]
+-; IC1-NEXT:    [[TMP4:%.*]] = shl nsw i64 [[INDEX]], 1
+-; IC1-NEXT:    [[TMP5:%.*]] = getelementptr inbounds i64, ptr [[DATA]], i64 [[TMP4]]
+-; IC1-NEXT:    [[WIDE_LOAD:%.*]] = load <vscale x 2 x i64>, ptr [[TMP5]], align 8
+-; IC1-NEXT:    store <vscale x 2 x i64> [[WIDE_LOAD]], ptr [[TMP5]], align 8
+-; IC1-NEXT:    [[INDEX_NEXT]] = add nuw i64 [[INDEX]], [[TMP2]]
+-; IC1-NEXT:    [[TMP6:%.*]] = icmp eq i64 [[INDEX_NEXT]], [[N_VEC]]
+-; IC1-NEXT:    br i1 [[TMP6]], label %[[MIDDLE_BLOCK:.*]], label %[[VECTOR_BODY]], !llvm.loop [[LOOP0:![0-9]+]]
+-; IC1:       [[MIDDLE_BLOCK]]:
+-; IC1-NEXT:    [[CMP_N:%.*]] = icmp eq i64 100, [[N_VEC]]
+-; IC1-NEXT:    br i1 [[CMP_N]], [[EXIT:label %.*]], label %[[SCALAR_PH]]
+-; IC1:       [[SCALAR_PH]]:
+-;
+ ; CHECK-LABEL: define void @load_store_interleave_group(
+ ; CHECK-SAME: ptr noalias [[DATA:%.*]]) #[[ATTR0:[0-9]+]] {
+ ; CHECK-NEXT:  [[ENTRY:.*:]]
+ ; CHECK-NEXT:    [[TMP4:%.*]] = call i64 @llvm.vscale.i64()
+-; CHECK-NEXT:    [[TMP5:%.*]] = shl nuw i64 [[TMP4]], 3
++; CHECK-NEXT:    [[TMP5:%.*]] = shl nuw i64 [[TMP4]], 1
+ ; CHECK-NEXT:    [[MIN_ITERS_CHECK:%.*]] = icmp ult i64 100, [[TMP5]]
+ ; CHECK-NEXT:    br i1 [[MIN_ITERS_CHECK]], label %[[SCALAR_PH:.*]], label %[[VECTOR_PH:.*]]
+ ; CHECK:       [[VECTOR_PH]]:
+ ; CHECK-NEXT:    [[TMP2:%.*]] = call i64 @llvm.vscale.i64()
+-; CHECK-NEXT:    [[TMP3:%.*]] = mul nuw i64 [[TMP2]], 8
++; CHECK-NEXT:    [[TMP3:%.*]] = mul nuw i64 [[TMP2]], 2
+ ; CHECK-NEXT:    [[N_MOD_VF:%.*]] = urem i64 100, [[TMP3]]
+ ; CHECK-NEXT:    [[N_VEC:%.*]] = sub i64 100, [[N_MOD_VF]]
+-; CHECK-NEXT:    [[TMP16:%.*]] = mul i64 [[TMP2]], 4
+ ; CHECK-NEXT:    br label %[[VECTOR_BODY:.*]]
+ ; CHECK:       [[VECTOR_BODY]]:
+ ; CHECK-NEXT:    [[INDEX:%.*]] = phi i64 [ 0, %[[VECTOR_PH]] ], [ [[INDEX_NEXT:%.*]], %[[VECTOR_BODY]] ]
+-; CHECK-NEXT:    [[TMP20:%.*]] = add i64 [[TMP2]], 0
+-; CHECK-NEXT:    [[TMP6:%.*]] = mul i64 [[TMP20]], 1
+-; CHECK-NEXT:    [[TMP7:%.*]] = add i64 [[INDEX]], [[TMP6]]
+-; CHECK-NEXT:    [[TMP24:%.*]] = mul i64 [[TMP2]], 2
+-; CHECK-NEXT:    [[TMP9:%.*]] = add i64 [[TMP24]], 0
+-; CHECK-NEXT:    [[TMP10:%.*]] = mul i64 [[TMP9]], 1
+-; CHECK-NEXT:    [[TMP11:%.*]] = add i64 [[INDEX]], [[TMP10]]
+-; CHECK-NEXT:    [[TMP12:%.*]] = mul i64 [[TMP2]], 3
+-; CHECK-NEXT:    [[TMP13:%.*]] = add i64 [[TMP12]], 0
+-; CHECK-NEXT:    [[TMP14:%.*]] = mul i64 [[TMP13]], 1
+-; CHECK-NEXT:    [[TMP15:%.*]] = add i64 [[INDEX]], [[TMP14]]
+ ; CHECK-NEXT:    [[TMP0:%.*]] = shl nsw i64 [[INDEX]], 1
+-; CHECK-NEXT:    [[TMP17:%.*]] = shl nsw i64 [[TMP7]], 1
+-; CHECK-NEXT:    [[TMP18:%.*]] = shl nsw i64 [[TMP11]], 1
+-; CHECK-NEXT:    [[TMP19:%.*]] = shl nsw i64 [[TMP15]], 1
+ ; CHECK-NEXT:    [[TMP1:%.*]] = getelementptr inbounds i64, ptr [[DATA]], i64 [[TMP0]]
+-; CHECK-NEXT:    [[TMP21:%.*]] = getelementptr inbounds i64, ptr [[DATA]], i64 [[TMP17]]
+-; CHECK-NEXT:    [[TMP22:%.*]] = getelementptr inbounds i64, ptr [[DATA]], i64 [[TMP18]]
+-; CHECK-NEXT:    [[TMP23:%.*]] = getelementptr inbounds i64, ptr [[DATA]], i64 [[TMP19]]
+ ; CHECK-NEXT:    [[WIDE_LOAD:%.*]] = load <vscale x 2 x i64>, ptr [[TMP1]], align 8
+-; CHECK-NEXT:    [[WIDE_LOAD1:%.*]] = load <vscale x 2 x i64>, ptr [[TMP21]], align 8
+-; CHECK-NEXT:    [[WIDE_LOAD2:%.*]] = load <vscale x 2 x i64>, ptr [[TMP22]], align 8
+-; CHECK-NEXT:    [[WIDE_LOAD3:%.*]] = load <vscale x 2 x i64>, ptr [[TMP23]], align 8
+ ; CHECK-NEXT:    store <vscale x 2 x i64> [[WIDE_LOAD]], ptr [[TMP1]], align 8
+-; CHECK-NEXT:    store <vscale x 2 x i64> [[WIDE_LOAD1]], ptr [[TMP21]], align 8
+-; CHECK-NEXT:    store <vscale x 2 x i64> [[WIDE_LOAD2]], ptr [[TMP22]], align 8
+-; CHECK-NEXT:    store <vscale x 2 x i64> [[WIDE_LOAD3]], ptr [[TMP23]], align 8
+-; CHECK-NEXT:    [[INDEX_NEXT]] = add nuw i64 [[INDEX]], [[TMP16]]
++; CHECK-NEXT:    [[INDEX_NEXT]] = add nuw i64 [[INDEX]], [[TMP2]]
+ ; CHECK-NEXT:    [[TMP8:%.*]] = icmp eq i64 [[INDEX_NEXT]], [[N_VEC]]
+ ; CHECK-NEXT:    br i1 [[TMP8]], label %[[MIDDLE_BLOCK:.*]], label %[[VECTOR_BODY]], !llvm.loop [[LOOP0:![0-9]+]]
+ ; CHECK:       [[MIDDLE_BLOCK]]:
+@@ -105,82 +53,27 @@
+ }
+ 
+ define void @test_2xi64_unary_op_load_interleave_group(ptr noalias %data, ptr noalias %factor) {
+-; IC1-LABEL: define void @test_2xi64_unary_op_load_interleave_group(
+-; IC1-SAME: ptr noalias [[DATA:%.*]], ptr noalias [[FACTOR:%.*]]) #[[ATTR0]] {
+-; IC1-NEXT:  [[ENTRY:.*:]]
+-; IC1-NEXT:    [[TMP0:%.*]] = call i64 @llvm.vscale.i64()
+-; IC1-NEXT:    [[TMP1:%.*]] = shl nuw i64 [[TMP0]], 1
+-; IC1-NEXT:    [[MIN_ITERS_CHECK:%.*]] = icmp ult i64 1111, [[TMP1]]
+-; IC1-NEXT:    br i1 [[MIN_ITERS_CHECK]], label %[[SCALAR_PH:.*]], label %[[VECTOR_PH:.*]]
+-; IC1:       [[VECTOR_PH]]:
+-; IC1-NEXT:    [[TMP2:%.*]] = call i64 @llvm.vscale.i64()
+-; IC1-NEXT:    [[TMP3:%.*]] = mul nuw i64 [[TMP2]], 2
+-; IC1-NEXT:    [[N_MOD_VF:%.*]] = urem i64 1111, [[TMP3]]
+-; IC1-NEXT:    [[N_VEC:%.*]] = sub i64 1111, [[N_MOD_VF]]
+-; IC1-NEXT:    br label %[[VECTOR_BODY:.*]]
+-; IC1:       [[VECTOR_BODY]]:
+-; IC1-NEXT:    [[INDEX:%.*]] = phi i64 [ 0, %[[VECTOR_PH]] ], [ [[INDEX_NEXT:%.*]], %[[VECTOR_BODY]] ]
+-; IC1-NEXT:    [[TMP4:%.*]] = shl nsw i64 [[INDEX]], 1
+-; IC1-NEXT:    [[TMP5:%.*]] = getelementptr inbounds double, ptr [[DATA]], i64 [[TMP4]]
+-; IC1-NEXT:    [[WIDE_LOAD:%.*]] = load <vscale x 2 x double>, ptr [[TMP5]], align 8
+-; IC1-NEXT:    [[TMP6:%.*]] = fneg <vscale x 2 x double> [[WIDE_LOAD]]
+-; IC1-NEXT:    store <vscale x 2 x double> [[TMP6]], ptr [[TMP5]], align 8
+-; IC1-NEXT:    [[INDEX_NEXT]] = add nuw i64 [[INDEX]], [[TMP2]]
+-; IC1-NEXT:    [[TMP7:%.*]] = icmp eq i64 [[INDEX_NEXT]], [[N_VEC]]
+-; IC1-NEXT:    br i1 [[TMP7]], label %[[MIDDLE_BLOCK:.*]], label %[[VECTOR_BODY]], !llvm.loop [[LOOP4:![0-9]+]]
+-; IC1:       [[MIDDLE_BLOCK]]:
+-; IC1-NEXT:    [[CMP_N:%.*]] = icmp eq i64 1111, [[N_VEC]]
+-; IC1-NEXT:    br i1 [[CMP_N]], [[EXIT:label %.*]], label %[[SCALAR_PH]]
+-; IC1:       [[SCALAR_PH]]:
+-;
+ ; CHECK-LABEL: define void @test_2xi64_unary_op_load_interleave_group(
+ ; CHECK-SAME: ptr noalias [[DATA:%.*]], ptr noalias [[FACTOR:%.*]]) #[[ATTR0]] {
+ ; CHECK-NEXT:  [[ENTRY:.*:]]
+ ; CHECK-NEXT:    [[TMP4:%.*]] = call i64 @llvm.vscale.i64()
+-; CHECK-NEXT:    [[TMP5:%.*]] = shl nuw i64 [[TMP4]], 3
++; CHECK-NEXT:    [[TMP5:%.*]] = shl nuw i64 [[TMP4]], 1
+ ; CHECK-NEXT:    [[MIN_ITERS_CHECK:%.*]] = icmp ult i64 1111, [[TMP5]]
+ ; CHECK-NEXT:    br i1 [[MIN_ITERS_CHECK]], label %[[SCALAR_PH:.*]], label %[[VECTOR_PH:.*]]
+ ; CHECK:       [[VECTOR_PH]]:
+ ; CHECK-NEXT:    [[TMP2:%.*]] = call i64 @llvm.vscale.i64()
+-; CHECK-NEXT:    [[TMP3:%.*]] = mul nuw i64 [[TMP2]], 8
++; CHECK-NEXT:    [[TMP3:%.*]] = mul nuw i64 [[TMP2]], 2
+ ; CHECK-NEXT:    [[N_MOD_VF:%.*]] = urem i64 1111, [[TMP3]]
+ ; CHECK-NEXT:    [[N_VEC:%.*]] = sub i64 1111, [[N_MOD_VF]]
+-; CHECK-NEXT:    [[TMP16:%.*]] = mul i64 [[TMP2]], 4
+ ; CHECK-NEXT:    br label %[[VECTOR_BODY:.*]]
+ ; CHECK:       [[VECTOR_BODY]]:
+ ; CHECK-NEXT:    [[INDEX:%.*]] = phi i64 [ 0, %[[VECTOR_PH]] ], [ [[INDEX_NEXT:%.*]], %[[VECTOR_BODY]] ]
+-; CHECK-NEXT:    [[TMP20:%.*]] = add i64 [[TMP2]], 0
+-; CHECK-NEXT:    [[TMP6:%.*]] = mul i64 [[TMP20]], 1
+-; CHECK-NEXT:    [[TMP24:%.*]] = add i64 [[INDEX]], [[TMP6]]
+-; CHECK-NEXT:    [[TMP8:%.*]] = mul i64 [[TMP2]], 2
+-; CHECK-NEXT:    [[TMP28:%.*]] = add i64 [[TMP8]], 0
+-; CHECK-NEXT:    [[TMP29:%.*]] = mul i64 [[TMP28]], 1
+-; CHECK-NEXT:    [[TMP11:%.*]] = add i64 [[INDEX]], [[TMP29]]
+-; CHECK-NEXT:    [[TMP12:%.*]] = mul i64 [[TMP2]], 3
+-; CHECK-NEXT:    [[TMP13:%.*]] = add i64 [[TMP12]], 0
+-; CHECK-NEXT:    [[TMP14:%.*]] = mul i64 [[TMP13]], 1
+-; CHECK-NEXT:    [[TMP15:%.*]] = add i64 [[INDEX]], [[TMP14]]
+ ; CHECK-NEXT:    [[TMP0:%.*]] = shl nsw i64 [[INDEX]], 1
+-; CHECK-NEXT:    [[TMP17:%.*]] = shl nsw i64 [[TMP24]], 1
+-; CHECK-NEXT:    [[TMP18:%.*]] = shl nsw i64 [[TMP11]], 1
+-; CHECK-NEXT:    [[TMP19:%.*]] = shl nsw i64 [[TMP15]], 1
+ ; CHECK-NEXT:    [[TMP1:%.*]] = getelementptr inbounds double, ptr [[DATA]], i64 [[TMP0]]
+-; CHECK-NEXT:    [[TMP21:%.*]] = getelementptr inbounds double, ptr [[DATA]], i64 [[TMP17]]
+-; CHECK-NEXT:    [[TMP22:%.*]] = getelementptr inbounds double, ptr [[DATA]], i64 [[TMP18]]
+-; CHECK-NEXT:    [[TMP23:%.*]] = getelementptr inbounds double, ptr [[DATA]], i64 [[TMP19]]
+ ; CHECK-NEXT:    [[TMP7:%.*]] = load <vscale x 2 x double>, ptr [[TMP1]], align 8
+-; CHECK-NEXT:    [[WIDE_LOAD1:%.*]] = load <vscale x 2 x double>, ptr [[TMP21]], align 8
+-; CHECK-NEXT:    [[WIDE_LOAD2:%.*]] = load <vscale x 2 x double>, ptr [[TMP22]], align 8
+-; CHECK-NEXT:    [[WIDE_LOAD3:%.*]] = load <vscale x 2 x double>, ptr [[TMP23]], align 8
+ ; CHECK-NEXT:    [[TMP9:%.*]] = fneg <vscale x 2 x double> [[TMP7]]
+-; CHECK-NEXT:    [[TMP25:%.*]] = fneg <vscale x 2 x double> [[WIDE_LOAD1]]
+-; CHECK-NEXT:    [[TMP26:%.*]] = fneg <vscale x 2 x double> [[WIDE_LOAD2]]
+-; CHECK-NEXT:    [[TMP27:%.*]] = fneg <vscale x 2 x double> [[WIDE_LOAD3]]
+ ; CHECK-NEXT:    store <vscale x 2 x double> [[TMP9]], ptr [[TMP1]], align 8
+-; CHECK-NEXT:    store <vscale x 2 x double> [[TMP25]], ptr [[TMP21]], align 8
+-; CHECK-NEXT:    store <vscale x 2 x double> [[TMP26]], ptr [[TMP22]], align 8
+-; CHECK-NEXT:    store <vscale x 2 x double> [[TMP27]], ptr [[TMP23]], align 8
+-; CHECK-NEXT:    [[INDEX_NEXT]] = add nuw i64 [[INDEX]], [[TMP16]]
++; CHECK-NEXT:    [[INDEX_NEXT]] = add nuw i64 [[INDEX]], [[TMP2]]
+ ; CHECK-NEXT:    [[TMP10:%.*]] = icmp eq i64 [[INDEX_NEXT]], [[N_VEC]]
+ ; CHECK-NEXT:    br i1 [[TMP10]], label %[[MIDDLE_BLOCK:.*]], label %[[VECTOR_BODY]], !llvm.loop [[LOOP4:![0-9]+]]
+ ; CHECK:       [[MIDDLE_BLOCK]]:
+diff -ruN --strip-trailing-cr a/llvm/test/Transforms/LoopVectorize/AArch64/transform-narrow-interleave-to-widen-memory-unroll.ll b/llvm/test/Transforms/LoopVectorize/AArch64/transform-narrow-interleave-to-widen-memory-unroll.ll
+--- a/llvm/test/Transforms/LoopVectorize/AArch64/transform-narrow-interleave-to-widen-memory-unroll.ll
++++ b/llvm/test/Transforms/LoopVectorize/AArch64/transform-narrow-interleave-to-widen-memory-unroll.ll
+@@ -60,26 +60,32 @@
+ ; CHECK-NEXT:    br label %[[VECTOR_BODY:.*]]
+ ; CHECK:       [[VECTOR_BODY]]:
+ ; CHECK-NEXT:    [[INDEX:%.*]] = phi i64 [ 0, %[[VECTOR_PH]] ], [ [[INDEX_NEXT:%.*]], %[[VECTOR_BODY]] ]
+-; CHECK-NEXT:    [[TMP0:%.*]] = add i64 [[INDEX]], 1
++; CHECK-NEXT:    [[TMP0:%.*]] = add i64 [[INDEX]], 2
+ ; CHECK-NEXT:    [[TMP1:%.*]] = getelementptr inbounds i64, ptr [[FACTOR]], i64 [[INDEX]]
+-; CHECK-NEXT:    [[TMP4:%.*]] = getelementptr inbounds i64, ptr [[FACTOR]], i64 [[TMP0]]
+-; CHECK-NEXT:    [[TMP2:%.*]] = load i64, ptr [[TMP1]], align 8
+-; CHECK-NEXT:    [[BROADCAST_SPLATINSERT:%.*]] = insertelement <2 x i64> poison, i64 [[TMP2]], i64 0
+-; CHECK-NEXT:    [[BROADCAST_SPLAT:%.*]] = shufflevector <2 x i64> [[BROADCAST_SPLATINSERT]], <2 x i64> poison, <2 x i32> zeroinitializer
+-; CHECK-NEXT:    [[TMP3:%.*]] = load i64, ptr [[TMP4]], align 8
+-; CHECK-NEXT:    [[BROADCAST_SPLATINSERT2:%.*]] = insertelement <2 x i64> poison, i64 [[TMP3]], i64 0
+-; CHECK-NEXT:    [[BROADCAST_SPLAT3:%.*]] = shufflevector <2 x i64> [[BROADCAST_SPLATINSERT2]], <2 x i64> poison, <2 x i32> zeroinitializer
++; CHECK-NEXT:    [[TMP3:%.*]] = getelementptr inbounds i64, ptr [[TMP1]], i32 2
++; CHECK-NEXT:    [[BROADCAST_SPLAT:%.*]] = load <2 x i64>, ptr [[TMP1]], align 8
++; CHECK-NEXT:    [[BROADCAST_SPLAT3:%.*]] = load <2 x i64>, ptr [[TMP3]], align 8
+ ; CHECK-NEXT:    [[TMP6:%.*]] = shl nsw i64 [[INDEX]], 1
+ ; CHECK-NEXT:    [[TMP7:%.*]] = shl nsw i64 [[TMP0]], 1
+ ; CHECK-NEXT:    [[TMP8:%.*]] = getelementptr inbounds i64, ptr [[DATA]], i64 [[TMP6]]
+ ; CHECK-NEXT:    [[TMP9:%.*]] = getelementptr inbounds i64, ptr [[DATA]], i64 [[TMP7]]
+-; CHECK-NEXT:    [[STRIDED_VEC2:%.*]] = load <2 x i64>, ptr [[TMP8]], align 8
+-; CHECK-NEXT:    [[STRIDED_VEC5:%.*]] = load <2 x i64>, ptr [[TMP9]], align 8
++; CHECK-NEXT:    [[WIDE_VEC:%.*]] = load <4 x i64>, ptr [[TMP8]], align 8
++; CHECK-NEXT:    [[WIDE_LOAD:%.*]] = shufflevector <4 x i64> [[WIDE_VEC]], <4 x i64> poison, <2 x i32> <i32 0, i32 2>
++; CHECK-NEXT:    [[STRIDED_VEC2:%.*]] = shufflevector <4 x i64> [[WIDE_VEC]], <4 x i64> poison, <2 x i32> <i32 1, i32 3>
++; CHECK-NEXT:    [[WIDE_VEC3:%.*]] = load <4 x i64>, ptr [[TMP9]], align 8
++; CHECK-NEXT:    [[WIDE_LOAD1:%.*]] = shufflevector <4 x i64> [[WIDE_VEC3]], <4 x i64> poison, <2 x i32> <i32 0, i32 2>
++; CHECK-NEXT:    [[STRIDED_VEC5:%.*]] = shufflevector <4 x i64> [[WIDE_VEC3]], <4 x i64> poison, <2 x i32> <i32 1, i32 3>
++; CHECK-NEXT:    [[TMP10:%.*]] = mul <2 x i64> [[BROADCAST_SPLAT]], [[WIDE_LOAD]]
++; CHECK-NEXT:    [[TMP11:%.*]] = mul <2 x i64> [[BROADCAST_SPLAT3]], [[WIDE_LOAD1]]
+ ; CHECK-NEXT:    [[TMP15:%.*]] = mul <2 x i64> [[BROADCAST_SPLAT]], [[STRIDED_VEC2]]
+ ; CHECK-NEXT:    [[TMP16:%.*]] = mul <2 x i64> [[BROADCAST_SPLAT3]], [[STRIDED_VEC5]]
+-; CHECK-NEXT:    store <2 x i64> [[TMP15]], ptr [[TMP8]], align 8
+-; CHECK-NEXT:    store <2 x i64> [[TMP16]], ptr [[TMP9]], align 8
+-; CHECK-NEXT:    [[INDEX_NEXT]] = add nuw i64 [[INDEX]], 2
++; CHECK-NEXT:    [[TMP17:%.*]] = shufflevector <2 x i64> [[TMP10]], <2 x i64> [[TMP15]], <4 x i32> <i32 0, i32 1, i32 2, i32 3>
++; CHECK-NEXT:    [[INTERLEAVED_VEC:%.*]] = shufflevector <4 x i64> [[TMP17]], <4 x i64> poison, <4 x i32> <i32 0, i32 2, i32 1, i32 3>
++; CHECK-NEXT:    store <4 x i64> [[INTERLEAVED_VEC]], ptr [[TMP8]], align 8
++; CHECK-NEXT:    [[TMP18:%.*]] = shufflevector <2 x i64> [[TMP11]], <2 x i64> [[TMP16]], <4 x i32> <i32 0, i32 1, i32 2, i32 3>
++; CHECK-NEXT:    [[INTERLEAVED_VEC6:%.*]] = shufflevector <4 x i64> [[TMP18]], <4 x i64> poison, <4 x i32> <i32 0, i32 2, i32 1, i32 3>
++; CHECK-NEXT:    store <4 x i64> [[INTERLEAVED_VEC6]], ptr [[TMP9]], align 8
++; CHECK-NEXT:    [[INDEX_NEXT]] = add nuw i64 [[INDEX]], 4
+ ; CHECK-NEXT:    [[TMP12:%.*]] = icmp eq i64 [[INDEX_NEXT]], 100
+ ; CHECK-NEXT:    br i1 [[TMP12]], label %[[MIDDLE_BLOCK:.*]], label %[[VECTOR_BODY]], !llvm.loop [[LOOP3:![0-9]+]]
+ ; CHECK:       [[MIDDLE_BLOCK]]:
+diff -ruN --strip-trailing-cr a/llvm/test/Transforms/LoopVectorize/AArch64/transform-narrow-interleave-to-widen-memory.ll b/llvm/test/Transforms/LoopVectorize/AArch64/transform-narrow-interleave-to-widen-memory.ll
+--- a/llvm/test/Transforms/LoopVectorize/AArch64/transform-narrow-interleave-to-widen-memory.ll
++++ b/llvm/test/Transforms/LoopVectorize/AArch64/transform-narrow-interleave-to-widen-memory.ll
+@@ -328,8 +328,10 @@
+ ; VF2-NEXT:    [[INDEX:%.*]] = phi i64 [ 0, %[[VECTOR_PH]] ], [ [[INDEX_NEXT:%.*]], %[[VECTOR_BODY]] ]
+ ; VF2-NEXT:    [[TMP0:%.*]] = shl nsw i64 [[INDEX]], 1
+ ; VF2-NEXT:    [[TMP1:%.*]] = getelementptr inbounds i64, ptr [[DST]], i64 [[TMP0]]
+-; VF2-NEXT:    store <2 x i64> [[BROADCAST_SPLAT]], ptr [[TMP1]], align 8
+-; VF2-NEXT:    [[INDEX_NEXT]] = add nuw i64 [[INDEX]], 1
++; VF2-NEXT:    [[TMP2:%.*]] = shufflevector <2 x i64> [[BROADCAST_SPLAT]], <2 x i64> [[BROADCAST_SPLAT]], <4 x i32> <i32 0, i32 1, i32 2, i32 3>
++; VF2-NEXT:    [[INTERLEAVED_VEC:%.*]] = shufflevector <4 x i64> [[TMP2]], <4 x i64> poison, <4 x i32> <i32 0, i32 2, i32 1, i32 3>
++; VF2-NEXT:    store <4 x i64> [[INTERLEAVED_VEC]], ptr [[TMP1]], align 8
++; VF2-NEXT:    [[INDEX_NEXT]] = add nuw i64 [[INDEX]], 2
+ ; VF2-NEXT:    [[TMP3:%.*]] = icmp eq i64 [[INDEX_NEXT]], 100
+ ; VF2-NEXT:    br i1 [[TMP3]], label %[[MIDDLE_BLOCK:.*]], label %[[VECTOR_BODY]], !llvm.loop [[LOOP7:![0-9]+]]
+ ; VF2:       [[MIDDLE_BLOCK]]:
+diff -ruN --strip-trailing-cr a/llvm/test/Transforms/LoopVectorize/WebAssembly/memory-interleave.ll b/llvm/test/Transforms/LoopVectorize/WebAssembly/memory-interleave.ll
+--- a/llvm/test/Transforms/LoopVectorize/WebAssembly/memory-interleave.ll
++++ b/llvm/test/Transforms/LoopVectorize/WebAssembly/memory-interleave.ll
+@@ -1779,7 +1779,7 @@
+ ; CHECK: LV: Scalar loop costs: 24
+ ; CHECK: LV: Vector loop of width 2 costs: 33
+ ; CHECK: LV: Vector loop of width 4 costs: 30
+-; CHECK: LV: Selecting VF: 4
++; CHECK: LV: Selecting VF: 1
+ define hidden void @four_floats_same_op(ptr noundef readonly captures(none) %a, ptr noundef readonly captures(none) %b, ptr noundef writeonly captures(none) %res, i32 noundef %N) {
+ entry:
+   %cmp45.not = icmp eq i32 %N, 0
+diff -ruN --strip-trailing-cr a/llvm/test/Transforms/LoopVectorize/X86/transform-narrow-interleave-to-widen-memory.ll b/llvm/test/Transforms/LoopVectorize/X86/transform-narrow-interleave-to-widen-memory.ll
+--- a/llvm/test/Transforms/LoopVectorize/X86/transform-narrow-interleave-to-widen-memory.ll
++++ b/llvm/test/Transforms/LoopVectorize/X86/transform-narrow-interleave-to-widen-memory.ll
+@@ -8,69 +8,15 @@
+ define void @test_4xi64(ptr noalias %data, ptr noalias %factor, i64 noundef %n) {
+ ; CHECK-LABEL: define void @test_4xi64(
+ ; CHECK-SAME: ptr noalias [[DATA:%.*]], ptr noalias [[FACTOR:%.*]], i64 noundef [[N:%.*]]) #[[ATTR0:[0-9]+]] {
+-; CHECK-NEXT:  [[ITER_CHECK:.*]]:
++; CHECK-NEXT:  [[ENTRY:.*]]:
+ ; CHECK-NEXT:    [[MIN_ITERS_CHECK:%.*]] = icmp ult i64 [[N]], 4
+-; CHECK-NEXT:    br i1 [[MIN_ITERS_CHECK]], label %[[VEC_EPILOG_SCALAR_PH:.*]], label %[[VECTOR_MAIN_LOOP_ITER_CHECK:.*]]
+-; CHECK:       [[VECTOR_MAIN_LOOP_ITER_CHECK]]:
+-; CHECK-NEXT:    [[MIN_ITERS_CHECK1:%.*]] = icmp ult i64 [[N]], 16
+-; CHECK-NEXT:    br i1 [[MIN_ITERS_CHECK1]], label %[[VEC_EPILOG_PH:.*]], label %[[VECTOR_PH:.*]]
++; CHECK-NEXT:    br i1 [[MIN_ITERS_CHECK]], label %[[SCALAR_PH:.*]], label %[[VECTOR_PH:.*]]
+ ; CHECK:       [[VECTOR_PH]]:
+-; CHECK-NEXT:    [[N_MOD_VF1:%.*]] = urem i64 [[N]], 16
+-; CHECK-NEXT:    [[N_VEC1:%.*]] = sub i64 [[N]], [[N_MOD_VF1]]
+-; CHECK-NEXT:    br label %[[VECTOR_BODY:.*]]
+-; CHECK:       [[VECTOR_BODY]]:
+-; CHECK-NEXT:    [[INDEX:%.*]] = phi i64 [ 0, %[[VECTOR_PH]] ], [ [[INDEX_NEXT1:%.*]], %[[VECTOR_BODY]] ]
+-; CHECK-NEXT:    [[TMP0:%.*]] = add i64 [[INDEX]], 1
+-; CHECK-NEXT:    [[TMP1:%.*]] = add i64 [[INDEX]], 2
+-; CHECK-NEXT:    [[TMP2:%.*]] = add i64 [[INDEX]], 3
+-; CHECK-NEXT:    [[TMP20:%.*]] = getelementptr inbounds i64, ptr [[FACTOR]], i64 [[INDEX]]
+-; CHECK-NEXT:    [[TMP21:%.*]] = getelementptr inbounds i64, ptr [[FACTOR]], i64 [[TMP0]]
+-; CHECK-NEXT:    [[TMP22:%.*]] = getelementptr inbounds i64, ptr [[FACTOR]], i64 [[TMP1]]
+-; CHECK-NEXT:    [[TMP6:%.*]] = getelementptr inbounds i64, ptr [[FACTOR]], i64 [[TMP2]]
+-; CHECK-NEXT:    [[TMP7:%.*]] = load i64, ptr [[TMP20]], align 8
+-; CHECK-NEXT:    [[BROADCAST_SPLATINSERT1:%.*]] = insertelement <4 x i64> poison, i64 [[TMP7]], i64 0
+-; CHECK-NEXT:    [[BROADCAST_SPLAT1:%.*]] = shufflevector <4 x i64> [[BROADCAST_SPLATINSERT1]], <4 x i64> poison, <4 x i32> zeroinitializer
+-; CHECK-NEXT:    [[TMP8:%.*]] = load i64, ptr [[TMP21]], align 8
+-; CHECK-NEXT:    [[BROADCAST_SPLATINSERT5:%.*]] = insertelement <4 x i64> poison, i64 [[TMP8]], i64 0
+-; CHECK-NEXT:    [[BROADCAST_SPLAT6:%.*]] = shufflevector <4 x i64> [[BROADCAST_SPLATINSERT5]], <4 x i64> poison, <4 x i32> zeroinitializer
+-; CHECK-NEXT:    [[TMP9:%.*]] = load i64, ptr [[TMP22]], align 8
+-; CHECK-NEXT:    [[BROADCAST_SPLATINSERT7:%.*]] = insertelement <4 x i64> poison, i64 [[TMP9]], i64 0
+-; CHECK-NEXT:    [[BROADCAST_SPLAT8:%.*]] = shufflevector <4 x i64> [[BROADCAST_SPLATINSERT7]], <4 x i64> poison, <4 x i32> zeroinitializer
+-; CHECK-NEXT:    [[TMP10:%.*]] = load i64, ptr [[TMP6]], align 8
+-; CHECK-NEXT:    [[BROADCAST_SPLATINSERT9:%.*]] = insertelement <4 x i64> poison, i64 [[TMP10]], i64 0
+-; CHECK-NEXT:    [[BROADCAST_SPLAT10:%.*]] = shufflevector <4 x i64> [[BROADCAST_SPLATINSERT9]], <4 x i64> poison, <4 x i32> zeroinitializer
+-; CHECK-NEXT:    [[TMP11:%.*]] = getelementptr inbounds { i64, i64, i64, i64 }, ptr [[DATA]], i64 [[INDEX]], i32 0
+-; CHECK-NEXT:    [[TMP12:%.*]] = getelementptr inbounds { i64, i64, i64, i64 }, ptr [[DATA]], i64 [[TMP0]], i32 0
+-; CHECK-NEXT:    [[TMP13:%.*]] = getelementptr inbounds { i64, i64, i64, i64 }, ptr [[DATA]], i64 [[TMP1]], i32 0
+-; CHECK-NEXT:    [[TMP23:%.*]] = getelementptr inbounds { i64, i64, i64, i64 }, ptr [[DATA]], i64 [[TMP2]], i32 0
+-; CHECK-NEXT:    [[WIDE_LOAD1:%.*]] = load <4 x i64>, ptr [[TMP11]], align 8
+-; CHECK-NEXT:    [[WIDE_LOAD2:%.*]] = load <4 x i64>, ptr [[TMP12]], align 8
+-; CHECK-NEXT:    [[WIDE_LOAD3:%.*]] = load <4 x i64>, ptr [[TMP13]], align 8
+-; CHECK-NEXT:    [[WIDE_LOAD4:%.*]] = load <4 x i64>, ptr [[TMP23]], align 8
+-; CHECK-NEXT:    [[TMP15:%.*]] = mul <4 x i64> [[BROADCAST_SPLAT1]], [[WIDE_LOAD1]]
+-; CHECK-NEXT:    [[TMP16:%.*]] = mul <4 x i64> [[BROADCAST_SPLAT6]], [[WIDE_LOAD2]]
+-; CHECK-NEXT:    [[TMP17:%.*]] = mul <4 x i64> [[BROADCAST_SPLAT8]], [[WIDE_LOAD3]]
+-; CHECK-NEXT:    [[TMP18:%.*]] = mul <4 x i64> [[BROADCAST_SPLAT10]], [[WIDE_LOAD4]]
+-; CHECK-NEXT:    store <4 x i64> [[TMP15]], ptr [[TMP11]], align 8
+-; CHECK-NEXT:    store <4 x i64> [[TMP16]], ptr [[TMP12]], align 8
+-; CHECK-NEXT:    store <4 x i64> [[TMP17]], ptr [[TMP13]], align 8
+-; CHECK-NEXT:    store <4 x i64> [[TMP18]], ptr [[TMP23]], align 8
+-; CHECK-NEXT:    [[INDEX_NEXT1]] = add nuw i64 [[INDEX]], 4
+-; CHECK-NEXT:    [[TMP19:%.*]] = icmp eq i64 [[INDEX_NEXT1]], [[N_VEC1]]
+-; CHECK-NEXT:    br i1 [[TMP19]], label %[[MIDDLE_BLOCK:.*]], label %[[VECTOR_BODY]], !llvm.loop [[LOOP0:![0-9]+]]
+-; CHECK:       [[MIDDLE_BLOCK]]:
+-; CHECK-NEXT:    [[CMP_N1:%.*]] = icmp eq i64 [[N]], [[N_VEC1]]
+-; CHECK-NEXT:    br i1 [[CMP_N1]], label %[[EXIT:.*]], label %[[VEC_EPILOG_ITER_CHECK:.*]]
+-; CHECK:       [[VEC_EPILOG_ITER_CHECK]]:
+-; CHECK-NEXT:    [[MIN_EPILOG_ITERS_CHECK:%.*]] = icmp ult i64 [[N_MOD_VF1]], 4
+-; CHECK-NEXT:    br i1 [[MIN_EPILOG_ITERS_CHECK]], label %[[VEC_EPILOG_SCALAR_PH]], label %[[VEC_EPILOG_PH]]
+-; CHECK:       [[VEC_EPILOG_PH]]:
+-; CHECK-NEXT:    [[VEC_EPILOG_RESUME_VAL:%.*]] = phi i64 [ [[N_VEC1]], %[[VEC_EPILOG_ITER_CHECK]] ], [ 0, %[[VECTOR_MAIN_LOOP_ITER_CHECK]] ]
+ ; CHECK-NEXT:    [[N_MOD_VF:%.*]] = urem i64 [[N]], 4
+ ; CHECK-NEXT:    [[N_VEC:%.*]] = sub i64 [[N]], [[N_MOD_VF]]
+-; CHECK-NEXT:    br label %[[VEC_EPILOG_VECTOR_BODY:.*]]
+-; CHECK:       [[VEC_EPILOG_VECTOR_BODY]]:
+-; CHECK-NEXT:    [[IV:%.*]] = phi i64 [ [[VEC_EPILOG_RESUME_VAL]], %[[VEC_EPILOG_PH]] ], [ [[INDEX_NEXT:%.*]], %[[VEC_EPILOG_VECTOR_BODY]] ]
++; CHECK-NEXT:    br label %[[VECTOR_BODY:.*]]
++; CHECK:       [[VECTOR_BODY]]:
++; CHECK-NEXT:    [[IV:%.*]] = phi i64 [ 0, %[[VECTOR_PH]] ], [ [[INDEX_NEXT:%.*]], %[[VECTOR_BODY]] ]
+ ; CHECK-NEXT:    [[ARRAYIDX:%.*]] = getelementptr inbounds i64, ptr [[FACTOR]], i64 [[IV]]
+ ; CHECK-NEXT:    [[TMP5:%.*]] = load i64, ptr [[ARRAYIDX]], align 8
+ ; CHECK-NEXT:    [[BROADCAST_SPLATINSERT:%.*]] = insertelement <4 x i64> poison, i64 [[TMP5]], i64 0
+@@ -81,15 +27,15 @@
+ ; CHECK-NEXT:    store <4 x i64> [[TMP4]], ptr [[TMP3]], align 8
+ ; CHECK-NEXT:    [[INDEX_NEXT]] = add nuw i64 [[IV]], 1
+ ; CHECK-NEXT:    [[TMP14:%.*]] = icmp eq i64 [[INDEX_NEXT]], [[N_VEC]]
+-; CHECK-NEXT:    br i1 [[TMP14]], label %[[VEC_EPILOG_MIDDLE_BLOCK:.*]], label %[[VEC_EPILOG_VECTOR_BODY]], !llvm.loop [[LOOP3:![0-9]+]]
+-; CHECK:       [[VEC_EPILOG_MIDDLE_BLOCK]]:
++; CHECK-NEXT:    br i1 [[TMP14]], label %[[MIDDLE_BLOCK:.*]], label %[[VECTOR_BODY]], !llvm.loop [[LOOP0:![0-9]+]]
++; CHECK:       [[MIDDLE_BLOCK]]:
+ ; CHECK-NEXT:    [[CMP_N:%.*]] = icmp eq i64 [[N]], [[N_VEC]]
+-; CHECK-NEXT:    br i1 [[CMP_N]], label %[[EXIT]], label %[[VEC_EPILOG_SCALAR_PH]]
+-; CHECK:       [[VEC_EPILOG_SCALAR_PH]]:
+-; CHECK-NEXT:    [[BC_RESUME_VAL:%.*]] = phi i64 [ [[N_VEC]], %[[VEC_EPILOG_MIDDLE_BLOCK]] ], [ [[N_VEC1]], %[[VEC_EPILOG_ITER_CHECK]] ], [ 0, %[[ITER_CHECK]] ]
++; CHECK-NEXT:    br i1 [[CMP_N]], label %[[EXIT:.*]], label %[[SCALAR_PH]]
++; CHECK:       [[SCALAR_PH]]:
++; CHECK-NEXT:    [[BC_RESUME_VAL:%.*]] = phi i64 [ [[N_VEC]], %[[MIDDLE_BLOCK]] ], [ 0, %[[ENTRY]] ]
+ ; CHECK-NEXT:    br label %[[LOOP:.*]]
+ ; CHECK:       [[LOOP]]:
+-; CHECK-NEXT:    [[IV1:%.*]] = phi i64 [ [[BC_RESUME_VAL]], %[[VEC_EPILOG_SCALAR_PH]] ], [ [[IV_NEXT:%.*]], %[[LOOP]] ]
++; CHECK-NEXT:    [[IV1:%.*]] = phi i64 [ [[BC_RESUME_VAL]], %[[SCALAR_PH]] ], [ [[IV_NEXT:%.*]], %[[LOOP]] ]
+ ; CHECK-NEXT:    [[DATA_2:%.*]] = getelementptr inbounds i64, ptr [[FACTOR]], i64 [[IV1]]
+ ; CHECK-NEXT:    [[L_2:%.*]] = load i64, ptr [[DATA_2]], align 8
+ ; CHECK-NEXT:    [[DATA_0:%.*]] = getelementptr inbounds { i64, i64, i64, i64 }, ptr [[DATA]], i64 [[IV1]], i32 0
+@@ -110,7 +56,7 @@
+ ; CHECK-NEXT:    store i64 [[MUL_3]], ptr [[DATA_3]], align 8
+ ; CHECK-NEXT:    [[IV_NEXT]] = add nuw nsw i64 [[IV1]], 1
+ ; CHECK-NEXT:    [[EC:%.*]] = icmp eq i64 [[IV_NEXT]], [[N]]
+-; CHECK-NEXT:    br i1 [[EC]], label %[[EXIT]], label %[[LOOP]], !llvm.loop [[LOOP4:![0-9]+]]
++; CHECK-NEXT:    br i1 [[EC]], label %[[EXIT]], label %[[LOOP]], !llvm.loop [[LOOP3:![0-9]+]]
+ ; CHECK:       [[EXIT]]:
+ ; CHECK-NEXT:    ret void
+ ;
+@@ -171,7 +117,7 @@
+ ; CHECK-NEXT:    store <8 x i64> [[INTERLEAVED_VEC]], ptr [[TMP4]], align 8
+ ; CHECK-NEXT:    [[INDEX_NEXT]] = add nuw i64 [[IV]], 4
+ ; CHECK-NEXT:    [[TMP12:%.*]] = icmp eq i64 [[INDEX_NEXT]], [[N_VEC]]
+-; CHECK-NEXT:    br i1 [[TMP12]], label %[[MIDDLE_BLOCK:.*]], label %[[VECTOR_BODY]], !llvm.loop [[LOOP5:![0-9]+]]
++; CHECK-NEXT:    br i1 [[TMP12]], label %[[MIDDLE_BLOCK:.*]], label %[[VECTOR_BODY]], !llvm.loop [[LOOP4:![0-9]+]]
+ ; CHECK:       [[MIDDLE_BLOCK]]:
+ ; CHECK-NEXT:    [[CMP_N:%.*]] = icmp eq i64 [[N]], [[N_VEC]]
+ ; CHECK-NEXT:    br i1 [[CMP_N]], label %[[EXIT:.*]], label %[[SCALAR_PH]]
+@@ -194,7 +140,7 @@
+ ; CHECK-NEXT:    store i64 [[MUL_1]], ptr [[DATA_1]], align 8
+ ; CHECK-NEXT:    [[IV_NEXT]] = add nuw nsw i64 [[IV1]], 1
+ ; CHECK-NEXT:    [[EC:%.*]] = icmp eq i64 [[IV_NEXT]], [[N]]
+-; CHECK-NEXT:    br i1 [[EC]], label %[[EXIT]], label %[[LOOP]], !llvm.loop [[LOOP6:![0-9]+]]
++; CHECK-NEXT:    br i1 [[EC]], label %[[EXIT]], label %[[LOOP]], !llvm.loop [[LOOP5:![0-9]+]]
+ ; CHECK:       [[EXIT]]:
+ ; CHECK-NEXT:    ret void
+ ;
+@@ -249,7 +195,7 @@
+ ; CHECK-NEXT:    store <8 x i64> [[INTERLEAVED_VEC]], ptr [[TMP4]], align 8
+ ; CHECK-NEXT:    [[INDEX_NEXT]] = add nuw i64 [[IV]], 4
+ ; CHECK-NEXT:    [[TMP12:%.*]] = icmp eq i64 [[INDEX_NEXT]], [[N_VEC]]
+-; CHECK-NEXT:    br i1 [[TMP12]], label %[[MIDDLE_BLOCK:.*]], label %[[VECTOR_BODY]], !llvm.loop [[LOOP7:![0-9]+]]
++; CHECK-NEXT:    br i1 [[TMP12]], label %[[MIDDLE_BLOCK:.*]], label %[[VECTOR_BODY]], !llvm.loop [[LOOP6:![0-9]+]]
+ ; CHECK:       [[MIDDLE_BLOCK]]:
+ ; CHECK-NEXT:    [[CMP_N:%.*]] = icmp eq i64 [[N]], [[N_VEC]]
+ ; CHECK-NEXT:    br i1 [[CMP_N]], label %[[EXIT:.*]], label %[[SCALAR_PH]]
+@@ -272,7 +218,7 @@
+ ; CHECK-NEXT:    store i64 [[MUL_1]], ptr [[DATA_1]], align 8
+ ; CHECK-NEXT:    [[IV_NEXT]] = add nuw nsw i64 [[IV1]], 1
+ ; CHECK-NEXT:    [[EC:%.*]] = icmp eq i64 [[IV_NEXT]], [[N]]
+-; CHECK-NEXT:    br i1 [[EC]], label %[[EXIT]], label %[[LOOP]], !llvm.loop [[LOOP8:![0-9]+]]
++; CHECK-NEXT:    br i1 [[EC]], label %[[EXIT]], label %[[LOOP]], !llvm.loop [[LOOP7:![0-9]+]]
+ ; CHECK:       [[EXIT]]:
+ ; CHECK-NEXT:    ret void
+ ;
+@@ -327,7 +273,7 @@
+ ; CHECK-NEXT:    store <8 x i64> [[INTERLEAVED_VEC]], ptr [[TMP4]], align 8
+ ; CHECK-NEXT:    [[INDEX_NEXT]] = add nuw i64 [[IV]], 4
+ ; CHECK-NEXT:    [[TMP12:%.*]] = icmp eq i64 [[INDEX_NEXT]], [[N_VEC]]
+-; CHECK-NEXT:    br i1 [[TMP12]], label %[[MIDDLE_BLOCK:.*]], label %[[VECTOR_BODY]], !llvm.loop [[LOOP9:![0-9]+]]
++; CHECK-NEXT:    br i1 [[TMP12]], label %[[MIDDLE_BLOCK:.*]], label %[[VECTOR_BODY]], !llvm.loop [[LOOP8:![0-9]+]]
+ ; CHECK:       [[MIDDLE_BLOCK]]:
+ ; CHECK-NEXT:    [[CMP_N:%.*]] = icmp eq i64 [[N]], [[N_VEC]]
+ ; CHECK-NEXT:    br i1 [[CMP_N]], label %[[EXIT:.*]], label %[[SCALAR_PH]]
+@@ -350,7 +296,7 @@
+ ; CHECK-NEXT:    store i64 [[MUL_0]], ptr [[DATA_1]], align 8
+ ; CHECK-NEXT:    [[IV_NEXT]] = add nuw nsw i64 [[IV1]], 1
+ ; CHECK-NEXT:    [[EC:%.*]] = icmp eq i64 [[IV_NEXT]], [[N]]
+-; CHECK-NEXT:    br i1 [[EC]], label %[[EXIT]], label %[[LOOP]], !llvm.loop [[LOOP10:![0-9]+]]
++; CHECK-NEXT:    br i1 [[EC]], label %[[EXIT]], label %[[LOOP]], !llvm.loop [[LOOP9:![0-9]+]]
+ ; CHECK:       [[EXIT]]:
+ ; CHECK-NEXT:    ret void
+ ;
+@@ -405,7 +351,7 @@
+ ; CHECK-NEXT:    store <8 x i64> [[INTERLEAVED_VEC]], ptr [[TMP4]], align 8
+ ; CHECK-NEXT:    [[INDEX_NEXT]] = add nuw i64 [[IV]], 4
+ ; CHECK-NEXT:    [[TMP9:%.*]] = icmp eq i64 [[INDEX_NEXT]], [[N_VEC]]
+-; CHECK-NEXT:    br i1 [[TMP9]], label %[[MIDDLE_BLOCK:.*]], label %[[VECTOR_BODY]], !llvm.loop [[LOOP11:![0-9]+]]
++; CHECK-NEXT:    br i1 [[TMP9]], label %[[MIDDLE_BLOCK:.*]], label %[[VECTOR_BODY]], !llvm.loop [[LOOP10:![0-9]+]]
+ ; CHECK:       [[MIDDLE_BLOCK]]:
+ ; CHECK-NEXT:    [[CMP_N:%.*]] = icmp eq i64 [[N]], [[N_VEC]]
+ ; CHECK-NEXT:    br i1 [[CMP_N]], label %[[EXIT:.*]], label %[[SCALAR_PH]]
+@@ -428,7 +374,7 @@
+ ; CHECK-NEXT:    store i64 [[MUL_1]], ptr [[DATA_0]], align 8
+ ; CHECK-NEXT:    [[IV_NEXT]] = add nuw nsw i64 [[IV1]], 1
+ ; CHECK-NEXT:    [[EC:%.*]] = icmp eq i64 [[IV_NEXT]], [[N]]
+-; CHECK-NEXT:    br i1 [[EC]], label %[[EXIT]], label %[[LOOP]], !llvm.loop [[LOOP12:![0-9]+]]
++; CHECK-NEXT:    br i1 [[EC]], label %[[EXIT]], label %[[LOOP]], !llvm.loop [[LOOP11:![0-9]+]]
+ ; CHECK:       [[EXIT]]:
+ ; CHECK-NEXT:    ret void
+ ;
+@@ -489,7 +435,7 @@
+ ; CHECK-NEXT:    store <8 x i64> [[INTERLEAVED_VEC]], ptr [[TMP16]], align 8
+ ; CHECK-NEXT:    [[INDEX_NEXT]] = add nuw i64 [[IV]], 4
+ ; CHECK-NEXT:    [[TMP15:%.*]] = icmp eq i64 [[INDEX_NEXT]], [[N_VEC]]
+-; CHECK-NEXT:    br i1 [[TMP15]], label %[[MIDDLE_BLOCK:.*]], label %[[VECTOR_BODY]], !llvm.loop [[LOOP13:![0-9]+]]
++; CHECK-NEXT:    br i1 [[TMP15]], label %[[MIDDLE_BLOCK:.*]], label %[[VECTOR_BODY]], !llvm.loop [[LOOP12:![0-9]+]]
+ ; CHECK:       [[MIDDLE_BLOCK]]:
+ ; CHECK-NEXT:    br label %[[SCALAR_PH]]
+ ; CHECK:       [[SCALAR_PH]]:
+@@ -513,7 +459,7 @@
+ ; CHECK-NEXT:    store i64 [[MUL_1]], ptr [[DATA_1]], align 8
+ ; CHECK-NEXT:    [[IV_NEXT]] = add nuw nsw i64 [[IV1]], 1
+ ; CHECK-NEXT:    [[EC:%.*]] = icmp eq i64 [[IV_NEXT]], [[N]]
+-; CHECK-NEXT:    br i1 [[EC]], label %[[EXIT:.*]], label %[[LOOP]], !llvm.loop [[LOOP14:![0-9]+]]
++; CHECK-NEXT:    br i1 [[EC]], label %[[EXIT:.*]], label %[[LOOP]], !llvm.loop [[LOOP13:![0-9]+]]
+ ; CHECK:       [[EXIT]]:
+ ; CHECK-NEXT:    ret void
+ ;
+@@ -573,7 +519,7 @@
+ ; CHECK-NEXT:    store <12 x i64> [[INTERLEAVED_VEC]], ptr [[TMP3]], align 8
+ ; CHECK-NEXT:    [[INDEX_NEXT]] = add nuw i64 [[IV]], 4
+ ; CHECK-NEXT:    [[TMP13:%.*]] = icmp eq i64 [[INDEX_NEXT]], [[N_VEC]]
+-; CHECK-NEXT:    br i1 [[TMP13]], label %[[MIDDLE_BLOCK:.*]], label %[[VECTOR_BODY]], !llvm.loop [[LOOP15:![0-9]+]]
++; CHECK-NEXT:    br i1 [[TMP13]], label %[[MIDDLE_BLOCK:.*]], label %[[VECTOR_BODY]], !llvm.loop [[LOOP14:![0-9]+]]
+ ; CHECK:       [[MIDDLE_BLOCK]]:
+ ; CHECK-NEXT:    [[CMP_N:%.*]] = icmp eq i64 [[N]], [[N_VEC]]
+ ; CHECK-NEXT:    br i1 [[CMP_N]], label %[[EXIT:.*]], label %[[SCALAR_PH]]
+@@ -598,7 +544,7 @@
+ ; CHECK-NEXT:    store i64 [[MUL_2]], ptr [[DATA_2]], align 8
+ ; CHECK-NEXT:    [[IV_NEXT]] = add nuw nsw i64 [[IV1]], 1
+ ; CHECK-NEXT:    [[EC:%.*]] = icmp eq i64 [[IV_NEXT]], [[N]]
+-; CHECK-NEXT:    br i1 [[EC]], label %[[EXIT]], label %[[LOOP]], !llvm.loop [[LOOP16:![0-9]+]]
++; CHECK-NEXT:    br i1 [[EC]], label %[[EXIT]], label %[[LOOP]], !llvm.loop [[LOOP15:![0-9]+]]
+ ; CHECK:       [[EXIT]]:
+ ; CHECK-NEXT:    ret void
+ ;
+@@ -707,7 +653,7 @@
+ ; CHECK-NEXT:    store <24 x i32> [[INTERLEAVED_VEC]], ptr [[TMP5]], align 8
+ ; CHECK-NEXT:    [[INDEX_NEXT]] = add nuw i64 [[IV]], 8
+ ; CHECK-NEXT:    [[TMP15:%.*]] = icmp eq i64 [[INDEX_NEXT]], [[N_VEC]]
+-; CHECK-NEXT:    br i1 [[TMP15]], label %[[MIDDLE_BLOCK:.*]], label %[[VECTOR_BODY]], !llvm.loop [[LOOP17:![0-9]+]]
++; CHECK-NEXT:    br i1 [[TMP15]], label %[[MIDDLE_BLOCK:.*]], label %[[VECTOR_BODY]], !llvm.loop [[LOOP16:![0-9]+]]
+ ; CHECK:       [[MIDDLE_BLOCK]]:
+ ; CHECK-NEXT:    br label %[[SCALAR_PH]]
+ ; CHECK:       [[SCALAR_PH]]:
+@@ -731,7 +677,7 @@
+ ; CHECK-NEXT:    store i32 [[MUL_2]], ptr [[DATA_2]], align 8
+ ; CHECK-NEXT:    [[IV_NEXT]] = add nuw nsw i64 [[IV1]], 1
+ ; CHECK-NEXT:    [[EC:%.*]] = icmp eq i64 [[IV_NEXT]], [[N]]
+-; CHECK-NEXT:    br i1 [[EC]], label %[[EXIT:.*]], label %[[LOOP]], !llvm.loop [[LOOP18:![0-9]+]]
++; CHECK-NEXT:    br i1 [[EC]], label %[[EXIT:.*]], label %[[LOOP]], !llvm.loop [[LOOP17:![0-9]+]]
+ ; CHECK:       [[EXIT]]:
+ ; CHECK-NEXT:    ret void
+ ;
+@@ -765,20 +711,19 @@
+ ; CHECK: [[LOOP0]] = distinct !{[[LOOP0]], [[META1:![0-9]+]], [[META2:![0-9]+]]}
+ ; CHECK: [[META1]] = !{!"llvm.loop.isvectorized", i32 1}
+ ; CHECK: [[META2]] = !{!"llvm.loop.unroll.runtime.disable"}
+-; CHECK: [[LOOP3]] = distinct !{[[LOOP3]], [[META1]], [[META2]]}
+-; CHECK: [[LOOP4]] = distinct !{[[LOOP4]], [[META2]], [[META1]]}
+-; CHECK: [[LOOP5]] = distinct !{[[LOOP5]], [[META1]], [[META2]]}
+-; CHECK: [[LOOP6]] = distinct !{[[LOOP6]], [[META2]], [[META1]]}
+-; CHECK: [[LOOP7]] = distinct !{[[LOOP7]], [[META1]], [[META2]]}
+-; CHECK: [[LOOP8]] = distinct !{[[LOOP8]], [[META2]], [[META1]]}
+-; CHECK: [[LOOP9]] = distinct !{[[LOOP9]], [[META1]], [[META2]]}
+-; CHECK: [[LOOP10]] = distinct !{[[LOOP10]], [[META2]], [[META1]]}
+-; CHECK: [[LOOP11]] = distinct !{[[LOOP11]], [[META1]], [[META2]]}
+-; CHECK: [[LOOP12]] = distinct !{[[LOOP12]], [[META2]], [[META1]]}
+-; CHECK: [[LOOP13]] = distinct !{[[LOOP13]], [[META1]], [[META2]]}
+-; CHECK: [[LOOP14]] = distinct !{[[LOOP14]], [[META2]], [[META1]]}
+-; CHECK: [[LOOP15]] = distinct !{[[LOOP15]], [[META1]], [[META2]]}
+-; CHECK: [[LOOP16]] = distinct !{[[LOOP16]], [[META2]], [[META1]]}
+-; CHECK: [[LOOP17]] = distinct !{[[LOOP17]], [[META1]], [[META2]]}
+-; CHECK: [[LOOP18]] = distinct !{[[LOOP18]], [[META2]], [[META1]]}
++; CHECK: [[LOOP3]] = distinct !{[[LOOP3]], [[META2]], [[META1]]}
++; CHECK: [[LOOP4]] = distinct !{[[LOOP4]], [[META1]], [[META2]]}
++; CHECK: [[LOOP5]] = distinct !{[[LOOP5]], [[META2]], [[META1]]}
++; CHECK: [[LOOP6]] = distinct !{[[LOOP6]], [[META1]], [[META2]]}
++; CHECK: [[LOOP7]] = distinct !{[[LOOP7]], [[META2]], [[META1]]}
++; CHECK: [[LOOP8]] = distinct !{[[LOOP8]], [[META1]], [[META2]]}
++; CHECK: [[LOOP9]] = distinct !{[[LOOP9]], [[META2]], [[META1]]}
++; CHECK: [[LOOP10]] = distinct !{[[LOOP10]], [[META1]], [[META2]]}
++; CHECK: [[LOOP11]] = distinct !{[[LOOP11]], [[META2]], [[META1]]}
++; CHECK: [[LOOP12]] = distinct !{[[LOOP12]], [[META1]], [[META2]]}
++; CHECK: [[LOOP13]] = distinct !{[[LOOP13]], [[META2]], [[META1]]}
++; CHECK: [[LOOP14]] = distinct !{[[LOOP14]], [[META1]], [[META2]]}
++; CHECK: [[LOOP15]] = distinct !{[[LOOP15]], [[META2]], [[META1]]}
++; CHECK: [[LOOP16]] = distinct !{[[LOOP16]], [[META1]], [[META2]]}
++; CHECK: [[LOOP17]] = distinct !{[[LOOP17]], [[META2]], [[META1]]}
+ ;.
+diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/libc/test/src/math/libc_math_test_rules.bzl b/utils/bazel/llvm-project-overlay/libc/test/src/math/libc_math_test_rules.bzl
+--- a/utils/bazel/llvm-project-overlay/libc/test/src/math/libc_math_test_rules.bzl
++++ b/utils/bazel/llvm-project-overlay/libc/test/src/math/libc_math_test_rules.bzl
+@@ -35,6 +35,7 @@
+             "//libc:__support_fputil_manipulation_functions",
+             "//libc:__support_fputil_nearest_integer_operations",
+             "//libc:__support_fputil_normal_float",
++            "//libc:__support_macros_optimization",
+             "//libc:__support_macros_properties_architectures",
+             "//libc:__support_macros_properties_os",
+             "//libc:__support_macros_properties_types",
+diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/mlir/python/BUILD.bazel b/utils/bazel/llvm-project-overlay/mlir/python/BUILD.bazel
+--- a/utils/bazel/llvm-project-overlay/mlir/python/BUILD.bazel
++++ b/utils/bazel/llvm-project-overlay/mlir/python/BUILD.bazel
+@@ -1029,6 +1029,7 @@
+     td_file = "mlir/dialects/ShardOps.td",
+     deps = [
+         "//mlir:OpBaseTdFiles",
++        "//mlir:ShapeOpsTdFiles",
+         "//mlir:ShardTdFiles",
+     ],
+ )
