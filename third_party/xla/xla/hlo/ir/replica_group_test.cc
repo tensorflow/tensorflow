@@ -20,6 +20,8 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "xla/hlo/ir/mesh_and_axis.h"
+#include "xla/hlo/ir/tile_assignment.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/xla_data.pb.h"
 
@@ -36,6 +38,123 @@ CollectiveDeviceListProto CreateDeviceListProto(
   }
   return proto;
 }
+
+TEST(CartesianProductTest, NonEmptyCartesianProduct) {
+  CartesianProduct product_ascending({1, 2, 3});
+  std::vector<std::vector<int64_t>> expected_ascending = {
+      {0, 0, 0}, {0, 0, 1}, {0, 0, 2}, {0, 1, 0}, {0, 1, 1}, {0, 1, 2}};
+  int cp_count = 0;
+  for (std::vector<int64_t> current : product_ascending) {
+    EXPECT_THAT(current,
+                testing::ElementsAreArray(expected_ascending[cp_count]));
+    cp_count++;
+  }
+  EXPECT_EQ(cp_count, expected_ascending.size());
+
+  CartesianProduct product_descending({4, 2});
+  std::vector<std::vector<int>> expected_descending = {
+      {0, 0}, {0, 1}, {1, 0}, {1, 1}, {2, 0}, {2, 1}, {3, 0}, {3, 1}};
+  cp_count = 0;
+  for (std::vector<int64_t> current : product_descending) {
+    EXPECT_THAT(current,
+                testing::ElementsAreArray(expected_descending[cp_count]));
+    cp_count++;
+  }
+  EXPECT_EQ(cp_count, expected_descending.size());
+
+  CartesianProduct product_ones({1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1});
+  std::vector<std::vector<int64_t>> expected_ones = {
+      {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}};
+  cp_count = 0;
+  for (std::vector<int64_t> current : product_ones) {
+    EXPECT_THAT(current, testing::ElementsAreArray(expected_ones[cp_count]));
+    cp_count++;
+  }
+  EXPECT_EQ(cp_count, expected_ones.size());
+}
+
+TEST(CartesianProductTest, EmptyCartesianProduct) {
+  CartesianProduct product_empty({});
+  EXPECT_TRUE(product_empty.begin().at_end);
+  for (
+      std::vector<int64_t> current :
+      product_empty) {  // NOLINT(clang-diagnostic-unreachable-code-loop-increment
+    FAIL() << "Expected empty product to be empty";
+  }
+
+  CartesianProduct product_empty_axis({1, 2, 3, 4, 5, 0, 6, 7});
+  EXPECT_TRUE(product_empty_axis.begin().at_end);
+  for (
+      std::vector<int64_t> current :
+      product_empty_axis) {  // NOLINT(clang-diagnostic-unreachable-code-loop-increment
+    FAIL() << "Expected product of empty axis to be empty";
+  }
+}
+
+TEST(MeshAxesReplicaGroupListTest, NumReplicaGroups) {
+  Mesh mesh_reduce_all_axes(TileAssignment(IotaTileAssignment::Create(
+                                /*dims=*/{4, 4})),
+                            /*axes_names=*/{"x", "y"});
+  MeshAxesReplicaGroupList replica_group_across_all_axes(
+      mesh_reduce_all_axes,
+      /*axes=*/{AxisRef(0), AxisRef(1)});
+  EXPECT_EQ(replica_group_across_all_axes.num_replica_groups(), 1);
+  EXPECT_EQ(replica_group_across_all_axes.num_devices_per_group(), 16);
+
+  Mesh mesh_reduce_one_axes(TileAssignment(IotaTileAssignment::Create(
+                                /*dims=*/{3, 5})),
+                            /*axes_names=*/{"a", "b"});
+  MeshAxesReplicaGroupList replica_group_across_a(mesh_reduce_one_axes,
+                                                  /*axes=*/{AxisRef(0)});
+  MeshAxesReplicaGroupList replica_group_across_b(mesh_reduce_one_axes,
+                                                  /*axes=*/{AxisRef(1)});
+  EXPECT_EQ(replica_group_across_a.num_replica_groups(), 5);
+  EXPECT_EQ(replica_group_across_a.num_devices_per_group(), 3);
+  EXPECT_EQ(replica_group_across_b.num_replica_groups(), 3);
+  EXPECT_EQ(replica_group_across_b.num_devices_per_group(), 5);
+
+  Mesh mesh_reduce_no_axes(TileAssignment(IotaTileAssignment::Create(
+                               /*dims=*/{2, 3, 5})),
+                           /*axes_names=*/{"p1", "p2", "p3"});
+  MeshAxesReplicaGroupList replica_group_across_no_axes(mesh_reduce_no_axes,
+                                                        /*axes=*/{});
+  EXPECT_EQ(replica_group_across_no_axes.num_replica_groups(), 2 * 3 * 5);
+  EXPECT_EQ(replica_group_across_no_axes.num_devices_per_group(), 1);
+}
+
+TEST(MeshAxesReplicaGroupListTest, ReplicaGroupsCountAndSizeForSubaxes) {
+  Mesh mesh_reduce_one_subaxis(TileAssignment(IotaTileAssignment::Create(
+                                   /*dims=*/{2, 6, 10})),
+                               /*axes_names=*/{"axis1", "axis2", "axis3"});
+  MeshAxesReplicaGroupList replica_group_across_axis1_subaxis(
+      mesh_reduce_one_subaxis,
+      /*axes=*/{AxisRef(0, {1, 2})});
+  MeshAxesReplicaGroupList replica_group_across_axis2_subaxis(
+      mesh_reduce_one_subaxis,
+      /*axes=*/{AxisRef(1, {2, 3})});
+  EXPECT_EQ(replica_group_across_axis1_subaxis.num_replica_groups(), 60);
+  EXPECT_EQ(replica_group_across_axis1_subaxis.num_devices_per_group(), 2);
+  EXPECT_EQ(replica_group_across_axis2_subaxis.num_replica_groups(), 40);
+  EXPECT_EQ(replica_group_across_axis2_subaxis.num_devices_per_group(), 3);
+
+  Mesh mesh_reduce_multiple_subaxis(TileAssignment(IotaTileAssignment::Create(
+                                        /*dims=*/{2 * 3, 5 * 7, 11 * 13})),
+                                    /*axes_names=*/{"alpha", "beta", "gamma"});
+  MeshAxesReplicaGroupList replica_group_across_multiple_subaxis1(
+      mesh_reduce_multiple_subaxis,
+      /*axes=*/{AxisRef(0, {1, 2}), AxisRef(1, {1, 5}), AxisRef(2, {1, 11})});
+  MeshAxesReplicaGroupList replica_group_across_multiple_subaxis2(
+      mesh_reduce_multiple_subaxis,
+      /*axes=*/{AxisRef(0, {2, 3}), AxisRef(1, {5, 7}), AxisRef(2, {11, 13})});
+  EXPECT_EQ(replica_group_across_multiple_subaxis1.num_replica_groups(), 273);
+  EXPECT_EQ(replica_group_across_multiple_subaxis1.num_devices_per_group(),
+            2 * 5 * 11);
+  EXPECT_EQ(replica_group_across_multiple_subaxis2.num_replica_groups(), 110);
+  EXPECT_EQ(replica_group_across_multiple_subaxis2.num_devices_per_group(),
+            3 * 7 * 13);
+}
+
+TEST(MeshAxesReplicaGroupListTest, ReplicaGroupSize) {}
 
 TEST(CollectiveDeviceListTest, DefaultListToString) {
   EXPECT_EQ(CollectiveDeviceList().ToString(true), "{}");
