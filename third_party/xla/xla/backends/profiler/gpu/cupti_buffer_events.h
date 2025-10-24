@@ -144,6 +144,10 @@ struct CudaGraphDetails {
                                 // node is cloned.
 };
 
+struct MarkerDataDetails {
+  absl::string_view marker_string;
+};
+
 inline std::string ToXStat(const KernelDetails& kernel_info,
                            double occupancy_pct) {
   return absl::StrCat(
@@ -180,6 +184,7 @@ enum class CuptiTracerEventType {
   ThreadMarkerStart = 17,
   ThreadMarkerEnd = 18,
   CudaGraphNodeMap = 19,
+  MarkerData = 20,
   Generic = 100,
 };
 
@@ -242,6 +247,8 @@ struct CuptiTracerEvent {
     GenericDetails generic_info;
     // Used for `source` DriverCallback, `type` must be CudaGraph.
     CudaGraphDetails cuda_graph_info;
+    // Used for `source` Activity, `type` must be ThreadMarkerRange.
+    MarkerDataDetails marker_data_info;
   };
 };
 

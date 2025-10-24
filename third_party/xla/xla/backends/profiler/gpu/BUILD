@@ -215,6 +215,7 @@ cc_library(
         ":cupti_buffer_events",
         ":cupti_collector",
         ":cupti_interface",
+        ":cupti_marker_data_parser",
         ":cupti_pm_sampler_factory",
         ":cupti_utils",
         "//xla/tsl/platform:env",
@@ -225,6 +226,7 @@ cc_library(
         "//xla/tsl/profiler/utils:per_thread",
         "//xla/tsl/profiler/utils:xplane_builder",
         "//xla/tsl/profiler/utils:xplane_schema",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -437,6 +439,64 @@ cc_library(
 )
 
 cc_library(
+    name = "cupti_nvtx_ext_payload",
+    srcs = if_cuda_newer_than(
+        "13_0",
+        ["cupti_nvtx_ext_payload.cc"],
+        [],
+    ),
+    hdrs = if_cuda_newer_than(
+        "13_0",
+        ["cupti_nvtx_ext_payload.h"],
+        [],
+    ),
+    # copybara:uncomment compatible_with = ["//buildenv/target:non_prod"],
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
+    deps = [
+        "//xla/tsl/cuda:cupti",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
+        "@local_config_cuda//cuda:cuda_headers",
+        "@local_tsl//tsl/platform",
+        "@local_tsl//tsl/platform:macros",
+    ],
+)
+
+cc_library(
+    name = "cupti_marker_data_parser",
+    srcs = if_cuda_newer_than(
+        "13_0",
+        ["cupti_marker_data_parser_ext.cc"],
+        ["cupti_marker_data_parser.cc"],
+    ),
+    hdrs = ["cupti_marker_data_parser.h"],
+    # copybara:uncomment compatible_with = ["//buildenv/target:non_prod"],
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
+    deps = [
+        "//xla/tsl/cuda:cupti",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
+        "@local_config_cuda//cuda:cuda_headers",
+    ] + if_cuda_newer_than(
+        "13_0",
+        [":cupti_nvtx_ext_payload"],
+        [],
+    ),
+)
+
+cc_library(
     name = "cupti_collector",
     srcs = ["cupti_collector.cc"],
     hdrs = ["cupti_collector.h"],
@@ -489,6 +549,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":cupti_interface",
+        ":cupti_marker_data_parser",
         ":cupti_utils",
         "//xla/tsl/cuda:cupti",
         "//xla/tsl/profiler/utils:buffer_pool",
@@ -699,6 +760,18 @@ xla_test(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "nvtx_ext_payload_sample",
+    testonly = 1,
+    srcs = ["nvtx_ext_payload_sample.cc"],
+    hdrs = ["nvtx_ext_payload_sample.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "@com_google_absl//absl/time",
+        "@local_config_cuda//cuda:cuda_headers",
     ],
 )
 

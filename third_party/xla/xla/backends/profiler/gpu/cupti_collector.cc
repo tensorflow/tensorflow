@@ -355,6 +355,12 @@ class PerDeviceCollector {
                               event.cuda_graph_info.orig_graph_id);
         }
       }
+    } else if (event.type == CuptiTracerEventType::ThreadMarkerRange) {
+      if (!event.marker_data_info.marker_string.empty()) {
+        xevent.AddStatValue(*plane->GetOrCreateStatMetadata(
+                                GetStatTypeStr(StatType::kMarkerPayloadString)),
+                            event.marker_data_info.marker_string);
+      }
     }
 
     std::vector<Annotation> annotation_stack =
@@ -834,7 +840,8 @@ class CuptiTraceCollectorImpl : public CuptiTraceCollector {
       num_activity_events_++;
     }
     if (event.type == CuptiTracerEventType::ThreadMarkerStart ||
-        event.type == CuptiTracerEventType::ThreadMarkerEnd) {
+        event.type == CuptiTracerEventType::ThreadMarkerEnd ||
+        event.type == CuptiTracerEventType::MarkerData) {
       // Process the nvtx marker, merge thread range start/end if appropriate.
       // If merged, the event will contains the merged content, and be used for
       // followed AddEvent() processing.
@@ -948,6 +955,8 @@ class CuptiTraceCollectorImpl : public CuptiTraceCollector {
       cuda_graph_node_id_map_;
   // Map from graph_id to original graph_id
   absl::flat_hash_map<uint32_t, uint32_t> cuda_graph_id_map_;
+  // For marker data strings.
+  StringDeduper string_deduper_;
 
   // process the nvtx marker, a)cache range start event, or b)merge range end
   // with its corresponding start event. If merged, the event be updated with
@@ -957,6 +966,8 @@ class CuptiTraceCollectorImpl : public CuptiTraceCollector {
     auto it = nvtx_markers_.find(marker_id);
     if (event.type == CuptiTracerEventType::ThreadMarkerStart) {
       if (it == nvtx_markers_.end()) {
+        // clear the marker data string.
+        event.marker_data_info.marker_string = "";
         nvtx_markers_[marker_id] =
             std::make_unique<CuptiTracerEvent>(std::move(event));
       } else {
@@ -969,11 +980,23 @@ class CuptiTraceCollectorImpl : public CuptiTraceCollector {
         it->second->end_time_ns = event.end_time_ns;
         it->second->graph_id = 0;
         event = std::move(*it->second);
+        event.marker_data_info.marker_string =
+            it->second->marker_data_info.marker_string;
         nvtx_markers_.erase(it);
         return true;  // The event is merged for further processing.
       } else {
         LOG_IF(ERROR, ++num_unmatched_nvtx_marker_end_ < 100)
             << "Unmatched nvtx thread range end marker id: " << marker_id;
+      }
+    } else if (event.type == CuptiTracerEventType::MarkerData) {
+      if (it == nvtx_markers_.end()) {
+        LOG_IF(ERROR, ++num_unmatched_nvtx_marker_end_ < 100)
+            << "Unmatched marker data for marker id: " << marker_id;
+      } else {
+        if (!event.name.empty()) {
+          it->second->marker_data_info.marker_string =
+              string_deduper_.Dedup(event.name);
+        }
       }
     }
     // No merged event is generated, return false.
