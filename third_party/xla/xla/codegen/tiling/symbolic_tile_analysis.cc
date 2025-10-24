@@ -541,6 +541,41 @@ void SortTiledHloInstructionsInPostOrder(
   }
 }
 
+// Returns `true` if the given dot instruction has a non-batch point dimension.
+//
+// This function will perform these checks for all `dot`-like instructions for
+// which `IsSomeDot` returns `true`.
+bool IsDotWithNonBatchPointDimension(const HloInstruction* instr) {
+  if (!IsSomeDot(instr)) {
+    return false;
+  }
+
+  auto has_any_trivial_dimension = [](const Shape& shape,
+                                      absl::Span<const int64_t> dimensions) {
+    return absl::c_any_of(
+        dimensions, [&](int64_t dim) { return shape.dimensions(dim) == 1; });
+  };
+
+  absl::Span<const int64_t> lhs_contracting_dimensions =
+      instr->dot_dimension_numbers().lhs_contracting_dimensions();
+  auto lhs_non_contracting_dimensions = GetNonContractingDims(
+      instr->operand(0)->shape().dimensions().size(),
+      lhs_contracting_dimensions,
+      instr->dot_dimension_numbers().lhs_batch_dimensions());
+
+  auto rhs_non_contracting_dimensions = GetNonContractingDims(
+      instr->operand(0)->shape().dimensions().size(),
+      instr->dot_dimension_numbers().rhs_contracting_dimensions(),
+      instr->dot_dimension_numbers().rhs_batch_dimensions());
+
+  return has_any_trivial_dimension(instr->operand(0)->shape(),
+                                   lhs_non_contracting_dimensions) ||
+         has_any_trivial_dimension(instr->operand(0)->shape(),
+                                   lhs_contracting_dimensions) ||
+         has_any_trivial_dimension(instr->operand(1)->shape(),
+                                   rhs_non_contracting_dimensions);
+}
+
 // Returns `true` if `SymbolicTileAnalysis` should simplify point dimensions
 // away when deriving indexing maps.
 //
@@ -571,7 +606,11 @@ bool ShouldDerivationSimplifyPointDimensions(const HloFusionAdaptor& fusion) {
       continue;
     }
 
-    if (IsSomeDot(&instruction_adaptor.instruction())) {
+    // We're OK with simplifying point dimensions if they occur only in the
+    // batch dimensions of a dot, but not if they occur in the contracting or
+    // or non-contracting dimensions. That's because batch dimensions are
+    // unconstrained by the hardware, unlike the others.
+    if (IsDotWithNonBatchPointDimension(&instruction_adaptor.instruction())) {
       return false;
     }
 
