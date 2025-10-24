@@ -10,8 +10,7 @@ xtile.entry_func @extract_insert_no_layout(%input: memref<1024xf32, #nvvm.memory
 
 // CHECK: func.func @extract_insert_no_layout(%[[ARG0:.*]]: !tt.ptr<f32>, %[[ARG1:.*]]: !tt.ptr<f32>) {
 // CHECK:   %[[PID:.*]] = tt.get_program_id x : i32
-// CHECK:   %[[PID_I64:.*]] = arith.extsi %[[PID]] : i32 to i64
-// CHECK:   %[[PID_IDX:.*]] = arith.index_cast %[[PID_I64]] : i64 to index
+// CHECK:   %[[PID_IDX:.*]] = arith.index_cast %[[PID]] : i32 to index
 // CHECK:   %[[TILE:.*]] = triton_xla.extract from %[[ARG0]] as memref<1024xf32, #triton_xla.layout<[0]>> [%[[PID_IDX]]] [1] [1] : tensor<1xf32>
 // CHECK:   triton_xla.insert %[[TILE]] into %[[ARG1]] as memref<32xf32, #triton_xla.layout<[0]>> [%[[PID_IDX]]] [1] [1] : tensor<1xf32>
 // CHECK:   return
@@ -29,8 +28,7 @@ xtile.entry_func @layout_preserved(%input: !arg_type,
 
 // CHECK: func.func @layout_preserved(%[[ARG0:.*]]: !tt.ptr<bf16>) {
 // CHECK:   %[[PID:.*]] = tt.get_program_id x : i32
-// CHECK:   %[[PID_I64:.*]] = arith.extsi %[[PID]] : i32 to i64
-// CHECK:   %[[PID_IDX:.*]] = arith.index_cast %[[PID_I64]] : i64 to index
+// CHECK:   %[[PID_IDX:.*]] = arith.index_cast %[[PID]] : i32 to index
 // CHECK:   %[[TILE:.*]] = triton_xla.extract from %[[ARG0]]
 // CHECK-SAME: as memref<1024x32x1x1xbf16, #triton_xla.layout<[3, 2, 0, 1]>>
 // CHECK-SAME: [%[[PID_IDX]], 0, 0, 0]

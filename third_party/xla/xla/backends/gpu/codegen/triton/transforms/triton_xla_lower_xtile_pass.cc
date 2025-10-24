@@ -163,13 +163,9 @@ class XTileEntryToTriton
 
     BlockArgument tile_id_arg = old_args.back();
 
-    // TODO(b/389955087): we can decide whether to sign extend by
-    // understanding if we need 64 bits to encode indices or if 32 bits are
-    // enough. For now, just use 64 bits to avoid issues.
     auto pid = builder.create<ttir::GetProgramIdOp>(ttir::ProgramIDDim::X);
-    Value pid_i64 = builder.create<ma::ExtSIOp>(builder.getI64Type(), pid);
     Value pid_idx =
-        builder.create<ma::IndexCastOp>(builder.getIndexType(), pid_i64);
+        builder.create<ma::IndexCastOp>(builder.getIndexType(), pid);
     rewriter.replaceAllUsesWith(tile_id_arg, pid_idx);
 
     // Handle memeref arguments.
