@@ -1,114 +1,2243 @@
+diff --git a/docs/sdy_export_passes.md b/docs/sdy_export_passes.md
+index 9e14eae..165377e 100755
+--- a/docs/sdy_export_passes.md
++++ b/docs/sdy_export_passes.md
+@@ -72,8 +72,7 @@ operation has compatible shardings.
+ #### Options
+ 
+ ```
+--enable-full-version                  : Enable full version.
+--avoid-reshards-on-named-computations : Avoid explicit reshards/collectives on named computations.
++-enable-full-version : Enable full version.
+ ```
+ 
+ ### `-sdy-remove-all-gather-reduce-scatter-for-cmv1`
+diff --git a/shardy/dialect/sdy/transforms/common/propagation_options.h b/shardy/dialect/sdy/transforms/common/propagation_options.h
+index 3700cd4..09ed107 100644
+--- a/shardy/dialect/sdy/transforms/common/propagation_options.h
++++ b/shardy/dialect/sdy/transforms/common/propagation_options.h
+@@ -50,8 +50,6 @@ struct PropagationOptions {
+   // auto-partitioner will be invoked after propagation of user-specified
+   // shardings.
+   bool enableAutoPartitioning = false;
+-  // Whether to avoid explicit reshards/collectives on named computations.
+-  bool avoidReshardsOnNamedComputations = false;
+ };
+ 
+ }  // namespace sdy
+diff --git a/shardy/dialect/sdy/transforms/export/explicit_reshards_util.cc b/shardy/dialect/sdy/transforms/export/explicit_reshards_util.cc
+index 2d5cc0a..50d584a 100644
+--- a/shardy/dialect/sdy/transforms/export/explicit_reshards_util.cc
++++ b/shardy/dialect/sdy/transforms/export/explicit_reshards_util.cc
+@@ -258,22 +258,18 @@ struct FactorAxesCandidate {
+   // sharding is size(B)/size(A), and where A is a strict prefix of B.
+   int64_t shardingSize = 0;
+   int64_t factorTypePrecedence = 0;
+-  int64_t communicationCost = INT64_MAX;
+ 
+   FactorAxesCandidate(FactorAxesPair factorAxes, int64_t sourceTensorSize,
+-                      int64_t shardingSize, FactorType factorType,
+-                      int64_t communicationCost)
++                      int64_t shardingSize, FactorType factorType)
+       : factorAxes(factorAxes),
+         totalSourceTensorSize(sourceTensorSize),
+         largestSourceTensorSize(sourceTensorSize),
+         shardingSize(shardingSize),
+-        factorTypePrecedence(precedence(factorType)),
+-        communicationCost(communicationCost) {}
++        factorTypePrecedence(precedence(factorType)) {}
+ 
+   FactorAxesCandidate() = default;
+ 
+   // Multi-level comparison.
+-  // 0. communicationCost
+   // 1. totalSourceTensorSize
+   // 2. factorTypePrecedence
+   // 3. largestSourceTensorSize
+@@ -281,10 +277,10 @@ struct FactorAxesCandidate {
+   // 5. factorAxes: If A is a strict prefix of B, then A is smaller than B.
+   bool operator<(const FactorAxesCandidate& rhs) const {
+     auto makeComparisonTuple = [](const FactorAxesCandidate& candidate) {
+-      return std::make_tuple(
+-          -candidate.communicationCost, candidate.totalSourceTensorSize,
+-          candidate.factorTypePrecedence, candidate.largestSourceTensorSize,
+-          candidate.shardingSize, candidate.factorAxes);
++      return std::forward_as_tuple(
++          candidate.totalSourceTensorSize, candidate.factorTypePrecedence,
++          candidate.largestSourceTensorSize, candidate.shardingSize,
++          candidate.factorAxes);
+     };
+     return makeComparisonTuple(*this) < makeComparisonTuple(rhs);
+   }
+@@ -317,8 +313,7 @@ using FactorAxesCandidatesMap =
+ void updateFactorAxesCandidate(FactorAxesCandidatesMap& factorAxesCandidatesMap,
+                                const FactorAxesPair& factorAxes,
+                                int64_t sourceTensorSize, const Mesh& mesh,
+-                               const FactorType factorType,
+-                               int64_t communicationCost) {
++                               const FactorType factorType) {
+   if (auto it = factorAxesCandidatesMap.find(factorAxes);
+       it != factorAxesCandidatesMap.end()) {
+     FactorAxesCandidate& candidate = it->second;
+@@ -329,8 +324,7 @@ void updateFactorAxesCandidate(FactorAxesCandidatesMap& factorAxesCandidatesMap,
+   }
+   factorAxesCandidatesMap.try_emplace(
+       factorAxes, factorAxes, sourceTensorSize,
+-      factorAxes.axes.getShardingSize(mesh.attr()), factorType,
+-      communicationCost);
++      factorAxes.axes.getShardingSize(mesh.attr()), factorType);
+ }
+ 
+ // A container for FactorAxesCandidates where the order of iteration does not
+@@ -479,150 +473,6 @@ class FactorAxesCandidateBag {
+   MeshAttr mesh;
+ };
+ 
+-int64_t getShardingSize(ArrayRef<AxisRefAttr> axisRefs, MeshAttr mesh) {
+-  int64_t shardingSize = 1;
+-  for (AxisRefAttr axisRef : axisRefs) {
+-    shardingSize *= axisRef.getSize(mesh);
+-  }
+-  return shardingSize;
+-}
+-
+-std::pair<SmallVector<AxisRefAttr>, SmallVector<AxisRefAttr>>
+-getShardingAxesInOtherAndThisFactor(
+-    const TensorFactorShardings& tensorFactorSharding,
+-    const int64_t factorIndex) {
+-  SmallVector<AxisRefAttr> axesInOtherFactor;
+-  SmallVector<AxisRefAttr> axesInThisFactor;
+-  for (const auto& [i, factorSharding] :
+-       tensorFactorSharding.factorIndexToSharding) {
+-    if (i == factorIndex) {
+-      axesInThisFactor = factorSharding.axisRefs;
+-    } else {
+-      axesInOtherFactor.append(factorSharding.axisRefs.begin(),
+-                               factorSharding.axisRefs.end());
+-    }
+-  }
+-  return {axesInOtherFactor, axesInThisFactor};
+-}
+-
+-int64_t getCommunicationCost(const ShardingProjection& shardingProjection,
+-                             OpShardingRuleAttr shardingRule,
+-                             ArrayRef<int64_t> tensorSizes, const Mesh& mesh,
+-                             const FactorAxesPair& factorAxesPair) {
+-  // The relative cost of collective operations.
+-  const int64_t allToAllCost = 1;
+-  const int64_t collectivePermuteCost = 2;
+-  const int64_t allGatherCost = 4;
+-  const int64_t reduceScatterCost = 4;
+-  const int64_t allReduceCost = 8;
+-
+-  int64_t communicationCost = 0;
+-
+-  // For each tensor (operand or result), we use the following notations.
+-  //
+-  // `factorAxesPair` is the candidate factor-axes pair.
+-  // * X = factorAxesPair.axes.
+-  // * A = sharding axes in other factors in the original sharding.
+-  // * B = sharding axes in this factor in the original sharding.
+-  // * AX = the intersection (overlap) of A and X.
+-  // * B-X = the difference of B and X.
+-
+-  SmallVector<AxisRefAttr> axesX = factorAxesPair.axes.toVector();
+-  int64_t axesXSize = factorAxesPair.axes.getShardingSize(mesh.attr());
+-
+-  // For each operand, estimate the cost of reshard from original sharding to
+-  // the candidate sharding axes.
+-  //
+-  // If the operand does not contain this factor, we need an all-gather on AX.
+-  //
+-  // If the operand contains this factor, we need
+-  // 1. all-to-all to move AX from other factors to this factor.
+-  // 2. collective-permute to handle B-X.
+-  // 3. all-gather to shrink the sharding size if needed.
+-  for (const auto& [tensorSize, tensorFactorSharding] : llvm::zip_equal(
+-           tensorSizes.drop_back(shardingProjection.getNumResults()),
+-           shardingProjection.getOperands())) {
+-    bool operandContainsFactor =
+-        tensorFactorSharding.factorIndexToSharding.contains(
+-            factorAxesPair.factorIndex);
+-    int64_t shardedTensorSize =
+-        tensorSize / tensorFactorSharding.getShardingSize(mesh.attr());
+-    auto [axesA, axesB] = getShardingAxesInOtherAndThisFactor(
+-        tensorFactorSharding, factorAxesPair.factorIndex);
+-
+-    SmallVector<AxisRefAttr> diffXA = getAxisSetDiff(axesX, axesA, mesh.attr());
+-    int64_t diffXASize = getShardingSize(diffXA, mesh.attr());
+-
+-    if (axesXSize > diffXASize) {
+-      // all-to-all on AX.
+-      communicationCost +=
+-          (operandContainsFactor ? allToAllCost : allGatherCost) *
+-          shardedTensorSize;
+-    }
+-
+-    if (operandContainsFactor) {
+-      if (!getAxisSetDiff(axesB, axesX, mesh.attr()).empty()) {
+-        communicationCost += collectivePermuteCost * shardedTensorSize;
+-      }
+-      if (getShardingSize(axesB, mesh.attr()) > diffXASize) {
+-        // The operand is over-sharded than the candidate. We need all-gather to
+-        // shrink the sharding size.
+-        communicationCost += allGatherCost * shardedTensorSize;
+-      }
+-    }
+-  }
+-
+-  // For each result, estimate the cost of reshard from the candidate sharding
+-  // axes to original sharding.
+-  //
+-  // We use the same notations as above.
+-  //
+-  // If the candidate factor is a reduction factor, we need all-reduce or
+-  // reduce-scatter on the result.
+-  //
+-  // If the result does not contain this factor, there is no additional cost.
+-  //
+-  // If the result contains this factor, we need
+-  // 1. all-to-all to move AX from this factor to other factors.
+-  // 2. all-gather to shrink the sharding size after the all-to-all above.
+-  for (const auto& [tensorSize, tensorFactorSharding] : llvm::zip_equal(
+-           tensorSizes.drop_front(shardingProjection.getNumOperands()),
+-           shardingProjection.getResults())) {
+-    int64_t shardedTensorSize = tensorSize / axesXSize;
+-    auto [axesA, axesB] = getShardingAxesInOtherAndThisFactor(
+-        tensorFactorSharding, factorAxesPair.factorIndex);
+-
+-    SmallVector<AxisRefAttr> diffXA = getAxisSetDiff(axesX, axesA, mesh.attr());
+-    int64_t diffXASize = getShardingSize(diffXA, mesh.attr());
+-
+-    if (shardingRule.isReductionFactor(factorAxesPair.factorIndex)) {
+-      communicationCost +=
+-          (diffXASize > 1 ? allReduceCost : reduceScatterCost) *
+-          shardedTensorSize;
+-    }
+-
+-    if (!tensorFactorSharding.factorIndexToSharding.contains(
+-            factorAxesPair.factorIndex)) {
+-      continue;
+-    }
+-    if (axesXSize > diffXASize) {
+-      // all-to-all on AX.
+-      communicationCost += allToAllCost * shardedTensorSize;
+-    }
+-
+-    if (!getAxisSetDiff(axesB, axesX, mesh.attr()).empty()) {
+-      communicationCost += collectivePermuteCost * shardedTensorSize;
+-    }
+-    if (getShardingSize(axesB, mesh.attr()) < diffXASize) {
+-      // The result is less-sharded than the candidate. We need all-gather to
+-      // shrink the sharding size.
+-      communicationCost += allGatherCost * shardedTensorSize;
+-    }
+-  }
+-
+-  return communicationCost;
+-}
+-
+ FactorAxesCandidateBag findFactorAxesCandidates(
+     const ShardingProjection& shardingProjection,
+     OpShardingRuleAttr shardingRule, ArrayRef<int64_t> tensorSizes,
+@@ -644,13 +494,10 @@ FactorAxesCandidateBag findFactorAxesCandidates(
+       }
+       ArrayRef<AxisRefAttr> axisRefs = factorSharding.axisRefs;
+       while (!axisRefs.empty()) {
+-        FactorAxesPair factorAxesPair(factorIndex, AxisListRef(axisRefs));
+-        int64_t communicationCost =
+-            getCommunicationCost(shardingProjection, shardingRule, tensorSizes,
+-                                 mesh, factorAxesPair);
+         updateFactorAxesCandidate(
+-            factorAxesCandidatesMap, factorAxesPair, tensorSize, mesh,
+-            shardingRule.getFactorType(factorIndex), communicationCost);
++            factorAxesCandidatesMap,
++            FactorAxesPair(factorIndex, AxisListRef(axisRefs)), tensorSize,
++            mesh, shardingRule.getFactorType(factorIndex));
+         axisRefs = axisRefs.drop_back();
+       }
+     }
+diff --git a/shardy/dialect/sdy/transforms/export/export_pipeline.cc b/shardy/dialect/sdy/transforms/export/export_pipeline.cc
+index e0557b1..90a6afc 100644
+--- a/shardy/dialect/sdy/transforms/export/export_pipeline.cc
++++ b/shardy/dialect/sdy/transforms/export/export_pipeline.cc
+@@ -40,8 +40,6 @@ void runShardyPartitioner(OpPassManager& pm, int& dumpIndex,
+                           const ExportOptions& options) {
+   InsertExplicitReshardsPassOptions passOptions;
+   passOptions.enableFullVersion = options.enableInsertExplicitCollectives;
+-  passOptions.avoidReshardsOnNamedComputations =
+-      options.avoidReshardsOnNamedComputations;
+   pm.addNestedPass<func::FuncOp>(createInsertExplicitReshardsPass(passOptions));
+ 
+   if (options.enableInsertExplicitCollectives) {
+diff --git a/shardy/dialect/sdy/transforms/export/insert_explicit_reshards.cc b/shardy/dialect/sdy/transforms/export/insert_explicit_reshards.cc
+index fb95adc..dcec262 100644
+--- a/shardy/dialect/sdy/transforms/export/insert_explicit_reshards.cc
++++ b/shardy/dialect/sdy/transforms/export/insert_explicit_reshards.cc
+@@ -97,22 +97,10 @@ void insertExplicitReshardsOnFuncReturn(Operation* op, func::FuncOp& funcOp,
+   }
+ }
+ 
+-void insertExplicitReshardsOnDataFlowOp(
+-    ShardableDataFlowOpInterface& op, IRRewriter& rewriter,
+-    const SymbolTable& symbolTable, const bool onFullVersion,
+-    const bool avoidReshardsOnNamedComputations) {
+-  if (isa<NamedComputationOp>(op) && avoidReshardsOnNamedComputations) {
+-    for (Value owner : op.getOpResultEdgeOwners()) {
+-      for (OpOperand* sourceOpOperand : op.getEdgeSources(owner)) {
+-        insertExplicitReshardsToTargetSharding(
+-            *sourceOpOperand,
+-            /*targetSharding=*/op.getEdgeOwnerSharding(owner), rewriter,
+-            symbolTable,
+-            /*insertAfterOperand=*/true, onFullVersion);
+-      }
+-    }
+-    return;
+-  }
++void insertExplicitReshardsOnDataFlowOp(ShardableDataFlowOpInterface& op,
++                                        IRRewriter& rewriter,
++                                        const SymbolTable& symbolTable,
++                                        const bool onFullVersion) {
+   for (Value owner : llvm::concat<Value>(op.getOpResultEdgeOwners(),
+                                          op.getBlockArgumentEdgeOwners())) {
+     TensorShardingAttr ownerSharding = op.transformTargetSharding(
+@@ -487,8 +475,7 @@ struct InsertExplicitReshardsPass
+         // TODO(enver): Prefer resharding the owner when multiple sources are
+         // sharded in the same way.
+         insertExplicitReshardsOnDataFlowOp(shardableDataFlowOp, rewriter,
+-                                           symbolTable, onFullVersion,
+-                                           avoidReshardsOnNamedComputations);
++                                           symbolTable, onFullVersion);
+         return;
+       }
+ 
+diff --git a/shardy/dialect/sdy/transforms/export/passes.h b/shardy/dialect/sdy/transforms/export/passes.h
+index 36f4de9..07b5d9d 100644
+--- a/shardy/dialect/sdy/transforms/export/passes.h
++++ b/shardy/dialect/sdy/transforms/export/passes.h
+@@ -75,12 +75,6 @@ struct ExportOptions : public PassPipelineOptions<ExportOptions> {
+       *this, "dump-propagation-edges",
+       llvm::cl::desc("Sink sdy.propagation_edges attr."),
+       llvm::cl::init(false)};
+-
+-  Option<bool> avoidReshardsOnNamedComputations{
+-      *this, "avoid-reshards-on-named-computations",
+-      llvm::cl::desc("Avoid inserting explicit reshards/collectives for named "
+-                     "computations."),
+-      llvm::cl::init(false)};
+ };
+ 
+ // Adds a sequence of export passes needed as a post-processing step for SDY
+diff --git a/shardy/dialect/sdy/transforms/export/passes.td b/shardy/dialect/sdy/transforms/export/passes.td
+index f6c8d86..f810ecb 100644
+--- a/shardy/dialect/sdy/transforms/export/passes.td
++++ b/shardy/dialect/sdy/transforms/export/passes.td
+@@ -110,11 +110,7 @@ def InsertExplicitReshardsPass : Pass<"sdy-insert-explicit-reshards", "func::Fun
+   let options = [
+       Option<"enableFullVersion", "enable-full-version",
+             "bool", /*default=*/"false",
+-            "Enable full version.">,
+-      Option<"avoidReshardsOnNamedComputations",
+-            "avoid-reshards-on-named-computations",
+-            "bool", /*default=*/"false",
+-            "Avoid explicit reshards/collectives on named computations.">
++            "Enable full version.">
+     ];
+ }
+ 
+diff --git a/shardy/dialect/sdy/transforms/export/test/insert_explicit_reshards/cholesky_triangular_solve.mlir b/shardy/dialect/sdy/transforms/export/test/insert_explicit_reshards/cholesky_triangular_solve.mlir
+index bb14074..3d6f236 100644
+--- a/shardy/dialect/sdy/transforms/export/test/insert_explicit_reshards/cholesky_triangular_solve.mlir
++++ b/shardy/dialect/sdy/transforms/export/test/insert_explicit_reshards/cholesky_triangular_solve.mlir
+@@ -147,12 +147,13 @@ func.func @cholesky_cholesky_dims_shardings_can_merge(%arg0: tensor<16x8x8x8xf32
+   return %0 :  tensor<16x8x8x8xf32>
+ }
+ 
+-// TODO(zixuanjiang). We may want to keep 'x' due to its larger size.
++
+ // CHECK-LABEL: func @cholesky_sharded_cholesky_dim_input_only_batch_dim_both_but_input_sharding_larger
+ func.func @cholesky_sharded_cholesky_dim_input_only_batch_dim_both_but_input_sharding_larger(%arg0: tensor<8x4x8x8xf32> {sdy.sharding = #sdy.sharding<@mesh_xyz, [{"x"}, {}, {}, {"z"}]>}) -> (tensor<8x4x8x8xf32> {sdy.sharding = #sdy.sharding<@mesh_xyz, [{"y"}, {}, {}, {}]>}){
+-  // CHECK: %[[RESHARD1:.*]] = sdy.reshard %arg0 <@mesh_xyz, [{"y"}, {}, {}, {}]> : tensor<8x4x8x8xf32>
+-  // CHECK-NEXT: %[[CHOLESKY:.*]] = stablehlo.cholesky %[[RESHARD1]], lower = true {sdy.sharding = #sdy.sharding_per_value<[<@mesh_xyz, [{"y"}, {}, {}, {}]>]>} : tensor<8x4x8x8xf32>
+-  // CHECK-NEXT: return %[[CHOLESKY]] : tensor<8x4x8x8xf32>
++  // CHECK: %[[RESHARD1:.*]] = sdy.reshard %arg0 <@mesh_xyz, [{"x"}, {}, {}, {}]> : tensor<8x4x8x8xf32>
++  // CHECK-NEXT: %[[CHOLESKY:.*]] = stablehlo.cholesky %[[RESHARD1]], lower = true {sdy.sharding = #sdy.sharding_per_value<[<@mesh_xyz, [{"x"}, {}, {}, {}]>]>} : tensor<8x4x8x8xf32>
++  // CHECK-NEXT: %[[RESHARD2:.*]] = sdy.reshard %[[CHOLESKY]] <@mesh_xyz, [{"y"}, {}, {}, {}]> : tensor<8x4x8x8xf32>
++  // CHECK-NEXT: return %[[RESHARD2]] : tensor<8x4x8x8xf32>
+   %0 = stablehlo.cholesky %arg0, lower = true {sdy.sharding = #sdy.sharding_per_value<[<@mesh_xyz, [{"y"}, {}, {}, {}]>]>} : (tensor<8x4x8x8xf32>) -> tensor<8x4x8x8xf32>
+   return %0 :  tensor<8x4x8x8xf32>
+ }
+diff --git a/shardy/dialect/sdy/transforms/export/test/insert_explicit_reshards/concatenate.mlir b/shardy/dialect/sdy/transforms/export/test/insert_explicit_reshards/concatenate.mlir
+index 0b10f3f..f1123a1 100644
+--- a/shardy/dialect/sdy/transforms/export/test/insert_explicit_reshards/concatenate.mlir
++++ b/shardy/dialect/sdy/transforms/export/test/insert_explicit_reshards/concatenate.mlir
+@@ -13,8 +13,8 @@ func.func @concatenate_single_input(%arg0: tensor<4x32x256xf32> {sdy.sharding =
+ 
+ // CHECK-LABEL: func @concatenate
+ func.func @concatenate(%arg0: tensor<4x32x256xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {}, {}]>}, %arg1: tensor<4x48x256xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"y"}, {}, {}]>}) -> tensor<4x80x256xf32> {
+-  // CHECK: %[[RESHARD1:.*]] = sdy.reshard %arg1 <@mesh, [{"x"}, {}, {}]> : tensor<4x48x256xf32>
+-  // CHECK-NEXT: %[[CONCATENATE:.*]] = stablehlo.concatenate %arg0, %[[RESHARD1]], dim = 1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x"}, {}, {}]>]>} : (tensor<4x32x256xf32>, tensor<4x48x256xf32>) -> tensor<4x80x256xf32>
++  // CHECK: %[[RESHARD1:.*]] = sdy.reshard %arg0 <@mesh, [{"y"}, {}, {}]> : tensor<4x32x256xf32>
++  // CHECK-NEXT: %[[CONCATENATE:.*]] = stablehlo.concatenate %[[RESHARD1]], %arg1, dim = 1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"y"}, {}, {}]>]>} : (tensor<4x32x256xf32>, tensor<4x48x256xf32>) -> tensor<4x80x256xf32>
+   // CHECK-NEXT: %[[RESHARD2:.*]] = sdy.reshard %[[CONCATENATE]] <@mesh, [{}, {}, {}]> : tensor<4x80x256xf32>
+   // CHECK-NEXT: return %[[RESHARD2]] : tensor<4x80x256xf32>
+   %0 = stablehlo.concatenate %arg0, %arg1, dim = 1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {}, {}]>]>} : (tensor<4x32x256xf32>, tensor<4x48x256xf32>) -> tensor<4x80x256xf32>
+@@ -64,11 +64,10 @@ func.func @concatenate_operands_are_from_slices_of_the_same_tensor(%arg0: tensor
+ func.func @concatenate_operands_are_results_of_slices_different_shardings_on_permutation_dim_with_equal_counts(%arg0: tensor<4x40x256xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {}, {}]>}, %arg1: tensor<4x60x256xf32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {"y"}, {}]>}) -> (tensor<4x80x256xf32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {"x"}, {}]>}) {
+   %0 = stablehlo.slice %arg0 [0:4, 0:32, 0:256] {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x"}, {}, {}]>]>} : (tensor<4x40x256xf32>) -> tensor<4x32x256xf32>
+   %1 = stablehlo.slice %arg1 [0:4, 0:48, 0:256] {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {"y"}, {}]>]>} : (tensor<4x60x256xf32>) -> tensor<4x48x256xf32>
+-  // CHECK: %[[RESHARD1:.*]] = sdy.reshard %0 <@mesh, [{"x"}, {"y"}, {}]> : tensor<4x32x256xf32>
+-  // CHECK-NEXT: %[[RESHARD2:.*]] = sdy.reshard %1 <@mesh, [{"x"}, {"y"}, {}]> : tensor<4x48x256xf32>
+-  // CHECK-NEXT: %[[CONCATENATE:.*]] = stablehlo.concatenate %[[RESHARD1]], %[[RESHARD2]], dim = 1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x"}, {"y"}, {}]>]>} : (tensor<4x32x256xf32>, tensor<4x48x256xf32>) -> tensor<4x80x256xf32>
+-  // CHECK-NEXT: %[[RESHARD3:.*]] = sdy.reshard %[[CONCATENATE]] <@mesh, [{}, {"x"}, {}]> : tensor<4x80x256xf32>
+-  // CHECK-NEXT: return %[[RESHARD3]] : tensor<4x80x256xf32>
++  // CHECK: %[[RESHARD1:.*]] = sdy.reshard %0 <@mesh, [{}, {"x"}, {}]> : tensor<4x32x256xf32>
++  // CHECK-NEXT: %[[RESHARD2:.*]] = sdy.reshard %1 <@mesh, [{}, {"x"}, {}]> : tensor<4x48x256xf32>
++  // CHECK-NEXT: %[[CONCATENATE:.*]] = stablehlo.concatenate %[[RESHARD1]], %[[RESHARD2]], dim = 1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {"x"}, {}]>]>} : (tensor<4x32x256xf32>, tensor<4x48x256xf32>) -> tensor<4x80x256xf32>
++  // CHECK-NEXT: return %[[CONCATENATE]] : tensor<4x80x256xf32>
+   %2 = stablehlo.concatenate %0, %1, dim = 1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [
+ {}, {"x"}, {}]>]>} : (tensor<4x32x256xf32>, tensor<4x48x256xf32>) -> tensor<4x80x256xf32>
+   return %2 : tensor<4x80x256xf32>
+@@ -78,11 +77,10 @@ func.func @concatenate_operands_are_results_of_slices_different_shardings_on_per
+ func.func @concatenate_operands_are_results_of_slices_different_shardings_on_permutation_dim_with_equal_counts_but_conflicting_on_batching_dim(%arg0: tensor<4x40x256xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x":(2)2}, {}, {}]>}, %arg1: tensor<4x60x256xf32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {"y"}, {}]>}) -> (tensor<4x80x256xf32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {"x"}, {}]>}) {
+   %0 = stablehlo.slice %arg0 [0:4, 0:32, 0:256] {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x":(2)2}, {}, {}]>]>} : (tensor<4x40x256xf32>) -> tensor<4x32x256xf32>
+   %1 = stablehlo.slice %arg1 [0:4, 0:48, 0:256] {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {"y"}, {}]>]>} : (tensor<4x60x256xf32>) -> tensor<4x48x256xf32>
+-  // CHECK: %[[RESHARD1:.*]] = sdy.reshard %0 <@mesh, [{"x":(2)2}, {"x":(1)2}, {}]> : tensor<4x32x256xf32>
+-  // CHECK-NEXT: %[[RESHARD2:.*]] = sdy.reshard %1 <@mesh, [{"x":(2)2}, {"x":(1)2}, {}]> : tensor<4x48x256xf32>
+-  // CHECK-NEXT: %[[CONCATENATE:.*]] = stablehlo.concatenate %[[RESHARD1]], %[[RESHARD2]], dim = 1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x":(2)2}, {"x":(1)2}, {}]>]>} : (tensor<4x32x256xf32>, tensor<4x48x256xf32>) -> tensor<4x80x256xf32>
+-  // CHECK-NEXT: %[[RESHARD3:.*]] = sdy.reshard %[[CONCATENATE]] <@mesh, [{}, {"x"}, {}]> : tensor<4x80x256xf32>
+-  // CHECK-NEXT: return %[[RESHARD3]] : tensor<4x80x256xf32>
++  // CHECK: %[[RESHARD1:.*]] = sdy.reshard %0 <@mesh, [{}, {"x"}, {}]> : tensor<4x32x256xf32>
++  // CHECK-NEXT: %[[RESHARD2:.*]] = sdy.reshard %1 <@mesh, [{}, {"x"}, {}]> : tensor<4x48x256xf32>
++  // CHECK-NEXT: %[[CONCATENATE:.*]] = stablehlo.concatenate %[[RESHARD1]], %[[RESHARD2]], dim = 1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {"x"}, {}]>]>} : (tensor<4x32x256xf32>, tensor<4x48x256xf32>) -> tensor<4x80x256xf32>
++  // CHECK-NEXT: return %[[CONCATENATE]] : tensor<4x80x256xf32>
+   %2 = stablehlo.concatenate %0, %1, dim = 1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {"x"}, {}]>]>} : (tensor<4x32x256xf32>, tensor<4x48x256xf32>) -> tensor<4x80x256xf32>
+   return %2 : tensor<4x80x256xf32>
+ }
+diff --git a/shardy/dialect/sdy/transforms/export/test/insert_explicit_reshards/dot_dot_general.mlir b/shardy/dialect/sdy/transforms/export/test/insert_explicit_reshards/dot_dot_general.mlir
+index e6162c4..c408590 100644
+--- a/shardy/dialect/sdy/transforms/export/test/insert_explicit_reshards/dot_dot_general.mlir
++++ b/shardy/dialect/sdy/transforms/export/test/insert_explicit_reshards/dot_dot_general.mlir
+@@ -250,10 +250,11 @@ func.func @dot_incompatible_in_out_mismatch_same_axis_on_different_factors_lhs_n
+ 
+ // CHECK-LABEL: func @dot_incompatible_in_out_mismatch_same_axis_on_different_factors_lhs_non_contracting_dim_is_sharded_smaller_local_contracting_dim
+ func.func @dot_incompatible_in_out_mismatch_same_axis_on_different_factors_lhs_non_contracting_dim_is_sharded_smaller_local_contracting_dim(%arg0: tensor<8x16xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {"y"}]>}, %arg1: tensor<16x16xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"y"}, {}]>}) -> (tensor<8x16xf32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {"x"}]>}) {
+-  // CHECK-NEXT: %0 = stablehlo.dot %arg0, %arg1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x"}, {}]>]>} : (tensor<8x16xf32>, tensor<16x16xf32>) -> tensor<8x16xf32>
+-  // CHECK-NEXT: %1 = sdy.all_reduce {"y"} %0 out_sharding=<@mesh, [{"x"}, {}]> : tensor<8x16xf32>
+-  // CHECK-NEXT: %2 = sdy.reshard %1 <@mesh, [{}, {"x"}]> : tensor<8x16xf32>
+-  // CHECK-NEXT: return %2 : tensor<8x16xf32>
++  // CHECK-NEXT: %[[RESHARD1:.*]] = sdy.reshard %arg0 <@mesh, [{}, {"y"}]> : tensor<8x16xf32>
++  // CHECK-NEXT: %[[RESHARD2:.*]] = sdy.reshard %arg1 <@mesh, [{"y"}, {"x"}]> : tensor<16x16xf32>
++  // CHECK-NEXT: %[[DOT:.*]] = stablehlo.dot %[[RESHARD1]], %[[RESHARD2]] {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {"x"}]>]>} : (tensor<8x16xf32>, tensor<16x16xf32>) -> tensor<8x16xf32>
++  // CHECK-NEXT: %[[ALL_REDUCE:.*]] = sdy.all_reduce {"y"} %[[DOT]] out_sharding=<@mesh, [{}, {"x"}]> : tensor<8x16xf32>
++  // CHECK-NEXT: return %[[ALL_REDUCE]] : tensor<8x16xf32>
+   %0 = stablehlo.dot %arg0, %arg1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {"x"}]>]>} : (tensor<8x16xf32>, tensor<16x16xf32>) -> tensor<8x16xf32>
+   return %0 : tensor<8x16xf32>
+ }
+@@ -523,12 +524,10 @@ func.func @dot_genaral_one_suffix_has_larger_count_on_another_factor(%arg0: tens
+   return %0 : tensor<4x8x16xf32>
+ }
+ 
+-// TODO(zixuanjiang). We may want to keep {"y", "x":(1)2, "t":(2)2} for the batch dimension.
+ // CHECK-LABEL: func @dot_genaral_batching_dimension_shardings_have_common_prefix
+ func.func @dot_genaral_batching_dimension_shardings_have_common_prefix(%arg0: tensor<64x8x32xf32> {sdy.sharding = #sdy.sharding<@mesh_xyzt, [{"y", "x":(1)2, "t":(1)2}, {"t":(2)2}, {}]>}, %arg1: tensor<64x32x16xf32> {sdy.sharding = #sdy.sharding<@mesh_xyzt, [{"y", "x":(1)2, "t":(2)2}, {}, {"t":(1)2}]>}) ->(tensor<64x8x16xf32> {sdy.sharding = #sdy.sharding<@mesh_xyzt, [{}, {"t":(2)2}, {"t":(1)2}]>}) {
+-  // CHECK: %[[RESHARD1:.*]] = sdy.reshard %arg0 <@mesh_xyzt, [{"y", "x":(1)2}, {"t":(2)2}, {}]> : tensor<64x8x32xf32>
+-  // CHECK: %[[RESHARD2:.*]] = sdy.reshard %arg1 <@mesh_xyzt, [{"y", "x":(1)2}, {}, {"t":(1)2}]> : tensor<64x32x16xf32>
+-  // CHECK-NEXT: %[[DOTGENERAL:.*]] = stablehlo.dot_general %[[RESHARD1]], %[[RESHARD2]], batching_dims = [0] x [0], contracting_dims = [2] x [1] {sdy.sharding = #sdy.sharding_per_value<[<@mesh_xyzt, [{"y", "x":(1)2}, {"t":(2)2}, {"t":(1)2}]>]>} : (tensor<64x8x32xf32>, tensor<64x32x16xf32>) -> tensor<64x8x16xf32>
++  // CHECK: %[[RESHARD1:.*]] = sdy.reshard %arg0 <@mesh_xyzt, [{"y", "x":(1)2, "t":(2)2}, {}, {}]> : tensor<64x8x32xf32>
++  // CHECK-NEXT: %[[DOTGENERAL:.*]] = stablehlo.dot_general %[[RESHARD1]], %arg1, batching_dims = [0] x [0], contracting_dims = [2] x [1] {sdy.sharding = #sdy.sharding_per_value<[<@mesh_xyzt, [{"y", "x":(1)2, "t":(2)2}, {}, {"t":(1)2}]>]>} : (tensor<64x8x32xf32>, tensor<64x32x16xf32>) -> tensor<64x8x16xf32>
+   // CHECK-NEXT: %[[RESHARD2:.*]] = sdy.reshard %[[DOTGENERAL]] <@mesh_xyzt, [{}, {"t":(2)2}, {"t":(1)2}]> : tensor<64x8x16xf32>
+   // CHECK-NEXT: return %[[RESHARD2]] : tensor<64x8x16xf32>
+   %0 = stablehlo.dot_general %arg0, %arg1, batching_dims = [0] x [0], contracting_dims = [2] x [1] {sdy.sharding = #sdy.sharding_per_value<[<@mesh_xyzt, [{}, {"t":(2)2}, {"t":(1)2}]>]>} : (tensor<64x8x32xf32>, tensor<64x32x16xf32>) -> tensor<64x8x16xf32>
+@@ -586,62 +585,6 @@ func.func @dot_only_contracting_dims_sharded_and_has_same_shardings(
+   return %0 : tensor<8x16xf32>
+ }
+ 
+-// The following 4 test targets are analyzed quantitlively in b/448376870#comment6.
+-// In short, keep the largest factor sharded.
+-
+-// CHECK-LABEL: func @dot_ij_jk_ik_i_is_largset
+-func.func @dot_ij_jk_ik_i_is_largset(
+-    %arg0: tensor<16x8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {"x"}]>},
+-    %arg1: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {"x"}]>})
+-    -> (tensor<16x8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {}]>}) {
+-  // CHECK-NEXT: %[[RESHARD_LHS:.*]] = sdy.reshard %arg0 <@mesh, [{"x"}, {}]> : tensor<16x8xf32>
+-  // CHECK-NEXT: %[[RESHARD_RHS:.*]] = sdy.reshard %arg1 <@mesh, [{}, {}]> : tensor<8x8xf32>
+-  // CHECK-NEXT: %[[DOT:.*]] = stablehlo.dot %[[RESHARD_LHS]], %[[RESHARD_RHS]] {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x"}, {}]>]>} : (tensor<16x8xf32>, tensor<8x8xf32>) -> tensor<16x8xf32>
+-  // CHECK-NEXT: return %[[DOT]] : tensor<16x8xf32>
+-  %0 = stablehlo.dot %arg0, %arg1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x"}, {}]>]>} : (tensor<16x8xf32>, tensor<8x8xf32>) -> tensor<16x8xf32>
+-  return %0 : tensor<16x8xf32>
+-}
+-
+-// CHECK-LABEL: func @dot_ij_jk_ik_j_is_largset
+-func.func @dot_ij_jk_ik_j_is_largset(
+-    %arg0: tensor<8x16xf32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {"x"}]>},
+-    %arg1: tensor<16x8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {"x"}]>})
+-    -> (tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {}]>}) {
+-  // CHECK-NEXT: %[[RESHARD_RHS:.*]] = sdy.reshard %arg1 <@mesh, [{"x"}, {}]> : tensor<16x8xf32>
+-  // CHECK-NEXT: %[[DOT:.*]] = stablehlo.dot %arg0, %[[RESHARD_RHS]] {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {}]>]>} : (tensor<8x16xf32>, tensor<16x8xf32>) -> tensor<8x8xf32>
+-  // CHECK-NEXT: %[[ALL_REDUCE:.*]] = sdy.all_reduce {"x"} %[[DOT]] out_sharding=<@mesh, [{}, {}]> : tensor<8x8xf32>
+-  // CHECK-NEXT: %[[RESHARD_OUT:.*]] = sdy.reshard %[[ALL_REDUCE]] <@mesh, [{"x"}, {}]> : tensor<8x8xf32>
+-  // CHECK-NEXT: return %[[RESHARD_OUT]] : tensor<8x8xf32>
+-  %0 = stablehlo.dot %arg0, %arg1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x"}, {}]>]>} : (tensor<8x16xf32>, tensor<16x8xf32>) -> tensor<8x8xf32>
+-  return %0 : tensor<8x8xf32>
+-}
+-
+-// CHECK-LABEL: func @dot_ij_jk_ik_k_is_largset
+-func.func @dot_ij_jk_ik_k_is_largset(
+-    %arg0: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {"x"}]>},
+-    %arg1: tensor<8x16xf32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {"x"}]>})
+-    -> (tensor<8x16xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {}]>}) {
+-  // CHECK-NEXT: %[[RESHARD_LHS:.*]] = sdy.reshard %arg0 <@mesh, [{}, {}]> : tensor<8x8xf32>
+-  // CHECK-NEXT: %[[DOT:.*]] = stablehlo.dot %[[RESHARD_LHS]], %arg1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {"x"}]>]>} : (tensor<8x8xf32>, tensor<8x16xf32>) -> tensor<8x16xf32>
+-  // CHECK-NEXT: %[[RESHARD_OUT:.*]] = sdy.reshard %[[DOT]] <@mesh, [{"x"}, {}]> : tensor<8x16xf32>
+-  // CHECK-NEXT: return %[[RESHARD_OUT]] : tensor<8x16xf32>
+-  %0 = stablehlo.dot %arg0, %arg1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x"}, {}]>]>} : (tensor<8x8xf32>, tensor<8x16xf32>) -> tensor<8x16xf32>
+-  return %0 : tensor<8x16xf32>
+-}
+-
+-// CHECK-LABEL: func @dot_ij_jk_ik_same_ijk
+-func.func @dot_ij_jk_ik_same_ijk(
+-    %arg0: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {"x"}]>},
+-    %arg1: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {"x"}]>})
+-    -> (tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {}]>}) {
+-  // CHECK-NEXT: %[[RESHARD_LHS:.*]] = sdy.reshard %arg0 <@mesh, [{}, {}]> : tensor<8x8xf32>
+-  // CHECK-NEXT: %[[DOT:.*]] = stablehlo.dot %[[RESHARD_LHS]], %arg1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {"x"}]>]>} : (tensor<8x8xf32>, tensor<8x8xf32>) -> tensor<8x8xf32>
+-  // CHECK-NEXT: %[[RESHARD_OUT:.*]] = sdy.reshard %[[DOT]] <@mesh, [{"x"}, {}]> : tensor<8x8xf32>
+-  // CHECK-NEXT: return %[[RESHARD_OUT]] : tensor<8x8xf32>
+-  %0 = stablehlo.dot %arg0, %arg1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x"}, {}]>]>} : (tensor<8x8xf32>, tensor<8x8xf32>) -> tensor<8x8xf32>
+-  return %0 : tensor<8x8xf32>
+-}
+-
+ // CHECK-LABEL: func @dot_on_square_matrices_lhs_2nd_dim_rhs_2nd_dim_sharded_the_same_way
+ func.func @dot_on_square_matrices_lhs_2nd_dim_rhs_2nd_dim_sharded_the_same_way(
+     %arg0: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {"y"}]>},
+@@ -673,10 +616,10 @@ func.func @dot_on_rectangular_inputs_square_output_large_contracting_dim_lhs_2nd
+     %arg0: tensor<8x16xf32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {"y"}]>},
+     %arg1: tensor<16x8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {"y"}]>})
+     -> tensor<8x8xf32> {
+-  // CHECK-NEXT: %0 = sdy.reshard %arg1 <@mesh, [{"y"}, {}]> : tensor<16x8xf32>
+-  // CHECK-NEXT: %1 = stablehlo.dot %arg0, %0 : (tensor<8x16xf32>, tensor<16x8xf32>) -> tensor<8x8xf32>
+-  // CHECK-NEXT: %2 = sdy.all_reduce {"y"} %1 out_sharding=<@mesh, [{}, {}]> : tensor<8x8xf32>
+-  // CHECK-NEXT: return %2 : tensor<8x8xf32>
++  // CHECK-NEXT: %[[RESHARD1:.*]] = sdy.reshard %arg0 <@mesh, [{}, {}]>
++  // CHECK-NEXT: %[[DOT:.*]] = stablehlo.dot %[[RESHARD1]], %arg1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {"y"}]>]>}
++  // CHECK-NEXT: %[[RESHARD2:.*]] = sdy.reshard %[[DOT]] <@mesh, [{}, {}]>
++  // CHECK-NEXT: return %[[RESHARD2]]
+   %0 = stablehlo.dot %arg0, %arg1 : (tensor<8x16xf32>, tensor<16x8xf32>) -> tensor<8x8xf32>
+   return %0 : tensor<8x8xf32>
+ }
+diff --git a/shardy/dialect/sdy/transforms/export/test/insert_explicit_reshards/dynamic_slice_dynamic_update_slice.mlir b/shardy/dialect/sdy/transforms/export/test/insert_explicit_reshards/dynamic_slice_dynamic_update_slice.mlir
+index c12086a..3c5e4c7 100644
+--- a/shardy/dialect/sdy/transforms/export/test/insert_explicit_reshards/dynamic_slice_dynamic_update_slice.mlir
++++ b/shardy/dialect/sdy/transforms/export/test/insert_explicit_reshards/dynamic_slice_dynamic_update_slice.mlir
+@@ -42,10 +42,10 @@ func.func @dynamic_update_slice(%arg0: tensor<32x4x8xf32> {sdy.sharding = #sdy.s
+ 
+ // CHECK-LABEL: func @dynamic_update_slice_different_input_and_output_sharding
+ func.func @dynamic_update_slice_different_input_and_output_sharding(%arg0: tensor<32x4x8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {"x"}, {"y"}]>}, %arg1: tensor<32x1x2xf32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {}, {"y"}]>}, %arg2: tensor<i32>, %arg3: tensor<i32>, %arg4: tensor<i32>) -> (tensor<32x4x8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {"y"}, {"x"}]>}){
+-  // CHECK-NEXT: %[[REPLICATED_UPDATE:.*]] = sdy.reshard %arg1 <@mesh, [{}, {}, {}]> : tensor<32x1x2xf32>
+-  // CHECK-NEXT: %[[DYNAMIC_UPDATE_SLICE:.*]] = stablehlo.dynamic_update_slice %arg0, %[[REPLICATED_UPDATE]], %arg2, %arg3, %arg4 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {"x"}, {"y"}]>]>} : (tensor<32x4x8xf32>, tensor<32x1x2xf32>, tensor<i32>, tensor<i32>, tensor<i32>) -> tensor<32x4x8xf32>
+-  // CHECK-NEXT: %[[RESHARD:.*]] = sdy.reshard %[[DYNAMIC_UPDATE_SLICE]] <@mesh, [{}, {"y"}, {"x"}]> : tensor<32x4x8xf32>
+-  // CHECK-NEXT: return %[[RESHARD]] : tensor<32x4x8xf32>
++  // CHECK: %[[RESHARD1:.*]] = sdy.reshard %arg0 <@mesh, [{}, {"y"}, {"x"}]> : tensor<32x4x8xf32>
++  // CHECK-NEXT: %[[RESHARD2:.*]] = sdy.reshard %arg1 <@mesh, [{}, {}, {}]> : tensor<32x1x2xf32>
++  // CHECK-NEXT: %[[DYNAMIC_UPDATE_SLICE:.*]] = stablehlo.dynamic_update_slice %[[RESHARD1]], %[[RESHARD2]], %arg2, %arg3, %arg4 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {"y"}, {"x"}]>]>} : (tensor<32x4x8xf32>, tensor<32x1x2xf32>, tensor<i32>, tensor<i32>, tensor<i32>) -> tensor<32x4x8xf32>
++  // CHECK-NEXT: return %[[DYNAMIC_UPDATE_SLICE]] : tensor<32x4x8xf32>
+   %0 = stablehlo.dynamic_update_slice %arg0, %arg1, %arg2, %arg3, %arg4 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {"y"}, {"x"}]>]>} : (tensor<32x4x8xf32>, tensor<32x1x2xf32>, tensor<i32>, tensor<i32>, tensor<i32>) -> tensor<32x4x8xf32>
+   return %0 : tensor<32x4x8xf32>
+ }
+diff --git a/shardy/dialect/sdy/transforms/export/test/insert_explicit_reshards/reshape.mlir b/shardy/dialect/sdy/transforms/export/test/insert_explicit_reshards/reshape.mlir
+index 81c0b6e..d9f743c 100644
+--- a/shardy/dialect/sdy/transforms/export/test/insert_explicit_reshards/reshape.mlir
++++ b/shardy/dialect/sdy/transforms/export/test/insert_explicit_reshards/reshape.mlir
+@@ -5,9 +5,10 @@ sdy.mesh @mesh_xyz = <["x"=4, "y"=2, "z"=4]>
+ 
+ // CHECK-LABEL: func @reshape
+ func.func @reshape(%arg0: tensor<16x2x4xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {}, {}]>}) -> (tensor<16x8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {"y", "x"}]>}) {
+-  // CHECK: %[[RESHARD1:.*]] = sdy.reshard %arg0 <@mesh, [{}, {"y"}, {"x"}]> : tensor<16x2x4xf32>
+-  // CHECK-NEXT: %[[RESHAPE:.*]] = stablehlo.reshape %[[RESHARD1]] {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {"y", "x"}]>]>} : (tensor<16x2x4xf32>) -> tensor<16x8xf32>
+-  // CHECK-NEXT: return %[[RESHAPE]] : tensor<16x8xf32>
++  // CHECK: %[[RESHARD1:.*]] = sdy.reshard %arg0 <@mesh, [{"x"}, {"y"}, {}]> : tensor<16x2x4xf32>
++  // CHECK-NEXT: %[[RESHAPE:.*]] = stablehlo.reshape %[[RESHARD1]] {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x"}, {"y"}]>]>} : (tensor<16x2x4xf32>) -> tensor<16x8xf32>
++  // CHECK-NEXT: %[[RESHARD2:.*]] = sdy.reshard %[[RESHAPE]] <@mesh, [{}, {"y", "x"}]> : tensor<16x8xf32>
++  // CHECK-NEXT: return %[[RESHARD2]] : tensor<16x8xf32>
+   %0 = stablehlo.reshape %arg0  {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {"y", "x"}]>]>} : (tensor<16x2x4xf32>) -> tensor<16x8xf32>
+   return %0 : tensor<16x8xf32>
+ }
+@@ -54,9 +55,9 @@ func.func @reshape_simple_merge_sharding_is_from_xy_to_xy_and_x_fits_exactly_to_
+ // CHECK-LABEL: func.func @reshape_simple_merge_sharding_is_from_xy_to_yx_and_x_fits_exactly_to_first_dim
+ // NOTE: It reshards this way because the dependencies are dropped as factors are fully-sharded.
+ func.func @reshape_simple_merge_sharding_is_from_xy_to_yx_and_x_fits_exactly_to_first_dim(%arg0: tensor<4x8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {"y"}]>}) -> (tensor<32xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"y", "x"}]>}) {
+-  // CHECK-NEXT: %[[RESHAPE:.*]] = stablehlo.reshape %arg0 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x", "y"}]>]>} : (tensor<4x8xf32>) -> tensor<32xf32>
+-  // CHECK-NEXT: %[[RESHARD:.*]] = sdy.reshard %[[RESHAPE]] <@mesh, [{"y", "x"}]> : tensor<32xf32>
+-  // CHECK-NEXT: return %[[RESHARD]] : tensor<32xf32>
++  // CHECK: %[[RESHARD:.*]] = sdy.reshard %arg0 <@mesh, [{"y", "x":(1)2}, {"x":(2)2}]> : tensor<4x8xf32>
++  // CHECK-NEXT: %[[RESHAPE:.*]] = stablehlo.reshape %[[RESHARD]] {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"y", "x"}]>]>} : (tensor<4x8xf32>) -> tensor<32xf32>
++  // CHECK-NEXT: return %[[RESHAPE]] : tensor<32xf32>
+   %0 = stablehlo.reshape %arg0 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"y", "x"}]>]>} : (tensor<4x8xf32>) -> tensor<32xf32>
+   return %0 : tensor<32xf32>
+ }
+diff --git a/shardy/dialect/sdy/transforms/export/test/insert_explicit_reshards_avoid_reshards_on_named_computations.mlir b/shardy/dialect/sdy/transforms/export/test/insert_explicit_reshards_avoid_reshards_on_named_computations.mlir
+deleted file mode 100644
+index 15acf58..0000000
+--- a/shardy/dialect/sdy/transforms/export/test/insert_explicit_reshards_avoid_reshards_on_named_computations.mlir
++++ /dev/null
+@@ -1,62 +0,0 @@
+-// RUN: sdy_opt %s -sdy-insert-explicit-reshards='avoid-reshards-on-named-computations=true' -sdy-insert-explicit-reshards='avoid-reshards-on-named-computations=true' | FileCheck %s
+-
+-sdy.mesh @mesh = <["x"=2, "y"=2, "z"=4]>
+-
+-//===----------------------------------------------------------------------===//
+-// Named computations tests
+-// More tests are in insert_explicit_reshards/data_flow_ops.mlir
+-//===----------------------------------------------------------------------===//
+-
+-// CHECK-LABEL: func @named_computation
+-func.func @named_computation(%arg0: tensor<210xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}]>}) -> (tensor<210xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"z"}]>}) {
+-  // CHECK-NEXT: sdy.named_computation<"foo">(%arg0)
+-  // CHECK-SAME: in_shardings=[<@mesh, [{"y"}]>] out_shardings=[<@mesh, [{"z"}]>
+-  %0 = sdy.named_computation<"foo">(%arg0) in_shardings=[<@mesh, [{"y"}]>] out_shardings=[<@mesh, [{"z"}]>] (%arg1: tensor<210xf32>) {
+-    %2 = stablehlo.abs %arg1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"y"}]>]>} : tensor<210xf32>
+-    // CHECK: %[[RESHARD:.*]] = sdy.reshard %{{.*}} <@mesh, [{"z"}]> : tensor<210xf32>
+-    // CHECK-NEXT: sdy.return %[[RESHARD]] : tensor<210xf32>
+-    sdy.return %2 : tensor<210xf32>
+-  } : (tensor<210xf32>) -> (tensor<210xf32>)
+-  %1 = stablehlo.negate %0 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"z"}]>]>} : tensor<210xf32>
+-  return %1 : tensor<210xf32>
+-}
+-
+-// CHECK-LABEL: func @one_argument_to_multiple_named_computations(
+-func.func @one_argument_to_multiple_named_computations(%arg0: tensor<210xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}]>}) -> (tensor<210xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"z"}]>}) {
+-  // CHECK-NEXT: %[[NC0:.*]] = sdy.named_computation<"foo">(%arg0)
+-  // CHECK-SAME: in_shardings=[<@mesh, [{"y"}]>] out_shardings=[<@mesh, [{"y"}]>
+-  %0 = sdy.named_computation<"foo">(%arg0) in_shardings=[<@mesh, [{"y"}]>] out_shardings=[<@mesh, [{"y"}]>] (%arg1: tensor<210xf32>) {
+-    %2 = stablehlo.abs %arg1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"y"}]>]>} : tensor<210xf32>
+-    sdy.return %2 : tensor<210xf32>
+-  } : (tensor<210xf32>) -> (tensor<210xf32>)
+-  // CHECK: %[[NC1:.*]] = sdy.named_computation<"foo">(%arg0)
+-  // CHECK-SAME: in_shardings=[<@mesh, [{"z"}]>] out_shardings=[<@mesh, [{"z"}]>
+-  %1 = sdy.named_computation<"foo">(%arg0) in_shardings=[<@mesh, [{"z"}]>] out_shardings=[<@mesh, [{"z"}]>] (%arg1: tensor<210xf32>) {
+-    %2 = stablehlo.abs %arg1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"z"}]>]>} : tensor<210xf32>
+-    sdy.return %2 : tensor<210xf32>
+-  } : (tensor<210xf32>) -> (tensor<210xf32>)
+-  // CHECK: %[[ADD:.*]] = stablehlo.add %[[NC0]], %[[NC1]] {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"z"}]>]>}
+-  // CHECK-NEXT: return %[[ADD]]
+-  %3 = stablehlo.add %0, %1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"z"}]>]>} : tensor<210xf32>
+-  return %3 : tensor<210xf32>
+-}
+-
+-// CHECK-LABEL: func @different_arguments_to_multiple_named_computations_with_same_input_output_shardings
+-func.func @different_arguments_to_multiple_named_computations_with_same_input_output_shardings(%arg0: tensor<210xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}]>}) -> (tensor<210xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"y"}]>}) {
+-  // CHECK-NEXT: %[[NC0:.*]] = sdy.named_computation<"foo">(%arg0)
+-  // CHECK-SAME: in_shardings=[<@mesh, [{"y"}]>] out_shardings=[<@mesh, [{"y"}]>
+-  %0 = sdy.named_computation<"foo">(%arg0) in_shardings=[<@mesh, [{"y"}]>] out_shardings=[<@mesh, [{"y"}]>] (%arg1: tensor<210xf32>) {
+-    %3 = stablehlo.abs %arg1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"y"}]>]>} : tensor<210xf32>
+-    sdy.return %3 : tensor<210xf32>
+-  } : (tensor<210xf32>) -> (tensor<210xf32>)
+-  // CHECK: %[[NEGATE:.*]] = stablehlo.negate %arg0 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"y"}]>]>}
+-  // CHECK-NEXT: %[[NC1:.*]] = sdy.named_computation<"foo">(%[[NEGATE]])
+-  // CHECK-SAME: in_shardings=[<@mesh, [{"y"}]>] out_shardings=[<@mesh, [{"y"}]>
+-  %1 = stablehlo.negate %arg0 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"y"}]>]>} : tensor<210xf32>
+-  %2 = sdy.named_computation<"foo">(%1) in_shardings=[<@mesh, [{"y"}]>] out_shardings=[<@mesh, [{"y"}]>] (%arg1: tensor<210xf32>) {
+-    %3 = stablehlo.abs %arg1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"y"}]>]>} : tensor<210xf32>
+-    sdy.return %3 : tensor<210xf32>
+-  } : (tensor<210xf32>) -> (tensor<210xf32>)
+-  %4 = stablehlo.add %0, %2 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"y"}]>]>} : tensor<210xf32>
+-  return %4 : tensor<210xf32>
+-}
+diff --git a/shardy/dialect/sdy/transforms/propagation/propagation_pipeline.cc b/shardy/dialect/sdy/transforms/propagation/propagation_pipeline.cc
+index 6ccbb0c..bd56418 100644
+--- a/shardy/dialect/sdy/transforms/propagation/propagation_pipeline.cc
++++ b/shardy/dialect/sdy/transforms/propagation/propagation_pipeline.cc
+@@ -40,8 +40,6 @@ void populateExportOptions(ExportOptions& options,
+       propOptions.removeAllGatherReduceScatterForCMV1;
+   options.dumpShardingOrigins = propOptions.debugShardingOrigins;
+   options.dumpPropagationEdges = propOptions.debugPropagationEdgeSharding;
+-  options.avoidReshardsOnNamedComputations =
+-      propOptions.avoidReshardsOnNamedComputations;
+ }
+ 
+ }  // namespace
 diff --git a/third_party/llvm/generated.patch b/third_party/llvm/generated.patch
-index 509398d..2856e5f 100644
+index 2856e5f..f8fc3c3 100644
 --- a/third_party/llvm/generated.patch
 +++ b/third_party/llvm/generated.patch
-@@ -1 +1,34 @@
+@@ -1,34 +1,15 @@
  Auto generated patch. Do not edit or delete it, even if empty.
-+diff -ruN --strip-trailing-cr a/mlir/test/Target/SPIRV/function-decorations-asserts.mlir b/mlir/test/Target/SPIRV/function-decorations-asserts.mlir
-+--- a/mlir/test/Target/SPIRV/function-decorations-asserts.mlir
-++++ b/mlir/test/Target/SPIRV/function-decorations-asserts.mlir
-+@@ -0,0 +1,20 @@
-++// REQUIRES: asserts
-++// RUN: mlir-translate --no-implicit-module --test-spirv-roundtrip --split-input-file --debug %s | FileCheck %s
-++
-++spirv.module Logical GLSL450 requires #spirv.vce<v1.0, [Shader, Linkage], []> {
-++    spirv.func @linkage_attr_test_kernel()  "DontInline"  attributes {}  {
-++        %uchar_0 = spirv.Constant 0 : i8
-++        %ushort_1 = spirv.Constant 1 : i16
-++        %uint_0 = spirv.Constant 0 : i32
-++        spirv.FunctionCall @outside.func.with.linkage(%uchar_0):(i8) -> ()
-++        spirv.Return
-++    }
-++    // CHECK: linkage_attributes = #spirv.linkage_attributes<linkage_name = "outside.func", linkage_type = <Import>>
-++    spirv.func @outside.func.with.linkage(%arg0 : i8) -> () "Pure" attributes {
-++      linkage_attributes=#spirv.linkage_attributes<
-++        linkage_name="outside.func",
-++        linkage_type=<Import>
-++      >
-++    }
-++    spirv.func @inside.func() -> () "Pure" attributes {} {spirv.Return}
-++}
-+diff -ruN --strip-trailing-cr a/mlir/test/Target/SPIRV/function-decorations.mlir b/mlir/test/Target/SPIRV/function-decorations.mlir
-+--- a/mlir/test/Target/SPIRV/function-decorations.mlir
-++++ b/mlir/test/Target/SPIRV/function-decorations.mlir
-+@@ -1,5 +1,4 @@
-+ // RUN: mlir-translate --no-implicit-module --test-spirv-roundtrip --split-input-file %s | FileCheck %s
-+-// RUN: mlir-translate --no-implicit-module --test-spirv-roundtrip --split-input-file --debug %s | FileCheck %s
+-diff -ruN --strip-trailing-cr a/mlir/test/Target/SPIRV/function-decorations-asserts.mlir b/mlir/test/Target/SPIRV/function-decorations-asserts.mlir
+---- a/mlir/test/Target/SPIRV/function-decorations-asserts.mlir
+-+++ b/mlir/test/Target/SPIRV/function-decorations-asserts.mlir
+-@@ -0,0 +1,20 @@
+-+// REQUIRES: asserts
+-+// RUN: mlir-translate --no-implicit-module --test-spirv-roundtrip --split-input-file --debug %s | FileCheck %s
+-+
+-+spirv.module Logical GLSL450 requires #spirv.vce<v1.0, [Shader, Linkage], []> {
+-+    spirv.func @linkage_attr_test_kernel()  "DontInline"  attributes {}  {
+-+        %uchar_0 = spirv.Constant 0 : i8
+-+        %ushort_1 = spirv.Constant 1 : i16
+-+        %uint_0 = spirv.Constant 0 : i32
+-+        spirv.FunctionCall @outside.func.with.linkage(%uchar_0):(i8) -> ()
+-+        spirv.Return
+-+    }
+-+    // CHECK: linkage_attributes = #spirv.linkage_attributes<linkage_name = "outside.func", linkage_type = <Import>>
+-+    spirv.func @outside.func.with.linkage(%arg0 : i8) -> () "Pure" attributes {
+-+      linkage_attributes=#spirv.linkage_attributes<
+-+        linkage_name="outside.func",
+-+        linkage_type=<Import>
+-+      >
+-+    }
+-+    spirv.func @inside.func() -> () "Pure" attributes {} {spirv.Return}
+-+}
+-diff -ruN --strip-trailing-cr a/mlir/test/Target/SPIRV/function-decorations.mlir b/mlir/test/Target/SPIRV/function-decorations.mlir
+---- a/mlir/test/Target/SPIRV/function-decorations.mlir
+-+++ b/mlir/test/Target/SPIRV/function-decorations.mlir
+-@@ -1,5 +1,4 @@
+- // RUN: mlir-translate --no-implicit-module --test-spirv-roundtrip --split-input-file %s | FileCheck %s
+--// RUN: mlir-translate --no-implicit-module --test-spirv-roundtrip --split-input-file --debug %s | FileCheck %s
++diff -ruN --strip-trailing-cr a/mlir/lib/Dialect/OpenMP/Transforms/OpenMPOffloadPrivatizationPrepare.cpp b/mlir/lib/Dialect/OpenMP/Transforms/OpenMPOffloadPrivatizationPrepare.cpp
++--- a/mlir/lib/Dialect/OpenMP/Transforms/OpenMPOffloadPrivatizationPrepare.cpp
+++++ b/mlir/lib/Dialect/OpenMP/Transforms/OpenMPOffloadPrivatizationPrepare.cpp
++@@ -189,7 +189,9 @@
+  
+- spirv.module Logical GLSL450 requires #spirv.vce<v1.0, [Shader, Linkage], []> {
+-     spirv.func @linkage_attr_test_kernel()  "DontInline"  attributes {}  {
++         DominanceInfo dom;
++         llvm::sort(chainOfOps, [&](Operation *l, Operation *r) {
++-          return dom.dominates(l, r);
+++          if (l == r)
+++            return false;
+++          return dom.properlyDominates(l, r);
++         });
 + 
-+ spirv.module Logical GLSL450 requires #spirv.vce<v1.0, [Shader, Linkage], []> {
-+     spirv.func @linkage_attr_test_kernel()  "DontInline"  attributes {}  {
++         rewriter.setInsertionPoint(chainOfOps.front());
+diff --git a/third_party/llvm/toolchains.patch b/third_party/llvm/toolchains.patch
+index 2370c1e..9aba685 100644
+--- a/third_party/llvm/toolchains.patch
++++ b/third_party/llvm/toolchains.patch
+@@ -55,4 +55,4 @@ index 2e3bff53ead9..8d01617effdc 100644
+ +    "//llvm:macos_x86_64_default": native_arch_defines("X86", "x86_64-unknown-darwin"),
+      "@bazel_tools//src/conditions:linux_aarch64": native_arch_defines("AArch64", "aarch64-unknown-linux-gnu"),
+      "@bazel_tools//src/conditions:linux_ppc64le": native_arch_defines("PowerPC", "powerpc64le-unknown-linux-gnu"),
+-     "@bazel_tools//src/conditions:linux_s390x": native_arch_defines("SystemZ", "systemz-unknown-linux_gnu"),
++     "@bazel_tools//src/conditions:linux_riscv64": native_arch_defines("RISCV", "riscv64-unknown-linux-gnu"),
 diff --git a/third_party/llvm/workspace.bzl b/third_party/llvm/workspace.bzl
-index 622428b..b1675f1 100644
+index b1675f1..974f27d 100644
 --- a/third_party/llvm/workspace.bzl
 +++ b/third_party/llvm/workspace.bzl
 @@ -4,8 +4,8 @@ load("//third_party:repo.bzl", "tf_http_archive")
  
  def repo(name):
      """Imports LLVM."""
--    LLVM_COMMIT = "d5ce81dc8143eed18a7342093b991a63b025e2d9"
--    LLVM_SHA256 = "07efbd552b4539a0b52201cfe73767a4265720789facdfa0d73bfeeb78ea19d3"
-+    LLVM_COMMIT = "32de3b9ef9e7e8debc14416e968456ca13b48bea"
-+    LLVM_SHA256 = "e048b05e1fb9366e224ea3c06f8473714114039bfad00e81db4ecb6409f23efa"
+-    LLVM_COMMIT = "32de3b9ef9e7e8debc14416e968456ca13b48bea"
+-    LLVM_SHA256 = "e048b05e1fb9366e224ea3c06f8473714114039bfad00e81db4ecb6409f23efa"
++    LLVM_COMMIT = "917d1f20aecfdbdc9e5a7a0eaf947ff7be6fbe15"
++    LLVM_SHA256 = "8d3d2fe0dfa882a4c4e1c790e2100bc9506b617f50ab30b0c7e303792d9d522f"
  
      tf_http_archive(
          name = name,
 diff --git a/third_party/stablehlo/temporary.patch b/third_party/stablehlo/temporary.patch
-index f2e3e59..473baf0 100755
+index 55268d3..f2a8787 100755
 --- a/third_party/stablehlo/temporary.patch
 +++ b/third_party/stablehlo/temporary.patch
-@@ -904,36 +904,6 @@ diff --ruN a/stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_simplific
-  // -----
+@@ -1,34 +1,542 @@
++diff --ruN a/stablehlo/stablehlo/conversions/linalg/tests/pointwise.mlir b/stablehlo/stablehlo/conversions/linalg/tests/pointwise.mlir
++--- stablehlo/stablehlo/conversions/linalg/tests/pointwise.mlir
+++++ stablehlo/stablehlo/conversions/linalg/tests/pointwise.mlir
++@@ -1,5 +1,6 @@
++ // RUN: stablehlo-opt %s --stablehlo-legalize-to-linalg --split-input-file --canonicalize | FileCheck %s
++ // RUN: stablehlo-opt %s --stablehlo-legalize-to-linalg="enable-primitive-ops=true" --split-input-file --canonicalize | FileCheck %s --check-prefix=CHECK-PRIMITIVE
+++// RUN: stablehlo-opt %s --stablehlo-legalize-to-linalg="capture-scalar-inputs=false" --split-input-file --canonicalize | FileCheck %s --check-prefix=CHECK-NO-CAPTURE
++ 
++ // CHECK: #map = affine_map<(d0, d1) -> (d0, d1)>
++ // CHECK-LABEL: func @float_add
++@@ -534,6 +535,19 @@
++   %0 = "stablehlo.sign"(%arg0) : (tensor<2x2xcomplex<f32>>)
++                           -> tensor<2x2xcomplex<f32>>
++   func.return %0 : tensor<2x2xcomplex<f32>>
+++}
+++
+++// -----
+++
+++// CHECK-LABEL: func @float_tan
+++// CHECK-PRIMITIVE-LABEL: func @float_tan
+++func.func @float_tan(%arg0: tensor<2x2xf32>) -> tensor<2x2xf32> {
+++  // CHECK: linalg.generic
+++  // CHECK: tan
+++  // CHECK-PRIMITIVE: linalg.map
+++  // CHECK-PRIMITIVE: tan
+++  %0 = "stablehlo.tan"(%arg0) : (tensor<2x2xf32>) -> tensor<2x2xf32>
+++  func.return %0 : tensor<2x2xf32>
++ }
++ 
++ // -----
++@@ -926,6 +940,23 @@
++ // CHECK-PRIMITIVE:      (%[[LHS_:.*]]: f32, %[[RHS_:.*]]: f32) {
++ // CHECK-PRIMITIVE:        %[[RES:.*]] = arith.select %[[PRED_ELEM]], %[[LHS_]], %[[RHS_]] : f32
++ // CHECK-PRIMITIVE:        linalg.yield %[[RES]]
+++
+++// CHECK-NO-CAPTURE:      #[[SCALAR_MAP:.*]] = affine_map<(d0, d1) -> ()>
+++// CHECK-NO-CAPTURE:      #[[ID_MAP:.*]] = affine_map<(d0, d1) -> (d0, d1)>
+++// CHECK-NO-CAPTURE:      func @select_scalar_pred_dyn
+++// CHECK-NO-CAPTURE-SAME:  (%[[PRED:.*]]: tensor<i1>, %[[LHS:.*]]: tensor<2x?xf32>, %[[RHS:.*]]: tensor<2x?xf32>)
+++// CHECK-NO-CAPTURE-DAG:  %[[C1:.*]] = arith.constant 1
+++// CHECK-NO-CAPTURE-DAG:  %[[DIM:.*]] =  tensor.dim %[[LHS]], %[[C1]]
+++// CHECK-NO-CAPTURE-DAG:  %[[DST:.*]] = tensor.empty(%[[DIM]])
+++// CHECK-NO-CAPTURE:      linalg.generic
+++// CHECK-NO-CAPTURE-SAME:   indexing_maps = [#[[SCALAR_MAP]], #[[ID_MAP]], #[[ID_MAP]], #[[ID_MAP]]]
+++// CHECK-NO-CAPTURE-SAME:   iterator_types = ["parallel", "parallel"]
+++// CHECK-NO-CAPTURE-SAME:   ins(%[[PRED]], %[[LHS]], %[[RHS]] : tensor<i1>, tensor<2x?xf32>, tensor<2x?xf32>)
+++// CHECK-NO-CAPTURE-SAME:   outs(%[[DST]] : tensor<2x?xf32>)
+++// CHECK-NO-CAPTURE-SAME:   {someattr}
+++// CHECK-NO-CAPTURE:      ^bb0(%[[PRED_:.*]]: i1, %[[LHS_:.*]]: f32, %[[RHS_:.*]]: f32, %{{.*}}: f32):
+++// CHECK-NO-CAPTURE:        %[[RES:.*]] = arith.select %[[PRED_]], %[[LHS_]], %[[RHS_]] : f32
+++// CHECK-NO-CAPTURE:        linalg.yield %[[RES]]
++ 
++ // -----
++ 
++diff --ruN a/stablehlo/stablehlo/conversions/linalg/transforms/LegalizeToLinalgUtils.cpp b/stablehlo/stablehlo/conversions/linalg/transforms/LegalizeToLinalgUtils.cpp
++--- stablehlo/stablehlo/conversions/linalg/transforms/LegalizeToLinalgUtils.cpp
+++++ stablehlo/stablehlo/conversions/linalg/transforms/LegalizeToLinalgUtils.cpp
++@@ -140,12 +140,11 @@
++   // (any sign-op, or an integral abs-op).
++   // TODO(peiming, ajcbik): these all can potentially be optimized by applying
++   // value transform on sparse_tenosr.value memref
++-  if (isa<mlir::stablehlo::SignOp>(op) || isa<mlir::stablehlo::NegOp>(op) ||
+++  if (isa<mlir::stablehlo::SignOp, mlir::stablehlo::NegOp,
+++          mlir::stablehlo::TanOp>(op) ||
++       (isa<mlir::stablehlo::AbsOp>(op) && hasIntegralShapeType(op)) ||
++-      isa<chlo::AsinOp>(op) || isa<chlo::AsinhOp>(op) ||
++-      isa<chlo::AtanOp>(op) || isa<chlo::AtanhOp>(op) ||
++-      isa<chlo::BesselI1eOp>(op) || isa<chlo::SinhOp>(op) ||
++-      isa<chlo::TanOp>(op)) {
+++      isa<chlo::AsinOp, chlo::AsinhOp, chlo::AtanOp, chlo::AtanhOp,
+++          chlo::BesselI1eOp, chlo::SinhOp, chlo::TanOp>(op)) {
++     if (!sparse_tensor::getSparseTensorEncoding(op->getResult(0).getType()) &&
++         !sparse_tensor::getSparseTensorEncoding(op->getOperand(0).getType()))
++       return Value();
++diff --ruN a/stablehlo/stablehlo/conversions/linalg/transforms/MapStablehloToScalarOp.h b/stablehlo/stablehlo/conversions/linalg/transforms/MapStablehloToScalarOp.h
++--- stablehlo/stablehlo/conversions/linalg/transforms/MapStablehloToScalarOp.h
+++++ stablehlo/stablehlo/conversions/linalg/transforms/MapStablehloToScalarOp.h
++@@ -153,14 +153,11 @@
++   using FOp = ::mlir::math::SinOp;
++   using COp = ::mlir::complex::SinOp;
++ };
++-// FIXME(Jakub)
++-/*
++ template <>
++ struct StablehloToScalarOp<stablehlo::TanOp> {
++   using FOp = ::mlir::math::TanOp;
++   using COp = ::mlir::complex::TanOp;
++ };
++-*/
++ template <>
++ struct StablehloToScalarOp<stablehlo::Atan2Op> {
++   using FOp = ::mlir::math::Atan2Op;
++diff --ruN a/stablehlo/stablehlo/conversions/linalg/transforms/Passes.td b/stablehlo/stablehlo/conversions/linalg/transforms/Passes.td
++--- stablehlo/stablehlo/conversions/linalg/transforms/Passes.td
+++++ stablehlo/stablehlo/conversions/linalg/transforms/Passes.td
++@@ -39,7 +39,11 @@
++                  Option<"enableSparseOps", "enable-sparse-ops", "bool",
++                         /*default=*/"false",
++                         "Lower to Sparse Tensor ops (sparse_tensor.concatenate)"
++-                        "when possible, instead of linalg.generic">];
+++                        "when possible, instead of linalg.generic">,
+++                 Option<"captureScalarInputs", "capture-scalar-inputs", "bool",
+++                        /*default=*/"true",
+++                        "Capture scalar inputs in generic ops instead of"
+++                        "passing as tensor-scalar argument.">];
++ }
++ 
++ #endif  // STABLEHLO_TO_LINALG_PASSES
++diff --ruN a/stablehlo/stablehlo/conversions/linalg/transforms/Rewriters.h b/stablehlo/stablehlo/conversions/linalg/transforms/Rewriters.h
++--- stablehlo/stablehlo/conversions/linalg/transforms/Rewriters.h
+++++ stablehlo/stablehlo/conversions/linalg/transforms/Rewriters.h
++@@ -26,11 +26,12 @@
++ //===----------------------------------------------------------------------===//
++ 
++ /// Populates the patterns that convert from StableHLO to Linalg on tensors.
++-void populateStablehloToLinalgConversionPatterns(MLIRContext *context,
++-                                                 TypeConverter &typeConverter,
++-                                                 RewritePatternSet *patterns,
+++void populateStablehloToLinalgConversionPatterns(MLIRContext* context,
+++                                                 TypeConverter& typeConverter,
+++                                                 RewritePatternSet* patterns,
++                                                  bool enablePrimitiveOps,
++-                                                 bool enableSparseOps);
+++                                                 bool enableSparseOps,
+++                                                 bool captureScalarInputs);
++ 
++ //===----------------------------------------------------------------------===//
++ // Fine-grained patterns used by the implementation.
++@@ -39,8 +40,9 @@
++ /// Populates the patterns that convert from elementwise StableHLO ops to Linalg
++ /// on tensors.
++ void populatePointwiseStablehloToLinalgConversionPatterns(
++-    MLIRContext *context, TypeConverter &typeConverter,
++-    RewritePatternSet *patterns, bool enablePrimitiveOps);
+++    MLIRContext* context, TypeConverter& typeConverter,
+++    RewritePatternSet* patterns, bool enablePrimitiveOps,
+++    bool captureScalarInputs);
++ 
++ /// Populates the patterns that convert from convolution StableHLO ops to Linalg
++ /// on tensors.
++diff --ruN a/stablehlo/stablehlo/conversions/linalg/transforms/StablehloLegalizeToLinalg.cpp b/stablehlo/stablehlo/conversions/linalg/transforms/StablehloLegalizeToLinalg.cpp
++--- stablehlo/stablehlo/conversions/linalg/transforms/StablehloLegalizeToLinalg.cpp
+++++ stablehlo/stablehlo/conversions/linalg/transforms/StablehloLegalizeToLinalg.cpp
++@@ -2634,7 +2634,8 @@
++ 
++     RewritePatternSet patterns_(context);
++     populateStablehloToLinalgConversionPatterns(
++-        context, converter, &patterns_, enablePrimitiveOps, enableSparseOps);
+++        context, converter, &patterns_, enablePrimitiveOps, enableSparseOps,
+++        captureScalarInputs);
++     patterns = std::move(patterns_);
++ 
++     return success();
++@@ -2657,7 +2658,8 @@
++                                                  TypeConverter& typeConverter,
++                                                  RewritePatternSet* patterns,
++                                                  bool enablePrimitiveOps,
++-                                                 bool enableSparseOps) {
+++                                                 bool enableSparseOps,
+++                                                 bool captureScalarInputs) {
++   // clang-format off
++   patterns->add<ConcatenateConverter>(typeConverter, context,
++                                       enablePrimitiveOps);
++@@ -2680,7 +2682,8 @@
++       >(typeConverter, context);
++ 
++   detail::populatePointwiseStablehloToLinalgConversionPatterns(
++-      context, typeConverter, patterns, enablePrimitiveOps);
+++      context, typeConverter, patterns, enablePrimitiveOps,
+++      captureScalarInputs);
++ 
++   if (enableSparseOps) {
++     patterns->add<SparseConcatenateConverter>(typeConverter, context);
+ diff --ruN a/stablehlo/stablehlo/conversions/linalg/transforms/StablehloToArith.cpp b/stablehlo/stablehlo/conversions/linalg/transforms/StablehloToArith.cpp
+ --- stablehlo/stablehlo/conversions/linalg/transforms/StablehloToArith.cpp
+ +++ stablehlo/stablehlo/conversions/linalg/transforms/StablehloToArith.cpp
+-@@ -33,6 +33,7 @@
+- 
+- template <typename OpTy>
+- struct ScalarHloToFuncPatterns final : OpConversionPattern<OpTy> {
+-+  // NOLINTNEXTLINE(clang-diagnostic-shadow-field)
+-   ScalarHloToFuncPatterns(TypeConverter& typeConverter, MLIRContext* context,
+-                           PatternBenefit benefit = 1)
+-       : OpConversionPattern<OpTy>(typeConverter, context, benefit) {}
+-@@ -51,6 +52,7 @@
+- template <typename OpTy>
+- struct ScalarHloToArithmeticPattern final : OpConversionPattern<OpTy> {
+-   ScalarHloToArithmeticPattern(
+-+      // NOLINTNEXTLINE(clang-diagnostic-shadow-field)
+-       TypeConverter& typeConverter, MLIRContext* context,
+-       llvm::function_ref<bool(Operation*)> filterFn = nullptr,
+-       PatternBenefit benefit = 1)
+-diff --ruN a/stablehlo/stablehlo/dialect/Base.td b/stablehlo/stablehlo/dialect/Base.td
+---- stablehlo/stablehlo/dialect/Base.td
+-+++ stablehlo/stablehlo/dialect/Base.td
+-@@ -152,7 +152,7 @@
+-     AnyTypeOf<[HLO_PerAxisQuantizedSignedInt, HLO_PerAxisQuantizedUnsignedInt], "per-axis integer quantized">;
+- 
+- // Token type.
+--def HLO_Token : Type<CPred<"::llvm::isa<::mlir::stablehlo::TokenType>($_self)">, "token">;
+-+def HLO_Token : Type<CPred<"::llvm::isa<TokenType>($_self)">, "token">;
+- 
+- // Any integer tensor types
+- def HLO_IntTensor : RankedTensorOf<[HLO_Int]>;
++@@ -145,6 +145,7 @@
++       ScalarHloToArithmeticPattern<mlir::stablehlo::SineOp>,
++       ScalarHloToArithmeticPattern<mlir::stablehlo::SqrtOp>,
++       ScalarHloToArithmeticPattern<mlir::stablehlo::SubtractOp>,
+++      ScalarHloToArithmeticPattern<mlir::stablehlo::TanOp>,
++       ScalarHloToArithmeticPattern<mlir::stablehlo::TanhOp>,
++       ScalarHloToArithmeticPattern<mlir::stablehlo::XorOp>>(typeConverter,
++                                                             context, filterFn);
++diff --ruN a/stablehlo/stablehlo/conversions/linalg/transforms/StablehloToLinalgPointwise.cpp b/stablehlo/stablehlo/conversions/linalg/transforms/StablehloToLinalgPointwise.cpp
++--- stablehlo/stablehlo/conversions/linalg/transforms/StablehloToLinalgPointwise.cpp
+++++ stablehlo/stablehlo/conversions/linalg/transforms/StablehloToLinalgPointwise.cpp
++@@ -23,6 +23,7 @@
++ 
++ #include "llvm/ADT/STLExtras.h"
++ #include "llvm/ADT/SmallVector.h"
+++#include "llvm/Support/Debug.h"
++ #include "mlir/Dialect/Linalg/IR/Linalg.h"
++ #include "mlir/Dialect/Tensor/IR/Tensor.h"
++ #include "mlir/IR/AffineMap.h"
++@@ -43,6 +44,8 @@
++ #include "stablehlo/conversions/linalg/transforms/Rewriters.h"
++ #include "stablehlo/dialect/StablehloOps.h"
++ 
+++#define DEBUG_TYPE "stablehlo-conversions"
+++
++ namespace mlir::stablehlo {
++ namespace {
++ int64_t getRank(Value v) { return cast<ShapedType>(v.getType()).getRank(); }
++@@ -142,6 +145,11 @@
++ struct PointwiseToLinalgMapConverter : OpConversionPattern<OpTy> {
++   using OpConversionPattern<OpTy>::OpConversionPattern;
++   using OpAdaptor = typename OpTy::Adaptor;
+++
+++  PointwiseToLinalgMapConverter(TypeConverter& typeConverter,
+++                                MLIRContext* context, bool captureScalarInputs)
+++      : OpConversionPattern<OpTy>(typeConverter, context),
+++        captureScalarInputs(captureScalarInputs) {}
++ 
++   virtual FailureOr<Operation *> createLinalgOp(
++       OpTy &op, ConversionPatternRewriter &rewriter,
++@@ -190,8 +198,11 @@
++             rewriter, loc, cast<TypedValue<ShapedType>>(input),
++             cast<ShapedType>(emptyTensor.getType())));
++         scalarInputs.push_back(nullptr);
+++      } else if (captureScalarInputs) {
+++        scalarInputs.push_back(rewriter.create<tensor::ExtractOp>(loc, input));
++       } else {
++-        scalarInputs.push_back(rewriter.create<tensor::ExtractOp>(loc, input));
+++        mappedInputs.push_back(input);
+++        scalarInputs.push_back(nullptr);
++       }
++     }
++ 
++@@ -202,6 +213,8 @@
++     rewriter.replaceOp(op, (*mapOp)->getResults());
++     return success();
++   }
+++
+++  bool captureScalarInputs;
++ };
++ 
++ /// Converts a HLO operation to a linalg.generic op that contains the
++@@ -211,12 +224,12 @@
++   using PointwiseToLinalgMapConverter<OpTy>::PointwiseToLinalgMapConverter;
++   using OpAdaptor = typename OpTy::Adaptor;
++ 
++-  FailureOr<Operation *> createLinalgOp(OpTy &op,
++-                                        ConversionPatternRewriter &rewriter,
++-                                        ArrayRef<Value> mappedInputs,
++-                                        ArrayRef<Value> scalarVals,
++-                                        Value emptyTensor,
++-                                        int64_t maxRank) const override {
+++  FailureOr<Operation*> createLinalgOp(OpTy& op,
+++                                       ConversionPatternRewriter& rewriter,
+++                                       ArrayRef<Value> mappedInputs,
+++                                       ArrayRef<Value> scalarVals,
+++                                       Value emptyTensor,
+++                                       int64_t maxRank) const override {
++     // Create indexing maps.
++     AffineMap scalarMap = AffineMap::get(maxRank, 0, rewriter.getContext());
++     AffineMap idMap = rewriter.getMultiDimIdentityMap(maxRank);
++@@ -225,10 +238,10 @@
++       maps.push_back(isScalar(v) ? scalarMap : idMap);
++     maps.push_back(idMap);
++     bool failed = false;
++-    Operation *linalgOp = rewriter.create<linalg::GenericOp>(
+++    Operation* linalgOp = rewriter.create<linalg::GenericOp>(
++         op.getLoc(), emptyTensor.getType(), mappedInputs, emptyTensor, maps,
++         getNParallelLoopsAttrs(maxRank),
++-        [&](OpBuilder &nestedBuilder, Location /*nested_loc*/,
+++        [&](OpBuilder& nestedBuilder, Location /*nested_loc*/,
++             ValueRange args) {
++           Type innerResultTy = getElementTypeOrSelf(emptyTensor);
++           auto argvec =
++@@ -253,8 +266,9 @@
++ 
++ namespace detail {
++ void populatePointwiseStablehloToLinalgConversionPatterns(
++-    MLIRContext *context, TypeConverter &typeConverter,
++-    RewritePatternSet *patterns, bool enablePrimitiveOps) {
+++    MLIRContext* context, TypeConverter& typeConverter,
+++    RewritePatternSet* patterns, bool enablePrimitiveOps,
+++    bool captureScalarInputs) {
++   if (enablePrimitiveOps) {
++     patterns->add<
++         PointwiseToLinalgMapConverter<mlir::stablehlo::AbsOp>,
++@@ -301,12 +315,12 @@
++         PointwiseToLinalgMapConverter<mlir::stablehlo::SineOp>,
++         PointwiseToLinalgMapConverter<mlir::stablehlo::SqrtOp>,
++         PointwiseToLinalgMapConverter<mlir::stablehlo::SubtractOp>,
+++        PointwiseToLinalgMapConverter<mlir::stablehlo::TanOp>,
++         PointwiseToLinalgMapConverter<mlir::stablehlo::TanhOp>,
++-        PointwiseToLinalgMapConverter<mlir::stablehlo::XorOp>>(typeConverter,
++-                                                               context);
+++        PointwiseToLinalgMapConverter<mlir::stablehlo::XorOp>>(
+++        typeConverter, context, captureScalarInputs);
++     return;
++   }
++-
++   patterns
++       ->add<PointwiseToLinalgConverter<mlir::stablehlo::AbsOp>,
++             PointwiseToLinalgConverter<mlir::stablehlo::AddOp>,
++@@ -352,9 +366,10 @@
++             PointwiseToLinalgConverter<mlir::stablehlo::SineOp>,
++             PointwiseToLinalgConverter<mlir::stablehlo::SqrtOp>,
++             PointwiseToLinalgConverter<mlir::stablehlo::SubtractOp>,
+++            PointwiseToLinalgConverter<mlir::stablehlo::TanOp>,
++             PointwiseToLinalgConverter<mlir::stablehlo::TanhOp>,
++-            PointwiseToLinalgConverter<mlir::stablehlo::XorOp>>(typeConverter,
++-                                                                context);
+++            PointwiseToLinalgConverter<mlir::stablehlo::XorOp>>(
+++          typeConverter, context, captureScalarInputs);
++ }
++ }  // namespace detail
++ }  // namespace mlir::stablehlo
++diff --ruN a/stablehlo/stablehlo/conversions/tosa/transforms/StablehloQuantLegalizeToTosaRescale.cpp b/stablehlo/stablehlo/conversions/tosa/transforms/StablehloQuantLegalizeToTosaRescale.cpp
++--- stablehlo/stablehlo/conversions/tosa/transforms/StablehloQuantLegalizeToTosaRescale.cpp
+++++ stablehlo/stablehlo/conversions/tosa/transforms/StablehloQuantLegalizeToTosaRescale.cpp
++@@ -40,7 +40,7 @@
++ 
++ namespace {
++ 
++-Value buildRescaleMultiplier(bool scale32, OpBuilder& builder, Location loc,
+++Value buildRescaleMultiplier(bool scale32, OpBuilder &builder, Location loc,
++                              ArrayRef<int32_t> multipliers) {
++   if (scale32) {
++     return tosa::getConstTensorInt<int32_t>(builder, loc, multipliers);
++@@ -51,7 +51,7 @@
++ }
++ 
++ // create a tosa rescale op and return its result value
++-Value buildRescale(PatternRewriter& rewriter, Location loc,
+++Value buildRescale(PatternRewriter &rewriter, Location loc,
++                    ShapedType outputType, Value inputVal, int32_t multiplier,
++                    int32_t shift, int64_t inputZp, int64_t outputZp,
++                    bool doubleRound, bool scale32, bool perChannel) {
++@@ -85,7 +85,7 @@
++ }
++ 
++ // Creates TOSA rescale op with int32 output
++-Value buildRescaleToInt32(PatternRewriter& rewriter, Location loc,
+++Value buildRescaleToInt32(PatternRewriter &rewriter, Location loc,
++                           Value inputVal, double inputScale, int64_t inputZp) {
++   auto inputType = cast<ShapedType>(inputVal.getType());
++   auto outputType = inputType.clone(rewriter.getI32Type());
++@@ -103,7 +103,7 @@
++ }
++ 
++ // Creates TOSA rescale op with int32 input
++-Value buildRescaleFromInt32(PatternRewriter& rewriter, Location loc,
+++Value buildRescaleFromInt32(PatternRewriter &rewriter, Location loc,
++                             ShapedType outputType, Value inputVal,
++                             double outputScale, int64_t outputZp) {
++   // Input should be int32 type
++@@ -124,14 +124,14 @@
++ }
++ 
++ using UnaryRescaleScalesFn =
++-    void (*)(const quant::UniformQuantizedType& operandQType,
++-             const quant::UniformQuantizedType& resultQType,
++-             double& operandRescaleScale, double& resultRescaleScale);
++-
++-void GetUnaryRescaleScales(const quant::UniformQuantizedType& operandQType,
++-                           const quant::UniformQuantizedType& resultQType,
++-                           double& operandRescaleScale,
++-                           double& resultRescaleScale) {
+++    void (*)(const quant::UniformQuantizedType &operandQType,
+++             const quant::UniformQuantizedType &resultQType,
+++             double &operandRescaleScale, double &resultRescaleScale);
+++
+++void GetUnaryRescaleScales(const quant::UniformQuantizedType &operandQType,
+++                           const quant::UniformQuantizedType &resultQType,
+++                           double &operandRescaleScale,
+++                           double &resultRescaleScale) {
++   double operandScale = operandQType.getScale();
++   double resultScale = resultQType.getScale();
++ 
++@@ -145,7 +145,7 @@
++ 
++ template <typename StablehloOp>
++ LogicalResult matchAndRewriteUnaryOp(
++-    StablehloOp op, PatternRewriter& rewriter,
+++    StablehloOp op, PatternRewriter &rewriter,
++     UnaryRescaleScalesFn rescaleScalesFn = GetUnaryRescaleScales) {
++   Value operand = op.getOperand();
++   Value result = op.getResult();
++@@ -190,21 +190,21 @@
++ }
++ 
++ LogicalResult matchAndRewriteOp(stablehlo::AbsOp op,
++-                                PatternRewriter& rewriter) {
+++                                PatternRewriter &rewriter) {
++   return matchAndRewriteUnaryOp(op, rewriter);
++ }
++ 
++ using BinaryRescaleScalesFn = void (*)(
++-    const quant::UniformQuantizedType& lhsQType,
++-    const quant::UniformQuantizedType& rhsQType,
++-    const quant::UniformQuantizedType& resultQType, double& lhsRescaleScale,
++-    double& rhsRescaleScale, double& resultRescaleScale);
++-
++-void GetAddSubRescaleScales(const quant::UniformQuantizedType& lhsQType,
++-                            const quant::UniformQuantizedType& rhsQType,
++-                            const quant::UniformQuantizedType& resultQType,
++-                            double& lhsRescaleScale, double& rhsRescaleScale,
++-                            double& resultRescaleScale) {
+++    const quant::UniformQuantizedType &lhsQType,
+++    const quant::UniformQuantizedType &rhsQType,
+++    const quant::UniformQuantizedType &resultQType, double &lhsRescaleScale,
+++    double &rhsRescaleScale, double &resultRescaleScale);
+++
+++void GetAddSubRescaleScales(const quant::UniformQuantizedType &lhsQType,
+++                            const quant::UniformQuantizedType &rhsQType,
+++                            const quant::UniformQuantizedType &resultQType,
+++                            double &lhsRescaleScale, double &rhsRescaleScale,
+++                            double &resultRescaleScale) {
++   // 1. Rescale inputs to scale = 2.0 x max(lhs.scale, rhs.scale)
++   // 2. Extra left shift to input to increase precision
++   // Where input_shift = 20 if input is 8-bit
++@@ -230,11 +230,11 @@
++       maxScale2x / (resultScale * static_cast<double>(1 << inputShift));
++ }
++ 
++-void GetMulDivRescaleScales(const quant::UniformQuantizedType& lhsQType,
++-                            const quant::UniformQuantizedType& rhsQType,
++-                            const quant::UniformQuantizedType& resultQType,
++-                            double& lhsRescaleScale, double& rhsRescaleScale,
++-                            double& resultRescaleScale) {
+++void GetMulDivRescaleScales(const quant::UniformQuantizedType &lhsQType,
+++                            const quant::UniformQuantizedType &rhsQType,
+++                            const quant::UniformQuantizedType &resultQType,
+++                            double &lhsRescaleScale, double &rhsRescaleScale,
+++                            double &resultRescaleScale) {
++   double lhsScale = lhsQType.getScale();
++   double rhsScale = rhsQType.getScale();
++   double resultScale = resultQType.getScale();
++@@ -248,11 +248,11 @@
++   resultRescaleScale = lhsScale * rhsScale / resultScale;
++ }
++ 
++-void GetMinMaxRescaleScales(const quant::UniformQuantizedType& lhsQType,
++-                            const quant::UniformQuantizedType& rhsQType,
++-                            const quant::UniformQuantizedType& resultQType,
++-                            double& lhsRescaleScale, double& rhsRescaleScale,
++-                            double& resultRescaleScale) {
+++void GetMinMaxRescaleScales(const quant::UniformQuantizedType &lhsQType,
+++                            const quant::UniformQuantizedType &rhsQType,
+++                            const quant::UniformQuantizedType &resultQType,
+++                            double &lhsRescaleScale, double &rhsRescaleScale,
+++                            double &resultRescaleScale) {
++   // 1. Rescale inputs to scale = max(lhs.scale, rhs.scale)
++   // 2. Extra left shift to input to increase precision
++   // Where input_shift = 20 if input is 8-bit
++@@ -280,7 +280,7 @@
++ }
++ 
++ template <typename StablehloOp>
++-LogicalResult matchAndRewriteBinaryOp(StablehloOp op, PatternRewriter& rewriter,
+++LogicalResult matchAndRewriteBinaryOp(StablehloOp op, PatternRewriter &rewriter,
++                                       BinaryRescaleScalesFn rescaleScalesFn) {
++   Value lhs = op.getLhs();
++   Value rhs = op.getRhs();
++@@ -339,37 +339,37 @@
++ }
++ 
++ LogicalResult matchAndRewriteOp(stablehlo::AddOp op,
++-                                PatternRewriter& rewriter) {
+++                                PatternRewriter &rewriter) {
++   return matchAndRewriteBinaryOp(op, rewriter, GetAddSubRescaleScales);
++ }
++ 
++ LogicalResult matchAndRewriteOp(stablehlo::SubtractOp op,
++-                                PatternRewriter& rewriter) {
+++                                PatternRewriter &rewriter) {
++   return matchAndRewriteBinaryOp(op, rewriter, GetAddSubRescaleScales);
++ }
++ 
++ LogicalResult matchAndRewriteOp(stablehlo::MulOp op,
++-                                PatternRewriter& rewriter) {
+++                                PatternRewriter &rewriter) {
++   return matchAndRewriteBinaryOp(op, rewriter, GetMulDivRescaleScales);
++ }
++ 
++ LogicalResult matchAndRewriteOp(stablehlo::DivOp op,
++-                                PatternRewriter& rewriter) {
+++                                PatternRewriter &rewriter) {
++   return matchAndRewriteBinaryOp(op, rewriter, GetMulDivRescaleScales);
++ }
++ 
++ LogicalResult matchAndRewriteOp(stablehlo::MinOp op,
++-                                PatternRewriter& rewriter) {
+++                                PatternRewriter &rewriter) {
++   return matchAndRewriteBinaryOp(op, rewriter, GetMinMaxRescaleScales);
++ }
++ 
++ LogicalResult matchAndRewriteOp(stablehlo::MaxOp op,
++-                                PatternRewriter& rewriter) {
+++                                PatternRewriter &rewriter) {
++   return matchAndRewriteBinaryOp(op, rewriter, GetMinMaxRescaleScales);
++ }
++ 
++ LogicalResult matchAndRewriteCompareOp(stablehlo::CompareOp op,
++-                                       PatternRewriter& rewriter) {
+++                                       PatternRewriter &rewriter) {
++   Value lhs = op.getLhs();
++   Value rhs = op.getRhs();
++   Value result = op.getResult();
++@@ -429,7 +429,7 @@
++ }
++ 
++ LogicalResult matchAndRewriteOp(stablehlo::CompareOp op,
++-                                PatternRewriter& rewriter) {
+++                                PatternRewriter &rewriter) {
++   return matchAndRewriteCompareOp(op, rewriter);
++ }
++ 
++@@ -438,7 +438,7 @@
++     : public OpRewritePattern<StablehloOpType> {
++   using OpRewritePattern<StablehloOpType>::OpRewritePattern;
++   LogicalResult matchAndRewrite(StablehloOpType op,
++-                                PatternRewriter& rewriter) const override {
+++                                PatternRewriter &rewriter) const override {
++     return matchAndRewriteOp(op, rewriter);
++   }
++ };
++@@ -446,7 +446,7 @@
++ struct StablehloQuantLegalizeToTosaRescalePass
++     : impl::StablehloQuantLegalizeToTosaRescalePassBase<
++           StablehloQuantLegalizeToTosaRescalePass> {
++-  LogicalResult initialize(MLIRContext* ctx) override {
+++  LogicalResult initialize(MLIRContext *ctx) override {
++     RewritePatternSet patternList(ctx);
++     populateStablehloQuantLegalizeToTosaRescalePatterns(&patternList, ctx);
++     patterns = std::move(patternList);
++@@ -468,7 +468,7 @@
++ }  // namespace
++ 
++ void populateStablehloQuantLegalizeToTosaRescalePatterns(
++-    RewritePatternSet* patterns, MLIRContext* context) {
+++    RewritePatternSet *patterns, MLIRContext *context) {
++   // unary ops
++   patterns->addWithLabel<QuantizedStablehloOpConversion<stablehlo::AbsOp>>(
++       {"StablehloQuantAbsOp"}, context);
+ diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.cpp b/stablehlo/stablehlo/dialect/StablehloOps.cpp
+ --- stablehlo/stablehlo/dialect/StablehloOps.cpp
+ +++ stablehlo/stablehlo/dialect/StablehloOps.cpp
+@@ -40,6 +548,97 @@ diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.cpp b/stablehlo/stablehlo/
+  #define GET_OP_CLASSES
+  #include "stablehlo/dialect/StablehloOps.cpp.inc"
   
-  ////////
--diff --ruN a/stablehlo/stablehlo/tests/transforms/stablehlo_refine_shapes.mlir b/stablehlo/stablehlo/tests/transforms/stablehlo_refine_shapes.mlir
----- stablehlo/stablehlo/tests/transforms/stablehlo_refine_shapes.mlir
--+++ stablehlo/stablehlo/tests/transforms/stablehlo_refine_shapes.mlir
--@@ -752,7 +752,7 @@
--     %2 = call @refine_call_callee(%arg0_different_i32, %1) : (tensor<i32>, tensor<?xf32>) -> tensor<?xf32>
--     return %2 : tensor<?xf32>
--   }
---  // expected-error@+1{{'func.func' op refined with invompatible refinement keys}}
--+  // expected-error@+1{{'func.func' op refined with incompatible refinement keys}}
--   func.func @refine_call_callee(%arg0: tensor<i32>, %arg1: tensor<?xf32>) -> tensor<?xf32> {
--     return %arg1 : tensor<?xf32>
--   }
--@@ -770,7 +770,7 @@
--     %2 = call @refine_call_callee(%arg0_different, %1) : (tensor<i32>, tensor<?xf32>) -> tensor<?xf32>
--     return %2 : tensor<?xf32>
--   }
---  // expected-error@+1{{'func.func' op refined with invompatible refinement keys}}
--+  // expected-error@+1{{'func.func' op refined with incompatible refinement keys}}
--   func.func @refine_call_callee(%arg0: tensor<i32>, %arg1: tensor<?xf32>) -> tensor<?xf32> {
--     return %arg1 : tensor<?xf32>
--   }
--@@ -789,7 +789,7 @@
--     %4 = call @refine_call_callee(%arg0_new, %3) : (tensor<i32>, tensor<?xf32>) -> tensor<?xf32>
--     return %4 : tensor<?xf32>
--   }
---  // expected-error@+1{{'func.func' op refined with invompatible refinement keys}}
--+  // expected-error@+1{{'func.func' op refined with incompatible refinement keys}}
--   func.func @refine_call_callee(%arg0: tensor<i32>, %arg1: tensor<?xf32>) -> tensor<?xf32> {
--     return %arg1 : tensor<?xf32>
--   }
- diff --ruN a/stablehlo/stablehlo/transforms/ChloLegalizeToStablehlo.cpp b/stablehlo/stablehlo/transforms/ChloLegalizeToStablehlo.cpp
- --- stablehlo/stablehlo/transforms/ChloLegalizeToStablehlo.cpp
- +++ stablehlo/stablehlo/transforms/ChloLegalizeToStablehlo.cpp
-@@ -1461,18 +1431,6 @@ diff --ruN a/stablehlo/stablehlo/transforms/ChloLegalizeToStablehlo.cpp b/stable
-    populateChloBroadcastingPatterns(context, patterns);
-    populateChloDecompositionPatterns(context, patterns);
++diff --ruN a/stablehlo/stablehlo/integrations/c/VhloDialect.h b/stablehlo/stablehlo/integrations/c/VhloDialect.h
++--- stablehlo/stablehlo/integrations/c/VhloDialect.h
+++++ stablehlo/stablehlo/integrations/c/VhloDialect.h
++@@ -13,7 +13,7 @@
++ #ifndef STABLEHLO_INTEGRATIONS_C_VHLO_DIALECT_H
++ #define STABLEHLO_INTEGRATIONS_C_VHLO_DIALECT_H
++ 
++-#include "mlir-c/RegisterEverything.h"
+++#include "mlir-c/IR.h"
++ 
++ #ifdef __cplusplus
++ extern "C" {
++diff --ruN a/stablehlo/stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.cpp b/stablehlo/stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.cpp
++--- stablehlo/stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.cpp
+++++ stablehlo/stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.cpp
++@@ -110,6 +110,43 @@
++   }
++ }
++ 
+++bool IsBoolean(ElementType elementType) {
+++  MLIRContext ctx;
+++  return getElementType(ctx, elementType).isInteger(1);
+++}
+++
+++bool IsComplex(ElementType elementType) {
+++  MLIRContext ctx;
+++  auto type = dyn_cast<ComplexType>(getElementType(ctx, elementType));
+++  return !!type;
+++}
+++
+++bool IsFloat(ElementType elementType) {
+++  MLIRContext ctx;
+++  return getElementType(ctx, elementType).isFloat();
+++}
+++
+++bool IsInteger(ElementType elementType, bool includeBool = false) {
+++  MLIRContext ctx;
+++  Type type = getElementType(ctx, elementType);
+++  return type.isInteger() && (includeBool || !IsBoolean(elementType));
+++}
+++
+++bool IsSignedInteger(ElementType elementType) {
+++  MLIRContext ctx;
+++  Type type = getElementType(ctx, elementType);
+++
+++  // Note that this is not the same as `type.isSignedInteger()`. Signed integers
+++  // are not used in StableHLO.
+++  return type.isSignlessInteger() && !IsBoolean(elementType);
+++}
+++
+++bool IsUnsignedInteger(ElementType elementType) {
+++  MLIRContext ctx;
+++  return getElementType(ctx, elementType).isUnsignedInteger() &&
+++         !IsBoolean(elementType);
+++}
+++
++ RankedTensorType makeTensorType(MLIRContext& ctx, ArrayRef<int64_t> shape,
++                                 ElementType elementType) {
++   return makeTensorType(ctx, shape, getElementType(ctx, elementType));
++diff --ruN a/stablehlo/stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h b/stablehlo/stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h
++--- stablehlo/stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h
+++++ stablehlo/stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h
++@@ -18,7 +18,6 @@
++ 
++ #include <complex>
++ #include <cstdint>
++-#include <source_location>
++ #include <type_traits>
++ #include <vector>
++ 
++@@ -68,6 +67,20 @@
++   // clang-format on
++ };
++ 
+++bool IsBoolean(ElementType elementType);
+++
+++bool IsComplex(ElementType elementType);
+++
+++bool IsFloat(ElementType elementType);
+++
+++bool IsInteger(ElementType elementType, bool includeBool);
+++
+++// In StableHLO, we refer to signed integer as the MLIR's equivalent signless
+++// integer. StableHLO does not have a notion of signless integers like MLIR.
+++bool IsSignedInteger(ElementType elementType);
+++
+++bool IsUnsignedInteger(ElementType elementType);
+++
++ Type getElementType(MLIRContext& ctx, ElementType elementType);
++ 
++ // Build a ranked tensor type with an element type of ElementType.
+ diff --ruN a/stablehlo/stablehlo/integrations/cpp/builder/AttrTypeBuilderUtilTest.cpp b/stablehlo/stablehlo/integrations/cpp/builder/AttrTypeBuilderUtilTest.cpp
+ --- stablehlo/stablehlo/integrations/cpp/builder/AttrTypeBuilderUtilTest.cpp
+ +++ stablehlo/stablehlo/integrations/cpp/builder/AttrTypeBuilderUtilTest.cpp
+@@ -244,6 +843,79 @@ diff --ruN a/stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_folder.ml
+ +  return %0, %1, %2, %3 : tensor<6xi32>, tensor<3xf32>, tensor<5xcomplex<f32>>, tensor<3x3xi32>
   }
--diff --ruN a/stablehlo/stablehlo/transforms/StablehloRefineShapes.cpp b/stablehlo/stablehlo/transforms/StablehloRefineShapes.cpp
----- stablehlo/stablehlo/transforms/StablehloRefineShapes.cpp
--+++ stablehlo/stablehlo/transforms/StablehloRefineShapes.cpp
--@@ -461,7 +461,7 @@
--   LogicalResult emitDifferentRefinementContextError(func::FuncOp func,
--                                                     RefinementKey key,
--                                                     RefinementKey prevKey) {
---    return func.emitOpError() << "refined with invompatible refinement keys:"
--+    return func.emitOpError() << "refined with incompatible refinement keys:"
--                               << "\n  curr=" << key.toString()
--                               << "\n  prev=" << prevKey.toString();
--   }
- diff --ruN a/stablehlo/stablehlo/transforms/optimization/Passes.td b/stablehlo/stablehlo/transforms/optimization/Passes.td
- --- stablehlo/stablehlo/transforms/optimization/Passes.td
- +++ stablehlo/stablehlo/transforms/optimization/Passes.td
+  
++ // -----
++@@ -529,28 +532,15 @@
++ // IotaOp
++ 
++ // CHECK-LABEL: func @eval_iota
++-func.func @eval_iota() -> (tensor<3x4x5xi32>, tensor<3x4x5xi32>, tensor<3x4x5xi32>) {
++-  // CHECK-NOT: stablehlo.iota
++-  // CHECK: [[RESULT0:%.*]] = stablehlo.constant dense<
++-  // CHECK-SAME: {{\[\[}}[0, 0, 0, 0, 0], [0, 0, 0, 0, 0], [0, 0, 0, 0, 0], [0, 0, 0, 0, 0]],
++-  // CHECK-SAME: {{\[}}[1, 1, 1, 1, 1], [1, 1, 1, 1, 1], [1, 1, 1, 1, 1], [1, 1, 1, 1, 1]],
++-  // CHECK-SAME: {{\[}}[2, 2, 2, 2, 2], [2, 2, 2, 2, 2], [2, 2, 2, 2, 2], [2, 2, 2, 2, 2]]]> : tensor<3x4x5xi32>
++-
++-  // CHECK: [[RESULT1:%.*]] = stablehlo.constant dense<
++-  // CHECK-SAME: {{\[\[}}[0, 0, 0, 0, 0], [1, 1, 1, 1, 1], [2, 2, 2, 2, 2], [3, 3, 3, 3, 3]],
++-  // CHECK-SAME: {{\[}}[0, 0, 0, 0, 0], [1, 1, 1, 1, 1], [2, 2, 2, 2, 2], [3, 3, 3, 3, 3]],
++-  // CHECK-SAME: {{\[}}[0, 0, 0, 0, 0], [1, 1, 1, 1, 1], [2, 2, 2, 2, 2], [3, 3, 3, 3, 3]]]> : tensor<3x4x5xi32>
++-
++-  // CHECK: [[RESULT2:%.*]] = stablehlo.constant dense<
++-  // CHECK-SAME: {{\[\[}}[0, 1, 2, 3, 4], [0, 1, 2, 3, 4], [0, 1, 2, 3, 4], [0, 1, 2, 3, 4]],
++-  // CHECK-SAME: {{\[}}[0, 1, 2, 3, 4], [0, 1, 2, 3, 4], [0, 1, 2, 3, 4], [0, 1, 2, 3, 4]],
++-  // CHECk-SAME: {{\[}}[0, 1, 2, 3, 4], [0, 1, 2, 3, 4], [0, 1, 2, 3, 4], [0, 1, 2, 3, 4]]]> : tensor<3x4x5xi32>
++-
+++func.func @eval_iota() -> (tensor<1xi32>, tensor<3x4x5xi32>, tensor<3x4x5xi32>) {
+++  // CHECK:      [[RESULT0:%.*]] = stablehlo.constant dense<0> : tensor<1xi32>
+++  // CHECK-NEXT: [[RESULT1:%.*]] = stablehlo.iota dim = 1 : tensor<3x4x5xi32>
+++  // CHECK-NEXT: [[RESULT2:%.*]] = stablehlo.iota dim = 2 : tensor<3x4x5xi32>
++   // CHECK: return [[RESULT0]], [[RESULT1]], [[RESULT2]]
++-  %0 = stablehlo.iota dim = 0 : tensor<3x4x5xi32>
+++  %0 = stablehlo.iota dim = 0 : tensor<1xi32>
++   %1 = stablehlo.iota dim = 1 : tensor<3x4x5xi32>
++   %2 = stablehlo.iota dim = 2 : tensor<3x4x5xi32>
++-  func.return %0, %1, %2 : tensor<3x4x5xi32>, tensor<3x4x5xi32>, tensor<3x4x5xi32>
+++  func.return %0, %1, %2 : tensor<1xi32>, tensor<3x4x5xi32>, tensor<3x4x5xi32>
++ }
++ 
++ // -----
++@@ -596,6 +586,37 @@
++   // CHECK-DAG:  [[CST2:%.+]] = stablehlo.constant dense<{{\[\[1, 2\], \[3, 4\]\]}}> : tensor<2x2xi32>
++   // CHECK-NEXT: return [[CST1]], [[CST2]]
++   return %0, %1 : tensor<1xi32>, tensor<2x2xi32>
+++}
+++
+++// -----
+++
+++////////
+++// SliceOp / DynamicSliceOp
+++
+++// CHECK-LABEL: @slice_fold
+++func.func @slice_fold(%arg0: tensor<6x1xi32>) -> tensor<1x1xi32> {
+++  %c = stablehlo.constant dense<[[0], [1], [2], [3], [4], [5]]> : tensor<6x1xi32>
+++  %0 = stablehlo.slice %c [2:3, 0:1] : (tensor<6x1xi32>) -> tensor<1x1xi32>
+++  // CHECK: stablehlo.constant dense<2> : tensor<1x1xi32>
+++  return %0 : tensor<1x1xi32>
+++}
+++
+++// CHECK-LABEL: @slice_fold_splat
+++func.func @slice_fold_splat(%arg0: tensor<6x1xi32>) -> tensor<1x1xi32> {
+++  %c = stablehlo.constant dense<1> : tensor<6x1xi32>
+++  %0 = stablehlo.slice %c [2:3, 0:1] : (tensor<6x1xi32>) -> tensor<1x1xi32>
+++  // CHECK: stablehlo.constant dense<1> : tensor<1x1xi32>
+++  return %0 : tensor<1x1xi32>
+++}
+++
+++// CHECK-LABEL: @dynamic_slice_fold
+++func.func @dynamic_slice_fold(%arg0: tensor<i32>, %arg1: tensor<i32>) -> tensor<1x1xi32> {
+++  %0 = stablehlo.constant dense<256> : tensor<6x1xi32>
+++  %1 = "stablehlo.dynamic_slice"(%0, %arg0, %arg1) <{slice_sizes = array<i64: 1, 1>}> : (tensor<6x1xi32>, tensor<i32>, tensor<i32>) -> tensor<1x1xi32>
+++
+++  // CHECK: %[[RESULT:.*]] = stablehlo.constant dense<256> : tensor<1x1xi32>
+++  // CHECK: return %[[RESULT]]
+++  return %1 : tensor<1x1xi32>
++ }
++ 
+  // -----
+ diff --ruN a/stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_simplification.mlir b/stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_simplification.mlir
+ --- stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_simplification.mlir
+@@ -349,6 +1021,533 @@ diff --ruN a/stablehlo/stablehlo/tests/transforms/stablehlo_refine_shapes.mlir b
+    func.func @refine_call_callee(%arg0: tensor<i32>, %arg1: tensor<?xf32>) -> tensor<?xf32> {
+      return %arg1 : tensor<?xf32>
+    }
++diff --ruN a/stablehlo/stablehlo/transforms/ChloLegalizeToStablehlo.cpp b/stablehlo/stablehlo/transforms/ChloLegalizeToStablehlo.cpp
++--- stablehlo/stablehlo/transforms/ChloLegalizeToStablehlo.cpp
+++++ stablehlo/stablehlo/transforms/ChloLegalizeToStablehlo.cpp
++@@ -73,7 +73,7 @@
++ template <typename FromOpTy, typename ToOpTy>
++ struct HloNaryElementwiseAdaptor {
++   static ToOpTy createOp(FromOpTy fromOp, Type resultType,
++-                         ValueRange broadcastedOperands, OpBuilder& builder) {
+++                         ValueRange broadcastedOperands, OpBuilder &builder) {
++     return builder.create<ToOpTy>(fromOp.getLoc(), resultType,
++                                   broadcastedOperands);
++   }
++@@ -118,7 +118,7 @@
++ struct HloCompareAdaptor {
++   static mlir::stablehlo::CompareOp createOp(
++       mlir::chlo::BroadcastCompareOp fromOp, Type resultType,
++-      ValueRange broadcastedOperands, OpBuilder& builder) {
+++      ValueRange broadcastedOperands, OpBuilder &builder) {
++     auto chloDirection = fromOp.getComparisonDirection();
++     auto hloDirection = toStableHloComparisonDirection(chloDirection);
++     if (!hloDirection) return nullptr;
++@@ -140,9 +140,9 @@
++ // to take a ChloOpTy, NonBroadcastingOpTy, and an Adaptor as templated values.
++ template <template <typename, typename, typename> typename Pattern,
++           typename... ConstructorArgs>
++-static void populateForBroadcastingBinaryOp(MLIRContext* context,
++-                                            RewritePatternSet* patterns,
++-                                            ConstructorArgs&&... args) {
+++static void populateForBroadcastingBinaryOp(MLIRContext *context,
+++                                            RewritePatternSet *patterns,
+++                                            ConstructorArgs &&...args) {
++ #define POPULATE_BCAST(ChloOp, HloOp)                                          \
++   patterns                                                                     \
++       ->add<Pattern<ChloOp, HloOp, HloNaryElementwiseAdaptor<ChloOp, HloOp>>>( \
++@@ -179,21 +179,21 @@
++       context, args...);
++ }
++ 
++-static Value getConstantLikeMaxFiniteValue(OpBuilder& b, Location loc,
+++static Value getConstantLikeMaxFiniteValue(OpBuilder &b, Location loc,
++                                            Value val) {
++   auto ty = cast<FloatType>(getElementTypeOrSelf(val.getType()));
++   return getConstantLike(
++       b, loc, llvm::APFloat::getLargest(ty.getFloatSemantics()), val);
++ }
++ 
++-static Value getConstantLikeInfValue(OpBuilder& b, Location loc, Value val,
+++static Value getConstantLikeInfValue(OpBuilder &b, Location loc, Value val,
++                                      bool negative) {
++   auto ty = cast<FloatType>(getElementTypeOrSelf(val.getType()));
++   return getConstantLike(
++       b, loc, llvm::APFloat::getInf(ty.getFloatSemantics(), negative), val);
++ }
++ 
++-static Value getConstantLikeSmallestNormalizedValue(OpBuilder& b, Location loc,
+++static Value getConstantLikeSmallestNormalizedValue(OpBuilder &b, Location loc,
++                                                     Value val) {
++   auto ty = cast<FloatType>(getElementTypeOrSelf(val.getType()));
++   return getConstantLike(
++@@ -239,7 +239,7 @@
++ 
++   LogicalResult matchAndRewrite(
++       ChloOpTy op, typename ChloOpTy::Adaptor adaptor,
++-      ConversionPatternRewriter& rewriter) const override {
+++      ConversionPatternRewriter &rewriter) const override {
++     // Only rewrite for statically determinable non-broadcasting cases.
++     auto lhsType = dyn_cast<RankedTensorType>(adaptor.getLhs().getType());
++     auto rhsType = dyn_cast<RankedTensorType>(adaptor.getRhs().getType());
++@@ -329,7 +329,7 @@
++ 
++   LogicalResult matchAndRewrite(
++       ChloOpTy op, typename ChloOpTy::Adaptor adaptor,
++-      ConversionPatternRewriter& rewriter) const override {
+++      ConversionPatternRewriter &rewriter) const override {
++     // Only support ranked operands.
++     Value lhs = adaptor.getLhs();
++     Value rhs = adaptor.getRhs();
++@@ -413,7 +413,7 @@
++ 
++   LogicalResult matchAndRewrite(
++       mlir::chlo::ConstantLikeOp op, OpAdaptor adaptor,
++-      ConversionPatternRewriter& rewriter) const override {
+++      ConversionPatternRewriter &rewriter) const override {
++     auto resultTy = cast<ShapedType>(op.getType());
++ 
++     // Unranked uses are not supported.
++@@ -445,7 +445,7 @@
++ 
++   LogicalResult matchAndRewrite(
++       mlir::chlo::BroadcastSelectOp op, OpAdaptor adaptor,
++-      ConversionPatternRewriter& rewriter) const override {
+++      ConversionPatternRewriter &rewriter) const override {
++     // Only support ranked operands.
++     Value pred = adaptor.getPred();
++     Value onTrue = adaptor.getOnTrue();
++@@ -533,7 +533,7 @@
++ 
++   LogicalResult matchAndRewrite(
++       mlir::chlo::ConstantOp op, OpAdaptor adaptor,
++-      ConversionPatternRewriter& rewriter) const override {
+++      ConversionPatternRewriter &rewriter) const override {
++     rewriter.replaceOpWithNewOp<mlir::stablehlo::ConstantOp>(op, op.getValue());
++     return success();
++   }
++@@ -541,7 +541,7 @@
++ 
++ template <typename FTy>
++ static Value materializeChebyshevPolynomialApproximation(
++-    OpBuilder& rewriter, Location loc, Value x, ArrayRef<FTy> coefficients) {
+++    OpBuilder &rewriter, Location loc, Value x, ArrayRef<FTy> coefficients) {
++   Value b0 = getConstantLike(rewriter, loc, 0.0, x);
++   Value b1 = getConstantLike(rewriter, loc, 0.0, x);
++   Value b2 = getConstantLike(rewriter, loc, 0.0, x);
++@@ -561,7 +561,7 @@
++ }
++ 
++ template <typename FTy>
++-static Value materializeBesselI1eApproximation(OpBuilder& rewriter,
+++static Value materializeBesselI1eApproximation(OpBuilder &rewriter,
++                                                Location loc, Value x,
++                                                ArrayRef<FTy> kI1eCoeffsA,
++                                                ArrayRef<FTy> kI1eCoeffsB) {
++@@ -594,7 +594,7 @@
++       loc, rewriter.create<mlir::stablehlo::SignOp>(loc, x), select);
++ }
++ 
++-Value materializeBesselI1eApproximationF32(OpBuilder& rewriter, Location loc,
+++Value materializeBesselI1eApproximationF32(OpBuilder &rewriter, Location loc,
++                                            ValueRange args) {
++   Value x = args.front();
++   assert(cast<ShapedType>(x.getType()).getElementType().isF32() &&
++@@ -620,7 +620,7 @@
++                                                   kI1eCoeffsB);
++ }
++ 
++-static Value materializeBesselI1eApproximationF64(OpBuilder& rewriter,
+++static Value materializeBesselI1eApproximationF64(OpBuilder &rewriter,
++                                                   Location loc,
++                                                   ValueRange args) {
++   Value x = args.front();
++@@ -663,10 +663,10 @@
++                                                    kI1eCoeffsA, kI1eCoeffsB);
++ }
++ 
++-static Value materializeWithUpcast(ConversionPatternRewriter& rewriter,
+++static Value materializeWithUpcast(ConversionPatternRewriter &rewriter,
++                                    Location loc, ValueRange args,
++                                    FloatType minPrecisionTy,
++-                                   Value callback(OpBuilder&, Location,
+++                                   Value callback(OpBuilder &, Location,
++                                                   ValueRange)) {
++   Type originalTy = getElementTypeOrSelf(args.front().getType());
++   auto floatOriginalTy = dyn_cast<FloatType>(originalTy);
++@@ -699,7 +699,7 @@
++ 
++   LogicalResult matchAndRewrite(
++       mlir::chlo::BesselI1eOp op, OpAdaptor adaptor,
++-      ConversionPatternRewriter& rewriter) const override {
+++      ConversionPatternRewriter &rewriter) const override {
++     Location loc = op.getLoc();
++     Value x = adaptor.getOperand();
++     Type ty = cast<ShapedType>(x.getType()).getElementType();
++@@ -725,7 +725,7 @@
++ };
++ 
++ template <typename FTy>
++-static Value materializePolynomialApproximation(OpBuilder& rewriter,
+++static Value materializePolynomialApproximation(OpBuilder &rewriter,
++                                                 Location loc, Value x,
++                                                 ArrayRef<FTy> coefficients) {
++   if (coefficients.empty()) return getConstantLike(rewriter, loc, 0.0, x);
++@@ -746,7 +746,7 @@
++ // argument and derive the final approximation for all |x| >= 1.
++ // This implementation is based on Cephes.
++ static Value materializeErfcApproximationF64ForMagnituteGeOne(
++-    ConversionPatternRewriter& rewriter, Location loc, ValueRange args) {
+++    ConversionPatternRewriter &rewriter, Location loc, ValueRange args) {
++   Value x = args.front();
++   assert(cast<ShapedType>(x.getType()).getElementType().isF64() &&
++          "expect f64 element type");
++@@ -831,7 +831,7 @@
++ // Precondition is |x| <= 1. Use erfc approximation, otherwise.
++ // This implementation is based on Cephes.
++ static Value materializeErfApproximationF64ForMagnituteLeOne(
++-    ConversionPatternRewriter& rewriter, Location loc, ValueRange args) {
+++    ConversionPatternRewriter &rewriter, Location loc, ValueRange args) {
++   Value x = args.front();
++   assert(cast<ShapedType>(x.getType()).getElementType().isF64() &&
++          "expect f64 element type");
++@@ -856,7 +856,7 @@
++ }
++ 
++ // This implementation is based on Cephes.
++-static Value materializeErfApproximationF64(ConversionPatternRewriter& rewriter,
+++static Value materializeErfApproximationF64(ConversionPatternRewriter &rewriter,
++                                             Location loc, ValueRange args) {
++   Value x = args.front();
++   assert(cast<ShapedType>(x.getType()).getElementType().isF64() &&
++@@ -884,7 +884,7 @@
++ }
++ 
++ static Value materializeErfcApproximationF64(
++-    ConversionPatternRewriter& rewriter, Location loc, ValueRange args) {
+++    ConversionPatternRewriter &rewriter, Location loc, ValueRange args) {
++   Value x = args.front();
++   assert(cast<ShapedType>(x.getType()).getElementType().isF64() &&
++          "expect f64 element type");
++@@ -916,7 +916,7 @@
++ // argument and derive the final approximation for all |x| >= 1.
++ // This implementation is based on Cephes.
++ static Value materializeErfcApproximationF32ForMagnitudeGeOne(
++-    OpBuilder& rewriter, Location loc, ValueRange args) {
+++    OpBuilder &rewriter, Location loc, ValueRange args) {
++   Value x = args.front();
++   assert(cast<ShapedType>(x.getType()).getElementType().isF32() &&
++          "expect f32 element type");
++@@ -982,7 +982,7 @@
++ // Precondition is |x| <= 1. Use erfc approximation, otherwise.
++ // This implementation is based on Cephes.
++ static Value materializeErfApproximationF32ForMagnitudeLeOne(
++-    OpBuilder& rewriter, Location loc, ValueRange args) {
+++    OpBuilder &rewriter, Location loc, ValueRange args) {
++   Value x = args.front();
++   assert(cast<ShapedType>(x.getType()).getElementType().isF32() &&
++          "expect f32 element type");
++@@ -1001,7 +1001,7 @@
++ }
++ 
++ // This is the same approximation as used in Eigen.
++-static Value materializeErfApproximationF32(OpBuilder& rewriter, Location loc,
+++static Value materializeErfApproximationF32(OpBuilder &rewriter, Location loc,
++                                             ValueRange args) {
++   Value x = args.front();
++   assert(cast<ShapedType>(x.getType()).getElementType().isF32() &&
++@@ -1038,7 +1038,7 @@
++                                                    erf, ubErf);
++ }
++ 
++-static Value materializeErfcApproximationF32(OpBuilder& rewriter, Location loc,
+++static Value materializeErfcApproximationF32(OpBuilder &rewriter, Location loc,
++                                              ValueRange args) {
++   Value x = args.front();
++   assert(cast<ShapedType>(x.getType()).getElementType().isF32() &&
++@@ -1070,7 +1070,7 @@
++ 
++   LogicalResult matchAndRewrite(
++       mlir::chlo::ErfOp op, OpAdaptor adaptor,
++-      ConversionPatternRewriter& rewriter) const override {
+++      ConversionPatternRewriter &rewriter) const override {
++     Location loc = op.getLoc();
++     Value x = adaptor.getOperand();
++     Type ty = cast<ShapedType>(x.getType()).getElementType();
++@@ -1098,7 +1098,7 @@
++ 
++   LogicalResult matchAndRewrite(
++       mlir::chlo::ErfcOp op, OpAdaptor adaptor,
++-      ConversionPatternRewriter& rewriter) const override {
+++      ConversionPatternRewriter &rewriter) const override {
++     Location loc = op.getLoc();
++     Value x = adaptor.getOperand();
++     Type ty = cast<ShapedType>(x.getType()).getElementType();
++@@ -1121,7 +1121,7 @@
++   }
++ };
++ 
++-static Value erfInv32(OpBuilder& b, Location loc, ValueRange args) {
+++static Value erfInv32(OpBuilder &b, Location loc, ValueRange args) {
++   constexpr int kDegree = 9;
++   constexpr std::array<float, 9> wLessThan5Constants = {
++       2.81022636e-08f,  3.43273939e-07f, -3.5233877e-06f,
++@@ -1178,7 +1178,7 @@
++       result);
++ }
++ 
++-static Value erfInv64(ConversionPatternRewriter& b, Location loc,
+++static Value erfInv64(ConversionPatternRewriter &b, Location loc,
++                       ValueRange args) {
++   constexpr std::array<double, 23> wLessThan625Constants = {
++       -3.6444120640178196996e-21, -1.685059138182016589e-19,
++@@ -1298,7 +1298,7 @@
++ 
++   LogicalResult matchAndRewrite(
++       mlir::chlo::ErfInvOp op, OpAdaptor adaptor,
++-      ConversionPatternRewriter& rewriter) const override {
+++      ConversionPatternRewriter &rewriter) const override {
++     Location loc = op.getLoc();
++     if (op.getType().getElementType().isF64()) {
++       rewriter.replaceOp(op, erfInv64(rewriter, loc, adaptor.getOperands()));
++@@ -1338,7 +1338,7 @@
++ //   with   t(z) = z + kLanczosGamma + 1/2
++ //          a(z) = kBaseLanczosCoeff
++ //                   + sum(k = 1, n, kLanczosCoefficients[i] / (z + k))
++-Value materializeLgamma(OpBuilder& rewriter, Location loc, ValueRange args) {
+++Value materializeLgamma(OpBuilder &rewriter, Location loc, ValueRange args) {
++   // If the input is less than 0.5 use Euler's reflection formula.
++   //   gamma(x) = pi / (sin(pi * x) * gamma(1 - x))
++   // Let z be
++@@ -1485,7 +1485,7 @@
++ // +/-89.4159851, due to rounding error when computing x +/- log(1/2).  The
++ // correct answer of 3.40281961e+38 (0x7f7fffec) is very close to max-float, so
++ // we deem this acceptable.
++-static Value materializeCoshApproximation(OpBuilder& rewriter, Location loc,
+++static Value materializeCoshApproximation(OpBuilder &rewriter, Location loc,
++                                           ValueRange operands) {
++   mlir::chlo::CoshOp::Adaptor transformed(operands);
++   Value x = transformed.getOperand();
++@@ -1504,7 +1504,7 @@
++ 
++   LogicalResult matchAndRewrite(
++       mlir::chlo::CoshOp op, OpAdaptor adaptor,
++-      ConversionPatternRewriter& rewriter) const override {
+++      ConversionPatternRewriter &rewriter) const override {
++     rewriter.replaceOp(
++         op, materializeWithUpcast(rewriter, op.getLoc(), adaptor.getOperands(),
++                                   rewriter.getF32Type(),
++@@ -1523,7 +1523,7 @@
++ //          a(z) = kBaseLanczosCoeff
++ //                   + sum(k = 1, n, kLanczosCoefficients[i] / (z + k))
++ //          a'(z) = - sum(k = 1, n, kLanczosCoefficients[i] / (z + k) / (z + k))
++-Value materializeDigamma(OpBuilder& rewriter, Location loc, ValueRange args) {
+++Value materializeDigamma(OpBuilder &rewriter, Location loc, ValueRange args) {
++   // If the input is less than 0.5 use Euler's reflection formula.
++   //   digamma(x) = digamma(1 - x) - pi * cot(pi * x)
++   // Let z be
++@@ -1630,14 +1630,14 @@
++ 
++ namespace {
++ 
++-static Value getConstantLikeSmallestFiniteValue(OpBuilder& b, Location loc,
+++static Value getConstantLikeSmallestFiniteValue(OpBuilder &b, Location loc,
++                                                 Value val) {
++   auto ty = cast<FloatType>(getElementTypeOrSelf(val.getType()));
++   return getConstantLike(
++       b, loc, llvm::APFloat::getSmallest(ty.getFloatSemantics()), val);
++ }
++ 
++-static Value materializeZeta(OpBuilder& rewriter, Location loc,
+++static Value materializeZeta(OpBuilder &rewriter, Location loc,
++                              ValueRange args) {
++   // Implementation ported from:
++   // https://github.com/openxla/xla/blob/7a067a7b88d2ffb15b1dc5e3c06f701a15f0391d/xla/client/lib/math.cc#L1912-L1917
++@@ -1790,7 +1790,7 @@
++ 
++ }  // namespace
++ 
++-Value materializePolygamma(OpBuilder& rewriter, Location loc, ValueRange args) {
+++Value materializePolygamma(OpBuilder &rewriter, Location loc, ValueRange args) {
++   mlir::chlo::PolygammaOp::Adaptor transformed(args);
++   Value n = transformed.getN();
++   Value x = transformed.getX();
++@@ -1840,7 +1840,7 @@
++ 
++   LogicalResult matchAndRewrite(
++       mlir::chlo::LgammaOp op, OpAdaptor adaptor,
++-      ConversionPatternRewriter& rewriter) const override {
+++      ConversionPatternRewriter &rewriter) const override {
++     FloatType minPrecisionTy = rewriter.getF32Type();
++     rewriter.replaceOp(
++         op, materializeWithUpcast(rewriter, op.getLoc(), adaptor.getOperands(),
++@@ -1854,7 +1854,7 @@
++ 
++   LogicalResult matchAndRewrite(
++       mlir::chlo::DigammaOp op, OpAdaptor adaptor,
++-      ConversionPatternRewriter& rewriter) const override {
+++      ConversionPatternRewriter &rewriter) const override {
++     FloatType minPrecisionTy = rewriter.getF32Type();
++     rewriter.replaceOp(
++         op, materializeWithUpcast(rewriter, op.getLoc(), adaptor.getOperands(),
++@@ -1863,7 +1863,7 @@
++   }
++ };
++ 
++-static Value materializeNextAfter(ConversionPatternRewriter& rewriter,
+++static Value materializeNextAfter(ConversionPatternRewriter &rewriter,
++                                   Location loc, ValueRange operands) {
++   mlir::chlo::NextAfterOp::Adaptor transformed(operands);
++   Value x = transformed.getX();
++@@ -1957,7 +1957,7 @@
++ 
++   LogicalResult matchAndRewrite(
++       mlir::chlo::NextAfterOp op, OpAdaptor adaptor,
++-      ConversionPatternRewriter& rewriter) const override {
+++      ConversionPatternRewriter &rewriter) const override {
++     rewriter.replaceOp(
++         op, materializeNextAfter(rewriter, op.getLoc(), adaptor.getOperands()));
++     return success();
++@@ -1969,7 +1969,7 @@
++ 
++   LogicalResult matchAndRewrite(
++       mlir::chlo::PolygammaOp op, OpAdaptor adaptor,
++-      ConversionPatternRewriter& rewriter) const override {
+++      ConversionPatternRewriter &rewriter) const override {
++     Location loc = op.getLoc();
++     FloatType minPrecisionTy = rewriter.getF32Type();
++     rewriter.replaceOp(
++@@ -1989,7 +1989,7 @@
++ // +/-89.4159851, due to rounding error when computing x +/- log(1/2).  The
++ // correct answer of 3.40281961e+38 (0x7f7fffec) is very close to max-float, so
++ // we deem this acceptable.
++-static Value materializeSinhApproximationForLargeX(OpBuilder& rewriter,
+++static Value materializeSinhApproximationForLargeX(OpBuilder &rewriter,
++                                                    Location loc,
++                                                    ValueRange operands) {
++   mlir::chlo::SinhOp::Adaptor transformed(operands);
++@@ -2007,7 +2007,7 @@
++ // Express `sinh` as
++ //   sinh(x) = (e^x - e^-x) / 2                     if |x| < 1
++ //           = e^(x + log(1/2)) - e^(-x + log(1/2)) otherwise.
++-static Value materializeSinhApproximation(OpBuilder& rewriter, Location loc,
+++static Value materializeSinhApproximation(OpBuilder &rewriter, Location loc,
++                                           ValueRange operands) {
++   Value largeSinhResult =
++       materializeSinhApproximationForLargeX(rewriter, loc, operands);
++@@ -2043,7 +2043,7 @@
++ namespace {
++ 
++ ArrayAttr convertPrecisionConfig(mlir::ArrayAttr precisionConfig,
++-                                 ConversionPatternRewriter& rewriter) {
+++                                 ConversionPatternRewriter &rewriter) {
++   std::vector<Attribute> precisions;
++   for (Attribute precision : precisionConfig.getValue()) {
++     switch (dyn_cast<mlir::chlo::PrecisionAttr>(precision).getValue()) {
++@@ -2077,7 +2077,7 @@
++ // In this implementation, the IR size increases by a factor of g. If this
++ // becomes a problem, we can try adding stablehlo.while to reduce the IR size.
++ LogicalResult handleRaggedDotMode1(mlir::chlo::RaggedDotOp op,
++-                                   ConversionPatternRewriter& rewriter) {
+++                                   ConversionPatternRewriter &rewriter) {
++   Value lhs = op.getLhs();
++   Value rhs = op.getRhs();
++   chlo::RaggedDotDimensionNumbersAttr raggedDotDimensionNumbers =
++@@ -2231,7 +2231,7 @@
++ //   group_sizes : [g]
++ //   result : [g, b, m, n]
++ LogicalResult handleRaggedDotMode2(mlir::chlo::RaggedDotOp op,
++-                                   ConversionPatternRewriter& rewriter) {
+++                                   ConversionPatternRewriter &rewriter) {
++   return failure();
++ }
++ 
++@@ -2241,7 +2241,7 @@
++ //   group_sizes : [g]
++ //   result : [b, m, n]
++ LogicalResult handleRaggedDotMode3(mlir::chlo::RaggedDotOp op,
++-                                   ConversionPatternRewriter& rewriter) {
+++                                   ConversionPatternRewriter &rewriter) {
++   return failure();
++ }
++ 
++@@ -2254,7 +2254,7 @@
++   // dimension.
++   LogicalResult matchAndRewrite(
++       mlir::chlo::RaggedDotOp op, OpAdaptor,
++-      ConversionPatternRewriter& rewriter) const override {
+++      ConversionPatternRewriter &rewriter) const override {
++     if (op.getLhs().getType().getRank() < op.getRhs().getType().getRank()) {
++       return handleRaggedDotMode1(op, rewriter);
++     } else if (op.getLhs().getType().getRank() <
++@@ -2271,7 +2271,7 @@
++ 
++   LogicalResult matchAndRewrite(
++       mlir::chlo::SinhOp op, OpAdaptor adaptor,
++-      ConversionPatternRewriter& rewriter) const override {
+++      ConversionPatternRewriter &rewriter) const override {
++     Value x = adaptor.getOperand();
++     if (isa<ComplexType>(cast<ShapedType>(x.getType()).getElementType())) {
++       rewriter.replaceOp(op, materializeSinhApproximationForLargeX(
++@@ -2321,7 +2321,7 @@
++ 
++   LogicalResult matchAndRewrite(
++       mlir::chlo::TopKOp op, OpAdaptor /*adaptor*/,
++-      ConversionPatternRewriter& rewriter) const override {
+++      ConversionPatternRewriter &rewriter) const override {
++     auto operandType = dyn_cast<RankedTensorType>(op.getOperand().getType());
++     if (!operandType) return failure();
++     int64_t operandRank = operandType.getRank();
++@@ -2436,7 +2436,7 @@
++ 
++   LogicalResult matchAndRewrite(
++       mlir::chlo::ZetaOp op, OpAdaptor adaptor,
++-      ConversionPatternRewriter& rewriter) const override {
+++      ConversionPatternRewriter &rewriter) const override {
++     Location loc = op.getLoc();
++     FloatType minPrecisionTy = rewriter.getF32Type();
++     rewriter.replaceOp(
++@@ -2452,7 +2452,7 @@
++ 
++ struct ChloLegalizeToStablehloPass final
++     : impl::ChloLegalizeToStablehloPassBase<ChloLegalizeToStablehloPass> {
++-  LogicalResult initialize(MLIRContext* context) override {
+++  LogicalResult initialize(MLIRContext *context) override {
++     target = std::make_shared<ConversionTarget>(*context);
++     target->addIllegalDialect<chlo::ChloDialect>();
++     target->addLegalDialect<mlir::stablehlo::StablehloDialect,
++@@ -2482,8 +2482,8 @@
++ }  // namespace
++ 
++ namespace {
++-static void populateChloBroadcastingPatterns(MLIRContext* context,
++-                                             RewritePatternSet* patterns) {
+++static void populateChloBroadcastingPatterns(MLIRContext *context,
+++                                             RewritePatternSet *patterns) {
++   // Instantiate conversion templates for conforming binary elementwise ops
++   // that do not have different dtypes between operands and results and do
++   // not have special attributes that need to be preserved.
++@@ -2496,8 +2496,8 @@
++   patterns->add<ConvertConstantLikeOp, ConvertSelectOp>(context);
++ }
++ 
++-static void populateChloDecompositionPatterns(MLIRContext* context,
++-                                              RewritePatternSet* patterns) {
+++static void populateChloDecompositionPatterns(MLIRContext *context,
+++                                              RewritePatternSet *patterns) {
++   populateWithGenerated(*patterns);
++   patterns
++       ->add<ConvertConstantOp, ConvertBesselI1eOp, ConvertCoshOp,
++@@ -2508,8 +2508,8 @@
++ }
++ }  // namespace
++ 
++-void populateChloToStablehloPatterns(MLIRContext* context,
++-                                     RewritePatternSet* patterns) {
+++void populateChloToStablehloPatterns(MLIRContext *context,
+++                                     RewritePatternSet *patterns) {
++   populateChloBroadcastingPatterns(context, patterns);
++   populateChloDecompositionPatterns(context, patterns);
++ }
+ diff --ruN a/stablehlo/stablehlo/transforms/StablehloRefineShapes.cpp b/stablehlo/stablehlo/transforms/StablehloRefineShapes.cpp
+ --- stablehlo/stablehlo/transforms/StablehloRefineShapes.cpp
+ +++ stablehlo/stablehlo/transforms/StablehloRefineShapes.cpp
+@@ -361,10 +1560,71 @@ diff --ruN a/stablehlo/stablehlo/transforms/StablehloRefineShapes.cpp b/stablehl
+                                << "\n  curr=" << key.toString()
+                                << "\n  prev=" << prevKey.toString();
+    }
++diff --ruN a/stablehlo/stablehlo/transforms/optimization/Passes.td b/stablehlo/stablehlo/transforms/optimization/Passes.td
++--- stablehlo/stablehlo/transforms/optimization/Passes.td
+++++ stablehlo/stablehlo/transforms/optimization/Passes.td
++@@ -23,14 +23,14 @@
++          "explicit MLIR `MemoryEffects`. Notably, this means `func.call` ops "
++          "will be assumed pure.">,
++   Option<"foldOpElementLimit", "fold-op-element-limit", "int64_t",
++-         /*default=*/"1",
+++         /*default=*/"65536",
++          "Folding an op into a constant can sometimes come at the cost of "
++          "memory overhead. (This occurs if the op's inputs are reused, meaning "
++          "that they can't be deleted after the op is folded to a constant, or "
++-         "when folding operations like `iota` whose outputs take up more "
+++         "when folding operations like `concat` whose outputs take up more "
++          "memory than their inputs.) In such cases, this config option sets an "
++          "upper limit on how many elements an op's result may have before the "
++-         "op is no longer folded.">,
+++         "op is no longer folded. Splat folds are exempt from this limit.">,
++   Option<"optimizeFloat", "optimize-float", "bool", /*default=*/"true",
++          "Allow float optimizations that, though mathematically equivalent, "
++          "may result in slightly different quantization of floating-point "
+ diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveFolder.cpp b/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveFolder.cpp
+ --- stablehlo/stablehlo/transforms/optimization/StablehloAggressiveFolder.cpp
+ +++ stablehlo/stablehlo/transforms/optimization/StablehloAggressiveFolder.cpp
+-@@ -530,10 +530,15 @@
++@@ -74,12 +74,39 @@
++ 
++ static constexpr StablehloAggressiveFolderPassOptions kDefaultOptions;
++ 
+++APSInt getAPSInt(Type type, uint64_t value) {
+++  unsigned numBits;
+++  bool isUnsigned;
+++  if (auto integerType = dyn_cast<IntegerType>(type)) {
+++    numBits = integerType.getWidth();
+++    // Signless types are treated as signed, per StableHLO convention.
+++    isUnsigned = integerType.isUnsignedInteger();
+++  } else {
+++    llvm::report_fatal_error("expected integer type");
+++  }
+++  return APSInt(
+++      {/*numBits=*/numBits, value, /*isSigned=*/false, /*implicitTrunc=*/true},
+++      /*isUnsigned=*/isUnsigned);
+++}
+++
++ template <typename T>
++ APSInt getAPSInt(unsigned bitWidth, T value, bool isSigned) {
++   return APSInt({/*numBits=*/bitWidth, static_cast<uint64_t>(value),
++                  /*isSigned=*/isSigned,
++                  /*implicitTrunc=*/true},
++                 /*isUnsigned=*/!isSigned);
+++}
+++
+++APFloat getAPFloat(
+++    Type type, double value,
+++    llvm::RoundingMode roundingMode = llvm::RoundingMode::NearestTiesToEven) {
+++  auto floatType = dyn_cast<FloatType>(type);
+++  if (!floatType) llvm::report_fatal_error("expected float type");
+++
+++  APFloat result(value);
+++  bool unusedLosesInfo = false;
+++  result.convert(floatType.getFloatSemantics(), roundingMode, &unusedLosesInfo);
+++  return result;
++ }
++ 
++ LogicalResult validateStaticShapeResult(PatternRewriter& rewriter,
++@@ -530,10 +557,15 @@
+    using FoldOpRewritePattern<OpType>::matchAndRewrite;
+    using FoldOpRewritePattern<OpType>::options;
+  
+@@ -382,7 +1642,7 @@ diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveFold
+        return success();
+      return rewriter.notifyMatchFailure(op, "skipping fold of shape op dtype");
+    }
+-@@ -605,7 +610,8 @@
++@@ -605,7 +637,8 @@
+                                  PatternRewriter& rewriter) const override {
+      auto resultType = op.getType();
+      if (failed(validateStaticShapeResult(rewriter, op, resultType)) ||
+@@ -392,7 +1652,7 @@ diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveFold
+        return failure();
+  
+      SplatElementsAttr cstAttr;
+-@@ -1104,7 +1110,7 @@
++@@ -1104,7 +1137,7 @@
+          failed(validateShapeFoldDtype(rewriter, op, resultType)))
+        return failure();
+  
+@@ -401,13 +1661,98 @@ diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveFold
+      if (!matchPattern(op.getOperand(), m_Constant(&attr)))
+        return rewriter.notifyMatchFailure(op, "expected constant operand");
+      rewriter.replaceOpWithNewOp<ConstantOp>(op, attr.reshape(resultType));
++@@ -1256,21 +1289,48 @@
++       return rewriter.notifyMatchFailure(
++           op, "expected operand with static ranked tensor type");
++ 
++-    ElementsAttr els;
+++    DenseElementsAttr els;
++     if (!matchPattern(operand, m_Constant(&els)))
++       return rewriter.notifyMatchFailure(
++           op, "expected constant integer or float operand");
++ 
+++    // Short circuit on splat resizes
+++    if (els.isSplat()) {
+++      rewriter.replaceOpWithNewOp<ConstantOp>(op, els.resizeSplat(resultType));
+++      return success();
+++    }
+++
++     DenseElementsAttr resAttr;
++-    if (auto data = els.tryGetValues<APInt>())
+++    if (auto data = els.tryGetValues<APInt>(); succeeded(data))
++       resAttr = sliceType(op, *data);
++-    else if (auto data = els.tryGetValues<APFloat>())
+++    else if (auto data = els.tryGetValues<APFloat>(); succeeded(data))
++       resAttr = sliceType(op, *data);
++     else
++       return rewriter.notifyMatchFailure(op.getLoc(),
++                                          "unsupported element type");
++ 
++     rewriter.replaceOpWithNewOp<ConstantOp>(op, resAttr);
+++    return success();
+++  }
+++};
+++
+++// Pattern: dynamic_slice(splat_cst, start, end) -> resized_splat_cst
+++struct FoldDynamicSliceOpPattern : public FoldOpRewritePattern<DynamicSliceOp> {
+++  using FoldOpRewritePattern::FoldOpRewritePattern;
+++
+++  LogicalResult matchAndRewrite(DynamicSliceOp op,
+++                                PatternRewriter& rewriter) const override {
+++    auto resultType = op.getType();
+++    if (failed(validateStaticShapeResult(rewriter, op, resultType)))
+++      return failure();
+++
+++    SplatElementsAttr inputSplatAttr;
+++    if (!matchPattern(op.getOperand(), m_Constant(&inputSplatAttr)) ||
+++        !inputSplatAttr)
+++      return rewriter.notifyMatchFailure(op, "Input must be a splat constant.");
+++
+++    rewriter.replaceOpWithNewOp<ConstantOp>(
+++        op, inputSplatAttr.resizeSplat(resultType));
++     return success();
++   }
++ };
++@@ -1482,6 +1542,14 @@
++       rewriter.replaceOpWithNewOp<ConstantOp>(
++           op, DenseIntElementsAttr::get(resultType, values));
++       return success();
+++    }
+++
+++    // TODO: Support more iota folding, but doing so currently causes OOMs,
+++    // so this pattern needs to be enabled more carefully.
+++    if (outputSize != 1) {
+++      return rewriter.notifyMatchFailure(
+++          op, "expected output size to be 1, but got: " +
+++                  std::to_string(outputSize));
++     }
++ 
++     int64_t sequences = 1;
++@@ -1881,6 +1949,7 @@
++   patterns->add<FoldConcatenateOpPattern>(context, options, benefit);
++   patterns->add<FoldConvertOpPattern>(context, options, benefit);
++   patterns->add<FoldDivOpPattern>(context, options, benefit);
+++  patterns->add<FoldDynamicSliceOpPattern>(context, options, benefit);
++   patterns->add<FoldGetDimensionSizeOpPattern>(context, options, benefit);
++   patterns->add<FoldMaxOpPattern>(context, options, benefit);
++   patterns->add<FoldMinOpPattern>(context, options, benefit);
+ diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplification.cpp b/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplification.cpp
+ --- stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplification.cpp
+ +++ stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplification.cpp
+-@@ -1309,6 +1309,17 @@
++@@ -331,7 +331,7 @@
++ DenseI64ArrayAttr getInvertedBroadcastDimensions(OpBuilder& b,
++                                                  ArrayRef<int64_t> dims) {
++   SmallVector<int64_t> permutation(dims.size());
++-  for (size_t i = 0; i < dims.size(); ++i) {
+++  for (auto i = 0; i < dims.size(); ++i) {
++     permutation[dims[i]] = i;
++   }
++   return b.getDenseI64ArrayAttr(permutation);
++@@ -1308,6 +1308,17 @@
++ //////////////////////////////////
+  // TransposeOp
+  /////////////////////////////////
+- 
+++
+ +DenseI64ArrayAttr getMergedTransposePermutation(OpBuilder& b,
+ +                                                ArrayRef<int64_t> childPerm,
+ +                                                ArrayRef<int64_t> parentPerm) {
+@@ -418,10 +1763,9 @@ diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimp
+ +  }
+ +  return b.getDenseI64ArrayAttr(mergedPerm);
+ +}
+-+
++ 
+  // Pattern: transpose(X, [no_mem_layout_change...]) -> reshape(X)
+  struct TransposeIsReshape final : SimplifyOpRewritePattern<TransposeOp> {
+-   using SimplifyOpRewritePattern::SimplifyOpRewritePattern;
+ diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplificationPatterns.td b/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplificationPatterns.td
+ --- stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplificationPatterns.td
+ +++ stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplificationPatterns.td
+diff --git a/third_party/stablehlo/workspace.bzl b/third_party/stablehlo/workspace.bzl
+index db43355..982a75c 100644
+--- a/third_party/stablehlo/workspace.bzl
++++ b/third_party/stablehlo/workspace.bzl
+@@ -4,8 +4,8 @@ load("//third_party:repo.bzl", "tf_http_archive", "tf_mirror_urls")
+ 
+ def repo():
+     #
+-    STABLEHLO_COMMIT = "baaf7475f8925cb0c5f9580408b3c0385f888487"
+-    STABLEHLO_SHA256 = "c4b96f94d9d4aaa8b2dc88104579aab662aa33d59b79e77a9b75c8e0af3d9461"
++    STABLEHLO_COMMIT = "0a4440a5c8de45c4f9649bf3eb4913bf3f97da0d"
++    STABLEHLO_SHA256 = "f1620aafc2b6d730e2ee9c33b35a59a2656a11eed10b1ef8049f175eb4fbdd9c"
+     #
+ 
+     tf_http_archive(
