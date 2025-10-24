@@ -82,9 +82,12 @@ namespace mh = ::mlir::mhlo;
 namespace mm = ::mlir::math;
 namespace mt = ::mlir::triton;
 
-ScalarOrTensor::ScalarOrTensor(mlir::Value value) : value_(value) {
-  CHECK(IsScalar() || UnwrapTensor().getType().getRank() > 0)
-      << "0D tensors are not supported by Triton";
+ScalarOrTensor::ScalarOrTensor(mlir::Value value, bool skip_is_scalar_check)
+    : value_(value) {
+  if (!skip_is_scalar_check) {
+    CHECK(IsScalar() || UnwrapTensor().getType().getRank() > 0)
+        << "0D tensors are not supported by Triton";
+  }
 }
 
 SmallVector<int64_t> GetPaddedTileSizes(ArrayRef<int64_t> tile_sizes) {

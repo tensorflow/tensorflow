@@ -69,6 +69,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypeInterfaces.h"
 #include "mlir/IR/BuiltinTypes.h"
+#include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/DialectRegistry.h"
 #include "mlir/IR/Location.h"
 #include "mlir/IR/MLIRContext.h"
@@ -360,6 +361,25 @@ ScalarOrTensor EmitParameterExtract(EmitterLocOpBuilder b,
   return ScalarOrTensor(extracted_tensor);
 }
 
+mlir::stablehlo::ConstantOp CreateZeroTensorConstant(
+    mlir::OpBuilder& builder, mlir::Location loc,
+    mlir::RankedTensorType tensor_type) {
+  mlir::Type element_type = tensor_type.getElementType();
+
+  // getZeroAttr works for standard integer and float types.
+  mlir::Attribute zero_attr = builder.getZeroAttr(element_type);
+
+  if (!zero_attr) {
+    mlir::emitError(loc, "Unsupported element type for getZeroAttr");
+    return nullptr;
+  }
+
+  auto denseAttr = mlir::DenseElementsAttr::get(tensor_type, zero_attr);
+
+  return builder.create<mlir::stablehlo::ConstantOp>(loc, tensor_type,
+                                                     denseAttr);
+}
+
 absl::StatusOr<ScalarOrTensor> EmitScope(
     EmitterLocOpBuilder b, absl::string_view libdevice_path,
     const se::DeviceDescription& device_info,
@@ -412,14 +432,25 @@ absl::StatusOr<ScalarOrTensor> EmitReduce(
                                                      neutral.UnwrapUnsafe()));
   }
 
-  ttir::ReduceOp reduction =
-      b.create<ttir::ReduceOp>(input.UnwrapUnsafe(), reduction_dimension);
+  // We emit a zero constant for the initial value of the reduction as triton
+  // doesn't have an init value, only an input parameter.
+  mlir::RankedTensorType constant_element_type = mlir::RankedTensorType::get(
+      {}, input.UnwrapTensor().getType().getElementType());
+
+  auto init_value =
+      CreateZeroTensorConstant(b, b.getLoc(), constant_element_type);
+
+  stablehlo::ReduceOp reduction = b.create<stablehlo::ReduceOp>(
+      input.UnwrapTensor(), init_value.getResult(), reduction_dimension);
   {
     TF_ASSIGN_OR_RETURN(Type result_ty,
                         TritonType(b, hlo_reduce.shape().element_type()));
+    result_ty = mlir::RankedTensorType::get({}, result_ty);
+
     mlir::Location loc = b.getLoc();
     mlir::Block* reducer = b.createBlock(&reduction->getRegion(0), {},
                                          {result_ty, result_ty}, {loc, loc});
+    b.setInsertionPointToStart(reducer);
 
     HloComputation* reduction_computation = hlo_reduce.to_apply();
 
@@ -430,10 +461,20 @@ absl::StatusOr<ScalarOrTensor> EmitReduce(
       if (instr->opcode() == HloOpcode::kParameter) {
         int parameter_number = instr->parameter_number();
         TF_RET_CHECK(parameter_number < 2);
-        TF_RET_CHECK(region_values
-                         .insert({instr, ScalarOrTensor(reducer->getArgument(
-                                             parameter_number))})
-                         .second);
+        auto argument = mlir::cast<mlir::TypedValue<mlir::RankedTensorType>>(
+            reducer->getArgument(parameter_number));
+
+        if (!argument) {
+          return Internal("Expected reducer argument to be a tensor.");
+        }
+
+        // Emit extract op so that the reducer can be lowered to triton, as the
+        // triton reducer can only work with scalars.
+        auto extracted_argument =
+            ScalarOrTensor(b.create<mlir::tensor::ExtractOp>(
+                                argument.getType().getElementType(), argument)
+                               .getResult());
+        TF_RET_CHECK(region_values.insert({instr, extracted_argument}).second);
       } else {
         to_emit.push_back(instr);
       }
@@ -441,16 +482,19 @@ absl::StatusOr<ScalarOrTensor> EmitReduce(
 
     TF_RET_CHECK(!to_emit.empty());
 
-    b.setInsertionPointToStart(reducer);
     TF_ASSIGN_OR_RETURN(
         ScalarOrTensor result,
         EmitScope(b, libdevice_path, device_info, /*analysis=*/nullptr, to_emit,
                   region_values));
-    b.create<ttir::ReduceReturnOp>(SmallVector<Value>({result.UnwrapUnsafe()}));
+    // Emit from_elements op so that the reducer can be lowered to triton, as
+    // the triton reducer can only work with scalars.
+    auto result_as_scalar = b.create<mlir::tensor::FromElementsOp>(
+        result_ty, result.UnwrapUnsafe());
+    b.create<stablehlo::ReturnOp>(SmallVector<Value>({result_as_scalar}));
     b.setInsertionPointAfter(reduction);
   }
 
-  return ScalarOrTensor(reduction.getResult().front());
+  return ScalarOrTensor(reduction.getResult(0), /*skip_is_scalar_check=*/true);
 }
 
 // Emit code corresponding to a fusion instruction somehow nested within the

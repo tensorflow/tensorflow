@@ -74,7 +74,12 @@ class ScalarOrTensor {
 
   // Wraps the given value in a ScalarOrTensor. CHECK-fails if the
   // value is a 0D tensor, because Triton does not support 0D tensors.
-  explicit ScalarOrTensor(mlir::Value value);
+  //
+  // If `skip_is_scalar_check` is true, the constructor will not perform the
+  // check. This is used to bypass the checks since the triton emitter is in
+  // progress of becoming a backend agnostic emitter. These checks should be
+  // moved to backend specific lowerings once those exist.
+  explicit ScalarOrTensor(mlir::Value value, bool skip_is_scalar_check = false);
 
   bool IsScalar() const { return !IsTensor(); }
   bool IsTensor() const { return mlir::isa<TensorValue>(value_); }
