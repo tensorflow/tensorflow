@@ -3,6 +3,7 @@ load(
     "//xla/tsl/platform:build_config_root.bzl",
     "if_llvm_aarch64_available",
     "if_llvm_powerpc_available",
+    "if_llvm_riscv_available",
     "if_llvm_system_z_available",
     "if_llvm_x86_available",
 )
@@ -149,6 +150,9 @@ cc_library(
     ]) + if_llvm_powerpc_available([
         "@llvm-project//llvm:PowerPCAsmParser",  # fixdeps: keep
         "@llvm-project//llvm:PowerPCCodeGen",  # fixdeps: keep
+    ]) + if_llvm_riscv_available([
+        "@llvm-project//llvm:RISCVAsmParser",  # fixdeps: keep
+        "@llvm-project//llvm:RISCVCodeGen",  # fixdeps: keep
     ]) + if_llvm_system_z_available([
         "@llvm-project//llvm:SystemZAsmParser",  # fixdeps: keep
         "@llvm-project//llvm:SystemZCodeGen",  # fixdeps: keep

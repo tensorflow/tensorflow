@@ -1,0 +1,131 @@
+From: Levi Zim <rsworktech@outlook.com>
+Date: Tue, 14 Oct 2025 19:45:36 +0800
+Subject: [PATCH] fix: Add linux_riscv64 to _pip_repository_impl
+
+Fix https://github.com/bazel-contrib/rules_python/discussions/2729
+---
+ python/private/pypi/pip_repository.bzl                   | 1 +
+ python/private/pypi/whl_installer/platform.py            | 3 +++
+ python/private/pypi/whl_target_platforms.bzl             | 1 +
+ tests/pypi/whl_installer/platform_test.py                | 6 +++---
+ .../whl_target_platforms/whl_target_platforms_tests.bzl  | 9 +++++++++
+ 5 files changed, 17 insertions(+), 3 deletions(-)
+
+diff --git a/python/private/pypi/pip_repository.bzl b/python/private/pypi/pip_repository.bzl
+index e9a4c44da3..d635651039 100644
+--- a/python/private/pypi/pip_repository.bzl
++++ b/python/private/pypi/pip_repository.bzl
+@@ -96,6 +96,7 @@ def _pip_repository_impl(rctx):
+                 "linux_aarch64",
+                 "linux_arm",
+                 "linux_ppc",
++                "linux_riscv64",
+                 "linux_s390x",
+                 "linux_x86_64",
+                 "osx_aarch64",
+diff --git a/python/private/pypi/whl_installer/platform.py b/python/private/pypi/whl_installer/platform.py
+index ff267fe4aa..0757d86990 100644
+--- a/python/private/pypi/whl_installer/platform.py
++++ b/python/private/pypi/whl_installer/platform.py
+@@ -45,6 +45,7 @@ class Arch(Enum):
+     ppc64le = 5
+     s390x = 6
+     arm = 7
++    riscv64 = 8
+     amd64 = x86_64
+     arm64 = aarch64
+     i386 = x86_32
+@@ -269,6 +270,8 @@ def platform_machine(self) -> str:
+             return "ppc"
+         elif self.arch == Arch.ppc64le:
+             return "ppc64le"
++        elif self.arch == Arch.riscv64:
++            return "riscv64"
+         elif self.arch == Arch.s390x:
+             return "s390x"
+         else:
+diff --git a/python/private/pypi/whl_target_platforms.bzl b/python/private/pypi/whl_target_platforms.bzl
+index 6c3dd5da83..28547c679c 100644
+--- a/python/private/pypi/whl_target_platforms.bzl
++++ b/python/private/pypi/whl_target_platforms.bzl
+@@ -30,6 +30,7 @@ _CPU_ALIASES = {
+     "ppc": "ppc",
+     "ppc64": "ppc",
+     "ppc64le": "ppc64le",
++    "riscv64": "riscv64",
+     "s390x": "s390x",
+     "arm": "arm",
+     "armv6l": "arm",
+diff --git a/tests/pypi/whl_installer/platform_test.py b/tests/pypi/whl_installer/platform_test.py
+index ad65650779..0d944bb196 100644
+--- a/tests/pypi/whl_installer/platform_test.py
++++ b/tests/pypi/whl_installer/platform_test.py
+@@ -38,17 +38,17 @@ def test_can_get_specific_from_string(self):
+ 
+     def test_can_get_all_for_py_version(self):
+         cp39 = Platform.all(minor_version=9, micro_version=0)
+-        self.assertEqual(21, len(cp39), f"Got {cp39}")
++        self.assertEqual(24, len(cp39), f"Got {cp39}")
+         self.assertEqual(cp39, Platform.from_string("cp39.0_*"))
+ 
+     def test_can_get_all_for_os(self):
+         linuxes = Platform.all(OS.linux, minor_version=9)
+-        self.assertEqual(7, len(linuxes))
++        self.assertEqual(8, len(linuxes))
+         self.assertEqual(linuxes, Platform.from_string("cp39_linux_*"))
+ 
+     def test_can_get_all_for_os_for_host_python(self):
+         linuxes = Platform.all(OS.linux)
+-        self.assertEqual(7, len(linuxes))
++        self.assertEqual(8, len(linuxes))
+         self.assertEqual(linuxes, Platform.from_string("linux_*"))
+ 
+     def test_platform_sort(self):
+diff --git a/tests/pypi/whl_target_platforms/whl_target_platforms_tests.bzl b/tests/pypi/whl_target_platforms/whl_target_platforms_tests.bzl
+index a976a0cf95..8b7f0ad02b 100644
+--- a/tests/pypi/whl_target_platforms/whl_target_platforms_tests.bzl
++++ b/tests/pypi/whl_target_platforms/whl_target_platforms_tests.bzl
+@@ -34,6 +34,9 @@ def _test_simple(env):
+         "musllinux_1_1_ppc64le": [
+             struct(os = "linux", cpu = "ppc64le", abi = None, target_platform = "linux_ppc64le", version = (1, 1)),
+         ],
++        "musllinux_1_2_riscv64": [
++            struct(os = "linux", cpu = "riscv64", abi = None, target_platform = "linux_riscv64", version = (1, 2)),
++        ],
+         "win_amd64": [
+             struct(os = "windows", cpu = "x86_64", abi = None, target_platform = "windows_x86_64", version = (0, 0)),
+         ],
+@@ -66,6 +69,9 @@ def _test_with_abi(env):
+         "musllinux_1_1_ppc64le": [
+             struct(os = "linux", cpu = "ppc64le", abi = "cp311", target_platform = "cp311_linux_ppc64le", version = (1, 1)),
+         ],
++        "musllinux_1_2_riscv64": [
++            struct(os = "linux", cpu = "riscv64", abi = "cp311", target_platform = "cp311_linux_riscv64", version = (1, 2)),
++        ],
+         "win_amd64": [
+             struct(os = "windows", cpu = "x86_64", abi = "cp311", target_platform = "cp311_windows_x86_64", version = (0, 0)),
+         ],
+@@ -96,6 +102,7 @@ def _can_parse_existing_tags(env):
+         "manylinux2014_i686": 1,
+         "manylinux2014_ppc64": 1,
+         "manylinux2014_ppc64le": 1,
++        "manylinux2014_riscv64": 1,
+         "manylinux2014_s390x": 1,
+         "manylinux2014_x86_64": 1,
+         "manylinux_11_12_aarch64": 1,
+@@ -103,6 +110,7 @@ def _can_parse_existing_tags(env):
+         "manylinux_11_12_i686": 1,
+         "manylinux_11_12_ppc64": 1,
+         "manylinux_11_12_ppc64le": 1,
++        "manylinux_11_12_riscv64": 1,
+         "manylinux_11_12_s390x": 1,
+         "manylinux_11_12_x86_64": 1,
+         "manylinux_1_2_aarch64": 1,
+@@ -111,6 +119,7 @@ def _can_parse_existing_tags(env):
+         "musllinux_11_12_armv7l": 1,
+         "musllinux_11_12_i686": 1,
+         "musllinux_11_12_ppc64le": 1,
++        "musllinux_11_12_riscv64": 1,
+         "musllinux_11_12_s390x": 1,
+         "musllinux_11_12_x86_64": 1,
+         "win32": 1,

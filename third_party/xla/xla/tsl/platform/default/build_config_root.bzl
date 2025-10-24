@@ -144,6 +144,12 @@ def if_llvm_powerpc_available(then, otherwise = []):
         "//conditions:default": otherwise,
     })
 
+def if_llvm_riscv_available(then, otherwise = []):
+    return select({
+        str(Label("//xla/tsl:riscv64_or_cross")): then,
+        "//conditions:default": otherwise,
+    })
+
 def if_llvm_system_z_available(then, otherwise = []):
     return select({
         str(Label("//xla/tsl:s390x_or_cross")): then,
