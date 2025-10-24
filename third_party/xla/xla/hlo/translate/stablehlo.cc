@@ -34,7 +34,6 @@ limitations under the License.
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Transforms/Passes.h"
 #include "stablehlo/transforms/Passes.h"
-#include "stablehlo/transforms/optimization/Passes.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/translate/hlo_to_mhlo/hlo_module_importer.h"
 #include "xla/hlo/translate/mhlo_to_hlo/mlir_hlo_to_hlo.h"
@@ -74,11 +73,9 @@ absl::Status StablehloToMhlo(mlir::ModuleOp module, bool run_canonicalizer) {
       mlir::mhlo::createChloLegalizeToHighLevelMhloPass());
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::stablehlo::createChloLegalizeToStablehloPass());
+  pm.addPass(mlir::mhlo::createStablehloLegalizeToHloPass());
   if (run_canonicalizer) {
-    pm.addNestedPass<mlir::func::FuncOp>(
-        mlir::stablehlo::createStablehloTargetIndependentOptimizationPass({
-            /*assumeNoUndeclaredSideEffects=*/true,
-        }));
+    pm.addNestedPass<mlir::func::FuncOp>(mlir::createCanonicalizerPass());
     pm.addPass(mlir::stablehlo_ext::
                    createStablehloSanitizeDiscardableAttributesPass());
   }
@@ -111,7 +108,6 @@ absl::Status ConvertStablehloToHloProtoInternal(mlir::ModuleOp module,
   mlir::MlirToHloConversionOptions options;
   options.return_tuple = return_tuple;
   options.use_tuple_args = use_tuple_args;
-  options.direct_stablehlo_to_hlo = true;
   TF_RETURN_IF_ERROR(mlir::ConvertMlirHloToHlo(module, hlo_proto, options));
   return absl::OkStatus();
 }
