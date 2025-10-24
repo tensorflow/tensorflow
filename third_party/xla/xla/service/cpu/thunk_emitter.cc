@@ -24,6 +24,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/match.h"
@@ -107,6 +108,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
+#include "xla/stream_executor/device_memory.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/statusor.h"
@@ -127,6 +129,7 @@ limitations under the License.
 
 #ifdef XLA_YNNPACK
 #include "xla/backends/cpu/runtime/ynnpack/ynn_fusion_thunk.h"
+#include "xla/backends/cpu/runtime/ynnpack/ynn_interop.h"
 #include "xla/backends/cpu/ynn_emitter.h"
 #include "xla/backends/cpu/ynn_support.h"
 #endif  // XLA_YNNPACK
@@ -1082,6 +1085,25 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitDotThunk(
       TF_ASSIGN_OR_RETURN(BufferAllocation::Slice out_slice,
                           GetAllocationSlice(instruction));
 
+#ifdef XLA_YNNPACK
+      const bool use_ynn = absl::c_linear_search(
+          hlo_module_config_.debug_options()
+              .xla_cpu_experimental_ynn_fusion_type(),
+          DebugOptions::LIBRARY_FUSION_TYPE_INDIVIDUAL_DOT);
+      if (use_ynn) {
+        // TODO(ashaposhnikov): Replace IsDotSupportedByXnn with
+        // IsDotSupportedByYnn.
+        TF_ASSIGN_OR_RETURN(
+            auto is_dot_supported,
+            IsDotSupportedByXnn(dnums, lhs->shape(), rhs->shape(),
+                                instruction->shape(), &target_machine_features_,
+                                /*use_cost_model=*/false));
+        if (is_dot_supported) {
+          return EmitYnnFusionThunk(instruction);
+        }
+      }
+#endif  // XLA_YNNPACK
+
       // Decide whether to use XNNPACK or Eigen.
       bool use_xnn = hlo_module_config_.debug_options().xla_cpu_use_xnnpack();
       if (use_xnn) {
@@ -1508,8 +1530,6 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitXnnFusionThunk(
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitYnnFusionThunk(
     const HloInstruction* instruction) {
 #ifdef XLA_YNNPACK
-  auto* fusion = Cast<HloFusionInstruction>(instruction);
-
   // Collect YNNPACK fusion arguments.
   std::vector<YnnFusionThunk::Argument> arguments;
   for (HloInstruction* operand : instruction->operands()) {
@@ -1530,15 +1550,36 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitYnnFusionThunk(
     results.push_back(YnnFusionThunk::Result{slice, indexed.shape});
   }
 
-  const HloComputation* computation = fusion->fused_instructions_computation();
-
-  // Construct YNNPACK subgraph builder from the fusion computation.
-  TF_ASSIGN_OR_RETURN(auto builder, EmitYnnFusionBuilder(computation));
+  absl::AnyInvocable<absl::StatusOr<YnnSubgraph>(
+      absl::Span<const se::DeviceMemoryBase> arguments_buffers)>
+      builder;
+  absl::Span<const int64_t> captured_arguments_ids;
+  if (instruction->opcode() == HloOpcode::kDot) {
+    const HloDotInstruction* dot = Cast<HloDotInstruction>(instruction);
+    // TODO(ashaposhnikov): Revisit this if we ever get a reliable way
+    // to determine that RHS is constant.
+    bool capture_rhs = false;
+    // Construct YNNPACK subgraph builder from the dot instruction.
+    TF_ASSIGN_OR_RETURN(builder, EmitYnnDotBuilder(dot, capture_rhs));
+    static constexpr int64_t kCapturedIds[1] = {1};
+    if (capture_rhs) {
+      captured_arguments_ids = kCapturedIds;
+    }
+  } else {
+    auto* fusion = Cast<HloFusionInstruction>(instruction);
+    const HloComputation* computation =
+        fusion->fused_instructions_computation();
+    // Construct YNNPACK subgraph builder from the fusion computation.
+    TF_ASSIGN_OR_RETURN(builder, EmitYnnFusionBuilder(computation));
+  }
 
   return ThunkSequence::Of<YnnFusionThunk>(
       YnnFusionThunk::Options{}, ThunkInfo(instruction), std::move(arguments),
       std::move(results),
-      [b = std::move(builder)](auto, auto) mutable { return b(); });
+      [b = std::move(builder)](auto, auto, auto arg_buffers) mutable {
+        return b(arg_buffers);
+      },
+      captured_arguments_ids);
 #else
   return Unimplemented("XLA is not built with YNNPACK.");
 #endif  // XLA_YNNPACK

@@ -155,6 +155,7 @@ message DebugOptions {
     LIBRARY_FUSION_TYPE_DOT = 1;  // Dot and any eltwise ops around it.
     LIBRARY_FUSION_TYPE_ELTWISE = 2;
     LIBRARY_FUSION_TYPE_REDUCE = 3;
+    LIBRARY_FUSION_TYPE_INDIVIDUAL_DOT = 4;
   }
 
   enum XnnGraphFusionMode {
@@ -205,14 +206,18 @@ message DebugOptions {
   // Call oneDNN custom call thunks in the CPU backend
   optional bool xla_cpu_experimental_onednn_custom_call = 412;
 
-  // Stores the fusion types enabled for oneDNN in DotLibraryRewriter pass.
+  // Stores the fusion types enabled for oneDNN in LibraryRewriter pass.
   repeated LibraryFusionType xla_cpu_experimental_onednn_fusion_type = 399;
 
-  // Stores the fusion types enabled for XNNPACK in DotLibraryRewriter pass.
+  // Stores the fusion types enabled for XNNPACK in LibraryRewriter pass.
   repeated LibraryFusionType xla_cpu_experimental_xnn_fusion_type = 400;
 
   // Controls XnnGraphFusion HLO pass.
   optional XnnGraphFusionMode xla_cpu_experimental_xnn_graph_fusion_mode = 365;
+
+  // Stores the fusion types enabled for YNNPACK in LibraryRewriter pass or
+  // for individual operations.
+  repeated LibraryFusionType xla_cpu_experimental_ynn_fusion_type = 422;
 
   // When xla_cpu_enable_fast_math is true then this controls whether we forbid
   // to use the reciprocal of an argument instead of division. Ignored when
@@ -1361,7 +1366,7 @@ message DebugOptions {
   // Note: when adding a new flag, please add it to one of the hardware-specific
   // or hardware-agnostic sections at the top of this proto message.
 
-  // Next id: 422
+  // Next id: 423
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

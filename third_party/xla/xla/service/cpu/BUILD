@@ -988,12 +988,14 @@ cc_library(
         "//xla/service:pattern_matcher",
         "//xla/service/gpu/model/experimental:symbolic_expr",
         "//xla/service/llvm_ir:llvm_util",
+        "//xla/stream_executor:device_memory",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:logging",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
@@ -1010,6 +1012,7 @@ cc_library(
     ]) + if_ynnpack([
         "//xla/backends/cpu:ynn_emitter",
         "//xla/backends/cpu:ynn_support",
+        "//xla/backends/cpu/runtime/ynnpack:ynn_interop",
         "//xla/backends/cpu/runtime/ynnpack:ynn_fusion_thunk",
     ]),
 )

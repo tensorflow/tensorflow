@@ -15,9 +15,12 @@ limitations under the License.
 
 #include "xla/backends/cpu/ynn_emitter.h"
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <numeric>
+#include <utility>
 #include <vector>
 
 #include "ynnpack/include/ynnpack.h"
@@ -25,13 +28,18 @@ limitations under the License.
 #include "absl/functional/any_invocable.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
+#include "absl/types/span.h"
+#include "xla/backends/cpu/runtime/dot_lib.h"
 #include "xla/backends/cpu/runtime/ynnpack/ynn_interop.h"
 #include "xla/backends/cpu/ynn_support.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/literal.h"
+#include "xla/primitive_util.h"
 #include "xla/shape.h"
+#include "xla/stream_executor/device_memory.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
@@ -280,7 +288,113 @@ static absl::StatusOr<YnnSubgraph> EmitYnnSubgraph(
   return subgraph;
 }
 
-absl::StatusOr<absl::AnyInvocable<absl::StatusOr<YnnSubgraph>()>>
+//===----------------------------------------------------------------------===//
+// Emit YNNPACK subgraph for the given HLO dot instruction.
+//===----------------------------------------------------------------------===//
+
+// TODO(ashaposhnikov): Use DefineBatchMatrixMultiply in EmitYnnSubgraph.
+static ynn_status DefineBatchMatrixMultiply(ynn_subgraph_t subgraph,
+                                            uint32_t input1_id,
+                                            uint32_t input2_id,
+                                            uint32_t output_id, size_t b_rank,
+                                            bool transpose_b) {
+  if (transpose_b) {
+    uint32_t input2_id_transposed = YNN_INVALID_VALUE_ID;
+    std::array<int32_t, YNN_MAX_TENSOR_RANK> perm;
+    std::iota(perm.begin(), perm.end(), 0);
+    CHECK_LT(b_rank, YNN_MAX_TENSOR_RANK);
+    std::swap(perm[b_rank - 1], perm[b_rank - 2]);
+    ynn_status status = ynn_define_static_transpose(
+        subgraph,
+        /*num_dims=*/b_rank, perm.data(), input2_id, &input2_id_transposed,
+        /*flags=*/0);
+    if (status != ynn_status_success) {
+      return status;
+    }
+    input2_id = input2_id_transposed;
+  }
+
+  return ynn_define_dot(subgraph, /*num_k_dims=*/1, input1_id, input2_id,
+                        YNN_INVALID_VALUE_ID, &output_id, /*flags=*/0);
+}
+
+static absl::StatusOr<YnnSubgraph> EmitYnnDotSubgraph(
+    const HloDotInstruction* dot,
+    std::vector<std::unique_ptr<Literal>>& literals,
+    absl::Span<const se::DeviceMemoryBase> arguments_buffers,
+    bool capture_rhs) {
+  TF_ASSIGN_OR_RETURN(YnnSubgraph subgraph,
+                      CreateYnnSubgraph([&](ynn_subgraph_t* subgraph) {
+                        return ynn_create_subgraph(
+                            /*external_value_ids=*/3,
+                            /*flags=*/0, subgraph);
+                      }));
+
+  uint32_t lhs_id = 0;
+  uint32_t rhs_id = 1;
+  uint32_t out_id = 2;
+
+  const HloInstruction* lhs = dot->operand(0);
+  const HloInstruction* rhs = dot->operand(1);
+
+  const Shape& lhs_shape = lhs->shape();
+  const Shape& rhs_shape = rhs->shape();
+  const Shape& out_shape = dot->shape();
+
+  auto dims = [](absl::Span<const int64_t> dims) -> std::vector<size_t> {
+    return {dims.begin(), dims.end()};
+  };
+
+  std::vector<size_t> lhs_dims = dims(lhs_shape.dimensions());
+  std::vector<size_t> rhs_dims = dims(rhs_shape.dimensions());
+  std::vector<size_t> out_dims = dims(out_shape.dimensions());
+
+  PrimitiveType dtype = lhs->shape().element_type();
+  if (dtype != F32 && dtype != BF16) {
+    return InvalidArgument("Unsupported input data type for YnnDotThunk: %s",
+                           primitive_util::LowercasePrimitiveTypeName(dtype));
+  }
+
+  ynn_type input_type = (dtype == F32) ? ynn_type_fp32 : ynn_type_bf16;
+  ynn_type output_type = ynn_type_fp32;
+
+  const uint32_t input_tensor_flags = YNN_VALUE_FLAG_EXTERNAL_INPUT;
+  YNN_RETURN_IF_ERROR(ynn_define_tensor_value(
+      subgraph.get(), input_type, lhs_dims.size(), lhs_dims.data(),
+      /*data=*/nullptr,
+      /*zero_point_id=*/YNN_INVALID_VALUE_ID,
+      /*scale_id=*/YNN_INVALID_VALUE_ID, input_tensor_flags, &lhs_id));
+
+  YNN_RETURN_IF_ERROR(ynn_define_tensor_value(
+      subgraph.get(), input_type, rhs_dims.size(), rhs_dims.data(),
+      capture_rhs ? arguments_buffers[1].opaque() : nullptr,
+      /*zero_point_id=*/YNN_INVALID_VALUE_ID,
+      /*scale_id=*/YNN_INVALID_VALUE_ID, input_tensor_flags, &rhs_id));
+
+  const uint32_t output_tensor_flags = YNN_VALUE_FLAG_EXTERNAL_OUTPUT;
+  YNN_RETURN_IF_ERROR(ynn_define_tensor_value(
+      subgraph.get(), output_type, out_dims.size(), out_dims.data(),
+      /*data=*/nullptr,
+      /*zero_point_id=*/YNN_INVALID_VALUE_ID,
+      /*scale_id=*/YNN_INVALID_VALUE_ID, output_tensor_flags, &out_id));
+
+  DotDimensionNumbers dot_dimensions = dot->dot_dimension_numbers();
+  TF_ASSIGN_OR_RETURN(DotShape dot_shape, GetDotShape(dot_dimensions, lhs_shape,
+                                                      rhs_shape, out_shape));
+
+  TF_ASSIGN_OR_RETURN(DotCanonicalDims dot_canonical_dims,
+                      GetDotCanonicalDims(dot_dimensions, dot_shape));
+
+  const size_t b_rank = rhs_shape.dimensions_size();
+  const bool transpose_b = !dot_canonical_dims.rhs_canonical;
+  YNN_RETURN_IF_ERROR(DefineBatchMatrixMultiply(subgraph.get(), lhs_id, rhs_id,
+                                                out_id, b_rank, transpose_b));
+
+  return subgraph;
+}
+
+absl::StatusOr<absl::AnyInvocable<absl::StatusOr<YnnSubgraph>(
+    absl::Span<const se::DeviceMemoryBase> arguments_buffers)>>
 EmitYnnFusionBuilder(const HloComputation* computation) {
   // We do not support non-array parameters for YNNPACK operations.
   for (auto& param : computation->parameter_instructions()) {
@@ -297,9 +411,18 @@ EmitYnnFusionBuilder(const HloComputation* computation) {
                            computation->root_instruction()->shape().ToString());
   }
 
-  return [computation,
-          literals = std::vector<std::unique_ptr<Literal>>()]() mutable {
+  return [computation, literals = std::vector<std::unique_ptr<Literal>>()](
+             absl::Span<const se::DeviceMemoryBase> arguments_buffers) mutable {
     return EmitYnnSubgraph(computation, literals);
+  };
+}
+
+absl::StatusOr<absl::AnyInvocable<absl::StatusOr<YnnSubgraph>(
+    absl::Span<const se::DeviceMemoryBase> arguments_buffers)>>
+EmitYnnDotBuilder(const HloDotInstruction* dot, bool capture_rhs) {
+  return [dot, capture_rhs, literals = std::vector<std::unique_ptr<Literal>>()](
+             absl::Span<const se::DeviceMemoryBase> arguments_buffers) mutable {
+    return EmitYnnDotSubgraph(dot, literals, arguments_buffers, capture_rhs);
   };
 }
 
