@@ -8083,6 +8083,32 @@ ENTRY entry {
                     op::Shape("s32[64,32]")));
 }
 
+TEST_P(SpmdPartitioningTest, DynamicUpdateSliceSingleDimension) {
+  absl::string_view hlo_string = R"(
+    HloModule module
+
+    ENTRY entry {
+      %input = s32[16] parameter(0)
+      %update = s32[8] parameter(1)
+      %c3 = s32[] constant(3)
+      ROOT %dynamic-update-slice = s32[16]
+        dynamic-update-slice(%input, %update, %c3),
+        sharding={devices=[4]0,1,2,3}
+    })";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/4));
+
+  const auto root = module->entry_computation()->root_instruction();
+  auto input = AllOf(op::Parameter(0), op::Shape("s32[16]"));
+  auto update = AllOf(op::Parameter(1), op::Shape("s32[8]"));
+  auto c3 = AllOf(op::Constant(), op::Shape("s32[]"));
+  EXPECT_THAT(
+      root, AllOf(op::DynamicSlice((op::DynamicUpdateSlice(input, update, c3)),
+                                   op::Reshape(_)),
+                  op::Shape("s32[4]")));
+}
+
 TEST_P(SpmdPartitioningTest, UnpartitionedGather) {
   absl::string_view hlo_string = R"(
 HloModule module
