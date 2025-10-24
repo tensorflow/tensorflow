@@ -229,35 +229,27 @@ AffineExpr CombineSizes(
 
 // Returns an affine expression logically equivalent to
 //   `eq_param != 1 ? true_expr : false_expr`.
-// `eq_param` is assumed to be able to be in the inclusive range
-//    {1, 2, ..., eq_param_inclusive_upper_bound}.
+// Assumes that 1 <= `eq_param` <= 2^62.
 AffineExpr IfNeqOne(AffineExpr eq_param, AffineExpr true_expr,
                     AffineExpr false_expr,
                     int64_t eq_param_inclusive_upper_bound) {
-  // Let e = eq_param, and b = eq_param_inclusive_bound, then we have:
-  //     1 <= e <= b
-  // <=> -b <= e - b - 1 <= -1              (subtract (b + 1))
-  // <=> 1 <= b + 1 - e <= b                (negate)
+  // Let e = eq_param, and b = some large constant s.t. b >= e - 1, then we
+  // have:
+  //     1 <= e <= b + 1
+  // <=> -b <= e - b - 1 <= 0               (subtract (b + 1))
+  // <=> 0 <= b + 1 - e <= b                (negate)
   // <=> 0 <= (b + 1 - e) floordiv b <= 1   (divide by b)
   //
-  // Since (b + 1 - e) floordiv b is an integer, it can only take values 0 or 1.
-  // Let's prove that
-  //   (b + 1 - e) floordiv b = 1 <=> e = 1.
-  //
-  // * If e = 1, then (b + 1 - e) floordiv b = (b + 1 - 1) floordiv b = 1.
-  // * If e != 1, then 1 < e since 1 is the lower bound for e.
-  //     1 < e <=> -e < -1                       (negate)
-  //           <=> b + 1 - e < b                 (add b + 1)
-  //           <=> (b - e + 1) floordiv b < 1.   (divide by b)
-  //   We also know that 0 <= (b + 1 - e) floordiv b. Therefore, we have that
-  //     (b - e + 1) floordiv b = 0.
+  // If e = 1, then (b + 1 - e) floordiv b = 1.
+  // If e > 1, then b + 1 - e < b, so (b + 1 - e) floordiv b = 0.
   //
   // Thus,
   //   (b + 1 - e) floordiv b = 1 <=> e = 1, and
   //   (b + 1 - e) floordiv b = 0 <=> e != 1
   // hold.
-  AffineExpr b = getAffineConstantExpr(eq_param_inclusive_upper_bound,
-                                       eq_param.getContext());
+  const int64_t kLargeConstant = 1ull << 62;
+  CHECK_GE(kLargeConstant, eq_param_inclusive_upper_bound - 1);
+  AffineExpr b = getAffineConstantExpr(kLargeConstant, eq_param.getContext());
   AffineExpr condition = mlir::getAffineBinaryOpExpr(AffineExprKind::FloorDiv,
                                                      b + 1 - eq_param, b);
 
