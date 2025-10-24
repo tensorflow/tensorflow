@@ -253,6 +253,8 @@ class AsyncValueRef {
 
   T& operator*() const { return get(); }
 
+  uint32_t NumRef() const { return AsPtr().NumRef(); }
+
   bool HasWaiter() const { return AsPtr().HasWaiter(); }
 
   template <typename Waiter>
@@ -366,11 +368,6 @@ class AsyncValueRef {
 
   // Returns a non-owning pointer to the underlying async value.
   AsyncValuePtr<T> AsPtr() const { return AsyncValuePtr<T>(GetAsyncValue()); }
-
-  // Return true if this is the only ref to the AsyncValue.
-  // This function requires the internal AsyncValue to be set (value_ !=
-  // nullptr).
-  bool IsUnique() const { return value_->IsUnique(); }
 
   // Make an explicit copy of this AsyncValueRef, increasing value_'s refcount
   // by one.
@@ -515,6 +512,9 @@ class AsyncValuePtr {
     DCHECK(!status.ok()) << "expected non-ok status";
     return value_->SetError(std::move(status));
   }
+
+  // Returns the number of references to the underlying async value.
+  uint32_t NumRef() const { return value_->NumRef(); }
 
   // Returns true if and only if there are any waiters waiting for this value to
   // become available.

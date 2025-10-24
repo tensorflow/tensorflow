@@ -89,15 +89,14 @@ TEST(AsyncValueTest, AddAndDropRef) {
   value->SetStateConcrete();
 
   EXPECT_TRUE(value->IsConcrete());
+  EXPECT_EQ(value->NumRef(), 1);
 
-  EXPECT_TRUE(value->IsUnique());
   value->AddRef();
-  EXPECT_FALSE(value->IsUnique());
-
+  EXPECT_EQ(value->NumRef(), 2);
   EXPECT_EQ(123, value->get<int32_t>());
 
   value->DropRef();
-  EXPECT_TRUE(value->IsUnique());
+  EXPECT_EQ(value->NumRef(), 1);
 
   value->DropRef();
 }

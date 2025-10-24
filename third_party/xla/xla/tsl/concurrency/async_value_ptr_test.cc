@@ -42,12 +42,12 @@ TEST(AsyncValuePtrTest, CopyRef) {
   AsyncValueRef<int32_t> ref0 = MakeAvailableAsyncValueRef<int32_t>(42);
   AsyncValuePtr<int32_t> ptr = ref0.AsPtr();
 
-  EXPECT_TRUE(ref0.IsUnique());  // pointer doesn't change the reference count
+  EXPECT_EQ(ref0.NumRef(), 1);  // pointer doesn't change the reference count
 
   AsyncValueRef<int32_t> ref1 = ptr.CopyRef();
 
-  EXPECT_FALSE(ref0.IsUnique());
-  EXPECT_FALSE(ref1.IsUnique());
+  EXPECT_EQ(ref0.NumRef(), 2);
+  EXPECT_EQ(ref1.NumRef(), 2);
 }
 
 TEST(AsyncValuePtrTest, Emplace) {
