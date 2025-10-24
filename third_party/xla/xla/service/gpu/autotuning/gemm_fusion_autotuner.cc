@@ -1068,8 +1068,7 @@ GemmFusionAutotunerImpl::CompileAll(AutotunerCompileUtil& compile_util,
       if (code == absl::StatusCode::kInternal ||
           code == absl::StatusCode::kFailedPrecondition ||
           code == absl::StatusCode::kUnimplemented ||
-          (debug_options_.xla_gpu_exhaustive_tiling_search() &&
-           code == absl::StatusCode::kInvalidArgument)) {
+          code == absl::StatusCode::kInvalidArgument) {
         VLOG(5) << "Compilation failed with status " << executable_or.status()
                 << " that is ignored";
         return nullptr;
