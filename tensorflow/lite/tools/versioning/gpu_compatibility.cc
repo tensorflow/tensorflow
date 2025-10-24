@@ -300,9 +300,6 @@ absl::Status CheckDepthwiseConvGpuDelegateCompatibility(
   if (bias && NumElements(bias->dims) != output_depth) {
     return absl::InvalidArgumentError("bias.size != output.c");
   }
-  if (depth_multiplier != 1 && input_depth != 1) {
-    return absl::UnimplementedError("depth_multiplier != 1 && input.c != 1");
-  }
   return absl::OkStatus();
 }
 
