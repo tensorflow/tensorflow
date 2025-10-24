@@ -1,0 +1,57 @@
+diff --git a/cc/impls/linux_aarch64_linux_aarch64_cuda/wrappers/nvcc_wrapper b/cc/impls/linux_aarch64_linux_aarch64_cuda/wrappers/nvcc_wrapper
+index 7b44b53..32d3bd0 100755
+--- cc/impls/linux_aarch64_linux_aarch64_cuda/wrappers/nvcc_wrapper
++++ cc/impls/linux_aarch64_linux_aarch64_cuda/wrappers/nvcc_wrapper
+@@ -246,8 +246,12 @@ def invoke_nvcc(argv, cuda_log=False):
+   out = ' -o ' + out_file[0]
+
+   nvccopts = '-D_FORCE_INLINES '
+-  capabilities_sm = set(get_option_value(argv, "--cuda-gpu-arch"))
+-  capabilities_compute = set(get_option_value(argv, '--cuda-include-ptx'))
++  capabilities_sm = set(get_option_value(argv, '--cuda-gpu-arch')) - set(
++      get_option_value(argv, '--no-cuda-gpu-arch')
++  )
++  capabilities_compute = set(
++      get_option_value(argv, '--cuda-include-ptx')
++  ) - set(get_option_value(argv, '--no-cuda-include-ptx'))
+   # When both "code=sm_xy" and "code=compute_xy" are requested for a single
+   # arch, they can be combined using "code=xy,compute_xy" which avoids a
+   # redundant PTX generation during compilation.
+diff --git a/cc/impls/linux_x86_64_linux_x86_64_cuda/wrappers/nvcc_wrapper b/cc/impls/linux_x86_64_linux_x86_64_cuda/wrappers/nvcc_wrapper
+index 7b44b53..32d3bd0 100755
+--- cc/impls/linux_x86_64_linux_x86_64_cuda/wrappers/nvcc_wrapper
++++ cc/impls/linux_x86_64_linux_x86_64_cuda/wrappers/nvcc_wrapper
+@@ -246,8 +246,12 @@ def invoke_nvcc(argv, cuda_log=False):
+   out = ' -o ' + out_file[0]
+
+   nvccopts = '-D_FORCE_INLINES '
+-  capabilities_sm = set(get_option_value(argv, "--cuda-gpu-arch"))
+-  capabilities_compute = set(get_option_value(argv, '--cuda-include-ptx'))
++  capabilities_sm = set(get_option_value(argv, '--cuda-gpu-arch')) - set(
++      get_option_value(argv, '--no-cuda-gpu-arch')
++  )
++  capabilities_compute = set(
++      get_option_value(argv, '--cuda-include-ptx')
++  ) - set(get_option_value(argv, '--no-cuda-include-ptx'))
+   # When both "code=sm_xy" and "code=compute_xy" are requested for a single
+   # arch, they can be combined using "code=xy,compute_xy" which avoids a
+   # redundant PTX generation during compilation.
+diff --git a/third_party/gpus/crosstool/clang/bin/crosstool_wrapper_driver_is_not_gcc.tpl b/third_party/gpus/crosstool/clang/bin/crosstool_wrapper_driver_is_not_gcc.tpl
+index 79aca21..2cfa7cd 100755
+--- third_party/gpus/crosstool/clang/bin/crosstool_wrapper_driver_is_not_gcc.tpl
++++ third_party/gpus/crosstool/clang/bin/crosstool_wrapper_driver_is_not_gcc.tpl
+@@ -229,8 +229,12 @@ def InvokeNvcc(argv, log=False):
+   out = ' -o ' + out_file[0]
+
+   nvccopts = '-D_FORCE_INLINES '
+-  capabilities_sm = set(GetOptionValue(argv, "--cuda-gpu-arch"))
+-  capabilities_compute = set(GetOptionValue(argv, '--cuda-include-ptx'))
++  capabilities_sm = set(get_option_value(argv, '--cuda-gpu-arch')) - set(
++      get_option_value(argv, '--no-cuda-gpu-arch')
++  )
++  capabilities_compute = set(
++      get_option_value(argv, '--cuda-include-ptx')
++  ) - set(get_option_value(argv, '--no-cuda-include-ptx'))
+   # When both "code=sm_xy" and "code=compute_xy" are requested for a single
+   # arch, they can be combined using "code=xy,compute_xy" which avoids a
+   # redundant PTX generation during compilation.
