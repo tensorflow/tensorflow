@@ -608,18 +608,17 @@ BatchResourceBase::GetBatcherQueueOptions(
       return SplitInputTask(input_task, open_batch_remaining_slot,
                             max_batch_size, output_tasks);
     };
-
-    if (allowed_batch_sizes.empty()) {
-      batcher_queue_options.max_execution_batch_size = max_batch_size;
-      batcher_queue_options.high_priority_queue_options
-          .max_execution_batch_size = max_batch_size;
-    } else {
-      batcher_queue_options.max_execution_batch_size =
-          *allowed_batch_sizes.rbegin();
-      batcher_queue_options.high_priority_queue_options
-          .max_execution_batch_size = *allowed_batch_sizes.rbegin();
-      batcher_queue_options.allowed_batch_sizes = allowed_batch_sizes;
-    }
+  }
+  if (allowed_batch_sizes.empty()) {
+    batcher_queue_options.max_execution_batch_size = max_batch_size;
+    batcher_queue_options.high_priority_queue_options.max_execution_batch_size =
+        max_batch_size;
+  } else {
+    batcher_queue_options.max_execution_batch_size =
+        *allowed_batch_sizes.rbegin();
+    batcher_queue_options.high_priority_queue_options.max_execution_batch_size =
+        *allowed_batch_sizes.rbegin();
+    batcher_queue_options.allowed_batch_sizes = allowed_batch_sizes;
   }
   batcher_queue_options.disable_padding = disable_padding;
 

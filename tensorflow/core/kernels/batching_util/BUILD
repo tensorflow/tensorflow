@@ -531,6 +531,7 @@ tf_cc_test(
         "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:refcount",
         "@local_tsl//tsl/platform:status",
+        "@local_xla//xla/tsl/lib/core:status_test_util",
         "@local_xla//xla/tsl/lib/monitoring:cell_reader",
         "@local_xla//xla/tsl/lib/monitoring:test_utils",
         "@local_xla//xla/tsl/platform:criticality",
