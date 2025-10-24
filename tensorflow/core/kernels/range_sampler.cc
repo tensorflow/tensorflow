@@ -16,9 +16,9 @@ limitations under the License.
 #include "tensorflow/core/kernels/range_sampler.h"
 
 #include <cmath>
-#include <unordered_set>
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/io/inputbuffer.h"
@@ -83,7 +83,8 @@ void RangeSampler::SampleBatchGetExpectedCountAvoid(
 
   if (unique) {
     CHECK_LE(static_cast<int64_t>(batch_size + avoided_values.size()), range_);
-    std::unordered_set<int64_t> used(batch_size);
+    absl::flat_hash_set<int64_t> used;
+    used.reserve(batch_size + avoided_values.size());
     used.insert(avoided_values.begin(), avoided_values.end());
     int num_picked = 0;
     num_tries = 0;
