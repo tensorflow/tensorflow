@@ -1007,6 +1007,12 @@ absl::Status CheckGpuDelegateCompatibility(const OpSignature& op_sig,
                                          /*required_outputs=*/1));
       return absl::OkStatus();
 
+    case kTfLiteBuiltinTopkV2:
+      RETURN_IF_ERROR(CheckInputsOutputs(op_sig,
+                                         /*required_runtime_inputs=*/1,
+                                         /*required_outputs=*/2));
+      return absl::OkStatus();
+
     case kTfLiteBuiltinTranspose:
       RETURN_IF_ERROR(CheckInputsOutputs(op_sig,
                                          /*required_runtime_inputs=*/1,
