@@ -2440,6 +2440,7 @@ tf_kernel_library(
         ":range_sampler",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/container:flat_hash_map",
     ],
 )
 
