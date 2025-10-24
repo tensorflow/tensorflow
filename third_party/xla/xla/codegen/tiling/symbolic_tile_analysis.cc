@@ -564,7 +564,7 @@ bool IsDotWithNonBatchPointDimension(const HloInstruction* instr) {
       instr->dot_dimension_numbers().lhs_batch_dimensions());
 
   auto rhs_non_contracting_dimensions = GetNonContractingDims(
-      instr->operand(0)->shape().dimensions().size(),
+      instr->operand(1)->shape().dimensions().size(),
       instr->dot_dimension_numbers().rhs_contracting_dimensions(),
       instr->dot_dimension_numbers().rhs_batch_dimensions());
 
