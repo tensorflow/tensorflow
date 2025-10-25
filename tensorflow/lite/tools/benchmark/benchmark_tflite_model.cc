@@ -1361,8 +1361,7 @@ std::unique_ptr<tflite::OpResolver> BenchmarkTfLiteModel::GetOpResolver()
   // XNNPACK delegate in TfLite runtime so that the original execution path
   // based on the unmodified model graph is still exercised.
   if (params_.HasParam("use_xnnpack") &&
-      params_.HasValueSet<bool>("use_xnnpack") &&
-      !params_.Get<bool>("use_xnnpack")) {
+      params_.HasValueSet<bool>("use_xnnpack")) {
     resolver =
         new tflite::ops::builtin::BuiltinOpResolverWithoutDefaultDelegates();
   } else {
