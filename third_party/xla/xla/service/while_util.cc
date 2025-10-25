@@ -615,4 +615,58 @@ absl::Status WhileUtil::IncrementWhileLoopTripCount(
   return induction_var->ReplaceAllUsesWith(decremented_induction_var);
 }
 
+void UpdateWhileLoopOriginalValue(
+    HloInstruction* while_instr, int64_t old_tuple_element_count,
+    const HloInstruction::InstructionVector& new_tuple_elements) {
+  auto append_to_original_value = [&](HloInstruction* instr) {
+    std::shared_ptr<OriginalValue> old_original_value = instr->original_value();
+    if (old_original_value != nullptr &&
+        old_original_value->IsCompatibleWith(instr->shape())) {
+      return;
+    }
+
+    // Returns if neither the instruction nor any of its new tuple elements have
+    // an original value.
+    if (old_original_value == nullptr) {
+      bool has_original_value = false;
+      std::for_each(new_tuple_elements.begin(), new_tuple_elements.end(),
+                    [&has_original_value](const HloInstruction* instr) {
+                      has_original_value |= instr->original_value() != nullptr;
+                    });
+      if (!has_original_value) {
+        return;
+      }
+    }
+
+    std::shared_ptr<OriginalValue> new_original_value =
+        std::make_shared<OriginalValue>(instr->shape());
+    if (old_original_value != nullptr) {
+      if (!old_original_value->IsTuple()) {
+        new_original_value->mutable_tree()->CopySubtreeFrom(
+            old_original_value->tree(), {}, {0});
+      } else {
+        for (auto& [shape_index, original_array] : old_original_value->tree()) {
+          *new_original_value->mutable_tree()->mutable_element(shape_index) =
+              original_array;
+        }
+      }
+    }
+
+    for (int64_t i = 0; i < new_tuple_elements.size(); ++i) {
+      if (new_tuple_elements[i]->original_value() != nullptr) {
+        new_original_value->mutable_tree()->CopySubtreeFrom(
+            new_tuple_elements[i]->original_value()->tree(), {},
+            {old_tuple_element_count + i});
+      }
+    }
+    instr->set_original_value(new_original_value);
+  };
+
+  if (while_instr->opcode() != HloOpcode::kWhile) {
+    return;
+  }
+  append_to_original_value(while_instr->while_init());
+  append_to_original_value(while_instr);
+}
+
 }  // namespace xla

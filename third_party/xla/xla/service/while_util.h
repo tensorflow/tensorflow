@@ -155,6 +155,12 @@ class WhileUtil {
   static absl::Status IncrementWhileLoopTripCount(
       const HloInstruction& while_instruction, int32_t increment);
 };
+
+// Updates the original value of the input and output of the while loop to
+// include the new tuple elements.
+void UpdateWhileLoopOriginalValue(
+    HloInstruction* while_instr, int64_t old_tuple_element_count,
+    const HloInstruction::InstructionVector& new_tuple_elements);
 }  // namespace xla
 
 #endif  // XLA_SERVICE_WHILE_UTIL_H_

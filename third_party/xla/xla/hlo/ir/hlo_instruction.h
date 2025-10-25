@@ -2467,7 +2467,7 @@ class alignas(kInstructionTypeMask + 1) HloInstruction {
   std::shared_ptr<OriginalValue> original_value() const;
   void set_original_value(std::shared_ptr<OriginalValue> original_value);
 
-  // Copy original value from the input instruction if the source and
+  // Copies original value from the input instruction if the source and
   // destination shapes are compatible. This performs a deep copy if clone is
   // set to true. Otherwise, it performs a shallow copy. Print a warning if the
   // shapes are not compatible and issue_warning is set to true.
@@ -2475,8 +2475,8 @@ class alignas(kInstructionTypeMask + 1) HloInstruction {
                          bool issue_warning = false);
 
  protected:
-  // Internal constructor for a given opcode/shape, other fields must be filled
-  // by factory methods.
+  // Internal constructor for a given opcode/shape, other fields must be
+  // filled by factory methods.
   HloInstruction(HloOpcode opcode, const Shape& shape);
 
   void RemoveAllOperands() { operands_.clear(); }
