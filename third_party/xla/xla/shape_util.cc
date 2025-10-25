@@ -1264,7 +1264,7 @@ ShapeUtil::PackedFactorFor1DInterleavedArray(const Shape& shape) {
       [&](int64_t dim) -> bool { return shape.dimensions()[dim] != 1; }, shape);
 }
 
-/* static */ Shape ShapeUtil::PermuteDimensions(
+/* static */ Shape ShapeUtil::PermuteDimensionsIgnoringLayout(
     absl::Span<const int64_t> permutation, const Shape& shape) {
   Shape new_shape = shape;
   new_shape.clear_dimensions();
@@ -1274,7 +1274,12 @@ ShapeUtil::PackedFactorFor1DInterleavedArray(const Shape& shape) {
   for (int i = 0; i < permuted_dims.size(); ++i) {
     new_shape.add_dimensions(permuted_dims[i], permuted_dynamic_dims[i]);
   }
+  return new_shape;
+}
 
+/* static */ Shape ShapeUtil::PermuteDimensions(
+    absl::Span<const int64_t> permutation, const Shape& shape) {
+  Shape new_shape = PermuteDimensionsIgnoringLayout(permutation, shape);
   // If `shape` has a layout, by contract we choose a new layout such that the
   // transpose defined by this permutation is a bitcast.
   //
