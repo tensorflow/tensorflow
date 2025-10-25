@@ -136,6 +136,7 @@ static void BM_ParallelFor(benchmark::State& state) {
 }
 
 BENCHMARK(BM_ParallelFor)
+    ->MeasureProcessCPUTime()
     ->ArgPair(8, 1)
     ->ArgPair(8, 2)
     ->ArgPair(8, 4)
