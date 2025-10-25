@@ -4091,11 +4091,14 @@ absl::StatusOr<CudnnGraph> GetCudnnFlashAttentionOperationGraph(
 
   // Setting bias
   if (bias_descriptor.has_value()) {
+    cudnn_frontend::DataType_t dataType =
+        ToCudnnFrontendDataType(bias_descriptor->type());
     auto bias_tensor =
         graph.tensor(Tensor_attributes()
                          .set_name("bias")
                          .set_dim(bias_descriptor->dimensions())
                          .set_stride(bias_descriptor->GetLogicalStrides())
+                         .set_data_type(dataType)
                          .set_uid(next_uid()));
     sdpa_options.set_bias(bias_tensor);
   }
@@ -4813,12 +4816,15 @@ absl::StatusOr<CudnnGraph> GetCudnnFlashAttentionBackwardOperationGraph(
   std::shared_ptr<Tensor_attributes> d_bias_tensor;
   if (use_bias) {
     DCHECK(bias_descriptor != std::nullopt);
+    cudnn_frontend::DataType_t dataType =
+        ToCudnnFrontendDataType(bias_descriptor->type());
     auto bias_dims = bias_descriptor->dimensions();
     auto bias_strides = bias_descriptor->GetLogicalStrides();
     auto bias_tensor = graph.tensor(Tensor_attributes()
                                         .set_name("bias")
                                         .set_dim(bias_dims)
                                         .set_stride(bias_strides)
+                                        .set_data_type(dataType)
                                         .set_uid(next_uid()));
     sdpa_backward_options.set_bias(bias_tensor);
 
