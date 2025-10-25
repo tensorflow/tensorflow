@@ -15,13 +15,14 @@ limitations under the License.
 
 #include "absl/strings/string_view.h"
 #include "xla/error_spec.h"
-#include "xla/tests/hlo_test_base.h"
-#include "tsl/platform/test.h"
+#include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
+#include "xla/tsl/platform/test.h"
 
 namespace xla {
 namespace {
 
-class FftTextTest : public HloTestBase {};
+using FftTextTest = HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>;
 
 TEST_F(FftTextTest, Fft) {
   absl::string_view hlo_string = R"(
