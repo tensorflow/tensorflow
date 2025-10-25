@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef XLA_TSL_PYTHON_LIB_CORE_NUMPY_H_
 #define XLA_TSL_PYTHON_LIB_CORE_NUMPY_H_
 
+// internal ifdefs start
+
 #ifdef PyArray_Type
 #error "Numpy cannot be included before numpy.h."
 #endif
@@ -58,5 +60,7 @@ namespace tsl {
 void ImportNumpy();
 
 }  // namespace tsl
+
+// internal ifdefs end
 
 #endif  // XLA_TSL_PYTHON_LIB_CORE_NUMPY_H_
