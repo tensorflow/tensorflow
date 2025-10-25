@@ -183,7 +183,12 @@ cc_library(
     hdrs = ["mesh_and_axis.h"],
     deps = [
         ":tile_assignment",
-        "@com_google_absl//absl/strings",
+        "//xla:array",
+        "//xla:xla_data_proto_cc",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/types:span",
+        "@llvm-project//llvm:Support",
     ],
 )
 
@@ -413,6 +418,22 @@ xla_cc_test(
         "//xla/service:hlo_proto_cc",
         "//xla/tsl/platform:test_main",
         "@com_google_googletest//:gtest",
+    ],
+)
+
+xla_cc_test(
+    name = "mesh_and_axis_test",
+    srcs = ["mesh_and_axis_test.cc"],
+    deps = [
+        ":mesh_and_axis",
+        ":tile_assignment",
+        "//xla:array",
+        "//xla:array2d",
+        "//xla/tsl/util/proto:proto_matchers",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:status_matchers",
+        "@local_tsl//tsl/platform:test",
     ],
 )
 
