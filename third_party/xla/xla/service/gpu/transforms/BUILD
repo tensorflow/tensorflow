@@ -2284,10 +2284,12 @@ xla_test(
         "reduction_layout_normalizer_test.cc",
     ],
     backends = ["gpu"],
+    tags = ["test_migrated_to_hlo_runner_pjrt"],
     deps = [
         ":reduction_layout_normalizer",
         "//xla:error_spec",
-        "//xla/tests:hlo_test_base",
+        "//xla/tests:hlo_pjrt_interpreter_reference_mixin",
+        "//xla/tests:hlo_pjrt_test_base",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status:status_matchers",
