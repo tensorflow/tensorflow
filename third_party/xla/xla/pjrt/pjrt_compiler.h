@@ -232,21 +232,6 @@ inline bool IsCpuId(PjRtPlatformId platform_id) {
   return platform_id == xla::CpuId();
 }
 
-// Returns true if it's TPU topology.
-inline bool IsTpuTopology(const PjRtTopologyDescription& topology_description) {
-  return IsTpuId(topology_description.platform_id());
-}
-
-// Returns true if it's GPU topology.
-inline bool IsGpuTopology(const PjRtTopologyDescription& topology_description) {
-  return IsGpuId(topology_description.platform_id());
-}
-
-// Returns true if it's CPU topology.
-inline bool IsCpuTopology(const PjRtTopologyDescription& topology_description) {
-  return IsCpuId(topology_description.platform_id());
-}
-
 // Abstract interface that all registered compilers must implement.
 class PjRtCompiler {
  public:
