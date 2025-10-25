@@ -60,6 +60,7 @@ cc_library(
     deps = [
         ":backend_config",
         ":hlo_sharding",
+        ":mesh_and_axis",
         ":named_sharding",
         ":ptrvec",
         ":tile_assignment",
@@ -123,6 +124,7 @@ cc_library(
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
+        "@com_google_protobuf//:protobuf_lite",
         "@highwayhash",
         "@highwayhash//:arch_specific",
         "@highwayhash//:hh_types",
@@ -183,7 +185,13 @@ cc_library(
     hdrs = ["mesh_and_axis.h"],
     deps = [
         ":tile_assignment",
+        "//xla:array",
+        "//xla:xla_data_proto_cc",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+        "@llvm-project//llvm:Support",
     ],
 )
 
@@ -409,10 +417,30 @@ xla_cc_test(
     srcs = ["replica_group_test.cc"],
     deps = [
         ":hlo",
+        ":mesh_and_axis",
+        ":tile_assignment",
+        "//xla:array",
         "//xla:xla_data_proto_cc",
         "//xla/service:hlo_proto_cc",
         "//xla/tsl/platform:test_main",
+        "@com_google_absl//absl/base:log_severity",
         "@com_google_googletest//:gtest",
+    ],
+)
+
+xla_cc_test(
+    name = "mesh_and_axis_test",
+    srcs = ["mesh_and_axis_test.cc"],
+    deps = [
+        ":mesh_and_axis",
+        ":tile_assignment",
+        "//xla:array",
+        "//xla:array2d",
+        "//xla/tsl/util/proto:proto_matchers",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:status_matchers",
+        "@local_tsl//tsl/platform:test",
     ],
 )
 
