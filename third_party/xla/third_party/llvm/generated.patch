@@ -1,1 +1,53 @@
 Auto generated patch. Do not edit or delete it, even if empty.
+diff -ruN --strip-trailing-cr a/llvm/include/llvm/ExecutionEngine/Orc/Core.h b/llvm/include/llvm/ExecutionEngine/Orc/Core.h
+--- a/llvm/include/llvm/ExecutionEngine/Orc/Core.h
++++ b/llvm/include/llvm/ExecutionEngine/Orc/Core.h
+@@ -1768,7 +1768,7 @@
+   // FIXME: We should be able to derive FailedSymsForQuery from each query once
+   //        we fix how the detach operation works.
+   struct EmitQueries {
+-    JITDylib::AsynchronousSymbolQuerySet Updated;
++    JITDylib::AsynchronousSymbolQuerySet Completed;
+     JITDylib::AsynchronousSymbolQuerySet Failed;
+     DenseMap<AsynchronousSymbolQuery *, std::shared_ptr<SymbolDependenceMap>>
+         FailedSymsForQuery;
+diff -ruN --strip-trailing-cr a/llvm/lib/ExecutionEngine/Orc/Core.cpp b/llvm/lib/ExecutionEngine/Orc/Core.cpp
+--- a/llvm/lib/ExecutionEngine/Orc/Core.cpp
++++ b/llvm/lib/ExecutionEngine/Orc/Core.cpp
+@@ -2901,13 +2901,23 @@
+ 
+   for (auto &SN : ER.Ready)
+     IL_collectQueries(
+-        EQ.Updated, SN->defs(),
++        EQ.Completed, SN->defs(),
+         [](JITDylib::SymbolTableEntry &E) { E.setState(SymbolState::Ready); },
+         [](AsynchronousSymbolQuery &Q, JITDylib &JD,
+            NonOwningSymbolStringPtr Name, JITDylib::SymbolTableEntry &E) {
+           Q.notifySymbolMetRequiredState(SymbolStringPtr(Name), E.getSymbol());
+         });
+ 
++  // std::erase_if is not available in C++17, and llvm::erase_if does not work
++  // here.
++  for (auto it = EQ.Completed.begin(), end = EQ.Completed.end(); it != end;) {
++    if ((*it)->isComplete()) {
++      ++it;
++    } else {
++      it = EQ.Completed.erase(it);
++    }
++  }
++
+ #ifdef EXPENSIVE_CHECKS
+   verifySessionState("exiting ExecutionSession::IL_emit");
+ #endif
+@@ -3043,9 +3053,8 @@
+     }
+   }
+ 
+-  for (auto &UQ : EmitQueries->Updated)
+-    if (UQ->isComplete())
+-      UQ->handleComplete(*this);
++  for (auto &UQ : EmitQueries->Completed)
++    UQ->handleComplete(*this);
+ 
+   // If there are any bad dependencies then return an error.
+   if (!BadDeps.empty()) {
