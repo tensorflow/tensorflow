@@ -705,6 +705,10 @@ class HloGraphNode {
   void SetGraphDepth(TimeCost graph_depth) { graph_depth_ = graph_depth; }
   bool GetForceDelay() const { return force_delay_; }
   void SetForceDelay(bool force_delay) { force_delay_ = force_delay; }
+  int GetForceDelayPriority() const { return force_delay_priority_; }
+  void SetForceDelayPriority(int force_delay_priority) {
+    force_delay_priority_ = force_delay_priority;
+  }
   bool GetForceEarly() const { return force_early_; }
   void SetForceEarly(bool force_early) { force_early_ = force_early; }
   bool GetForceDelayAfterTarget() const { return force_delay_after_target_; }
@@ -947,6 +951,9 @@ class HloGraphNode {
   // bitfields
   // Force the scheduling of the nodes with attribute set as late as possible.
   bool force_delay_ = false;
+  // If multiple nodes are there with force_delay_ = true, the one with the
+  // lowest delay priority will be scheduled first.
+  int force_delay_priority_ = 0;
   // Force the scheduling of the nodes with attribute set as early as possible.
   bool force_early_ = false;
   // If has_rare_ is false, then all the fields in rare can assumed to be

@@ -37,6 +37,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
@@ -149,6 +150,18 @@ bool IsCustomCallWithForceDelayAttribute(const HloInstruction* instr) {
   auto attr = instr->get_frontend_attribute("scheduler_hint");
   return instr->opcode() == HloOpcode::kCustomCall && attr.has_value() &&
          attr.value() == "force_delay";
+}
+
+int GetCustomCallForceDelayPriority(const HloInstruction* instr) {
+  auto attr = instr->get_frontend_attribute("scheduler_delay_priority");
+  if (instr->opcode() == HloOpcode::kCustomCall && attr.has_value()) {
+    int out;
+    CHECK(absl::SimpleAtoi(attr.value(), &out))
+        << "Failed to parse scheduler_delay_priority attribute: "
+        << attr.value();
+    return out;
+  }
+  return 0;
 }
 
 absl::flat_hash_map<int64_t, int64_t>
@@ -1258,7 +1271,9 @@ class ReadySetLt {
     HloGraphNode* bn = b.node;
     // Schedule according to ForceEarly.
     CMP_PROPERTY(GetForceEarly(), "kForceEarly");
-    // Schedule according to ForceDelay first.
+    // Schedule according to highest ForceDelay first.
+    CMP_EXPLICIT(-an->GetForceDelayPriority(), -bn->GetForceDelayPriority(),
+                 "kForceDelayPriority");
     CMP_EXPLICIT(!an->GetForceDelay(), !bn->GetForceDelay(), "kForceDelay");
     // Use the preference value (comes from a heuristic) to choose between
     // the two candidates. If two preferences are the same regular LHS logic
@@ -2591,6 +2606,7 @@ HloScheduleGraph::HloScheduleGraph(
     }
     if (IsCustomCallWithForceDelayAttribute(instr)) {
       n->SetForceDelay(true);
+      n->SetForceDelayPriority(GetCustomCallForceDelayPriority(instr));
     }
   }
 
