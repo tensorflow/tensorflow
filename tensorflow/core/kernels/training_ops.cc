@@ -18,6 +18,8 @@ limitations under the License.
 
 #include <algorithm>  // NOLINT
 
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -3450,9 +3452,9 @@ class SparseApplyKerasMomentumOp : public OpKernel {
         momentum.scalar<T>(), use_nesterov_);
     OP_REQUIRES(
         ctx, bad_i < 0,
-        errors::InvalidArgument(
+        absl::InvalidArgumentError(absl::StrCat(
             "indices", SliceDebugString(indices.shape(), bad_i), " = ",
-            indices_flat(bad_i), " is not in [0, ", var.dim_size(0), ")"));
+            indices_flat(bad_i), " is not in [0, ", var.dim_size(0), ")")));
 
     MaybeForwardRefInputToRefOutput(ctx, 0, 0);
   }
