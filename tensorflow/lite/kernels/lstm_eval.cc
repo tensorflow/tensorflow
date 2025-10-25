@@ -1771,8 +1771,8 @@ inline void LstmStepInteger8x8_8(
       intermediate_scale_a[6], intermediate_scale_b[6], intermediate_zp[10],
       output_state_ptr, output_state_zp, recurrent_to_output_weight_ptr,
       effective_recurrent_to_output_scale_a,
-      effective_recurrent_to_output_scale_b, intermediate_scale_a[11],
-      intermediate_scale_b[7], intermediate_zp[7], layer_norm_output_weight_ptr,
+      effective_recurrent_to_output_scale_b, intermediate_scale_a[7],
+      intermediate_scale_b[7], intermediate_zp[11], layer_norm_output_weight_ptr,
       layer_norm_output_scale_a, layer_norm_output_scale_b,
       output_gate_bias_ptr, n_batch, n_input, n_output, n_cell,
       kTfLiteActSigmoid, output_gate_scratch, scratch0, scratch1);
