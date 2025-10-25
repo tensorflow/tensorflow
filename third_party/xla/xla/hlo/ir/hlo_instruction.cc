@@ -997,7 +997,8 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
             proto.operand_shapes_with_layout();
         operand_shapes.reserve(operand_shapes_with_layout.size());
         for (const ShapeProto& shape_proto : operand_shapes_with_layout) {
-          operand_shapes.emplace_back(shape_proto);
+          TF_ASSIGN_OR_RETURN(Shape shape, Shape::FromProto(shape_proto));
+          operand_shapes.emplace_back(std::move(shape));
         }
         TF_RET_CHECK(proto.called_computation_ids_size() <= 1);
         if (proto.called_computation_ids_size() == 1) {
