@@ -146,12 +146,10 @@ class CollectiveOpsTestE2E : public HloHardwareIndependentTestBase {
         reference_platform, /*intra_op_parallelism_threads=*/0);
 
     replacements_[kF8E4M3DatatypePlaceholder] =
-        IsCuda() ? "f8e4m3fn" : "f8e4m3fnuz";
+        Capability().IsCuda() ? "f8e4m3fn" : "f8e4m3fnuz";
     replacements_[kF8E5M2DatatypePlaceholder] =
-        IsCuda() ? "f8e5m2" : "f8e5m2fnuz";
+        Capability().IsCuda() ? "f8e5m2" : "f8e5m2fnuz";
   }
-
-  bool IsCuda() { return Capability().IsCuda(); }
 
   const se::GpuComputeCapability& Capability() {
     return hlo_runner_->backend()

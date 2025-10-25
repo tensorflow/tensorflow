@@ -112,15 +112,6 @@ class TritonTest : public GpuCodegenTest {
     return device_desc().gpu_compute_capability();
   }
 
-  stream_executor::GpuComputeCapability CudaAmpereOrRocm() {
-    if (GpuComputeCapability().IsRocm()) {
-      return stream_executor::GpuComputeCapability{
-          device_desc().rocm_compute_capability()};
-    }
-    return stream_executor::GpuComputeCapability{
-        se::CudaComputeCapability::Ampere()};
-  }
-
   // Returns the module, its fusion computation and associated block level
   // parameters from an HLO module text whose entry computation contains a
   // single GEMM fusion.

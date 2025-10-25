@@ -97,8 +97,6 @@ bool IsNonDepthwiseConvCustomCall(const HloInstruction* instr) {
   return IsConvCustomCall(instr) && !IsConvDepthwise(instr);
 }
 
-bool IsROCm(se::GpuComputeCapability cc) { return cc.IsRocm(); }
-
 // elu, relu6, and leaky-relu activations are supported in cudnn via the
 // "runtime fusion" engine, which JIT compiles C++ code.  This can be slow to
 // compile, so we guard it with a debug option.
@@ -1452,7 +1450,7 @@ absl::StatusOr<bool> FuseConvertToF16(HloComputation* comp) {
 
 absl::StatusOr<bool> FuseConvertToS8(HloComputation* comp,
                                      se::GpuComputeCapability cc) {
-  if (IsROCm(cc)) return false;
+  if (cc.IsRocm()) return false;
   bool changed = false;
   for (HloInstruction* instr : comp->MakeInstructionPostOrder()) {
     HloInstruction* gte = nullptr;
@@ -1694,7 +1692,7 @@ absl::StatusOr<bool> CudnnFusedConvRewriter::Run(
     bool changed = false;
     // Rewrite FP8 convolutions and supported adjacent pointwise ops into a
     // ForwardGraph Custom Call.
-    if (!IsROCm(compute_capability_)) {
+    if (!compute_capability_.IsRocm()) {
       auto* cc = compute_capability_.cuda_compute_capability();
       TF_ASSIGN_OR_RETURN(
           changed, F8GraphConv(comp, *cc, dnn_version_, toolkit_version_));

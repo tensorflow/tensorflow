@@ -118,8 +118,8 @@ ENTRY TestComputation {
 }
 
 TEST_F(ConvolutionLayoutNormalizationTest, GraphConvF8) {
-  if (!GetCudaComputeCapability().IsAtLeast(
-          se::CudaComputeCapability::kHopper)) {
+  if (IsRocm() || !GetCudaComputeCapability().IsAtLeast(
+                      se::CudaComputeCapability::kHopper)) {
     GTEST_SKIP() << "FP8 convolutions require Hopper or newer architecture.";
   }
   const char* hlo = R"(
