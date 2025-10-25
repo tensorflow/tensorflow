@@ -8,6 +8,15 @@ load(
 # copybara:uncomment package(default_applicable_licenses = ["//tensorflow:license"])
 
 cc_library(
+    name = "resize_uninitialized",
+    hdrs = ["resize_uninitialized.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "@com_google_absl//absl/meta:type_traits",
+    ],
+)
+
+cc_library(
     name = "proto_serialization",
     srcs = ["proto_serialization.cc"],
     hdrs = ["proto_serialization.h"],

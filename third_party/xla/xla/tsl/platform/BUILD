@@ -60,6 +60,7 @@ exports_files(
         "env.h",
         "numa_hwloc.cc",
         "numa_noop.cc",
+        "snappy.cc",
     ],
     visibility = internal_visibility([
         "//tensorflow/core/platform:__subpackages__",
