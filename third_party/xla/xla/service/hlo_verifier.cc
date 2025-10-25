@@ -3840,7 +3840,7 @@ absl::Status InstructionVerifier::VerifyNoHostMemorySpace(
       });
 }
 
-absl::StatusOr<bool> HloVerifier::Run(
+absl::StatusOr<bool> HloVerifier::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   auto disabled = module->config().debug_options().xla_disable_hlo_passes();

@@ -35,8 +35,9 @@ class ShardingFormatPicker : public HloModulePass {
   explicit ShardingFormatPicker(ShardingType sharding_type)
       : sharding_type_(sharding_type) {}
   absl::string_view name() const override { return "sharding-format-picker"; }
-  using HloPassInterface::Run;
-  absl::StatusOr<bool> Run(
+
+ protected:
+  absl::StatusOr<bool> RunImpl(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 

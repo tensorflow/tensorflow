@@ -384,7 +384,7 @@ class SplitkRewriterVisitor : public DfsHloRewriteVisitor {
 
 }  // namespace
 
-absl::StatusOr<bool> SplitkRewriter::Run(
+absl::StatusOr<bool> SplitkRewriter::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   if (!module->config()

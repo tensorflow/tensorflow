@@ -647,7 +647,7 @@ absl::StatusOr<bool> SoftmaxRewriterTriton::MaybeFuseNormalizationDiamond(
                               use_cost_model_to_evaluate_fusions_);
 }
 
-absl::StatusOr<bool> SoftmaxRewriterTriton::Run(
+absl::StatusOr<bool> SoftmaxRewriterTriton::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   TF_RETURN_IF_ERROR(EnsureTritonSupportsComputeCapability(

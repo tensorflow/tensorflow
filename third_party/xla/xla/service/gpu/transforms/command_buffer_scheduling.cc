@@ -794,7 +794,7 @@ CommandBufferScheduling::CommandBufferScheduling(
     const se::DeviceDescription& device_description)
     : device_description_(device_description) {}
 
-absl::StatusOr<bool> CommandBufferScheduling::Run(
+absl::StatusOr<bool> CommandBufferScheduling::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   // We run command buffer scheduling after a regular scheduling to guarantee

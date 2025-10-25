@@ -3121,7 +3121,7 @@ std::vector<HloInstruction*> ShardingPropagation::GetRelatedInstructions(
   }
 };
 
-absl::StatusOr<bool> ShardingPropagation::Run(
+absl::StatusOr<bool> ShardingPropagation::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   LOG(WARNING) << "GSPMD sharding propagation is going to be deprecated and "

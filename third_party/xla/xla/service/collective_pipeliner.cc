@@ -3382,7 +3382,7 @@ absl::StatusOr<bool> CollectivePipeliner::RunPipeliner(
   return changed;
 }
 
-absl::StatusOr<bool> CollectivePipeliner::Run(
+absl::StatusOr<bool> CollectivePipeliner::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   CHECK(config_.acceptable_formatting);

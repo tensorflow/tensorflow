@@ -134,7 +134,7 @@ absl::StatusOr<bool> CompositeRewriter::RewriteComputation(
   return changed;
 }
 
-absl::StatusOr<bool> CompositeRewriter::Run(
+absl::StatusOr<bool> CompositeRewriter::RunImpl(
     HloModule* module, const absl::flat_hash_set<absl::string_view>&) {
   bool changed = false;
   for (HloComputation* computation : module->computations()) {

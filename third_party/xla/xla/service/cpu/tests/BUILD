@@ -394,11 +394,10 @@ xla_cc_test(
         "notap",
     ],
     deps = [
-        "//xla:literal",
         "//xla:shape_util",
+        "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:pattern_matcher_gmock",
         "//xla/hlo/testlib:test",
-        "//xla/hlo/testlib:test_helpers",
         "//xla/service:cpu_plugin",
         "//xla/service:pattern_matcher",
         "//xla/service/cpu:backend_config_proto_cc",
@@ -407,6 +406,7 @@ xla_cc_test(
         "//xla/service/cpu:onednn_util",
         "//xla/tests:hlo_test_base",
         "//xla/tests:xla_internal_test_main",
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/strings",
     ],
 )

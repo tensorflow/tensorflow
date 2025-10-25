@@ -116,7 +116,7 @@ absl::StatusOr<std::unique_ptr<AutotunerPass>> AutotunerPass::Create(
       new AutotunerPass(std::move(autotuner), should_autotune));
 }
 
-absl::StatusOr<bool> AutotunerPass::Run(
+absl::StatusOr<bool> AutotunerPass::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   VLOG(1) << "Running Autotuner Pass";

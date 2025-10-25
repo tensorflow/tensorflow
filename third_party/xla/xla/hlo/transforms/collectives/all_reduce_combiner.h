@@ -45,11 +45,6 @@ class AllReduceCombiner : public HloModulePass {
 
   absl::string_view name() const override { return "all-reduce-combiner"; }
 
-  using HloPassInterface::Run;
-  absl::StatusOr<bool> Run(
-      HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
-
   using GroupKey = std::tuple<AllReduceKey, /*extra_args*/ std::string>;
 
   static std::string& GetGroupKeyExtraArgs(AllReduceCombiner::GroupKey& key);
@@ -66,6 +61,10 @@ class AllReduceCombiner : public HloModulePass {
       absl::FunctionRef<std::optional<AllReduceCombiner::GroupKey>(
           const HloInstruction*, const HloDomainMap&)>
           combine_key);
+
+  absl::StatusOr<bool> RunImpl(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
   // Combine all reduce ops up to this threshold.
   int64_t combine_threshold_in_bytes_;

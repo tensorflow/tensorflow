@@ -94,7 +94,7 @@ PartitionAssignment::ChoosePartitioningAlgorithm(
   return PartitioningAlgorithm::CreateNoopPartitioning(num_partitions());
 }
 
-absl::StatusOr<bool> PartitionAssignment::Run(
+absl::StatusOr<bool> PartitionAssignment::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   VLOG(2) << "Running partition assignment on module " << module->name();

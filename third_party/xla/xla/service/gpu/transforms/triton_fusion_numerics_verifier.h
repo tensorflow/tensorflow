@@ -49,14 +49,14 @@ class TritonFusionNumericsVerifier : public HloModulePass {
   static absl::string_view Name() { return "triton-numerics-verifier"; }
   absl::string_view name() const override { return Name(); }
 
-  using HloPassInterface::Run;
-  absl::StatusOr<bool> Run(
-      HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
-
   using FusionCacheKey = std::string;
 
   int CacheHitsForTestingOnly() const { return cache_hits_; }
+
+ protected:
+  absl::StatusOr<bool> RunImpl(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
   DeviceOrDevicelessConfig config_;

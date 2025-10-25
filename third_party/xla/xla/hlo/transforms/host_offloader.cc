@@ -1380,7 +1380,7 @@ absl::StatusOr<bool> HostOffloader::HandlePallasKernels(HloModule* module) {
   return changed;
 }
 
-absl::StatusOr<bool> HostOffloader::Run(
+absl::StatusOr<bool> HostOffloader::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   // Start by removing all host memory space from all shapes. Host memory space

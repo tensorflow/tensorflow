@@ -425,7 +425,7 @@ bool eraseInlineableAttrForShardyManualComputations(HloModule* module) {
 
 }  // namespace
 
-absl::StatusOr<bool> ShardyXLA::Run(
+absl::StatusOr<bool> ShardyXLA::RunImpl(
     HloModule* hloModule,
     const absl::flat_hash_set<absl::string_view>& executionThreads) {
   auto moduleFrontendAttrs = hloModule->frontend_attributes().map();

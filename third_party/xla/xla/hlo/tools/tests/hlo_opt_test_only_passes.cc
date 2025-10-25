@@ -221,7 +221,7 @@ absl::StatusOr<bool> XlaBuilderTestPass::ReplaceWithExpandedClientHlo(
       "Unsupported xla_builder custom call target: ", custom_call_target));
 }
 
-absl::StatusOr<bool> XlaBuilderTestPass::Run(
+absl::StatusOr<bool> XlaBuilderTestPass::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;

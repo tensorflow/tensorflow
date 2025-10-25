@@ -35,9 +35,9 @@ limitations under the License.
 
 namespace xla {
 
-absl::StatusOr<bool> AllGatherBroadcastReorder::Run(
-    HloModule *module,
-    const absl::flat_hash_set<absl::string_view> &execution_threads) {
+absl::StatusOr<bool> AllGatherBroadcastReorder::RunImpl(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   if (hlo_query::ContainsLayoutConstrainedCollective(*module,
                                                      HloOpcode::kAllGather)) {
     VLOG(1) << "Skip AllGatherBroadcastReorder because the module contains "
