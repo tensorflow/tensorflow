@@ -32,6 +32,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/functional/bind_front.h"
 #include "absl/log/log.h"
+#include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "xla/tsl/lib/gtl/map_util.h"
 #include "xla/tsl/platform/env.h"
@@ -934,7 +935,18 @@ void GroupXplaneEvents(tensorflow::profiler::XPlane* plane,
   if (step_line) {
     bool device_loop = (step_line->events_size() > module_line->events_size());
     if (device_loop) {
-      group_line = nullptr;
+      if (!absl::StartsWith(plane->name(), kTpuPlanePrefix)) {
+        return;
+      }
+      int32_t group_id = 0;
+      for (XEvent& event : *step_line->mutable_events()) {
+        XEventBuilder step_builder(step_line, &plane_builder, &event);
+        XEventVisitor step_visitor(&plane_visitor, step_line, &event);
+        if (!step_visitor.GetStat(StatType::kGroupId).has_value()) {
+          step_builder.AddStatValue(*group_id_stat_metadata, group_id++);
+        }
+      }
+      group_line = step_line;
     } else {  // host loop
       if (group_line) {
         // Determine whether the module line has been grouped.
