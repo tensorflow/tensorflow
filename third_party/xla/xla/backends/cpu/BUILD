@@ -235,14 +235,11 @@ cc_library(
         "//xla:shape_util",
         "//xla:util",
         "//xla:xla_data_proto_cc",
-        "//xla/backends/cpu/codegen:target_machine_features",
         "//xla/backends/cpu/runtime:dot_lib",
         "//xla/backends/cpu/runtime/ynnpack:ynn_interop",
         "//xla/hlo/ir:hlo",
-        "//xla/service:pattern_matcher",
         "//xla/tsl/platform:statusor",
         "@XNNPACK//ynnpack",
-        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:no_destructor",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -250,7 +247,6 @@ cc_library(
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
-        "@com_google_absl//absl/types:span",
     ],
 )
 

@@ -257,6 +257,10 @@ limitations under the License.
 #include "xla/service/cpu/onednn_ops_rewriter.h"
 #endif  // XLA_ONEDNN
 
+#ifdef XLA_YNNPACK
+#include "xla/backends/cpu/ynn_support.h"
+#endif  // XLA_YNNPACK
+
 namespace xla {
 namespace {
 
@@ -628,15 +632,42 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
     if (!call_library_for_dot(*instr)) {
       return true;
     }
-    bool use_cost_model = module->config()
-                              .debug_options()
-                              .xla_cpu_experimental_xnn_graph_fusion_mode() !=
-                          DebugOptions::XNN_GRAPH_FUSION_MODE_BYPASS_COST_MODEL;
-    return !IsDotSupportedByXnn(instr->dot_dimension_numbers(),
-                                instr->operand(0)->shape(),
-                                instr->operand(1)->shape(), instr->shape(),
-                                target_machine_features, use_cost_model)
-                .value_or(false);
+
+#ifdef XLA_YNNPACK
+    if (absl::c_linear_search(
+            module->config()
+                .debug_options()
+                .xla_cpu_experimental_ynn_fusion_type(),
+            DebugOptions::LIBRARY_FUSION_TYPE_INDIVIDUAL_DOT)) {
+      if (IsDotSupportedByYnn(instr->dot_dimension_numbers(),
+                              instr->operand(0)->shape(),
+                              instr->operand(1)->shape(), instr->shape())
+              .value_or(false)) {
+        return false;
+      }
+    }
+#endif  // XLA_YNNPACK
+
+    auto xnn_graph_fusion_mode =
+        module->config()
+            .debug_options()
+            .xla_cpu_experimental_xnn_graph_fusion_mode();
+    if (xnn_graph_fusion_mode != DebugOptions::XNN_GRAPH_FUSION_MODE_DISABLED) {
+      bool use_cost_model =
+          module->config()
+              .debug_options()
+              .xla_cpu_experimental_xnn_graph_fusion_mode() !=
+          DebugOptions::XNN_GRAPH_FUSION_MODE_BYPASS_COST_MODEL;
+      if (IsDotSupportedByXnn(instr->dot_dimension_numbers(),
+                              instr->operand(0)->shape(),
+                              instr->operand(1)->shape(), instr->shape(),
+                              target_machine_features, use_cost_model)
+              .value_or(false)) {
+        return false;
+      }
+    }
+
+    return true;
   };
 
   // xla::cpu::GetDotImplementationStrategy (used by call_library_for_dot)

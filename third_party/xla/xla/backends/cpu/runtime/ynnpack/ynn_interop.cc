@@ -46,12 +46,22 @@ absl::StatusOr<YnnThreadpool> CreateYnnThreadpool(
 
 absl::StatusOr<ynn_type> YnnType(const PrimitiveType& type) {
   switch (type) {
+    case S4:
+      return ynn_type_int4;
+    case U4:
+      return ynn_type_uint4;
+    case S8:
+      return ynn_type_int8;
+    case U8:
+      return ynn_type_uint8;
     case BF16:
       return ynn_type_bf16;
     case F16:
       return ynn_type_fp16;
     case F32:
       return ynn_type_fp32;
+    case S32:
+      return ynn_type_int32;
     default:
       return InvalidArgument("Unsupported YNNPACK type: %s",
                              primitive_util::LowercasePrimitiveTypeName(type));

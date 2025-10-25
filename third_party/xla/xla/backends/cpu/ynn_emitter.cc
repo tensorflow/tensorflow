@@ -349,31 +349,26 @@ static absl::StatusOr<YnnSubgraph> EmitYnnDotSubgraph(
   std::vector<size_t> rhs_dims = dims(rhs_shape.dimensions());
   std::vector<size_t> out_dims = dims(out_shape.dimensions());
 
-  PrimitiveType dtype = lhs->shape().element_type();
-  if (dtype != F32 && dtype != BF16) {
-    return InvalidArgument("Unsupported input data type for YnnDotThunk: %s",
-                           primitive_util::LowercasePrimitiveTypeName(dtype));
-  }
-
-  ynn_type input_type = (dtype == F32) ? ynn_type_fp32 : ynn_type_bf16;
-  ynn_type output_type = ynn_type_fp32;
+  TF_ASSIGN_OR_RETURN(ynn_type ynn_lhs_type, YnnType(lhs_shape.element_type()));
+  TF_ASSIGN_OR_RETURN(ynn_type ynn_rhs_type, YnnType(rhs_shape.element_type()));
+  TF_ASSIGN_OR_RETURN(ynn_type ynn_out_type, YnnType(out_shape.element_type()));
 
   const uint32_t input_tensor_flags = YNN_VALUE_FLAG_EXTERNAL_INPUT;
   YNN_RETURN_IF_ERROR(ynn_define_tensor_value(
-      subgraph.get(), input_type, lhs_dims.size(), lhs_dims.data(),
+      subgraph.get(), ynn_lhs_type, lhs_dims.size(), lhs_dims.data(),
       /*data=*/nullptr,
       /*zero_point_id=*/YNN_INVALID_VALUE_ID,
       /*scale_id=*/YNN_INVALID_VALUE_ID, input_tensor_flags, &lhs_id));
 
   YNN_RETURN_IF_ERROR(ynn_define_tensor_value(
-      subgraph.get(), input_type, rhs_dims.size(), rhs_dims.data(),
+      subgraph.get(), ynn_rhs_type, rhs_dims.size(), rhs_dims.data(),
       capture_rhs ? arguments_buffers[1].opaque() : nullptr,
       /*zero_point_id=*/YNN_INVALID_VALUE_ID,
       /*scale_id=*/YNN_INVALID_VALUE_ID, input_tensor_flags, &rhs_id));
 
   const uint32_t output_tensor_flags = YNN_VALUE_FLAG_EXTERNAL_OUTPUT;
   YNN_RETURN_IF_ERROR(ynn_define_tensor_value(
-      subgraph.get(), output_type, out_dims.size(), out_dims.data(),
+      subgraph.get(), ynn_out_type, out_dims.size(), out_dims.data(),
       /*data=*/nullptr,
       /*zero_point_id=*/YNN_INVALID_VALUE_ID,
       /*scale_id=*/YNN_INVALID_VALUE_ID, output_tensor_flags, &out_id));

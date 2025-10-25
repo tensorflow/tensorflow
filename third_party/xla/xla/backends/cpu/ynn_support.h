@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/shape.h"
 
 namespace xla::cpu {
 
@@ -54,6 +55,12 @@ bool IsConstantSupportedByYnn(const HloInstruction* hlo);
 
 // Returns true if the nonconstant elementwise op is supported by YNNPACK.
 bool IsElementwiseOpSupportedByYnn(const HloInstruction* hlo);
+
+// Returns true if the dot operation is supported by YNNPACK. Returns an error
+// if the dot operation shape is invalid.
+absl::StatusOr<bool> IsDotSupportedByYnn(
+    const DotDimensionNumbers& dot_dimensions, const Shape& lhs_shape,
+    const Shape& rhs_shape, const Shape& out_shape);
 
 }  // namespace xla::cpu
 
