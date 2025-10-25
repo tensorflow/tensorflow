@@ -93,7 +93,11 @@ class Worker {
  public:
   Worker(size_t worker_index, WorkQueue* queue);
 
-  std::optional<size_t> Pop();
+  // Pops a work item from the work queue. If `notify_work_stealing` is true,
+  // the worker will notify the work queue when it switches to the work
+  // stealing mode. Worker parallelization has an optimization to avoid
+  // scheduling more workers if there are workers in the work stealing mode.
+  std::optional<size_t> Pop(bool notify_work_stealing = true);
 
   // Schedule `num_workers` workers into the Eigen thread pool that process
   // `num_work_items` parallel work items and return an async value that becomes
@@ -182,7 +186,7 @@ inline Worker::Worker(size_t worker_index, WorkQueue* queue)
       partition_index_(worker_index),
       queue_(queue) {}
 
-inline std::optional<size_t> Worker::Pop() {
+inline std::optional<size_t> Worker::Pop(bool notify_work_stealing) {
   std::optional<size_t> work_item = queue_->Pop(partition_index_);
   if (ABSL_PREDICT_TRUE(work_item)) {
     return work_item;
@@ -190,7 +194,8 @@ inline std::optional<size_t> Worker::Pop() {
 
   // If we didn't find a work item in the initially assigned partition, notify
   // the work queue that we are switching to work stealing mode.
-  if (ABSL_PREDICT_FALSE(partition_index_ == worker_index_)) {
+  if (ABSL_PREDICT_FALSE(notify_work_stealing &&
+                         partition_index_ == worker_index_)) {
     queue_->NotifyWorkStealingWorker();
   }
 
