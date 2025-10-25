@@ -23,7 +23,9 @@
     * Adds int8 and int16x8 support for SQRT operator.
     * Adds int16x8 support for EQUAL and NOT_EQUAL operators.
     * Adds support for int2 type.
-    * Adds support for int2/int4 in tfl.cast.
+    * Adds support for int2/int4 in tfl.cast .
+    * Adds support for SRQ int2 in tfl.fully_connected.
+    * Adds support for int4 in tfl.slice.
 
 ### Bug Fixes and Other Changes
 

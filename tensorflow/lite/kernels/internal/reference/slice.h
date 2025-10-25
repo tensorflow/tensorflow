@@ -15,7 +15,14 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_INTERNAL_REFERENCE_SLICE_H_
 #define TENSORFLOW_LITE_KERNELS_INTERNAL_REFERENCE_SLICE_H_
 
+#include <cstdint>
+#include <vector>
+
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/internal/portable_tensor.h"
+#include "tensorflow/lite/kernels/internal/portable_tensor_utils.h"
+#include "tensorflow/lite/kernels/internal/runtime_shape.h"
+#include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/internal/types.h"
 
 namespace tflite {
@@ -72,6 +79,27 @@ inline void Slice(const tflite::SliceParams& op_params,
                   const RuntimeShape& output_shape, TfLiteTensor* output) {
   SequentialTensorWriter<T> writer(input, output);
   return Slice(op_params, input_shape, output_shape, &writer);
+}
+
+inline void SliceInt4(const tflite::SliceParams& op_params,
+                      const RuntimeShape& input_shape,
+                      const TfLiteTensor* input,
+                      const RuntimeShape& output_shape, TfLiteTensor* output) {
+  const int num_input_elements = input_shape.FlatSize();
+  std::vector<int8_t> unpacked_input(num_input_elements);
+  tensor_utils::UnpackPackedIntToInt8(GetTensorData<int8_t>(input),
+                                      num_input_elements, 4,
+                                      unpacked_input.data());
+
+  const int num_output_elements = output_shape.FlatSize();
+  std::vector<int8_t> unpacked_output(num_output_elements);
+
+  reference_ops::Slice<int8_t>(op_params, input_shape, unpacked_input.data(),
+                               output_shape, unpacked_output.data());
+
+  tensor_utils::PackInt8IntoDenseInt(unpacked_output.data(),
+                                     num_output_elements, 4,
+                                     GetTensorData<int8_t>(output));
 }
 
 }  // namespace reference_ops
