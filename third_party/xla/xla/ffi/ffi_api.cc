@@ -289,7 +289,7 @@ static XLA_FFI_CallFrame PrepareMetadataCallFrame(
   return XLA_FFI_CallFrame{
       XLA_FFI_CallFrame_STRUCT_SIZE,
       &extension->extension_base,
-      /*api=*/nullptr,
+      /*api=*/GetXlaFfiApi(),
       /*context=*/nullptr,
       /*stage=*/XLA_FFI_ExecutionStage_EXECUTE,
       /*args=*/XLA_FFI_Args{XLA_FFI_Args_STRUCT_SIZE},
@@ -386,20 +386,6 @@ static std::vector<std::string> GetHandlerStages(
   return stages;
 }
 
-static bool CheckMetadata(const XLA_FFI_Metadata& a,
-                          const XLA_FFI_Metadata& b) {
-  return a.api_version.major_version == b.api_version.major_version &&
-         a.api_version.minor_version == b.api_version.minor_version &&
-         a.traits == b.traits &&
-         a.state_type_id.type_id == b.state_type_id.type_id;
-}
-
-static bool CheckHandlerBundle(const XLA_FFI_Handler_Bundle& a,
-                               const XLA_FFI_Handler_Bundle& b) {
-  return a.instantiate == b.instantiate && a.prepare == b.prepare &&
-         a.initialize == b.initialize && a.execute == b.execute;
-}
-
 static absl::Status RegisterHandler(absl::string_view name,
                                     absl::string_view platform,
                                     XLA_FFI_Handler_Bundle bundle,
@@ -455,13 +441,13 @@ static absl::Status RegisterHandler(absl::string_view name,
   // long as we register exactly the same handler.
   if (!emplaced) {
     const HandlerRegistration& existing = it->second;
-    if (!CheckMetadata(existing.metadata, metadata)) {
+    if (existing.metadata != metadata) {
       return InvalidArgument(
           "Duplicate FFI handler registration for %s on platform %s "
           "(canonical %s) with different metadata: %v vs %v",
           name, platform, canonical_platform, existing.metadata, metadata);
     }
-    if (!CheckHandlerBundle(existing.bundle, bundle)) {
+    if (existing.bundle != bundle) {
       return InvalidArgument(
           "Duplicate FFI handler registration for %s on platform %s "
           "(canonical %s) with different bundle addresses",
