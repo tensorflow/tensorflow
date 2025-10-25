@@ -2335,13 +2335,18 @@ xla_test(
 xla_test(
     name = "pad_test",
     srcs = ["pad_test.cc"],
+    tags = ["test_migrated_to_hlo_runner_pjrt"],
     deps = [
-        ":client_library_test_base",
-        ":xla_internal_test_main",
+        ":client_library_test_runner_mixin",
+        ":hlo_pjrt_interpreter_reference_mixin",
+        ":hlo_pjrt_test_base",
+        ":xla_internal_test_main",  # fixdeps: keep
+        "//xla:array",
         "//xla:array2d",
         "//xla:array3d",
         "//xla:array4d",
         "//xla:error_spec",
+        "//xla:literal",
         "//xla:literal_util",
         "//xla:reference_util",
         "//xla:shape_util",
@@ -2350,7 +2355,8 @@ xla_test(
         "//xla/hlo/builder:xla_builder",
         "//xla/hlo/builder:xla_computation",
         "//xla/hlo/builder/lib:arithmetic",
-        "@local_tsl//tsl/platform:test",
+        "//xla/tsl/platform:test",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
