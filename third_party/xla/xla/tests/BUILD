@@ -525,17 +525,22 @@ xla_test(
         "conv_depthwise_test.cc",
     ],
     shard_count = 30,
+    tags = [
+        "test_migrated_to_hlo_runner_pjrt",
+    ],
     deps = [
-        ":client_library_test_base",
         ":conv_depthwise_common",
-        ":hlo_test_base",
-        ":xla_internal_test_main",
-        "//xla:execution_options_util",
-        "//xla:status_macros",
-        "//xla/hlo/builder:xla_computation",
+        ":hlo_pjrt_interpreter_reference_mixin",
+        ":hlo_pjrt_test_base",
+        ":xla_internal_test_main",  # fixdeps: keep
+        "//xla:error_spec",
+        "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:test",
         "//xla/hlo/transforms:despecializer",
         "//xla/hlo/transforms/simplifiers:float_normalization",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:test",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -940,9 +945,7 @@ cc_library(
     testonly = True,
     srcs = ["conv_depthwise_common.cc"],
     hdrs = ["conv_depthwise_common.h"],
-    tags = ["test_migrated_to_hlo_runner_pjrt"],
     deps = [
-        ":client_library_test_base",
         "//xla/hlo/testlib:test",
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/algorithm:container",
