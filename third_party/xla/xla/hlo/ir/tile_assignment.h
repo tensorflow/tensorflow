@@ -110,8 +110,10 @@ class IotaTileAssignment {
   std::optional<IotaTileAssignment> Transpose(absl::Span<const int> perm) const;
 
   void Print(Printer* printer) const;
+  void PrintArray(Printer* printer) const;
 
   std::string ToString() const;
+  std::string ArrayToString() const;
 
   // Materializes array representation of IotaTileAssignment.
   Array<int64_t> ToArray() const;
@@ -187,7 +189,7 @@ class TileAssignment {
       : TileAssignment(std::make_shared<const Array<int64_t>>(
             std::initializer_list<int64_t>{1}, device_id)) {}
   explicit TileAssignment(IotaTileAssignment iota) : iota_(std::move(iota)) {}
-  explicit TileAssignment(std::initializer_list<int64_t> dims)
+  TileAssignment(std::initializer_list<int64_t> dims)
       : iota_(IotaTileAssignment::Create(dims)) {}
   explicit TileAssignment(absl::Span<const int64_t> dims)
       : iota_(IotaTileAssignment::Create(dims)) {}
@@ -249,8 +251,10 @@ class TileAssignment {
   [[nodiscard]] TileAssignment Transpose(absl::Span<const int> perm) const;
 
   void Print(Printer* printer) const;
+  void PrintArray(Printer* printer) const;
 
   std::string ToString() const;
+  std::string ArrayToString() const;
 
   bool UsesDevice(int64_t device) const;
 

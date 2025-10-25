@@ -126,10 +126,14 @@ TransposeKind GetTransposeKind(absl::Span<const int64_t> dims,
   for (int i = 0; i < perm.size(); ++i) {
     const auto& d = perm[i];
     if (dims[d] == 1) {
-      if (d != i && dims[i] != 1) kind = TransposeKind::kReshape;
+      if (d != i && dims[i] != 1) {
+        kind = TransposeKind::kReshape;
+      }
       continue;
     }
-    if (d <= prev_non_one_dim) return TransposeKind::kTranspose;
+    if (d <= prev_non_one_dim) {
+      return TransposeKind::kTranspose;
+    }
     prev_non_one_dim = d;
   }
   return kind;
@@ -268,7 +272,9 @@ std::optional<IotaTileAssignment> IotaTileAssignment::Transpose(
   DCHECK_EQ(ndims_, perm.size());
   auto dims = this->dims();
   const TransposeKind kind = GetTransposeKind(dims, perm);
-  if (kind == TransposeKind::kNoop) return *this;
+  if (kind == TransposeKind::kNoop) {
+    return *this;
+  }
   absl::InlinedVector<int64_t, 6> new_dims(ndims_);
   for (int64_t i = 0; i < ndims_; ++i) {
     new_dims[i] = dims[perm[i]];
@@ -304,7 +310,9 @@ std::optional<IotaTileAssignment> IotaTileAssignment::Transpose(
     absl::InlinedVector<int, 6> new_perm;
     new_perm.reserve(non_one_dims.size());
     for (int i = 0; i < ndims_; ++i) {
-      if (dims[perm[i]] == 1) continue;
+      if (dims[perm[i]] == 1) {
+        continue;
+      }
       new_perm.push_back(transpose_perm[one_to_non_one[perm[i]]]);
     }
     CHECK_EQ(reshape_ndims_, new_perm.size());
@@ -430,10 +438,8 @@ std::optional<IotaTileAssignment> IotaTileAssignment::Transpose(
                                     flattened_transpose_perm);
 }
 
-void IotaTileAssignment::Print(Printer* printer) const {
+void IotaTileAssignment::PrintArray(Printer* printer) const {
   printer->Append("[");
-  AppendJoin(printer, dims(), ",");
-  printer->Append("]<=[");
   AppendJoin(printer, reshape_dims(), ",");
   printer->Append("]");
   if (reshape_ndims_ > 1) {
@@ -441,6 +447,19 @@ void IotaTileAssignment::Print(Printer* printer) const {
     AppendJoin(printer, transpose_perm(), ",");
     printer->Append(")");
   }
+}
+
+void IotaTileAssignment::Print(Printer* printer) const {
+  printer->Append("[");
+  AppendJoin(printer, dims(), ",");
+  printer->Append("]<=");
+  PrintArray(printer);
+}
+
+std::string IotaTileAssignment::ArrayToString() const {
+  StringPrinter printer;
+  PrintArray(&printer);
+  return std::move(printer).ToString();
 }
 
 std::string IotaTileAssignment::ToString() const {
@@ -608,6 +627,14 @@ absl::Status TileAssignment::EachStatus(
   return TileAssignment(std::move(cloned_array));
 }
 
+void TileAssignment::PrintArray(Printer* printer) const {
+  if (iota_) {
+    iota_->PrintArray(printer);
+  } else {
+    AppendJoin(printer, array(), ",");
+  }
+}
+
 void TileAssignment::Print(Printer* printer) const {
   if (iota_) {
     printer->Append("devices=");
@@ -618,6 +645,12 @@ void TileAssignment::Print(Printer* printer) const {
     printer->Append("]");
     AppendJoin(printer, array(), ",");
   }
+}
+
+std::string TileAssignment::ArrayToString() const {
+  StringPrinter printer;
+  PrintArray(&printer);
+  return std::move(printer).ToString();
 }
 
 std::string TileAssignment::ToString() const {

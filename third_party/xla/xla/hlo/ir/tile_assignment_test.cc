@@ -146,13 +146,16 @@ TEST(IotaTileAssignmentTest, ValueAt) {
 
 TEST(IotaTileAssignmentTest, ToString) {
   IotaTileAssignment iota = IotaTileAssignment::Create({2, 3});
+  EXPECT_EQ(iota.ArrayToString(), "[6]");
   EXPECT_EQ(iota.ToString(), "[2,3]<=[6]");
 
   IotaTileAssignment iota2 = IotaTileAssignment::Create({2, 6}, {3, 4}, {0, 1});
+  EXPECT_EQ(iota2.ArrayToString(), "[12]");
   EXPECT_EQ(iota2.ToString(), "[2,6]<=[12]");
 
   IotaTileAssignment iota3 =
       IotaTileAssignment::Create({3, 4, 5}, {3, 4, 5}, {2, 0, 1});
+  EXPECT_EQ(iota3.ArrayToString(), "[12,5]T(1,0)");
   EXPECT_EQ(iota3.ToString(), "[3,4,5]<=[12,5]T(1,0)");
 }
 
