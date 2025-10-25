@@ -16,22 +16,17 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/tasks/add.h"
 
 #include <string>
-#include <utility>
 #include <vector>
 
 #include "absl/strings/str_cat.h"
-#include "tensorflow/lite/delegates/gpu/common/task/gpu_operation.h"
+#include "tensorflow/lite/delegates/gpu/common/operations.h"
+#include "tensorflow/lite/delegates/gpu/common/task/work_group_picking.h"
 
 namespace tflite {
 namespace gpu {
 namespace {
 GPUOperation CreateUnequalAdd(const OperationDef& op_def) {
   GPUOperation op(op_def);
-  op.AddDstTensor("dst_tensor", op_def.dst_tensors[0]);
-  for (int i = 0; i < op_def.src_tensors.size(); ++i) {
-    const std::string tensor_name = absl::StrCat("src_tensor_", i);
-    op.AddSrcTensor(tensor_name, op_def.src_tensors[i]);
-  }
   op.tensor_to_grid_ = TensorToGrid::kWBToX_HDToY_SToZ;
   std::string c;
   c += "MAIN_FUNCTION($0) {\n";
@@ -51,7 +46,7 @@ GPUOperation CreateUnequalAdd(const OperationDef& op_def) {
   c += "  int S = GLOBAL_ID_2;\n";
   c += "  if (X >= args.dst_tensor.Width() || Y >= args.dst_tensor.Height() || "
        "S >= args.dst_tensor.Slices()) return; \n";
-  c += "  args.src_tensor_0::type src = args.src_tensor_0::zero_value;\n";
+  c += "  float4 src = INIT_FLOAT4(0.0f);\n";
   for (int i = 0; i < op_def.src_tensors.size(); ++i) {
     const std::string tensor_name = absl::StrCat("src_tensor_", i);
     c += "  if (S < args." + tensor_name + ".Slices()) {\n";
