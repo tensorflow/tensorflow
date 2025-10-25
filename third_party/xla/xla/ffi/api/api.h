@@ -1836,6 +1836,61 @@ XLA_FFI_REGISTER_SCALAR_ATTR_DECODING(std::complex<double>,
 
 #undef XLA_FFI_REGISTER_SCALAR_ATTR_DECODING
 
+// Decoding for an attribute of `std::variant<T0, T1, Ts...>` type.
+//
+// Returns the decoding result for a first type that matches the attribute type,
+// if no type matches, returns std::nullopt.
+template <typename T0, typename T1, typename... Ts>
+struct AttrDecoding<std::variant<T0, T1, Ts...>> {
+  using Type = std::variant<T0, T1, Ts...>;
+
+  XLA_FFI_ATTRIBUTE_ALWAYS_INLINE static bool Isa(XLA_FFI_AttrType type,
+                                                  void* attr) {
+    return AttrDecoding<T0>::Isa(type, attr) ||
+           AttrDecoding<T1>::Isa(type, attr) ||
+           (AttrDecoding<Ts>::Isa(type, attr) || ...);
+  };
+
+  XLA_FFI_ATTRIBUTE_ALWAYS_INLINE static std::optional<Type> Decode(
+      XLA_FFI_AttrType type, void* attr, DiagnosticEngine& diagnostic) {
+    static constexpr size_t kSize = 2 + sizeof...(Ts);
+
+    // A table of function pointers to the Isa checks.
+    static constexpr std::array<decltype(&Isa), kSize> isa = {
+        AttrDecoding<T0>::Isa,
+        AttrDecoding<T1>::Isa,
+        AttrDecoding<Ts>::Isa...,
+    };
+
+    // A table of function pointers to the Decode adaptors.
+    static constexpr std::array<decltype(&Decode), kSize> decode = {
+        DecodeAdaptor<T0>,
+        DecodeAdaptor<T1>,
+        DecodeAdaptor<Ts>...,
+    };
+
+    // Find the first type that matches the attribute type and try to decode it.
+    for (size_t i = 0; i < kSize; ++i) {
+      if ((*isa[i])(type, attr)) {
+        return (*decode[i])(type, attr, diagnostic);
+      }
+    }
+
+    return diagnostic.Emit(
+        "Wrong attribute type: it doesn't match any of the variant types");
+  }
+
+  template <typename T>
+  XLA_FFI_ATTRIBUTE_ALWAYS_INLINE static std::optional<Type> DecodeAdaptor(
+      XLA_FFI_AttrType type, void* attr, DiagnosticEngine& diagnostic) {
+    if (auto decoded = AttrDecoding<T>::Decode(type, attr, diagnostic);
+        XLA_FFI_PREDICT_TRUE(decoded)) {
+      return std::move(*decoded);
+    }
+    return std::nullopt;
+  }
+};
+
 //===----------------------------------------------------------------------===//
 // Automatic dictionary attributes to structs decoding.
 //===----------------------------------------------------------------------===//
