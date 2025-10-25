@@ -243,9 +243,15 @@ class FutureBase : public FutureMoveControl<is_move_only> {
     // instead of dropping the promise without fulfilling it in order to make
     // debugging easier. Also, be aware that the current promise may still be
     // used to mint a future.
+    //
+    // We use this API only when we are exclusive owner of the promise and can
+    // guarantee that it didn't escape to other threads via pointers. Otherwise,
+    // this is best effort check, because it uses two atomic operations and is
+    // not atomic itself.
     bool IsUniqueReference() const {
-      CHECK(promise_) << "Promise must wrap an async value";
-      return promise_.IsUnique() && !promise_.HasWaiter();
+      CHECK(promise_ && !promise_.GetAsyncValue()->IsIndirect())
+          << "Promise must wrap a concrete async value";
+      return promise_.GetAsyncValue()->NumRef() == 1 && !promise_.HasWaiter();
     }
 
    protected:
