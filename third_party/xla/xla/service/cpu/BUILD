@@ -406,6 +406,8 @@ cc_library(
         ":onednn_contraction_rewriter",
         ":onednn_float_support",
         ":onednn_ops_rewriter",
+    ]) + if_ynnpack([
+        "//xla/backends/cpu:ynn_support",
     ]),
 )
 
