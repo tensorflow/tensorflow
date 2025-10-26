@@ -76,12 +76,18 @@ archive_override(
 ##############################################################
 # C++ dependencies
 
+bazel_dep(name = "xnnpack", repo_name = "XNNPACK")
+archive_override(
+    module_name = "xnnpack",
+    strip_prefix = "XNNPACK-2f108e3efda443ac9f233671cfacf2b3183b7e94",
+    urls = ["https://github.com/google/XNNPACK/archive/2f108e3efda443ac9f233671cfacf2b3183b7e94.zip"],
+)
+
 # TODO: most of them can be Bazel modules, but we need a release strategy for them
 third_party = use_extension("//third_party/extensions:third_party.bzl", "third_party_ext")
 use_repo(
     third_party,
     "FXdiv",
-    "XNNPACK",
     "cpuinfo",
     "cudnn_frontend_archive",
     "ducc",
