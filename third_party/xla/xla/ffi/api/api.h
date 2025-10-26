@@ -1895,6 +1895,47 @@ XLA_FFI_REGISTER_SCALAR_ATTR_DECODING(std::complex<double>,
 
 #undef XLA_FFI_REGISTER_SCALAR_ATTR_DECODING
 
+// Decoding for an attribute of `std::variant<T0, T1, Ts...>` type.
+//
+// Returns the decoding result for a first type that matches the attribute type,
+// if no type matches, returns std::nullopt.
+template <typename T0, typename T1, typename... Ts>
+struct AttrDecoding<std::variant<T0, T1, Ts...>> {
+  using Type = std::variant<T0, T1, Ts...>;
+
+  XLA_FFI_ATTRIBUTE_ALWAYS_INLINE static bool Isa(XLA_FFI_AttrType type,
+                                                  void* attr) {
+    return AttrDecoding<T0>::Isa(type, attr) ||
+           AttrDecoding<T1>::Isa(type, attr) ||
+           (AttrDecoding<Ts>::Isa(type, attr) || ...);
+  };
+
+  XLA_FFI_ATTRIBUTE_ALWAYS_INLINE static std::optional<Type> Decode(
+      XLA_FFI_AttrType type, void* attr, DiagnosticEngine& diagnostic) {
+    return Decode<T0, T1, Ts...>(type, attr, diagnostic);
+  }
+
+ private:
+  template <typename U, typename... Us>
+  XLA_FFI_ATTRIBUTE_ALWAYS_INLINE static std::optional<Type> Decode(
+      XLA_FFI_AttrType type, void* attr, DiagnosticEngine& diagnostic) {
+    if (AttrDecoding<U>::Isa(type, attr)) {
+      if (auto decoded = AttrDecoding<U>::Decode(type, attr, diagnostic);
+          XLA_FFI_PREDICT_TRUE(decoded)) {
+        return std::move(*decoded);
+      }
+      return std::nullopt;
+    }
+
+    if constexpr (sizeof...(Us) > 0) {
+      return Decode<Us...>(type, attr, diagnostic);
+    }
+
+    return diagnostic.Emit(
+        "Wrong attribute type: it doesn't match any of the variant types");
+  }
+};
+
 //===----------------------------------------------------------------------===//
 // Automatic dictionary attributes to structs decoding.
 //===----------------------------------------------------------------------===//
