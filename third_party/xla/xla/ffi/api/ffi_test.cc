@@ -465,13 +465,39 @@ TEST(FfiTest, RunId) {
   TF_ASSERT_OK(status);
 }
 
+TEST(FfiTest, RunIdViaContext) {
+  CallFrameBuilder builder(/*num_args=*/0, /*num_rets=*/0);
+  auto call_frame = builder.Build();
+
+  auto handler = Ffi::Bind().Ctx().To([&](Context ctx) {
+    ErrorOr<RunId> run_id = ctx.get<RunId>();
+    EXPECT_TRUE(run_id.has_value());
+    EXPECT_EQ(run_id->run_id, 42);
+    return Error::Success();
+  });
+
+  CallOptions options;
+  options.run_id = xla::RunId{42};
+
+  auto status = Call(*handler, call_frame, options);
+
+  TF_ASSERT_OK(status);
+}
+
 TEST(FfiTest, DeviceOrdinal) {
   CallFrameBuilder builder(/*num_args=*/0, /*num_rets=*/0);
   auto call_frame = builder.Build();
 
-  auto handler =
-      Ffi::Bind().Ctx<DeviceOrdinal>().To([&](int32_t device_ordinal) {
+  auto handler = Ffi::Bind().Ctx<DeviceOrdinal>().Ctx().To(
+      [&](int32_t device_ordinal, Context ctx) {
+        // Get device ordinal from the argument.
         EXPECT_EQ(device_ordinal, 42);
+
+        // Get device ordinal from the context.
+        ErrorOr<int32_t> device_ordinal_or_error = ctx.get<DeviceOrdinal>();
+        EXPECT_TRUE(device_ordinal_or_error.has_value());
+        EXPECT_EQ(*device_ordinal_or_error, 42);
+
         return Error::Success();
       });
 

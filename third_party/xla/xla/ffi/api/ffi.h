@@ -1082,8 +1082,8 @@ class Dictionary : public internal::DictionaryBase {
   template <typename T>
   ErrorOr<T> get(std::string_view name) const {
     DiagnosticEngine diagnostic;
-    std::optional<T> value = internal::DictionaryBase::get<T>(name, diagnostic);
-    if (!value.has_value()) {
+    auto value = internal::DictionaryBase::get<T>(name, diagnostic);
+    if (XLA_FFI_PREDICT_FALSE(!value.has_value())) {
       return Unexpected(Error::Internal(diagnostic.Result()));
     }
     return *value;
@@ -1111,6 +1111,38 @@ struct AttrDecoding<Dictionary> {
              << XLA_FFI_AttrType_DICTIONARY << " but got " << type;
     }
     return Dictionary(reinterpret_cast<XLA_FFI_Attrs*>(attr));
+  }
+};
+
+//===----------------------------------------------------------------------===//
+// Type-safe wrapper for accessing context.
+//===----------------------------------------------------------------------===//
+
+class Context : public internal::ContextBase {
+ public:
+  using internal::ContextBase::ContextBase;
+
+  template <typename T>
+  ErrorOr<typename CtxDecoding<T>::Type> get() const {
+    DiagnosticEngine diagnostic;
+    auto value = internal::ContextBase::get<T>(diagnostic);
+    if (XLA_FFI_PREDICT_FALSE(!value.has_value())) {
+      return Unexpected(Error::Internal(diagnostic.Result()));
+    }
+    return *value;
+  }
+};
+
+// Context decoding for catch-all `Context` type.
+template <>
+struct CtxDecoding<Context> {
+  using Type = Context;
+
+  XLA_FFI_ATTRIBUTE_ALWAYS_INLINE
+  static std::optional<Context> Decode(const XLA_FFI_Api* api,
+                                       XLA_FFI_ExecutionContext* ctx,
+                                       DiagnosticEngine&) {
+    return Context(api, ctx);
   }
 };
 
