@@ -34,6 +34,7 @@ limitations under the License.
 #include "slinky/base/ref_count.h"
 #include "slinky/base/thread_pool.h"
 #include "xla/backends/cpu/runtime/work_queue.h"
+#include "tsl/profiler/lib/traceme.h"
 
 #define EIGEN_USE_THREADS
 #include "Eigen/ThreadPool"
@@ -66,10 +67,14 @@ class Task final : public SlinkyThreadPool::task {
   // Runs this task by processing work items in the current thread.
   TaskState Run();
 
+  // Returns true if the work queue is empty. It doesn't mean that the task is
+  // complete, as some threads might still be working on this task.
+  bool IsEmptyWorkQueue() const;
+
   // Returns the number of workers that are currently working on this task.
   int64_t num_workers() const;
 
-  bool is_empty_work_queue() const;
+  // Returns true if the task is done.
   bool done() const final;
 
  private:
@@ -100,13 +105,13 @@ TaskState Task::Run() {
   Worker w(worker_index, &work_queue_);
   size_t num_processed_work_items = 0;
 
-  if (std::optional<size_t> item = w.Pop()) {
+  if (std::optional<size_t> item = w.Pop(/*notify_work_stealing=*/false)) {
     SlinkyThreadPool::task_body body = body_;
 
     do {
       body(*item);
       ++num_processed_work_items;
-    } while ((item = w.Pop()).has_value());
+    } while ((item = w.Pop(/*notify_work_stealing=*/false)).has_value());
   }
 
   // The number of pending work items should never go below zero.
@@ -128,7 +133,7 @@ int64_t Task::num_workers() const {
   return worker_index_.load(std::memory_order_relaxed);
 }
 
-bool Task::is_empty_work_queue() const { return work_queue_.IsEmpty(); }
+bool Task::IsEmptyWorkQueue() const { return work_queue_.IsEmpty(); }
 
 bool Task::done() const {
   return pending_work_items_.load(std::memory_order_acquire) == 0;
@@ -231,7 +236,7 @@ slinky::ref_count<Task> SlinkyThreadPool::Impl::Dequeue() {
     slinky::ref_count<Task>& task = *i;
 
     // Task doesn't have any more work items to process.
-    if (ABSL_PREDICT_FALSE(task->is_empty_work_queue())) {
+    if (ABSL_PREDICT_FALSE(task->IsEmptyWorkQueue())) {
       i = tasks_.erase(i);
       continue;
     }
@@ -278,6 +283,7 @@ void SlinkyThreadPool::Impl::WorkOnTasks(const absl::Condition& condition) {
 
 void SlinkyThreadPool::Impl::Await(const absl::Condition& condition) {
   if (ABSL_PREDICT_FALSE(!condition.Eval())) {
+    tsl::profiler::TraceMe trace("SlinkyThreadPool::Await");
     absl::MutexLock lock(waiter_mutex_);
     waiter_mutex_.Await(condition);
   }
@@ -303,7 +309,7 @@ void SlinkyThreadPool::Impl::ScheduleWorkers(int64_t num_workers,
   if (ABSL_PREDICT_TRUE(num_workers > 0 && CanScheduleWorkers())) {
     slinky::ref_count<ScheduleState> state(
         new ScheduleState(num_workers - 1, std::move(task), {this}));
-    threadpool_->Schedule([state = state.take()]() {
+    threadpool_->Schedule([state = state.take()] {
       ScheduleWorkers</*release_impl_ref=*/false>(state);
     });
   }
@@ -321,8 +327,7 @@ void SlinkyThreadPool::Impl::ScheduleWorkers(ScheduleState* context) {
 
   for (size_t i = 0; i < kNumRecursiveWorkers; ++i) {
     bool schedule_worker =
-        state->impl->CanScheduleWorkers() &&
-        !state->task->is_empty_work_queue() &&
+        state->impl->CanScheduleWorkers() && !state->task->IsEmptyWorkQueue() &&
         state->remaining_workers.fetch_sub(1, std::memory_order_relaxed) > 0;
 
     if (ABSL_PREDICT_TRUE(!schedule_worker)) {
@@ -333,7 +338,7 @@ void SlinkyThreadPool::Impl::ScheduleWorkers(ScheduleState* context) {
     // reference count to track the number of active workers.
     state->impl->add_ref();
     state->impl->threadpool_->Schedule(
-        [state = slinky::ref_count<ScheduleState>(state).take()]() {
+        [state = slinky::ref_count<ScheduleState>(state).take()] {
           SlinkyThreadPool::Impl::ScheduleWorkers</*release_impl_ref=*/true>(
               state);
         });
