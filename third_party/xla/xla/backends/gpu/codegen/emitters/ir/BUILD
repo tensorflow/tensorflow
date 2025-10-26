@@ -113,6 +113,7 @@ cc_library(
         ":xla_gpu_types_inc_gen",
         "//xla/codegen/emitters/ir:xla",
         "//xla/hlo/analysis:indexing_analysis",
+        "//xla/service/gpu/model/experimental:symbolic_expr",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:BytecodeOpInterface",

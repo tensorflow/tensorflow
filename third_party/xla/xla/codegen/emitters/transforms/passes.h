@@ -21,6 +21,12 @@ limitations under the License.
 
 #include "mlir/Pass/Pass.h"
 
+namespace xla {
+namespace gpu {
+class SymbolicExprContext;
+}  // namespace gpu
+}  // namespace xla
+
 namespace stream_executor {
 class DeviceDescription;
 }  // namespace stream_executor

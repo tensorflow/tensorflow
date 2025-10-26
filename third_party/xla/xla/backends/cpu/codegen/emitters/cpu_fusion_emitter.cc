@@ -168,7 +168,8 @@ IndexingMap GetDefaultIndexingMap(
       mlir::AffineMap::get(/*num_dims=*/1, /*num_symbols=*/1, result,
                            symbolic_expr_context->GetMLIRContext());
   return IndexingMap(
-      affine_map, {IndexingMap::Variable({0, num_threads - 1, "thread_id"})},
+      affine_map, symbolic_expr_context,
+      {IndexingMap::Variable({0, num_threads - 1, "thread_id"})},
       {IndexingMap::Variable({0, num_tile_elements - 1, "linear_index"})}, {},
       constraints);
 }

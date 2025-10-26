@@ -250,8 +250,12 @@ std::optional<Value> GetVectorBaseIndices(Value index, scf::ForOp loop,
 
   auto operands = llvm::to_vector(apply_indexing.getOperands());
   operands[induction_var_operand_index] = b.create<arith::ConstantIndexOp>(0);
+  // TODO(karupayun): Check that this is ok and not being deallocated.
+  gpu::SymbolicExprContext symbolic_expr_context(b.getContext());
 
-  return b.create<ApplyIndexingOp>(operands, apply_indexing.getIndexingMap())
+  return b
+      .create<ApplyIndexingOp>(
+          operands, apply_indexing.getIndexingMap(&symbolic_expr_context))
       ->getResult(0);
 }
 

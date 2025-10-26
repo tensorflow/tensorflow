@@ -55,7 +55,7 @@ def XLA_IndexingMapAttr : XLA_Attr<"IndexingMap"> {
   let genVerifyDecl = 1;
   let extraClassDeclaration = [{
     // Returns the indexing map constructed from IndexingMapAttr.
-    xla::IndexingMap getIndexingMap() const;
+    xla::IndexingMap getIndexingMap(gpu::SymbolicExprContext* symbolic_expr_context) const;
 
     // Returns the number of indexing map results.
     int64_t getNumResults() const;

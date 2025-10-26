@@ -49,11 +49,13 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/Support/LLVM.h"
 #include "xla/hlo/analysis/interval.h"
+#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "tsl/platform/logging.h"  // IWYU pragma: keep
 
 namespace xla {
 namespace {
 
+using gpu::SymbolicExprContext;
 using llvm::ArrayRef;
 using llvm::SmallBitVector;
 using llvm::SmallVector;
@@ -903,14 +905,19 @@ std::vector<IndexingMap::Variable> RangeVarsFromTensorSizes(
 }
 
 IndexingMap::IndexingMap(
-    AffineMap affine_map, std::vector<IndexingMap::Variable> dimensions,
+    AffineMap affine_map, SymbolicExprContext* symbolic_expr_context,
+    std::vector<IndexingMap::Variable> dimensions,
     std::vector<IndexingMap::Variable> range_vars,
     std::vector<IndexingMap::Variable> rt_vars,
     absl::Span<std::pair<AffineExpr, Interval> const> constraints)
     : affine_map_(affine_map),
+      symbolic_expr_context_(symbolic_expr_context),
       dim_vars_(std::move(dimensions)),
       range_vars_(std::move(range_vars)),
       rt_vars_(std::move(rt_vars)) {
+  if (symbolic_expr_context) {
+    CHECK_EQ(affine_map.getContext(), symbolic_expr_context->GetMLIRContext());
+  }
   if (!VerifyVariableIntervals()) {
     ResetToKnownEmpty();
     return;
@@ -921,15 +928,20 @@ IndexingMap::IndexingMap(
 }
 
 IndexingMap::IndexingMap(
-    AffineMap affine_map, std::vector<IndexingMap::Variable> dimensions,
+    AffineMap affine_map, SymbolicExprContext* symbolic_expr_context,
+    std::vector<IndexingMap::Variable> dimensions,
     std::vector<IndexingMap::Variable> range_vars,
     std::vector<IndexingMap::Variable> rt_vars,
     const llvm::MapVector<AffineExpr, Interval>& constraints)
     : affine_map_(affine_map),
+      symbolic_expr_context_(symbolic_expr_context),
       dim_vars_(std::move(dimensions)),
       range_vars_(std::move(range_vars)),
       rt_vars_(std::move(rt_vars)),
       constraints_(constraints) {
+  if (symbolic_expr_context) {
+    CHECK_EQ(affine_map.getContext(), symbolic_expr_context->GetMLIRContext());
+  }
   if (!VerifyVariableIntervals() || !VerifyConstraintIntervals()) {
     ResetToKnownEmpty();
     return;
@@ -937,15 +949,16 @@ IndexingMap::IndexingMap(
 }
 
 IndexingMap IndexingMap::FromTensorSizes(
-    AffineMap affine_map, absl::Span<const int64_t> dim_upper_bounds,
+    AffineMap affine_map, SymbolicExprContext* symbolic_expr_context,
+    absl::Span<const int64_t> dim_upper_bounds,
     absl::Span<const int64_t> symbol_upper_bounds) {
-  return IndexingMap{affine_map, DimVarsFromTensorSizes(dim_upper_bounds),
+  if (symbolic_expr_context) {
+    CHECK_EQ(affine_map.getContext(), symbolic_expr_context->GetMLIRContext());
+  }
+  return IndexingMap{affine_map, symbolic_expr_context,
+                     DimVarsFromTensorSizes(dim_upper_bounds),
                      RangeVarsFromTensorSizes(symbol_upper_bounds),
                      /*rt_vars=*/{}};
-}
-
-RangeEvaluator IndexingMap::GetRangeEvaluator() const {
-  return RangeEvaluator(*this, GetMLIRContext());
 }
 
 const Interval& IndexingMap::GetDimensionBound(int64_t dim_id) const {
@@ -1093,8 +1106,9 @@ void IndexingMap::RenameDimVar(int64_t id, absl::string_view new_name) {
 }
 
 RangeEvaluator::RangeEvaluator(const IndexingMap& indexing_map,
-                               MLIRContext* mlir_context, bool use_constraints)
-    : mlir_context_(mlir_context),
+                               gpu::SymbolicExprContext* symbolic_expr_context,
+                               bool use_constraints)
+    : symbolic_expr_context_(symbolic_expr_context),
       indexing_map_(indexing_map),
       use_constraints_(use_constraints) {}
 
@@ -1165,10 +1179,6 @@ Interval RangeEvaluator::ComputeExpressionRange(AffineExpr expr) {
     }
   }
   return result;
-}
-
-MLIRContext* IndexingMap::GetMLIRContext() const {
-  return IsUndefined() ? nullptr : affine_map_.getContext();
 }
 
 namespace {
@@ -1246,7 +1256,7 @@ bool IndexingMap::Simplify(SimplifyPointDimensions simplify_point_dimensions) {
 
   // Simplify affine_map using the optimized ranges.
   // Potentially, we can be smarter about recreating the range_evaluator.
-  RangeEvaluator constraint_range_evaluator(*this, GetMLIRContext(),
+  RangeEvaluator constraint_range_evaluator(*this, symbolic_expr_context_,
                                             /*use_constraints=*/false);
   AffineExprSimplifier constraint_simplifier(&constraint_range_evaluator);
   while (true) {
@@ -1260,7 +1270,7 @@ bool IndexingMap::Simplify(SimplifyPointDimensions simplify_point_dimensions) {
   }
   // Simplify dependent constraints.
   constraints_were_simplified |= MergeModConstraints();
-  RangeEvaluator range_evaluator(*this, GetMLIRContext(),
+  RangeEvaluator range_evaluator(*this, symbolic_expr_context_,
                                  /*use_constraints=*/true);
   AffineMap simplified_affine_map =
       AffineExprSimplifier(&range_evaluator, simplify_point_dimensions)
@@ -1621,7 +1631,7 @@ SmallBitVector IndexingMap::RemoveUnusedVars() {
 }
 
 bool IndexingMap::MergeModConstraints() {
-  RangeEvaluator range_evaluator(*this, GetMLIRContext(),
+  RangeEvaluator range_evaluator(*this, symbolic_expr_context_,
                                  /*use_constraints=*/false);
   bool did_simplify = false;
 
@@ -1732,9 +1742,9 @@ IndexingMap ComposeIndexingMaps(const IndexingMap& first,
         /*dimReplacements=*/{}, symbol_replacements, composed_map.getNumDims(),
         composed_map.getNumSymbols());
   }
-  IndexingMap composed_indexing_map(composed_map, first.GetDimVars(),
-                                    std::move(combined_range_vars),
-                                    std::move(combined_rt_vars));
+  IndexingMap composed_indexing_map(
+      composed_map, first.GetSymbolicExprContext(), first.GetDimVars(),
+      std::move(combined_range_vars), std::move(combined_rt_vars));
 
   // Add constraints that are already present in the producer_map. We have to
   // compute consumer_map(producer_constraints). To keep all symbols and
@@ -1890,7 +1900,8 @@ IndexingMap IndexingMap::ConvertSymbolsToDimensions() const {
 
   AffineMap canonical_map =
       affine_map_.replaceDimsAndSymbols({}, syms_replacements, num_vars, 0);
-  IndexingMap new_indexing_map(canonical_map, new_dim_vars, /*range_vars=*/{},
+  IndexingMap new_indexing_map(canonical_map, symbolic_expr_context_,
+                               new_dim_vars, /*range_vars=*/{},
                                /*rt_vars=*/{}, new_constraints);
   return new_indexing_map;
 }
@@ -1942,8 +1953,9 @@ IndexingMap ConvertRangeVariablesToDimensions(
     constraints.push_back({constraint.first.replaceSymbols(symbol_replacements),
                            constraint.second});
   }
-  return IndexingMap{converted_affine_map, std::move(dims),
-                     std::move(range_vars), map.GetRTVars(), constraints};
+  return IndexingMap{converted_affine_map, map.GetSymbolicExprContext(),
+                     std::move(dims),      std::move(range_vars),
+                     map.GetRTVars(),      constraints};
 }
 
 }  // namespace xla

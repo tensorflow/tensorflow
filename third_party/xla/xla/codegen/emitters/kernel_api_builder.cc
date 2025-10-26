@@ -305,7 +305,8 @@ IndexingMap GetDefaultWorkItemIndexingMap(
       mlir::AffineMap::get(/*dimCount=*/6,
                            /*symbolCount=*/range_vars_size, output_dims,
                            symbolic_expr_context->GetMLIRContext()),
-      std::move(dim_vars), std::move(range_vars), /*rt_vars=*/{});
+      symbolic_expr_context, std::move(dim_vars), std::move(range_vars),
+      /*rt_vars=*/{});
   indexing_map.AddConstraint(linear_index, Interval{0, num_elements - 1});
   indexing_map.Simplify();
   indexing_map.RemoveUnusedSymbols();

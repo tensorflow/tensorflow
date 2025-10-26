@@ -164,6 +164,7 @@ cc_library(
         ":passes_inc_gen",
         "//xla/codegen/emitters/ir:xla",
         "//xla/hlo/analysis:indexing_analysis",
+        "//xla/service/gpu/model/experimental:symbolic_expr",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/log:check",

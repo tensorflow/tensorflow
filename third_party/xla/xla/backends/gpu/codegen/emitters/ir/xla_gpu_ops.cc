@@ -47,6 +47,7 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/emitters/ir/xla_gpu_dialect.cc.inc"
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/analysis/indexing_map_serialization.h"
+#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 
 namespace xla {
 namespace gpu {
@@ -86,12 +87,14 @@ void AllocateSharedOp::getAsmResultNames(
 //===----------------------------------------------------------------------===//
 
 LogicalResult InsertOp::verify() {
-  if (!getMap().getIndexingMap().GetRangeVars().empty()) {
+  SymbolicExprContext symbolic_expr_context(getContext());
+  if (!getMap().getIndexingMap(&symbolic_expr_context).GetRangeVars().empty()) {
     return emitOpError() << "insert_op map must not have any symbols";
   }
   int64_t vector_map_num_results =
       getSource().getType().getIndexingMapAttr().getNumResults();
-  if (vector_map_num_results != getMap().getIndexingMap().GetDimVars().size()) {
+  if (vector_map_num_results !=
+      getMap().getIndexingMap(&symbolic_expr_context).GetDimVars().size()) {
     return emitOpError() << "source map result count must equal insert_op's "
                             "map's dimension count";
   }
