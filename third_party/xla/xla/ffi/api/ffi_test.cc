@@ -23,14 +23,17 @@ limitations under the License.
 #include <string>
 #include <type_traits>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/functional/overload.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/strings/match.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/blocking_counter.h"
 #include "xla/executable_run_options.h"
@@ -47,7 +50,6 @@ limitations under the License.
 #include "xla/tsl/concurrency/chain.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/env.h"
-#include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/platform/test_benchmark.h"
 #include "xla/tsl/platform/threadpool.h"
@@ -116,7 +118,6 @@ XLA_FFI_REGISTER_STRUCT_ATTR_DECODING(
 namespace xla::ffi {
 
 using ::testing::HasSubstr;
-using ::tsl::testing::StatusIs;
 
 TEST(FfiTest, DataTypeEnumValue) {
   // Verify that xla::PrimitiveType and xla::ffi::DataType use the same
@@ -464,13 +465,39 @@ TEST(FfiTest, RunId) {
   TF_ASSERT_OK(status);
 }
 
+TEST(FfiTest, RunIdViaContext) {
+  CallFrameBuilder builder(/*num_args=*/0, /*num_rets=*/0);
+  auto call_frame = builder.Build();
+
+  auto handler = Ffi::Bind().Ctx().To([&](Context ctx) {
+    ErrorOr<RunId> run_id = ctx.get<RunId>();
+    EXPECT_TRUE(run_id.has_value());
+    EXPECT_EQ(run_id->run_id, 42);
+    return Error::Success();
+  });
+
+  CallOptions options;
+  options.run_id = xla::RunId{42};
+
+  auto status = Call(*handler, call_frame, options);
+
+  TF_ASSERT_OK(status);
+}
+
 TEST(FfiTest, DeviceOrdinal) {
   CallFrameBuilder builder(/*num_args=*/0, /*num_rets=*/0);
   auto call_frame = builder.Build();
 
-  auto handler =
-      Ffi::Bind().Ctx<DeviceOrdinal>().To([&](int32_t device_ordinal) {
+  auto handler = Ffi::Bind().Ctx<DeviceOrdinal>().Ctx().To(
+      [&](int32_t device_ordinal, Context ctx) {
+        // Get device ordinal from the argument.
         EXPECT_EQ(device_ordinal, 42);
+
+        // Get device ordinal from the context.
+        ErrorOr<int32_t> device_ordinal_or_error = ctx.get<DeviceOrdinal>();
+        EXPECT_TRUE(device_ordinal_or_error.has_value());
+        EXPECT_EQ(*device_ordinal_or_error, 42);
+
         return Error::Success();
       });
 
@@ -883,6 +910,44 @@ TEST(FfiTest, AutoBindingDictionary) {
   CallFrameBuilder::AttributesBuilder attrs;
   attrs.Insert("i32", 42);
   attrs.Insert("f32", 42.0f);
+
+  CallFrameBuilder builder(/*num_args=*/0, /*num_rets=*/0);
+  builder.AddAttributes(attrs.Build());
+  auto call_frame = builder.Build();
+
+  auto status = Call(*handler, call_frame);
+  TF_ASSERT_OK(status);
+}
+
+TEST(FfiTest, VariantAttrDecoding) {
+  using Integral = std::variant<int8_t, int16_t, int32_t, int64_t>;
+
+  auto to_string = absl::Overload{
+      [](int8_t i) { return absl::StrCat("i8: ", i); },
+      [](int16_t i) { return absl::StrCat("i16: ", i); },
+      [](int32_t i) { return absl::StrCat("i32: ", i); },
+      [](int64_t i) { return absl::StrCat("i64: ", i); },
+  };
+
+  auto handler = Ffi::BindTo([&](Dictionary attrs) {
+    EXPECT_TRUE(attrs.contains<Integral>("i32"));
+    EXPECT_TRUE(attrs.contains<Integral>("i64"));
+
+    Integral i32 = *attrs.get<Integral>("i32");
+    EXPECT_EQ(i32.index(), 2);
+
+    Integral i64 = *attrs.get<Integral>("i64");
+    EXPECT_EQ(i64.index(), 3);
+
+    EXPECT_EQ(std::visit(to_string, i32), "i32: 42");
+    EXPECT_EQ(std::visit(to_string, i64), "i64: 42");
+
+    return Error::Success();
+  });
+
+  CallFrameBuilder::AttributesBuilder attrs;
+  attrs.Insert("i32", int32_t{42});
+  attrs.Insert("i64", int64_t{42});
 
   CallFrameBuilder builder(/*num_args=*/0, /*num_rets=*/0);
   builder.AddAttributes(attrs.Build());
@@ -1750,5 +1815,34 @@ static void BM_EnumAttrsFunctionWrapper(benchmark::State& state) {
 BENCHMARK(BM_EnumAttrs);
 BENCHMARK(BM_EnumAttrsFunction);
 BENCHMARK(BM_EnumAttrsFunctionWrapper);
+
+//===----------------------------------------------------------------------===//
+// BM_VariantAttr
+//===----------------------------------------------------------------------===//
+
+void BM_VariantAttr(benchmark::State& state) {
+  using Integral = std::variant<int8_t, int16_t, int32_t, int64_t>;
+
+  CallFrameBuilder::AttributesBuilder attrs;
+  attrs.Insert("i32", int32_t{0});
+  attrs.Insert("i64", int64_t{0});
+
+  CallFrameBuilder builder(/*num_args=*/0, /*num_rets=*/0);
+  builder.AddAttributes(attrs.Build());
+  auto call_frame = builder.Build();
+
+  auto handler = Ffi::Bind().Attr<Integral>("i32").Attr<Integral>("i64").To(
+      [](Integral i32, Integral i64) {
+        benchmark::DoNotOptimize(i32);
+        benchmark::DoNotOptimize(i64);
+        return Error::Success();
+      });
+
+  for (auto _ : state) {
+    CHECK_OK(Call(*handler, call_frame));
+  }
+}
+
+BENCHMARK(BM_VariantAttr);
 
 }  // namespace xla::ffi

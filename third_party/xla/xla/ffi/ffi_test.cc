@@ -213,10 +213,13 @@ TEST(FfiTest, RunId) {
   CallFrameBuilder builder(/*num_args=*/0, /*num_rets=*/0);
   auto call_frame = builder.Build();
 
-  auto handler = Ffi::Bind().Ctx<RunId>().To([&](RunId run_id) {
-    EXPECT_EQ(run_id.ToInt(), 42);
-    return absl::OkStatus();
-  });
+  auto handler = Ffi::Bind().Ctx<RunId>().Ctx().To(
+      [&](RunId run_id, Context context) -> absl::Status {
+        EXPECT_EQ(run_id.ToInt(), 42);
+        TF_ASSIGN_OR_RETURN(RunId run_id_from_context, context.get<RunId>());
+        EXPECT_EQ(run_id_from_context.ToInt(), 42);
+        return absl::OkStatus();
+      });
 
   CallOptions options;
   options.run_id = RunId{42};
