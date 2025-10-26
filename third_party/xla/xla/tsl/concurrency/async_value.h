@@ -88,7 +88,12 @@ class AsyncValue {
   // Return reference count. This should be used for testing and debugging only.
   uint32_t NumRef() const { return refcount_.load(std::memory_order_acquire); }
 
-  // Return true if reference count is 1.
+  // Return true if this async value is a unique reference to the underlying
+  // payload. For concrete async values, this is equivalent to `NumRef() == 1`.
+  // For indirect async values it means that the whole chain of indirect async
+  // values has a reference count of 1. For unavailable indirect async values we
+  // conservatively return false as we don't know to what async value it will be
+  // forwarded.
   bool IsUnique() const;
 
   // Add a new reference to this object.
@@ -806,10 +811,9 @@ class IndirectAsyncValue : public AsyncValue {
 
   bool IsUnique() const {
     // In addition to checking the refcount of this IndirectAsyncValue, we also
-    // need to check the refcount of the underlying value. If the underlying
-    // value is not available, we conservatively return false.
-    return (refcount_.load(std::memory_order_acquire) == 1) && IsAvailable() &&
-           value_->IsUnique();
+    // need to check the refcount of the underlying value. If indirect async
+    // value value is not forwarded, we conservatively return false.
+    return (NumRef() == 1) && value_ && value_->IsUnique();
   }
 
  protected:
@@ -1152,7 +1156,7 @@ inline void AsyncValue::Destroy() {
 
 inline bool AsyncValue::IsUnique() const {
   if (kind() != Kind::kIndirect) {
-    return refcount_.load(std::memory_order_acquire) == 1;
+    return NumRef() == 1;
   }
 
   // If it is an IndirectAsyncValue, we also need to check the refcount of the
