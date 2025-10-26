@@ -192,6 +192,49 @@ inline std::ostream& operator<<(std::ostream& os,
   }
 }
 
+//===----------------------------------------------------------------------===//
+// Builtin structs equality
+//===----------------------------------------------------------------------===//
+
+inline bool operator==(const XLA_FFI_TypeId& a, const XLA_FFI_TypeId& b) {
+  return a.type_id == b.type_id;
+}
+
+inline bool operator!=(const XLA_FFI_TypeId& a, const XLA_FFI_TypeId& b) {
+  return !(a == b);
+}
+
+inline bool operator==(const XLA_FFI_Api_Version& a,
+                       const XLA_FFI_Api_Version& b) {
+  return a.major_version == b.major_version &&
+         a.minor_version == b.minor_version;
+}
+
+inline bool operator!=(const XLA_FFI_Api_Version& a,
+                       const XLA_FFI_Api_Version& b) {
+  return !(a == b);
+}
+
+inline bool operator==(const XLA_FFI_Metadata& a, const XLA_FFI_Metadata& b) {
+  return a.api_version == b.api_version && a.traits == b.traits &&
+         a.state_type_id == b.state_type_id;
+}
+
+inline bool operator!=(const XLA_FFI_Metadata& a, const XLA_FFI_Metadata& b) {
+  return !(a == b);
+}
+
+inline bool operator==(const XLA_FFI_Handler_Bundle& a,
+                       const XLA_FFI_Handler_Bundle& b) {
+  return a.instantiate == b.instantiate && a.prepare == b.prepare &&
+         a.initialize == b.initialize && a.execute == b.execute;
+}
+
+inline bool operator!=(const XLA_FFI_Handler_Bundle& a,
+                       const XLA_FFI_Handler_Bundle& b) {
+  return !(a == b);
+}
+
 namespace xla::ffi {
 
 enum class ExecutionStage : uint8_t {
@@ -321,6 +364,9 @@ class Ffi {
   static XLA_FFI_Error* InvalidArgument(const XLA_FFI_Api* api,
                                         std::string message);
 
+  static XLA_FFI_Error* FailedPrecondition(const XLA_FFI_Api* api,
+                                           std::string message);
+
   static XLA_FFI_Error* CheckStructSize(const XLA_FFI_Api* api,
                                         std::string_view struct_name,
                                         size_t expected, size_t actual);
@@ -381,6 +427,12 @@ inline XLA_FFI_Error* Ffi::MakeError(const XLA_FFI_Api* api,
 inline XLA_FFI_Error* Ffi::InvalidArgument(const XLA_FFI_Api* api,
                                            std::string message) {
   return MakeError(api, XLA_FFI_Error_Code_INVALID_ARGUMENT,
+                   std::move(message));
+}
+
+inline XLA_FFI_Error* Ffi::FailedPrecondition(const XLA_FFI_Api* api,
+                                              std::string message) {
+  return MakeError(api, XLA_FFI_Error_Code_FAILED_PRECONDITION,
                    std::move(message));
 }
 
@@ -1211,6 +1263,7 @@ class RemainingArgsBase {
   template <typename T>
   bool isa(size_t index) const {
     size_t idx = offset() + index;
+    assert(idx < args_->size && "illegal remaining args index");
     return ArgDecoding<T>::Isa(args_->types[idx], args_->args[idx]);
   }
 
@@ -1244,6 +1297,7 @@ class RemainingRetsBase {
   template <typename T>
   bool isa(size_t index) const {
     size_t idx = offset_ + index;
+    assert(idx < rets_->size && "illegal remaining rets index");
     return RetDecoding<T>::Isa(rets_->types[idx], rets_->rets[idx]);
   }
 
@@ -1655,6 +1709,11 @@ class Handler : public Ffi {
     // type id in the metadata.
     using ResultEncoding = ResultEncoding<stage, ResultType>;
     if constexpr (internal::is_state_constructor_v<ResultEncoding>) {
+      if (ResultEncoding::state_type_id() == XLA_FFI_UNKNOWN_TYPE_ID) {
+        return FailedPrecondition(api,
+                                  "Types used by FFI handlers must be "
+                                  "registered before the handler registration");
+      }
       extension->metadata->state_type_id = ResultEncoding::state_type_id();
     } else {
       extension->metadata->state_type_id = XLA_FFI_UNKNOWN_TYPE_ID;
