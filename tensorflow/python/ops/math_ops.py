@@ -1104,53 +1104,47 @@ def saturate_cast(value, dtype, name=None):
     # in_dtype is real, but out_dtype could be complex.
     out_real_dtype = dtype.real_dtype
 
-    # TODO: b/288437118 - unconditionally apply `clip_by_value` to fix `inf`
-    #                     behavior.
-    if (
-        forward_compat.forward_compatible(2024, 11, 1)
-        or in_dtype.min < out_real_dtype.min
-        or in_dtype.max > out_real_dtype.max
-    ):
-      # The output min/max may not actually be representable in the
-      # in_dtype (e.g. casting float32 to uint32).  This can lead to undefined
-      # behavior when trying to cast a value outside the valid range of the
-      # target type. We work around this by nudging the min/max to fall within
-      # the valid output range.  The catch is that we may actually saturate
-      # to a value less than the true saturation limit, but this is the best we
-      # can do in order to avoid UB without introducing a separate SaturateCast
-      # op.
-      np_dtype = in_dtype.as_numpy_dtype
+    # Apply clip_by_value unconditionally to fix inf behavior (b/288437118)
+    # The output min/max may not actually be representable in the
+    # in_dtype (e.g. casting float32 to uint32).  This can lead to undefined
+    # behavior when trying to cast a value outside the valid range of the
+    # target type. We work around this by nudging the min/max to fall within
+    # the valid output range.  The catch is that we may actually saturate
+    # to a value less than the true saturation limit, but this is the best we
+    # can do in order to avoid UB without introducing a separate SaturateCast
+    # op.
+    np_dtype = in_dtype.as_numpy_dtype
 
-      # We promote types *before* comparison in order to not lose precision.
-      # The Try/Except block is mostly to work around bfloat16 types which are
-      # not numpy dtypes.
-      try:
-        promoted_type = np.promote_types(
-            np_dtype, out_real_dtype.as_numpy_dtype
-        )
-      except TypeError:
-        # On newer numpy versions this is DTypePromotionError.
-        # Fall back to just floats. This should be sufficient in most cases
-        # since we only expect to hit this error in cases of bloat16.
-        promoted_type = float
-
-      min_limit = np_dtype(np.maximum(in_dtype.min, out_real_dtype.min))
-      promoted = np.array([min_limit, out_real_dtype.min], dtype=promoted_type)
-      if promoted[0] < promoted[1]:
-        min_limit = np.nextafter(min_limit, np_dtype(0), dtype=np_dtype)
-
-      max_limit = np_dtype(np.minimum(float(in_dtype.max),
-                                      float(out_real_dtype.max)))
-      promoted = np.array([max_limit, out_real_dtype.max], dtype=promoted_type)
-      if promoted[0] > promoted[1]:
-        max_limit = np.nextafter(max_limit, np_dtype(0), dtype=np_dtype)
-
-      value = gen_math_ops._clip_by_value(
-          value,
-          ops.convert_to_tensor(min_limit, dtype=in_dtype),
-          ops.convert_to_tensor(max_limit, dtype=in_dtype),
-          name="clamp",
+    # We promote types *before* comparison in order to not lose precision.
+    # The Try/Except block is mostly to work around bfloat16 types which are
+    # not numpy dtypes.
+    try:
+      promoted_type = np.promote_types(
+          np_dtype, out_real_dtype.as_numpy_dtype
       )
+    except TypeError:
+      # On newer numpy versions this is DTypePromotionError.
+      # Fall back to just floats. This should be sufficient in most cases
+      # since we only expect to hit this error in cases of bloat16.
+      promoted_type = float
+
+    min_limit = np_dtype(np.maximum(in_dtype.min, out_real_dtype.min))
+    promoted = np.array([min_limit, out_real_dtype.min], dtype=promoted_type)
+    if promoted[0] < promoted[1]:
+      min_limit = np.nextafter(min_limit, np_dtype(0), dtype=np_dtype)
+
+    max_limit = np_dtype(np.minimum(float(in_dtype.max),
+                                    float(out_real_dtype.max)))
+    promoted = np.array([max_limit, out_real_dtype.max], dtype=promoted_type)
+    if promoted[0] > promoted[1]:
+      max_limit = np.nextafter(max_limit, np_dtype(0), dtype=np_dtype)
+
+    value = gen_math_ops._clip_by_value(
+        value,
+        ops.convert_to_tensor(min_limit, dtype=in_dtype),
+        ops.convert_to_tensor(max_limit, dtype=in_dtype),
+        name="clamp",
+    )
     return cast(value, dtype, name=name)
 
 

@@ -344,6 +344,18 @@ class SaturateCastTest(test.TestCase):
         y = math_ops.saturate_cast(x, dtype=out_type)
         self.assertAllEqual(math_ops.is_finite(y), [True, True, False, False])
 
+  def testSaturateInfClamping(self):
+    """Test that infinity values are properly clamped to target type range."""
+    for in_type in [dtypes.float32, dtypes.float64]:
+      for out_type in [dtypes.int32, dtypes.int16, dtypes.uint32]:
+        inf = float("inf")
+        neg_inf = float("-inf")
+        x = constant_op.constant([inf, neg_inf], dtype=in_type)
+        y = math_ops.saturate_cast(x, dtype=out_type)
+        y_val = self.evaluate(y)
+        self.assertEqual(y_val[0], out_type.max)  # +inf should become max
+        self.assertEqual(y_val[1], out_type.min)  # -inf should become min
+
 
 if __name__ == "__main__":
   test.main()
