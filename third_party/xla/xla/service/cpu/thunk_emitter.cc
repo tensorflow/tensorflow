@@ -1571,8 +1571,8 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitYnnFusionThunk(
   }
 
   return ThunkSequence::Of<YnnFusionThunk>(
-      YnnFusionThunk::Options{}, ThunkInfo(instruction), std::move(arguments),
-      std::move(results),
+      YnnFusionThunk::Options{}, ThunkInfo(instruction), instruction,
+      std::move(arguments), std::move(results),
       [b = std::move(builder)](auto, auto, auto arg_buffers) mutable {
         return b(arg_buffers);
       },

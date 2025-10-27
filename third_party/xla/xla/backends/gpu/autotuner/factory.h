@@ -36,6 +36,13 @@ struct GetCodegenBackends {
       SymbolicExprContext* symbolic_expr_context)>;
 };
 
+struct GetFissionBackends {
+  using Type = std::function<std::vector<std::unique_ptr<CodegenBackend>>(
+      stream_executor::StreamExecutor*, const DebugOptions*, Compiler*,
+      const Compiler::TargetConfig*,
+      SymbolicExprContext* symbolic_expr_context)>;
+};
+
 }  // namespace gpu
 }  // namespace xla
 

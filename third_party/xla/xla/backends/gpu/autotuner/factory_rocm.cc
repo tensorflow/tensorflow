@@ -45,10 +45,22 @@ std::vector<std::unique_ptr<CodegenBackend>> GetCodegenBackendsForROCm(
   return backends;
 }
 
+std::vector<std::unique_ptr<CodegenBackend>> GetFissionBackendsForROCm(
+    stream_executor::StreamExecutor* stream_executor,
+    const DebugOptions* debug_options, Compiler* compiler,
+    const Compiler::TargetConfig* target_config,
+    SymbolicExprContext* symbolic_expr_context) {
+  return {};
+}
+
 STREAM_EXECUTOR_REGISTER_OBJECT_STATICALLY(GetCodegenBackendsROCmRegistration,
                                            GetCodegenBackends,
                                            se::rocm::kROCmPlatformId,
                                            GetCodegenBackendsForROCm);
+STREAM_EXECUTOR_REGISTER_OBJECT_STATICALLY(GetFissionBackendsROCmRegistration,
+                                           GetFissionBackends,
+                                           se::rocm::kROCmPlatformId,
+                                           GetFissionBackendsForROCm);
 
 }  // namespace gpu
 }  // namespace xla
