@@ -142,6 +142,7 @@ cc_library(
         "//tensorflow/core/tfrt/mlrt/interpreter:register_span",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/cleanup",
+        "@local_xla//xla/tsl/platform:errors",
     ],
 )
 
