@@ -102,6 +102,21 @@ TEST_F(SymbolicMapConverterTest, SymbolicToAffineNestedFailure) {
   EXPECT_FALSE(affine_map);
 }
 
+TEST_F(SymbolicMapConverterTest, AffineExprsToSymbolicExprs) {
+  mlir::AffineExpr d0 = mlir::getAffineDimExpr(0, &mlir_context_);
+  mlir::AffineExpr d1 = mlir::getAffineDimExpr(1, &mlir_context_);
+  mlir::AffineExpr s0 = mlir::getAffineSymbolExpr(0, &mlir_context_);
+  mlir::AffineExpr c1 = mlir::getAffineConstantExpr(1, &mlir_context_);
+  llvm::SmallVector<mlir::AffineExpr> affine_exprs = {d0, d1, s0, c1};
+  llvm::SmallVector<SymbolicExpr> symbolic_exprs = AffineExprsToSymbolicExprs(
+      affine_exprs, &symbolic_expr_context_, /*num_dims=*/2);
+  EXPECT_EQ(symbolic_exprs.size(), 4);
+  EXPECT_EQ(symbolic_exprs[0], symbolic_expr_context_.CreateVariable(0));
+  EXPECT_EQ(symbolic_exprs[1], symbolic_expr_context_.CreateVariable(1));
+  EXPECT_EQ(symbolic_exprs[2], symbolic_expr_context_.CreateVariable(2));
+  EXPECT_EQ(symbolic_exprs[3], symbolic_expr_context_.CreateConstant(1));
+}
+
 TEST_F(SymbolicMapConverterTest,
        ConvertAffineConstraintsToSymbolicConstraints) {
   mlir::AffineExpr d0 = mlir::getAffineDimExpr(0, &mlir_context_);
@@ -153,8 +168,8 @@ TEST_F(SymbolicMapConverterTest, ConvertAffineToSymbolicExpr) {
   SymbolicExpr expected_symbolic_expr =
       ((exp_d0 * exp_c2 + exp_s0 - exp_c1) / exp_c2) % exp_c3 + exp_d1;
 
-  EXPECT_EQ(AffineToSymbolicExpr(affine_expr, &symbolic_expr_context_,
-                                 /*num_dims=*/2),
+  EXPECT_EQ(AffineExprToSymbolicExpr(affine_expr, &symbolic_expr_context_,
+                                     /*num_dims=*/2),
             expected_symbolic_expr);
 }
 
