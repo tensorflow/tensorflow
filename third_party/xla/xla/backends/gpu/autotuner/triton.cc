@@ -59,39 +59,37 @@ namespace gpu {
 namespace {
 std::vector<TritonGemmConfig> GetDefaultTritonConfigs(
     se::GpuComputeCapability compute_capability, bool autotune_tma) {
-  if (compute_capability.IsCuda()) {
-    auto* cuda_compute_capability =
-        compute_capability.cuda_compute_capability();
-    std::vector<TritonGemmConfig> configs;
-
-    if (cuda_compute_capability->IsAtLeastBlackwell()) {
-      configs = *kBlackwellConfigs;
-    } else if (cuda_compute_capability->IsHopper() ||
-               cuda_compute_capability->IsAmpere()) {
-      configs = *kHopperAmpereConfigs;
-    } else {
-      configs = *kDefaultCudaConfigs;
-    }
-
-    if (!autotune_tma) {
-      return configs;
-    }
-
-    // Hopper+ devices support TMA. Add TMA parameterized configs.
-    std::vector<TritonGemmConfig> tma_parameterized_configs;
-    for (auto& config : configs) {
-      config.is_tma_allowed = false;
-      tma_parameterized_configs.push_back(config);
-
-      config.is_tma_allowed = true;
-      tma_parameterized_configs.push_back(config);
-    }
-    return tma_parameterized_configs;
-  }
   if (compute_capability.IsRocm()) {
     return *kDefaultRocmConfigs;
   }
-  return {};
+
+  CHECK(compute_capability.IsCuda());
+  auto* cuda_compute_capability = compute_capability.cuda_compute_capability();
+  std::vector<TritonGemmConfig> configs;
+
+  if (cuda_compute_capability->IsAtLeastBlackwell()) {
+    configs = *kBlackwellConfigs;
+  } else if (cuda_compute_capability->IsHopper() ||
+             cuda_compute_capability->IsAmpere()) {
+    configs = *kHopperAmpereConfigs;
+  } else {
+    configs = *kDefaultCudaConfigs;
+  }
+
+  if (!autotune_tma) {
+    return configs;
+  }
+
+  // Hopper+ devices support TMA. Add TMA parameterized configs.
+  std::vector<TritonGemmConfig> tma_parameterized_configs;
+  for (auto& config : configs) {
+    config.is_tma_allowed = false;
+    tma_parameterized_configs.push_back(config);
+
+    config.is_tma_allowed = true;
+    tma_parameterized_configs.push_back(config);
+  }
+  return tma_parameterized_configs;
 }
 
 }  // namespace

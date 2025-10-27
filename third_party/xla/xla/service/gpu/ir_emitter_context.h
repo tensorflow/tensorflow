@@ -100,14 +100,6 @@ class IrEmitterContext {
   const se::GpuComputeCapability& gpu_compute_capability() const {
     return gpu_device_info_.gpu_compute_capability();
   }
-  se::CudaComputeCapability cuda_compute_capability() const {
-    auto* cc = gpu_compute_capability().cuda_compute_capability();
-    return cc != nullptr ? *cc : se::CudaComputeCapability();
-  }
-  se::RocmComputeCapability rocm_compute_capability() const {
-    auto* cc = gpu_compute_capability().rocm_compute_capability();
-    return cc != nullptr ? *cc : se::RocmComputeCapability();
-  }
 
   // TODO: b/451959933 - Add nullability annotation to be explicit about this
   // pointer: go/totw/230. Alternatively, return by reference instead of pointer
