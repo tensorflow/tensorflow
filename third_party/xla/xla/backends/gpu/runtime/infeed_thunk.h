@@ -16,10 +16,14 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_RUNTIME_INFEED_THUNK_H_
 #define XLA_BACKENDS_GPU_RUNTIME_INFEED_THUNK_H_
 
+#include <memory>
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/service/buffer_assignment.h"
 
 namespace xla {
 namespace gpu {

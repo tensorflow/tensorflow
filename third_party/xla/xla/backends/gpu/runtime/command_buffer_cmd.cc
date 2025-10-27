@@ -63,6 +63,7 @@ limitations under the License.
 #include "xla/ffi/call_frame.h"
 #include "xla/ffi/ffi_api.h"
 #include "xla/hlo/evaluator/hlo_evaluator.h"
+#include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/runtime/buffer_use.h"
 #include "xla/runtime/execution_graph.h"

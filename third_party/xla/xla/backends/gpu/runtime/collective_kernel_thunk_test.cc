@@ -30,7 +30,6 @@ limitations under the License.
 #include "xla/array.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
-#include "xla/hlo/ir/collective_op_group_mode.h"
 #include "xla/runtime/device_id.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/collective_ops_utils.h"

@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <memory>
 #include <utility>
-#include <variant>
 #include <vector>
 
 #include "absl/log/check.h"
@@ -33,7 +32,6 @@ limitations under the License.
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/lazy_op_runner.h"
-#include "xla/stream_executor/rocm/rocm_compute_capability.h"
 #include "xla/stream_executor/scratch_allocator.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/platform/errors.h"

@@ -18,7 +18,6 @@ limitations under the License.
 #include <algorithm>
 #include <cstdint>
 
-#include "absl/algorithm/container.h"
 #include "absl/base/casts.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"

@@ -19,7 +19,6 @@ limitations under the License.
 #include <cstdint>
 
 #include "absl/status/status.h"
-#include "absl/types/span.h"
 #include "xla/core/collectives/rank_id.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/gpu/launch_dimensions.h"

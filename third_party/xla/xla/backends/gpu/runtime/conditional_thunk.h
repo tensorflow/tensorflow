@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_BACKENDS_GPU_RUNTIME_CONDITIONAL_THUNK_H_
 
 #include <memory>
+#include <string>
 #include <vector>
 
 #include "absl/base/thread_annotations.h"

@@ -26,17 +26,18 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/synchronization/mutex.h"
 #include "mlir/IR/BuiltinAttributes.h"
-#include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/executable_run_options.h"
+#include "xla/hlo/ir/collective_op_group_mode.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/service/collective_ops_utils.h"
+#include "xla/service/source_target_pairs.h"
 #include "xla/shape.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {

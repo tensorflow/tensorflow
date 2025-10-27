@@ -22,13 +22,14 @@ limitations under the License.
 #include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/gpu_solver_context.h"
-#include "xla/stream_executor/stream.h"
+#include "xla/stream_executor/platform.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
