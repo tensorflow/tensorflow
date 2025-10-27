@@ -561,8 +561,8 @@ struct FoldApplyIndexingResults
       return rewriter.notifyMatchFailure(indexing_op,
                                          "Domain of the indexing map is empty");
     }
-    AffineMap* affine_map = &indexing_map.GetMutableAffineMap();
-    unsigned num_results = affine_map->getNumResults();
+    AffineMap affine_map = indexing_map.GetAffineMap();
+    unsigned num_results = affine_map.getNumResults();
     SmallVector<AffineExpr, 4> new_exprs;
     new_exprs.reserve(num_results);
     SmallVector<Value, 4> new_values;
@@ -574,7 +574,7 @@ struct FoldApplyIndexingResults
       }
 
       unsigned id = opresult.getResultNumber();
-      AffineExpr result_expr = affine_map->getResult(id);
+      AffineExpr result_expr = affine_map.getResult(id);
       if (auto const_expr =
               mlir::dyn_cast<mlir::AffineConstantExpr>(result_expr)) {
         new_values.push_back(rewriter.create<arith::ConstantIndexOp>(
@@ -598,11 +598,14 @@ struct FoldApplyIndexingResults
       return rewriter.notifyMatchFailure(
           indexing_op, "No constant or dim/symbol expression found");
     }
-    *affine_map =
-        AffineMap::get(affine_map->getNumDims(), affine_map->getNumSymbols(),
-                       new_exprs, affine_map->getContext());
+    AffineMap new_affine_map =
+        AffineMap::get(affine_map.getNumDims(), affine_map.getNumSymbols(),
+                       new_exprs, affine_map.getContext());
+    IndexingMap new_indexing_map(
+        new_affine_map, indexing_map.GetDimVars(), indexing_map.GetRangeVars(),
+        indexing_map.GetRTVars(), indexing_map.GetConstraints());
     auto new_indexing_op = rewriter.create<ApplyIndexingOp>(
-        loc, indexing_op.getOperands(), indexing_map);
+        loc, indexing_op.getOperands(), new_indexing_map);
     for (int new_result_id = 0, new_indexing_op_result_id = 0;
          new_result_id < new_values.size(); ++new_result_id) {
       auto& new_value = new_values[new_result_id];

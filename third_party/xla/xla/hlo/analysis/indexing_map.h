@@ -164,7 +164,6 @@ class IndexingMap {
 
   // Returns the affine map.
   mlir::AffineMap GetAffineMap() const { return affine_map_; }
-  mlir::AffineMap& GetMutableAffineMap() { return affine_map_; }
 
   // Returns the number of indexing map results.
   int64_t GetNumResults() const { return affine_map_.getNumResults(); }
