@@ -60,7 +60,8 @@ def TritonXLAFoldTransposePass : Pass<"triton-xla-fold-transpose", "mlir::Module
     This pass tries to remove transposes by folding them into loads.
   }];
   let dependentDialects = [
-    "::mlir::triton::xla::XlaTritonDialect"
+    "::mlir::triton::xla::XlaTritonDialect",
+    "::mlir::memref::MemRefDialect",
   ];
   let constructor = "CreateTritonXLAFoldTransposePass()";
 }

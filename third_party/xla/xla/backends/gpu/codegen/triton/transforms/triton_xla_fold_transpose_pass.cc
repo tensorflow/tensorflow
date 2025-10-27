@@ -16,18 +16,18 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <memory>
-#include <optional>
 #include <type_traits>
 #include <utility>
 
 #include "absl/algorithm/container.h"
 #include "llvm/ADT/ArrayRef.h"
-#include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
+#include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/OpDefinition.h"
 #include "mlir/IR/OperationSupport.h"
@@ -38,8 +38,8 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
-#include "xla/backends/gpu/codegen/triton/ir/triton_xla_ops.h"
 #include "xla/backends/gpu/codegen/triton/transforms/passes.h"
+#include "xla/codegen/xtile/ir/xtile_ops.h"
 #include "xla/util.h"
 #include "triton/Dialect/Triton/IR/Dialect.h"
 
@@ -58,20 +58,17 @@ namespace {
   return guard;
 }
 
-LogicalResult FoldTransposeOfExtract(TransOp op, PatternRewriter& rewriter) {
-  auto extract = op.getSrc().getDefiningOp<ExtractOp>();
+// Push the transpose up through the extract tile, this will then be folded into
+// MemrefToPtr at the lowering stage.
+LogicalResult PushTransposeThroughExtractTile(TransOp op,
+                                              PatternRewriter& rewriter) {
+  auto extract = op.getSrc().getDefiningOp<::xla::xtile::ExtractTileOp>();
   if (!extract) {
     return rewriter.notifyMatchFailure(op, "Transpose source is not extract.");
   }
 
-  // Compute the dimensions dropped from the source.
-  std::optional<llvm::SmallDenseSet<unsigned>> reduction_mask =
-      computeRankReductionMask(extract.getStaticSizes(),
-                               extract.getType().getShape());
-  if (!reduction_mask) {
-    return rewriter.notifyMatchFailure(op, "Unsupported rank reduction.");
-  }
-  SmallVector<unsigned> reduced_dims = to_vector(*reduction_mask);
+  SmallVector<unsigned> reduced_dims =
+      to_vector(extract.getReducedDimensions());
   absl::c_sort(reduced_dims);
 
   // Compute the set of not-reduced dimensions.
@@ -88,8 +85,8 @@ LogicalResult FoldTransposeOfExtract(TransOp op, PatternRewriter& rewriter) {
   }
 
   // Compute the permutation of source dimensions.
-  size_t src_rank = extract.getSrcShape().size();
-  SmallVector<int32_t> permutation;
+  size_t src_rank = extract.getSource().getType().getRank();
+  SmallVector<int64_t> permutation;
   permutation.reserve(src_rank);
   for (auto [src_dim, dst_dim] :
        llvm::zip_equal(retained_dims, op.getOrder())) {
@@ -111,24 +108,20 @@ LogicalResult FoldTransposeOfExtract(TransOp op, PatternRewriter& rewriter) {
     return result;
   };
 
-  SmallVector<int32_t> inv_permutation(permutation.size());
-  for (auto [i, dim] : llvm::enumerate(permutation)) {
-    inv_permutation[dim] = i;
-  }
+  auto permutation_map = mlir::AffineMapAttr::get(
+      mlir::AffineMap::getPermutationMap(permutation, rewriter.getContext()));
+  // TODO(willfroom): Return a permutation layout (b/455478641).
+  auto pushed_transpose = mlir::memref::TransposeOp::create(
+      rewriter, extract.getLoc(), extract.getSource(), permutation_map);
 
-  SmallVector<int64_t> layout;
-  layout.reserve(extract.getSrcLayout().size());
-  for (auto dim : extract.getSrcLayout()) {
-    layout.push_back(inv_permutation[dim]);
-  }
+  rewriter.replaceOpWithNewOp<::xla::xtile::ExtractTileOp>(
+      op, op.getType(), pushed_transpose, permute(extract.getOffsets()),
+      permute(extract.getFullTileShape()), permute(extract.getStrides()));
 
-  rewriter.replaceOpWithNewOp<ExtractOp>(
-      op, op.getType(), extract.getSrc(), permute(extract.getMixedOffsets()),
-      permute(extract.getStaticSizes()), permute(extract.getStaticStrides()),
-      permute(extract.getSrcShape()), layout);
   if (extract->use_empty()) {
     rewriter.eraseOp(extract);
   }
+
   return success();
 }
 
@@ -332,7 +325,7 @@ class TritonXLAFoldTransposePass
  private:
   void runOnOperation() override {
     RewritePatternSet patterns(&getContext());
-    patterns.add(FoldTransposeOfExtract);
+    patterns.add(PushTransposeThroughExtractTile);
     patterns.add(PushTransposeUpIntoIf);
     patterns.add(HoistTransposeUpFromIf, /*benefit=*/2);
     patterns.add(PushTransposeUpThroughBroadcast);

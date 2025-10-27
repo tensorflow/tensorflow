@@ -34,8 +34,8 @@ void CreateTritonXlaPipeline(
     const stream_executor::GpuComputeCapability& gpu_cc, bool rewrite_int4,
     bool allow_tma) {
   pm->addPass(mlir::triton::xla::CreateTritonXLASqueezeDimsPass());
-  pm->addPass(mlir::triton::xla::CreateTritonXLALowerXTilePass());
   pm->addPass(mlir::triton::xla::CreateTritonXLAFoldTransposePass());
+  pm->addPass(mlir::triton::xla::CreateTritonXLALowerXTilePass());
 
   auto* cuda_cc = gpu_cc.cuda_compute_capability();
   bool is_at_least_hopper = cuda_cc != nullptr && cuda_cc->IsAtLeastHopper();

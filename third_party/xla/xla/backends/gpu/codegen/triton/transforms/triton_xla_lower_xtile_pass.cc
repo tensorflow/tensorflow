@@ -136,14 +136,14 @@ MemrefToPtrOp CreateMemrefToPtr(mlir::OpBuilder& builder,
 class XTileEntryToTriton
     : public mlir::OpRewritePattern<::xla::xtile::EntryFuncOp> {
  public:
-  XTileEntryToTriton(mlir::MLIRContext* context, mlir::ModuleOp& module)
-      : OpRewritePattern(context), module_(module) {}
+  using OpRewritePattern::OpRewritePattern;
 
   mlir::LogicalResult matchAndRewrite(
       ::xla::xtile::EntryFuncOp entry_op,
       mlir::PatternRewriter& rewriter) const override {
-    mlir::ImplicitLocOpBuilder builder(module_->getLoc(), module_);
-    builder.setInsertionPointToStart(module_.getBody());
+    mlir::ModuleOp module = entry_op->getParentOfType<mlir::ModuleOp>();
+    mlir::ImplicitLocOpBuilder builder(module->getLoc(), module);
+    builder.setInsertionPointToStart(module.getBody());
 
     auto new_arg_types = GetPtrArgTypes(entry_op.getBufferArgs());
     auto new_func_op = builder.create<mlir::func::FuncOp>(
@@ -194,9 +194,6 @@ class XTileEntryToTriton
     rewriter.eraseOp(entry_op);
     return success();
   }
-
- private:
-  mlir::ModuleOp& module_;
 };
 
 // Rewrite a xtile extract to a triton_xla extract.
@@ -283,6 +280,25 @@ class XTileInsertToTriton
   }
 };
 
+class FoldIntoMemrefToPtr : public mlir::OpRewritePattern<MemrefToPtrOp> {
+ public:
+  using OpRewritePattern::OpRewritePattern;
+
+  mlir::LogicalResult matchAndRewrite(
+      MemrefToPtrOp op, mlir::PatternRewriter& rewriter) const override {
+    // As a transpose doesn't add any offset we can simply fold it into the
+    // memref_to_ptr.
+    auto transpose = op.getSrc().getDefiningOp<mlir::memref::TransposeOp>();
+    if (!transpose) {
+      return mlir::failure();
+    }
+
+    rewriter.replaceOpWithNewOp<MemrefToPtrOp>(op, op.getType(),
+                                               transpose.getIn());
+    return mlir::success();
+  }
+};
+
 class TritonXLALowerXTilePass
     : public impl::TritonXLALowerXTilePassBase<TritonXLALowerXTilePass> {
  public:
@@ -294,8 +310,8 @@ class TritonXLALowerXTilePass
 
     mlir::RewritePatternSet patterns(context);
 
-    patterns.add<XTileEntryToTriton>(context, module);
-    patterns.add<XTileExtractToTriton, XTileInsertToTriton>(context);
+    patterns.add<XTileEntryToTriton, XTileExtractToTriton, XTileInsertToTriton,
+                 FoldIntoMemrefToPtr>(context);
     if (mlir::failed(
             mlir::applyPatternsGreedily(module, std::move(patterns)))) {
       signalPassFailure();

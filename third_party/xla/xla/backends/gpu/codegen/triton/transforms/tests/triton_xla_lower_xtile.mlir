@@ -52,3 +52,17 @@ xtile.entry_func @scalar_insert_extract(%input: !memref_type,
   xtile.insert %tile into %output[%tile_id][1][1] : tensor<f64> -> !memref_type
   xtile.return
 }
+
+// -----
+
+// CHECK-LABEL: func.func @fold_transpose_into_ptr
+// CHECK-SAME: (%[[ARG0:.*]]: memref<32x16xf64, #triton_xla.layout<[0, 1]>>)
+func.func @fold_transpose_into_ptr(
+    %arg0: memref<32x16xf64, #triton_xla.layout<[0, 1]>>) -> !tt.ptr<f64> {
+  %transposed = memref.transpose %arg0 (d0, d1) -> (d1, d0)
+    : memref<32x16xf64, #triton_xla.layout<[0, 1]>> to memref<16x32xf64>
+  // CHECK: %[[PTR:.*]] = triton_xla.memref_to_ptr %[[ARG0]] from memref<32x16xf64, #triton_xla.layout<[0, 1]>> to <f64>
+  %ptr = triton_xla.memref_to_ptr %transposed from memref<16x32xf64> to !tt.ptr<f64>
+  // CHECK: return %[[PTR]] : !tt.ptr<f64>
+  return %ptr : !tt.ptr<f64>
+}
