@@ -18,6 +18,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/string_view.h"
+#include "llvm/TargetParser/Triple.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_module_group.h"
 #include "xla/literal.h"
@@ -34,6 +35,7 @@ limitations under the License.
 #include "xla/tests/literal_test_util.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
+#include "tsl/platform/casts.h"
 
 namespace xla {
 namespace cpu {
@@ -123,6 +125,50 @@ ENTRY e {
 
   test("Test kHloAdd1", kHloAdd1, 1, 2);
   test("Test kHloAdd2", kHloAdd2, 1, 3);
+}
+
+TEST_F(CpuAotCompilerTest,
+       ExportedExecutableTargetMachineOptionsMatchTheCompilationMachine) {
+  absl::string_view module_string = R"(
+HloModule module
+
+ENTRY main {
+  a = f32[] parameter(0)
+  b = f32[] parameter(1)
+  a_plus_b = f32[] add(a, b)
+  ROOT result = f32[] add(a_plus_b, b)
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(se::Platform * platform,
+                          se::PlatformManager::PlatformWithName("host"));
+  TF_ASSERT_OK_AND_ASSIGN(se::StreamExecutor * stream_exec,
+                          platform->ExecutorForDevice(0));
+
+  Compiler* compiler = backend().compiler();
+  ASSERT_NE(compiler, nullptr);
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                          ParseAndReturnVerifiedModule(module_string));
+
+  xla::Compiler::CompileOptions compile_options;
+  TF_ASSERT_OK_AND_ASSIGN(
+      hlo_module, compiler->RunHloPasses(std::move(hlo_module), stream_exec,
+                                         compile_options));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto executable, compiler->RunBackend(std::move(hlo_module), stream_exec,
+                                            compile_options));
+
+  TF_ASSERT_OK_AND_ASSIGN(auto aot_result, compiler->Export(executable.get()));
+
+  CpuAotCompilationResult* cpu_aot_result =
+      tsl::down_cast<CpuAotCompilationResult*>(aot_result.get());
+  ASSERT_NE(cpu_aot_result, nullptr);
+
+  EXPECT_EQ(
+      llvm::Triple(cpu_aot_result->proto().target_machine_options().triple())
+          .getArchName(),
+      llvm::Triple(kTargetTripleForHost).getArchName());
 }
 
 }  // namespace

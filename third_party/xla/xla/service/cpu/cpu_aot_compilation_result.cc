@@ -79,7 +79,8 @@ CpuAotCompilationResult::Create(
     absl::string_view function_name, std::vector<ObjFileProto> obj_files,
     std::vector<SymbolProto> symbols, const ThunkSequence& thunks,
     std::unique_ptr<FunctionLibrary> function_library,
-    std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data) {
+    std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data,
+    TargetMachineOptionsProto target_machine_options) {
   ThunkSequenceSerDesProtobuf thunk_sequence_serdes(
       &buffer_assignment->Allocations());
   TF_ASSIGN_OR_RETURN(ThunkSequenceProto thunk_proto,
@@ -108,7 +109,7 @@ CpuAotCompilationResult::Create(
       hlo_module, buffer_assignment, function_name, std::move(obj_files),
       std::move(symbols), thunk_proto, std::move(temp_allocation_index),
       std::move(buffer_allocation_infos), std::move(function_library),
-      std::move(hlo_profile_printer_data)));
+      std::move(hlo_profile_printer_data), std::move(target_machine_options)));
 }
 
 CpuAotCompilationResult::CpuAotCompilationResult(
@@ -118,7 +119,8 @@ CpuAotCompilationResult::CpuAotCompilationResult(
     std::optional<size_t> temp_allocation_index,
     std::vector<BufferAllocationInfo> buffer_allocation_infos,
     std::unique_ptr<FunctionLibrary> function_library,
-    std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data)
+    std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data,
+    TargetMachineOptionsProto target_machine_options)
     : temp_allocation_index_(temp_allocation_index),
       buffer_allocation_infos_(std::move(buffer_allocation_infos)),
       function_library_(std::move(function_library)),
@@ -128,6 +130,7 @@ CpuAotCompilationResult::CpuAotCompilationResult(
       hlo_module->config().ToProto();
   *proto_.mutable_buffer_assignment() = buffer_assignment->ToProto();
   proto_.set_entry_function_name(function_name);
+  *proto_.mutable_target_machine_options() = std::move(target_machine_options);
   for (ObjFileProto& obj_file : obj_files) {
     *proto_.add_object_files() = std::move(obj_file);
   }
@@ -193,7 +196,7 @@ CpuAotCompilationResult::LoadExecutable(
       CpuExecutable::Create(std::move(function_library_),
                             std::move(buffer_assignment), std::move(module),
                             std::move(*thunks), std::move(constants), nullptr,
-                            nullptr));
+                            nullptr, proto_.target_machine_options()));
 
   // Dump computation proto state and buffer assignment for
   // GetCompiledMemoryStats results.

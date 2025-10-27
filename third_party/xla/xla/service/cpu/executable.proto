@@ -36,6 +36,12 @@ message ObjFileProto {
   string name = 2;
 }
 
+message TargetMachineOptionsProto {
+  string triple = 1;
+  string cpu = 2;
+  string features = 3;
+}
+
 message CompilationResultProto {
   enum ObjFileKind {
     UNKNOWN = 0;
@@ -58,4 +64,5 @@ message CompilationResultProto {
   ThunkSequenceProto thunk_sequence = 6;
   repeated SymbolProto compiled_symbols = 7;
   repeated ObjFileProto object_files = 8;
+  TargetMachineOptionsProto target_machine_options = 9;
 }

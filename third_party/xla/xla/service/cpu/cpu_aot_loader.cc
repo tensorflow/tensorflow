@@ -158,6 +158,22 @@ CpuAotLoader::LoadAotCompilationResult(
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<HloModule> hlo_module,
       HloModule::CreateFromProtoWithConfig(aot_result_proto.hlo_module()));
+
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<llvm::TargetMachine> target_machine,
+      IrCompiler::InferTargetMachine(
+          std::move(CompilerTargetOptions(hlo_module->config())),
+          IrCompiler::GetCodeGenOptLevel(hlo_module->config()),
+          CpuFeatureFromString(
+              hlo_module->config().debug_options().xla_cpu_max_isa())));
+
+  llvm::Triple triple(aot_result_proto.target_machine_options().triple());
+  llvm::Triple expected_triple(target_machine->getTargetTriple());
+  if (triple.getArchName() != expected_triple.getArchName()) {
+    return Internal("Target arch mismatch expected %s got %s.",
+                    expected_triple.getArchName(), triple.getArchName());
+  }
+
   std::vector<SymbolProto> compiled_symbols_proto;
   for (const auto& symbol_proto : aot_result_proto.compiled_symbols()) {
     compiled_symbols_proto.push_back(symbol_proto);
