@@ -58,7 +58,7 @@ jobs:
       # Upload the results as artifacts (optional). Commenting out will disable uploads of run results in SARIF
       # format to the repository Actions tab.
       - name: "Upload artifact"
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v3.pre.node20
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v3.pre.node20
         with:
           name: SARIF file
           path: results.sarif
