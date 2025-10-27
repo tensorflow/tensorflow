@@ -333,7 +333,12 @@ def plot_model(model,
   else:
     extension = extension[1:]
   # Save image to disk.
-  dot.write(to_file, format=extension)
+  dot_data = dot.create(prog='dot', format=extension)
+  if not dot_data:
+    raise OSError('pydot failed to generate graph visualization. '
+                  'Check that graphviz is installed and in your PATH.')
+  with open(to_file, 'wb') as f:
+    f.write(dot_data)
   # Return the image as a Jupyter Image object, to be displayed in-line.
   # Note that we cannot easily detect whether the code is running in a
   # notebook, and thus we always return the Image if Jupyter is available.
