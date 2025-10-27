@@ -78,17 +78,13 @@ py::dtype EtypeToDtype(xla::PrimitiveType p) {
 // NOTE: It seems insurmountable to get "native_proto_caster.h" to work
 // with nanobind modules; therefore, we define our extension as a pybind11
 // module so that we can use `pybind11::module_::def`.
-PYBIND11_MODULE(_types, py_m) {
+NB_MODULE(_types, nb_m) {
+  py::module_ py_m = py::reinterpret_borrow<py::module_>(nb_m.ptr());
   // Initialize ABSL logging because code within XLA uses it.
   // (As per `xla::Init` in "xla.cc"; though we don't need it ourselves.)
 #ifndef PLATFORM_GOOGLE
   xla::InitializeAbslLogging();
 #endif  // PLATFORM_GOOGLE
-
-  // Normally this would happen at the start of NB_MODULE, but since
-  // this is a pybind11 module we have to do this ourselves.
-  // (As per `xla::Init` in "xla.cc".)
-  nb::detail::init(NB_DOMAIN_STR);
 
   // Import implicit conversions from Python protobuf objects to C++
   // protobuf objects.
@@ -126,7 +122,6 @@ PYBIND11_MODULE(_types, py_m) {
   // NOTE: This does *not* mean that C++ can `py::cast` from `xla::Literal`
   // to `py::object`.  It's unclear whether we can simultaneously provide
   // both nanobind and pybind11 bindings (if we wanted the latter).
-  nb::module_ nb_m = nb::cast<nb::module_>(nb::borrow(py_m.ptr()));
   nb::class_<xla::Literal>(nb_m, "Literal")
       .def("__repr__", &xla::Literal::ToString);
 
