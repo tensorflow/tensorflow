@@ -615,7 +615,12 @@ PyObject* InterpreterWrapper::SetTensor(int tensor_index, PyObject* value,
   TfLiteTensor* tensor =
       interpreter_->subgraph(subgraph_index)->tensor(tensor_index);
 
-  if (python_utils::TfLiteTypeFromPyArray(array) != tensor->type) {
+  if (tensor->type == kTfLiteInt4) {
+    return python_utils::SetInt4Tensor(tensor, array, tensor_index);
+  }
+
+  TfLiteType incoming_type = python_utils::TfLiteTypeFromPyArray(array);
+  if (incoming_type != tensor->type) {
     PyErr_Format(PyExc_ValueError,
                  "Cannot set tensor:"
                  " Got value of type %s"
