@@ -90,8 +90,10 @@ struct GroupingEventStats {
 
   std::optional<int> producer_type;
   std::optional<uint64_t> producer_id;
+  std::optional<int32_t> producer_pid;
   std::optional<int> consumer_type;
   std::optional<uint64_t> consumer_id;
+  std::optional<int32_t> consumer_pid;
   std::optional<int> root_level;
   bool is_async = false;
 };
@@ -107,11 +109,17 @@ GroupingEventStats::GroupingEventStats(const XEventVisitor& event) {
       case StatType::kProducerId:
         producer_id = stat.IntOrUintValue();
         break;
+      case StatType::kProducerPid:
+        producer_pid = stat.IntOrUintValue();
+        break;
       case StatType::kConsumerType:
         consumer_type = stat.IntValue();
         break;
       case StatType::kConsumerId:
         consumer_id = stat.IntOrUintValue();
+        break;
+      case StatType::kConsumerPid:
+        consumer_pid = stat.IntOrUintValue();
         break;
       case StatType::kIsRoot:
         root_level = stat.IntValue();
@@ -134,33 +142,52 @@ GroupingEventStats::GroupingEventStats(const XEventVisitor& event) {
 void SetContextGroup(const GroupingEventStats& stats, EventNode* event,
                      ContextGroupMap* context_groups) {
   if (stats.producer_type.has_value() && stats.producer_id.has_value()) {
-    ((*context_groups)[*stats.producer_type][*stats.producer_id])
-        .producers.push_back(event);
+    if (stats.producer_pid.has_value()) {
+      ((*context_groups)[*stats.producer_type][*stats.producer_id])
+          .pid_context_groups[*stats.producer_pid]
+          .producers.push_back(event);
+    } else {
+      ((*context_groups)[*stats.producer_type][*stats.producer_id])
+          .no_pid_context_group.producers.push_back(event);
+    }
   }
   if (stats.consumer_type.has_value() && stats.consumer_id.has_value()) {
-    ((*context_groups)[*stats.consumer_type][*stats.consumer_id])
-        .consumers.push_back(event);
+    if (stats.consumer_pid.has_value()) {
+      ((*context_groups)[*stats.consumer_type][*stats.consumer_id])
+          .pid_context_groups[*stats.consumer_pid]
+          .consumers.push_back(event);
+    } else {
+      ((*context_groups)[*stats.consumer_type][*stats.consumer_id])
+          .no_pid_context_group.consumers.push_back(event);
+    }
   }
 }
 
-void ConnectContextGroups(const ContextGroupMap& context_groups) {
-  for (auto& type_id_group : context_groups) {
-    for (auto& id_group : type_id_group.second) {
-      const ContextGroup& group = id_group.second;
-      if (group.producers.size() >= 64 && group.consumers.size() >= 64) {
-        LOG_EVERY_N(WARNING, 1000)
-            << "id:" << id_group.first
-            << " producers:" << group.producers.size() << " : "
-            << group.producers[0]->GetEventVisitor().Name()
-            << " consumers:" << group.consumers.size() << " : "
-            << group.consumers[0]->GetEventVisitor().Name();
-        continue;
-      }
+namespace {
+void ConnectContextGroup(uint64_t id, const ContextGroup& group) {
+  if (group.producers.size() >= 64 && group.consumers.size() >= 64) {
+    LOG_EVERY_N(WARNING, 1000)
+        << "id:" << id << " producers:" << group.producers.size() << " : "
+        << group.producers[0]->GetEventVisitor().Name()
+        << " consumers:" << group.consumers.size() << " : "
+        << group.consumers[0]->GetEventVisitor().Name();
+    return;
+  }
+  for (EventNode* parent : group.producers) {
+    for (EventNode* child : group.consumers) {
+      parent->AddChild(child);
+    }
+  }
+}
 
-      for (EventNode* parent : group.producers) {
-        for (EventNode* child : group.consumers) {
-          parent->AddChild(child);
-        }
+}  // namespace
+
+void ConnectContextGroups(const ContextGroupMap& context_groups) {
+  for (auto& [context_type, id_group_map] : context_groups) {
+    for (auto& [context_id, pid_group] : id_group_map) {
+      ConnectContextGroup(context_id, pid_group.no_pid_context_group);
+      for (auto& [pid, group] : pid_group.pid_context_groups) {
+        ConnectContextGroup(context_id, group);
       }
     }
   }

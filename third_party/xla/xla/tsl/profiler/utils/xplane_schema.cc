@@ -253,6 +253,8 @@ const StatTypeMap& GetStatTypeMap() {
        {"_ct", kConsumerType},
        {"_p", kProducerId},
        {"_c", kConsumerId},
+       {"_ppid", kProducerPid},
+       {"_cpid", kConsumerPid},
        {"_r", kIsRoot},
        {"_a", kIsAsync},
        // Device trace arguments.
