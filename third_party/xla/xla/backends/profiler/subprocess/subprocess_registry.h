@@ -32,7 +32,7 @@ namespace subprocess {
 
 // Information about a registered subprocess.
 struct SubprocessInfo {
-  pid_t pid;
+  uint32_t pid;
   std::string address;
   std::shared_ptr<tensorflow::grpc::ProfilerService::Stub> profiler_stub;
 
@@ -60,13 +60,13 @@ struct SubprocessInfo {
 // may block for a while until the stub is ready or connection times out.
 // RETURNS: an error if the subprocess is already registered or if the
 // subprocess stub cannot be created.
-absl::Status RegisterSubprocess(pid_t pid, int port);
-absl::Status RegisterSubprocess(pid_t pid,
+absl::Status RegisterSubprocess(uint32_t pid, int port);
+absl::Status RegisterSubprocess(uint32_t pid,
                                 absl::string_view unix_domain_socket);
 
 // Unregisters a subprocess by just erasing it from the registry. If there are
 // in-flight profiling sessions, they will NOT be cancelled.
-absl::Status UnregisterSubprocess(pid_t pid);
+absl::Status UnregisterSubprocess(uint32_t pid);
 
 // Returns all currently registered subprocesses.
 std::vector<SubprocessInfo> GetRegisteredSubprocesses();
