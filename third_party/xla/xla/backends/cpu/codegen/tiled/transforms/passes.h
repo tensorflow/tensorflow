@@ -38,6 +38,7 @@ std::unique_ptr<mlir::Pass> CreateLowerXTileEntryPass();
 std::unique_ptr<mlir::Pass> CreateShloToVectorPass();
 std::unique_ptr<mlir::Pass> CreateXTileToVectorPass();
 std::unique_ptr<mlir::Pass> CreateTensorOpsToVectorPass();
+std::unique_ptr<mlir::Pass> CreateRewriteDynamicVectorExtractPass();
 
 #define GEN_PASS_REGISTRATION
 #include "xla/backends/cpu/codegen/tiled/transforms/passes.h.inc"

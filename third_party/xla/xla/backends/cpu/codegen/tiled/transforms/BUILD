@@ -48,6 +48,7 @@ cc_library(
     srcs = [
         "elemental_tensor_to_vector.cc",
         "lower_xtile_entry.cc",
+        "rewrite_dynamic_vector_extract.cc",
         "shlo_to_vector.cc",
         "tensor_ops_to_vector.cc",
         "xtile_to_vector.cc",
@@ -63,6 +64,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:Analysis",
         "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:ArithOpsIncGen",
         "@llvm-project//mlir:DataLayoutInterfaces",
@@ -75,6 +77,7 @@ cc_library(
         "@llvm-project//mlir:MemRefDialect",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:SCFDialect",
+        "@llvm-project//mlir:SCFUtils",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TensorDialect",
         "@llvm-project//mlir:TransformUtils",
