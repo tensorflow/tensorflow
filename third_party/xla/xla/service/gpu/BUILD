@@ -602,7 +602,6 @@ cc_library(
         "//xla/service/llvm_ir:loop_emitter",
         "//xla/service/llvm_ir:tuple_ops",
         "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/hash",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
@@ -612,6 +611,7 @@ cc_library(
         "@llvm-project//llvm:Core",
         "@llvm-project//llvm:Support",
         "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:fingerprint",
         "@local_tsl//tsl/platform:statusor",
     ],
 )
