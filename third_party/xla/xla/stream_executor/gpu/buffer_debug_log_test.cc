@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/types/span.h"
+#include "xla/backends/gpu/runtime/buffer_debug_log.pb.h"
 #include "xla/backends/gpu/runtime/buffer_debug_log_structs.h"
 #include "xla/backends/gpu/runtime/thunk_buffer_id.h"
 #include "xla/backends/gpu/runtime/thunk_id.h"
@@ -46,7 +47,6 @@ namespace {
 using ::tsl::proto_testing::EqualsProto;
 using ::xla::gpu::BufferDebugLogEntry;
 using ::xla::gpu::BufferDebugLogHeader;
-using ::xla::gpu::BufferDebugLogProto;
 using ::xla::gpu::ThunkBufferId;
 using ::xla::gpu::ThunkId;
 
@@ -128,9 +128,9 @@ TEST_F(BufferDebugLogTest, ReadAsProto) {
                                        /*capacity=*/10};
   const BufferDebugLogEntry entries[] = {
       {/*entry_id=*/ThunkBufferId::Create(ThunkId(123), 4).value(),
-       /*checksum=*/12341234},
+       /*value=*/12341234},
       {/*entry_id=*/ThunkBufferId::Create(ThunkId(567), 8).value(),
-       /*checksum=*/56785678},
+       /*value=*/56785678},
   };
   std::vector<uint8_t> log_data(sizeof(header) + sizeof(entries));
   memcpy(log_data.data(), &header, sizeof(header));
@@ -140,12 +140,12 @@ TEST_F(BufferDebugLogTest, ReadAsProto) {
 
   BufferDebugLog device_log =
       BufferDebugLog::FromDeviceMemoryUnchecked(log_buffer);
-  TF_ASSERT_OK_AND_ASSIGN(BufferDebugLogProto log_proto,
+  TF_ASSERT_OK_AND_ASSIGN(xla::gpu::BufferDebugLogProto log_proto,
                           device_log.ReadProto(*stream_));
 
   EXPECT_THAT(log_proto, EqualsProto(R"pb(
-                entries { thunk_id: 123 buffer_idx: 4 checksum: 12341234 }
-                entries { thunk_id: 567 buffer_idx: 8 checksum: 56785678 }
+                entries { thunk_id: 123 buffer_idx: 4 value: 12341234 }
+                entries { thunk_id: 567 buffer_idx: 8 value: 56785678 }
               )pb"));
 }
 

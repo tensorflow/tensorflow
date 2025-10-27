@@ -966,6 +966,7 @@ xla_test(
     backends = ["gpu"],
     deps = [
         ":buffer_debug_log",
+        "//xla/backends/gpu/runtime:buffer_debug_log_proto_cc",
         "//xla/backends/gpu/runtime:buffer_debug_log_structs",
         "//xla/backends/gpu/runtime:thunk_buffer_id",
         "//xla/backends/gpu/runtime:thunk_id",

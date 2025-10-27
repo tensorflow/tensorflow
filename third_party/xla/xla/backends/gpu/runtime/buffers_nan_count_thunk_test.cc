@@ -138,13 +138,11 @@ TEST_F(BuffersDebugNanCountThunkTest, CalculatesNanCounts) {
       UnorderedElementsAre(
           BufferDebugLogEntry{
               /*entry_id=*/ThunkBufferId::Create(ThunkId(123), 4).value(),
-              /*checksum=*/1,  // We use checksum field for NaN count. It will
-                               // be generalised in the follow-up commits.
+              /*value=*/1,
           },
           BufferDebugLogEntry{
               /*entry_id=*/ThunkBufferId::Create(ThunkId(456), 8).value(),
-              /*checksum=*/2,  // We use checksum field for NaN count. It will
-                               // be generalised in the follow-up commits.
+              /*value=*/2,
           }));
 }
 

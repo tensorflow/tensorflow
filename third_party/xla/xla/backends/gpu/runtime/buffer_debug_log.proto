@@ -26,8 +26,8 @@ message BufferDebugLogEntryProto {
   // Thunk::buffer_uses().
   uint64 buffer_idx = 2;
 
-  // The checksum of the buffer.
-  uint32 checksum = 3;
+  // The value of the buffer.
+  uint32 value = 3;
 }
 
 // A dump of a `BufferDebugLog` contents.

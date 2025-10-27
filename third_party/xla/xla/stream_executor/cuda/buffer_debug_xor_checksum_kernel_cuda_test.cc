@@ -142,7 +142,7 @@ TEST_F(ChecksumKernelTest, ComputesCorrectChecksumForMultipleOf32Bit) {
 
   TF_ASSERT_OK_AND_ASSIGN(auto host_log, device_log.ReadFromDevice(*stream_));
   ASSERT_GE(host_log.size(), 1);
-  EXPECT_EQ(host_log[0].checksum, kExpectedChecksum);
+  EXPECT_EQ(host_log[0].value, kExpectedChecksum);
 }
 
 TEST_F(ChecksumKernelTest,
@@ -158,7 +158,7 @@ TEST_F(ChecksumKernelTest,
   TF_ASSERT_OK_AND_ASSIGN(auto host_log, device_log.ReadFromDevice(*stream_));
   ASSERT_GE(host_log.size(), 1);
   // Assumes the device uses little-endian byte order.
-  EXPECT_EQ(host_log[0].checksum, 0x55000000);
+  EXPECT_EQ(host_log[0].value, 0x55000000);
 }
 
 TEST_F(ChecksumKernelTest, ComputesCorrectChecksumInParallel) {
@@ -177,7 +177,7 @@ TEST_F(ChecksumKernelTest, ComputesCorrectChecksumInParallel) {
 
   TF_ASSERT_OK_AND_ASSIGN(auto host_log, device_log.ReadFromDevice(*stream_));
   ASSERT_GE(host_log.size(), 1);
-  EXPECT_EQ(host_log[0].checksum, kExpectedChecksum);
+  EXPECT_EQ(host_log[0].value, kExpectedChecksum);
 }
 
 TEST_F(ChecksumKernelTest, ComputesCorrectChecksumInParallelWithMaxThreads) {
@@ -196,7 +196,7 @@ TEST_F(ChecksumKernelTest, ComputesCorrectChecksumInParallelWithMaxThreads) {
 
   TF_ASSERT_OK_AND_ASSIGN(auto host_log, device_log.ReadFromDevice(*stream_));
   ASSERT_GE(host_log.size(), 1);
-  EXPECT_EQ(host_log[0].checksum, kExpectedChecksum);
+  EXPECT_EQ(host_log[0].value, kExpectedChecksum);
 }
 
 TEST_F(ChecksumKernelTest, AppendsChecksumsToLog) {
@@ -218,11 +218,11 @@ TEST_F(ChecksumKernelTest, AppendsChecksumsToLog) {
   TF_ASSERT_OK_AND_ASSIGN(auto host_log, device_log.ReadFromDevice(*stream_));
   ASSERT_GE(host_log.size(), 3);
   EXPECT_EQ(host_log[0].entry_id, kId123);
-  EXPECT_EQ(host_log[0].checksum, 0x01230123);
+  EXPECT_EQ(host_log[0].value, 0x01230123);
   EXPECT_EQ(host_log[1].entry_id, kId456);
-  EXPECT_EQ(host_log[1].checksum, 0x04560456);
+  EXPECT_EQ(host_log[1].value, 0x04560456);
   EXPECT_EQ(host_log[2].entry_id, kId789);
-  EXPECT_EQ(host_log[2].checksum, 0x07890789);
+  EXPECT_EQ(host_log[2].value, 0x07890789);
 }
 
 TEST_F(ChecksumKernelTest, DiscardsOverflowingChecksums) {
@@ -246,9 +246,9 @@ TEST_F(ChecksumKernelTest, DiscardsOverflowingChecksums) {
   TF_ASSERT_OK_AND_ASSIGN(auto host_log, device_log.ReadFromDevice(*stream_));
   ASSERT_GE(host_log.size(), 2);
   EXPECT_EQ(host_log[0].entry_id, kId123);
-  EXPECT_EQ(host_log[0].checksum, 0x01230123);
+  EXPECT_EQ(host_log[0].value, 0x01230123);
   EXPECT_EQ(host_log[1].entry_id, kId456);
-  EXPECT_EQ(host_log[1].checksum, 0x04560456);
+  EXPECT_EQ(host_log[1].value, 0x04560456);
 }
 
 }  // namespace

@@ -131,7 +131,7 @@ TEST_F(NanCountKernelTest, CountsNansForF32) {
 
   TF_ASSERT_OK_AND_ASSIGN(auto host_log, device_log.ReadFromDevice(*stream_));
   ASSERT_GE(host_log.size(), 1);
-  EXPECT_EQ(host_log[0].checksum, 2);
+  EXPECT_EQ(host_log[0].value, 2);
 }
 
 TEST_F(NanCountKernelTest, CountsNansForBf16) {
@@ -150,7 +150,7 @@ TEST_F(NanCountKernelTest, CountsNansForBf16) {
 
   TF_ASSERT_OK_AND_ASSIGN(auto host_log, device_log.ReadFromDevice(*stream_));
   ASSERT_GE(host_log.size(), 1);
-  EXPECT_EQ(host_log[0].checksum, 2);
+  EXPECT_EQ(host_log[0].value, 2);
 }
 
 TEST_F(NanCountKernelTest, CountsNansInParallel) {
@@ -171,8 +171,8 @@ TEST_F(NanCountKernelTest, CountsNansInParallel) {
 
   TF_ASSERT_OK_AND_ASSIGN(auto host_log, device_log.ReadFromDevice(*stream_));
   ASSERT_GE(host_log.size(), 2);
-  EXPECT_EQ(host_log[0].checksum, 3);
-  EXPECT_EQ(host_log[1].checksum, 3);
+  EXPECT_EQ(host_log[0].value, 3);
+  EXPECT_EQ(host_log[1].value, 3);
 }
 
 }  // namespace
