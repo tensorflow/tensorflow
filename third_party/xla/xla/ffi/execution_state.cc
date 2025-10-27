@@ -35,8 +35,7 @@ ExecutionState::~ExecutionState() {
 }
 
 absl::Status ExecutionState::Set(TypeId type_id, void* state) {
-  TF_ASSIGN_OR_RETURN(auto type_info,
-                      TypeRegistry::GetExternalTypeInfo(type_id));
+  TF_ASSIGN_OR_RETURN(auto type_info, TypeRegistry::GetTypeInfo(type_id));
   if (type_info.deleter == nullptr) {
     return InvalidArgument(
         "Type id %d does not have a registered type info with a deleter",

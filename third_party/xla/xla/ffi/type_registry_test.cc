@@ -21,6 +21,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "absl/strings/string_view.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
@@ -53,7 +54,7 @@ TEST(TypeRegistryTest, RegisterExternalTypeId) {
 
   // Registered type has a correct type info.
   TF_ASSERT_OK_AND_ASSIGN(TypeRegistry::TypeInfo foo_info,
-                          TypeRegistry::GetExternalTypeInfo(foo_id));
+                          TypeRegistry::GetTypeInfo(foo_id));
   EXPECT_EQ(foo_info.deleter, type_info.deleter);
 
   // It's ok to register a new type with a user-provided type id.
@@ -64,14 +65,19 @@ TEST(TypeRegistryTest, RegisterExternalTypeId) {
 
   // And a new type has a correct type info.
   TF_ASSERT_OK_AND_ASSIGN(TypeRegistry::TypeInfo bar_info,
-                          TypeRegistry::GetExternalTypeInfo(bar_id));
+                          TypeRegistry::GetTypeInfo(bar_id));
   EXPECT_EQ(bar_info.deleter, type_info.deleter);
 }
 
 TEST(TypeRegistryTest, RegisterInternalTypeId) {
-  auto int32_type_id = TypeRegistry::GetTypeId<int32_t>();
-  auto int64_type_id = TypeRegistry::GetTypeId<int64_t>();
-  EXPECT_NE(int32_type_id, int64_type_id);
+  auto int32_id = TypeRegistry::GetTypeId<int32_t>();
+  auto int64_id = TypeRegistry::GetTypeId<int64_t>();
+  EXPECT_NE(int32_id, int64_id);
+
+  absl::string_view int32_name = TypeRegistry::GetTypeName<int32_t>();
+  absl::string_view int64_name = TypeRegistry::GetTypeName<int64_t>();
+  EXPECT_EQ(*TypeRegistry::GetTypeId(int32_name), int32_id);
+  EXPECT_EQ(*TypeRegistry::GetTypeId(int64_name), int64_id);
 }
 
 TEST(TypeRegistryTest, InternalTypeInfo) {

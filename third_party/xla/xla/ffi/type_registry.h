@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <cstdint>
 
+#include "absl/base/no_destructor.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -64,6 +65,14 @@ class TypeRegistry {
     Deleter deleter = nullptr;
   };
 
+  // Returns type id for a given type name. Returns an error if type is
+  // not registered. Works for both external and internal type ids.
+  static absl::StatusOr<TypeId> GetTypeId(absl::string_view name);
+
+  // Returns type info for a given type id. Returns an error if type id is not
+  // registered. Works for both external and internal type ids.
+  static absl::StatusOr<TypeInfo> GetTypeInfo(TypeId type_id);
+
   // Assigns a unique type id to an external type with a given name. Returns an
   // error if a type with a given name is already registered in the process.
   static absl::StatusOr<TypeId> AssignExternalTypeId(absl::string_view name,
@@ -76,9 +85,9 @@ class TypeRegistry {
                                              TypeId type_id,
                                              TypeInfo type_info);
 
-  // Returns type info for a given external type id. Returns an error if type
-  // id is not registered.
-  static absl::StatusOr<TypeInfo> GetExternalTypeInfo(TypeId type_id);
+  // Returns a type name for a given type. For internal type ids only.
+  template <typename T>
+  static absl::string_view GetTypeName();
 
   // Returns a type id for a given type. For internal type ids only.
   template <typename T>
@@ -89,16 +98,21 @@ class TypeRegistry {
   static TypeInfo GetTypeInfo();
 
  private:
-  // We never mix external and internal type ids, so we can use different type
-  // id spaces to assign unique ids to each type.
-  static TypeId GetNextInternalTypeId();
-  static TypeId GetNextExternalTypeId();
+  static TypeId GetNextTypeId();
 };
 
 template <typename T>
+absl::string_view TypeRegistry::GetTypeName() {
+  return typeid(T).name();
+}
+
+template <typename T>
 TypeRegistry::TypeId TypeRegistry::GetTypeId() {
-  static const TypeId id = GetNextInternalTypeId();
-  return id;
+  // We always register internal types in the static type registry, because we
+  // want to be able to lookup them by name.
+  static const absl::NoDestructor<absl::StatusOr<TypeId>> id(
+      AssignExternalTypeId(GetTypeName<T>(), GetTypeInfo<T>()));
+  return **id;
 }
 
 template <typename T>
