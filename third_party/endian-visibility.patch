@@ -1,0 +1,15 @@
+diff --git a/absl/base/BUILD.bazel b/absl/base/BUILD.bazel
+index 2b380e61..91e5c7ab 100644
+--- a/absl/base/BUILD.bazel
++++ b/absl/base/BUILD.bazel
+@@ -542,9 +542,7 @@ cc_library(
+     ],
+     copts = ABSL_DEFAULT_COPTS,
+     linkopts = ABSL_DEFAULT_LINKOPTS,
+-    visibility = [
+-        "//absl:__subpackages__",
+-    ],
++    visibility = ["//visibility:public"],
+     deps = [
+         ":base",
+         ":config",

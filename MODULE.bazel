@@ -1,9 +1,113 @@
+"""WIP!!"""
 module(name = "org_tensorflow")
 
+bazel_dep(name = "bazel_features", version = "1.36.0")
+bazel_dep(name = "abseil-cpp", version = "20250814.1", repo_name = "com_google_absl")
+single_version_override(
+    module_name = "abseil-cpp",
+    patches = ["//third_party:endian-visibility.patch"],
+    patch_strip = 1,
+)
 bazel_dep(name = "rules_python", version = "1.6.0")
+bazel_dep(name = "rules_shell", version = "0.4.1")
+bazel_dep(name = "bazel_skylib", version = "1.8.1")
+bazel_dep(name = "platforms", version = "0.0.11")
+bazel_dep(name = "rules_license", version = "1.0.0")
+bazel_dep(name = "rules_pkg", version = "1.0.1")
+bazel_dep(name = "rules_java", version = "7.12.2")
+bazel_dep(name = "rules_jvm_external", version = "6.8")
+bazel_dep(name = "protobuf", version = "32.1", repo_name = "com_google_protobuf")
+bazel_dep(name = "rules_cc", version = "0.2.0")
+bazel_dep(name = "rules_webtesting", version = "0.4.1", repo_name = "io_bazel_rules_webtesting")
+bazel_dep(name = "rules_closure", version = "0.15.0", repo_name = "io_bazel_rules_closure")
+bazel_dep(name = "grpc", version = "1.74.1", repo_name = "com_github_grpc_grpc")
+archive_override(
+    module_name = "grpc",
+    urls = ["https://github.com/grpc/grpc/archive/refs/tags/v1.74.1.tar.gz"],
+    patches = ["//third_party:grpc-bzlmod-fix.patch"],
+    patch_strip = 1,
+    strip_prefix = "grpc-1.74.1",
+    integrity = "sha256-e/l8Ec84CNZQo6Alu/nF+SLIRKWQgmKFBndl39BV0ig=",
+)
+bazel_dep(name = "nlohmann_json", version = "3.12.0")
+bazel_dep(name = "google_benchmark", version = "1.8.5", repo_name = "com_google_benchmark")
+bazel_dep(name = "rules_foreign_cc", version = "0.15.1")
+bazel_dep(name = "rules_proto", version = "7.1.0")
+bazel_dep(name = "zstd", version = "1.5.7", repo_name = "net_zstd")
+bazel_dep(name = "pybind11_bazel", version = "2.13.6")
+bazel_dep(name = "pybind11_protobuf", version = "0.0.0-20250210-f02a2b7")
+bazel_dep(name = "pybind11_abseil", version = "202402.0")
+bazel_dep(name = "or-tools", version = "9.12", repo_name = "com_google_ortools")
+bazel_dep(name = "re2", version = "2024-07-02.bcr.1", repo_name = "com_googlesource_code_re2")
+bazel_dep(name = "rules_android", version = "0.6.6", repo_name = "build_bazel_rules_android")
+bazel_dep(name = "rules_android_ndk", version = "0.1.3")
+bazel_dep(name = "apple_support", version = "1.19.0", repo_name = "build_bazel_apple_support")
+bazel_dep(name = "rules_swift", version = "2.1.1")
+bazel_dep(name = "googletest", version = "1.17.0.bcr.1", repo_name = "com_google_googletest")
+bazel_dep(name = "fuzztest", version = "20250805.0", repo_name = "com_google_fuzztest")
+bazel_dep(name = "gflags", version = "2.2.2", repo_name = "com_github_gflags_gflags")
+bazel_dep(name = "snappy", version = "1.2.0")
+bazel_dep(name = "zlib", version = "1.3.1.bcr.7")
+bazel_dep(name = "libpng", version = "1.6.50.bcr.1", repo_name = "png")
+bazel_dep(name = "boringssl", version = "0.20250818.0")
+bazel_dep(name = "libprotobuf-mutator", version = "1.3", repo_name = "libprotobuf_mutator")
+
+bazel_dep(name = "rules_ml_toolchain")
+archive_override(
+    module_name = "rules_ml_toolchain",
+    integrity = "sha256-QTPGwgRd5dehM/b8AI7mvWE693jxIUPQkAPpCN1UHYw=",
+    strip_prefix = "rules_ml_toolchain-d8d8f49297a1e74fcceffc9ef6c7f8da9b0a0c53",
+    urls = ["https://github.com/google-ml-infra/rules_ml_toolchain/archive/d8d8f49297a1e74fcceffc9ef6c7f8da9b0a0c53.tar.gz"],
+)
+
+pybind11_internal_configure = use_extension(
+    "@pybind11_bazel//:internal_configure.bzl",
+    "internal_configure_extension",
+)
+use_repo(pybind11_internal_configure, "pybind11")
+
+# Compatibility layer
+compat = use_extension("@rules_java//java:rules_java_deps.bzl", "compatibility_proxy")
+use_repo(compat, "compatibility_proxy")
 
 python = use_extension("@rules_python//python/extensions:python.bzl", "python")
 
 python.defaults(python_version = "3.11")
 python.toolchain(python_version = "3.11")
 use_repo(python, "python_3_11", "python_3_11_host")
+
+cuda_configure = use_extension("@rules_ml_toolchain//third_party/extensions:cuda_configure.bzl", "cuda_configure_ext")
+use_repo(cuda_configure, "local_config_cuda")
+
+nccl_configure = use_extension("@rules_ml_toolchain//third_party/extensions:nccl_configure.bzl", "nccl_configure_ext")
+use_repo(nccl_configure, "local_config_nccl")
+
+sycl_configure = use_extension("@rules_ml_toolchain//third_party/extensions:sycl_configure.bzl", "sycl_configure_ext")
+use_repo(sycl_configure, "local_config_sycl")
+
+cuda_redist_init_ext = use_extension("@rules_ml_toolchain//third_party/extensions:cuda_redist_init.bzl", "cuda_redist_init_ext")
+use_repo(cuda_redist_init_ext, "cuda_cudart")
+
+register_toolchains("@rules_ml_toolchain//cc:linux_x86_64_linux_x86_64")
+
+register_toolchains("@rules_ml_toolchain//cc:linux_x86_64_linux_x86_64_cuda")
+
+register_toolchains("@rules_ml_toolchain//cc:linux_aarch64_linux_aarch64")
+
+register_toolchains("@rules_ml_toolchain//cc:linux_aarch64_linux_aarch64_cuda")
+
+maven = use_extension("@rules_jvm_external//:extensions.bzl", "maven")
+maven.install(
+    artifacts = [
+        "androidx.annotation:annotation:aar:1.1.0",
+    ],
+    repositories = [
+        "https://jcenter.bintray.com",
+        "https://maven.google.com",
+        "https://dl.google.com/dl/android/maven2",
+        "https://repo1.maven.org/maven2",
+    ],
+    fetch_sources = True,
+    version_conflict_policy = "pinned",
+)
+use_repo(maven, "maven")

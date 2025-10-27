@@ -8,19 +8,66 @@
     "https://bcr.bazel.build/modules/abseil-cpp/20230802.0.bcr.1/MODULE.bazel": "1c8cec495288dccd14fdae6e3f95f772c1c91857047a098fad772034264cc8cb",
     "https://bcr.bazel.build/modules/abseil-cpp/20230802.0/MODULE.bazel": "d253ae36a8bd9ee3c5955384096ccb6baf16a1b1e93e858370da0a3b94f77c16",
     "https://bcr.bazel.build/modules/abseil-cpp/20230802.1/MODULE.bazel": "fa92e2eb41a04df73cdabeec37107316f7e5272650f81d6cc096418fe647b915",
+    "https://bcr.bazel.build/modules/abseil-cpp/20240116.0/MODULE.bazel": "98dc378d64c12a4e4741ad3362f87fb737ee6a0886b2d90c3cdbb4d93ea3e0bf",
     "https://bcr.bazel.build/modules/abseil-cpp/20240116.1/MODULE.bazel": "37bcdb4440fbb61df6a1c296ae01b327f19e9bb521f9b8e26ec854b6f97309ed",
-    "https://bcr.bazel.build/modules/abseil-cpp/20240116.1/source.json": "9be551b8d4e3ef76875c0d744b5d6a504a27e3ae67bc6b28f46415fd2d2957da",
+    "https://bcr.bazel.build/modules/abseil-cpp/20240116.2/MODULE.bazel": "73939767a4686cd9a520d16af5ab440071ed75cec1a876bf2fcfaf1f71987a16",
+    "https://bcr.bazel.build/modules/abseil-cpp/20240722.0.bcr.2/MODULE.bazel": "c3661b44c9d3f17f0b65ffb544896aaeb89127398ea867537babac18133a002a",
+    "https://bcr.bazel.build/modules/abseil-cpp/20250127.0/MODULE.bazel": "d1086e248cda6576862b4b3fe9ad76a214e08c189af5b42557a6e1888812c5d5",
+    "https://bcr.bazel.build/modules/abseil-cpp/20250127.1/MODULE.bazel": "c4a89e7ceb9bf1e25cf84a9f830ff6b817b72874088bf5141b314726e46a57c1",
+    "https://bcr.bazel.build/modules/abseil-cpp/20250512.0/MODULE.bazel": "c4d02dd22cd87458516655a45512060246ee2a4732f1fbe948a5bd9eb614e626",
+    "https://bcr.bazel.build/modules/abseil-cpp/20250512.1/MODULE.bazel": "d209fdb6f36ffaf61c509fcc81b19e81b411a999a934a032e10cd009a0226215",
+    "https://bcr.bazel.build/modules/abseil-cpp/20250814.1/MODULE.bazel": "51f2312901470cdab0dbdf3b88c40cd21c62a7ed58a3de45b365ddc5b11bcab2",
+    "https://bcr.bazel.build/modules/abseil-cpp/20250814.1/source.json": "cea3901d7e299da7320700abbaafe57a65d039f10d0d7ea601c4a66938ea4b0c",
+    "https://bcr.bazel.build/modules/abseil-py/2.1.0/MODULE.bazel": "5ebe5bf853769c65707e5c28f216798f7a4b1042015e6a36e6d03094d94bec8a",
+    "https://bcr.bazel.build/modules/abseil-py/2.1.0/source.json": "0e8fc4f088ce07099c1cd6594c20c7ddbb48b4b3c0849b7d94ba94be88ff042b",
+    "https://bcr.bazel.build/modules/apple_rules_lint/0.3.2/MODULE.bazel": "025c849b118da09af75afe0785bade64f082d27bb6aa1e078bfcbd1dc5a5bb26",
+    "https://bcr.bazel.build/modules/apple_rules_lint/0.3.2/source.json": "eea39d44eba88408573363151dfe63a01be1229d463dff18b9fbb412589e79f2",
+    "https://bcr.bazel.build/modules/apple_support/1.11.1/MODULE.bazel": "1843d7cd8a58369a444fc6000e7304425fba600ff641592161d9f15b179fb896",
+    "https://bcr.bazel.build/modules/apple_support/1.13.0/MODULE.bazel": "7c8cdea7e031b7f9f67f0b497adf6d2c6a2675e9304ca93a9af6ed84eef5a524",
+    "https://bcr.bazel.build/modules/apple_support/1.14.0/MODULE.bazel": "ff6681d5678559b588b5062313e6314be77d560d546e28833e10d6d1b54d18ee",
+    "https://bcr.bazel.build/modules/apple_support/1.15.1/MODULE.bazel": "a0556fefca0b1bb2de8567b8827518f94db6a6e7e7d632b4c48dc5f865bc7c85",
+    "https://bcr.bazel.build/modules/apple_support/1.17.1/MODULE.bazel": "655c922ab1209978a94ef6ca7d9d43e940cd97d9c172fb55f94d91ac53f8610b",
+    "https://bcr.bazel.build/modules/apple_support/1.19.0/MODULE.bazel": "195d987152354e9e4cab8f5635b55d39632b1542a8854b2012727d3a7bb02df4",
+    "https://bcr.bazel.build/modules/apple_support/1.19.0/source.json": "3c140194b5f0ff7953a234d59007e1264b93a5b50e3a9014a8e9a15d354e36bf",
     "https://bcr.bazel.build/modules/apple_support/1.5.0/MODULE.bazel": "50341a62efbc483e8a2a6aec30994a58749bd7b885e18dd96aa8c33031e558ef",
-    "https://bcr.bazel.build/modules/apple_support/1.5.0/source.json": "eb98a7627c0bc486b57f598ad8da50f6625d974c8f723e9ea71bd39f709c9862",
+    "https://bcr.bazel.build/modules/aspect_bazel_lib/1.31.2/MODULE.bazel": "7bee702b4862612f29333590f4b658a5832d433d6f8e4395f090e8f4e85d442f",
+    "https://bcr.bazel.build/modules/aspect_bazel_lib/1.38.0/MODULE.bazel": "6307fec451ba9962c1c969eb516ebfe1e46528f7fa92e1c9ac8646bef4cdaa3f",
+    "https://bcr.bazel.build/modules/aspect_bazel_lib/1.40.3/MODULE.bazel": "668e6bcb4d957fc0e284316dba546b705c8d43c857f87119619ee83c4555b859",
+    "https://bcr.bazel.build/modules/aspect_bazel_lib/2.11.0/MODULE.bazel": "cb1ba9f9999ed0bc08600c221f532c1ddd8d217686b32ba7d45b0713b5131452",
+    "https://bcr.bazel.build/modules/aspect_bazel_lib/2.11.0/source.json": "92494d5aa43b96665397dd13ee16023097470fa85e276b93674d62a244de47ee",
+    "https://bcr.bazel.build/modules/aspect_bazel_lib/2.7.7/MODULE.bazel": "491f8681205e31bb57892d67442ce448cda4f472a8e6b3dc062865e29a64f89c",
+    "https://bcr.bazel.build/modules/aspect_bazel_lib/2.8.1/MODULE.bazel": "812d2dd42f65dca362152101fbec418029cc8fd34cbad1a2fde905383d705838",
+    "https://bcr.bazel.build/modules/aspect_bazel_lib/2.9.3/MODULE.bazel": "66baf724dbae7aff4787bf2245cc188d50cb08e07789769730151c0943587c14",
+    "https://bcr.bazel.build/modules/aspect_rules_esbuild/0.21.0/MODULE.bazel": "77dc393c43ad79398b05865444c5200c6f1aae6765615544f2c7730b5858d533",
+    "https://bcr.bazel.build/modules/aspect_rules_esbuild/0.21.0/source.json": "062b1d3dba8adcfeb28fe60c185647f5a53ec0487ffe93cf0ae91566596e4b49",
+    "https://bcr.bazel.build/modules/aspect_rules_js/1.33.1/MODULE.bazel": "db3e7f16e471cf6827059d03af7c21859e7a0d2bc65429a3a11f005d46fc501b",
+    "https://bcr.bazel.build/modules/aspect_rules_js/1.39.0/MODULE.bazel": "aece421d479e3c31dc3e5f6d49a12acc2700457c03c556650ec7a0ff23fc0d95",
+    "https://bcr.bazel.build/modules/aspect_rules_js/2.0.0/MODULE.bazel": "b45b507574aa60a92796e3e13c195cd5744b3b8aff516a9c0cb5ae6a048161c5",
+    "https://bcr.bazel.build/modules/aspect_rules_js/2.1.3/MODULE.bazel": "47cc48eec374d69dced3cf9b9e5926beac2f927441acfb1a3568bbb709b25666",
+    "https://bcr.bazel.build/modules/aspect_rules_js/2.1.3/source.json": "6b0fe67780c101430be087381b7a79d75eeebe1a1eae6a2cee937713603634ac",
+    "https://bcr.bazel.build/modules/aspect_rules_lint/0.12.0/MODULE.bazel": "e767c5dbfeb254ec03275a7701b5cfde2c4d2873676804bc7cb27ddff3728fed",
+    "https://bcr.bazel.build/modules/aspect_rules_ts/3.4.0/MODULE.bazel": "5b554d5de90d96ee14117527c0519037713dd33884f3212eae391beccb2e94ff",
+    "https://bcr.bazel.build/modules/aspect_rules_ts/3.4.0/source.json": "9ada3722b716853b6dccdb7b650d8e776a23bc8a190de0c59bd15f21afea6f8a",
+    "https://bcr.bazel.build/modules/bazel_features/0.1.0/MODULE.bazel": "47011d645b0f949f42ee67f2e8775188a9cf4a0a1528aa2fa4952f2fd00906fd",
+    "https://bcr.bazel.build/modules/bazel_features/1.1.0/MODULE.bazel": "cfd42ff3b815a5f39554d97182657f8c4b9719568eb7fded2b9135f084bf760b",
     "https://bcr.bazel.build/modules/bazel_features/1.1.1/MODULE.bazel": "27b8c79ef57efe08efccbd9dd6ef70d61b4798320b8d3c134fd571f78963dbcd",
+    "https://bcr.bazel.build/modules/bazel_features/1.10.0/MODULE.bazel": "f75e8807570484a99be90abcd52b5e1f390362c258bcb73106f4544957a48101",
     "https://bcr.bazel.build/modules/bazel_features/1.11.0/MODULE.bazel": "f9382337dd5a474c3b7d334c2f83e50b6eaedc284253334cf823044a26de03e8",
+    "https://bcr.bazel.build/modules/bazel_features/1.13.0/MODULE.bazel": "c14c33c7c3c730612bdbe14ebbb5e61936b6f11322ea95a6e91cd1ba962f94df",
     "https://bcr.bazel.build/modules/bazel_features/1.15.0/MODULE.bazel": "d38ff6e517149dc509406aca0db3ad1efdd890a85e049585b7234d04238e2a4d",
     "https://bcr.bazel.build/modules/bazel_features/1.17.0/MODULE.bazel": "039de32d21b816b47bd42c778e0454217e9c9caac4a3cf8e15c7231ee3ddee4d",
     "https://bcr.bazel.build/modules/bazel_features/1.18.0/MODULE.bazel": "1be0ae2557ab3a72a57aeb31b29be347bcdc5d2b1eb1e70f39e3851a7e97041a",
     "https://bcr.bazel.build/modules/bazel_features/1.19.0/MODULE.bazel": "59adcdf28230d220f0067b1f435b8537dd033bfff8db21335ef9217919c7fb58",
     "https://bcr.bazel.build/modules/bazel_features/1.21.0/MODULE.bazel": "675642261665d8eea09989aa3b8afb5c37627f1be178382c320d1b46afba5e3b",
-    "https://bcr.bazel.build/modules/bazel_features/1.21.0/source.json": "3e8379efaaef53ce35b7b8ba419df829315a880cb0a030e5bb45c96d6d5ecb5f",
+    "https://bcr.bazel.build/modules/bazel_features/1.23.0/MODULE.bazel": "fd1ac84bc4e97a5a0816b7fd7d4d4f6d837b0047cf4cbd81652d616af3a6591a",
+    "https://bcr.bazel.build/modules/bazel_features/1.28.0/MODULE.bazel": "4b4200e6cbf8fa335b2c3f43e1d6ef3e240319c33d43d60cc0fbd4b87ece299d",
+    "https://bcr.bazel.build/modules/bazel_features/1.3.0/MODULE.bazel": "cdcafe83ec318cda34e02948e81d790aab8df7a929cec6f6969f13a489ccecd9",
+    "https://bcr.bazel.build/modules/bazel_features/1.30.0/MODULE.bazel": "a14b62d05969a293b80257e72e597c2da7f717e1e69fa8b339703ed6731bec87",
+    "https://bcr.bazel.build/modules/bazel_features/1.36.0/MODULE.bazel": "596cb62090b039caf1cad1d52a8bc35cf188ca9a4e279a828005e7ee49a1bec3",
+    "https://bcr.bazel.build/modules/bazel_features/1.36.0/source.json": "279625cafa5b63cc0a8ee8448d93bc5ac1431f6000c50414051173fd22a6df3c",
     "https://bcr.bazel.build/modules/bazel_features/1.4.1/MODULE.bazel": "e45b6bb2350aff3e442ae1111c555e27eac1d915e77775f6fdc4b351b758b5d7",
+    "https://bcr.bazel.build/modules/bazel_features/1.9.0/MODULE.bazel": "885151d58d90d8d9c811eb75e3288c11f850e1d6b481a8c9f766adee4712358b",
+    "https://bcr.bazel.build/modules/bazel_features/1.9.1/MODULE.bazel": "8f679097876a9b609ad1f60249c49d68bfab783dd9be012faf9d82547b14815a",
     "https://bcr.bazel.build/modules/bazel_skylib/1.0.3/MODULE.bazel": "bcb0fd896384802d1ad283b4e4eb4d718eebd8cb820b0a2c3a347fb971afd9d8",
     "https://bcr.bazel.build/modules/bazel_skylib/1.1.1/MODULE.bazel": "1add3e7d93ff2e6998f9e118022c84d163917d912f5afafb3058e3d2f1545b5e",
     "https://bcr.bazel.build/modules/bazel_skylib/1.2.0/MODULE.bazel": "44fe84260e454ed94ad326352a698422dbe372b21a1ac9f3eab76eb531223686",
@@ -34,109 +81,522 @@
     "https://bcr.bazel.build/modules/bazel_skylib/1.7.1/MODULE.bazel": "3120d80c5861aa616222ec015332e5f8d3171e062e3e804a2a0253e1be26e59b",
     "https://bcr.bazel.build/modules/bazel_skylib/1.8.1/MODULE.bazel": "88ade7293becda963e0e3ea33e7d54d3425127e0a326e0d17da085a5f1f03ff6",
     "https://bcr.bazel.build/modules/bazel_skylib/1.8.1/source.json": "7ebaefba0b03efe59cac88ed5bbc67bcf59a3eff33af937345ede2a38b2d368a",
+    "https://bcr.bazel.build/modules/bazel_worker_api/0.0.1/MODULE.bazel": "02a13b77321773b2042e70ee5e4c5e099c8ddee4cf2da9cd420442c36938d4bd",
+    "https://bcr.bazel.build/modules/bazel_worker_api/0.0.4/MODULE.bazel": "460aa12d01231a80cce03c548287b433b321d205b0028ae596728c35e5ee442e",
+    "https://bcr.bazel.build/modules/bazel_worker_api/0.0.4/source.json": "d353c410d47a8b65d09fa98e83d57ebec257a2c2b9c6e42d6fda1cb25e5464a5",
+    "https://bcr.bazel.build/modules/bazel_worker_java/0.0.4/MODULE.bazel": "82494a01018bb7ef06d4a17ec4cd7a758721f10eb8b6c820a818e70d669500db",
+    "https://bcr.bazel.build/modules/bazel_worker_java/0.0.4/source.json": "a2d30458fd86cf022c2b6331e652526fa08e17573b2f5034a9dbcacdf9c2583c",
+    "https://bcr.bazel.build/modules/bliss/0.73/MODULE.bazel": "26b5476884b67df20a8b87ab2806657123b439e978da76f484427a15fb552b26",
+    "https://bcr.bazel.build/modules/bliss/0.73/source.json": "5cb395710670662321f492fc3d4fce3551e3d5708682e4f2320bacaadf6e5e36",
+    "https://bcr.bazel.build/modules/boost.algorithm/1.83.0.bcr.1/MODULE.bazel": "8657617ad7aa55d179078faa15c131f07ae1bc35e536343211eee2d942368881",
+    "https://bcr.bazel.build/modules/boost.algorithm/1.83.0.bcr.1/source.json": "664117fe5b44d4e00e6a0b7c8f3893f22971bb11401ef6c0afa0c44c9bcf62b6",
+    "https://bcr.bazel.build/modules/boost.align/1.83.0.bcr.1/MODULE.bazel": "3a4320a5c5f21e3e75024550d4db99cb19575db87ddb4bfd9b7821f87b6a7999",
+    "https://bcr.bazel.build/modules/boost.align/1.83.0.bcr.1/source.json": "ee963f5571b73693e9f2fc647efbb45f6255b49b1ad4f59e914d2ad2c20dd335",
+    "https://bcr.bazel.build/modules/boost.array/1.83.0.bcr.1/MODULE.bazel": "ffe2956a8f5d90839e710cb298f0a342acc5a1d8fdfeee9578cae9657df87e38",
+    "https://bcr.bazel.build/modules/boost.array/1.83.0.bcr.1/source.json": "6d3925fef402c04bd7ea463203c1892c6ab96351c2264566e4bc9e6543fc777f",
+    "https://bcr.bazel.build/modules/boost.assert/1.83.0.bcr.1/MODULE.bazel": "abc07418c37c6e1876f56d959ff1b7cdcac70c8b7236bbacc69ab66686968910",
+    "https://bcr.bazel.build/modules/boost.assert/1.83.0.bcr.1/source.json": "05d5c7ef77352f32264b9ca625df8ca742b78a94d4b057347a54204d6cd9ded6",
+    "https://bcr.bazel.build/modules/boost.atomic/1.83.0.bcr.1/MODULE.bazel": "f2f7e2f0a7cb7764f53851e00120d468d507c9979c8e3f941a757ff5b5f74992",
+    "https://bcr.bazel.build/modules/boost.atomic/1.83.0.bcr.1/source.json": "4699e8c3d31a1fe9a84ec421c2f0cf99b8ac951db18b392ba2afec0dfd32181e",
+    "https://bcr.bazel.build/modules/boost.bind/1.83.0.bcr.1/MODULE.bazel": "c226a7152112ec5329aa831fd7daab296db2e8bf1a427e05c33bb770c885e044",
+    "https://bcr.bazel.build/modules/boost.bind/1.83.0.bcr.1/source.json": "1ad06dbc6d538e539abaeb58d647d787b63c2b0eb54f61168c8501d420cdd691",
+    "https://bcr.bazel.build/modules/boost.chrono/1.83.0.bcr.1/MODULE.bazel": "3e14a982441c92d79ecd6a7229ad56e621deba5d123f39b559be13ce0ab4ec1d",
+    "https://bcr.bazel.build/modules/boost.chrono/1.83.0.bcr.1/source.json": "9c21c228f4c55418d5fa94f051a0d36f05723b6ca2fc5dd38e8098f9f97389a0",
+    "https://bcr.bazel.build/modules/boost.concept_check/1.83.0.bcr.1/MODULE.bazel": "987ddeeca7c552f7c15557ed9f1e1de26e976d1380002cd41e56ea0ef7e1d25e",
+    "https://bcr.bazel.build/modules/boost.concept_check/1.83.0.bcr.1/source.json": "0a5cb9c8a8b424c04a717b2cbf483f1ee576611b3370550369671ea4f5852e3c",
+    "https://bcr.bazel.build/modules/boost.config/1.83.0.bcr.1/MODULE.bazel": "a9049b46df8ba7d4a895122cfbda4cf71ad01f441fad62117931cfafecba35d1",
+    "https://bcr.bazel.build/modules/boost.config/1.83.0.bcr.1/source.json": "4810a18d8d9827bf2822ca8e3e1491cfb882657224bc2def70b334120415ccc2",
+    "https://bcr.bazel.build/modules/boost.container/1.83.0.bcr.1/MODULE.bazel": "41c6d3a367a7eea6debf93ec058acb682d83158231553a1a6a841c40679e8baa",
+    "https://bcr.bazel.build/modules/boost.container/1.83.0.bcr.1/source.json": "23f49c4fad6c0407f592b5fa825452ba67a2c0b3f78b1da8bee0bf16d2b6763f",
+    "https://bcr.bazel.build/modules/boost.container_hash/1.83.0.bcr.1/MODULE.bazel": "baf420d50979d18d247681bb4f3e097c054f314c2a3c98c14f1b750871329ad7",
+    "https://bcr.bazel.build/modules/boost.container_hash/1.83.0.bcr.1/source.json": "f3248fbd4a2cd88333343bd78f317e3f7b085b6a2a31adab26f402083bdbdb26",
+    "https://bcr.bazel.build/modules/boost.conversion/1.83.0.bcr.1/MODULE.bazel": "d05ea5d39c0399ddd0331922e64a6bb8bdfe40b83cb6d4ecee62d7cb68f6c36b",
+    "https://bcr.bazel.build/modules/boost.conversion/1.83.0.bcr.1/source.json": "7b91cda19dcf46d35b47fd30ea9a6226c880d27f6abd51f8107c5015fec9bd46",
+    "https://bcr.bazel.build/modules/boost.core/1.83.0.bcr.1/MODULE.bazel": "6aa5d86d84dbeefeda0f5e3ac596db7426ecb6f6ebdf69383c2963292ee568cf",
+    "https://bcr.bazel.build/modules/boost.core/1.83.0.bcr.1/source.json": "62f0884fe4d287b72146c3355df6d737b016f312bb3bf9c1bbf41fd84400b046",
+    "https://bcr.bazel.build/modules/boost.date_time/1.83.0.bcr.1/MODULE.bazel": "47500c0f2985abf43129c9e0c175f7846eec6dbaf29f1c5a506f3f7b24ca94e1",
+    "https://bcr.bazel.build/modules/boost.date_time/1.83.0.bcr.1/source.json": "efd4950a6be9febc2b315de7008ac72b331612c8a9bdc72eb3260bcf66f7edea",
+    "https://bcr.bazel.build/modules/boost.describe/1.83.0.bcr.1/MODULE.bazel": "04f902525e3f53a7eec9e10bb58623d5b249afaa4f245917cc827f63933351ba",
+    "https://bcr.bazel.build/modules/boost.describe/1.83.0.bcr.1/source.json": "b3201219ad62723a684c98d1f13448346774d5979adf99d88583765150a9095c",
+    "https://bcr.bazel.build/modules/boost.detail/1.83.0.bcr.2/MODULE.bazel": "0016cbb9f265ebd4efcbb5f1aff14ccce5754bd98c3d9ff375d3a39f4173f8de",
+    "https://bcr.bazel.build/modules/boost.detail/1.83.0.bcr.3/MODULE.bazel": "89ce4454da586d3229071c94ae4fe305fa907f30f8b1ac38dfd637aebe20f306",
+    "https://bcr.bazel.build/modules/boost.detail/1.83.0.bcr.3/source.json": "2e4fd5c2b978891f79b255238d52134da48e5d388b5480138dbe5243fa6318e0",
+    "https://bcr.bazel.build/modules/boost.dynamic_bitset/1.83.0.bcr.1/MODULE.bazel": "2093a9d09159b97ada67ed370492f61c775ae7df5018c8ba9c69053ed7813dab",
+    "https://bcr.bazel.build/modules/boost.dynamic_bitset/1.83.0.bcr.1/source.json": "c8470feff0d94ef0c950dfa6b214cc119bbaae95355e27838b9d295c7b222b21",
+    "https://bcr.bazel.build/modules/boost.endian/1.83.0.bcr.1/MODULE.bazel": "334ce9f6e18c951767261b1e0050bd1b810607b0e508cfbf9ed03e20c6950b2f",
+    "https://bcr.bazel.build/modules/boost.endian/1.83.0.bcr.1/source.json": "ab64b9e716dbf35323d08ee83654f93ce136216eda11c96d23e57e62a09d7a6d",
+    "https://bcr.bazel.build/modules/boost.exception/1.83.0.bcr.1/MODULE.bazel": "60d6418bbe6246f71c1ff211c08f187d975fe12a0f6845c64c6127977c51375b",
+    "https://bcr.bazel.build/modules/boost.exception/1.83.0.bcr.1/source.json": "54a9e9984fccf6f49385b28c301ff3af0e7485ac7e5281c5d249f1b5b1225c9c",
+    "https://bcr.bazel.build/modules/boost.function/1.83.0.bcr.1/MODULE.bazel": "b555cccb955cc4bd8d548f81ec29fdd33284ae04afd9ed92b254abe6357a5ed7",
+    "https://bcr.bazel.build/modules/boost.function/1.83.0.bcr.1/source.json": "a85e42738a1fd7eb3df45ca31fe213ca23832adb0032a7bcf9cd8dac42445f86",
+    "https://bcr.bazel.build/modules/boost.function_types/1.83.0.bcr.1/MODULE.bazel": "266d931a312bafb39053b6a0260e59882c1389e8126f9dc5b3f37a1c2b66a152",
+    "https://bcr.bazel.build/modules/boost.function_types/1.83.0.bcr.1/source.json": "c421295de00ee97f4d605d8a873ce002b64d9e4226f61db710ceaaf2ff1c581a",
+    "https://bcr.bazel.build/modules/boost.functional/1.83.0.bcr.1/MODULE.bazel": "8e0f52ea1e5f1d34442347c1ddcb202ce2cc610175226df58770c69d7267b4a8",
+    "https://bcr.bazel.build/modules/boost.functional/1.83.0.bcr.1/source.json": "6a3c58ca81f5226221ac1565aa3a7c93e5d04b27d2f9bd71e1b113ff19f5a658",
+    "https://bcr.bazel.build/modules/boost.fusion/1.83.0.bcr.1/MODULE.bazel": "1a651840d5710e5f2b882535f9fd7a18d6932c24559185362a3dfe0ca3702ee4",
+    "https://bcr.bazel.build/modules/boost.fusion/1.83.0.bcr.1/source.json": "8977203271c1f1db3f329e5cdd4960d26060ef13bdc7e47820b77f61d2369909",
+    "https://bcr.bazel.build/modules/boost.integer/1.83.0.bcr.1/MODULE.bazel": "29655d7e043ba79065ed8fb8b8b99133470ff240f4606bebb6085d2c856578df",
+    "https://bcr.bazel.build/modules/boost.integer/1.83.0.bcr.1/source.json": "92d1105b5e005c47b10c09b42dfbc86374a069b62055c7471eb8546545ee534b",
+    "https://bcr.bazel.build/modules/boost.intrusive/1.83.0.bcr.1/MODULE.bazel": "74da910d77fbd42847917c0603a5c78ce7d8085d28a3fb9a98c56bd070238a10",
+    "https://bcr.bazel.build/modules/boost.intrusive/1.83.0.bcr.1/source.json": "dbeb235ffc10db2e0c553e21f266bdb32b3c82ef93d2cbfbbe78fa6e8fc760b5",
+    "https://bcr.bazel.build/modules/boost.io/1.83.0.bcr.1/MODULE.bazel": "ce3b42ee33880f7250263a158c51b6c33c38ccbff754b78703c8af3f842e1cb1",
+    "https://bcr.bazel.build/modules/boost.io/1.83.0.bcr.1/source.json": "94e74cc68d9ba9821aa35c207a943c8140856fbc494b3524d3729f0caa9e97db",
+    "https://bcr.bazel.build/modules/boost.iterator/1.83.0.bcr.1/MODULE.bazel": "6ac7783146113154a83e841bfa4449105718006378edff7fbfc53aeddf00812b",
+    "https://bcr.bazel.build/modules/boost.iterator/1.83.0.bcr.1/source.json": "16e10bfe39dd3096147160668219e7a9bb8a42bbce5bd6a8a9bfcb9c428f7912",
+    "https://bcr.bazel.build/modules/boost.lexical_cast/1.83.0.bcr.1/MODULE.bazel": "80f23d54f238b4dc9ae7e408621d1358af93617880675dea6a5338b690642841",
+    "https://bcr.bazel.build/modules/boost.lexical_cast/1.83.0.bcr.1/source.json": "e016aee7804f47d861b3ad9ea045d79ef861b0f3101c8d0ceb33e73e98e7f620",
+    "https://bcr.bazel.build/modules/boost.math/1.83.0.bcr.1/MODULE.bazel": "659d025c87e1b2a0eef9ca001156b6b96432034332e9be9d901328f448e22111",
+    "https://bcr.bazel.build/modules/boost.math/1.83.0.bcr.1/source.json": "9ec7345a110fc9b0ac6df2c2ff93f1d37aa5aad292a2ba05e5139a196cfebf5c",
+    "https://bcr.bazel.build/modules/boost.move/1.83.0.bcr.1/MODULE.bazel": "e901ceb363762eb989a7a53418fe7ce2acf8f542a413109105184a4e22e38096",
+    "https://bcr.bazel.build/modules/boost.move/1.83.0.bcr.1/source.json": "978a8ff249833ab0764a7c2a83a9bda299960112613f22c1ee3bb3ec97fbddbf",
+    "https://bcr.bazel.build/modules/boost.mp11/1.83.0.bcr.1/MODULE.bazel": "cf0d62cfca8865a1e1672953bd5b08cf5cb95e3aae819427565606305dd29165",
+    "https://bcr.bazel.build/modules/boost.mp11/1.83.0.bcr.1/source.json": "554cee46c279651fc3ffca71d947e8b99cb26bd87661debe7946eb21b61031f7",
+    "https://bcr.bazel.build/modules/boost.mpl/1.83.0.bcr.1/MODULE.bazel": "9cd97b224f9c1d8ffefdf48a7163767ca3968fbdfbc76f057caefbb4054be33e",
+    "https://bcr.bazel.build/modules/boost.mpl/1.83.0.bcr.1/source.json": "2ad7f4a254613fe2c0722d6127d9b366dbd19dcd8e44ad23f3ff66bf48163019",
+    "https://bcr.bazel.build/modules/boost.multiprecision/1.83.0.bcr.1/MODULE.bazel": "8cfeff36485d9e8687d904f38dca74ee26c37ea7ba8433f076d961e7f9329e8d",
+    "https://bcr.bazel.build/modules/boost.multiprecision/1.83.0.bcr.1/source.json": "39672d3d0db7afe04384c63d2af93f95221a7afe7762e390a8a0a99adad38b6f",
+    "https://bcr.bazel.build/modules/boost.numeric_conversion/1.83.0.bcr.1/MODULE.bazel": "1920d71f656a0433947579a86c22e0dd897816eadee3ae20d5c51dab9505deb3",
+    "https://bcr.bazel.build/modules/boost.numeric_conversion/1.83.0.bcr.1/source.json": "fc35a1dbb8810812f05fa54667f0edeac142f5fc144f9426236694a1d01e875c",
+    "https://bcr.bazel.build/modules/boost.optional/1.83.0.bcr.1/MODULE.bazel": "971e786a19e31dfbd8d311dff3bbffc7c1e16f348e019dfca50620fd9c475092",
+    "https://bcr.bazel.build/modules/boost.optional/1.83.0.bcr.1/source.json": "486e1173f8b24120078f072f434a79fb3aa8c6b0dafbc19c56b7780ea2336595",
+    "https://bcr.bazel.build/modules/boost.phoenix/1.83.0.bcr.1/MODULE.bazel": "62399f244151ee55b04a8adf620daf5fc106b149f5f18b155759381a1ebe656f",
+    "https://bcr.bazel.build/modules/boost.phoenix/1.83.0.bcr.1/source.json": "0974bc6d0f46611eb85eacea0ec68a59944cc3186989553d0b70764092a9b509",
+    "https://bcr.bazel.build/modules/boost.pool/1.83.0.bcr.1/MODULE.bazel": "7b7cae959d31e55cfdead4122cddf2ec84d7f3a8f0cf5cbc8d8176d226a1e83a",
+    "https://bcr.bazel.build/modules/boost.pool/1.83.0.bcr.1/source.json": "030c265079a757f423cb4fa86aff594ea3e20f3187e4a8a3a68a613d0eebeff4",
+    "https://bcr.bazel.build/modules/boost.predef/1.83.0.bcr.1/MODULE.bazel": "0dd34241f892423a9dcd20e1256b6a1c787d60849e9576c724a71607ad8a1955",
+    "https://bcr.bazel.build/modules/boost.predef/1.83.0.bcr.1/source.json": "deb64fec0911e7a5d38d8517ecdd470b0b3983506662e01f63f8925688c05c01",
+    "https://bcr.bazel.build/modules/boost.preprocessor/1.83.0.bcr.1/MODULE.bazel": "edb9fb7900ea7002cbefffd97302b071d7cbd8f948b51c7b1a75043bd2985eba",
+    "https://bcr.bazel.build/modules/boost.preprocessor/1.83.0.bcr.1/source.json": "69dc4f6fc76305c21c4a651c94ccfdc8a76d8fbae1151e7c1d1a4599dffc0f03",
+    "https://bcr.bazel.build/modules/boost.proto/1.83.0.bcr.1/MODULE.bazel": "a7f5243ab1919fca16f9016374e96fd6956d320592b5967e2f025a95b30f32fe",
+    "https://bcr.bazel.build/modules/boost.proto/1.83.0.bcr.1/source.json": "2be12e6b8f170aa8aff437b269b4c0f2d7b63125475507e437b7150184f27d5e",
+    "https://bcr.bazel.build/modules/boost.random/1.83.0.bcr.1/MODULE.bazel": "cabe3ba820c9588a9ca22548b88ad8c4b307be085691b286ff0dae8a46b25fa0",
+    "https://bcr.bazel.build/modules/boost.random/1.83.0.bcr.1/source.json": "5cc5c8c13e525c5b1c12ea5b31359a16bfaf25b750c0601c0624b9342872e05d",
+    "https://bcr.bazel.build/modules/boost.range/1.83.0.bcr.1/MODULE.bazel": "136d623462d1d5c7cf79df83b5ce17a8582a92abb116da9d88c5e5594e5a7d92",
+    "https://bcr.bazel.build/modules/boost.range/1.83.0.bcr.1/source.json": "f99062101034f19d9bf2bef3e07cc99bf192640b72560663227e5375efd1e144",
+    "https://bcr.bazel.build/modules/boost.ratio/1.83.0.bcr.1/MODULE.bazel": "3ad15c17bd4dbe71910bb413ac19523e41688f6957103b68bb4d02ac20af567c",
+    "https://bcr.bazel.build/modules/boost.ratio/1.83.0.bcr.1/source.json": "eb58a64870c8c06383748081107e092512f9e781407e28b6cfcf648aa74c8fc8",
+    "https://bcr.bazel.build/modules/boost.rational/1.83.0.bcr.1/MODULE.bazel": "cb0953fb163d4b42c67b762896a357c9ae45a59f2fef5ff25f0dc2f0127710a4",
+    "https://bcr.bazel.build/modules/boost.rational/1.83.0.bcr.1/source.json": "79bfbaf9da65bd765fa4b47e1ac0a914b17151120e6a29286976fa7c5b92eb60",
+    "https://bcr.bazel.build/modules/boost.regex/1.83.0.bcr.1/MODULE.bazel": "5e2c235ea0bdbd8fa942f429ed8aefa1ad3e1471993a17a7b82c1f127dbcb3a2",
+    "https://bcr.bazel.build/modules/boost.regex/1.83.0.bcr.1/source.json": "1d5fda14ae73d5f12ced3c8731006f28b54bdaf75da35f6cc06c2b57b724d011",
+    "https://bcr.bazel.build/modules/boost.serialization/1.83.0.bcr.1/MODULE.bazel": "38913136b1e818768a25338a21640277cfa73d3af5d4eb6865ef0eb973c6b042",
+    "https://bcr.bazel.build/modules/boost.serialization/1.83.0.bcr.1/source.json": "0aea602e3a56afd785f49d4275ea6fa037c936be48bdc67a8c556ed9c2d6def4",
+    "https://bcr.bazel.build/modules/boost.smart_ptr/1.83.0.bcr.1/MODULE.bazel": "5652293a4b393e5a56ef4113e0f41b6121d22a0d8f7ccd3e27c4042b947683e3",
+    "https://bcr.bazel.build/modules/boost.smart_ptr/1.83.0.bcr.1/source.json": "1b1b6b549073ef6b1bdbd9898490f73ddb6324774d441cd24d6d1181d4bc75f4",
+    "https://bcr.bazel.build/modules/boost.spirit/1.83.0.bcr.1/MODULE.bazel": "7d50233e6108a0a8fc6fcfde4ce55a09796a65fdcae48d3c78167c25ca7d73fa",
+    "https://bcr.bazel.build/modules/boost.spirit/1.83.0.bcr.1/source.json": "21e666c55355d43edd19fb8a4535a33dd988571f02289a15035de7cb902377d4",
+    "https://bcr.bazel.build/modules/boost.static_assert/1.83.0.bcr.1/MODULE.bazel": "2b605adc483c6241865f1e862437331bc6f56c0d376769908b70ba18d3da1f07",
+    "https://bcr.bazel.build/modules/boost.static_assert/1.83.0.bcr.1/source.json": "a0eac8de976fff7efdf498933d7494df30eff471c51c1edfc822007069697ed7",
+    "https://bcr.bazel.build/modules/boost.system/1.83.0.bcr.1/MODULE.bazel": "5f905d0fbb1ce99231f3fa278b2e5999aa7395c6393ac42d479ae21824adf03f",
+    "https://bcr.bazel.build/modules/boost.system/1.83.0.bcr.1/source.json": "0676ab63c01c5ddf731a5cf54667ffc6560e9fb52401a2a9ac6a10c5a9909019",
+    "https://bcr.bazel.build/modules/boost.thread/1.83.0.bcr.1/MODULE.bazel": "2c5da147f251b0c7af2f0861477271878ed364248edd85c6e93175cf6e5f98ce",
+    "https://bcr.bazel.build/modules/boost.thread/1.83.0.bcr.1/source.json": "bd25b519fd0d8ade2bcb1ddef2276e4bf88f8254381ecab27ec0cc05b36d871d",
+    "https://bcr.bazel.build/modules/boost.throw_exception/1.83.0.bcr.1/MODULE.bazel": "b757c832f5f5f818d87c9eaa993d3eb211554197321c3edf641e2c8821cf19c2",
+    "https://bcr.bazel.build/modules/boost.throw_exception/1.83.0.bcr.1/source.json": "c752d584840e9183141f9d53f07f2051016c16771a973cdd1487f9585980c2e5",
+    "https://bcr.bazel.build/modules/boost.tokenizer/1.83.0.bcr.1/MODULE.bazel": "486e2806e0682f12d1ea8f97013b65719eaefb3078f347b3a3518cd6f7b2c837",
+    "https://bcr.bazel.build/modules/boost.tokenizer/1.83.0.bcr.1/source.json": "c4f3923d7b4e094cd70cff03d59b556653b78cc1a5dc3652e88609df566a9839",
+    "https://bcr.bazel.build/modules/boost.tuple/1.83.0.bcr.1/MODULE.bazel": "1d540b5efd3b65eeabd3621e5187a799e21bfa9ffc6afd7d4ad307cc4a27a6d4",
+    "https://bcr.bazel.build/modules/boost.tuple/1.83.0.bcr.1/source.json": "7aa33ec2aaae45605049ea0ec1c1de9517a1e1278a22d0a521521d4023f9ad87",
+    "https://bcr.bazel.build/modules/boost.type_index/1.83.0.bcr.1/MODULE.bazel": "6d78322266adba397ef8c2568ab90bb87432b052e724857b4b9f30f85544ef15",
+    "https://bcr.bazel.build/modules/boost.type_index/1.83.0.bcr.1/source.json": "08db090d1570232c3f513ca8f6a107bd1d10be9a65d7d0f8b850cfdd9055ab22",
+    "https://bcr.bazel.build/modules/boost.type_traits/1.83.0.bcr.1/MODULE.bazel": "89bbca2de42dc79ffcabb3625103771e4b04566eee6b8cfe7fa807d133d053f7",
+    "https://bcr.bazel.build/modules/boost.type_traits/1.83.0.bcr.1/source.json": "051e4969558e4a356c5059f4a4f41335b3968b91fa8ae1772898676ec95ded56",
+    "https://bcr.bazel.build/modules/boost.typeof/1.83.0.bcr.1/MODULE.bazel": "6b3dd6cfe993a8ccf98bce79506be41ec893c65013d7a5be9177c8a185e86d87",
+    "https://bcr.bazel.build/modules/boost.typeof/1.83.0.bcr.1/source.json": "0ec40beca58de1b17c1ddb18c357ef525977e4312540122b3b91cbe485556f17",
+    "https://bcr.bazel.build/modules/boost.unordered/1.83.0.bcr.1/MODULE.bazel": "c9be557708b3390921d02880774fd76299e5b9523f045d8b09b067777bf47bb4",
+    "https://bcr.bazel.build/modules/boost.unordered/1.83.0.bcr.1/source.json": "1f64a4e380153091443c069cdfebaa2102faa22673a5bf2c3690bfe67eaf4685",
+    "https://bcr.bazel.build/modules/boost.utility/1.83.0.bcr.1/MODULE.bazel": "1346dc27d6c8b7ced10896224ed3e406adac3fd79c8450d78c291228f1b9075d",
+    "https://bcr.bazel.build/modules/boost.utility/1.83.0.bcr.1/source.json": "15636369b5452784e7bd04f7ae52c751e591dd4ebb852688fccc66234d452929",
+    "https://bcr.bazel.build/modules/boost.variant/1.83.0.bcr.1/MODULE.bazel": "adafe526c9f34d61cc49d9676057d8d039aa53905e3333707d667447e58b322a",
+    "https://bcr.bazel.build/modules/boost.variant/1.83.0.bcr.1/source.json": "a088bfec1fc7eaf9c56692e0709eaba13f1be0a3fb0e81161f0d7a76d779f333",
+    "https://bcr.bazel.build/modules/boost.variant2/1.83.0.bcr.1/MODULE.bazel": "c60baa3b8923712a156197ffaf5cf9972bf35e44d00a90f7019a06761f391d3e",
+    "https://bcr.bazel.build/modules/boost.variant2/1.83.0.bcr.1/source.json": "041f94707bd509bc1f93782ccb6c38d491ac0dca25d26011f2047639d3a2bcd1",
+    "https://bcr.bazel.build/modules/boost.winapi/1.83.0.bcr.1/MODULE.bazel": "faf78b50dae672a38b77db545a460428cfe47a8d79466455ef397d76037e9e40",
+    "https://bcr.bazel.build/modules/boost.winapi/1.83.0.bcr.1/source.json": "0957b4dabe425e7f9d8d02db63969b808a280c11388ad7814e50b0779ae592cc",
+    "https://bcr.bazel.build/modules/boringssl/0.0.0-20230215-5c22014/MODULE.bazel": "4b03dc0d04375fa0271174badcd202ed249870c8e895b26664fd7298abea7282",
+    "https://bcr.bazel.build/modules/boringssl/0.0.0-20240530-2db0eb3/MODULE.bazel": "d0405b762c5e87cd445b7015f2b8da5400ef9a8dbca0bfefa6c1cea79d528a97",
+    "https://bcr.bazel.build/modules/boringssl/0.20240913.0/MODULE.bazel": "fcaa7503a5213290831a91ed1eb538551cf11ac0bc3a6ad92d0fef92c5bd25fb",
+    "https://bcr.bazel.build/modules/boringssl/0.20241024.0/MODULE.bazel": "b540cff73d948cb79cb0bc108d7cef391d2098a25adabfda5043e4ef548dbc87",
+    "https://bcr.bazel.build/modules/boringssl/0.20250818.0/MODULE.bazel": "f1d47a56473955f97a14701e74c41668e5e12c3a694212c231e237a13a51b2bd",
+    "https://bcr.bazel.build/modules/boringssl/0.20250818.0/source.json": "883d4fdc55451fbfddb0409bab8e3a7f7276827ce44ad9b24d83b7c59097cecc",
+    "https://bcr.bazel.build/modules/brotli/1.1.0/MODULE.bazel": "3b5b90488995183419c4b5c9b063a164f6c0bc4d0d6b40550a612a5e860cc0fe",
+    "https://bcr.bazel.build/modules/brotli/1.1.0/source.json": "098a4fd315527166e8dfe1fd1537c96a737a83764be38fc43f4da231d600f3d0",
     "https://bcr.bazel.build/modules/buildozer/7.1.2/MODULE.bazel": "2e8dd40ede9c454042645fd8d8d0cd1527966aa5c919de86661e62953cd73d84",
     "https://bcr.bazel.build/modules/buildozer/7.1.2/source.json": "c9028a501d2db85793a6996205c8de120944f50a0d570438fcae0457a5f9d1f8",
+    "https://bcr.bazel.build/modules/bzip2/1.0.8/MODULE.bazel": "83ee443b286b0b91566e5ee77e74ba6445895f3135467893871560f9e4ebc159",
+    "https://bcr.bazel.build/modules/bzip2/1.0.8/source.json": "b64f3a2f973749cf5f6ee32b3d804af56a35a746228a7845ed5daa31c8cc8af1",
+    "https://bcr.bazel.build/modules/c-ares/1.19.1.bcr.1/MODULE.bazel": "4894eaa219c932a8025c223e5dbf0826de226f8cb62bbed76466c9475598e22b",
+    "https://bcr.bazel.build/modules/c-ares/1.19.1.bcr.1/source.json": "fa4eb4f11c83cfdc2ea12ce9433f5a0a2c2686c60b2e469c146a05f495e9a4bd",
+    "https://bcr.bazel.build/modules/c-ares/1.19.1/MODULE.bazel": "73bca21720772370ff91cc8e88bbbaf14897720c6473e87c1ddc0f848284c313",
+    "https://bcr.bazel.build/modules/cel-spec/0.15.0/MODULE.bazel": "e1eed53d233acbdcf024b4b0bc1528116d92c29713251b5154078ab1348cb600",
+    "https://bcr.bazel.build/modules/cel-spec/0.15.0/source.json": "ab7dccdf21ea2261c0f809b5a5221a4d7f8b580309f285fdf1444baaca75d44a",
+    "https://bcr.bazel.build/modules/civetweb/1.16/MODULE.bazel": "46a38f9daeb57392e3827fce7d40926be0c802bd23cdd6bfd3a96c804de42fae",
+    "https://bcr.bazel.build/modules/civetweb/1.16/source.json": "ba8b9585adb8355cb51b999d57172fd05e7a762c56b8d4bac6db42c99de3beb7",
+    "https://bcr.bazel.build/modules/contrib_rules_jvm/0.27.0/MODULE.bazel": "47935663ea1bf540b651ceaed516c181623ae4185d37fd1f6c79066effe4601c",
+    "https://bcr.bazel.build/modules/contrib_rules_jvm/0.27.0/source.json": "966fcac19d6d8a0f3c8239fbd1a3ff0bff0a6ec34efbaa9ba5cadfd5b04729b6",
+    "https://bcr.bazel.build/modules/crc32c/1.1.0/MODULE.bazel": "f11439d063a2b4e0f19b56bb8da6a931f9691bf583bd1ec0718645bce6c62b06",
+    "https://bcr.bazel.build/modules/crc32c/1.1.0/source.json": "aabc6ce46d4b71343d500270c2ddfd45f59cff9fd171313bdd773bf620cf2a6f",
+    "https://bcr.bazel.build/modules/curl/8.7.1/MODULE.bazel": "088221c35a2939c555e6e47cb31a81c15f8b59f4daa8009b1e9271a502d33485",
+    "https://bcr.bazel.build/modules/curl/8.8.0.bcr.3/MODULE.bazel": "df703a5a606a5bc264a95940113daa44197dc211f51230dd058323f2aa50efca",
+    "https://bcr.bazel.build/modules/curl/8.8.0.bcr.3/source.json": "ef03f6b660515bcfc9e284e8bdd3679895cc28afdaecd794a6059d47f22d1df1",
+    "https://bcr.bazel.build/modules/curl/8.8.0/MODULE.bazel": "7da3b3e79b0b4ee8f8c95d640bc6ad7b430ce66ef6e9c9d2bc29b3b5ef85f6fe",
+    "https://bcr.bazel.build/modules/cython/3.0.11-1/MODULE.bazel": "868b3f5c956c3657420d2302004c6bb92606bfa47e314bab7f2ba0630c7c966c",
+    "https://bcr.bazel.build/modules/cython/3.0.11-1/source.json": "da318be900b8ca9c3d1018839d3bebc5a8e1645620d0848fa2c696d4ecf7c296",
+    "https://bcr.bazel.build/modules/eigen/3.4.0.bcr.2/MODULE.bazel": "23fd0e097bfc0952632b854377b79ccee80fd473db6d55e0e26fce80a919f0c5",
+    "https://bcr.bazel.build/modules/eigen/3.4.0.bcr.2/source.json": "517be47a2886a9fd0918674f381a6ff1b9db6468af36f062e0c03b2f4a419ef6",
+    "https://bcr.bazel.build/modules/envoy_api/0.0.0-20250128-4de3c74/MODULE.bazel": "1fe72489212c530086e3ffb0e018b2bfef4663200ca03571570f9f006bef1d75",
+    "https://bcr.bazel.build/modules/envoy_api/0.0.0-20250128-4de3c74/source.json": "028519164a2e24563f4b43d810fdedc702daed90e71e7042d45ba82ad807b46f",
+    "https://bcr.bazel.build/modules/flatbuffers/25.2.10/MODULE.bazel": "dab15cafe8512d2c4a8daa44c2d7968c5c79f01e220d40076cdc260bf58605e2",
+    "https://bcr.bazel.build/modules/flatbuffers/25.2.10/source.json": "7eae7ea3eb913b9802426e4d5df11d6c6072a3573a548f8cabf1e965f5cca4d0",
+    "https://bcr.bazel.build/modules/fmt/11.1.1/MODULE.bazel": "5d8be02924a69c13d2fb0b22d5511bb8cf2fe52a557ad6d095688fcd6b7beefb",
+    "https://bcr.bazel.build/modules/fmt/11.1.1/source.json": "fbf9d442fec272274d0af20ccf36b3387c3d85ea27680c98a197c01c00c3dfc7",
+    "https://bcr.bazel.build/modules/fuzztest/20250214.0/MODULE.bazel": "b65b66befece838904a4e1a8bf5bb8d610b0e7519f0e4654fae6e61f3b9a54e8",
+    "https://bcr.bazel.build/modules/fuzztest/20250805.0/MODULE.bazel": "a1149725e0dfff4464079b0c0ae64c1f88dc1b2d17190f567c7390afb3788e22",
+    "https://bcr.bazel.build/modules/fuzztest/20250805.0/source.json": "a18dbbd78a59238982e1e309526d7d1afe2b654d57f32be0a309aa588795d259",
+    "https://bcr.bazel.build/modules/gazelle/0.27.0/MODULE.bazel": "3446abd608295de6d90b4a8a118ed64a9ce11dcb3dda2dc3290a22056bd20996",
+    "https://bcr.bazel.build/modules/gazelle/0.30.0/MODULE.bazel": "f888a1effe338491f35f0e0e85003b47bb9d8295ccba73c37e07702d8d31c65b",
+    "https://bcr.bazel.build/modules/gazelle/0.32.0/MODULE.bazel": "b499f58a5d0d3537f3cf5b76d8ada18242f64ec474d8391247438bf04f58c7b8",
+    "https://bcr.bazel.build/modules/gazelle/0.33.0/MODULE.bazel": "a13a0f279b462b784fb8dd52a4074526c4a2afe70e114c7d09066097a46b3350",
+    "https://bcr.bazel.build/modules/gazelle/0.34.0/MODULE.bazel": "abdd8ce4d70978933209db92e436deb3a8b737859e9354fb5fd11fb5c2004c8a",
+    "https://bcr.bazel.build/modules/gazelle/0.36.0/MODULE.bazel": "e375d5d6e9a6ca59b0cb38b0540bc9a05b6aa926d322f2de268ad267a2ee74c0",
+    "https://bcr.bazel.build/modules/gazelle/0.37.0/MODULE.bazel": "d1327ba0907d0275ed5103bfbbb13518f6c04955b402213319d0d6c0ce9839d4",
+    "https://bcr.bazel.build/modules/gazelle/0.39.1/MODULE.bazel": "1fa3fefad240e535066fd0e6950dfccd627d36dc699ee0034645e51dbde3980f",
+    "https://bcr.bazel.build/modules/gazelle/0.40.0/MODULE.bazel": "42ba5378ebe845fca43989a53186ab436d956db498acde790685fe0e8f9c6146",
+    "https://bcr.bazel.build/modules/gazelle/0.40.0/source.json": "1e5ef6e4d8b9b6836d93273c781e78ff829ea2e077afef7a57298040fa4f010a",
+    "https://bcr.bazel.build/modules/gflags/2.2.2/MODULE.bazel": "ba6502c3fee189734f359454db8a49b7c08afd7271b32e7c6fc38c2d2e1edbeb",
+    "https://bcr.bazel.build/modules/gflags/2.2.2/source.json": "b06d93702e18b5d75a69d53464c37ef5c2a9b4e237a8d4f2bf0217b3b0af2bee",
+    "https://bcr.bazel.build/modules/glpk/5.0.bcr.2/MODULE.bazel": "d539aa4b146ae743e51eba2e42851e27580a34edd51d82fec4738edc20e3d1d8",
+    "https://bcr.bazel.build/modules/glpk/5.0.bcr.2/source.json": "624382187f52acfb739e560922ec6c3b6d7ca0036c82c8333c810505273970cf",
+    "https://bcr.bazel.build/modules/google_bazel_common/0.0.1/MODULE.bazel": "5b364f7ca35cc87851b625cd9ec2b86bd6d3fbe9724646f28a5254d213f1c05b",
+    "https://bcr.bazel.build/modules/google_bazel_common/0.0.1/source.json": "399a40d8acfb3a592f38717d27457900cc9540da8ddcff936584d0b590e3386d",
     "https://bcr.bazel.build/modules/google_benchmark/1.8.2/MODULE.bazel": "a70cf1bba851000ba93b58ae2f6d76490a9feb74192e57ab8e8ff13c34ec50cb",
+    "https://bcr.bazel.build/modules/google_benchmark/1.8.4/MODULE.bazel": "c6d54a11dcf64ee63545f42561eda3fd94c1b5f5ebe1357011de63ae33739d5e",
+    "https://bcr.bazel.build/modules/google_benchmark/1.8.5/MODULE.bazel": "9ba9b31b984022828a950e3300410977eda2e35df35584c6b0b2d0c2e52766b7",
+    "https://bcr.bazel.build/modules/google_benchmark/1.8.5/source.json": "2c9c685f9b496f125b9e3a9c696c549d1ed2f33b75830a2fb6ac94fab23c0398",
+    "https://bcr.bazel.build/modules/google_cloud_cpp/3.0.0-rc1/MODULE.bazel": "d3dc3ee19f703239a67b5f954784706ffab28c0d5cf4dcc5253df8ee2feba8ff",
+    "https://bcr.bazel.build/modules/google_cloud_cpp/3.0.0-rc1/source.json": "0dfad712a3cd6843be34cd3b1b27d56741ce164a8e2ad633fa56932dab4b51b3",
+    "https://bcr.bazel.build/modules/googleapis-cc/1.0.0/MODULE.bazel": "cf01757e7590c56140a4b81638ff2b3e7074769e6271720bbf738fcda25b6fc2",
+    "https://bcr.bazel.build/modules/googleapis-cc/1.0.0/source.json": "ab0e3a2ee9968a8848f59872fbbfa3e1f768597d71d2229e6caa319d357967c7",
+    "https://bcr.bazel.build/modules/googleapis-grpc-cc/1.0.0/MODULE.bazel": "3553358a9d8d96026c9e28d9fb6c268574950d0be7fa9b4c0aeaf3c37c73f2d3",
+    "https://bcr.bazel.build/modules/googleapis-grpc-cc/1.0.0/source.json": "fa7b79043b3c82bf74f1f2fa45af289e19b247375868d0752db2c114a1c7366c",
+    "https://bcr.bazel.build/modules/googleapis-rules-registry/1.0.0/MODULE.bazel": "97c6a4d413b373d4cc97065da3de1b2166e22cbbb5f4cc9f05760bfa83619e24",
+    "https://bcr.bazel.build/modules/googleapis-rules-registry/1.0.0/source.json": "cf611c836a60e98e2e2ab2de8004f119e9f06878dcf4ea2d95a437b1b7a89fe9",
+    "https://bcr.bazel.build/modules/googleapis/0.0.0-20240326-1c8d509c5/MODULE.bazel": "a4b7e46393c1cdcc5a00e6f85524467c48c565256b22b5fae20f84ab4a999a68",
+    "https://bcr.bazel.build/modules/googleapis/0.0.0-20240819-fe8ba054a/MODULE.bazel": "117b7c7be7327ed5d6c482274533f2dbd78631313f607094d4625c28203cacdf",
+    "https://bcr.bazel.build/modules/googleapis/0.0.0-20250703-f9d6fe4a/MODULE.bazel": "d1a3f5d60acdc6466b2f86320855c8a5543cec1af1e4bf9d34d3115fe043c851",
+    "https://bcr.bazel.build/modules/googleapis/0.0.0-20250703-f9d6fe4a/source.json": "a51564703aa367b73e995ab01c8485860066ad39866065767871887c63122392",
     "https://bcr.bazel.build/modules/googletest/1.11.0/MODULE.bazel": "3a83f095183f66345ca86aa13c58b59f9f94a2f81999c093d4eeaa2d262d12f4",
     "https://bcr.bazel.build/modules/googletest/1.14.0.bcr.1/MODULE.bazel": "22c31a561553727960057361aa33bf20fb2e98584bc4fec007906e27053f80c6",
-    "https://bcr.bazel.build/modules/googletest/1.14.0.bcr.1/source.json": "41e9e129f80d8c8bf103a7acc337b76e54fad1214ac0a7084bf24f4cd924b8b4",
     "https://bcr.bazel.build/modules/googletest/1.14.0/MODULE.bazel": "cfbcbf3e6eac06ef9d85900f64424708cc08687d1b527f0ef65aa7517af8118f",
+    "https://bcr.bazel.build/modules/googletest/1.15.2/MODULE.bazel": "6de1edc1d26cafb0ea1a6ab3f4d4192d91a312fd2d360b63adaa213cd00b2108",
+    "https://bcr.bazel.build/modules/googletest/1.16.0/MODULE.bazel": "a175623c69e94fca4ca7acbc12031e637b0c489318cd4805606981d4d7adb34a",
+    "https://bcr.bazel.build/modules/googletest/1.17.0.bcr.1/MODULE.bazel": "9f8e815fba6e81dee850a33068166989000eabcf7690d2127a975c2ebda6baae",
+    "https://bcr.bazel.build/modules/googletest/1.17.0.bcr.1/source.json": "7ec4d46613cc41d908cb87a58e7e7ad11dba4662640af8ae2200bd045c1e4f84",
+    "https://bcr.bazel.build/modules/googletest/1.17.0/MODULE.bazel": "dbec758171594a705933a29fcf69293d2468c49ec1f2ebca65c36f504d72df46",
+    "https://bcr.bazel.build/modules/grpc-java/1.62.2/MODULE.bazel": "99b8771e8c7cacb130170fed2a10c9e8fed26334a93e73b42d2953250885a158",
+    "https://bcr.bazel.build/modules/grpc-java/1.66.0/MODULE.bazel": "86ff26209fac846adb89db11f3714b3dc0090fb2fb81575673cc74880cda4e7e",
+    "https://bcr.bazel.build/modules/grpc-proto/0.0.0-20240627-ec30f58/MODULE.bazel": "88de79051e668a04726e9ea94a481ec6f1692086735fd6f488ab908b3b909238",
+    "https://bcr.bazel.build/modules/highs/1.9.0/MODULE.bazel": "76a6b90cef0630db604b3ee3e004ea54ea92bf4bcb2fbe9cf619eb9d2dc8c651",
+    "https://bcr.bazel.build/modules/highs/1.9.0/source.json": "40f023f93f0bdcaeb14cfd3975c9b6f2f9a0315201791611ca203450f2b4c028",
+    "https://bcr.bazel.build/modules/highwayhash/0.0.0-20240305-5ad3bf8/MODULE.bazel": "5c7f29d5bd70feff14b0f65b39584957e18e4a8d555e5a29a4c36019afbb44b9",
+    "https://bcr.bazel.build/modules/highwayhash/0.0.0-20240305-5ad3bf8/source.json": "211c0937ef5f537da6c3c135d12e60927c71b380642e207e4a02b86d29c55e85",
     "https://bcr.bazel.build/modules/jsoncpp/1.9.5/MODULE.bazel": "31271aedc59e815656f5736f282bb7509a97c7ecb43e927ac1a37966e0578075",
-    "https://bcr.bazel.build/modules/jsoncpp/1.9.5/source.json": "4108ee5085dd2885a341c7fab149429db457b3169b86eb081fa245eadf69169d",
+    "https://bcr.bazel.build/modules/jsoncpp/1.9.6/MODULE.bazel": "2f8d20d3b7d54143213c4dfc3d98225c42de7d666011528dc8fe91591e2e17b0",
+    "https://bcr.bazel.build/modules/jsoncpp/1.9.6/source.json": "a04756d367a2126c3541682864ecec52f92cdee80a35735a3cb249ce015ca000",
     "https://bcr.bazel.build/modules/libpfm/4.11.0/MODULE.bazel": "45061ff025b301940f1e30d2c16bea596c25b176c8b6b3087e92615adbd52902",
+    "https://bcr.bazel.build/modules/libpfm/4.11.0/source.json": "caaffb3ac2b59b8aac456917a4ecf3167d40478ee79f15ab7a877ec9273937c9",
+    "https://bcr.bazel.build/modules/libpng/1.6.50.bcr.1/MODULE.bazel": "5a5bef9f8b723d04b194b80071b927653a4064379bb6673c829fd3c14828fba0",
+    "https://bcr.bazel.build/modules/libpng/1.6.50.bcr.1/source.json": "90245ae3e111b84da48061935c3f6ebc658e3c87e5bd8c6e2f19cd7eec43203a",
+    "https://bcr.bazel.build/modules/libprotobuf-mutator/1.3/MODULE.bazel": "9d21c6ff119cf463291489ebcecc2040532302986e49696f4cd6c1187f639b00",
+    "https://bcr.bazel.build/modules/libprotobuf-mutator/1.3/source.json": "6b569b2b79da2c0fad1aaf83cad51d0764c84ffeca0f7d8fd541542bc1cb1855",
+    "https://bcr.bazel.build/modules/lz4/1.9.4/MODULE.bazel": "e3d307b1d354d70f6c809167eafecf5d622c3f27e3971ab7273410f429c7f83a",
+    "https://bcr.bazel.build/modules/lz4/1.9.4/source.json": "233f0bdfc21f254e3dda14683ddc487ca68c6a3a83b7d5db904c503f85bd089b",
+    "https://bcr.bazel.build/modules/mbedtls/3.6.0/MODULE.bazel": "8e380e4698107c5f8766264d4df92e36766248447858db28187151d884995a09",
+    "https://bcr.bazel.build/modules/mbedtls/3.6.0/source.json": "1dbe7eb5258050afcc3806b9d43050f71c6f539ce0175535c670df606790b30c",
+    "https://bcr.bazel.build/modules/nlohmann_json/3.11.3/MODULE.bazel": "87023db2f55fc3a9949c7b08dc711fae4d4be339a80a99d04453c4bb3998eefc",
+    "https://bcr.bazel.build/modules/nlohmann_json/3.12.0/MODULE.bazel": "21f19a4479e994c1546cf6f10c65d2fa464cd95f49eebad98dc5bac49c801dab",
+    "https://bcr.bazel.build/modules/nlohmann_json/3.12.0/source.json": "6bf17b358c467effad70c02ab43e2d65939d740f667157397f583435909cfae1",
+    "https://bcr.bazel.build/modules/nlohmann_json/3.6.1/MODULE.bazel": "6f7b417dcc794d9add9e556673ad25cb3ba835224290f4f848f8e2db1e1fca74",
+    "https://bcr.bazel.build/modules/opencensus-cpp/0.0.0-20230502-50eb5de.bcr.2/MODULE.bazel": "cc18734138dd18c912c6ce2a59186db28f85d8058c99c9f21b46ca3e0aba0ebe",
+    "https://bcr.bazel.build/modules/opencensus-cpp/0.0.0-20230502-50eb5de.bcr.2/source.json": "7c135f9d42bb3b045669c3c6ab3bb3c208e00b46aca4422eea64c29811a5b240",
+    "https://bcr.bazel.build/modules/opencensus-proto/0.4.1.bcr.2/MODULE.bazel": "789706a714855f92c5c8cfcf1ef32bbb64dcd3b7c9066756ad7986ec59709d29",
+    "https://bcr.bazel.build/modules/opencensus-proto/0.4.1.bcr.2/source.json": "aadf3f53e08b72376506b7c4ea3d167010c9efb160d7d6e1e304ed646bac1b36",
+    "https://bcr.bazel.build/modules/opencensus-proto/0.4.1/MODULE.bazel": "4a2e8b4d0b544002502474d611a5a183aa282251e14f6a01afe841c0c1b10372",
+    "https://bcr.bazel.build/modules/openssl/3.3.1.bcr.1/MODULE.bazel": "49c0c07e8fb87b480bccb842cfee1b32617f11dac590f732573c69058699a3d1",
+    "https://bcr.bazel.build/modules/openssl/3.3.1.bcr.1/source.json": "0c0872e048bbea052a9c541fb47019481a19201ba5555a71d762ad591bf94e1f",
+    "https://bcr.bazel.build/modules/opentelemetry-cpp/1.19.0/MODULE.bazel": "3455326c08b28415648a3d60d8e3c811847ebdbe64474f75b25878f25585aea1",
+    "https://bcr.bazel.build/modules/opentelemetry-cpp/1.19.0/source.json": "4e48137e4c3ecb99401ff99876df8fa330598d7da051869bec643446e8a8ff95",
+    "https://bcr.bazel.build/modules/opentelemetry-proto/1.4.0.bcr.1/MODULE.bazel": "5ceaf25e11170d22eded4c8032728b4a3f273765fccda32f9e94f463755c4167",
+    "https://bcr.bazel.build/modules/opentelemetry-proto/1.5.0/MODULE.bazel": "7543d91a53b98e7b5b37c5a0865b93bff12c1ee022b1e322cd236b968894b030",
+    "https://bcr.bazel.build/modules/opentelemetry-proto/1.5.0/source.json": "046b721ce203e88cdaad44d7dd17a86b7200eab9388b663b234e72e13ff7b143",
+    "https://bcr.bazel.build/modules/opentracing-cpp/1.6.0/MODULE.bazel": "b3925269f63561b8b880ae7cf62ccf81f6ece55b62cd791eda9925147ae116ec",
+    "https://bcr.bazel.build/modules/opentracing-cpp/1.6.0/source.json": "da1cb1add160f5e5074b7272e9db6fd8f1b3336c15032cd0a653af9d2f484aed",
+    "https://bcr.bazel.build/modules/or-tools/9.12/MODULE.bazel": "9b3c0a7f08772f51b4083ccca0e69abf49b1488e2fd9078e535d8855cdda0cf2",
+    "https://bcr.bazel.build/modules/or-tools/9.12/source.json": "98c1da7031be89e3f58e95a16784c1f5524c0ff6d8ea436ac6df4e9efe03458b",
+    "https://bcr.bazel.build/modules/pcre2/10.43/MODULE.bazel": "08eaa025111bd0fedc14a8187c2905fa6ee4501fbe558193e9bf6cc3e2cdf23c",
+    "https://bcr.bazel.build/modules/pcre2/10.43/source.json": "8b4149e707094f1d5b57df7216539c3415226e814085c4d960bd9f3d49581b88",
     "https://bcr.bazel.build/modules/platforms/0.0.10/MODULE.bazel": "8cb8efaf200bdeb2150d93e162c40f388529a25852b332cec879373771e48ed5",
     "https://bcr.bazel.build/modules/platforms/0.0.11/MODULE.bazel": "0daefc49732e227caa8bfa834d65dc52e8cc18a2faf80df25e8caea151a9413f",
-    "https://bcr.bazel.build/modules/platforms/0.0.11/source.json": "f7e188b79ebedebfe75e9e1d098b8845226c7992b307e28e1496f23112e8fc29",
     "https://bcr.bazel.build/modules/platforms/0.0.4/MODULE.bazel": "9b328e31ee156f53f3c416a64f8491f7eb731742655a47c9eec4703a71644aee",
     "https://bcr.bazel.build/modules/platforms/0.0.5/MODULE.bazel": "5733b54ea419d5eaf7997054bb55f6a1d0b5ff8aedf0176fef9eea44f3acda37",
     "https://bcr.bazel.build/modules/platforms/0.0.6/MODULE.bazel": "ad6eeef431dc52aefd2d77ed20a4b353f8ebf0f4ecdd26a807d2da5aa8cd0615",
     "https://bcr.bazel.build/modules/platforms/0.0.7/MODULE.bazel": "72fd4a0ede9ee5c021f6a8dd92b503e089f46c227ba2813ff183b71616034814",
     "https://bcr.bazel.build/modules/platforms/0.0.8/MODULE.bazel": "9f142c03e348f6d263719f5074b21ef3adf0b139ee4c5133e2aa35664da9eb2d",
     "https://bcr.bazel.build/modules/platforms/0.0.9/MODULE.bazel": "4a87a60c927b56ddd67db50c89acaa62f4ce2a1d2149ccb63ffd871d5ce29ebc",
+    "https://bcr.bazel.build/modules/platforms/1.0.0/MODULE.bazel": "f05feb42b48f1b3c225e4ccf351f367be0371411a803198ec34a389fb22aa580",
+    "https://bcr.bazel.build/modules/platforms/1.0.0/source.json": "f4ff1fd412e0246fd38c82328eb209130ead81d62dcd5a9e40910f867f733d96",
+    "https://bcr.bazel.build/modules/prometheus-cpp/1.3.0.bcr.1/MODULE.bazel": "116ad46e97c1d2aeb020fe2899a342a7e703574ce7c0faf7e4810f938c974a9a",
+    "https://bcr.bazel.build/modules/prometheus-cpp/1.3.0.bcr.1/source.json": "e813cce2d450708cfcb26e309c5172583a7440776edf354e83e6788c768e5cca",
+    "https://bcr.bazel.build/modules/prometheus-cpp/1.3.0/MODULE.bazel": "ce82e086bbc0b60267e970f6a54b2ca6d0f22d3eb6633e00e2cc2899c700f3d8",
     "https://bcr.bazel.build/modules/protobuf/21.7/MODULE.bazel": "a5a29bb89544f9b97edce05642fac225a808b5b7be74038ea3640fae2f8e66a7",
+    "https://bcr.bazel.build/modules/protobuf/23.1/MODULE.bazel": "88b393b3eb4101d18129e5db51847cd40a5517a53e81216144a8c32dfeeca52a",
+    "https://bcr.bazel.build/modules/protobuf/24.4/MODULE.bazel": "7bc7ce5f2abf36b3b7b7c8218d3acdebb9426aeb35c2257c96445756f970eb12",
+    "https://bcr.bazel.build/modules/protobuf/25.6/MODULE.bazel": "fc0ae073b47c7ede88b825ff79e64f1c058967c7a87a86cdf4abecd9e0516625",
+    "https://bcr.bazel.build/modules/protobuf/26.0.bcr.1/MODULE.bazel": "8f04d38c2da40a3715ff6bdce4d32c5981e6432557571482d43a62c31a24c2cf",
+    "https://bcr.bazel.build/modules/protobuf/26.0/MODULE.bazel": "8402da964092af40097f4a205eec2a33fd4a7748dc43632b7d1629bfd9a2b856",
+    "https://bcr.bazel.build/modules/protobuf/27.0-rc2/MODULE.bazel": "b2b0dbafd57b6bec0ca9b251da02e628c357dab53a097570aa7d79d020f107cf",
     "https://bcr.bazel.build/modules/protobuf/27.0/MODULE.bazel": "7873b60be88844a0a1d8f80b9d5d20cfbd8495a689b8763e76c6372998d3f64c",
+    "https://bcr.bazel.build/modules/protobuf/27.1/MODULE.bazel": "703a7b614728bb06647f965264967a8ef1c39e09e8f167b3ca0bb1fd80449c0d",
+    "https://bcr.bazel.build/modules/protobuf/27.2/MODULE.bazel": "32450b50673882e4c8c3d10a83f3bc82161b213ed2f80d17e38bece8f165c295",
+    "https://bcr.bazel.build/modules/protobuf/28.2/MODULE.bazel": "c0c8e51757df486d0314fa290e174d707bad4a6c2aa5ccb08a4b4abd76a23e90",
+    "https://bcr.bazel.build/modules/protobuf/28.3/MODULE.bazel": "2b3764bbab2e46703412bd3b859efcf0322638ed015e88432df3bb740507a1e9",
     "https://bcr.bazel.build/modules/protobuf/29.0-rc2/MODULE.bazel": "6241d35983510143049943fc0d57937937122baf1b287862f9dc8590fc4c37df",
     "https://bcr.bazel.build/modules/protobuf/29.0-rc3/MODULE.bazel": "33c2dfa286578573afc55a7acaea3cada4122b9631007c594bf0729f41c8de92",
-    "https://bcr.bazel.build/modules/protobuf/29.0-rc3/source.json": "c16a6488fb279ef578da7098e605082d72ed85fc8d843eaae81e7d27d0f4625d",
+    "https://bcr.bazel.build/modules/protobuf/29.0/MODULE.bazel": "319dc8bf4c679ff87e71b1ccfb5a6e90a6dbc4693501d471f48662ac46d04e4e",
+    "https://bcr.bazel.build/modules/protobuf/29.1/MODULE.bazel": "557c3457560ff49e122ed76c0bc3397a64af9574691cb8201b4e46d4ab2ecb95",
+    "https://bcr.bazel.build/modules/protobuf/29.2/MODULE.bazel": "5435497c190d86f79b0568698c45044df7c8d97692886cda9fe9cf9053aea712",
     "https://bcr.bazel.build/modules/protobuf/3.19.0/MODULE.bazel": "6b5fbb433f760a99a22b18b6850ed5784ef0e9928a72668b66e4d7ccd47db9b0",
+    "https://bcr.bazel.build/modules/protobuf/3.19.2/MODULE.bazel": "532ffe5f2186b69fdde039efe6df13ba726ff338c6bc82275ad433013fa10573",
     "https://bcr.bazel.build/modules/protobuf/3.19.6/MODULE.bazel": "9233edc5e1f2ee276a60de3eaa47ac4132302ef9643238f23128fea53ea12858",
+    "https://bcr.bazel.build/modules/protobuf/30.0/MODULE.bazel": "0e736de5d52ad7824113f47e65256a26ee74b689ba859c5447a0663e5a075409",
+    "https://bcr.bazel.build/modules/protobuf/30.1/MODULE.bazel": "293a47b398800e1efeed6e325f2809c5fab6c692a80384c507afd0ffca3b1bcf",
+    "https://bcr.bazel.build/modules/protobuf/31.0/MODULE.bazel": "cce0f305064713b382211c4c5af1d4fc1466e1fbc9059aa0941801970f6add5c",
+    "https://bcr.bazel.build/modules/protobuf/31.1/MODULE.bazel": "379a389bb330b7b8c1cdf331cc90bf3e13de5614799b3b52cdb7c6f389f6b38e",
+    "https://bcr.bazel.build/modules/protobuf/32.1/MODULE.bazel": "89cd2866a9cb07fee9ff74c41ceace11554f32e0d849de4e23ac55515cfada4d",
+    "https://bcr.bazel.build/modules/protobuf/32.1/source.json": "bd2664e90875c0cd755d1d9b7a103a4b027893ac8eafa3bba087557ffc244ad4",
+    "https://bcr.bazel.build/modules/protoc-gen-validate/1.0.4.bcr.2/MODULE.bazel": "c4bd2c850211ff5b7dadf9d2d0496c1c922fdedc303c775b01dfd3b3efc907ed",
+    "https://bcr.bazel.build/modules/protoc-gen-validate/1.0.4/MODULE.bazel": "b8913c154b16177990f6126d2d2477d187f9ddc568e95ee3e2d50fc65d2c494a",
+    "https://bcr.bazel.build/modules/protoc-gen-validate/1.2.1.bcr.1/MODULE.bazel": "4bf09676b62fa587ae07e073420a76ec8766dcce7545e5f8c68cfa8e484b5120",
+    "https://bcr.bazel.build/modules/protoc-gen-validate/1.2.1.bcr.1/source.json": "c19071ebc4b53b5f1cfab9c66eefaf6e4179eb8a998970d07b1077687e777f29",
+    "https://bcr.bazel.build/modules/pybind11_abseil/202402.0/MODULE.bazel": "73e1d9bee567576fc75dcc8a01a479772528719d9825d13b6d224277c24bcfcc",
+    "https://bcr.bazel.build/modules/pybind11_abseil/202402.0/source.json": "77f09963c9a51e05212bcfb21c1a5aab860be0afba6483f2b43a0e4f334af255",
+    "https://bcr.bazel.build/modules/pybind11_bazel/2.11.1.bzl.2/MODULE.bazel": "1972d10555d0cb2a9df4bb30be5f293178a2ccf1678a6ce097c21d87ec6e5f1d",
+    "https://bcr.bazel.build/modules/pybind11_bazel/2.11.1.bzl.3/MODULE.bazel": "a1b973f5bfa6df193ec17010c461494fae18a2b4477ff3dc8086846ca806683d",
     "https://bcr.bazel.build/modules/pybind11_bazel/2.11.1/MODULE.bazel": "88af1c246226d87e65be78ed49ecd1e6f5e98648558c14ce99176da041dc378e",
-    "https://bcr.bazel.build/modules/pybind11_bazel/2.11.1/source.json": "be4789e951dd5301282729fe3d4938995dc4c1a81c2ff150afc9f1b0504c6022",
+    "https://bcr.bazel.build/modules/pybind11_bazel/2.12.0/MODULE.bazel": "e6f4c20442eaa7c90d7190d8dc539d0ab422f95c65a57cc59562170c58ae3d34",
+    "https://bcr.bazel.build/modules/pybind11_bazel/2.13.6/MODULE.bazel": "2d746fda559464b253b2b2e6073cb51643a2ac79009ca02100ebbc44b4548656",
+    "https://bcr.bazel.build/modules/pybind11_bazel/2.13.6/source.json": "6aa0703de8efb20cc897bbdbeb928582ee7beaf278bcd001ac253e1605bddfae",
+    "https://bcr.bazel.build/modules/pybind11_protobuf/0.0.0-20240524-1d7a729/MODULE.bazel": "80f8b3030727650f22f63914f45c44fed73479ed146edb87d906a7afb11f534a",
+    "https://bcr.bazel.build/modules/pybind11_protobuf/0.0.0-20250210-f02a2b7/MODULE.bazel": "3e371e23625884c93ecb99b5f484ad3ab31b896ce0fa3e86f7e42f3b4f82d739",
+    "https://bcr.bazel.build/modules/pybind11_protobuf/0.0.0-20250210-f02a2b7/source.json": "6474ec11ffa491308333ce657a6300a6a91a1ccbe34ee08036bc1806cfe9ea72",
+    "https://bcr.bazel.build/modules/rapidjson/1.1.0.bcr.20241007/MODULE.bazel": "82fbcb2e42f9e0040e76ccc74c06c3e46dfd33c64ca359293f8b84df0e6dff4c",
+    "https://bcr.bazel.build/modules/rapidjson/1.1.0.bcr.20241007/source.json": "5c42389ad0e21fc06b95ad7c0b730008271624a2fa3292e0eab5f30e15adeee3",
+    "https://bcr.bazel.build/modules/re2/2021-09-01/MODULE.bazel": "bcb6b96f3b071e6fe2d8bed9cc8ada137a105f9d2c5912e91d27528b3d123833",
     "https://bcr.bazel.build/modules/re2/2023-09-01/MODULE.bazel": "cb3d511531b16cfc78a225a9e2136007a48cf8a677e4264baeab57fe78a80206",
-    "https://bcr.bazel.build/modules/re2/2023-09-01/source.json": "e044ce89c2883cd957a2969a43e79f7752f9656f6b20050b62f90ede21ec6eb4",
+    "https://bcr.bazel.build/modules/re2/2024-04-01/MODULE.bazel": "eb949379b51784dcc859dfa3655b6e46da179837873ee05aaf7f3b811a7a03ac",
+    "https://bcr.bazel.build/modules/re2/2024-05-01/MODULE.bazel": "55a3f059538f381107824e7d00df5df6d061ba1fb80e874e4909c0f0549e8f3e",
+    "https://bcr.bazel.build/modules/re2/2024-07-02.bcr.1/MODULE.bazel": "b4963dda9b31080be1905ef085ecd7dd6cd47c05c79b9cdf83ade83ab2ab271a",
+    "https://bcr.bazel.build/modules/re2/2024-07-02.bcr.1/source.json": "2ff292be6ef3340325ce8a045ecc326e92cbfab47c7cbab4bd85d28971b97ac4",
+    "https://bcr.bazel.build/modules/re2/2024-07-02/MODULE.bazel": "0eadc4395959969297cbcf31a249ff457f2f1d456228c67719480205aa306daa",
+    "https://bcr.bazel.build/modules/riegeli/0.0.0-20240606-973b6f0/MODULE.bazel": "3e8067b12d3a3bb4bc297b29c66a778af0c1da0cddbfde37d18c077ffc365602",
+    "https://bcr.bazel.build/modules/riegeli/0.0.0-20241218-3385e3c/MODULE.bazel": "14bbe297ac80b30b689bde824d823f53bd87cd504ec3f82de72a730e7b02d526",
+    "https://bcr.bazel.build/modules/riegeli/0.0.0-20250706-c4d1f27/MODULE.bazel": "b8b7309fb00c6b545fafcdfc3bf8cba168a61d37d841b9d90bacf7e70ae6627c",
+    "https://bcr.bazel.build/modules/riegeli/0.0.0-20250706-c4d1f27/source.json": "af3e2998bdf2f0ca3695816695c079f885d1e5b838e1d05ca82450aba4941762",
     "https://bcr.bazel.build/modules/rules_android/0.1.1/MODULE.bazel": "48809ab0091b07ad0182defb787c4c5328bd3a278938415c00a7b69b50c4d3a8",
-    "https://bcr.bazel.build/modules/rules_android/0.1.1/source.json": "e6986b41626ee10bdc864937ffb6d6bf275bb5b9c65120e6137d56e6331f089e",
+    "https://bcr.bazel.build/modules/rules_android/0.6.6/MODULE.bazel": "b0fb569752aab65ab1a9db0a8f6cfaf5aa1754965e17e95dcf0e4d88e192a68d",
+    "https://bcr.bazel.build/modules/rules_android/0.6.6/source.json": "a9d8dc2d5a102dc03269a94acc886a4cab82cdcb9ccbc77b0f665d6d17a6ae09",
+    "https://bcr.bazel.build/modules/rules_android_ndk/0.1.3/MODULE.bazel": "3ca2a6bf93e33c696e0393ef86698d155f1b8c6f72e7418b782690a75bc1ab99",
+    "https://bcr.bazel.build/modules/rules_android_ndk/0.1.3/source.json": "2cc34cc412da45b81c82168252b8d347e108a62607b98a80afdf5f3787bc7cc0",
+    "https://bcr.bazel.build/modules/rules_apple/3.13.0/MODULE.bazel": "b4559a2c6281ca3165275bb36c1f0ac74666632adc5bdb680e366de7ce845f43",
+    "https://bcr.bazel.build/modules/rules_apple/3.16.0/MODULE.bazel": "0d1caf0b8375942ce98ea944be754a18874041e4e0459401d925577624d3a54a",
+    "https://bcr.bazel.build/modules/rules_apple/3.16.0/source.json": "d8b5fe461272018cc07cfafce11fe369c7525330804c37eec5a82f84cd475366",
+    "https://bcr.bazel.build/modules/rules_buf/0.1.1/MODULE.bazel": "6189aec18a4f7caff599ad41b851ab7645d4f1e114aa6431acf9b0666eb92162",
     "https://bcr.bazel.build/modules/rules_cc/0.0.1/MODULE.bazel": "cb2aa0747f84c6c3a78dad4e2049c154f08ab9d166b1273835a8174940365647",
     "https://bcr.bazel.build/modules/rules_cc/0.0.10/MODULE.bazel": "ec1705118f7eaedd6e118508d3d26deba2a4e76476ada7e0e3965211be012002",
     "https://bcr.bazel.build/modules/rules_cc/0.0.13/MODULE.bazel": "0e8529ed7b323dad0775ff924d2ae5af7640b23553dfcd4d34344c7e7a867191",
+    "https://bcr.bazel.build/modules/rules_cc/0.0.14/MODULE.bazel": "5e343a3aac88b8d7af3b1b6d2093b55c347b8eefc2e7d1442f7a02dc8fea48ac",
     "https://bcr.bazel.build/modules/rules_cc/0.0.15/MODULE.bazel": "6704c35f7b4a72502ee81f61bf88706b54f06b3cbe5558ac17e2e14666cd5dcc",
     "https://bcr.bazel.build/modules/rules_cc/0.0.16/MODULE.bazel": "7661303b8fc1b4d7f532e54e9d6565771fea666fbdf839e0a86affcd02defe87",
-    "https://bcr.bazel.build/modules/rules_cc/0.0.16/source.json": "227e83737046aa4f50015da48e98e0d8ab42fd0ec74d8d653b6cc9f9a357f200",
+    "https://bcr.bazel.build/modules/rules_cc/0.0.17/MODULE.bazel": "2ae1d8f4238ec67d7185d8861cb0a2cdf4bc608697c331b95bf990e69b62e64a",
     "https://bcr.bazel.build/modules/rules_cc/0.0.2/MODULE.bazel": "6915987c90970493ab97393024c156ea8fb9f3bea953b2f3ec05c34f19b5695c",
+    "https://bcr.bazel.build/modules/rules_cc/0.0.5/MODULE.bazel": "be41f87587998fe8890cd82ea4e848ed8eb799e053c224f78f3ff7fe1a1d9b74",
     "https://bcr.bazel.build/modules/rules_cc/0.0.6/MODULE.bazel": "abf360251023dfe3efcef65ab9d56beefa8394d4176dd29529750e1c57eaa33f",
     "https://bcr.bazel.build/modules/rules_cc/0.0.8/MODULE.bazel": "964c85c82cfeb6f3855e6a07054fdb159aced38e99a5eecf7bce9d53990afa3e",
     "https://bcr.bazel.build/modules/rules_cc/0.0.9/MODULE.bazel": "836e76439f354b89afe6a911a7adf59a6b2518fafb174483ad78a2a2fde7b1c5",
+    "https://bcr.bazel.build/modules/rules_cc/0.1.0/MODULE.bazel": "2fef03775b9ba995ec543868840041cc69e8bc705eb0cb6604a36eee18c87d8b",
+    "https://bcr.bazel.build/modules/rules_cc/0.1.1/MODULE.bazel": "2f0222a6f229f0bf44cd711dc13c858dad98c62d52bd51d8fc3a764a83125513",
+    "https://bcr.bazel.build/modules/rules_cc/0.1.2/MODULE.bazel": "557ddc3a96858ec0d465a87c0a931054d7dcfd6583af2c7ed3baf494407fd8d0",
+    "https://bcr.bazel.build/modules/rules_cc/0.1.4/MODULE.bazel": "bb03a452a7527ac25a7518fb86a946ef63df860b9657d8323a0c50f8504fb0b9",
+    "https://bcr.bazel.build/modules/rules_cc/0.2.0/MODULE.bazel": "b5c17f90458caae90d2ccd114c81970062946f49f355610ed89bebf954f5783c",
+    "https://bcr.bazel.build/modules/rules_cc/0.2.0/source.json": "5f7f4e578e950adbf194217d4b607237a8197fc53ba46c367b3d61a86ecf35c2",
+    "https://bcr.bazel.build/modules/rules_closure/0.15.0/MODULE.bazel": "2346f8f2daefe805bb12d5a97218d33cd02fd10732eb2de8e94ca88b00efdd68",
+    "https://bcr.bazel.build/modules/rules_closure/0.15.0/source.json": "c477734278ed50eef6d698fbbb2ac0ef8583257a7c0b05ea55d145da4acadb4e",
+    "https://bcr.bazel.build/modules/rules_foreign_cc/0.10.1/MODULE.bazel": "b9527010e5fef060af92b6724edb3691970a5b1f76f74b21d39f7d433641be60",
+    "https://bcr.bazel.build/modules/rules_foreign_cc/0.15.1/MODULE.bazel": "c2c60d26c79fda484acb95cdbec46e89d6b28b4845cb277160ce1e0c8622bb88",
+    "https://bcr.bazel.build/modules/rules_foreign_cc/0.15.1/source.json": "a161811a63ba8a859086da3b7ff3ad04f2e9c255d7727b41087103fc0eb22f55",
     "https://bcr.bazel.build/modules/rules_foreign_cc/0.9.0/MODULE.bazel": "c9e8c682bf75b0e7c704166d79b599f93b72cfca5ad7477df596947891feeef6",
     "https://bcr.bazel.build/modules/rules_fuzzing/0.5.2/MODULE.bazel": "40c97d1144356f52905566c55811f13b299453a14ac7769dfba2ac38192337a8",
-    "https://bcr.bazel.build/modules/rules_fuzzing/0.5.2/source.json": "c8b1e2c717646f1702290959a3302a178fb639d987ab61d548105019f11e527e",
+    "https://bcr.bazel.build/modules/rules_go/0.33.0/MODULE.bazel": "a2b11b64cd24bf94f57454f53288a5dacfe6cb86453eee7761b7637728c1910c",
+    "https://bcr.bazel.build/modules/rules_go/0.38.1/MODULE.bazel": "fb8e73dd3b6fc4ff9d260ceacd830114891d49904f5bda1c16bc147bcc254f71",
+    "https://bcr.bazel.build/modules/rules_go/0.39.1/MODULE.bazel": "d34fb2a249403a5f4339c754f1e63dc9e5ad70b47c5e97faee1441fc6636cd61",
+    "https://bcr.bazel.build/modules/rules_go/0.41.0/MODULE.bazel": "55861d8e8bb0e62cbd2896f60ff303f62ffcb0eddb74ecb0e5c0cbe36fc292c8",
+    "https://bcr.bazel.build/modules/rules_go/0.42.0/MODULE.bazel": "8cfa875b9aa8c6fce2b2e5925e73c1388173ea3c32a0db4d2b4804b453c14270",
+    "https://bcr.bazel.build/modules/rules_go/0.43.0/MODULE.bazel": "ed9a2706de830b743a18401b4d178576368c4d05d04af4f2a084a69897fd7f04",
+    "https://bcr.bazel.build/modules/rules_go/0.45.1/MODULE.bazel": "6d7884f0edf890024eba8ab31a621faa98714df0ec9d512389519f0edff0281a",
+    "https://bcr.bazel.build/modules/rules_go/0.46.0/MODULE.bazel": "3477df8bdcc49e698b9d25f734c4f3a9f5931ff34ee48a2c662be168f5f2d3fd",
+    "https://bcr.bazel.build/modules/rules_go/0.48.0/MODULE.bazel": "d00ebcae0908ee3f5e6d53f68677a303d6d59a77beef879598700049c3980a03",
+    "https://bcr.bazel.build/modules/rules_go/0.50.1/MODULE.bazel": "b91a308dc5782bb0a8021ad4330c81fea5bda77f96b9e4c117b9b9c8f6665ee0",
+    "https://bcr.bazel.build/modules/rules_go/0.51.0-rc1/MODULE.bazel": "4547e768b0cd24b3e6387f824b4c2842f6f5fdf29962ec8d5b67da758409b496",
+    "https://bcr.bazel.build/modules/rules_go/0.51.0-rc2/MODULE.bazel": "edfc3a9cea7bedb0eaaff37b0d7817c1a4bf72b3c615580b0ffcee6c52690fd4",
+    "https://bcr.bazel.build/modules/rules_go/0.51.0-rc2/source.json": "6b5cd0b3da2bd0e6949580851db990a04af0a285f072b9a0f059424457cd8cc9",
     "https://bcr.bazel.build/modules/rules_java/4.0.0/MODULE.bazel": "5a78a7ae82cd1a33cef56dc578c7d2a46ed0dca12643ee45edbb8417899e6f74",
     "https://bcr.bazel.build/modules/rules_java/5.3.5/MODULE.bazel": "a4ec4f2db570171e3e5eb753276ee4b389bae16b96207e9d3230895c99644b86",
+    "https://bcr.bazel.build/modules/rules_java/5.5.0/MODULE.bazel": "486ad1aa15cdc881af632b4b1448b0136c76025a1fe1ad1b65c5899376b83a50",
+    "https://bcr.bazel.build/modules/rules_java/6.0.0/MODULE.bazel": "8a43b7df601a7ec1af61d79345c17b31ea1fedc6711fd4abfd013ea612978e39",
+    "https://bcr.bazel.build/modules/rules_java/6.1.1/MODULE.bazel": "124151afe9d8e797c5779a5d7fa88ff3ef7a2a283dcc435c62626a216d6aab8e",
+    "https://bcr.bazel.build/modules/rules_java/6.3.0/MODULE.bazel": "a97c7678c19f236a956ad260d59c86e10a463badb7eb2eda787490f4c969b963",
+    "https://bcr.bazel.build/modules/rules_java/6.4.0/MODULE.bazel": "e986a9fe25aeaa84ac17ca093ef13a4637f6107375f64667a15999f77db6c8f6",
     "https://bcr.bazel.build/modules/rules_java/6.5.2/MODULE.bazel": "1d440d262d0e08453fa0c4d8f699ba81609ed0e9a9a0f02cd10b3e7942e61e31",
+    "https://bcr.bazel.build/modules/rules_java/7.1.0/MODULE.bazel": "30d9135a2b6561c761bd67bd4990da591e6bdc128790ce3e7afd6a3558b2fb64",
     "https://bcr.bazel.build/modules/rules_java/7.10.0/MODULE.bazel": "530c3beb3067e870561739f1144329a21c851ff771cd752a49e06e3dc9c2e71a",
     "https://bcr.bazel.build/modules/rules_java/7.12.2/MODULE.bazel": "579c505165ee757a4280ef83cda0150eea193eed3bef50b1004ba88b99da6de6",
     "https://bcr.bazel.build/modules/rules_java/7.2.0/MODULE.bazel": "06c0334c9be61e6cef2c8c84a7800cef502063269a5af25ceb100b192453d4ab",
+    "https://bcr.bazel.build/modules/rules_java/7.3.2/MODULE.bazel": "50dece891cfdf1741ea230d001aa9c14398062f2b7c066470accace78e412bc2",
+    "https://bcr.bazel.build/modules/rules_java/7.4.0/MODULE.bazel": "a592852f8a3dd539e82ee6542013bf2cadfc4c6946be8941e189d224500a8934",
     "https://bcr.bazel.build/modules/rules_java/7.6.1/MODULE.bazel": "2f14b7e8a1aa2f67ae92bc69d1ec0fa8d9f827c4e17ff5e5f02e91caa3b2d0fe",
     "https://bcr.bazel.build/modules/rules_java/7.6.5/MODULE.bazel": "481164be5e02e4cab6e77a36927683263be56b7e36fef918b458d7a8a1ebadb1",
+    "https://bcr.bazel.build/modules/rules_java/8.13.0/MODULE.bazel": "0444ebf737d144cf2bb2ccb368e7f1cce735264285f2a3711785827c1686625e",
+    "https://bcr.bazel.build/modules/rules_java/8.13.0/source.json": "4605c0f676b87dd9d1fabd4d743b71f04d97503bd1a79aad53f87399fb5396de",
     "https://bcr.bazel.build/modules/rules_java/8.3.2/MODULE.bazel": "7336d5511ad5af0b8615fdc7477535a2e4e723a357b6713af439fe8cf0195017",
     "https://bcr.bazel.build/modules/rules_java/8.5.1/MODULE.bazel": "d8a9e38cc5228881f7055a6079f6f7821a073df3744d441978e7a43e20226939",
-    "https://bcr.bazel.build/modules/rules_java/8.5.1/source.json": "db1a77d81b059e0f84985db67a22f3f579a529a86b7997605be3d214a0abe38e",
+    "https://bcr.bazel.build/modules/rules_java/8.6.0/MODULE.bazel": "9c064c434606d75a086f15ade5edb514308cccd1544c2b2a89bbac4310e41c71",
+    "https://bcr.bazel.build/modules/rules_java/8.6.1/MODULE.bazel": "f4808e2ab5b0197f094cabce9f4b006a27766beb6a9975931da07099560ca9c2",
+    "https://bcr.bazel.build/modules/rules_java/8.6.3/MODULE.bazel": "e90505b7a931d194245ffcfb6ff4ca8ef9d46b4e830d12e64817752e0198e2ed",
     "https://bcr.bazel.build/modules/rules_jvm_external/4.4.2/MODULE.bazel": "a56b85e418c83eb1839819f0b515c431010160383306d13ec21959ac412d2fe7",
     "https://bcr.bazel.build/modules/rules_jvm_external/5.1/MODULE.bazel": "33f6f999e03183f7d088c9be518a63467dfd0be94a11d0055fe2d210f89aa909",
     "https://bcr.bazel.build/modules/rules_jvm_external/5.2/MODULE.bazel": "d9351ba35217ad0de03816ef3ed63f89d411349353077348a45348b096615036",
+    "https://bcr.bazel.build/modules/rules_jvm_external/5.3/MODULE.bazel": "bf93870767689637164657731849fb887ad086739bd5d360d90007a581d5527d",
+    "https://bcr.bazel.build/modules/rules_jvm_external/6.0/MODULE.bazel": "37c93a5a78d32e895d52f86a8d0416176e915daabd029ccb5594db422e87c495",
+    "https://bcr.bazel.build/modules/rules_jvm_external/6.1/MODULE.bazel": "75b5fec090dbd46cf9b7d8ea08cf84a0472d92ba3585b476f44c326eda8059c4",
+    "https://bcr.bazel.build/modules/rules_jvm_external/6.2/MODULE.bazel": "36a6e52487a855f33cb960724eb56547fa87e2c98a0474c3acad94339d7f8e99",
     "https://bcr.bazel.build/modules/rules_jvm_external/6.3/MODULE.bazel": "c998e060b85f71e00de5ec552019347c8bca255062c990ac02d051bb80a38df0",
-    "https://bcr.bazel.build/modules/rules_jvm_external/6.3/source.json": "6f5f5a5a4419ae4e37c35a5bb0a6ae657ed40b7abc5a5189111b47fcebe43197",
+    "https://bcr.bazel.build/modules/rules_jvm_external/6.6/MODULE.bazel": "153042249c7060536dc95b6bb9f9bb8063b8a0b0cb7acdb381bddbc2374aed55",
+    "https://bcr.bazel.build/modules/rules_jvm_external/6.7/MODULE.bazel": "e717beabc4d091ecb2c803c2d341b88590e9116b8bf7947915eeb33aab4f96dd",
+    "https://bcr.bazel.build/modules/rules_jvm_external/6.8/MODULE.bazel": "b5afe861e867e4c8e5b88e401cb7955bd35924258f97b1862cc966cbcf4f1a62",
+    "https://bcr.bazel.build/modules/rules_jvm_external/6.8/source.json": "c85e553d5ac17f7825cd85b9cceb500c64f9e44f0e93c7887469e430c4ae9eff",
+    "https://bcr.bazel.build/modules/rules_kotlin/1.9.0/MODULE.bazel": "ef85697305025e5a61f395d4eaede272a5393cee479ace6686dba707de804d59",
+    "https://bcr.bazel.build/modules/rules_kotlin/1.9.5/MODULE.bazel": "043a16a572f610558ec2030db3ff0c9938574e7dd9f58bded1bb07c0192ef025",
     "https://bcr.bazel.build/modules/rules_kotlin/1.9.6/MODULE.bazel": "d269a01a18ee74d0335450b10f62c9ed81f2321d7958a2934e44272fe82dcef3",
     "https://bcr.bazel.build/modules/rules_kotlin/1.9.6/source.json": "2faa4794364282db7c06600b7e5e34867a564ae91bda7cae7c29c64e9466b7d5",
     "https://bcr.bazel.build/modules/rules_license/0.0.3/MODULE.bazel": "627e9ab0247f7d1e05736b59dbb1b6871373de5ad31c3011880b4133cafd4bd0",
     "https://bcr.bazel.build/modules/rules_license/0.0.7/MODULE.bazel": "088fbeb0b6a419005b89cf93fe62d9517c0a2b8bb56af3244af65ecfe37e7d5d",
+    "https://bcr.bazel.build/modules/rules_license/0.0.8/MODULE.bazel": "5669c6fe49b5134dbf534db681ad3d67a2d49cfc197e4a95f1ca2fd7f3aebe96",
     "https://bcr.bazel.build/modules/rules_license/1.0.0/MODULE.bazel": "a7fda60eefdf3d8c827262ba499957e4df06f659330bbe6cdbdb975b768bb65c",
     "https://bcr.bazel.build/modules/rules_license/1.0.0/source.json": "a52c89e54cc311196e478f8382df91c15f7a2bfdf4c6cd0e2675cc2ff0b56efb",
+    "https://bcr.bazel.build/modules/rules_nodejs/5.8.2/MODULE.bazel": "6bc03c8f37f69401b888023bf511cb6ee4781433b0cb56236b2e55a21e3a026a",
+    "https://bcr.bazel.build/modules/rules_nodejs/6.2.0/MODULE.bazel": "ec27907f55eb34705adb4e8257952162a2d4c3ed0f0b3b4c3c1aad1fac7be35e",
+    "https://bcr.bazel.build/modules/rules_nodejs/6.3.0/MODULE.bazel": "45345e4aba35dd6e4701c1eebf5a4e67af4ed708def9ebcdc6027585b34ee52d",
+    "https://bcr.bazel.build/modules/rules_nodejs/6.3.3/MODULE.bazel": "b66eadebd10f1f1b25f52f95ab5213a57e82c37c3f656fcd9a57ad04d2264ce7",
+    "https://bcr.bazel.build/modules/rules_nodejs/6.3.3/source.json": "45bd343155bdfed2543f0e39b80ff3f6840efc31975da4b5795797f4c94147ad",
+    "https://bcr.bazel.build/modules/rules_perl/0.2.4/MODULE.bazel": "5f5af7be4bf5fb88d91af7469518f0fd2161718aefc606188f7cd51f436ca938",
+    "https://bcr.bazel.build/modules/rules_perl/0.2.4/source.json": "574317d6b3c7e4843fe611b76f15e62a1889949f5570702e1ee4ad335ea3c339",
     "https://bcr.bazel.build/modules/rules_pkg/0.7.0/MODULE.bazel": "df99f03fc7934a4737122518bb87e667e62d780b610910f0447665a7e2be62dc",
     "https://bcr.bazel.build/modules/rules_pkg/1.0.1/MODULE.bazel": "5b1df97dbc29623bccdf2b0dcd0f5cb08e2f2c9050aab1092fd39a41e82686ff",
     "https://bcr.bazel.build/modules/rules_pkg/1.0.1/source.json": "bd82e5d7b9ce2d31e380dd9f50c111d678c3bdaca190cb76b0e1c71b05e1ba8a",
     "https://bcr.bazel.build/modules/rules_proto/4.0.0/MODULE.bazel": "a7a7b6ce9bee418c1a760b3d84f83a299ad6952f9903c67f19e4edd964894e06",
     "https://bcr.bazel.build/modules/rules_proto/5.3.0-21.7/MODULE.bazel": "e8dff86b0971688790ae75528fe1813f71809b5afd57facb44dad9e8eca631b7",
+    "https://bcr.bazel.build/modules/rules_proto/6.0.0-rc1/MODULE.bazel": "1e5b502e2e1a9e825eef74476a5a1ee524a92297085015a052510b09a1a09483",
+    "https://bcr.bazel.build/modules/rules_proto/6.0.0/MODULE.bazel": "b531d7f09f58dce456cd61b4579ce8c86b38544da75184eadaf0a7cb7966453f",
     "https://bcr.bazel.build/modules/rules_proto/6.0.2/MODULE.bazel": "ce916b775a62b90b61888052a416ccdda405212b6aaeb39522f7dc53431a5e73",
-    "https://bcr.bazel.build/modules/rules_proto/6.0.2/source.json": "17a2e195f56cb28d6bbf763e49973d13890487c6945311ed141e196fb660426d",
+    "https://bcr.bazel.build/modules/rules_proto/7.0.2/MODULE.bazel": "bf81793bd6d2ad89a37a40693e56c61b0ee30f7a7fdbaf3eabbf5f39de47dea2",
+    "https://bcr.bazel.build/modules/rules_proto/7.1.0/MODULE.bazel": "002d62d9108f75bb807cd56245d45648f38275cb3a99dcd45dfb864c5d74cb96",
+    "https://bcr.bazel.build/modules/rules_proto/7.1.0/source.json": "39f89066c12c24097854e8f57ab8558929f9c8d474d34b2c00ac04630ad8940e",
     "https://bcr.bazel.build/modules/rules_python/0.10.2/MODULE.bazel": "cc82bc96f2997baa545ab3ce73f196d040ffb8756fd2d66125a530031cd90e5f",
+    "https://bcr.bazel.build/modules/rules_python/0.20.0/MODULE.bazel": "bfe14d17f20e3fe900b9588f526f52c967a6f281e47a1d6b988679bd15082286",
+    "https://bcr.bazel.build/modules/rules_python/0.22.0/MODULE.bazel": "b8057bafa11a9e0f4b08fc3b7cd7bee0dcbccea209ac6fc9a3ff051cd03e19e9",
     "https://bcr.bazel.build/modules/rules_python/0.22.1/MODULE.bazel": "26114f0c0b5e93018c0c066d6673f1a2c3737c7e90af95eff30cfee38d0bbac7",
     "https://bcr.bazel.build/modules/rules_python/0.23.1/MODULE.bazel": "49ffccf0511cb8414de28321f5fcf2a31312b47c40cc21577144b7447f2bf300",
     "https://bcr.bazel.build/modules/rules_python/0.25.0/MODULE.bazel": "72f1506841c920a1afec76975b35312410eea3aa7b63267436bfb1dd91d2d382",
     "https://bcr.bazel.build/modules/rules_python/0.28.0/MODULE.bazel": "cba2573d870babc976664a912539b320cbaa7114cd3e8f053c720171cde331ed",
     "https://bcr.bazel.build/modules/rules_python/0.31.0/MODULE.bazel": "93a43dc47ee570e6ec9f5779b2e64c1476a6ce921c48cc9a1678a91dd5f8fd58",
+    "https://bcr.bazel.build/modules/rules_python/0.33.2/MODULE.bazel": "3e036c4ad8d804a4dad897d333d8dce200d943df4827cb849840055be8d2e937",
+    "https://bcr.bazel.build/modules/rules_python/0.34.0/MODULE.bazel": "1d623d026e075b78c9fde483a889cda7996f5da4f36dffb24c246ab30f06513a",
+    "https://bcr.bazel.build/modules/rules_python/0.36.0/MODULE.bazel": "a4ce1ccea92b9106c7d16ab9ee51c6183107e78ba4a37aa65055227b80cd480c",
+    "https://bcr.bazel.build/modules/rules_python/0.37.1/MODULE.bazel": "3faeb2d9fa0a81f8980643ee33f212308f4d93eea4b9ce6f36d0b742e71e9500",
+    "https://bcr.bazel.build/modules/rules_python/0.37.2/MODULE.bazel": "b5ffde91410745750b6c13be1c5dc4555ef5bc50562af4a89fd77807fdde626a",
     "https://bcr.bazel.build/modules/rules_python/0.4.0/MODULE.bazel": "9208ee05fd48bf09ac60ed269791cf17fb343db56c8226a720fbb1cdf467166c",
+    "https://bcr.bazel.build/modules/rules_python/0.40.0/MODULE.bazel": "9d1a3cd88ed7d8e39583d9ffe56ae8a244f67783ae89b60caafc9f5cf318ada7",
+    "https://bcr.bazel.build/modules/rules_python/1.0.0/MODULE.bazel": "898a3d999c22caa585eb062b600f88654bf92efb204fa346fb55f6f8edffca43",
+    "https://bcr.bazel.build/modules/rules_python/1.2.0/MODULE.bazel": "5aeeb48b2a6c19d668b48adf2b8a2b209a6310c230db0ce77450f148a89846e4",
+    "https://bcr.bazel.build/modules/rules_python/1.4.1/MODULE.bazel": "8991ad45bdc25018301d6b7e1d3626afc3c8af8aaf4bc04f23d0b99c938b73a6",
     "https://bcr.bazel.build/modules/rules_python/1.6.0/MODULE.bazel": "7e04ad8f8d5bea40451cf80b1bd8262552aa73f841415d20db96b7241bd027d8",
     "https://bcr.bazel.build/modules/rules_python/1.6.0/source.json": "e980f654cf66ec4928672f41fc66c4102b5ea54286acf4aecd23256c84211be6",
+    "https://bcr.bazel.build/modules/rules_robolectric/4.14.1.2/MODULE.bazel": "d44fec647d0aeb67b9f3b980cf68ba634976f3ae7ccd6c07d790b59b87a4f251",
+    "https://bcr.bazel.build/modules/rules_robolectric/4.14.1.2/source.json": "37c10335f2361c337c5c1f34ed36d2da70534c23088062b33a8bdaab68aa9dea",
+    "https://bcr.bazel.build/modules/rules_rust/0.45.1/MODULE.bazel": "a69d0db3a958fab2c6520961e1b2287afcc8b36690fd31bbc4f6f7391397150d",
+    "https://bcr.bazel.build/modules/rules_rust/0.51.0/MODULE.bazel": "2b6d1617ac8503bfdcc0e4520c20539d4bba3a691100bee01afe193ceb0310f9",
+    "https://bcr.bazel.build/modules/rules_shell/0.1.2/MODULE.bazel": "66e4ca3ce084b04af0b9ff05ff14cab4e5df7503973818bb91cbc6cda08d32fc",
     "https://bcr.bazel.build/modules/rules_shell/0.2.0/MODULE.bazel": "fda8a652ab3c7d8fee214de05e7a9916d8b28082234e8d2c0094505c5268ed3c",
-    "https://bcr.bazel.build/modules/rules_shell/0.2.0/source.json": "7f27af3c28037d9701487c4744b5448d26537cc66cdef0d8df7ae85411f8de95",
+    "https://bcr.bazel.build/modules/rules_shell/0.3.0/MODULE.bazel": "de4402cd12f4cc8fda2354fce179fdb068c0b9ca1ec2d2b17b3e21b24c1a937b",
+    "https://bcr.bazel.build/modules/rules_shell/0.4.0/MODULE.bazel": "0f8f11bb3cd11755f0b48c1de0bbcf62b4b34421023aa41a2fc74ef68d9584f0",
+    "https://bcr.bazel.build/modules/rules_shell/0.4.1/MODULE.bazel": "00e501db01bbf4e3e1dd1595959092c2fadf2087b2852d3f553b5370f5633592",
+    "https://bcr.bazel.build/modules/rules_shell/0.4.1/source.json": "4757bd277fe1567763991c4425b483477bb82e35e777a56fd846eb5cceda324a",
+    "https://bcr.bazel.build/modules/rules_swift/1.16.0/MODULE.bazel": "4a09f199545a60d09895e8281362b1ff3bb08bbde69c6fc87aff5b92fcc916ca",
+    "https://bcr.bazel.build/modules/rules_swift/2.1.1/MODULE.bazel": "494900a80f944fc7aa61500c2073d9729dff0b764f0e89b824eb746959bc1046",
+    "https://bcr.bazel.build/modules/rules_swift/2.1.1/source.json": "40fc69dfaac64deddbb75bd99cdac55f4427d9ca0afbe408576a65428427a186",
+    "https://bcr.bazel.build/modules/rules_web_testing_java/0.4.1/MODULE.bazel": "06abf7e55a331e4b03a45e5f871ce17c2046e8d84c220a8118c6138c3727d634",
+    "https://bcr.bazel.build/modules/rules_web_testing_java/0.4.1/source.json": "32a46874dcce26d4aff7680bd3033d0940fd0f6153313a9a6513dda92026ae64",
+    "https://bcr.bazel.build/modules/rules_webtesting/0.4.1/MODULE.bazel": "057b86eb0d93165f2913f7a76062c3db0032b91863670a917d6ea0ceb0431933",
+    "https://bcr.bazel.build/modules/rules_webtesting/0.4.1/source.json": "c85937393e148430d8df5b61e5ee76a081bd7572d79994a714c70663e8b4bd2b",
+    "https://bcr.bazel.build/modules/scip/9.2.0.bcr.3/MODULE.bazel": "c5f8ebefa7fe493ae7412f5268081187228a30cf3919b0d983bbd053f2c32d7f",
+    "https://bcr.bazel.build/modules/scip/9.2.0.bcr.3/source.json": "1df3dbb6a949d3acaa7aa2bc024abb04675fd254860daea02394606e97589cbc",
+    "https://bcr.bazel.build/modules/snappy/1.2.0/MODULE.bazel": "cc7a727b46089c7fdae0ede21b1fd65bdb14d01823da118ef5c48044f40b6b27",
+    "https://bcr.bazel.build/modules/snappy/1.2.0/source.json": "17f5527e15d30a9d9eebf79ed73b280b56cac44f8c8fea696666d99943f84c33",
+    "https://bcr.bazel.build/modules/soplex/7.1.2.bcr.1/MODULE.bazel": "25212bddb61e56fab42b7e4faf039880aa868b1a116621fba5941eb6db41b393",
+    "https://bcr.bazel.build/modules/soplex/7.1.2.bcr.1/source.json": "6a779e6c9e55ceb90a5acf1ea09a6a275359faee4d540451ecd96b5c385e0b3f",
+    "https://bcr.bazel.build/modules/stardoc/0.5.0/MODULE.bazel": "f9f1f46ba8d9c3362648eea571c6f9100680efc44913618811b58cc9c02cd678",
     "https://bcr.bazel.build/modules/stardoc/0.5.1/MODULE.bazel": "1a05d92974d0c122f5ccf09291442580317cdd859f07a8655f1db9a60374f9f8",
     "https://bcr.bazel.build/modules/stardoc/0.5.3/MODULE.bazel": "c7f6948dae6999bf0db32c1858ae345f112cacf98f174c7a8bb707e41b974f1c",
+    "https://bcr.bazel.build/modules/stardoc/0.5.4/MODULE.bazel": "6569966df04610b8520957cb8e97cf2e9faac2c0309657c537ab51c16c18a2a4",
+    "https://bcr.bazel.build/modules/stardoc/0.5.6/MODULE.bazel": "c43dabc564990eeab55e25ed61c07a1aadafe9ece96a4efabb3f8bf9063b71ef",
+    "https://bcr.bazel.build/modules/stardoc/0.6.2/MODULE.bazel": "7060193196395f5dd668eda046ccbeacebfd98efc77fed418dbe2b82ffaa39fd",
     "https://bcr.bazel.build/modules/stardoc/0.7.0/MODULE.bazel": "05e3d6d30c099b6770e97da986c53bd31844d7f13d41412480ea265ac9e8079c",
+    "https://bcr.bazel.build/modules/stardoc/0.7.1/MODULE.bazel": "3548faea4ee5dda5580f9af150e79d0f6aea934fc60c1cc50f4efdd9420759e7",
     "https://bcr.bazel.build/modules/stardoc/0.7.2/MODULE.bazel": "fc152419aa2ea0f51c29583fab1e8c99ddefd5b3778421845606ee628629e0e5",
     "https://bcr.bazel.build/modules/stardoc/0.7.2/source.json": "58b029e5e901d6802967754adf0a9056747e8176f017cfe3607c0851f4d42216",
+    "https://bcr.bazel.build/modules/swift_argument_parser/1.3.1.1/MODULE.bazel": "5e463fbfba7b1701d957555ed45097d7f984211330106ccd1352c6e0af0dcf91",
+    "https://bcr.bazel.build/modules/swift_argument_parser/1.3.1.1/source.json": "32bd87e5f4d7acc57c5b2ff7c325ae3061d5e242c0c4c214ae87e0f1c13e54cb",
+    "https://bcr.bazel.build/modules/swig/4.3.0/MODULE.bazel": "51619e147172c5380869cc90460b1c7fecfe21d6f566e97bc7ecf61244bdc7b8",
+    "https://bcr.bazel.build/modules/swig/4.3.0/source.json": "ea8dac67896e3a623cd92c48573a351c4bab1537f5aeb210c1c1e049994dd599",
     "https://bcr.bazel.build/modules/upb/0.0.0-20220923-a547704/MODULE.bazel": "7298990c00040a0e2f121f6c32544bab27d4452f80d9ce51349b1a28f3005c43",
+    "https://bcr.bazel.build/modules/upb/0.0.0-20230516-61a97ef/MODULE.bazel": "c0df5e35ad55e264160417fd0875932ee3c9dda63d9fccace35ac62f45e1b6f9",
+    "https://bcr.bazel.build/modules/xds/0.0.0-20240423-555b57e/MODULE.bazel": "cea509976a77e34131411684ef05a1d6ad194dd71a8d5816643bc5b0af16dc0f",
+    "https://bcr.bazel.build/modules/xds/0.0.0-20240423-555b57e/source.json": "7227e1fcad55f3f3cab1a08691ecd753cb29cc6380a47bc650851be9f9ad6d20",
+    "https://bcr.bazel.build/modules/xz/5.4.5.bcr.1/MODULE.bazel": "c037f75fa1b7e1ff15fbd15d807a8ce545e9b02f02df0a9777aa9aa7d8b268bb",
+    "https://bcr.bazel.build/modules/xz/5.4.5.bcr.1/source.json": "766f28499a16fa9ed8dc94382d50e80ceda0d0ab80b79b7b104a67074ab10e1f",
     "https://bcr.bazel.build/modules/zlib/1.2.11/MODULE.bazel": "07b389abc85fdbca459b69e2ec656ae5622873af3f845e1c9d80fe179f3effa0",
     "https://bcr.bazel.build/modules/zlib/1.2.12/MODULE.bazel": "3b1a8834ada2a883674be8cbd36ede1b6ec481477ada359cd2d3ddc562340b27",
+    "https://bcr.bazel.build/modules/zlib/1.2.13/MODULE.bazel": "aa6deb1b83c18ffecd940c4119aff9567cd0a671d7bba756741cb2ef043a29d5",
+    "https://bcr.bazel.build/modules/zlib/1.3.1.bcr.1/MODULE.bazel": "6a9fe6e3fc865715a7be9823ce694ceb01e364c35f7a846bf0d2b34762bc066b",
     "https://bcr.bazel.build/modules/zlib/1.3.1.bcr.3/MODULE.bazel": "af322bc08976524477c79d1e45e241b6efbeb918c497e8840b8ab116802dda79",
-    "https://bcr.bazel.build/modules/zlib/1.3.1.bcr.3/source.json": "2be409ac3c7601245958cd4fcdff4288be79ed23bd690b4b951f500d54ee6e7d",
-    "https://bcr.bazel.build/modules/zlib/1.3.1/MODULE.bazel": "751c9940dcfe869f5f7274e1295422a34623555916eb98c174c1e945594bf198"
+    "https://bcr.bazel.build/modules/zlib/1.3.1.bcr.4/MODULE.bazel": "fc880fa3bd9c5299be64b712fbc60a1978ea9ce0a9f74f6bbd0b61c12db1aee6",
+    "https://bcr.bazel.build/modules/zlib/1.3.1.bcr.5/MODULE.bazel": "eec517b5bbe5492629466e11dae908d043364302283de25581e3eb944326c4ca",
+    "https://bcr.bazel.build/modules/zlib/1.3.1.bcr.6/MODULE.bazel": "e937cf0a3772f93ad91f3c7af4f330b76a878bbfee06527ca1a9673b790eb896",
+    "https://bcr.bazel.build/modules/zlib/1.3.1.bcr.7/MODULE.bazel": "26a6764cda2bfa720e5ea6bea9e6aa4282b69f96d3b9cfcfbce1ef596ce30e43",
+    "https://bcr.bazel.build/modules/zlib/1.3.1.bcr.7/source.json": "086122bc43f9108094fed21aaace4c0affd5abd8364af0520dbacdb76cc0546d",
+    "https://bcr.bazel.build/modules/zlib/1.3.1/MODULE.bazel": "751c9940dcfe869f5f7274e1295422a34623555916eb98c174c1e945594bf198",
+    "https://bcr.bazel.build/modules/zstd/1.5.6/MODULE.bazel": "471ebe7d3cdd8c6469390fcf623eb4779ff55fbee0a87f1dc57a1def468b96d4",
+    "https://bcr.bazel.build/modules/zstd/1.5.7/MODULE.bazel": "f5780cdbd6f4c5bb985a20f839844316fe48fb5e463056f372dbc37cfabdf450",
+    "https://bcr.bazel.build/modules/zstd/1.5.7/source.json": "f72c48184b6528ffc908a5a2bcbf3070c6684f3db03da2182c8ca999ae5f5cfd",
+    "https://bcr.bazel.build/modules/zstr/1.0.7/MODULE.bazel": "e6a2129c3747123db5b11375848865a8d03c0f27672506f694f9939b556eab7d",
+    "https://bcr.bazel.build/modules/zstr/1.0.7/source.json": "d241d7f5f0330cfb5ffb1af66845f98479a3e1da094ad8f9bf3ec41c4e05499a"
   },
   "selectedYankedVersions": {},
   "moduleExtensions": {
     "@@apple_support~//crosstool:setup.bzl%apple_cc_configure_extension": {
       "general": {
-        "bzlTransitiveDigest": "PjIds3feoYE8SGbbIq2SFTZy3zmxeO2tQevJZNDo7iY=",
-        "usagesDigest": "+hz7IHWN6A1oVJJWNDB6yZRG+RYhF76wAYItpAeIUIg=",
+        "bzlTransitiveDigest": "XAA5r7L1KMuUvHTqqDaw0bAq4nfDNO8LW62dzEDUm2A=",
+        "usagesDigest": "xpFebp9zHn25ZmVY1vOY0ZldEuv7dr7SLCGYTw1aO0M=",
         "recordedFileInputs": {},
         "recordedDirentsInputs": {},
         "envVariables": {},
@@ -161,27 +621,365 @@
         ]
       }
     },
-    "@@rules_java~//java:rules_java_deps.bzl%compatibility_proxy": {
+    "@@aspect_rules_esbuild~//esbuild:extensions.bzl%esbuild": {
       "general": {
-        "bzlTransitiveDigest": "KIX40nDfygEWbU+rq3nYpt3tVgTK/iO8PKh5VMBlN7M=",
-        "usagesDigest": "pwHZ+26iLgQdwvdZeA5wnAjKnNI3y6XO2VbhOTeo5h8=",
+        "bzlTransitiveDigest": "8iOqbPY5ve3DvjzaI1mJZ8XTiJypN2PeWvcKOvmZLy8=",
+        "usagesDigest": "iDVoyPxUeADmfK8ssoyG3Ehq1bj6p7A43LpEiE266os=",
         "recordedFileInputs": {},
         "recordedDirentsInputs": {},
         "envVariables": {},
         "generatedRepoSpecs": {
-          "compatibility_proxy": {
-            "bzlFile": "@@rules_java~//java:rules_java_deps.bzl",
-            "ruleClassName": "_compatibility_proxy_repo_rule",
-            "attributes": {}
+          "esbuild_darwin-x64": {
+            "bzlFile": "@@aspect_rules_esbuild~//esbuild:repositories.bzl",
+            "ruleClassName": "esbuild_repositories",
+            "attributes": {
+              "esbuild_version": "0.19.9",
+              "platform": "darwin-x64"
+            }
+          },
+          "esbuild_darwin-arm64": {
+            "bzlFile": "@@aspect_rules_esbuild~//esbuild:repositories.bzl",
+            "ruleClassName": "esbuild_repositories",
+            "attributes": {
+              "esbuild_version": "0.19.9",
+              "platform": "darwin-arm64"
+            }
+          },
+          "esbuild_linux-x64": {
+            "bzlFile": "@@aspect_rules_esbuild~//esbuild:repositories.bzl",
+            "ruleClassName": "esbuild_repositories",
+            "attributes": {
+              "esbuild_version": "0.19.9",
+              "platform": "linux-x64"
+            }
+          },
+          "esbuild_linux-arm64": {
+            "bzlFile": "@@aspect_rules_esbuild~//esbuild:repositories.bzl",
+            "ruleClassName": "esbuild_repositories",
+            "attributes": {
+              "esbuild_version": "0.19.9",
+              "platform": "linux-arm64"
+            }
+          },
+          "esbuild_win32-x64": {
+            "bzlFile": "@@aspect_rules_esbuild~//esbuild:repositories.bzl",
+            "ruleClassName": "esbuild_repositories",
+            "attributes": {
+              "esbuild_version": "0.19.9",
+              "platform": "win32-x64"
+            }
+          },
+          "esbuild_toolchains": {
+            "bzlFile": "@@aspect_rules_esbuild~//esbuild/private:toolchains_repo.bzl",
+            "ruleClassName": "toolchains_repo",
+            "attributes": {
+              "esbuild_version": "0.19.9",
+              "user_repository_name": "esbuild"
+            }
+          },
+          "npm__esbuild_0.19.9": {
+            "bzlFile": "@@aspect_rules_js~//npm/private:npm_import.bzl",
+            "ruleClassName": "npm_import_rule",
+            "attributes": {
+              "package": "esbuild",
+              "version": "0.19.9",
+              "root_package": "",
+              "link_workspace": "",
+              "link_packages": {},
+              "integrity": "sha512-U9CHtKSy+EpPsEBa+/A2gMs/h3ylBC0H0KSqIg7tpztHerLi6nrrcoUJAkNCEPumx8yJ+Byic4BVwHgRbN0TBg==",
+              "url": "",
+              "commit": "",
+              "patch_args": [
+                "-p0"
+              ],
+              "patches": [],
+              "custom_postinstall": "",
+              "npm_auth": "",
+              "npm_auth_basic": "",
+              "npm_auth_username": "",
+              "npm_auth_password": "",
+              "lifecycle_hooks": [],
+              "extra_build_content": "",
+              "generate_bzl_library_targets": false,
+              "extract_full_archive": false,
+              "system_tar": "auto"
+            }
+          },
+          "npm__esbuild_0.19.9__links": {
+            "bzlFile": "@@aspect_rules_js~//npm/private:npm_import.bzl",
+            "ruleClassName": "npm_import_links",
+            "attributes": {
+              "package": "esbuild",
+              "version": "0.19.9",
+              "dev": false,
+              "root_package": "",
+              "link_packages": {},
+              "deps": {},
+              "transitive_closure": {},
+              "lifecycle_build_target": false,
+              "lifecycle_hooks_env": [],
+              "lifecycle_hooks_execution_requirements": [
+                "no-sandbox"
+              ],
+              "lifecycle_hooks_use_default_shell_env": false,
+              "bins": {},
+              "package_visibility": [
+                "//visibility:public"
+              ],
+              "replace_package": ""
+            }
           }
         },
         "recordedRepoMappingEntries": [
           [
-            "rules_java~",
+            "aspect_bazel_lib~",
+            "bazel_skylib",
+            "bazel_skylib~"
+          ],
+          [
+            "aspect_bazel_lib~",
+            "bazel_tools",
+            "bazel_tools"
+          ],
+          [
+            "aspect_rules_esbuild~",
+            "aspect_rules_js",
+            "aspect_rules_js~"
+          ],
+          [
+            "aspect_rules_esbuild~",
+            "bazel_skylib",
+            "bazel_skylib~"
+          ],
+          [
+            "aspect_rules_js~",
+            "aspect_bazel_lib",
+            "aspect_bazel_lib~"
+          ],
+          [
+            "aspect_rules_js~",
+            "bazel_skylib",
+            "bazel_skylib~"
+          ],
+          [
+            "aspect_rules_js~",
             "bazel_tools",
             "bazel_tools"
           ]
         ]
+      }
+    },
+    "@@googleapis~//:extensions.bzl%switched_rules": {
+      "general": {
+        "bzlTransitiveDigest": "vG6fuTzXD8MMvHWZEQud0MMH7eoC4GXY0va7VrFFh04=",
+        "usagesDigest": "u1DsNDlYHEnzg4MhPeq0ShO+E1bcBtzwrzDydMGgLzo=",
+        "recordedFileInputs": {},
+        "recordedDirentsInputs": {},
+        "envVariables": {},
+        "generatedRepoSpecs": {
+          "com_google_googleapis_imports": {
+            "bzlFile": "@@googleapis~//:repository_rules.bzl",
+            "ruleClassName": "switched_rules",
+            "attributes": {
+              "rules": {
+                "proto_library_with_info": [
+                  "",
+                  ""
+                ],
+                "moved_proto_library": [
+                  "",
+                  ""
+                ],
+                "java_proto_library": [
+                  "",
+                  ""
+                ],
+                "java_grpc_library": [
+                  "",
+                  ""
+                ],
+                "java_gapic_library": [
+                  "",
+                  ""
+                ],
+                "java_gapic_test": [
+                  "",
+                  ""
+                ],
+                "java_gapic_assembly_gradle_pkg": [
+                  "",
+                  ""
+                ],
+                "py_proto_library": [
+                  "",
+                  ""
+                ],
+                "py_grpc_library": [
+                  "",
+                  ""
+                ],
+                "py_gapic_library": [
+                  "",
+                  ""
+                ],
+                "py_test": [
+                  "",
+                  ""
+                ],
+                "py_gapic_assembly_pkg": [
+                  "",
+                  ""
+                ],
+                "py_import": [
+                  "",
+                  ""
+                ],
+                "go_proto_library": [
+                  "",
+                  ""
+                ],
+                "go_grpc_library": [
+                  "",
+                  ""
+                ],
+                "go_library": [
+                  "",
+                  ""
+                ],
+                "go_test": [
+                  "",
+                  ""
+                ],
+                "go_gapic_library": [
+                  "",
+                  ""
+                ],
+                "go_gapic_assembly_pkg": [
+                  "",
+                  ""
+                ],
+                "cc_proto_library": [
+                  "",
+                  ""
+                ],
+                "cc_grpc_library": [
+                  "",
+                  ""
+                ],
+                "cc_gapic_library": [
+                  "",
+                  ""
+                ],
+                "php_proto_library": [
+                  "",
+                  "php_proto_library"
+                ],
+                "php_grpc_library": [
+                  "",
+                  "php_grpc_library"
+                ],
+                "php_gapic_library": [
+                  "",
+                  "php_gapic_library"
+                ],
+                "php_gapic_assembly_pkg": [
+                  "",
+                  "php_gapic_assembly_pkg"
+                ],
+                "nodejs_gapic_library": [
+                  "",
+                  "typescript_gapic_library"
+                ],
+                "nodejs_gapic_assembly_pkg": [
+                  "",
+                  "typescript_gapic_assembly_pkg"
+                ],
+                "ruby_proto_library": [
+                  "",
+                  ""
+                ],
+                "ruby_grpc_library": [
+                  "",
+                  ""
+                ],
+                "ruby_ads_gapic_library": [
+                  "",
+                  ""
+                ],
+                "ruby_cloud_gapic_library": [
+                  "",
+                  ""
+                ],
+                "ruby_gapic_assembly_pkg": [
+                  "",
+                  ""
+                ],
+                "csharp_proto_library": [
+                  "",
+                  ""
+                ],
+                "csharp_grpc_library": [
+                  "",
+                  ""
+                ],
+                "csharp_gapic_library": [
+                  "",
+                  ""
+                ],
+                "csharp_gapic_assembly_pkg": [
+                  "",
+                  ""
+                ]
+              }
+            }
+          }
+        },
+        "recordedRepoMappingEntries": []
+      }
+    },
+    "@@pybind11_bazel~//:internal_configure.bzl%internal_configure_extension": {
+      "general": {
+        "bzlTransitiveDigest": "Jsid+Er+k0JcuPNjK83nTid7q9/fJQeD+ntFHFVkKQg=",
+        "usagesDigest": "JgPy4R/bTaZI3tbSqKbpHTkkO9VKJFRMl8WJYLg/ufw=",
+        "recordedFileInputs": {},
+        "recordedDirentsInputs": {},
+        "envVariables": {},
+        "generatedRepoSpecs": {
+          "pybind11": {
+            "bzlFile": "@@bazel_tools//tools/build_defs/repo:http.bzl",
+            "ruleClassName": "http_archive",
+            "attributes": {
+              "build_file": "@@pybind11_bazel~//:pybind11-BUILD.bazel",
+              "strip_prefix": "pybind11-2.13.6",
+              "url": "https://github.com/pybind/pybind11/archive/refs/tags/v2.13.6.tar.gz",
+              "integrity": "sha256-4Iy4f0dz2pf6e18DXeh2OrxlbYfVdz5i9toFh9Hw7CA="
+            }
+          }
+        },
+        "recordedRepoMappingEntries": [
+          [
+            "pybind11_bazel~",
+            "bazel_tools",
+            "bazel_tools"
+          ]
+        ]
+      }
+    },
+    "@@rules_android~//rules/android_sdk_repository:rule.bzl%android_sdk_repository_extension": {
+      "general": {
+        "bzlTransitiveDigest": "NAy+0M15JNVEBb8Tny6t7j3lKqTnsAMjoBB6LJ+C370=",
+        "usagesDigest": "weZLGEpNa+fTJZ9CEljWxpN3/kuPzj/ULgebzOt2h4g=",
+        "recordedFileInputs": {},
+        "recordedDirentsInputs": {},
+        "envVariables": {},
+        "generatedRepoSpecs": {
+          "androidsdk": {
+            "bzlFile": "@@rules_android~//rules/android_sdk_repository:rule.bzl",
+            "ruleClassName": "_android_sdk_repository",
+            "attributes": {}
+          }
+        },
+        "recordedRepoMappingEntries": []
       }
     },
     "@@rules_kotlin~//src/main/starlark/core/repositories:bzlmod_setup.bzl%rules_kotlin_extensions": {
@@ -251,6 +1049,1933 @@
             "bazel_tools"
           ]
         ]
+      }
+    },
+    "@@rules_ml_toolchain~//third_party/extensions:cuda_configure.bzl%cuda_configure_ext": {
+      "general": {
+        "bzlTransitiveDigest": "52jmpiOJEBaqYGk41HZOmAwZxTu4gva6UQhq9yWkprg=",
+        "usagesDigest": "6w031YfoS8ayIVb42XPuv3iWXybsv3RY/x5O/NYh7Z0=",
+        "recordedFileInputs": {},
+        "recordedDirentsInputs": {},
+        "envVariables": {},
+        "generatedRepoSpecs": {
+          "local_config_cuda": {
+            "bzlFile": "@@rules_ml_toolchain~//third_party/gpus/cuda/hermetic:cuda_configure.bzl",
+            "ruleClassName": "cuda_configure",
+            "attributes": {}
+          }
+        },
+        "recordedRepoMappingEntries": [
+          [
+            "rules_ml_toolchain~",
+            "cuda_cccl",
+            "rules_ml_toolchain~~cuda_redist_init_ext~cuda_cccl"
+          ],
+          [
+            "rules_ml_toolchain~",
+            "cuda_crt",
+            "rules_ml_toolchain~~cuda_redist_init_ext~cuda_crt"
+          ],
+          [
+            "rules_ml_toolchain~",
+            "cuda_cublas",
+            "rules_ml_toolchain~~cuda_redist_init_ext~cuda_cublas"
+          ],
+          [
+            "rules_ml_toolchain~",
+            "cuda_cudart",
+            "rules_ml_toolchain~~cuda_redist_init_ext~cuda_cudart"
+          ],
+          [
+            "rules_ml_toolchain~",
+            "cuda_cudnn",
+            "rules_ml_toolchain~~cuda_redist_init_ext~cuda_cudnn"
+          ],
+          [
+            "rules_ml_toolchain~",
+            "cuda_cufft",
+            "rules_ml_toolchain~~cuda_redist_init_ext~cuda_cufft"
+          ],
+          [
+            "rules_ml_toolchain~",
+            "cuda_cupti",
+            "rules_ml_toolchain~~cuda_redist_init_ext~cuda_cupti"
+          ],
+          [
+            "rules_ml_toolchain~",
+            "cuda_curand",
+            "rules_ml_toolchain~~cuda_redist_init_ext~cuda_curand"
+          ],
+          [
+            "rules_ml_toolchain~",
+            "cuda_cusolver",
+            "rules_ml_toolchain~~cuda_redist_init_ext~cuda_cusolver"
+          ],
+          [
+            "rules_ml_toolchain~",
+            "cuda_cusparse",
+            "rules_ml_toolchain~~cuda_redist_init_ext~cuda_cusparse"
+          ],
+          [
+            "rules_ml_toolchain~",
+            "cuda_nvcc",
+            "rules_ml_toolchain~~cuda_redist_init_ext~cuda_nvcc"
+          ],
+          [
+            "rules_ml_toolchain~",
+            "cuda_nvdisasm",
+            "rules_ml_toolchain~~cuda_redist_init_ext~cuda_nvdisasm"
+          ],
+          [
+            "rules_ml_toolchain~",
+            "cuda_nvjitlink",
+            "rules_ml_toolchain~~cuda_redist_init_ext~cuda_nvjitlink"
+          ],
+          [
+            "rules_ml_toolchain~",
+            "cuda_nvml",
+            "rules_ml_toolchain~~cuda_redist_init_ext~cuda_nvml"
+          ],
+          [
+            "rules_ml_toolchain~",
+            "cuda_nvtx",
+            "rules_ml_toolchain~~cuda_redist_init_ext~cuda_nvtx"
+          ],
+          [
+            "rules_ml_toolchain~",
+            "cuda_nvvm",
+            "rules_ml_toolchain~~cuda_redist_init_ext~cuda_nvvm"
+          ],
+          [
+            "rules_ml_toolchain~",
+            "cuda_profiler_api",
+            "rules_ml_toolchain~~cuda_redist_init_ext~cuda_profiler_api"
+          ],
+          [
+            "rules_ml_toolchain~",
+            "llvm_linux_aarch64",
+            "rules_ml_toolchain~~toolchain_ext~llvm_linux_aarch64"
+          ],
+          [
+            "rules_ml_toolchain~",
+            "llvm_linux_x86_64",
+            "rules_ml_toolchain~~toolchain_ext~llvm_linux_x86_64"
+          ]
+        ]
+      }
+    },
+    "@@rules_ml_toolchain~//third_party/extensions:cuda_json.bzl%cuda_json_ext": {
+      "general": {
+        "bzlTransitiveDigest": "6g4ca02x0YCPKmOLkZwxgh4YXJk3+fiyfFYM2fvoWKg=",
+        "usagesDigest": "+NQGzYcOyPITvfPpowqal+Wu0caefSlfOA6Hy04m6UA=",
+        "recordedFileInputs": {},
+        "recordedDirentsInputs": {},
+        "envVariables": {},
+        "generatedRepoSpecs": {
+          "standalone_cuda_redist_json": {
+            "bzlFile": "@@rules_ml_toolchain~//third_party/gpus:nvidia_common_rules.bzl",
+            "ruleClassName": "_redist_json",
+            "attributes": {
+              "toolkit_name": "CUDA",
+              "json_dict": {
+                "11.8": [
+                  "https://developer.download.nvidia.com/compute/cuda/redist/redistrib_11.8.0.json",
+                  "941a950a4ab3b95311c50df7b3c8bca973e0cdda76fc2f4b456d2d5e4dac0281"
+                ],
+                "12.1.1": [
+                  "https://developer.download.nvidia.com/compute/cuda/redist/redistrib_12.1.1.json",
+                  "bafea3cb83a4cf5c764eeedcaac0040d0d3c5db3f9a74550da0e7b6ac24d378c"
+                ],
+                "12.2.0": [
+                  "https://developer.download.nvidia.com/compute/cuda/redist/redistrib_12.2.0.json",
+                  "d883762c6339c8ebb3ffb072facc8f7265cd257d2db16a475fff9a9306ecea89"
+                ],
+                "12.3.1": [
+                  "https://developer.download.nvidia.com/compute/cuda/redist/redistrib_12.3.1.json",
+                  "b3cc4181d711cf9b6e3718f323b23813c24f9478119911d7b4bceec9b437dbc3"
+                ],
+                "12.3.2": [
+                  "https://developer.download.nvidia.com/compute/cuda/redist/redistrib_12.3.2.json",
+                  "1b6eacf335dd49803633fed53ef261d62c193e5a56eee5019e7d2f634e39e7ef"
+                ],
+                "12.4.0": [
+                  "https://developer.download.nvidia.com/compute/cuda/redist/redistrib_12.4.0.json",
+                  "a4f496b8d5299939b34c9ef88dc4274821f8c9451b2d7c9bcee53166932da067"
+                ],
+                "12.4.1": [
+                  "https://developer.download.nvidia.com/compute/cuda/redist/redistrib_12.4.1.json",
+                  "9cd815f3b71c2e3686ef2219b7794b81044f9dcefaa8e21dacfcb5bc4d931892"
+                ],
+                "12.5.0": [
+                  "https://developer.download.nvidia.com/compute/cuda/redist/redistrib_12.5.0.json",
+                  "166664b520bfe51f27abcc8c7a934f4cb6ea287f8c399b5f8255f6f4d214569a"
+                ],
+                "12.5.1": [
+                  "https://developer.download.nvidia.com/compute/cuda/redist/redistrib_12.5.1.json",
+                  "7ab9c76014ae4907fa1b51738af599607a5fd8ca3a5c4bb4c3b31338cc642a93"
+                ],
+                "12.6.0": [
+                  "https://developer.download.nvidia.com/compute/cuda/redist/redistrib_12.6.0.json",
+                  "87740b01676b3d18982982ab96ec7fa1a626d03a96df070a6b0f258d01ff5fab"
+                ],
+                "12.6.1": [
+                  "https://developer.download.nvidia.com/compute/cuda/redist/redistrib_12.6.1.json",
+                  "22ddfeb81a6f9cee4a708a2e3b4db1c36c7db0a1daa1f33f9c7f2f12a1e790de"
+                ],
+                "12.6.2": [
+                  "https://developer.download.nvidia.com/compute/cuda/redist/redistrib_12.6.2.json",
+                  "8056da1f5acca8e613da1349d9b8782b774ad0254e3eddcc95734ded4d33f2df"
+                ],
+                "12.6.3": [
+                  "https://developer.download.nvidia.com/compute/cuda/redist/redistrib_12.6.3.json",
+                  "9c598598457a6463eb92889080c16b2b9dc04150e501b8bfc1536d403ba70aaf"
+                ],
+                "12.8.0": [
+                  "https://developer.download.nvidia.com/compute/cuda/redist/redistrib_12.8.0.json",
+                  "daa0d766b36feaa933592162c27be5fb63b68fc547ca6886c160a35d96ee8891"
+                ],
+                "12.8.1": [
+                  "https://developer.download.nvidia.com/compute/cuda/redist/redistrib_12.8.1.json",
+                  "249e28a83008d711d5f72880541c8be6253f6d61608461de4fcb715554a6cf17"
+                ],
+                "12.9.0": [
+                  "https://developer.download.nvidia.com/compute/cuda/redist/redistrib_12.9.0.json",
+                  "4e4e17a12adcf8cac40b990e1618406cd7ad52da1817819166af28a9dfe21d4a"
+                ],
+                "12.9.1": [
+                  "https://developer.download.nvidia.com/compute/cuda/redist/redistrib_12.9.1.json",
+                  "8335301010b0023ee1ff61eb11e2600ca62002d76780de4089011ad77e0c7630"
+                ],
+                "13.0.0": [
+                  "https://developer.download.nvidia.com/compute/cuda/redist/redistrib_13.0.0.json",
+                  "fe6a86b54450d03ae709123a52717870c49046d65d45303ce585c7aa8a83a217"
+                ],
+                "13.0.1": [
+                  "https://developer.download.nvidia.com/compute/cuda/redist/redistrib_13.0.1.json",
+                  "9c494bc13b34e8fbcad083a6486d185b0906068b821722502edf9d0e3bd14096"
+                ]
+              },
+              "mirrored_tars_json_dict": {
+                "11.8": [
+                  "https://storage.googleapis.com/mirror.tensorflow.org/developer.download.nvidia.com/compute/cuda/redist/redistrib_11.8.0_tar.json",
+                  "a325b9dfba60c88f71b681e2f58b790b09afd9cb476fe620fabcb50be6f30add"
+                ],
+                "12.1.1": [
+                  "https://storage.googleapis.com/mirror.tensorflow.org/developer.download.nvidia.com/compute/cuda/redist/redistrib_12.1.1_tar.json",
+                  "f4c6679ebf3dedbeff329d5ee0c8bfec3f32c4976f5d9cdc238ac9faa0109502"
+                ],
+                "12.2.0": [
+                  "https://storage.googleapis.com/mirror.tensorflow.org/developer.download.nvidia.com/compute/cuda/redist/redistrib_12.2.0_tar.json",
+                  "69db566d620fbc5ecb8ee367d60b7e1d23f0ee64a11eca4cad97b037d9850819"
+                ],
+                "12.3.1": [
+                  "https://storage.googleapis.com/mirror.tensorflow.org/developer.download.nvidia.com/compute/cuda/redist/redistrib_12.3.1_tar.json",
+                  "d2d6331166117ca6889899245071903b1b01127713e934f8a91850f52862644c"
+                ],
+                "12.3.2": [
+                  "https://storage.googleapis.com/mirror.tensorflow.org/developer.download.nvidia.com/compute/cuda/redist/redistrib_12.3.2_tar.json",
+                  "796b019c6d707a656544ef007ad180d2e57dbf5c018683464166e2c512c1ec68"
+                ],
+                "12.4.0": [
+                  "https://storage.googleapis.com/mirror.tensorflow.org/developer.download.nvidia.com/compute/cuda/redist/redistrib_12.4.0_tar.json",
+                  "3b5066efdfe8072997ca8f3bbb9bf8c4bb869f25461d22887247be4d16101ba7"
+                ],
+                "12.4.1": [
+                  "https://storage.googleapis.com/mirror.tensorflow.org/developer.download.nvidia.com/compute/cuda/redist/redistrib_12.4.1_tar.json",
+                  "ff6cf5d43fd65e65bf1380f295adcc77b1c7598feff5b782912885ee5ac242e8"
+                ],
+                "12.5.0": [
+                  "https://storage.googleapis.com/mirror.tensorflow.org/developer.download.nvidia.com/compute/cuda/redist/redistrib_12.5.0_tar.json",
+                  "32a8d4ce1b31d15f02ac6a9cc7c5b060bd329a2a754906b1485752d9c9da59b5"
+                ],
+                "12.5.1": [
+                  "https://storage.googleapis.com/mirror.tensorflow.org/developer.download.nvidia.com/compute/cuda/redist/redistrib_12.5.1_tar.json",
+                  "b1d50589900b5b50d01d1f741448802020835b5135fcbb969c6bf7b831372a7f"
+                ],
+                "12.6.0": [
+                  "https://storage.googleapis.com/mirror.tensorflow.org/developer.download.nvidia.com/compute/cuda/redist/redistrib_12.6.0_tar.json",
+                  "a5de3ae3f01ab25dec442fa133ca1d3eb0001fab6de14490b2f314b03dd3c0e4"
+                ],
+                "12.6.1": [
+                  "https://storage.googleapis.com/mirror.tensorflow.org/developer.download.nvidia.com/compute/cuda/redist/redistrib_12.6.1_tar.json",
+                  "8da05eb613d2d71b4814fde25de0a418b1dc04c0a409209dfce82b5ca8b15dec"
+                ],
+                "12.6.2": [
+                  "https://storage.googleapis.com/mirror.tensorflow.org/developer.download.nvidia.com/compute/cuda/redist/redistrib_12.6.2_tar.json",
+                  "cb18f8464212e71c364f6d8c9bf6b70c0908e2e069d75c90fc65e0b07981bb53"
+                ],
+                "12.6.3": [
+                  "https://storage.googleapis.com/mirror.tensorflow.org/developer.download.nvidia.com/compute/cuda/redist/redistrib_12.6.3_tar.json",
+                  "e1b558de79fe2da21cac80c498e4175a48087677627eacb915dd78f42833b5b3"
+                ],
+                "12.8.0": [
+                  "https://storage.googleapis.com/mirror.tensorflow.org/developer.download.nvidia.com/compute/cuda/redist/redistrib_12.8.0_tar.json",
+                  "c9790b289d654844d9dd2ec07f30383220dac1320f7d7d686722e946f9a55e44"
+                ],
+                "12.8.1": [
+                  "https://storage.googleapis.com/mirror.tensorflow.org/developer.download.nvidia.com/compute/cuda/redist/redistrib_12.8.1_tar.json",
+                  "30a1b8ace0d38237f4ab3ab28d89dbc77ae2c4ebabe27ba08b3c0961cc6cc7fa"
+                ],
+                "12.9.0": [
+                  "https://storage.googleapis.com/mirror.tensorflow.org/developer.download.nvidia.com/compute/cuda/redist/redistrib_12.9.0_tar.json",
+                  "c614ee6171763d0a5bb4997f7004409d2b9621833ac6eccfa72ecfc411701f9d"
+                ],
+                "12.9.1": [
+                  "https://storage.googleapis.com/mirror.tensorflow.org/developer.download.nvidia.com/compute/cuda/redist/redistrib_12.9.1_tar.json",
+                  "a6b09fa5048ca1ea206ea5a0a287f28f7eaae7cd3e08ab20d2c4d47d53ec39f5"
+                ],
+                "13.0.0": [
+                  "https://storage.googleapis.com/mirror.tensorflow.org/developer.download.nvidia.com/compute/cuda/redist/redistrib_13.0.0_tar.json",
+                  "0beef25312491a2c5fff36470be82d68adc870a250f59a647389b7ebcf275722"
+                ],
+                "13.0.1": [
+                  "https://storage.googleapis.com/mirror.tensorflow.org/developer.download.nvidia.com/compute/cuda/redist/redistrib_13.0.1_tar.json",
+                  "8d99db1a7c2d3ad35d5b62f3615426f25dd57ff3e812bbf71eb5c311cdf64011"
+                ]
+              },
+              "redist_version_env_vars": [
+                "HERMETIC_CUDA_VERSION",
+                "TF_CUDA_VERSION"
+              ],
+              "local_path_env_var": "LOCAL_CUDA_PATH",
+              "use_tar_file_env_var": "USE_CUDA_TAR_ARCHIVE_FILES"
+            }
+          },
+          "cudnn_redist_json": {
+            "bzlFile": "@@rules_ml_toolchain~//third_party/gpus:nvidia_common_rules.bzl",
+            "ruleClassName": "_redist_json",
+            "attributes": {
+              "toolkit_name": "CUDNN",
+              "json_dict": {
+                "8.9.4.25": [
+                  "https://developer.download.nvidia.com/compute/cudnn/redist/redistrib_8.9.4.25.json",
+                  "02258dba8384860c9230fe3c78522e7bd8e350e461ccd37a8d932cb64127ba57"
+                ],
+                "8.9.6": [
+                  "https://developer.download.nvidia.com/compute/cudnn/redist/redistrib_8.9.6.json",
+                  "6069ef92a2b9bb18cebfbc944964bd2b024b76f2c2c35a43812982e0bc45cf0c"
+                ],
+                "8.9.7.29": [
+                  "https://developer.download.nvidia.com/compute/cudnn/redist/redistrib_8.9.7.29.json",
+                  "a0734f26f068522464fa09b2f2c186dfbe6ad7407a88ea0c50dd331f0c3389ec"
+                ],
+                "9.1.1": [
+                  "https://developer.download.nvidia.com/compute/cudnn/redist/redistrib_9.1.1.json",
+                  "d22d569405e5683ff8e563d00d6e8c27e5e6a902c564c23d752b22a8b8b3fe20"
+                ],
+                "9.2.0": [
+                  "https://developer.download.nvidia.com/compute/cudnn/redist/redistrib_9.2.0.json",
+                  "6852eb279b95d2b5775f7a7737ec133bed059107f863cdd8588f3ae6f13eadd7"
+                ],
+                "9.2.1": [
+                  "https://developer.download.nvidia.com/compute/cudnn/redist/redistrib_9.2.1.json",
+                  "9a4198c59b2e66b2b115a736ebe4dc8f3dc6d78161bb494702f824da8fc77b99"
+                ],
+                "9.3.0": [
+                  "https://developer.download.nvidia.com/compute/cudnn/redist/redistrib_9.3.0.json",
+                  "d17d9a7878365736758550294f03e633a0b023bec879bf173349bfb34781972e"
+                ],
+                "9.4.0": [
+                  "https://developer.download.nvidia.com/compute/cudnn/redist/redistrib_9.4.0.json",
+                  "6eeaafc5cc3d4bb2f283e6298e4c55d4c59d7c83c5d9fd8721a2c0e55aee4e54"
+                ],
+                "9.5.0": [
+                  "https://developer.download.nvidia.com/compute/cudnn/redist/redistrib_9.5.0.json",
+                  "3939f0533fdd0d3aa7edd1ac358d43da18e438e5d8f39c3c15bb72519bad7fb5"
+                ],
+                "9.5.1": [
+                  "https://developer.download.nvidia.com/compute/cudnn/redist/redistrib_9.5.1.json",
+                  "a5484eef575bbb1fd4f96136cf12244ebc194b661f5ae9ed3b8aaa07e06434b1"
+                ],
+                "9.6.0": [
+                  "https://developer.download.nvidia.com/compute/cudnn/redist/redistrib_9.6.0.json",
+                  "6dd9a931d981fe5afc7e7ed0c422a4035b1411db4e28a39cf2429e62e3efcd3e"
+                ],
+                "9.7.0": [
+                  "https://developer.download.nvidia.com/compute/cudnn/redist/redistrib_9.7.0.json",
+                  "e715c1d028585d228c4678c2cdc5ad9a34fde54515a1c52aa60e36021a90dd90"
+                ],
+                "9.7.1": [
+                  "https://developer.download.nvidia.com/compute/cudnn/redist/redistrib_9.7.1.json",
+                  "f9bc411a4908f0931e7323f89049e3a38453632c4ac5f4aa3220af69ddded9dc"
+                ],
+                "9.8.0": [
+                  "https://developer.download.nvidia.com/compute/cudnn/redist/redistrib_9.8.0.json",
+                  "a1599fa1f8dcb81235157be5de5ab7d3936e75dfc4e1e442d07970afad3c4843"
+                ],
+                "9.9.0": [
+                  "https://developer.download.nvidia.com/compute/cudnn/redist/redistrib_9.9.0.json",
+                  "614d3c5ceb02e1eb1508f0bc9231c3c03c113bb514b950a1108adb9fde801c77"
+                ],
+                "9.10.0": [
+                  "https://developer.download.nvidia.com/compute/cudnn/redist/redistrib_9.10.0.json",
+                  "d06b8df4d305dd7021838ffb2a26c2a861d522f2a129c6a372fad72ca009b1f1"
+                ],
+                "9.10.1": [
+                  "https://developer.download.nvidia.com/compute/cudnn/redist/redistrib_9.10.1.json",
+                  "2ac8d48d3ab4de1acdce65fa3e8ecfb14750d4e101b05fe3307d2f95f2740563"
+                ],
+                "9.10.2": [
+                  "https://developer.download.nvidia.com/compute/cudnn/redist/redistrib_9.10.2.json",
+                  "73a33a12bbb8eb12b105a515b5921db2e328b3ca679f92b6184c7f32fe94a8b0"
+                ],
+                "9.11.0": [
+                  "https://developer.download.nvidia.com/compute/cudnn/redist/redistrib_9.11.0.json",
+                  "7a16458ea21573e18d190df0c8d68ea1e8c82faf1bcfad4a39ceb600c26639cc"
+                ],
+                "9.12.0": [
+                  "https://developer.download.nvidia.com/compute/cudnn/redist/redistrib_9.12.0.json",
+                  "39bb68f0ca6abdbf9bab3ecb1cb18f458d635f72d72ede98a308216fd22efab3"
+                ],
+                "9.13.0": [
+                  "https://developer.download.nvidia.com/compute/cudnn/redist/redistrib_9.13.0.json",
+                  "55e3eb3ccb1ca543a7811312466f44841d630d3b2252f5763ad53509d2c09fbf"
+                ]
+              },
+              "mirrored_tars_json_dict": {
+                "8.9.4.25": [
+                  "https://storage.googleapis.com/mirror.tensorflow.org/developer.download.nvidia.com/compute/cudnn/redist/redistrib_8.9.4.25_tar.json",
+                  "cf2642a1db2b564065232277f061e89f1b20435f88164fa783855ac69f33d3c2"
+                ],
+                "8.9.6": [
+                  "https://storage.googleapis.com/mirror.tensorflow.org/developer.download.nvidia.com/compute/cudnn/redist/redistrib_8.9.6_tar.json",
+                  "dab3ead7f79bf0378e2e9037a9f6a87f249c581aa75d1e2f352ffa3df56d5356"
+                ],
+                "8.9.7.29": [
+                  "https://storage.googleapis.com/mirror.tensorflow.org/developer.download.nvidia.com/compute/cudnn/redist/redistrib_8.9.7.29_tar.json",
+                  "7e305dc19b8a273645078bb3a37faaa54256a59ac9137934979983d9ce481717"
+                ],
+                "9.1.1": [
+                  "https://storage.googleapis.com/mirror.tensorflow.org/developer.download.nvidia.com/compute/cudnn/redist/redistrib_9.1.1_tar.json",
+                  "6960bc9e472b21c4ffae0a75309f41f48eb3d943a553ad70273927fb170fa99f"
+                ],
+                "9.2.0": [
+                  "https://storage.googleapis.com/mirror.tensorflow.org/developer.download.nvidia.com/compute/cudnn/redist/redistrib_9.2.0_tar.json",
+                  "35469a1494c8f95d81774fd7750c6cd2def3919e83b0fa8e0285edd42bcead20"
+                ],
+                "9.2.1": [
+                  "https://storage.googleapis.com/mirror.tensorflow.org/developer.download.nvidia.com/compute/cudnn/redist/redistrib_9.2.1_tar.json",
+                  "de77cb78dd620f1c1f8d1a07e167ba6d6cfa1be5769172a09c5315a1463811c1"
+                ],
+                "9.3.0": [
+                  "https://storage.googleapis.com/mirror.tensorflow.org/developer.download.nvidia.com/compute/cudnn/redist/redistrib_9.3.0_tar.json",
+                  "50aadf1e10b0988bb74497331953f1afbd9c596c27c6014f4d3f370cec2713aa"
+                ],
+                "9.4.0": [
+                  "https://storage.googleapis.com/mirror.tensorflow.org/developer.download.nvidia.com/compute/cudnn/redist/redistrib_9.4.0_tar.json",
+                  "114a6ad4152ea014cc07fec1fa63a029c6eec6a5dc4463c8dc83ad6d5f809795"
+                ],
+                "9.5.0": [
+                  "https://storage.googleapis.com/mirror.tensorflow.org/developer.download.nvidia.com/compute/cudnn/redist/redistrib_9.5.0_tar.json",
+                  "f224f5a875129eeb5b3c7e18d8a5f2e7bb5498f0e3095a8ae5fb863ebc450c52"
+                ],
+                "9.5.1": [
+                  "https://storage.googleapis.com/mirror.tensorflow.org/developer.download.nvidia.com/compute/cudnn/redist/redistrib_9.5.1_tar.json",
+                  "28ce996b3f4171f6a3873152470e14753788cddd089261513c18c773fe2a2b73"
+                ],
+                "9.6.0": [
+                  "https://storage.googleapis.com/mirror.tensorflow.org/developer.download.nvidia.com/compute/cudnn/redist/redistrib_9.6.0_tar.json",
+                  "084cc250593cfbc962f7942a4871aa13a179ce5beb1aea236b74080cc23e29f0"
+                ],
+                "9.7.0": [
+                  "https://storage.googleapis.com/mirror.tensorflow.org/developer.download.nvidia.com/compute/cudnn/redist/redistrib_9.7.0_tar.json",
+                  "402906b09b7b2624e6a5c6937a41cc3330d6e588f2f211504ad3fb8a5823fa01"
+                ],
+                "9.7.1": [
+                  "https://storage.googleapis.com/mirror.tensorflow.org/developer.download.nvidia.com/compute/cudnn/redist/redistrib_9.7.1_tar.json",
+                  "2eaa4594c1ab188c939026d90245d3ffca2a83d41aba1be903f644cc1215c23d"
+                ],
+                "9.8.0": [
+                  "https://storage.googleapis.com/mirror.tensorflow.org/developer.download.nvidia.com/compute/cudnn/redist/redistrib_9.8.0_tar.json",
+                  "030378782b94597855cdf7d3068968f88460cd9c4ce9d73c77cfad64dfdea070"
+                ],
+                "9.9.0": [
+                  "https://storage.googleapis.com/mirror.tensorflow.org/developer.download.nvidia.com/compute/cudnn/redist/redistrib_9.9.0_tar.json",
+                  "43a331efcd54041c1a0c752e7451708097d9b35cff87e594e7d45e1123435d49"
+                ],
+                "9.10.0": [
+                  "https://storage.googleapis.com/mirror.tensorflow.org/developer.download.nvidia.com/compute/cudnn/redist/redistrib_9.10.0_tar.json",
+                  "a12f12c38b8e4db4c1f305661072f3bed07f25a84b9a65016925aebd5238989e"
+                ],
+                "9.10.1": [
+                  "https://storage.googleapis.com/mirror.tensorflow.org/developer.download.nvidia.com/compute/cudnn/redist/redistrib_9.10.1_tar.json",
+                  "3f6f8c5474ffa4cc95a1d114298472c475d8cadea04acb2e00ce3ad0aabd6783"
+                ],
+                "9.10.2": [
+                  "https://storage.googleapis.com/mirror.tensorflow.org/developer.download.nvidia.com/compute/cudnn/redist/redistrib_9.10.2_tar.json",
+                  "10241f263ee24b57265a3c9e057c0a79a6a47ea4234ac87ba04cf228c5fdf31c"
+                ],
+                "9.11.0": [
+                  "https://storage.googleapis.com/mirror.tensorflow.org/developer.download.nvidia.com/compute/cudnn/redist/redistrib_9.11.0_tar.json",
+                  "fa8d0fc0fdb6d2e3f5d208f8eef93826122a91d9deec8f501c4966323dcad745"
+                ],
+                "9.12.0": [
+                  "https://storage.googleapis.com/mirror.tensorflow.org/developer.download.nvidia.com/compute/cudnn/redist/redistrib_9.12.0_tar.json",
+                  "3c0865952243f58513cf8dd853d5ef631db78f778a4f742cc9196bd2de429f1d"
+                ],
+                "9.13.0": [
+                  "https://storage.googleapis.com/mirror.tensorflow.org/developer.download.nvidia.com/compute/cudnn/redist/redistrib_9.13.0_tar.json",
+                  "b2fe96612070231275461fc84bceccc094d193546a107c8a2cda4fa322628a1f"
+                ]
+              },
+              "redist_version_env_vars": [
+                "HERMETIC_CUDNN_VERSION",
+                "TF_CUDNN_VERSION"
+              ],
+              "local_path_env_var": "LOCAL_CUDNN_PATH",
+              "use_tar_file_env_var": "USE_CUDA_TAR_ARCHIVE_FILES"
+            }
+          },
+          "cuda_redist_json": {
+            "bzlFile": "@@rules_ml_toolchain~//third_party/gpus/cuda/hermetic:cuda_json_init_repository.bzl",
+            "ruleClassName": "_combined_redist_json",
+            "attributes": {}
+          }
+        },
+        "recordedRepoMappingEntries": [
+          [
+            "rules_ml_toolchain~",
+            "tar",
+            "rules_ml_toolchain~~toolchain_ext~tar"
+          ],
+          [
+            "rules_ml_toolchain~",
+            "xz",
+            "rules_ml_toolchain~~toolchain_ext~xz"
+          ]
+        ]
+      }
+    },
+    "@@rules_ml_toolchain~//third_party/extensions:cuda_redist_init.bzl%cuda_redist_init_ext": {
+      "general": {
+        "bzlTransitiveDigest": "xiZyhG0R8J558yz7lyNGAbWNCNvBtu4DCUSw8xnveuI=",
+        "usagesDigest": "at3leB9T+EbOWOkgi3RgvU/8QAly2nKULOu0HT4U5dg=",
+        "recordedFileInputs": {},
+        "recordedDirentsInputs": {},
+        "envVariables": {},
+        "generatedRepoSpecs": {
+          "cuda_driver": {
+            "bzlFile": "@@rules_ml_toolchain~//third_party/gpus:nvidia_common_rules.bzl",
+            "ruleClassName": "_redist_repo",
+            "attributes": {
+              "url_dict": {},
+              "versions": [
+                "580,575,570,560,555,550,545,530,520"
+              ],
+              "build_templates": [
+                "@@rules_ml_toolchain~//third_party/gpus/cuda/hermetic:cuda_driver.BUILD.tpl"
+              ],
+              "override_strip_prefix": "",
+              "redist_path_prefix": "https://developer.download.nvidia.com/compute/cuda/redist/",
+              "mirrored_tar_redist_path_prefix": "https://storage.googleapis.com/mirror.tensorflow.org/developer.download.nvidia.com/compute/cuda/redist/",
+              "redist_version_env_vars": [
+                "HERMETIC_CUDA_VERSION",
+                "TF_CUDA_VERSION"
+              ],
+              "local_path_env_var": "LOCAL_CUDA_PATH",
+              "use_tar_file_env_var": "USE_CUDA_TAR_ARCHIVE_FILES",
+              "target_arch_env_var": "CUDA_REDIST_TARGET_PLATFORM",
+              "local_source_dirs": [
+                "include",
+                "lib",
+                "bin",
+                "nvvm"
+              ],
+              "repository_symlinks": {}
+            }
+          },
+          "cuda_cublas": {
+            "bzlFile": "@@rules_ml_toolchain~//third_party/gpus:nvidia_common_rules.bzl",
+            "ruleClassName": "_redist_repo",
+            "attributes": {
+              "url_dict": {},
+              "versions": [
+                "13,12,11"
+              ],
+              "build_templates": [
+                "@@rules_ml_toolchain~//third_party/gpus/cuda/hermetic:cuda_cublas.BUILD.tpl"
+              ],
+              "override_strip_prefix": "",
+              "redist_path_prefix": "https://developer.download.nvidia.com/compute/cuda/redist/",
+              "mirrored_tar_redist_path_prefix": "https://storage.googleapis.com/mirror.tensorflow.org/developer.download.nvidia.com/compute/cuda/redist/",
+              "redist_version_env_vars": [
+                "HERMETIC_CUDA_VERSION",
+                "TF_CUDA_VERSION"
+              ],
+              "local_path_env_var": "LOCAL_CUDA_PATH",
+              "use_tar_file_env_var": "USE_CUDA_TAR_ARCHIVE_FILES",
+              "target_arch_env_var": "CUDA_REDIST_TARGET_PLATFORM",
+              "local_source_dirs": [
+                "include",
+                "lib",
+                "bin",
+                "nvvm"
+              ],
+              "repository_symlinks": {}
+            }
+          },
+          "cuda_cudart": {
+            "bzlFile": "@@rules_ml_toolchain~//third_party/gpus:nvidia_common_rules.bzl",
+            "ruleClassName": "_redist_repo",
+            "attributes": {
+              "url_dict": {},
+              "versions": [
+                "13,12,11"
+              ],
+              "build_templates": [
+                "@@rules_ml_toolchain~//third_party/gpus/cuda/hermetic:cuda_cudart.BUILD.tpl"
+              ],
+              "override_strip_prefix": "",
+              "redist_path_prefix": "https://developer.download.nvidia.com/compute/cuda/redist/",
+              "mirrored_tar_redist_path_prefix": "https://storage.googleapis.com/mirror.tensorflow.org/developer.download.nvidia.com/compute/cuda/redist/",
+              "redist_version_env_vars": [
+                "HERMETIC_CUDA_VERSION",
+                "TF_CUDA_VERSION"
+              ],
+              "local_path_env_var": "LOCAL_CUDA_PATH",
+              "use_tar_file_env_var": "USE_CUDA_TAR_ARCHIVE_FILES",
+              "target_arch_env_var": "CUDA_REDIST_TARGET_PLATFORM",
+              "local_source_dirs": [
+                "include",
+                "lib",
+                "bin",
+                "nvvm"
+              ],
+              "repository_symlinks": {}
+            }
+          },
+          "cuda_cufft": {
+            "bzlFile": "@@rules_ml_toolchain~//third_party/gpus:nvidia_common_rules.bzl",
+            "ruleClassName": "_redist_repo",
+            "attributes": {
+              "url_dict": {},
+              "versions": [
+                "13,12,11,10"
+              ],
+              "build_templates": [
+                "@@rules_ml_toolchain~//third_party/gpus/cuda/hermetic:cuda_cufft.BUILD.tpl"
+              ],
+              "override_strip_prefix": "",
+              "redist_path_prefix": "https://developer.download.nvidia.com/compute/cuda/redist/",
+              "mirrored_tar_redist_path_prefix": "https://storage.googleapis.com/mirror.tensorflow.org/developer.download.nvidia.com/compute/cuda/redist/",
+              "redist_version_env_vars": [
+                "HERMETIC_CUDA_VERSION",
+                "TF_CUDA_VERSION"
+              ],
+              "local_path_env_var": "LOCAL_CUDA_PATH",
+              "use_tar_file_env_var": "USE_CUDA_TAR_ARCHIVE_FILES",
+              "target_arch_env_var": "CUDA_REDIST_TARGET_PLATFORM",
+              "local_source_dirs": [
+                "include",
+                "lib",
+                "bin",
+                "nvvm"
+              ],
+              "repository_symlinks": {}
+            }
+          },
+          "cuda_cupti": {
+            "bzlFile": "@@rules_ml_toolchain~//third_party/gpus:nvidia_common_rules.bzl",
+            "ruleClassName": "_redist_repo",
+            "attributes": {
+              "url_dict": {},
+              "versions": [
+                "13,12,11"
+              ],
+              "build_templates": [
+                "@@rules_ml_toolchain~//third_party/gpus/cuda/hermetic:cuda_cupti.BUILD.tpl"
+              ],
+              "override_strip_prefix": "",
+              "redist_path_prefix": "https://developer.download.nvidia.com/compute/cuda/redist/",
+              "mirrored_tar_redist_path_prefix": "https://storage.googleapis.com/mirror.tensorflow.org/developer.download.nvidia.com/compute/cuda/redist/",
+              "redist_version_env_vars": [
+                "HERMETIC_CUDA_VERSION",
+                "TF_CUDA_VERSION"
+              ],
+              "local_path_env_var": "LOCAL_CUDA_PATH",
+              "use_tar_file_env_var": "USE_CUDA_TAR_ARCHIVE_FILES",
+              "target_arch_env_var": "CUDA_REDIST_TARGET_PLATFORM",
+              "local_source_dirs": [
+                "include",
+                "lib",
+                "bin",
+                "nvvm"
+              ],
+              "repository_symlinks": {}
+            }
+          },
+          "cuda_curand": {
+            "bzlFile": "@@rules_ml_toolchain~//third_party/gpus:nvidia_common_rules.bzl",
+            "ruleClassName": "_redist_repo",
+            "attributes": {
+              "url_dict": {},
+              "versions": [
+                "10"
+              ],
+              "build_templates": [
+                "@@rules_ml_toolchain~//third_party/gpus/cuda/hermetic:cuda_curand.BUILD.tpl"
+              ],
+              "override_strip_prefix": "",
+              "redist_path_prefix": "https://developer.download.nvidia.com/compute/cuda/redist/",
+              "mirrored_tar_redist_path_prefix": "https://storage.googleapis.com/mirror.tensorflow.org/developer.download.nvidia.com/compute/cuda/redist/",
+              "redist_version_env_vars": [
+                "HERMETIC_CUDA_VERSION",
+                "TF_CUDA_VERSION"
+              ],
+              "local_path_env_var": "LOCAL_CUDA_PATH",
+              "use_tar_file_env_var": "USE_CUDA_TAR_ARCHIVE_FILES",
+              "target_arch_env_var": "CUDA_REDIST_TARGET_PLATFORM",
+              "local_source_dirs": [
+                "include",
+                "lib",
+                "bin",
+                "nvvm"
+              ],
+              "repository_symlinks": {}
+            }
+          },
+          "cuda_cusolver": {
+            "bzlFile": "@@rules_ml_toolchain~//third_party/gpus:nvidia_common_rules.bzl",
+            "ruleClassName": "_redist_repo",
+            "attributes": {
+              "url_dict": {},
+              "versions": [
+                "12,11"
+              ],
+              "build_templates": [
+                "@@rules_ml_toolchain~//third_party/gpus/cuda/hermetic:cuda_cusolver.BUILD.tpl"
+              ],
+              "override_strip_prefix": "",
+              "redist_path_prefix": "https://developer.download.nvidia.com/compute/cuda/redist/",
+              "mirrored_tar_redist_path_prefix": "https://storage.googleapis.com/mirror.tensorflow.org/developer.download.nvidia.com/compute/cuda/redist/",
+              "redist_version_env_vars": [
+                "HERMETIC_CUDA_VERSION",
+                "TF_CUDA_VERSION"
+              ],
+              "local_path_env_var": "LOCAL_CUDA_PATH",
+              "use_tar_file_env_var": "USE_CUDA_TAR_ARCHIVE_FILES",
+              "target_arch_env_var": "CUDA_REDIST_TARGET_PLATFORM",
+              "local_source_dirs": [
+                "include",
+                "lib",
+                "bin",
+                "nvvm"
+              ],
+              "repository_symlinks": {}
+            }
+          },
+          "cuda_cusparse": {
+            "bzlFile": "@@rules_ml_toolchain~//third_party/gpus:nvidia_common_rules.bzl",
+            "ruleClassName": "_redist_repo",
+            "attributes": {
+              "url_dict": {},
+              "versions": [
+                "13,12,11"
+              ],
+              "build_templates": [
+                "@@rules_ml_toolchain~//third_party/gpus/cuda/hermetic:cuda_cusparse.BUILD.tpl"
+              ],
+              "override_strip_prefix": "",
+              "redist_path_prefix": "https://developer.download.nvidia.com/compute/cuda/redist/",
+              "mirrored_tar_redist_path_prefix": "https://storage.googleapis.com/mirror.tensorflow.org/developer.download.nvidia.com/compute/cuda/redist/",
+              "redist_version_env_vars": [
+                "HERMETIC_CUDA_VERSION",
+                "TF_CUDA_VERSION"
+              ],
+              "local_path_env_var": "LOCAL_CUDA_PATH",
+              "use_tar_file_env_var": "USE_CUDA_TAR_ARCHIVE_FILES",
+              "target_arch_env_var": "CUDA_REDIST_TARGET_PLATFORM",
+              "local_source_dirs": [
+                "include",
+                "lib",
+                "bin",
+                "nvvm"
+              ],
+              "repository_symlinks": {}
+            }
+          },
+          "cuda_nvjitlink": {
+            "bzlFile": "@@rules_ml_toolchain~//third_party/gpus:nvidia_common_rules.bzl",
+            "ruleClassName": "_redist_repo",
+            "attributes": {
+              "url_dict": {},
+              "versions": [
+                "13,12"
+              ],
+              "build_templates": [
+                "@@rules_ml_toolchain~//third_party/gpus/cuda/hermetic:cuda_nvjitlink.BUILD.tpl"
+              ],
+              "override_strip_prefix": "",
+              "redist_path_prefix": "https://developer.download.nvidia.com/compute/cuda/redist/",
+              "mirrored_tar_redist_path_prefix": "https://storage.googleapis.com/mirror.tensorflow.org/developer.download.nvidia.com/compute/cuda/redist/",
+              "redist_version_env_vars": [
+                "HERMETIC_CUDA_VERSION",
+                "TF_CUDA_VERSION"
+              ],
+              "local_path_env_var": "LOCAL_CUDA_PATH",
+              "use_tar_file_env_var": "USE_CUDA_TAR_ARCHIVE_FILES",
+              "target_arch_env_var": "CUDA_REDIST_TARGET_PLATFORM",
+              "local_source_dirs": [
+                "include",
+                "lib",
+                "bin",
+                "nvvm"
+              ],
+              "repository_symlinks": {}
+            }
+          },
+          "cuda_nvrtc": {
+            "bzlFile": "@@rules_ml_toolchain~//third_party/gpus:nvidia_common_rules.bzl",
+            "ruleClassName": "_redist_repo",
+            "attributes": {
+              "url_dict": {},
+              "versions": [
+                "13,12,11"
+              ],
+              "build_templates": [
+                "@@rules_ml_toolchain~//third_party/gpus/cuda/hermetic:cuda_nvrtc.BUILD.tpl"
+              ],
+              "override_strip_prefix": "",
+              "redist_path_prefix": "https://developer.download.nvidia.com/compute/cuda/redist/",
+              "mirrored_tar_redist_path_prefix": "https://storage.googleapis.com/mirror.tensorflow.org/developer.download.nvidia.com/compute/cuda/redist/",
+              "redist_version_env_vars": [
+                "HERMETIC_CUDA_VERSION",
+                "TF_CUDA_VERSION"
+              ],
+              "local_path_env_var": "LOCAL_CUDA_PATH",
+              "use_tar_file_env_var": "USE_CUDA_TAR_ARCHIVE_FILES",
+              "target_arch_env_var": "CUDA_REDIST_TARGET_PLATFORM",
+              "local_source_dirs": [
+                "include",
+                "lib",
+                "bin",
+                "nvvm"
+              ],
+              "repository_symlinks": {}
+            }
+          },
+          "cuda_cccl": {
+            "bzlFile": "@@rules_ml_toolchain~//third_party/gpus:nvidia_common_rules.bzl",
+            "ruleClassName": "_redist_repo",
+            "attributes": {
+              "url_dict": {},
+              "versions": [
+                "13,12,11"
+              ],
+              "build_templates": [
+                "@@rules_ml_toolchain~//third_party/gpus/cuda/hermetic:cuda_cccl.BUILD.tpl"
+              ],
+              "override_strip_prefix": "",
+              "redist_path_prefix": "https://developer.download.nvidia.com/compute/cuda/redist/",
+              "mirrored_tar_redist_path_prefix": "https://storage.googleapis.com/mirror.tensorflow.org/developer.download.nvidia.com/compute/cuda/redist/",
+              "redist_version_env_vars": [
+                "HERMETIC_CUDA_VERSION",
+                "TF_CUDA_VERSION"
+              ],
+              "local_path_env_var": "LOCAL_CUDA_PATH",
+              "use_tar_file_env_var": "USE_CUDA_TAR_ARCHIVE_FILES",
+              "target_arch_env_var": "CUDA_REDIST_TARGET_PLATFORM",
+              "local_source_dirs": [
+                "include",
+                "lib",
+                "bin",
+                "nvvm"
+              ],
+              "repository_symlinks": {}
+            }
+          },
+          "cuda_crt": {
+            "bzlFile": "@@rules_ml_toolchain~//third_party/gpus:nvidia_common_rules.bzl",
+            "ruleClassName": "_redist_repo",
+            "attributes": {
+              "url_dict": {},
+              "versions": [
+                "13"
+              ],
+              "build_templates": [
+                "@@rules_ml_toolchain~//third_party/gpus/cuda/hermetic:cuda_crt.BUILD.tpl"
+              ],
+              "override_strip_prefix": "",
+              "redist_path_prefix": "https://developer.download.nvidia.com/compute/cuda/redist/",
+              "mirrored_tar_redist_path_prefix": "https://storage.googleapis.com/mirror.tensorflow.org/developer.download.nvidia.com/compute/cuda/redist/",
+              "redist_version_env_vars": [
+                "HERMETIC_CUDA_VERSION",
+                "TF_CUDA_VERSION"
+              ],
+              "local_path_env_var": "LOCAL_CUDA_PATH",
+              "use_tar_file_env_var": "USE_CUDA_TAR_ARCHIVE_FILES",
+              "target_arch_env_var": "CUDA_REDIST_TARGET_PLATFORM",
+              "local_source_dirs": [
+                "include",
+                "lib",
+                "bin",
+                "nvvm"
+              ],
+              "repository_symlinks": {}
+            }
+          },
+          "cuda_nvcc": {
+            "bzlFile": "@@rules_ml_toolchain~//third_party/gpus:nvidia_common_rules.bzl",
+            "ruleClassName": "_redist_repo",
+            "attributes": {
+              "url_dict": {},
+              "versions": [
+                "13,12,11"
+              ],
+              "build_templates": [
+                "@@rules_ml_toolchain~//third_party/gpus/cuda/hermetic:cuda_nvcc.BUILD.tpl"
+              ],
+              "override_strip_prefix": "",
+              "redist_path_prefix": "https://developer.download.nvidia.com/compute/cuda/redist/",
+              "mirrored_tar_redist_path_prefix": "https://storage.googleapis.com/mirror.tensorflow.org/developer.download.nvidia.com/compute/cuda/redist/",
+              "redist_version_env_vars": [
+                "HERMETIC_CUDA_VERSION",
+                "TF_CUDA_VERSION"
+              ],
+              "local_path_env_var": "LOCAL_CUDA_PATH",
+              "use_tar_file_env_var": "USE_CUDA_TAR_ARCHIVE_FILES",
+              "target_arch_env_var": "CUDA_REDIST_TARGET_PLATFORM",
+              "local_source_dirs": [
+                "include",
+                "lib",
+                "bin",
+                "nvvm"
+              ],
+              "repository_symlinks": {
+                "@@rules_ml_toolchain~~cuda_redist_init_ext~cuda_cudart//:include/cuda.h": "include/cuda.h",
+                "@@rules_ml_toolchain~~cuda_redist_init_ext~cuda_nvdisasm//:bin/nvdisasm": "bin/nvdisasm",
+                "@@rules_ml_toolchain~~cuda_redist_init_ext~cuda_nvvm//:nvvm/bin/cicc": "nvvm/bin/cicc",
+                "@@rules_ml_toolchain~~cuda_redist_init_ext~cuda_nvvm//:nvvm/libdevice/libdevice.10.bc": "nvvm/libdevice/libdevice.10.bc"
+              }
+            }
+          },
+          "cuda_nvvm": {
+            "bzlFile": "@@rules_ml_toolchain~//third_party/gpus:nvidia_common_rules.bzl",
+            "ruleClassName": "_redist_repo",
+            "attributes": {
+              "url_dict": {},
+              "versions": [
+                "13"
+              ],
+              "build_templates": [
+                "@@rules_ml_toolchain~//third_party/gpus/cuda/hermetic:cuda_nvvm.BUILD"
+              ],
+              "override_strip_prefix": "",
+              "redist_path_prefix": "https://developer.download.nvidia.com/compute/cuda/redist/",
+              "mirrored_tar_redist_path_prefix": "https://storage.googleapis.com/mirror.tensorflow.org/developer.download.nvidia.com/compute/cuda/redist/",
+              "redist_version_env_vars": [
+                "HERMETIC_CUDA_VERSION",
+                "TF_CUDA_VERSION"
+              ],
+              "local_path_env_var": "LOCAL_CUDA_PATH",
+              "use_tar_file_env_var": "USE_CUDA_TAR_ARCHIVE_FILES",
+              "target_arch_env_var": "CUDA_REDIST_TARGET_PLATFORM",
+              "local_source_dirs": [
+                "include",
+                "lib",
+                "bin",
+                "nvvm"
+              ],
+              "repository_symlinks": {}
+            }
+          },
+          "cuda_nvdisasm": {
+            "bzlFile": "@@rules_ml_toolchain~//third_party/gpus:nvidia_common_rules.bzl",
+            "ruleClassName": "_redist_repo",
+            "attributes": {
+              "url_dict": {},
+              "versions": [
+                "13,12"
+              ],
+              "build_templates": [
+                "@@rules_ml_toolchain~//third_party/gpus/cuda/hermetic:cuda_nvdisasm.BUILD"
+              ],
+              "override_strip_prefix": "",
+              "redist_path_prefix": "https://developer.download.nvidia.com/compute/cuda/redist/",
+              "mirrored_tar_redist_path_prefix": "https://storage.googleapis.com/mirror.tensorflow.org/developer.download.nvidia.com/compute/cuda/redist/",
+              "redist_version_env_vars": [
+                "HERMETIC_CUDA_VERSION",
+                "TF_CUDA_VERSION"
+              ],
+              "local_path_env_var": "LOCAL_CUDA_PATH",
+              "use_tar_file_env_var": "USE_CUDA_TAR_ARCHIVE_FILES",
+              "target_arch_env_var": "CUDA_REDIST_TARGET_PLATFORM",
+              "local_source_dirs": [
+                "include",
+                "lib",
+                "bin",
+                "nvvm"
+              ],
+              "repository_symlinks": {}
+            }
+          },
+          "cuda_nvml": {
+            "bzlFile": "@@rules_ml_toolchain~//third_party/gpus:nvidia_common_rules.bzl",
+            "ruleClassName": "_redist_repo",
+            "attributes": {
+              "url_dict": {},
+              "versions": [
+                "13,12,11"
+              ],
+              "build_templates": [
+                "@@rules_ml_toolchain~//third_party/gpus/cuda/hermetic:cuda_nvml.BUILD.tpl"
+              ],
+              "override_strip_prefix": "",
+              "redist_path_prefix": "https://developer.download.nvidia.com/compute/cuda/redist/",
+              "mirrored_tar_redist_path_prefix": "https://storage.googleapis.com/mirror.tensorflow.org/developer.download.nvidia.com/compute/cuda/redist/",
+              "redist_version_env_vars": [
+                "HERMETIC_CUDA_VERSION",
+                "TF_CUDA_VERSION"
+              ],
+              "local_path_env_var": "LOCAL_CUDA_PATH",
+              "use_tar_file_env_var": "USE_CUDA_TAR_ARCHIVE_FILES",
+              "target_arch_env_var": "CUDA_REDIST_TARGET_PLATFORM",
+              "local_source_dirs": [
+                "include",
+                "lib",
+                "bin",
+                "nvvm"
+              ],
+              "repository_symlinks": {}
+            }
+          },
+          "cuda_nvprune": {
+            "bzlFile": "@@rules_ml_toolchain~//third_party/gpus:nvidia_common_rules.bzl",
+            "ruleClassName": "_redist_repo",
+            "attributes": {
+              "url_dict": {},
+              "versions": [
+                "13,12,11"
+              ],
+              "build_templates": [
+                "@@rules_ml_toolchain~//third_party/gpus/cuda/hermetic:cuda_nvprune.BUILD"
+              ],
+              "override_strip_prefix": "",
+              "redist_path_prefix": "https://developer.download.nvidia.com/compute/cuda/redist/",
+              "mirrored_tar_redist_path_prefix": "https://storage.googleapis.com/mirror.tensorflow.org/developer.download.nvidia.com/compute/cuda/redist/",
+              "redist_version_env_vars": [
+                "HERMETIC_CUDA_VERSION",
+                "TF_CUDA_VERSION"
+              ],
+              "local_path_env_var": "LOCAL_CUDA_PATH",
+              "use_tar_file_env_var": "USE_CUDA_TAR_ARCHIVE_FILES",
+              "target_arch_env_var": "CUDA_REDIST_TARGET_PLATFORM",
+              "local_source_dirs": [
+                "include",
+                "lib",
+                "bin",
+                "nvvm"
+              ],
+              "repository_symlinks": {}
+            }
+          },
+          "cuda_profiler_api": {
+            "bzlFile": "@@rules_ml_toolchain~//third_party/gpus:nvidia_common_rules.bzl",
+            "ruleClassName": "_redist_repo",
+            "attributes": {
+              "url_dict": {},
+              "versions": [
+                "13,12,11"
+              ],
+              "build_templates": [
+                "@@rules_ml_toolchain~//third_party/gpus/cuda/hermetic:cuda_profiler.BUILD.tpl"
+              ],
+              "override_strip_prefix": "",
+              "redist_path_prefix": "https://developer.download.nvidia.com/compute/cuda/redist/",
+              "mirrored_tar_redist_path_prefix": "https://storage.googleapis.com/mirror.tensorflow.org/developer.download.nvidia.com/compute/cuda/redist/",
+              "redist_version_env_vars": [
+                "HERMETIC_CUDA_VERSION",
+                "TF_CUDA_VERSION"
+              ],
+              "local_path_env_var": "LOCAL_CUDA_PATH",
+              "use_tar_file_env_var": "USE_CUDA_TAR_ARCHIVE_FILES",
+              "target_arch_env_var": "CUDA_REDIST_TARGET_PLATFORM",
+              "local_source_dirs": [
+                "include",
+                "lib",
+                "bin",
+                "nvvm"
+              ],
+              "repository_symlinks": {}
+            }
+          },
+          "cuda_nvtx": {
+            "bzlFile": "@@rules_ml_toolchain~//third_party/gpus:nvidia_common_rules.bzl",
+            "ruleClassName": "_redist_repo",
+            "attributes": {
+              "url_dict": {},
+              "versions": [
+                "13,12,11"
+              ],
+              "build_templates": [
+                "@@rules_ml_toolchain~//third_party/gpus/cuda/hermetic:cuda_nvtx.BUILD.tpl"
+              ],
+              "override_strip_prefix": "",
+              "redist_path_prefix": "https://developer.download.nvidia.com/compute/cuda/redist/",
+              "mirrored_tar_redist_path_prefix": "https://storage.googleapis.com/mirror.tensorflow.org/developer.download.nvidia.com/compute/cuda/redist/",
+              "redist_version_env_vars": [
+                "HERMETIC_CUDA_VERSION",
+                "TF_CUDA_VERSION"
+              ],
+              "local_path_env_var": "LOCAL_CUDA_PATH",
+              "use_tar_file_env_var": "USE_CUDA_TAR_ARCHIVE_FILES",
+              "target_arch_env_var": "CUDA_REDIST_TARGET_PLATFORM",
+              "local_source_dirs": [
+                "include",
+                "lib",
+                "bin",
+                "nvvm"
+              ],
+              "repository_symlinks": {}
+            }
+          },
+          "cuda_cudnn": {
+            "bzlFile": "@@rules_ml_toolchain~//third_party/gpus:nvidia_common_rules.bzl",
+            "ruleClassName": "_redist_repo",
+            "attributes": {
+              "url_dict": {},
+              "versions": [
+                "9",
+                "8"
+              ],
+              "build_templates": [
+                "@@rules_ml_toolchain~//third_party/gpus/cuda/hermetic:cuda_cudnn9.BUILD.tpl",
+                "@@rules_ml_toolchain~//third_party/gpus/cuda/hermetic:cuda_cudnn.BUILD.tpl"
+              ],
+              "override_strip_prefix": "",
+              "redist_path_prefix": "https://developer.download.nvidia.com/compute/cudnn/redist/",
+              "mirrored_tar_redist_path_prefix": "https://storage.googleapis.com/mirror.tensorflow.org/developer.download.nvidia.com/compute/cudnn/redist/",
+              "redist_version_env_vars": [
+                "HERMETIC_CUDNN_VERSION",
+                "TF_CUDNN_VERSION"
+              ],
+              "local_path_env_var": "LOCAL_CUDNN_PATH",
+              "use_tar_file_env_var": "USE_CUDA_TAR_ARCHIVE_FILES",
+              "target_arch_env_var": "CUDA_REDIST_TARGET_PLATFORM",
+              "local_source_dirs": [
+                "include",
+                "lib"
+              ],
+              "repository_symlinks": {}
+            }
+          }
+        },
+        "recordedRepoMappingEntries": [
+          [
+            "rules_ml_toolchain~",
+            "cuda_cudart",
+            "rules_ml_toolchain~~cuda_redist_init_ext~cuda_cudart"
+          ],
+          [
+            "rules_ml_toolchain~",
+            "cuda_nvdisasm",
+            "rules_ml_toolchain~~cuda_redist_init_ext~cuda_nvdisasm"
+          ],
+          [
+            "rules_ml_toolchain~",
+            "cuda_nvvm",
+            "rules_ml_toolchain~~cuda_redist_init_ext~cuda_nvvm"
+          ],
+          [
+            "rules_ml_toolchain~",
+            "cuda_redist_json",
+            "rules_ml_toolchain~~cuda_json_ext~cuda_redist_json"
+          ],
+          [
+            "rules_ml_toolchain~",
+            "tar",
+            "rules_ml_toolchain~~toolchain_ext~tar"
+          ],
+          [
+            "rules_ml_toolchain~",
+            "xz",
+            "rules_ml_toolchain~~toolchain_ext~xz"
+          ],
+          [
+            "rules_ml_toolchain~~cuda_json_ext~cuda_redist_json",
+            "cudnn_redist_json",
+            "rules_ml_toolchain~~cuda_json_ext~cudnn_redist_json"
+          ],
+          [
+            "rules_ml_toolchain~~cuda_json_ext~cuda_redist_json",
+            "standalone_cuda_redist_json",
+            "rules_ml_toolchain~~cuda_json_ext~standalone_cuda_redist_json"
+          ]
+        ]
+      }
+    },
+    "@@rules_ml_toolchain~//third_party/extensions:nccl_configure.bzl%nccl_configure_ext": {
+      "general": {
+        "bzlTransitiveDigest": "go0VdfatkFnrQOf5OKVynSpHXPiojLMAVNHLyjBQUT8=",
+        "usagesDigest": "yHOsQNLAlFO6oU4Gpak0KXa+JEW1H3yq19Re6+3qJfE=",
+        "recordedFileInputs": {},
+        "recordedDirentsInputs": {},
+        "envVariables": {},
+        "generatedRepoSpecs": {
+          "local_config_nccl": {
+            "bzlFile": "@@rules_ml_toolchain~//third_party/nccl/hermetic:nccl_configure.bzl",
+            "ruleClassName": "nccl_configure",
+            "attributes": {}
+          }
+        },
+        "recordedRepoMappingEntries": [
+          [
+            "rules_ml_toolchain~",
+            "cuda_cccl",
+            "rules_ml_toolchain~~cuda_redist_init_ext~cuda_cccl"
+          ],
+          [
+            "rules_ml_toolchain~",
+            "cuda_crt",
+            "rules_ml_toolchain~~cuda_redist_init_ext~cuda_crt"
+          ],
+          [
+            "rules_ml_toolchain~",
+            "cuda_cublas",
+            "rules_ml_toolchain~~cuda_redist_init_ext~cuda_cublas"
+          ],
+          [
+            "rules_ml_toolchain~",
+            "cuda_cudart",
+            "rules_ml_toolchain~~cuda_redist_init_ext~cuda_cudart"
+          ],
+          [
+            "rules_ml_toolchain~",
+            "cuda_cudnn",
+            "rules_ml_toolchain~~cuda_redist_init_ext~cuda_cudnn"
+          ],
+          [
+            "rules_ml_toolchain~",
+            "cuda_cufft",
+            "rules_ml_toolchain~~cuda_redist_init_ext~cuda_cufft"
+          ],
+          [
+            "rules_ml_toolchain~",
+            "cuda_cupti",
+            "rules_ml_toolchain~~cuda_redist_init_ext~cuda_cupti"
+          ],
+          [
+            "rules_ml_toolchain~",
+            "cuda_curand",
+            "rules_ml_toolchain~~cuda_redist_init_ext~cuda_curand"
+          ],
+          [
+            "rules_ml_toolchain~",
+            "cuda_cusolver",
+            "rules_ml_toolchain~~cuda_redist_init_ext~cuda_cusolver"
+          ],
+          [
+            "rules_ml_toolchain~",
+            "cuda_cusparse",
+            "rules_ml_toolchain~~cuda_redist_init_ext~cuda_cusparse"
+          ],
+          [
+            "rules_ml_toolchain~",
+            "cuda_nccl",
+            "rules_ml_toolchain~~nccl_redist_ext~cuda_nccl"
+          ],
+          [
+            "rules_ml_toolchain~",
+            "cuda_nvcc",
+            "rules_ml_toolchain~~cuda_redist_init_ext~cuda_nvcc"
+          ],
+          [
+            "rules_ml_toolchain~",
+            "cuda_nvdisasm",
+            "rules_ml_toolchain~~cuda_redist_init_ext~cuda_nvdisasm"
+          ],
+          [
+            "rules_ml_toolchain~",
+            "cuda_nvjitlink",
+            "rules_ml_toolchain~~cuda_redist_init_ext~cuda_nvjitlink"
+          ],
+          [
+            "rules_ml_toolchain~",
+            "cuda_nvml",
+            "rules_ml_toolchain~~cuda_redist_init_ext~cuda_nvml"
+          ],
+          [
+            "rules_ml_toolchain~",
+            "cuda_nvtx",
+            "rules_ml_toolchain~~cuda_redist_init_ext~cuda_nvtx"
+          ],
+          [
+            "rules_ml_toolchain~",
+            "cuda_nvvm",
+            "rules_ml_toolchain~~cuda_redist_init_ext~cuda_nvvm"
+          ],
+          [
+            "rules_ml_toolchain~",
+            "cuda_profiler_api",
+            "rules_ml_toolchain~~cuda_redist_init_ext~cuda_profiler_api"
+          ],
+          [
+            "rules_ml_toolchain~",
+            "llvm_linux_aarch64",
+            "rules_ml_toolchain~~toolchain_ext~llvm_linux_aarch64"
+          ],
+          [
+            "rules_ml_toolchain~",
+            "llvm_linux_x86_64",
+            "rules_ml_toolchain~~toolchain_ext~llvm_linux_x86_64"
+          ],
+          [
+            "rules_ml_toolchain~",
+            "rules_ml_toolchain",
+            "rules_ml_toolchain~"
+          ]
+        ]
+      }
+    },
+    "@@rules_ml_toolchain~//third_party/extensions:nccl_redist.bzl%nccl_redist_ext": {
+      "general": {
+        "bzlTransitiveDigest": "0/Obh+x22+H+6Al6bPS+w2P8ThorK/qQnUuDtDpCGao=",
+        "usagesDigest": "xqQ8G6Tv7sra3qWhmMOojoU/3TK9jOmGl9kgg2P8WtM=",
+        "recordedFileInputs": {},
+        "recordedDirentsInputs": {},
+        "envVariables": {},
+        "generatedRepoSpecs": {
+          "cuda_nccl": {
+            "bzlFile": "@@rules_ml_toolchain~//third_party/nccl/hermetic:nccl_redist_init_repository.bzl",
+            "ruleClassName": "cuda_nccl_repo",
+            "attributes": {
+              "sha256_dict": {
+                "11.8-x86_64-unknown-linux-gnu": "49d8350629c7888701d1fd200934942671cb5c728f49acc5a0b3a768820bed29",
+                "12.1.1-x86_64-unknown-linux-gnu": "de5ba5562f08029a19cb1cd659404b18411ed0d6c90ac5f52f30bf99ad5809aa",
+                "12.1.1-aarch64-unknown-linux-gnu": "4617839f3bb730c3845bf9adf92dbe0e009bc53ca5022ed941f2e23fb76e6f17",
+                "12.2.0-x86_64-unknown-linux-gnu": "de5ba5562f08029a19cb1cd659404b18411ed0d6c90ac5f52f30bf99ad5809aa",
+                "12.2.0-aarch64-unknown-linux-gnu": "4617839f3bb730c3845bf9adf92dbe0e009bc53ca5022ed941f2e23fb76e6f17",
+                "12.3.1-x86_64-unknown-linux-gnu": "de5ba5562f08029a19cb1cd659404b18411ed0d6c90ac5f52f30bf99ad5809aa",
+                "12.3.1-aarch64-unknown-linux-gnu": "4617839f3bb730c3845bf9adf92dbe0e009bc53ca5022ed941f2e23fb76e6f17",
+                "12.3.2-x86_64-unknown-linux-gnu": "de5ba5562f08029a19cb1cd659404b18411ed0d6c90ac5f52f30bf99ad5809aa",
+                "12.3.2-aarch64-unknown-linux-gnu": "4617839f3bb730c3845bf9adf92dbe0e009bc53ca5022ed941f2e23fb76e6f17",
+                "12.4.0-x86_64-unknown-linux-gnu": "de5ba5562f08029a19cb1cd659404b18411ed0d6c90ac5f52f30bf99ad5809aa",
+                "12.4.0-aarch64-unknown-linux-gnu": "4617839f3bb730c3845bf9adf92dbe0e009bc53ca5022ed941f2e23fb76e6f17",
+                "12.4.1-x86_64-unknown-linux-gnu": "de5ba5562f08029a19cb1cd659404b18411ed0d6c90ac5f52f30bf99ad5809aa",
+                "12.4.1-aarch64-unknown-linux-gnu": "4617839f3bb730c3845bf9adf92dbe0e009bc53ca5022ed941f2e23fb76e6f17",
+                "12.5.0-x86_64-unknown-linux-gnu": "de5ba5562f08029a19cb1cd659404b18411ed0d6c90ac5f52f30bf99ad5809aa",
+                "12.5.0-aarch64-unknown-linux-gnu": "4617839f3bb730c3845bf9adf92dbe0e009bc53ca5022ed941f2e23fb76e6f17",
+                "12.5.1-x86_64-unknown-linux-gnu": "de5ba5562f08029a19cb1cd659404b18411ed0d6c90ac5f52f30bf99ad5809aa",
+                "12.5.1-aarch64-unknown-linux-gnu": "4617839f3bb730c3845bf9adf92dbe0e009bc53ca5022ed941f2e23fb76e6f17",
+                "12.6.0-x86_64-unknown-linux-gnu": "de5ba5562f08029a19cb1cd659404b18411ed0d6c90ac5f52f30bf99ad5809aa",
+                "12.6.0-aarch64-unknown-linux-gnu": "4617839f3bb730c3845bf9adf92dbe0e009bc53ca5022ed941f2e23fb76e6f17",
+                "12.6.1-x86_64-unknown-linux-gnu": "de5ba5562f08029a19cb1cd659404b18411ed0d6c90ac5f52f30bf99ad5809aa",
+                "12.6.1-aarch64-unknown-linux-gnu": "4617839f3bb730c3845bf9adf92dbe0e009bc53ca5022ed941f2e23fb76e6f17",
+                "12.6.2-x86_64-unknown-linux-gnu": "de5ba5562f08029a19cb1cd659404b18411ed0d6c90ac5f52f30bf99ad5809aa",
+                "12.6.2-aarch64-unknown-linux-gnu": "4617839f3bb730c3845bf9adf92dbe0e009bc53ca5022ed941f2e23fb76e6f17",
+                "12.6.3-x86_64-unknown-linux-gnu": "de5ba5562f08029a19cb1cd659404b18411ed0d6c90ac5f52f30bf99ad5809aa",
+                "12.6.3-aarch64-unknown-linux-gnu": "4617839f3bb730c3845bf9adf92dbe0e009bc53ca5022ed941f2e23fb76e6f17",
+                "12.8.0-x86_64-unknown-linux-gnu": "de5ba5562f08029a19cb1cd659404b18411ed0d6c90ac5f52f30bf99ad5809aa",
+                "12.8.0-aarch64-unknown-linux-gnu": "4617839f3bb730c3845bf9adf92dbe0e009bc53ca5022ed941f2e23fb76e6f17",
+                "12.8.1-x86_64-unknown-linux-gnu": "de5ba5562f08029a19cb1cd659404b18411ed0d6c90ac5f52f30bf99ad5809aa",
+                "12.8.1-aarch64-unknown-linux-gnu": "4617839f3bb730c3845bf9adf92dbe0e009bc53ca5022ed941f2e23fb76e6f17",
+                "12.9.0-x86_64-unknown-linux-gnu": "de5ba5562f08029a19cb1cd659404b18411ed0d6c90ac5f52f30bf99ad5809aa",
+                "12.9.0-aarch64-unknown-linux-gnu": "4617839f3bb730c3845bf9adf92dbe0e009bc53ca5022ed941f2e23fb76e6f17",
+                "12.9.1-x86_64-unknown-linux-gnu": "de5ba5562f08029a19cb1cd659404b18411ed0d6c90ac5f52f30bf99ad5809aa",
+                "12.9.1-aarch64-unknown-linux-gnu": "4617839f3bb730c3845bf9adf92dbe0e009bc53ca5022ed941f2e23fb76e6f17",
+                "13.0.0-x86_64-unknown-linux-gnu": "b28a524abd8389b76a4a3f133c76a7aaa7005e47fcaa9d9603b90103927a3f93",
+                "13.0.0-aarch64-unknown-linux-gnu": "5e3cc863e52bf9dd1e3ab1941bddb414098f489ae7342f6b3a274602303da123",
+                "13.0.1-x86_64-unknown-linux-gnu": "b28a524abd8389b76a4a3f133c76a7aaa7005e47fcaa9d9603b90103927a3f93",
+                "13.0.1-aarch64-unknown-linux-gnu": "5e3cc863e52bf9dd1e3ab1941bddb414098f489ae7342f6b3a274602303da123"
+              },
+              "url_dict": {
+                "11.8-x86_64-unknown-linux-gnu": "https://files.pythonhosted.org/packages/ac/9a/8b6a28b3b87d5fddab0e92cd835339eb8fbddaa71ae67518c8c1b3d05bae/nvidia_nccl_cu11-2.21.5-py3-none-manylinux2014_x86_64.whl",
+                "12.1.1-x86_64-unknown-linux-gnu": "https://files.pythonhosted.org/packages/c4/cb/2cf5b8e6a669c90ac6410c3a9d86881308492765b6744de5d0ce75089999/nvidia_nccl_cu12-2.27.7-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl",
+                "12.1.1-aarch64-unknown-linux-gnu": "https://files.pythonhosted.org/packages/b3/66/ac1f588af222bf98dfb55ce0efeefeab2a612d6d93ef60bd311d176a8346/nvidia_nccl_cu12-2.27.7-py3-none-manylinux2014_aarch64.manylinux_2_17_aarch64.whl",
+                "12.2.0-x86_64-unknown-linux-gnu": "https://files.pythonhosted.org/packages/c4/cb/2cf5b8e6a669c90ac6410c3a9d86881308492765b6744de5d0ce75089999/nvidia_nccl_cu12-2.27.7-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl",
+                "12.2.0-aarch64-unknown-linux-gnu": "https://files.pythonhosted.org/packages/b3/66/ac1f588af222bf98dfb55ce0efeefeab2a612d6d93ef60bd311d176a8346/nvidia_nccl_cu12-2.27.7-py3-none-manylinux2014_aarch64.manylinux_2_17_aarch64.whl",
+                "12.3.1-x86_64-unknown-linux-gnu": "https://files.pythonhosted.org/packages/c4/cb/2cf5b8e6a669c90ac6410c3a9d86881308492765b6744de5d0ce75089999/nvidia_nccl_cu12-2.27.7-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl",
+                "12.3.1-aarch64-unknown-linux-gnu": "https://files.pythonhosted.org/packages/b3/66/ac1f588af222bf98dfb55ce0efeefeab2a612d6d93ef60bd311d176a8346/nvidia_nccl_cu12-2.27.7-py3-none-manylinux2014_aarch64.manylinux_2_17_aarch64.whl",
+                "12.3.2-x86_64-unknown-linux-gnu": "https://files.pythonhosted.org/packages/c4/cb/2cf5b8e6a669c90ac6410c3a9d86881308492765b6744de5d0ce75089999/nvidia_nccl_cu12-2.27.7-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl",
+                "12.3.2-aarch64-unknown-linux-gnu": "https://files.pythonhosted.org/packages/b3/66/ac1f588af222bf98dfb55ce0efeefeab2a612d6d93ef60bd311d176a8346/nvidia_nccl_cu12-2.27.7-py3-none-manylinux2014_aarch64.manylinux_2_17_aarch64.whl",
+                "12.4.0-x86_64-unknown-linux-gnu": "https://files.pythonhosted.org/packages/c4/cb/2cf5b8e6a669c90ac6410c3a9d86881308492765b6744de5d0ce75089999/nvidia_nccl_cu12-2.27.7-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl",
+                "12.4.0-aarch64-unknown-linux-gnu": "https://files.pythonhosted.org/packages/b3/66/ac1f588af222bf98dfb55ce0efeefeab2a612d6d93ef60bd311d176a8346/nvidia_nccl_cu12-2.27.7-py3-none-manylinux2014_aarch64.manylinux_2_17_aarch64.whl",
+                "12.4.1-x86_64-unknown-linux-gnu": "https://files.pythonhosted.org/packages/c4/cb/2cf5b8e6a669c90ac6410c3a9d86881308492765b6744de5d0ce75089999/nvidia_nccl_cu12-2.27.7-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl",
+                "12.4.1-aarch64-unknown-linux-gnu": "https://files.pythonhosted.org/packages/b3/66/ac1f588af222bf98dfb55ce0efeefeab2a612d6d93ef60bd311d176a8346/nvidia_nccl_cu12-2.27.7-py3-none-manylinux2014_aarch64.manylinux_2_17_aarch64.whl",
+                "12.5.0-x86_64-unknown-linux-gnu": "https://files.pythonhosted.org/packages/c4/cb/2cf5b8e6a669c90ac6410c3a9d86881308492765b6744de5d0ce75089999/nvidia_nccl_cu12-2.27.7-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl",
+                "12.5.0-aarch64-unknown-linux-gnu": "https://files.pythonhosted.org/packages/b3/66/ac1f588af222bf98dfb55ce0efeefeab2a612d6d93ef60bd311d176a8346/nvidia_nccl_cu12-2.27.7-py3-none-manylinux2014_aarch64.manylinux_2_17_aarch64.whl",
+                "12.5.1-x86_64-unknown-linux-gnu": "https://files.pythonhosted.org/packages/c4/cb/2cf5b8e6a669c90ac6410c3a9d86881308492765b6744de5d0ce75089999/nvidia_nccl_cu12-2.27.7-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl",
+                "12.5.1-aarch64-unknown-linux-gnu": "https://files.pythonhosted.org/packages/b3/66/ac1f588af222bf98dfb55ce0efeefeab2a612d6d93ef60bd311d176a8346/nvidia_nccl_cu12-2.27.7-py3-none-manylinux2014_aarch64.manylinux_2_17_aarch64.whl",
+                "12.6.0-x86_64-unknown-linux-gnu": "https://files.pythonhosted.org/packages/c4/cb/2cf5b8e6a669c90ac6410c3a9d86881308492765b6744de5d0ce75089999/nvidia_nccl_cu12-2.27.7-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl",
+                "12.6.0-aarch64-unknown-linux-gnu": "https://files.pythonhosted.org/packages/b3/66/ac1f588af222bf98dfb55ce0efeefeab2a612d6d93ef60bd311d176a8346/nvidia_nccl_cu12-2.27.7-py3-none-manylinux2014_aarch64.manylinux_2_17_aarch64.whl",
+                "12.6.1-x86_64-unknown-linux-gnu": "https://files.pythonhosted.org/packages/c4/cb/2cf5b8e6a669c90ac6410c3a9d86881308492765b6744de5d0ce75089999/nvidia_nccl_cu12-2.27.7-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl",
+                "12.6.1-aarch64-unknown-linux-gnu": "https://files.pythonhosted.org/packages/b3/66/ac1f588af222bf98dfb55ce0efeefeab2a612d6d93ef60bd311d176a8346/nvidia_nccl_cu12-2.27.7-py3-none-manylinux2014_aarch64.manylinux_2_17_aarch64.whl",
+                "12.6.2-x86_64-unknown-linux-gnu": "https://files.pythonhosted.org/packages/c4/cb/2cf5b8e6a669c90ac6410c3a9d86881308492765b6744de5d0ce75089999/nvidia_nccl_cu12-2.27.7-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl",
+                "12.6.2-aarch64-unknown-linux-gnu": "https://files.pythonhosted.org/packages/b3/66/ac1f588af222bf98dfb55ce0efeefeab2a612d6d93ef60bd311d176a8346/nvidia_nccl_cu12-2.27.7-py3-none-manylinux2014_aarch64.manylinux_2_17_aarch64.whl",
+                "12.6.3-x86_64-unknown-linux-gnu": "https://files.pythonhosted.org/packages/c4/cb/2cf5b8e6a669c90ac6410c3a9d86881308492765b6744de5d0ce75089999/nvidia_nccl_cu12-2.27.7-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl",
+                "12.6.3-aarch64-unknown-linux-gnu": "https://files.pythonhosted.org/packages/b3/66/ac1f588af222bf98dfb55ce0efeefeab2a612d6d93ef60bd311d176a8346/nvidia_nccl_cu12-2.27.7-py3-none-manylinux2014_aarch64.manylinux_2_17_aarch64.whl",
+                "12.8.0-x86_64-unknown-linux-gnu": "https://files.pythonhosted.org/packages/c4/cb/2cf5b8e6a669c90ac6410c3a9d86881308492765b6744de5d0ce75089999/nvidia_nccl_cu12-2.27.7-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl",
+                "12.8.0-aarch64-unknown-linux-gnu": "https://files.pythonhosted.org/packages/b3/66/ac1f588af222bf98dfb55ce0efeefeab2a612d6d93ef60bd311d176a8346/nvidia_nccl_cu12-2.27.7-py3-none-manylinux2014_aarch64.manylinux_2_17_aarch64.whl",
+                "12.8.1-x86_64-unknown-linux-gnu": "https://files.pythonhosted.org/packages/c4/cb/2cf5b8e6a669c90ac6410c3a9d86881308492765b6744de5d0ce75089999/nvidia_nccl_cu12-2.27.7-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl",
+                "12.8.1-aarch64-unknown-linux-gnu": "https://files.pythonhosted.org/packages/b3/66/ac1f588af222bf98dfb55ce0efeefeab2a612d6d93ef60bd311d176a8346/nvidia_nccl_cu12-2.27.7-py3-none-manylinux2014_aarch64.manylinux_2_17_aarch64.whl",
+                "12.9.0-x86_64-unknown-linux-gnu": "https://files.pythonhosted.org/packages/c4/cb/2cf5b8e6a669c90ac6410c3a9d86881308492765b6744de5d0ce75089999/nvidia_nccl_cu12-2.27.7-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl",
+                "12.9.0-aarch64-unknown-linux-gnu": "https://files.pythonhosted.org/packages/b3/66/ac1f588af222bf98dfb55ce0efeefeab2a612d6d93ef60bd311d176a8346/nvidia_nccl_cu12-2.27.7-py3-none-manylinux2014_aarch64.manylinux_2_17_aarch64.whl",
+                "12.9.1-x86_64-unknown-linux-gnu": "https://files.pythonhosted.org/packages/c4/cb/2cf5b8e6a669c90ac6410c3a9d86881308492765b6744de5d0ce75089999/nvidia_nccl_cu12-2.27.7-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl",
+                "12.9.1-aarch64-unknown-linux-gnu": "https://files.pythonhosted.org/packages/b3/66/ac1f588af222bf98dfb55ce0efeefeab2a612d6d93ef60bd311d176a8346/nvidia_nccl_cu12-2.27.7-py3-none-manylinux2014_aarch64.manylinux_2_17_aarch64.whl",
+                "13.0.0-x86_64-unknown-linux-gnu": "https://pypi.nvidia.com/nvidia-nccl-cu13/nvidia_nccl_cu13-2.27.7-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl",
+                "13.0.0-aarch64-unknown-linux-gnu": "https://pypi.nvidia.com/nvidia-nccl-cu13/nvidia_nccl_cu13-2.27.7-py3-none-manylinux2014_aarch64.manylinux_2_17_aarch64.whl",
+                "13.0.1-x86_64-unknown-linux-gnu": "https://pypi.nvidia.com/nvidia-nccl-cu13/nvidia_nccl_cu13-2.27.7-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl",
+                "13.0.1-aarch64-unknown-linux-gnu": "https://pypi.nvidia.com/nvidia-nccl-cu13/nvidia_nccl_cu13-2.27.7-py3-none-manylinux2014_aarch64.manylinux_2_17_aarch64.whl"
+              },
+              "versions": [
+                "2"
+              ],
+              "build_templates": [
+                "@@rules_ml_toolchain~//third_party/nccl/hermetic:cuda_nccl.BUILD.tpl"
+              ],
+              "strip_prefix": "nvidia/nccl"
+            }
+          }
+        },
+        "recordedRepoMappingEntries": [
+          [
+            "rules_ml_toolchain~",
+            "rules_ml_toolchain",
+            "rules_ml_toolchain~"
+          ],
+          [
+            "rules_ml_toolchain~",
+            "tar",
+            "rules_ml_toolchain~~toolchain_ext~tar"
+          ],
+          [
+            "rules_ml_toolchain~",
+            "xz",
+            "rules_ml_toolchain~~toolchain_ext~xz"
+          ]
+        ]
+      }
+    },
+    "@@rules_ml_toolchain~//third_party/extensions:sycl_configure.bzl%sycl_configure_ext": {
+      "general": {
+        "bzlTransitiveDigest": "2DJvFJq/jcO/kiC6VlOIW5vTmI8WGjXTcCTQW9hgDjs=",
+        "usagesDigest": "fL/jq0XEemklK9gzEy5wIkCtg2aTNzuuFsIaFOrnauk=",
+        "recordedFileInputs": {},
+        "recordedDirentsInputs": {},
+        "envVariables": {},
+        "generatedRepoSpecs": {
+          "zero_loader": {
+            "bzlFile": "@@rules_ml_toolchain~//gpu/sycl:dist_repo.bzl",
+            "ruleClassName": "dist_repo",
+            "attributes": {
+              "distrs": {
+                "ubuntu_24.10_2025.1": [
+                  "https://tensorflow-file-hosting.s3.us-east-1.amazonaws.com/ze_loader_libs.tar.gz",
+                  "71cbfd8ac59e1231f013e827ea8efe6cf5da36fad771da2e75e202423bd6b82e",
+                  ""
+                ]
+              },
+              "build_templates": {
+                "ubuntu_24.10_2025.1": "//gpu/sycl:zero_loader.BUILD"
+              }
+            }
+          },
+          "level_zero": {
+            "bzlFile": "@@rules_ml_toolchain~//gpu/sycl:dist_repo.bzl",
+            "ruleClassName": "dist_repo",
+            "attributes": {
+              "distrs": {
+                "ubuntu_24.10_2025.1": [
+                  "https://tensorflow-file-hosting.s3.us-east-1.amazonaws.com/level-zero-1.21.10.tar.gz",
+                  "e0ff1c6cb9b551019579a2dd35c3a611240c1b60918c75345faf9514142b9c34",
+                  "level-zero-1.21.10"
+                ]
+              },
+              "build_templates": {
+                "ubuntu_24.10_2025.1": "//gpu/sycl:level_zero.BUILD"
+              }
+            }
+          },
+          "oneapi": {
+            "bzlFile": "@@rules_ml_toolchain~//gpu/sycl:dist_repo.bzl",
+            "ruleClassName": "dist_repo",
+            "attributes": {
+              "distrs": {
+                "ubuntu_24.10_2025.1": [
+                  "https://tensorflow-file-hosting.s3.us-east-1.amazonaws.com/intel-oneapi-base-toolkit-2025.1.3.7.tar.gz",
+                  "2213104bd122336551aa144512e7ab99e4a84220e77980b5f346edc14ebd458a",
+                  "oneapi"
+                ],
+                "ubuntu_24.04_2025.1": [
+                  "https://tensorflow-file-hosting.s3.us-east-1.amazonaws.com/intel-oneapi-base-toolkit-2025.1.3.7.tar.gz",
+                  "2213104bd122336551aa144512e7ab99e4a84220e77980b5f346edc14ebd458a",
+                  "oneapi"
+                ],
+                "ubuntu_22.04_2025.1": [
+                  "https://tensorflow-file-hosting.s3.us-east-1.amazonaws.com/intel-oneapi-base-toolkit-2025.1.3.7.tar.gz",
+                  "2213104bd122336551aa144512e7ab99e4a84220e77980b5f346edc14ebd458a",
+                  "oneapi"
+                ]
+              },
+              "build_templates": {
+                "ubuntu_24.10_2025.1": "//gpu/sycl:oneapi.BUILD",
+                "ubuntu_24.04_2025.1": "//gpu/sycl:oneapi.BUILD",
+                "ubuntu_22.04_2025.1": "//gpu/sycl:oneapi.BUILD"
+              }
+            }
+          },
+          "local_config_sycl": {
+            "bzlFile": "@@rules_ml_toolchain~//gpu/sycl:sycl_configure.bzl",
+            "ruleClassName": "sycl_configure",
+            "attributes": {}
+          }
+        },
+        "recordedRepoMappingEntries": [
+          [
+            "rules_ml_toolchain~",
+            "bazel_tools",
+            "bazel_tools"
+          ],
+          [
+            "rules_ml_toolchain~",
+            "tar",
+            "rules_ml_toolchain~~toolchain_ext~tar"
+          ],
+          [
+            "rules_ml_toolchain~",
+            "xz",
+            "rules_ml_toolchain~~toolchain_ext~xz"
+          ]
+        ]
+      }
+    },
+    "@@rules_ml_toolchain~//third_party/extensions:toolchain.bzl%toolchain_ext": {
+      "general": {
+        "bzlTransitiveDigest": "YRDqtE8sKO6Jnbve3MDPHzjEVE0emTCRsxVSbzEhqfQ=",
+        "usagesDigest": "glG0LrF3W8fU85afYAs7g/iBuWq9q4z3J722atssJa4=",
+        "recordedFileInputs": {},
+        "recordedDirentsInputs": {},
+        "envVariables": {},
+        "generatedRepoSpecs": {
+          "tar": {
+            "bzlFile": "@@rules_ml_toolchain~//common:tar_extraction_utils.bzl",
+            "ruleClassName": "tool_archive",
+            "attributes": {
+              "linux_x86_64_sha256": "d3be6744685d7a90adc16e3d5342ba9b28fc388422629a1bea146b3798229af6",
+              "linux_x86_64_urls": [
+                "https://storage.googleapis.com/ml-sysroot-testing/tar_x86_64-1.35.tar.xz"
+              ],
+              "linux_x86_64_strip_prefix": "tar_x86_64-1.35",
+              "linux_aarch64_sha256": "f75b274fdec81fa3563dff722c7cc93403c8d155abdf637f745b44b2ccaeb5d7",
+              "linux_aarch64_urls": [
+                "https://storage.googleapis.com/ml-sysroot-testing/tar_aarch64_1.35-0.1.0.tar.xz"
+              ],
+              "linux_aarch64_strip_prefix": "tar_aarch64_1.35-0.1.0"
+            }
+          },
+          "xz": {
+            "bzlFile": "@@rules_ml_toolchain~//common:tar_extraction_utils.bzl",
+            "ruleClassName": "tool_archive",
+            "attributes": {
+              "linux_x86_64_sha256": "59b9f6681b2aa395a07908d6875ce47eae8e2a5af496449b827bd0370947d355",
+              "linux_x86_64_urls": [
+                "https://storage.googleapis.com/ml-sysroot-testing/xz_x86_64-5.8.1.tar.xz"
+              ],
+              "linux_x86_64_strip_prefix": "xz_x86_64-5.8.1",
+              "linux_aarch64_sha256": "0ac42974d1bd31c1e10d9c8cdbf98885bdee563b3db11de9ae1e236da02281f7",
+              "linux_aarch64_urls": [
+                "https://storage.googleapis.com/ml-sysroot-testing/xz_aarch64_5.8.1-0.1.0.tar.xz"
+              ],
+              "linux_aarch64_strip_prefix": "xz_aarch64_5.8.1-0.1.0"
+            }
+          },
+          "sysroot_linux_x86_64": {
+            "bzlFile": "@@rules_ml_toolchain~//cc/deps:sysroot.bzl",
+            "ruleClassName": "sysroot",
+            "attributes": {
+              "default_dist": "linux_glibc_2_27",
+              "dists": {
+                "@@rules_ml_toolchain~~toolchain_ext~sysroot_linux_x86_64_glibc_2_27//:startup_libs": "linux_glibc_2_27",
+                "@@rules_ml_toolchain~~toolchain_ext~sysroot_linux_x86_64_glibc_2_31//:startup_libs": "linux_glibc_2_31"
+              },
+              "build_file_tpl": "@@rules_ml_toolchain~//cc/deps:sysroot_linux.BUILD.tpl"
+            }
+          },
+          "sysroot_linux_x86_64_glibc_2_27": {
+            "bzlFile": "@@rules_ml_toolchain~//common:mirrored_http_archive.bzl",
+            "ruleClassName": "mirrored_http_archive",
+            "attributes": {
+              "sha256": "7d9300ec03d008e96f0098dfcd4e9974dd64f2d5fccdd0f1a2b2d4af63301a04",
+              "mirrored_tar_sha256": "8680378000cf63647db5421377fbdb6a4fe98e0207b87f7cfec51883bde587aa",
+              "urls": [
+                "https://storage.googleapis.com/mirror.tensorflow.org/storage.googleapis.com/ml-sysroot-testing/ubuntu18_x86_64_sysroot_gcc8_patched-0.1.0.tar.xz",
+                "https://storage.googleapis.com/ml-sysroot-testing/ubuntu18_x86_64_sysroot_gcc8_patched-0.1.0.tar.xz"
+              ],
+              "build_file": "@@rules_ml_toolchain~//cc/config:sysroot_ubuntu18_x86_64.BUILD",
+              "strip_prefix": "ubuntu18_x86_64_sysroot_gcc8_patched-0.1.0"
+            }
+          },
+          "sysroot_linux_x86_64_glibc_2_31": {
+            "bzlFile": "@@rules_ml_toolchain~//common:mirrored_http_archive.bzl",
+            "ruleClassName": "mirrored_http_archive",
+            "attributes": {
+              "sha256": "18e7dcfc87e6562c85cad9806db79fd3feb943db3ff98ab8c170e308655dfc99",
+              "urls": [
+                "https://storage.googleapis.com/mirror.tensorflow.org/storage.googleapis.com/ml-sysroot-testing/sysroot_x86_64_ubuntu20_gcc10-0.1.0.tar.xz",
+                "https://storage.googleapis.com/ml-sysroot-testing/sysroot_x86_64_ubuntu20_gcc10-0.1.0.tar.xz"
+              ],
+              "build_file": "@@rules_ml_toolchain~//cc/config:sysroot_ubuntu20_x86_64_gcc10.BUILD",
+              "strip_prefix": "sysroot_x86_64_ubuntu20_gcc10"
+            }
+          },
+          "sysroot_linux_aarch64": {
+            "bzlFile": "@@rules_ml_toolchain~//cc/deps:sysroot.bzl",
+            "ruleClassName": "sysroot",
+            "attributes": {
+              "default_dist": "linux_glibc_2_27",
+              "dists": {
+                "@@rules_ml_toolchain~~toolchain_ext~sysroot_linux_aarch64_glibc_2_27//:startup_libs": "linux_glibc_2_27",
+                "@@rules_ml_toolchain~~toolchain_ext~sysroot_linux_aarch64_glibc_2_31//:startup_libs": "linux_glibc_2_31"
+              },
+              "build_file_tpl": "@@rules_ml_toolchain~//cc/deps:sysroot_linux.BUILD.tpl"
+            }
+          },
+          "sysroot_linux_aarch64_glibc_2_27": {
+            "bzlFile": "@@rules_ml_toolchain~//common:mirrored_http_archive.bzl",
+            "ruleClassName": "mirrored_http_archive",
+            "attributes": {
+              "sha256": "31a285faccb6996c16acde8ef6841841d591f73196dc5b7bdd9cf55b7f0c35a1",
+              "mirrored_tar_sha256": "23989e1c4184b472ffcacf04cfeb7c9e108cb4126aeadb8a326597795b47f175",
+              "urls": [
+                "https://storage.googleapis.com/mirror.tensorflow.org/storage.googleapis.com/ml-sysroot-testing/sysroot_aarch64_ubuntu18_gcc8.4-0.1.0.tar.xz",
+                "https://storage.googleapis.com/ml-sysroot-testing/sysroot_aarch64_ubuntu18_gcc8.4-0.1.0.tar.xz"
+              ],
+              "build_file": "@@rules_ml_toolchain~//cc/config:sysroot_ubuntu18_aarch64.BUILD",
+              "strip_prefix": "sysroot_aarch64_ubuntu18_gcc8.4-0.1.0"
+            }
+          },
+          "sysroot_linux_aarch64_glibc_2_31": {
+            "bzlFile": "@@rules_ml_toolchain~//common:mirrored_http_archive.bzl",
+            "ruleClassName": "mirrored_http_archive",
+            "attributes": {
+              "sha256": "3f2b534bf8305f0bc750ef570673fabc04c160e72b5eae5948284edda43d11cc",
+              "urls": [
+                "https://storage.googleapis.com/mirror.tensorflow.org/storage.googleapis.com/ml-sysroot-testing/sysroot_aarch64_ubuntu20_gcc10-0.1.0.tar.xz",
+                "https://storage.googleapis.com/ml-sysroot-testing/sysroot_aarch64_ubuntu20_gcc10-0.1.0.tar.xz"
+              ],
+              "build_file": "@@rules_ml_toolchain~//cc/config:sysroot_ubuntu20_aarch64_gcc10.BUILD",
+              "strip_prefix": "sysroot_aarch64_ubuntu20_gcc10"
+            }
+          },
+          "sysroot_darwin_aarch64": {
+            "bzlFile": "@@bazel_tools//tools/build_defs/repo:local.bzl",
+            "ruleClassName": "new_local_repository",
+            "attributes": {
+              "build_file": "@@rules_ml_toolchain~//cc/config:sysroot_darwin_aarch64.BUILD",
+              "path": "cc/sysroots/darwin_aarch64/MacOSX.sdk"
+            }
+          },
+          "llvm_linux_x86_64": {
+            "bzlFile": "@@rules_ml_toolchain~//cc/deps:llvm.bzl",
+            "ruleClassName": "llvm",
+            "attributes": {
+              "default_version": "18",
+              "versions": {
+                "@@rules_ml_toolchain~~toolchain_ext~llvm18_linux_x86_64//:all": "18",
+                "@@rules_ml_toolchain~~toolchain_ext~llvm19_linux_x86_64//:all": "19",
+                "@@rules_ml_toolchain~~toolchain_ext~llvm20_linux_x86_64//:all": "20",
+                "@@rules_ml_toolchain~~toolchain_ext~llvm21_linux_x86_64//:all": "21"
+              },
+              "build_file_tpl": "@@rules_ml_toolchain~//cc/deps:llvm_linux.BUILD.tpl"
+            }
+          },
+          "llvm18_linux_x86_64": {
+            "bzlFile": "@@rules_ml_toolchain~//common:mirrored_http_archive.bzl",
+            "ruleClassName": "mirrored_http_archive",
+            "attributes": {
+              "urls": [
+                "https://storage.googleapis.com/mirror.tensorflow.org/github.com/llvm/llvm-project/releases/download/llvmorg-18.1.8/clang+llvm-18.1.8-x86_64-linux-gnu-ubuntu-18.04.tar.xz",
+                "https://github.com/llvm/llvm-project/releases/download/llvmorg-18.1.8/clang+llvm-18.1.8-x86_64-linux-gnu-ubuntu-18.04.tar.xz"
+              ],
+              "sha256": "54ec30358afcc9fb8aa74307db3046f5187f9fb89fb37064cdde906e062ebf36",
+              "mirrored_tar_sha256": "01b8e95e34e7d0117edd085577529b375ec422130ed212d2911727545314e6c2",
+              "build_file": "@@rules_ml_toolchain~//cc/config:llvm18_linux_x86_64.BUILD",
+              "strip_prefix": "clang+llvm-18.1.8-x86_64-linux-gnu-ubuntu-18.04",
+              "remote_file_urls": {
+                "lib/libtinfo.so.5": [
+                  "https://github.com/yuriit-google/sysroots/raw/f890514a360cd1959c786402a8e794218b1be93f/archives/libtinfo.so.5"
+                ],
+                "lib/libtinfo5-copyright.txt": [
+                  "https://raw.githubusercontent.com/yuriit-google/sysroots/ba192c408e0f82c6c9a5b92712038edaa64326d6/archives/copyright"
+                ]
+              },
+              "remote_file_integrity": {
+                "lib/libtinfo.so.5": "sha256-Es/8cnQZDKFpOlLM2DA+cZQH5wfIVX3ft+74HyCO+qs=",
+                "lib/libtinfo5-copyright.txt": "sha256-Xo7pAsiQbdt3ef023Jl5ywi1H76/fAsamut4rzgq9ZA="
+              }
+            }
+          },
+          "llvm19_linux_x86_64": {
+            "bzlFile": "@@rules_ml_toolchain~//common:mirrored_http_archive.bzl",
+            "ruleClassName": "mirrored_http_archive",
+            "attributes": {
+              "urls": [
+                "https://storage.googleapis.com/mirror.tensorflow.org/github.com/llvm/llvm-project/releases/download/llvmorg-19.1.7/LLVM-19.1.7-Linux-X64.tar.xz",
+                "https://github.com/llvm/llvm-project/releases/download/llvmorg-19.1.7/LLVM-19.1.7-Linux-X64.tar.xz"
+              ],
+              "sha256": "4a5ec53951a584ed36f80240f6fbf8fdd46b4cf6c7ee87cc2d5018dc37caf679",
+              "mirrored_tar_sha256": "ecb0a20f3976ccb6f20fe98baeef45cd80c59d7aec971098094518283f1157ff",
+              "build_file": "@@rules_ml_toolchain~//cc/config:llvm19_linux_x86_64.BUILD",
+              "strip_prefix": "LLVM-19.1.7-Linux-X64"
+            }
+          },
+          "llvm20_linux_x86_64": {
+            "bzlFile": "@@rules_ml_toolchain~//common:mirrored_http_archive.bzl",
+            "ruleClassName": "mirrored_http_archive",
+            "attributes": {
+              "urls": [
+                "https://storage.googleapis.com/mirror.tensorflow.org/github.com/llvm/llvm-project/releases/download/llvmorg-20.1.8/LLVM-20.1.8-Linux-X64.tar.xz",
+                "https://github.com/llvm/llvm-project/releases/download/llvmorg-20.1.8/LLVM-20.1.8-Linux-X64.tar.xz"
+              ],
+              "sha256": "1ead36b3dfcb774b57be530df42bec70ab2d239fbce9889447c7a29a4ddc1ae6",
+              "mirrored_tar_sha256": "57152ed2a054a06dc3fc7abe35da02696fe80d07884de94621726e1ae8d9a53f",
+              "build_file": "@@rules_ml_toolchain~//cc/config:llvm20_linux_x86_64.BUILD",
+              "strip_prefix": "LLVM-20.1.8-Linux-X64"
+            }
+          },
+          "llvm21_linux_x86_64": {
+            "bzlFile": "@@rules_ml_toolchain~//common:mirrored_http_archive.bzl",
+            "ruleClassName": "mirrored_http_archive",
+            "attributes": {
+              "urls": [
+                "https://storage.googleapis.com/mirror.tensorflow.org/github.com/llvm/llvm-project/releases/download/llvmorg-21.1.2/LLVM-21.1.2-Linux-X64.tar.xz",
+                "https://github.com/llvm/llvm-project/releases/download/llvmorg-21.1.2/LLVM-21.1.2-Linux-X64.tar.xz"
+              ],
+              "sha256": "38dc1e278b8d688d9f4f1077da1dcda623d9e0dd89ffcf03bc18d3492bbd9cb6",
+              "mirrored_tar_sha256": "563f5d0ed531053cf2d726b09b3e023820ff8d771b9ba0f17a2cb32059d96fe8",
+              "build_file": "@@rules_ml_toolchain~//cc/config:llvm21_linux_x86_64.BUILD",
+              "strip_prefix": "LLVM-21.1.2-Linux-X64"
+            }
+          },
+          "llvm_linux_aarch64": {
+            "bzlFile": "@@rules_ml_toolchain~//cc/deps:llvm.bzl",
+            "ruleClassName": "llvm",
+            "attributes": {
+              "default_version": "18",
+              "versions": {
+                "@@rules_ml_toolchain~~toolchain_ext~llvm18_linux_aarch64//:all": "18",
+                "@@rules_ml_toolchain~~toolchain_ext~llvm20_linux_aarch64//:all": "20"
+              },
+              "build_file_tpl": "@@rules_ml_toolchain~//cc/deps:llvm_linux.BUILD.tpl"
+            }
+          },
+          "llvm18_linux_aarch64": {
+            "bzlFile": "@@rules_ml_toolchain~//common:mirrored_http_archive.bzl",
+            "ruleClassName": "mirrored_http_archive",
+            "attributes": {
+              "urls": [
+                "https://storage.googleapis.com/mirror.tensorflow.org/github.com/llvm/llvm-project/releases/download/llvmorg-18.1.8/clang+llvm-18.1.8-aarch64-linux-gnu.tar.xz",
+                "https://github.com/llvm/llvm-project/releases/download/llvmorg-18.1.8/clang+llvm-18.1.8-aarch64-linux-gnu.tar.xz"
+              ],
+              "sha256": "dcaa1bebbfbb86953fdfbdc7f938800229f75ad26c5c9375ef242edad737d999",
+              "mirrored_tar_sha256": "26a52cc6c658736f822546f220216178ac50d75ac1809bf8608395c8edd7c2c1",
+              "build_file": "@@rules_ml_toolchain~//cc/config:llvm18_linux_aarch64.BUILD",
+              "strip_prefix": "clang+llvm-18.1.8-aarch64-linux-gnu"
+            }
+          },
+          "llvm20_linux_aarch64": {
+            "bzlFile": "@@rules_ml_toolchain~//common:mirrored_http_archive.bzl",
+            "ruleClassName": "mirrored_http_archive",
+            "attributes": {
+              "urls": [
+                "https://storage.googleapis.com/mirror.tensorflow.org/github.com/llvm/llvm-project/releases/download/llvmorg-20.1.8/LLVM-20.1.8-Linux-ARM64.tar.xz",
+                "https://github.com/llvm/llvm-project/releases/download/llvmorg-20.1.8/LLVM-20.1.8-Linux-ARM64.tar.xz"
+              ],
+              "sha256": "b855cc17d935fdd83da82206b7a7cfc680095efd1e9e8182c4a05e761958bef8",
+              "mirrored_tar_sha256": "3c932449de47078a5a5c39499e1d741da6df29e767502803c1c7194022720a07",
+              "build_file": "@@rules_ml_toolchain~//cc/config:llvm20_linux_aarch64.BUILD",
+              "strip_prefix": "LLVM-20.1.8-Linux-ARM64"
+            }
+          },
+          "llvm_darwin_aarch64": {
+            "bzlFile": "@@rules_ml_toolchain~//cc/deps:llvm.bzl",
+            "ruleClassName": "llvm",
+            "attributes": {
+              "default_version": "18",
+              "versions": {
+                "@@rules_ml_toolchain~~toolchain_ext~llvm18_darwin_aarch64//:all": "18",
+                "@@rules_ml_toolchain~~toolchain_ext~llvm20_darwin_aarch64//:all": "20"
+              },
+              "build_file_tpl": "@@rules_ml_toolchain~//cc/deps:llvm_darwin.BUILD.tpl"
+            }
+          },
+          "llvm18_darwin_aarch64": {
+            "bzlFile": "@@rules_ml_toolchain~//common:mirrored_http_archive.bzl",
+            "ruleClassName": "mirrored_http_archive",
+            "attributes": {
+              "urls": [
+                "https://storage.googleapis.com/mirror.tensorflow.org/github.com/llvm/llvm-project/releases/download/llvmorg-18.1.8/clang+llvm-18.1.8-arm64-apple-macos11.tar.xz",
+                "https://github.com/llvm/llvm-project/releases/download/llvmorg-18.1.8/clang+llvm-18.1.8-arm64-apple-macos11.tar.xz"
+              ],
+              "sha256": "4573b7f25f46d2a9c8882993f091c52f416c83271db6f5b213c93f0bd0346a10",
+              "mirrored_tar_sha256": "abf9636295730364bfe4cfa6b491dc8476587bd6d7271e3011dafdb5e382bcdf",
+              "build_file": "@@rules_ml_toolchain~//cc/config:llvm18_darwin_aarch64.BUILD",
+              "strip_prefix": "clang+llvm-18.1.8-arm64-apple-macos11"
+            }
+          },
+          "llvm20_darwin_aarch64": {
+            "bzlFile": "@@rules_ml_toolchain~//common:mirrored_http_archive.bzl",
+            "ruleClassName": "mirrored_http_archive",
+            "attributes": {
+              "urls": [
+                "https://storage.googleapis.com/mirror.tensorflow.org/github.com/llvm/llvm-project/releases/download/llvmorg-20.1.8/LLVM-20.1.8-macOS-ARM64.tar.xz",
+                "https://github.com/llvm/llvm-project/releases/download/llvmorg-20.1.8/LLVM-20.1.8-macOS-ARM64.tar.xz"
+              ],
+              "sha256": "a9a22f450d35f1f73cd61ab6a17c6f27d8f6051d56197395c1eb397f0c9bbec4",
+              "mirrored_tar_sha256": "19f015fd93ef0a9963e4cebe02b051e6d357b4ab86bb060ca8ad5141d7284289",
+              "build_file": "@@rules_ml_toolchain~//cc/config:llvm20_darwin_aarch64.BUILD",
+              "strip_prefix": "LLVM-20.1.8-macOS-ARM64"
+            }
+          }
+        },
+        "recordedRepoMappingEntries": [
+          [
+            "rules_ml_toolchain~",
+            "bazel_tools",
+            "bazel_tools"
+          ],
+          [
+            "rules_ml_toolchain~",
+            "tar",
+            "rules_ml_toolchain~~toolchain_ext~tar"
+          ],
+          [
+            "rules_ml_toolchain~",
+            "xz",
+            "rules_ml_toolchain~~toolchain_ext~xz"
+          ]
+        ]
+      }
+    },
+    "@@rules_nodejs~//nodejs:extensions.bzl%node": {
+      "general": {
+        "bzlTransitiveDigest": "q44Ox2Nwogn6OsO0Xw5lhjkd/xmxkvvpwVOn5P4pmHQ=",
+        "usagesDigest": "WQpLKLujnBfrx9sMWCJgyaK9P04binseT6CGBy3vP4E=",
+        "recordedFileInputs": {},
+        "recordedDirentsInputs": {},
+        "envVariables": {},
+        "generatedRepoSpecs": {
+          "nodejs_linux_amd64": {
+            "bzlFile": "@@rules_nodejs~//nodejs:repositories.bzl",
+            "ruleClassName": "_nodejs_repositories",
+            "attributes": {
+              "node_download_auth": {},
+              "node_repositories": {},
+              "node_urls": [
+                "https://nodejs.org/dist/v{version}/{filename}"
+              ],
+              "node_version": "18.20.5",
+              "include_headers": false,
+              "platform": "linux_amd64"
+            }
+          },
+          "nodejs_linux_arm64": {
+            "bzlFile": "@@rules_nodejs~//nodejs:repositories.bzl",
+            "ruleClassName": "_nodejs_repositories",
+            "attributes": {
+              "node_download_auth": {},
+              "node_repositories": {},
+              "node_urls": [
+                "https://nodejs.org/dist/v{version}/{filename}"
+              ],
+              "node_version": "18.20.5",
+              "include_headers": false,
+              "platform": "linux_arm64"
+            }
+          },
+          "nodejs_linux_s390x": {
+            "bzlFile": "@@rules_nodejs~//nodejs:repositories.bzl",
+            "ruleClassName": "_nodejs_repositories",
+            "attributes": {
+              "node_download_auth": {},
+              "node_repositories": {},
+              "node_urls": [
+                "https://nodejs.org/dist/v{version}/{filename}"
+              ],
+              "node_version": "18.20.5",
+              "include_headers": false,
+              "platform": "linux_s390x"
+            }
+          },
+          "nodejs_linux_ppc64le": {
+            "bzlFile": "@@rules_nodejs~//nodejs:repositories.bzl",
+            "ruleClassName": "_nodejs_repositories",
+            "attributes": {
+              "node_download_auth": {},
+              "node_repositories": {},
+              "node_urls": [
+                "https://nodejs.org/dist/v{version}/{filename}"
+              ],
+              "node_version": "18.20.5",
+              "include_headers": false,
+              "platform": "linux_ppc64le"
+            }
+          },
+          "nodejs_darwin_amd64": {
+            "bzlFile": "@@rules_nodejs~//nodejs:repositories.bzl",
+            "ruleClassName": "_nodejs_repositories",
+            "attributes": {
+              "node_download_auth": {},
+              "node_repositories": {},
+              "node_urls": [
+                "https://nodejs.org/dist/v{version}/{filename}"
+              ],
+              "node_version": "18.20.5",
+              "include_headers": false,
+              "platform": "darwin_amd64"
+            }
+          },
+          "nodejs_darwin_arm64": {
+            "bzlFile": "@@rules_nodejs~//nodejs:repositories.bzl",
+            "ruleClassName": "_nodejs_repositories",
+            "attributes": {
+              "node_download_auth": {},
+              "node_repositories": {},
+              "node_urls": [
+                "https://nodejs.org/dist/v{version}/{filename}"
+              ],
+              "node_version": "18.20.5",
+              "include_headers": false,
+              "platform": "darwin_arm64"
+            }
+          },
+          "nodejs_windows_amd64": {
+            "bzlFile": "@@rules_nodejs~//nodejs:repositories.bzl",
+            "ruleClassName": "_nodejs_repositories",
+            "attributes": {
+              "node_download_auth": {},
+              "node_repositories": {},
+              "node_urls": [
+                "https://nodejs.org/dist/v{version}/{filename}"
+              ],
+              "node_version": "18.20.5",
+              "include_headers": false,
+              "platform": "windows_amd64"
+            }
+          },
+          "nodejs": {
+            "bzlFile": "@@rules_nodejs~//nodejs/private:nodejs_repo_host_os_alias.bzl",
+            "ruleClassName": "nodejs_repo_host_os_alias",
+            "attributes": {
+              "user_node_repository_name": "nodejs"
+            }
+          },
+          "nodejs_host": {
+            "bzlFile": "@@rules_nodejs~//nodejs/private:nodejs_repo_host_os_alias.bzl",
+            "ruleClassName": "nodejs_repo_host_os_alias",
+            "attributes": {
+              "user_node_repository_name": "nodejs"
+            }
+          },
+          "nodejs_toolchains": {
+            "bzlFile": "@@rules_nodejs~//nodejs/private:nodejs_toolchains_repo.bzl",
+            "ruleClassName": "nodejs_toolchains_repo",
+            "attributes": {
+              "user_node_repository_name": "nodejs"
+            }
+          }
+        },
+        "recordedRepoMappingEntries": []
       }
     },
     "@@rules_python~//python/uv:uv.bzl%uv": {

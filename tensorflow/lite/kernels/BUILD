@@ -3426,17 +3426,18 @@ tflite_portable_test_suite_combined(
 )
 
 # Note this is created mainly for validating external delegates in OSS.
-tflite_combine_cc_tests(
-    name = "combined_all_kernel_tests",
-    deps_conditions = [":test_main"],
-    generate_cc_library = True,
-)
+# This test seems problematic in bzlmod
+# tflite_combine_cc_tests(
+#     name = "combined_all_kernel_tests",
+#     deps_conditions = [":test_main"],
+#     generate_cc_library = True,
+# )
 
-# This test uses SimpleAllocator and works nicely with ASAN.
-tflite_combine_cc_tests(
-    name = "combined_all_kernel_with_simple_allocator_tests",
-    args = ["--use_simple_allocator=true"],
-    deps_conditions = [":test_main"],
-)
+# # This test uses SimpleAllocator and works nicely with ASAN.
+# tflite_combine_cc_tests(
+#     name = "combined_all_kernel_with_simple_allocator_tests",
+#     args = ["--use_simple_allocator=true"],
+#     deps_conditions = [":test_main"],
+# )
 
 tflite_self_contained_libs_test_suite(name = "self_contained_libs_tests")

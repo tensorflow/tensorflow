@@ -96,6 +96,8 @@ cc_library(
     deps = [
         "//xla/tsl/platform:macros",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:optional",
+        "@com_google_absl//absl/utility",
         "@local_tsl//tsl/platform:regexp",
     ],
 )
