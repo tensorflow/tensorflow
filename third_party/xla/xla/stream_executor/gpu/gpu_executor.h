@@ -90,6 +90,8 @@ class GpuExecutor : public StreamExecutorCommon {
         "CreateMulticastMemory is not implemented.");
   };
 
+  virtual bool is_multicast_supported() const { return false; }
+
  private:
   // The device ordinal value that this executor was initialized with; recorded
   // for use in getting device metadata. Immutable post-initialization.

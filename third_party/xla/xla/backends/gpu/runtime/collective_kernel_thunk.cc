@@ -97,6 +97,8 @@ int64_t GetMaxSupportedAllReduceSizeBytes(AllReduceStrategy strategy) {
       return kMaxOneShotAllReduceSizeBytes;
     case AllReduceStrategy::kTwoShot:
       return kMaxTwoShotAllReduceSizeBytes;
+    case AllReduceStrategy::kMultimem:
+      return kMaxTwoShotAllReduceSizeBytes;
   }
 }
 
@@ -152,7 +154,6 @@ int64_t CollectiveKernelThunk::GetInputSizeBytes() const {
 
 struct BaseRangePtrRendezvousValue {
   RankId rank;
-  se::DeviceMemoryBase locally_allocated_buffer_ptr;
   se::DeviceMemoryBase buffer_ptr;
 
   bool operator<(const BaseRangePtrRendezvousValue& other) const {
@@ -170,11 +171,7 @@ absl::Status CollectiveKernelThunk::ExchangeStateMetadata(
       << "Device " << params.collective_params->global_device_id
       << "is not in the clique.";
   rendezvous_value.rank = rank.value();
-  rendezvous_value.locally_allocated_buffer_ptr = state.local_buffer.memory();
-  TF_ASSIGN_OR_RETURN(rendezvous_value.buffer_ptr,
-                      params.executor->GetMemoryRange(
-                          params.buffer_allocations->GetDeviceAddress(
-                              buffers_[0].source_buffer)));
+  rendezvous_value.buffer_ptr = state.local_buffer.memory();
 
   auto rendezvous_fn =
       [](absl::Span<const BaseRangePtrRendezvousValue* const> values) {
@@ -207,12 +204,12 @@ absl::Status CollectiveKernelThunk::ExchangeStateMetadata(
   CollectiveKernelMetadata metadata;
   metadata.rank = rank.value().value();
   for (int i = 0; i < rendezvous_values->size(); ++i) {
-    metadata.local_buffer_root_ptrs[i] =
-        (uint64_t)rendezvous_values->at(i)
-            .locally_allocated_buffer_ptr.opaque();
     metadata.buffer_root_ptrs[i] =
         (uint64_t)rendezvous_values->at(i).buffer_ptr.opaque();
   }
+
+  // TODO(patrios): Add multicast setup.
+  metadata.multicast_buffer_ptr = 0;
 
   se::DeviceMemoryBase metadata_ptr =
       params.executor->Allocate(sizeof(CollectiveKernelMetadata), 0);

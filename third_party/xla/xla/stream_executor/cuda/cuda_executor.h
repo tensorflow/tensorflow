@@ -190,7 +190,9 @@ class CudaExecutor : public GpuExecutor {
   // Returns a handle to the given memory if it was allocated with VMM API.
   absl::StatusOr<VmmMemoryHandle> RetainVmmMemoryHandle(void* ptr);
 
-  bool is_multicast_supported() const { return is_multicast_supported_; }
+  bool is_multicast_supported() const override {
+    return is_multicast_supported_;
+  }
 
  private:
   absl::Status VmmDeallocateMemory(void* ptr);

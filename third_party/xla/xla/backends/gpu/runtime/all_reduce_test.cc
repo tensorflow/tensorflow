@@ -42,13 +42,14 @@ limitations under the License.
 #include "xla/service/platform_util.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/device_memory_handle.h"
 #include "xla/stream_executor/gpu/all_reduce_kernel.h"
 #include "xla/stream_executor/gpu/collective_kernel_metadata.h"
+#include "xla/stream_executor/gpu/gpu_executor.h"
 #include "xla/stream_executor/gpu/gpu_init.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream.h"
+#include "xla/stream_executor/stream_executor.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/status_matchers.h"
@@ -94,6 +95,19 @@ class AllReduceKernelTest : public ::testing::Test,
     TF_RETURN_IF_ERROR(executors[0]->EnablePeerAccessTo(executors[1]));
     TF_RETURN_IF_ERROR(executors[1]->EnablePeerAccessTo(executors[0]));
 
+    std::unique_ptr<stream_executor::gpu::GpuExecutor::MulticastMemory>
+        multicast_memory;
+    if (params_.all_reduce_strategy == AllReduceStrategy::kMultimem) {
+      TF_ASSIGN_OR_RETURN(
+          multicast_memory,
+          dynamic_cast<stream_executor::gpu::GpuExecutor*>(executors[0])
+              ->CreateMulticastMemory(num_elements * sizeof(T), num_ranks));
+
+      for (int i = 0; i < num_ranks; ++i) {
+        TF_RETURN_IF_ERROR(multicast_memory->SubscribeDevice(i));
+      }
+    }
+
     std::vector<std::unique_ptr<se::Stream>> streams;
     std::vector<se::DeviceMemoryBase> allocated_buffers;
     std::vector<se::DeviceMemoryBase> local_input_buffers;
@@ -115,7 +129,8 @@ class AllReduceKernelTest : public ::testing::Test,
           /*local_input_buffer_size=*/aligned_input_size +
           /*data_buffer_size=*/aligned_input_size +
           /*signal_buffer_size=*/aligned_signal_size;
-      allocated_buffers.emplace_back(executor->AllocateArray<T>(total_size));
+      allocated_buffers.emplace_back(executor->AllocateArray<T>(
+          total_size, static_cast<int64_t>(stream_executor::MemoryType::kP2P)));
       local_input_buffers.emplace_back(
           allocated_buffers[i].GetByteSlice(0, aligned_input_size));
       TF_RET_CHECK(!local_input_buffers[i].is_null());
@@ -140,10 +155,19 @@ class AllReduceKernelTest : public ::testing::Test,
       metadata.rank = i;
 
       for (int j = 0; j < num_ranks; ++j) {
-        // One-Shot all-reduce doesn't use an input buffer from the peers.
-        metadata.buffer_root_ptrs[j] = 0;
-        metadata.local_buffer_root_ptrs[j] =
-            (uint64_t)allocated_buffers[j].opaque();
+        metadata.buffer_root_ptrs[j] = (uint64_t)allocated_buffers[j].opaque();
+      }
+
+      if (params_.all_reduce_strategy == AllReduceStrategy::kMultimem) {
+        stream_executor::gpu::GpuExecutor* gpu_executor =
+            dynamic_cast<stream_executor::gpu::GpuExecutor*>(executors[i]);
+        TF_RET_CHECK(gpu_executor != nullptr);
+        TF_ASSIGN_OR_RETURN(void* mapped_memory,
+                            multicast_memory->MapMemory(
+                                allocated_buffers[i].opaque(), gpu_executor));
+        metadata.multicast_buffer_ptr = (uint64_t)mapped_memory;
+      } else {
+        metadata.multicast_buffer_ptr = 0;
       }
 
       metadata_buffers.emplace_back(executors[i]->AllocateArray<uint64_t>(
@@ -196,6 +220,8 @@ class AllReduceKernelTest : public ::testing::Test,
 
   int64_t num_elements() const { return params_.num_elements; }
 
+  AllReduceStrategy strategy() const { return params_.all_reduce_strategy; }
+
  private:
   TestParams params_;
 };
@@ -205,6 +231,11 @@ TEST_P(AllReduceKernelTest, KernelTestAddF32) {
 
   std::vector<se::StreamExecutor*> executors = {GetGpuExecutor(0),
                                                 GetGpuExecutor(1)};
+  if (strategy() == AllReduceStrategy::kMultimem &&
+      !dynamic_cast<stream_executor::gpu::GpuExecutor*>(executors[0])
+           ->is_multicast_supported()) {
+    GTEST_SKIP() << "Multimem not supported on this device.";
+  }
 
   if (!executors[0]->CanEnablePeerAccessTo(executors[1])) {
     GTEST_SKIP() << "Test requires direct peer memory access between devices.";
@@ -238,6 +269,9 @@ TEST_P(AllReduceKernelTest, KernelTestAddF32) {
 }
 
 TEST_P(AllReduceKernelTest, KernelTestAddBF16) {
+  if (strategy() == AllReduceStrategy::kMultimem) {
+    GTEST_SKIP() << "Multimem does not support BF16.";
+  }
   constexpr int64_t kNumRanks = 2;
 
   std::vector<se::StreamExecutor*> executors = {GetGpuExecutor(0),
@@ -271,6 +305,9 @@ TEST_P(AllReduceKernelTest, KernelTestAddBF16) {
 }
 
 TEST_P(AllReduceKernelTest, KernelTestOrPred) {
+  if (strategy() == AllReduceStrategy::kMultimem) {
+    GTEST_SKIP() << "Multimem does not support predicates.";
+  }
   constexpr int64_t kNumRanks = 2;
 
   std::vector<se::StreamExecutor*> executors = {GetGpuExecutor(0),
@@ -305,6 +342,9 @@ TEST_P(AllReduceKernelTest, KernelTestOrPred) {
 }
 
 TEST_P(AllReduceKernelTest, KernelTestAddPred_Unsupported) {
+  if (strategy() == AllReduceStrategy::kMultimem) {
+    GTEST_SKIP() << "Multimem does not support predicates.";
+  }
   constexpr int64_t kNumRanks = 2;
   std::vector<se::StreamExecutor*> executors = {GetGpuExecutor(0),
                                                 GetGpuExecutor(1)};
@@ -327,7 +367,8 @@ INSTANTIATE_TEST_SUITE_P(
     AllReduceKernelTest, AllReduceKernelTest,
     ::testing::ConvertGenerator(
         ::testing::Combine(::testing::Values(AllReduceStrategy::kOneShot,
-                                             AllReduceStrategy::kTwoShot),
+                                             AllReduceStrategy::kTwoShot,
+                                             AllReduceStrategy::kMultimem),
                            ::testing::Values(128000, 124000)),
         [](const std::tuple<AllReduceStrategy, int64_t>& params) {
           return TestParams{std::get<0>(params), std::get<1>(params)};
