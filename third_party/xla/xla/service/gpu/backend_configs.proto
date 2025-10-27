@@ -205,6 +205,9 @@ message BlockLevelFusionConfig {
 
   // Allow/disallow TMA usage for all arguments of the kernel (where possible).
   bool is_tma_allowed = 6;
+
+  // Allow/disallow automatic warp specialization.
+  bool is_warp_specialization_allowed = 7;
 }
 
 message DynamicMemcpyConfig {

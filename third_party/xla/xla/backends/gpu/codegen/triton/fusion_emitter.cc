@@ -750,8 +750,9 @@ absl::StatusOr<std::vector<ScalarOrTensor>> EmitTiledComputation(
     EmitterLocOpBuilder b, absl::string_view libdevice_path,
     const se::DeviceDescription& device_info,
     const HloFusionInstruction* fusion,
-    const TiledHloComputation& tiled_computation, mlir::FunctionOpInterface fn,
-    Value pid,
+    const TiledHloComputation& tiled_computation,
+    const BlockLevelParameters& block_level_parameters,
+    mlir::FunctionOpInterface fn, Value pid,
     absl::flat_hash_map<const TiledHloInstruction*, ScalarOrTensor>& values);
 
 // Returns the number of iterations of the loop over the contracting
@@ -938,8 +939,9 @@ absl::StatusOr<ScalarOrTensor> EmitDot(
     EmitterLocOpBuilder b, absl::string_view libdevice_path,
     const se::DeviceDescription& device_info,
     const HloFusionInstruction* fusion,
-    const TiledHloInstruction& tiled_hlo_dot, mlir::FunctionOpInterface fn,
-    Value pid,
+    const TiledHloInstruction& tiled_hlo_dot,
+    const BlockLevelParameters& block_level_parameters,
+    mlir::FunctionOpInterface fn, Value pid,
     absl::flat_hash_map<const TiledHloInstruction*, ScalarOrTensor>& values) {
   // We expect to get a tiled HLO in form:
   //
@@ -1021,10 +1023,7 @@ absl::StatusOr<ScalarOrTensor> EmitDot(
       /*upperBound=*/MakeIndex(b, loop_iteration_count),
       /*step=*/MakeIndex(b, 1), accumulator);
 
-  if (fusion->GetModule()
-          ->config()
-          .debug_options()
-          .xla_gpu_experimental_enable_triton_warp_specialization()) {
+  if (block_level_parameters.is_warp_specialization_allowed) {
     for_op->setAttr("tt.warp_specialize", b.getBoolAttr(true));
   }
 
@@ -1045,8 +1044,8 @@ absl::StatusOr<ScalarOrTensor> EmitDot(
           EmitTiledComputation(
               b, libdevice_path, device_info,
               ::xla::Cast<HloFusionInstruction>(tiled_fusion_operand->hlo()),
-              *tiled_fusion_operand->called_computation(), fn,
-              computation_index, values));
+              *tiled_fusion_operand->called_computation(),
+              block_level_parameters, fn, computation_index, values));
       if (result.size() != 1) {
         return absl::InternalError(absl::StrCat(
             "Expected nested fusion computation to emit a single value, got ",
@@ -1109,8 +1108,9 @@ absl::StatusOr<ScalarOrTensor> EmitScaledDot(
     EmitterLocOpBuilder b, absl::string_view libdevice_path,
     const se::DeviceDescription& device_info,
     const HloFusionInstruction* fusion,
-    const TiledHloInstruction& tiled_hlo_dot, mlir::FunctionOpInterface fn,
-    Value pid,
+    const TiledHloInstruction& tiled_hlo_dot,
+    const BlockLevelParameters& block_level_parameters,
+    mlir::FunctionOpInterface fn, Value pid,
     absl::flat_hash_map<const TiledHloInstruction*, ScalarOrTensor>& values) {
   VLOG(2) << "EmitScaledDot: " << tiled_hlo_dot.ToString();
   const HloScaledDotInstruction& scaled_dot =
@@ -1155,6 +1155,8 @@ absl::StatusOr<ScalarOrTensor> EmitScaledDot(
       {IndexingMap::Variable{{0, loop_iteration_count - 1}, "k"}},
       /*rt_vars=*/{}};
 
+  // TODO(b/449668102): Consider adding warp specialization support for scaled
+  // dot. At the moment, there are no benchmarks that use scaled dot.
   auto for_op = b.create<mlir::scf::ForOp>(
       /*lowerBound=*/MakeIndex(b, 0),
       /*upperBound=*/MakeIndex(b, loop_iteration_count),
@@ -1176,8 +1178,8 @@ absl::StatusOr<ScalarOrTensor> EmitScaledDot(
           EmitTiledComputation(
               b, libdevice_path, device_info,
               ::xla::Cast<HloFusionInstruction>(tiled_fusion_operand->hlo()),
-              *tiled_fusion_operand->called_computation(), fn,
-              computation_index, values));
+              *tiled_fusion_operand->called_computation(),
+              block_level_parameters, fn, computation_index, values));
       if (result.size() != 1) {
         return absl::InternalError(absl::StrCat(
             "Expected nested fusion computation to emit a single value, got ",
@@ -1261,8 +1263,9 @@ absl::StatusOr<ScalarOrTensor> EmitConcatenate(
     EmitterLocOpBuilder b, absl::string_view libdevice_path,
     const se::DeviceDescription& device_info,
     const HloFusionInstruction* fusion,
-    const TiledHloInstruction& tiled_concatenate, mlir::FunctionOpInterface fn,
-    Value pid,
+    const TiledHloInstruction& tiled_concatenate,
+    const BlockLevelParameters& block_level_parameters,
+    mlir::FunctionOpInterface fn, Value pid,
     absl::flat_hash_map<const TiledHloInstruction*, ScalarOrTensor>& values) {
   const int64_t concatenate_dimension =
       tiled_concatenate.hlo()->concatenate_dimension();
@@ -1355,7 +1358,8 @@ absl::StatusOr<ScalarOrTensor> EmitConcatenate(
         EmitTiledComputation(
             b, libdevice_path, device_info,
             ::xla::Cast<HloFusionInstruction>(tiled_fusion_operand->hlo()),
-            *tiled_fusion_operand->called_computation(), fn, pid, values));
+            *tiled_fusion_operand->called_computation(), block_level_parameters,
+            fn, pid, values));
     CHECK_EQ(result.size(), 1);
     b.create<mlir::scf::YieldOp>(result.front().UnwrapTensor());
   }
@@ -1435,6 +1439,7 @@ absl::StatusOr<ScalarOrTensor> EmitTiledHloInstruction(
     EmitterLocOpBuilder b, absl::string_view libdevice_path,
     const se::DeviceDescription& device_info,
     const HloFusionInstruction* fusion, const TiledHloInstruction& tiled_hlo,
+    const BlockLevelParameters& block_level_parameters,
     mlir::FunctionOpInterface fn, Value pid,
     absl::flat_hash_map<const TiledHloInstruction*, ScalarOrTensor>& values) {
   const HloInstruction* hlo = tiled_hlo.hlo();
@@ -1484,7 +1489,7 @@ absl::StatusOr<ScalarOrTensor> EmitTiledHloInstruction(
 
   if (hlo->opcode() == HloOpcode::kConcatenate) {
     return EmitConcatenate(b, libdevice_path, device_info, fusion, tiled_hlo,
-                           fn, pid, values);
+                           block_level_parameters, fn, pid, values);
   }
 
   if (hlo->opcode() == HloOpcode::kPad) {
@@ -1492,13 +1497,13 @@ absl::StatusOr<ScalarOrTensor> EmitTiledHloInstruction(
   }
 
   if (hlo->opcode() == HloOpcode::kDot) {
-    return EmitDot(b, libdevice_path, device_info, fusion, tiled_hlo, fn, pid,
-                   values);
+    return EmitDot(b, libdevice_path, device_info, fusion, tiled_hlo,
+                   block_level_parameters, fn, pid, values);
   }
 
   if (hlo->opcode() == HloOpcode::kScaledDot) {
-    return EmitScaledDot(b, libdevice_path, device_info, fusion, tiled_hlo, fn,
-                         pid, values);
+    return EmitScaledDot(b, libdevice_path, device_info, fusion, tiled_hlo,
+                         block_level_parameters, fn, pid, values);
   }
 
   if (hlo->opcode() == HloOpcode::kConstant) {
@@ -1575,8 +1580,9 @@ absl::StatusOr<std::vector<ScalarOrTensor>> EmitTiledComputation(
     EmitterLocOpBuilder b, absl::string_view libdevice_path,
     const se::DeviceDescription& device_info,
     const HloFusionInstruction* fusion,
-    const TiledHloComputation& tiled_computation, mlir::FunctionOpInterface fn,
-    Value pid,
+    const TiledHloComputation& tiled_computation,
+    const BlockLevelParameters& block_level_parameters,
+    mlir::FunctionOpInterface fn, Value pid,
     absl::flat_hash_map<const TiledHloInstruction*, ScalarOrTensor>& values) {
   VLOG(2) << "EmitTiledComputation: " << tiled_computation.ToString();
   for (const TiledHloInstruction* tiled_hlo :
@@ -1601,10 +1607,10 @@ absl::StatusOr<std::vector<ScalarOrTensor>> EmitTiledComputation(
       VLOG(1) << "Skipping nested fusion: " << hlo->ToString();
       continue;
     }
-    TF_ASSIGN_OR_RETURN(
-        ScalarOrTensor result,
-        EmitTiledHloInstruction(b, libdevice_path, device_info, fusion,
-                                *tiled_hlo, fn, pid, values));
+    TF_ASSIGN_OR_RETURN(ScalarOrTensor result,
+                        EmitTiledHloInstruction(
+                            b, libdevice_path, device_info, fusion, *tiled_hlo,
+                            block_level_parameters, fn, pid, values));
     TF_RET_CHECK(values.insert({tiled_hlo, result}).second) << hlo->ToString();
     VLOG(8) << "Emitted " << hlo->ToString(HloPrintOptions::ShortParsable());
   }
@@ -1840,7 +1846,8 @@ absl::Status EmitGeneric(mlir::OpBuilder builder,
   TF_ASSIGN_OR_RETURN(
       auto results,
       EmitTiledComputation(b, libdevice_path, device_info, fusion,
-                           tiled_hlo_computation, fn, tile_id, values));
+                           tiled_hlo_computation, block_level_parameters, fn,
+                           tile_id, values));
 
   for (auto [root, result, arg] :
        llvm::zip(tiled_hlo_computation.GetRoots(), results,

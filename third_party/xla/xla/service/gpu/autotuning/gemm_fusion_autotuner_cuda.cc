@@ -94,12 +94,11 @@ std::vector<TritonGemmConfig> GemmFusionAutotunerImpl::GetDefaultTritonConfigs()
     configs = *kDefaultCudaConfigs;
   }
 
+  // Hopper+ devices support TMA. Add TMA parameterized configs.
   if (!debug_options_.xla_gpu_experimental_enable_triton_tma() ||
       !compute_capability.IsAtLeastHopper()) {
     return configs;
   }
-
-  // Hopper+ devices support TMA. Add TMA parameterized configs.
   std::vector<TritonGemmConfig> tma_parameterized_configs;
   for (auto& config : configs) {
     config.is_tma_allowed = false;
@@ -108,7 +107,25 @@ std::vector<TritonGemmConfig> GemmFusionAutotunerImpl::GetDefaultTritonConfigs()
     config.is_tma_allowed = true;
     tma_parameterized_configs.push_back(config);
   }
-  return tma_parameterized_configs;
+
+  // TODO(b/449668102): Currently only supporting warp specialization on
+  // Blackwell+. Potentially extend support to Hopper.
+  if (!compute_capability.IsAtLeastBlackwell()) {
+    return tma_parameterized_configs;
+  }
+  std::vector<TritonGemmConfig> warp_specialized_configs;
+  for (auto& config : tma_parameterized_configs) {
+    config.is_warp_specialization_allowed = false;
+    warp_specialized_configs.push_back(config);
+
+    if (config.is_tma_allowed && config.num_warps <= 16 &&
+        config.num_warps % 4 == 0) {
+      config.is_warp_specialization_allowed = true;
+      warp_specialized_configs.push_back(config);
+    }
+  }
+
+  return warp_specialized_configs;
 }
 
 }  // namespace gpu

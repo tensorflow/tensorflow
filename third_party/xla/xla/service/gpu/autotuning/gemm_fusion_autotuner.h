@@ -164,6 +164,7 @@ class GemmFusionAutotunerImpl {
   // Helper methods.
   const AutotuneConfig& GetConfig() const { return config_; }
   bool IsAutotuningEnabled() const;
+  bool IsWarpSpecializationAvailable() const;
 
   static const int64_t BLAS_GEMM_DEFAULT;
 

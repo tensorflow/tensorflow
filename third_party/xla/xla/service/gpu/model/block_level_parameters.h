@@ -36,6 +36,7 @@ struct BlockLevelParameters {
   int num_ctas = 1;
   int num_stages = 1;
   bool is_tma_allowed = false;
+  bool is_warp_specialization_allowed = false;
 
   // Returns a BlockLevelParameters struct from a BlockLevelFusionConfig proto.
   static BlockLevelParameters FromBlockLevelFusionConfig(
@@ -45,6 +46,8 @@ struct BlockLevelParameters {
     result.num_ctas = config.num_ctas();
     result.num_stages = config.num_stages();
     result.is_tma_allowed = config.is_tma_allowed();
+    result.is_warp_specialization_allowed =
+        config.is_warp_specialization_allowed();
     result.output_tile_sizes.reserve(config.output_tiles_size());
     for (const auto& tile : config.output_tiles()) {
       result.output_tile_sizes.push_back(
@@ -65,6 +68,7 @@ struct BlockLevelParameters {
     config.set_num_ctas(num_ctas);
     config.set_num_stages(num_stages);
     config.set_is_tma_allowed(is_tma_allowed);
+    config.set_is_warp_specialization_allowed(is_warp_specialization_allowed);
     return config;
   }
 };

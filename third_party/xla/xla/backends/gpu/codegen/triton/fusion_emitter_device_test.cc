@@ -3284,7 +3284,8 @@ fdot {
     "fusion_backend_config":{
       "kind":"__triton_nested_gemm_fusion", "block_level_fusion_config":{
         "output_tiles":[{"sizes":["128", "64"]}],
-        "is_tma_allowed":"1"
+        "is_tma_allowed":"1",
+        "is_warp_specialization_allowed":"1"
       }
     }
   }
@@ -3292,7 +3293,8 @@ fdot {
     "fusion_backend_config":{
       "kind":"__triton_nested_gemm_fusion", "block_level_fusion_config":{
         "output_tiles":[{"sizes":["64", "128"]}],
-        "is_tma_allowed":"1"
+        "is_tma_allowed":"1",
+        "is_warp_specialization_allowed":"1"
       }
     }
   }
@@ -3313,7 +3315,8 @@ ENTRY entry {
           "num_warps":"8",
           "num_ctas":"1",
           "num_stages":"1",
-          "is_tma_allowed":"1"}}}
+          "is_tma_allowed":"1",
+          "is_warp_specialization_allowed":"1"}}}
 })";
 
   // Check that the IR attribute is set correctly.

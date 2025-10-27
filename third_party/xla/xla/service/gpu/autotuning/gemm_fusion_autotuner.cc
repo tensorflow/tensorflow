@@ -779,6 +779,12 @@ bool GemmFusionAutotunerImpl::IsAutotuningEnabled() const {
          !debug_options_.xla_gpu_deterministic_ops();
 }
 
+bool GemmFusionAutotunerImpl::IsWarpSpecializationAvailable() const {
+  auto compute_capability = config_.GetGpuComputeCapability();
+  return compute_capability.IsCuda() &&
+         compute_capability.cuda_compute_capability()->IsAtLeastBlackwell();
+}
+
 static std::vector<BackendConfig> GenerateCustomKernelFusionConfigs(
     const HloFusionInstruction& fusion,
     se::DeviceDescription device_description) {
@@ -974,6 +980,16 @@ GemmFusionAutotunerImpl::GenerateTritonConfigs(const HloDotInstruction& dot) {
   bool autotune_tma = debug_options_.xla_gpu_experimental_enable_triton_tma() &&
                       stream_executor::gpu::IsTmaAvailableForDevice(
                           config_.GetDeviceDescription());
+  bool autotune_warp_specialization =
+      debug_options_.xla_gpu_experimental_enable_triton_warp_specialization() &&
+      IsWarpSpecializationAvailable();
+  if (autotune_warp_specialization && !autotune_tma) {
+    return absl::InvalidArgumentError(
+        "Warp specialization is requested, but TMA is not enabled. If you wish "
+        "to enable warp specialization, set both "
+        "`xla_gpu_experimental_enable_triton_tma` and "
+        "`xla_gpu_experimental_enable_triton_warp_specialization` to true.");
+  }
   TritonDotFusionSearchSpace search_space(config_.GetDeviceDescription(), &dot);
   VLOG(1) << "Generating configs from search space: "
           << search_space.ToString();
@@ -983,7 +999,8 @@ GemmFusionAutotunerImpl::GenerateTritonConfigs(const HloDotInstruction& dot) {
       /*force_contracting_split=*/autotune_contracting_split
           ? std::nullopt
           : std::make_optional(1),
-      /*autotune_tma=*/autotune_tma);
+      /*autotune_tma=*/autotune_tma,
+      /*autotune_warp_specialization=*/autotune_warp_specialization);
 
   // TODO(b/421858850): Restricting configs for dots from broadcasts is a
   // temporary solution. We should remove this once we have a fix for the error.
