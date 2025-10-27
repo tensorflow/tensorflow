@@ -197,7 +197,7 @@ class PjRtDevice {
 
   // Returns a scoped event that the caller uses to tell the PjRtClient that
   // there is asynchronous work happening that depends on activity on the
-  // PjRtDevice. See comment on class definition in pjrt_future.h.
+  // PjRtDevice. See comment on class definition in future.h.
   //
   // Only some PjRtDevice implementations support ScopedAsyncTrackingEvent, and
   // those that do not will return nullptr.

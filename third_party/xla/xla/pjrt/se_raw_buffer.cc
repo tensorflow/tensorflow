@@ -37,7 +37,6 @@ limitations under the License.
 #include "xla/pjrt/device_event.h"
 #include "xla/pjrt/local_device_state.h"
 #include "xla/pjrt/pjrt_client.h"
-#include "xla/pjrt/pjrt_future.h"
 #include "xla/pjrt/pjrt_stream_executor_client.h"
 #include "xla/pjrt/raw_buffer.h"
 #include "xla/pjrt/tracked_device_buffer.h"

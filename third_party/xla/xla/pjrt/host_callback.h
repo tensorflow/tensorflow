@@ -33,7 +33,6 @@ limitations under the License.
 #include "xla/future.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_executable.h"
-#include "xla/pjrt/pjrt_future.h"
 #include "xla/shape.h"
 #include "tsl/platform/logging.h"
 

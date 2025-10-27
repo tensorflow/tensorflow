@@ -22,7 +22,6 @@ limitations under the License.
 
 #include "absl/status/statusor.h"
 #include "xla/future.h"
-#include "xla/pjrt/pjrt_future.h"
 #include "xla/pjrt/pjrt_stream_executor_client.h"
 #include "xla/pjrt/raw_buffer.h"
 #include "xla/pjrt/tracked_device_buffer.h"

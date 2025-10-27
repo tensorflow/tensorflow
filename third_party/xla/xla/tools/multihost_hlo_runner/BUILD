@@ -184,7 +184,6 @@ cc_library(
         "//xla/pjrt:pjrt_client",
         "//xla/pjrt:pjrt_compiler",
         "//xla/pjrt:pjrt_executable",
-        "//xla/pjrt:pjrt_future",
         "//xla/pjrt:pjrt_layout",
         "//xla/pjrt/distributed:key_value_store_interface",
         "//xla/runtime/large_hlo_snapshot_serialization:serialization",

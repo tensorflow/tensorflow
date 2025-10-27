@@ -36,7 +36,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
-#include "xla/pjrt/pjrt_future.h"
+#include "xla/future.h"
 #include "xla/python/transfer/transfer_socket.pb.h"
 #include "xla/tsl/concurrency/ref_count.h"
 

@@ -55,7 +55,6 @@ cc_library(
         "//xla/pjrt:pjrt_compiler",
         "//xla/pjrt:pjrt_device_description",
         "//xla/pjrt:pjrt_executable",
-        "//xla/pjrt:pjrt_future",
         "//xla/pjrt:pjrt_layout",
         "//xla/pjrt:string_utils",
         "//xla/pjrt/c:pjrt_c_api_ffi_extension_hdrs",
