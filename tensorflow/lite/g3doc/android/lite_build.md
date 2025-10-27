@@ -8,6 +8,8 @@ them in your Android projects.
 
 ## Use Nightly Snapshots
 
+Warning: Support for nightly snapshots is currently broken (b/446167415).
+
 To use nightly snapshots, add the following repo to your root Gradle build
 config.
 
