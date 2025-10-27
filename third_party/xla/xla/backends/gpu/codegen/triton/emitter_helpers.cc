@@ -236,6 +236,11 @@ Value Cast(EmitterLocOpBuilder& b, Value value, Type dst_element_ty) {
       }
       return b.create<ma::ExtSIOp>(dst_ty, value);
     }
+    // int => bool is always value != 0.
+    if (dst_element_ty.isInteger(1)) {
+      return b.create<ma::CmpIOp>(ma::CmpIPredicate::ne, value,
+                                  ZerosLike(b, value));
+    }
     return b.create<ma::TruncIOp>(dst_ty, value);
   }
   // int => float

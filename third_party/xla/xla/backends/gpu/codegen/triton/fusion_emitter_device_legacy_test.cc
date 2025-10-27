@@ -468,9 +468,10 @@ ENTRY e {
 )";
   TF_EXPECT_OK(CreateTritonIrAndFileCheckForDot(this, kHloText,
                                                 "triton_gemm_computation", R"(
+CHECK: %[[CST:.*]] = arith.constant dense<0>
 CHECK: %[[LOAD:.*]] = tt.load %{{.*}} {{.*}} : !tt.ptr<tensor<16x16xi8>>
-CHECK: %[[TRUNCI:.*]] = arith.trunci %[[LOAD]] : tensor<16x16xi8> to tensor<16x16xi1>
-CHECK: %{{.*}} = arith.andi %[[TRUNCI]], %{{.*}} : tensor<16x16xi1>
+CHECK: %[[CMPI:.*]] = arith.cmpi ne, %[[LOAD]], %[[CST]] : tensor<16x16xi8>
+CHECK: %{{.*}} = arith.andi %[[CMPI]], %{{.*}} : tensor<16x16xi1>
 )"));
 }
 
