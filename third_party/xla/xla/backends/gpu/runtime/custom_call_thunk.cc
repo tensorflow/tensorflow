@@ -38,6 +38,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/executable_run_options.h"
 #include "xla/ffi/api/c_api.h"
+#include "xla/ffi/attribute_map.h"
 #include "xla/ffi/call_frame.h"
 #include "xla/ffi/execution_state.h"
 #include "xla/ffi/ffi_api.h"
@@ -69,7 +70,7 @@ using xla::ffi::CallOptions;
 static absl::StatusOr<ffi::CallFrame> BuildCallFramePrototype(
     absl::Span<const std::optional<ShapedSlice>> operands,
     absl::Span<const std::optional<ShapedSlice>> results,
-    CustomCallThunk::AttributesMap attributes) {
+    ffi::AttributesMap attributes) {
   CallFrameBuilder builder(
       /*num_args=*/operands.size(),
       /*num_rets=*/results.size());
@@ -204,8 +205,9 @@ absl::StatusOr<std::unique_ptr<CustomCallThunk>> CustomCallThunk::Create(
 absl::StatusOr<std::unique_ptr<CustomCallThunk>> CustomCallThunk::Create(
     ThunkInfo thunk_info, std::string target_name,
     std::vector<std::optional<ShapedSlice>> operands,
-    std::vector<std::optional<ShapedSlice>> results, AttributesMap attributes,
-    const HloComputation* called_computation, absl::string_view platform_name) {
+    std::vector<std::optional<ShapedSlice>> results,
+    ffi::AttributesMap attributes, const HloComputation* called_computation,
+    absl::string_view platform_name) {
   TF_ASSIGN_OR_RETURN(ffi::HandlerRegistration registration,
                       ffi::FindHandler(target_name, platform_name));
 
@@ -218,8 +220,8 @@ absl::StatusOr<std::unique_ptr<CustomCallThunk>> CustomCallThunk::Create(
     ThunkInfo thunk_info, std::string target_name,
     XLA_FFI_Handler_Bundle bundle,
     std::vector<std::optional<ShapedSlice>> operands,
-    std::vector<std::optional<ShapedSlice>> results, AttributesMap attributes,
-    const HloComputation* called_computation) {
+    std::vector<std::optional<ShapedSlice>> results,
+    ffi::AttributesMap attributes, const HloComputation* called_computation) {
   auto execution_state = std::make_unique<ffi::ExecutionState>();
 
   // Initialize FFI handler state if it has an instantiate callback.
@@ -267,7 +269,7 @@ CustomCallThunk::CustomCallThunk(
     XLA_FFI_Handler_Bundle bundle,
     std::vector<std::optional<ShapedSlice>> operands,
     std::vector<std::optional<ShapedSlice>> results, CallFrame call_frame,
-    AttributesMap attributes,
+    ffi::AttributesMap attributes,
     std::unique_ptr<ffi::ExecutionState> execution_state,
     const HloComputation* called_computation)
     : Thunk(Thunk::kCustomCall, thunk_info),

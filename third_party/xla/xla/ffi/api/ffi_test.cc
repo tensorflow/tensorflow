@@ -38,6 +38,7 @@ limitations under the License.
 #include "absl/synchronization/blocking_counter.h"
 #include "xla/executable_run_options.h"
 #include "xla/ffi/api/c_api.h"
+#include "xla/ffi/attribute_map.h"
 #include "xla/ffi/call_frame.h"
 #include "xla/ffi/execution_context.h"
 #include "xla/ffi/execution_state.h"
@@ -117,6 +118,7 @@ XLA_FFI_REGISTER_STRUCT_ATTR_DECODING(
 
 namespace xla::ffi {
 
+using ::absl_testing::StatusIs;
 using ::testing::HasSubstr;
 
 TEST(FfiTest, DataTypeEnumValue) {
@@ -577,9 +579,8 @@ TEST(FfiTest, MissingBufferArgument) {
       [](auto) { return Error::Success(); });
   auto status = Call(*handler, call_frame);
 
-  EXPECT_THAT(status,
-              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
-                                     HasSubstr("Wrong number of arguments")));
+  EXPECT_THAT(status, StatusIs(absl::StatusCode::kInvalidArgument,
+                               HasSubstr("Wrong number of arguments")));
 }
 
 TEST(FfiTest, WrongRankBufferArgument) {
@@ -595,9 +596,8 @@ TEST(FfiTest, WrongRankBufferArgument) {
   auto status = Call(*handler, call_frame);
 
   EXPECT_THAT(status,
-              absl_testing::StatusIs(
-                  absl::StatusCode::kInvalidArgument,
-                  HasSubstr("Wrong buffer rank: expected 1 but got 2")));
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("Wrong buffer rank: expected 1 but got 2")));
 }
 
 TEST(FfiTest, WrongTypeBufferArgument) {
@@ -612,10 +612,10 @@ TEST(FfiTest, WrongTypeBufferArgument) {
       [](auto) { return Error::Success(); });
   auto status = Call(*handler, call_frame);
 
-  EXPECT_THAT(status,
-              absl_testing::StatusIs(
-                  absl::StatusCode::kInvalidArgument,
-                  HasSubstr("Wrong buffer dtype: expected F32 but got S32")));
+  EXPECT_THAT(
+      status,
+      StatusIs(absl::StatusCode::kInvalidArgument,
+               HasSubstr("Wrong buffer dtype: expected F32 but got S32")));
 }
 
 TEST(FfiTest, WrongNumberOfArguments) {
@@ -631,9 +631,8 @@ TEST(FfiTest, WrongNumberOfArguments) {
       Ffi::Bind().Attr<int>("foo").To([](int foo) { return Error::Success(); });
   auto status = Call(*handler, call_frame);
 
-  EXPECT_THAT(status,
-              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
-                                     HasSubstr("Wrong number of attributes")));
+  EXPECT_THAT(status, StatusIs(absl::StatusCode::kInvalidArgument,
+                               HasSubstr("Wrong number of attributes")));
   EXPECT_THAT(status.message(), HasSubstr("foo"));
   EXPECT_THAT(status.message(), HasSubstr("bar"));
 }
@@ -1072,10 +1071,10 @@ TEST(FfiTest, AttrsAsDictionary) {
 }
 
 TEST(FfiTest, DictionaryAttr) {
-  CallFrameBuilder::AttributesMap dict0;
+  AttributesMap dict0;
   dict0.try_emplace("i32", 42);
 
-  CallFrameBuilder::AttributesMap dict1;
+  AttributesMap dict1;
   dict1.try_emplace("f32", 42.0f);
 
   CallFrameBuilder::AttributesBuilder attrs;
@@ -1119,7 +1118,7 @@ TEST(FfiTest, DictionaryAttr) {
 }
 
 TEST(FfiTest, StructAttr) {
-  CallFrameBuilder::AttributesMap dict;
+  AttributesMap dict;
   dict.try_emplace("i32", 42);
   dict.try_emplace("f32", 42.0f);
 
@@ -1232,7 +1231,7 @@ TEST(FfiTest, EnumAttr) {
 }
 
 TEST(FfiTest, WrongEnumAttrType) {
-  CallFrameBuilder::AttributesMap dict;
+  AttributesMap dict;
   dict.try_emplace("i32", 42);
 
   CallFrameBuilder::AttributesBuilder attrs;

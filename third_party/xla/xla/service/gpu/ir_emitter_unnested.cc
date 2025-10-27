@@ -1199,7 +1199,7 @@ absl::Status IrEmitterUnnested::EmitCustomCallThunk(
   // attributes map at IR emission time, so that we do not need to
   // parse MLIR at run time. For FFI handlers backend config must be
   // a compatible MLIR dictionary.
-  CustomCallThunk::AttributesMap attributes;
+  ffi::AttributesMap attributes;
 
   auto backend_config = instr->backend_config<GpuBackendConfig>();
   if (!backend_config.ok()) {

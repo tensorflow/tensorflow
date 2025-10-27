@@ -24,28 +24,26 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
-#include "llvm/ADT/TypeSwitch.h"
+#include "llvm/ADT/TypeSwitch.h"  // IWYU pragma: keep
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/Support/LLVM.h"
-#include "xla/ffi/call_frame.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla::ffi {
-
-static absl::StatusOr<CallFrameBuilder::Attribute> ConvertBoolAttr(
-    absl::string_view name, mlir::BoolAttr boolean) {
+static absl::StatusOr<Attribute> ConvertBoolAttr(absl::string_view name,
+                                                 mlir::BoolAttr boolean) {
   return static_cast<bool>(boolean.getValue());
 }
 
-static absl::StatusOr<CallFrameBuilder::Attribute> ConvertStringAttr(
-    absl::string_view name, mlir::StringAttr str) {
+static absl::StatusOr<Attribute> ConvertStringAttr(absl::string_view name,
+                                                   mlir::StringAttr str) {
   return str.getValue().str();
 }
 
-static absl::StatusOr<CallFrameBuilder::Attribute> ConvertIntegerAttr(
-    absl::string_view name, mlir::IntegerAttr integer) {
+static absl::StatusOr<Attribute> ConvertIntegerAttr(absl::string_view name,
+                                                    mlir::IntegerAttr integer) {
   if (integer.getType().isUnsignedInteger()) {
     switch (integer.getType().getIntOrFloatBitWidth()) {
       case 8:
@@ -77,8 +75,8 @@ static absl::StatusOr<CallFrameBuilder::Attribute> ConvertIntegerAttr(
   }
 }
 
-static absl::StatusOr<CallFrameBuilder::Attribute> ConvertFloatAttr(
-    absl::string_view name, mlir::FloatAttr fp) {
+static absl::StatusOr<Attribute> ConvertFloatAttr(absl::string_view name,
+                                                  mlir::FloatAttr fp) {
   switch (fp.getType().getIntOrFloatBitWidth()) {
     case 32:
       return static_cast<float>(fp.getValue().convertToFloat());
@@ -90,24 +88,28 @@ static absl::StatusOr<CallFrameBuilder::Attribute> ConvertFloatAttr(
   }
 }
 
-static absl::StatusOr<CallFrameBuilder::Attribute> ConvertArrayAttr(
-    absl::string_view name, mlir::DenseArrayAttr arr) {
+static absl::StatusOr<Attribute> ConvertArrayAttr(absl::string_view name,
+                                                  mlir::DenseArrayAttr arr) {
   if (auto dense = mlir::dyn_cast<mlir::DenseI8ArrayAttr>(arr)) {
     return dense.asArrayRef().vec();
-  } else if (auto dense = mlir::dyn_cast<mlir::DenseI16ArrayAttr>(arr)) {
-    return dense.asArrayRef().vec();
-  } else if (auto dense = mlir::dyn_cast<mlir::DenseI32ArrayAttr>(arr)) {
-    return dense.asArrayRef().vec();
-  } else if (auto dense = mlir::dyn_cast<mlir::DenseI64ArrayAttr>(arr)) {
-    return dense.asArrayRef().vec();
-  } else if (auto dense = mlir::dyn_cast<mlir::DenseF32ArrayAttr>(arr)) {
-    return dense.asArrayRef().vec();
-  } else if (auto dense = mlir::dyn_cast<mlir::DenseF64ArrayAttr>(arr)) {
-    return dense.asArrayRef().vec();
-  } else {
-    return absl::InvalidArgumentError(
-        absl::StrCat("Unsupported array element type for attribute: ", name));
   }
+  if (auto dense = mlir::dyn_cast<mlir::DenseI16ArrayAttr>(arr)) {
+    return dense.asArrayRef().vec();
+  }
+  if (auto dense = mlir::dyn_cast<mlir::DenseI32ArrayAttr>(arr)) {
+    return dense.asArrayRef().vec();
+  }
+  if (auto dense = mlir::dyn_cast<mlir::DenseI64ArrayAttr>(arr)) {
+    return dense.asArrayRef().vec();
+  }
+  if (auto dense = mlir::dyn_cast<mlir::DenseF32ArrayAttr>(arr)) {
+    return dense.asArrayRef().vec();
+  }
+  if (auto dense = mlir::dyn_cast<mlir::DenseF64ArrayAttr>(arr)) {
+    return dense.asArrayRef().vec();
+  }
+  return absl::InvalidArgumentError(
+      absl::StrCat("Unsupported array element type for attribute: ", name));
 }
 
 template <typename T>
@@ -117,7 +119,7 @@ static std::vector<T> CopyDenseElementsToVec(
   return std::vector<T>(it.begin(), it.end());
 }
 
-static absl::StatusOr<CallFrameBuilder::Attribute> ConvertDenseElementsAttr(
+static absl::StatusOr<Attribute> ConvertDenseElementsAttr(
     absl::string_view name, mlir::DenseIntOrFPElementsAttr arr) {
   auto type = arr.getElementType();
   if (type.isInteger()) {
@@ -156,16 +158,15 @@ static absl::StatusOr<CallFrameBuilder::Attribute> ConvertDenseElementsAttr(
       absl::StrCat("Unsupported array element type for attribute: ", name));
 }
 
-static absl::StatusOr<CallFrameBuilder::Attribute> ConvertDictionaryAttr(
+static absl::StatusOr<Attribute> ConvertDictionaryAttr(
     absl::string_view name, mlir::DictionaryAttr dict) {
   TF_ASSIGN_OR_RETURN(auto attrs, BuildAttributesMap(dict));
-  return CallFrameBuilder::Dictionary{
-      std::make_shared<CallFrameBuilder::AttributesMap>(std::move(attrs))};
+  return AttributesDictionary{
+      std::make_shared<AttributesMap>(std::move(attrs))};
 }
 
-absl::StatusOr<CallFrameBuilder::AttributesMap> BuildAttributesMap(
-    mlir::DictionaryAttr dict) {
-  CallFrameBuilder::AttributesMap attributes;
+absl::StatusOr<AttributesMap> BuildAttributesMap(mlir::DictionaryAttr dict) {
+  AttributesMap attributes;
   for (auto& kv : dict) {
     absl::string_view name = kv.getName().strref();
     mlir::Attribute value = kv.getValue();

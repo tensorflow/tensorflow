@@ -706,6 +706,7 @@ cc_library(
         "//xla:executable_run_options",
         "//xla:shape_util",
         "//xla:util",
+        "//xla/ffi:attribute_map",
         "//xla/ffi:call_frame",
         "//xla/ffi:execution_context",
         "//xla/ffi:execution_state",

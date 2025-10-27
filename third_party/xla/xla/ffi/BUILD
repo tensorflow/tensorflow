@@ -22,6 +22,7 @@ cc_library(
     hdrs = ["call_frame.h"],
     deps = [
         ":api",
+        ":attribute_map",
         "//xla:types",
         "//xla:util",
         "//xla:xla_data_proto_cc",
@@ -44,6 +45,7 @@ xla_cc_test(
     name = "call_frame_test",
     srcs = ["call_frame_test.cc"],
     deps = [
+        ":attribute_map",
         ":call_frame",
         "//xla:xla_data_proto_cc",
         "//xla/ffi/api:c_api",
@@ -196,7 +198,9 @@ cc_library(
     srcs = ["attribute_map.cc"],
     hdrs = ["attribute_map.h"],
     deps = [
-        ":call_frame",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
@@ -204,8 +208,6 @@ cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
@@ -216,6 +218,7 @@ xla_cc_test(
     features = ["-use_header_modules"],
     shuffle_tests = False,
     deps = [
+        ":attribute_map",
         ":call_frame",
         ":execution_context",
         ":execution_state",
