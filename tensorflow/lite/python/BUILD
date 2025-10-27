@@ -321,7 +321,7 @@ py_strict_test(
         "//tensorflow/python/saved_model:save_options",
         "//tensorflow/python/trackable:autotrackable",
         "@absl_py//absl/testing:parameterized",
-        "@pypi_jax//:pkg",
+        "@pypi//jax",
     ],
 )
 

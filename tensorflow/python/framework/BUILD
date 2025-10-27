@@ -303,7 +303,7 @@ py_strict_library(
         "//tensorflow/python/eager:execute",
         "//tensorflow/security/fuzzing/py:annotation_types",
         "//tensorflow/tools/docs:doc_controls",
-        "@pypi_typing_extensions//:pkg",
+        "@pypi//typing_extensions",
     ],
 )
 
@@ -1758,7 +1758,7 @@ py_strict_library(
     deps = [
         ":composite_tensor",
         "//tensorflow/python/util:nest",
-        "@pypi_typing_extensions//:pkg",
+        "@pypi//typing_extensions",
     ],
 )
 
@@ -1786,7 +1786,7 @@ py_strict_library(
         "//tensorflow/python/util:tf_decorator_py",
         "//tensorflow/python/util:tf_export",
         "//tensorflow/python/util:tf_inspect",
-        "@pypi_typing_extensions//:pkg",
+        "@pypi//typing_extensions",
     ],
 )
 
@@ -1929,7 +1929,7 @@ pytype_strict_library(
         "//tensorflow/python/lib/io:file_io",
         "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/util:compat",
-        "@pypi_packaging//:pkg",
+        "@pypi//packaging",
     ],
 )
 
@@ -2213,7 +2213,7 @@ pytype_strict_library(
         "//tensorflow/python/util/protobuf",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
-        "@pypi_portpicker//:pkg",
+        "@pypi//portpicker",
     ],
 )
 
@@ -2781,7 +2781,7 @@ tf_py_strict_test(
         "//tensorflow/python/util:nest",
         "//tensorflow/python/util:tf_inspect",
         "@absl_py//absl/testing:parameterized",
-        "@pypi_typing_extensions//:pkg",
+        "@pypi//typing_extensions",
     ],
 )
 

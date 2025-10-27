@@ -615,7 +615,7 @@ py_strict_library(
     deps = [
         ":keras_lib",
         "//third_party/py/numpy",
-        "@pypi_scipy//:pkg",
+        "@pypi//scipy",
         "@six_archive//:six",
     ],
 )
