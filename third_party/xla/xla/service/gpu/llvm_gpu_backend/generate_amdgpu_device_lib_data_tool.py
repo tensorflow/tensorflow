@@ -75,7 +75,7 @@ def main():
 
 namespace {cpp_namespace} {{
   inline const char kRaw_{cpp_identifier}[] = "{data_string}";
-  constexpr llvm::StringRef {cpp_identifier}{{kRaw_{cpp_identifier}, sizeof(kRaw_{cpp_identifier})}};
+  constexpr llvm::StringRef {cpp_identifier}{{kRaw_{cpp_identifier}, sizeof(kRaw_{cpp_identifier}) - 1}};
 }} // namespace {cpp_namespace}
 """)
 

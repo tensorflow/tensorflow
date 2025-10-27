@@ -389,6 +389,14 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   const int64_t kDefaultMinGemmRewriteSize = 100;
   opts.set_xla_gpu_gemm_rewrite_size_threshold(kDefaultMinGemmRewriteSize);
 
+#ifdef HAS_SUPPORT_FOR_EMBEDDED_LIB_DEVICE
+  opts.set_xla_gpu_use_embeded_device_lib(true);
+#endif
+
+#ifdef HAS_SUPPORT_FOR_LLD_AS_A_LIBRARY
+  opts.set_xla_gpu_use_inprocess_lld(true);
+#endif
+
   opts.set_xla_gpu_use_memcpy_local_p2p(false);
 
   opts.set_xla_reduce_window_rewrite_base_length(16);
