@@ -3121,9 +3121,13 @@ xla_test(
         "gpu",
         "interpreter",
     ],
+    tags = [
+        "test_migrated_to_hlo_runner_pjrt",
+    ],
     deps = [
         ":client_library_test_runner_mixin",
-        ":hlo_test_base",
+        ":hlo_pjrt_interpreter_reference_mixin",
+        ":hlo_pjrt_test_base",
         ":literal_test_util",
         ":xla_internal_test_main",  # fixdeps: keep
         "//xla:array2d",
