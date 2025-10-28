@@ -17,10 +17,10 @@ limitations under the License.
 #define XLA_BACKENDS_CPU_CODEGEN_COMPUTATION_KERNEL_EMITTER_H_
 
 #include <cstdint>
-#include <string>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/IRBuilder.h"
@@ -50,9 +50,8 @@ class ComputationKernelEmitter final : public LlvmKernelEmitter {
                            const BufferAssignment* buffer_assignment,
                            const TargetMachineFeatures* target_machine);
 
+  absl::string_view name() const final { return "computation_kernel_emitter"; }
   absl::StatusOr<LlvmKernelDefinition> EmitKernelDefinition() final;
-
-  std::string name() const final { return "computation_kernel_emitter"; }
 
  private:
   absl::StatusOr<llvm::Function*> EmitNestedComputation(

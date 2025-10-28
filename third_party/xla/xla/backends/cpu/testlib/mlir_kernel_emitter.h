@@ -48,9 +48,8 @@ class MlirTestKernelEmitter : public MlirKernelEmitter {
                         NumWorkGroups num_workgroups,
                         absl::Span<const KernelArg> args);
 
+  absl::string_view name() const override { return "mlir_test_kernel_emitter"; }
   absl::StatusOr<MlirKernelDefinition> EmitKernelDefinition() final;
-
-  std::string name() const override { return "mlir_test_kernel_emitter"; }
 
  private:
   std::string mlir_;

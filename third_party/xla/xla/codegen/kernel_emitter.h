@@ -17,9 +17,9 @@ limitations under the License.
 #define XLA_CODEGEN_KERNEL_EMITTER_H_
 
 #include <memory>
-#include <string>
 
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "xla/codegen/kernel_definition.h"
 #include "xla/tsl/platform/statusor.h"
 
@@ -28,6 +28,8 @@ namespace xla {
 class KernelEmitterBase {
  public:
   virtual ~KernelEmitterBase() = default;
+
+  virtual absl::string_view name() const = 0;
 
   virtual absl::StatusOr<std::unique_ptr<KernelDefinitionBase>>
   EmitBaseKernelDefinition() = 0;
@@ -41,8 +43,6 @@ class KernelEmitter : public KernelEmitterBase {
   virtual ~KernelEmitter() = default;
 
   virtual absl::StatusOr<KernelDefinitionType> EmitKernelDefinition() = 0;
-
-  virtual std::string name() const = 0;
 
  private:
   absl::StatusOr<std::unique_ptr<KernelDefinitionBase>>

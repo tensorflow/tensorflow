@@ -16,7 +16,6 @@ limitations under the License.
 #ifndef XLA_CODEGEN_EMITTERS_LOOP_KERNEL_EMITTER_H_
 #define XLA_CODEGEN_EMITTERS_LOOP_KERNEL_EMITTER_H_
 
-#include <cstdint>
 #include <string>
 
 #include "absl/status/status.h"
@@ -28,7 +27,6 @@ limitations under the License.
 #include "xla/codegen/emitters/kernel_arguments.h"
 #include "xla/codegen/hlo_fusion_spec.h"
 #include "xla/codegen/kernel_definition.h"
-#include "xla/codegen/kernel_spec.h"
 #include "xla/codegen/mlir_kernel_source.h"
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -51,6 +49,7 @@ class LoopFusionKernelEmitter final : public MlirKernelEmitter {
                           absl::string_view entry_function_name,
                           BackendKind backend_kind);
 
+  absl::string_view name() const final { return "loop_fusion_kernel_emitter"; }
   absl::StatusOr<MlirKernelDefinition> EmitKernelDefinition() override;
 
   static IndexingMap ComputeWorkItemIdToOutputIndexing(
@@ -60,8 +59,6 @@ class LoopFusionKernelEmitter final : public MlirKernelEmitter {
   // Get the shape that will be used for loop indexing for the given fusion
   // specification.
   static Shape GetIndexingShape(const HloFusionSpec& fusion_spec);
-
-  std::string name() const final { return "loop_fusion_kernel_emitter"; }
 
  private:
   IndexingMap ComputeWorkItemIdToOutputIndexing(

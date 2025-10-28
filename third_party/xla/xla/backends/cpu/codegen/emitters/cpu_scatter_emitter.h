@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/Value.h"
@@ -43,9 +44,8 @@ class CpuScatterFusion final : public MlirKernelEmitter {
                    const HloFusionInstruction* fusion,
                    gpu::SymbolicExprContext* symbolic_expr_context);
 
+  absl::string_view name() const final { return "cpu_scatter_fusion"; }
   absl::StatusOr<MlirKernelDefinition> EmitKernelDefinition() final;
-
-  std::string name() const final { return "cpu_scatter_fusion"; }
 
  private:
   absl::Status EmitEntryFunction(

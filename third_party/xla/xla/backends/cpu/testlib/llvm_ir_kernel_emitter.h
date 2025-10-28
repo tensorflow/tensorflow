@@ -49,9 +49,8 @@ class LlvmTestKernelEmitter : public LlvmKernelEmitter {
                         NumWorkGroups num_workgroups,
                         absl::Span<const KernelArg> args);
 
+  absl::string_view name() const override { return "llvm_test_kernel_emitter"; }
   absl::StatusOr<LlvmKernelDefinition> EmitKernelDefinition() final;
-
-  std::string name() const override { return "llvm_test_kernel_emitter"; }
 
  private:
   std::string llvm_ir_;

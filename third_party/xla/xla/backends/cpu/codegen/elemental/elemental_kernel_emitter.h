@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Module.h"
 #include "xla/backends/cpu/codegen/kernel_api_ir_builder.h"
@@ -39,9 +40,8 @@ class ElementalKernelEmitter final : public LlvmKernelEmitter {
                          const BufferAssignment* buffer_assignment,
                          const TargetMachineFeatures* target_machine);
 
+  absl::string_view name() const final { return "elemental_kernel_emitter"; }
   absl::StatusOr<LlvmKernelDefinition> EmitKernelDefinition() override;
-
-  std::string name() const final { return "elemental_kernel_emitter"; }
 
  private:
   // Emits LLVM IR using elemental loop emitter and the given element generator.
