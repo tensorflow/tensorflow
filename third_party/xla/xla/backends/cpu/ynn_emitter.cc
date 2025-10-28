@@ -40,6 +40,7 @@ limitations under the License.
 #include "xla/primitive_util.h"
 #include "xla/shape.h"
 #include "xla/stream_executor/device_memory.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
@@ -284,6 +285,10 @@ static absl::StatusOr<YnnSubgraph> EmitYnnSubgraph(
       }
     }
   }
+
+  ynn_status status = ynn_optimize_subgraph(
+      subgraph.get(), /*threadpool=*/nullptr, /*flags=*/0);
+  TF_RETURN_IF_ERROR(YnnStatusToStatus(status));
 
   return subgraph;
 }

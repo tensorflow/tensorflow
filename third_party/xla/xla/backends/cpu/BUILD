@@ -161,6 +161,7 @@ cc_library(
         "//xla/backends/cpu/runtime/ynnpack:ynn_interop",
         "//xla/hlo/ir:hlo",
         "//xla/stream_executor:device_memory",
+        "//xla/tsl/platform:errors",
         "//xla/tsl/platform:logging",
         "//xla/tsl/platform:statusor",
         "@XNNPACK//ynnpack",
