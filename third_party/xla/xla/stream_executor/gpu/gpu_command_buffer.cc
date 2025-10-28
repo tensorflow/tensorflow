@@ -569,14 +569,15 @@ absl::Status GpuCommandBuffer::Finalize() {
   TF_RETURN_IF_ERROR(PrepareFinalization());
 
   // Maybe dump created GPU graph to a dot file for debugging.
-  if (state_ == State::kCreate && VLOG_IS_ON(10)) {
+  if (state_ == State::kCreate &&
+      (VLOG_IS_ON(10) || (VLOG_IS_ON(9) && mode_ == Mode::kPrimary))) {
     std::string path = tsl::io::GetTempFilename(/*extension=*/"dot");
     TF_RETURN_IF_ERROR(WriteGraphToDotFile(path));
-    if (VLOG_IS_ON(100)) {
+    if (VLOG_IS_ON(100) || (VLOG_IS_ON(90) && mode_ == Mode::kPrimary)) {
       std::string dot_file_contents;
       TF_RETURN_IF_ERROR(
           tsl::ReadFileToString(tsl::Env::Default(), path, &dot_file_contents));
-      VLOG(100) << "Contents of " << path << " is:\n" << dot_file_contents;
+      VLOG(90) << "Contents of " << path << " is:\n" << dot_file_contents;
     }
   }
 
