@@ -40,6 +40,7 @@ limitations under the License.
 #include "xla/service/cpu/runtime_symbol_generator.h"
 #include "xla/service/executable.h"
 #include "xla/service/hlo_module_config.h"
+#include "xla/service/llvm_ir/llvm_command_line_options.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
@@ -88,6 +89,11 @@ absl::StatusOr<std::unique_ptr<FunctionLibrary>> LoadFunctionLibrary(
     absl::Span<const ObjFileProto> obj_files, const HloModule* hlo_module) {
   const HloModuleConfig& config = hlo_module->config();
   const DebugOptions& debug_options = config.debug_options();
+
+  auto llvm_options = llvm_ir::ExtractXlaBackendExtraOptions(
+      config.debug_options().xla_backend_extra_options());
+  llvm_ir::LLVMCommandLineOptionsLock llvm_lock(llvm_options);
+
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<llvm::TargetMachine> target_machine,
       IrCompiler::InferTargetMachine(
@@ -158,6 +164,10 @@ CpuAotLoader::LoadAotCompilationResult(
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<HloModule> hlo_module,
       HloModule::CreateFromProtoWithConfig(aot_result_proto.hlo_module()));
+
+  auto llvm_options = llvm_ir::ExtractXlaBackendExtraOptions(
+      hlo_module->config().debug_options().xla_backend_extra_options());
+  llvm_ir::LLVMCommandLineOptionsLock llvm_lock(llvm_options);
 
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<llvm::TargetMachine> target_machine,
