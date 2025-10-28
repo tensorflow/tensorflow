@@ -486,6 +486,18 @@ cc_library(
     ],
 )
 
+tsl_cc_test(
+    name = "session_manager_test",
+    srcs = ["session_manager_test.cc"],
+    deps = [
+        ":session_manager",
+        "//xla/tsl/platform:test",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 cc_library(
     name = "timestamp_utils",
     srcs = ["timestamp_utils.cc"],

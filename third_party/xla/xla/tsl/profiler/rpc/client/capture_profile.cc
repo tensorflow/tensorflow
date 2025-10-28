@@ -199,8 +199,10 @@ absl::Status CaptureRemoteTrace(const std::string& logdir,
   DCHECK_GT(opts.profiler_options().duration_ms(), 0);
   DCHECK(!opts.service_addresses().empty());
 
-  // Use the current timestamp as the run name.
-  std::string session_id = GetCurrentTimeStampAsString();
+  // Sets the session ID if provided, otherwise uses the current timestamp.
+  std::string session_id = opts.profiler_options().session_id().empty()
+                               ? GetCurrentTimeStampAsString()
+                               : opts.profiler_options().session_id();
   std::string repository_root = GetTensorBoardProfilePluginDir(logdir);
   auto duration_ms = opts.profiler_options().duration_ms();
 

@@ -136,6 +136,13 @@ RemoteProfilerSessionManagerOptions GetRemoteSessionManagerOptionsLocked(
             options.set_delay_ms(value);
           },
           nullptr);
+    } else if (key == "session_id") {
+      SetOption<std::string>(
+          key, kw.second,
+          [&options](tensorflow::ProfileOptions*, std::string value) {
+            options.mutable_profiler_options()->set_session_id(value);
+          },
+          nullptr);
     } else {
       LOG(WARNING) << "Unrecognised key: " << key;
     }
