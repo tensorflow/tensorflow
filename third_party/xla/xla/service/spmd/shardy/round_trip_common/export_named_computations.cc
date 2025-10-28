@@ -157,10 +157,15 @@ class ExportNamedComputationsPass
     mlir::Block& moduleBlock = moduleOp.getRegion().front();
 
     if (dedupFunctionsFully) {
+      using FuncNameKey = std::pair<StringRef, ManualAxesAttr>;
       llvm::SmallDenseMap<ComputationKey, int64_t> funcCallSiteCounts;
-      llvm::SmallDenseMap<std::pair<StringRef, ManualAxesAttr>,
-                          std::pair<NamedComputationOp, int64_t>>
+      llvm::SmallDenseMap<FuncNameKey, std::pair<NamedComputationOp, int64_t>>
           funcToNamedComputations;
+      // TODO(enver): Instead of a SmallDenseMap and a separate SmallVector to
+      // guarantee a deterministic iteration order, consider using
+      // llvm::MapVector.
+      // Required to iterate on functions in a deterministic order.
+      llvm::SmallVector<FuncNameKey> funcNames;
       moduleOp.walk([&](NamedComputationOp namedComputationOp) {
         ManualAxesAttr manualAxesAttr =
             namedComputationOp->getAttrOfType<ManualAxesAttr>(kManualAxes);
@@ -172,20 +177,24 @@ class ExportNamedComputationsPass
                                 TensorShardingPerValueAttr()),
                             manualAxesAttr);
         const int64_t callSiteCount = funcCallSiteCounts[key]++;
+        FuncNameKey funcNameKey =
+            std::pair(namedComputationOp.getName(), manualAxesAttr);
         if (auto [it, inserted] = funcToNamedComputations.try_emplace(
-                std::pair(namedComputationOp.getName(), manualAxesAttr),
-                namedComputationOp, callSiteCount);
+                funcNameKey, namedComputationOp, callSiteCount);
             !inserted) {
           auto& [cachedNamedComputationOp, cachedCallSiteCount] = it->second;
           if (callSiteCount > cachedCallSiteCount) {
             cachedNamedComputationOp = namedComputationOp;
             cachedCallSiteCount = callSiteCount;
           }
+        } else {  // inserted is true.
+          funcNames.push_back(funcNameKey);
         }
       });
 
-      for (auto& [_, namedComputationCountPair] : funcToNamedComputations) {
-        auto& [namedComputationOp, callSiteCount] = namedComputationCountPair;
+      for (FuncNameKey funcNameKey : funcNames) {
+        auto& [namedComputationOp, callSiteCount] =
+            funcToNamedComputations.find(funcNameKey)->second;
         mlir::IRRewriter rewriter(namedComputationOp);
         rewriter.setInsertionPointToEnd(&moduleBlock);
         ManualAxesAttr manualAxesAttr =
