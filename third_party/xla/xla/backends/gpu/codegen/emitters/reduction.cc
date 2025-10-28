@@ -195,9 +195,9 @@ PerThreadOutputs ReductionFusion::EmitterState::EmitPerThreadElements(
   const auto& reductions = owner.reduction_heroes_[group_id];
   absl::flat_hash_map<const HloInstruction*, int> iter_arg_starts;
 
-  for (const auto& [reduction, init] : inits) {
+  for (const HloInstruction* reduction : reductions) {
     iter_arg_starts[reduction] = iter_arg_inits.size();
-    iter_arg_inits.append(init);
+    iter_arg_inits.append(inits.find(reduction)->second);
   }
 
   auto body_builder = [&](ImplicitLocOpBuilder& nested_b,
