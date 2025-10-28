@@ -1503,8 +1503,14 @@ inline ThreadPool::ThreadPool(const XLA_FFI_Api* api,
 // Type Registration
 //===----------------------------------------------------------------------===//
 
+// TODO(ezhulenev): Remove this once everyone migrates to MakeTypeInfo.
 template <typename T>
 constexpr XLA_FFI_TypeInfo TypeInfo() {
+  return XLA_FFI_TypeInfo{[](void* ptr) { delete static_cast<T*>(ptr); }};
+}
+
+template <typename T>
+constexpr XLA_FFI_TypeInfo MakeTypeInfo() {
   return XLA_FFI_TypeInfo{[](void* ptr) { delete static_cast<T*>(ptr); }};
 }
 
