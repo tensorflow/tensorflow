@@ -333,6 +333,7 @@ Future<> TfrtGpuBuffer::ToLiteralHelper(Future<MutableLiteralBase*> literal) {
   auto [promise, future] = Future<>::MakePromise();
   auto usage_event = tsl::MakeConstructedAsyncValueRef<GpuEvent>();
   auto* device_buffer = AcquireUsage(usage_event);
+  MarkGpuEventReadyOnExit usage_event_holder(std::move(usage_event));
   if (device_buffer == nullptr) {
     promise.Set(
         InvalidArgument("ToLiteral() called on deleted or donated buffer"));
@@ -342,12 +343,10 @@ Future<> TfrtGpuBuffer::ToLiteralHelper(Future<MutableLiteralBase*> literal) {
   bool unpack_subbyte_types =
       client_->xla_client()->backend().transfer_manager()->PackSubbyteTypes();
 
-  auto [literal_and_transpose_promise, literal_and_transpose_future] =
-      Future<std::pair<MutableLiteralBase*,
-                       std::shared_ptr<TransposePlan>>>::MakePromise();
   literal.OnReady(
-      [client = client_, on_device_shape{on_device_shape_},
-       promise = std::move(literal_and_transpose_promise)](
+      [client = client_, on_device_shape{on_device_shape_}, device(device_),
+       device_buffer, usage_event_holder = std::move(usage_event_holder),
+       promise = std::move(promise), unpack_subbyte_types](
           const absl::StatusOr<MutableLiteralBase*>& value) mutable {
         if (!value.ok()) {
           promise.Set(value.status());
@@ -397,46 +396,26 @@ Future<> TfrtGpuBuffer::ToLiteralHelper(Future<MutableLiteralBase*> literal) {
             }
           }
         }
-        promise.Set(std::make_pair(literal, std::move(transpose)));
-      });
 
-  auto d2h_copy = [device(device_), device_buffer,
-                   usage_event(std::move(usage_event)),
-                   promise = std::move(promise), client = client_,
-                   on_device_shape{on_device_shape_}, unpack_subbyte_types,
-                   literal_and_transpose =
-                       std::move(literal_and_transpose_future)]() mutable {
-    tsl::profiler::TraceMe traceme("ToLiteral::D2H_copy");
-    if (device_buffer->definition_event().IsError()) {
-      usage_event.SetStateConcrete();
-      VLOG(3) << "device_buffer->definition_event().GetError(): "
-              << device_buffer->definition_event().GetError();
+        auto d2h_copy = [device, device_buffer,
+                         usage_event_holder = std::move(usage_event_holder),
+                         promise = std::move(promise), client,
+                         on_device_shape{on_device_shape}, unpack_subbyte_types,
+                         literal, transpose = std::move(transpose)]() mutable {
+          tsl::profiler::TraceMe traceme("ToLiteral::D2H_copy");
+          if (device_buffer->definition_event().IsError()) {
+            VLOG(3) << "device_buffer->definition_event().GetError(): "
+                    << device_buffer->definition_event().GetError();
 
-      promise.Set(device_buffer->definition_event().GetError());
-      return;
-    }
-    size_t byte_size = device_buffer->buffer()->buffer().size();
-
-    PrimitiveType type = on_device_shape.element_type();
-    bool should_unpack =
-        unpack_subbyte_types && primitive_util::IsSubByteNonPredType(type);
-
-    literal_and_transpose.OnReady(
-        [device = std::move(device), device_buffer = std::move(device_buffer),
-         usage_event = std::move(usage_event), promise = std::move(promise),
-         client = std::move(client),
-         on_device_shape = std::move(on_device_shape), should_unpack,
-         byte_size](
-            const absl::StatusOr<
-                std::pair<MutableLiteralBase*, std::shared_ptr<TransposePlan>>>&
-                value) mutable {
-          if (!value.ok()) {
-            usage_event.SetStateConcrete();
-            promise.Set(value.status());
+            promise.Set(device_buffer->definition_event().GetError());
             return;
           }
+          size_t byte_size = device_buffer->buffer()->buffer().size();
 
-          auto [literal, transpose] = *std::move(value);
+          PrimitiveType type = on_device_shape.element_type();
+          bool should_unpack = unpack_subbyte_types &&
+                               primitive_util::IsSubByteNonPredType(type);
+
           HostMemoryAllocator::OwnedPtr staging_buffer;
           void* buffer_ptr;
           if (on_device_shape.IsArray()) {
@@ -456,7 +435,6 @@ Future<> TfrtGpuBuffer::ToLiteralHelper(Future<MutableLiteralBase*> literal) {
                                                       {"size", byte_size},
                                                   });
             });
-            MarkGpuEventReadyOnExit ready_on_exit(std::move(usage_event));
 
             auto d2h_stream = device->d2h_stream();
 
@@ -524,12 +502,11 @@ Future<> TfrtGpuBuffer::ToLiteralHelper(Future<MutableLiteralBase*> literal) {
             std::memcpy(literal->untyped_data(), buffer, byte_size);
           }
           promise.Set(absl::OkStatus());
-        });
-  };
-  EnqueueWorkWhenReady(client_->blocking_thread_pool(),
-                       {device_buffer->definition_event().CopyRCRef()},
-                       std::move(d2h_copy));
-
+        };
+        EnqueueWorkWhenReady(client->blocking_thread_pool(),
+                             {device_buffer->definition_event().CopyRCRef()},
+                             std::move(d2h_copy));
+      });
   return FutureHelpers::WithProfiling(
       std::move(future),
       /*on_block_start=*/
