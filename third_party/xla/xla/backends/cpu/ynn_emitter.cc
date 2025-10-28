@@ -390,6 +390,10 @@ static absl::StatusOr<YnnSubgraph> EmitYnnDotSubgraph(
   YNN_RETURN_IF_ERROR(DefineBatchMatrixMultiply(subgraph.get(), lhs_id, rhs_id,
                                                 out_id, b_rank, transpose_b));
 
+  ynn_status status = ynn_optimize_subgraph(
+      subgraph.get(), /*threadpool=*/nullptr, /*flags=*/0);
+  TF_RETURN_IF_ERROR(YnnStatusToStatus(status));
+
   return subgraph;
 }
 
