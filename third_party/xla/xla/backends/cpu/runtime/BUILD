@@ -136,9 +136,9 @@ cc_library(
     deps = [
         ":kernel_c_api",
         "//xla/tsl/lib/gtl:int_type",
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
-        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
