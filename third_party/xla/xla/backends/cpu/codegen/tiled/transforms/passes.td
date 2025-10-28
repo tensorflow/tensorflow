@@ -49,6 +49,8 @@ def ShloToVectorPass : Pass<"xtile-cpu-shlo-to-vector", "mlir::ModuleOp"> {
     "mlir::tensor::TensorDialect",
     "mlir::vector::VectorDialect",
     "mlir::stablehlo::StablehloDialect",
+    "mlir::scf::SCFDialect",
+    "mlir::memref::MemRefDialect",
   ];
 }
 
