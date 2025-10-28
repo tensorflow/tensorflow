@@ -1135,9 +1135,10 @@ absl::StatusOr<std::unique_ptr<PjRtClient>> GetStreamExecutorGpuClient(
 
   std::shared_ptr<KeyValueStoreInterface> kv_store = options.kv_store;
   if (options.enable_mock_nccl) {
-    kv_store = std::make_shared<InMemoryKeyValueStore>();
+    kv_store = {};
   }
-  TF_RET_CHECK(options.num_nodes == 1 || kv_store != nullptr);
+  TF_RET_CHECK(options.enable_mock_nccl || options.num_nodes == 1 ||
+               kv_store != nullptr);
   TF_ASSIGN_OR_RETURN(
       DeviceTopologyPair device_topology_pair,
       BuildDistributedDevices(

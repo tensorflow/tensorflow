@@ -1499,6 +1499,11 @@ TEST(StreamExecutorGpuClientTest, MockNcclClientWithGpuTopologyExecuteTest) {
   options.executable_build_options.set_num_partitions(8)
       .set_use_spmd_partitioning(true)
       .set_allow_spmd_sharding_propagation_to_output({true});
+
+  // Mock NCCL does not support sharded autotuning.
+  options.executable_build_options.mutable_debug_options()
+      ->set_xla_gpu_shard_autotuning(false);
+
   TF_ASSERT_OK_AND_ASSIGN(auto executable,
                           client->CompileAndLoad(*module, options));
 
@@ -1523,6 +1528,37 @@ TEST(StreamExecutorGpuClientTest, MockNcclClientWithGpuTopologyExecuteTest) {
   // Test that running the program does not crash/hang.
   TF_ASSERT_OK(
       executable->Execute(absl::MakeSpan(input_ptrs), ExecuteOptions()));
+}
+
+TEST(StreamExecutorGpuClientTest, MockNcclClientWithAutotuningFails) {
+  GpuClientOptions client_options = DefaultOptions();
+  client_options.enable_mock_nccl = true;
+  client_options.num_nodes = 4;
+  client_options.mock_gpu_topology = "2x2x2";
+  TF_ASSERT_OK_AND_ASSIGN(auto client,
+                          GetStreamExecutorGpuClient(client_options));
+
+  auto devices_per_host = client->addressable_device_count();
+  EXPECT_EQ(devices_per_host, 2) << "This test requires 2 local GPUs.";
+
+  mlir::MLIRContext context;
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module, xla::ParseMlirModuleString(kMlirDistributedSum, context));
+
+  xla::CompileOptions options;
+  options.executable_build_options.set_num_partitions(8)
+      .set_use_spmd_partitioning(true)
+      .set_allow_spmd_sharding_propagation_to_output({true});
+  options.executable_build_options.mutable_debug_options()
+      ->set_xla_gpu_shard_autotuning(true);
+
+  auto compiled = client->CompileAndLoad(*module, options);
+
+  EXPECT_FALSE(compiled.ok());
+  EXPECT_THAT(
+      compiled.status().message(),
+      HasSubstr(
+          "Sharded autotuning requested but key-value store is missing."));
 }
 
 TEST(StreamExecutorGpuClientTest, MockNcclClientWithGpuTopologyMismatchTest) {

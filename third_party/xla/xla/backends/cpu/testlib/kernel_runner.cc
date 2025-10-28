@@ -62,7 +62,7 @@ absl::StatusOr<KernelRunner> KernelRunner::Create(
 
   TF_RETURN_IF_ERROR(compiler.AddModule(std::move(thread_safe_module)));
 
-  const std::string& kernel_name = spec.name();
+  absl::string_view kernel_name = spec.name();
   TF_ASSIGN_OR_RETURN(std::unique_ptr<FunctionLibrary> library,
                       std::move(compiler).Compile(
                           {FunctionLibrary::Sym<XLA_CPU_Kernel>(kernel_name)}));

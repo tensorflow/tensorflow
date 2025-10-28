@@ -20,11 +20,13 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/ExecutionEngine/Orc/ThreadSafeModule.h"
 #include "mlir/IR/MLIRContext.h"
@@ -69,6 +71,9 @@ class ThunkEmitter {
   };
 
   struct EmittedKernel {
+    EmittedKernel(absl::string_view name, llvm::orc::ThreadSafeModule module)
+        : kernel_name(name), module(std::move(module)) {}
+
     std::string kernel_name;
     llvm::orc::ThreadSafeModule module;
   };
