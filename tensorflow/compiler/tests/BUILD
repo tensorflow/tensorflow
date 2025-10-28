@@ -2,7 +2,14 @@ load("//tensorflow:strict.default.bzl", "py_strict_library", "py_strict_test")
 load("//tensorflow:tensorflow.default.bzl", "cuda_py_strict_test", "tf_cuda_cc_test")
 load("//tensorflow/compiler/aot:tfcompile.bzl", "tf_library")
 load("//tensorflow/compiler/tests:build_combined_defs.bzl", "tf_xla_combined_py_test")
-load("//tensorflow/compiler/tests:build_defs.bzl", "generate_backend_suites", "tf_xla_py_strict_test")
+load(
+    "//tensorflow/compiler/tests:build_defs.bzl",
+    "generate_backend_suites",
+    "tf_xla_py_strict_test",
+    # copybara:uncomment_begin(google-only)
+    # "tpu_backends",
+    # copybara:uncomment_end
+)
 load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "tf_cuda_tests_tags",
@@ -213,9 +220,8 @@ tf_xla_combined_py_test(
     name = "combined_ops_test_f",
     size = "medium",
     timeout = "long",
-    # copybara:uncomment_begin
-    # #TODO(b/286470564): Remove once the bug is fixed.
-    # disable_tpu_tfrt = True,
+    # copybara:uncomment_begin(google-only)
+    # disabled_backends = tpu_backends(),
     # copybara:uncomment_end
     exec_properties = {
         "cpp_link.mem": "16g",
@@ -340,10 +346,6 @@ tf_xla_py_strict_test(
     name = "add_n_test",
     size = "small",
     srcs = ["add_n_test.py"],
-    # copybara:uncomment_begin
-    # #TODO(b/286470564): Remove once the bug is fixed.
-    # disable_tpu_tfrt = True,
-    # copybara:uncomment_end
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
         "notap",
@@ -496,10 +498,6 @@ tf_xla_py_strict_test(
     name = "cond_test",
     size = "small",
     srcs = ["cond_test.py"],
-    # copybara:uncomment_begin
-    # #TODO(b/286470564): Remove once the bug is fixed.
-    # disable_tpu_tfrt = True,
-    # copybara:uncomment_end
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
         "notap",
@@ -1746,12 +1744,8 @@ tf_xla_py_strict_test(
     name = "tensor_list_ops_test",
     size = "small",
     srcs = ["tensor_list_ops_test.py"],
-    # copybara:uncomment_begin
-    # #TODO(b/286470564): Remove once the bug is fixed.
-    # disable_tpu_tfrt = True,
-    # copybara:uncomment_end
-    # TensorList ops are not implemented in the on-demand compilation model yet.
-    disabled_backends = ["cpu_ondemand"],
+    # TensorList ops are only implemented on CPU.
+    enabled_backends = ["cpu"],
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
     ],
@@ -1906,10 +1900,6 @@ tf_xla_py_strict_test(
     name = "while_test",
     size = "small",
     srcs = ["while_test.py"],
-    # copybara:uncomment_begin
-    # #TODO(b/291130193): Remove once the bug is fixed.
-    # disable_tpu_tfrt = True,
-    # copybara:uncomment_end
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
         "notap",
@@ -2429,9 +2419,6 @@ tf_xla_py_strict_test(
     name = "where_op_tpu_test",
     size = "small",
     srcs = ["where_op_test.py"],
-    args = [
-        "--tpu_use_tfrt=true",
-    ],
     disabled_backends = [
         "cpu",
         "cpu_ondemand",
