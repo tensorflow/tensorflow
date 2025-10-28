@@ -1500,35 +1500,6 @@ inline ThreadPool::ThreadPool(const XLA_FFI_Api* api,
     : api_(api), ctx_(ctx), diagnostic_(diagnostic) {}
 
 //===----------------------------------------------------------------------===//
-// Context decoding for FFI internals
-//===----------------------------------------------------------------------===//
-
-struct FfiApi {};
-struct FfiExecutionContext {};
-
-template <>
-struct CtxDecoding<FfiApi> {
-  using Type = const XLA_FFI_Api*;
-
-  XLA_FFI_ATTRIBUTE_ALWAYS_INLINE static std::optional<Type> Decode(
-      const XLA_FFI_Api* api, XLA_FFI_ExecutionContext* ctx,
-      DiagnosticEngine& diagnostic) {
-    return api;
-  }
-};
-
-template <>
-struct CtxDecoding<FfiExecutionContext> {
-  using Type = XLA_FFI_ExecutionContext*;
-
-  XLA_FFI_ATTRIBUTE_ALWAYS_INLINE static std::optional<Type> Decode(
-      const XLA_FFI_Api* api, XLA_FFI_ExecutionContext* ctx,
-      DiagnosticEngine& diagnostic) {
-    return ctx;
-  }
-};
-
-//===----------------------------------------------------------------------===//
 // Type Registration
 //===----------------------------------------------------------------------===//
 
