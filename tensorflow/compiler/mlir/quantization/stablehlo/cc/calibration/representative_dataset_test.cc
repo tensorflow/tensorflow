@@ -36,8 +36,6 @@ using ::testing::HasSubstr;
 using ::testing::Key;
 using ::testing::SizeIs;
 using ::testing::StrEq;
-using ::tsl::testing::IsOk;
-using ::tsl::testing::StatusIs;
 
 TEST(CreateRepresentativeDatasetFileMapTest,
      ConfigWithoutExplicitSignatureKeyMappedToServingDefault) {
