@@ -116,7 +116,6 @@ PremappedCopierState::PremappedCopierState(
       max_num_parallel_copies_(max_num_parallel_copies),
       xfer_size_(xfer_size) {
   max_copies_ = scratch->size() / xfer_size_;
-  max_copies_ = std::min(max_copies_, size_t(8));
   available_copy_offsets_.reserve(max_copies_);
   for (size_t i = 0; i < max_copies_; ++i) {
     available_copy_offsets_.push_back(reinterpret_cast<char*>(scratch->data()) +
