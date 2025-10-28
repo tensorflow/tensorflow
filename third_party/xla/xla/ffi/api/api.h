@@ -260,8 +260,7 @@ enum class Traits : uint32_t {
   //   2. the FFI handler only uses device allocations passed in as buffer
   //      arguments (e.g. it does *not* do any runtime device memory
   //      allocations);
-  //   3. the FFI handler may not query the execution status of the stream
-  //      (e.g. calling `cudaGetLastError` on the stream is invalid).
+  //   3. the FFI handler may not query the execution status of the stream.
   kCmdBufferCompatible = XLA_FFI_HANDLER_TRAITS_COMMAND_BUFFER_COMPATIBLE,
 };
 
