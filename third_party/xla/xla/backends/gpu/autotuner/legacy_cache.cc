@@ -16,14 +16,18 @@ limitations under the License.
 #include "xla/backends/gpu/autotuner/legacy_cache.h"
 
 #include <optional>
+#include <string>
 
 #include "google/protobuf/duration.pb.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/gpu/autotuning/autotune_cache_key.h"
 #include "xla/service/gpu/autotuning/autotuner_util.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/protobuf/dnn.pb.h"
 
 namespace xla {
@@ -61,6 +65,32 @@ absl::Status LegacyCache::Insert(const HloInstruction* instr,
     return result_and_inserted.status();
   }
   return absl::OkStatus();
+}
+
+void LegacyCache::ClearCache() { AutotunerUtil::ClearAutotuneResults(); }
+
+absl::StatusOr<std::string> LegacyCache::Serialize(
+    absl::Span<const HloInstruction* const> instructions_to_serialize) {
+  AutotuneCacheKeySet key_set;
+  for (const HloInstruction* instr : instructions_to_serialize) {
+    key_set.insert(GetAutotuneCacheKey(*instr));
+  }
+
+  std::optional<const AutotuneCacheKeySet*> keys_to_send = std::nullopt;
+  if (!key_set.empty()) {
+    keys_to_send = &key_set;
+  }
+
+  AutotuneResults results;
+  TF_RETURN_IF_ERROR(
+      AutotunerUtil::SerializeAutotuneResults(&results, keys_to_send));
+  return AutotuneResultsToString(results, true);
+}
+
+absl::Status LegacyCache::Deserialize(absl::string_view serialized_cache) {
+  return AutotunerUtil::LoadAutotuneResults(serialized_cache,
+                                            /*as_textproto=*/true,
+                                            /*allow_override=*/true);
 }
 
 AutotuneCacheKey LegacyCache::GetAutotuneCacheKey(const HloInstruction& instr) {

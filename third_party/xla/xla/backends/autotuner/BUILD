@@ -128,6 +128,9 @@ cc_library(
         ":autotuner_cache_proto_cc",
         "//xla/hlo/ir:hlo",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
     ],
 )
 

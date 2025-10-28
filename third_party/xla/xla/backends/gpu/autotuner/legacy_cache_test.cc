@@ -20,6 +20,7 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <vector>
 
 #include "google/protobuf/any.pb.h"
 #include <gmock/gmock.h>
@@ -33,6 +34,7 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/protobuf/dnn.pb.h"
 
 namespace xla {
@@ -230,6 +232,32 @@ TEST_F(LegacyCacheTest, OnlyInsertOncePerHlo) {
   Config another_config = CreateDummyCublasConfig();
   TF_ASSERT_OK(cache.Insert(instr.get(), another_config));
   EXPECT_THAT(cache.Lookup(instr.get()), Optional(ConfigEq(config)));
+}
+
+TEST_F(LegacyCacheTest, SerializeAndDeserialize) {
+  LegacyCache cache(test_dir_, mode_, device_desc_);
+  std::unique_ptr<HloInstruction> instr_1 = CreateDummyInstr("hlo9");
+  std::unique_ptr<HloInstruction> instr_2 = CreateDummyInstr("hlo10");
+  Config orig_config = CreateDummyTritonConfig();
+  TF_ASSERT_OK(cache.Insert(instr_1.get(), orig_config));
+  TF_ASSERT_OK(cache.Insert(instr_2.get(), orig_config));
+
+  // Serialize instr_1 to a string.
+  std::vector<const HloInstruction*> instructions_to_serialize = {
+      instr_1.get()};
+  TF_ASSERT_OK_AND_ASSIGN(std::string serialized_cache,
+                          cache.Serialize(instructions_to_serialize));
+
+  // Overwrite config for both instructions.
+  cache.ClearCache();
+  Config another_config = CreateDummyCublasConfig();
+  TF_ASSERT_OK(cache.Insert(instr_1.get(), another_config));
+  TF_ASSERT_OK(cache.Insert(instr_2.get(), another_config));
+
+  // Deserialize the cache, only instr_1 should be overwritten.
+  TF_ASSERT_OK(cache.Deserialize(serialized_cache));
+  EXPECT_THAT(cache.Lookup(instr_1.get()), Optional(ConfigEq(orig_config)));
+  EXPECT_THAT(cache.Lookup(instr_2.get()), Optional(ConfigEq(another_config)));
 }
 
 }  // namespace
