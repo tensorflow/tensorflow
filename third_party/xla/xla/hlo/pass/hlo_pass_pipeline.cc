@@ -179,6 +179,7 @@ absl::StatusOr<bool> HloPassPipeline::RunPassesInternal(
       hash_before = absl::HashOf(*hlo);
       VLOG(2) << "  Module hash " << hash_before.value();
     }
+    VLOG(2) << "  Number of instructions: " << hlo->instruction_count();
     tsl::profiler::TraceMe traceme(pass->name());
     if (!pass->IsPassPipeline()) {
       compilation_stats_->StartPass(pass_name);
