@@ -110,8 +110,10 @@ class IotaTileAssignment {
   std::optional<IotaTileAssignment> Transpose(absl::Span<const int> perm) const;
 
   void Print(Printer* printer) const;
+  void PrintArray(Printer* printer) const;
 
   std::string ToString() const;
+  std::string ArrayToString() const;
 
   // Materializes array representation of IotaTileAssignment.
   Array<int64_t> ToArray() const;
@@ -249,8 +251,10 @@ class TileAssignment {
   [[nodiscard]] TileAssignment Transpose(absl::Span<const int> perm) const;
 
   void Print(Printer* printer) const;
+  void PrintArray(Printer* printer) const;
 
   std::string ToString() const;
+  std::string ArrayToString() const;
 
   bool UsesDevice(int64_t device) const;
 
