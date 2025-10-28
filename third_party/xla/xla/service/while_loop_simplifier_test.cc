@@ -1481,5 +1481,59 @@ ENTRY %main (arg.0: f32[3], arg.1: f32[2]) -> (f32[3], f32[2], f32[2], f32[3]) {
                         op::GetTupleElement(op::While(), 0)));
 }
 
+TEST_F(WhileLoopSimplifierTest, RemoveDeadTupleIndicesWithOriginalValue) {
+  const std::string hlo_string = R"(
+  HloModule dus
+
+%while.body (arg_tuple: (f32[3], f32[2], f32[2], f32[3], s32[])) -> (f32[3], f32[2], f32[2], f32[3], s32[]) {
+  %arg_tuple = (f32[3], f32[2], f32[2], f32[3], s32[]) parameter(0)
+  %get-tuple-element.0 = f32[3] get-tuple-element(%arg_tuple), index=0
+  %get-tuple-element.1 = f32[2] get-tuple-element(%arg_tuple), index=1
+  %get-tuple-element.2 = f32[2] get-tuple-element(%arg_tuple), index=2
+  %get-tuple-element.3 = f32[3] get-tuple-element(%arg_tuple), index=3
+  %get-tuple-element.4 = s32[] get-tuple-element(%arg_tuple), index=4
+  %constant.1 = s32[] constant(1)
+  %constant.v0 = f32[1] constant({0.0})
+  %constant.v1 = f32[1] constant({1.0})
+  %dynamic-update-slice.0 = f32[3] dynamic-update-slice(%get-tuple-element.0, %constant.v0, s32[] %constant.1)
+  %dynamic-update-slice.3 = f32[3] dynamic-update-slice(%get-tuple-element.3, %constant.v0, s32[] %constant.1)
+  %add = add(s32[] %get-tuple-element.4, s32[] %constant.1)
+  ROOT %tuple = tuple(%dynamic-update-slice.0, %get-tuple-element.1, %get-tuple-element.2, %dynamic-update-slice.3, %add)
+}
+
+%while.condition (arg_tuple.cond:(f32[3], f32[2], f32[2], f32[3], s32[])) -> pred[] {
+  %arg_tuple.cond = (f32[3], f32[2], f32[2], f32[3], s32[]) parameter(0)
+  %get-tuple-element.cond = s32[] get-tuple-element(%arg_tuple.cond), index=4
+  %constant.3 = s32[] constant(3)
+  ROOT %compare = pred[] compare(s32[] %get-tuple-element.cond, s32[] %constant.3), direction=LT
+}
+
+ENTRY %main (arg.0: f32[3], arg.1: f32[2]) -> (f32[3], f32[2], f32[2], f32[3]) {
+  %constant.0 = s32[] constant(0)
+  %arg.0 = f32[3] parameter(0)
+  %arg.1 = f32[2] parameter(1)
+  %input = tuple(%arg.0, %arg.1, %arg.1, %arg.0, %constant.0), origin={({"arg.0"}, {"arg.1"}, {"arg.1"}, {"arg.0"}, {"constant.0"})}
+  %while = while(%input), condition=%while.condition, body=%while.body, origin={({"while.116" {0}}, {"while.116" {1}}, {"while.116" {2}}, {"while.116" {3}}, {"while.116" {4}})}
+  %get-tuple-element.out0 = f32[3] get-tuple-element(%while), index=0
+  %get-tuple-element.out1 = f32[2] get-tuple-element(%while), index=1
+  %get-tuple-element.out2 = f32[2] get-tuple-element(%while), index=2
+  %get-tuple-element.out3 = f32[3] get-tuple-element(%while), index=3
+  ROOT %root = tuple(%get-tuple-element.out0, %get-tuple-element.out1, %get-tuple-element.out2, %get-tuple-element.out3)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_TRUE(WhileLoopSimplifier().Run(module.get()).value());
+  HloInstruction* while_instr = FindFirstWhile(module.get());
+  ASSERT_NE(while_instr->original_value(), nullptr);
+  EXPECT_EQ(while_instr->original_value()->ToString(),
+            R"(({"while.116" {0}}, {"while.116" {1}}, {"while.116" {4}}))");
+  HloInstruction* while_init = while_instr->while_init();
+  ASSERT_NE(while_init->original_value(), nullptr);
+  EXPECT_EQ(while_init->original_value()->ToString(),
+            R"(({"arg.0"}, {"arg.1"}, {"constant.0"}))");
+}
+
 }  // namespace
 }  // namespace xla
