@@ -2868,7 +2868,7 @@ absl::Status VerifyLayoutConstrainedAllReduce(const HloModule& module) {
 
 namespace {
 std::string FormatShapeIndexValidationError(
-    absl::string_view instruction_name,
+    const HloInstruction* instruction,
     const absl::flat_hash_set<ShapeIndex>& shape_leaf_indices,
     const absl::flat_hash_set<ShapeIndex>& ov_leaf_indices) {
   std::vector<ShapeIndex> shape_only;
@@ -2892,7 +2892,8 @@ std::string FormatShapeIndexValidationError(
       "Mismatched tuple structure in original_value for "
       "instruction %s. Leaf indices in shape and original_value "
       "do not match.\nIn shape only: {%s}\nIn original_value only: {%s}",
-      instruction_name, absl::StrJoin(shape_only, ", ", shape_index_formatter),
+      instruction->ToString(),
+      absl::StrJoin(shape_only, ", ", shape_index_formatter),
       absl::StrJoin(ov_only, ", ", shape_index_formatter));
 }
 
@@ -2921,9 +2922,9 @@ absl::Status VerifyOriginalValue(const HloModule& module) {
         }
 
         if (shape_leaf_indices != ov_leaf_indices) {
-          return Internal("%s", FormatShapeIndexValidationError(
-                                    instruction->name(), shape_leaf_indices,
-                                    ov_leaf_indices));
+          return Internal(
+              "%s", FormatShapeIndexValidationError(
+                        instruction, shape_leaf_indices, ov_leaf_indices));
         }
       }
     }
