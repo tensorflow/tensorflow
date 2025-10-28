@@ -262,11 +262,18 @@ class SendConnectionHandler : public PollEventLoop::Handler {
 
   bool HandleEvents(const pollfd& events) override {
     if (events.revents & POLLRDHUP) {
-      HandleRdHup();
+      TransitionToErrorState();
       return false;
     } else if (events.revents & POLLERR) {
 #ifdef MSG_ZEROCOPY
-      CHECK_OK(table_.HandleSocketErrors(*fd_));
+      auto status = table_.HandleSocketErrors(*fd_);
+      if (!status.ok()) {
+        TransitionToErrorState();
+        return false;
+      }
+#else
+      TransitionToErrorState();
+      return false;
 #endif
     } else if (events.revents & POLLOUT) {
       if (no_more_messages_.load() == true) {
@@ -280,7 +287,7 @@ class SendConnectionHandler : public PollEventLoop::Handler {
     return true;
   }
 
-  void HandleRdHup() {
+  void TransitionToErrorState() {
     while (true) {
       auto state = state_.load();
       if (state == SocketState::kNotReady) {
