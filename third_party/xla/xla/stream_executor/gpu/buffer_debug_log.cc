@@ -103,7 +103,7 @@ absl::StatusOr<xla::gpu::BufferDebugLogProto> BufferDebugLog::ReadProto(
         buffer_debug_log_proto.add_entries();
     entry_proto->set_thunk_id(entry.entry_id.thunk_id().value());
     entry_proto->set_buffer_idx(entry.entry_id.buffer_idx());
-    entry_proto->set_value(entry.value);
+    entry_proto->set_checksum(entry.value);
   }
 
   return buffer_debug_log_proto;
