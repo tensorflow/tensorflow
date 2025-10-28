@@ -600,10 +600,11 @@ size_t MMapWeightCacheProvider::LookUpOrInsert(
 void* MMapWeightCacheProvider::OffsetToAddr(const size_t offset) {
   // While the cache is being built, the buffer could grow and need to be
   // reallocated so we cannot ensure pointer stability.
-  XNNPACK_ABORT_CHECK(
-      !IsBuilding(),
-      "Cannot get the address of a buffer in a cache during a building step.");
-  return offset_to_addr_[offset];
+  auto it = offset_to_addr_.find(offset);
+  XNNPACK_ABORT_CHECK(it != offset_to_addr_.end(),
+                      "Cannot get the address of a buffer in a cache before "
+                      "the build step that introduces it has finished.");
+  return it->second;
 }
 
 void MMapWeightCacheProvider::Release() {

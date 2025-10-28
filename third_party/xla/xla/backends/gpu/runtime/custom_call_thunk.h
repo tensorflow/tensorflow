@@ -170,7 +170,7 @@ class CustomCallThunk : public Thunk {
   xla::ffi::CallOptions BuildCallOptions(
       RunId run_id, se::Stream* absl_nullable stream,
       const BufferAllocations* absl_nullable buffer_allocations,
-      const ffi::ExecutionContext* absl_nonnull execution_context);
+      const ffi::ExecutionContext* absl_nullable execution_context);
 
   absl::Status ExecuteFfiHandler(RunId run_id, XLA_FFI_Handler* handler,
                                  XLA_FFI_ExecutionStage stage,
