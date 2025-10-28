@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_CODEGEN_LLVM_IR_KERNEL_SOURCE_H_
-#define XLA_CODEGEN_LLVM_IR_KERNEL_SOURCE_H_
+#ifndef XLA_CODEGEN_LLVM_KERNEL_SOURCE_H_
+#define XLA_CODEGEN_LLVM_KERNEL_SOURCE_H_
 
 #include <memory>
 #include <string>
@@ -31,14 +31,14 @@ namespace xla {
 // implementation we might emit a single LLVM module with multiple kernels or a
 // separate LLVM module for each kernel. Kernel function signature is defined by
 // the backend specific ABI.
-class LlvmIrKernelSource final : public KernelSource {
+class LlvmKernelSource final : public KernelSource {
  public:
-  LlvmIrKernelSource(llvm::orc::ThreadSafeContext context,
-                     std::unique_ptr<llvm::Module> module)
+  LlvmKernelSource(llvm::orc::ThreadSafeContext context,
+                   std::unique_ptr<llvm::Module> module)
       : module_(std::move(module), std::move(context)) {}
 
-  LlvmIrKernelSource(LlvmIrKernelSource&& other) = default;
-  LlvmIrKernelSource& operator=(LlvmIrKernelSource&& other) noexcept = default;
+  LlvmKernelSource(LlvmKernelSource&& other) = default;
+  LlvmKernelSource& operator=(LlvmKernelSource&& other) noexcept = default;
 
   llvm::orc::ThreadSafeModule thread_safe_module() && {
     return std::move(module_);
@@ -52,4 +52,4 @@ class LlvmIrKernelSource final : public KernelSource {
 
 }  // namespace xla
 
-#endif  // XLA_CODEGEN_LLVM_IR_KERNEL_SOURCE_H_
+#endif  // XLA_CODEGEN_LLVM_KERNEL_SOURCE_H_

@@ -27,7 +27,7 @@ limitations under the License.
 #include "xla/backends/cpu/codegen/jit_compiler.h"
 #include "xla/backends/cpu/testlib/llvm_ir_kernel_emitter.h"
 #include "xla/codegen/kernel_definition.h"
-#include "xla/codegen/llvm_ir_kernel_source.h"
+#include "xla/codegen/llvm_kernel_source.h"
 #include "xla/codegen/testlib/kernel_runner.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/literal.h"
@@ -83,9 +83,8 @@ TEST(KernelRunnerTest, Add) {
                                 NumWorkGroups{kNumElements},
                                 {read_arg, read_arg, write_arg});
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      KernelDefinition<LlvmIrKernelSource> kernel_definition,
-      emitter.EmitKernelDefinition());
+  TF_ASSERT_OK_AND_ASSIGN(KernelDefinition<LlvmKernelSource> kernel_definition,
+                          emitter.EmitKernelDefinition());
   TF_ASSERT_OK_AND_ASSIGN(JitCompiler compiler,
                           KernelRunner::CreateJitCompiler(HloModuleConfig()));
 

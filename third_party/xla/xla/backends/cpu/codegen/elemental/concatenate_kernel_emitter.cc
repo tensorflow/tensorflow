@@ -33,8 +33,8 @@ limitations under the License.
 #include "xla/backends/cpu/codegen/target_machine_features.h"
 #include "xla/codegen/kernel_definition.h"
 #include "xla/codegen/kernel_spec.h"
-#include "xla/codegen/llvm_ir_kernel_source.h"
 #include "xla/codegen/llvm_kernel_definition.h"
+#include "xla/codegen/llvm_kernel_source.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/layout_util.h"
@@ -112,7 +112,7 @@ ConcatenateKernelEmitter::EmitKernelDefinition() {
                           llvm_module.get(), ir_builder,
                           kernel_prototype.workgroup_id.x, total_workgroups));
 
-  LlvmIrKernelSource source(std::move(ctx), std::move(llvm_module));
+  LlvmKernelSource source(std::move(ctx), std::move(llvm_module));
   NumWorkGroups num_workgroups;
   if (is_parallel) {
     num_workgroups.x = total_workgroups;

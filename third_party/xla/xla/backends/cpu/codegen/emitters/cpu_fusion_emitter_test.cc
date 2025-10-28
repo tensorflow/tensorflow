@@ -30,7 +30,7 @@ limitations under the License.
 #include "xla/backends/cpu/codegen/emitters/cpu_scatter_emitter.h"
 #include "xla/backends/cpu/codegen/fusion_compiler.h"
 #include "xla/codegen/kernel_definition.h"
-#include "xla/codegen/llvm_ir_kernel_source.h"
+#include "xla/codegen/llvm_kernel_source.h"
 #include "xla/codegen/mlir_kernel_source.h"
 #include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_ordering.h"
@@ -171,7 +171,7 @@ TEST_F(CpuFusionEmitterTest, ScatterLlvm) {
   auto [spec, source] = std::move(kernel_definition).ReleaseStorage();
   FusionCompiler compiler(mlir_context.get(),
                           FusionCompiler::Options{512, 1, true});
-  TF_ASSERT_OK_AND_ASSIGN(LlvmIrKernelSource llvm_source,
+  TF_ASSERT_OK_AND_ASSIGN(LlvmKernelSource llvm_source,
                           compiler.Compile(std::move(source)));
   auto llvm_dump = llvm_source.ToString();
   TF_ASSERT_OK_AND_ASSIGN(bool filecheck_matched,

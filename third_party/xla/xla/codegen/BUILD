@@ -86,9 +86,9 @@ cc_library(
 )
 
 cc_library(
-    name = "llvm_ir_kernel_source",
-    srcs = ["llvm_ir_kernel_source.cc"],
-    hdrs = ["llvm_ir_kernel_source.h"],
+    name = "llvm_kernel_source",
+    srcs = ["llvm_kernel_source.cc"],
+    hdrs = ["llvm_kernel_source.h"],
     deps = [
         ":kernel_source",
         "//xla/service/llvm_ir:llvm_util",
@@ -163,7 +163,7 @@ cc_library(
     hdrs = ["llvm_kernel_definition.h"],
     deps = [
         ":kernel_definition",
-        ":llvm_ir_kernel_source",
+        ":llvm_kernel_source",
     ],
 )
 

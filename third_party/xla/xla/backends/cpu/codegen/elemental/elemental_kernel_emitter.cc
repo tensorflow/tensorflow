@@ -39,8 +39,8 @@ limitations under the License.
 #include "xla/backends/cpu/codegen/target_machine_features.h"
 #include "xla/codegen/kernel_definition.h"
 #include "xla/codegen/kernel_spec.h"
-#include "xla/codegen/llvm_ir_kernel_source.h"
 #include "xla/codegen/llvm_kernel_definition.h"
+#include "xla/codegen/llvm_kernel_source.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -228,7 +228,7 @@ ElementalKernelEmitter::EmitKernelDefinition() {
                       EmitElementalLoops(ir_builder, instr_, kernel_prototype,
                                          element_generator));
 
-  LlvmIrKernelSource source(std::move(ctx), std::move(llvm_module));
+  LlvmKernelSource source(std::move(ctx), std::move(llvm_module));
 
   KernelSpec spec(kernel_prototype.function->getName(), num_workgroups,
                   std::move(kernel_prototype.argument_buffers),

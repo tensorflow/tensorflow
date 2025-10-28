@@ -102,7 +102,7 @@ xla_cc_test(
         ":cpu_fusion_emitters",
         "//xla/backends/cpu/codegen:fusion_compiler",
         "//xla/codegen:kernel_definition",
-        "//xla/codegen:llvm_ir_kernel_source",
+        "//xla/codegen:llvm_kernel_source",
         "//xla/codegen:mlir_kernel_source",
         "//xla/hlo/analysis:alias_info",
         "//xla/hlo/analysis:hlo_ordering",

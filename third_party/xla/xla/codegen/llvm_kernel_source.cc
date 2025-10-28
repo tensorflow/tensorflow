@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/codegen/llvm_ir_kernel_source.h"
+#include "xla/codegen/llvm_kernel_source.h"
 
 #include <string>
 
@@ -22,7 +22,7 @@ limitations under the License.
 
 namespace xla {
 
-std::string LlvmIrKernelSource::ToString() const {
+std::string LlvmKernelSource::ToString() const {
   return module_.withModuleDo(
       [&](llvm::Module& m) { return llvm_ir::DumpToString(&m); });
 }

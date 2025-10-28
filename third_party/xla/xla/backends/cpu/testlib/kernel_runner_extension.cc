@@ -42,9 +42,9 @@ limitations under the License.
 #include "xla/backends/cpu/testlib/llvm_ir_kernel_emitter.h"
 #include "xla/backends/cpu/testlib/mlir_kernel_emitter.h"
 #include "xla/codegen/kernel_definition.h"
-#include "xla/codegen/llvm_ir_kernel_source.h"
 #include "xla/codegen/llvm_kernel_definition.h"
 #include "xla/codegen/llvm_kernel_emitter.h"
+#include "xla/codegen/llvm_kernel_source.h"
 #include "xla/codegen/mlir_kernel_definition.h"
 #include "xla/codegen/mlir_kernel_emitter.h"
 #include "xla/codegen/mlir_kernel_source.h"
@@ -117,15 +117,14 @@ NB_MODULE(_extension, kernel_runner_module) {
       });
 
   kernel_runner_module.def("lower_to_llvm", [](MlirKernelSource& source) {
-    absl::StatusOr<LlvmIrKernelSource> llvm_ir_kernel_source =
-        LowerToLlvm(source);
+    absl::StatusOr<LlvmKernelSource> llvm_kernel_source = LowerToLlvm(source);
 
-    if (!llvm_ir_kernel_source.ok()) {
+    if (!llvm_kernel_source.ok()) {
       throw std::runtime_error(
-          std::string(llvm_ir_kernel_source.status().message()));
+          std::string(llvm_kernel_source.status().message()));
     }
 
-    return std::move(llvm_ir_kernel_source).value();
+    return std::move(llvm_kernel_source).value();
   });
 
   nb::class_<CpuCompiler>(kernel_runner_module, "HloCompiler")

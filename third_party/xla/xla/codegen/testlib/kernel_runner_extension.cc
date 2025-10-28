@@ -38,9 +38,9 @@ limitations under the License.
 #include "xla/codegen/kernel_emitter.h"
 #include "xla/codegen/kernel_source.h"
 #include "xla/codegen/kernel_spec.h"
-#include "xla/codegen/llvm_ir_kernel_source.h"
 #include "xla/codegen/llvm_kernel_definition.h"
 #include "xla/codegen/llvm_kernel_emitter.h"
+#include "xla/codegen/llvm_kernel_source.h"
 #include "xla/codegen/mlir_kernel_definition.h"
 #include "xla/codegen/mlir_kernel_emitter.h"
 #include "xla/codegen/mlir_kernel_source.h"
@@ -178,8 +178,8 @@ NB_MODULE(_extension, kernel_runner_module) {
   nb::class_<KernelSource>(kernel_runner_module, "KernelSource")
       .def("__str__", &KernelSource::ToString);
 
-  nb::class_<LlvmIrKernelSource, KernelSource> llvm_kernel_source(
-      kernel_runner_module, "LlvmIrKernelSource");
+  nb::class_<LlvmKernelSource, KernelSource> llvm_kernel_source(
+      kernel_runner_module, "LlvmKernelSource");
 
   nb::class_<MlirKernelSource, KernelSource>(kernel_runner_module,
                                              "MlirKernelSource")

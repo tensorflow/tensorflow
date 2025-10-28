@@ -26,8 +26,8 @@ limitations under the License.
 #include "xla/backends/cpu/codegen/kernel_api_ir_builder.h"
 #include "xla/backends/cpu/codegen/target_machine_features.h"
 #include "xla/codegen/kernel_spec.h"
-#include "xla/codegen/llvm_ir_kernel_source.h"
 #include "xla/codegen/llvm_kernel_definition.h"
+#include "xla/codegen/llvm_kernel_source.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/runtime/work_group.h"
 #include "xla/service/buffer_assignment.h"
@@ -104,7 +104,7 @@ absl::StatusOr<LlvmKernelDefinition> DotKernelEmitter::EmitKernelDefinition() {
           *target_machine_,
           /*allow_runtime_calls=*/false));
 
-  LlvmIrKernelSource source(std::move(ctx), std::move(llvm_module));
+  LlvmKernelSource source(std::move(ctx), std::move(llvm_module));
 
   KernelSpec spec(kernel_prototype.function->getName(),
                   NumWorkGroups{num_workgroups.x, num_workgroups.y},

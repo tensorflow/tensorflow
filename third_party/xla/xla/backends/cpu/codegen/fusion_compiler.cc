@@ -86,7 +86,7 @@ limitations under the License.
 #include "xla/codegen/emitters/ir/xla_ops.h"
 #include "xla/codegen/emitters/transforms/pass_pipelines.h"
 #include "xla/codegen/emitters/transforms/passes.h"
-#include "xla/codegen/llvm_ir_kernel_source.h"
+#include "xla/codegen/llvm_kernel_source.h"
 #include "xla/codegen/mlir_kernel_source.h"
 #include "xla/codegen/trace_pass_instrumentation.h"
 #include "xla/codegen/xtile/ir/xtile_dialect.h"
@@ -408,12 +408,12 @@ absl::StatusOr<std::unique_ptr<llvm::Module>> FusionCompiler::Compile(
 }
 
 // Compile a MLIR kernel source to a LLVM kernel source.
-absl::StatusOr<LlvmIrKernelSource> FusionCompiler::Compile(
+absl::StatusOr<LlvmKernelSource> FusionCompiler::Compile(
     MlirKernelSource mlir_kernel_source) {
   auto llvm_context = std::make_unique<llvm::LLVMContext>();
   TF_ASSIGN_OR_RETURN(std::unique_ptr<llvm::Module> llvm_module,
                       Compile(*llvm_context, mlir_kernel_source.module()));
-  return LlvmIrKernelSource(std::move(llvm_context), std::move(llvm_module));
+  return LlvmKernelSource(std::move(llvm_context), std::move(llvm_module));
 }
 
 std::unique_ptr<mlir::MLIRContext> FusionCompiler::CreateContext() {
