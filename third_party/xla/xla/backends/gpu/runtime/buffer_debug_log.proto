@@ -26,8 +26,20 @@ message BufferDebugLogEntryProto {
   // Thunk::buffer_uses().
   uint64 buffer_idx = 2;
 
-  // The value of the buffer.
-  uint32 value = 3;
+  // The checksum of the buffer.
+  uint32 checksum = 3;
+
+  // If true, the entry refers to a thunk input buffer, and the checksum is
+  // calculated based on the buffer value before the thunk execution.
+  //
+  // If false, it refers to thunk output, and the checksum is calculated based
+  // on the buffer value after the thunk execution.
+  bool is_input_buffer = 4;
+
+  // ID of the thunk execution that produced this entry. Entries with the same
+  // (thunk_id, execution_id) describe buffers used by a single execution of a
+  // thunk.
+  uint32 execution_id = 5;
 }
 
 // A dump of a `BufferDebugLog` contents.
