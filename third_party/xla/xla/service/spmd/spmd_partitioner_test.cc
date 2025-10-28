@@ -8083,6 +8083,33 @@ ENTRY entry {
                     op::Shape("s32[64,32]")));
 }
 
+TEST_P(SpmdPartitioningTest, DynamicUpdateSliceSingleDimension) {
+  absl::string_view hlo_string = R"(
+    HloModule module
+
+    ENTRY entry {
+      %input = s32[16] parameter(0), sharding={devices=[4]<=[4]}
+      %update = s32[8] parameter(1), sharding={devices=[4]<=[4]}
+      %c3 = s32[] constant(3)
+      ROOT %dynamic-update-slice = s32[16]
+        dynamic-update-slice(%input, %update, %c3),
+        sharding={devices=[4]<=[4]}
+    })";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/4));
+  const auto root = module->entry_computation()->root_instruction();
+  auto sharded_input = AllOf(op::Parameter(0), op::Shape("s32[4]"));
+  auto sharded_update = AllOf(op::Parameter(1), op::Shape("s32[2]"));
+  auto c3 = AllOf(op::Constant(), op::Shape("s32[]"));
+  EXPECT_THAT(root,
+              AllOf(op::DynamicSlice((op::DynamicUpdateSlice(
+                                         op::AllGather(sharded_input),
+                                         op::AllGather(sharded_update), c3)),
+                                     op::Reshape(_)),
+                    op::Shape("s32[4]")));
+}
+
 TEST_P(SpmdPartitioningTest, UnpartitionedGather) {
   absl::string_view hlo_string = R"(
 HloModule module
@@ -14754,6 +14781,8 @@ ENTRY entry {
                                _, _, _, _));
 }
 
+// TODO: fix this test; right now it breaks in collective_ops_e2e_test.cc, even
+// though it passes the SPMD partitioner unit test.
 TEST_P(SpmdPartitioningTest,
        KeepPartitionedNonSlicedDimensionWithConstantIndices) {
   const char* const hlo_string = R"(

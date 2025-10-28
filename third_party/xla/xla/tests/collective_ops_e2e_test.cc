@@ -1711,6 +1711,22 @@ ENTRY entry {
   CollectiveOpsCompareShardedUnsharded(hlo_text);
 }
 
+// This is an execution test for the example in Option 2 in go/dus-spmd. This
+// test should pass regardless of which DUS SPMD implementation option is used.
+TEST_F(CollectiveOpsTestE2EShardedUnsharded,
+       DusSingleDimensionInPartitionMode) {
+  const std::string hlo_text = R"(
+    HloModule module, entry_computation_layout={(s32[16]{0}, s32[8]{0})->s32[16]{0}}, num_partitions=4
+
+    ENTRY entry {
+      %input = s32[16] parameter(0), sharding={devices=[4]<=[4]}
+      %update = s32[8] parameter(1), sharding={devices=[4]<=[4]}
+      %c3 = s32[] constant(3)
+      ROOT %dynamic-update-slice = s32[16] dynamic-update-slice(%input, %update, %c3), sharding={devices=[4]<=[4]}
+    })";
+  CollectiveOpsCompareShardedUnsharded(hlo_text, /*num_partitions=*/4);
+}
+
 TEST_F(CollectiveOpsTestE2EShardedUnsharded, DotBatchAndNonContracting) {
   const std::string hlo_text = R"(
 HloModule module, entry_computation_layout={(f32[4,16,8]{2,1,0}, f32[4,4,8]{2,1,0})->f32[4,16,4]{2,1,0}}, num_partitions=2
