@@ -1814,7 +1814,6 @@ TEST(StreamExecutorGpuClientTest, ExecutePinnedHostOutputTupleTest) {
   // Untuple the result so that we get separate buffers.
   // This is how JAX invokes XLA.
   ExecuteOptions execute_options;
-  execute_options.untuple_result = true;
   TF_ASSERT_OK_AND_ASSIGN(
       auto result, executable->Execute({{input.get()}}, execute_options));
 

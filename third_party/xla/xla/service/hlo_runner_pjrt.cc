@@ -137,11 +137,6 @@ absl::StatusOr<std::vector<Layout>> FlattenedParameterLayouts(
 
 absl::StatusOr<ExecuteOptions> GenerateExecuteOptions(const HloModule& module) {
   ExecuteOptions execute_options;
-
-  // PjRt requires untuple_result if the output is a tuple.
-  if (module.result_shape().IsTuple()) {
-    execute_options.untuple_result = true;
-  }
   return execute_options;
 }
 
@@ -567,7 +562,6 @@ absl::StatusOr<std::vector<Literal>> HloRunnerPjRt::ExecuteReplicated(
                       HloRunnerPjRtExecutable::TryUnwrap(*this, executable));
 
   xla::ExecuteOptions execute_options;
-  execute_options.untuple_result = true;
   return ExecuteReplicatedImpl(
       [&](absl::Span<const std::vector<PjRtBuffer*>> argument_buffer_slices)
           -> absl::StatusOr<
@@ -631,7 +625,6 @@ absl::StatusOr<std::vector<Literal>> HloRunnerPjRt::ExecuteReplicated(
                            args = argument_buffer_slices[i], device_ptr]() {
               std::optional<Future<>> returned_future = {};
               xla::ExecuteOptions options;
-              options.untuple_result = true;
               per_replica_results[i] = pjrt_executable->ExecuteSharded(
                   args, device_ptr, options,
                   /*returned_future=*/returned_future,

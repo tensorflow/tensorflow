@@ -1818,7 +1818,6 @@ PJRT_Error* PJRT_LoadedExecutable_Execute(
   }
   options.strict_shape_checking = true;
   options.arguments_are_tupled = false;
-  options.untuple_result = true;
   options.context = args->options->context
                         ? args->options->context->execute_context.get()
                         : nullptr;

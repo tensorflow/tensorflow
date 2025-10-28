@@ -571,7 +571,6 @@ ENTRY DuplicateDonationError() -> (f32[2, 2], f32[2, 2]) {
                           MakeFloatBuffer(client.get(), data, {2, 2}));
 
   xla::ExecuteOptions options;
-  options.untuple_result = true;
   {
     auto result = pjrt_executable->Execute(/*argument_handles=*/{{
                                                buffer0.get(),

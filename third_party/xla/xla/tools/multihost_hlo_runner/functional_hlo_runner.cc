@@ -115,31 +115,17 @@ absl::Span<PjRtDevice* const> GetLocalDevices(const PjRtClient& client) {
 // ExecuteOptions::arguments_are_tupled = false.
 // This enables PjRtClient::Execute to assemble the tupled arguments from
 // a flat list of buffers.
-// Additionally, we set ExecuteOptions::untuple_result = true if the module's
-// output is a tuple. Thus we can use the aliased output buffer as input
-// arguments and reuse the non-aliased argument buffers. In this mode, users may
-// provide the argument literals as a list of tuples (for the convenience of
-// future use cases) or a tuple literal (to support existing use cases).
 //
 // Case 2: the HLO module is compiled with
 // CompileOptions::parameter_is_tupled_arguments = false
 // and the HLO module is executed with
 // ExecuteOptions::arguments_are_tupled = false.
-// Same as above, we set ExecuteOptions::untuple_result = true if the module's
-// output is a tuple. This allows us to reuse on-device buffers in the same way
-// as case 1.
 //
 // Case 3: the HLO module is compiled with
 // CompileOptions::parameter_is_tupled_arguments = false
 // and the HLO module is executed with
 // ExecuteOptions::arguments_are_tupled = false.
 // We will create new on-device buffers for each repeated execution.
-//
-// Irrespective of the above, if the output is a tuple with leaves mixing host
-// and device memory spaces, we set ExecuteOptions::untuple_result = true.
-// Otherwise PJRT cannot correctly represent these tuples, because a PjRtBuffer
-// can only belong to one memory space. By "untupling", PJRT assigns a separate
-// PjRtBuffer to each leaf.
 
 enum class ParameterType {
   kOneTupleOfArrays = 0,
@@ -612,7 +598,6 @@ absl::StatusOr<PerDeviceLiteralVecType> RunInternal(
                                                 flatten_arguments));
         argument_ptrs = CreateArgumentPointersFromDeviceBuffers(device_buffers);
       }
-      execute_options.untuple_result = true;
       execute_options.launch_id = repeat + 1 + running_options.base_run_id;
       if (running_options.execution_profiles != nullptr) {
         execute_options.execution_profile =

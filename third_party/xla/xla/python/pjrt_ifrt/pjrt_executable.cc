@@ -714,7 +714,6 @@ PjRtLoadedExecutable::Execute(absl::Span<ArrayRef> args,
   }
 
   xla::ExecuteOptions opts;
-  opts.untuple_result = true;
   opts.launch_id = options.launch_id;
   opts.use_major_to_minor_data_layout_for_callbacks = true;
   opts.non_donatable_input_indices = options.non_donatable_input_indices;

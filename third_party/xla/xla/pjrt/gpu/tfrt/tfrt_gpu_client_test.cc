@@ -239,7 +239,6 @@ ENTRY %Add.6 (a.1: f32[], b.2: f32[]) -> (f32[], f32[]) {
                           CompileExecutable(kAddProgram, *client));
 
   ExecuteOptions options;
-  options.untuple_result = true;
   TF_ASSERT_OK_AND_ASSIGN(
       auto result,
       executable->Execute({{buffer.get(), buffer.get()}}, /*options=*/options));
@@ -1440,7 +1439,6 @@ TEST(TfrtGpuClientTest, ExecutePinnedHostOutputTupleTest) {
   // Untuple the result so that we get separate buffers.
   // This is how JAX invokes XLA.
   ExecuteOptions execute_options;
-  execute_options.untuple_result = true;
   TF_ASSERT_OK_AND_ASSIGN(
       auto result, executable->Execute({{input.get()}}, execute_options));
 

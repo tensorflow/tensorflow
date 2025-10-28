@@ -113,7 +113,6 @@ absl::Status ExecuteWithSameInputBuffer(
   TF_ASSIGN_OR_RETURN(auto executable,
                       ToyExecutable(*client, shape, std::move(set_up_aliases)));
   xla::ExecuteOptions options;
-  options.untuple_result = true;
   return executable->Execute({{buffer.get(), buffer.get()}}, options).status();
 }
 
