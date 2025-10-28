@@ -47,6 +47,7 @@ limitations under the License.
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "third_party/gpus/cuda/include/cuda_runtime_api.h"
 #include "third_party/gpus/cuda/include/driver_types.h"
+#include "third_party/gpus/cuda/nvml/include/nvml.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/core/collectives/collectives.h"
 #include "xla/core/collectives/collectives_registry.h"
@@ -688,6 +689,39 @@ absl::StatusOr<CUmulticastObjectProp> CreateMulticastObjectProperties(
   multicast_properties.size =
       xla::RoundUpTo<size_t>(size, multicast_granularity);
   return multicast_properties;
+}
+
+absl::StatusOr<int64_t> GetDevicePcieBandwidth(int device_ordinal) {
+  nvmlDevice_t nvml_device;
+  nvmlReturn_t result =
+      nvmlDeviceGetHandleByIndex(device_ordinal, &nvml_device);
+  if (result != NVML_SUCCESS) {
+    return absl::InternalError(
+        absl::StrCat("nvmlDeviceGetHandleByIndex failed with ", result));
+  }
+
+  // nvmlDeviceGetPcieSpeed returns wrong information. Verified with
+  // nvbandwidth.
+  unsigned int link_gen, link_width;
+  result = nvmlDeviceGetCurrPcieLinkGeneration(nvml_device, &link_gen);
+  if (result != NVML_SUCCESS) {
+    return absl::InternalError(absl::StrCat(
+        "nvmlDeviceGetCurrPcieLinkGeneration failed with ", result));
+  }
+
+  result = nvmlDeviceGetCurrPcieLinkWidth(nvml_device, &link_width);
+  if (result != NVML_SUCCESS) {
+    return absl::InternalError(
+        absl::StrCat("nvmlDeviceGetCurrPcieLinkWidth failed with ", result));
+  }
+
+  // PCIe v1 single lane speed. 0.25 GB/s
+  int64_t lane_speed = 0.25 * 1024 * 1024 * 1024;
+  for (int i = 1; i < link_gen; i++) {
+    lane_speed *= 2;
+  }
+
+  return lane_speed * link_width;
 }
 
 }  // namespace
@@ -1627,6 +1661,18 @@ CudaExecutor::CreateDeviceDescription(int device_ordinal) {
     // lane.
     desc.set_memory_bandwidth(2 * int64_t{mem_clock_khz.value()} * 1000 *
                               int64_t{mem_bus_width_bits.value()} / 8);
+  }
+
+  {
+    absl::StatusOr<int64_t> status_or_bandwidth =
+        GetDevicePcieBandwidth(device_ordinal);
+    if (status_or_bandwidth.ok()) {
+      desc.set_pcie_bandwidth(*status_or_bandwidth);
+    } else {
+      LOG(ERROR) << status_or_bandwidth.status().message()
+                 << " Assuming PCIe gen 3 x16 bandwidth.";
+      status_or_bandwidth = 16LL * 1024 * 1024 * 1024;
+    }
   }
 
   {

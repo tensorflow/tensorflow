@@ -1121,6 +1121,9 @@ RocmExecutor::CreateDeviceDescription(int device_ordinal) {
     desc.set_l2_cache_size(prop.l2CacheSize);
   }
 
+  // PCIe bandwidth for PCI Gen4 x16 (approximate)
+  desc.set_pcie_bandwidth(32LL * 1024 * 1024 * 1024);
+
   {
     auto ecc_enabled_or = IsEccEnabled(device);
     if (!ecc_enabled_or.ok()) {
