@@ -38,6 +38,17 @@ cc_library(
     ],
 )
 
+xla_cc_test(
+    name = "rocm_compute_capability_test",
+    srcs = ["rocm_compute_capability_test.cc"],
+    deps = [
+        ":rocm_compute_capability",
+        "//xla/tsl/util/proto:proto_matchers",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 cc_library(
     name = "rocm_context",
     srcs = ["rocm_context.cc"],

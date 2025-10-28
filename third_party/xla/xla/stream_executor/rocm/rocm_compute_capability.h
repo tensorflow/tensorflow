@@ -61,6 +61,11 @@ class RocmComputeCapability {
     return proto;
   }
 
+  static RocmComputeCapability FromProto(
+      const RocmComputeCapabilityProto& proto) {
+    return RocmComputeCapability{proto.gcn_arch_name()};
+  }
+
   bool operator==(const RocmComputeCapability& other) const {
     return gcn_arch_name_ == other.gcn_arch_name_;
   }
