@@ -26,6 +26,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -81,6 +82,8 @@ using HloPositionOrUse = std::variant<HloPosition, HloUse>;
 using OpSpanSizeFn = std::function<int64_t(
     HloInstruction* original_hlo, HloInstruction* hlo_with_memory_spaces,
     int64_t operand_index)>;
+using VerifyMemorySpaceColoringFunction =
+    std::function<absl::Status(const HloInstruction*)>;
 
 // MSA allows for custom post-allocation transformations. When a post-allocation
 // transformation is performed on an instruction, this result is returned. It
@@ -442,6 +445,11 @@ struct Options {
   // assignment algorithm.
   absl::flat_hash_map<HloPosition, std::vector<CustomCallPrefetchDetails>>
       hlo_position_to_custom_call_prefetch_details;
+
+  VerifyMemorySpaceColoringFunction verify_memory_space_coloring_fn =
+      [](const HloInstruction* instruction) -> absl::Status {
+    return absl::OkStatus();
+  };
 
   std::string ToString() const;
 };
