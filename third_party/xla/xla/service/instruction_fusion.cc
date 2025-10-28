@@ -802,11 +802,6 @@ HloInstruction* InstructionFusion::AddFusionInstruction(
     // fusions.
     TF_CHECK_OK(computation->ReplaceInstruction(consumer, fusion_instruction));
   }
-<<<<<<< HEAD
-  fusion_instruction->set_called_computations_execution_thread(
-      computation->execution_thread());
-=======
->>>>>>> upstream/master
   return fusion_instruction;
 }
 

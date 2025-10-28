@@ -21,10 +21,6 @@ limitations under the License.
 #include <utility>
 
 #include "xnnpack.h"
-<<<<<<< HEAD:third_party/xla/xla/backends/cpu/xnn_support.cc
-#include "absl/algorithm/container.h"
-=======
->>>>>>> upstream/master:third_party/xla/xla/backends/cpu/xnn_fusion.cc
 #include "absl/base/no_destructor.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"

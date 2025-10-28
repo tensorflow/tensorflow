@@ -18,13 +18,9 @@ limitations under the License.
 #include <optional>
 #include <utility>
 
-<<<<<<< HEAD
-#include <gtest/gtest.h>
-=======
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/log/log.h"
->>>>>>> upstream/master
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -32,32 +28,23 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
-<<<<<<< HEAD
-=======
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/literal_util.h"
->>>>>>> upstream/master
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_verifier.h"
 #include "xla/service/sharding_propagation.h"
 #include "xla/service/spmd/stateful_rng_spmd_partitioner.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
-<<<<<<< HEAD
-=======
 #include "xla/xla.pb.h"
->>>>>>> upstream/master
 #include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace spmd {
 namespace {
 
-<<<<<<< HEAD
-=======
 namespace op = xla::testing::opcode_matchers;
 
->>>>>>> upstream/master
 class DotHandlerTest : public HloHardwareIndependentTestBase {
  public:
   absl::StatusOr<std::unique_ptr<HloModule>> PartitionComputation(
@@ -151,8 +138,8 @@ HloModule test
 ENTRY main {
   Arg_0 = bf16[2048,24576]{1,0} parameter(0), sharding={devices=[1,4]<=[4]}
   Arg_1 = bf16[24576,98304]{1,0} parameter(1), sharding={devices=[4,1]<=[4]}
-  ROOT dot = bf16[2048,98304]{1,0} dot(Arg_0, Arg_1), 
-    lhs_contracting_dims={1}, rhs_contracting_dims={0}, 
+  ROOT dot = bf16[2048,98304]{1,0} dot(Arg_0, Arg_1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0},
     sharding={devices=[1,4]<=[4]}
 }
 )";
@@ -196,9 +183,9 @@ HloModule test
 ENTRY main {
   Arg_0 = bf16[8,2048,256]{2,1,0} parameter(0), sharding={devices=[4,1,1]<=[4]}
   Arg_1 = bf16[8,256,512]{2,1,0} parameter(1), sharding={devices=[4,1,1]<=[4]}
-  ROOT dot = bf16[8,2048,512]{2,1,0} dot(Arg_0, Arg_1), 
+  ROOT dot = bf16[8,2048,512]{2,1,0} dot(Arg_0, Arg_1),
     lhs_batch_dims={0}, rhs_batch_dims={0},
-    lhs_contracting_dims={2}, rhs_contracting_dims={1}, 
+    lhs_contracting_dims={2}, rhs_contracting_dims={1},
     sharding={devices=[4,1,1]<=[4]}
 }
 )";
@@ -231,8 +218,8 @@ HloModule test
 ENTRY main {
   Arg_0 = bf16[128,256]{1,0} parameter(0), sharding={devices=[1,16]<=[16]}
   Arg_1 = bf16[256,512]{1,0} parameter(1), sharding={devices=[16,1]<=[16]}
-  ROOT dot = bf16[128,512]{1,0} dot(Arg_0, Arg_1), 
-    lhs_contracting_dims={1}, rhs_contracting_dims={0}, 
+  ROOT dot = bf16[128,512]{1,0} dot(Arg_0, Arg_1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0},
     sharding={devices=[1,16]<=[16]}
 }
 )";
@@ -256,8 +243,8 @@ HloModule test
 ENTRY main {
   Arg_0 = bf16[128,256]{1,0} parameter(0), sharding={devices=[1,32]<=[32]}
   Arg_1 = bf16[256,512]{1,0} parameter(1), sharding={devices=[32,1]<=[32]}
-  ROOT dot = bf16[128,512]{1,0} dot(Arg_0, Arg_1), 
-    lhs_contracting_dims={1}, rhs_contracting_dims={0}, 
+  ROOT dot = bf16[128,512]{1,0} dot(Arg_0, Arg_1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0},
     sharding={devices=[1,32]<=[32]}
 }
 )";
@@ -282,8 +269,8 @@ HloModule test
 ENTRY main {
   Arg_0 = bf16[128,256]{1,0} parameter(0), sharding={devices=[1,64]<=[64]}
   Arg_1 = bf16[256,512]{1,0} parameter(1), sharding={devices=[64,1]<=[64]}
-  ROOT dot = bf16[128,512]{1,0} dot(Arg_0, Arg_1), 
-    lhs_contracting_dims={1}, rhs_contracting_dims={0}, 
+  ROOT dot = bf16[128,512]{1,0} dot(Arg_0, Arg_1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0},
     sharding={devices=[1,64]<=[64]}
 }
 )";
@@ -309,8 +296,8 @@ HloModule test
 ENTRY main {
   Arg_0 = bf16[128,256]{1,0} parameter(0), sharding={devices=[1,8]<=[8]}
   Arg_1 = bf16[256,512]{1,0} parameter(1), sharding={devices=[8,1]<=[8]}
-  ROOT dot = bf16[128,512]{1,0} dot(Arg_0, Arg_1), 
-    lhs_contracting_dims={1}, rhs_contracting_dims={0}, 
+  ROOT dot = bf16[128,512]{1,0} dot(Arg_0, Arg_1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0},
     sharding={devices=[1,8]<=[8]}
 }
 )";
@@ -358,8 +345,6 @@ ENTRY main {
   }
 }
 
-<<<<<<< HEAD
-=======
 TEST_F(DotHandlerTest, MXCustomCall_BatchAndBatch) {
   absl::string_view hlo_string = R"(
 HloModule module
@@ -570,7 +555,6 @@ ENTRY entry {
                      op::Parameter(2), op::DynamicSlice(), op::Parameter(3)));
 }
 
->>>>>>> upstream/master
 }  // namespace
 }  // namespace spmd
 }  // namespace xla

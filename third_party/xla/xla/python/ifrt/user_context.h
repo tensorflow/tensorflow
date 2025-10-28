@@ -43,24 +43,10 @@ class UserContext : public tsl::ReferenceCounted<UserContext>,
  public:
   ~UserContext() override = default;
 
-<<<<<<< HEAD
-  // Returns a fingerprint of the UserContext. The returned fingerprint must
-  // be non-zero, as the special value of zero is reserved for the IFRT
-  // implementations for their internal default UserContext.  IFRT
-  // implementations may use internally. IFRT implementations
-  // may also use this as a key for holding the UserContexts in a container, and
-  // so this should be efficient enough to called multiple times.
-  //
-  // TODO(hyeontaek): Remove this method once we migrate the UserContext to
-  // a unique id scheme, where the id can be chosen without fingerprinting the
-  // content of the UserContext.
-  virtual uint64_t Fingerprint() const = 0;
-=======
   // Returns the unique ID of the `UserContext`. This ID is expected to be
   // globally unique for a certain context. For instance, both a global random
   // ID and the fingerprint of the `UserContext` content may be used as the ID.
   virtual UserContextId Id() const = 0;
->>>>>>> upstream/master
 
   // Returns a human readable string. Meant for debugging, logging, and for
   // putting together statusz-like pages.
@@ -79,8 +65,6 @@ class UserContext : public tsl::ReferenceCounted<UserContext>,
 
 using UserContextRef = tsl::RCReference<UserContext>;
 
-<<<<<<< HEAD
-=======
 // 'AnnotatedUserContext` represents a `UserContext` with a human-readable short
 // message. The annotation adds extra contextual information that is known after
 // creation time of the original `UserContext`, but before actually observing
@@ -207,7 +191,6 @@ class FusedUserContext
   std::vector<UserContextRef> user_contexts_;
 };
 
->>>>>>> upstream/master
 // Tracks the active `UserContext` within the scope. It holds a pointer to the
 // `UserContext` instance and uses a thread-local variable to make it
 // discoverable through a static method.
@@ -215,11 +198,7 @@ class UserContextScope {
  public:
   // Sets up the current thread's `UserContextRef` to the given `context`.
   // `context` must be valid throughout the lifetime of the scope.
-<<<<<<< HEAD
-  explicit UserContextScope(UserContextRef context);
-=======
   explicit UserContextScope(absl_nullable UserContextRef context);
->>>>>>> upstream/master
 
   // Restores the current thread's `UserContextRef` to the state before this
   // scope was created.
@@ -238,24 +217,14 @@ class UserContextScope {
   // `UserContextRef`.
   //
   // Returns `nullptr` if there is no `UserContextRef` in the scope.
-<<<<<<< HEAD
-  static const UserContextRef& current();
-=======
   static absl_nullable const UserContextRef& current();
->>>>>>> upstream/master
 
  private:
   // The outer scope's `UserContext`. When this scope is destroyed, the current
   // scope's `UserContext` will be restored to it.
-<<<<<<< HEAD
-  const UserContextRef* const outer_context_;  // Not owned.
-  // The current scope's `UserContext`.
-  const UserContextRef context_;
-=======
   absl_nullable const UserContextRef* const outer_context_;  // Not owned.
   // The current scope's `UserContext`.
   absl_nullable const UserContextRef context_;
->>>>>>> upstream/master
 };
 
 }  // namespace ifrt

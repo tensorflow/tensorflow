@@ -379,8 +379,6 @@ def BiasQuantizerPass : Pass<"tfl-bias-quantizer", "mlir::ModuleOp"> {
   ];
 }
 
-<<<<<<< HEAD
-=======
 def FuseQDQPass : Pass<"tfl-fuse-qdq", "mlir::ModuleOp"> {
   let summary = "Fuses dq and q ops before and after ops that can be quantized.";
   let description = [{
@@ -392,7 +390,6 @@ def FuseQDQPass : Pass<"tfl-fuse-qdq", "mlir::ModuleOp"> {
   ];
 }
 
->>>>>>> upstream/master
 def QuantizeVariablesPass : Pass<"tfl-quantize-variables", "mlir::ModuleOp"> {
   let summary = "Quantize variables";
   let constructor = "CreatePrepareQuantizeVariablesPass()";

@@ -160,15 +160,9 @@ void ImportEntryComputationResultLayoutAndTiles(
           result_layouts.push_back(layout_attrs.first);
           result_tiles.push_back(layout_attrs.second);
         });
-<<<<<<< HEAD
-    module->setAttr(kEntryComputationResultLayout,
-                    builder.getArrayAttr(result_layouts));
-    module->setAttr(kEntryComputationResultTiles,
-=======
     module->setAttr(xla::kMhloXlaEntryComputationResultLayout,
                     builder.getArrayAttr(result_layouts));
     module->setAttr(xla::kMhloXlaEntryComputationResultTiles,
->>>>>>> upstream/master
                     builder.getArrayAttr(result_tiles));
     return;
   }

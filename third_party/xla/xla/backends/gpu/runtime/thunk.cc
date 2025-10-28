@@ -36,10 +36,7 @@ limitations under the License.
 #include "xla/backends/gpu/collectives/gpu_cliques.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
-<<<<<<< HEAD
-=======
 #include "xla/backends/gpu/runtime/thunk_id.h"
->>>>>>> upstream/master
 #include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
 #include "xla/executable_run_options.h"
@@ -430,8 +427,6 @@ absl::StatusOr<ThunkProto> Thunk::ToProto() const {
       typeid(*this).name()));
 }
 
-<<<<<<< HEAD
-=======
 ThunkMetadataProto Thunk::ToMetadataProto() const {
   ThunkMetadataProto metadata_proto;
   *metadata_proto.mutable_thunk_info() = thunk_info_.ToProto();
@@ -448,7 +443,6 @@ ThunkMetadataListProto GetMetadataListProtoFromThunkGraph(
   return metadata_list_proto;
 }
 
->>>>>>> upstream/master
 absl::StatusOr<GpuCollectives* absl_nonnull> Thunk::GetGpuCollectives(
     CollectiveExecuteParams const& params) {
   if (params.collectives == nullptr) {
@@ -461,10 +455,6 @@ ThunkInfoProto Thunk::ThunkInfo::ToProto() const {
   ThunkInfoProto proto;
   proto.set_profile_annotation(profile_annotation);
   proto.set_execution_stream_id(execution_stream_id.value());
-<<<<<<< HEAD
-  return proto;
-}
-=======
   proto.set_thunk_id(thunk_id.value());
   return proto;
 }
@@ -487,6 +477,5 @@ absl::StatusOr<ShapedSliceProto> ShapedSlice::ToProto() const {
   return proto;
 }
 
->>>>>>> upstream/master
 }  // namespace gpu
 }  // namespace xla

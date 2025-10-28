@@ -17,15 +17,6 @@ limitations under the License.
 #define XLA_SERVICE_GPU_MODEL_EXPERIMENTAL_SYMBOLIC_EXPR_H_
 
 #include <cstdint>
-<<<<<<< HEAD
-#include <string>
-#include <vector>
-
-#include "absl/strings/string_view.h"
-#include "absl/types/span.h"
-#include "llvm/ADT/DenseMapInfo.h"
-#include "llvm/ADT/Hashing.h"
-=======
 #include <functional>
 #include <string>
 
@@ -37,7 +28,6 @@ limitations under the License.
 #include "llvm/ADT/Hashing.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/MLIRContext.h"
->>>>>>> upstream/master
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/StorageUniquer.h"
 
@@ -50,17 +40,6 @@ class SymbolicExprStorage;
 typedef int64_t VariableID;
 
 enum class SymbolicExprType {
-<<<<<<< HEAD
-  kConstant,
-  kVariable,
-  kAdd,
-  kMul,
-  kFloorDiv,
-  kCeilDiv,
-  kMod,
-  kMax,
-  kMin,
-=======
   kAdd,
   kMul,
   kMod,
@@ -70,7 +49,6 @@ enum class SymbolicExprType {
   kMin,
   kVariable,
   kConstant,  // Constant should be the last type for the comparator.
->>>>>>> upstream/master
   // TODO(karupayun): Add kIn operator.
   // kIn,  // 'var in [a, b]' .
 };
@@ -91,14 +69,6 @@ class SymbolicExpr {
   SymbolicExpr GetLHS() const;
   SymbolicExpr GetRHS() const;
   int64_t GetValue() const;
-<<<<<<< HEAD
-  std::string ToString() const;
-  int64_t Evaluate(absl::Span<const int64_t> variable_values) const;
-  SymbolicExpr ReplaceVariables(
-      absl::Span<const SymbolicExpr> substitutions) const;
-  SymbolicExpr Canonicalize() const;
-
-=======
   // If num_dims is provided, then the first num_dims variables are dimensions,
   // and the rest are symbols.
   std::string ToString(int64_t num_dims = -1) const;
@@ -135,7 +105,6 @@ class SymbolicExpr {
   // subexpression in postorder.
   void Walk(const std::function<void(SymbolicExpr)>& callback) const;
 
->>>>>>> upstream/master
   SymbolicExpr operator+(int64_t v) const;
   SymbolicExpr operator+(SymbolicExpr other) const;
   SymbolicExpr operator-() const;
@@ -160,8 +129,6 @@ class SymbolicExpr {
 
   const ImplType* GetImpl() const { return impl_; }
 
-<<<<<<< HEAD
-=======
   template <typename Sink>
   friend void AbslStringify(Sink& sink, const SymbolicExpr expr) {
     sink.Append(expr.ToString());
@@ -173,7 +140,6 @@ class SymbolicExpr {
     return os;
   }
 
->>>>>>> upstream/master
  private:
   const ImplType* impl_ = nullptr;
 };
@@ -182,44 +148,24 @@ inline ::llvm::hash_code hash_value(SymbolicExpr expr) {
   return ::llvm::hash_value(expr.GetImpl());
 }
 
-<<<<<<< HEAD
-// Maps a set of input variables to a set of output SymbolicExpr trees.
-struct SymbolicMap {
-  int64_t num_dimensions;
-  int64_t num_ranges;
-  int64_t num_symbols;
-  std::vector<SymbolicExpr> exprs;
-};
-
-class SymbolicExprContext {
- public:
-  SymbolicExprContext();
-=======
 class SymbolicExprContext {
  public:
   explicit SymbolicExprContext(mlir::MLIRContext* mlir_context);
->>>>>>> upstream/master
   SymbolicExpr Parse(absl::string_view expr_str);
   SymbolicExpr CreateConstant(int64_t value);
   SymbolicExpr CreateVariable(int64_t var_id);
   SymbolicExpr CreateBinaryOp(SymbolicExprType type, SymbolicExpr lhs,
                               SymbolicExpr rhs);
 
-<<<<<<< HEAD
-=======
   mlir::MLIRContext* GetMLIRContext() const { return mlir_context_; }
 
->>>>>>> upstream/master
  private:
   SymbolicExpr GetOrCreate(SymbolicExprType type, int64_t value,
                            SymbolicExpr lhs, SymbolicExpr rhs);
   mlir::StorageUniquer uniquer_;
-<<<<<<< HEAD
-=======
   // TODO(b/446856305): MLIRContext is only used here temporarily while we have
   // AffineMap <-> SymbolicMap convertors.
   mlir::MLIRContext* mlir_context_;
->>>>>>> upstream/master
 };
 
 }  // namespace gpu

@@ -224,8 +224,6 @@ TEST_F(MatmulPerfTableGenTest, CompactTableInDeterministicOrder) {
   }
 }
 
-<<<<<<< HEAD
-=======
 TEST_F(MatmulPerfTableGenTest, MergeGemmTables) {
   const absl::string_view kGemmTableOld = R"pb(
     entries {
@@ -322,6 +320,5 @@ TEST_F(MatmulPerfTableGenTest, MergeGemmTables) {
                   tsl::proto_testing::EqualsProto(actual_merged_perf_table)));
 }
 
->>>>>>> upstream/master
 }  // namespace
 }  // namespace xla::gpu

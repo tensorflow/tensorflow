@@ -27,15 +27,11 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/layout.h"
 #include "xla/layout_util.h"
-<<<<<<< HEAD
-#include "xla/pjrt/pjrt_device_description.h"
-=======
 #include "xla/pjrt/gpu/gpu_topology.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_device_description.h"
 #include "xla/pjrt/pjrt_device_dimensions.h"
->>>>>>> upstream/master
 #include "xla/pjrt/pjrt_stream_executor_device_description.h"
 #include "xla/primitive_util.h"
 #include "xla/shape.h"

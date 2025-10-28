@@ -32,12 +32,8 @@ HloPassPipeline FusionPipeline(
     const DebugOptions& debug_options,
     HloCostAnalysis::ShapeSizeFunction shape_size_bytes_function,
     tsl::thread::ThreadPool* thread_pool,
-<<<<<<< HEAD
-    const se::DeviceDescription& gpu_device_info);
-=======
     const se::DeviceDescription& gpu_device_info,
     SymbolicExprContext* symbolic_expr_context);
->>>>>>> upstream/master
 
 }  // namespace gpu
 }  // namespace xla

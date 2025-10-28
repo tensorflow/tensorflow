@@ -31,10 +31,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
-<<<<<<< HEAD
-=======
 #include "xla/backends/gpu/runtime/thunk_id.h"
->>>>>>> upstream/master
 #include "xla/codegen/emitters/kernel_arguments.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/buffer_assignment.h"
@@ -110,19 +107,12 @@ class KernelThunk : public Thunk {
   // The shared memory required by the kernel.
   int64_t shmem_bytes() const { return shmem_bytes_; }
 
-<<<<<<< HEAD
-  const std::optional<stream_executor::gpu::TmaMetadata>& tma_metadata() const {
-    return tma_metadata_;
-  }
-
-=======
   const stream_executor::gpu::TmaMetadata& tma_metadata() const {
     return tma_metadata_;
   }
 
   BufferUses buffer_uses() const override;
 
->>>>>>> upstream/master
  private:
   // Buffer slices passed to the kernel as arguments.
   std::vector<BufferAllocation::Slice> args_;
@@ -161,12 +151,8 @@ class KernelThunk : public Thunk {
 class CustomKernelThunk : public Thunk {
  public:
   CustomKernelThunk(const HloInstruction* inst, CustomKernel custom_kernel,
-<<<<<<< HEAD
-                    const emitters::KernelArguments& kernel_arguments);
-=======
                     const emitters::KernelArguments& kernel_arguments,
                     ThunkId thunk_id);
->>>>>>> upstream/master
 
   std::string ToString(int indent) const override;
 

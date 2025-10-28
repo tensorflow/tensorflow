@@ -15,13 +15,6 @@ limitations under the License.
 
 #include "xla/python/ifrt/user_context.h"
 
-<<<<<<< HEAD
-#include <utility>
-
-#include "absl/base/attributes.h"
-#include "absl/base/no_destructor.h"
-#include "absl/log/check.h"
-=======
 #include <string>
 #include <utility>
 #include <vector>
@@ -35,32 +28,20 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "tsl/platform/random.h"
->>>>>>> upstream/master
 
 namespace xla {
 namespace ifrt {
 
-<<<<<<< HEAD
-char UserContext::ID = 0;  // For llvm::RTTI
-=======
 // For llvm::RTTI
 [[maybe_unused]] char UserContext::ID = 0;
 [[maybe_unused]] char AnnotatedUserContext::ID = 0;
 [[maybe_unused]] char ChainedUserContext::ID = 0;
 [[maybe_unused]] char FusedUserContext::ID = 0;
->>>>>>> upstream/master
 
 namespace {
 
 const auto kNullContext = absl::NoDestructor<UserContextRef>(UserContextRef());
 
-<<<<<<< HEAD
-ABSL_CONST_INIT thread_local const UserContextRef* current_context = nullptr;
-
-}  // namespace
-
-UserContextScope::UserContextScope(UserContextRef context)
-=======
 ABSL_CONST_INIT thread_local
     absl_nullable const UserContextRef* current_context = nullptr;
 
@@ -141,7 +122,6 @@ std::string FusedUserContext::DebugString() const {
 }
 
 UserContextScope::UserContextScope(absl_nullable UserContextRef context)
->>>>>>> upstream/master
     : outer_context_(current_context), context_(std::move(context)) {
   current_context = &context_;
 }
@@ -151,16 +131,11 @@ UserContextScope::~UserContextScope() {
   current_context = outer_context_;
 }
 
-<<<<<<< HEAD
-const UserContextRef& UserContextScope::current() {
-  if (current_context == nullptr) {
-=======
 absl_nullable const UserContextRef& UserContextScope::current() {
   if (current_context == nullptr) {
 #ifdef IFRT_REQUIRE_USER_CONTEXT
     CHECK(false) << "User context is required but not set";
 #endif
->>>>>>> upstream/master
     return *kNullContext;
   }
   return *current_context;

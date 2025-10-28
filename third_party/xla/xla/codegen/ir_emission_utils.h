@@ -86,8 +86,6 @@ std::optional<HloInstructionAdaptor> FindHero(
     const HloInstructionAdaptor& root,
     absl::AnyInvocable<bool(const HloInstruction&)> predicate);
 
-<<<<<<< HEAD
-=======
 // Should the given fusion be emitted using the DUS emitter.
 bool IsDynamicUpdateSliceFusion(const HloFusionSpec& fusion_spec);
 
@@ -118,7 +116,6 @@ absl::StatusOr<bool> CanEmitFusedDynamicUpdateSliceInPlace(
     const HloFusionAdaptor& fusion_adaptor,
     const BufferAssignment* buffer_assignment, const HloInstruction* fusion);
 
->>>>>>> upstream/master
 }  // namespace xla
 
 #endif  // XLA_CODEGEN_IR_EMISSION_UTILS_H_

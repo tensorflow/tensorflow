@@ -271,14 +271,9 @@ absl::Status RunAllToAll(bool has_split_dimension,
                          se::Stream& stream, Communicator* comm,
                          bool use_symmetric_buffer) {
   int device_ordinal = stream.parent()->device_ordinal();
-<<<<<<< HEAD
-  VLOG(3) << "Performing all-to-all from device ordinal: " << device_ordinal
-          << ", has_split_dimension: " << has_split_dimension;
-=======
   VLOG(3) << "[" << device_ordinal
           << "] Performing all-to-all, has_split_dimension: "
           << has_split_dimension;
->>>>>>> upstream/master
   TF_RETURN_IF_ERROR(MaybeRegisterBuffers(stream.parent(), buffers, comm,
                                           use_symmetric_buffer));
 

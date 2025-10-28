@@ -330,29 +330,17 @@ TEST_F(ExecutionStreamAssignmentTest, AsyncCollectiveTest) {
                      /*number_of_collective_execution_streams=*/2});
   EXPECT_THAT(assignment.GetSyncExecutionStreamId(
                   FindInstruction(module.get(), "add.0")),
-<<<<<<< HEAD
-              IsOkAndHolds(ExecutionStreamId(0)));
-  EXPECT_THAT(
-      assignment.GetAsyncExecutionStreamIds(Cast<HloAllReduceInstruction>(
-          FindInstruction(module.get(), "ar-start"))),
-      IsOkAndHolds(AsyncExecutionStreamIds{
-=======
               absl_testing::IsOkAndHolds(ExecutionStreamId(0)));
   EXPECT_THAT(
       assignment.GetAsyncExecutionStreamIds(Cast<HloAllReduceInstruction>(
           FindInstruction(module.get(), "ar-start"))),
       absl_testing::IsOkAndHolds(AsyncExecutionStreamIds{
->>>>>>> upstream/master
           /*source_stream_id=*/ExecutionStreamId(0),
           /*destination_stream_id=*/ExecutionStreamId(5)}));
   EXPECT_THAT(
       assignment.GetAsyncExecutionStreamIds(Cast<HloAsyncStartInstruction>(
           FindInstruction(module.get(), "rs-start"))),
-<<<<<<< HEAD
-      IsOkAndHolds(AsyncExecutionStreamIds{
-=======
       absl_testing::IsOkAndHolds(AsyncExecutionStreamIds{
->>>>>>> upstream/master
           /*source_stream_id=*/ExecutionStreamId(0),
           /*destination_stream_id=*/ExecutionStreamId(6)}));
 
@@ -363,29 +351,17 @@ TEST_F(ExecutionStreamAssignmentTest, AsyncCollectiveTest) {
                      /*number_of_collective_execution_streams=*/1});
   EXPECT_THAT(assignment.GetSyncExecutionStreamId(
                   FindInstruction(module.get(), "add.0")),
-<<<<<<< HEAD
-              IsOkAndHolds(ExecutionStreamId(0)));
-  EXPECT_THAT(
-      assignment.GetAsyncExecutionStreamIds(Cast<HloAllReduceInstruction>(
-          FindInstruction(module.get(), "ar-start"))),
-      IsOkAndHolds(AsyncExecutionStreamIds{
-=======
               absl_testing::IsOkAndHolds(ExecutionStreamId(0)));
   EXPECT_THAT(
       assignment.GetAsyncExecutionStreamIds(Cast<HloAllReduceInstruction>(
           FindInstruction(module.get(), "ar-start"))),
       absl_testing::IsOkAndHolds(AsyncExecutionStreamIds{
->>>>>>> upstream/master
           /*source_stream_id=*/ExecutionStreamId(0),
           /*destination_stream_id=*/ExecutionStreamId(5)}));
   EXPECT_THAT(
       assignment.GetAsyncExecutionStreamIds(Cast<HloAsyncStartInstruction>(
           FindInstruction(module.get(), "rs-start"))),
-<<<<<<< HEAD
-      IsOkAndHolds(AsyncExecutionStreamIds{
-=======
       absl_testing::IsOkAndHolds(AsyncExecutionStreamIds{
->>>>>>> upstream/master
           /*source_stream_id=*/ExecutionStreamId(0),
           /*destination_stream_id=*/ExecutionStreamId(5)}));
 }

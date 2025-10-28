@@ -840,13 +840,8 @@ absl::Status GenerateHeader(
   TF_RETURN_IF_ERROR(ValidateConfig(config));
   TF_RETURN_IF_ERROR(ValidateFeedFetchCppNames(config));
 
-<<<<<<< HEAD
-  const std::vector<BufferInfo>& buffer_infos =
-      compile_result.aot->buffer_infos();
-=======
   absl::Span<const BufferAllocationInfo> buffer_infos =
       compile_result.aot->buffer_allocation_infos();
->>>>>>> upstream/master
 
   const std::vector<int32> arg_index_table =
       ::xla::cpu::CreateArgIndexTable(buffer_infos);

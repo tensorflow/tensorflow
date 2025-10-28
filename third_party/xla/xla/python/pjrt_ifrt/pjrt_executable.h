@@ -235,11 +235,7 @@ class PjRtLoadedExecutable final
 
   UserContextRef user_context() const override { return user_context_; }
 
-<<<<<<< HEAD
-  Future<> GetReadyFuture() const override {
-=======
   tsl::Future<> GetReadyFuture() const override {
->>>>>>> upstream/master
     // PjRtCompiler blocks until compilation finishes and returns only the
     // executables that are ready.
     return tsl::Future<>(absl::OkStatus());
@@ -378,11 +374,8 @@ class PjRtLoadedExecutable final
   std::vector<DType> output_dtypes_;
   std::vector<Shape> output_shapes_;
   std::vector<ShardingRef> output_shardings_;
-<<<<<<< HEAD
-=======
   std::optional<std::vector<std::shared_ptr<const xla::PjRtLayout>>>
       output_layouts_;
->>>>>>> upstream/master
   const xla::ifrt::UserContextRef user_context_;
 };
 

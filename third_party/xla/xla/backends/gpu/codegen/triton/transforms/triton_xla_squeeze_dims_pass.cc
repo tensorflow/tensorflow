@@ -74,11 +74,7 @@ SmallVector<uint32_t> GetDimsToSqueeze(RankedTensorType type) {
 // Returns the axis of first squeeze_dims user.
 std::optional<uint32_t> GetSqueezeDimsUserAxis(Operation* op) {
   for (Operation* user : op->getUsers()) {
-<<<<<<< HEAD
-    if (auto op = dyn_cast<SqueezeDimsOp>(user); op) {
-=======
     if (auto op = dyn_cast<SqueezeDimsOp>(user)) {
->>>>>>> upstream/master
       return op.getAxis();
     }
   }
@@ -157,86 +153,6 @@ Value SqueezeTensorValue(PatternRewriter& rewriter, Value value,
   return value;
 }
 
-<<<<<<< HEAD
-// Returns a new pointer by applying the given offsets and strides for the
-// given dimensions.
-Value SqueezePointer(PatternRewriter& rewriter, Location loc, Value base,
-                     ValueRange offsets, ValueRange strides,
-                     ArrayRef<uint32_t> squeeze_dims) {
-  for (auto dim : squeeze_dims) {
-    Value extsi = rewriter.create<arith::ExtSIOp>(loc, rewriter.getI64Type(),
-                                                  offsets[dim]);
-    Value muli = rewriter.create<arith::MulIOp>(loc, extsi, strides[dim]);
-    base = rewriter.create<AddPtrOp>(loc, base.getType(), base, muli);
-  }
-  return base;
-}
-
-// Rewrites tt.make_tensor_ptr with unit dimensions. Returns the
-// new MakeTensorPtrOp result and the dimensions that were removed.
-Value SqueezeMakeTensorPtr(PatternRewriter& rewriter, MakeTensorPtrOp op,
-                           ArrayRef<uint32_t> squeeze_dims) {
-  auto tensor_type = cast<RankedTensorType>(op.getType().getPointeeType());
-  auto squeeze_type = SqueezeTensorType(tensor_type, squeeze_dims);
-  auto ptr_type =
-      PointerType::get(squeeze_type, op.getType().getAddressSpace());
-
-  // Strides already encode the layout, so we can use the default order.
-  // Note that the order attribute is ignored in the Triton lowering.
-  SmallVector<int32_t> order(squeeze_type.getShape().size());
-  std::iota(order.rbegin(), order.rend(), 0);
-
-  OpBuilder::InsertionGuard guard = SetInsertionPoint(rewriter, op);
-  // Add the offsets along the dimensions to squeeze to the base pointer.
-  Value base = SqueezePointer(rewriter, op.getLoc(), op.getBase(),
-                              op.getOffsets(), op.getStrides(), squeeze_dims);
-  return rewriter.create<MakeTensorPtrOp>(
-      op.getLoc(), ptr_type, base, SqueezeElements(op.getShape(), squeeze_dims),
-      SqueezeElements(op.getStrides(), squeeze_dims),
-      SqueezeElements(op.getOffsets(), squeeze_dims), order);
-}
-
-// Folds squeeze_dims into tt.load(tt.make_tensor_ptr).
-// TODO(csigg): Add support for tt.load(tt.make_tensor_descriptor).
-LogicalResult FoldSqueezeDimsOfLoad(LoadOp op, PatternRewriter& rewriter) {
-  if (op.getMask() || op.getOther()) {
-    return rewriter.notifyMatchFailure(op, "Unsupported load.");
-  }
-  std::optional<uint32_t> axis = GetSqueezeDimsUserAxis(op);
-  if (!axis) {
-    return rewriter.notifyMatchFailure(op, "No squeeze_dims users.");
-  }
-  if (absl::c_contains(op.getBoundaryCheck(), *axis)) {
-    return rewriter.notifyMatchFailure(op, "Boundary check contains axis.");
-  }
-  auto make_tensor_ptr = op.getPtr().getDefiningOp<MakeTensorPtrOp>();
-  if (!make_tensor_ptr) {
-    return rewriter.notifyMatchFailure(
-        op, "Expected ptr to be defined by make_tensor_ptr.");
-  }
-
-  Value pointer = SqueezeMakeTensorPtr(rewriter, make_tensor_ptr, *axis);
-  Value new_load = rewriter.create<LoadOp>(
-      op.getLoc(), pointer, SqueezeBoundaryCheck(op.getBoundaryCheck(), *axis),
-      op.getPadding(), op.getCache(), op.getEvict(), op.getIsVolatile());
-  ReplaceOpWithExpandDimsOf(rewriter, op, new_load, *axis);
-  return success();
-}
-
-// Extracts unit dimensions from tt.store and prepends them as squeeze_dims.
-LogicalResult SqueezeStore(StoreOp op, PatternRewriter& rewriter) {
-  if (op.getMask()) {
-    return rewriter.notifyMatchFailure(op, "Unsupported store.");
-  }
-  auto make_tensor_ptr = op.getPtr().getDefiningOp<MakeTensorPtrOp>();
-  if (!make_tensor_ptr) {
-    return rewriter.notifyMatchFailure(
-        op, "Expected ptr to be defined by make_tensor_ptr.");
-  }
-  auto tensor_type = dyn_cast<RankedTensorType>(op.getValue().getType());
-  if (!tensor_type || tensor_type.getRank() == 0) {
-    return rewriter.notifyMatchFailure(op, "Expected tensor type.");
-=======
 LogicalResult FoldSqueezeDimsOfExtractTile(::xla::xtile::ExtractTileOp op,
                                            PatternRewriter& rewriter) {
   std::optional<uint32_t> axis = GetSqueezeDimsUserAxis(op);
@@ -258,7 +174,6 @@ LogicalResult SqueezeInsertTile(::xla::xtile::InsertTileOp op,
                                 PatternRewriter& rewriter) {
   if (op.getSource().getType().getRank() == 0) {
     return rewriter.notifyMatchFailure(op, "Expected non-scalar source.");
->>>>>>> upstream/master
   }
 
   auto squeeze_dims = GetDimsToSqueeze(op.getSource().getType());
@@ -600,13 +515,8 @@ class TritonXLASqueezeDimsPass
  private:
   void runOnOperation() override {
     RewritePatternSet patterns(&getContext());
-<<<<<<< HEAD
-    patterns.add(FoldSqueezeDimsOfLoad);
-    patterns.add(SqueezeStore);
-=======
     patterns.add(FoldSqueezeDimsOfExtractTile);
     patterns.add(SqueezeInsertTile);
->>>>>>> upstream/master
     patterns.add(SqueezeReshapeOperand);
     patterns.add(ExpandReshapeResult);
     patterns.add<PushSqueezeDimsUpThroughElementwise>(&getContext());

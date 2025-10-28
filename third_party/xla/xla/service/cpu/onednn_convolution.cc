@@ -263,11 +263,7 @@ void ExecuteOneDnnConvolution(absl::Span<MemrefInfoHandler> arguments,
   std::vector<memory::desc> fused_mds;
   std::vector<void*> fused_bufs;
   for (int64_t i = 0; i < num_fused_operands; ++i) {
-<<<<<<< HEAD
-    MemrefInfo operand_minfo(args[arg_indx++]);
-=======
     MemrefInfo operand_minfo(arguments[i + 2].get());
->>>>>>> upstream/master
     memory::desc mem_desc = operand_minfo.GetOneDnnMemDesc();
     if (mem_desc.get_ndims() == new_res_md.get_ndims()) {
       mem_desc = mem_desc.permute_axes(ComputePermutations(

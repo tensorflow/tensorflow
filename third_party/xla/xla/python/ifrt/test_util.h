@@ -96,13 +96,8 @@ absl::StatusOr<DeviceListRef> GetDevices(Client* client,
 absl::StatusOr<DeviceListRef> GetAddressableDevices(
     Client* client, absl::Span<const int> device_indices);
 
-<<<<<<< HEAD
-// Returns a new `UserContext` for testing. The created `UserContext` has a
-// fingerprint equal to `id`.
-=======
 // Returns a new `UserContext` for testing. The created `UserContext` has an
 // ID equal to `id`.
->>>>>>> upstream/master
 UserContextRef MakeUserContext(uint64_t id);
 
 }  // namespace test_util

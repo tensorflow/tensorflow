@@ -299,10 +299,7 @@ struct MlirCommonFlags {
   // with different local CPU devices settings.
   bool tf_mlir_enable_multiple_local_cpu_devices;
   bool tf_mlir_enable_debug_info_serialization;
-<<<<<<< HEAD
-=======
   bool tf_serialize_mlir_to_compressed_bytecode;
->>>>>>> upstream/master
 };
 
 // Flags for the JitRt pipeline -- see tf_jitrt_pipeline.h for details.

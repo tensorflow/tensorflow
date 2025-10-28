@@ -252,10 +252,7 @@ strict_cc_test(
         "//xla/hlo/builder:xla_computation",
         "//xla/hlo/parser:hlo_parser",
         "//xla/service:hlo_module_config",
-<<<<<<< HEAD
-=======
         "//xla/service/cpu:cpu_aot_compilation_result",
->>>>>>> upstream/master
         "//xla/tsl/concurrency:async_value",
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:statusor",
@@ -368,10 +365,7 @@ cc_library(
     deps = [
         "//xla:shape_util",
         "//xla:status_macros",
-<<<<<<< HEAD
-=======
         "//xla:xla_data_proto_cc",
->>>>>>> upstream/master
         "//xla/core/host_offloading:hlo_host_device_type_call_wrapper",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",

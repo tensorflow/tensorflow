@@ -66,12 +66,7 @@ limitations under the License.
 
 namespace xla {
 
-<<<<<<< HEAD
-inline constexpr absl::string_view kOriginalValuePlaceholderPrefix =
-    "_ovplaceholder_";
-=======
 inline constexpr absl::string_view kOriginalValuePlaceholderDelimiter = "__ovp";
->>>>>>> upstream/master
 
 using LayoutCanonicalizationCallback =
     std::function<absl::StatusOr<std::pair<std::vector<Shape>, Shape>>(
@@ -341,12 +336,8 @@ class HloModule {
   void CleanupComputations();
 
   // Runs HloModule::CleanupComputations() and HloComputation::Cleanup() on all
-<<<<<<< HEAD
-  // computations.
-=======
   // computations. Cleanup can cause instruction's unique ids to change so it
   // will also update the schedule's ids.
->>>>>>> upstream/master
   void Cleanup() {
     CleanupComputations();
     for (HloComputation* comp : computations()) {
@@ -598,19 +589,10 @@ class HloModule {
         << "Can't get computation name uniquer after HloModule was finalized";
     return *computation_name_uniquer_;
   }
-<<<<<<< HEAD
-
-  // Assign a new unique dense id for an instruction
-  int64_t NewUniqueInstructionId() {
-    int64_t result = next_unique_id_;
-    next_unique_id_++;
-    return result;
-=======
   // Returns the next unique computation id that will be handed out by this
   // module.
   int64_t next_unique_computation_id() const {
     return ReadNextUniqueComputationId();
->>>>>>> upstream/master
   }
 
   // input_output_alias_config indicates the list of aliased buffers that are
@@ -874,10 +856,6 @@ class HloModule {
   // unique per module. Will be reset to nullopt when Finalize() is called.
   std::optional<NameUniquer> computation_name_uniquer_{/*separator=*/"."};
   std::optional<NameUniquer> instruction_name_uniquer_{/*separator=*/"."};
-<<<<<<< HEAD
-  int64_t next_unique_id_ = 0;
-=======
->>>>>>> upstream/master
 
   // Used to keep track of the next unique module id that should be assigned.
   static std::atomic<int> next_unique_module_id_;
@@ -1008,28 +986,6 @@ class HloModule {
         const xla::OriginalValueRecoveryTableProto&
             original_value_recovery_table);
 
-<<<<<<< HEAD
-    // Adds an entry to the original value recovery table. Each entry contains a
-    // recovery computation that can be used to recover the original array in
-    // the old original value from the original array in the new original value.
-
-    // Adds an entry to the original value recovery table. Tries to
-    // create a placeholder original value for the replacing instruction if it
-    // doesn't have one.
-    void AddRecoveryModule(const HloInstruction* replaced_inst,
-                           HloInstruction* replacing_inst,
-                           std::unique_ptr<HloModule> recovery_module);
-
-    // Creates a recovery module using the computation built from
-    // build_recovery_computation as the entry computation, and adds an entry to
-    // the original value recovery table using the recovery module.
-    void BuildAndAddRecoveryModule(
-        const HloInstruction* replaced_inst, HloInstruction* replacing_inst,
-        const std::function<HloInstruction*(
-            xla::HloComputation::Builder& builder,
-            const xla::Shape& input_shape, const xla::Shape& output_shape)>&
-            build_entry_computation);
-=======
     // Populates the original value recovery table for a transformation that
     // replaces `old_inst` with `new_inst`.
     //
@@ -1116,7 +1072,6 @@ class HloModule {
    private:
     friend class HloModule;
     Table table_;
->>>>>>> upstream/master
   };
 
   const OriginalValueRecoveryTable& original_value_recovery_table() const {

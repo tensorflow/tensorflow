@@ -84,8 +84,6 @@ class KernelArguments {
       const BufferAlignment& buffer_alignment,
       const HloInstruction* hlo_instruction);
 
-<<<<<<< HEAD
-=======
   // Certain kernels require output arguments to be interleaved with input
   // arguments. This function creates a KernelArguments object where the output
   // arguments are interleaved with the input arguments according to the
@@ -99,7 +97,6 @@ class KernelArguments {
       const HloInstruction* hlo_instruction,
       absl::Span<const int32_t> interleaved_output_indices);
 
->>>>>>> upstream/master
   explicit KernelArguments(std::vector<KernelArgument>&& args)
       : args_(std::move(args)) {}
 

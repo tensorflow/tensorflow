@@ -114,10 +114,6 @@ xla_test(
     name = "cutlass_gemm_fusion_test",
     srcs = ["cutlass_gemm_fusion_test.cc"],
     backends = ["gpu"],
-<<<<<<< HEAD
-    disabled_backends = DEFAULT_DISABLED_BACKENDS,
-=======
->>>>>>> upstream/master
     tags = ["cuda-only"],
     deps = [
         ":custom_kernel_fusion_pattern",

@@ -1,9 +1,5 @@
 // RUN: xla-opt %s --triton-xla-squeeze-dims="finalize=false" \
-<<<<<<< HEAD
-// RUN: | FileCheck %s
-=======
 // RUN: --split-input-file | FileCheck %s
->>>>>>> upstream/master
 
 // RUN: xla-opt %s --triton-xla-squeeze-dims --split-input-file \
 // RUN: | FileCheck %s --check-prefix=FINALIZE
@@ -16,16 +12,6 @@ func.func @push_squeeze_dims_up_through_elementwise(%arg0: tensor<4x1x8xf32>) ->
   return %1 : tensor<4x8xf32>
 }
 
-<<<<<<< HEAD
-// CHECK-LABEL: func @push_squeeze_dims_up_through_multiple_results
-tt.func @push_squeeze_dims_up_through_multiple_results(%arg0: tensor<4x1x8xf32>) -> tensor<4x8xf32> {
-  // CHECK: tt.elementwise_inline_asm {{.*}} : tensor<4x8xf32> -> tensor<4x8xf32>, tensor<4x8xf32>
-  %0:2 = tt.elementwise_inline_asm "" {constraints = "", packed_element = 1 : i32, pure = true} %arg0 : tensor<4x1x8xf32> -> tensor<4x1x8xf32>, tensor<4x1x8xf32>
-  %1 = triton_xla.squeeze_dims %0#0 {axis = 1 : i32} : tensor<4x1x8xf32> -> tensor<4x8xf32>
-  tt.return %1 : tensor<4x8xf32>
-}
-
-=======
 // -----
 
 // CHECK-LABEL: func @push_squeeze_dims_up_through_multiple_results
@@ -38,7 +24,6 @@ func.func @push_squeeze_dims_up_through_multiple_results(%arg0: tensor<4x1x8xf32
 
 // -----
 
->>>>>>> upstream/master
 // CHECK-LABEL: func @push_squeeze_dims_up_through_broadcast
 func.func @push_squeeze_dims_up_through_broadcast(%arg0: tensor<1x4x1x8xf32>) -> tensor<4x16x8xf32> {
   // CHECK: tt.broadcast {{.*}} : tensor<4x1x8xf32> -> tensor<4x16x8xf32>
@@ -114,16 +99,6 @@ func.func @squeeze_reshape(%arg0: tensor<4x1x1xf32>) -> tensor<4xf32> {
   return %0 : tensor<4xf32>
 }
 
-<<<<<<< HEAD
-// CHECK-LABEL: func @expand_reshape
-tt.func @expand_reshape(%arg0: tensor<4xf32>) -> tensor<4x1x1xf32> {
-  %0 = tt.reshape %arg0 : tensor<4xf32> -> tensor<4x1x1xf32>
-  // CHECK: tt.expand_dims {{.*}} {axis = 1 : i32} : tensor<4xf32> -> tensor<4x1xf32>
-  // CHECK: tt.expand_dims {{.*}} {axis = 1 : i32} : tensor<4x1xf32> -> tensor<4x1x1xf32>
-  tt.return %0 : tensor<4x1x1xf32>
-}
-
-=======
 // -----
 
 // CHECK-LABEL: func @expand_reshape
@@ -136,7 +111,6 @@ func.func @expand_reshape(%arg0: tensor<4xf32>) -> tensor<4x1x1xf32> {
 
 // -----
 
->>>>>>> upstream/master
 // CHECK-LABEL: func @skip_reshape_with_attr
 func.func @skip_reshape_with_attr(%arg0: tensor<4x1xf32>) -> tensor<4xf32> {
   // CHECK-NOT: triton_xla.squeeze_dims
@@ -160,22 +134,6 @@ func.func @reshape_with_encoding(%arg0: tensor<1x32xf32, #arg_enc>) -> tensor<32
 }
 }
 
-<<<<<<< HEAD
-// CHECK-LABEL: func @fold_squeeze_dims_of_load_ptr
-tt.func @fold_squeeze_dims_of_load_ptr(%arg0: !tt.ptr<f32>, %arg1: i32) -> tensor<4x8xf32> {
-  %c0_i32 = arith.constant 0 : i32
-  %c3_i32 = arith.constant 3 : i32
-  %c1_i64 = arith.constant 1 : i64
-  %c4_i64 = arith.constant 4 : i64
-  %c8_i64 = arith.constant 8 : i64
-  %c16_i64 = arith.constant 16 : i64
-  %c128_i64 = arith.constant 128 : i64
-  // CHECK: %[[ADDPTR:.*]] = tt.addptr %arg0, %c24_i64
-  // CHECK: tt.make_tensor_ptr %[[ADDPTR]], {{.*}} {order = array<i32: 1, 0>} : <tensor<4x8xf32>>
-  %0 = tt.make_tensor_ptr %arg0, [%c4_i64, %c16_i64, %c8_i64], [%c128_i64, %c8_i64, %c1_i64], [%c0_i32, %c3_i32, %c0_i32] {order = array<i32: 2, 1, 0>} : <tensor<4x1x8xf32>>
-  // CHECK: tt.load {{.*}} {boundaryCheck = array<i32: 1>, padding = 1 : i32} : !tt.ptr<tensor<4x8xf32>>
-  %1 = tt.load %0 {boundaryCheck = array<i32: 2>, padding = 1 : i32} : !tt.ptr<tensor<4x1x8xf32>>
-=======
 // -----
 
 // CHECK-LABEL: func @fold_squeeze_dims_of_extract
@@ -187,83 +145,12 @@ func.func @fold_squeeze_dims_of_extract(
   // CHECK-SAME: memref<4x16x8xf32, #triton_xla.layout<[2, 1, 0]>> -> tensor<4x8xf32>
   %tile = xtile.extract %input[%offset, %offset, %offset][4, 1, 8][1, 1, 1]
     : memref<4x16x8xf32, #triton_xla.layout<[2, 1, 0]>> -> tensor<4x1x8xf32>
->>>>>>> upstream/master
   // CHECK-NOT: triton_xla.squeeze_dims
   %squeezed = triton_xla.squeeze_dims %tile {axis = 1 : i32} : tensor<4x1x8xf32> -> tensor<4x8xf32>
   // CHECK: return %[[EXTRACT]]
   return %squeezed : tensor<4x8xf32>
 }
 
-<<<<<<< HEAD
-// CHECK-LABEL: func @squeeze_dims_of_load_ptr_with_boundary_check
-tt.func @squeeze_dims_of_load_ptr_with_boundary_check(%arg0: !tt.ptr<f32>) -> tensor<4x8xf32> {
-  %c0_i32 = arith.constant 0 : i32
-  %c1_i64 = arith.constant 1 : i64
-  %c4_i64 = arith.constant 4 : i64
-  %c8_i64 = arith.constant 8 : i64
-  %0 = tt.make_tensor_ptr %arg0, [%c4_i64, %c1_i64, %c8_i64], [%c8_i64, %c8_i64, %c1_i64], [%c0_i32, %c0_i32, %c0_i32] {order = array<i32: 2, 1, 0>} : <tensor<4x1x8xf32>>
-  // CHECK: tt.load {{.*}} {boundaryCheck = array<i32: 1>} : !tt.ptr<tensor<4x1x8xf32>>
-  %1 = tt.load %0 {boundaryCheck = array<i32: 1>} : !tt.ptr<tensor<4x1x8xf32>>
-  // CHECK: triton_xla.squeeze_dims
-  %2 = triton_xla.squeeze_dims %1 {axis = 1 : i32} : tensor<4x1x8xf32> -> tensor<4x8xf32>
-  tt.return %2 : tensor<4x8xf32>
-}
-
-// CHECK-LABEL: func @squeeze_dims_of_load_ptr_with_mask
-tt.func @squeeze_dims_of_load_ptr_with_mask(%arg0: !tt.ptr<f32>, %arg1: tensor<4x1x8xi1>) -> tensor<4x8xf32> {
-  %c0_i32 = arith.constant 0 : i32
-  %c1_i64 = arith.constant 1 : i64
-  %c4_i64 = arith.constant 4 : i64
-  %c8_i64 = arith.constant 8 : i64
-  %0 = tt.make_tensor_ptr %arg0, [%c4_i64, %c1_i64, %c8_i64], [%c8_i64, %c8_i64, %c1_i64], [%c0_i32, %c0_i32, %c0_i32] {order = array<i32: 2, 1, 0>} : <tensor<4x1x8xf32>>
-  // CHECK: tt.load {{.*}}, %arg1 : !tt.ptr<tensor<4x1x8xf32>>
-  %1 = tt.load %0, %arg1 : !tt.ptr<tensor<4x1x8xf32>>
-  // CHECK: triton_xla.squeeze_dims
-  %2 = triton_xla.squeeze_dims %1 {axis = 1 : i32} : tensor<4x1x8xf32> -> tensor<4x8xf32>
-  tt.return %2 : tensor<4x8xf32>
-}
-
-// CHECK-LABEL: func @squeeze_store
-tt.func @squeeze_store(%arg0: !tt.ptr<f32>, %arg1: tensor<4x1x8xf32>) {
-  %c0_i32 = arith.constant 0 : i32
-  %c3_i32 = arith.constant 3 : i32
-  %c1_i64 = arith.constant 1 : i64
-  %c4_i64 = arith.constant 4 : i64
-  %c8_i64 = arith.constant 8 : i64
-  %c16_i64 = arith.constant 16 : i64
-  %c128_i64 = arith.constant 128 : i64
-  // CHECK-DAG: triton_xla.squeeze_dims {{.*}} {axis = 1 : i32} : tensor<4x1x8xf32> -> tensor<4x8xf32>
-  // CHECK-DAG: %[[ADDPTR:.*]] = tt.addptr %arg0, %c24_i64
-  // CHECK-DAG: tt.make_tensor_ptr %[[ADDPTR]], {{.*}} {order = array<i32: 1, 0>} : <tensor<4x8xf32>>
-  %0 = tt.make_tensor_ptr %arg0, [%c4_i64, %c16_i64, %c8_i64], [%c128_i64, %c8_i64, %c1_i64], [%c0_i32, %c3_i32, %c0_i32] {order = array<i32: 2, 1, 0>} : <tensor<4x1x8xf32>>
-  // CHECK: tt.store {{.*}} {boundaryCheck = array<i32: 1>} : !tt.ptr<tensor<4x8xf32>>
-  tt.store %0, %arg1 {boundaryCheck = array<i32: 2>} : !tt.ptr<tensor<4x1x8xf32>>
-  tt.return
-}
-
-// CHECK-LABEL: func @squeeze_store_unit_tensor
-tt.func @squeeze_store_unit_tensor(%arg0: !tt.ptr<f32>, %arg1: tensor<1x1xf32>) {
-  %c0_i32 = arith.constant 0 : i32
-  %c1_i64 = arith.constant 1 : i64
-  %0 = tt.make_tensor_ptr %arg0, [%c1_i64, %c1_i64], [%c1_i64, %c1_i64], [%c0_i32, %c0_i32] {order = array<i32: 0>} : <tensor<1x1xf32>>
-  // CHECK: triton_xla.squeeze_dims
-  // CHECK: tt.store {{.*}} : !tt.ptr<tensor<1xf32>>
-  tt.store %0, %arg1 : !tt.ptr<tensor<1x1xf32>>
-  tt.return
-}
-
-// CHECK-LABEL: func @squeeze_store_with_mask
-tt.func @squeeze_store_with_mask(%arg0: !tt.ptr<f32>, %arg1: tensor<4x1xf32>, %arg2: tensor<4x1xi1>) {
-  %c0_i32 = arith.constant 0 : i32
-  %c1_i64 = arith.constant 1 : i64
-  %c4_i64 = arith.constant 4 : i64
-  %0 = tt.make_tensor_ptr %arg0, [%c4_i64, %c1_i64], [%c1_i64, %c1_i64], [%c0_i32, %c0_i32] {order = array<i32: 0>} : <tensor<4x1xf32>>
-  // CHECK-NOT: triton_xla.squeeze_dims
-  // CHECK: tt.store {{.*}} : !tt.ptr<tensor<4x1xf32>>
-  tt.store %0, %arg1, %arg2 : !tt.ptr<tensor<4x1xf32>>
-  tt.return
-}
-=======
 
 // -----
 
@@ -298,7 +185,6 @@ func.func @squeeze_insert_unit_tensor(
 }
 
 // -----
->>>>>>> upstream/master
 
 // CHECK-LABEL: func @reorder_squeeze_dims
 func.func @reorder_squeeze_dims(%arg0: tensor<4x1x8x1xf32>) -> tensor<4x8xf32> {
@@ -320,15 +206,10 @@ func.func @diamond(%arg0: tensor<4x1x8xf32>) -> tensor<4x8xf32> {
   return %2 : tensor<4x8xf32>
 }
 
-<<<<<<< HEAD
-// CHECK-LABEL: func @insert_expand_dims
-tt.func @insert_expand_dims(%arg0: tensor<4x1xf32>) -> tensor<4xf32> {
-=======
 // -----
 
 // CHECK-LABEL: func @insert_expand_dims
 func.func @insert_expand_dims(%arg0: tensor<4x1xf32>) -> tensor<4xf32> {
->>>>>>> upstream/master
   // CHECK: %[[NEGF:.*]] = arith.negf {{.*}} : tensor<4xf32>
   // CHECK-NOT: arith.negf
   // CHECK: tt.expand_dims %[[NEGF]] {axis = 1 : i32} : tensor<4xf32> -> tensor<4x1xf32>

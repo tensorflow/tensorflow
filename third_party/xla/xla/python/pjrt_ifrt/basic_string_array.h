@@ -40,10 +40,7 @@ limitations under the License.
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt/user_context.h"
-<<<<<<< HEAD
-=======
 #include "xla/tsl/concurrency/future.h"
->>>>>>> upstream/master
 #include "xla/tsl/concurrency/ref_count.h"
 
 namespace xla {
@@ -159,13 +156,8 @@ class BasicStringArray final
   Shape shape_;
   ShardingRef sharding_;
   const UserContextRef user_context_;
-<<<<<<< HEAD
-  Future<Buffers> buffers_;
-  Future<> ready_future_;
-=======
   tsl::Future<Buffers> buffers_;
   tsl::Future<> ready_future_;
->>>>>>> upstream/master
 
   mutable absl::Mutex mu_;
   OnDoneWithBuffer on_done_with_buffer_ ABSL_GUARDED_BY(mu_);

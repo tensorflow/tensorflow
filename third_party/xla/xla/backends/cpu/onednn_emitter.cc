@@ -19,11 +19,6 @@ limitations under the License.
 #include <cstdint>
 #include <vector>
 
-<<<<<<< HEAD
-#include "oneapi/dnnl/dnnl_common.hpp"
-#include "oneapi/dnnl/dnnl_graph.hpp"
-=======
->>>>>>> upstream/master
 #include "absl/container/flat_hash_map.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/log/log.h"
@@ -33,10 +28,7 @@ limitations under the License.
 #include "oneapi/dnnl/dnnl_graph.hpp"  // NOLINT
 #include "xla/backends/cpu/onednn_fusion.h"
 #include "xla/backends/cpu/onednn_support.h"
-<<<<<<< HEAD
-=======
 #include "xla/backends/cpu/runtime/dot_lib.h"
->>>>>>> upstream/master
 #include "xla/backends/cpu/runtime/onednn/onednn_interop.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"

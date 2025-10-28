@@ -25,32 +25,15 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/MLIRContext.h"
-<<<<<<< HEAD
-#include "xla/hlo/analysis/indexing_map.h"
-#include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/utils/hlo_traversal.h"
-#include "xla/service/gpu/model/constraint_expression.h"
-=======
 #include "xla/codegen/tiling/constraint_expression.h"
 #include "xla/hlo/analysis/interval.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/utils/hlo_traversal.h"
->>>>>>> upstream/master
 #include "xla/service/gpu/model/experimental/symbolic_tile.h"
 #include "xla/shape.h"
 
 namespace xla::gpu::experimental {
 
-<<<<<<< HEAD
-// TilingSpace contains information about all parallel and sequential dimensions
-// and runtime variables in a fusion.
-// The parallel dimensions correspond to the dimensions of the outputs of the
-// fusion.
-// The sequential dimensions correspond to the contraction/reduction dimensions
-// of the dots/reduces in the fusion.
-// The runtime variables correspond to the offsets of the dynamic slices in the
-// fusion.
-=======
 // TilingSpace holds information about all tiling parameters of a fusion.
 //
 // It defines symbolic tiles for the fusion roots as symbolic expressions and
@@ -63,7 +46,6 @@ namespace xla::gpu::experimental {
 // This information allows us later to explore the space of all possible tilings
 // and assign concrete tilings for every instruction of the fusion with
 // SymbolicTilePropagation.
->>>>>>> upstream/master
 class TilingSpace {
  public:
   TilingSpace() : constraints_(ConstraintExpression::GetAlwaysSatisfied()) {}
@@ -176,13 +158,9 @@ class TilingSpace {
   // The deque is used to guarantee the pointer stability.
   std::deque<RTVarInfo> rt_vars_;
 
-<<<<<<< HEAD
-  // Root instruction of the fusion.
-=======
   // Symbolic tiles for the fusion roots.
   // For tuple roots, there will be one tile per tuple element. Otherwise,
   // there will be only one symbolic tile.
->>>>>>> upstream/master
   llvm::SmallVector<SymbolicTile, 2> tiled_roots_;
 
   // Constraint expression for the tiling space.

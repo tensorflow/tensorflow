@@ -118,28 +118,7 @@ class SubcomputationInsertionVisitor : public DfsHloVisitorWithDefault {
         outer_->AddInstruction(std::move(new_hlo));
     TF_RETURN_IF_ERROR(NoteMapping(hlo, new_hlo_pointer));
 
-<<<<<<< HEAD
-    new_hlo_pointer->CopyOriginalValue(hlo, /*clone=*/true);
-    if (std::shared_ptr<OriginalValue> original_value =
-            new_hlo_pointer->original_value()) {
-      for (auto& pair : original_value->mutable_original_arrays()) {
-        std::optional<OriginalArray>& original_array = pair.second;
-        if (original_array.has_value()) {
-          std::string call_instruction_name;
-          if (std::shared_ptr<OriginalValue> call_original_value =
-                  call_->original_value()) {
-            call_instruction_name = call_original_value->original_arrays()
-                                        .begin()
-                                        ->second->instruction_name;
-          }
-          original_array->instruction_name = absl::StrCat(
-              call_instruction_name, "/", original_array->instruction_name);
-        }
-      }
-    }
-=======
     PropagateOriginalValue(new_hlo_pointer, hlo);
->>>>>>> upstream/master
 
     // Account for control edges.
     for (HloInstruction* control_predecessor : hlo->control_predecessors()) {
@@ -353,11 +332,7 @@ bool CallInliner::IsInlineableCallOp(HloInstruction* instruction) const {
   if (instruction->GetModule()->config().use_shardy_partitioner() &&
       (absl::StrContains(instruction->to_apply()->name(), "shmap_body") ||
        absl::StrContains(instruction->to_apply()->name(),
-<<<<<<< HEAD
-                         sdy::kManualComputationBodyFuncName.str()))) {
-=======
                          sdy::kManualComputationFuncName.str()))) {
->>>>>>> upstream/master
     // TODO(b/436603025). Remove this special handling by marking the
     // instruction as uninlineable with the frontend attribute.
     //
@@ -367,11 +342,7 @@ bool CallInliner::IsInlineableCallOp(HloInstruction* instruction) const {
     // - shmap_body: We do not want to inline the bodies of JAX shard maps to
     //   import them into an `sdy.ManualComputationOp`. This is for the MHLO
     //   round-trip pipeline
-<<<<<<< HEAD
-    // - kManualComputationBodyFuncName: Same as shmap_body except for the SDY
-=======
     // - kManualComputationFuncName: Same as shmap_body except for the SDY
->>>>>>> upstream/master
     //   round-trip pipeline.
     return false;
   }

@@ -41,6 +41,7 @@ limitations under the License.
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/gpu/redzone_allocator.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/stream_executor/stream_executor_memory_allocator.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "tsl/platform/casts.h"
@@ -68,15 +69,9 @@ std::vector<ExecutionInput> CreateExecutionInputsFromBuffers(
 
 int GetScratchBytes(const Executable* executable) {
   int scratch_bytes = 0;
-<<<<<<< HEAD
-  for (const auto& allocation : executable->GetAllocations()) {
-    if (allocation.IsPreallocatedTempBuffer()) {
-      for (const auto& [buffer, offset] : allocation.assigned_buffers()) {
-=======
   for (const auto* allocation : executable->GetAllocations()) {
     if (allocation->IsPreallocatedTempBuffer()) {
       for (const auto& [buffer, offset] : allocation->assigned_buffers()) {
->>>>>>> upstream/master
         // Scratch space is allocated as the second element in the output tuple
         // of the instruction.
         const auto& shape_index = buffer->positions().front().index;
@@ -94,11 +89,6 @@ int GetScratchBytes(const Executable* executable) {
 }  // namespace
 
 std::unique_ptr<GpuProfiler> GpuProfiler::Create(
-<<<<<<< HEAD
-    se::StreamExecutor* stream_executor, se::DeviceMemoryAllocator* allocator,
-    ProfileOptions options) {
-  auto stream = stream_executor->CreateStream();
-=======
     se::StreamExecutor* stream_executor, ProfileOptions options,
     se::DeviceMemoryAllocator* external_allocator) {
   std::unique_ptr<se::DeviceMemoryAllocator> owned_allocator;
@@ -114,37 +104,17 @@ std::unique_ptr<GpuProfiler> GpuProfiler::Create(
   // `stream_executor->CreateStream()` instead of reusing the allocator stream
   // once we can handle cuBLAS using multiple streams.
   auto stream = active_allocator->GetStream(stream_executor->device_ordinal());
->>>>>>> upstream/master
   if (!stream.ok()) {
     LOG(ERROR) << "Failed to create stream: " << stream.status();
     return nullptr;
   }
-<<<<<<< HEAD
-  return absl::WrapUnique(new GpuProfiler(stream_executor, allocator,
-                                          std::move(stream.value()), options));
-=======
   return absl::WrapUnique(new GpuProfiler(stream_executor, active_allocator,
                                           std::move(owned_allocator),
                                           stream.value(), options));
->>>>>>> upstream/master
 }
 
 absl::StatusOr<std::unique_ptr<InputBuffers>> GpuProfiler::CreateInputBuffers(
     const Executable* executable) {
-<<<<<<< HEAD
-  if (!executable->has_module()) {
-    return absl::InvalidArgumentError(
-        "Cannot create input buffers, the executable does not have an "
-        "attatched HloModule.");
-  }
-  TF_ASSIGN_OR_RETURN(
-      RedzoneBuffers buffers,
-      RedzoneBuffers::FromComputation(
-          *executable->module().entry_computation(), allocator_, stream_.get(),
-          RedzoneBuffers::BuffersToCreate::kAllInputs,
-          options_.should_init_buffers,
-          /*should_check_correctness=*/true, options_.redzone_padding_bytes));
-=======
   TF_ASSIGN_OR_RETURN(
       RedzoneBuffers buffers,
       RedzoneBuffers::FromProgramShape(
@@ -153,7 +123,6 @@ absl::StatusOr<std::unique_ptr<InputBuffers>> GpuProfiler::CreateInputBuffers(
           options_.should_init_buffers,
           /*should_check_correctness=*/true, options_.redzone_padding_bytes,
           allocator_, stream_));
->>>>>>> upstream/master
   auto gpu_buffers = std::make_unique<GpuInputBuffers>();
   gpu_buffers->redzone_buffers = std::move(buffers);
   return gpu_buffers;
@@ -187,13 +156,6 @@ absl::StatusOr<ProfileResult> GpuProfiler::Profile(
   TF_ASSIGN_OR_RETURN(
       ExecutionOutput execution_output,
       Execute(executable, std::move(execution_inputs), &profile));
-<<<<<<< HEAD
-
-  result.duration = absl::Nanoseconds(profile.compute_time_ns());
-  if (options_.should_populate_output_buffer) {
-    result.output_buffer = execution_output.Commit().ConsumeResult();
-  }
-=======
 
   result.duration = absl::Nanoseconds(profile.compute_time_ns());
   ScopedShapedBuffer output_buffers = execution_output.Commit().ConsumeResult();
@@ -204,7 +166,6 @@ absl::StatusOr<ProfileResult> GpuProfiler::Profile(
     result.output_buffer = std::move(output_buffers);
   }
 
->>>>>>> upstream/master
   return result;
 }
 
@@ -217,11 +178,7 @@ absl::StatusOr<ExecutionOutput> GpuProfiler::Execute(
 
   ExecutableRunOptions run_options;
   run_options.set_device_ordinal(stream_executor_->device_ordinal());
-<<<<<<< HEAD
-  run_options.set_stream(stream_.get());
-=======
   run_options.set_stream(stream_);
->>>>>>> upstream/master
   run_options.set_allocator(allocator_);
   run_options.set_gpu_executable_run_options(&gpu_opts);
   run_options.set_execution_profile(profile);
@@ -249,18 +206,6 @@ absl::Status GpuProfiler::CheckInputBuffers(InputBuffers& buffers) {
 absl::Status GpuProfiler::CheckOutputBuffer(ScopedShapedBuffer& output,
                                             ScopedShapedBuffer& reference,
                                             float rtol) {
-<<<<<<< HEAD
-  BufferComparator comparator(output.on_device_shape(), rtol);
-
-  TF_ASSIGN_OR_RETURN(
-      bool outputs_match,
-      comparator.CompareEqual(stream_.get(), output.root_buffer(),
-                              reference.root_buffer()));
-  if (outputs_match) {
-    return absl::OkStatus();
-  }
-  return absl::InternalError("Output buffer does not match reference buffer.");
-=======
   return ShapeUtil::ForEachLeafShapeWithStatus(
       reference.on_device_shape(),
       [&](const Shape& subshape, const ShapeIndex& index) -> absl::Status {
@@ -277,7 +222,6 @@ absl::Status GpuProfiler::CheckOutputBuffer(ScopedShapedBuffer& output,
         return absl::InternalError(
             "Output buffer does not match reference buffer.");
       });
->>>>>>> upstream/master
 }
 
 }  // namespace gpu

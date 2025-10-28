@@ -79,64 +79,7 @@ using absl::kZeroPad7;
 using absl::kZeroPad8;
 using absl::kZeroPad9;
 using Hex ABSL_DEPRECATE_AND_INLINE() = absl::Hex;
-<<<<<<< HEAD
-
-class AlphaNum {
-  // NOLINTBEGIN(google-explicit-constructor)
- public:
-  // No bool ctor -- bools convert to an integral type.
-  // A bool ctor would also convert incoming pointers (bletch).
-  AlphaNum(int i32)  // NOLINT(runtime/explicit)
-      : piece_(digits_, FastInt32ToBufferLeft(i32, digits_)) {}
-  AlphaNum(unsigned int u32)  // NOLINT(runtime/explicit)
-      : piece_(digits_, FastUInt32ToBufferLeft(u32, digits_)) {}
-  AlphaNum(long x)  // NOLINT(runtime/explicit)
-      : piece_(digits_, FastInt64ToBufferLeft(x, digits_)) {}
-  AlphaNum(unsigned long x)  // NOLINT(runtime/explicit)
-      : piece_(digits_, FastUInt64ToBufferLeft(x, digits_)) {}
-  AlphaNum(long long int i64)  // NOLINT(runtime/explicit)
-      : piece_(digits_, FastInt64ToBufferLeft(i64, digits_)) {}
-  AlphaNum(unsigned long long int u64)  // NOLINT(runtime/explicit)
-      : piece_(digits_, FastUInt64ToBufferLeft(u64, digits_)) {}
-
-  AlphaNum(float f)  // NOLINT(runtime/explicit)
-      : piece_(digits_, FloatToBuffer(f, digits_)) {}
-  AlphaNum(double f)  // NOLINT(runtime/explicit)
-      : piece_(digits_, DoubleToBuffer(f, digits_)) {}
-  AlphaNum(bfloat16 bf)  // NOLINT(runtime/explicit)
-      : piece_(digits_, FloatToBuffer(static_cast<float>(bf), digits_)) {}
-
-  AlphaNum(absl::Hex hex);  // NOLINT(runtime/explicit)
-
-  AlphaNum(const char *c_str) : piece_(c_str) {}  // NOLINT(runtime/explicit)
-  AlphaNum(const absl::string_view &pc)
-      : piece_(pc) {}               // NOLINT(runtime/explicit)
-  AlphaNum(const std::string &str)  // NOLINT(runtime/explicit)
-      : piece_(str) {}
-  AlphaNum(const tstring &str)  // NOLINT(runtime/explicit)
-      : piece_(str) {}
-  template <typename A>
-  AlphaNum(const std::basic_string<char, std::char_traits<char>, A> &str)
-      : piece_(str) {}  // NOLINT(runtime/explicit)
-
-  absl::string_view::size_type size() const { return piece_.size(); }
-  const char *data() const { return piece_.data(); }
-  absl::string_view Piece() const { return piece_; }
-
- private:
-  absl::string_view piece_;
-  char digits_[kFastToBufferSize];
-
-  // Use ":" not ':'
-  AlphaNum(char c);  // NOLINT(runtime/explicit)
-
-  // NOLINTEND(google-explicit-constructor)
-  AlphaNum(const AlphaNum &) = delete;
-  void operator=(const AlphaNum &) = delete;
-};
-=======
 using AlphaNum ABSL_DEPRECATE_AND_INLINE() = absl::AlphaNum;
->>>>>>> upstream/master
 
 // ----------------------------------------------------------------------
 // StrCat()

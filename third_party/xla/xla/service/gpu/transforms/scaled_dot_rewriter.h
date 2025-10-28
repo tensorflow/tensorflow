@@ -13,18 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-<<<<<<< HEAD
-<<<<<<< HEAD:third_party/xla/xla/service/gpu/transforms/scaled_dot_rewriter.h
 #ifndef XLA_SERVICE_GPU_TRANSFORMS_SCALED_DOT_REWRITER_H_
 #define XLA_SERVICE_GPU_TRANSFORMS_SCALED_DOT_REWRITER_H_
-=======
-#ifndef XLA_HLO_TRANSFORMS_SIMPLIFIERS_SLICE_HOISTER_H_
-#define XLA_HLO_TRANSFORMS_SIMPLIFIERS_SLICE_HOISTER_H_
->>>>>>> upstream/master:third_party/xla/xla/hlo/transforms/simplifiers/slice_hoister.h
-=======
-#ifndef XLA_SERVICE_GPU_TRANSFORMS_SCALED_DOT_REWRITER_H_
-#define XLA_SERVICE_GPU_TRANSFORMS_SCALED_DOT_REWRITER_H_
->>>>>>> upstream/master
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
@@ -34,45 +24,18 @@ limitations under the License.
 #include "xla/hlo/pass/hlo_pass_interface.h"
 
 namespace xla {
-<<<<<<< HEAD
-
-<<<<<<< HEAD:third_party/xla/xla/service/gpu/transforms/scaled_dot_rewriter.h
-=======
 namespace gpu {
 
->>>>>>> upstream/master
 // This pass rewrites ScaledDot instructions into a sequence of other HLO
 // instructions, including Convert, Broadcast, Reshape, Multiply, and Dot.
 class ScaledDotRewriter : public HloModulePass {
  public:
   absl::string_view name() const override { return "scaled-dot-rewriter"; }
-<<<<<<< HEAD
-=======
-// An HLO pass that hoists slice operations through add operations.
-class SliceHoister : public HloModulePass {
- public:
-  SliceHoister() = default;
->>>>>>> upstream/master:third_party/xla/xla/hlo/transforms/simplifiers/slice_hoister.h
 
-  absl::string_view name() const override { return "slice-hoister"; }
-=======
-
->>>>>>> upstream/master
   using HloPassInterface::Run;
   absl::StatusOr<bool> Run(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
-<<<<<<< HEAD
-};
-
-}  // namespace xla
-
-<<<<<<< HEAD:third_party/xla/xla/service/gpu/transforms/scaled_dot_rewriter.h
-#endif  // XLA_SERVICE_GPU_TRANSFORMS_SCALED_DOT_REWRITER_H_
-=======
-#endif  // XLA_HLO_TRANSFORMS_SIMPLIFIERS_SLICE_HOISTER_H_
->>>>>>> upstream/master:third_party/xla/xla/hlo/transforms/simplifiers/slice_hoister.h
-=======
 
   absl::StatusOr<bool> RewriteComputation(HloComputation* computation);
 };
@@ -81,4 +44,3 @@ class SliceHoister : public HloModulePass {
 }  // namespace xla
 
 #endif  // XLA_SERVICE_GPU_TRANSFORMS_SCALED_DOT_REWRITER_H_
->>>>>>> upstream/master

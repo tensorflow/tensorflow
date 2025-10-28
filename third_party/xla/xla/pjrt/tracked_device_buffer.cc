@@ -56,110 +56,6 @@ limitations under the License.
 
 namespace xla {
 
-<<<<<<< HEAD
-void BufferSequencingEvent::SetSequencingEvent(EventPool::Handle event,
-                                               se::Stream* stream) {
-  EventState state;
-  state.event = std::move(event);
-  state.definition_stream = stream;
-  event_.emplace(std::move(state));
-}
-
-void BufferSequencingEvent::SetDefinedStatus(absl::Status status) {
-  CHECK(!status.ok());
-  event_.SetError(status);
-}
-
-uint64_t BufferSequencingEvent::sequence_number() const {
-  return event_->event.sequence_number();
-}
-
-void BufferSequencingEvent::WaitForEventOnStream(se::Stream* stream) {
-  // We cannot wait for an event until ThenRecordEvent has been called; on GPU
-  // newly created events are deemed to have already happened past.
-  tsl::BlockUntilReady(event_);
-
-  if (event_.IsError()) {
-    return;
-  }
-  if (event_->definition_stream == stream) {
-    return;
-  }
-
-  absl::MutexLock lock(&mu_);
-  // The set of defined streams is expected to be very small indeed (usually
-  // 1-2), so a simple linear scan should be fast enough.
-  if (std::find(streams_defined_on_.begin(), streams_defined_on_.end(),
-                stream) != streams_defined_on_.end()) {
-    // stream is in streams_defined_on_; it doesn't need to be waited on.
-    return;
-  }
-
-  stream->WaitFor(event_->event.event()).IgnoreError();
-  streams_defined_on_.push_back(stream);
-}
-
-absl::Status BufferSequencingEvent::WaitForEventOnExternalStream(
-    std::intptr_t stream) {
-  tsl::BlockUntilReady(event_);
-  if (const auto* error = event_.GetErrorIfPresent()) {
-    return *error;
-  }
-  return event_->event.event()->WaitForEventOnExternalStream(stream);
-}
-
-bool BufferSequencingEvent::IsPredeterminedErrorOrDefinedOn(
-    se::Stream* stream) {
-  tsl::BlockUntilReady(event_);
-  CHECK(event_.IsAvailable());
-
-  // IsPredeterminedError
-  if (event_.IsError()) {
-    return true;
-  }
-
-  if (event_->definition_stream == stream) {
-    return true;
-  }
-
-  // The set of defined streams is expected to be very small indeed (usually
-  // 1-2), so a simple linear scan should be fast enough.
-  absl::MutexLock lock(&mu_);
-  return absl::c_find(streams_defined_on_, stream) != streams_defined_on_.end();
-}
-
-bool BufferSequencingEvent::IsComplete() {
-  tsl::BlockUntilReady(event_);
-  if (event_.IsError()) {
-    return true;
-  }
-
-  return event_->event.event()->PollForStatus() == se::Event::Status::kComplete;
-}
-
-void BufferSequencingEvent::ExecuteOrAddToFutureTasks(
-    const std::string& task_name, std::function<void()> task) {
-  tsl::profiler::TraceMeProducer producer(
-      "BufferSequencingEvent::ExecuteOrAddToFutureTasks",
-      tsl::profiler::ContextType::kPjRt);
-
-  auto traced_task = [task = std::move(task),
-                      context_id = producer.GetContextId()]() {
-    tsl::profiler::TraceMeConsumer consumer("BufferSequencingEvent::Execute",
-                                            tsl::profiler::ContextType::kPjRt,
-                                            context_id);
-    task();
-  };
-
-  // Execute the `task` when definition event becomes available. If it's already
-  // available, the task will be executed immediately.
-  event_.AndThen([this, traced_task = std::move(traced_task)]() mutable {
-    thread_pool_->Schedule(std::move(traced_task));
-  });
-}
-
-=======
->>>>>>> upstream/master
 ShapedBuffer RawSEDeviceMemory::AsShapedBuffer(
     PjRtDevice* device, const Shape& on_device_shape) const {
   ShapedBuffer shaped_buffer(on_device_shape, device->local_device_id().value(),
@@ -284,23 +180,14 @@ void TrackedDeviceBuffer::ConfirmDonation() {
   ReleaseDeviceMemory();
 }
 
-<<<<<<< HEAD
-void TrackedDeviceBuffer::AddUsageEvent(se::Stream* usage_stream,
-                                        BufferSequencingEventRef event,
-=======
 void TrackedDeviceBuffer::AddUsageEvent(BufferSequencingEventRef event,
->>>>>>> upstream/master
                                         bool reference_held) {
   CHECK(in_use_);
 
   // If the event is 0, it means that the event is not recorded yet and the task
   // related to this event is deferred, so just add it.
   if (!event->IsDefined()) {
-<<<<<<< HEAD
-    usage_events_.push_back({usage_stream, event, reference_held});
-=======
     usage_events_.push_back({event, reference_held});
->>>>>>> upstream/master
     return;
   }
   auto* usage_stream = event->definition_stream();
@@ -309,11 +196,7 @@ void TrackedDeviceBuffer::AddUsageEvent(BufferSequencingEventRef event,
     // If the existing event is 0, it means that the event is not recorded yet
     // and the task related to this event is deferred, so don't replace it.
     if (!existing.event->IsDefined()) continue;
-<<<<<<< HEAD
-    if (existing.stream == usage_stream) {
-=======
     if (existing.event->definition_stream() == usage_stream) {
->>>>>>> upstream/master
       if (*existing.event < *event) {
         existing.event = event;
         existing.reference_held = reference_held;
@@ -343,12 +226,9 @@ TrackedDeviceBuffer::GetAsyncValueDefinitionEvents() {
 
 tsl::RCReference<CommonPjRtRawBuffer> TrackedDeviceBuffer::GetRawBuffer(
     PjRtMemorySpace* memory_space) {
-<<<<<<< HEAD
-=======
   if (!device_memory_) {
     return tsl::RCReference<CommonPjRtRawBuffer>();
   }
->>>>>>> upstream/master
   return tsl::MakeRef<PjRtStreamExecutorRawBuffer>(
       tensorflow::down_cast<PjRtStreamExecutorClient*>(memory_space->client()),
       memory_space,
@@ -358,8 +238,6 @@ tsl::RCReference<CommonPjRtRawBuffer> TrackedDeviceBuffer::GetRawBuffer(
       device_memory_);
 }
 
-<<<<<<< HEAD
-=======
 void TrackedDeviceBuffer::AddUsageEvent(
     tsl::RCReference<PjRtDeviceEvent> event) {
   if (event) {
@@ -370,7 +248,6 @@ void TrackedDeviceBuffer::AddUsageEvent(
   }
 }
 
->>>>>>> upstream/master
 void GetDeviceBufferEvents(
     const TrackedDeviceBuffer& buffer, bool get_usage_events,
     absl::flat_hash_set<BufferSequencingEvent*>* events) {

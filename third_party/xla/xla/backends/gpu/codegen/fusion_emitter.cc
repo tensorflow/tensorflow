@@ -188,16 +188,11 @@ absl::StatusOr<llvm::Function*> BuildKernelPrototypeFromUniqueName(
                            llvm::Attribute::get(llvm_arg.getContext(),
                                                 llvm::Attribute::NoAlias));
     }
-<<<<<<< HEAD
-  }
-
-=======
     if (impl_arg && impl_arg->hasAttribute("nvvm.grid_constant")) {
       kernel->addParamAttr(arg_idx, llvm::Attribute::get(llvm_arg.getContext(),
                                                          "nvvm.grid_constant"));
     }
   }
->>>>>>> upstream/master
   return kernel;
 }
 

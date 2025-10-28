@@ -21,10 +21,7 @@ limitations under the License.
 
 // Placeholder for lineage logging import.
 // Placeholder for lineage logging additional import.
-<<<<<<< HEAD
-=======
 #include "absl/base/call_once.h"
->>>>>>> upstream/master
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"

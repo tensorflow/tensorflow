@@ -23,10 +23,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/call_once.h"
-<<<<<<< HEAD
-=======
 #include "absl/log/check.h"
->>>>>>> upstream/master
 #include "absl/log/log.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/ExecutionEngine/JITEventListener.h"
@@ -38,10 +35,7 @@ limitations under the License.
 #include "llvm/ExecutionEngine/Orc/ThreadSafeModule.h"
 #include "llvm/ExecutionEngine/SectionMemoryManager.h"
 #include "llvm/IR/BasicBlock.h"
-<<<<<<< HEAD
-=======
 #include "llvm/IR/Constants.h"
->>>>>>> upstream/master
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/IRBuilder.h"
@@ -53,10 +47,7 @@ limitations under the License.
 #include "llvm/IR/Verifier.h"
 #include "llvm/MC/TargetRegistry.h"
 #include "llvm/Support/Alignment.h"
-<<<<<<< HEAD
-=======
 #include "llvm/Support/Casting.h"
->>>>>>> upstream/master
 #include "llvm/Support/Errc.h"
 #include "llvm/Support/Error.h"
 #include "llvm/Support/ErrorHandling.h"
@@ -247,20 +238,12 @@ llvm::Expected<void*> JitRunner::CreateVectorWrapperWithLoop(
 
 std::unique_ptr<llvm::TargetMachine> CreateHostTargetMachine() {
   initializeNativeTargets();
-<<<<<<< HEAD
-  const std::string triple = llvm::sys::getDefaultTargetTriple();
-=======
   const llvm::Triple triple(llvm::sys::getDefaultTargetTriple());
->>>>>>> upstream/master
   llvm::StringRef cpu = llvm::sys::getHostCPUName();
   llvm::StringMap<bool> features = llvm::sys::getHostCPUFeatures();
   std::string errors = "";
   const llvm::Target* target =
-<<<<<<< HEAD
-      llvm::TargetRegistry::lookupTarget(llvm::StringRef(triple), errors);
-=======
       llvm::TargetRegistry::lookupTarget(triple, errors);
->>>>>>> upstream/master
   LOG_IF(FATAL, !target) << "Failed to lookup target: " << errors;
   std::string feature_str;
   for (const auto& [feature, value] : features) {
@@ -270,13 +253,6 @@ std::unique_ptr<llvm::TargetMachine> CreateHostTargetMachine() {
   }
   llvm::TargetOptions target_options;
   std::unique_ptr<llvm::TargetMachine> target_machine(
-<<<<<<< HEAD
-      target->createTargetMachine(llvm::Triple(triple), cpu, feature_str,
-                                  target_options, std::nullopt, std::nullopt));
-  LOG_IF(FATAL, !target_machine) << "Failed to create target machine";
-  return target_machine;
-}
-=======
       target->createTargetMachine(triple, cpu, feature_str, target_options,
                                   std::nullopt, std::nullopt));
   LOG_IF(FATAL, !target_machine) << "Failed to create target machine";
@@ -352,5 +328,4 @@ llvm::Function* CreateKTimesWrapper(llvm::Module* module,
 
   return wrapper_func;
 }
->>>>>>> upstream/master
 }  // namespace xla::codegen::intrinsic

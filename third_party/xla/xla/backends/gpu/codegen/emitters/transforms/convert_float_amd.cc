@@ -46,10 +46,7 @@ limitations under the License.
 #include "google/protobuf/text_format.h"
 #include "xla/backends/gpu/codegen/emitters/transforms/passes.h"
 #include "xla/stream_executor/device_description.h"
-<<<<<<< HEAD
-=======
 #include "xla/stream_executor/device_description.pb.h"
->>>>>>> upstream/master
 #include "xla/tsl/platform/status.h"
 
 namespace xla {

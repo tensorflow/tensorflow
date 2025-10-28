@@ -80,11 +80,7 @@ static void MakeTTGIR(mlir::OpPassManager* pm,
   pm->addPass(mlir::createLoopInvariantCodeMotionPass());
   pm->addPass(mlir::createCanonicalizerPass());
 
-<<<<<<< HEAD
-  if (cc.has_amd_matrix_core()) {
-=======
   if (rocm_cc.has_amd_matrix_instr()) {
->>>>>>> upstream/master
     pm->addPass(mlir::createTritonAMDGPUStreamPipeline(
         {num_stages, /*global_prefetch=*/0, /*local_prefetch=*/0,
          /*use_async_copy=*/false, /*use_block_pingpong=*/false}));
@@ -149,15 +145,6 @@ static void MakeLLIR(mlir::OpPassManager* pm,
   pm->addPass(mt::createConvertBuiltinFuncToLLVMPass(/*ftz=*/true));
 }
 
-<<<<<<< HEAD
-std::string GetLibdevicePath(const HloModuleConfig& hlo_config,
-  const se::DeviceDescription& device_info) {
-  std::string libdevice_dir = tsl::RocdlRoot();
-  auto compute_capability = device_info.rocm_compute_capability();
-  const std::string libdevice_path =
-      amdgpu::LibDevicePath(compute_capability.gcn_arch_name(), libdevice_dir);
-  return libdevice_path;
-=======
 void CreateTritonRocmPipeline(
     mlir::OpPassManager* pm,
     const stream_executor::RocmComputeCapability& rocm_cc, int num_warps,
@@ -165,7 +152,6 @@ void CreateTritonRocmPipeline(
   MakeTTIR(pm);
   MakeTTGIR(pm, rocm_cc, num_warps, num_ctas, num_stages);
   MakeLLIR(pm, rocm_cc, num_stages);
->>>>>>> upstream/master
 }
 
 }  // namespace gpu

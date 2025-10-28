@@ -26,10 +26,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "llvm/IR/LLVMContext.h"
 #include "xla/hlo/ir/hlo_module.h"
-<<<<<<< HEAD
-=======
 #include "xla/hlo/tools/hlo_opt/opt_lib.h"
->>>>>>> upstream/master
 #include "xla/hlo/transforms/host_offloader.h"
 #include "xla/hlo/transforms/simplifiers/hlo_memory_scheduler.h"
 #include "xla/layout.h"
@@ -162,11 +159,7 @@ class GpuOptProvider : public CompiledOptProvider {
         });
     // go/keep-sorted start
     RegisterPass<CopyInsertion>(alias_info_.get());
-<<<<<<< HEAD
-    RegisterPass<HloMemoryScheduler>(alias_info_.get(), size_func);
-=======
     RegisterPass<HloMemoryScheduler>(alias_info_.get(), kSizeFunction);
->>>>>>> upstream/master
     RegisterPass<HostOffloader>(alias_info_.get());
     RegisterPass<gpu::AllGatherOptimizer>();
     RegisterPass<gpu::CuDnnCustomCallConverter>();

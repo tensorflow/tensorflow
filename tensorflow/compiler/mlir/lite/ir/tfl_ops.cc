@@ -251,11 +251,7 @@ bool ShouldFoldOperation(Operation* inst) {
   int64_t operands_size = get_size(inst->getOperandTypes());
 
   constexpr int kSizeFactor = 2;
-<<<<<<< HEAD
-  constexpr int64_t kResultsSizeThreshold = (1 << 16);  // 64 Kib =   8 KiB
-=======
   constexpr int64_t kResultsSizeThreshold = (1 << 19);                // 64 KiB
->>>>>>> upstream/master
   constexpr int64_t kOperandsSizeThreshold = 200L * 1024 * 1024 * 8;  // 200 MiB
 
   return (operands_size <= kOperandsSizeThreshold) &&

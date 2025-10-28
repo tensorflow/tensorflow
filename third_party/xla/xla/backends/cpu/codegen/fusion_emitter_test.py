@@ -223,16 +223,11 @@ class LoopFusionTest(parameterized.TestCase):
     hlo_module, buffer_assignment = utilities.parse_hlo_module(hlo)
     jit_compiler = testlib_cpu.JitCompiler(hlo_module.get_config())
     mlir_context = testlib_cpu.MLIRContext()
-<<<<<<< HEAD
-    kernel_definition = testlib_cpu.emit_fusion_kernel(
-        mlir_context, hlo_module.get_root_instruction(), buffer_assignment
-=======
     symbolic_expr_context = testlib_cpu.SymbolicExprContext(mlir_context)
     kernel_definition = testlib_cpu.emit_fusion_kernel(
         symbolic_expr_context,
         hlo_module.get_root_instruction(),
         buffer_assignment,
->>>>>>> upstream/master
     )
 
     kernel_runner = testlib_cpu.KernelRunner.create(
@@ -264,7 +259,7 @@ class FusionEmitterTest(parameterized.TestCase):
         %param = f64[3] parameter(0)
         %multiplier = f64[3] constant({1, 0, nan})
         %mult = f64[3] multiply(%param, %multiplier)
-        ROOT %exp = f64[3] exponential(%mult) 
+        ROOT %exp = f64[3] exponential(%mult)
       }
 
       ENTRY main {

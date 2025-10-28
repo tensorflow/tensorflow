@@ -155,27 +155,18 @@ absl::StatusOr<bool> RunScheduler(
         std::make_unique<ApproximateLatencyEstimator>(),
     std::unique_ptr<AsyncTracker> async_tracker = nullptr,
     std::unique_ptr<LegalizeSchedulingAnnotations::Config> legalizer_config =
-<<<<<<< HEAD
-        nullptr) {
-=======
         nullptr,
     bool skip_async_collective_creator = false) {
->>>>>>> upstream/master
   AsyncCollectiveCreator::CollectiveCreatorConfig config{
       /*convert_all_reduce=*/HloPredicateTrue,
       /*convert_all_gather=*/HloPredicateTrue,
       /*convert_collective_broadcast=*/HloPredicateTrue,
       /*convert_collective_permute=*/HloPredicateTrue};
-<<<<<<< HEAD
-  TF_ASSIGN_OR_RETURN(bool value,
-                      AsyncCollectiveCreator(std::move(config)).Run(module));
-=======
   bool value = false;
   if (!skip_async_collective_creator) {
     TF_ASSIGN_OR_RETURN(value,
                         AsyncCollectiveCreator(std::move(config)).Run(module));
   }
->>>>>>> upstream/master
   if (!legalizer_config) {
     legalizer_config =
         std::make_unique<LegalizeSchedulingAnnotations::Config>();
@@ -4748,8 +4739,6 @@ ROOT tuple.2 = (f32[16,2048,2048]{2,1,0}, f32[8,128,128]{2,1,0}, f32[16,2048,204
             GetIndex(new_instruction_sequence, "cp1d"));
 }
 
-<<<<<<< HEAD
-=======
 TEST_F(LatencyHidingSchedulerTest, SyncAllGatherResource) {
   absl::string_view hlo_string = R"(
 HloModule module, is_scheduled=true
@@ -4933,7 +4922,6 @@ ENTRY entry {
               sync_ag_index < async_ag_done_index);
 }
 
->>>>>>> upstream/master
 class LatencyHidingSchedulerBenchmark : public LatencyHidingSchedulerTest {
  public:
   void TestBody() override {}

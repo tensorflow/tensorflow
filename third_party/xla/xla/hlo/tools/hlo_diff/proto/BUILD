@@ -18,11 +18,8 @@ tf_proto_library(
     name = "diff_result_proto",
     srcs = ["diff_result.proto"],
 )
-<<<<<<< HEAD
-=======
 
 tf_jspb_proto_library(
     name = "diff_result_jspb_proto",
     deps = [":diff_result_proto"],
 )
->>>>>>> upstream/master

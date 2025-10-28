@@ -59,19 +59,19 @@ TEST_F(HloDiffTest, FindMainMatchedComputationWorks) {
   // [Param p5]->[Param p7]->└-------┘  └----------┘
   const char* hlo_string = R"(
   HloModule module, is_scheduled=true
-  
+
   fused_computation.1 {
     p2 = s32[32,16]{0,1:T(1,128)} parameter(0)
     p3 = s32[32,16]{0,1:T(1,128)} parameter(1)
     add.1 = s32[32,16]{0,1:T(1,128)} add(p2, p3)
   }
-  
+
   fused_computation.2 {
     p6 = s32[32,16]{0,1:T(1,128)} parameter(0)
     p7 = s32[32,16]{0,1:T(1,128)} parameter(1)
     add.2 = s32[32,16]{0,1:T(1,128)} add(p6, p7)
   }
-  
+
   ENTRY entry {
     p0 = s32[32,16]{0, 1:T(1,128)} parameter(0)
     p1 = s32[32,16]{0,1:T(1,128)} parameter(1)
@@ -187,7 +187,7 @@ TEST_F(HloDiffTest, FindMainMatchedComputationWorks) {
 TEST_F(HloDiffTest, InstructionDiffWorks) {
   const char* hlo_string_l = R"(
   HloModule module, is_scheduled=true
-  
+
   ENTRY entry {
     parameter.0 = f32[] parameter(0)
     parameter.1 = f32[] parameter(1)
@@ -197,7 +197,7 @@ TEST_F(HloDiffTest, InstructionDiffWorks) {
   )";
   const char* hlo_string_r = R"(
   HloModule module, is_scheduled=true
-  
+
   ENTRY entry {
     parameter.0 = f32[] parameter(0)
     parameter.1 = f32[] parameter(1)
@@ -262,7 +262,7 @@ TEST_F(HloDiffTest, ComputationDiffFingerprintWorks) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> module_l,
                           ParseAndReturnVerifiedModule(R"(
   HloModule module, is_scheduled=true
-  
+
   ENTRY entry {
     parameter.0 = f32[] parameter(0)
     parameter.1 = f32[] parameter(1)
@@ -281,7 +281,7 @@ TEST_F(HloDiffTest, ComputationDiffFingerprintWorks) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> module_r,
                           ParseAndReturnVerifiedModule(R"(
   HloModule module, is_scheduled=true
-  
+
   ENTRY entry {
     parameter.0 = f32[] parameter(0)
     parameter.1 = f32[] parameter(1)
@@ -361,19 +361,19 @@ TEST_F(HloDiffTest, FindConnectedComponentsWorks) {
   // [Param p5]->[Param p7]->└-------┘  └----------┘
   const char* hlo_string = R"(
   HloModule module, is_scheduled=true
-  
+
   fused_computation.1 {
     p2 = s32[32,16]{0,1:T(1,128)} parameter(0)
     p3 = s32[32,16]{0,1:T(1,128)} parameter(1)
     add.1 = s32[32,16]{0,1:T(1,128)} add(p2, p3)
   }
-  
+
   fused_computation.2 {
     p6 = s32[32,16]{0,1:T(1,128)} parameter(0)
     p7 = s32[32,16]{0,1:T(1,128)} parameter(1)
     add.2 = s32[32,16]{0,1:T(1,128)} add(p6, p7)
   }
-  
+
   ENTRY entry {
     p0 = s32[32,16]{0, 1:T(1,128)} parameter(0)
     p1 = s32[32,16]{0,1:T(1,128)} parameter(1)
@@ -506,11 +506,7 @@ subtract.0 = f32[] subtract(constant.0, constant.1)
                                 /*left_unmatched_instruction_count=*/3,
                                 /*right_unmatched_instruction_count=*/0)),
                   FieldsAre(
-<<<<<<< HEAD
-                      /*fingerprint=*/14547129201606263045U,
-=======
                       /*fingerprint=*/2981450499210857672U,
->>>>>>> upstream/master
                       /*computation_groups=*/
                       UnorderedElementsAre(FieldsAre(
                           /*left_computations=*/IsEmpty(),
@@ -582,7 +578,7 @@ TEST_F(HloDiffTest, DiffSummaryFromDiffResultProtoWorks) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> module_l,
                           ParseAndReturnVerifiedModule(R"(
   HloModule module, is_scheduled=true
-  
+
   ENTRY entry {
     parameter.0 = f32[] parameter(0)
     parameter.1 = f32[] parameter(1)
@@ -592,7 +588,7 @@ TEST_F(HloDiffTest, DiffSummaryFromDiffResultProtoWorks) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> module_r,
                           ParseAndReturnVerifiedModule(R"(
   HloModule module, is_scheduled=true
-  
+
   ENTRY entry {
     parameter.0 = f32[] parameter(0)
     parameter.1 = f32[] parameter(1)

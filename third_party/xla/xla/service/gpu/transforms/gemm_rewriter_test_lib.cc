@@ -94,13 +94,8 @@ bool GemmRewriteTestBase::HasFp8Support() const {
 
 bool GemmRewriteTestBase::HasCudaComputeCapability(
     const stream_executor::CudaComputeCapability& cc) const {
-<<<<<<< HEAD
-  return IsCuda() && std::get<se::CudaComputeCapability>(Capability())
-                         .SupportsAllFeaturesOf(cc);
-=======
   return IsCuda() &&
          Capability().cuda_compute_capability()->SupportsAllFeaturesOf(cc);
->>>>>>> upstream/master
 }
 
 ParameterizedGemmRewriteTestBase::ParameterizedGemmRewriteTestBase() {

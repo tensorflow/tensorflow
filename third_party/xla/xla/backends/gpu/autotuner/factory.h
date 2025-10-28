@@ -31,13 +31,9 @@ namespace gpu {
 
 struct GetCodegenBackends {
   using Type = std::function<std::vector<std::unique_ptr<CodegenBackend>>(
-<<<<<<< HEAD
-      stream_executor::StreamExecutor*, const DebugOptions*, Compiler*)>;
-=======
       stream_executor::StreamExecutor*, const DebugOptions*, Compiler*,
       const Compiler::TargetConfig*,
       SymbolicExprContext* symbolic_expr_context)>;
->>>>>>> upstream/master
 };
 
 }  // namespace gpu

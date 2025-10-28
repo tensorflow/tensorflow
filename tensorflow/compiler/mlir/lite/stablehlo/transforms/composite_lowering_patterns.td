@@ -244,8 +244,6 @@ def LegalizeCompositePack4Elements1 : Pat<
         (TFL_PackOp (variadic $i0, $i1, $i2, $i3),
           (GetCompositeAttributeAs<"values_count", "IntegerAttr"> $attrs),
           (GetCompositeAttributeAs<"axis", "IntegerAttr"> $attrs))>;
-<<<<<<< HEAD
-=======
 
 def LegalizeDynamicSlice : Pat<
         (MHLO_CompositeOp:$composite
@@ -273,4 +271,3 @@ def LegalizeBMM4dAdjY_1 : Pat<
           ConstantStrAttr<StrAttr, "tfl.bmm_4d_adj_y">, $attrs, $_, $_),
         (TFL_BatchMatMulOp $lhs, $rhs, ConstBoolAttrFalse, ConstBoolAttrTrue,
                      ConstBoolAttrFalse)>;
->>>>>>> upstream/master

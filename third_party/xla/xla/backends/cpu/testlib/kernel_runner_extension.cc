@@ -198,15 +198,6 @@ NB_MODULE(_extension, kernel_runner_module) {
       .def(
           "__init__",
           [](CpuScatterFusion* self, const HloFusionInstruction* instruction,
-<<<<<<< HEAD
-             const BufferAssignment* bufffer_assignment,
-             mlir::MLIRContext* context) {
-            new (self)
-                CpuScatterFusion(*bufffer_assignment, instruction, context);
-          },
-          nb::keep_alive<1, 2>(), nb::keep_alive<1, 3>(),
-          nb::keep_alive<1, 3>());
-=======
              const BufferAssignment* buffer_assignment,
              gpu::SymbolicExprContext* symbolic_expr_context) {
             new (self) CpuScatterFusion(*buffer_assignment, instruction,
@@ -214,7 +205,6 @@ NB_MODULE(_extension, kernel_runner_module) {
           },
           nb::keep_alive<1, 2>(), nb::keep_alive<1, 3>(),
           nb::keep_alive<1, 4>());
->>>>>>> upstream/master
 
   kernel_runner_module.def(
       "emit_fusion_kernel",

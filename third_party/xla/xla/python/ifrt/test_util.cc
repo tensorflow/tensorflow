@@ -35,11 +35,7 @@ limitations under the License.
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/user_context.h"
-<<<<<<< HEAD
-#include "xla/tsl/concurrency/ref_count.h"
-=======
 #include "xla/python/ifrt/user_context_test_util.h"
->>>>>>> upstream/master
 
 namespace xla {
 namespace ifrt {
@@ -129,33 +125,8 @@ absl::StatusOr<DeviceListRef> GetAddressableDevices(
   return client->MakeDeviceList(std::move(devices));
 }
 
-<<<<<<< HEAD
-namespace {
-
-class TestUserContext : public llvm::RTTIExtends<TestUserContext, UserContext> {
- public:
-  explicit TestUserContext(uint64_t id) : id_(id) {}
-
-  uint64_t Fingerprint() const override { return id_; }
-
-  std::string DebugString() const override {
-    return absl::StrCat("TestUserContext(", id_, ")");
-  }
-
-  // No new `ID` is not defined because tests below do not exercise RTTI.
-
- private:
-  uint64_t id_;
-};
-
-}  // namespace
-
-UserContextRef MakeUserContext(uint64_t id) {
-  return tsl::MakeRef<TestUserContext>(id);
-=======
 UserContextRef MakeUserContext(uint64_t id) {
   return TestUserContext::Create(UserContextId(id));
->>>>>>> upstream/master
 }
 
 }  // namespace test_util

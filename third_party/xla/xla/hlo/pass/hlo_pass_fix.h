@@ -73,49 +73,6 @@ class HloPassFix : public Pass {
     return !run_state.changed.empty();
   }
 
-<<<<<<< HEAD
-  using HloPassInterface::RunOnModuleGroup;
-  absl::StatusOr<bool> RunOnModuleGroup(
-      HloModuleGroup* module_group,
-      const absl::flat_hash_set<absl::string_view>& execution_threads)
-      override {
-    bool changed = false;
-    bool changed_this_iteration = true;
-    int64_t iteration_count = 0;
-    VLOG(3) << "Running HloPassFix.";
-    while (changed_this_iteration) {
-      TF_ASSIGN_OR_RETURN(
-          changed_this_iteration,
-          Pass::RunOnModuleGroup(module_group, execution_threads));
-      changed |= changed_this_iteration;
-      VLOG(3) << "changed_this_iteration: " << changed_this_iteration;
-      ++iteration_count;
-      if (iteration_count == kIterationLimit) {
-        const DebugOptions& debug_options =
-            module_group->module(0).config().debug_options();
-        if (debug_options
-                .xla_unsupported_crash_on_hlo_pass_fix_max_iterations()) {
-          LOG(FATAL) << "Unexpectedly high number of iterations "
-                     << iteration_count << " in HLO pass '" << Pass::name()
-                     << "' for module group '" << module_group->name() << "'";
-        }
-        VLOG(1) << "Unexpectedly high number of iterations in HLO passes, "
-                   "exiting fixed point loop.";
-        if (debug_options
-                .xla_unsupported_crash_on_hlo_pass_silent_hlo_change()) {
-          // When crash on silent HLO changes is enabled, we can't lie about not
-          // changing the module, as that will lead to an immediate crash.
-          return changed;
-        }
-        // Return false in case this is fixed point is nested.
-        return false;
-      }
-    }
-    return changed;
-  }
-
-=======
->>>>>>> upstream/master
  private:
   absl::Status RunToFixPoint(
       HloModule* module, RunState* run_state,
@@ -142,11 +99,7 @@ class HloPassFix : public Pass {
               << " changed_this_iteration: "
               << !run_state->changed_this_iteration.empty();
       run_state->IncrementIteration();
-<<<<<<< HEAD
-      if (run_state->iteration == kIterationLimit) {
-=======
       if (run_state->iteration == iteration_limit_) {
->>>>>>> upstream/master
         const DebugOptions& debug_options = module->config().debug_options();
         if (debug_options
                 .xla_unsupported_crash_on_hlo_pass_fix_max_iterations()) {

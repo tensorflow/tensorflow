@@ -709,11 +709,7 @@ class XlaBuilder {
       std::optional<PrimitiveType> preferred_element_type = std::nullopt);
 
   XlaOp ScaledDot(
-<<<<<<< HEAD
-      XlaOp lhs, XlaOp lhs_scale, XlaOp rhs, XlaOp rhs_scale,
-=======
       XlaOp lhs, XlaOp rhs, XlaOp lhs_scale, XlaOp rhs_scale,
->>>>>>> upstream/master
       const DotDimensionNumbers& dimension_number,
       const PrecisionConfig* precision_config = nullptr,
       std::optional<PrimitiveType> preferred_element_type = std::nullopt);
@@ -1449,11 +1445,7 @@ class XlaBuilder {
                          const RaggedDotDimensionNumbers& dimension_numbers,
                          const PrecisionConfig* precision_config,
                          std::optional<PrimitiveType> preferred_element_type);
-<<<<<<< HEAD
-  friend XlaOp ScaledDot(XlaOp lhs, XlaOp lhs_scale, XlaOp rhs, XlaOp rhs_scale,
-=======
   friend XlaOp ScaledDot(XlaOp lhs, XlaOp rhs, XlaOp lhs_scale, XlaOp rhs_scale,
->>>>>>> upstream/master
                          const DotDimensionNumbers& dimension_number,
                          const PrecisionConfig* precision_config,
                          std::optional<PrimitiveType> preferred_element_type);
@@ -2013,15 +2005,8 @@ class XlaScopedOriginalValueAssignment {
   XlaScopedOriginalValueAssignment(
       xla::XlaBuilder* builder,
       std::optional<OriginalValueProto> original_value_proto)
-<<<<<<< HEAD
-      : builder_(builder) {
-    if (original_value_proto.has_value()) {
-      builder_->SetOriginalValue(original_value_proto.value());
-    }
-=======
       : builder_(builder), prev_original_value_(builder->original_value()) {
     SetOriginalValue(original_value_proto);
->>>>>>> upstream/master
   }
 
   XlaScopedOriginalValueAssignment(const XlaScopedOriginalValueAssignment&) =
@@ -2029,13 +2014,6 @@ class XlaScopedOriginalValueAssignment {
   XlaScopedOriginalValueAssignment& operator=(
       const XlaScopedOriginalValueAssignment&) = delete;
 
-<<<<<<< HEAD
-  ~XlaScopedOriginalValueAssignment() { builder_->ClearOriginalValue(); }
-
- private:
-  xla::XlaBuilder* const builder_;
-  std::optional<OpSharding> prev_sharding_;
-=======
   ~XlaScopedOriginalValueAssignment() {
     SetOriginalValue(prev_original_value_);
   }
@@ -2052,7 +2030,6 @@ class XlaScopedOriginalValueAssignment {
 
   xla::XlaBuilder* const builder_;
   std::optional<OriginalValueProto> prev_original_value_;
->>>>>>> upstream/master
 };
 
 // RAII-style object: save the current builder's frontend attributes, and merge

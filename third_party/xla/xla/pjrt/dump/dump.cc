@@ -77,21 +77,13 @@ absl::Status DumpCompileInputs(absl::string_view dump_to_path,
 
   // Dump module to file.
   std::string module_file_name = tsl::io::JoinPath(dump_sub_dir, "module.mlir");
-<<<<<<< HEAD
-  LOG(INFO) << "Dumping module to " << module_file_name;
-=======
   VLOG(3) << "Dumping module to " << module_file_name;
->>>>>>> upstream/master
   TF_RETURN_IF_ERROR(pjrt::MlirModuleToFile(module, module_file_name));
 
   // Dump compile options to file.
   std::string options_file_name =
       tsl::io::JoinPath(dump_sub_dir, "compile_options.pb");
-<<<<<<< HEAD
-  LOG(INFO) << "Dumping compile options to " << options_file_name;
-=======
   VLOG(3) << "Dumping compile options to " << options_file_name;
->>>>>>> upstream/master
   // Unset xla_dump_to when dumping so that reproducers don't dump by default
   compile_options.executable_build_options.mutable_debug_options()
       ->clear_xla_dump_to();
@@ -102,11 +94,7 @@ absl::Status DumpCompileInputs(absl::string_view dump_to_path,
   std::string topology_file_name =
       tsl::io::JoinPath(dump_sub_dir, "topology.pb");
 
-<<<<<<< HEAD
-  LOG(INFO) << "Dumping topology to " << topology_file_name;
-=======
   VLOG(3) << "Dumping topology to " << topology_file_name;
->>>>>>> upstream/master
   TF_ASSIGN_OR_RETURN(auto topology_proto, topology.ToProto());
   TF_RETURN_IF_ERROR(
       tsl::WriteStringToFile(tsl::Env::Default(), topology_file_name,
@@ -114,8 +102,6 @@ absl::Status DumpCompileInputs(absl::string_view dump_to_path,
   return absl::OkStatus();
 }
 
-<<<<<<< HEAD
-=======
 absl::Status MaybeDumpCompileInputs(
     xla::CompileOptions compile_options, mlir::ModuleOp module,
     const xla::PjRtTopologyDescription& topology) {
@@ -143,5 +129,4 @@ absl::Status MaybeDumpCompileInputs(
   return absl::OkStatus();
 }
 
->>>>>>> upstream/master
 }  // namespace pjrt

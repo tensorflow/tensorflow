@@ -3170,12 +3170,6 @@ func.func @main(%input0: tensor<16x16xf32>, %input1: tensor<16x16xi32>) {
 }
 
 // -----
-<<<<<<< HEAD
-// CHECK: HloModule
-// CHECK: ENTRY
-// CHECK: %[[ARG0:.*]] = f32[192] parameter(0)
-// CHECK: ROOT %[[RESULT:.*]] = f32[1,17,17,192] broadcast(%[[ARG0]]), dimensions={3}, origin={{[{][{]}}"broadcast.2342"{{[}][}]}}
-=======
 
 // CHECK: HloModule
 // CHECK: ENTRY
@@ -3205,7 +3199,6 @@ module {
 // CHECK: ENTRY
 // CHECK: %[[ARG0:.*]] = f32[192] parameter(0)
 // CHECK-LITERAL: ROOT %[[RESULT:.*]] = f32[1,17,17,192] broadcast(%[[ARG0]]), dimensions={3}, origin={{"broadcast.2342"}}
->>>>>>> upstream/master
 
 func.func @main(%arg0: tensor<192xf32>) -> tensor<1x17x17x192xf32> {
   %0 = "mhlo.broadcast_in_dim"(%arg0) <{broadcast_dimensions = dense<3> : tensor<1xi64>}> {mhlo.original_value = "{{\22broadcast.2342\22}}"} : (tensor<192xf32>) -> tensor<1x17x17x192xf32>
@@ -3216,8 +3209,6 @@ func.func @main(%arg0: tensor<192xf32>) -> tensor<1x17x17x192xf32> {
 
 // CHECK: HloModule
 // CHECK: ENTRY
-<<<<<<< HEAD
-=======
 // CHECK:  %[[ARG0:.*]] = f32[10] parameter(0)
 // CHECK-LITERAL:  %[[TOPK:.*]] = (f32[8], s32[8]) topk(%[[ARG0]]), k=8, largest=true, origin={({"t" {0}}, {"t" {1}})}
 // CHECK-LITERAL:  ROOT %[[GTE0:.*]] = f32[8] get-tuple-element(%[[TOPK]]), index=0, origin={{"t" {0}}}
@@ -3252,7 +3243,6 @@ func.func @main(%arg0: tensor<i32> {mhlo.original_value = "{{\22a\22}}"}, %arg1:
 
 // CHECK: HloModule
 // CHECK: ENTRY
->>>>>>> upstream/master
 func.func @main() -> memref<2xf32> {
   // CHECK: custom-call(), custom_call_target="CreateBuffer"
   %0 = "mhlo.custom_call"() {
@@ -3352,8 +3342,6 @@ func.func @main(%arg0: tensor<i1>, %arg1: memref<2xf32>) -> memref<2xf32> {
     }
   func.return %0#1: memref<2xf32>
 }
-<<<<<<< HEAD
-=======
 
 // -----
 
@@ -3400,4 +3388,3 @@ func.func @main(%arg0: tensor<8x8xf32>) -> tensor<8x6xf32> {
   %1 = mhlo.get_tuple_element %0[0] : (tuple<tensor<8x6xf32>, tensor<8x6xf32>>) -> tensor<8x6xf32>
   func.return %1: tensor<8x6xf32>
 }
->>>>>>> upstream/master

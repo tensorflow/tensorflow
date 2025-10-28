@@ -32,10 +32,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/convolution_thunk.h"
 #include "xla/backends/gpu/runtime/copy_thunk.h"
 #include "xla/backends/gpu/runtime/cudnn_thunk.h"
-<<<<<<< HEAD
-=======
 #include "xla/backends/gpu/runtime/fft_thunk.h"
->>>>>>> upstream/master
 #include "xla/backends/gpu/runtime/gemm_thunk.h"
 #include "xla/backends/gpu/runtime/gpublas_lt_matmul_thunk.h"
 #include "xla/backends/gpu/runtime/infeed_thunk.h"
@@ -185,27 +182,6 @@ absl::StatusOr<std::unique_ptr<Thunk>> DeserializeThunkProto(
           "Thunk deserialization of thunks of type %s is not yet supported.",
           GetStoredThunkTypeName(thunk_proto).value()));
   }
-<<<<<<< HEAD
-  if (thunk_proto.has_cudnn_thunk()) {
-    return CuDnnThunk::FromProto(std::move(thunk_info),
-                                 thunk_proto.cudnn_thunk(), buffer_allocations);
-  }
-
-  std::optional<absl::string_view> unsupported_thunk_type =
-      GetStoredThunkTypeName(thunk_proto);
-
-  if (!unsupported_thunk_type.has_value()) {
-    return absl::InvalidArgumentError(
-        "Encountered ThunkProto without an embedded thunk. This indicates that "
-        "the loaded executable contains a thunk type that is not supported by "
-        "this version of XLA.");
-  }
-
-  return absl::InvalidArgumentError(absl::StrFormat(
-      "Thunk deserialization of thunks of type %s is not yet supported.",
-      GetStoredThunkTypeName(thunk_proto).value()));
-=======
->>>>>>> upstream/master
 }
 
 }  // namespace xla::gpu

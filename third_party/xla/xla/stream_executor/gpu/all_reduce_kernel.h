@@ -78,13 +78,6 @@ struct AllReduceKernelParams {
   // Ranks rotated by `rank` % `num_ranks` to circumvent all GPUs reading from
   // the same location simultaneously. Index 0 is the rank itself.
   std::array<int64_t, kMaxNumAllReduceInputPtrs> rotated_ranks;
-<<<<<<< HEAD
-  // Signal flags buffers of all devices ordered by rank.
-  std::array<RestrictedPtr<uint32_t>, kMaxNumAllReduceInputPtrs>
-      signal_flags_buffers;
-=======
-
->>>>>>> upstream/master
   // Value to be written to the signal flags. Should be different for different
   // invocations of the kernel with the same signal buffer.
   uint32_t signal_value;

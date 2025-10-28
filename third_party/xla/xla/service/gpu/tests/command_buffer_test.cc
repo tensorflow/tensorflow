@@ -67,10 +67,6 @@ class CommandBufferTest
  protected:
   DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = HloPjRtTestBase::GetDebugOptionsForTest();
-<<<<<<< HEAD
-    debug_options.set_xla_gpu_command_buffer_scheduling_mode(
-        DebugOptions::CONCURRENT);
-=======
     debug_options.set_xla_gpu_command_buffer_scheduling_mode(GetParam());
     return debug_options;
   }
@@ -82,7 +78,6 @@ class CommandBufferUnrollTest : public CommandBufferTest {
     DebugOptions debug_options = HloPjRtTestBase::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_command_buffer_scheduling_mode(GetParam());
     debug_options.set_xla_gpu_command_buffer_unroll_loops(true);
->>>>>>> upstream/master
     return debug_options;
   }
 
@@ -135,7 +130,7 @@ TEST_P(CommandBufferTest, Fusions) {
   EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
 }
 
-TEST_P(CommandBufferTest, TrueFalseConditional) { 
+TEST_P(CommandBufferTest, TrueFalseConditional) {
   if (IsRocm()) {
     GTEST_SKIP() << "Test currently failing on ROCm"; //TODO(rocm): weekly sync 25-07-14
   }
@@ -199,7 +194,7 @@ TEST_P(CommandBufferTest, TrueFalseConditional) {
   }
 }
 
-TEST_P(CommandBufferTest, IndexConditional) { 
+TEST_P(CommandBufferTest, IndexConditional) {
   if (IsRocm()) {
     GTEST_SKIP() << "Test currently failing on ROCm"; //TODO(rocm): weekly sync 25-07-14
   }

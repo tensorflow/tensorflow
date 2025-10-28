@@ -148,11 +148,7 @@ cc_library(
     alwayslink = 1,
 )
 
-<<<<<<< HEAD
-cc_library(
-=======
 sycl_library(
->>>>>>> upstream/master
     name = "sycl_kernel",
     srcs = ["sycl_kernel.cc"],
     hdrs = ["sycl_kernel.h"],
@@ -162,14 +158,8 @@ sycl_library(
     ],
     deps = [
         "//xla/stream_executor:stream_executor_h",
-<<<<<<< HEAD
-        "@com_google_absl//absl/status:statusor",
-        "@local_config_sycl//sycl:sycl_headers",
-        "@local_tsl//tsl/platform:logging",
-=======
         "//xla/tsl/platform:logging",
         "@com_google_absl//absl/status:statusor",
->>>>>>> upstream/master
     ],
 )
 
@@ -182,10 +172,7 @@ xla_test(
         "oneapi-only",
     ],
     deps = [
-<<<<<<< HEAD
-=======
         ":sycl_platform_id",
->>>>>>> upstream/master
         "//xla/stream_executor:kernel",
         "//xla/stream_executor:launch_dim",
         "//xla/stream_executor:platform",
@@ -195,9 +182,6 @@ xla_test(
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
         "@com_google_googletest//:gtest_main",
-<<<<<<< HEAD
-        "@local_config_sycl//sycl:sycl_headers",
-=======
     ],
 )
 
@@ -331,6 +315,5 @@ xla_test(
         "//xla/stream_executor:platform_manager",
         "//xla/stream_executor:stream_executor_h",
         "@com_google_googletest//:gtest_main",
->>>>>>> upstream/master
     ],
 )

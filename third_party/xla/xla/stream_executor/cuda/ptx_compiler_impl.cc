@@ -210,12 +210,6 @@ absl::StatusOr<int> GetLatestPtxIsaVersionForNvptxCompiler() {
     nvPTXCompilerDestroy(&compiler_handle);
   };
 
-<<<<<<< HEAD
-  // TODO(b/437088681): Re-enable heap checking when calling
-  // nvPTXCompilerCompile. The compiler does not seem to free resources properly
-  // on error.
-  absl::LeakCheckDisabler disabler;
-=======
   std::optional<absl::LeakCheckDisabler> disabler;
   TF_ASSIGN_OR_RETURN(SemanticVersion version, GetLibNvPtxCompilerVersion());
   if (version < SemanticVersion(13, 0, 0)) {
@@ -224,7 +218,6 @@ absl::StatusOr<int> GetLatestPtxIsaVersionForNvptxCompiler() {
     disabler.emplace();
   }
 
->>>>>>> upstream/master
   std::vector<const char*> opts{};
   nvPTXCompileResult compile_result =
       nvPTXCompilerCompile(compiler_handle, opts.size(), opts.data());

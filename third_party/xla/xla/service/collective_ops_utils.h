@@ -31,10 +31,6 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/executable_run_options.h"
-<<<<<<< HEAD
-#include "xla/hlo/ir/collective_device_list.h"
-=======
->>>>>>> upstream/master
 #include "xla/hlo/ir/collective_op_group_mode.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"

@@ -17,19 +17,12 @@ func.func @local_xla.sdy.manual_computation_body(%arg0: tensor<0x8xf32>) -> tens
 
 // -----
 
-<<<<<<< HEAD
-func.func @manual_computation_missing_local_to_global_shape(%arg0: tensor<0x16xf32>) -> (tensor<0x8xf32>) {
-  %0 = stablehlo.custom_call @local_xla.sdy.GlobalToLocalShape(%arg0) {mhlo.frontend_attributes = {xla.sdy.manual_axes = "#sdy<manual_axes{\22b\22}>", xla.sdy.in_shardings = "#sdy.sharding_per_value<[<@mesh, [{}, {\22b\22}]>]>"}} : (tensor<0x16xf32>) -> tensor<0x8xf32>
-  // expected-error @+2 {{'func.call' op expected the first use of @local_xla.sdy.manual_computation_body to be a xla.sdy.LocalToGlobalShape CustomCallOp}}
-  // expected-error @+1 {{failed to legalize operation 'func.call'}}
-=======
 sdy.mesh @mesh = <["a"=2, "b"=2]>
 
 func.func @manual_computation_missing_local_to_global_shape(%arg0: tensor<0x16xf32>) -> (tensor<0x8xf32>) {
   %0 = stablehlo.custom_call @local_xla.sdy.GlobalToLocalShape(%arg0) {mhlo.frontend_attributes = {xla.sdy.manual_axes = "#sdy<manual_axes{\22b\22}>", xla.sdy.in_shardings = "#sdy.sharding_per_value<[<@mesh, [{}, {\22b\22}]>]>"}} : (tensor<0x16xf32>) -> tensor<0x8xf32>
   // expected-error @+2 {{'func.call' op expected the first use of @local_xla.sdy.manual_computation_body to be a xla.sdy.LocalToGlobalShape CustomCallOp}}
   // expected-error @+1 {{failed to rewrite func.call to manual computation}}
->>>>>>> upstream/master
   %1 = call @local_xla.sdy.manual_computation_body(%0) : (tensor<0x8xf32>) -> tensor<0x8xf32>
   return %1 : tensor<0x8xf32>
 }

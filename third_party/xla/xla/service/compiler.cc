@@ -28,10 +28,6 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/debug_options_flags.h"
-<<<<<<< HEAD
-#include "xla/hlo/ir/hlo_module_group.h"
-=======
->>>>>>> upstream/master
 #include "xla/service/metrics_hook_interface.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/dnn.h"

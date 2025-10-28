@@ -66,10 +66,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/host_execute_thunk.h"
 #include "xla/backends/gpu/runtime/runtime_intrinsics.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
-<<<<<<< HEAD
-=======
 #include "xla/backends/gpu/runtime/thunk.h"
->>>>>>> upstream/master
 #include "xla/core/host_offloading/hlo_host_device_type_call_wrapper.h"
 #include "xla/core/host_offloading/host_compute_asyncifier.h"
 #include "xla/hlo/analysis/alias_info.h"
@@ -532,18 +529,12 @@ GpuThunkAotCompilationResult::LoadExecutable(
       std::move(ir_emitter_context.constants());
   TF_ASSIGN_OR_RETURN(auto output_info,
                       GetOutputInfo(*hlo_module, *buffer_assignment));
-<<<<<<< HEAD
-  const Shape& output_shape = hlo_module->result_shape();
-  DebugOptions debug_options = hlo_module->config().debug_options();
-  std::string hlo_module_name = hlo_module->name();
-=======
   ProgramShape program_shape =
       hlo_module->entry_computation_layout().ComputeProgramShape();
   *program_shape.mutable_result() = hlo_module->result_shape();
   DebugOptions debug_options = hlo_module->config().debug_options();
   std::string hlo_module_name = hlo_module->name();
 
->>>>>>> upstream/master
   {
     tsl::profiler::TraceMe traceme("CreateGpuExecutable");
     std::unique_ptr<GpuAliasInfo> alias_info =
@@ -558,11 +549,7 @@ GpuThunkAotCompilationResult::LoadExecutable(
         /*constants=*/std::move(constants),
         /*output_info=*/std::move(output_info),
         /*module_name=*/std::move(hlo_module_name),
-<<<<<<< HEAD
-        /*output_shape=*/std::move(output_shape),
-=======
         /*program_shape=*/std::move(program_shape),
->>>>>>> upstream/master
         /*mlir_allocations=*/std::nullopt,
         /*buffer_assignment=*/std::move(buffer_assignment),
         /*alias_info=*/std::move(alias_info),
@@ -585,10 +572,6 @@ namespace {
 // Adds the HloVerifier for GPU to the given pipeline.
 void AddHloVerifier(HloPassPipeline* pipeline,
                     HloVerifierOpts&& opts = {}, bool debug_only = false) {
-<<<<<<< HEAD
-  opts.verify_unique_channel_ids = verify_unique_channel_ids;
-=======
->>>>>>> upstream/master
   opts.verify_no_collective_deadlocks = true;
   std::unique_ptr<TargetVerifierMetadata> verifier_metadata =
       std::make_unique<CpuGpuVerifierMetadata>(std::move(opts));
@@ -741,19 +724,11 @@ absl::Status ClearBackendConfigDeviceType(HloInstruction* instr) {
 bool BackendConfigDeviceTypeIsHost(HloInstruction* instr) {
   if (!instr->has_backend_config()) {
     return false;
-<<<<<<< HEAD
   }
   auto backend_config = instr->backend_config<GpuBackendConfig>();
   if (!backend_config.ok()) {
     return false;
   }
-=======
-  }
-  auto backend_config = instr->backend_config<GpuBackendConfig>();
-  if (!backend_config.ok()) {
-    return false;
-  }
->>>>>>> upstream/master
   return backend_config->device_type() == DEVICE_TYPE_HOST;
 }
 
@@ -769,23 +744,15 @@ absl::Status RunOptimizationPasses(
       gpu_target_config.device_description.gpu_compute_capability();
 
   HloPassPipeline pipeline("optimization");
-<<<<<<< HEAD
-  AddHloVerifier(&pipeline, !debug_options.xla_ignore_channel_id());
-=======
   AddHloVerifier(&pipeline);
->>>>>>> upstream/master
   if (debug_options.xla_detect_unstable_reductions() !=
       DebugOptions::UNSTABLE_REDUCTION_DETECTION_MODE_NONE) {
     pipeline.AddPass<UnstableReductionDetector>();
   }
   pipeline.AddPass<RaggedDotRewriter>();
-<<<<<<< HEAD
-  pipeline.AddPass<ScaledDotRewriter>();
-=======
   if (!debug_options.xla_gpu_experimental_scaled_dot_with_triton()) {
     pipeline.AddPass<ScaledDotRewriter>();
   }
->>>>>>> upstream/master
   pipeline.AddPass<BatchedGatherScatterNormalizer>();
   if (debug_options.xla_gpu_multi_streamed_windowed_einsum()) {
     pipeline.AddPass<WindowedEinsumHandler>();
@@ -1237,11 +1204,7 @@ absl::Status RunFusionPasses(HloModule* hlo_module,
 
   TF_RETURN_IF_ERROR(
       FusionPipeline(hlo_module->config().debug_options(), shape_size_fn,
-<<<<<<< HEAD
-                     thread_pool, gpu_device_info)
-=======
                      thread_pool, gpu_device_info, symbolic_expr_context)
->>>>>>> upstream/master
           .Run(hlo_module, {HloInstruction::kMainExecutionThread})
           .status());
 
@@ -1941,11 +1904,7 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
 
   TF_RETURN_IF_ERROR(AddConvAndGemmAutotuningPasses(
       &pipeline, gpu_version, options, hlo_module, autotune_config, thread_pool,
-<<<<<<< HEAD
-      stream_exec));
-=======
       stream_exec, &gpu_target_config));
->>>>>>> upstream/master
 
   // The GEMM fusion autotuner can insert new bf16 reductions that need to be
   // normalized again.
@@ -2578,20 +2537,12 @@ GpuCompiler::CompileToBackendResult(
     const se::DeviceDescription& gpu_device_info) {
   tsl::profiler::TraceMe traceme("CompileToBackendResult");
   std::unique_ptr<GpuAliasInfo> alias_info = GetAliasInfo(gpu_device_info);
-<<<<<<< HEAD
-  TF_RETURN_IF_ERROR(RunPreSchedulingPasses(module, executor, gpu_device_info,
-                                            alias_info.get()));
-  TF_ASSIGN_OR_RETURN(ScheduleMetadata schedule_metadata,
-                      ScheduleGpuModule(module, pointer_size_, gpu_device_info,
-                                        alias_info.get()));
-=======
   TF_RETURN_IF_ERROR(
       RunPreSchedulingPasses(module, gpu_device_info, alias_info.get()));
   TF_ASSIGN_OR_RETURN(
       ScheduleMetadata schedule_metadata,
       ScheduleGpuModule(module, pointer_size_, gpu_device_info,
                         &symbolic_expr_context_, alias_info.get()));
->>>>>>> upstream/master
   HloPassPipeline pipeline("scheduled-gpu-module");
   AddHloVerifier(&pipeline);
   TF_RETURN_IF_ERROR(pipeline.Run(module).status());

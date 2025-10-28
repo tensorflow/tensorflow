@@ -15,20 +15,12 @@ limitations under the License.
 
 #include "xla/python/ifrt/user_context.h"
 
-<<<<<<< HEAD
-#include <cstdint>
-=======
->>>>>>> upstream/master
 #include <string>
 
 #include <gtest/gtest.h>
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
-<<<<<<< HEAD
-#include "llvm/Support/ExtensibleRTTI.h"
-=======
 #include "xla/python/ifrt/user_context_test_util.h"
->>>>>>> upstream/master
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/threadpool.h"
@@ -38,18 +30,6 @@ namespace ifrt {
 
 namespace {
 
-<<<<<<< HEAD
-class TestUserContext : public llvm::RTTIExtends<TestUserContext, UserContext> {
- public:
-  static UserContextRef Create() { return tsl::MakeRef<TestUserContext>(); }
-
-  uint64_t Fingerprint() const override { return 1; }
-
-  std::string DebugString() const override { return ""; }
-
-  // No new `ID` is not defined because tests below do not exercise RTTI.
-};
-=======
 TEST(AnnotatedUserContextTest, Id) {
   const UserContextId kUserContextId(100);
   UserContextRef context = TestUserContext::Create(kUserContextId);
@@ -137,33 +117,19 @@ TEST(FusedUserContextTest, DebugString) {
             "Fused user context: {\n\nTestUserContext(100)\n\n(nullptr user "
             "context)\n\nTestUserContext(200)\n\n}");
 }
->>>>>>> upstream/master
 
 TEST(UserContextScopeTest, NullContext) {
   EXPECT_EQ(UserContextScope::current(), nullptr);
 }
 
 TEST(UserContextScopeTest, SingleScope) {
-<<<<<<< HEAD
-  UserContextRef context = TestUserContext::Create();
-=======
   const UserContextId kUserContextId(100);
   UserContextRef context = TestUserContext::Create(kUserContextId);
->>>>>>> upstream/master
   UserContextScope scope(context);
   EXPECT_EQ(UserContextScope::current(), context);
 }
 
 TEST(UserContextScopeTest, SingleScopeWithInlineContextCreation) {
-<<<<<<< HEAD
-  UserContextScope scope(TestUserContext::Create());
-  EXPECT_EQ(UserContextScope::current()->Fingerprint(), 1);
-}
-
-TEST(UserContextScopeTest, NestedScopes) {
-  UserContextRef context1 = TestUserContext::Create();
-  UserContextRef context2 = TestUserContext::Create();
-=======
   const UserContextId kUserContextId(100);
   UserContextScope scope(TestUserContext::Create(kUserContextId));
   EXPECT_EQ(UserContextScope::current()->Id(), kUserContextId);
@@ -174,7 +140,6 @@ TEST(UserContextScopeTest, NestedScopes) {
   const UserContextId kUserContextId2(200);
   UserContextRef context1 = TestUserContext::Create(kUserContextId1);
   UserContextRef context2 = TestUserContext::Create(kUserContextId2);
->>>>>>> upstream/master
   UserContextScope scope1(context1);
   EXPECT_EQ(UserContextScope::current(), context1);
   {
@@ -185,12 +150,8 @@ TEST(UserContextScopeTest, NestedScopes) {
 }
 
 TEST(UserContextScopeTest, ThreadLocalScopes) {
-<<<<<<< HEAD
-  UserContextRef context = TestUserContext::Create();
-=======
   const UserContextId kUserContextId(100);
   UserContextRef context = TestUserContext::Create(kUserContextId);
->>>>>>> upstream/master
   UserContextScope scope(context);
   EXPECT_EQ(UserContextScope::current(), context);
 
@@ -202,11 +163,7 @@ TEST(UserContextScopeTest, ThreadLocalScopes) {
   // The effect of UserContextScope set is limited to the current thread.
   for (int i = 0; i < 100; ++i) {
     thread_pool1.Schedule([&]() {
-<<<<<<< HEAD
-      UserContextRef context1 = TestUserContext::Create();
-=======
       UserContextRef context1 = TestUserContext::Create(kUserContextId);
->>>>>>> upstream/master
       UserContextScope scope1(context1);
       EXPECT_EQ(UserContextScope::current(), context1);
       absl::SleepFor(absl::Microseconds(10));
@@ -214,11 +171,7 @@ TEST(UserContextScopeTest, ThreadLocalScopes) {
   }
   for (int i = 0; i < 100; ++i) {
     thread_pool2.Schedule([&]() {
-<<<<<<< HEAD
-      UserContextRef context2 = TestUserContext::Create();
-=======
       UserContextRef context2 = TestUserContext::Create(kUserContextId);
->>>>>>> upstream/master
       UserContextScope scope1(context2);
       EXPECT_EQ(UserContextScope::current(), context2);
       absl::SleepFor(absl::Microseconds(10));

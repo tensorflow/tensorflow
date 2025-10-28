@@ -212,11 +212,7 @@ tf_cc_test(
         "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
-<<<<<<< HEAD
-        "@llvm-project//mlir:RegisterAllDialects",
-=======
         "@llvm-project//mlir:RegisterAllDialects",  # buildcleaner: keep
->>>>>>> upstream/master
         "@local_tsl//tsl/platform:protobuf",
         "@local_xla//xla/pjrt:pjrt_compiler",
         "@local_xla//xla/pjrt/plugin/xla_cpu:cpu_topology_description",

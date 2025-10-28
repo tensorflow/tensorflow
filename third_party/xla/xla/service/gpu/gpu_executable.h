@@ -291,14 +291,11 @@ class GpuExecutable : public Executable {
   //
   // This object is also used for dumping debug info.
   std::shared_ptr<const xla::BufferAssignment> buffer_assignment_;
-<<<<<<< HEAD
-=======
 
   // Extra allocations added by thunk passes outside of the normal buffer
   // assignment process.
   // std::deque is used to ensure pointer stability.
   const std::deque<BufferAllocation> thunk_pass_allocations_;
->>>>>>> upstream/master
 
   // Backend specific aliasing information whether operands can/should share the
   // buffer with the user.

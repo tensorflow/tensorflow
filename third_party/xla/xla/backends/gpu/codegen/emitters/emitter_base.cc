@@ -317,16 +317,11 @@ absl::StatusOr<FusionEmissionResult> EmitterBase::Emit(
 
   FusionEmissionResult result;
   result.thunks.emplace_back(std::make_unique<KernelThunk>(
-<<<<<<< HEAD
-      Thunk::ThunkInfo::WithProfileAnnotation(&fusion), entry->kernel_name,
-      args, launch_dims, entry->cluster_dim, entry->shmem_bytes));
-=======
       Thunk::ThunkInfo::WithProfileAnnotation(
           &fusion, ir_emitter_context.GetNextThunkId()),
       entry->kernel_name, args, launch_dims, entry->cluster_dim,
       entry->shmem_bytes,
       /*tma_metadata=*/se::gpu::TmaMetadata()));
->>>>>>> upstream/master
   return result;
 }
 

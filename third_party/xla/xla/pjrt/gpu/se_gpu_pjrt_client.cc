@@ -80,10 +80,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_stream_executor_client.h"
 #include "xla/pjrt/plugin/xla_gpu/xla_gpu_allocator_config.h"
 #include "xla/pjrt/plugin/xla_gpu/xla_gpu_client_options.h"
-<<<<<<< HEAD
-=======
 #include "xla/pjrt/raw_buffer.h"
->>>>>>> upstream/master
 #include "xla/pjrt/se_raw_buffer.h"
 #include "xla/pjrt/tracked_device_buffer.h"
 #include "xla/pjrt/worker_thread.h"
@@ -573,58 +570,6 @@ static absl::flat_hash_map<std::string, PjRtDeviceAttribute> GetAttrsForDevices(
   return attrs;
 }
 
-<<<<<<< HEAD
-// Aborts all NCCL collectives when a task fails, as reported by the
-// JobStateUpdate.
-absl::Status AbortOnFailure(
-    absl::Span<const tensorflow::CoordinatedTaskStateInfo> previous_state,
-    absl::Span<const tensorflow::CoordinatedTaskStateInfo> current_state) {
-  if (previous_state.empty()) {
-    // When a job first starts, there is no previous job state.
-    return absl::OkStatus();
-  }
-
-  // We expect previous_state and current_state to have the same size, and we
-  // expect for every i, previous_state[i] and current_state[i] correspond to
-  // the same task.
-  if (previous_state.size() != current_state.size()) {
-    return FailedPrecondition(
-        "Previous and current job states have different sizes: %d vs %d",
-        previous_state.size(), current_state.size());
-  }
-
-  std::vector<IncarnationId> failed_incarnations;
-  for (int i = 0; i < previous_state.size(); ++i) {
-    const tensorflow::CoordinatedTaskStateInfo& previous = previous_state[i];
-    const tensorflow::CoordinatedTaskStateInfo& current = current_state[i];
-    if (previous.task().task_id() != current.task().task_id()) {
-      return FailedPrecondition(
-          "Previous and current job states have mismatched task ids: %d vs %d",
-          previous.task().task_id(), current.task().task_id());
-    }
-    if (previous.state() !=
-        tensorflow::CoordinatedTaskState::TASKSTATE_CONNECTED) {
-      // A task that was not previously connected cannot fail.
-      continue;
-    }
-    if (current.state() !=
-            tensorflow::CoordinatedTaskState::TASKSTATE_CONNECTED ||
-        previous.incarnation() != current.incarnation()) {
-      // The task is either failed, or restarted with a different incarnation.
-      VLOG(1) << "Task " << previous.task().task_id() << " (incarnation "
-              << previous.incarnation() << ") failed";
-      failed_incarnations.push_back(IncarnationId(previous.incarnation()));
-    }
-  }
-
-  if (!failed_incarnations.empty()) {
-    return xla::gpu::AbortCliquesWithIncarnations(failed_incarnations);
-  }
-  return absl::OkStatus();
-}
-
-=======
->>>>>>> upstream/master
 StreamExecutorGpuClient::StreamExecutorGpuClient(
     std::string platform_name, LocalClient* client,
     std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> devices,
@@ -643,14 +588,6 @@ StreamExecutorGpuClient::StreamExecutorGpuClient(
           should_stage_host_to_device_transfers, std::move(gpu_run_options)),
       num_nodes_(num_nodes),
       abort_collectives_on_failure_(abort_collectives_on_failure),
-<<<<<<< HEAD
-      topology_(xla::StreamExecutorGpuTopologyDescription(
-          tsl::Fingerprint64(platform_name), platform_name,
-          std::move(gpu_topology), GetAttrsForDevices(addressable_devices()),
-          GetTargetConfigForDevices(addressable_devices()))),
-      kv_store_(std::move(kv_store)),
-      distributed_client_(std::move(distributed_client)) {
-=======
       kv_store_(std::move(kv_store)) {
   if (gpu_topology != nullptr) {
     topology_.emplace(tsl::Fingerprint64(platform_name), platform_name,
@@ -658,7 +595,6 @@ StreamExecutorGpuClient::StreamExecutorGpuClient(
                       GetAttrsForDevices(addressable_devices()),
                       GetTargetConfigForDevices(addressable_devices()));
   }
->>>>>>> upstream/master
   const int basePinnedId = device_count();
   for (auto* device : addressable_devices()) {
     // Use the device id to construct a globally unique memory space id. We do
@@ -716,19 +652,10 @@ void StreamExecutorGpuClient::UpdateGlobalProcessInfo(
   if (!abort_collectives_on_failure_) {
     return;
   }
-<<<<<<< HEAD
-
-  absl::MutexLock lock(&task_state_infos_mu_);
-  if (absl::Status s = AbortOnFailure(task_state_infos_, infos); !s.ok()) {
-    LOG(ERROR) << s;
-  }
-  task_state_infos_ = {infos.begin(), infos.end()};
-=======
   absl::Status s = ::xla::gpu::UpdateGlobalProcessInfo(infos);
   if (!s.ok()) {
     LOG(WARNING) << s;
   }
->>>>>>> upstream/master
 }
 
 absl::StatusOr<std::unique_ptr<PjRtClient::AsyncHostToDeviceTransferManager>>
@@ -813,11 +740,7 @@ Future<> StreamExecutorGpuClient::CopyRawSubBufferToHost(
         InvalidArgument("Copy raw buffer called on an invalid buffer"));
   }
 
-<<<<<<< HEAD
-  auto promise = PjRtFuture<>::CreatePromise();
-=======
   auto [promise, future] = Future<>::MakePromise();
->>>>>>> upstream/master
   auto usage_event = BufferSequencingEvent::Create(this->thread_pool());
 
   auto definition_events = hold->definition_events();
@@ -963,17 +886,9 @@ absl::Status StreamExecutorGpuClient::UpdateCompileOptionsInternal(
     bool lookup_addressable_devices) {
   TF_RETURN_IF_ERROR(PjRtStreamExecutorClient::UpdateCompileOptionsInternal(
       options, returned_extras, lookup_addressable_devices));
-<<<<<<< HEAD
-  // TODO: Fix null topology usage in TF.
-  // https://github.com/search?q=repo%3Atensorflow%2Ftensorflow%20%2F*gpu_topology%3D*%2Fnullptr&type=code
-  if (topology_.gpu_topology_ptr() != nullptr) {
-    options->executable_build_options.set_slice_size(
-        topology_.gpu_topology().slice_size());
-=======
   if (topology_) {
     options->executable_build_options.set_slice_size(
         topology_->gpu_topology().slice_size());
->>>>>>> upstream/master
   }
   return absl::OkStatus();
 }
@@ -1764,14 +1679,8 @@ absl::StatusOr<std::unique_ptr<PjRtClient>> GetStreamExecutorGpuClient(
       pjrt_platform_name, xla_client, std::move(device_topology_pair.first),
       options.node_id, std::move(allocator), std::move(host_memory_allocator),
       options.should_stage_host_to_device_transfers, std::move(gpu_run_options),
-<<<<<<< HEAD
-      std::move(kv_store), std::move(options.distributed_runtime_client),
-      options.abort_collectives_on_failure, std::move(gpu_topology),
-      options.num_nodes);
-=======
       std::move(kv_store), options.abort_collectives_on_failure,
       std::move(gpu_topology), options.num_nodes);
->>>>>>> upstream/master
 }
 
 std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> BuildLocalDevices(

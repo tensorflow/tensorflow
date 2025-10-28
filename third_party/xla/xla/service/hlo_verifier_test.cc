@@ -219,12 +219,7 @@ TEST_F(HloVerifierTest, CheckCallThreadMismatch) {
           .status();
   ASSERT_FALSE(status.ok());
   EXPECT_THAT(status.message(),
-<<<<<<< HEAD
-              HasSubstr("Non-Embedded context callable instruction mycall "
-                        "to_apply computation execution thread does not match "
-=======
               HasSubstr("to_apply computation execution thread does not match "
->>>>>>> upstream/master
                         "(parallel_thread vs main)"));
 }
 
@@ -2359,14 +2354,6 @@ TEST_F(HloVerifierTest, CallThreadVerifier) {
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnUnverifiedModule(kModuleStr));
-<<<<<<< HEAD
-  EXPECT_THAT(
-      HloVerifier{HloVerifierOpts{}.VerifyCallNestedComputationThreadName()}
-          .Run(module.get())
-          .status()
-          .message(),
-      HasSubstr("to_apply computation execution thread does not match"));
-=======
 
   absl::Status status =
       HloVerifier{HloVerifierOpts{}.VerifyCallNestedComputationThreadName()}
@@ -2378,7 +2365,6 @@ TEST_F(HloVerifierTest, CallThreadVerifier) {
       status.message(),
       HasSubstr("crs0 to_apply computation execution thread does not match "
                 "(parallel_thread vs main)"));
->>>>>>> upstream/master
 }
 
 TEST_F(HloVerifierTest, AllReduceVerifier) {
@@ -3112,16 +3098,11 @@ TEST_F(HloVerifierTest, VerifyCustomCallThread) {
       HloVerifier{HloVerifierOpts{}.VerifyCallNestedComputationThreadName()}
           .Run(module.get())
           .status();
-<<<<<<< HEAD
-  // Embedded call context computation thread name is not checked.
-  ASSERT_TRUE(status.ok());
-=======
 
   ASSERT_FALSE(status.ok());
   EXPECT_THAT(status.message(),
               HasSubstr("custom to_apply computation execution thread does "
                         "not match (parallel_thread vs main)"));
->>>>>>> upstream/master
 }
 
 TEST_F(HloVerifierTest, CheckWhileThread) {
@@ -4422,17 +4403,11 @@ TEST_F(HloVerifierTestForCollectiveDeadlocks, VerifySendRecvDeadlockOnRecv) {
 
   ENTRY test_computation {
     after_all = token[] after-all()
-<<<<<<< HEAD
-    recv1 = (f32[], u32[], token[]) recv(after_all), channel_id=1
-    recv1-done = (f32[], token[]) recv-done(recv1), channel_id=1
-    recv2 = (f32[], u32[], token[]) recv(after_all), channel_id=2
-=======
     recv1 = (f32[], u32[], token[]) recv(after_all), channel_id=1, frontend_attributes={
             _xla_send_recv_source_target_pairs="{{3,0}}"}
     recv1-done = (f32[], token[]) recv-done(recv1), channel_id=1
     recv2 = (f32[], u32[], token[]) recv(after_all), channel_id=2, frontend_attributes={
             _xla_send_recv_source_target_pairs="{{0,1}}"}
->>>>>>> upstream/master
     ROOT recv2-done = (f32[], token[]) recv-done(recv2), channel_id=2
   })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
@@ -4449,17 +4424,11 @@ TEST_F(HloVerifierTestForCollectiveDeadlocks, VerifySendRecvDeadlockOnSend) {
   ENTRY test_computation {
     c0 = f32[] constant(0)
     after_all = token[] after-all()
-<<<<<<< HEAD
-    send1 = (f32[], u32[], token[]) send(c0, after_all), channel_id=1
-    send1-done = token[] send-done(send1), channel_id=1
-    send2 = (f32[], u32[], token[]) send(c0, after_all), channel_id=2
-=======
     send1 = (f32[], u32[], token[]) send(c0, after_all), channel_id=1, frontend_attributes={
             _xla_send_recv_source_target_pairs="{{3,0}}"}
     send1-done = token[] send-done(send1), channel_id=1
     send2 = (f32[], u32[], token[]) send(c0, after_all), channel_id=2, frontend_attributes={
             _xla_send_recv_source_target_pairs="{{0,1}}"}
->>>>>>> upstream/master
     ROOT send2-done = token[] send-done(send2), channel_id=2
   })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
@@ -4477,12 +4446,8 @@ TEST_F(HloVerifierTestForCollectiveDeadlocks,
   ENTRY test_computation {
     c0 = f32[] constant(0)
     after_all = token[] after-all()
-<<<<<<< HEAD
-    send1 = (f32[], u32[], token[]) send(c0, after_all), channel_id=1
-=======
     send1 = (f32[], u32[], token[]) send(c0, after_all), channel_id=1, frontend_attributes={
             _xla_send_recv_source_target_pairs="{{3,0}}"}
->>>>>>> upstream/master
     send1-done = token[] send-done(send1), channel_id=1
     p0 = f32[10] parameter(0)
     p1 = bf16[10] parameter(1)
@@ -4490,18 +4455,12 @@ TEST_F(HloVerifierTestForCollectiveDeadlocks,
   })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
                           ParseAndReturnUnverifiedModule(hlo));
-<<<<<<< HEAD
-  EXPECT_THAT(verifier().Run(module.get()),
-              StatusIs(absl::StatusCode::kInternal,
-                       HasSubstr("Expected send or recv")));
-=======
   EXPECT_THAT(
       verifier().Run(module.get()),
       StatusIs(
           absl::StatusCode::kInternal,
           HasSubstr(
               "Introducing the following instruction will cause a deadlock")));
->>>>>>> upstream/master
 }
 
 TEST_F(HloVerifierTestForCollectiveDeadlocks,
@@ -4512,12 +4471,8 @@ TEST_F(HloVerifierTestForCollectiveDeadlocks,
   while_body {
     c0 = f32[] constant(0)
     after_all = token[] after-all()
-<<<<<<< HEAD
-    send1 = (f32[], u32[], token[]) send(c0, after_all), channel_id=1
-=======
     send1 = (f32[], u32[], token[]) send(c0, after_all), channel_id=1, frontend_attributes={
             _xla_send_recv_source_target_pairs="{{3,0}}"}
->>>>>>> upstream/master
     send1-done = token[] send-done(send1), channel_id=1
     params = (f32[10], bf16[10]) parameter(0)
     p0 = f32[10] get-tuple-element(params), index=0
@@ -4538,12 +4493,8 @@ TEST_F(HloVerifierTestForCollectiveDeadlocks,
 
   ENTRY test_computation {
     after_all = token[] after-all()
-<<<<<<< HEAD
-    recv = (f32[], u32[], token[]) recv(after_all), channel_id=1
-=======
     recv = (f32[], u32[], token[]) recv(after_all), channel_id=1, frontend_attributes={
             _xla_send_recv_source_target_pairs="{{0,1},{1,2},{2,3}}"}
->>>>>>> upstream/master
     recv_done = (f32[], token[]) recv-done(recv), channel_id=1
     p0 = f32[10] parameter(0)
     p1 = bf16[10] parameter(1)
@@ -4557,12 +4508,6 @@ TEST_F(HloVerifierTestForCollectiveDeadlocks,
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
                           ParseAndReturnUnverifiedModule(hlo));
-<<<<<<< HEAD
-  EXPECT_THAT(verifier().Run(module.get()),
-              StatusIs(absl::StatusCode::kInternal,
-                       AnyOf(HasSubstr("Expected send or recv"),
-                             HasSubstr("Expected send to match recv"))));
-=======
   EXPECT_THAT(
       verifier().Run(module.get()),
       StatusIs(
@@ -4570,7 +4515,6 @@ TEST_F(HloVerifierTestForCollectiveDeadlocks,
           HasSubstr(
               "Expected send and recv instructions to have the same "
               "source-target pairs, but could not match some instructions.")));
->>>>>>> upstream/master
 }
 
 TEST_F(HloVerifierTestForCollectiveDeadlocks,
@@ -4710,8 +4654,6 @@ TEST_F(HloVerifierTestForCollectiveDeadlocks, VerifySendRecvNoDeadlocks) {
                           ParseAndReturnUnverifiedModule(hlo));
   EXPECT_THAT(verifier().Run(module.get()), IsOkAndHolds(false));
 }
-<<<<<<< HEAD
-=======
 TEST_F(HloVerifierTestForCollectiveDeadlocks,
        VerifySendRecvNoDeadlocksWithWhileLoop) {
   const char* const hlo = R"(
@@ -4879,7 +4821,6 @@ ENTRY main {
                           ParseAndReturnUnverifiedModule(hlo));
   EXPECT_THAT(verifier().Run(module.get()), IsOkAndHolds(false));
 }
->>>>>>> upstream/master
 
 TEST_F(HloVerifierTest, VerifyMatchingSendSameChannel) {
   const char* const hlo = R"(
@@ -4988,19 +4929,11 @@ TEST_F(HloVerifierTest, ScaledDotWithNoScalesFails) {
   static constexpr absl::string_view kScaledDotHloString = R"(
     HloModule module
     ENTRY entry_computation {
-<<<<<<< HEAD
-      a = f32[2,10] parameter(0)
-      b = f32[10,2] parameter(1)
-      a_scale = f32[] constant(1)
-      b_scale = f32[] constant(1)
-      ROOT dot = f32[2,2] scaled-dot(a, a_scale, b, b_scale),
-=======
       a = bf16[2,10] parameter(0)
       b = bf16[10,2] parameter(1)
       a_scale = bf16[] constant(1)
       b_scale = bf16[] constant(1)
       ROOT dot = f32[2,2] scaled-dot(a, b, a_scale, b_scale),
->>>>>>> upstream/master
         lhs_contracting_dims={1},
         rhs_contracting_dims={0}
     }
@@ -5020,19 +4953,11 @@ TEST_F(HloVerifierTest, ScaledDotWithBothScalesSucceeds) {
   static constexpr absl::string_view kScaledDotHloString = R"(
     HloModule module
     ENTRY entry_computation {
-<<<<<<< HEAD
-      a = f32[2,10] parameter(0)
-      b = f32[10,2] parameter(1)
-      a_scale = f32[2,2] parameter(2)
-      b_scale = f32[2,2] parameter(3)
-      ROOT dot = f32[2,2] scaled-dot(a, a_scale, b, b_scale),
-=======
       a = f8e5m2[2,10] parameter(0)
       b = f8e8m0fnu[10,2] parameter(1)
       a_scale = f8e5m2[2,2] parameter(2)
       b_scale = f8e8m0fnu[2,2] parameter(3)
       ROOT dot = f32[2,2] scaled-dot(a, b, a_scale, b_scale),
->>>>>>> upstream/master
         lhs_contracting_dims={1},
         rhs_contracting_dims={0}
     }
@@ -5050,11 +4975,7 @@ TEST_F(HloVerifierTest, ScaledDotInvalidScaleShapeFails) {
       b = f32[10,2] parameter(1)
       a_scale = f32[2,2,2] parameter(2)
       b_scale = f32[2,2,2] parameter(3)
-<<<<<<< HEAD
-      ROOT dot = f32[2,2] scaled-dot(a, a_scale, b, b_scale),
-=======
       ROOT dot = f32[2,2] scaled-dot(a, b, a_scale, b_scale),
->>>>>>> upstream/master
         lhs_contracting_dims={1},
         rhs_contracting_dims={0}
     }
@@ -5078,11 +4999,7 @@ TEST_F(HloVerifierTest, ScaledDotWithInvalidScaleContractingDimSizeFails) {
       b = f32[10,2] parameter(1)
       a_scale = f32[2,6] parameter(2)
       b_scale = f32[6,2] parameter(3)
-<<<<<<< HEAD
-      ROOT dot = f32[2,2] scaled-dot(a, a_scale, b, b_scale),
-=======
       ROOT dot = f32[2,2] scaled-dot(a, b, a_scale, b_scale),
->>>>>>> upstream/master
         lhs_contracting_dims={1},
         rhs_contracting_dims={0}
     }
@@ -5105,11 +5022,7 @@ TEST_F(HloVerifierTest, ScaledDotWithScaleNonContractingDimSucceeds) {
       b = f32[10,2] parameter(1)
       a_scale = f32[1,5] parameter(2)
       b_scale = f32[5,1] parameter(3)
-<<<<<<< HEAD
-      ROOT dot = f32[2,2] scaled-dot(a, a_scale, b, b_scale),
-=======
       ROOT dot = f32[2,2] scaled-dot(a, b, a_scale, b_scale),
->>>>>>> upstream/master
         lhs_contracting_dims={1},
         rhs_contracting_dims={0}
     }
@@ -5120,8 +5033,6 @@ TEST_F(HloVerifierTest, ScaledDotWithScaleNonContractingDimSucceeds) {
   EXPECT_THAT(verifier().Run(module.get()), absl_testing::IsOkAndHolds(false));
 }
 
-<<<<<<< HEAD
-=======
 TEST_F(HloVerifierTest, VerifyBuffersLayoutChangeInPinAllowed) {
   const char* const hlo = R"(
   HloModule module
@@ -5158,6 +5069,5 @@ TEST_F(HloVerifierTestLayoutSensitive,
   EXPECT_THAT(status.message(), HasSubstr("Different aliasing shapes"));
 }
 
->>>>>>> upstream/master
 }  // namespace
 }  // namespace xla

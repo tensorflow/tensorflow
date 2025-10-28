@@ -34,10 +34,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"
 #include "xla/client/local_client.h"
 #include "xla/executable_run_options.h"
-<<<<<<< HEAD
-=======
 #include "xla/future.h"
->>>>>>> upstream/master
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/layout.h"
 #include "xla/pjrt/distributed/client.h"
@@ -143,15 +140,6 @@ class StreamExecutorGpuClient : public xla::PjRtStreamExecutorClient {
       std::optional<absl::Span<const std::optional<Layout>>> device_layouts,
       PjRtMemorySpace* memory_space) override;
 
-<<<<<<< HEAD
-  PjRtFuture<> CopyRawSubBufferToHost(PjRtBuffer* buffer, PjRtFuture<void*> dst,
-                                      int64_t offset,
-                                      int64_t transfer_size) override;
-
-  void CopyToRemoteDevice(PjRtBuffer* buffer,
-                          absl::string_view serialized_descriptor,
-                          PjRtBuffer::RemoteSendCallback on_done) override;
-=======
   Future<> CopyRawSubBufferToHost(PjRtBuffer* buffer, Future<void*> dst,
                                   int64_t offset,
                                   int64_t transfer_size) override;
@@ -163,7 +151,6 @@ class StreamExecutorGpuClient : public xla::PjRtStreamExecutorClient {
       tsl::RCReference<PjRtDeviceEventPromise> usage_event_promise,
       Future<std::string> serialized_descriptor,
       PjRtBuffer::RemoteSendCallback on_done) override;
->>>>>>> upstream/master
 
   absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
   MakeCrossHostReceiveBuffers(absl::Span<const Shape> shapes,
@@ -201,18 +188,8 @@ class StreamExecutorGpuClient : public xla::PjRtStreamExecutorClient {
 
   std::optional<int> num_nodes_;
   const bool abort_collectives_on_failure_ = false;
-<<<<<<< HEAD
-  xla::StreamExecutorGpuTopologyDescription topology_;
-  std::shared_ptr<KeyValueStoreInterface> kv_store_;
-  std::shared_ptr<DistributedRuntimeClient> distributed_client_;
-
-  absl::Mutex task_state_infos_mu_;
-  std::vector<tensorflow::CoordinatedTaskStateInfo> task_state_infos_
-      ABSL_GUARDED_BY(task_state_infos_mu_);
-=======
   std::optional<xla::StreamExecutorGpuTopologyDescription> topology_;
   std::shared_ptr<KeyValueStoreInterface> kv_store_;
->>>>>>> upstream/master
 };
 
 std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> BuildLocalDevices(

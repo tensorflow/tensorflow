@@ -178,59 +178,6 @@ static FusionCompiler::CompilationHooks FusionCompilerHooks(
   return hooks;
 }
 
-<<<<<<< HEAD
-absl::StatusOr<std::string> GetFusionFingerprint(
-    const HloFusionInstruction& fusion,
-    const BufferAssignment& buffer_assignment,
-    const emitters::KernelArguments::BufferAlignment& buffer_alignment) {
-  TF_ASSIGN_OR_RETURN(
-      auto args, emitters::KernelArguments::Create(buffer_assignment,
-                                                   buffer_alignment, &fusion));
-
-  return emitters::GetComputationFingerprint(
-      fusion.fused_instructions_computation(), args.args());
-}
-
-}  // namespace
-
-static FusionCompiler::CompilationHooks FusionCompilerHooks(
-    const HloModule& hlo_module) {
-  if (!DumpingEnabledForHloModule(hlo_module)) {
-    return {};
-  }
-
-  auto callback_factory = [&hlo_module](std::string stage_name) {
-    return [&hlo_module, stage_name](mlir::ModuleOp module) {
-      std::optional<llvm::StringRef> name = module.getName();
-      if (!name.has_value()) {
-        return;
-      }
-
-      DumpToFileInDirOrStdout(
-          hlo_module, "",
-          absl::StrCat(absl::string_view(*name), "-", stage_name, ".mlir"),
-          mlir::debugString(module));
-    };
-  };
-
-  FusionCompiler::CompilationHooks hooks;
-  hooks.pre_optimization = callback_factory("pre-optimization");
-  hooks.post_optimization = callback_factory("post-optimization");
-  hooks.post_lowering = callback_factory("post-lowering");
-
-  return hooks;
-}
-
-static FusionCompiler::Options FusionCompilerOptions(
-    const HloModuleConfig& config) {
-  const DebugOptions& debug_options = config.debug_options();
-  return FusionCompiler::Options{
-      debug_options.xla_cpu_prefer_vector_width(),
-      debug_options.xla_cpu_emitter_verification_level(),
-      debug_options.xla_cpu_enable_fast_min_max()};
-}
-
-=======
 static FusionCompiler::Options FusionCompilerOptions(
     const HloModuleConfig& config) {
   const DebugOptions& debug_options = config.debug_options();
@@ -241,7 +188,6 @@ static FusionCompiler::Options FusionCompilerOptions(
       llvm_ir::GetCpuFastMathFlags(config)};
 }
 
->>>>>>> upstream/master
 static FusionCompiler FusionCompilerFactory(mlir::MLIRContext* context,
                                             const HloModule& hlo_module) {
   FusionCompiler::Options options = FusionCompilerOptions(hlo_module.config());
@@ -287,10 +233,7 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitEntryComputation(
 
 absl::StatusOr<std::vector<ThunkEmitter::EmittedKernel>>
 ThunkEmitter::ConsumeKernels() {
-<<<<<<< HEAD
-=======
   tsl::profiler::TraceMe trace("ThunkEmitter::ConsumeKernels");
->>>>>>> upstream/master
   TF_ASSIGN_OR_RETURN(std::vector<LlvmKernelDefinition> fusion_kernels,
                       parallel_fusion_emitter_.ConsumeKernels());
 
@@ -883,20 +826,6 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitElementalKernelThunk(
   kernels_.push_back(
       {kernel_spec.name(), std::move(kernel_source).thread_safe_module()});
 
-<<<<<<< HEAD
-  // AOT compiled kernels get linked together, so we aren't allowed to change
-  // module flags as that will break linking.
-  if (!options_.is_aot_compilation &&
-      (instruction->opcode() == HloOpcode::kReduce ||
-       instruction->opcode() == HloOpcode::kReduceWindow)) {
-    TF_RETURN_IF_ERROR(
-        HandleReduceAndReduceWindowElementalKernelCompilationOptions(
-            instruction, *kernels_.back().module.getModuleUnlocked(),
-            target_machine_features_));
-  }
-
-=======
->>>>>>> upstream/master
   return MakeKernelThunkSequence(instruction, std::move(kernel_spec),
                                  /*min_alignment=*/MinAlign());
 }
@@ -918,11 +847,7 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitFusionKernelThunk(
   if (ir_emitter_.IsSupportedByFusionEmitter(fusion) &&
       fusion->fused_expression_root()->opcode() == HloOpcode::kScatter) {
     auto kernel_emitter = std::make_unique<CpuScatterFusion>(
-<<<<<<< HEAD
-        buffer_assignment_, fusion, mlir_context_.get());
-=======
         buffer_assignment_, fusion, &symbolic_expr_context_);
->>>>>>> upstream/master
 
     TF_ASSIGN_OR_RETURN(MlirKernelDefinition kernel_definition,
                         kernel_emitter->EmitKernelDefinition());
@@ -959,14 +884,8 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitFusionKernelThunk(
                           emitters::GetKernelSpec(
                               kernel_spec.name(), *fusion, &buffer_assignment_,
                               kernel_spec.work_dimensions()));
-<<<<<<< HEAD
-      return MakeKernelThunkSequence(
-          instruction, new_kernel_spec,
-          /*min_alignment=*/cpu_function_runtime::MinAlign());
-=======
       return MakeKernelThunkSequence(instruction, new_kernel_spec,
                                      /*min_alignment=*/MinAlign());
->>>>>>> upstream/master
     }
 
     TF_ASSIGN_OR_RETURN(KernelSpec kernel_spec,

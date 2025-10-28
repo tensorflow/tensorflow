@@ -184,11 +184,7 @@ TEST_F(RunHandlerThreadWorkQueueTest, NoHandlerReturnsError) {
   auto queue = std::make_unique<RunHandlerThreadWorkQueue>(options);
   tfrt::RequestContextBuilder ctx_builder(nullptr, nullptr);
   EXPECT_THAT(
-<<<<<<< HEAD
-      queue->InitializeRequest(/*request_id=*/100),
-=======
       queue->InitializeRequest(/*request_id=*/100, /*priority=*/0),
->>>>>>> upstream/master
       absl_testing::StatusIs(
           absl::StatusCode::kDeadlineExceeded,
           "Could not obtain RunHandler for request after waiting for 1 ms."));

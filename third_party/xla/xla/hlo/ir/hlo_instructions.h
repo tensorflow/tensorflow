@@ -41,10 +41,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_print_options.h"
-<<<<<<< HEAD
-=======
 #include "xla/hlo/ir/replica_group.h"
->>>>>>> upstream/master
 #include "xla/layout.h"
 #include "xla/literal.h"
 #include "xla/literal_pool.h"
@@ -2711,13 +2708,8 @@ class HloScaledDotInstruction : public HloInstruction {
   // 'rhs_scale' as the scale factors. Dimensions of the scale factors should
   // have the same order as the dimensions of the dot operation.
   explicit HloScaledDotInstruction(const Shape& shape, HloInstruction* lhs,
-<<<<<<< HEAD
-                                   HloInstruction* lhs_scale,
-                                   HloInstruction* rhs,
-=======
                                    HloInstruction* rhs,
                                    HloInstruction* lhs_scale,
->>>>>>> upstream/master
                                    HloInstruction* rhs_scale,
                                    const DotDimensionNumbers& dimension_numbers,
                                    const PrecisionConfig& precision_config);

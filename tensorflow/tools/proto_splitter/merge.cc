@@ -298,11 +298,7 @@ absl::Status Merger::ProcessField(
                        " not found in message descriptor.",
                        merged_message->GetDescriptor()->full_name(), ".\n"));
     }
-<<<<<<< HEAD
-    
-=======
 
->>>>>>> upstream/master
     auto res = GetMutableField(merged_message, field);
     if (!res.ok()) {
       if (!absl::IsNotFound(res.status())) return res.status();

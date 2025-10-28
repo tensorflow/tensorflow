@@ -28,11 +28,7 @@ cuda_library(
     visibility = ["//visibility:public"],
     deps = [
         "@local_config_cuda//cuda:cuda_headers",
-<<<<<<< HEAD
-        "@local_config_cuda//cuda:cudart",
-=======
         "@local_xla//xla/tsl/cuda:cudart",
->>>>>>> upstream/master
         "@rapids_logger",
     ],
 )

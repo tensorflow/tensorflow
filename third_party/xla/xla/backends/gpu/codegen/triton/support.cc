@@ -415,11 +415,7 @@ CodegenDecision AreDotAlgorithmInputAndOutputConversionsSupported(
 
   if (algorithm == PrecisionConfig::ALG_DOT_F64_F64_F64 &&
       primitive_util::BitWidth(lhs_type) < 32 &&
-<<<<<<< HEAD
-      !std::get<se::CudaComputeCapability>(gpu_version).IsAtLeastBlackwell()) {
-=======
       !gpu_version.cuda_compute_capability()->IsAtLeastBlackwell()) {
->>>>>>> upstream/master
     return forbid("Unsupported BF16 on GPUs before Blackwell");
   }
 
@@ -661,16 +657,10 @@ CodegenDecision IsTritonSupportedInstructionImpl(
       return CodegenDecision::Forbid(
           "dynamic slice is supported but not enabled yet");
     case HloOpcode::kBitcast:
-<<<<<<< HEAD
-      if (instr.shape().element_type() !=
-          instr.operand(0)->shape().element_type()) {
-        return CodegenDecision::Forbid("Bitcast-convert is not supported");
-=======
       if (ShapeUtil::ElementsIn(instr.operand(0)->shape()) !=
           ShapeUtil::ElementsIn(instr.shape())) {
         return CodegenDecision::Forbid(
             "only bitcasts with the same number of elements are supported");
->>>>>>> upstream/master
       }
       return CodegenDecision(instr.shape().element_type() != S4,
                              "S4 is not supported.");

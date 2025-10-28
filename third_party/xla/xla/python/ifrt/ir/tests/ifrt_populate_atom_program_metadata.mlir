@@ -57,8 +57,6 @@ module @populate_sdy_partitioned_attr {
 
 // -----
 
-<<<<<<< HEAD
-=======
 !array = !ifrt.array<tensor<2x2xi32>,
                      #ifrt.sharding_param<2x1 to [0] on 2>, [0,1]>
 // CHECK-LABEL: @populate_compile_options_key_attr
@@ -87,7 +85,6 @@ module @populate_compile_options_key_attr {
 
 // -----
 
->>>>>>> upstream/master
 // CHECK-LABEL: @populate_result_metadata
 module @populate_result_metadata {
   func.func @main() attributes {ifrt.function} {

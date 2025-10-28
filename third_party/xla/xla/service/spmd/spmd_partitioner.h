@@ -547,14 +547,11 @@ class PartitionedHlo {
     hlo_->set_sharding(sharding);
   }
 
-<<<<<<< HEAD
-=======
   // Returns the rank of the SPMD instruction.
   const int64_t num_dimensions() const {
     return base_shape_.dimensions().size();
   }
 
->>>>>>> upstream/master
   int64_t NewChannel() const { return (*state_.next_channel_id)++; }
 
   // Reshards the HLO to a usable partitioned input for a windowed user. Could

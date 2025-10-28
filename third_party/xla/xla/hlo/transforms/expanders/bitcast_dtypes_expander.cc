@@ -118,11 +118,8 @@ absl::StatusOr<HloInstruction*> BitcastDtypesExpander::ExpandInstruction(
   HloInstruction* call =
       instruction->parent()->AddInstruction(HloInstruction::CreateCall(
           instruction->shape(), instruction->operands(), computation));
-<<<<<<< HEAD
-=======
   call->set_original_value(
       std::make_shared<OriginalValue>(OriginalValue::SyntheticCall()));
->>>>>>> upstream/master
   HloInstruction* root = call->to_apply()->root_instruction();
   // TODO(b/260601110): In theory, we shouldn't need to do it, but in practice
   // this creates reshape/broadcast patterns that can be pretty bad if not

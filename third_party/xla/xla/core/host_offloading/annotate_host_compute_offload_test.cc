@@ -23,11 +23,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-<<<<<<< HEAD
-#include "xla/hlo/ir/hlo_module_group.h"
-=======
 #include "xla/hlo/ir/hlo_module.h"
->>>>>>> upstream/master
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
@@ -40,17 +36,10 @@ namespace {
 
 class AnnotateHostComputeOffloadTest : public HloHardwareIndependentTestBase {
  protected:
-<<<<<<< HEAD
-  static absl::StatusOr<bool> RunPasses(HloModuleGroup& module_group) {
-    HloPassPipeline pipeline("AnnotateHostComputeOffloadTest");
-    pipeline.AddPass<AnnotateHostComputeOffload>();
-    return pipeline.RunOnModuleGroup(&module_group);
-=======
   static absl::StatusOr<bool> RunPasses(HloModule* module) {
     HloPassPipeline pipeline("AnnotateHostComputeOffloadTest");
     pipeline.AddPass<AnnotateHostComputeOffload>();
     return pipeline.Run(module);
->>>>>>> upstream/master
   }
 
   static void ExpectAllHostInstructions(HloComputation& computation) {
@@ -74,12 +63,7 @@ TEST_F(AnnotateHostComputeOffloadTest, TestUnmodifiedModule) {
   })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> verified_module,
                           ParseAndReturnVerifiedModule(hlo_string));
-<<<<<<< HEAD
-  HloModuleGroup module_group(std::move(verified_module));
-  TF_ASSERT_OK_AND_ASSIGN(bool modified, RunPasses(module_group));
-=======
   TF_ASSERT_OK_AND_ASSIGN(bool modified, RunPasses(verified_module.get()));
->>>>>>> upstream/master
   EXPECT_FALSE(modified);
 }
 
@@ -88,7 +72,7 @@ TEST_F(AnnotateHostComputeOffloadTest, TestUnmodifiedModule) {
 TEST_F(AnnotateHostComputeOffloadTest, AnnotatesHostComputeOffloadForHostCall) {
   std::string hlo_string = R"(
   HloModule AnnotatesHostComputeOffloadForHostCall
-  
+
   host_compute_offload {
     p0 = s32[32]{0} parameter(0)
     p1 = s32[32]{0} parameter(1)
@@ -102,21 +86,11 @@ TEST_F(AnnotateHostComputeOffloadTest, AnnotatesHostComputeOffloadForHostCall) {
   })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> verified_module,
                           ParseAndReturnVerifiedModule(hlo_string));
-<<<<<<< HEAD
-  HloModuleGroup module_group(std::move(verified_module));
-  TF_ASSERT_OK_AND_ASSIGN(bool modified, RunPasses(module_group));
-  EXPECT_TRUE(modified);
-
-  HloComputation* host_compute_offload =
-      module_group.modules().front()->GetComputationWithName(
-          "host_compute_offload");
-=======
   TF_ASSERT_OK_AND_ASSIGN(bool modified, RunPasses(verified_module.get()));
   EXPECT_TRUE(modified);
 
   HloComputation* host_compute_offload =
       verified_module->GetComputationWithName("host_compute_offload");
->>>>>>> upstream/master
   ASSERT_NE(host_compute_offload, nullptr);
   ExpectAllHostInstructions(*host_compute_offload);
 }
@@ -127,13 +101,13 @@ TEST_F(AnnotateHostComputeOffloadTest,
        AnnotatesNestedHostComputeOffloadForHostCall) {
   std::string hlo_string = R"(
   HloModule AnnotatesNestedHostComputeOffloadForHostCall
-  
+
   nested_host_compute_offload {
     p0 = s32[32]{0} parameter(0)
     p1 = s32[32]{0} parameter(1)
     ROOT add = add(p0, p1)
   }
-  
+
   host_compute_offload {
     p0 = s32[32]{0} parameter(0)
     p1 = s32[32]{0} parameter(1)
@@ -147,31 +121,16 @@ TEST_F(AnnotateHostComputeOffloadTest,
   })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> verified_module,
                           ParseAndReturnVerifiedModule(hlo_string));
-<<<<<<< HEAD
-  HloModuleGroup module_group(std::move(verified_module));
-  TF_ASSERT_OK_AND_ASSIGN(bool modified, RunPasses(module_group));
-  EXPECT_TRUE(modified);
-
-  HloComputation* host_compute_offload =
-      module_group.modules().front()->GetComputationWithName(
-          "host_compute_offload");
-=======
   TF_ASSERT_OK_AND_ASSIGN(bool modified, RunPasses(verified_module.get()));
   EXPECT_TRUE(modified);
 
   HloComputation* host_compute_offload =
       verified_module->GetComputationWithName("host_compute_offload");
->>>>>>> upstream/master
   ASSERT_NE(host_compute_offload, nullptr);
   ExpectAllHostInstructions(*host_compute_offload);
 
   HloComputation* nested_host_compute_offload =
-<<<<<<< HEAD
-      module_group.modules().front()->GetComputationWithName(
-          "nested_host_compute_offload");
-=======
       verified_module->GetComputationWithName("nested_host_compute_offload");
->>>>>>> upstream/master
   ASSERT_NE(nested_host_compute_offload, nullptr);
   ExpectAllHostInstructions(*nested_host_compute_offload);
 }

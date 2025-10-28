@@ -144,16 +144,9 @@ class AllReduceKernelTest : public ::testing::Test,
 
     std::vector<se::DeviceMemoryBase> metadata_buffers;
 
-<<<<<<< HEAD
-      signal_flags_buffers.emplace_back(
-          executor, executor->AllocateArray<uint32_t>(
-                        num_ranks * launch_dimensions.num_blocks()));
-      TF_RET_CHECK(!signal_flags_buffers[i].memory().is_null());
-=======
     for (int i = 0; i < num_ranks; ++i) {
       CollectiveKernelMetadata metadata;
       metadata.rank = i;
->>>>>>> upstream/master
 
       for (int j = 0; j < num_ranks; ++j) {
         // One-Shot all-reduce doesn't use an input buffer from the peers.

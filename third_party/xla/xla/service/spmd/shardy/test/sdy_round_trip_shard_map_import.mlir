@@ -298,8 +298,6 @@ func.func @local_xla.sdy.manual_computation_body_10(%arg0: tensor<0x8xf32>, %arg
   %0 = stablehlo.dot %arg0, %arg1 : (tensor<0x8xf32>, tensor<8x0xf32>) -> tensor<0x0xf32>
   return %0, %arg1 : tensor<0x0xf32>, tensor<8x0xf32>
 }
-<<<<<<< HEAD
-=======
 
 // CHECK-LABEL: func @using_same_body_func
 func.func @using_same_body_func(%arg0: tensor<8x16xf32>, %arg1: tensor<16x32xf32>) -> (tensor<8x32xf32>, tensor<8x32xf32>) {
@@ -393,4 +391,3 @@ func.func @local_xla.sdy.manual_computation_body.clone.c_0(%arg0: tensor<2x8xf32
   %0 = stablehlo.dot %arg0, %arg1 : (tensor<2x8xf32>, tensor<8x32xf32>) -> tensor<2x32xf32>
   return %0 : tensor<2x32xf32>
 }
->>>>>>> upstream/master

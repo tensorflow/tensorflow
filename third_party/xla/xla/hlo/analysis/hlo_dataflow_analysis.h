@@ -322,8 +322,6 @@ class HloDataflowAnalysis {
   // An explicit graph holding phi values and edges.
   PhiGraph phi_graph_;
 
-<<<<<<< HEAD
-=======
   // Caches for CanShareOperandBufferWithUser.
   mutable absl::flat_hash_map<
       HloInstruction*,
@@ -334,7 +332,6 @@ class HloDataflowAnalysis {
       cache_share_buffer_with_operand_;
 };
 
->>>>>>> upstream/master
 }  // namespace xla
 
 #endif  // XLA_HLO_ANALYSIS_HLO_DATAFLOW_ANALYSIS_H_

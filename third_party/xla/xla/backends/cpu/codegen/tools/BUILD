@@ -82,10 +82,7 @@ xla_cc_binary(
         "//xla/codegen:mlir_kernel_definition",
         "//xla/codegen/tools:test_lib",
         "//xla/hlo/ir:hlo",
-<<<<<<< HEAD
-=======
         "//xla/service/gpu/model/experimental:symbolic_expr",
->>>>>>> upstream/master
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",

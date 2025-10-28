@@ -175,8 +175,6 @@ absl::StatusOr<Thunk::XnnParams> Thunk::XnnParams::Create(
 Thunk::XnnParams::XnnParams(XnnThreadpool threadpool)
     : threadpool(std::move(threadpool)) {}
 
-<<<<<<< HEAD
-=======
 #ifdef XLA_YNNPACK
 absl::StatusOr<Thunk::YnnParams> Thunk::YnnParams::Create(
     const ExecutableRunOptions* run_options) {
@@ -189,7 +187,6 @@ Thunk::YnnParams::YnnParams(YnnThreadpool threadpool)
     : threadpool(std::move(threadpool)) {}
 #endif  // XLA_YNNPACK
 
->>>>>>> upstream/master
 Thunk::ExecuteSession::ExecuteSession(int64_t max_workers,
                                       int64_t split_threshold)
     : lock_(std::make_shared<std::nullopt_t>(std::nullopt)),

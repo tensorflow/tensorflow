@@ -171,8 +171,6 @@ TEST_F(CudnnBackendTest, GetDefaultConfigFromCudnnFusionFails) {
           (*hlo_module->entry_computation()->root_instruction()));
   EXPECT_THAT(config,
               absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
-<<<<<<< HEAD
-=======
 }
 
 TEST_F(CudnnBackendTest, GetDefaultConfigFromCudnnCustomCall) {
@@ -185,7 +183,6 @@ TEST_F(CudnnBackendTest, GetDefaultConfigFromCudnnCustomCall) {
   CudnnBackendConfig algorithm_config;
   ASSERT_TRUE(config->get()->UnpackTo(&algorithm_config));
   EXPECT_EQ(algorithm_config.algo_id(), -1);
->>>>>>> upstream/master
 }
 
 TEST_F(CudnnBackendTest, ApplyConfigToCudnnFusion) {

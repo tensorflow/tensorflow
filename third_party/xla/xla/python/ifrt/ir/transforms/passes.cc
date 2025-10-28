@@ -124,12 +124,8 @@ absl::Status createOutlinedAtomProgramsToCompiledPipeline(
     pm.addPass(createIfrtLowerMpmdReshardToCallPass());
   }
   pm.addPass(createIfrtPrecompileAtomProgramPreprocessingPass(
-<<<<<<< HEAD
-      {/*platform_names=*/llvm::to_vector(options.platform_names)}));
-=======
       {/*platform_names=*/llvm::to_vector(options.platform_names),
        /*compile_options=*/compile_options}));
->>>>>>> upstream/master
   if (options.propagate_shardings) {
     pm.addPass(createIfrtCompileAndPropagateShardingsPass(
         compiler, compile_options->compile_options_overrides,
@@ -213,13 +209,9 @@ void registerIfrtPassesAndPipelines(
   mlir::PassPipelineRegistration<>(
       "ifrt-compile-xla-preprocessing-pipeline",
       "Run passes to lower an IFRT XLA program for XLA compilation",
-<<<<<<< HEAD
-      createIfrtCompileXlaPreprocessingPipeline);
-=======
       [compile_options](mlir::OpPassManager& pm) mutable {
         createIfrtCompileXlaPreprocessingPipeline(pm, compile_options);
       });
->>>>>>> upstream/master
   // Do not move to lambda captures because the pass pipeline registration is
   // invoked for each module in a test file.
   mlir::PassPipelineRegistration<OutlinedAtomProgramsToCompiledPipelineOptions>(

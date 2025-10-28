@@ -15,9 +15,6 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tensorflow/utils/deserialize_mlir_module_utils.h"
 
-<<<<<<< HEAD
-#include "absl/status/status.h"
-=======
 #include <climits>
 #include <cstddef>
 #include <cstdint>
@@ -28,7 +25,6 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
->>>>>>> upstream/master
 #include "llvm/ADT/StringRef.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -36,10 +32,7 @@ limitations under the License.
 #include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "xla/status_macros.h"
-<<<<<<< HEAD
 
-namespace tensorflow {
-=======
 #include "tensorflow/core/lib/io/inputstream_interface.h"
 #include "tensorflow/core/lib/io/zlib_compression_options.h"
 #include "tensorflow/core/lib/io/zlib_inputstream.h"
@@ -88,7 +81,6 @@ class MemoryInputStream : public tensorflow::io::InputStreamInterface {
   int64_t pos_ = 0;  // Tracks where we are in the file.
 };
 }  // namespace
->>>>>>> upstream/master
 
 absl::Status DeserializeMlirModule(
     llvm::StringRef serialized_mlir_module, mlir::MLIRContext* mlir_context,
@@ -101,15 +93,6 @@ absl::Status DeserializeMlirModule(
   // error reporting system.
   mlir::StatusScopedDiagnosticHandler error_handler(mlir_context);
 
-<<<<<<< HEAD
-  // Parse the module.
-  *mlir_module = mlir::parseSourceString<mlir::ModuleOp>(serialized_mlir_module,
-                                                         mlir_context);
-  if (!*mlir_module)
-    return error_handler.Combine(
-        absl::InvalidArgumentError("could not parse MLIR module"));
-
-=======
   // Look for the GZIP magic number to check if this is a compressed bytecode.
   if (serialized_mlir_module.starts_with("\x1f\x8b")) {
     // Try to uncompress the and parse the bytecode.
@@ -148,7 +131,6 @@ absl::Status DeserializeMlirModule(
           absl::InvalidArgumentError("could not parse MLIR module"));
     }
   }
->>>>>>> upstream/master
   return absl::OkStatus();
 }
 

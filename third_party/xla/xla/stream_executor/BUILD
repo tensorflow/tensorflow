@@ -66,17 +66,9 @@ cc_library(
         "//xla/stream_executor/rocm:rocm_compute_capability",
         "//xla/tsl/lib/math:math_util",
         "//xla/tsl/platform:statusor",
-<<<<<<< HEAD
-        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
-=======
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/status:statusor",
->>>>>>> upstream/master
     ],
 )
 
@@ -599,10 +591,7 @@ cc_library(
         ":stream",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:inlined_vector",
-<<<<<<< HEAD
-=======
         "@com_google_absl//absl/functional:overload",
->>>>>>> upstream/master
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/meta:type_traits",
         "@com_google_absl//absl/status",
@@ -862,11 +851,6 @@ xla_cc_test(
         "@com_google_absl//absl/types:span",
         "@com_google_benchmark//:benchmark",
         "@com_google_googletest//:gtest",
-<<<<<<< HEAD
-        "@local_tsl//tsl/platform:test",
-        "@local_tsl//tsl/platform:test_benchmark",
-=======
->>>>>>> upstream/master
     ],
 )
 

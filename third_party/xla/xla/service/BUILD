@@ -1232,10 +1232,7 @@ cc_library(
         "//xla/service/heap_simulator",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:logging",
-<<<<<<< HEAD
-=======
         "//xla/tsl/platform:status",
->>>>>>> upstream/master
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
@@ -1528,13 +1525,9 @@ cc_library(
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/base:core_headers",
-<<<<<<< HEAD
-        "@com_google_absl//absl/container:flat_hash_set",
-=======
         "@com_google_absl//absl/base:nullability",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log",
->>>>>>> upstream/master
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
@@ -1863,28 +1856,6 @@ xla_cc_test(
 )
 
 cc_library(
-<<<<<<< HEAD
-    name = "hlo_module_group_metadata",
-    srcs = ["hlo_module_group_metadata.cc"],
-    hdrs = ["hlo_module_group_metadata.h"],
-    deps = [
-        "//xla:shape_util",
-        "//xla:status_macros",
-        "//xla:util",
-        "//xla/hlo/ir:hlo",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:logging",
-        "@local_tsl//tsl/platform:status",
-    ],
-)
-
-cc_library(
-=======
->>>>>>> upstream/master
     name = "hlo_module_util",
     srcs = ["hlo_module_util.cc"],
     hdrs = ["hlo_module_util.h"],
@@ -4437,10 +4408,7 @@ cc_library(
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
-<<<<<<< HEAD
-=======
         "//xla/stream_executor/integrations:tf_allocator_adapter",
->>>>>>> upstream/master
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/base:nullability",
         "@com_google_absl//absl/log",
@@ -4722,10 +4690,6 @@ xla_cc_test(
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
-<<<<<<< HEAD
-        "@local_tsl//tsl/platform:statusor",
-=======
->>>>>>> upstream/master
     ],
 )
 
@@ -6059,10 +6023,7 @@ xla_cc_test(
         "//xla/hlo/parser:hlo_parser",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/hlo/transforms/simplifiers:algebraic_simplifier",
-<<<<<<< HEAD
-=======
         "//xla/tsl/lib/core:status_test_util",
->>>>>>> upstream/master
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",

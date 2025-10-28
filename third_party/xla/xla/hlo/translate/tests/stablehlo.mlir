@@ -1951,12 +1951,6 @@ module {
 // -----
 
 // CHECK-LABEL: HloModule main
-<<<<<<< HEAD
-
-// CHECK: ENTRY
-// CHECK: %[[ARG0:.*]] = f32[192] parameter(0)
-// CHECK: ROOT %[[RESULT:.*]] = f32[1,17,17,192] broadcast(%[[ARG0]]), dimensions={3}, origin={{[{][{]}}"broadcast.2342"{{[}][}]}}
-=======
 // CHECK: ENTRY
 // CHECK-LITERAL:: f32[192] parameter(0), origin={{"a"}}
 
@@ -1985,7 +1979,6 @@ module {
 // CHECK: ENTRY
 // CHECK: %[[ARG0:.*]] = f32[192] parameter(0)
 // CHECK-LITERAL: ROOT %[[RESULT:.*]] = f32[1,17,17,192] broadcast(%[[ARG0]]), dimensions={3}, origin={{"broadcast.2342"}}
->>>>>>> upstream/master
 
 module {
   func.func @main(%arg0: tensor<192xf32>) -> tensor<1x17x17x192xf32> {
@@ -1998,15 +1991,6 @@ module {
 
 // CHECK-LABEL: HloModule main
 // CHECK: ENTRY
-<<<<<<< HEAD
-func.func @main() -> tensor<128x2048xf32> {
-  // CHECK-NEXT: %after-all.1 = token[] after-all(), sharding={manual}
-  // CHECK-NEXT: %infeed.2 = ((f32[2048,128]), token[]) infeed(%after-all.1), sharding={{[{][{]manual}, {manual[}][}]}}
-  // CHECK-NEXT: %get-tuple-element.5 = token[] get-tuple-element(%infeed.2), index=1, sharding={manual}
-  // CHECK-NEXT: %get-tuple-element.3 = (f32[2048,128]) get-tuple-element(%infeed.2), index=0, sharding={{[{][{]manual[}][}]}}
-  // CHECK-NEXT: %get-tuple-element.4 = f32[2048,128] get-tuple-element(%get-tuple-element.3), index=0, sharding={manual}
-  // CHECK-NEXT: ROOT %transpose.6 = f32[128,2048] transpose(%get-tuple-element.4), dimensions={1,0}, sharding={manual}
-=======
 // CHECK:  %[[ARG0:.*]] = f32[10] parameter(0)
 // CHECK-LITERAL:  %[[TOPK:.*]] = (f32[8], s32[8]) topk(%[[ARG0]]), k=8, largest=true, origin={({"t" {0}}, {"t" {1}})}
 // CHECK-LITERAL:  ROOT %[[GTE0:.*]] = f32[8] get-tuple-element(%[[TOPK]]), index=0, origin={{"t" {0}}}
@@ -2047,7 +2031,6 @@ func.func @main() -> tensor<128x2048xf32> {
   // CHECK-NEXT: %get-tuple-element.3 = (f32[2048,128]) get-tuple-element(%infeed.1), index=0, sharding={{[{][{]manual[}][}]}}
   // CHECK-NEXT: %get-tuple-element.4 = f32[2048,128] get-tuple-element(%get-tuple-element.3), index=0, sharding={manual}
   // CHECK-NEXT: ROOT %transpose.1 = f32[128,2048] transpose(%get-tuple-element.4), dimensions={1,0}, sharding={manual}
->>>>>>> upstream/master
   %0 = stablehlo.create_token {mhlo.sharding = "{manual}", xla_shape = "token[]"} : !stablehlo.token
   %1:2 = "stablehlo.infeed"(%0) <{infeed_config = "", layout = [[1, 0]]}> {mhlo.sharding = "{{manual}, {manual}}"} : (!stablehlo.token) -> (tensor<2048x128xf32>, !stablehlo.token)
   %2 = stablehlo.transpose %1#0, dims = [1, 0] {mhlo.sharding = "{manual}", result_layout = dense<[0, 1]> : tensor<2xindex>, xla_shape = "f32[128,2048]{0,1}"} : (tensor<2048x128xf32>) -> tensor<128x2048xf32>
@@ -2175,8 +2158,6 @@ func.func @main(%arg0: tensor<i1>, %arg1: memref<2xf32>) -> memref<2xf32> {
     }
   func.return %0#1: memref<2xf32>
 }
-<<<<<<< HEAD
-=======
 
 // -----
 
@@ -2234,4 +2215,3 @@ func.func @main(%arg0: tensor<8x8xf32>) -> tensor<8x6xf32> {
   %1 = stablehlo.get_tuple_element %0[0] : (tuple<tensor<8x6xf32>, tensor<8x6xf32>>) -> tensor<8x6xf32>
   func.return %1: tensor<8x6xf32>
 }
->>>>>>> upstream/master

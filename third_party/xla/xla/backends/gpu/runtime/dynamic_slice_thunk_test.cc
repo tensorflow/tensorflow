@@ -58,10 +58,7 @@ limitations under the License.
 #include "xla/stream_executor/stream_executor_memory_allocator.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
-<<<<<<< HEAD
-=======
 #include "xla/tsl/util/proto/proto_matchers.h"
->>>>>>> upstream/master
 #include "xla/xla_data.pb.h"
 
 namespace xla::gpu {

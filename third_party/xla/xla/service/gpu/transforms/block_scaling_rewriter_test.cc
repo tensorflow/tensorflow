@@ -231,11 +231,7 @@ ENTRY main {
       backend_config={"block_scaled_dot_backend_config":{block_size:32}}
 })";
 
-<<<<<<< HEAD
-  BlockScalingRewriter pass(/*allow_cudnn=*/false);
-=======
   BlockScalingRewriter pass(se::dnn::VersionInfo{});
->>>>>>> upstream/master
   RunAndFilecheckHloRewrite(hlo_string, std::move(pass), R"(
   CHECK: [[lhs_quant:%.+]] = f8e4m3fn[4,16,224]{2,1,0} parameter(0)
   CHECK: [[lhs_quant_cvt:%.+]] = f32[4,16,224]{2,1,0} convert([[lhs_quant]])
@@ -377,11 +373,7 @@ ENTRY main {
       backend_config={"block_scaled_dot_backend_config":{block_size:32}}
 })";
 
-<<<<<<< HEAD
-  BlockScalingRewriter pass(/*allow_cudnn=*/true);
-=======
   BlockScalingRewriter pass(kCudnnSupportsBlockScaledDot);
->>>>>>> upstream/master
   RunAndFilecheckHloRewrite(hlo_string, std::move(pass), R"(
   CHECK: [[lhs:%.+]] = f8e4m3fn[4,120,96]{2,1,0} parameter(0)
   CHECK: [[lhs_pad:%.+]] = f8e4m3fn[4,128,96]{2,1,0} pad([[lhs]], {{.+}}), padding=0_0x0_8x0_0

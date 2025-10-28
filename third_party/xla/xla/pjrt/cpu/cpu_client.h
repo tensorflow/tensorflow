@@ -319,8 +319,6 @@ class PjRtCpuClient final : public CommonPjRtClient {
 
   // A callback to customize the HloModuleConfig for each compiled module.
   std::function<void(HloModuleConfig&)> customize_hlo_module_config_;
-<<<<<<< HEAD
-=======
 
   // IMPORTANT: All thread pools must be destroyed first, because thread pool
   // destruction guarantees that all scheduled tasks are completed. Otherwise,
@@ -334,7 +332,6 @@ class PjRtCpuClient final : public CommonPjRtClient {
   // Thread pool for running PjRtClient tasks.
   std::unique_ptr<tsl::thread::ThreadPool> pjrt_client_thread_pool_;
   std::unique_ptr<AsyncWorkRunner> async_work_runner_;
->>>>>>> upstream/master
 };
 
 class PjRtCpuExecutable final : public PjRtLoadedExecutable {

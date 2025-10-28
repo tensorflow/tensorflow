@@ -751,22 +751,12 @@ void registerStablehloImportShardingsPass() {
 void addStablehloImportPipeline(mlir::OpPassManager& pm,
                                 ArrayRef<bool> allowPropagationToArgs,
                                 ArrayRef<bool> allowPropagationToResults,
-<<<<<<< HEAD
-                                bool importFuncCalls,
-                                bool importOnlyUninlineableFuncCalls) {
-=======
                                 bool importFuncCalls) {
->>>>>>> upstream/master
   addCommonPreImportPasses(pm);
   pm.addPass(createImportShardingsPass(allowPropagationToArgs,
                                        allowPropagationToResults));
   pm.addPass(createStablehloRoundTripShardMapImportPass());
-<<<<<<< HEAD
-  addCommonPostImportPasses(pm, importFuncCalls,
-                            importOnlyUninlineableFuncCalls);
-=======
   addCommonPostImportPasses(pm, importFuncCalls);
->>>>>>> upstream/master
 }
 
 void registerStablehloImportPipeline() {
@@ -775,11 +765,7 @@ void registerStablehloImportPipeline() {
       "Run passes to import a StableHLO module with `mhlo.shardings` into the "
       "SDY (Shardy) dialect.",
       std::bind(addStablehloImportPipeline, std::placeholders::_1,
-<<<<<<< HEAD
-                ArrayRef<bool>(), ArrayRef<bool>(), true, true));
-=======
                 ArrayRef<bool>(), ArrayRef<bool>(), true));
->>>>>>> upstream/master
 }
 
 }  // namespace sdy

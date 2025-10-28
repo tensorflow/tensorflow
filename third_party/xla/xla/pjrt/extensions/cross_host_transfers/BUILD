@@ -10,15 +10,9 @@ cc_library(
     srcs = ["pjrt_c_api_cross_host_transfers_extension.cc"],
     hdrs = ["pjrt_c_api_cross_host_transfers_extension.h"],
     deps = [
-<<<<<<< HEAD
-        "//xla:shape_util",
-        "//xla/pjrt:pjrt_client",
-        "//xla/pjrt:pjrt_future",
-=======
         "//xla:future",
         "//xla:shape_util",
         "//xla/pjrt:pjrt_client",
->>>>>>> upstream/master
         "//xla/pjrt/c:pjrt_c_api_hdrs",
         "//xla/pjrt/c:pjrt_c_api_helpers",
         "//xla/pjrt/c:pjrt_c_api_wrapper_impl",

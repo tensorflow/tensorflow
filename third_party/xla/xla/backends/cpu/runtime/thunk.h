@@ -269,8 +269,6 @@ class Thunk {
   };
 
   //===--------------------------------------------------------------------===//
-<<<<<<< HEAD
-=======
   // YnnParams
   //===--------------------------------------------------------------------===//
 
@@ -290,7 +288,6 @@ class Thunk {
 #endif  // XLA_YNNPACK
 
   //===--------------------------------------------------------------------===//
->>>>>>> upstream/master
   // ExecuteParams
   //===--------------------------------------------------------------------===//
 
@@ -305,12 +302,9 @@ class Thunk {
     CollectiveExecuteParams* collective_params = nullptr;
     CustomCallExecuteParams* custom_call_params = nullptr;
     XnnParams* xnn_params = nullptr;
-<<<<<<< HEAD
-=======
     YnnParams* ynn_params = nullptr;
     int64_t run_id = -1;          // -1 means no run id is set.
     int64_t device_ordinal = -1;  // -1 means no device ordinal is set.
->>>>>>> upstream/master
     ExecuteSession session = ExecuteSession(ExecuteSession::kMaxWorkers,
                                             ExecuteSession::kSplitThreshold);
   };

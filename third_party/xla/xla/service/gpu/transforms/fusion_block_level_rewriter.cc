@@ -28,10 +28,6 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/Support/MathExtras.h"
-<<<<<<< HEAD
-#include "mlir/IR/MLIRContext.h"
-=======
->>>>>>> upstream/master
 #include "xla/backends/gpu/codegen/triton/support.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -53,20 +49,13 @@ limitations under the License.
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
-<<<<<<< HEAD
-=======
 #include "xla/xla_data.pb.h"
->>>>>>> upstream/master
 
 namespace xla {
 namespace gpu {
 
 namespace {
 
-<<<<<<< HEAD
-using ::mlir::MLIRContext;
-=======
->>>>>>> upstream/master
 namespace m = ::xla::match;
 
 // Pattern-matches slow loop fusions that can likely be handled better by
@@ -174,12 +163,8 @@ absl::StatusOr<bool> ShouldTryRewriteFusion(
 absl::StatusOr<bool> ProcessFusionInstruction(
     HloFusionInstruction* fusion_instruction,
     const se::DeviceDescription& device_info,
-<<<<<<< HEAD
-    HloCostAnalysis::ShapeSizeFunction shape_size, MLIRContext* ctx) {
-=======
     HloCostAnalysis::ShapeSizeFunction shape_size,
     SymbolicExprContext* symbolic_expr_context) {
->>>>>>> upstream/master
   TF_ASSIGN_OR_RETURN(bool should_try_rewrite,
                       ShouldTryRewriteFusion(fusion_instruction, device_info));
   if (!should_try_rewrite) {
@@ -267,15 +252,9 @@ absl::StatusOr<bool> FusionBlockLevelRewriter::Run(
     }
     HloFusionInstruction* fusion_instruction =
         ::xla::Cast<HloFusionInstruction>(computation->FusionInstruction());
-<<<<<<< HEAD
-    TF_ASSIGN_OR_RETURN(
-        bool changed, ProcessFusionInstruction(fusion_instruction, device_info_,
-                                               shape_size_, &ctx));
-=======
     TF_ASSIGN_OR_RETURN(bool changed, ProcessFusionInstruction(
                                           fusion_instruction, device_info_,
                                           shape_size_, symbolic_expr_context_));
->>>>>>> upstream/master
 
     has_changed |= changed;
   }

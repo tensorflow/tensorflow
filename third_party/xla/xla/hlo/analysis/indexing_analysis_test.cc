@@ -2999,11 +2999,7 @@ TEST_F(IndexingAnalysisTest, AllGatherFusionWithReshape) {
   auto fusion_adaptor = HloFusionAdaptor::ForProducerConsumer(all_gather, root);
 
   auto grouped_indexing = ComputeGroupedOutputToInputIndexing(
-<<<<<<< HEAD
-      *fusion_adaptor, fusion_adaptor->GetRoots()[0], &mlir_context_);
-=======
       *fusion_adaptor, fusion_adaptor->GetRoots()[0], &symbolic_expr_context_);
->>>>>>> upstream/master
 
   EXPECT_THAT(grouped_indexing[root], ElementsAre(MatchOperandIndexing(R"(
     (d0) -> (d0),
@@ -3047,11 +3043,7 @@ TEST_F(IndexingAnalysisTest, ChainedAllGatherFusion) {
   auto fusion_adaptor = HloFusionAdaptor::ForProducerConsumer(all_gather, root);
 
   auto grouped_indexing = ComputeGroupedOutputToInputIndexing(
-<<<<<<< HEAD
-      *fusion_adaptor, fusion_adaptor->GetRoots()[0], &mlir_context_);
-=======
       *fusion_adaptor, fusion_adaptor->GetRoots()[0], &symbolic_expr_context_);
->>>>>>> upstream/master
 
   EXPECT_THAT(grouped_indexing[parameter],
               ElementsAre(UndefinedOperandIndexing()));
@@ -3075,11 +3067,7 @@ TEST_F(IndexingAnalysisTest, AllGatherDotFusion_GatherNonContractingDim) {
   auto fusion_adaptor = HloFusionAdaptor::ForProducerConsumer(all_gather, root);
 
   auto grouped_indexing = ComputeGroupedOutputToInputIndexing(
-<<<<<<< HEAD
-      *fusion_adaptor, fusion_adaptor->GetRoots()[0], &mlir_context_);
-=======
       *fusion_adaptor, fusion_adaptor->GetRoots()[0], &symbolic_expr_context_);
->>>>>>> upstream/master
 
   EXPECT_THAT(grouped_indexing[parameter], ElementsAre(MatchOperandIndexing(R"(
     (d0, d1)[s0] -> (d0 mod 64, s0),
@@ -3114,11 +3102,7 @@ TEST_F(IndexingAnalysisTest, AllGatherDotFusion_GatherContractingDim) {
   auto fusion_adaptor = HloFusionAdaptor::ForProducerConsumer(all_gather, root);
 
   auto grouped_indexing = ComputeGroupedOutputToInputIndexing(
-<<<<<<< HEAD
-      *fusion_adaptor, fusion_adaptor->GetRoots()[0], &mlir_context_);
-=======
       *fusion_adaptor, fusion_adaptor->GetRoots()[0], &symbolic_expr_context_);
->>>>>>> upstream/master
 
   EXPECT_THAT(grouped_indexing[parameter], ElementsAre(MatchOperandIndexing(R"(
     (d0, d1)[s0] -> (d0, s0 mod 128),

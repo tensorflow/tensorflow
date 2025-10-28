@@ -23,10 +23,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status_matchers.h"
-<<<<<<< HEAD
-=======
 #include "mlir/IR/MLIRContext.h"
->>>>>>> upstream/master
 #include "xla/backends/gpu/codegen/triton/support.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"

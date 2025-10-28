@@ -1122,54 +1122,16 @@ class NestGemmFusionVisitor : public DfsHloRewriteVisitor {
  private:
   absl::Status AcceptDotOperand(const HloInstruction* operand,
                                 absl::Span<const int64_t> batch_dims,
-<<<<<<< HEAD
-                                absl::Span<const int64_t> contracting_dims,
-                                bool is_lhs) {
-    if (contracting_dims.size() != 1) {
-      return absl::InternalError(
-          absl::StrCat("Expected ", is_lhs ? "LHS" : "RHS",
-                       " operand with exactly one contracting dimension, got ",
-                       contracting_dims.size()));
-=======
                                 absl::Span<const int64_t> contracting_dims) {
     if (contracting_dims.size() != 1) {
       return absl::InternalError(absl::StrCat(
           "Expected operand with exactly one contracting dimension, got ",
           contracting_dims.size()));
->>>>>>> upstream/master
     }
 
     TF_ASSIGN_OR_RETURN(
         std::vector<int64_t> non_contracting_dimensions,
         GetNonContractingDims(operand->shape(), batch_dims, contracting_dims));
-<<<<<<< HEAD
-
-    if (non_contracting_dimensions.size() != 1) {
-      return absl::InternalError(absl::StrCat(
-          "Expected ", is_lhs ? "LHS" : "RHS",
-          " operand with exactly one non-contracting dimension, got ",
-          non_contracting_dimensions.size()));
-    }
-
-    if (is_lhs) {
-      if (non_contracting_dimensions[0] >= contracting_dims[0]) {
-        return absl::InternalError(absl::StrCat(
-            "Expected LHS non-contracting dimension to be before contracting "
-            "dimension, got ",
-            non_contracting_dimensions[0], " >= ", contracting_dims[0]));
-      }
-    } else {
-      if (non_contracting_dimensions[0] <= contracting_dims[0]) {
-        return absl::InternalError(absl::StrCat(
-            "Expected RHS non-contracting dimension to be after contracting "
-            "dimension, got ",
-            non_contracting_dimensions[0], " <= ", contracting_dims[0]));
-      }
-    }
-    return absl::OkStatus();
-  }
-
-=======
     if (non_contracting_dimensions.size() != 1) {
       return absl::InternalError(absl::StrCat(
           "Expected operand with exactly one non-contracting dimension, got ",
@@ -1179,7 +1141,6 @@ class NestGemmFusionVisitor : public DfsHloRewriteVisitor {
     return absl::OkStatus();
   }
 
->>>>>>> upstream/master
   absl::Status AcceptDotInstruction(const HloDotInstruction* dot) {
     if (IsFeatureEnabled(
             dot->GetModule(),
@@ -1190,17 +1151,9 @@ class NestGemmFusionVisitor : public DfsHloRewriteVisitor {
     const HloInstruction* rhs = dot->operand(1);
     auto dims = dot->dot_dimension_numbers();
     TF_RETURN_IF_ERROR(AcceptDotOperand(lhs, dims.lhs_batch_dimensions(),
-<<<<<<< HEAD
-                                        dims.lhs_contracting_dimensions(),
-                                        /*is_lhs=*/true));
-    TF_RETURN_IF_ERROR(AcceptDotOperand(rhs, dims.rhs_batch_dimensions(),
-                                        dims.rhs_contracting_dimensions(),
-                                        /*is_lhs=*/false));
-=======
                                         dims.lhs_contracting_dimensions()));
     TF_RETURN_IF_ERROR(AcceptDotOperand(rhs, dims.rhs_batch_dimensions(),
                                         dims.rhs_contracting_dimensions()));
->>>>>>> upstream/master
     return absl::OkStatus();
   }
 
@@ -1211,13 +1164,6 @@ class NestGemmFusionVisitor : public DfsHloRewriteVisitor {
     switch (instruction->opcode()) {
       case HloOpcode::kBroadcast:
       case HloOpcode::kConstant:
-<<<<<<< HEAD
-        return absl::OkStatus();
-      case HloOpcode::kBroadcast:
-        return absl::OkStatus();
-      case HloOpcode::kFusion:
-        return AcceptResultingFusion(Cast<HloFusionInstruction>(instruction));
-=======
       case HloOpcode::kPad:
       case HloOpcode::kParameter:
         return absl::OkStatus();
@@ -1231,7 +1177,6 @@ class NestGemmFusionVisitor : public DfsHloRewriteVisitor {
           return absl::OkStatus();
         }
         return absl::InternalError("Scaled dot with Triton is not enabled.");
->>>>>>> upstream/master
       case HloOpcode::kDot:
         return AcceptDotInstruction(Cast<HloDotInstruction>(instruction));
       default:
@@ -1256,8 +1201,6 @@ class NestGemmFusionVisitor : public DfsHloRewriteVisitor {
     const HloComputation* computation = fusion->called_computation();
     for (const HloInstruction* instruction : computation->instructions()) {
       TF_RETURN_IF_ERROR(AcceptNestedInstruction(instruction));
-<<<<<<< HEAD
-=======
     }
     return absl::OkStatus();
   }
@@ -1295,37 +1238,6 @@ class NestGemmFusionVisitor : public DfsHloRewriteVisitor {
       return absl::InternalError(absl::StrCat(
           "Computation of fusion ", fusion->ToString(),
           " is not supported by Triton: ", can_codegen_computation.Explain()));
->>>>>>> upstream/master
-    }
-
-    return AcceptResultingFusion(fusion);
-  }
-
-  absl::Status RewriteFusion(HloFusionInstruction* fusion,
-                             CallGraph* call_graph) {
-    HloComputation* computation = fusion->called_computation();
-    TF_ASSIGN_OR_RETURN(TritonGemmConfig config, GetTritonGemmConfig(*fusion));
-    HloInstruction* instr =
-        hlo_query::GetFirstInstructionWithOpcode(*computation, HloOpcode::kDot);
-    if (instr == nullptr) {
-      return absl::InternalError(absl::StrCat("Computation of fusion ",
-                                              fusion->ToString(),
-                                              " has no dot instruction"));
-    }
-    TF_RETURN_IF_ERROR(
-        TryHoistBitcastsInComputationToCallers(instr, call_graph));
-    HloDotInstruction* dot = Cast<HloDotInstruction>(instr);
-    TF_RETURN_IF_ERROR(
-        MakeNestedFusionFromGemmFusion(fusion, config, dot, ctx_));
-
-    MarkAsChanged();
-
-    if (CodegenDecision can_codegen_computation = IsTritonSupportedComputation(
-            *fusion->called_computation(), compute_capability_);
-        !can_codegen_computation) {
-      return absl::InternalError(absl::StrCat(
-          "Computation of fusion ", fusion->ToString(),
-          " is not supported by Triton: ", can_codegen_computation.Explain()));
     }
 
     return AcceptResultingFusion(fusion);
@@ -1351,10 +1263,6 @@ class NestGemmFusionVisitor : public DfsHloRewriteVisitor {
         return absl::OkStatus();
       }
     }
-<<<<<<< HEAD
-
-=======
->>>>>>> upstream/master
     {
       // Symbolic tile analysis and nesting do not support all HLOs yet and
       // might leave the module in an invalid state. To avoid that we first dry

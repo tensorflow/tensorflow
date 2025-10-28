@@ -33,31 +33,14 @@ namespace xla {
 
 class CycleDetectionVisitor : public DfsHloVisitorWithDefault {
  public:
-<<<<<<< HEAD
+  // Relies on HloInstruction::Accept() to run PostOrderDFS which does cycle
+  // detection by default.
   absl::Status VerifyNoCycle(HloModule* module) {
     for (auto* comp : module->computations()) {
       TF_RETURN_IF_ERROR(comp->Accept(this));
     }
     return absl::OkStatus();
   }
-  // Relies on HloInstruction::Accept() to run PostOrderDFS which does cycle
-  // detection by default.
-  absl::Status VerifyNoCycle(HloModuleGroup* module_group) {
-    for (auto* comp : module_group->module(0).computations()) {
-=======
-  // Relies on HloInstruction::Accept() to run PostOrderDFS which does cycle
-  // detection by default.
-  absl::Status VerifyNoCycle(HloModule* module) {
-    for (auto* comp : module->computations()) {
->>>>>>> upstream/master
-      TF_RETURN_IF_ERROR(comp->Accept(this));
-    }
-    return absl::OkStatus();
-  }
-<<<<<<< HEAD
-=======
-
->>>>>>> upstream/master
   absl::Status DefaultAction(HloInstruction* instruction) override {
     return absl::OkStatus();
   }
@@ -77,18 +60,6 @@ class HloCycleDetection : public HloModulePass {
     return false;
   }
 
-<<<<<<< HEAD
-  using HloPassInterface::RunOnModuleGroup;
-  absl::StatusOr<bool> RunOnModuleGroup(
-      HloModuleGroup* module_group,
-      const absl::flat_hash_set<absl::string_view>& execution_threads)
-      override {
-    TF_RETURN_IF_ERROR(visitor_.VerifyNoCycle(module_group));
-    return false;
-  }
-
-=======
->>>>>>> upstream/master
  private:
   CycleDetectionVisitor visitor_;
 };

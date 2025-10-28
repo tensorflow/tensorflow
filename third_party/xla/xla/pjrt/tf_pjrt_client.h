@@ -81,14 +81,8 @@ class TfPjRtBuffer : public PjRtBuffer {
   Future<> ToLiteral(MutableLiteralBase* literal) override {
     return wrapped_->ToLiteral(literal);
   }
-<<<<<<< HEAD
-  PjRtFuture<> LazyToLiteral(
-      absl::AnyInvocable<PjRtFuture<MutableLiteralBase*>() &&> generator)
-      override {
-=======
   Future<> LazyToLiteral(
       absl::AnyInvocable<Future<MutableLiteralBase*>() &&> generator) override {
->>>>>>> upstream/master
     return wrapped_->LazyToLiteral(std::move(generator));
   }
   absl::StatusOr<size_t> GetOnDeviceSizeInBytes() const override {

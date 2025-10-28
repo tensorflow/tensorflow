@@ -80,22 +80,14 @@ class SdyRoundTripShardMapExportPass
       mlir::TypeRange localResultTypes =
           sdy::getBodyTerminatorOpOperandTypes(manualComputation);
       auto funcOp = FuncOp::create(
-<<<<<<< HEAD
-          rewriter, loc, kManualComputationBodyFuncName,
-=======
           rewriter, loc, kManualComputationFuncName,
->>>>>>> upstream/master
           rewriter.getFunctionType(manualCompBodyArgTypes, localResultTypes));
       mlir::StringAttr funcName = symbolTable.insert(funcOp);
 
       rewriter.setInsertionPoint(manualComputation);
       mlir::ValueRange operands = manualComputation->getOperands();
       if (!operands.empty()) {
-<<<<<<< HEAD
-        globalToLocalShape = stablehlo::CustomCallOp::create(
-=======
         auto globalToLocalShape = stablehlo::CustomCallOp::create(
->>>>>>> upstream/master
             rewriter, loc, manualCompBodyArgTypes, operands);
         globalToLocalShape.setCallTargetName(kGlobalToLocalShapeCallTargetName);
         // We mark `xla.sdy.GlobalToLocalShape` as side-effecting to avoid
@@ -119,12 +111,6 @@ class SdyRoundTripShardMapExportPass
         auto localToGlobalShape = stablehlo::CustomCallOp::create(
             rewriter, loc, manualComputation.getResultTypes(),
             callOp->getResults());
-<<<<<<< HEAD
-        // We don't mark `xla.sdy.LocalToGlobalShape` as side-effecting, so if
-        // any of its results has a dimension of size 0 (i.e. 0 num-elements),
-        // it will be replaced with a constant of the same shape.
-=======
->>>>>>> upstream/master
         localToGlobalShape.setCallTargetName(kLocalToGlobalShapeCallTargetName);
         // We mark `xla.sdy.LocalToGlobalShape` as side-effecting to avoid
         // CSE removing it if it has no users.

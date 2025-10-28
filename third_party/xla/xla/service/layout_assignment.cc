@@ -1935,14 +1935,6 @@ absl::Status LayoutAssignment::PropagateBufferConstraintToOperands(
     }
     if (!InstructionCanChangeLayoutInstance(instruction)) {
       // Copy the layout to the operand.
-<<<<<<< HEAD
-      if (buffer.IsArray() && operand->shape().IsArray() &&
-          operand->shape().dimensions().size() ==
-              LayoutUtil::MinorToMajor(buffer_constraint.layout()).size()) {
-        TF_RETURN_IF_ERROR(SetArrayOperandLayout(
-            buffer_constraint.layout(), instruction, operand_no,
-            /*mandatory=*/true, /*dfs=*/true, current_priority_));
-=======
       if (buffer.IsArray() && operand->shape().IsArray()) {
         if (operand->shape().dimensions().size() ==
             LayoutUtil::MinorToMajor(buffer_constraint.layout()).size()) {
@@ -1963,7 +1955,6 @@ absl::Status LayoutAssignment::PropagateBufferConstraintToOperands(
               shape.layout(), instruction, operand_no,
               /*mandatory=*/true, /*dfs=*/true, current_priority_));
         }
->>>>>>> upstream/master
       }
 
     } else if (instruction->opcode() == HloOpcode::kBroadcast) {

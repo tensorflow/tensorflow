@@ -77,18 +77,11 @@ class LoadedExecutable final
     return absl::UnimplementedError("Not implemented");
   }
   absl::StatusOr<std::string> Serialize() const override;
-<<<<<<< HEAD
-  xla::ifrt::UserContextRef user_context() const override {
-    return user_context_;
-  }
-  Future<> GetReadyFuture() const override;
-=======
   absl::StatusOr<std::string> GetHumanReadableProgramText() const override;
   xla::ifrt::UserContextRef user_context() const override {
     return user_context_;
   }
   tsl::Future<> GetReadyFuture() const override;
->>>>>>> upstream/master
 
   int num_devices() const override;
   int64_t SizeOfGeneratedCodeInBytes() const override;
@@ -158,11 +151,7 @@ class LoadedExecutable final
   const DeviceListRef devices_;
   const std::vector<xla::ifrt::Device*> addressable_devices_;
   const absl::StatusOr<std::optional<std::string>> fingerprint_;
-<<<<<<< HEAD
-  const Future<> ready_future_;
-=======
   const tsl::Future<> ready_future_;
->>>>>>> upstream/master
   const xla::ifrt::UserContextRef user_context_;
 
   class OutputSpecCache;

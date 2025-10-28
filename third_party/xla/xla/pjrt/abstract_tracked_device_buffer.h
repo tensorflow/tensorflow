@@ -65,21 +65,6 @@ class AbstractTrackedDeviceBuffer {
   // Clones an abstract buffer with an additional control dependency.
   virtual absl::StatusOr<std::unique_ptr<AbstractTrackedDeviceBuffer>>
   CloneWithControlDependency(PjRtMemorySpace* memory_space,
-<<<<<<< HEAD
-                             PjRtFuture<> dependency) {
-    return absl::UnimplementedError(
-        "DonateWithControlDependency is not supported.");
-  }
-
-  // Populates a future::promise when all the definition events are complete.
-  virtual PjRtFuture<>::Promise GetReadyFuturePromise(
-      PjRtMemorySpace* memory_space) {
-    auto promise = PjRtFuture<>::CreatePromise();
-    promise.Set(absl::UnimplementedError(
-        absl::StrCat("GetReadyFuturePromise not supported for ",
-                     memory_space->DebugString())));
-    return promise;
-=======
                              Future<> dependency) {
     return Unimplemented("DonateWithControlDependency is not supported.");
   }
@@ -89,18 +74,12 @@ class AbstractTrackedDeviceBuffer {
   virtual Future<> GetReadyFuture(PjRtMemorySpace* memory_space) {
     return Future<>(Unimplemented("GetReadyFuture not supported for %s",
                                   memory_space->DebugString()));
->>>>>>> upstream/master
   }
 
   // Waits for all usage and definition events to complete synchronously
   // and returns the status.
   virtual absl::Status BlockForOperationsToComplete(
       PjRtMemorySpace* memory_space) {
-<<<<<<< HEAD
-    return absl::UnimplementedError(
-        absl::StrCat("BlockForOperationsToComplete not supported for ",
-                     memory_space->DebugString()));
-=======
     return Unimplemented("BlockForOperationsToComplete not supported for %s",
                          memory_space->DebugString());
   }
@@ -114,7 +93,6 @@ class AbstractTrackedDeviceBuffer {
   virtual absl::Status WaitUntilBufferReadyOnStream(std::intptr_t stream) {
     return absl::UnimplementedError(
         "WaitUntilBufferReadyOnStream is only implemented for GPU.");
->>>>>>> upstream/master
   }
 };
 

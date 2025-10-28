@@ -65,10 +65,7 @@ cc_library(
         "//xla:util",
         "//xla:xla_proto_cc",
         "//xla/codegen:intrinsic_lib",
-<<<<<<< HEAD
-=======
         "//xla/codegen/intrinsic",
->>>>>>> upstream/master
         "//xla/codegen/intrinsic:intrinsic_compiler_lib",
         "//xla/service:hlo_module_config",
         "//xla/service/cpu:backend_config_proto_cc",
@@ -199,16 +196,11 @@ cc_library(
         "@llvm-project//mlir:Transforms",
         "@llvm-project//mlir:UBToLLVM",
         "@llvm-project//mlir:VectorDialect",
-<<<<<<< HEAD
-        "@local_tsl//tsl/profiler/lib:traceme",
-        "@local_tsl//tsl/profiler/lib:traceme_encode",
-=======
         "@llvm-project//mlir:VectorToLLVM",
         "@llvm-project//mlir:VectorToSCF",
         "@local_tsl//tsl/profiler/lib:traceme",
         "@local_tsl//tsl/profiler/lib:traceme_encode",
         "@stablehlo//:stablehlo_passes",
->>>>>>> upstream/master
     ],
 )
 
@@ -642,10 +634,7 @@ cc_library(
         "//xla/codegen:ir_emission_utils",
         "//xla/codegen:mlir_kernel_definition",
         "//xla/codegen/emitters:concatenate_kernel_emitter",
-<<<<<<< HEAD
-=======
         "//xla/codegen/emitters:dynamic_update_slice_kernel_emitter",
->>>>>>> upstream/master
         "//xla/codegen/emitters:kernel_arguments",
         "//xla/codegen/emitters:loop_kernel_emitter",
         "//xla/codegen/emitters/ir:xla",
@@ -659,10 +648,7 @@ cc_library(
         "//xla/service:buffer_assignment",
         "//xla/service/cpu:backend_config_proto_cc",
         "//xla/service/gpu:ir_emission_utils",
-<<<<<<< HEAD
-=======
         "//xla/service/gpu/model/experimental:symbolic_expr",
->>>>>>> upstream/master
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:inlined_vector",

@@ -55,19 +55,6 @@ namespace cpu {
 // architecture, so JIT-ed code and host code share the same ABI.
 class CpuExecutable : public Executable {
  public:
-<<<<<<< HEAD
-  // Creates a CpuExecutable from JIT compiled cpu function by resolving
-  // `entry_function_name` in the `jit`.
-  static absl::StatusOr<std::unique_ptr<CpuExecutable>> Create(
-      std::unique_ptr<FunctionLibrary> function_library,
-      std::unique_ptr<BufferAssignment> assignment,
-      std::unique_ptr<HloModule> hlo_module,
-      const std::string& entry_function_name,
-      std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data,
-      std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map);
-
-=======
->>>>>>> upstream/master
   // Creates a CpuExecutable from a thunk sequence.
   static absl::StatusOr<std::unique_ptr<CpuExecutable>> Create(
       std::unique_ptr<FunctionLibrary> function_library,
@@ -141,10 +128,7 @@ class CpuExecutable : public Executable {
   ThunkExecutor& thunks() { return *thunks_; }
 
   bool has_xnn_fusions() const { return has_xnn_fusions_; }
-<<<<<<< HEAD
-=======
   bool has_ynn_fusions() const { return has_ynn_fusions_; }
->>>>>>> upstream/master
 
   const BufferAssignment& buffer_assignment() const { return *assignment_; }
   absl::Span<const ConstantAllocation> constants() const { return constants_; }
@@ -218,10 +202,7 @@ class CpuExecutable : public Executable {
 
   // Buffer assignment for the buffers we need to allocate.
   std::shared_ptr<BufferAssignment> assignment_;
-<<<<<<< HEAD
-=======
   std::vector<const BufferAllocation*> alloc_ptrs_;
->>>>>>> upstream/master
 
   // The LLVM IR, in string format, of the unoptimized module generated for this
   // CpuExecutable. We save a string instead of an llvm::Module* because leaving
@@ -250,12 +231,9 @@ class CpuExecutable : public Executable {
   // Whether the thunk executor contains any XNN fusion thunks.
   bool has_xnn_fusions_ = false;
 
-<<<<<<< HEAD
-=======
   // Whether the thunk executor contains any YNN fusion thunks.
   bool has_ynn_fusions_ = false;
 
->>>>>>> upstream/master
   // Entry function name for the computation.
   std::string entry_function_name_;
 

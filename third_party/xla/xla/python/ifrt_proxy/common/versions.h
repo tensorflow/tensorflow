@@ -48,9 +48,6 @@ enum {
   kSerDesVersioning = 15,
 
   // kExecutableDevices adds a devices() method to Executable.
-<<<<<<< HEAD
-  kExecutableDevices,
-=======
   kExecutableDevices = 16,
 
   // Optimize large transfers with the proxy-server and client in the same
@@ -63,7 +60,6 @@ enum {
   // kLoadedExecutableGetHumanReadableProgramText implements
   // GetHumanReadableProgramText in Executable.
   kLoadedExecutableGetHumanReadableProgramText = 19,
->>>>>>> upstream/master
 
   // kSentiel is used to derive kCurrent below. Keep this as the last value of
   // the enum.

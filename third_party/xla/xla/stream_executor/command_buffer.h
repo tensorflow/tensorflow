@@ -185,8 +185,6 @@ class CommandBuffer {
   virtual absl::Status UpdateChildCommand(ChildCommandType type,
                                           const Command* command,
                                           const CommandBuffer& nested) = 0;
-<<<<<<< HEAD
-=======
 
   virtual absl::StatusOr<const Command*> CreateChildCommand(
       ChildCommandType type, StreamExecutor* executor,
@@ -199,7 +197,6 @@ class CommandBuffer {
       ChildCommandType type, const Command* command,
       absl::AnyInvocable<absl::Status(stream_executor::CommandBuffer*)>
           record_fn) = 0;
->>>>>>> upstream/master
 
   // Creates a device-to-device memory copy.
   virtual absl::StatusOr<const Command*> CreateMemcpyD2D(

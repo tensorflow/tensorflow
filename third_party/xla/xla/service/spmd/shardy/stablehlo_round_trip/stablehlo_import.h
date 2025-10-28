@@ -76,12 +76,7 @@ void registerStablehloImportPipeline();
 void addStablehloImportPipeline(mlir::OpPassManager& pm,
                                 mlir::ArrayRef<bool> allowPropagationToArgs,
                                 mlir::ArrayRef<bool> allowPropagationToResults,
-<<<<<<< HEAD
-                                bool importFuncCalls = true,
-                                bool importOnlyUninlineableFuncCalls = true);
-=======
                                 bool importFuncCalls = true);
->>>>>>> upstream/master
 
 // Creates ImportShardingsPass that converts `mhlo.sharding` to `mesh` and
 // `sdy.sharding`.

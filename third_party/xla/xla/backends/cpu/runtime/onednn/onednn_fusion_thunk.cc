@@ -25,12 +25,9 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
-<<<<<<< HEAD
-=======
 #include "oneapi/dnnl/dnnl_common.hpp"
 #include "oneapi/dnnl/dnnl_graph.hpp"
 #include "oneapi/dnnl/dnnl_threadpool.hpp"
->>>>>>> upstream/master
 #include "xla/backends/cpu/onednn_fusion.h"
 #include "xla/backends/cpu/runtime/onednn/onednn_threadpool.h"
 #include "xla/backends/cpu/runtime/thunk.h"

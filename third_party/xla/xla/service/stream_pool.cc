@@ -31,11 +31,7 @@ StreamPool::Ptr StreamPool::BorrowStream(se::StreamPriority priority) {
   std::unique_ptr<se::Stream> stream = nullptr;
 
   {
-<<<<<<< HEAD
-    absl::MutexLock lock(&mu_);
-=======
     absl::MutexLock lock(mu_);
->>>>>>> upstream/master
     if (auto it = streams_with_pri_.find(priority);
         it != streams_with_pri_.end()) {
       std::vector<std::unique_ptr<se::Stream>>& streams = it->second;

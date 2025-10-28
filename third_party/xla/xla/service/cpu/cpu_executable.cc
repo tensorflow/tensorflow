@@ -86,37 +86,6 @@ namespace cpu {
 absl::StatusOr<std::unique_ptr<CpuExecutable>> CpuExecutable::Create(
     std::unique_ptr<FunctionLibrary> function_library,
     std::unique_ptr<BufferAssignment> assignment,
-<<<<<<< HEAD
-    std::unique_ptr<HloModule> hlo_module,
-    const std::string& entry_function_name,
-    std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data,
-    std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map) {
-  VLOG(2) << "Create CpuExecutable from a jit compiled function: "
-          << entry_function_name << ", module=" << hlo_module->name();
-
-  std::unique_ptr<CpuExecutable> executable(new CpuExecutable(
-      std::move(hlo_module), std::move(hlo_profile_printer_data),
-      std::move(hlo_profile_index_map), std::move(assignment)));
-  executable->function_library_ = std::move(function_library);
-  executable->module_name_ = entry_function_name;
-
-  TF_ASSIGN_OR_RETURN(
-      executable->compute_function_,
-      executable->function_library_
-          ->ResolveFunction<std::remove_pointer_t<ComputeFunctionType>>(
-              entry_function_name));
-
-  VLOG(1) << "compute_function_ at address "
-          << reinterpret_cast<void*>(executable->compute_function_);
-
-  return executable;
-}
-
-absl::StatusOr<std::unique_ptr<CpuExecutable>> CpuExecutable::Create(
-    std::unique_ptr<FunctionLibrary> function_library,
-    std::unique_ptr<BufferAssignment> assignment,
-=======
->>>>>>> upstream/master
     std::unique_ptr<HloModule> hlo_module, ThunkSequence thunks,
     std::vector<ConstantAllocation> constants,
     std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data,
@@ -141,15 +110,12 @@ absl::StatusOr<std::unique_ptr<CpuExecutable>> CpuExecutable::Create(
     executable->has_xnn_fusions_ |= thunk.kind() == Thunk::Kind::kXnnFusion;
   });
 
-<<<<<<< HEAD
-=======
   // Find if the thunk sequence contains any YNN fusion thunks. If we do have
   // any, we will prepare the YNNPACK thread pool for them at run time.
   executable->thunks_->thunk_sequence().ForEach([&](const Thunk& thunk) {
     executable->has_ynn_fusions_ |= thunk.kind() == Thunk::Kind::kYnnFusion;
   });
 
->>>>>>> upstream/master
   // Re-index constants by their allocation index to allow efficient lookup.
   for (auto& constant : constants) {
     if (executable->constants_.size() <= constant.index) {
@@ -173,8 +139,6 @@ CpuExecutable::CpuExecutable(
     XlaDebugInfoManager::Get()->RegisterModule(shared_module(), assignment_);
   }
 
-<<<<<<< HEAD
-=======
   if (assignment_) {
     alloc_ptrs_.reserve(assignment_->Allocations().size());
     for (const BufferAllocation& alloc : assignment_->Allocations()) {
@@ -182,7 +146,6 @@ CpuExecutable::CpuExecutable(
     }
   }
 
->>>>>>> upstream/master
   // Once we compiled HLO module to CPU executable, we don't need to keep the
   // HLO module metadata around.
   if (has_module()) {

@@ -48,11 +48,8 @@ limitations under the License.
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt/test_util.h"
 #include "xla/python/ifrt/user_context.h"
-<<<<<<< HEAD
-=======
 #include "xla/python/pjrt_ifrt/executable_metadata.pb.h"
 #include "xla/python/pjrt_ifrt/pjrt_layout.h"
->>>>>>> upstream/master
 #include "xla/python/pjrt_ifrt/xla_compiler.h"
 #include "xla/python/pjrt_ifrt/xla_executable_version.h"
 #include "xla/tsl/concurrency/future.h"
@@ -158,8 +155,6 @@ absl::StatusOr<LoadedExecutableRef> CompileOnDevices(
       build_options.set_device_assignment(device_assignment);
     }
     TF_ASSIGN_OR_RETURN(device_list, client->MakeDeviceList(devices));
-<<<<<<< HEAD
-=======
   }
   auto xla_compile_options =
       std::make_unique<XlaCompileOptions>(compile_options, device_list);
@@ -251,7 +246,6 @@ module @add attributes {
   ) -> (tensor<2x3xi32> {mhlo.sharding = "{devices=[2,1]<=[2]}"}) {
     %0 = stablehlo.add %arg0, %arg0 : tensor<2x3xi32>
     return %0 : tensor<2x3xi32>
->>>>>>> upstream/master
   }
 })";
   Compiler* compiler = client->GetDefaultCompiler();
@@ -353,15 +347,9 @@ TEST_P(LoadedExecutableImplTest, CompileAndExecute) {
     TF_ASSERT_OK_AND_ASSIGN(
         loaded_executable,
         CompileOnDevices(client.get(), compiler, module_add_one, devices,
-<<<<<<< HEAD
-                         /*replicated=*/false));
-  }
-  EXPECT_EQ(loaded_executable->user_context()->Fingerprint(), 20);
-=======
                          /*replicated=*/false, serialize));
   }
   EXPECT_EQ(loaded_executable->user_context()->Id(), UserContextId(20));
->>>>>>> upstream/master
 
   DType dtype(DType::kF32);
   Shape shape({2, 3});
@@ -389,11 +377,7 @@ TEST_P(LoadedExecutableImplTest, CompileAndExecute) {
   }
   TF_ASSERT_OK(result.status.Await());
   EXPECT_THAT(result.outputs, SizeIs(1));
-<<<<<<< HEAD
-  EXPECT_EQ(result.outputs[0]->user_context()->Fingerprint(), 100);
-=======
   EXPECT_EQ(result.outputs[0]->user_context()->Id(), UserContextId(100));
->>>>>>> upstream/master
 
   std::vector<float> out_data(6);
   auto future = result.outputs[0]->CopyToHostBuffer(
@@ -419,15 +403,9 @@ TEST_P(LoadedExecutableImplTest, CompileAndExecutePortable) {
     TF_ASSERT_OK_AND_ASSIGN(
         loaded_executable,
         CompileOnDevices(client.get(), compiler, module_add_one, devices,
-<<<<<<< HEAD
-                         /*replicated=*/false));
-  }
-  EXPECT_EQ(loaded_executable->user_context()->Fingerprint(), 20);
-=======
                          /*replicated=*/false, serialize));
   }
   EXPECT_EQ(loaded_executable->user_context()->Id(), UserContextId(20));
->>>>>>> upstream/master
 
   DType dtype(DType::kF32);
   Shape shape({2, 3});
@@ -457,11 +435,7 @@ TEST_P(LoadedExecutableImplTest, CompileAndExecutePortable) {
   }
   TF_ASSERT_OK(result.status.Await());
   EXPECT_THAT(result.outputs, SizeIs(1));
-<<<<<<< HEAD
-  EXPECT_EQ(result.outputs[0]->user_context()->Fingerprint(), 100);
-=======
   EXPECT_EQ(result.outputs[0]->user_context()->Id(), UserContextId(100));
->>>>>>> upstream/master
 
   std::vector<float> out_data(6);
   auto future = result.outputs[0]->CopyToHostBuffer(
@@ -509,11 +483,7 @@ TEST_P(LoadedExecutableImplTest, DoNotFillStatus) {
                                  /*devices=*/std::nullopt));
   EXPECT_FALSE(result.status.IsValid());
   EXPECT_THAT(result.outputs, SizeIs(1));
-<<<<<<< HEAD
-  EXPECT_EQ(result.outputs[0]->user_context()->Fingerprint(), 100);
-=======
   EXPECT_EQ(result.outputs[0]->user_context()->Id(), UserContextId(100));
->>>>>>> upstream/master
 
   std::vector<float> out_data(6);
   auto future = result.outputs[0]->CopyToHostBuffer(

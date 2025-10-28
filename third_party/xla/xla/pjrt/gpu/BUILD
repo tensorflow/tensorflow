@@ -654,18 +654,12 @@ xla_cc_test(
     deps = [
         ":gpu_topology",
         ":se_gpu_topology_description",
-<<<<<<< HEAD
-        "//xla/pjrt:pjrt_compiler",
-        "//xla/pjrt:pjrt_device_description",
-        "//xla/pjrt:pjrt_stream_executor_device_description",
-=======
         "//xla/pjrt:pjrt_common",
         "//xla/pjrt:pjrt_compiler",
         "//xla/pjrt:pjrt_device_description",
         "//xla/pjrt:pjrt_device_dimensions",
         "//xla/pjrt:pjrt_stream_executor_device_description",
         "//xla/tsl/platform:statusor",
->>>>>>> upstream/master
         "@com_google_googletest//:gtest_main",
     ],
 )

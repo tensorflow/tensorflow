@@ -15,9 +15,6 @@ limitations under the License.
 
 #include "xla/codegen/intrinsic/fptrunc.h"
 
-<<<<<<< HEAD
-#include "absl/log/check.h"
-=======
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -27,7 +24,6 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "llvm/ADT/APFloat.h"
->>>>>>> upstream/master
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/FloatingPointMode.h"
 #include "llvm/IR/Argument.h"
@@ -40,16 +36,11 @@ limitations under the License.
 #include "llvm/IR/Type.h"
 #include "llvm/Support/Casting.h"
 #include "xla/codegen/intrinsic/intrinsic.h"
-<<<<<<< HEAD
-#include "xla/service/llvm_ir/llvm_util.h"
-#include "xla/tsl/platform/errors.h"
-=======
 #include "xla/primitive_util.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
->>>>>>> upstream/master
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
@@ -136,105 +127,6 @@ static llvm::Function* ExtendF8e5m2ToF16(llvm::Module* module, Type from,
   return func;
 }
 
-<<<<<<< HEAD
-static llvm::Function* TruncateF16ToF8e4m3fn(llvm::Module* module, Type from,
-                                             Type to) {
-  llvm::LLVMContext& context = module->getContext();
-  llvm::IRBuilder<> b(context);
-  llvm::Function* func = CreateFunction(module, from, to);
-  llvm::BasicBlock* entry_bb = llvm::BasicBlock::Create(context, "entry", func);
-  b.SetInsertPoint(entry_bb);
-  llvm::Value* f16_value = func->getArg(0);
-
-  using llvm::APInt;
-  using llvm::Value;
-
-  llvm::Type* i8_ty = to.to_ir_type(context);
-  llvm::Type* i16_ty = Type(U16, from.vector_width()).to_ir_type(context);
-  auto i8_const = [&](int val) { return llvm::ConstantInt::get(i8_ty, val); };
-  auto i16_const = [&](int val) { return llvm::ConstantInt::get(i16_ty, val); };
-
-  // Cast the input value to an integer for bitwise manipulation. Get the
-  // absolute value of the input value.
-  //   f16_as_int = bitcast(f16_value, int)
-  //   f16_abs_bits = f16_as_int & 0x7FFF
-  Value* f16_as_int = b.CreateBitCast(f16_value, i16_ty);
-  llvm::Value* f16_abs_bits = b.CreateAnd(f16_as_int, i16_const(0x7FFF));
-
-  // Get the sign.
-  //   f8_sign = (f16_as_int & 0x8000) >> 8
-  Value* f16_sign = b.CreateAnd(f16_as_int, i16_const(0x8000));
-  f16_sign = b.CreateLShr(f16_sign, i16_const(8));
-  Value* f8_sign = b.CreateTrunc(f16_sign, i8_ty);
-
-  // Truncate the mantissa to 3 bits. ReducePrecision cannot deal with
-  // f8E4M3FN's NaN representations, so don't use ReducePrecision to handle
-  // exponent reduction. Denormal values are not handled properly here and are
-  // dealt with later in this function.
-  absl::StatusOr<Value*> f16_reduced_statusor =
-      llvm_ir::EmitReducePrecisionIR(/*src_ty=*/F16, f16_value,
-                                     /*dest_exponent_bits=*/5,
-                                     /*dest_mantissa_bits=*/3,
-                                     /*quiet_nans=*/false, &b);
-  CHECK_OK(f16_reduced_statusor.status());  // Crash OK
-  Value* f16_reduced = f16_reduced_statusor.value();
-  f16_reduced = b.CreateBitCast(f16_reduced, i16_ty);
-
-  // Remove the sign bit.
-  //   f16_reduced = f16_reduced & 0x7FFF
-  f16_reduced = b.CreateAnd(f16_reduced, i16_const(0x7FFF));
-
-  // Bits of the F16 representation of the smallest F8 normal value.
-  constexpr int min_normal_value = 0x2400;
-
-  // Round values smaller than the smallest F8 normal value up to the smallest
-  // F8 normal value. The case where we round to a denormal value is handled
-  // later.
-  //    f16_reduced = max(f16_reduced, min_normal_value)
-  f16_reduced =
-      b.CreateSelect(b.CreateICmpULT(f16_reduced, i16_const(min_normal_value)),
-                     i16_const(min_normal_value), f16_reduced);
-
-  constexpr int exponent_bias_difference = 15 - 7;
-  constexpr int f8_exponent_bits = 4;
-  constexpr int f16_mantissa_bits = 10;
-  constexpr int f8_mantissa_bits = 3;
-  constexpr int mantissa_bits_difference = f16_mantissa_bits - f8_mantissa_bits;
-
-  // Adjust the exponent by subtracting the difference in exponent bias.
-  //   f16_reduced -= (exponent_bias_difference << f16_mantissa_bits)
-  f16_reduced = b.CreateSub(
-      f16_reduced, i16_const(exponent_bias_difference << f16_mantissa_bits));
-
-  // Shift to convert to F8.
-  //   f8_bits = f16_reduced >> mantissa_bits_difference;
-  Value* f8_bits =
-      b.CreateLShr(f16_reduced, i16_const(mantissa_bits_difference));
-  f8_bits = b.CreateTrunc(f8_bits, i8_ty);
-
-  // Bits of the highest F16 value that gets converted to a finite F8 value.
-  // In binary: 0 10111 1101111111
-  constexpr int max_finite_value = 0x5F7F;
-
-  // If we're above the maximum F8 value, output NaN.
-  //   f8_bits = f16_abs_bits > max_finite_value ? 0x7F : f8_bits
-  f8_bits =
-      b.CreateSelect(b.CreateICmpUGT(f16_abs_bits, i16_const(max_finite_value)),
-                     i8_const(0x7F), f8_bits);
-
-  // Handle F16 values that are halfway between denormal F8 values.
-  f8_bits = llvm_ir::HandleHalfwayPointsFxToF8<F16, f8_exponent_bits>(
-      f16_abs_bits, f8_bits, from.vector_width(), &b);
-
-  // Set the sign bit.
-  //   f8_bits |= f8_sign
-  f8_bits = b.CreateOr(f8_bits, f8_sign);
-  b.CreateRet(f8_bits);
-  return func;
-}
-
-=======
->>>>>>> upstream/master
 static llvm::Function* ExtendF8e4m3fnToF16(llvm::Module* module, Type from,
                                            Type to) {
   llvm::LLVMContext& context = module->getContext();
@@ -244,10 +136,6 @@ static llvm::Function* ExtendF8e4m3fnToF16(llvm::Module* module, Type from,
   b.SetInsertPoint(entry_bb);
   llvm::Value* f8_value = func->getArg(0);
 
-<<<<<<< HEAD
-  using llvm::APInt;
-=======
->>>>>>> upstream/master
   using llvm::Value;
 
   llvm::Type* i8_type = from.to_ir_type(context);
@@ -340,8 +228,6 @@ static llvm::Function* ExtendF8e4m3fnToF16(llvm::Module* module, Type from,
   return func;
 }
 
-<<<<<<< HEAD
-=======
 // For debugging purposes; print floating point values to stdout.
 void EmitPrintf(llvm::Module* module, Type ty, llvm::Value* value,
                 llvm::IRBuilder<>* b) {
@@ -594,19 +480,15 @@ absl::StatusOr<llvm::Function*> EmitFxxToF8E(llvm::Module* module,
   return func;
 }
 
->>>>>>> upstream/master
 absl::StatusOr<llvm::Function*> FpTrunc::CreateDefinition(llvm::Module* module,
                                                           Type from, Type to) {
   TF_RETURN_IF_ERROR(Type::VerifySameWidth(from, to));
 
-<<<<<<< HEAD
-=======
   if (primitive_util::IsF8Type(to.element_type()) &&
       (from.element_type() == F16 || from.element_type() == F32 ||
        from.element_type() == F64)) {
     return EmitFxxToF8E(module, from, to);
   }
->>>>>>> upstream/master
   if (from.element_type() == F32 && to.element_type() == BF16) {
     return TruncateF32ToBf16(module, from, to);
   }
@@ -616,12 +498,6 @@ absl::StatusOr<llvm::Function*> FpTrunc::CreateDefinition(llvm::Module* module,
   if (from.element_type() == F8E4M3FN && to.element_type() == F16) {
     return ExtendF8e4m3fnToF16(module, from, to);
   }
-<<<<<<< HEAD
-  if (from.element_type() == F16 && to.element_type() == F8E4M3FN) {
-    return TruncateF16ToF8e4m3fn(module, from, to);
-  }
-=======
->>>>>>> upstream/master
 
   return Internal("Unsupported fptrunc conversion: from=%s to=%s", from.name(),
                   to.name());

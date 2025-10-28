@@ -229,11 +229,7 @@ __device__ __forceinline__ void TwoShotAllReduceKernelImpl(
         continue;
       }
       accs[args.rotated_ranks[r]] =
-<<<<<<< HEAD
-          VecLoad(args.remote_input_buffers[args.rotated_ranks[r]] + offset_i);
-=======
           VecLoad(remote_input_buffers[args.rotated_ranks[r]] + offset_i);
->>>>>>> upstream/master
     }
 
     Vec<T> acc = accs[0];
@@ -268,14 +264,8 @@ __device__ __forceinline__ void TwoShotAllReduceKernelImpl(
       if (offset_i >= args.num_elements) {
         continue;
       }
-<<<<<<< HEAD
-      VecStore(
-          args.output_buffer + offset_i,
-          VecLoad(args.remote_input_buffers[args.rotated_ranks[r]] + offset_i));
-=======
       VecStore(args.output_buffer + offset_i,
                VecLoad(remote_input_buffers[args.rotated_ranks[r]] + offset_i));
->>>>>>> upstream/master
     }
   }
 }

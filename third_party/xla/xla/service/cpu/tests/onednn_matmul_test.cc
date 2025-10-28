@@ -28,10 +28,7 @@ class MatmulTest : public HloTestBase {
  protected:
   DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
-<<<<<<< HEAD
-=======
     debug_options.set_xla_cpu_experimental_onednn_custom_call(true);
->>>>>>> upstream/master
     return debug_options;
   }
 
@@ -1623,11 +1620,7 @@ TEST_F(MatmulTest, SimpleTestNoTransposeFusion2) {
   MatchOptimizedHlo(matmul_module_str,
                     R"(
     ; CHECK:     custom_call_target="__onednn$matmul",
-<<<<<<< HEAD
-    ; CHECK:     call(%{{[a-z,A-Z,0-9,_,-]*}})
-=======
     ; CHECK:     fusion(%{{[a-z,A-Z,0-9,_,-]*}})
->>>>>>> upstream/master
     )");
 }
 

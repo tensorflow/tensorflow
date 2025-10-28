@@ -91,11 +91,7 @@ class DistributedRuntimeClient {
     bool poll_for_error_from_service_at_startup = true;
 
     // If true, a multi-controller JAX job can continue even if this client
-<<<<<<< HEAD
-    // fails. Otherwise, the job will fail when the task failes.
-=======
     // fails. Otherwise, the job will fail when the task fails.
->>>>>>> upstream/master
     bool recoverable = false;
   };
 

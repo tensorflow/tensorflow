@@ -41,18 +41,12 @@ limitations under the License.
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/raw_ostream.h"
 #include "xla/backends/autotuner/codegen_backend.h"
-<<<<<<< HEAD
-#include "xla/backends/gpu/autotuner/cublas.h"
-#include "xla/backends/gpu/autotuner/cublaslt.h"
-#include "xla/backends/gpu/autotuner/factory.h"
-=======
 #include "xla/backends/gpu/autotuner/block_level_emitter.h"
 #include "xla/backends/gpu/autotuner/cublas.h"
 #include "xla/backends/gpu/autotuner/cublaslt.h"
 #include "xla/backends/gpu/autotuner/cudnn.h"
 #include "xla/backends/gpu/autotuner/native_emitter.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
->>>>>>> upstream/master
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -97,10 +91,6 @@ limitations under the License.
 #include "xla/service/gpu/transforms/cudnn_norm_rewriter.h"
 #include "xla/service/gpu/transforms/cudnn_pad_for_convolutions.h"
 #include "xla/service/gpu/transforms/cudnn_simplify_padding.h"
-<<<<<<< HEAD
-#include "xla/service/gpu/transforms/cudnn_vectorize_convolutions.h"
-=======
->>>>>>> upstream/master
 #include "xla/service/gpu/transforms/gpusolver_rewriter.h"
 #include "xla/service/gpu/transforms/triangular_solve_rewriter.h"
 #include "xla/service/hlo_cost_analysis.h"
@@ -217,19 +207,7 @@ absl::Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
     pipeline.AddPass<CudnnFusedConvRewriter>(*cuda_compute_capability,
                                              dnn_version, toolkit_version);
     pipeline.AddPass<ConvPaddingLegalization>();
-<<<<<<< HEAD
-    pipeline.AddPass<CudnnPadForConvolutions>(cuda_compute_capability);
-    if (!cuda_compute_capability.IsAtLeast(
-            se::CudaComputeCapability::CudaComputeCapabilities::kHopper)) {
-      // CUDNN vectorization is not performant on Hopper and later.
-      // The official guidance is not to use the vectorized layouts anymore on
-      // these newer architectures.
-      pipeline.AddPass<CudnnVectorizeConvolutions>(cuda_compute_capability,
-                                                   dnn_version);
-    }
-=======
     pipeline.AddPass<CudnnPadForConvolutions>(*cuda_compute_capability);
->>>>>>> upstream/master
   }
   // The conv padding/vectorization passes which we need to get rid of.  They
   // also leave behind unnecessary tuple/get-tuple-element pairs that
@@ -318,11 +296,7 @@ absl::Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(
            .xla_gpu_experimental_disable_binary_libraries()) {
     for (const CublasPaddingRequirement& requirement :
          CublasPaddingRequirements) {
-<<<<<<< HEAD
-      if (cuda_compute_capability.SupportsAllFeaturesOf(
-=======
       if (cuda_compute_capability->SupportsAllFeaturesOf(
->>>>>>> upstream/master
               requirement.min_compute_capability)) {
         pre_pipeline.AddPass<CublasPadForGemms>(
             gpu_target_config.device_description.gpu_compute_capability(),
@@ -375,12 +349,8 @@ absl::Status NVPTXCompiler::AddConvAndGemmAutotuningPasses(
     HloPassPipeline* pipeline, const se::GpuComputeCapability& gpu_version,
     const CompileOptions& options, HloModule* hlo_module,
     AutotuneConfig& autotune_config, tsl::thread::ThreadPool* thread_pool,
-<<<<<<< HEAD
-    se::StreamExecutor* stream_exec) {
-=======
     se::StreamExecutor* stream_exec,
     const Compiler::TargetConfig* target_config) {
->>>>>>> upstream/master
   const DebugOptions& debug_options = hlo_module->config().debug_options();
   if (hlo_module->config()
           .debug_options()
@@ -390,35 +360,6 @@ absl::Status NVPTXCompiler::AddConvAndGemmAutotuningPasses(
     return absl::OkStatus();
   }
 
-<<<<<<< HEAD
-  // TODO(b/407495801): Cached Gemm as well as Conv autotuning results are
-  // loaded in the GpuConvAlgorithmPicker but should be loaded in the autotuner.
-  pipeline->AddPass<GpuConvAlgorithmPicker>(autotune_config);
-
-  if (debug_options.xla_gpu_experimental_use_autotuner_pass()) {
-    std::vector<std::unique_ptr<CodegenBackend>> backends;
-    backends.push_back(
-        std::make_unique<CublasBackend>(stream_exec, &debug_options, this));
-    backends.push_back(
-        std::make_unique<CublasLtBackend>(stream_exec, &debug_options, this));
-    TF_ASSIGN_OR_RETURN(
-        std::unique_ptr<AutotunerPass> autotuner_pass,
-        AutotunerPass::Create(std::move(backends), debug_options,
-                              options.device_allocator, stream_exec,
-                              thread_pool));
-    pipeline->AddPass(std::move(autotuner_pass));
-  } else {
-    // On Ampere or later, GemmAlgorithmPicker just provides a way to "warmup"
-    // the
-    // execution. But we already do that during GemmFusionAutotuner pass. In
-    // that case, we do a recursive compilation call that has
-    // 'is_autotuning_compilation' set to true.
-    if (!std::get<se::CudaComputeCapability>(gpu_version).IsAtLeastAmpere() ||
-        options.is_autotuning_compilation) {
-      pipeline->AddPass<GemmAlgorithmPicker>(autotune_config);
-    }
-  }
-=======
   std::vector<std::unique_ptr<CodegenBackend>> backends;
   backends.push_back(std::make_unique<CublasBackend>(
       stream_exec, &debug_options, this, target_config));
@@ -438,7 +379,6 @@ absl::Status NVPTXCompiler::AddConvAndGemmAutotuningPasses(
                             thread_pool, should_autotune, target_config,
                             options.device_allocator));
   pipeline->AddPass(std::move(autotuner_pass));
->>>>>>> upstream/master
   return absl::OkStatus();
 }
 
@@ -449,9 +389,6 @@ absl::Status NVPTXCompiler::AddGemmFusionAutotuningPasses(
     const se::SemanticVersion& toolkit_version,
     se::StreamExecutor* stream_executor) {
   pipeline->AddPass<GemmFusionAutotuner>(autotune_config, toolkit_version,
-<<<<<<< HEAD
-                                         thread_pool, key_value_store);
-=======
                                          thread_pool, key_value_store,
                                          symbolic_expr_context());
   return absl::OkStatus();
@@ -519,7 +456,6 @@ absl::Status NVPTXCompiler::AddFusionAutotuningPass(
                             target_config, options.device_allocator,
                             /*optimize_scratch_bytes=*/false));
   pipeline->AddPass(std::move(autotuner_pass));
->>>>>>> upstream/master
   return absl::OkStatus();
 }
 

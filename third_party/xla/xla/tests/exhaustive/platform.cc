@@ -17,13 +17,7 @@ limitations under the License.
 
 #include "absl/log/check.h"
 #include "absl/log/log.h"
-<<<<<<< HEAD
-#include "xla/stream_executor/cuda/cuda_compute_capability.h"
-#include "xla/stream_executor/device_description.h"
-#include "xla/stream_executor/platform.h"
-=======
 #include "xla/service/hlo_runner_interface.h"
->>>>>>> upstream/master
 
 namespace xla {
 namespace exhaustive_op_test {
@@ -50,41 +44,8 @@ Platform::Value GetPlatformValue(const HloRunnerInterface& runner) {
 }
 }  // namespace
 
-<<<<<<< HEAD
-bool Platform::IsNvidiaP100() const {
-  return std::holds_alternative<stream_executor::CudaComputeCapability>(
-             value_) &&
-         std::get<stream_executor::CudaComputeCapability>(value_) ==
-             stream_executor::CudaComputeCapability::Pascal();
-}
-
-bool Platform::IsNvidiaV100() const {
-  return std::holds_alternative<stream_executor::CudaComputeCapability>(
-             value_) &&
-         std::get<stream_executor::CudaComputeCapability>(value_) ==
-             stream_executor::CudaComputeCapability::Volta();
-}
-
-bool Platform::IsNvidiaA100() const {
-  return std::holds_alternative<stream_executor::CudaComputeCapability>(
-             value_) &&
-         std::get<stream_executor::CudaComputeCapability>(value_) ==
-             stream_executor::CudaComputeCapability::Ampere();
-}
-
-bool Platform::IsNvidiaH100() const {
-  return std::holds_alternative<stream_executor::CudaComputeCapability>(
-             value_) &&
-         std::get<stream_executor::CudaComputeCapability>(value_) ==
-             stream_executor::CudaComputeCapability::Hopper();
-}
-
-Platform::Platform(const stream_executor::Platform& platform)
-    : value_(GetPlatformValue(platform)) {}
-=======
 Platform::Platform(const HloRunnerInterface& runner)
     : value_(GetPlatformValue(runner)) {}
->>>>>>> upstream/master
 
 }  // namespace exhaustive_op_test
 }  // namespace xla

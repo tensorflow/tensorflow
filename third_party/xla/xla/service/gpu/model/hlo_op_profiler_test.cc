@@ -60,8 +60,6 @@ TEST_F(HloOpProfilerTest, UnsupportedCombinationsDoNotCrash) {
   HloOpProfiler profiler(test_runner_as_hlo_runner());
   EXPECT_THAT(profiler.MeasureClockCyclesPerOp(HloOpcode::kCbrt, S8),
               absl_testing::StatusIs(tsl::error::INVALID_ARGUMENT));
-<<<<<<< HEAD
-=======
 }
 
 TEST_F(HloOpProfilerTest, AllSupportedCombinationsAreMeasurable) {
@@ -107,7 +105,6 @@ TEST_F(HloOpProfilerTest, AllSupportedCombinationsAreMeasurable) {
       TF_EXPECT_OK(profiler.MeasureClockCyclesPerOp(op, Type));
     }
   }
->>>>>>> upstream/master
 }
 
 }  // namespace

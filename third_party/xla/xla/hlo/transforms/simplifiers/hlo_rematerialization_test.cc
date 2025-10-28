@@ -64,14 +64,9 @@ using ::testing::Eq;
 using ::testing::HasSubstr;
 using ::testing::Not;
 using ::testing::Pair;
-<<<<<<< HEAD
-using ::testing::UnorderedElementsAre;
-using tsl::testing::IsOkAndHolds;
-=======
 using ::testing::Property;
 using ::testing::StrEq;
 using ::testing::UnorderedElementsAre;
->>>>>>> upstream/master
 
 class AsyncRematerializationTest : public RematerializationTestBase {
  protected:

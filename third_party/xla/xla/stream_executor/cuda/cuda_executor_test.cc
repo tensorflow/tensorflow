@@ -170,8 +170,6 @@ TEST(CudaExecutorTest, CreateUnsupportedMemoryAllocatorsFail) {
                           platform->ExecutorForDevice(0));
   EXPECT_THAT(executor->CreateMemoryAllocator(MemoryType::kDevice),
               Not(absl_testing::IsOk()));
-<<<<<<< HEAD
-=======
 }
 
 TEST(CudaExecutorTest, GetPointerMemorySpaceWorksWithUnifiedMemory) {
@@ -252,7 +250,6 @@ TEST(CudaExecutorTest,
 
   EXPECT_THAT(cuda_executor->RetainVmmMemoryHandle(ptr.opaque()),
               absl_testing::StatusIs(absl::StatusCode::kInternal));
->>>>>>> upstream/master
 }
 }  // namespace
 }  // namespace stream_executor::gpu

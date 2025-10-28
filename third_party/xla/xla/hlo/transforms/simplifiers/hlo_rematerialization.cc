@@ -1591,14 +1591,11 @@ MemoryUsageTracker::PickRematerializationCandidates(
   for (auto* start_item = instruction_list.first_skip_node();
        start_item != nullptr;
        start_item = instruction_list.next_skip_node(start_item)) {
-<<<<<<< HEAD
-=======
     if (start_item->instruction->IsDead()) {
       // This should only happen in peak priority mode because it does not run a
       // DCE pass to remove dead instructions in between certain remat calls.
       continue;
     }
->>>>>>> upstream/master
     std::vector<HloRematItem*> block =
         GetInitialBlock(instruction_list, *this, start_item, min_block_size);
     if (block.size() < min_block_size) {
@@ -2513,12 +2510,7 @@ RematPeakAggressively(
               << max_block_size;
     }
     if (instructions_added.remat_count > 0) {
-<<<<<<< HEAD
-      VLOG(2) << "Instructions were rematerialized, readjusting schedule";
-
-=======
       VLOG(2) << "Instructions were rematerialized";
->>>>>>> upstream/master
       // Found a valid block. Reset to start looking for single
       // instructions again.
       remat->UpdateMaxRematerializedBlockSize(max_block_size);
@@ -2685,15 +2677,6 @@ HloRematerialization::PeakPrioritySubPass(
 
   // Update peak memory used by computation.
   computation_peak_memory_.at(computation) = peak_memory_during_remat;
-<<<<<<< HEAD
-  if (module_changed_in_this_subpass && over_memory_limit) {
-    return RematSubpassResult::kChangedButOverMemoryLimit;
-  }
-  if (module_changed_in_this_subpass && !over_memory_limit) {
-    return RematSubpassResult::kChangedAndUnderMemoryLimit;
-  }
-  return RematSubpassResult::kUnchanged;
-=======
   RematSubpassResult remat_subpass_result{
       // NOLINTNEXTLINE (-Wpre-c++20-compat-pedantic)
       .status = RematSubpassStatus::kUnchanged,
@@ -2709,18 +2692,13 @@ HloRematerialization::PeakPrioritySubPass(
         RematSubpassStatus::kChangedAndUnderMemoryLimit;
   }
   return remat_subpass_result;
->>>>>>> upstream/master
 }
 
 absl::StatusOr<bool> HloRematerialization::RematerializeComputationPeakPriority(
     HloComputation* computation, HloSchedule* schedule,
     int64_t memory_limit_bytes, int64_t min_remat_size,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
-<<<<<<< HEAD
-  VLOG(2) << "Rematerializing Using Peak Priority";
-=======
   VLOG(1) << "Rematerializing Using Peak Priority";
->>>>>>> upstream/master
   // If memory limit is zero, cost savings estimates don't work because the cost
   // is defined as memory_limit_bytes / memory_reduced. Bounds it to a large
   // enough value for cost differences to be comparable.
@@ -2770,29 +2748,15 @@ absl::StatusOr<bool> HloRematerialization::RematerializeComputationPeakPriority(
       &remat_move_instructions,
       &execution_threads};
 
-<<<<<<< HEAD
-  RematSubpassResult remat_subpass_result =
-      RematSubpassResult::kChangedButOverMemoryLimit;
-  bool changed = false;
-  while (remat_subpass_result ==
-         RematSubpassResult::kChangedButOverMemoryLimit) {
-    TF_ASSIGN_OR_RETURN(
-        remat_subpass_result,
-=======
   RematSubpassStatus remat_subpass_status;
   bool changed = false;
   do {
     TF_ASSIGN_OR_RETURN(
         RematSubpassResult remat_subpass_result,
->>>>>>> upstream/master
         PeakPrioritySubPass(peak_memory_instruction, rematerialization_state,
                             computation, call_graph_node, min_remat_size,
                             peak_memory_during_remat, memory_limit_bytes,
                             execution_threads));
-<<<<<<< HEAD
-    changed |= (remat_subpass_result != RematSubpassResult::kUnchanged);
-  }
-=======
     changed |= (remat_subpass_result.status != RematSubpassStatus::kUnchanged);
     remat_subpass_status = remat_subpass_result.status;
     peak_memory_during_remat = remat_subpass_result.peak_memory_during_remat;
@@ -2800,7 +2764,6 @@ absl::StatusOr<bool> HloRematerialization::RematerializeComputationPeakPriority(
   } while (remat_subpass_status ==
            RematSubpassStatus::kChangedButOverMemoryLimit);
 
->>>>>>> upstream/master
   rematerialized_computations_.insert(computation);
   return changed;
 }

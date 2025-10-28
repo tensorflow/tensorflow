@@ -50,13 +50,8 @@ namespace {
 
 absl::StatusOr<std::unique_ptr<const HloGumgraphMappings>> FindMappings(
     const HloGumgraph& left, const HloGumgraph& right,
-<<<<<<< HEAD
-    absl::Span<const std::pair<absl::string_view, absl::string_view>>
-        manual_mappings = {},
-=======
     const std::vector<std::pair<std::string, std::string>>& manual_mappings =
         {},
->>>>>>> upstream/master
     const MatchOptions& options = {}) {
   LOG(INFO) << "Running Matchers";
   auto mappings = std::make_unique<HloGumgraphMappings>();

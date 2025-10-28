@@ -570,7 +570,6 @@ absl::StatusOr<bool> InfeedTokenPropagation::Run(
           worklist.push(instruction->parent());
         }
       }
-<<<<<<< HEAD
     }
 
     while (!worklist.empty()) {
@@ -590,27 +589,6 @@ absl::StatusOr<bool> InfeedTokenPropagation::Run(
       }
     }
 
-=======
-    }
-
-    while (!worklist.empty()) {
-      HloComputation* computation = worklist.front();
-      worklist.pop();
-      const CallGraphNode& node = call_graph_->GetNode(computation);
-      if (node.caller_callsites().empty()) {
-        continue;
-      }
-      if (node.caller_callsites().size() > 1) {
-        return FailedPrecondition(
-            "Call graph must be flattened before infeed token propagation.");
-      }
-      HloComputation* parent = node.callers()[0];
-      if (visited.insert(parent).second) {
-        worklist.push(parent);
-      }
-    }
-
->>>>>>> upstream/master
     DependencyHloOrdering ordering = DependencyHloOrdering(module);
 
     for (HloInstruction* dangling_infeed : dangling_infeeds) {

@@ -26,12 +26,9 @@ limitations under the License.
 #include "absl/functional/function_ref.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-<<<<<<< HEAD
-=======
 #include "absl/time/time.h"
 #include "xla/autotune_results.pb.h"
 #include "xla/autotuning.pb.h"
->>>>>>> upstream/master
 #include "xla/backends/autotuner/autotuner_cache_interface.h"
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/backends/autotuner/profiler.h"
@@ -46,17 +43,9 @@ using InstructionFilterFn = absl::FunctionRef<bool(const xla::HloInstruction&)>;
 namespace xla {
 
 struct AutotuneConfig {
-<<<<<<< HEAD
-  // Whether to skip configs that failed to compile.
-  bool skip_failing_configs = true;
-  // Whether to check the correctness of the output buffers and OOM reads on
-  // Input Buffers.
-  bool check_buffers = false;
-=======
   // Whether to check the correctness of the output buffers and OOM reads on
   // Input Buffers.
   bool check_buffers = true;
->>>>>>> upstream/master
   // Relative tolerance for correctness check.
   float relative_tolerance = 1e-6;
   // Whether to crash the process on check failure.
@@ -66,11 +55,6 @@ struct AutotuneConfig {
   // space for temporary tensors. The best config will be the one with the
   // smallest scratch space among top minimum duration configs in
   // scratch_bytes_window_size_us window.
-<<<<<<< HEAD
-  bool optimize_scratch_bytes = false;
-  // Window size in microseconds to consider for scratch bytes optimization.
-  int scratch_bytes_window_size_us = 4;
-=======
   bool optimize_scratch_bytes = true;
   // Window size in microseconds to consider for scratch bytes optimization.
   int scratch_bytes_window_size_us = 4;
@@ -97,7 +81,6 @@ struct AutotuneConfig {
   // Note: If cache is provided, the cached config will be used instead of the
   // default config.
   bool use_default_config = false;
->>>>>>> upstream/master
 };
 
 class Autotuner {
@@ -162,10 +145,6 @@ class Autotuner {
     std::string ToString(bool verbose = false) const;
     AutotuneResult ToProto() const;
   };
-  struct ExecutableCandidate {
-    Config config;
-    std::unique_ptr<Executable> executable;
-  };
 
   Autotuner(std::vector<std::unique_ptr<CodegenBackend>> codegen_backends,
             std::unique_ptr<Profiler> profiler, AutotuneConfig autotune_config,
@@ -218,17 +197,6 @@ class Autotuner {
   void LogConfigResults(const HloInstruction& instr,
                         const std::vector<ConfigResult>& results);
   absl::Status DumpLogsToFile();
-
-  absl::StatusOr<Config> ProfileAndPickBest(
-      HloInstruction* instr, std::vector<ExecutableCandidate>& candidates);
-
-  absl::StatusOr<ScopedShapedBuffer> GetReferenceOutput(
-      std::vector<ExecutableCandidate>& candidates,
-      InputBuffers& input_buffers);
-
-  absl::Status CheckBuffers(InputBuffers& input_buffers,
-                            ScopedShapedBuffer& output,
-                            ScopedShapedBuffer& reference);
 
   std::vector<std::unique_ptr<CodegenBackend>> codegen_backends_;
   std::unique_ptr<Profiler> profiler_;

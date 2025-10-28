@@ -1016,8 +1016,6 @@ ENTRY main {
   EXPECT_FALSE(async_tracker.IsSupportedAsyncStart(*dynamic_slice_done));
 }
 
-<<<<<<< HEAD
-=======
 TEST_F(GpuLatencyHidingSchedulerBaseTest, ParallelThreadsShouldBeScheduled) {
   absl::string_view kHloModule = R"(
     HloModule Test1
@@ -1045,6 +1043,5 @@ TEST_F(GpuLatencyHidingSchedulerBaseTest, ParallelThreadsShouldBeScheduled) {
   TF_EXPECT_OK(ScheduleModule(module.get()));
 }
 
->>>>>>> upstream/master
 }  // namespace
 }  // namespace xla::gpu

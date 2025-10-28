@@ -617,10 +617,7 @@ xla_cc_test(
         "//xla:xla_data_proto_cc",
         "//xla/hlo/parser:hlo_parser",
         "//xla/service:hlo_module_config",
-<<<<<<< HEAD
-=======
         "//xla/service:hlo_proto_cc",
->>>>>>> upstream/master
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:statusor",

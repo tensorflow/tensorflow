@@ -28,27 +28,12 @@ cc_library(
         ":type",
         ":vec_name_mangler",
         "//xla:xla_data_proto_cc",
-<<<<<<< HEAD:third_party/xla/xla/codegen/intrinsic/BUILD
-        "//xla/mlir/utils:type_util",
-        "//xla/service/llvm_ir:llvm_util",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
-        "@llvm-project//llvm:Support",
-=======
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
->>>>>>> upstream/master:third_party/xla/xla/codegen/math/BUILD
         "@llvm-project//llvm:Target",
         "@llvm-project//llvm:ir_headers",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
-<<<<<<< HEAD:third_party/xla/xla/codegen/intrinsic/BUILD
-        "@llvm-project//mlir:Support",
-=======
->>>>>>> upstream/master:third_party/xla/xla/codegen/math/BUILD
     ],
 )
 
@@ -74,12 +59,9 @@ cc_library(
         "//xla:xla_data_proto_cc",
         "//xla/service/llvm_ir:llvm_util",
         "//xla/tsl/platform:errors",
-<<<<<<< HEAD:third_party/xla/xla/codegen/intrinsic/BUILD
-=======
         "//xla/tsl/platform:status",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/log",
->>>>>>> upstream/master:third_party/xla/xla/codegen/math/BUILD
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
@@ -411,13 +393,8 @@ xla_cc_test(
         "//xla:xla_data_proto_cc",
         "//xla/tsl/platform:test_benchmark",
         "//xla/tsl/platform:test_main",
-<<<<<<< HEAD:third_party/xla/xla/codegen/intrinsic/BUILD
-        "@llvm-project//llvm:Target",
-        "@llvm-project//llvm:TargetParser",
-=======
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Target",
->>>>>>> upstream/master:third_party/xla/xla/codegen/math/BUILD
         "@llvm-project//llvm:ir_headers",
     ],
 )
@@ -449,8 +426,6 @@ xla_cc_test(
         "//xla:xla_data_proto_cc",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//llvm:JITLink",
-<<<<<<< HEAD:third_party/xla/xla/codegen/intrinsic/BUILD
-=======
         "@llvm-project//llvm:ir_headers",
     ],
 )
@@ -484,7 +459,6 @@ xla_cc_test(
         "//xla/tsl/lib/core:status_test_util",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//llvm:Support",
->>>>>>> upstream/master:third_party/xla/xla/codegen/math/BUILD
         "@llvm-project//llvm:ir_headers",
     ],
 )

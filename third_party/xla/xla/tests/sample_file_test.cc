@@ -55,12 +55,6 @@ class SampleFileTest : public HloRunnerAgnosticReferenceMixin<HloPjRtTestBase> {
 };
 
 TEST_F(SampleFileTest, Convolution) {
-<<<<<<< HEAD
-  const std::string& filename = tsl::io::JoinPath(
-      tsl::testing::XlaSrcRoot(), "../external/local_xla/xla/tests", 
-      "isolated_convolution.hlo");
-  EXPECT_TRUE(RunAndCompareFromFile(filename, ErrorSpec{0.01}));
-=======
   const std::string filename = tsl::io::JoinPath(
       tsl::testing::XlaSrcRoot(), "tests", "isolated_convolution.hlo");
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
@@ -70,7 +64,6 @@ TEST_F(SampleFileTest, Convolution) {
       .set_xla_cpu_parallel_codegen_split_count(1);
 
   EXPECT_TRUE(RunAndCompare(std::move(module), ErrorSpec{0.01}));
->>>>>>> upstream/master
 }
 
 }  // namespace

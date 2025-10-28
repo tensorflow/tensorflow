@@ -15,16 +15,6 @@ limitations under the License.
 
 #include "xla/backends/profiler/gpu/cupti_tracer_options_utils.h"
 
-<<<<<<< HEAD
-#include <cstdint>
-#include <functional>
-#include <string>
-
-#include "absl/container/flat_hash_set.h"
-#include "absl/status/status.h"
-#include "absl/strings/str_cat.h"
-#include "absl/strings/str_join.h"
-=======
 #include <algorithm>
 #include <cstdint>
 #include <functional>
@@ -37,7 +27,6 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_split.h"
->>>>>>> upstream/master
 #include "absl/strings/string_view.h"
 #include "third_party/gpus/cuda/extras/CUPTI/include/cupti_activity.h"
 #include "xla/backends/profiler/gpu/cupti_collector.h"
@@ -50,12 +39,9 @@ namespace xla {
 namespace profiler {
 using tsl::profiler::SetValue;
 
-<<<<<<< HEAD
-=======
 constexpr int64_t kMinBufferSize = 64;    // 64MB
 constexpr int64_t kMaxBufferSize = 4096;  // 4GB
 
->>>>>>> upstream/master
 absl::Status UpdateCuptiTracerOptionsFromProfilerOptions(
     const tensorflow::ProfileOptions& profile_options,
     CuptiTracerOptions& tracer_options,
@@ -100,8 +86,6 @@ absl::Status UpdateCuptiTracerOptionsFromProfilerOptions(
                        }
                      }));
 
-<<<<<<< HEAD
-=======
   TF_RETURN_IF_ERROR(SetValue<std::string>(
       profile_options, "gpu_pm_sample_counters", input_keys,
       [&](const std::string& value) {
@@ -128,7 +112,6 @@ absl::Status UpdateCuptiTracerOptionsFromProfilerOptions(
             1024ULL;
       }));
 
->>>>>>> upstream/master
   if (!input_keys.empty()) {
     return absl::InvalidArgumentError(absl::StrCat(
         "Parsing advanced_configuration failed for CUPTI tracer. The following "

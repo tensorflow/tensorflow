@@ -110,8 +110,6 @@ absl::Status UncompilableMatmul(absl::string_view explanation) {
   return s;
 }
 
-<<<<<<< HEAD
-=======
 // Returns the padded K dimension so that it is a multiple of split_k and 16B.
 int64_t GetPaddedK(HloInstruction& dot, int64_t k, int64_t split_k) {
   const int64_t alignment_in_bits = 16 * 8;
@@ -123,7 +121,6 @@ int64_t GetPaddedK(HloInstruction& dot, int64_t k, int64_t split_k) {
   return RoundUpTo(k, split_k * alignment_in_bits / min_element_size_in_bits);
 }
 
->>>>>>> upstream/master
 }  // namespace
 
 absl::StatusOr<HloInstruction*> MakeSplitKOperand(
@@ -309,22 +306,6 @@ absl::Status MakeDotComputationSplitKBatch(HloComputation* computation,
     // Add split-K dimension to `current`.
     HloInstruction* expanded;
     if (current == dot) {
-<<<<<<< HEAD
-      TF_ASSIGN_OR_RETURN(
-          HloInstruction * lhs,
-          MakeSplitKOperand(*dot, analysis, config, lhs_contracting_idx, 0));
-      TF_ASSIGN_OR_RETURN(
-          HloInstruction * rhs,
-          MakeSplitKOperand(*dot, analysis, config, rhs_contracting_idx, 1));
-      if (lhs->operand(0)->opcode() == HloOpcode::kPad) {
-        CHECK_EQ(rhs->operand(0)->opcode(), HloOpcode::kPad);
-        did_pad = true;
-      }
-      // Keep the precision of the accumulator type for the dot output.
-      expanded = MakeDotHlo(lhs, rhs, new_dim_numbers, dot->precision_config(),
-                            accumulator_dtype)
-                     .value();
-=======
       if (dot_cast != nullptr) {
         // Dot operation.
         TF_ASSIGN_OR_RETURN(
@@ -402,7 +383,6 @@ absl::Status MakeDotComputationSplitKBatch(HloComputation* computation,
             MakeScaledDotHlo(lhs, rhs, lhs_scale, rhs_scale, new_dim_numbers,
                              dot->precision_config(), accumulator_dtype));
       }
->>>>>>> upstream/master
       // Make the added batch dimension the major-most, keep the order of the
       // original dimensions.
       expanded->mutable_shape()->mutable_layout()->clear_minor_to_major();

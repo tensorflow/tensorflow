@@ -64,11 +64,8 @@ limitations under the License.
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/pjrt/extensions/cross_host_transfers/pjrt_c_api_cross_host_transfers_extension.h"
 #include "xla/pjrt/extensions/executable_metadata/executable_metadata_extension.h"
-<<<<<<< HEAD:third_party/xla/xla/pjrt/pjrt_c_api_client.cc
-=======
 #include "xla/pjrt/extensions/host_allocator/host_allocator_extension.h"
 #include "xla/pjrt/extensions/host_allocator/host_allocator_interface_impl.h"
->>>>>>> upstream/master:third_party/xla/xla/pjrt/c_api_client/pjrt_c_api_client.cc
 #include "xla/pjrt/mlir_to_hlo.h"
 #include "xla/pjrt/pjrt_api.h"
 #include "xla/pjrt/pjrt_client.h"
@@ -289,15 +286,6 @@ void PjRtCApiClient::InitAttributes() {
   attributes_ =
       pjrt::ConvertFromPjRtNamedValueList(args.attributes, args.num_attributes);
   attributes_["serialize_with_sdy"] = true;
-<<<<<<< HEAD:third_party/xla/xla/pjrt/pjrt_c_api_client.cc
-  const PJRT_Api* c_api = pjrt_c_api();
-  PJRT_CrossHostTransfers_Extension* extension =
-      pjrt::FindExtension<PJRT_CrossHostTransfers_Extension>(
-          c_api, PJRT_Extension_Type::PJRT_Extension_Type_CrossHostTransfers);
-  if (extension != nullptr) {
-    attributes_["supports_cross_host_transfers"] = true;
-  }
-=======
   PJRT_CrossHostTransfers_Extension* extension =
       FindExtension<PJRT_CrossHostTransfers_Extension>(
           PJRT_Extension_Type::PJRT_Extension_Type_CrossHostTransfers);
@@ -313,7 +301,6 @@ PJRT_Extension_Base* PjRtCApiClient::FindExtensionImpl(
     return nullptr;
   }
   return it->second;
->>>>>>> upstream/master:third_party/xla/xla/pjrt/c_api_client/pjrt_c_api_client.cc
 }
 
 int PjRtCApiClient::device_count() const { return devices_.size(); }
@@ -429,10 +416,7 @@ void PjRtCApiClient::UpdateGlobalProcessInfo(
   std::vector<PJRT_ProcessInfo> process_infos;
   for (const tensorflow::CoordinatedTaskStateInfo& info : infos) {
     PJRT_ProcessInfo process_info;
-<<<<<<< HEAD:third_party/xla/xla/pjrt/pjrt_c_api_client.cc
-=======
     process_info.struct_size = PJRT_ProcessInfo_STRUCT_SIZE;
->>>>>>> upstream/master:third_party/xla/xla/pjrt/c_api_client/pjrt_c_api_client.cc
     process_info.task_id = info.task().task_id();
     process_info.incarnation_id = info.incarnation();
     process_info.state = translate_state(info.state());
@@ -533,10 +517,6 @@ PjRtCApiClient::CompileAndLoad(mlir::ModuleOp module, CompileOptions options) {
   if (!pjrt_c_api()) llvm::report_fatal_error("pjrt_c_api is null");
 
   std::string version_string = GetPluginStablehloVersionOrDefault(this);
-<<<<<<< HEAD:third_party/xla/xla/pjrt/pjrt_c_api_client.cc
-  TF_ASSIGN_OR_RETURN(std::string serialized,
-                      xla::Serialize(module, version_string));
-=======
 
   TF_ASSIGN_OR_RETURN(
       std::string serialized,
@@ -547,7 +527,6 @@ PjRtCApiClient::CompileAndLoad(mlir::ModuleOp module, CompileOptions options) {
     // MLIR. We don't use them anymore, and this reduces peak memory.
     module.getBody()->clear();
   }
->>>>>>> upstream/master:third_party/xla/xla/pjrt/c_api_client/pjrt_c_api_client.cc
   std::string format(pjrt::kMlirFormat);
   return InitializeArgsAndCompile(this, c_api_, c_client_.get(), options,
                                   serialized, format);
@@ -968,36 +947,6 @@ absl::Status PjRtCApiClient::DmaUnmap(void* data) {
 }
 
 PJRT_Transfers_CrossHostRecvNotifierInfo CppCrossHostRecvNotifierToC(
-<<<<<<< HEAD:third_party/xla/xla/pjrt/pjrt_c_api_client.cc
-    const PJRT_Api* c_api, const xla::PjRtCrossHostRecvNotifier& cpp_notifier,
-    PjRtCApiClient::CrossHostRecvNotifierFunction* notifier_function) {
-  *notifier_function = [&cpp_notifier, c_api](
-                           PJRT_Error* error,
-                           const char** serialized_descriptors,
-                           size_t* descriptors_sizes, size_t num_descriptors) {
-    if (error != nullptr) {
-      absl::Status state = ::pjrt::PjrtErrorToStatus(error, c_api);
-      return cpp_notifier(std::move(state));
-    }
-    xla::PjRtCrossHostRecvState state;
-    state.descriptors.reserve(num_descriptors);
-    for (int i = 0; i < num_descriptors; ++i) {
-      xla::PjRtCrossHostRecvDescriptors descriptors;
-      descriptors.serialized_descriptors.push_back(
-          std::string(serialized_descriptors[i], descriptors_sizes[i]));
-      state.descriptors.push_back(std::move(descriptors));
-    }
-
-    // TODO(emilyaf): Support cancellation.
-    xla::PjRtCrossHostSendCancelNotifier cancel_notifier =
-        [](absl::string_view, absl::Status, std::function<void(absl::Status)>) {
-          LOG(FATAL) << "MakeCrossHostReceiveBuffers: Cancellation is not "
-                        "supported in PJRT C API.";
-        };
-    state.cancel_notifier = cancel_notifier;
-    return cpp_notifier(std::move(state));
-  };
-=======
     const PJRT_Api* c_api, xla::PjRtCrossHostRecvNotifier cpp_notifier) {
   auto notifier_function = new PjRtCApiClient::CrossHostRecvNotifierFunction(
       [cpp_notifier = std::move(cpp_notifier), c_api](
@@ -1026,7 +975,6 @@ PJRT_Transfers_CrossHostRecvNotifierInfo CppCrossHostRecvNotifierToC(
         state.cancel_notifier = cancel_notifier;
         return cpp_notifier(std::move(state));
       });
->>>>>>> upstream/master:third_party/xla/xla/pjrt/c_api_client/pjrt_c_api_client.cc
   return PJRT_Transfers_CrossHostRecvNotifierInfo{
       /*user_arg=*/notifier_function,
       /*notifier=*/
@@ -1035,14 +983,9 @@ PJRT_Transfers_CrossHostRecvNotifierInfo CppCrossHostRecvNotifierToC(
         PjRtCApiClient::CrossHostRecvNotifierFunction* notifier_fn =
             reinterpret_cast<PjRtCApiClient::CrossHostRecvNotifierFunction*>(
                 user_arg);
-<<<<<<< HEAD:third_party/xla/xla/pjrt/pjrt_c_api_client.cc
-        return (*notifier_fn)(error, serialized_descriptors, descriptors_sizes,
-                              num_descriptors);
-=======
         (*notifier_fn)(error, serialized_descriptors, descriptors_sizes,
                        num_descriptors);
         delete notifier_fn;
->>>>>>> upstream/master:third_party/xla/xla/pjrt/c_api_client/pjrt_c_api_client.cc
       }};
 }
 
@@ -1052,13 +995,8 @@ PjRtCApiClient::MakeCrossHostReceiveBuffers(
     PjRtCrossHostRecvNotifier notifier) {
   const PJRT_Api* c_api = pjrt_c_api();
   PJRT_CrossHostTransfers_Extension* extension =
-<<<<<<< HEAD:third_party/xla/xla/pjrt/pjrt_c_api_client.cc
-      pjrt::FindExtension<PJRT_CrossHostTransfers_Extension>(
-          c_api, PJRT_Extension_Type::PJRT_Extension_Type_CrossHostTransfers);
-=======
       FindExtension<PJRT_CrossHostTransfers_Extension>(
           PJRT_Extension_Type::PJRT_Extension_Type_CrossHostTransfers);
->>>>>>> upstream/master:third_party/xla/xla/pjrt/c_api_client/pjrt_c_api_client.cc
   if (extension == nullptr) {
     return absl::UnimplementedError(
         "MakeCrossHostReceiveBuffers is not implemented in this PJRT plugin.");
@@ -1098,13 +1036,7 @@ PjRtCApiClient::MakeCrossHostReceiveBuffers(
   args.element_types = element_type_list.data();
   args.layouts = layout_list.data();
 
-<<<<<<< HEAD:third_party/xla/xla/pjrt/pjrt_c_api_client.cc
-  CrossHostRecvNotifierFunction notifier_function;
-  args.notifier =
-      CppCrossHostRecvNotifierToC(c_api, notifier, &notifier_function);
-=======
   args.notifier = CppCrossHostRecvNotifierToC(c_api, std::move(notifier));
->>>>>>> upstream/master:third_party/xla/xla/pjrt/c_api_client/pjrt_c_api_client.cc
   args.device = tensorflow::down_cast<PjRtCApiDevice*>(device)->c_device();
 
   std::vector<PJRT_Buffer*> temp_buffers(shapes.size());
@@ -1117,10 +1049,6 @@ PjRtCApiClient::MakeCrossHostReceiveBuffers(
   for (int i = 0; i < args.num_buffers; ++i) {
     buffers.emplace_back(std::unique_ptr<PjRtBuffer>(
         std::make_unique<PjRtCApiBuffer>(this, args.buffers[i])));
-<<<<<<< HEAD:third_party/xla/xla/pjrt/pjrt_c_api_client.cc
-    buffers.back()->GetReadyFuture().Await();
-=======
->>>>>>> upstream/master:third_party/xla/xla/pjrt/c_api_client/pjrt_c_api_client.cc
   }
   return buffers;
 }
@@ -2738,21 +2666,12 @@ absl::StatusOr<std::vector<int64_t>> PjRtCApiBuffer::logical_dimensions() {
                               args.unpadded_dims + args.num_dims);
 }
 
-<<<<<<< HEAD:third_party/xla/xla/pjrt/pjrt_c_api_client.cc
-PjRtFuture<> PjRtCApiBuffer::LazyToLiteral(
-    absl::AnyInvocable<PjRtFuture<MutableLiteralBase*>() &&> generator) {
-  PjRtFuture<MutableLiteralBase*> future = std::move(generator)();
-  const absl::StatusOr<MutableLiteralBase*>& literal = future.Await();
-  if (!literal.ok()) {
-    return PjRtFuture<>(literal.status());
-=======
 Future<> PjRtCApiBuffer::LazyToLiteral(
     absl::AnyInvocable<Future<MutableLiteralBase*>() &&> generator) {
   Future<MutableLiteralBase*> future = std::move(generator)();
   const absl::StatusOr<MutableLiteralBase*>& literal = future.Await();
   if (!literal.ok()) {
     return Future<>(literal.status());
->>>>>>> upstream/master:third_party/xla/xla/pjrt/c_api_client/pjrt_c_api_client.cc
   }
   return ToLiteral(literal.value());
 }
@@ -3021,18 +2940,10 @@ PjRtCApiBuffer::AcquireExternalReference() {
 }
 
 void PjRtCApiBuffer::CopyToRemoteDevice(
-<<<<<<< HEAD:third_party/xla/xla/pjrt/pjrt_c_api_client.cc
-    PjRtFuture<std::string> serialized_descriptor, RemoteSendCallback on_done) {
-  const PJRT_Api* c_api = pjrt_c_api();
-  PJRT_CrossHostTransfers_Extension* extension =
-      pjrt::FindExtension<PJRT_CrossHostTransfers_Extension>(
-          c_api, PJRT_Extension_Type::PJRT_Extension_Type_CrossHostTransfers);
-=======
     Future<std::string> serialized_descriptor, RemoteSendCallback on_done) {
   PJRT_CrossHostTransfers_Extension* extension =
       client_->FindExtension<PJRT_CrossHostTransfers_Extension>(
           PJRT_Extension_Type::PJRT_Extension_Type_CrossHostTransfers);
->>>>>>> upstream/master:third_party/xla/xla/pjrt/c_api_client/pjrt_c_api_client.cc
   if (extension == nullptr) {
     LOG(FATAL) << "PjRtBuffer::CopyToRemoteDevice: Cross host transfers "
                   "extension not found in PJRT plugin.";

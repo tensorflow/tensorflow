@@ -1039,8 +1039,6 @@ absl::StatusOr<SmallVector<Value, 1>> HloToMlir(
       return {MapHloOp<mhlo::AbsOp>(
           PrimitiveTypeToMlirType(element_type, builder), arg_types, operands,
           /*attributes=*/{}, builder)};
-<<<<<<< HEAD
-=======
     case HloOpcode::kAcos:
       return MapElementwiseOp<mhlo::AcosOp>(arg_types, operands, builder);
     case HloOpcode::kAcosh:
@@ -1049,7 +1047,6 @@ absl::StatusOr<SmallVector<Value, 1>> HloToMlir(
       return MapElementwiseOp<mhlo::AsinOp>(arg_types, operands, builder);
     case HloOpcode::kAsinh:
       return MapElementwiseOp<mhlo::AsinhOp>(arg_types, operands, builder);
->>>>>>> upstream/master
     case HloOpcode::kAdd:
       if (element_type == PRED) {
         return MapElementwiseOp<mhlo::OrOp>(arg_types, operands, builder);
@@ -1400,16 +1397,10 @@ absl::StatusOr<SmallVector<Value>> SubgraphConverter::EmitInstruction(
     return EmitElementwiseInstruction(instr, indices);
   }
 
-<<<<<<< HEAD
-  TF_ASSIGN_OR_RETURN(auto entry,
-                      HloToMlir(instr, this_fn_, indices, provide_operand_fn_,
-                                call_target_provider_, builder_));
-=======
   TF_ASSIGN_OR_RETURN(
       auto entry,
       HloToMlir(instr, this_fn_, indices, provide_operand_fn_,
                 call_target_provider_, builder_, symbolic_expr_context_));
->>>>>>> upstream/master
   CHECK(!absl::c_linear_search(entry, nullptr))
       << "Failed to lower " << instr->name();
   return CacheInstruction(instr, indices, std::move(entry));
@@ -1444,57 +1435,6 @@ SubgraphConverter::EmitElementwiseInstruction(const HloInstruction* root,
   }
 
   for (auto* instr : llvm::reverse(pre_order)) {
-<<<<<<< HEAD
-    TF_ASSIGN_OR_RETURN(auto entry,
-                        HloToMlir(instr, this_fn_, indices, provide_operand_fn_,
-                                  call_target_provider_, builder_));
-    CacheInstruction(instr, indices, std::move(entry));
-  }
-  return cached_instructions_[{root, IndicesToPtrs(indices)}];
-}
-
-std::vector<void*> SubgraphConverter::IndicesToPtrs(ValueRange indices) {
-  std::vector<void*> indices_ptrs;
-  indices_ptrs.reserve(indices.size());
-  for (auto index : indices) {
-    indices_ptrs.push_back(index.getAsOpaquePointer());
-  }
-  return indices_ptrs;
-}
-
-const SmallVector<Value>* SubgraphConverter::TryGetCachedInstruction(
-    const HloInstruction* instr, ValueRange indices, bool log_dominance_check) {
-  std::vector<void*> indices_ptrs = IndicesToPtrs(indices);
-
-  auto itr = cached_instructions_.find(std::make_pair(instr, indices_ptrs));
-  if (itr == cached_instructions_.end()) {
-    return nullptr;
-  }
-
-  SmallVector<Value>& entry = itr->second;
-  // Only use the entry if its parent block is still in scope. Note that this
-  // should always be the case normally - if not, we risk exponential code
-  // size.
-  if (!entry.empty()) {
-    auto* entry_block = entry.front().getParentBlock();
-    auto* insertion_block = builder_.getInsertionBlock();
-    while (insertion_block != nullptr) {
-      if (insertion_block == entry_block) {
-        return &entry;
-      }
-      if (insertion_block->getParentOp()) {
-        insertion_block = insertion_block->getParentOp()->getBlock();
-      } else {
-        insertion_block = nullptr;
-        if (log_dominance_check) {
-          VLOG(2) << "Failed dominance check while looking up cache for "
-                  << instr->ToShortString()
-                  << ". This is a bug in the computation partitioner.";
-        }
-      }
-    }
-  }
-=======
     TF_ASSIGN_OR_RETURN(
         auto entry,
         HloToMlir(instr, this_fn_, indices, provide_operand_fn_,
@@ -1545,7 +1485,6 @@ const SmallVector<Value>* SubgraphConverter::TryGetCachedInstruction(
       }
     }
   }
->>>>>>> upstream/master
 
   return nullptr;
 }

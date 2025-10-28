@@ -89,38 +89,6 @@ class AddLoopUnrollFlagsPass
   }
 
  private:
-<<<<<<< HEAD
-  // Get the minimum element size in bits of any tensor extract/insert that use
-  // the loops induction variable.
-  static int64_t MinElementBits(mlir::scf::ForOp& for_op) {
-    mlir::DataLayout data_layout = mlir::DataLayout::closest(for_op);
-    std::optional<int64_t> min_element_bits;
-
-    auto update_min_element_bits = [&](mlir::Type type) {
-      llvm::TypeSize size = data_layout.getTypeSizeInBits(type);
-      int64_t element_bits = size.getFixedValue();
-      if (!min_element_bits.has_value()) {
-        min_element_bits = element_bits;
-      } else if (element_bits < min_element_bits.value()) {
-        min_element_bits = element_bits;
-      }
-    };
-
-    for_op.walk([&](mlir::Operation* op) {
-      if (auto extract_op = mlir::dyn_cast<mlir::tensor::ExtractOp>(op)) {
-        update_min_element_bits(extract_op.getResult().getType());
-      }
-
-      if (auto insert_op = mlir::dyn_cast<mlir::tensor::InsertOp>(op)) {
-        update_min_element_bits(insert_op.getScalar().getType());
-      }
-    });
-
-    return min_element_bits ? *min_element_bits : 0;
-  }
-
-=======
->>>>>>> upstream/master
   // Recursively insert the number of nested accessed bits for each loop.
   static int64_t RecursiveWalk(
       mlir::scf::ForOp for_op,

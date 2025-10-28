@@ -494,11 +494,7 @@ absl::StatusOr<std::unique_ptr<HloModule>> GetAutotunedModule(
     const AutotuneConfig& autotune_config,
     const se::SemanticVersion& toolkit_version, AutotunerCompileUtil& util,
     const AutotuneResult result, const HloFusionInstruction* fusion,
-<<<<<<< HEAD
-    int fusion_id) {
-=======
     int fusion_id, SymbolicExprContext* symbolic_expr_context) {
->>>>>>> upstream/master
   TritonGemmConfig triton_gemm_config;
   if (result.has_triton()) {
     TF_ASSIGN_OR_RETURN(triton_gemm_config,
@@ -1401,10 +1397,6 @@ absl::Status GemmFusionAutotunerImpl::Autotune(
     TF_ASSIGN_OR_RETURN(AutotuneResult best,
                         PickBestResult(results, fusion->ToString(),
                                        root->GetModule()->config()));
-<<<<<<< HEAD
-    VLOG(2) << "Best time: "
-            << tsl::proto_utils::FromDurationProto(best.run_time());
-=======
     if (VLOG_IS_ON(2)) {
       absl::Duration best_time =
           tsl::proto_utils::FromDurationProto(best.run_time());
@@ -1419,15 +1411,6 @@ absl::Status GemmFusionAutotunerImpl::Autotune(
           module,
           GetAutotunedModule(config_, toolkit_version_, compile_util, best,
                              fusion, fusion_id, symbolic_expr_context_));
-    }
->>>>>>> upstream/master
-
-    std::unique_ptr<HloModule> module;
-    if (debug_options_.xla_gpu_dump_autotuned_gemm_fusions() ||
-        !debug_options_.xla_gpu_dump_autotune_logs_to().empty()) {
-      TF_ASSIGN_OR_RETURN(
-          module, GetAutotunedModule(config_, toolkit_version_, compile_util,
-                                     best, fusion, fusion_id));
     }
 
     if (debug_options_.xla_gpu_dump_autotuned_gemm_fusions()) {

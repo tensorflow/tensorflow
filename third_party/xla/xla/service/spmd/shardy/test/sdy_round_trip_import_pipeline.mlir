@@ -415,8 +415,6 @@ func.func private @foo(%arg0: tensor<8xf32>) -> tensor<8xf32> {
   %0 = stablehlo.add %arg0, %arg0 : tensor<8xf32>
   return %0 : tensor<8xf32>
 }
-<<<<<<< HEAD
-=======
 
 // -----
 // CHECK-LABEL: module @main_func_in_out_tuple_shardings
@@ -446,4 +444,3 @@ module @main_func_in_out_tuple_shardings attributes {mhlo.frontend_attributes = 
     return %arg0 : tensor<32xi32>
   }
 }
->>>>>>> upstream/master

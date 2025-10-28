@@ -83,10 +83,7 @@ limitations under the License.
 
 #include "absl/base/optimization.h"
 #include "absl/container/inlined_vector.h"
-<<<<<<< HEAD
-=======
 #include "absl/functional/overload.h"
->>>>>>> upstream/master
 #include "absl/log/check.h"
 #include "absl/meta/type_traits.h"
 #include "absl/status/status.h"

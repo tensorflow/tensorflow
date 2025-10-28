@@ -483,11 +483,7 @@ TEST_F(ComputationPartitionerTest, PartitioningIsDeterministic) {
 
   auto* fusion = module->GetComputationWithName("fused_computation");
   ASSERT_NE(fusion, nullptr);
-<<<<<<< HEAD
-  PartitionedComputation computation(fusion, &mlir_context_);
-=======
   PartitionedComputation computation(fusion, &symbolic_expr_context_);
->>>>>>> upstream/master
   EXPECT_EQ(computation.subgraphs().size(), 1);
 }
 

@@ -49,10 +49,6 @@ absl::StatusOr<std::unique_ptr<xla::HloModule>> ConvertShardyToHlo(
   // need to add an option to to convert to custom call @Sharding.
   xla::sdy::StablehloExportPipelineOptions options;
   options.keepHloShardingConstraints = true;
-<<<<<<< HEAD
-  options.keepShardMapBodyAsFunc = true;
-=======
->>>>>>> upstream/master
   xla::sdy::addStablehloExportPipeline(pm, options);
 
   mlir::BaseScopedDiagnosticHandler diagnostic_handler(

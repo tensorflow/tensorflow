@@ -1080,12 +1080,8 @@ ENTRY main {
 
   // Passing tile parameters that do not satisfy the constraints should result
   // in an error...
-<<<<<<< HEAD:third_party/xla/xla/service/gpu/model/symbolic_tile_analysis_test.cc
-  EXPECT_THAT(analysis->ComputeTiledHloInstructions(impossible_tile_parameters),
-=======
   EXPECT_THAT(analysis->ComputeTiledHloInstructions(impossible_tile_parameters,
                                                     default_schedule_builder_),
->>>>>>> upstream/master:third_party/xla/xla/codegen/tiling/symbolic_tile_analysis_test.cc
               absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
 
   // ... unless we pinky-promise (lie) that they satisfy the constraints ;)

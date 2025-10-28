@@ -54,10 +54,7 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/layout.h"
 #include "xla/permutation_util.h"
-<<<<<<< HEAD
-=======
 #include "xla/service/gpu/model/experimental/symbolic_expr.h"
->>>>>>> upstream/master
 #include "xla/service/matmul_indexing_utils.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -1615,10 +1612,6 @@ GroupedByOpIndexing ComputeGroupedOutputToInputIndexing(
   return grouped_indexing_maps;
 }
 
-<<<<<<< HEAD
-HloInstructionIndexing ComputeOutputToInputAllGatherOpIndexing(
-    const HloAllGatherInstruction* instr, MLIRContext* ctx) {
-=======
 namespace {
 // Returns a linearized shape, i.e. tensor<num_elements(input) x
 // element_type>.
@@ -1743,7 +1736,6 @@ HloInstructionIndexing ComputeOutputToInputAllGatherOpIndexing(
     const HloAllGatherInstruction* instr,
     SymbolicExprContext* symbolic_expr_context) {
   MLIRContext* ctx = symbolic_expr_context->GetMLIRContext();
->>>>>>> upstream/master
   // CHECK_EQ(instr->all_gather_dimension(), 0);
   // if (instr->all_gather_dimension() != 0) {
   //   return CreateUnknownIndexing(instr->operand_count());
@@ -1781,15 +1773,9 @@ HloInstructionIndexing ComputeOutputToInputAllGatherOpIndexing(
   return HloInstructionIndexing::FromOperandIndexing({operand_indexing});
 }
 
-<<<<<<< HEAD
-HloInstructionIndexing ComputeOutputToInputIndexing(const HloInstruction* instr,
-                                                    int output_id,
-                                                    MLIRContext* ctx) {
-=======
 HloInstructionIndexing ComputeOutputToInputIndexing(
     const HloInstruction* instr, int output_id,
     SymbolicExprContext* symbolic_expr_context) {
->>>>>>> upstream/master
   if (HloInstruction::IsOpElementwise(instr->opcode()) ||
       instr->opcode() == HloOpcode::kMap) {
     // Note: map has a `dimensions` attribute, but it does nothing. See
@@ -1804,10 +1790,6 @@ HloInstructionIndexing ComputeOutputToInputIndexing(
     return ComputeOutputToInputAllGatherOpIndexing(all_gather,
                                                    symbolic_expr_context);
   }
-  // go/keep-sorted start
-  if (auto all_gather = DynCast<HloAllGatherInstruction>(instr)) {
-    return ComputeOutputToInputAllGatherOpIndexing(all_gather, ctx);
-  }
   if (auto broadcast = DynCast<HloBroadcastInstruction>(instr)) {
     return ComputeOutputToInputBroadcastOpIndexing(broadcast,
                                                    symbolic_expr_context);
@@ -1820,20 +1802,12 @@ HloInstructionIndexing ComputeOutputToInputIndexing(
     return HloInstructionIndexing{};
   }
   if (auto convolution = DynCast<HloConvolutionInstruction>(instr)) {
-<<<<<<< HEAD
-    return ComputeOutputToInputConvolutionOpIndexing(convolution, ctx);
-  }
-  if (auto dot = DynCast<HloDotInstruction>(instr)) {
-    return ComputeOutputToInputDotOpIndexing(dot, ctx);
-  }
-=======
     return ComputeOutputToInputConvolutionOpIndexing(convolution,
                                                      symbolic_expr_context);
   }
   if (auto dot = DynCast<HloDotInstruction>(instr)) {
     return ComputeOutputToInputDotOpIndexing(dot, symbolic_expr_context);
   }
->>>>>>> upstream/master
   if (auto dus = DynCast<HloDynamicUpdateSliceInstruction>(instr)) {
     return ComputeOutputToInputDynamicUpdateSliceOpIndexing(
         dus, symbolic_expr_context);
@@ -1841,9 +1815,6 @@ HloInstructionIndexing ComputeOutputToInputIndexing(
   if (auto dynamic_slice = DynCast<HloDynamicSliceInstruction>(instr)) {
     return ComputeOutputToInputDynamicSliceOpIndexing(dynamic_slice,
                                                       symbolic_expr_context);
-  }
-  if (auto dynamic_slice = DynCast<HloDynamicSliceInstruction>(instr)) {
-    return ComputeOutputToInputDynamicSliceOpIndexing(dynamic_slice, ctx);
   }
   if (auto fusion = DynCast<HloFusionInstruction>(instr)) {
     return ComputeOutputToInputFusionOpIndexing(fusion, output_id,
@@ -1861,19 +1832,12 @@ HloInstructionIndexing ComputeOutputToInputIndexing(
   if (auto parameter = DynCast<HloParameterInstruction>(instr)) {
     return HloInstructionIndexing{};
   }
-  if (auto parameter = DynCast<HloParameterInstruction>(instr)) {
-    return HloInstructionIndexing{};
-  }
   if (auto reduce = DynCast<HloReduceInstruction>(instr)) {
     return ComputeOutputToInputReduceOpIndexing(reduce, symbolic_expr_context);
   }
   if (auto reduce_window = DynCast<HloReduceWindowInstruction>(instr)) {
-<<<<<<< HEAD
-    return ComputeOutputToInputReduceWindowOpIndexing(reduce_window, ctx);
-=======
     return ComputeOutputToInputReduceWindowOpIndexing(reduce_window,
                                                       symbolic_expr_context);
->>>>>>> upstream/master
   }
   if (auto reshape = DynCast<HloReshapeInstruction>(instr)) {
     return ComputeOutputToInputReshapeOpIndexing(reshape,
@@ -1890,12 +1854,8 @@ HloInstructionIndexing ComputeOutputToInputIndexing(
     return ComputeOutputToInputSliceOpIndexing(slice, symbolic_expr_context);
   }
   if (auto transpose = DynCast<HloTransposeInstruction>(instr)) {
-<<<<<<< HEAD
-    return ComputeOutputToInputTransposeOpIndexing(transpose, ctx);
-=======
     return ComputeOutputToInputTransposeOpIndexing(transpose,
                                                    symbolic_expr_context);
->>>>>>> upstream/master
   }
   // go/keep-sorted end
   LOG(ERROR) << "ComputeOutputToInputIndexing is not implemented for opcode "
@@ -1935,11 +1895,7 @@ HloInstructionIndexing ComputeInputToOutputIndexing(
                                                  symbolic_expr_context);
   }
   if (auto reverse = DynCast<HloReverseInstruction>(instr)) {
-<<<<<<< HEAD
-    return ComputeReverseOpIndexing(reverse, ctx);
-=======
     return ComputeReverseOpIndexing(reverse, symbolic_expr_context);
->>>>>>> upstream/master
   }
   if (auto slice = DynCast<HloSliceInstruction>(instr)) {
     return ComputeInputToOutputSliceOpIndexing(slice, symbolic_expr_context);
@@ -1948,12 +1904,6 @@ HloInstructionIndexing ComputeInputToOutputIndexing(
     return ComputeInputToOutputTransposeOpIndexing(transpose,
                                                    symbolic_expr_context);
   }
-<<<<<<< HEAD
-  if (auto transpose = DynCast<HloTransposeInstruction>(instr)) {
-    return ComputeInputToOutputTransposeOpIndexing(transpose, ctx);
-  }
-=======
->>>>>>> upstream/master
   // go/keep-sorted end
   if (instr->opcode() == HloOpcode::kTuple) {
     return HloInstructionIndexing::FromIndexingMaps({CreateIdentityMap(

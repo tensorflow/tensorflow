@@ -32,10 +32,6 @@
 #include "grpcpp/support/sync_stream.h"
 #include "xla/pjrt/distributed/util.h"
 #include "xla/pjrt/semaphore.h"
-<<<<<<< HEAD
-#include "xla/python/ifrt/future.h"
-=======
->>>>>>> upstream/master
 #include "xla/python/ifrt_proxy/client/global_flags.h"
 #include "xla/python/ifrt_proxy/common/grpc_ifrt_service.grpc.pb.h"
 #include "xla/python/ifrt_proxy/common/grpc_ifrt_service.pb.h"
@@ -159,12 +155,8 @@ tsl::Future<> GrpcClientHostBufferStore::Store(uint64_t handle,
 
   auto reservation = ScopedAcquireSemaphore(store_throttler_);
   work_queue_->Schedule([this, reservation = std::move(reservation), handle,
-<<<<<<< HEAD
-                         promise, data, flow]() mutable -> void {
-=======
                          promise = std::move(promise).ToShared(), data,
                          flow]() mutable -> void {
->>>>>>> upstream/master
     auto span = flow.Span<XFlowHelper::kRecv>();
     GrpcHostBufferStoreMetadata metadata;
     metadata.set_session_id(session_id_);
@@ -262,12 +254,8 @@ tsl::Future<absl::Cord> GrpcClientHostBufferStore::Lookup(uint64_t handle) {
 
   auto reservation = ScopedAcquireSemaphore(lookup_throttler_);
   work_queue_->Schedule([this, reservation = std::move(reservation), handle,
-<<<<<<< HEAD
-                         promise, flow]() mutable -> void {
-=======
                          promise = std::move(promise).ToShared(),
                          flow]() mutable -> void {
->>>>>>> upstream/master
     auto span = flow.Span<XFlowHelper::kRecv>();
     GrpcHostBufferLookupRequest request;
     request.set_handle(handle);

@@ -73,11 +73,7 @@ std::optional<std::string> KeyValueStore::Get(absl::string_view key) {
 
 absl::StatusOr<std::string> KeyValueStore::IncrementBy(absl::string_view key,
                                                        int64_t increment) {
-<<<<<<< HEAD
-  absl::MutexLock l(&mu_);
-=======
   absl::MutexLock l(mu_);
->>>>>>> upstream/master
   auto [it, inserted] = data_.try_emplace(key, "0");
   int val;
   if (!absl::SimpleAtoi(it->second, &val)) {
@@ -85,10 +81,7 @@ absl::StatusOr<std::string> KeyValueStore::IncrementBy(absl::string_view key,
         "Failed to parse value \"%s\" as an integer.", it->second));
   }
   it->second = absl::StrCat(val + increment);
-<<<<<<< HEAD
-=======
   NotifyCallbacksForKey(key, it->second);
->>>>>>> upstream/master
   return it->second;
 }
 

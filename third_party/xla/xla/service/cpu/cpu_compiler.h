@@ -117,15 +117,11 @@ class CpuCompiler : public LLVMCompiler {
       const CompileOptions& compile_options);
 
   absl::StatusOr<std::unique_ptr<CpuExecutable>> CompileCpuExecutable(
-<<<<<<< HEAD
-      std::unique_ptr<HloModule> module);
-=======
       std::unique_ptr<HloModule> module,
       const ThunkEmitter::Options& thunk_emitter_options,
       std::unique_ptr<IrCompiler> ir_compiler,
       const llvm::PICLevel::Level& pic_level = llvm::PICLevel::NotPIC,
       const llvm::PIELevel::Level& pie_level = llvm::PIELevel::Default);
->>>>>>> upstream/master
 
   absl::StatusOr<std::unique_ptr<AotCompilationResult>>
   CompileAheadOfTimeThunks(

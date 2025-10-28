@@ -17,10 +17,6 @@ limitations under the License.
 #define XLA_BACKENDS_CPU_CODEGEN_FUSION_EMITTER_H_
 
 #include "absl/status/statusor.h"
-<<<<<<< HEAD
-#include "mlir/IR/MLIRContext.h"
-=======
->>>>>>> upstream/master
 #include "xla/codegen/emitters/kernel_arguments.h"
 #include "xla/codegen/mlir_kernel_definition.h"
 #include "xla/hlo/ir/hlo_instructions.h"

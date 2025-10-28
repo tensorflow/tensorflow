@@ -169,11 +169,7 @@ TEST_F(CompilerTest, Compile) {
   MockClient client;
   ON_CALL(client, LookupDevice(_)).WillByDefault([&](DeviceId id) {
     return &devices[id.value()];
-<<<<<<< HEAD
-  }));
-=======
   });
->>>>>>> upstream/master
   ON_CALL(client, MakeDeviceList(_)).WillByDefault(Return(device_list));
 
   Compiler compiler(&client, rpc_helper_);

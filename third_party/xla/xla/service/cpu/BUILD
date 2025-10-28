@@ -989,11 +989,8 @@ cc_library(
         "//xla/service:hlo_module_config",
         "//xla/service:hlo_proto_cc",
         "//xla/service:pattern_matcher",
-<<<<<<< HEAD
-=======
         "//xla/service/gpu/model/experimental:symbolic_expr",
         "//xla/service/llvm_ir:llvm_util",
->>>>>>> upstream/master
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:logging",
@@ -2002,10 +1999,7 @@ cc_library(
     hdrs = ["elemental_ir_emitter.h"],
     deps = [
         ":elemental_math_emitter",
-<<<<<<< HEAD
-=======
         "//xla:util",
->>>>>>> upstream/master
         "//xla/codegen/intrinsic",
         "//xla/codegen/intrinsic:exp",
         "//xla/codegen/intrinsic:rsqrt",
@@ -2058,15 +2052,10 @@ cc_library(
         "//xla/codegen:mlir_kernel_source",
         "//xla/hlo/ir:hlo",
         "//xla/service:buffer_assignment",
-<<<<<<< HEAD
-        "//xla/tsl/platform:env",
-        "//xla/tsl/platform:statusor",
-=======
         "//xla/service/gpu/model/experimental:symbolic_expr",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
->>>>>>> upstream/master
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/functional:bind_front",
         "@com_google_absl//absl/functional:function_ref",
@@ -2088,26 +2077,17 @@ xla_test(
         "//xla/backends/cpu/codegen:fusion_compiler",
         "//xla/codegen:llvm_kernel_definition",
         "//xla/hlo/ir:hlo",
-<<<<<<< HEAD
-        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
-        "//xla/tsl/platform:env",
-        "//xla/tsl/platform:statusor",
-=======
         "//xla/hlo/testlib:filecheck",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/service/llvm_ir:llvm_util",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:threadpool_interface",
->>>>>>> upstream/master
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//llvm:JITLink",
-<<<<<<< HEAD
-=======
         "@llvm-project//llvm:ir_headers",
->>>>>>> upstream/master
         "@llvm-project//mlir:IR",
     ],
 )

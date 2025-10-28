@@ -476,13 +476,8 @@ class HloInstruction {
   // 'rhs_scale', with contracting, batch, ragged, and group dimensions
   // specified in 'dimension_numbers'.
   static std::unique_ptr<HloInstruction> CreateScaledDot(
-<<<<<<< HEAD
-      const Shape& shape, HloInstruction* lhs, HloInstruction* lhs_scale,
-      HloInstruction* rhs, HloInstruction* rhs_scale,
-=======
       const Shape& shape, HloInstruction* lhs, HloInstruction* rhs,
       HloInstruction* lhs_scale, HloInstruction* rhs_scale,
->>>>>>> upstream/master
       const DotDimensionNumbers& dimension_numbers,
       const PrecisionConfig& precision_config);
 

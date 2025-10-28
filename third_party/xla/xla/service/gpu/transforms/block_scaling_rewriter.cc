@@ -395,15 +395,11 @@ absl::StatusOr<XlaOp> BuildCudnnScaledDot(XlaOp lhs_input, XlaOp rhs_input,
                                           XlaOp global_scale,
                                           const DotDimensionNumbers& dnums,
                                           PrimitiveType result_type,
-<<<<<<< HEAD
-                                          std::optional<int64_t> block_size) {
-=======
                                           std::optional<int64_t> block_size,
                                           se::dnn::VersionInfo cudnn_version) {
   bool cudnn_supports_global_scale =
       cudnn_version >= kCudnnSupportsBlockScaledDotWithGlobalScale;
 
->>>>>>> upstream/master
   // Get inputs from parameters.
   TF_ASSIGN_OR_RETURN(
       auto lhs_ops_and_size,
@@ -508,15 +504,9 @@ absl::StatusOr<XlaOp> BuildBlockScaledDotInput(
 absl::StatusOr<XlaOp> BuildBlockScaledDot(
     XlaBuilder& builder, const HloInstruction* lhs_input,
     const HloInstruction* rhs_input, const HloInstruction* lhs_scale,
-<<<<<<< HEAD
-    const HloInstruction* rhs_scale, const DotDimensionNumbers& dnums,
-    PrimitiveType result_type, std::optional<int64_t> block_size,
-    bool allow_cudnn) {
-=======
     const HloInstruction* rhs_scale, const HloInstruction* global_scale,
     const DotDimensionNumbers& dnums, PrimitiveType result_type,
     std::optional<int64_t> block_size, se::dnn::VersionInfo cudnn_version) {
->>>>>>> upstream/master
   // Get dot LHS parameter(s).
   XlaOp lhs_op = Parameter(&builder, 0, lhs_input->shape(), "lhs");
   XlaOp lhs_scale_op = Parameter(&builder, 2, lhs_scale->shape(), "lhs_scale");
@@ -541,12 +531,8 @@ absl::StatusOr<XlaOp> BuildBlockScaledDot(
           GetCudnnMxType(lhs_input->shape(), lhs_scale->shape(), block_size),
           GetCudnnMxType(rhs_input->shape(), rhs_scale->shape(), block_size))) {
     return BuildCudnnScaledDot(lhs_op, rhs_op, lhs_scale_op, rhs_scale_op,
-<<<<<<< HEAD
-                               dnums, result_type, block_size);
-=======
                                global_scale_op, dnums, result_type, block_size,
                                std::move(cudnn_version));
->>>>>>> upstream/master
   }
 
   // Build general dot op.
@@ -557,8 +543,6 @@ absl::StatusOr<XlaOp> BuildBlockScaledDot(
     TF_ASSIGN_OR_RETURN(
         rhs_op, BuildBlockScaledDotInput(rhs_op, rhs_scale_op, result_type,
                                          block_size));
-<<<<<<< HEAD
-=======
   }
   XlaOp result = DotGeneral(lhs_op, rhs_op, dnums, /*precision_config=*/nullptr,
                             /*preferred_element_type=*/result_type);
@@ -567,7 +551,6 @@ absl::StatusOr<XlaOp> BuildBlockScaledDot(
   if (global_scale_op.valid()) {
     result = Mul(result, global_scale_op,
                  /*broadcast_dimensions=*/{});
->>>>>>> upstream/master
   }
   return result;
 }
@@ -601,8 +584,6 @@ absl::StatusOr<HloInstruction*> ExpandBlockScaledDotCustomCall(
     return InvalidArgument("Incorrect output shape for block scaled dot op");
   }
 
-<<<<<<< HEAD
-=======
   // Check global scale shape.
   if (instruction->operand_count() == 5) {
     const Shape& global_scale_shape = instruction->operand(4)->shape();
@@ -613,7 +594,6 @@ absl::StatusOr<HloInstruction*> ExpandBlockScaledDotCustomCall(
     }
   }
 
->>>>>>> upstream/master
   // If an explicit block size is passed in the backend config, use it.
   // This is needed when the scale tensor is padded, the block size cannot be
   // implied in this case.
@@ -631,14 +611,9 @@ absl::StatusOr<HloInstruction*> ExpandBlockScaledDotCustomCall(
   TF_ASSIGN_OR_RETURN(
       XlaOp block_scaled_dot,
       BuildBlockScaledDot(builder, operands[0], operands[1], operands[2],
-<<<<<<< HEAD
-                          operands.size() == 4 ? operands[3] : nullptr, dnums,
-                          result_type, block_size, allow_cudnn));
-=======
                           operands.size() >= 4 ? operands[3] : nullptr,
                           operands.size() == 5 ? operands[4] : nullptr, dnums,
                           result_type, block_size, std::move(cudnn_version)));
->>>>>>> upstream/master
 
   // Reshape to the expected output shape.
   // This should only happen when a unit-sized dimension is added by the pass.

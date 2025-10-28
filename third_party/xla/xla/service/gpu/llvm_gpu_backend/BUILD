@@ -29,10 +29,7 @@ cc_library(
         "//xla:util",
         "//xla:xla_proto_cc",
         "//xla/codegen:intrinsic_lib",
-<<<<<<< HEAD
-=======
         "//xla/codegen/intrinsic",
->>>>>>> upstream/master
         "//xla/codegen/intrinsic:intrinsic_compiler_lib",
         "//xla/service/llvm_ir:llvm_type_conversion_util",
         "//xla/service/llvm_ir:llvm_util",

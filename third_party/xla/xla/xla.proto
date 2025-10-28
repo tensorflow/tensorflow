@@ -202,12 +202,9 @@ message DebugOptions {
   // below!
   optional bool xla_cpu_enable_fast_min_max = 140;
 
-<<<<<<< HEAD
-=======
   // Call oneDNN custom call thunks in the CPU backend
   optional bool xla_cpu_experimental_onednn_custom_call = 412;
 
->>>>>>> upstream/master
   // Stores the fusion types enabled for oneDNN in DotLibraryRewriter pass.
   repeated LibraryFusionType xla_cpu_experimental_onednn_fusion_type = 399;
 
@@ -410,13 +407,10 @@ message DebugOptions {
   optional CommandBufferSchedulingMode xla_gpu_command_buffer_scheduling_mode =
       404;
 
-<<<<<<< HEAD
-=======
   // During command buffer lowering, unroll the loop command if loop has known
   // loop count and the loop body does not have unsupported commands.
   optional bool xla_gpu_command_buffer_unroll_loops = 411;
 
->>>>>>> upstream/master
   optional bool xla_gpu_copy_insertion_use_region_analysis = 236;
 
   // Crashes the program when any kind of verification fails, instead of just
@@ -1367,11 +1361,7 @@ message DebugOptions {
   // Note: when adding a new flag, please add it to one of the hardware-specific
   // or hardware-agnostic sections at the top of this proto message.
 
-<<<<<<< HEAD
-  // Next id: 408
-=======
   // Next id: 422
->>>>>>> upstream/master
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

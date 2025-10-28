@@ -45,12 +45,8 @@ enum class Side { kLhs, kRhs };
 
 Side GetSide(const HloInstruction& dot, int operand_number) {
   if (dot.opcode() == HloOpcode::kScaledDot) {
-<<<<<<< HEAD:third_party/xla/xla/service/matmul_indexing_utils.cc
-    return operand_number < 2 ? Side::kLhs : Side::kRhs;
-=======
     return (operand_number == 0 || operand_number == 2) ? Side::kLhs
                                                         : Side::kRhs;
->>>>>>> upstream/master:third_party/xla/xla/service/gpu/matmul_indexing_utils.cc
   }
   return operand_number == 0 ? Side::kLhs : Side::kRhs;
 }
@@ -138,21 +134,6 @@ absl::StatusOr<std::array<DotOperandDims, 4>> DotOperandDims::FromScaledDot(
     const HloInstruction* scaled_dot) {
   TF_ASSIGN_OR_RETURN(auto lhs_dims, FromDotOperand(scaled_dot, 0));
   DotOperandDims lhs_scale_dims;
-<<<<<<< HEAD:third_party/xla/xla/service/matmul_indexing_utils.cc
-  if (scaled_dot->operand(1)->opcode() != HloOpcode::kConstant ||
-      !scaled_dot->operand(1)->shape().dimensions().empty()) {
-    TF_ASSIGN_OR_RETURN(lhs_scale_dims, FromDotOperand(scaled_dot, 1));
-  }
-
-  TF_ASSIGN_OR_RETURN(auto rhs_dims, FromDotOperand(scaled_dot, 2));
-  DotOperandDims rhs_scale_dims;
-  if (scaled_dot->operand(3)->opcode() != HloOpcode::kConstant ||
-      !scaled_dot->operand(3)->shape().dimensions().empty()) {
-    TF_ASSIGN_OR_RETURN(rhs_scale_dims, FromDotOperand(scaled_dot, 3));
-  }
-
-  return std::array<DotOperandDims, 4>{lhs_dims, lhs_scale_dims, rhs_dims,
-=======
   if (!ShapeUtil::IsScalar(scaled_dot->operand(2)->shape())) {
     TF_ASSIGN_OR_RETURN(lhs_scale_dims, FromDotOperand(scaled_dot, 2));
   }
@@ -164,7 +145,6 @@ absl::StatusOr<std::array<DotOperandDims, 4>> DotOperandDims::FromScaledDot(
   }
 
   return std::array<DotOperandDims, 4>{lhs_dims, rhs_dims, lhs_scale_dims,
->>>>>>> upstream/master:third_party/xla/xla/service/gpu/matmul_indexing_utils.cc
                                        rhs_scale_dims};
 }
 

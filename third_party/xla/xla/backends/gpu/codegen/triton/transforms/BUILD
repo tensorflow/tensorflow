@@ -40,14 +40,11 @@ cc_library(
         "triton_xla_convert_unsupported_types.cc",
         "triton_xla_extract_insert_to_triton_pass.cc",
         "triton_xla_fold_transpose_pass.cc",
-<<<<<<< HEAD
-=======
         "triton_xla_lower_atomics_pass.cc",
         "triton_xla_lower_block_barrier_pass.cc",
         "triton_xla_lower_get_tid_pass.cc",
         "triton_xla_lower_remote_access_pass.cc",
         "triton_xla_lower_xtile_pass.cc",
->>>>>>> upstream/master
         "triton_xla_squeeze_dims_pass.cc",
         "triton_xla_unswitch_loops_pass.cc",
     ],
@@ -55,10 +52,6 @@ cc_library(
     deps = [
         ":passes_inc_gen",
         "//xla:permutation_util",
-<<<<<<< HEAD
-        "//xla:shape_util",
-=======
->>>>>>> upstream/master
         "//xla:util",
         "//xla/backends/gpu/codegen/triton:emitter_helpers",
         "//xla/backends/gpu/codegen/triton/ir:triton_xla",
@@ -66,12 +59,7 @@ cc_library(
         "//xla/codegen/emitters/ir:xla",
         "//xla/codegen/xtile/ir:xtile",
         "//xla/service/llvm_ir:llvm_util",
-<<<<<<< HEAD
-        "//xla/stream_executor:device_description",
-        "//xla/stream_executor/cuda:cuda_compute_capability",
-=======
         "//xla/stream_executor/gpu:collective_kernel_metadata",
->>>>>>> upstream/master
         "//xla/stream_executor/gpu:tma_metadata",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -99,10 +87,7 @@ cc_library(
         "@llvm-project//mlir:SCFTransforms",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
-<<<<<<< HEAD
-=======
         "@stablehlo//:stablehlo_ops",
->>>>>>> upstream/master
         "@triton//:TritonDialects",
     ],
 )

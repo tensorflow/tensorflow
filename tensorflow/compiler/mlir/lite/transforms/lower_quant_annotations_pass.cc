@@ -245,12 +245,7 @@ class RewriteDequantizeCompositeOp
     TFL::DequantizeOp tfl_dequantize_op =
         TFL::DequantizeOp::create(rewriter, composite_op.getLoc(), output_type,
                                   /*input=*/tfl_quantize_input);
-<<<<<<< HEAD
-    rewriter.replaceAllOpUsesWith(composite_op, tfl_dequantize_op.getOutput());
-    rewriter.eraseOp(composite_op);
-=======
     rewriter.replaceOp(composite_op, tfl_dequantize_op.getOutput());
->>>>>>> upstream/master
 
     return success();
   }
@@ -317,12 +312,6 @@ class RewriteFakeQuantCompositeOp
     Type output_type = op.getType(0);
     TFL::DequantizeOp tfl_dequantize_op = TFL::DequantizeOp::create(
         rewriter, op.getLoc(), output_type, /*input=*/tfl_quantize_op);
-<<<<<<< HEAD
-
-    rewriter.replaceAllOpUsesWith(op, tfl_dequantize_op.getOutput());
-    rewriter.eraseOp(op);
-=======
->>>>>>> upstream/master
 
     rewriter.replaceOp(op, tfl_dequantize_op.getOutput());
     return success();

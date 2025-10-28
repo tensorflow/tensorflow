@@ -125,8 +125,6 @@ xla_cc_test(
     ],
 )
 
-<<<<<<< HEAD
-=======
 cc_library(
     name = "xla_executable_version",
     srcs = ["xla_executable_version.cc"],
@@ -161,7 +159,6 @@ cc_library(
     alwayslink = True,
 )
 
->>>>>>> upstream/master
 tf_proto_library(
     name = "executable_metadata_proto",
     srcs = ["executable_metadata.proto"],
@@ -319,10 +316,7 @@ cc_library(
         ":pjrt_attribute_map_util",
         ":pjrt_dtype",
         ":transfer_server_interface",
-<<<<<<< HEAD
-=======
         ":xla_executable_version_serdes",
->>>>>>> upstream/master
         ":xla_ifrt",
         "//xla:literal",
         "//xla:shape_util",
@@ -562,10 +556,7 @@ cc_library(
         "//xla/pjrt:pjrt_layout",
         "//xla/python/ifrt",
         "//xla/python/ifrt:user_context",
-<<<<<<< HEAD
-=======
         "//xla/tsl/concurrency:future",
->>>>>>> upstream/master
         "//xla/tsl/concurrency:ref_count",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/base:core_headers",

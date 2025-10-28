@@ -23,54 +23,10 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-<<<<<<< HEAD
-inline constexpr int64_t kCollectiveMemorySpaceColor = 1;
-inline constexpr int64_t kTempBufferMemorySpaceColor = 2;
-
-// Set memory space to kCollectiveMemorySpaceColor for all allocations used by
-// all-reduce, all-gather, and reduce-scatter. This memory space maps to
-// collective memory using ncclMemAlloc in the runtime.
-inline BufferAssigner::Colorer CollectiveColorer(bool use_user_buffers,
-                                                 bool use_nvshmem) {
-  return [use_user_buffers, use_nvshmem](HloAliasAnalysis* alias_analysis,
-                                         const HloOrdering&) {
-    // NOTE: The explicit internal constructor is needed as an explicitly typed
-    // variable to avoid a method ambiguity error when compiling for CUDA 12.4.
-    static const absl::NoDestructor<absl::flat_hash_set<HloOpcode>>
-        kSupportedOpcodes(absl::flat_hash_set<HloOpcode>{
-            HloOpcode::kAllReduce,
-            HloOpcode::kAllReduceStart,
-            HloOpcode::kAllReduceDone,
-            HloOpcode::kAllGather,
-            HloOpcode::kAllGatherStart,
-            HloOpcode::kAllGatherDone,
-            HloOpcode::kReduceScatter,
-            HloOpcode::kCollectivePermute,
-            HloOpcode::kCollectivePermuteStart,
-            HloOpcode::kCollectivePermuteDone,
-            HloOpcode::kAllToAll,
-        });
-
-    auto is_nvshmem_op = [](const HloInstruction* inst) {
-      bool is_nvshmem_collective = false;
-      if (inst->has_backend_config()) {
-        auto gpu_config = inst->backend_config<GpuBackendConfig>();
-        if (!gpu_config.ok()) {
-          return false;
-        }
-        const CollectiveBackendConfig& backend_config =
-            gpu_config.value().collective_backend_config();
-        is_nvshmem_collective =
-            backend_config.backend() == CollectiveBackendConfig::NVSHMEM;
-      }
-      return is_nvshmem_collective;
-    };
-=======
 enum class MemorySpaceColor {
   // Corresponds to stream_executor::MemoryTypes::kDefault or kUnified.
   // This memory can be allocated with any device allocation API.
   kDefault = 0,
->>>>>>> upstream/master
 
   // Corresponds to stream_executor::MemoryTypes::kCollective.
   // This memory should be allocated with ncclMemAlloc in the runtime.

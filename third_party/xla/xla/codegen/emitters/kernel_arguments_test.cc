@@ -18,14 +18,6 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <memory>
-<<<<<<< HEAD
-
-#include <gmock/gmock.h>
-#include <gtest/gtest.h>
-#include "absl/strings/string_view.h"
-#include "xla/hlo/analysis/alias_info.h"
-#include "xla/hlo/analysis/hlo_ordering.h"
-=======
 #include <vector>
 
 #include <gmock/gmock.h>
@@ -36,7 +28,6 @@ limitations under the License.
 #include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_ordering.h"
 #include "xla/hlo/ir/hlo_instruction.h"
->>>>>>> upstream/master
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/service/buffer_assignment.h"
@@ -46,12 +37,6 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/platform/statusor.h"
-<<<<<<< HEAD
-
-namespace xla::emitters {
-namespace {
-using ::testing::ElementsAre;
-=======
 #include "xla/xla_data.pb.h"
 
 namespace xla::emitters {
@@ -59,7 +44,6 @@ namespace {
 using ::absl_testing::StatusIs;
 using ::testing::ElementsAre;
 using ::testing::HasSubstr;
->>>>>>> upstream/master
 using ::testing::SizeIs;
 
 using KernelArgumentsTest = HloHardwareIndependentTestBase;
@@ -117,8 +101,6 @@ TEST_F(KernelArgumentsTest, GetArgumentBufferSlices) {
               ElementsAre(false, false, true));
 }
 
-<<<<<<< HEAD
-=======
 TEST_F(KernelArgumentsTest, InterleavedOutputIndicesTest) {
   const absl::string_view hlo_string = R"(
 HloModule TestModule
@@ -332,6 +314,5 @@ ENTRY main {
   ASSERT_EQ(kernel_args.args().size(), 3);  // 2 inputs + 1 output
 }
 
->>>>>>> upstream/master
 }  // namespace
 }  // namespace xla::emitters

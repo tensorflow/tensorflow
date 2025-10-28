@@ -239,8 +239,6 @@ absl::Status GpuCommandBuffer::UpdateChildCommand(ChildCommandType type,
   auto* gpu_command = tsl::down_cast<const GpuCommand*>(command);
   VLOG(5) << "UpdateChildCommand: " << reinterpret_cast<const void*>(command);
   return UpdateChildNode(type, gpu_command->handle, nested);
-<<<<<<< HEAD
-=======
 }
 
 absl::StatusOr<const CommandBuffer::Command*>
@@ -266,7 +264,6 @@ absl::Status GpuCommandBuffer::UpdateChildCommand(
   auto* gpu_command = dynamic_cast<const GpuChildCommand*>(command);
   CHECK(gpu_command) << "Command must be a GpuChildCommand";
   return record_fn(gpu_command->command_buffer.get());
->>>>>>> upstream/master
 }
 
 absl::StatusOr<const CommandBuffer::Command*> GpuCommandBuffer::CreateMemcpyD2D(

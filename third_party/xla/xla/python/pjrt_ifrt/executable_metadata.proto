@@ -22,12 +22,6 @@ import "xla/python/ifrt/layout.proto";
 import "xla/python/ifrt/shape.proto";
 import "xla/xla_data.proto";
 
-<<<<<<< HEAD
-message SerializedXlaExecutableMetadata {
-  // IFRT version
-  int32 ifrt_version_number = 1;
-
-=======
 // Proto equivalent of C++ `XlaExecutableVersion`.
 message SerializedXlaExecutableVersion {
   // Serialization and deserialization version.
@@ -71,20 +65,10 @@ message SerializedXlaExecutableMetadata {
   // The runtime ABI version at the time this executable was created.
   SerializedXlaExecutableVersion executable_version = 9;
 
->>>>>>> upstream/master
   // IFRT runtime that created this executable. Loading executables across
   // runtimes are supported.
   string runtime_name = 2;
 
-<<<<<<< HEAD
-  // ID that identifies the platform (CPU/GPU/TPU). This corresponds to
-  // xla::PjRtPlatformId.
-  fixed64 platform_id = 3;
-
-  // ABI version of the runtime that this executable is compatible with.
-  // Note: Also present within the serialized executable for PjRt TPU.
-  bytes runtime_abi_version = 4;
-=======
   // Name of the computation that this executable represents. This is not a
   // unique identifier of the computation. Only to be used for debugging and
   // logging purposes.
@@ -92,7 +76,6 @@ message SerializedXlaExecutableMetadata {
 
   // Whether the executable is compiled to be portable.
   bool portable = 8;
->>>>>>> upstream/master
 
   // Below fields are artifacts gathered from the compiled executable required
   // for the IFRT runtimes to be able to construct an IFRT executable without a
@@ -105,13 +88,9 @@ message SerializedXlaExecutableMetadata {
 
   message OutputSpec {
     ifrt.ShapeProto shard_shape = 1;
-<<<<<<< HEAD
-    ifrt.DTypeProto dtype = 2;
-=======
     ifrt.ShapeProto shape = 6;
     ifrt.DTypeProto dtype = 2;
     // Layout can be absent when the output uses the default layout.
->>>>>>> upstream/master
     ifrt.LayoutProto layout = 3;
     string memory_kind = 4;
     xla.OpSharding op_sharding = 5;
@@ -120,17 +99,12 @@ message SerializedXlaExecutableMetadata {
   repeated OutputSpec output_specs = 5;
 
   message ParameterSpec {
-<<<<<<< HEAD
-    ifrt.LayoutProto layout = 1;
-    xla.OpSharding op_sharding = 2;
-=======
     ifrt.ShapeProto shape = 4;
     ifrt.DTypeProto dtype = 5;
     // Layout can be absent when the parameter uses the default layout.
     ifrt.LayoutProto layout = 1;
     xla.OpSharding op_sharding = 2;
     bool donated_input = 3;
->>>>>>> upstream/master
   }
 
   repeated ParameterSpec parameter_specs = 6;

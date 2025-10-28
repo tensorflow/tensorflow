@@ -715,8 +715,6 @@ ENTRY %SubtractionPattern {
       module->entry_computation()->root_instruction());
   EXPECT_EQ(rs->scatter_dimension(), 1) << rs->ToString();
   EXPECT_EQ(AllReduceCount(module), 0);
-<<<<<<< HEAD
-=======
 }
 
 TEST_F(GpuReduceScatterCreatorTest, AllReduceThroughTuple) {
@@ -775,7 +773,6 @@ ENTRY %AllReduce {
       << "ReduceScatterCreator should transform after AlgebraicSimplifier";
   EXPECT_GE(ReduceScatterCount(module_with_algsimp), 1)
       << "Expected at least one ReduceScatter after transformation";
->>>>>>> upstream/master
 }
 
 }  // namespace

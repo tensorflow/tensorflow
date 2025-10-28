@@ -34,11 +34,7 @@ StreamExecutor::ResourceTypeId StreamExecutor::GetNextResourceTypeId() {
 
 StreamExecutor::Resource* StreamExecutor::GetOrNullResource(
     ResourceTypeId type_id) {
-<<<<<<< HEAD
-  absl::MutexLock lock(&resource_mutex_);
-=======
   absl::MutexLock lock(resource_mutex_);
->>>>>>> upstream/master
   auto it = resources_.find(type_id);
   return (it != resources_.end()) ? it->second.get() : nullptr;
 }
@@ -48,11 +44,7 @@ StreamExecutor::Resource* StreamExecutor::GetOrCreateResource(
     absl::FunctionRef<std::unique_ptr<Resource>()> create) {
   // First, try to find the resource under lock
   {
-<<<<<<< HEAD
-    absl::MutexLock lock(&resource_mutex_);
-=======
     absl::MutexLock lock(resource_mutex_);
->>>>>>> upstream/master
     auto it = resources_.find(type_id);
     if (ABSL_PREDICT_TRUE(it != resources_.end())) {
       return it->second.get();
@@ -65,11 +57,7 @@ StreamExecutor::Resource* StreamExecutor::GetOrCreateResource(
 
   // Acquire lock again to insert the new resource
   {
-<<<<<<< HEAD
-    absl::MutexLock lock(&resource_mutex_);
-=======
     absl::MutexLock lock(resource_mutex_);
->>>>>>> upstream/master
     auto it = resources_.find(type_id);
     if (ABSL_PREDICT_TRUE(it == resources_.end())) {
       // We won the race — insert our resource

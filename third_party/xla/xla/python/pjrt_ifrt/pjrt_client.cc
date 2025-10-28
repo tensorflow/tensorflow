@@ -884,12 +884,9 @@ absl::StatusOr<std::unique_ptr<PjRtClient>> PjRtClient::Create(
     }
   }
 
-<<<<<<< HEAD
-=======
   client->work_queue_ = std::make_unique<tsl::UnboundedWorkQueue>(
       tsl::Env::Default(), "ifrt_pjrt_client_work_queue");
 
->>>>>>> upstream/master
   LogDeviceSummary(client.get());
   return client;
 }
@@ -907,11 +904,7 @@ PjRtClient::PjRtClient(std::shared_ptr<xla::PjRtClient> pjrt_client)
       attributes_(MakeAttributeMap(pjrt_client_.get())) {}
 
 PjRtClient::~PjRtClient() {
-<<<<<<< HEAD
-  absl::MutexLock lock(&shutting_down_mu_);
-=======
   absl::MutexLock lock(shutting_down_mu_);
->>>>>>> upstream/master
   shutting_down_ = true;
 }
 
@@ -1427,11 +1420,7 @@ PjRtClient::CopyArraysForCrossHostFallback(
     absl::Span<ArrayRef> arrays, DeviceListRef src_devices,
     DeviceListRef dst_devices, std::optional<MemoryKind> memory_kind) {
   {
-<<<<<<< HEAD
-    absl::MutexLock lock(&(transfer_server_mu_));
-=======
     absl::MutexLock lock(transfer_server_mu_);
->>>>>>> upstream/master
     TF_RETURN_IF_ERROR(InitializeTransferServer());
   }
   return (*transfer_server_)
@@ -1459,22 +1448,14 @@ absl::Status PjRtClient::WatchGlobalProcessInfo(
         [this, &response,
          &done](absl::StatusOr<tensorflow::WatchJobStateResponse> r) {
           response = std::move(r);
-<<<<<<< HEAD
-          absl::MutexLock lock(&shutting_down_mu_);
-=======
           absl::MutexLock lock(shutting_down_mu_);
->>>>>>> upstream/master
           done = true;
         });
 
     {
       // Wait for the WatchJobStateAsync call to finish or for us to shut down,
       // whichever happens first.
-<<<<<<< HEAD
-      absl::MutexLock lock(&shutting_down_mu_);
-=======
       absl::MutexLock lock(shutting_down_mu_);
->>>>>>> upstream/master
       auto done_or_shutting_down = [this, &done]() {
         shutting_down_mu_.AssertHeld();
         return done || shutting_down_;

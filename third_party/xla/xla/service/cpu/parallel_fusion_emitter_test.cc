@@ -16,11 +16,8 @@ limitations under the License.
 #include "xla/service/cpu/parallel_fusion_emitter.h"
 
 #include <cstdint>
-<<<<<<< HEAD
-=======
 #include <functional>
 #include <string>
->>>>>>> upstream/master
 #include <utility>
 
 #include <gmock/gmock.h>
@@ -28,23 +25,13 @@ limitations under the License.
 #include "absl/status/status_matchers.h"
 #include "absl/strings/string_view.h"
 #include "llvm/ExecutionEngine/Orc/ThreadSafeModule.h"
-<<<<<<< HEAD
-=======
 #include "llvm/IR/FMF.h"
 #include "llvm/IR/Module.h"
->>>>>>> upstream/master
 #include "mlir/IR/BuiltinOps.h"
 #include "xla/backends/cpu/codegen/fusion_compiler.h"
 #include "xla/codegen/llvm_kernel_definition.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
-<<<<<<< HEAD
-#include "xla/hlo/ir/hlo_instructions.h"
-#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
-#include "xla/tsl/platform/env.h"
-#include "xla/tsl/platform/statusor.h"
-#include "xla/tsl/platform/threadpool.h"
-=======
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/testlib/filecheck.h"
@@ -54,7 +41,6 @@ limitations under the License.
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/threadpool.h"
 #include "xla/tsl/platform/threadpool_interface.h"
->>>>>>> upstream/master
 
 namespace xla::cpu {
 namespace {
@@ -80,10 +66,7 @@ FusionCompiler::Options CreateDefaultOptions() {
   options.vector_width = 128;
   options.verification_level = 1;
   options.fast_min_max = false;
-<<<<<<< HEAD
-=======
   options.fast_math_flags = llvm::FastMathFlags::getFast();
->>>>>>> upstream/master
 
   return options;
 }
@@ -104,8 +87,6 @@ FusionCompiler::CompilationHooks ParallelFusionEmitterTest::CreateMockHooks(
   return hooks;
 }
 
-<<<<<<< HEAD
-=======
 class BlockingThreadPool final : public tsl::thread::ThreadPoolInterface {
  public:
   void Schedule(std::function<void()> fn) override { fn(); }
@@ -113,21 +94,10 @@ class BlockingThreadPool final : public tsl::thread::ThreadPoolInterface {
   int CurrentThreadId() const override { return 0; }
 };
 
->>>>>>> upstream/master
 TEST_F(ParallelFusionEmitterTest, HappyPathSingleFusion) {
   constexpr absl::string_view expected_name = "root_fusion";
   constexpr absl::string_view trivial_fusion = R"(
     add1 {
-<<<<<<< HEAD
-      p = s32[] parameter(0)
-      c = s32[] constant(1)
-      ROOT a = s32[] add(p, c)
-    }
-
-    ENTRY main {
-      p = s32[] parameter(0)
-      ROOT root_fusion = s32[] fusion(p), kind=kLoop, calls=add1
-=======
       p = f32[] parameter(0)
       c = f32[] constant(1)
       ROOT a = f32[] add(p, c)
@@ -136,7 +106,6 @@ TEST_F(ParallelFusionEmitterTest, HappyPathSingleFusion) {
     ENTRY main {
       p = f32[] parameter(0)
       ROOT root_fusion = f32[] fusion(p), kind=kLoop, calls=add1
->>>>>>> upstream/master
     })";
 
   TF_ASSERT_OK_AND_ASSIGN(auto hlo_module,
@@ -159,12 +128,6 @@ TEST_F(ParallelFusionEmitterTest, HappyPathSingleFusion) {
   auto [spec, source] = std::move(lowered_kernel).ReleaseStorage();
   EXPECT_EQ(spec.name(), expected_name);
 
-<<<<<<< HEAD
-  llvm::orc::ThreadSafeModule llvm_module =
-      std::move(source).thread_safe_module();
-  EXPECT_NE(llvm_module.getModuleUnlocked()->getFunction(expected_name),
-            nullptr);
-=======
   llvm::orc::ThreadSafeModule thread_safe_llvm_module =
       std::move(source).thread_safe_module();
   llvm::Module* llvm_module = thread_safe_llvm_module.getModuleUnlocked();
@@ -223,7 +186,6 @@ TEST_F(ParallelFusionEmitterTest, FusionsAreSorted) {
   ASSERT_EQ(kernels.size(), 2);
   EXPECT_EQ(kernels[0].spec().name(), "fusion_0");
   EXPECT_EQ(kernels[1].spec().name(), "fusion_1");
->>>>>>> upstream/master
 }
 
 // Check that error condition from emitting is propagated.

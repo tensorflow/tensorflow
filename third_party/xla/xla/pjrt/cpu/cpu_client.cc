@@ -67,10 +67,7 @@ limitations under the License.
 #include "xla/layout_util.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
-<<<<<<< HEAD
-=======
 #include "xla/pjrt/abstract_tracked_device_buffer.h"
->>>>>>> upstream/master
 #include "xla/pjrt/common_pjrt_client.h"
 #include "xla/pjrt/cpu/abstract_cpu_buffer.h"
 #include "xla/pjrt/cpu/cpu_async_execution_tracker.h"
@@ -138,8 +135,6 @@ limitations under the License.
 #include "unsupported/Eigen/CXX11/Tensor"
 
 namespace xla {
-<<<<<<< HEAD
-=======
 
 static int CpuDeviceCount() {
   // By default we fix the number of devices to one.  However we do let the user
@@ -187,7 +182,6 @@ class CustomAllocator final : public CpuDeviceMemory::Allocator {
 };
 
 }  // namespace
->>>>>>> upstream/master
 
 absl::StatusOr<std::unique_ptr<PjRtClient>> GetPjRtCpuClient(
     CpuClientOptions options) {
@@ -208,13 +202,8 @@ absl::StatusOr<std::unique_ptr<PjRtClient>> GetPjRtCpuClient(
                         : CpuDeviceMemory::MakeDefaultAllocator();
 
   return std::unique_ptr<PjRtClient>(new PjRtCpuClient(
-<<<<<<< HEAD
-      options.process_id, std::move(devices), std::move(options.collectives),
-      num_threads, options.asynchronous,
-=======
       options.process_id, std::move(devices), std::move(allocator),
       std::move(options.collectives), num_threads, options.asynchronous,
->>>>>>> upstream/master
       std::move(options.customize_hlo_module_config)));
 }
 
@@ -274,19 +263,7 @@ PjRtCpuClient::PjRtCpuClient(
           new tsl::thread::ThreadPool(tsl::Env::Default(), GetThreadOptions(),
                                       "XLAPjRtCpuClient", num_threads)),
       async_work_runner_(
-<<<<<<< HEAD
-          MakeThreadPoolAsyncWorkRunner(pjrt_client_thread_pool_.get())),
-      last_collective_launch_event_(
-          tsl::MakeAvailableAsyncValueRef<CpuEvent>()),
-      transpose_cache_(1024),
-      collectives_(std::move(collectives)),
-      topology_(platform_id(), platform_name(), platform_version(),
-                GetCpuDevices(owned_devices_), cpu::DetectMachineAttributes()),
-      asynchronous_(asynchronous),
-      customize_hlo_module_config_(std::move(customize_hlo_module_config)) {
-=======
           MakeThreadPoolAsyncWorkRunner(pjrt_client_thread_pool_.get())) {
->>>>>>> upstream/master
   for (const std::unique_ptr<PjRtCpuDevice>& device : owned_devices_) {
     devices_.push_back(device.get());
     CHECK(
@@ -917,14 +894,9 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> PjRtCpuClient::CreateErrorBuffer(
   }
   // Create a dummy buffer because the rest of the code expects a buffer
   // regardless of whether the definition event is an error.
-<<<<<<< HEAD
-  TF_ASSIGN_OR_RETURN(auto buffer,
-                      CpuDeviceMemory::Allocate(ShapeUtil::ByteSizeOf(shape)));
-=======
   TF_ASSIGN_OR_RETURN(
       auto buffer,
       CpuDeviceMemory::Allocate(ShapeUtil::ByteSizeOf(shape), *allocator_));
->>>>>>> upstream/master
   return std::make_unique<CommonPjRtBufferImpl>(
       shape,
       std::make_unique<TrackedCpuDeviceBuffer>(
@@ -932,11 +904,7 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> PjRtCpuClient::CreateErrorBuffer(
           absl::InlinedVector<tsl::AsyncValueRef<CpuEvent>, 4>{
               tsl::AsyncValueRef<CpuEvent>(
                   tsl::MakeErrorAsyncValueRef(std::move(error)))}),
-<<<<<<< HEAD
-      *device->default_memory_space());
-=======
       memory_space);
->>>>>>> upstream/master
 }
 
 absl::StatusOr<std::unique_ptr<PjRtClient::AsyncHostToDeviceTransferManager>>
@@ -1001,23 +969,6 @@ absl::StatusOr<CompiledMemoryStats> PjRtCpuExecutable::GetCompiledMemoryStats()
   return memory_stats;
 }
 
-absl::StatusOr<CompiledMemoryStats> PjRtCpuExecutable::GetCompiledMemoryStats()
-    const {
-  auto cpu_executable_ptr =
-      tsl::down_cast<cpu::CpuExecutable*>(cpu_executable_.get());
-  const auto& buffer_assignment = cpu_executable_ptr->buffer_assignment();
-  auto proto = buffer_assignment.ToProto();
-
-  CompiledMemoryStats memory_stats = CompiledMemoryStats();
-  memory_stats.generated_code_size_in_bytes = SizeOfGeneratedCodeInBytes();
-  memory_stats.serialized_buffer_assignment = proto.SerializeAsString();
-  memory_stats.PopulateBufferStatsFromAllocations(
-      cpu_executable_->GetAllocations());
-  TF_ASSIGN_OR_RETURN(int64_t peak_memory, ComputePeakMemory(proto));
-  memory_stats.peak_memory_in_bytes = peak_memory;
-  return memory_stats;
-}
-
 absl::StatusOr<std::pair<tsl::RCReference<PjRtDeviceEventPromise>,
                          tsl::RCReference<PjRtDeviceEvent>>>
 PjRtCpuClient::CreateLinkedEventPromise(PjRtMemorySpace* memory_space,
@@ -1046,11 +997,7 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> PjRtCpuClient::DefineBuffer(
       std::make_unique<TrackedCpuDeviceBuffer>(
           /*owns_buffers=*/raw_buffer_is_mutable,
           tsl::down_cast<CpuRawBuffer*>(raw_buffer.get())->buffer(),
-<<<<<<< HEAD
-          std::move(definition_events)),
-=======
           ShapeUtil::ByteSizeOf(on_device_shape), std::move(definition_events)),
->>>>>>> upstream/master
       raw_buffer->memory_space()));
 }
 
@@ -1729,15 +1676,12 @@ absl::StatusOr<PjRtLoadedExecutable::Result> PjRtCpuExecutable::ExecuteHelper(
                             cpu::Thunk::XnnParams::Create(&run_options));
       }
 
-<<<<<<< HEAD
-=======
       std::optional<cpu::Thunk::YnnParams> ynn_params;
       if (cpu_executable->has_ynn_fusions()) {
         TF_ASSIGN_OR_RETURN(ynn_params,
                             cpu::Thunk::YnnParams::Create(&run_options));
       }
 
->>>>>>> upstream/master
       cpu::ThreadPoolTaskRunner task_runner(
           run_options.intra_op_thread_pool()->getPool());
 
@@ -1749,15 +1693,11 @@ absl::StatusOr<PjRtLoadedExecutable::Result> PjRtCpuExecutable::ExecuteHelper(
           &task_runner,
           &collective_params,
           &custom_call_execute_params,
-<<<<<<< HEAD
-          xnn_params ? &*xnn_params : nullptr};
-=======
           xnn_params ? &*xnn_params : nullptr,
           ynn_params ? &*ynn_params : nullptr,
           run_options.run_id().ToInt(),
           run_options.device_ordinal(),
       };
->>>>>>> upstream/master
 
       thunks_execute_event = cpu_executable->thunks().Execute(execute_params);
 
@@ -1881,15 +1821,12 @@ absl::StatusOr<PjRtLoadedExecutable::Result> PjRtCpuExecutable::ExecuteHelper(
               xnn_params = cpu::Thunk::XnnParams::Create(&run_options);
             }
 
-<<<<<<< HEAD
-=======
             absl::StatusOr<std::optional<cpu::Thunk::YnnParams>> ynn_params(
                 std::nullopt);
             if (cpu_executable->has_ynn_fusions()) {
               ynn_params = cpu::Thunk::YnnParams::Create(&run_options);
             }
 
->>>>>>> upstream/master
             cpu::ThreadPoolTaskRunner task_runner(
                 run_options.intra_op_thread_pool()->getPool());
 
@@ -1902,15 +1839,11 @@ absl::StatusOr<PjRtLoadedExecutable::Result> PjRtCpuExecutable::ExecuteHelper(
                   &task_runner,
                   &*collective_params,
                   &*custom_call_params,
-<<<<<<< HEAD
-                  *xnn_params ? &**xnn_params : nullptr};
-=======
                   *xnn_params ? &**xnn_params : nullptr,
                   *ynn_params ? &**ynn_params : nullptr,
                   run_options.run_id().ToInt(),
                   run_options.device_ordinal(),
               };
->>>>>>> upstream/master
 
               auto thunks_execute_event =
                   cpu_executable->thunks().Execute(execute_params);

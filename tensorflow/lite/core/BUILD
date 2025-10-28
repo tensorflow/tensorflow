@@ -184,11 +184,6 @@ cc_library(
         # copybara:uncomment "//third_party/odml/litert/litert:__subpackages__",
         # "//third_party/odml/litert:__subpackages__",  # copybara:uncomment
         "//tensorflow/lite:__subpackages__",
-<<<<<<< HEAD
-        "//third_party/deepmind/lyria_live/internal/odml:__subpackages__",
-        "//third_party/odml/litert/litert:__subpackages__",
-=======
->>>>>>> upstream/master
     ] + core_cc_api_stable_visibility_allowlist(),
     deps = [
         ":model_builder",

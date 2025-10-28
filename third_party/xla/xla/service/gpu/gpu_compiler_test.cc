@@ -614,13 +614,6 @@ ENTRY main {
 
 class GpuCompilerTestWithAutotuneDb : public GpuCompilerTest {
  public:
-<<<<<<< HEAD
-  static void SetUpTestSuite() {
-    // std::string path =
-    //     tsl::io::JoinPath(tsl::testing::XlaSrcRoot(), "service", "gpu",
-    //                       "gpu_compiler_test_autotune_db.textproto");
-    // TF_EXPECT_OK(AutotunerUtil::LoadAutotuneResultsFromFile(path));
-=======
   void SetUp() override {
     std::string path =
         tsl::io::JoinPath(tsl::testing::XlaSrcRoot(), "service", "gpu",
@@ -651,7 +644,6 @@ class GpuCompilerTestWithAutotuneDb : public GpuCompilerTest {
     TF_EXPECT_OK(tsl::WriteStringToFile(env, tmp_filepath, contents));
     AutotunerUtil::ClearAutotuneResults();
     TF_EXPECT_OK(AutotunerUtil::LoadAutotuneResultsFromFile(tmp_filepath));
->>>>>>> upstream/master
   }
 
   static void TearDownTestSuite() { AutotunerUtil::ClearAutotuneResults(); }
@@ -659,21 +651,7 @@ class GpuCompilerTestWithAutotuneDb : public GpuCompilerTest {
 
 TEST_F(GpuCompilerTestWithAutotuneDb,
        GemmFusionIsNoOpWhenGemmFusionAutotunerFallsBackToCublas) {
-<<<<<<< HEAD
-  // if (std::holds_alternative<se::RocmComputeCapability>(GpuComputeComp())) {  
-  //  GTEST_SKIP() << "Folder structure differences prevents finding of gpu_compiler_test_autotune_db.textproto.";
-  // }
-  // TODO: weekly-sync 24-12-10
-  GTEST_SKIP() << "TODO(b/344573710): this test is flaky, disable it "
-               << " until flakiness is fixed.";
-  auto cc = backend()
-                .default_stream_executor()
-                ->GetDeviceDescription()
-                .cuda_compute_capability();
-  if (!cc.IsAtLeastAmpere()) {
-=======
   if (!get_cuda_cc().IsAtLeastAmpere()) {
->>>>>>> upstream/master
     GTEST_SKIP() << "Autotuning results have only been generated for Ampere "
                  << "and later GPUs";
   }
@@ -2097,15 +2075,7 @@ ENTRY main {
 }
 
 TEST_F(GpuCompilerTest, NoCudnnVectorizationOnHopperAndBeyond) {
-<<<<<<< HEAD
-  bool is_hopper_or_beyond = backend()
-                                 .default_stream_executor()
-                                 ->GetDeviceDescription()
-                                 .cuda_compute_capability()
-                                 .IsAtLeastHopper();
-=======
   bool is_hopper_or_beyond = get_cuda_cc().IsAtLeastHopper();
->>>>>>> upstream/master
 
   auto module = ParseAndReturnVerifiedModule(R"(
   HloModule TestModule
@@ -2134,8 +2104,6 @@ TEST_F(GpuCompilerTest, NoCudnnVectorizationOnHopperAndBeyond) {
               absl_testing::IsOkAndHolds(true));
 }
 
-<<<<<<< HEAD
-=======
 TEST_F(GpuCompilerTest, BitcastConvertSimplificationToBitcastIsValid) {
   const std::string kHloText = R"(
 m {
@@ -2285,7 +2253,6 @@ auto SelectKTestParams() {
 // Instantiate the test suite with (n, k, expected_kind) pairs.
 INSTANTIATE_TEST_SUITE_P(SelectKOrCustomKernel, GpuCompilerSelectKTest,
                          SelectKTestParams());
->>>>>>> upstream/master
 }  // namespace
 }  // namespace gpu
 }  // namespace xla

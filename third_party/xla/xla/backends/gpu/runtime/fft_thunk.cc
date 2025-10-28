@@ -43,11 +43,6 @@ limitations under the License.
 #include "xla/types.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-<<<<<<< HEAD
-#include "tsl/platform/logging.h"
-#include "tsl/platform/statusor.h"
-=======
->>>>>>> upstream/master
 
 namespace xla {
 namespace gpu {

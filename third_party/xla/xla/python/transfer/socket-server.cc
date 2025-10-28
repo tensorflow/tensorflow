@@ -85,118 +85,6 @@ class SocketServer::SocketNetworkState : public SocketFdPacketState {
                        [this]() { StartConnect(); });
   }
 
-<<<<<<< HEAD
-  bool HandleEvents(const pollfd& events) override {
-    tsl::profiler::TraceMe __trace("SocketServer::HandleEvents");
-    if (!is_connected_) {
-      // poll() may remind us that fd_ is invalid while waiting to reconnect.
-      if (fd_ == -1) {
-        return true;
-      }
-      // If HUP with an error happens, then schedule a reconnect.
-      if ((events.revents & POLLHUP) && (events.revents & POLLERR)) {
-        fd_ = -1;
-        loop()->ScheduleAt(absl::Now() + absl::Seconds(2),
-                           [this]() { StartConnect(); });
-        return true;
-      }
-      if (!(events.revents & POLLOUT)) {
-        return true;
-      }
-      is_connected_ = true;
-    }
-    if (events.revents & POLLIN) {
-      ssize_t recv_size =
-          recv(fd_, network_buffer_.get() + recv_count_, 4096 - recv_count_, 0);
-      if (recv_size == 0) {
-        {
-          absl::MutexLock l(&mu_);
-          is_poisoned_ = true;
-          peer_is_closed_ = true;
-          poison_status_ = absl::InternalError(
-              "SocketServer: Connection closed recv() == 0.");
-        }
-        ClearDestTable();
-      } else if (recv_size == -1 && errno == EAGAIN) {
-      } else {
-        if (recv_size < 0) {
-          Poison(absl::InternalError(
-              absl::StrFormat("%ld = recv() failed errno: %d err: %s",
-                              recv_size, errno, strerror(errno))));
-          return true;
-        }
-        recv_count_ += recv_size;
-        while (recv_count_ >= sizeof(uint32_t)) {
-          uint32_t frame_size;
-          memcpy(&frame_size, network_buffer_.get(), sizeof(uint32_t));
-          if (frame_size < 0 || frame_size > 4096 - sizeof(uint32_t)) {
-            Poison(absl::InternalError(
-                absl::StrFormat("frame_size is too large: %lu", frame_size)));
-            return true;
-          }
-          size_t total_frame_size =
-              static_cast<size_t>(frame_size) + sizeof(uint32_t);
-          // Needs more input.
-          if (total_frame_size > recv_count_) {
-            break;
-          }
-          absl::string_view buffer(network_buffer_.get() + sizeof(uint32_t),
-                                   frame_size);
-          SocketTransferRequest req;
-          if (!req.ParseFromArray(buffer.data(), buffer.size())) {
-            Poison(
-                absl::InternalError("Could not parse SocketTransferRequest."));
-            return true;
-          }
-          HandlePacket(req);
-          if (total_frame_size < recv_count_) {
-            memmove(network_buffer_.get(),
-                    network_buffer_.get() + total_frame_size,
-                    recv_count_ - total_frame_size);
-          }
-          recv_count_ -= total_frame_size;
-        }
-      }
-    }
-    if (events.revents & POLLOUT) {
-      can_send_ = true;
-    }
-    mu_.Lock();
-    while (!frames_.empty() && can_send_) {
-      auto& packet_to_send = frames_.front();
-      if (packet_to_send.empty()) {
-        shutdown(fd_, SHUT_WR);
-        break;
-      }
-      const void* base = packet_to_send.data() + write_offset_;
-      size_t size = packet_to_send.size() - write_offset_;
-      ssize_t send_size = send(fd_, base, size, 0);
-      if (send_size > 0) {
-        write_offset_ += send_size;
-        if (send_size == size) {
-          write_offset_ = 0;
-          frames_.pop_front();
-        } else {
-          can_send_ = false;
-        }
-      } else if (send_size < 0 && errno == EAGAIN) {
-        can_send_ = false;
-      } else {
-        mu_.Unlock();
-        Poison(absl::InternalError(
-            absl::StrFormat("%ld = send() failed errno: %d err: %s", send_size,
-                            errno, strerror(errno))));
-        return true;
-      }
-    }
-    if (peer_is_closed_ && num_refs_ == 0) {
-      mu_.Unlock();
-      delete this;
-      return false;
-    }
-    mu_.Unlock();
-    return true;
-=======
   void RecvClosed(absl::Status error) override {
     Shutdown(SHUT_RDWR);
     if (error.ok()) {
@@ -205,7 +93,6 @@ class SocketServer::SocketNetworkState : public SocketFdPacketState {
     }
     Poison(error);
     DropSysRef();
->>>>>>> upstream/master
   }
 
   void SendClosed(absl::Status error) override {

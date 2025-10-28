@@ -101,11 +101,7 @@ onednn_graph_cc_library(
     deps = ["//xla/tsl/mkl:onednn"],
 )
 
-<<<<<<< HEAD
-cc_library(
-=======
 onednn_graph_cc_library(
->>>>>>> upstream/master
     name = "onednn_support",
     srcs = ["onednn_support.cc"],
     hdrs = ["onednn_support.h"],
@@ -152,15 +148,9 @@ cc_library(
 )
 
 cc_library(
-<<<<<<< HEAD
-    name = "xnn_gemm_config",
-    srcs = ["xnn_gemm_config.cc"],
-    hdrs = ["xnn_gemm_config.h"],
-=======
     name = "ynn_emitter",
     srcs = ["ynn_emitter.cc"],
     hdrs = ["ynn_emitter.h"],
->>>>>>> upstream/master
     deps = [
         ":ynn_support",
         "//xla:literal",
@@ -186,22 +176,6 @@ cc_library(
     srcs = ["xnn_gemm_config.cc"],
     hdrs = ["xnn_gemm_config.h"],
     deps = [
-        "//xla:shape_util",
-        "//xla:xla_data_proto_cc",
-        "//xla/backends/cpu/codegen:target_machine_features",
-        "//xla/backends/cpu/runtime:dot_lib",
-        "@com_google_absl//absl/base:no_destructor",
-        "@com_google_absl//absl/log:check",
-        "@llvm-project//llvm:Target",
-    ],
-)
-
-cc_library(
-    name = "xnn_support",
-    srcs = ["xnn_support.cc"],
-    hdrs = ["xnn_support.h"],
-    deps = [
-        ":xnn_gemm_config",
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
         "//xla/backends/cpu/codegen:target_machine_features",

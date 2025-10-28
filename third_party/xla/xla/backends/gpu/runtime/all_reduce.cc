@@ -112,14 +112,6 @@ absl::Status LaunchTypedKernel(TagType, se::Stream* stream,
       CeilOfRatio(params.num_elements_per_rank,
                   absl::implicit_cast<int64_t>(launch_dimensions.num_blocks())),
       se::gpu::kNumElementsPerThread);
-<<<<<<< HEAD
-  absl::c_transform(
-      signal_flags_buffers, params.signal_flags_buffers.begin(),
-      [](se::DeviceMemoryBase buffer) {
-        return tsl::safe_reinterpret_cast<uint32_t*>(buffer.opaque());
-      });
-=======
->>>>>>> upstream/master
   params.rank_offset =
       kIsTwoShot ? params.rank * params.num_elements_per_rank : 0;
   for (int i = 0; i < params.num_ranks; ++i) {

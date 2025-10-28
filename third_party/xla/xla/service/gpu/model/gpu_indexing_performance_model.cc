@@ -46,12 +46,6 @@ limitations under the License.
 #include "xla/service/gpu/model/coalescing_analysis.h"
 #include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
 #include "xla/service/gpu/model/gpu_performance_model_base.h"
-<<<<<<< HEAD
-#include "xla/service/gpu/model/symbolic_tile_analysis.h"
-#include "xla/service/gpu/model/tiled_hlo_computation.h"
-#include "xla/service/gpu/model/tiled_hlo_instruction.h"
-=======
->>>>>>> upstream/master
 #include "xla/service/gpu/model/triton_emitter_constraints.h"
 #include "xla/service/instruction_fusion.h"
 #include "xla/shape.h"
@@ -146,13 +140,8 @@ bool DoesComputationFitInRegisters(
     const se::DeviceDescription& device_info) {
   // Check that output tiles fit in registers.
   for (const TiledHloInstruction* root : tiled_hlo_computation.GetRoots()) {
-<<<<<<< HEAD
-    if (!DoesTileFitsInRegisters(GetPaddedTileSize(root->tile_sizes()),
-                                 device_info)) {
-=======
     if (!DoesTileFitInRegisters(GetPaddedTileSize(root->tile_sizes()),
                                 device_info)) {
->>>>>>> upstream/master
       return false;
     }
   }
@@ -164,13 +153,8 @@ bool DoesComputationFitInRegisters(
     // Iota is not an operand, but usually needs to be materialized in
     // registers.
     if ((is_operand || tiled_hlo->hlo()->opcode() == HloOpcode::kIota) &&
-<<<<<<< HEAD
-        !DoesTileFitsInRegisters(GetPaddedTileSize(tiled_hlo->tile_sizes()),
-                                 device_info)) {
-=======
         !DoesTileFitInRegisters(GetPaddedTileSize(tiled_hlo->tile_sizes()),
                                 device_info)) {
->>>>>>> upstream/master
       return false;
     }
   }

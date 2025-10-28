@@ -712,12 +712,8 @@ absl::Status HostOffloader::CreateAllocateBufferForDynamicUpdateSlice(
   // and the DynamicUpdateSlice.
   std::queue<InstructionAndShapeIndex> queue;
   queue.push(InstructionAndShapeIndex(dynamic_update_slice));
-<<<<<<< HEAD
-  HloInstruction* previous_instruction = nullptr;
-=======
   std::optional<InstructionAndShapeIndex> previous_instruction_and_shape =
       std::nullopt;
->>>>>>> upstream/master
   bool found_broadcast = false;
   while (!queue.empty()) {
     InstructionAndShapeIndex instruction_and_shape = queue.front();
@@ -809,11 +805,7 @@ absl::Status HostOffloader::CreateAllocateBufferForDynamicUpdateSlice(
       // non-host memory space user, we need to restore it to its original
       // memory space and create a new AllocateBuffer on host just for the
       // instruction that we're walking up the graph from.
-<<<<<<< HEAD
-      CHECK_NE(previous_instruction, nullptr)
-=======
       CHECK(previous_instruction_and_shape.has_value())
->>>>>>> upstream/master
           << "We expect to have a previous instruction at this point.";
       TF_ASSIGN_OR_RETURN(
           std::vector<InstructionAndShapeIndex> successors,
@@ -831,13 +823,6 @@ absl::Status HostOffloader::CreateAllocateBufferForDynamicUpdateSlice(
                              instruction->mutable_shape(), shape_index),
                          previous_memory_space);
           std::vector<int64_t> operand_indices =
-<<<<<<< HEAD
-              previous_instruction->operand_indices(instruction);
-          if (operand_indices.size() > 1) {
-            return absl::UnimplementedError(
-                "We do not yet support adjusting AllocateBuffer when it "
-                "appears in multiple operand indices.");
-=======
               previous_instruction_and_shape->instruction->operand_indices(
                   instruction);
           if (operand_indices.size() > 1 &&
@@ -850,7 +835,6 @@ absl::Status HostOffloader::CreateAllocateBufferForDynamicUpdateSlice(
           int operand_index = 0;
           if (instruction->opcode() == HloOpcode::kTuple) {
             operand_index = previous_instruction_and_shape->shape_index.front();
->>>>>>> upstream/master
           }
           HloInstruction* new_allocate_buffer =
               instruction->parent()->AddInstruction(
@@ -858,24 +842,15 @@ absl::Status HostOffloader::CreateAllocateBufferForDynamicUpdateSlice(
                                                    "AllocateBuffer"));
           SetMemorySpace(new_allocate_buffer->mutable_shape(),
                          Layout::kHostMemorySpace);
-<<<<<<< HEAD
-          TF_RETURN_IF_ERROR(previous_instruction->ReplaceOperandWith(
-              operand_indices[0], new_allocate_buffer));
-=======
           TF_RETURN_IF_ERROR(
               previous_instruction_and_shape->instruction->ReplaceOperandWith(
                   operand_indices[operand_index], new_allocate_buffer));
->>>>>>> upstream/master
           break;
         }
       }
       return absl::OkStatus();
     }
-<<<<<<< HEAD
-    previous_instruction = instruction;
-=======
     previous_instruction_and_shape = instruction_and_shape;
->>>>>>> upstream/master
     const std::vector<InstructionAndShapeIndex> predecessors =
         host_offload_utils::GetPredecessors(instruction_and_shape);
     for (const InstructionAndShapeIndex& predecessor : predecessors) {

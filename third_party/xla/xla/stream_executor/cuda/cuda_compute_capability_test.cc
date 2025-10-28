@@ -120,54 +120,6 @@ TEST(CudaComputeCapabilityTest, ToProto) {
   EXPECT_EQ(proto2.minor(), 5);
   EXPECT_EQ(proto2.feature_extension(),
             CudaComputeCapabilityProto::FORWARD_COMPATIBLE_FEATURES);
-<<<<<<< HEAD
-}
-
-TEST(CudaComputeCapabilityTest, FromProtoWithFeatureExtensionUnspecified) {
-  using FeatureExtension = CudaComputeCapability::FeatureExtension;
-
-  // An unspecified feature extension field should be interpreted as NONE - no
-  // feature extension enabled.
-  CudaComputeCapabilityProto proto;
-  proto.set_major(100);
-  proto.set_minor(5);
-  TF_ASSERT_OK_AND_ASSIGN(auto cc, CudaComputeCapability::FromProto(proto));
-  EXPECT_EQ(cc.major, 100);
-  EXPECT_EQ(cc.minor, 5);
-  EXPECT_EQ(cc.feature_extension, FeatureExtension::kNone);
-
-  // On Hopper we expect accelerated features to be the default as this is how
-  // XLA treated Hopper GPUs before we could handle feature extensions
-  // explicitly.
-  proto.set_major(9);
-  proto.set_minor(5);
-  TF_ASSERT_OK_AND_ASSIGN(cc, CudaComputeCapability::FromProto(proto));
-  EXPECT_EQ(cc.major, 9);
-  EXPECT_EQ(cc.minor, 5);
-  EXPECT_EQ(cc.feature_extension, FeatureExtension::kAcceleratedFeatures);
-
-  // On Blackwell we expect accelerated features to be the default as this is
-  // how XLA treated Blackwell GPUs before we could handle feature extensions
-  // explicitly.
-  proto.set_major(10);
-  proto.set_minor(2);
-  TF_ASSERT_OK_AND_ASSIGN(cc, CudaComputeCapability::FromProto(proto));
-  EXPECT_EQ(cc.major, 10);
-  EXPECT_EQ(cc.minor, 2);
-  EXPECT_EQ(cc.feature_extension, FeatureExtension::kAcceleratedFeatures);
-}
-
-TEST(CudaComputeCapabilityTest, FromProtoWithFeatureExtensionSpecified) {
-  using FeatureExtension = CudaComputeCapability::FeatureExtension;
-
-  CudaComputeCapabilityProto proto;
-  proto.set_major(100);
-  proto.set_minor(5);
-  proto.set_feature_extension(CudaComputeCapabilityProto::ACCELERATED_FEATURES);
-  TF_ASSERT_OK_AND_ASSIGN(auto cc, CudaComputeCapability::FromProto(proto));
-  EXPECT_EQ(cc.major, 100);
-  EXPECT_EQ(cc.minor, 5);
-=======
 }
 
 TEST(CudaComputeCapabilityTest, FromProtoWithFeatureExtensionUnspecified) {
@@ -266,7 +218,6 @@ TEST(CudaComputeCapabilityTest, FromProtoWithFeatureExtensionSpecified) {
   TF_ASSERT_OK_AND_ASSIGN(auto cc, CudaComputeCapability::FromProto(proto));
   EXPECT_EQ(cc.major, 100);
   EXPECT_EQ(cc.minor, 5);
->>>>>>> upstream/master
   EXPECT_EQ(cc.feature_extension, FeatureExtension::kAcceleratedFeatures);
 }
 
@@ -346,7 +297,6 @@ TEST(CudaComputeCapabilityTest, ComparisonTest) {
       newer_but_same_generation_compatible));
   EXPECT_FALSE(base_but_accelerated.CanRunOn(next_generation));
   EXPECT_FALSE(base_but_accelerated.SupportsAllFeaturesOf(next_generation));
-<<<<<<< HEAD
 
   EXPECT_TRUE(base_but_forward_compatible.CanRunOn(base));
   EXPECT_TRUE(base_but_forward_compatible.SupportsAllFeaturesOf(base));
@@ -366,27 +316,6 @@ TEST(CudaComputeCapabilityTest, ComparisonTest) {
       base_but_forward_compatible.SupportsAllFeaturesOf(next_generation));
 }
 
-=======
-
-  EXPECT_TRUE(base_but_forward_compatible.CanRunOn(base));
-  EXPECT_TRUE(base_but_forward_compatible.SupportsAllFeaturesOf(base));
-  EXPECT_TRUE(base_but_forward_compatible.CanRunOn(newer_but_same_generation));
-  EXPECT_FALSE(base_but_forward_compatible.SupportsAllFeaturesOf(
-      newer_but_same_generation));
-  EXPECT_TRUE(base_but_forward_compatible.CanRunOn(
-      newer_but_same_generation_accelerated));
-  EXPECT_FALSE(base_but_forward_compatible.SupportsAllFeaturesOf(
-      newer_but_same_generation_accelerated));
-  EXPECT_TRUE(base_but_forward_compatible.CanRunOn(
-      newer_but_same_generation_compatible));
-  EXPECT_FALSE(base_but_forward_compatible.SupportsAllFeaturesOf(
-      newer_but_same_generation_compatible));
-  EXPECT_FALSE(base_but_forward_compatible.CanRunOn(next_generation));
-  EXPECT_FALSE(
-      base_but_forward_compatible.SupportsAllFeaturesOf(next_generation));
-}
-
->>>>>>> upstream/master
 TEST(CudaComputeCapabilityTest, GetPtxAsTargetName) {
   EXPECT_EQ(CudaComputeCapability::Ampere().GetPtxAsTargetName(
                 CudaComputeCapability::CompileMode::kPtx),
@@ -397,21 +326,6 @@ TEST(CudaComputeCapabilityTest, GetPtxAsTargetName) {
   EXPECT_EQ(CudaComputeCapability::Ampere().GetPtxAsTargetName(
                 CudaComputeCapability::CompileMode::kSass),
             "sm_80");
-<<<<<<< HEAD
-
-  EXPECT_EQ(CudaComputeCapability::Hopper().GetPtxAsTargetName(), "sm_90");
-  EXPECT_EQ(
-      CudaComputeCapability(
-          9, 0, CudaComputeCapability::FeatureExtension::kAcceleratedFeatures)
-          .GetPtxAsTargetName(),
-      "sm_90a");
-  EXPECT_EQ(
-      CudaComputeCapability(
-          10, 0,
-          CudaComputeCapability::FeatureExtension::kForwardCompatibleFeatures)
-          .GetPtxAsTargetName(),
-      "sm_100f");
-=======
 
   EXPECT_EQ(CudaComputeCapability::Hopper().GetPtxAsTargetName(), "sm_90");
   EXPECT_EQ(
@@ -443,7 +357,6 @@ TEST(CudaComputeCapabilityTest, WithoutAnyFeatureExtension) {
           CudaComputeCapability::FeatureExtension::kForwardCompatibleFeatures)
           .WithoutAnyFeatureExtension(),
       CudaComputeCapability(100, 52));
->>>>>>> upstream/master
 }
 
 }  // namespace

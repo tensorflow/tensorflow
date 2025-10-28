@@ -1279,8 +1279,6 @@ ENTRY e {
   EXPECT_FALSE(GemmFusion(gpu_version_).Run(module.get()).value());
 }
 
-<<<<<<< HEAD
-=======
 TEST_F(GemmFusionTest, FusionShouldNotDuplicatePowerOp) {
   // Elementwise operations with broadcast operands are usually fused, however
   // with multiple users it can result in executing the op twice.
@@ -1307,7 +1305,6 @@ ENTRY e {
 )");
 }
 
->>>>>>> upstream/master
 TEST_F(GemmFusionTest, RaggedDotBecomesFusion) {
   auto module = ParseAndReturnVerifiedModule(R"(
 HloModule m

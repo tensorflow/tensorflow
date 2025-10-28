@@ -462,17 +462,11 @@ absl::StatusOr<TmaMetadata> TmaMetadata::FromProto(
 
 bool IsTmaAvailableForDevice(
     const stream_executor::DeviceDescription& device_info) {
-<<<<<<< HEAD
-  bool is_cuda = std::holds_alternative<stream_executor::CudaComputeCapability>(
-      device_info.gpu_compute_capability());
-  return is_cuda && device_info.cuda_compute_capability().IsAtLeastHopper();
-=======
   if (auto* cuda_cc = std::get_if<stream_executor::CudaComputeCapability>(
           &device_info.gpu_compute_capability())) {
     return cuda_cc->IsAtLeastHopper();
   }
   return false;
->>>>>>> upstream/master
 }
 
 // Limitations of TMA:

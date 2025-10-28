@@ -62,10 +62,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/pjrt/proto/compile_options.pb.h"
 #include "xla/pjrt/proto/topology_description.pb.h"
-<<<<<<< HEAD
-=======
 #include "xla/pjrt/raw_buffer.h"
->>>>>>> upstream/master
 #include "xla/service/computation_placer.h"
 #include "xla/service/global_device_id.h"
 #include "xla/service/hlo.pb.h"
@@ -2573,8 +2570,6 @@ PJRT_Error* PJRT_TopologyDescription_Deserialize(
   return nullptr;
 }
 
-<<<<<<< HEAD
-=======
 PJRT_Error* PJRT_LoadedExecutable_GetDeviceAssignment(
     PJRT_LoadedExecutable_GetDeviceAssignment_Args* args) {
   PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
@@ -2628,7 +2623,6 @@ PJRT_Error* PJRT_LoadedExecutable_GetDeviceAssignment(
 
 // ---------------------------------- Layouts ----------------------------------
 
->>>>>>> upstream/master
 PJRT_Error* PJRT_Layouts_MemoryLayout_Destroy(
     PJRT_Layouts_MemoryLayout_Destroy_Args* args) {
   PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
@@ -3086,15 +3080,12 @@ PJRT_Api CreatePjrtApi(PJRT_Client_Create* create_fn,
       pjrt::PJRT_Client_UpdateGlobalProcessInfo,
       /*PJRT_TopologyDescription_Deserialize=*/
       pjrt::PJRT_TopologyDescription_Deserialize,
-<<<<<<< HEAD
-=======
       /*PJRT_Client_CreateAliasBuffer=*/
       pjrt::PJRT_Client_CreateAliasBuffer,
       /*PJRT_Client_FulfillAliasBuffer=*/
       pjrt::PJRT_Client_FulfillAliasBuffer,
       /*PJRT_LoadedExecutable_GetDeviceAssignment=*/
       pjrt::PJRT_LoadedExecutable_GetDeviceAssignment,
->>>>>>> upstream/master
   };
 }
 

@@ -424,9 +424,6 @@ cuda_library(
     ],
 )
 
-<<<<<<< HEAD
-cuda_only_cc_library(
-=======
 cuda_library(
     name = "buffer_debug_xor_checksum_kernel_cuda",
     srcs = ["buffer_debug_xor_checksum_kernel_cuda.cu.cc"],
@@ -484,7 +481,6 @@ xla_test(
 )
 
 cc_library(
->>>>>>> upstream/master
     name = "cudnn_plugin",
     srcs = ["cuda_dnn.cc"],
     hdrs = ["cuda_dnn.h"],
@@ -621,10 +617,6 @@ xla_cc_test(
         "//xla/hlo/parser:hlo_parser",
         "//xla/tsl/cuda:cudart",  # build_cleaner: keep
         "//xla/tsl/cuda:cudnn",  # build_cleaner: keep
-<<<<<<< HEAD
-        "@com_google_absl//absl/status",
-=======
->>>>>>> upstream/master
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
         "@cudnn_frontend_archive//:cudnn_frontend",

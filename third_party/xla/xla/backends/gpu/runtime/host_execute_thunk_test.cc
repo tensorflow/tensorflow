@@ -19,17 +19,6 @@ limitations under the License.
 #include <cstring>
 #include <memory>
 #include <utility>
-<<<<<<< HEAD
-
-#include <gmock/gmock.h>
-#include <gtest/gtest.h>
-#include "absl/status/status.h"
-#include "absl/strings/ascii.h"
-#include "xla/backends/cpu/alignment.h"
-#include "xla/backends/gpu/runtime/thunk.h"
-#include "xla/core/host_offloading/host_offloading_executable.h"
-#include "xla/executable_run_options.h"
-=======
 #include <vector>
 
 #include <gmock/gmock.h>
@@ -45,16 +34,12 @@ limitations under the License.
 #include "xla/core/host_offloading/host_offloading_executable.h"
 #include "xla/executable_run_options.h"
 #include "xla/hlo/builder/xla_computation.h"
->>>>>>> upstream/master
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/service/buffer_assignment.h"
-<<<<<<< HEAD
-=======
 #include "xla/service/compiler.h"
 #include "xla/service/cpu/cpu_aot_compilation_result.h"
->>>>>>> upstream/master
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/platform_util.h"
 #include "xla/service/service_executable_run_options.h"
@@ -68,13 +53,9 @@ limitations under the License.
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
-<<<<<<< HEAD
-#include "xla/util.h"
-=======
 #include "xla/tsl/util/proto/proto_matchers.h"
 #include "xla/util.h"
 #include "tsl/platform/casts.h"
->>>>>>> upstream/master
 
 namespace xla {
 namespace gpu {
@@ -87,8 +68,6 @@ se::StreamExecutor* GpuExecutor() {
   return platform->ExecutorForDevice(0).value();
 }
 
-<<<<<<< HEAD
-=======
 absl::StatusOr<std::unique_ptr<HostExecuteStartThunk>>
 CreateHostExecuteStartThunk(
     Thunk::ThunkInfo thunk_info, const HloModule& hlo_module,
@@ -121,7 +100,6 @@ CreateHostExecuteStartThunk(
       std::move(args), std::move(results));
 }
 
->>>>>>> upstream/master
 TEST(HostExecuteStartThunkTest, SingleArgSingleResult) {
   se::StreamExecutor* stream_executor = GpuExecutor();
   TF_ASSERT_OK_AND_ASSIGN(auto stream, stream_executor->CreateStream());
@@ -150,17 +128,11 @@ TEST(HostExecuteStartThunkTest, SingleArgSingleResult) {
   BufferAllocation::Slice slice_arg(&alloc_arg, 0, 4);
   BufferAllocation::Slice slice_result(&alloc_result, 0, 4);
 
-<<<<<<< HEAD
-  HostExecuteStartThunk thunk(Thunk::ThunkInfo(), *hlo_module,
-                              {{slice_arg, ShapeUtil::MakeShape(S32, {})}},
-                              {{slice_result, ShapeUtil::MakeShape(S32, {})}});
-=======
   TF_ASSERT_OK_AND_ASSIGN(auto thunk,
                           CreateHostExecuteStartThunk(
                               Thunk::ThunkInfo(), *hlo_module,
                               {{slice_arg, ShapeUtil::MakeShape(S32, {})}},
                               {{slice_result, ShapeUtil::MakeShape(S32, {})}}));
->>>>>>> upstream/master
 
   se::StreamExecutorMemoryAllocator allocator(stream_executor);
   ExecutableRunOptions executable_run_options;
@@ -176,19 +148,11 @@ TEST(HostExecuteStartThunkTest, SingleArgSingleResult) {
       nullptr, nullptr);
 
   TF_ASSERT_OK(
-<<<<<<< HEAD
-      thunk.Initialize(Thunk::InitializeParams{/*executor=*/stream_executor}));
-  TF_ASSERT_OK(thunk.ExecuteOnStream(params));
-
-  TF_ASSERT_OK_AND_ASSIGN(auto execute_event,
-                          thunk.async_events()->ExtractEvent(
-=======
       thunk->Initialize(Thunk::InitializeParams{/*executor=*/stream_executor}));
   TF_ASSERT_OK(thunk->ExecuteOnStream(params));
 
   TF_ASSERT_OK_AND_ASSIGN(auto execute_event,
                           thunk->async_events()->ExtractEvent(
->>>>>>> upstream/master
                               stream_executor, RunId(params.execution_id)));
 
   tsl::BlockUntilReady(execute_event);
@@ -242,13 +206,6 @@ TEST(HostExecuteStartThunkTest, MultiArgMultipleResult) {
   BufferAllocation::Slice slice_arg1(&alloc_arg1, 0, 4);
   BufferAllocation::Slice slice_result1(&alloc_result1, 0, 4);
 
-<<<<<<< HEAD
-  HostExecuteStartThunk thunk(Thunk::ThunkInfo(), *hlo_module,
-                              {{slice_arg0, ShapeUtil::MakeShape(S32, {})},
-                               {slice_arg1, ShapeUtil::MakeShape(S32, {})}},
-                              {{slice_result0, ShapeUtil::MakeShape(S32, {})},
-                               {slice_result1, ShapeUtil::MakeShape(S32, {})}});
-=======
   TF_ASSERT_OK_AND_ASSIGN(
       auto thunk, CreateHostExecuteStartThunk(
                       Thunk::ThunkInfo(), *hlo_module,
@@ -256,7 +213,6 @@ TEST(HostExecuteStartThunkTest, MultiArgMultipleResult) {
                        {slice_arg1, ShapeUtil::MakeShape(S32, {})}},
                       {{slice_result0, ShapeUtil::MakeShape(S32, {})},
                        {slice_result1, ShapeUtil::MakeShape(S32, {})}}));
->>>>>>> upstream/master
 
   se::StreamExecutorMemoryAllocator allocator(stream_executor);
   ExecutableRunOptions executable_run_options;
@@ -271,19 +227,11 @@ TEST(HostExecuteStartThunkTest, MultiArgMultipleResult) {
       nullptr, nullptr);
 
   TF_ASSERT_OK(
-<<<<<<< HEAD
-      thunk.Initialize(Thunk::InitializeParams{/*executor=*/stream_executor}));
-  TF_ASSERT_OK(thunk.ExecuteOnStream(params));
-
-  TF_ASSERT_OK_AND_ASSIGN(auto execute_event,
-                          thunk.async_events()->ExtractEvent(
-=======
       thunk->Initialize(Thunk::InitializeParams{/*executor=*/stream_executor}));
   TF_ASSERT_OK(thunk->ExecuteOnStream(params));
 
   TF_ASSERT_OK_AND_ASSIGN(auto execute_event,
                           thunk->async_events()->ExtractEvent(
->>>>>>> upstream/master
                               stream_executor, RunId(params.execution_id)));
 
   tsl::BlockUntilReady(execute_event);
@@ -342,17 +290,11 @@ TEST(HostExecuteStartThunkTest, ArgAndResultPinnedOnHost) {
   BufferAllocation::Slice slice_arg(&alloc_arg, 0, 4);
   BufferAllocation::Slice slice_result(&alloc_result, 0, 4);
 
-<<<<<<< HEAD
-  HostExecuteStartThunk thunk(Thunk::ThunkInfo(), *hlo_module,
-                              {{slice_arg, ShapeUtil::MakeShape(S32, {})}},
-                              {{slice_result, ShapeUtil::MakeShape(S32, {})}});
-=======
   TF_ASSERT_OK_AND_ASSIGN(auto thunk,
                           CreateHostExecuteStartThunk(
                               Thunk::ThunkInfo(), *hlo_module,
                               {{slice_arg, ShapeUtil::MakeShape(S32, {})}},
                               {{slice_result, ShapeUtil::MakeShape(S32, {})}}));
->>>>>>> upstream/master
 
   se::StreamExecutorMemoryAllocator allocator(stream_executor);
   ExecutableRunOptions executable_run_options;
@@ -367,13 +309,6 @@ TEST(HostExecuteStartThunkTest, ArgAndResultPinnedOnHost) {
       nullptr, nullptr);
 
   TF_ASSERT_OK(
-<<<<<<< HEAD
-      thunk.Initialize(Thunk::InitializeParams{/*executor=*/stream_executor}));
-  TF_ASSERT_OK(thunk.ExecuteOnStream(params));
-
-  TF_ASSERT_OK_AND_ASSIGN(auto execute_event,
-                          thunk.async_events()->ExtractEvent(
-=======
       thunk->Initialize(Thunk::InitializeParams{/*executor=*/stream_executor}));
   TF_ASSERT_OK(thunk->ExecuteOnStream(params));
 
@@ -454,7 +389,6 @@ TEST(HostExecuteStartThunkTest, ArgAndResultInSharedMemory) {
 
   TF_ASSERT_OK_AND_ASSIGN(auto execute_event,
                           thunk->async_events()->ExtractEvent(
->>>>>>> upstream/master
                               stream_executor, RunId(params.execution_id)));
   tsl::BlockUntilReady(execute_event);
   EXPECT_FALSE(execute_event.IsError());
@@ -492,17 +426,11 @@ TEST(HostExecuteStartThunkTest, ArgAndResultNonRegisteredHostMemory) {
   BufferAllocation::Slice slice_arg(&alloc_arg, 0, 4);
   BufferAllocation::Slice slice_result(&alloc_result, 0, 4);
 
-<<<<<<< HEAD
-  HostExecuteStartThunk thunk(Thunk::ThunkInfo(), *hlo_module,
-                              {{slice_arg, ShapeUtil::MakeShape(S32, {})}},
-                              {{slice_result, ShapeUtil::MakeShape(S32, {})}});
-=======
   TF_ASSERT_OK_AND_ASSIGN(auto thunk,
                           CreateHostExecuteStartThunk(
                               Thunk::ThunkInfo(), *hlo_module,
                               {{slice_arg, ShapeUtil::MakeShape(S32, {})}},
                               {{slice_result, ShapeUtil::MakeShape(S32, {})}}));
->>>>>>> upstream/master
 
   se::StreamExecutorMemoryAllocator allocator(stream_executor);
   ExecutableRunOptions executable_run_options;
@@ -517,19 +445,11 @@ TEST(HostExecuteStartThunkTest, ArgAndResultNonRegisteredHostMemory) {
       nullptr, nullptr);
 
   TF_ASSERT_OK(
-<<<<<<< HEAD
-      thunk.Initialize(Thunk::InitializeParams{/*executor=*/stream_executor}));
-  TF_ASSERT_OK(thunk.ExecuteOnStream(params));
-
-  TF_ASSERT_OK_AND_ASSIGN(auto execute_event,
-                          thunk.async_events()->ExtractEvent(
-=======
       thunk->Initialize(Thunk::InitializeParams{/*executor=*/stream_executor}));
   TF_ASSERT_OK(thunk->ExecuteOnStream(params));
 
   TF_ASSERT_OK_AND_ASSIGN(auto execute_event,
                           thunk->async_events()->ExtractEvent(
->>>>>>> upstream/master
                               stream_executor, RunId(params.execution_id)));
   tsl::BlockUntilReady(execute_event);
   EXPECT_FALSE(execute_event.IsError());
@@ -575,17 +495,11 @@ TEST(HostExecuteStartThunkTest, TestErrorPropagationFromExecuteEvent) {
   BufferAllocation::Slice slice_arg(&alloc_arg, 0, 4);
   BufferAllocation::Slice slice_result(&alloc_result, 0, 4);
 
-<<<<<<< HEAD
-  HostExecuteStartThunk thunk(Thunk::ThunkInfo(), *hlo_module,
-                              {{slice_arg, ShapeUtil::MakeShape(S32, {})}},
-                              {{slice_result, ShapeUtil::MakeShape(S32, {})}});
-=======
   TF_ASSERT_OK_AND_ASSIGN(auto thunk,
                           CreateHostExecuteStartThunk(
                               Thunk::ThunkInfo(), *hlo_module,
                               {{slice_arg, ShapeUtil::MakeShape(S32, {})}},
                               {{slice_result, ShapeUtil::MakeShape(S32, {})}}));
->>>>>>> upstream/master
 
   se::StreamExecutorMemoryAllocator allocator(stream_executor);
   ExecutableRunOptions executable_run_options;
@@ -600,19 +514,11 @@ TEST(HostExecuteStartThunkTest, TestErrorPropagationFromExecuteEvent) {
       nullptr, nullptr);
 
   TF_ASSERT_OK(
-<<<<<<< HEAD
-      thunk.Initialize(Thunk::InitializeParams{/*executor=*/stream_executor}));
-  TF_ASSERT_OK(thunk.ExecuteOnStream(params));
-
-  TF_ASSERT_OK_AND_ASSIGN(auto execute_event,
-                          thunk.async_events()->ExtractEvent(
-=======
       thunk->Initialize(Thunk::InitializeParams{/*executor=*/stream_executor}));
   TF_ASSERT_OK(thunk->ExecuteOnStream(params));
 
   TF_ASSERT_OK_AND_ASSIGN(auto execute_event,
                           thunk->async_events()->ExtractEvent(
->>>>>>> upstream/master
                               stream_executor, RunId(params.execution_id)));
   tsl::BlockUntilReady(execute_event);
   EXPECT_TRUE(execute_event.IsError());
@@ -680,8 +586,6 @@ TEST(HostExecuteDoneThunkTest, WaitingOnErrorEvent) {
               absl_testing::StatusIs(absl::StatusCode::kInternal));
 }
 
-<<<<<<< HEAD
-=======
 TEST(HostExecuteStartThunkTest, ProtoRoundTrip) {
   static constexpr char const* kHloModule = R"(
     HloModule module
@@ -799,7 +703,6 @@ TEST(HostExecuteThunkTest, ProtoRoundTripPairing) {
             done_thunk->GetAsyncEventsUniqueId());
 }
 
->>>>>>> upstream/master
 }  // namespace
 
 }  // namespace gpu

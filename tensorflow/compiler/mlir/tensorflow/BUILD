@@ -962,16 +962,11 @@ cc_library(
     hdrs = ["utils/deserialize_mlir_module_utils.h"],
     deps = [
         ":error_util",
-<<<<<<< HEAD
-        "//tensorflow/core/platform:status",
-        "@com_google_absl//absl/status",
-=======
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_headers_for_pybind",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
->>>>>>> upstream/master
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
@@ -1009,32 +1004,6 @@ tf_cc_test(
     srcs = ["utils/serialize_mlir_module_utils_test.cc"],
     deps = [
         ":deserialize_mlir_module_utils",
-        ":serialize_mlir_module_utils",
-        "//tensorflow/compiler/jit:flags",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "@com_google_absl//absl/strings",
-        "@com_google_googletest//:gtest_main",
-        "@llvm-project//mlir:IR",
-    ],
-)
-
-cc_library(
-    name = "serialize_mlir_module_utils",
-    srcs = ["utils/serialize_mlir_module_utils.cc"],
-    hdrs = ["utils/serialize_mlir_module_utils.h"],
-    deps = [
-        "//tensorflow/compiler/jit:flags",
-        "//tensorflow/compiler/jit:flags_headers",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:IR",
-    ],
-)
-
-tf_cc_test(
-    name = "serialize_mlir_module_utils_test",
-    srcs = ["utils/serialize_mlir_module_utils_test.cc"],
-    deps = [
         ":serialize_mlir_module_utils",
         "//tensorflow/compiler/jit:flags",
         "//tensorflow/core:test",

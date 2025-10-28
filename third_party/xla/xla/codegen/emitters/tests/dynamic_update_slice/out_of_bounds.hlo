@@ -1,15 +1,9 @@
-<<<<<<< HEAD:third_party/xla/xla/backends/gpu/codegen/emitters/tests/dynamic_update_slice/out_of_bounds.hlo
-// RUN: fusion_to_mlir %s | emitters_opt -xla-test-optimize |\
-// RUN:   FileCheck %s
-// RUN: gpu_test_correctness %s
-=======
 // RUN: gpu_fusion_to_mlir %s | emitters_opt -xla-test-optimize |\
 // RUN:   FileCheck %s --check-prefixes=CHECK,CHECK-GPU
 // RUN: cpu_fusion_to_mlir %s | emitters_opt -xla-test-optimize |\
 // RUN:   FileCheck %s
 // RUN: gpu_test_correctness %s
 // RUN: cpu_test_correctness %s
->>>>>>> upstream/master:third_party/xla/xla/codegen/emitters/tests/dynamic_update_slice/out_of_bounds.hlo
 
 fusion {
   in = f32[7,8] parameter(0)

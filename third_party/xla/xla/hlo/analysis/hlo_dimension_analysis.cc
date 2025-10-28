@@ -297,11 +297,8 @@ absl::Status HloWeightPropagation::HandleOptimizationBarrier(
   return absl::OkStatus();
 }
 
-<<<<<<< HEAD
-=======
 absl::Status HloWeightPropagation::HandleAllGather(HloInstruction* all_gather) {
   return HandleSimpleOp(all_gather);
 }
 
->>>>>>> upstream/master
 }  // namespace xla

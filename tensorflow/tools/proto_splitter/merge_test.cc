@@ -290,42 +290,26 @@ TEST(MergeTest, TestReadChunkedFromString) {
 }
 
 TEST(MergeTest, TestProcessFieldReturnsErrorOnInvalidFieldNumber) {
-<<<<<<< HEAD
-
-=======
->>>>>>> upstream/master
   ::tensorflow::proto_splitter::ChunkedMessage chunked_message;
 
   auto* chunk_field = chunked_message.add_chunked_fields();
 
   auto* tag = chunk_field->add_field_tag();
-<<<<<<< HEAD
-  tag->set_field(99999);  
-=======
   tag->set_field(99999);
->>>>>>> upstream/master
 
   chunk_field->mutable_message()->set_chunk_index(0);
 
   std::vector<std::unique_ptr<tsl::protobuf::Message>> chunks;
-<<<<<<< HEAD
-  chunks.push_back(std::make_unique<::tensorflow::proto_splitter_testdata::ManyFields>());
-=======
   chunks.push_back(
       std::make_unique<::tensorflow::proto_splitter_testdata::ManyFields>());
->>>>>>> upstream/master
 
   ::tensorflow::proto_splitter_testdata::ManyFields merged;
   absl::Status status = Merger::Merge(chunks, chunked_message, &merged);
 
   EXPECT_FALSE(status.ok());
   EXPECT_EQ(status.code(), absl::StatusCode::kFailedPrecondition);
-<<<<<<< HEAD
-  EXPECT_THAT(std::string(status.message()), ::testing::HasSubstr("not found in message descriptor"));
-=======
   EXPECT_THAT(std::string(status.message()),
               ::testing::HasSubstr("not found in message descriptor"));
->>>>>>> upstream/master
 }
 
 }  // namespace

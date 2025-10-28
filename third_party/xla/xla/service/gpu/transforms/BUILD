@@ -92,16 +92,9 @@ xla_cc_test(
         "//xla/service:pattern_matcher",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor/cuda:cuda_compute_capability",
-<<<<<<< HEAD
-        "//xla/tests:xla_internal_test_main",
-        "//xla/tsl/platform:statusor",
-        "@com_google_absl//absl/strings:string_view",
-        "@com_google_googletest//:gtest",
-=======
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
->>>>>>> upstream/master
     ],
 )
 
@@ -188,10 +181,6 @@ xla_cc_test(
         "//xla/hlo/utils:hlo_query",
         "//xla/tests:hlo_test_base",
         "//xla/tests:literal_test_util",
-<<<<<<< HEAD
-        "//xla/tsl/platform:status_matchers",
-=======
->>>>>>> upstream/master
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_googletest//:gtest_main",
@@ -204,10 +193,7 @@ cc_library(
     hdrs = ["fusion_block_level_rewriter.h"],
     deps = [
         "//xla:shape_util",
-<<<<<<< HEAD
-=======
         "//xla:xla_data_proto_cc",
->>>>>>> upstream/master
         "//xla:xla_proto_cc",
         "//xla/backends/gpu/codegen/triton:support",
         "//xla/hlo/ir:hlo",
@@ -231,10 +217,6 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
-<<<<<<< HEAD
-        "@llvm-project//mlir:IR",
-=======
->>>>>>> upstream/master
     ],
 )
 
@@ -255,10 +237,6 @@ xla_cc_test(
         "//xla/service/gpu/model/experimental:symbolic_expr",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor/cuda:cuda_compute_capability",
-<<<<<<< HEAD
-        "//xla/tests:xla_internal_test_main",  # fixdeps: keep
-=======
->>>>>>> upstream/master
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status:status_matchers",
@@ -390,13 +368,9 @@ cc_library(
         "//xla/ffi:ffi_api",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
-<<<<<<< HEAD
-        "//xla/hlo/utils:hlo_longest_prefix",
-=======
         "//xla/hlo/transforms/simplifiers:computation_canonicalizers",
         "//xla/hlo/utils:hlo_longest_prefix",
         "//xla/hlo/utils:hlo_traversal",
->>>>>>> upstream/master
         "//xla/service/gpu:backend_configs_cc",
         "//xla/service/gpu:cublas_cudnn",
         "//xla/service/gpu:hlo_fusion_analysis",
@@ -543,10 +517,6 @@ xla_cc_test(
         "//xla/stream_executor:device_description",
         "//xla/stream_executor/cuda:cuda_compute_capability",
         "//xla/tests:hlo_test_base",
-<<<<<<< HEAD
-        "//xla/tests:xla_internal_test_main",  # fixdeps: keep
-=======
->>>>>>> upstream/master
         "//xla/tsl/platform:statusor",
         "//xla/tsl/util/proto:proto_matchers",
         "@com_google_absl//absl/log:check",
@@ -555,10 +525,7 @@ xla_cc_test(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings:string_view",
-<<<<<<< HEAD
-=======
         "@com_google_googletest//:gtest_main",
->>>>>>> upstream/master
     ],
 )
 
@@ -808,9 +775,6 @@ cc_library(
         "//xla/stream_executor/cuda:cudnn_plugin",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:statusor",
-<<<<<<< HEAD
-    ]) + ["//xla/service:matmul_indexing_utils"],
-=======
     ]) + [
         "//xla/service:matmul_indexing_utils",
         "//xla/stream_executor:numeric_options",
@@ -819,7 +783,6 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@cudnn_frontend_archive//:cudnn_frontend",
     ],
->>>>>>> upstream/master
 )
 
 cc_library(
@@ -1134,10 +1097,7 @@ xla_cc_test(
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/hlo/testlib:pattern_matcher_gmock",
         "//xla/service:pattern_matcher",
-<<<<<<< HEAD
-=======
         "//xla/tsl/platform:statusor",
->>>>>>> upstream/master
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_googletest//:gtest_main",
     ],
@@ -1196,17 +1156,10 @@ cc_library(
     srcs = ["dot_strength_reduction.cc"],
     hdrs = ["dot_strength_reduction.h"],
     deps = [
-<<<<<<< HEAD
-        ":dot_algorithm_rewriter",
-        "//xla:literal",
-        "//xla:literal_util",
-        "//xla:shape_util",
-=======
         "//xla:literal",
         "//xla:literal_util",
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
->>>>>>> upstream/master
         "//xla/backends/gpu/codegen/triton:support",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/transforms/expanders:op_expander_pass",
@@ -1227,10 +1180,6 @@ xla_cc_test(
     srcs = ["dot_strength_reduction_test.cc"],
     deps = [
         ":dot_strength_reduction",
-<<<<<<< HEAD
-        "//xla/hlo/ir:hlo",
-=======
->>>>>>> upstream/master
         "//xla/hlo/testlib:filecheck",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/hlo/testlib:verified_hlo_module",
@@ -1355,10 +1304,7 @@ xla_cc_test(
         "//xla/stream_executor:device_memory",
         "//xla/stream_executor:stream",
         "//xla/stream_executor/gpu:gpu_init_impl",
-<<<<<<< HEAD
-=======
         "//xla/tsl/platform:statusor",
->>>>>>> upstream/master
         "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest_main",
     ],
@@ -1835,11 +1781,7 @@ xla_cc_test(
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
-<<<<<<< HEAD
-        "@com_google_googletest//:gtest",
-=======
         "@com_google_googletest//:gtest_main",
->>>>>>> upstream/master
     ],
 )
 
@@ -2046,10 +1988,7 @@ cc_library(
         "//xla/service:call_graph",
         "//xla/service:instruction_fusion",
         "//xla/service:matmul_indexing_utils",
-<<<<<<< HEAD
-=======
         "//xla/service/gpu:backend_configs_cc",
->>>>>>> upstream/master
         "//xla/service/gpu:ir_emission_utils",
         "//xla/service/gpu:matmul_utils",
         "//xla/service/gpu/model:block_level_parameters",
@@ -2391,16 +2330,10 @@ xla_cc_test(
         "//xla/hlo/testlib:test",
         "//xla/service:pattern_matcher",
         "//xla/stream_executor:device_description",
-<<<<<<< HEAD
-        "//xla/tests:xla_internal_test_main",
-        "//xla/tsl/platform:statusor",
-        "@com_google_absl//absl/status:statusor",
-=======
         "//xla/stream_executor:device_description_proto_cc",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status:statusor",
         "@com_google_googletest//:gtest_main",
->>>>>>> upstream/master
     ],
 )
 
@@ -2495,8 +2428,6 @@ cc_library(
     ],
 )
 
-<<<<<<< HEAD
-=======
 cc_library(
     name = "composite_rewriter",
     srcs = ["composite_rewriter.cc"],
@@ -2534,7 +2465,6 @@ xla_cc_test(
     ],
 )
 
->>>>>>> upstream/master
 xla_cc_test(
     name = "scalar_constant_sinker_test",
     srcs = ["scalar_constant_sinker_test.cc"],
@@ -2696,14 +2626,8 @@ xla_cc_test(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status:status_matchers",
-<<<<<<< HEAD
-        "@com_google_googletest//:gtest",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:status_matchers",
-=======
         "@com_google_googletest//:gtest_main",
         "@llvm-project//mlir:IR",
->>>>>>> upstream/master
     ],
 )
 
@@ -2800,10 +2724,7 @@ xla_cc_test(
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/service/gpu:backend_configs_cc",
         "//xla/stream_executor:device_description",
-<<<<<<< HEAD
-=======
         "//xla/stream_executor:device_description_proto_cc",
->>>>>>> upstream/master
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/status:statusor",
@@ -3006,10 +2927,7 @@ xla_cc_test(
         ":tree_reduction_rewriter",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/stream_executor:device_description",
-<<<<<<< HEAD
-=======
         "//xla/stream_executor:device_description_proto_cc",
->>>>>>> upstream/master
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",

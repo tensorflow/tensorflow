@@ -191,25 +191,11 @@ HloComputation* HloModule::AddComputationInternal(
   } else {
     // Don't uniquify the names of the computation or instruction, but we must
     // run the names through the uniquifiers to prevent future name collisions
-<<<<<<< HEAD
-    // for computations and instructions created later. Also, set the
-    // next_unique_id_ to the one greater than the max unique id of any
-    // instruction (or the computation) to avoid ID collisions.
-    computation_name_uniquer().GetUniqueName(computation->name());
-    for (auto* instruction : computation->instructions()) {
-      instruction_name_uniquer().GetUniqueName(instruction->name());
-      next_unique_id_ =
-          std::max(next_unique_id_, instruction->unique_id_64_bits() + 1);
-    }
-    if (next_unique_id_ < computation->unique_id() + 1) {
-      next_unique_id_ = computation->unique_id() + 1;
-=======
     // for computations and instructions created later.
     ResyncNextUniqueComputationId(computation->unique_id());
     computation_name_uniquer().GetUniqueName(computation->name());
     for (auto* instruction : computation->instructions()) {
       instruction_name_uniquer().GetUniqueName(instruction->name());
->>>>>>> upstream/master
     }
   }
 
@@ -300,18 +286,9 @@ void HloModule::MarkFusionDuplications(
 
 void HloModule::MoveComputationsFrom(HloModule* module,
                                      bool make_names_unique) {
-<<<<<<< HEAD
-  for (size_t i = 0; i < module->computations_.size(); ++i) {
-    if (module->computations_[i] == nullptr) {
-      continue;
-    }
-    for (auto* instruction : module->computations_[i]->instructions()) {
-      instruction->ClearUniqueIdInternal();
-=======
   for (size_t i = 0; i < module->computation_count(); ++i) {
     if (module->computations_[i] == nullptr) {
       continue;
->>>>>>> upstream/master
     }
     module->computations_[i]->ClearUniqueIdInternal();
     auto computation_raw_ptr = module->computations_[i].get();
@@ -1454,11 +1431,7 @@ void HloModule::Clone(const std::string& suffix, HloCloneContext* context,
 
   // Preserve original instruction and computation ids.
   CopyUniqueIds(*this, module, *context);
-<<<<<<< HEAD
-  module->next_unique_id_ = next_unique_id_;
-=======
   module->SetNextUniqueComputationId(ReadNextUniqueComputationId());
->>>>>>> upstream/master
 
   module->input_output_alias_config() = input_output_alias_config();
   module->buffer_donor_config() = buffer_donor_config();
@@ -1611,15 +1584,9 @@ GetOrderedHashMap(
 std::string HloModule::OriginalValueRecoveryTable::ToString(
     HloPrintOptions options) const {
   std::string result;
-<<<<<<< HEAD
-  for (const auto& p : GetOrderedHashMap(*this)) {
-    const auto& replaced_original_array = p.first;
-    const auto& replacing_original_array = p.second.first;
-=======
   for (const auto& p : GetOrderedHashMap(table_)) {
     const auto& old_original_array = p.first;
     const auto& new_original_array = p.second.first;
->>>>>>> upstream/master
     HloModule* recovery_module = p.second.second;
     // Wraps the recovery module with double quotes so that it can be parsed as
     // a string. This is to make sure it can be parsed as a standalone module
@@ -1628,20 +1595,6 @@ std::string HloModule::OriginalValueRecoveryTable::ToString(
     const std::string tab(2 * (options.indent_amount()), ' ');
     std::string recovery_module_string;
     if (recovery_module) {
-<<<<<<< HEAD
-      absl::StrAppend(&recovery_module_string, ",\n", tab, "\"\n",
-                      recovery_module->entry_computation()->ToString(
-                          HloPrintOptions()
-                              .set_print_computation_mode(
-                                  HloPrintOptions::PrintComputationMode::
-                                      kComputationWithEntryKeyword)
-                              .set_indent_amount(options.indent_amount() + 1)),
-                      "\n", tab, "\"");
-    }
-    absl::StrAppend(&result, tab, "{", replaced_original_array.ToString(),
-                    "} : {", replacing_original_array.ToString(), "}",
-                    recovery_module_string, "\n");
-=======
       absl::StrAppend(
           &recovery_module_string, ",\n", tab, "\"\n",
           recovery_module->ToString(
@@ -1651,7 +1604,6 @@ std::string HloModule::OriginalValueRecoveryTable::ToString(
     absl::StrAppend(&result, tab, "{", old_original_array.ToString(), "} : {",
                     new_original_array.ToString(), "}", recovery_module_string,
                     "\n");
->>>>>>> upstream/master
   }
   return result;
 }
@@ -1659,17 +1611,6 @@ std::string HloModule::OriginalValueRecoveryTable::ToString(
 OriginalValueRecoveryTableProto HloModule::OriginalValueRecoveryTable::ToProto()
     const {
   OriginalValueRecoveryTableProto original_value_recovery_table_proto;
-<<<<<<< HEAD
-  for (const auto& p : GetOrderedHashMap(*this)) {
-    const auto& replaced_original_array = p.first;
-    const auto& replacing_original_array = p.second.first;
-    HloModule* recovery_module = p.second.second;
-    auto* entry = original_value_recovery_table_proto.add_entries();
-    *entry->mutable_replaced_original_array() =
-        replaced_original_array.ToProto();
-    *entry->mutable_replacing_original_array() =
-        replacing_original_array.ToProto();
-=======
   for (const auto& p : GetOrderedHashMap(table_)) {
     const auto& old_original_array = p.first;
     const auto& new_original_array = p.second.first;
@@ -1677,7 +1618,6 @@ OriginalValueRecoveryTableProto HloModule::OriginalValueRecoveryTable::ToProto()
     auto* entry = original_value_recovery_table_proto.add_entries();
     *entry->mutable_old_original_array() = old_original_array.ToProto();
     *entry->mutable_new_original_array() = new_original_array.ToProto();
->>>>>>> upstream/master
     if (recovery_module) {
       *entry->mutable_recovery_module() = recovery_module->ToProto();
     }
@@ -1692,17 +1632,10 @@ HloModule::OriginalValueRecoveryTable::FromProto(
   OriginalValueRecoveryTable original_value_recovery_table;
 
   for (const auto& entry : original_value_recovery_table_proto.entries()) {
-<<<<<<< HEAD
-    OriginalArray replaced_original_array =
-                      OriginalArray::FromProto(entry.replaced_original_array()),
-                  replacing_original_array = OriginalArray::FromProto(
-                      entry.replacing_original_array());
-=======
     OriginalArray old_original_array =
                       OriginalArray::FromProto(entry.old_original_array()),
                   new_original_array =
                       OriginalArray::FromProto(entry.new_original_array());
->>>>>>> upstream/master
     std::unique_ptr<HloModule> recovery_module;
     if (entry.has_recovery_module()) {
       const HloModuleProto proto = entry.recovery_module();
@@ -1712,86 +1645,13 @@ HloModule::OriginalValueRecoveryTable::FromProto(
       TF_ASSIGN_OR_RETURN(recovery_module,
                           HloModule::CreateFromProto(proto, config));
     }
-<<<<<<< HEAD
-    original_value_recovery_table[replaced_original_array] =
-        std::make_pair(replacing_original_array, std::move(recovery_module));
-=======
     original_value_recovery_table.table_[old_original_array] =
         std::make_pair(new_original_array, std::move(recovery_module));
->>>>>>> upstream/master
   }
   return original_value_recovery_table;
 }
 
 namespace {
-<<<<<<< HEAD
-void AddEntryToOriginalValueRecoveryTable(
-    OriginalValueRecoveryTable& original_value_recovery_table,
-    std::shared_ptr<OriginalValue> old_original_value,
-    std::shared_ptr<OriginalValue> new_original_value,
-    std::unique_ptr<HloModule> recovery_module) {
-  original_value_recovery_table
-      [*old_original_value->original_arrays().begin()->second] = {
-          *new_original_value->original_arrays().begin()->second,
-          std::move(recovery_module)};
-}
-}  // namespace
-
-void HloModule::OriginalValueRecoveryTable::AddRecoveryModule(
-    const HloInstruction* replaced_inst, HloInstruction* replacing_inst,
-    std::unique_ptr<HloModule> recovery_module) {
-  const std::shared_ptr<OriginalValue>& replaced_original_value =
-      replaced_inst->original_value();
-  if (!replaced_original_value) {
-    return;
-  }
-  std::shared_ptr<OriginalValue> replacing_original_value =
-      replacing_inst->original_value();
-
-  // Creates a placeholder original value for the replacing instruction if it
-  // doesn't have one.
-  if (!replacing_original_value) {
-    replacing_original_value = OriginalValue::CreateFromInstruction(
-        replacing_inst, /*prefix=*/kOriginalValuePlaceholderPrefix);
-    if (!replacing_original_value) {
-      return;
-    }
-  }
-
-  AddEntryToOriginalValueRecoveryTable(*this, replaced_original_value,
-                                       replacing_original_value,
-                                       std::move(recovery_module));
-}
-
-void HloModule::OriginalValueRecoveryTable::BuildAndAddRecoveryModule(
-    const HloInstruction* replaced_inst, HloInstruction* replacing_inst,
-    const std::function<HloInstruction*(
-        xla::HloComputation::Builder& builder, const xla::Shape& input_shape,
-        const xla::Shape& output_shape)>& build_entry_computation) {
-  const std::shared_ptr<OriginalValue>& replaced_original_value =
-      replaced_inst->original_value();
-  if (!replaced_original_value) {
-    return;
-  }
-  std::shared_ptr<OriginalValue> replacing_original_value =
-      replacing_inst->original_value();
-
-  if (build_entry_computation) {
-    xla::HloComputation::Builder builder("recovery_computation");
-    xla::HloModuleConfig config;
-    auto recovery_module =
-        std::make_unique<xla::HloModule>("recovery_module", config);
-    recovery_module->AddEntryComputation(builder.Build(build_entry_computation(
-        builder, replacing_inst->shape(), replaced_inst->shape())));
-
-    return AddRecoveryModule(replaced_inst, replacing_inst,
-                             std::move(recovery_module));
-  }
-
-  AddEntryToOriginalValueRecoveryTable(*this, replaced_original_value,
-                                       replacing_original_value,
-                                       /*recovery_module=*/nullptr);
-=======
 std::string GetOriginalValuePlaceholderInstructionName(
     absl::string_view original_value_instruction_name) {
   std::string base_name = std::string(original_value_instruction_name);
@@ -1901,7 +1761,6 @@ void HloModule::OriginalValueRecoveryTable::BuildAndAddRecoveryComputation(
         recovery_module->AddEntryComputation(builder.Build(*root_instruction));
         return recovery_module;
       });
->>>>>>> upstream/master
 }
 
 /* static */ std::atomic<int> HloModule::next_unique_module_id_(0);

@@ -15,16 +15,6 @@ limitations under the License.
 
 #include "xla/codegen/ir_emission_utils.h"
 
-<<<<<<< HEAD
-#include <optional>
-
-#include "absl/functional/any_invocable.h"
-#include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/hlo/utils/hlo_traversal.h"
-#include "xla/primitive_util.h"
-#include "xla/shape_util.h"
-=======
 #include <functional>
 #include <optional>
 #include <queue>
@@ -47,7 +37,6 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/platform/statusor.h"
->>>>>>> upstream/master
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -131,8 +120,6 @@ std::optional<HloInstructionAdaptor> FindHero(
   return hero;
 }
 
-<<<<<<< HEAD
-=======
 bool IsDynamicUpdateSliceFusion(const HloFusionSpec& fusion_spec) {
   return absl::c_all_of(
       fusion_spec.fusion_roots(), [](const HloInstructionAdaptor& root) {
@@ -322,5 +309,4 @@ absl::StatusOr<bool> CanEmitFusedDynamicUpdateSliceInPlace(
       buffer_assignment ? fusion : nullptr);
 }
 
->>>>>>> upstream/master
 }  // namespace xla

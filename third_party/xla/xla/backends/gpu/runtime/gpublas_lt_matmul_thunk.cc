@@ -24,10 +24,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-<<<<<<< HEAD
-=======
 #include "absl/types/span.h"
->>>>>>> upstream/master
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/buffer_assignment.h"
@@ -57,15 +54,15 @@ struct MatmulPlanCache {
   }
 
   template < class Func >
-  absl::StatusOr<se::gpu::BlasLt::MatmulPlan *> 
+  absl::StatusOr<se::gpu::BlasLt::MatmulPlan *>
           GetOrCreate(const std::string& key, Func&& create) {
     // each GPU has a different mutex => hence different GPU instances can
     // create matmul plans in parallel
-    absl::MutexLock lock(mutex_.get()); 
+    absl::MutexLock lock(mutex_.get());
     auto res = map_.emplace(key, se::gpu::BlasLt::MatmulPlanPtr{});
     if(res.second) { // new entry inserted
       TF_ASSIGN_OR_RETURN(res.first->second, create());
-    } 
+    }
     return res.first->second.get();
   }
 
@@ -123,18 +120,7 @@ CublasLtMatmulThunk::CublasLtMatmulThunk(
       c_scale_(c_scale),
       d_scale_(d_scale),
       d_amax_(d_amax),
-<<<<<<< HEAD
-      workspace_(workspace) {
-  // The tests creating CublasLtMatmulThunk directly might not provide the
-  // pointer to the actual instruction, in this case Matmul plans are not
-  // cached.
-  if (instr != nullptr) {
-    canonical_hlo_ = AutotuneCacheKey::HloInstructionToCanonicalString(*instr);
-  }
-}
-=======
       workspace_(workspace) {}
->>>>>>> upstream/master
 
 absl::Status CublasLtMatmulThunk::ExecuteOnStreamInternal(
     se::Stream* stream, const ExecuteParams& params) {
@@ -169,7 +155,7 @@ absl::Status CublasLtMatmulThunk::ExecuteOnStreamInternal(
   if (workspace_.has_value()) {
     workspace = allocs.GetDeviceAddress(workspace_.value());
   }
- 
+
 
   return plan->ExecuteOnStream(
       stream, allocs.GetDeviceAddress(a_), allocs.GetDeviceAddress(b_),

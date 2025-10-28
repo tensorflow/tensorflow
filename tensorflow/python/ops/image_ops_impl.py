@@ -5324,13 +5324,8 @@ def _cross_suppression(boxes, box_slice, iou_threshold, inner_idx, tile_size):
     boxes: a tensor of shape [batch_size, num_boxes_with_padding, 4]
     box_slice: a tensor of shape [batch_size, tile_size, 4]
     iou_threshold: a scalar tensor
-<<<<<<< HEAD
-    inner_idx: a scalar tensor representing the tile index of the tile
-      that is used to suppress box_slice
-=======
     inner_idx: a scalar tensor representing the tile index of the tile that is
       used to suppress box_slice
->>>>>>> upstream/master
     tile_size: an integer representing the number of boxes in a tile
 
   Returns:

@@ -13,19 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-<<<<<<< HEAD:third_party/xla/xla/backends/profiler/gpu/cupti_status.h
-#ifndef XLA_BACKENDS_PROFILER_GPU_CUPTI_STATUS_H_
-#define XLA_BACKENDS_PROFILER_GPU_CUPTI_STATUS_H_
-
-#include "absl/status/status.h"
-#include "third_party/gpus/cuda/extras/CUPTI/include/cupti_result.h"
-
-namespace xla {
-namespace profiler {
-
-absl::Status ToStatus(CUptiResult result);
-
-=======
 #include <gtest/gtest.h>
 #include "xla/stream_executor/sycl/sycl_platform_id.h"
 #include "xla/tests/hlo_test_base.h"
@@ -39,14 +26,8 @@ class IntelGpuCompilerTest : public HloTestBase {};
 TEST_F(IntelGpuCompilerTest, CheckCompiler) {
   auto compiler = backend().compiler();
   EXPECT_EQ(compiler->PlatformId(), stream_executor::sycl::kSyclPlatformId);
->>>>>>> upstream/master:third_party/xla/xla/service/gpu/intel_gpu_compiler_test.cc
 }
-}  // namespace xla
 
-<<<<<<< HEAD:third_party/xla/xla/backends/profiler/gpu/cupti_status.h
-#endif  // XLA_BACKENDS_PROFILER_GPU_CUPTI_STATUS_H_
-=======
 }  // namespace
 }  // namespace gpu
 }  // namespace xla
->>>>>>> upstream/master:third_party/xla/xla/service/gpu/intel_gpu_compiler_test.cc

@@ -80,11 +80,7 @@ class CpuTrackedDeviceEvent : public PjRtDeviceEvent {
     return event_.GetAsyncValue();
   }
 
-<<<<<<< HEAD
-  PjRtFuture<> GetReadyFuture() override;
-=======
   Future<> GetReadyFuture() override;
->>>>>>> upstream/master
 
  private:
   tsl::AsyncValueRef<CpuEvent> event_;

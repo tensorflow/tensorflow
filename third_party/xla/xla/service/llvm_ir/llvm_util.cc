@@ -1016,8 +1016,6 @@ absl::StatusOr<llvm::Value*> EmitReducePrecisionIR(
   return result;
 }
 
-<<<<<<< HEAD
-=======
 llvm::Value* HandleHalfwayPointsFxToF8(
     PrimitiveType fx_type, int f8_exponent_bits, int f8_mantissa_bits,
     int f8_bias, llvm::Value* fx_abs_bits, llvm::Value* f8_bits,
@@ -1117,6 +1115,5 @@ llvm::Value* HandleHalfwayPointsFxToF8(
   return final_result;
 }
 
->>>>>>> upstream/master
 }  // namespace llvm_ir
 }  // namespace xla

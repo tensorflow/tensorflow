@@ -1561,15 +1561,6 @@ ENTRY %test (v1: f32[]) -> f32[] {
 
 {
 "OriginalValueRecoveryTable",
-<<<<<<< HEAD
-R"(HloModule test, entry_computation_layout={(f32[192]{0})->f32[1,17,17,192]{3,2,1,0}}, origin_recovery_table={
-  {"broadcast.2340"} : {"reshape.2341"}
-  {"reshape.2341"} : {"placeholder_reshape.201"},
-  "
-    ENTRY %recovery_computation.3 (p.1: f32[192]) -> f32[1,192] {
-      %p.1 = f32[192]{0} parameter(0)
-      ROOT %reshape.2 = f32[1,192]{1,0} reshape(%p.1)
-=======
 R"(HloModule module, entry_computation_layout={()->s32[1,3]{1,0}}, num_partitions=2, origin_recovery_table={
   {"constant"} : {"constant__ovp0"},
   "
@@ -1585,7 +1576,6 @@ R"(HloModule module, entry_computation_layout={()->s32[1,3]{1,0}}, num_partition
       %x.1 = s32[] parameter(0)
       %y.1 = s32[] parameter(1)
       ROOT %add.1 = s32[] add(%x.1, %y.1)
->>>>>>> upstream/master
     }
 
     ENTRY %recovery_computation (param: s32[2,3]) -> s32[2,3] {

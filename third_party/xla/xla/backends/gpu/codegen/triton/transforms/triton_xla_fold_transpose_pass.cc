@@ -13,25 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-<<<<<<< HEAD
-#include <cstdint>
-#include <memory>
-=======
 #include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <optional>
->>>>>>> upstream/master
 #include <type_traits>
 #include <utility>
 
 #include "absl/algorithm/container.h"
 #include "llvm/ADT/ArrayRef.h"
-<<<<<<< HEAD
-#include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/SmallVector.h"
-#include "mlir/Dialect/Func/IR/FuncOps.h"
-=======
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
@@ -39,7 +29,6 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/IR/BuiltinTypes.h"
->>>>>>> upstream/master
 #include "mlir/IR/OpDefinition.h"
 #include "mlir/IR/OperationSupport.h"
 #include "mlir/IR/PatternMatch.h"
@@ -49,17 +38,10 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
-<<<<<<< HEAD
-#include "xla/backends/gpu/codegen/triton/transforms/passes.h"
-#include "xla/util.h"
-#include "triton/Dialect/Triton/IR/Dialect.h"
-#include "triton/Dialect/Triton/IR/Types.h"
-=======
 #include "xla/backends/gpu/codegen/triton/ir/triton_xla_ops.h"
 #include "xla/backends/gpu/codegen/triton/transforms/passes.h"
 #include "xla/util.h"
 #include "triton/Dialect/Triton/IR/Dialect.h"
->>>>>>> upstream/master
 
 namespace mlir::triton::xla {
 
@@ -68,58 +50,6 @@ namespace mlir::triton::xla {
 
 namespace {
 
-<<<<<<< HEAD
-template <typename T>
-auto ApplyPermutation(T input, ArrayRef<int32_t> perm) {
-  SmallVector<std::decay_t<decltype(*input.begin())>> result;
-  result.reserve(perm.size());
-  for (int32_t p : perm) {
-    result.push_back(input[p]);
-  }
-  return result;
-}
-
-LogicalResult FoldTransposeOfLoad(TransOp op, PatternRewriter& rewriter) {
-  auto load = op.getSrc().getDefiningOp<LoadOp>();
-  if (!load) {
-    return rewriter.notifyMatchFailure(op, "Transpose source is not a load.");
-  }
-  auto make_ptr = load.getPtr().getDefiningOp<MakeTensorPtrOp>();
-  if (!make_ptr) {
-    return rewriter.notifyMatchFailure(op, "Expected load of make_tensor_ptr.");
-  }
-  if (load.getMask() || load.getOther()) {
-    return rewriter.notifyMatchFailure(op, "Unsupported load.");
-  }
-
-  auto apply_order = [&](auto range) {
-    return ApplyPermutation(range, op.getOrder());
-  };
-
-  auto ptr_type =
-      PointerType::get(op.getType(), make_ptr.getType().getAddressSpace());
-  auto new_make_ptr = rewriter.create<MakeTensorPtrOp>(
-      make_ptr.getLoc(), ptr_type, make_ptr.getBase(),
-      apply_order(make_ptr.getShape()), apply_order(make_ptr.getStrides()),
-      // Leave original order, it's unused but checked to be default elsewhere.
-      apply_order(make_ptr.getOffsets()), make_ptr.getOrderAttr());
-
-  SmallVector<bool> boundary_check_bits(op.getType().getRank());
-  for (auto dim : load.getBoundaryCheck()) {
-    boundary_check_bits[dim] = true;
-  }
-  SmallVector<int32_t> new_boundary_check;
-  for (auto [dim, value] : llvm::enumerate(apply_order(boundary_check_bits))) {
-    if (value) {
-      new_boundary_check.push_back(dim);
-    }
-  }
-  auto new_load = rewriter.create<LoadOp>(
-      load.getLoc(), new_make_ptr, new_boundary_check, load.getPadding(),
-      load.getCache(), load.getEvict(), load.getIsVolatile());
-
-  rewriter.replaceOp(op, new_load.getResult());
-=======
 // Sets the insertion point at the given op and returns the guard.
 [[nodiscard]] OpBuilder::InsertionGuard SetInsertionPoint(OpBuilder& builder,
                                                           Operation* op) {
@@ -242,7 +172,6 @@ LogicalResult PushTransposeUpThroughExpandDims(TransOp op,
       rewriter.create<TransOp>(op.getLoc(), expand_dims.getSrc(), new_order);
   rewriter.replaceOpWithNewOp<ExpandDimsOp>(op, op.getType(), new_trans,
                                             new_axis);
->>>>>>> upstream/master
   return success();
 }
 
@@ -272,8 +201,6 @@ LogicalResult PushTransposeUpThroughElementwise(TransOp op,
   return success();
 }
 
-<<<<<<< HEAD
-=======
 // Pushes tt.trans up into scf.if.
 //
 // Example:
@@ -339,7 +266,6 @@ LogicalResult HoistTransposeUpFromIf(TransOp op, PatternRewriter& rewriter) {
   return success();
 }
 
->>>>>>> upstream/master
 SmallVector<int32_t> GetInversePermutation(ArrayRef<int32_t> permutation) {
   SmallVector<int32_t> result(permutation.size());
   for (int32_t i = 0; i < permutation.size(); ++i) {
@@ -398,47 +324,6 @@ LogicalResult PushTransposeUpThroughReshape(TransOp op,
   return success();
 }
 
-<<<<<<< HEAD
-LogicalResult PushTransposeUpThroughJoinOfInlineAsm(TransOp op,
-                                                    PatternRewriter& rewriter) {
-  auto join = op.getSrc().getDefiningOp<JoinOp>();
-  if (!join) {
-    return rewriter.notifyMatchFailure(op, "Transpose source is not a join.");
-  }
-  if (op.getOrder().back() + 1 != op.getOrder().size()) {
-    return rewriter.notifyMatchFailure(op, "Transposes last dimension.");
-  }
-  auto inline_asm = join.getLhs().getDefiningOp<ElementwiseInlineAsmOp>();
-  if (!inline_asm || join.getRhs().getDefiningOp() != inline_asm) {
-    return rewriter.notifyMatchFailure(op, "Join source is not an inline asm.");
-  }
-
-  SmallVector<Value> new_operands;
-  new_operands.reserve(inline_asm->getNumOperands());
-  auto order = op.getOrder().drop_back();
-  for (Value operand : inline_asm->getOperands()) {
-    if (auto tensor_type = dyn_cast<RankedTensorType>(operand.getType())) {
-      operand = rewriter.create<TransOp>(inline_asm->getLoc(), operand, order);
-    }
-    new_operands.push_back(operand);
-  }
-
-  Operation* new_inline_asm = rewriter.clone(*inline_asm.getOperation());
-  new_inline_asm->setOperands(new_operands);
-  for (Value result : new_inline_asm->getResults()) {
-    if (auto tensor_type = dyn_cast<RankedTensorType>(result.getType())) {
-      auto shape = ApplyPermutation(tensor_type.getShape(), order);
-      result.setType(tensor_type.clone(shape));
-    }
-  }
-  rewriter.replaceOpWithNewOp<JoinOp>(op, op.getType(),
-                                      new_inline_asm->getResults());
-
-  return success();
-}
-
-=======
->>>>>>> upstream/master
 class TritonXLAFoldTransposePass
     : public impl::TritonXLAFoldTransposePassBase<TritonXLAFoldTransposePass> {
  public:
@@ -447,12 +332,6 @@ class TritonXLAFoldTransposePass
  private:
   void runOnOperation() override {
     RewritePatternSet patterns(&getContext());
-<<<<<<< HEAD
-    patterns.add(FoldTransposeOfLoad);
-    patterns.add(PushTransposeUpThroughElementwise);
-    patterns.add(PushTransposeUpThroughReshape);
-    patterns.add(PushTransposeUpThroughJoinOfInlineAsm);
-=======
     patterns.add(FoldTransposeOfExtract);
     patterns.add(PushTransposeUpIntoIf);
     patterns.add(HoistTransposeUpFromIf, /*benefit=*/2);
@@ -460,7 +339,6 @@ class TritonXLAFoldTransposePass
     patterns.add(PushTransposeUpThroughElementwise);
     patterns.add(PushTransposeUpThroughExpandDims);
     patterns.add(PushTransposeUpThroughReshape);
->>>>>>> upstream/master
     if (failed(applyPatternsGreedily(getOperation(), std::move(patterns)))) {
       return signalPassFailure();
     }

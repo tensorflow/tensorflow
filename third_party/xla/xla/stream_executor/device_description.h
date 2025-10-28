@@ -27,15 +27,7 @@ limitations under the License.
 #include <utility>
 #include <variant>
 
-<<<<<<< HEAD
-#include "absl/algorithm/container.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/str_join.h"
-#include "absl/strings/str_split.h"
-#include "absl/strings/string_view.h"
-=======
-#include "absl/status/statusor.h"
->>>>>>> upstream/master
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.pb.h"
 #include "xla/stream_executor/launch_dim.h"
@@ -50,41 +42,9 @@ class GpuComputeCapability
   using std::variant<CudaComputeCapability, RocmComputeCapability>::variant;
   using std::variant<CudaComputeCapability, RocmComputeCapability>::operator=;
 
-<<<<<<< HEAD
-  explicit RocmComputeCapability(const RocmComputeCapabilityProto& proto)
-      : gcn_arch_name_(proto.gcn_arch_name()) {}
-
-  RocmComputeCapability() = default;
-
-  std::string gcn_arch_name() const { return gcn_arch_name_; }
-
-  std::string gfx_version() const {
-    std::vector<std::string> tokens = absl::StrSplit(gcn_arch_name_, ':');
-    return tokens[0];
-  }
-
-  bool is_supported_gfx_version() const {
-    return absl::c_count(kSupportedGfxVersions, gfx_version()) != 0;
-  }
-
-  std::string supported_gfx_versions_str() const {
-    return absl::StrJoin(kSupportedGfxVersions, ", ");
-  }
-
-  bool gfx9_mi100() const { return gfx_version() == "gfx908"; }
-
-  bool gfx9_mi200() const { return gfx_version() == "gfx90a"; }
-
-  bool gfx9_mi300() const { return gfx_version() == "gfx942"; }
-
-  bool gfx9_mi350() const { return gfx_version() == "gfx950"; }
-
-  bool gfx9_mi300_series() const { return gfx9_mi300() || gfx9_mi350(); }
-=======
   bool IsCuda() const {
     return std::holds_alternative<CudaComputeCapability>(*this);
   }
->>>>>>> upstream/master
 
   bool IsRocm() const {
     return std::holds_alternative<RocmComputeCapability>(*this);
@@ -94,33 +54,8 @@ class GpuComputeCapability
     return std::get_if<CudaComputeCapability>(this);
   }
 
-<<<<<<< HEAD
-  bool gfx10_rx68xx() const { return gfx_version() == "gfx1030"; }
-
-  bool gfx10_rx69xx() const { return gfx_version() == "gfx1030"; }
-
-  bool gfx11_rx7900() const { return (gfx_version() == "gfx1100" ||
-                                      gfx_version() == "gfx1101" ||
-                                      gfx_version() == "gfx1102"); }
-
-  bool gfx12_rx8900() const { return ((gfx_version() == "gfx1200") || 
-                                      (gfx_version() == "gfx1201")); }
-  bool gfx11() const { return gfx_version().find("gfx11"); }
-
-  bool gfx1200() const { return gfx_version() == "gfx1200"; }
-
-  bool gfx1201() const { return gfx_version() == "gfx1201"; }
-
-  bool has_nhwc_layout_support() const { return gfx9_mi100_or_later(); }
-
-  bool has_bf16_dtype_support() const { return gfx9_mi100_or_later(); }
-
-  bool has_fast_fp16_support() const {
-    return gfx9_mi100_or_later() || gfx10_rx68xx() || gfx10_rx69xx() || gfx11();
-=======
   const RocmComputeCapability* rocm_compute_capability() const {
     return std::get_if<RocmComputeCapability>(this);
->>>>>>> upstream/master
   }
 
   std::string ToString() const {
@@ -129,58 +64,6 @@ class GpuComputeCapability
     }
     return rocm_compute_capability()->ToString();
   }
-<<<<<<< HEAD
-
-  bool has_packed_fp16_atomics_support() const { return gfx9_mi100_or_later(); }
-
-  bool has_packed_bf16_atomics_support() const { return gfx9_mi300_series(); }
-
-  bool fence_before_barrier() const {
-    return gfx_version() != "gfx900" && gfx_version() != "gfx906";
-  }
-
-  bool has_hipblaslt() const {
-    return gfx9_mi200_or_later() || gfx1200() || gfx1201();
-  }
-
-  bool has_fp8_support() const {
-    return has_ocp_fp8_support() || has_nanoo_fp8_support();
-  }
-
-  bool has_ocp_fp8_support() const {
-    return gfx1200() || gfx1201() || gfx9_mi350();
-  }
-
-  bool has_nanoo_fp8_support() const { return gfx9_mi300(); }
-
-  std::string ToString() const { return gcn_arch_name(); }
-
-  RocmComputeCapabilityProto ToProto() const {
-    RocmComputeCapabilityProto proto;
-    proto.set_gcn_arch_name(gcn_arch_name_);
-    return proto;
-  }
-
-  bool operator==(const RocmComputeCapability& other) const {
-    return gcn_arch_name_ == other.gcn_arch_name_;
-  }
-
- private:
-  std::string gcn_arch_name_ = "gfx000";  // default to invalid arch.
-
-  static constexpr absl::string_view kSupportedGfxVersions[]{
-      "gfx900",                         // MI25
-      "gfx906",                         // MI50 / MI60
-      "gfx908",                         // MI100
-      "gfx90a",                         // MI200
-      "gfx942",                         // MI300
-      "gfx950",                         // MI355
-      "gfx1030",                        // RX68xx / RX69xx
-      "gfx1100", "gfx1101", "gfx1102",  // RX7900
-      "gfx1200", "gfx1201",             // RX8900      
-  };
-=======
->>>>>>> upstream/master
 };
 
 // Data that describes the execution target of the StreamExecutor, in terms of
@@ -337,62 +220,6 @@ class DeviceDescription {
   // also we do not count what occupies cache, but rather claim that what is
   // much smaller than the cache size will likely stay in it.
   constexpr int64_t l1_cache_size_per_SM() const {
-<<<<<<< HEAD
-    return std::visit(
-        [](const auto& capability) -> int64_t {
-          if constexpr (std::is_same_v<std::decay_t<decltype(capability)>,
-                                       RocmComputeCapability>) {
-            // MI100 and MI200 has 16KB L1 cache per CU.
-            if (capability.gfx9_mi100() || capability.gfx9_mi200()) {
-              return 16 * 1024;
-            }
-            // MI300 has 32KB L1 cache per CU.
-            if (capability.gfx9_mi300_series()) {
-              return 32 * 1024;
-            }
-          }
-          // Default return for other GPUs (e.g., RTX A6000).
-          return 2 * 1024;
-        },
-        gpu_compute_capability_);
-  }
-
-  constexpr int64_t dram_to_l2_transaction_size_bytes() const {
-    return std::visit(
-        [](const auto& capability) -> int {
-          if constexpr (std::is_same_v<std::decay_t<decltype(capability)>,
-                                       RocmComputeCapability>) {
-            // DRAM->L2 bus is 128 Byte width for MI300.
-            if (capability.gfx9_mi300_series()) {
-              return 128;
-            }
-          }
-          // Cache line is 128B that is split into 4 sectors of 32B. Default
-          // transaction size from DRAM -> L2 = 64 Bytes = 2 sectors, since
-          // V100, but it can be also configured.
-          // https://developer.download.nvidia.com/video/gputechconf/gtc/2020/presentations/s21819-optimizing-applications-for-nvidia-ampere-gpu-architecture.pdf
-          // (page 10).
-          // return 64 Bytes by default.
-          return 64;
-        },
-        gpu_compute_capability_);
-  }
-
-  constexpr int64_t memory_transactions_per_clock() const {
-    return std::visit(
-        [](const auto& capability) -> int {
-          if constexpr (std::is_same_v<std::decay_t<decltype(capability)>,
-                                       RocmComputeCapability>) {
-            // 16 works well on MI300.
-            if (capability.gfx9_mi300_series()) {
-              return 16;
-            }
-          }
-          // Default return for other GPUs.
-          return 32;
-        },
-        gpu_compute_capability_);
-=======
     if (auto* capability = gpu_compute_capability_.rocm_compute_capability()) {
       // MI100 and MI200 has 16KB L1 cache per CU.
       if (capability->gfx9_mi100() || capability->gfx9_mi200()) {
@@ -432,7 +259,6 @@ class DeviceDescription {
     }
     // Default return for other GPUs.
     return 32;
->>>>>>> upstream/master
   }
 
   GpuDeviceInfoProto ToGpuProto() const;
@@ -469,10 +295,7 @@ class DeviceDescription {
   void set_runtime_version(const SemanticVersion& value) {
     runtime_version_ = value;
   }
-<<<<<<< HEAD
-=======
   void set_dnn_version(const SemanticVersion& value) { dnn_version_ = value; }
->>>>>>> upstream/master
   void set_compile_time_toolkit_version(const SemanticVersion& value) {
     compile_time_toolkit_version_ = value;
   }

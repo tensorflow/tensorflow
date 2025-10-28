@@ -139,20 +139,12 @@ TEST_F(CollectiveBackendAssignerTest, LargeCollectivePermuteUsesNvshmem) {
 
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
   EXPECT_THAT(RunCollectiveBackendAssigner(module.get()),
-<<<<<<< HEAD
-              absl_testing::IsOkAndHolds(false));
-=======
               absl_testing::IsOkAndHolds(true));
->>>>>>> upstream/master
 
   const HloInstruction* permute =
       module->entry_computation()->root_instruction();
   EXPECT_THAT(GetCollectiveBackendConfig(permute),
-<<<<<<< HEAD
-              absl_testing::IsOkAndHolds(CollectiveBackendConfig::DEFAULT));
-=======
               absl_testing::IsOkAndHolds(CollectiveBackendConfig::NVSHMEM));
->>>>>>> upstream/master
 }
 
 }  // namespace

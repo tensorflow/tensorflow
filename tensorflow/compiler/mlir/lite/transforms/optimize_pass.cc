@@ -1247,29 +1247,17 @@ static std::optional<Value> GetAs1DValue(PatternRewriter& rewriter, Value value,
 }
 
 // Tries to get the given `bias` as a 1D tensor of `num_channels` elements.
-<<<<<<< HEAD
-// If `bias` is a `NoneType`, a 1D tensor of zeros is created.
-=======
 // If `bias` is a `NoneType`, a 1D tensor of zeros is created with the given
 // `fallback_element_type`.
->>>>>>> upstream/master
 // Otherwise, it uses `GetAs1DValue` to handle scalar constants and other
 // broadcastable shapes.
 static std::optional<Value> GetBiasIn1D(PatternRewriter& rewriter, Value bias,
                                         int num_channels,
-<<<<<<< HEAD
-                                        Type filter_element_type) {
-  // If it's none, create a zero tensor with shape {num_channels}.
-  if (mlir::isa<NoneType>(bias.getType())) {
-    RankedTensorType type =
-        RankedTensorType::get({num_channels}, filter_element_type);
-=======
                                         Type fallback_element_type) {
   // If it's none, create a zero tensor with shape {num_channels}.
   if (mlir::isa<NoneType>(bias.getType())) {
     RankedTensorType type =
         RankedTensorType::get({num_channels}, fallback_element_type);
->>>>>>> upstream/master
     auto attr = rewriter.getZeroAttr(type);
     return rewriter.create<arith::ConstantOp>(bias.getLoc(), type, attr);
   }
@@ -1307,41 +1295,6 @@ static RankedTensorType GetRankedTensorType(Value value) {
   return nullptr;
 }
 
-<<<<<<< HEAD
-// Gets the number of channels and filter element type for a FullyConnected op.
-// This is used to determine the shape of the bias tensor when fusing an Add op.
-// It first tries to get this information from the filter tensor. If the filter
-// is unranked, it falls back to using the output tensor of the FullyConnected
-// op.
-static std::optional<std::pair<int, Type>> GetFcNumChannelsAndFilterType(
-    TFL::FullyConnectedOp fc_op) {
-  Value filter = fc_op.getFilter();
-  if (auto filter_type = GetRankedTensorType(filter);
-      filter_type && filter_type.getRank() == 2 &&
-      !mlir::isa<quant::QuantizedType>(filter_type.getElementType())) {
-    // Get the number of channels from the filter's shape if it's a ranked
-    // 2D tensor. Filter must be a `2D` tensor with `{num_channels,
-    // num_features}` shape.
-    int num_channels = filter_type.getShape()[0];
-    Type filter_element_type = filter_type.getElementType();
-    return {{num_channels, filter_element_type}};
-  }
-
-  // Fallback to using the FC op's output shape to determine the number of
-  // channels. This is useful when the filter is unranked.
-  auto fc_output_type =
-      mlir::dyn_cast<RankedTensorType>(fc_op.getOutput()[0].getType());
-  if (!fc_output_type || !fc_output_type.hasStaticShape() ||
-      fc_output_type.getRank() == 0) {
-    return std::nullopt;
-  }
-  int num_channels = fc_output_type.getShape().back();
-  Type filter_element_type = fc_output_type.getElementType();
-  return {{num_channels, filter_element_type}};
-}
-
-=======
->>>>>>> upstream/master
 // Fuse Add with proceeding FullyConnected.
 // TODO(b/136285429): Move to tablegen when variadic is supported
 struct FuseFullyConnectedAndAdd : public OpRewritePattern<TFL::AddOp> {
@@ -1385,25 +1338,6 @@ struct FuseFullyConnectedAndAdd : public OpRewritePattern<TFL::AddOp> {
     ElementsAttr bias_value;
     if (fc_op.getFusedActivationFunction() != "NONE") return failure();
 
-<<<<<<< HEAD
-    // Get the number of channels if possible.
-    auto fc_info = GetFcNumChannelsAndFilterType(fc_op);
-    if (!fc_info) {
-      return failure();
-    }
-    const auto& [num_channels, filter_element_type] = *fc_info;
-
-    auto bias_1d =
-        GetBiasIn1D(rewriter, bias, num_channels, filter_element_type);
-    // Get the added value as a 1D tensor.
-    auto add_rhs_1d = GetAs1DValue(rewriter, add_rhs, num_channels);
-
-    if (!bias_1d.has_value() || !add_rhs_1d.has_value()) {
-      return failure();
-    }
-
-=======
->>>>>>> upstream/master
     auto fc_output_type =
         mlir::dyn_cast<RankedTensorType>(fc_op.getOutput()[0].getType());
     auto add_output_type =
@@ -1417,8 +1351,6 @@ struct FuseFullyConnectedAndAdd : public OpRewritePattern<TFL::AddOp> {
       return failure();
     }
 
-<<<<<<< HEAD
-=======
     // Get the number of output channels.
     if (fc_output_type.getShape().empty()) {
       return failure();
@@ -1444,7 +1376,6 @@ struct FuseFullyConnectedAndAdd : public OpRewritePattern<TFL::AddOp> {
           add_op, "Bias and add_rhs are not broadcastable");
     }
 
->>>>>>> upstream/master
     auto new_bias =
         rewriter
             .create<AddOp>(add_op.getLoc(), bias_1d.value(), add_rhs_1d.value(),

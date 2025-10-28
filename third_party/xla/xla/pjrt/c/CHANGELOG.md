@@ -1,14 +1,5 @@
 # PJRT C API changelog
 
-<<<<<<< HEAD
-## 0.75
-
-* Added `PJRT_TopologyDescription_Deserialize.`
-
-## 0.74
-
-* Added `PJRT_Extension_Type::PJRT_Extension_Type_CrossHostTransfers.`
-=======
 ## 0.80
 
 * Added `PJRT_Extension_Type::PJRT_Extension_Type_HostAllocator`.
@@ -36,7 +27,6 @@
 ## 0.74
 
 * Added `PJRT_Extension_Type::PJRT_Extension_Type_CrossHostTransfers`.
->>>>>>> upstream/master
 
 ## 0.73
 

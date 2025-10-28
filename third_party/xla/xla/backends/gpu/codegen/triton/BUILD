@@ -1,7 +1,3 @@
-<<<<<<< HEAD
-load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm_is_configured")
-=======
->>>>>>> upstream/master
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("//xla:xla.default.bzl", "xla_cc_test")
 load(
@@ -175,8 +171,6 @@ cc_library(
     hdrs = ["compilation_pipeline.h"],
     tags = ["gpu"],
     deps = [
-<<<<<<< HEAD
-=======
         "//xla/backends/gpu/codegen/emitters/transforms:passes",
         "//xla/backends/gpu/codegen/triton/transforms:passes",
         "//xla/codegen/emitters/transforms:convert_pure_call_ops_pass",
@@ -187,7 +181,6 @@ cc_library(
         "//xla/stream_executor/cuda:cuda_compute_capability",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",
->>>>>>> upstream/master
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
@@ -196,10 +189,7 @@ cc_library(
         "@llvm-project//mlir:ControlFlowToLLVM",
         "@llvm-project//mlir:IndexToLLVM",
         "@llvm-project//mlir:NVVMToLLVM",
-<<<<<<< HEAD
-=======
         "@llvm-project//mlir:Pass",
->>>>>>> upstream/master
         "@llvm-project//mlir:SCFToControlFlow",
         "@llvm-project//mlir:Transforms",
         "@triton//:TritonDialects",
@@ -212,18 +202,6 @@ cc_library(
         "@triton//:TritonToTritonGPUPasses",
         "@triton//:TritonTransforms",
         "@triton//:WarpSpecialization",
-<<<<<<< HEAD
-    ]) + if_cuda_is_configured([
-        "//xla/service/gpu/llvm_gpu_backend:nvptx_backend",
-        "//xla/service/gpu/llvm_gpu_backend:nvptx_libdevice_path",
-        "@triton//third_party/nvidia:NVGPUToLLVM",
-        "@triton//third_party/nvidia:TritonNVIDIAGPUToLLVM",
-        "@triton//third_party/nvidia:NVHopperTransforms",
-    ]) + if_rocm_is_configured([
-        "//xla/service/gpu/llvm_gpu_backend:amdgpu_backend",
-        "//xla/tsl/platform:rocm_rocdl_path",
-=======
->>>>>>> upstream/master
         "@triton//third_party/amd:TritonAMDGPUToLLVM",
         "@triton//third_party/amd:TritonAMDGPUTransforms",
         "@triton//third_party/nvidia:NVGPUToLLVM",
@@ -474,13 +452,8 @@ cc_library(
         "//xla/service/gpu:launch_dimensions",
         "//xla/service/gpu:matmul_utils",
         "//xla/service/gpu:triton_fusion_analysis",
-<<<<<<< HEAD
-        "//xla/service/gpu/model:symbolic_tile_analysis",
-        "//xla/service/gpu/model:tiled_hlo_instruction_or_computation",
-=======
         "//xla/service/gpu/model:block_level_parameters",
         "//xla/service/gpu/model/experimental:symbolic_expr",
->>>>>>> upstream/master
         "//xla/stream_executor:device_description",
         "//xla/stream_executor:launch_dim",
         "@com_google_absl//absl/status",

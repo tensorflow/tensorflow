@@ -50,10 +50,7 @@ class OneDnnSoftmaxTest
  protected:
   DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
-<<<<<<< HEAD
-=======
     debug_options.set_xla_cpu_experimental_onednn_custom_call(true);
->>>>>>> upstream/master
     return debug_options;
   }
 

@@ -134,8 +134,6 @@ void AddSPMDPasses(
       /*disable_ag_rewrite_for_multiple_consumers=*/true,
       /*enable_partial_windowed_einsums=*/true, oper_size_threshold,
       max_windowed_einsum_iteration);
-<<<<<<< HEAD
-=======
   // NOTE: even though the inliner is called in `RunPreSPMDPartitionerPasses`,
   // it doesn't inline functions needed for ShardyXLA. ShardyXLA will also leave
   // functions called `kInlineableManualComputationFuncName` not inlined, so
@@ -150,7 +148,6 @@ void AddSPMDPasses(
         return absl::StrContains(instruction->to_apply()->name(),
                                  sdy::kInlineableManualComputationFuncName);
       });
->>>>>>> upstream/master
   spmd_pipeline.AddPass<CollectivePermuteMotion>();
 }
 

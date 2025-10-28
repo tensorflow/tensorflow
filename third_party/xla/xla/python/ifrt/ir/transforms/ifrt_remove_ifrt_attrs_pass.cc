@@ -40,10 +40,7 @@ void IfrtRemoveIfrtAttrsPass::runOnOperation() {
   mlir::ModuleOp module_op = getOperation();
   module_op->removeAttr(kIfrtNumDevicesAttrName);
   module_op->removeAttr(kIfrtLocalViewAttrName);
-<<<<<<< HEAD
-=======
   module_op->removeAttr(kIfrtCompileOptionsKey);
->>>>>>> upstream/master
   module_op->removeAttr(kIsSdyPartitioned);
   module_op.walk([&](mlir::func::FuncOp func_op) {
     // Remove from function attributes.

@@ -152,8 +152,6 @@ class JitRunner {
 
 std::unique_ptr<llvm::TargetMachine> CreateHostTargetMachine();
 
-<<<<<<< HEAD:third_party/xla/xla/codegen/intrinsic/simple_jit_runner.h
-=======
 // Creates a new LLVM function that wraps an existing function by
 // unrolling calls in a sequence.
 //
@@ -170,7 +168,6 @@ llvm::Function* CreateKTimesWrapper(llvm::Module* module,
                                     llvm::Function* original_func,
                                     int unroll_factor, size_t vector_size);
 
->>>>>>> upstream/master:third_party/xla/xla/codegen/math/simple_jit_runner.h
 }  // namespace xla::codegen::intrinsic
 
 #endif  // XLA_CODEGEN_INTRINSIC_SIMPLE_JIT_RUNNER_H_

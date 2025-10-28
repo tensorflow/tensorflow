@@ -85,11 +85,7 @@ cc_library(
         "//xla/ffi",
         "//xla/ffi:execution_context",
         "//xla/ffi:ffi_api",
-<<<<<<< HEAD
-        "//xla/ffi:type_id_registry",
-=======
         "//xla/ffi:type_registry",
->>>>>>> upstream/master
         "//xla/ffi/api:c_api",
         "//xla/ffi/api:ffi",
         "@com_google_absl//absl/status",
@@ -122,10 +118,7 @@ cc_library(
         "//xla/pjrt:partial_program_utils",
         "//xla/pjrt:pjrt_compiler",
         "//xla/pjrt:pjrt_executable",
-<<<<<<< HEAD
-=======
         "//xla/pjrt:string_utils",
->>>>>>> upstream/master
         "//xla/pjrt/proto:compile_options_proto_cc",
         "//xla/pjrt/proto:pjrt_partial_program_proto_cc",
         "@com_google_absl//absl/status",

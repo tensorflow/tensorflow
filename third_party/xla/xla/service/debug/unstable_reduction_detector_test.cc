@@ -15,30 +15,16 @@ limitations under the License.
 
 #include "xla/service/debug/unstable_reduction_detector.h"
 
-<<<<<<< HEAD
-#include <type_traits>
-
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/base/log_severity.h"
-#include "absl/log/log_sink.h"
-=======
-#include <gmock/gmock.h>
-#include <gtest/gtest.h>
-#include "absl/base/log_severity.h"
->>>>>>> upstream/master
 #include "absl/log/scoped_mock_log.h"
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/parser/hlo_parser.h"
-<<<<<<< HEAD
-#include "xla/tsl/platform/logging.h"
-#include "xla/tsl/platform/statusor.h"
-=======
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
->>>>>>> upstream/master
 
 namespace xla {
 namespace {
@@ -91,20 +77,6 @@ TEST(UnstableReductionDetectorTest, FailOnUnstableReductions) {
           DebugOptions::UNSTABLE_REDUCTION_DETECTION_MODE_FAIL);
   UnstableReductionDetector detector;
   ::absl::ScopedMockLog log;
-<<<<<<< HEAD
-  if constexpr (std::is_same_v<absl::LogSink, tsl::TFLogSink>) {
-    EXPECT_CALL(
-        log,
-        Log(LogSeverity::kWarning, _,
-            HasSubstr("1 unstable reductions found in module 'module_main'")));
-    EXPECT_CALL(log,
-                Log(LogSeverity::kWarning, _,
-                    "Unstable reduction: %red.1 = bf16[] reduce(%p0.1, %init), "
-                    "dimensions={0}, to_apply=%red, "
-                    "metadata={op_name=\"op_name\" "
-                    "source_file=\"source_file.py\" source_line=42}"));
-  }
-=======
   EXPECT_CALL(
       log,
       Log(LogSeverity::kWarning, _,
@@ -115,7 +87,6 @@ TEST(UnstableReductionDetectorTest, FailOnUnstableReductions) {
                   "dimensions={0}, to_apply=%red, "
                   "metadata={op_name=\"op_name\" "
                   "source_file=\"source_file.py\" source_line=42}"));
->>>>>>> upstream/master
   log.StartCapturingLogs();
   EXPECT_THAT(
       detector.Run(module.get(), /*execution_threads=*/{}),
@@ -134,18 +105,6 @@ TEST(UnstableReductionDetectorTest, WarningOnUnstableReduction) {
           DebugOptions::UNSTABLE_REDUCTION_DETECTION_MODE_WARNING);
   UnstableReductionDetector detector;
   ::absl::ScopedMockLog log;
-<<<<<<< HEAD
-  if constexpr (std::is_same_v<absl::LogSink, tsl::TFLogSink>) {
-    EXPECT_CALL(log,
-                Log(LogSeverity::kWarning, _,
-                    "1 unstable reductions found in module 'module_main'"));
-    EXPECT_CALL(log, Log(LogSeverity::kWarning, _,
-                         "Unstable reduction: %red.1 = bf16[] reduce(%p0.1, "
-                         "%init), dimensions={0}, to_apply=%red, "
-                         "metadata={op_name=\"op_name\" "
-                         "source_file=\"source_file.py\" source_line=42}"));
-  }
-=======
   EXPECT_CALL(log, Log(LogSeverity::kWarning, _,
                        "1 unstable reductions found in module 'module_main'"));
   EXPECT_CALL(log, Log(LogSeverity::kWarning, _,
@@ -153,7 +112,6 @@ TEST(UnstableReductionDetectorTest, WarningOnUnstableReduction) {
                        "%init), dimensions={0}, to_apply=%red, "
                        "metadata={op_name=\"op_name\" "
                        "source_file=\"source_file.py\" source_line=42}"));
->>>>>>> upstream/master
   log.StartCapturingLogs();
   EXPECT_THAT(detector.Run(module.get(), /*execution_threads=*/{}),
               IsOkAndHolds(false));
@@ -169,22 +127,11 @@ TEST(UnstableReductionDetectorTest, FailOnUnstableReductionNoMetadata) {
           DebugOptions::UNSTABLE_REDUCTION_DETECTION_MODE_FAIL);
   UnstableReductionDetector detector;
   ::absl::ScopedMockLog log;
-<<<<<<< HEAD
-  if constexpr (std::is_same_v<absl::LogSink, tsl::TFLogSink>) {
-    EXPECT_CALL(log,
-                Log(LogSeverity::kWarning, _,
-                    "1 unstable reductions found in module 'module_main'"));
-    EXPECT_CALL(log, Log(LogSeverity::kWarning, _,
-                         "Unstable reduction: %red.1 = bf16[] reduce(%p0.1, "
-                         "%init), dimensions={0}, to_apply=%red"));
-  }
-=======
   EXPECT_CALL(log, Log(LogSeverity::kWarning, _,
                        "1 unstable reductions found in module 'module_main'"));
   EXPECT_CALL(log, Log(LogSeverity::kWarning, _,
                        "Unstable reduction: %red.1 = bf16[] reduce(%p0.1, "
                        "%init), dimensions={0}, to_apply=%red"));
->>>>>>> upstream/master
   log.StartCapturingLogs();
   EXPECT_THAT(detector.Run(module.get(), /*execution_threads=*/{}),
               StatusIs(absl::StatusCode::kFailedPrecondition,

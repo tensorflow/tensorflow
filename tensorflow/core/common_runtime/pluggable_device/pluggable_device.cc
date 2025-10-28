@@ -30,10 +30,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/ascii.h"
-<<<<<<< HEAD
-=======
 #include "absl/strings/str_cat.h"
->>>>>>> upstream/master
 #include "absl/synchronization/notification.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/platform/errors.h"

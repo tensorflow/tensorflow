@@ -324,14 +324,13 @@ cc_library(
         "//xla/hlo/analysis:alias_info",
         "//xla/hlo/analysis:hlo_alias_analysis",
         "//xla/hlo/analysis:hlo_dataflow_analysis",
+        "//xla/hlo/analysis:tuple_points_to_analysis",
+        "//xla/hlo/analysis:logical_buffer_analysis",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
         "//xla/service:buffer_value",
         "//xla/service:hlo_value",
-<<<<<<< HEAD
-=======
         "//xla/service:logical_buffer",
->>>>>>> upstream/master
         "//xla/service/heap_simulator",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:logging",
@@ -1633,8 +1632,6 @@ cc_library(
 )
 
 cc_library(
-<<<<<<< HEAD
-=======
     name = "sub_byte_collective_normalization",
     srcs = ["sub_byte_collective_normalization.cc"],
     hdrs = ["sub_byte_collective_normalization.h"],
@@ -1669,7 +1666,6 @@ xla_cc_test(
 )
 
 cc_library(
->>>>>>> upstream/master
     name = "all_gather_permuted_ds_simplifier",
     srcs = ["all_gather_permuted_ds_simplifier.cc"],
     hdrs = ["all_gather_permuted_ds_simplifier.h"],

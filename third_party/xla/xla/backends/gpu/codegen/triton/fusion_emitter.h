@@ -38,14 +38,8 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
-<<<<<<< HEAD
-#include "xla/service/gpu/model/symbolic_tile_analysis.h"
-#include "xla/service/gpu/model/tiled_hlo_computation.h"
-#include "xla/service/gpu/model/tiled_hlo_instruction.h"
-=======
 #include "xla/service/gpu/model/block_level_parameters.h"
 #include "xla/service/gpu/model/experimental/symbolic_expr.h"
->>>>>>> upstream/master
 #include "xla/service/hlo_module_config.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/gpu/tma_metadata.h"
@@ -151,8 +145,6 @@ absl::StatusOr<Tiling> TilingFromAnnotatedFusion(
     const SymbolicTileAnalysis& symbolic_tile_analysis,
     const BlockLevelParameters& block_level_parameters);
 
-<<<<<<< HEAD
-=======
 // This function (or its future equivalent) should emit the MLIR module in the
 // shared dialect between XLA:CPU and XLA:GPU. At the moment it is still
 // emitting GPU specific modules. It is currently exposed only for testing
@@ -173,7 +165,6 @@ absl::Status LowerXTileToTriton(mlir::ModuleOp xtile_dialect_module,
                                 mlir::MLIRContext& mlir_context,
                                 const HloFusionInstruction& fusion);
 
->>>>>>> upstream/master
 }  // namespace ir_emitter_triton_internal
 }  // namespace gpu
 }  // namespace xla

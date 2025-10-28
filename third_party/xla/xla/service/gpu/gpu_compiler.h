@@ -175,12 +175,8 @@ class GpuCompiler : public LLVMCompiler {
       HloPassPipeline* pipeline, const se::GpuComputeCapability& gpu_version,
       const CompileOptions& options, HloModule* hlo_module,
       AutotuneConfig& autotune_config, tsl::thread::ThreadPool* thread_pool,
-<<<<<<< HEAD
-      se::StreamExecutor* stream_exec) {
-=======
       se::StreamExecutor* stream_exec,
       const Compiler::TargetConfig* target_config) {
->>>>>>> upstream/master
     return absl::OkStatus();
   }
 

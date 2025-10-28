@@ -74,11 +74,7 @@ size_t AlignedBufferBytes(
         (buffers[i].is_entry_parameter() && allocate_entry_params);
 
     if (should_allocate) {
-<<<<<<< HEAD:third_party/xla/xla/cpu_function_runtime.cc
-      total += align_to(buffer_infos[i].size(), cpu::Align());
-=======
       total += align_to(buffers[i].size(), xla::cpu::Align());
->>>>>>> upstream/master:tensorflow/compiler/tf2xla/allocator.cc
     }
   }
   return total;
@@ -91,11 +87,7 @@ void* MallocContiguousBuffers(
       tensorflow::AlignedBufferBytes(buffers, allocate_entry_params);
   void* contiguous = nullptr;
   if (total > 0) {
-<<<<<<< HEAD:third_party/xla/xla/cpu_function_runtime.cc
-    contiguous = aligned_malloc(total, cpu::Align());
-=======
     contiguous = aligned_malloc(total, xla::cpu::Align());
->>>>>>> upstream/master:tensorflow/compiler/tf2xla/allocator.cc
     if (annotate_initialized) {
       // Since the memory for temp buffers is written to by JITed code, msan has
       // no way of knowing the memory was initialized, so explicitly mark it.
@@ -109,11 +101,7 @@ void* MallocContiguousBuffers(
         (buffers[i].is_entry_parameter() && allocate_entry_params);
     if (should_allocate) {
       bufs[i] = reinterpret_cast<void*>(pos);
-<<<<<<< HEAD:third_party/xla/xla/cpu_function_runtime.cc
-      pos += align_to(buffer_infos[i].size(), cpu::Align());
-=======
       pos += align_to(buffers[i].size(), xla::cpu::Align());
->>>>>>> upstream/master:tensorflow/compiler/tf2xla/allocator.cc
     } else {
       bufs[i] = nullptr;
     }

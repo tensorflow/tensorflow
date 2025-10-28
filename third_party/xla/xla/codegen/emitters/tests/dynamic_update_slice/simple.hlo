@@ -1,15 +1,9 @@
-<<<<<<< HEAD:third_party/xla/xla/backends/gpu/codegen/emitters/tests/dynamic_update_slice/simple.hlo
-// RUN: fusion_to_mlir %s | emitters_opt -xla-test-optimize |\
-// RUN:   FileCheck %s
-// RUN: gpu_test_correctness %s --bijection_inputs=updated:1
-=======
 // RUN: gpu_fusion_to_mlir %s | emitters_opt -xla-test-optimize |\
 // RUN:   FileCheck %s --check-prefixes=CHECK,CHECK-GPU
 // RUN: cpu_fusion_to_mlir %s | emitters_opt -xla-test-optimize |\
 // RUN:   FileCheck %s
 // RUN: gpu_test_correctness %s --bijection_inputs=updated:1
 // RUN: cpu_test_correctness %s
->>>>>>> upstream/master:third_party/xla/xla/codegen/emitters/tests/dynamic_update_slice/simple.hlo
 
 fusion {
   in = f32[20,30] parameter(0)

@@ -23,22 +23,15 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
-<<<<<<< HEAD
-=======
 #include "absl/algorithm/container.h"
->>>>>>> upstream/master
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/function_ref.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
-<<<<<<< HEAD
-#include "absl/strings/str_format.h"
-=======
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
->>>>>>> upstream/master
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"

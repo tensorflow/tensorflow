@@ -143,16 +143,10 @@ TEST(BasicStringArrayTest, CreateSuccess) {
 TEST(BasicStringArrayTest, CreateFailureWithInvalidFuture) {
   TF_ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
   // Create fails if with invalid future.
-<<<<<<< HEAD
-  EXPECT_THAT(CreateTestArray(client.get(), Future<BasicStringArray::Buffers>(),
-                              /*on_done_with_buffer=*/nullptr),
-              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
-=======
   EXPECT_THAT(
       CreateTestArray(client.get(), tsl::Future<BasicStringArray::Buffers>(),
                       /*on_done_with_buffer=*/nullptr),
       absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
->>>>>>> upstream/master
 }
 
 TEST(BasicStringArrayTest, Destruction) {

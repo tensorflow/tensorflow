@@ -31,10 +31,7 @@ limitations under the License.
 #include "mlir/IR/Operation.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/host_execute_thunk.h"
-<<<<<<< HEAD
-=======
 #include "xla/backends/gpu/runtime/thunk_id.h"
->>>>>>> upstream/master
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/buffer_assignment.h"

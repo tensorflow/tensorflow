@@ -730,39 +730,6 @@ absl::Status BufferAssignment::CombineTempAllocations(
       continue;
     }
 
-<<<<<<< HEAD
-      BufferAllocation* combined_allocation = combined_it->second;
-      VLOG(1) << "Combined allocation absorbing temp allocation: "
-              << temp_allocation;
-
-      // Each temp allocation is placed end-to-end, accounting for alignment.
-      // The offset of each buffer in the combined allocation is computed from
-      // the base offset of the allocation. For private stack color, we assume
-      // each allocation object corresponds to one of the independent executions
-      // of the private stack computations, so it is safe to reuse offsets in
-      // that case.
-      int64_t alignment = color_alignment_(color);
-      int64_t base;
-      bool is_private_stack = private_stack_colors.contains(color);
-      if (is_private_stack) {
-        base = 0;
-        combined_allocation->set_size(std::max(base, temp_allocation.size()));
-      } else {
-        base = RoundUpTo(combined_allocation->size(), alignment);
-        combined_allocation->set_size(base + temp_allocation.size());
-      }
-      for (const auto& buffer_offset_size : temp_allocation.assigned_buffers_) {
-        const HloValue* value = buffer_offset_size.first;
-        const int64_t offset = buffer_offset_size.second.offset;
-        const int64_t size = buffer_offset_size.second.size;
-        TF_RETURN_IF_ERROR(
-            combined_allocation->AddAssignment(*value, base + offset, size));
-      }
-      if (!temp_allocation.HeapTraces().empty()) {
-        CHECK_EQ(temp_allocation.HeapTraces().size(), 1);
-        combined_allocation->AddHeapTrace(temp_allocation.HeapTraces().front());
-      }
-=======
     // If we got here, temp_allocation is still valid, since all the paths
     // that `std::move` it continue.
     BufferAllocation* combined_allocation = combined_it->second;
@@ -796,7 +763,6 @@ absl::Status BufferAssignment::CombineTempAllocations(
       CHECK_EQ(temp_allocation.HeapTraces().size(), 1);
       combined_allocation->AddHeapTrace(temp_allocation.HeapTraces().front());
     }
->>>>>>> upstream/master
 
     if (is_private_stack) {
       if (temp_allocation.size() == combined_allocation->size()) {
@@ -2008,11 +1974,7 @@ absl::Status BufferAssigner::AssignBuffersWithSequentialOrdering(
               HeapSimulator::Run(
                   get_heap_algorithm(alignment), *private_stack_computation,
                   *instruction_sequence, assignment->alias_analysis(),
-<<<<<<< HEAD
-                  alias_info_, assignment->buffer_size_, &schedule, options));
-=======
                   alias_info_, &assignment->buffer_size_, &schedule, options));
->>>>>>> upstream/master
           TF_RETURN_IF_ERROR(AssignBuffersFromHeapSimulator(
               result, assignment, color, isolation_options));
         }
@@ -2023,11 +1985,7 @@ absl::Status BufferAssigner::AssignBuffersWithSequentialOrdering(
             HeapSimulator::Run(get_heap_algorithm(alignment),
                                assignment->module(), schedule,
                                assignment->alias_analysis(), alias_info_,
-<<<<<<< HEAD
-                               assignment->buffer_size_, options));
-=======
                                &assignment->buffer_size_, options));
->>>>>>> upstream/master
         TF_RETURN_IF_ERROR(AssignBuffersFromHeapSimulator(
             result, assignment, color, isolation_options));
       }
@@ -2061,11 +2019,7 @@ absl::Status BufferAssigner::AssignBuffersWithSequentialOrdering(
             HeapSimulator::Run(get_heap_algorithm(alignment), *computation,
                                *instruction_sequence,
                                assignment->alias_analysis(), alias_info_,
-<<<<<<< HEAD
-                               assignment->buffer_size_, options));
-=======
                                &assignment->buffer_size_, options));
->>>>>>> upstream/master
         TF_RETURN_IF_ERROR(AssignBuffersFromHeapSimulator(
             result, assignment, color, isolation_options));
       }

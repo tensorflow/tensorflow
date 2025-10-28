@@ -25,10 +25,6 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/BuiltinOps.h"
-<<<<<<< HEAD
-#include "mlir/IR/MLIRContext.h"
-=======
->>>>>>> upstream/master
 #include "mlir/IR/OwningOpRef.h"
 #include "xla/backends/gpu/codegen/emitters/emitter_base.h"
 #include "xla/codegen/emitters/computation_partitioner.h"
@@ -58,11 +54,7 @@ class ConcatenateFusion final : public EmitterBase {
 
  protected:
   absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateMLIRModule(
-<<<<<<< HEAD
-      mlir::MLIRContext& context, const HloFusionInstruction& fusion,
-=======
       SymbolicExprContext& context, const HloFusionInstruction& fusion,
->>>>>>> upstream/master
       const std::string& entry_function_name,
       const BufferAssignment* buffer_assignment) const override;
 

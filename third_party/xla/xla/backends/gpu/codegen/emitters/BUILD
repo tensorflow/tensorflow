@@ -31,10 +31,7 @@ cc_library(
         "//xla/service/gpu:gpu_fusible",
         "//xla/service/gpu:hlo_fusion_analysis",
         "//xla/service/gpu:launch_dimensions",
-<<<<<<< HEAD
-=======
         "//xla/service/gpu/model/experimental:symbolic_expr",
->>>>>>> upstream/master
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
@@ -190,18 +187,10 @@ cc_library(
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
-<<<<<<< HEAD
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:ArithDialect",
-        "@llvm-project//mlir:FuncDialect",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:TensorDialect",
-=======
         "@com_google_absl//absl/status:statusor",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
->>>>>>> upstream/master
     ],
 )
 

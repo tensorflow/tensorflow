@@ -438,11 +438,8 @@ void AllocateAndParseFlags() {
       enable_mlir_multiple_local_cpu_devices;
   mlir_flags->tf_mlir_enable_debug_info_serialization =
       enable_mlir_debug_info_serialization;
-<<<<<<< HEAD
-=======
   mlir_flags->tf_serialize_mlir_to_compressed_bytecode =
       enable_serialize_mlir_to_compressed_bytecode;
->>>>>>> upstream/master
 
   if (use_tfg_graph_dumper) {
     UseMlirForGraphDump(MlirDumpConfig{}.elide_large_attributes().emit_dialect(

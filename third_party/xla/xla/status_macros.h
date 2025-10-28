@@ -286,21 +286,12 @@ class StatusAdaptorForMacros {
 // Returns a Status error if the condition is false. The condition text is
 // included in the error message. The caller can optionally stream more error
 // messages after the macro.
-<<<<<<< HEAD
-#define TF_RET_CHECK(condition)                                      \
-  /* NOLINTNEXTLINE(readability-simplify-boolean-expr) */            \
-  while (ABSL_PREDICT_FALSE(!(condition)))                           \
-  return xla::status_macros::MakeErrorStream(__FILE__, __LINE__,     \
-                                             ::tsl::error::INTERNAL) \
-      .with_log_stack_trace()                                        \
-=======
 #define TF_RET_CHECK(condition)                                           \
   /* NOLINTNEXTLINE(readability-simplify-boolean-expr) */                 \
   while (ABSL_PREDICT_FALSE(!(condition)))                                \
   return xla::status_macros::MakeErrorStream(__FILE__, __LINE__,          \
                                              absl::StatusCode::kInternal) \
       .with_log_stack_trace()                                             \
->>>>>>> upstream/master
       .add_ret_check_failure(#condition)
 
 // Returns a Status error. The caller must stream at least one error message

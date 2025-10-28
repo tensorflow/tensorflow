@@ -27,11 +27,6 @@ limitations under the License.
 #include "mlir/IR/AffineMap.h"
 
 namespace xla::gpu::experimental {
-<<<<<<< HEAD
-
-class TilingSpace;
-=======
->>>>>>> upstream/master
 
 class TilingSpace;
 
@@ -53,24 +48,15 @@ class TilingSpace;
 // output, parallel dimensions the corresponding root instruction are followed
 // by sequential dimensions.
 //
-<<<<<<< HEAD
-// (tid0, tid1)[ts1] -> offsets [17 * tid0 + tid1 * ts1] sizes [ts1] strides [1]
-//              upper bounds [17 * tid0]
-=======
 // Symbols are:
 //  - tile sizes of all dimensions, followed by
 //  - runtime variables.
->>>>>>> upstream/master
 struct DimTile {
   bool operator==(const DimTile& other) const;
 
   mlir::AffineExpr offset;
   mlir::AffineExpr size;
   mlir::AffineExpr stride;
-<<<<<<< HEAD
-  mlir::AffineExpr upper_bound;
-};
-=======
   // The masking condition of the upper bound can be written as:
   // dimension_index < upper_bounds(tile IDs)[tile sizes]{runtime variables}
   //
@@ -97,7 +83,6 @@ struct DimTile {
   mlir::AffineExpr upper_bound;
 };
 
->>>>>>> upstream/master
 template <typename H>
 H AbslHashValue(H h, const DimTile& dim_tile) {
   llvm::hash_code dim_tile_hash = llvm::hash_combine(
@@ -105,12 +90,9 @@ H AbslHashValue(H h, const DimTile& dim_tile) {
   return H::combine(std::move(h), static_cast<size_t>(dim_tile_hash));
 }
 
-<<<<<<< HEAD
-=======
 // SymbolicTile is a collection of tilings for every dimension of output tensor
 // of an HLO instruction. SymbolicTiledHloInstruction associates a SymbolicTile
 // with an HLO instruction.
->>>>>>> upstream/master
 class SymbolicTile {
  public:
   SymbolicTile(const TilingSpace& tiling_space,
@@ -123,7 +105,6 @@ class SymbolicTile {
                llvm::ArrayRef<mlir::AffineExpr> upper_bounds);
 
   std::string ToString(bool print_variables = true) const;
-<<<<<<< HEAD
 
   llvm::SmallVector<mlir::AffineExpr> offsets() const;
   llvm::SmallVector<mlir::AffineExpr> sizes() const;
@@ -135,19 +116,6 @@ class SymbolicTile {
   const TilingSpace& tiling_space() const { return *tiling_space_; }
   mlir::MLIRContext* mlir_context() const;
 
-=======
-
-  llvm::SmallVector<mlir::AffineExpr> offsets() const;
-  llvm::SmallVector<mlir::AffineExpr> sizes() const;
-  llvm::SmallVector<mlir::AffineExpr> strides() const;
-  llvm::SmallVector<mlir::AffineExpr> upper_bounds() const;
-  llvm::ArrayRef<DimTile> dim_tiles() const { return dim_tiles_; }
-  int64_t num_dim_tiles() const { return dim_tiles_.size(); }
-
-  const TilingSpace& tiling_space() const { return *tiling_space_; }
-  mlir::MLIRContext* mlir_context() const;
-
->>>>>>> upstream/master
   bool operator==(const SymbolicTile& other) const;
 
   // This allows GUnit to print the tile.
@@ -170,14 +138,9 @@ H AbslHashValue(H h, const SymbolicTile& symbolic_tile) {
   return h;
 }
 
-<<<<<<< HEAD
-// Returns a DimTile that covers the entire dimension, i.e.
-// offset 0, size = next_power_of_2(dim_size), stride 1, upper_bound = dim_size.
-=======
 // Returns a DimTile that covers the entire dimension with a single power of 2
 // sized tile, i.e. offset 0, size = next_power_of_2(dim_size), stride 1,
 // upper_bound = dim_size.
->>>>>>> upstream/master
 DimTile GetFullDimTile(int64_t dim_size, mlir::MLIRContext* ctx);
 
 // Returns a DimTile that covers the entire dimension, i.e.

@@ -47,10 +47,7 @@ limitations under the License.
 #include "xla/hlo/translate/mhlo_to_hlo/mlir_hlo_to_hlo.h"
 #include "xla/hlo/translate/mhlo_to_hlo/type_to_shape.h"
 #include "xla/hlo/translate/register.h"
-<<<<<<< HEAD
-=======
 #include "xla/mlir_hlo/utils/unregistered_attributes.h"
->>>>>>> upstream/master
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_proto_util.h"

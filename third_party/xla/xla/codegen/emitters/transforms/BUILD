@@ -62,10 +62,6 @@ cc_library(
         ":atomic_rmw_utils",
         ":convert_pure_call_ops_pass",
         ":passes_inc_gen",
-<<<<<<< HEAD
-        ":propagate_alias_scopes",  # buildcleaner: keep
-=======
->>>>>>> upstream/master
         ":simplify_affine_pass",
         ":simplify_arith_pass",
         "//xla:shape_util",
@@ -204,18 +200,6 @@ cc_library(
         "@llvm-project//mlir:SCFDialect",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
-    ],
-)
-
-cc_library(
-    name = "pass_pipelines",
-    srcs = ["pass_pipelines.cc"],
-    hdrs = ["pass_pipelines.h"],
-    deps = [
-        ":convert_pure_call_ops_pass",
-        "@llvm-project//mlir:FuncDialect",
-        "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:Transforms",
     ],
 )
 

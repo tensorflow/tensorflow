@@ -26,21 +26,15 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
-<<<<<<< HEAD
-=======
 #include "absl/algorithm/container.h"
 #include "absl/base/nullability.h"
->>>>>>> upstream/master
 #include "absl/container/flat_hash_set.h"
 #include "absl/functional/overload.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-<<<<<<< HEAD
-=======
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
->>>>>>> upstream/master
 #include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/command_buffer_cmd.h"
 #include "xla/backends/gpu/runtime/command_buffer_cmd_emitter.h"
@@ -50,15 +44,10 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/custom_call_thunk.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
-<<<<<<< HEAD
-#include "xla/backends/gpu/runtime/while_thunk.h"
-#include "xla/ffi/ffi_api.h"
-=======
 #include "xla/backends/gpu/runtime/thunk_pass_pipeline.h"
 #include "xla/backends/gpu/runtime/while_thunk.h"
 #include "xla/ffi/ffi_api.h"
 #include "xla/hlo/ir/hlo_module.h"
->>>>>>> upstream/master
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/semantic_version.h"
@@ -66,26 +55,15 @@ limitations under the License.
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "tsl/platform/platform.h"
-<<<<<<< HEAD
-=======
 #include "tsl/profiler/lib/profiler_lock.h"
->>>>>>> upstream/master
 #include "tsl/profiler/lib/traceme.h"
 
 namespace xla {
 namespace gpu {
-<<<<<<< HEAD
-
-using CommandBufferConfig = CommandBufferConversionPass::CommandBufferConfig;
-
-namespace {
-
-=======
 namespace {
 
 using CommandBufferConfig = CommandBufferConversionPass::CommandBufferConfig;
 
->>>>>>> upstream/master
 CommandBufferConfig GetCommandBufferConfig(
     const DebugOptions& debug_options,
     const se::DeviceDescription& device_info) {
@@ -94,18 +72,7 @@ CommandBufferConfig GetCommandBufferConfig(
     commands.insert(static_cast<DebugOptions::CommandBufferCmdType>(cmd_type));
   }
 
-<<<<<<< HEAD
-  absl::flat_hash_set<std::string> legacy_custom_call_targets;
-  for (const auto& target :
-       debug_options.legacy_command_buffer_custom_call_targets()) {
-    legacy_custom_call_targets.insert(target);
-  }
-
-  CommandBufferConfig config{
-      std::move(commands), std::move(legacy_custom_call_targets), device_info};
-=======
   CommandBufferConfig config{std::move(commands), device_info};
->>>>>>> upstream/master
 
   // Erase command buffer cmd types that are not supported by the gpu runtime.
   static constexpr auto kRequireConditionals = {DebugOptions::CONDITIONAL,
@@ -133,30 +100,16 @@ CommandBufferConfig GetCommandBufferConfig(
   };
 
   // Check if CUDA/ROCM driver supports required features.
-<<<<<<< HEAD
-  auto erase_cuda = [&](const se::CudaComputeCapability& cuda_comp) {
-=======
   if (device_info.gpu_compute_capability().IsCuda()) {
->>>>>>> upstream/master
     if (std::min(device_info.runtime_version(), device_info.driver_version()) <
         se::SemanticVersion{12, 3, 0}) {
       erase(kRequireTracing);       // cuStreamBeginCaptureToGraph
       erase(kRequireConditionals);  // on-device control flow
     }
-<<<<<<< HEAD
-  };
-  auto erase_rocm = [&](const se::RocmComputeCapability& rocm_comp) {
-    erase(kRequireConditionals);  // on-device control flow
-  };
-
-  std::visit(absl::Overload(erase_cuda, erase_rocm),
-             device_info.gpu_compute_capability());
-=======
   }
   if (device_info.gpu_compute_capability().IsRocm()) {
     erase(kRequireConditionals);  // on-device control flow
   }
->>>>>>> upstream/master
 
   return config;
 }
@@ -175,10 +128,7 @@ std::optional<DebugOptions::CommandBufferCmdType> GetCommandBufferCmdType(
         return DebugOptions::FUSION;
       } else {
         // Only copy within the same device can be converted to command buffers.
-<<<<<<< HEAD
-=======
         VLOG(2) << "Unsupported thunk kind: " << Thunk::KindToString(kind);
->>>>>>> upstream/master
         return std::nullopt;
       }
     case Thunk::kKernel:
@@ -207,14 +157,10 @@ std::optional<DebugOptions::CommandBufferCmdType> GetCommandBufferCmdType(
       return DebugOptions::CUSTOM_CALL;
     case Thunk::kCublasLtMatmul:
       return DebugOptions::CUBLASLT;
-<<<<<<< HEAD
-    default:
-=======
     case Thunk::kDynamicSlice:
       return DebugOptions::DYNAMIC_SLICE_FUSION;
     default:
       VLOG(2) << "Unsupported thunk kind: " << Thunk::KindToString(kind);
->>>>>>> upstream/master
       return std::nullopt;
   }
 }
@@ -255,14 +201,6 @@ bool IsConvertible(const ConditionalThunk& conditional_thunk,
 bool IsConvertible(const CustomCallThunk& custom_call_thunk,
                    const CommandBufferConfig& config) {
   const std::string& target_name = custom_call_thunk.target_name();
-<<<<<<< HEAD
-  if (config.enabled_legacy_custom_call_targets.contains(target_name)) {
-    VLOG(3) << "Recording legacy custom call target " << target_name
-            << " into command buffer.";
-    return true;
-  }
-=======
->>>>>>> upstream/master
 
   // Check if FFI handler is compatible with command buffers.
   absl::StatusOr<ffi::HandlerRegistration> registration =
@@ -281,9 +219,6 @@ bool IsConvertible(const Thunk& thunk, const CommandBufferConfig& config) {
   }
 
   auto cmd_type = GetCommandBufferCmdType(thunk);
-<<<<<<< HEAD
-  if (!cmd_type.has_value() || !config.enabled_commands.contains(*cmd_type)) {
-=======
   if (!cmd_type.has_value()) {
     return false;  // Thunk kind is not supported for command buffer conversion.
   }
@@ -292,7 +227,6 @@ bool IsConvertible(const Thunk& thunk, const CommandBufferConfig& config) {
     VLOG(2) << "Thunk kind " << Thunk::KindToString(thunk.kind())
             << " lowering is not enabled by the user for type "
             << DebugOptions::CommandBufferCmdType_Name(*cmd_type);
->>>>>>> upstream/master
     return false;  // Thunk kind is not supported for command buffer conversion.
   }
 
@@ -418,13 +352,10 @@ ConvertThunksToCommandBuffer(
 
   Thunk::ThunkInfo thunk_info;
   thunk_info.profile_annotation = "command_buffer";
-<<<<<<< HEAD
-=======
   if (tsl::profiler::ProfilerLock::HasActiveSession() &&
       !debug_options.xla_enable_command_buffers_during_profiling()) {
     thunk_info.profile_annotation += " (disabled for profiling)";
   }
->>>>>>> upstream/master
   return std::make_unique<CommandBufferThunk>(
       std::move(cmd_executor), std::move(thunk_info),
       std::make_unique<SequentialThunk>(Thunk::ThunkInfo(),
@@ -441,8 +372,6 @@ absl::Status FlushCommandBuffer(
   // them to the new thunks sequence as is.
   if (current_command_buffer_thunks.size() <
       std::max(1, debug_options.xla_gpu_graph_min_graph_size())) {
-<<<<<<< HEAD
-=======
     if (VLOG_IS_ON(2)) {
       for (const auto& thunk : current_command_buffer_thunks) {
         VLOG(2) << "Thunk kind " << Thunk::KindToString(thunk->kind())
@@ -450,7 +379,6 @@ absl::Status FlushCommandBuffer(
                    "less than the min graph size";
       }
     }
->>>>>>> upstream/master
     new_thunks.insert(
         new_thunks.end(),
         std::make_move_iterator(current_command_buffer_thunks.begin()),
@@ -475,11 +403,6 @@ absl::Status FlushCommandBuffer(
 
 }  // namespace
 
-<<<<<<< HEAD
-absl::StatusOr<bool> CommandBufferConversionPass::Run(
-    SequentialThunk* root_thunk, const DebugOptions& debug_options,
-    const se::DeviceDescription& device_info) {
-=======
 std::string CommandBufferConversionPass::CommandBufferConfig::ToString() const {
   auto formatter = [](std::string* out,
                       DebugOptions::CommandBufferCmdType cmd) {
@@ -494,17 +417,12 @@ absl::StatusOr<bool> CommandBufferConversionPass::Run(
     const HloModule* absl_nullable hlo_module,
     const se::DeviceDescription& device_info,
     ThunkPassBufferAllocator& allocator) {
->>>>>>> upstream/master
   tsl::profiler::TraceMe traceme("CommandBufferConversionPass");
 
   CommandBufferConfig config =
       GetCommandBufferConfig(debug_options, device_info);
-<<<<<<< HEAD
-
-=======
   VLOG(1) << "Module " << module_name_
           << " CommandBufferConfig: " << config.ToString();
->>>>>>> upstream/master
   TF_ASSIGN_OR_RETURN(
       CommandBufferCmdExecutor::SynchronizationMode synchronization_mode,
       GetSynchronizationMode(
@@ -536,16 +454,8 @@ absl::StatusOr<bool> CommandBufferConversionPass::Run(
       if (!region.empty()) {
         // If a valid region is found, add the whole region to the current
         // sequence and continue processing.
-<<<<<<< HEAD
-        current_command_buffer_thunks.insert(
-            current_command_buffer_thunks.end(),
-            std::make_move_iterator(region.begin()),
-            std::make_move_iterator(region.end()));
-        i += region.size() - 1;
-=======
         i += region.size() - 1;
         absl::c_move(region, std::back_inserter(current_command_buffer_thunks));
->>>>>>> upstream/master
         continue;
       }
     } else if (IsConvertible(*thunk.get(), config) && !thunk->IsAsyncDone()) {
@@ -559,12 +469,6 @@ absl::StatusOr<bool> CommandBufferConversionPass::Run(
       // If a `WhileThunk` itself is not eligible for conversion into a
       // command buffer, we attempt to convert thunks within its body
       auto while_thunk = static_cast<WhileThunk*>(thunk.get());
-<<<<<<< HEAD
-      TF_ASSIGN_OR_RETURN(
-          bool changed_in_body,
-          Run(while_thunk->body_thunk_sequence(), debug_options, device_info));
-      changed |= changed_in_body;
-=======
       TF_ASSIGN_OR_RETURN(bool changed_in_body,
                           Run(while_thunk->body_thunk_sequence(), debug_options,
                               hlo_module, device_info, allocator));
@@ -579,7 +483,6 @@ absl::StatusOr<bool> CommandBufferConversionPass::Run(
                                 device_info, allocator));
         changed |= changed_in_branch;
       }
->>>>>>> upstream/master
     }
 
     // If the current thunk is not convertible, flush collected eligible thunk

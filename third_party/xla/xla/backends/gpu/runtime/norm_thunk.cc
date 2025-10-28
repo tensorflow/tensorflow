@@ -21,10 +21,6 @@ limitations under the License.
 
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
-<<<<<<< HEAD
-#include "absl/synchronization/mutex.h"
-#include "xla/stream_executor/stream_executor.h"
-=======
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
@@ -37,7 +33,6 @@ limitations under the License.
 #include "xla/stream_executor/stream.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
->>>>>>> upstream/master
 #include "xla/util.h"
 
 namespace xla {

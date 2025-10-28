@@ -437,11 +437,6 @@ class XLAConfigOptions:
       if compiler_pair == (SyclCompiler.ICPX, HostCompiler.CLANG):
         rc.append("build --config sycl")
         rc.append("build --config icpx_clang")
-<<<<<<< HEAD
-      elif compiler_pair == (SyclCompiler.ICPX, HostCompiler.GCC):
-        rc.append("build --config sycl")
-=======
->>>>>>> upstream/master
       else:
         raise NotImplementedError(" Sycl with host compiler not supported")
 

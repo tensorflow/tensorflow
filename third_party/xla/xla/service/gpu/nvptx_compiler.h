@@ -74,12 +74,8 @@ class NVPTXCompiler : public GpuCompiler {
       HloPassPipeline* pipeline, const se::GpuComputeCapability& gpu_version,
       const CompileOptions& options, HloModule* hlo_module,
       AutotuneConfig& autotune_config, tsl::thread::ThreadPool* thread_pool,
-<<<<<<< HEAD
-      se::StreamExecutor* stream_exec) override;
-=======
       se::StreamExecutor* stream_exec,
       const Compiler::TargetConfig* target_config) override;
->>>>>>> upstream/master
 
   absl::Status AddGemmFusionAutotuningPasses(
       HloPassPipeline* pipeline, HloModule* hlo_module,

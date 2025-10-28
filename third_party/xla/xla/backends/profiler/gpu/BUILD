@@ -1,9 +1,6 @@
 load("@local_config_cuda//cuda:build_defs.bzl", "cuda_library")
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm_is_configured")
-<<<<<<< HEAD
-=======
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
->>>>>>> upstream/master
 load("//xla:xla.default.bzl", "xla_cc_test")
 load("//xla/tests:build_defs.bzl", "xla_test")
 load(
@@ -170,10 +167,7 @@ cuda_library(
     testonly = 1,
     srcs = ["cuda_test.cu.cc"],
     hdrs = ["cuda_test.h"],
-<<<<<<< HEAD
     tags = ["cuda-only"],
-=======
->>>>>>> upstream/master
     visibility = ["//visibility:public"],
     deps = [
         "@com_google_googletest//:gtest_for_library",
@@ -224,10 +218,6 @@ cc_library(
         ":cupti_interface",
         ":cupti_pm_sampler_factory",
         ":cupti_utils",
-<<<<<<< HEAD
-        ":nvtx_utils",
-=======
->>>>>>> upstream/master
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",
@@ -448,26 +438,6 @@ cc_library(
 )
 
 cc_library(
-<<<<<<< HEAD
-    name = "nvtx_utils",
-    srcs = ["nvtx_utils.cc"],
-    hdrs = ["nvtx_utils.h"],
-    # copybara:uncomment compatible_with = ["//buildenv/target:non_prod"],
-    tags = [
-        "cuda-only",
-        "gpu",
-    ],
-    deps = [
-        "@com_google_absl//absl/strings",
-        "@local_config_cuda//cuda:cuda_headers",
-        "@local_tsl//tsl/platform",
-        "@local_tsl//tsl/platform:macros",
-    ],
-)
-
-cc_library(
-=======
->>>>>>> upstream/master
     name = "cupti_collector",
     srcs = ["cupti_collector.cc"],
     hdrs = ["cupti_collector.h"],
@@ -563,8 +533,6 @@ cc_library(
 )
 
 cc_library(
-<<<<<<< HEAD
-=======
     name = "ondevice_event_exporter",
     srcs = ["ondevice_event_exporter.cc"],
     hdrs = ["ondevice_event_exporter.h"],
@@ -615,7 +583,6 @@ xla_cc_test(
 )
 
 cc_library(
->>>>>>> upstream/master
     name = "cupti_status",
     srcs = ["cupti_status.cc"],
     hdrs = ["cupti_status.h"],

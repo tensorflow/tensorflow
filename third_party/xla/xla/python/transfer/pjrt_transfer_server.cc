@@ -231,11 +231,7 @@ absl::Status PjRtTransferServer::CrossHostPull(
   }
   tsl::RCReference<aux::SocketServer::Connection> connection;
   {
-<<<<<<< HEAD
-    absl::MutexLock lock(&connections_mu_);
-=======
     absl::MutexLock lock(connections_mu_);
->>>>>>> upstream/master
     TF_ASSIGN_OR_RETURN(connection, GetConnection(remote_pid));
   }
 

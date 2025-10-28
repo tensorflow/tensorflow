@@ -775,11 +775,7 @@ void CuptiPmSamplerDecodeThread::DecodeUntilDisabled() {
 // Entry function for decode thread
 void CuptiPmSamplerDecodeThread::MainFunc() {
   // RAII lock to ensure mutex is released when thread exits
-<<<<<<< HEAD
-  absl::MutexLock lock(&state_mutex_);
-=======
   absl::MutexLock lock(state_mutex_);
->>>>>>> upstream/master
 
   // Control loop for decode thread
   do {
@@ -802,15 +798,9 @@ void CuptiPmSamplerDecodeThread::MainFunc() {
         {
           // Release lock for expensive decode call, but regain before returning
           // to control loop
-<<<<<<< HEAD
-          state_mutex_.Unlock();
-          DecodeUntilDisabled();
-          state_mutex_.Lock();
-=======
           state_mutex_.unlock();
           DecodeUntilDisabled();
           state_mutex_.lock();
->>>>>>> upstream/master
         }
         // Returns when Disabled has been requested
         StateIs(ThreadState::kDisabled);

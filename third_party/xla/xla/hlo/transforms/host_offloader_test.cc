@@ -89,15 +89,12 @@ class HostOffloaderTest : public HloHardwareIndependentTestBase {
     return false;
   }
 
-<<<<<<< HEAD
-=======
   static void DisableAutomaticHostComputeOffload(HloModule* module) {
     module->mutable_config()
         .mutable_debug_options()
         .set_xla_disable_automatic_host_compute_offload(true);
   }
 
->>>>>>> upstream/master
   AliasInfo alias_info_;
 };
 
@@ -4136,8 +4133,8 @@ ENTRY %main {
 // DynamicUpdateSlice(MoveToHost(...)) in a while loop body.
 TEST_F(HostOffloaderTest, MoveToHostInsideWhileLoopBodyShareSameBroadcast) {
   const absl::string_view hlo_string = R"(
-    HloModule MoveToHostFoundOutsideAndInsideOfWhileLoop, entry_computation_layout={(s32[],f32[1,1,128,128],f32[1,1,128,128])->(f32[8,1,128,128]{3,2,1,0:T(8,128)S(5)}, f32[8,1,128,128]{3,2,1,0:T(8,128)S(5)}, f32[1,1,128,128], f32[1,1,128,128], s32[], s32[])} 
-    
+    HloModule MoveToHostFoundOutsideAndInsideOfWhileLoop, entry_computation_layout={(s32[],f32[1,1,128,128],f32[1,1,128,128])->(f32[8,1,128,128]{3,2,1,0:T(8,128)S(5)}, f32[8,1,128,128]{3,2,1,0:T(8,128)S(5)}, f32[1,1,128,128], f32[1,1,128,128], s32[], s32[])}
+
     while_condition {
       condition_param = (f32[8,1,128,128], f32[8,1,128,128], f32[1,1,128,128], f32[1,1,128,128], s32[], s32[]) parameter(0)
       condition_current_iteration_index = s32[] get-tuple-element(condition_param), index=5
@@ -4584,8 +4581,6 @@ ENTRY main.39_spmd (param.2: f32[16,16,16]) -> (f32[16,16,16], f32[16,16,16]) {
   EXPECT_EQ(default_memory_space_count, 1);
 }
 
-<<<<<<< HEAD
-=======
 TEST_F(HostOffloaderTest, PreExistingAllocateBufferMultipleUsersDuplicated) {
   const absl::string_view hlo_string = R"(
 HloModule module, entry_computation_layout={(f32[1,10], s32[])->(f32[1,10], f32[2,10])}
@@ -4655,7 +4650,6 @@ TEST_F(HostOffloaderTest, AutomaticHostComputeOffloadDisabled) {
               absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
->>>>>>> upstream/master
 }  // namespace
 
 }  // namespace xla

@@ -181,11 +181,7 @@ tsl::RCReference<ChunkDestination> MakeDmaDestination(
 
 // Creates a ChunkDestination for a sliced offset into
 // a PjRtRawBuffer.
-<<<<<<< HEAD
-absl::StatusOr<std::pair<tsl::RCReference<ChunkDestination>, xla::PjRtFuture<>>>
-=======
 absl::StatusOr<std::pair<tsl::RCReference<ChunkDestination>, xla::Future<>>>
->>>>>>> upstream/master
 CreateSlicedRawBufferDest(tsl::RCReference<xla::PjRtRawBuffer> raw_buffer,
                           size_t offset, size_t size);
 
@@ -203,11 +199,7 @@ class IsLastSemaphore {
   auto DoWork(size_t value, T&& cb) -> absl::Status {
     bool is_last;
     {
-<<<<<<< HEAD
-      absl::MutexLock l(&mu_);
-=======
       absl::MutexLock l(mu_);
->>>>>>> upstream/master
       if (is_done_) {
         return absl::OkStatus();
       }
@@ -230,11 +222,7 @@ class IsLastSemaphore {
 
   // Return true if this is the first call to poison.
   bool Poison() {
-<<<<<<< HEAD
-    absl::MutexLock l(&mu_);
-=======
     absl::MutexLock l(mu_);
->>>>>>> upstream/master
     if (is_done_) {
       return false;
     }

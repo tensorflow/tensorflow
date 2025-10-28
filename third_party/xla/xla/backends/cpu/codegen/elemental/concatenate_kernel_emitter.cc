@@ -51,16 +51,6 @@ limitations under the License.
 namespace xla::cpu {
 
 static absl::Status CanDoFastConcatenate(const HloInstruction* concatenate) {
-<<<<<<< HEAD
-  if (!concatenate->backend_config<BackendConfig>()
-           ->outer_dimension_partitions()
-           .empty()) {
-    return absl::Status(
-        absl::StatusCode::kFailedPrecondition,
-        "Cannot generate memcpy-based concat for the parallel CPU backend");
-  }
-=======
->>>>>>> upstream/master
   const Shape& output_shape = concatenate->shape();
   for (auto* op : concatenate->operands()) {
     if (!LayoutUtil::Equal(op->shape().layout(), output_shape.layout())) {

@@ -1067,8 +1067,6 @@ absl::Status MemorySpaceAssignment::FixSchedule() {
     TF_RET_CHECK(schedule.is_computation_scheduled(computation));
     computation_to_stats[computation] = {};
   }
-<<<<<<< HEAD
-=======
 
   // This set contains instructions that should be ignored when iterating
   // through `flattened_instructions_` to build the new schedule.  MSA adds new
@@ -1093,7 +1091,6 @@ absl::Status MemorySpaceAssignment::FixSchedule() {
       }
     }
   }
->>>>>>> upstream/master
 
   // Create the schedule for all computations at the same time, by first
   // scheduling the before instructions, then the current instruction and
@@ -1128,12 +1125,8 @@ absl::Status MemorySpaceAssignment::FixSchedule() {
       // dependencies.
       if (instruction != nullptr &&
           instruction->opcode() != HloOpcode::kBitcast &&
-<<<<<<< HEAD
-          instruction->opcode() != HloOpcode::kTuple) {
-=======
           instruction->opcode() != HloOpcode::kTuple &&
           !pass_over_instructions.contains(instruction)) {
->>>>>>> upstream/master
         HloComputation* computation = instruction->parent();
         if (computation_to_stats.contains(computation)) {
           ComputationStats& stats = computation_to_stats[computation];

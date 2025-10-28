@@ -58,20 +58,12 @@ cc_library(
         "//xla/client:executable_build_options",
         "//xla/hlo/builder:xla_builder",
         "//xla/hlo/builder:xla_computation",
-<<<<<<< HEAD
-        "//xla/service:shaped_buffer",
-        "//xla/stream_executor:device_description",
-        "//xla/stream_executor:platform",
-        "//xla/stream_executor/cuda:cuda_compute_capability",
-        "//xla/tests:client_library_test_base",
-=======
         "//xla/service:hlo_module_config",
         "//xla/service:hlo_runner_interface",
         "//xla/tests:client_library_test_runner_mixin",
         "//xla/tests:hlo_pjrt_interpreter_reference_mixin",
         "//xla/tests:hlo_pjrt_test_base",
         "//xla/tests:xla_test_backend_predicates",
->>>>>>> upstream/master
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:statusor",

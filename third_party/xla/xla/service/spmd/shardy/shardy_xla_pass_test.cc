@@ -832,17 +832,10 @@ TEST_F(ShardyXLATest, TestUseTuplesTrueNoSetLayout) {
   const char* const hloString = R"(
     HloModule pjit_f, allow_spmd_sharding_propagation_to_parameters={false,false,false}, num_partitions=8, frontend_attributes={xla.sdy.use_tuple_args="t"}
 
-<<<<<<< HEAD
-    ENTRY %main.7 (Arg_0.1: f32[8,16], Arg_1.2: f32[16,32], Arg_2.3: f32[8,32]) -> f32[8,32] {
-      %Arg_0.1 = f32[8,16] parameter(0)
-      %Arg_1.2 = f32[16,32] parameter(1)
-      %dot.4 = f32[8,32] dot(f32[8,16]{1,0} %Arg_0.1, f32[16,32]{1,0} %Arg_1.2), lhs_contracting_dims={1}, rhs_contracting_dims={0}
-=======
     ENTRY %main.7 (Arg_0.1: f32[8,16], Arg_1.1: f32[16,32], Arg_2.3: f32[8,32]) -> f32[8,32] {
       %Arg_0.1 = f32[8,16] parameter(0)
       %Arg_1.1 = f32[16,32] parameter(1)
       %dot.4 = f32[8,32] dot(f32[8,16]{1,0} %Arg_0.1, f32[16,32]{1,0} %Arg_1.1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
->>>>>>> upstream/master
       %Arg_2.3 = f32[8,32] parameter(2)
       ROOT %add.5 = f32[8,32] add(f32[8,32] %dot.4, f32[8,32] %Arg_2.3)
     })";
@@ -1089,19 +1082,11 @@ TEST_F(ShardyXLATest, PreserveOriginalValueRecoveryTable) {
   const char* const expected = R"(
   // CHECK:       {"reshape.2341"} : {"placeholder_reshape.201"},
   // CHECK-NEXT:  "
-<<<<<<< HEAD
-  // CHECK-NEXT:    ENTRY %recovery_computation.1 (p.1: f32[192]) -> f32[1,192] {
-  // CHECK-NEXT:      %p.1 = f32[192]{0} parameter(0)
-  // CHECK-NEXT:      ROOT %reshape.2 = f32[1,192]{1,0} reshape(%p.1)
-  // CHECK-NEXT:    }
-  // CHECK-NEXT:  "
-=======
   // CHECK:       ENTRY %recovery_computation.1 (p.1: f32[192]) -> f32[1,192] {
   // CHECK-NEXT:      %p.1 = f32[192]{0} parameter(0)
   // CHECK-NEXT:      ROOT %reshape.2 = f32[1,192]{1,0} reshape(%p.1)
   // CHECK-NEXT:    }
   // CHECK:       "
->>>>>>> upstream/master
   )";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
@@ -1134,8 +1119,6 @@ TEST_F(ShardyXLATest, UpdateInlineableAttr) {
   EXPECT_EQ(root->to_apply()->name(), "inlineable_callee");
 }
 
-<<<<<<< HEAD
-=======
 TEST_F(ShardyXLATest, ManualComputationCallOpWithToken) {
   const char* const hloString = R"(
     HloModule main, entry_computation_layout={(token[])->token[]}, frontend_attributes={xla.sdy.meshes={mesh = #sdy.mesh<["x"=2]>}}
@@ -1162,6 +1145,5 @@ TEST_F(ShardyXLATest, ManualComputationCallOpWithToken) {
   EXPECT_EQ(callInst->sharding().ToString(), "{manual}");
 }
 
->>>>>>> upstream/master
 }  // namespace sdy
 }  // namespace xla

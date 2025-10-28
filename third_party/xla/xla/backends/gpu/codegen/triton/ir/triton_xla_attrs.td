@@ -83,8 +83,6 @@ def TTXLA_LayoutAttr : TTXLA_Attr<"Layout", [
   }];
 }
 
-<<<<<<< HEAD
-=======
 def TTXLA_ComparatorEnum : I32Enum<"Comparator",
     "A comparison operator for instructions.",
     [
@@ -97,5 +95,4 @@ def TTXLA_ComparatorEnum : I32Enum<"Comparator",
 def TTXLA_ComparatorAttr : EnumAttr<XlaTritonDialect, TTXLA_ComparatorEnum, "">;
 
 
->>>>>>> upstream/master
 #endif // XLA_BACKENDS_GPU_CODEGEN_TRITON_IR_TRITON_XLA_ATTRS_TD_

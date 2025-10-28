@@ -780,8 +780,6 @@ func.func @nested_manual_computations(%arg0: tensor<8xf32> {sdy.sharding = #sdy.
 // CHECK-NEXT:    %0 = stablehlo.abs %arg0 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x"}]>]>} : tensor<8xf32>
 // CHECK-NEXT:    return %0 : tensor<8xf32>
 // CHECK-NEXT:  }
-<<<<<<< HEAD
-=======
 
 // -----
 
@@ -828,4 +826,3 @@ func.func @named_computations_same_funcs_two_same_manual_axes_different_sharding
 // CHECK-SAME:      %arg0: tensor<8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"y"}]>}
 // CHECK-SAME:      -> (tensor<8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"y"}]>}) {
 
->>>>>>> upstream/master

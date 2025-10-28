@@ -157,13 +157,9 @@ absl::StatusOr<int64_t> GetNonContractingDimsNumElements(
 // powers of two.
 absl::StatusOr<bool> ShouldSwapOperands(const HloInstruction* instr) {
   const HloDotInstruction* dot = DynCast<HloDotInstruction>(instr);
-<<<<<<< HEAD
-  if (dot == nullptr) return false;
-=======
   if (dot == nullptr) {
     return false;
   }
->>>>>>> upstream/master
   const bool lhs_has_code = HasCodeGeneratingInstructions(dot->operand(0));
   const bool rhs_has_code = HasCodeGeneratingInstructions(dot->operand(1));
   TF_ASSIGN_OR_RETURN(const int64_t lhs_size, GetNonContractingDimsNumElements(

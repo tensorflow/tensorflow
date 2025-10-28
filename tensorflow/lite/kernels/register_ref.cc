@@ -447,11 +447,7 @@ BuiltinRefOpResolver::BuiltinRefOpResolver() {
              /* max_version = */ 5);
   AddBuiltin(BuiltinOperator_NOT_EQUAL, Register_NOT_EQUAL(),
              /* min_version = */ 1,
-<<<<<<< HEAD
-             /* max_version = */ 3);
-=======
              /* max_version = */ 4);
->>>>>>> upstream/master
   AddBuiltin(BuiltinOperator_SQRT, Register_SQRT(),
              /* min_version = */ 1,
              /* max_version = */ 2);

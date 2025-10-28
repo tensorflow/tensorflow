@@ -155,15 +155,9 @@ common:macos --copt=-DGRPC_BAZEL_BUILD
 common:macos --features=archive_param_file
 
 # Settings for MacOS on ARM CPUs.
-<<<<<<< HEAD
-build:macos_arm64 --cpu=darwin_arm64
-build:macos_arm64 --macos_minimum_os=11.0
-build:macos_arm64 --platforms=@build_bazel_apple_support//platforms:darwin_arm64
-=======
 common:macos_arm64 --cpu=darwin_arm64
 common:macos_arm64 --macos_minimum_os=11.0
 common:macos_arm64 --platforms=@build_bazel_apple_support//platforms:darwin_arm64
->>>>>>> upstream/master
 
 # Config to use a mostly-static build and disable modular op registration
 # support (this will revert to loading TensorFlow with RTLD_GLOBAL in Python).
@@ -196,21 +190,6 @@ common:mkl_aarch64_threadpool -c opt
 common:mkl_aarch64 --config=mkl_aarch64_threadpool
 
 # Default CUDA, CUDNN and NVSHMEM versions.
-<<<<<<< HEAD
-build:cuda_version --repo_env=HERMETIC_CUDA_VERSION="12.9.1"
-build:cuda_version --repo_env=HERMETIC_CUDNN_VERSION="9.8.0"
-build:cuda_version --repo_env=HERMETIC_NVSHMEM_VERSION="3.2.5"
-
-# CUDA: This config refers to building CUDA op kernels with nvcc.
-build:cuda --repo_env TF_NEED_CUDA=1
-build:cuda --@rules_ml_toolchain//common:enable_cuda
-build:cuda --config=cuda_version
-# This flag is needed to include CUDA libraries.
-build:cuda --@local_config_cuda//cuda:include_cuda_libs=true
-
-# This configuration is used for building the wheels.
-build:cuda_wheel --@local_config_cuda//cuda:include_cuda_libs=false
-=======
 common:cuda_version --repo_env=HERMETIC_CUDA_VERSION="12.9.1"
 common:cuda_version --repo_env=HERMETIC_CUDNN_VERSION="9.8.0"
 common:cuda_version --repo_env=HERMETIC_NVSHMEM_VERSION="3.2.5"
@@ -224,7 +203,6 @@ common:cuda --@local_config_cuda//cuda:include_cuda_libs=true
 
 # This configuration is used for building the wheels.
 common:cuda_wheel --@local_config_cuda//cuda:include_cuda_libs=false
->>>>>>> upstream/master
 
 # CUDA: This config refers to building CUDA op kernels with clang.
 common:cuda_clang --config=cuda
@@ -325,25 +303,6 @@ common:rocm_ci_hermetic --@local_config_rocm//rocm:rocm_path_type=hermetic
 
 # This config option is used for SYCL as GPU backend.
 # SYCL Configuration (non-hermetic)
-<<<<<<< HEAD
-build:sycl --crosstool_top=@local_config_sycl//crosstool:toolchain
-build:sycl --define=using_sycl=true
-build:sycl --define=tensorflow_mkldnn_contraction_kernel=0
-build:sycl --repo_env=TF_NEED_SYCL=1
-build:sycl --cxxopt=-std=c++17
-build:sycl --host_cxxopt=-std=c++17
-build:sycl --repo_env=SYCL_BUILD_HERMETIC=0
-build:sycl --config=clang_local
-
-# Enable Clang for host and icpx for SYCL
-build:icpx_clang --repo_env TF_ICPX_CLANG=1
-build:icpx_clang --action_env=CLANG_COMPILER_PATH="/usr/lib/llvm-18/bin/clang"
-build:icpx_clang --linkopt="-fuse-ld=lld"
-build:icpx_clang --linkopt="-lm"
-build:icpx_clang --host_linkopt="-lm"
-build:icpx_clang --host_linkopt="-fuse-ld=lld"
-build:icpx_clang --copt=-fclang-abi-compat=17
-=======
 common:sycl --@rules_ml_toolchain//common:enable_sycl=True
 common:sycl --repo_env=TF_NEED_SYCL=1
 common:sycl --define=tensorflow_mkldnn_contraction_kernel=0
@@ -354,7 +313,6 @@ common:sycl --repo_env=SYCL_BUILD_HERMETIC=0
 # Enable Clang for host and icpx for SYCL
 common:icpx_clang --repo_env TF_ICPX_CLANG=1
 common:icpx_clang --copt=-fclang-abi-compat=17
->>>>>>> upstream/master
 
 # Hermetic SYCL Configuration
 common:sycl_hermetic --config=sycl
@@ -521,21 +479,6 @@ common:resultstore --bes_timeout=600s
 # Flag to enable remote config
 common --experimental_repo_remote_exec
 
-<<<<<<< HEAD
-build:use_tar_archive_files --repo_env=USE_CUDA_TAR_ARCHIVE_FILES=1
-build:use_tar_archive_files --repo_env=USE_NVSHMEM_TAR_ARCHIVE_FILES=1
-build:use_tar_archive_files --repo_env=USE_LLVM_TAR_ARCHIVE_FILES=1
-build:use_tar_archive_files --repo_env=USE_MIRRORED_TAR_ARCHIVE_FILES=1
-
-# Make Bazel not try to probe the host system for a C++ toolchain.
-build:rbe_base --config=use_tar_archive_files
-build:rbe_base --config=resultstore
-build:rbe_base --define=EXECUTOR=remote
-build:rbe_base --jobs=800
-build:rbe_base --remote_executor=grpcs://remotebuildexecution.googleapis.com
-build:rbe_base --remote_timeout=3600
-build:rbe_base --spawn_strategy=remote,worker,standalone,local
-=======
 common:use_tar_archive_files --repo_env=USE_CUDA_TAR_ARCHIVE_FILES=1
 common:use_tar_archive_files --repo_env=USE_NVSHMEM_TAR_ARCHIVE_FILES=1
 common:use_tar_archive_files --repo_env=USE_LLVM_TAR_ARCHIVE_FILES=1
@@ -549,7 +492,6 @@ common:rbe_base --jobs=800
 common:rbe_base --remote_executor=grpcs://remotebuildexecution.googleapis.com
 common:rbe_base --remote_timeout=3600
 common:rbe_base --spawn_strategy=remote,worker,standalone,local
->>>>>>> upstream/master
 # Attempt to minimize the amount of data transfer between bazel and the remote
 # workers:
 common:rbe_base --remote_download_toplevel
@@ -603,11 +545,7 @@ common:rbe_linux_cuda --config=cuda_clang_official
 common:rbe_linux_cuda --config=rbe_linux_cpu
 # dt9 is based on glibc 2.17, which is outdated and incompatible with CUDA 12.8.0
 # unset TF_SYSROOT
-<<<<<<< HEAD
-build:rbe_linux_cuda --repo_env=TF_SYSROOT=
-=======
 common:rbe_linux_cuda --repo_env=TF_SYSROOT=
->>>>>>> upstream/master
 # For Remote build execution -- GPU configuration
 common:rbe_linux_cuda --repo_env=REMOTE_GPU_TESTING=1
 # Enable forward compatibility for CUDA builds because RBE docker image doesn't
@@ -667,31 +605,18 @@ common:release_macos_base --config=clang_local
 # Build configs for macOS x86
 common:release_macos_x86 --config=release_macos_base
 # Build with the AVX instruction set when on macOS x86
-<<<<<<< HEAD
-build:release_macos_x86 --config=avx_linux
-build:release_macos_x86 --cpu=darwin
-build:release_macos_x86 --platforms=@build_bazel_apple_support//platforms:darwin_x86_64
-=======
 common:release_macos_x86 --config=avx_linux
 common:release_macos_x86 --cpu=darwin
 common:release_macos_x86 --platforms=@build_bazel_apple_support//platforms:darwin_x86_64
->>>>>>> upstream/master
 # Target Catalina as the minimum compatible OS version
 common:release_macos_x86 --macos_minimum_os=10.15
 common:release_macos_x86 --macos_sdk_version=10.15
 
 # Build configs for macOS Arm64
-<<<<<<< HEAD
-build:release_macos_arm64 --config=release_macos_base
-build:release_macos_arm64 --cpu=darwin_arm64
-build:release_macos_arm64 --platforms=@build_bazel_apple_support//platforms:darwin_arm64
-build:release_macos_arm64 --define=tensorflow_mkldnn_contraction_kernel=0
-=======
 common:release_macos_arm64 --config=release_macos_base
 common:release_macos_arm64 --cpu=darwin_arm64
 common:release_macos_arm64 --platforms=@build_bazel_apple_support//platforms:darwin_arm64
 common:release_macos_arm64 --define=tensorflow_mkldnn_contraction_kernel=0
->>>>>>> upstream/master
 # Target Moneterey as the minimum compatible OS version
 common:release_macos_arm64 --macos_minimum_os=12.0
 common:release_macos_arm64 --macos_sdk_version=12.0

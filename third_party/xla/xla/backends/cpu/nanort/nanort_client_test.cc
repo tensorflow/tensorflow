@@ -448,11 +448,7 @@ TEST_P(NanoRtClientTest, ProgramShapeTestInt4) {
       executable->program_shape()->result().layout().element_size_in_bits(), 4);
 }
 
-<<<<<<< HEAD
-TEST(NanoRtClientTest, ProgramShapeKeepsLayout) {
-=======
 TEST_P(NanoRtClientTest, ProgramShapeKeepsLayout) {
->>>>>>> upstream/master
   constexpr absl::string_view kModuleStr = R"(
     HloModule layout_test
 
@@ -467,14 +463,8 @@ TEST_P(NanoRtClientTest, ProgramShapeKeepsLayout) {
                           ParseAndReturnUnverifiedModule(kModuleStr));
   XlaComputation computation(hlo_module->ToProto());
 
-<<<<<<< HEAD
-  NanoRtClient client;
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<NanoRtExecutable> executable,
-                          client.Compile(computation));
-=======
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<NanoRtExecutable> executable,
                           GetExecutable(computation, GetParam()));
->>>>>>> upstream/master
   ASSERT_TRUE(executable->program_shape().has_value());
 
   auto program_shape = executable->program_shape();
@@ -487,15 +477,12 @@ TEST_P(NanoRtClientTest, ProgramShapeKeepsLayout) {
             absl::Span<const int64_t>({0, 1}));
 }
 
-<<<<<<< HEAD
-=======
 INSTANTIATE_TEST_SUITE_P(NanoRtClientTestSuite, NanoRtClientTest,
                          ::testing::Bool(),
                          [](const ::testing::TestParamInfo<bool>& info) {
                            return info.param ? "EXPORT" : "NO_EXPORT";
                          });
 
->>>>>>> upstream/master
 //===----------------------------------------------------------------------===//
 // Performance benchmarks below
 //===----------------------------------------------------------------------===//

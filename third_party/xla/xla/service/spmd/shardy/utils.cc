@@ -440,8 +440,6 @@ bool hasShardyMesh(mlir::ModuleOp module) {
   return !module.getOps<mlir::sdy::MeshOp>().empty();
 }
 
-<<<<<<< HEAD
-=======
 namespace {
 // Returns the first non-maximal mesh on the result shardings, if there is
 // one. Otherwise returns `std::nullopt`.
@@ -484,6 +482,5 @@ mlir::sdy::TensorShardingPerValueAttr getFuncResultShardings(
                                                     resultShardings);
 }
 
->>>>>>> upstream/master
 }  // namespace sdy
 }  // namespace xla

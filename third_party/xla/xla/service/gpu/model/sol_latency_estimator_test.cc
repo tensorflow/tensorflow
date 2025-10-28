@@ -512,12 +512,9 @@ TEST_F(IsSolLatencyEstimatorEnabledTest, DisabledIfFlagIsOffOnHopper) {
 
   gpu_device_info_.set_cuda_compute_capability(
       stream_executor::CudaComputeCapability::Hopper());
-<<<<<<< HEAD
-=======
 
   config.mutable_debug_options()
       .set_xla_gpu_enable_analytical_sol_latency_estimator(false);
->>>>>>> upstream/master
 
   auto module = CreateTestModule(config);
 

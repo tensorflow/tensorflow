@@ -57,10 +57,7 @@ limitations under the License.
 #include "xla/pjrt/gpu/gpu_topology.h"
 #include "xla/pjrt/gpu/gpu_topology.pb.h"
 #include "xla/pjrt/gpu/tfrt/gpu_event.h"
-<<<<<<< HEAD
-=======
 #include "xla/pjrt/gpu/tfrt/tfrt_gpu_device.h"
->>>>>>> upstream/master
 #include "xla/pjrt/gpu/tfrt/tfrt_gpu_executable.h"
 #include "xla/pjrt/gpu/tfrt/tracked_gpu_device_buffer.h"
 #include "xla/pjrt/host_memory_spaces.h"
@@ -705,16 +702,6 @@ TEST(TfrtGpuClientTest, ToLiteralAsync) {
 
   Shape host_shape =
       ShapeUtil::DeviceShapeToHostShape(buffer->on_device_shape());
-<<<<<<< HEAD
-  auto literal_promise = PjRtFuture<MutableLiteralBase*>::CreatePromise();
-
-  // Literal is not ready.
-  buffer
-      ->LazyToLiteral(
-          [&]() { return PjRtFuture<MutableLiteralBase*>(literal_promise); })
-      .OnReady([&](absl::Status s) {
-        absl::MutexLock l(&mu);
-=======
   auto [literal_promise, literal_future] =
       Future<MutableLiteralBase*>::MakePromise();
 
@@ -722,7 +709,6 @@ TEST(TfrtGpuClientTest, ToLiteralAsync) {
   buffer->LazyToLiteral([f = std::move(literal_future)]() { return f; })
       .OnReady([&](absl::Status s) {
         absl::MutexLock l(mu);
->>>>>>> upstream/master
         TF_ASSERT_OK(s);
         got_literal = true;
       });
@@ -771,20 +757,11 @@ TEST(TfrtGpuClientTest, ToLiteralAsyncWithNonCompactLayout) {
 
   Shape host_shape =
       ShapeUtil::DeviceShapeToHostShape(buffer->on_device_shape());
-<<<<<<< HEAD
-  auto literal_promise = PjRtFuture<MutableLiteralBase*>::CreatePromise();
-
-  absl::Notification n;
-  buffer
-      ->LazyToLiteral(
-          [&]() { return PjRtFuture<MutableLiteralBase*>(literal_promise); })
-=======
   auto [literal_promise, literal_future] =
       Future<MutableLiteralBase*>::MakePromise();
 
   absl::Notification n;
   buffer->LazyToLiteral([f = std::move(literal_future)]() { return f; })
->>>>>>> upstream/master
       .OnReady([&](absl::Status s) {
         TF_ASSERT_OK(s);
         n.Notify();
@@ -1906,8 +1883,6 @@ TEST(TfrtGpuClientTest, HostExecuteRuntimeTest) {
                                      *result_literal));
 }
 
-<<<<<<< HEAD
-=======
 TEST(TfrtGpuClientTest, CreateAliasBuffer) {
   TF_ASSERT_OK_AND_ASSIGN(auto client, GetTfrtGpuClient(GpuClientOptions()));
 
@@ -1967,6 +1942,5 @@ TEST(TfrtGpuClientTest, CreateAliasBuffer) {
       LiteralUtil::CreateR2<int32_t>({{2, 3, 4}, {5, 6, 7}}), *alias_literal));
 }
 
->>>>>>> upstream/master
 }  // namespace
 }  // namespace xla

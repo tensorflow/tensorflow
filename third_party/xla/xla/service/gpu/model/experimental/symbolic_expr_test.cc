@@ -22,10 +22,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-<<<<<<< HEAD
-=======
 #include "llvm/ADT/DenseMap.h"
->>>>>>> upstream/master
 #include "xla/hlo/analysis/indexing_test_utils.h"
 
 namespace xla {
@@ -37,12 +34,8 @@ using ::testing::Values;
 // Test fixture to hold the context for all tests.
 struct SymbolicExprTest : public ::testing::Test {
  protected:
-<<<<<<< HEAD
-  SymbolicExprContext ctx;
-=======
   // There should not be any usage of MLIRContext in this test.
   SymbolicExprContext ctx{nullptr};
->>>>>>> upstream/master
   SymbolicExpr v0 = ctx.CreateVariable(0);
   SymbolicExpr v1 = ctx.CreateVariable(1);
   SymbolicExpr c2 = ctx.CreateConstant(2);
@@ -57,8 +50,6 @@ TEST_F(SymbolicExprTest, CreateAndPrint) {
                   "((((v0 + 42) * max(min(v1, 2), 0)) floordiv 2) ceildiv 2)"));
 }
 
-<<<<<<< HEAD
-=======
 TEST_F(SymbolicExprTest, PrintWithDifferentNumDimensions) {
   SymbolicExpr expr = v0 * 2 + v1;
 
@@ -71,7 +62,6 @@ TEST_F(SymbolicExprTest, PrintWithDifferentNumDimensions) {
   EXPECT_THAT(expr.ToString(2), MatchIndexingString("((d0 * 2) + d1)"));
 }
 
->>>>>>> upstream/master
 TEST_F(SymbolicExprTest, ParseAndPrint) {
   const std::string kStringContainingAllOperators =
       "((((v0 + 42) * max(min(v1, 2), 0)) floordiv 2) ceildiv 2)";
@@ -134,8 +124,6 @@ TEST_F(SymbolicExprTest, ReplaceVariables) {
   EXPECT_EQ(result.ToString(), "(v0 + (v2 * 10))");
 }
 
-<<<<<<< HEAD
-=======
 TEST_F(SymbolicExprTest, ReplaceSymbols) {
   SymbolicExpr d0 = ctx.CreateVariable(0);
   SymbolicExpr s0 = ctx.CreateVariable(1);
@@ -165,7 +153,6 @@ TEST_F(SymbolicExprTest, ReplaceDimsAndSymbols) {
   EXPECT_EQ(replace_only_symbols, ((d0 + (d0 * 2)) * c7));
 }
 
->>>>>>> upstream/master
 TEST_F(SymbolicExprTest, UniquingWorks) {
   SymbolicExpr c1 = ctx.CreateConstant(42);
   SymbolicExpr c2 = ctx.CreateConstant(42);
@@ -180,8 +167,6 @@ TEST_F(SymbolicExprTest, UniquingWorks) {
   EXPECT_NE(add1, add3);
 }
 
-<<<<<<< HEAD
-=======
 TEST_F(SymbolicExprTest, Replace) {
   SymbolicExpr d0 = ctx.CreateVariable(0);
   SymbolicExpr d1 = ctx.CreateVariable(1);
@@ -225,7 +210,6 @@ TEST_F(SymbolicExprTest, ReplaceWithMap) {
   EXPECT_EQ(expr.Replace(no_change), expr);
 }
 
->>>>>>> upstream/master
 TEST_F(SymbolicExprTest, Canonicalization_Basic) {
   SymbolicExpr constants = (c2 * 3) + 5;
   EXPECT_EQ(constants.Canonicalize().ToString(), "11");
@@ -312,8 +296,6 @@ TEST_F(SymbolicExprTest, Canonicalization_DivMod) {
   EXPECT_EQ(((v0 * 6).ceilDiv(-3)).Canonicalize().ToString(), "(v0 * -2)");
 }
 
-<<<<<<< HEAD
-=======
 TEST_F(SymbolicExprTest, Walk) {
   SymbolicExpr expr = (v0 + 42) * v1;
   std::vector<std::string> visited_exprs;
@@ -323,7 +305,6 @@ TEST_F(SymbolicExprTest, Walk) {
                                                     "v1", "((v0 + 42) * v1)"));
 }
 
->>>>>>> upstream/master
 }  // namespace
 }  // namespace gpu
 }  // namespace xla

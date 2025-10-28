@@ -21,12 +21,9 @@
 
 * `tf.lite`
     * Adds int8 and int16x8 support for SQRT operator.
-<<<<<<< HEAD
-=======
     * Adds int16x8 support for EQUAL and NOT_EQUAL operators.
     * Adds support for int2 type.
     * Adds support for int2/int4 in tfl.cast.
->>>>>>> upstream/master
 
 ### Bug Fixes and Other Changes
 
@@ -34,18 +31,6 @@
 * <IF A CHANGE CLOSES A GITHUB ISSUE, IT SHOULD BE DOCUMENTED HERE>
 * <NOTES SHOULD BE GROUPED PER AREA>
 
-<<<<<<< HEAD
-## Thanks to our Contributors
-
-This release contains contributions from many people at Google, as well as:
-
-<INSERT>, <NAME>, <HERE>, <USING>, <GITHUB>, <HANDLE>
-
-# Release 2.20.0
-
-## TensorFlow
-
-=======
 * `tf.data`
     * Adds `NoneTensorSpec` to the public API so that `None`s in `element_spec`
       can be identified via `isinstance(..., tf.NoneTensorSpec)`.
@@ -60,7 +45,6 @@ This release contains contributions from many people at Google, as well as:
 
 ## TensorFlow
 
->>>>>>> upstream/master
 ### Breaking Changes
 
 * The `tensorflow-io-gcs-filesystem` package is now optional, due its uncertain, and limited support. To install it alongside `tensorflow`, run `pip install "tensorflow[gcs-filesystem]"`.

@@ -671,13 +671,6 @@ lit_test_suite_for_gpus(
     ],
     hermetic_cuda_data_dir = "%S/../../../../../cuda_nvcc",
     tags = ["no-oneapi"],
-<<<<<<< HEAD
-    tags_override = {
-        "single_instruction.hlo": ["cuda-only"],
-        "sorting.hlo" : ["cuda-only"], #TODO(rocm): weekly sync 25-08-25
-    },
-=======
->>>>>>> upstream/master
     tools = [
         "//xla/tools:hlo-opt",
         "@llvm-project//llvm:FileCheck",
@@ -697,13 +690,9 @@ lit_test_suite_for_gpus(
 #         "@llvm-project//mlir:LLVMIRTransforms",
 #         "@llvm-project//mlir:LLVMToLLVMIRTranslation",
 #         "@llvm-project//mlir:MlirOptLib",
-<<<<<<< HEAD
-#         "@llvm-project//mlir:RegisterAllExtensions",
-=======
 #         "@llvm-project//mlir:Pass",
 #         "@llvm-project//mlir:RegisterAllExtensions",  # buildcleaner: keep
 #         "@llvm-project//mlir:Support",
->>>>>>> upstream/master
 #         "@llvm-project//mlir:TensorDialect",
 #         "@stablehlo//:stablehlo_ops",
 #         "//xla/backends/gpu/codegen/emitters/transforms:passes",
@@ -855,10 +844,7 @@ xla_test(
         "//xla:shape_util",
         "//xla:types",
         "//xla:xla_data_proto_cc",
-<<<<<<< HEAD
-=======
         "//xla:xla_proto_cc",
->>>>>>> upstream/master
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:test_helpers",
         "//xla/service/gpu:stream_executor_util",

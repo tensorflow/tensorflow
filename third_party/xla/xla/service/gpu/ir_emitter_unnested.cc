@@ -1019,11 +1019,6 @@ absl::Status IrEmitterUnnested::EmitCuDnnThunk(
     dropout_seed = gpu_config.cudnn_fmha_backend_config().seed();
   }
   AddThunkToThunkSequence(std::make_unique<CuDnnThunk>(
-<<<<<<< HEAD
-      fingerprint, Thunk::ThunkInfo::WithProfileAnnotation(instr),
-      kernel_arguments.GetArgumentBufferSlices(),
-      kernel_arguments.GetArgumentOutputFlags(), dropout_seed));
-=======
       fingerprint,
       Thunk::ThunkInfo::WithProfileAnnotation(
           instr, ir_emitter_context_->GetNextThunkId()),
@@ -1037,7 +1032,6 @@ absl::Status IrEmitterUnnested::EmitPtxCustomCall(
   TF_ASSIGN_OR_RETURN(auto thunk,
                       EmitPtxCustomKernelThunk(instr, ir_emitter_context_));
   AddThunkToThunkSequence(std::move(thunk));
->>>>>>> upstream/master
   return absl::OkStatus();
 }
 
@@ -1208,54 +1202,6 @@ absl::Status IrEmitterUnnested::EmitCustomCallThunk(
   // a compatible MLIR dictionary.
   CustomCallThunk::AttributesMap attributes;
 
-<<<<<<< HEAD
-  // For information about this calling convention, see
-  // xla/g3doc/custom_call.md.
-  switch (instr->api_version()) {
-    case CustomCallApiVersion::API_VERSION_ORIGINAL: {
-      constexpr absl::string_view kErrorMessage =
-          "Custom call API version `API_VERSION_ORIGINAL` is "
-          "not supported "
-          "by XLA:GPU. Prefer "
-          "https://docs.jax.dev/en/latest/ffi.html. It "
-          "will be fully removed in November 2025.";
-      if constexpr (tsl::kIsOpenSource) {
-        LOG(ERROR) << kErrorMessage;
-      } else {
-        LOG(FATAL) << kErrorMessage;
-      }
-
-      custom_call_target = [call_target](stream_executor::Stream* stream,
-                                         void** buffers, const char* opaque,
-                                         size_t opaque_len,
-                                         XlaCustomCallStatus*) {
-        reinterpret_cast<CustomCallWithOpaqueStreamHandle>(call_target)(
-            stream->platform_specific_handle().stream, buffers, opaque,
-            opaque_len);
-      };
-      break;
-    }
-    case CustomCallApiVersion::API_VERSION_STATUS_RETURNING:
-    case CustomCallApiVersion::API_VERSION_STATUS_RETURNING_UNIFIED:
-      custom_call_target = [call_target](stream_executor::Stream* stream,
-                                         void** buffers, const char* opaque,
-                                         size_t opaque_len,
-                                         XlaCustomCallStatus* status) {
-        reinterpret_cast<CustomCallWithStatusAndOpaqueStreamHandle>(
-            call_target)(stream->platform_specific_handle().stream, buffers,
-                         opaque, opaque_len, status);
-      };
-      break;
-    case CustomCallApiVersion::API_VERSION_TYPED_FFI:
-      // We already checked `handler` above.
-      break;
-    default:
-      return Internal("Unknown custom-call API version enum value: %d",
-                      instr->api_version());
-  }
-
-=======
->>>>>>> upstream/master
   auto backend_config = instr->backend_config<GpuBackendConfig>();
   if (!backend_config.ok()) {
     VLOG(3) << "Unable to parse backend config for custom call: "
@@ -1492,23 +1438,8 @@ absl::Status IrEmitterUnnested::EmitTopKCustomCall(
   // Load TopK custom kernel.
   TF_ASSIGN_OR_RETURN(
       CustomKernel kernel,
-<<<<<<< HEAD
-      kernel::topk::GetTopKKernel("topk", data_shape.element_type(), n, k,
-                                  batch_size, platform_name(), wavefront_size));
-
-  // Prepare kernel arguments.
-  TF_ASSIGN_OR_RETURN(auto kernel_arguments,
-                      emitters::KernelArguments::Create(
-                          ir_emitter_context_->buffer_assignment(),
-                          GetDefaultBufferAlignment(), instr));
-
-  auto thunk = std::make_unique<CustomKernelThunk>(instr, std::move(kernel),
-                                                   kernel_arguments);
-  AddThunkToThunkSequence(std::move(thunk));
-=======
       kernel::topk::GetTopKKernel("topk", dtype, n, k, batch_size,
                                   platform_name(), wavefront_size));
->>>>>>> upstream/master
 
   AddThunkToThunkSequence(std::make_unique<CustomKernelThunk>(
       instr, std::move(kernel), kernel_arguments,
@@ -1645,16 +1576,10 @@ absl::Status IrEmitterUnnested::EmitTritonCustomCall(
                           GetDefaultBufferAlignment(), instr));
 
   AddThunkToThunkSequence(std::make_unique<KernelThunk>(
-<<<<<<< HEAD
-      Thunk::ThunkInfo::WithProfileAnnotation(instr), entry->kernel_name,
-      kernel_arguments, entry->launch_dimensions, entry->cluster_dim,
-      entry->shmem_bytes));
-=======
       Thunk::ThunkInfo::WithProfileAnnotation(
           instr, ir_emitter_context_->GetNextThunkId()),
       entry->kernel_name, kernel_arguments, entry->launch_dimensions,
       entry->cluster_dim, entry->shmem_bytes, entry->tma_metadata));
->>>>>>> upstream/master
   return absl::OkStatus();
 }
 
@@ -2559,13 +2484,7 @@ absl::Status IrEmitterUnnested::EmitNvshmemThunk(
                                 /*source_buffer=*/src,
                                 /*destination_buffer=*/dst,
                                 /*source_memory_space=*/src_memory_space,
-<<<<<<< HEAD
-                                /*destination_memory_space=*/dst_memory_space,
-                                /*source_value=*/nullptr,
-                                /*destination_value=*/nullptr});
-=======
                                 /*destination_memory_space=*/dst_memory_space});
->>>>>>> upstream/master
   };
 
   // For other operations simply zip operands with results.
@@ -2581,12 +2500,8 @@ absl::Status IrEmitterUnnested::EmitNvshmemThunk(
   }
 
   if (should_use_nvshmem_thunk) {
-<<<<<<< HEAD
-    auto thunk_info = Thunk::ThunkInfo::WithProfileAnnotation(inst);
-=======
     auto thunk_info = Thunk::ThunkInfo::WithProfileAnnotation(
         inst, ir_emitter_context_->GetNextThunkId());
->>>>>>> upstream/master
     // The wrapper name is used when syntactic sugar is turned on.
     if (ir_emitter_context_->debug_options().xla_syntax_sugar_async_ops()) {
       thunk_info.profile_annotation = async_start->name();
@@ -2619,12 +2534,8 @@ absl::Status IrEmitterUnnested::EmitDegeneratedCollectiveThunk(
   for (int64_t i = 0; i < buffers.size(); i++) {
     const Shape shape = inst->operand(i)->shape();
     thunks.push_back(std::make_unique<DeviceToDeviceCopyThunk>(
-<<<<<<< HEAD
-        Thunk::ThunkInfo::WithProfileAnnotation(inst),
-=======
         Thunk::ThunkInfo::WithProfileAnnotation(
             inst, ir_emitter_context_->GetNextThunkId()),
->>>>>>> upstream/master
         /*source_buffer=*/buffers[i].source_buffer,
         /*destination_buffer=*/buffers[i].destination_buffer,
         /*mem_size=*/ShapeUtil::ByteSizeOf(shape)));
@@ -2633,13 +2544,9 @@ absl::Status IrEmitterUnnested::EmitDegeneratedCollectiveThunk(
     AddThunkToThunkSequence(std::move(thunks[0]));
   } else {
     AddThunkToThunkSequence(std::make_unique<SequentialThunk>(
-<<<<<<< HEAD
-        Thunk::ThunkInfo::WithProfileAnnotation(inst), std::move(thunks)));
-=======
         Thunk::ThunkInfo::WithProfileAnnotation(
             inst, ir_emitter_context_->GetNextThunkId()),
         std::move(thunks)));
->>>>>>> upstream/master
   }
   return absl::OkStatus();
 }
@@ -2720,14 +2627,9 @@ IrEmitterUnnested::BuildKernelThunkForNonFusionOp(
                            launch_dimensions, &b_));
 
   AddThunkToThunkSequence(std::make_unique<KernelThunk>(
-<<<<<<< HEAD
-      Thunk::ThunkInfo::WithProfileAnnotation(instr), kernel->getName().str(),
-      kernel_arguments, launch_dimensions,
-=======
       Thunk::ThunkInfo::WithProfileAnnotation(
           instr, ir_emitter_context_->GetNextThunkId()),
       kernel->getName().str(), kernel_arguments, launch_dimensions,
->>>>>>> upstream/master
       /*cluster_dim=*/std::nullopt,
       /*shmem_bytes=*/0,
       /*tma_metadata=*/se::gpu::TmaMetadata()));
@@ -2747,24 +2649,6 @@ IrEmitterUnnested::BuildKernelThunkForNonFusionOp(
     ir_arrays.push_back(ir_array);
   }
 
-<<<<<<< HEAD
-  std::vector<llvm_ir::IrArray> ir_arrays;
-  ir_arrays.reserve(kernel_arguments.args().size());
-  for (const auto& [kernel_argument, llvm_arg] :
-       llvm::zip(kernel_arguments.args(), kernel->args())) {
-    llvm::Type* ir_type =
-        llvm_ir::ShapeToIrType(kernel_argument.shape(), llvm_arg.getContext());
-    llvm_ir::IrArray ir_array(&llvm_arg, ir_type, kernel_argument.shape());
-
-    if (!kernel_argument.written()) {
-      ir_array.MarkInvariantOverWholeProgram(&llvm_arg.getContext());
-    }
-
-    ir_arrays.push_back(ir_array);
-  }
-
-=======
->>>>>>> upstream/master
   return ir_arrays;
 }
 
@@ -3203,13 +3087,9 @@ absl::Status IrEmitterUnnested::EmitHloInstruction(
                 GetInstructionToHostExecuteAsyncEvents().at(custom_call);
 
             AddThunkToThunkSequence(std::make_unique<HostExecuteDoneThunk>(
-<<<<<<< HEAD
-                Thunk::ThunkInfo::WithProfileAnnotation(instr), async_events));
-=======
                 Thunk::ThunkInfo::WithProfileAnnotation(
                     instr, ir_emitter_context_->GetNextThunkId()),
                 async_events));
->>>>>>> upstream/master
             return absl::OkStatus();
           }
           // Wait until the concurrent stream has finished.
@@ -3326,11 +3206,6 @@ absl::Status IrEmitterUnnested::EmitHloInstruction(
               result_slices.push_back({slice, indexed.shape});
             }
 
-<<<<<<< HEAD
-            auto thunk = std::make_unique<HostExecuteStartThunk>(
-                Thunk::ThunkInfo::WithProfileAnnotation(instr), *hlo_module,
-                std::move(operand_slices), std::move(result_slices));
-=======
             HostOffloadingExecutableProto host_offloading_executable_proto;
             *host_offloading_executable_proto.mutable_hlo_module() =
                 hlo_module->ToProto();
@@ -3344,7 +3219,6 @@ absl::Status IrEmitterUnnested::EmitHloInstruction(
                         instr, ir_emitter_context_->GetNextThunkId()),
                     std::move(host_offloading_executable_proto),
                     std::move(operand_slices), std::move(result_slices)));
->>>>>>> upstream/master
 
             auto async_events = thunk->async_events();
 

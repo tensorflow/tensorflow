@@ -64,15 +64,6 @@ TEST(DefaultWorkItemIndexingMap, MultiDimensionTile) {
 
   EXPECT_EQ(affine_map.getResult(0), 3 * work_group_sym + work_item_sym);
 
-<<<<<<< HEAD
-  mlir::AffineExpr tile_sym_x = mlir::getAffineSymbolExpr(0, &context);
-  EXPECT_EQ(affine_map.getResult(1), tile_sym_x);
-
-  mlir::AffineExpr tile_sym_y = mlir::getAffineSymbolExpr(1, &context);
-  EXPECT_EQ(affine_map.getResult(2), tile_sym_y);
-
-  mlir::AffineExpr tile_sym_z = mlir::getAffineSymbolExpr(2, &context);
-=======
   mlir::AffineExpr tile_sym_x = mlir::getAffineSymbolExpr(0, &mlir_context);
   EXPECT_EQ(affine_map.getResult(1), tile_sym_x);
 
@@ -80,7 +71,6 @@ TEST(DefaultWorkItemIndexingMap, MultiDimensionTile) {
   EXPECT_EQ(affine_map.getResult(2), tile_sym_y);
 
   mlir::AffineExpr tile_sym_z = mlir::getAffineSymbolExpr(2, &mlir_context);
->>>>>>> upstream/master
   EXPECT_EQ(affine_map.getResult(3), tile_sym_z);
 }
 

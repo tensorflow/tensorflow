@@ -34,16 +34,6 @@ def python_init_rules(extra_patches = []):
         },
     )
 
-<<<<<<< HEAD
-def python_init_rules(extra_patches = []):
-    """Defines (doesn't setup) the rules_python repository.
-
-    Args:
-      extra_patches: list of labels. Additional patches to apply after the default
-        set of patches.
-    """
-=======
->>>>>>> upstream/master
     http_archive(
         name = "rules_python",
         sha256 = "fa7dd2c6b7d63b3585028dd8a90a6cf9db83c33b250959c2ee7b583a6c130e12",
@@ -51,14 +41,8 @@ def python_init_rules(extra_patches = []):
         url = "https://github.com/bazelbuild/rules_python/releases/download/1.6.0/rules_python-1.6.0.tar.gz",
         patch_args = ["-p1"],
         patches = [
-<<<<<<< HEAD
-            Label("//third_party/py:rules_python1.patch"),
-            Label("//third_party/py:rules_python2.patch"),
-            Label("//third_party/py:rules_python3.patch"),
-=======
             Label("//third_party/py:rules_python_pip_version.patch"),
             Label("//third_party/py:rules_python_freethreaded.patch"),
             Label("//third_party/py:rules_python_versions.patch"),
->>>>>>> upstream/master
         ] + extra_patches,
     )

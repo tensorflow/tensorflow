@@ -49,11 +49,7 @@ absl::StatusOr<std::unique_ptr<Executable>> CompileHloModule(
 
 class CpuProfilerTest : public HloHardwareIndependentTestBase {
  public:
-<<<<<<< HEAD
-  CpuProfilerTest() { profile_options_.should_populate_output_buffer = false; }
-=======
   CpuProfilerTest() = default;
->>>>>>> upstream/master
   ProfileOptions profile_options_;
 };
 
@@ -68,31 +64,11 @@ TEST_F(CpuProfilerTest, CreateInputBuffersAndProfile) {
                           ParseAndReturnVerifiedModule(kHloModule));
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Executable> executable,
                           CompileHloModule(std::move(hlo_module)));
-<<<<<<< HEAD
-
-  auto profiler = CpuProfiler::Create(profile_options_);
-  TF_ASSERT_OK_AND_ASSIGN(auto profiles, profiler->ProfileWithSharedBuffers(
-                                             std::move(executables)));
-
-  // We expect only one profile because we only have one executable.
-  EXPECT_EQ(profiles.size(), 1);
-  TF_EXPECT_OK(profiles[0].status());
-}
-
-TEST_F(CpuProfilerTest, ProfileWithSharedBuffersWithoutExecutable) {
-  auto profiler = CpuProfiler::Create(profile_options_);
-  TF_ASSERT_OK_AND_ASSIGN(auto profiles,
-                          profiler->ProfileWithSharedBuffers({}));
-
-  // No executable means no profiles.
-  EXPECT_EQ(profiles.size(), 0);
-=======
   auto profiler = CpuProfiler::Create(profile_options_);
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<InputBuffers> buffers,
                           profiler->CreateInputBuffers(executable.get()));
   TF_ASSERT_OK_AND_ASSIGN(ProfileResult profile,
                           profiler->Profile(executable.get(), *buffers));
->>>>>>> upstream/master
 }
 
 TEST_F(CpuProfilerTest, CreateInputBuffersAndProfile) {

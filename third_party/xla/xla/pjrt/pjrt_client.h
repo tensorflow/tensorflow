@@ -677,8 +677,6 @@ class PjRtClient {
       const Shape& shape, PjRtMemorySpace* memory_space) {
     return absl::UnimplementedError(
         "CreateUninitializedBuffer is not supported.");
-<<<<<<< HEAD
-=======
   }
 
   // Creates a buffer that is an alias of another buffer. The alias buffer
@@ -687,7 +685,6 @@ class PjRtClient {
       std::pair<std::unique_ptr<PjRtBuffer>, PjRtFulfillAliasBufferCallback>>
   CreateAliasBuffer(const Shape& shape, PjRtMemorySpace* memory_space) {
     return absl::UnimplementedError("CreateAliasBuffer is not supported.");
->>>>>>> upstream/master
   }
 
   // Creates buffer in the given memory space that carries an error future
@@ -703,8 +700,6 @@ class PjRtClient {
     return absl::UnimplementedError(
         absl::StrFormat("GetTopologyDescription not supported on platform %s",
                         platform_name()));
-<<<<<<< HEAD
-=======
   }
 
   // An allocator for host-side memory.
@@ -734,7 +729,6 @@ class PjRtClient {
   // Returns the host allocator for the client if supported.
   virtual absl::StatusOr<HostAllocator*> GetHostAllocator() const {
     return absl::UnimplementedError("GetHostAllocator is not supported.");
->>>>>>> upstream/master
   }
 
   // A client may want to create a buffer, and hand the buffer to other PjRt
@@ -1137,13 +1131,8 @@ class PjRtBuffer {
   // The specific timing of calling `generator` is implementation defined, and
   // might be done eagerly, but it is guaranteed to be earlier than when the
   // returned future becomes ready.
-<<<<<<< HEAD
-  virtual PjRtFuture<> LazyToLiteral(
-      absl::AnyInvocable<PjRtFuture<MutableLiteralBase*>() &&> generator) = 0;
-=======
   virtual Future<> LazyToLiteral(
       absl::AnyInvocable<Future<MutableLiteralBase*>() &&> generator) = 0;
->>>>>>> upstream/master
 
   // Synchronous overload of ToLiteral, as a convenience.
   absl::Status ToLiteralSync(MutableLiteralBase* literal) {
@@ -1315,11 +1304,7 @@ class PjRtBuffer {
   // If either 'this' or 'dependency' transitions to error, then the returned
   // buffer will transition to error.
   virtual absl::StatusOr<std::unique_ptr<PjRtBuffer>>
-<<<<<<< HEAD
-  DonateWithControlDependency(PjRtFuture<> dependency) {
-=======
   DonateWithControlDependency(Future<> dependency) {
->>>>>>> upstream/master
     return absl::UnimplementedError(
         "DonateWithControlDependency is not supported.");
   }

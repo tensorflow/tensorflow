@@ -1488,11 +1488,7 @@ IfrtBackend::HandleLoadedExecutableMetadataRequest(
                               .loaded_executable_handle());
 
   if (!executable_info.ok()) {
-<<<<<<< HEAD
-    return Future<BackendInterface::Response>(executable_info.status());
-=======
     return tsl::Future<BackendInterface::Response>(executable_info.status());
->>>>>>> upstream/master
   }
 
   return AsyncExecute([executable_info = *std::move(executable_info),

@@ -43,11 +43,7 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/emitters/emitter_base.h"
 #include "xla/backends/gpu/codegen/emitters/ir/xla_gpu_ops.h"
 #include "xla/backends/gpu/codegen/emitters/transforms/passes.h"
-<<<<<<< HEAD
-#include "xla/codegen/emitters/ir/xla_ops.h"
-=======
 #include "xla/codegen/emitters/ir/xla_dialect.h"
->>>>>>> upstream/master
 #include "xla/codegen/emitters/transforms/pass_pipelines.h"
 #include "xla/codegen/emitters/transforms/passes.h"
 #include "xla/codegen/xtile/ir/xtile_dialect.h"
@@ -81,14 +77,9 @@ int main(int argc, char** argv) {
       [=](mlir::OpPassManager& pm, llvm::StringRef options,
           llvm::function_ref<mlir::LogicalResult(const llvm::Twine&)>
               errorHandler) {
-<<<<<<< HEAD
-        if (!options.empty()) return mlir::failure();
-
-=======
         if (!options.empty()) {
           return mlir::failure();
         }
->>>>>>> upstream/master
         xla::emitters::RegisterOptimizationPasses(pm);
         return mlir::success();
       },

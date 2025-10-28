@@ -88,11 +88,7 @@ absl::Status RunAllReduce(ReductionKind reduction_kind,
                           se::Stream& stream, Communicator* comm,
                           bool use_symmetric_buffer) {
   int device_ordinal = stream.parent()->device_ordinal();
-<<<<<<< HEAD
-  VLOG(3) << "Performing all-reduce from device ordinal: " << device_ordinal;
-=======
   VLOG(3) << "[" << device_ordinal << "] Performing all-reduce";
->>>>>>> upstream/master
   TF_RETURN_IF_ERROR(MaybeRegisterBuffers(stream.parent(), buffers, comm,
                                           use_symmetric_buffer));
 
@@ -238,12 +234,7 @@ absl::Status RunReduceScatter(ReductionKind reduction_kind,
                               se::Stream& stream, Communicator* comm,
                               bool use_symmetric_buffer) {
   int device_ordinal = stream.parent()->device_ordinal();
-<<<<<<< HEAD
-  VLOG(3) << "Performing reduce-scatter from device ordinal: "
-          << device_ordinal;
-=======
   VLOG(3) << "[" << device_ordinal << "] Performing reduce-scatter";
->>>>>>> upstream/master
   TF_RETURN_IF_ERROR(MaybeRegisterBuffers(stream.parent(), buffers, comm,
                                           use_symmetric_buffer));
 

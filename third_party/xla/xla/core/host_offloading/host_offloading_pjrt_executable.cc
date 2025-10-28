@@ -36,10 +36,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/core/host_offloading/host_offloading_buffer.h"
 #include "xla/core/host_offloading/host_offloading_executable.h"
-<<<<<<< HEAD
-=======
 #include "xla/core/host_offloading/host_offloading_executable.pb.h"
->>>>>>> upstream/master
 #include "xla/core/host_offloading/host_offloading_layout_analysis.h"
 #include "xla/core/host_offloading/host_offloading_transforms.h"
 #include "xla/hlo/builder/xla_computation.h"

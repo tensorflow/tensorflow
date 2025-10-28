@@ -207,8 +207,6 @@ class PjRtTopologyDescription {
   virtual absl::StatusOr<PjRtTopologyDescriptionProto> ToProto() const {
     return absl::UnimplementedError("ToProto is unsupported.");
   }
-<<<<<<< HEAD
-=======
 
   // Returns a new `PjRtTopologyDescription` representing a subslice of the
   // current topology, defined by `chips_per_host_bounds` and `host_bounds`.
@@ -217,7 +215,6 @@ class PjRtTopologyDescription {
       const PjRtDeviceDimensions& host_bounds) const {
     return absl::UnimplementedError("Subslice is not supported.");
   }
->>>>>>> upstream/master
 };
 
 // Returns true if it's TPU topology.

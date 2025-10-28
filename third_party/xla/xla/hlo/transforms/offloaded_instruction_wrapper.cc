@@ -18,10 +18,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-<<<<<<< HEAD
-=======
 #include "absl/algorithm/container.h"
->>>>>>> upstream/master
 #include "absl/container/flat_hash_set.h"
 #include "absl/functional/function_ref.h"
 #include "absl/log/check.h"
@@ -36,10 +33,7 @@ limitations under the License.
 #include "xla/side_effect_util.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/util.h"
-<<<<<<< HEAD
-=======
 #include "xla/xla_data.pb.h"
->>>>>>> upstream/master
 #include "tsl/platform/casts.h"
 
 namespace xla::offloader_util {

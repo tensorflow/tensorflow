@@ -147,15 +147,10 @@ TEST_F(IndexingMapTest, EvaluateIgnoresDomainRanges) {
   )");
 
   auto results = indexing_map.Evaluate(
-<<<<<<< HEAD
-      mlir::getAffineConstantExprs({1, 2}, &mlir_context_),
-      mlir::getAffineConstantExprs({3, 4}, &mlir_context_));
-=======
       mlir::getAffineConstantExprs({1, 2},
                                    symbolic_expr_context_.GetMLIRContext()),
       mlir::getAffineConstantExprs({3, 4},
                                    symbolic_expr_context_.GetMLIRContext()));
->>>>>>> upstream/master
 
   EXPECT_THAT(results, ElementsAre(2, 1, 4, 3));
 }
@@ -493,23 +488,15 @@ TEST_F(IndexingMapTest, RemoveUnusedSymbols_ConstraintsWithManySymbols) {
 TEST_F(IndexingMapTest, RemoveUnusedSymbols_ConstraintsWithRTVars) {
   IndexingMap indexing_map(
       ParseAffineMap("(d0)[s0, s1, s2, s3, s4] -> (d0 * 4 + s1 + s3 - 42)",
-<<<<<<< HEAD
-                     &mlir_context_),
-=======
                      &symbolic_expr_context_),
->>>>>>> upstream/master
       {IndexingMap::Variable{{0, 31}}},
       {IndexingMap::Variable{{0, 0}}, IndexingMap::Variable{{0, 1}},
        IndexingMap::Variable{{0, 2}}},
       {IndexingMap::Variable{Interval{0, 3}},
        IndexingMap::Variable{Interval{0, 4}}});
   indexing_map.AddConstraint(
-<<<<<<< HEAD
-      ParseAffineExpr("d0 * 4 + s1 + s3", &mlir_context_), Interval{24, 459});
-=======
       ParseAffineExpr("d0 * 4 + s1 + s3", &symbolic_expr_context_),
       Interval{24, 459});
->>>>>>> upstream/master
   indexing_map.RemoveUnusedSymbols();
   // Symbols s0, s2, s4 will be removed and s1 and s3 will become s0 and s1.
   EXPECT_THAT(indexing_map, MatchIndexingMap(R"(

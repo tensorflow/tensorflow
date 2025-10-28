@@ -87,10 +87,7 @@ cc_library(
         "//xla:types",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass_pipeline",
-<<<<<<< HEAD
-=======
         "//xla/hlo/tools/hlo_opt:opt_lib",
->>>>>>> upstream/master
         "//xla/hlo/transforms:host_offloader",
         "//xla/hlo/transforms/simplifiers:algebraic_simplifier",
         "//xla/hlo/transforms/simplifiers:hlo_memory_scheduler",

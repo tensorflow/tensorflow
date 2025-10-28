@@ -122,23 +122,6 @@ class CommonPjRtClient : public PjRtClient {
         "CreateLinkedEventPromise is not supported");
   }
 
-<<<<<<< HEAD
-  // Create a promise with potentially attached debug_info (if
-  // event_tracking_enabled()).
-  virtual PjRtFuture<>::Promise CreateUserPromise(PjRtMemorySpace* memory_space,
-                                                  absl::string_view debug_info);
-  // Creates a future from a promise PjRtFuture<>(promise) but with event
-  // tracking and traceme scopes.
-  virtual PjRtFuture<> CreateFutureFromUserPromise(
-      PjRtMemorySpace* memory_space, const char* callee_type,
-      const char* callee_method, PjRtFuture<>::Promise promise);
-  // Create a linked PjRtFuture<> and ::Promise pair for operations on
-  // buffers in memory_space which populates debug information like linked
-  // tracmes.
-  std::pair<PjRtFuture<>::Promise, PjRtFuture<>> CreateLinkedUserPromise(
-      PjRtMemorySpace* memory_space, const char* callee_type,
-      const char* callee_method, absl::string_view debug_info);
-=======
   // Track a user-provided future with attached debug_info (if
   // event_tracking_enabled()).
   virtual void TrackFuture(PjRtMemorySpace* memory_space,
@@ -159,7 +142,6 @@ class CommonPjRtClient : public PjRtClient {
       PjRtMemorySpace* memory_space, const char* callee_type,
       const char* callee_method, absl::string_view debug_info);
 
->>>>>>> upstream/master
   template <typename T, std::enable_if_t<std::is_invocable_v<T>, bool> = true>
   absl::StatusOr<std::pair<tsl::RCReference<PjRtDeviceEventPromise>,
                            tsl::RCReference<PjRtDeviceEvent>>>
@@ -263,11 +245,7 @@ class CommonPjRtClient : public PjRtClient {
 class CommonPjRtBufferImpl : public CommonPjRtBuffer {
  public:
   CommonPjRtBufferImpl(
-<<<<<<< HEAD
-      Shape on_device_shape,
-=======
       const Shape& on_device_shape,
->>>>>>> upstream/master
       std::unique_ptr<AbstractTrackedDeviceBuffer> tracked_device_buffer,
       PjRtMemorySpace* memory_space);
 
@@ -292,15 +270,9 @@ class CommonPjRtBufferImpl : public CommonPjRtBuffer {
   ReleaseDeviceMemoryOwnership(bool wait_for_operations_to_complete) override;
 
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> DonateWithControlDependency(
-<<<<<<< HEAD
-      PjRtFuture<> dependency) override;
-
-  PjRtFuture<> GetReadyFuture() override;
-=======
       Future<> dependency) override;
 
   Future<> GetReadyFuture() override;
->>>>>>> upstream/master
 
   // The implementation of logical_on_device_shape may involve a blocking
   // device to host transfer to read the metadata of dynamic shape.
@@ -330,16 +302,9 @@ class CommonPjRtBufferImpl : public CommonPjRtBuffer {
   CopyToMemorySpaceSyncThroughLiteral(PjRtMemorySpace* dst_memory_space);
 
   using PjRtBuffer::ToLiteralSync;
-<<<<<<< HEAD
-  PjRtFuture<> ToLiteral(MutableLiteralBase* literal) override;
-  PjRtFuture<> LazyToLiteral(
-      absl::AnyInvocable<PjRtFuture<MutableLiteralBase*>() &&> generator)
-      override;
-=======
   Future<> ToLiteral(MutableLiteralBase* literal) override;
   Future<> LazyToLiteral(
       absl::AnyInvocable<Future<MutableLiteralBase*>() &&> generator) override;
->>>>>>> upstream/master
 
   absl::StatusOr<tsl::RCReference<PjRtRawBuffer>> CreateRawAliasOfBuffer();
 
@@ -361,11 +326,7 @@ class CommonPjRtBufferImpl : public CommonPjRtBuffer {
   // null, will call the function in the generator.
   Future<> ToLiteralImpl(
       MutableLiteralBase* literal,
-<<<<<<< HEAD
-      absl::AnyInvocable<PjRtFuture<MutableLiteralBase*>() &&> generator);
-=======
       absl::AnyInvocable<Future<MutableLiteralBase*>() &&> generator);
->>>>>>> upstream/master
 
  private:
   const Shape on_device_shape_;

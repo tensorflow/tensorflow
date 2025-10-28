@@ -27,11 +27,7 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/MLIRContext.h"
-<<<<<<< HEAD
-#include "xla/hlo/analysis/indexing_map.h"
-=======
 #include "xla/hlo/analysis/interval.h"
->>>>>>> upstream/master
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -67,8 +63,6 @@ void TilingSpace::AppendRTVar(const HloInstruction* hlo, int64_t operand_id,
       rt_var,
   });
   hlo_to_rt_var_[std::make_pair(hlo, operand_id)] = &rt_vars_.back();
-<<<<<<< HEAD
-=======
 }
 
 void TilingSpace::ProcessInstruction(const HloInstruction& hlo) {
@@ -86,7 +80,6 @@ void TilingSpace::ProcessInstruction(const HloInstruction& hlo) {
       // TODO(goncharov): should have a explicit list of supported instructions?
       break;
   }
->>>>>>> upstream/master
 }
 
 // Add dot contraction dimensions in the order of contracting dimensions.
@@ -189,15 +182,10 @@ std::unique_ptr<TilingSpace> TilingSpace::Create(const HloFusionAdaptor& fusion,
   for (const HloInstructionAdaptor& root : roots) {
     const Shape& root_shape = root.shape();
     if (!root.shape().IsArray() && root.opcode() != HloOpcode::kReduce) {
-<<<<<<< HEAD
-      LOG(FATAL) << "Unsupported root shape: " << root_shape.ToString();
-    }
-=======
       LOG(FATAL) << "Unsupported root shape " << root_shape.ToString()
                  << " for root " << root.instruction().ToString();
     }
     // TODO(goncharov): why do we only care about the first shape of a tuple?
->>>>>>> upstream/master
     absl::Span<const int64_t> dims =
         GetFirstShape(&root.instruction()).dimensions();
     llvm::SmallVector<DimTile> dim_tiles;
@@ -219,23 +207,7 @@ std::unique_ptr<TilingSpace> TilingSpace::Create(const HloFusionAdaptor& fusion,
   // Iterator in reversed post-order (use-before-def).
   auto post_order = fusion.MakeInstructionPostOrder();
   for (auto it = post_order.rbegin(); it != post_order.rend(); ++it) {
-<<<<<<< HEAD
-    switch (it->instruction().opcode()) {
-      case HloOpcode::kDot:
-        tiling_space->ProcessDot(it->instruction());
-        break;
-      case HloOpcode::kReduce:
-        tiling_space->ProcessReduce(it->instruction());
-        break;
-      case HloOpcode::kDynamicSlice:
-        tiling_space->ProcessDynamicSlice(it->instruction());
-        break;
-      default:
-        break;
-    }
-=======
     tiling_space->ProcessInstruction(it->instruction());
->>>>>>> upstream/master
   }
   return tiling_space;
 }

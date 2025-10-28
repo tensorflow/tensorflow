@@ -86,10 +86,6 @@ def find_cc(repository_ctx):
     """Find the C++ compiler."""
 
     target_cc_name = "clang"
-<<<<<<< HEAD
-    cc_path_envvar = _CLANG_COMPILER_PATH
-=======
->>>>>>> upstream/master
     cc_name = target_cc_name
 
     cc_name_from_env = get_host_environ(repository_ctx, _CLANG_COMPILER_PATH)
@@ -273,22 +269,10 @@ def _soversion(repository_ctx, path, bash_bin = None):
     for row in exec_result.stdout.strip().split("\n"):
         match = row.find("SONAME")
         if match >= 0:
-<<<<<<< HEAD
-            start = row.find(".so.", match)
-            end = row.rfind("]")
-            if start == -1 or end <= start + 4:
-                auto_configure_fail("Failed to extract soversion from line: %s" % row)
-            soversion = row[start + 4:end]
-            break
-
-    if soversion == "":
-        auto_configure_warning("No soversion found for %s" % path)
-=======
             match = row.find(".so.", match)
             if match >= 0:
                 soversion = row[match + 4:-1]
                 break
->>>>>>> upstream/master
     return soversion
 
 def _select_rocm_lib_paths(repository_ctx, libs_paths, bash_bin):
@@ -336,18 +320,6 @@ def _find_libs(repository_ctx, rocm_config, bash_bin):
     libs_paths = [
         (name, _rocm_lib_paths(repository_ctx, name, path))
         for name, path in [
-<<<<<<< HEAD
-            ("amdhip64", rocm_config.rocm_toolkit_path),
-            ("rocblas", rocm_config.rocm_toolkit_path),
-            ("hiprand", rocm_config.rocm_toolkit_path),
-            ("MIOpen", miopen_path),
-            ("rccl", rccl_path),
-            ("hipsparse", rocm_config.rocm_toolkit_path),
-            ("roctracer64", rocm_config.rocm_toolkit_path),
-            ("rocsolver", rocm_config.rocm_toolkit_path),
-            ("hipfft", rocm_config.rocm_toolkit_path),
-            ("rocrand", rocm_config.rocm_toolkit_path),
-=======
             ("amdhip64", repo_path),
             ("rocblas", repo_path),
             ("hiprand", repo_path),
@@ -361,7 +333,6 @@ def _find_libs(repository_ctx, rocm_config, bash_bin):
             ("hipsolver", repo_path),
             ("hipblas", repo_path),
             ("hipblaslt", repo_path),
->>>>>>> upstream/master
         ]
     ]
 
@@ -699,10 +670,7 @@ def _create_local_rocm_repository(repository_ctx):
 
     # Set up crosstool/
     cc = find_cc(repository_ctx)
-<<<<<<< HEAD
-=======
 
->>>>>>> upstream/master
     host_compiler_includes = get_cxx_inc_directories(
         repository_ctx,
         cc,
@@ -760,12 +728,8 @@ def _create_local_rocm_repository(repository_ctx):
         tpl_paths["crosstool:clang/bin/crosstool_wrapper_driver_rocm"],
         {
             "%{cpu_compiler}": str(cc),
-<<<<<<< HEAD
-            "%{hipcc_path}": str(repository_ctx.path(rocm_config.rocm_toolkit_path + "/bin/hipcc")),
-=======
             "%{compiler_is_clang}": "True",
             "%{rocm_root}": "external/local_config_rocm/" + str(rocm_config.rocm_toolkit_path),
->>>>>>> upstream/master
             "%{hipcc_env}": _hipcc_env(repository_ctx),
             "%{rocr_runtime_library}": "hsa-runtime64",
             "%{hip_runtime_library}": "amdhip64",

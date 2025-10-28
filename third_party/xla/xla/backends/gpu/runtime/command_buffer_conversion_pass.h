@@ -15,12 +15,6 @@ limitations under the License.
 
 #ifndef XLA_BACKENDS_GPU_RUNTIME_COMMAND_BUFFER_CONVERSION_PASS_H_
 #define XLA_BACKENDS_GPU_RUNTIME_COMMAND_BUFFER_CONVERSION_PASS_H_
-<<<<<<< HEAD:third_party/xla/xla/backends/gpu/runtime/command_buffer_conversion_pass.h
-
-#include <memory>
-#include <string>
-=======
->>>>>>> upstream/master:third_party/xla/xla/service/gpu/transforms/command_buffer_conversion_pass.h
 
 #include "absl/base/nullability.h"
 #include "absl/container/flat_hash_set.h"
@@ -28,10 +22,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk_pass_pipeline.h"
-<<<<<<< HEAD:third_party/xla/xla/backends/gpu/runtime/command_buffer_conversion_pass.h
-=======
 #include "xla/hlo/ir/hlo_module.h"
->>>>>>> upstream/master:third_party/xla/xla/service/gpu/transforms/command_buffer_conversion_pass.h
 #include "xla/stream_executor/device_description.h"
 
 namespace xla {

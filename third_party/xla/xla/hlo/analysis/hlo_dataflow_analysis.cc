@@ -1818,12 +1818,6 @@ bool HloDataflowAnalysis::CanShareOperandBufferWithUser(
   if (shapes_equal) {
     // Must-alias relationship returns true for in-place operations (DUS and DUS
     // fusions), regardless of the backend.
-<<<<<<< HEAD
-    for (const auto& operand_and_output_index :
-         alias_info->GetInPlaceInputOutputPairs(user)) {
-      if (operand_and_output_index.second != user_index) {
-        continue;
-=======
     // Cache uses of value and alias_info->GetInPlaceInputOutputPairs to speed
     // up repeated calls.
     auto [operand_it, operand_inserted] =
@@ -1842,7 +1836,6 @@ bool HloDataflowAnalysis::CanShareOperandBufferWithUser(
            alias_info->GetInPlaceInputOutputPairs(user)) {
         pairs[operand_and_output_index.second].push_back(
             operand_and_output_index.first);
->>>>>>> upstream/master
       }
     }
     auto& uses = operand_it->second;

@@ -668,10 +668,7 @@ cc_library(
         "//xla/hlo/transforms/simplifiers:gather_simplifier",
         "//xla/hlo/utils:hlo_traversal",
         "//xla/service:matmul_indexing_utils",
-<<<<<<< HEAD
-=======
         "//xla/service/gpu/model/experimental:symbolic_expr",
->>>>>>> upstream/master
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",

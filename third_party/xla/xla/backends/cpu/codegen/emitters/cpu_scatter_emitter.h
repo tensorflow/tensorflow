@@ -39,15 +39,9 @@ namespace cpu {
 // Generic scatter fusion. Lowers to LLVM via MLIR.
 class CpuScatterFusion final : public MlirKernelEmitter {
  public:
-<<<<<<< HEAD
-  explicit CpuScatterFusion(const BufferAssignment& buffer_assignment,
-                            const HloFusionInstruction* fusion,
-                            mlir::MLIRContext* context);
-=======
   CpuScatterFusion(const BufferAssignment& buffer_assignment,
                    const HloFusionInstruction* fusion,
                    gpu::SymbolicExprContext* symbolic_expr_context);
->>>>>>> upstream/master
 
   absl::StatusOr<MlirKernelDefinition> EmitKernelDefinition() final;
 
@@ -61,12 +55,8 @@ class CpuScatterFusion final : public MlirKernelEmitter {
       const HloFusionInstruction& fusion) const;
 
   std::vector<emitters::EpilogueSpecification> GetEpilogues(
-<<<<<<< HEAD
-      const HloFusionInstruction& fusion, mlir::MLIRContext* context) const;
-=======
       const HloFusionInstruction& fusion,
       gpu::SymbolicExprContext* symbolic_expr_context) const;
->>>>>>> upstream/master
 
   mlir::Value EmitThreadId(mlir::ImplicitLocOpBuilder& builder, int dim) const;
 
@@ -80,11 +70,7 @@ class CpuScatterFusion final : public MlirKernelEmitter {
 
   const BufferAssignment& buffer_assignment_;
   const HloFusionInstruction* fusion_;
-<<<<<<< HEAD
-  mlir::MLIRContext* context_;
-=======
   gpu::SymbolicExprContext* symbolic_expr_context_;
->>>>>>> upstream/master
 
   int64_t vector_size_;
   int64_t num_threads_;

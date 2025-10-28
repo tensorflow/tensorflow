@@ -645,11 +645,7 @@ absl::Status MatmulPerfTableGen::Dump(
 
 absl::Status MatmulPerfTableGen::Dump(const GemmPerfTable& table) {
   if (config_.output.empty()) {
-<<<<<<< HEAD
-    LOG(INFO) << table.DebugString();
-=======
     std::cout << table.DebugString();
->>>>>>> upstream/master
     return absl::OkStatus();
   }
   if (absl::StrContains(config_.output, ".pbtxt")) {

@@ -409,19 +409,11 @@ class SchedulerCore {
   MakeSchedulingState(const HloComputation* computation) {
     return absl::UnimplementedError("Not implemented.");
   }
-<<<<<<< HEAD
   virtual absl::StatusOr<std::vector<HloInstruction*>> ScheduleComputation(
       const HloComputation* computation) {
     return absl::UnimplementedError("Not implemented.");
   }
   virtual absl::StatusOr<std::vector<HloInstruction*>> ScheduleComputation(
-=======
-  virtual absl::StatusOr<std::vector<HloInstruction*>> ScheduleComputation(
-      const HloComputation* computation) {
-    return absl::UnimplementedError("Not implemented.");
-  }
-  virtual absl::StatusOr<std::vector<HloInstruction*>> ScheduleComputation(
->>>>>>> upstream/master
       const HloComputation* computation,
       std::shared_ptr<SchedulingState> sched_state) {
     return absl::UnimplementedError("Not implemented.");

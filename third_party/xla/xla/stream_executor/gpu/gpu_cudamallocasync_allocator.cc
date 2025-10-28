@@ -437,41 +437,25 @@ bool GpuCudaMallocAsyncAllocator::TracksAllocationSizes() const {
 
 size_t GpuCudaMallocAsyncAllocator::RequestedSize(const void* ptr) const {
   if (!stats_ || !ptr) return 0;
-<<<<<<< HEAD
   tsl::mutex_lock l(lock_);
-=======
-  absl::MutexLock l(mutex_);
->>>>>>> upstream/master
   return size_map_.at(ptr);
 }
 
 size_t GpuCudaMallocAsyncAllocator::AllocatedSize(const void* ptr) const {
   if (!stats_ || !ptr) return 0;
-<<<<<<< HEAD
   tsl::mutex_lock l(lock_);
-=======
-  absl::MutexLock l(mutex_);
->>>>>>> upstream/master
   return size_map_.at(ptr);
 }
 
 std::optional<tsl::AllocatorStats> GpuCudaMallocAsyncAllocator::GetStats() {
   if (!stats_) return std::nullopt;
-<<<<<<< HEAD
   tsl::mutex_lock l(lock_);
-=======
-  absl::MutexLock l(mutex_);
->>>>>>> upstream/master
   return *stats_;
 }
 
 bool GpuCudaMallocAsyncAllocator::ClearStats() {
   if (!stats_) return false;
-<<<<<<< HEAD
   tsl::mutex_lock l(lock_);
-=======
-  absl::MutexLock l(mutex_);
->>>>>>> upstream/master
   stats_->num_allocs = 0;
   stats_->peak_bytes_in_use = stats_->bytes_in_use;
   stats_->largest_alloc_size = 0;

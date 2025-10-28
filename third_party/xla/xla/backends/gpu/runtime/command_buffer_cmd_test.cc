@@ -60,8 +60,6 @@ static se::StreamExecutor* GpuExecutor() {
   return platform->ExecutorForDevice(0).value();
 }
 
-<<<<<<< HEAD
-=======
 // Some of the tests rely on CUDA 12.9+ features.
 bool IsAtLeastCuda12900(const se::StreamExecutor* stream_executor) {
   const auto& device_description = stream_executor->GetDeviceDescription();
@@ -80,7 +78,6 @@ bool IsAtLeastCuda12900(const se::StreamExecutor* stream_executor) {
   return false;
 }
 
->>>>>>> upstream/master
 // Give a short alias to synchronization mode.
 static constexpr auto serialize =
     CommandBufferCmdExecutor::SynchronizationMode::kSerialize;

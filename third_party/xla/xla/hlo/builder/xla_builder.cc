@@ -2159,11 +2159,7 @@ XlaOp XlaBuilder::DotGeneral(
 }
 
 XlaOp XlaBuilder::ScaledDot(
-<<<<<<< HEAD
-    XlaOp lhs, XlaOp lhs_scale, XlaOp rhs, XlaOp rhs_scale,
-=======
     XlaOp lhs, XlaOp rhs, XlaOp lhs_scale, XlaOp rhs_scale,
->>>>>>> upstream/master
     const DotDimensionNumbers& dimension_numbers,
     const PrecisionConfig* precision_config,
     std::optional<PrimitiveType> preferred_element_type) {
@@ -2182,11 +2178,7 @@ XlaOp XlaBuilder::ScaledDot(
       *instr.mutable_precision_config() = *precision_config;
     }
     return AddInstruction(std::move(instr), HloOpcode::kScaledDot,
-<<<<<<< HEAD
-                          {lhs, lhs_scale, rhs, rhs_scale});
-=======
                           {lhs, rhs, lhs_scale, rhs_scale});
->>>>>>> upstream/master
   });
 }
 
@@ -2203,20 +2195,12 @@ absl::StatusOr<XlaOp> XlaBuilder::DotGeneralInternal(
   return AddInstruction(std::move(instr), HloOpcode::kDot, {lhs, rhs});
 }
 
-<<<<<<< HEAD
-XlaOp ScaledDot(const XlaOp lhs, const XlaOp lhs_scale, const XlaOp rhs,
-=======
 XlaOp ScaledDot(const XlaOp lhs, const XlaOp rhs, const XlaOp lhs_scale,
->>>>>>> upstream/master
                 const XlaOp rhs_scale,
                 const DotDimensionNumbers& dimension_numbers,
                 const PrecisionConfig* precision_config,
                 std::optional<PrimitiveType> preferred_element_type) {
-<<<<<<< HEAD
-  return lhs.builder()->ScaledDot(lhs, lhs_scale, rhs, rhs_scale,
-=======
   return lhs.builder()->ScaledDot(lhs, rhs, lhs_scale, rhs_scale,
->>>>>>> upstream/master
                                   dimension_numbers, precision_config,
                                   preferred_element_type);
 }
@@ -5045,17 +5029,10 @@ absl::StatusOr<XlaOp> XlaBuilder::AddInstruction(
       absl::string_view name = (last_slash_pos == absl::string_view::npos)
                                    ? op_name
                                    : op_name.substr(last_slash_pos + 1);
-<<<<<<< HEAD
-      instr.set_name(
-          xla::SanitizeOpName(std::string(name), kNameSeparator, "_"));
-    } else {
-      instr.set_name(instr.opcode());
-=======
       instr.set_name(UniquifyInstructionName(
           xla::SanitizeOpName(std::string(name), kNameSeparator, "_")));
     } else {
       instr.set_name(UniquifyInstructionName(instr.opcode()));
->>>>>>> upstream/master
     }
   }
 

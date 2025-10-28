@@ -2791,11 +2791,8 @@ xla_test(
         "//xla:types",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
-<<<<<<< HEAD
-=======
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/hlo/testlib:pattern_matcher_gmock",
->>>>>>> upstream/master
         "//xla/hlo/testlib:verified_hlo_module",
         "//xla/hlo/utils:hlo_matchers",
         "//xla/service:backend",
@@ -3813,8 +3810,6 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_for_library",
-<<<<<<< HEAD
-=======
     ],
 )
 
@@ -3826,6 +3821,5 @@ cc_library(
         ":hlo_test_base",
         "//xla/service/gpu/model/experimental:symbolic_expr",
         "@llvm-project//mlir:IR",
->>>>>>> upstream/master
     ],
 )

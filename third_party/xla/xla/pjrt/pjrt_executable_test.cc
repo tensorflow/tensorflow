@@ -64,8 +64,6 @@ TEST(CompileOptionsTest, DeserializeSerializedMultiSliceConfig) {
 
   EXPECT_EQ(option.multi_slice_config, nullptr);
   EXPECT_EQ(option.serialized_multi_slice_config, serialized_config);
-<<<<<<< HEAD
-=======
 }
 
 TEST(CompileOptionsTest, Defaults) {
@@ -73,7 +71,6 @@ TEST(CompileOptionsTest, Defaults) {
   EXPECT_EQ(src.compile_portable_executable, false);
   EXPECT_EQ(src.parameter_is_tupled_arguments, false);
   EXPECT_EQ(src.allow_in_place_mlir_modification, false);
->>>>>>> upstream/master
 }
 
 TEST(ExecuteOptionsTest, Serialization) {

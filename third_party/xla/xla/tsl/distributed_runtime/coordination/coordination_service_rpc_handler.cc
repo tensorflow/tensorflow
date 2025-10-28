@@ -194,11 +194,7 @@ void CoordinationServiceRpcHandler::GetTaskStateAsync(
 void CoordinationServiceRpcHandler::WatchJobStateAsync(
     const tensorflow::WatchJobStateRequest* request,
     tensorflow::WatchJobStateResponse* response, StatusCallback done) {
-<<<<<<< HEAD
-  absl::ReaderMutexLock l(&mu_);
-=======
   absl::ReaderMutexLock l(mu_);
->>>>>>> upstream/master
   if (service_ == nullptr) {
     done(MakeCoordinationError(
         absl::InternalError("Coordination service is not enabled.")));

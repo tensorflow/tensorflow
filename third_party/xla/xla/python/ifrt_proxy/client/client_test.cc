@@ -347,13 +347,8 @@ TEST_P(ClientTest, GetDefaultLayoutFailure) {
       .WillOnce(Return(tsl::Future<ClientSession::Response>(
           absl::InternalError("injected from test"))));
 
-<<<<<<< HEAD
-  EXPECT_THAT(client_->GetDefaultLayout(DType(DType::kF64), {1, 2, 3}, device_,
-                                        MemoryKind("mock")),
-=======
   EXPECT_THAT(client_->GetDefaultPjRtLayout(DType(DType::kF64), {1, 2, 3},
                                             device_, MemoryKind("mock")),
->>>>>>> upstream/master
               Not(absl_testing::IsOk()));
 }
 

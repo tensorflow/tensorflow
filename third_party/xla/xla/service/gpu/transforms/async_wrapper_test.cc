@@ -31,10 +31,6 @@ limitations under the License.
 #include "xla/literal_util.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/literal_test_util.h"
-<<<<<<< HEAD
-#include "xla/tsl/platform/status_matchers.h"
-=======
->>>>>>> upstream/master
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla::gpu {

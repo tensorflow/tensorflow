@@ -134,21 +134,6 @@ std::pair<Shape, Shape> GetPerGroupBaseShape(
                         GetPerGroupBaseShape(grouped_sharding, pair.second));
 }
 
-<<<<<<< HEAD
-  auto create_sharded_dot =
-      [&](HloInstruction* l, HloInstruction* r, SpmdBuilder* b,
-          const Window& conv_window) -> absl::StatusOr<HloInstruction*> {
-    TF_ASSIGN_OR_RETURN(
-        auto sharded_dot_shape,
-        ShapeInference::InferDotOpShape(
-            l->shape(), r->shape(), hlo->dot_dimension_numbers(),
-            /*preferred_element_type=*/hlo->shape().element_type()));
-    return b->AddInstruction(HloInstruction::CreateDot(
-        sharded_dot_shape, l, r, hlo->dot_dimension_numbers(),
-        hlo->precision_config()));
-  };
-  return HandleDotHelper(hlo, mapping, create_sharded_dot);
-=======
 // Functor class for creating sharded dots with operands of type PartitionedHlo.
 class CreateShardedDotFunctor final
     : public CreateShardedFunctorBase<PartitionedHlo> {
@@ -184,7 +169,6 @@ absl::Status SpmdPartitioningVisitor::HandleDot(HloInstruction* hlo) {
   CreateShardedDotFunctor create_sharded_dot_functor(dot);
   return HandleDotHelper<CreateShardedDotFunctor>(hlo, mapping,
                                                   create_sharded_dot_functor);
->>>>>>> upstream/master
 }
 
 namespace {
@@ -1965,45 +1949,6 @@ absl::StatusOr<HloInstruction*> PartitionBaseCase(
     }
   }
 
-<<<<<<< HEAD
-  std::optional<WindowedEinsumConfig> e_config = std::nullopt;
-  if (!should_skip_windowed_einsum) {
-    e_config = GetWindowedEinsumConfiguration(
-        num_partitions, output_lhs_non_contracting_partitions,
-        output_rhs_non_contracting_partitions, rhs_contracting_partitions,
-        rhs_non_contracting_partitions, rhs_batch_partitions,
-        lhs_contracting_partitions, lhs_non_contracting_partitions,
-        lhs_batch_partitions, ShapeSizeInBytes(rhs.base_shape()),
-        ShapeSizeInBytes(lhs.base_shape()), ShapeSizeInBytes(output_base_shape),
-        options, output_sharding_transposed_to_match_lhs,
-        output_sharding_transposed_to_match_rhs,
-        lhs_sharding_transposed_to_match_rhs,
-        rhs_sharding_transposed_to_match_lhs, lhs_sharding, rhs_sharding,
-        output_sharding, conv_window, dims_mapping, indices_map,
-        visitor->call_graph(), options.max_windowed_einsum_iteration,
-        original_hlo, &lhs, &rhs, create_sharded_dot, b, module, visitor);
-  }
-  if (e_config) {
-    int64_t loop_partitions = 1;
-    for (int64_t dim : e_config->windowing_dims) {
-      loop_partitions *= lhs_sharding.tile_assignment().dim(dim);
-    }
-    if (e_config->windowing_dims.empty()) {
-      loop_partitions = num_partitions;
-    }
-
-    VLOG(2) << "Emit windowed dot.";
-    return EmitWindowedDotGeneral(
-        lhs, rhs, output_base_shape, output_sharding, dims_mapping,
-        num_partitions, loop_partitions, create_sharded_dot, conv_window,
-        module, original_hlo, options, b, windowed_dot_general_loops, *e_config,
-        indices_map, lhs_sharding_transposed_to_match_output,
-        rhs_sharding_transposed_to_match_output,
-        rhs_sharding_transposed_to_match_lhs,
-        lhs_sharding_transposed_to_match_rhs,
-        output_sharding_transposed_to_match_rhs,
-        output_sharding_transposed_to_match_lhs);
-=======
   // Disable windowed einsums for block-scaled dot.
   if constexpr (std::is_same_v<PartitionedHloMaybeMX, PartitionedHlo>) {
     std::optional<WindowedEinsumConfig> e_config = std::nullopt;
@@ -2046,7 +1991,6 @@ absl::StatusOr<HloInstruction*> PartitionBaseCase(
           output_sharding_transposed_to_match_rhs,
           output_sharding_transposed_to_match_lhs);
     }
->>>>>>> upstream/master
   }
 
   {

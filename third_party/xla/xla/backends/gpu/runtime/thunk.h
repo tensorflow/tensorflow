@@ -230,11 +230,8 @@ class Thunk {
 
     ExecutionStreamId execution_stream_id = kDefaultExecutionStreamId;
 
-<<<<<<< HEAD
-=======
     ThunkId thunk_id = ThunkId{0};
 
->>>>>>> upstream/master
     // Serializes a ThunkInfo to a ThunkInfoProto.
     ThunkInfoProto ToProto() const;
   };

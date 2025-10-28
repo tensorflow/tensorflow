@@ -364,7 +364,6 @@ TEST_P(RemapPlanTest, InvalidShardIndex) {
       run(RemapPlan::Interval{-1, 1, 1}, RemapPlan::Interval{0, 1, 1}),
       absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
                              HasSubstr("start must be in [0, 0], but is -1")));
-<<<<<<< HEAD
   EXPECT_THAT(
       run(RemapPlan::Interval{1, 1, 1}, RemapPlan::Interval{0, 1, 1}),
       absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
@@ -374,17 +373,6 @@ TEST_P(RemapPlanTest, InvalidShardIndex) {
       absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
                              HasSubstr("start must be in [0, 0], but is -1")));
   EXPECT_THAT(
-=======
-  EXPECT_THAT(
-      run(RemapPlan::Interval{1, 1, 1}, RemapPlan::Interval{0, 1, 1}),
-      absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
-                             HasSubstr("start must be in [0, 0], but is 1")));
-  EXPECT_THAT(
-      run(RemapPlan::Interval{0, 1, 1}, RemapPlan::Interval{-1, 1, 1}),
-      absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
-                             HasSubstr("start must be in [0, 0], but is -1")));
-  EXPECT_THAT(
->>>>>>> upstream/master
       run(RemapPlan::Interval{0, 1, 1}, RemapPlan::Interval{1, 1, 1}),
       absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
                              HasSubstr("start must be in [0, 0], but is 1")));

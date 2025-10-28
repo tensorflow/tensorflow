@@ -61,10 +61,7 @@ limitations under the License.
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/threadpool.h"
-<<<<<<< HEAD
-=======
 #include "xla/tsl/util/proto/proto_matchers.h"
->>>>>>> upstream/master
 #include "xla/xla.pb.h"
 
 namespace xla::gpu {

@@ -1001,11 +1001,7 @@ TEST_F(HeapSimulatorTest, AsyncCallImplicitSharding) {
                           ParseAndReturnUnverifiedModule(hlo_string));
   TF_ASSERT_OK_AND_ASSIGN(auto alias_analysis,
                           HloAliasAnalysis::Run(module.get(), &alias_info_));
-<<<<<<< HEAD
-  auto size_fn = [](const BufferValue& buffer) -> int64_t {
-=======
   BufferValue::SizeFunction size_fn = [](const BufferValue& buffer) -> int64_t {
->>>>>>> upstream/master
     const Shape& shape = buffer.shape();
     if (!shape.IsArray()) {
       return 0;

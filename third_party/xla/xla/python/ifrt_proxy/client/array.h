@@ -108,11 +108,7 @@ class Array final : public llvm::RTTIExtends<Array, xla::ifrt::Array> {
         dtype_(dtype),
         shape_(std::move(shape)),
         sharding_(std::move(sharding)),
-<<<<<<< HEAD
-        custom_layout_(std::move(layout)),
-=======
         layout_(std::move(layout)),
->>>>>>> upstream/master
         user_context_(UserContextScope::current()),
         handle_(arr_handle) {}
 

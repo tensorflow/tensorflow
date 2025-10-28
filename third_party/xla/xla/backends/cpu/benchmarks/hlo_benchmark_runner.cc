@@ -47,10 +47,7 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/tests/test_utils.h"
 #include "xla/tools/hlo_module_loader.h"
-<<<<<<< HEAD
-=======
 #include "xla/tools/run_hlo_module.pb.h"
->>>>>>> upstream/master
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"

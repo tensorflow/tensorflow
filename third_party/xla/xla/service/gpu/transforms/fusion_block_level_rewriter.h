@@ -32,16 +32,11 @@ class FusionBlockLevelRewriter : public HloModulePass {
  public:
   explicit FusionBlockLevelRewriter(
       const se::DeviceDescription& device_info,
-<<<<<<< HEAD
-      HloCostAnalysis::ShapeSizeFunction shape_size)
-      : device_info_(device_info), shape_size_(shape_size) {}
-=======
       HloCostAnalysis::ShapeSizeFunction shape_size,
       SymbolicExprContext* symbolic_expr_context)
       : device_info_(device_info),
         shape_size_(shape_size),
         symbolic_expr_context_(symbolic_expr_context) {}
->>>>>>> upstream/master
 
   absl::string_view name() const override {
     return "fusion-block-level-rewriter";
@@ -55,10 +50,7 @@ class FusionBlockLevelRewriter : public HloModulePass {
  private:
   const se::DeviceDescription& device_info_;
   HloCostAnalysis::ShapeSizeFunction shape_size_;
-<<<<<<< HEAD
-=======
   SymbolicExprContext* symbolic_expr_context_;
->>>>>>> upstream/master
 };
 
 }  // namespace gpu

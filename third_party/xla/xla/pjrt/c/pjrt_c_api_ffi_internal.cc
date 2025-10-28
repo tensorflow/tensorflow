@@ -19,14 +19,9 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/ffi/api/c_api.h"
 #include "xla/ffi/execution_context.h"
-<<<<<<< HEAD
-#include "xla/ffi/ffi_api.h"
-#include "xla/ffi/type_id_registry.h"
-=======
 #include "xla/ffi/ffi.h"
 #include "xla/ffi/ffi_api.h"
 #include "xla/ffi/type_registry.h"
->>>>>>> upstream/master
 #include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/c/pjrt_c_api_ffi_extension.h"
 #include "xla/pjrt/c/pjrt_c_api_helpers.h"
@@ -110,10 +105,7 @@ PJRT_FFI_Extension CreateFfiExtension(PJRT_Extension_Base* next) {
       /*type_id_register=*/PJRT_FFI_Type_Register,
       /*user_data_add=*/PJRT_FFI_UserData_Add,
       /*register_handler=*/PJRT_FFI_Register_Handler,
-<<<<<<< HEAD
-=======
       /*type_register=*/PJRT_FFI_Type_Register,
->>>>>>> upstream/master
   };
 }
 

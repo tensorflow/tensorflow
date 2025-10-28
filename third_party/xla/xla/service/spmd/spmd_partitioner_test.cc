@@ -84,36 +84,11 @@ class SpmdPartitioningTest
  public:
   absl::StatusOr<std::unique_ptr<HloModule>> PartitionComputation(
       absl::string_view hlo_module, int64_t num_devices,
-<<<<<<< HEAD
-      bool use_all_gather = false, bool conv_halo_exchange_always_on_lhs = true,
-      bool choose_faster_windowed_einsum = false,
-      bool unroll_windowed_einsum = false,
-      bool bidirectional_windowed_einsum = false,
-      int64_t threshold_for_windowed_einsum_mib = -1,
-      std::vector<GatherScatterPartitioningMethod> gather_methods =
-          {GatherScatterPartitioningMethod::kExplicitBatch,
-           GatherScatterPartitioningMethod::kIndexParallel},
-      std::vector<GatherScatterPartitioningMethod> scatter_methods =
-          {GatherScatterPartitioningMethod::kExplicitBatch,
-           GatherScatterPartitioningMethod::kIndexParallel},
-      std::optional<int64_t> total_bytes_windowed_einsum_threshold =
-          std::nullopt) {
-    // Some tests (BackpropFilter convs) set this flag false to test two
-    // different paths of the implementation.
-    SpmdPartitionerOptions options;
-    options.conv_halo_exchange_always_on_lhs = conv_halo_exchange_always_on_lhs;
-=======
       SpmdPartitionerOptions options = SpmdPartitionerOptions(),
       bool use_all_gather = true) {
->>>>>>> upstream/master
     options.allow_module_signature_change = true;
     auto collective_ops_creator =
         GetDefaultCollectiveOpsCreator(num_devices, /*num_replicas=*/1);
-<<<<<<< HEAD
-    // Do not use all-gather for pattern-matching purpose, as the partitioner
-    // might create reshape/transposes around it.
-=======
->>>>>>> upstream/master
     if (!use_all_gather) {
       collective_ops_creator.create_cross_partition_all_gather = nullptr;
     }
@@ -2206,13 +2181,7 @@ ENTRY entry {
   options.conv_halo_exchange_always_on_lhs = false;
   TF_ASSERT_OK_AND_ASSIGN(
       auto module,
-<<<<<<< HEAD
-      PartitionComputation(hlo_string, /*num_devices=*/2,
-                           /*use_all_gather=*/false,
-                           /*conv_halo_exchange_always_on_lhs=*/false));
-=======
       PartitionComputation(hlo_string, /*num_devices=*/2, options));
->>>>>>> upstream/master
   VLOG(1) << module->ToString();
 
   const auto root = module->entry_computation()->root_instruction();
@@ -2252,13 +2221,7 @@ ENTRY entry {
   options.conv_halo_exchange_always_on_lhs = false;
   TF_ASSERT_OK_AND_ASSIGN(
       auto module,
-<<<<<<< HEAD
-      PartitionComputation(hlo_string, /*num_devices=*/2,
-                           /*use_all_gather=*/false,
-                           /*conv_halo_exchange_always_on_lhs=*/false));
-=======
       PartitionComputation(hlo_string, /*num_devices=*/2, options));
->>>>>>> upstream/master
   VLOG(1) << module->ToString();
 
   const auto root = module->entry_computation()->root_instruction();
@@ -2300,13 +2263,7 @@ ENTRY entry {
   options.conv_halo_exchange_always_on_lhs = false;
   TF_ASSERT_OK_AND_ASSIGN(
       auto module,
-<<<<<<< HEAD
-      PartitionComputation(hlo_string, /*num_devices=*/2,
-                           /*use_all_gather=*/false,
-                           /*conv_halo_exchange_always_on_lhs=*/false));
-=======
       PartitionComputation(hlo_string, /*num_devices=*/2, options));
->>>>>>> upstream/master
   VLOG(1) << module->ToString();
 
   const auto root = module->entry_computation()->root_instruction();
@@ -2340,13 +2297,7 @@ ENTRY entry {
   options.conv_halo_exchange_always_on_lhs = false;
   TF_ASSERT_OK_AND_ASSIGN(
       auto module,
-<<<<<<< HEAD
-      PartitionComputation(hlo_string, /*num_devices=*/2,
-                           /*use_all_gather=*/false,
-                           /*conv_halo_exchange_always_on_lhs=*/false));
-=======
       PartitionComputation(hlo_string, /*num_devices=*/2, options));
->>>>>>> upstream/master
   VLOG(1) << module->ToString();
 
   const auto root = module->entry_computation()->root_instruction();
@@ -5177,13 +5128,7 @@ ENTRY entry {
   options.conv_halo_exchange_always_on_lhs = false;
   TF_ASSERT_OK_AND_ASSIGN(
       auto module,
-<<<<<<< HEAD
-      PartitionComputation(hlo_string, /*num_devices=*/2,
-                           /*use_all_gather=*/false,
-                           /*conv_halo_exchange_always_on_lhs=*/false));
-=======
       PartitionComputation(hlo_string, /*num_devices=*/2, options));
->>>>>>> upstream/master
   VLOG(1) << module->ToString();
 
   const auto root = module->entry_computation()->root_instruction();
@@ -5345,17 +5290,7 @@ ENTRY entry {
   options.threshold_for_windowed_einsum_mib = 0;
   TF_ASSERT_OK_AND_ASSIGN(
       auto module,
-<<<<<<< HEAD
-      PartitionComputation(hlo_string, /*num_devices=*/2,
-                           /*use_all_gather=*/false,
-                           /*conv_halo_exchange_always_on_lhs=*/true,
-                           /*choose_faster_windowed_einsum=*/false,
-                           /*unroll_windowed_einsum=*/false,
-                           /*bidirectional_windowed_einsum=*/false,
-                           /*threshold_for_windowed_einsum_mib=*/0));
-=======
       PartitionComputation(hlo_string, /*num_devices=*/2, options));
->>>>>>> upstream/master
   VLOG(1) << module->ToString();
 
   // Check while op.
@@ -5404,17 +5339,7 @@ ENTRY entry {
   options.threshold_for_windowed_einsum_mib = 0;
   TF_ASSERT_OK_AND_ASSIGN(
       auto module,
-<<<<<<< HEAD
-      PartitionComputation(hlo_string, /*num_devices=*/2,
-                           /*use_all_gather=*/false,
-                           /*conv_halo_exchange_always_on_lhs=*/true,
-                           /*choose_faster_windowed_einsum=*/false,
-                           /*unroll_windowed_einsum=*/false,
-                           /*bidirectional_windowed_einsum=*/false,
-                           /*threshold_for_windowed_einsum_mib=*/0));
-=======
       PartitionComputation(hlo_string, /*num_devices=*/2, options));
->>>>>>> upstream/master
   VLOG(1) << module->ToString();
 
   // Check while op.
@@ -5469,17 +5394,7 @@ ENTRY entry {
   options.threshold_for_windowed_einsum_mib = 0;
   TF_ASSERT_OK_AND_ASSIGN(
       auto module,
-<<<<<<< HEAD
-      PartitionComputation(hlo_string, /*num_devices=*/64,
-                           /*use_all_gather=*/false,
-                           /*conv_halo_exchange_always_on_lhs=*/true,
-                           /*choose_faster_windowed_einsum=*/true,
-                           /*unroll_windowed_einsum=*/false,
-                           /*bidirectional_windowed_einsum=*/false,
-                           /*threshold_for_windowed_einsum_mib=*/0));
-=======
       PartitionComputation(hlo_string, /*num_devices=*/64, options));
->>>>>>> upstream/master
   VLOG(1) << module->ToString();
 
   // Check while op.
@@ -5532,17 +5447,7 @@ ENTRY entry {
   options.threshold_for_windowed_einsum_mib = 0;
   TF_ASSERT_OK_AND_ASSIGN(
       auto module,
-<<<<<<< HEAD
-      PartitionComputation(hlo_string, /*num_devices=*/64,
-                           /*use_all_gather=*/false,
-                           /*conv_halo_exchange_always_on_lhs=*/true,
-                           /*choose_faster_windowed_einsum=*/true,
-                           /*unroll_windowed_einsum=*/true,
-                           /*bidirectional_windowed_einsum=*/true,
-                           /*threshold_for_windowed_einsum_mib=*/0));
-=======
       PartitionComputation(hlo_string, /*num_devices=*/64, options));
->>>>>>> upstream/master
   VLOG(1) << module->ToString();
   TF_ASSERT_OK(HloVerifier(/*layout_sensitive=*/false,
                            /*allow_mixed_precision=*/false)
@@ -5581,20 +5486,7 @@ ENTRY entry {
   options.total_bytes_windowed_einsum_threshold = 1 << 30;
   TF_ASSERT_OK_AND_ASSIGN(
       auto module,
-<<<<<<< HEAD
-      PartitionComputation(hlo_string, /*num_devices=*/2,
-                           /*use_all_gather=*/false,
-                           /*conv_halo_exchange_always_on_lhs=*/true,
-                           /*choose_faster_windowed_einsum=*/false,
-                           /*unroll_windowed_einsum=*/false,
-                           /*bidirectional_windowed_einsum=*/false,
-                           /*threshold_for_windowed_einsum_mib=*/5,
-                           {GatherScatterPartitioningMethod::kExplicitBatch},
-                           {GatherScatterPartitioningMethod::kExplicitBatch},
-                           /*total_bytes_windowed_einsum_threshold=*/1 << 30));
-=======
       PartitionComputation(hlo_string, /*num_devices=*/2, options));
->>>>>>> upstream/master
   VLOG(1) << module->ToString();
   // Total bytes threshold overrides threshold_for_windowed_einsum_mib,
   // there shouldn't be any while loop after partitioner.
@@ -5640,17 +5532,7 @@ ENTRY entry {
   options.threshold_for_windowed_einsum_mib = 0;
   TF_ASSERT_OK_AND_ASSIGN(
       auto module,
-<<<<<<< HEAD
-      PartitionComputation(hlo_string, /*num_devices=*/2,
-                           /*use_all_gather=*/false,
-                           /*conv_halo_exchange_always_on_lhs=*/true,
-                           /*choose_faster_windowed_einsum=*/false,
-                           /*unroll_windowed_einsum=*/false,
-                           /*bidirectional_windowed_einsum=*/false,
-                           /*threshold_for_windowed_einsum_mib=*/0));
-=======
       PartitionComputation(hlo_string, /*num_devices=*/2, options));
->>>>>>> upstream/master
   ASSERT_FALSE(absl::c_any_of(module->entry_computation()->instructions(),
                               [](const HloInstruction* inst) {
                                 return inst->opcode() == HloOpcode::kWhile;
@@ -6057,15 +5939,7 @@ ENTRY entry {
   options.unroll_windowed_einsum = true;
   TF_ASSERT_OK_AND_ASSIGN(
       auto module,
-<<<<<<< HEAD
-      PartitionComputation(hlo_string, /*num_devices=*/4,
-                           /*use_all_gather=*/false,
-                           /*conv_halo_exchange_always_on_lhs =*/true,
-                           /*choose_faster_windowed_einsum =*/false,
-                           /*unroll_windowed_einsum =*/true));
-=======
       PartitionComputation(hlo_string, /*num_devices=*/4, options));
->>>>>>> upstream/master
   VLOG(1) << module->ToString();
 
   const auto lhs = AllOf(
@@ -6139,16 +6013,7 @@ ENTRY entry {
   options.bidirectional_windowed_einsum = true;
   TF_ASSERT_OK_AND_ASSIGN(
       auto module,
-<<<<<<< HEAD
-      PartitionComputation(hlo_string, /*num_devices=*/4,
-                           /*use_all_gather=*/false,
-                           /*conv_halo_exchange_always_on_lhs =*/true,
-                           /*choose_faster_windowed_einsum =*/false,
-                           /*unroll_windowed_einsum =*/false,
-                           /*bidirectional_windowed_einsum =*/true));
-=======
       PartitionComputation(hlo_string, /*num_devices=*/4, options));
->>>>>>> upstream/master
   VLOG(1) << module->ToString();
   const auto lhs = AllOf(
       op::Copy(op::DynamicSlice(op::Parameter(0), op::Constant(),
@@ -6314,15 +6179,7 @@ ENTRY entry {
   options.unroll_windowed_einsum = true;
   TF_ASSERT_OK_AND_ASSIGN(
       auto module,
-<<<<<<< HEAD
-      PartitionComputation(hlo_string, /*num_devices=*/8,
-                           /*use_all_gather=*/false,
-                           /*conv_halo_exchange_always_on_lhs =*/true,
-                           /*choose_faster_windowed_einsum =*/false,
-                           /*unroll_windowed_einsum =*/true));
-=======
       PartitionComputation(hlo_string, /*num_devices=*/8, options));
->>>>>>> upstream/master
   VLOG(1) << module->ToString();
 
   const auto lhs =
@@ -6396,16 +6253,7 @@ ENTRY entry {
   options.bidirectional_windowed_einsum = true;
   TF_ASSERT_OK_AND_ASSIGN(
       auto module,
-<<<<<<< HEAD
-      PartitionComputation(hlo_string, /*num_devices=*/8,
-                           /*use_all_gather=*/false,
-                           /*conv_halo_exchange_always_on_lhs =*/true,
-                           /*choose_faster_windowed_einsum =*/false,
-                           /*unroll_windowed_einsum =*/false,
-                           /*bidirectional_windowed_einsum =*/true));
-=======
       PartitionComputation(hlo_string, /*num_devices=*/8, options));
->>>>>>> upstream/master
   VLOG(1) << module->ToString();
 
   const auto lhs =
@@ -6610,15 +6458,7 @@ ENTRY entry {
   options.unroll_windowed_einsum = true;
   TF_ASSERT_OK_AND_ASSIGN(
       auto module,
-<<<<<<< HEAD
-      PartitionComputation(hlo_string, /*num_devices=*/2,
-                           /*use_all_gather=*/false,
-                           /*conv_halo_exchange_always_on_lhs =*/true,
-                           /*choose_faster_windowed_einsum =*/false,
-                           /*unroll_windowed_einsum =*/true));
-=======
       PartitionComputation(hlo_string, /*num_devices=*/2, options));
->>>>>>> upstream/master
   VLOG(1) << module->ToString();
   const auto root = module->entry_computation()->root_instruction();
   EXPECT_THAT(
@@ -6685,16 +6525,7 @@ ENTRY entry {
   options.bidirectional_windowed_einsum = true;
   TF_ASSERT_OK_AND_ASSIGN(
       auto module,
-<<<<<<< HEAD
-      PartitionComputation(hlo_string, /*num_devices=*/4,
-                           /*use_all_gather=*/false,
-                           /*conv_halo_exchange_always_on_lhs =*/true,
-                           /*choose_faster_windowed_einsum =*/false,
-                           /*unroll_windowed_einsum =*/false,
-                           /*bidirectional_windowed_einsum =*/true));
-=======
       PartitionComputation(hlo_string, /*num_devices=*/4, options));
->>>>>>> upstream/master
   VLOG(1) << module->ToString();
   const auto root = module->entry_computation()->root_instruction();
   EXPECT_THAT(
@@ -6829,15 +6660,7 @@ ENTRY entry {
   options.unroll_windowed_einsum = true;
   TF_ASSERT_OK_AND_ASSIGN(
       auto module,
-<<<<<<< HEAD
-      PartitionComputation(hlo_string, /*num_devices=*/2,
-                           /*use_all_gather=*/false,
-                           /*conv_halo_exchange_always_on_lhs =*/true,
-                           /*choose_faster_windowed_einsum =*/false,
-                           /*unroll_windowed_einsum =*/true));
-=======
       PartitionComputation(hlo_string, /*num_devices=*/2, options));
->>>>>>> upstream/master
   VLOG(1) << module->ToString();
 
   const auto root = module->entry_computation()->root_instruction();
@@ -6907,16 +6730,7 @@ ENTRY entry {
   options.bidirectional_windowed_einsum = true;
   TF_ASSERT_OK_AND_ASSIGN(
       auto module,
-<<<<<<< HEAD
-      PartitionComputation(hlo_string, /*num_devices=*/4,
-                           /*use_all_gather=*/false,
-                           /*conv_halo_exchange_always_on_lhs =*/true,
-                           /*choose_faster_windowed_einsum =*/false,
-                           /*unroll_windowed_einsum =*/false,
-                           /*bidirectional_windowed_einsum =*/true));
-=======
       PartitionComputation(hlo_string, /*num_devices=*/4, options));
->>>>>>> upstream/master
   VLOG(1) << module->ToString();
 
   const auto root = module->entry_computation()->root_instruction();
@@ -7064,15 +6878,7 @@ ENTRY entry {
   options.unroll_windowed_einsum = true;
   TF_ASSERT_OK_AND_ASSIGN(
       auto module,
-<<<<<<< HEAD
-      PartitionComputation(hlo_string, /*num_devices=*/2,
-                           /*use_all_gather=*/false,
-                           /*conv_halo_exchange_always_on_lhs =*/true,
-                           /*choose_faster_windowed_einsum =*/false,
-                           /*unroll_windowed_einsum =*/true));
-=======
       PartitionComputation(hlo_string, /*num_devices=*/2, options));
->>>>>>> upstream/master
   VLOG(1) << module->ToString();
 
   const auto root = module->entry_computation()->root_instruction();
@@ -7147,16 +6953,7 @@ ENTRY entry {
   options.bidirectional_windowed_einsum = true;
   TF_ASSERT_OK_AND_ASSIGN(
       auto module,
-<<<<<<< HEAD
-      PartitionComputation(hlo_string, /*num_devices=*/4,
-                           /*use_all_gather=*/false,
-                           /*conv_halo_exchange_always_on_lhs =*/true,
-                           /*choose_faster_windowed_einsum =*/false,
-                           /*unroll_windowed_einsum =*/false,
-                           /*bidirectional_windowed_einsum =*/true));
-=======
       PartitionComputation(hlo_string, /*num_devices=*/4, options));
->>>>>>> upstream/master
   VLOG(1) << module->ToString();
 
   const auto root = module->entry_computation()->root_instruction();
@@ -7414,15 +7211,7 @@ ENTRY entry {
   options.unroll_windowed_einsum = true;
   TF_ASSERT_OK_AND_ASSIGN(
       auto module,
-<<<<<<< HEAD
-      PartitionComputation(hlo_string, /*num_devices=*/2,
-                           /*use_all_gather=*/false,
-                           /*conv_halo_exchange_always_on_lhs =*/true,
-                           /*choose_faster_windowed_einsum =*/false,
-                           /*unroll_windowed_einsum =*/true));
-=======
       PartitionComputation(hlo_string, /*num_devices=*/2, options));
->>>>>>> upstream/master
   VLOG(1) << module->ToString();
 
   const auto root = module->entry_computation()->root_instruction();
@@ -7524,16 +7313,7 @@ ENTRY entry {
   options.bidirectional_windowed_einsum = true;
   TF_ASSERT_OK_AND_ASSIGN(
       auto module,
-<<<<<<< HEAD
-      PartitionComputation(hlo_string, /*num_devices=*/4,
-                           /*use_all_gather=*/false,
-                           /*conv_halo_exchange_always_on_lhs =*/true,
-                           /*choose_faster_windowed_einsum =*/false,
-                           /*unroll_windowed_einsum =*/false,
-                           /*bidirectional_windowed_einsum =*/true));
-=======
       PartitionComputation(hlo_string, /*num_devices=*/4, options));
->>>>>>> upstream/master
   VLOG(1) << module->ToString();
 
   const auto root = module->entry_computation()->root_instruction();
@@ -7675,15 +7455,7 @@ ENTRY entry {
   options.unroll_windowed_einsum = true;
   TF_ASSERT_OK_AND_ASSIGN(
       auto module,
-<<<<<<< HEAD
-      PartitionComputation(hlo_string, /*num_devices=*/2,
-                           /*use_all_gather=*/false,
-                           /*conv_halo_exchange_always_on_lhs =*/true,
-                           /*choose_faster_windowed_einsum =*/false,
-                           /*unroll_windowed_einsum =*/true));
-=======
       PartitionComputation(hlo_string, /*num_devices=*/2, options));
->>>>>>> upstream/master
   VLOG(1) << module->ToString();
 
   const auto root = module->entry_computation()->root_instruction();
@@ -7781,16 +7553,7 @@ ENTRY entry {
   options.bidirectional_windowed_einsum = true;
   TF_ASSERT_OK_AND_ASSIGN(
       auto module,
-<<<<<<< HEAD
-      PartitionComputation(hlo_string, /*num_devices=*/4,
-                           /*use_all_gather=*/false,
-                           /*conv_halo_exchange_always_on_lhs =*/true,
-                           /*choose_faster_windowed_einsum =*/false,
-                           /*unroll_windowed_einsum =*/false,
-                           /*bidirectional_windowed_einsum =*/true));
-=======
       PartitionComputation(hlo_string, /*num_devices=*/4, options));
->>>>>>> upstream/master
   VLOG(1) << module->ToString();
 
   const auto root = module->entry_computation()->root_instruction();
@@ -7906,15 +7669,7 @@ ENTRY entry {
   options.unroll_windowed_einsum = true;
   TF_ASSERT_OK_AND_ASSIGN(
       auto module,
-<<<<<<< HEAD
-      PartitionComputation(hlo_string, /*num_devices=*/2,
-                           /*use_all_gather=*/false,
-                           /*conv_halo_exchange_always_on_lhs =*/true,
-                           /*choose_faster_windowed_einsum =*/false,
-                           /*unroll_windowed_einsum =*/true));
-=======
       PartitionComputation(hlo_string, /*num_devices=*/2, options));
->>>>>>> upstream/master
   VLOG(1) << module->ToString();
 
   const auto root = module->entry_computation()->root_instruction();
@@ -7993,16 +7748,7 @@ ENTRY entry {
   options.bidirectional_windowed_einsum = true;
   TF_ASSERT_OK_AND_ASSIGN(
       auto module,
-<<<<<<< HEAD
-      PartitionComputation(hlo_string, /*num_devices=*/4,
-                           /*use_all_gather=*/false,
-                           /*conv_halo_exchange_always_on_lhs =*/true,
-                           /*choose_faster_windowed_einsum =*/false,
-                           /*unroll_windowed_einsum =*/false,
-                           /*bidirectional_windowed_einsum =*/true));
-=======
       PartitionComputation(hlo_string, /*num_devices=*/4, options));
->>>>>>> upstream/master
   VLOG(1) << module->ToString();
 
   auto input_subtuple =
@@ -12318,18 +12064,7 @@ ENTRY %module {
     options.preferred_gather_partition_methods = {method};
     TF_ASSERT_OK_AND_ASSIGN(
         auto module,
-<<<<<<< HEAD
-        PartitionComputation(hlo_string, /*num_devices=*/8,
-                             /*use_all_gather=*/false,
-                             /*conv_halo_exchange_always_on_lhs=*/true,
-                             /*choose_faster_windowed_einsum=*/false,
-                             /*unroll_windowed_einsum=*/false,
-                             /*bidirectional_windowed_einsum=*/false,
-                             /*threshold_for_windowed_einsum_mib=*/-1, {method},
-                             {method}));
-=======
         PartitionComputation(hlo_string, /*num_devices=*/8, options));
->>>>>>> upstream/master
     VLOG(1) << module->ToString();
     auto operand = AllOf(op::Shape("s32[2,4,2,2]"), op::Parameter());
     auto indices = AllOf(op::Shape("s32[2,2,2]"), op::Subtract());
@@ -12607,14 +12342,7 @@ ENTRY entry {
       GatherScatterPartitioningMethod::kTrivialSlicedOperand};
   TF_ASSERT_OK_AND_ASSIGN(
       auto module,
-<<<<<<< HEAD
-      PartitionComputation(
-          hlo_string, /*num_devices=*/32, /*use_all_gather=*/false, true, false,
-          false, false, -1,
-          {GatherScatterPartitioningMethod::kTrivialSlicedOperand}));
-=======
       PartitionComputation(hlo_string, /*num_devices=*/32, options));
->>>>>>> upstream/master
   VLOG(1) << module->ToString();
   HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, op::AllReduce(op::Select(_, _, op::Gather(_, _))));
@@ -12646,13 +12374,7 @@ ENTRY entry {
       GatherScatterPartitioningMethod::kIndexParallel};
   TF_ASSERT_OK_AND_ASSIGN(
       auto module,
-<<<<<<< HEAD
-      PartitionComputation(
-          hlo_string, /*num_devices=*/32, /*use_all_gather=*/false, true, false,
-          false, false, -1, {GatherScatterPartitioningMethod::kIndexParallel}));
-=======
       PartitionComputation(hlo_string, /*num_devices=*/32, options));
->>>>>>> upstream/master
   VLOG(1) << module->ToString();
   HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, op::AllGather(op::AllReduce(
@@ -13308,18 +13030,7 @@ ENTRY %module {
     options.preferred_scatter_partition_methods = {method};
     TF_ASSERT_OK_AND_ASSIGN(
         auto module,
-<<<<<<< HEAD
-        PartitionComputation(hlo_string, /*num_devices=*/8,
-                             /*use_all_gather=*/false,
-                             /*conv_halo_exchange_always_on_lhs=*/true,
-                             /*choose_faster_windowed_einsum=*/false,
-                             /*unroll_windowed_einsum=*/false,
-                             /*bidirectional_windowed_einsum=*/false,
-                             /*threshold_for_windowed_einsum_mib=*/-1, {method},
-                             {method}));
-=======
         PartitionComputation(hlo_string, /*num_devices=*/8, options));
->>>>>>> upstream/master
     VLOG(1) << module->ToString();
     auto operand = AllOf(op::Shape("s32[2,4,2,2]"), op::Select());
     auto indices = AllOf(op::Shape("s32[2,2,2]"), op::Subtract());
@@ -13596,14 +13307,7 @@ ENTRY entry {
       GatherScatterPartitioningMethod::kTrivialSlicedOperand};
   TF_ASSERT_OK_AND_ASSIGN(
       auto module,
-<<<<<<< HEAD
-      PartitionComputation(
-          hlo_string, /*num_devices=*/32, /*use_all_gather=*/false, true, false,
-          false, false, -1,
-          {GatherScatterPartitioningMethod::kTrivialSlicedOperand}));
-=======
       PartitionComputation(hlo_string, /*num_devices=*/32, options));
->>>>>>> upstream/master
   VLOG(1) << module->ToString();
   HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, op::AllReduce(op::Scatter(op::Select(_, _, _),
@@ -13642,13 +13346,7 @@ ENTRY entry {
       GatherScatterPartitioningMethod::kIndexParallel};
   TF_ASSERT_OK_AND_ASSIGN(
       auto module,
-<<<<<<< HEAD
-      PartitionComputation(
-          hlo_string, /*num_devices=*/32, /*use_all_gather=*/false, true, false,
-          false, false, -1, {GatherScatterPartitioningMethod::kIndexParallel}));
-=======
       PartitionComputation(hlo_string, /*num_devices=*/32, options));
->>>>>>> upstream/master
   VLOG(1) << module->ToString();
   auto all_to_all = FindInstruction(module.get(), HloOpcode::kAllToAll);
   EXPECT_NE(all_to_all, nullptr);
@@ -13889,17 +13587,8 @@ ENTRY %module {
     reshape(bf16[128,1024,4,176,256,1,1]{6,5,4,3,2,1,0} %convolution.3),
     sharding={replicated}
 })";
-<<<<<<< HEAD
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto module,
-      PartitionComputation(hlo_string, /*num_devices=*/8,
-                           /*use_all_gather=*/false,
-                           /*conv_halo_exchange_always_on_lhs =*/true,
-                           /*choose_faster_windowed_einsum =*/false));
-=======
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           PartitionComputation(hlo_string, /*num_devices=*/8));
->>>>>>> upstream/master
   const HloInstruction* while_inst = FindInstruction(module.get(), "while");
   EXPECT_NE(while_inst, nullptr);
   const HloComputation* cond_comp = while_inst->while_condition();
@@ -13934,14 +13623,7 @@ ENTRY %module {
   options.choose_faster_windowed_einsum_over_mem = true;
   TF_ASSERT_OK_AND_ASSIGN(
       auto module,
-<<<<<<< HEAD
-      PartitionComputation(hlo_string, /*num_devices=*/8,
-                           /*use_all_gather=*/false,
-                           /*conv_halo_exchange_always_on_lhs =*/true,
-                           /*choose_faster_windowed_einsum =*/true));
-=======
       PartitionComputation(hlo_string, /*num_devices=*/8, options));
->>>>>>> upstream/master
   const HloInstruction* while_inst = FindInstruction(module.get(), "while");
   EXPECT_NE(while_inst, nullptr);
   const HloComputation* cond_comp = while_inst->while_condition();
@@ -13983,14 +13665,7 @@ ENTRY entry {
   options.choose_faster_windowed_einsum_over_mem = true;
   TF_ASSERT_OK_AND_ASSIGN(
       auto module,
-<<<<<<< HEAD
-      PartitionComputation(hlo_string, /*num_devices=*/32,
-                           /*use_all_gather=*/false,
-                           /*conv_halo_exchange_always_on_lhs =*/true,
-                           /*choose_faster_windowed_einsum =*/true));
-=======
       PartitionComputation(hlo_string, /*num_devices=*/32, options));
->>>>>>> upstream/master
   const HloInstruction* while_inst = FindInstruction(module.get(), "while");
   EXPECT_NE(while_inst, nullptr);
   const HloComputation* cond_comp = while_inst->while_condition();
@@ -14028,17 +13703,8 @@ ENTRY entry {
   ROOT %output = bf16[16,36,256,16,4,288,1]{6,5,4,3,2,1,0}
    copy(%convolution.10), sharding={replicated}
 })";
-<<<<<<< HEAD
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto module,
-      PartitionComputation(hlo_string, /*num_devices=*/32,
-                           /*use_all_gather=*/false,
-                           /*conv_halo_exchange_always_on_lhs =*/true,
-                           /*choose_faster_windowed_einsum =*/false));
-=======
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           PartitionComputation(hlo_string, /*num_devices=*/32));
->>>>>>> upstream/master
   const HloInstruction* while_inst = FindInstruction(module.get(), "while");
   EXPECT_NE(while_inst, nullptr);
   const HloComputation* cond_comp = while_inst->while_condition();
@@ -14072,14 +13738,7 @@ ENTRY entry {
   options.choose_faster_windowed_einsum_over_mem = true;
   TF_ASSERT_OK_AND_ASSIGN(
       auto module,
-<<<<<<< HEAD
-      PartitionComputation(hlo_string, /*num_devices=*/8,
-                           /*use_all_gather=*/false,
-                           /*conv_halo_exchange_always_on_lhs =*/true,
-                           /*choose_faster_windowed_einsum =*/true));
-=======
       PartitionComputation(hlo_string, /*num_devices=*/8, options));
->>>>>>> upstream/master
 
   const HloInstruction* dot_op = FindInstruction(module.get(), HloOpcode::kDot);
   auto op1 = op::Shape("f32[4,2,4,4]");
@@ -14102,17 +13761,8 @@ ENTRY entry {
     sharding={devices=[1,2,1,2]<=[4]}
 })";
 
-<<<<<<< HEAD
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto module,
-      PartitionComputation(hlo_string, /*num_devices=*/4,
-                           /*use_all_gather=*/false,
-                           /*conv_halo_exchange_always_on_lhs=*/true,
-                           /*choose_faster_windowed_einsum=*/true));
-=======
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           PartitionComputation(hlo_string, /*num_devices=*/4));
->>>>>>> upstream/master
   VLOG(1) << module->ToString();
   const auto root = module->entry_computation()->root_instruction();
   auto dot = AllOf(op::Shape("f32[16,32,24,1024]"),
@@ -15998,17 +15648,7 @@ ENTRY %entry {
   options.bidirectional_windowed_einsum = true;
   TF_ASSERT_OK_AND_ASSIGN(
       auto module,
-<<<<<<< HEAD
-      PartitionComputation(hlo_string, /*num_devices=*/32,
-                           /*use_all_gather=*/false,
-                           /*conv_halo_exchange_always_on_lhs=*/true,
-                           /*choose_faster_windowed_einsum=*/true,
-                           /*unroll_windowed_einsum=*/false,
-                           /*bidirectional_windowed_einsum=*/true,
-                           /*threshold_for_windowed_einsum_mib=*/-1));
-=======
       PartitionComputation(hlo_string, /*num_devices=*/32, options));
->>>>>>> upstream/master
   XLA_VLOG_LINES(1, module->ToString());
 
   // Check while op.
@@ -16040,17 +15680,7 @@ ENTRY entry {
   options.threshold_for_windowed_einsum_mib = 0;
   TF_ASSERT_OK_AND_ASSIGN(
       auto module,
-<<<<<<< HEAD
-      PartitionComputation(hlo_string, /*num_devices=*/8,
-                           /*use_all_gather=*/false,
-                           /*conv_halo_exchange_always_on_lhs=*/true,
-                           /*choose_faster_windowed_einsum=*/false,
-                           /*unroll_windowed_einsum=*/false,
-                           /*bidirectional_windowed_einsum=*/false,
-                           /*threshold_for_windowed_einsum_mib=*/0));
-=======
       PartitionComputation(hlo_string, /*num_devices=*/8, options));
->>>>>>> upstream/master
 
   // While op.
   const auto arg0 = AllOf(op::Parameter(0), op::Shape("f32[4,512,3264]"));
@@ -16124,17 +15754,7 @@ ENTRY entry {
   options.threshold_for_windowed_einsum_mib = 0;
   TF_ASSERT_OK_AND_ASSIGN(
       auto module,
-<<<<<<< HEAD
-      PartitionComputation(hlo_string, /*num_devices=*/8,
-                           /*use_all_gather=*/false,
-                           /*conv_halo_exchange_always_on_lhs=*/true,
-                           /*choose_faster_windowed_einsum=*/false,
-                           /*unroll_windowed_einsum=*/true,
-                           /*bidirectional_windowed_einsum=*/false,
-                           /*threshold_for_windowed_einsum_mib=*/0));
-=======
       PartitionComputation(hlo_string, /*num_devices=*/8, options));
->>>>>>> upstream/master
 
   // While op.
   const auto arg0 = AllOf(op::Parameter(0), op::Shape("f32[4,512,3264]"));
@@ -16207,17 +15827,7 @@ ENTRY entry {
   options.threshold_for_windowed_einsum_mib = 0;
   TF_ASSERT_OK_AND_ASSIGN(
       auto module,
-<<<<<<< HEAD
-      PartitionComputation(hlo_string, /*num_devices=*/8,
-                           /*use_all_gather=*/false,
-                           /*conv_halo_exchange_always_on_lhs=*/true,
-                           /*choose_faster_windowed_einsum=*/false,
-                           /*unroll_windowed_einsum=*/false,
-                           /*bidirectional_windowed_einsum=*/false,
-                           /*threshold_for_windowed_einsum_mib=*/0));
-=======
       PartitionComputation(hlo_string, /*num_devices=*/8, options));
->>>>>>> upstream/master
 
   const auto root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, AllOf(op::Dot(), op::Shape("f32[4,2048,544]")));
@@ -16239,17 +15849,7 @@ ENTRY entry {
   options.threshold_for_windowed_einsum_mib = 0;
   TF_ASSERT_OK_AND_ASSIGN(
       auto module,
-<<<<<<< HEAD
-      PartitionComputation(hlo_string, /*num_devices=*/8,
-                           /*use_all_gather=*/false,
-                           /*conv_halo_exchange_always_on_lhs=*/true,
-                           /*choose_faster_windowed_einsum=*/false,
-                           /*unroll_windowed_einsum=*/false,
-                           /*bidirectional_windowed_einsum=*/false,
-                           /*threshold_for_windowed_einsum_mib=*/0));
-=======
       PartitionComputation(hlo_string, /*num_devices=*/8, options));
->>>>>>> upstream/master
 
   const auto root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, AllOf(op::Dot(), op::Shape("f32[4,2048,544]")));
@@ -16271,17 +15871,7 @@ ENTRY entry {
   options.threshold_for_windowed_einsum_mib = 0;
   TF_ASSERT_OK_AND_ASSIGN(
       auto module,
-<<<<<<< HEAD
-      PartitionComputation(hlo_string, /*num_devices=*/8,
-                           /*use_all_gather=*/false,
-                           /*conv_halo_exchange_always_on_lhs=*/true,
-                           /*choose_faster_windowed_einsum=*/false,
-                           /*unroll_windowed_einsum=*/false,
-                           /*bidirectional_windowed_einsum=*/false,
-                           /*threshold_for_windowed_einsum_mib=*/0));
-=======
       PartitionComputation(hlo_string, /*num_devices=*/8, options));
->>>>>>> upstream/master
 
   const auto root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, AllOf(op::Dot(), op::Shape("f32[8,2048,272]")));
@@ -16302,18 +15892,7 @@ ENTRY %extracted_computation (param: f32[13,128,312,16,312]) -> f32[13,39936,499
 })";
 
   TF_ASSERT_OK_AND_ASSIGN(
-<<<<<<< HEAD
-      auto module,
-      PartitionComputation(hlo_string, /*num_devices=*/128,
-                           /*use_all_gather=*/false,
-                           /*conv_halo_exchange_always_on_lhs=*/true,
-                           /*choose_faster_windowed_einsum=*/true,
-                           /*unroll_windowed_einsum=*/false,
-                           /*bidirectional_windowed_einsum=*/true,
-                           /*threshold_for_windowed_einsum_mib=*/-1));
-=======
       auto module, PartitionComputation(hlo_string, /*num_devices=*/128));
->>>>>>> upstream/master
   XLA_VLOG_LINES(1, module->ToString());
   // Check an all-to-all is emitted for resharding.
   auto all_to_all = FindInstruction(module.get(), HloOpcode::kAllToAll);
@@ -16338,18 +15917,8 @@ ENTRY entry {
   ROOT sort.209 = (f32[4,16384,4096]{2,1,0}, s32[4,16384,4096]{2,1,0}) sort(param.0, param.1), dimensions={2}, to_apply=top_k_gt_f32_comparator_64.35303, sharding={{devices=[4,4,4]<=[64]}, {devices=[4,4,4]<=[64]}}
 })";
 
-<<<<<<< HEAD
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto module,
-      PartitionComputation(
-          hlo_string, /*num_devices=*/64,
-          /*use_all_gather=*/false,
-          /*conv_halo_exchange_always_on_lhs=*/true,
-          /*xla_tpu_enable_log_recorder_partitioned_logging=*/true));
-=======
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           PartitionComputation(hlo_string, /*num_devices=*/64));
->>>>>>> upstream/master
   XLA_VLOG_LINES(1, module->ToString());
 
   EXPECT_THAT(
@@ -16387,19 +15956,9 @@ ENTRY offloading (param0: f32[1,256,128]) -> f32[1,256,128] {
 }
 )";
 
-<<<<<<< HEAD
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto module,
-      PartitionComputation(
-          hlo_string, /*num_devices=*/4,
-          /*use_all_gather=*/false,
-          /*conv_halo_exchange_always_on_lhs=*/true,
-          /*xla_tpu_enable_log_recorder_partitioned_logging=*/true));
-=======
   SpmdPartitionerOptions options;
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           PartitionComputation(hlo_string, /*num_devices=*/4));
->>>>>>> upstream/master
   XLA_VLOG_LINES(1, module->ToString());
 
   // Check that the partitioner does not insert any sharding code between
@@ -16789,8 +16348,6 @@ ENTRY entry {
   EXPECT_EQ(FindInstruction(module.get(), HloOpcode::kAllReduce), nullptr);
 }
 
-<<<<<<< HEAD
-=======
 TEST_P(SpmdPartitioningTest, SubgroupUnreducedAndReplicated) {
   absl::string_view hlo_string = R"(
 HloModule module
@@ -16807,7 +16364,6 @@ ENTRY entry {
   EXPECT_EQ(FindInstruction(module.get(), HloOpcode::kAllReduce), nullptr);
 }
 
->>>>>>> upstream/master
 TEST_P(SpmdPartitioningTest, OriginalValueWithTrivialShardingAnnotation) {
   absl::string_view hlo_string = R"(
 HloModule module
@@ -16819,12 +16375,7 @@ ENTRY entry {
 })";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
-<<<<<<< HEAD
-                          PartitionComputation(hlo_string, /*num_devices=*/16,
-                                               /*use_all_gather=*/true));
-=======
                           PartitionComputation(hlo_string, /*num_devices=*/16));
->>>>>>> upstream/master
   const HloComputation* recovery_computation =
       module->original_value_recovery_table()
           .begin()
@@ -16885,12 +16436,7 @@ ENTRY entry {
 })";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
-<<<<<<< HEAD
-                          PartitionComputation(hlo_string, /*num_devices=*/16,
-                                               /*use_all_gather=*/true));
-=======
                           PartitionComputation(hlo_string, /*num_devices=*/16));
->>>>>>> upstream/master
   const HloComputation* recovery_computation =
       module->original_value_recovery_table()
           .begin()
@@ -17025,8 +16571,6 @@ ENTRY entry {
   TF_EXPECT_OK(partitioner.Run(module.get()).status());
 }
 
-<<<<<<< HEAD
-=======
 TEST_P(SpmdPartitioningTest, KeepShardings) {
   absl::string_view hlo_string = R"(
 HloModule module
@@ -17056,7 +16600,6 @@ ENTRY entry {
   }
 }
 
->>>>>>> upstream/master
 }  // namespace
 }  // namespace spmd
 }  // namespace xla

@@ -284,8 +284,6 @@ TEST_F(PjrtCApiGpuExecutableTest, GetCompiledMemoryStats) {
             stats.host_output_size_in_bytes);
   EXPECT_EQ(ref_stats.host_alias_size_in_bytes, stats.host_alias_size_in_bytes);
   EXPECT_EQ(ref_stats.host_temp_size_in_bytes, stats.host_temp_size_in_bytes);
-<<<<<<< HEAD
-=======
 }
 
 TEST_F(PjrtCApiGpuExecutableTest, GetNumOutputs) {
@@ -338,7 +336,6 @@ TEST_F(PjrtCApiGpuExecutableTest, GetDeviceAssignment) {
       EXPECT_EQ((*device_assignment)(i, j), ref_device_assignment(i, j));
     }
   }
->>>>>>> upstream/master
 }
 
 TEST_F(PjrtCApiGpuTest, CreateAndDestroyExecuteContext) {
@@ -1177,9 +1174,9 @@ module {
 
 TEST(PjrtCAPIGpuExtensionTest, TritonCompile) {
   // TODO(rocm): weekly-sync 25-01-29
-#ifdef TENSORFLOW_USE_ROCM  
-  GTEST_SKIP() << "This is currently disabled on ROCM.";  
-#endif   
+#ifdef TENSORFLOW_USE_ROCM
+  GTEST_SKIP() << "This is currently disabled on ROCM.";
+#endif
   constexpr absl::string_view kArchName = "7.0";
   PJRT_Triton_Compile_Args args;
   args.struct_size = PJRT_Triton_Compile_Args_STRUCT_SIZE;

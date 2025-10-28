@@ -1268,17 +1268,10 @@ TEST(StreamExecutorGpuClientTest, GetDeviceFabricInfo) {
                 // Only allow failures due to insufficient CUDA driver version.
                 EXPECT_THAT(
                     fabric_info.status().message(),
-<<<<<<< HEAD
-                    AnyOf(
-                        HasSubstr("Failed to initialize NVML library."),
-                        HasSubstr(
-                            "NVML library doesn't have required functions.")));
-=======
                     AnyOf(HasSubstr("Failed to initialize NVML library."),
                           HasSubstr(
                               "NVML library doesn't have required functions."),
                           HasSubstr("NVML usage is not supported")));
->>>>>>> upstream/master
               }
             }
           }

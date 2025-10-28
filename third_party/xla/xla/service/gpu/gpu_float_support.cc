@@ -68,16 +68,11 @@ bool GpuFloatSupport::IsSupported(const HloInstruction& hlo) const {
     case HloOpcode::kAllReduceStart:
     case HloOpcode::kAllReduceDone:
     case HloOpcode::kReduceScatter:
-<<<<<<< HEAD
-    // Handled by Triton GEMM.
-    case HloOpcode::kDot:
-=======
     case HloOpcode::kScaledDot:
       // We accept any scaled dot, because there is a rewrite pass that will
       // lower it to a dot + multiply for unsupported types.
       return true;
     case HloOpcode::kDot:  // Handled by Triton GEMM.
->>>>>>> upstream/master
       using TypeAndCC =
           std::pair<PrimitiveType, stream_executor::CudaComputeCapability>;
       for (auto [type, cc] :

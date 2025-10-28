@@ -27,9 +27,6 @@ limitations under the License.
 #include "mlir/Bytecode/BytecodeWriter.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
-<<<<<<< HEAD
-#include "tensorflow/compiler/jit/flags.h"
-=======
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/jit/flags.h"
 #include "xla/tsl/lib/io/zlib_compression_options.h"
@@ -37,7 +34,6 @@ limitations under the License.
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/file_system.h"
 
->>>>>>> upstream/master
 namespace tensorflow {
 namespace {
 class WritableStringFile : public tsl::WritableFile {

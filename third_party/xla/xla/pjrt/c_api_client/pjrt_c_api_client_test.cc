@@ -217,8 +217,6 @@ TEST(PjRtCApiClientTest, TopologyPlatformIdAndName) {
   EXPECT_EQ(topology->platform_id(), xla::CpuId());
 }
 
-<<<<<<< HEAD:third_party/xla/xla/pjrt/pjrt_c_api_client_test.cc
-=======
 TEST(PjRtCApiClientTest, TopologyGetDefaultLayout) {
   SetUpCpuPjRtApi();
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
@@ -236,7 +234,6 @@ TEST(PjRtCApiClientTest, TopologyGetDefaultLayout) {
   EXPECT_EQ(layout, expected_layout);
 }
 
->>>>>>> upstream/master:third_party/xla/xla/pjrt/c_api_client/pjrt_c_api_client_test.cc
 TEST(PjRtCApiClientTest, NonEmptyExecutableFingerprint) {
   SetUpCpuPjRtApi();
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,

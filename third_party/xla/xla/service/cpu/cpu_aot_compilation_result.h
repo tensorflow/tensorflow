@@ -148,40 +148,23 @@ class CpuAotCompilationResult : public AotCompilationResult {
     return temp_allocation_index_;
   }
 
-<<<<<<< HEAD
-  const std::vector<cpu_function_runtime::BufferInfo>& buffer_infos() const {
-    return buffer_infos_;
-=======
   absl::Span<const BufferAllocationInfo> buffer_allocation_infos() const {
     return buffer_allocation_infos_;
->>>>>>> upstream/master
   }
 
   const HloProfilePrinterData* hlo_profile_printer_data() const {
     return hlo_profile_printer_data_.get();
   }
 
-<<<<<<< HEAD
-  static absl::StatusOr<std::unique_ptr<CpuAotCompilationResult>> FromString(
-      const std::string& serialized, FunctionLibrary* function_library) {
-    CompilationResultProto proto;
-    if (!proto.ParseFromString(serialized)) {
-      return Internal("Failed to parse serialized CpuAotCompilationResult.");
-    }
-
-=======
   static absl::StatusOr<std::unique_ptr<CpuAotCompilationResult>> FromProto(
       CompilationResultProto proto,
       std::unique_ptr<FunctionLibrary> function_library) {
->>>>>>> upstream/master
     TF_ASSIGN_OR_RETURN(
         std::unique_ptr<HloModule> module,
         HloModule::CreateFromProtoWithConfig(proto.hlo_module()));
 
     return std::unique_ptr<CpuAotCompilationResult>(new CpuAotCompilationResult(
         proto, std::move(module), std::move(function_library)));
-<<<<<<< HEAD
-=======
   }
 
   static absl::StatusOr<std::unique_ptr<CpuAotCompilationResult>> FromString(
@@ -193,7 +176,6 @@ class CpuAotCompilationResult : public AotCompilationResult {
     }
 
     return FromProto(std::move(proto), std::move(function_library));
->>>>>>> upstream/master
   }
 
  private:
@@ -206,15 +188,9 @@ class CpuAotCompilationResult : public AotCompilationResult {
       std::unique_ptr<FunctionLibrary> function_library,
       std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data);
 
-<<<<<<< HEAD
-  explicit CpuAotCompilationResult(CompilationResultProto proto,
-                                   std::unique_ptr<HloModule> module,
-                                   FunctionLibrary* function_library)
-=======
   explicit CpuAotCompilationResult(
       CompilationResultProto proto, std::unique_ptr<HloModule> module,
       std::unique_ptr<FunctionLibrary> function_library)
->>>>>>> upstream/master
       : proto_(std::move(proto)),
         module_(std::move(module)),
         function_library_(std::move(function_library)) {}

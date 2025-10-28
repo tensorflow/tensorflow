@@ -1626,17 +1626,6 @@ absl::Status AlgebraicSimplifierVisitor::HandleBitcastConvert(
     return absl::OkStatus();
   }
   if (options_.is_layout_sensitive() &&
-<<<<<<< HEAD
-      options_.rewrite_no_op_bitcast_convert_to_bitcast() &&
-      // Equal shape ignoring element type implies same bitwidth, as for
-      // different bitwidth shape inference would yield a different shape for
-      // the output. A bitcast-convert with same shape but different bitwidth
-      // would fail the HloVerifier.
-      ShapeUtil::EqualIgnoringElementType(bitcast->shape(), operand->shape())) {
-    ReplaceWithBitcast(bitcast);
-    return absl::OkStatus();
-  }
-=======
       options_.rewrite_no_op_bitcast_convert_to_bitcast()) {
     // Equal shape ignoring element type implies same bitwidth, as for
     // different bitwidth shape inference would yield a different shape for
@@ -1671,7 +1660,6 @@ absl::Status AlgebraicSimplifierVisitor::HandleBitcastConvert(
     }
   }
 
->>>>>>> upstream/master
   // Eliminate bitcast converts between same shape.
   ReplaceInstructionIfCompatible(bitcast, bitcast->mutable_operand(0));
   return absl::OkStatus();
@@ -5281,25 +5269,6 @@ absl::Status AlgebraicSimplifierVisitor::HandleBroadcast(
         dims.erase(dims.begin() + inserted_index);
       }
 
-<<<<<<< HEAD
-      HloInstruction* replaced_inst = operand;
-      if (replaced_inst->original_value()) {
-        HloInstruction* replacing_inst = operand->mutable_operand(0);
-        auto build_entry_computation = [](xla::HloComputation::Builder& builder,
-                                          const xla::Shape& input_shape,
-                                          const xla::Shape& output_shape) {
-          xla::HloInstruction* param = builder.AddInstruction(
-              xla::HloInstruction::CreateParameter(0, input_shape, "p"));
-          return builder.AddInstruction(
-              xla::HloInstruction::CreateReshape(output_shape, param));
-        };
-        HloModule* module = broadcast->parent()->parent();
-        module->mutable_original_value_recovery_table()
-            .BuildAndAddRecoveryModule(replaced_inst, replacing_inst,
-                                       build_entry_computation);
-      }
-
-=======
       HloModule* module = broadcast->parent()->parent();
       module->mutable_original_value_recovery_table()
           .BuildAndAddRecoveryComputation(
@@ -5312,7 +5281,6 @@ absl::Status AlgebraicSimplifierVisitor::HandleBroadcast(
                 return builder.AddInstruction(
                     xla::HloInstruction::CreateReshape(old_shape, param));
               });
->>>>>>> upstream/master
       return ReplaceWithNewInstruction(
           broadcast,
           HloInstruction::CreateBroadcast(broadcast->shape(),

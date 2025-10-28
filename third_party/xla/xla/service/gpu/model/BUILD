@@ -804,10 +804,7 @@ cc_library(
         "@local_tsl//tsl/platform:statusor",
     ] + if_cuda([
         # keep sorted
-<<<<<<< HEAD
-=======
         "//xla/backends/profiler/gpu:cupti_buffer_events",
->>>>>>> upstream/master
         "//xla/backends/profiler/gpu:cupti_collector",
         "//xla/backends/profiler/gpu:cupti_tracer",
     ]),

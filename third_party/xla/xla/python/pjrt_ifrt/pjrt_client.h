@@ -21,11 +21,8 @@ limitations under the License.
 #include <functional>
 #include <memory>
 #include <optional>
-<<<<<<< HEAD
-=======
 #include <tuple>
 #include <utility>
->>>>>>> upstream/master
 #include <vector>
 
 #include "absl/base/thread_annotations.h"
@@ -449,13 +446,10 @@ class PjRtClient final
   absl::Mutex shutting_down_mu_;
   bool shutting_down_ ABSL_GUARDED_BY(shutting_down_mu_) = false;
   std::unique_ptr<tsl::Thread> global_process_info_thread_;
-<<<<<<< HEAD
-=======
 
   // A work queue for dispatching background work. Enqueued work items can
   // access the members of this class, so work_queue_ should be built last.
   std::unique_ptr<tsl::UnboundedWorkQueue> work_queue_;
->>>>>>> upstream/master
 
   friend class PjRtClientPeer;
 };

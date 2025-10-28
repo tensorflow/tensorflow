@@ -27,34 +27,23 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
-<<<<<<< HEAD
-#include "absl/types/span.h"
-=======
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/Casting.h"
->>>>>>> upstream/master
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
-<<<<<<< HEAD
-#include "mlir/IR/Types.h"
-=======
 #include "mlir/IR/SymbolTable.h"
 #include "mlir/IR/Types.h"
 #include "mlir/IR/Value.h"
->>>>>>> upstream/master
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Support/DebugStringHelper.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
-<<<<<<< HEAD
-=======
 #include "xla/pjrt/pjrt_layout.h"
->>>>>>> upstream/master
 #include "xla/python/ifrt/array_spec.h"
 #include "xla/python/ifrt/attribute_map.h"
 #include "xla/python/ifrt/client.h"
@@ -62,15 +51,10 @@ limitations under the License.
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/ir/atom_program_compiler.h"
-<<<<<<< HEAD
-#include "xla/python/ifrt/ir/ifrt_dialect.h"
-#include "xla/python/ifrt/ir/ifrt_ir_program.h"
-=======
 #include "xla/python/ifrt/ir/constants.h"
 #include "xla/python/ifrt/ir/ifrt_dialect.h"
 #include "xla/python/ifrt/ir/ifrt_ir_program.h"
 #include "xla/python/ifrt/ir/ifrt_ops.h"
->>>>>>> upstream/master
 #include "xla/python/ifrt/ir/transforms/debug.h"
 #include "xla/python/ifrt/ir/transforms/passes.h"
 #include "xla/python/ifrt/ir/transforms/utils.h"
@@ -153,8 +137,6 @@ absl::StatusOr<std::vector<xla::ifrt::ArraySpec>> ExtractOutSpecs(
   return out_specs;
 }
 
-<<<<<<< HEAD
-=======
 absl::StatusOr<std::shared_ptr<const xla::PjRtLayout>> BuildDefaultLayout(
     const xla::ifrt::ArraySpec& arg_spec, xla::ifrt::Client* client) {
   TF_ASSIGN_OR_RETURN(auto shard_shape,
@@ -319,7 +301,6 @@ absl::Status PopulateLayouts(mlir::ModuleOp mlir_module,
   return absl::OkStatus();
 }
 
->>>>>>> upstream/master
 }  // namespace
 
 absl::StatusOr<CompiledIfrtIrProgram> CompiledIfrtIrProgram::Create(
@@ -358,30 +339,12 @@ absl::StatusOr<CompiledIfrtIrProgram> CompiledIfrtIrProgram::Create(
 
   // Run lowering passes.
   {
-<<<<<<< HEAD
-    mlir::PassManager pm(context);
-    InitPassManager(pm, "ifrt.compile", compile_options->mlir_dump_to,
-                    compile_options->mlir_dump_pass_re,
-                    compile_options->mlir_dump_func_re,
-                    compile_options->mlir_enable_timing);
-=======
->>>>>>> upstream/master
     // We need to ensure that Multithreading is enabled in order to be able
     // to dispatch compilations from multiple threads. Otherwise, we would
     // trigger data races while printing the ModuleOps for creating the
     // compilation cache keys
     // (see llvm/llvm-project/mlir/lib/Support/StorageUniquer.cpp).
     // JAX currently disables Multithreading for all contexts, but temporarily
-<<<<<<< HEAD
-    // enabling multithreading here is safe because the context is not shared
-    // across JAX ModuleOps.
-    bool wasMultithreaded = context->isMultithreadingEnabled();
-    context->enableMultithreading(true);
-    absl::Cleanup reset_multithreading = [&]() {
-      context->enableMultithreading(wasMultithreaded);
-    };
-
-=======
     // enabling multithreading here is safe as long as the IfrtIRProgram
     // exclusively owns the context because the context is not shared across JAX
     // ModuleOps.
@@ -402,7 +365,6 @@ absl::StatusOr<CompiledIfrtIrProgram> CompiledIfrtIrProgram::Create(
                     compile_options->mlir_dump_func_re,
                     compile_options->mlir_enable_timing);
 
->>>>>>> upstream/master
     xla::ifrt::IfrtToOutlinedAtomProgramsPipelineOptions
         outline_pipeline_options;
     outline_pipeline_options.propagate_shardings =
@@ -452,8 +414,6 @@ absl::StatusOr<CompiledIfrtIrProgram> CompiledIfrtIrProgram::Create(
   TF_ASSIGN_OR_RETURN(std::vector<xla::ifrt::ArraySpec> out_specs,
                       ExtractOutSpecs(mlir_module, client, devices));
 
-<<<<<<< HEAD
-=======
   absl::Status layout_status =
       PopulateLayouts(mlir_module, client, *atom_executable_map,
                       absl::MakeSpan(in_specs), absl::MakeSpan(out_specs));
@@ -475,23 +435,14 @@ absl::StatusOr<CompiledIfrtIrProgram> CompiledIfrtIrProgram::Create(
     }
   }
 
->>>>>>> upstream/master
   return CompiledIfrtIrProgram{
       /*program_name=*/mlir_module.getName().value_or("unknown").str(),
       /*atom_program_executables=*/std::move(atom_executable_map),
       /*in_specs=*/std::move(in_specs),
       /*out_specs=*/std::move(out_specs),
-<<<<<<< HEAD
-      /*program=*/std::move(ifrt_ir_program),
-      // TODO(b/382761415): Do not store the mlir module once we can get the
-      // layouts from the IFRT IR ArrayType. It is currently necessary to clone
-      // to avoid accessing the module from different threads.
-      /*mlir_module=*/mlir::OwningOpRef<mlir::ModuleOp>(mlir_module.clone()),
-=======
       /*layout_status=*/layout_status,
       /*donatable_input_indices=*/std::move(donatable_input_indices),
       /*program=*/std::move(ifrt_ir_program),
->>>>>>> upstream/master
       /*device_assignments=*/std::move(device_assignments),
   };
 }

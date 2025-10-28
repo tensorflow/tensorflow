@@ -34,10 +34,6 @@ cc_library(
         "//xla/hlo/analysis:interval",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/utils:hlo_traversal",
-<<<<<<< HEAD
-        "//xla/service/gpu/model:constraint_expression",
-=======
->>>>>>> upstream/master
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
@@ -210,39 +206,6 @@ xla_cc_test(
         "//xla/hlo/utils:hlo_traversal",
         "//xla/tsl/platform:status_matchers",
         "//xla/tsl/platform:statusor",
-<<<<<<< HEAD
-        "@com_google_absl//absl/strings:string_view",
-        "@com_google_googletest//:gtest_main",
-        "@llvm-project//mlir:IR",
-    ],
-)
-
-cc_library(
-    name = "symbolic_expr",
-    srcs = ["symbolic_expr.cc"],
-    hdrs = ["symbolic_expr.h"],
-    deps = [
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/synchronization",
-        "@com_google_absl//absl/types:span",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:Support",
-    ],
-)
-
-xla_cc_test(
-    name = "symbolic_expr_test",
-    srcs = ["symbolic_expr_test.cc"],
-    deps = [
-        ":symbolic_expr",
-        "//xla/hlo/analysis:indexing_test_utils",
-        "@com_google_absl//absl/strings:string_view",
-        "@com_google_googletest//:gtest_main",
-=======
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//mlir:IR",
@@ -331,6 +294,5 @@ xla_cc_test(
         "@llvm-project//mlir:AsmParser",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
->>>>>>> upstream/master
     ],
 )

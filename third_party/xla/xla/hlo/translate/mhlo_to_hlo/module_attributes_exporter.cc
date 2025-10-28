@@ -150,19 +150,11 @@ absl::StatusOr<xla::HloComputationProto*> FindEntryComputation(
 
 void ExportHloModuleConfig(xla::HloModuleConfig& config, ModuleOp module) {
   if (auto num_partitions =
-<<<<<<< HEAD
-          module->getAttrOfType<IntegerAttr>(kMhloNumPartitions)) {
-    config.set_num_partitions(num_partitions.getInt());
-  }
-  if (auto num_replicas =
-          module->getAttrOfType<IntegerAttr>(kMhloNumReplicas)) {
-=======
           module->getAttrOfType<IntegerAttr>(xla::kMhloNumPartitions)) {
     config.set_num_partitions(num_partitions.getInt());
   }
   if (auto num_replicas =
           module->getAttrOfType<IntegerAttr>(xla::kMhloNumReplicas)) {
->>>>>>> upstream/master
     config.set_replica_count(num_replicas.getInt());
   }
 }

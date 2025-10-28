@@ -1383,12 +1383,9 @@ message OriginalValueElementProto {
 
 message OriginalValueProto {
   repeated OriginalValueElementProto elements = 1;
-<<<<<<< HEAD
-=======
   // If true, the annotated instruction is a synthetic call and elements should
   // be ignored.
   bool is_synthetic_call = 2;
->>>>>>> upstream/master
 }
 
 message GemmPerfTableEntry {

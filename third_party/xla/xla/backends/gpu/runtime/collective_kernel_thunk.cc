@@ -50,10 +50,7 @@ limitations under the License.*/
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
-<<<<<<< HEAD
-=======
 #include "xla/util.h"
->>>>>>> upstream/master
 #include "xla/xla_data.pb.h"
 
 namespace xla::gpu {
@@ -240,10 +237,6 @@ absl::Status CollectiveKernelThunk::Initialize(const InitializeParams& params) {
   const LaunchDimensions launch_dimensions = AllReduceLaunchDimensions(
       buffers_[0].element_count, clique_key.num_local_participants(),
       GetAllReduceStrategy(GetInputSizeBytes()));
-<<<<<<< HEAD
-=======
-
->>>>>>> upstream/master
   StreamState* state = nullptr;
   {
     absl::MutexLock lock(mutex_);
@@ -262,19 +255,7 @@ absl::Status CollectiveKernelThunk::Initialize(const InitializeParams& params) {
                          (kSignalBufferSize + kLocalBufferSize) * kNumBuffers,
                          "Local and Signal buffers"));
 
-<<<<<<< HEAD
-      // Step2: Allocate signal buffer
-      // We needs 1 atomic flag per block per device on each device.
-      const int64_t kNumSignalFlags =
-          clique_key.num_local_participants() * launch_dimensions.num_blocks();
-      TF_ASSIGN_OR_RETURN(
-          se::DeviceMemoryHandle signal_flags_alloc,
-          AllocateMemory(params.executor,
-                         kNumSignalFlags * sizeof(int32_t) * kNumBuffers,
-                         "SignalBuffer"));
-=======
       // Step2: We needs 1 atomic flag per block per device on each device.
->>>>>>> upstream/master
       // One-shot kernel expects that the signal flags buffer is zeroed out.
       // Initial state of device memory is undefined, so we need to zero out
       // the buffer. The kernel will take care of leaving the buffer in
@@ -368,11 +349,7 @@ absl::Status CollectiveKernelThunk::ExecuteOnStream(
   const uint32_t buffer_index = state->invocation_count % kNumBuffers;
   auto const strategy = GetAllReduceStrategy(GetInputSizeBytes());
   const LaunchDimensions launch_dimensions =
-<<<<<<< HEAD
-      AllReduceLaunchDimensions(buffer.element_count, kNumRanks, strategy);
-=======
       AllReduceLaunchDimensions(buffer.element_count, num_devices, strategy);
->>>>>>> upstream/master
   // In case of two-shot we want to increment in multiples of 2.
   state->invocation_count += 1 + static_cast<uint32_t>(strategy);
   VLOG(3) << "[" << device_ordinal

@@ -366,12 +366,8 @@ TransposeFusion::WriteResult TransposeFusion::EmitWriteToShMemMlir(
     inits.push_back(entry_function.getArgument(num_inputs + index));
   }
 
-<<<<<<< HEAD
-  IndexingMap write_indexing = GetSharedMemoryIndexing(/*read=*/false, ctx);
-=======
   IndexingMap write_indexing =
       GetSharedMemoryIndexing(/*read=*/false, symbolic_expr_context_);
->>>>>>> upstream/master
   auto body_builder = [&](ImplicitLocOpBuilder& nested_b,
                           ValueRange symbol_values, ValueRange map_results,
                           ValueRange output_tensors) -> SmallVector<Value> {
@@ -419,12 +415,8 @@ TransposeFusion::WriteResult TransposeFusion::EmitWriteToShMemMlir(
   };
 
   auto indexing = GetIndexing(
-<<<<<<< HEAD
-      /*input=*/true, shmem_transposes_.front()->operand(0)->shape(), ctx);
-=======
       /*input=*/true, shmem_transposes_.front()->operand(0)->shape(),
       symbolic_expr_context_);
->>>>>>> upstream/master
   auto written_vector = emitters::EmitXlaLoopOp(builder, thread_and_block_ids,
                                                 inits, indexing, body_builder);
   ValueRange written = written_vector;
@@ -830,15 +822,9 @@ IndexingMap PackedTranspose::GetInputIndexing(
   MLIRContext* mlir_context = symbolic_expr_context->GetMLIRContext();
   // Dimensions variables.
   auto thread_id = getAffineDimExpr(
-<<<<<<< HEAD
-      KernelFusionInterface::kIndexingMapThreadIdxDims[0], ctx);
-  auto block_id =
-      getAffineDimExpr(KernelFusionInterface::kIndexingMapBlockIdxDims[0], ctx);
-=======
       KernelFusionInterface::kIndexingMapThreadIdxDims[0], mlir_context);
   auto block_id = getAffineDimExpr(
       KernelFusionInterface::kIndexingMapBlockIdxDims[0], mlir_context);
->>>>>>> upstream/master
   auto warp_size = kNumShmemBanks;
   auto lane_id = thread_id % warp_size;
   auto warp_id = thread_id.floorDiv(warp_size);
@@ -900,11 +886,7 @@ IndexingMap PackedTranspose::GetShmemWriteIndexing(
   MLIRContext* mlir_context = symbolic_expr_context->GetMLIRContext();
   // Dimensions variables.
   auto thread_id = getAffineDimExpr(
-<<<<<<< HEAD
-      KernelFusionInterface::kIndexingMapThreadIdxDims[0], ctx);
-=======
       KernelFusionInterface::kIndexingMapThreadIdxDims[0], mlir_context);
->>>>>>> upstream/master
   auto warp_size = kNumShmemBanks;
   auto lane_id = thread_id % warp_size;
   auto warp_id = thread_id.floorDiv(warp_size);
@@ -937,11 +919,7 @@ IndexingMap PackedTranspose::GetShmemReadIndexing(
   MLIRContext* mlir_context = symbolic_expr_context->GetMLIRContext();
   // Dimensions variables.
   auto thread_id = getAffineDimExpr(
-<<<<<<< HEAD
-      KernelFusionInterface::kIndexingMapThreadIdxDims[0], ctx);
-=======
       KernelFusionInterface::kIndexingMapThreadIdxDims[0], mlir_context);
->>>>>>> upstream/master
   auto warp_size = kNumShmemBanks;
   auto lane_id = thread_id % warp_size;
   auto warp_id = thread_id.floorDiv(warp_size);
@@ -978,15 +956,9 @@ IndexingMap PackedTranspose::GetOutputIndexing(
   MLIRContext* mlir_context = symbolic_expr_context->GetMLIRContext();
   // Dimensions variables.
   auto thread_id = getAffineDimExpr(
-<<<<<<< HEAD
-      KernelFusionInterface::kIndexingMapThreadIdxDims[0], ctx);
-  auto block_id =
-      getAffineDimExpr(KernelFusionInterface::kIndexingMapBlockIdxDims[0], ctx);
-=======
       KernelFusionInterface::kIndexingMapThreadIdxDims[0], mlir_context);
   auto block_id = getAffineDimExpr(
       KernelFusionInterface::kIndexingMapBlockIdxDims[0], mlir_context);
->>>>>>> upstream/master
   auto warp_size = kNumShmemBanks;
   auto lane_id = thread_id % warp_size;
   auto warp_id = thread_id.floorDiv(warp_size);

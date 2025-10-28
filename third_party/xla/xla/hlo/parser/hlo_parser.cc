@@ -48,10 +48,6 @@ limitations under the License.
 #include "Eigen/Core"
 #include "xla/array.h"
 #include "xla/comparison_util.h"
-<<<<<<< HEAD
-#include "xla/hlo/ir/collective_device_list.h"
-=======
->>>>>>> upstream/master
 #include "xla/hlo/ir/collective_op_group_mode.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_domain_metadata.h"
@@ -603,16 +599,10 @@ class HloParserImpl : public HloParser {
                   uint64_t lexer_skip_mask = kNoneMask);
   bool ParseUnsignedIntegerType(PrimitiveType* primitive_type);
   bool ParseOriginalArray(OriginalArray& original_array);
-<<<<<<< HEAD
-  bool ParseOriginalValueArrays(
-      std::vector<std::pair<ShapeIndex, std::optional<OriginalArray>>>&
-          original_value_arrays);
-=======
   bool ParseAndAddOriginalArray(
       const ShapeIndex& leaf_shape_index,
       std::vector<std::pair<ShapeIndex, std::optional<OriginalArray>>>*);
   bool ParseOriginalValueImpl(std::optional<OriginalValue>& original_value);
->>>>>>> upstream/master
   bool ParseOriginalValueRecoveryTable(
       OriginalValueRecoveryTable& original_value_recovery_table);
   bool ParseCollectiveOpGroupMode(CollectiveOpGroupMode* result);
@@ -5265,17 +5255,10 @@ bool HloParserImpl::ParseAttributeHelper(
         return true;
       }
       case AttrTy::kOriginalValue: {
-<<<<<<< HEAD
-        std::vector<std::pair<ShapeIndex, std::optional<OriginalArray>>> arrays;
-        if (!ParseOriginalValueArrays(arrays)) {
-=======
         std::optional<OriginalValue> result;
         if (!ParseOriginalValueImpl(result)) {
->>>>>>> upstream/master
           return false;
         }
-        auto result = std::make_shared<OriginalValue>(
-            TupleTree<std::optional<OriginalArray>>(absl::MakeSpan(arrays)));
         static_cast<optional<std::shared_ptr<OriginalValue>>*>(attr_out_ptr)
             ->emplace(std::make_shared<OriginalValue>(std::move(*result)));
         return true;
@@ -6655,12 +6638,6 @@ bool HloParserImpl::ParseOriginalArray(OriginalArray& original_array) {
   return true;
 }
 
-<<<<<<< HEAD
-// original_value ::= '{' '('* original_array [','] ')'* | original_value '}'
-bool HloParserImpl::ParseOriginalValueArrays(
-    std::vector<std::pair<ShapeIndex, std::optional<OriginalArray>>>&
-        original_value_arrays) {
-=======
 bool HloParserImpl::ParseAndAddOriginalArray(
     const ShapeIndex& leaf_shape_index,
     std::vector<std::pair<ShapeIndex, std::optional<OriginalArray>>>*
@@ -6686,7 +6663,6 @@ bool HloParserImpl::ParseAndAddOriginalArray(
 // | original_value ) '}'
 bool HloParserImpl::ParseOriginalValueImpl(
     std::optional<OriginalValue>& original_value) {
->>>>>>> upstream/master
   VLOG(kDebugLevel) << "ParseOriginalValue";
 
   if (!ParseToken(TokKind::kLbrace, "Expects '{' to start original value")) {
@@ -6716,34 +6692,6 @@ bool HloParserImpl::ParseOriginalValueImpl(
 
   ShapeIndex leaf_shape_index;
   while (lexer_.GetKind() != TokKind::kRbrace) {
-<<<<<<< HEAD
-    if (lexer_.GetKind() == TokKind::kLparen) {
-      lexer_.Lex();
-      leaf_shape_index.push_back(0);
-    } else if (lexer_.GetKind() == TokKind::kRparen) {
-      lexer_.Lex();
-      leaf_shape_index.pop_back();
-    } else if (lexer_.GetKind() == TokKind::kComma) {
-      lexer_.Lex();
-      ++leaf_shape_index.back();
-    } else if (lexer_.GetKind() == TokKind::kLbrace) {
-      OriginalArray original_array;
-      if (!ParseOriginalArray(original_array)) {
-        return false;
-      }
-      if (original_array.instruction_name.empty()) {
-        // The original value is not expected to have any leaf without values.
-        // However we should not fail the execution here. This should
-        // be done in HloVerifier instead.
-        LOG(WARNING) << "Found an empty leaf node in an original value";
-        original_value_arrays.emplace_back(leaf_shape_index, std::nullopt);
-      } else {
-        original_value_arrays.emplace_back(leaf_shape_index,
-                                           std::move(original_array));
-      }
-    } else {
-      return false;
-=======
     switch (lexer_.GetKind()) {
       case TokKind::kLparen:
         lexer_.Lex();
@@ -6767,7 +6715,6 @@ bool HloParserImpl::ParseOriginalValueImpl(
         return TokenError(
             "Expects '[synthetic]' or a tuple tree of original arrays in "
             "original_value field.");
->>>>>>> upstream/master
     }
   }
 
@@ -6817,14 +6764,9 @@ bool HloParserImpl::ParseOriginalValueRecoveryTable(
       }
       recovery_module = std::move(status_or_recovery_module.value());
     }
-<<<<<<< HEAD
-    original_value_recovery_table[replaced_original_array] =
-        std::make_pair(replacing_original_array, std::move(recovery_module));
-=======
     original_value_recovery_table.emplace(
         replaced_original_array,
         std::make_pair(replacing_original_array, std::move(recovery_module)));
->>>>>>> upstream/master
   }
 
   lexer_.Lex();
@@ -7436,18 +7378,6 @@ absl::StatusOr<HloSharding> HloParserImpl::ParseShardingOnly() {
 absl::StatusOr<std::shared_ptr<OriginalValue>>
 HloParserImpl::ParseOriginalValueOnly() {
   lexer_.Lex();
-<<<<<<< HEAD
-  std::vector<std::pair<ShapeIndex, std::optional<OriginalArray>>> arrays;
-  if (!ParseOriginalValueArrays(arrays)) {
-    return InvalidArgument("Syntax error:\n%s", GetError());
-  }
-  auto original_value = std::make_shared<OriginalValue>(
-      TupleTree<std::optional<OriginalArray>>(absl::MakeSpan(arrays)));
-  if (lexer_.GetKind() != TokKind::kEof) {
-    return InvalidArgument("Syntax error:\nExtra content after original value");
-  }
-  return original_value;
-=======
   std::optional<OriginalValue> original_value;
   if (!ParseOriginalValueImpl(original_value)) {
     return InvalidArgument("Syntax error:\n%s", GetError());
@@ -7456,7 +7386,6 @@ HloParserImpl::ParseOriginalValueOnly() {
     return InvalidArgument("Syntax error:\nExtra content after original value");
   }
   return std::make_shared<OriginalValue>(std::move(*original_value));
->>>>>>> upstream/master
 }
 
 absl::StatusOr<FrontendAttributes>

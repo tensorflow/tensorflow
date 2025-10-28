@@ -87,11 +87,8 @@ limitations under the License.
 #include "xla/codegen/llvm_ir_kernel_source.h"
 #include "xla/codegen/mlir_kernel_source.h"
 #include "xla/codegen/trace_pass_instrumentation.h"
-<<<<<<< HEAD
-=======
 #include "xla/codegen/xtile/ir/xtile_dialect.h"
 #include "xla/codegen/xtile/ir/xtile_ops.h"
->>>>>>> upstream/master
 #include "xla/mlir/tools/mlir_replay/public/compiler_trace.pb.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/status_macros.h"
@@ -141,16 +138,6 @@ static std::unique_ptr<::mlir::Pass> CreateConvertMathToLLVMPass() {
   return mlir::createConvertMathToLLVMPass(options);
 }
 
-<<<<<<< HEAD
-static std::unique_ptr<::mlir::Pass> CreateInlinerAndCsePass() {
-  return mlir::createCompositeFixedPointPass(
-      "Inliner", [](mlir::OpPassManager& pm) {
-        pm.addPass(mlir::createInlinerPass({}, [](mlir::OpPassManager& pm) {
-          // CSE after inlining because inlining can introduce duplicates.
-          pm.addPass(mlir::createCSEPass());
-        }));
-      });
-=======
 // The final lowering passes common to both scalar and tiled kernels.
 // These passes are primarily responsible for lowering individual ops to
 // their LLVM equivalent.
@@ -177,7 +164,6 @@ static void AddGenericLoweringPasses(mlir::OpPassManager& pm) {
   pm.addPass(mlir::createReconcileUnrealizedCastsPass());
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::createCSEPass());
->>>>>>> upstream/master
 }
 
 static std::unique_ptr<::mlir::Pass> CreateInlinerAndCsePass() {
@@ -195,10 +181,7 @@ static std::unique_ptr<::mlir::Pass> CreateInlinerAndCsePass() {
 // on scalar instructions extracted/inserted from tensor types.
 static void AddScalarOptimizationPasses(mlir::OpPassManager& pm,
                                         int32_t vector_width) {
-<<<<<<< HEAD
-=======
   emitters::RegisterOptimizationPasses(pm);
->>>>>>> upstream/master
   pm.addPass(CreateAddReductionFastMathFlagsPass());
   pm.addPass(CreateInlinerAndCsePass());
   pm.addNestedPass<mlir::func::FuncOp>(CreatePeelWorkgroupLoopPass());
@@ -224,10 +207,7 @@ static void AddScalarOptimizationPasses(mlir::OpPassManager& pm,
   //     emitters::CreateVectorizeLoadsAndStoresPass(/*target_type=*/"cpu"));
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::createCSEPass());
-<<<<<<< HEAD
-=======
   pm.addNestedPass<mlir::func::FuncOp>(CreateAddLoopUnrollFlagsPass());
->>>>>>> upstream/master
 }
 
 // Lowering passes for the "hero" emitters, e.g. loop emitter.
@@ -274,24 +254,10 @@ static void AddTiledLoweringPasses(mlir::OpPassManager& pm) {
       mlir::VectorTransferToSCFOptions().enableFullUnroll(false)));
   pm.addPass(mlir::createConvertVectorToLLVMPass());
 
-<<<<<<< HEAD
-  pm.addNestedPass<mlir::func::FuncOp>(cpu::CreateExpandFloatOpsPass());
-  pm.addPass(emitters::CreateExpandFloatOpsPass(/*aproximate_tanh=*/false));
-  pm.addPass(emitters::CreateEraseDeadFunctionsPass());
-  pm.addPass(mlir::createLowerAffinePass());
-  pm.addPass(mlir::createSCFToControlFlowPass());
-  pm.addPass(emitters::CreateLowerXlaIntrinsicLibPass());
-  pm.addNestedPass<mlir::func::FuncOp>(CreateConvertMathToLLVMPass());
-  pm.addPass(emitters::CreateLowerToLLVMPass(/*target_type=*/"cpu"));
-  pm.addPass(mlir::createReconcileUnrealizedCastsPass());
-  pm.addPass(mlir::createCanonicalizerPass());
-  pm.addPass(mlir::createCSEPass());
-=======
   pm.addPass(mlir::createConvertComplexToStandardPass());
   pm.addPass(mlir::memref::createExpandStridedMetadataPass());
 
   AddGenericLoweringPasses(pm);
->>>>>>> upstream/master
 }
 
 static int GetLlvmFunctionDefCount(mlir::ModuleOp m) {
@@ -306,57 +272,6 @@ static int GetLlvmFunctionDefCount(mlir::ModuleOp m) {
   return count;
 };
 
-<<<<<<< HEAD
-FusionCompiler::FusionCompiler(mlir::MLIRContext* context, Options options,
-                               CompilationHooks hooks)
-    : options_(std::move(options)),
-      hooks_(std::move(hooks)),
-      optimization_pass_manager_(
-          mlir::PassManager::on<mlir::ModuleOp>(context)),
-      lowering_pass_manager_(mlir::PassManager::on<mlir::ModuleOp>(context)) {
-  emitters::RegisterOptimizationPasses(optimization_pass_manager_);
-  AddLoopTransformationPasses(optimization_pass_manager_,
-                              options_.vector_width);
-  optimization_pass_manager_.addInstrumentation(
-      std::make_unique<TraceInstrumentation>());
-
-  AddLoweringPasses(lowering_pass_manager_, options_.vector_width,
-                    options_.fast_min_max);
-  lowering_pass_manager_.addInstrumentation(
-      std::make_unique<TraceInstrumentation>());
-}
-
-absl::StatusOr<std::unique_ptr<llvm::Module>> FusionCompiler::Compile(
-    llvm::LLVMContext& llvm_context, mlir::ModuleOp mlir_module) {
-  absl::string_view module_name =
-      mlir_module.getName() ? *mlir_module.getName() : "UnknownFusionModule";
-  auto get_module_op_count = [&mlir_module]() {
-    // Count the number of leaf ops, i.e those without a sub-region.
-    int64_t count = 0;
-    mlir_module.walk([&count](mlir::Operation* op) {
-      if (op->getNumRegions() == 0) {
-        count++;
-      }
-    });
-    return count;
-  };
-  VLOG(1) << "Compiling MLIR module: " << module_name << ", with "
-          << get_module_op_count() << " operations.";
-  XLA_SCOPED_LOGGING_TIMER_LEVEL(
-      absl::StrCat("Compiled MLIR module: ", module_name), 1);
-
-  tsl::profiler::TraceMe trace([&] {
-    return tsl::profiler::TraceMeEncode(
-        "FusionCompiler::Compile",
-        {{"module", module_name}, {"op_count", get_module_op_count()}});
-  });
-
-  if (hooks_.pre_optimization) {
-    hooks_.pre_optimization(mlir_module);
-  }
-  TF_RETURN_IF_ERROR(RunPassPipeline(mlir_module, optimization_pass_manager_,
-                                     nullptr, options_.verification_level));
-=======
 static void ApplyFastMathFlags(llvm::Module& llvm_module,
                                const llvm::FastMathFlags& fast_math_flags) {
   for (llvm::Function& function : llvm_module) {
@@ -384,7 +299,6 @@ FusionCompiler::FusionCompiler(mlir::MLIRContext* context, Options options,
   }
   AddScalarLoweringPasses(scalar_pass_manager_, options_.vector_width,
                           options_.fast_min_max);
->>>>>>> upstream/master
 
   // Tiled passes.
   AddTiledOptimizationPasses(tiled_pass_manager_);
@@ -394,10 +308,6 @@ FusionCompiler::FusionCompiler(mlir::MLIRContext* context, Options options,
   }
   AddTiledLoweringPasses(tiled_pass_manager_);
 
-<<<<<<< HEAD
-  TF_RETURN_IF_ERROR(RunPassPipeline(mlir_module, lowering_pass_manager_,
-                                     nullptr, options_.verification_level));
-=======
   scalar_pass_manager_.addInstrumentation(
       std::make_unique<TraceInstrumentation>());
   tiled_pass_manager_.addInstrumentation(
@@ -438,7 +348,6 @@ absl::StatusOr<std::unique_ptr<llvm::Module>> FusionCompiler::Compile(
   }
   TF_RETURN_IF_ERROR(
       RunPassPipeline(mlir_module, pm, nullptr, options_.verification_level));
->>>>>>> upstream/master
 
   if (hooks_.post_lowering) {
     hooks_.post_lowering(mlir_module);

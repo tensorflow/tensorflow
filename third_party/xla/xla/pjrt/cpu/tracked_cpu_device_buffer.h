@@ -211,12 +211,7 @@ class TrackedCpuDeviceBuffer : public AbstractTrackedDeviceBuffer {
 
   void Delete(PjRtMemorySpace* memory_space) override;
 
-<<<<<<< HEAD
-  PjRtFuture<>::Promise GetReadyFuturePromise(
-      PjRtMemorySpace* memory_space) override;
-=======
   Future<> GetReadyFuture(PjRtMemorySpace* memory_space) override;
->>>>>>> upstream/master
 
   absl::Status BlockForOperationsToComplete(
       PjRtMemorySpace* memory_space) override;

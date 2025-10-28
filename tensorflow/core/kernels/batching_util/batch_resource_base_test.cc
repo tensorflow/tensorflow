@@ -28,10 +28,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
-<<<<<<< HEAD
-=======
 #include "absl/synchronization/blocking_counter.h"
->>>>>>> upstream/master
 #include "absl/synchronization/notification.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"

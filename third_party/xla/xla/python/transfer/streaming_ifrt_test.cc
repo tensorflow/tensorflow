@@ -136,11 +136,7 @@ void CopyIntoDest(tsl::RCReference<ChunkDestination> dest,
     mu.LockWhen(absl::Condition(&cond));
     auto state = local_queue.front();
     local_queue.pop_front();
-<<<<<<< HEAD
-    mu.Unlock();
-=======
     mu.unlock();
->>>>>>> upstream/master
     TF_ASSERT_OK(
         dest->Put(state.buff, state.offset, state.size,
                   [cstate, buf = state.buff]() { cstate->ReturnBuffer(buf); }));

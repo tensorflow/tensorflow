@@ -16,12 +16,8 @@ limitations under the License.
 #ifndef XLA_TSL_PLATFORM_PREFETCH_H_
 #define XLA_TSL_PLATFORM_PREFETCH_H_
 
-<<<<<<< HEAD
-#include "tsl/platform/platform.h"
-=======
 #include "absl/base/macros.h"
 #include "absl/base/prefetch.h"
->>>>>>> upstream/master
 
 namespace tsl {
 namespace port {
@@ -42,22 +38,6 @@ enum PrefetchHint {
   PREFETCH_HINT_NTA = 0  // No temporal locality
 };
 template <PrefetchHint hint>
-<<<<<<< HEAD
-void prefetch(const void* x);
-
-// ---------------------------------------------------------------------------
-// Inline implementation
-// ---------------------------------------------------------------------------
-template <PrefetchHint hint>
-inline void prefetch(const void* x) {
-// Check of COMPILER_GCC macro below is kept only for backward-compatibility
-// reasons. COMPILER_GCC3 is the macro that actually enables prefetch.
-#if defined(__llvm__) || defined(COMPILER_GCC) || defined(COMPILER_GCC3)
-  __builtin_prefetch(x, 0, hint);
-#else
-// You get no effect.  Feel free to add more sections above.
-#endif
-=======
 ABSL_DEPRECATE_AND_INLINE()
 void prefetch(const void* x) {
   absl::PrefetchToLocalCache(x);
@@ -67,7 +47,6 @@ template <>
 ABSL_DEPRECATE_AND_INLINE()
 inline void prefetch<PREFETCH_HINT_NTA>(const void* x) {
   absl::PrefetchToLocalCacheNta(x);
->>>>>>> upstream/master
 }
 
 }  // namespace port

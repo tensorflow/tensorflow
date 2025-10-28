@@ -71,26 +71,6 @@ class Communicator {
     return Unimplemented("User-managed buffer registration is not supported");
   }
 
-<<<<<<< HEAD
-  // Register `buffer` for efficient collective operations (i.e. on NCCL backend
-  // it registers the buffer for zero-copy collective operations).
-  // If `use_symmetric_buffer` is true, the buffer is registered as a symmetric
-  // buffer.
-  virtual absl::StatusOr<std::unique_ptr<RegisteredBufferHandle>>
-  RegisterBuffer(stream_executor::DeviceMemoryBase buffer,
-                 bool use_symmetric_buffer) {
-    return Unimplemented("User-managed buffer registration is not supported");
-  }
-
-  // Register `buffer` for efficient collective operations (i.e. on NVSHMEM
-  // backend it registers the buffer for unregistered nvshmem buffers).
-  virtual absl::Status RegisterBuffer(void* addr, size_t length) {
-    return absl::UnimplementedError(
-        "User-managed buffer registration is not supported");
-  }
-
-=======
->>>>>>> upstream/master
   // Abort any uncompleted operations and destroys the underlying communicator
   // object. It is undefined behavior to use the communicator after calling
   // this method.

@@ -142,10 +142,6 @@ message CudnnThunkProto {
   optional int64 sdpa_dropout_seed = 3;
 }
 
-<<<<<<< HEAD
-message HostExecuteStartThunkProto {}
-message HostExecuteDoneThunkProto {}
-=======
 message ShapedSliceProto {
   xla.buffer_assignment.BufferAllocationSliceProto slice = 1;
   xla.ShapeProto shape = 2;
@@ -253,7 +249,6 @@ message FftThunkProto {
   xla.ShapeProto input_shape = 5;
   xla.ShapeProto output_shape = 6;
 }
->>>>>>> upstream/master
 
 message ThunkProto {
   ThunkInfoProto thunk_info = 1;
@@ -275,8 +270,6 @@ message ThunkProto {
     CudnnThunkProto cudnn_thunk = 15;
     HostExecuteStartThunkProto host_execute_start_thunk = 16;
     HostExecuteDoneThunkProto host_execute_done_thunk = 17;
-<<<<<<< HEAD
-=======
     DynamicSliceThunkProto dynamic_slice_thunk = 18;
     MemzeroThunkProto memzero_thunk = 19;
     SelectKThunkProto select_k_thunk = 20;
@@ -289,7 +282,6 @@ message ThunkProto {
     FftThunkProto fft_thunk = 27;
     CholeskyThunkProto cholesky_thunk = 28;
     Memset32BitValueThunkProto memset32bit_value_thunk = 29;
->>>>>>> upstream/master
   }
 }
 

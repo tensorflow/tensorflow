@@ -97,8 +97,6 @@
 *   Added date: 2025-07-18
 *   Changes:
     *   Added support for `LoadedExecutable::devices()`.
-<<<<<<< HEAD
-=======
 
 ## Version kGrpcAllowLargeTransferOptimizationViaSharedDirectory
 
@@ -118,4 +116,3 @@
 *   Added date: 2025-10-01
 *   Changes:
     *   Added support for `LoadedExecutable::GetHumanReadableProgramText()`.
->>>>>>> upstream/master

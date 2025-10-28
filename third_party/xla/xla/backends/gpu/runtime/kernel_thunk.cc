@@ -33,10 +33,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
-<<<<<<< HEAD
-=======
 #include "xla/backends/gpu/runtime/thunk_id.h"
->>>>>>> upstream/master
 #include "xla/codegen/emitters/kernel_arguments.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/runtime/buffer_use.h"
@@ -83,21 +80,12 @@ Thunk::BufferUses BufferUseFromKernelArguments(
 // KernelThunk
 //===----------------------------------------------------------------------===//
 
-<<<<<<< HEAD
-KernelThunk::KernelThunk(
-    Thunk::ThunkInfo thunk_info, std::string kernel_name,
-    const emitters::KernelArguments& kernel_arguments,
-    LaunchDimensions launch_dimensions,
-    std::optional<se::ClusterDim> cluster_dim, int64_t shmem_bytes,
-    std::optional<stream_executor::gpu::TmaMetadata> tma_metadata)
-=======
 KernelThunk::KernelThunk(Thunk::ThunkInfo thunk_info, std::string kernel_name,
                          const emitters::KernelArguments& kernel_arguments,
                          LaunchDimensions launch_dimensions,
                          std::optional<se::ClusterDim> cluster_dim,
                          int64_t shmem_bytes,
                          stream_executor::gpu::TmaMetadata tma_metadata)
->>>>>>> upstream/master
     : Thunk(Kind::kKernel, std::move(thunk_info)),
       args_(kernel_arguments.GetArgumentBufferSlices()),
       written_(kernel_arguments.GetArgumentOutputFlags()),
@@ -131,13 +119,7 @@ absl::StatusOr<ThunkProto> KernelThunk::ToProto() const {
     *kernel_proto->mutable_cluster_dim() = cluster_dim_->ToProto();
   }
   kernel_proto->set_shmem_bytes(shmem_bytes_);
-<<<<<<< HEAD
-  if (tma_metadata_.has_value()) {
-    *kernel_proto->mutable_tma_metadata() = tma_metadata_->ToProto();
-  }
-=======
   *kernel_proto->mutable_tma_metadata() = tma_metadata_.ToProto();
->>>>>>> upstream/master
   return proto;
 }
 
@@ -167,24 +149,12 @@ absl::StatusOr<std::unique_ptr<KernelThunk>> KernelThunk::FromProto(
     emitters::KernelArgument argument{Shape{}, slice};
     argument.set_written(proto.written().at(i));
     arguments.push_back(std::move(argument));
-<<<<<<< HEAD
-  }
-
-  std::optional<stream_executor::gpu::TmaMetadata> tma_metadata;
-  if (proto.has_tma_metadata()) {
-    TF_ASSIGN_OR_RETURN(
-        tma_metadata,
-        stream_executor::gpu::TmaMetadata::FromProto(proto.tma_metadata()));
-  }
-
-=======
   }
 
   TF_ASSIGN_OR_RETURN(
       stream_executor::gpu::TmaMetadata tma_metadata,
       stream_executor::gpu::TmaMetadata::FromProto(proto.tma_metadata()));
 
->>>>>>> upstream/master
   return std::make_unique<KernelThunk>(
       thunk_info, proto.kernel_name(),
       emitters::KernelArguments(std::move(arguments)), launch_dimensions,
@@ -294,31 +264,6 @@ absl::Status KernelThunk::ExecuteOnStream(const ExecuteParams& params) {
     kernel = it->second.get();
   }
 
-<<<<<<< HEAD
-  VLOG(3) << "Launching " << kernel->name();
-  absl::InlinedVector<std::variant<se::DeviceMemoryBase, se::TensorMap>, 4>
-      kernel_args;
-  stream_executor::gpu::TmaMetadata tma_metadata =
-      tma_metadata_.value_or(stream_executor::gpu::TmaMetadata{});
-  for (int idx = 0; idx < args_.size(); ++idx) {
-    const BufferAllocation::Slice& arg = args_[idx];
-    se::DeviceMemoryBase buf = params.buffer_allocations->GetDeviceAddress(arg);
-    VLOG(3) << "  Arg: alloc #" << arg.index() << ", offset: " << arg.offset()
-            << ": " << buf.opaque() << " (" << buf.size() << "B)";
-
-    if (auto it = tma_metadata.arg_index_to_tma_info.find(idx);
-        it != tma_metadata.arg_index_to_tma_info.end()) {
-      // TMA descriptor argument.
-      stream_executor::gpu::TmaDescriptor tma_desc = it->second;
-      TF_ASSIGN_OR_RETURN(se::TensorMap tensor_map,
-                          executor->CreateTensorMap(tma_desc, buf.opaque()));
-      VLOG(3) << "  Using TensorMap for arg #" << idx << ": "
-              << tma_desc.ToString();
-      kernel_args.push_back(std::move(tensor_map));
-    } else {
-      // Buffer argument.
-      kernel_args.push_back(buf);
-=======
   absl::InlinedVector<se::KernelArgument, 4> kernel_args;
   {
     TraceMe trace(
@@ -348,7 +293,6 @@ absl::Status KernelThunk::ExecuteOnStream(const ExecuteParams& params) {
         // Buffer argument.
         kernel_args.push_back(buf);
       }
->>>>>>> upstream/master
     }
   }
 
@@ -372,15 +316,9 @@ Thunk::BufferUses KernelThunk::buffer_uses() const {
 
 CustomKernelThunk::CustomKernelThunk(
     const HloInstruction* instr, CustomKernel custom_kernel,
-<<<<<<< HEAD
-    const emitters::KernelArguments& kernel_arguments)
-    : Thunk(Kind::kCustomKernel,
-            Thunk::ThunkInfo::WithProfileAnnotation(instr)),
-=======
     const emitters::KernelArguments& kernel_arguments, ThunkId thunk_id)
     : Thunk(Kind::kCustomKernel,
             Thunk::ThunkInfo::WithProfileAnnotation(instr, thunk_id)),
->>>>>>> upstream/master
       args_(kernel_arguments.GetArgumentBufferSlices()),
       written_(kernel_arguments.GetArgumentOutputFlags()),
       custom_kernel_(std::move(custom_kernel)) {}

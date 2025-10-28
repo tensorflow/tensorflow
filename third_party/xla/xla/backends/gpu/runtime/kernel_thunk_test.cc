@@ -34,10 +34,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
-<<<<<<< HEAD
-=======
 #include "xla/backends/gpu/runtime/thunk_id.h"
->>>>>>> upstream/master
 #include "xla/codegen/emitters/kernel_arguments.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/literal.h"
@@ -48,13 +45,9 @@ limitations under the License.
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/service_executable_run_options.h"
 #include "xla/shape_util.h"
-<<<<<<< HEAD
-#include "xla/stream_executor/gpu/tma_metadata.h"
-=======
 #include "xla/stream_executor/gpu/gpu_test_kernels.h"
 #include "xla/stream_executor/gpu/tma_metadata.h"
 #include "xla/stream_executor/kernel_spec.h"
->>>>>>> upstream/master
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
@@ -276,8 +269,6 @@ TEST(KernelThunkTest, ToAndFromProto) {
   EXPECT_THAT(reconstructed_thunk->arguments(),
               ::testing::ElementsAre(slice0, slice1));
   EXPECT_THAT(reconstructed_thunk->tma_metadata(), tma_metadata);
-<<<<<<< HEAD
-=======
 }
 
 TEST(KernelThunkTest, BufferUsesReturnsCorrectBuffers) {
@@ -297,7 +288,6 @@ TEST(KernelThunkTest, BufferUsesReturnsCorrectBuffers) {
 
   ASSERT_THAT(buffers, testing::UnorderedElementsAre(BufferUse::Read(slice0),
                                                      BufferUse::Write(slice1)));
->>>>>>> upstream/master
 }
 
 TEST(KernelThunkTest, BufferUsesReturnsBuffersInConsistentOrder) {

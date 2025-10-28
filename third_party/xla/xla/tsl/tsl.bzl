@@ -13,10 +13,7 @@ load(
     "if_enable_mkl",
     "if_mkldnn_aarch64_acl",
     "if_mkldnn_openmp",
-<<<<<<< HEAD
-=======
     "if_onednn",
->>>>>>> upstream/master
     "if_onednn_async",
     "onednn_v3_define",
 )
@@ -246,7 +243,6 @@ def get_win_copts(
     Args:
         is_external: sets dllexport
         is_msvc: whether the compiler expects msvc-style flags.
-<<<<<<< HEAD
 
     Returns:
         A list of copts to pass to the cc_library.
@@ -296,57 +292,6 @@ def get_win_copts(
             "/DTF_COMPILE_LIBRARY",
         )
     else:
-=======
-
-    Returns:
-        A list of copts to pass to the cc_library.
-    """
-    WINDOWS_COPTS = []
-    if is_msvc:
-        WINDOWS_COPTS += [
-            "/DPLATFORM_WINDOWS",
-            "/DEIGEN_HAS_C99_MATH",
-            "/DTENSORFLOW_USE_EIGEN_THREADPOOL",
-            "/DEIGEN_AVOID_STL_ARRAY",
-            "/Iexternal/gemmlowp",
-            "/wd4018",  # -Wno-sign-compare
-            # Bazel's CROSSTOOL currently pass /EHsc to enable exception by
-            # default. We can't pass /EHs-c- to disable exception, otherwise
-            # we will get a waterfall of flag conflict warnings. Wait for
-            # Bazel to fix this.
-            # "/D_HAS_EXCEPTIONS=0",
-            # "/EHs-c-",
-            "/wd4577",
-            "/DNOGDI",
-            # Also see build:windows lines in tensorflow/opensource_only/.bazelrc
-            # where we set some other options globally.
-        ]
-    else:
-        WINDOWS_COPTS += [
-            "-DPLATFORM_WINDOWS",
-            "-DEIGEN_HAS_C99_MATH",
-            "-DTENSORFLOW_USE_EIGEN_THREADPOOL",
-            "-DEIGEN_AVOID_STL_ARRAY",
-            "-Iexternal/gemmlowp",
-            "-Wno-sign-compare",
-            "-DNOGDI",
-        ]
-
-    if is_external:
-        if is_msvc:
-            WINDOWS_COPTS.append(
-                "/UTF_COMPILE_LIBRARY",
-            )
-        else:
-            WINDOWS_COPTS.append(
-                "-UTF_COMPILE_LIBRARY",
-            )
-    elif is_msvc:
-        WINDOWS_COPTS.append(
-            "/DTF_COMPILE_LIBRARY",
-        )
-    else:
->>>>>>> upstream/master
         WINDOWS_COPTS.append(
             "-DTF_COMPILE_LIBRARY",
         )

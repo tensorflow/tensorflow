@@ -55,10 +55,7 @@ xla_cc_binary(
     deps = [
         ":test_lib",
         "//xla/codegen/tools:test_lib",
-<<<<<<< HEAD
-=======
         "//xla/service/gpu/model/experimental:symbolic_expr",
->>>>>>> upstream/master
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@llvm-project//llvm:Support",

@@ -137,12 +137,6 @@ bool IsAtLeastCuda12300(const se::StreamExecutor* stream_executor) {
 
 bool IsAtLeastCuda12900(const se::StreamExecutor* stream_executor) {
   const auto& device_description = stream_executor->GetDeviceDescription();
-<<<<<<< HEAD
-  const auto* cuda_cc = std::get_if<se::CudaComputeCapability>(
-      &device_description.gpu_compute_capability());
-  if (cuda_cc != nullptr) {
-    if (device_description.driver_version() >=
-=======
   const auto* cuda_cc =
       device_description.gpu_compute_capability().cuda_compute_capability();
   if (cuda_cc != nullptr) {
@@ -151,7 +145,6 @@ bool IsAtLeastCuda12900(const se::StreamExecutor* stream_executor) {
     // the driver's headers.
     if (std::min(device_description.driver_version(),
                  device_description.compile_time_toolkit_version()) >=
->>>>>>> upstream/master
         stream_executor::SemanticVersion(12, 9, 0)) {
       return true;
     }
@@ -871,11 +864,7 @@ TEST(CommandBufferThunkTest, ChildGemmCmd) {
       CommandBufferCmdExecutor::Create(std::move(child_commands), serialize));
 
   CommandBufferCmdSequence commands;
-<<<<<<< HEAD
-  commands.Emplace<ChildCmd>(std::move(child_executor), ResourceUseVector{});
-=======
   commands.Emplace<ChildCmd>(std::move(child_executor));
->>>>>>> upstream/master
 
   TF_ASSERT_OK_AND_ASSIGN(
       CommandBufferCmdExecutor executor,
@@ -892,24 +881,12 @@ TEST(CommandBufferThunkTest, ChildGemmCmd) {
       run_options, allocations, stream.get(), stream.get(), nullptr, nullptr);
 
   Thunk::ExecutableSource source = {/*text=*/"", /*binary=*/{}};
-<<<<<<< HEAD
-  VLOG(0) << "Initialize thunk";
-  TF_ASSERT_OK(thunk.Initialize(
-      {stream_executor, source, &allocations, stream.get(), stream.get()}));
-
-  VLOG(0) << "Initialize done";
-  // Execute command buffer thunk and verify that it executed a GEMM.
-  TF_ASSERT_OK(thunk.ExecuteOnStream(params));
-
-  VLOG(0) << "Execute thunk done";
-=======
   TF_ASSERT_OK(thunk.Initialize(
       {stream_executor, source, &allocations, stream.get(), stream.get()}));
 
   // Execute command buffer thunk and verify that it executed a GEMM.
   TF_ASSERT_OK(thunk.ExecuteOnStream(params));
 
->>>>>>> upstream/master
   TF_ASSERT_OK(stream->BlockHostUntilDone());
 
   // Copy `out` data back to host.
@@ -1163,20 +1140,12 @@ TEST(CommandBufferThunkTest, CublasLtCmd) {
   // Prepare commands sequence for constructing command buffer.
   CommandBufferCmdSequence commands;
   commands.Emplace<CublasLtCmd>(CublasLtMatmulThunk(
-<<<<<<< HEAD
-      nullptr, config.value(), se::gpu::BlasLt::Epilogue::kDefault, 0, slice_a,
-      slice_b, slice_c, slice_d, BufferAllocation::Slice(),
-      BufferAllocation::Slice(), BufferAllocation::Slice(),
-      BufferAllocation::Slice(), BufferAllocation::Slice(),
-      BufferAllocation::Slice(), BufferAllocation::Slice(), slice_workspace));
-=======
       Thunk::ThunkInfo(), /*canonical_hlo=*/"", config.value(),
       se::gpu::BlasLt::Epilogue::kDefault, 0, slice_a, slice_b, slice_c,
       slice_d, BufferAllocation::Slice(), BufferAllocation::Slice(),
       BufferAllocation::Slice(), BufferAllocation::Slice(),
       BufferAllocation::Slice(), BufferAllocation::Slice(),
       BufferAllocation::Slice(), slice_workspace));
->>>>>>> upstream/master
   TF_ASSERT_OK_AND_ASSIGN(
       CommandBufferCmdExecutor executor,
       CommandBufferCmdExecutor::Create(std::move(commands), serialize));
@@ -1276,7 +1245,7 @@ TEST(CommandBufferThunkTest, MultipleLaunchCmd) {
   if (!IsAtLeastCuda12300(stream_executor)) {
     // TODO(rocm): weekly sync 24-12-10
     GTEST_SKIP() << "CUDA graph conditionals are not supported";
-  }  
+  }
 
   TF_ASSERT_OK_AND_ASSIGN(auto stream, stream_executor->CreateStream());
 
@@ -1612,133 +1581,6 @@ TEST(CommandBufferThunkTest, WhileCmd) {
   ASSERT_EQ(dst, std::vector<int32_t>(4, 15));
 }
 
-<<<<<<< HEAD
-class CmdBufferTest : public HloPjRtInterpreterReferenceMixin<HloPjRtTestBase> {
- public:
-  DebugOptions GetDebugOptionsForTest() const override {
-    DebugOptions debug_options = HloPjRtTestBase::GetDebugOptionsForTest();
-    debug_options.set_xla_gpu_autotune_level(0);
-    debug_options.set_xla_gpu_enable_dynamic_slice_fusion(true);
-    debug_options.set_xla_gpu_graph_min_graph_size(1);
-    debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::FUSION);
-    debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::CUBLAS);
-    debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::CUBLASLT);
-    debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::CUSTOM_CALL);
-    debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::CUDNN);
-    debug_options.add_xla_gpu_enable_command_buffer(
-        DebugOptions::DYNAMIC_SLICE_FUSION);
-    return debug_options;
-  }
-
-  bool IsRocm(const se::StreamExecutor* stream_executor) {
-    const auto& device_description = stream_executor->GetDeviceDescription();
-    const auto* rocm_cc = std::get_if<se::RocmComputeCapability>(
-          &device_description.gpu_compute_capability());
-    if (rocm_cc != nullptr) {
-        return true;
-    }
-    return false;
-	}
-};
-
-TEST_F(CmdBufferTest, DynamicSliceFusionCmd) {
-  // TODO(rocm): weekly-sync 25-02-21
-  se::StreamExecutor* stream_executor = GpuExecutor();
-	if(IsRocm(stream_executor)) {
-			GTEST_SKIP() << "Currently disabled on ROCm.";	
-	}
-
-  // Hlo generated by below jax code
-  // def scan_body(carry, x):
-  //     sliced_x = lax.slice(x, (0, 0), (128, 128))
-  //     result = jnp.dot(carry, sliced_x)
-  //     new_carry = result
-  //     return new_carry, result
-  // @jax.jit
-  // def run_scan(initial_carry, xs):
-  //     final_carry, outputs = lax.scan(scan_body, initial_carry, xs, length=2)
-  //     return final_carry, outputs
-
-  const char* module_str = R"(
-HloModule jit_run_scan
-
-None.7 {
-  Arg_0.8 = f32[128,128]{1,0} parameter(0)
-  Arg_1.9 = f32[128,128]{1,0} parameter(1)
-  dot.10 = f32[128,128]{1,0} dot(Arg_0.8, Arg_1.9), lhs_contracting_dims={1}, rhs_contracting_dims={0}
-  ROOT tuple.11 = (f32[128,128]{1,0}, f32[128,128]{1,0}) tuple(dot.10, dot.10)
-}
-
-region_0.12 {
-  arg_tuple.13 = (s32[], f32[128,128]{1,0}, f32[2,128,128]{2,1,0}, f32[2,128,128]{2,1,0}) parameter(0)
-  get-tuple-element.14 = s32[] get-tuple-element(arg_tuple.13), index=0
-  constant.18 = s32[] constant(1)
-  add.34 = s32[] add(get-tuple-element.14, constant.18)
-  get-tuple-element.15 = f32[128,128]{1,0} get-tuple-element(arg_tuple.13), index=1
-  get-tuple-element.17 = f32[2,128,128]{2,1,0} get-tuple-element(arg_tuple.13), index=3
-  constant.20 = s32[] constant(0)
-  compare.21 = pred[] compare(get-tuple-element.14, constant.20), direction=LT
-  constant.19 = s32[] constant(2)
-  add.22 = s32[] add(get-tuple-element.14, constant.19)
-  select.23 = s32[] select(compare.21, add.22, get-tuple-element.14)
-  dynamic-slice.24 = f32[1,128,128]{2,1,0} dynamic-slice(get-tuple-element.17, select.23, constant.20, constant.20), dynamic_slice_sizes={1,128,128}
-  reshape.25 = f32[128,128]{1,0} reshape(dynamic-slice.24)
-  call.26 = (f32[128,128]{1,0}, f32[128,128]{1,0}) call(get-tuple-element.15, reshape.25), to_apply=None.7
-  get-tuple-element.27 = f32[128,128]{1,0} get-tuple-element(call.26), index=0
-  get-tuple-element.16 = f32[2,128,128]{2,1,0} get-tuple-element(arg_tuple.13), index=2
-  get-tuple-element.28 = f32[128,128]{1,0} get-tuple-element(call.26), index=1
-  reshape.29 = f32[1,128,128]{2,1,0} reshape(get-tuple-element.28)
-  compare.30 = pred[] compare(get-tuple-element.14, constant.20), direction=LT
-  add.31 = s32[] add(get-tuple-element.14, constant.19)
-  select.32 = s32[] select(compare.30, add.31, get-tuple-element.14)
-  dynamic-update-slice.33 = f32[2,128,128]{2,1,0} dynamic-update-slice(get-tuple-element.16, reshape.29, select.32, constant.20, constant.20)
-  ROOT tuple.35 = (s32[], f32[128,128]{1,0}, f32[2,128,128]{2,1,0}, f32[2,128,128]{2,1,0}) tuple(add.34, get-tuple-element.27, dynamic-update-slice.33, get-tuple-element.17)
-} // region_0.12
-
-region_1.36 {
-  arg_tuple.37 = (s32[], f32[128,128]{1,0}, f32[2,128,128]{2,1,0}, f32[2,128,128]{2,1,0}) parameter(0)
-  get-tuple-element.39 = f32[128,128]{1,0} get-tuple-element(arg_tuple.37), index=1
-  get-tuple-element.40 = f32[2,128,128]{2,1,0} get-tuple-element(arg_tuple.37), index=2
-  get-tuple-element.41 = f32[2,128,128]{2,1,0} get-tuple-element(arg_tuple.37), index=3
-  get-tuple-element.38 = s32[] get-tuple-element(arg_tuple.37), index=0
-  constant.42 = s32[] constant(2)
-  ROOT compare.43 = pred[] compare(get-tuple-element.38, constant.42), direction=LT
-} // region_1.36
-
-ENTRY main.49 {
-  constant.3 = s32[] constant(0)
-  Arg_0.1 = f32[128,128]{1,0} parameter(0)
-  constant.4 = f32[] constant(0)
-  broadcast.5 = f32[2,128,128]{2,1,0} broadcast(constant.4), dimensions={}
-  Arg_1.2 = f32[2,128,128]{2,1,0} parameter(1)
-  tuple.6 = (s32[], f32[128,128]{1,0}, f32[2,128,128]{2,1,0}, f32[2,128,128]{2,1,0}) tuple(constant.3, Arg_0.1, broadcast.5, Arg_1.2)
-  while.44 = (s32[], f32[128,128]{1,0}, f32[2,128,128]{2,1,0}, f32[2,128,128]{2,1,0}) while(tuple.6), condition=region_1.36, body=region_0.12
-  get-tuple-element.45 = s32[] get-tuple-element(while.44), index=0
-  get-tuple-element.46 = f32[128,128]{1,0} get-tuple-element(while.44), index=1
-  get-tuple-element.47 = f32[2,128,128]{2,1,0} get-tuple-element(while.44), index=2
-  ROOT tuple.48 = (f32[128,128]{1,0}, f32[2,128,128]{2,1,0}) tuple(get-tuple-element.46, get-tuple-element.47)
-}
-)";
-
-  // running with module without exclusive lock on GpuExecutable
-  HloModuleConfig config;
-  auto debug_options = GetDebugOptionsForTest();
-  debug_options.set_xla_gpu_require_exclusive_lock(false);
-  config.set_debug_options(debug_options);
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(module_str, config));
-  EXPECT_TRUE(RunAndCompare(std::move(module), ErrorSpec{1e-3, 2e-3}));
-
-  // running with module with exclusive lock on GpuExecutable
-  debug_options.set_xla_gpu_require_exclusive_lock(true);
-  config.set_debug_options(debug_options);
-  TF_ASSERT_OK_AND_ASSIGN(module,
-                          ParseAndReturnVerifiedModule(module_str, config));
-  EXPECT_TRUE(RunAndCompare(std::move(module), ErrorSpec{1e-3, 2e-3}));
-}
-
-=======
->>>>>>> upstream/master
 TEST(CommandBufferThunkTest, ToStringPrintsNestedThunks) {
   BufferAllocation alloc_a(/*index=*/0, /*size=*/4, /*color=*/0);
   BufferAllocation::Slice slice_a(&alloc_a, /*offset=*/0, /*size=*/4);

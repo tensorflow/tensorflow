@@ -29,10 +29,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
 #include "xla/backends/cpu/alignment.h"
-<<<<<<< HEAD
-=======
 #include "xla/future.h"
->>>>>>> upstream/master
 #include "xla/pjrt/common_pjrt_client.h"
 #include "xla/pjrt/cpu/cpu_event.h"
 #include "xla/pjrt/cpu/raw_buffer.h"
@@ -44,10 +41,7 @@ limitations under the License.
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/platform/errors.h"
-<<<<<<< HEAD
-=======
 #include "xla/tsl/platform/statusor.h"
->>>>>>> upstream/master
 #include "xla/util.h"
 #include "tsl/platform/casts.h"
 #include "tsl/platform/mem.h"
@@ -329,24 +323,6 @@ void TrackedCpuDeviceBuffer::Delete(PjRtMemorySpace* memory_space) {
   });
 }
 
-<<<<<<< HEAD
-PjRtFuture<>::Promise TrackedCpuDeviceBuffer::GetReadyFuturePromise(
-    PjRtMemorySpace* memory_space) {
-  PjRtFuture<>::Promise promise =
-      tensorflow::down_cast<CommonPjRtClient*>(memory_space->client())
-          ->CreateUserPromise(memory_space, "BufferDefinitionEvent");
-  definition_event().AndThen(
-      [definition_event = definition_event().AsPtr(), promise]() mutable {
-        if (definition_event.IsError()) {
-          const absl::Status& s = definition_event.GetError();
-          promise.Set(tsl::errors::CreateWithUpdatedMessage(
-              s, absl::StrCat("Buffer Definition Event: ", s.message())));
-        } else {
-          promise.Set();
-        }
-      });
-  return promise;
-=======
 Future<> TrackedCpuDeviceBuffer::GetReadyFuture(PjRtMemorySpace* memory_space) {
   auto [promise, future] = Future<>::MakePromise();
 
@@ -375,7 +351,6 @@ TrackedCpuDeviceBuffer::GetDefinitionEvent(PjRtMemorySpace* memory_space) {
         "exactly 1 definition event.");
   }
   return tsl::MakeRef<CpuTrackedDeviceEvent>(definition_event_);
->>>>>>> upstream/master
 }
 
 absl::Status TrackedCpuDeviceBuffer::BlockForOperationsToComplete(

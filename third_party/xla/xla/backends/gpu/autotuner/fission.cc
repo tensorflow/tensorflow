@@ -312,12 +312,6 @@ absl::Status FissionBackend::ApplyConfig(HloInstruction& instr,
       /*uniquify_channel_ids=*/true);
   TF_RETURN_IF_ERROR(call_inliner.Run(hlo_module).status());
 
-<<<<<<< HEAD
-  if (config.Is<CublasBackendConfig>()) {
-    TF_RETURN_IF_ERROR(FissionToCublas(hlo_module,
-                                       target_config().device_description,
-                                       /*rewrite_to_cublaslt=*/false));
-=======
   bool use_cublaslt =
       computation->parent()->config().debug_options().xla_gpu_enable_cublaslt();
 
@@ -325,7 +319,6 @@ absl::Status FissionBackend::ApplyConfig(HloInstruction& instr,
     TF_RETURN_IF_ERROR(
         FissionToCublas(hlo_module, target_config().device_description,
                         /*rewrite_to_cublaslt=*/false, symbolic_expr_context_));
->>>>>>> upstream/master
     for (HloComputation* computation :
          hlo_module->MakeNonfusionComputations()) {
       for (HloInstruction* instruction : computation->instructions()) {
@@ -338,17 +331,10 @@ absl::Status FissionBackend::ApplyConfig(HloInstruction& instr,
     return absl::OkStatus();
   }
 
-<<<<<<< HEAD
-  if (config.Is<CublasLtBackendConfig>()) {
-    TF_RETURN_IF_ERROR(FissionToCublas(hlo_module,
-                                       target_config().device_description,
-                                       /*rewrite_to_cublaslt=*/true));
-=======
   if (use_cublaslt && config.Is<CublasOrCublasLtBackendConfig>()) {
     TF_RETURN_IF_ERROR(
         FissionToCublas(hlo_module, target_config().device_description,
                         /*rewrite_to_cublaslt=*/true, symbolic_expr_context_));
->>>>>>> upstream/master
     for (HloComputation* computation :
          hlo_module->MakeNonfusionComputations()) {
       for (HloInstruction* instruction : computation->instructions()) {
@@ -364,14 +350,9 @@ absl::Status FissionBackend::ApplyConfig(HloInstruction& instr,
   }
 
   if (config.Is<CustomKernelBackendConfig>()) {
-<<<<<<< HEAD
-    TF_RETURN_IF_ERROR(
-        FissionToCustomKernel(hlo_module, target_config().device_description));
-=======
     TF_RETURN_IF_ERROR(FissionToCustomKernel(hlo_module,
                                              target_config().device_description,
                                              symbolic_expr_context_));
->>>>>>> upstream/master
     for (HloComputation* computation : hlo_module->computations()) {
       if (IsCustomKernel(computation)) {
         TF_RETURN_IF_ERROR(custom_kernel_backend_.ApplyConfig(

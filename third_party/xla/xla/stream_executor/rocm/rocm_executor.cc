@@ -433,10 +433,6 @@ void* DeviceAllocate(Context* context, uint64_t bytes,
   }
 
   ScopedActivateContext activated(context);
-<<<<<<< HEAD
-  hipDeviceptr_t result = nullptr;
-  hipError_t res = wrap::hipMalloc(&result, bytes);
-=======
   hipDeviceptr_t device_mem = nullptr;
   hipError_t res;
   if (is_fine_grained) {
@@ -449,7 +445,6 @@ void* DeviceAllocate(Context* context, uint64_t bytes,
   } else {
     res = wrap::hipMalloc(&device_mem, bytes);
   }
->>>>>>> upstream/master
   if (res != hipSuccess) {
     // LOG(INFO) because this isn't always important to users (e.g. BFCAllocator
     // implements a retry if the first allocation fails).
@@ -703,13 +698,8 @@ absl::StatusOr<std::unique_ptr<Kernel>> RocmExecutor::LoadKernel(
   } else {
     return absl::InternalError("No method of loading ROCM kernel provided");
   }
-<<<<<<< HEAD
-  
-  absl::MutexLock lock{&in_memory_modules_mu_};
-=======
 
   absl::MutexLock lock{in_memory_modules_mu_};
->>>>>>> upstream/master
   loaded_kernels_.insert(rocm_kernel.get());
 
   // We have to trust the kernel loader spec arity because there doesn't appear

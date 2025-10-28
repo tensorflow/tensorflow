@@ -16,27 +16,18 @@ limitations under the License.
 #include "xla/pjrt/gpu/se_gpu_topology_description.h"
 
 #include <memory>
-<<<<<<< HEAD
-=======
 #include <utility>
->>>>>>> upstream/master
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "xla/pjrt/gpu/gpu_topology.h"
-<<<<<<< HEAD
-#include "xla/pjrt/pjrt_compiler.h"
-#include "xla/pjrt/pjrt_device_description.h"
-#include "xla/pjrt/pjrt_stream_executor_device_description.h"
-=======
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_device_description.h"
 #include "xla/pjrt/pjrt_device_dimensions.h"
 #include "xla/pjrt/pjrt_stream_executor_device_description.h"
 #include "xla/tsl/platform/statusor.h"
->>>>>>> upstream/master
 
 namespace xla {
 namespace {
@@ -112,8 +103,6 @@ TEST(StreamExecutorGpuTopologyDescriptionTest, AsymmetricTopology) {
   EXPECT_EQ(device_descs.size(), 0);
 }
 
-<<<<<<< HEAD
-=======
 TEST(PjRtTopologyUtilsGPUTest, GetDeviceCoords) {
   std::shared_ptr<xla::GpuTopology> gpu_topology =
       std::make_shared<xla::GpuTopology>(
@@ -190,6 +179,5 @@ TEST(PjRtTopologyUtilsGPUTest, GetDeviceCoordsMultipleHostScopedPartition) {
   ASSERT_EQ(core_id3, 0);
 }
 
->>>>>>> upstream/master
 }  // namespace
 }  // namespace xla

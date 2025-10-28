@@ -70,14 +70,9 @@ class GpuCodegenBackend : public CodegenBackend {
     TF_RETURN_IF_ERROR(ApplyConfig(*root_instruction, config));
 
     hlo_module->mutable_config().set_debug_options(debug_options_);
-<<<<<<< HEAD
-    hlo_module->mutable_config().mutable_debug_options().set_xla_enable_dumping(
-        false);
-=======
     AdjustDebugOptionsForAutotuning(
         hlo_module->mutable_config().mutable_debug_options(),
         allow_register_spills_);
->>>>>>> upstream/master
 
     Compiler::CompileOptions options;
     options.target_config = target_config_;
@@ -89,8 +84,6 @@ class GpuCodegenBackend : public CodegenBackend {
   }
 
   bool CanProduceWrongResults() const override { return false; }
-<<<<<<< HEAD
-=======
   // TODO b/443207721 - Remove this once we have a better way to handle register
   // spilling during autotuning.
   // Allows compilation to succeed even if kernels spill registers,
@@ -116,7 +109,6 @@ class GpuCodegenBackend : public CodegenBackend {
           false);
     }
   }
->>>>>>> upstream/master
 
  private:
   // Optimize the HLO module.

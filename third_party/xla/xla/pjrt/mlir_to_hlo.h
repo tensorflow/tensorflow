@@ -44,18 +44,11 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ParseMlirModuleString(
 // Converts an CHLO/MHLO module to XLA HLO.
 // TODO(b/345414638): Delete `use_shardy` when we move Shardy as the first pass
 // in the XLA pipeline.
-<<<<<<< HEAD
-absl::Status MlirToXlaComputation(mlir::ModuleOp module,
-                                  XlaComputation& xla_computation,
-                                  bool use_tuple_args, bool return_tuple,
-                                  ExecutableBuildOptions* exec_build_options);
-=======
 absl::Status MlirToXlaComputation(
     mlir::ModuleOp module, XlaComputation& xla_computation, bool use_tuple_args,
     bool return_tuple, ExecutableBuildOptions* exec_build_options,
     const mlir::mhlo::ChloLegalizeToHighLevelMhloPassOptions& chlo_opts =
         mlir::mhlo::getDefaultChloToHighLevelMhloOptions());
->>>>>>> upstream/master
 
 // Converts an MHLO/CHLO module string to an XLA computation.
 absl::Status ParseMlirModuleStringAndConvertToXlaComputation(

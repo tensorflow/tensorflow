@@ -212,26 +212,7 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
-    ],
-)
-
-xla_cc_test(
-    name = "kernel_arguments_test",
-    srcs = ["kernel_arguments_test.cc"],
-    deps = [
-        ":kernel_arguments",
-        "//xla:shape_util",
-        "//xla/hlo/analysis:alias_info",
-        "//xla/hlo/analysis:hlo_ordering",
-        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
-        "//xla/hlo/testlib:verified_hlo_module",
-        "//xla/service:buffer_assignment",
-        "//xla/service:buffer_value",
-        "//xla/service:logical_buffer",
-        "//xla/service/gpu:gpu_constants",
-        "//xla/tsl/platform:statusor",
-        "@com_google_absl//absl/strings:string_view",
-        "@com_google_googletest//:gtest_main",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -395,10 +376,7 @@ cc_library(
         "//xla/runtime:work_dimensions",
         "//xla/runtime:work_item",
         "//xla/service:buffer_assignment",
-<<<<<<< HEAD
-=======
         "//xla/service/gpu/model/experimental:symbolic_expr",
->>>>>>> upstream/master
         "//xla/service/llvm_ir:llvm_util",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",
@@ -434,8 +412,6 @@ cc_library(
     ],
 )
 
-<<<<<<< HEAD
-=======
 cc_library(
     name = "dynamic_update_slice_kernel_emitter",
     srcs = ["dynamic_update_slice_kernel_emitter.cc"],
@@ -482,7 +458,6 @@ cc_library(
     ],
 )
 
->>>>>>> upstream/master
 xla_cc_test(
     name = "type_util_test",
     srcs = ["type_util_test.cc"],

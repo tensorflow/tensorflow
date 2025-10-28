@@ -73,9 +73,6 @@ void IfrtLowerAtomProgramMetadataToXlaPass::runOnOperation() {
     signalPassFailure();
     return;
   }
-<<<<<<< HEAD
-  const bool is_sdy = module_op->hasAttr(kIsSdyPartitioned);
-=======
 
   // If the ModuleOp has a compile options key, then try to use the provided
   // compile options.
@@ -107,7 +104,6 @@ void IfrtLowerAtomProgramMetadataToXlaPass::runOnOperation() {
                  .executable_build_options.use_shardy_partitioner();
   }
 
->>>>>>> upstream/master
   int num_devices = num_devices_attr.getInt();
   mlir::func::FuncOp func_op = GetMainFunction(module_op);
   auto local_view_attr =

@@ -474,11 +474,7 @@ HloRunnerPjRt::ExecuteWithExecutable(OpaqueExecutable* executable,
       continue;
     }
     results.push_back(TransferLiteralsFromDevice(
-<<<<<<< HEAD
-        *std::move(output_buffers), execute_options.untuple_result));
-=======
         *std::move(output_buffers), module.result_shape().IsTuple()));
->>>>>>> upstream/master
   }
   return results;
 }

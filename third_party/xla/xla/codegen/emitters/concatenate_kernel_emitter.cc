@@ -41,10 +41,6 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/ImplicitLocOpBuilder.h"
 #include "mlir/IR/Location.h"
-<<<<<<< HEAD
-#include "mlir/IR/MLIRContext.h"
-=======
->>>>>>> upstream/master
 #include "mlir/IR/OwningOpRef.h"
 #include "mlir/IR/Value.h"
 #include "mlir/IR/ValueRange.h"
@@ -67,10 +63,7 @@ limitations under the License.
 #include "xla/runtime/work_dimensions.h"
 #include "xla/runtime/work_item.h"
 #include "xla/service/buffer_assignment.h"
-<<<<<<< HEAD
-=======
 #include "xla/service/gpu/model/experimental/symbolic_expr.h"
->>>>>>> upstream/master
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -81,14 +74,6 @@ limitations under the License.
 namespace xla::emitters {
 
 ConcatenateFusionKernelEmitter::ConcatenateFusionKernelEmitter(
-<<<<<<< HEAD
-    mlir::MLIRContext& mlir_context, const HloFusionInstruction& fusion,
-    const HloFusionSpec& fusion_spec, const BufferAssignment* buffer_assignment,
-    KernelArguments::BufferAlignment buffer_alignment,
-    WorkDimensions work_dimensions, absl::string_view entry_function_name,
-    BackendKind backend_kind)
-    : mlir_context_(mlir_context),
-=======
     gpu::SymbolicExprContext& symbolic_expr_context,
     const HloFusionInstruction& fusion, const HloFusionSpec& fusion_spec,
     const BufferAssignment* buffer_assignment,
@@ -96,7 +81,6 @@ ConcatenateFusionKernelEmitter::ConcatenateFusionKernelEmitter(
     WorkDimensions work_dimensions, absl::string_view entry_function_name,
     BackendKind backend_kind)
     : symbolic_expr_context_(symbolic_expr_context),
->>>>>>> upstream/master
       fusion_(fusion),
       fusion_spec_(fusion_spec),
       buffer_assignment_(buffer_assignment),
@@ -108,11 +92,7 @@ ConcatenateFusionKernelEmitter::ConcatenateFusionKernelEmitter(
 
 absl::StatusOr<MlirKernelDefinition>
 ConcatenateFusionKernelEmitter::EmitKernelDefinition() {
-<<<<<<< HEAD
-  mlir::OpBuilder builder(&mlir_context_);
-=======
   mlir::OpBuilder builder(symbolic_expr_context_.GetMLIRContext());
->>>>>>> upstream/master
   auto loc = mlir::NameLoc::get(builder.getStringAttr(fusion_.name()));
   mlir::OwningOpRef<mlir::ModuleOp> module = llvm_ir::CreateMlirModuleOp(
       loc, absl::StrCat(fusion_.name(), "_kernel_module"));
@@ -124,14 +104,6 @@ ConcatenateFusionKernelEmitter::EmitKernelDefinition() {
       mlir::func::FuncOp entry_func,
       emitters::EmitKernelApi(*module, fusion_, buffer_assignment_,
                               buffer_alignment_, entry_function_name_));
-<<<<<<< HEAD
-  SetBackendKind(&mlir_context_, entry_func, backend_kind_);
-
-  std::vector<emitters::EpilogueSpecification> epilogues =
-      GetEpilogues(fusion_, module->getContext());
-  emitters::PartitionedComputations computations(
-      fusion_.fused_instructions_computation(), module->getContext(),
-=======
   SetBackendKind(symbolic_expr_context_.GetMLIRContext(), entry_func,
                  backend_kind_);
 
@@ -139,7 +111,6 @@ ConcatenateFusionKernelEmitter::EmitKernelDefinition() {
       GetEpilogues(fusion_, &symbolic_expr_context_);
   emitters::PartitionedComputations computations(
       fusion_.fused_instructions_computation(), &symbolic_expr_context_,
->>>>>>> upstream/master
       epilogues);
   TF_ASSIGN_OR_RETURN(auto call_targets, emitters::EmitPartitionedComputations(
                                              *module, computations));
@@ -182,20 +153,12 @@ int ConcatenateFusionKernelEmitter::GetValidUnrollFactor(
 
 IndexingMap ConcatenateFusionKernelEmitter::ComputeWorkItemIdToOutputIndexing(
     const WorkDimensions& work_dimensions, const Shape& largest_shape,
-<<<<<<< HEAD
-    mlir::MLIRContext* ctx) {
-=======
     gpu::SymbolicExprContext* ctx) {
->>>>>>> upstream/master
   return GetDefaultWorkItemIndexingMap(work_dimensions, largest_shape, ctx);
 }
 
 IndexingMap ConcatenateFusionKernelEmitter::ComputeWorkItemIdToOutputIndexing(
-<<<<<<< HEAD
-    mlir::MLIRContext* ctx) const {
-=======
     gpu::SymbolicExprContext* ctx) const {
->>>>>>> upstream/master
   return ComputeWorkItemIdToOutputIndexing(work_dimensions_, largest_shape_,
                                            ctx);
 }
@@ -208,10 +171,6 @@ absl::Status ConcatenateFusionKernelEmitter::EmitEntryFunction(
   const auto& root_computation = computations.FindPartitionedComputation(
       fusion.fused_instructions_computation());
 
-<<<<<<< HEAD
-  mlir::MLIRContext* context = entry_function.getContext();
-=======
->>>>>>> upstream/master
   mlir::ImplicitLocOpBuilder builder(entry_function.getLoc(), entry_function);
   builder.setInsertionPointToStart(entry_function.addEntryBlock());
 
@@ -227,17 +186,11 @@ absl::Status ConcatenateFusionKernelEmitter::EmitEntryFunction(
   llvm::SmallVector<mlir::Value> result_tensors{output_tensor_args.begin(),
                                                 output_tensor_args.end()};
 
-<<<<<<< HEAD
-  auto work_item_id_to_input_map = ComputeWorkItemIdToOutputIndexing(context);
-  auto epilogue_indexing = ComputeEpilogueInputToOutputIndexing(
-      fusion_spec_.fusion_hero(0), fusion_spec_.fusion_root(0), context);
-=======
   auto work_item_id_to_input_map =
       ComputeWorkItemIdToOutputIndexing(&symbolic_expr_context_);
   auto epilogue_indexing = ComputeEpilogueInputToOutputIndexing(
       fusion_spec_.fusion_hero(0), fusion_spec_.fusion_root(0),
       &symbolic_expr_context_);
->>>>>>> upstream/master
 
   const auto* concat = &fusion_spec_.fusion_hero(0).instruction();
 
@@ -258,11 +211,7 @@ absl::Status ConcatenateFusionKernelEmitter::EmitEntryFunction(
     for (auto [operand_index, operand] : llvm::enumerate(concat->operands())) {
       IndexingMap input_to_output_map =
           ComputeInputToOutputIndexing(concat, /*input_id=*/operand_index,
-<<<<<<< HEAD
-                                       context)
-=======
                                        &symbolic_expr_context_)
->>>>>>> upstream/master
               .indexing_maps.front()
               .begin()
               ->map();
@@ -314,12 +263,8 @@ absl::Status ConcatenateFusionKernelEmitter::EmitEntryFunction(
       llvm::SmallVector<mlir::OpFoldResult> offsets(output_tensor.getRank(),
                                                     nested_b.getIndexAttr(0));
       llvm::SmallVector<mlir::OpFoldResult> sizes =
-<<<<<<< HEAD
-          mlir::getAsIndexOpFoldResult(context, output_tensor.getShape());
-=======
           mlir::getAsIndexOpFoldResult(symbolic_expr_context_.GetMLIRContext(),
                                        output_tensor.getShape());
->>>>>>> upstream/master
       llvm::SmallVector<mlir::OpFoldResult> strides(output_tensor.getRank(),
                                                     nested_b.getIndexAttr(1));
       nested_b.create<mlir::tensor::ParallelInsertSliceOp>(
@@ -329,11 +274,7 @@ absl::Status ConcatenateFusionKernelEmitter::EmitEntryFunction(
 
   const NumWorkItems& num_work_items = work_dimensions_.num_work_items;
   llvm::SmallVector<mlir::OpFoldResult> upper_bounds =
-<<<<<<< HEAD
-      mlir::getAsIndexOpFoldResult(context,
-=======
       mlir::getAsIndexOpFoldResult(symbolic_expr_context_.GetMLIRContext(),
->>>>>>> upstream/master
                                    {static_cast<int64_t>(num_work_items.x),
                                     static_cast<int64_t>(num_work_items.y),
                                     static_cast<int64_t>(num_work_items.z)});
@@ -348,18 +289,11 @@ absl::Status ConcatenateFusionKernelEmitter::EmitEntryFunction(
 
 std::vector<emitters::EpilogueSpecification>
 ConcatenateFusionKernelEmitter::GetEpilogues(
-<<<<<<< HEAD
-    const HloFusionInstruction& fusion, mlir::MLIRContext* mlir_context) const {
-  return {emitters::EpilogueSpecification::FromIdentityIndexing(
-      &fusion_spec_.fusion_hero(0).instruction(),
-      &fusion_spec_.fusion_root(0).instruction(), mlir_context)};
-=======
     const HloFusionInstruction& fusion,
     gpu::SymbolicExprContext* symbolic_expr_context) const {
   return {emitters::EpilogueSpecification::FromIdentityIndexing(
       &fusion_spec_.fusion_hero(0).instruction(),
       &fusion_spec_.fusion_root(0).instruction(), symbolic_expr_context)};
->>>>>>> upstream/master
 }
 
 }  // namespace xla::emitters

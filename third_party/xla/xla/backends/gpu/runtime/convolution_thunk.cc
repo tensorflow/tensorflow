@@ -36,11 +36,8 @@ limitations under the License.
 #include "xla/stream_executor/rocm/rocm_compute_capability.h"
 #include "xla/stream_executor/scratch_allocator.h"
 #include "xla/stream_executor/stream_executor.h"
-<<<<<<< HEAD
-=======
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
->>>>>>> upstream/master
 #include "xla/tsl/protobuf/dnn.pb.h"
 #include "xla/util.h"
 

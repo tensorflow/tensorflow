@@ -118,10 +118,6 @@ ENTRY entry_computation {
   // Ensure that the emitter fails gracefully when the launch config is not set.
   EXPECT_THAT(triton_fusion_emitter->GenerateTritonKernelAndWrapper(
                   *::xla::Cast<HloFusionInstruction>(root), "random_name",
-<<<<<<< HEAD
-                  device_info, /*llvm_module=*/nullptr, &mlir_context),
-              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
-=======
                   device_info, /*llvm_module=*/nullptr, &symbolic_expr_context),
               absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
 }
@@ -165,7 +161,6 @@ ENTRY entry_computation {
             /*ceil(125 / 4)=*/32);
   EXPECT_EQ(launch_config->launch_dimensions.num_threads_per_block(),
             /*32 * 2 * 1=*/64);
->>>>>>> upstream/master
 }
 
 }  // namespace

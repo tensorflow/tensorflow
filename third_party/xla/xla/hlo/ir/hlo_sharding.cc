@@ -854,11 +854,7 @@ absl::Status HloSharding::ValidateNonTuple(
                        tile_assignment_.iota_->num_elements() == *num_devices;
   }
 
-<<<<<<< HEAD
-  if (IsTileMaximal() || IsManual() || IsUnknown() || IsUnreduced()) {
-=======
   if (IsTileMaximal() || IsManual() || IsUnreduced() || IsUnknown()) {
->>>>>>> upstream/master
     return absl::OkStatus();
   }
 
@@ -1047,11 +1043,8 @@ OpSharding HloSharding::ToProto() const {
     result.set_type(OpSharding::MAXIMAL);
   } else if (IsManual()) {
     result.set_type(OpSharding::MANUAL);
-<<<<<<< HEAD
-=======
   } else if (IsUnreduced()) {
     result.set_type(OpSharding::UNREDUCED);
->>>>>>> upstream/master
   } else if (IsUnknown()) {
     result.set_type(OpSharding::UNKNOWN);
   } else {

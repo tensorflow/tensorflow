@@ -422,12 +422,8 @@ absl::StatusOr<std::vector<TritonGemmConfig>>
 GetPossibleMatmulAutotuneTritonConfigs(
     const D& dot, const se::CudaComputeCapability& compute_capability,
     const se::SemanticVersion& toolkit_version,
-<<<<<<< HEAD
-    const DebugOptions& debug_options) {
-=======
     const DebugOptions& debug_options,
     SymbolicExprContext* symbolic_expr_context) {
->>>>>>> upstream/master
   TF_ASSIGN_OR_RETURN(se::DeviceDescription device_description,
                       se::DeviceDescription::FromProto(
                           se::GpuDeviceInfoProto::default_instance()));
@@ -586,12 +582,8 @@ ENTRY e {
   MatchOptimizedHlo(kHloText, R"(
 ; CHECK: reduce
 ; CHECK: ENTRY
-<<<<<<< HEAD
-; CHECK: ROOT {{.*}} fusion({{.*}}), kind=kLoop
-=======
 ; CHECK: f32[{{.*}},7,18]{2,1,0} fusion({{.*}})
 ; CHECK: ROOT {{.*}} f16[7,18]{1,0} fusion({{.*}})
->>>>>>> upstream/master
 )");
 
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-2, /*arel=*/1e-3}));
@@ -624,12 +616,8 @@ ENTRY e {
 ; CHECK-SAME: "kind":"__triton_nested_gemm_fusion"
 ; CHECK-SAME: "sizes":["1","32","64"]
 ; CHECK: ENTRY
-<<<<<<< HEAD
-; CHECK: ROOT {{.*}} f16[55,20]{1,0} fusion({{.*}}), kind=kLoop
-=======
 ; CHECK: f32[3,55,20]{2,1,0} fusion({{.*}})
 ; CHECK: ROOT {{.*}} f16[55,20]{1,0} fusion({{.*}})
->>>>>>> upstream/master
 )");
 
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
@@ -1917,12 +1905,8 @@ TEST_F(GemmFusionAutotunerEnableTma,
           *Cast<HloDotInstruction>(
               module->entry_computation()->root_instruction()),
           se::CudaComputeCapability(se::CudaComputeCapability::kHopper, 0),
-<<<<<<< HEAD
-          GetToolkitVersion(), GetDebugOptionsForTest()));
-=======
           GetToolkitVersion(), GetDebugOptionsForTest(),
           &symbolic_expr_context_));
->>>>>>> upstream/master
 
   auto is_disallowed_tma_config = [](const TritonGemmConfig& c) {
     return c.num_stages > 2 && c.is_tma_allowed;

@@ -168,11 +168,7 @@ class CpuOptProvider : public CompiledOptProvider {
         },
         TransposeFolding::NeverFoldTranspose);
     RegisterPass<cpu::ConvCanonicalization>(&target_machine_features);
-<<<<<<< HEAD
-    RegisterPass<HloMemoryScheduler>(alias_info_.get(), size_func);
-=======
     RegisterPass<HloMemoryScheduler>(alias_info_.get(), kSizeFunction);
->>>>>>> upstream/master
     RegisterPass<HostOffloader>(alias_info_.get());
 
     // Fails to register if module does not have entry computation layout

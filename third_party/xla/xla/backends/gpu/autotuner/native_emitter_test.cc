@@ -22,14 +22,6 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
-<<<<<<< HEAD
-#include "xla/backends/autotuner/codegen_backend.h"
-#include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
-#include "xla/service/gpu/backend_configs.pb.h"
-#include "xla/service/gpu/nvptx_compiler.h"
-#include "xla/service/platform_util.h"
-=======
 #include "absl/status/statusor.h"
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -43,7 +35,6 @@ limitations under the License.
 #include "xla/service/platform_util.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream_executor.h"
->>>>>>> upstream/master
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla {
@@ -68,26 +59,11 @@ HloModule m
 
 ENTRY %entry_computation (p0: f32[32,4096,2048]) -> f32[32,2048] {
   %p0 = f32[32,4096,2048]{2,1,0} parameter(0)
-<<<<<<< HEAD
-  ROOT %reduce_fusion = f32[32,2048]{1,0} fusion(%p0), kind=kCustom,
-    calls=%fused_reduce.clone,
-    backend_config={ "fusion_backend_config": {
-      "kind":"__triton",
-      "block_level_fusion_config":{
-        "num_warps":"8","output_tiles":[{"sizes":["1","4"]}],
-        "num_ctas":1,"num_stages":1,"is_tma_allowed":false
-      }
-    }}
-})";
-
-const char kMultiOutputFusionHlo[] = R"(
-=======
   ROOT %reduce_fusion = f32[32,2048]{1,0} fusion(%p0), kind=kInput,
     calls=%fused_reduce.clone
 })";
 
 const char kCustomFusionHlo[] = R"(
->>>>>>> upstream/master
 HloModule m
 
 %fused_add_and_sub (p0: f32[32,16], p1: f32[32,16]) -> (f32[32,16], f32[32,16]) {
@@ -115,16 +91,6 @@ ENTRY %entry_computation (p0: f32[32,16], p1: f32[32,16]) -> (f32[32,16], f32[32
 class NativeEmitterBackendTest : public HloHardwareIndependentTestBase {
  protected:
   NativeEmitterBackendTest()
-<<<<<<< HEAD
-      : backend_(PlatformUtil::GetDefaultPlatform()
-                     .value()
-                     ->ExecutorForDevice(0)
-                     .value(),
-                 &debug_options_, &compiler_) {}
-
-  DebugOptions debug_options_;
-  NVPTXCompiler compiler_;
-=======
       : stream_executor_(PlatformUtil::GetDefaultPlatform()
                              .value()
                              ->ExecutorForDevice(0)
@@ -136,7 +102,6 @@ class NativeEmitterBackendTest : public HloHardwareIndependentTestBase {
   NVPTXCompiler compiler_;
   se::StreamExecutor* stream_executor_;
   Compiler::TargetConfig target_config_;
->>>>>>> upstream/master
   NativeEmitterBackend backend_;
 };
 
@@ -167,26 +132,15 @@ TEST_F(NativeEmitterBackendTest, GetSupportedConfigs) {
 }
 
 TEST_F(NativeEmitterBackendTest,
-<<<<<<< HEAD
-       GetSupportedConfigsDoesNotSupportMultiOutputFusions) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kMultiOutputFusionHlo));
-=======
        GetSupportedConfigsDoesNotSupportKCustomFusions) {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(kCustomFusionHlo));
->>>>>>> upstream/master
   auto fusion_instruction = module->entry_computation()->root_instruction();
   // Call GetSupportedConfigs on the fusion instruction.
   TF_ASSERT_OK_AND_ASSIGN(std::vector<std::unique_ptr<BackendConfig>> configs,
                           backend_.GetSupportedConfigs(*(fusion_instruction)));
-<<<<<<< HEAD
-  // GetSupportedConfigs should return an empty vector as it doesn't support
-  // multi-output fusions.
-=======
   // GetSupportedConfigs should return an empty vector as it doesn't support the
   // fusion.
->>>>>>> upstream/master
   ASSERT_TRUE(configs.empty());
 }
 
@@ -232,8 +186,6 @@ TEST_F(NativeEmitterBackendTest, CompileForDefaultConfig) {
   EXPECT_THAT(maybe_executable, absl_testing::IsOk());
 }
 
-<<<<<<< HEAD
-=======
 class MockCompiler : public Compiler {
  public:
   MOCK_METHOD(absl::StatusOr<std::unique_ptr<Executable>>, RunBackend,
@@ -281,7 +233,6 @@ TEST_F(NativeEmitterBackendTest, CompileSetsIsAutotuningCompilationOption) {
   EXPECT_THAT(backend.Compile(*fusion, *config), absl_testing::IsOk());
 }
 
->>>>>>> upstream/master
 }  // namespace
 }  // namespace gpu
 }  // namespace xla

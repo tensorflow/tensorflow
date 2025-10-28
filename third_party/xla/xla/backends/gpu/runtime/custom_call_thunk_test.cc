@@ -110,8 +110,6 @@ TEST(CustomCallThunkTest, CustomCallOnCustomStream) {
   thunk->set_execution_stream_id(ExecutionStreamId(1));
   EXPECT_THAT(thunk->ExecuteOnStream(Thunk::ExecuteParams(params)),
               absl_testing::IsOk());
-<<<<<<< HEAD
-=======
 }
 
 // A simple callback function that always returns an error.
@@ -198,7 +196,6 @@ TEST(CustomCallThunkTest, ResolvesLegacyCustomCall) {
   EXPECT_THAT(thunk->ExecuteOnStream(params),
               StatusIs(absl::StatusCode::kInternal,
                        HasSubstr("Legacy Custom call was executed!")));
->>>>>>> upstream/master
 }
 
 }  // namespace

@@ -16,10 +16,7 @@ limitations under the License.
 #include "xla/backends/profiler/gpu/cupti_collector.h"
 
 #include <cstdint>
-<<<<<<< HEAD
-=======
 #include <limits>
->>>>>>> upstream/master
 #include <memory>
 #include <string>
 

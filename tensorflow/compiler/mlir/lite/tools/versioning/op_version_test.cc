@@ -1466,8 +1466,6 @@ TEST(OpVersionTest, VersioningSqrtTest) {
 
   fake_op_sig.inputs = CreateOpSignatureTensorSpecs(kTfLiteInt16);
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 2);
-<<<<<<< HEAD
-=======
 }
 
 TEST(OpVersionTest, VersioningCastTest) {
@@ -1536,6 +1534,5 @@ TEST(OpVersionTest, VersioningCastTest) {
   fake_op_sig.inputs = CreateOpSignatureTensorSpecs(kTfLiteInt32);
   fake_op_sig.outputs = CreateOpSignatureTensorSpecs(kTfLiteInt32);
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 1);
->>>>>>> upstream/master
 }
 }  // namespace tflite

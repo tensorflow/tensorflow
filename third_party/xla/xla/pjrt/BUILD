@@ -474,10 +474,7 @@ cc_library(
     hdrs = ["pjrt_compiler.h"],
     visibility = internal_visibility([":friends"]),
     deps = [
-<<<<<<< HEAD
-=======
         ":pjrt_common",
->>>>>>> upstream/master
         ":pjrt_device_description",
         ":pjrt_device_dimensions",
         ":pjrt_executable",
@@ -866,17 +863,6 @@ cc_library(
         "//xla/tsl/concurrency:async_value",
         "//xla/tsl/concurrency:ref_count",
         "@com_google_absl//absl/base:core_headers",
-<<<<<<< HEAD
-        "@com_google_absl//absl/base:no_destructor",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/meta:type_traits",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/synchronization",
-        "@com_google_absl//absl/types:span",
-        "@com_google_absl//absl/utility",
-=======
->>>>>>> upstream/master
     ],
 )
 
@@ -1007,114 +993,6 @@ xla_cc_test(
 )
 
 cc_library(
-<<<<<<< HEAD
-    name = "pjrt_c_api_client",
-    srcs = ["pjrt_c_api_client.cc"],
-    hdrs = ["pjrt_c_api_client.h"],
-    visibility = internal_visibility([":friends"]),
-    deps = [
-        ":mlir_to_hlo",
-        ":pjrt_api",
-        ":pjrt_client",
-        ":pjrt_common",
-        ":pjrt_compiler",
-        ":pjrt_device_description",
-        ":pjrt_executable",
-        ":pjrt_future",
-        ":pjrt_layout",
-        "//xla:literal",
-        "//xla:shape_util",
-        "//xla:util",
-        "//xla:xla_data_proto_cc",
-        "//xla:xla_proto_cc",
-        "//xla/ffi:execution_context",
-        "//xla/hlo/builder:xla_computation",
-        "//xla/hlo/ir:hlo",
-        "//xla/hlo/translate/mhlo_to_hlo:mlir_hlo_to_hlo",
-        "//xla/mlir_hlo:mhlo_passes",
-        "//xla/pjrt/c:pjrt_c_api_ffi_extension_hdrs",
-        "//xla/pjrt/c:pjrt_c_api_hdrs",
-        "//xla/pjrt/c:pjrt_c_api_helpers",
-        "//xla/pjrt/c:pjrt_c_api_layouts_extension_hdrs",
-        "//xla/pjrt/c:pjrt_c_api_memory_descriptions_extension_hdrs",
-        "//xla/pjrt/c:pjrt_c_api_profiler_extension_hdrs",
-        "//xla/pjrt/c:pjrt_c_api_stream_extension_hdrs",
-        "//xla/pjrt/distributed:key_value_store_interface",
-        "//xla/pjrt/extensions/cross_host_transfers:pjrt_c_api_cross_host_transfer_extension",
-        "//xla/pjrt/extensions/executable_metadata:executable_metadata_extension",
-        "//xla/pjrt/proto:compile_options_proto_cc",
-        "//xla/pjrt/proto:topology_description_proto_cc",
-        "//xla/service:computation_placer_hdr",
-        "//xla/service:hlo_cost_analysis",
-        "//xla/service:hlo_proto_cc",
-        "//xla/tsl/framework:allocator",
-        "//xla/tsl/platform:errors",
-        "//xla/tsl/platform:status",
-        "//xla/tsl/platform:statusor",
-        "//xla/tsl/protobuf:coordination_service_proto_cc",
-        "@com_google_absl//absl/cleanup",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:inlined_vector",
-        "@com_google_absl//absl/functional:any_invocable",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:str_format",
-        "@com_google_absl//absl/synchronization",
-        "@com_google_absl//absl/types:span",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:Support",
-        "@local_tsl//tsl/platform:casts",
-        "@local_tsl//tsl/platform:fingerprint",
-    ],
-)
-
-xla_cc_test(
-    name = "pjrt_c_api_client_test",
-    srcs = ["pjrt_c_api_client_test.cc"],
-    tags = [
-        "nomsan",
-    ],
-    deps = [
-        ":mlir_to_hlo",
-        ":pjrt_api",
-        ":pjrt_c_api_client",
-        ":pjrt_client",
-        ":pjrt_compiler",
-        ":pjrt_device_description",
-        ":pjrt_executable",
-        "//xla:cpu_function_runtime",
-        "//xla:literal",
-        "//xla:literal_util",
-        "//xla:shape_util",
-        "//xla/ffi",
-        "//xla/ffi:ffi_api",
-        "//xla/hlo/builder:xla_builder",
-        "//xla/hlo/builder:xla_computation",
-        "//xla/hlo/parser:hlo_parser",
-        "//xla/pjrt/c:pjrt_c_api_cpu_internal",
-        "//xla/pjrt/c:pjrt_c_api_hdrs",
-        "//xla/service:computation_placer_hdr",
-        "//xla/tests:literal_test_util",
-        "//xla/tsl/lib/core:status_test_util",
-        "//xla/tsl/platform:statusor",
-        "//xla/tsl/platform:test",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/strings:str_format",
-        "@com_google_absl//absl/types:span",
-        "@com_google_googletest//:gtest_main",
-        "@llvm-project//mlir:IR",
-        "@stablehlo//:version",
-    ],
-)
-
-cc_library(
-=======
->>>>>>> upstream/master
     name = "tf_pjrt_client",
     srcs = ["tf_pjrt_client.cc"],
     hdrs = ["tf_pjrt_client.h"],
@@ -1387,24 +1265,6 @@ cc_library(
     name = "thread_pool_async_work_runner",
     srcs = ["thread_pool_async_work_runner.cc"],
     hdrs = ["thread_pool_async_work_runner.h"],
-<<<<<<< HEAD
-    deps = [
-        ":async_work_runner",
-        "//xla/tsl/concurrency:async_value",
-        "//xla/tsl/concurrency:ref_count",
-        "//xla/tsl/platform:env",
-        "@com_google_absl//absl/functional:any_invocable",
-        "@com_google_absl//absl/types:span",
-    ],
-)
-
-cc_library(
-    name = "pjrt_phase_compile",
-    srcs = ["pjrt_phase_compile.cc"],
-    hdrs = ["pjrt_phase_compile.h"],
-    visibility = ["//visibility:public"],
-=======
->>>>>>> upstream/master
     deps = [
         ":async_work_runner",
         "//xla/tsl/concurrency:async_value",

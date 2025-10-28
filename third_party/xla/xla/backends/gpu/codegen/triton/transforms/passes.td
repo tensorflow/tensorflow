@@ -97,13 +97,10 @@ def LoadInt4RewritePass
   let dependentDialects = [
     "triton::TritonDialect"
   ];
-<<<<<<< HEAD
-=======
   let options = [
     Option<"enable_bf16x2_", "enable_bf16x2", "bool", "true",
            "Whether to enable bf16x2.">,
   ];
->>>>>>> upstream/master
 }
 
 def RoundF32ToTF32ForTf32DotRewritePass

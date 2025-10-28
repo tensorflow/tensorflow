@@ -123,8 +123,6 @@ ENTRY entry_computation {
   EXPECT_THAT(analysis->ParametersSatisfyConstraints(
                   Tiling({{fusion_root, FlatTiling({1024, 1})}})),
               absl_testing::IsOkAndHolds(false));
-<<<<<<< HEAD
-=======
 }
 
 TEST_F(TritonEmitterConstraintsTest, DotOperandSizeConstraintIsEnforced) {
@@ -158,7 +156,6 @@ ENTRY entry_computation {
   EXPECT_THAT(analysis->ParametersSatisfyConstraints(
                   Tiling({{fusion_root, FlatTiling({512, 4, 4})}})),
               absl_testing::IsOkAndHolds(false));
->>>>>>> upstream/master
 }
 
 TEST_F(TritonEmitterConstraintsTest, TooManyBlocksConstraintIsEnforced) {

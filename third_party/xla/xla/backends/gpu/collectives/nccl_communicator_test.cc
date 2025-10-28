@@ -57,15 +57,8 @@ void AssertAborted(absl::Status s) {
                                         HasSubstr("aborted")));
 };
 
-<<<<<<< HEAD
-void AssertEventAborted(tsl::AsyncValueRef<Communicator::Event> event) {
-  tsl::BlockUntilReady(event);
-  ASSERT_TRUE(event.IsError());
-  ASSERT_THAT(event.GetError(),
-=======
 void AssertEventAborted(Future<> future) {
   ASSERT_THAT(future.Await(),
->>>>>>> upstream/master
               absl_testing::StatusIs(absl::StatusCode::kFailedPrecondition,
                                      HasSubstr("aborted")));
 };

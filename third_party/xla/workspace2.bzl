@@ -46,10 +46,7 @@ load("//third_party/rmm:workspace.bzl", rmm = "repo")
 load("//third_party/robin_map:workspace.bzl", robin_map = "repo")
 load("//third_party/rocm_device_libs:workspace.bzl", rocm_device_libs = "repo")
 load("//third_party/shardy:workspace.bzl", shardy = "repo")
-<<<<<<< HEAD
-=======
 load("//third_party/slinky:workspace.bzl", slinky = "repo")
->>>>>>> upstream/master
 load("//third_party/spdlog:workspace.bzl", spdlog = "repo")
 load("//third_party/stablehlo:workspace.bzl", stablehlo = "repo")
 load("//third_party/tensorrt:tensorrt_configure.bzl", "tensorrt_configure")
@@ -77,20 +74,13 @@ def _initialize_third_party():
     eigen3()
     farmhash()
     fmt()
-<<<<<<< HEAD
-=======
     fxdiv()
->>>>>>> upstream/master
     gemmlowp()
     gloo()
     highwayhash()
     hwloc()
     implib_so()
-<<<<<<< HEAD
-    kokkos()
-=======
     llvm_openmp()
->>>>>>> upstream/master
     ml_dtypes()
     mpitrampoline()
     nanobind()
@@ -99,20 +89,14 @@ def _initialize_third_party():
     onednn()
     pybind11_abseil()
     pybind11_bazel()
-<<<<<<< HEAD
-=======
     pthreadpool()
->>>>>>> upstream/master
     raft()
     rapids_logger()
     rmm()
     robin_map()
     rocm_device_libs()
     shardy()
-<<<<<<< HEAD
-=======
     slinky()
->>>>>>> upstream/master
     spdlog()
     stablehlo()
     tensorrt()
@@ -174,49 +158,11 @@ def _tf_repositories():
     #    curl -L <url> | sha256sum
     # and update the sha256 with the result.
 
-<<<<<<< HEAD
-    # LINT.IfChange
-    tf_http_archive(
-        name = "XNNPACK",
-        sha256 = "d6871c9e499924d0efe6c759b976615f8704804d4fda782626db130abe0bc599",
-        strip_prefix = "XNNPACK-dd9be413f1a49957f0c7617caf315b64566c3ed2",
-        urls = tf_mirror_urls("https://github.com/google/XNNPACK/archive/dd9be413f1a49957f0c7617caf315b64566c3ed2.zip"),
-    )
-    # LINT.ThenChange(//tensorflow/lite/tools/cmake/modules/xnnpack.cmake)
-
-    tf_http_archive(
-        name = "KleidiAI",
-        sha256 = "919683ceeedd6dd9db26c341eef448f9096616dfc4e9270e0209e481921e78e4",
-        strip_prefix = "kleidiai-45bf06030727ce049793ce6749e943cc2ea896fe",
-        urls = tf_mirror_urls("https://github.com/ARM-software/kleidiai/archive/45bf06030727ce049793ce6749e943cc2ea896fe.zip"),
-    )
-
-    tf_http_archive(
-        name = "FXdiv",
-        sha256 = "3d7b0e9c4c658a84376a1086126be02f9b7f753caa95e009d9ac38d11da444db",
-        strip_prefix = "FXdiv-63058eff77e11aa15bf531df5dd34395ec3017c8",
-        urls = tf_mirror_urls("https://github.com/Maratyszcza/FXdiv/archive/63058eff77e11aa15bf531df5dd34395ec3017c8.zip"),
-    )
-
-    tf_http_archive(
-        name = "cpuinfo",
-        sha256 = "a074e612706113048f1bb2937e7af3c5b57a037ce048d3cfaaca2931575819d2",
-        strip_prefix = "cpuinfo-e4cadd02a8b386c38b84f0a19eddacec3f433baa",
-        urls = tf_mirror_urls("https://github.com/pytorch/cpuinfo/archive/e4cadd02a8b386c38b84f0a19eddacec3f433baa.zip"),
-    )
-
-    tf_http_archive(
-        name = "pthreadpool",
-        sha256 = "516ba8d05c30e016d7fd7af6a7fc74308273883f857faf92bc9bb630ab6dba2c",
-        strip_prefix = "pthreadpool-c2ba5c50bb58d1397b693740cf75fad836a0d1bf",
-        urls = tf_mirror_urls("https://github.com/google/pthreadpool/archive/c2ba5c50bb58d1397b693740cf75fad836a0d1bf.zip"),
-=======
     tf_http_archive(
         name = "KleidiAI",
         sha256 = "42155cfc084bf1f80e9ef486470f949502ea8d1b845b2f1bebd58978a1b540aa",
         strip_prefix = "kleidiai-8ca226712975f24f13f71d04cda039a0ee9f9e2f",
         urls = tf_mirror_urls("https://github.com/ARM-software/kleidiai/archive/8ca226712975f24f13f71d04cda039a0ee9f9e2f.zip"),
->>>>>>> upstream/master
     )
 
     tf_http_archive(
@@ -355,11 +301,7 @@ def _tf_repositories():
     maybe(
         tf_http_archive,
         name = "com_google_protobuf",
-<<<<<<< HEAD
-        patch_file = ["//third_party/protobuf:protobuf-6.31.1.patch"],
-=======
         patch_file = ["//third_party/protobuf:protobuf.patch"],
->>>>>>> upstream/master
         sha256 = "6e09bbc950ba60c3a7b30280210cd285af8d7d8ed5e0a6ed101c72aff22e8d88",
         strip_prefix = "protobuf-6.31.1",
         urls = tf_mirror_urls("https://github.com/protocolbuffers/protobuf/archive/refs/tags/v6.31.1.zip"),
@@ -461,18 +403,6 @@ def _tf_repositories():
     )
 
     tf_http_archive(
-<<<<<<< HEAD
-        name = "cudnn_frontend_archive",
-        build_file = "//third_party:cudnn_frontend.BUILD",
-        patch_file = ["//third_party:cudnn_frontend_header_fix.patch"],
-        sha256 = "257b3b7f8a99abc096094abc9e5011659117b647d55293bcd2c5659f9181b99e",
-        strip_prefix = "cudnn-frontend-1.13.0",
-        urls = tf_mirror_urls("https://github.com/NVIDIA/cudnn-frontend/archive/refs/tags/v1.13.0.zip"),
-    )
-
-    tf_http_archive(
-=======
->>>>>>> upstream/master
         name = "cutlass_archive",
         build_file = "//third_party:cutlass.BUILD",
         sha256 = "a7739ca3dc74e3a5cb57f93fc95224c5e2a3c2dff2c16bb09a5e459463604c08",

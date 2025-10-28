@@ -31,10 +31,7 @@ onednn_graph_cc_library(
         "//xla/tsl/platform:logging",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/status",
-<<<<<<< HEAD
-=======
         "@com_google_absl//absl/strings",
->>>>>>> upstream/master
     ],
 )
 
@@ -88,10 +85,7 @@ cc_library(
     # copybara:uncomment compatible_with = ["//buildenv/target:non_prod"],
     deps = [
         "//xla/backends/cpu/runtime:work_queue",
-<<<<<<< HEAD
-=======
         "//xla/tsl/concurrency:async_value",
->>>>>>> upstream/master
         "//xla/tsl/mkl:onednn",
         "@eigen_archive//:eigen3",
     ],
@@ -118,8 +112,6 @@ onednn_graph_cc_test(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/synchronization",
         "@eigen_archive//:eigen3",
-<<<<<<< HEAD
-=======
     ],
 )
 
@@ -177,6 +169,5 @@ onednn_cc_test(
         "//xla/tsl/platform:test",
         "@com_google_googletest//:gtest_main",
         "@eigen_archive//:eigen3",
->>>>>>> upstream/master
     ],
 )

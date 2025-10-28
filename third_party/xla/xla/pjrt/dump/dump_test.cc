@@ -39,18 +39,12 @@ limitations under the License.
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_device_description.h"
 #include "xla/pjrt/pjrt_executable.h"
-<<<<<<< HEAD
-=======
 #include "xla/pjrt/proto/topology_description.pb.h"
->>>>>>> upstream/master
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
-<<<<<<< HEAD
-=======
 #include "xla/xla_data.pb.h"
->>>>>>> upstream/master
 #include "tsl/platform/path.h"
 
 namespace {
@@ -166,8 +160,6 @@ TEST(DumpTest, DumpCompileInputs) {
                                             HasSubstr("topology.pb")));
 }
 
-<<<<<<< HEAD
-=======
 TEST(MaybeDumpCompileInputsTest, XlaDumpToNotSet) {
   const std::string temp_test_dir = tsl::testing::TmpDir();
   const std::string temp_test_subdir =
@@ -229,5 +221,4 @@ TEST(MaybeDumpCompileInputsTest, XlaDumpToSet) {
                                             HasSubstr("topology.pb")));
 }
 
->>>>>>> upstream/master
 }  // namespace

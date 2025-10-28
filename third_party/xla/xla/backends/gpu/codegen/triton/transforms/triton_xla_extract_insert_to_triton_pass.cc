@@ -14,10 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <algorithm>
-<<<<<<< HEAD
-=======
 #include <cstddef>
->>>>>>> upstream/master
 #include <cstdint>
 #include <memory>
 #include <numeric>
@@ -60,12 +57,6 @@ limitations under the License.
 #include "xla/codegen/emitter_loc_op_builder.h"
 #include "xla/codegen/emitters/ir/xla_ops.h"
 #include "xla/permutation_util.h"
-<<<<<<< HEAD
-#include "xla/shape.h"
-#include "xla/shape_util.h"
-#include "xla/stream_executor/device_description.h"
-=======
->>>>>>> upstream/master
 #include "xla/stream_executor/gpu/tma_metadata.h"
 
 namespace mlir::triton::xla {
@@ -157,23 +148,12 @@ bool IsOffsetDivisibilityGuaranteed(mlir::Value offset_val,
 //      minor tile dimension (in bytes) must be divisible by 16, it is
 //      sufficient to check that the offset in the minor dimension (in bytes) is
 //      divisible by 16.
-<<<<<<< HEAD
-bool CanUseTma(bool tma_enabled,
-               const stream_executor::DeviceDescription& device_description,
-               const ArrayRef<int64_t>& original_shape,
-=======
 bool CanUseTma(bool allow_tma, const ArrayRef<int64_t>& original_shape,
->>>>>>> upstream/master
                const ArrayRef<int64_t>& tile_shape,
                const ArrayRef<int64_t>& tile_strides, ValueRange offsets,
                const TypedValue<PointerType>& pointer,
                const ArrayRef<int64_t>& minor_to_major_layout) {
-<<<<<<< HEAD
-  if (!tma_enabled ||
-      !stream_executor::gpu::IsTmaAvailableForDevice(device_description)) {
-=======
   if (!allow_tma) {
->>>>>>> upstream/master
     return false;
   }
 
@@ -197,10 +177,7 @@ bool CanUseTma(bool allow_tma, const ArrayRef<int64_t>& original_shape,
   // used or not.
   SmallVector<int64_t> canonical_tile_strides(tile_strides.begin(),
                                               tile_strides.end());
-<<<<<<< HEAD
-=======
   // TODO(csigg): canonicalize_status is ignored.
->>>>>>> upstream/master
   auto canonicalize_status = CanonicalizeTileStrides(canonical_tile_strides,
                                                      tile_shape, original_shape,
                                                      /*validate=*/false);
@@ -230,101 +207,6 @@ bool CanUseTma(bool allow_tma, const ArrayRef<int64_t>& original_shape,
   return true;
 }
 
-<<<<<<< HEAD
-SmallVector<int32_t> ComputeBoundaryChecks(
-    const ArrayRef<int64_t>& original_shape,
-    const ArrayRef<int64_t>& tile_shape) {
-  SmallVector<int32_t> boundary_checks;
-  for (auto [dim_idx, sizes] :
-       llvm::enumerate(llvm::zip(original_shape, tile_shape))) {
-    auto [dim_size, tile_size] = sizes;
-    if (dim_size % tile_size) {
-      boundary_checks.push_back(dim_idx);
-    }
-  }
-  return boundary_checks;
-}
-
-// TensorPtr is intended to wrap the base pointer of the TiledHloInstruction and
-// the necessary offsets so that Triton can compute the pointer to the
-// block specific to the given pid. This option would yield simpler code,
-// but cannot handle all combinations of strides and offsets, because Triton
-// always multiplies the offset by the stride. E.g., it's not possible to
-// slice [10] with [1:5:2] because the offset is misaligned with regards to the
-// stride.
-//
-// Instead, we output a TensorPtr that points directly to the tile specific
-// to the pid. All offset computation is done in advance. MakeTensorPtrOp
-// sees 0 offsets. This allows Triton to read any block regardless of
-// strides size or offsets. To make sure that masking is correct, we compute
-// a "residual shape" which is the original parent shape minus the offsets.
-SmallVector<Value> ComputeResidualShape(::xla::EmitterLocOpBuilder& builder,
-                                        ArrayRef<int64_t> original_shape,
-                                        ValueRange tile_offsets) {
-  SmallVector<Value> residual_shape;
-  for (auto [dim_idx, shape_and_tile_offset] :
-       llvm::enumerate(llvm::zip(original_shape, tile_offsets))) {
-    auto [shape, tile_offset] = shape_and_tile_offset;
-    Value size =
-        ::xla::gpu::triton::CreateConst(builder, builder.getI64Type(), shape)
-            .UnwrapScalar();
-    // Offsets are necessarily positive since they represent a distance
-    // between 0 and the size of the tensor on the given axis. Therefore, it
-    // is safe to use 'IndexCastUI' here. This allows index canonicalizations
-    // later on.
-    Value offset =
-        builder.create<arith::IndexCastUIOp>(builder.getI64Type(), tile_offset);
-    residual_shape.push_back(builder.create<arith::SubIOp>(size, offset));
-  }
-
-  return residual_shape;
-}
-
-// Compute physical strides of the tile. `tile_strides` contains strides for
-// individual dimensions. We need to convert them to strides in the buffer
-// taking into account physical layout. Note that we should pass in the
-// minor-to-major layout for this to work correctly.
-SmallVector<Value> ComputeStrides(::xla::EmitterLocOpBuilder& builder,
-                                  ArrayRef<int64_t> original_shape,
-                                  ValueRange tile_strides,
-                                  ArrayRef<int64_t> minor_to_major_layout) {
-  SmallVector<Value> strides(tile_strides.size());
-  int64_t current_stride = 1;
-  for (int64_t cur_dim : minor_to_major_layout) {
-    strides[cur_dim] = builder.create<arith::MulIOp>(
-        builder.create<arith::IndexCastUIOp>(builder.getI64Type(),
-                                             tile_strides[cur_dim]),
-        ::xla::gpu::triton::CreateConst(builder, builder.getI64Type(),
-                                        current_stride)
-            .UnwrapScalar());
-    current_stride *= original_shape[cur_dim];
-  }
-  return strides;
-}
-
-// Based on the multi-dimensional offsets and layout of the shape, we compute
-// a linear offset. We do this because we move the pointer to the correct
-// position via tt.addptr prior to calling tt.make_tensor_ptr.
-Value ComputeLinearOffset(::xla::EmitterLocOpBuilder& builder,
-                          Type element_type, ValueRange offsets,
-                          llvm::ArrayRef<int64_t> shape,
-                          llvm::ArrayRef<int64_t> layout) {
-  ::xla::Shape xla_shape = ::xla::ShapeUtil::MakeShapeWithDenseLayout(
-      xgt::GetPrimitiveType(element_type).value(), shape, layout);
-
-  ::xla::Shape linear_shape = ::xla::ShapeUtil::MakeShape(
-      xla_shape.element_type(), {::xla::ShapeUtil::ElementsIn(xla_shape)});
-  auto bitcast_map =
-      ::xla::GetBitcastMap(xla_shape, linear_shape, builder.getContext());
-
-  return builder.create<arith::IndexCastUIOp>(
-      builder.getI64Type(),
-      builder.create<::xla::ApplyIndexingOp>(offsets, bitcast_map)
-          .getResult(0));
-}
-
-=======
->>>>>>> upstream/master
 // Add TMA attributes to the corresponding argument in the function.
 void AddTmaAttributes(::xla::EmitterLocOpBuilder& builder,
                       const TypedValue<PointerType>& pointer,
@@ -388,48 +270,6 @@ SmallVector<int32_t> GetInverseLayoutPermutation(ArrayRef<int64_t> layout) {
   return SmallVector<int32_t>(permutation.begin(), permutation.end());
 }
 
-<<<<<<< HEAD
-Value CreateAddPtrOp(::xla::EmitterLocOpBuilder& builder,
-                     const TypedValue<PointerType>& pointer, ValueRange offsets,
-                     llvm::ArrayRef<int64_t> shape,
-                     llvm::ArrayRef<int64_t> layout) {
-  auto linear_offset = ComputeLinearOffset(
-      builder, pointer.getType().getPointeeType(), offsets, shape, layout);
-  return builder.create<AddPtrOp>(pointer.getType(), pointer, linear_offset);
-}
-
-Value CreateMakeTensorPtrOp(::xla::EmitterLocOpBuilder& builder, Value ptr,
-                            ArrayRef<int64_t> original_shape,
-                            ArrayRef<int64_t> tile_shape,
-                            SmallVector<Value> offsets,
-                            SmallVector<Value> tile_strides,
-                            ArrayRef<int64_t> layout) {
-  SmallVector<Value> residual_shape =
-      ComputeResidualShape(builder, original_shape, offsets);
-
-  // Offsets are always passed as 0 since we are using "residual shape".
-  SmallVector<Value> zero_offsets(
-      tile_shape.size(),
-      ::xla::gpu::triton::CreateConst(builder, builder.getI32Type(), 0)
-          .UnwrapScalar());
-
-  SmallVector<Value> strides =
-      ComputeStrides(builder, original_shape, tile_strides, layout);
-
-  // Strides already encode the layout, so we can use the default order.
-  // Note that the order attribute is ignored in the Triton lowering.
-  SmallVector<int32_t> dim_order(layout.size());
-  std::iota(dim_order.rbegin(), dim_order.rend(), 0);
-
-  return builder
-      .create<MakeTensorPtrOp>(ptr, residual_shape, strides, zero_offsets,
-                               llvm::to_vector_of<int32_t>(tile_shape),
-                               dim_order)
-      .getResult();
-}
-
-=======
->>>>>>> upstream/master
 // Rewrite func.func to tt.func.
 class RewriteFuncOp : public mlir::OpRewritePattern<func::FuncOp> {
  public:
@@ -458,11 +298,7 @@ class RewriteFuncOp : public mlir::OpRewritePattern<func::FuncOp> {
 
         operand_type = TensorDescType::get(
             builder.getContext(),
-<<<<<<< HEAD
-            RankedTensorType::get(normalized_block_shape, element_type));
-=======
             RankedTensorType::get(ordered_block_shape, element_type));
->>>>>>> upstream/master
         // !tt.tensordesc<tensor<block_shape x element_type>> -> !tt.ptr<>
         cast_to_orig_type = builder.create<mlir::UnrealizedConversionCastOp>(
             operand_type, func_arg);
@@ -684,55 +520,16 @@ class RewriteExtract : public mlir::OpRewritePattern<ExtractOp> {
     ArrayRef<int64_t> src_layout = op.getSrcLayout();
 
     auto offsets = op.getOffsetsAsValues(builder);
-<<<<<<< HEAD
-    if (CanUseTma(tma_enabled_, *device_description_, src_shape, tile_shape,
-                  op.getStaticStrides(), offsets, op.getSrc(), src_layout)) {
-      SmallVector<int64_t> strides = llvm::to_vector(op.getStaticStrides());
-      if (auto result = CanonicalizeTileStrides(strides, tile_shape, src_shape);
-=======
     auto sizes = op.getStaticSizes();
     auto strides = to_vector(op.getStaticStrides());
 
     if (CanUseTma(allow_tma_, src_shape, sizes, strides, offsets, op.getSrc(),
                   src_layout)) {
       if (auto result = CanonicalizeTileStrides(strides, sizes, src_shape);
->>>>>>> upstream/master
           !result.ok()) {
         return rewriter.notifyMatchFailure(op, result.message());
       }
 
-<<<<<<< HEAD
-      AddTmaAttributes(builder, op.getSrc(), src_shape, src_layout, tile_shape,
-                       strides);
-
-      SmallVector<int64_t> normalized_tile_shape =
-          Normalize(tile_shape, src_layout);
-      auto normalized_tile_type = RankedTensorType::get(
-          normalized_tile_shape, tile_type.getElementType());
-      auto normalized_offsets = Normalize(offsets, src_layout);
-
-      // tensor -> !tt.tensordesc<tile_type>
-      auto cast_to_tensor_desc =
-          builder
-              .create<mlir::UnrealizedConversionCastOp>(
-                  TensorDescType::get(builder.getContext(),
-                                      normalized_tile_type),
-                  op.getSrc())
-              .getResult(0);
-
-      auto descriptor_load = builder.create<DescriptorLoadOp>(
-          normalized_tile_type, cast_to_tensor_desc,
-          IndexCastUI(builder, builder.getI32Type(), normalized_offsets));
-
-      // Insert a transpose if the layout is not normalized.
-      if (!IsNormalizedLayout(src_layout)) {
-        // Transpose an already normalized tensor back to the original layout.
-        auto transpose =
-            builder.create<TransOp>(op.getType(), descriptor_load,
-                                    GetInverseLayoutPermutation(src_layout));
-        rewriter.replaceOp(op, transpose);
-        return mlir::success();
-=======
       AddTmaAttributes(builder, op.getSrc(), src_shape, src_layout, sizes,
                        strides);
 
@@ -759,29 +556,16 @@ class RewriteExtract : public mlir::OpRewritePattern<ExtractOp> {
       if (sizes.size() != tile_shape.size()) {
         result = ReshapeOp::create(builder, tile_shape, result,
                                    /*allowReorder=*/false);
->>>>>>> upstream/master
       }
 
       rewriter.replaceOp(op, result);
       return mlir::success();
     }
 
-<<<<<<< HEAD
-    auto ptr =
-        CreateAddPtrOp(builder, op.getSrc(), offsets, src_shape, src_layout);
-    auto strides = op.getStridesAsValues(builder);
-    ptr = CreateMakeTensorPtrOp(builder, ptr, src_shape, tile_shape, offsets,
-                                strides, src_layout);
-    auto boundary_checks = ComputeBoundaryChecks(src_shape, tile_shape);
-    std::optional<PaddingOption> padding;
-    if (!boundary_checks.empty()) {
-      padding = PaddingOption::PAD_ZERO;
-=======
     // Compute the set of reduced dimensions.
     auto reduction_mask = mlir::computeRankReductionMask(sizes, tile_shape);
     if (!reduction_mask) {
       return rewriter.notifyMatchFailure(op, "Unsupported rank reduction.");
->>>>>>> upstream/master
     }
     SmallVector<unsigned> reduced_dims = to_vector(*reduction_mask);
     absl::c_sort(reduced_dims);
@@ -831,12 +615,6 @@ class RewriteInsert : public mlir::OpRewritePattern<InsertOp> {
     ArrayRef<int64_t> dst_layout = op.getDstLayout();
 
     auto offsets = op.getOffsetsAsValues(builder);
-<<<<<<< HEAD
-    if (CanUseTma(tma_enabled_, *device_description_, dst_shape, tile_shape,
-                  op.getStaticStrides(), offsets, op.getDst(), dst_layout)) {
-      SmallVector<int64_t> strides = llvm::to_vector(op.getStaticStrides());
-      if (auto result = CanonicalizeTileStrides(strides, tile_shape, dst_shape);
-=======
     auto sizes = op.getStaticSizes();
     auto strides = to_vector(op.getStaticStrides());
 
@@ -851,35 +629,10 @@ class RewriteInsert : public mlir::OpRewritePattern<InsertOp> {
     if (CanUseTma(allow_tma_, dst_shape, sizes, strides, offsets, op.getDst(),
                   dst_layout)) {
       if (auto result = CanonicalizeTileStrides(strides, sizes, dst_shape);
->>>>>>> upstream/master
           !result.ok()) {
         return rewriter.notifyMatchFailure(op, result.message());
       }
 
-<<<<<<< HEAD
-      AddTmaAttributes(builder, op.getDst(), dst_shape, dst_layout, tile_shape,
-                       strides);
-
-      SmallVector<int64_t> normalized_tile_shape =
-          Normalize(tile_shape, dst_layout);
-      auto normalized_tile_type = RankedTensorType::get(
-          normalized_tile_shape, tile_type.getElementType());
-      auto normalized_offsets = Normalize(offsets, dst_layout);
-
-      // tensor -> !tt.tensordesc<tile_type>
-      auto cast_to_tensor_desc =
-          builder
-              .create<mlir::UnrealizedConversionCastOp>(
-                  TensorDescType::get(builder.getContext(),
-                                      normalized_tile_type),
-                  op.getDst())
-              .getResult(0);
-
-      // Insert a transpose if the layout is not normalized.
-      auto src = op.getSrc();
-      if (!IsNormalizedLayout(dst_layout)) {
-        // Transpose to a normalized tensor by simply reversing the layout.
-=======
       AddTmaAttributes(builder, op.getDst(), dst_shape, dst_layout, sizes,
                        strides);
 
@@ -898,7 +651,6 @@ class RewriteInsert : public mlir::OpRewritePattern<InsertOp> {
       // Insert a transpose if the layout is not major-to-minor.
       if (!IsMajorToMinorLayout(dst_layout)) {
         // Transpose to a major-to-minor tensor by simply reversing the layout.
->>>>>>> upstream/master
         auto transpose_order = llvm::to_vector_of<int32_t>(dst_layout);
         std::reverse(transpose_order.begin(), transpose_order.end());
         src = builder.create<TransOp>(src, transpose_order);
@@ -909,22 +661,11 @@ class RewriteInsert : public mlir::OpRewritePattern<InsertOp> {
           builder, cast_to_tensor_desc.getResult(0), src,
           IndexCast(builder, builder.getI32Type(), ordered_offsets));
     } else {
-<<<<<<< HEAD
-      auto ptr =
-          CreateAddPtrOp(builder, op.getDst(), offsets, dst_shape, dst_layout);
-      auto strides = op.getStridesAsValues(builder);
-      ptr = CreateMakeTensorPtrOp(builder, ptr, dst_shape, tile_shape, offsets,
-                                  strides, dst_layout);
-      builder.create<StoreOp>(ptr, op.getSrc(),
-                              ComputeBoundaryChecks(dst_shape, tile_shape),
-                              CacheModifier::NONE, EvictionPolicy::NORMAL);
-=======
       auto [ptr, mask] = CreateTensorOfPointersAndMask(
           builder, op.getDst(), dst_shape, dst_layout, offsets, sizes, strides,
           reduced_dims, tile_shape);
       StoreOp::create(builder, ptr, op.getSrc(), mask, CacheModifier::NONE,
                       EvictionPolicy::NORMAL);
->>>>>>> upstream/master
     }
     rewriter.eraseOp(op);
     return mlir::success();
@@ -981,40 +722,6 @@ class RewriteScalarExtract : public mlir::OpRewritePattern<tensor::ExtractOp> {
   }
 };
 
-<<<<<<< HEAD
-class DeviceDescriptionParser
-    : public llvm::cl::parser<stream_executor::DeviceDescription> {
- public:
-  using parser::parser;
-
-  bool parse(llvm::cl::Option& option, StringRef arg_name, StringRef arg_value,
-             stream_executor::DeviceDescription& value) {
-    if (arg_value.empty()) {
-      value = stream_executor::DeviceDescription();
-      return false;
-    }
-    stream_executor::GpuDeviceInfoProto proto;
-    if (!tsl::protobuf::TextFormat::ParseFromString(arg_value.str(), &proto)) {
-      return option.error("failed to parse GpuDeviceInfoProto from string: " +
-                          arg_value);
-    }
-    absl::StatusOr<stream_executor::DeviceDescription> device_description =
-        stream_executor::DeviceDescription::FromProto(proto);
-    if (!device_description.ok()) {
-      return option.error(device_description.status().message());
-    }
-    value = *device_description;
-    return false;
-  }
-
-  static void print(raw_ostream& os,
-                    const stream_executor::DeviceDescription& value) {
-    os << value.ToString();
-  }
-};
-
-=======
->>>>>>> upstream/master
 class TritonXLAExtractInsertToTritonPass
     : public impl::TritonXLAExtractInsertToTritonPassBase<
           TritonXLAExtractInsertToTritonPass> {

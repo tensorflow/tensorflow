@@ -69,13 +69,6 @@ void CpuTrackedDeviceEventPromise::Set(
   auto cpu_event =
       tensorflow::down_cast<CpuTrackedDeviceEvent*>(event.get())->event();
   av_->ForwardTo(std::move(cpu_event));
-<<<<<<< HEAD
-}
-
-void CpuTrackedDeviceEventPromise::SetReady() {
-  av_->ForwardTo(tsl::MakeAvailableAsyncValueRef<CpuEvent>());
-=======
->>>>>>> upstream/master
 }
 
 void CpuTrackedDeviceEventPromise::SetReady() {

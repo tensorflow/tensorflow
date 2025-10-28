@@ -124,19 +124,13 @@ absl::Status AttachAnnotation(
   return absl::OkStatus();
 }
 
-<<<<<<< HEAD
-bool IsSupportedAsyncOp(HloInstruction* instr, bool supports_async_start) {
-=======
 bool IsSupportedAsyncOp(HloInstruction* instr, bool supports_async_start,
                         bool check_sync_versions) {
->>>>>>> upstream/master
   if (instr->opcode() == HloOpcode::kAsyncStart && !supports_async_start) {
     VLOG(1) << "Dropping annotation on async start operation: "
             << instr->name();
     return false;
   }
-<<<<<<< HEAD
-=======
   if (check_sync_versions) {
     if (HloPredicateIsOp<HloOpcode::kAllGather, HloOpcode::kAllReduce,
                          HloOpcode::kCollectivePermute, HloOpcode::kSendDone,
@@ -145,7 +139,6 @@ bool IsSupportedAsyncOp(HloInstruction* instr, bool supports_async_start,
       return true;
     }
   }
->>>>>>> upstream/master
   return HloPredicateIsOp<
       HloOpcode::kAllGatherDone, HloOpcode::kAllGatherStart,
       HloOpcode::kAllReduceDone, HloOpcode::kAllReduceStart,
@@ -374,12 +367,8 @@ bool LegalizeSchedulingAnnotations::KeepSchedulingAnnotation(
     return false;
   }
 
-<<<<<<< HEAD
-  return IsSupportedAsyncOp(instr, config_.keep_start_annotation) ||
-=======
   return IsSupportedAsyncOp(instr, config_.keep_start_annotation,
                             /*check_sync_versions=*/false) ||
->>>>>>> upstream/master
          config_.keep_sync_annotation(instr);
 }
 

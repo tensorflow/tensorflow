@@ -382,15 +382,8 @@ absl::Status RunCollectivePermute(
   //
 
   int device_ordinal = stream.parent()->device_ordinal();
-<<<<<<< HEAD
-  VLOG(3) << "Performing collective permute from device ordinal: "
-          << device_ordinal << " current_id " << current_id;
-  TF_RETURN_IF_ERROR(MaybeRegisterBuffers(stream.parent(), buffers, comm,
-                                          use_symmetric_buffer));
-=======
   VLOG(3) << "[" << device_ordinal
           << "] Performing collective permute, current_id " << current_id;
->>>>>>> upstream/master
 
   std::optional<int64_t> source_id = source_target.source;
   std::optional<int64_t> target_id = source_target.target;

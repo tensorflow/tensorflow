@@ -147,8 +147,6 @@ bool IsCustomCallToTopK(const HloInstruction& hlo) {
          hlo.custom_call_target() == kTopKCustomCallTarget;
 }
 
-<<<<<<< HEAD
-=======
 bool IsCustomCallToPtxKernel(const HloInstruction& hlo) {
   return hlo.opcode() == HloOpcode::kCustomCall &&
          hlo.custom_call_target() == "__gpu$xla.gpu.ptx";
@@ -161,7 +159,6 @@ bool IsCollectiveMosaicGpuInstruction(const HloInstruction& hlo) {
          absl::StrContains(hlo.raw_backend_config_string(), "nvshmem");
 }
 
->>>>>>> upstream/master
 static bool IsContiguousSlice(
     const Shape& orig, const Shape& sliced,
     std::optional<absl::Span<const int64_t>> slice_strides) {

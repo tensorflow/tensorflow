@@ -18,10 +18,7 @@ limitations under the License.
 
 #include <string>
 
-<<<<<<< HEAD
-=======
 #include "absl/status/statusor.h"
->>>>>>> upstream/master
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 
 namespace tensorflow {

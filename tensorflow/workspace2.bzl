@@ -11,10 +11,7 @@ load("@local_xla//third_party/dlpack:workspace.bzl", dlpack = "repo")
 load("@local_xla//third_party/ducc:workspace.bzl", ducc = "repo")
 load("@local_xla//third_party/eigen3:workspace.bzl", eigen3 = "repo")
 load("@local_xla//third_party/farmhash:workspace.bzl", farmhash = "repo")
-<<<<<<< HEAD
-=======
 load("@local_xla//third_party/fmt:workspace.bzl", fmt = "repo")
->>>>>>> upstream/master
 load("@local_xla//third_party/FP16:workspace.bzl", FP16 = "repo")
 load("@local_xla//third_party/gemmlowp:workspace.bzl", gemmlowp = "repo")
 load("@local_xla//third_party/git:git_configure.bzl", "git_configure")
@@ -171,30 +168,18 @@ def _tf_repositories():
     # LINT.IfChange(xnnpack)
     tf_http_archive(
         name = "XNNPACK",
-<<<<<<< HEAD
-        sha256 = "d6871c9e499924d0efe6c759b976615f8704804d4fda782626db130abe0bc599",
-        strip_prefix = "XNNPACK-dd9be413f1a49957f0c7617caf315b64566c3ed2",
-        urls = tf_mirror_urls("https://github.com/google/XNNPACK/archive/dd9be413f1a49957f0c7617caf315b64566c3ed2.zip"),
-=======
         sha256 = "a23040b6307b67da2319de292a0bb4b39d0e5913fae50a90f955eafa1acb81c7",
         strip_prefix = "XNNPACK-da9a34d9bb68f339c35d2da480ab0734b0a26429",
         urls = tf_mirror_urls("https://github.com/google/XNNPACK/archive/da9a34d9bb68f339c35d2da480ab0734b0a26429.zip"),
->>>>>>> upstream/master
     )
     # LINT.ThenChange(//tensorflow/lite/tools/cmake/modules/xnnpack.cmake)
 
     # XNNPack dependency.
     tf_http_archive(
         name = "KleidiAI",
-<<<<<<< HEAD
-        sha256 = "919683ceeedd6dd9db26c341eef448f9096616dfc4e9270e0209e481921e78e4",
-        strip_prefix = "kleidiai-45bf06030727ce049793ce6749e943cc2ea896fe",
-        urls = tf_mirror_urls("https://github.com/ARM-software/kleidiai/archive/45bf06030727ce049793ce6749e943cc2ea896fe.zip"),
-=======
         sha256 = "42155cfc084bf1f80e9ef486470f949502ea8d1b845b2f1bebd58978a1b540aa",
         strip_prefix = "kleidiai-8ca226712975f24f13f71d04cda039a0ee9f9e2f",
         urls = tf_mirror_urls("https://github.com/ARM-software/kleidiai/archive/8ca226712975f24f13f71d04cda039a0ee9f9e2f.zip"),
->>>>>>> upstream/master
     )
 
     tf_http_archive(
@@ -215,17 +200,10 @@ def _tf_repositories():
 
     tf_http_archive(
         name = "cpuinfo",
-<<<<<<< HEAD
-        sha256 = "a074e612706113048f1bb2937e7af3c5b57a037ce048d3cfaaca2931575819d2",
-        strip_prefix = "cpuinfo-e4cadd02a8b386c38b84f0a19eddacec3f433baa",
-        patch_file = ["//third_party/cpuinfo:cpuinfo_ppc64le_support.patch"],
-        urls = tf_mirror_urls("https://github.com/pytorch/cpuinfo/archive/e4cadd02a8b386c38b84f0a19eddacec3f433baa.zip"),
-=======
         sha256 = "c0254ce97f7abc778dd2df0aaca1e0506dba1cd514fdb9fe88c07849393f8ef4",
         strip_prefix = "cpuinfo-8a9210069b5a37dd89ed118a783945502a30a4ae",
         patch_file = ["//third_party/cpuinfo:cpuinfo_ppc64le_support.patch"],
         urls = tf_mirror_urls("https://github.com/pytorch/cpuinfo/archive/8a9210069b5a37dd89ed118a783945502a30a4ae.zip"),
->>>>>>> upstream/master
     )
 
     tf_http_archive(
@@ -421,11 +399,7 @@ def _tf_repositories():
     maybe(
         tf_http_archive,
         name = "com_google_protobuf",
-<<<<<<< HEAD
-        patch_file = ["@local_xla//third_party/protobuf:protobuf-6.31.1.patch"],
-=======
         patch_file = ["@local_xla//third_party/protobuf:protobuf.patch"],
->>>>>>> upstream/master
         sha256 = "6e09bbc950ba60c3a7b30280210cd285af8d7d8ed5e0a6ed101c72aff22e8d88",
         strip_prefix = "protobuf-6.31.1",
         urls = tf_mirror_urls("https://github.com/protocolbuffers/protobuf/archive/refs/tags/v6.31.1.zip"),

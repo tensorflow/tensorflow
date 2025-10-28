@@ -51,10 +51,7 @@ xla_cc_test(
     srcs = ["attribute_exporter_test.cc"],
     deps = [
         ":attribute_exporter",
-<<<<<<< HEAD
-=======
         "//xla:xla_data_proto_cc",
->>>>>>> upstream/master
         "//xla/hlo/ir:hlo_sharding",
         "//xla/hlo/parser:hlo_parser",
         "//xla/mlir/utils:error_util",
@@ -286,10 +283,7 @@ xla_cc_test(
         "//xla/tsl/platform:status_matchers",
         "//xla/tsl/platform:test",
         "//xla/tsl/platform:test_main",
-<<<<<<< HEAD
-=======
         "@com_google_absl//absl/status:status_matchers",
->>>>>>> upstream/master
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
     ],
@@ -309,10 +303,7 @@ cc_library(
         "//xla/hlo/builder:xla_computation",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/translate:register",
-<<<<<<< HEAD
-=======
         "//xla/mlir_hlo:unregistered_attributes",
->>>>>>> upstream/master
         "//xla/service:hlo_module_config",
         "//xla/service:hlo_proto_cc",
         "//xla/service:hlo_proto_util",

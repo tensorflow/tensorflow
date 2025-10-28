@@ -62,10 +62,7 @@ limitations under the License.
 #include "xla/literal_util.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/call_graph.h"
-<<<<<<< HEAD
-=======
 #include "xla/service/call_inliner.h"
->>>>>>> upstream/master
 #include "xla/service/custom_call_status.h"
 #include "xla/service/custom_call_target_registry.h"
 #include "xla/service/gpu/backend_configs.pb.h"
@@ -103,14 +100,9 @@ absl::StatusOr<std::unique_ptr<Thunk>> BuildCustomKernelThunkForFusion(
       emitters::KernelArguments::Create(ir_emitter_context.buffer_assignment(),
                                         GetDefaultBufferAlignment(), &fusion));
 
-<<<<<<< HEAD
-  return std::make_unique<CustomKernelThunk>(&fusion, std::move(custom_kernel),
-                                             std::move(kernel_arguments));
-=======
   return std::make_unique<CustomKernelThunk>(
       &fusion, std::move(custom_kernel), std::move(kernel_arguments),
       ir_emitter_context.GetNextThunkId());
->>>>>>> upstream/master
 }
 
 absl::StatusOr<BufferAllocation::Slice> GetOperandSlice(

@@ -20,13 +20,8 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "llvm/Support/ExtensibleRTTI.h"
-<<<<<<< HEAD
-#include "xla/python/ifrt/future.h"
-#include "xla/python/ifrt/user_context.h"
-=======
 #include "xla/python/ifrt/user_context.h"
 #include "xla/tsl/concurrency/future.h"
->>>>>>> upstream/master
 #include "xla/tsl/concurrency/ref_count.h"
 
 namespace xla {

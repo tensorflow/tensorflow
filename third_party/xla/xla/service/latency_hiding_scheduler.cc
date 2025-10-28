@@ -65,10 +65,7 @@ limitations under the License.
 #include "xla/status_macros.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
-<<<<<<< HEAD
-=======
 #include "xla/tsl/platform/status.h"
->>>>>>> upstream/master
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
@@ -1628,140 +1625,6 @@ absl::StatusOr<HloGraphNode*>
 DefaultSchedulerCore::FindAndExtractBestNodeAvailable(
     DefaultSchedulerCore::SchedulingState& sched_state,
     DefaultSchedulerCore::ShouldSkipNodeFunction should_skip_node) {
-<<<<<<< HEAD
-  // Schedule a nop instruction if available.
-  if (!sched_state.nop_set.empty()) {
-    HloGraphNode* node = sched_state.nop_set.back();
-    sched_state.nop_set.pop_back();
-    return node;
-  }
-  absl::InlinedVector<std::pair<HloGraphNode*, SkipNodeReason>, 2>
-      skipped_nodes_and_reasons;
-  VLOG(2) << "Current time: " << sched_state.current_time;
-  ReadySetLt ready_lt{&sched_state, target_scheduling_rule_,
-                      early_target_scheduling_rule_};
-  // Construct a schedule candidate for caching.
-  ScheduleCandidate ready_chosen;
-  ScheduleCandidate ready_chosen_orig;
-  bool ready_chosen_valid = false;
-  ScheduleCandidate ready_candidate_orig;
-  auto chosen_it = sched_state.ready_set.end();
-
-  // Try to pick nodes from the ready set first that are the ones that cause the
-  // most latency hiding.
-  const bool vlog_2 = VLOG_IS_ON(2);
-  const bool has_should_skip_node = (should_skip_node != nullptr);
-  for (auto ready_node_it = sched_state.ready_set.begin(),
-            e = sched_state.ready_set.end();
-       ready_node_it != e; ++ready_node_it) {
-    HloGraphNode* ready_node = *ready_node_it;
-    if (has_should_skip_node && should_skip_node(ready_node)) {
-      if (!ready_chosen_valid) {
-        skipped_nodes_and_reasons.push_back(
-            {ready_node, SkipNodeReason::kShouldSkipNodeFunction});
-        if (ABSL_PREDICT_FALSE(vlog_2)) {
-          VLOG(2) << SkipNodeReasonString(
-                         skipped_nodes_and_reasons.back().second)
-                  << " node: " << ready_node->GetInstr().name();
-        }
-      }
-      continue;
-    }
-    // These ifs will be true when the iterator points to an annotated node,
-    // but the chosen node is nullptr because the annotation group is not
-    // ready to be scheduled yet (because of the annotation roots' successors
-    // not being scheduled yet). So we skip this node and continue to the next
-    // one.
-    if (ABSL_PREDICT_FALSE(ready_node->GetAnnotation() != -1)) {
-      if (!ready_chosen_valid) {
-        skipped_nodes_and_reasons.push_back(
-            {ready_node, SkipNodeReason::kAnnotationGroupNotReady});
-        if (ABSL_PREDICT_FALSE(vlog_2)) {
-          VLOG(2) << SkipNodeReasonString(
-                         skipped_nodes_and_reasons.back().second)
-                  << " node: " << ready_node->GetInstr().name();
-        }
-      }
-      continue;
-    }
-    // If this node would cause the max_concurrent_resource count to go beyond
-    // the limit do not schedule it and pass to the next node.
-    if (is_default_scheduling_instruction_crosses_overlap_limit_ &&
-        !ready_node->HasRecursiveResources()) {
-      // Default scheduling_instruction_crosses_overlap_limit_ is a noop in
-      // this case
-    } else {
-      // Either scheduling_instruction_crosses_overlap_limit_ is not the
-      // default, or the node actually has recursive resoures
-      if (scheduling_instruction_crosses_overlap_limit_(sched_state,
-                                                        ready_node)) {
-        if (ready_chosen.node == nullptr) {
-          skipped_nodes_and_reasons.push_back(
-              {ready_node, SkipNodeReason::kExceedsOverlapLimit});
-          if (ABSL_PREDICT_FALSE(vlog_2)) {
-            VLOG(2) << SkipNodeReasonString(
-                           skipped_nodes_and_reasons.back().second)
-                    << " node: " << ready_node->GetInstr().name();
-          }
-        }
-        continue;
-      }
-    }
-    ScheduleCandidate ready_candidate =
-        InitializeCandidate(ready_node, sched_state);
-    if (!ready_chosen_valid) {
-      ready_chosen = ready_candidate;
-      chosen_it = ready_node_it;
-      ready_chosen_valid = true;
-      if (ABSL_PREDICT_FALSE(vlog_2)) {
-        VLOG(2) << "Choosing from ready ("
-                << ready_chosen.node->GetInstr().name()
-                << ") Reason: First Candidate";
-      }
-      continue;
-    }
-
-    if (ABSL_PREDICT_FALSE(vlog_2)) {
-      ready_chosen_orig = ready_chosen;
-      ready_candidate_orig = ready_candidate;
-    }
-    const char* reason;
-    bool new_candidate_selected =
-        ready_lt.MaybeUpdate(ready_candidate, ready_chosen, &reason);
-    if (ABSL_PREDICT_FALSE(vlog_2)) {
-      auto print_pressure_change =
-          [](const DefaultSchedulerCore::ScheduleCandidate& p) {
-            if (p.has_pressure_change) {
-              return std::to_string(p.pressure_change_first);
-            }
-            return std::string("N/A");
-          };
-      VLOG(2) << "Choosing from ready ("
-              << (new_candidate_selected
-                      ? ready_candidate_orig.node->GetInstr().name()
-                      : ready_chosen_orig.node->GetInstr().name())
-              << ") vs ("
-              << (new_candidate_selected
-                      ? ready_chosen_orig.node->GetInstr().name()
-                      : ready_candidate_orig.node->GetInstr().name())
-              << ") Reason: " << reason << " mem pressure chosen "
-              << print_pressure_change(new_candidate_selected
-                                           ? ready_candidate_orig
-                                           : ready_chosen_orig)
-              << " mem pressure other "
-              << print_pressure_change(new_candidate_selected
-                                           ? ready_chosen_orig
-                                           : ready_candidate_orig);
-    }
-
-    if (new_candidate_selected) {
-      chosen_it = ready_node_it;
-      DCHECK_EQ(ready_chosen.node, *chosen_it);
-    }
-  }
-
-  if (!ready_chosen_valid) {
-=======
   while (true) {
     // Schedule a nop instruction if available.
     if (!sched_state.nop_set.empty()) {
@@ -1949,7 +1812,6 @@ DefaultSchedulerCore::FindAndExtractBestNodeAvailable(
 
     // If we reach here, no node was scheduled and no annotation group could be
     // deannotated.
->>>>>>> upstream/master
     if (!sched_state.ready_annotations.empty()) {
       std::string error_message = absl::StrCat(
           "There is a scheduling group which exceeds the overlap limits. "
@@ -3152,13 +3014,6 @@ DefaultSchedulerCore::GetNumResourcesNeededForAnnotation(
         sched_state.async_tracker->GetNumResourcesPerInstruction(*instr);
     for (const auto& [resource, usage] : num_resources_needed_per_instr) {
       if (instr->opcode() == HloOpcode::kAsyncDone) {
-<<<<<<< HEAD
-        // Special case: if a async-done op's matching start op is not in the
-        // same annotation group, then the live range of the resources used
-        // by this async-done op extends beyond this annotation group.
-        const HloInstruction* start = instr->operand(0);
-        if (std::find(instrs.begin(), instrs.end(), start) == instrs.end()) {
-=======
         // There are two cases where the resources used by the async-done op
         // need to be accumulated:
         // 1. if a async-done op's matching start op is not in the
@@ -3170,7 +3025,6 @@ DefaultSchedulerCore::GetNumResourcesNeededForAnnotation(
         const HloInstruction* start = instr->operand(0);
         if (std::find(instrs.begin(), instrs.end(), start) == instrs.end() ||
             get_max_resources) {
->>>>>>> upstream/master
           num_resources_needed[resource] += usage;
           continue;
         }
@@ -3221,8 +3075,6 @@ bool DefaultSchedulerCore::SchedulingAnnotationCrossesOverlapLimit(
   }
   return false;
 }
-<<<<<<< HEAD
-=======
 
 absl::StatusOr<bool> DefaultSchedulerCore::TryScheduleOneAnnotationGroup(
     DefaultSchedulerCore::SchedulingState* sched_state,
@@ -3260,7 +3112,6 @@ absl::StatusOr<bool> DefaultSchedulerCore::TryScheduleOneAnnotationGroup(
   return false;
 }
 
->>>>>>> upstream/master
 absl::StatusOr<std::shared_ptr<SchedulerCore::SchedulingState>>
 DefaultSchedulerCore::MakeSchedulingState(const HloComputation* computation) {
   const HloSchedule& module_schedule = computation->parent()->schedule();
@@ -3280,26 +3131,6 @@ DefaultSchedulerCore::MakeSchedulingState(const HloComputation* computation) {
   sched_state->sched_graph.InitializeGraphAnalysis();
   return sched_state;
 }
-<<<<<<< HEAD
-absl::StatusOr<std::vector<HloInstruction*>>
-DefaultSchedulerCore::ScheduleComputation(const HloComputation* computation) {
-  TF_ASSIGN_OR_RETURN(auto sched_state, MakeSchedulingState(computation));
-  return ScheduleComputation(computation, sched_state);
-}
-absl::StatusOr<std::vector<HloInstruction*>>
-DefaultSchedulerCore::ScheduleComputation(
-    const HloComputation* computation,
-    std::shared_ptr<SchedulerCore::SchedulingState> _sched_state) {
-  // Up-cast the scheduling state DefaultSchedulerCore::SchedulingState.
-  std::shared_ptr<DefaultSchedulerCore::SchedulingState> sched_state =
-      std::dynamic_pointer_cast<DefaultSchedulerCore::SchedulingState>(
-          _sched_state);
-
-  CHECK_NE(sched_state, nullptr)
-      << "ScheduleComputation must be called with a "
-      << "DefaultSchedulerCore::SchedulingState object.";
-
-=======
 
 absl::StatusOr<std::vector<HloInstruction*>>
 DefaultSchedulerCore::ScheduleComputation(const HloComputation* computation) {
@@ -3320,7 +3151,6 @@ DefaultSchedulerCore::ScheduleComputation(
       << "ScheduleComputation must be called with a "
       << "DefaultSchedulerCore::SchedulingState object.";
 
->>>>>>> upstream/master
   // Reset the scheduling graph.
   sched_state->sched_graph.InitializeGraphAnalysis();
   sched_state->sched_graph.ResetScheduling();
@@ -3383,33 +3213,6 @@ DefaultSchedulerCore::ScheduleComputation(
       };
       return absl::StrJoin(sched_state->ready_set, "\n", LogFormatter());
     }());
-<<<<<<< HEAD
-    if (!sched_state->ready_annotations.empty() &&
-        sched_state->nodes_holding_annotations.empty()) {
-      // Pick the first ready annotation whose scheduling will not cross the
-      // overlap limit. If there is no such annotation, continue with
-      // scheduling non-annotated ops.
-      int64_t annotation_index = -1;
-      for (int64_t i = 0; i < sched_state->ready_annotations.size(); ++i) {
-        if (SchedulingAnnotationCrossesOverlapLimit(
-                *sched_state, sched_state->ready_annotations[i])) {
-          continue;
-        }
-        annotation_index = i;
-        break;
-      }
-      if (annotation_index != -1) {
-        std::swap(sched_state->ready_annotations[annotation_index],
-                  sched_state->ready_annotations.back());
-        int64_t annotation = sched_state->ready_annotations.back();
-        sched_state->ready_annotations.pop_back();
-        VLOG(2) << "------- BEGIN ANNOTATION: " << annotation << " -------";
-        sched_state->ongoing_annotation = annotation;
-        TF_RETURN_IF_ERROR(
-            ScheduleAnnotation(computation, annotation, sched_state.get()));
-        VLOG(2) << "-------  END ANNOTATION: " << annotation << " --------";
-        sched_state->ongoing_annotation = -1;
-=======
     auto scheduled_with_max_resources = TryScheduleOneAnnotationGroup(
         sched_state.get(), computation, /*use_max_resource*/ true);
     if (!scheduled_with_max_resources.ok()) {
@@ -3430,17 +3233,12 @@ DefaultSchedulerCore::ScheduleComputation(
         return scheduled_with_min_resources.status();
       }
       if (*scheduled_with_min_resources) {
->>>>>>> upstream/master
         continue;
       }
       VLOG(3)
           << "Failed to schedule any annotation groups with minimum resources";
       return scheduling_step_status;
     }
-<<<<<<< HEAD
-    TF_RETURN_IF_ERROR(SchedulingStep(sched_state.get()));
-=======
->>>>>>> upstream/master
   }
 
   if (VLOG_IS_ON(5)) {

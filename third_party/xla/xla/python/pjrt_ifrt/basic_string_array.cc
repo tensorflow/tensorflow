@@ -38,10 +38,7 @@ limitations under the License.
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt/user_context.h"
-<<<<<<< HEAD
-=======
 #include "xla/tsl/concurrency/future.h"
->>>>>>> upstream/master
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"

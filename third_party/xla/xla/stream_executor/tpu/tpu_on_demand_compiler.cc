@@ -156,24 +156,6 @@ class TpuCompiler : public Compiler {
     }
 
     std::vector<std::unique_ptr<Executable>> executables;
-<<<<<<< HEAD
-    for (int i = 0; i < module_group->size(); ++i) {
-      // We get the HloModule from the compiled executable, rather than reusing
-      // the input module from 'module_group', in case the module changed in
-      // some way. For example, if the computation is automatically partitioned
-      // via XLA, the executable's module may have different input/output shapes
-      // than the input module.
-      XLA_HloModule c_module =
-          ExecutorApiFn()->TpuExecutable_HloModuleFn(se_executables[i]);
-      auto cleanup_c_module = absl::MakeCleanup(
-          [&c_module]() { ApiConverter::Destroy(&c_module); });
-      TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
-                          ApiConverter::FromC(c_module));
-      std::shared_ptr<HloModule> module_shared(module.release());
-      executables.emplace_back(std::make_unique<legacy::TpuExecutable>(
-          se_executables[i], std::move(module_shared)));
-    }
-=======
     // We get the HloModule from the compiled executable, rather than reusing
     // the input module in case the module changed in some way. For example,
     // if the computation is automatically partitioned via XLA, the
@@ -188,7 +170,6 @@ class TpuCompiler : public Compiler {
     std::shared_ptr<HloModule> module_shared(module.release());
     executables.emplace_back(std::make_unique<legacy::TpuExecutable>(
         se_executables[0], std::move(module_shared)));
->>>>>>> upstream/master
 
     stream_executor::tpu::SerializedProto_Free(se_module_group.proto);
     delete[] se_executables;

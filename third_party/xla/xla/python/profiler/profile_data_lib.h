@@ -25,10 +25,7 @@ limitations under the License.
 
 #include "absl/log/check.h"
 #include "nanobind/nanobind.h"
-<<<<<<< HEAD:third_party/xla/xla/python/profiler/profile_data_lib.h
-=======
 #include "google/protobuf/repeated_ptr_field.h"
->>>>>>> upstream/master:third_party/xla/xla/python/profiler/profile_data.h
 #include "tsl/platform/logging.h"
 #include "tsl/platform/protobuf.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"

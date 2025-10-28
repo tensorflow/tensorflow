@@ -144,29 +144,6 @@ module @result_unspecified_sharding attributes {ifrt.num_devices = 2, ifrt.compi
   }
 }
 
-<<<<<<< HEAD:third_party/xla/xla/python/ifrt/ir/tests/ifrt_lower_atom_program_metadata_to_xla.mlir
-// -----
-
-// CHECK-LABEL: @result_unspecified_sharding_sdy_partitioned
-module @result_unspecified_sharding_sdy_partitioned attributes {ifrt.num_devices = 2, ifrt.is_sdy_partitioned} {
-  // CHECK: -> (tensor<2x2xi32>
-  // CHECK-SAME: {
-  // CHECK-NOT:    mhlo.sharding
-  // CHECK-DAG:    ifrt.sharding = #ifrt.sharding_param<2x1 to [0] on 2>
-  // CHECK-SAME: }
-  // CHECK: tensor<2x2xi32> {ifrt.sharding = #ifrt.sharding_unspecified})
-  func.func @main()
-      -> (tensor<2x2xi32> {
-            ifrt.sharding=#ifrt.sharding_param<2x1 to [0] on 2>},
-          tensor<2x2xi32> {ifrt.sharding=#ifrt.sharding_unspecified}) {
-    %0 = mhlo.constant dense<1> : tensor<2x2xi32>
-    return %0, %0 : tensor<2x2xi32>, tensor<2x2xi32>
-  }
-}
-
-
-=======
->>>>>>> upstream/master:third_party/xla/xla/python/ifrt/ir/tests/ifrt_lower_atom_program_metadata_to_xla-gspmd_partitioned_compile_override.mlir
 // -----
 
 module @arg_missing_sharding attributes {ifrt.num_devices = 2, ifrt.compile_options_key = "test_override"} {
@@ -178,22 +155,7 @@ module @arg_missing_sharding attributes {ifrt.num_devices = 2, ifrt.compile_opti
 
 // -----
 
-<<<<<<< HEAD:third_party/xla/xla/python/ifrt/ir/tests/ifrt_lower_atom_program_metadata_to_xla.mlir
-// CHECK-LABEL: @arg_missing_sharding_sdy_partitioned
-module @arg_missing_sharding_sdy_partitioned attributes {ifrt.num_devices = 2, ifrt.is_sdy_partitioned} {
-  // CHECK: %arg0: tensor<2x2xi32>
-  // CHECK-NOT: mhlo.sharding
-  func.func @main(%arg0: tensor<2x2xi32>) {
-    return
-  }
-}
-
-// -----
-
-module @result_missing_sharding attributes {ifrt.num_devices = 2} {
-=======
 module @result_missing_sharding attributes {ifrt.num_devices = 2, ifrt.compile_options_key = "test_override"} {
->>>>>>> upstream/master:third_party/xla/xla/python/ifrt/ir/tests/ifrt_lower_atom_program_metadata_to_xla-gspmd_partitioned_compile_override.mlir
   // expected-error @+1 {{'func.func' op can't find `ifrt.sharding` attribute of output #0 to set `mhlo.sharding` attribute}}
   func.func @main() -> (tensor<2x2xi32>) {
      %0 = mhlo.constant dense<1> : tensor<2x2xi32>

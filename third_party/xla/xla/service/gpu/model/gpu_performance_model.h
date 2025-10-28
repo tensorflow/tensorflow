@@ -88,20 +88,12 @@ class GpuPerformanceModel : public GpuPerformanceModelBase {
 // owning model should be used.
 class GpuPerformanceModelOwning {
  public:
-<<<<<<< HEAD
-  explicit GpuPerformanceModelOwning(const se::DeviceDescription& device_info)
-      : fusion_analysis_cache_(device_info),
-        gpu_performance_model_(std::make_unique<GpuPerformanceModel>(
-            device_info, fusion_analysis_cache_,
-            gpu_performance_model_cache_)) {};
-=======
   GpuPerformanceModelOwning(const se::DeviceDescription& device_info,
                             SymbolicExprContext* symbolic_expr_context)
       : fusion_analysis_cache_(device_info),
         gpu_performance_model_(std::make_unique<GpuPerformanceModel>(
             device_info, fusion_analysis_cache_, gpu_performance_model_cache_,
             symbolic_expr_context)) {};
->>>>>>> upstream/master
 
   GpuPerformanceModel& Get() const { return *gpu_performance_model_; }
 

@@ -66,10 +66,7 @@ cc_library(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status:statusor",
-<<<<<<< HEAD
-=======
         "@com_google_protobuf//:protobuf",
->>>>>>> upstream/master
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:AffineDialect",
         "@llvm-project//mlir:AffineUtils",

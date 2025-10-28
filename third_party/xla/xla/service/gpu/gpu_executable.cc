@@ -45,13 +45,9 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/nvshmem_collective_thunk.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
-<<<<<<< HEAD
-#include "xla/backends/gpu/runtime/thunk_pass_pipeline.h"
-=======
 #include "xla/backends/gpu/runtime/thunk_checksum_tracing_pass.h"
 #include "xla/backends/gpu/runtime/thunk_pass_pipeline.h"
 #include "xla/core/collectives/clique_key.h"
->>>>>>> upstream/master
 #include "xla/executable_run_options.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -177,15 +173,6 @@ static absl::flat_hash_set<ExecutionStreamId> GetExecutionStreamIds(
 static absl::Status RunThunkPasses(const DebugOptions& debug_options,
                                    const se::DeviceDescription& device_info,
                                    SequentialThunk* root_thunk,
-<<<<<<< HEAD
-                                   HloModule* hlo_module) {
-  ThunkPassPipeline pipeline("thunk-passes");
-  if (debug_options.xla_gpu_experimental_enable_command_buffer_on_thunks()) {
-    pipeline.AddPass(std::make_unique<CommandBufferConversionPass>());
-  }
-  TF_ASSIGN_OR_RETURN(bool changed,
-                      pipeline.Run(root_thunk, debug_options, device_info));
-=======
                                    HloModule* hlo_module,
                                    ThunkPassBufferAllocator& allocator) {
   ThunkPassPipeline pipeline("thunk-passes");
@@ -199,7 +186,6 @@ static absl::Status RunThunkPasses(const DebugOptions& debug_options,
   TF_ASSIGN_OR_RETURN(bool changed,
                       pipeline.Run(root_thunk, debug_options, hlo_module,
                                    device_info, allocator));
->>>>>>> upstream/master
   if (changed) {
     VLOG(3) << "Thunk passes changed the thunk tree.";
     if (hlo_module && DumpingEnabledForHloModule(*hlo_module)) {
@@ -209,8 +195,6 @@ static absl::Status RunThunkPasses(const DebugOptions& debug_options,
           root_thunk->ToString(/*indent=*/0));
     }
   }
-<<<<<<< HEAD
-=======
 
   if (hlo_module && DumpingEnabledForHloModule(*hlo_module)) {
     ThunkMetadataListProto metadata_list_proto =
@@ -219,18 +203,11 @@ static absl::Status RunThunkPasses(const DebugOptions& debug_options,
                                 "thunk_metadata");
   }
 
->>>>>>> upstream/master
   return absl::OkStatus();
 }
 
 absl::StatusOr<std::unique_ptr<GpuExecutable>> GpuExecutable::Create(
     Params params) {
-<<<<<<< HEAD
-  TF_RETURN_IF_ERROR(
-      RunThunkPasses(params.debug_options, params.device_description,
-                     params.executable.get(), params.debug_module.get()));
-  return std::unique_ptr<GpuExecutable>(new GpuExecutable(std::move(params)));
-=======
   int64_t next_idx = 0;
   if (params.mlir_allocations.has_value()) {
     next_idx = params.mlir_allocations->size();
@@ -246,7 +223,6 @@ absl::StatusOr<std::unique_ptr<GpuExecutable>> GpuExecutable::Create(
 
   return std::unique_ptr<GpuExecutable>(new GpuExecutable(
       std::move(params), std::move(allocator.MutableAllocations())));
->>>>>>> upstream/master
 }
 
 // Implementation note: HLO profiling is always enabled for GPU executables,

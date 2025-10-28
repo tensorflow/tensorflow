@@ -34,28 +34,6 @@ namespace {
 
 bool DimensionRequiresPadding(const int64_t size, const PrimitiveType data_type,
                               const se::GpuComputeCapability& gpu_cc) {
-<<<<<<< HEAD
-  return std::visit(
-      absl::Overload(
-          [&](const se::CudaComputeCapability& cc) {
-            for (const auto& req : CublasPaddingRequirements) {
-              if (cc.SupportsAllFeaturesOf(req.min_compute_capability) &&
-                  data_type == req.data_type && size % req.multiple_of != 0) {
-                return true;
-              }
-            }
-            return false;
-          },
-          [&](const se::RocmComputeCapability& cc) {
-            for (const auto& req : HipblasPaddingRequirements) {
-              if (data_type == req.data_type && size % req.multiple_of != 0) {
-                return true;
-              }
-            }
-            return false;
-          }),
-      gpu_cc);
-=======
   if (const se::CudaComputeCapability* cc = gpu_cc.cuda_compute_capability()) {
     for (const auto& req : CublasPaddingRequirements) {
       if (cc->SupportsAllFeaturesOf(req.min_compute_capability) &&
@@ -74,7 +52,6 @@ bool DimensionRequiresPadding(const int64_t size, const PrimitiveType data_type,
     return false;
   }
   return false;
->>>>>>> upstream/master
 }
 
 bool ShapeRequiresPadding(const Shape& shape, int batch_dimensions_size,

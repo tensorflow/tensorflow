@@ -330,15 +330,10 @@ class CoordinationServiceAgent {
   // If a task fails and restarts, for example, it will have a different
   // incarnation id before and after it fails. This allows us to distinguish
   // different executions of the same task.
-<<<<<<< HEAD
-  absl::StatusOr<std::vector<IncarnationId>> Incarnations(
-      absl::Span<const int> tasks) const;
-=======
   absl::flat_hash_map<int, IncarnationId> Incarnations() const {
     absl::MutexLock lock(incarnations_mu_);
     return incarnations_;
   }
->>>>>>> upstream/master
 
   // Get unowned Env* that the agent was initialized with.
   absl::StatusOr<Env*> GetEnv();

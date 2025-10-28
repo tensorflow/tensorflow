@@ -93,17 +93,10 @@ void RegisterAllHloDialects(mlir::DialectRegistry& registry) {
   mlir::stablehlo::registerAllDialects(registry);
 }
 
-<<<<<<< HEAD
-absl::Status MlirToXlaComputation(mlir::ModuleOp module,
-                                  XlaComputation& xla_computation,
-                                  bool use_tuple_args, bool return_tuple,
-                                  ExecutableBuildOptions* exec_build_options) {
-=======
 absl::Status MlirToXlaComputation(
     mlir::ModuleOp module, XlaComputation& xla_computation, bool use_tuple_args,
     bool return_tuple, ExecutableBuildOptions* exec_build_options,
     const ChloLegalizeToHighLevelMhloPassOptions& chlo_opts) {
->>>>>>> upstream/master
   mlir::MLIRContext* context = module->getContext();
   mlir::BaseScopedDiagnosticHandler diagnostic_handler(context);
   {

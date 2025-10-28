@@ -172,11 +172,8 @@ cc_library(
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/base:no_destructor",
-<<<<<<< HEAD
-=======
         "@com_google_absl//absl/log:absl_check",
         "@com_google_absl//absl/log:absl_log",
->>>>>>> upstream/master
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",

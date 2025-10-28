@@ -643,13 +643,6 @@ absl::StatusOr<HloSchedule> ScheduleGpuModuleWithMemoryScheduler(
     }
     return ShapeUtil::ByteSizeOf(shape, pointer_size);
   };
-<<<<<<< HEAD
-  return ScheduleModule(
-      module,
-      DefaultMemoryScheduler(alias_info, size_func, PostProcessSchedule),
-      /*execution_threads=*/{HloInstruction::kMainExecutionThread},
-      peak_memory_bytes);
-=======
   return ScheduleModule(module,
                         DefaultMemoryScheduler(alias_info, std::move(size_func),
                                                PostProcessSchedule),
@@ -657,7 +650,6 @@ absl::StatusOr<HloSchedule> ScheduleGpuModuleWithMemoryScheduler(
                         {HloInstruction::kMainExecutionThread,
                          StreamAttributeAsyncWrapper::kParallelExecutionThread},
                         peak_memory_bytes);
->>>>>>> upstream/master
 }
 
 }  // end namespace

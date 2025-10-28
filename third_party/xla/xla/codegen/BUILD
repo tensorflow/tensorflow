@@ -176,10 +176,6 @@ cc_library(
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/utils:hlo_traversal",
-<<<<<<< HEAD
-        "@com_google_absl//absl/container:inlined_vector",
-        "@com_google_absl//absl/functional:any_invocable",
-=======
         "//xla/service:buffer_assignment",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
@@ -207,7 +203,6 @@ xla_cc_test(
         "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:status_matchers",
         "@local_tsl//tsl/platform:test",
->>>>>>> upstream/master
     ],
 )
 
@@ -226,10 +221,7 @@ cc_library(
         "//xla/codegen/intrinsic:rsqrt",
         "//xla/codegen/intrinsic:string_interner",
         "//xla/codegen/intrinsic:tanh",
-<<<<<<< HEAD
-=======
         "//xla/codegen/intrinsic:type",
->>>>>>> upstream/master
         "//xla/codegen/intrinsic:vec_name_mangler",
         "//xla/service/llvm_ir:llvm_util",
         "@com_google_absl//absl/container:flat_hash_map",

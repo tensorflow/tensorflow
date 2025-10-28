@@ -46,10 +46,6 @@ limitations under the License.
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/executable.h"
-<<<<<<< HEAD
-#include "xla/python/ifrt/future.h"
-=======
->>>>>>> upstream/master
 #include "xla/python/ifrt/ir/compiled_ifrt_ir_program.h"
 #include "xla/python/ifrt/ir/constants.h"
 #include "xla/python/ifrt/ir/ifrt_dialect.h"
@@ -60,10 +56,7 @@ limitations under the License.
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/status_macros.h"
-<<<<<<< HEAD
-=======
 #include "xla/tsl/concurrency/future.h"
->>>>>>> upstream/master
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
@@ -182,11 +175,7 @@ struct Environment {
   bool fill_status;
   // Contains a future for each ifrt.CallOp that is a leaf (i.e., has no outputs
   // or all its outputs are returned from the program).
-<<<<<<< HEAD
-  std::vector<xla::ifrt::Future<>> leaf_call_op_futures;
-=======
   std::vector<tsl::Future<>> leaf_call_op_futures;
->>>>>>> upstream/master
 };
 
 absl::StatusOr<std::unique_ptr<ProgramInterpreter>> ProgramInterpreter::Create(
@@ -272,11 +261,7 @@ absl::StatusOr<ExecuteResult> ProgramInterpreter::Execute(
   VLOG(2) << "Finished interpreting program: " << program_->program_name;
   ExecuteResult result;
   if (env.fill_status) {
-<<<<<<< HEAD
-    result.status = JoinFutures(absl::MakeSpan(env.leaf_call_op_futures));
-=======
     result.status = tsl::JoinFutures(absl::MakeSpan(env.leaf_call_op_futures));
->>>>>>> upstream/master
   }
   result.outputs = std::move(env.outputs);
   return result;

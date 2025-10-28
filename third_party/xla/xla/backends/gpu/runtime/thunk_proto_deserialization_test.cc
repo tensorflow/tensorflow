@@ -377,12 +377,7 @@ TEST(ThunkProtoDeserializationTest, WaitForStreamsThunk) {
 }
 
 TEST(ThunkProtoDeserializationTest, CudnnThunk) {
-<<<<<<< HEAD
-  ThunkProto proto;
-  CHECK(tsl::protobuf::TextFormat::ParseFromString(
-=======
   ThunkProto proto = ParseTextProtoOrDie<ThunkProto>(
->>>>>>> upstream/master
       R"pb(
         thunk_info { execution_stream_id: 7 }
         cudnn_thunk {
@@ -390,12 +385,7 @@ TEST(ThunkProtoDeserializationTest, CudnnThunk) {
           args { buffer_allocation_index: 0 }
           args { buffer_allocation_index: 1 }
         }
-<<<<<<< HEAD
-      )pb",
-      &proto));
-=======
       )pb");
->>>>>>> upstream/master
   std::vector<BufferAllocation> buffer_allocations = {
       BufferAllocation(/*index=*/0, /*size=*/1024, /*color=*/0),
       BufferAllocation(/*index=*/1, /*size=*/1024, /*color=*/0),
@@ -408,8 +398,6 @@ TEST(ThunkProtoDeserializationTest, CudnnThunk) {
   EXPECT_THAT(round_trip_proto, EqualsProto(proto));
 }
 
-<<<<<<< HEAD
-=======
 TEST(ThunkProtoDeserializationTest, CublasLtMatmulThunk) {
   ThunkProto proto = ParseTextProtoOrDie<ThunkProto>(
       R"pb(
@@ -475,7 +463,6 @@ TEST(ThunkProtoDeserializationTest, CublasLtMatmulThunk) {
   EXPECT_THAT(round_trip_proto, EqualsProto(proto));
 }
 
->>>>>>> upstream/master
 TEST(ThunkProtoDeserializationTest, EmptyThunkImplReturnsAnError) {
   ThunkProto proto = ParseTextProtoOrDie<ThunkProto>(
       R"pb(

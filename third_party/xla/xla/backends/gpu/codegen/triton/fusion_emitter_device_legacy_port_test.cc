@@ -267,11 +267,7 @@ ENTRY e {
       CreateTritonIrAndFileCheck(*module_and_metadata.computation,
                                  module_and_metadata.block_level_parameters,
                                  R"(
-<<<<<<< HEAD
-CHECK: %[[LOAD:.*]] = triton_xla.extract {{.*}} : tensor<16x16xi8>
-=======
 CHECK: %[[LOAD:.*]] = xtile.extract {{.*}} -> tensor<16x16xi8>
->>>>>>> upstream/master
 CHECK: %[[TRUNCI:.*]] = arith.trunci %[[LOAD]] : tensor<16x16xi8> to tensor<16x16xi1>
 CHECK: %{{.*}} = arith.andi %[[TRUNCI]], %{{.*}} : tensor<16x16xi1>
 )"));
@@ -363,11 +359,7 @@ ENTRY e {
     CHECK: %[[V2:.*]] = tensor.extract %[[ARG2]][] : tensor<i32>
     CHECK: %[[CLAMP0:.*]] = arith.maxsi %[[V2]], %[[c0]] : i32
     CHECK: %[[CLAMP1:.*]] = arith.minsi %[[CLAMP0]], %[[c3]] : i32
-<<<<<<< HEAD
-    CHECK: %[[OFFSET:.*]] = arith.index_castui %[[CLAMP1]] : i32 to index
-=======
     CHECK: %[[OFFSET:.*]] = arith.index_cast %[[CLAMP1]] : i32 to index
->>>>>>> upstream/master
     CHECK: triton_xla.extract from %[[ARG1]] {{.*}} [%[[OFFSET]], 0, 0] [1, 32, 32] [0, 1, 1]
     CHECK: tt.dot
   )"));
@@ -525,22 +517,13 @@ ENTRY entry {
 
   const HloFusionInstruction* fusion1 = Cast<HloFusionInstruction>(
       module1_and_metadata.computation->FusionInstruction());
-<<<<<<< HEAD
-  EXPECT_THAT(TritonWrapper("test_fn", fusion1, cc, device_info,
-                            module1_and_metadata.block_level_parameters,
-                            &llvm_module, mlir_context),
-              absl_testing::StatusIs(
-                  tsl::error::RESOURCE_EXHAUSTED,
-                  ::testing::HasSubstr("Shared memory size limit exceeded")));
-=======
-  EXPECT_THAT(
+    EXPECT_THAT(
       TritonWrapper("test_fn", fusion1, se::GpuComputeCapability{cc},
                     device_info, module1_and_metadata.block_level_parameters,
                     &llvm_module, symbolic_expr_context_),
       absl_testing::StatusIs(
           tsl::error::RESOURCE_EXHAUSTED,
           ::testing::HasSubstr("Shared memory size limit exceeded")));
->>>>>>> upstream/master
 
   TF_ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module2_and_metadata,
                           GetModuleAndNestedFusionMetadata(absl::Substitute(
@@ -885,20 +868,12 @@ ENTRY entry {
 
   const HloFusionInstruction* fusion1 = Cast<HloFusionInstruction>(
       module1_and_metadata.computation->FusionInstruction());
-<<<<<<< HEAD
-  EXPECT_THAT(TritonWrapper("test_fn", fusion1, cc, device_info,
-                            module1_and_metadata.block_level_parameters,
-                            &llvm_module, mlir_context),
-              absl_testing::StatusIs(tsl::error::RESOURCE_EXHAUSTED,
-                                     "Tiling complexity heuristic exceeded"));
-=======
   EXPECT_THAT(
       TritonWrapper("test_fn", fusion1, se::GpuComputeCapability{cc},
                     device_info, module1_and_metadata.block_level_parameters,
                     &llvm_module, symbolic_expr_context_),
       absl_testing::StatusIs(tsl::error::RESOURCE_EXHAUSTED,
                              "Tiling complexity heuristic exceeded"));
->>>>>>> upstream/master
 
   // Succeeds if the tiling is not too complex.
   TF_ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module2_and_metadata,

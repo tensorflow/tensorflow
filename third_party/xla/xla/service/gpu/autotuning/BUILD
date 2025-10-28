@@ -336,10 +336,7 @@ xla_test(
     tags = ["cuda-only"],
     deps = [
         ":autotuner_pass",
-<<<<<<< HEAD
-=======
         "//xla/backends/autotuner",
->>>>>>> upstream/master
         "//xla/backends/autotuner:autotuner_cache_proto_cc",
         "//xla/backends/autotuner:codegen_backend",
         "//xla/backends/gpu/autotuner:cublas",
@@ -347,11 +344,8 @@ xla_test(
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/service:platform_util",
         "//xla/service/gpu:backend_configs_cc",
-<<<<<<< HEAD
-=======
         "//xla/service/gpu:cublas_cudnn",
         "//xla/service/gpu:gpu_compiler",
->>>>>>> upstream/master
         "//xla/service/gpu:nvptx_compiler_impl",
         "//xla/stream_executor:device_memory_allocator",
         "//xla/stream_executor:platform_manager",
@@ -363,17 +357,10 @@ xla_test(
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
-<<<<<<< HEAD
-        "@com_google_absl//absl/strings",
-        "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:path",
-        "@local_tsl//tsl/platform:status",
-=======
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:path",
->>>>>>> upstream/master
     ],
 )
 
@@ -739,12 +726,8 @@ cc_library(
         "//xla/backends/gpu/autotuner:legacy_cache",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
-<<<<<<< HEAD
-        "//xla/service/gpu:cublas_cudnn",
-=======
         "//xla/service:compiler",
         "//xla/stream_executor:device_description",
->>>>>>> upstream/master
         "//xla/stream_executor:device_memory_allocator",
         "//xla/stream_executor:stream_executor_h",
         "//xla/tsl/platform:env",

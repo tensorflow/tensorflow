@@ -45,13 +45,9 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
-<<<<<<< HEAD
-#include "xla/hlo/utils/hlo_longest_prefix.h"
-=======
 #include "xla/hlo/transforms/simplifiers/computation_canonicalizers.h"
 #include "xla/hlo/utils/hlo_longest_prefix.h"
 #include "xla/hlo/utils/hlo_traversal.h"
->>>>>>> upstream/master
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"

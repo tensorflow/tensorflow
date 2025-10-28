@@ -381,44 +381,10 @@ RocmBandwidthSettings CreateSettings(
 }  // namespace
 
 /*static*/ bool GpuPerformanceWithCollectiveModel::InitNvml() {
-<<<<<<< HEAD
-#if GOOGLE_CUDA && defined(PLATFORM_POSIX) && !defined(PLATFORM_GOOGLE)
-  void* libhandle = dlopen("libnvidia-ml.so.1", RTLD_NOW);
-  CHECK(libhandle != nullptr) << "Failed to open libnvidia-ml.so.1";
-
-  struct SymbolEntry {
-    void** functor;
-    char const* name;
-  };
-
-  std::vector<SymbolEntry> symbols = {
-      {(void**)&xla_nvmlInit, "nvmlInit_v2"},
-      {(void**)&xla_nvmlShutdown, "nvmlShutdown"},
-      {(void**)&xla_nvmlDeviceGetHandleByIndex, "nvmlDeviceGetHandleByIndex"},
-      {(void**)&xla_nvmlDeviceGetNvLinkCapability,
-       "nvmlDeviceGetNvLinkCapability"},
-      {(void**)&xla_nvmlSystemGetNVMLVersion, "nvmlSystemGetNVMLVersion"},
-  };
-#if GOOGLE_CUDA && CUDA_VERSION >= 12040
-  symbols.push_back({(void**)&xla_nvmlDeviceGetHandleByPciBusId_v2,
-                     "nvmlDeviceGetHandleByPciBusId_v2"});
-  symbols.push_back({(void**)&xla_nvmlDeviceGetGpuFabricInfoV,
-                     "nvmlDeviceGetGpuFabricInfoV"});
-#endif  // CUDA_VERSION >= 12040
-  for (SymbolEntry se : symbols) {
-    *se.functor = dlsym(libhandle, se.name);
-    if (*se.functor == nullptr) {
-      const char* dlsym_error = dlerror();
-      if (dlsym_error) {
-        LOG(WARNING) << dlsym_error;
-      }
-    }
-=======
 #if GOOGLE_CUDA && (defined(PLATFORM_POSIX) || defined(PLATFORM_GOOGLE))
   nvmlReturn_t init_result = nvmlInit();
   if (init_result != NVML_SUCCESS) {
     LOG(ERROR) << "NVML init failed with " << init_result;
->>>>>>> upstream/master
   }
   return init_result == NVML_SUCCESS;
 #elif TENSORFLOW_USE_ROCM

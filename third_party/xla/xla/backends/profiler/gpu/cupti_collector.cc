@@ -680,10 +680,7 @@ class EventInQueue {
 
 void PmSamples::PopulateCounterLine(XPlaneBuilder* plane,
                                     uint64_t start_gpu_time_ns) {
-<<<<<<< HEAD
-=======
   absl::flat_hash_map<std::string, int> skipped_nan_count_per_metric;
->>>>>>> upstream/master
   XLineBuilder line = plane->GetOrCreateCounterLine();
   std::vector<std::pair<XEventMetadata*, XStatMetadata*>> counter_metadata;
   counter_metadata.reserve(metrics_.size());
@@ -723,15 +720,6 @@ const std::vector<std::string>& PmSamples::GetMetrics() const {
   return metrics_;
 }
 
-<<<<<<< HEAD
-size_t PmSamples::GetNumSamples() const { return sampler_ranges_.size(); }
-
-const std::vector<std::string>& PmSamples::GetMetrics() const {
-  return metrics_;
-}
-
-=======
->>>>>>> upstream/master
 const std::vector<SamplerRange>& PmSamples::GetSamplerRanges() const {
   return sampler_ranges_;
 }

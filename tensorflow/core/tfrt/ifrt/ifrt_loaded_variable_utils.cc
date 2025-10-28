@@ -104,11 +104,7 @@ absl::Status AsyncLoadRestoredTensorAsIfrtLoadedVariable(
     return absl::OkStatus();
   }
 
-<<<<<<< HEAD
-  xla::ifrt::Future<tensorflow::Tensor> restored_tensor_future =
-=======
   tsl::Future<tensorflow::Tensor> restored_tensor_future =
->>>>>>> upstream/master
       restore_tensor_registry.GetRestoredTensor(tensor_name);
   if (!restored_tensor_future.IsValid()) {
     return absl::InternalError(absl::StrCat(

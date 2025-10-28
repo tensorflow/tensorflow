@@ -177,19 +177,9 @@ TEST_F(HloPassFixTest, RunModuleToNonDefaultEarlyExit) {
   // TODO(b/395958361): HloPassFix lies about whether it changed the module if
   // it terminates due to hitting the iteration limit.
   EXPECT_FALSE(changed);
-<<<<<<< HEAD
-
-  // But don't lie when crash_on_hlo_pass_silent_hlo_change is set.
-  module->mutable_config()
-      .mutable_debug_options()
-      .set_xla_unsupported_crash_on_hlo_pass_silent_hlo_change(true);
-  TF_ASSERT_OK_AND_ASSIGN(changed, pass.Run(module.get()));
-  EXPECT_TRUE(changed);
-=======
   HloInstruction* root = module->entry_computation()->root_instruction();
   ASSERT_EQ(root->opcode(), HloOpcode::kConstant);
   EXPECT_EQ(root->literal().GetFirstElement<int32_t>(), 20);
->>>>>>> upstream/master
 }
 
 }  // namespace

@@ -357,9 +357,6 @@ int main(int argc, char* argv[]) {
   xla::gpu::DeviceHloInstructionProfiles result = table_gen.ComputeTable();
   auto compact_result = MatmulPerfTableGen::Compact(result);
   CHECK_OK(compact_result.status());
-<<<<<<< HEAD
-  CHECK_OK(table_gen.Dump(*compact_result));
-=======
 
   // Merge with previous results if any.
   xla::GemmPerfTable perf_table;
@@ -375,7 +372,6 @@ int main(int argc, char* argv[]) {
 
   // Dump results.
   CHECK_OK(table_gen.Dump(perf_table));
->>>>>>> upstream/master
 
   return 0;
 }

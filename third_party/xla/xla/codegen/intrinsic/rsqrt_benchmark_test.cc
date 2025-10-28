@@ -42,10 +42,7 @@ limitations under the License.
 
 namespace xla::codegen::intrinsic {
 
-<<<<<<< HEAD:third_party/xla/xla/codegen/intrinsic/rsqrt_benchmark_test.cc
-=======
 using ::xla::codegen::intrinsics::DeviceType;
->>>>>>> upstream/master:third_party/xla/xla/codegen/math/rsqrt_benchmark_test.cc
 using ::xla::codegen::intrinsics::Rsqrt;
 using ::xla::codegen::intrinsics::Type;
 
@@ -70,12 +67,6 @@ JitRunner CreateJitRunnerWithRsqrt(Type type) {
   auto module = std::make_unique<llvm::Module>("test_module", *context);
   std::unique_ptr<llvm::TargetMachine> target_machine =
       xla::codegen::intrinsic::CreateHostTargetMachine();
-<<<<<<< HEAD:third_party/xla/xla/codegen/intrinsic/rsqrt_benchmark_test.cc
-  llvm::Function* rsqrt_func =
-      Rsqrt::CreateDefinition(
-          module.get(), {target_machine->getTargetFeatureString().str(), false},
-          type)
-=======
   const auto features = target_machine->getTargetFeatureString().str();
   DeviceType device_type = absl::StrContains(features, "+sse4a")
                                ? DeviceType::kAmdCpu
@@ -83,7 +74,6 @@ JitRunner CreateJitRunnerWithRsqrt(Type type) {
   llvm::Function* rsqrt_func =
       Rsqrt::CreateDefinition(module.get(), {features, device_type, false},
                               type)
->>>>>>> upstream/master:third_party/xla/xla/codegen/math/rsqrt_benchmark_test.cc
           .value();
   rsqrt_func->setLinkage(llvm::Function::ExternalLinkage);
   CreateOneOverSqrt(*context, *module, Type::TypeToIrType(type, *context));

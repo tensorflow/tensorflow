@@ -45,12 +45,8 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_sharding.h"
-<<<<<<< HEAD
-#include "xla/hlo/testlib/verified_hlo_module.h"
-=======
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/pattern_matcher_gmock.h"
->>>>>>> upstream/master
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
@@ -1490,13 +1486,8 @@ TEST_F(CollectiveOpsTestE2E, HostMemoryOffloadingWithDonation) {
       /*param_index=*/{},
       /*kind=*/HloInputOutputAliasConfig::AliasKind::kMustAlias));
 
-<<<<<<< HEAD
-  auto executable_or =
-      CreateExecutable(std::move(module), /*run_hlo_passes=*/false);
-=======
   auto executable_or = hlo_runner_->CreateExecutable(std::move(module),
                                                      /*run_hlo_passes=*/false);
->>>>>>> upstream/master
 
   EXPECT_FALSE(executable_or.ok())
       << "Expected buffer assignment error but compilation succeeded";
@@ -1514,15 +1505,9 @@ class CollectiveOpsTestE2EShardedUnsharded : public CollectiveOpsTestE2E {
   void CollectiveOpsCompareShardedUnsharded(const std::string& hlo_text,
                                             const int64_t num_partitions = 2) {
     const int64_t num_replicas = 1;
-<<<<<<< HEAD
-    if (test_runner().device_count() < num_replicas * num_partitions) {
-      GTEST_SKIP() << "Test requires at least " << num_replicas * num_partitions
-                   << " devices (" << test_runner().device_count()
-=======
     if (hlo_runner_->device_count() < num_replicas * num_partitions) {
       GTEST_SKIP() << "Test requires at least " << num_replicas * num_partitions
                    << " devices (" << hlo_runner_->device_count()
->>>>>>> upstream/master
                    << " available)";
     }
 
@@ -1569,17 +1554,10 @@ class CollectiveOpsTestE2EShardedUnsharded : public CollectiveOpsTestE2E {
     DeviceAssignment ref_assn(/*replica_count=*/1,
                               /*computation_count=*/1);
     ref_assn(0, 0) = 0;
-<<<<<<< HEAD
-    return HloTestBase::ExecuteReplicated(std::move(ref_module), ref_fake_ptrs,
-                                          /*num_replicas=*/1, &ref_assn,
-                                          /*run_hlo_passes=*/true,
-                                          /*use-threads=*/true);
-=======
     return ExecuteReplicated(std::move(ref_module), ref_fake_ptrs,
                              /*num_replicas=*/1, &ref_assn,
                              /*run_hlo_passes=*/true,
                              /*use_threads=*/true);
->>>>>>> upstream/master
   }
 
   // Execute the sharded case.
@@ -1654,15 +1632,9 @@ class CollectiveOpsTestE2EShardedUnsharded : public CollectiveOpsTestE2E {
     for (int64_t i = 0; i < num_partitions; ++i) {
       assn(0, i) = i;
     }
-<<<<<<< HEAD
-    return HloTestBase::ExecuteReplicated(std::move(module), fake_ptrs,
-                                          num_partitions,
-                                          /*run_hlo_passes=*/true, &assn);
-=======
     return ExecuteReplicated(std::move(module), fake_ptrs, &assn,
                              num_partitions,
                              /*run_hlo_passes=*/true);
->>>>>>> upstream/master
   }
 
   // Slice the unsharded reference results and compare to the sharded case.
@@ -1814,8 +1786,6 @@ ENTRY entry {
   CollectiveOpsCompareShardedUnsharded(hlo_text, /*num_partitions=*/4);
 }
 
-<<<<<<< HEAD
-=======
 TEST_F(CollectiveOpsTestE2EShardedUnsharded, BlockScaledDotBatchAndBatch) {
   const std::string hlo_text = R"(
 HloModule module, entry_computation_layout={(f8e4m3fn[4,16,64]{2,1,0}, f8e8m0fnu[4,16,2]{2,1,0}, f8e4m3fn[4,4,64]{2,1,0}, f8e8m0fnu[4,4,2]{2,1,0})->f32[4,16,4]{2,1,0}}, num_partitions=2
@@ -1920,7 +1890,6 @@ ENTRY entry {
   CollectiveOpsCompareShardedUnsharded(hlo_text, /*num_partitions=*/4);
 }
 
->>>>>>> upstream/master
 // E2E tests comparing the results of windowed einsum and non-windowed cases.
 class CollectiveOpsTestE2EWindowedNonWindowed : public CollectiveOpsTestE2E {
  public:
@@ -3604,7 +3573,7 @@ TEST_F(RaggedAllToAllMultiHostDecomposerTest, RaggedAllToAll_2GPUs_SliceSize1) {
     output_offsets = s32[32] parameter(4)
     recv_sizes = s32[32] parameter(5)
     ROOT ra2a = f32[512,5,32] ragged-all-to-all(input, output,
-      input_offsets, send_sizes, output_offsets, recv_sizes), 
+      input_offsets, send_sizes, output_offsets, recv_sizes),
       replica_groups={{0,1}}
   })";
 
@@ -3655,7 +3624,7 @@ TEST_F(RaggedAllToAllMultiHostDecomposerTest, RaggedAllToAll_8GPUs_SliceSize4) {
     output_offsets = s32[32] parameter(4)
     recv_sizes = s32[32] parameter(5)
     ROOT ra2a = f32[512,5,32] ragged-all-to-all(input, output,
-      input_offsets, send_sizes, output_offsets, recv_sizes), 
+      input_offsets, send_sizes, output_offsets, recv_sizes),
       replica_groups={{0,1,2,3,4,5,6,7}}
   })";
 
@@ -3709,7 +3678,7 @@ TEST_F(RaggedAllToAllMultiHostDecomposerTest,
     output_offsets = s32[32] parameter(4)
     recv_sizes = s32[32] parameter(5)
     ROOT ra2a = f32[512,5,32] ragged-all-to-all(input, output,
-      input_offsets, send_sizes, output_offsets, recv_sizes), 
+      input_offsets, send_sizes, output_offsets, recv_sizes),
       replica_groups={{0,2,4,6},{1,3,5,7}}
   })";
 

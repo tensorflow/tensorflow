@@ -38,13 +38,9 @@ namespace {
 
 TEST(DeviceInfoTest, DeviceInfoMatches) {
   absl::flat_hash_map<std::string, GpuDeviceInfoProto> gpu_specs;
-<<<<<<< HEAD
-  for (const std::string file_name : GPU_SPEC_FILE_NAMES) {
-=======
   for (const std::string file_name :
        {"a100_pcie_80", "a100_sxm_40", "a100_sxm_80", "a6000", "b200",
         "h100_pcie", "h100_sxm", "p100", "v100", "mi200"}) {
->>>>>>> upstream/master
     GpuTargetConfigProto proto;
     std::string spec_string;
     TF_ASSERT_OK(tsl::ReadFileToString(

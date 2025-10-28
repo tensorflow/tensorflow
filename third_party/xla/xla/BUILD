@@ -1239,10 +1239,7 @@ cc_library(
             "@com_google_absl//absl/status:statusor",
             "@com_google_absl//absl/strings",
             "@com_google_absl//absl/strings:str_format",
-<<<<<<< HEAD
-=======
             "@com_google_protobuf//:protobuf",
->>>>>>> upstream/master
             "@local_tsl//tsl/platform:platform_port",
         ],
 )
@@ -1267,10 +1264,6 @@ cc_library(
     visibility = internal_visibility([":friends"]),
     deps = [
         "//xla/backends/cpu:alignment",
-<<<<<<< HEAD
-        "//xla/tsl/util:safe_reinterpret_cast",
-=======
->>>>>>> upstream/master
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/base:dynamic_annotations",
     ],
@@ -1298,11 +1291,7 @@ xla_cc_test(
             "@com_google_absl//absl/status:statusor",
             "@com_google_absl//absl/strings",
             "@com_google_googletest//:gtest",
-<<<<<<< HEAD
-            "@local_tsl//tsl/platform:protobuf",
-=======
             "@com_google_protobuf//:protobuf_lite",
->>>>>>> upstream/master
         ],
 )
 

@@ -855,8 +855,6 @@ class GemmFusionVisitor : public DfsHloRewriteVisitor {
     return absl::OkStatus();
   }
 
-<<<<<<< HEAD
-=======
   absl::Status HandleScaledDot(HloInstruction* scaled_dot) override {
     CHECK_EQ(scaled_dot->opcode(), HloOpcode::kScaledDot);
     HloComputation::Builder builder(
@@ -897,7 +895,6 @@ class GemmFusionVisitor : public DfsHloRewriteVisitor {
     return absl::OkStatus();
   }
 
->>>>>>> upstream/master
  private:
   se::GpuComputeCapability gpu_version_;
 };

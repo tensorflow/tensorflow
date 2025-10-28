@@ -18,10 +18,7 @@ limitations under the License.
 #include <cstdint>
 #include <vector>
 
-<<<<<<< HEAD
-=======
 #include <gtest/gtest.h>
->>>>>>> upstream/master
 #include "absl/status/statusor.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/parser/hlo_parser.h"
@@ -31,13 +28,9 @@ limitations under the License.
 #include "xla/service/pattern_matcher.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
-<<<<<<< HEAD
-#include "xla/tsl/platform/statusor.h"
-=======
 #include "xla/stream_executor/device_description.pb.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
->>>>>>> upstream/master
 
 namespace xla {
 namespace gpu {

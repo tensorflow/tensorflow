@@ -221,20 +221,11 @@ class InterpreterLiteralWrapperBuffer final : public PjRtBuffer {
         }));
   }
 
-<<<<<<< HEAD
-  PjRtFuture<> LazyToLiteral(
-      absl::AnyInvocable<PjRtFuture<MutableLiteralBase*>() &&> generator)
-      override {
-    // Underlying buffer is always ready, so we can immediately call the
-    // generator.
-    PjRtFuture<MutableLiteralBase*> future = std::move(generator)();
-=======
   Future<> LazyToLiteral(
       absl::AnyInvocable<Future<MutableLiteralBase*>() &&> generator) override {
     // Underlying buffer is always ready, so we can immediately call the
     // generator.
     Future<MutableLiteralBase*> future = std::move(generator)();
->>>>>>> upstream/master
     const absl::StatusOr<MutableLiteralBase*>& literal = future.Await();
     if (!literal.ok()) {
       return Future<>(literal.status());

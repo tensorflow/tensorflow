@@ -433,10 +433,7 @@ cc_library(
     hdrs = ["collective_op_group_mode.h"],
     deps = [
         "//xla:util",
-<<<<<<< HEAD
-=======
         "//xla:xla_data_proto_cc",
->>>>>>> upstream/master
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
@@ -456,8 +453,6 @@ xla_cc_test(
 )
 
 xla_cc_test(
-<<<<<<< HEAD
-=======
     name = "dfs_hlo_visitor_test",
     srcs = ["dfs_hlo_visitor_test.cc"],
     deps = [
@@ -474,7 +469,6 @@ xla_cc_test(
 )
 
 xla_cc_test(
->>>>>>> upstream/master
     name = "hlo_original_value_test",
     srcs = ["hlo_original_value_test.cc"],
     deps = [

@@ -144,23 +144,13 @@ absl::Status RunAllToAllOnIndexBuffer(
 absl::Status RunRaggedAllToAll(
     int64_t ragged_row_element_size, int64_t num_total_updates,
     const std::vector<DeviceBufferPair>& original_buffers, se::Stream& stream,
-<<<<<<< HEAD
-    Communicator* comm, const std::vector<int64_t*>& ragged_metadata_allocs,
-=======
     Communicator* comm, absl::Span<int64_t* const> ragged_metadata_allocs,
->>>>>>> upstream/master
     const se::DeviceMemoryBase& output_offsets_device_buffer,
     bool use_symmetric_buffer) {
   int device_ordinal = stream.parent()->device_ordinal();
   VLOG(3) << "[" << device_ordinal
           << "] Performing ragged-all-to-all from device ordinal: "
           << device_ordinal;
-<<<<<<< HEAD
-  TF_RETURN_IF_ERROR(MaybeRegisterBuffers(stream.parent(), original_buffers,
-                                          comm, use_symmetric_buffer));
-
-=======
->>>>>>> upstream/master
   TF_ASSIGN_OR_RETURN(int32_t num_ranks, comm->NumRanks());
 
   std::vector<DeviceBufferPair> buffers = original_buffers;
@@ -318,21 +308,12 @@ absl::Status RendezvousAfterKernelFinish(
   return absl::OkStatus();
 }
 
-<<<<<<< HEAD
-absl::Status RunMemCpyRaggedAllToAll(
-    const GpuCliqueKey& clique_key, RankId rank,
-    int64_t ragged_row_element_size, int64_t num_total_updates,
-    const std::vector<DeviceBufferPair>& buffers, se::Stream& stream,
-    Communicator* comm, const std::vector<int64_t*>& ragged_metadata_allocs,
-    se::Event* start_event, se::Event* end_event) {
-=======
 }  // namespace
 
 absl::Status RaggedAllToAllStartThunk::RunMemCpyRaggedAllToAll(
     const GpuCliqueKey& clique_key, se::Stream& stream,
     const StreamState& state, absl::Span<DeviceBufferPair const> buffers,
     absl::Span<int64_t* const> ragged_metadata_allocs) {
->>>>>>> upstream/master
   int device_ordinal = stream.parent()->device_ordinal();
   const RankId& rank = state.rank;
   const int64_t num_ranks = clique_key.num_local_participants();
@@ -593,12 +574,8 @@ absl::StatusOr<bool> RaggedAllToAllStartThunk::RunCollective(
   TF_RETURN_IF_ERROR(RunRaggedAllToAll(
       config_.num_row_elements, config_.num_total_updates, device_buffers,
       stream, comm_handle.comm, ragged_metadata_allocs,
-<<<<<<< HEAD
-      output_offsets_device_buffer, config_.config.use_symmetric_buffer));
-=======
       state->output_offsets_device_buffer.memory(),
       config_.config.use_symmetric_buffer));
->>>>>>> upstream/master
   return true;
 }
 

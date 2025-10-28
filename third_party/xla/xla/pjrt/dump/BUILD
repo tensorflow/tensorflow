@@ -1,10 +1,6 @@
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("//xla:xla.default.bzl", "xla_cc_test")
-<<<<<<< HEAD
-load("//xla/tsl:tsl.default.bzl", "get_compatible_with_libtpu_portable")
-=======
 load("//xla/tsl:tsl.default.bzl", "get_compatible_with_libtpu_portable", "get_compatible_with_portable")
->>>>>>> upstream/master
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -16,11 +12,7 @@ cc_library(
     name = "dump",
     srcs = ["dump.cc"],
     hdrs = ["dump.h"],
-<<<<<<< HEAD
-    compatible_with = get_compatible_with_libtpu_portable(),
-=======
     compatible_with = (get_compatible_with_libtpu_portable() + get_compatible_with_portable()),
->>>>>>> upstream/master
     deps = [
         ":mlir",
         "//xla/pjrt:pjrt_compiler",
@@ -45,17 +37,11 @@ xla_cc_test(
     deps = [
         ":dump",
         "//xla:shape_util",
-<<<<<<< HEAD
-        "//xla/pjrt:pjrt_compiler",
-        "//xla/pjrt:pjrt_device_description",
-        "//xla/pjrt:pjrt_executable",
-=======
         "//xla:xla_data_proto_cc",
         "//xla/pjrt:pjrt_compiler",
         "//xla/pjrt:pjrt_device_description",
         "//xla/pjrt:pjrt_executable",
         "//xla/pjrt/proto:topology_description_proto_cc",
->>>>>>> upstream/master
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:statusor",
@@ -78,11 +64,7 @@ cc_library(
     name = "mlir",
     srcs = ["mlir.cc"],
     hdrs = ["mlir.h"],
-<<<<<<< HEAD
-    compatible_with = get_compatible_with_libtpu_portable(),
-=======
     compatible_with = (get_compatible_with_libtpu_portable() + get_compatible_with_portable()),
->>>>>>> upstream/master
     deps = [
         "//xla/tsl/platform:env",
         "@com_google_absl//absl/status",
@@ -94,11 +76,7 @@ cc_library(
 xla_cc_test(
     name = "mlir_test",
     srcs = ["mlir_test.cc"],
-<<<<<<< HEAD
-    compatible_with = get_compatible_with_libtpu_portable(),
-=======
     compatible_with = (get_compatible_with_libtpu_portable() + get_compatible_with_portable()),
->>>>>>> upstream/master
     deps = [
         ":mlir",
         "//xla/mlir_hlo",

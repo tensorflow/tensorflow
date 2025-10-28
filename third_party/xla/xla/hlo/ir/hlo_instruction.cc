@@ -1675,19 +1675,11 @@ HloInstruction::CreateTriangularSolve(const Shape& shape, HloInstruction* a,
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateScaledDot(
-<<<<<<< HEAD
-    const Shape& shape, HloInstruction* lhs, HloInstruction* lhs_scale,
-    HloInstruction* rhs, HloInstruction* rhs_scale,
-    const DotDimensionNumbers& dimension_numbers,
-    const PrecisionConfig& precision_config) {
-  return std::make_unique<HloScaledDotInstruction>(shape, lhs, lhs_scale, rhs,
-=======
     const Shape& shape, HloInstruction* lhs, HloInstruction* rhs,
     HloInstruction* lhs_scale, HloInstruction* rhs_scale,
     const DotDimensionNumbers& dimension_numbers,
     const PrecisionConfig& precision_config) {
   return std::make_unique<HloScaledDotInstruction>(shape, lhs, rhs, lhs_scale,
->>>>>>> upstream/master
                                                    rhs_scale, dimension_numbers,
                                                    precision_config);
 }
@@ -6013,14 +6005,6 @@ void HloInstruction::set_async_execution_thread(
 
 void HloInstruction::set_called_computations_execution_thread(
     absl::string_view async_execution_thread) {
-<<<<<<< HEAD
-  if (GetInstructionCallContext(this->opcode()) == CallContext::kEmbedded) {
-    // There is no need to set the thread name for embedded computations
-    // recursively, because they cannot be executed asynchronously.
-    return;
-  }
-=======
->>>>>>> upstream/master
   Cast<HloCallableInstruction>(this)->RecursivelySetComputationsThreadName(
       async_execution_thread);
 }

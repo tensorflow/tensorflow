@@ -301,11 +301,7 @@ TEST_F(CudaStreamTest, WaitForOtherStream) {
 
   EXPECT_THAT(stream1->RecordEvent(&event), absl_testing::IsOk());
   EXPECT_THAT(stream2->BlockHostUntilDone(), absl_testing::IsOk());
-<<<<<<< HEAD
-  absl::MutexLock lock(&mutex);
-=======
   absl::MutexLock lock(mutex);
->>>>>>> upstream/master
   EXPECT_THAT(execution_order,
               ElementsAre(ExecutionStage::kBeforeWaitForEvent,
                           ExecutionStage::kAfterWaitForEvent,

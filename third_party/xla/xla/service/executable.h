@@ -30,10 +30,6 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
-<<<<<<< HEAD
-#include "xla/debug_options_flags.h"
-=======
->>>>>>> upstream/master
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/computation_layout.h"

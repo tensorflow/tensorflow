@@ -40,19 +40,6 @@ class XnnMatcher : public LibraryMatcher {
 
   // Returns the set of supported HLO instructions.
   absl::flat_hash_set<HloOpcode> SupportedOps() const override {
-<<<<<<< HEAD
-    static const auto* kSupportedOps = []() {
-      static auto* supported_ops =
-          new absl::flat_hash_set<HloOpcode>{HloOpcode::kDot};
-      for (const auto& [op, _] : GetXnnUnaryOpMap()) {
-        supported_ops->insert(op);
-      }
-      for (const auto& [op, _] : GetXnnBinaryOpMap()) {
-        supported_ops->insert(op);
-      }
-      return supported_ops;
-    }();
-=======
     static const absl::NoDestructor<absl::flat_hash_set<HloOpcode>>
         kSupportedOps{[]() {
           absl::flat_hash_set<HloOpcode> supported_ops{
@@ -65,7 +52,6 @@ class XnnMatcher : public LibraryMatcher {
           }
           return supported_ops;
         }()};
->>>>>>> upstream/master
     return *kSupportedOps;
   }
 
@@ -76,11 +62,6 @@ class XnnMatcher : public LibraryMatcher {
           instr->dot_dimension_numbers(), instr->operand(0)->shape(),
           instr->operand(1)->shape(), instr->shape(), target_machine_features_);
     }
-<<<<<<< HEAD
-    if (instr->IsConstant()) {
-      return IsConstantSupportedByXnn(instr);
-    }
-=======
     if (instr->opcode() == HloOpcode::kReduce) {
       return IsReduceOpSupportedByXnn(instr);
     }
@@ -93,7 +74,6 @@ class XnnMatcher : public LibraryMatcher {
     if (fuse_reduce_) {
       return false;
     }
->>>>>>> upstream/master
     if (instr->IsElementwise()) {
       return IsElementwiseOpSupportedByXnn(instr);
     }
@@ -107,12 +87,9 @@ class XnnMatcher : public LibraryMatcher {
     if (fuse_dot_ && instr->opcode() == HloOpcode::kDot) {
       return true;
     }
-<<<<<<< HEAD
-=======
     if (fuse_reduce_ && instr->opcode() == HloOpcode::kReduce) {
       return true;
     }
->>>>>>> upstream/master
     return fuse_eltwise_ && instr->IsElementwise();
   }
 

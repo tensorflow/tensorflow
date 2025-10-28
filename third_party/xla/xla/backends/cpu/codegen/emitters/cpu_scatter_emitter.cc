@@ -92,21 +92,13 @@ namespace ma = ::mlir::arith;
 namespace scf = ::mlir::scf;
 
 std::vector<emitters::EpilogueSpecification> CpuScatterFusion::GetEpilogues(
-<<<<<<< HEAD
-    const HloFusionInstruction& fusion, mlir::MLIRContext* context) const {
-=======
     const HloFusionInstruction& fusion,
     gpu::SymbolicExprContext* symbolic_expr_context) const {
->>>>>>> upstream/master
   const auto* scatter = fusion_->fused_expression_root();
   // We don't actually support epilogues for scatter, but this is how we tell
   // the base class that we don't want it to generate code for the scatter.
   return {emitters::EpilogueSpecification::FromIdentityIndexing(
-<<<<<<< HEAD
-      scatter, scatter, context)};
-=======
       scatter, scatter, symbolic_expr_context)};
->>>>>>> upstream/master
 }
 
 std::optional<IndexingMap> CpuScatterFusion::ComputeThreadIdToOutputIndexing(
@@ -191,14 +183,6 @@ SmallVector<Value> EmitScatterComputation(
   return {atomic_rmw->getResult(0)};
 }
 
-<<<<<<< HEAD
-CpuScatterFusion::CpuScatterFusion(const BufferAssignment& buffer_assignment,
-                                   const HloFusionInstruction* fusion,
-                                   mlir::MLIRContext* context)
-    : buffer_assignment_(buffer_assignment),
-      fusion_(fusion),
-      context_(context) {
-=======
 CpuScatterFusion::CpuScatterFusion(
     const BufferAssignment& buffer_assignment,
     const HloFusionInstruction* fusion,
@@ -206,7 +190,6 @@ CpuScatterFusion::CpuScatterFusion(
     : buffer_assignment_(buffer_assignment),
       fusion_(fusion),
       symbolic_expr_context_(symbolic_expr_context) {
->>>>>>> upstream/master
   const auto* scatter = Cast<HloScatterInstruction>(
       fusion->fused_instructions_computation()->root_instruction());
   auto update_shape = scatter->scatter_updates().front()->shape();
@@ -269,11 +252,7 @@ IndexingMap GetScatterIndexingMap(
 }
 
 absl::StatusOr<MlirKernelDefinition> CpuScatterFusion::EmitKernelDefinition() {
-<<<<<<< HEAD
-  mlir::OpBuilder builder(context_);
-=======
   mlir::OpBuilder builder(symbolic_expr_context_->GetMLIRContext());
->>>>>>> upstream/master
   TF_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
                       CreateNamedMlirModuleOp(*fusion_, builder));
 
@@ -297,16 +276,10 @@ absl::StatusOr<MlirKernelDefinition> CpuScatterFusion::EmitKernelDefinition() {
                            std::string(module_name), buffer_assignment_));
 
   std::vector<emitters::EpilogueSpecification> epilogues =
-<<<<<<< HEAD
-      GetEpilogues(*fusion_, context_);
-  emitters::PartitionedComputations computations(
-      fusion_->fused_instructions_computation(), context_, epilogues);
-=======
       GetEpilogues(*fusion_, symbolic_expr_context_);
   emitters::PartitionedComputations computations(
       fusion_->fused_instructions_computation(), symbolic_expr_context_,
       epilogues);
->>>>>>> upstream/master
   TF_ASSIGN_OR_RETURN(
       emitters::CallTargetProvider call_targets,
       EmitCallTargets(mlir_module.get(), *fusion_, computations, epilogues));

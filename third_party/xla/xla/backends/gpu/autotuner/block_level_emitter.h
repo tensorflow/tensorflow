@@ -44,12 +44,6 @@ class BlockLevelEmitterBackend : public GpuCodegenBackend {
  public:
   explicit BlockLevelEmitterBackend(
       const DebugOptions* absl_nonnull debug_options,
-<<<<<<< HEAD
-      Compiler* absl_nonnull compiler, bool use_default_config = false)
-      : GpuCodegenBackend("BlockLevelEmitter", stream_executor, debug_options,
-                          compiler),
-        use_default_config_(use_default_config) {}
-=======
       Compiler* absl_nonnull compiler,
       HloCostAnalysis::ShapeSizeFunction shape_size_fn,
       const Compiler::TargetConfig* target_config,
@@ -58,7 +52,6 @@ class BlockLevelEmitterBackend : public GpuCodegenBackend {
                           target_config),
         use_default_config_(use_default_config),
         shape_size_fn_(std::move(shape_size_fn)) {}
->>>>>>> upstream/master
 
   // Returns all supported block-level tiling configurations for the given
   // instruction.
@@ -76,9 +69,6 @@ class BlockLevelEmitterBackend : public GpuCodegenBackend {
   // Determines whether the given HLO instruction is supported by this backend.
   bool IsSupported(const HloInstruction& instr);
 
-<<<<<<< HEAD
- private:
-=======
   // We don't want to use the Triton emitter as a reference because it can
   // produce wrong results.
   bool CanProduceWrongResults() const override { return true; }
@@ -86,19 +76,15 @@ class BlockLevelEmitterBackend : public GpuCodegenBackend {
  private:
   absl::StatusOr<BlockLevelFusionConfig> GetCostModelConfig(
       const HloInstruction& instr) const;
->>>>>>> upstream/master
   // If true, the backend will return a single default configuration in
   // GetSupportedConfigs instead of generating all supported configurations.
   // This is useful to autotune between different backends without increasing
   // compile time by too much. It will use the default config, likely already
   // assigned by the cost model.
   bool use_default_config_;
-<<<<<<< HEAD
-=======
   // A function which returns the size in bytes of the top-level buffer of a
   // shape.
   HloCostAnalysis::ShapeSizeFunction shape_size_fn_;
->>>>>>> upstream/master
 };
 
 }  // namespace gpu

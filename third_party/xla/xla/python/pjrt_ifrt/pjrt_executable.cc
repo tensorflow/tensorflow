@@ -657,10 +657,7 @@ PjRtLoadedExecutable::PjRtLoadedExecutable(
       output_dtypes_(std::move(output_dtypes)),
       output_shapes_(std::move(output_shapes)),
       output_shardings_(std::move(output_shardings)),
-<<<<<<< HEAD
-=======
       output_layouts_(std::move(output_layouts)),
->>>>>>> upstream/master
       user_context_(UserContextScope::current()) {}
 
 PjRtLoadedExecutable::~PjRtLoadedExecutable() = default;

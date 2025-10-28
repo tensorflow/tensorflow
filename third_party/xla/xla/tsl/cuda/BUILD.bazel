@@ -409,8 +409,6 @@ cc_library(
 alias(
     name = "nvshmem_stub",
     actual = if_cuda_libs("@nvidia_nvshmem//:nvshmem", ":nvshmem"),
-<<<<<<< HEAD
-=======
     visibility = ["//visibility:public"],
 )
 
@@ -440,6 +438,5 @@ cc_library(
 alias(
     name = "nvml",  # buildifier: disable=duplicated-name
     actual = ":nvml_stub",
->>>>>>> upstream/master
     visibility = ["//visibility:public"],
 )

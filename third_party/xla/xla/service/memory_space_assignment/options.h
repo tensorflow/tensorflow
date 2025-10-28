@@ -417,22 +417,6 @@ struct Options {
   // allocate for post-module operations.
   uint64_t post_module_scoped_alternate_memory_size_in_bytes = 0;
 
-<<<<<<< HEAD
-  // If true, MSA will allocate buffers for explicitly pinned buffers in
-  // alternate memory first, and then run the rest of the algorithm.
-  bool explicit_pinning_mode = false;
-
-  // If set, this is the maximum number of concurrent prefetches allowed for
-  // block allocations.
-  int64_t max_outstanding_prefetches_for_block_allocations = 0;
-
-  // If set, this is the size of scoped alternate memory that we require MSA to
-  // allocate for block allocated weights.
-  uint64_t reserved_bytes_for_block_allocated_weights = 0;
-
-  // The list of defining positions of block allocated weights.
-  absl::flat_hash_set<HloPosition> block_allocated_weights_positions;
-=======
   // This is the maximum number of concurrent block prefetches allowed.
   int64_t max_outstanding_block_prefetches = 0;
 
@@ -441,7 +425,6 @@ struct Options {
 
   // List of hlo positions for block prefetches.
   absl::flat_hash_set<HloPosition> block_prefetched_positions;
->>>>>>> upstream/master
 
   // Determines the bandwidth adjustment factor for an async start instruction.
   // The available bandwidth for instructions between this and the async done
@@ -452,8 +435,6 @@ struct Options {
       async_instruction_bw_adjustment_factor_fn =
           [](const HloInstruction*) { return std::nullopt; };
 
-<<<<<<< HEAD
-=======
   // One HloPosition can have multiple custom call prefetches associated with
   // it. For every custom-call prefetched HloPosition, this map stores the
   // details of all the custom-call prefetches associated with it. This is used
@@ -462,7 +443,6 @@ struct Options {
   absl::flat_hash_map<HloPosition, std::vector<CustomCallPrefetchDetails>>
       hlo_position_to_custom_call_prefetch_details;
 
->>>>>>> upstream/master
   std::string ToString() const;
 };
 

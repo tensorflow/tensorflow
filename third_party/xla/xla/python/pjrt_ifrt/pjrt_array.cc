@@ -561,20 +561,11 @@ absl::StatusOr<ArrayRef> PjRtArray::Copy(
     layout = layout_;
   }
   return std::visit(
-<<<<<<< HEAD
-      [this, new_client, &new_sharding, &buffers](const auto& shape) {
-        std::shared_ptr<const xla::PjRtLayout> buffer_layout =
-            buffers[0]->layout();
-        return PjRtArray::Create(new_client, dtype_, shape,
-                                 std::move(new_sharding), std::move(buffers),
-                                 std::move(buffer_layout));
-=======
       [this, new_client, &new_sharding, &buffers,
        layout = std::move(layout)](const auto& shape) {
         return PjRtArray::Create(new_client, dtype_, shape,
                                  std::move(new_sharding), std::move(buffers),
                                  layout);
->>>>>>> upstream/master
       },
       shape_);
 }

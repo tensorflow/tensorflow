@@ -110,13 +110,10 @@ LogicalResult LayoutAttr::verifyLayout(
                  << " dimensions, but shape has " << shape.size();
     return failure();
   }
-<<<<<<< HEAD
-=======
   if (!isPermutationVector(getMinorToMajor().asArrayRef())) {
     emit_error() << "layout is not a permutation";
     return failure();
   }
->>>>>>> upstream/master
   return success();
 }
 

@@ -425,8 +425,6 @@ py_strict_test(
         ]),
 )
 
-<<<<<<< HEAD
-=======
 nanobind_pywrap_extension(
     name = "_gpu_ondevice_tracing",
     srcs = ["gpu_ondevice_tracing.cc"],
@@ -439,7 +437,6 @@ nanobind_pywrap_extension(
     ],
 )
 
->>>>>>> upstream/master
 cc_library(
     name = "logging",
     srcs = ["logging.cc"],

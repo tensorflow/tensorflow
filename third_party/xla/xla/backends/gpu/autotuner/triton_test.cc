@@ -37,10 +37,7 @@ limitations under the License.
 #include "xla/service/gpu/nvptx_compiler.h"
 #include "xla/service/platform_util.h"
 #include "xla/stream_executor/device_description.pb.h"
-<<<<<<< HEAD
-=======
 #include "xla/stream_executor/stream_executor.h"
->>>>>>> upstream/master
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
 #include "xla/xla.pb.h"
@@ -77,13 +74,6 @@ const char kHlo[] = R"(
 class TritonBackendTest : public HloHardwareIndependentTestBase {
  protected:
   TritonBackendTest()
-<<<<<<< HEAD
-      : backend_(PlatformUtil::GetDefaultPlatform()
-                     .value()
-                     ->ExecutorForDevice(0)
-                     .value(),
-                 &debug_options_, &compiler_) {
-=======
       : stream_executor_(PlatformUtil::GetDefaultPlatform()
                              .value()
                              ->ExecutorForDevice(0)
@@ -91,7 +81,6 @@ class TritonBackendTest : public HloHardwareIndependentTestBase {
         target_config_(stream_executor_),
         backend_(&debug_options_, &compiler_, &target_config_,
                  &symbolic_expr_context_) {
->>>>>>> upstream/master
     // TODO(b/315957220): Remove the experimental flags once TMA is enabled by
     // default.
     debug_options_.set_xla_gpu_experimental_enable_triton_tma(true);

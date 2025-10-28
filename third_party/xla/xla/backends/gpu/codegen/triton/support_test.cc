@@ -2581,29 +2581,13 @@ TEST_P(BitcastConvertTest, BitcastConvertDisguisedAsBitcast) {
 
   const int bit_width_in = primitive_util::BitWidth(data_type_in);
   const int bit_width_out = primitive_util::BitWidth(data_type_out);
-<<<<<<< HEAD
-  if (bit_width_in != bit_width_out) {
-    GTEST_SKIP() << "We don't replace bitcast-convert with bitcast if the "
-                    "bitwidth is different";
-  }
-=======
   std::vector<int64_t> output_tile_sizes = {1, 32};
   std::string hlo_text;
->>>>>>> upstream/master
   const std::string data_type_in_str =
       primitive_util::LowercasePrimitiveTypeName(data_type_in);
   const std::string data_type_out_str =
       primitive_util::LowercasePrimitiveTypeName(data_type_out);
 
-<<<<<<< HEAD
-  std::string hlo_text = absl::Substitute(
-      R"(
-ENTRY triton_computation {
-  parameter = $0[33,68] parameter(0)
-  ROOT bc_convert = $1[33,68] bitcast(parameter)
-})",
-      data_type_in_str, data_type_out_str);
-=======
   if (bit_width_in == bit_width_out) {
     hlo_text = absl::Substitute(
         R"(
@@ -2630,16 +2614,11 @@ ENTRY triton_computation {
         data_type_in_str, bit_width_out / bit_width_in, data_type_out_str);
     output_tile_sizes = {1};
   }
->>>>>>> upstream/master
 
   TF_ASSERT_OK_AND_ASSIGN(TestedInstruction ti,
                           ParseTemplateAndGetInstruction(hlo_text, data_type_in,
                                                          HloOpcode::kBitcast));
 
-<<<<<<< HEAD
-  std::vector<int64_t> output_tile_sizes = {1, 32};
-=======
->>>>>>> upstream/master
   RunSupportTest(std::move(ti), output_tile_sizes, cc);
 }
 

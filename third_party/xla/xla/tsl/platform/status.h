@@ -101,24 +101,6 @@ namespace tsl {
 // usage of `OkStatus()` when constructing such an OK status.
 ABSL_DEPRECATE_AND_INLINE() inline absl::Status OkStatus() {
   return absl::OkStatus();
-<<<<<<< HEAD
-};
-
-// Given `Status.message()` does not guarantee to be always backed by a
-// null-terminated string, we have this utility function when it's needed for
-// the Tensorflow C-API.
-// A more robust API would be to get both a `char*` of the beginning of the
-// string, plus the size (see e.g. `XlaCustomCallStatusSetFailure`).
-// NB: This Windows-only implementation is exists only to avoid a linker error.
-// Remove if this is resolved.
-#ifdef _WIN32
-const char* NullTerminatedMessage(const absl::Status& status);
-#else
-ABSL_DEPRECATE_AND_INLINE()
-inline const char* NullTerminatedMessage(const absl::Status& status) {
-  return absl::StatusMessageAsCStr(status);
-=======
->>>>>>> upstream/master
 }
 
 // TODO(b/197552541) Move this namespace to errors.h.

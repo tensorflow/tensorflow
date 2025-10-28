@@ -296,32 +296,18 @@ TEST(PjRtCpuClientTest, HloSnapshot) {
 }
 
 TEST(PjRtCpuClientTest, UnoptimizedHloSnapshot) {
-<<<<<<< HEAD
-  static constexpr char kProgram[] = R"(
-    HloModule add
-    ENTRY add {
-      x = f32[3,2] parameter(0)
-      y = f32[3,2] parameter(1)
-      ROOT add = f32[3,2] add(x, y)
-=======
   static constexpr absl::string_view kProgram = R"(
     module {
       func.func @main(%arg0: tensor<3x2xf32>, %arg1: tensor<3x2xf32>) -> tensor<3x2xf32> {
         %0 = mhlo.add %arg0, %arg1 : tensor<3x2xf32>
         return %0 : tensor<3x2xf32>
       }
->>>>>>> upstream/master
     })";
 
   CpuClientOptions cpu_options;
   cpu_options.cpu_device_count = 1;
   TF_ASSERT_OK_AND_ASSIGN(auto client,
                           GetPjRtCpuClient(std::move(cpu_options)));
-<<<<<<< HEAD
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module,
-                          ParseAndReturnUnverifiedModule(kProgram, {}));
-=======
->>>>>>> upstream/master
 
   std::string dir =
       tsl::io::JoinPath(tsl::testing::TmpDir(), "UnoptimizedHloSnapshot");
@@ -330,11 +316,6 @@ TEST(PjRtCpuClientTest, UnoptimizedHloSnapshot) {
   debug_opts->set_xla_dump_to(dir);
   debug_opts->set_xla_dump_hlo_snapshots(true);
   debug_opts->set_xla_dump_hlo_unoptimized_snapshots(true);
-<<<<<<< HEAD
-  XlaComputation xla_computation(hlo_module->ToProto());
-  TF_ASSERT_OK_AND_ASSIGN(auto pjrt_executable,
-                          client->CompileAndLoad(xla_computation, options));
-=======
 
   mlir::MLIRContext context;
   context.loadDialect<mlir::func::FuncDialect, mlir::mhlo::MhloDialect>();
@@ -343,7 +324,6 @@ TEST(PjRtCpuClientTest, UnoptimizedHloSnapshot) {
 
   TF_ASSERT_OK_AND_ASSIGN(auto pjrt_executable,
                           client->CompileAndLoad(mlir_module.get(), options));
->>>>>>> upstream/master
 
   std::vector<float> data1{1.0, 2.0, 3.0, 4.0, 5.0, 6.0};
   std::vector<float> data2{10.0, 20.0, 30.0, 40.0, 50.0, 60.0};
@@ -387,8 +367,6 @@ TEST(PjRtCpuClientTest, UnoptimizedHloSnapshot) {
       LiteralUtil::CreateR2<float>({{10.0, 20.0}, {30.0, 40.0}, {50.0, 60.0}}));
 }
 
-<<<<<<< HEAD
-=======
 TEST(PjRtCpuClientTest, DumpOnDeserialize) {
   static constexpr char kProgram[] = R"(
     HloModule add
@@ -452,7 +430,6 @@ TEST(PjRtCpuClientTest, DumpOnDeserialize) {
   EXPECT_EQ(compile_dump_contents, deserialize_dump_contents);
 }
 
->>>>>>> upstream/master
 TEST(PjRtCpuClientTest, AsyncTransferRawData) {
   TF_ASSERT_OK_AND_ASSIGN(auto client, GetPjRtCpuClient(CpuClientOptions()));
   xla::Shape shape = ShapeUtil::MakeShape(U32, {3, 2});
@@ -633,14 +610,6 @@ TEST(PjRtCpuClientTest, AsyncTransferSetBufferError) {
 TEST(PjRtCpuClientTest, CreateErrorBuffer) {
   TF_ASSERT_OK_AND_ASSIGN(auto client, GetPjRtCpuClient(CpuClientOptions()));
   xla::Shape shape = ShapeUtil::MakeShape(U32, {3, 2});
-<<<<<<< HEAD
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto buffer, client->CreateErrorBuffer(Internal("foobar"), shape,
-                                             client->memory_spaces()[0]));
-  EXPECT_THAT(
-      buffer->ToLiteralSync(),
-      absl_testing::StatusIs(tsl::error::INTERNAL, HasSubstr("foobar")));
-=======
   for (PjRtMemorySpace* memory_space : client->memory_spaces()) {
     TF_ASSERT_OK_AND_ASSIGN(
         auto buffer,
@@ -650,7 +619,6 @@ TEST(PjRtCpuClientTest, CreateErrorBuffer) {
         absl_testing::StatusIs(tsl::error::INTERNAL, HasSubstr("foobar")));
     EXPECT_EQ(buffer->memory_space(), memory_space);
   }
->>>>>>> upstream/master
 }
 
 TEST(PjRtCpuClientTest, AsyncTransferRawDataToSubBuffer) {

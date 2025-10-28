@@ -740,21 +740,12 @@ ENTRY entry {
   block_level_parameters.num_stages = 4;
   block_level_parameters.num_warps = 8;
 
-<<<<<<< HEAD
-  EXPECT_THAT(
-      TritonWrapper("test_fn", triton_dot_fusion, CudaAmpereOrRocm(), dev_info,
-                    block_level_parameters, &llvm_module, mlir_context),
-      absl_testing::StatusIs(
-          tsl::error::RESOURCE_EXHAUSTED,
-          ::testing::HasSubstr("Shared memory size limit exceeded")));
-=======
   EXPECT_THAT(TritonWrapper("test_fn", triton_dot_fusion, CudaAmpereOrRocm(),
                             dev_info, block_level_parameters, &llvm_module,
                             symbolic_expr_context),
               absl_testing::StatusIs(
                   tsl::error::RESOURCE_EXHAUSTED,
                   ::testing::HasSubstr("Shared memory size limit exceeded")));
->>>>>>> upstream/master
 
   config.set_block_m(64);
   config.set_block_n(128);
@@ -1345,21 +1336,12 @@ ENTRY entry {
   block_level_parameters.num_ctas = 1;
   block_level_parameters.num_stages = 1;
   block_level_parameters.num_warps = 2;
-<<<<<<< HEAD
-  EXPECT_THAT(
-      TritonWrapper("test_fn", triton_dot_fusion, CudaAmpereOrRocm(), dev_info,
-                    block_level_parameters, &llvm_module, mlir_context),
-      absl_testing::StatusIs(
-          tsl::error::RESOURCE_EXHAUSTED,
-          "Tiling complexity heuristic exceeded: 147456 > 9000"));
-=======
   EXPECT_THAT(TritonWrapper("test_fn", triton_dot_fusion, CudaAmpereOrRocm(),
                             dev_info, block_level_parameters, &llvm_module,
                             symbolic_expr_context),
               absl_testing::StatusIs(
                   tsl::error::RESOURCE_EXHAUSTED,
                   "Tiling complexity heuristic exceeded: 147456 > 9000"));
->>>>>>> upstream/master
 
   // Succeeds if the tiling is not too complex.
   config.set_block_m(32);

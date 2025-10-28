@@ -21,15 +21,10 @@ limitations under the License.
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/transforms/simplifiers/algebraic_simplifier.h"
-<<<<<<< HEAD
-#include "xla/service/call_inliner.h"
-#include "xla/service/instruction_fusion.h"
-=======
 #include "xla/literal_util.h"
 #include "xla/service/call_inliner.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
->>>>>>> upstream/master
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 
@@ -38,8 +33,6 @@ namespace {
 
 using PropagateOriginalValueTest = HloHardwareIndependentTestBase;
 using OriginalValueRecoveryTableTest = HloHardwareIndependentTestBase;
-<<<<<<< HEAD
-=======
 
 TEST_F(PropagateOriginalValueTest, Clone) {
   HloComputation::Builder builder(TestName());
@@ -63,7 +56,6 @@ TEST_F(PropagateOriginalValueTest, Clone) {
   EXPECT_TRUE(tuple_clone_same_shape->original_value());
   EXPECT_FALSE(tuple_clone_different_shape->original_value());
 }
->>>>>>> upstream/master
 
 TEST_F(PropagateOriginalValueTest, ReplaceAllUses) {
   const absl::string_view hlo_string = R"(
@@ -119,14 +111,8 @@ TEST_F(PropagateOriginalValueTest,
        CallInlinerMissingOriginalValueInCallInstruction) {
   const absl::string_view hlo_string = R"(
 // CHECK-LABEL:test
-<<<<<<< HEAD
-// CHECK: %[[LHS:.*]] =
-// CHECK:  %[[RHS:.*]] = f32[] constant(2), origin={{[{]}}{"/rhs"}
-// CHECK: %[[ADD:.*]] = f32[] add(%[[LHS]], %[[RHS]]), origin={{[{]}}{"/add"}
-=======
 // CHECK-NOT:origin
 // CHECK-NOT:call(
->>>>>>> upstream/master
 
   HloModule test
 
@@ -145,8 +131,6 @@ TEST_F(PropagateOriginalValueTest,
                             CallInliner(/*single_call_site=*/false));
 }
 
-<<<<<<< HEAD
-=======
 TEST_F(PropagateOriginalValueTest, CallInlinerSyntheticCallInstruction) {
   const absl::string_view hlo_string = R"(
 // CHECK-LABEL:test
@@ -172,7 +156,6 @@ TEST_F(PropagateOriginalValueTest, CallInlinerSyntheticCallInstruction) {
                             CallInliner(/*single_call_site=*/false));
 }
 
->>>>>>> upstream/master
 TEST_F(OriginalValueRecoveryTableTest,
        AlgebraicSimplifierReshapeAndBroadcastMerged) {
   constexpr absl::string_view hlo_string = R"(
@@ -201,10 +184,6 @@ ENTRY %ReshapeAndBroadcastMerged (param0: f32[5]) -> f32[1,2,3,5,1] {
   RunAndFilecheckHloRewrite(hlo_string, AlgebraicSimplifier(options));
 }
 
-<<<<<<< HEAD
-TEST_F(OriginalValueRecoveryTableTest, FailedToGetPlaceholderOriginalValue) {
-  constexpr absl::string_view hlo_string = R"(
-=======
 TEST_F(OriginalValueRecoveryTableTest,
        NullOriginalValueOnTupleGetTupleElementIsNotContagious) {
   constexpr absl::string_view hlo_string = R"(
@@ -222,8 +201,7 @@ TEST_F(OriginalValueRecoveryTableTest,
 // CHECK-NEXT:   %get-tuple-element = f32[5]{0} get-tuple-element(%param), index=1, origin={{[{]}}{"reshape__ovp0"}}
 // CHECK-NEXT:   ROOT %broadcast = f32[1,2,3,5,1]{4,3,2,1,0} broadcast(%get-tuple-element), dimensions={3}
 // CHECK-NEXT: }
-  
->>>>>>> upstream/master
+
 HloModule test
 
 ENTRY %main (param0: (f32[5]{0}, f32[5]{0})) -> f32[1,2,3,5,1] {
@@ -236,16 +214,7 @@ ENTRY %main (param0: (f32[5]{0}, f32[5]{0})) -> f32[1,2,3,5,1] {
   )";
 
   AlgebraicSimplifierOptions options;
-<<<<<<< HEAD
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          AlgebraicSimplifier(options).Run(module.get()));
-  EXPECT_TRUE(changed);
-  EXPECT_TRUE(module->original_value_recovery_table().empty());
-=======
   RunAndFilecheckHloRewrite(hlo_string, AlgebraicSimplifier(options));
->>>>>>> upstream/master
 }
 
 }  // namespace

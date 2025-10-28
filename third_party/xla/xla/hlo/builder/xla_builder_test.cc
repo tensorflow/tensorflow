@@ -4035,8 +4035,6 @@ TEST(XlaBuilderTest, InstructionNameFromMetadataWithDot) {
             "inputs_x");
 }
 
-<<<<<<< HEAD
-=======
 TEST(XlaBuilderTest, BuildProtoWritesFullRootId) {
   XlaBuilder b_root(TestName());
 
@@ -4115,6 +4113,5 @@ TEST(XlaBuilderTest, OriginalValue) {
   EXPECT_THAT(*tuple_original_value, expected_tuple_original_value);
 }
 
->>>>>>> upstream/master
 }  // namespace
 }  // namespace xla

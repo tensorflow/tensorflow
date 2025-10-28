@@ -46,10 +46,7 @@ class LegalizeSchedulingAnnotations : public HloModulePass {
     bool keep_start_annotation = true;
     bool deannotate_unsupported_groups = false;
     bool check_gap_only = false;
-<<<<<<< HEAD
-=======
     bool check_non_mitigatable_gap_only = false;
->>>>>>> upstream/master
   };
 
   explicit LegalizeSchedulingAnnotations(Config config)

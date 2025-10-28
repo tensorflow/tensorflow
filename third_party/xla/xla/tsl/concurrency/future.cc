@@ -40,12 +40,6 @@ absl::NoDestructor<tsl::AsyncValueOwningRef<absl::Status>>
     Future<>::ready_promise_(
         tsl::MakeAvailableAsyncValueRef<absl::Status>(ready_promise_storage));
 
-// Construct an immediately ready promise in the static storage. This avoids
-// heap allocation and reference counting operations on a hot path.
-static tsl::internal::AsyncValueStorage<absl::Status> ready_promise_storage;
-absl::NoDestructor<tsl::AsyncValueOwningRef<absl::Status>>
-    PjRtFuture<>::ready_promise_(
-        tsl::MakeAvailableAsyncValueRef<absl::Status>(ready_promise_storage));
 
 namespace {
 struct State {

@@ -35,13 +35,8 @@ limitations under the License.
 #include "xla/backends/gpu/autotuner/legacy_cache.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
-<<<<<<< HEAD
-#include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/service/gpu/cublas_cudnn.h"
-=======
 #include "xla/service/compiler.h"
 #include "xla/stream_executor/device_description.h"
->>>>>>> upstream/master
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/platform/errors.h"
@@ -93,45 +88,6 @@ ProfileOptions GetProfileOptions(const DebugOptions& debug_options) {
 
 absl::StatusOr<std::unique_ptr<AutotunerPass>> AutotunerPass::Create(
     std::vector<std::unique_ptr<CodegenBackend>> backends,
-<<<<<<< HEAD
-    const DebugOptions& debug_options, se::DeviceMemoryAllocator* allocator,
-    stream_executor::StreamExecutor* stream_executor,
-    tsl::thread::ThreadPool* thread_pool) {
-  std::unique_ptr<GpuProfiler> profiler =
-      GpuProfiler::Create(stream_executor, allocator, ProfileOptions());
-
-  std::unique_ptr<AutotunerCacheInterface> cache = nullptr;
-  const std::string& cache_dir =
-      debug_options.xla_gpu_experimental_autotuner_cache_dir();
-  if (!cache_dir.empty()) {
-    FileBasedCacheConfig cache_config;
-    cache_config.autotune_cache_dir = cache_dir;
-    cache_config.device_desc = stream_executor->GetDeviceDescription();
-    switch (debug_options.xla_gpu_experimental_autotune_cache_mode()) {
-      case DebugOptions::AUTOTUNE_CACHE_MODE_READ:
-        cache_config.autotune_cache_mode =
-            FileBasedCacheConfig::CacheMode::READ;
-        break;
-      case DebugOptions::AUTOTUNE_CACHE_MODE_UPDATE:
-        cache_config.autotune_cache_mode =
-            FileBasedCacheConfig::CacheMode::READ_WRITE;
-        break;
-      default:
-        // Includes AUTOTUNE_CACHE_MODE_UNSPECIFIED
-        LOG(WARNING) << "Unknown autotune cache mode, defaulting to READ_WRITE";
-        cache_config.autotune_cache_mode =
-            FileBasedCacheConfig::CacheMode::READ_WRITE;
-        break;
-    }
-    TF_ASSIGN_OR_RETURN(cache, FileBasedAutotunerCache::Create(cache_config));
-  }
-
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<Autotuner> autotuner,
-      Autotuner::Create(std::move(backends), std::move(profiler),
-                        AutotuneConfig(), std::move(cache), thread_pool));
-  return absl::WrapUnique(new AutotunerPass(std::move(autotuner)));
-=======
     const DebugOptions& debug_options,
     stream_executor::StreamExecutor* stream_executor,
     tsl::thread::ThreadPool* thread_pool, InstructionFilterFn should_autotune,
@@ -165,7 +121,6 @@ absl::StatusOr<std::unique_ptr<AutotunerPass>> AutotunerPass::Create(
                         autotune_config, std::move(cache), thread_pool));
   return absl::WrapUnique(
       new AutotunerPass(std::move(autotuner), should_autotune));
->>>>>>> upstream/master
 }
 
 absl::StatusOr<bool> AutotunerPass::Run(
@@ -173,16 +128,7 @@ absl::StatusOr<bool> AutotunerPass::Run(
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   VLOG(1) << "Running Autotuner Pass";
 
-<<<<<<< HEAD
-  auto should_autotune = [](const HloInstruction& instruction) -> bool {
-    return instruction.opcode() == HloOpcode::kCustomCall &&
-           IsCublasGemm(instruction);
-  };
-
-  TF_RETURN_IF_ERROR(autotuner_->Autotune(module, should_autotune));
-=======
   TF_RETURN_IF_ERROR(autotuner_->Autotune(module, should_autotune_));
->>>>>>> upstream/master
   return true;
 }
 

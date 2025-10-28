@@ -17,10 +17,7 @@ limitations under the License.
 
 #include <array>
 #include <cstdint>
-<<<<<<< HEAD
-=======
 #include <limits>
->>>>>>> upstream/master
 #include <memory>
 #include <utility>
 
@@ -193,8 +190,6 @@ TEST(FpTruncExecutionTest, F8e4m3fnToF16_Vector4) {
   EXPECT_EQ(actuals[3], static_cast<int16_t>(0b0011100000000000));
 }
 
-<<<<<<< HEAD
-=======
 TEST(FpTruncExecutionTest, F32ToF8e4m3fn) {
   JitRunner jit = CreateJitRunner(Type::S(F32), Type::S(F8E4M3FN));
   auto fptrunc = jit.GetScalarFn<int8_t(float)>(
@@ -497,5 +492,4 @@ TEST(FpTruncExecutionTest, F16ToF8e5m2fnuz) {
             static_cast<int8_t>(0b10111100));  // -0.5
 }
 
->>>>>>> upstream/master
 }  // namespace xla::codegen::intrinsics

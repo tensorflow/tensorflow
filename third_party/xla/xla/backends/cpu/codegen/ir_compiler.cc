@@ -66,10 +66,7 @@ limitations under the License.
 #include "xla/backends/cpu/codegen/cpu_features.h"
 #include "xla/backends/cpu/codegen/kernel_api_ir_builder.h"
 #include "xla/backends/cpu/codegen/polynomial_approximations.h"
-<<<<<<< HEAD
-=======
 #include "xla/codegen/intrinsic/intrinsic.h"
->>>>>>> upstream/master
 #include "xla/codegen/intrinsic/intrinsic_compiler_lib.h"
 #include "xla/codegen/intrinsic_lib.h"
 #include "xla/service/cpu/backend_config.pb.h"
@@ -349,13 +346,6 @@ llvm::Error IrCompiler::RunIrPasses(llvm::Module& module,
       std::make_unique<llvm::TargetLibraryInfoImpl>(target_triple);
   target_library_info_impl->addVectorizableFunctions(
       PolynomialApproximationsVectorization());
-<<<<<<< HEAD
-  codegen::IntrinsicFunctionLib intrinsic_lib(
-      {target_machine->getTargetFeatureString().str(),
-       /*disable_platform_dependent_math=*/options_
-           .disable_platform_dependent_math});
-=======
-
   xla::codegen::intrinsics::DeviceType device_type;
   if (target_triple.isX86()) {
     // As a heuristic, we check for SSE4a to determine if we are on AMD.
@@ -379,7 +369,6 @@ llvm::Error IrCompiler::RunIrPasses(llvm::Module& module,
       {target_machine->getTargetFeatureString().str(), device_type,
        /*disable_platform_dependent_math=*/
        options_.disable_platform_dependent_math});
->>>>>>> upstream/master
   target_library_info_impl->addVectorizableFunctions(
       intrinsic_lib.Vectorizations());
 

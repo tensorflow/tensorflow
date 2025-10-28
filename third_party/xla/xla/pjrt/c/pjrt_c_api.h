@@ -67,11 +67,8 @@ typedef enum {
   PJRT_Extension_Type_Unknown,
   PJRT_Extension_Type_CrossHostTransfers,
   PJRT_Extension_Type_ExecutableMetadata,
-<<<<<<< HEAD
-=======
   PJRT_Extension_Type_Callback,
   PJRT_Extension_Type_HostAllocator,  // Experimental.
->>>>>>> upstream/master
 } PJRT_Extension_Type;
 
 // PJRT_Extension_Base contains a type and a pointer to next
@@ -106,11 +103,7 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_Extension_Base, next);
 // Changes include:
 // * Adding a new field to the PJRT_Api or argument structs
 // * Renaming a method or argument (doesn't affect ABI)
-<<<<<<< HEAD
-#define PJRT_API_MINOR 75
-=======
 #define PJRT_API_MINOR 80
->>>>>>> upstream/master
 
 // The plugin should set the major_version and minor_version of
 // PJRT_Api.pjrt_api_version to be the `PJRT_API_MAJOR` and `PJRT_API_MINOR` in
@@ -604,10 +597,7 @@ typedef enum {
 // TODO: mwhittaker - Add the remaining fields from
 // tensorflow::CoordinatedTaskStateInfo.
 struct PJRT_ProcessInfo {
-<<<<<<< HEAD
-=======
   size_t struct_size;
->>>>>>> upstream/master
   int task_id;
   uint64_t incarnation_id;
   PJRT_ProcessState state;
@@ -2685,21 +2675,14 @@ typedef struct PJRT_Api {
   _PJRT_API_STRUCT_FIELD(PJRT_Client_CreateUninitializedBuffer);
   _PJRT_API_STRUCT_FIELD(PJRT_Client_UpdateGlobalProcessInfo);
   _PJRT_API_STRUCT_FIELD(PJRT_TopologyDescription_Deserialize);
-<<<<<<< HEAD
-=======
   _PJRT_API_STRUCT_FIELD(PJRT_Client_CreateAliasBuffer);
   _PJRT_API_STRUCT_FIELD(PJRT_Client_FulfillAliasBuffer);
   _PJRT_API_STRUCT_FIELD(PJRT_LoadedExecutable_GetDeviceAssignment);
->>>>>>> upstream/master
 } PJRT_Api;
 
 enum {
   PJRT_Api_STRUCT_SIZE =
-<<<<<<< HEAD
-      PJRT_STRUCT_SIZE(PJRT_Api, PJRT_TopologyDescription_Deserialize)
-=======
       PJRT_STRUCT_SIZE(PJRT_Api, PJRT_LoadedExecutable_GetDeviceAssignment)
->>>>>>> upstream/master
 };
 
 #undef _PJRT_API_STRUCT_FIELD

@@ -300,17 +300,11 @@ CoordinationService::GetCountOfOutOfSyncTasksPerBarrier() {
       }
     }
   }
-<<<<<<< HEAD
-  VLOG(1) << "out_of_sync_tasks_per_barrier: "
-          << absl::StrJoin(out_of_sync_tasks_per_barrier, ",",
-                           absl::PairFormatter("="));
-=======
   if (!out_of_sync_tasks_per_barrier.empty()) {
     LOG(INFO) << "out_of_sync_tasks_per_barrier: "
               << absl::StrJoin(out_of_sync_tasks_per_barrier, ",",
                                absl::PairFormatter("="));
   }
->>>>>>> upstream/master
 
   return out_of_sync_tasks_per_barrier;
 }
@@ -879,11 +873,7 @@ void CoordinationService::ClusterStateUpdated() {
 void CoordinationService::WatchJobState(absl::string_view job_name,
                                         std::optional<int64_t> version_number,
                                         WatchJobStateCallback callback) {
-<<<<<<< HEAD
-  absl::MutexLock l(&state_mu_);
-=======
   absl::MutexLock l(state_mu_);
->>>>>>> upstream/master
   int64_t v = version_number.value_or(-1);
   CHECK_GE(cluster_state_version_number_, v);
   if (cluster_state_version_number_ == v) {

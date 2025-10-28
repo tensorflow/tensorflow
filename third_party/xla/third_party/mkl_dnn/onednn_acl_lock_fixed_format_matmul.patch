@@ -17,15 +17,9 @@ index 380a0a3843..61cd2af4b7 100644
 --- a/src/cpu/aarch64/matmul/acl_matmul.cpp
 +++ b/src/cpu/aarch64/matmul/acl_matmul.cpp
 @@ -178,11 +178,9 @@ status_t acl_matmul_t::execute_forward(const exec_ctx_t &ctx) const {
-<<<<<<< HEAD
- 
-     std::unique_lock<std::mutex> locker {mtx_, std::defer_lock};
- 
-=======
 
      std::unique_lock<std::mutex> locker {mtx_, std::defer_lock};
 
->>>>>>> upstream/master
 -    // Some of the underlying kernels used by ACL still require some state and
 -    // are not safe to be called in parallel with different execution contexts.
 -    // Eventually when all kernels are truly stateless, this guard can be
@@ -34,12 +28,5 @@ index 380a0a3843..61cd2af4b7 100644
 +    // Non-fixed-format kernels in ACL hold shared state and are not safe to be
 +    // called in parallel with different execution contexts.
 +    if (!IsFixedFormat) { locker.lock(); }
-<<<<<<< HEAD
- 
      bool is_transA = amp.is_transA;
      bool is_transB = amp.is_transB;
-=======
-
-     bool is_transA = amp.is_transA;
-     bool is_transB = amp.is_transB;
->>>>>>> upstream/master

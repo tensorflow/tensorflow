@@ -3919,26 +3919,16 @@ HloRaggedDotInstruction::CloneWithNewOperandsImpl(
 }
 
 HloScaledDotInstruction::HloScaledDotInstruction(
-<<<<<<< HEAD
-    const Shape& shape, HloInstruction* lhs, HloInstruction* lhs_scale,
-    HloInstruction* rhs, HloInstruction* rhs_scale,
-=======
     const Shape& shape, HloInstruction* lhs, HloInstruction* rhs,
     HloInstruction* lhs_scale, HloInstruction* rhs_scale,
->>>>>>> upstream/master
     const DotDimensionNumbers& dimension_numbers,
     const PrecisionConfig& precision_config)
     : HloInstruction(HloOpcode::kScaledDot, shape),
       dot_dimension_numbers_(dimension_numbers),
       precision_config_(precision_config) {
   AppendOperand(lhs);
-<<<<<<< HEAD
-  AppendOperand(lhs_scale);
-  AppendOperand(rhs);
-=======
   AppendOperand(rhs);
   AppendOperand(lhs_scale);
->>>>>>> upstream/master
   AppendOperand(rhs_scale);
 }
 

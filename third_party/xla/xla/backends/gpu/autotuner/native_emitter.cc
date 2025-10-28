@@ -36,12 +36,6 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-<<<<<<< HEAD
-bool IsSupported(const HloInstruction& instr) {
-  return instr.opcode() == HloOpcode::kFusion &&
-         // TODO: b/440062644 - Support multi-output fusions.
-         !Cast<HloFusionInstruction>(&instr)->IsMultiOutputFusion();
-=======
 // Returns true if the given instruction is a fusion instruction that is
 // supported by the native emitter backend.
 //
@@ -55,7 +49,6 @@ bool IsSupported(const HloInstruction& instr) {
   }
   auto fusion_kind = Cast<HloFusionInstruction>(&instr)->fusion_kind();
   return fusion_kind != HloInstruction::FusionKind::kCustom;
->>>>>>> upstream/master
 }
 
 absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>>

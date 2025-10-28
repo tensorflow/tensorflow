@@ -154,8 +154,6 @@ class ConfigureTest(absltest.TestCase):
         using_nccl=False,
         rocm_compiler=RocmCompiler.HIPCC,
         sycl_compiler=SyclCompiler.ICPX,
-<<<<<<< HEAD
-=======
     )
 
     bazelrc_lines = config.to_bazelrc_lines(
@@ -179,7 +177,6 @@ class ConfigureTest(absltest.TestCase):
         using_nccl=False,
         rocm_compiler=RocmCompiler.HIPCC,
         sycl_compiler=SyclCompiler.ICPX,
->>>>>>> upstream/master
     )
 
     bazelrc_lines = config.to_bazelrc_lines(

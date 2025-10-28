@@ -254,10 +254,6 @@ void convertShardyAttrs(FuncOp funcOp, IRRewriter& rewriter) {
   });
 }
 
-<<<<<<< HEAD
-// TODO (b/432659630): Add tests
-=======
->>>>>>> upstream/master
 using ShardingSetter =
     absl::AnyInvocable<void(FuncOp, int64_t, TensorShardingAttr)>;
 LogicalResult handleFuncTupleInOutShardings(ModuleOp moduleOp, FuncOp funcOp,

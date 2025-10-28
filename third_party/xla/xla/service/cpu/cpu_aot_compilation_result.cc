@@ -74,11 +74,7 @@ se::Platform::Id CpuAotCompilationOptions::PlatformId() const {
   return se::host::kHostPlatformId;
 }
 
-<<<<<<< HEAD
-/*static*/ absl::StatusOr<std::unique_ptr<CpuAotCompilationResult>>
-=======
 absl::StatusOr<std::unique_ptr<CpuAotCompilationResult>>
->>>>>>> upstream/master
 CpuAotCompilationResult::Create(
     const HloModule* hlo_module, const BufferAssignment* buffer_assignment,
     absl::string_view function_name, std::vector<ObjFileProto> obj_files,

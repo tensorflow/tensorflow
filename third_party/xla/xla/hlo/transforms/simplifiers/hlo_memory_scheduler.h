@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_alias_analysis.h"
+#include "xla/hlo/analysis/tuple_points_to_analysis.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_schedule.h"
@@ -41,13 +42,16 @@ namespace xla {
 // 'module' given a points-to analysis result that describes buffer aliasing.
 // peak_memory (may be nullptr) is set to the peak memory of the resulting
 // schedule according to the HeapSimulator.
+//
+// TODO(yunxing): Cleanup usage of TuplePointsToAnalysis.
 class ModuleSchedulerAlgorithm {
  public:
   explicit ModuleSchedulerAlgorithm(const AliasInfo* alias_info)
       : alias_info_(alias_info) {}
   virtual ~ModuleSchedulerAlgorithm() = default;
   virtual absl::StatusOr<HloSchedule> Run(
-      const HloModule* module, const HloAliasAnalysis& alias_analysis,
+      const HloModule* module, const TuplePointsToAnalysis& points_to_analysis,
+      const HloAliasAnalysis& alias_analysis,
       const absl::flat_hash_set<absl::string_view>& execution_threads,
       int64_t* peak_memory) const = 0;
 
@@ -71,9 +75,11 @@ class ComputationSchedulerAlgorithm : public ModuleSchedulerAlgorithm {
  public:
   virtual absl::StatusOr<HloInstructionSequence> Run(
       HloComputation* computation,
+      const TuplePointsToAnalysis& points_to_analysis,
       const HloAliasAnalysis& alias_analysis) const = 0;
   absl::StatusOr<HloSchedule> Run(
-      const HloModule* module, const HloAliasAnalysis& alias_analysis,
+      const HloModule* module, const TuplePointsToAnalysis& points_to_analysis,
+      const HloAliasAnalysis& alias_analysis,
       const absl::flat_hash_set<absl::string_view>& execution_threads,
       int64_t* peak_memory) const override;
 
@@ -90,19 +96,12 @@ class ComputationSchedulerAlgorithm : public ModuleSchedulerAlgorithm {
                                 BufferValue::SizeFunction size_function,
                                 SchedulerPostprocessor postprocessor)
       : ModuleSchedulerAlgorithm(alias_info),
-<<<<<<< HEAD
-        size_function_(std::move(size_function)),
-        postprocessor_(std::move(postprocessor)) {}
-
-  BufferValue::SizeFunction size_function_;
-=======
         owned_size_function_(std::move(size_function)),
         size_function_(&*owned_size_function_),
         postprocessor_(std::move(postprocessor)) {}
 
   std::optional<BufferValue::SizeFunction> owned_size_function_;
   const BufferValue::SizeFunction* absl_nonnull size_function_;
->>>>>>> upstream/master
   SchedulerPostprocessor postprocessor_;
 };
 
@@ -125,6 +124,7 @@ class ListMemoryScheduler : public ComputationSchedulerAlgorithm {
   using ModuleSchedulerAlgorithm::Run;
   absl::StatusOr<HloInstructionSequence> Run(
       HloComputation* computation,
+      const TuplePointsToAnalysis& points_to_analysis,
       const HloAliasAnalysis& alias_analysis) const override;
 };
 
@@ -145,6 +145,7 @@ class DFSMemoryScheduler : public ComputationSchedulerAlgorithm {
   using ModuleSchedulerAlgorithm::Run;
   absl::StatusOr<HloInstructionSequence> Run(
       HloComputation* computation,
+      const TuplePointsToAnalysis& points_to_analysis,
       const HloAliasAnalysis& alias_analysis) const override;
 };
 
@@ -172,6 +173,7 @@ class BFScheduler : public ComputationSchedulerAlgorithm {
                                       std::move(postprocessor)) {}
   absl::StatusOr<HloInstructionSequence> Run(
       HloComputation* computation,
+      const TuplePointsToAnalysis& points_to_analysis,
       const HloAliasAnalysis& alias_analysis) const override;
 };
 
@@ -192,6 +194,7 @@ class PostOrderScheduler : public ComputationSchedulerAlgorithm {
   using ModuleSchedulerAlgorithm::Run;
   absl::StatusOr<HloInstructionSequence> Run(
       HloComputation* computation,
+      const TuplePointsToAnalysis& points_to_analysis,
       const HloAliasAnalysis& alias_analysis) const override;
 };
 
@@ -215,19 +218,14 @@ class DefaultMemoryScheduler : public ModuleSchedulerAlgorithm {
                          BufferValue::SizeFunction size_function,
                          const SchedulerPostprocessor& postprocessor = {})
       : ModuleSchedulerAlgorithm(alias_info),
-<<<<<<< HEAD
-        list_scheduler_(alias_info, size_function, postprocessor),
-        dfs_scheduler_(alias_info, size_function, postprocessor),
-        post_order_scheduler_(alias_info, size_function, postprocessor) {}
-=======
         owned_size_function_(std::move(size_function)),
         size_function_(&*owned_size_function_),
         list_scheduler_(alias_info, size_function_, postprocessor),
         dfs_scheduler_(alias_info, size_function_, postprocessor),
         post_order_scheduler_(alias_info, size_function_, postprocessor) {}
->>>>>>> upstream/master
   absl::StatusOr<HloSchedule> Run(
-      const HloModule* module, const HloAliasAnalysis& alias_analysis,
+      const HloModule* module, const TuplePointsToAnalysis& points_to_analysis,
+      const HloAliasAnalysis& alias_analysis,
       const absl::flat_hash_set<absl::string_view>& execution_threads,
       int64_t* peak_memory) const override;
 

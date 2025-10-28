@@ -375,20 +375,11 @@ absl::Status runShardingPropagation(HloModule* hloModule,
         /*allowPropagationToResults=*/
         spanToArrayRef(
             hloModule->config().allow_spmd_sharding_propagation_to_output()),
-<<<<<<< HEAD
-        /*importFuncCalls=*/true,
-        /*importOnlyUninlineableFuncCalls=*/false);
-=======
         /*importFuncCalls=*/true);
->>>>>>> upstream/master
   } else {
     // This branch is in production.
     addSdyRoundTripImportPipeline(pm, /*enableConstantImport=*/true,
                                   /*importFuncCalls=*/true,
-<<<<<<< HEAD
-                                  /*importOnlyUninlineableFuncCalls=*/false,
-=======
->>>>>>> upstream/master
                                   /*liftAndDedupMeshes=*/true);
   }
 
@@ -398,14 +389,10 @@ absl::Status runShardingPropagation(HloModule* hloModule,
   options.conservativePropagation = hloModule->use_auto_spmd_partitioning();
   options.enableAutoPartitioning = hloModule->use_auto_spmd_partitioning();
   mlir::sdy::addPropagationPipeline(pm, dumpIndex, options);
-<<<<<<< HEAD
-  addStablehloExportPipeline(pm);
-=======
 
   xla::sdy::StablehloExportPipelineOptions stablehloExportPipelineOptions;
   stablehloExportPipelineOptions.dedupFunctionsFully = dedupFunctionsFully;
   addStablehloExportPipeline(pm, stablehloExportPipelineOptions);
->>>>>>> upstream/master
   pm.addPass(mlir::sdy::createSaveModuleOpPass(shardyDir, "output_module",
                                                dumpIndex++));
   tsl::StatusScopedDiagnosticHandler diagnosticHandler(
@@ -423,11 +410,7 @@ bool eraseInlineableAttrForShardyManualComputations(HloModule* module) {
         continue;
       }
       if (absl::StrContains(instruction->to_apply()->name(),
-<<<<<<< HEAD
-                            sdy::kManualComputationBodyFuncName.str())) {
-=======
                             sdy::kManualComputationFuncName.str())) {
->>>>>>> upstream/master
         instruction->erase_frontend_attribute(kXlaInlineableAttr);
         // TODO(b/436603025). CallInliner do not inline the Shardy related
         // manual computations based on the callee name. We have to rename the

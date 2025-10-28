@@ -18,10 +18,6 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <tuple>
-<<<<<<< HEAD
-#include <utility>
-=======
->>>>>>> upstream/master
 
 #include "absl/log/check.h"
 #include "llvm/ADT/DenseMap.h"
@@ -112,15 +108,6 @@ StringAttr createFuncOpOrGetFromCache(
     mlir::IRRewriter& rewriter, SymbolTable& symbolTable,
     ManualAxesAttr manualAxesAttr,
     std::optional<TensorShardingPerValueAttr> inShardings,
-<<<<<<< HEAD
-    std::optional<TensorShardingPerValueAttr> outShardings) {
-  auto key = std::make_tuple(namedComputationOp.getName(),
-                             namedComputationOp.getInShardings().value_or(
-                                 TensorShardingPerValueAttr()),
-                             namedComputationOp.getOutShardings().value_or(
-                                 TensorShardingPerValueAttr()),
-                             manualAxesAttr);
-=======
     std::optional<TensorShardingPerValueAttr> outShardings,
     bool dedupFunctionsFully) {
   auto key = std::make_tuple(
@@ -130,7 +117,6 @@ StringAttr createFuncOpOrGetFromCache(
       dedupFunctionsFully ? TensorShardingPerValueAttr()
                           : outShardings.value_or(TensorShardingPerValueAttr()),
       manualAxesAttr);
->>>>>>> upstream/master
   if (auto it = funcCache.find(key); it != funcCache.end()) {
     return it->second;
   }
@@ -148,8 +134,6 @@ class ExportNamedComputationsPass
  public:
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(ExportNamedComputationsPass)
 
-<<<<<<< HEAD
-=======
   explicit ExportNamedComputationsPass(bool dedupFunctionsFully) {
     this->dedupFunctionsFully = dedupFunctionsFully;
   }
@@ -161,7 +145,6 @@ class ExportNamedComputationsPass
     this->dedupFunctionsFully = other.dedupFunctionsFully;
   }
 
->>>>>>> upstream/master
   llvm::SmallDenseMap<ComputationKey, StringAttr> funcCache;
 
   void runOnOperation() final {
@@ -187,11 +170,7 @@ class ExportNamedComputationsPass
       }
       StringAttr funcSymName = createFuncOpOrGetFromCache(
           namedComputationOp, funcCache, rewriter, symbolTable, manualAxesAttr,
-<<<<<<< HEAD
-          inShardings, outShardings);
-=======
           inShardings, outShardings, dedupFunctionsFully);
->>>>>>> upstream/master
 
       // Replace the `NamedComputationOp` with a `CallOp`.
       rewriter.setInsertionPoint(namedComputationOp);

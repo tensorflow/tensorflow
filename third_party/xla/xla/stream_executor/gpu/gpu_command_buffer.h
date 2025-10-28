@@ -106,8 +106,6 @@ class GpuCommandBuffer : public CommandBuffer {
     GraphConditionalNodeHandle conditional_node;
   };
 
-<<<<<<< HEAD
-=======
   struct GpuChildCommand : public CommandBuffer::Command {
     GpuChildCommand(GraphNodeHandle h, std::unique_ptr<CommandBuffer> cb)
         : handle(h), command_buffer(std::move(cb)) {}
@@ -115,7 +113,6 @@ class GpuCommandBuffer : public CommandBuffer {
     std::unique_ptr<CommandBuffer> command_buffer;
   };
 
->>>>>>> upstream/master
   GpuCommandBuffer(Mode mode, StreamExecutor* executor);
 
   // Bring CreateLaunch and UpdateLaunch template functions into scope.
@@ -135,14 +132,6 @@ class GpuCommandBuffer : public CommandBuffer {
                             const BlockDim& blocks, const Kernel& kernel,
                             const KernelArgs& args) override;
 
-<<<<<<< HEAD
-  absl::StatusOr<const Command*> CreateChildCommand(
-      ChildCommandType type, CommandBuffer& nested,
-      absl::Span<const Command* const> dependencies) override;
-
-  absl::Status UpdateChildCommand(ChildCommandType type, const Command* command,
-                                  const CommandBuffer& nested) override;
-=======
   // Cloned type child command creation and update.
   absl::StatusOr<const Command*> CreateChildCommand(
       ChildCommandType type, CommandBuffer& nested,
@@ -162,7 +151,6 @@ class GpuCommandBuffer : public CommandBuffer {
       ChildCommandType type, const Command* command,
       absl::AnyInvocable<absl::Status(stream_executor::CommandBuffer*)>
           record_fn) override;
->>>>>>> upstream/master
 
   absl::StatusOr<const Command*> CreateMemcpyD2D(
       DeviceMemoryBase* dst, const DeviceMemoryBase& src, uint64_t size,
@@ -365,13 +353,8 @@ class GpuCommandBuffer : public CommandBuffer {
       ChildCommandType type, absl::Span<const GraphNodeHandle> dependencies,
       CommandBuffer& nested) = 0;
 
-<<<<<<< HEAD
-  // Updates an existing child node. Will return an error if the given node has
-  // not been created as a child node.
-=======
   // Updates an existing child node. Will return an error if the given node
   // has not been created as a child node.
->>>>>>> upstream/master
   virtual absl::Status UpdateChildNode(ChildCommandType type,
                                        GraphNodeHandle node_handle,
                                        const CommandBuffer& nested) = 0;

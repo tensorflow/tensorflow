@@ -25,10 +25,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
-<<<<<<< HEAD
-=======
 #include "absl/strings/ascii.h"
->>>>>>> upstream/master
 #include "absl/strings/match.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"

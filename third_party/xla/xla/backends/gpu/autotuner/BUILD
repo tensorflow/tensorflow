@@ -1,11 +1,7 @@
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm_is_configured")
-<<<<<<< HEAD
-load("//xla:xla.default.bzl", "xla_cc_binary")
-=======
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("//xla:xla.default.bzl", "xla_cc_binary", "xla_cc_test")
->>>>>>> upstream/master
 load("//xla/tests:build_defs.bzl", "xla_test")
 load(
     "//xla/tsl/platform/default:cuda_build_defs.bzl",
@@ -68,17 +64,11 @@ cc_library(
         "//xla/service:instruction_fusion",
         "//xla/service/gpu:backend_configs_cc",
         "//xla/service/gpu:ir_emission_utils",
-<<<<<<< HEAD
-        "//xla/stream_executor:device_description",
-        "//xla/stream_executor:stream_executor_h",
-        "//xla/stream_executor/cuda:cuda_compute_capability",
-=======
         "//xla/service/gpu/model:fusion_analysis_cache",
         "//xla/service/gpu/model:gpu_indexing_performance_model",
         "//xla/service/gpu/model/experimental:symbolic_expr",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor:stream_executor_h",
->>>>>>> upstream/master
         "//xla/stream_executor/gpu:tma_metadata",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",
@@ -115,20 +105,14 @@ xla_test(
         "//xla/backends/autotuner:codegen_backend",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
-<<<<<<< HEAD
-=======
         "//xla/service:compiler",
->>>>>>> upstream/master
         "//xla/service:executable",
         "//xla/service:platform_util",
         "//xla/service/gpu:backend_configs_cc",
         "//xla/service/gpu:ir_emission_utils",
         "//xla/service/gpu:nvptx_compiler_impl",
         "//xla/stream_executor:device_description_proto_cc",
-<<<<<<< HEAD
-=======
         "//xla/stream_executor:stream_executor_h",
->>>>>>> upstream/master
         "//xla/tsl/platform:status_matchers",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/util/proto:proto_matchers",
@@ -491,10 +475,7 @@ xla_test(
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:filecheck",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
-<<<<<<< HEAD
-=======
         "//xla/service:compiler",
->>>>>>> upstream/master
         "//xla/service:platform_util",
         "//xla/service/gpu:nvptx_compiler_impl",
         "//xla/stream_executor:device_description_proto_cc",
@@ -534,10 +515,7 @@ cc_library(
         "//xla/service/gpu:split_k_gemm_rewriter",
         "//xla/service/gpu/autotuning:dot_search_space",
         "//xla/service/gpu/autotuning:triton_configs",
-<<<<<<< HEAD
-=======
         "//xla/service/gpu/model/experimental:symbolic_expr",
->>>>>>> upstream/master
         "//xla/service/gpu/transforms:fusion_wrapper",
         "//xla/service/gpu/transforms:nest_gemm_fusion",
         "//xla/service/gpu/transforms:priority_fusion",
@@ -583,20 +561,14 @@ xla_test(
         "//xla/service/gpu:nvptx_compiler_impl",
         "//xla/service/gpu/model/experimental:symbolic_expr",
         "//xla/stream_executor:device_description_proto_cc",
-<<<<<<< HEAD
-=======
         "//xla/stream_executor:stream_executor_h",
->>>>>>> upstream/master
         "//xla/tsl/platform:statusor",
         "//xla/tsl/util/proto:proto_matchers",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/status:statusor",
         "@com_google_googletest//:gtest_main",
-<<<<<<< HEAD
-=======
         "@llvm-project//mlir:IR",
->>>>>>> upstream/master
     ],
 )
 
@@ -619,10 +591,7 @@ cc_library(
         "//xla/stream_executor:device_memory",
         "//xla/stream_executor:device_memory_allocator",
         "//xla/stream_executor:stream_executor_h",
-<<<<<<< HEAD
-=======
         "//xla/stream_executor:stream_executor_memory_allocator",
->>>>>>> upstream/master
         "//xla/stream_executor/gpu:redzone_allocator",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",
@@ -662,13 +631,10 @@ cc_library(
 xla_test(
     name = "native_emitter_test",
     srcs = ["native_emitter_test.cc"],
-<<<<<<< HEAD
-=======
     backend_tags = {
         # TODO(b/445172709): Re-enable once fixed.
         "b200": ["broken"],
     },
->>>>>>> upstream/master
     backends = [
         "a100",
         "h100",
@@ -682,31 +648,21 @@ xla_test(
         ":native_emitter",
         "//xla/backends/autotuner:codegen_backend",
         "//xla/hlo/ir:hlo",
-<<<<<<< HEAD
-        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
-=======
         "//xla/hlo/ir:hlo_module_group",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/service:compiler",
         "//xla/service:executable",
         "//xla/service:hlo_cost_analysis",
->>>>>>> upstream/master
         "//xla/service:platform_util",
         "//xla/service/gpu:backend_configs_cc",
         "//xla/service/gpu:nvptx_compiler",
         "//xla/service/gpu:nvptx_compiler_impl",
-<<<<<<< HEAD
-        "//xla/tsl/platform:statusor",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:status_matchers",
-=======
         "//xla/stream_executor:platform",
         "//xla/stream_executor:stream_executor_h",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/status:statusor",
->>>>>>> upstream/master
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -726,10 +682,7 @@ cc_library(
         ":triton",
         "//xla/backends/autotuner:codegen_backend",
         "//xla/service:compiler",
-<<<<<<< HEAD
-=======
         "//xla/service/gpu/model/experimental:symbolic_expr",
->>>>>>> upstream/master
         "//xla/stream_executor:stream_executor_h",
         "//xla/stream_executor/cuda:cuda_platform_id",
         "//xla/stream_executor/platform:platform_object_registry",
@@ -750,10 +703,7 @@ cc_library(
         ":triton",
         "//xla/backends/autotuner:codegen_backend",
         "//xla/service:compiler",
-<<<<<<< HEAD
-=======
         "//xla/service/gpu/model/experimental:symbolic_expr",
->>>>>>> upstream/master
         "//xla/stream_executor:stream_executor_h",
         "//xla/stream_executor/platform:platform_object_registry",
         "//xla/stream_executor/rocm:rocm_platform_id",
@@ -767,11 +717,7 @@ cc_library(
     deps = [
         "//xla/backends/autotuner:codegen_backend",
         "//xla/service:compiler",
-<<<<<<< HEAD
-        "//xla/stream_executor:platform",
-=======
         "//xla/service/gpu/model/experimental:symbolic_expr",
->>>>>>> upstream/master
         "//xla/stream_executor:stream_executor_h",
     ],
 )
@@ -868,10 +814,7 @@ xla_cc_binary(
         "//xla:debug_options_flags",
         "//xla:xla_proto_cc",
         "//xla/backends/autotuner",
-<<<<<<< HEAD
-=======
         "//xla/backends/autotuner:autotuner_cache_interface",
->>>>>>> upstream/master
         "//xla/backends/autotuner:codegen_backend",
         "//xla/backends/autotuner:file_based_autotuner_cache",
         "//xla/backends/autotuner:profiler",
@@ -880,10 +823,7 @@ xla_cc_binary(
         "//xla/service:compiler",
         "//xla/service:gpu_plugin",
         "//xla/service:platform_util",
-<<<<<<< HEAD
-=======
         "//xla/service/gpu/model/experimental:symbolic_expr",
->>>>>>> upstream/master
         "//xla/stream_executor:device_memory_allocator",
         "//xla/stream_executor:platform",
         "//xla/stream_executor:platform_manager",
@@ -903,9 +843,6 @@ xla_cc_binary(
         "@com_google_absl//absl/strings:string_view",
         "@llvm-project//mlir:IR",
         "@local_tsl//tsl/platform:platform_port",
-<<<<<<< HEAD
-    ] + if_cuda_is_configured([":factory_cuda"]) + if_rocm_is_configured([":factory_rocm"]),
-=======
     ] + if_cuda_is_configured([
         ":factory_cuda",
         "//xla/stream_executor/cuda:all_runtime",
@@ -913,5 +850,4 @@ xla_cc_binary(
         ":factory_rocm",
         "//xla/stream_executor/rocm:all_runtime",
     ]),
->>>>>>> upstream/master
 )

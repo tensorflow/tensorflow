@@ -65,12 +65,8 @@ class LoopFusionKernelEmitter final : public MlirKernelEmitter {
   std::string name() const final { return "loop_fusion_kernel_emitter"; }
 
  private:
-<<<<<<< HEAD
-  IndexingMap ComputeWorkItemIdToOutputIndexing(mlir::MLIRContext* ctx) const;
-=======
   IndexingMap ComputeWorkItemIdToOutputIndexing(
       gpu::SymbolicExprContext* ctx) const;
->>>>>>> upstream/master
 
   absl::Status EmitEntryFunction(
       const emitters::PartitionedComputations& computations,

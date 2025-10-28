@@ -169,10 +169,7 @@ cc_library(
         "@local_xla//xla/python/pjrt_ifrt",
         "@local_xla//xla/service:computation_placer_hdr",
         "@local_xla//xla/service:dump",
-<<<<<<< HEAD
-=======
         "@local_xla//xla/tsl/concurrency:future",
->>>>>>> upstream/master
         "@local_xla//xla/tsl/concurrency:ref_count",
         "@local_xla//xla/tsl/framework:serving_device_selector",
         "@local_xla//xla/tsl/platform:env",

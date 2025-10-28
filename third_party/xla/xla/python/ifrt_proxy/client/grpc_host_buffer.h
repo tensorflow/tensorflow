@@ -24,10 +24,6 @@
 #include "absl/strings/cord.h"
 #include "absl/strings/string_view.h"
 #include "xla/pjrt/semaphore.h"
-<<<<<<< HEAD
-#include "xla/python/ifrt/future.h"
-=======
->>>>>>> upstream/master
 #include "xla/python/ifrt_proxy/client/host_buffer.h"
 #include "xla/python/ifrt_proxy/common/grpc_ifrt_service.grpc.pb.h"
 #include "xla/python/ifrt_proxy/common/ifrt_service.pb.h"

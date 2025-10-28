@@ -414,10 +414,7 @@ cc_library(
     deps = [
         ":ifrt",
         ":user_context",
-<<<<<<< HEAD
-=======
         ":user_context_test_util",
->>>>>>> upstream/master
         "//xla/tsl/concurrency:ref_count",
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:statusor",
@@ -481,11 +478,8 @@ cc_library(
         ":ifrt",
         ":test_util",
         ":user_context",
-<<<<<<< HEAD
-=======
         "//xla:shape_util",
         "//xla/pjrt:pjrt_layout",
->>>>>>> upstream/master
         "//xla/python/ifrt/ir:sharding_param",
         "//xla/tsl/concurrency:future",
         "//xla/tsl/concurrency:ref_count",
@@ -1120,12 +1114,6 @@ cc_library(
     ]),
     deps = [
         "//xla/tsl/concurrency:ref_count",
-<<<<<<< HEAD
-        "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/base:no_destructor",
-        "@com_google_absl//absl/log:check",
-        "@llvm-project//llvm:Support",
-=======
         "//xla/tsl/lib/gtl:int_type",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/base:no_destructor",
@@ -1136,7 +1124,6 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
         "@local_tsl//tsl/platform:random",
->>>>>>> upstream/master
     ],
 )
 
@@ -1145,16 +1132,11 @@ xla_cc_test(
     srcs = ["user_context_test.cc"],
     deps = [
         ":user_context",
-<<<<<<< HEAD
-=======
         ":user_context_test_util",
->>>>>>> upstream/master
         "//xla/tsl/concurrency:ref_count",
         "//xla/tsl/platform:env",
         "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest_main",
-<<<<<<< HEAD
-=======
     ],
 )
 
@@ -1231,7 +1213,6 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/types:span",
->>>>>>> upstream/master
         "@llvm-project//llvm:Support",
     ],
 )

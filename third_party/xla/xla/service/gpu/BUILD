@@ -402,10 +402,7 @@ cc_library(
         ":kernel_reuse_cache",
         "//xla/backends/gpu/runtime:collective_thunk",
         "//xla/backends/gpu/runtime:host_execute_thunk",
-<<<<<<< HEAD
-=======
         "//xla/backends/gpu/runtime:thunk_id",
->>>>>>> upstream/master
         "//xla/hlo/ir:hlo",
         "//xla/service:buffer_assignment",
         "//xla/service:call_inliner",
@@ -741,18 +738,12 @@ cc_library(
         "//xla/backends/gpu/runtime:nvshmem_collective_thunk",
         "//xla/backends/gpu/runtime:sequential_thunk",
         "//xla/backends/gpu/runtime:thunk",
-<<<<<<< HEAD
-        "//xla/backends/gpu/runtime:thunk_pass_pipeline",
-        "//xla/hlo/ir:hlo",
-        "//xla/service:buffer_assignment",
-=======
         "//xla/backends/gpu/runtime:thunk_checksum_tracing_pass",
         "//xla/backends/gpu/runtime:thunk_pass_pipeline",
         "//xla/core/collectives:clique_key",
         "//xla/hlo/ir:hlo",
         "//xla/service:buffer_assignment",
         "//xla/service:computation_layout",
->>>>>>> upstream/master
         "//xla/service:dump",
         "//xla/service:executable",
         "//xla/service:hlo_value",
@@ -821,28 +812,14 @@ xla_cc_test(
         ":gpu_executable",
         ":launch_dimensions",
         "//xla:debug_options_flags",
-<<<<<<< HEAD
-=======
         "//xla:literal_util",
         "//xla:shape_layout",
->>>>>>> upstream/master
         "//xla:shape_util",
         "//xla/backends/gpu/runtime:copy_thunk",
         "//xla/backends/gpu/runtime:kernel_thunk",
         "//xla/backends/gpu/runtime:sequential_thunk",
         "//xla/backends/gpu/runtime:thunk",
         "//xla/codegen/emitters:kernel_arguments",
-<<<<<<< HEAD
-        "//xla/hlo/ir:hlo",
-        "//xla/service:buffer_assignment",
-        "//xla/stream_executor:device_description",
-        "//xla/stream_executor:semantic_version",
-        "//xla/stream_executor/cuda:cuda_compute_capability",
-        "//xla/tsl/platform:env",
-        "//xla/tsl/platform:status_matchers",
-        "//xla/tsl/platform:statusor",
-        "//xla/tsl/util/proto:proto_matchers",
-=======
         "//xla/hlo/analysis:alias_info",
         "//xla/hlo/analysis:hlo_ordering",
         "//xla/hlo/ir:hlo",
@@ -862,7 +839,6 @@ xla_cc_test(
         "//xla/tsl/util/proto:proto_matchers",
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/status:statusor",
->>>>>>> upstream/master
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:path",
@@ -1413,10 +1389,7 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor/cuda:cuda_compute_capability",
-<<<<<<< HEAD
-=======
         "//xla/stream_executor/rocm:rocm_compute_capability",
->>>>>>> upstream/master
         "@com_google_absl//absl/functional:overload",
     ],
 )
@@ -1589,10 +1562,7 @@ cc_library(
         "//xla/service:hlo_verifier",
         "//xla/service:layout_assignment",
         "//xla/service/gpu/model:gpu_hlo_cost_analysis",
-<<<<<<< HEAD
-=======
         "//xla/service/gpu/model/experimental:symbolic_expr",
->>>>>>> upstream/master
         "//xla/service/gpu/transforms:multi_output_fusion",
         "//xla/service/gpu/transforms:priority_fusion",
         "//xla/service/gpu/transforms:variadic_op_splitter",
@@ -1802,13 +1772,9 @@ cc_library(
         "//xla/service:while_loop_all_reduce_code_motion",
         "//xla/service:while_loop_constant_sinking",
         "//xla/service:while_loop_simplifier",
-<<<<<<< HEAD
-        "//xla/service/debug:unstable_reduction_detector",
-=======
         "//xla/service/cpu:cpu_aot_compilation_result",
         "//xla/service/debug:unstable_reduction_detector",
         "//xla/service/gpu/autotuning:autotuner_pass",
->>>>>>> upstream/master
         "//xla/service/gpu/autotuning:autotuner_util",
         "//xla/service/gpu/model:collective_ptable_stats_collection",
         "//xla/service/gpu/model:gpu_cost_model_stats_collection",
@@ -1950,15 +1916,9 @@ cc_library(
 xla_test(
     name = "gpu_compiler_test",
     srcs = ["gpu_compiler_test.cc"],
-<<<<<<< HEAD
-     backend_tags = {
-        "gpu_a100": ["cuda-only"],
-        "gpu_v100": ["cuda-only"],
-=======
     backend_tags = {
         # TODO(b/445172709): Re-enable once nvbug 5552596 is fixed.
         "b200": ["broken"],
->>>>>>> upstream/master
     },
     backends = ["gpu"],
     data = ["gpu_compiler_test_autotune_db.textproto"],
@@ -2119,17 +2079,11 @@ cc_library(
         "//xla:xla_data_proto_cc",
         "//xla:xla_proto_cc",
         "//xla/backends/autotuner:codegen_backend",
-<<<<<<< HEAD
-        "//xla/backends/gpu/autotuner:cublas",
-        "//xla/backends/gpu/autotuner:cublaslt",
-        "//xla/backends/gpu/autotuner:factory",
-=======
         "//xla/backends/gpu/autotuner:block_level_emitter",
         "//xla/backends/gpu/autotuner:cublas",
         "//xla/backends/gpu/autotuner:cublaslt",
         "//xla/backends/gpu/autotuner:cudnn",
         "//xla/backends/gpu/autotuner:native_emitter",
->>>>>>> upstream/master
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
         "//xla/hlo/pass:hlo_pass_pipeline",
@@ -2145,10 +2099,7 @@ cc_library(
         "//xla/service:compiler",
         "//xla/service:dump",
         "//xla/service:float_support",
-<<<<<<< HEAD
-=======
         "//xla/service:hlo_cost_analysis",
->>>>>>> upstream/master
         "//xla/service:hlo_module_config",
         "//xla/service:hlo_verifier",
         "//xla/service/gpu/autotuning:autotuner_pass",
@@ -2168,10 +2119,6 @@ cc_library(
         "//xla/service/gpu/transforms:cudnn_norm_rewriter",
         "//xla/service/gpu/transforms:cudnn_pad_for_convolutions",
         "//xla/service/gpu/transforms:cudnn_simplify_padding",
-<<<<<<< HEAD
-        "//xla/service/gpu/transforms:cudnn_vectorize_convolutions",
-=======
->>>>>>> upstream/master
         "//xla/service/gpu/transforms:gpusolver_rewriter",
         "//xla/service/gpu/transforms:triangular_solve_rewriter",
         "//xla/service/llvm_ir:llvm_util",
@@ -2378,10 +2325,7 @@ cc_library(
     ],
     deps = [
         ":alias_info",
-<<<<<<< HEAD
-=======
         ":cublas_cudnn",
->>>>>>> upstream/master
         ":cublas_padding_requirements",
         ":gpu_compiler",
         ":target_constants",
@@ -2390,10 +2334,7 @@ cc_library(
         "//xla:xla_proto_cc",
         "//xla/backends/autotuner:codegen_backend",
         "//xla/backends/gpu/autotuner:cublas",
-<<<<<<< HEAD
-=======
         "//xla/backends/gpu/autotuner:cublaslt",
->>>>>>> upstream/master
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
         "//xla/hlo/pass:hlo_pass_pipeline",
