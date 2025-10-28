@@ -276,7 +276,7 @@ std::string GetSmName(se::CudaComputeCapability compute_capability) {
     // major version supports the forward compatible feature
     // extension.
     target_compute_capability.feature_extension =
-        se::CudaComputeCapability::FeatureExtension::kForwardCompatibleFeatures;
+        se::CudaComputeCapability::FeatureExtension::kFamilyCompatibleFeatures;
   }
 
   // If the current CC isn't supported by LLVM and it is newer then
