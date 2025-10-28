@@ -15,8 +15,12 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/schema/schema_utils.h"
 
 #include <algorithm>
+#include <complex>
+#include <cstddef>
+#include <cstdint>
 
 #include "tensorflow/compiler/mlir/lite/kernels/internal/compatibility_macros.h"
+#include "tensorflow/compiler/mlir/lite/schema/schema_generated.h"
 
 namespace tflite {
 
@@ -59,4 +63,51 @@ BuiltinOperator GetBuiltinCode(const OperatorCodeT* op_code) {
                                              op_code->deprecated_builtin_code));
 }
 
+size_t TensorTypeGetSize(::tflite::TensorType data_type) {
+  switch (data_type) {
+    case ::tflite::TensorType_FLOAT32:
+      static_assert(sizeof(float) == 4, "");
+      return 4;
+    case ::tflite::TensorType_FLOAT16:
+      static_assert(sizeof(int16_t) == 2, "");
+      return 2;
+    case ::tflite::TensorType_INT32:
+      static_assert(sizeof(int32_t) == 4, "");
+      return 4;
+    case ::tflite::TensorType_UINT8:
+      static_assert(sizeof(uint8_t) == 1, "");
+      return 1;
+    case ::tflite::TensorType_INT64:
+      static_assert(sizeof(int64_t) == 8, "");
+      return 8;
+    case ::tflite::TensorType_BOOL:
+      return sizeof(bool);
+    case ::tflite::TensorType_INT16:
+      static_assert(sizeof(int16_t) == 2, "");
+      return 2;
+    case ::tflite::TensorType_COMPLEX64:
+      static_assert(sizeof(std::complex<float>) == 8, "");
+      return 8;
+    case ::tflite::TensorType_INT8:
+      static_assert(sizeof(int8_t) == 1, "");
+      return 1;
+    case ::tflite::TensorType_FLOAT64:
+      static_assert(sizeof(double) == 8, "");
+      return 8;
+    case ::tflite::TensorType_COMPLEX128:
+      static_assert(sizeof(std::complex<double>) == 16, "");
+      return 16;
+    case ::tflite::TensorType_UINT64:
+      static_assert(sizeof(uint64_t) == 8, "");
+      return 8;
+    case ::tflite::TensorType_UINT32:
+      static_assert(sizeof(uint32_t) == 4, "");
+      return 4;
+    case ::tflite::TensorType_UINT16:
+      static_assert(sizeof(uint16_t) == 2, "");
+      return 2;
+    default:
+      return 0;
+  }
+}
 }  // namespace tflite
