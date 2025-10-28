@@ -31,7 +31,8 @@ cc_library(
     srcs = ["proto_matchers.cc"],
     hdrs = ["proto_matchers.h"],
     visibility = [
-        "//learning/pathways:__subpackages__",  # For OSS
+        "//learning/pathways:__subpackages__",
+        "//third_party/pathways:__subpackages__",  # For OSS
         "//xla:__subpackages__",
     ],
     deps = [

@@ -1033,6 +1033,7 @@ package_group(
         "//tensorflow_models/google/recml/...",
         "//third_party/cloud_tpu/convergence_tools/sdc_monitoring/...",
         "//third_party/cloud_tpu/inference_converter/...",
+        "//third_party/pathways/...",
         "//third_party/py/cloud_ml_autoflow/...",
         "//third_party/py/envlogger/...",
         "//third_party/py/gldm/...",
@@ -1050,6 +1051,7 @@ package_group(
     name = "ndarray_tensor_allow_list",
     packages = [
         "//learning/gemini/gemax/...",
+        "//third_party/pathways/...",
         "//third_party/py/courier/...",
         "//third_party/py/tensorfn/...",
     ],
