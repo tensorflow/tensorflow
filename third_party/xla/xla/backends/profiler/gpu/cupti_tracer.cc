@@ -1225,6 +1225,8 @@ CuptiTracer::CreateDefaultCallbackIds() {
       CUPTI_DRIVER_TRACE_CBID_cuMemcpy3DAsync_v2,
       CUPTI_DRIVER_TRACE_CBID_cuMemcpyHtoA_v2,
       CUPTI_DRIVER_TRACE_CBID_cuMemcpyHtoAAsync_v2,
+      CUPTI_DRIVER_TRACE_CBID_cuMemcpyPeer,
+      CUPTI_DRIVER_TRACE_CBID_cuMemcpyPeerAsync,
       // MemAlloc
       CUPTI_DRIVER_TRACE_CBID_cuMemAlloc_v2,
       CUPTI_DRIVER_TRACE_CBID_cuMemAllocPitch_v2,
