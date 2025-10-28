@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_HLO_IR_REPLICA_GROUP_H_
 #define XLA_HLO_IR_REPLICA_GROUP_H_
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -25,7 +26,9 @@ limitations under the License.
 #include <vector>
 
 #include "absl/types/span.h"
+#include "google/protobuf/repeated_ptr_field.h"
 #include "xla/array.h"
+#include "xla/hlo/ir/mesh_and_axis.h"
 #include "xla/hlo/ir/tile_assignment.h"
 #include "xla/printer.h"
 #include "xla/service/hlo.pb.h"
@@ -33,6 +36,83 @@ limitations under the License.
 #include "tsl/platform/protobuf.h"
 
 namespace xla {
+
+class MeshAxesReplicaGroupList {
+ public:
+  explicit MeshAxesReplicaGroupList(Mesh mesh, std::vector<AxisRef> axes)
+      : mesh_(std::move(mesh)), axes_(std::move(axes)) {}
+
+  bool operator==(const MeshAxesReplicaGroupList& other) const {
+    return mesh_ == other.mesh_ && axes_ == other.axes_;
+  }
+
+  template <typename H>
+  friend H AbslHashValue(H h, const MeshAxesReplicaGroupList& c) {
+    return H::combine(std::move(h), c.mesh_, c.axes_);
+  }
+
+  int64_t num_replica_groups() const;
+  int64_t num_devices_per_group() const;
+
+  void Print(Printer* printer) const;
+
+  std::string ToString() const;
+
+  MeshAxesReplicaGroupListProto ToProto() const;
+
+  static MeshAxesReplicaGroupList FromProto(
+      const MeshAxesReplicaGroupListProto& proto);
+
+ private:
+  Mesh mesh_;
+  std::vector<AxisRef> axes_;
+};
+
+class CartesianProduct {
+ public:
+  explicit CartesianProduct(std::vector<int64_t> limits)
+      : limits_(std::move(limits)) {}
+
+  struct Iterator {
+    std::vector<int64_t> current;  // The current state, e.g., {0, 1, 0}
+    const std::vector<int64_t>* limits;
+    bool at_end;
+
+    explicit Iterator(const std::vector<int64_t>* p_limits, bool is_end = false)
+        : current(p_limits->size(), 0), limits(p_limits), at_end(is_end) {
+      // If any of the limits are <= 0, (or the list is empty) then the entire
+      // product is empty. In this case there is nothing to iterate over.
+      if (!at_end) {
+        at_end = limits->empty() || std::any_of(limits->begin(), limits->end(),
+                                                [](int l) { return l <= 0; });
+      }
+    }
+
+    std::vector<int64_t> operator*() const { return current; }
+
+    bool operator!=(const Iterator& other) const {
+      return at_end != other.at_end;
+    }
+
+    Iterator& operator++() {
+      // Increment tuple using odometer logic (from right to left or least to
+      // most significant digits).
+      for (int i = limits->size() - 1; i >= 0; --i) {
+        if (++current[i] < (*limits)[i]) {
+          return *this;
+        }
+        current[i] = 0;
+      }
+      at_end = true;
+      return *this;
+    }
+  };
+  Iterator begin() const { return Iterator(&limits_); }
+  Iterator end() const { return Iterator(&limits_, true); }
+
+ private:
+  std::vector<int64_t> limits_;
+};
 
 std::string ReplicaGroupsToString(
     absl::Span<const ReplicaGroup> replica_groups);
