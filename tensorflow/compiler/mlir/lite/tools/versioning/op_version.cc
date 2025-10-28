@@ -468,6 +468,9 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       return 1;
 
     case BuiltinOperator_SLICE:
+      if (op_sig.inputs.at(0).type == kTfLiteInt4) {
+        return 7;
+      }
       if (op_sig.inputs.at(0).type == kTfLiteUInt32) {
         return 6;
       }
@@ -477,7 +480,6 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       if (op_sig.inputs.at(0).type == kTfLiteInt16) {
         return 4;
       }
-      // Version 3 supports string input types.
       if (op_sig.inputs.at(0).type == kTfLiteString) {
         return 3;
       }
