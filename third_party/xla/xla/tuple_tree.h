@@ -371,6 +371,8 @@ class TupleTree {
         .ok();
   }
 
+  bool IsTuple() const { return nodes_.size() > 1; }
+
   absl::Status CopyCompatibleSubtreeFrom(const TupleTree<T>& other,
                                          const ShapeIndex& src_index,
                                          const ShapeIndex& dst_index) {
