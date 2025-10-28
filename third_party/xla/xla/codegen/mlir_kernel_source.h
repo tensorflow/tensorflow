@@ -26,6 +26,8 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
 #include "mlir/Support/DebugStringHelper.h"
+#include "xla/codegen/kernel_definition.h"
+#include "xla/codegen/kernel_emitter.h"
 #include "xla/codegen/kernel_source.h"
 #include "xla/service/gpu/model/experimental/symbolic_expr.h"
 
@@ -80,6 +82,9 @@ class MlirKernelSource final : public KernelSource {
  private:
   Storage storage_;
 };
+
+using MlirKernelDefinition = KernelDefinition<MlirKernelSource>;  // NOLINT
+using MlirKernelEmitter = KernelEmitter<MlirKernelDefinition>;    // NOLINT
 
 }  // namespace xla
 

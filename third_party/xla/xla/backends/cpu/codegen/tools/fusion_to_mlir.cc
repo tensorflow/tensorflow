@@ -21,7 +21,6 @@ limitations under the License.
 #include "llvm/Support/raw_ostream.h"
 #include "xla/backends/cpu/codegen/fusion_compiler.h"
 #include "xla/backends/cpu/codegen/fusion_emitter.h"
-#include "xla/codegen/mlir_kernel_definition.h"
 #include "xla/codegen/tools/test_lib.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instructions.h"

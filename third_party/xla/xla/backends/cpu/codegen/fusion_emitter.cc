@@ -42,7 +42,6 @@ limitations under the License.
 #include "xla/codegen/emitters/loop_kernel_emitter.h"
 #include "xla/codegen/hlo_fusion_spec.h"
 #include "xla/codegen/ir_emission_utils.h"
-#include "xla/codegen/mlir_kernel_definition.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"

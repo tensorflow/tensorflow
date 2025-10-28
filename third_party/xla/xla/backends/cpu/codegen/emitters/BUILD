@@ -39,8 +39,6 @@ cc_library(
         "//xla/backends/cpu/codegen:symbol_name_util",
         "//xla/codegen:kernel_definition",
         "//xla/codegen:kernel_spec",
-        "//xla/codegen:mlir_kernel_definition",
-        "//xla/codegen:mlir_kernel_emitter",
         "//xla/codegen:mlir_kernel_source",
         "//xla/codegen/emitters:computation_partitioner",
         "//xla/codegen/emitters:elemental_hlo_to_mlir",

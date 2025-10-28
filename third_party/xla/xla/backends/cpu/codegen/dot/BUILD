@@ -18,8 +18,6 @@ cc_library(
         "//xla/codegen:kernel_definition",
         "//xla/codegen:kernel_emitter",
         "//xla/codegen:kernel_spec",
-        "//xla/codegen:llvm_kernel_definition",
-        "//xla/codegen:llvm_kernel_emitter",
         "//xla/codegen:llvm_kernel_source",
         "//xla/hlo/ir:hlo",
         "//xla/runtime:work_group",

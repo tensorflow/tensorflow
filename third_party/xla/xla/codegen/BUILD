@@ -90,6 +90,8 @@ cc_library(
     srcs = ["llvm_kernel_source.cc"],
     hdrs = ["llvm_kernel_source.h"],
     deps = [
+        ":kernel_definition",
+        ":kernel_emitter",
         ":kernel_source",
         "//xla/service/llvm_ir:llvm_util",
         "@llvm-project//llvm:Core",
@@ -117,6 +119,8 @@ cc_library(
     srcs = ["mlir_kernel_source.cc"],
     hdrs = ["mlir_kernel_source.h"],
     deps = [
+        ":kernel_definition",
+        ":kernel_emitter",
         ":kernel_source",
         "//xla:util",
         "//xla/service/gpu/model/experimental:symbolic_expr",
@@ -126,44 +130,6 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
         "@llvm-project//mlir:Support",
-    ],
-)
-
-cc_library(
-    name = "mlir_kernel_definition",
-    hdrs = ["mlir_kernel_definition.h"],
-    deps = [
-        ":kernel_definition",
-        ":kernel_source",
-        ":kernel_spec",
-        ":mlir_kernel_source",
-    ],
-)
-
-cc_library(
-    name = "mlir_kernel_emitter",
-    hdrs = ["mlir_kernel_emitter.h"],
-    deps = [
-        ":kernel_emitter",
-        ":mlir_kernel_definition",
-    ],
-)
-
-cc_library(
-    name = "llvm_kernel_emitter",
-    hdrs = ["llvm_kernel_emitter.h"],
-    deps = [
-        ":kernel_emitter",
-        ":llvm_kernel_definition",
-    ],
-)
-
-cc_library(
-    name = "llvm_kernel_definition",
-    hdrs = ["llvm_kernel_definition.h"],
-    deps = [
-        ":kernel_definition",
-        ":llvm_kernel_source",
     ],
 )
 
