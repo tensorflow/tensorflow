@@ -46,6 +46,7 @@ limitations under the License.
 #include "xla/service/heap_simulator/allocation_block.h"
 #include "xla/service/heap_simulator/heap_simulator.h"
 #include "xla/service/hlo.pb.h"
+#include "xla/service/hlo_buffer.h"
 #include "xla/service/hlo_value.h"
 #include "xla/service/memory_space_assignment/allocation.h"
 #include "xla/service/memory_space_assignment/allocation_value.h"
@@ -60,6 +61,13 @@ limitations under the License.
 
 namespace xla {
 namespace memory_space_assignment {
+
+// A struct representing use intervals.
+struct UseInterval {
+  int64_t first_use_time;
+  int64_t last_use_time;
+};
+
 // A struct representing an asynchronous copy with its logical start and end
 // time (time that copy done is scheduled), the resource this copy would use,
 // its destination memory space, and a unique ID.
@@ -338,6 +346,19 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
   // in one pass within a block of memory space in the alternate memory. This
   // guarantees FIFO ordering of all prefetches and allows for more aggressive
   // prefetching i.e. allowing for bandwidth saturation.
+  //
+  // 1) Prefetches are copy-like operations and generate a new HloValue.
+  // 2) For compiler-inserted block prefetches:
+  //    A) The prefetch done, and everything that aliases with the prefetch
+  //       source and comes after the prefetch done will now alias with the new
+  //       HloValue and get alternate memory.
+  //    B) Everything that aliases with the prefetch source and comes before the
+  //       prefetch done will get default memory.
+  // 3) For user-inserted block prefetches:
+  //    A) The prefetch done and everything that aliases with it will get
+  //       alternate memory.
+  //    B) Everything that aliases with the source of the prefetch will get
+  //       default memory.
 
   // Processes existing, explicit block prefetched copy start/done instructions.
   // Such instructions are inserted before MSA. MSA just needs to schedule them.
@@ -351,6 +372,18 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
   // REQUIRED: Scoped vmem must be allocated at offset 0 at the time this method
   //           is called.
   absl::Status CreateNewBlockPrefetches();
+
+  // Creates colocated allocations for values aliased to the new block
+  // prefetches and finalizes them.
+  void ColocateAndFinalizeValuesAliasedToNewBlockPrefetches(
+      const HloValue* maybe_sliced_value, const HloBuffer& buffer,
+      const Chunk& chunk_candidate, int64_t buffer_size,
+      AllocationBlock* first_colocated_repack_allocation,
+      const absl::flat_hash_map<const HloInstruction*, int64_t>&
+          instruction_schedule,
+      const absl::flat_hash_map<const HloValue*, UseInterval>&
+          value_to_use_intervals,
+      std::vector<int64_t>& prefetch_end_times);
 
   // Returns the maximum amount of scoped memory that is reserved at any time in
   // the program.
