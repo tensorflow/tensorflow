@@ -30,7 +30,7 @@ namespace collective_util {
 
 /*static*/
 absl::Status InitializeDeviceAndLocality(const DeviceMgr* dev_mgr,
-                                         const string& device_name,
+                                         const std::string& device_name,
                                          Device** device,
                                          DeviceLocality* device_locality) {
   if (!dev_mgr) {
@@ -54,10 +54,10 @@ absl::Status InitializeDeviceAndLocality(const DeviceMgr* dev_mgr,
 }
 
 /*static*/
-string SubdivPermDebugString(const CollectiveParams& col_params) {
+std::string SubdivPermDebugString(const CollectiveParams& col_params) {
   const auto& subdiv_perms =
       col_params.instance.impl_details.subdiv_permutations;
-  string buf;
+  std::string buf;
   for (int sdi = 0; sdi < subdiv_perms.size(); ++sdi) {
     absl::StrAppend(&buf, "Subdiv ", sdi, " device order:\n");
     for (int di = 0; di < subdiv_perms[sdi].size(); ++di) {
