@@ -49,7 +49,7 @@ struct RawType {
 
 template <>
 struct RawType<qint8> {
-  using type = int8;
+  using type = int8_t;
 };
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -117,8 +117,8 @@ absl::Status CheckPaddingSize(int64_t window_rows, int64_t window_cols,
 }
 
 PoolParameters::PoolParameters(OpKernelContext* context,
-                               const std::vector<int32>& ksize,
-                               const std::vector<int32>& stride,
+                               const std::vector<int32_t>& ksize,
+                               const std::vector<int32_t>& stride,
                                Padding padding,
                                std::vector<int64_t> explicit_paddings,
                                TensorFormat data_format,

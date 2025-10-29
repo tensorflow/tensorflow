@@ -102,7 +102,7 @@ class TensorMapSize : public OpKernel {
     OP_REQUIRES_OK(ctx, GetInputMap(ctx, 0, &map));
     Tensor* result;
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape{}, &result));
-    result->scalar<int32>()() = map->tensors().size();
+    result->scalar<int32_t>()() = map->tensors().size();
   }
 };
 
