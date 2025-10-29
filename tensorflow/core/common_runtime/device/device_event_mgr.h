@@ -83,7 +83,7 @@ class EventMgr {
   friend class EventMgrFactory;
 
   se::StreamExecutor* const exec_;
-  const int32 polling_active_delay_usecs_;
+  const int32_t polling_active_delay_usecs_;
   mutex mu_;
   condition_variable events_pending_ TF_GUARDED_BY(mu_);
 
