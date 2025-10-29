@@ -28,12 +28,12 @@ limitations under the License.
 namespace tensorflow {
 
 TEST(AccuracyUtilsTest, ReadGroundTruthFile) {
-  string file_name = tensorflow::io::JoinPath(tensorflow::testing::TmpDir(),
-                                              "ground_truth.txt");
-  string file_data = "a,10\nb,12\n";
+  std::string file_name = tensorflow::io::JoinPath(
+      tensorflow::testing::TmpDir(), "ground_truth.txt");
+  std::string file_data = "a,10\nb,12\n";
   TF_ASSERT_OK(WriteStringToFile(Env::Default(), file_name, file_data));
 
-  std::vector<std::pair<string, int64_t>> ground_truth;
+  std::vector<std::pair<std::string, int64_t>> ground_truth;
   TF_ASSERT_OK(ReadGroundTruthFile(file_name, &ground_truth));
   ASSERT_EQ(2, ground_truth.size());
   EXPECT_EQ("a", ground_truth[0].first);
