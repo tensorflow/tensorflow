@@ -27,7 +27,8 @@ class GetOptionsOp : public OpKernel {
 
   void Compute(OpKernelContext* ctx) final;
 
-  string TraceString(const OpKernelContext& ctx, bool verbose) const override;
+  std::string TraceString(const OpKernelContext& ctx,
+                          bool verbose) const override;
 };
 
 }  // namespace data

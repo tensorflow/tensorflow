@@ -25,7 +25,7 @@ class ShardDatasetParams : public DatasetParams {
   ShardDatasetParams(T input_dataset_params, int64_t num_shards, int64_t index,
                      bool require_non_empty, DataTypeVector output_dtypes,
                      std::vector<PartialTensorShape> output_shapes,
-                     string node_name)
+                     std::string node_name)
       : DatasetParams(std::move(output_dtypes), std::move(output_shapes),
                       std::move(node_name)),
         num_shards_(num_shards),
@@ -41,7 +41,8 @@ class ShardDatasetParams : public DatasetParams {
     return CreateTensors<int64_t>(TensorShape({}), {{num_shards_}, {index_}});
   }
 
-  absl::Status GetInputNames(std::vector<string>* input_names) const override {
+  absl::Status GetInputNames(
+      std::vector<std::string>* input_names) const override {
     input_names->clear();
     input_names->emplace_back(ShardDatasetOp::kInputDataset);
     input_names->emplace_back(ShardDatasetOp::kNumShards);
@@ -58,7 +59,9 @@ class ShardDatasetParams : public DatasetParams {
     return absl::OkStatus();
   }
 
-  string dataset_type() const override { return ShardDatasetOp::kDatasetType; }
+  std::string dataset_type() const override {
+    return ShardDatasetOp::kDatasetType;
+  }
 
  private:
   int64_t num_shards_;
