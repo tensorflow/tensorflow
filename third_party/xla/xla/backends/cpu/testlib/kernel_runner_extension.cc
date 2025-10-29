@@ -42,6 +42,7 @@ limitations under the License.
 #include "xla/backends/cpu/testlib/llvm_ir_kernel_emitter.h"
 #include "xla/backends/cpu/testlib/mlir_kernel_emitter.h"
 #include "xla/codegen/kernel_definition.h"
+#include "xla/codegen/kernel_emitter.h"
 #include "xla/codegen/llvm_kernel_source.h"
 #include "xla/codegen/mlir_kernel_source.h"
 #include "xla/codegen/testlib/kernel_runner.h"
@@ -86,10 +87,10 @@ NB_MODULE(_extension, kernel_runner_module) {
   // Use a tuple and cast to NumWorkGroups to take advantage of built in
   // bindings.
   using NbNumWorkGroups = std::tuple<uint64_t, uint64_t, uint64_t>;
-  nb::class_<LlvmTestKernelEmitter, LlvmKernelEmitter>(kernel_runner_module,
-                                                       "LlvmTestKernelEmitter")
-      .def("__init__", [](LlvmKernelEmitter* self, absl::string_view ir,
-                          absl::string_view kernel_name,
+  nb::class_<LlvmTestKernelEmitter, KernelEmitter<LlvmKernelSource>>(
+      kernel_runner_module, "LlvmTestKernelEmitter")
+      .def("__init__", [](KernelEmitter<LlvmKernelSource>* self,
+                          absl::string_view ir, absl::string_view kernel_name,
                           NbNumWorkGroups num_workgroups) {
         new (self)
             LlvmTestKernelEmitter(ir, kernel_name,
@@ -160,28 +161,28 @@ NB_MODULE(_extension, kernel_runner_module) {
                                     "TargetMachineFeatures")
       .def("__str__", &TargetMachineFeatures::get_target_feature_string);
 
-  nb::class_<ElementalKernelEmitter, LlvmKernelEmitter>(
+  nb::class_<ElementalKernelEmitter, KernelEmitter<LlvmKernelSource>>(
       kernel_runner_module, "ElementalKernelEmitter")
       .def(nb::init<const HloInstruction*, const BufferAssignment*,
                     const TargetMachineFeatures*>(),
            nb::keep_alive<1, 2>(), nb::keep_alive<1, 3>(),
            nb::keep_alive<1, 4>());
 
-  nb::class_<DotKernelEmitter, LlvmKernelEmitter>(kernel_runner_module,
-                                                  "DotKernelEmitter")
+  nb::class_<DotKernelEmitter, KernelEmitter<LlvmKernelSource>>(
+      kernel_runner_module, "DotKernelEmitter")
       .def(nb::init<const HloInstruction*, const BufferAssignment*,
                     const TargetMachineFeatures*>(),
            nb::keep_alive<1, 2>(), nb::keep_alive<1, 3>(),
            nb::keep_alive<1, 4>());
 
-  nb::class_<ConcatenateKernelEmitter, LlvmKernelEmitter>(
+  nb::class_<ConcatenateKernelEmitter, KernelEmitter<LlvmKernelSource>>(
       kernel_runner_module, "ConcatenateKernelEmitter")
       .def(nb::init<const HloInstruction*, const BufferAssignment*,
                     const TargetMachineFeatures*>(),
            nb::keep_alive<1, 2>(), nb::keep_alive<1, 3>(),
            nb::keep_alive<1, 4>());
 
-  nb::class_<ComputationKernelEmitter, LlvmKernelEmitter>(
+  nb::class_<ComputationKernelEmitter, KernelEmitter<LlvmKernelSource>>(
       kernel_runner_module, "ComputationKernelEmitter")
       .def(nb::init<const HloInstruction*, const BufferAssignment*,
                     const TargetMachineFeatures*>(),

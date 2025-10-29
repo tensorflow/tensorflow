@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/codegen/kernel_emitter.h"
 #include "xla/codegen/llvm_kernel_source.h"
 #include "xla/runtime/buffer_use.h"
 #include "xla/runtime/work_group.h"
@@ -34,7 +35,7 @@ namespace xla::cpu {
 // into the dedicated LLVM context and module instance. This kernel emitter is
 // intended to be used for testing purposes only: (1) load pre-compiled LLVM IR
 // into the XLA kernel spec; (2) Execute it with user provided input buffers.
-class LlvmTestKernelEmitter : public LlvmKernelEmitter {
+class LlvmTestKernelEmitter : public KernelEmitter<LlvmKernelSource> {
  public:
   // When loading kernel IR into the KernelSpec we create a separate buffer
   // allocation for every kernel argument. We don't use buffer assignment in
