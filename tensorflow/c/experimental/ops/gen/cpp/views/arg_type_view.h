@@ -26,7 +26,7 @@ class ArgTypeView {
  public:
   explicit ArgTypeView(ArgType arg_type);
 
-  string TypeName() const;
+  std::string TypeName() const;
 
  private:
   ArgType arg_type_;

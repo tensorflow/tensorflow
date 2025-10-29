@@ -24,7 +24,7 @@ namespace cpp {
 
 ArgTypeView::ArgTypeView(ArgType arg_type) : arg_type_(arg_type) {}
 
-string ArgTypeView::TypeName() const {
+std::string ArgTypeView::TypeName() const {
   if (arg_type_.is_read_only()) {
     if (arg_type_.is_list()) {
       return "absl::Span<AbstractTensorHandle* const>";
