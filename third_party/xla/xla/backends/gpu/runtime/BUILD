@@ -3134,5 +3134,35 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     deps = [
         ":thunk_buffer_id",
+        "//xla/tsl/lib/gtl:int_type",
+    ],
+)
+
+cc_library(
+    name = "buffer_debug_log_entry_metadata_store",
+    srcs = ["buffer_debug_log_entry_metadata_store.cc"],
+    hdrs = ["buffer_debug_log_entry_metadata_store.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        ":buffer_debug_log_proto_cc",
+        ":buffer_debug_log_structs",
+        ":thunk_id",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+xla_cc_test(
+    name = "buffer_debug_log_entry_metadata_store_test",
+    srcs = ["buffer_debug_log_entry_metadata_store_test.cc"],
+    deps = [
+        ":buffer_debug_log_entry_metadata_store",
+        ":buffer_debug_log_structs",
+        ":thunk_buffer_id",
+        ":thunk_id",
+        "//xla/tsl/util/proto:proto_matchers",
+        "@com_google_googletest//:gtest_main",
     ],
 )

@@ -21,8 +21,12 @@ limitations under the License.
 #include <tuple>
 
 #include "xla/backends/gpu/runtime/thunk_buffer_id.h"
+#include "xla/tsl/lib/gtl/int_type.h"
 
 namespace xla::gpu {
+
+// TODO: b/447080910 - use this instead of ThunkBufferId.
+TSL_LIB_GTL_DEFINE_INT_TYPE(BufferDebugLogEntryId, uint32_t)
 
 struct BufferDebugLogEntry {
   // An ID that uniquely identifies a thunk and its specific input or output
