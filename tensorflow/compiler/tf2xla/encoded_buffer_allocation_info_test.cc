@@ -1,4 +1,4 @@
-/* Copyright 2025 The OpenXLA Authors.
+/* Copyright 2025 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,14 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/backends/cpu/buffer_allocation_info.h"
+#include "tensorflow/compiler/tf2xla/encoded_buffer_allocation_info.h"
 
 #include <gtest/gtest.h>
+#include "xla/backends/cpu/buffer_allocation_info.h"
 
 namespace xla::cpu {
 namespace {
 
-TEST(BufferAllocationInfoTest, RoundTrip) {
+TEST(EncodedBufferAllocationInfoTest, RoundTrip) {
   auto round_trip = [](const BufferAllocationInfo& buffer_info) {
     EncodedBufferAllocationInfo encoded(buffer_info);
     BufferAllocationInfo round_trip(encoded);

@@ -60,15 +60,6 @@ cc_library(
     ],
 )
 
-xla_cc_test(
-    name = "buffer_allocation_info_test",
-    srcs = ["buffer_allocation_info_test.cc"],
-    deps = [
-        ":buffer_allocation_info",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
 onednn_graph_cc_library(
     name = "onednn_emitter",
     srcs = ["onednn_emitter.cc"],

@@ -28,6 +28,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
+#include "tensorflow/compiler/tf2xla/encoded_buffer_allocation_info.h"
 #include "xla/backends/cpu/alignment.h"
 #include "xla/backends/cpu/buffer_allocation_info.h"
 #include "xla/backends/cpu/runtime/rng_state_lib.h"
