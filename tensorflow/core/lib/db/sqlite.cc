@@ -123,7 +123,7 @@ absl::Status EnvPragma(Sqlite* db, const char* pragma, const char* var) {
 }  // namespace
 
 /* static */
-absl::Status Sqlite::Open(const string& path, int flags, Sqlite** db) {
+absl::Status Sqlite::Open(const std::string& path, int flags, Sqlite** db) {
   flags |= SQLITE_OPEN_PRIVATECACHE;
   flags |= SQLITE_OPEN_URI;
   sqlite3* sqlite = nullptr;
