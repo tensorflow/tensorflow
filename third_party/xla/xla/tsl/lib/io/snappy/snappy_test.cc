@@ -26,16 +26,16 @@ limitations under the License.
 
 namespace tsl {
 
-static void CheckPrefixSuffix(absl::string_view str, const string& prefix,
-                              const string& suffix) {
+static void CheckPrefixSuffix(absl::string_view str, const std::string& prefix,
+                              const std::string& suffix) {
   CHECK_GE(str.size(), prefix.size());
   CHECK_GE(str.size(), suffix.size());
   CHECK_EQ(str.substr(0, prefix.length()), prefix);
   CHECK_EQ(str.substr(str.length() - suffix.length()), suffix);
 }
 
-static string GetRecord() {
-  static const string lorem_ipsum =
+static std::string GetRecord() {
+  static const std::string lorem_ipsum =
       "Lorem ipsum dolor sit amet, consectetur adipiscing elit."
       " Fusce vehicula tincidunt libero sit amet ultrices. Vestibulum non "
       "felis augue. Duis vitae augue id lectus lacinia congue et ut purus. "
@@ -51,8 +51,8 @@ static string GetRecord() {
   return lorem_ipsum;
 }
 
-static string GenTestString(int copies = 1) {
-  string result = "";
+static std::string GenTestString(int copies = 1) {
+  std::string result = "";
   for (int i = 0; i < copies; i++) {
     result += GetRecord();
   }
@@ -64,8 +64,8 @@ absl::Status TestMultipleWritesWriteFile(size_t compress_input_buf_size,
                                          int num_writes, bool with_flush,
                                          int num_copies,
                                          bool corrupt_compressed_file,
-                                         string& fname, string& data,
-                                         string& expected_result) {
+                                         std::string& fname, std::string& data,
+                                         std::string& expected_result) {
   Env* env = Env::Default();
 
   fname = testing::TmpDir() + "/snappy_buffers_test";
@@ -88,7 +88,8 @@ absl::Status TestMultipleWritesWriteFile(size_t compress_input_buf_size,
   TF_RETURN_IF_ERROR(file_writer->Close());
 
   if (corrupt_compressed_file) {
-    string corrupt_fname = testing::TmpDir() + "/snappy_buffers_test_corrupt";
+    std::string corrupt_fname =
+        testing::TmpDir() + "/snappy_buffers_test_corrupt";
     std::unique_ptr<WritableFile> corrupt_file_writer;
     TF_RETURN_IF_ERROR(
         env->NewWritableFile(corrupt_fname, &corrupt_file_writer));
@@ -135,9 +136,9 @@ absl::Status TestMultipleWrites(size_t compress_input_buf_size,
                                 bool corrupt_compressed_file = false) {
   Env* env = Env::Default();
 
-  string expected_result;
-  string fname;
-  string data;
+  std::string expected_result;
+  std::string fname;
+  std::string data;
 
   TF_RETURN_IF_ERROR(TestMultipleWritesWriteFile(
       compress_input_buf_size, compress_output_buf_size, num_writes, with_flush,
@@ -150,7 +151,7 @@ absl::Status TestMultipleWrites(size_t compress_input_buf_size,
 
   // Run the test twice, resetting the stream after the first attempt.
   for (int attempt = 0; attempt < 2; ++attempt) {
-    string actual_result;
+    std::string actual_result;
     for (int i = 0; i < num_writes; i++) {
       tstring decompressed_output;
       TF_RETURN_IF_ERROR(in.ReadNBytes(data.size(), &decompressed_output));
@@ -173,9 +174,9 @@ absl::Status TestMultipleWritesInputStream(
     bool corrupt_compressed_file = false) {
   Env* env = Env::Default();
 
-  string expected_result;
-  string fname;
-  string data;
+  std::string expected_result;
+  std::string fname;
+  std::string data;
 
   TF_RETURN_IF_ERROR(TestMultipleWritesWriteFile(
       compress_input_buf_size, compress_output_buf_size, num_writes, with_flush,
@@ -188,7 +189,7 @@ absl::Status TestMultipleWritesInputStream(
                                             uncompress_output_buf_size);
 
   for (int attempt = 0; attempt < 2; ++attempt) {
-    string actual_result;
+    std::string actual_result;
     for (int i = 0; i < num_writes; ++i) {
       tstring decompressed_output;
       TF_RETURN_IF_ERROR(
@@ -208,7 +209,7 @@ void TestTellWriteFile(size_t compress_input_buf_size,
                        size_t compress_output_buf_size,
                        size_t uncompress_input_buf_size,
                        size_t uncompress_output_buf_size, int num_copies,
-                       string& fname, string& data) {
+                       std::string& fname, std::string& data) {
   Env* env = Env::Default();
   fname = testing::TmpDir() + "/snappy_buffers_test";
   data = GenTestString(num_copies);
@@ -228,14 +229,14 @@ void TestTell(size_t compress_input_buf_size, size_t compress_output_buf_size,
               size_t uncompress_input_buf_size,
               size_t uncompress_output_buf_size, int num_copies = 1) {
   Env* env = Env::Default();
-  string data;
-  string fname;
+  std::string data;
+  std::string fname;
 
   TestTellWriteFile(compress_input_buf_size, compress_output_buf_size,
                     uncompress_input_buf_size, uncompress_output_buf_size,
                     num_copies, fname, data);
 
-  tstring first_half(string(data, 0, data.size() / 2));
+  tstring first_half(std::string(data, 0, data.size() / 2));
   tstring bytes_read;
   std::unique_ptr<RandomAccessFile> file_reader;
   TF_CHECK_OK(env->NewRandomAccessFile(fname, &file_reader));
@@ -265,14 +266,14 @@ void TestTellInputStream(size_t compress_input_buf_size,
                          size_t uncompress_output_buf_size,
                          int num_copies = 1) {
   Env* env = Env::Default();
-  string data;
-  string fname;
+  std::string data;
+  std::string fname;
 
   TestTellWriteFile(compress_input_buf_size, compress_output_buf_size,
                     uncompress_input_buf_size, uncompress_output_buf_size,
                     num_copies, fname, data);
 
-  tstring first_half(string(data, 0, data.size() / 2));
+  tstring first_half(std::string(data, 0, data.size() / 2));
   tstring bytes_read;
   std::unique_ptr<RandomAccessFile> file_reader;
   TF_CHECK_OK(env->NewRandomAccessFile(fname, &file_reader));
@@ -297,7 +298,7 @@ void TestTellInputStream(size_t compress_input_buf_size,
 }
 
 static bool SnappyCompressionSupported() {
-  string out;
+  std::string out;
   absl::string_view in = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
   return port::Snappy_Compress(in.data(), in.size(), &out);
 }
