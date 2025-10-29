@@ -249,7 +249,8 @@ IndexingMap GetScatterIndexingMap(
       {}, constraints);
 }
 
-absl::StatusOr<MlirKernelDefinition> CpuScatterFusion::EmitKernelDefinition() {
+absl::StatusOr<CpuScatterFusion::KernelDefinition>
+CpuScatterFusion::EmitKernelDefinition() {
   mlir::OpBuilder builder(symbolic_expr_context_->GetMLIRContext());
   TF_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
                       CreateNamedMlirModuleOp(*fusion_, builder));
@@ -325,8 +326,8 @@ absl::StatusOr<MlirKernelDefinition> CpuScatterFusion::EmitKernelDefinition() {
                          std::move(argument_buffers), std::move(result_buffers),
                          std::move(invariant_arguments));
 
-  return MlirKernelDefinition(std::move(kernel_spec),
-                              MlirKernelSource(std::move(mlir_module)));
+  return KernelDefinition(std::move(kernel_spec),
+                          MlirKernelSource(std::move(mlir_module)));
 }
 
 absl::Status CpuScatterFusion::EmitEntryFunction(

@@ -206,9 +206,8 @@ NB_MODULE(_extension, kernel_runner_module) {
       [](SymbolicExprContext& symbolic_expr_context,
          const HloFusionInstruction& fusion,
          const BufferAssignment* buffer_assignment) {
-        absl::StatusOr<MlirKernelDefinition> kernel_definition =
-            EmitFusionKernel(symbolic_expr_context, fusion, buffer_assignment,
-                             false);
+        auto kernel_definition = EmitFusionKernel(symbolic_expr_context, fusion,
+                                                  buffer_assignment, false);
         if (!kernel_definition.ok()) {
           throw std::runtime_error(kernel_definition.status().ToString());
         }
@@ -242,8 +241,8 @@ NB_MODULE(_extension, kernel_runner_module) {
                                               "KernelRunner")
       .def_static(
           "create",
-          [](std::unique_ptr<MlirKernelDefinition,
-                             nb::deleter<MlirKernelDefinition>>
+          [](std::unique_ptr<KernelDefinition<MlirKernelSource>,
+                             nb::deleter<KernelDefinition<MlirKernelSource>>>
                  kernel_definition,
              std::unique_ptr<JitCompiler, nb::deleter<JitCompiler>>
                  jit_compiler) {
