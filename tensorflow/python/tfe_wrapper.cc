@@ -377,7 +377,7 @@ py::object TFE_Py_ExecuteCancelable_wrapper(
 }
 
 static py::object TF_ListPhysicalDevices() {
-  std::vector<string> devices;
+  std::vector<std::string> devices;
   absl::Status s = tensorflow::DeviceFactory::ListAllPhysicalDevices(&devices);
   MaybeRaiseRegisteredFromStatus(s);
   PyObject* result = PyList_New(devices.size());
@@ -391,7 +391,7 @@ static py::object TF_ListPhysicalDevices() {
 }
 
 static py::object TF_ListPluggablePhysicalDevices() {
-  std::vector<string> devices;
+  std::vector<std::string> devices;
   absl::Status s =
       tensorflow::DeviceFactory::ListPluggablePhysicalDevices(&devices);
   MaybeRaiseRegisteredFromStatus(s);
@@ -405,9 +405,10 @@ static py::object TF_ListPluggablePhysicalDevices() {
   return tensorflow::PyoOrThrow(result.release());
 }
 
-static std::unordered_map<string, string> TF_GetDeviceDetails(int index) {
+static std::unordered_map<std::string, std::string> TF_GetDeviceDetails(
+    int index) {
   tensorflow::Safe_TF_StatusPtr status = tensorflow::make_safe(TF_NewStatus());
-  std::unordered_map<string, string> device_details;
+  std::unordered_map<std::string, std::string> device_details;
   absl::Status s =
       tensorflow::DeviceFactory::GetAnyDeviceDetails(index, &device_details);
   tensorflow::Set_TF_Status_from_Status(status.get(), s);
