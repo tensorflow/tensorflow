@@ -39,7 +39,8 @@ bool GrpcMaybeParseProto(::grpc::ByteBuffer* src, protobuf::Message* dst) {
 
 // GrpcMaybeUnparseProto from a string simply copies the string to the
 // ByteBuffer.
-::grpc::Status GrpcMaybeUnparseProto(const string& src, grpc::ByteBuffer* dst) {
+::grpc::Status GrpcMaybeUnparseProto(const std::string& src,
+                                     grpc::ByteBuffer* dst) {
   ::grpc::Slice s(src.data(), src.size());
   ::grpc::ByteBuffer buffer(&s, 1);
   dst->Swap(&buffer);
@@ -47,7 +48,7 @@ bool GrpcMaybeParseProto(::grpc::ByteBuffer* src, protobuf::Message* dst) {
 }
 
 // GrpcMaybeParseProto simply copies bytes into the string.
-bool GrpcMaybeParseProto(grpc::ByteBuffer* src, string* dst) {
+bool GrpcMaybeParseProto(grpc::ByteBuffer* src, std::string* dst) {
   dst->clear();
   dst->reserve(src->Length());
   std::vector<::grpc::Slice> slices;
