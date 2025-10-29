@@ -331,8 +331,9 @@ absl::Status RegisterCustomTypeId(absl::string_view type_name,
   }
   XLA_FFI_TypeId* type_id_ptr =
       reinterpret_cast<XLA_FFI_TypeId*>(static_cast<void*>(capsule.data()));
-  return ffi::TakeStatus(ffi::Ffi::RegisterTypeId(xla::ffi::GetXlaFfiApi(),
-                                                  type_name, type_id_ptr));
+  XLA_FFI_TypeInfo* type_info_ptr = nullptr;
+  return ffi::TakeStatus(ffi::Ffi::RegisterTypeId(
+      xla::ffi::GetXlaFfiApi(), type_name, type_id_ptr, type_info_ptr));
 }
 
 NB_MODULE(py_hlo_multihost_runner, m) {
