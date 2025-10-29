@@ -2771,8 +2771,10 @@ cc_library(
     features = ["-layering_check"],
     deps = [
         "//tensorflow/core:framework",
+        "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
+        "@local_xla//xla/tsl/lib/strings:resize_uninitialized",
     ],
 )
 
