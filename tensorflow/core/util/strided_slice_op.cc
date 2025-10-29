@@ -33,13 +33,13 @@ constexpr int32_t kShrinkAxis = -1, kNewAxis = -2;
 // if one does foo[3:5, ..., -3], this will have 3 length tensors
 struct StridedSliceSparseSpec {
   int64_t dims;
-  int32 num_add_axis_after_ellipsis;
+  int32_t num_add_axis_after_ellipsis;
   const Tensor* begin_tensor;
   const Tensor* end_tensor;
   const Tensor& strides_tensor;
-  const int32 begin_mask, end_mask;
-  int32 ellipsis_mask;
-  const int32 new_axis_mask, shrink_axis_mask;
+  const int32_t begin_mask, end_mask;
+  int32_t ellipsis_mask;
+  const int32_t new_axis_mask, shrink_axis_mask;
 };
 
 // Dense slicing specification
@@ -49,8 +49,8 @@ struct StridedSliceSparseSpec {
 // sparse had 3 length tensors.
 struct StridedSliceDenseSpec {
   const int64_t dims;
-  int32 begin_mask;
-  int32 end_mask;
+  int32_t begin_mask;
+  int32_t end_mask;
   bool begin_valid;
   bool end_valid;
   absl::InlinedVector<int64_t, 4UL>& begin;
@@ -62,18 +62,18 @@ struct StridedSliceDenseSpec {
   // entries. If an index in this array is positive, the size of the dimension
   // is obtained from canonical end-begin. Otherwise, if it is a kNewAxis,
   // it will be 1. A shrunk dimension is skipped.
-  absl::InlinedVector<int32, 4UL> final_shape_gather_indices;
+  absl::InlinedVector<int32_t, 4UL> final_shape_gather_indices;
   // This vector has the same size as final_shape_gather_indices, but it
   // remembers the sparse index that a dimension comes from, instead of dense
   // index. A -1 in this vector means there the index is not from the sparse
   // input.
-  absl::InlinedVector<int32, 4UL> final_shape_gather_indices_sparse;
-  absl::InlinedVector<int32, 4UL> input_shape_gather_indices_sparse;
+  absl::InlinedVector<int32_t, 4UL> final_shape_gather_indices_sparse;
+  absl::InlinedVector<int32_t, 4UL> input_shape_gather_indices_sparse;
   // The dense indexed shrink mask is which processing dimensions
   // should be shrunk. For example, if foo.shape = (10,10,10,10)
   // foo[3, ..., 5] has sparse_shrink_axis_mask of 0x5 and
   // dense_shrink_axis_mask of 0x9, yielding a final shape (10,10).
-  int32 shrink_axis_mask;
+  int32_t shrink_axis_mask;
 };
 
 }  // namespace
@@ -281,7 +281,7 @@ absl::Status ValidateStridedSliceOp(
                                       *strides};
 
   if (strides_tensor.dtype() == DT_INT32) {
-    TF_RETURN_IF_ERROR(BuildDenseSpec<int32>(sparse_spec, &dense_spec));
+    TF_RETURN_IF_ERROR(BuildDenseSpec<int32_t>(sparse_spec, &dense_spec));
   } else if (strides_tensor.dtype() == DT_INT64) {
     TF_RETURN_IF_ERROR(BuildDenseSpec<int64_t>(sparse_spec, &dense_spec));
   } else if (strides_tensor.dtype() == DT_INT16) {
