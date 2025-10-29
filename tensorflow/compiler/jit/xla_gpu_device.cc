@@ -40,14 +40,14 @@ namespace tensorflow {
 
 class XlaGpuDeviceFactory : public DeviceFactory {
  public:
-  absl::Status ListPhysicalDevices(std::vector<string>* devices) override;
+  absl::Status ListPhysicalDevices(std::vector<std::string>* devices) override;
   absl::Status CreateDevices(
-      const SessionOptions& options, const string& name_prefix,
+      const SessionOptions& options, const std::string& name_prefix,
       std::vector<std::unique_ptr<Device>>* devices) override;
 };
 
 absl::Status XlaGpuDeviceFactory::ListPhysicalDevices(
-    std::vector<string>* devices) {
+    std::vector<std::string>* devices) {
   XlaDeviceFlags* flags = GetXlaDeviceFlags();
   if (!flags->tf_xla_enable_xla_devices && !XlaDevicesCreationRequired()) {
     VLOG(1) << "Not creating XLA devices, tf_xla_enable_xla_devices not set "
@@ -76,7 +76,7 @@ absl::Status XlaGpuDeviceFactory::ListPhysicalDevices(
 }
 
 absl::Status XlaGpuDeviceFactory::CreateDevices(
-    const SessionOptions& session_options, const string& name_prefix,
+    const SessionOptions& session_options, const std::string& name_prefix,
     std::vector<std::unique_ptr<Device>>* devices) {
   XlaDeviceFlags* flags = GetXlaDeviceFlags();
   if (!flags->tf_xla_enable_xla_devices && !XlaDevicesCreationRequired()) {
@@ -117,7 +117,7 @@ absl::Status XlaGpuDeviceFactory::CreateDevices(
     return absl::OkStatus();
   }
 
-  string allowed_gpus =
+  std::string allowed_gpus =
       session_options.config.gpu_options().visible_device_list();
   std::optional<std::set<int>> gpu_ids =
       ParseVisibleDeviceList(allowed_gpus).value();
