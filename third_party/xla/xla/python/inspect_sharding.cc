@@ -46,7 +46,8 @@ std::optional<xla::HloSharding> InspectShardingReadArgs(
     JAX_InspectSharding_Callback_Args* args) {
   xla::OpSharding proto;
   if (args->sharding_spec_size > std::numeric_limits<int>::max() ||
-      !proto.ParseFromArray(args->sharding_spec, args->sharding_spec_size)) {
+      !proto.ParseFromString(
+          absl::string_view(args->sharding_spec, args->sharding_spec_size))) {
     InspectShardingSetError(args,
                             "inspect_sharding: error parsing OpShardingProto");
     return std::nullopt;
