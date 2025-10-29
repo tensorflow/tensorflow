@@ -33,23 +33,24 @@ namespace tensorflow {
 // TODO(jpienaar): Clean up NodeDefBuilder and remove this class.
 class IncompleteNodeDefBuilder {
  public:
-  IncompleteNodeDefBuilder(const string& name, const string& op,
+  IncompleteNodeDefBuilder(const std::string& name, const std::string& op,
                            const NodeDebugInfo& debug);
 
-  IncompleteNodeDefBuilder& AddAttr(const string& attr, const DataType& type);
-  IncompleteNodeDefBuilder& AddAttr(const string& attr, int val);
+  IncompleteNodeDefBuilder& AddAttr(const std::string& attr,
+                                    const DataType& type);
+  IncompleteNodeDefBuilder& AddAttr(const std::string& attr, int val);
 
-  IncompleteNodeDefBuilder& Device(const string& device);
+  IncompleteNodeDefBuilder& Device(const std::string& device);
 
   absl::Status Build(Graph* graph, Node** n);
 
-  static IncompleteNodeDefBuilder Identity(const string& name,
+  static IncompleteNodeDefBuilder Identity(const std::string& name,
                                            const DataType& type,
                                            const NodeDebugInfo& debug);
-  static IncompleteNodeDefBuilder Merge(const string& name,
+  static IncompleteNodeDefBuilder Merge(const std::string& name,
                                         const DataType& type,
                                         const NodeDebugInfo& debug, int n);
-  static IncompleteNodeDefBuilder Switch(const string& name,
+  static IncompleteNodeDefBuilder Switch(const std::string& name,
                                          const DataType& type,
                                          const NodeDebugInfo& debug);
 
