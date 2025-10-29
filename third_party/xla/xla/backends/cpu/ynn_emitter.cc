@@ -57,11 +57,8 @@ using TensorIdMap = absl::flat_hash_map<const HloInstruction*, uint32_t>;
 //===----------------------------------------------------------------------===//
 
 static std::vector<size_t> YnnDimensions(const Shape& shape) {
-  std::vector<size_t> dims;
-  for (auto& dim : shape.dimensions()) {
-    dims.push_back(dim);
-  }
-  return dims;
+  absl::Span<const int64_t> dims = shape.dimensions();
+  return {dims.begin(), dims.end()};
 }
 
 //===----------------------------------------------------------------------===//
