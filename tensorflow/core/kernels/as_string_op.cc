@@ -40,7 +40,7 @@ class AsStringOp : public OpKernel {
     bool scientific;
     bool shortest;
     int32_t width;
-    string fill_string;
+    std::string fill_string;
     DataType dtype;
     OP_REQUIRES_OK(ctx, ctx->GetAttr("T", &dtype));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("precision", &precision));
@@ -178,13 +178,13 @@ class AsStringOp : public OpKernel {
   } break
 
     switch (dtype) {
-      ENCODE_TYPE(DT_UINT8, uint8, format_);
-      ENCODE_TYPE(DT_UINT16, uint16, format_);
-      ENCODE_TYPE(DT_UINT32, uint32, format_);
-      ENCODE_TYPE(DT_UINT64, uint64, format_);
-      ENCODE_TYPE(DT_INT8, int8, format_);
-      ENCODE_TYPE(DT_INT16, int16, format_);
-      ENCODE_TYPE(DT_INT32, int32, format_);
+      ENCODE_TYPE(DT_UINT8, uint8_t, format_);
+      ENCODE_TYPE(DT_UINT16, uint16_t, format_);
+      ENCODE_TYPE(DT_UINT32, uint32_t, format_);
+      ENCODE_TYPE(DT_UINT64, uint64_t, format_);
+      ENCODE_TYPE(DT_INT8, int8_t, format_);
+      ENCODE_TYPE(DT_INT16, int16_t, format_);
+      ENCODE_TYPE(DT_INT32, int32_t, format_);
       ENCODE_TYPE(DT_INT64, int64_t, format_);
       ENCODE_TYPE(DT_FLOAT, float, format_);
       ENCODE_TYPE(DT_DOUBLE, double, format_);
@@ -246,7 +246,7 @@ class AsStringOp : public OpKernel {
   }
 
  private:
-  string format_;
+  std::string format_;
 };
 
 REGISTER_KERNEL_BUILDER(Name("AsString").Device(DEVICE_CPU), AsStringOp);
