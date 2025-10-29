@@ -39,7 +39,7 @@ absl::Status Run(const std::string& filename) {
       module->entry_computation()->root_instruction());
   fusion->SetAndSanitizeName("main");
   TF_ASSIGN_OR_RETURN(
-      MlirKernelDefinition kernel_definition,
+      KernelDefinition kernel_definition,
       EmitFusionKernel(*symbolic_expr_context, *fusion, nullptr, false));
   llvm::outs() << kernel_definition.source().ToString();
   return absl::OkStatus();

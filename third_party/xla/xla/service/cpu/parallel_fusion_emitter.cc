@@ -171,7 +171,7 @@ absl::StatusOr<KernelSpec> ParallelFusionEmitter::AddFusion(
   // fixed but will require a rework of the ThunkEmitter.
   auto compiler_instance = fusion_compiler_pool_->GetInstance();
   TF_ASSIGN_OR_RETURN(
-      MlirKernelDefinition mlir_kernel_definition,
+      KernelDefinition mlir_kernel_definition,
       EmitFusionKernel(*compiler_instance->symbolic_expr_context, *fusion,
                        buffer_assignment_, use_unique_c_name_));
 
@@ -181,8 +181,8 @@ absl::StatusOr<KernelSpec> ParallelFusionEmitter::AddFusion(
   }
 
   KernelSpec spec = mlir_kernel_definition.spec();
-  auto shared_source =
-      std::make_shared<MlirKernelDefinition>(std::move(mlir_kernel_definition));
+  auto shared_source = std::make_shared<KernelDefinition<MlirKernelSource>>(
+      std::move(mlir_kernel_definition));
 
   thread_pool_.Schedule(absl::bind_front(&ParallelFusionEmitter::CompileFusion,
                                          this, std::move(shared_source),

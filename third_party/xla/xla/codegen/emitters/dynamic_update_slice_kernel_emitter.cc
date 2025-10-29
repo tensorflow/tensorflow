@@ -92,7 +92,7 @@ DynamicUpdateSliceKernelEmitter::DynamicUpdateSliceKernelEmitter(
       entry_function_name_(entry_function_name),
       backend_kind_(backend_kind) {}
 
-absl::StatusOr<MlirKernelDefinition>
+absl::StatusOr<DynamicUpdateSliceKernelEmitter::KernelDefinition>
 DynamicUpdateSliceKernelEmitter::EmitKernelDefinition() {
   mlir::OpBuilder builder(symbolic_expr_context_.GetMLIRContext());
   auto loc = mlir::NameLoc::get(builder.getStringAttr(fusion_.name()));
@@ -120,8 +120,8 @@ DynamicUpdateSliceKernelEmitter::EmitKernelDefinition() {
 
   TF_ASSIGN_OR_RETURN(auto kernel_spec, GetKernelSpec());
 
-  return MlirKernelDefinition(std::move(kernel_spec),
-                              MlirKernelSource(std::move(module)));
+  return KernelDefinition(std::move(kernel_spec),
+                          MlirKernelSource(std::move(module)));
 }
 
 IndexingMap DynamicUpdateSliceKernelEmitter::ComputeWorkItemIdToInputIndexing(

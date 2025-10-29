@@ -851,7 +851,7 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitFusionKernelThunk(
     auto kernel_emitter = std::make_unique<CpuScatterFusion>(
         buffer_assignment_, fusion, &symbolic_expr_context_);
 
-    TF_ASSIGN_OR_RETURN(MlirKernelDefinition kernel_definition,
+    TF_ASSIGN_OR_RETURN(KernelDefinition kernel_definition,
                         kernel_emitter->EmitKernelDefinition());
 
     auto kernel_spec = kernel_definition.spec();

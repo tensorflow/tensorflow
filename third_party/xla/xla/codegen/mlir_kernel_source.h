@@ -81,8 +81,6 @@ class MlirKernelSource final : public KernelSource {
   Storage storage_;
 };
 
-using MlirKernelDefinition = KernelDefinition<MlirKernelSource>;  // NOLINT
-
 }  // namespace xla
 
 #endif  // XLA_CODEGEN_MLIR_KERNEL_SOURCE_H_

@@ -42,7 +42,7 @@ limitations under the License.
 #include "xla/codegen/emitters/loop_kernel_emitter.h"
 #include "xla/codegen/hlo_fusion_spec.h"
 #include "xla/codegen/ir_emission_utils.h"
-#include "xla/codegen/kernel_spec.h"
+#include "xla/codegen/kernel_definition.h"
 #include "xla/codegen/mlir_kernel_source.h"
 #include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -57,7 +57,6 @@ limitations under the License.
 #include "xla/runtime/work_tile_size.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/cpu/backend_config.pb.h"
-#include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/platform/statusor.h"
@@ -208,7 +207,7 @@ static HloFusionSpec GetLoopFusionSpec(const HloFusionInstruction& fusion) {
                        std::move(heroes));
 }
 
-static absl::StatusOr<MlirKernelDefinition> EmitLoopFusionKernel(
+static absl::StatusOr<KernelDefinition<MlirKernelSource>> EmitLoopFusionKernel(
     SymbolicExprContext& context, const HloFusionInstruction& fusion,
     const BufferAssignment* buffer_assignment, absl::string_view name) {
   VLOG(2) << "Emitting loop fusion kernel: " << name;
@@ -230,9 +229,11 @@ static absl::StatusOr<MlirKernelDefinition> EmitLoopFusionKernel(
   return mlir_kernel_definition;
 }
 
-static absl::StatusOr<MlirKernelDefinition> EmitConcatenateFusionKernel(
-    SymbolicExprContext& context, const HloFusionInstruction& fusion,
-    const BufferAssignment* buffer_assignment, absl::string_view name) {
+static absl::StatusOr<KernelDefinition<MlirKernelSource>>
+EmitConcatenateFusionKernel(SymbolicExprContext& context,
+                            const HloFusionInstruction& fusion,
+                            const BufferAssignment* buffer_assignment,
+                            absl::string_view name) {
   VLOG(2) << "Emitting concatenate fusion kernel: " << name;
   HloFusionSpec fusion_spec = GetLoopFusionSpec(fusion);
   auto work_dimensions = GetConcatenateEmitterWorkDims(fusion, fusion_spec);
@@ -252,9 +253,11 @@ static absl::StatusOr<MlirKernelDefinition> EmitConcatenateFusionKernel(
   return mlir_kernel_definition;
 }
 
-static absl::StatusOr<MlirKernelDefinition> EmitDynamicUpdateSliceFusionKernel(
-    SymbolicExprContext& context, const HloFusionInstruction& fusion,
-    const BufferAssignment* buffer_assignment, absl::string_view name) {
+static absl::StatusOr<KernelDefinition<MlirKernelSource>>
+EmitDynamicUpdateSliceFusionKernel(SymbolicExprContext& context,
+                                   const HloFusionInstruction& fusion,
+                                   const BufferAssignment* buffer_assignment,
+                                   absl::string_view name) {
   VLOG(2) << "Emitting dynamic update slice fusion kernel: " << name;
   HloFusionSpec fusion_spec = GetLoopFusionSpec(fusion);
   auto work_dimensions =
@@ -275,7 +278,7 @@ static absl::StatusOr<MlirKernelDefinition> EmitDynamicUpdateSliceFusionKernel(
   return mlir_kernel_definition;
 }
 
-absl::StatusOr<MlirKernelDefinition> EmitFusionKernel(
+absl::StatusOr<KernelDefinition<MlirKernelSource>> EmitFusionKernel(
     SymbolicExprContext& context, const HloFusionInstruction& fusion,
     const BufferAssignment* buffer_assignment, bool use_unique_c_name) {
   if (fusion.fusion_kind() == HloFusionInstruction::FusionKind::kLoop) {

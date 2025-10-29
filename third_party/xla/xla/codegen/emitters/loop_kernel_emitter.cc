@@ -84,7 +84,7 @@ LoopFusionKernelEmitter::LoopFusionKernelEmitter(
       entry_function_name_(entry_function_name),
       backend_kind_(backend_kind) {}
 
-absl::StatusOr<MlirKernelDefinition>
+absl::StatusOr<LoopFusionKernelEmitter::KernelDefinition>
 LoopFusionKernelEmitter::EmitKernelDefinition() {
   mlir::OpBuilder builder(symbolic_expr_context_.GetMLIRContext());
   auto loc = mlir::NameLoc::get(builder.getStringAttr(fusion_.name()));
@@ -114,8 +114,8 @@ LoopFusionKernelEmitter::EmitKernelDefinition() {
                       GetKernelSpec(entry_function_name_, fusion_,
                                     buffer_assignment_, work_dimensions_));
 
-  return MlirKernelDefinition(std::move(kernel_spec),
-                              MlirKernelSource(std::move(module)));
+  return KernelDefinition(std::move(kernel_spec),
+                          MlirKernelSource(std::move(module)));
 }
 
 IndexingMap LoopFusionKernelEmitter::ComputeWorkItemIdToOutputIndexing(
