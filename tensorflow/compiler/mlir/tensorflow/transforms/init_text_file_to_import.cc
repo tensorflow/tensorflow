@@ -49,7 +49,7 @@ static constexpr int kTextFileIndex_LineNumber = -1;
 class InitTextFileToImportPass
     : public impl::InitTextFileToImportPassBase<InitTextFileToImportPass> {
  public:
-  InitTextFileToImportPass() {}
+  InitTextFileToImportPass() = default;
   InitTextFileToImportPass(const InitTextFileToImportPass&) {}
   explicit InitTextFileToImportPass(std::string saved_model_dir) {
     saved_model_dir_ = saved_model_dir;
