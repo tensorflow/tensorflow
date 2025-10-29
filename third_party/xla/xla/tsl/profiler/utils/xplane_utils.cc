@@ -316,7 +316,7 @@ void SortXSpace(XSpace* space) {
 // The assumption is that both line's timestamp_ns and start_time_ns are
 // nano-seconds from epoch time, the different of these values is much
 // smaller than these value.
-void NormalizeTimestamps(XPlane* plane, uint64 start_time_ns) {
+void NormalizeTimestamps(XPlane* plane, uint64_t start_time_ns) {
   for (XLine& line : *plane->mutable_lines()) {
     if (line.timestamp_ns() >= static_cast<int64_t>(start_time_ns)) {
       line.set_timestamp_ns(line.timestamp_ns() - start_time_ns);
@@ -324,13 +324,13 @@ void NormalizeTimestamps(XPlane* plane, uint64 start_time_ns) {
   }
 }
 
-void NormalizeTimestamps(XSpace* space, uint64 start_time_ns) {
+void NormalizeTimestamps(XSpace* space, uint64_t start_time_ns) {
   for (XPlane& plane : *space->mutable_planes()) {
     NormalizeTimestamps(&plane, start_time_ns);
   }
 }
 
-void DenormalizeTimestamps(XPlane* plane, uint64 start_time_ns) {
+void DenormalizeTimestamps(XPlane* plane, uint64_t start_time_ns) {
   for (XLine& line : *plane->mutable_lines()) {
     if (line.timestamp_ns() < static_cast<int64_t>(start_time_ns)) {
       line.set_timestamp_ns(line.timestamp_ns() + start_time_ns);
@@ -338,7 +338,7 @@ void DenormalizeTimestamps(XPlane* plane, uint64 start_time_ns) {
   }
 }
 
-void DenormalizeTimestamps(XSpace* space, uint64 start_time_ns) {
+void DenormalizeTimestamps(XSpace* space, uint64_t start_time_ns) {
   for (XPlane& plane : *space->mutable_planes()) {
     DenormalizeTimestamps(&plane, start_time_ns);
   }
@@ -567,7 +567,7 @@ void AggregateXPlane(const XPlane& full_trace, XPlane& aggregated_trace) {
   aggregated_plane.SetName(plane.Name());
   aggregated_plane.SetId(plane.Id());
 
-  uint64_t first_op_start_ps = kint64max;
+  uint64_t first_op_start_ps = std::numeric_limits<int64_t>::max();
   uint64_t last_op_end_ps = 0;
 
   plane.ForEachLine([&](const XLineVisitor& line) {
@@ -594,8 +594,9 @@ void AggregateXPlane(const XPlane& full_trace, XPlane& aggregated_trace) {
                            ? last_op_end_ps
                            : timespan.end_ps();
       const auto& group_stat = event.GetStat(StatType::kGroupId);
-      int64_t group_id =
-          group_stat.has_value() ? group_stat->IntOrUintValue() : kint64max;
+      int64_t group_id = group_stat.has_value()
+                             ? group_stat->IntOrUintValue()
+                             : std::numeric_limits<int64_t>::max();
 
       StatByEvent& line_stats = stats[line.Id()][group_id];
       line_stats[event.Id()].stat.UpdateStat(timespan.duration_ps());
@@ -646,7 +647,7 @@ void AggregateXPlane(const XPlane& full_trace, XPlane& aggregated_trace) {
             aggregated_line.AddEvent(event_metadata);
         aggregated_event.SetNumOccurrences(event_stat.stat.count());
         aggregated_event.SetDurationPs(event_stat.stat.sum());
-        if (group_id != kint64max) {
+        if (group_id != std::numeric_limits<int64_t>::max()) {
           aggregated_event.AddStatValue(*kGroupId, group_id);
         }
         if (event_stat.stat.count() > 1) {

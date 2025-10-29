@@ -28,7 +28,7 @@ limitations under the License.
 namespace tsl {
 namespace profiler {
 
-using XStatValue = std::variant<int64_t, uint64, absl::string_view>;
+using XStatValue = std::variant<int64_t, uint64_t, absl::string_view>;
 
 XPlane* GetOrCreateHostXPlane(XSpace* space);
 
