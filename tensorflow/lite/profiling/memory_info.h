@@ -30,6 +30,9 @@ struct MemoryUsage {
 
   // Indicates whether obtaining memory usage is supported on the platform, thus
   // indicating whether the values defined in this struct make sense or not.
+  // Note that even if this returns true, some of the fields in the struct may
+  // not be supported by GetMemoryUsage(); in such cases, unsupported fields
+  // will be set to kValueNotSet (zero) or -1.
   static bool IsSupported();
 
   MemoryUsage()
@@ -127,7 +130,7 @@ struct MemoryUsage {
 };
 
 // Return the memory usage from the system.
-// Note: this currently only works on Linux-based and Apple systems.
+// Note: this currently only works on Linux-based, Apple, and Windows systems.
 MemoryUsage GetMemoryUsage();
 
 }  // namespace memory

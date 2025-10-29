@@ -15,7 +15,6 @@ limitations under the License.
 #include "tensorflow/lite/profiling/memory_info.h"
 
 #include <memory>
-#include <new>
 #include <sstream>
 #include <string>
 
@@ -75,10 +74,28 @@ TEST(MemoryUsage, GetMemoryUsage) {
   }
 
   EXPECT_GE(result.mem_footprint_kb, size / 1024);
+#if !defined(__linux__) ||                                        \
+    (!defined(ADDRESS_SANITIZER) && !defined(MEMORY_SANITIZER) && \
+     !defined(THREAD_SANITIZER))
   EXPECT_GE(result.total_allocated_bytes, size);
   EXPECT_GE(result.in_use_allocated_bytes, size);
+#else
+  // The mallinfo() function, which is used on Linux, returns invalid
+  // results when address/memory/thread sanitizer is enabled, e.g.
+  // <https://github.com/google/sanitizers/issues/1845>, so the
+  // *_allocated_bytes fields are not supported in those cases,
+  // and should be set to either -1 or kValueNotSet(0).
+  if (result.total_allocated_bytes != -1) {
+    EXPECT_EQ(result.total_allocated_bytes, MemoryUsage::kValueNotSet);
+  }
+  if (result.in_use_allocated_bytes != -1) {
+    EXPECT_EQ(result.in_use_allocated_bytes, MemoryUsage::kValueNotSet);
+  }
+#endif  // !defined(__linux__) ||                                        \
+        // (!defined(ADDRESS_SANITIZER) && !defined(MEMORY_SANITIZER) && \
+        //  !defined(THREAD_SANITIZER))
   EXPECT_GE(result.private_footprint_bytes, size);
-#endif
+#endif  // defined(__linux__) || defined(__APPLE__) || defined(_WIN32)
 }
 
 // The main aim of this test is just to exercise the code for
