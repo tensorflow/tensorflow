@@ -56,7 +56,7 @@ void EvalDequantize(const Tensor& input, const Tensor& scales,
                                         quantization_axis, output);
   } else {
     EvalPerTensorDequantize<Tin, Tout>(input, scales.scalar<float>()(),
-                                       zero_points.scalar<int32>()(), output);
+                                       zero_points.scalar<int32_t>()(), output);
   }
 }
 
