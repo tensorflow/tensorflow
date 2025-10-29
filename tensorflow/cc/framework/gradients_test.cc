@@ -520,7 +520,7 @@ TEST_F(GradientsTest, AddSymbolicGradientsTest) {
     // Construct grad inputs.
     OutputList output_grads;
     Tensor ts(DT_INT32, {N, 1});
-    auto v = ts.matrix<int32>();
+    auto v = ts.matrix<int32_t>();
     for (int i = 0; i < N; ++i) {
       v(i, 0) = i;
     }
