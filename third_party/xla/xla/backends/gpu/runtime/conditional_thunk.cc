@@ -165,6 +165,14 @@ void ConditionalThunk::ForAllThunksMutable(absl::FunctionRef<void(Thunk*)> fn) {
   }
 }
 
+void ConditionalThunk::TransformAllNestedThunks(
+    absl::FunctionRef<std::unique_ptr<Thunk>(std::unique_ptr<Thunk>)> fn) {
+  for (std::unique_ptr<SequentialThunk>& branch_thunk : branch_thunks_) {
+    branch_thunk->TransformAllNestedThunks(fn);
+    branch_thunk = SequentialThunk::FromThunk(fn(std::move(branch_thunk)));
+  }
+}
+
 absl::StatusOr<ThunkProto> ConditionalThunk::ToProto() const {
   ThunkProto proto;
   *proto.mutable_thunk_info() = thunk_info().ToProto();

@@ -4914,6 +4914,80 @@ ENTRY e {
   EXPECT_TRUE(RunAndCompareNoHloPasses(
       std::move(optimized_module), ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
+
+TEST_F(TritonScaledDotTest, BroadcastAndReshapeGetFused) {
+  if (!GetCudaComputeCapability().IsAtLeastHopper()) {
+    GTEST_SKIP() << "Skipping test for pre-Hopper GPUs.";
+  }
+  constexpr absl::string_view kHloTextTemplate = R"hlo(
+HloModule ScaledDotWithBatchGetFusedAndExecutedCorrectly
+
+ENTRY e {
+  lhs = f8e4m3fn[3,128,128] parameter(0)
+  rhs = f8e4m3fn[3,128,128] parameter(1)
+  lhs_scale = f8e8m0fnu[3,128,1] parameter(2)
+  lhs_scale_broadcasted = f8e8m0fnu[3,128,1,4] broadcast(lhs_scale),
+      dimensions={0,1,2}
+  lhs_scale_reshaped = f8e8m0fnu[3,128,4] reshape(lhs_scale_broadcasted)
+  rhs_scale = f8e8m0fnu[3,128,1] parameter(3)
+  rhs_scale_broadcasted = f8e8m0fnu[3,128,1,4] broadcast(rhs_scale),
+      dimensions={0,1,2}
+  rhs_scale_reshaped = f8e8m0fnu[3,128,4] reshape(rhs_scale_broadcasted)
+  ROOT _ = bf16[3,128,128] scaled-dot(
+      lhs,
+      rhs,
+      lhs_scale_reshaped,
+      rhs_scale_reshaped),
+    lhs_batch_dims={0},
+    rhs_batch_dims={0},
+    lhs_contracting_dims={2},
+    rhs_contracting_dims={2}
+}
+  )hlo";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(kHloTextTemplate));
+  TF_ASSERT_OK_AND_ASSIGN(auto optimized_module,
+                          GetOptimizedModule(std::move(module)));
+  constexpr absl::string_view kExpectedOptimizedHLO = R"(
+    CHECK: ROOT %{{.*}} = f8e8m0fnu[3,128,4]{2,1,0} broadcast(%{{.*}}), dimensions={0,1}
+    CHECK: ROOT %{{.*}} = f8e8m0fnu[3,128,4]{2,1,0} broadcast(%{{.*}}), dimensions={0,1}
+    CHECK: %fusion
+    CHECK: %[[parameter_2:.*]] = f8e8m0fnu[3,128]{1,0} parameter(2)
+    CHECK: %{{.*}} = f8e8m0fnu[3,128,4]{2,1,0} fusion(%[[parameter_2]])
+    CHECK: %[[parameter_3:.*]] = f8e8m0fnu[3,128]{1,0} parameter(3)
+    CHECK: %{{.*}} = f8e8m0fnu[3,128,4]{2,1,0} fusion(%[[parameter_3]])
+    CHECK: ROOT {{.*}} scaled-dot
+    CHECK: ENTRY
+    CHECK: __triton_nested_gemm_fusion
+  )";
+  EXPECT_THAT(RunFileCheck(optimized_module->ToString(), kExpectedOptimizedHLO),
+              true);
+
+  HloComputation* scaled_dot_computation = GetFirstComputationWithInstruction(
+      *optimized_module, HloOpcode::kScaledDot);
+  constexpr absl::string_view kExpectedTritonIr = R"(
+      CHECK: tt.dot_scaled
+      CHECK: tensor<16x128xf8E4M3FN>, tensor<16x4xi8>
+      CHECK: tensor<128x16xf8E4M3FN>, tensor<16x4xi8>
+      CHECK: -> tensor<16x16xf32>
+  )";
+  EXPECT_THAT(CreateTritonIrAndFileCheck(*scaled_dot_computation,
+                                         /*block_level_parameters=*/
+                                         {
+                                             {{1, 16, 16}},
+                                             4,
+                                             1,
+                                             1,
+                                             false,
+                                         },
+                                         kExpectedTritonIr),
+              absl_testing::IsOk());
+
+  EXPECT_TRUE(RunAndCompareNoHloPasses(
+      std::move(optimized_module), ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla

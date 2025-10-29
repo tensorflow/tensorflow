@@ -53,9 +53,10 @@ namespace xla::gpu {
 namespace {
 
 using ::testing::ElementsAre;
+using ::testing::NotNull;
+using ::testing::SizeIs;
 using ::tsl::proto_testing::EqualsProto;
 using ::tsl::proto_testing::ParseTextProtoOrDie;
-using ::tsl::testing::IsOk;
 using Kind = Thunk::Kind;
 
 // A dummy `Thunk` that does nothing.
@@ -377,6 +378,33 @@ TEST(WhileThunkTest, FromProto) {
   ASSERT_NE(thunk, nullptr);
   TF_ASSERT_OK_AND_ASSIGN(ThunkProto round_trip_proto, thunk->ToProto());
   EXPECT_THAT(round_trip_proto, EqualsProto(proto));
+}
+
+TEST(WhileThunkTest, TransformAllNestedThunks) {
+  BufferAllocation::Slice slice;
+  auto condition_thunk_sequence =
+      std::make_unique<SequentialThunk>(Thunk::ThunkInfo(), ThunkSequence());
+  auto body_thunk_sequence =
+      std::make_unique<SequentialThunk>(Thunk::ThunkInfo(), ThunkSequence());
+  auto while_thunk = std::make_unique<WhileThunk>(
+      Thunk::ThunkInfo(), /*loop=*/nullptr,
+      /*condition_result_buffer_index=*/slice,
+      /*condition_thunk_sequence=*/std::move(condition_thunk_sequence),
+      /*body_thunk_sequence_=*/std::move(body_thunk_sequence),
+      /*trip_count=*/3);
+
+  while_thunk->TransformAllNestedThunks([](auto) {
+    return std::make_unique<DummyThunk>(Kind::kCustomCall, Thunk::ThunkInfo());
+  });
+
+  EXPECT_THAT(while_thunk->condition_thunk_sequence(), NotNull());
+  EXPECT_THAT(while_thunk->condition_thunk_sequence()->thunks(), SizeIs(1));
+  EXPECT_THAT(while_thunk->condition_thunk_sequence()->thunks()[0]->kind(),
+              Kind::kCustomCall);
+  EXPECT_THAT(while_thunk->body_thunk_sequence(), NotNull());
+  EXPECT_THAT(while_thunk->body_thunk_sequence()->thunks(), SizeIs(1));
+  EXPECT_THAT(while_thunk->body_thunk_sequence()->thunks()[0]->kind(),
+              Kind::kCustomCall);
 }
 
 }  // namespace

@@ -33,6 +33,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/custom_call_thunk.h"
 #include "xla/backends/gpu/runtime/dynamic_slice_thunk.pb.h"
 #include "xla/backends/gpu/runtime/gemm_thunk.h"
+#include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/ffi/attribute_map.h"
 #include "xla/ffi/ffi.h"
@@ -65,7 +66,20 @@ limitations under the License.
 namespace xla::gpu {
 namespace {
 
+class DummyThunk : public Thunk {
+ public:
+  explicit DummyThunk(Kind kind, const Thunk::ThunkInfo& info)
+      : Thunk(kind, info) {}
+  ~DummyThunk() override = default;
+
+  absl::Status ExecuteOnStream(const ExecuteParams& params) override {
+    return absl::OkStatus();
+  }
+};
+
 using DynamicSliceThunkTest = HloHardwareIndependentTestBase;
+using ::testing::NotNull;
+using ::testing::SizeIs;
 using ::tsl::proto_testing::EqualsProto;
 
 std::string GetPlatformName() {
@@ -2098,6 +2112,30 @@ TEST_F(DynamicSliceThunkTest,
   EXPECT_TRUE(std::holds_alternative<HloModule*>((*deserialized_offsets)[0]));
   EXPECT_NE(std::get<HloModule*>((*deserialized_offsets)[0]), nullptr);
   EXPECT_EQ(proto.offsets().offsets(0).hlo_module_offset_idx(), 0);
+}
+
+TEST_F(DynamicSliceThunkTest, TransformAllNestedThunks) {
+  auto seq = std::make_unique<ThunkSequence>();
+  seq->emplace_back(
+      std::make_unique<DummyThunk>(Thunk::Kind::kGemm, Thunk::ThunkInfo()));
+  DynamicSliceThunk thunk(Thunk::ThunkInfo(),
+                          /*embedded_thunk=*/std::move(seq),
+                          /*arguments=*/{},
+                          /*fake_allocations=*/{},
+                          /*offsets=*/{},
+                          /*orig_shapes=*/{},
+                          /*sliced_shapes=*/{},
+                          /*offset_byte_sizes=*/{});
+
+  thunk.TransformAllNestedThunks([](auto) {
+    return std::make_unique<DummyThunk>(Thunk::Kind::kCustomCall,
+                                        Thunk::ThunkInfo());
+  });
+
+  EXPECT_THAT(thunk.get_embedded_thunk(), NotNull());
+  EXPECT_THAT(thunk.get_embedded_thunk()->thunks(), SizeIs(1));
+  EXPECT_THAT(thunk.get_embedded_thunk()->thunks()[0]->kind(),
+              Thunk::Kind::kCustomCall);
 }
 
 }  // namespace

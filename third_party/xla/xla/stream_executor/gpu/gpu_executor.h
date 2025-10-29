@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
+#include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/stream_executor_common.h"
@@ -78,7 +79,7 @@ class GpuExecutor : public StreamExecutorCommon {
       return absl::UnimplementedError("SubscribeDevice is not implemented.");
     }
 
-    virtual absl::StatusOr<void*> MapMemory(void* device_ptr,
+    virtual absl::StatusOr<void*> MapMemory(const DeviceMemoryBase& location,
                                             GpuExecutor* gpu_executor) {
       return absl::UnimplementedError("MapMemory is not implemented.");
     }

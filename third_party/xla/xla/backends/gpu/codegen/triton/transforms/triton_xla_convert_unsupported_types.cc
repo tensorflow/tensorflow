@@ -15,7 +15,6 @@ limitations under the License.
 #include <utility>
 
 #include "mlir/Dialect/Arith/IR/Arith.h"
-#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/SCF/Transforms/Patterns.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinTypeInterfaces.h"
@@ -26,7 +25,6 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Transforms/DialectConversion.h"
-#include "xla/backends/gpu/codegen/triton/ir/triton_xla_ops.h"
 #include "xla/codegen/xtile/ir/xtile_ops.h"
 #include "triton/Dialect/Triton/IR/Dialect.h"
 #include "triton/Dialect/Triton/IR/Types.h"
@@ -101,6 +99,8 @@ class TritonXLAConvertUnsupportedTypesPass
                  GenericOpConversionPattern<::xla::xtile::InsertTileOp>,
                  GenericOpConversionPattern<ReshapeOp>,
                  GenericOpConversionPattern<TransOp>,
+                 GenericOpConversionPattern<ExpandDimsOp>,
+                 GenericOpConversionPattern<BroadcastOp>,
                  GenericOpConversionPattern<arith::BitcastOp>>(converter, ctx);
     scf::populateSCFStructuralTypeConversions(converter, patterns);
     populateFunctionOpInterfaceTypeConversionPattern<::xla::xtile::EntryFuncOp>(

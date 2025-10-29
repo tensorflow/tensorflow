@@ -135,5 +135,13 @@ void CollectiveGroupThunk::ForAllThunksMutable(
   }
 }
 
+void CollectiveGroupThunk::TransformAllNestedThunks(
+    absl::FunctionRef<std::unique_ptr<Thunk>(std::unique_ptr<Thunk>)> fn) {
+  for (std::unique_ptr<Thunk>& thunk : thunks_) {
+    thunk->TransformAllNestedThunks(fn);
+    thunk = fn(std::move(thunk));
+  }
+}
+
 }  // namespace gpu
 }  // namespace xla
